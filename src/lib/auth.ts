@@ -1,0 +1,53 @@
+"use client";
+
+/**
+ * ล็อกอินแอดมินฝั่ง client — เรียกผ่าน API route (ตรวจกับ Firebase employees2 ฝั่งเซิร์ฟเวอร์)
+ * โหมดเดโม (ยังไม่ตั้งค่า Firebase) → เข้าหลังบ้านได้เลย
+ */
+
+export async function signInAdmin(
+  username: string,
+  password: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return res.ok ? { ok: true } : { ok: false, error: data.error ?? "เข้าสู่ระบบไม่สำเร็จ" };
+  } catch {
+    return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
+  }
+}
+
+export async function signOut(): Promise<void> {
+  try {
+    await fetch("/api/admin/logout", { method: "POST" });
+  } catch {
+    // ข้าม
+  }
+}
+
+interface SessionInfo {
+  configured: boolean;
+  loggedIn: boolean;
+  name: string | null;
+}
+
+export async function getAdminSession(): Promise<SessionInfo> {
+  try {
+    const res = await fetch("/api/admin/session", { cache: "no-store" });
+    if (!res.ok) return { configured: false, loggedIn: false, name: null };
+    return (await res.json()) as SessionInfo;
+  } catch {
+    return { configured: false, loggedIn: false, name: null };
+  }
+}
+
+/** เข้าหลังบ้านได้ไหม: โหมดเดโม (ยังไม่ตั้งค่า) → ได้เลย, โหมดจริง → ต้องล็อกอิน */
+export async function canAccessAdmin(): Promise<boolean> {
+  const s = await getAdminSession();
+  return !s.configured || s.loggedIn;
+}

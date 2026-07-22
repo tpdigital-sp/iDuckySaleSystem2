@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-prompt), "Prompt", sans-serif;
+
+  /* พื้นเว็บหน้าร้าน — ขาวล้วน */
+  --color-cream: #ffffff;
+  /* เหลืองเป็ด — สี accent รอง (โลโก้/ไฮไลต์/ตัวอักษรบนปุ่มเข้ม) */
+  --color-ducky: #ffdb57;
+  --color-ducky-dark: #f2c53d;
+
+  /* ──────────────────────────────────────────────────────────────
+     รีแบรนด์ iDucky: รีแมป ramp "amber" (สีแบรนด์หลักเดิมทั่วเว็บ)
+     → ฟ้าพาสเทลอมเขียว (sky/teal) ตามโทนในภาพแบรนด์
+     ทำให้คลาส amber-* ทั้งหน้าบ้าน+หลังบ้าน กลายเป็นฟ้าแบรนด์ทันที
+     โดยไม่ต้องไล่แก้ทีละไฟล์ (มี ~147 จุด)  ⚠️ อย่าลืมว่า amber = ฟ้าแล้ว
+     ────────────────────────────────────────────────────────────── */
+  --color-amber-50: #eef7fa;
+  --color-amber-100: #d6edf2;
+  --color-amber-200: #b3dfe8;
+  --color-amber-300: #86ccd9;
+  --color-amber-400: #57b5c8;
+  --color-amber-500: #3fa1b6;
+  --color-amber-600: #34889f;
+  --color-amber-700: #2e7086;
+  --color-amber-800: #2b5c6e;
+  --color-amber-900: #284e5d;
+  --color-amber-950: #1a3843;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-cream);
+  color: #35434b;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}

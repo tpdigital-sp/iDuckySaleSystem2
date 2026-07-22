@@ -1,0 +1,10 @@
+# Netlify config — Next.js 15 (SSR) + Supabase + firebase-admin
+# Netlify ตรวจเจอ Next.js อัตโนมัติ และเพิ่ม @netlify/plugin-nextjs ให้เอง
+# (SSR/API routes ทำงานผ่าน Netlify Functions ที่ปลั๊กอินสร้างให้)
+
+[build]
+  command = "next build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
