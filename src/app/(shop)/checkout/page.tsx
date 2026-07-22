@@ -45,13 +45,26 @@ export default function CheckoutPage() {
   const [reported, setReported] = useState(false);
   const [reportErr, setReportErr] = useState("");
 
+  const [dragOver, setDragOver] = useState(false);
+
   function pickSlip(file: File | null) {
     setReportErr("");
+    if (file && !file.type.startsWith("image/")) {
+      setReportErr("รองรับเฉพาะไฟล์รูปภาพ (PNG / JPG)");
+      return;
+    }
     setSlip(file);
     setSlipPreview((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return file ? URL.createObjectURL(file) : "";
     });
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) pickSlip(file);
   }
 
   async function submitSlip() {
@@ -196,7 +209,15 @@ export default function CheckoutPage() {
             <p className="text-sm font-bold text-stone-700">📤 โอนแล้ว? แจ้งสลิปที่นี่</p>
             <p className="mt-0.5 text-xs text-stone-500">แนบรูปสลิปการโอน แล้วกดแจ้งโอน — ทางร้านจะตรวจสอบยอดให้อัตโนมัติ</p>
 
-            <label className="mt-3 block cursor-pointer">
+            <label
+              className="mt-3 block cursor-pointer"
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+            >
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/webp,image/gif"
@@ -210,9 +231,13 @@ export default function CheckoutPage() {
                   <span className="absolute bottom-2 right-2 rounded-full bg-stone-900/70 px-3 py-1 text-xs font-semibold text-white">เปลี่ยนรูป</span>
                 </div>
               ) : (
-                <div className="grid place-items-center gap-1 rounded-xl border-2 border-dashed border-stone-200 py-8 text-center transition hover:border-amber-300 hover:bg-amber-50/40">
+                <div
+                  className={`grid place-items-center gap-1 rounded-xl border-2 border-dashed py-8 text-center transition ${
+                    dragOver ? "border-amber-400 bg-amber-50/70" : "border-stone-200 hover:border-amber-300 hover:bg-amber-50/40"
+                  }`}
+                >
                   <span className="text-3xl">🖼️</span>
-                  <span className="text-sm font-semibold text-stone-600">แตะเพื่อแนบรูปสลิป</span>
+                  <span className="text-sm font-semibold text-stone-600">{dragOver ? "วางรูปที่นี่ได้เลย" : "แตะ หรือ ลากรูปมาวาง"}</span>
                   <span className="text-xs text-stone-400">PNG / JPG · ไม่เกิน 5MB</span>
                 </div>
               )}
