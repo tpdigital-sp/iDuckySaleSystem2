@@ -1,11 +1,14 @@
 # Netlify config — Next.js 15 (SSR) + Supabase + firebase-admin
 # ประกาศ @netlify/plugin-nextjs ตรง ๆ (ไม่พึ่ง auto-detect)
 # ปลั๊กอินจะแปลง .next เป็น Serverless/Edge Functions ให้ SSR + API routes ทำงาน
-# และตั้ง publish directory ให้เอง — จึง "ห้าม" ใส่ publish = ".next" เอง
-# (ถ้าใส่เอง Netlify จะเสิร์ฟ .next ดิบเป็น static → ไม่มี index.html → 404)
+#
+# publish = ".next" ต้องกำหนดในไฟล์นี้ เพื่อ "ทับ" ค่าใน Dashboard UI
+# (UI ตั้งไว้เป็นรากโปรเจกต์ /opt/build/repo → plugin fail เพราะ publish = base dir)
+# เมื่อมี plugin ประกาศชัด plugin จะจัดการ .next ให้ถูก (ไม่เสิร์ฟดิบจน 404)
 
 [build]
   command = "next build"
+  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "22"
