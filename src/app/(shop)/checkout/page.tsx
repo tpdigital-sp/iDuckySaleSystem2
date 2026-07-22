@@ -13,6 +13,7 @@ interface Placed {
   text: string;
   total: number;
   url: string;
+  key?: string;
 }
 
 export default function CheckoutPage() {
@@ -57,7 +58,7 @@ export default function CheckoutPage() {
     if (!placed || !slip) return;
     setReporting(true);
     setReportErr("");
-    const res = await reportPayment(placed.id, slip);
+    const res = await reportPayment(placed.id, placed.key, slip);
     setReporting(false);
     if (!res.ok) {
       setReportErr(res.error ?? "แจ้งโอนไม่สำเร็จ");
@@ -121,7 +122,7 @@ export default function CheckoutPage() {
     lines.push(`ยอดชำระ: ${formatPrice(total)}`);
     lines.push("(โอนแล้วแนบรูปสลิปในแชทนี้ได้เลย)");
     lines.push(`🔗 ลิงก์ออเดอร์: ${orderUrl}`);
-    setPlaced({ id: res.orderId, text: lines.join("\n"), total, url: orderUrl });
+    setPlaced({ id: res.orderId, text: lines.join("\n"), total, url: orderUrl, key: res.key });
     clear();
   }
 

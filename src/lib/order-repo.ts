@@ -16,10 +16,10 @@ export interface CreateOrderInput {
   items: { productId: string; name: string; selections: string; qty: number; unitPrice: number }[];
 }
 
-/** ลูกค้าสั่งซื้อ → สร้างออเดอร์ (public API, service role เขียน) */
+/** ลูกค้าสั่งซื้อ → สร้างออเดอร์ (public API, service role เขียน) · คืน key ลับสำหรับแจ้งโอน */
 export async function placeOrder(
   input: CreateOrderInput
-): Promise<{ ok: boolean; orderId?: string; error?: string }> {
+): Promise<{ ok: boolean; orderId?: string; key?: string; error?: string }> {
   try {
     const res = await fetch("/api/orders", {
       method: "POST",
@@ -27,20 +27,22 @@ export async function placeOrder(
       body: JSON.stringify(input),
     });
     const data = await res.json().catch(() => ({}));
-    return res.ok ? { ok: true, orderId: data.id } : { ok: false, error: data.error ?? "สั่งซื้อไม่สำเร็จ" };
+    return res.ok ? { ok: true, orderId: data.id, key: data.key } : { ok: false, error: data.error ?? "สั่งซื้อไม่สำเร็จ" };
   } catch {
     return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
   }
 }
 
-/** ลูกค้าแจ้งโอน → อัปโหลดสลิป + เปลี่ยนสถานะออเดอร์เป็น "รอตรวจสอบ" */
+/** ลูกค้าแจ้งโอน → อัปโหลดสลิป + เปลี่ยนสถานะออเดอร์เป็น "รอตรวจสอบ" (ยืนยันด้วย key ลับ) */
 export async function reportPayment(
   orderId: string,
+  key: string | undefined,
   slip: File
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const fd = new FormData();
     fd.append("orderId", orderId);
+    if (key) fd.append("key", key);
     fd.append("file", slip);
     const res = await fetch("/api/orders/slip", { method: "POST", body: fd });
     const data = await res.json().catch(() => ({}));

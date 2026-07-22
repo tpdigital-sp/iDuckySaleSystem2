@@ -55,6 +55,8 @@ export interface Order {
   slipUrl?: string;
   /** เวลาที่ลูกค้ากดแจ้งโอน (ISO string) */
   paidReportedAt?: string;
+  /** กุญแจลับต่อออเดอร์ (สุ่มตอนสร้าง) — ใช้ยืนยันสิทธิ์ตอนแจ้งโอน (public endpoint) · ไม่เปิดเผยใน URL */
+  key?: string;
 }
 
 export function orderTotal(o: Order): number {

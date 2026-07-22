@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomBytes } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import type { Order } from "@/lib/admin-data";
 
@@ -38,8 +39,10 @@ export async function POST(req: Request) {
 
   const now = new Date();
   const id = orderNo(now);
+  const key = randomBytes(24).toString("base64url"); // กุญแจลับต่อออเดอร์ (~32 ตัว, เดาไม่ได้)
   const order: Order = {
     id,
+    key,
     customer: input.customerName.trim(),
     phone: input.phone.trim(),
     address: input.address.trim(),
@@ -60,5 +63,5 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "ระบบยังไม่พร้อม — ผู้ดูแลต้องสร้างตาราง orders ก่อน (รัน supabase/orders.sql)" }, { status: 503 });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, id });
+  return NextResponse.json({ ok: true, id, key });
 }

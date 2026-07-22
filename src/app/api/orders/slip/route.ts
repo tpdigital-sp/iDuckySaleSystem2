@@ -32,6 +32,7 @@ export async function POST(req: Request) {
   }
 
   const orderId = String(form.get("orderId") ?? "").trim();
+  const key = String(form.get("key") ?? "");
   const file = form.get("file");
   if (!orderId) return NextResponse.json({ error: "ไม่มีเลขออเดอร์" }, { status: 400 });
   if (!(file instanceof File)) return NextResponse.json({ error: "ไม่มีไฟล์สลิป" }, { status: 400 });
@@ -45,6 +46,10 @@ export async function POST(req: Request) {
   if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
   if (!row) return NextResponse.json({ error: "ไม่พบเลขออเดอร์นี้" }, { status: 404 });
   const order = row.data as Order;
+  // ยืนยันสิทธิ์ด้วยกุญแจลับ — กันคนเดาเลขออเดอร์แล้วแนบสลิปมั่ว
+  // (ออเดอร์เก่าก่อนมีระบบ key จะไม่มี order.key → ข้ามการเช็ค เพื่อ backward-compat)
+  if (order.key && order.key !== key)
+    return NextResponse.json({ error: "ลิงก์แจ้งโอนไม่ถูกต้อง (รหัสออเดอร์ไม่ตรง)" }, { status: 403 });
   if (order.status !== "รอชำระเงิน" && order.status !== "รอตรวจสอบ")
     return NextResponse.json({ error: "ออเดอร์นี้ยืนยันการชำระเงินแล้ว ไม่ต้องแจ้งโอนซ้ำ" }, { status: 409 });
 
