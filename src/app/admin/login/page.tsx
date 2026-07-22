@@ -13,10 +13,16 @@ export default function AdminLoginPage() {
   const [loading, setLoading] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
 
+  // ปลายทางหลังล็อกอิน — คืนค่า ?next= (เฉพาะ path ภายใน /admin กัน open-redirect) ไม่งั้น /admin
+  function nextDest() {
+    const n = new URLSearchParams(window.location.search).get("next");
+    return n && n.startsWith("/admin") ? n : "/admin";
+  }
+
   useEffect(() => {
     getAdminSession().then((s) => {
       setConfigured(s.configured);
-      if (s.loggedIn) router.replace("/admin");
+      if (s.loggedIn) router.replace(nextDest());
     });
   }, [router]);
 
@@ -26,7 +32,7 @@ export default function AdminLoginPage() {
     setError("");
     const res = await signInAdmin(username, password);
     setLoading(false);
-    if (res.ok) router.push("/admin");
+    if (res.ok) router.push(nextDest());
     else setError(res.error ?? "เข้าสู่ระบบไม่สำเร็จ");
   }
 

@@ -33,7 +33,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       setConfigured(s.configured);
       const ok = !s.configured || s.loggedIn;
       setAllowed(ok);
-      if (!ok) router.replace("/admin/login");
+      // เก็บปลายทางเดิม (เช่น ลิงก์ลึก ?order=) ไว้ใน ?next= เพื่อพากลับหลังล็อกอิน
+      if (!ok) router.replace(`/admin/login?next=${encodeURIComponent(pathname + window.location.search)}`);
     });
     return () => {
       active = false;

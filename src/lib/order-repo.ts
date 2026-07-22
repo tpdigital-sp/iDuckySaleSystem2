@@ -33,6 +33,23 @@ export async function placeOrder(
   }
 }
 
+/** ลูกค้าแจ้งโอน → อัปโหลดสลิป + เปลี่ยนสถานะออเดอร์เป็น "รอตรวจสอบ" */
+export async function reportPayment(
+  orderId: string,
+  slip: File
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const fd = new FormData();
+    fd.append("orderId", orderId);
+    fd.append("file", slip);
+    const res = await fetch("/api/orders/slip", { method: "POST", body: fd });
+    const data = await res.json().catch(() => ({}));
+    return res.ok ? { ok: true } : { ok: false, error: data.error ?? "แจ้งโอนไม่สำเร็จ" };
+  } catch {
+    return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
+  }
+}
+
 /** แอดมินดึงออเดอร์ทั้งหมด · needsSetup = true เมื่อตาราง orders ยังไม่ถูกสร้าง */
 export async function fetchOrdersAdmin(): Promise<{ orders: Order[]; needsSetup: boolean }> {
   try {

@@ -1,5 +1,6 @@
 export type OrderStatus =
   | "รอชำระเงิน"
+  | "รอตรวจสอบ"
   | "ชำระแล้ว"
   | "กำลังผลิต"
   | "จัดส่งแล้ว"
@@ -8,6 +9,7 @@ export type OrderStatus =
 
 export const ORDER_STATUSES: OrderStatus[] = [
   "รอชำระเงิน",
+  "รอตรวจสอบ",
   "ชำระแล้ว",
   "กำลังผลิต",
   "จัดส่งแล้ว",
@@ -17,6 +19,7 @@ export const ORDER_STATUSES: OrderStatus[] = [
 
 export const STATUS_STYLES: Record<OrderStatus, string> = {
   รอชำระเงิน: "bg-amber-50 text-amber-700 ring-amber-200/70",
+  รอตรวจสอบ: "bg-orange-50 text-orange-700 ring-orange-200/70",
   ชำระแล้ว: "bg-sky-50 text-sky-700 ring-sky-200/70",
   กำลังผลิต: "bg-violet-50 text-violet-700 ring-violet-200/70",
   จัดส่งแล้ว: "bg-blue-50 text-blue-700 ring-blue-200/70",
@@ -48,6 +51,10 @@ export interface Order {
   /** เชื่อมกับสมาชิก (ถ้าล็อกอินตอนสั่ง) — ไม่มี = สั่งแบบ guest */
   customerId?: string;
   email?: string;
+  /** หลักฐานการโอน — URL รูปสลิปที่ลูกค้าอัปโหลด (มี = ลูกค้าแจ้งโอนแล้ว) */
+  slipUrl?: string;
+  /** เวลาที่ลูกค้ากดแจ้งโอน (ISO string) */
+  paidReportedAt?: string;
 }
 
 export function orderTotal(o: Order): number {

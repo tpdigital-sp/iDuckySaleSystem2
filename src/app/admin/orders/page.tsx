@@ -23,12 +23,16 @@ export default function AdminOrdersPage() {
   const [demo, setDemo] = useState(false); // true = ยังไม่มีออเดอร์จริง (โชว์ตัวอย่าง)
 
   useEffect(() => {
+    // ลิงก์ลึกจากลูกค้า: /admin/orders?order=<id> → เปิดออเดอร์นั้นให้อัตโนมัติ
+    const deepLink = new URLSearchParams(window.location.search).get("order");
     fetchOrdersAdmin().then((r) => {
+      const list = r.orders.length > 0 ? r.orders : MOCK_ORDERS;
       if (r.orders.length > 0) setOrders(r.orders);
       else {
         setOrders(MOCK_ORDERS); // ยังไม่มีออเดอร์จริง → โชว์ตัวอย่างไว้ก่อน
         setDemo(true);
       }
+      if (deepLink && list.some((o) => o.id === deepLink)) setSelectedId(deepLink);
     });
   }, []);
 
@@ -58,6 +62,7 @@ export default function AdminOrdersPage() {
     return {
       total: orders.length,
       awaitPay: orders.filter((o) => o.status === "รอชำระเงิน").length,
+      toVerify: orders.filter((o) => o.status === "รอตรวจสอบ").length,
       toShip: orders.filter((o) => o.status === "ชำระแล้ว" || o.status === "กำลังผลิต").length,
       shipped: orders.filter((o) => o.status === "จัดส่งแล้ว").length,
       todaySales: active.filter((o) => dayOf(o.date) === today).reduce((s, o) => s + orderTotal(o), 0),
@@ -82,9 +87,10 @@ export default function AdminOrdersPage() {
       </p>
 
       {/* แดชบอร์ดสรุป */}
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-7">
         <StatTile label="ออเดอร์ทั้งหมด" value={stats.total.toString()} />
         <StatTile label="รอชำระ" value={stats.awaitPay.toString()} accent="amber" />
+        <StatTile label="รอตรวจสอบ" value={stats.toVerify.toString()} accent="orange" />
         <StatTile label="รอจัดส่ง" value={stats.toShip.toString()} accent="violet" />
         <StatTile label="จัดส่งแล้ว" value={stats.shipped.toString()} accent="sky" />
         <StatTile label="ยอดขายวันนี้" value={formatPrice(stats.todaySales)} accent="emerald" />
@@ -122,6 +128,7 @@ export default function AdminOrdersPage() {
                     </p>
                     <p className={`mt-0.5 truncate text-xs ${faint}`}>
                       {o.date} · {qtyOf(o)} ชิ้น · {o.payment} · {o.shipping}
+                      {o.slipUrl && <span className="ml-1 font-semibold text-orange-600">· 📎 มีสลิป</span>}
                     </p>
                   </div>
                   <span className="text-sm font-semibold text-slate-900">{formatPrice(orderTotal(o))}</span>
@@ -148,18 +155,20 @@ function StatTile({
 }: {
   label: string;
   value: string;
-  accent?: "amber" | "sky" | "violet" | "emerald";
+  accent?: "amber" | "orange" | "sky" | "violet" | "emerald";
 }) {
   const color =
     accent === "amber"
       ? "text-amber-600"
-      : accent === "sky"
-        ? "text-sky-600"
-        : accent === "violet"
-          ? "text-violet-600"
-          : accent === "emerald"
-            ? "text-emerald-600"
-            : "text-slate-900";
+      : accent === "orange"
+        ? "text-orange-600"
+        : accent === "sky"
+          ? "text-sky-600"
+          : accent === "violet"
+            ? "text-violet-600"
+            : accent === "emerald"
+              ? "text-emerald-600"
+              : "text-slate-900";
   return (
     <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200/70">
       <div className="text-xs text-slate-500">{label}</div>
@@ -288,6 +297,23 @@ function OrderDrawer({
               </div>
             </div>
           </div>
+
+          {order.slipUrl && (
+            <div>
+              <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                หลักฐานการโอน {order.status === "รอตรวจสอบ" && <span className="ml-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-700">รอตรวจ</span>}
+              </h3>
+              <a href={order.slipUrl} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-xl ring-1 ring-slate-200 transition hover:ring-amber-300">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={order.slipUrl} alt="สลิปการโอน" className="max-h-72 w-full bg-slate-50 object-contain" />
+              </a>
+              {order.paidReportedAt && (
+                <p className={`mt-1 text-xs ${faint}`}>
+                  ลูกค้าแจ้งโอน: {new Date(order.paidReportedAt).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · แตะรูปเพื่อดูเต็ม
+                </p>
+              )}
+            </div>
+          )}
 
           {order.tracking && (
             <div>
