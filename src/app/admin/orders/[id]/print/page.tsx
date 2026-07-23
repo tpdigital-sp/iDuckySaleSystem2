@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
+import Barcode from "@/components/Barcode";
 import { formatPrice } from "@/lib/products";
 import { MOCK_ORDERS, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
 import { fetchOrdersAdmin } from "@/lib/order-repo";
@@ -131,19 +132,17 @@ export default function PrintOrderPage() {
                 <p className="text-xs leading-snug text-slate-600">{SHOP.addressLines.join(" ")}</p>
                 <p className="text-xs tabular-nums text-slate-600">โทร. {SHOP.phone}</p>
               </div>
-              <div className="flex items-start gap-4">
-                <div className="text-right">
-                  <p className="font-mono text-2xl font-extrabold tracking-tight">{order.id}</p>
-                  <p className="text-xs text-slate-500">{order.date}</p>
-                  <p className="mt-1 inline-block rounded border border-slate-900 px-2 py-0.5 text-xs font-bold">
-                    {order.shipping}
-                  </p>
-                </div>
-                {/* QR = เลขออเดอร์ล้วน — สำหรับ "เครื่องยิง" ที่คอม (ห้ามเปลี่ยนเป็น URL) */}
-                <div className="shrink-0 text-center">
-                  <QRCodeSVG value={order.id} size={78} level="M" marginSize={0} />
-                  <p className="mt-1 text-[9px] font-bold leading-tight text-slate-600">🔫 เครื่องยิง</p>
-                  <p className="text-[9px] leading-tight text-slate-500">ผูกเลขพัสดุ</p>
+              <div className="shrink-0 text-right">
+                <p className="font-mono text-2xl font-extrabold tracking-tight">{order.id}</p>
+                <p className="text-xs text-slate-500">{order.date}</p>
+                <p className="mt-1 inline-block rounded border border-slate-900 px-2 py-0.5 text-xs font-bold">
+                  {order.shipping}
+                </p>
+                {/* บาร์โค้ด = เลขออเดอร์ล้วน สำหรับเครื่องยิงที่คอม (ห้ามเปลี่ยนเป็น URL)
+                    ใช้บาร์โค้ดแทน QR เพื่อไม่ให้สับสนกับ QR มือถือบนใบงาน */}
+                <div className="mt-2 flex flex-col items-end">
+                  <Barcode value={order.id} displayValue={false} />
+                  <p className="mt-0.5 text-[9px] leading-tight text-slate-500">สแกนด้วยเครื่องยิง → ผูกเลขพัสดุ</p>
                 </div>
               </div>
             </div>
