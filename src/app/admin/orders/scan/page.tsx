@@ -10,6 +10,22 @@ import { h1, muted } from "@/lib/admin-ui";
 type Msg = { kind: "ok" | "err" | "info"; text: string } | null;
 
 /**
+ * ดึงเลขออเดอร์ออกจากสิ่งที่ยิงเข้ามา
+ * รองรับทั้งโค้ดล้วน (OD-260722-8143) และลิงก์เต็ม (กรณียิงโดน QR ของมือถือ)
+ */
+function extractOrderId(raw: string): string {
+  const v = raw.trim();
+  const m = v.match(/OD-\d{6}-\d{4}/i);
+  if (m) return m[0].toUpperCase();
+  // เผื่อรูปแบบเลขออเดอร์เปลี่ยนในอนาคต — ถ้าเป็น URL ให้เอาส่วนท้ายของ path
+  if (/^https?:\/\//i.test(v)) {
+    const tail = v.split(/[?#]/)[0].split("/").filter(Boolean).pop();
+    if (tail) return decodeURIComponent(tail);
+  }
+  return v;
+}
+
+/**
  * สถานีสแกน — ยิง QR เลขออเดอร์ แล้วยิง/พิมพ์เลขพัสดุต่อ
  * เครื่องสแกนทำงานเหมือนคีย์บอร์ด (พิมพ์ข้อความ + Enter) จึงรับผ่าน <form> ธรรมดา
  * ช่องกรอกจะโฟกัสค้างไว้เสมอ เพื่อให้ยิงต่อเนื่องได้โดยไม่ต้องคลิก
@@ -59,9 +75,10 @@ export default function ScanTrackingPage() {
 
     // ── ขั้นที่ 1: ยิง QR เลขออเดอร์ ──
     if (!target) {
-      const found = orders.find((o) => o.id.toLowerCase() === v.toLowerCase());
+      const code = extractOrderId(v);
+      const found = orders.find((o) => o.id.toLowerCase() === code.toLowerCase());
       if (!found) {
-        setMsg({ kind: "err", text: `ไม่พบออเดอร์ “${v}” — ยิง QR บนใบงานอีกครั้ง` });
+        setMsg({ kind: "err", text: `ไม่พบออเดอร์ “${code}” — ยิง QR บนใบงานอีกครั้ง` });
         setTimeout(focusInput, 50);
         return;
       }

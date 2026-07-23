@@ -20,6 +20,7 @@ export default function PrintOrderPage() {
   const [loading, setLoading] = useState(true);
   const [docs, setDocs] = useState<Record<DocKey, boolean>>({ work: true, receipt: false });
   const [withProofs, setWithProofs] = useState(true);
+  const [origin, setOrigin] = useState(""); // สำหรับ QR มือถือ (ต้องอ่านฝั่งเบราว์เซอร์)
 
   const load = useCallback(async () => {
     const r = await fetchOrdersAdmin();
@@ -30,6 +31,7 @@ export default function PrintOrderPage() {
 
   useEffect(() => {
     // ?doc=work|receipt (รองรับลิงก์เก่า job/label → work)
+    setOrigin(window.location.origin);
     const only = new URLSearchParams(window.location.search).get("doc");
     if (only === "receipt") setDocs({ work: false, receipt: true });
     else if (only) setDocs({ work: true, receipt: false });
@@ -52,6 +54,8 @@ export default function PrintOrderPage() {
   const totalQty = order.items.reduce((s, i) => s + i.qty, 0);
   const printedAt = new Date().toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
   const chosen = (Object.keys(docs) as DocKey[]).filter((k) => docs[k]);
+  /** ลิงก์เต็มสำหรับ QR มือถือ — เปิดหน้าออเดอร์เพื่อเช็คของตามภาพ */
+  const orderUrl = origin ? `${origin}/admin/orders/${encodeURIComponent(order.id)}` : "";
 
   return (
     <>
@@ -135,10 +139,11 @@ export default function PrintOrderPage() {
                     {order.shipping}
                   </p>
                 </div>
-                {/* QR = เลขออเดอร์ (ยิงเข้าระบบตอนผูกเลขพัสดุ) */}
+                {/* QR = เลขออเดอร์ล้วน — สำหรับ "เครื่องยิง" ที่คอม (ห้ามเปลี่ยนเป็น URL) */}
                 <div className="shrink-0 text-center">
                   <QRCodeSVG value={order.id} size={78} level="M" marginSize={0} />
-                  <p className="mt-1 text-[9px] leading-tight text-slate-500">สแกนเพื่อผูกเลขพัสดุ</p>
+                  <p className="mt-1 text-[9px] font-bold leading-tight text-slate-600">🔫 เครื่องยิง</p>
+                  <p className="text-[9px] leading-tight text-slate-500">ผูกเลขพัสดุ</p>
                 </div>
               </div>
             </div>
@@ -160,6 +165,24 @@ export default function PrintOrderPage() {
               <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-3 text-[10px] font-bold tracking-wide text-slate-400">
                 ✂ ตัดตามเส้นนี้ — ส่วนบนติดหน้ากล่อง · ส่วนล่างเก็บเป็นใบงาน
               </span>
+            </div>
+
+            {/* หัวใบงาน + QR มือถือ — พนักงานแพ็คสแกนเพื่อเปิดหน้าออเดอร์ เช็คของตามภาพจริง */}
+            <div className="keep flex items-center justify-between gap-4 rounded border border-slate-300 bg-slate-50 px-4 py-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ใบงาน / Packing list</p>
+                <p className="mt-0.5 font-mono text-lg font-extrabold tracking-tight">{order.id}</p>
+                <p className="text-xs text-slate-600">
+                  {order.customer} · {totalQty} ชิ้น · {order.items.length} รายการ
+                </p>
+              </div>
+              {orderUrl && (
+                <div className="shrink-0 text-center">
+                  <QRCodeSVG value={orderUrl} size={82} level="M" marginSize={0} />
+                  <p className="mt-1 text-[9px] font-bold leading-tight text-slate-600">📱 มือถือ</p>
+                  <p className="text-[9px] leading-tight text-slate-500">เปิดหน้าออเดอร์ · เช็คของ</p>
+                </div>
+              )}
             </div>
 
             {/* ตารางงาน */}
