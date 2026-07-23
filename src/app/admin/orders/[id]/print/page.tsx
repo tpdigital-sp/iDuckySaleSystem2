@@ -141,7 +141,7 @@ export default function PrintOrderPage() {
                 {/* บาร์โค้ด = เลขออเดอร์ล้วน สำหรับเครื่องยิงที่คอม (ห้ามเปลี่ยนเป็น URL)
                     ใช้บาร์โค้ดแทน QR เพื่อไม่ให้สับสนกับ QR มือถือบนใบงาน */}
                 <div className="mt-2 flex flex-col items-end">
-                  <Barcode value={order.id} displayValue={false} />
+                  <Barcode value={order.id} displayValue={false} height={30} width={1.2} />
                   <p className="mt-0.5 text-[9px] leading-tight text-slate-500">สแกนด้วยเครื่องยิง → ผูกเลขพัสดุ</p>
                 </div>
               </div>
