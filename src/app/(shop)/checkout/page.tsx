@@ -2,11 +2,21 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { formatPrice, FREE_SHIPPING_THRESHOLD, SHIPPING_METHODS } from "@/lib/products";
+import { formatPrice } from "@/lib/products";
 import { useCart } from "@/lib/cart-context";
 import { useCustomer } from "@/lib/customer-context";
-import { fetchShopPayment, hasPayment, EMPTY_PAYMENT, type ShopPayment } from "@/lib/shop-settings";
-import { placeOrder, reportPayment } from "@/lib/order-repo";
+import {
+  fetchShopPayment,
+  hasPayment,
+  freeShippingMinOf,
+  shippingOf,
+  DEFAULT_SHIPPING,
+  EMPTY_PAYMENT,
+  type ShopPayment,
+  type ShippingMethod,
+} from "@/lib/shop-settings";
+import { appendToOrder, placeOrder, reportPayment } from "@/lib/order-repo";
+import { clearAppendTarget, getAppendTarget, type AppendTarget } from "@/lib/append-order";
 
 interface Placed {
   id: string;
@@ -20,7 +30,9 @@ export default function CheckoutPage() {
   const { items, subtotal, totalQty, productOf, clear } = useCart();
   const { customer } = useCustomer();
   const [payment, setPayment] = useState<ShopPayment>(EMPTY_PAYMENT);
-  const [shippingId, setShippingId] = useState<string>(SHIPPING_METHODS[0].id);
+  const [methods, setMethods] = useState<ShippingMethod[]>(DEFAULT_SHIPPING);
+  const [freeMin, setFreeMin] = useState(0);
+  const [shippingId, setShippingId] = useState<string>(DEFAULT_SHIPPING[0].id);
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -46,6 +58,11 @@ export default function CheckoutPage() {
   const [reportErr, setReportErr] = useState("");
 
   const [dragOver, setDragOver] = useState(false);
+
+  /* โหมดสั่งเพิ่มในออเดอร์เดิม (มาจากหน้าเช็คออเดอร์) */
+  const [appendTo, setAppendTo] = useState<AppendTarget | null>(null);
+  const [appendDone, setAppendDone] = useState<{ owed: number } | null>(null);
+  useEffect(() => setAppendTo(getAppendTarget()), []);
 
   function pickSlip(file: File | null) {
     setReportErr("");
@@ -81,23 +98,24 @@ export default function CheckoutPage() {
   }
 
   useEffect(() => {
-    fetchShopPayment().then(setPayment);
+    fetchShopPayment().then((p) => {
+      setPayment(p);
+      const list = shippingOf(p);
+      setMethods(list);
+      setFreeMin(freeShippingMinOf(p));
+      setShippingId((cur) => (list.some((m) => m.id === cur) ? cur : list[0].id));
+    });
     const s = localStorage.getItem("iducky-shipping-v1");
     if (s) setShippingId(s);
   }, []);
 
-  const shippingMethod = SHIPPING_METHODS.find((s) => s.id === shippingId) ?? SHIPPING_METHODS[0];
-  const freeShipping = subtotal >= FREE_SHIPPING_THRESHOLD;
-  const shippingCost = freeShipping ? 0 : shippingMethod.price;
+  const shippingMethod = methods.find((s) => s.id === shippingId) ?? methods[0];
+  const freeShipping = freeMin > 0 && subtotal >= freeMin;
+  // สั่งเพิ่มในออเดอร์เดิม → ไม่คิดค่าส่งซ้ำ (จ่ายไปแล้วในออเดอร์แรก)
+  const shippingCost = appendTo ? 0 : freeShipping ? 0 : shippingMethod.price;
   const total = subtotal + shippingCost;
 
   async function submit() {
-    if (!name.trim() || !phone.trim() || !address.trim()) {
-      setErr("กรอกชื่อ เบอร์โทร และที่อยู่จัดส่งให้ครบ");
-      return;
-    }
-    setPlacing(true);
-    setErr("");
     const orderItems = items.map((it) => ({
       productId: it.productId,
       name: productOf(it.productId)?.name ?? it.productId,
@@ -105,6 +123,29 @@ export default function CheckoutPage() {
       qty: it.qty,
       unitPrice: it.unitPrice,
     }));
+
+    // ── โหมดสั่งเพิ่ม: ต่อท้ายออเดอร์เดิม ไม่ต้องกรอกที่อยู่ใหม่ ──
+    if (appendTo) {
+      setPlacing(true);
+      setErr("");
+      const res = await appendToOrder(appendTo.id, appendTo.key, orderItems);
+      setPlacing(false);
+      if (!res.ok) {
+        setErr(res.error ?? "สั่งเพิ่มไม่สำเร็จ");
+        return;
+      }
+      clearAppendTarget();
+      setAppendDone({ owed: res.owed ?? 0 });
+      clear();
+      return;
+    }
+
+    if (!name.trim() || !phone.trim() || !address.trim()) {
+      setErr("กรอกชื่อ เบอร์โทร และที่อยู่จัดส่งให้ครบ");
+      return;
+    }
+    setPlacing(true);
+    setErr("");
     const res = await placeOrder({
       customerName: name,
       phone,
@@ -122,8 +163,8 @@ export default function CheckoutPage() {
       setErr(res.error ?? "สั่งซื้อไม่สำเร็จ");
       return;
     }
-    // ลิงก์ออเดอร์ (สำหรับส่งให้แอดมินเปิดดู/แก้ไข)
-    const orderUrl = `${window.location.origin}/admin/orders?order=${res.orderId}`;
+    // ลิงก์ออเดอร์ของลูกค้า — เช็คสถานะ / ดูแบบงาน / อนุมัติ (ต้องมี key ถึงเปิดได้)
+    const orderUrl = `${window.location.origin}/order/${res.orderId}${res.key ? `?key=${encodeURIComponent(res.key)}` : ""}`;
     // สร้างข้อความ LINE ก่อนล้างตะกร้า
     const lines = [`🦆 ออเดอร์ ${res.orderId}`, `ชื่อ: ${name.trim()} · ${phone.trim()}`, "━━━━━━━━━━━━━━"];
     orderItems.forEach((it, i) => {
@@ -134,7 +175,7 @@ export default function CheckoutPage() {
     lines.push(`รวม ${totalQty} ชิ้น · จัดส่ง ${freeShipping ? "ฟรี" : formatPrice(shippingCost)}`);
     lines.push(`ยอดชำระ: ${formatPrice(total)}`);
     lines.push("(โอนแล้วแนบรูปสลิปในแชทนี้ได้เลย)");
-    lines.push(`🔗 ลิงก์ออเดอร์: ${orderUrl}`);
+    lines.push(`🔗 เช็คออเดอร์/ดูแบบงาน: ${orderUrl}`);
     setPlaced({ id: res.orderId, text: lines.join("\n"), total, url: orderUrl, key: res.key });
     clear();
   }
@@ -146,6 +187,34 @@ export default function CheckoutPage() {
       /* ข้าม */
     }
     window.open("https://line.me/R/msg/text/?" + encodeURIComponent(text), "_blank", "noopener,noreferrer");
+  }
+
+  /* ── สั่งเพิ่มในออเดอร์เดิมสำเร็จ ── */
+  if (appendDone && appendTo) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-10 text-center">
+        <div className="rounded-2xl bg-emerald-50/70 p-6 ring-1 ring-emerald-200">
+          <span className="text-5xl">🛍️</span>
+          <h1 className="mt-3 text-2xl font-extrabold text-emerald-800">เพิ่มเข้าออเดอร์เดิมแล้ว!</h1>
+          <p className="mt-1 text-sm text-stone-600">
+            รายการใหม่ถูกเพิ่มเข้า <span className="font-bold text-stone-900">{appendTo.id}</span> เรียบร้อย
+          </p>
+          {appendDone.owed > 0 && (
+            <p className="mt-3 rounded-xl bg-white px-4 py-3 text-sm ring-1 ring-amber-200">
+              ยอดที่ต้องโอนเพิ่ม <span className="text-lg font-extrabold text-amber-600">{formatPrice(appendDone.owed)}</span>
+              <br />
+              <span className="text-xs text-stone-500">ไม่มีค่าจัดส่งเพิ่ม เพราะรวมส่งกับออเดอร์เดิม</span>
+            </p>
+          )}
+        </div>
+        <Link
+          href={`/order/${appendTo.id}?key=${encodeURIComponent(appendTo.key)}`}
+          className="mt-5 inline-block rounded-full bg-amber-500 px-8 py-3.5 text-sm font-bold text-white shadow-lg transition hover:bg-amber-600"
+        >
+          ไปหน้าออเดอร์ เพื่อแจ้งโอน →
+        </Link>
+      </div>
+    );
   }
 
   /* ── หลังสั่งซื้อสำเร็จ: เลขออเดอร์ + แจ้งโอน + แชร์ LINE ── */
@@ -169,8 +238,11 @@ export default function CheckoutPage() {
             }}
             className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-xs font-bold text-stone-600 ring-1 ring-stone-200 transition hover:bg-stone-50"
           >
-            {linkCopied ? "✓ คัดลอกลิงก์แล้ว" : "🔗 คัดลอกลิงก์ออเดอร์ (ส่งให้แอดมิน)"}
+            {linkCopied ? "✓ คัดลอกลิงก์แล้ว" : "🔗 คัดลอกลิงก์เช็คออเดอร์"}
           </button>
+          <p className="mt-2 text-[11px] leading-relaxed text-stone-400">
+            เก็บลิงก์นี้ไว้นะครับ — ใช้เช็คสถานะ · <strong className="text-stone-500">ดูแบบงานที่กราฟฟิกทำ และกดอนุมัติ</strong>
+          </p>
         </div>
 
         {hasPayment(payment) && (
@@ -289,10 +361,33 @@ export default function CheckoutPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <Link href="/cart" className="text-sm font-semibold text-stone-400 hover:text-stone-600">← ตะกร้า</Link>
-      <h1 className="mt-1 text-2xl font-extrabold text-amber-950">ยืนยันการสั่งซื้อ</h1>
-      <p className="mt-1 text-sm text-stone-500">กรอกข้อมูลผู้รับ แล้วกดสั่งซื้อ · ขั้นถัดไปจะแจ้งเลขออเดอร์ + บัญชีให้โอน</p>
+      <h1 className="mt-1 text-2xl font-extrabold text-amber-950">
+        {appendTo ? "สั่งเพิ่มในออเดอร์เดิม" : "ยืนยันการสั่งซื้อ"}
+      </h1>
+      {appendTo ? (
+        <div className="mt-3 rounded-2xl bg-amber-50 p-4 text-sm ring-1 ring-amber-200">
+          <p className="font-bold text-amber-900">
+            🛍️ กำลังเพิ่มเข้าออเดอร์ <span className="font-mono">{appendTo.id}</span>
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-stone-600">
+            ใช้ชื่อ/ที่อยู่เดิม · <strong className="text-amber-700">ไม่คิดค่าจัดส่งเพิ่ม</strong> เพราะส่งรวมกล่องเดียวกัน
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              clearAppendTarget();
+              setAppendTo(null);
+            }}
+            className="mt-2 text-xs font-bold text-stone-500 underline underline-offset-2 hover:text-rose-600"
+          >
+            ยกเลิก — สั่งเป็นออเดอร์ใหม่แทน
+          </button>
+        </div>
+      ) : (
+        <p className="mt-1 text-sm text-stone-500">กรอกข้อมูลผู้รับ แล้วกดสั่งซื้อ · ขั้นถัดไปจะแจ้งเลขออเดอร์ + บัญชีให้โอน</p>
+      )}
 
-      <div className="mt-5 space-y-3">
+      <div className={`mt-5 space-y-3 ${appendTo ? "hidden" : ""}`}>
         <div>
           <label className="mb-1 block text-sm font-bold text-stone-700">ชื่อผู้รับ</label>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="ชื่อ-นามสกุล" className={inputCls} />
@@ -310,8 +405,11 @@ export default function CheckoutPage() {
       {/* สรุปยอด */}
       <div className="mt-5 rounded-2xl bg-amber-50/70 p-4 ring-1 ring-amber-200">
         <div className="flex justify-between text-sm text-stone-600"><span>รวมสินค้า ({totalQty} ชิ้น)</span><span>{formatPrice(subtotal)}</span></div>
-        <div className="mt-1 flex justify-between text-sm text-stone-600"><span>ค่าจัดส่ง ({shippingMethod.name})</span><span>{freeShipping ? "ฟรี" : formatPrice(shippingCost)}</span></div>
-        <div className="mt-2 flex justify-between border-t border-amber-100 pt-2 text-base font-extrabold text-amber-950"><span>ยอดชำระ</span><span className="text-amber-600">{formatPrice(total)}</span></div>
+        <div className="mt-1 flex justify-between text-sm text-stone-600">
+          <span>ค่าจัดส่ง{appendTo ? "" : ` (${shippingMethod.name})`}</span>
+          <span>{appendTo ? "รวมกับออเดอร์เดิมแล้ว" : freeShipping ? "ฟรี" : formatPrice(shippingCost)}</span>
+        </div>
+        <div className="mt-2 flex justify-between border-t border-amber-100 pt-2 text-base font-extrabold text-amber-950"><span>{appendTo ? "ยอดที่ต้องโอนเพิ่ม" : "ยอดชำระ"}</span><span className="text-amber-600">{formatPrice(total)}</span></div>
       </div>
 
       {err && <p className="mt-3 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{err}</p>}
@@ -322,7 +420,7 @@ export default function CheckoutPage() {
         disabled={placing}
         className="mt-4 w-full rounded-full bg-amber-400 px-6 py-3.5 text-base font-bold text-white shadow-lg transition hover:scale-[1.01] hover:bg-amber-500 disabled:opacity-50"
       >
-        {placing ? "กำลังสั่งซื้อ…" : "✅ ยืนยันสั่งซื้อ"}
+        {placing ? "กำลังบันทึก…" : appendTo ? `➕ เพิ่มเข้าออเดอร์ ${appendTo.id}` : "✅ ยืนยันสั่งซื้อ"}
       </button>
     </div>
   );

@@ -16,6 +16,17 @@ export interface BankAccount {
   accountNo: string;   // เลขบัญชี
 }
 
+/** รูปแบบการจัดส่งที่ให้ลูกค้าเลือกตอนสั่งซื้อ */
+export interface ShippingMethod {
+  id: string;
+  name: string;   // เช่น "ส่งธรรมดา (3-5 วัน)"
+  price: number;  // ค่าส่ง (บาท)
+}
+
+/**
+ * ตั้งค่าร้านทั้งหมด (เก็บรวมในเรคอร์ดเดียว id = __shop_payment__)
+ * ชื่อ interface ยังเป็น ShopPayment เพื่อไม่ให้โค้ดเดิมพัง แต่ตอนนี้เก็บ "ทุกการตั้งค่า"
+ */
 export interface ShopPayment {
   banks: BankAccount[];
   /** พร้อมเพย์ (เบอร์โทร / เลขบัตร ปชช. / เลขนิติบุคคล) */
@@ -23,11 +34,33 @@ export interface ShopPayment {
   promptpayName?: string;
   /** ข้อความ/ขั้นตอนให้ลูกค้า */
   note?: string;
+  /** รูปแบบจัดส่ง — ไม่ตั้ง = ใช้ค่าเริ่มต้น */
+  shipping?: ShippingMethod[];
+  /** ซื้อครบเท่านี้ส่งฟรี (บาท) — 0 หรือไม่ตั้ง = ไม่มีโปรส่งฟรี */
+  freeShippingMin?: number;
 }
 
 export const SETTINGS_ID = "__shop_payment__";
 const LOCAL_KEY = "iducky-payment-v1";
 export const EMPTY_PAYMENT: ShopPayment = { banks: [] };
+
+/** ค่าเริ่มต้นถ้าแอดมินยังไม่ได้ตั้งค่าจัดส่ง */
+export const DEFAULT_SHIPPING: ShippingMethod[] = [
+  { id: "standard", name: "ส่งธรรมดา (3-5 วัน)", price: 50 },
+  { id: "express", name: "ส่งด่วน (1-2 วัน)", price: 90 },
+];
+export const DEFAULT_FREE_SHIPPING_MIN = 999;
+
+/** รูปแบบจัดส่งที่ใช้จริง (ตกไปใช้ค่าเริ่มต้นถ้ายังไม่ตั้ง/ตั้งไว้ว่าง) */
+export function shippingOf(s: ShopPayment | null | undefined): ShippingMethod[] {
+  const list = (s?.shipping ?? []).filter((m) => m.name?.trim());
+  return list.length ? list : DEFAULT_SHIPPING;
+}
+
+/** ยอดขั้นต่ำส่งฟรี (0 = ปิดโปร) */
+export function freeShippingMinOf(s: ShopPayment | null | undefined): number {
+  return s?.freeShippingMin ?? DEFAULT_FREE_SHIPPING_MIN;
+}
 
 /** มีช่องทางรับเงินอย่างน้อย 1 อย่างไหม */
 export function hasPayment(p: ShopPayment | null | undefined): boolean {

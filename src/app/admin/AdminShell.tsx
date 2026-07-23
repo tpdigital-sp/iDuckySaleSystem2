@@ -8,10 +8,11 @@ import { getAdminSession, signOut } from "@/lib/auth";
 const MENU = [
   { href: "/admin", label: "ภาพรวม", emoji: "📊" },
   { href: "/admin/orders", label: "คำสั่งซื้อ", emoji: "📦" },
+  { href: "/admin/orders/scan", label: "ยิงเลขพัสดุ", emoji: "📮" },
   { href: "/admin/products", label: "สินค้า", emoji: "🏷️" },
   { href: "/admin/options", label: "คลังตัวเลือก", emoji: "🎛️" },
   { href: "/admin/import", label: "นำเข้าสินค้า", emoji: "📥" },
-  { href: "/admin/payment", label: "บัญชี/ชำระเงิน", emoji: "🏦" },
+  { href: "/admin/settings", label: "ตั้งค่าระบบ", emoji: "⚙️" },
 ];
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
@@ -59,10 +60,16 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   }
   if (allowed === false) return null;
 
+  // เมนูที่ "ตรงที่สุด" กับ path ปัจจุบัน — /admin/orders/OD-123 → ไฮไลต์ "คำสั่งซื้อ"
+  // ส่วน /admin/orders/scan → ไฮไลต์ "ยิงเลขพัสดุ" (เพราะ href ยาวกว่า จึงชนะ)
+  const activeHref = MENU.map((m) => m.href)
+    .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
+    .sort((a, b) => b.length - a.length)[0];
+
   const nav = (
     <nav className="space-y-0.5">
       {MENU.map((m) => {
-        const active = pathname === m.href;
+        const active = m.href === activeHref;
         return (
           <Link
             key={m.href}
@@ -85,7 +92,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-800">
       {/* แถบข้าง (เดสก์ท็อป) */}
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-slate-200 bg-white p-3 md:flex">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-slate-200 bg-white p-3 md:flex print:hidden">
         <Link href="/admin" className="mb-5 flex items-center gap-2.5 px-2 py-1">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-ducky text-xl shadow-sm">🦆</span>
           <span className="leading-tight">
@@ -115,7 +122,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* แถบบน (มือถือ) */}
-        <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-slate-200 bg-white/90 px-4 backdrop-blur md:hidden">
+        <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-slate-200 bg-white/90 px-4 backdrop-blur md:hidden print:hidden">
           <Link href="/admin" className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-ducky text-lg">🦆</span>
             <span className="text-sm font-bold text-slate-900">iDucky Admin</span>
@@ -155,17 +162,17 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         )}
 
         {configured ? (
-          <div className="flex items-center justify-center gap-1.5 border-b border-emerald-100 bg-emerald-50/60 px-4 py-1.5 text-xs font-medium text-emerald-700">
+          <div className="flex items-center justify-center gap-1.5 border-b border-emerald-100 bg-emerald-50/60 px-4 py-1.5 text-xs font-medium text-emerald-700 print:hidden">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> เชื่อมต่อจริง — Firebase + Supabase · การแก้ไขบันทึกลงฐานข้อมูล
           </div>
         ) : (
-          <div className="flex items-center justify-center gap-1.5 border-b border-amber-100 bg-amber-50/60 px-4 py-1.5 text-xs font-medium text-amber-700">
+          <div className="flex items-center justify-center gap-1.5 border-b border-amber-100 bg-amber-50/60 px-4 py-1.5 text-xs font-medium text-amber-700 print:hidden">
             <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> โหมดตัวอย่าง (Demo) — ยังไม่ได้ตั้งค่าฐานข้อมูล การแก้ไขเก็บในเบราว์เซอร์นี้
           </div>
         )}
 
         {/* ความกว้างคุมจากแต่ละหน้าเอง (หน้าแก้ไขสินค้าใช้เต็มจอ) */}
-        <main className="w-full flex-1 px-4 py-6 md:px-8 md:py-8">{children}</main>
+        <main className="w-full flex-1 px-4 py-6 md:px-8 md:py-8 print:p-0">{children}</main>
       </div>
     </div>
   );

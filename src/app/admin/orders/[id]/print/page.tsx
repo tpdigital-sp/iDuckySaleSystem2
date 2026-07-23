@@ -1,0 +1,326 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { QRCodeSVG } from "qrcode.react";
+import { formatPrice } from "@/lib/products";
+import { MOCK_ORDERS, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
+import { fetchOrdersAdmin } from "@/lib/order-repo";
+import { SHOP } from "@/lib/shop-info";
+
+/** work = ใบงาน+ใบปะหน้าพัสดุ (ใบเดียวจบ) · receipt = ใบเสร็จให้ลูกค้า */
+type DocKey = "work" | "receipt";
+
+export default function PrintOrderPage() {
+  const params = useParams<{ id: string }>();
+  const orderId = decodeURIComponent(String(params?.id ?? ""));
+
+  const [order, setOrder] = useState<Order | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [docs, setDocs] = useState<Record<DocKey, boolean>>({ work: true, receipt: false });
+  const [withProofs, setWithProofs] = useState(true);
+
+  const load = useCallback(async () => {
+    const r = await fetchOrdersAdmin();
+    const list = r.orders.length > 0 ? r.orders : MOCK_ORDERS;
+    setOrder(list.find((o) => o.id === orderId) ?? null);
+    setLoading(false);
+  }, [orderId]);
+
+  useEffect(() => {
+    // ?doc=work|receipt (รองรับลิงก์เก่า job/label → work)
+    const only = new URLSearchParams(window.location.search).get("doc");
+    if (only === "receipt") setDocs({ work: false, receipt: true });
+    else if (only) setDocs({ work: true, receipt: false });
+    void load();
+  }, [load]);
+
+  if (loading) return <p className="p-10 text-center text-sm text-slate-400">กำลังโหลด…</p>;
+  if (!order) {
+    return (
+      <div className="p-10 text-center">
+        <p className="font-semibold text-slate-600">ไม่พบออเดอร์ {orderId}</p>
+        <Link href="/admin/orders" className="mt-3 inline-block text-sm font-semibold text-amber-600 hover:underline">
+          ← กลับหน้าคำสั่งซื้อ
+        </Link>
+      </div>
+    );
+  }
+
+  const subtotal = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+  const totalQty = order.items.reduce((s, i) => s + i.qty, 0);
+  const printedAt = new Date().toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
+  const chosen = (Object.keys(docs) as DocKey[]).filter((k) => docs[k]);
+
+  return (
+    <>
+      <style>{`
+        @page { size: A4; margin: 10mm; }
+        @media print {
+          html, body { background: #fff !important; }
+          .no-print { display: none !important; }
+          .sheet { break-after: page; box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; width: auto !important; }
+          .sheet:last-child { break-after: auto; }
+          tr, .keep { break-inside: avoid; }
+        }
+      `}</style>
+
+      {/* ── แถบเครื่องมือ (ไม่พิมพ์ออกมา) ── */}
+      <div className="no-print sticky top-0 z-10 mb-6 flex flex-wrap items-center gap-4 border-b border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
+        <Link href={`/admin/orders/${encodeURIComponent(order.id)}`} className="text-sm text-slate-500 hover:text-slate-800">
+          ← กลับหน้าออเดอร์
+        </Link>
+
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          {([
+            ["work", "ใบงาน + ใบปะหน้า"],
+            ["receipt", "ใบเสร็จ"],
+          ] as [DocKey, string][]).map(([k, label]) => (
+            <label key={k} className="flex cursor-pointer items-center gap-1.5">
+              <input
+                type="checkbox"
+                checked={docs[k]}
+                onChange={(e) => setDocs((d) => ({ ...d, [k]: e.target.checked }))}
+                className="h-4 w-4 accent-amber-500"
+              />
+              {label}
+            </label>
+          ))}
+          <span className="text-slate-300">|</span>
+          <label className="flex cursor-pointer items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={withProofs}
+              onChange={(e) => setWithProofs(e.target.checked)}
+              className="h-4 w-4 accent-amber-500"
+            />
+            แนบรูปแบบงาน
+          </label>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => window.print()}
+          disabled={chosen.length === 0}
+          className="ml-auto rounded-xl bg-amber-500 px-5 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-40"
+        >
+          🖨️ พิมพ์
+        </button>
+      </div>
+
+      <div className="mx-auto max-w-[210mm] space-y-6 px-4 pb-16 text-slate-900">
+        {chosen.length === 0 && (
+          <p className="no-print rounded-xl bg-amber-50 p-6 text-center text-sm text-amber-800 ring-1 ring-amber-200">
+            เลือกเอกสารที่ต้องการพิมพ์อย่างน้อย 1 อย่างด้านบน
+          </p>
+        )}
+
+        {/* ═══════════ ใบงาน + ใบปะหน้าพัสดุ (ใบเดียวจบ) ═══════════ */}
+        {docs.work && (
+          <section className="sheet rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+            {/* แถวบน: ผู้ส่ง | เลขออเดอร์ */}
+            <div className="flex items-start justify-between gap-6 border-b-2 border-slate-900 pb-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ผู้ส่ง / From</p>
+                <p className="mt-0.5 text-sm font-bold">{SHOP.legalName}</p>
+                <p className="text-xs leading-snug text-slate-600">{SHOP.addressLines.join(" ")}</p>
+                <p className="text-xs tabular-nums text-slate-600">โทร. {SHOP.phone}</p>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="text-right">
+                  <p className="font-mono text-2xl font-extrabold tracking-tight">{order.id}</p>
+                  <p className="text-xs text-slate-500">{order.date}</p>
+                  <p className="mt-1 inline-block rounded border border-slate-900 px-2 py-0.5 text-xs font-bold">
+                    {order.shipping}
+                  </p>
+                </div>
+                {/* QR = เลขออเดอร์ (ยิงเข้าระบบตอนผูกเลขพัสดุ) */}
+                <div className="shrink-0 text-center">
+                  <QRCodeSVG value={order.id} size={78} level="M" marginSize={0} />
+                  <p className="mt-1 text-[9px] leading-tight text-slate-500">สแกนเพื่อผูกเลขพัสดุ</p>
+                </div>
+              </div>
+            </div>
+
+            {/* ผู้รับ — ส่วนนี้ขึ้นไปคือ "ป้ายติดกล่อง" ตัดตามเส้นประด้านล่าง */}
+            <div className="keep mt-4 rounded border border-slate-300 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ผู้รับ / To</p>
+                <p className="font-mono text-xs font-bold text-slate-700">{order.id}</p>
+              </div>
+              <p className="mt-1 text-2xl font-extrabold leading-tight">{order.customer}</p>
+              <p className="mt-1 whitespace-pre-line text-lg leading-snug">{order.address}</p>
+              <p className="mt-2 text-xl font-bold tabular-nums">โทร. {order.phone}</p>
+            </div>
+
+            {/* เส้นประสำหรับตัด — ส่วนบนเอาไปติดหน้ากล่อง ส่วนล่างเก็บไว้เป็นใบงาน */}
+            <div className="relative my-6" aria-hidden>
+              <div className="border-t-2 border-dashed border-slate-400" />
+              <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-3 text-[10px] font-bold tracking-wide text-slate-400">
+                ✂ ตัดตามเส้นนี้ — ส่วนบนติดหน้ากล่อง · ส่วนล่างเก็บเป็นใบงาน
+              </span>
+            </div>
+
+            {/* ตารางงาน */}
+            <table className="mt-5 w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-y border-slate-300 bg-slate-50 text-left">
+                  <th className="w-8 py-2 pl-2">#</th>
+                  <th className="w-64 py-2">แบบงาน</th>
+                  <th className="py-2">รายการ / ตัวเลือก</th>
+                  <th className="w-16 py-2 text-center">จำนวน</th>
+                  <th className="w-14 py-2 text-center">ตรวจ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {order.items.map((it, i) => {
+                  const proofs = proofsOf(it);
+                  return (
+                    <tr key={`${it.productId}-${i}`} className="border-b border-slate-200 align-top">
+                      <td className="py-3 pl-2 tabular-nums">{i + 1}</td>
+                      <td className="py-3 pr-4">
+                        {!withProofs ? (
+                          <span className="text-xs text-slate-400">—</span>
+                        ) : proofs.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {proofs.map((p, j) => (
+                              <div key={`${p.url}-${j}`} className="w-28">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={p.url}
+                                  alt={`แบบงาน ${it.name} รูปที่ ${j + 1}`}
+                                  className="h-24 w-28 rounded border border-slate-300 object-contain"
+                                />
+                                <p className="mt-0.5 text-[10px] leading-tight text-slate-600">
+                                  {p.qty ? <strong>{p.qty} ชิ้น</strong> : null}
+                                  {p.qty && p.note ? " · " : null}
+                                  {p.note}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs font-semibold text-rose-600">⚠️ ยังไม่มีแบบงาน</p>
+                        )}
+                      </td>
+                      <td className="py-3">
+                        <p className="font-bold">{it.name}</p>
+                        {it.selections && <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{it.selections}</p>}
+                      </td>
+                      <td className="py-3 text-center text-base font-bold tabular-nums">{it.qty}</td>
+                      <td className="py-3 text-center text-lg text-slate-400">☐</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-slate-300">
+                  <td colSpan={3} className="py-2 pl-2 text-xs text-slate-500">
+                    รวม {order.items.length} รายการ · สถานะ: {order.status}
+                  </td>
+                  <td className="py-2 text-center text-base font-extrabold tabular-nums">{totalQty}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+
+            {order.note && (
+              <p className="mt-3 rounded border border-slate-300 bg-slate-50 p-3 text-sm">
+                <strong>หมายเหตุ:</strong> {order.note}
+              </p>
+            )}
+
+            <div className="mt-5 flex flex-wrap gap-8 text-xs text-slate-500">
+              <p>ผู้ผลิต ............................. วันที่ ..............</p>
+              <p>ผู้ตรวจ ............................. วันที่ ..............</p>
+              <p>ผู้แพ็ค ............................. วันที่ ..............</p>
+            </div>
+            <p className="mt-3 text-right text-[10px] text-slate-400">พิมพ์เมื่อ {printedAt}</p>
+          </section>
+        )}
+
+        {/* ═══════════ ใบเสร็จ ═══════════ */}
+        {docs.receipt && (
+          <section className="sheet rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+            <div className="flex items-start justify-between border-b-2 border-slate-900 pb-3">
+              <div>
+                <p className="text-lg font-extrabold">{SHOP.legalName}</p>
+                <p className="text-xs leading-snug text-slate-600">{SHOP.addressLines.join(" ")}</p>
+                <p className="text-xs text-slate-600">โทร. {SHOP.phone}</p>
+                {SHOP.taxId && <p className="text-xs text-slate-600">เลขประจำตัวผู้เสียภาษี {SHOP.taxId}</p>}
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-extrabold">ใบเสร็จรับเงิน</p>
+                <p className="font-mono text-sm font-bold">{order.id}</p>
+                <p className="text-xs text-slate-500">{order.date}</p>
+              </div>
+            </div>
+
+            <div className="mt-3 text-sm">
+              <p className="text-slate-500">ลูกค้า</p>
+              <p className="font-bold">
+                {order.customer} · {order.phone}
+              </p>
+              <p className="leading-snug">{order.address}</p>
+            </div>
+
+            <table className="mt-4 w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-y border-slate-300 bg-slate-50 text-left">
+                  <th className="w-8 py-2 pl-2">#</th>
+                  <th className="py-2">รายการ</th>
+                  <th className="w-24 py-2 text-right">ราคา/หน่วย</th>
+                  <th className="w-16 py-2 text-center">จำนวน</th>
+                  <th className="w-24 py-2 pr-2 text-right">รวม</th>
+                </tr>
+              </thead>
+              <tbody>
+                {order.items.map((it, i) => (
+                  <tr key={`${it.productId}-${i}`} className="border-b border-slate-200 align-top">
+                    <td className="py-2 pl-2 tabular-nums">{i + 1}</td>
+                    <td className="py-2">
+                      <p className="font-semibold">{it.name}</p>
+                      {it.selections && <p className="text-xs text-slate-500">{it.selections}</p>}
+                    </td>
+                    <td className="py-2 text-right tabular-nums">{formatPrice(it.unitPrice)}</td>
+                    <td className="py-2 text-center tabular-nums">{it.qty}</td>
+                    <td className="py-2 pr-2 text-right tabular-nums">{formatPrice(it.qty * it.unitPrice)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="ml-auto mt-3 w-64 text-sm">
+              <div className="flex justify-between py-1">
+                <span className="text-slate-500">รวมสินค้า</span>
+                <span className="tabular-nums">{formatPrice(subtotal)}</span>
+              </div>
+              <div className="flex justify-between py-1">
+                <span className="text-slate-500">ค่าจัดส่ง</span>
+                <span className="tabular-nums">{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
+              </div>
+              <div className="mt-1 flex justify-between border-t-2 border-slate-900 py-1.5 text-base font-extrabold">
+                <span>ยอดรวมทั้งสิ้น</span>
+                <span className="tabular-nums">{formatPrice(orderTotal(order))}</span>
+              </div>
+            </div>
+
+            <p className="mt-3 text-sm">
+              <span className="text-slate-500">ชำระโดย:</span> {order.payment}
+              {order.slipUrl && <span className="ml-2 font-semibold text-emerald-700">· ลูกค้าแจ้งโอนแล้ว</span>}
+            </p>
+
+            <div className="mt-10 flex justify-end">
+              <div className="text-center text-xs text-slate-500">
+                <p>.................................................</p>
+                <p className="mt-1">ผู้รับเงิน</p>
+              </div>
+            </div>
+            <p className="mt-4 text-right text-[10px] text-slate-400">พิมพ์เมื่อ {printedAt}</p>
+          </section>
+        )}
+      </div>
+    </>
+  );
+}

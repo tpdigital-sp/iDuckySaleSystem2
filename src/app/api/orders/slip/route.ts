@@ -67,7 +67,15 @@ export async function POST(req: Request) {
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 
   const { data: pub } = sb.storage.from(BUCKET).getPublicUrl(path);
-  const updated: Order = { ...order, slipUrl: pub.publicUrl, paidReportedAt: new Date().toISOString(), status: "รอตรวจสอบ" };
+  // จำยอดรวม ณ ตอนแจ้งโอน — ถ้าลูกค้าสั่งเพิ่มทีหลัง จะรู้ว่าค้างชำระเท่าไหร่
+  const paidNow = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0) + order.shippingCost;
+  const updated: Order = {
+    ...order,
+    slipUrl: pub.publicUrl,
+    paidReportedAt: new Date().toISOString(),
+    paidTotal: paidNow,
+    status: "รอตรวจสอบ",
+  };
   const { error: saveErr } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
 

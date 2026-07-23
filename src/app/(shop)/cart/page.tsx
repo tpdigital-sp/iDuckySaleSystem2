@@ -3,18 +3,35 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { formatPrice } from "@/lib/products";
 import {
-  formatPrice,
-  FREE_SHIPPING_THRESHOLD,
-  SHIPPING_METHODS,
-} from "@/lib/products";
+  fetchShopPayment,
+  freeShippingMinOf,
+  shippingOf,
+  DEFAULT_SHIPPING,
+  type ShippingMethod,
+} from "@/lib/shop-settings";
 import { useCart } from "@/lib/cart-context";
 import ProductVisual from "@/components/ProductVisual";
 
 export default function CartPage() {
   const { items, subtotal, totalQty, setQty, removeItem, clear, productOf } = useCart();
   const router = useRouter();
-  const [shippingId, setShippingId] = useState<string>(SHIPPING_METHODS[0].id);
+  // รูปแบบจัดส่ง + โปรส่งฟรี ดึงจากที่แอดมินตั้งค่าไว้ (ระหว่างโหลดใช้ค่าเริ่มต้นไปก่อน)
+  const [methods, setMethods] = useState<ShippingMethod[]>(DEFAULT_SHIPPING);
+  const [freeMin, setFreeMin] = useState(0);
+  const [shippingId, setShippingId] = useState<string>(DEFAULT_SHIPPING[0].id);
+
+  useEffect(() => {
+    fetchShopPayment().then((p) => {
+      const list = shippingOf(p);
+      setMethods(list);
+      setFreeMin(freeShippingMinOf(p));
+      // ถ้าที่จำไว้ไม่มีในรายการแล้ว → กลับไปใช้ตัวแรก
+      setShippingId((cur) => (list.some((m) => m.id === cur) ? cur : list[0].id));
+    });
+  }, []);
+
   // จำวิธีจัดส่งที่เลือก เพื่อส่งต่อไปหน้าแจ้งโอนเงิน
   useEffect(() => {
     const s = localStorage.getItem("iducky-shipping-v1");
@@ -24,11 +41,11 @@ export default function CartPage() {
     localStorage.setItem("iducky-shipping-v1", shippingId);
   }, [shippingId]);
 
-  const shippingMethod = SHIPPING_METHODS.find((s) => s.id === shippingId)!;
-  const freeShipping = subtotal >= FREE_SHIPPING_THRESHOLD;
+  const shippingMethod = methods.find((s) => s.id === shippingId) ?? methods[0];
+  const freeShipping = freeMin > 0 && subtotal >= freeMin;
   const shippingCost = freeShipping ? 0 : shippingMethod.price;
   const total = subtotal + shippingCost;
-  const remainForFree = FREE_SHIPPING_THRESHOLD - subtotal;
+  const remainForFree = freeMin - subtotal;
 
   if (items.length === 0) {
     return (
@@ -160,7 +177,7 @@ export default function CartPage() {
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-amber-200">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-ducky to-amber-500 transition-all"
-                  style={{ width: `${Math.min(100, (subtotal / FREE_SHIPPING_THRESHOLD) * 100)}%` }}
+                  style={{ width: `${freeMin > 0 ? Math.min(100, (subtotal / freeMin) * 100) : 0}%` }}
                 />
               </div>
             </div>
@@ -174,7 +191,7 @@ export default function CartPage() {
           <div className="mt-4">
             <span className="mb-2 block text-sm font-bold text-stone-700">วิธีจัดส่ง</span>
             <div className="space-y-2">
-              {SHIPPING_METHODS.map((s) => (
+              {methods.map((s) => (
                 <label
                   key={s.id}
                   className={`flex cursor-pointer items-center justify-between rounded-2xl px-4 py-3 text-sm ring-1 transition ${

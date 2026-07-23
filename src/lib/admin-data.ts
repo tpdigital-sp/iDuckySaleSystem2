@@ -2,6 +2,9 @@ export type OrderStatus =
   | "รอชำระเงิน"
   | "รอตรวจสอบ"
   | "ชำระแล้ว"
+  | "รอตรวจแบบ"
+  | "แก้ไขแบบ"
+  | "อนุมัติแบบ"
   | "กำลังผลิต"
   | "จัดส่งแล้ว"
   | "เสร็จสิ้น"
@@ -11,21 +14,81 @@ export const ORDER_STATUSES: OrderStatus[] = [
   "รอชำระเงิน",
   "รอตรวจสอบ",
   "ชำระแล้ว",
+  "รอตรวจแบบ",
+  "แก้ไขแบบ",
+  "อนุมัติแบบ",
   "กำลังผลิต",
   "จัดส่งแล้ว",
   "เสร็จสิ้น",
   "ยกเลิก",
 ];
 
+/**
+ * สีสถานะ — ไล่ตามลำดับงาน เหลือง→ส้ม→เขียว→ม่วง→แดง→เทอร์ควอยซ์→คราม→ฟ้า→เทา
+ * ⚠️ ห้ามใช้ ramp "amber" ที่นี่ เพราะถูกรีแมปเป็นสีฟ้าแบรนด์ (globals.css)
+ *    ถ้าใช้จะกลืนกับ sky/blue จนแยกสถานะไม่ออก
+ */
 export const STATUS_STYLES: Record<OrderStatus, string> = {
-  รอชำระเงิน: "bg-amber-50 text-amber-700 ring-amber-200/70",
+  รอชำระเงิน: "bg-yellow-50 text-yellow-700 ring-yellow-200/70",
   รอตรวจสอบ: "bg-orange-50 text-orange-700 ring-orange-200/70",
-  ชำระแล้ว: "bg-sky-50 text-sky-700 ring-sky-200/70",
-  กำลังผลิต: "bg-violet-50 text-violet-700 ring-violet-200/70",
-  จัดส่งแล้ว: "bg-blue-50 text-blue-700 ring-blue-200/70",
-  เสร็จสิ้น: "bg-emerald-50 text-emerald-700 ring-emerald-200/70",
-  ยกเลิก: "bg-slate-100 text-slate-500 ring-slate-200/70",
+  ชำระแล้ว: "bg-green-50 text-green-700 ring-green-200/70",
+  รอตรวจแบบ: "bg-violet-50 text-violet-700 ring-violet-200/70",
+  แก้ไขแบบ: "bg-rose-50 text-rose-700 ring-rose-200/70",
+  อนุมัติแบบ: "bg-teal-50 text-teal-700 ring-teal-200/70",
+  กำลังผลิต: "bg-indigo-50 text-indigo-700 ring-indigo-200/70",
+  จัดส่งแล้ว: "bg-sky-50 text-sky-700 ring-sky-200/70",
+  เสร็จสิ้น: "bg-slate-200 text-slate-700 ring-slate-300/70",
+  ยกเลิก: "bg-stone-100 text-stone-400 ring-stone-200/70",
 };
+
+/** ขั้นตอนของออเดอร์ที่ลูกค้า/ทีมงานเข้าใจง่าย (ไม่ใช่สถานะดิบ) */
+export const ORDER_STEPS = ["สั่งซื้อ", "ชำระเงิน", "แบบงาน", "ผลิต", "จัดส่ง"] as const;
+
+/** สถานะ → อยู่ขั้นที่เท่าไหร่ (ขั้นก่อนหน้า = ผ่านแล้ว) · 5 = จบครบ · -1 = ยกเลิก */
+export const STEP_OF: Record<OrderStatus, number> = {
+  รอชำระเงิน: 1,
+  รอตรวจสอบ: 1,
+  ชำระแล้ว: 2,
+  รอตรวจแบบ: 2,
+  แก้ไขแบบ: 2,
+  อนุมัติแบบ: 3,
+  กำลังผลิต: 3,
+  จัดส่งแล้ว: 4,
+  เสร็จสิ้น: 5,
+  ยกเลิก: -1,
+};
+
+/** สถานะการตรวจแบบของสินค้าแต่ละรายการ */
+export type ProofStatus = "รอตรวจ" | "อนุมัติ" | "ขอแก้ไข";
+
+export const PROOF_STYLES: Record<ProofStatus, string> = {
+  รอตรวจ: "bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200/70",
+  อนุมัติ: "bg-teal-50 text-teal-700 ring-teal-200/70",
+  ขอแก้ไข: "bg-rose-50 text-rose-700 ring-rose-200/70",
+};
+
+/** 1 บรรทัดในประวัติการทำงานของออเดอร์ (audit log) */
+export interface LogEntry {
+  /** ISO timestamp */
+  at: string;
+  /** ใครทำ — "ลูกค้า" | "แอดมิน" | "กราฟฟิก" | "ระบบ" */
+  by: string;
+  /** สิ่งที่ทำ เช่น "อัปโหลดแบบ" */
+  action: string;
+  /** รายละเอียดเพิ่มเติม เช่น ชื่อรายการ / คอมเมนต์ลูกค้า */
+  detail?: string;
+}
+
+/** ภาพแบบงาน 1 รูป ที่กราฟฟิกอัปโหลดให้ลูกค้าตรวจ */
+export interface Proof {
+  url: string;
+  /** จำนวนชิ้นที่ใช้แบบรูปนี้ (กราฟฟิกกรอก) */
+  qty?: number;
+  /** รายละเอียดเพิ่มเติมของรูปนี้ เช่น "ลายด้านหน้า" (กราฟฟิกกรอก) */
+  note?: string;
+  /** เวลาอัปโหลด (ISO) */
+  at: string;
+}
 
 export interface OrderItem {
   productId: string;
@@ -33,6 +96,16 @@ export interface OrderItem {
   selections: string;
   qty: number;
   unitPrice: number;
+  /** ภาพแบบงาน (proof) — หลายรูปได้ แต่ละรูประบุจำนวน/รายละเอียดของตัวเอง */
+  proofs?: Proof[];
+  /** @deprecated รูปแบบเดิม (รูปเดียว) — อ่านผ่าน proofsOf() เพื่อรองรับออเดอร์เก่า */
+  proofUrl?: string;
+  /** สถานะการตรวจแบบ "ของทั้งรายการ" (ลูกค้าอนุมัติ/ขอแก้ทีเดียวทั้งรายการ) */
+  proofStatus?: ProofStatus;
+  /** คอมเมนต์จากลูกค้าเมื่อกด "ขอแก้ไข" */
+  proofNote?: string;
+  /** เวลาที่อัปโหลด/อัปเดตแบบล่าสุด (ISO) */
+  proofUpdatedAt?: string;
 }
 
 export interface Order {
@@ -55,12 +128,36 @@ export interface Order {
   slipUrl?: string;
   /** เวลาที่ลูกค้ากดแจ้งโอน (ISO string) */
   paidReportedAt?: string;
-  /** กุญแจลับต่อออเดอร์ (สุ่มตอนสร้าง) — ใช้ยืนยันสิทธิ์ตอนแจ้งโอน (public endpoint) · ไม่เปิดเผยใน URL */
+  /** กุญแจลับต่อออเดอร์ (สุ่มตอนสร้าง) — ใช้ยืนยันสิทธิ์ตอนแจ้งโอน/ดูแบบ (public endpoint) */
   key?: string;
+  /**
+   * ยอดที่ลูกค้าแจ้งโอนไปแล้ว (บันทึกตอนกดแจ้งโอน = ยอดรวม ณ ตอนนั้น)
+   * ใช้คำนวณ "ยอดค้างชำระ" เมื่อลูกค้าสั่งเพิ่มในออเดอร์เดิม
+   */
+  paidTotal?: number;
+  /** ประวัติการทำงานของออเดอร์ (เก่า→ใหม่) — ใครทำอะไรเมื่อไหร่ */
+  log?: LogEntry[];
 }
 
 export function orderTotal(o: Order): number {
   return o.items.reduce((s, i) => s + i.qty * i.unitPrice, 0) + o.shippingCost;
+}
+
+/** ยอดที่ลูกค้ายังค้างชำระ (มากกว่า 0 = ต้องโอนเพิ่ม เช่น หลังสั่งเพิ่มในออเดอร์เดิม) */
+export function orderBalance(o: Order): number {
+  return Math.max(0, orderTotal(o) - (o.paidTotal ?? 0));
+}
+
+/** รูปแบบงานของรายการ — รองรับออเดอร์เก่าที่เก็บเป็น proofUrl รูปเดียว */
+export function proofsOf(item: OrderItem): Proof[] {
+  if (item.proofs?.length) return item.proofs;
+  return item.proofUrl ? [{ url: item.proofUrl, at: item.proofUpdatedAt ?? "" }] : [];
+}
+
+/** เพิ่ม 1 บรรทัดลงประวัติออเดอร์ (คืน Order ใหม่ ไม่แก้ของเดิม) */
+export function withLog(order: Order, by: string, action: string, detail?: string): Order {
+  const entry: LogEntry = { at: new Date().toISOString(), by, action, ...(detail ? { detail } : {}) };
+  return { ...order, log: [...(order.log ?? []), entry] };
 }
 
 /** ออเดอร์ตัวอย่างสำหรับเดโมหลังบ้าน — เฟสถัดไปจะดึงจากฐานข้อมูลจริง */
