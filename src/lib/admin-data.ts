@@ -79,6 +79,17 @@ export interface LogEntry {
   detail?: string;
 }
 
+/** ผลตรวจนับของพนักงานแพ็ค ต่อภาพแบบงาน 1 รูป */
+export interface PackCheck {
+  status: "ครบ" | "ไม่ครบ";
+  /** จำนวนที่นับได้จริง — กรอกเมื่อเลือก "ไม่ครบ" */
+  got?: number;
+  /** ใครตรวจ */
+  by: string;
+  /** เวลาที่ตรวจ (ISO) */
+  at: string;
+}
+
 /** ภาพแบบงาน 1 รูป ที่กราฟฟิกอัปโหลดให้ลูกค้าตรวจ */
 export interface Proof {
   url: string;
@@ -88,6 +99,8 @@ export interface Proof {
   note?: string;
   /** เวลาอัปโหลด (ISO) */
   at: string;
+  /** ผลตรวจนับของพนักงานแพ็ค — ต้องมีครบทุกรูปก่อนยิงเลขพัสดุ */
+  pack?: PackCheck;
 }
 
 export interface OrderItem {
@@ -106,6 +119,8 @@ export interface OrderItem {
   proofNote?: string;
   /** เวลาที่อัปโหลด/อัปเดตแบบล่าสุด (ISO) */
   proofUpdatedAt?: string;
+  /** พนักงานแพ็คยืนยันว่าอ่านรายละเอียดรายการนี้แล้ว — ต้องมีก่อนยิงเลขพัสดุ */
+  noteAck?: { by: string; at: string };
 }
 
 export interface Order {
@@ -152,6 +167,38 @@ export function orderBalance(o: Order): number {
 export function proofsOf(item: OrderItem): Proof[] {
   if (item.proofs?.length) return item.proofs;
   return item.proofUrl ? [{ url: item.proofUrl, at: item.proofUpdatedAt ?? "" }] : [];
+}
+
+/** ผลตรวจ "พร้อมส่งหรือยัง" ของพนักงานแพ็ค */
+export interface PackGate {
+  /** ผ่านครบทุกเงื่อนไข → ยิงเลขพัสดุได้ */
+  ready: boolean;
+  /** รูปแบบงานที่ยังไม่ได้กดตรวจนับ */
+  uncounted: { item: string; index: number }[];
+  /** รายการที่ยังไม่ได้กดยืนยันว่าอ่านรายละเอียดแล้ว */
+  unread: string[];
+  /** รูปที่พนักงานกด "ไม่ครบ" — ของขาด ห้ามส่ง */
+  short: { item: string; got: number; need?: number }[];
+}
+
+/**
+ * ตรวจว่าออเดอร์ผ่านขั้นตอนแพ็คครบหรือยัง
+ * ใช้ทั้งหน้าออเดอร์ (แสดงความคืบหน้า) และหน้ายิงเลขพัสดุ (บล็อกไม่ให้ยิง)
+ */
+export function packGate(order: Order): PackGate {
+  const uncounted: PackGate["uncounted"] = [];
+  const unread: string[] = [];
+  const short: PackGate["short"] = [];
+
+  order.items.forEach((it) => {
+    if (!it.noteAck) unread.push(it.name);
+    proofsOf(it).forEach((p, j) => {
+      if (!p.pack) uncounted.push({ item: it.name, index: j + 1 });
+      else if (p.pack.status === "ไม่ครบ") short.push({ item: it.name, got: p.pack.got ?? 0, need: p.qty });
+    });
+  });
+
+  return { ready: !uncounted.length && !unread.length && !short.length, uncounted, unread, short };
 }
 
 /** เพิ่ม 1 บรรทัดลงประวัติออเดอร์ (คืน Order ใหม่ ไม่แก้ของเดิม) */

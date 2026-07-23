@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 
 /**
  * ขยายดูรูปเต็มจอในหน้าเดิม (ไม่เปิดแท็บใหม่)
@@ -10,11 +10,14 @@ export default function ImageLightbox({
   src,
   alt,
   caption,
+  footer,
   onClose,
 }: {
   src: string;
   alt: string;
   caption?: string;
+  /** แถบปุ่มใต้รูป เช่น ปุ่มยืนยันการตรวจนับของพนักงานแพ็ค */
+  footer?: ReactNode;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -44,9 +47,14 @@ export default function ImageLightbox({
         src={src}
         alt={alt}
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[82vh] max-w-full rounded-xl object-contain shadow-2xl"
+        className={`max-w-full rounded-xl object-contain shadow-2xl ${footer ? "max-h-[58vh]" : "max-h-[82vh]"}`}
       />
       {caption && <p className="max-w-lg text-center text-sm text-white/80">{caption}</p>}
+      {footer && (
+        <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md">
+          {footer}
+        </div>
+      )}
       <p className="text-xs text-white/40">แตะพื้นหลัง หรือกด Esc เพื่อปิด</p>
 
       <button

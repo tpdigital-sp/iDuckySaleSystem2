@@ -8,6 +8,7 @@ import {
   MOCK_ORDERS,
   ORDER_STATUSES,
   orderTotal,
+  packGate,
   PROOF_STYLES,
   proofsOf,
   STATUS_STYLES,
@@ -18,8 +19,9 @@ import {
 } from "@/lib/admin-data";
 import { fetchOrdersAdmin, saveOrderAdmin, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
-import { card, faint, muted } from "@/lib/admin-ui";
+import { card, faint, muted, shortTime } from "@/lib/admin-ui";
 import ImageLightbox from "@/components/ImageLightbox";
+import PackCheckPanel from "@/components/PackCheckPanel";
 
 const LBL = "text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400";
 const SOFT = "rounded-xl border border-slate-200/70 bg-white p-4";
@@ -35,7 +37,13 @@ export default function AdminOrderDetailPage() {
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [err, setErr] = useState("");
-  const [lightbox, setLightbox] = useState<{ src: string; alt: string; caption?: string } | null>(null);
+  const [lightbox, setLightbox] = useState<{
+    src: string;
+    alt: string;
+    caption?: string;
+    /** ตำแหน่งของรูปแบบงาน — มีค่าเมื่อเปิดจากแกลเลอรี (ใช้แสดงปุ่มตรวจนับ) */
+    at?: { item: number; proof: number };
+  } | null>(null);
   const [origin, setOrigin] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
   const [overrideLock, setOverrideLock] = useState(false); // แอดมินยืนยันให้ทำแบบก่อนจ่ายเงิน
@@ -117,6 +125,42 @@ export default function AdminOrderDetailPage() {
     if (!demo) void saveOrderAdmin(next);
   }
 
+  /** พนักงานแพ็คกดยืนยันผลตรวจนับของรูปแบบงาน 1 รูป */
+  function setPackCheck(itemIndex: number, proofIndex: number, status: "ครบ" | "ไม่ครบ", got?: number) {
+    if (!order) return;
+    const item = order.items[itemIndex];
+    const pack = { status, ...(status === "ไม่ครบ" ? { got: got ?? 0 } : {}), by: "พนักงานแพ็ค", at: new Date().toISOString() };
+    const items = order.items.map((it, i) =>
+      i === itemIndex ? { ...it, proofs: proofsOf(it).map((p, j) => (j === proofIndex ? { ...p, pack } : p)) } : it
+    );
+    const next = withLog(
+      { ...order, items },
+      "พนักงานแพ็ค",
+      status === "ครบ" ? "ตรวจนับ: ครบ" : "ตรวจนับ: ไม่ครบ",
+      `${item?.name ?? ""} รูปที่ ${proofIndex + 1}${status === "ไม่ครบ" ? ` — นับได้ ${got ?? 0} ชิ้น` : ""}`
+    );
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
+
+  /** พนักงานแพ็คกดยืนยันว่าอ่านรายละเอียดของรายการแล้ว (กดซ้ำ = ยกเลิก) */
+  function toggleNoteAck(itemIndex: number) {
+    if (!order) return;
+    const item = order.items[itemIndex];
+    const acked = !!item?.noteAck;
+    const items = order.items.map((it, i) =>
+      i === itemIndex ? { ...it, noteAck: acked ? undefined : { by: "พนักงานแพ็ค", at: new Date().toISOString() } } : it
+    );
+    const next = withLog(
+      { ...order, items },
+      "พนักงานแพ็ค",
+      acked ? "ยกเลิกยืนยันอ่านรายละเอียด" : "ยืนยันอ่านรายละเอียดแล้ว",
+      item?.name
+    );
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
+
   function removeProof(itemIndex: number, proofIndex: number) {
     if (!order) return;
     const items = order.items.map((it, i) => {
@@ -174,6 +218,7 @@ export default function AdminOrderDetailPage() {
 
   // ถือว่า "จ่ายแล้ว" เมื่อแอดมินยืนยันสลิปแล้ว (ชำระแล้วเป็นต้นไป)
   const paidOk = !(["รอชำระเงิน", "รอตรวจสอบ"] as OrderStatus[]).includes(order.status);
+  const gate = packGate(order); // ขั้นตอนแพ็คผ่านครบหรือยัง
   // ออเดอร์อื่นของลูกค้าคนเดียวกันที่ยังไม่ปิด (จับคู่จากเบอร์โทร) — เตือนให้พิจารณารวมส่ง
   const phoneKey = (order.phone ?? "").replace(/\D/g, "");
   const related = allOrders.filter(
@@ -280,6 +325,29 @@ export default function AdminOrderDetailPage() {
               </button>
             </div>
           )}
+          {/* สรุปขั้นตอนแพ็ค — ต้องผ่านครบก่อนถึงยิงเลขพัสดุได้ */}
+          <div
+            className={`mt-3 rounded-xl p-3 ring-1 ${
+              gate.ready ? "bg-green-50 ring-green-200" : "bg-slate-50 ring-slate-200"
+            }`}
+          >
+            <p className={`text-xs font-bold ${gate.ready ? "text-green-800" : "text-slate-700"}`}>
+              {gate.ready ? "✅ ตรวจแพ็คครบแล้ว — ยิงเลขพัสดุได้" : "📦 ยังตรวจแพ็คไม่ครบ — ยิงเลขพัสดุไม่ได้"}
+            </p>
+            {!gate.ready && (
+              <ul className="mt-1 space-y-0.5 text-[11px] leading-relaxed text-slate-600">
+                {gate.uncounted.length > 0 && <li>• ยังไม่ได้ตรวจนับ {gate.uncounted.length} รูป (กดที่รูปเพื่อขยาย แล้วกดยืนยัน)</li>}
+                {gate.unread.length > 0 && <li>• ยังไม่ได้ยืนยันอ่านรายละเอียด {gate.unread.length} รายการ</li>}
+                {gate.short.map((s, k) => (
+                  <li key={k} className="font-bold text-rose-600">
+                    • ของไม่ครบ: {s.item} — นับได้ {s.got}
+                    {s.need ? ` จาก ${s.need}` : ""} ชิ้น
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           {err && (
             <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600 ring-1 ring-rose-200">
               ⚠️ {err}
@@ -295,11 +363,40 @@ export default function AdminOrderDetailPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-bold text-slate-800">{it.name}</p>
-                      {it.selections && <p className={`mt-0.5 text-xs ${faint}`}>{it.selections}</p>}
                     </div>
                     <span className="shrink-0 text-sm font-bold text-slate-900">
                       {it.qty} × {formatPrice(it.unitPrice)}
                     </span>
+                  </div>
+
+                  {/* ช่องรายละเอียด — พนักงานแพ็คต้องกดยืนยันว่าอ่านแล้วก่อนยิงเลขพัสดุ */}
+                  <div
+                    className={`mt-2 rounded-xl border p-3 transition ${
+                      it.noteAck ? "border-green-200 bg-green-50/50" : "border-slate-200 bg-slate-50/70"
+                    }`}
+                  >
+                    <p className={LBL}>รายละเอียด</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-slate-700">
+                      {it.selections || "— ไม่มีรายละเอียดเพิ่มเติม —"}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleNoteAck(i)}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                          it.noteAck
+                            ? "bg-green-600 text-white hover:bg-green-700"
+                            : "border border-slate-300 bg-white text-slate-600 hover:border-green-400 hover:text-green-700"
+                        }`}
+                      >
+                        {it.noteAck ? "✅ อ่านรายละเอียดแล้ว" : "☐ ยืนยันว่าอ่านรายละเอียดแล้ว"}
+                      </button>
+                      {it.noteAck && (
+                        <span className="text-[10px] text-slate-400">
+                          {it.noteAck.by} · {shortTime(it.noteAck.at)}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -333,7 +430,16 @@ export default function AdminOrderDetailPage() {
                   {/* แกลเลอรีแบบงาน — หลายรูป แต่ละรูประบุจำนวน/รายละเอียด */}
                   <div className="mt-3 flex flex-wrap gap-3">
                     {proofs.map((p, j) => (
-                      <div key={`${p.url}-${j}`} className="w-36 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                      <div
+                        key={`${p.url}-${j}`}
+                        className={`w-36 overflow-hidden rounded-xl border bg-white ${
+                          p.pack?.status === "ครบ"
+                            ? "border-green-300"
+                            : p.pack?.status === "ไม่ครบ"
+                              ? "border-rose-300"
+                              : "border-slate-200"
+                        }`}
+                      >
                         <div className="relative">
                           <button
                             type="button"
@@ -342,6 +448,7 @@ export default function AdminOrderDetailPage() {
                                 src: p.url,
                                 alt: `แบบงาน ${it.name} รูปที่ ${j + 1}`,
                                 caption: [it.name, p.qty ? `${p.qty} ชิ้น` : "", p.note ?? ""].filter(Boolean).join(" · "),
+                                at: { item: i, proof: j },
                               })
                             }
                             aria-label={`ขยายดูแบบงาน ${it.name} รูปที่ ${j + 1}`}
@@ -358,6 +465,22 @@ export default function AdminOrderDetailPage() {
                           >
                             ✕
                           </button>
+                          {/* ผลตรวจนับของพนักงานแพ็ค */}
+                          <span
+                            className={`pointer-events-none absolute bottom-1.5 left-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              p.pack?.status === "ครบ"
+                                ? "bg-green-600 text-white"
+                                : p.pack?.status === "ไม่ครบ"
+                                  ? "bg-rose-600 text-white"
+                                  : "bg-slate-900/60 text-white"
+                            }`}
+                          >
+                            {p.pack?.status === "ครบ"
+                              ? "✅ ครบ"
+                              : p.pack?.status === "ไม่ครบ"
+                                ? `⚠️ ได้ ${p.pack.got ?? 0}`
+                                : "รอตรวจนับ"}
+                          </span>
                         </div>
                         <div className="space-y-1.5 p-2">
                           <label className="flex items-center gap-1.5">
@@ -601,7 +724,23 @@ export default function AdminOrderDetailPage() {
       </div>
 
       {lightbox && (
-        <ImageLightbox src={lightbox.src} alt={lightbox.alt} caption={lightbox.caption} onClose={() => setLightbox(null)} />
+        <ImageLightbox
+          src={lightbox.src}
+          alt={lightbox.alt}
+          caption={lightbox.caption}
+          footer={
+            lightbox.at ? (
+              <PackCheckPanel
+                proof={proofsOf(order.items[lightbox.at.item])[lightbox.at.proof]}
+                onConfirm={(status, got) => {
+                  setPackCheck(lightbox.at!.item, lightbox.at!.proof, status, got);
+                  setLightbox(null);
+                }}
+              />
+            ) : undefined
+          }
+          onClose={() => setLightbox(null)}
+        />
       )}
     </div>
   );

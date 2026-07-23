@@ -33,3 +33,8 @@ export const pillIdle = `${pill} border border-slate-200 bg-white text-slate-600
 
 // ── badge สถานะ/ป้าย (โทนนุ่ม) ──
 export const badge = "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold";
+
+/** เวลาแบบสั้น "23 ก.ค. 14:05" — ใช้กำกับว่าใครทำอะไรเมื่อไหร่ */
+export function shortTime(iso: string): string {
+  return new Date(iso).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}

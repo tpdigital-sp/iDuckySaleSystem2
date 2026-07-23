@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { formatPrice } from "@/lib/products";
-import { MOCK_ORDERS, orderTotal, STATUS_STYLES, withLog, type Order } from "@/lib/admin-data";
+import { MOCK_ORDERS, orderTotal, packGate, STATUS_STYLES, withLog, type Order, type PackGate } from "@/lib/admin-data";
 import { fetchOrdersAdmin, saveOrderAdmin } from "@/lib/order-repo";
 import { h1, muted } from "@/lib/admin-ui";
 
@@ -38,6 +38,7 @@ export default function ScanTrackingPage() {
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState<{ id: string; tracking: string; at: string }[]>([]);
+  const [blocked, setBlocked] = useState<{ order: Order; gate: PackGate } | null>(null); // ตรวจแพ็คไม่ครบ
   const inputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -80,6 +81,13 @@ export default function ScanTrackingPage() {
       if (!found) {
         setMsg({ kind: "err", text: `ไม่พบออเดอร์ “${code}” — ยิง QR บนใบงานอีกครั้ง` });
         setTimeout(focusInput, 50);
+        return;
+      }
+      // ── ด่านกันพลาด: ต้องตรวจแพ็คครบก่อนถึงยิงเลขพัสดุได้ ──
+      const gate = packGate(found);
+      if (!gate.ready) {
+        setBlocked({ order: found, gate });
+        setMsg(null);
         return;
       }
       setTarget(found);
@@ -155,7 +163,9 @@ export default function ScanTrackingPage() {
             ref={inputRef}
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            onBlur={() => setTimeout(focusInput, 120)}
+            onBlur={() => {
+              if (!blocked) setTimeout(focusInput, 120); // ตอนมี popup อย่าแย่งโฟกัส จะกดปุ่มไม่ได้
+            }}
             autoComplete="off"
             autoFocus
             placeholder={waiting ? "ยิง QR หรือพิมพ์เลขออเดอร์ แล้วกด Enter" : "ยิงเลขพัสดุ แล้วกด Enter"}
@@ -223,6 +233,63 @@ export default function ScanTrackingPage() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* ── ป๊อปอัปเตือน: ตรวจแพ็คไม่ครบ ยิงไม่ได้ ── */}
+      {blocked && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="block-title"
+          className="fixed inset-0 z-[100] grid place-items-center bg-slate-900/75 p-4 backdrop-blur-sm"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <p className="text-4xl">🚫</p>
+            <h2 id="block-title" className="mt-2 text-xl font-extrabold text-slate-900">
+              ยังยิงเลขพัสดุไม่ได้
+            </h2>
+            <p className="mt-1 font-mono text-sm font-bold text-slate-700">{blocked.order.id}</p>
+            <p className="text-sm text-slate-600">{blocked.order.customer}</p>
+
+            <div className="mt-4 rounded-xl bg-rose-50 p-3 ring-1 ring-rose-200">
+              <p className="text-xs font-bold text-rose-800">ต้องทำให้ครบก่อน:</p>
+              <ul className="mt-1 space-y-1 text-sm leading-relaxed text-rose-700">
+                {blocked.gate.uncounted.length > 0 && (
+                  <li>• ยังไม่ได้ตรวจนับของ {blocked.gate.uncounted.length} รูป</li>
+                )}
+                {blocked.gate.unread.length > 0 && (
+                  <li>• ยังไม่ได้ยืนยันอ่านรายละเอียด {blocked.gate.unread.length} รายการ</li>
+                )}
+                {blocked.gate.short.map((s, k) => (
+                  <li key={k} className="font-bold">
+                    • ของไม่ครบ: {s.item} — นับได้ {s.got}
+                    {s.need ? ` จาก ${s.need}` : ""} ชิ้น
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link
+                href={`/admin/orders/${encodeURIComponent(blocked.order.id)}`}
+                className="flex-1 rounded-xl bg-slate-900 px-4 py-3 text-center text-sm font-bold text-white transition hover:bg-slate-700"
+              >
+                เปิดหน้าออเดอร์เพื่อตรวจ
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  setBlocked(null);
+                  setValue("");
+                  setTimeout(focusInput, 50);
+                }}
+                className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50"
+              >
+                ปิด · ยิงออเดอร์อื่น
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
