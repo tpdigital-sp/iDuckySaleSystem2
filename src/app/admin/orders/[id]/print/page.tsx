@@ -224,7 +224,7 @@ export default function PrintOrderPage() {
               <thead>
                 <tr className="border-y border-slate-300 bg-slate-50 text-left">
                   <th className="w-8 py-2 pl-2">#</th>
-                  <th className="w-64 py-2">แบบงาน</th>
+                  <th className="w-96 py-2">แบบงาน</th>
                   <th className="py-2">รายการ / ตัวเลือก</th>
                 </tr>
               </thead>
