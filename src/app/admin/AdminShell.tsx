@@ -11,7 +11,7 @@ import type { Perm } from "@/lib/permissions";
 const MENU: { href: string; label: string; emoji: string; perm: Perm }[] = [
   { href: "/admin", label: "ภาพรวม", emoji: "📊", perm: "orders.view" },
   { href: "/admin/orders", label: "คำสั่งซื้อ", emoji: "📦", perm: "orders.view" },
-  { href: "/admin/orders/scan", label: "ยิงเลขพัสดุ", emoji: "📮", perm: "pack.ship" },
+  { href: "/admin/orders/scan", label: "แพ็ค–ส่ง", emoji: "📮", perm: "pack.ship" },
   { href: "/admin/products", label: "สินค้า", emoji: "🏷️", perm: "products.view" },
   { href: "/admin/options", label: "คลังตัวเลือก", emoji: "🎛️", perm: "presets.manage" },
   { href: "/admin/import", label: "นำเข้าสินค้า", emoji: "📥", perm: "products.import" },
