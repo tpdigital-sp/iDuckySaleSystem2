@@ -463,7 +463,7 @@ function AdminSettingsPageInner() {
           )}
 
           {tab === "welcome" && (
-            <section className={`${card} p-6 sm:p-8`}>
+            <section className={`mt-5 ${card} p-6 sm:p-8`}>
               {/* หัว: ชื่อ + สวิตช์เปิด/ปิด (มีป้ายสถานะชัดเจน) */}
               <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
                 <div>
