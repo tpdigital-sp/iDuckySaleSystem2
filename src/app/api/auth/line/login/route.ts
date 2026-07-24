@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { requestOrigin } from "@/lib/server/req-origin";
 
 export const runtime = "nodejs";
 
@@ -9,7 +10,7 @@ export async function GET(req: Request) {
   if (!channelId) {
     return NextResponse.redirect(new URL("/account/login?line=notset", req.url));
   }
-  const origin = new URL(req.url).origin;
+  const origin = requestOrigin(req);
   const state = crypto.randomUUID();
 
   const jar = await cookies();

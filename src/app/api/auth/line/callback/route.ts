@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
+import { requestOrigin } from "@/lib/server/req-origin";
 
 export const runtime = "nodejs";
 
 /** LINE redirect กลับมาพร้อม code → แลก token → ดึงโปรไฟล์ → หา/สร้าง user Supabase → ทำ session */
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const origin = url.origin;
+  // ต้องตรงกับ redirect_uri ตอน login เป๊ะ (โดเมนจริง ไม่ใช่ host ชั่วคราวของ preview)
+  const origin = requestOrigin(req);
   const fail = (reason: string) => NextResponse.redirect(`${origin}/account/login?line=${reason}`);
 
   const code = url.searchParams.get("code");
