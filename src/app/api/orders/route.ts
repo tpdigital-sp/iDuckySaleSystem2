@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import type { Order } from "@/lib/admin-data";
 import { paidSpend, tierForSpend, tierDiscountAmount, tiersOf, type Tier } from "@/lib/tiers";
+import { couponLabel, validateCoupon, type Coupon } from "@/lib/coupons";
 
 // id เรคอร์ดตั้งค่าร้าน (ตรงกับ SETTINGS_ID ใน shop-settings ซึ่งเป็น "use client")
 const SETTINGS_ROW = "__shop_payment__";
@@ -15,7 +16,7 @@ function orderNo(d: Date): string {
   return `OD-${ymd}-${String(Math.floor(1000 + Math.random() * 9000))}`;
 }
 
-/** ลูกค้าสั่งซื้อ (guest) → บันทึกออเดอร์จริง */
+/** ลูกค้าสั่งซื้อ (guest หรือ สมาชิก) → บันทึกออเดอร์จริง + คิดส่วนลด (ระดับ/คูปอง) ฝั่งเซิร์ฟเวอร์ */
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
@@ -30,6 +31,7 @@ export async function POST(req: Request) {
     shippingCost?: number;
     items?: Order["items"];
     note?: string;
+    couponCode?: string;
   };
   try {
     input = await req.json();
@@ -41,25 +43,58 @@ export async function POST(req: Request) {
   if (!Array.isArray(input.items) || input.items.length === 0)
     return NextResponse.json({ error: "ไม่มีรายการสินค้า" }, { status: 400 });
 
-  // ── ส่วนลดระดับสมาชิก — คิดฝั่งเซิร์ฟเวอร์เท่านั้น (กันแก้ราคาผ่านเบราว์เซอร์) ──
-  let discount: Order["discount"] | undefined;
-  if (input.customerId) {
+  const subtotal = input.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+  const now = new Date();
+  const id = orderNo(now);
+  const cid = input.customerId;
+
+  // ── 1) ส่วนลดระดับสมาชิก ──
+  let tierAmount = 0;
+  let tierLabel = "";
+  if (cid) {
     const [settRes, ordRes] = await Promise.all([
       sb.from("products").select("data").eq("id", SETTINGS_ROW).maybeSingle(),
       sb.from("orders").select("data"),
     ]);
     const configuredTiers = ((settRes.data?.data as { tiers?: Tier[] } | undefined)?.tiers ?? []).filter((t) => t.name?.trim());
     const tiers = tiersOf(configuredTiers.length ? configuredTiers : null);
-    const myPaid = (ordRes.data ?? []).map((r) => r.data as Order).filter((o) => o.customerId === input.customerId);
+    const myPaid = (ordRes.data ?? []).map((r) => r.data as Order).filter((o) => o.customerId === cid);
     const tier = tierForSpend(paidSpend(myPaid), tiers);
-    const subtotal = input.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
-    const amount = tierDiscountAmount(subtotal, tier.discountPct);
-    if (amount > 0) discount = { label: `สมาชิก ${tier.name} (${tier.discountPct}%)`, amount };
+    tierAmount = tierDiscountAmount(subtotal, tier.discountPct);
+    if (tierAmount > 0) tierLabel = `สมาชิก ${tier.name} (${tier.discountPct}%)`;
   }
 
-  const now = new Date();
-  const id = orderNo(now);
-  const key = randomBytes(24).toString("base64url"); // กุญแจลับต่อออเดอร์ (~32 ตัว, เดาไม่ได้)
+  // ── 2) คูปอง (ต้องล็อกอิน) — เอาอันที่ดีกว่าระดับ · ใช้ครั้งเดียวแบบ atomic ──
+  let discount: Order["discount"] | undefined;
+  let redeemedCode: string | null = null; // เก็บไว้ rollback ถ้า insert พัง
+  let coupon: { applied: boolean; reason?: string } = { applied: false };
+  const couponCode = (input.couponCode ?? "").trim().toUpperCase();
+
+  if (couponCode && cid) {
+    const { data: cRow } = await sb.from("coupons").select("data").eq("code", couponCode).maybeSingle();
+    const c = (cRow?.data as Coupon | undefined) ?? null;
+    const v = validateCoupon(c, cid, subtotal, now.getTime());
+    if (!v.ok) {
+      coupon = { applied: false, reason: v.reason };
+    } else if (c && v.discount > tierAmount) {
+      // ดีกว่าระดับ → ตัดใช้แบบ atomic (update เฉพาะที่ status ยัง active — ยิงพร้อมกันได้แค่คนเดียว)
+      const redeemed: Coupon = { ...c, status: "redeemed", redeemedBy: cid, redeemedOrderId: id, redeemedAt: now.toISOString() };
+      const { data: upd } = await sb.from("coupons").update({ data: redeemed }).eq("code", couponCode).eq("data->>status", "active").select("code");
+      if (upd && upd.length) {
+        discount = { label: couponLabel(c), amount: v.discount, couponCode };
+        redeemedCode = couponCode;
+        coupon = { applied: true };
+      } else {
+        coupon = { applied: false, reason: "used" }; // ถูกใช้ไปก่อนแล้ว (ชิงพร้อมกัน)
+      }
+    } else {
+      coupon = { applied: false, reason: "worse" }; // คูปองใช้ได้ แต่ส่วนลดระดับดีกว่า → ไม่เผาคูปอง
+    }
+  }
+  // ถ้าไม่ได้ใช้คูปอง → ใช้ส่วนลดระดับ (ถ้ามี)
+  if (!discount && tierAmount > 0) discount = { label: tierLabel, amount: tierAmount };
+
+  const key = randomBytes(24).toString("base64url"); // กุญแจลับต่อออเดอร์
   const order: Order = {
     id,
     key,
@@ -73,16 +108,22 @@ export async function POST(req: Request) {
     status: "รอชำระเงิน",
     note: input.note?.trim() || undefined,
     items: input.items,
-    ...(input.customerId ? { customerId: input.customerId } : {}),
+    ...(cid ? { customerId: cid } : {}),
     ...(input.email?.trim() ? { email: input.email.trim() } : {}),
     ...(discount ? { discount } : {}),
   };
 
   const { error } = await sb.from("orders").insert({ id, data: order });
   if (error) {
+    // สร้างออเดอร์พัง → คืนคูปองที่เพิ่งตัดใช้ (best-effort) กันคูปองหายฟรี
+    if (redeemedCode) {
+      const { data: cRow } = await sb.from("coupons").select("data").eq("code", redeemedCode).maybeSingle();
+      const c = cRow?.data as Coupon | undefined;
+      if (c) await sb.from("coupons").update({ data: { ...c, status: "active", redeemedBy: undefined, redeemedOrderId: undefined, redeemedAt: undefined } }).eq("code", redeemedCode);
+    }
     if (error.code === "42P01" || error.code === "PGRST205" || /schema cache|does not exist/i.test(error.message))
       return NextResponse.json({ error: "ระบบยังไม่พร้อม — ผู้ดูแลต้องสร้างตาราง orders ก่อน (รัน supabase/orders.sql)" }, { status: 503 });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, id, key });
+  return NextResponse.json({ ok: true, id, key, coupon });
 }

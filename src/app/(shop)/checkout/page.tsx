@@ -135,7 +135,59 @@ export default function CheckoutPage() {
     })();
   }, [customer, appendTo]);
 
-  const discount = tier ? tierDiscountAmount(subtotal, tier.pct) : 0;
+  const tierDiscount = tier ? tierDiscountAmount(subtotal, tier.pct) : 0;
+
+  // ── คูปอง (ต้องล็อกอิน) — พรีวิวส่วนลด เซิร์ฟเวอร์ตัดใช้จริงตอนสั่งซื้อ ──
+  const [couponInput, setCouponInput] = useState("");
+  const [couponPreview, setCouponPreview] = useState<{ code: string; discount: number; label: string } | null>(null);
+  const [couponErr, setCouponErr] = useState("");
+  const [couponBusy, setCouponBusy] = useState(false);
+  // รับโค้ดจากลิงก์ /coupon/[code] (เก็บไว้ตอนเปิดลิงก์)
+  useEffect(() => {
+    const saved = localStorage.getItem("ducky_coupon");
+    if (saved) setCouponInput(saved.toUpperCase());
+  }, []);
+
+  async function applyCoupon() {
+    const code = couponInput.trim().toUpperCase();
+    if (!code) return;
+    if (!customer) {
+      setCouponErr("เข้าสู่ระบบก่อนใช้คูปอง");
+      return;
+    }
+    setCouponBusy(true);
+    setCouponErr("");
+    try {
+      const token = await getAccessToken();
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ code, subtotal }),
+      });
+      const j = await res.json();
+      if (!j.ok) {
+        setCouponPreview(null);
+        setCouponErr(j.error ?? "ใช้คูปองไม่ได้");
+        return;
+      }
+      setCouponPreview({ code: j.code, discount: j.discount, label: j.label });
+      localStorage.setItem("ducky_coupon", j.code);
+    } finally {
+      setCouponBusy(false);
+    }
+  }
+
+  function removeCoupon() {
+    setCouponPreview(null);
+    setCouponInput("");
+    setCouponErr("");
+    localStorage.removeItem("ducky_coupon");
+  }
+
+  // เลือกส่วนลดที่ดีกว่า (ระดับ vs คูปอง) — ตรงกับที่เซิร์ฟเวอร์คิด
+  const couponDisc = couponPreview?.discount ?? 0;
+  const useCoupon = couponDisc > tierDiscount;
+  const discount = Math.max(tierDiscount, couponDisc);
   const total = Math.max(0, subtotal - discount + shippingCost);
 
   async function submit() {
@@ -180,6 +232,7 @@ export default function CheckoutPage() {
       shippingCost,
       subtotal,
       total,
+      couponCode: couponPreview?.code,
       items: orderItems,
     });
     setPlacing(false);
@@ -200,6 +253,7 @@ export default function CheckoutPage() {
     lines.push(`ยอดชำระ: ${formatPrice(total)}`);
     lines.push("(โอนแล้วแนบรูปสลิปในแชทนี้ได้เลย)");
     lines.push(`🔗 เช็คออเดอร์/ดูแบบงาน: ${orderUrl}`);
+    if (res.coupon?.applied) localStorage.removeItem("ducky_coupon"); // คูปองถูกตัดใช้แล้ว
     setPlaced({ id: res.orderId, text: lines.join("\n"), total, url: orderUrl, key: res.key });
     clear();
   }
@@ -426,12 +480,56 @@ export default function CheckoutPage() {
         </div>
       </div>
 
+      {/* คูปองส่วนลด (เฉพาะสมาชิก · ไม่ใช้ตอนสั่งเพิ่ม) */}
+      {customer && !appendTo && (
+        <div className="mt-5 rounded-2xl bg-white p-4 ring-1 ring-amber-200">
+          <p className="text-sm font-bold text-stone-700">🎟️ คูปองส่วนลด</p>
+          {couponPreview ? (
+            <div className="mt-2 flex items-center justify-between gap-2 rounded-xl bg-emerald-50 px-3 py-2.5 ring-1 ring-emerald-200">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-emerald-800">{couponPreview.label}</p>
+                <p className="text-xs text-emerald-600">ส่วนลด {formatPrice(couponPreview.discount)}</p>
+              </div>
+              <button type="button" onClick={removeCoupon} className="shrink-0 text-xs font-bold text-stone-400 underline underline-offset-2 hover:text-rose-600">
+                เอาออก
+              </button>
+            </div>
+          ) : (
+            <div className="mt-2 flex gap-2">
+              <input
+                value={couponInput}
+                onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                onKeyDown={(e) => e.key === "Enter" && applyCoupon()}
+                placeholder="กรอกโค้ดคูปอง"
+                className="min-w-0 flex-1 rounded-2xl bg-white px-4 py-2.5 font-mono text-sm uppercase tracking-wide text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+              />
+              <button
+                type="button"
+                onClick={applyCoupon}
+                disabled={couponBusy || !couponInput.trim()}
+                className="shrink-0 rounded-2xl bg-stone-800 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-stone-900 disabled:opacity-40"
+              >
+                {couponBusy ? "…" : "ใช้"}
+              </button>
+            </div>
+          )}
+          {couponErr && <p className="mt-2 text-xs font-medium text-rose-600">{couponErr}</p>}
+          {couponPreview && !useCoupon && tierDiscount > 0 && (
+            <p className="mt-2 text-xs text-stone-500">ℹ️ ส่วนลดสมาชิกของคุณสูงกว่า จึงใช้ส่วนลดสมาชิกแทน (คูปองยังไม่ถูกตัดใช้ เก็บไว้ครั้งหน้าได้)</p>
+          )}
+        </div>
+      )}
+
       {/* สรุปยอด */}
       <div className="mt-5 rounded-2xl bg-amber-50/70 p-4 ring-1 ring-amber-200">
         <div className="flex justify-between text-sm text-stone-600"><span>รวมสินค้า ({totalQty} ชิ้น)</span><span>{formatPrice(subtotal)}</span></div>
-        {tier && discount > 0 && (
+        {discount > 0 && (
           <div className="mt-1 flex justify-between text-sm font-semibold text-emerald-600">
-            <span>{tier.icon} ส่วนลดสมาชิก {tier.name} ({tier.pct}%)</span>
+            <span>
+              {useCoupon
+                ? `🎟️ ${couponPreview!.label}`
+                : `${tier?.icon ?? "🎖️"} ส่วนลดสมาชิก ${tier?.name ?? ""} (${tier?.pct ?? 0}%)`}
+            </span>
             <span>−{formatPrice(discount)}</span>
           </div>
         )}

@@ -13,13 +13,14 @@ export interface CreateOrderInput {
   shippingCost: number;
   subtotal: number;
   total: number;
+  couponCode?: string;
   items: { productId: string; name: string; selections: string; sel?: Record<string, string>; qty: number; unitPrice: number }[];
 }
 
 /** ลูกค้าสั่งซื้อ → สร้างออเดอร์ (public API, service role เขียน) · คืน key ลับสำหรับแจ้งโอน */
 export async function placeOrder(
   input: CreateOrderInput
-): Promise<{ ok: boolean; orderId?: string; key?: string; error?: string }> {
+): Promise<{ ok: boolean; orderId?: string; key?: string; coupon?: { applied: boolean; reason?: string }; error?: string }> {
   try {
     const res = await fetch("/api/orders", {
       method: "POST",
@@ -27,7 +28,7 @@ export async function placeOrder(
       body: JSON.stringify(input),
     });
     const data = await res.json().catch(() => ({}));
-    return res.ok ? { ok: true, orderId: data.id, key: data.key } : { ok: false, error: data.error ?? "สั่งซื้อไม่สำเร็จ" };
+    return res.ok ? { ok: true, orderId: data.id, key: data.key, coupon: data.coupon } : { ok: false, error: data.error ?? "สั่งซื้อไม่สำเร็จ" };
   } catch {
     return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
   }
