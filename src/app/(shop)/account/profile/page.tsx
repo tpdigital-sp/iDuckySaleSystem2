@@ -53,16 +53,34 @@ export default function ProfilePage() {
       <p className="mt-1 text-sm text-stone-400">ใช้เติมอัตโนมัติตอนสั่งซื้อครั้งต่อไป — กรอกครั้งเดียว ไม่ต้องพิมพ์ซ้ำทุกออเดอร์</p>
 
       <div className="mt-6 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-amber-100 sm:p-8">
-        {/* อีเมลบัญชี (แก้ไม่ได้ — ใช้ล็อกอิน) */}
-        {customer.email && (
-          <div className="mb-6 flex items-center gap-3 rounded-2xl bg-amber-50/60 px-4 py-3 ring-1 ring-amber-100">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-amber-100 text-lg">📧</span>
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">อีเมลบัญชี</p>
-              <p className="truncate text-sm font-bold text-stone-700">{customer.email}</p>
-            </div>
-          </div>
-        )}
+        {/* บัญชีเข้าสู่ระบบ (แก้ไม่ได้) — LINE จะไม่โชว์อีเมลสังเคราะห์ */}
+        {customer.email &&
+          (() => {
+            const isLine = /@line\.iducky\.local$/i.test(customer.email);
+            return (
+              <div
+                className={`mb-6 flex items-center gap-3 rounded-2xl px-4 py-3 ring-1 ${
+                  isLine ? "bg-[#06C755]/5 ring-[#06C755]/25" : "bg-amber-50/60 ring-amber-100"
+                }`}
+              >
+                <span
+                  className={`grid h-10 w-10 shrink-0 place-items-center rounded-full text-lg ${
+                    isLine ? "bg-[#06C755]/15" : "bg-amber-100"
+                  }`}
+                >
+                  {isLine ? "💬" : "📧"}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">บัญชีเข้าสู่ระบบ</p>
+                  {isLine ? (
+                    <p className="text-sm font-bold text-[#06C755]">เข้าสู่ระบบผ่าน LINE</p>
+                  ) : (
+                    <p className="truncate text-sm font-bold text-stone-700">{customer.email}</p>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
         <div className="grid gap-5 sm:grid-cols-2">
           <div>
