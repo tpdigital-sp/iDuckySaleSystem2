@@ -147,6 +147,9 @@ function AdminSettingsPageInner() {
 
   const inputCls =
     "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100";
+  // ช่องกรอกขนาดใหญ่ (ใช้ในแท็บคูปองต้อนรับ ให้โปร่ง อ่านง่าย)
+  const bigInput =
+    "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100";
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -460,41 +463,41 @@ function AdminSettingsPageInner() {
           )}
 
           {tab === "welcome" && (
-            <section className={card}>
+            <section className={`${card} p-6 sm:p-8`}>
               {/* หัว: ชื่อ + สวิตช์เปิด/ปิด (มีป้ายสถานะชัดเจน) */}
-              <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+              <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
                 <div>
-                  <h2 className="text-sm font-semibold text-slate-800">🎁 คูปองต้อนรับสมาชิกใหม่</h2>
-                  <p className={`mt-0.5 text-xs ${faint}`}>แจกอัตโนมัติเมื่อลูกค้าสมัคร/ล็อกอินครั้งแรก · ผูกบัญชี ใช้ครั้งเดียว</p>
+                  <h2 className="text-lg font-bold text-slate-800">🎁 คูปองต้อนรับสมาชิกใหม่</h2>
+                  <p className={`mt-1 text-sm ${muted}`}>แจกอัตโนมัติเมื่อลูกค้าสมัคร/ล็อกอินครั้งแรก · ผูกบัญชี ใช้ครั้งเดียว</p>
                 </div>
                 <button
                   type="button"
                   role="switch"
                   aria-checked={welcome.enabled}
                   onClick={() => patchWelcome({ enabled: !welcome.enabled })}
-                  className={`flex shrink-0 items-center gap-2 rounded-full py-1 pl-3 pr-1 text-xs font-bold transition ${
+                  className={`flex shrink-0 items-center gap-2.5 rounded-full py-1.5 pl-4 pr-1.5 text-sm font-bold transition ${
                     welcome.enabled ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"
                   }`}
                 >
                   {welcome.enabled ? "เปิดแจกอยู่" : "ปิดอยู่"}
-                  <span className={`relative h-6 w-11 rounded-full transition ${welcome.enabled ? "bg-emerald-500" : "bg-slate-300"}`}>
-                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${welcome.enabled ? "left-[22px]" : "left-0.5"}`} />
+                  <span className={`relative h-7 w-12 rounded-full transition ${welcome.enabled ? "bg-emerald-500" : "bg-slate-300"}`}>
+                    <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${welcome.enabled ? "left-[22px]" : "left-0.5"}`} />
                   </span>
                 </button>
               </div>
 
-              <div className="mt-5 grid gap-6 lg:grid-cols-[1fr_18rem]">
+              <div className="mt-7 grid gap-8 lg:grid-cols-[1fr_22rem]">
                 {/* ── ซ้าย: ตั้งค่า ── */}
-                <div className={`space-y-5 ${welcome.enabled ? "" : "pointer-events-none opacity-50"}`}>
+                <div className={`space-y-7 ${welcome.enabled ? "" : "pointer-events-none opacity-50"}`}>
                   <div>
-                    <span className="mb-1.5 block text-xs font-medium text-slate-600">รูปแบบส่วนลด</span>
-                    <div className="inline-flex rounded-lg border border-slate-200 p-0.5">
+                    <span className="mb-2 block text-sm font-semibold text-slate-700">รูปแบบส่วนลด</span>
+                    <div className="inline-flex rounded-xl border border-slate-200 p-1">
                       {(["percent", "fixed"] as const).map((t) => (
                         <button
                           key={t}
                           type="button"
                           onClick={() => patchWelcome({ type: t })}
-                          className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${
+                          className={`rounded-lg px-6 py-2.5 text-base font-medium transition ${
                             welcome.type === t ? "bg-amber-500 text-white shadow-sm" : "text-slate-500 hover:text-slate-800"
                           }`}
                         >
@@ -504,52 +507,52 @@ function AdminSettingsPageInner() {
                     </div>
                   </div>
 
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-6 sm:grid-cols-2">
                     <label className="block">
-                      <span className="mb-1 block text-xs font-medium text-slate-600">{welcome.type === "percent" ? "ส่วนลด (%)" : "ส่วนลด (บาท)"}</span>
-                      <input type="number" min={0} value={welcome.value} onChange={(e) => patchWelcome({ value: Number(e.target.value) })} className={`${inputCls} text-right tabular-nums`} />
+                      <span className="mb-1.5 block text-sm font-semibold text-slate-700">{welcome.type === "percent" ? "ส่วนลด (%)" : "ส่วนลด (บาท)"}</span>
+                      <input type="number" min={0} value={welcome.value} onChange={(e) => patchWelcome({ value: Number(e.target.value) })} className={`${bigInput} text-right tabular-nums`} />
                     </label>
                     {welcome.type === "percent" && (
                       <label className="block">
-                        <span className="mb-1 block text-xs font-medium text-slate-600">ส่วนลดสูงสุด (บาท)</span>
-                        <input type="number" min={0} value={welcome.maxDiscount ?? 0} onChange={(e) => patchWelcome({ maxDiscount: Number(e.target.value) })} className={`${inputCls} text-right tabular-nums`} />
-                        <span className="mt-1 block text-[11px] text-slate-400">0 = ไม่จำกัด</span>
+                        <span className="mb-1.5 block text-sm font-semibold text-slate-700">ส่วนลดสูงสุด (บาท)</span>
+                        <input type="number" min={0} value={welcome.maxDiscount ?? 0} onChange={(e) => patchWelcome({ maxDiscount: Number(e.target.value) })} className={`${bigInput} text-right tabular-nums`} />
+                        <span className="mt-1.5 block text-xs text-slate-400">0 = ไม่จำกัด</span>
                       </label>
                     )}
                     <label className="block">
-                      <span className="mb-1 block text-xs font-medium text-slate-600">ยอดสั่งซื้อขั้นต่ำ (บาท)</span>
-                      <input type="number" min={0} value={welcome.minSpend ?? 0} onChange={(e) => patchWelcome({ minSpend: Number(e.target.value) })} className={`${inputCls} text-right tabular-nums`} />
-                      <span className="mt-1 block text-[11px] text-slate-400">0 = ไม่มีขั้นต่ำ</span>
+                      <span className="mb-1.5 block text-sm font-semibold text-slate-700">ยอดสั่งซื้อขั้นต่ำ (บาท)</span>
+                      <input type="number" min={0} value={welcome.minSpend ?? 0} onChange={(e) => patchWelcome({ minSpend: Number(e.target.value) })} className={`${bigInput} text-right tabular-nums`} />
+                      <span className="mt-1.5 block text-xs text-slate-400">0 = ไม่มีขั้นต่ำ</span>
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-xs font-medium text-slate-600">อายุคูปอง (วัน)</span>
-                      <input type="number" min={0} value={welcome.expiryDays ?? 0} onChange={(e) => patchWelcome({ expiryDays: Number(e.target.value) })} className={`${inputCls} text-right tabular-nums`} />
-                      <span className="mt-1 block text-[11px] text-slate-400">0 = ไม่หมดอายุ</span>
+                      <span className="mb-1.5 block text-sm font-semibold text-slate-700">อายุคูปอง (วัน)</span>
+                      <input type="number" min={0} value={welcome.expiryDays ?? 0} onChange={(e) => patchWelcome({ expiryDays: Number(e.target.value) })} className={`${bigInput} text-right tabular-nums`} />
+                      <span className="mt-1.5 block text-xs text-slate-400">0 = ไม่หมดอายุ</span>
                     </label>
                   </div>
 
-                  <p className={`text-xs ${faint}`}>💡 คูปองจะโผล่ให้ลูกค้าใส่อัตโนมัติตอนสั่งซื้อครั้งแรก — ไม่ต้องแจกโค้ดเอง</p>
+                  <p className={`text-sm ${faint}`}>💡 คูปองจะโผล่ให้ลูกค้าใส่อัตโนมัติตอนสั่งซื้อครั้งแรก — ไม่ต้องแจกโค้ดเอง</p>
                 </div>
 
                 {/* ── ขวา: พรีวิวตั๋วสด ── */}
                 <div>
-                  <span className="mb-1.5 block text-xs font-medium text-slate-600">ตัวอย่างที่ลูกค้าเห็น</span>
-                  <div className={`overflow-hidden rounded-2xl shadow-sm ring-1 ${welcome.enabled ? "ring-sky-100" : "ring-slate-200 grayscale"}`}>
-                    <div className={`px-4 py-5 text-center text-white ${welcome.enabled ? "bg-gradient-to-br from-sky-400 to-teal-500" : "bg-slate-400"}`}>
-                      <span className="text-3xl">🎟️</span>
-                      <p className="mt-1 text-[10px] font-medium uppercase tracking-wider opacity-90">คูปองต้อนรับ</p>
-                      <p className="mt-0.5 text-2xl font-extrabold">
+                  <span className="mb-2 block text-sm font-semibold text-slate-700">ตัวอย่างที่ลูกค้าเห็น</span>
+                  <div className={`overflow-hidden rounded-3xl shadow-md ring-1 ${welcome.enabled ? "ring-sky-100" : "ring-slate-200 grayscale"}`}>
+                    <div className={`px-6 py-8 text-center text-white ${welcome.enabled ? "bg-gradient-to-br from-sky-400 to-teal-500" : "bg-slate-400"}`}>
+                      <span className="text-5xl">🎟️</span>
+                      <p className="mt-2 text-xs font-medium uppercase tracking-wider opacity-90">คูปองต้อนรับ</p>
+                      <p className="mt-1 text-4xl font-extrabold">
                         {welcome.type === "percent" ? `ลด ${welcome.value || 0}%` : `ลด ${welcome.value || 0}฿`}
                       </p>
                     </div>
-                    <div className="space-y-1.5 bg-white px-4 py-4 text-center text-xs text-slate-500">
+                    <div className="space-y-2 bg-white px-6 py-5 text-center text-sm text-slate-500">
                       {welcome.type === "percent" && (welcome.maxDiscount ?? 0) > 0 && <p>• ลดสูงสุด {welcome.maxDiscount}฿</p>}
                       <p>• {(welcome.minSpend ?? 0) > 0 ? `ยอดขั้นต่ำ ${welcome.minSpend}฿` : "ไม่มียอดขั้นต่ำ"}</p>
                       <p>• {(welcome.expiryDays ?? 0) > 0 ? `ใช้ได้ภายใน ${welcome.expiryDays} วัน` : "ไม่มีวันหมดอายุ"}</p>
                       <p>• ใช้ได้ครั้งเดียว · เฉพาะบัญชีที่ได้รับ</p>
                     </div>
                   </div>
-                  {!welcome.enabled && <p className="mt-2 text-center text-[11px] text-slate-400">ปิดอยู่ — ยังไม่แจกให้สมาชิกใหม่</p>}
+                  {!welcome.enabled && <p className="mt-3 text-center text-xs text-slate-400">ปิดอยู่ — ยังไม่แจกให้สมาชิกใหม่</p>}
                 </div>
               </div>
             </section>
