@@ -41,6 +41,32 @@ export interface ShopPayment {
   freeShippingMin?: number;
   /** ระดับสมาชิก — ไม่ตั้ง = ใช้ค่าเริ่มต้น (ดู @/lib/tiers) */
   tiers?: Tier[];
+  /** คูปองต้อนรับสมาชิกใหม่ (แจกอัตโนมัติตอนสมัคร) */
+  welcomeCoupon?: WelcomeCouponConfig;
+}
+
+/** ตั้งค่าคูปองต้อนรับ — คิด/ออกฝั่งเซิร์ฟเวอร์ตอนสมาชิกใหม่ล็อกอินครั้งแรก */
+export interface WelcomeCouponConfig {
+  enabled: boolean;
+  type: "percent" | "fixed";
+  value: number;
+  minSpend?: number;
+  maxDiscount?: number; // เพดาน (เฉพาะ percent)
+  expiryDays?: number; // อายุคูปองนับจากวันออก — 0/ไม่ตั้ง = ไม่หมดอายุ
+}
+
+export const DEFAULT_WELCOME_COUPON: WelcomeCouponConfig = {
+  enabled: false, // ปิดไว้ก่อน — แอดมินเปิดเองที่ /admin/settings
+  type: "percent",
+  value: 10,
+  minSpend: 0,
+  maxDiscount: 200,
+  expiryDays: 30,
+};
+
+/** ตั้งค่าคูปองต้อนรับที่ใช้จริง (ตกไปใช้ค่าเริ่มต้นถ้ายังไม่ตั้ง) */
+export function welcomeCouponOf(s: ShopPayment | null | undefined): WelcomeCouponConfig {
+  return { ...DEFAULT_WELCOME_COUPON, ...(s?.welcomeCoupon ?? {}) };
 }
 
 export const SETTINGS_ID = "__shop_payment__";

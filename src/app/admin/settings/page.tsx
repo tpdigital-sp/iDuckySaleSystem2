@@ -11,9 +11,11 @@ import {
   persistShopPayment,
   shippingOf,
   tiersConfigOf,
+  welcomeCouponOf,
   type BankAccount,
   type ShippingMethod,
   type ShopPayment,
+  type WelcomeCouponConfig,
 } from "@/lib/shop-settings";
 import { DEFAULT_TIERS, type Tier } from "@/lib/tiers";
 import { btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
@@ -21,7 +23,7 @@ import { btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
 const newId = (p = "b") =>
   typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${p}-${Date.now()}-${Math.floor(Math.random() * 1e4)}`;
 
-type Tab = "pay" | "ship" | "tier";
+type Tab = "pay" | "ship" | "tier" | "welcome";
 
 function AdminSettingsPageInner() {
   const [tab, setTab] = useState<Tab>("pay");
@@ -39,6 +41,9 @@ function AdminSettingsPageInner() {
   // ── ระดับสมาชิก ──
   const [tiers, setTiers] = useState<Tier[]>([]);
 
+  // ── คูปองต้อนรับ ──
+  const [welcome, setWelcome] = useState<WelcomeCouponConfig>(welcomeCouponOf(null));
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -53,9 +58,15 @@ function AdminSettingsPageInner() {
       setShipping(shippingOf(p));
       setFreeMin(freeShippingMinOf(p));
       setTiers(tiersConfigOf(p));
+      setWelcome(welcomeCouponOf(p));
       setLoading(false);
     });
   }, []);
+
+  const patchWelcome = (patch: Partial<WelcomeCouponConfig>) => {
+    setWelcome((w) => ({ ...w, ...patch }));
+    touch();
+  };
 
   const touch = () => setSaved(false);
 
@@ -114,6 +125,14 @@ function AdminSettingsPageInner() {
         .map((t) => ({ ...t, name: t.name.trim(), minSpend: Number(t.minSpend) || 0, discountPct: Number(t.discountPct) || 0 }))
         .filter((t) => t.name)
         .sort((a, b) => a.minSpend - b.minSpend),
+      welcomeCoupon: {
+        enabled: welcome.enabled,
+        type: welcome.type,
+        value: Number(welcome.value) || 0,
+        minSpend: Number(welcome.minSpend) || 0,
+        maxDiscount: welcome.type === "percent" ? Number(welcome.maxDiscount) || 0 : 0,
+        expiryDays: Number(welcome.expiryDays) || 0,
+      },
     };
     const res = await persistShopPayment(payload);
     setSaving(false);
@@ -141,6 +160,7 @@ function AdminSettingsPageInner() {
             ["pay", "🏦 ชำระเงิน"],
             ["ship", "🚚 การจัดส่ง"],
             ["tier", "🏅 ระดับสมาชิก"],
+            ["welcome", "🎁 คูปองต้อนรับ"],
           ] as [Tab, string][]
         ).map(([k, label]) => (
           <button
@@ -433,6 +453,69 @@ function AdminSettingsPageInner() {
               )}
               <p className={`mt-3 text-xs ${faint}`}>
                 💡 ควรมีระดับเริ่มต้นที่ยอด 0 · ลด 0% (สมาชิกใหม่) และเรียงยอดจากน้อยไปมาก · ระบบจะเรียงให้อัตโนมัติตอนบันทึก
+              </p>
+            </section>
+          )}
+
+          {tab === "welcome" && (
+            <section className={card}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-800">🎁 คูปองต้อนรับสมาชิกใหม่</h2>
+                  <p className={`mt-0.5 text-xs ${faint}`}>แจกอัตโนมัติเมื่อลูกค้าสมัคร/ล็อกอินครั้งแรก · ผูกบัญชี ใช้ครั้งเดียว</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={welcome.enabled}
+                  onClick={() => patchWelcome({ enabled: !welcome.enabled })}
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition ${welcome.enabled ? "bg-emerald-500" : "bg-slate-300"}`}
+                >
+                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${welcome.enabled ? "left-[22px]" : "left-0.5"}`} />
+                </button>
+              </div>
+
+              <div className={`mt-4 space-y-4 ${welcome.enabled ? "" : "pointer-events-none opacity-40"}`}>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["percent", "fixed"] as const).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => patchWelcome({ type: t })}
+                      className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                        welcome.type === t ? "border-amber-400 bg-amber-50 text-amber-700" : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                      }`}
+                    >
+                      {t === "percent" ? "ลด %" : "ลดเป็นบาท"}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-slate-600">{welcome.type === "percent" ? "ส่วนลด (%)" : "ส่วนลด (บาท)"}</span>
+                    <input type="number" min={0} value={welcome.value} onChange={(e) => patchWelcome({ value: Number(e.target.value) })} className={`${inputCls} text-right tabular-nums`} />
+                  </label>
+                  {welcome.type === "percent" && (
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-medium text-slate-600">ส่วนลดสูงสุด (บาท) · 0 = ไม่จำกัด</span>
+                      <input type="number" min={0} value={welcome.maxDiscount ?? 0} onChange={(e) => patchWelcome({ maxDiscount: Number(e.target.value) })} className={`${inputCls} text-right tabular-nums`} />
+                    </label>
+                  )}
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-slate-600">ยอดขั้นต่ำ (บาท) · 0 = ไม่มี</span>
+                    <input type="number" min={0} value={welcome.minSpend ?? 0} onChange={(e) => patchWelcome({ minSpend: Number(e.target.value) })} className={`${inputCls} text-right tabular-nums`} />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-slate-600">อายุคูปอง (วัน) · 0 = ไม่หมดอายุ</span>
+                    <input type="number" min={0} value={welcome.expiryDays ?? 0} onChange={(e) => patchWelcome({ expiryDays: Number(e.target.value) })} className={`${inputCls} text-right tabular-nums`} />
+                  </label>
+                </div>
+              </div>
+
+              <p className={`mt-4 text-xs ${faint}`}>
+                💡 ตัวอย่าง: “ลด 10% สูงสุด 200฿ อายุ 30 วัน” · คูปองจะโผล่ให้ลูกค้าใส่อัตโนมัติตอนสั่งซื้อครั้งแรก
+                {welcome.enabled ? "" : " · สถานะตอนนี้ปิดอยู่ (ยังไม่แจก)"}
               </p>
             </section>
           )}
