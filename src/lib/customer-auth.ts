@@ -75,6 +75,23 @@ export async function updateProfile(profile: Profile): Promise<{ ok: boolean; er
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+/** ส่งอีเมลลิงก์รีเซ็ตรหัสผ่าน — คลิกแล้วเด้งมาที่ /account/reset เพื่อตั้งรหัสใหม่ */
+export async function requestPasswordReset(email: string): Promise<{ ok: boolean; error?: string }> {
+  const sb = getSupabase();
+  if (!sb) return { ok: false, error: "ระบบยังไม่พร้อม" };
+  const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/account/reset` : undefined;
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
+  return error ? { ok: false, error: mapErr(error.message) } : { ok: true };
+}
+
+/** ตั้งรหัสผ่านใหม่ (ใช้ตอนอยู่ในเซสชัน recovery จากลิงก์อีเมล) */
+export async function updatePassword(password: string): Promise<{ ok: boolean; error?: string }> {
+  const sb = getSupabase();
+  if (!sb) return { ok: false, error: "ระบบยังไม่พร้อม" };
+  const { error } = await sb.auth.updateUser({ password });
+  return error ? { ok: false, error: mapErr(error.message) } : { ok: true };
+}
+
 /** token สำหรับยิง API ที่ต้องยืนยันตัวตนลูกค้า (เช่น ประวัติออเดอร์) */
 export async function getAccessToken(): Promise<string | null> {
   const sb = getSupabase();

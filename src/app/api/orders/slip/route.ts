@@ -5,7 +5,8 @@ import type { Order } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
 
-const BUCKET = "payment-slips";
+// bucket ส่วนตัว — สลิปมีเลขบัญชี/ยอดเงินลูกค้า ห้ามเปิด public · แอดมินดูผ่าน signed URL เท่านั้น
+const BUCKET = "payment-slips-private";
 const EXT: Record<string, string> = {
   "image/png": "png",
   "image/jpeg": "jpg",
@@ -61,17 +62,18 @@ export async function POST(req: Request) {
 
   let { error: upErr } = await upload();
   if (upErr && /bucket not found/i.test(upErr.message)) {
-    await sb.storage.createBucket(BUCKET, { public: true, fileSizeLimit: "5MB" });
+    // สร้างเป็น bucket ส่วนตัว (public: false) — เปิดได้เฉพาะผ่าน signed URL
+    await sb.storage.createBucket(BUCKET, { public: false, fileSizeLimit: "5MB" });
     ({ error: upErr } = await upload());
   }
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 
-  const { data: pub } = sb.storage.from(BUCKET).getPublicUrl(path);
   // จำยอดรวม ณ ตอนแจ้งโอน — ถ้าลูกค้าสั่งเพิ่มทีหลัง จะรู้ว่าค้างชำระเท่าไหร่
   const paidNow = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0) + order.shippingCost;
   const updated: Order = {
     ...order,
-    slipUrl: pub.publicUrl,
+    slipPath: path, // เก็บ path — ไม่เก็บ URL สาธารณะ
+    slipUrl: undefined, // ล้างของเก่า (ถ้ามี) กันชี้ไปไฟล์ public เดิม
     paidReportedAt: new Date().toISOString(),
     paidTotal: paidNow,
     status: "รอตรวจสอบ",
@@ -79,5 +81,5 @@ export async function POST(req: Request) {
   const { error: saveErr } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
 
-  return NextResponse.json({ ok: true, slipUrl: pub.publicUrl });
+  return NextResponse.json({ ok: true });
 }

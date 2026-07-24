@@ -54,7 +54,20 @@ export async function GET() {
       return NextResponse.json({ orders: [], needsSetup: true });
     return NextResponse.json({ error: error.message, orders: [] }, { status: 500 });
   }
-  return NextResponse.json({ orders: (data ?? []).map((r) => r.data as Order) });
+
+  const orders = (data ?? []).map((r) => r.data as Order);
+  // เซ็น signed URL ชั่วคราวสำหรับสลิปที่อยู่ใน bucket ส่วนตัว (ออเดอร์ใหม่) — ไม่แก้ข้อมูลในฐาน
+  const withSlip = orders.filter((o) => o.slipPath);
+  if (withSlip.length) {
+    const signed = await Promise.all(
+      withSlip.map((o) => sb.storage.from("payment-slips-private").createSignedUrl(o.slipPath!, 3600))
+    );
+    withSlip.forEach((o, i) => {
+      const url = signed[i].data?.signedUrl;
+      if (url) o.slipUrl = url; // ชั่วคราว ใช้แสดงผลเท่านั้น ไม่ persist
+    });
+  }
+  return NextResponse.json({ orders });
 }
 
 /** แอดมินอัปเดตออเดอร์ (เปลี่ยนสถานะ ฯลฯ) — ส่ง Order เต็มมา */
@@ -86,6 +99,9 @@ export async function PATCH(req: Request) {
     if (gErr || !row) return NextResponse.json({ error: "ไม่พบออเดอร์นี้" }, { status: 404 });
     toSave = mergePackFields(row.data as Order, order, can(actor, "pack.ship"));
   }
+
+  // อย่าเก็บ signed URL ชั่วคราวลงฐาน — สลิปที่มี slipPath ต้องเซ็นใหม่ทุกครั้งที่ดึง
+  if (toSave.slipPath) toSave = { ...toSave, slipUrl: undefined };
 
   const { error } = await sb.from("orders").update({ data: toSave }).eq("id", toSave.id);
   return error

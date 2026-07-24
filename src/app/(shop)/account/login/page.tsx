@@ -105,6 +105,11 @@ function LoginInner() {
           onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
           className={inputCls}
         />
+        <div className="text-right">
+          <Link href="/account/reset" className="text-xs font-semibold text-amber-600 hover:underline">
+            ลืมรหัสผ่าน?
+          </Link>
+        </div>
       </div>
 
       {err && <p className="mt-3 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{err}</p>}
