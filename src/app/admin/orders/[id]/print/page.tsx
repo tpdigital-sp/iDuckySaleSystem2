@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
@@ -58,6 +58,24 @@ export default function PrintOrderPage() {
     void load();
   }, [load]);
 
+  // วัดว่าเนื้อหาชีทงานล้นเกิน A4 ไหม (วัดที่ความกว้าง A4 = 794px) → ใช้ตัดสินใจโชว์โน้ต "ดูต่อผ่านมือถือ"
+  const workRef = useRef<HTMLElement>(null);
+  const [overflows, setOverflows] = useState(false);
+  useEffect(() => {
+    const el = workRef.current;
+    if (!el) return;
+    const measure = () => {
+      const prev = el.style.width;
+      el.style.width = "794px"; // ความกว้าง A4
+      const h = el.scrollHeight; // สูงเนื้อหาจริง (รวม padding p-8 = 64px ที่ตอนพิมพ์ไม่มี)
+      el.style.width = prev;
+      setOverflows(h - 64 > 1047); // 1047px = A4 หัก margin · เกิน = ล้น
+    };
+    measure();
+    const t = setTimeout(measure, 500); // เผื่อ layout/รูปเสถียร
+    return () => clearTimeout(t);
+  }, [order, withProofs, docs]);
+
   if (loading) return <p className="p-10 text-center text-sm text-slate-400">กำลังโหลด…</p>;
   if (!order) {
     return (
@@ -76,6 +94,8 @@ export default function PrintOrderPage() {
   const PRINT_ROW_LIMIT = withProofs ? 4 : 12;
   const shownItems = order.items.slice(0, PRINT_ROW_LIMIT);
   const overflowCount = order.items.length - shownItems.length;
+  const totalProofs = order.items.reduce((s, it) => s + proofsOf(it).length, 0); // แบบงานทั้งหมดกี่รูป
+  const contentOverflows = overflows || overflowCount > 0; // เนื้อหาล้น A4 → โชว์โน้ตดูมือถือ
   const printedAt = new Date().toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
   const chosen = (Object.keys(docs) as DocKey[]).filter((k) => docs[k]);
   /** ลิงก์เต็มสำหรับ QR มือถือ — เปิดหน้าออเดอร์เพื่อเช็คของตามภาพ */
@@ -164,7 +184,7 @@ export default function PrintOrderPage() {
 
         {/* ═══════════ ใบงาน + ใบปะหน้าพัสดุ (ใบเดียวจบ) ═══════════ */}
         {docs.work && (
-          <section className="sheet rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+          <section ref={workRef} className="sheet rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
             {/* แถวบน: ผู้ส่ง | วิธีจัดส่ง + บาร์โค้ด (เลขออเดอร์อยู่ในบาร์โค้ด + กล่องใบงานด้านล่างแล้ว) */}
             <div className="flex items-start justify-between gap-6 border-b-2 border-slate-900 pb-3">
               <div>
@@ -292,15 +312,16 @@ export default function PrintOrderPage() {
             </div>
             {/* /sheet-body */}
 
-            {/* ท้ายบิล — เตือนดูต่อผ่านมือถือ (อยู่นอกโซนตัด แสดงเสมอ) */}
-            <div className="keep mt-3 rounded-lg border-2 border-slate-900 bg-slate-50 p-3 text-center">
-              {overflowCount > 0 ? (
-                <p className="text-lg font-extrabold text-slate-900">📱 ยังมีอีก {overflowCount} รายการ — ดูทั้งหมดผ่านมือถือ</p>
-              ) : (
-                <p className="text-sm font-bold text-slate-700">📱 ตรวจรายการ/แบบงานครบทุกชิ้นบนมือถือ</p>
-              )}
-              <p className="mt-0.5 text-xs font-semibold text-slate-600">สแกน QR ด้านบนเพื่อเปิดหน้าออเดอร์</p>
-            </div>
+            {/* ท้ายบิล — โชว์เฉพาะออเดอร์ที่เนื้อหาล้น A4 (อยู่นอกโซนตัด แสดงเสมอ) */}
+            {contentOverflows && (
+              <div className="keep mt-3 rounded-lg border-2 border-slate-900 bg-slate-50 p-3 text-center">
+                <p className="font-extrabold" style={{ color: "#dc2626", fontSize: 25 }}>
+                  ทั้งหมด {order.items.length} รายการ · แบบงาน {totalProofs} รูป
+                </p>
+                <p className="mt-1 text-base font-bold text-slate-800">📱 ตรวจรายการ/แบบงานครบทุกชิ้นบนมือถือ</p>
+                <p className="mt-0.5 text-xs font-semibold text-slate-600">สแกน QR ด้านบนเพื่อเปิดหน้าออเดอร์</p>
+              </div>
+            )}
 
             {order.note && (
               <p className="mt-3 rounded border border-slate-300 bg-slate-50 p-3 text-sm">
