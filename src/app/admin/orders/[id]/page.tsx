@@ -23,6 +23,7 @@ import { card, faint, muted, shortTime } from "@/lib/admin-ui";
 import ImageLightbox from "@/components/ImageLightbox";
 import PackCheckPanel from "@/components/PackCheckPanel";
 import { useCan } from "@/lib/perm-context";
+import { publicOrigin } from "@/lib/shop-info";
 
 const LBL = "text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400";
 const SOFT = "rounded-xl border border-slate-200/70 bg-white p-4";
@@ -56,7 +57,7 @@ export default function AdminOrderDetailPage() {
   const mayProof = can("proof.manage"); // อัปโหลด/ลบแบบงาน
   const mayCancel = can("orders.cancel");
 
-  useEffect(() => setOrigin(window.location.origin), []);
+  useEffect(() => setOrigin(publicOrigin()), []); // ลิงก์นี้ส่งให้ลูกค้า ต้องไม่ใช่ localhost
 
   const load = useCallback(async () => {
     const r = await fetchOrdersAdmin();

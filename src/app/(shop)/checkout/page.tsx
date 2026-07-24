@@ -17,6 +17,7 @@ import {
 } from "@/lib/shop-settings";
 import { appendToOrder, placeOrder, reportPayment } from "@/lib/order-repo";
 import { clearAppendTarget, getAppendTarget, type AppendTarget } from "@/lib/append-order";
+import { publicOrigin } from "@/lib/shop-info";
 
 interface Placed {
   id: string;
@@ -164,7 +165,7 @@ export default function CheckoutPage() {
       return;
     }
     // ลิงก์ออเดอร์ของลูกค้า — เช็คสถานะ / ดูแบบงาน / อนุมัติ (ต้องมี key ถึงเปิดได้)
-    const orderUrl = `${window.location.origin}/order/${res.orderId}${res.key ? `?key=${encodeURIComponent(res.key)}` : ""}`;
+    const orderUrl = `${publicOrigin()}/order/${res.orderId}${res.key ? `?key=${encodeURIComponent(res.key)}` : ""}`;
     // สร้างข้อความ LINE ก่อนล้างตะกร้า
     const lines = [`🦆 ออเดอร์ ${res.orderId}`, `ชื่อ: ${name.trim()} · ${phone.trim()}`, "━━━━━━━━━━━━━━"];
     orderItems.forEach((it, i) => {

@@ -26,6 +26,7 @@ import { fetchPresets } from "@/lib/preset-repo";
 import { type OptionPreset } from "@/lib/option-presets";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import GradientPicker from "@/components/GradientPicker";
+import { publicOrigin } from "@/lib/shop-info";
 
 type DraftChoice = { name: string; extra: string };
 /** presetId มี = กลุ่มนี้ "ลิงก์" คลังตัวเลือกกลาง (label+choices มาจากคลัง แก้ในกลุ่มไม่ได้จนกว่าจะตัดลิงก์) */
@@ -387,7 +388,7 @@ export default function ProductEditor({ product }: { product: Product }) {
   // เติมโดเมนหลัง mount เพื่อให้ HTML ฝั่งเซิร์ฟเวอร์/เบราว์เซอร์ตรงกัน
   const [fullUrl, setFullUrl] = useState(productUrl);
   useEffect(() => {
-    setFullUrl(`${window.location.origin}${productUrl}`);
+    setFullUrl(`${publicOrigin()}${productUrl}`);
   }, [productUrl]);
 
   function patch(patchObj: Partial<Draft>) {

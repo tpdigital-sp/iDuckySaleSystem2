@@ -8,7 +8,7 @@ import Barcode from "@/components/Barcode";
 import { formatPrice } from "@/lib/products";
 import { MOCK_ORDERS, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
 import { fetchOrdersAdmin } from "@/lib/order-repo";
-import { SHOP } from "@/lib/shop-info";
+import { publicOrigin, SHOP } from "@/lib/shop-info";
 import { useCan } from "@/lib/perm-context";
 
 /** work = ใบงาน+ใบปะหน้าพัสดุ (ใบเดียวจบ) · receipt = ใบเสร็จให้ลูกค้า */
@@ -34,7 +34,7 @@ export default function PrintOrderPage() {
 
   useEffect(() => {
     // ?doc=work|receipt (รองรับลิงก์เก่า job/label → work)
-    setOrigin(window.location.origin);
+    setOrigin(publicOrigin()); // ต้องเป็นโดเมนจริง มือถือถึงสแกนแล้วเปิดได้
     const only = new URLSearchParams(window.location.search).get("doc");
     if (only === "receipt") setDocs({ work: false, receipt: true });
     else if (only) setDocs({ work: true, receipt: false });
