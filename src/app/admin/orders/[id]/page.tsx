@@ -22,7 +22,7 @@ import { usePolling } from "@/lib/use-polling";
 import { card, faint, muted, shortTime } from "@/lib/admin-ui";
 import ImageLightbox from "@/components/ImageLightbox";
 import PackCheckPanel from "@/components/PackCheckPanel";
-import { useCan } from "@/lib/perm-context";
+import { useActor, useCan } from "@/lib/perm-context";
 import { publicOrigin } from "@/lib/shop-info";
 
 const LBL = "text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400";
@@ -52,6 +52,7 @@ export default function AdminOrderDetailPage() {
   const trackingRef = useRef<string>(""); // เลขพัสดุที่บันทึกไปแล้ว กันบันทึกซ้ำตอน blur
 
   const can = useCan();
+  const actor = useActor(); // ชื่อคนที่ล็อกอินอยู่ (ไว้บันทึกประวัติว่าใครทำ)
   const seesMoney = can("orders.money"); // เห็นราคา/สลิป
   const mayEdit = can("orders.edit"); // เปลี่ยนสถานะ/แก้ข้อมูล
   const mayProof = can("proof.manage"); // อัปโหลด/ลบแบบงาน
@@ -90,7 +91,7 @@ export default function AdminOrderDetailPage() {
 
   function changeStatus(status: OrderStatus) {
     if (!order || order.status === status) return;
-    const next = withLog({ ...order, status }, "แอดมิน", "เปลี่ยนสถานะ", `${order.status} → ${status}`);
+    const next = withLog({ ...order, status }, actor, "เปลี่ยนสถานะ", `${order.status} → ${status}`);
     setOrder(next);
     if (!demo) void saveOrderAdmin(next);
   }
@@ -125,7 +126,7 @@ export default function AdminOrderDetailPage() {
     trackingRef.current = t;
     const next = withLog(
       { ...order, tracking: t, status: order.status === "เสร็จสิ้น" ? order.status : "จัดส่งแล้ว" },
-      "แอดมิน",
+      actor,
       "บันทึกเลขพัสดุ",
       t
     );
@@ -164,13 +165,13 @@ export default function AdminOrderDetailPage() {
   function setPackCheck(itemIndex: number, proofIndex: number, status: "ครบ" | "ไม่ครบ", got?: number) {
     if (!order) return;
     const item = order.items[itemIndex];
-    const pack = { status, ...(status === "ไม่ครบ" ? { got: got ?? 0 } : {}), by: "พนักงานแพ็ค", at: new Date().toISOString() };
+    const pack = { status, ...(status === "ไม่ครบ" ? { got: got ?? 0 } : {}), by: actor, at: new Date().toISOString() };
     const items = order.items.map((it, i) =>
       i === itemIndex ? { ...it, proofs: proofsOf(it).map((p, j) => (j === proofIndex ? { ...p, pack } : p)) } : it
     );
     const next = withLog(
       { ...order, items },
-      "พนักงานแพ็ค",
+      actor,
       status === "ครบ" ? "ตรวจนับ: ครบ" : "ตรวจนับ: ไม่ครบ",
       `${item?.name ?? ""} รูปที่ ${proofIndex + 1}${status === "ไม่ครบ" ? ` — นับได้ ${got ?? 0} ชิ้น` : ""}`
     );
@@ -184,11 +185,11 @@ export default function AdminOrderDetailPage() {
     const item = order.items[itemIndex];
     const acked = !!item?.noteAck;
     const items = order.items.map((it, i) =>
-      i === itemIndex ? { ...it, noteAck: acked ? undefined : { by: "พนักงานแพ็ค", at: new Date().toISOString() } } : it
+      i === itemIndex ? { ...it, noteAck: acked ? undefined : { by: actor, at: new Date().toISOString() } } : it
     );
     const next = withLog(
       { ...order, items },
-      "พนักงานแพ็ค",
+      actor,
       acked ? "ยกเลิกยืนยันอ่านรายละเอียด" : "ยืนยันอ่านรายละเอียดแล้ว",
       item?.name
     );
@@ -204,7 +205,7 @@ export default function AdminOrderDetailPage() {
       // ไม่เหลือรูปแล้ว → กลับไปสถานะ "รอกราฟฟิกทำแบบ"
       return proofs.length ? { ...it, proofs } : { ...it, proofs, proofStatus: undefined, proofNote: undefined };
     });
-    const next = withLog({ ...order, items }, "กราฟฟิก", "ลบแบบงาน", order.items[itemIndex]?.name);
+    const next = withLog({ ...order, items }, actor, "ลบแบบงาน", order.items[itemIndex]?.name);
     setOrder(next);
     if (!demo) void saveOrderAdmin(next);
   }

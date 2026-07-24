@@ -81,7 +81,7 @@ export async function POST(req: Request) {
   );
   const updated = withLog(
     { ...order, items, status: "รอตรวจแบบ" },
-    "กราฟฟิก",
+    gate.actor.name?.trim() || "กราฟฟิก", // บันทึกชื่อคนที่อัปโหลดจริง (fallback: กราฟฟิก)
     "อัปโหลดแบบให้ลูกค้าตรวจ",
     `${order.items[itemIndex].name}${proofQty ? ` · ${proofQty} ชิ้น` : ""}${proofNote ? ` · ${proofNote}` : ""}`
   );
