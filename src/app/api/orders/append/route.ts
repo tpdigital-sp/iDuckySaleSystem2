@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
+import { orderTotal, withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
 
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     );
 
   const merged = [...order.items, ...items];
-  const newTotal = merged.reduce((s, i) => s + i.qty * i.unitPrice, 0) + order.shippingCost;
+  const newTotal = orderTotal({ ...order, items: merged }); // หักส่วนลด (ส่วนลดคิดจาก subtotal เดิม ไม่คิดซ้ำของที่สั่งเพิ่ม)
   const owed = newTotal - (order.paidTotal ?? 0);
 
   const updated = withLog(

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import type { Order } from "@/lib/admin-data";
+import { orderTotal, type Order } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
 
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 
   // จำยอดรวม ณ ตอนแจ้งโอน — ถ้าลูกค้าสั่งเพิ่มทีหลัง จะรู้ว่าค้างชำระเท่าไหร่
-  const paidNow = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0) + order.shippingCost;
+  const paidNow = orderTotal(order); // หักส่วนลดระดับสมาชิกแล้ว
   const updated: Order = {
     ...order,
     slipPath: path, // เก็บ path — ไม่เก็บ URL สาธารณะ

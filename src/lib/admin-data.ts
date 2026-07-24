@@ -162,10 +162,17 @@ export interface Order {
   paidTotal?: number;
   /** ประวัติการทำงานของออเดอร์ (เก่า→ใหม่) — ใครทำอะไรเมื่อไหร่ */
   log?: LogEntry[];
+  /** ส่วนลดระดับสมาชิก (คิดฝั่งเซิร์ฟเวอร์ตอนสร้างออเดอร์) — หักออกจากยอดรวม */
+  discount?: { tier: string; pct: number; amount: number };
+}
+
+/** ราคาสินค้ารวม (ก่อนค่าส่ง/ส่วนลด) */
+export function orderSubtotal(o: Order): number {
+  return o.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
 }
 
 export function orderTotal(o: Order): number {
-  return o.items.reduce((s, i) => s + i.qty * i.unitPrice, 0) + o.shippingCost;
+  return Math.max(0, orderSubtotal(o) + o.shippingCost - (o.discount?.amount ?? 0));
 }
 
 /** ยอดที่ลูกค้ายังค้างชำระ (มากกว่า 0 = ต้องโอนเพิ่ม เช่น หลังสั่งเพิ่มในออเดอร์เดิม) */

@@ -8,6 +8,7 @@
  *   เลี่ยงการสร้างตารางใหม่/รัน SQL · ถ้าต่อไปอยากแยกตาราง `shop_settings` ก็ย้ายได้
  */
 import { getSupabase } from "./supabase";
+import { DEFAULT_TIERS, type Tier } from "./tiers";
 
 export interface BankAccount {
   id: string;
@@ -38,6 +39,8 @@ export interface ShopPayment {
   shipping?: ShippingMethod[];
   /** ซื้อครบเท่านี้ส่งฟรี (บาท) — 0 หรือไม่ตั้ง = ไม่มีโปรส่งฟรี */
   freeShippingMin?: number;
+  /** ระดับสมาชิก — ไม่ตั้ง = ใช้ค่าเริ่มต้น (ดู @/lib/tiers) */
+  tiers?: Tier[];
 }
 
 export const SETTINGS_ID = "__shop_payment__";
@@ -60,6 +63,12 @@ export function shippingOf(s: ShopPayment | null | undefined): ShippingMethod[] 
 /** ยอดขั้นต่ำส่งฟรี (0 = ปิดโปร) */
 export function freeShippingMinOf(s: ShopPayment | null | undefined): number {
   return s?.freeShippingMin ?? DEFAULT_FREE_SHIPPING_MIN;
+}
+
+/** ระดับสมาชิกที่ใช้จริง (ตกไปใช้ค่าเริ่มต้นถ้ายังไม่ตั้ง) */
+export function tiersConfigOf(s: ShopPayment | null | undefined): Tier[] {
+  const list = (s?.tiers ?? []).filter((t) => t.name?.trim());
+  return list.length ? list : DEFAULT_TIERS;
 }
 
 /** มีช่องทางรับเงินอย่างน้อย 1 อย่างไหม */
