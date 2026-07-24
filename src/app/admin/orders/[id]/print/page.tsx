@@ -315,7 +315,7 @@ export default function PrintOrderPage() {
             {/* ท้ายบิล — โชว์เฉพาะออเดอร์ที่เนื้อหาล้น A4 (อยู่นอกโซนตัด แสดงเสมอ) */}
             {contentOverflows && (
               <div className="keep mt-3 rounded-lg border-2 border-slate-900 bg-slate-50 p-3 text-center">
-                <p className="font-extrabold" style={{ color: "#dc2626", fontSize: 25 }}>
+                <p className="font-extrabold" style={{ color: "#dc2626", fontSize: 20 }}>
                   ทั้งหมด {order.items.length} รายการ · แบบงาน {totalProofs} รูป
                 </p>
                 <p className="mt-1 text-base font-bold text-slate-800">📱 ตรวจรายการ/แบบงานครบทุกชิ้นบนมือถือ</p>
