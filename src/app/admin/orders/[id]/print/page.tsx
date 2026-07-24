@@ -172,13 +172,12 @@ export default function PrintOrderPage() {
               <div className="shrink-0 text-right">
                 <p className="font-mono text-2xl font-extrabold tracking-tight">{order.id}</p>
                 <p className="text-xs text-slate-500">{order.date}</p>
-                <p className="mt-1 inline-block rounded border border-slate-900 px-2 py-0.5 text-xs font-bold">
-                  {order.shipping}
-                </p>
-                {/* บาร์โค้ด = เลขออเดอร์ล้วน สำหรับเครื่องยิงที่คอม (ห้ามเปลี่ยนเป็น URL)
-                    ใช้บาร์โค้ดแทน QR เพื่อไม่ให้สับสนกับ QR มือถือบนใบงาน */}
+                {/* วิธีจัดส่งตัวใหญ่เหนือบาร์โค้ด (สไตล์ป้ายขนส่ง) · บาร์โค้ด = เลขออเดอร์ล้วน สำหรับเครื่องยิงที่คอม */}
                 <div className="mt-2 flex flex-col items-end">
-                  <Barcode value={order.id} displayValue={false} height={30} width={1.2} />
+                  <p className="text-3xl font-extrabold uppercase leading-none tracking-tight">{order.shipping}</p>
+                  <div className="mt-1.5">
+                    <Barcode value={order.id} displayValue={false} height={30} width={1.2} />
+                  </div>
                   <p className="mt-0.5 text-[9px] leading-tight text-slate-500">สแกนด้วยเครื่องยิง → ผูกเลขพัสดุ</p>
                 </div>
               </div>
@@ -193,12 +192,6 @@ export default function PrintOrderPage() {
               <p className="mt-1 text-2xl font-extrabold leading-tight">{order.customer}</p>
               <p className="mt-1 whitespace-pre-line text-lg leading-snug">{order.address}</p>
               <p className="mt-2 text-xl font-bold tabular-nums">โทร. {order.phone}</p>
-              {(order.shipDate?.from || order.shipDate?.to) && (
-                <p className="mt-2 inline-block rounded bg-slate-100 px-2 py-1 text-base font-bold">
-                  📅 วันที่จัดส่ง: {fmtThaiDate(order.shipDate?.from)}
-                  {order.shipDate?.to && order.shipDate.to !== order.shipDate.from ? ` – ${fmtThaiDate(order.shipDate.to)}` : ""}
-                </p>
-              )}
             </div>
 
             {/* เส้นประสำหรับตัด — ส่วนบนเอาไปติดหน้ากล่อง ส่วนล่างเก็บไว้เป็นใบงาน */}
@@ -217,6 +210,12 @@ export default function PrintOrderPage() {
                 <p className="text-xs text-slate-600">
                   {order.customer} · {totalQty} ชิ้น · {order.items.length} รายการ
                 </p>
+                {(order.shipDate?.from || order.shipDate?.to) && (
+                  <p className="mt-1.5 inline-block rounded bg-white px-2 py-1 text-base font-bold ring-1 ring-slate-300">
+                    📅 วันที่จัดส่ง: {fmtThaiDate(order.shipDate?.from)}
+                    {order.shipDate?.to && order.shipDate.to !== order.shipDate.from ? ` – ${fmtThaiDate(order.shipDate.to)}` : ""}
+                  </p>
+                )}
               </div>
               {orderUrl && (
                 <div className="shrink-0 text-center">
