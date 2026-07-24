@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import { formatPrice } from "@/lib/products";
-import { MOCK_ORDERS, noteCss, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
+import { MOCK_ORDERS, noteHasText, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -275,10 +275,11 @@ export default function PrintOrderPage() {
                       <td className="py-3">
                         <p className="font-bold">{it.name}</p>
                         {it.selections && <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{it.selections}</p>}
-                        {it.adminNote?.text && (
-                          <p className="mt-1 whitespace-pre-line font-semibold leading-snug" style={noteCss(it.adminNote)}>
-                            📝 {it.adminNote.text}
-                          </p>
+                        {noteHasText(it.adminNote) && (
+                          <p
+                            className="mt-1 leading-snug text-slate-900"
+                            dangerouslySetInnerHTML={{ __html: `📝 ${it.adminNote}` }}
+                          />
                         )}
                       </td>
                       <td className="py-3 text-center text-base font-bold tabular-nums">{it.qty}</td>
@@ -304,13 +305,11 @@ export default function PrintOrderPage() {
               </p>
             )}
 
-            {order.billNote?.text && (
+            {noteHasText(order.billNote) && (
               <p
-                className="mt-3 whitespace-pre-line rounded border border-slate-300 p-3 font-semibold leading-snug"
-                style={noteCss(order.billNote)}
-              >
-                {order.billNote.text}
-              </p>
+                className="mt-3 rounded border border-slate-300 p-3 leading-snug text-slate-900"
+                dangerouslySetInnerHTML={{ __html: order.billNote! }}
+              />
             )}
 
             <div className="mt-5 flex flex-wrap gap-8 text-xs text-slate-500">

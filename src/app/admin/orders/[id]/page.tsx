@@ -16,11 +16,10 @@ import {
   NOTE_COLORS,
   NOTE_SIZES,
   NOTE_WEIGHTS,
-  noteCss,
+  noteHasText,
   type Order,
   type OrderStatus,
   type Proof,
-  type NoteStyle,
   type NoteColor,
   type NoteSize,
   type NoteWeight,
@@ -36,32 +35,123 @@ import { publicOrigin } from "@/lib/shop-info";
 const LBL = "text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400";
 const SOFT = "rounded-xl border border-slate-200/70 bg-white p-4";
 
-/** ช่องกรอกหมายเหตุใบงาน — พิมพ์ข้อความ + เลือกสี + ขนาดฟอนต์ (ชุดสำเร็จรูป) */
-function NoteEditor({
+/** sanitize HTML หมายเหตุ — เก็บเฉพาะ span/div/br + inline style color/font-size/font-weight (กัน XSS) */
+function sanitizeNoteHtml(html: string): string {
+  if (typeof document === "undefined") return html;
+  const tmpl = document.createElement("template");
+  tmpl.innerHTML = html;
+  const clean = (node: Node) => {
+    Array.from(node.childNodes).forEach((child) => {
+      if (child.nodeType === Node.TEXT_NODE) return;
+      if (child.nodeType !== Node.ELEMENT_NODE) {
+        child.parentNode?.removeChild(child);
+        return;
+      }
+      const el = child as HTMLElement;
+      const tag = el.tagName.toLowerCase();
+      if (["span", "div", "br", "b", "strong", "font"].includes(tag)) {
+        const { color, fontSize, fontWeight } = el.style;
+        Array.from(el.attributes).forEach((a) => el.removeAttribute(a.name));
+        if (color) el.style.color = color;
+        if (fontSize) el.style.fontSize = fontSize;
+        if (fontWeight) el.style.fontWeight = fontWeight;
+        clean(el);
+        return;
+      }
+      // แท็กอื่น (script ฯลฯ) → แกะออก เหลือแต่ข้อความข้างใน
+      const parent = el.parentNode;
+      if (parent) {
+        while (el.firstChild) parent.insertBefore(el.firstChild, el);
+        parent.removeChild(el);
+      }
+    });
+  };
+  clean(tmpl.content);
+  return tmpl.innerHTML;
+}
+
+/**
+ * ช่องกรอกหมายเหตุใบงานแบบ rich text — เลือก(ไฮไลต์)คำที่ต้องการ แล้วกดสี/ขนาด/น้ำหนัก
+ * ใช้กับเฉพาะส่วนที่เลือก (ไม่เปลี่ยนทั้งข้อความ) · เก็บเป็น HTML
+ */
+function RichNoteEditor({
   value,
-  onPatch,
+  onChange,
   placeholder,
 }: {
-  value?: NoteStyle;
-  onPatch: (patch: Partial<NoteStyle>, save: boolean) => void;
+  value?: string;
+  onChange: (html: string, commit: boolean) => void;
   placeholder?: string;
 }) {
-  const color = value?.color ?? "black";
-  const size = value?.size ?? "base";
-  const weight = value?.weight ?? "normal";
+  const ref = useRef<HTMLDivElement>(null);
+  const lastPushed = useRef<string>(value ?? "");
+  const [empty, setEmpty] = useState(!noteHasText(value));
+
+  // ซิงก์ค่าจากภายนอกเข้า editor (ไม่ทับตอนแอดมินกำลังพิมพ์เอง)
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if ((value ?? "") !== lastPushed.current && el.innerHTML !== (value ?? "")) {
+      el.innerHTML = value ?? "";
+      lastPushed.current = value ?? "";
+      setEmpty(!el.textContent?.trim());
+    }
+  }, [value]);
+
+  function push(commit: boolean) {
+    const el = ref.current;
+    if (!el) return;
+    const html = sanitizeNoteHtml(el.innerHTML);
+    lastPushed.current = html;
+    setEmpty(!el.textContent?.trim());
+    onChange(html, commit);
+  }
+
+  function applyStyle(style: { color?: string; fontSize?: string; fontWeight?: string }) {
+    const el = ref.current;
+    if (!el) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!el.contains(range.commonAncestorContainer) || range.collapsed) return; // ต้องเลือกคำก่อน
+    const span = document.createElement("span");
+    if (style.color) span.style.color = style.color;
+    if (style.fontSize) span.style.fontSize = style.fontSize;
+    if (style.fontWeight) span.style.fontWeight = style.fontWeight;
+    try {
+      range.surroundContents(span);
+    } catch {
+      const frag = range.extractContents();
+      span.appendChild(frag);
+      range.insertNode(span);
+    }
+    sel.removeAllRanges();
+    const r2 = document.createRange();
+    r2.selectNodeContents(span);
+    sel.addRange(r2);
+    push(true);
+  }
+
+  // กัน mousedown บนปุ่มไม่ให้ contentEditable เสียการไฮไลต์
+  const keepSel = (e: React.MouseEvent) => e.preventDefault();
+
   return (
     <div className="space-y-2">
-      <textarea
-        value={value?.text ?? ""}
-        onChange={(e) => onPatch({ text: e.target.value }, false)}
-        onBlur={() => onPatch({}, true)}
-        rows={2}
-        placeholder={placeholder}
-        style={noteCss(value?.text ? value : undefined)}
-        className="w-full resize-y rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm leading-snug focus:border-amber-300 focus:outline-none"
-      />
+      <div className="relative">
+        <div
+          ref={ref}
+          contentEditable
+          suppressContentEditableWarning
+          onInput={() => push(false)}
+          onBlur={() => push(true)}
+          className="min-h-[58px] w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm leading-snug focus:border-amber-300 focus:outline-none"
+        />
+        {empty && placeholder && (
+          <span className="pointer-events-none absolute left-2.5 top-1.5 text-sm text-slate-400">{placeholder}</span>
+        )}
+      </div>
+      <p className="text-[10px] text-slate-400">✏️ เลือก (ไฮไลต์) คำที่ต้องการก่อน แล้วกดสี/ขนาด/น้ำหนัก — ใช้เฉพาะคำที่เลือก</p>
       <div className="space-y-2 rounded-lg bg-slate-50/80 p-2.5 ring-1 ring-slate-100">
-        {/* สี */}
         <div className="flex items-center gap-2.5">
           <span className="w-12 shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">สี</span>
           <div className="flex items-center gap-1.5">
@@ -70,19 +160,14 @@ function NoteEditor({
                 key={c}
                 type="button"
                 title={NOTE_COLORS[c].label}
-                onClick={() => onPatch({ color: c }, true)}
-                className={`grid h-6 w-6 place-items-center rounded-full text-[11px] font-bold text-white ring-2 transition ${
-                  color === c ? "ring-slate-500" : "ring-transparent hover:ring-slate-300"
-                }`}
+                onMouseDown={keepSel}
+                onClick={() => applyStyle({ color: NOTE_COLORS[c].hex })}
+                className="h-6 w-6 rounded-full ring-2 ring-transparent transition hover:ring-slate-300"
                 style={{ backgroundColor: NOTE_COLORS[c].hex }}
-              >
-                {color === c ? "✓" : ""}
-              </button>
+              />
             ))}
           </div>
         </div>
-
-        {/* ขนาด */}
         <div className="flex items-center gap-2.5">
           <span className="w-12 shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">ขนาด</span>
           <div className="inline-flex overflow-hidden rounded-md ring-1 ring-slate-200">
@@ -90,18 +175,15 @@ function NoteEditor({
               <button
                 key={s}
                 type="button"
-                onClick={() => onPatch({ size: s }, true)}
-                className={`border-r border-slate-200 px-2.5 py-1 text-[11px] font-semibold transition last:border-r-0 ${
-                  size === s ? "bg-amber-500 text-white" : "bg-white text-slate-500 hover:bg-slate-100"
-                }`}
+                onMouseDown={keepSel}
+                onClick={() => applyStyle({ fontSize: `${NOTE_SIZES[s].px}px` })}
+                className="border-r border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-500 transition last:border-r-0 hover:bg-slate-100"
               >
                 {NOTE_SIZES[s].label}
               </button>
             ))}
           </div>
         </div>
-
-        {/* น้ำหนัก */}
         <div className="flex items-center gap-2.5">
           <span className="w-12 shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">น้ำหนัก</span>
           <div className="inline-flex overflow-hidden rounded-md ring-1 ring-slate-200">
@@ -109,11 +191,10 @@ function NoteEditor({
               <button
                 key={w}
                 type="button"
-                onClick={() => onPatch({ weight: w }, true)}
+                onMouseDown={keepSel}
+                onClick={() => applyStyle({ fontWeight: String(NOTE_WEIGHTS[w].css) })}
                 style={{ fontWeight: NOTE_WEIGHTS[w].css }}
-                className={`border-r border-slate-200 px-2.5 py-1 text-[11px] transition last:border-r-0 ${
-                  weight === w ? "bg-slate-700 text-white" : "bg-white text-slate-500 hover:bg-slate-100"
-                }`}
+                className="border-r border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-500 transition last:border-r-0 hover:bg-slate-100"
               >
                 {NOTE_WEIGHTS[w].label}
               </button>
@@ -222,20 +303,15 @@ export default function AdminOrderDetailPage() {
     if (!demo) void saveOrderAdmin(next);
   }
 
-  /** แก้ไข NoteStyle ของท้ายบิล หรือของรายการที่ index (itemIdx = null → ท้ายบิล) */
-  function patchNote(itemIdx: number | null, patch: Partial<NoteStyle>, save: boolean) {
+  /** บันทึกหมายเหตุ (HTML) ของท้ายบิล หรือของรายการที่ index (itemIdx = null → ท้ายบิล) · commit = บันทึกลง DB */
+  function setNote(itemIdx: number | null, html: string, commit: boolean) {
     setOrder((cur) => {
       if (!cur) return cur;
-      if (itemIdx === null) {
-        const next = { ...cur, billNote: { ...(cur.billNote ?? { text: "" }), ...patch } };
-        if (save && !demo) void saveOrderAdmin(next);
-        return next;
-      }
-      const items = cur.items.map((it, i) =>
-        i === itemIdx ? { ...it, adminNote: { ...(it.adminNote ?? { text: "" }), ...patch } } : it
-      );
-      const next = { ...cur, items };
-      if (save && !demo) void saveOrderAdmin(next);
+      const next =
+        itemIdx === null
+          ? { ...cur, billNote: html }
+          : { ...cur, items: cur.items.map((it, i) => (i === itemIdx ? { ...it, adminNote: html } : it)) };
+      if (commit && !demo) void saveOrderAdmin(next);
       return next;
     });
   }
@@ -923,9 +999,9 @@ export default function AdminOrderDetailPage() {
                         <p className="mb-1.5 truncate text-xs font-bold text-slate-600">
                           {idx + 1}. {it.name}
                         </p>
-                        <NoteEditor
+                        <RichNoteEditor
                           value={it.adminNote}
-                          onPatch={(p, s) => patchNote(idx, p, s)}
+                          onChange={(html, commit) => setNote(idx, html, commit)}
                           placeholder="หมายเหตุรายการนี้ (เช่น ห่อแยก / งานด่วน)"
                         />
                       </div>
@@ -936,9 +1012,9 @@ export default function AdminOrderDetailPage() {
                 {/* หมายเหตุท้ายบิล */}
                 <div>
                   <p className="mb-1.5 text-xs font-semibold text-slate-600">📄 หมายเหตุท้ายบิล</p>
-                  <NoteEditor
+                  <RichNoteEditor
                     value={order.billNote}
-                    onPatch={(p, s) => patchNote(null, p, s)}
+                    onChange={(html, commit) => setNote(null, html, commit)}
                     placeholder="เช่น ขอบคุณที่อุดหนุน 🦆 / นัดรับหน้าร้าน"
                   />
                 </div>

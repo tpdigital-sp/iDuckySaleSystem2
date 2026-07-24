@@ -110,13 +110,10 @@ export type NoteSize = "sm" | "base" | "lg" | "xl";
 /** น้ำหนักฟอนต์ของหมายเหตุ */
 export type NoteWeight = "thin" | "normal" | "bold";
 
-/** หมายเหตุที่แอดมินพิมพ์ลงใบงาน — เลือกสี + ขนาด + น้ำหนักฟอนต์ได้ */
-export interface NoteStyle {
-  text: string;
-  color?: NoteColor;
-  size?: NoteSize;
-  weight?: NoteWeight;
-}
+/**
+ * หมายเหตุใบงานเก็บเป็น "rich text HTML" — แอดมินเลือกเฉพาะคำที่ต้องการแล้วเปลี่ยนสี/ขนาด/น้ำหนักได้
+ * (span ที่มี inline style: color / font-size / font-weight เท่านั้น · ผ่านการ sanitize ก่อนบันทึก)
+ */
 
 /** สีสำเร็จรูป → ป้ายไทย + ค่า hex (ใช้ inline style ให้พิมพ์ออกสีตรง) */
 export const NOTE_COLORS: Record<NoteColor, { label: string; hex: string }> = {
@@ -143,16 +140,9 @@ export const NOTE_WEIGHTS: Record<NoteWeight, { label: string; css: number }> = 
   bold: { label: "หนา", css: 700 },
 };
 
-/** แปลง NoteStyle → inline style (สี/ขนาด/น้ำหนัก) สำหรับแสดง/พิมพ์ */
-export function noteCss(
-  n: NoteStyle | undefined
-): { color: string; fontSize: number; fontWeight: number } | undefined {
-  if (!n) return undefined;
-  return {
-    color: NOTE_COLORS[n.color ?? "black"].hex,
-    fontSize: NOTE_SIZES[n.size ?? "base"].px,
-    fontWeight: NOTE_WEIGHTS[n.weight ?? "normal"].css,
-  };
+/** มีข้อความจริงไหม (ตัด tag/ช่องว่างออก) — ใช้ตัดสินใจว่าจะโชว์บนใบงานไหม */
+export function noteHasText(html?: string): boolean {
+  return !!html && html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim().length > 0;
 }
 
 export interface OrderItem {
@@ -178,8 +168,8 @@ export interface OrderItem {
   noteAck?: { by: string; at: string };
   /** กราฟฟิกยืนยันว่าอ่านรายละเอียดรายการนี้แล้ว (ก่อนทำแบบงาน) — audit trail */
   graphicAck?: { by: string; at: string };
-  /** หมายเหตุที่แอดมินพิมพ์ลงใบงาน (ตรงตำแหน่งรายการนี้) — เลือกสี/ขนาดได้ */
-  adminNote?: NoteStyle;
+  /** หมายเหตุที่แอดมินพิมพ์ลงใบงาน (ตรงตำแหน่งรายการนี้) — rich text HTML (สี/ขนาด/น้ำหนักต่อคำ) */
+  adminNote?: string;
 }
 
 export interface Order {
@@ -211,8 +201,8 @@ export interface Order {
   printedAt?: string;
   /** ช่วงวันที่จัดส่ง (แอดมินระบุ) — โชว์บนใบงาน · เก็บเป็น yyyy-mm-dd */
   shipDate?: { from?: string; to?: string };
-  /** หมายเหตุท้ายบิล (แอดมินพิมพ์ลงใบงาน) — เลือกสี/ขนาดได้ */
-  billNote?: NoteStyle;
+  /** หมายเหตุท้ายบิล (แอดมินพิมพ์ลงใบงาน) — rich text HTML (สี/ขนาด/น้ำหนักต่อคำ) */
+  billNote?: string;
   /** กุญแจลับต่อออเดอร์ (สุ่มตอนสร้าง) — ใช้ยืนยันสิทธิ์ตอนแจ้งโอน/ดูแบบ (public endpoint) */
   key?: string;
   /**
