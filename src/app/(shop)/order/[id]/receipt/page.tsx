@@ -124,7 +124,7 @@ export default function CustomerReceiptPage() {
             </div>
             {order.discount && order.discount.amount > 0 && (
               <div className="flex justify-between font-semibold text-emerald-600">
-                <span>ส่วนลดสมาชิก {order.discount.tier} ({order.discount.pct}%)</span>
+                <span>{order.discount.label}</span>
                 <span className="tabular-nums">−{formatPrice(order.discount.amount)}</span>
               </div>
             )}

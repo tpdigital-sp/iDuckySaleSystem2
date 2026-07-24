@@ -343,7 +343,7 @@ export default function PrintOrderPage() {
               </div>
               {order.discount && order.discount.amount > 0 && (
                 <div className="flex justify-between py-1 text-emerald-600">
-                  <span>ส่วนลด {order.discount.tier} ({order.discount.pct}%)</span>
+                  <span>{order.discount.label}</span>
                   <span className="tabular-nums">−{formatPrice(order.discount.amount)}</span>
                 </div>
               )}

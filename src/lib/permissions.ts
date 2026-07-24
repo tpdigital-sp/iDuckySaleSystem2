@@ -51,7 +51,9 @@ export type Perm =
   /** คลังตัวเลือกกลาง */
   | "presets.manage"
   /** ตั้งค่าระบบ — เลขบัญชีร้าน ค่าส่ง */
-  | "settings.manage";
+  | "settings.manage"
+  /** จัดการคูปอง — สร้าง/แจก/ดูสถานะ */
+  | "coupons.manage";
 
 /** สิทธิ์ของพนักงานฝ่ายแอดมิน (ออฟฟิศ — ดูแลลูกค้า/ออเดอร์/งานแบบ) */
 const STAFF_ADMIN: Perm[] = [
@@ -65,6 +67,7 @@ const STAFF_ADMIN: Perm[] = [
   "pack.ship",
   "products.view",
   "products.import",
+  "coupons.manage",
 ];
 
 /** สิทธิ์ของพนักงานฝ่ายแพ็คของ (หน้างาน — ตรวจนับ ยิงเลขพัสดุ) */
@@ -97,6 +100,7 @@ export const ALL_PERMS: Perm[] = [
   "products.importOverwrite",
   "presets.manage",
   "settings.manage",
+  "coupons.manage",
 ];
 
 /** ผู้ใช้คนนี้ทำสิ่งนี้ได้ไหม */

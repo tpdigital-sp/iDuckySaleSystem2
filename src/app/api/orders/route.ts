@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     const tier = tierForSpend(paidSpend(myPaid), tiers);
     const subtotal = input.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
     const amount = tierDiscountAmount(subtotal, tier.discountPct);
-    if (amount > 0) discount = { tier: tier.name, pct: tier.discountPct, amount };
+    if (amount > 0) discount = { label: `สมาชิก ${tier.name} (${tier.discountPct}%)`, amount };
   }
 
   const now = new Date();

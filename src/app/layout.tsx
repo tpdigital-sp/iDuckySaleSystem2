@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   description:
     "ร้านพิมพ์สินค้าตามสั่ง (Print on Demand) แก้วน้ำ เสื้อยืด เคสมือถือ กรอบผ้าใบ กระเป๋าผ้า พิมพ์ลายของคุณเองได้ทุกชิ้น ส่งไวทั่วไทย",
   manifest: "/manifest.json",
-  icons: { icon: "/icon.svg", apple: "/icon.svg" },
+  icons: { icon: "/icon.png", apple: "/icon.png" },
 };
 
 export const viewport: Viewport = {

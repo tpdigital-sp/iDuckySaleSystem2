@@ -162,8 +162,8 @@ export interface Order {
   paidTotal?: number;
   /** ประวัติการทำงานของออเดอร์ (เก่า→ใหม่) — ใครทำอะไรเมื่อไหร่ */
   log?: LogEntry[];
-  /** ส่วนลดระดับสมาชิก (คิดฝั่งเซิร์ฟเวอร์ตอนสร้างออเดอร์) — หักออกจากยอดรวม */
-  discount?: { tier: string; pct: number; amount: number };
+  /** ส่วนลด (ระดับสมาชิก หรือ คูปอง) คิดฝั่งเซิร์ฟเวอร์ตอนสร้างออเดอร์ — หักออกจากยอดรวม */
+  discount?: { label: string; amount: number; couponCode?: string };
 }
 
 /** ราคาสินค้ารวม (ก่อนค่าส่ง/ส่วนลด) */

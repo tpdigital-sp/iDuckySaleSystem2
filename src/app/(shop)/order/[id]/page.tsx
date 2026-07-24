@@ -402,7 +402,7 @@ export default function CustomerOrderPage() {
             </div>
             {order.discount && order.discount.amount > 0 && (
               <div className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
-                <span>ส่วนลดสมาชิก {order.discount.tier} ({order.discount.pct}%)</span>
+                <span>{order.discount.label}</span>
                 <span>−{formatPrice(order.discount.amount)}</span>
               </div>
             )}
