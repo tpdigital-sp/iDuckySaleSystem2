@@ -117,7 +117,18 @@ export default function PrintOrderPage() {
 
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={() => {
+            // ปริ้นใบงาน (มีที่อยู่/ใบปะหน้า) = ล็อกที่อยู่ฝั่งลูกค้า — ตั้ง printedAt ครั้งแรก
+            if (docs.work && order && !order.printedAt) {
+              fetch("/api/admin/orders/printed", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ orderId: order.id }),
+              }).catch(() => {});
+              setOrder((o) => (o ? { ...o, printedAt: new Date().toISOString() } : o));
+            }
+            window.print();
+          }}
           disabled={chosen.length === 0}
           className="ml-auto rounded-xl bg-amber-500 px-5 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-40"
         >

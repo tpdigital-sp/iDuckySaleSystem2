@@ -153,6 +153,8 @@ export interface Order {
   slipPath?: string;
   /** เวลาที่ลูกค้ากดแจ้งโอน (ISO string) */
   paidReportedAt?: string;
+  /** เวลาที่แอดมินปริ้นใบงานครั้งแรก (ISO) — มีค่า = ล็อกที่อยู่ ลูกค้าแก้ไม่ได้แล้ว */
+  printedAt?: string;
   /** กุญแจลับต่อออเดอร์ (สุ่มตอนสร้าง) — ใช้ยืนยันสิทธิ์ตอนแจ้งโอน/ดูแบบ (public endpoint) */
   key?: string;
   /**

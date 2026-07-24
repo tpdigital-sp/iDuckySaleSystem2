@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import { orderBalance, orderTotal, PROOF_STYLES, proofsOf, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
-import { fetchOrderForCustomer, reportPayment, reviewProof } from "@/lib/order-repo";
+import { fetchOrderForCustomer, reportPayment, reviewProof, updateOrderAddress } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
 import { setAppendTarget } from "@/lib/append-order";
 import ImageLightbox from "@/components/ImageLightbox";
@@ -44,6 +44,43 @@ export default function CustomerOrderPage() {
   const [slipBusy, setSlipBusy] = useState(false);
   const [slipErr, setSlipErr] = useState("");
 
+  /* แก้ไขที่อยู่จัดส่ง (ได้จนกว่าร้านจะปริ้นใบงาน) */
+  const [editAddr, setEditAddr] = useState(false);
+  const [addrForm, setAddrForm] = useState({ customer: "", phone: "", address: "" });
+  const [addrBusy, setAddrBusy] = useState(false);
+  const [addrErr, setAddrErr] = useState("");
+
+  function startEditAddr() {
+    if (!order) return;
+    setAddrForm({ customer: order.customer, phone: order.phone, address: order.address });
+    setAddrErr("");
+    setEditAddr(true);
+  }
+
+  async function saveAddr() {
+    if (!order) return;
+    if (!addrForm.customer.trim() || !addrForm.phone.trim() || !addrForm.address.trim()) {
+      setAddrErr("กรอกชื่อผู้รับ เบอร์โทร และที่อยู่ให้ครบ");
+      return;
+    }
+    setAddrBusy(true);
+    setAddrErr("");
+    const res = await updateOrderAddress(orderId, orderKey, {
+      customer: addrForm.customer.trim(),
+      phone: addrForm.phone.trim(),
+      address: addrForm.address.trim(),
+    });
+    setAddrBusy(false);
+    if (!res.ok) {
+      setAddrErr(res.error ?? "แก้ไขไม่สำเร็จ");
+      if (res.locked && res.order) setOrder(res.order); // ร้านเพิ่งปริ้น → รีเฟรชให้เห็นสถานะล็อก
+      else if (res.locked) void load(orderKey);
+      return;
+    }
+    if (res.order) setOrder(res.order);
+    setEditAddr(false);
+  }
+
   const load = useCallback(
     async (key: string) => {
       setLoading(true);
@@ -63,12 +100,12 @@ export default function CustomerOrderPage() {
 
   /** ดึงข้อมูลใหม่เงียบ ๆ — ให้แบบงานใหม่จากกราฟฟิกขึ้นเอง */
   const refresh = useCallback(async () => {
-    // กันข้อมูลใหม่ทับตอนลูกค้ากำลังพิมพ์คำขอแก้ไข หรือกำลังส่งอยู่
-    if (editingIdx !== null || busyIdx !== null) return;
+    // กันข้อมูลใหม่ทับตอนลูกค้ากำลังพิมพ์คำขอแก้ไข/แก้ที่อยู่ หรือกำลังส่งอยู่
+    if (editingIdx !== null || busyIdx !== null || editAddr) return;
     const res = await fetchOrderForCustomer(orderId, orderKey);
     if (!res.order) return;
     setOrder((cur) => (JSON.stringify(cur) === JSON.stringify(res.order) ? cur : res.order!));
-  }, [orderId, orderKey, editingIdx, busyIdx]);
+  }, [orderId, orderKey, editingIdx, busyIdx, editAddr]);
 
   const live = !!order && order.status !== "เสร็จสิ้น" && order.status !== "ยกเลิก";
   usePolling(refresh, { enabled: live });
@@ -420,14 +457,84 @@ export default function CustomerOrderPage() {
             </div>
           )}
 
-          <div className="rounded-2xl bg-white p-4 ring-1 ring-stone-200 sm:p-5">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">จัดส่งถึง</p>
-            <p className="mt-2 text-sm font-bold text-amber-950">{order.customer}</p>
-            <p className="text-sm leading-snug text-stone-500">{order.address}</p>
-            <p className="mt-1.5 text-xs text-stone-400">
-              {order.phone} · ชำระโดย{order.payment}
-            </p>
-          </div>
+          {(() => {
+            const addrLocked = !!order.printedAt || ["จัดส่งแล้ว", "เสร็จสิ้น", "ยกเลิก"].includes(order.status);
+            return (
+              <div className="rounded-2xl bg-white p-4 ring-1 ring-stone-200 sm:p-5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">จัดส่งถึง</p>
+                  {!editAddr &&
+                    (addrLocked ? (
+                      <span className="text-[11px] font-semibold text-stone-400">🔒 ล็อกแล้ว</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={startEditAddr}
+                        className="text-xs font-bold text-amber-600 hover:text-amber-700 hover:underline"
+                      >
+                        ✏️ แก้ไข
+                      </button>
+                    ))}
+                </div>
+
+                {editAddr ? (
+                  <div className="mt-3 space-y-2">
+                    <input
+                      value={addrForm.customer}
+                      onChange={(e) => setAddrForm((f) => ({ ...f, customer: e.target.value }))}
+                      placeholder="ชื่อผู้รับ"
+                      className="w-full rounded-xl bg-white px-3 py-2 text-sm text-stone-700 ring-1 ring-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    />
+                    <input
+                      value={addrForm.phone}
+                      onChange={(e) => setAddrForm((f) => ({ ...f, phone: e.target.value.replace(/[^\d\-+ ]/g, "") }))}
+                      inputMode="tel"
+                      placeholder="เบอร์โทร"
+                      className="w-full rounded-xl bg-white px-3 py-2 text-sm text-stone-700 ring-1 ring-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    />
+                    <textarea
+                      value={addrForm.address}
+                      onChange={(e) => setAddrForm((f) => ({ ...f, address: e.target.value }))}
+                      rows={3}
+                      placeholder="บ้านเลขที่ · ถนน · ตำบล/อำเภอ · จังหวัด · รหัสไปรษณีย์"
+                      className="w-full resize-y rounded-xl bg-white px-3 py-2 text-sm text-stone-700 ring-1 ring-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    />
+                    {addrErr && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-600">{addrErr}</p>}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={saveAddr}
+                        disabled={addrBusy}
+                        className="flex-1 rounded-full bg-amber-400 px-4 py-2 text-sm font-bold text-white transition hover:bg-amber-500 disabled:opacity-50"
+                      >
+                        {addrBusy ? "กำลังบันทึก…" : "💾 บันทึกที่อยู่"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditAddr(false)}
+                        className="rounded-full px-4 py-2 text-sm font-semibold text-stone-400 hover:text-stone-600"
+                      >
+                        ยกเลิก
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="mt-2 text-sm font-bold text-amber-950">{order.customer}</p>
+                    <p className="text-sm leading-snug text-stone-500">{order.address}</p>
+                    <p className="mt-1.5 text-xs text-stone-400">
+                      {order.phone} · ชำระโดย{order.payment}
+                    </p>
+                    <p className="mt-2 text-[11px] leading-relaxed text-stone-400">
+                      {addrLocked
+                        ? "🔒 ทางร้านเริ่มทำใบงานแล้ว แก้ไขที่อยู่ไม่ได้ — หากต้องแก้ ติดต่อร้านทางไลน์"
+                        : "แก้ไขที่อยู่ได้จนกว่าทางร้านจะปริ้นใบงาน"}
+                    </p>
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
           {order.log && order.log.length > 0 && (
             <details className="rounded-2xl bg-white p-4 ring-1 ring-stone-200 sm:p-5">

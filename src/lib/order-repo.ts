@@ -88,6 +88,27 @@ export async function fetchOrderForCustomer(
   }
 }
 
+/** ลูกค้าแก้ไขที่อยู่จัดส่ง (ได้จนกว่าร้านจะปริ้นใบงาน — เซิร์ฟเวอร์เช็ก printedAt) */
+export async function updateOrderAddress(
+  orderId: string,
+  key: string,
+  fields: { customer: string; phone: string; address: string }
+): Promise<{ ok: boolean; order?: Order; locked?: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/orders/address", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, key, ...fields }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return res.ok
+      ? { ok: true, order: data.order as Order }
+      : { ok: false, locked: !!data.locked, error: data.error ?? "แก้ไขที่อยู่ไม่สำเร็จ" };
+  } catch {
+    return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
+  }
+}
+
 /** ลูกค้าตรวจแบบ — อนุมัติ หรือ ขอแก้ไข (พร้อมคอมเมนต์) */
 export async function reviewProof(
   orderId: string,
