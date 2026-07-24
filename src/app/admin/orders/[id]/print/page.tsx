@@ -161,24 +161,24 @@ export default function PrintOrderPage() {
         {/* ═══════════ ใบงาน + ใบปะหน้าพัสดุ (ใบเดียวจบ) ═══════════ */}
         {docs.work && (
           <section className="sheet rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-            {/* แถวบน: ผู้ส่ง | เลขออเดอร์ */}
-            <div className="flex items-start justify-between gap-6 border-b-2 border-slate-900 pb-3">
+            {/* เลขออเดอร์ — หัวบนสุด (ย้ายออกจากมุมบาร์โค้ด) */}
+            <p className="font-mono text-xl font-extrabold tracking-tight text-slate-800">{order.id}</p>
+
+            {/* แถวบน: ผู้ส่ง | วิธีจัดส่ง + บาร์โค้ด */}
+            <div className="mt-2 flex items-start justify-between gap-6 border-b-2 border-slate-900 pb-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ผู้ส่ง / From</p>
                 <p className="mt-0.5 text-sm font-bold">{SHOP.legalName}</p>
                 <p className="text-xs leading-snug text-slate-600">{SHOP.addressLines.join(" ")}</p>
                 <p className="text-xs tabular-nums text-slate-600">โทร. {SHOP.phone}</p>
               </div>
-              <div className="shrink-0 text-right">
-                <p className="font-mono text-base font-bold tracking-tight text-slate-600">{order.id}</p>
-                {/* วิธีจัดส่งตัวใหญ่เหนือบาร์โค้ด (สไตล์ป้ายขนส่ง) · บาร์โค้ด = เลขออเดอร์ล้วน สำหรับเครื่องยิงที่คอม */}
-                <div className="mt-2 flex flex-col items-end">
-                  <p className="text-3xl font-extrabold uppercase leading-none tracking-tight">{order.shipping}</p>
-                  <div className="mt-1.5">
-                    <Barcode value={order.id} displayValue={false} height={30} width={1.2} />
-                  </div>
-                  <p className="mt-0.5 text-[9px] leading-tight text-slate-500">สแกนด้วยเครื่องยิง → ผูกเลขพัสดุ</p>
+              {/* วิธีจัดส่งตัวใหญ่เหนือบาร์โค้ด (สไตล์ป้ายขนส่ง) · บาร์โค้ด = เลขออเดอร์ล้วน สำหรับเครื่องยิงที่คอม */}
+              <div className="flex shrink-0 flex-col items-end">
+                <p className="text-3xl font-extrabold uppercase leading-none tracking-tight">{order.shipping}</p>
+                <div className="mt-1.5">
+                  <Barcode value={order.id} displayValue={false} height={30} width={1.2} />
                 </div>
+                <p className="mt-0.5 text-[9px] leading-tight text-slate-500">สแกนด้วยเครื่องยิง → ผูกเลขพัสดุ</p>
               </div>
             </div>
 
