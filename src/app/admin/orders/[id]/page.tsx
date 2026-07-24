@@ -227,6 +227,51 @@ export default function AdminOrderDetailPage() {
   // ถือว่า "จ่ายแล้ว" เมื่อแอดมินยืนยันสลิปแล้ว (ชำระแล้วเป็นต้นไป)
   const paidOk = !(["รอชำระเงิน", "รอตรวจสอบ"] as OrderStatus[]).includes(order.status);
   const gate = packGate(order); // ขั้นตอนแพ็คผ่านครบหรือยัง
+  // ฝ่ายแพ็ค (ตรวจนับได้ แต่แก้ออเดอร์ไม่ได้) → ใช้หน้าเฉพาะกิจ เห็นแค่ที่จำเป็น
+  const isPackOnly = can("pack.check") && !mayEdit;
+
+  if (isPackOnly) {
+    return (
+      <>
+        <PackView
+          order={order}
+          gate={gate}
+          onCheck={setPackCheck}
+          onAck={toggleNoteAck}
+          onTrackingChange={(v) => setOrder((cur) => (cur ? { ...cur, tracking: v } : cur))}
+          onTrackingSave={saveTracking}
+          onZoom={(i, j) => {
+            const p = proofsOf(order.items[i])[j];
+            setLightbox({
+              src: p.url,
+              alt: `แบบงาน ${order.items[i].name}`,
+              caption: [order.items[i].name, p.qty ? `${p.qty} ชิ้น` : "", p.note ?? ""].filter(Boolean).join(" · "),
+              at: { item: i, proof: j },
+            });
+          }}
+        />
+        {lightbox && (
+          <ImageLightbox
+            src={lightbox.src}
+            alt={lightbox.alt}
+            caption={lightbox.caption}
+            footer={
+              lightbox.at ? (
+                <PackCheckPanel
+                  proof={proofsOf(order.items[lightbox.at.item])[lightbox.at.proof]}
+                  onConfirm={(status, got) => {
+                    setPackCheck(lightbox.at!.item, lightbox.at!.proof, status, got);
+                    setLightbox(null);
+                  }}
+                />
+              ) : undefined
+            }
+            onClose={() => setLightbox(null)}
+          />
+        )}
+      </>
+    );
+  }
   // ออเดอร์อื่นของลูกค้าคนเดียวกันที่ยังไม่ปิด (จับคู่จากเบอร์โทร) — เตือนให้พิจารณารวมส่ง
   const phoneKey = (order.phone ?? "").replace(/\D/g, "");
   const related = allOrders.filter(
@@ -770,6 +815,177 @@ export default function AdminOrderDetailPage() {
           onClose={() => setLightbox(null)}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * หน้าแพ็คบนมือถือ (แบบ B) — สำหรับฝ่ายแพ็คเท่านั้น เห็นแค่ที่จำเป็น
+ * ของแต่ละรายการ + รูปเทียบใหญ่ + 2 ปุ่มยืนยัน + ยิงเลขพัสดุ (ล็อกจนตรวจครบ)
+ * ตัดออก: ราคา · ลิงก์ลูกค้า · ปุ่มปริ้น · แก้ไข/ลบแบบ · log ยาว
+ */
+function PackView({
+  order,
+  gate,
+  onCheck,
+  onAck,
+  onTrackingChange,
+  onTrackingSave,
+  onZoom,
+}: {
+  order: Order;
+  gate: ReturnType<typeof packGate>;
+  onCheck: (i: number, j: number, status: "ครบ" | "ไม่ครบ", got?: number) => void;
+  onAck: (i: number) => void;
+  onTrackingChange: (v: string) => void;
+  onTrackingSave: () => void;
+  onZoom: (i: number, j: number) => void;
+}) {
+  const totalQty = order.items.reduce((s, it) => s + it.qty, 0);
+  return (
+    <div className="mx-auto min-h-screen max-w-[480px] bg-slate-50 pb-28">
+      {/* หัวเข้ม + ความคืบหน้า */}
+      <div className="bg-slate-900 px-4 py-4 text-white">
+        <Link href="/admin/orders" className="text-xs text-slate-400">
+          ← คำสั่งซื้อทั้งหมด
+        </Link>
+        <p className="mt-1 font-mono text-xl font-extrabold">{order.id}</p>
+        <p className="text-xs text-slate-300">
+          {order.customer} · รวม {totalQty} ชิ้น
+        </p>
+        <p className={`mt-1 text-sm font-bold ${gate.ready ? "text-green-400" : "text-amber-300"}`}>
+          {gate.ready
+            ? "✅ ตรวจครบแล้ว — ยิงเลขพัสดุได้"
+            : `⏳ เหลืออีก ${gate.uncounted.length + gate.unread.length} จุดต้องยืนยัน`}
+        </p>
+      </div>
+
+      {/* รายการ */}
+      <div className="space-y-4 p-3">
+        {order.items.map((it, i) => {
+          const proofs = proofsOf(it);
+          return (
+            <div key={`${it.productId}-${i}`} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200">
+              <div className="mb-2 flex items-baseline justify-between">
+                <p className="text-base font-extrabold text-slate-900">{it.name}</p>
+                <span className="text-lg font-black text-slate-900">
+                  {it.qty}
+                  <span className="text-xs font-bold text-slate-400"> ชิ้น</span>
+                </span>
+              </div>
+
+              {/* รูปแบบงานใหญ่ + ปุ่มยืนยันใต้รูป */}
+              {proofs.length > 0 ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {proofs.map((p, j) => (
+                    <div
+                      key={`${p.url}-${j}`}
+                      className={`overflow-hidden rounded-xl ring-1 ${
+                        p.pack?.status === "ครบ"
+                          ? "ring-green-300"
+                          : p.pack?.status === "ไม่ครบ"
+                            ? "ring-rose-300"
+                            : "ring-slate-200"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onZoom(i, j)}
+                        className="relative block aspect-[4/3] w-full bg-slate-50"
+                        aria-label={`ดูแบบงาน ${it.name} รูปที่ ${j + 1} เต็มจอ`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={p.url} alt={`แบบงาน ${it.name}`} className="h-full w-full object-contain" />
+                        {p.qty ? (
+                          <span className="absolute left-1 top-1 rounded bg-slate-900/70 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                            {p.qty} ชิ้น
+                          </span>
+                        ) : null}
+                        <span className="absolute bottom-1 right-1 rounded bg-slate-900/60 px-1.5 py-0.5 text-[10px] text-white">
+                          🔍 ดูใหญ่
+                        </span>
+                      </button>
+                      <div className="flex">
+                        <button
+                          type="button"
+                          onClick={() => onCheck(i, j, "ครบ")}
+                          className={`flex-1 py-2.5 text-sm font-bold ${
+                            p.pack?.status === "ครบ" ? "bg-green-600 text-white" : "bg-slate-50 text-slate-500"
+                          }`}
+                        >
+                          ✓ ครบ
+                        </button>
+                        {/* ไม่ครบต้องกรอกจำนวน → เปิดรูปใหญ่ให้กรอกในแผงตรวจนับ */}
+                        <button
+                          type="button"
+                          onClick={() => onZoom(i, j)}
+                          className={`flex-1 border-l border-white py-2.5 text-sm font-bold ${
+                            p.pack?.status === "ไม่ครบ" ? "bg-rose-600 text-white" : "bg-slate-50 text-slate-500"
+                          }`}
+                        >
+                          {p.pack?.status === "ไม่ครบ" ? `⚠️ ได้ ${p.pack.got ?? 0}` : "✕ ไม่ครบ"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-xl bg-slate-50 px-3 py-4 text-center text-xs text-slate-400 ring-1 ring-slate-200">
+                  ยังไม่มีรูปแบบงาน
+                </p>
+              )}
+
+              {/* รายละเอียด + ยืนยันอ่านแล้ว */}
+              <button
+                type="button"
+                onClick={() => onAck(i)}
+                className={`mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-3 text-left ${
+                  it.noteAck ? "bg-green-50 ring-1 ring-green-200" : "bg-amber-50 ring-1 ring-amber-200"
+                }`}
+              >
+                <span className="text-lg">{it.noteAck ? "✅" : "📄"}</span>
+                <span className="min-w-0 flex-1 text-xs">
+                  <span className="block font-bold text-slate-700">{it.selections || "ไม่มีรายละเอียดเพิ่มเติม"}</span>
+                  <span className={it.noteAck ? "text-green-700" : "font-bold text-amber-700"}>
+                    {it.noteAck ? "ยืนยันอ่านแล้ว" : "แตะเพื่อยืนยันว่าอ่านแล้ว"}
+                  </span>
+                </span>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* แถบยิงเลขพัสดุ ติดล่างจอ */}
+      <div className="fixed inset-x-0 bottom-0 mx-auto max-w-[480px] border-t border-slate-200 bg-white p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+        {gate.ready ? (
+          <div className="flex items-center gap-2 rounded-xl bg-green-600 px-3 py-3 text-white">
+            <span className="text-lg">📮</span>
+            <input
+              value={order.tracking ?? ""}
+              onChange={(e) => onTrackingChange(e.target.value)}
+              onBlur={onTrackingSave}
+              placeholder="ยิง/พิมพ์เลขพัสดุ แล้ว Enter"
+              className="w-full bg-transparent font-mono text-sm font-bold placeholder:font-sans placeholder:font-normal placeholder:text-white/70 focus:outline-none"
+            />
+          </div>
+        ) : (
+          <div className="rounded-xl bg-slate-100 px-3 py-3 ring-1 ring-slate-200">
+            <p className="flex items-center gap-2 text-sm font-bold text-slate-500">
+              <span className="grayscale">🔒</span> ตรวจให้ครบก่อน ถึงยิงเลขพัสดุได้
+            </p>
+            <p className="mt-0.5 pl-6 text-[11px] text-slate-400">
+              {[
+                gate.uncounted.length ? `ตรวจนับอีก ${gate.uncounted.length} รูป` : "",
+                gate.unread.length ? `ยืนยันอ่านอีก ${gate.unread.length} รายการ` : "",
+                gate.short.length ? `ของไม่ครบ ${gate.short.length} รายการ` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
