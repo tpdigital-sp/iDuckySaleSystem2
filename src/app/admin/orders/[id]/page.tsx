@@ -133,6 +133,33 @@ export default function AdminOrderDetailPage() {
     if (!demo) void saveOrderAdmin(next);
   }
 
+  /** เปิดดูรูปแบบงานเต็มจอ (รู้ตำแหน่ง item/proof เพื่อเลื่อนรูปในรายการเดียวกันได้) */
+  function showProof(itemIndex: number, proofIndex: number) {
+    if (!order) return;
+    const it = order.items[itemIndex];
+    const p = proofsOf(it)[proofIndex];
+    if (!p) return;
+    setLightbox({
+      src: p.url,
+      alt: `แบบงาน ${it.name} รูปที่ ${proofIndex + 1}`,
+      caption: [it.name, p.qty ? `${p.qty} ชิ้น` : "", p.note ?? ""].filter(Boolean).join(" · "),
+      at: { item: itemIndex, proof: proofIndex },
+    });
+  }
+
+  /** ปุ่มเลื่อนซ้าย/ขวาของไลต์บ็อกซ์ — เลื่อนได้ในรูปแบบงานของรายการเดียวกัน */
+  function lightboxNav() {
+    if (!lightbox?.at || !order) return {};
+    const { item, proof } = lightbox.at;
+    const total = proofsOf(order.items[item]).length;
+    if (total <= 1) return {};
+    return {
+      counter: `${proof + 1} / ${total}`,
+      onPrev: proof > 0 ? () => showProof(item, proof - 1) : undefined,
+      onNext: proof < total - 1 ? () => showProof(item, proof + 1) : undefined,
+    };
+  }
+
   /** พนักงานแพ็คกดยืนยันผลตรวจนับของรูปแบบงาน 1 รูป */
   function setPackCheck(itemIndex: number, proofIndex: number, status: "ครบ" | "ไม่ครบ", got?: number) {
     if (!order) return;
@@ -240,21 +267,14 @@ export default function AdminOrderDetailPage() {
           onAck={toggleNoteAck}
           onTrackingChange={(v) => setOrder((cur) => (cur ? { ...cur, tracking: v } : cur))}
           onTrackingSave={saveTracking}
-          onZoom={(i, j) => {
-            const p = proofsOf(order.items[i])[j];
-            setLightbox({
-              src: p.url,
-              alt: `แบบงาน ${order.items[i].name}`,
-              caption: [order.items[i].name, p.qty ? `${p.qty} ชิ้น` : "", p.note ?? ""].filter(Boolean).join(" · "),
-              at: { item: i, proof: j },
-            });
-          }}
+          onZoom={showProof}
         />
         {lightbox && (
           <ImageLightbox
             src={lightbox.src}
             alt={lightbox.alt}
             caption={lightbox.caption}
+            {...lightboxNav()}
             footer={
               lightbox.at ? (
                 <PackCheckPanel
@@ -504,14 +524,7 @@ export default function AdminOrderDetailPage() {
                         <div className="relative">
                           <button
                             type="button"
-                            onClick={() =>
-                              setLightbox({
-                                src: p.url,
-                                alt: `แบบงาน ${it.name} รูปที่ ${j + 1}`,
-                                caption: [it.name, p.qty ? `${p.qty} ชิ้น` : "", p.note ?? ""].filter(Boolean).join(" · "),
-                                at: { item: i, proof: j },
-                              })
-                            }
+                            onClick={() => showProof(i, j)}
                             aria-label={`ขยายดูแบบงาน ${it.name} รูปที่ ${j + 1}`}
                             className="block aspect-[4/3] w-full cursor-zoom-in bg-slate-50"
                           >
@@ -801,6 +814,7 @@ export default function AdminOrderDetailPage() {
           src={lightbox.src}
           alt={lightbox.alt}
           caption={lightbox.caption}
+          {...lightboxNav()}
           footer={
             lightbox.at ? (
               <PackCheckPanel
