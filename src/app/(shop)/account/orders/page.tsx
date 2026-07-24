@@ -66,17 +66,18 @@ export default function MyOrdersPage() {
   }
 
   if (loading || !customer) {
-    return <div className="mx-auto max-w-2xl px-4 py-16 text-center text-sm text-stone-400">กำลังโหลด…</div>;
+    return <div className="mx-auto max-w-7xl px-4 py-16 text-center text-sm text-stone-400">กำลังโหลด…</div>;
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
+    <div className="mx-auto max-w-7xl px-4 py-10 md:px-8">
       <Link href="/account" className="text-sm font-semibold text-stone-400 hover:text-stone-600">← บัญชีของฉัน</Link>
-      <h1 className="mt-1 text-2xl font-extrabold text-amber-950">ประวัติการสั่งซื้อ</h1>
+      <h1 className="mt-1 text-2xl font-extrabold text-amber-950 sm:text-3xl">ประวัติการสั่งซื้อ</h1>
+      {orders.length > 0 && <p className="mt-1 text-sm text-stone-400">ทั้งหมด {orders.length} ออเดอร์ · กดสั่งซ้ำหรือดูรายละเอียดได้เลย</p>}
 
       {/* ตัวกรอง */}
       {orders.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-5 flex flex-wrap gap-2">
           {FILTERS.map((f) => (
             <button
               key={f.key}
@@ -105,13 +106,13 @@ export default function MyOrdersPage() {
       ) : shown.length === 0 ? (
         <p className="mt-8 text-center text-sm text-stone-400">ไม่มีออเดอร์ในกลุ่มนี้</p>
       ) : (
-        <div className="mt-5 space-y-3">
+        <div className="mt-6 grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {shown.map((o) => {
             const owed = orderBalance(o);
             const href = `/order/${encodeURIComponent(o.id)}${o.key ? `?key=${encodeURIComponent(o.key)}` : ""}`;
             const canReorder = o.items.some((it) => productOf(it.productId));
             return (
-              <div key={o.id} className="rounded-2xl bg-white p-4 ring-1 ring-amber-100">
+              <div key={o.id} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-amber-100 transition hover:shadow-md">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-bold text-stone-800">{o.id}</p>
