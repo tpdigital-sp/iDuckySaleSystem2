@@ -149,7 +149,7 @@ function AdminSettingsPageInner() {
     "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100";
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-5xl">
       <h1 className={h1}>⚙️ ตั้งค่าระบบ</h1>
       <p className={`mt-1 ${muted}`}>ช่องทางรับเงิน และรูปแบบการจัดส่งที่ลูกค้าเลือกได้ตอนสั่งซื้อ</p>
 
@@ -239,43 +239,45 @@ function AdminSettingsPageInner() {
                 </div>
               </section>
 
-              <section className={`mt-4 p-5 ${card}`}>
-                <h2 className="text-sm font-semibold text-slate-800">📱 พร้อมเพย์ (PromptPay)</h2>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <input
-                    value={promptpay}
-                    onChange={(e) => {
-                      setPromptpay(e.target.value);
-                      touch();
-                    }}
-                    placeholder="เบอร์ / เลขบัตร ปชช. / เลขนิติบุคคล"
-                    className={`${inputCls} min-w-52 flex-1 font-mono tracking-wide`}
-                  />
-                  <input
-                    value={promptpayName}
-                    onChange={(e) => {
-                      setPromptpayName(e.target.value);
-                      touch();
-                    }}
-                    placeholder="ชื่อบัญชีพร้อมเพย์"
-                    className={`${inputCls} min-w-44 flex-1`}
-                  />
-                </div>
-              </section>
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <section className={`p-5 ${card}`}>
+                  <h2 className="text-sm font-semibold text-slate-800">📱 พร้อมเพย์ (PromptPay)</h2>
+                  <div className="mt-3 space-y-2">
+                    <input
+                      value={promptpay}
+                      onChange={(e) => {
+                        setPromptpay(e.target.value);
+                        touch();
+                      }}
+                      placeholder="เบอร์ / เลขบัตร ปชช. / เลขนิติบุคคล"
+                      className={`${inputCls} font-mono tracking-wide`}
+                    />
+                    <input
+                      value={promptpayName}
+                      onChange={(e) => {
+                        setPromptpayName(e.target.value);
+                        touch();
+                      }}
+                      placeholder="ชื่อบัญชีพร้อมเพย์"
+                      className={inputCls}
+                    />
+                  </div>
+                </section>
 
-              <section className={`mt-4 p-5 ${card}`}>
-                <h2 className="text-sm font-semibold text-slate-800">📝 หมายเหตุถึงลูกค้า (ไม่บังคับ)</h2>
-                <textarea
-                  value={note}
-                  onChange={(e) => {
-                    setNote(e.target.value);
-                    touch();
-                  }}
-                  rows={2}
-                  placeholder="เช่น โอนแล้วแนบสลิปในหน้าออเดอร์ · โอนภายใน 24 ชม."
-                  className={`${inputCls} mt-3 resize-y`}
-                />
-              </section>
+                <section className={`p-5 ${card}`}>
+                  <h2 className="text-sm font-semibold text-slate-800">📝 หมายเหตุถึงลูกค้า (ไม่บังคับ)</h2>
+                  <textarea
+                    value={note}
+                    onChange={(e) => {
+                      setNote(e.target.value);
+                      touch();
+                    }}
+                    rows={3}
+                    placeholder="เช่น โอนแล้วแนบสลิปในหน้าออเดอร์ · โอนภายใน 24 ชม."
+                    className={`${inputCls} mt-3 h-[calc(100%-2.5rem)] resize-y`}
+                  />
+                </section>
+              </div>
             </>
           )}
 
