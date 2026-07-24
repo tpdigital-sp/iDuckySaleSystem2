@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatPrice } from "@/lib/products";
-import { orderTotal, STATUS_STYLES, type Order } from "@/lib/admin-data";
+import { orderBalance, orderTotal, STATUS_STYLES, type Order } from "@/lib/admin-data";
 import { useCustomer } from "@/lib/customer-context";
 import { getAccessToken } from "@/lib/customer-auth";
 
@@ -50,29 +50,43 @@ export default function MyOrdersPage() {
         </div>
       ) : (
         <div className="mt-5 space-y-3">
-          {orders.map((o) => (
-            <div key={o.id} className="rounded-2xl bg-white p-4 ring-1 ring-amber-100">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-bold text-stone-800">{o.id}</p>
-                  <p className="text-xs text-stone-400">{o.date}</p>
+          {orders.map((o) => {
+            const owed = orderBalance(o);
+            const href = `/order/${encodeURIComponent(o.id)}${o.key ? `?key=${encodeURIComponent(o.key)}` : ""}`;
+            return (
+              <Link key={o.id} href={href} className="block rounded-2xl bg-white p-4 ring-1 ring-amber-100 transition hover:ring-amber-300">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-bold text-stone-800">{o.id}</p>
+                    <p className="text-xs text-stone-400">{o.date}</p>
+                  </div>
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${STATUS_STYLES[o.status]}`}>
+                    {o.status}
+                  </span>
                 </div>
-                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${STATUS_STYLES[o.status]}`}>
-                  {o.status}
-                </span>
-              </div>
-              <ul className="mt-2 space-y-0.5 text-xs text-stone-500">
-                {o.items.map((it, i) => (
-                  <li key={i} className="truncate">
-                    {it.name} ×{it.qty}
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-2 border-t border-amber-50 pt-2 text-right text-sm font-bold text-stone-900">
-                รวม {formatPrice(orderTotal(o))}
-              </p>
-            </div>
-          ))}
+                <ul className="mt-2 space-y-0.5 text-xs text-stone-500">
+                  {o.items.map((it, i) => (
+                    <li key={i} className="truncate">
+                      {it.name} ×{it.qty}
+                    </li>
+                  ))}
+                </ul>
+                {o.tracking && (
+                  <p className="mt-2 rounded-lg bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700">
+                    🚚 เลขพัสดุ: <span className="font-mono">{o.tracking}</span>
+                  </p>
+                )}
+                <div className="mt-2 flex items-center justify-between border-t border-amber-50 pt-2">
+                  <span className="text-xs font-semibold text-amber-600">ดูรายละเอียด / อนุมัติแบบ →</span>
+                  {owed > 0 ? (
+                    <span className="text-sm font-bold text-rose-600">ค้างชำระ {formatPrice(owed)}</span>
+                  ) : (
+                    <span className="text-sm font-bold text-stone-900">รวม {formatPrice(orderTotal(o))}</span>
+                  )}
+                </div>
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>

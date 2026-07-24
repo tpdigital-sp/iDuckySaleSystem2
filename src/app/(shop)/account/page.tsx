@@ -3,8 +3,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { formatPrice } from "@/lib/products";
+import { orderBalance, orderTotal, STATUS_STYLES, type Order } from "@/lib/admin-data";
 import { useCustomer } from "@/lib/customer-context";
-import { signOut, updateProfile } from "@/lib/customer-auth";
+import { getAccessToken, signOut, updateProfile } from "@/lib/customer-auth";
+
+/** ลิงก์เปิดหน้าเช็คออเดอร์ (ต้องมี key ถึงเปิดได้) */
+const orderHref = (o: Order) => `/order/${encodeURIComponent(o.id)}${o.key ? `?key=${encodeURIComponent(o.key)}` : ""}`;
 
 export default function AccountPage() {
   const router = useRouter();
@@ -15,6 +20,7 @@ export default function AccountPage() {
   const [address, setAddress] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [orders, setOrders] = useState<Order[] | null>(null); // null = กำลังโหลด
 
   useEffect(() => {
     if (customer) {
@@ -27,6 +33,17 @@ export default function AccountPage() {
   useEffect(() => {
     if (!loading && !customer) router.replace("/account/login");
   }, [loading, customer, router]);
+
+  // ดึงประวัติออเดอร์มาโชว์พรีวิวล่าสุด
+  useEffect(() => {
+    if (!customer) return;
+    (async () => {
+      const token = await getAccessToken();
+      const res = await fetch("/api/orders/mine", { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      setOrders(data.orders ?? []);
+    })();
+  }, [customer]);
 
   if (loading || !customer) {
     return <div className="mx-auto max-w-md px-4 py-16 text-center text-sm text-stone-400">กำลังโหลด…</div>;
@@ -63,13 +80,60 @@ export default function AccountPage() {
         </div>
       </div>
 
-      <Link
-        href="/account/orders"
-        className="mt-5 flex items-center justify-between rounded-2xl bg-white p-4 ring-1 ring-amber-200 transition hover:bg-amber-50/50"
-      >
-        <span className="text-sm font-bold text-stone-700">🧾 ประวัติการสั่งซื้อ</span>
-        <span className="text-stone-300">›</span>
-      </Link>
+      {/* ── ประวัติการสั่งซื้อ (พรีวิวล่าสุด) ── */}
+      <div className="mt-5 flex items-center justify-between">
+        <h2 className="text-sm font-bold text-stone-700">🧾 ประวัติการสั่งซื้อ</h2>
+        {orders && orders.length > 0 && (
+          <Link href="/account/orders" className="text-xs font-semibold text-amber-600 hover:underline">
+            ดูทั้งหมด ({orders.length}) →
+          </Link>
+        )}
+      </div>
+
+      {orders === null ? (
+        <div className="mt-2 rounded-2xl bg-white p-6 text-center text-sm text-stone-400 ring-1 ring-amber-100">กำลังโหลด…</div>
+      ) : orders.length === 0 ? (
+        <div className="mt-2 rounded-2xl bg-white p-6 text-center ring-1 ring-amber-100">
+          <span className="text-3xl">🧾</span>
+          <p className="mt-2 text-sm text-stone-500">ยังไม่มีคำสั่งซื้อ</p>
+          <Link href="/products" className="mt-3 inline-block rounded-full bg-amber-400 px-5 py-2 text-xs font-bold text-white transition hover:bg-amber-500">
+            🛍️ ไปเลือกสินค้า
+          </Link>
+        </div>
+      ) : (
+        <div className="mt-2 space-y-2">
+          {orders.slice(0, 3).map((o) => {
+            const owed = orderBalance(o);
+            return (
+              <Link
+                key={o.id}
+                href={orderHref(o)}
+                className="block rounded-2xl bg-white p-4 ring-1 ring-amber-100 transition hover:ring-amber-300"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-stone-800">{o.id}</p>
+                    <p className="truncate text-xs text-stone-400">
+                      {o.date} · {o.items.length} รายการ
+                    </p>
+                  </div>
+                  <span className={`shrink-0 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${STATUS_STYLES[o.status]}`}>
+                    {o.status}
+                  </span>
+                </div>
+                <div className="mt-2 flex items-center justify-between border-t border-amber-50 pt-2">
+                  <span className="text-xs text-stone-400">{o.tracking ? `พัสดุ: ${o.tracking}` : "แตะเพื่อดู/อนุมัติแบบ"}</span>
+                  {owed > 0 ? (
+                    <span className="text-sm font-bold text-rose-600">ค้างชำระ {formatPrice(owed)}</span>
+                  ) : (
+                    <span className="text-sm font-bold text-stone-900">{formatPrice(orderTotal(o))}</span>
+                  )}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
       <h2 className="mt-6 text-sm font-bold text-stone-700">ข้อมูลของฉัน</h2>
       <div className="mt-2 space-y-3">
