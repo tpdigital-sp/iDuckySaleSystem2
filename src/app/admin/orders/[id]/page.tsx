@@ -85,7 +85,11 @@ function RichNoteEditor({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const lastPushed = useRef<string>(value ?? "");
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [empty, setEmpty] = useState(!noteHasText(value));
+
+  // เคลียร์ตัวตั้งเวลาเซฟตอน unmount
+  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
 
   // ซิงก์ค่าจากภายนอกเข้า editor (ไม่ทับตอนแอดมินกำลังพิมพ์เอง)
   useEffect(() => {
@@ -105,6 +109,17 @@ function RichNoteEditor({
     lastPushed.current = html;
     setEmpty(!el.textContent?.trim());
     onChange(html, commit);
+  }
+
+  // พิมพ์: อัปเดตจอทันที + เซฟอัตโนมัติหลังหยุดพิมพ์ ~0.6 วิ (กันข้อความหายถ้ารีเฟรชก่อน blur)
+  function handleInput() {
+    push(false);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => push(true), 600);
+  }
+  function handleBlur() {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    push(true);
   }
 
   function applyStyle(style: { color?: string; fontSize?: string; fontWeight?: string }) {
@@ -142,8 +157,8 @@ function RichNoteEditor({
           ref={ref}
           contentEditable
           suppressContentEditableWarning
-          onInput={() => push(false)}
-          onBlur={() => push(true)}
+          onInput={handleInput}
+          onBlur={handleBlur}
           className="min-h-[58px] w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm leading-snug focus:border-amber-300 focus:outline-none"
         />
         {empty && placeholder && (
@@ -255,9 +270,15 @@ export default function AdminOrderDetailPage() {
   /** ดึงข้อมูลใหม่เงียบ ๆ — ให้เห็นทันทีเมื่อลูกค้าอนุมัติ/ขอแก้ไข */
   const refresh = useCallback(async () => {
     if (uploadingIdx !== null) return; // กำลังอัปโหลดอยู่ อย่าเพิ่งทับ
-    // กำลังพิมพ์ในช่องจำนวน/รายละเอียดอยู่ → ข้ามรอบนี้ ไม่งั้นข้อความที่พิมพ์จะหาย
-    const el = document.activeElement;
-    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return;
+    // กำลังพิมพ์ในช่องกรอก/หมายเหตุ (contentEditable) อยู่ → ข้ามรอบนี้ ไม่งั้นข้อความที่พิมพ์จะหาย
+    const el = document.activeElement as HTMLElement | null;
+    if (
+      el instanceof HTMLInputElement ||
+      el instanceof HTMLTextAreaElement ||
+      el instanceof HTMLSelectElement ||
+      el?.isContentEditable
+    )
+      return;
 
     const r = await fetchOrdersAdmin();
     if (r.orders.length === 0) return;
