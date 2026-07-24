@@ -107,12 +107,15 @@ export interface Proof {
 export type NoteColor = "black" | "red" | "blue" | "green" | "orange" | "gray";
 /** ขนาดฟอนต์ของหมายเหตุ (ชุดสำเร็จรูป) */
 export type NoteSize = "sm" | "base" | "lg" | "xl";
+/** น้ำหนักฟอนต์ของหมายเหตุ */
+export type NoteWeight = "thin" | "normal" | "bold";
 
-/** หมายเหตุที่แอดมินพิมพ์ลงใบงาน — เลือกสี + ขนาดฟอนต์ได้ */
+/** หมายเหตุที่แอดมินพิมพ์ลงใบงาน — เลือกสี + ขนาด + น้ำหนักฟอนต์ได้ */
 export interface NoteStyle {
   text: string;
   color?: NoteColor;
   size?: NoteSize;
+  weight?: NoteWeight;
 }
 
 /** สีสำเร็จรูป → ป้ายไทย + ค่า hex (ใช้ inline style ให้พิมพ์ออกสีตรง) */
@@ -133,12 +136,22 @@ export const NOTE_SIZES: Record<NoteSize, { label: string; px: number }> = {
   xl: { label: "ใหญ่มาก", px: 24 },
 };
 
-/** แปลง NoteStyle → inline style (สี/ขนาด) สำหรับแสดง/พิมพ์ */
-export function noteCss(n: NoteStyle | undefined): { color: string; fontSize: number } | undefined {
+/** น้ำหนักฟอนต์ → ป้ายไทย + ค่า CSS */
+export const NOTE_WEIGHTS: Record<NoteWeight, { label: string; css: number }> = {
+  thin: { label: "บาง", css: 300 },
+  normal: { label: "ปกติ", css: 400 },
+  bold: { label: "หนา", css: 700 },
+};
+
+/** แปลง NoteStyle → inline style (สี/ขนาด/น้ำหนัก) สำหรับแสดง/พิมพ์ */
+export function noteCss(
+  n: NoteStyle | undefined
+): { color: string; fontSize: number; fontWeight: number } | undefined {
   if (!n) return undefined;
   return {
     color: NOTE_COLORS[n.color ?? "black"].hex,
     fontSize: NOTE_SIZES[n.size ?? "base"].px,
+    fontWeight: NOTE_WEIGHTS[n.weight ?? "normal"].css,
   };
 }
 

@@ -15,6 +15,7 @@ import {
   withLog,
   NOTE_COLORS,
   NOTE_SIZES,
+  NOTE_WEIGHTS,
   noteCss,
   type Order,
   type OrderStatus,
@@ -22,6 +23,7 @@ import {
   type NoteStyle,
   type NoteColor,
   type NoteSize,
+  type NoteWeight,
 } from "@/lib/admin-data";
 import { fetchOrdersAdmin, saveOrderAdmin, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
@@ -46,6 +48,7 @@ function NoteEditor({
 }) {
   const color = value?.color ?? "black";
   const size = value?.size ?? "base";
+  const weight = value?.weight ?? "normal";
   return (
     <div className="space-y-2">
       <textarea
@@ -79,6 +82,19 @@ function NoteEditor({
               className={`rounded px-1.5 py-0.5 text-[11px] font-bold transition ${size === s ? "bg-amber-500 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
             >
               {NOTE_SIZES[s].label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1">
+          {(Object.keys(NOTE_WEIGHTS) as NoteWeight[]).map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => onPatch({ weight: w }, true)}
+              style={{ fontWeight: NOTE_WEIGHTS[w].css }}
+              className={`rounded px-1.5 py-0.5 text-[11px] transition ${weight === w ? "bg-slate-700 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
+            >
+              {NOTE_WEIGHTS[w].label}
             </button>
           ))}
         </div>
