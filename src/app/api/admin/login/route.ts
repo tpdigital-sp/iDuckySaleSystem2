@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import {
-  ADMIN_ROLE_VALUE,
   EMPLOYEE_COLLECTION,
   getFirestoreAdmin,
   normalizeUsername,
   verifyPassword,
 } from "@/lib/server/firebase-admin";
+import { can, WORK_STATUS_ACTIVE } from "@/lib/permissions";
 import { SESSION_COOKIE, adminCookieOptions, createSessionToken } from "@/lib/server/admin-session";
 
 export const runtime = "nodejs";
@@ -37,6 +37,7 @@ export async function POST(req: Request) {
     name?: string;
     isSuspended?: boolean;
     workStatus?: string;
+    department?: string;
   };
   const wanted = normalizeUsername(username);
   const rows = await db.collection(EMPLOYEE_COLLECTION).get();
@@ -48,19 +49,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" }, { status: 401 });
   }
 
-  // ระงับ/พ้นสภาพ → เข้าไม่ได้
-  if (emp.isSuspended === true || emp.workStatus === "resigned") {
+  // ระงับ / ไม่ได้ทำงานอยู่ → เข้าไม่ได้ (allowlist: ต้องเป็น "working" เท่านั้น)
+  if (emp.isSuspended === true || emp.workStatus !== WORK_STATUS_ACTIVE) {
     return NextResponse.json({ error: "บัญชีนี้ถูกระงับหรือพ้นสภาพพนักงานแล้ว" }, { status: 403 });
   }
   // เทียบรหัสผ่าน (รองรับ SHA-256 hash / plaintext ปนกัน)
   if (!verifyPassword(password, emp.password ?? "")) {
     return NextResponse.json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" }, { status: 401 });
   }
-  if (emp.role !== ADMIN_ROLE_VALUE) {
+
+  // ตำแหน่ง/แผนกนี้มีสิทธิ์เข้าหลังบ้านไหม (Administrator, พนักงาน·แอดมิน, พนักงาน·แพ็คของ)
+  const actor = { username: wanted, name: emp.name, role: emp.role ?? "", department: emp.department };
+  if (!can(actor, "admin.access")) {
     return NextResponse.json({ error: "บัญชีนี้ไม่มีสิทธิ์เข้าหลังบ้าน" }, { status: 403 });
   }
 
-  const token = createSessionToken({ username: wanted, name: emp.name, role: emp.role });
+  const token = createSessionToken({
+    username: wanted,
+    name: emp.name,
+    role: actor.role,
+    department: emp.department,
+  });
   const jar = await cookies();
   jar.set(SESSION_COOKIE, token, adminCookieOptions());
   return NextResponse.json({ ok: true, name: emp.name ?? username });

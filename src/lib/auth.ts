@@ -5,6 +5,8 @@
  * โหมดเดโม (ยังไม่ตั้งค่า Firebase) → เข้าหลังบ้านได้เลย
  */
 
+import type { Perm } from "@/lib/permissions";
+
 export async function signInAdmin(
   username: string,
   password: string
@@ -34,15 +36,21 @@ interface SessionInfo {
   configured: boolean;
   loggedIn: boolean;
   name: string | null;
+  /** ชื่อตำแหน่งไว้แสดง เช่น "พนักงาน · แพ็คของ" */
+  role?: string;
+  /** สิทธิ์ที่ใช้ซ่อน/แสดงเมนูและปุ่ม (ของจริงบังคับที่ API) */
+  perms?: Perm[];
 }
+
+const EMPTY: SessionInfo = { configured: false, loggedIn: false, name: null, role: "", perms: [] };
 
 export async function getAdminSession(): Promise<SessionInfo> {
   try {
     const res = await fetch("/api/admin/session", { cache: "no-store" });
-    if (!res.ok) return { configured: false, loggedIn: false, name: null };
+    if (!res.ok) return EMPTY;
     return (await res.json()) as SessionInfo;
   } catch {
-    return { configured: false, loggedIn: false, name: null };
+    return EMPTY;
   }
 }
 

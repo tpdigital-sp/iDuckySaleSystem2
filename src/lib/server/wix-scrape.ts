@@ -27,6 +27,26 @@ const parseRows = (t: string) =>
     [...tr[1].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/g)].map((c) => strip(c[1]))
   );
 
+/**
+ * โดเมนที่ยอมให้ดึงข้อมูลได้ — กันคนกรอก URL ภายในองค์กร/เครือข่ายส่วนตัว
+ * (พนักงานใช้หน้านำเข้าได้ด้วย จึงต้องจำกัดปลายทางไว้)
+ */
+const ALLOWED_HOSTS = [
+  "www.iduckyofficial-pricelists.com",
+  "iduckyofficial-pricelists.com",
+  "www.iduckyprintsstudio.com",
+  "iduckyprintsstudio.com",
+];
+
+export function isAllowedScrapeUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && ALLOWED_HOSTS.includes(u.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 async function getHtml(url: string): Promise<string> {
   for (let i = 0; i < 3; i++) {
     try {
@@ -50,7 +70,11 @@ export function normalizeWixUrl(input: string): string {
 
 /** ดึง+แปลงสินค้าจากหน้า Wix (ตารางราคา + ชื่อ + รูป) */
 export async function scrapeWixPage(inputUrl: string): Promise<{ products: DetectedProduct[]; skipped: number }> {
-  const html = await getHtml(normalizeWixUrl(inputUrl));
+  const url = normalizeWixUrl(inputUrl);
+  if (!isAllowedScrapeUrl(url)) {
+    throw new Error(`นำเข้าได้เฉพาะจากเว็บของร้านเท่านั้น (${ALLOWED_HOSTS[0]})`);
+  }
+  const html = await getHtml(url);
   if (!html) return { products: [], skipped: 0 };
 
   // รูป/ไอคอนขยะที่ไม่ใช่รูปสินค้า: ddb95188/d18e3f8f/e2a0c467 = ตัวคั่น/แบนเนอร์ · 551cc5af = โลโก้ "uc" (โผล่ก่อนตารางแรกทุกหน้า)

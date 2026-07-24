@@ -9,6 +9,7 @@ import { formatPrice } from "@/lib/products";
 import { MOCK_ORDERS, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
 import { fetchOrdersAdmin } from "@/lib/order-repo";
 import { SHOP } from "@/lib/shop-info";
+import { useCan } from "@/lib/perm-context";
 
 /** work = ใบงาน+ใบปะหน้าพัสดุ (ใบเดียวจบ) · receipt = ใบเสร็จให้ลูกค้า */
 type DocKey = "work" | "receipt";
@@ -22,6 +23,7 @@ export default function PrintOrderPage() {
   const [docs, setDocs] = useState<Record<DocKey, boolean>>({ work: true, receipt: false });
   const [withProofs, setWithProofs] = useState(true);
   const [origin, setOrigin] = useState(""); // สำหรับ QR มือถือ (ต้องอ่านฝั่งเบราว์เซอร์)
+  const seesMoney = useCan()("orders.money"); // ฝ่ายแพ็คไม่เห็นใบเสร็จ (มีราคา)
 
   const load = useCallback(async () => {
     const r = await fetchOrdersAdmin();
@@ -78,10 +80,11 @@ export default function PrintOrderPage() {
         </Link>
 
         <div className="flex flex-wrap items-center gap-3 text-sm">
-          {([
+          {(([
             ["work", "ใบงาน + ใบปะหน้า"],
-            ["receipt", "ใบเสร็จ"],
-          ] as [DocKey, string][]).map(([k, label]) => (
+            // ใบเสร็จมีราคา — เฉพาะคนที่เห็นข้อมูลเงินได้
+            ...(seesMoney ? [["receipt", "ใบเสร็จ"]] : []),
+          ] as [DocKey, string][])).map(([k, label]) => (
             <label key={k} className="flex cursor-pointer items-center gap-1.5">
               <input
                 type="checkbox"
@@ -263,7 +266,7 @@ export default function PrintOrderPage() {
         )}
 
         {/* ═══════════ ใบเสร็จ ═══════════ */}
-        {docs.receipt && (
+        {docs.receipt && seesMoney && (
           <section className="sheet rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
             <div className="flex items-start justify-between border-b-2 border-slate-900 pb-3">
               <div>

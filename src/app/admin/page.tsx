@@ -1,9 +1,13 @@
+"use client";
+
 import Link from "next/link";
 import { formatPrice, PRODUCTS } from "@/lib/products";
 import { MOCK_ORDERS, orderTotal, STATUS_STYLES } from "@/lib/admin-data";
 import { badge, card, cardPad, faint, h1, h2, muted } from "@/lib/admin-ui";
+import { useCan } from "@/lib/perm-context";
 
 export default function AdminDashboard() {
+  const seesMoney = useCan()("orders.money"); // ฝ่ายแพ็คไม่เห็นตัวเลขยอดขาย
   const todaySales = MOCK_ORDERS.filter(
     (o) => o.date.startsWith("20 ก.ค.") && o.status !== "ยกเลิก"
   ).reduce((s, o) => s + orderTotal(o), 0);
@@ -13,7 +17,7 @@ export default function AdminDashboard() {
   const producing = MOCK_ORDERS.filter((o) => o.status === "กำลังผลิต").length;
 
   const stats = [
-    { emoji: "💰", tint: "bg-emerald-50 text-emerald-600", label: "ยอดขายวันนี้", value: formatPrice(todaySales), sub: "จากออเดอร์ที่ไม่ถูกยกเลิก" },
+    ...(seesMoney ? [{ emoji: "💰", tint: "bg-emerald-50 text-emerald-600", label: "ยอดขายวันนี้", value: formatPrice(todaySales), sub: "จากออเดอร์ที่ไม่ถูกยกเลิก" }] : []),
     { emoji: "🧾", tint: "bg-sky-50 text-sky-600", label: "ออเดอร์ใหม่", value: `${waiting}`, sub: "รอชำระ / รอเริ่มผลิต" },
     { emoji: "🖨️", tint: "bg-violet-50 text-violet-600", label: "กำลังผลิต", value: `${producing}`, sub: "อยู่ในคิวพิมพ์" },
     { emoji: "🏷️", tint: "bg-amber-50 text-amber-600", label: "สินค้าในร้าน", value: `${PRODUCTS.length}`, sub: "5 หมวดหมู่" },
@@ -56,7 +60,7 @@ export default function AdminDashboard() {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
-                  <span className="text-sm font-semibold text-slate-900">{formatPrice(orderTotal(o))}</span>
+                  {seesMoney && <span className="text-sm font-semibold text-slate-900">{formatPrice(orderTotal(o))}</span>}
                   <span className={`${badge} ${STATUS_STYLES[o.status]}`}>{o.status}</span>
                 </div>
               </li>

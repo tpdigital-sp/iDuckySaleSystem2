@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { SESSION_COOKIE, verifySessionToken } from "@/lib/server/admin-session";
+import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import type { ShopPayment } from "@/lib/shop-settings";
 
@@ -9,16 +8,12 @@ export const runtime = "nodejs";
 // (ค่า const จากโมดูล client จะกลายเป็น stub เมื่อ import ฝั่ง server → id เป็น null)
 const SHOP_PAYMENT_ID = "__shop_payment__";
 
-async function requireAdmin() {
-  const jar = await cookies();
-  return verifySessionToken(jar.get(SESSION_COOKIE)?.value);
-}
-
 /** บันทึกข้อมูลบัญชีร้าน (เฉพาะแอดมิน) — เก็บในตาราง option_presets ด้วย reserved id */
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
-  if (!(await requireAdmin())) return NextResponse.json({ error: "ต้องล็อกอินแอดมิน" }, { status: 401 });
+  const gate = await requirePerm("settings.manage");
+  if (gate.res) return gate.res;
 
   let p: ShopPayment;
   try {

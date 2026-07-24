@@ -1,21 +1,16 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { SESSION_COOKIE, verifySessionToken } from "@/lib/server/admin-session";
+import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import type { Order } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
 
-async function requireAdmin() {
-  const jar = await cookies();
-  return verifySessionToken(jar.get(SESSION_COOKIE)?.value);
-}
-
 /** แอดมินดึงออเดอร์จริงทั้งหมด (ใหม่→เก่า) */
 export async function GET() {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ orders: [] });
-  if (!(await requireAdmin())) return NextResponse.json({ error: "ต้องล็อกอินแอดมิน" }, { status: 401 });
+  const gate = await requirePerm("orders.view");
+  if (gate.res) return gate.res;
 
   const { data, error } = await sb.from("orders").select("data").order("created_at", { ascending: false });
   if (error) {
@@ -31,7 +26,8 @@ export async function GET() {
 export async function PATCH(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
-  if (!(await requireAdmin())) return NextResponse.json({ error: "ต้องล็อกอินแอดมิน" }, { status: 401 });
+  const gate = await requirePerm("orders.edit");
+  if (gate.res) return gate.res;
 
   let order: Order;
   try {

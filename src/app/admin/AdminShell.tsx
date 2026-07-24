@@ -4,15 +4,18 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getAdminSession, signOut } from "@/lib/auth";
+import { PermProvider } from "@/lib/perm-context";
+import type { Perm } from "@/lib/permissions";
 
-const MENU = [
-  { href: "/admin", label: "ภาพรวม", emoji: "📊" },
-  { href: "/admin/orders", label: "คำสั่งซื้อ", emoji: "📦" },
-  { href: "/admin/orders/scan", label: "ยิงเลขพัสดุ", emoji: "📮" },
-  { href: "/admin/products", label: "สินค้า", emoji: "🏷️" },
-  { href: "/admin/options", label: "คลังตัวเลือก", emoji: "🎛️" },
-  { href: "/admin/import", label: "นำเข้าสินค้า", emoji: "📥" },
-  { href: "/admin/settings", label: "ตั้งค่าระบบ", emoji: "⚙️" },
+/** เมนู + สิทธิ์ที่ต้องมีถึงจะเห็น */
+const MENU: { href: string; label: string; emoji: string; perm: Perm }[] = [
+  { href: "/admin", label: "ภาพรวม", emoji: "📊", perm: "orders.view" },
+  { href: "/admin/orders", label: "คำสั่งซื้อ", emoji: "📦", perm: "orders.view" },
+  { href: "/admin/orders/scan", label: "ยิงเลขพัสดุ", emoji: "📮", perm: "pack.ship" },
+  { href: "/admin/products", label: "สินค้า", emoji: "🏷️", perm: "products.view" },
+  { href: "/admin/options", label: "คลังตัวเลือก", emoji: "🎛️", perm: "presets.manage" },
+  { href: "/admin/import", label: "นำเข้าสินค้า", emoji: "📥", perm: "products.import" },
+  { href: "/admin/settings", label: "ตั้งค่าระบบ", emoji: "⚙️", perm: "settings.manage" },
 ];
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
@@ -23,6 +26,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [allowed, setAllowed] = useState<boolean | null>(null);
   // ตั้งค่า Firebase auth แล้วหรือยัง (โหมดจริง vs เดโม)
   const [configured, setConfigured] = useState(false);
+  // สิทธิ์ + ตำแหน่งของผู้ใช้ที่ล็อกอินอยู่ (ส่งต่อให้ทุกหน้าใต้ /admin)
+  const [perms, setPerms] = useState<Perm[]>([]);
+  const [roleName, setRoleName] = useState("");
 
   const isLoginPage = pathname === "/admin/login";
 
@@ -32,6 +38,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     getAdminSession().then((s) => {
       if (!active) return;
       setConfigured(s.configured);
+      setPerms(s.perms ?? []);
+      setRoleName(s.role ?? "");
       const ok = !s.configured || s.loggedIn;
       setAllowed(ok);
       // เก็บปลายทางเดิม (เช่น ลิงก์ลึก ?order=) ไว้ใน ?next= เพื่อพากลับหลังล็อกอิน
@@ -60,15 +68,19 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   }
   if (allowed === false) return null;
 
+  // เมนูที่เห็นตามสิทธิ์ (การซ่อนเป็นแค่ความสะดวก — ของจริงบังคับที่ API)
+  const menu = MENU.filter((m) => perms.includes(m.perm));
+
   // เมนูที่ "ตรงที่สุด" กับ path ปัจจุบัน — /admin/orders/OD-123 → ไฮไลต์ "คำสั่งซื้อ"
   // ส่วน /admin/orders/scan → ไฮไลต์ "ยิงเลขพัสดุ" (เพราะ href ยาวกว่า จึงชนะ)
-  const activeHref = MENU.map((m) => m.href)
+  const activeHref = menu
+    .map((m) => m.href)
     .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
     .sort((a, b) => b.length - a.length)[0];
 
   const nav = (
     <nav className="space-y-0.5">
-      {MENU.map((m) => {
+      {menu.map((m) => {
         const active = m.href === activeHref;
         return (
           <Link
@@ -90,6 +102,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   );
 
   return (
+    <PermProvider value={{ perms, role: roleName }}>
     <div className="flex min-h-screen bg-slate-50 text-slate-800">
       {/* แถบข้าง (เดสก์ท็อป) */}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-slate-200 bg-white p-3 md:flex print:hidden">
@@ -97,7 +110,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-ducky text-xl shadow-sm">🦆</span>
           <span className="leading-tight">
             <span className="block text-sm font-bold text-slate-900">iDucky Admin</span>
-            <span className="block text-[11px] text-slate-400">ระบบหลังบ้าน</span>
+            <span className="block text-[11px] text-slate-400">{roleName || "ระบบหลังบ้าน"}</span>
           </span>
         </Link>
         {nav}
@@ -175,5 +188,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         <main className="w-full flex-1 px-4 py-6 md:px-8 md:py-8 print:p-0">{children}</main>
       </div>
     </div>
+    </PermProvider>
   );
 }

@@ -1,21 +1,16 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { SESSION_COOKIE, verifySessionToken } from "@/lib/server/admin-session";
+import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import type { OptionPreset } from "@/lib/option-presets";
 
 export const runtime = "nodejs";
 
-async function requireAdmin() {
-  const jar = await cookies();
-  return verifySessionToken(jar.get(SESSION_COOKIE)?.value);
-}
-
 /** บันทึก/อัปเดตคลังตัวเลือก (เฉพาะแอดมินที่ล็อกอิน) */
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
-  if (!(await requireAdmin())) return NextResponse.json({ error: "ต้องล็อกอินแอดมิน" }, { status: 401 });
+  const gate = await requirePerm("presets.manage");
+  if (gate.res) return gate.res;
 
   let preset: OptionPreset;
   try {
@@ -40,7 +35,8 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
-  if (!(await requireAdmin())) return NextResponse.json({ error: "ต้องล็อกอินแอดมิน" }, { status: 401 });
+  const gate = await requirePerm("presets.manage");
+  if (gate.res) return gate.res;
   const id = new URL(req.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "ไม่มี id" }, { status: 400 });
   const { error } = await sb.from("option_presets").delete().eq("id", id);

@@ -22,6 +22,7 @@ import { usePolling } from "@/lib/use-polling";
 import { card, faint, muted, shortTime } from "@/lib/admin-ui";
 import ImageLightbox from "@/components/ImageLightbox";
 import PackCheckPanel from "@/components/PackCheckPanel";
+import { useCan } from "@/lib/perm-context";
 
 const LBL = "text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400";
 const SOFT = "rounded-xl border border-slate-200/70 bg-white p-4";
@@ -48,6 +49,12 @@ export default function AdminOrderDetailPage() {
   const [linkCopied, setLinkCopied] = useState(false);
   const [overrideLock, setOverrideLock] = useState(false); // แอดมินยืนยันให้ทำแบบก่อนจ่ายเงิน
   const trackingRef = useRef<string>(""); // เลขพัสดุที่บันทึกไปแล้ว กันบันทึกซ้ำตอน blur
+
+  const can = useCan();
+  const seesMoney = can("orders.money"); // เห็นราคา/สลิป
+  const mayEdit = can("orders.edit"); // เปลี่ยนสถานะ/แก้ข้อมูล
+  const mayProof = can("proof.manage"); // อัปโหลด/ลบแบบงาน
+  const mayCancel = can("orders.cancel");
 
   useEffect(() => setOrigin(window.location.origin), []);
 
@@ -267,21 +274,29 @@ export default function AdminOrderDetailPage() {
               </Link>
             ))}
           </div>
-          <select
-            value={order.status}
-            onChange={(e) => changeStatus(e.target.value as OrderStatus)}
-            className={`rounded-xl px-3.5 py-2.5 text-sm font-bold ring-1 focus:outline-none focus:ring-2 focus:ring-amber-300 ${STATUS_STYLES[order.status]}`}
-          >
-            {ORDER_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-          <div className="text-right">
-            <div className={LBL}>ยอดรวม</div>
-            <div className="text-2xl font-bold tracking-tight text-slate-900">{formatPrice(orderTotal(order))}</div>
-          </div>
+          {mayEdit ? (
+            <select
+              value={order.status}
+              onChange={(e) => changeStatus(e.target.value as OrderStatus)}
+              className={`rounded-xl px-3.5 py-2.5 text-sm font-bold ring-1 focus:outline-none focus:ring-2 focus:ring-amber-300 ${STATUS_STYLES[order.status]}`}
+            >
+              {ORDER_STATUSES.filter((s) => s !== "ยกเลิก" || mayCancel || order.status === "ยกเลิก").map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className={`rounded-xl px-3.5 py-2.5 text-sm font-bold ring-1 ${STATUS_STYLES[order.status]}`}>
+              {order.status}
+            </span>
+          )}
+          {seesMoney && (
+            <div className="text-right">
+              <div className={LBL}>ยอดรวม</div>
+              <div className="text-2xl font-bold tracking-tight text-slate-900">{formatPrice(orderTotal(order))}</div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -457,14 +472,16 @@ export default function AdminOrderDetailPage() {
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={p.url} alt={`แบบงาน ${it.name} รูปที่ ${j + 1}`} className="h-full w-full object-contain" />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => removeProof(i, j)}
-                            aria-label="ลบรูปนี้"
-                            className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-slate-900/60 text-xs text-white transition hover:bg-rose-600"
-                          >
-                            ✕
-                          </button>
+                          {mayProof && (
+                            <button
+                              type="button"
+                              onClick={() => removeProof(i, j)}
+                              aria-label="ลบรูปนี้"
+                              className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-slate-900/60 text-xs text-white transition hover:bg-rose-600"
+                            >
+                              ✕
+                            </button>
+                          )}
                           {/* ผลตรวจนับของพนักงานแพ็ค */}
                           <span
                             className={`pointer-events-none absolute bottom-1.5 left-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold ${
@@ -482,33 +499,42 @@ export default function AdminOrderDetailPage() {
                                 : "รอตรวจนับ"}
                           </span>
                         </div>
-                        <div className="space-y-1.5 p-2">
-                          <label className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-bold text-slate-400">จำนวน</span>
+                        {mayProof ? (
+                          <div className="space-y-1.5 p-2">
+                            <label className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-bold text-slate-400">จำนวน</span>
+                              <input
+                                type="number"
+                                min={1}
+                                value={p.qty ?? ""}
+                                placeholder="—"
+                                onChange={(e) => patchProof(i, j, { qty: e.target.value ? Number(e.target.value) : undefined })}
+                                onBlur={persist}
+                                className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs focus:border-amber-300 focus:outline-none"
+                              />
+                              <span className="text-[10px] text-slate-400">ชิ้น</span>
+                            </label>
                             <input
-                              type="number"
-                              min={1}
-                              value={p.qty ?? ""}
-                              placeholder="—"
-                              onChange={(e) => patchProof(i, j, { qty: e.target.value ? Number(e.target.value) : undefined })}
+                              type="text"
+                              value={p.note ?? ""}
+                              placeholder="รายละเอียด เช่น ลายหน้า"
+                              onChange={(e) => patchProof(i, j, { note: e.target.value })}
                               onBlur={persist}
                               className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs focus:border-amber-300 focus:outline-none"
                             />
-                            <span className="text-[10px] text-slate-400">ชิ้น</span>
-                          </label>
-                          <input
-                            type="text"
-                            value={p.note ?? ""}
-                            placeholder="รายละเอียด เช่น ลายหน้า"
-                            onChange={(e) => patchProof(i, j, { note: e.target.value })}
-                            onBlur={persist}
-                            className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs focus:border-amber-300 focus:outline-none"
-                          />
-                        </div>
+                          </div>
+                        ) : (
+                          /* ฝ่ายแพ็ค — อ่านอย่างเดียว แก้ไม่ได้ */
+                          <div className="p-2 text-[11px] leading-snug text-slate-600">
+                            {p.qty ? <strong>{p.qty} ชิ้น</strong> : <span className="text-slate-400">ไม่ระบุจำนวน</span>}
+                            {p.note ? <span className="block text-slate-500">{p.note}</span> : null}
+                          </div>
+                        )}
                       </div>
                     ))}
 
-                    {/* กล่องเพิ่มรูป — ลากมาวาง หรือแตะ */}
+                    {/* กล่องเพิ่มรูป — ลากมาวาง หรือแตะ (เฉพาะคนที่จัดการแบบงานได้) */}
+                    {mayProof && (
                     <div
                       role="button"
                       tabIndex={0}
@@ -547,6 +573,7 @@ export default function AdminOrderDetailPage() {
                       />
                       {uploadingIdx === i ? "กำลังอัปโหลด…" : dragIdx === i ? "วางรูปที่นี่" : "＋ ลากรูปมาวาง"}
                     </div>
+                    )}
                   </div>
                 </div>
               );
@@ -608,7 +635,7 @@ export default function AdminOrderDetailPage() {
             </div>
           </div>
 
-          <div>
+          <div className={seesMoney ? "" : "hidden"}>
             <p className={LBL}>ยอดเงิน</p>
             <div className={`mt-2 ${SOFT}`}>
               <div className="flex justify-between text-sm">
@@ -626,7 +653,7 @@ export default function AdminOrderDetailPage() {
             </div>
           </div>
 
-          {order.slipUrl && (
+          {order.slipUrl && seesMoney && (
             <div>
               <p className={LBL}>หลักฐานการโอน</p>
               <div className={`mt-2 flex items-center gap-3 ${SOFT}`}>

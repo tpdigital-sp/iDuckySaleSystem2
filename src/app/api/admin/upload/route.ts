@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
-import { SESSION_COOKIE, verifySessionToken } from "@/lib/server/admin-session";
+import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 
 export const runtime = "nodejs";
@@ -14,16 +13,12 @@ const EXT: Record<string, string> = {
   "image/gif": "gif",
 };
 
-async function requireAdmin() {
-  const jar = await cookies();
-  return verifySessionToken(jar.get(SESSION_COOKIE)?.value);
-}
-
 /** อัปโหลดรูปสินค้าขึ้น Supabase Storage → คืน public URL (เฉพาะแอดมิน) */
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
-  if (!(await requireAdmin())) return NextResponse.json({ error: "ต้องล็อกอินแอดมิน" }, { status: 401 });
+  const gate = await requirePerm("products.manage");
+  if (gate.res) return gate.res;
 
   let form: FormData;
   try {

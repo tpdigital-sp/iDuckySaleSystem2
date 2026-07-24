@@ -19,6 +19,7 @@ import { deleteProductDb, fetchProductRaw, fetchProducts, persistProduct } from 
 import { getAdminSession } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { badge, btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
+import { useCan } from "@/lib/perm-context";
 
 type ViewMode = "table" | "cards";
 type SortMode = "default" | "price-asc" | "price-desc" | "sold-desc";
@@ -52,6 +53,7 @@ export default function AdminProductsPage() {
   // ชื่อผู้ตรวจ (คนที่ล็อกอินอยู่) — โหมดเดโมที่ไม่มีชื่อใช้ "ทีมงาน"
   const [reviewer, setReviewer] = useState("ทีมงาน");
   const [creating, setCreating] = useState(false);
+  const mayManage = useCan()("products.manage"); // ฝ่ายแอดมินดูได้อย่างเดียว
   const router = useRouter();
 
   /** สร้างสินค้าใหม่เปล่า → บันทึกลงฐานข้อมูล → เด้งเข้าหน้าแก้ไขให้กรอกข้อมูล */
@@ -169,7 +171,12 @@ export default function AdminProductsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          {!isSupabaseConfigured && (
+          {!mayManage && (
+            <span className="self-center rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500">
+              👁 ดูอย่างเดียว
+            </span>
+          )}
+          {mayManage && !isSupabaseConfigured && (
             <button
               type="button"
               onClick={handleResetAll}
@@ -179,15 +186,17 @@ export default function AdminProductsPage() {
               ↩ รีเซ็ตทั้งหมด
             </button>
           )}
-          <button
-            type="button"
-            onClick={createProduct}
-            disabled={creating}
-            title="สร้างสินค้าใหม่เปล่า แล้วไปหน้าแก้ไข"
-            className={btnPrimary}
-          >
-            {creating ? "กำลังสร้าง…" : "＋ เพิ่มสินค้า"}
-          </button>
+          {mayManage && (
+            <button
+              type="button"
+              onClick={createProduct}
+              disabled={creating}
+              title="สร้างสินค้าใหม่เปล่า แล้วไปหน้าแก้ไข"
+              className={btnPrimary}
+            >
+              {creating ? "กำลังสร้าง…" : "＋ เพิ่มสินค้า"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -412,15 +421,18 @@ function ReviewToggle({ p, onToggle, size = "sm" }: { p: Product; onToggle: (p: 
 }
 
 function RowActions({ p, onRemove, onToggleReview }: { p: Product; onRemove: (id: string) => void; onToggleReview: (p: Product) => void }) {
+  const mayManage = useCan()("products.manage");
   return (
     <div className="flex shrink-0 items-center gap-1">
       <ReviewToggle p={p} onToggle={onToggleReview} />
-      <Link
-        href={`/admin/products/${p.id}`}
-        className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-600"
-      >
-        แก้ไข
-      </Link>
+      {mayManage && (
+        <Link
+          href={`/admin/products/${p.id}`}
+          className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-600"
+        >
+          แก้ไข
+        </Link>
+      )}
       <a
         href={`/products/${p.id}`}
         target="_blank"
@@ -430,13 +442,15 @@ function RowActions({ p, onRemove, onToggleReview }: { p: Product; onRemove: (id
       >
         ดู
       </a>
-      <button
-        type="button"
-        onClick={() => onRemove(p.id)}
-        className="rounded-lg px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
-      >
-        ลบ
-      </button>
+      {mayManage && (
+        <button
+          type="button"
+          onClick={() => onRemove(p.id)}
+          className="rounded-lg px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
+        >
+          ลบ
+        </button>
+      )}
     </div>
   );
 }
@@ -522,6 +536,7 @@ function CardGrid({
   onRemove: (id: string) => void;
   onToggleReview: (p: Product) => void;
 }) {
+  const mayManage = useCan()("products.manage");
   return (
     <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
       {items.map((p) => (
@@ -549,29 +564,33 @@ function CardGrid({
             </div>
             <div className="mt-2.5 flex items-center gap-1 border-t border-slate-100 pt-2">
               <ReviewToggle p={p} onToggle={onToggleReview} size="xs" />
-              <Link
-                href={`/admin/products/${p.id}`}
-                className="flex-1 rounded-lg bg-amber-500 px-2 py-1.5 text-center text-xs font-semibold text-white transition hover:bg-amber-600"
-              >
-                แก้ไข
-              </Link>
+              {mayManage && (
+                <Link
+                  href={`/admin/products/${p.id}`}
+                  className="flex-1 rounded-lg bg-amber-500 px-2 py-1.5 text-center text-xs font-semibold text-white transition hover:bg-amber-600"
+                >
+                  แก้ไข
+                </Link>
+              )}
               <a
                 href={`/products/${p.id}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
+                className={`rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 ${mayManage ? "" : "flex-1 text-center"}`}
                 title="เปิดหน้าสินค้าจริง"
               >
                 ดู
               </a>
-              <button
-                type="button"
-                onClick={() => onRemove(p.id)}
-                className="rounded-lg px-2 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
-                title="ลบ"
-              >
-                ลบ
-              </button>
+              {mayManage && (
+                <button
+                  type="button"
+                  onClick={() => onRemove(p.id)}
+                  className="rounded-lg px-2 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
+                  title="ลบ"
+                >
+                  ลบ
+                </button>
+              )}
             </div>
           </div>
         </div>

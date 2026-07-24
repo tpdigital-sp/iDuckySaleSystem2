@@ -1,17 +1,12 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
-import { SESSION_COOKIE, verifySessionToken } from "@/lib/server/admin-session";
+import { requirePerm } from "@/lib/server/require-perm";
+import { can } from "@/lib/permissions";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { scrapeWixPage } from "@/lib/server/wix-scrape";
 import type { CategoryId, Product } from "@/lib/products";
 
 export const runtime = "nodejs";
-
-async function requireAdmin() {
-  const jar = await cookies();
-  return verifySessionToken(jar.get(SESSION_COOKIE)?.value);
-}
 
 function slugify(s: string): string {
   const base = s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -46,7 +41,10 @@ async function pullImage(sb: ReturnType<typeof getSupabaseAdmin>, id: string, ur
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
-  if (!(await requireAdmin())) return NextResponse.json({ error: "ต้องล็อกอินแอดมิน" }, { status: 401 });
+  const gate = await requirePerm("products.import");
+  if (gate.res) return gate.res;
+  /** ทับสินค้าที่มีอยู่แล้วได้ไหม — ไม่ได้ = ข้ามตัวที่ id ซ้ำ (กันแก้ราคาทางอ้อม) */
+  const mayOverwrite = can(gate.actor, "products.importOverwrite");
 
   const action = new URL(req.url).searchParams.get("action");
   const bodyIn = await req.json().catch(() => ({}));
@@ -67,13 +65,30 @@ export async function POST(req: Request) {
   if (action === "save") {
     const items = Array.isArray(bodyIn.items) ? bodyIn.items : [];
     if (!items.length) return NextResponse.json({ error: "ไม่มีสินค้าให้นำเข้า" }, { status: 400 });
+
+    // id ที่มีในระบบแล้ว — คนที่ทับไม่ได้จะถูกข้ามพร้อมบอกเหตุผล
+    const wantedIds = items
+      .map((it: { id?: string; name?: string }) => String(it.id || "").trim() || slugify(String(it.name || "").trim()))
+      .filter(Boolean);
+    const existing = new Set<string>();
+    if (wantedIds.length) {
+      const { data } = await sb.from("products").select("id").in("id", wantedIds);
+      for (const row of data ?? []) existing.add(row.id as string);
+    }
+
     const results: { id: string; ok: boolean; image: boolean }[] = [];
+    const skippedExisting: string[] = [];
     let sort = 400;
     for (const it of items) {
       const name = String(it.name || "").trim();
       const category = String(it.category || "acrylic") as CategoryId;
       if (!name) continue;
       const id = String(it.id || "").trim() || slugify(name);
+      // สินค้ามีอยู่แล้ว + ไม่มีสิทธิ์ทับ → ข้าม (ไม่งั้นราคา/ตัวเลือกเดิมจะหาย)
+      if (existing.has(id) && !mayOverwrite) {
+        skippedExisting.push(name);
+        continue;
+      }
       const emoji = String(it.emoji || "📦");
       const gradient = "from-sky-100 to-blue-200";
       let imageSrc: string | undefined;
@@ -104,7 +119,15 @@ export async function POST(req: Request) {
       );
       results.push({ id, ok: !error, image: !!imageSrc });
     }
-    return NextResponse.json({ ok: true, results, imported: results.filter((r) => r.ok).length });
+    return NextResponse.json({
+      ok: true,
+      results,
+      imported: results.filter((r) => r.ok).length,
+      skippedExisting,
+      ...(skippedExisting.length
+        ? { warning: `ข้าม ${skippedExisting.length} รายการที่มีอยู่แล้ว — ต้องให้ผู้ดูแลระบบยืนยันการทับ` }
+        : {}),
+    });
   }
 
   return NextResponse.json({ error: "action ไม่ถูกต้อง (scrape | save)" }, { status: 400 });

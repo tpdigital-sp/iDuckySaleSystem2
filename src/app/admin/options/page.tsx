@@ -1,5 +1,7 @@
 "use client";
 
+import RequirePerm from "@/components/RequirePerm";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -15,7 +17,7 @@ import { badge, btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
 
 type Draft = OptionPreset & { _saving?: boolean; _dirty?: boolean };
 
-export default function AdminOptionsPage() {
+function AdminOptionsPageInner() {
   const [presets, setPresets] = useState<Draft[]>([]);
   const [usage, setUsage] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -356,4 +358,13 @@ function uniqueId(base: string, taken: Set<string>, self: string): string {
   let id = `${base}-${++n}`;
   while (taken.has(id) && id !== self) id = `${base}-${++n}`;
   return id;
+}
+
+/** กันคนที่ไม่มีสิทธิ์พิมพ์ URL เข้าตรง ๆ */
+export default function AdminOptionsPage() {
+  return (
+    <RequirePerm perm="presets.manage">
+      <AdminOptionsPageInner />
+    </RequirePerm>
+  );
 }

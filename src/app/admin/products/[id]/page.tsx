@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { PRODUCTS } from "@/lib/products";
 import { getProductServer } from "@/lib/products-server";
 import ProductEditor from "./ProductEditor";
+import RequirePerm from "@/components/RequirePerm";
 
 export function generateStaticParams() {
   return PRODUCTS.map((p) => ({ id: p.id }));
@@ -26,5 +27,9 @@ export default async function AdminProductEditPage({
   const { id } = await params;
   const product = await getProductServer(id);
   if (!product) notFound();
-  return <ProductEditor product={product} />;
+  return (
+    <RequirePerm perm="products.manage">
+      <ProductEditor product={product} />
+    </RequirePerm>
+  );
 }

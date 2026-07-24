@@ -1,5 +1,7 @@
 "use client";
 
+import RequirePerm from "@/components/RequirePerm";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
@@ -19,7 +21,7 @@ const newId = (p = "b") =>
 
 type Tab = "pay" | "ship";
 
-export default function AdminSettingsPage() {
+function AdminSettingsPageInner() {
   const [tab, setTab] = useState<Tab>("pay");
 
   // ── ชำระเงิน ──
@@ -357,5 +359,14 @@ export default function AdminSettingsPage() {
         </>
       )}
     </div>
+  );
+}
+
+/** กันคนที่ไม่มีสิทธิ์พิมพ์ URL เข้าตรง ๆ */
+export default function AdminSettingsPage() {
+  return (
+    <RequirePerm perm="settings.manage">
+      <AdminSettingsPageInner />
+    </RequirePerm>
   );
 }

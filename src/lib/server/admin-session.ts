@@ -13,6 +13,8 @@ export interface AdminSession {
   username: string;
   name?: string;
   role: string;
+  /** แผนก (เฉพาะ role "พนักงาน") — ใช้ตัดสินสิทธิ์ ดู @/lib/permissions */
+  department?: string;
   exp: number; // unix seconds
 }
 

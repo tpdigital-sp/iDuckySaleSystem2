@@ -17,6 +17,8 @@ import { fetchOrdersAdmin } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
 import StepDots from "@/components/StepDots";
 import { h1, muted } from "@/lib/admin-ui";
+import { useCan } from "@/lib/perm-context";
+import { PACKING_QUEUE_STATUSES } from "@/lib/permissions";
 
 /** แบ่งสถานะตามแผนกที่รับผิดชอบ — แต่ละแผนกเห็นเฉพาะงานของตัวเอง */
 const DEPARTMENTS: { key: string; label: string; emoji: string; statuses: OrderStatus[] }[] = [
@@ -25,6 +27,10 @@ const DEPARTMENTS: { key: string; label: string; emoji: string; statuses: OrderS
   { key: "design", label: "ทำแบบ", emoji: "🎨", statuses: ["รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"] },
   { key: "pack", label: "แพ็คของ", emoji: "📦", statuses: ["กำลังผลิต", "จัดส่งแล้ว", "เสร็จสิ้น"] },
 ];
+
+/** ฝ่ายแพ็คเห็นเฉพาะออเดอร์ที่ถึงคิวแพ็คแล้ว — จอสะอาด หยิบผิดใบยาก */
+const visibleTo = (list: Order[], seesAll: boolean) =>
+  seesAll ? list : list.filter((o) => PACKING_QUEUE_STATUSES.includes(o.status));
 
 const qtyOf = (o: Order) => o.items.reduce((s, i) => s + i.qty, 0);
 const dayOf = (d: string) => d.split(" ").slice(0, 3).join(" ");
@@ -41,6 +47,10 @@ export default function AdminOrdersPage() {
   const [q, setQ] = useState("");
   const [demo, setDemo] = useState(false);
 
+  const can = useCan();
+  const seesAll = can("orders.viewAll"); // ฝ่ายแพ็คเห็นเฉพาะคิวของตัวเอง
+  const seesMoney = can("orders.money");
+
   useEffect(() => {
     const deepLink = new URLSearchParams(window.location.search).get("order");
     if (deepLink) {
@@ -48,19 +58,20 @@ export default function AdminOrdersPage() {
       return;
     }
     fetchOrdersAdmin().then((r) => {
-      if (r.orders.length > 0) setOrders(r.orders);
+      if (r.orders.length > 0) setOrders(visibleTo(r.orders, seesAll));
       else {
-        setOrders(MOCK_ORDERS);
+        setOrders(visibleTo(MOCK_ORDERS, seesAll));
         setDemo(true);
       }
     });
-  }, [router]);
+  }, [router, seesAll]);
 
   const refresh = useCallback(async () => {
     const r = await fetchOrdersAdmin();
     if (r.orders.length === 0) return;
-    setOrders((cur) => (JSON.stringify(cur) === JSON.stringify(r.orders) ? cur : r.orders));
-  }, []);
+    const next = visibleTo(r.orders, seesAll);
+    setOrders((cur) => (JSON.stringify(cur) === JSON.stringify(next) ? cur : next));
+  }, [seesAll]);
   usePolling(refresh, { enabled: !demo });
 
   const counts = useMemo(() => {
@@ -150,7 +161,7 @@ export default function AdminOrdersPage() {
         <Tile label="ต้องทำตอนนี้" value={stats.needUs.toString()} tone="warn" />
         <Tile label="รอลูกค้า" value={stats.waitCustomer.toString()} />
         <Tile label="กำลังผลิต" value={stats.making.toString()} />
-        <Tile label="ยอดขายวันนี้" value={formatPrice(stats.todaySales)} tone="brand" />
+        {seesMoney && <Tile label="ยอดขายวันนี้" value={formatPrice(stats.todaySales)} tone="brand" />}
       </div>
 
       {/* ── แท็บแผนก ── */}
@@ -203,7 +214,7 @@ export default function AdminOrdersPage() {
                   <Th>ลูกค้า</Th>
                   <Th className="w-[210px]">ความคืบหน้า</Th>
                   <Th>สถานะ</Th>
-                  <Th className="w-[110px] text-right">ยอด</Th>
+                  <Th className="w-[110px] text-right">{seesMoney ? "ยอด" : "จำนวน"}</Th>
                   <Th className="w-8" />
                 </tr>
               </thead>
@@ -242,7 +253,7 @@ export default function AdminOrdersPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3.5 text-right align-middle font-bold tabular-nums text-slate-900">
-                        {formatPrice(orderTotal(o))}
+                        {seesMoney ? formatPrice(orderTotal(o)) : `${qtyOf(o)} ชิ้น`}
                       </td>
                       <td className="pr-4 align-middle text-slate-300">›</td>
                     </tr>

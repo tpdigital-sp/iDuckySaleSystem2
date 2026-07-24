@@ -1,5 +1,7 @@
 "use client";
 
+import RequirePerm from "@/components/RequirePerm";
+
 import { useState } from "react";
 import Link from "next/link";
 import { CATEGORIES, type CategoryId } from "@/lib/products";
@@ -19,7 +21,7 @@ interface Row {
 
 const KIND_LABEL: Record<string, string> = { tiers: "ราคาตามจำนวน", matrix: "ขนาด × จำนวน", size: "ราคาตามขนาด" };
 
-export default function AdminImportPage() {
+function AdminImportPageInner() {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -71,6 +73,15 @@ export default function AdminImportPage() {
       if (!res.ok) { setError(data.error ?? "นำเข้าไม่สำเร็จ"); return; }
       const withImg = (data.results ?? []).filter((r: { image: boolean }) => r.image).length;
       setResult(`นำเข้าสำเร็จ ${data.imported} รายการ (มีรูป ${withImg} รายการ) ✓`);
+      // สินค้าที่มีอยู่แล้วถูกข้าม เพราะทับของเดิมต้องใช้สิทธิ์ผู้ดูแลระบบ
+      const skipped: string[] = data.skippedExisting ?? [];
+      if (skipped.length) {
+        setError(
+          `⚠️ ข้าม ${skipped.length} รายการที่มีอยู่ในระบบแล้ว (${skipped.slice(0, 3).join(", ")}` +
+            `${skipped.length > 3 ? " และอื่น ๆ" : ""}) — การนำเข้าทับของเดิมจะลบราคา/ตัวเลือกเดิมทิ้ง ` +
+            `ต้องให้ผู้ดูแลระบบเป็นคนทำ`
+        );
+      }
     } catch {
       setError("เชื่อมต่อไม่ได้");
     } finally {
@@ -191,5 +202,14 @@ export default function AdminImportPage() {
         นำเข้าแล้วดู/แก้ต่อได้ที่ <Link href="/admin/products" className="font-semibold text-amber-600 hover:underline">หน้าสินค้า</Link> · ชื่อ/หมวด/รูป/ราคา แก้ได้ทั้งหมด
       </p>
     </div>
+  );
+}
+
+/** กันคนที่ไม่มีสิทธิ์พิมพ์ URL เข้าตรง ๆ */
+export default function AdminImportPage() {
+  return (
+    <RequirePerm perm="products.import">
+      <AdminImportPageInner />
+    </RequirePerm>
   );
 }
