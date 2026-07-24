@@ -447,13 +447,15 @@ export default function AdminOrderDetailPage() {
     if (!demo) void saveOrderAdmin(next);
   }
 
-  async function sendProof(itemIndex: number, file: File | null) {
-    if (!file || !order) return;
-    setErr("");
-    if (!file.type.startsWith("image/")) {
-      setErr("รองรับเฉพาะไฟล์รูปภาพ (PNG / JPG)");
+  /** อัปโหลดแบบงานได้หลายรูปพร้อมกัน — ทีละรูปเรียงกัน (กันชนกันตอน server ต่อ proofs) */
+  async function sendProofs(itemIndex: number, fileList: FileList | File[] | null) {
+    if (!order) return;
+    const files = Array.from(fileList ?? []).filter((f) => f.type.startsWith("image/"));
+    if (files.length === 0) {
+      if (fileList && Array.from(fileList).length > 0) setErr("รองรับเฉพาะไฟล์รูปภาพ (PNG / JPG)");
       return;
     }
+    setErr("");
     // กันกราฟฟิกทำงานฟรี — ออเดอร์ที่ยังไม่จ่าย/ยังไม่ตรวจสลิป ต้องยืนยันก่อน
     if (!paidOk && !overrideLock) {
       setErr(`ออเดอร์นี้ยังไม่ได้ยืนยันการชำระเงิน (สถานะ “${order.status}”) — กด “ทำแบบก่อนได้” ด้านล่างถ้าจงใจ`);
@@ -464,13 +466,15 @@ export default function AdminOrderDetailPage() {
       return;
     }
     setUploadingIdx(itemIndex);
-    const res = await uploadProof(order.id, itemIndex, file);
-    setUploadingIdx(null);
-    if (!res.ok) {
-      setErr(res.error ?? "อัปโหลดแบบไม่สำเร็จ");
-      return;
+    for (const file of files) {
+      const res = await uploadProof(order.id, itemIndex, file);
+      if (!res.ok) {
+        setErr(res.error ?? "อัปโหลดแบบไม่สำเร็จ");
+        break;
+      }
+      if (res.order) setOrder(res.order);
     }
-    if (res.order) setOrder(res.order);
+    setUploadingIdx(null);
   }
 
   if (loading) {
@@ -824,7 +828,7 @@ export default function AdminOrderDetailPage() {
                       onDrop={(e) => {
                         e.preventDefault();
                         setDragIdx(null);
-                        void sendProof(i, e.dataTransfer.files?.[0] ?? null);
+                        void sendProofs(i, e.dataTransfer.files);
                       }}
                       className={`grid aspect-[4/3] w-36 cursor-pointer place-items-center self-start rounded-xl px-2 text-center text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
                         dragIdx === i
@@ -835,14 +839,15 @@ export default function AdminOrderDetailPage() {
                       <input
                         type="file"
                         accept="image/png,image/jpeg,image/webp,image/gif"
+                        multiple
                         className="hidden"
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => {
-                          void sendProof(i, e.target.files?.[0] ?? null);
+                          void sendProofs(i, e.target.files);
                           e.target.value = "";
                         }}
                       />
-                      {uploadingIdx === i ? "กำลังอัปโหลด…" : dragIdx === i ? "วางรูปที่นี่" : "＋ ลากรูปมาวาง"}
+                      {uploadingIdx === i ? "กำลังอัปโหลด…" : dragIdx === i ? "วางรูปที่นี่" : "＋ ลากหลายรูปมาวาง"}
                     </div>
                     )}
                   </div>
