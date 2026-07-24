@@ -64,12 +64,20 @@ export default function PrintOrderPage() {
     <>
       <style>{`
         @page { size: A4; margin: 10mm; }
+        /* แกลเลอรีแบบงาน — บนจอปัดดูทีละรูป (scroll-snap) ซ่อน scrollbar */
+        .proof-scroll { scrollbar-width: none; scroll-snap-type: x mandatory; }
+        .proof-scroll::-webkit-scrollbar { display: none; }
+        .proof-item { scroll-snap-align: center; }
         @media print {
           html, body { background: #fff !important; }
           .no-print { display: none !important; }
           .sheet { break-after: page; box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; width: auto !important; }
           .sheet:last-child { break-after: auto; }
           tr, .keep { break-inside: avoid; }
+          /* ตอนปริ้น: โชว์ทุกรูปครบ ไม่ใช่ปัดทีละรูป */
+          .proof-scroll { width: auto !important; max-width: none !important; overflow: visible !important; flex-wrap: wrap !important; }
+          .proof-item { width: 7rem !important; }
+          .proof-hint { display: none !important; }
         }
       `}</style>
 
@@ -208,23 +216,31 @@ export default function PrintOrderPage() {
                         {!withProofs ? (
                           <span className="text-xs text-slate-400">—</span>
                         ) : proofs.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {proofs.map((p, j) => (
-                              <div key={`${p.url}-${j}`} className="w-28">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={p.url}
-                                  alt={`แบบงาน ${it.name} รูปที่ ${j + 1}`}
-                                  className="h-24 w-28 rounded border border-slate-300 object-contain"
-                                />
-                                <p className="mt-0.5 text-[10px] leading-tight text-slate-600">
-                                  {p.qty ? <strong>{p.qty} ชิ้น</strong> : null}
-                                  {p.qty && p.note ? " · " : null}
-                                  {p.note}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
+                          <>
+                            {/* บนจอ: ปัดดูทีละรูป · ตอนปริ้น: โชว์ครบทุกรูป (คุมด้วย CSS ด้านบน) */}
+                            <div className="proof-scroll flex w-[44vw] max-w-[15rem] gap-2 overflow-x-auto sm:w-56">
+                              {proofs.map((p, j) => (
+                                <div key={`${p.url}-${j}`} className="proof-item w-40 shrink-0 sm:w-28">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={p.url}
+                                    alt={`แบบงาน ${it.name} รูปที่ ${j + 1}`}
+                                    className="h-32 w-40 rounded border border-slate-300 object-contain sm:h-24 sm:w-28"
+                                  />
+                                  <p className="mt-0.5 text-[10px] leading-tight text-slate-600">
+                                    {p.qty ? <strong>{p.qty} ชิ้น</strong> : null}
+                                    {p.qty && p.note ? " · " : null}
+                                    {p.note}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                            {proofs.length > 1 && (
+                              <p className="proof-hint mt-1 text-[10px] font-semibold text-slate-400">
+                                ← ปัดดู {proofs.length} รูป →
+                              </p>
+                            )}
+                          </>
                         ) : (
                           <p className="text-xs font-semibold text-rose-600">⚠️ ยังไม่มีแบบงาน</p>
                         )}
