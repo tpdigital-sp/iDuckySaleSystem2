@@ -121,6 +121,7 @@ export default function CheckoutPage() {
       productId: it.productId,
       name: productOf(it.productId)?.name ?? it.productId,
       selections: Object.entries(it.selections).map(([k, v]) => `${k}: ${v}`).join(" · "),
+      sel: it.selections,
       qty: it.qty,
       unitPrice: it.unitPrice,
     }));

@@ -13,7 +13,7 @@ export interface CreateOrderInput {
   shippingCost: number;
   subtotal: number;
   total: number;
-  items: { productId: string; name: string; selections: string; qty: number; unitPrice: number }[];
+  items: { productId: string; name: string; selections: string; sel?: Record<string, string>; qty: number; unitPrice: number }[];
 }
 
 /** ลูกค้าสั่งซื้อ → สร้างออเดอร์ (public API, service role เขียน) · คืน key ลับสำหรับแจ้งโอน */

@@ -106,7 +106,10 @@ export interface Proof {
 export interface OrderItem {
   productId: string;
   name: string;
+  /** ตัวเลือกแบบข้อความ (แสดงผล) เช่น "ขนาด: M · สี: ขาว" */
   selections: string;
+  /** ตัวเลือกแบบมีโครงสร้าง — ใช้ปุ่ม "สั่งซ้ำ" ดึงกลับเข้าตะกร้าได้ตรง (ออเดอร์เก่าไม่มี) */
+  sel?: Record<string, string>;
   qty: number;
   unitPrice: number;
   /** ภาพแบบงาน (proof) — หลายรูปได้ แต่ละรูประบุจำนวน/รายละเอียดของตัวเอง */
