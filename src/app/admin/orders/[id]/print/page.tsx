@@ -22,6 +22,15 @@ import { useCan } from "@/lib/perm-context";
 /** work = ใบงาน+ใบปะหน้าพัสดุ (ใบเดียวจบ) · receipt = ใบเสร็จให้ลูกค้า */
 type DocKey = "work" | "receipt";
 
+/** ตัดลิงก์ไฟล์ลาย/อีเมล (URL) ออกจากตัวเลือก — ไม่จำเป็นบนใบงานกระดาษ */
+function cleanSelections(sel?: string): string {
+  if (!sel) return "";
+  return sel
+    .split(" · ")
+    .filter((seg) => !/https?:\/\/|ลิงก์ไฟล์|อีเมล/i.test(seg))
+    .join(" · ");
+}
+
 export default function PrintOrderPage() {
   const params = useParams<{ id: string }>();
   const orderId = decodeURIComponent(String(params?.id ?? ""));
@@ -63,6 +72,10 @@ export default function PrintOrderPage() {
 
   const subtotal = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
   const totalQty = order.items.reduce((s, i) => s + i.qty, 0);
+  // จำกัดจำนวนแถวให้พอดี A4 1 หน้า — ถ้าเกินให้ดูต่อผ่านมือถือ (มีรูปแบบงาน = แถวสูง เลยได้น้อยกว่า)
+  const PRINT_ROW_LIMIT = withProofs ? 4 : 12;
+  const shownItems = order.items.slice(0, PRINT_ROW_LIMIT);
+  const overflowCount = order.items.length - shownItems.length;
   const printedAt = new Date().toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
   const chosen = (Object.keys(docs) as DocKey[]).filter((k) => docs[k]);
   /** ลิงก์เต็มสำหรับ QR มือถือ — เปิดหน้าออเดอร์เพื่อเช็คของตามภาพ */
@@ -229,12 +242,10 @@ export default function PrintOrderPage() {
                   <th className="w-8 py-2 pl-2">#</th>
                   <th className="w-64 py-2">แบบงาน</th>
                   <th className="py-2">รายการ / ตัวเลือก</th>
-                  <th className="w-16 py-2 text-center">จำนวน</th>
-                  <th className="w-14 py-2 text-center">ตรวจ</th>
                 </tr>
               </thead>
               <tbody>
-                {order.items.map((it, i) => {
+                {shownItems.map((it, i) => {
                   const proofs = proofsOf(it);
                   return (
                     <tr key={`${it.productId}-${i}`} className="border-b border-slate-200 align-top">
@@ -274,7 +285,9 @@ export default function PrintOrderPage() {
                       </td>
                       <td className="py-3">
                         <p className="font-bold">{it.name}</p>
-                        {it.selections && <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{it.selections}</p>}
+                        {cleanSelections(it.selections) && (
+                          <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{cleanSelections(it.selections)}</p>
+                        )}
                         {noteHasText(it.adminNote) && (
                           <p
                             className="mt-1 leading-snug text-slate-900"
@@ -282,8 +295,6 @@ export default function PrintOrderPage() {
                           />
                         )}
                       </td>
-                      <td className="py-3 text-center text-base font-bold tabular-nums">{it.qty}</td>
-                      <td className="py-3 text-center text-lg text-slate-400">☐</td>
                     </tr>
                   );
                 })}
@@ -291,13 +302,23 @@ export default function PrintOrderPage() {
               <tfoot>
                 <tr className="border-t border-slate-300">
                   <td colSpan={3} className="py-2 pl-2 text-xs text-slate-500">
-                    รวม {order.items.length} รายการ · สถานะ: {order.status}
+                    รวม {order.items.length} รายการ · {totalQty} ชิ้น · สถานะ: {order.status}
                   </td>
-                  <td className="py-2 text-center text-base font-extrabold tabular-nums">{totalQty}</td>
-                  <td />
                 </tr>
               </tfoot>
             </table>
+
+            {/* รายการเกิน A4 → ให้ดูต่อผ่านมือถือ (สแกน QR ด้านบน) ตัวใหญ่ ๆ */}
+            {overflowCount > 0 && (
+              <div className="keep mt-4 rounded-lg border-2 border-slate-900 bg-slate-50 p-4 text-center">
+                <p className="text-xl font-extrabold text-slate-900">
+                  📱 ยังมีอีก {overflowCount} รายการ — ดูทั้งหมดผ่านมือถือ
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-600">
+                  สแกน QR ด้านบนเพื่อเปิดหน้าออเดอร์ · เช็ครายการ + แบบงานครบทุกชิ้น
+                </p>
+              </div>
+            )}
 
             {order.note && (
               <p className="mt-3 rounded border border-slate-300 bg-slate-50 p-3 text-sm">
