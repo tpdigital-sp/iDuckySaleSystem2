@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { currentActor, requirePerm } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
+import { notifyCustomer, orderLink } from "@/lib/server/notify";
 import { proofsOf, type Order, type OrderStatus } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
@@ -92,19 +93,29 @@ export async function PATCH(req: Request) {
   }
   if (!order?.id) return NextResponse.json({ error: "ไม่มีเลขออเดอร์" }, { status: 400 });
 
-  // ฝ่ายแพ็ค: ดึงออเดอร์เดิมมาเป็นฐาน แล้วทับเฉพาะฟิลด์งานแพ็ค (กันแก้ราคา/ที่อยู่/รายการ)
-  let toSave = order;
-  if (!mayEditFull) {
-    const { data: row, error: gErr } = await sb.from("orders").select("data").eq("id", order.id).single();
-    if (gErr || !row) return NextResponse.json({ error: "ไม่พบออเดอร์นี้" }, { status: 404 });
-    toSave = mergePackFields(row.data as Order, order, can(actor, "pack.ship"));
-  }
+  // ดึงออเดอร์เดิม — ฝ่ายแพ็คใช้เป็นฐาน merge · ทุกคนใช้เทียบสถานะเก่าเพื่อแจ้งเตือน
+  const { data: row, error: gErr } = await sb.from("orders").select("data").eq("id", order.id).single();
+  if (gErr || !row) return NextResponse.json({ error: "ไม่พบออเดอร์นี้" }, { status: 404 });
+  const existing = row.data as Order;
+  const oldStatus = existing.status;
+
+  let toSave = mayEditFull ? order : mergePackFields(existing, order, can(actor, "pack.ship"));
 
   // อย่าเก็บ signed URL ชั่วคราวลงฐาน — สลิปที่มี slipPath ต้องเซ็นใหม่ทุกครั้งที่ดึง
   if (toSave.slipPath) toSave = { ...toSave, slipUrl: undefined };
 
   const { error } = await sb.from("orders").update({ data: toSave }).eq("id", toSave.id);
-  return error
-    ? NextResponse.json({ error: error.message }, { status: 500 })
-    : NextResponse.json({ ok: true, order: toSave });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // แจ้งเตือนลูกค้าเมื่อสถานะเปลี่ยนไปขั้นสำคัญ (เงียบถ้ายังไม่ตั้งค่า LINE)
+  if (toSave.status !== oldStatus) {
+    const origin = new URL(req.url).origin;
+    const link = orderLink(origin, toSave);
+    if (toSave.status === "ชำระแล้ว")
+      void notifyCustomer(sb, toSave, `✅ ยืนยันการชำระเงินออเดอร์ ${toSave.id} แล้ว กำลังเริ่มงานให้ครับ\n${link}`);
+    else if (toSave.status === "จัดส่งแล้ว")
+      void notifyCustomer(sb, toSave, `🚚 ออเดอร์ ${toSave.id} จัดส่งแล้ว${toSave.tracking ? `\nเลขพัสดุ: ${toSave.tracking}` : ""}\n${link}`);
+  }
+
+  return NextResponse.json({ ok: true, order: toSave });
 }

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { proofsOf, withLog, type Order } from "@/lib/admin-data";
+import { notifyCustomer, orderLink } from "@/lib/server/notify";
 
 export const runtime = "nodejs";
 
@@ -87,6 +88,10 @@ export async function POST(req: Request) {
 
   const { error: saveErr } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
+
+  // แจ้งเตือนลูกค้าว่ามีแบบงานให้ตรวจ (เงียบถ้ายังไม่ตั้งค่า LINE)
+  const origin = new URL(req.url).origin;
+  void notifyCustomer(sb, updated, `🎨 แบบงานออเดอร์ ${updated.id} พร้อมให้คุณตรวจแล้ว\nดู/อนุมัติได้ที่: ${orderLink(origin, updated)}`);
 
   return NextResponse.json({ ok: true, order: updated });
 }
