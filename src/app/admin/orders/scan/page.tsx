@@ -160,7 +160,7 @@ export default function ScanTrackingPage() {
   const waiting = !target;
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-5xl">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className={h1}>📮 สถานีแพ็ค–ส่ง</h1>
