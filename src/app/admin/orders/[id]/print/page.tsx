@@ -161,11 +161,8 @@ export default function PrintOrderPage() {
         {/* ═══════════ ใบงาน + ใบปะหน้าพัสดุ (ใบเดียวจบ) ═══════════ */}
         {docs.work && (
           <section className="sheet rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-            {/* เลขออเดอร์ — หัวบนสุด (ย้ายออกจากมุมบาร์โค้ด) */}
-            <p className="font-mono text-xl font-extrabold tracking-tight text-slate-800">{order.id}</p>
-
-            {/* แถวบน: ผู้ส่ง | วิธีจัดส่ง + บาร์โค้ด */}
-            <div className="mt-2 flex items-start justify-between gap-6 border-b-2 border-slate-900 pb-3">
+            {/* แถวบน: ผู้ส่ง | วิธีจัดส่ง + บาร์โค้ด (เลขออเดอร์อยู่ในบาร์โค้ด + กล่องใบงานด้านล่างแล้ว) */}
+            <div className="flex items-start justify-between gap-6 border-b-2 border-slate-900 pb-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ผู้ส่ง / From</p>
                 <p className="mt-0.5 text-sm font-bold">{SHOP.legalName}</p>
