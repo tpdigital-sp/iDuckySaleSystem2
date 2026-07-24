@@ -10,11 +10,15 @@ import {
   hasPayment,
   freeShippingMinOf,
   shippingOf,
+  tiersConfigOf,
   DEFAULT_SHIPPING,
   EMPTY_PAYMENT,
   type ShopPayment,
   type ShippingMethod,
 } from "@/lib/shop-settings";
+import { getAccessToken } from "@/lib/customer-auth";
+import { paidSpend, tierForSpend, tierDiscountAmount } from "@/lib/tiers";
+import type { Order } from "@/lib/admin-data";
 import { appendToOrder, placeOrder, reportPayment } from "@/lib/order-repo";
 import { clearAppendTarget, getAppendTarget, type AppendTarget } from "@/lib/append-order";
 import { publicOrigin } from "@/lib/shop-info";
@@ -114,7 +118,25 @@ export default function CheckoutPage() {
   const freeShipping = freeMin > 0 && subtotal >= freeMin;
   // สั่งเพิ่มในออเดอร์เดิม → ไม่คิดค่าส่งซ้ำ (จ่ายไปแล้วในออเดอร์แรก)
   const shippingCost = appendTo ? 0 : freeShipping ? 0 : shippingMethod.price;
-  const total = subtotal + shippingCost;
+
+  // ── ส่วนลดระดับสมาชิก (โชว์เป็นตัวอย่าง — เซิร์ฟเวอร์คิดจริงตอนสร้างออเดอร์) ──
+  const [tier, setTier] = useState<{ name: string; icon: string; pct: number } | null>(null);
+  useEffect(() => {
+    if (!customer || appendTo) { setTier(null); return; } // สั่งเพิ่มไม่คิดส่วนลดใหม่
+    (async () => {
+      const token = await getAccessToken();
+      const [ordRes, sett] = await Promise.all([
+        fetch("/api/orders/mine", { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
+        fetchShopPayment(),
+      ]);
+      const spend = paidSpend((ordRes.orders ?? []) as Order[]);
+      const t = tierForSpend(spend, tiersConfigOf(sett));
+      setTier(t.discountPct > 0 ? { name: t.name, icon: t.icon, pct: t.discountPct } : null);
+    })();
+  }, [customer, appendTo]);
+
+  const discount = tier ? tierDiscountAmount(subtotal, tier.pct) : 0;
+  const total = Math.max(0, subtotal - discount + shippingCost);
 
   async function submit() {
     const orderItems = items.map((it) => ({
@@ -407,6 +429,12 @@ export default function CheckoutPage() {
       {/* สรุปยอด */}
       <div className="mt-5 rounded-2xl bg-amber-50/70 p-4 ring-1 ring-amber-200">
         <div className="flex justify-between text-sm text-stone-600"><span>รวมสินค้า ({totalQty} ชิ้น)</span><span>{formatPrice(subtotal)}</span></div>
+        {tier && discount > 0 && (
+          <div className="mt-1 flex justify-between text-sm font-semibold text-emerald-600">
+            <span>{tier.icon} ส่วนลดสมาชิก {tier.name} ({tier.pct}%)</span>
+            <span>−{formatPrice(discount)}</span>
+          </div>
+        )}
         <div className="mt-1 flex justify-between text-sm text-stone-600">
           <span>ค่าจัดส่ง{appendTo ? "" : ` (${shippingMethod.name})`}</span>
           <span>{appendTo ? "รวมกับออเดอร์เดิมแล้ว" : freeShipping ? "ฟรี" : formatPrice(shippingCost)}</span>

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatPrice } from "@/lib/products";
 import { orderBalance, orderTotal, STATUS_STYLES, type Order } from "@/lib/admin-data";
+import { fetchShopPayment, tiersConfigOf } from "@/lib/shop-settings";
+import { nextTier, paidSpend, tierForSpend, type Tier } from "@/lib/tiers";
 import { useCustomer } from "@/lib/customer-context";
 import { getAccessToken, signOut } from "@/lib/customer-auth";
 
@@ -15,6 +17,7 @@ export default function AccountPage() {
   const router = useRouter();
   const { customer, loading } = useCustomer();
   const [orders, setOrders] = useState<Order[] | null>(null);
+  const [tierList, setTierList] = useState<Tier[] | null>(null);
 
   useEffect(() => {
     if (!loading && !customer) router.replace("/account/login");
@@ -24,9 +27,12 @@ export default function AccountPage() {
     if (!customer) return;
     (async () => {
       const token = await getAccessToken();
-      const res = await fetch("/api/orders/mine", { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" });
-      const data = await res.json().catch(() => ({}));
-      setOrders(data.orders ?? []);
+      const [res, sett] = await Promise.all([
+        fetch("/api/orders/mine", { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
+        fetchShopPayment(),
+      ]);
+      setOrders(res.orders ?? []);
+      setTierList(tiersConfigOf(sett));
     })();
   }, [customer]);
 
@@ -42,6 +48,12 @@ export default function AccountPage() {
   const latest = orders?.[0];
   const displayName = customer.name || "สมาชิก";
 
+  // ── ระดับสมาชิก ──
+  const spend = orders ? paidSpend(orders) : 0;
+  const tier = orders && tierList ? tierForSpend(spend, tierList) : null;
+  const next = orders && tierList ? nextTier(spend, tierList) : null;
+  const progressPct = next && next.minSpend > 0 ? Math.min(100, Math.round((spend / next.minSpend) * 100)) : 100;
+
   return (
     <div className="mx-auto max-w-md px-4 py-10">
       {/* ── หัว: โปรไฟล์ ── */}
@@ -54,6 +66,37 @@ export default function AccountPage() {
           <p className="truncate text-xs text-stone-500">{customer.email}</p>
         </div>
       </div>
+
+      {/* ── ระดับสมาชิก ── */}
+      {tier && (
+        <div className="mt-5 rounded-2xl bg-gradient-to-br from-amber-100 to-amber-50 p-4 ring-1 ring-amber-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-amber-500">ระดับสมาชิก</p>
+              <p className="text-lg font-extrabold text-amber-950">
+                {tier.icon} {tier.name}
+                {tier.discountPct > 0 && <span className="ml-1 text-sm font-bold text-emerald-600">ลด {tier.discountPct}%</span>}
+              </p>
+            </div>
+            <p className="text-right text-xs text-amber-700">
+              ยอดสะสม
+              <span className="block text-base font-extrabold text-amber-950">{formatPrice(spend)}</span>
+            </p>
+          </div>
+          {next ? (
+            <div className="mt-3">
+              <div className="h-2 overflow-hidden rounded-full bg-white/70">
+                <div className="h-full rounded-full bg-amber-400 transition-all" style={{ width: `${progressPct}%` }} />
+              </div>
+              <p className="mt-1.5 text-[11px] text-amber-700">
+                อีก <strong>{formatPrice(Math.max(0, next.minSpend - spend))}</strong> ขึ้นระดับ {next.icon} {next.name} (ลด {next.discountPct}%)
+              </p>
+            </div>
+          ) : (
+            <p className="mt-2 text-[11px] font-bold text-amber-700">🎉 คุณอยู่ระดับสูงสุดแล้ว!</p>
+          )}
+        </div>
+      )}
 
       {/* ── ออเดอร์ล่าสุด (ไฮไลต์) ── */}
       {orders === null ? (

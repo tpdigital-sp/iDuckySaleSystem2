@@ -10,16 +10,18 @@ import {
   freeShippingMinOf,
   persistShopPayment,
   shippingOf,
+  tiersConfigOf,
   type BankAccount,
   type ShippingMethod,
   type ShopPayment,
 } from "@/lib/shop-settings";
+import { DEFAULT_TIERS, type Tier } from "@/lib/tiers";
 import { btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
 
 const newId = (p = "b") =>
   typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${p}-${Date.now()}-${Math.floor(Math.random() * 1e4)}`;
 
-type Tab = "pay" | "ship";
+type Tab = "pay" | "ship" | "tier";
 
 function AdminSettingsPageInner() {
   const [tab, setTab] = useState<Tab>("pay");
@@ -34,6 +36,9 @@ function AdminSettingsPageInner() {
   const [shipping, setShipping] = useState<ShippingMethod[]>([]);
   const [freeMin, setFreeMin] = useState<number>(0);
 
+  // ── ระดับสมาชิก ──
+  const [tiers, setTiers] = useState<Tier[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -47,6 +52,7 @@ function AdminSettingsPageInner() {
       setNote(p.note ?? "");
       setShipping(shippingOf(p));
       setFreeMin(freeShippingMinOf(p));
+      setTiers(tiersConfigOf(p));
       setLoading(false);
     });
   }, []);
@@ -104,6 +110,10 @@ function AdminSettingsPageInner() {
       note: note.trim() || undefined,
       shipping: cleanShipping,
       freeShippingMin: Number(freeMin) || 0,
+      tiers: tiers
+        .map((t) => ({ ...t, name: t.name.trim(), minSpend: Number(t.minSpend) || 0, discountPct: Number(t.discountPct) || 0 }))
+        .filter((t) => t.name)
+        .sort((a, b) => a.minSpend - b.minSpend),
     };
     const res = await persistShopPayment(payload);
     setSaving(false);
@@ -130,6 +140,7 @@ function AdminSettingsPageInner() {
           [
             ["pay", "🏦 ชำระเงิน"],
             ["ship", "🚚 การจัดส่ง"],
+            ["tier", "🏅 ระดับสมาชิก"],
           ] as [Tab, string][]
         ).map(([k, label]) => (
           <button
@@ -341,10 +352,95 @@ function AdminSettingsPageInner() {
             </>
           )}
 
+          {/* ══════ ระดับสมาชิก ══════ */}
+          {tab === "tier" && (
+            <section className={`mt-4 p-5 ${card}`}>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-slate-800">🏅 ระดับสมาชิก ({tiers.length})</h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTiers([...tiers, { id: newId("t"), name: "", icon: "🎖", minSpend: 0, discountPct: 0 }]);
+                    touch();
+                  }}
+                  className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100"
+                >
+                  ＋ เพิ่มระดับ
+                </button>
+              </div>
+              <p className={`mt-1 text-xs ${faint}`}>
+                ลูกค้าสะสมยอด "จ่ายจริง" ตลอดชีพ ถึงขั้นต่ำของระดับไหน → ได้ส่วนลด % นั้นอัตโนมัติทุกออเดอร์ (คิดจากราคาสินค้าก่อนค่าส่ง)
+              </p>
+
+              {/* หัวตาราง */}
+              <div className="mt-3 hidden grid-cols-[3rem_1fr_8rem_6rem_2.5rem] gap-2 px-1 text-[11px] font-bold text-slate-400 sm:grid">
+                <span>ไอคอน</span>
+                <span>ชื่อระดับ</span>
+                <span className="text-right">ยอดสะสม ≥</span>
+                <span className="text-right">ลด %</span>
+                <span />
+              </div>
+              <div className="mt-1 space-y-2">
+                {tiers.map((t, i) => (
+                  <div key={t.id} className="grid grid-cols-[3rem_1fr_8rem_6rem_2.5rem] items-center gap-2">
+                    <input
+                      value={t.icon}
+                      onChange={(e) => { setTiers(tiers.map((x, j) => (j === i ? { ...x, icon: e.target.value } : x))); touch(); }}
+                      className={`${inputCls} text-center`}
+                      maxLength={2}
+                    />
+                    <input
+                      value={t.name}
+                      placeholder="ชื่อระดับ"
+                      onChange={(e) => { setTiers(tiers.map((x, j) => (j === i ? { ...x, name: e.target.value } : x))); touch(); }}
+                      className={inputCls}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      value={t.minSpend}
+                      onChange={(e) => { setTiers(tiers.map((x, j) => (j === i ? { ...x, minSpend: Number(e.target.value) } : x))); touch(); }}
+                      className={`${inputCls} text-right tabular-nums`}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={t.discountPct}
+                      onChange={(e) => { setTiers(tiers.map((x, j) => (j === i ? { ...x, discountPct: Number(e.target.value) } : x))); touch(); }}
+                      className={`${inputCls} text-right tabular-nums`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setTiers(tiers.filter((_, j) => j !== i)); touch(); }}
+                      className="grid h-9 place-items-center rounded-lg text-rose-500 hover:bg-rose-50"
+                      aria-label="ลบระดับ"
+                    >
+                      🗑
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {tiers.length === 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setTiers(DEFAULT_TIERS.map((d) => ({ ...d }))); touch(); }}
+                  className="mt-3 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  ↩︎ ใช้ค่าเริ่มต้น (5 ระดับ 🥉→👑)
+                </button>
+              )}
+              <p className={`mt-3 text-xs ${faint}`}>
+                💡 ควรมีระดับเริ่มต้นที่ยอด 0 · ลด 0% (สมาชิกใหม่) และเรียงยอดจากน้อยไปมาก · ระบบจะเรียงให้อัตโนมัติตอนบันทึก
+              </p>
+            </section>
+          )}
+
           {error && <div className="mt-4 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{error}</div>}
 
           <div className="mt-5 flex items-center justify-between gap-3">
-            <p className={`text-xs ${faint}`}>บันทึกครั้งเดียวมีผลทั้ง 2 แท็บ</p>
+            <p className={`text-xs ${faint}`}>บันทึกครั้งเดียวมีผลทุกแท็บ</p>
             <button type="button" onClick={save} disabled={saving} className={`${btnPrimary} ${saved ? "!bg-emerald-600" : ""}`}>
               {saving ? "กำลังบันทึก…" : saved ? "✓ บันทึกแล้ว" : "💾 บันทึก"}
             </button>

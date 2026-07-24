@@ -122,6 +122,12 @@ export default function CustomerReceiptPage() {
               <span>ค่าจัดส่ง ({order.shipping})</span>
               <span className="tabular-nums">{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
             </div>
+            {order.discount && order.discount.amount > 0 && (
+              <div className="flex justify-between font-semibold text-emerald-600">
+                <span>ส่วนลดสมาชิก {order.discount.tier} ({order.discount.pct}%)</span>
+                <span className="tabular-nums">−{formatPrice(order.discount.amount)}</span>
+              </div>
+            )}
             <div className="flex justify-between border-t border-stone-200 pt-2 text-base font-extrabold text-amber-950">
               <span>ยอดรวมทั้งสิ้น</span>
               <span className="tabular-nums">{formatPrice(orderTotal(order))}</span>

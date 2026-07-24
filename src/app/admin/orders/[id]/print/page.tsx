@@ -341,6 +341,12 @@ export default function PrintOrderPage() {
                 <span className="text-slate-500">ค่าจัดส่ง</span>
                 <span className="tabular-nums">{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
               </div>
+              {order.discount && order.discount.amount > 0 && (
+                <div className="flex justify-between py-1 text-emerald-600">
+                  <span>ส่วนลด {order.discount.tier} ({order.discount.pct}%)</span>
+                  <span className="tabular-nums">−{formatPrice(order.discount.amount)}</span>
+                </div>
+              )}
               <div className="mt-1 flex justify-between border-t-2 border-slate-900 py-1.5 text-base font-extrabold">
                 <span>ยอดรวมทั้งสิ้น</span>
                 <span className="tabular-nums">{formatPrice(orderTotal(order))}</span>

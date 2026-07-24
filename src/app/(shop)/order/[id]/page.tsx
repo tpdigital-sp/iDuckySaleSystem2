@@ -400,6 +400,12 @@ export default function CustomerOrderPage() {
               <span className="text-stone-500">ค่าจัดส่ง ({order.shipping})</span>
               <span>{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
             </div>
+            {order.discount && order.discount.amount > 0 && (
+              <div className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
+                <span>ส่วนลดสมาชิก {order.discount.tier} ({order.discount.pct}%)</span>
+                <span>−{formatPrice(order.discount.amount)}</span>
+              </div>
+            )}
             <div className="mt-2.5 flex justify-between border-t border-stone-100 pt-2.5 text-base font-extrabold text-amber-950">
               <span>ยอดรวม</span>
               <span className="text-amber-600">{formatPrice(orderTotal(order))}</span>

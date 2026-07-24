@@ -699,6 +699,12 @@ export default function AdminOrderDetailPage() {
                 <span className={muted}>ค่าจัดส่ง</span>
                 <span>{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
               </div>
+              {order.discount && order.discount.amount > 0 && (
+                <div className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
+                  <span>ส่วนลด {order.discount.tier} ({order.discount.pct}%)</span>
+                  <span>−{formatPrice(order.discount.amount)}</span>
+                </div>
+              )}
               <div className="mt-2.5 flex justify-between border-t border-slate-100 pt-2.5 font-bold text-slate-900">
                 <span>ยอดรวม</span>
                 <span>{formatPrice(orderTotal(order))}</span>
