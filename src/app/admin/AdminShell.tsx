@@ -29,6 +29,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   // สิทธิ์ + ตำแหน่งของผู้ใช้ที่ล็อกอินอยู่ (ส่งต่อให้ทุกหน้าใต้ /admin)
   const [perms, setPerms] = useState<Perm[]>([]);
   const [roleName, setRoleName] = useState("");
+  const [userName, setUserName] = useState(""); // ชื่อคนที่ล็อกอินอยู่
 
   const isLoginPage = pathname === "/admin/login";
 
@@ -40,6 +41,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       setConfigured(s.configured);
       setPerms(s.perms ?? []);
       setRoleName(s.role ?? "");
+      setUserName(s.name ?? "");
       const ok = !s.configured || s.loggedIn;
       setAllowed(ok);
       // เก็บปลายทางเดิม (เช่น ลิงก์ลึก ?order=) ไว้ใน ?next= เพื่อพากลับหลังล็อกอิน
@@ -78,6 +80,21 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
     .sort((a, b) => b.length - a.length)[0];
 
+  /** การ์ดบอกว่าใครล็อกอินอยู่ + แผนกไหน (ทีมงานใช้เครื่องร่วมกัน ต้องเห็นชัดว่าเป็นใคร) */
+  const userCard = userName ? (
+    <div className="flex items-center gap-2.5 rounded-xl bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200/70">
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ducky text-sm font-bold text-slate-800">
+        {userName.trim().charAt(0) || "?"}
+      </span>
+      <span className="min-w-0 leading-tight">
+        <span className="block truncate text-sm font-bold text-slate-800" title={userName}>
+          {userName}
+        </span>
+        {roleName && <span className="block truncate text-[11px] text-slate-500">{roleName}</span>}
+      </span>
+    </div>
+  ) : null;
+
   const nav = (
     <nav className="space-y-0.5">
       {menu.map((m) => {
@@ -110,11 +127,12 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-ducky text-xl shadow-sm">🦆</span>
           <span className="leading-tight">
             <span className="block text-sm font-bold text-slate-900">iDucky Admin</span>
-            <span className="block text-[11px] text-slate-400">{roleName || "ระบบหลังบ้าน"}</span>
+            <span className="block text-[11px] text-slate-400">ระบบหลังบ้าน</span>
           </span>
         </Link>
         {nav}
         <div className="mt-auto space-y-0.5 border-t border-slate-100 pt-2">
+          {userCard && <div className="mb-1.5">{userCard}</div>}
           <Link
             href="/"
             className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
@@ -154,6 +172,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           <div className="border-b border-slate-200 bg-white p-3 md:hidden">
             {nav}
             <div className="mt-1 border-t border-slate-100 pt-1">
+              {userCard && <div className="mb-1.5">{userCard}</div>}
               <Link
                 href="/"
                 onClick={() => setOpen(false)}
