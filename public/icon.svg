@@ -1,4 +1,39 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <rect width="128" height="128" rx="28" fill="#ffd43b"/>
-  <text x="64" y="82" font-size="64" text-anchor="middle">🦆</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="62%">
+      <stop offset="0%" stop-color="#93d8de"/>
+      <stop offset="100%" stop-color="#47afbb"/>
+    </radialGradient>
+    <linearGradient id="head" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fdf7d6"/>
+      <stop offset="100%" stop-color="#fbe29c"/>
+    </linearGradient>
+    <linearGradient id="bill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f5964d"/>
+      <stop offset="100%" stop-color="#e75f1b"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="50" cy="50" r="50" fill="url(#bg)"/>
+
+  <!-- ขนหัว (tuft) -->
+  <path d="M40 24 q3 -11 8 -3 q3 -9 8 -1 q3 -8 7 1 q-3 9 -11 9 q-8 0 -12 -5z" fill="#fdf7d6"/>
+
+  <!-- หัวเป็ด -->
+  <path d="M50 20 c20 0 31 16 31 34 c0 17 -14 29 -31 29 c-17 0 -31 -12 -31 -29 c0 -18 11 -34 31 -34z" fill="url(#head)"/>
+
+  <!-- แก้มชมพู -->
+  <ellipse cx="28" cy="63" rx="8.5" ry="6" fill="#f2a0b6"/>
+  <ellipse cx="72" cy="63" rx="8.5" ry="6" fill="#f2a0b6"/>
+
+  <!-- ตาขวา (ลืม) -->
+  <ellipse cx="63.5" cy="50" rx="4.6" ry="6.6" fill="#4a2c1a"/>
+
+  <!-- ตาซ้าย (หลิ่ว) -->
+  <path d="M31 52 q6.5 6 13 0" fill="none" stroke="#4a2c1a" stroke-width="3.4" stroke-linecap="round"/>
+
+  <!-- ปาก -->
+  <path d="M50 57 c6 -3 22 1 22 10 c0 6 -10 10 -22 10 c-12 0 -22 -4 -22 -10 c0 -9 16 -13 22 -10z" fill="url(#bill)"/>
+  <circle cx="44" cy="68.5" r="1.7" fill="#c9531a"/>
+  <circle cx="56" cy="68.5" r="1.7" fill="#c9531a"/>
 </svg>
