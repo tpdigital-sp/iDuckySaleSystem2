@@ -19,7 +19,7 @@ import {
 } from "@/lib/admin-data";
 import { fetchOrdersAdmin, saveOrderAdmin, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
-import { card, faint, muted } from "@/lib/admin-ui";
+import { card, faint, muted, shortTime } from "@/lib/admin-ui";
 import ImageLightbox from "@/components/ImageLightbox";
 import PackCheckPanel from "@/components/PackCheckPanel";
 import { useActor, useCan } from "@/lib/perm-context";
@@ -192,6 +192,24 @@ export default function AdminOrderDetailPage() {
       { ...order, items },
       actor,
       acked ? "ยกเลิกยืนยันอ่านรายละเอียด" : "ยืนยันอ่านรายละเอียดแล้ว",
+      item?.name
+    );
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
+
+  /** กราฟฟิกยืนยันว่าอ่านรายละเอียดรายการแล้ว (ก่อนทำแบบงาน) · กดซ้ำ = ยกเลิก */
+  function toggleGraphicAck(itemIndex: number) {
+    if (!order) return;
+    const item = order.items[itemIndex];
+    const acked = !!item?.graphicAck;
+    const items = order.items.map((it, i) =>
+      i === itemIndex ? { ...it, graphicAck: acked ? undefined : { by: actor, at: new Date().toISOString() } } : it
+    );
+    const next = withLog(
+      { ...order, items },
+      actor,
+      acked ? "กราฟฟิกยกเลิกยืนยันอ่านรายละเอียด" : "กราฟฟิกยืนยันอ่านรายละเอียดแล้ว",
       item?.name
     );
     setOrder(next);
@@ -458,8 +476,28 @@ export default function AdminOrderDetailPage() {
                     </span>
                   </div>
 
-                  {/* รายละเอียด (ตัวเลือก) — อ่านอย่างเดียว · การยืนยันอ่านย้ายไปโหมดแพ็คแล้ว */}
+                  {/* รายละเอียด (ตัวเลือก) + ยืนยันอ่านของกราฟฟิก (การยืนยันของแพ็คอยู่ในโหมดแพ็ค) */}
                   {it.selections && <p className={`mt-1 text-xs ${faint}`}>{it.selections}</p>}
+                  {mayProof && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleGraphicAck(i)}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                          it.graphicAck
+                            ? "bg-violet-600 text-white hover:bg-violet-700"
+                            : "border border-slate-300 bg-white text-slate-600 hover:border-violet-400 hover:text-violet-700"
+                        }`}
+                      >
+                        {it.graphicAck ? "✅ กราฟฟิกอ่านรายละเอียดแล้ว" : "☐ ยืนยันว่าอ่านรายละเอียดแล้ว (กราฟฟิก)"}
+                      </button>
+                      {it.graphicAck && (
+                        <span className="text-[10px] text-slate-400">
+                          {it.graphicAck.by} · {shortTime(it.graphicAck.at)}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     {it.proofStatus ? (

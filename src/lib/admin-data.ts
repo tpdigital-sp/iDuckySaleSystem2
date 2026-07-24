@@ -124,6 +124,8 @@ export interface OrderItem {
   proofUpdatedAt?: string;
   /** พนักงานแพ็คยืนยันว่าอ่านรายละเอียดรายการนี้แล้ว — ต้องมีก่อนยิงเลขพัสดุ */
   noteAck?: { by: string; at: string };
+  /** กราฟฟิกยืนยันว่าอ่านรายละเอียดรายการนี้แล้ว (ก่อนทำแบบงาน) — audit trail */
+  graphicAck?: { by: string; at: string };
 }
 
 export interface Order {
