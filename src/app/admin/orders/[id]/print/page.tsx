@@ -310,12 +310,7 @@ export default function PrintOrderPage() {
               />
             )}
 
-            <div className="mt-5 flex flex-wrap gap-8 text-xs text-slate-500">
-              <p>ผู้ผลิต ............................. วันที่ ..............</p>
-              <p>ผู้ตรวจ ............................. วันที่ ..............</p>
-              <p>ผู้แพ็ค ............................. วันที่ ..............</p>
-            </div>
-            <p className="mt-3 text-right text-[10px] text-slate-400">พิมพ์เมื่อ {printedAt}</p>
+            <p className="mt-4 text-right text-[10px] text-slate-400">พิมพ์เมื่อ {printedAt}</p>
           </section>
         )}
 
