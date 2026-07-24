@@ -824,6 +824,149 @@ export default function AdminOrderDetailPage() {
  * ของแต่ละรายการ + รูปเทียบใหญ่ + 2 ปุ่มยืนยัน + ยิงเลขพัสดุ (ล็อกจนตรวจครบ)
  * ตัดออก: ราคา · ลิงก์ลูกค้า · ปุ่มปริ้น · แก้ไข/ลบแบบ · log ยาว
  */
+/**
+ * แกลเลอรีปัดดูรูปแบบงาน (สำหรับหน้าแพ็คมือถือ) — ทีละรูป กด "ครบ" เลื่อนไปรูปถัดไปที่ยังไม่ตรวจ
+ * มีตัวนับ "ตรวจแล้ว N/M" กันลืม · "ไม่ครบ" เปิดรูปใหญ่ให้กรอกจำนวนที่ได้จริง
+ */
+function ProofCarousel({
+  itemIndex,
+  itemName,
+  proofs,
+  onCheck,
+  onZoom,
+}: {
+  itemIndex: number;
+  itemName: string;
+  proofs: Proof[];
+  onCheck: (i: number, j: number, status: "ครบ" | "ไม่ครบ", got?: number) => void;
+  onZoom: (i: number, j: number) => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [current, setCurrent] = useState(0);
+  const checked = proofs.filter((p) => p.pack).length;
+
+  const goTo = (idx: number) => {
+    const sc = scrollRef.current;
+    // ใช้ children ตรง ๆ (เสถียรกว่า inline ref ที่ถูกล้างชั่วขณะตอน re-render)
+    const el = sc?.children[idx] as HTMLElement | undefined;
+    if (!sc || !el) return;
+    // ระยะจากขอบซ้ายของ container ถึงขอบซ้ายของสไลด์ (viewport px) → บวกกับ scroll ปัจจุบัน
+    const delta = el.getBoundingClientRect().left - sc.getBoundingClientRect().left;
+    // ใช้ 'auto' (เด้งทันที) — 'smooth' โดน scroll-snap-mandatory ดึงกลับ 0
+    sc.scrollTo({ left: sc.scrollLeft + delta, behavior: "auto" });
+  };
+
+  // อัปเดตจุดบอกตำแหน่งตามการปัด
+  const onScroll = () => {
+    const sc = scrollRef.current;
+    if (!sc) return;
+    const idx = Math.round(sc.scrollLeft / sc.clientWidth);
+    setCurrent(Math.max(0, Math.min(proofs.length - 1, idx)));
+  };
+
+  const handleOk = (j: number) => {
+    onCheck(itemIndex, j, "ครบ");
+    // เลื่อนไปรูปถัดไปที่ยังไม่ตรวจ (วน หา k != j ที่ยังไม่มีผล)
+    const order = [...proofs.keys()].filter((k) => k !== j);
+    const nextUnchecked = order.find((k) => k > j && !proofs[k].pack) ?? order.find((k) => !proofs[k].pack);
+    if (nextUnchecked != null) setTimeout(() => goTo(nextUnchecked), 120);
+  };
+
+  // รูปเดียว — ไม่ต้องปัด แสดงเต็ม
+  const single = proofs.length === 1;
+
+  return (
+    <div>
+      {!single && (
+        <div className="mb-1.5 flex items-center justify-between text-xs">
+          <span className={`font-bold ${checked === proofs.length ? "text-green-600" : "text-slate-500"}`}>
+            ตรวจแล้ว {checked}/{proofs.length} รูป
+          </span>
+          <span className="text-slate-400">← ปัดดูรูป →</span>
+        </div>
+      )}
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className={`proof-carousel flex gap-2 ${single ? "" : "snap-x snap-mandatory overflow-x-auto"}`}
+      >
+        {proofs.map((p, j) => (
+          <div
+            key={`${p.url}-${j}`}
+            className={`${single ? "w-full" : "w-full shrink-0 snap-center"} overflow-hidden rounded-xl ring-1 ${
+              p.pack?.status === "ครบ"
+                ? "ring-green-300"
+                : p.pack?.status === "ไม่ครบ"
+                  ? "ring-rose-300"
+                  : "ring-slate-200"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => onZoom(itemIndex, j)}
+              className="relative block aspect-[4/3] w-full bg-slate-50"
+              aria-label={`ดูแบบงาน ${itemName} รูปที่ ${j + 1} เต็มจอ`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={p.url} alt={`แบบงาน ${itemName}`} className="h-full w-full object-contain" />
+              {p.qty ? (
+                <span className="absolute left-1.5 top-1.5 rounded bg-slate-900/70 px-2 py-0.5 text-xs font-bold text-white">
+                  {p.qty} ชิ้น
+                </span>
+              ) : null}
+              {!single && (
+                <span className="absolute right-1.5 top-1.5 rounded bg-slate-900/60 px-2 py-0.5 text-xs font-bold text-white">
+                  {j + 1}/{proofs.length}
+                </span>
+              )}
+              <span className="absolute bottom-1.5 right-1.5 rounded bg-slate-900/60 px-2 py-0.5 text-[11px] text-white">
+                🔍 ดูใหญ่
+              </span>
+            </button>
+            <div className="flex">
+              <button
+                type="button"
+                onClick={() => handleOk(j)}
+                className={`flex-1 py-3 text-base font-bold ${
+                  p.pack?.status === "ครบ" ? "bg-green-600 text-white" : "bg-slate-50 text-slate-500"
+                }`}
+              >
+                ✓ ครบ
+              </button>
+              {/* ไม่ครบต้องกรอกจำนวน → เปิดรูปใหญ่ให้กรอกในแผงตรวจนับ */}
+              <button
+                type="button"
+                onClick={() => onZoom(itemIndex, j)}
+                className={`flex-1 border-l border-white py-3 text-base font-bold ${
+                  p.pack?.status === "ไม่ครบ" ? "bg-rose-600 text-white" : "bg-slate-50 text-slate-500"
+                }`}
+              >
+                {p.pack?.status === "ไม่ครบ" ? `⚠️ ได้ ${p.pack.got ?? 0}` : "✕ ไม่ครบ"}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* จุดบอกตำแหน่ง + สถานะแต่ละรูป */}
+      {!single && (
+        <div className="mt-2 flex justify-center gap-1.5">
+          {proofs.map((p, j) => (
+            <button
+              key={j}
+              type="button"
+              onClick={() => goTo(j)}
+              aria-label={`ไปรูปที่ ${j + 1}`}
+              className={`h-2 rounded-full transition-all ${
+                j === current ? "w-5" : "w-2"
+              } ${p.pack?.status === "ครบ" ? "bg-green-500" : p.pack?.status === "ไม่ครบ" ? "bg-rose-500" : "bg-slate-300"}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PackView({
   order,
   gate,
@@ -874,61 +1017,9 @@ function PackView({
                 </span>
               </div>
 
-              {/* รูปแบบงานใหญ่ + ปุ่มยืนยันใต้รูป */}
+              {/* รูปแบบงาน — ปัดดูทีละรูป กด "ครบ" แล้วเลื่อนไปรูปถัดไปที่ยังไม่ตรวจ */}
               {proofs.length > 0 ? (
-                <div className="grid grid-cols-2 gap-2">
-                  {proofs.map((p, j) => (
-                    <div
-                      key={`${p.url}-${j}`}
-                      className={`overflow-hidden rounded-xl ring-1 ${
-                        p.pack?.status === "ครบ"
-                          ? "ring-green-300"
-                          : p.pack?.status === "ไม่ครบ"
-                            ? "ring-rose-300"
-                            : "ring-slate-200"
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => onZoom(i, j)}
-                        className="relative block aspect-[4/3] w-full bg-slate-50"
-                        aria-label={`ดูแบบงาน ${it.name} รูปที่ ${j + 1} เต็มจอ`}
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={p.url} alt={`แบบงาน ${it.name}`} className="h-full w-full object-contain" />
-                        {p.qty ? (
-                          <span className="absolute left-1 top-1 rounded bg-slate-900/70 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                            {p.qty} ชิ้น
-                          </span>
-                        ) : null}
-                        <span className="absolute bottom-1 right-1 rounded bg-slate-900/60 px-1.5 py-0.5 text-[10px] text-white">
-                          🔍 ดูใหญ่
-                        </span>
-                      </button>
-                      <div className="flex">
-                        <button
-                          type="button"
-                          onClick={() => onCheck(i, j, "ครบ")}
-                          className={`flex-1 py-2.5 text-sm font-bold ${
-                            p.pack?.status === "ครบ" ? "bg-green-600 text-white" : "bg-slate-50 text-slate-500"
-                          }`}
-                        >
-                          ✓ ครบ
-                        </button>
-                        {/* ไม่ครบต้องกรอกจำนวน → เปิดรูปใหญ่ให้กรอกในแผงตรวจนับ */}
-                        <button
-                          type="button"
-                          onClick={() => onZoom(i, j)}
-                          className={`flex-1 border-l border-white py-2.5 text-sm font-bold ${
-                            p.pack?.status === "ไม่ครบ" ? "bg-rose-600 text-white" : "bg-slate-50 text-slate-500"
-                          }`}
-                        >
-                          {p.pack?.status === "ไม่ครบ" ? `⚠️ ได้ ${p.pack.got ?? 0}` : "✕ ไม่ครบ"}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <ProofCarousel itemIndex={i} itemName={it.name} proofs={proofs} onCheck={onCheck} onZoom={onZoom} />
               ) : (
                 <p className="rounded-xl bg-slate-50 px-3 py-4 text-center text-xs text-slate-400 ring-1 ring-slate-200">
                   ยังไม่มีรูปแบบงาน
