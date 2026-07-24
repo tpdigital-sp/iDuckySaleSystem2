@@ -9,6 +9,7 @@ import { fetchShopPayment, tiersConfigOf } from "@/lib/shop-settings";
 import { nextTier, paidSpend, tierForSpend, type Tier } from "@/lib/tiers";
 import { useCustomer } from "@/lib/customer-context";
 import { getAccessToken, signOut } from "@/lib/customer-auth";
+import MyCoupons from "@/components/MyCoupons";
 
 /** ลิงก์เปิดหน้าเช็คออเดอร์ (ต้องมี key ถึงเปิดได้) */
 const orderHref = (o: Order) => `/order/${encodeURIComponent(o.id)}${o.key ? `?key=${encodeURIComponent(o.key)}` : ""}`;
@@ -37,7 +38,7 @@ export default function AccountPage() {
   }, [customer]);
 
   if (loading || !customer) {
-    return <div className="mx-auto max-w-md px-4 py-16 text-center text-sm text-stone-400">กำลังโหลด…</div>;
+    return <div className="mx-auto max-w-3xl px-4 py-16 text-center text-sm text-stone-400">กำลังโหลด…</div>;
   }
 
   async function logout() {
@@ -55,7 +56,7 @@ export default function AccountPage() {
   const progressPct = next && next.minSpend > 0 ? Math.min(100, Math.round((spend / next.minSpend) * 100)) : 100;
 
   return (
-    <div className="mx-auto max-w-md px-4 py-10">
+    <div className="mx-auto max-w-3xl px-4 py-10">
       {/* ── หัว: โปรไฟล์ ── */}
       <div className="flex items-center gap-3">
         <div className="grid h-14 w-14 place-items-center rounded-full bg-amber-100 text-xl font-bold text-amber-700">
@@ -67,9 +68,11 @@ export default function AccountPage() {
         </div>
       </div>
 
+      {/* ── สรุป: ระดับสมาชิก + ออเดอร์ล่าสุด (2 คอลัมน์บนจอกว้าง) ── */}
+      <div className="mt-6 grid items-start gap-4 md:grid-cols-2">
       {/* ── ระดับสมาชิก ── */}
       {tier && (
-        <div className="mt-5 rounded-2xl bg-gradient-to-br from-amber-100 to-amber-50 p-4 ring-1 ring-amber-200">
+        <div className="rounded-2xl bg-gradient-to-br from-amber-100 to-amber-50 p-4 ring-1 ring-amber-200">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-widest text-amber-500">ระดับสมาชิก</p>
@@ -100,11 +103,11 @@ export default function AccountPage() {
 
       {/* ── ออเดอร์ล่าสุด (ไฮไลต์) ── */}
       {orders === null ? (
-        <div className="mt-6 rounded-2xl bg-white p-6 text-center text-sm text-stone-400 ring-1 ring-amber-100">กำลังโหลด…</div>
+        <div className="rounded-2xl bg-white p-6 text-center text-sm text-stone-400 ring-1 ring-amber-100">กำลังโหลด…</div>
       ) : latest ? (
         <Link
           href={orderHref(latest)}
-          className="mt-6 block rounded-2xl bg-white p-4 ring-1 ring-amber-100 transition hover:ring-amber-300"
+          className="block rounded-2xl bg-white p-4 ring-1 ring-amber-100 transition hover:ring-amber-300"
         >
           <p className="text-xs font-bold uppercase tracking-widest text-stone-400">ออเดอร์ล่าสุด</p>
           <div className="mt-1 flex items-center justify-between gap-2">
@@ -126,7 +129,7 @@ export default function AccountPage() {
           </div>
         </Link>
       ) : (
-        <div className="mt-6 rounded-2xl bg-white p-6 text-center ring-1 ring-amber-100">
+        <div className="rounded-2xl bg-white p-6 text-center ring-1 ring-amber-100">
           <span className="text-3xl">🧾</span>
           <p className="mt-2 text-sm text-stone-500">ยังไม่มีคำสั่งซื้อ</p>
           <Link href="/products" className="mt-3 inline-block rounded-full bg-amber-400 px-5 py-2 text-xs font-bold text-white transition hover:bg-amber-500">
@@ -134,6 +137,12 @@ export default function AccountPage() {
           </Link>
         </div>
       )}
+      </div>
+
+      {/* ── คูปองของฉัน ── */}
+      <div className="mt-8">
+        <MyCoupons />
+      </div>
 
       {/* ── เมนู ── */}
       <div className="mt-6 divide-y divide-amber-50 overflow-hidden rounded-2xl bg-white ring-1 ring-amber-100">
