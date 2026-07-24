@@ -13,9 +13,15 @@ import {
   proofsOf,
   STATUS_STYLES,
   withLog,
+  NOTE_COLORS,
+  NOTE_SIZES,
+  noteCss,
   type Order,
   type OrderStatus,
   type Proof,
+  type NoteStyle,
+  type NoteColor,
+  type NoteSize,
 } from "@/lib/admin-data";
 import { fetchOrdersAdmin, saveOrderAdmin, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
@@ -27,6 +33,59 @@ import { publicOrigin } from "@/lib/shop-info";
 
 const LBL = "text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400";
 const SOFT = "rounded-xl border border-slate-200/70 bg-white p-4";
+
+/** ช่องกรอกหมายเหตุใบงาน — พิมพ์ข้อความ + เลือกสี + ขนาดฟอนต์ (ชุดสำเร็จรูป) */
+function NoteEditor({
+  value,
+  onPatch,
+  placeholder,
+}: {
+  value?: NoteStyle;
+  onPatch: (patch: Partial<NoteStyle>, save: boolean) => void;
+  placeholder?: string;
+}) {
+  const color = value?.color ?? "black";
+  const size = value?.size ?? "base";
+  return (
+    <div className="space-y-2">
+      <textarea
+        value={value?.text ?? ""}
+        onChange={(e) => onPatch({ text: e.target.value }, false)}
+        onBlur={() => onPatch({}, true)}
+        rows={2}
+        placeholder={placeholder}
+        style={noteCss(value?.text ? value : undefined)}
+        className="w-full resize-y rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm leading-snug focus:border-amber-300 focus:outline-none"
+      />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <div className="flex items-center gap-1">
+          {(Object.keys(NOTE_COLORS) as NoteColor[]).map((c) => (
+            <button
+              key={c}
+              type="button"
+              title={NOTE_COLORS[c].label}
+              onClick={() => onPatch({ color: c }, true)}
+              className={`h-5 w-5 rounded-full ring-2 transition ${color === c ? "ring-slate-400" : "ring-transparent hover:ring-slate-200"}`}
+              style={{ backgroundColor: NOTE_COLORS[c].hex }}
+            />
+          ))}
+        </div>
+        <div className="flex items-center gap-1">
+          {(Object.keys(NOTE_SIZES) as NoteSize[]).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => onPatch({ size: s }, true)}
+              className={`rounded px-1.5 py-0.5 text-[11px] font-bold transition ${size === s ? "bg-amber-500 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
+            >
+              {NOTE_SIZES[s].label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function AdminOrderDetailPage() {
   const params = useParams<{ id: string }>();
@@ -117,6 +176,30 @@ export default function AdminOrderDetailPage() {
   function persist() {
     if (!order || demo) return;
     void saveOrderAdmin(order);
+  }
+
+  /** อัปเดต order + บันทึกทันที (ใช้กับ select สี/ขนาด/วันที่ ที่ไม่มี blur) */
+  function applyOrder(next: Order) {
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
+
+  /** แก้ไข NoteStyle ของท้ายบิล หรือของรายการที่ index (itemIdx = null → ท้ายบิล) */
+  function patchNote(itemIdx: number | null, patch: Partial<NoteStyle>, save: boolean) {
+    setOrder((cur) => {
+      if (!cur) return cur;
+      if (itemIdx === null) {
+        const next = { ...cur, billNote: { ...(cur.billNote ?? { text: "" }), ...patch } };
+        if (save && !demo) void saveOrderAdmin(next);
+        return next;
+      }
+      const items = cur.items.map((it, i) =>
+        i === itemIdx ? { ...it, adminNote: { ...(it.adminNote ?? { text: "" }), ...patch } } : it
+      );
+      const next = { ...cur, items };
+      if (save && !demo) void saveOrderAdmin(next);
+      return next;
+    });
   }
 
   /** บันทึกเลขพัสดุ + เปลี่ยนสถานะเป็น "จัดส่งแล้ว" + ลง log */
@@ -768,9 +851,68 @@ export default function AdminOrderDetailPage() {
             </div>
           </div>
 
+          {/* ── ข้อมูลใบงาน: วันที่จัดส่ง + หมายเหตุ (โชว์ตอนปริ้น) ── */}
+          {mayEdit && (
+            <div>
+              <p className={LBL}>ใบงาน · การจัดส่ง</p>
+              <div className={`mt-2 space-y-4 ${SOFT}`}>
+                {/* วันที่จัดส่ง */}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold text-slate-600">📅 วันที่จัดส่ง (จาก–ถึง)</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={order.shipDate?.from ?? ""}
+                      onChange={(e) => applyOrder({ ...order, shipDate: { ...order.shipDate, from: e.target.value } })}
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800 focus:border-amber-300 focus:outline-none"
+                    />
+                    <span className="shrink-0 text-slate-400">–</span>
+                    <input
+                      type="date"
+                      value={order.shipDate?.to ?? ""}
+                      onChange={(e) => applyOrder({ ...order, shipDate: { ...order.shipDate, to: e.target.value } })}
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800 focus:border-amber-300 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* หมายเหตุแต่ละรายการ */}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold text-slate-600">📝 หมายเหตุตรงรายการสินค้า</p>
+                  <div className="space-y-2.5">
+                    {order.items.map((it, idx) => (
+                      <div key={idx} className="rounded-lg bg-slate-50 p-2.5 ring-1 ring-slate-200">
+                        <p className="mb-1.5 truncate text-xs font-bold text-slate-600">
+                          {idx + 1}. {it.name}
+                        </p>
+                        <NoteEditor
+                          value={it.adminNote}
+                          onPatch={(p, s) => patchNote(idx, p, s)}
+                          placeholder="หมายเหตุรายการนี้ (เช่น ห่อแยก / งานด่วน)"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* หมายเหตุท้ายบิล */}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold text-slate-600">📄 หมายเหตุท้ายบิล</p>
+                  <NoteEditor
+                    value={order.billNote}
+                    onPatch={(p, s) => patchNote(null, p, s)}
+                    placeholder="เช่น ขอบคุณที่อุดหนุน 🦆 / นัดรับหน้าร้าน"
+                  />
+                </div>
+
+                <p className={`text-[11px] ${faint}`}>บันทึกอัตโนมัติ · แสดงบนใบงานตอนปริ้น</p>
+              </div>
+            </div>
+          )}
+
           {order.note && (
             <div>
-              <p className={LBL}>หมายเหตุ</p>
+              <p className={LBL}>หมายเหตุลูกค้า</p>
               <p className="mt-2 rounded-xl bg-amber-50/60 p-3 text-sm text-slate-600 ring-1 ring-amber-100">{order.note}</p>
             </div>
           )}

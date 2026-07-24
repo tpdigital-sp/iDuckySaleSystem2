@@ -6,7 +6,15 @@ import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import { formatPrice } from "@/lib/products";
-import { MOCK_ORDERS, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
+import { MOCK_ORDERS, noteCss, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
+
+/** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
+function fmtThaiDate(d?: string): string {
+  if (!d) return "";
+  const [y, m, day] = d.split("-");
+  if (!y || !m || !day) return d;
+  return `${day}/${m}/${Number(y) + 543}`;
+}
 import { fetchOrdersAdmin } from "@/lib/order-repo";
 import { publicOrigin, SHOP } from "@/lib/shop-info";
 import { useCan } from "@/lib/perm-context";
@@ -70,6 +78,8 @@ export default function PrintOrderPage() {
         .proof-item { scroll-snap-align: center; }
         @media print {
           html, body { background: #fff !important; }
+          /* ให้สีหมายเหตุพิมพ์ออกตรงตามที่เลือก */
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .no-print { display: none !important; }
           .sheet { break-after: page; box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; width: auto !important; }
           .sheet:last-child { break-after: auto; }
@@ -178,6 +188,12 @@ export default function PrintOrderPage() {
               <p className="mt-1 text-2xl font-extrabold leading-tight">{order.customer}</p>
               <p className="mt-1 whitespace-pre-line text-lg leading-snug">{order.address}</p>
               <p className="mt-2 text-xl font-bold tabular-nums">โทร. {order.phone}</p>
+              {(order.shipDate?.from || order.shipDate?.to) && (
+                <p className="mt-2 inline-block rounded bg-slate-100 px-2 py-1 text-base font-bold">
+                  📅 วันที่จัดส่ง: {fmtThaiDate(order.shipDate?.from)}
+                  {order.shipDate?.to && order.shipDate.to !== order.shipDate.from ? ` – ${fmtThaiDate(order.shipDate.to)}` : ""}
+                </p>
+              )}
             </div>
 
             {/* เส้นประสำหรับตัด — ส่วนบนเอาไปติดหน้ากล่อง ส่วนล่างเก็บไว้เป็นใบงาน */}
@@ -259,6 +275,11 @@ export default function PrintOrderPage() {
                       <td className="py-3">
                         <p className="font-bold">{it.name}</p>
                         {it.selections && <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{it.selections}</p>}
+                        {it.adminNote?.text && (
+                          <p className="mt-1 whitespace-pre-line font-semibold leading-snug" style={noteCss(it.adminNote)}>
+                            📝 {it.adminNote.text}
+                          </p>
+                        )}
                       </td>
                       <td className="py-3 text-center text-base font-bold tabular-nums">{it.qty}</td>
                       <td className="py-3 text-center text-lg text-slate-400">☐</td>
@@ -279,7 +300,16 @@ export default function PrintOrderPage() {
 
             {order.note && (
               <p className="mt-3 rounded border border-slate-300 bg-slate-50 p-3 text-sm">
-                <strong>หมายเหตุ:</strong> {order.note}
+                <strong>หมายเหตุลูกค้า:</strong> {order.note}
+              </p>
+            )}
+
+            {order.billNote?.text && (
+              <p
+                className="mt-3 whitespace-pre-line rounded border border-slate-300 p-3 font-semibold leading-snug"
+                style={noteCss(order.billNote)}
+              >
+                {order.billNote.text}
               </p>
             )}
 

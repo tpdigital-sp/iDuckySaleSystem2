@@ -103,6 +103,45 @@ export interface Proof {
   pack?: PackCheck;
 }
 
+/** สีของหมายเหตุบนใบงาน (ชุดสำเร็จรูป) */
+export type NoteColor = "black" | "red" | "blue" | "green" | "orange" | "gray";
+/** ขนาดฟอนต์ของหมายเหตุ (ชุดสำเร็จรูป) */
+export type NoteSize = "sm" | "base" | "lg" | "xl";
+
+/** หมายเหตุที่แอดมินพิมพ์ลงใบงาน — เลือกสี + ขนาดฟอนต์ได้ */
+export interface NoteStyle {
+  text: string;
+  color?: NoteColor;
+  size?: NoteSize;
+}
+
+/** สีสำเร็จรูป → ป้ายไทย + ค่า hex (ใช้ inline style ให้พิมพ์ออกสีตรง) */
+export const NOTE_COLORS: Record<NoteColor, { label: string; hex: string }> = {
+  black: { label: "ดำ", hex: "#1e293b" },
+  red: { label: "แดง", hex: "#dc2626" },
+  blue: { label: "น้ำเงิน", hex: "#2563eb" },
+  green: { label: "เขียว", hex: "#16a34a" },
+  orange: { label: "ส้ม", hex: "#ea580c" },
+  gray: { label: "เทา", hex: "#64748b" },
+};
+
+/** ขนาดสำเร็จรูป → ป้ายไทย + px */
+export const NOTE_SIZES: Record<NoteSize, { label: string; px: number }> = {
+  sm: { label: "เล็ก", px: 12 },
+  base: { label: "ปกติ", px: 14 },
+  lg: { label: "ใหญ่", px: 18 },
+  xl: { label: "ใหญ่มาก", px: 24 },
+};
+
+/** แปลง NoteStyle → inline style (สี/ขนาด) สำหรับแสดง/พิมพ์ */
+export function noteCss(n: NoteStyle | undefined): { color: string; fontSize: number } | undefined {
+  if (!n) return undefined;
+  return {
+    color: NOTE_COLORS[n.color ?? "black"].hex,
+    fontSize: NOTE_SIZES[n.size ?? "base"].px,
+  };
+}
+
 export interface OrderItem {
   productId: string;
   name: string;
@@ -126,6 +165,8 @@ export interface OrderItem {
   noteAck?: { by: string; at: string };
   /** กราฟฟิกยืนยันว่าอ่านรายละเอียดรายการนี้แล้ว (ก่อนทำแบบงาน) — audit trail */
   graphicAck?: { by: string; at: string };
+  /** หมายเหตุที่แอดมินพิมพ์ลงใบงาน (ตรงตำแหน่งรายการนี้) — เลือกสี/ขนาดได้ */
+  adminNote?: NoteStyle;
 }
 
 export interface Order {
@@ -155,6 +196,10 @@ export interface Order {
   paidReportedAt?: string;
   /** เวลาที่แอดมินปริ้นใบงานครั้งแรก (ISO) — มีค่า = ล็อกที่อยู่ ลูกค้าแก้ไม่ได้แล้ว */
   printedAt?: string;
+  /** ช่วงวันที่จัดส่ง (แอดมินระบุ) — โชว์บนใบงาน · เก็บเป็น yyyy-mm-dd */
+  shipDate?: { from?: string; to?: string };
+  /** หมายเหตุท้ายบิล (แอดมินพิมพ์ลงใบงาน) — เลือกสี/ขนาดได้ */
+  billNote?: NoteStyle;
   /** กุญแจลับต่อออเดอร์ (สุ่มตอนสร้าง) — ใช้ยืนยันสิทธิ์ตอนแจ้งโอน/ดูแบบ (public endpoint) */
   key?: string;
   /**
