@@ -60,43 +60,65 @@ function NoteEditor({
         style={noteCss(value?.text ? value : undefined)}
         className="w-full resize-y rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm leading-snug focus:border-amber-300 focus:outline-none"
       />
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <div className="flex items-center gap-1">
-          {(Object.keys(NOTE_COLORS) as NoteColor[]).map((c) => (
-            <button
-              key={c}
-              type="button"
-              title={NOTE_COLORS[c].label}
-              onClick={() => onPatch({ color: c }, true)}
-              className={`h-5 w-5 rounded-full ring-2 transition ${color === c ? "ring-slate-400" : "ring-transparent hover:ring-slate-200"}`}
-              style={{ backgroundColor: NOTE_COLORS[c].hex }}
-            />
-          ))}
+      <div className="space-y-2 rounded-lg bg-slate-50/80 p-2.5 ring-1 ring-slate-100">
+        {/* สี */}
+        <div className="flex items-center gap-2.5">
+          <span className="w-12 shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">สี</span>
+          <div className="flex items-center gap-1.5">
+            {(Object.keys(NOTE_COLORS) as NoteColor[]).map((c) => (
+              <button
+                key={c}
+                type="button"
+                title={NOTE_COLORS[c].label}
+                onClick={() => onPatch({ color: c }, true)}
+                className={`grid h-6 w-6 place-items-center rounded-full text-[11px] font-bold text-white ring-2 transition ${
+                  color === c ? "ring-slate-500" : "ring-transparent hover:ring-slate-300"
+                }`}
+                style={{ backgroundColor: NOTE_COLORS[c].hex }}
+              >
+                {color === c ? "✓" : ""}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          {(Object.keys(NOTE_SIZES) as NoteSize[]).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => onPatch({ size: s }, true)}
-              className={`rounded px-1.5 py-0.5 text-[11px] font-bold transition ${size === s ? "bg-amber-500 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
-            >
-              {NOTE_SIZES[s].label}
-            </button>
-          ))}
+
+        {/* ขนาด */}
+        <div className="flex items-center gap-2.5">
+          <span className="w-12 shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">ขนาด</span>
+          <div className="inline-flex overflow-hidden rounded-md ring-1 ring-slate-200">
+            {(Object.keys(NOTE_SIZES) as NoteSize[]).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => onPatch({ size: s }, true)}
+                className={`border-r border-slate-200 px-2.5 py-1 text-[11px] font-semibold transition last:border-r-0 ${
+                  size === s ? "bg-amber-500 text-white" : "bg-white text-slate-500 hover:bg-slate-100"
+                }`}
+              >
+                {NOTE_SIZES[s].label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          {(Object.keys(NOTE_WEIGHTS) as NoteWeight[]).map((w) => (
-            <button
-              key={w}
-              type="button"
-              onClick={() => onPatch({ weight: w }, true)}
-              style={{ fontWeight: NOTE_WEIGHTS[w].css }}
-              className={`rounded px-1.5 py-0.5 text-[11px] transition ${weight === w ? "bg-slate-700 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
-            >
-              {NOTE_WEIGHTS[w].label}
-            </button>
-          ))}
+
+        {/* น้ำหนัก */}
+        <div className="flex items-center gap-2.5">
+          <span className="w-12 shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">น้ำหนัก</span>
+          <div className="inline-flex overflow-hidden rounded-md ring-1 ring-slate-200">
+            {(Object.keys(NOTE_WEIGHTS) as NoteWeight[]).map((w) => (
+              <button
+                key={w}
+                type="button"
+                onClick={() => onPatch({ weight: w }, true)}
+                style={{ fontWeight: NOTE_WEIGHTS[w].css }}
+                className={`border-r border-slate-200 px-2.5 py-1 text-[11px] transition last:border-r-0 ${
+                  weight === w ? "bg-slate-700 text-white" : "bg-white text-slate-500 hover:bg-slate-100"
+                }`}
+              >
+                {NOTE_WEIGHTS[w].label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>
