@@ -90,9 +90,13 @@ export default function PrintOrderPage() {
           /* ให้สีหมายเหตุพิมพ์ออกตรงตามที่เลือก */
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .no-print { display: none !important; }
-          .sheet { break-after: page; box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; width: auto !important; }
+          .print-wrap { padding: 0 !important; }
+          /* 1 ออเดอร์ = 1 หน้า A4 เป๊ะ (277mm = A4 หัก margin) — ส่วนเกินถูกตัด (ดูต่อผ่านมือถือ) */
+          .sheet { break-after: page; box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; width: auto !important; height: 277mm; overflow: hidden; display: flex; flex-direction: column; }
           .sheet:last-child { break-after: auto; }
-          tr, .keep { break-inside: avoid; }
+          /* โซนตารางงาน = ยืดเต็มที่เหลือ แล้วตัดส่วนเกิน (หัว+ท้ายไม่โดนตัด) */
+          .sheet-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+          .keep { break-inside: avoid; }
         }
       `}</style>
 
@@ -151,7 +155,7 @@ export default function PrintOrderPage() {
         </button>
       </div>
 
-      <div className="mx-auto max-w-[210mm] space-y-6 px-4 pb-16 text-slate-900">
+      <div className="print-wrap mx-auto max-w-[210mm] space-y-6 px-4 pb-16 text-slate-900">
         {chosen.length === 0 && (
           <p className="no-print rounded-xl bg-amber-50 p-6 text-center text-sm text-amber-800 ring-1 ring-amber-200">
             เลือกเอกสารที่ต้องการพิมพ์อย่างน้อย 1 อย่างด้านบน
@@ -219,7 +223,8 @@ export default function PrintOrderPage() {
               )}
             </div>
 
-            {/* ตารางงาน */}
+            {/* ตารางงาน — โซนที่ตัดได้ถ้าเกิน A4 (หัว/ท้ายอยู่นอกโซนนี้ ไม่โดนตัด) */}
+            <div className="sheet-body">
             <table className="mt-5 w-full border-collapse text-sm">
               <thead>
                 <tr className="border-y border-slate-300 bg-slate-50 text-left">
@@ -284,18 +289,18 @@ export default function PrintOrderPage() {
                 </tr>
               </tfoot>
             </table>
+            </div>
+            {/* /sheet-body */}
 
-            {/* รายการเกิน A4 → ให้ดูต่อผ่านมือถือ (สแกน QR ด้านบน) ตัวใหญ่ ๆ */}
-            {overflowCount > 0 && (
-              <div className="keep mt-4 rounded-lg border-2 border-slate-900 bg-slate-50 p-4 text-center">
-                <p className="text-xl font-extrabold text-slate-900">
-                  📱 ยังมีอีก {overflowCount} รายการ — ดูทั้งหมดผ่านมือถือ
-                </p>
-                <p className="mt-1 text-sm font-semibold text-slate-600">
-                  สแกน QR ด้านบนเพื่อเปิดหน้าออเดอร์ · เช็ครายการ + แบบงานครบทุกชิ้น
-                </p>
-              </div>
-            )}
+            {/* ท้ายบิล — เตือนดูต่อผ่านมือถือ (อยู่นอกโซนตัด แสดงเสมอ) */}
+            <div className="keep mt-3 rounded-lg border-2 border-slate-900 bg-slate-50 p-3 text-center">
+              {overflowCount > 0 ? (
+                <p className="text-lg font-extrabold text-slate-900">📱 ยังมีอีก {overflowCount} รายการ — ดูทั้งหมดผ่านมือถือ</p>
+              ) : (
+                <p className="text-sm font-bold text-slate-700">📱 ตรวจรายการ/แบบงานครบทุกชิ้นบนมือถือ</p>
+              )}
+              <p className="mt-0.5 text-xs font-semibold text-slate-600">สแกน QR ด้านบนเพื่อเปิดหน้าออเดอร์</p>
+            </div>
 
             {order.note && (
               <p className="mt-3 rounded border border-slate-300 bg-slate-50 p-3 text-sm">
