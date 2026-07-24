@@ -53,7 +53,9 @@ export async function GET(req: Request) {
       /* ข้าม */
     }
   }
-  const loginEmail = email || `line_${prof.userId}@line.iducky.local`;
+  // ⚠️ ต้องเป็นตัวพิมพ์เล็ก — Supabase เก็บอีเมลเป็นตัวเล็กเสมอ ส่วน LINE userId ขึ้นต้นด้วย "U" ตัวใหญ่
+  // ถ้าไม่ lowercase ครั้งที่สองจะหา user ไม่เจอ (ตัวใหญ่ != ตัวเล็ก) แล้วขึ้น "สร้างบัญชีไม่สำเร็จ"
+  const loginEmail = (email || `line_${prof.userId}@line.iducky.local`).toLowerCase();
 
   const sb = getSupabaseAdmin();
   if (!sb) return fail("nodb");
@@ -62,9 +64,9 @@ export async function GET(req: Request) {
   const meta = { name: prof.displayName ?? "", picture: prof.pictureUrl ?? "", line_user_id: prof.userId };
   const created = await sb.auth.admin.createUser({ email: loginEmail, email_confirm: true, user_metadata: meta });
   if (!created.data.user) {
-    // มีอยู่แล้ว → หา + อัปเดตชื่อ/รูปล่าสุด
-    const { data: list } = await sb.auth.admin.listUsers();
-    const existing = list.users.find((u) => u.email === loginEmail);
+    // มีอยู่แล้ว → หา + อัปเดตชื่อ/รูปล่าสุด (เทียบแบบไม่สนตัวพิมพ์ กันพลาด)
+    const { data: list } = await sb.auth.admin.listUsers({ perPage: 1000 });
+    const existing = list.users.find((u) => u.email?.toLowerCase() === loginEmail);
     if (!existing) return fail("createuser");
     await sb.auth.admin.updateUserById(existing.id, { user_metadata: { ...existing.user_metadata, ...meta } });
   }
