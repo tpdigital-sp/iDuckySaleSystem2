@@ -19,7 +19,7 @@ import {
 } from "@/lib/admin-data";
 import { fetchOrdersAdmin, saveOrderAdmin, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
-import { card, faint, muted, shortTime } from "@/lib/admin-ui";
+import { card, faint, muted } from "@/lib/admin-ui";
 import ImageLightbox from "@/components/ImageLightbox";
 import PackCheckPanel from "@/components/PackCheckPanel";
 import { useActor, useCan } from "@/lib/perm-context";
@@ -49,6 +49,7 @@ export default function AdminOrderDetailPage() {
   const [origin, setOrigin] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
   const [overrideLock, setOverrideLock] = useState(false); // แอดมินยืนยันให้ทำแบบก่อนจ่ายเงิน
+  const [packMode, setPackMode] = useState(false); // แอดมินสลับเข้าโหมดแพ็ค (ตรวจนับ/ยืนยันอ่าน) เอง
   const trackingRef = useRef<string>(""); // เลขพัสดุที่บันทึกไปแล้ว กันบันทึกซ้ำตอน blur
 
   const can = useCan();
@@ -255,12 +256,25 @@ export default function AdminOrderDetailPage() {
   // ถือว่า "จ่ายแล้ว" เมื่อแอดมินยืนยันสลิปแล้ว (ชำระแล้วเป็นต้นไป)
   const paidOk = !(["รอชำระเงิน", "รอตรวจสอบ"] as OrderStatus[]).includes(order.status);
   const gate = packGate(order); // ขั้นตอนแพ็คผ่านครบหรือยัง
-  // ฝ่ายแพ็ค (ตรวจนับได้ แต่แก้ออเดอร์ไม่ได้) → ใช้หน้าเฉพาะกิจ เห็นแค่ที่จำเป็น
+  // ฝ่ายแพ็ค (ตรวจนับได้ แต่แก้ออเดอร์ไม่ได้) → เห็นหน้าแพ็คเสมอ · แอดมิน/พนักงานแอดมินกด "โหมดแพ็ค" เอง
   const isPackOnly = can("pack.check") && !mayEdit;
+  const showPackView = isPackOnly || packMode;
 
-  if (isPackOnly) {
+  if (showPackView) {
     return (
       <>
+        {packMode && !isPackOnly && (
+          <div className="mx-auto mb-3 flex max-w-[480px] items-center justify-between px-3">
+            <span className="text-sm font-bold text-slate-500">📦 โหมดแพ็ค</span>
+            <button
+              type="button"
+              onClick={() => setPackMode(false)}
+              className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+            >
+              ← กลับหน้าตรวจสอบออเดอร์
+            </button>
+          </div>
+        )}
         <PackView
           order={order}
           gate={gate}
@@ -407,28 +421,21 @@ export default function AdminOrderDetailPage() {
               </button>
             </div>
           )}
-          {/* สรุปขั้นตอนแพ็ค — ต้องผ่านครบก่อนถึงยิงเลขพัสดุได้ */}
-          <div
-            className={`mt-3 rounded-xl p-3 ring-1 ${
-              gate.ready ? "bg-green-50 ring-green-200" : "bg-slate-50 ring-slate-200"
-            }`}
-          >
-            <p className={`text-xs font-bold ${gate.ready ? "text-green-800" : "text-slate-700"}`}>
-              {gate.ready ? "✅ ตรวจแพ็คครบแล้ว — ยิงเลขพัสดุได้" : "📦 ยังตรวจแพ็คไม่ครบ — ยิงเลขพัสดุไม่ได้"}
-            </p>
-            {!gate.ready && (
-              <ul className="mt-1 space-y-0.5 text-[11px] leading-relaxed text-slate-600">
-                {gate.uncounted.length > 0 && <li>• ยังไม่ได้ตรวจนับ {gate.uncounted.length} รูป (กดที่รูปเพื่อขยาย แล้วกดยืนยัน)</li>}
-                {gate.unread.length > 0 && <li>• ยังไม่ได้ยืนยันอ่านรายละเอียด {gate.unread.length} รายการ</li>}
-                {gate.short.map((s, k) => (
-                  <li key={k} className="font-bold text-rose-600">
-                    • ของไม่ครบ: {s.item} — นับได้ {s.got}
-                    {s.need ? ` จาก ${s.need}` : ""} ชิ้น
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          {/* ปุ่มสลับเข้าโหมดแพ็ค (เฉพาะคนที่มีสิทธิ์ตรวจแพ็ค) — งานแพ็คแยกไปหน้าโหมดแพ็ค ไม่ปนหน้านี้ */}
+          {can("pack.check") && (
+            <button
+              type="button"
+              onClick={() => setPackMode(true)}
+              className={`mt-3 flex w-full items-center justify-between rounded-xl p-3 text-left ring-1 transition ${
+                gate.ready ? "bg-green-50 ring-green-200 hover:bg-green-100" : "bg-slate-50 ring-slate-200 hover:bg-slate-100"
+              }`}
+            >
+              <span className={`text-xs font-bold ${gate.ready ? "text-green-800" : "text-slate-700"}`}>
+                📦 {gate.ready ? "ตรวจแพ็คครบแล้ว — พร้อมยิงเลขพัสดุ" : "เข้าโหมดแพ็ค (ตรวจนับ/ยืนยันอ่าน)"}
+              </span>
+              <span className="text-slate-400">›</span>
+            </button>
+          )}
 
           {err && (
             <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600 ring-1 ring-rose-200">
@@ -451,35 +458,8 @@ export default function AdminOrderDetailPage() {
                     </span>
                   </div>
 
-                  {/* ช่องรายละเอียด — พนักงานแพ็คต้องกดยืนยันว่าอ่านแล้วก่อนยิงเลขพัสดุ */}
-                  <div
-                    className={`mt-2 rounded-xl border p-3 transition ${
-                      it.noteAck ? "border-green-200 bg-green-50/50" : "border-slate-200 bg-slate-50/70"
-                    }`}
-                  >
-                    <p className={LBL}>รายละเอียด</p>
-                    <p className="mt-0.5 text-xs leading-relaxed text-slate-700">
-                      {it.selections || "— ไม่มีรายละเอียดเพิ่มเติม —"}
-                    </p>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => toggleNoteAck(i)}
-                        className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-                          it.noteAck
-                            ? "bg-green-600 text-white hover:bg-green-700"
-                            : "border border-slate-300 bg-white text-slate-600 hover:border-green-400 hover:text-green-700"
-                        }`}
-                      >
-                        {it.noteAck ? "✅ อ่านรายละเอียดแล้ว" : "☐ ยืนยันว่าอ่านรายละเอียดแล้ว"}
-                      </button>
-                      {it.noteAck && (
-                        <span className="text-[10px] text-slate-400">
-                          {it.noteAck.by} · {shortTime(it.noteAck.at)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  {/* รายละเอียด (ตัวเลือก) — อ่านอย่างเดียว · การยืนยันอ่านย้ายไปโหมดแพ็คแล้ว */}
+                  {it.selections && <p className={`mt-1 text-xs ${faint}`}>{it.selections}</p>}
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     {it.proofStatus ? (
@@ -512,16 +492,7 @@ export default function AdminOrderDetailPage() {
                   {/* แกลเลอรีแบบงาน — หลายรูป แต่ละรูประบุจำนวน/รายละเอียด */}
                   <div className="mt-3 flex flex-wrap gap-3">
                     {proofs.map((p, j) => (
-                      <div
-                        key={`${p.url}-${j}`}
-                        className={`w-36 overflow-hidden rounded-xl border bg-white ${
-                          p.pack?.status === "ครบ"
-                            ? "border-green-300"
-                            : p.pack?.status === "ไม่ครบ"
-                              ? "border-rose-300"
-                              : "border-slate-200"
-                        }`}
-                      >
+                      <div key={`${p.url}-${j}`} className="w-36 overflow-hidden rounded-xl border border-slate-200 bg-white">
                         <div className="relative">
                           <button
                             type="button"
@@ -542,22 +513,6 @@ export default function AdminOrderDetailPage() {
                               ✕
                             </button>
                           )}
-                          {/* ผลตรวจนับของพนักงานแพ็ค */}
-                          <span
-                            className={`pointer-events-none absolute bottom-1.5 left-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                              p.pack?.status === "ครบ"
-                                ? "bg-green-600 text-white"
-                                : p.pack?.status === "ไม่ครบ"
-                                  ? "bg-rose-600 text-white"
-                                  : "bg-slate-900/60 text-white"
-                            }`}
-                          >
-                            {p.pack?.status === "ครบ"
-                              ? "✅ ครบ"
-                              : p.pack?.status === "ไม่ครบ"
-                                ? `⚠️ ได้ ${p.pack.got ?? 0}`
-                                : "รอตรวจนับ"}
-                          </span>
                         </div>
                         {mayProof ? (
                           <div className="space-y-1.5 p-2">
@@ -810,23 +765,13 @@ export default function AdminOrderDetailPage() {
         </div>
       </div>
 
+      {/* หน้าตรวจสอบออเดอร์: ขยายรูปดูอย่างเดียว (ไม่มีปุ่มตรวจนับ — งานแพ็คอยู่ในโหมดแพ็ค) */}
       {lightbox && (
         <ImageLightbox
           src={lightbox.src}
           alt={lightbox.alt}
           caption={lightbox.caption}
           {...lightboxNav()}
-          footer={
-            lightbox.at ? (
-              <PackCheckPanel
-                proof={proofsOf(order.items[lightbox.at.item])[lightbox.at.proof]}
-                onConfirm={(status, got) => {
-                  setPackCheck(lightbox.at!.item, lightbox.at!.proof, status, got);
-                  setLightbox(null);
-                }}
-              />
-            ) : undefined
-          }
           onClose={() => setLightbox(null)}
         />
       )}
