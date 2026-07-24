@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   if (!code) return NextResponse.json({ ok: false, error: "ใส่โค้ดคูปอง" }, { status: 400 });
 
   const { data: cRow, error } = await sb.from("coupons").select("data").eq("code", code).maybeSingle();
-  if (error && !/schema cache|does not exist/i.test(error.message))
+  if (error && !/schema cache|find the table|relation .*does not exist/i.test(error.message))
     return NextResponse.json({ ok: false, error: "ตรวจคูปองไม่สำเร็จ" }, { status: 500 });
 
   const c = (cRow?.data as Coupon | undefined) ?? null;

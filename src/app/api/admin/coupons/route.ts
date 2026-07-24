@@ -6,7 +6,7 @@ import { randomCode, type Coupon } from "@/lib/coupons";
 export const runtime = "nodejs";
 
 const tableMissing = (msg: string, code?: string) =>
-  code === "42P01" || code === "PGRST205" || /schema cache|does not exist/i.test(msg);
+  code === "42P01" || code === "PGRST205" || /schema cache|find the table|relation .*does not exist/i.test(msg);
 
 /** แอดมินดูคูปองทั้งหมด (ใหม่→เก่า) */
 export async function GET() {

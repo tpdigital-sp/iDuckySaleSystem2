@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 const NEW_ACCOUNT_DAYS = 14;
 
 const tableMissing = (msg = "", code?: string) =>
-  code === "42P01" || code === "PGRST205" || /schema cache|does not exist/i.test(msg);
+  code === "42P01" || code === "PGRST205" || /schema cache|find the table|relation .*does not exist/i.test(msg);
 
 /**
  * ออกคูปองต้อนรับให้สมาชิกใหม่ (เรียกตอนล็อกอินครั้งแรก) — idempotent

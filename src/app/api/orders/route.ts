@@ -121,7 +121,7 @@ export async function POST(req: Request) {
       const c = cRow?.data as Coupon | undefined;
       if (c) await sb.from("coupons").update({ data: { ...c, status: "active", redeemedBy: undefined, redeemedOrderId: undefined, redeemedAt: undefined } }).eq("code", redeemedCode);
     }
-    if (error.code === "42P01" || error.code === "PGRST205" || /schema cache|does not exist/i.test(error.message))
+    if (error.code === "42P01" || error.code === "PGRST205" || /schema cache|find the table|relation .*does not exist/i.test(error.message))
       return NextResponse.json({ error: "ระบบยังไม่พร้อม — ผู้ดูแลต้องสร้างตาราง orders ก่อน (รัน supabase/orders.sql)" }, { status: 503 });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
