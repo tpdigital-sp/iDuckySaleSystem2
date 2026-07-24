@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import { orderBalance, orderTotal, PROOF_STYLES, proofsOf, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
-import { fetchOrderForCustomer, reviewProof } from "@/lib/order-repo";
+import { fetchOrderForCustomer, reportPayment, reviewProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
 import { setAppendTarget } from "@/lib/append-order";
 import ImageLightbox from "@/components/ImageLightbox";
@@ -41,6 +41,8 @@ export default function CustomerOrderPage() {
   const [busyIdx, setBusyIdx] = useState<number | null>(null);
   const [actionErr, setActionErr] = useState("");
   const [lightbox, setLightbox] = useState<{ src: string; alt: string; caption?: string } | null>(null);
+  const [slipBusy, setSlipBusy] = useState(false);
+  const [slipErr, setSlipErr] = useState("");
 
   const load = useCallback(
     async (key: string) => {
@@ -83,6 +85,24 @@ export default function CustomerOrderPage() {
     if (res.order) setOrder(res.order);
     setEditingIdx(null);
     setNote("");
+  }
+
+  /** ลูกค้าอัปโหลดสลิปแจ้งโอน (ทั้งจ่ายครั้งแรกและจ่ายส่วนต่างที่สั่งเพิ่ม) */
+  async function uploadSlip(file: File | null) {
+    if (!file) return;
+    setSlipErr("");
+    if (!file.type.startsWith("image/")) {
+      setSlipErr("แนบเป็นรูปสลิป (PNG / JPG)");
+      return;
+    }
+    setSlipBusy(true);
+    const res = await reportPayment(orderId, orderKey, file);
+    setSlipBusy(false);
+    if (!res.ok) {
+      setSlipErr(res.error ?? "แจ้งโอนไม่สำเร็จ");
+      return;
+    }
+    void load(orderKey); // ดึงสถานะใหม่ (เป็น "รอตรวจสอบ")
   }
 
   if (loading) {
@@ -134,9 +154,17 @@ export default function CustomerOrderPage() {
               </p>
             )}
           </div>
-          <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ring-1 ${STATUS_STYLES[order.status]}`}>
-            {order.status}
-          </span>
+          <div className="flex flex-col items-end gap-2">
+            <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ring-1 ${STATUS_STYLES[order.status]}`}>
+              {order.status}
+            </span>
+            <Link
+              href={`/order/${encodeURIComponent(orderId)}/receipt${orderKey ? `?key=${encodeURIComponent(orderKey)}` : ""}`}
+              className="rounded-full bg-stone-100 px-3 py-1 text-xs font-bold text-stone-600 transition hover:bg-stone-200"
+            >
+              🧾 ใบเสร็จ
+            </Link>
+          </div>
         </div>
 
         {/* แถบขั้นตอน */}
@@ -180,15 +208,37 @@ export default function CustomerOrderPage() {
         )}
       </div>
 
-      {balance > 0 && (order.paidTotal ?? 0) > 0 && (
+      {/* ── ชำระเงิน / แจ้งสลิป ── */}
+      {order.status === "รอชำระเงิน" && (
         <div className="mt-4 rounded-2xl bg-rose-50 p-4 ring-1 ring-rose-200">
           <p className="text-sm font-bold text-rose-800">
-            💸 มียอดค้างชำระ {formatPrice(balance)}
+            💸 {(order.paidTotal ?? 0) > 0 ? `มียอดค้างชำระ ${formatPrice(balance)}` : `รอชำระเงิน ${formatPrice(orderTotal(order))}`}
           </p>
           <p className="mt-1 text-xs leading-relaxed text-rose-700">
-            เกิดจากการสั่งเพิ่มในออเดอร์นี้ — โอนเฉพาะส่วนต่างมาที่บัญชีร้าน แล้วแจ้งสลิปได้เลย
-            (จ่ายไปแล้ว {formatPrice(order.paidTotal ?? 0)} จากยอดรวม {formatPrice(orderTotal(order))})
+            {(order.paidTotal ?? 0) > 0
+              ? `เกิดจากการสั่งเพิ่ม — โอนเฉพาะส่วนต่างมาที่บัญชีร้าน แล้วแนบสลิป (จ่ายแล้ว ${formatPrice(order.paidTotal ?? 0)} จาก ${formatPrice(orderTotal(order))})`
+              : "โอนเงินมาที่บัญชีร้านแล้วแนบสลิปที่นี่ ทางร้านจะตรวจสอบและเริ่มงานให้"}
           </p>
+          <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-rose-700">
+            {slipBusy ? "กำลังส่งสลิป…" : "📤 แนบสลิปการโอน"}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              disabled={slipBusy}
+              onChange={(e) => {
+                void uploadSlip(e.target.files?.[0] ?? null);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          {slipErr && <p className="mt-2 text-xs font-semibold text-rose-700">⚠️ {slipErr}</p>}
+        </div>
+      )}
+
+      {order.status === "รอตรวจสอบ" && (
+        <div className="mt-4 rounded-2xl bg-orange-50 p-4 text-sm text-orange-800 ring-1 ring-orange-200">
+          🧾 <strong>ได้รับสลิปแล้ว</strong> — ทางร้านกำลังตรวจสอบการชำระเงิน เดี๋ยวจะเริ่มงานให้ครับ
         </div>
       )}
 
