@@ -170,8 +170,7 @@ export default function PrintOrderPage() {
                 <p className="text-xs tabular-nums text-slate-600">โทร. {SHOP.phone}</p>
               </div>
               <div className="shrink-0 text-right">
-                <p className="font-mono text-2xl font-extrabold tracking-tight">{order.id}</p>
-                <p className="text-xs text-slate-500">{order.date}</p>
+                <p className="font-mono text-base font-bold tracking-tight text-slate-600">{order.id}</p>
                 {/* วิธีจัดส่งตัวใหญ่เหนือบาร์โค้ด (สไตล์ป้ายขนส่ง) · บาร์โค้ด = เลขออเดอร์ล้วน สำหรับเครื่องยิงที่คอม */}
                 <div className="mt-2 flex flex-col items-end">
                   <p className="text-3xl font-extrabold uppercase leading-none tracking-tight">{order.shipping}</p>
@@ -185,10 +184,7 @@ export default function PrintOrderPage() {
 
             {/* ผู้รับ — ส่วนนี้ขึ้นไปคือ "ป้ายติดกล่อง" ตัดตามเส้นประด้านล่าง */}
             <div className="keep mt-4 rounded border border-slate-300 p-5">
-              <div className="flex items-start justify-between gap-4">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ผู้รับ / To</p>
-                <p className="font-mono text-xs font-bold text-slate-700">{order.id}</p>
-              </div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ผู้รับ / To</p>
               <p className="mt-1 text-2xl font-extrabold leading-tight">{order.customer}</p>
               <p className="mt-1 whitespace-pre-line text-lg leading-snug">{order.address}</p>
               <p className="mt-2 text-xl font-bold tabular-nums">โทร. {order.phone}</p>
