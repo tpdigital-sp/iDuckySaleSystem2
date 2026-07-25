@@ -13,12 +13,30 @@ export interface Tier {
 }
 
 export const DEFAULT_TIERS: Tier[] = [
-  { id: "bronze", name: "บรอนซ์", icon: "🥉", minSpend: 0, discountPct: 0 },
-  { id: "silver", name: "ซิลเวอร์", icon: "🥈", minSpend: 3000, discountPct: 3 },
-  { id: "gold", name: "โกลด์", icon: "🥇", minSpend: 10000, discountPct: 5 },
-  { id: "platinum", name: "แพลทินัม", icon: "💎", minSpend: 30000, discountPct: 8 },
-  { id: "diamond", name: "ไดมอนด์", icon: "👑", minSpend: 80000, discountPct: 12 },
+  { id: "bronze", name: "Bronze", icon: "🥉", minSpend: 0, discountPct: 0 },
+  { id: "silver", name: "Silver", icon: "🥈", minSpend: 3000, discountPct: 3 },
+  { id: "gold", name: "Gold", icon: "🥇", minSpend: 10000, discountPct: 5 },
+  { id: "platinum", name: "Platinum", icon: "💎", minSpend: 30000, discountPct: 8 },
+  { id: "diamond", name: "Diamond", icon: "👑", minSpend: 80000, discountPct: 12 },
 ];
+
+/** สี gradient + สีป้ายส่วนลด ต่อระดับ (โทนสีสด อิงโลหะ/อัญมณี) — คีย์ด้วย id, ไม่เจอใช้ลำดับวน */
+const TIER_GRAD = [
+  "linear-gradient(135deg,#7c4a21,#b06a34 55%,#c98a4e)", // bronze
+  "linear-gradient(135deg,#525b67,#828d9c 55%,#a6afba)", // silver
+  "linear-gradient(135deg,#b9791a,#e0a92a 55%,#f2c94c)", // gold
+  "linear-gradient(135deg,#0b6b7a,#149bad 52%,#3fd0dd)", // platinum
+  "linear-gradient(135deg,#5b2ec0,#4a54d6 45%,#3b7ae4)", // diamond
+];
+const TIER_PILL = ["#7c4a21", "#525b67", "#8a5a12", "#0b6b7a", "#4032a0"];
+const TIER_ID_INDEX: Record<string, number> = { bronze: 0, silver: 1, gold: 2, platinum: 3, diamond: 4 };
+
+/** คืนสี gradient + สีป้ายของระดับ (index = ตำแหน่งในลิสต์ ใช้เมื่อ id ไม่ตรงมาตรฐาน) */
+export function tierColor(tier: { id: string }, index = 0): { gradient: string; pill: string } {
+  const i = TIER_ID_INDEX[tier.id] ?? index;
+  const k = ((i % TIER_GRAD.length) + TIER_GRAD.length) % TIER_GRAD.length;
+  return { gradient: TIER_GRAD[k], pill: TIER_PILL[k] };
+}
 
 /** สถานะที่ถือว่า "จ่ายแล้ว" — นับเข้ายอดสะสม (ไม่นับ รอชำระ/รอตรวจสลิป/ยกเลิก) */
 const PAID_STATUSES: OrderStatus[] = ["ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ", "กำลังผลิต", "จัดส่งแล้ว", "เสร็จสิ้น"];

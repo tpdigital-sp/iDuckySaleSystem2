@@ -6,7 +6,7 @@ import Link from "next/link";
 import { formatPrice } from "@/lib/products";
 import { orderBalance, orderTotal, STATUS_STYLES, type Order } from "@/lib/admin-data";
 import { fetchShopPayment, tiersConfigOf } from "@/lib/shop-settings";
-import { nextTier, paidSpend, tierForSpend, type Tier } from "@/lib/tiers";
+import { nextTier, paidSpend, tierColor, tierForSpend, type Tier } from "@/lib/tiers";
 import { useCustomer } from "@/lib/customer-context";
 import { getAccessToken, signOut } from "@/lib/customer-auth";
 import MyCoupons from "@/components/MyCoupons";
@@ -70,36 +70,47 @@ export default function AccountPage() {
 
       {/* ── สรุป: ระดับสมาชิก + ออเดอร์ล่าสุด (2 คอลัมน์บนจอกว้าง) ── */}
       <div className="mt-6 grid items-start gap-4 md:grid-cols-2">
-      {/* ── ระดับสมาชิก ── */}
-      {tier && (
-        <div className="rounded-2xl bg-gradient-to-br from-amber-100 to-amber-50 p-4 ring-1 ring-amber-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-amber-500">ระดับสมาชิก</p>
-              <p className="text-lg font-extrabold text-amber-950">
-                {tier.icon} {tier.name}
-                {tier.discountPct > 0 && <span className="ml-1 text-sm font-bold text-emerald-600">ลด {tier.discountPct}%</span>}
-              </p>
-            </div>
-            <p className="text-right text-xs text-amber-700">
-              ยอดสะสม
-              <span className="block text-base font-extrabold text-amber-950">{formatPrice(spend)}</span>
-            </p>
-          </div>
-          {next ? (
-            <div className="mt-3">
-              <div className="h-2 overflow-hidden rounded-full bg-white/70">
-                <div className="h-full rounded-full bg-amber-400 transition-all" style={{ width: `${progressPct}%` }} />
+      {/* ── ระดับสมาชิก — สีเฉพาะตามระดับ (อิงโลหะ/อัญมณี) ── */}
+      {tier &&
+        (() => {
+          const { gradient, pill } = tierColor(tier, tierList?.findIndex((t) => t.id === tier.id) ?? 0);
+          return (
+            <div className="rounded-2xl p-4 text-white shadow-sm" style={{ background: gradient }}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-white/80">ระดับสมาชิก</p>
+                  <p className="mt-0.5 text-lg font-extrabold">
+                    {tier.icon} {tier.name}
+                    {tier.discountPct > 0 && (
+                      <span
+                        className="ml-1.5 inline-block rounded-full bg-white/95 px-2 py-0.5 align-middle text-xs font-bold"
+                        style={{ color: pill }}
+                      >
+                        ลด {tier.discountPct}%
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <p className="text-right text-[11px] text-white/80">
+                  ยอดสะสม
+                  <span className="block text-base font-extrabold text-white">{formatPrice(spend)}</span>
+                </p>
               </div>
-              <p className="mt-1.5 text-[11px] text-amber-700">
-                อีก <strong>{formatPrice(Math.max(0, next.minSpend - spend))}</strong> ขึ้นระดับ {next.icon} {next.name} (ลด {next.discountPct}%)
-              </p>
+              {next ? (
+                <div className="mt-3">
+                  <div className="h-2 overflow-hidden rounded-full bg-white/25">
+                    <div className="h-full rounded-full bg-white transition-all" style={{ width: `${progressPct}%` }} />
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-white/90">
+                    อีก <strong>{formatPrice(Math.max(0, next.minSpend - spend))}</strong> ขึ้นระดับ {next.icon} {next.name} (ลด {next.discountPct}%)
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-2 text-[11px] font-bold text-white/90">🎉 คุณอยู่ระดับสูงสุดแล้ว!</p>
+              )}
             </div>
-          ) : (
-            <p className="mt-2 text-[11px] font-bold text-amber-700">🎉 คุณอยู่ระดับสูงสุดแล้ว!</p>
-          )}
-        </div>
-      )}
+          );
+        })()}
 
       {/* ── ออเดอร์ล่าสุด (ไฮไลต์) ── */}
       {orders === null ? (
