@@ -16,7 +16,8 @@ function fmtThaiDate(d?: string): string {
   return `${day}/${m}/${Number(y) + 543}`;
 }
 import { fetchOrdersAdmin } from "@/lib/order-repo";
-import { publicOrigin, SHOP } from "@/lib/shop-info";
+import { publicOrigin } from "@/lib/shop-info";
+import { fetchShopPayment, shopInfoOf, type ShopInfo } from "@/lib/shop-settings";
 import { useCan } from "@/lib/perm-context";
 
 /** work = ใบงาน+ใบปะหน้าพัสดุ (ใบเดียวจบ) · receipt = ใบเสร็จให้ลูกค้า */
@@ -40,6 +41,7 @@ export default function PrintOrderPage() {
   const [docs, setDocs] = useState<Record<DocKey, boolean>>({ work: true, receipt: false });
   const [withProofs, setWithProofs] = useState(true);
   const [origin, setOrigin] = useState(""); // สำหรับ QR มือถือ (ต้องอ่านฝั่งเบราว์เซอร์)
+  const [shop, setShop] = useState<ShopInfo>(shopInfoOf(null)); // ข้อมูลร้าน (แอดมินแก้ได้ที่ตั้งค่าระบบ)
   const seesMoney = useCan()("orders.money"); // ฝ่ายแพ็คไม่เห็นใบเสร็จ (มีราคา)
 
   const load = useCallback(async () => {
@@ -55,6 +57,7 @@ export default function PrintOrderPage() {
     const only = new URLSearchParams(window.location.search).get("doc");
     if (only === "receipt") setDocs({ work: false, receipt: true });
     else if (only) setDocs({ work: true, receipt: false });
+    void fetchShopPayment().then((p) => setShop(shopInfoOf(p)));
     void load();
   }, [load]);
 
@@ -189,9 +192,9 @@ export default function PrintOrderPage() {
             <div className="flex items-start justify-between gap-6 border-b-2 border-slate-900 pb-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ผู้ส่ง / From</p>
-                <p className="mt-0.5 text-sm font-bold">{SHOP.legalName}</p>
-                <p className="text-xs leading-snug text-slate-600">{SHOP.addressLines.join(" ")}</p>
-                <p className="text-xs tabular-nums text-slate-600">โทร. {SHOP.phone}</p>
+                <p className="mt-0.5 text-sm font-bold">{shop.legalName}</p>
+                <p className="text-xs leading-snug text-slate-600">{shop.address.replace(/\n+/g, " ")}</p>
+                <p className="text-xs tabular-nums text-slate-600">โทร. {shop.phone}</p>
               </div>
               {/* วิธีจัดส่งตัวใหญ่เหนือบาร์โค้ด (สไตล์ป้ายขนส่ง) · บาร์โค้ด = เลขออเดอร์ล้วน สำหรับเครื่องยิงที่คอม */}
               <div className="flex shrink-0 flex-col items-end">
@@ -345,10 +348,10 @@ export default function PrintOrderPage() {
           <section className="sheet rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
             <div className="flex items-start justify-between border-b-2 border-slate-900 pb-3">
               <div>
-                <p className="text-lg font-extrabold">{SHOP.legalName}</p>
-                <p className="text-xs leading-snug text-slate-600">{SHOP.addressLines.join(" ")}</p>
-                <p className="text-xs text-slate-600">โทร. {SHOP.phone}</p>
-                {SHOP.taxId && <p className="text-xs text-slate-600">เลขประจำตัวผู้เสียภาษี {SHOP.taxId}</p>}
+                <p className="text-lg font-extrabold">{shop.legalName}</p>
+                <p className="text-xs leading-snug text-slate-600">{shop.address.replace(/\n+/g, " ")}</p>
+                <p className="text-xs text-slate-600">โทร. {shop.phone}</p>
+                {shop.taxId && <p className="text-xs text-slate-600">เลขประจำตัวผู้เสียภาษี {shop.taxId}</p>}
               </div>
               <div className="text-right">
                 <p className="text-lg font-extrabold">ใบเสร็จรับเงิน</p>

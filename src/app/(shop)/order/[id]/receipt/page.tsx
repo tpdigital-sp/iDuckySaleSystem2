@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import { orderTotal, type Order } from "@/lib/admin-data";
 import { fetchOrderForCustomer } from "@/lib/order-repo";
-import { SHOP } from "@/lib/shop-info";
+import { fetchShopPayment, shopInfoOf, type ShopInfo } from "@/lib/shop-settings";
 
 /** ใบเสร็จ/ใบรับเงิน ที่ลูกค้าเปิด+พิมพ์เองได้ (ต้องมี key) */
 export default function CustomerReceiptPage() {
@@ -16,6 +16,11 @@ export default function CustomerReceiptPage() {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
   const [orderKey, setOrderKey] = useState("");
+  const [shop, setShop] = useState<ShopInfo>(shopInfoOf(null)); // ข้อมูลร้าน (แอดมินแก้ได้ที่ตั้งค่าระบบ)
+
+  useEffect(() => {
+    void fetchShopPayment().then((p) => setShop(shopInfoOf(p)));
+  }, []);
 
   const load = useCallback(
     async (key: string) => {
@@ -66,11 +71,11 @@ export default function CustomerReceiptPage() {
           {/* หัว */}
           <div className="flex items-start justify-between border-b border-stone-200 pb-4">
             <div>
-              <p className="text-lg font-extrabold text-amber-950">{SHOP.name}</p>
-              <p className="text-xs leading-snug text-stone-500">{SHOP.legalName}</p>
-              <p className="text-xs leading-snug text-stone-500">{SHOP.addressLines.join(" ")}</p>
-              <p className="text-xs text-stone-500">โทร. {SHOP.phone}</p>
-              {SHOP.taxId && <p className="text-xs text-stone-500">เลขผู้เสียภาษี {SHOP.taxId}</p>}
+              <p className="text-lg font-extrabold text-amber-950">{shop.name}</p>
+              <p className="text-xs leading-snug text-stone-500">{shop.legalName}</p>
+              <p className="text-xs leading-snug text-stone-500">{shop.address.replace(/\n+/g, " ")}</p>
+              <p className="text-xs text-stone-500">โทร. {shop.phone}</p>
+              {shop.taxId && <p className="text-xs text-stone-500">เลขผู้เสียภาษี {shop.taxId}</p>}
             </div>
             <div className="text-right">
               <p className="text-sm font-bold text-stone-700">ใบรับเงิน</p>
@@ -141,7 +146,7 @@ export default function CustomerReceiptPage() {
           </div>
 
           <p className="mt-5 text-center text-[11px] text-stone-400">
-            เอกสารนี้ออกโดยระบบอัตโนมัติ · ขอบคุณที่อุดหนุน {SHOP.name} 🦆
+            เอกสารนี้ออกโดยระบบอัตโนมัติ · ขอบคุณที่อุดหนุน {shop.name} 🦆
           </p>
         </div>
       </div>

@@ -9,6 +9,7 @@
  */
 import { getSupabase } from "./supabase";
 import { DEFAULT_TIERS, type Tier } from "./tiers";
+import { SHOP } from "./shop-info";
 
 export interface BankAccount {
   id: string;
@@ -43,6 +44,41 @@ export interface ShopPayment {
   tiers?: Tier[];
   /** คูปองต้อนรับสมาชิกใหม่ (แจกอัตโนมัติตอนสมัคร) */
   welcomeCoupon?: WelcomeCouponConfig;
+  /** ข้อมูลร้าน (ชื่อ/บริษัท/ที่อยู่/โทร) — ใช้บนใบงาน/ใบปะหน้า/ใบเสร็จ · ไม่ตั้ง = ใช้ค่าในโค้ด */
+  shopInfo?: ShopInfo;
+}
+
+/** ข้อมูลร้านที่แอดมินแก้เองได้ (แสดงบนเอกสารพิมพ์ทุกใบ) */
+export interface ShopInfo {
+  /** ชื่อร้าน (แบรนด์) เช่น iDucky Prints Studio */
+  name: string;
+  /** ชื่อบริษัท/ผู้ส่งบนใบปะหน้า */
+  legalName: string;
+  /** ที่อยู่ (ขึ้นบรรทัดใหม่ได้) */
+  address: string;
+  phone: string;
+  /** เลขประจำตัวผู้เสียภาษี — เว้นว่าง = ไม่แสดงบนใบเสร็จ */
+  taxId?: string;
+}
+
+export const DEFAULT_SHOP_INFO: ShopInfo = {
+  name: SHOP.name,
+  legalName: SHOP.legalName,
+  address: SHOP.addressLines.join("\n"),
+  phone: SHOP.phone,
+  taxId: SHOP.taxId,
+};
+
+/** ข้อมูลร้านที่ใช้จริง (ตกไปใช้ค่าในโค้ดถ้ายังไม่ตั้ง/ตั้งไว้ว่าง) */
+export function shopInfoOf(s: ShopPayment | null | undefined): ShopInfo {
+  const i = s?.shopInfo;
+  return {
+    name: i?.name?.trim() || DEFAULT_SHOP_INFO.name,
+    legalName: i?.legalName?.trim() || DEFAULT_SHOP_INFO.legalName,
+    address: i?.address?.trim() || DEFAULT_SHOP_INFO.address,
+    phone: i?.phone?.trim() || DEFAULT_SHOP_INFO.phone,
+    taxId: i?.taxId?.trim() || DEFAULT_SHOP_INFO.taxId,
+  };
 }
 
 /** ตั้งค่าคูปองต้อนรับ — คิด/ออกฝั่งเซิร์ฟเวอร์ตอนสมาชิกใหม่ล็อกอินครั้งแรก */

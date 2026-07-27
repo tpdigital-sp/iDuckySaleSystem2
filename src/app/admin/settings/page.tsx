@@ -12,10 +12,12 @@ import {
   shippingOf,
   tiersConfigOf,
   welcomeCouponOf,
+  shopInfoOf,
   type BankAccount,
   type ShippingMethod,
   type ShopPayment,
   type WelcomeCouponConfig,
+  type ShopInfo,
 } from "@/lib/shop-settings";
 import { DEFAULT_TIERS, type Tier } from "@/lib/tiers";
 import { btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
@@ -23,7 +25,7 @@ import { btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
 const newId = (p = "b") =>
   typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${p}-${Date.now()}-${Math.floor(Math.random() * 1e4)}`;
 
-type Tab = "pay" | "ship" | "tier" | "welcome";
+type Tab = "shop" | "pay" | "ship" | "tier" | "welcome";
 
 function AdminSettingsPageInner() {
   const [tab, setTab] = useState<Tab>("pay");
@@ -44,6 +46,13 @@ function AdminSettingsPageInner() {
   // ── คูปองต้อนรับ ──
   const [welcome, setWelcome] = useState<WelcomeCouponConfig>(welcomeCouponOf(null));
 
+  // ── ข้อมูลร้าน (แสดงบนใบงาน/ใบปะหน้า/ใบเสร็จ) ──
+  const [info, setInfo] = useState<ShopInfo>(shopInfoOf(null));
+  const patchInfo = (patch: Partial<ShopInfo>) => {
+    setInfo((v) => ({ ...v, ...patch }));
+    touch();
+  };
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -59,6 +68,7 @@ function AdminSettingsPageInner() {
       setFreeMin(freeShippingMinOf(p));
       setTiers(tiersConfigOf(p));
       setWelcome(welcomeCouponOf(p));
+      setInfo(shopInfoOf(p));
       setLoading(false);
     });
   }, []);
@@ -125,6 +135,13 @@ function AdminSettingsPageInner() {
         .map((t) => ({ ...t, name: t.name.trim(), minSpend: Number(t.minSpend) || 0, discountPct: Number(t.discountPct) || 0 }))
         .filter((t) => t.name)
         .sort((a, b) => a.minSpend - b.minSpend),
+      shopInfo: {
+        name: info.name.trim(),
+        legalName: info.legalName.trim(),
+        address: info.address.trim(),
+        phone: info.phone.trim(),
+        taxId: info.taxId?.trim() || undefined,
+      },
       welcomeCoupon: {
         enabled: welcome.enabled,
         type: welcome.type,
@@ -160,6 +177,7 @@ function AdminSettingsPageInner() {
       <div className="mt-5 flex flex-wrap gap-2">
         {(
           [
+            ["shop", "🏪 ข้อมูลร้าน"],
             ["pay", "🏦 ชำระเงิน"],
             ["ship", "🚚 การจัดส่ง"],
             ["tier", "🏅 ระดับสมาชิก"],
@@ -186,6 +204,37 @@ function AdminSettingsPageInner() {
         <div className={`mt-5 p-8 text-center text-sm ${muted} ${card}`}>กำลังโหลด…</div>
       ) : (
         <>
+          {/* ══════ ข้อมูลร้าน ══════ */}
+          {tab === "shop" && (
+            <section className={`mt-4 p-5 ${card}`}>
+              <h2 className="text-sm font-semibold text-slate-800">🏪 ข้อมูลร้าน</h2>
+              <p className={`mt-0.5 text-xs ${faint}`}>แสดงบนใบงาน · ใบปะหน้าพัสดุ (ผู้ส่ง) · ใบเสร็จ</p>
+
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">ชื่อร้าน (แบรนด์)</span>
+                  <input value={info.name} onChange={(e) => patchInfo({ name: e.target.value })} className={inputCls} placeholder="เช่น iDucky Prints Studio" />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">ชื่อบริษัท / ผู้ส่ง</span>
+                  <input value={info.legalName} onChange={(e) => patchInfo({ legalName: e.target.value })} className={inputCls} placeholder="เช่น บริษัท ทีพีดิจิตอล" />
+                </label>
+                <label className="block sm:col-span-2">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">ที่อยู่ร้าน</span>
+                  <textarea value={info.address} onChange={(e) => patchInfo({ address: e.target.value })} rows={2} className={`${inputCls} resize-y`} placeholder="บ้านเลขที่ ซอย/ถนน แขวง/เขต จังหวัด รหัสไปรษณีย์" />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">เบอร์โทรร้าน</span>
+                  <input value={info.phone} onChange={(e) => patchInfo({ phone: e.target.value })} inputMode="tel" className={inputCls} placeholder="เช่น 096-569-9414" />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">เลขประจำตัวผู้เสียภาษี — ไม่บังคับ</span>
+                  <input value={info.taxId ?? ""} onChange={(e) => patchInfo({ taxId: e.target.value })} className={inputCls} placeholder="เว้นว่าง = ไม่แสดงบนใบเสร็จ" />
+                </label>
+              </div>
+            </section>
+          )}
+
           {/* ══════ ชำระเงิน ══════ */}
           {tab === "pay" && (
             <>
