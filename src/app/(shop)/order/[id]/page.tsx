@@ -40,7 +40,8 @@ export default function CustomerOrderPage() {
   const [note, setNote] = useState("");
   const [busyIdx, setBusyIdx] = useState<number | null>(null);
   const [actionErr, setActionErr] = useState("");
-  const [lightbox, setLightbox] = useState<{ src: string; alt: string; caption?: string } | null>(null);
+  // อ้างอิงด้วย index (ไม่เก็บ src ตรง ๆ) — ให้ปุ่มอนุมัติ/เลื่อนรูปใน lightbox ใช้ข้อมูลล่าสุดเสมอ
+  const [lightbox, setLightbox] = useState<{ itemIdx: number; proofIdx: number } | null>(null);
   const [slipBusy, setSlipBusy] = useState(false);
   const [slipErr, setSlipErr] = useState("");
 
@@ -327,13 +328,7 @@ export default function CustomerOrderPage() {
                         <div key={`${p.url}-${j}`} className="w-24">
                           <button
                             type="button"
-                            onClick={() =>
-                              setLightbox({
-                                src: p.url,
-                                alt: `แบบงาน ${it.name} รูปที่ ${j + 1}`,
-                                caption: [it.name, p.qty ? `${p.qty} ชิ้น` : "", p.note ?? ""].filter(Boolean).join(" · "),
-                              })
-                            }
+                            onClick={() => setLightbox({ itemIdx: i, proofIdx: j })}
                             aria-label={`ขยายดูแบบงาน ${it.name} รูปที่ ${j + 1}`}
                             className="block aspect-[4/3] w-full cursor-zoom-in overflow-hidden rounded-xl ring-1 ring-stone-200 transition hover:ring-amber-300"
                           >
@@ -597,9 +592,54 @@ export default function CustomerOrderPage() {
         </Link>
       </div>
 
-      {lightbox && (
-        <ImageLightbox src={lightbox.src} alt={lightbox.alt} caption={lightbox.caption} onClose={() => setLightbox(null)} />
-      )}
+      {lightbox &&
+        (() => {
+          const it = order.items[lightbox.itemIdx];
+          const proofs = it ? proofsOf(it) : [];
+          const p = proofs[lightbox.proofIdx];
+          if (!it || !p) return null; // ข้อมูลเพิ่งรีเฟรชแล้วรูปหาย → ไม่แสดง
+          const many = proofs.length > 1;
+          const go = (d: number) =>
+            setLightbox({ itemIdx: lightbox.itemIdx, proofIdx: (lightbox.proofIdx + d + proofs.length) % proofs.length });
+          return (
+            <ImageLightbox
+              src={p.url}
+              alt={`แบบงาน ${it.name} รูปที่ ${lightbox.proofIdx + 1}`}
+              caption={[it.name, p.qty ? `${p.qty} ชิ้น` : "", p.note ?? ""].filter(Boolean).join(" · ")}
+              counter={many ? `${lightbox.proofIdx + 1} / ${proofs.length}` : undefined}
+              onPrev={many ? () => go(-1) : undefined}
+              onNext={many ? () => go(1) : undefined}
+              onClose={() => setLightbox(null)}
+              footer={
+                it.proofStatus === "รอตรวจ" ? (
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => act(lightbox.itemIdx, "approve")}
+                      disabled={busyIdx === lightbox.itemIdx}
+                      className="rounded-full bg-amber-500 px-5 py-2.5 text-sm font-bold text-white shadow-lg transition hover:bg-amber-600 disabled:opacity-50"
+                    >
+                      {busyIdx === lightbox.itemIdx ? "กำลังส่ง…" : "✅ อนุมัติแบบนี้"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLightbox(null);
+                        setEditingIdx(lightbox.itemIdx);
+                        setNote("");
+                      }}
+                      className="rounded-full bg-white/10 px-5 py-2.5 text-sm font-bold text-rose-300 ring-1 ring-rose-300/50 transition hover:bg-rose-500/20"
+                    >
+                      ✏️ ขอแก้ไข
+                    </button>
+                  </div>
+                ) : it.proofStatus === "อนุมัติ" ? (
+                  <p className="text-center text-sm font-bold text-teal-300">✅ คุณอนุมัติแบบนี้แล้ว</p>
+                ) : undefined
+              }
+            />
+          );
+        })()}
     </div>
   );
 }
