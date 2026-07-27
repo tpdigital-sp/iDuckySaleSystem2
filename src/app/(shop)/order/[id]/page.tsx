@@ -165,6 +165,10 @@ export default function CustomerOrderPage() {
   }
 
   const waiting = order.items.filter((it) => proofsOf(it).length && it.proofStatus === "รอตรวจ").length;
+  /** จำนวนภาพแบบงานที่ยังรออนุมัติ (รวมทุกรายการที่สถานะรอตรวจ) */
+  const waitingProofs = order.items
+    .filter((it) => it.proofStatus === "รอตรวจ")
+    .reduce((s, it) => s + proofsOf(it).length, 0);
   const subtotal = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
   const step = STEP_OF[order.status];
   const balance = orderBalance(order);
@@ -282,7 +286,7 @@ export default function CustomerOrderPage() {
 
       {waiting > 0 && (
         <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
-          🎨 <strong>มีแบบงานรอให้คุณตรวจ {waiting} รายการ</strong> — ดูรูปแล้วกดอนุมัติ หรือขอแก้ไขได้เลย
+          🎨 <strong>มีแบบงานรอให้คุณตรวจ {waiting} รายการ ({waitingProofs} ภาพ)</strong> — ดูรูปแล้วกดอนุมัติ หรือขอแก้ไขได้เลย
         </div>
       )}
 
@@ -613,13 +617,18 @@ export default function CustomerOrderPage() {
               footer={
                 it.proofStatus === "รอตรวจ" ? (
                   <div className="flex flex-wrap justify-center gap-2">
+                    <p className="w-full text-center text-xs font-semibold text-white/80">
+                      เหลือรออนุมัติ {waiting} รายการ · {waitingProofs} ภาพ
+                    </p>
                     <button
                       type="button"
                       onClick={() => act(lightbox.itemIdx, "approve")}
                       disabled={busyIdx === lightbox.itemIdx}
                       className="rounded-full bg-amber-500 px-5 py-2.5 text-sm font-bold text-white shadow-lg transition hover:bg-amber-600 disabled:opacity-50"
                     >
-                      {busyIdx === lightbox.itemIdx ? "กำลังส่ง…" : "✅ อนุมัติแบบนี้"}
+                      {busyIdx === lightbox.itemIdx
+                        ? "กำลังส่ง…"
+                        : `✅ อนุมัติแบบนี้${proofs.length > 1 ? ` (ทั้ง ${proofs.length} ภาพ)` : ""}`}
                     </button>
                     <button
                       type="button"
