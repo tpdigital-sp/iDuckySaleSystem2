@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 
 /**
  * ฝ่ายแพ็คบันทึกได้เฉพาะงานแพ็ค — เอาออเดอร์เดิมจาก DB เป็นฐาน แล้วทับเฉพาะ:
- *   ผลตรวจนับ (proofs[].pack) · ยืนยันอ่าน (items[].noteAck) · เลขพัสดุ + สถานะจัดส่ง · log
+ *   ผลตรวจนับ (proofs[].pack) · ยืนยันอ่าน (items[].noteAck) · ยืนยันใส่งานตัวอย่าง (items[].samplePacked) · เลขพัสดุ + สถานะจัดส่ง · log
  * ฟิลด์อื่น (ราคา ที่อยู่ รายการ) ใช้ของเดิมทั้งหมด — กันแก้ทางอ้อม
  */
 function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Order {
@@ -20,7 +20,7 @@ function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Or
       const ip = (inc.proofs ?? [])[j];
       return ip?.pack ? { ...p, pack: ip.pack } : p;
     });
-    return { ...it, proofs, noteAck: inc.noteAck ?? it.noteAck };
+    return { ...it, proofs, noteAck: inc.noteAck ?? it.noteAck, samplePacked: inc.samplePacked ?? it.samplePacked };
   });
 
   const merged: Order = { ...existing, items };

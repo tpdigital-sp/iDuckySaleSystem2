@@ -170,6 +170,10 @@ export interface OrderItem {
   proofUpdatedAt?: string;
   /** พนักงานแพ็คยืนยันว่าอ่านรายละเอียดรายการนี้แล้ว — ต้องมีก่อนยิงเลขพัสดุ */
   noteAck?: { by: string; at: string };
+  /** งานนี้มีชิ้นงานตัวอย่างที่ขึ้นให้ลูกค้าตรวจ — กราฟฟิก/แอดมินติ๊กไว้ ฝ่ายแพ็คต้องส่งไปพร้อมออเดอร์ */
+  sampleRequired?: { by: string; at: string };
+  /** พนักงานแพ็คยืนยันว่าใส่ชิ้นงานตัวอย่างลงกล่องแล้ว — ต้องมีก่อนยิงเลขพัสดุ (เมื่อ sampleRequired) */
+  samplePacked?: { by: string; at: string };
   /** กราฟฟิกยืนยันว่าอ่านรายละเอียดรายการนี้แล้ว (ก่อนทำแบบงาน) — audit trail */
   graphicAck?: { by: string; at: string };
   /** หมายเหตุที่แอดมินพิมพ์ลงใบงาน (ตรงตำแหน่งรายการนี้) — rich text HTML (สี/ขนาด/น้ำหนักต่อคำ) */
@@ -250,6 +254,8 @@ export interface PackGate {
   unread: string[];
   /** รูปที่พนักงานกด "ไม่ครบ" — ของขาด ห้ามส่ง */
   short: { item: string; got: number; need?: number }[];
+  /** รายการที่มีชิ้นงานตัวอย่างแต่ยังไม่ได้ยืนยันว่าใส่กล่องแล้ว — กันลืมส่งตัวอย่างไปกับออเดอร์ */
+  unsampled: string[];
 }
 
 /**
@@ -260,16 +266,24 @@ export function packGate(order: Order): PackGate {
   const uncounted: PackGate["uncounted"] = [];
   const unread: string[] = [];
   const short: PackGate["short"] = [];
+  const unsampled: string[] = [];
 
   order.items.forEach((it) => {
     if (!it.noteAck) unread.push(it.name);
+    if (it.sampleRequired && !it.samplePacked) unsampled.push(it.name);
     proofsOf(it).forEach((p, j) => {
       if (!p.pack) uncounted.push({ item: it.name, index: j + 1 });
       else if (p.pack.status === "ไม่ครบ") short.push({ item: it.name, got: p.pack.got ?? 0, need: p.qty });
     });
   });
 
-  return { ready: !uncounted.length && !unread.length && !short.length, uncounted, unread, short };
+  return {
+    ready: !uncounted.length && !unread.length && !short.length && !unsampled.length,
+    uncounted,
+    unread,
+    short,
+    unsampled,
+  };
 }
 
 /** เพิ่ม 1 บรรทัดลงประวัติออเดอร์ (คืน Order ใหม่ ไม่แก้ของเดิม) */

@@ -362,7 +362,15 @@ export default function AdminOrderDetailPage() {
     setLightbox({
       src: p.url,
       alt: `แบบงาน ${it.name} รูปที่ ${proofIndex + 1}`,
-      caption: [it.name, p.qty ? `${p.qty} ชิ้น` : "", p.note ?? ""].filter(Boolean).join(" · "),
+      caption: [
+        it.name,
+        p.qty ? `${p.qty} ชิ้น` : "",
+        p.note ?? "",
+        p.review === "อนุมัติ" ? "✔ ลูกค้าอนุมัติรูปนี้" : "",
+        p.review === "ขอแก้ไข" ? `✏️ ลูกค้าขอแก้รูปนี้${p.reviewNote ? ` — “${p.reviewNote}”` : ""}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
       at: { item: itemIndex, proof: proofIndex },
     });
   }
@@ -428,6 +436,44 @@ export default function AdminOrderDetailPage() {
       { ...order, items },
       actor,
       acked ? "กราฟฟิกยกเลิกยืนยันอ่านรายละเอียด" : "กราฟฟิกยืนยันอ่านรายละเอียดแล้ว",
+      item?.name
+    );
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
+
+  /** กราฟฟิก/แอดมินติ๊กว่างานนี้มีชิ้นงานตัวอย่างที่ต้องส่งให้ลูกค้า · กดซ้ำ = ยกเลิก */
+  function toggleSampleRequired(itemIndex: number) {
+    if (!order) return;
+    const item = order.items[itemIndex];
+    const on = !!item?.sampleRequired;
+    const items = order.items.map((it, i) =>
+      i === itemIndex
+        ? { ...it, sampleRequired: on ? undefined : { by: actor, at: new Date().toISOString() }, ...(on ? { samplePacked: undefined } : {}) }
+        : it
+    );
+    const next = withLog(
+      { ...order, items },
+      actor,
+      on ? "ยกเลิก: มีงานตัวอย่าง" : "ติ๊กว่ามีงานตัวอย่างต้องส่งให้ลูกค้า",
+      item?.name
+    );
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
+
+  /** พนักงานแพ็คยืนยันว่าใส่ชิ้นงานตัวอย่างลงกล่องแล้ว · กดซ้ำ = ยกเลิก */
+  function toggleSamplePacked(itemIndex: number) {
+    if (!order) return;
+    const item = order.items[itemIndex];
+    const acked = !!item?.samplePacked;
+    const items = order.items.map((it, i) =>
+      i === itemIndex ? { ...it, samplePacked: acked ? undefined : { by: actor, at: new Date().toISOString() } } : it
+    );
+    const next = withLog(
+      { ...order, items },
+      actor,
+      acked ? "ยกเลิกยืนยันใส่งานตัวอย่าง" : "ยืนยันใส่งานตัวอย่างลงกล่องแล้ว",
       item?.name
     );
     setOrder(next);
@@ -520,6 +566,7 @@ export default function AdminOrderDetailPage() {
           gate={gate}
           onCheck={setPackCheck}
           onAck={toggleNoteAck}
+          onSampleAck={toggleSamplePacked}
           onTrackingChange={(v) => setOrder((cur) => (cur ? { ...cur, tracking: v } : cur))}
           onTrackingSave={saveTracking}
           onZoom={showProof}
@@ -718,6 +765,23 @@ export default function AdminOrderDetailPage() {
                           {it.graphicAck.by} · {shortTime(it.graphicAck.at)}
                         </span>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => toggleSampleRequired(i)}
+                        title="ติ๊กเมื่อขึ้นชิ้นงานตัวอย่างให้ลูกค้า — ฝ่ายแพ็คจะถูกบังคับให้ยืนยันว่าใส่กล่องแล้วก่อนยิงเลขพัสดุ"
+                        className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                          it.sampleRequired
+                            ? "bg-amber-500 text-white hover:bg-amber-600"
+                            : "border border-slate-300 bg-white text-slate-600 hover:border-amber-400 hover:text-amber-700"
+                        }`}
+                      >
+                        {it.sampleRequired ? "🎁 มีงานตัวอย่างต้องส่งให้ลูกค้า" : "☐ งานนี้มีชิ้นงานตัวอย่าง"}
+                      </button>
+                      {it.sampleRequired && (
+                        <span className="text-[10px] text-slate-400">
+                          {it.sampleRequired.by} · {shortTime(it.sampleRequired.at)}
+                        </span>
+                      )}
                     </div>
                   )}
 
@@ -739,6 +803,22 @@ export default function AdminOrderDetailPage() {
                       <span className={`text-[11px] ${proofQty && proofQty !== it.qty ? "font-bold text-rose-600" : faint}`}>
                         {proofs.length} แบบ · ระบุจำนวนรวม {proofQty}/{it.qty} ชิ้น
                         {proofQty > 0 && proofQty !== it.qty ? " ⚠️ ไม่ตรง" : ""}
+                      </span>
+                    )}
+                    {it.sampleRequired && (
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${
+                          it.samplePacked
+                            ? "bg-teal-50 text-teal-700 ring-teal-200/70"
+                            : "bg-amber-50 text-amber-700 ring-amber-200/70"
+                        }`}
+                        title={
+                          it.samplePacked
+                            ? `ยืนยันโดย ${it.samplePacked.by} · ${shortTime(it.samplePacked.at)}`
+                            : "ฝ่ายแพ็คต้องยืนยันว่าใส่ชิ้นงานตัวอย่างลงกล่องก่อนยิงเลขพัสดุ"
+                        }
+                      >
+                        {it.samplePacked ? "🎁 งานตัวอย่างใส่กล่องแล้ว" : "🎁 มีงานตัวอย่างต้องส่ง"}
                       </span>
                     )}
                   </div>
@@ -763,6 +843,14 @@ export default function AdminOrderDetailPage() {
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={p.url} alt={`แบบงาน ${it.name} รูปที่ ${j + 1}`} className="h-full w-full object-contain" />
                           </button>
+                          {/* ผลตรวจของลูกค้า "ต่อรูปนี้" — ไม่มีค่า = ลูกค้ายังไม่ตรวจรูปนี้ */}
+                          {p.review && (
+                            <span
+                              className={`pointer-events-none absolute left-1.5 top-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${PROOF_STYLES[p.review]}`}
+                            >
+                              {p.review === "อนุมัติ" ? "✔ อนุมัติ" : "✏️ ขอแก้ไข"}
+                            </span>
+                          )}
                           {mayProof && (
                             <button
                               type="button"
@@ -797,12 +885,20 @@ export default function AdminOrderDetailPage() {
                               onBlur={persist}
                               className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs focus:border-amber-300 focus:outline-none"
                             />
+                            {p.review === "ขอแก้ไข" && p.reviewNote && (
+                              <p className="rounded-lg bg-rose-50 px-2 py-1 text-[10px] leading-snug text-rose-700 ring-1 ring-rose-100">
+                                ลูกค้าขอแก้: “{p.reviewNote}”
+                              </p>
+                            )}
                           </div>
                         ) : (
                           /* ฝ่ายแพ็ค — อ่านอย่างเดียว แก้ไม่ได้ */
                           <div className="p-2 text-[11px] leading-snug text-slate-600">
                             {p.qty ? <strong>{p.qty} ชิ้น</strong> : <span className="text-slate-400">ไม่ระบุจำนวน</span>}
                             {p.note ? <span className="block text-slate-500">{p.note}</span> : null}
+                            {p.review === "ขอแก้ไข" && p.reviewNote && (
+                              <span className="block text-rose-600">ลูกค้าขอแก้: “{p.reviewNote}”</span>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1258,6 +1354,7 @@ function PackView({
   gate,
   onCheck,
   onAck,
+  onSampleAck,
   onTrackingChange,
   onTrackingSave,
   onZoom,
@@ -1266,6 +1363,7 @@ function PackView({
   gate: ReturnType<typeof packGate>;
   onCheck: (i: number, j: number, status: "ครบ" | "ไม่ครบ", got?: number) => void;
   onAck: (i: number) => void;
+  onSampleAck: (i: number) => void;
   onTrackingChange: (v: string) => void;
   onTrackingSave: () => void;
   onZoom: (i: number, j: number) => void;
@@ -1285,7 +1383,7 @@ function PackView({
         <p className={`mt-1 text-sm font-bold ${gate.ready ? "text-green-400" : "text-amber-300"}`}>
           {gate.ready
             ? "✅ ตรวจครบแล้ว — ยิงเลขพัสดุได้"
-            : `⏳ เหลืออีก ${gate.uncounted.length + gate.unread.length} จุดต้องยืนยัน`}
+            : `⏳ เหลืออีก ${gate.uncounted.length + gate.unread.length + gate.unsampled.length} จุดต้องยืนยัน`}
         </p>
       </div>
 
@@ -1328,6 +1426,29 @@ function PackView({
                   </span>
                 </span>
               </button>
+
+              {/* งานตัวอย่าง — บังคับยืนยันว่าใส่กล่องแล้ว (เฉพาะรายการที่กราฟฟิกติ๊กไว้) */}
+              {it.sampleRequired && (
+                <button
+                  type="button"
+                  onClick={() => onSampleAck(i)}
+                  className={`mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-3 text-left ${
+                    it.samplePacked ? "bg-green-50 ring-1 ring-green-200" : "bg-rose-50 ring-2 ring-rose-300"
+                  }`}
+                >
+                  <span className="text-lg">{it.samplePacked ? "✅" : "🎁"}</span>
+                  <span className="min-w-0 flex-1 text-xs">
+                    <span className={`block font-extrabold ${it.samplePacked ? "text-slate-700" : "text-rose-700"}`}>
+                      งานนี้มีชิ้นงานตัวอย่าง — ต้องแนบให้ลูกค้า
+                    </span>
+                    <span className={it.samplePacked ? "text-green-700" : "font-bold text-rose-600"}>
+                      {it.samplePacked
+                        ? `ใส่กล่องแล้ว · ${it.samplePacked.by}`
+                        : "แตะยืนยันเมื่อใส่ตัวอย่างลงกล่องแล้ว"}
+                    </span>
+                  </span>
+                </button>
+              )}
             </div>
           );
         })}
@@ -1356,6 +1477,7 @@ function PackView({
                 gate.uncounted.length ? `ตรวจนับอีก ${gate.uncounted.length} รูป` : "",
                 gate.unread.length ? `ยืนยันอ่านอีก ${gate.unread.length} รายการ` : "",
                 gate.short.length ? `ของไม่ครบ ${gate.short.length} รายการ` : "",
+                gate.unsampled.length ? `🎁 ใส่งานตัวอย่างอีก ${gate.unsampled.length} รายการ` : "",
               ]
                 .filter(Boolean)
                 .join(" · ")}

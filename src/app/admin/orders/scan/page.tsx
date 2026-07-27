@@ -321,6 +321,7 @@ export default function ScanTrackingPage() {
               const need = [
                 g.uncounted.length ? `ตรวจนับ ${g.uncounted.length} รูป` : "",
                 g.unread.length ? `อ่านรายละเอียด ${g.unread.length} รายการ` : "",
+                g.unsampled.length ? `🎁 ใส่งานตัวอย่าง ${g.unsampled.length} รายการ` : "",
               ]
                 .filter(Boolean)
                 .join(" · ");
@@ -385,6 +386,11 @@ export default function ScanTrackingPage() {
               <ul className="mt-1 space-y-1 text-sm leading-relaxed text-rose-700">
                 {blocked.gate.uncounted.length > 0 && <li>• ยังไม่ได้ตรวจนับของ {blocked.gate.uncounted.length} รูป</li>}
                 {blocked.gate.unread.length > 0 && <li>• ยังไม่ได้ยืนยันอ่านรายละเอียด {blocked.gate.unread.length} รายการ</li>}
+                {blocked.gate.unsampled.map((name, k) => (
+                  <li key={`s-${k}`} className="font-bold">
+                    • 🎁 ยังไม่ได้ยืนยันใส่งานตัวอย่าง: {name}
+                  </li>
+                ))}
                 {blocked.gate.short.map((s, k) => (
                   <li key={k} className="font-bold">
                     • ของไม่ครบ: {s.item} — นับได้ {s.got}

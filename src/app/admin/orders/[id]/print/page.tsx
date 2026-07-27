@@ -236,6 +236,11 @@ export default function PrintOrderPage() {
                     {order.shipDate?.to && order.shipDate.to !== order.shipDate.from ? ` – ${fmtThaiDate(order.shipDate.to)}` : ""}
                   </p>
                 )}
+                {order.items.some((it) => it.sampleRequired) && (
+                  <p className="mt-1.5 block w-fit rounded border-2 border-red-600 bg-white px-2 py-1 text-base font-extrabold" style={{ color: "#dc2626" }}>
+                    🎁 ออเดอร์นี้มีงานตัวอย่าง {order.items.filter((it) => it.sampleRequired).length} รายการ — ต้องแนบไปด้วย!
+                  </p>
+                )}
               </div>
               {orderUrl && (
                 <div className="shrink-0 text-center">
@@ -290,6 +295,11 @@ export default function PrintOrderPage() {
                       </td>
                       <td className="py-3">
                         <p className="font-bold">{it.name}</p>
+                        {it.sampleRequired && (
+                          <p className="mt-1 inline-block rounded border-2 border-red-600 px-2 py-0.5 text-sm font-extrabold" style={{ color: "#dc2626" }}>
+                            🎁 มีงานตัวอย่าง — แนบใส่กล่องให้ลูกค้าด้วย
+                          </p>
+                        )}
                         {cleanSelections(it.selections) && (
                           <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{cleanSelections(it.selections)}</p>
                         )}
