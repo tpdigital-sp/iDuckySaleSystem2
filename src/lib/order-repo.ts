@@ -109,19 +109,20 @@ export async function updateOrderAddress(
   }
 }
 
-/** ลูกค้าตรวจแบบ — อนุมัติ หรือ ขอแก้ไข (พร้อมคอมเมนต์) */
+/** ลูกค้าตรวจแบบ — อนุมัติ หรือ ขอแก้ไข (พร้อมคอมเมนต์) · ระบุ proofIndex = ตรวจเฉพาะรูปนั้น */
 export async function reviewProof(
   orderId: string,
   key: string,
   itemIndex: number,
   action: "approve" | "request",
-  note?: string
+  note?: string,
+  proofIndex?: number
 ): Promise<{ ok: boolean; order?: Order; error?: string }> {
   try {
     const res = await fetch("/api/orders/review", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, key, itemIndex, action, note }),
+      body: JSON.stringify({ orderId, key, itemIndex, action, note, proofIndex }),
     });
     const data = await res.json().catch(() => ({}));
     return res.ok ? { ok: true, order: data.order as Order } : { ok: false, error: data.error ?? "ส่งผลตรวจไม่สำเร็จ" };

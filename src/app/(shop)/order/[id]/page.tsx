@@ -42,6 +42,14 @@ export default function CustomerOrderPage() {
   const [actionErr, setActionErr] = useState("");
   // อ้างอิงด้วย index (ไม่เก็บ src ตรง ๆ) — ให้ปุ่มอนุมัติ/เลื่อนรูปใน lightbox ใช้ข้อมูลล่าสุดเสมอ
   const [lightbox, setLightbox] = useState<{ itemIdx: number; proofIdx: number } | null>(null);
+  /* กล่องขอแก้ไข "รูปนี้" ใน lightbox */
+  const [lbEdit, setLbEdit] = useState(false);
+  const [lbNote, setLbNote] = useState("");
+  const openLightbox = (itemIdx: number, proofIdx: number) => {
+    setLightbox({ itemIdx, proofIdx });
+    setLbEdit(false);
+    setLbNote("");
+  };
   const [slipBusy, setSlipBusy] = useState(false);
   const [slipErr, setSlipErr] = useState("");
 
@@ -111,18 +119,31 @@ export default function CustomerOrderPage() {
   const live = !!order && order.status !== "เสร็จสิ้น" && order.status !== "ยกเลิก";
   usePolling(refresh, { enabled: live });
 
-  async function act(itemIndex: number, action: "approve" | "request") {
+  /** ส่งผลตรวจ — ระบุ proofIdx = เฉพาะรูปนั้น (per-image) · คืน order ล่าสุดให้ผู้เรียกใช้ต่อ (เช่น เด้งรูปถัดไป) */
+  async function act(
+    itemIndex: number,
+    action: "approve" | "request",
+    opts?: { proofIdx?: number; noteText?: string }
+  ): Promise<Order | null> {
     setActionErr("");
     setBusyIdx(itemIndex);
-    const res = await reviewProof(orderId, orderKey, itemIndex, action, action === "request" ? note : undefined);
+    const res = await reviewProof(
+      orderId,
+      orderKey,
+      itemIndex,
+      action,
+      action === "request" ? (opts?.noteText ?? note) : undefined,
+      opts?.proofIdx
+    );
     setBusyIdx(null);
     if (!res.ok) {
       setActionErr(res.error ?? "ส่งผลตรวจไม่สำเร็จ");
-      return;
+      return null;
     }
     if (res.order) setOrder(res.order);
     setEditingIdx(null);
     setNote("");
+    return res.order ?? null;
   }
 
   /** ลูกค้าอัปโหลดสลิปแจ้งโอน (ทั้งจ่ายครั้งแรกและจ่ายส่วนต่างที่สั่งเพิ่ม) */
@@ -165,10 +186,10 @@ export default function CustomerOrderPage() {
   }
 
   const waiting = order.items.filter((it) => proofsOf(it).length && it.proofStatus === "รอตรวจ").length;
-  /** จำนวนภาพแบบงานที่ยังรออนุมัติ (รวมทุกรายการที่สถานะรอตรวจ) */
+  /** จำนวน "ภาพ" ที่ลูกค้ายังไม่ได้ตรวจ (per-image) — ข้ามรายการที่อนุมัติครบแล้ว */
   const waitingProofs = order.items
-    .filter((it) => it.proofStatus === "รอตรวจ")
-    .reduce((s, it) => s + proofsOf(it).length, 0);
+    .filter((it) => proofsOf(it).length && it.proofStatus !== "อนุมัติ")
+    .reduce((s, it) => s + proofsOf(it).filter((p) => !p.review).length, 0);
   const subtotal = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
   const step = STEP_OF[order.status];
   const balance = orderBalance(order);
@@ -286,7 +307,7 @@ export default function CustomerOrderPage() {
 
       {waiting > 0 && (
         <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
-          🎨 <strong>มีแบบงานรอให้คุณตรวจ {waiting} รายการ ({waitingProofs} ภาพ)</strong> — ดูรูปแล้วกดอนุมัติ หรือขอแก้ไขได้เลย
+          🎨 <strong>มีแบบงานรอให้คุณตรวจ {waiting} รายการ — เหลืออีก {waitingProofs} ภาพ</strong> · แตะรูปเพื่อดูใหญ่ แล้วกดอนุมัติทีละภาพได้เลย
         </div>
       )}
 
@@ -332,12 +353,23 @@ export default function CustomerOrderPage() {
                         <div key={`${p.url}-${j}`} className="w-24">
                           <button
                             type="button"
-                            onClick={() => setLightbox({ itemIdx: i, proofIdx: j })}
+                            onClick={() => openLightbox(i, j)}
                             aria-label={`ขยายดูแบบงาน ${it.name} รูปที่ ${j + 1}`}
-                            className="block aspect-[4/3] w-full cursor-zoom-in overflow-hidden rounded-xl ring-1 ring-stone-200 transition hover:ring-amber-300"
+                            className={`relative block aspect-[4/3] w-full cursor-zoom-in overflow-hidden rounded-xl ring-1 transition hover:ring-amber-300 ${
+                              p.review === "อนุมัติ" ? "ring-teal-300" : p.review === "ขอแก้ไข" ? "ring-rose-300" : "ring-stone-200"
+                            }`}
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={p.url} alt={`แบบงาน ${it.name} รูปที่ ${j + 1}`} className="h-full w-full bg-stone-50 object-contain" />
+                            {p.review && (
+                              <span
+                                className={`absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold text-white ${
+                                  p.review === "อนุมัติ" ? "bg-teal-500" : "bg-rose-500"
+                                }`}
+                              >
+                                {p.review === "อนุมัติ" ? "✓" : "✏"}
+                              </span>
+                            )}
                           </button>
                           {(p.qty || p.note) && (
                             <p className="mt-1 text-[11px] leading-tight text-stone-500">
@@ -405,7 +437,9 @@ export default function CustomerOrderPage() {
                         disabled={busyIdx === i}
                         className="rounded-full bg-amber-500 px-4 py-2 text-[13px] font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-50"
                       >
-                        {busyIdx === i ? "กำลังส่ง…" : "✅ อนุมัติแบบนี้"}
+                        {busyIdx === i
+                          ? "กำลังส่ง…"
+                          : `✅ อนุมัติทุกภาพที่เหลือ${proofs.filter((p) => !p.review).length ? ` (${proofs.filter((p) => !p.review).length})` : ""}`}
                       </button>
                       <button
                         type="button"
@@ -603,8 +637,17 @@ export default function CustomerOrderPage() {
           const p = proofs[lightbox.proofIdx];
           if (!it || !p) return null; // ข้อมูลเพิ่งรีเฟรชแล้วรูปหาย → ไม่แสดง
           const many = proofs.length > 1;
-          const go = (d: number) =>
-            setLightbox({ itemIdx: lightbox.itemIdx, proofIdx: (lightbox.proofIdx + d + proofs.length) % proofs.length });
+          const go = (d: number) => openLightbox(lightbox.itemIdx, (lightbox.proofIdx + d + proofs.length) % proofs.length);
+          /** อนุมัติรูปนี้ แล้วเด้งไปรูปถัดไปที่ยังไม่ตรวจ (ถ้าไม่มีแล้วอยู่ที่เดิมให้เห็นป้ายเขียว) */
+          const approveThis = async () => {
+            const o = await act(lightbox.itemIdx, "approve", { proofIdx: lightbox.proofIdx });
+            if (!o) return;
+            const ps = proofsOf(o.items[lightbox.itemIdx] ?? it);
+            const after = ps.findIndex((pp, idx) => idx > lightbox.proofIdx && !pp.review);
+            const any = ps.findIndex((pp) => !pp.review);
+            const target = after >= 0 ? after : any;
+            if (target >= 0) openLightbox(lightbox.itemIdx, target);
+          };
           return (
             <ImageLightbox
               src={p.url}
@@ -615,36 +658,68 @@ export default function CustomerOrderPage() {
               onNext={many ? () => go(1) : undefined}
               onClose={() => setLightbox(null)}
               footer={
-                it.proofStatus === "รอตรวจ" ? (
+                p.review === "อนุมัติ" ? (
+                  <p className="text-center text-sm font-bold text-teal-300">✅ ภาพนี้อนุมัติแล้ว</p>
+                ) : p.review === "ขอแก้ไข" ? (
+                  <p className="text-center text-sm font-bold text-rose-300">
+                    ✏️ ขอแก้ไขภาพนี้แล้ว{p.reviewNote ? ` — “${p.reviewNote}”` : ""}
+                  </p>
+                ) : lbEdit ? (
+                  <div className="rounded-2xl bg-white/10 p-3">
+                    <textarea
+                      value={lbNote}
+                      onChange={(e) => setLbNote(e.target.value)}
+                      rows={2}
+                      autoFocus
+                      placeholder="อยากให้แก้ตรงไหนในภาพนี้?"
+                      className="w-full resize-y rounded-xl bg-white px-3 py-2 text-sm text-stone-700 focus:outline-none"
+                    />
+                    <div className="mt-2 flex justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const o = await act(lightbox.itemIdx, "request", { proofIdx: lightbox.proofIdx, noteText: lbNote });
+                          if (o) {
+                            setLbEdit(false);
+                            setLbNote("");
+                          }
+                        }}
+                        disabled={!lbNote.trim() || busyIdx === lightbox.itemIdx}
+                        className="rounded-full bg-rose-500 px-4 py-2 text-[13px] font-bold text-white transition hover:bg-rose-600 disabled:opacity-50"
+                      >
+                        {busyIdx === lightbox.itemIdx ? "กำลังส่ง…" : "ส่งคำขอแก้ไขภาพนี้"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLbEdit(false)}
+                        className="rounded-full px-4 py-2 text-[13px] font-semibold text-white/70 hover:bg-white/10"
+                      >
+                        ยกเลิก
+                      </button>
+                    </div>
+                  </div>
+                ) : (
                   <div className="flex flex-wrap justify-center gap-2">
                     <p className="w-full text-center text-xs font-semibold text-white/80">
-                      เหลือรออนุมัติ {waiting} รายการ · {waitingProofs} ภาพ
+                      เหลือรออนุมัติอีก {waitingProofs} ภาพ
                     </p>
                     <button
                       type="button"
-                      onClick={() => act(lightbox.itemIdx, "approve")}
+                      onClick={approveThis}
                       disabled={busyIdx === lightbox.itemIdx}
                       className="rounded-full bg-amber-500 px-5 py-2.5 text-sm font-bold text-white shadow-lg transition hover:bg-amber-600 disabled:opacity-50"
                     >
-                      {busyIdx === lightbox.itemIdx
-                        ? "กำลังส่ง…"
-                        : `✅ อนุมัติแบบนี้${proofs.length > 1 ? ` (ทั้ง ${proofs.length} ภาพ)` : ""}`}
+                      {busyIdx === lightbox.itemIdx ? "กำลังส่ง…" : "✅ อนุมัติภาพนี้"}
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setLightbox(null);
-                        setEditingIdx(lightbox.itemIdx);
-                        setNote("");
-                      }}
+                      onClick={() => setLbEdit(true)}
                       className="rounded-full bg-white/10 px-5 py-2.5 text-sm font-bold text-rose-300 ring-1 ring-rose-300/50 transition hover:bg-rose-500/20"
                     >
-                      ✏️ ขอแก้ไข
+                      ✏️ ขอแก้ไขภาพนี้
                     </button>
                   </div>
-                ) : it.proofStatus === "อนุมัติ" ? (
-                  <p className="text-center text-sm font-bold text-teal-300">✅ คุณอนุมัติแบบนี้แล้ว</p>
-                ) : undefined
+                )
               }
             />
           );
