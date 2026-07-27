@@ -1393,6 +1393,29 @@ function PackView({
           const proofs = proofsOf(it);
           return (
             <div key={`${it.productId}-${i}`} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200">
+              {/* งานตัวอย่าง — วางบนสุดให้สะดุดตาก่อนเริ่มแพ็ค · บังคับยืนยันก่อนยิงเลขพัสดุ */}
+              {it.sampleRequired && (
+                <button
+                  type="button"
+                  onClick={() => onSampleAck(i)}
+                  className={`mb-2 flex w-full items-center gap-2 rounded-xl px-3 py-3 text-left ${
+                    it.samplePacked ? "bg-green-50 ring-1 ring-green-200" : "bg-rose-50 ring-2 ring-rose-300"
+                  }`}
+                >
+                  <span className="text-lg">{it.samplePacked ? "✅" : "🎁"}</span>
+                  <span className="min-w-0 flex-1 text-xs">
+                    <span className={`block font-extrabold ${it.samplePacked ? "text-slate-700" : "text-rose-700"}`}>
+                      อย่าลืม! ใส่ชิ้นงานตัวอย่างลงกล่อง
+                    </span>
+                    <span className={it.samplePacked ? "text-green-700" : "font-bold text-rose-600"}>
+                      {it.samplePacked
+                        ? `ใส่แล้ว · ยืนยันโดย ${it.samplePacked.by}`
+                        : "ใส่เรียบร้อยแล้วค่อยแตะยืนยันตรงนี้"}
+                    </span>
+                  </span>
+                </button>
+              )}
+
               <div className="mb-2 flex items-baseline justify-between">
                 <p className="text-base font-extrabold text-slate-900">{it.name}</p>
                 <span className="text-lg font-black text-slate-900">
@@ -1427,28 +1450,6 @@ function PackView({
                 </span>
               </button>
 
-              {/* งานตัวอย่าง — บังคับยืนยันว่าใส่กล่องแล้ว (เฉพาะรายการที่กราฟฟิกติ๊กไว้) */}
-              {it.sampleRequired && (
-                <button
-                  type="button"
-                  onClick={() => onSampleAck(i)}
-                  className={`mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-3 text-left ${
-                    it.samplePacked ? "bg-green-50 ring-1 ring-green-200" : "bg-rose-50 ring-2 ring-rose-300"
-                  }`}
-                >
-                  <span className="text-lg">{it.samplePacked ? "✅" : "🎁"}</span>
-                  <span className="min-w-0 flex-1 text-xs">
-                    <span className={`block font-extrabold ${it.samplePacked ? "text-slate-700" : "text-rose-700"}`}>
-                      งานนี้มีชิ้นงานตัวอย่าง — ต้องแนบให้ลูกค้า
-                    </span>
-                    <span className={it.samplePacked ? "text-green-700" : "font-bold text-rose-600"}>
-                      {it.samplePacked
-                        ? `ใส่กล่องแล้ว · ${it.samplePacked.by}`
-                        : "แตะยืนยันเมื่อใส่ตัวอย่างลงกล่องแล้ว"}
-                    </span>
-                  </span>
-                </button>
-              )}
             </div>
           );
         })}
