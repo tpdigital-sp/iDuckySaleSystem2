@@ -55,20 +55,28 @@ export async function PATCH(req: Request) {
   const db = getFirestoreAdmin();
   if (!db) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Firebase" }, { status: 503 });
 
-  let body: { id?: string; role?: string; department?: string; workStatus?: string };
+  let body: { id?: string; role?: string; department?: string; workStatus?: string; isSuspended?: boolean };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
   }
   const id = (body.id ?? "").trim();
+  if (!id) return NextResponse.json({ error: "ไม่มีรหัสพนักงาน" }, { status: 400 });
+
+  // แก้ได้ 2 แบบ: ข้อมูลตำแหน่ง (role+department+workStatus) หรือสวิตช์ระงับสิทธิ์ (isSuspended) อย่างเดียว
+  const suspendOnly = body.role === undefined && body.isSuspended !== undefined;
   const role = (body.role ?? "").trim();
   const department = (body.department ?? "").trim().slice(0, 40);
   const workStatus = (body.workStatus ?? "").trim().slice(0, 30);
-  if (!id) return NextResponse.json({ error: "ไม่มีรหัสพนักงาน" }, { status: 400 });
-  if (role !== ROLE_ADMINISTRATOR && role !== ROLE_STAFF)
-    return NextResponse.json({ error: `บทบาทต้องเป็น "${ROLE_ADMINISTRATOR}" หรือ "${ROLE_STAFF}"` }, { status: 400 });
-  if (!workStatus) return NextResponse.json({ error: "ไม่มีสถานะการทำงาน" }, { status: 400 });
+  if (suspendOnly) {
+    if (typeof body.isSuspended !== "boolean")
+      return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
+  } else {
+    if (role !== ROLE_ADMINISTRATOR && role !== ROLE_STAFF)
+      return NextResponse.json({ error: `บทบาทต้องเป็น "${ROLE_ADMINISTRATOR}" หรือ "${ROLE_STAFF}"` }, { status: 400 });
+    if (!workStatus) return NextResponse.json({ error: "ไม่มีสถานะการทำงาน" }, { status: 400 });
+  }
 
   const ref = db.collection(EMPLOYEE_COLLECTION).doc(id);
   const snap = await ref.get();
@@ -84,10 +92,10 @@ export async function PATCH(req: Request) {
   if (!actorIsAdmin) {
     if (target.role === ROLE_ADMINISTRATOR)
       return NextResponse.json({ error: "แก้บัญชีระดับผู้ดูแลระบบได้เฉพาะผู้ดูแลระบบด้วยกัน" }, { status: 403 });
-    if (role === ROLE_ADMINISTRATOR)
+    if (!suspendOnly && role === ROLE_ADMINISTRATOR)
       return NextResponse.json({ error: "ตั้งระดับผู้ดูแลระบบได้เฉพาะผู้ดูแลระบบเท่านั้น" }, { status: 403 });
   }
 
-  await ref.update({ role, department, workStatus });
+  await ref.update(suspendOnly ? { isSuspended: body.isSuspended } : { role, department, workStatus });
   return NextResponse.json({ ok: true });
 }

@@ -40,6 +40,7 @@ function StaffRow({
   const [department, setDepartment] = useState(s.department);
   const [workStatus, setWorkStatus] = useState(s.workStatus);
   const [busy, setBusy] = useState(false);
+  const [suspending, setSuspending] = useState(false);
   const [flash, setFlash] = useState<"ok" | "err" | null>(null);
   const [err, setErr] = useState("");
 
@@ -68,6 +69,29 @@ function StaffRow({
     onSaved();
   }
 
+  /** ระงับ/คืนสิทธิ์เข้าหลังบ้าน — ไม่แตะสถานะการทำงาน (ยังเป็นพนักงานอยู่) */
+  async function toggleSuspend() {
+    const who = s.fullname || s.name || s.username;
+    const msg = s.isSuspended
+      ? `คืนสิทธิ์ให้ "${who}" กลับมาเข้าหลังบ้านได้เหมือนเดิม?`
+      : `ระงับสิทธิ์ "${who}" ไม่ให้เข้าหลังบ้าน?\n(ยังเป็นพนักงานอยู่ ไม่ใช่การพ้นสภาพ — คืนสิทธิ์ได้ทุกเมื่อ)`;
+    if (!window.confirm(msg)) return;
+    setSuspending(true);
+    setErr("");
+    const res = await fetch("/api/admin/staff", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: s.id, isSuspended: !s.isSuspended }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setSuspending(false);
+    if (!res.ok) {
+      setErr(j.error ?? "บันทึกไม่สำเร็จ");
+      return;
+    }
+    onSaved();
+  }
+
   const sel =
     "rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[13px] text-slate-800 focus:border-amber-300 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400";
 
@@ -77,6 +101,11 @@ function StaffRow({
         <p className="truncate text-sm font-bold text-slate-800">
           {s.fullname || s.name || s.username}{" "}
           {lockNote === "self" && <span className="text-xs font-semibold text-amber-600">(คุณ)</span>}
+          {s.isSuspended && (
+            <span className="ml-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-600">
+              ⛔ ระงับสิทธิ์อยู่
+            </span>
+          )}
         </p>
         <p className={`truncate text-[11px] ${faint}`}>
           {s.name && s.fullname ? `${s.name} · ` : ""}
@@ -135,6 +164,18 @@ function StaffRow({
           >
             {busy ? "กำลังบันทึก…" : flash === "ok" ? "✓ บันทึกแล้ว" : "บันทึก"}
           </button>
+          <button
+            type="button"
+            onClick={toggleSuspend}
+            disabled={suspending}
+            className={`rounded-full px-3 py-1.5 text-xs font-bold transition disabled:opacity-40 ${
+              s.isSuspended
+                ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                : "bg-white text-rose-600 ring-1 ring-rose-200 hover:bg-rose-50"
+            }`}
+          >
+            {suspending ? "…" : s.isSuspended ? "↩️ คืนสิทธิ์" : "⛔ ระงับสิทธิ์"}
+          </button>
           {err && <p className="w-full text-xs font-medium text-rose-600">{err}</p>}
         </>
       )}
@@ -173,9 +214,9 @@ function StaffPageInner() {
 
   // แสดงเฉพาะคนที่ยังทำงานอยู่ (พ้นสภาพแล้วไม่โชว์)
   const working = (staff ?? []).filter((s) => s.workStatus === "working");
-  // "ใช้งานระบบได้" = บทบาท/แผนกปัจจุบันเปิดสิทธิ์เข้าหลังบ้าน (ใช้กติกาเดียวกับตอนล็อกอินจริง)
+  // "ใช้งานระบบได้" = ไม่ถูกระงับ + บทบาท/แผนกเปิดสิทธิ์เข้าหลังบ้าน (กติกาเดียวกับตอนล็อกอินจริง)
   const hasAccess = (s: Staff) =>
-    can({ username: s.username, role: s.role, department: s.department }, "admin.access");
+    !s.isSuspended && can({ username: s.username, role: s.role, department: s.department }, "admin.access");
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -222,8 +263,8 @@ function StaffPageInner() {
           <section className="mt-3">
             <p className={`mb-2 text-xs ${faint}`}>
               {view === "access"
-                ? "พนักงานกลุ่มนี้ล็อกอินเข้าหลังบ้านได้ตามสิทธิ์ของแผนก · เปลี่ยนสถานะเป็น “พ้นสภาพ” เพื่อปิดบัญชี"
-                : "แผนกของกลุ่มนี้ยังไม่ถูกกำหนดสิทธิ์ จึงเข้าหลังบ้านไม่ได้ — เปลี่ยนแผนกเป็น แอดมิน / แพ็คของ / คอนเทนต์ เพื่อเปิดสิทธิ์"}
+                ? "พนักงานกลุ่มนี้ล็อกอินเข้าหลังบ้านได้ตามสิทธิ์ของแผนก · กด “⛔ ระงับสิทธิ์” เพื่อปิดการเข้าระบบชั่วคราวโดยยังเป็นพนักงานอยู่"
+                : "กลุ่มนี้เข้าหลังบ้านไม่ได้ — แผนกยังไม่ถูกกำหนดสิทธิ์ (เปลี่ยนเป็น แอดมิน / แพ็คของ / คอนเทนต์ เพื่อเปิด) หรือถูกระงับสิทธิ์ไว้ (กด “↩️ คืนสิทธิ์”)"}
             </p>
             <div className="space-y-2">
               {working
