@@ -57,7 +57,7 @@ export async function POST(req: Request) {
   }
   // ถูกระงับสิทธิ์เฉพาะระบบนี้ (จากหน้า /admin/staff) — ระบบอื่นยังใช้ได้ตามปกติ
   if (emp.iduckySuspended === true) {
-    return NextResponse.json({ error: "บัญชีนี้ถูกระงับสิทธิ์เข้าระบบนี้ — ติดต่อผู้ดูแลระบบ" }, { status: 403 });
+    return NextResponse.json({ error: "บัญชีนี้ถูกปิดการเข้าใช้งานระบบนี้ — ติดต่อผู้ดูแลระบบ" }, { status: 403 });
   }
   // เทียบรหัสผ่าน (รองรับ SHA-256 hash / plaintext ปนกัน)
   if (!verifyPassword(password, emp.password ?? "")) {
