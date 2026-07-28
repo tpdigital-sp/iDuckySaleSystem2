@@ -55,7 +55,9 @@ export type Perm =
   /** ตั้งค่าระบบ — เลขบัญชีร้าน ค่าส่ง */
   | "settings.manage"
   /** จัดการคูปอง — สร้าง/แจก/ดูสถานะ */
-  | "coupons.manage";
+  | "coupons.manage"
+  /** กำหนดบทบาท/แผนก/สถานะให้พนักงาน (ตั้งหรือแก้ระดับ Administrator ได้เฉพาะผู้ดูแลระบบ) */
+  | "staff.manage";
 
 /** สิทธิ์ของพนักงานฝ่ายแอดมิน (ออฟฟิศ — ดูแลลูกค้า/ออเดอร์/งานแบบ) */
 const STAFF_ADMIN: Perm[] = [
@@ -70,6 +72,7 @@ const STAFF_ADMIN: Perm[] = [
   "products.view",
   "products.import",
   "coupons.manage",
+  "staff.manage",
 ];
 
 /** สิทธิ์ของพนักงานฝ่ายแพ็คของ (หน้างาน — ตรวจนับ ยิงเลขพัสดุ) */
@@ -115,6 +118,7 @@ export const ALL_PERMS: Perm[] = [
   "presets.manage",
   "settings.manage",
   "coupons.manage",
+  "staff.manage",
 ];
 
 /** คำอธิบายสิทธิ์แต่ละตัว (ไว้แสดงหน้าตั้งค่า → แท็บบทบาท) — จัดกลุ่มเพื่ออ่านง่าย */
@@ -153,6 +157,7 @@ export const PERM_INFO: { group: string; perms: { perm: Perm; label: string }[] 
       { perm: "presets.manage", label: "จัดการคลังตัวเลือกกลาง" },
       { perm: "coupons.manage", label: "สร้าง/แจก/ยกเลิกคูปองส่วนลด" },
       { perm: "settings.manage", label: "ตั้งค่าระบบ — ข้อมูลร้าน บัญชี ค่าส่ง ระดับสมาชิก คูปองต้อนรับ" },
+      { perm: "staff.manage", label: "กำหนดบทบาท/แผนกให้พนักงาน (ตั้งระดับผู้ดูแลระบบได้เฉพาะผู้ดูแลระบบ)" },
     ],
   },
 ];
