@@ -331,9 +331,16 @@ export default function CustomerOrderPage() {
         ) : (
           <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-amber-200 sm:p-5">
             <p className="text-sm font-bold text-stone-800">💬 ได้รับสินค้าแล้ว เป็นยังไงบ้างครับ?</p>
-            <p className="mt-0.5 text-[11px] text-stone-400">
-              ประเมินแบบไม่ระบุตัวตน — ร้านไม่รู้ว่าใครประเมิน ตอบตรง ๆ ได้เลยครับ
-            </p>
+            {/* ป้ายนิรนาม — ต้องมองผ่าน ๆ แล้วรู้ทันทีว่าไม่ระบุตัวตน */}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-1 text-[11px] font-extrabold text-white shadow-sm">
+                🕵️ ไม่ระบุตัวตน 100%
+              </span>
+              <span className="text-[11px] font-semibold text-stone-500">
+                ร้าน<span className="mx-0.5 rounded bg-emerald-50 px-1 py-0.5 font-extrabold text-emerald-600">ไม่มีทางรู้</span>ว่าใครประเมิน
+                — <span className="font-bold text-stone-600">ติได้เต็มที่ ชมได้เต็มใจ</span> 🦆
+              </span>
+            </div>
 
             {/* คะแนนอีโมจิ 1-5 */}
             <div className="mt-3 flex justify-between gap-1 sm:justify-start sm:gap-2">
@@ -373,39 +380,42 @@ export default function CustomerOrderPage() {
                     </button>
                   ))}
                 </div>
-                <textarea
-                  value={rateComment}
-                  onChange={(e) => setRateComment(e.target.value)}
-                  rows={2}
-                  placeholder="ฝากคำแนะนำถึงร้าน (ไม่บังคับ)"
-                  className="mt-2.5 w-full resize-y rounded-xl bg-stone-50 px-3 py-2 text-sm text-stone-700 ring-1 ring-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                />
-                {rateErr && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{rateErr}</p>}
-                <button
-                  type="button"
-                  disabled={rateBusy}
-                  onClick={async () => {
-                    setRateBusy(true);
-                    setRateErr("");
-                    const res = await submitRating(orderId, orderKey, {
-                      score: rateScore,
-                      tags: rateTags,
-                      comment: rateComment.trim() || undefined,
-                    });
-                    setRateBusy(false);
-                    if (!res.ok) {
-                      setRateErr(res.error ?? "ส่งไม่สำเร็จ");
-                      return;
-                    }
-                    setRateDone(true);
-                    setOrder((cur) => (cur ? { ...cur, rated: true } : cur));
-                  }}
-                  className="mt-3 w-full rounded-full bg-amber-400 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-amber-500 disabled:opacity-50 sm:w-auto sm:px-8"
-                >
-                  {rateBusy ? "กำลังส่ง…" : "ส่งแบบประเมิน"}
-                </button>
               </>
             )}
+
+            {/* หมายเหตุ — โชว์ตลอด ไม่ต้องรอเลือกอีโมจิ */}
+            <p className="mt-3 text-xs font-semibold text-stone-600">📝 หมายเหตุถึงร้าน (ไม่บังคับ)</p>
+            <textarea
+              value={rateComment}
+              onChange={(e) => setRateComment(e.target.value)}
+              rows={2}
+              placeholder="เช่น สีเพี้ยนจากแบบนิดหน่อย · แพ็คดีมาก · อยากให้มีลายใหม่ ๆ"
+              className="mt-1.5 w-full resize-y rounded-xl bg-stone-50 px-3 py-2 text-sm text-stone-700 ring-1 ring-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+            />
+            {rateErr && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{rateErr}</p>}
+            <button
+              type="button"
+              disabled={rateBusy || rateScore === 0}
+              onClick={async () => {
+                setRateBusy(true);
+                setRateErr("");
+                const res = await submitRating(orderId, orderKey, {
+                  score: rateScore,
+                  tags: rateTags,
+                  comment: rateComment.trim() || undefined,
+                });
+                setRateBusy(false);
+                if (!res.ok) {
+                  setRateErr(res.error ?? "ส่งไม่สำเร็จ");
+                  return;
+                }
+                setRateDone(true);
+                setOrder((cur) => (cur ? { ...cur, rated: true } : cur));
+              }}
+              className="mt-3 w-full rounded-full bg-amber-400 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-amber-500 disabled:opacity-50 sm:w-auto sm:px-8"
+            >
+              {rateBusy ? "กำลังส่ง…" : rateScore === 0 ? "เลือกอีโมจิด้านบนก่อนครับ" : "ส่งแบบประเมิน"}
+            </button>
           </div>
         ))}
 
