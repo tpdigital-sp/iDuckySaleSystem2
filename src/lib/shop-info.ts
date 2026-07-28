@@ -16,7 +16,7 @@ export const SHOP = {
 export const shopAddressOneLine = [SHOP.legalName, ...SHOP.addressLines].join(" ");
 
 /** ที่อยู่เว็บจริง — ตั้ง NEXT_PUBLIC_SITE_URL ทับได้ถ้าย้ายโดเมน */
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://iduckysalesystem.netlify.app").replace(/\/+$/, "");
+export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://iduckystore.netlify.app").replace(/\/+$/, "");
 
 /** ที่อยู่ในเครือข่ายส่วนตัว — คนอื่น/มือถือ เข้าไม่ได้ */
 const PRIVATE_HOST = /^https?:\/\/(localhost|127\.|0\.0\.0\.0|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i;

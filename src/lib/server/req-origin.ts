@@ -5,7 +5,7 @@
  *        ทำให้ host เปลี่ยนทุก deploy → redirect_uri ไม่ตรงที่ลงทะเบียน → LINE 400
  * แก้:   localhost ใช้ตามจริง · ที่เหลือ (production/preview) บังคับใช้โดเมนจริง (SITE_URL) เสมอ
  */
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://iduckysalesystem.netlify.app").replace(/\/+$/, "");
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://iduckystore.netlify.app").replace(/\/+$/, "");
 
 export function requestOrigin(req: Request): string {
   const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
