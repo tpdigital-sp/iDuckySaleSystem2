@@ -200,6 +200,33 @@ function StaffPageInner() {
   const hasAccess = (s: Staff) =>
     !s.suspended && can({ username: s.username, role: s.role, department: s.department }, "admin.access");
 
+  // จัดกลุ่มตามตำแหน่ง/แผนก (อีโมจิชุดเดียวกับตารางบทบาทในตั้งค่าระบบ)
+  const groupOf = (s: Staff) => {
+    if (s.role === ROLE_ADMINISTRATOR) return "👑 ผู้ดูแลระบบ";
+    const d = s.department.trim();
+    if (!d) return "❔ ยังไม่ระบุแผนก";
+    if (d === DEPT_ADMIN) return `🧑‍💼 ${DEPT_ADMIN}`;
+    if (d === DEPT_PACKING) return `📦 ${DEPT_PACKING}`;
+    if (d.toLowerCase() === "content" || d === DEPT_CONTENT) return `🖋️ ${DEPT_CONTENT}`;
+    return `🏭 ${d}`;
+  };
+  // ลำดับกลุ่มหลักก่อน แผนกอื่นเรียงชื่อ ก-ฮ ต่อท้าย
+  const GROUP_ORDER = ["👑 ผู้ดูแลระบบ", `🧑‍💼 ${DEPT_ADMIN}`, `📦 ${DEPT_PACKING}`, `🖋️ ${DEPT_CONTENT}`];
+  const groupsOf = (list: Staff[]) => {
+    const m = new Map<string, Staff[]>();
+    list.forEach((s) => {
+      const g = groupOf(s);
+      if (!m.has(g)) m.set(g, []);
+      m.get(g)!.push(s);
+    });
+    return [...m.entries()].sort((a, b) => {
+      const ia = GROUP_ORDER.indexOf(a[0]);
+      const ib = GROUP_ORDER.indexOf(b[0]);
+      if (ia !== -1 || ib !== -1) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+      return a[0].localeCompare(b[0], "th");
+    });
+  };
+
   return (
     <div className="mx-auto max-w-4xl">
       <h1 className={h1}>👥 พนักงาน</h1>
@@ -248,24 +275,30 @@ function StaffPageInner() {
                 ? "พนักงานกลุ่มนี้ล็อกอินเข้าหลังบ้านได้ตามสิทธิ์ของแผนก · กด “⛔ ปิดการเข้าใช้งาน” เพื่อปิดเฉพาะระบบนี้ (ระบบอื่นใช้ได้ปกติ ยังเป็นพนักงานอยู่)"
                 : "กลุ่มนี้เข้าหลังบ้านไม่ได้ — แผนกยังไม่ถูกกำหนดสิทธิ์ (เปลี่ยนเป็น แอดมิน / แพ็คของ / คอนเทนต์ เพื่อเปิด) หรือถูกปิดการเข้าใช้งานไว้ (กด “↩️ เปิดการเข้าใช้งาน”)"}
             </p>
-            <div className="space-y-2">
-              {working
-                .filter((s) => (view === "access" ? hasAccess(s) : !hasAccess(s)))
-                .map((s) => {
-                  const self = norm(s.username) === me;
-                  const adminLocked = !canGrantAdmin && s.role === ROLE_ADMINISTRATOR;
-                  return (
-                    <StaffRow
-                      key={s.id}
-                      s={s}
-                      locked={self || adminLocked}
-                      lockNote={self ? "self" : adminLocked ? "admin" : undefined}
-                      canGrantAdmin={canGrantAdmin}
-                      onSaved={load}
-                    />
-                  );
-                })}
-            </div>
+            {groupsOf(working.filter((s) => (view === "access" ? hasAccess(s) : !hasAccess(s)))).map(([g, members]) => (
+              <div key={g} className="mb-5">
+                <h2 className="mb-1.5 flex items-baseline gap-2 text-[13px] font-bold text-slate-600">
+                  {g}
+                  <span className={`text-[11px] font-medium ${faint}`}>{members.length} คน</span>
+                </h2>
+                <div className="space-y-2">
+                  {members.map((s) => {
+                    const self = norm(s.username) === me;
+                    const adminLocked = !canGrantAdmin && s.role === ROLE_ADMINISTRATOR;
+                    return (
+                      <StaffRow
+                        key={s.id}
+                        s={s}
+                        locked={self || adminLocked}
+                        lockNote={self ? "self" : adminLocked ? "admin" : undefined}
+                        canGrantAdmin={canGrantAdmin}
+                        onSaved={load}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
             {working.filter((s) => (view === "access" ? hasAccess(s) : !hasAccess(s))).length === 0 && (
               <p className={`rounded-xl bg-slate-50 px-4 py-6 text-center text-sm ${muted}`}>ไม่มีพนักงานในกลุ่มนี้</p>
             )}
