@@ -2,13 +2,14 @@
 
 import RequirePerm from "@/components/RequirePerm";
 import { useEffect, useState } from "react";
-import { faint, h1, h2, muted } from "@/lib/admin-ui";
+import { faint, h1, muted } from "@/lib/admin-ui";
 import { DEPT_ADMIN, DEPT_CONTENT, DEPT_PACKING, ROLE_ADMINISTRATOR, ROLE_STAFF } from "@/lib/permissions";
 
 interface Staff {
   id: string;
   username: string;
   name: string;
+  fullname: string;
   role: string;
   department: string;
   workStatus: string;
@@ -74,9 +75,13 @@ function StaffRow({
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-white px-4 py-3 ring-1 ring-slate-200">
       <div className="min-w-0 flex-1 basis-40">
         <p className="truncate text-sm font-bold text-slate-800">
-          {s.name || s.username} {lockNote === "self" && <span className="text-xs font-semibold text-amber-600">(คุณ)</span>}
+          {s.fullname || s.name || s.username}{" "}
+          {lockNote === "self" && <span className="text-xs font-semibold text-amber-600">(คุณ)</span>}
         </p>
-        <p className={`truncate text-[11px] ${faint}`}>{s.username}</p>
+        <p className={`truncate text-[11px] ${faint}`}>
+          {s.name && s.fullname ? `${s.name} · ` : ""}
+          {s.username}
+        </p>
       </div>
 
       {locked ? (
@@ -140,6 +145,7 @@ function StaffRow({
 function StaffPageInner() {
   const [staff, setStaff] = useState<Staff[] | null>(null);
   const [canGrantAdmin, setCanGrantAdmin] = useState(false);
+  const [view, setView] = useState<"working" | "left">("working");
   const [me, setMe] = useState("");
   const [err, setErr] = useState("");
 
@@ -169,7 +175,7 @@ function StaffPageInner() {
     <div className="mx-auto max-w-4xl">
       <h1 className={h1}>👥 พนักงาน</h1>
       <p className={`mt-1 ${muted}`}>
-        กำหนดบทบาท/แผนก/สถานะการทำงาน — แสดงเฉพาะพนักงานที่ทำงานอยู่ · มีผลกับสิทธิ์ทันทีที่ล็อกอินครั้งถัดไป · ดูสิทธิ์แต่ละตำแหน่งได้ที่ ตั้งค่าระบบ → แท็บบทบาท
+        กำหนดบทบาท/แผนก/สถานะการทำงาน — มีผลกับสิทธิ์ทันทีที่ล็อกอินครั้งถัดไป · ดูสิทธิ์แต่ละตำแหน่งได้ที่ ตั้งค่าระบบ → แท็บบทบาท
       </p>
       {!canGrantAdmin && staff !== null && (
         <p className="mt-3 rounded-xl bg-sky-50 px-4 py-2.5 text-xs font-medium text-sky-700 ring-1 ring-sky-100">
@@ -183,12 +189,39 @@ function StaffPageInner() {
         <p className="py-16 text-center text-sm text-slate-400">กำลังโหลดรายชื่อ…</p>
       ) : (
         <>
-          <section className="mt-5">
-            <h2 className={`mb-2 ${h2}`}>ทำงานอยู่ ({staff.filter((s) => s.workStatus === "working").length})</h2>
-            <p className={`mb-2 text-xs ${faint}`}>เปลี่ยนสถานะเป็น “พ้นสภาพ” แล้วบัญชีจะล็อกอินไม่ได้ และหายจากหน้านี้</p>
+          {/* แท็บย่อย: ทำงานอยู่ (ล็อกอินได้) / พ้นสภาพ (ล็อกอินไม่ได้ — ดึงกลับมาทำงานได้จากแท็บนี้) */}
+          <div className="mt-5 flex gap-2">
+            {(
+              [
+                ["working", `✅ ทำงานอยู่ (${staff.filter((s) => s.workStatus === "working").length})`],
+                ["left", `🗂️ พ้นสภาพ (${staff.filter((s) => s.workStatus !== "working").length})`],
+              ] as ["working" | "left", string][]
+            ).map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setView(k)}
+                aria-pressed={view === k}
+                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  view === k
+                    ? "bg-amber-500 text-white shadow-sm"
+                    : "border border-slate-200 bg-white text-slate-600 hover:border-amber-200 hover:text-slate-900"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <section className="mt-3">
+            <p className={`mb-2 text-xs ${faint}`}>
+              {view === "working"
+                ? "เปลี่ยนสถานะเป็น “พ้นสภาพ” แล้วบัญชีจะล็อกอินไม่ได้ และย้ายไปแท็บพ้นสภาพ"
+                : "บัญชีในแท็บนี้ล็อกอินไม่ได้ — เปลี่ยนสถานะกลับเป็น “ทำงานอยู่” เพื่อเปิดใช้อีกครั้ง"}
+            </p>
             <div className="space-y-2">
               {staff
-                .filter((s) => s.workStatus === "working")
+                .filter((s) => (view === "working" ? s.workStatus === "working" : s.workStatus !== "working"))
                 .map((s) => {
                   const self = norm(s.username) === me;
                   const adminLocked = !canGrantAdmin && s.role === ROLE_ADMINISTRATOR;
@@ -204,8 +237,10 @@ function StaffPageInner() {
                   );
                 })}
             </div>
+            {staff.filter((s) => (view === "working" ? s.workStatus === "working" : s.workStatus !== "working")).length === 0 && (
+              <p className={`rounded-xl bg-slate-50 px-4 py-6 text-center text-sm ${muted}`}>ไม่มีพนักงานในกลุ่มนี้</p>
+            )}
           </section>
-
         </>
       )}
     </div>

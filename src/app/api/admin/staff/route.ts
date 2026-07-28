@@ -8,6 +8,8 @@ export const runtime = "nodejs";
 interface EmpDoc {
   username?: string;
   name?: string;
+  /** ชื่อ-นามสกุลเต็ม (name = ชื่อเล่น) */
+  fullname?: string;
   role?: string;
   department?: string;
   workStatus?: string;
@@ -29,13 +31,14 @@ export async function GET() {
         id: d.id,
         username: e.username ?? "",
         name: e.name ?? "",
+        fullname: e.fullname ?? "",
         role: e.role ?? "",
         department: e.department ?? "",
         workStatus: e.workStatus ?? "",
         isSuspended: e.isSuspended === true,
       };
     })
-    .sort((a, b) => (a.name || a.username).localeCompare(b.name || b.username, "th"));
+    .sort((a, b) => (a.fullname || a.name || a.username).localeCompare(b.fullname || b.name || b.username, "th"));
 
   return NextResponse.json({
     staff,
