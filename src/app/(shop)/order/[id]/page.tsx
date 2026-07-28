@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import { orderBalance, orderTotal, PROOF_STYLES, proofsOf, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
-import { fetchOrderForCustomer, reportPayment, reviewProof, updateOrderAddress } from "@/lib/order-repo";
+import { fetchOrderForCustomer, reportPayment, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
+import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
 import { setAppendTarget } from "@/lib/append-order";
 import ImageLightbox from "@/components/ImageLightbox";
@@ -50,6 +51,14 @@ export default function CustomerOrderPage() {
     setLbEdit(false);
     setLbNote("");
   };
+  /* แบบประเมินความพึงพอใจ (นิรนาม) — โชว์เมื่อได้รับของแล้วและยังไม่เคยประเมิน */
+  const [rateScore, setRateScore] = useState(0);
+  const [rateTags, setRateTags] = useState<string[]>([]);
+  const [rateComment, setRateComment] = useState("");
+  const [rateBusy, setRateBusy] = useState(false);
+  const [rateDone, setRateDone] = useState(false);
+  const [rateErr, setRateErr] = useState("");
+
   const [slipBusy, setSlipBusy] = useState(false);
   const [slipErr, setSlipErr] = useState("");
 
@@ -310,6 +319,95 @@ export default function CustomerOrderPage() {
           🎨 <strong>มีแบบงานรอให้คุณตรวจ {waiting} รายการ — เหลืออีก {waitingProofs} ภาพ</strong> · แตะรูปเพื่อดูใหญ่ แล้วกดอนุมัติทีละภาพได้เลย
         </div>
       )}
+
+      {/* ── แบบประเมินความพึงพอใจ (นิรนาม) — โชว์เมื่อได้รับสินค้าแล้ว ── */}
+      {(order.status === "จัดส่งแล้ว" || order.status === "เสร็จสิ้น") &&
+        (order.rated || rateDone ? (
+          rateDone && (
+            <div className="mt-4 rounded-2xl bg-teal-50 p-4 text-center text-sm font-semibold text-teal-700 ring-1 ring-teal-200">
+              🙏 ขอบคุณสำหรับการประเมินครับ — ความเห็นของคุณช่วยให้ร้านพัฒนาขึ้น 🦆
+            </div>
+          )
+        ) : (
+          <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-amber-200 sm:p-5">
+            <p className="text-sm font-bold text-stone-800">💬 ได้รับสินค้าแล้ว เป็นยังไงบ้างครับ?</p>
+            <p className="mt-0.5 text-[11px] text-stone-400">
+              ประเมินแบบไม่ระบุตัวตน — ร้านไม่รู้ว่าใครประเมิน ตอบตรง ๆ ได้เลยครับ
+            </p>
+
+            {/* คะแนนอีโมจิ 1-5 */}
+            <div className="mt-3 flex justify-between gap-1 sm:justify-start sm:gap-2">
+              {SCORE_FACES.map((f) => (
+                <button
+                  key={f.score}
+                  type="button"
+                  onClick={() => setRateScore(f.score)}
+                  className={`flex w-14 flex-col items-center rounded-xl px-1 py-2 transition ${
+                    rateScore === f.score ? "bg-amber-100 ring-2 ring-amber-400" : "hover:bg-stone-50"
+                  }`}
+                >
+                  <span className={`text-2xl ${rateScore && rateScore !== f.score ? "grayscale opacity-40" : ""}`}>{f.emoji}</span>
+                  <span className="mt-0.5 text-[10px] font-semibold text-stone-500">{f.label}</span>
+                </button>
+              ))}
+            </div>
+
+            {rateScore > 0 && (
+              <>
+                <p className="mt-3 text-xs font-semibold text-stone-600">
+                  {rateScore >= 4 ? "ชอบตรงไหนเป็นพิเศษ?" : "อยากให้ปรับปรุงเรื่องไหน?"} (เลือกได้หลายข้อ)
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {RATING_TAGS.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setRateTags((v) => (v.includes(t) ? v.filter((x) => x !== t) : [...v, t]))}
+                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                        rateTags.includes(t)
+                          ? "bg-amber-400 text-white"
+                          : "bg-stone-100 text-stone-500 hover:bg-stone-200"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  value={rateComment}
+                  onChange={(e) => setRateComment(e.target.value)}
+                  rows={2}
+                  placeholder="ฝากคำแนะนำถึงร้าน (ไม่บังคับ)"
+                  className="mt-2.5 w-full resize-y rounded-xl bg-stone-50 px-3 py-2 text-sm text-stone-700 ring-1 ring-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                />
+                {rateErr && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{rateErr}</p>}
+                <button
+                  type="button"
+                  disabled={rateBusy}
+                  onClick={async () => {
+                    setRateBusy(true);
+                    setRateErr("");
+                    const res = await submitRating(orderId, orderKey, {
+                      score: rateScore,
+                      tags: rateTags,
+                      comment: rateComment.trim() || undefined,
+                    });
+                    setRateBusy(false);
+                    if (!res.ok) {
+                      setRateErr(res.error ?? "ส่งไม่สำเร็จ");
+                      return;
+                    }
+                    setRateDone(true);
+                    setOrder((cur) => (cur ? { ...cur, rated: true } : cur));
+                  }}
+                  className="mt-3 w-full rounded-full bg-amber-400 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-amber-500 disabled:opacity-50 sm:w-auto sm:px-8"
+                >
+                  {rateBusy ? "กำลังส่ง…" : "ส่งแบบประเมิน"}
+                </button>
+              </>
+            )}
+          </div>
+        ))}
 
       {actionErr && <p className="mt-4 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{actionErr}</p>}
 

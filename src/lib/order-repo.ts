@@ -88,6 +88,25 @@ export async function fetchOrderForCustomer(
   }
 }
 
+/** ลูกค้าส่งแบบประเมินความพึงพอใจ (นิรนาม — เซิร์ฟเวอร์ไม่เก็บว่าออเดอร์ไหนให้คะแนนเท่าไหร่) */
+export async function submitRating(
+  orderId: string,
+  key: string,
+  payload: { score: number; tags: string[]; comment?: string }
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/ratings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, key, ...payload }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return res.ok ? { ok: true } : { ok: false, error: data.error ?? "ส่งแบบประเมินไม่สำเร็จ" };
+  } catch {
+    return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
+  }
+}
+
 /** ลูกค้าแก้ไขที่อยู่จัดส่ง (ได้จนกว่าร้านจะปริ้นใบงาน — เซิร์ฟเวอร์เช็ก printedAt) */
 export async function updateOrderAddress(
   orderId: string,
