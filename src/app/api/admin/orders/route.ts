@@ -3,7 +3,19 @@ import { currentActor, requirePerm } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { notifyCustomer, orderLink } from "@/lib/server/notify";
-import { proofsOf, type Order, type OrderStatus } from "@/lib/admin-data";
+import { packGate, proofsOf, withLog, type Order, type OrderStatus, type PackGate } from "@/lib/admin-data";
+
+/** สรุปเหตุผลที่ด่านตรวจยังไม่ผ่าน (ไว้โชว์/ลง log) */
+function gateReasons(g: PackGate): string {
+  return [
+    g.uncounted.length ? `ตรวจนับอีก ${g.uncounted.length} รูป` : "",
+    g.unread.length ? `ยืนยันอ่านอีก ${g.unread.length} รายการ` : "",
+    g.short.length ? `ของไม่ครบ ${g.short.length} รายการ` : "",
+    g.unsampled.length ? `ยังไม่ยืนยันใส่งานตัวอย่าง ${g.unsampled.length} รายการ` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
 
 export const runtime = "nodejs";
 
@@ -99,7 +111,31 @@ export async function PATCH(req: Request) {
   const existing = row.data as Order;
   const oldStatus = existing.status;
 
-  let toSave = mayEditFull ? order : mergePackFields(existing, order, can(actor, "pack.ship"));
+  // มีการ "ยิงเลขพัสดุใหม่" ในคำขอนี้ไหม (ใช้ตัดสินเรื่องด่านตรวจ)
+  const wantsTracking =
+    typeof order.tracking === "string" && order.tracking.trim() !== "" && order.tracking.trim() !== (existing.tracking ?? "");
+
+  let toSave: Order;
+  if (mayEditFull) {
+    toSave = order;
+    // แอดมินยิงเลขทั้งที่ด่านตรวจยังไม่ครบ = อนุญาต (ตัดสินใจเอง) แต่บันทึก log ฝั่งเซิร์ฟเวอร์เสมอ — ตรวจย้อนหลังได้ว่าใครข้าม
+    if (wantsTracking) {
+      const g = packGate(existing);
+      if (!g.ready) {
+        toSave = withLog(toSave, actor.name || actor.username, "⚠️ ข้ามด่านตรวจ — ยิงเลขพัสดุ", gateReasons(g));
+      }
+    }
+  } else {
+    // ฝ่ายแพ็ค: ห้ามข้ามเด็ดขาด — เช็คด่านจากข้อมูลล่าสุด (รวมผลตรวจที่เพิ่งส่งมาในคำขอนี้)
+    const mergedNoShip = mergePackFields(existing, order, false);
+    if (wantsTracking && !packGate(mergedNoShip).ready) {
+      return NextResponse.json(
+        { error: `ยังยิงเลขพัสดุไม่ได้ — ${gateReasons(packGate(mergedNoShip))}` },
+        { status: 409 }
+      );
+    }
+    toSave = mergePackFields(existing, order, can(actor, "pack.ship"));
+  }
 
   // อย่าเก็บ signed URL ชั่วคราวลงฐาน — สลิปที่มี slipPath ต้องเซ็นใหม่ทุกครั้งที่ดึง
   if (toSave.slipPath) toSave = { ...toSave, slipUrl: undefined };

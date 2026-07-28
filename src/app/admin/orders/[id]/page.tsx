@@ -337,11 +337,35 @@ export default function AdminOrderDetailPage() {
     });
   }
 
-  /** บันทึกเลขพัสดุ + เปลี่ยนสถานะเป็น "จัดส่งแล้ว" + ลง log */
+  /** บันทึกเลขพัสดุ + เปลี่ยนสถานะเป็น "จัดส่งแล้ว" + ลง log
+   *  ด่านตรวจยังไม่ครบ → แอดมินยืนยันข้ามได้ (เซิร์ฟเวอร์ลง log "ข้ามด่านตรวจ") · ฝ่ายแพ็คโดนเซิร์ฟเวอร์ปฏิเสธ */
   function saveTracking() {
     if (!order) return;
     const t = (order.tracking ?? "").trim();
     if (!t || t === trackingRef.current) return; // ไม่เปลี่ยน → ไม่ต้องบันทึกซ้ำ
+
+    const g = packGate(order);
+    if (!g.ready) {
+      const reasons = [
+        g.uncounted.length ? `• ตรวจนับอีก ${g.uncounted.length} รูป` : "",
+        g.unread.length ? `• ยืนยันอ่านอีก ${g.unread.length} รายการ` : "",
+        g.short.length ? `• ของไม่ครบ ${g.short.length} รายการ` : "",
+        g.unsampled.length ? `• ยังไม่ยืนยันใส่งานตัวอย่าง ${g.unsampled.length} รายการ` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const okToSkip =
+        mayEdit &&
+        window.confirm(
+          `⚠️ ด่านตรวจแพ็คยังไม่ครบ:\n${reasons}\n\nยืนยันข้ามด่านและยิงเลขพัสดุเลยไหม?\n(การข้ามจะถูกบันทึกในประวัติออเดอร์ พร้อมชื่อคุณ)`
+        );
+      if (!okToSkip) {
+        // ยกเลิก → คืนช่องกรอกเป็นค่าที่บันทึกไว้ก่อนหน้า
+        setOrder((cur) => (cur ? { ...cur, tracking: trackingRef.current || undefined } : cur));
+        if (!mayEdit) setErr(`ยังยิงเลขพัสดุไม่ได้ — ต้องผ่านด่านตรวจก่อน:\n${reasons}`);
+        return;
+      }
+    }
     trackingRef.current = t;
     const next = withLog(
       { ...order, tracking: t, status: order.status === "เสร็จสิ้น" ? order.status : "จัดส่งแล้ว" },
