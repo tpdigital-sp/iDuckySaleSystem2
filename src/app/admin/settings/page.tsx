@@ -20,7 +20,7 @@ import {
   type ShopInfo,
 } from "@/lib/shop-settings";
 import { DEFAULT_TIERS, type Tier } from "@/lib/tiers";
-import { DEPT_ADMIN, DEPT_PACKING, PERM_INFO, permsOf, ROLE_ADMINISTRATOR, ROLE_STAFF } from "@/lib/permissions";
+import { DEPT_ADMIN, DEPT_CONTENT, DEPT_PACKING, PERM_INFO, permsOf, ROLE_ADMINISTRATOR, ROLE_STAFF } from "@/lib/permissions";
 import { btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
 
 const newId = (p = "b") =>
@@ -616,6 +616,7 @@ function AdminSettingsPageInner() {
                 { name: "ผู้ดูแลระบบ", short: "👑", perms: permsOf({ username: "", role: ROLE_ADMINISTRATOR }) },
                 { name: "พนักงาน · แอดมิน", short: "🧑‍💼", perms: permsOf({ username: "", role: ROLE_STAFF, department: DEPT_ADMIN }) },
                 { name: "พนักงาน · แพ็คของ", short: "📦", perms: permsOf({ username: "", role: ROLE_STAFF, department: DEPT_PACKING }) },
+                { name: "พนักงาน · คอนเทนต์", short: "🖋️", perms: permsOf({ username: "", role: ROLE_STAFF, department: DEPT_CONTENT }) },
               ];
               return (
                 <section className={`mt-5 p-5 ${card} sm:p-6`}>
@@ -626,7 +627,7 @@ function AdminSettingsPageInner() {
                   </p>
 
                   <div className="mt-4 overflow-x-auto">
-                    <table className="w-full min-w-[560px] border-collapse text-sm">
+                    <table className="w-full min-w-[640px] border-collapse text-sm">
                       <thead>
                         <tr className="border-b border-slate-200 text-left">
                           <th className="py-2 pr-3 font-semibold text-slate-500">สิทธิ์</th>
@@ -642,7 +643,7 @@ function AdminSettingsPageInner() {
                         {PERM_INFO.map((g) => (
                           <Fragment key={g.group}>
                             <tr>
-                              <td colSpan={4} className="pb-1 pt-4 text-xs font-bold text-slate-500">
+                              <td colSpan={roles.length + 1} className="pb-1 pt-4 text-xs font-bold text-slate-500">
                                 {g.group}
                               </td>
                             </tr>

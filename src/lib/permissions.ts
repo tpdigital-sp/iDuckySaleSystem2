@@ -10,6 +10,8 @@ export const ROLE_ADMINISTRATOR = "Administrator";
 export const ROLE_STAFF = "พนักงาน";
 export const DEPT_ADMIN = "แอดมิน";
 export const DEPT_PACKING = "แพ็คของ";
+/** แผนกคอนเทนต์ — ดูแลหน้าเว็บ/สินค้า/ราคา (ใน Firebase พิมพ์ "คอนเทนต์" หรือ "content" ก็ได้) */
+export const DEPT_CONTENT = "คอนเทนต์";
 /** พนักงานที่ยังทำงานอยู่เท่านั้นถึงล็อกอินได้ (allowlist — สถานะอื่นปิดไว้ก่อน) */
 export const WORK_STATUS_ACTIVE = "working";
 
@@ -73,6 +75,15 @@ const STAFF_ADMIN: Perm[] = [
 /** สิทธิ์ของพนักงานฝ่ายแพ็คของ (หน้างาน — ตรวจนับ ยิงเลขพัสดุ) */
 const STAFF_PACKING: Perm[] = ["admin.access", "orders.view", "pack.check", "pack.ship"];
 
+/** สิทธิ์ของพนักงานฝ่ายคอนเทนต์ (ดูแลหน้าเว็บ — เพิ่ม/แก้สินค้า ราคา ตัวเลือก นำเข้าจาก URL) */
+const STAFF_CONTENT: Perm[] = [
+  "admin.access",
+  "products.view",
+  "products.manage",
+  "products.import",
+  "presets.manage",
+];
+
 /** คืนรายการสิทธิ์ทั้งหมดของผู้ใช้คนนี้ */
 export function permsOf(actor: Actor | null | undefined): Perm[] {
   if (!actor) return [];
@@ -80,6 +91,9 @@ export function permsOf(actor: Actor | null | undefined): Perm[] {
   if (actor.role !== ROLE_STAFF) return [];
   if (actor.department === DEPT_ADMIN) return STAFF_ADMIN;
   if (actor.department === DEPT_PACKING) return STAFF_PACKING;
+  // คอนเทนต์: รับทั้งภาษาไทยและอังกฤษ (กันพิมพ์ใน Firebase คนละแบบ)
+  const dept = (actor.department ?? "").trim().toLowerCase();
+  if (dept === DEPT_CONTENT.toLowerCase() || dept === "content") return STAFF_CONTENT;
   // แผนกอื่นที่ยังไม่ได้กำหนดสิทธิ์ → ไม่ให้เข้า (ปิดไว้ก่อนปลอดภัยกว่า)
   return [];
 }
