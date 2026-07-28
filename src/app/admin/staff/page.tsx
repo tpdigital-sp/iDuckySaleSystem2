@@ -3,7 +3,7 @@
 import RequirePerm from "@/components/RequirePerm";
 import { useEffect, useState } from "react";
 import { faint, h1, muted } from "@/lib/admin-ui";
-import { DEPT_ADMIN, DEPT_CONTENT, DEPT_PACKING, ROLE_ADMINISTRATOR, ROLE_STAFF } from "@/lib/permissions";
+import { can, DEPT_ADMIN, DEPT_CONTENT, DEPT_PACKING, ROLE_ADMINISTRATOR, ROLE_STAFF } from "@/lib/permissions";
 
 interface Staff {
   id: string;
@@ -145,7 +145,7 @@ function StaffRow({
 function StaffPageInner() {
   const [staff, setStaff] = useState<Staff[] | null>(null);
   const [canGrantAdmin, setCanGrantAdmin] = useState(false);
-  const [view, setView] = useState<"working" | "left">("working");
+  const [view, setView] = useState<"access" | "noAccess">("access");
   const [me, setMe] = useState("");
   const [err, setErr] = useState("");
 
@@ -171,6 +171,12 @@ function StaffPageInner() {
   const norm = (u: string) =>
     u.trim().toLowerCase().replace(/\s+/g, ".").replace(/[^a-z0-9._-]/g, "").replace(/^[._-]+|[._-]+$/g, "");
 
+  // แสดงเฉพาะคนที่ยังทำงานอยู่ (พ้นสภาพแล้วไม่โชว์)
+  const working = (staff ?? []).filter((s) => s.workStatus === "working");
+  // "ใช้งานระบบได้" = บทบาท/แผนกปัจจุบันเปิดสิทธิ์เข้าหลังบ้าน (ใช้กติกาเดียวกับตอนล็อกอินจริง)
+  const hasAccess = (s: Staff) =>
+    can({ username: s.username, role: s.role, department: s.department }, "admin.access");
+
   return (
     <div className="mx-auto max-w-4xl">
       <h1 className={h1}>👥 พนักงาน</h1>
@@ -189,13 +195,13 @@ function StaffPageInner() {
         <p className="py-16 text-center text-sm text-slate-400">กำลังโหลดรายชื่อ…</p>
       ) : (
         <>
-          {/* แท็บย่อย: ทำงานอยู่ (ล็อกอินได้) / พ้นสภาพ (ล็อกอินไม่ได้ — ดึงกลับมาทำงานได้จากแท็บนี้) */}
+          {/* แท็บย่อย: แบ่งตามสิทธิ์เข้าหลังบ้าน — มีสิทธิ์แล้ว / ยังไม่มีสิทธิ์ (แผนกยังไม่ถูกกำหนดสิทธิ์) */}
           <div className="mt-5 flex gap-2">
             {(
               [
-                ["working", `✅ ทำงานอยู่ (${staff.filter((s) => s.workStatus === "working").length})`],
-                ["left", `🗂️ พ้นสภาพ (${staff.filter((s) => s.workStatus !== "working").length})`],
-              ] as ["working" | "left", string][]
+                ["access", `🔓 ใช้งานระบบได้ (${working.filter(hasAccess).length})`],
+                ["noAccess", `🔒 ยังไม่มีสิทธิ์ (${working.filter((s) => !hasAccess(s)).length})`],
+              ] as ["access" | "noAccess", string][]
             ).map(([k, label]) => (
               <button
                 key={k}
@@ -215,13 +221,13 @@ function StaffPageInner() {
 
           <section className="mt-3">
             <p className={`mb-2 text-xs ${faint}`}>
-              {view === "working"
-                ? "เปลี่ยนสถานะเป็น “พ้นสภาพ” แล้วบัญชีจะล็อกอินไม่ได้ และย้ายไปแท็บพ้นสภาพ"
-                : "บัญชีในแท็บนี้ล็อกอินไม่ได้ — เปลี่ยนสถานะกลับเป็น “ทำงานอยู่” เพื่อเปิดใช้อีกครั้ง"}
+              {view === "access"
+                ? "พนักงานกลุ่มนี้ล็อกอินเข้าหลังบ้านได้ตามสิทธิ์ของแผนก · เปลี่ยนสถานะเป็น “พ้นสภาพ” เพื่อปิดบัญชี"
+                : "แผนกของกลุ่มนี้ยังไม่ถูกกำหนดสิทธิ์ จึงเข้าหลังบ้านไม่ได้ — เปลี่ยนแผนกเป็น แอดมิน / แพ็คของ / คอนเทนต์ เพื่อเปิดสิทธิ์"}
             </p>
             <div className="space-y-2">
-              {staff
-                .filter((s) => (view === "working" ? s.workStatus === "working" : s.workStatus !== "working"))
+              {working
+                .filter((s) => (view === "access" ? hasAccess(s) : !hasAccess(s)))
                 .map((s) => {
                   const self = norm(s.username) === me;
                   const adminLocked = !canGrantAdmin && s.role === ROLE_ADMINISTRATOR;
@@ -237,7 +243,7 @@ function StaffPageInner() {
                   );
                 })}
             </div>
-            {staff.filter((s) => (view === "working" ? s.workStatus === "working" : s.workStatus !== "working")).length === 0 && (
+            {working.filter((s) => (view === "access" ? hasAccess(s) : !hasAccess(s))).length === 0 && (
               <p className={`rounded-xl bg-slate-50 px-4 py-6 text-center text-sm ${muted}`}>ไม่มีพนักงานในกลุ่มนี้</p>
             )}
           </section>
