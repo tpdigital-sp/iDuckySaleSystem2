@@ -17,10 +17,6 @@ interface Staff {
 }
 
 const DEPTS = [DEPT_ADMIN, DEPT_PACKING, DEPT_CONTENT];
-const STATUS_OPTIONS: { value: string; label: string }[] = [
-  { value: "working", label: "ทำงานอยู่" },
-  { value: "left", label: "พ้นสภาพ" },
-];
 
 /** แถวพนักงาน 1 คน — แก้บทบาท/แผนก/สถานะ แล้วบันทึกเป็นรายคน */
 function StaffRow({
@@ -38,16 +34,13 @@ function StaffRow({
 }) {
   const [role, setRole] = useState(s.role);
   const [department, setDepartment] = useState(s.department);
-  const [workStatus, setWorkStatus] = useState(s.workStatus);
   const [busy, setBusy] = useState(false);
   const [suspending, setSuspending] = useState(false);
   const [flash, setFlash] = useState<"ok" | "err" | null>(null);
   const [err, setErr] = useState("");
 
-  const dirty = role !== s.role || department !== s.department || workStatus !== s.workStatus;
+  const dirty = role !== s.role || department !== s.department;
   const isAdminRole = role === ROLE_ADMINISTRATOR;
-  // สถานะปัจจุบันที่ไม่อยู่ในตัวเลือกมาตรฐาน (ค่าเก่าจากระบบ TP) — โชว์ให้เลือกคงไว้ได้
-  const customStatus = workStatus && !STATUS_OPTIONS.some((o) => o.value === workStatus);
 
   async function save() {
     setBusy(true);
@@ -55,7 +48,8 @@ function StaffRow({
     const res = await fetch("/api/admin/staff", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: s.id, role, department: isAdminRole ? "" : department, workStatus }),
+      // workStatus ส่งค่าเดิมกลับไปเฉย ๆ (หน้านี้ไม่มีตัวแก้สถานะแล้ว — จัดการที่ระบบ TP)
+      body: JSON.stringify({ id: s.id, role, department: isAdminRole ? "" : department, workStatus: s.workStatus }),
     });
     const j = await res.json().catch(() => ({}));
     setBusy(false);
@@ -139,18 +133,6 @@ function StaffRow({
                 </option>
               ))}
               {department && !DEPTS.includes(department) && <option value={department}>{department} (เดิม)</option>}
-            </select>
-          </label>
-
-          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
-            สถานะ
-            <select value={workStatus} onChange={(e) => setWorkStatus(e.target.value)} className={sel}>
-              {STATUS_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-              {customStatus && <option value={workStatus}>{workStatus} (เดิม)</option>}
             </select>
           </label>
 
