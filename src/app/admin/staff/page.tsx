@@ -2,7 +2,7 @@
 
 import RequirePerm from "@/components/RequirePerm";
 import { useEffect, useState } from "react";
-import { cardPad, faint, h1, h2, muted } from "@/lib/admin-ui";
+import { faint, h1, h2, muted } from "@/lib/admin-ui";
 import { DEPT_ADMIN, DEPT_CONTENT, DEPT_PACKING, ROLE_ADMINISTRATOR, ROLE_STAFF } from "@/lib/permissions";
 
 interface Staff {
@@ -169,8 +169,7 @@ function StaffPageInner() {
     <div className="mx-auto max-w-4xl">
       <h1 className={h1}>👥 พนักงาน</h1>
       <p className={`mt-1 ${muted}`}>
-        กำหนดบทบาท/แผนก/สถานะการทำงาน — มีผลกับสิทธิ์ทันทีที่พนักงานล็อกอินครั้งถัดไป · ดูสิทธิ์ของแต่ละตำแหน่งได้ที่
-        ตั้งค่าระบบ → แท็บบทบาท
+        กำหนดบทบาท/แผนก/สถานะการทำงาน — แสดงเฉพาะพนักงานที่ทำงานอยู่ · มีผลกับสิทธิ์ทันทีที่ล็อกอินครั้งถัดไป · ดูสิทธิ์แต่ละตำแหน่งได้ที่ ตั้งค่าระบบ → แท็บบทบาท
       </p>
       {!canGrantAdmin && staff !== null && (
         <p className="mt-3 rounded-xl bg-sky-50 px-4 py-2.5 text-xs font-medium text-sky-700 ring-1 ring-sky-100">
@@ -186,6 +185,7 @@ function StaffPageInner() {
         <>
           <section className="mt-5">
             <h2 className={`mb-2 ${h2}`}>ทำงานอยู่ ({staff.filter((s) => s.workStatus === "working").length})</h2>
+            <p className={`mb-2 text-xs ${faint}`}>เปลี่ยนสถานะเป็น “พ้นสภาพ” แล้วบัญชีจะล็อกอินไม่ได้ และหายจากหน้านี้</p>
             <div className="space-y-2">
               {staff
                 .filter((s) => s.workStatus === "working")
@@ -206,30 +206,6 @@ function StaffPageInner() {
             </div>
           </section>
 
-          {staff.some((s) => s.workStatus !== "working") && (
-            <section className={`mt-6 ${cardPad}`}>
-              <h2 className={`mb-2 ${h2}`}>ไม่ได้ทำงานแล้ว ({staff.filter((s) => s.workStatus !== "working").length})</h2>
-              <p className={`mb-2 text-xs ${faint}`}>บัญชีเหล่านี้ล็อกอินไม่ได้ — เปลี่ยนสถานะเป็น &quot;ทำงานอยู่&quot; เพื่อเปิดใช้อีกครั้ง</p>
-              <div className="space-y-2">
-                {staff
-                  .filter((s) => s.workStatus !== "working")
-                  .map((s) => {
-                    const self = norm(s.username) === me;
-                    const adminLocked = !canGrantAdmin && s.role === ROLE_ADMINISTRATOR;
-                    return (
-                      <StaffRow
-                        key={s.id}
-                        s={s}
-                        locked={self || adminLocked}
-                        lockNote={self ? "self" : adminLocked ? "admin" : undefined}
-                        canGrantAdmin={canGrantAdmin}
-                        onSaved={load}
-                      />
-                    );
-                  })}
-              </div>
-            </section>
-          )}
         </>
       )}
     </div>
