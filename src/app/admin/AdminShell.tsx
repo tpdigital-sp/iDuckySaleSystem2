@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { getAdminSession, signOut } from "@/lib/auth";
 import { PermProvider } from "@/lib/perm-context";
 import type { Perm } from "@/lib/permissions";
+import { markRatingsSeen, unseenRatingCount } from "@/lib/ratings";
 
 /** เมนู + สิทธิ์ที่ต้องมีถึงจะเห็น */
 const MENU: { href: string; label: string; emoji: string; perm: Perm }[] = [
@@ -15,6 +16,7 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm }[] = [
   { href: "/admin/products", label: "สินค้า", emoji: "🏷️", perm: "products.view" },
   { href: "/admin/options", label: "คลังตัวเลือก", emoji: "🎛️", perm: "presets.manage" },
   { href: "/admin/coupons", label: "คูปอง", emoji: "🎟️", perm: "coupons.manage" },
+  { href: "/admin/ratings", label: "ความพึงพอใจ", emoji: "💬", perm: "orders.viewAll" },
   { href: "/admin/import", label: "นำเข้าสินค้า", emoji: "📥", perm: "products.import" },
   { href: "/admin/settings", label: "ตั้งค่าระบบ", emoji: "⚙️", perm: "settings.manage" },
 ];
@@ -31,6 +33,30 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [perms, setPerms] = useState<Perm[]>([]);
   const [roleName, setRoleName] = useState("");
   const [userName, setUserName] = useState(""); // ชื่อคนที่ล็อกอินอยู่
+  // badge แจ้งจำนวนประเมินความพึงพอใจใหม่ที่ยังไม่ได้เปิดดู (นับต่อเครื่องด้วย localStorage)
+  const [newRatings, setNewRatings] = useState(0);
+
+  useEffect(() => {
+    if (pathname === "/admin/login" || !perms.includes("orders.viewAll")) return;
+    let active = true;
+    fetch("/api/admin/ratings", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (!active) return;
+        const rows = (j.ratings ?? []) as { id: string }[];
+        if (pathname === "/admin/ratings") {
+          // กำลังเปิดหน้าประเมินอยู่ → ถือว่าเห็นครบแล้ว
+          markRatingsSeen(rows.map((r) => r.id));
+          setNewRatings(0);
+        } else {
+          setNewRatings(unseenRatingCount(rows));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [perms, pathname]);
 
   const isLoginPage = pathname === "/admin/login";
 
@@ -113,6 +139,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             }`}
           >
             <span className={`text-base ${active ? "" : "opacity-80"}`}>{m.emoji}</span> {m.label}
+            {m.href === "/admin/ratings" && newRatings > 0 && (
+              <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[11px] font-bold text-white">
+                {newRatings > 99 ? "99+" : newRatings}
+              </span>
+            )}
           </Link>
         );
       })}

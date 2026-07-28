@@ -1,8 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { SCORE_FACES, type Rating } from "@/lib/ratings";
 import { formatPrice, PRODUCTS } from "@/lib/products";
 import { MOCK_ORDERS, orderTotal, STATUS_STYLES } from "@/lib/admin-data";
 import { badge, card, cardPad, faint, h1, h2, muted } from "@/lib/admin-ui";
@@ -90,105 +88,9 @@ export default function AdminDashboard() {
         </section>
       </div>
 
-      {/* ผลประเมินความพึงพอใจ (นิรนาม) */}
-      <RatingsSummary />
-
       <p className={`mt-6 text-center text-xs ${faint}`}>
         ยอดสรุปคำนวณจากออเดอร์จำลอง — เมื่อต่อฐานข้อมูลจริง ตัวเลขจะอัปเดตอัตโนมัติ
       </p>
     </div>
-  );
-}
-
-/** สรุปผลประเมินความพึงพอใจ — ข้อมูลนิรนาม (ระบบไม่รู้ว่าใครประเมิน) */
-function RatingsSummary() {
-  const [ratings, setRatings] = useState<Rating[] | null>(null);
-  const [needsSetup, setNeedsSetup] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/admin/ratings", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((j) => {
-        setRatings(j.ratings ?? []);
-        setNeedsSetup(!!j.needsSetup);
-      })
-      .catch(() => setRatings([]));
-  }, []);
-
-  if (ratings === null) return null;
-
-  const count = ratings.length;
-  const avg = count ? ratings.reduce((s, r) => s + r.score, 0) / count : 0;
-  const dist = [5, 4, 3, 2, 1].map((s) => ({ s, n: ratings.filter((r) => r.score === s).length }));
-  const tagCount = new Map<string, number>();
-  ratings.forEach((r) => (r.tags ?? []).forEach((t) => tagCount.set(t, (tagCount.get(t) ?? 0) + 1)));
-  const topTags = [...tagCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const comments = ratings.filter((r) => r.comment).slice(0, 4);
-  const face = (s: number) => SCORE_FACES.find((f) => f.score === s)?.emoji ?? "⭐";
-
-  return (
-    <section className={`mt-6 ${cardPad}`}>
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className={h2}>💬 ความพึงพอใจลูกค้า</h2>
-        <span className={`text-[11px] ${faint}`}>ประเมินแบบนิรนาม — ระบบไม่บันทึกว่าใครประเมิน</span>
-      </div>
-
-      {needsSetup ? (
-        <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-200">
-          ยังไม่มีตาราง <code className="font-mono">ratings</code> — รัน <code className="font-mono">supabase/ratings.sql</code> ใน
-          Supabase SQL Editor หนึ่งครั้ง
-        </p>
-      ) : count === 0 ? (
-        <p className={`rounded-xl bg-slate-50 px-4 py-6 text-center text-sm ${muted}`}>
-          ยังไม่มีการประเมิน — ลูกค้าจะเห็นแบบประเมินในหน้าออเดอร์เมื่อได้รับสินค้าแล้ว
-        </p>
-      ) : (
-        <div className="grid gap-5 md:grid-cols-[180px_1fr_1fr]">
-          <div className="text-center md:border-r md:border-slate-100 md:pr-5">
-            <p className="text-4xl">{face(Math.round(avg))}</p>
-            <p className="mt-1 text-3xl font-bold tracking-tight text-slate-900">{avg.toFixed(1)}</p>
-            <p className={`text-xs ${faint}`}>จาก 5 · ทั้งหมด {count} ครั้ง</p>
-          </div>
-
-          <div className="space-y-1.5">
-            {dist.map(({ s, n }) => (
-              <div key={s} className="flex items-center gap-2 text-xs">
-                <span className="w-5 text-center">{face(s)}</span>
-                <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100">
-                  <div className="h-full rounded-full bg-amber-400" style={{ width: count ? `${(n / count) * 100}%` : 0 }} />
-                </div>
-                <span className={`w-6 text-right tabular-nums ${faint}`}>{n}</span>
-              </div>
-            ))}
-            {topTags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-2">
-                {topTags.map(([t, n]) => (
-                  <span key={t} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-                    {t} · {n}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <p className="mb-1.5 text-xs font-semibold text-slate-500">คอมเมนต์ล่าสุด</p>
-            {comments.length === 0 ? (
-              <p className={`text-xs ${faint}`}>ยังไม่มีคอมเมนต์</p>
-            ) : (
-              <ul className="space-y-2">
-                {comments.map((r, i) => (
-                  <li key={i} className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                    <span className="mr-1">{face(r.score)}</span>
-                    “{r.comment}”
-                    <span className={`ml-1 ${faint}`}>· {r.month}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
-    </section>
   );
 }
