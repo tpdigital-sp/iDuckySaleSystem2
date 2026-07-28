@@ -2,7 +2,7 @@
 
 import RequirePerm from "@/components/RequirePerm";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   DEFAULT_SHIPPING,
@@ -20,12 +20,13 @@ import {
   type ShopInfo,
 } from "@/lib/shop-settings";
 import { DEFAULT_TIERS, type Tier } from "@/lib/tiers";
+import { DEPT_ADMIN, DEPT_PACKING, PERM_INFO, permsOf, ROLE_ADMINISTRATOR, ROLE_STAFF } from "@/lib/permissions";
 import { btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
 
 const newId = (p = "b") =>
   typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${p}-${Date.now()}-${Math.floor(Math.random() * 1e4)}`;
 
-type Tab = "shop" | "pay" | "ship" | "tier" | "welcome";
+type Tab = "shop" | "pay" | "ship" | "tier" | "welcome" | "roles";
 
 function AdminSettingsPageInner() {
   const [tab, setTab] = useState<Tab>("pay");
@@ -182,6 +183,7 @@ function AdminSettingsPageInner() {
             ["ship", "🚚 การจัดส่ง"],
             ["tier", "🏅 ระดับสมาชิก"],
             ["welcome", "🎁 คูปองต้อนรับ"],
+            ["roles", "👥 บทบาท"],
           ] as [Tab, string][]
         ).map(([k, label]) => (
           <button
@@ -606,6 +608,70 @@ function AdminSettingsPageInner() {
               </div>
             </section>
           )}
+
+          {/* ══════ บทบาท & สิทธิ์ (อ่านอย่างเดียว — ดึงจากตัวกำหนดสิทธิ์จริง) ══════ */}
+          {tab === "roles" &&
+            (() => {
+              const roles = [
+                { name: "ผู้ดูแลระบบ", short: "👑", perms: permsOf({ username: "", role: ROLE_ADMINISTRATOR }) },
+                { name: "พนักงาน · แอดมิน", short: "🧑‍💼", perms: permsOf({ username: "", role: ROLE_STAFF, department: DEPT_ADMIN }) },
+                { name: "พนักงาน · แพ็คของ", short: "📦", perms: permsOf({ username: "", role: ROLE_STAFF, department: DEPT_PACKING }) },
+              ];
+              return (
+                <section className={`mt-5 p-5 ${card} sm:p-6`}>
+                  <h2 className="text-sm font-semibold text-slate-800">👥 บทบาทการทำงาน — แต่ละตำแหน่งทำอะไรได้บ้าง</h2>
+                  <p className={`mt-1 text-xs ${faint}`}>
+                    ตารางนี้อ่านอย่างเดียว (ตรงกับสิทธิ์จริงในระบบเสมอ) · กำหนดตำแหน่งพนักงานใน Firebase{" "}
+                    <code className="font-mono">employees2</code>: ช่อง role / department / workStatus = &quot;working&quot;
+                  </p>
+
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="w-full min-w-[560px] border-collapse text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-left">
+                          <th className="py-2 pr-3 font-semibold text-slate-500">สิทธิ์</th>
+                          {roles.map((r) => (
+                            <th key={r.name} className="w-28 px-2 py-2 text-center font-semibold text-slate-700">
+                              <span className="block text-lg">{r.short}</span>
+                              <span className="block text-[11px] leading-tight">{r.name}</span>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {PERM_INFO.map((g) => (
+                          <Fragment key={g.group}>
+                            <tr>
+                              <td colSpan={4} className="pb-1 pt-4 text-xs font-bold text-slate-500">
+                                {g.group}
+                              </td>
+                            </tr>
+                            {g.perms.map((p) => (
+                              <tr key={p.perm} className="border-b border-slate-100">
+                                <td className="py-2 pr-3 text-[13px] leading-snug text-slate-700">{p.label}</td>
+                                {roles.map((r) => (
+                                  <td key={r.name} className="px-2 py-2 text-center">
+                                    {r.perms.includes(p.perm) ? (
+                                      <span className="font-bold text-emerald-600">✓</span>
+                                    ) : (
+                                      <span className="text-slate-300">—</span>
+                                    )}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <p className={`mt-4 text-xs ${faint}`}>
+                    💡 การซ่อนเมนู/ปุ่มในหน้าจอเป็นแค่ความสะดวก — สิทธิ์จริงถูกบังคับที่เซิร์ฟเวอร์ทุกครั้ง (แก้ไม่ได้จากหน้าเว็บ)
+                  </p>
+                </section>
+              );
+            })()}
 
           {error && <div className="mt-4 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{error}</div>}
 
