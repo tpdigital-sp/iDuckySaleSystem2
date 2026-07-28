@@ -13,7 +13,7 @@ interface Staff {
   role: string;
   department: string;
   workStatus: string;
-  isSuspended: boolean;
+  suspended: boolean;
 }
 
 const DEPTS = [DEPT_ADMIN, DEPT_PACKING, DEPT_CONTENT];
@@ -69,19 +69,19 @@ function StaffRow({
     onSaved();
   }
 
-  /** ระงับ/คืนสิทธิ์เข้าหลังบ้าน — ไม่แตะสถานะการทำงาน (ยังเป็นพนักงานอยู่) */
+  /** ระงับ/คืนสิทธิ์เข้าหลังบ้าน "เฉพาะระบบนี้" — ไม่แตะสถานะการทำงาน และไม่กระทบระบบอื่น */
   async function toggleSuspend() {
     const who = s.fullname || s.name || s.username;
-    const msg = s.isSuspended
-      ? `คืนสิทธิ์ให้ "${who}" กลับมาเข้าหลังบ้านได้เหมือนเดิม?`
-      : `ระงับสิทธิ์ "${who}" ไม่ให้เข้าหลังบ้าน?\n(ยังเป็นพนักงานอยู่ ไม่ใช่การพ้นสภาพ — คืนสิทธิ์ได้ทุกเมื่อ)`;
+    const msg = s.suspended
+      ? `คืนสิทธิ์ให้ "${who}" กลับมาเข้าระบบนี้ได้เหมือนเดิม?`
+      : `ระงับสิทธิ์ "${who}" ไม่ให้เข้าระบบนี้?\n(เฉพาะระบบนี้เท่านั้น — ระบบอื่นใช้ได้ปกติ · ยังเป็นพนักงานอยู่ คืนสิทธิ์ได้ทุกเมื่อ)`;
     if (!window.confirm(msg)) return;
     setSuspending(true);
     setErr("");
     const res = await fetch("/api/admin/staff", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: s.id, isSuspended: !s.isSuspended }),
+      body: JSON.stringify({ id: s.id, suspended: !s.suspended }),
     });
     const j = await res.json().catch(() => ({}));
     setSuspending(false);
@@ -101,9 +101,9 @@ function StaffRow({
         <p className="truncate text-sm font-bold text-slate-800">
           {s.fullname || s.name || s.username}{" "}
           {lockNote === "self" && <span className="text-xs font-semibold text-amber-600">(คุณ)</span>}
-          {s.isSuspended && (
+          {s.suspended && (
             <span className="ml-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-600">
-              ⛔ ระงับสิทธิ์อยู่
+              ⛔ ระงับสิทธิ์เฉพาะระบบนี้
             </span>
           )}
         </p>
@@ -169,12 +169,12 @@ function StaffRow({
             onClick={toggleSuspend}
             disabled={suspending}
             className={`rounded-full px-3 py-1.5 text-xs font-bold transition disabled:opacity-40 ${
-              s.isSuspended
+              s.suspended
                 ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
                 : "bg-white text-rose-600 ring-1 ring-rose-200 hover:bg-rose-50"
             }`}
           >
-            {suspending ? "…" : s.isSuspended ? "↩️ คืนสิทธิ์" : "⛔ ระงับสิทธิ์"}
+            {suspending ? "…" : s.suspended ? "↩️ คืนสิทธิ์" : "⛔ ระงับสิทธิ์"}
           </button>
           {err && <p className="w-full text-xs font-medium text-rose-600">{err}</p>}
         </>
@@ -216,7 +216,7 @@ function StaffPageInner() {
   const working = (staff ?? []).filter((s) => s.workStatus === "working");
   // "ใช้งานระบบได้" = ไม่ถูกระงับ + บทบาท/แผนกเปิดสิทธิ์เข้าหลังบ้าน (กติกาเดียวกับตอนล็อกอินจริง)
   const hasAccess = (s: Staff) =>
-    !s.isSuspended && can({ username: s.username, role: s.role, department: s.department }, "admin.access");
+    !s.suspended && can({ username: s.username, role: s.role, department: s.department }, "admin.access");
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -263,8 +263,8 @@ function StaffPageInner() {
           <section className="mt-3">
             <p className={`mb-2 text-xs ${faint}`}>
               {view === "access"
-                ? "พนักงานกลุ่มนี้ล็อกอินเข้าหลังบ้านได้ตามสิทธิ์ของแผนก · กด “⛔ ระงับสิทธิ์” เพื่อปิดการเข้าระบบชั่วคราวโดยยังเป็นพนักงานอยู่"
-                : "กลุ่มนี้เข้าหลังบ้านไม่ได้ — แผนกยังไม่ถูกกำหนดสิทธิ์ (เปลี่ยนเป็น แอดมิน / แพ็คของ / คอนเทนต์ เพื่อเปิด) หรือถูกระงับสิทธิ์ไว้ (กด “↩️ คืนสิทธิ์”)"}
+                ? "พนักงานกลุ่มนี้ล็อกอินเข้าหลังบ้านได้ตามสิทธิ์ของแผนก · กด “⛔ ระงับสิทธิ์” เพื่อปิดการเข้าเฉพาะระบบนี้ (ระบบอื่นใช้ได้ปกติ ยังเป็นพนักงานอยู่)"
+                : "กลุ่มนี้เข้าหลังบ้านไม่ได้ — แผนกยังไม่ถูกกำหนดสิทธิ์ (เปลี่ยนเป็น แอดมิน / แพ็คของ / คอนเทนต์ เพื่อเปิด) หรือถูกระงับสิทธิ์ระบบนี้ไว้ (กด “↩️ คืนสิทธิ์”)"}
             </p>
             <div className="space-y-2">
               {working

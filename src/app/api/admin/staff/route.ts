@@ -13,7 +13,8 @@ interface EmpDoc {
   role?: string;
   department?: string;
   workStatus?: string;
-  isSuspended?: boolean;
+  /** ระงับสิทธิ์เฉพาะระบบ iDucky — คนละตัวกับ isSuspended ของระบบ TP เดิม (ห้ามแตะตัวนั้น) */
+  iduckySuspended?: boolean;
 }
 
 /** รายชื่อพนักงานทั้งหมด (ไม่ส่งรหัสผ่านออกไปเด็ดขาด) */
@@ -35,7 +36,7 @@ export async function GET() {
         role: e.role ?? "",
         department: e.department ?? "",
         workStatus: e.workStatus ?? "",
-        isSuspended: e.isSuspended === true,
+        suspended: e.iduckySuspended === true,
       };
     })
     .sort((a, b) => (a.fullname || a.name || a.username).localeCompare(b.fullname || b.name || b.username, "th"));
@@ -55,7 +56,7 @@ export async function PATCH(req: Request) {
   const db = getFirestoreAdmin();
   if (!db) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Firebase" }, { status: 503 });
 
-  let body: { id?: string; role?: string; department?: string; workStatus?: string; isSuspended?: boolean };
+  let body: { id?: string; role?: string; department?: string; workStatus?: string; suspended?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -64,13 +65,13 @@ export async function PATCH(req: Request) {
   const id = (body.id ?? "").trim();
   if (!id) return NextResponse.json({ error: "ไม่มีรหัสพนักงาน" }, { status: 400 });
 
-  // แก้ได้ 2 แบบ: ข้อมูลตำแหน่ง (role+department+workStatus) หรือสวิตช์ระงับสิทธิ์ (isSuspended) อย่างเดียว
-  const suspendOnly = body.role === undefined && body.isSuspended !== undefined;
+  // แก้ได้ 2 แบบ: ข้อมูลตำแหน่ง (role+department+workStatus) หรือสวิตช์ระงับสิทธิ์เฉพาะระบบนี้ (suspended)
+  const suspendOnly = body.role === undefined && body.suspended !== undefined;
   const role = (body.role ?? "").trim();
   const department = (body.department ?? "").trim().slice(0, 40);
   const workStatus = (body.workStatus ?? "").trim().slice(0, 30);
   if (suspendOnly) {
-    if (typeof body.isSuspended !== "boolean")
+    if (typeof body.suspended !== "boolean")
       return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
   } else {
     if (role !== ROLE_ADMINISTRATOR && role !== ROLE_STAFF)
@@ -96,6 +97,6 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "ตั้งระดับผู้ดูแลระบบได้เฉพาะผู้ดูแลระบบเท่านั้น" }, { status: 403 });
   }
 
-  await ref.update(suspendOnly ? { isSuspended: body.isSuspended } : { role, department, workStatus });
+  await ref.update(suspendOnly ? { iduckySuspended: body.suspended } : { role, department, workStatus });
   return NextResponse.json({ ok: true });
 }

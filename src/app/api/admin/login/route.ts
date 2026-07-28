@@ -36,6 +36,8 @@ export async function POST(req: Request) {
     role?: string;
     name?: string;
     isSuspended?: boolean;
+    /** ระงับสิทธิ์เฉพาะระบบ iDucky (ไม่เกี่ยวกับ isSuspended ของระบบ TP เดิม) */
+    iduckySuspended?: boolean;
     workStatus?: string;
     department?: string;
   };
@@ -52,6 +54,10 @@ export async function POST(req: Request) {
   // ระงับ / ไม่ได้ทำงานอยู่ → เข้าไม่ได้ (allowlist: ต้องเป็น "working" เท่านั้น)
   if (emp.isSuspended === true || emp.workStatus !== WORK_STATUS_ACTIVE) {
     return NextResponse.json({ error: "บัญชีนี้ถูกระงับหรือพ้นสภาพพนักงานแล้ว" }, { status: 403 });
+  }
+  // ถูกระงับสิทธิ์เฉพาะระบบนี้ (จากหน้า /admin/staff) — ระบบอื่นยังใช้ได้ตามปกติ
+  if (emp.iduckySuspended === true) {
+    return NextResponse.json({ error: "บัญชีนี้ถูกระงับสิทธิ์เข้าระบบนี้ — ติดต่อผู้ดูแลระบบ" }, { status: 403 });
   }
   // เทียบรหัสผ่าน (รองรับ SHA-256 hash / plaintext ปนกัน)
   if (!verifyPassword(password, emp.password ?? "")) {
