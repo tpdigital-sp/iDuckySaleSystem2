@@ -204,7 +204,7 @@ function StaffPageInner() {
     <div className="mx-auto max-w-4xl">
       <h1 className={h1}>👥 พนักงาน</h1>
       <p className={`mt-1 ${muted}`}>
-        กำหนดบทบาท/แผนก/สถานะการทำงาน — มีผลกับสิทธิ์ทันทีที่ล็อกอินครั้งถัดไป · ดูสิทธิ์แต่ละตำแหน่งได้ที่ ตั้งค่าระบบ → แท็บบทบาท
+        กำหนดบทบาท/แผนก และเปิด–ปิดการเข้าใช้งานระบบนี้ — มีผลทันทีที่ล็อกอินครั้งถัดไป · ดูสิทธิ์แต่ละตำแหน่งได้ที่ ตั้งค่าระบบ → แท็บบทบาท
       </p>
       {!canGrantAdmin && staff !== null && (
         <p className="mt-3 rounded-xl bg-sky-50 px-4 py-2.5 text-xs font-medium text-sky-700 ring-1 ring-sky-100">
