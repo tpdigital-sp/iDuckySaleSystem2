@@ -53,6 +53,27 @@ export default function CheckoutPage() {
   const [err, setErr] = useState("");
   const [placed, setPlaced] = useState<Placed | null>(null);
 
+  // ── โหมดพนักงาน: สั่งแทนลูกค้า (เห็นเฉพาะคนที่ล็อกอินหลังบ้านและมีสิทธิ์แก้ออเดอร์) ──
+  const [staffName, setStaffName] = useState("");
+  const [staffMode, setStaffMode] = useState(false);
+  useEffect(() => {
+    fetch("/api/admin/session", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (j?.loggedIn && Array.isArray(j.perms) && j.perms.includes("orders.edit")) setStaffName(j.name || "พนักงาน");
+      })
+      .catch(() => {});
+  }, []);
+  const toggleStaffMode = (on: boolean) => {
+    setStaffMode(on);
+    if (on) {
+      // ล้างข้อมูลที่เติมจากโปรไฟล์พนักงานเอง — ต้องกรอกของ "ลูกค้า" แทน
+      setName("");
+      setPhone("");
+      setAddress("");
+    }
+  };
+
   const [linkCopied, setLinkCopied] = useState(false);
 
   // แจ้งโอน (อัปโหลดสลิป)
@@ -190,9 +211,11 @@ export default function CheckoutPage() {
   }
 
   // เลือกส่วนลดที่ดีกว่า (ระดับ vs คูปอง) — ตรงกับที่เซิร์ฟเวอร์คิด
-  const couponDisc = couponPreview?.discount ?? 0;
-  const useCoupon = couponDisc > tierDiscount;
-  const discount = Math.max(tierDiscount, couponDisc);
+  // โหมดพนักงานสั่งแทน: ไม่คิดส่วนลดสมาชิก/คูปองของพนักงานเอง (ออเดอร์เป็นของลูกค้า)
+  const couponDisc = staffMode ? 0 : (couponPreview?.discount ?? 0);
+  const effTierDiscount = staffMode ? 0 : tierDiscount;
+  const useCoupon = couponDisc > effTierDiscount;
+  const discount = Math.max(effTierDiscount, couponDisc);
   const total = Math.max(0, subtotal - discount + shippingCost);
 
   async function submit() {
@@ -231,13 +254,14 @@ export default function CheckoutPage() {
       customerName: name,
       phone,
       address,
-      email: customer?.email,
-      customerId: customer?.id,
+      email: staffMode ? undefined : customer?.email,
+      customerId: staffMode ? undefined : customer?.id,
       shipping: shippingMethod.name,
       shippingCost,
       subtotal,
       total,
-      couponCode: couponPreview?.code,
+      couponCode: staffMode ? undefined : couponPreview?.code,
+      staffOrder: staffMode || undefined,
       items: orderItems,
     });
     setPlacing(false);
@@ -306,8 +330,13 @@ export default function CheckoutPage() {
       <div className="mx-auto max-w-2xl px-4 py-10">
         <div className="rounded-2xl bg-emerald-50/70 p-6 text-center ring-1 ring-emerald-200">
           <span className="text-5xl">✅</span>
-          <h1 className="mt-3 text-2xl font-extrabold text-emerald-800">สั่งซื้อสำเร็จ!</h1>
-          <p className="mt-1 text-sm text-stone-600">เลขออเดอร์ของคุณ</p>
+          <h1 className="mt-3 text-2xl font-extrabold text-emerald-800">{staffMode ? "สั่งแทนลูกค้าสำเร็จ!" : "สั่งซื้อสำเร็จ!"}</h1>
+          {staffMode && (
+            <p className="mx-auto mt-2 max-w-sm rounded-xl bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700 ring-1 ring-sky-200">
+              🧑‍💼 คัดลอกลิงก์ออเดอร์ด้านล่างส่งให้ลูกค้า — ลูกค้าเปิดดูยอด โอนเงิน และแนบสลิปเองได้จากลิงก์เดียว
+            </p>
+          )}
+          <p className="mt-1 text-sm text-stone-600">{staffMode ? "เลขออเดอร์" : "เลขออเดอร์ของคุณ"}</p>
           <p className="select-all text-2xl font-extrabold tracking-wide text-stone-900">{placed.id}</p>
           <p className="mt-2 text-sm text-stone-500">
             ยอดที่ต้องโอน <span className="font-bold text-amber-600">{formatPrice(placed.total)}</span>
@@ -470,9 +499,23 @@ export default function CheckoutPage() {
         <p className="mt-1 text-sm text-stone-500">กรอกข้อมูลผู้รับ แล้วกดสั่งซื้อ · ขั้นถัดไปจะแจ้งเลขออเดอร์ + บัญชีให้โอน</p>
       )}
 
+      {/* โหมดพนักงาน: สั่งแทนลูกค้า (เห็นเฉพาะคนที่ล็อกอินหลังบ้าน) */}
+      {staffName && !appendTo && (
+        <label className={`mt-5 flex cursor-pointer items-start gap-3 rounded-2xl p-4 ring-1 transition ${staffMode ? "bg-sky-50 ring-sky-300" : "bg-white ring-stone-200 hover:ring-sky-200"}`}>
+          <input type="checkbox" checked={staffMode} onChange={(e) => toggleStaffMode(e.target.checked)} className="mt-0.5 h-4 w-4 accent-sky-600" />
+          <span className="min-w-0">
+            <span className="block text-sm font-bold text-stone-800">🧑‍💼 สั่งแทนลูกค้า (โหมดพนักงาน — {staffName})</span>
+            <span className="mt-0.5 block text-xs text-stone-500">
+              กรอกชื่อ/เบอร์/ที่อยู่ของ<strong>ลูกค้า</strong> · ออเดอร์จะบันทึกว่าสั่งโดยคุณ ไม่ผูกบัญชี/คูปอง/แต้มสมาชิกของคุณ ·
+              สั่งเสร็จคัดลอกลิงก์ออเดอร์ส่งให้ลูกค้าโอน/แนบสลิปเองได้เลย
+            </span>
+          </span>
+        </label>
+      )}
+
       <div className={`mt-5 space-y-3 ${appendTo ? "hidden" : ""}`}>
         <div>
-          <label className="mb-1 block text-sm font-bold text-stone-700">ชื่อผู้รับ</label>
+          <label className="mb-1 block text-sm font-bold text-stone-700">{staffMode ? "ชื่อผู้รับ (ลูกค้า)" : "ชื่อผู้รับ"}</label>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="ชื่อ-นามสกุล" className={inputCls} />
         </div>
         <div>
@@ -485,8 +528,8 @@ export default function CheckoutPage() {
         </div>
       </div>
 
-      {/* คูปองส่วนลด (เฉพาะสมาชิก · ไม่ใช้ตอนสั่งเพิ่ม) */}
-      {customer && !appendTo && (
+      {/* คูปองส่วนลด (เฉพาะสมาชิก · ไม่ใช้ตอนสั่งเพิ่ม/สั่งแทนลูกค้า) */}
+      {customer && !appendTo && !staffMode && (
         <div className="mt-5 rounded-2xl bg-white p-4 ring-1 ring-amber-200">
           <p className="text-sm font-bold text-stone-700">🎟️ คูปองส่วนลด</p>
           {couponPreview ? (

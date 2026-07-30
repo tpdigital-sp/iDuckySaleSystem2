@@ -990,6 +990,11 @@ export default function AdminOrderDetailPage() {
               <p className={`mt-2 text-xs ${faint}`}>
                 {order.payment} · {order.shipping}
               </p>
+              {order.placedBy && (
+                <p className="mt-2 inline-flex rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200">
+                  🧑‍💼 พนักงานสั่งแทนลูกค้า — {order.placedBy}
+                </p>
+              )}
             </div>
           </div>
 

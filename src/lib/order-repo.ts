@@ -14,6 +14,8 @@ export interface CreateOrderInput {
   subtotal: number;
   total: number;
   couponCode?: string;
+  /** พนักงานสั่งแทนลูกค้า (เซิร์ฟเวอร์ตรวจสิทธิ์จากคุกกี้หลังบ้านเอง) */
+  staffOrder?: boolean;
   items: { productId: string; name: string; selections: string; sel?: Record<string, string>; qty: number; unitPrice: number }[];
 }
 

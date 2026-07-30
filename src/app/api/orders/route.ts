@@ -4,6 +4,9 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import type { Order } from "@/lib/admin-data";
 import { paidSpend, tierForSpend, tierDiscountAmount, tiersOf, type Tier } from "@/lib/tiers";
 import { couponLabel, validateCoupon, type Coupon } from "@/lib/coupons";
+import { currentActor } from "@/lib/server/require-perm";
+import { can } from "@/lib/permissions";
+import { loadRolePerms } from "@/lib/server/role-perms";
 
 // id เรคอร์ดตั้งค่าร้าน (ตรงกับ SETTINGS_ID ใน shop-settings ซึ่งเป็น "use client")
 const SETTINGS_ROW = "__shop_payment__";
@@ -32,6 +35,8 @@ export async function POST(req: Request) {
     items?: Order["items"];
     note?: string;
     couponCode?: string;
+    /** โหมดพนักงานสั่งแทนลูกค้า — ต้องล็อกอินหลังบ้านและมีสิทธิ์ orders.edit (ตรวจจากคุกกี้ฝั่งเซิร์ฟเวอร์) */
+    staffOrder?: boolean;
   };
   try {
     input = await req.json();
@@ -42,6 +47,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "กรอกชื่อ เบอร์ และที่อยู่ให้ครบ" }, { status: 400 });
   if (!Array.isArray(input.items) || input.items.length === 0)
     return NextResponse.json({ error: "ไม่มีรายการสินค้า" }, { status: 400 });
+
+  // สั่งแทนลูกค้า: เช็คว่าเป็นพนักงานจริง (อ้างชื่อเองจากหน้าเว็บไม่ได้) · ออเดอร์ไม่ผูกบัญชี/คูปอง/แต้ม
+  let placedBy = "";
+  if (input.staffOrder) {
+    const staff = await currentActor();
+    if (!staff || !can(staff, "orders.edit", await loadRolePerms()))
+      return NextResponse.json({ error: "โหมดสั่งแทนลูกค้าใช้ได้เฉพาะพนักงานที่ล็อกอินหลังบ้าน" }, { status: 403 });
+    placedBy = staff.name?.trim() || staff.username;
+    input.customerId = undefined;
+    input.email = undefined;
+    input.couponCode = undefined;
+  }
 
   const subtotal = input.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
   const now = new Date();
@@ -117,6 +134,7 @@ export async function POST(req: Request) {
     ...(cid ? { customerId: cid } : {}),
     ...(input.email?.trim() ? { email: input.email.trim() } : {}),
     ...(discount ? { discount } : {}),
+    ...(placedBy ? { placedBy } : {}),
   };
 
   const { error } = await sb.from("orders").insert({ id, data: order });
