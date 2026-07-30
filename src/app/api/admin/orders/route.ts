@@ -91,14 +91,13 @@ export async function POST(req: Request) {
   const gate = await requirePerm("orders.edit");
   if (gate.res) return gate.res;
 
-  let body: { customerName?: string; phone?: string; address?: string; shipping?: string; shippingCost?: number };
+  // สร้างได้ทันทีไม่ต้องกรอกอะไรก่อน — ไปเติมชื่อ/ที่อยู่/รายการ ในหน้าออเดอร์ (หน้าเดียวจบ)
+  let body: { customerName?: string; phone?: string; address?: string; shipping?: string; shippingCost?: number } = {};
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
+    /* ไม่ส่ง body มาก็ได้ */
   }
-  if (!body.customerName?.trim() || !body.phone?.trim() || !body.address?.trim())
-    return NextResponse.json({ error: "กรอกชื่อ เบอร์ และที่อยู่ลูกค้าให้ครบ" }, { status: 400 });
 
   const now = new Date();
   const p = (n: number) => String(n).padStart(2, "0");
@@ -107,9 +106,9 @@ export async function POST(req: Request) {
   let order: Order = {
     id,
     key: randomBytes(24).toString("base64url"),
-    customer: body.customerName.trim(),
-    phone: body.phone.trim(),
-    address: body.address.trim(),
+    customer: body.customerName?.trim() || "ยังไม่ระบุชื่อ",
+    phone: body.phone?.trim() || "",
+    address: body.address?.trim() || "",
     date: now.toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
     payment: "โอนธนาคาร",
     shipping: body.shipping === "ส่งด่วน" ? "ส่งด่วน" : "ส่งธรรมดา",

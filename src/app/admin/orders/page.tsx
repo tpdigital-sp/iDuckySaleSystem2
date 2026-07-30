@@ -321,72 +321,32 @@ function Chip({
   );
 }
 
-/** ปุ่ม + ฟอร์มสร้างออเดอร์ใหม่จากหลังบ้าน (งานพิเศษ/สั่งแทนลูกค้า — ไม่ต้องผ่านหน้าร้าน) */
+/** ปุ่มสร้างออเดอร์ใหม่ — สร้างออเดอร์เปล่าทันที แล้วพาเข้าหน้าออเดอร์ (กรอกชื่อ/ที่อยู่/รายการ ที่นั่นหน้าเดียวจบ) */
 function NewOrderButton({ onCreated }: { onCreated: (id: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
-  const [shipCost, setShipCost] = useState("0");
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
 
-  async function submit() {
-    if (!name.trim() || !phone.trim() || !address.trim()) return setErr("กรอกชื่อ เบอร์ และที่อยู่ลูกค้าให้ครบ");
+  async function create() {
+    if (busy) return;
     setBusy(true);
-    setErr("");
     const res = await fetch("/api/admin/orders", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ customerName: name, phone, address, shippingCost: Number(shipCost) || 0 }),
+      body: "{}",
     });
     const j = await res.json().catch(() => ({}));
     setBusy(false);
-    if (!res.ok) return setErr(j.error ?? "สร้างออเดอร์ไม่สำเร็จ");
+    if (!res.ok) return alert(j.error ?? "สร้างออเดอร์ไม่สำเร็จ");
     onCreated(j.id);
   }
 
-  const inp =
-    "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100";
-
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="rounded-full bg-amber-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-amber-600"
-      >
-        ＋ สร้างออเดอร์ใหม่
-      </button>
-      {open && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4" onClick={() => !busy && setOpen(false)}>
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm font-bold text-slate-800">＋ สร้างออเดอร์ใหม่ (งานพิเศษ / สั่งแทนลูกค้า)</p>
-            <p className="mt-1 text-xs text-slate-500">
-              สร้างเสร็จจะพาเข้าหน้าออเดอร์ — กด “เพิ่มรายการพิเศษ” ใส่งานต่อได้เลย · ถ้าสินค้ามีบนเว็บ แนะนำสั่งผ่านหน้าร้านโหมด
-              🧑‍💼 สั่งแทนลูกค้า (ได้ตัวเลือก/ราคาอัตโนมัติ)
-            </p>
-            <div className="mt-3 space-y-2.5">
-              <input value={name} onChange={(e) => setName(e.target.value)} className={inp} placeholder="ชื่อลูกค้า" />
-              <input value={phone} onChange={(e) => setPhone(e.target.value.replace(/[^\d\-+ ]/g, ""))} inputMode="tel" className={inp} placeholder="เบอร์โทรลูกค้า" />
-              <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={3} className={`${inp} resize-y`} placeholder="ที่อยู่จัดส่ง" />
-              <label className="block text-xs font-semibold text-slate-500">
-                ค่าจัดส่ง (บาท)
-                <input type="number" min={0} value={shipCost} onChange={(e) => setShipCost(e.target.value)} className={`${inp} mt-1`} />
-              </label>
-            </div>
-            {err && <p className="mt-2 text-xs font-semibold text-rose-600">{err}</p>}
-            <div className="mt-4 flex justify-end gap-2">
-              <button type="button" onClick={() => setOpen(false)} disabled={busy} className="rounded-full px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100">
-                ยกเลิก
-              </button>
-              <button type="button" onClick={submit} disabled={busy} className="rounded-full bg-amber-500 px-5 py-2 text-sm font-bold text-white transition hover:bg-amber-600 disabled:opacity-50">
-                {busy ? "กำลังสร้าง…" : "สร้างออเดอร์"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    <button
+      type="button"
+      onClick={create}
+      disabled={busy}
+      className="rounded-full bg-amber-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-amber-600 disabled:opacity-50"
+    >
+      {busy ? "กำลังสร้าง…" : "＋ สร้างออเดอร์ใหม่"}
+    </button>
   );
 }

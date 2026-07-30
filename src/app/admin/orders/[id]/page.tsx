@@ -998,14 +998,59 @@ export default function AdminOrderDetailPage() {
           <div>
             <p className={LBL}>ลูกค้า / จัดส่ง</p>
             <div className={`mt-2 ${SOFT}`}>
-              <p className="text-sm">
-                <span className="font-bold text-slate-800">{order.customer}</span>{" "}
-                <span className={muted}>· {order.phone}</span>
-              </p>
-              <p className={`text-sm ${muted}`}>{order.address}</p>
-              <p className={`mt-2 text-xs ${faint}`}>
-                {order.payment} · {order.shipping}
-              </p>
+              {mayEdit ? (
+                /* แอดมินแก้ข้อมูลลูกค้าตรงนี้ได้เลย (บันทึกอัตโนมัติตอนออกจากช่อง) — ใช้กับออเดอร์ที่สร้างจากหลังบ้านด้วย */
+                <div className="space-y-2">
+                  <div className="grid grid-cols-[1fr_auto] gap-2">
+                    <input
+                      value={order.customer}
+                      onChange={(e) => setOrder((cur) => (cur ? { ...cur, customer: e.target.value } : cur))}
+                      onBlur={persist}
+                      placeholder="ชื่อลูกค้า"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-bold text-slate-800 focus:border-amber-300 focus:outline-none"
+                    />
+                    <input
+                      value={order.phone}
+                      onChange={(e) => setOrder((cur) => (cur ? { ...cur, phone: e.target.value.replace(/[^\d\-+ ]/g, "") } : cur))}
+                      onBlur={persist}
+                      inputMode="tel"
+                      placeholder="เบอร์โทร"
+                      className="w-32 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 focus:border-amber-300 focus:outline-none"
+                    />
+                  </div>
+                  <textarea
+                    value={order.address}
+                    onChange={(e) => setOrder((cur) => (cur ? { ...cur, address: e.target.value } : cur))}
+                    onBlur={persist}
+                    rows={2}
+                    placeholder="ที่อยู่จัดส่ง"
+                    className="w-full resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 focus:border-amber-300 focus:outline-none"
+                  />
+                  <p className={`flex items-center gap-2 text-xs ${faint}`}>
+                    {order.payment} · {order.shipping} · ค่าส่ง
+                    <input
+                      type="number"
+                      min={0}
+                      value={order.shippingCost}
+                      onChange={(e) => setOrder((cur) => (cur ? { ...cur, shippingCost: Math.max(0, Number(e.target.value) || 0) } : cur))}
+                      onBlur={persist}
+                      className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
+                    />
+                    บาท
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm">
+                    <span className="font-bold text-slate-800">{order.customer}</span>{" "}
+                    <span className={muted}>· {order.phone}</span>
+                  </p>
+                  <p className={`text-sm ${muted}`}>{order.address}</p>
+                  <p className={`mt-2 text-xs ${faint}`}>
+                    {order.payment} · {order.shipping}
+                  </p>
+                </>
+              )}
               {order.placedBy && (
                 <p className="mt-2 inline-flex rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200">
                   🧑‍💼 พนักงานสั่งแทนลูกค้า — {order.placedBy}
