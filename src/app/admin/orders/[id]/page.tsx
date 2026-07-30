@@ -18,6 +18,7 @@ import {
   NOTE_WEIGHTS,
   noteHasText,
   type Order,
+  type OrderItem,
   type OrderStatus,
   type Proof,
   type NoteColor,
@@ -975,6 +976,21 @@ export default function AdminOrderDetailPage() {
               );
             })}
           </div>
+
+          {/* เพิ่มรายการพิเศษ — งานสั่งทำที่ไม่มีหน้าเว็บ (เฉพาะคนที่แก้ออเดอร์ได้) */}
+          {mayEdit && (
+            <SpecialItemAdder
+              onAdd={(item) => {
+                const next = withLog(
+                  { ...order, items: [...order.items, item] },
+                  actor,
+                  "เพิ่มรายการพิเศษ",
+                  `${item.name} ×${item.qty} @${formatPrice(item.unitPrice)}`
+                );
+                applyOrder(next);
+              }}
+            />
+          )}
         </div>
 
         {/* ── ขวา: ข้อมูล ── */}
@@ -1531,5 +1547,74 @@ function Actor({ by }: { by: string }) {
     <span className={`mr-1.5 inline-block rounded-full px-2 py-0.5 align-[1px] text-[10px] font-bold ring-1 ${tone}`}>
       {by}
     </span>
+  );
+}
+
+/** ฟอร์มเพิ่มรายการพิเศษ (งานสั่งทำที่ไม่มีหน้าเว็บ) — กรอกชื่อ/สเปค/จำนวน/ราคาเอง แล้วเพิ่มเข้าออเดอร์ */
+function SpecialItemAdder({ onAdd }: { onAdd: (item: OrderItem) => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [spec, setSpec] = useState("");
+  const [qty, setQty] = useState("1");
+  const [price, setPrice] = useState("");
+  const [err, setErr] = useState("");
+
+  function submit() {
+    const n = name.trim();
+    const q = Math.max(1, Math.floor(Number(qty) || 0));
+    const p = Math.max(0, Number(price) || 0);
+    if (!n) return setErr("ใส่ชื่องานก่อน");
+    if (!Number(qty) || Number(qty) < 1) return setErr("จำนวนต้องอย่างน้อย 1");
+    onAdd({ productId: "special-item", name: n, selections: spec.trim(), qty: q, unitPrice: p });
+    setOpen(false);
+    setName("");
+    setSpec("");
+    setQty("1");
+    setPrice("");
+    setErr("");
+  }
+
+  const inp =
+    "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100";
+
+  if (!open)
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-3 w-full rounded-xl border-2 border-dashed border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-500 transition hover:border-amber-300 hover:bg-amber-50/40 hover:text-amber-700"
+      >
+        ＋ เพิ่มรายการพิเศษ (งานที่ไม่มีหน้าเว็บ)
+      </button>
+    );
+
+  return (
+    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+      <p className="mb-3 text-sm font-bold text-slate-800">＋ เพิ่มรายการพิเศษ</p>
+      <div className="space-y-2.5">
+        <input value={name} onChange={(e) => setName(e.target.value)} className={inp} placeholder="ชื่องาน เช่น ป้ายอะคริลิกสั่งทำ 30×60 ซม." />
+        <textarea value={spec} onChange={(e) => setSpec(e.target.value)} rows={2} className={`${inp} resize-y`} placeholder="สเปค/รายละเอียด (ไม่บังคับ) เช่น หนา 5 มม. · พิมพ์ UV 2 ด้าน" />
+        <div className="grid grid-cols-2 gap-2.5">
+          <label className="block text-xs font-semibold text-slate-500">
+            จำนวน
+            <input type="number" min={1} value={qty} onChange={(e) => setQty(e.target.value)} className={`${inp} mt-1`} />
+          </label>
+          <label className="block text-xs font-semibold text-slate-500">
+            ราคา/ชิ้น (บาท) — 0 = รอตีราคา
+            <input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} className={`${inp} mt-1`} placeholder="เช่น 1500" />
+          </label>
+        </div>
+      </div>
+      {err && <p className="mt-2 text-xs font-semibold text-rose-600">{err}</p>}
+      <div className="mt-3 flex gap-2">
+        <button type="button" onClick={submit} className="rounded-full bg-amber-500 px-5 py-1.5 text-xs font-bold text-white transition hover:bg-amber-600">
+          เพิ่มเข้าออเดอร์
+        </button>
+        <button type="button" onClick={() => { setOpen(false); setErr(""); }} className="rounded-full px-4 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100">
+          ยกเลิก
+        </button>
+      </div>
+      <p className="mt-2 text-[11px] text-slate-400">รายการจะเข้าออเดอร์นี้ทันที (มีบันทึกว่าใครเพิ่ม) · แนบแบบงาน/ตรวจแพ็คได้เหมือนสินค้าปกติ</p>
+    </div>
   );
 }
