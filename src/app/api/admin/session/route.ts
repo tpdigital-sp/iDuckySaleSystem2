@@ -8,6 +8,7 @@ import {
   verifySessionToken,
 } from "@/lib/server/admin-session";
 import { ALL_PERMS, permsOf, roleLabel } from "@/lib/permissions";
+import { loadRolePerms } from "@/lib/server/role-perms";
 
 export const runtime = "nodejs";
 
@@ -25,7 +26,7 @@ export async function GET() {
     loggedIn: !!session,
     name: session?.name ?? session?.username ?? null,
     role: roleLabel(actor),
-    perms: isFirebaseAdminConfigured ? permsOf(actor) : ALL_PERMS,
+    perms: isFirebaseAdminConfigured ? permsOf(actor, await loadRolePerms()) : ALL_PERMS,
   });
 
   // ต่ออายุแบบ sliding: ยังล็อกอินอยู่ → รีเฟรชคุกกี้ให้หมดอายุเลื่อนออกไปอีก 30 วัน

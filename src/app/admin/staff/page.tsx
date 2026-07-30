@@ -3,7 +3,7 @@
 import RequirePerm from "@/components/RequirePerm";
 import { useEffect, useState } from "react";
 import { faint, h1, muted } from "@/lib/admin-ui";
-import { can, DEPT_ADMIN, DEPT_CONTENT, DEPT_PACKING, ROLE_ADMINISTRATOR, ROLE_STAFF } from "@/lib/permissions";
+import { DEPT_ADMIN, DEPT_CONTENT, DEPT_PACKING, ROLE_ADMINISTRATOR, ROLE_STAFF } from "@/lib/permissions";
 
 interface Staff {
   id: string;
@@ -14,9 +14,11 @@ interface Staff {
   department: string;
   workStatus: string;
   suspended: boolean;
+  /** เซิร์ฟเวอร์คิดให้จากชุดสิทธิ์จริง (รวมบทบาทที่แอดมินแก้เอง + สถานะระงับ) */
+  hasAccess: boolean;
 }
 
-const DEPTS = [DEPT_ADMIN, DEPT_PACKING, DEPT_CONTENT];
+const DEFAULT_DEPTS = [DEPT_ADMIN, DEPT_PACKING, DEPT_CONTENT];
 
 /** แถวพนักงาน 1 คน — แก้บทบาท/แผนก/สถานะ แล้วบันทึกเป็นรายคน */
 function StaffRow({
@@ -24,12 +26,14 @@ function StaffRow({
   locked,
   lockNote,
   canGrantAdmin,
+  depts,
   onSaved,
 }: {
   s: Staff;
   locked: boolean;
   lockNote?: string;
   canGrantAdmin: boolean;
+  depts: string[];
   onSaved: () => void;
 }) {
   const [role, setRole] = useState(s.role);
@@ -127,12 +131,12 @@ function StaffRow({
             แผนก
             <select value={isAdminRole ? "" : department} onChange={(e) => setDepartment(e.target.value)} disabled={isAdminRole} className={sel}>
               <option value="">— {isAdminRole ? "ทุกสิทธิ์" : "ยังไม่กำหนด (เข้าไม่ได้)"} —</option>
-              {DEPTS.map((d) => (
+              {depts.map((d) => (
                 <option key={d} value={d}>
                   {d}
                 </option>
               ))}
-              {department && !DEPTS.includes(department) && <option value={department}>{department} (เดิม)</option>}
+              {department && !depts.includes(department) && <option value={department}>{department} (เดิม)</option>}
             </select>
           </label>
 
@@ -168,6 +172,7 @@ function StaffRow({
 function StaffPageInner() {
   const [staff, setStaff] = useState<Staff[] | null>(null);
   const [canGrantAdmin, setCanGrantAdmin] = useState(false);
+  const [depts, setDepts] = useState<string[]>(DEFAULT_DEPTS);
   const [view, setView] = useState<"access" | "noAccess">("access");
   const [me, setMe] = useState("");
   const [err, setErr] = useState("");
@@ -183,6 +188,7 @@ function StaffPageInner() {
         }
         setStaff(j.staff ?? []);
         setCanGrantAdmin(!!j.canGrantAdmin);
+        if (Array.isArray(j.departments) && j.departments.length) setDepts(j.departments);
         setMe(j.me ?? "");
       })
       .catch(() => setErr("โหลดรายชื่อไม่สำเร็จ"));
@@ -196,9 +202,8 @@ function StaffPageInner() {
 
   // แสดงเฉพาะคนที่ยังทำงานอยู่ (พ้นสภาพแล้วไม่โชว์)
   const working = (staff ?? []).filter((s) => s.workStatus === "working");
-  // "ใช้งานระบบได้" = ไม่ถูกระงับ + บทบาท/แผนกเปิดสิทธิ์เข้าหลังบ้าน (กติกาเดียวกับตอนล็อกอินจริง)
-  const hasAccess = (s: Staff) =>
-    !s.suspended && can({ username: s.username, role: s.role, department: s.department }, "admin.access");
+  // "ใช้งานระบบได้" — เซิร์ฟเวอร์คิดมาให้แล้ว (ชุดสิทธิ์เดียวกับตอนล็อกอิน รวมบทบาทที่แอดมินแก้เอง)
+  const hasAccess = (s: Staff) => s.hasAccess;
 
   // จัดกลุ่มตามตำแหน่ง/แผนก (อีโมจิชุดเดียวกับตารางบทบาทในตั้งค่าระบบ)
   const groupOf = (s: Staff) => {
@@ -292,6 +297,7 @@ function StaffPageInner() {
                         locked={self || adminLocked}
                         lockNote={self ? "self" : adminLocked ? "admin" : undefined}
                         canGrantAdmin={canGrantAdmin}
+                        depts={depts}
                         onSaved={load}
                       />
                     );

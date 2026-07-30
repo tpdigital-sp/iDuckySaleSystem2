@@ -20,7 +20,15 @@ import {
   type ShopInfo,
 } from "@/lib/shop-settings";
 import { DEFAULT_TIERS, type Tier } from "@/lib/tiers";
-import { DEPT_ADMIN, DEPT_CONTENT, DEPT_PACKING, PERM_INFO, permsOf, ROLE_ADMINISTRATOR, ROLE_STAFF } from "@/lib/permissions";
+import {
+  DEPT_ADMIN,
+  DEPT_CONTENT,
+  DEPT_PACKING,
+  PERM_INFO,
+  ROLE_ADMINISTRATOR,
+  type Perm,
+  type RolePermsMap,
+} from "@/lib/permissions";
 import { btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
 
 const newId = (p = "b") =>
@@ -58,6 +66,76 @@ function AdminSettingsPageInner() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+
+  // ── บทบาท & สิทธิ์ (เก็บแยกแถว __role_perms__ — บันทึกด้วยปุ่มของแท็บนี้เอง) ──
+  const [rolesMap, setRolesMap] = useState<RolePermsMap | null>(null);
+  const [rolesEditable, setRolesEditable] = useState(false);
+  const [rolesDirty, setRolesDirty] = useState(false);
+  const [rolesSaving, setRolesSaving] = useState(false);
+  const [rolesSaved, setRolesSaved] = useState(false);
+  const [rolesErr, setRolesErr] = useState("");
+  const [newRole, setNewRole] = useState("");
+
+  useEffect(() => {
+    fetch("/api/admin/role-perms", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.roles) setRolesMap(j.roles as RolePermsMap);
+        setRolesEditable(!!j.editable);
+      })
+      .catch(() => {});
+  }, []);
+
+  const togglePerm = (dept: string, perm: Perm) => {
+    setRolesMap((m) => {
+      if (!m) return m;
+      const cur = m[dept] ?? [];
+      return { ...m, [dept]: cur.includes(perm) ? cur.filter((p) => p !== perm) : [...cur, perm] };
+    });
+    setRolesDirty(true);
+    setRolesSaved(false);
+  };
+  const addRole = () => {
+    const name = newRole.trim().slice(0, 30);
+    if (!name) return;
+    if (name === ROLE_ADMINISTRATOR || name === "ผู้ดูแลระบบ") return setRolesErr("ชื่อนี้สงวนไว้สำหรับผู้ดูแลระบบ");
+    setRolesMap((m) => {
+      if (!m || m[name]) return m;
+      return { ...m, [name]: ["admin.access"] };
+    });
+    setNewRole("");
+    setRolesDirty(true);
+    setRolesSaved(false);
+    setRolesErr("");
+  };
+  const removeRole = (dept: string) => {
+    if (!confirm(`ลบบทบาท "${dept}"? พนักงานแผนกนี้จะเข้าหลังบ้านไม่ได้จนกว่าจะย้ายแผนก`)) return;
+    setRolesMap((m) => {
+      if (!m) return m;
+      const next = { ...m };
+      delete next[dept];
+      return next;
+    });
+    setRolesDirty(true);
+    setRolesSaved(false);
+  };
+  async function saveRoles() {
+    if (!rolesMap) return;
+    setRolesSaving(true);
+    setRolesErr("");
+    const res = await fetch("/api/admin/role-perms", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roles: rolesMap }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setRolesSaving(false);
+    if (!res.ok) return setRolesErr(j.error ?? "บันทึกไม่สำเร็จ");
+    if (j.roles) setRolesMap(j.roles as RolePermsMap); // เซิร์ฟเวอร์อาจเติม admin.access ให้อัตโนมัติ
+    setRolesDirty(false);
+    setRolesSaved(true);
+    setTimeout(() => setRolesSaved(false), 2500);
+  }
 
   useEffect(() => {
     fetchShopPayment().then((p) => {
@@ -609,66 +687,130 @@ function AdminSettingsPageInner() {
             </section>
           )}
 
-          {/* ══════ บทบาท & สิทธิ์ (อ่านอย่างเดียว — ดึงจากตัวกำหนดสิทธิ์จริง) ══════ */}
+          {/* ══════ บทบาท & สิทธิ์ — ผู้ดูแลระบบติ๊กแก้สิทธิ์/เพิ่มบทบาทได้ ══════ */}
           {tab === "roles" &&
             (() => {
-              const roles = [
-                { name: "ผู้ดูแลระบบ", short: "👑", perms: permsOf({ username: "", role: ROLE_ADMINISTRATOR }) },
-                { name: "พนักงาน · แอดมิน", short: "🧑‍💼", perms: permsOf({ username: "", role: ROLE_STAFF, department: DEPT_ADMIN }) },
-                { name: "พนักงาน · แพ็คของ", short: "📦", perms: permsOf({ username: "", role: ROLE_STAFF, department: DEPT_PACKING }) },
-                { name: "พนักงาน · คอนเทนต์", short: "🖋️", perms: permsOf({ username: "", role: ROLE_STAFF, department: DEPT_CONTENT }) },
-              ];
+              const EMOJI: Record<string, string> = { [DEPT_ADMIN]: "🧑‍💼", [DEPT_PACKING]: "📦", [DEPT_CONTENT]: "🖋️" };
+              const BUILTIN = [DEPT_ADMIN, DEPT_PACKING, DEPT_CONTENT];
+              const depts = rolesMap ? Object.keys(rolesMap) : [];
               return (
                 <section className={`mt-5 p-5 ${card} sm:p-6`}>
                   <h2 className="text-sm font-semibold text-slate-800">👥 บทบาทการทำงาน — แต่ละตำแหน่งทำอะไรได้บ้าง</h2>
                   <p className={`mt-1 text-xs ${faint}`}>
-                    ตารางนี้อ่านอย่างเดียว (ตรงกับสิทธิ์จริงในระบบเสมอ) · กำหนดตำแหน่งพนักงานใน Firebase{" "}
-                    <code className="font-mono">employees2</code>: ช่อง role / department / workStatus = &quot;working&quot;
+                    {rolesEditable
+                      ? "ติ๊กเลือกสิทธิ์ของแต่ละบทบาทได้เลย แล้วกด “บันทึกบทบาท” — มีผลกับทุกคนในแผนกนั้นทันทีที่โหลดหน้าใหม่/ล็อกอินครั้งถัดไป"
+                      : "ดูได้อย่างเดียว — แก้ชุดสิทธิ์ได้เฉพาะผู้ดูแลระบบ"}{" "}
+                    · ผู้ดูแลระบบได้ทุกสิทธิ์เสมอ (แก้ไม่ได้ กันล็อกตัวเองออกจากระบบ)
                   </p>
 
-                  <div className="mt-4 overflow-x-auto">
-                    <table className="w-full min-w-[640px] border-collapse text-sm">
-                      <thead>
-                        <tr className="border-b border-slate-200 text-left">
-                          <th className="py-2 pr-3 font-semibold text-slate-500">สิทธิ์</th>
-                          {roles.map((r) => (
-                            <th key={r.name} className="w-28 px-2 py-2 text-center font-semibold text-slate-700">
-                              <span className="block text-lg">{r.short}</span>
-                              <span className="block text-[11px] leading-tight">{r.name}</span>
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {PERM_INFO.map((g) => (
-                          <Fragment key={g.group}>
-                            <tr>
-                              <td colSpan={roles.length + 1} className="pb-1 pt-4 text-xs font-bold text-slate-500">
-                                {g.group}
-                              </td>
+                  {!rolesMap ? (
+                    <p className="py-10 text-center text-sm text-slate-400">กำลังโหลดชุดสิทธิ์…</p>
+                  ) : (
+                    <>
+                      <div className="mt-4 overflow-x-auto">
+                        <table className="w-full min-w-[640px] border-collapse text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-200 text-left">
+                              <th className="py-2 pr-3 font-semibold text-slate-500">สิทธิ์</th>
+                              <th className="w-24 px-2 py-2 text-center font-semibold text-slate-700">
+                                <span className="block text-lg">👑</span>
+                                <span className="block text-[11px] leading-tight">ผู้ดูแลระบบ</span>
+                              </th>
+                              {depts.map((d) => (
+                                <th key={d} className="w-24 px-2 py-2 text-center font-semibold text-slate-700">
+                                  <span className="block text-lg">{EMOJI[d] ?? "🏢"}</span>
+                                  <span className="block text-[11px] leading-tight">พนักงาน · {d}</span>
+                                  {rolesEditable && !BUILTIN.includes(d) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => removeRole(d)}
+                                      className="mt-0.5 text-[10px] font-medium text-rose-500 hover:underline"
+                                    >
+                                      ลบบทบาท
+                                    </button>
+                                  )}
+                                </th>
+                              ))}
                             </tr>
-                            {g.perms.map((p) => (
-                              <tr key={p.perm} className="border-b border-slate-100">
-                                <td className="py-2 pr-3 text-[13px] leading-snug text-slate-700">{p.label}</td>
-                                {roles.map((r) => (
-                                  <td key={r.name} className="px-2 py-2 text-center">
-                                    {r.perms.includes(p.perm) ? (
-                                      <span className="font-bold text-emerald-600">✓</span>
-                                    ) : (
-                                      <span className="text-slate-300">—</span>
-                                    )}
+                          </thead>
+                          <tbody>
+                            {PERM_INFO.map((g) => (
+                              <Fragment key={g.group}>
+                                <tr>
+                                  <td colSpan={depts.length + 2} className="pb-1 pt-4 text-xs font-bold text-slate-500">
+                                    {g.group}
                                   </td>
+                                </tr>
+                                {g.perms.map((p) => (
+                                  <tr key={p.perm} className="border-b border-slate-100">
+                                    <td className="py-2 pr-3 text-[13px] leading-snug text-slate-700">{p.label}</td>
+                                    <td className="px-2 py-2 text-center">
+                                      <span className="font-bold text-emerald-600">✓</span>
+                                    </td>
+                                    {depts.map((d) => (
+                                      <td key={d} className="px-2 py-2 text-center">
+                                        {rolesEditable ? (
+                                          <input
+                                            type="checkbox"
+                                            checked={(rolesMap[d] ?? []).includes(p.perm)}
+                                            onChange={() => togglePerm(d, p.perm)}
+                                            className="h-4 w-4 cursor-pointer accent-emerald-600"
+                                            aria-label={`${d}: ${p.label}`}
+                                          />
+                                        ) : (rolesMap[d] ?? []).includes(p.perm) ? (
+                                          <span className="font-bold text-emerald-600">✓</span>
+                                        ) : (
+                                          <span className="text-slate-300">—</span>
+                                        )}
+                                      </td>
+                                    ))}
+                                  </tr>
                                 ))}
-                              </tr>
+                              </Fragment>
                             ))}
-                          </Fragment>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {rolesEditable && (
+                        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+                          <input
+                            value={newRole}
+                            onChange={(e) => setNewRole(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addRole())}
+                            className="w-48 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400"
+                            placeholder="ชื่อบทบาทใหม่ เช่น การตลาด"
+                            maxLength={30}
+                          />
+                          <button
+                            type="button"
+                            onClick={addRole}
+                            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                          >
+                            ＋ เพิ่มบทบาท
+                          </button>
+                          <button
+                            type="button"
+                            onClick={saveRoles}
+                            disabled={!rolesDirty || rolesSaving}
+                            className={`ml-auto rounded-lg px-4 py-2 text-sm font-bold text-white transition disabled:opacity-40 ${
+                              rolesSaved ? "bg-emerald-600" : "bg-amber-500 hover:bg-amber-600"
+                            }`}
+                          >
+                            {rolesSaving ? "กำลังบันทึก…" : rolesSaved ? "✓ บันทึกแล้ว" : "💾 บันทึกบทบาท"}
+                          </button>
+                          {rolesErr && <p className="w-full text-xs font-medium text-rose-600">{rolesErr}</p>}
+                          <p className={`w-full text-[11px] ${faint}`}>
+                            บทบาทใหม่จะไปโผล่ในตัวเลือกแผนกที่หน้า 👥 พนักงาน · ถ้าติ๊กสิทธิ์ใดไว้ ระบบจะเติม “เข้าหลังบ้านได้”
+                            ให้อัตโนมัติ · ชื่อบทบาทต้องตรงกับช่อง department ของพนักงาน
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
 
                   <p className={`mt-4 text-xs ${faint}`}>
-                    💡 การซ่อนเมนู/ปุ่มในหน้าจอเป็นแค่ความสะดวก — สิทธิ์จริงถูกบังคับที่เซิร์ฟเวอร์ทุกครั้ง (แก้ไม่ได้จากหน้าเว็บ)
+                    💡 การซ่อนเมนู/ปุ่มในหน้าจอเป็นแค่ความสะดวก — สิทธิ์จริงถูกบังคับที่เซิร์ฟเวอร์ทุกครั้ง
                   </p>
                 </section>
               );

@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/server/admin-session";
 import { can, type Actor, type Perm } from "@/lib/permissions";
+import { loadRolePerms } from "@/lib/server/role-perms";
 
 /**
  * ด่านตรวจสิทธิ์ฝั่งเซิร์ฟเวอร์ — ต้องเรียกใน API route ทุกเส้นที่แตะข้อมูลหลังบ้าน
@@ -31,7 +32,7 @@ export async function requirePerm(
   if (!actor) {
     return { actor: null, res: NextResponse.json({ error: "ต้องล็อกอินก่อน" }, { status: 401 }) };
   }
-  if (!can(actor, perm)) {
+  if (!can(actor, perm, await loadRolePerms())) {
     return {
       actor: null,
       res: NextResponse.json({ error: "บัญชีนี้ไม่มีสิทธิ์ทำรายการนี้" }, { status: 403 }),

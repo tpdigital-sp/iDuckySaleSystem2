@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { EMPLOYEE_COLLECTION, getFirestoreAdmin, normalizeUsername } from "@/lib/server/firebase-admin";
-import { ROLE_ADMINISTRATOR, ROLE_STAFF } from "@/lib/permissions";
+import { can, DEFAULT_ROLE_PERMS, ROLE_ADMINISTRATOR, ROLE_STAFF } from "@/lib/permissions";
+import { loadRolePerms } from "@/lib/server/role-perms";
 
 export const runtime = "nodejs";
 
@@ -24,7 +25,7 @@ export async function GET() {
   const db = getFirestoreAdmin();
   if (!db) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Firebase" }, { status: 503 });
 
-  const rows = await db.collection(EMPLOYEE_COLLECTION).get();
+  const [rows, rolePerms] = await Promise.all([db.collection(EMPLOYEE_COLLECTION).get(), loadRolePerms()]);
   const staff = rows.docs
     .map((d) => {
       const e = d.data() as EmpDoc;
@@ -37,12 +38,18 @@ export async function GET() {
         department: e.department ?? "",
         workStatus: e.workStatus ?? "",
         suspended: e.iduckySuspended === true,
+        // เข้าหลังบ้านได้จริงไหม — คิดจากชุดสิทธิ์เดียวกับตอนล็อกอิน (รวมบทบาทที่แอดมินแก้เอง)
+        hasAccess:
+          e.iduckySuspended !== true &&
+          can({ username: e.username ?? "", role: e.role ?? "", department: e.department }, "admin.access", rolePerms),
       };
     })
     .sort((a, b) => (a.fullname || a.name || a.username).localeCompare(b.fullname || b.name || b.username, "th"));
 
   return NextResponse.json({
     staff,
+    // ตัวเลือกแผนกในหน้าจอ = บทบาททั้งหมดที่ตั้งไว้ (รวมที่เพิ่มใหม่)
+    departments: Object.keys(rolePerms ?? DEFAULT_ROLE_PERMS),
     // พนง.แอดมินตั้ง/แก้ระดับ Administrator ไม่ได้ — ให้หน้าจอปิดตัวเลือกให้ตรงกับกติกาเซิร์ฟเวอร์
     canGrantAdmin: gate.actor.role === ROLE_ADMINISTRATOR,
     me: normalizeUsername(gate.actor.username),

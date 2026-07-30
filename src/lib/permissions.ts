@@ -87,16 +87,32 @@ const STAFF_CONTENT: Perm[] = [
   "presets.manage",
 ];
 
-/** คืนรายการสิทธิ์ทั้งหมดของผู้ใช้คนนี้ */
-export function permsOf(actor: Actor | null | undefined): Perm[] {
+/** ชุดสิทธิ์ต่อแผนก — แก้/เพิ่มบทบาทได้ที่ ตั้งค่าระบบ → แท็บบทบาท (เก็บใน DB, ตัวนี้คือค่าเริ่มต้น) */
+export type RolePermsMap = Record<string, Perm[]>;
+export const DEFAULT_ROLE_PERMS: RolePermsMap = {
+  [DEPT_ADMIN]: STAFF_ADMIN,
+  [DEPT_PACKING]: STAFF_PACKING,
+  [DEPT_CONTENT]: STAFF_CONTENT,
+};
+
+/** กรองค่าจาก DB ให้เหลือเฉพาะสิทธิ์ที่ระบบรู้จัก (กันข้อมูลเก่า/พิมพ์ผิด) */
+const sanitizePerms = (ps: unknown): Perm[] =>
+  (Array.isArray(ps) ? ps : []).filter((p): p is Perm => ALL_PERMS.includes(p as Perm));
+
+/**
+ * คืนรายการสิทธิ์ทั้งหมดของผู้ใช้คนนี้
+ * @param rolePerms ชุดสิทธิ์ที่แอดมินแก้เอง (จาก DB) — ไม่ส่ง = ใช้ค่าเริ่มต้น
+ */
+export function permsOf(actor: Actor | null | undefined, rolePerms?: RolePermsMap): Perm[] {
   if (!actor) return [];
-  if (actor.role === ROLE_ADMINISTRATOR) return ALL_PERMS;
+  if (actor.role === ROLE_ADMINISTRATOR) return ALL_PERMS; // ผู้ดูแลระบบได้ทุกสิทธิ์เสมอ (แก้ไม่ได้ กันล็อกตัวเองออก)
   if (actor.role !== ROLE_STAFF) return [];
-  if (actor.department === DEPT_ADMIN) return STAFF_ADMIN;
-  if (actor.department === DEPT_PACKING) return STAFF_PACKING;
+  const map = rolePerms ?? DEFAULT_ROLE_PERMS;
+  const dept = (actor.department ?? "").trim();
+  if (map[dept]) return sanitizePerms(map[dept]);
   // คอนเทนต์: รับทั้งภาษาไทยและอังกฤษ (กันพิมพ์ใน Firebase คนละแบบ)
-  const dept = (actor.department ?? "").trim().toLowerCase();
-  if (dept === DEPT_CONTENT.toLowerCase() || dept === "content") return STAFF_CONTENT;
+  const dl = dept.toLowerCase();
+  if (dl === DEPT_CONTENT.toLowerCase() || dl === "content") return sanitizePerms(map[DEPT_CONTENT] ?? []);
   // แผนกอื่นที่ยังไม่ได้กำหนดสิทธิ์ → ไม่ให้เข้า (ปิดไว้ก่อนปลอดภัยกว่า)
   return [];
 }
@@ -163,8 +179,8 @@ export const PERM_INFO: { group: string; perms: { perm: Perm; label: string }[] 
 ];
 
 /** ผู้ใช้คนนี้ทำสิ่งนี้ได้ไหม */
-export function can(actor: Actor | null | undefined, perm: Perm): boolean {
-  return permsOf(actor).includes(perm);
+export function can(actor: Actor | null | undefined, perm: Perm, rolePerms?: RolePermsMap): boolean {
+  return permsOf(actor, rolePerms).includes(perm);
 }
 
 /** ชื่อตำแหน่งไว้แสดงในหน้าจอ เช่น "พนักงาน · แพ็คของ" */

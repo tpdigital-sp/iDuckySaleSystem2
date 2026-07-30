@@ -7,6 +7,7 @@ import {
   verifyPassword,
 } from "@/lib/server/firebase-admin";
 import { can, WORK_STATUS_ACTIVE } from "@/lib/permissions";
+import { loadRolePerms } from "@/lib/server/role-perms";
 import { SESSION_COOKIE, adminCookieOptions, createSessionToken } from "@/lib/server/admin-session";
 
 export const runtime = "nodejs";
@@ -64,9 +65,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" }, { status: 401 });
   }
 
-  // ตำแหน่ง/แผนกนี้มีสิทธิ์เข้าหลังบ้านไหม (Administrator, พนักงาน·แอดมิน, พนักงาน·แพ็คของ)
+  // ตำแหน่ง/แผนกนี้มีสิทธิ์เข้าหลังบ้านไหม (ตามชุดสิทธิ์ที่แก้ได้ในตั้งค่าระบบ → แท็บบทบาท)
   const actor = { username: wanted, name: emp.name, role: emp.role ?? "", department: emp.department };
-  if (!can(actor, "admin.access")) {
+  if (!can(actor, "admin.access", await loadRolePerms())) {
     return NextResponse.json({ error: "บัญชีนี้ไม่มีสิทธิ์เข้าหลังบ้าน" }, { status: 403 });
   }
 
