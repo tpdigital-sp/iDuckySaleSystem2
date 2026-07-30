@@ -156,6 +156,21 @@ export default function AdminOrdersPage() {
         </div>
       </div>
 
+      {/* แนะนำวิธีสั่งแทนลูกค้า — ให้เลือกทางถูกก่อนกดสร้าง (เห็นเฉพาะคนที่สร้างออเดอร์ได้) */}
+      {can("orders.edit") && (
+        <p className="mt-3 rounded-xl bg-sky-50/70 px-4 py-2.5 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
+          💡 <strong>สั่งแทนลูกค้า:</strong> สินค้ามีบนเว็บ →{" "}
+          <Link href="/" className="font-bold underline underline-offset-2 hover:text-sky-600">
+            ไปหน้าร้าน
+          </Link>{" "}
+          หยิบใส่ตะกร้าแล้วติ๊ก 🧑‍💼 สั่งแทนลูกค้า (ได้ตัวเลือก/ราคาอัตโนมัติ) · งานสั่งทำที่<strong>ไม่มีบนเว็บ</strong> → กด
+          “＋ สร้างออเดอร์ใหม่” แล้วเพิ่มรายการพิเศษจาก{" "}
+          <Link href="/admin/special-products" className="font-bold underline underline-offset-2 hover:text-sky-600">
+            คลังสินค้าสั่งพิเศษ
+          </Link>
+        </p>
+      )}
+
       {/* ── การ์ดสรุป ── */}
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Tile label="ทั้งหมด" value={stats.total.toString()} />
