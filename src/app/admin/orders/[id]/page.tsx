@@ -1703,7 +1703,12 @@ function SpecialItemAdder({ onAdd }: { onAdd: (item: OrderItem) => void }) {
           ยกเลิก
         </button>
       </div>
-      <p className="mt-2 text-[11px] text-slate-400">รายการจะเข้าออเดอร์นี้ทันที (มีบันทึกว่าใครเพิ่ม) · แนบแบบงาน/ตรวจแพ็คได้เหมือนสินค้าปกติ</p>
+      <p className="mt-2 text-[11px] text-slate-400">
+        รายการจะเข้าออเดอร์นี้ทันที (มีบันทึกว่าใครเพิ่ม) · แนบแบบงาน/ตรวจแพ็คได้เหมือนสินค้าปกติ ·{" "}
+        <Link href="/admin/special-products" className="font-semibold text-amber-600 hover:underline">
+          จัดการคลังสินค้าสั่งพิเศษ →
+        </Link>
+      </p>
     </div>
   );
 }
