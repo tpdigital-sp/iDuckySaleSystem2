@@ -1595,7 +1595,7 @@ function Actor({ by }: { by: string }) {
   );
 }
 
-/** ฟอร์มเพิ่มรายการพิเศษ (งานสั่งทำที่ไม่มีหน้าเว็บ) — กรอกชื่อ/สเปค/จำนวน/ราคาเอง แล้วเพิ่มเข้าออเดอร์ */
+/** ฟอร์มเพิ่มรายการพิเศษ (งานสั่งทำที่ไม่มีหน้าเว็บ) — พิมพ์ชื่อแล้วมีคลังสินค้าพิเศษขึ้นให้เลือก (เติมสเปคอัตโนมัติ) */
 function SpecialItemAdder({ onAdd }: { onAdd: (item: OrderItem) => void }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -1603,6 +1603,18 @@ function SpecialItemAdder({ onAdd }: { onAdd: (item: OrderItem) => void }) {
   const [qty, setQty] = useState("1");
   const [price, setPrice] = useState("");
   const [err, setErr] = useState("");
+  // คลังสินค้าพิเศษ (นำเข้าจากระบบเดิม/เพิ่มเอง) — โหลดครั้งเดียวตอนเปิดฟอร์ม
+  const [catalog, setCatalog] = useState<{ name: string; detail: string }[]>([]);
+  const [showSug, setShowSug] = useState(false);
+  useEffect(() => {
+    if (!open || catalog.length) return;
+    fetch("/api/admin/special-products", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => setCatalog(j.list ?? []))
+      .catch(() => {});
+  }, [open, catalog.length]);
+  const kw = name.trim().toLowerCase();
+  const suggestions = kw ? catalog.filter((p) => p.name.toLowerCase().includes(kw)).slice(0, 8) : [];
 
   function submit() {
     const n = name.trim();
@@ -1637,7 +1649,39 @@ function SpecialItemAdder({ onAdd }: { onAdd: (item: OrderItem) => void }) {
     <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
       <p className="mb-3 text-sm font-bold text-slate-800">＋ เพิ่มรายการพิเศษ</p>
       <div className="space-y-2.5">
-        <input value={name} onChange={(e) => setName(e.target.value)} className={inp} placeholder="ชื่องาน เช่น ป้ายอะคริลิกสั่งทำ 30×60 ซม." />
+        <div className="relative">
+          <input
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              setShowSug(true);
+            }}
+            onFocus={() => setShowSug(true)}
+            onBlur={() => setTimeout(() => setShowSug(false), 150)}
+            className={inp}
+            placeholder="พิมพ์ชื่องาน — มีคลังสินค้าพิเศษขึ้นให้เลือก"
+          />
+          {showSug && suggestions.length > 0 && (
+            <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+              {suggestions.map((p) => (
+                <button
+                  key={p.name}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setName(p.name);
+                    setSpec(p.detail);
+                    setShowSug(false);
+                  }}
+                  className="block w-full border-b border-slate-100 px-3 py-2 text-left last:border-0 hover:bg-amber-50"
+                >
+                  <span className="block text-sm font-semibold text-slate-800">{p.name}</span>
+                  <span className="block truncate text-[11px] text-slate-400">{p.detail.split("\n")[0]}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <textarea value={spec} onChange={(e) => setSpec(e.target.value)} rows={2} className={`${inp} resize-y`} placeholder="สเปค/รายละเอียด (ไม่บังคับ) เช่น หนา 5 มม. · พิมพ์ UV 2 ด้าน" />
         <div className="grid grid-cols-2 gap-2.5">
           <label className="block text-xs font-semibold text-slate-500">
