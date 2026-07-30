@@ -73,7 +73,13 @@ export async function POST(req: Request) {
   if (couponCode && cid) {
     const { data: cRow } = await sb.from("coupons").select("data").eq("code", couponCode).maybeSingle();
     const c = (cRow?.data as Coupon | undefined) ?? null;
-    const v = validateCoupon(c, cid, subtotal, now.getTime());
+    const v = validateCoupon(
+      c,
+      cid,
+      subtotal,
+      now.getTime(),
+      input.items.map((i) => ({ productId: i.productId, qty: i.qty, unitPrice: i.unitPrice }))
+    );
     if (!v.ok) {
       coupon = { applied: false, reason: v.reason };
     } else if (c && v.discount > tierAmount) {

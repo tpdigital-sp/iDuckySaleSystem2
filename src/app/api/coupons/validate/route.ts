@@ -17,7 +17,7 @@ export async function POST(req: Request) {
   const { data: u, error: authErr } = await sb.auth.getUser(token);
   if (authErr || !u.user) return NextResponse.json({ ok: false, error: "เซสชันหมดอายุ" }, { status: 401 });
 
-  let body: { code?: string; subtotal?: number };
+  let body: { code?: string; subtotal?: number; items?: { productId?: string; qty?: number; unitPrice?: number }[] };
   try {
     body = await req.json();
   } catch {
@@ -26,14 +26,26 @@ export async function POST(req: Request) {
   const code = (body.code ?? "").trim().toUpperCase();
   const subtotal = Math.max(0, Number(body.subtotal) || 0);
   if (!code) return NextResponse.json({ ok: false, error: "ใส่โค้ดคูปอง" }, { status: 400 });
+  // รายการสินค้า (ไว้ตัดสินค้าไม่ร่วมรายการ) — ของเก่าที่ไม่ส่ง items มาก็ยังใช้ได้
+  const items = (Array.isArray(body.items) ? body.items : [])
+    .map((i) => ({ productId: String(i.productId ?? ""), qty: Math.max(0, Number(i.qty) || 0), unitPrice: Math.max(0, Number(i.unitPrice) || 0) }))
+    .filter((i) => i.productId);
 
   const { data: cRow, error } = await sb.from("coupons").select("data").eq("code", code).maybeSingle();
   if (error && !/schema cache|find the table|relation .*does not exist/i.test(error.message))
     return NextResponse.json({ ok: false, error: "ตรวจคูปองไม่สำเร็จ" }, { status: 500 });
 
   const c = (cRow?.data as Coupon | undefined) ?? null;
-  const v = validateCoupon(c, u.user.id, subtotal, Date.now());
+  const v = validateCoupon(c, u.user.id, subtotal, Date.now(), items.length ? items : undefined);
   if (!v.ok) return NextResponse.json({ ok: false, error: couponErrorText(v.reason) });
 
-  return NextResponse.json({ ok: true, code, discount: v.discount, label: couponLabel(c!) });
+  // มีบางชิ้นไม่ร่วมรายการ → บอกลูกค้าว่าส่วนลดคิดเฉพาะสินค้าที่ร่วม
+  const hasExcluded = !!c!.excludeProducts?.length && items.some((i) => c!.excludeProducts!.includes(i.productId));
+  return NextResponse.json({
+    ok: true,
+    code,
+    discount: v.discount,
+    label: couponLabel(c!),
+    ...(hasExcluded ? { note: "สินค้าบางรายการไม่ร่วมรายการ — ส่วนลดคิดเฉพาะสินค้าที่ร่วม" } : {}),
+  });
 }

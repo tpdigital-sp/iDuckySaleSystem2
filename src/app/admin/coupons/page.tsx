@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { publicOrigin } from "@/lib/shop-info";
 import { couponLabel, type Coupon } from "@/lib/coupons";
+import { fetchProductsLite } from "@/lib/product-repo";
 
 type Form = {
   type: "percent" | "fixed";
@@ -47,6 +48,11 @@ export default function AdminCouponsPage() {
   const [err, setErr] = useState("");
   const [justMade, setJustMade] = useState<string[]>([]);
   const [copied, setCopied] = useState<string>("");
+  // สินค้าไม่ร่วมรายการ (เลือกจากรายการสินค้าจริง)
+  const [products, setProducts] = useState<{ id: string; name: string }[]>([]);
+  const [exclude, setExclude] = useState<string[]>([]);
+  const [exSearch, setExSearch] = useState("");
+  const [exOpen, setExOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -62,6 +68,9 @@ export default function AdminCouponsPage() {
 
   useEffect(() => {
     load();
+    fetchProductsLite()
+      .then((ps) => setProducts(ps.map((p) => ({ id: p.id, name: p.name }))))
+      .catch(() => {});
   }, [load]);
 
   async function copy(text: string, tag: string) {
@@ -94,6 +103,7 @@ export default function AdminCouponsPage() {
           expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : undefined,
           note: form.note.trim() || undefined,
           assignedTo: form.assignedTo.trim() || undefined,
+          excludeProducts: exclude.length ? exclude : undefined,
           count: Number(form.count) || 1,
           codePrefix: form.codePrefix.trim() || undefined,
         }),
@@ -102,6 +112,9 @@ export default function AdminCouponsPage() {
       if (!res.ok) return setErr(j.error ?? "สร้างคูปองไม่สำเร็จ");
       setJustMade(j.codes ?? []);
       setForm((f) => ({ ...EMPTY, type: f.type })); // คงชนิดไว้ เผื่อสร้างต่อ
+      setExclude([]);
+      setExSearch("");
+      setExOpen(false);
       await load();
     } finally {
       setBusy(false);
@@ -209,6 +222,57 @@ export default function AdminCouponsPage() {
               placeholder="ล็อกให้ใช้ได้เฉพาะบัญชีนี้"
             />
           </Field>
+
+          {/* สินค้าไม่ร่วมรายการ — ส่วนลด/ยอดขั้นต่ำจะคิดเฉพาะสินค้าที่ร่วม */}
+          <div className="mb-3">
+            <button
+              type="button"
+              onClick={() => setExOpen((v) => !v)}
+              className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-50"
+            >
+              <span>
+                🚫 สินค้าไม่ร่วมรายการ — ไม่บังคับ
+                {exclude.length > 0 && <span className="ml-1 font-bold text-rose-600">({exclude.length})</span>}
+              </span>
+              <span className="text-slate-400">{exOpen ? "▲" : "▼"}</span>
+            </button>
+            {exOpen && (
+              <div className="mt-2 rounded-lg border border-slate-200 p-2">
+                <input
+                  value={exSearch}
+                  onChange={(e) => setExSearch(e.target.value)}
+                  className={inputCls}
+                  placeholder="ค้นหาชื่อสินค้า…"
+                />
+                <div className="mt-2 max-h-44 space-y-1 overflow-y-auto">
+                  {products
+                    .filter((p) => !exSearch.trim() || p.name.toLowerCase().includes(exSearch.trim().toLowerCase()))
+                    .map((p) => (
+                      <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs text-slate-700 hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          checked={exclude.includes(p.id)}
+                          onChange={(e) =>
+                            setExclude((xs) => (e.target.checked ? [...xs, p.id] : xs.filter((x) => x !== p.id)))
+                          }
+                          className="accent-rose-500"
+                        />
+                        <span className="truncate">{p.name}</span>
+                      </label>
+                    ))}
+                  {products.length === 0 && <p className="px-1.5 py-2 text-xs text-slate-400">กำลังโหลดรายการสินค้า…</p>}
+                </div>
+                {exclude.length > 0 && (
+                  <p className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
+                    เลือกแล้ว {exclude.length} สินค้า — ลูกค้าใช้คูปองได้ แต่ส่วนลดจะไม่คิดจากสินค้าเหล่านี้
+                    <button type="button" onClick={() => setExclude([])} className="ml-2 font-medium text-rose-600 hover:underline">
+                      ล้างทั้งหมด
+                    </button>
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-2">
             <Field label="จำนวนใบ">
@@ -323,6 +387,17 @@ export default function AdminCouponsPage() {
                   <div className="w-full text-[11px] text-slate-400">
                     {c.minSpend ? `ขั้นต่ำ ฿${c.minSpend} · ` : ""}
                     {c.maxDiscount ? `สูงสุด ฿${c.maxDiscount} · ` : ""}
+                    {c.excludeProducts?.length ? (
+                      <span
+                        className="cursor-help underline decoration-dotted"
+                        title={c.excludeProducts.map((id) => products.find((p) => p.id === id)?.name ?? id).join(", ")}
+                      >
+                        ไม่ร่วม {c.excludeProducts.length} สินค้า
+                      </span>
+                    ) : (
+                      ""
+                    )}
+                    {c.excludeProducts?.length ? " · " : ""}
                     {c.expiresAt ? `หมดอายุ ${new Date(c.expiresAt).toLocaleDateString("th-TH")} · ` : ""}
                     {c.assignedTo ? "เจาะจงบัญชี · " : ""}
                     {c.note ? `“${c.note}” · ` : ""}

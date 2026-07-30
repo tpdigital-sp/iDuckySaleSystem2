@@ -37,6 +37,7 @@ export async function POST(req: Request) {
     maxDiscount?: number;
     expiresAt?: string;
     assignedTo?: string;
+    excludeProducts?: string[];
     note?: string;
     count?: number;
     codePrefix?: string;
@@ -53,6 +54,11 @@ export async function POST(req: Request) {
   if (type === "percent" && value > 100) return NextResponse.json({ error: "ส่วนลด % ต้องไม่เกิน 100" }, { status: 400 });
   const count = Math.min(500, Math.max(1, Math.floor(Number(body.count) || 1)));
   const prefix = (body.codePrefix ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+  // สินค้าไม่ร่วมรายการ (product id) — จำกัดจำนวนกัน payload บวม
+  const excludeProducts = (Array.isArray(body.excludeProducts) ? body.excludeProducts : [])
+    .map((p) => String(p).trim())
+    .filter(Boolean)
+    .slice(0, 300);
   const now = new Date().toISOString();
 
   const rows = Array.from({ length: count }, () => {
@@ -65,6 +71,7 @@ export async function POST(req: Request) {
       ...(type === "percent" && body.maxDiscount ? { maxDiscount: Math.max(0, Number(body.maxDiscount) || 0) } : {}),
       ...(body.expiresAt ? { expiresAt: body.expiresAt } : {}),
       ...(body.assignedTo?.trim() ? { assignedTo: body.assignedTo.trim() } : {}),
+      ...(excludeProducts.length ? { excludeProducts } : {}),
       ...(body.note?.trim() ? { note: body.note.trim() } : {}),
       status: "active",
       createdAt: now,

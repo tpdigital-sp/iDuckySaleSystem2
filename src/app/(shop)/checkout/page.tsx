@@ -139,7 +139,7 @@ export default function CheckoutPage() {
 
   // ── คูปอง (ต้องล็อกอิน) — พรีวิวส่วนลด เซิร์ฟเวอร์ตัดใช้จริงตอนสั่งซื้อ ──
   const [couponInput, setCouponInput] = useState("");
-  const [couponPreview, setCouponPreview] = useState<{ code: string; discount: number; label: string } | null>(null);
+  const [couponPreview, setCouponPreview] = useState<{ code: string; discount: number; label: string; note?: string } | null>(null);
   const [couponErr, setCouponErr] = useState("");
   const [couponBusy, setCouponBusy] = useState(false);
   // รับโค้ดจากลิงก์ /coupon/[code] (เก็บไว้ตอนเปิดลิงก์)
@@ -162,7 +162,12 @@ export default function CheckoutPage() {
       const res = await fetch("/api/coupons/validate", {
         method: "POST",
         headers: { "content-type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ code, subtotal }),
+        body: JSON.stringify({
+          code,
+          subtotal,
+          // ส่งรายการสินค้าไปด้วย — คูปองบางใบมีสินค้าไม่ร่วมรายการ (คิดส่วนลดเฉพาะที่ร่วม)
+          items: items.map((it) => ({ productId: it.productId, qty: it.qty, unitPrice: it.unitPrice })),
+        }),
       });
       const j = await res.json();
       if (!j.ok) {
@@ -170,7 +175,7 @@ export default function CheckoutPage() {
         setCouponErr(j.error ?? "ใช้คูปองไม่ได้");
         return;
       }
-      setCouponPreview({ code: j.code, discount: j.discount, label: j.label });
+      setCouponPreview({ code: j.code, discount: j.discount, label: j.label, note: j.note });
       localStorage.setItem("ducky_coupon", j.code);
     } finally {
       setCouponBusy(false);
@@ -489,6 +494,7 @@ export default function CheckoutPage() {
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-emerald-800">{couponPreview.label}</p>
                 <p className="text-xs text-emerald-600">ส่วนลด {formatPrice(couponPreview.discount)}</p>
+                {couponPreview.note && <p className="mt-0.5 text-[11px] text-amber-600">⚠️ {couponPreview.note}</p>}
               </div>
               <button type="button" onClick={removeCoupon} className="shrink-0 text-xs font-bold text-stone-400 underline underline-offset-2 hover:text-rose-600">
                 เอาออก
