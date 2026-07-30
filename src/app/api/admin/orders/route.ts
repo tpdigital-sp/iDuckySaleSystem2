@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomBytes } from "node:crypto";
 import { currentActor, requirePerm } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
@@ -81,6 +82,47 @@ export async function GET() {
     });
   }
   return NextResponse.json({ orders });
+}
+
+/** แอดมินสร้างออเดอร์ใหม่จากหลังบ้าน (ออเดอร์เปล่า — ไปกดเพิ่มรายการพิเศษต่อในหน้าออเดอร์) */
+export async function POST(req: Request) {
+  const sb = getSupabaseAdmin();
+  if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
+  const gate = await requirePerm("orders.edit");
+  if (gate.res) return gate.res;
+
+  let body: { customerName?: string; phone?: string; address?: string; shipping?: string; shippingCost?: number };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
+  }
+  if (!body.customerName?.trim() || !body.phone?.trim() || !body.address?.trim())
+    return NextResponse.json({ error: "กรอกชื่อ เบอร์ และที่อยู่ลูกค้าให้ครบ" }, { status: 400 });
+
+  const now = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  const id = `OD-${String(now.getFullYear()).slice(2)}${p(now.getMonth() + 1)}${p(now.getDate())}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const by = gate.actor.name?.trim() || gate.actor.username;
+  let order: Order = {
+    id,
+    key: randomBytes(24).toString("base64url"),
+    customer: body.customerName.trim(),
+    phone: body.phone.trim(),
+    address: body.address.trim(),
+    date: now.toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+    payment: "โอนธนาคาร",
+    shipping: body.shipping === "ส่งด่วน" ? "ส่งด่วน" : "ส่งธรรมดา",
+    shippingCost: Math.max(0, Number(body.shippingCost) || 0),
+    status: "รอชำระเงิน",
+    items: [],
+    placedBy: by,
+  };
+  order = withLog(order, by, "สร้างออเดอร์จากหลังบ้าน", "งานพิเศษ/สั่งแทนลูกค้า");
+
+  const { error } = await sb.from("orders").insert({ id, data: order });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true, id });
 }
 
 /** แอดมินอัปเดตออเดอร์ (เปลี่ยนสถานะ ฯลฯ) — ส่ง Order เต็มมา */
