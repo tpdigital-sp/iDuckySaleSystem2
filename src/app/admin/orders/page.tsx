@@ -164,7 +164,7 @@ export default function AdminOrdersPage() {
             ไปหน้าร้าน
           </Link>{" "}
           หยิบใส่ตะกร้าแล้วติ๊ก 🧑‍💼 สั่งแทนลูกค้า (ได้ตัวเลือก/ราคาอัตโนมัติ) · งานสั่งทำที่<strong>ไม่มีบนเว็บ</strong> → กด
-          “＋ สร้างออเดอร์ใหม่” แล้วเพิ่มรายการพิเศษจาก{" "}
+          “🛠️ สร้างออเดอร์งานพิเศษ” แล้วเพิ่มรายการจาก{" "}
           <Link href="/admin/special-products" className="font-bold underline underline-offset-2 hover:text-sky-600">
             คลังสินค้าสั่งพิเศษ
           </Link>
@@ -361,7 +361,7 @@ function NewOrderButton({ onCreated }: { onCreated: (id: string) => void }) {
       disabled={busy}
       className="rounded-full bg-amber-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-amber-600 disabled:opacity-50"
     >
-      {busy ? "กำลังสร้าง…" : "＋ สร้างออเดอร์ใหม่"}
+      {busy ? "กำลังสร้าง…" : "🛠️ สร้างออเดอร์งานพิเศษ"}
     </button>
   );
 }
