@@ -52,6 +52,9 @@ export default function CustomerOrderPage() {
     setLbNote("");
   };
   /* แบบประเมินความพึงพอใจ (นิรนาม) — โชว์เมื่อได้รับของแล้วและยังไม่เคยประเมิน */
+  /* กล่องยืนยันก่อนอนุมัติแบบงาน (modal ของเราเอง — แต่งสี/เน้นคำได้) */
+  const [confirmApprove, setConfirmApprove] = useState<{ resolve: (ok: boolean) => void } | null>(null);
+
   /* คู่มือวิธีตรวจ/อนุมัติแบบงาน — เด้งเองครั้งแรกที่มีแบบรอตรวจ (จำต่อออเดอร์ต่อเครื่อง) */
   const [showGuide, setShowGuide] = useState(false);
   useEffect(() => {
@@ -156,11 +159,10 @@ export default function CustomerOrderPage() {
     action: "approve" | "request",
     opts?: { proofIdx?: number; noteText?: string }
   ): Promise<Order | null> {
-    // กันเผลอแตะอนุมัติ — ให้ลูกค้ายืนยันก่อนทุกครั้ง (ทั้งอนุมัติรายภาพและอนุมัติทั้งรายการ)
+    // กันเผลอแตะอนุมัติ — ให้ลูกค้ายืนยันผ่าน modal สวย ๆ ก่อนทุกครั้ง (ทั้งรายภาพและทั้งรายการ)
     if (action === "approve") {
-      const ok = window.confirm(
-        "ยืนยันการอนุมัติแบบงาน ✅\n\nทางบริษัทจะจัดทำงานตามภาพที่ลูกค้าอนุมัติทันที\nหากไม่มั่นใจ รบกวนตรวจสอบอีกรอบ หรือสอบถามแอดมินก่อนนะคะ"
-      );
+      const ok = await new Promise<boolean>((resolve) => setConfirmApprove({ resolve }));
+      setConfirmApprove(null);
       if (!ok) return null;
     }
     setActionErr("");
@@ -353,6 +355,45 @@ export default function CustomerOrderPage() {
           >
             ❓ วิธีตรวจ/อนุมัติแบบ
           </button>
+        </div>
+      )}
+
+      {/* ── กล่องยืนยันก่อนอนุมัติแบบงาน ── */}
+      {confirmApprove && (
+        <div className="fixed inset-0 z-[70] grid place-items-center bg-stone-900/70 p-4" onClick={() => confirmApprove.resolve(false)}>
+          <div
+            className="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-gradient-to-b from-teal-50 to-white px-6 pb-2 pt-6 text-center">
+              <span className="text-5xl">✅</span>
+              <h2 className="mt-2 text-lg font-extrabold text-teal-700">ยืนยันการอนุมัติแบบงาน</h2>
+            </div>
+            <div className="px-6 pb-6 pt-2">
+              <p className="text-center text-sm leading-relaxed text-stone-600">
+                ทางบริษัทจะ<strong className="text-rose-600">จัดทำงานตามภาพที่อนุมัติทันที</strong>
+                <br />
+                หาก<strong className="text-amber-600">ไม่มั่นใจ</strong> รบกวน
+                <strong className="text-stone-800">ตรวจสอบอีกรอบ</strong>
+                <br />
+                หรือ<strong className="text-teal-600">สอบถามแอดมิน</strong>ก่อนนะคะ 🙏
+              </p>
+              <button
+                type="button"
+                onClick={() => confirmApprove.resolve(true)}
+                className="mt-5 w-full rounded-full bg-teal-500 px-6 py-3 text-sm font-extrabold text-white shadow-lg transition hover:bg-teal-600"
+              >
+                ✅ ยืนยันอนุมัติ — ให้เริ่มผลิตได้เลย
+              </button>
+              <button
+                type="button"
+                onClick={() => confirmApprove.resolve(false)}
+                className="mt-2 w-full rounded-full px-6 py-2.5 text-sm font-bold text-stone-500 transition hover:bg-stone-100"
+              >
+                ↩️ ขอดูอีกครั้ง
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
