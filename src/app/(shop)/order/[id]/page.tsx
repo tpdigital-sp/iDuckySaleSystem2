@@ -134,6 +134,13 @@ export default function CustomerOrderPage() {
     action: "approve" | "request",
     opts?: { proofIdx?: number; noteText?: string }
   ): Promise<Order | null> {
+    // กันเผลอแตะอนุมัติ — ให้ลูกค้ายืนยันก่อนทุกครั้ง (ทั้งอนุมัติรายภาพและอนุมัติทั้งรายการ)
+    if (action === "approve") {
+      const ok = window.confirm(
+        "ยืนยันการอนุมัติแบบงาน ✅\n\nทางบริษัทจะจัดทำงานตามภาพที่ลูกค้าอนุมัติทันที\nหากไม่มั่นใจ รบกวนตรวจสอบอีกรอบ หรือสอบถามแอดมินก่อนนะคะ"
+      );
+      if (!ok) return null;
+    }
     setActionErr("");
     setBusyIdx(itemIndex);
     const res = await reviewProof(
