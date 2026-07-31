@@ -4,6 +4,7 @@ import { currentActor, requirePerm } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { notifyCustomer, orderLink } from "@/lib/server/notify";
+import { reportPaidToTP } from "@/lib/server/tp-report";
 import { packGate, proofsOf, withLog, type Order, type OrderStatus, type PackGate } from "@/lib/admin-data";
 
 /** สรุปเหตุผลที่ด่านตรวจยังไม่ผ่าน (ไว้โชว์/ลง log) */
@@ -190,6 +191,9 @@ export async function PATCH(req: Request) {
     const link = orderLink(origin, toSave);
     if (toSave.status === "ชำระแล้ว")
       void notifyCustomer(sb, toSave, `✅ ยืนยันการชำระเงินออเดอร์ ${toSave.id} แล้ว กำลังเริ่มงานให้ครับ\n${link}`);
+    // ส่งเข้า msVerify ระบบ Admin — แยกว่าตรวจโดยแอดมิน (SlipOK ผ่านจะถูกส่งจาก slip route ไปแล้ว = idempotent)
+    if (toSave.status === "ชำระแล้ว")
+      void reportPaidToTP(toSave, `แอดมิน ${actor.name?.trim() || actor.username}`);
     else if (toSave.status === "จัดส่งแล้ว")
       void notifyCustomer(sb, toSave, `🚚 ออเดอร์ ${toSave.id} จัดส่งแล้ว${toSave.tracking ? `\nเลขพัสดุ: ${toSave.tracking}` : ""}\n${link}`);
   }

@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderTotal, withLog, type Order } from "@/lib/admin-data";
 import { verifySlipWithSlipOK } from "@/lib/server/slipok";
 import { notifyCustomer, orderLink } from "@/lib/server/notify";
+import { reportPaidToTP } from "@/lib/server/tp-report";
 
 export const runtime = "nodejs";
 
@@ -100,6 +101,7 @@ export async function POST(req: Request) {
   if (verify.status === "pass") {
     const origin = new URL(req.url).origin;
     void notifyCustomer(sb, updated, `✅ ยืนยันการชำระเงินออเดอร์ ${updated.id} แล้ว กำลังเริ่มงานให้ครับ\n${orderLink(origin, updated)}`);
+    void reportPaidToTP(updated, "SlipOK อัตโนมัติ"); // ส่งเข้า msVerify ระบบ Admin (fire-and-forget)
   }
 
   return NextResponse.json({ ok: true, verified: verify.status === "pass" });
