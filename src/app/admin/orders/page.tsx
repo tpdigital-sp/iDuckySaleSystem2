@@ -267,6 +267,33 @@ export default function AdminOrdersPage() {
                         <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${STATUS_STYLES[o.status]}`}>
                           {o.status}
                         </span>
+                        {/* ใครเป็นคนตรวจสลิป — SlipOK อัตโนมัติ หรือแอดมินตรวจเอง (เห็นเฉพาะคนเห็นข้อมูลเงิน) */}
+                        {seesMoney && o.slipVerify?.status === "pass" && (
+                          <span className="mt-1 block">
+                            <span className="inline-flex whitespace-nowrap rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200">
+                              🤖 SlipOK ตรวจ ✓
+                            </span>
+                          </span>
+                        )}
+                        {seesMoney && o.slipVerify?.status === "fail" && o.status === "รอตรวจสอบ" && (
+                          <span className="mt-1 block">
+                            <span className="inline-flex whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 ring-1 ring-amber-200">
+                              ⚠️ SlipOK ไม่ผ่าน — ตรวจเอง
+                            </span>
+                          </span>
+                        )}
+                        {seesMoney &&
+                          (o.slipPath || o.slipUrl) &&
+                          o.slipVerify?.status !== "pass" &&
+                          o.status !== "รอชำระเงิน" &&
+                          o.status !== "รอตรวจสอบ" &&
+                          o.status !== "ยกเลิก" && (
+                            <span className="mt-1 block">
+                              <span className="inline-flex whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500 ring-1 ring-slate-200">
+                                🧑‍💼 แอดมินตรวจเอง
+                              </span>
+                            </span>
+                          )}
                       </td>
                       <td className="px-4 py-3.5 text-right align-middle font-bold tabular-nums text-slate-900">
                         {seesMoney ? formatPrice(orderTotal(o)) : `${qtyOf(o)} ชิ้น`}
