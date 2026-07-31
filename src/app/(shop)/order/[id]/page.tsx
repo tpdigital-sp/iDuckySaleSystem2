@@ -52,6 +52,28 @@ export default function CustomerOrderPage() {
     setLbNote("");
   };
   /* แบบประเมินความพึงพอใจ (นิรนาม) — โชว์เมื่อได้รับของแล้วและยังไม่เคยประเมิน */
+  /* คู่มือวิธีตรวจ/อนุมัติแบบงาน — เด้งเองครั้งแรกที่มีแบบรอตรวจ (จำต่อออเดอร์ต่อเครื่อง) */
+  const [showGuide, setShowGuide] = useState(false);
+  useEffect(() => {
+    if (!order) return;
+    const pending = order.items.some((it) => proofsOf(it).length && it.proofStatus === "รอตรวจ");
+    if (!pending) return;
+    try {
+      if (localStorage.getItem(`ducky-review-guide-${order.id}`)) return;
+    } catch {
+      /* localStorage ปิด — เด้งได้ตามปกติ */
+    }
+    setShowGuide(true);
+  }, [order]);
+  const closeGuide = () => {
+    setShowGuide(false);
+    try {
+      if (order) localStorage.setItem(`ducky-review-guide-${order.id}`, "1");
+    } catch {
+      /* ข้าม */
+    }
+  };
+
   const [rateScore, setRateScore] = useState(0);
   const [rateTags, setRateTags] = useState<string[]>([]);
   const [rateComment, setRateComment] = useState("");
@@ -323,7 +345,58 @@ export default function CustomerOrderPage() {
 
       {waiting > 0 && (
         <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
-          🎨 <strong>มีแบบงานรอให้คุณตรวจ {waiting} รายการ — เหลืออีก {waitingProofs} ภาพ</strong> · แตะรูปเพื่อดูใหญ่ แล้วกดอนุมัติทีละภาพได้เลย
+          🎨 <strong>มีแบบงานรอให้คุณตรวจ {waiting} รายการ — เหลืออีก {waitingProofs} ภาพ</strong> · แตะรูปเพื่อดูใหญ่ แล้วกดอนุมัติทีละภาพได้เลย{" "}
+          <button
+            type="button"
+            onClick={() => setShowGuide(true)}
+            className="mt-1 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-bold text-amber-700 ring-1 ring-amber-300 transition hover:bg-amber-100"
+          >
+            ❓ วิธีตรวจ/อนุมัติแบบ
+          </button>
+        </div>
+      )}
+
+      {/* ── คู่มือวิธีตรวจแบบงาน (เด้งครั้งแรก / กดเปิดซ้ำได้) ── */}
+      {showGuide && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-stone-900/60 p-4" onClick={closeGuide}>
+          <div
+            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-center text-4xl">🎨</p>
+            <h2 className="mt-2 text-center text-lg font-extrabold text-amber-950">วิธีตรวจ & อนุมัติแบบงาน</h2>
+            <div className="mt-4 space-y-3 text-sm text-stone-700">
+              <p className="flex gap-2.5">
+                <span className="shrink-0 grid h-6 w-6 place-items-center rounded-full bg-amber-100 text-xs font-extrabold text-amber-700">1</span>
+                <span>
+                  <strong>แตะรูปแบบงาน</strong> เพื่อขยายดูเต็มจอ — เลื่อนซ้าย/ขวาดูภาพถัดไปได้ มีตัวเลขบอกว่าดูภาพที่เท่าไหร่จากทั้งหมด
+                </span>
+              </p>
+              <p className="flex gap-2.5">
+                <span className="shrink-0 grid h-6 w-6 place-items-center rounded-full bg-amber-100 text-xs font-extrabold text-amber-700">2</span>
+                <span>
+                  ในภาพขยาย กด <strong className="text-teal-600">✅ อนุมัติภาพนี้</strong> ถ้าถูกต้อง หรือ{" "}
+                  <strong className="text-rose-500">✏️ ขอแก้ไขภาพนี้</strong> แล้วพิมพ์จุดที่อยากแก้ — ระบบจะเด้งภาพถัดไปให้อัตโนมัติจนครบ
+                </span>
+              </p>
+              <p className="flex gap-2.5">
+                <span className="shrink-0 grid h-6 w-6 place-items-center rounded-full bg-amber-100 text-xs font-extrabold text-amber-700">3</span>
+                <span>
+                  ถ้าดูครบและมั่นใจทั้งชุด กดปุ่ม <strong>✅ อนุมัติทุกภาพที่เหลือ</strong> ทีเดียวได้เลย
+                </span>
+              </p>
+            </div>
+            <p className="mt-4 rounded-xl bg-rose-50 px-3 py-2.5 text-xs leading-relaxed text-rose-700 ring-1 ring-rose-100">
+              ⚠️ <strong>ทางบริษัทจะจัดทำงานตามภาพที่อนุมัติทันที</strong> — หากไม่มั่นใจ รบกวนตรวจสอบอีกรอบ หรือสอบถามแอดมินก่อนนะคะ
+            </p>
+            <button
+              type="button"
+              onClick={closeGuide}
+              className="mt-4 w-full rounded-full bg-amber-400 px-6 py-3 text-sm font-extrabold text-white shadow-lg transition hover:bg-amber-500"
+            >
+              เข้าใจแล้ว เริ่มตรวจแบบ 🎨
+            </button>
+          </div>
         </div>
       )}
 
