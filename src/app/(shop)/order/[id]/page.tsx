@@ -5,7 +5,7 @@ import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
-import { adminDiscountAmount, itemDiscountAmount, orderBalance, orderItemDiscounts, orderTotal, PROOF_STYLES, proofsOf, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { adminDiscountAmount, amountDueNow, itemDiscountAmount, orderBalance, orderItemDiscounts, orderTotal, PROOF_STYLES, proofsOf, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchOrderForCustomer, reportPayment, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
@@ -295,12 +295,19 @@ export default function CustomerOrderPage() {
           className={`mt-4 rounded-2xl p-4 ring-2 transition ${slipDrag ? "bg-rose-100 ring-rose-400 ring-dashed" : "bg-rose-50 ring-1 ring-rose-200"}`}
         >
           <p className="text-sm font-bold text-rose-800">
-            💸 {(order.paidTotal ?? 0) > 0 ? `มียอดค้างชำระ ${formatPrice(balance)}` : `รอชำระเงิน ${formatPrice(orderTotal(order))}`}
+            💸{" "}
+            {order.deposit && !order.deposit.firstPaidAt
+              ? `โอนมัดจำ 50% ก่อนเริ่มงาน ${formatPrice(amountDueNow(order))}`
+              : (order.paidTotal ?? 0) > 0
+                ? `มียอดค้างชำระ ${formatPrice(balance)}`
+                : `รอชำระเงิน ${formatPrice(orderTotal(order))}`}
           </p>
           <p className="mt-1 text-xs leading-relaxed text-rose-700">
-            {(order.paidTotal ?? 0) > 0
-              ? `เกิดจากการสั่งเพิ่ม — โอนเฉพาะส่วนต่างมาที่บัญชีร้าน แล้วแนบสลิป (จ่ายแล้ว ${formatPrice(order.paidTotal ?? 0)} จาก ${formatPrice(orderTotal(order))})`
-              : "โอนเงินมาที่บัญชีร้านแล้วแนบสลิปที่นี่ ทางร้านจะตรวจสอบและเริ่มงานให้"}
+            {order.deposit && !order.deposit.firstPaidAt
+              ? `ออเดอร์นี้ตกลงมัดจำก่อน — โอน ${formatPrice(amountDueNow(order))} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} แล้วแนบสลิป · ส่วนที่เหลือชำระก่อนจัดส่ง`
+              : (order.paidTotal ?? 0) > 0
+                ? `เกิดจากการสั่งเพิ่ม — โอนเฉพาะส่วนต่างมาที่บัญชีร้าน แล้วแนบสลิป (จ่ายแล้ว ${formatPrice(order.paidTotal ?? 0)} จาก ${formatPrice(orderTotal(order))})`
+                : "โอนเงินมาที่บัญชีร้านแล้วแนบสลิปที่นี่ ทางร้านจะตรวจสอบและเริ่มงานให้"}
           </p>
           <label
             onDragOver={(e) => e.preventDefault()}
@@ -327,6 +334,30 @@ export default function CustomerOrderPage() {
           {slipErr && <p className="mt-2 text-xs font-semibold text-rose-700">⚠️ {slipErr}</p>}
         </div>
       )}
+      {/* ── มัดจำผ่านแล้ว: เก็บยอดคงเหลือก่อนจัดส่ง — แนบสลิปได้ตลอด ── */}
+      {order.deposit?.firstPaidAt && !order.deposit.settledAt && order.status !== "รอชำระเงิน" && order.status !== "รอตรวจสอบ" && !cancelled && (
+        <div className="mt-4 rounded-2xl bg-rose-50 p-4 ring-1 ring-rose-200">
+          <p className="text-sm font-bold text-rose-800">💳 ค้างชำระยอดคงเหลือ {formatPrice(amountDueNow(order))}</p>
+          <p className="mt-1 text-xs leading-relaxed text-rose-700">
+            รับมัดจำ {formatPrice(order.deposit.amount)} แล้ว — โอนส่วนที่เหลือแล้วแนบสลิปตรงนี้ ก่อนทางร้านจัดส่งของ
+          </p>
+          <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-rose-700">
+            {slipBusy ? "กำลังส่งสลิป…" : "📤 แนบสลิปยอดคงเหลือ"}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              disabled={slipBusy}
+              onChange={(e) => {
+                void uploadSlip(e.target.files?.[0] ?? null);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          {slipErr && <p className="mt-2 text-xs font-semibold text-rose-700">⚠️ {slipErr}</p>}
+        </div>
+      )}
+
       {order.status === "รอตรวจสอบ" && (
         <div className="mt-4 rounded-2xl bg-orange-50 p-4 text-sm text-orange-800 ring-1 ring-orange-200">
           🧾 <strong>ได้รับสลิปแล้ว</strong> — ทางร้านกำลังตรวจสอบการชำระเงิน เดี๋ยวจะเริ่มงานให้ครับ
@@ -860,6 +891,20 @@ export default function CustomerOrderPage() {
               <span>ยอดรวม</span>
               <span className="text-amber-600">{formatPrice(orderTotal(order))}</span>
             </div>
+            {order.deposit && (
+              <div className="mt-2 space-y-1 rounded-xl bg-stone-50 p-2.5 text-xs">
+                <div className="flex justify-between font-semibold">
+                  <span className="text-stone-500">มัดจำ 50% {order.deposit.firstPaidAt ? "· รับแล้ว ✓" : "· รอโอน"}</span>
+                  <span className={order.deposit.firstPaidAt ? "text-emerald-600" : "text-rose-600"}>{formatPrice(order.deposit.amount)}</span>
+                </div>
+                <div className="flex justify-between font-semibold">
+                  <span className="text-stone-500">ยอดคงเหลือ {order.deposit.settledAt ? "· ครบแล้ว ✓" : "· ชำระก่อนจัดส่ง"}</span>
+                  <span className={order.deposit.settledAt ? "text-emerald-600" : "text-rose-600"}>
+                    {formatPrice(Math.max(0, orderTotal(order) - order.deposit.amount))}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           {order.tracking && (

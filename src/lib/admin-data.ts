@@ -197,6 +197,8 @@ export interface Order {
   shippingCost: number;
   status: OrderStatus;
   tracking?: string;
+  /** โหมดมัดจำ 50% — ลูกค้าโอนงวดแรกก่อนเริ่มงาน เก็บส่วนที่เหลือให้ครบก่อนพิมพ์เอกสาร/ส่งของ */
+  deposit?: OrderDeposit;
   /** ภาพของในกล่องก่อนปิด (ฝ่ายแพ็คถ่าย) — packGate บังคับอย่างน้อย 1 รูปก่อนยิงเลขพัสดุ */
   packPhotos?: PackPhoto[];
   note?: string;
@@ -301,6 +303,31 @@ export interface PackPhoto {
   at: string;
 }
 
+/** โหมดมัดจำ 50% ของออเดอร์ */
+export interface OrderDeposit {
+  /** ยอดมัดจำงวดแรก (บาท) */
+  amount: number;
+  /** งวดแรก (มัดจำ) ยืนยันแล้วเมื่อ (ISO) — มีค่า = เริ่มงานได้ */
+  firstPaidAt?: string;
+  /** เก็บครบทั้งออเดอร์แล้วเมื่อ (ISO) — มีค่า = พิมพ์เอกสาร/ยิงเลขพัสดุได้ */
+  settledAt?: string;
+}
+
+/** ได้รับเงินครบยอดออเดอร์หรือยัง — ใช้ล็อกการพิมพ์ใบงาน/ใบเสร็จ และยิงเลขพัสดุ */
+export function orderFullyPaid(o: Order): boolean {
+  const paidStage = !(["รอชำระเงิน", "รอตรวจสอบ", "ยกเลิก"] as OrderStatus[]).includes(o.status);
+  if (o.deposit) return paidStage && !!o.deposit.settledAt;
+  return paidStage;
+}
+
+/** ยอดที่ลูกค้าต้องโอน "งวดนี้" — มัดจำ / ยอดคงเหลือ / เต็มจำนวน */
+export function amountDueNow(o: Order): number {
+  const total = orderTotal(o);
+  if (o.deposit && !o.deposit.firstPaidAt) return Math.min(total, Math.max(0, o.deposit.amount));
+  if (o.deposit && !o.deposit.settledAt) return Math.max(0, total - (o.paidTotal ?? 0));
+  return total;
+}
+
 export interface PackGate {
   /** ผ่านครบทุกเงื่อนไข → ยิงเลขพัสดุได้ */
   ready: boolean;
@@ -314,6 +341,8 @@ export interface PackGate {
   unsampled: string[];
   /** ยังไม่มีภาพถ่ายของในกล่องก่อนปิด — บังคับอย่างน้อย 1 รูปก่อนยิงเลขพัสดุ */
   noPhoto: boolean;
+  /** ออเดอร์มัดจำที่ยังเก็บยอดคงเหลือไม่ครบ — ห้ามยิงเลขพัสดุ */
+  unpaidBalance: boolean;
 }
 
 /**
@@ -336,14 +365,16 @@ export function packGate(order: Order): PackGate {
   });
 
   const noPhoto = !(order.packPhotos && order.packPhotos.length > 0);
+  const unpaidBalance = !!order.deposit && !order.deposit.settledAt;
 
   return {
-    ready: !uncounted.length && !unread.length && !short.length && !unsampled.length && !noPhoto,
+    ready: !uncounted.length && !unread.length && !short.length && !unsampled.length && !noPhoto && !unpaidBalance,
     uncounted,
     unread,
     short,
     unsampled,
     noPhoto,
+    unpaidBalance,
   };
 }
 

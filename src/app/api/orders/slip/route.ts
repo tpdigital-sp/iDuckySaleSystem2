@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderTotal, withLog, type Order } from "@/lib/admin-data";
+import { amountDueNow, orderTotal, withLog, type Order } from "@/lib/admin-data";
 import { verifySlipWithSlipOK } from "@/lib/server/slipok";
 import { notifyCustomer, orderLink } from "@/lib/server/notify";
 import { reportPaidToTP } from "@/lib/server/tp-report";
@@ -54,7 +54,10 @@ export async function POST(req: Request) {
   // (ออเดอร์เก่าก่อนมีระบบ key จะไม่มี order.key → ข้ามการเช็ค เพื่อ backward-compat)
   if (order.key && order.key !== key)
     return NextResponse.json({ error: "ลิงก์แจ้งโอนไม่ถูกต้อง (รหัสออเดอร์ไม่ตรง)" }, { status: 403 });
-  if (order.status !== "รอชำระเงิน" && order.status !== "รอตรวจสอบ")
+  // ออเดอร์มัดจำที่ผ่านงวดแรกแล้ว → เปิดให้แนบสลิป "ยอดคงเหลือ" ได้แม้เข้าขั้นผลิตแล้ว
+  const balancePhase = !!order.deposit && !!order.deposit.firstPaidAt && !order.deposit.settledAt;
+  if (order.status === "ยกเลิก") return NextResponse.json({ error: "ออเดอร์นี้ถูกยกเลิกแล้ว" }, { status: 409 });
+  if (!balancePhase && order.status !== "รอชำระเงิน" && order.status !== "รอตรวจสอบ")
     return NextResponse.json({ error: "ออเดอร์นี้ยืนยันการชำระเงินแล้ว ไม่ต้องแจ้งโอนซ้ำ" }, { status: 409 });
 
   // อัปโหลดสลิป (สร้าง bucket ให้อัตโนมัติถ้ายังไม่มี)
@@ -71,28 +74,48 @@ export async function POST(req: Request) {
   }
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 
-  // ── ตรวจสลิปอัตโนมัติกับ SlipOK (ถ้าตั้งค่าไว้) — เทียบยอดที่ต้องโอนจริง ──
-  const expected = orderTotal(order); // หักส่วนลดทุกชนิดแล้ว
+  // ── ตรวจสลิปอัตโนมัติกับ SlipOK (ถ้าตั้งค่าไว้) — เทียบ "ยอดงวดนี้" (มัดจำ/คงเหลือ/เต็ม) ──
+  const expected = amountDueNow(order);
+  const depositPhase = !!order.deposit && !order.deposit.firstPaidAt; // งวดแรกของออเดอร์มัดจำ
   const verify = await verifySlipWithSlipOK(bytes, file.type, expected);
   const now = new Date().toISOString();
 
-  // จำยอดรวม ณ ตอนแจ้งโอน — ถ้าลูกค้าสั่งเพิ่มทีหลัง จะรู้ว่าค้างชำระเท่าไหร่
   let updated: Order = {
     ...order,
     slipPath: path, // เก็บ path — ไม่เก็บ URL สาธารณะ
     slipUrl: undefined, // ล้างของเก่า (ถ้ามี) กันชี้ไปไฟล์ public เดิม
     paidReportedAt: now,
-    paidTotal: expected,
-    // ผ่านการตรวจอัตโนมัติเท่านั้นถึงยืนยันให้เลย — นอกนั้นรอแอดมินตรวจตามเดิม
-    status: verify.status === "pass" ? "ชำระแล้ว" : "รอตรวจสอบ",
     ...(verify.status === "pass" || verify.status === "fail"
       ? { slipVerify: { status: verify.status, detail: verify.detail, amount: verify.amount, transRef: verify.transRef, at: now } }
       : { slipVerify: undefined }),
   };
-  if (verify.status === "pass")
-    updated = withLog(updated, "SlipOK", "ยืนยันการชำระเงินอัตโนมัติ", `ยอด ${verify.amount ?? expected} บาท${verify.transRef ? ` · อ้างอิง ${verify.transRef}` : ""}`);
-  else if (verify.status === "fail")
-    updated = withLog(updated, "SlipOK", "สลิปตรวจไม่ผ่าน — รอแอดมินตรวจเอง", verify.detail ?? "");
+  if (balancePhase) {
+    // งวดหลังของออเดอร์มัดจำ — สถานะงานเดินต่อตามเดิม ไม่ถอยกลับไปรอตรวจสอบ
+    if (verify.status === "pass") {
+      updated = { ...updated, paidTotal: orderTotal(order), deposit: { ...order.deposit!, settledAt: now } };
+      updated = withLog(updated, "SlipOK", "รับยอดคงเหลือครบแล้ว (อัตโนมัติ)", `ยอด ${verify.amount ?? expected} บาท${verify.transRef ? ` · อ้างอิง ${verify.transRef}` : ""}`);
+    } else {
+      updated = withLog(updated, "SlipOK", "สลิปยอดคงเหลือรอแอดมินตรวจ", verify.detail ?? "ตรวจอัตโนมัติไม่ได้");
+    }
+  } else {
+    updated = {
+      ...updated,
+      // จำยอดที่รับ ณ งวดนี้ — ออเดอร์มัดจำเก็บแค่ยอดงวดแรกก่อน
+      paidTotal: expected,
+      // ผ่านการตรวจอัตโนมัติเท่านั้นถึงยืนยันให้เลย — นอกนั้นรอแอดมินตรวจตามเดิม
+      status: verify.status === "pass" ? "ชำระแล้ว" : "รอตรวจสอบ",
+      ...(depositPhase && verify.status === "pass" ? { deposit: { ...order.deposit!, firstPaidAt: now } } : {}),
+    };
+    if (verify.status === "pass")
+      updated = withLog(
+        updated,
+        "SlipOK",
+        depositPhase ? "ยืนยันมัดจำ 50% อัตโนมัติ" : "ยืนยันการชำระเงินอัตโนมัติ",
+        `ยอด ${verify.amount ?? expected} บาท${verify.transRef ? ` · อ้างอิง ${verify.transRef}` : ""}`
+      );
+    else if (verify.status === "fail")
+      updated = withLog(updated, "SlipOK", "สลิปตรวจไม่ผ่าน — รอแอดมินตรวจเอง", verify.detail ?? "");
+  }
 
   const { error: saveErr } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
@@ -100,8 +123,18 @@ export async function POST(req: Request) {
   // ผ่านอัตโนมัติ → แจ้งลูกค้าทันทีเหมือนแอดมินกดยืนยันเอง (เงียบถ้ายังไม่ตั้งค่า LINE)
   if (verify.status === "pass") {
     const origin = new URL(req.url).origin;
-    void notifyCustomer(sb, updated, `✅ ยืนยันการชำระเงินออเดอร์ ${updated.id} แล้ว กำลังเริ่มงานให้ครับ\n${orderLink(origin, updated)}`);
-    void reportPaidToTP(updated, "SlipOK อัตโนมัติ"); // ส่งเข้า msVerify ระบบ Admin (fire-and-forget)
+    const link = orderLink(origin, updated);
+    if (balancePhase) {
+      void notifyCustomer(sb, updated, `✅ รับยอดคงเหลือออเดอร์ ${updated.id} ครบแล้ว ขอบคุณครับ\n${link}`);
+      void reportPaidToTP(updated, "SlipOK อัตโนมัติ", { docSuffix: "-final", amount: expected, noteSuffix: "ยอดคงเหลือ 50% หลัง (ครบแล้ว)" });
+    } else if (depositPhase) {
+      const remain = orderTotal(updated) - (updated.paidTotal ?? 0);
+      void notifyCustomer(sb, updated, `✅ รับมัดจำออเดอร์ ${updated.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${remain.toLocaleString()} บาท ชำระก่อนจัดส่ง\n${link}`);
+      void reportPaidToTP(updated, "SlipOK อัตโนมัติ", { amount: expected, noteSuffix: "มัดจำ 50% งวดแรก" });
+    } else {
+      void notifyCustomer(sb, updated, `✅ ยืนยันการชำระเงินออเดอร์ ${updated.id} แล้ว กำลังเริ่มงานให้ครับ\n${link}`);
+      void reportPaidToTP(updated, "SlipOK อัตโนมัติ"); // ส่งเข้า msVerify ระบบ Admin (fire-and-forget)
+    }
   }
 
   return NextResponse.json({ ok: true, verified: verify.status === "pass" });

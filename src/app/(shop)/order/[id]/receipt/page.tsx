@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { formatPrice } from "@/lib/products";
-import { adminDiscountAmount, orderItemDiscounts, orderTotal, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, orderFullyPaid, orderItemDiscounts, orderTotal, type Order } from "@/lib/admin-data";
 import { fetchOrderForCustomer } from "@/lib/order-repo";
 import { fetchShopPayment, shopInfoOf, type ShopInfo } from "@/lib/shop-settings";
 
@@ -50,6 +50,24 @@ export default function CustomerReceiptPage() {
 
   const subtotal = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
   const backHref = `/order/${encodeURIComponent(orderId)}${orderKey ? `?key=${encodeURIComponent(orderKey)}` : ""}`;
+
+  // 🔒 ใบเสร็จออกได้เมื่อชำระครบ 100% เท่านั้น (ออเดอร์มัดจำต้องเก็บยอดหลังครบก่อน)
+  if (!orderFullyPaid(order)) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-16 text-center">
+        <span className="text-5xl">🔒</span>
+        <p className="mt-4 text-sm font-bold text-stone-700">ยังออกใบเสร็จไม่ได้ — ชำระเงินยังไม่ครบจำนวน</p>
+        <p className="mt-1 text-xs text-stone-500">
+          {order.deposit && !order.deposit.settledAt
+            ? `รับมัดจำแล้ว ${formatPrice(order.paidTotal ?? order.deposit.amount)} · ค้างยอดคงเหลือ ${formatPrice(Math.max(0, orderTotal(order) - (order.paidTotal ?? 0)))}`
+            : "ใบเสร็จจะเปิดดูได้หลังทางร้านยืนยันการชำระเงินครบถ้วน"}
+        </p>
+        <Link href={backHref} className="mt-5 inline-block rounded-full bg-amber-400 px-5 py-2 text-sm font-bold text-white hover:bg-amber-500">
+          ← กลับหน้าออเดอร์
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <>

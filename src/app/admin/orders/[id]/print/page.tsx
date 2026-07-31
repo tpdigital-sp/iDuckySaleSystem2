@@ -7,7 +7,7 @@ import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { formatPrice } from "@/lib/products";
-import { adminDiscountAmount, MOCK_ORDERS, noteHasText, orderItemDiscounts, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, MOCK_ORDERS, noteHasText, orderFullyPaid, orderItemDiscounts, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -116,6 +116,8 @@ export default function PrintOrderPage() {
   const totalProofs = order.items.reduce((s, it) => s + proofsOf(it).length, 0); // แบบงานทั้งหมดกี่รูป
   const contentOverflows = overflows || overflowCount > 0; // เนื้อหาล้น A4 → โชว์โน้ตดูมือถือ
   const printedAt = new Date().toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
+  // 🔒 ยังไม่ได้รับเงินครบ (รวมออเดอร์มัดจำที่ค้างยอดหลัง) → พิมพ์เอกสารไม่ได้
+  const fullyPaid = orderFullyPaid(order);
   const chosen = (Object.keys(docs) as DocKey[]).filter((k) => docs[k]);
   /** ลิงก์เต็มสำหรับ QR มือถือ — เปิดหน้าออเดอร์เพื่อเช็คของตามภาพ */
   const orderUrl = origin ? `${origin}/admin/orders/${encodeURIComponent(order.id)}` : "";
@@ -173,9 +175,15 @@ export default function PrintOrderPage() {
           </label>
         </div>
 
+        {!fullyPaid && (
+          <span className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">
+            🔒 ยังไม่ได้รับเงินครบ 100%{order.deposit && !order.deposit.settledAt ? ` — ค้างยอดคงเหลือ ${formatPrice(Math.max(0, orderTotal(order) - (order.paidTotal ?? 0)))}` : ""} · พิมพ์ไม่ได้
+          </span>
+        )}
         <button
           type="button"
           onClick={() => {
+            if (!fullyPaid) return;
             // ปริ้นใบงาน (มีที่อยู่/ใบปะหน้า) = ล็อกที่อยู่ฝั่งลูกค้า — ตั้ง printedAt ครั้งแรก
             if (docs.work && order && !order.printedAt) {
               fetch("/api/admin/orders/printed", {
@@ -187,7 +195,8 @@ export default function PrintOrderPage() {
             }
             window.print();
           }}
-          disabled={chosen.length === 0}
+          disabled={chosen.length === 0 || !fullyPaid}
+          title={fullyPaid ? undefined : "รับเงินครบ 100% ก่อนถึงพิมพ์ได้"}
           className="ml-auto rounded-xl bg-amber-500 px-5 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-40"
         >
           🖨️ พิมพ์

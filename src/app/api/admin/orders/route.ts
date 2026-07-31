@@ -5,7 +5,7 @@ import { can } from "@/lib/permissions";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { notifyCustomer, orderLink } from "@/lib/server/notify";
 import { reportPaidToTP } from "@/lib/server/tp-report";
-import { packGate, proofsOf, withLog, type Order, type OrderStatus, type PackGate } from "@/lib/admin-data";
+import { orderTotal, packGate, proofsOf, withLog, type Order, type OrderStatus, type PackGate } from "@/lib/admin-data";
 
 /** สรุปเหตุผลที่ด่านตรวจยังไม่ผ่าน (ไว้โชว์/ลง log) */
 function gateReasons(g: PackGate): string {
@@ -15,6 +15,7 @@ function gateReasons(g: PackGate): string {
     g.short.length ? `ของไม่ครบ ${g.short.length} รายการ` : "",
     g.unsampled.length ? `ยังไม่ยืนยันใส่งานตัวอย่าง ${g.unsampled.length} รายการ` : "",
     g.noPhoto ? "ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง" : "",
+    g.unpaidBalance ? "ยังเก็บยอดคงเหลือ (มัดจำ 50%) ไม่ครบ" : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -186,17 +187,39 @@ export async function PATCH(req: Request) {
   const { error } = await sb.from("orders").update({ data: toSave }).eq("id", toSave.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  const adminName = `แอดมิน ${actor.name?.trim() || actor.username}`;
+  // มัดจำงวดแรกเพิ่งยืนยัน (มือ) ในคำขอนี้ — ใช้แยกรูปแบบรายงาน msVerify
+  const depositFirstNow = !!toSave.deposit?.firstPaidAt && !existing.deposit?.firstPaidAt;
+
   // แจ้งเตือนลูกค้าเมื่อสถานะเปลี่ยนไปขั้นสำคัญ (เงียบถ้ายังไม่ตั้งค่า LINE)
   if (toSave.status !== oldStatus) {
     const origin = new URL(req.url).origin;
     const link = orderLink(origin, toSave);
     if (toSave.status === "ชำระแล้ว")
-      void notifyCustomer(sb, toSave, `✅ ยืนยันการชำระเงินออเดอร์ ${toSave.id} แล้ว กำลังเริ่มงานให้ครับ\n${link}`);
+      void notifyCustomer(
+        sb,
+        toSave,
+        depositFirstNow
+          ? `✅ รับมัดจำออเดอร์ ${toSave.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${Math.max(0, orderTotal(toSave) - (toSave.paidTotal ?? 0)).toLocaleString()} บาท ชำระก่อนจัดส่ง\n${link}`
+          : `✅ ยืนยันการชำระเงินออเดอร์ ${toSave.id} แล้ว กำลังเริ่มงานให้ครับ\n${link}`
+      );
     // ส่งเข้า msVerify ระบบ Admin — แยกว่าตรวจโดยแอดมิน (SlipOK ผ่านจะถูกส่งจาก slip route ไปแล้ว = idempotent)
     if (toSave.status === "ชำระแล้ว")
-      void reportPaidToTP(toSave, `แอดมิน ${actor.name?.trim() || actor.username}`);
+      void reportPaidToTP(
+        toSave,
+        adminName,
+        depositFirstNow ? { amount: toSave.deposit!.amount, noteSuffix: "มัดจำ 50% งวดแรก" } : undefined
+      );
     else if (toSave.status === "จัดส่งแล้ว")
       void notifyCustomer(sb, toSave, `🚚 ออเดอร์ ${toSave.id} จัดส่งแล้ว${toSave.tracking ? `\nเลขพัสดุ: ${toSave.tracking}` : ""}\n${link}`);
+  }
+
+  // มัดจำ: แอดมินยืนยันรับยอดคงเหลือครบในคำขอนี้ → แจ้งลูกค้า + ส่งเรคอร์ดงวดหลังเข้า msVerify
+  if (toSave.deposit?.settledAt && !existing.deposit?.settledAt) {
+    const origin = new URL(req.url).origin;
+    const bal = Math.max(0, orderTotal(toSave) - (existing.paidTotal ?? toSave.deposit.amount));
+    void notifyCustomer(sb, toSave, `✅ รับยอดคงเหลือออเดอร์ ${toSave.id} ครบแล้ว ขอบคุณครับ\n${orderLink(origin, toSave)}`);
+    void reportPaidToTP(toSave, adminName, { docSuffix: "-final", amount: bal, noteSuffix: "ยอดคงเหลือ 50% หลัง (ครบแล้ว)" });
   }
 
   return NextResponse.json({ ok: true, order: toSave });

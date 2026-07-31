@@ -13,7 +13,18 @@ import { SITE_URL } from "@/lib/shop-info";
  */
 export const TP_PAID_COLLECTION = "iduckyPaidOrders";
 
-export async function reportPaidToTP(order: Order, verifiedBy: string): Promise<void> {
+export async function reportPaidToTP(
+  order: Order,
+  verifiedBy: string,
+  opts?: {
+    /** ต่อท้าย doc id — ใช้กับงวดที่สองของออเดอร์มัดจำ (กันชนกับเรคอร์ดงวดแรก) */
+    docSuffix?: string;
+    /** ยอดของงวดนี้ (ไม่ระบุ = paidTotal/ยอดออเดอร์) */
+    amount?: number;
+    /** ข้อความต่อท้าย note เช่น "มัดจำ 50% งวดแรก" */
+    noteSuffix?: string;
+  }
+): Promise<void> {
   try {
     const db = getFirestoreAdmin();
     if (!db) return; // ยังไม่ตั้งค่า Firebase — ข้ามเงียบ
@@ -36,18 +47,18 @@ export async function reportPaidToTP(order: Order, verifiedBy: string): Promise<
 
     await db
       .collection(TP_PAID_COLLECTION)
-      .doc(order.id)
+      .doc(`${order.id}${opts?.docSuffix ?? ""}`)
       .create({
-        id: `iducky-${order.id}`,
+        id: `iducky-${order.id}${opts?.docSuffix ?? ""}`,
         orderId: order.id,
         date: `${part("year")}-${part("month")}-${part("day")}`,
         time: `${part("hour")}:${part("minute")}`,
         customerName: order.customer,
         phone: order.phone || "",
-        slipAmount: order.paidTotal ?? orderTotal(order),
+        slipAmount: opts?.amount ?? order.paidTotal ?? orderTotal(order),
         bank: "iDucky Store",
         orderLink: `${SITE_URL}/admin/orders/${encodeURIComponent(order.id)}`,
-        note: itemSummary,
+        note: opts?.noteSuffix ? `${opts.noteSuffix} · ${itemSummary}`.slice(0, 120) : itemSummary,
         verifiedBy,
         paymentStatus: "ชำระแล้ว",
         origin: "iducky",

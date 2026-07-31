@@ -9,6 +9,7 @@ import {
   MOCK_ORDERS,
   ORDER_STATUSES,
   adminDiscountAmount,
+  amountDueNow,
   itemDiscountAmount,
   orderItemDiscounts,
   orderTotal,
@@ -384,6 +385,7 @@ export default function AdminOrderDetailPage() {
         g.short.length ? `ของไม่ครบ ${g.short.length} รายการ` : "",
         g.unsampled.length ? `ยังไม่ยืนยันใส่ชิ้นงานตัวอย่าง ${g.unsampled.length} รายการ` : "",
         g.noPhoto ? "ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง" : "",
+        g.unpaidBalance ? "ยังเก็บยอดคงเหลือ (มัดจำ 50%) ไม่ครบ" : "",
       ].filter(Boolean);
       if (!mayEdit) {
         setOrder((cur) => (cur ? { ...cur, tracking: trackingRef.current || undefined } : cur));
@@ -474,6 +476,55 @@ export default function AdminOrderDetailPage() {
     );
     setOrder(next);
     if (!demo) void saveOrderAdmin(next);
+  }
+
+  /** เปิดโหมดมัดจำ 50% — ลูกค้าโอนครึ่งแรกก่อนเริ่มงาน (แก้ยอดมัดจำไม่ได้ ระบบคิดครึ่งหนึ่งปัดขึ้น) */
+  function enableDeposit() {
+    if (!order) return;
+    const amt = Math.ceil(orderTotal(order) / 2);
+    applyOrder(withLog({ ...order, deposit: { amount: amt } }, actor, "เปิดโหมดมัดจำ 50%", `มัดจำ ${amt} บาท จากยอด ${orderTotal(order)} บาท`));
+  }
+
+  function cancelDeposit() {
+    if (!order?.deposit || order.deposit.firstPaidAt) return;
+    if (!window.confirm("ยกเลิกโหมดมัดจำ 50% — กลับไปเก็บเต็มจำนวน?")) return;
+    applyOrder(withLog({ ...order, deposit: undefined }, actor, "ยกเลิกโหมดมัดจำ 50%"));
+  }
+
+  /** แอดมินตรวจสลิปมัดจำเองแล้วกดยืนยัน (กรณี SlipOK ไม่ผ่าน/โอนช่องทางอื่น) */
+  function confirmDepositFirst() {
+    if (!order?.deposit || order.deposit.firstPaidAt) return;
+    if (!window.confirm(`ยืนยันว่าได้รับมัดจำ ${formatPrice(order.deposit.amount)} แล้ว? ออเดอร์จะเริ่มงานได้ทันที`)) return;
+    const now = new Date().toISOString();
+    applyOrder(
+      withLog(
+        {
+          ...order,
+          deposit: { ...order.deposit, firstPaidAt: now },
+          paidTotal: order.deposit.amount,
+          status: (["รอชำระเงิน", "รอตรวจสอบ"] as OrderStatus[]).includes(order.status) ? ("ชำระแล้ว" as OrderStatus) : order.status,
+        },
+        actor,
+        "ยืนยันรับมัดจำ 50%",
+        `ยอด ${order.deposit.amount} บาท`
+      )
+    );
+  }
+
+  /** แอดมินยืนยันว่าเก็บยอดคงเหลือครบแล้ว — ปลดล็อกพิมพ์เอกสาร/ยิงเลขพัสดุ */
+  function confirmDepositSettled() {
+    if (!order?.deposit || !order.deposit.firstPaidAt || order.deposit.settledAt) return;
+    const bal = Math.max(0, orderTotal(order) - (order.paidTotal ?? order.deposit.amount));
+    if (!window.confirm(`ยืนยันว่าได้รับยอดคงเหลือ ${formatPrice(bal)} ครบแล้ว?`)) return;
+    const now = new Date().toISOString();
+    applyOrder(
+      withLog(
+        { ...order, deposit: { ...order.deposit, settledAt: now }, paidTotal: orderTotal(order) },
+        actor,
+        "รับยอดคงเหลือครบแล้ว",
+        `ยอด ${bal} บาท — จ่ายครบ 100%`
+      )
+    );
   }
 
   /** ฝ่ายแพ็คถ่าย/แนบภาพของในกล่องก่อนปิด — บังคับอย่างน้อย 1 รูปก่อนยิงเลขพัสดุ */
@@ -1359,6 +1410,63 @@ export default function AdminOrderDetailPage() {
                 <span>ยอดรวม</span>
                 <span>{formatPrice(orderTotal(order))}</span>
               </div>
+
+              {/* ── มัดจำ 50% — ลูกค้าขอโอนงวดแรกก่อนเริ่มงาน ── */}
+              {!order.deposit && mayEdit && (order.status === "รอชำระเงิน" || order.status === "รอตรวจสอบ") && (
+                <button
+                  type="button"
+                  onClick={enableDeposit}
+                  className="mt-2.5 w-full rounded-lg border border-dashed border-violet-300 bg-violet-50/60 py-2 text-xs font-bold text-violet-600 transition hover:bg-violet-100"
+                >
+                  ➗ เปิดโหมดมัดจำ 50% (โอนก่อน {formatPrice(Math.ceil(orderTotal(order) / 2))})
+                </button>
+              )}
+              {order.deposit && (
+                <div className="mt-2.5 space-y-1.5 rounded-xl bg-violet-50/60 p-2.5 ring-1 ring-violet-100">
+                  <div className="flex items-center justify-between text-xs font-semibold">
+                    <span className="text-violet-700">➗ มัดจำ 50% {order.deposit.firstPaidAt ? "· รับแล้ว ✓" : "· รอโอน"}</span>
+                    <span className={order.deposit.firstPaidAt ? "text-emerald-600" : "text-slate-700"}>{formatPrice(order.deposit.amount)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-semibold">
+                    <span className="text-violet-700">ยอดคงเหลือ {order.deposit.settledAt ? "· ครบแล้ว ✓" : "· เก็บก่อนส่ง"}</span>
+                    <span className={order.deposit.settledAt ? "text-emerald-600" : "text-rose-600"}>
+                      {formatPrice(Math.max(0, orderTotal(order) - order.deposit.amount))}
+                    </span>
+                  </div>
+                  {mayEdit && !order.deposit.firstPaidAt && (
+                    <div className="flex gap-1.5 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={confirmDepositFirst}
+                        className="flex-1 rounded-lg bg-violet-600 py-1.5 text-[11px] font-bold text-white transition hover:bg-violet-700"
+                      >
+                        ✔️ ยืนยันรับมัดจำ (ตรวจเอง)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelDeposit}
+                        className="rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-bold text-slate-500 transition hover:bg-slate-50"
+                      >
+                        ยกเลิกโหมด
+                      </button>
+                    </div>
+                  )}
+                  {mayEdit && order.deposit.firstPaidAt && !order.deposit.settledAt && (
+                    <button
+                      type="button"
+                      onClick={confirmDepositSettled}
+                      className="w-full rounded-lg bg-emerald-600 py-1.5 text-[11px] font-bold text-white transition hover:bg-emerald-700"
+                    >
+                      ✔️ ยืนยันรับยอดคงเหลือครบ (ตรวจเอง)
+                    </button>
+                  )}
+                  {!order.deposit.settledAt && (
+                    <p className="text-[10px] leading-snug text-violet-500">
+                      ยังพิมพ์ใบงาน/ใบเสร็จและยิงเลขพัสดุไม่ได้ จนกว่าจะเก็บครบ 100%
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1882,7 +1990,7 @@ function PackView({
         <p className={`mt-1 text-sm font-bold ${gate.ready ? "text-green-400" : "text-amber-300"}`}>
           {gate.ready
             ? "✅ ตรวจครบแล้ว — ยิงเลขพัสดุได้"
-            : `⏳ เหลืออีก ${gate.uncounted.length + gate.unread.length + gate.unsampled.length + (gate.noPhoto ? 1 : 0)} จุดต้องยืนยัน`}
+            : `⏳ เหลืออีก ${gate.uncounted.length + gate.unread.length + gate.unsampled.length + (gate.noPhoto ? 1 : 0) + (gate.unpaidBalance ? 1 : 0)} จุดต้องยืนยัน`}
         </p>
       </div>
 
@@ -2031,6 +2139,7 @@ function PackView({
                 gate.short.length ? `ของไม่ครบ ${gate.short.length} รายการ` : "",
                 gate.unsampled.length ? `🎁 ใส่งานตัวอย่างอีก ${gate.unsampled.length} รายการ` : "",
                 gate.noPhoto ? "📸 ถ่ายภาพก่อนปิดกล่อง" : "",
+                gate.unpaidBalance ? "💳 เก็บยอดคงเหลือ (มัดจำ) ให้ครบ" : "",
               ]
                 .filter(Boolean)
                 .join(" · ")}
