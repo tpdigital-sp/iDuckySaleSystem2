@@ -112,6 +112,17 @@ export default function CustomerOrderPage() {
 
   const [slipBusy, setSlipBusy] = useState(false);
   const [slipErr, setSlipErr] = useState("");
+  const [slipDrag, setSlipDrag] = useState(false);
+  // กันวางไฟล์พลาดนอกกล่องแล้วเบราว์เซอร์เปิดรูปแทนหน้าเว็บ (สาเหตุ "โยนแล้วไม่ได้")
+  useEffect(() => {
+    const block = (e: DragEvent) => e.preventDefault();
+    window.addEventListener("dragover", block);
+    window.addEventListener("drop", block);
+    return () => {
+      window.removeEventListener("dragover", block);
+      window.removeEventListener("drop", block);
+    };
+  }, []);
 
   /* แก้ไขที่อยู่จัดส่ง (ได้จนกว่าร้านจะปริ้นใบงาน) */
   const [editAddr, setEditAddr] = useState(false);
@@ -263,6 +274,113 @@ export default function CustomerOrderPage() {
   );
   const cancelled = order.status === "ยกเลิก";
 
+  /* ชุดชำระเงิน/สลิป — มือถือโชว์บนสุด (CTA ต้องเจอทันที) · เดสก์ท็อปย้ายไปคอลัมน์ขวา */
+  const payFlow = (
+    <>
+      {/* ── ชำระเงิน / แจ้งสลิป ── */}
+      {order.status === "รอชำระเงิน" && (
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setSlipDrag(true);
+          }}
+          onDragLeave={() => setSlipDrag(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setSlipDrag(false);
+            const f = e.dataTransfer.files?.[0];
+            if (f) void uploadSlip(f);
+          }}
+          className={`mt-4 rounded-2xl p-4 ring-2 transition ${slipDrag ? "bg-rose-100 ring-rose-400 ring-dashed" : "bg-rose-50 ring-1 ring-rose-200"}`}
+        >
+          <p className="text-sm font-bold text-rose-800">
+            💸 {(order.paidTotal ?? 0) > 0 ? `มียอดค้างชำระ ${formatPrice(balance)}` : `รอชำระเงิน ${formatPrice(orderTotal(order))}`}
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-rose-700">
+            {(order.paidTotal ?? 0) > 0
+              ? `เกิดจากการสั่งเพิ่ม — โอนเฉพาะส่วนต่างมาที่บัญชีร้าน แล้วแนบสลิป (จ่ายแล้ว ${formatPrice(order.paidTotal ?? 0)} จาก ${formatPrice(orderTotal(order))})`
+              : "โอนเงินมาที่บัญชีร้านแล้วแนบสลิปที่นี่ ทางร้านจะตรวจสอบและเริ่มงานให้"}
+          </p>
+          <label
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              // ลากสลิปมาวางที่ปุ่มนี้ได้เลย (เดสก์ท็อป) — มือถือแตะเลือกไฟล์เหมือนเดิม
+              e.preventDefault();
+              const f = e.dataTransfer.files?.[0];
+              if (f) void uploadSlip(f);
+            }}
+            className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-rose-700"
+          >
+            {slipBusy ? "กำลังส่งสลิป…" : "📤 แนบสลิปการโอน — แตะเลือกรูป หรือลากมาวางตรงนี้"}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              disabled={slipBusy}
+              onChange={(e) => {
+                void uploadSlip(e.target.files?.[0] ?? null);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          {slipErr && <p className="mt-2 text-xs font-semibold text-rose-700">⚠️ {slipErr}</p>}
+        </div>
+      )}
+      {order.status === "รอตรวจสอบ" && (
+        <div className="mt-4 rounded-2xl bg-orange-50 p-4 text-sm text-orange-800 ring-1 ring-orange-200">
+          🧾 <strong>ได้รับสลิปแล้ว</strong> — ทางร้านกำลังตรวจสอบการชำระเงิน เดี๋ยวจะเริ่มงานให้ครับ
+          {order.slipUrl && (
+            <span className="mt-3 flex items-center gap-3">
+              <a href={order.slipUrl} target="_blank" rel="noreferrer" className="block h-16 w-16 shrink-0 overflow-hidden rounded-lg ring-1 ring-orange-200 transition hover:ring-orange-400">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={order.slipUrl} alt="สลิปที่คุณแนบ" className="h-full w-full object-cover" />
+              </a>
+              <span className="min-w-0 text-xs">
+                <span className="block font-bold">สลิปที่คุณแนบไว้ (แตะเพื่อดูเต็ม)</span>
+                {order.paidReportedAt && (
+                  <span className="block text-orange-600/80">
+                    แจ้งโอนเมื่อ {new Date(order.paidReportedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}
+                  </span>
+                )}
+                <label className="mt-1 inline-block cursor-pointer rounded-full bg-white px-3 py-1 text-[11px] font-bold text-orange-700 ring-1 ring-orange-300 transition hover:bg-orange-100">
+                  {slipBusy ? "กำลังส่ง…" : "📤 แนบสลิปใหม่ (แทนใบเดิม)"}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    disabled={slipBusy}
+                    onChange={(e) => {
+                      void uploadSlip(e.target.files?.[0] ?? null);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </span>
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* สลิปที่แนบ — โชว์ต่อหลังร้านยืนยันแล้วด้วย (หลักฐานการชำระของลูกค้า) */}
+      {order.slipUrl && order.status !== "รอตรวจสอบ" && order.status !== "รอชำระเงิน" && (
+        <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
+          <a href={order.slipUrl} target="_blank" rel="noreferrer" className="block h-14 w-14 shrink-0 overflow-hidden rounded-lg ring-1 ring-stone-200 transition hover:ring-amber-300">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={order.slipUrl} alt="สลิปการโอน" className="h-full w-full object-cover" />
+          </a>
+          <span className="min-w-0 text-xs text-stone-600">
+            <span className="block text-sm font-bold text-stone-800">🧾 สลิปการโอนของคุณ</span>
+            {order.paidReportedAt && (
+              <span className="block">
+                แจ้งโอนเมื่อ {new Date(order.paidReportedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })} · แตะรูปเพื่อดูเต็ม
+              </span>
+            )}
+          </span>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       {/* ── หัวออเดอร์ + แถบขั้นตอน ── */}
@@ -335,95 +453,8 @@ export default function CustomerOrderPage() {
         )}
       </div>
 
-      {/* ── ชำระเงิน / แจ้งสลิป ── */}
-      {order.status === "รอชำระเงิน" && (
-        <div className="mt-4 rounded-2xl bg-rose-50 p-4 ring-1 ring-rose-200">
-          <p className="text-sm font-bold text-rose-800">
-            💸 {(order.paidTotal ?? 0) > 0 ? `มียอดค้างชำระ ${formatPrice(balance)}` : `รอชำระเงิน ${formatPrice(orderTotal(order))}`}
-          </p>
-          <p className="mt-1 text-xs leading-relaxed text-rose-700">
-            {(order.paidTotal ?? 0) > 0
-              ? `เกิดจากการสั่งเพิ่ม — โอนเฉพาะส่วนต่างมาที่บัญชีร้าน แล้วแนบสลิป (จ่ายแล้ว ${formatPrice(order.paidTotal ?? 0)} จาก ${formatPrice(orderTotal(order))})`
-              : "โอนเงินมาที่บัญชีร้านแล้วแนบสลิปที่นี่ ทางร้านจะตรวจสอบและเริ่มงานให้"}
-          </p>
-          <label
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              // ลากสลิปมาวางที่ปุ่มนี้ได้เลย (เดสก์ท็อป) — มือถือแตะเลือกไฟล์เหมือนเดิม
-              e.preventDefault();
-              const f = e.dataTransfer.files?.[0];
-              if (f) void uploadSlip(f);
-            }}
-            className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-rose-700"
-          >
-            {slipBusy ? "กำลังส่งสลิป…" : "📤 แนบสลิปการโอน — แตะเลือกรูป หรือลากมาวางตรงนี้"}
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="hidden"
-              disabled={slipBusy}
-              onChange={(e) => {
-                void uploadSlip(e.target.files?.[0] ?? null);
-                e.target.value = "";
-              }}
-            />
-          </label>
-          {slipErr && <p className="mt-2 text-xs font-semibold text-rose-700">⚠️ {slipErr}</p>}
-        </div>
-      )}
+      <div className="lg:hidden">{payFlow}</div>
 
-      {order.status === "รอตรวจสอบ" && (
-        <div className="mt-4 rounded-2xl bg-orange-50 p-4 text-sm text-orange-800 ring-1 ring-orange-200">
-          🧾 <strong>ได้รับสลิปแล้ว</strong> — ทางร้านกำลังตรวจสอบการชำระเงิน เดี๋ยวจะเริ่มงานให้ครับ
-          {order.slipUrl && (
-            <span className="mt-3 flex items-center gap-3">
-              <a href={order.slipUrl} target="_blank" rel="noreferrer" className="block h-16 w-16 shrink-0 overflow-hidden rounded-lg ring-1 ring-orange-200 transition hover:ring-orange-400">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={order.slipUrl} alt="สลิปที่คุณแนบ" className="h-full w-full object-cover" />
-              </a>
-              <span className="min-w-0 text-xs">
-                <span className="block font-bold">สลิปที่คุณแนบไว้ (แตะเพื่อดูเต็ม)</span>
-                {order.paidReportedAt && (
-                  <span className="block text-orange-600/80">
-                    แจ้งโอนเมื่อ {new Date(order.paidReportedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}
-                  </span>
-                )}
-                <label className="mt-1 inline-block cursor-pointer rounded-full bg-white px-3 py-1 text-[11px] font-bold text-orange-700 ring-1 ring-orange-300 transition hover:bg-orange-100">
-                  {slipBusy ? "กำลังส่ง…" : "📤 แนบสลิปใหม่ (แทนใบเดิม)"}
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    className="hidden"
-                    disabled={slipBusy}
-                    onChange={(e) => {
-                      void uploadSlip(e.target.files?.[0] ?? null);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-              </span>
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* สลิปที่แนบ — โชว์ต่อหลังร้านยืนยันแล้วด้วย (หลักฐานการชำระของลูกค้า) */}
-      {order.slipUrl && order.status !== "รอตรวจสอบ" && order.status !== "รอชำระเงิน" && (
-        <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
-          <a href={order.slipUrl} target="_blank" rel="noreferrer" className="block h-14 w-14 shrink-0 overflow-hidden rounded-lg ring-1 ring-stone-200 transition hover:ring-amber-300">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={order.slipUrl} alt="สลิปการโอน" className="h-full w-full object-cover" />
-          </a>
-          <span className="min-w-0 text-xs text-stone-600">
-            <span className="block text-sm font-bold text-stone-800">🧾 สลิปการโอนของคุณ</span>
-            {order.paidReportedAt && (
-              <span className="block">
-                แจ้งโอนเมื่อ {new Date(order.paidReportedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })} · แตะรูปเพื่อดูเต็ม
-              </span>
-            )}
-          </span>
-        </div>
-      )}
 
       {waitingItems > 0 && (
         <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
@@ -795,6 +826,7 @@ export default function CustomerOrderPage() {
 
         {/* ขวา: สรุป (ติดหนึบตอนเลื่อน) */}
         <aside className="space-y-4 lg:sticky lg:top-6">
+          <div className="hidden lg:block">{payFlow}</div>
           <div className="rounded-2xl bg-white p-4 ring-1 ring-stone-200 sm:p-5">
             <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">สรุปยอด</p>
             <div className="mt-2.5 flex justify-between text-sm">

@@ -33,7 +33,7 @@ import { usePolling } from "@/lib/use-polling";
 import { card, faint, muted, shortTime } from "@/lib/admin-ui";
 import ImageLightbox from "@/components/ImageLightbox";
 import PackCheckPanel from "@/components/PackCheckPanel";
-import { useActor, useCan } from "@/lib/perm-context";
+import { useActor, useCan, useRoleLabel } from "@/lib/perm-context";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
 
@@ -253,6 +253,7 @@ export default function AdminOrderDetailPage() {
   const can = useCan();
   const actor = useActor(); // ชื่อคนที่ล็อกอินอยู่ (ไว้บันทึกประวัติว่าใครทำ)
   const seesMoney = can("orders.money"); // เห็นราคา/สลิป
+  const isSuperAdmin = useRoleLabel() === "ผู้ดูแลระบบ"; // ลบสลิปได้เฉพาะผู้ดูแลระบบ (เซิร์ฟเวอร์บังคับซ้ำ)
   const mayEdit = can("orders.edit"); // เปลี่ยนสถานะ/แก้ข้อมูล
   const mayProof = can("proof.manage"); // อัปโหลด/ลบแบบงาน
   const mayCancel = can("orders.cancel");
@@ -321,6 +322,23 @@ export default function AdminOrderDetailPage() {
           }
         : cur
     );
+  }
+
+  /** ลบสลิป (เฉพาะผู้ดูแลระบบ) — รีเซ็ตการแจ้งโอน ออเดอร์กลับเป็น รอชำระเงิน */
+  async function deleteSlip() {
+    if (!order) return;
+    if (!confirm(`ลบสลิปของ ${order.id}?\n\nการแจ้งโอนจะถูกรีเซ็ต ออเดอร์กลับเป็น "รอชำระเงิน" ให้ลูกค้าแนบใหม่`)) return;
+    const res = await fetch("/api/admin/orders/slip", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ orderId: order.id }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setErr(j.error ?? "ลบสลิปไม่สำเร็จ");
+      return;
+    }
+    if (j.order) setOrder(j.order);
   }
 
   /** บันทึกออเดอร์ปัจจุบันลงฐานข้อมูล (เรียกตอน blur ช่องกรอก) */
@@ -1135,9 +1153,45 @@ export default function AdminOrderDetailPage() {
                 <span className={muted}>รวมสินค้า ({qty} ชิ้น)</span>
                 <span>{formatPrice(subtotal)}</span>
               </div>
-              <div className="mt-1.5 flex justify-between text-sm">
+              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-sm">
                 <span className={muted}>ค่าจัดส่ง</span>
-                <span>{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
+                {mayEdit ? (
+                  /* เลือกวิธีส่งจากตั้งค่าร้าน — ราคาเติมอัตโนมัติ แล้วแก้ตัวเลขต่อได้ (จุดเดียวของทั้งหน้า) */
+                  <span className="flex items-center gap-1.5">
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const m = shipMethods.find((x) => x.id === e.target.value);
+                        if (!m) return;
+                        applyOrder({
+                          ...order,
+                          shipping: (m.name.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา") as Order["shipping"],
+                          shippingCost: Math.max(0, m.price),
+                        });
+                      }}
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
+                    >
+                      <option value="" disabled>
+                        เลือกวิธีส่ง…
+                      </option>
+                      {shipMethods.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} — ฿{m.price}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min={0}
+                      value={order.shippingCost}
+                      onChange={(e) => setOrder((cur) => (cur ? { ...cur, shippingCost: Math.max(0, Number(e.target.value) || 0) } : cur))}
+                      onBlur={persist}
+                      className="w-16 rounded-lg border border-slate-200 bg-white px-2 py-1 text-right text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
+                    />
+                  </span>
+                ) : (
+                  <span>{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
+                )}
               </div>
               {order.discount && order.discount.amount > 0 && (
                 <div className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
@@ -1274,42 +1328,8 @@ export default function AdminOrderDetailPage() {
                     placeholder="ที่อยู่จัดส่ง"
                     className="w-full resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 focus:border-amber-300 focus:outline-none"
                   />
-                  <p className={`flex flex-wrap items-center gap-2 text-xs ${faint}`}>
-                    {order.payment} ·
-                    {/* เลือกวิธีส่งจากตั้งค่าร้าน — ราคาเติมให้อัตโนมัติ (แก้ตัวเลขเองต่อได้) */}
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        const m = shipMethods.find((x) => x.id === e.target.value);
-                        if (!m) return;
-                        const next = {
-                          ...order,
-                          shipping: (m.name.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา") as Order["shipping"],
-                          shippingCost: Math.max(0, m.price),
-                        };
-                        applyOrder(next);
-                      }}
-                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
-                    >
-                      <option value="" disabled>
-                        {order.shipping} — เลือกวิธีส่ง…
-                      </option>
-                      {shipMethods.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name} — ฿{m.price}
-                        </option>
-                      ))}
-                    </select>
-                    ค่าส่ง
-                    <input
-                      type="number"
-                      min={0}
-                      value={order.shippingCost}
-                      onChange={(e) => setOrder((cur) => (cur ? { ...cur, shippingCost: Math.max(0, Number(e.target.value) || 0) } : cur))}
-                      onBlur={persist}
-                      className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
-                    />
-                    บาท
+                  <p className={`text-xs ${faint}`}>
+                    {order.payment} · {order.shipping}
                   </p>
                 </div>
               ) : (
@@ -1404,7 +1424,18 @@ export default function AdminOrderDetailPage() {
                   <img src={order.slipUrl} alt="สลิปการโอน" className="h-full w-full object-cover" />
                 </button>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-slate-800">ลูกค้าแจ้งโอนแล้ว</p>
+                  <p className="text-sm font-bold text-slate-800">
+                    ลูกค้าแจ้งโอนแล้ว
+                    {isSuperAdmin && (
+                      <button
+                        type="button"
+                        onClick={deleteSlip}
+                        className="ml-2 rounded-full px-2 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
+                      >
+                        🗑 ลบสลิป
+                      </button>
+                    )}
+                  </p>
                   {order.paidReportedAt && (
                     <p className={`text-xs ${faint}`}>
                       {new Date(order.paidReportedAt).toLocaleString("th-TH", {
