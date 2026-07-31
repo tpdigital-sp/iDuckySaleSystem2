@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import { adminDiscountAmount, itemDiscountAmount, orderBalance, orderItemDiscounts, orderTotal, PROOF_STYLES, proofsOf, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
@@ -1183,7 +1184,7 @@ function CustomerThaiPostStatus({ orderId, orderKey, tracking }: { orderId: stri
   const [st, setSt] = useState<{
     loading: boolean;
     configured?: boolean;
-    events?: { description: string; location?: string; at: string }[];
+    events?: { status: string; description: string; location?: string; at: string }[];
     error?: string;
   }>({ loading: true });
   const trackUrl = `https://track.thailandpost.co.th/?trackNumber=${encodeURIComponent(tracking)}`;
@@ -1200,16 +1201,11 @@ function CustomerThaiPostStatus({ orderId, orderKey, tracking }: { orderId: stri
     };
   }, [orderId, orderKey]);
 
-  const latest = st.events?.[st.events.length - 1];
   return (
     <div className="mt-2">
-      {latest ? (
-        <div className="rounded-xl bg-white/70 p-3 ring-1 ring-amber-200/60">
-          <p className="text-sm font-bold text-amber-950">
-            📮 {latest.description}
-            {latest.location ? <span className="font-normal text-stone-500"> · {latest.location}</span> : null}
-          </p>
-          <p className="mt-0.5 text-[11px] text-stone-400">{latest.at}</p>
+      {st.events?.length ? (
+        <div className="rounded-xl bg-white/80 p-3 ring-1 ring-amber-200/60">
+          <ThaiPostTimeline events={st.events} />
         </div>
       ) : st.loading && orderKey ? (
         <p className="text-xs text-stone-400">กำลังเช็คสถานะกับไปรษณีย์ไทย…</p>

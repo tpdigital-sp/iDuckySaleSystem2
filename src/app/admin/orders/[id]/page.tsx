@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import { useParams } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import {
@@ -1545,6 +1546,31 @@ export default function AdminOrderDetailPage() {
             {(order.tracking ?? "").trim() && <ThaiPostStatus number={order.tracking!.trim()} />}
           </div>
 
+          {/* 📸 ภาพที่ฝ่ายแพ็คถ่ายก่อนปิดกล่อง — โชว์ในหน้าตรวจสอบด้วย (จัดการรูปทำในโหมดแพ็ค) */}
+          {(order.packPhotos?.length ?? 0) > 0 && (
+            <div>
+              <p className={LBL}>ภาพก่อนปิดกล่อง ({order.packPhotos!.length})</p>
+              <div className={`mt-2 ${SOFT}`}>
+                <div className="grid grid-cols-3 gap-2">
+                  {(order.packPhotos ?? []).map((ph, i) => (
+                    <a key={`${ph.url}-${i}`} href={ph.url} target="_blank" rel="noreferrer" className="group">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={ph.url}
+                        alt={`ภาพก่อนปิดกล่อง ${i + 1}`}
+                        className="h-20 w-full rounded-lg object-cover ring-1 ring-slate-200 transition group-hover:ring-amber-300"
+                      />
+                      <p className="mt-0.5 truncate text-[10px] text-slate-400">
+                        {ph.by} · {shortTime(ph.at)}
+                      </p>
+                    </a>
+                  ))}
+                </div>
+                <p className={`mt-1.5 text-[11px] ${faint}`}>ลูกค้าเห็นภาพชุดนี้ในหน้าออเดอร์ด้วย · เพิ่ม/ลบรูปได้ในโหมดแพ็ค</p>
+              </div>
+            </div>
+          )}
+
           {/* ── ข้อมูลใบงาน: วันที่จัดส่ง + หมายเหตุ (โชว์ตอนปริ้น) ── */}
           {mayEdit && (
             <div>
@@ -2159,7 +2185,6 @@ function ThaiPostStatus({ number }: { number: string }) {
     events?: { status: string; description: string; location?: string; at: string }[];
     error?: string;
   }>({ loading: true });
-  const [open, setOpen] = useState(false);
   const trackUrl = `https://track.thailandpost.co.th/?trackNumber=${encodeURIComponent(number)}`;
 
   useEffect(() => {
@@ -2175,7 +2200,6 @@ function ThaiPostStatus({ number }: { number: string }) {
   }, [number]);
 
   if (!/^[A-Z]{2}\d{9}TH$/i.test(number)) return null; // ไม่ใช่เลข ปณ. (เช่น Flash/J&T) — ไม่โชว์
-  const latest = state.events?.[state.events.length - 1];
 
   return (
     <div className="mt-2 rounded-xl bg-rose-50/50 p-3 ring-1 ring-rose-100">
@@ -2197,36 +2221,8 @@ function ThaiPostStatus({ number }: { number: string }) {
       ) : !state.events?.length ? (
         <p className="mt-1 text-xs text-slate-500">ปณ. ยังไม่มีข้อมูลเลขนี้ (พัสดุใหม่จะขึ้นหลังไปรษณีย์รับเข้าระบบ)</p>
       ) : (
-        <div className="mt-1.5">
-          <p className="text-sm font-bold text-slate-800">
-            {latest!.description}
-            {latest!.location ? <span className="font-normal text-slate-500"> · {latest!.location}</span> : null}
-          </p>
-          <p className="text-[11px] text-slate-400">{latest!.at}</p>
-          {state.events!.length > 1 && (
-            <>
-              {open && (
-                <ul className="mt-2 space-y-1.5 border-l-2 border-rose-200 pl-3">
-                  {[...state.events!].reverse().slice(1).map((e, i) => (
-                    <li key={i}>
-                      <p className="text-xs font-semibold text-slate-600">
-                        {e.description}
-                        {e.location ? <span className="font-normal text-slate-400"> · {e.location}</span> : null}
-                      </p>
-                      <p className="text-[10px] text-slate-400">{e.at}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <button
-                type="button"
-                onClick={() => setOpen((v) => !v)}
-                className="mt-1.5 text-[11px] font-bold text-rose-600 hover:underline"
-              >
-                {open ? "หุบประวัติเดินทาง ▴" : `ดูประวัติเดินทางทั้งหมด ${state.events!.length} ขั้น ▾`}
-              </button>
-            </>
-          )}
+        <div className="mt-2.5">
+          <ThaiPostTimeline events={state.events!} />
         </div>
       )}
     </div>
