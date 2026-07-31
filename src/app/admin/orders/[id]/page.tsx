@@ -1126,6 +1126,119 @@ export default function AdminOrderDetailPage() {
               }}
             />
           )}
+
+          {/* ยอดเงิน — ย้ายมาไว้ใต้รายการสินค้า (มองไล่จากบนลงล่างจบในคอลัมน์เดียว) */}
+          <div className={seesMoney ? "" : "hidden"}>
+            <p className={LBL}>ยอดเงิน</p>
+            <div className={`mt-2 ${SOFT}`}>
+              <div className="flex justify-between text-sm">
+                <span className={muted}>รวมสินค้า ({qty} ชิ้น)</span>
+                <span>{formatPrice(subtotal)}</span>
+              </div>
+              <div className="mt-1.5 flex justify-between text-sm">
+                <span className={muted}>ค่าจัดส่ง</span>
+                <span>{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
+              </div>
+              {order.discount && order.discount.amount > 0 && (
+                <div className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
+                  <span>{order.discount.label}</span>
+                  <span>−{formatPrice(order.discount.amount)}</span>
+                </div>
+              )}
+              {orderItemDiscounts(order) > 0 && (
+                <div className="mt-1.5 flex justify-between text-sm font-semibold text-rose-500">
+                  <span>ส่วนลดรายรายการ</span>
+                  <span>−{formatPrice(orderItemDiscounts(order))}</span>
+                </div>
+              )}
+              {/* ส่วนลดทั้งบิล (แอดมินใส่เอง) — บันทึกตอนออกจากช่อง + ลง log */}
+              {mayEdit ? (
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-sm">
+                  <input
+                    value={order.adminDiscount?.label ?? ""}
+                    onChange={(e) =>
+                      setOrder((cur) =>
+                        cur ? { ...cur, adminDiscount: { amount: cur.adminDiscount?.amount ?? 0, label: e.target.value } } : cur
+                      )
+                    }
+                    onBlur={persist}
+                    placeholder="ส่วนลดทั้งบิล (เหตุผล)"
+                    className="w-full min-w-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
+                  />
+                  <span className="flex shrink-0 items-center gap-1 font-semibold text-rose-500">
+                    −
+                    <input
+                      type="number"
+                      min={0}
+                      value={order.adminDiscount?.pct !== undefined ? (order.adminDiscount.pct || "") : (order.adminDiscount?.amount || "")}
+                      placeholder="0"
+                      onChange={(e) => {
+                        const v = Math.max(0, Number(e.target.value) || 0);
+                        const isPct = order.adminDiscount?.pct !== undefined;
+                        setOrder((cur) => {
+                          if (!cur) return cur;
+                          if (v <= 0 && !isPct) return { ...cur, adminDiscount: cur.adminDiscount?.label ? { label: cur.adminDiscount.label } : undefined };
+                          return {
+                            ...cur,
+                            adminDiscount: isPct
+                              ? { label: cur.adminDiscount?.label, pct: Math.min(100, v) }
+                              : { label: cur.adminDiscount?.label, amount: v },
+                          };
+                        });
+                      }}
+                      onFocus={(e) => (e.currentTarget.dataset.orig = String(adminDiscountAmount(order)))}
+                      onBlur={(e) => {
+                        const orig = Number(e.currentTarget.dataset.orig || 0);
+                        const now = adminDiscountAmount(order);
+                        if (orig === now) return persist();
+                        const pct = (order.adminDiscount?.pct ?? 0) > 0 ? ` (${order.adminDiscount!.pct}%)` : "";
+                        const next = withLog(order, actor, "ส่วนลดทั้งบิล", `−${formatPrice(now)}${pct}${order.adminDiscount?.label ? ` · ${order.adminDiscount.label}` : ""}`);
+                        applyOrder(next);
+                      }}
+                      className="w-16 rounded-md border border-slate-200 bg-white px-1.5 py-1 text-right text-xs font-semibold text-rose-600 focus:border-amber-300 focus:outline-none"
+                    />
+                    <select
+                      value={order.adminDiscount?.pct !== undefined ? "pct" : "baht"}
+                      onChange={(e) => {
+                        const toPct = e.target.value === "pct";
+                        const cur = order.adminDiscount?.pct !== undefined ? order.adminDiscount.pct : (order.adminDiscount?.amount ?? 0);
+                        const next = withLog(
+                          {
+                            ...order,
+                            adminDiscount: toPct
+                              ? { label: order.adminDiscount?.label, pct: Math.min(100, cur) }
+                              : { label: order.adminDiscount?.label, amount: cur },
+                          },
+                          actor,
+                          "ส่วนลดทั้งบิล",
+                          `สลับหน่วยเป็น ${toPct ? "%" : "บาท"}`
+                        );
+                        applyOrder(next);
+                      }}
+                      className="rounded-md border border-slate-200 bg-white px-1 py-1 text-xs font-semibold text-rose-600 focus:border-amber-300 focus:outline-none"
+                    >
+                      <option value="baht">฿</option>
+                      <option value="pct">%</option>
+                    </select>
+                    {(order.adminDiscount?.pct ?? 0) > 0 && adminDiscountAmount(order) > 0 && (
+                      <span className="text-xs text-slate-400">= −{formatPrice(adminDiscountAmount(order))}</span>
+                    )}
+                  </span>
+                </div>
+              ) : (
+                adminDiscountAmount(order) > 0 && (
+                  <div className="mt-1.5 flex justify-between text-sm font-semibold text-rose-500">
+                    <span>{order.adminDiscount?.label || "ส่วนลดพิเศษ"}{(order.adminDiscount?.pct ?? 0) > 0 ? ` (${order.adminDiscount!.pct}%)` : ""}</span>
+                    <span>−{formatPrice(adminDiscountAmount(order))}</span>
+                  </div>
+                )
+              )}
+              <div className="mt-2.5 flex justify-between border-t border-slate-100 pt-2.5 font-bold text-slate-900">
+                <span>ยอดรวม</span>
+                <span>{formatPrice(orderTotal(order))}</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* ── ขวา: ข้อมูล ── */}
@@ -1257,117 +1370,6 @@ export default function AdminOrderDetailPage() {
             </div>
           </div>
 
-          <div className={seesMoney ? "" : "hidden"}>
-            <p className={LBL}>ยอดเงิน</p>
-            <div className={`mt-2 ${SOFT}`}>
-              <div className="flex justify-between text-sm">
-                <span className={muted}>รวมสินค้า ({qty} ชิ้น)</span>
-                <span>{formatPrice(subtotal)}</span>
-              </div>
-              <div className="mt-1.5 flex justify-between text-sm">
-                <span className={muted}>ค่าจัดส่ง</span>
-                <span>{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
-              </div>
-              {order.discount && order.discount.amount > 0 && (
-                <div className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
-                  <span>{order.discount.label}</span>
-                  <span>−{formatPrice(order.discount.amount)}</span>
-                </div>
-              )}
-              {orderItemDiscounts(order) > 0 && (
-                <div className="mt-1.5 flex justify-between text-sm font-semibold text-rose-500">
-                  <span>ส่วนลดรายรายการ</span>
-                  <span>−{formatPrice(orderItemDiscounts(order))}</span>
-                </div>
-              )}
-              {/* ส่วนลดทั้งบิล (แอดมินใส่เอง) — บันทึกตอนออกจากช่อง + ลง log */}
-              {mayEdit ? (
-                <div className="mt-1.5 flex items-center justify-between gap-2 text-sm">
-                  <input
-                    value={order.adminDiscount?.label ?? ""}
-                    onChange={(e) =>
-                      setOrder((cur) =>
-                        cur ? { ...cur, adminDiscount: { amount: cur.adminDiscount?.amount ?? 0, label: e.target.value } } : cur
-                      )
-                    }
-                    onBlur={persist}
-                    placeholder="ส่วนลดทั้งบิล (เหตุผล)"
-                    className="w-full min-w-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
-                  />
-                  <span className="flex shrink-0 items-center gap-1 font-semibold text-rose-500">
-                    −
-                    <input
-                      type="number"
-                      min={0}
-                      value={order.adminDiscount?.pct !== undefined ? (order.adminDiscount.pct || "") : (order.adminDiscount?.amount || "")}
-                      placeholder="0"
-                      onChange={(e) => {
-                        const v = Math.max(0, Number(e.target.value) || 0);
-                        const isPct = order.adminDiscount?.pct !== undefined;
-                        setOrder((cur) => {
-                          if (!cur) return cur;
-                          if (v <= 0 && !isPct) return { ...cur, adminDiscount: cur.adminDiscount?.label ? { label: cur.adminDiscount.label } : undefined };
-                          return {
-                            ...cur,
-                            adminDiscount: isPct
-                              ? { label: cur.adminDiscount?.label, pct: Math.min(100, v) }
-                              : { label: cur.adminDiscount?.label, amount: v },
-                          };
-                        });
-                      }}
-                      onFocus={(e) => (e.currentTarget.dataset.orig = String(adminDiscountAmount(order)))}
-                      onBlur={(e) => {
-                        const orig = Number(e.currentTarget.dataset.orig || 0);
-                        const now = adminDiscountAmount(order);
-                        if (orig === now) return persist();
-                        const pct = (order.adminDiscount?.pct ?? 0) > 0 ? ` (${order.adminDiscount!.pct}%)` : "";
-                        const next = withLog(order, actor, "ส่วนลดทั้งบิล", `−${formatPrice(now)}${pct}${order.adminDiscount?.label ? ` · ${order.adminDiscount.label}` : ""}`);
-                        applyOrder(next);
-                      }}
-                      className="w-16 rounded-md border border-slate-200 bg-white px-1.5 py-1 text-right text-xs font-semibold text-rose-600 focus:border-amber-300 focus:outline-none"
-                    />
-                    <select
-                      value={order.adminDiscount?.pct !== undefined ? "pct" : "baht"}
-                      onChange={(e) => {
-                        const toPct = e.target.value === "pct";
-                        const cur = order.adminDiscount?.pct !== undefined ? order.adminDiscount.pct : (order.adminDiscount?.amount ?? 0);
-                        const next = withLog(
-                          {
-                            ...order,
-                            adminDiscount: toPct
-                              ? { label: order.adminDiscount?.label, pct: Math.min(100, cur) }
-                              : { label: order.adminDiscount?.label, amount: cur },
-                          },
-                          actor,
-                          "ส่วนลดทั้งบิล",
-                          `สลับหน่วยเป็น ${toPct ? "%" : "บาท"}`
-                        );
-                        applyOrder(next);
-                      }}
-                      className="rounded-md border border-slate-200 bg-white px-1 py-1 text-xs font-semibold text-rose-600 focus:border-amber-300 focus:outline-none"
-                    >
-                      <option value="baht">฿</option>
-                      <option value="pct">%</option>
-                    </select>
-                    {(order.adminDiscount?.pct ?? 0) > 0 && adminDiscountAmount(order) > 0 && (
-                      <span className="text-xs text-slate-400">= −{formatPrice(adminDiscountAmount(order))}</span>
-                    )}
-                  </span>
-                </div>
-              ) : (
-                adminDiscountAmount(order) > 0 && (
-                  <div className="mt-1.5 flex justify-between text-sm font-semibold text-rose-500">
-                    <span>{order.adminDiscount?.label || "ส่วนลดพิเศษ"}{(order.adminDiscount?.pct ?? 0) > 0 ? ` (${order.adminDiscount!.pct}%)` : ""}</span>
-                    <span>−{formatPrice(adminDiscountAmount(order))}</span>
-                  </div>
-                )
-              )}
-              <div className="mt-2.5 flex justify-between border-t border-slate-100 pt-2.5 font-bold text-slate-900">
-                <span>ยอดรวม</span>
-                <span>{formatPrice(orderTotal(order))}</span>
-              </div>
-            </div>
-          </div>
 
           {order.slipUrl && seesMoney && (
             <div>
