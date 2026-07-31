@@ -249,6 +249,7 @@ export default function AdminOrderDetailPage() {
   const [overrideLock, setOverrideLock] = useState(false); // แอดมินยืนยันให้ทำแบบก่อนจ่ายเงิน
   const [packMode, setPackMode] = useState(false); // แอดมินสลับเข้าโหมดแพ็ค (ตรวจนับ/ยืนยันอ่าน) เอง
   const [logOpen, setLogOpen] = useState(false); // ประวัติการทำงาน: หุบไว้ (โชว์ 3 รายการล่าสุด) กดค่อยขยาย
+  const [skipGate, setSkipGate] = useState<string[] | null>(null); // โมดัลยืนยันข้ามด่านแพ็ค (เหตุผลที่ยังไม่ครบ)
   const trackingRef = useRef<string>(""); // เลขพัสดุที่บันทึกไปแล้ว กันบันทึกซ้ำตอน blur
 
   const can = useCan();
@@ -377,26 +378,26 @@ export default function AdminOrderDetailPage() {
     const g = packGate(order);
     if (!g.ready) {
       const reasons = [
-        g.uncounted.length ? `• ตรวจนับอีก ${g.uncounted.length} รูป` : "",
-        g.unread.length ? `• ยืนยันอ่านอีก ${g.unread.length} รายการ` : "",
-        g.short.length ? `• ของไม่ครบ ${g.short.length} รายการ` : "",
-        g.unsampled.length ? `• ยังไม่ยืนยันใส่งานตัวอย่าง ${g.unsampled.length} รายการ` : "",
-        g.noPhoto ? "• ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง" : "",
-      ]
-        .filter(Boolean)
-        .join("\n");
-      const okToSkip =
-        mayEdit &&
-        window.confirm(
-          `⚠️ ด่านตรวจแพ็คยังไม่ครบ:\n${reasons}\n\nยืนยันข้ามด่านและยิงเลขพัสดุเลยไหม?\n(การข้ามจะถูกบันทึกในประวัติออเดอร์ พร้อมชื่อคุณ)`
-        );
-      if (!okToSkip) {
-        // ยกเลิก → คืนช่องกรอกเป็นค่าที่บันทึกไว้ก่อนหน้า
+        g.uncounted.length ? `ตรวจนับแบบงานอีก ${g.uncounted.length} รูป` : "",
+        g.unread.length ? `ยืนยันอ่านรายละเอียดอีก ${g.unread.length} รายการ` : "",
+        g.short.length ? `ของไม่ครบ ${g.short.length} รายการ` : "",
+        g.unsampled.length ? `ยังไม่ยืนยันใส่ชิ้นงานตัวอย่าง ${g.unsampled.length} รายการ` : "",
+        g.noPhoto ? "ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง" : "",
+      ].filter(Boolean);
+      if (!mayEdit) {
         setOrder((cur) => (cur ? { ...cur, tracking: trackingRef.current || undefined } : cur));
-        if (!mayEdit) setErr(`ยังยิงเลขพัสดุไม่ได้ — ต้องผ่านด่านตรวจก่อน:\n${reasons}`);
+        setErr(`ยังยิงเลขพัสดุไม่ได้ — ต้องผ่านด่านตรวจก่อน: ${reasons.join(" · ")}`);
         return;
       }
+      setSkipGate(reasons); // เปิดโมดัลยืนยัน — ตัดสินใจต่อใน confirmSkipGate/cancelSkipGate
+      return;
     }
+    commitTracking(t);
+  }
+
+  /** บันทึกเลขพัสดุจริง (ผ่านด่านแล้ว หรือแอดมินยืนยันข้าม) */
+  function commitTracking(t: string) {
+    if (!order) return;
     trackingRef.current = t;
     const next = withLog(
       { ...order, tracking: t, status: order.status === "เสร็จสิ้น" ? order.status : "จัดส่งแล้ว" },
@@ -406,6 +407,19 @@ export default function AdminOrderDetailPage() {
     );
     setOrder(next);
     if (!demo) void saveOrderAdmin(next);
+  }
+
+  /** แอดมินยืนยัน "ข้ามด่านตรวจ" จากโมดัล — เซิร์ฟเวอร์จะลง log ชื่อคนข้ามเสมอ */
+  function confirmSkipGate() {
+    setSkipGate(null);
+    const t = (order?.tracking ?? "").trim();
+    if (t) commitTracking(t);
+  }
+
+  /** ยกเลิกข้ามด่าน → คืนช่องเลขพัสดุเป็นค่าเดิม */
+  function cancelSkipGate() {
+    setSkipGate(null);
+    setOrder((cur) => (cur ? { ...cur, tracking: trackingRef.current || undefined } : cur));
   }
 
   /** เปิดดูรูปแบบงานเต็มจอ (รู้ตำแหน่ง item/proof เพื่อเลื่อนรูปในรายการเดียวกันได้) */
@@ -685,6 +699,7 @@ export default function AdminOrderDetailPage() {
             </button>
           </div>
         )}
+        {skipGate && <SkipGateModal reasons={skipGate} onCancel={cancelSkipGate} onConfirm={confirmSkipGate} />}
         <PackView
           order={order}
           onPhotoAdd={addPackPhotos}
@@ -1639,6 +1654,8 @@ export default function AdminOrderDetailPage() {
         </div>
       </div>
 
+      {skipGate && <SkipGateModal reasons={skipGate} onCancel={cancelSkipGate} onConfirm={confirmSkipGate} />}
+
       {/* หน้าตรวจสอบออเดอร์: ขยายรูปดูอย่างเดียว (ไม่มีปุ่มตรวจนับ — งานแพ็คอยู่ในโหมดแพ็ค) */}
       {lightbox && (
         <ImageLightbox
@@ -2212,6 +2229,60 @@ function ThaiPostStatus({ number }: { number: string }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+
+/** โมดัลยืนยัน "ข้ามด่านตรวจแพ็ค" — แทน confirm() เดิม เน้นให้เห็นชัดว่าขาดอะไรและมีผลอะไร */
+function SkipGateModal({ reasons, onCancel, onConfirm }: { reasons: string[]; onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onCancel}>
+      <div
+        className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        role="alertdialog"
+        aria-modal="true"
+      >
+        {/* หัวโทนเตือน */}
+        <div className="bg-amber-50 px-5 pb-4 pt-5 text-center ring-1 ring-inset ring-amber-100">
+          <span className="text-4xl">📦⚠️</span>
+          <p className="mt-2 text-lg font-extrabold text-slate-900">ด่านตรวจแพ็คยังไม่ครบ</p>
+          <p className="mt-0.5 text-xs text-slate-500">ยังยิงเลขพัสดุตอนนี้ไม่ควร — เช็คก่อนว่าตั้งใจข้ามจริงไหม</p>
+        </div>
+
+        {/* รายการที่ขาด */}
+        <ul className="space-y-2 px-5 py-4">
+          {reasons.map((r, i) => (
+            <li key={i} className="flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2 ring-1 ring-rose-100">
+              <span className="mt-0.5 text-rose-500">✗</span>
+              <span className="text-sm font-bold text-rose-700">{r}</span>
+            </li>
+          ))}
+        </ul>
+
+        <p className="px-5 text-center text-[11px] leading-relaxed text-slate-400">
+          หากยืนยันข้าม ระบบจะ<strong className="text-amber-600">บันทึกในประวัติออเดอร์พร้อมชื่อคุณ</strong>ว่าเป็นผู้ข้ามด่านตรวจ
+        </p>
+
+        {/* ปุ่ม — ค่าเริ่มต้นชวนให้กลับไปทำให้ครบ */}
+        <div className="flex flex-col gap-2 p-5">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="w-full rounded-xl bg-slate-900 py-3 text-sm font-extrabold text-white transition hover:bg-slate-700"
+          >
+            ← กลับไปตรวจให้ครบก่อน (แนะนำ)
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="w-full rounded-xl border-2 border-amber-300 bg-amber-50 py-2.5 text-sm font-extrabold text-amber-700 transition hover:bg-amber-100"
+          >
+            ⚠️ ยืนยันข้ามด่าน — ยิงเลขพัสดุเลย
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
