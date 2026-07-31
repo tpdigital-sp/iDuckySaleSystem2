@@ -456,7 +456,7 @@ export default function CustomerOrderPage() {
                 </div>
 
                 {!proofs.length ? (
-                  <div className="mt-2 grid aspect-[16/7] place-items-center rounded-xl border-2 border-dashed border-stone-200 bg-stone-50/60 px-4 text-center text-xs leading-relaxed text-stone-400">
+                  <div className="mt-2 rounded-xl border-2 border-dashed border-stone-200 bg-stone-50/60 px-4 py-3 text-center text-xs leading-relaxed text-stone-400">
                     🎨 ยังไม่มีแบบงาน — ทีมกราฟฟิกกำลังจัดทำ เดี๋ยวจะแจ้งให้ตรวจครับ
                   </div>
                 ) : (
