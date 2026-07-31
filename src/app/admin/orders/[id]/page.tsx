@@ -248,6 +248,7 @@ export default function AdminOrderDetailPage() {
   const [linkCopied, setLinkCopied] = useState(false);
   const [overrideLock, setOverrideLock] = useState(false); // แอดมินยืนยันให้ทำแบบก่อนจ่ายเงิน
   const [packMode, setPackMode] = useState(false); // แอดมินสลับเข้าโหมดแพ็ค (ตรวจนับ/ยืนยันอ่าน) เอง
+  const [logOpen, setLogOpen] = useState(false); // ประวัติการทำงาน: หุบไว้ (โชว์ 3 รายการล่าสุด) กดค่อยขยาย
   const trackingRef = useRef<string>(""); // เลขพัสดุที่บันทึกไปแล้ว กันบันทึกซ้ำตอน blur
 
   const can = useCan();
@@ -1600,7 +1601,7 @@ export default function AdminOrderDetailPage() {
               <p className={`mt-2 text-xs ${faint}`}>ยังไม่มีประวัติ — จะบันทึกอัตโนมัติเมื่อมีการเปลี่ยนแปลง</p>
             ) : (
               <ul className="relative mt-3 space-y-4 border-l-2 border-slate-200 pl-4">
-                {[...order.log].reverse().map((l, i) => (
+                {[...order.log].reverse().slice(0, logOpen ? undefined : 3).map((l, i) => (
                   <li key={i} className="relative">
                     <span
                       className={`absolute -left-[22px] top-1.5 h-2.5 w-2.5 rounded-full border-2 ${
@@ -1623,6 +1624,15 @@ export default function AdminOrderDetailPage() {
                   </li>
                 ))}
               </ul>
+            )}
+            {(order.log?.length ?? 0) > 3 && (
+              <button
+                type="button"
+                onClick={() => setLogOpen((v) => !v)}
+                className="mt-2 w-full rounded-lg bg-slate-50 py-1.5 text-xs font-bold text-slate-500 ring-1 ring-slate-200 transition hover:bg-slate-100"
+              >
+                {logOpen ? "หุบประวัติ ▴" : `ดูทั้งหมด ${order.log!.length} รายการ ▾`}
+              </button>
             )}
           </div>
         </div>
