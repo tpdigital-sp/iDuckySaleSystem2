@@ -380,6 +380,7 @@ export default function AdminOrderDetailPage() {
         g.unread.length ? `• ยืนยันอ่านอีก ${g.unread.length} รายการ` : "",
         g.short.length ? `• ของไม่ครบ ${g.short.length} รายการ` : "",
         g.unsampled.length ? `• ยังไม่ยืนยันใส่งานตัวอย่าง ${g.unsampled.length} รายการ` : "",
+        g.noPhoto ? "• ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง" : "",
       ]
         .filter(Boolean)
         .join("\n");
@@ -457,6 +458,53 @@ export default function AdminOrderDetailPage() {
     );
     setOrder(next);
     if (!demo) void saveOrderAdmin(next);
+  }
+
+  /** ฝ่ายแพ็คถ่าย/แนบภาพของในกล่องก่อนปิด — บังคับอย่างน้อย 1 รูปก่อนยิงเลขพัสดุ */
+  async function addPackPhotos(files: FileList | null) {
+    if (!order || !files?.length) return;
+    setErr("");
+    if (demo) {
+      // โหมดเดโม: เก็บเป็น URL ชั่วคราวในหน้า (ไม่ persist) ให้ทดลอง flow ได้
+      const now = new Date().toISOString();
+      const added = Array.from(files).map((f) => ({ url: URL.createObjectURL(f), by: actor, at: now }));
+      setOrder({ ...order, packPhotos: [...(order.packPhotos ?? []), ...added] });
+      return;
+    }
+    for (const f of Array.from(files)) {
+      const fd = new FormData();
+      fd.append("orderId", order.id);
+      fd.append("file", f);
+      const res = await fetch("/api/admin/orders/pack-photo", { method: "POST", body: fd });
+      const j = (await res.json().catch(() => null)) as { order?: Order; error?: string } | null;
+      if (!res.ok || !j?.order) {
+        setErr(j?.error ?? "อัปโหลดภาพไม่สำเร็จ");
+        return;
+      }
+      setOrder(j.order);
+    }
+  }
+
+  /** ลบภาพก่อนปิดกล่อง (ถ่ายผิด/ซ้ำ) */
+  async function deletePackPhoto(index: number) {
+    if (!order) return;
+    if (!window.confirm("ลบภาพก่อนปิดกล่องรูปนี้?")) return;
+    if (demo) {
+      const photos = (order.packPhotos ?? []).filter((_, i) => i !== index);
+      setOrder({ ...order, packPhotos: photos.length ? photos : undefined });
+      return;
+    }
+    const res = await fetch("/api/admin/orders/pack-photo", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId: order.id, index }),
+    });
+    const j = (await res.json().catch(() => null)) as { order?: Order; error?: string } | null;
+    if (!res.ok || !j?.order) {
+      setErr(j?.error ?? "ลบภาพไม่สำเร็จ");
+      return;
+    }
+    setOrder(j.order);
   }
 
   /** พนักงานแพ็คกดยืนยันว่าอ่านรายละเอียดของรายการแล้ว (กดซ้ำ = ยกเลิก) */
@@ -638,6 +686,8 @@ export default function AdminOrderDetailPage() {
         )}
         <PackView
           order={order}
+          onPhotoAdd={addPackPhotos}
+          onPhotoDelete={deletePackPhoto}
           gate={gate}
           onCheck={setPackCheck}
           onAck={toggleNoteAck}
@@ -1749,6 +1799,8 @@ function PackView({
   onTrackingChange,
   onTrackingSave,
   onZoom,
+  onPhotoAdd,
+  onPhotoDelete,
 }: {
   order: Order;
   gate: ReturnType<typeof packGate>;
@@ -1758,6 +1810,8 @@ function PackView({
   onTrackingChange: (v: string) => void;
   onTrackingSave: () => void;
   onZoom: (i: number, j: number) => void;
+  onPhotoAdd: (files: FileList | null) => void;
+  onPhotoDelete: (i: number) => void;
 }) {
   const totalQty = order.items.reduce((s, it) => s + it.qty, 0);
   return (
@@ -1774,7 +1828,7 @@ function PackView({
         <p className={`mt-1 text-sm font-bold ${gate.ready ? "text-green-400" : "text-amber-300"}`}>
           {gate.ready
             ? "✅ ตรวจครบแล้ว — ยิงเลขพัสดุได้"
-            : `⏳ เหลืออีก ${gate.uncounted.length + gate.unread.length + gate.unsampled.length} จุดต้องยืนยัน`}
+            : `⏳ เหลืออีก ${gate.uncounted.length + gate.unread.length + gate.unsampled.length + (gate.noPhoto ? 1 : 0)} จุดต้องยืนยัน`}
         </p>
       </div>
 
@@ -1846,6 +1900,58 @@ function PackView({
         })}
       </div>
 
+      {/* 📸 ภาพก่อนปิดกล่อง — บังคับอย่างน้อย 1 รูปก่อนยิงเลขพัสดุ */}
+      <div className="px-3 pt-1">
+        <div className={`rounded-2xl bg-white p-3 shadow-sm ring-1 ${gate.noPhoto ? "ring-2 ring-rose-300" : "ring-slate-200"}`}>
+          <p className="flex flex-wrap items-center gap-2 text-sm font-extrabold text-slate-900">
+            📸 ถ่ายภาพของในกล่อง ก่อนปิดกล่อง
+            {gate.noPhoto ? (
+              <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-600">ยังไม่มีภาพ — ต้องถ่ายก่อนยิงเลข</span>
+            ) : (
+              <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">มีภาพแล้ว ✓</span>
+            )}
+          </p>
+          <p className="mt-0.5 text-[11px] text-slate-400">
+            ถ่ายให้เห็นของครบทุกชิ้นในกล่อง — เก็บเป็นหลักฐานอ้างอิงเมื่อลูกค้าแจ้งของขาด/ผิด
+          </p>
+          {(order.packPhotos?.length ?? 0) > 0 && (
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {(order.packPhotos ?? []).map((p, i) => (
+                <div key={`${p.url}-${i}`} className="relative">
+                  <a href={p.url} target="_blank" rel="noreferrer">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.url} alt={`ภาพก่อนปิดกล่อง ${i + 1}`} className="h-24 w-full rounded-lg object-cover ring-1 ring-slate-200" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => onPhotoDelete(i)}
+                    className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow"
+                    aria-label="ลบภาพ"
+                  >
+                    ✕
+                  </button>
+                  <p className="mt-0.5 truncate text-[9px] text-slate-400">{p.by}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          <label className="mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 px-3 py-3 text-xs font-bold text-slate-500 hover:border-sky-300 hover:text-sky-600">
+            📷 ถ่ายรูป / เลือกรูปจากเครื่อง
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                onPhotoAdd(e.target.files);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+      </div>
+
       {/* แถบยิงเลขพัสดุ ติดล่างจอ */}
       <div className="fixed inset-x-0 bottom-0 mx-auto max-w-[480px] border-t border-slate-200 bg-white p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
         {gate.ready ? (
@@ -1870,6 +1976,7 @@ function PackView({
                 gate.unread.length ? `ยืนยันอ่านอีก ${gate.unread.length} รายการ` : "",
                 gate.short.length ? `ของไม่ครบ ${gate.short.length} รายการ` : "",
                 gate.unsampled.length ? `🎁 ใส่งานตัวอย่างอีก ${gate.unsampled.length} รายการ` : "",
+                gate.noPhoto ? "📸 ถ่ายภาพก่อนปิดกล่อง" : "",
               ]
                 .filter(Boolean)
                 .join(" · ")}

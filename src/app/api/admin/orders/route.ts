@@ -14,6 +14,7 @@ function gateReasons(g: PackGate): string {
     g.unread.length ? `ยืนยันอ่านอีก ${g.unread.length} รายการ` : "",
     g.short.length ? `ของไม่ครบ ${g.short.length} รายการ` : "",
     g.unsampled.length ? `ยังไม่ยืนยันใส่งานตัวอย่าง ${g.unsampled.length} รายการ` : "",
+    g.noPhoto ? "ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง" : "",
   ]
     .filter(Boolean)
     .join(" · ");

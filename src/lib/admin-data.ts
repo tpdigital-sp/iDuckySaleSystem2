@@ -197,6 +197,8 @@ export interface Order {
   shippingCost: number;
   status: OrderStatus;
   tracking?: string;
+  /** ภาพของในกล่องก่อนปิด (ฝ่ายแพ็คถ่าย) — packGate บังคับอย่างน้อย 1 รูปก่อนยิงเลขพัสดุ */
+  packPhotos?: PackPhoto[];
   note?: string;
   items: OrderItem[];
   /** เชื่อมกับสมาชิก (ถ้าล็อกอินตอนสั่ง) — ไม่มี = สั่งแบบ guest */
@@ -290,6 +292,15 @@ export function proofsOf(item: OrderItem): Proof[] {
 }
 
 /** ผลตรวจ "พร้อมส่งหรือยัง" ของพนักงานแพ็ค */
+/** ภาพถ่ายของจริงในกล่อง "ก่อนปิดกล่อง" — ฝ่ายแพ็คถ่ายเก็บเป็นหลักฐานทุกออเดอร์ */
+export interface PackPhoto {
+  url: string;
+  /** path ใน storage (ใช้ตอนลบไฟล์จริง) */
+  path?: string;
+  by: string;
+  at: string;
+}
+
 export interface PackGate {
   /** ผ่านครบทุกเงื่อนไข → ยิงเลขพัสดุได้ */
   ready: boolean;
@@ -301,6 +312,8 @@ export interface PackGate {
   short: { item: string; got: number; need?: number }[];
   /** รายการที่มีชิ้นงานตัวอย่างแต่ยังไม่ได้ยืนยันว่าใส่กล่องแล้ว — กันลืมส่งตัวอย่างไปกับออเดอร์ */
   unsampled: string[];
+  /** ยังไม่มีภาพถ่ายของในกล่องก่อนปิด — บังคับอย่างน้อย 1 รูปก่อนยิงเลขพัสดุ */
+  noPhoto: boolean;
 }
 
 /**
@@ -322,12 +335,15 @@ export function packGate(order: Order): PackGate {
     });
   });
 
+  const noPhoto = !(order.packPhotos && order.packPhotos.length > 0);
+
   return {
-    ready: !uncounted.length && !unread.length && !short.length && !unsampled.length,
+    ready: !uncounted.length && !unread.length && !short.length && !unsampled.length && !noPhoto,
     uncounted,
     unread,
     short,
     unsampled,
+    noPhoto,
   };
 }
 
