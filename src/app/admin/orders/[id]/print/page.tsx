@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
+import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { formatPrice } from "@/lib/products";
 import { adminDiscountAmount, MOCK_ORDERS, noteHasText, orderItemDiscounts, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
 
@@ -43,6 +44,21 @@ export default function PrintOrderPage() {
   const [origin, setOrigin] = useState(""); // สำหรับ QR มือถือ (ต้องอ่านฝั่งเบราว์เซอร์)
   const [shop, setShop] = useState<ShopInfo>(shopInfoOf(null)); // ข้อมูลร้าน (แอดมินแก้ได้ที่ตั้งค่าระบบ)
   const seesMoney = useCan()("orders.money"); // ฝ่ายแพ็คไม่เห็นใบเสร็จ (มีราคา)
+
+  // 📮 สถานะพัสดุ ปณ. ณ เวลาพิมพ์ — โชว์บนใบงานเมื่อมีเลขรูปแบบไปรษณีย์ไทย
+  const [thpEvents, setThpEvents] = useState<ThpEventView[] | null>(null);
+  useEffect(() => {
+    const n = (order?.tracking ?? "").trim().toUpperCase();
+    if (!/^[A-Z]{2}\d{9}TH$/.test(n)) return;
+    let live = true;
+    fetch(`/api/orders/track?number=${encodeURIComponent(n)}`)
+      .then((r) => r.json())
+      .then((j) => live && j?.events?.length && setThpEvents(j.events))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [order?.tracking]);
 
   const load = useCallback(async () => {
     const r = await fetchOrdersAdmin();
@@ -336,6 +352,18 @@ export default function PrintOrderPage() {
                 </p>
                 <p className="mt-1 text-base font-bold text-slate-800">📱 ตรวจรายการ/แบบงานครบทุกชิ้นบนมือถือ</p>
                 <p className="mt-0.5 text-xs font-semibold text-slate-600">สแกน QR ด้านบนเพื่อเปิดหน้าออเดอร์</p>
+              </div>
+            )}
+
+            {/* 📮 สถานะพัสดุไปรษณีย์ไทย — snapshot ณ เวลาพิมพ์ */}
+            {thpEvents && (
+              <div className="keep mt-3 rounded border border-slate-300 p-3">
+                <p className="text-xs font-bold text-slate-700">
+                  📮 สถานะพัสดุไปรษณีย์ไทย <span className="font-normal text-slate-400">· ณ เวลาพิมพ์ {printedAt}</span>
+                </p>
+                <div className="mt-2">
+                  <ThaiPostTimeline events={thpEvents} />
+                </div>
               </div>
             )}
 
