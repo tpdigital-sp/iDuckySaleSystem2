@@ -620,6 +620,10 @@ export default function CustomerOrderPage() {
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={p.url} alt={`แบบงาน ${it.name} รูปที่ ${j + 1}`} className="h-full w-full bg-stone-50 object-contain" />
+                            {/* เลขรูป — เลขเดียวกับที่ทีมงานเห็น อ้างถึงกันได้ตรง ๆ ว่า "รูปที่ N" */}
+                            <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-stone-900/55 px-1 py-0.5 text-[9px] font-bold text-white">
+                              รูปที่ {j + 1}
+                            </span>
                             {p.review && (
                               <span
                                 className={`absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold text-white ${
