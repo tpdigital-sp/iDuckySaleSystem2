@@ -551,6 +551,28 @@ export default function AdminOrderDetailPage() {
     setUploadingIdx(null);
   }
 
+  /** เปลี่ยนรูปทับตำแหน่งเดิม (กราฟฟิกแก้ตามคำขอลูกค้า) — เลขรูปไม่เลื่อน ผลตรวจรูปนั้นรีเซ็ตให้ลูกค้าตรวจใหม่ */
+  async function replaceProof(itemIndex: number, proofIdx: number, file: File | null) {
+    if (!order || !file) return;
+    if (!file.type.startsWith("image/")) {
+      setErr("รองรับเฉพาะไฟล์รูปภาพ (PNG / JPG)");
+      return;
+    }
+    if (demo) {
+      setErr("ออเดอร์ตัวอย่าง — เปลี่ยนรูปได้เฉพาะออเดอร์จริง");
+      return;
+    }
+    setErr("");
+    setUploadingIdx(itemIndex);
+    const res = await uploadProof(order.id, itemIndex, file, { replaceIndex: proofIdx });
+    setUploadingIdx(null);
+    if (!res.ok) {
+      setErr(res.error ?? "เปลี่ยนรูปไม่สำเร็จ");
+      return;
+    }
+    if (res.order) setOrder(res.order);
+  }
+
   if (loading) {
     return <p className="py-20 text-center text-sm text-slate-400">กำลังโหลดออเดอร์…</p>;
   }
@@ -935,7 +957,12 @@ export default function AdminOrderDetailPage() {
                   {/* แกลเลอรีแบบงาน — หลายรูป แต่ละรูประบุจำนวน/รายละเอียด */}
                   <div className="mt-3 flex flex-wrap gap-3">
                     {proofs.map((p, j) => (
-                      <div key={`${p.url}-${j}`} className="w-36 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                      <div
+                        key={`${p.url}-${j}`}
+                        className={`w-36 overflow-hidden rounded-xl border bg-white ${
+                          p.review === "ขอแก้ไข" ? "border-rose-300 ring-2 ring-rose-200" : "border-slate-200"
+                        }`}
+                      >
                         <div className="relative">
                           <button
                             type="button"
@@ -946,6 +973,10 @@ export default function AdminOrderDetailPage() {
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={p.url} alt={`แบบงาน ${it.name} รูปที่ ${j + 1}`} className="h-full w-full object-contain" />
                           </button>
+                          {/* เลขรูป — ให้ตรงกับที่ลูกค้าอ้างถึง ("รูปที่ 8") ไม่ต้องนั่งนับ */}
+                          <span className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-slate-900/60 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                            รูปที่ {j + 1}
+                          </span>
                           {/* ผลตรวจของลูกค้า "ต่อรูปนี้" — ไม่มีค่า = ลูกค้ายังไม่ตรวจรูปนี้ */}
                           {p.review && (
                             <span
@@ -993,6 +1024,25 @@ export default function AdminOrderDetailPage() {
                                 ลูกค้าขอแก้: “{p.reviewNote}”
                               </p>
                             )}
+                            {/* เปลี่ยนรูปทับตำแหน่งเดิม — ไม่ต้องลบแล้วอัปใหม่ เลขรูปไม่เลื่อน */}
+                            <label
+                              className={`block cursor-pointer rounded-lg px-2 py-1 text-center text-[11px] font-bold transition ${
+                                p.review === "ขอแก้ไข"
+                                  ? "bg-rose-500 text-white hover:bg-rose-600"
+                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                              } ${uploadingIdx === i ? "pointer-events-none opacity-50" : ""}`}
+                            >
+                              {uploadingIdx === i ? "กำลังอัปโหลด…" : "🔄 เปลี่ยนรูปนี้"}
+                              <input
+                                type="file"
+                                accept="image/png,image/jpeg,image/webp,image/gif"
+                                className="hidden"
+                                onChange={(e) => {
+                                  void replaceProof(i, j, e.target.files?.[0] ?? null);
+                                  e.target.value = "";
+                                }}
+                              />
+                            </label>
                           </div>
                         ) : (
                           /* ฝ่ายแพ็ค — อ่านอย่างเดียว แก้ไม่ได้ */

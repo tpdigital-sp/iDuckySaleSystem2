@@ -157,7 +157,7 @@ export async function uploadProof(
   orderId: string,
   itemIndex: number,
   file: File,
-  meta?: { qty?: number; note?: string }
+  meta?: { qty?: number; note?: string; replaceIndex?: number }
 ): Promise<{ ok: boolean; order?: Order; error?: string }> {
   try {
     const fd = new FormData();
@@ -166,6 +166,8 @@ export async function uploadProof(
     fd.append("file", file);
     if (meta?.qty) fd.append("qty", String(meta.qty));
     if (meta?.note) fd.append("note", meta.note);
+    // เปลี่ยนรูปทับตำแหน่งเดิม (แก้ตามคำขอลูกค้า) — ตำแหน่ง/เลขรูปไม่เลื่อน
+    if (meta?.replaceIndex !== undefined) fd.append("replaceIndex", String(meta.replaceIndex));
     const res = await fetch("/api/admin/orders/proof", { method: "POST", body: fd });
     const data = await res.json().catch(() => ({}));
     return res.ok ? { ok: true, order: data.order as Order } : { ok: false, error: data.error ?? "อัปโหลดแบบไม่สำเร็จ" };

@@ -34,6 +34,9 @@ export async function POST(req: Request) {
 
   const orderId = String(form.get("orderId") ?? "").trim();
   const itemIndex = Number(form.get("itemIndex"));
+  // มีค่า = "เปลี่ยนรูป" ทับตำแหน่งเดิม (กราฟฟิกแก้ตามคำขอลูกค้า) — ตำแหน่ง/เลขรูปไม่เลื่อน
+  const rawReplace = form.get("replaceIndex");
+  const replaceIndex = rawReplace === null ? null : Number(rawReplace);
   const file = form.get("file");
   const rawQty = Number(form.get("qty"));
   const proofQty = Number.isFinite(rawQty) && rawQty > 0 ? Math.floor(rawQty) : undefined;
@@ -51,6 +54,8 @@ export async function POST(req: Request) {
   if (!row) return NextResponse.json({ error: "ไม่พบเลขออเดอร์นี้" }, { status: 404 });
   const order = row.data as Order;
   if (!order.items?.[itemIndex]) return NextResponse.json({ error: "ไม่พบรายการสินค้านี้ในออเดอร์" }, { status: 404 });
+  if (replaceIndex !== null && (!Number.isInteger(replaceIndex) || !proofsOf(order.items[itemIndex])[replaceIndex]))
+    return NextResponse.json({ error: "ไม่พบรูปที่จะเปลี่ยน" }, { status: 404 });
 
   // อัปโหลดรูปแบบ (สร้าง bucket ให้อัตโนมัติถ้ายังไม่มี)
   const safeId = orderId.replace(/[^a-z0-9_-]/gi, "") || "misc";
@@ -67,23 +72,52 @@ export async function POST(req: Request) {
 
   const { data: pub } = sb.storage.from(BUCKET).getPublicUrl(path);
   const now = new Date().toISOString();
-  const newProof = { url: pub.publicUrl, at: now, ...(proofQty ? { qty: proofQty } : {}), ...(proofNote ? { note: proofNote } : {}) };
-  const items = order.items.map((it, i) =>
-    i === itemIndex
-      ? {
-          ...it,
-          proofs: [...proofsOf(it), newProof], // เพิ่มรูป ไม่ทับของเดิม
-          proofStatus: "รอตรวจ" as const,
-          proofNote: undefined, // เคลียร์คอมเมนต์เก่าของลูกค้า เพราะส่งแบบใหม่ให้ตรวจแล้ว
-          proofUpdatedAt: now,
-        }
-      : it
-  );
+
+  let items: Order["items"];
+  if (replaceIndex !== null) {
+    // ── เปลี่ยนรูปทับตำแหน่งเดิม: ตำแหน่ง/จำนวน/รายละเอียดคงอยู่ · ผลตรวจ+ผลนับของรูปนั้นรีเซ็ต (รูปเปลี่ยนแล้วต้องตรวจใหม่) ──
+    items = order.items.map((it, i) => {
+      if (i !== itemIndex) return it;
+      const proofs = proofsOf(it).map((p, j) =>
+        j === replaceIndex
+          ? { url: pub.publicUrl, at: now, ...(p.qty ? { qty: p.qty } : {}), ...(p.note ? { note: p.note } : {}) }
+          : p
+      );
+      // สถานะรายการคิดใหม่จากผลตรวจรายรูป (ตรรกะเดียวกับตอนลูกค้าตรวจ)
+      const anyEdit = proofs.some((p) => p.review === "ขอแก้ไข");
+      const allOk = proofs.length > 0 && proofs.every((p) => p.review === "อนุมัติ");
+      return {
+        ...it,
+        proofs,
+        proofStatus: (anyEdit ? "ขอแก้ไข" : allOk ? "อนุมัติ" : "รอตรวจ") as typeof it.proofStatus,
+        ...(anyEdit ? {} : { proofNote: undefined }), // ไม่มีรูปค้างแก้แล้ว → เคลียร์คอมเมนต์รวมของรายการ
+        proofUpdatedAt: now,
+      };
+    });
+  } else {
+    const newProof = { url: pub.publicUrl, at: now, ...(proofQty ? { qty: proofQty } : {}), ...(proofNote ? { note: proofNote } : {}) };
+    items = order.items.map((it, i) =>
+      i === itemIndex
+        ? {
+            ...it,
+            proofs: [...proofsOf(it), newProof], // เพิ่มรูป ไม่ทับของเดิม
+            proofStatus: "รอตรวจ" as const,
+            proofNote: undefined, // เคลียร์คอมเมนต์เก่าของลูกค้า เพราะส่งแบบใหม่ให้ตรวจแล้ว
+            proofUpdatedAt: now,
+          }
+        : it
+    );
+  }
+
+  // ยังมีรายการไหนค้างแก้อยู่ไหม → คุมสถานะออเดอร์ให้ตรงความจริง
+  const anyEditLeft = items.some((it) => it.proofStatus === "ขอแก้ไข");
   const updated = withLog(
-    { ...order, items, status: "รอตรวจแบบ" },
+    { ...order, items, status: anyEditLeft ? ("แก้ไขแบบ" as const) : ("รอตรวจแบบ" as const) },
     gate.actor.name?.trim() || "กราฟฟิก", // บันทึกชื่อคนที่อัปโหลดจริง (fallback: กราฟฟิก)
-    "อัปโหลดแบบให้ลูกค้าตรวจ",
-    `${order.items[itemIndex].name}${proofQty ? ` · ${proofQty} ชิ้น` : ""}${proofNote ? ` · ${proofNote}` : ""}`
+    replaceIndex !== null ? "เปลี่ยนรูปแบบงาน (แก้ตามคำขอ)" : "อัปโหลดแบบให้ลูกค้าตรวจ",
+    replaceIndex !== null
+      ? `${order.items[itemIndex].name} · รูปที่ ${replaceIndex + 1}`
+      : `${order.items[itemIndex].name}${proofQty ? ` · ${proofQty} ชิ้น` : ""}${proofNote ? ` · ${proofNote}` : ""}`
   );
 
   const { error: saveErr } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
@@ -91,7 +125,13 @@ export async function POST(req: Request) {
 
   // แจ้งเตือนลูกค้าว่ามีแบบงานให้ตรวจ (เงียบถ้ายังไม่ตั้งค่า LINE)
   const origin = new URL(req.url).origin;
-  void notifyCustomer(sb, updated, `🎨 แบบงานออเดอร์ ${updated.id} พร้อมให้คุณตรวจแล้ว\nดู/อนุมัติได้ที่: ${orderLink(origin, updated)}`);
+  void notifyCustomer(
+    sb,
+    updated,
+    replaceIndex !== null
+      ? `🎨 รูปที่ ${replaceIndex + 1} ของออเดอร์ ${updated.id} แก้ไขเรียบร้อย พร้อมให้คุณตรวจอีกครั้ง\nดู/อนุมัติได้ที่: ${orderLink(origin, updated)}`
+      : `🎨 แบบงานออเดอร์ ${updated.id} พร้อมให้คุณตรวจแล้ว\nดู/อนุมัติได้ที่: ${orderLink(origin, updated)}`
+  );
 
   return NextResponse.json({ ok: true, order: updated });
 }
