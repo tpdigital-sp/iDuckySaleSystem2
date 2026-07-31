@@ -50,10 +50,36 @@ export default function CustomerOrderPage() {
     setLightbox({ itemIdx, proofIdx });
     setLbEdit(false);
     setLbNote("");
+    setLbConfirm(false);
   };
   /* แบบประเมินความพึงพอใจ (นิรนาม) — โชว์เมื่อได้รับของแล้วและยังไม่เคยประเมิน */
-  /* กล่องยืนยันก่อนอนุมัติแบบงาน (modal ของเราเอง — แต่งสี/เน้นคำได้) */
+  /* กล่องยืนยันก่อนอนุมัติแบบงาน (modal ของเราเอง — แต่งสี/เน้นคำได้)
+     ถามครั้งเดียวต่อออเดอร์ต่อเครื่อง — ยืนยันแล้วภาพถัดไปกดอนุมัติผ่านเลย (จำใน localStorage) */
   const [confirmApprove, setConfirmApprove] = useState<{ resolve: (ok: boolean) => void } | null>(null);
+  /* ยืนยันแบบ inline ในหน้าภาพขยาย (ไม่บังภาพ) */
+  const [lbConfirm, setLbConfirm] = useState(false);
+  const confirmedOnce = () => {
+    try {
+      return order ? !!localStorage.getItem(`ducky-approve-once-${order.id}`) : false;
+    } catch {
+      return true; // localStorage ปิด → ไม่ต้องถามซ้ำวนไป
+    }
+  };
+  const markConfirmedOnce = () => {
+    try {
+      if (order) localStorage.setItem(`ducky-approve-once-${order.id}`, "1");
+    } catch {
+      /* ข้าม */
+    }
+  };
+  /** ยืนยันผ่าน modal (ใช้กับปุ่มอนุมัติทุกภาพนอกหน้าภาพขยาย) — ข้ามถ้าเคยยืนยันแล้ว */
+  const confirmViaModal = async (): Promise<boolean> => {
+    if (confirmedOnce()) return true;
+    const ok = await new Promise<boolean>((resolve) => setConfirmApprove({ resolve }));
+    setConfirmApprove(null);
+    if (ok) markConfirmedOnce();
+    return ok;
+  };
 
   /* คู่มือวิธีตรวจ/อนุมัติแบบงาน — เด้งเองครั้งแรกที่มีแบบรอตรวจ (จำต่อออเดอร์ต่อเครื่อง) */
   const [showGuide, setShowGuide] = useState(false);
@@ -159,12 +185,6 @@ export default function CustomerOrderPage() {
     action: "approve" | "request",
     opts?: { proofIdx?: number; noteText?: string }
   ): Promise<Order | null> {
-    // กันเผลอแตะอนุมัติ — ให้ลูกค้ายืนยันผ่าน modal สวย ๆ ก่อนทุกครั้ง (ทั้งรายภาพและทั้งรายการ)
-    if (action === "approve") {
-      const ok = await new Promise<boolean>((resolve) => setConfirmApprove({ resolve }));
-      setConfirmApprove(null);
-      if (!ok) return null;
-    }
     setActionErr("");
     setBusyIdx(itemIndex);
     const res = await reviewProof(
@@ -400,7 +420,7 @@ export default function CustomerOrderPage() {
 
       {/* ── คู่มือวิธีตรวจแบบงาน (เด้งครั้งแรก / กดเปิดซ้ำได้) ── */}
       {showGuide && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-stone-900/60 p-4" onClick={closeGuide}>
+        <div className="fixed inset-0 z-[120] grid place-items-center bg-stone-900/60 p-4" onClick={closeGuide}>
           <div
             className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
@@ -668,7 +688,9 @@ export default function CustomerOrderPage() {
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => act(i, "approve")}
+                        onClick={async () => {
+                          if (await confirmViaModal()) void act(i, "approve");
+                        }}
                         disabled={busyIdx === i}
                         className="rounded-full bg-amber-500 px-4 py-2 text-[13px] font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-50"
                       >
@@ -887,6 +909,11 @@ export default function CustomerOrderPage() {
           const go = (d: number) => openLightbox(lightbox.itemIdx, (lightbox.proofIdx + d + proofs.length) % proofs.length);
           /** อนุมัติรูปนี้ แล้วเด้งไปรูปถัดไปที่ยังไม่ตรวจ (ถ้าไม่มีแล้วอยู่ที่เดิมให้เห็นป้ายเขียว) */
           const approveThis = async () => {
+            // ครั้งแรกของออเดอร์: โชว์แถบยืนยันใต้ภาพ (ภาพยังเห็นเต็ม ๆ) — ครั้งถัดไปกดทีเดียวผ่านเลย
+            if (!confirmedOnce()) {
+              setLbConfirm(true);
+              return;
+            }
             const o = await act(lightbox.itemIdx, "approve", { proofIdx: lightbox.proofIdx });
             if (!o) return;
             const ps = proofsOf(o.items[lightbox.itemIdx] ?? it);
@@ -911,6 +938,44 @@ export default function CustomerOrderPage() {
                   <p className="text-center text-sm font-bold text-rose-300">
                     ✏️ ขอแก้ไขภาพนี้แล้ว{p.reviewNote ? ` — “${p.reviewNote}”` : ""}
                   </p>
+                ) : lbConfirm ? (
+                  <div className="rounded-2xl bg-white/10 p-3 text-center">
+                    <p className="text-xs leading-relaxed text-white/90">
+                      ทางบริษัทจะ<strong className="text-rose-300">จัดทำงานตามภาพที่อนุมัติทันที</strong> — หาก
+                      <strong className="text-amber-300">ไม่มั่นใจ</strong> รบกวน
+                      <strong className="text-white">ตรวจสอบอีกรอบ</strong> หรือ
+                      <strong className="text-teal-300">สอบถามแอดมิน</strong>ก่อนนะคะ 🙏
+                      <br />
+                      <span className="text-white/60">(ยืนยันครั้งเดียว — ภาพถัดไปกดอนุมัติได้เลย)</span>
+                    </p>
+                    <div className="mt-2.5 flex flex-wrap justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          markConfirmedOnce();
+                          setLbConfirm(false);
+                          const o = await act(lightbox.itemIdx, "approve", { proofIdx: lightbox.proofIdx });
+                          if (!o) return;
+                          const ps = proofsOf(o.items[lightbox.itemIdx] ?? it);
+                          const after = ps.findIndex((pp, idx) => idx > lightbox.proofIdx && !pp.review);
+                          const any = ps.findIndex((pp) => !pp.review);
+                          const target = after >= 0 ? after : any;
+                          if (target >= 0) openLightbox(lightbox.itemIdx, target);
+                        }}
+                        disabled={busyIdx === lightbox.itemIdx}
+                        className="rounded-full bg-teal-500 px-5 py-2.5 text-sm font-extrabold text-white shadow-lg transition hover:bg-teal-600 disabled:opacity-50"
+                      >
+                        ✅ ยืนยันอนุมัติ — ให้เริ่มผลิตได้เลย
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLbConfirm(false)}
+                        className="rounded-full px-4 py-2.5 text-sm font-bold text-white/70 hover:bg-white/10"
+                      >
+                        ↩️ ขอดูอีกครั้ง
+                      </button>
+                    </div>
+                  </div>
                 ) : lbEdit ? (
                   <div className="rounded-2xl bg-white/10 p-3">
                     <textarea
@@ -948,7 +1013,10 @@ export default function CustomerOrderPage() {
                 ) : (
                   <div className="flex flex-wrap justify-center gap-2">
                     <p className="w-full text-center text-xs font-semibold text-white/80">
-                      เหลือรออนุมัติอีก {waitingProofs} ภาพ
+                      เหลือรออนุมัติอีก {waitingProofs} ภาพ ·{" "}
+                      <button type="button" onClick={() => setShowGuide(true)} className="font-bold text-amber-300 underline underline-offset-2">
+                        ❓ วิธีตรวจ
+                      </button>
                     </p>
                     <button
                       type="button"
