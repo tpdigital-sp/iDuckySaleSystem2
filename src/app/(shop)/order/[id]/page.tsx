@@ -375,6 +375,53 @@ export default function CustomerOrderPage() {
       {order.status === "รอตรวจสอบ" && (
         <div className="mt-4 rounded-2xl bg-orange-50 p-4 text-sm text-orange-800 ring-1 ring-orange-200">
           🧾 <strong>ได้รับสลิปแล้ว</strong> — ทางร้านกำลังตรวจสอบการชำระเงิน เดี๋ยวจะเริ่มงานให้ครับ
+          {order.slipUrl && (
+            <span className="mt-3 flex items-center gap-3">
+              <a href={order.slipUrl} target="_blank" rel="noreferrer" className="block h-16 w-16 shrink-0 overflow-hidden rounded-lg ring-1 ring-orange-200 transition hover:ring-orange-400">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={order.slipUrl} alt="สลิปที่คุณแนบ" className="h-full w-full object-cover" />
+              </a>
+              <span className="min-w-0 text-xs">
+                <span className="block font-bold">สลิปที่คุณแนบไว้ (แตะเพื่อดูเต็ม)</span>
+                {order.paidReportedAt && (
+                  <span className="block text-orange-600/80">
+                    แจ้งโอนเมื่อ {new Date(order.paidReportedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}
+                  </span>
+                )}
+                <label className="mt-1 inline-block cursor-pointer rounded-full bg-white px-3 py-1 text-[11px] font-bold text-orange-700 ring-1 ring-orange-300 transition hover:bg-orange-100">
+                  {slipBusy ? "กำลังส่ง…" : "📤 แนบสลิปใหม่ (แทนใบเดิม)"}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    disabled={slipBusy}
+                    onChange={(e) => {
+                      void uploadSlip(e.target.files?.[0] ?? null);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </span>
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* สลิปที่แนบ — โชว์ต่อหลังร้านยืนยันแล้วด้วย (หลักฐานการชำระของลูกค้า) */}
+      {order.slipUrl && order.status !== "รอตรวจสอบ" && order.status !== "รอชำระเงิน" && (
+        <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
+          <a href={order.slipUrl} target="_blank" rel="noreferrer" className="block h-14 w-14 shrink-0 overflow-hidden rounded-lg ring-1 ring-stone-200 transition hover:ring-amber-300">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={order.slipUrl} alt="สลิปการโอน" className="h-full w-full object-cover" />
+          </a>
+          <span className="min-w-0 text-xs text-stone-600">
+            <span className="block text-sm font-bold text-stone-800">🧾 สลิปการโอนของคุณ</span>
+            {order.paidReportedAt && (
+              <span className="block">
+                แจ้งโอนเมื่อ {new Date(order.paidReportedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })} · แตะรูปเพื่อดูเต็ม
+              </span>
+            )}
+          </span>
         </div>
       )}
 

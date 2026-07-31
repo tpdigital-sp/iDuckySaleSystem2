@@ -47,7 +47,9 @@ export async function verifySlipWithSlipOK(
       | { success?: boolean; message?: string; code?: number; data?: { success?: boolean; message?: string; amount?: number; transRef?: string; receiver?: { displayName?: string } } }
       | null;
 
-    if (res.ok && j?.success && j.data?.success !== false) {
+    // ผ่าน = HTTP 2xx และไม่มีธง success เป็น false ที่ชั้นไหนเลย
+    // (SlipOK บางเวอร์ชันไม่ส่ง j.success ระดับบน — อย่าตีตกเพราะฟิลด์ที่ไม่มี)
+    if (res.ok && j && j.success !== false && j.data?.success !== false) {
       return {
         status: "pass",
         amount: Number(j.data?.amount) || undefined,
@@ -59,8 +61,10 @@ export async function verifySlipWithSlipOK(
     const code = Number(j?.code);
     if (res.status === 401 || res.status === 403 || (code >= 1000 && code <= 1005))
       return { status: "skip", detail: `SlipOK ตั้งค่าไม่ถูกต้อง/ใช้งานไม่ได้ (${j?.message ?? res.status})` };
-    const msg = j?.data?.message || j?.message || `ตรวจไม่ผ่าน (HTTP ${res.status})`;
-    return { status: "fail", detail: String(msg).slice(0, 200) };
+    // เก็บคำตอบดิบย่อ ๆ ไว้ในเหตุผล — วินิจฉัยเคสแปลก ๆ ได้จากหลังบ้านเลย
+    const msg = j?.data?.message || j?.message || `ตรวจไม่ผ่าน`;
+    const raw = JSON.stringify(j ?? {}).slice(0, 160);
+    return { status: "fail", detail: `${String(msg).slice(0, 120)} (HTTP ${res.status} · ${raw})` };
   } catch {
     return { status: "skip", detail: "เชื่อมต่อ SlipOK ไม่ได้" };
   }
