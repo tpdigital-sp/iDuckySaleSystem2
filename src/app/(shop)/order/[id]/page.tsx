@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
-import { orderBalance, orderTotal, PROOF_STYLES, proofsOf, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { orderBalance, orderItemDiscounts, orderTotal, PROOF_STYLES, proofsOf, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchOrderForCustomer, reportPayment, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
@@ -434,8 +434,11 @@ export default function CustomerOrderPage() {
                     <p className="font-bold text-amber-950">{it.name}</p>
                     {it.selections && <p className="mt-0.5 text-xs text-stone-400">{it.selections}</p>}
                   </div>
-                  <span className="shrink-0 text-sm font-bold text-amber-950">
+                  <span className="shrink-0 text-right text-sm font-bold text-amber-950">
                     {it.qty} × {formatPrice(it.unitPrice)}
+                    {(it.discount ?? 0) > 0 && (
+                      <span className="block text-[11px] font-semibold text-emerald-600">ส่วนลด −{formatPrice(it.discount!)}</span>
+                    )}
                   </span>
                 </div>
 
@@ -582,6 +585,18 @@ export default function CustomerOrderPage() {
               <div className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
                 <span>{order.discount.label}</span>
                 <span>−{formatPrice(order.discount.amount)}</span>
+              </div>
+            )}
+            {orderItemDiscounts(order) > 0 && (
+              <div className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
+                <span>ส่วนลดรายการสินค้า</span>
+                <span>−{formatPrice(orderItemDiscounts(order))}</span>
+              </div>
+            )}
+            {(order.adminDiscount?.amount ?? 0) > 0 && (
+              <div className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
+                <span>{order.adminDiscount?.label?.trim() || "ส่วนลดพิเศษจากร้าน"}</span>
+                <span>−{formatPrice(order.adminDiscount!.amount)}</span>
               </div>
             )}
             <div className="mt-2.5 flex justify-between border-t border-stone-100 pt-2.5 text-base font-extrabold text-amber-950">

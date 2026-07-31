@@ -7,6 +7,7 @@ import { formatPrice } from "@/lib/products";
 import {
   MOCK_ORDERS,
   ORDER_STATUSES,
+  orderItemDiscounts,
   orderTotal,
   packGate,
   PROOF_STYLES,
@@ -765,8 +766,39 @@ export default function AdminOrderDetailPage() {
                     <div className="min-w-0">
                       <p className="font-bold text-slate-800">{it.name}</p>
                     </div>
-                    <span className="shrink-0 text-sm font-bold text-slate-900">
+                    <span className="shrink-0 text-right text-sm font-bold text-slate-900">
                       {it.qty} × {formatPrice(it.unitPrice)}
+                      {/* ส่วนลดเฉพาะรายการนี้ (แอดมินใส่เอง — บันทึกตอนออกจากช่อง พร้อมลง log) */}
+                      {mayEdit && seesMoney ? (
+                        <span className="mt-1 flex items-center justify-end gap-1 text-[11px] font-semibold text-rose-500">
+                          ลด ฿
+                          <input
+                            type="number"
+                            min={0}
+                            value={it.discount ?? ""}
+                            placeholder="0"
+                            onChange={(e) => {
+                              const v = Math.max(0, Number(e.target.value) || 0);
+                              setOrder((cur) =>
+                                cur
+                                  ? { ...cur, items: cur.items.map((x, j) => (j === i ? { ...x, discount: v > 0 ? v : undefined } : x)) }
+                                  : cur
+                              );
+                            }}
+                            onFocus={(e) => (e.currentTarget.dataset.orig = String(it.discount ?? 0))}
+                            onBlur={(e) => {
+                              const orig = Number(e.currentTarget.dataset.orig || 0);
+                              const now = Number(it.discount ?? 0);
+                              if (orig === now) return;
+                              const next = withLog(order, actor, "ส่วนลดรายการ", `${it.name}: −${formatPrice(now)}`);
+                              applyOrder(next);
+                            }}
+                            className="w-16 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-right text-[11px] font-semibold text-rose-600 focus:border-amber-300 focus:outline-none"
+                          />
+                        </span>
+                      ) : (it.discount ?? 0) > 0 && seesMoney ? (
+                        <span className="mt-0.5 block text-[11px] font-semibold text-rose-500">ลด −{formatPrice(it.discount!)}</span>
+                      ) : null}
                     </span>
                   </div>
 
@@ -1113,6 +1145,59 @@ export default function AdminOrderDetailPage() {
                   <span>{order.discount.label}</span>
                   <span>−{formatPrice(order.discount.amount)}</span>
                 </div>
+              )}
+              {orderItemDiscounts(order) > 0 && (
+                <div className="mt-1.5 flex justify-between text-sm font-semibold text-rose-500">
+                  <span>ส่วนลดรายรายการ</span>
+                  <span>−{formatPrice(orderItemDiscounts(order))}</span>
+                </div>
+              )}
+              {/* ส่วนลดทั้งบิล (แอดมินใส่เอง) — บันทึกตอนออกจากช่อง + ลง log */}
+              {mayEdit ? (
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-sm">
+                  <input
+                    value={order.adminDiscount?.label ?? ""}
+                    onChange={(e) =>
+                      setOrder((cur) =>
+                        cur ? { ...cur, adminDiscount: { amount: cur.adminDiscount?.amount ?? 0, label: e.target.value } } : cur
+                      )
+                    }
+                    onBlur={persist}
+                    placeholder="ส่วนลดทั้งบิล (เหตุผล)"
+                    className="w-full min-w-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
+                  />
+                  <span className="flex shrink-0 items-center gap-1 font-semibold text-rose-500">
+                    −฿
+                    <input
+                      type="number"
+                      min={0}
+                      value={order.adminDiscount?.amount || ""}
+                      placeholder="0"
+                      onChange={(e) => {
+                        const v = Math.max(0, Number(e.target.value) || 0);
+                        setOrder((cur) =>
+                          cur ? { ...cur, adminDiscount: v > 0 ? { ...(cur.adminDiscount ?? {}), amount: v } : undefined } : cur
+                        );
+                      }}
+                      onFocus={(e) => (e.currentTarget.dataset.orig = String(order.adminDiscount?.amount ?? 0))}
+                      onBlur={(e) => {
+                        const orig = Number(e.currentTarget.dataset.orig || 0);
+                        const now = order.adminDiscount?.amount ?? 0;
+                        if (orig === now) return persist();
+                        const next = withLog(order, actor, "ส่วนลดทั้งบิล", `−${formatPrice(now)}${order.adminDiscount?.label ? ` (${order.adminDiscount.label})` : ""}`);
+                        applyOrder(next);
+                      }}
+                      className="w-20 rounded-md border border-slate-200 bg-white px-1.5 py-1 text-right text-xs font-semibold text-rose-600 focus:border-amber-300 focus:outline-none"
+                    />
+                  </span>
+                </div>
+              ) : (
+                (order.adminDiscount?.amount ?? 0) > 0 && (
+                  <div className="mt-1.5 flex justify-between text-sm font-semibold text-rose-500">
+                    <span>{order.adminDiscount?.label || "ส่วนลดพิเศษ"}</span>
+                    <span>−{formatPrice(order.adminDiscount!.amount)}</span>
+                  </div>
+                )
               )}
               <div className="mt-2.5 flex justify-between border-t border-slate-100 pt-2.5 font-bold text-slate-900">
                 <span>ยอดรวม</span>

@@ -158,6 +158,8 @@ export interface OrderItem {
   sel?: Record<string, string>;
   qty: number;
   unitPrice: number;
+  /** ส่วนลดเฉพาะรายการนี้ (บาท รวมทั้งบรรทัด) — แอดมินใส่เอง หักออกจากยอดรวม */
+  discount?: number;
   /** ภาพแบบงาน (proof) — หลายรูปได้ แต่ละรูประบุจำนวน/รายละเอียดของตัวเอง */
   proofs?: Proof[];
   /** @deprecated รูปแบบเดิม (รูปเดียว) — อ่านผ่าน proofsOf() เพื่อรองรับออเดอร์เก่า */
@@ -224,6 +226,8 @@ export interface Order {
   log?: LogEntry[];
   /** ส่วนลด (ระดับสมาชิก หรือ คูปอง) คิดฝั่งเซิร์ฟเวอร์ตอนสร้างออเดอร์ — หักออกจากยอดรวม */
   discount?: { label: string; amount: number; couponCode?: string };
+  /** ส่วนลดทั้งบิลที่แอดมินใส่เอง (แยกจากคูปอง/ระดับสมาชิก — ใช้พร้อมกันได้) */
+  adminDiscount?: { label?: string; amount: number };
   /**
    * ลูกค้าประเมินความพึงพอใจแล้ว (กันประเมินซ้ำ) — ตั้งใจเก็บแค่ boolean
    * ห้ามเก็บคะแนน/เวลา/รายละเอียดใด ๆ ที่นี่ เพื่อให้คะแนนในตาราง ratings นิรนามจริง
@@ -236,8 +240,18 @@ export function orderSubtotal(o: Order): number {
   return o.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
 }
 
+/** รวมส่วนลดรายรายการ (แอดมินใส่เอง) */
+export function orderItemDiscounts(o: Order): number {
+  return o.items.reduce((s, i) => s + Math.max(0, i.discount ?? 0), 0);
+}
+
+/** ส่วนลดทั้งหมดของออเดอร์ = คูปอง/ระดับ + ส่วนลดทั้งบิลจากแอดมิน + ส่วนลดรายรายการ */
+export function orderDiscountTotal(o: Order): number {
+  return (o.discount?.amount ?? 0) + Math.max(0, o.adminDiscount?.amount ?? 0) + orderItemDiscounts(o);
+}
+
 export function orderTotal(o: Order): number {
-  return Math.max(0, orderSubtotal(o) + o.shippingCost - (o.discount?.amount ?? 0));
+  return Math.max(0, orderSubtotal(o) + o.shippingCost - orderDiscountTotal(o));
 }
 
 /** ยอดที่ลูกค้ายังค้างชำระ (มากกว่า 0 = ต้องโอนเพิ่ม เช่น หลังสั่งเพิ่มในออเดอร์เดิม) */

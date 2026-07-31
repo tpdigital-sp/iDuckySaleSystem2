@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import { formatPrice } from "@/lib/products";
-import { MOCK_ORDERS, noteHasText, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
+import { MOCK_ORDERS, noteHasText, orderItemDiscounts, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -417,6 +417,18 @@ export default function PrintOrderPage() {
                 <div className="flex justify-between py-1 text-emerald-600">
                   <span>{order.discount.label}</span>
                   <span className="tabular-nums">−{formatPrice(order.discount.amount)}</span>
+                </div>
+              )}
+              {orderItemDiscounts(order) > 0 && (
+                <div className="flex justify-between py-1 text-emerald-600">
+                  <span>ส่วนลดรายการสินค้า</span>
+                  <span className="tabular-nums">−{formatPrice(orderItemDiscounts(order))}</span>
+                </div>
+              )}
+              {(order.adminDiscount?.amount ?? 0) > 0 && (
+                <div className="flex justify-between py-1 text-emerald-600">
+                  <span>{order.adminDiscount?.label?.trim() || "ส่วนลดพิเศษ"}</span>
+                  <span className="tabular-nums">−{formatPrice(order.adminDiscount!.amount)}</span>
                 </div>
               )}
               <div className="mt-1 flex justify-between border-t-2 border-slate-900 py-1.5 text-base font-extrabold">
