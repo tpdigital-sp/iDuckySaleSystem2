@@ -64,12 +64,16 @@ export async function trackThailandPost(barcode: string): Promise<ThpResult> {
   if (!bearer) return { configured: true, error: "เชื่อมต่อระบบ ปณ. ไม่ได้ (token ใช้ไม่ได้/หมดโควตา)" };
 
   try {
-    const res = await fetch("https://trackapi.thailandpost.co.th/post/api/v1/track", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "all", language: "TH", barcode: [code] }),
-      signal: AbortSignal.timeout(15_000),
-    });
+    // เอกสาร ปณ. ใช้ scheme "Token <token>" — บางเวอร์ชันรับ "Bearer" · ลอง Token ก่อน ไม่ผ่านค่อย Bearer
+    const call = (scheme: string) =>
+      fetch("https://trackapi.thailandpost.co.th/post/api/v1/track", {
+        method: "POST",
+        headers: { Authorization: `${scheme} ${bearer}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "all", language: "TH", barcode: [code] }),
+        signal: AbortSignal.timeout(15_000),
+      });
+    let res = await call("Token");
+    if (res.status === 401 || res.status === 403) res = await call("Bearer");
     const j = (await res.json().catch(() => null)) as {
       response?: { items?: Record<string, { status?: string; status_description?: string; status_date?: string; location?: string }[]> };
       message?: string;
