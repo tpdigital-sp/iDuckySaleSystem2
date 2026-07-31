@@ -25,7 +25,23 @@ export interface ThpResult {
 /** เลขพัสดุรูปแบบไปรษณีย์ไทย เช่น EY145587896TH */
 export const isThaiPostNumber = (n: string): boolean => /^[A-Z]{2}\d{9}TH$/i.test(n.trim());
 
-export const thailandPostConfigured = (): boolean => !!process.env.THAILANDPOST_TRACK_TOKEN;
+/**
+ * token ดิบมีอักขระพิเศษ ($ ? ~) ที่ dotenv-expand ของ Next ตีความผิด →
+ * เก็บเป็น base64 (THAILANDPOST_TRACK_TOKEN_B64) ปลอดภัยสุด · ตัวแปรแบบดิบยังใช้ได้
+ */
+function apiKey(): string {
+  const b64 = process.env.THAILANDPOST_TRACK_TOKEN_B64;
+  if (b64) {
+    try {
+      return Buffer.from(b64, "base64").toString("utf8").trim();
+    } catch {
+      return "";
+    }
+  }
+  return process.env.THAILANDPOST_TRACK_TOKEN ?? "";
+}
+
+export const thailandPostConfigured = (): boolean => !!apiKey();
 
 // token ใช้งาน (Bearer) หมดอายุเป็นรอบ — cache ใน memory ต่อ process
 let bearerCache: { token: string; expireAt: number } | null = null;
@@ -33,13 +49,14 @@ let bearerCache: { token: string; expireAt: number } | null = null;
 const trackCache = new Map<string, { at: number; result: ThpResult }>();
 
 async function getBearer(): Promise<string | null> {
-  const key = process.env.THAILANDPOST_TRACK_TOKEN;
+  const key = apiKey();
   if (!key) return null;
   if (bearerCache && Date.now() < bearerCache.expireAt) return bearerCache.token;
   try {
     const res = await fetch("https://trackapi.thailandpost.co.th/post/api/v1/authenticate/token", {
       method: "POST",
-      headers: { Authorization: `Token ${key}` },
+      // ปณ. บังคับ Content-Type แม้ไม่มี body — ไม่ใส่ = 401 เงียบ ๆ
+      headers: { Authorization: `Token ${key}`, "Content-Type": "application/json" },
       signal: AbortSignal.timeout(15_000),
     });
     const j = (await res.json().catch(() => null)) as { token?: string; expire?: string } | null;
