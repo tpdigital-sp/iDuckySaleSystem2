@@ -336,6 +336,31 @@ export default function PrintOrderPage() {
               </div>
             )}
 
+            {/* 📸 ภาพที่ฝ่ายแพ็คถ่ายก่อนปิดกล่อง — หลักฐานว่าแพ็คอะไรลงกล่องไปบ้าง */}
+            {(order.packPhotos?.length ?? 0) > 0 && (
+              <div className="keep mt-3 rounded border border-slate-300 p-3">
+                <p className="text-xs font-bold text-slate-700">
+                  📸 ภาพของในกล่องก่อนปิด ({order.packPhotos!.length} รูป) — ถ่ายโดยฝ่ายแพ็ค
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {(order.packPhotos ?? []).map((p, i) => (
+                    <div key={`${p.url}-${i}`} className="w-24">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={p.url}
+                        alt={`ภาพก่อนปิดกล่อง ${i + 1}`}
+                        className="h-24 w-24 rounded border border-slate-300 object-cover"
+                      />
+                      <p className="mt-0.5 text-[9px] leading-tight text-slate-600">
+                        {p.by} ·{" "}
+                        {new Date(p.at).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {order.note && (
               <p className="mt-3 rounded border border-slate-300 bg-slate-50 p-3 text-sm">
                 <strong>หมายเหตุลูกค้า:</strong> {order.note}
