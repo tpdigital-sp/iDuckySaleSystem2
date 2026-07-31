@@ -160,6 +160,8 @@ export interface OrderItem {
   unitPrice: number;
   /** ส่วนลดเฉพาะรายการนี้ (บาท รวมทั้งบรรทัด) — แอดมินใส่เอง หักออกจากยอดรวม */
   discount?: number;
+  /** ส่วนลดเฉพาะรายการนี้เป็น % ของราคาบรรทัด (มีค่า = ใช้ % แทนบาท) */
+  discountPct?: number;
   /** ภาพแบบงาน (proof) — หลายรูปได้ แต่ละรูประบุจำนวน/รายละเอียดของตัวเอง */
   proofs?: Proof[];
   /** @deprecated รูปแบบเดิม (รูปเดียว) — อ่านผ่าน proofsOf() เพื่อรองรับออเดอร์เก่า */
@@ -226,8 +228,8 @@ export interface Order {
   log?: LogEntry[];
   /** ส่วนลด (ระดับสมาชิก หรือ คูปอง) คิดฝั่งเซิร์ฟเวอร์ตอนสร้างออเดอร์ — หักออกจากยอดรวม */
   discount?: { label: string; amount: number; couponCode?: string };
-  /** ส่วนลดทั้งบิลที่แอดมินใส่เอง (แยกจากคูปอง/ระดับสมาชิก — ใช้พร้อมกันได้) */
-  adminDiscount?: { label?: string; amount: number };
+  /** ส่วนลดทั้งบิลที่แอดมินใส่เอง (แยกจากคูปอง/ระดับสมาชิก — ใช้พร้อมกันได้) · pct มีค่า = คิดเป็น % ของยอดสินค้าหลังหักส่วนลดรายรายการ */
+  adminDiscount?: { label?: string; amount?: number; pct?: number };
   /**
    * ลูกค้าประเมินความพึงพอใจแล้ว (กันประเมินซ้ำ) — ตั้งใจเก็บแค่ boolean
    * ห้ามเก็บคะแนน/เวลา/รายละเอียดใด ๆ ที่นี่ เพื่อให้คะแนนในตาราง ratings นิรนามจริง
@@ -240,14 +242,32 @@ export function orderSubtotal(o: Order): number {
   return o.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
 }
 
+/** ส่วนลดของรายการนี้เป็นบาท (รองรับทั้งใส่บาทตรง ๆ และ % ของราคาบรรทัด) — ไม่เกินราคาบรรทัด */
+export function itemDiscountAmount(i: OrderItem): number {
+  const line = i.qty * i.unitPrice;
+  if ((i.discountPct ?? 0) > 0) return Math.min(line, Math.floor((line * i.discountPct!) / 100));
+  return Math.min(line, Math.max(0, i.discount ?? 0));
+}
+
 /** รวมส่วนลดรายรายการ (แอดมินใส่เอง) */
 export function orderItemDiscounts(o: Order): number {
-  return o.items.reduce((s, i) => s + Math.max(0, i.discount ?? 0), 0);
+  return o.items.reduce((s, i) => s + itemDiscountAmount(i), 0);
+}
+
+/** ส่วนลดทั้งบิลของแอดมินเป็นบาท — % คิดจากยอดสินค้าหลังหักส่วนลดรายรายการ */
+export function adminDiscountAmount(o: Order): number {
+  const d = o.adminDiscount;
+  if (!d) return 0;
+  if ((d.pct ?? 0) > 0) {
+    const base = Math.max(0, orderSubtotal(o) - orderItemDiscounts(o));
+    return Math.floor((base * d.pct!) / 100);
+  }
+  return Math.max(0, d.amount ?? 0);
 }
 
 /** ส่วนลดทั้งหมดของออเดอร์ = คูปอง/ระดับ + ส่วนลดทั้งบิลจากแอดมิน + ส่วนลดรายรายการ */
 export function orderDiscountTotal(o: Order): number {
-  return (o.discount?.amount ?? 0) + Math.max(0, o.adminDiscount?.amount ?? 0) + orderItemDiscounts(o);
+  return (o.discount?.amount ?? 0) + adminDiscountAmount(o) + orderItemDiscounts(o);
 }
 
 export function orderTotal(o: Order): number {

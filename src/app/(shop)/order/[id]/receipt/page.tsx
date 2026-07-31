@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { formatPrice } from "@/lib/products";
-import { orderItemDiscounts, orderTotal, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, orderItemDiscounts, orderTotal, type Order } from "@/lib/admin-data";
 import { fetchOrderForCustomer } from "@/lib/order-repo";
 import { fetchShopPayment, shopInfoOf, type ShopInfo } from "@/lib/shop-settings";
 
@@ -139,10 +139,10 @@ export default function CustomerReceiptPage() {
                 <span className="tabular-nums">−{formatPrice(orderItemDiscounts(order))}</span>
               </div>
             )}
-            {(order.adminDiscount?.amount ?? 0) > 0 && (
+            {adminDiscountAmount(order) > 0 && (
               <div className="flex justify-between font-semibold text-emerald-600">
-                <span>{order.adminDiscount?.label?.trim() || "ส่วนลดพิเศษจากร้าน"}</span>
-                <span className="tabular-nums">−{formatPrice(order.adminDiscount!.amount)}</span>
+                <span>{order.adminDiscount?.label?.trim() || "ส่วนลดพิเศษจากร้าน"}{(order.adminDiscount?.pct ?? 0) > 0 ? ` (${order.adminDiscount!.pct}%)` : ""}</span>
+                <span className="tabular-nums">−{formatPrice(adminDiscountAmount(order))}</span>
               </div>
             )}
             <div className="flex justify-between border-t border-stone-200 pt-2 text-base font-extrabold text-amber-950">

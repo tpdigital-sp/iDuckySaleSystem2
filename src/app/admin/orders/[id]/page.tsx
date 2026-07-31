@@ -7,6 +7,8 @@ import { formatPrice } from "@/lib/products";
 import {
   MOCK_ORDERS,
   ORDER_STATUSES,
+  adminDiscountAmount,
+  itemDiscountAmount,
   orderItemDiscounts,
   orderTotal,
   packGate,
@@ -768,36 +770,80 @@ export default function AdminOrderDetailPage() {
                     </div>
                     <span className="shrink-0 text-right text-sm font-bold text-slate-900">
                       {it.qty} × {formatPrice(it.unitPrice)}
-                      {/* ส่วนลดเฉพาะรายการนี้ (แอดมินใส่เอง — บันทึกตอนออกจากช่อง พร้อมลง log) */}
+                      {/* ส่วนลดเฉพาะรายการนี้ — เลือกได้ทั้งบาทและ % (บันทึกตอนออกจากช่อง พร้อมลง log) */}
                       {mayEdit && seesMoney ? (
                         <span className="mt-1 flex items-center justify-end gap-1 text-[11px] font-semibold text-rose-500">
-                          ลด ฿
+                          ลด
                           <input
                             type="number"
                             min={0}
-                            value={it.discount ?? ""}
+                            value={it.discountPct !== undefined ? (it.discountPct || "") : (it.discount ?? "")}
                             placeholder="0"
                             onChange={(e) => {
                               const v = Math.max(0, Number(e.target.value) || 0);
+                              const isPct = it.discountPct !== undefined;
                               setOrder((cur) =>
                                 cur
-                                  ? { ...cur, items: cur.items.map((x, j) => (j === i ? { ...x, discount: v > 0 ? v : undefined } : x)) }
+                                  ? {
+                                      ...cur,
+                                      items: cur.items.map((x, j) =>
+                                        j === i
+                                          ? isPct
+                                            ? { ...x, discountPct: Math.min(100, v), discount: undefined }
+                                            : { ...x, discount: v > 0 ? v : undefined, discountPct: undefined }
+                                          : x
+                                      ),
+                                    }
                                   : cur
                               );
                             }}
-                            onFocus={(e) => (e.currentTarget.dataset.orig = String(it.discount ?? 0))}
+                            onFocus={(e) => (e.currentTarget.dataset.orig = String(itemDiscountAmount(it)))}
                             onBlur={(e) => {
                               const orig = Number(e.currentTarget.dataset.orig || 0);
-                              const now = Number(it.discount ?? 0);
+                              const now = itemDiscountAmount(it);
                               if (orig === now) return;
-                              const next = withLog(order, actor, "ส่วนลดรายการ", `${it.name}: −${formatPrice(now)}`);
+                              const pct = (it.discountPct ?? 0) > 0 ? ` (${it.discountPct}%)` : "";
+                              const next = withLog(order, actor, "ส่วนลดรายการ", `${it.name}: −${formatPrice(now)}${pct}`);
                               applyOrder(next);
                             }}
-                            className="w-16 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-right text-[11px] font-semibold text-rose-600 focus:border-amber-300 focus:outline-none"
+                            className="w-14 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-right text-[11px] font-semibold text-rose-600 focus:border-amber-300 focus:outline-none"
                           />
+                          <select
+                            value={it.discountPct !== undefined ? "pct" : "baht"}
+                            onChange={(e) => {
+                              const toPct = e.target.value === "pct";
+                              // สลับหน่วย — ย้ายตัวเลขเดิมไปหน่วยใหม่ (แล้วบันทึก)
+                              const cur = it.discountPct !== undefined ? it.discountPct : (it.discount ?? 0);
+                              const next = withLog(
+                                {
+                                  ...order,
+                                  items: order.items.map((x, j) =>
+                                    j === i
+                                      ? toPct
+                                        ? { ...x, discountPct: Math.min(100, cur), discount: undefined }
+                                        : { ...x, discount: cur > 0 ? cur : undefined, discountPct: undefined }
+                                      : x
+                                  ),
+                                },
+                                actor,
+                                "ส่วนลดรายการ",
+                                `${it.name}: สลับหน่วยเป็น ${toPct ? "%" : "บาท"}`
+                              );
+                              applyOrder(next);
+                            }}
+                            className="rounded-md border border-slate-200 bg-white px-1 py-0.5 text-[11px] font-semibold text-rose-600 focus:border-amber-300 focus:outline-none"
+                          >
+                            <option value="baht">฿</option>
+                            <option value="pct">%</option>
+                          </select>
+                          {(it.discountPct ?? 0) > 0 && itemDiscountAmount(it) > 0 && (
+                            <span className="text-slate-400">= −{formatPrice(itemDiscountAmount(it))}</span>
+                          )}
                         </span>
-                      ) : (it.discount ?? 0) > 0 && seesMoney ? (
-                        <span className="mt-0.5 block text-[11px] font-semibold text-rose-500">ลด −{formatPrice(it.discount!)}</span>
+                      ) : itemDiscountAmount(it) > 0 && seesMoney ? (
+                        <span className="mt-0.5 block text-[11px] font-semibold text-rose-500">
+                          ลด{(it.discountPct ?? 0) > 0 ? ` ${it.discountPct}%` : ""} −{formatPrice(itemDiscountAmount(it))}
+                        </span>
                       ) : null}
                     </span>
                   </div>
@@ -1167,35 +1213,70 @@ export default function AdminOrderDetailPage() {
                     className="w-full min-w-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
                   />
                   <span className="flex shrink-0 items-center gap-1 font-semibold text-rose-500">
-                    −฿
+                    −
                     <input
                       type="number"
                       min={0}
-                      value={order.adminDiscount?.amount || ""}
+                      value={order.adminDiscount?.pct !== undefined ? (order.adminDiscount.pct || "") : (order.adminDiscount?.amount || "")}
                       placeholder="0"
                       onChange={(e) => {
                         const v = Math.max(0, Number(e.target.value) || 0);
-                        setOrder((cur) =>
-                          cur ? { ...cur, adminDiscount: v > 0 ? { ...(cur.adminDiscount ?? {}), amount: v } : undefined } : cur
-                        );
+                        const isPct = order.adminDiscount?.pct !== undefined;
+                        setOrder((cur) => {
+                          if (!cur) return cur;
+                          if (v <= 0 && !isPct) return { ...cur, adminDiscount: cur.adminDiscount?.label ? { label: cur.adminDiscount.label } : undefined };
+                          return {
+                            ...cur,
+                            adminDiscount: isPct
+                              ? { label: cur.adminDiscount?.label, pct: Math.min(100, v) }
+                              : { label: cur.adminDiscount?.label, amount: v },
+                          };
+                        });
                       }}
-                      onFocus={(e) => (e.currentTarget.dataset.orig = String(order.adminDiscount?.amount ?? 0))}
+                      onFocus={(e) => (e.currentTarget.dataset.orig = String(adminDiscountAmount(order)))}
                       onBlur={(e) => {
                         const orig = Number(e.currentTarget.dataset.orig || 0);
-                        const now = order.adminDiscount?.amount ?? 0;
+                        const now = adminDiscountAmount(order);
                         if (orig === now) return persist();
-                        const next = withLog(order, actor, "ส่วนลดทั้งบิล", `−${formatPrice(now)}${order.adminDiscount?.label ? ` (${order.adminDiscount.label})` : ""}`);
+                        const pct = (order.adminDiscount?.pct ?? 0) > 0 ? ` (${order.adminDiscount!.pct}%)` : "";
+                        const next = withLog(order, actor, "ส่วนลดทั้งบิล", `−${formatPrice(now)}${pct}${order.adminDiscount?.label ? ` · ${order.adminDiscount.label}` : ""}`);
                         applyOrder(next);
                       }}
-                      className="w-20 rounded-md border border-slate-200 bg-white px-1.5 py-1 text-right text-xs font-semibold text-rose-600 focus:border-amber-300 focus:outline-none"
+                      className="w-16 rounded-md border border-slate-200 bg-white px-1.5 py-1 text-right text-xs font-semibold text-rose-600 focus:border-amber-300 focus:outline-none"
                     />
+                    <select
+                      value={order.adminDiscount?.pct !== undefined ? "pct" : "baht"}
+                      onChange={(e) => {
+                        const toPct = e.target.value === "pct";
+                        const cur = order.adminDiscount?.pct !== undefined ? order.adminDiscount.pct : (order.adminDiscount?.amount ?? 0);
+                        const next = withLog(
+                          {
+                            ...order,
+                            adminDiscount: toPct
+                              ? { label: order.adminDiscount?.label, pct: Math.min(100, cur) }
+                              : { label: order.adminDiscount?.label, amount: cur },
+                          },
+                          actor,
+                          "ส่วนลดทั้งบิล",
+                          `สลับหน่วยเป็น ${toPct ? "%" : "บาท"}`
+                        );
+                        applyOrder(next);
+                      }}
+                      className="rounded-md border border-slate-200 bg-white px-1 py-1 text-xs font-semibold text-rose-600 focus:border-amber-300 focus:outline-none"
+                    >
+                      <option value="baht">฿</option>
+                      <option value="pct">%</option>
+                    </select>
+                    {(order.adminDiscount?.pct ?? 0) > 0 && adminDiscountAmount(order) > 0 && (
+                      <span className="text-xs text-slate-400">= −{formatPrice(adminDiscountAmount(order))}</span>
+                    )}
                   </span>
                 </div>
               ) : (
-                (order.adminDiscount?.amount ?? 0) > 0 && (
+                adminDiscountAmount(order) > 0 && (
                   <div className="mt-1.5 flex justify-between text-sm font-semibold text-rose-500">
-                    <span>{order.adminDiscount?.label || "ส่วนลดพิเศษ"}</span>
-                    <span>−{formatPrice(order.adminDiscount!.amount)}</span>
+                    <span>{order.adminDiscount?.label || "ส่วนลดพิเศษ"}{(order.adminDiscount?.pct ?? 0) > 0 ? ` (${order.adminDiscount!.pct}%)` : ""}</span>
+                    <span>−{formatPrice(adminDiscountAmount(order))}</span>
                   </div>
                 )
               )}
