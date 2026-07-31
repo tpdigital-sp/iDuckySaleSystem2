@@ -85,7 +85,7 @@ export default function CustomerOrderPage() {
   const [showGuide, setShowGuide] = useState(false);
   useEffect(() => {
     if (!order) return;
-    const pending = order.items.some((it) => proofsOf(it).length && it.proofStatus === "รอตรวจ");
+    const pending = order.items.some((it) => it.proofStatus !== "อนุมัติ" && proofsOf(it).some((p) => !p.review));
     if (!pending) return;
     try {
       if (localStorage.getItem(`ducky-review-guide-${order.id}`)) return;
@@ -246,6 +246,10 @@ export default function CustomerOrderPage() {
   }
 
   const waiting = order.items.filter((it) => proofsOf(it).length && it.proofStatus === "รอตรวจ").length;
+  /** รายการที่ยังมีภาพค้างตรวจ (นับทั้งสถานะรอตรวจและขอแก้ไข) — ใช้โชว์แบนเนอร์+คู่มือ */
+  const waitingItems = order.items.filter(
+    (it) => it.proofStatus !== "อนุมัติ" && proofsOf(it).some((p) => !p.review)
+  ).length;
   /** จำนวน "ภาพ" ที่ลูกค้ายังไม่ได้ตรวจ (per-image) — ข้ามรายการที่อนุมัติครบแล้ว */
   const waitingProofs = order.items
     .filter((it) => proofsOf(it).length && it.proofStatus !== "อนุมัติ")
@@ -365,9 +369,9 @@ export default function CustomerOrderPage() {
         </div>
       )}
 
-      {waiting > 0 && (
+      {waitingItems > 0 && (
         <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
-          🎨 <strong>มีแบบงานรอให้คุณตรวจ {waiting} รายการ — เหลืออีก {waitingProofs} ภาพ</strong> · แตะรูปเพื่อดูใหญ่ แล้วกดอนุมัติทีละภาพได้เลย{" "}
+          🎨 <strong>มีแบบงานรอให้คุณตรวจ {waitingItems} รายการ — เหลืออีก {waitingProofs} ภาพ</strong> · แตะรูปเพื่อดูใหญ่ แล้วกดอนุมัติทีละภาพได้เลย{" "}
           <button
             type="button"
             onClick={() => setShowGuide(true)}
@@ -636,7 +640,21 @@ export default function CustomerOrderPage() {
                         </div>
                       ))}
                     </div>
-                    <p className="mt-1.5 text-[11px] text-stone-400">แตะรูปเพื่อดูขนาดเต็ม</p>
+                    <p className="mt-1.5 text-[11px] text-stone-400">
+                      แตะรูปเพื่อดูขนาดเต็ม
+                      {it.proofStatus !== "อนุมัติ" && proofs.some((p) => !p.review) && (
+                        <>
+                          {" · "}
+                          <button
+                            type="button"
+                            onClick={() => setShowGuide(true)}
+                            className="font-bold text-amber-600 underline underline-offset-2 hover:text-amber-700"
+                          >
+                            ❓ วิธีตรวจ/อนุมัติแบบ
+                          </button>
+                        </>
+                      )}
+                    </p>
                   </>
                 )}
 
