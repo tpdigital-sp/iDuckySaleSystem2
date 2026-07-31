@@ -211,6 +211,8 @@ export interface Order {
   slipPath?: string;
   /** เวลาที่ลูกค้ากดแจ้งโอน (ISO string) */
   paidReportedAt?: string;
+  /** ผลตรวจสลิปอัตโนมัติ (SlipOK) — pass = ยืนยันชำระให้แล้ว · fail = ให้แอดมินตรวจเอง */
+  slipVerify?: { status: "pass" | "fail"; detail?: string; amount?: number; transRef?: string; at: string };
   /** เวลาที่แอดมินปริ้นใบงานครั้งแรก (ISO) — มีค่า = ล็อกที่อยู่ ลูกค้าแก้ไม่ได้แล้ว */
   printedAt?: string;
   /** ช่วงวันที่จัดส่ง (แอดมินระบุ) — โชว์บนใบงาน · เก็บเป็น yyyy-mm-dd */

@@ -1340,6 +1340,25 @@ export default function AdminOrderDetailPage() {
           {order.slipUrl && seesMoney && (
             <div>
               <p className={LBL}>หลักฐานการโอน</p>
+              {/* ผลตรวจสลิปอัตโนมัติ (SlipOK) */}
+              {order.slipVerify && (
+                <p
+                  className={`mt-2 rounded-xl px-3 py-2 text-xs font-semibold ring-1 ${
+                    order.slipVerify.status === "pass"
+                      ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                      : "bg-amber-50 text-amber-800 ring-amber-200"
+                  }`}
+                >
+                  {order.slipVerify.status === "pass" ? (
+                    <>
+                      ✅ SlipOK ตรวจแล้ว: ยอดถูกต้อง {order.slipVerify.amount ? formatPrice(order.slipVerify.amount) : ""} — ยืนยันการชำระให้อัตโนมัติ
+                      {order.slipVerify.transRef ? ` · อ้างอิง ${order.slipVerify.transRef}` : ""}
+                    </>
+                  ) : (
+                    <>⚠️ SlipOK ตรวจไม่ผ่าน{order.slipVerify.detail ? `: ${order.slipVerify.detail}` : ""} — กรุณาตรวจสลิปเอง</>
+                  )}
+                </p>
+              )}
               <div className={`mt-2 flex items-center gap-3 ${SOFT}`}>
                 <button
                   type="button"

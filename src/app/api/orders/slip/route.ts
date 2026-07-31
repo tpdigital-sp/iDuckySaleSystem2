@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderTotal, type Order } from "@/lib/admin-data";
+import { orderTotal, withLog, type Order } from "@/lib/admin-data";
+import { verifySlipWithSlipOK } from "@/lib/server/slipok";
+import { notifyCustomer, orderLink } from "@/lib/server/notify";
 
 export const runtime = "nodejs";
 
@@ -68,18 +70,37 @@ export async function POST(req: Request) {
   }
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 
+  // ── ตรวจสลิปอัตโนมัติกับ SlipOK (ถ้าตั้งค่าไว้) — เทียบยอดที่ต้องโอนจริง ──
+  const expected = orderTotal(order); // หักส่วนลดทุกชนิดแล้ว
+  const verify = await verifySlipWithSlipOK(bytes, file.type, expected);
+  const now = new Date().toISOString();
+
   // จำยอดรวม ณ ตอนแจ้งโอน — ถ้าลูกค้าสั่งเพิ่มทีหลัง จะรู้ว่าค้างชำระเท่าไหร่
-  const paidNow = orderTotal(order); // หักส่วนลดระดับสมาชิกแล้ว
-  const updated: Order = {
+  let updated: Order = {
     ...order,
     slipPath: path, // เก็บ path — ไม่เก็บ URL สาธารณะ
     slipUrl: undefined, // ล้างของเก่า (ถ้ามี) กันชี้ไปไฟล์ public เดิม
-    paidReportedAt: new Date().toISOString(),
-    paidTotal: paidNow,
-    status: "รอตรวจสอบ",
+    paidReportedAt: now,
+    paidTotal: expected,
+    // ผ่านการตรวจอัตโนมัติเท่านั้นถึงยืนยันให้เลย — นอกนั้นรอแอดมินตรวจตามเดิม
+    status: verify.status === "pass" ? "ชำระแล้ว" : "รอตรวจสอบ",
+    ...(verify.status === "pass" || verify.status === "fail"
+      ? { slipVerify: { status: verify.status, detail: verify.detail, amount: verify.amount, transRef: verify.transRef, at: now } }
+      : { slipVerify: undefined }),
   };
+  if (verify.status === "pass")
+    updated = withLog(updated, "SlipOK", "ยืนยันการชำระเงินอัตโนมัติ", `ยอด ${verify.amount ?? expected} บาท${verify.transRef ? ` · อ้างอิง ${verify.transRef}` : ""}`);
+  else if (verify.status === "fail")
+    updated = withLog(updated, "SlipOK", "สลิปตรวจไม่ผ่าน — รอแอดมินตรวจเอง", verify.detail ?? "");
+
   const { error: saveErr } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
 
-  return NextResponse.json({ ok: true });
+  // ผ่านอัตโนมัติ → แจ้งลูกค้าทันทีเหมือนแอดมินกดยืนยันเอง (เงียบถ้ายังไม่ตั้งค่า LINE)
+  if (verify.status === "pass") {
+    const origin = new URL(req.url).origin;
+    void notifyCustomer(sb, updated, `✅ ยืนยันการชำระเงินออเดอร์ ${updated.id} แล้ว กำลังเริ่มงานให้ครับ\n${orderLink(origin, updated)}`);
+  }
+
+  return NextResponse.json({ ok: true, verified: verify.status === "pass" });
 }
