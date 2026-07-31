@@ -35,6 +35,7 @@ import ImageLightbox from "@/components/ImageLightbox";
 import PackCheckPanel from "@/components/PackCheckPanel";
 import { useActor, useCan } from "@/lib/perm-context";
 import { publicOrigin } from "@/lib/shop-info";
+import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
 
 const LBL = "text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400";
 const SOFT = "rounded-xl border border-slate-200/70 bg-white p-4";
@@ -292,6 +293,12 @@ export default function AdminOrderDetailPage() {
   }, [orderId, uploadingIdx]);
 
   usePolling(refresh, { enabled: !demo && !!order });
+
+  // วิธีจัดส่งจากตั้งค่าร้าน — ให้แอดมินเลือกแล้วเติมค่าส่งอัตโนมัติ (ใช้ในออเดอร์งานพิเศษ/สั่งแทน)
+  const [shipMethods, setShipMethods] = useState<ShippingMethod[]>([]);
+  useEffect(() => {
+    void fetchShopPayment().then((p) => setShipMethods(shippingOf(p)));
+  }, []);
 
   function changeStatus(status: OrderStatus) {
     if (!order || order.status === status) return;
@@ -1154,8 +1161,33 @@ export default function AdminOrderDetailPage() {
                     placeholder="ที่อยู่จัดส่ง"
                     className="w-full resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 focus:border-amber-300 focus:outline-none"
                   />
-                  <p className={`flex items-center gap-2 text-xs ${faint}`}>
-                    {order.payment} · {order.shipping} · ค่าส่ง
+                  <p className={`flex flex-wrap items-center gap-2 text-xs ${faint}`}>
+                    {order.payment} ·
+                    {/* เลือกวิธีส่งจากตั้งค่าร้าน — ราคาเติมให้อัตโนมัติ (แก้ตัวเลขเองต่อได้) */}
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const m = shipMethods.find((x) => x.id === e.target.value);
+                        if (!m) return;
+                        const next = {
+                          ...order,
+                          shipping: (m.name.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา") as Order["shipping"],
+                          shippingCost: Math.max(0, m.price),
+                        };
+                        applyOrder(next);
+                      }}
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
+                    >
+                      <option value="" disabled>
+                        {order.shipping} — เลือกวิธีส่ง…
+                      </option>
+                      {shipMethods.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} — ฿{m.price}
+                        </option>
+                      ))}
+                    </select>
+                    ค่าส่ง
                     <input
                       type="number"
                       min={0}

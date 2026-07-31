@@ -346,8 +346,17 @@ export default function CustomerOrderPage() {
               ? `เกิดจากการสั่งเพิ่ม — โอนเฉพาะส่วนต่างมาที่บัญชีร้าน แล้วแนบสลิป (จ่ายแล้ว ${formatPrice(order.paidTotal ?? 0)} จาก ${formatPrice(orderTotal(order))})`
               : "โอนเงินมาที่บัญชีร้านแล้วแนบสลิปที่นี่ ทางร้านจะตรวจสอบและเริ่มงานให้"}
           </p>
-          <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-rose-700">
-            {slipBusy ? "กำลังส่งสลิป…" : "📤 แนบสลิปการโอน"}
+          <label
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              // ลากสลิปมาวางที่ปุ่มนี้ได้เลย (เดสก์ท็อป) — มือถือแตะเลือกไฟล์เหมือนเดิม
+              e.preventDefault();
+              const f = e.dataTransfer.files?.[0];
+              if (f) void uploadSlip(f);
+            }}
+            className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-rose-700"
+          >
+            {slipBusy ? "กำลังส่งสลิป…" : "📤 แนบสลิปการโอน — แตะเลือกรูป หรือลากมาวางตรงนี้"}
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"
