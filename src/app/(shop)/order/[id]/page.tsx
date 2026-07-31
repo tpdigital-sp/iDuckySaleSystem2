@@ -865,7 +865,11 @@ export default function CustomerOrderPage() {
             <div className="rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200 sm:p-5">
               <p className="text-[11px] font-bold uppercase tracking-widest text-amber-700">เลขพัสดุ</p>
               <p className="mt-1 select-all break-all font-mono text-lg font-extrabold text-amber-950">{order.tracking}</p>
-              <p className="mt-1 text-xs text-stone-500">แตะค้างเพื่อคัดลอก แล้วนำไปเช็คสถานะกับขนส่งได้เลย</p>
+              {/^[A-Z]{2}\d{9}TH$/i.test(order.tracking.trim()) ? (
+                <CustomerThaiPostStatus orderId={order.id} orderKey={orderKey} tracking={order.tracking.trim()} />
+              ) : (
+                <p className="mt-1 text-xs text-stone-500">แตะค้างเพื่อคัดลอก แล้วนำไปเช็คสถานะกับขนส่งได้เลย</p>
+              )}
             </div>
           )}
 
@@ -1149,6 +1153,55 @@ export default function CustomerOrderPage() {
             />
           );
         })()}
+    </div>
+  );
+}
+
+
+/** สถานะพัสดุไปรษณีย์ไทยฝั่งลูกค้า — ใช้กุญแจออเดอร์ยืนยันตัว · ไม่มี token = ลิงก์ไปเว็บ ปณ. */
+function CustomerThaiPostStatus({ orderId, orderKey, tracking }: { orderId: string; orderKey: string; tracking: string }) {
+  const [st, setSt] = useState<{
+    loading: boolean;
+    configured?: boolean;
+    events?: { description: string; location?: string; at: string }[];
+    error?: string;
+  }>({ loading: true });
+  const trackUrl = `https://track.thailandpost.co.th/?trackNumber=${encodeURIComponent(tracking)}`;
+
+  useEffect(() => {
+    if (!orderKey) return;
+    let live = true;
+    fetch(`/api/orders/track?orderId=${encodeURIComponent(orderId)}&key=${encodeURIComponent(orderKey)}`)
+      .then((r) => r.json())
+      .then((j) => live && setSt({ loading: false, ...j }))
+      .catch(() => live && setSt({ loading: false, error: "x" }));
+    return () => {
+      live = false;
+    };
+  }, [orderId, orderKey]);
+
+  const latest = st.events?.[st.events.length - 1];
+  return (
+    <div className="mt-2">
+      {latest ? (
+        <div className="rounded-xl bg-white/70 p-3 ring-1 ring-amber-200/60">
+          <p className="text-sm font-bold text-amber-950">
+            📮 {latest.description}
+            {latest.location ? <span className="font-normal text-stone-500"> · {latest.location}</span> : null}
+          </p>
+          <p className="mt-0.5 text-[11px] text-stone-400">{latest.at}</p>
+        </div>
+      ) : st.loading && orderKey ? (
+        <p className="text-xs text-stone-400">กำลังเช็คสถานะกับไปรษณีย์ไทย…</p>
+      ) : null}
+      <a
+        href={trackUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-1.5 inline-block text-xs font-bold text-amber-700 underline decoration-amber-300 underline-offset-2 hover:text-amber-800"
+      >
+        เช็คสถานะเต็ม ๆ ที่เว็บไปรษณีย์ไทย ↗
+      </a>
     </div>
   );
 }

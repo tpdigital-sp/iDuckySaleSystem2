@@ -1527,6 +1527,7 @@ export default function AdminOrderDetailPage() {
                 📮 ใช้เครื่องยิง QR แทน →
               </Link>
             </div>
+            {(order.tracking ?? "").trim() && <ThaiPostStatus number={order.tracking!.trim()} />}
           </div>
 
           {/* ── ข้อมูลใบงาน: วันที่จัดส่ง + หมายเหตุ (โชว์ตอนปริ้น) ── */}
@@ -2127,6 +2128,90 @@ function SpecialItemAdder({ onAdd }: { onAdd: (item: OrderItem) => void }) {
           จัดการคลังสินค้าสั่งพิเศษ →
         </Link>
       </p>
+    </div>
+  );
+}
+
+
+/** สถานะพัสดุจากไปรษณีย์ไทย — มี token = timeline สด · ไม่มี = ลิงก์ไปเช็คเว็บ ปณ. */
+function ThaiPostStatus({ number }: { number: string }) {
+  const [state, setState] = useState<{
+    loading: boolean;
+    configured?: boolean;
+    notThaiPost?: boolean;
+    events?: { status: string; description: string; location?: string; at: string }[];
+    error?: string;
+  }>({ loading: true });
+  const [open, setOpen] = useState(false);
+  const trackUrl = `https://track.thailandpost.co.th/?trackNumber=${encodeURIComponent(number)}`;
+
+  useEffect(() => {
+    let live = true;
+    setState({ loading: true });
+    fetch(`/api/orders/track?number=${encodeURIComponent(number)}`)
+      .then((r) => r.json())
+      .then((j) => live && setState({ loading: false, ...j }))
+      .catch(() => live && setState({ loading: false, error: "เชื่อมต่อไม่ได้" }));
+    return () => {
+      live = false;
+    };
+  }, [number]);
+
+  if (!/^[A-Z]{2}\d{9}TH$/i.test(number)) return null; // ไม่ใช่เลข ปณ. (เช่น Flash/J&T) — ไม่โชว์
+  const latest = state.events?.[state.events.length - 1];
+
+  return (
+    <div className="mt-2 rounded-xl bg-rose-50/50 p-3 ring-1 ring-rose-100">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-bold text-rose-700">📮 สถานะพัสดุ ไปรษณีย์ไทย</p>
+        <a href={trackUrl} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-rose-600 hover:underline">
+          เปิดเว็บ ปณ. ↗
+        </a>
+      </div>
+      {state.loading ? (
+        <p className="mt-1 text-xs text-slate-400">กำลังเช็คสถานะ…</p>
+      ) : state.configured === false ? (
+        <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+          กดลิงก์ด้านบนเพื่อเช็คสถานะ · อยากให้โชว์สถานะสดตรงนี้ — สมัคร Track&Trace API ฟรีที่ track.thailandpost.co.th
+          แล้วตั้งค่า <code className="rounded bg-white px-1">THAILANDPOST_TRACK_TOKEN</code>
+        </p>
+      ) : state.error ? (
+        <p className="mt-1 text-xs text-amber-600">{state.error}</p>
+      ) : !state.events?.length ? (
+        <p className="mt-1 text-xs text-slate-500">ปณ. ยังไม่มีข้อมูลเลขนี้ (พัสดุใหม่จะขึ้นหลังไปรษณีย์รับเข้าระบบ)</p>
+      ) : (
+        <div className="mt-1.5">
+          <p className="text-sm font-bold text-slate-800">
+            {latest!.description}
+            {latest!.location ? <span className="font-normal text-slate-500"> · {latest!.location}</span> : null}
+          </p>
+          <p className="text-[11px] text-slate-400">{latest!.at}</p>
+          {state.events!.length > 1 && (
+            <>
+              {open && (
+                <ul className="mt-2 space-y-1.5 border-l-2 border-rose-200 pl-3">
+                  {[...state.events!].reverse().slice(1).map((e, i) => (
+                    <li key={i}>
+                      <p className="text-xs font-semibold text-slate-600">
+                        {e.description}
+                        {e.location ? <span className="font-normal text-slate-400"> · {e.location}</span> : null}
+                      </p>
+                      <p className="text-[10px] text-slate-400">{e.at}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                className="mt-1.5 text-[11px] font-bold text-rose-600 hover:underline"
+              >
+                {open ? "หุบประวัติเดินทาง ▴" : `ดูประวัติเดินทางทั้งหมด ${state.events!.length} ขั้น ▾`}
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
