@@ -609,6 +609,69 @@ export default function ProductEditor({ product }: { product: Product }) {
   }, [draft]);
 
   const cat = CATEGORIES.find((c) => c.id === draft.category);
+
+  /** ✨ เขียน SEO/AEO อัตโนมัติจากข้อมูลสินค้า (ชื่อ/หมวด/ราคา/ตัวเลือก/จุดเด่น) — กดแล้วแก้ต่อได้ */
+  function autoFillSeo() {
+    const hasOld = draft.seo.title || draft.seo.description || draft.seo.keywords || draft.seo.faqs.length > 0;
+    if (hasOld && !window.confirm("เขียนทับ SEO/AEO ที่มีอยู่ด้วยข้อความอัตโนมัติ?")) return;
+    const name = draft.name.trim() || "สินค้า";
+    const price = Number(draft.price) || 0;
+    const opts = draft.options
+      .map((o) => ({ label: o.label.trim(), names: o.choices.map((c) => c.name.trim()).filter(Boolean) }))
+      .filter((o) => o.label && o.names.length > 0);
+    const hi = draft.highlights.map((h) => h.trim()).filter(Boolean);
+
+    // ตัดที่ขอบคำ — ไม่ให้คำท้ายขาดกลางคำ
+    const cut = (t: string, n: number) => (t.length <= n ? t : t.slice(0, n).replace(/\s+\S*$/, ""));
+    const title = cut(`${name} พิมพ์ลายตามสั่ง${price ? ` เริ่มต้น ${price} บาท` : ""} | iDucky`, 60);
+    const descriptionRaw = (
+      `${name} สั่งทำลายของคุณเอง` +
+      (opts.length ? ` มี${opts.map((o) => o.label).slice(0, 3).join(" / ")}ให้เลือก` : "") +
+      (price ? ` เริ่มต้น ${price} บาท` : "") +
+      (hi[0] ? ` · ${hi[0]}` : "") +
+      " · สั่งง่าย ส่งไวทั่วไทย ตรวจแบบก่อนผลิตทุกชิ้น"
+    );
+    const description = cut(descriptionRaw, 160);
+    const kw = [
+      name,
+      ...(cat ? [cat.name, cat.nameEn] : []),
+      ...opts.flatMap((o) => o.names.slice(0, 3)),
+      "พิมพ์ลาย",
+      "สั่งทำ",
+      "ตามสั่ง",
+      "ของขวัญ",
+      "iDucky",
+    ]
+      .map((k) => k.trim())
+      .filter(Boolean);
+    const keywords = [...new Set(kw)].slice(0, 12).join(", ");
+
+    const faqs: DraftFaq[] = [
+      {
+        q: `${name} ราคาเท่าไหร่?`,
+        a: price
+          ? `เริ่มต้นชิ้นละ ${price} บาท — ราคาจริงขึ้นกับตัวเลือกและจำนวนที่สั่ง ดูราคาแต่ละแบบได้ในหน้าสินค้า`
+          : "ราคาขึ้นกับแบบและจำนวนที่สั่ง ดูรายละเอียดได้ในหน้าสินค้า หรือทักไลน์ร้านได้เลย",
+      },
+      ...(opts.length
+        ? [
+            {
+              q: `${name} มี${opts[0].label}อะไรให้เลือกบ้าง?`,
+              a: opts.map((o) => `${o.label}: ${o.names.slice(0, 6).join(", ")}`).join(" · "),
+            },
+          ]
+        : []),
+      {
+        q: `สั่ง ${name} เป็นลายของตัวเองได้ไหม?`,
+        a: "ได้ครับ ส่งไฟล์ลาย/รูปที่ต้องการมาตอนสั่งซื้อ ทีมงานจัดทำแบบให้ตรวจและอนุมัติก่อนเริ่มผลิตทุกครั้ง",
+      },
+      {
+        q: "สั่งแล้วกี่วันได้ของ?",
+        a: "หลังยืนยันการชำระเงินและอนุมัติแบบ ทีมงานจะเริ่มผลิตและจัดส่งทั่วไทย ติดตามสถานะได้จากลิงก์ออเดอร์ตลอดเวลา",
+      },
+    ];
+    patch({ seo: { title, description, keywords, faqs } });
+  }
   const categoryLabel = cat?.name ?? draft.category;
   const thumbEmoji = draft.emoji || cat?.emoji || "📦";
   const thumbGradient = draft.gradient || cat?.gradient || "from-amber-100 to-amber-200";
@@ -1787,7 +1850,16 @@ export default function ProductEditor({ product }: { product: Product }) {
 
       {/* SEO / AEO */}
       <section id="sec-seo" className="scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <h2 className="mb-1 text-sm font-semibold text-slate-800">🔎 SEO / AEO (ค้นหา + ให้ AI ตอบ)</h2>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-slate-800">🔎 SEO / AEO (ค้นหา + ให้ AI ตอบ)</h2>
+          <button
+            type="button"
+            onClick={autoFillSeo}
+            className="rounded-full bg-violet-500 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-violet-600"
+          >
+            ✨ เขียนให้อัตโนมัติ
+          </button>
+        </div>
         <p className="mb-3 text-[11px] text-slate-400">
           ปรับข้อความที่ Google/AI ใช้ตอนค้นหาและสรุปคำตอบ · เว้นว่าง = ใช้ชื่อ/รายละเอียดอัตโนมัติ
         </p>
