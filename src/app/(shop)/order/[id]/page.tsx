@@ -873,6 +873,26 @@ export default function CustomerOrderPage() {
             </div>
           )}
 
+          {/* 📸 ภาพของในกล่องก่อนปิด — ทีมแพ็คถ่ายเก็บไว้ ลูกค้าเห็นว่าของครบตามที่ส่งจริง */}
+          {(order.packPhotos?.length ?? 0) > 0 && (
+            <div className="rounded-2xl bg-white p-4 ring-1 ring-stone-200 sm:p-5">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">📸 ภาพของในกล่องก่อนปิด</p>
+              <p className="mt-1 text-xs text-stone-500">ทีมแพ็คถ่ายไว้ก่อนปิดกล่อง — ของตามภาพนี้ถูกจัดส่งไปกับพัสดุของคุณ</p>
+              <div className="mt-2.5 grid grid-cols-3 gap-2">
+                {(order.packPhotos ?? []).map((ph, i) => (
+                  <a key={`${ph.url}-${i}`} href={ph.url} target="_blank" rel="noreferrer" className="group">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={ph.url}
+                      alt={`ภาพก่อนปิดกล่อง ${i + 1}`}
+                      className="h-24 w-full rounded-xl object-cover ring-1 ring-stone-200 transition group-hover:ring-amber-300"
+                    />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
           {(() => {
             const addrLocked = !!order.printedAt || ["จัดส่งแล้ว", "เสร็จสิ้น", "ยกเลิก"].includes(order.status);
             return (

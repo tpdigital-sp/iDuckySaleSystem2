@@ -18,16 +18,18 @@ export async function GET(req: Request) {
   const key = (url.searchParams.get("key") ?? "").trim();
   let number = (url.searchParams.get("number") ?? "").trim().toUpperCase();
 
-  const actor = await currentActor();
-  if (!actor) {
-    // ทางลูกค้า: ต้องมีกุญแจออเดอร์ และใช้เลขของออเดอร์ตัวเอง
-    if (!orderId || !key) return NextResponse.json({ error: "ไม่มีสิทธิ์เรียกดู" }, { status: 401 });
+  if (orderId && key) {
+    // ทางลูกค้า (กุญแจออเดอร์) — ต้องมาก่อนเช็คคุกกี้ ไม่งั้นทีมงานที่ล็อกอินค้างไว้เปิดลิงก์ลูกค้าแล้วพัง
     const sb = getSupabaseAdmin();
     if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
     const { data: row } = await sb.from("orders").select("data").eq("id", orderId).maybeSingle();
     const order = row?.data as Order | undefined;
     if (!order || (order.key ?? "") !== key) return NextResponse.json({ error: "ไม่มีสิทธิ์เรียกดู" }, { status: 401 });
     number = (order.tracking ?? "").trim().toUpperCase();
+  } else {
+    // ทางทีมงาน: ส่ง ?number= ตรง ๆ ได้ (ต้องล็อกอินหลังบ้าน)
+    const actor = await currentActor();
+    if (!actor) return NextResponse.json({ error: "ไม่มีสิทธิ์เรียกดู" }, { status: 401 });
   }
 
   if (!number) return NextResponse.json({ error: "ไม่มีเลขพัสดุ" }, { status: 400 });
