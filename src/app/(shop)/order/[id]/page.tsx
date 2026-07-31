@@ -360,7 +360,8 @@ export default function CustomerOrderPage() {
 
       {/* ── กล่องยืนยันก่อนอนุมัติแบบงาน ── */}
       {confirmApprove && (
-        <div className="fixed inset-0 z-[70] grid place-items-center bg-stone-900/70 p-4" onClick={() => confirmApprove.resolve(false)}>
+        // z สูงกว่า ImageLightbox (z-[100]) — กล่องยืนยันต้องลอยเหนือภาพขยายเสมอ
+        <div className="fixed inset-0 z-[110] grid place-items-center bg-stone-900/70 p-4" onClick={() => confirmApprove.resolve(false)}>
           <div
             className="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl"
             onClick={(e) => e.stopPropagation()}
