@@ -26,6 +26,23 @@ function cut(t: string, n: number): string {
   return t.length <= n ? t : t.slice(0, n).replace(/\s+\S*$/, "");
 }
 
+/**
+ * คำบริการที่ลูกค้าใช้ค้นหางานสั่งทำ ("รับทำ…", "รับสกรีน…") เลือกตามหมวด
+ * — ร้านเป็นงานสั่งทำ คนค้นด้วยคำพวกนี้มากกว่าชื่อสินค้าเฉย ๆ
+ */
+const SERVICE_VERBS: Record<string, string[]> = {
+  apparel: ["รับสกรีน", "รับปัก", "รับทำ"],
+  fabric: ["รับสกรีน", "รับทำ", "รับผลิต"],
+  home: ["รับสกรีน", "รับทำ", "รับผลิต"],
+  bag: ["รับสกรีน", "รับทำ", "รับผลิต"],
+  "sticker-paper": ["รับพิมพ์", "รับทำ", "รับผลิต"],
+  "card-photo": ["รับพิมพ์", "รับทำ", "รับผลิต"],
+  banner: ["รับพิมพ์", "รับทำ", "รับผลิต"],
+  "calendar-frame": ["รับพิมพ์", "รับทำ", "รับผลิต"],
+  gifts: ["รับปัก", "รับทำ", "รับผลิต"],
+};
+const DEFAULT_VERBS = ["รับทำ", "รับผลิต", "รับสกรีน"];
+
 export function autoSeoOf(p: AutoSeoInput): AutoSeo {
   const name = p.name.trim() || "สินค้า";
   const price = Number(p.price) || 0;
@@ -33,11 +50,20 @@ export function autoSeoOf(p: AutoSeoInput): AutoSeo {
   const opts = (p.options ?? [])
     .map((o) => ({ label: o.label.trim(), names: o.choices.map((c) => c.name.trim()).filter(Boolean) }))
     .filter((o) => o.label && o.names.length > 0);
-  const hi = (p.highlights ?? []).map((h) => h.trim()).filter(Boolean);
+  // จุดเด่นที่ซ้ำกับชื่อสินค้า (หลายตัว import มาแล้ว highlight = ชื่อ) ไม่เอามาซ้ำใน description
+  const hi = (p.highlights ?? []).map((h) => h.trim()).filter((h) => h && !name.includes(h) && !h.includes(name));
 
-  const title = cut(`${name} พิมพ์ลายตามสั่ง${price ? ` เริ่มต้น ${price} บาท` : ""}`, 60);
+  const verbs = SERVICE_VERBS[p.categoryId ?? ""] ?? DEFAULT_VERBS;
+  // ชื่อสั้นไว้ผสมคำค้น (ตัดวงเล็บออก เช่น "Jibbitz (อะคริลิคติดรองเท้า)" → "Jibbitz")
+  const shortName = name.replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g, " ").trim() || name;
+  // คำไทยเขียนติดกัน ("รับทำพวงกุญแจ") ชื่ออังกฤษเว้นวรรค ("รับทำ Jibbitz")
+  const compound = (v: string, w: string) => (/^[A-Za-z0-9]/.test(w) ? `${v} ${w}` : `${v}${w}`);
+
+  // ใส่ราคาแล้วยาวเกิน 60 → ตัดท่อนราคาออกทั้งท่อน (กันเหลือคำค้างแบบ "เริ่มต้น" เฉย ๆ)
+  const titleFull = `${verbs[0]} ${name} พิมพ์ลายตามสั่ง${price ? ` เริ่มต้น ${price} บาท` : ""}`;
+  const title = titleFull.length <= 60 ? titleFull : cut(`${verbs[0]} ${name} พิมพ์ลายตามสั่ง`, 60);
   const description = cut(
-    `${name} สั่งทำลายของคุณเอง` +
+    `${verbs.slice(0, 2).join("/")} ${name} งานสั่งทำใส่ลาย/รูปของคุณเอง` +
       (opts.length ? ` มี${opts.map((o) => o.label).slice(0, 3).join(" / ")}ให้เลือก` : "") +
       (price ? ` เริ่มต้น ${price} บาท` : "") +
       (hi[0] ? ` · ${hi[0]}` : "") +
@@ -46,11 +72,22 @@ export function autoSeoOf(p: AutoSeoInput): AutoSeo {
   );
   const keywords = [
     ...new Set(
-      [name, ...(cat ? [cat.name, cat.nameEn] : []), ...opts.flatMap((o) => o.names.slice(0, 3)), "พิมพ์ลาย", "สั่งทำ", "ตามสั่ง", "ของขวัญ", "iDucky"]
+      [
+        compound(verbs[0], shortName),
+        ...(cat ? cat.name.split(" / ").map((n) => compound(verbs[0], n.trim())) : []),
+        name,
+        ...verbs,
+        "งานสั่งทำ",
+        ...(cat ? [cat.name, cat.nameEn] : []),
+        ...opts.flatMap((o) => o.names.slice(0, 2)),
+        "พิมพ์ลายตามสั่ง",
+        "ของขวัญ",
+        "iDucky",
+      ]
         .map((k) => k.trim())
         .filter(Boolean)
     ),
-  ].slice(0, 12);
+  ].slice(0, 14);
 
   // คำตอบตั้งใจไม่ระบุตัวเลขวัน/เงื่อนไขที่ระบบไม่รู้จริง — กันสัญญาเกินจริงกับลูกค้า
   const faqs: AutoSeo["faqs"] = [
@@ -69,7 +106,7 @@ export function autoSeoOf(p: AutoSeoInput): AutoSeo {
         ]
       : []),
     {
-      q: `สั่ง ${name} เป็นลายของตัวเองได้ไหม?`,
+      q: `${verbs[0]} ${name} เป็นลายของตัวเองได้ไหม?`,
       a: "ได้ครับ ส่งไฟล์ลาย/รูปที่ต้องการมาตอนสั่งซื้อ ทีมงานจัดทำแบบให้ตรวจและอนุมัติก่อนเริ่มผลิตทุกครั้ง",
     },
     {
