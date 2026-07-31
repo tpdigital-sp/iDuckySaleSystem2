@@ -124,7 +124,7 @@ export default function CustomerReceiptPage() {
               <span className="tabular-nums">{formatPrice(subtotal)}</span>
             </div>
             <div className="flex justify-between text-stone-500">
-              <span>ค่าจัดส่ง ({order.shipping})</span>
+              <span>ค่าจัดส่ง ({order.shippingLabel || order.shipping})</span>
               <span className="tabular-nums">{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
             </div>
             {order.discount && order.discount.amount > 0 && (

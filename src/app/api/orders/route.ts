@@ -127,6 +127,7 @@ export async function POST(req: Request) {
     date: now.toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
     payment: "โอนธนาคาร",
     shipping: input.shipping === "ส่งด่วน" ? "ส่งด่วน" : "ส่งธรรมดา",
+    ...(input.shipping?.trim() ? { shippingLabel: input.shipping.trim().slice(0, 40) } : {}),
     shippingCost: Number(input.shippingCost) || 0,
     status: "รอชำระเงิน",
     note: input.note?.trim() || undefined,

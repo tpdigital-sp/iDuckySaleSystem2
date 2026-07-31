@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { PRODUCTS } from "@/lib/products";
 import { getProductServer } from "@/lib/products-server";
+import { productAutoSeo } from "@/lib/auto-seo";
 import ProductDetail from "./ProductDetail";
 
 export function generateStaticParams() {
@@ -16,12 +17,14 @@ export async function generateMetadata({
   const { id } = await params;
   const product = await getProductServer(id);
   if (!product) return { title: "ไม่พบสินค้า" };
-  const title = product.seo?.title || product.name;
-  const description = product.seo?.description || product.description;
+  // แอดมินยังไม่เขียน SEO เอง → ระบบเขียนให้อัตโนมัติจากข้อมูลสินค้า (ทุกสินค้ามี meta ครบเสมอ)
+  const auto = productAutoSeo(product);
+  const title = product.seo?.title || auto.title;
+  const description = product.seo?.description || product.description || auto.description;
   return {
     title,
     description,
-    ...(product.seo?.keywords?.length ? { keywords: product.seo.keywords } : {}),
+    keywords: product.seo?.keywords?.length ? product.seo.keywords : auto.keywords,
     openGraph: {
       title,
       description,

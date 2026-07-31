@@ -192,6 +192,8 @@ export interface Order {
   date: string;
   payment: "PromptPay" | "บัตรเครดิต" | "โอนธนาคาร" | "เก็บเงินปลายทาง";
   shipping: "ส่งธรรมดา" | "ส่งด่วน";
+  /** ชื่อวิธีส่งจริงที่เลือก (เช่น "EMS (50)") — ไม่มี = ใช้ shipping แสดงแทน */
+  shippingLabel?: string;
   shippingCost: number;
   status: OrderStatus;
   tracking?: string;

@@ -1159,20 +1159,21 @@ export default function AdminOrderDetailPage() {
                   /* เลือกวิธีส่งจากตั้งค่าร้าน — ราคาเติมอัตโนมัติ แล้วแก้ตัวเลขต่อได้ (จุดเดียวของทั้งหน้า) */
                   <span className="flex items-center gap-1.5">
                     <select
-                      value=""
+                      value={shipMethods.find((m) => m.name === order.shippingLabel)?.id ?? ""}
                       onChange={(e) => {
                         const m = shipMethods.find((x) => x.id === e.target.value);
                         if (!m) return;
                         applyOrder({
                           ...order,
                           shipping: (m.name.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา") as Order["shipping"],
+                          shippingLabel: m.name,
                           shippingCost: Math.max(0, m.price),
                         });
                       }}
                       className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
                     >
                       <option value="" disabled>
-                        เลือกวิธีส่ง…
+                        {order.shippingLabel || "เลือกวิธีส่ง…"}
                       </option>
                       {shipMethods.map((m) => (
                         <option key={m.id} value={m.id}>
@@ -1329,7 +1330,7 @@ export default function AdminOrderDetailPage() {
                     className="w-full resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 focus:border-amber-300 focus:outline-none"
                   />
                   <p className={`text-xs ${faint}`}>
-                    {order.payment} · {order.shipping}
+                    {order.payment} · {order.shippingLabel || order.shipping}
                   </p>
                 </div>
               ) : (
@@ -1340,7 +1341,7 @@ export default function AdminOrderDetailPage() {
                   </p>
                   <p className={`text-sm ${muted}`}>{order.address}</p>
                   <p className={`mt-2 text-xs ${faint}`}>
-                    {order.payment} · {order.shipping}
+                    {order.payment} · {order.shippingLabel || order.shipping}
                   </p>
                 </>
               )}

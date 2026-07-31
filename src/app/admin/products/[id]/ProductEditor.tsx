@@ -18,6 +18,7 @@ import {
   type ProductReview,
   type ProductSeo,
 } from "@/lib/products";
+import { autoSeoOf } from "@/lib/auto-seo";
 import { hasOverride, resetOverride } from "@/lib/product-store";
 import { deleteProductDb, fetchProductRaw, persistProduct } from "@/lib/product-repo";
 import { getAdminSession } from "@/lib/auth";
@@ -370,6 +371,14 @@ export default function ProductEditor({ product }: { product: Product }) {
   // คลังตัวเลือกกลาง (สำหรับปุ่ม "แทรกจากคลัง" + ซิงก์กลุ่มที่ลิงก์)
   const [presets, setPresets] = useState<OptionPreset[]>([]);
 
+  // SEO ยังว่าง → ระบบเขียนให้เลยอัตโนมัติ (ไม่ต้องกดปุ่ม) — แอดมินแก้ต่อได้ก่อนบันทึก
+  function withAutoSeo(d: Draft): Draft {
+    const empty = !d.seo.title && !d.seo.description && !d.seo.keywords && d.seo.faqs.length === 0;
+    if (!empty || !d.name.trim()) return d;
+    const auto = autoSeoOf({ name: d.name, price: Number(d.price) || 0, categoryId: d.category, options: d.options, highlights: d.highlights });
+    return { ...d, seo: { title: auto.title, description: auto.description, keywords: auto.keywords.join(", "), faqs: auto.faqs } };
+  }
+
   // โหลดข้อมูลล่าสุด (Supabase หรือ localStorage) + คลังตัวเลือก หลัง mount
   useEffect(() => {
     let active = true;
@@ -378,10 +387,13 @@ export default function ProductEditor({ product }: { product: Product }) {
       setPresets(ps);
       if (p) {
         const d = toDraft(p);
-        setDraft({ ...d, options: syncLinkedDraft(d.options, ps) });
+        setDraft(withAutoSeo({ ...d, options: syncLinkedDraft(d.options, ps) }));
+      } else {
+        setDraft((cur) => withAutoSeo(cur));
       }
     });
     setOverridden(!isSupabaseConfigured && hasOverride(productId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId]);
 
   const productUrl = `/products/${productId}`;
@@ -610,68 +622,24 @@ export default function ProductEditor({ product }: { product: Product }) {
 
   const cat = CATEGORIES.find((c) => c.id === draft.category);
 
-  /** ✨ เขียน SEO/AEO อัตโนมัติจากข้อมูลสินค้า (ชื่อ/หมวด/ราคา/ตัวเลือก/จุดเด่น) — กดแล้วแก้ต่อได้ */
+  /** ✨ เขียน SEO/AEO อัตโนมัติจากข้อมูลสินค้า (ชื่อ/หมวด/ราคา/ตัวเลือก/จุดเด่น) — เขียนแล้วแก้ต่อได้ */
+  function applyAutoSeo() {
+    const auto = autoSeoOf({
+      name: draft.name,
+      price: Number(draft.price) || 0,
+      categoryId: draft.category,
+      options: draft.options,
+      highlights: draft.highlights,
+    });
+    patch({ seo: { title: auto.title, description: auto.description, keywords: auto.keywords.join(", "), faqs: auto.faqs } });
+  }
+
   function autoFillSeo() {
     const hasOld = draft.seo.title || draft.seo.description || draft.seo.keywords || draft.seo.faqs.length > 0;
     if (hasOld && !window.confirm("เขียนทับ SEO/AEO ที่มีอยู่ด้วยข้อความอัตโนมัติ?")) return;
-    const name = draft.name.trim() || "สินค้า";
-    const price = Number(draft.price) || 0;
-    const opts = draft.options
-      .map((o) => ({ label: o.label.trim(), names: o.choices.map((c) => c.name.trim()).filter(Boolean) }))
-      .filter((o) => o.label && o.names.length > 0);
-    const hi = draft.highlights.map((h) => h.trim()).filter(Boolean);
-
-    // ตัดที่ขอบคำ — ไม่ให้คำท้ายขาดกลางคำ
-    const cut = (t: string, n: number) => (t.length <= n ? t : t.slice(0, n).replace(/\s+\S*$/, ""));
-    const title = cut(`${name} พิมพ์ลายตามสั่ง${price ? ` เริ่มต้น ${price} บาท` : ""} | iDucky`, 60);
-    const descriptionRaw = (
-      `${name} สั่งทำลายของคุณเอง` +
-      (opts.length ? ` มี${opts.map((o) => o.label).slice(0, 3).join(" / ")}ให้เลือก` : "") +
-      (price ? ` เริ่มต้น ${price} บาท` : "") +
-      (hi[0] ? ` · ${hi[0]}` : "") +
-      " · สั่งง่าย ส่งไวทั่วไทย ตรวจแบบก่อนผลิตทุกชิ้น"
-    );
-    const description = cut(descriptionRaw, 160);
-    const kw = [
-      name,
-      ...(cat ? [cat.name, cat.nameEn] : []),
-      ...opts.flatMap((o) => o.names.slice(0, 3)),
-      "พิมพ์ลาย",
-      "สั่งทำ",
-      "ตามสั่ง",
-      "ของขวัญ",
-      "iDucky",
-    ]
-      .map((k) => k.trim())
-      .filter(Boolean);
-    const keywords = [...new Set(kw)].slice(0, 12).join(", ");
-
-    const faqs: DraftFaq[] = [
-      {
-        q: `${name} ราคาเท่าไหร่?`,
-        a: price
-          ? `เริ่มต้นชิ้นละ ${price} บาท — ราคาจริงขึ้นกับตัวเลือกและจำนวนที่สั่ง ดูราคาแต่ละแบบได้ในหน้าสินค้า`
-          : "ราคาขึ้นกับแบบและจำนวนที่สั่ง ดูรายละเอียดได้ในหน้าสินค้า หรือทักไลน์ร้านได้เลย",
-      },
-      ...(opts.length
-        ? [
-            {
-              q: `${name} มี${opts[0].label}อะไรให้เลือกบ้าง?`,
-              a: opts.map((o) => `${o.label}: ${o.names.slice(0, 6).join(", ")}`).join(" · "),
-            },
-          ]
-        : []),
-      {
-        q: `สั่ง ${name} เป็นลายของตัวเองได้ไหม?`,
-        a: "ได้ครับ ส่งไฟล์ลาย/รูปที่ต้องการมาตอนสั่งซื้อ ทีมงานจัดทำแบบให้ตรวจและอนุมัติก่อนเริ่มผลิตทุกครั้ง",
-      },
-      {
-        q: "สั่งแล้วกี่วันได้ของ?",
-        a: "หลังยืนยันการชำระเงินและอนุมัติแบบ ทีมงานจะเริ่มผลิตและจัดส่งทั่วไทย ติดตามสถานะได้จากลิงก์ออเดอร์ตลอดเวลา",
-      },
-    ];
-    patch({ seo: { title, description, keywords, faqs } });
+    applyAutoSeo();
   }
+
   const categoryLabel = cat?.name ?? draft.category;
   const thumbEmoji = draft.emoji || cat?.emoji || "📦";
   const thumbGradient = draft.gradient || cat?.gradient || "from-amber-100 to-amber-200";

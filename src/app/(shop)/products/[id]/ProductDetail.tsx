@@ -1,5 +1,6 @@
 "use client";
 
+import { productAutoSeo } from "@/lib/auto-seo";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -109,7 +110,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   }
 
   // ── SEO/AEO: FAQ + structured data (JSON-LD) ให้ Google/AI ดึงไปตอบ ──
-  const faqs = product.seo?.faqs ?? [];
+  // ไม่มี FAQ ที่แอดมินเขียนเอง → ใช้ชุดที่ระบบเขียนให้อัตโนมัติ (ทุกสินค้ามี AEO เสมอ)
+  const faqs = product.seo?.faqs?.length ? product.seo.faqs : productAutoSeo(product).faqs;
   const jsonLd = useMemo(() => {
     const range = priceRange(product);
     const graph: Record<string, unknown>[] = [
@@ -137,11 +139,11 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
         },
       },
     ];
-    if ((product.seo?.faqs ?? []).length > 0) {
+    if (faqs.length > 0) {
       graph.push({
         "@context": "https://schema.org",
         "@type": "FAQPage",
-        mainEntity: (product.seo?.faqs ?? []).map((f) => ({
+        mainEntity: faqs.map((f) => ({
           "@type": "Question",
           name: f.q,
           acceptedAnswer: { "@type": "Answer", text: f.a },
@@ -149,7 +151,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
       });
     }
     return graph;
-  }, [product]);
+  }, [product, faqs]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 pt-6">

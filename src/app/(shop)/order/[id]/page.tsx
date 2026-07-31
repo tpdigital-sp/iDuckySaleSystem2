@@ -834,7 +834,7 @@ export default function CustomerOrderPage() {
               <span>{formatPrice(subtotal)}</span>
             </div>
             <div className="mt-1.5 flex justify-between text-sm">
-              <span className="text-stone-500">ค่าจัดส่ง ({order.shipping})</span>
+              <span className="text-stone-500">ค่าจัดส่ง ({order.shippingLabel || order.shipping})</span>
               <span>{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
             </div>
             {order.discount && order.discount.amount > 0 && (
