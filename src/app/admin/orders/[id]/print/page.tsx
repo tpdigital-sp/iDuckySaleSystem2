@@ -153,14 +153,16 @@ export default function PrintOrderPage() {
             // ใบเสร็จมีราคา — เฉพาะคนที่เห็นข้อมูลเงินได้
             ...(seesMoney ? [["receipt", "ใบเสร็จ"]] : []),
           ] as [DocKey, string][])).map(([k, label]) => (
-            <label key={k} className="flex cursor-pointer items-center gap-1.5">
+            <label key={k} className={`flex items-center gap-1.5 ${k === "receipt" && !fullyPaid ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}>
               <input
                 type="checkbox"
-                checked={docs[k]}
+                checked={docs[k] && !(k === "receipt" && !fullyPaid)}
+                disabled={k === "receipt" && !fullyPaid}
                 onChange={(e) => setDocs((d) => ({ ...d, [k]: e.target.checked }))}
                 className="h-4 w-4 accent-amber-500"
               />
               {label}
+              {k === "receipt" && !fullyPaid ? " 🔒" : ""}
             </label>
           ))}
           <span className="text-slate-300">|</span>
@@ -177,15 +179,14 @@ export default function PrintOrderPage() {
 
         {!fullyPaid && (
           <span className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">
-            🔒 ยังไม่ได้รับเงินครบ 100%{order.deposit && !order.deposit.settledAt ? ` — ค้างยอดคงเหลือ ${formatPrice(Math.max(0, orderTotal(order) - (order.paidTotal ?? 0)))}` : ""} · พิมพ์ไม่ได้
+            🔒 ยังไม่จ่ายครบ 100% — พิมพ์ได้เฉพาะใบงาน (ไม่มีใบปะหน้า) · ใบเสร็จยังออกไม่ได้
           </span>
         )}
         <button
           type="button"
           onClick={() => {
-            if (!fullyPaid) return;
-            // ปริ้นใบงาน (มีที่อยู่/ใบปะหน้า) = ล็อกที่อยู่ฝั่งลูกค้า — ตั้ง printedAt ครั้งแรก
-            if (docs.work && order && !order.printedAt) {
+            // ปริ้นใบปะหน้า (มีที่อยู่) = ล็อกที่อยู่ฝั่งลูกค้า — ตั้ง printedAt เฉพาะเมื่อใบปะหน้าถูกพิมพ์จริง (จ่ายครบ)
+            if (fullyPaid && docs.work && order && !order.printedAt) {
               fetch("/api/admin/orders/printed", {
                 method: "POST",
                 headers: { "content-type": "application/json" },
@@ -195,8 +196,8 @@ export default function PrintOrderPage() {
             }
             window.print();
           }}
-          disabled={chosen.length === 0 || !fullyPaid}
-          title={fullyPaid ? undefined : "รับเงินครบ 100% ก่อนถึงพิมพ์ได้"}
+          disabled={chosen.length === 0 || (!fullyPaid && !docs.work)}
+          title={fullyPaid || docs.work ? undefined : "ใบเสร็จพิมพ์ได้เมื่อรับเงินครบ 100%"}
           className="ml-auto rounded-xl bg-amber-500 px-5 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-40"
         >
           🖨️ พิมพ์
@@ -213,6 +214,19 @@ export default function PrintOrderPage() {
         {/* ═══════════ ใบงาน + ใบปะหน้าพัสดุ (ใบเดียวจบ) ═══════════ */}
         {docs.work && (
           <section ref={workRef} className="sheet rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+            {/* 🔒 ยังไม่จ่ายครบ → พิมพ์ได้เฉพาะส่วนใบงาน · ใบปะหน้า (ที่อยู่จัดส่ง) ถูกกันไว้ */}
+            {!fullyPaid && (
+              <div className="keep mb-4 rounded-lg border-2 border-dashed border-rose-300 bg-rose-50 p-4 text-center">
+                <p className="text-sm font-extrabold" style={{ color: "#dc2626" }}>
+                  🔒 ใบปะหน้าพัสดุยังไม่พิมพ์ — ลูกค้าชำระยังไม่ครบ 100%
+                  {order.deposit && !order.deposit.settledAt
+                    ? ` (ค้างยอดคงเหลือ ${formatPrice(Math.max(0, orderTotal(order) - (order.paidTotal ?? 0)))})`
+                    : ""}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-600">เก็บเงินครบแล้วพิมพ์ใบงานใหม่ ใบปะหน้า/ที่อยู่จัดส่งจะแสดงอัตโนมัติ</p>
+              </div>
+            )}
+            {fullyPaid && (<>
             {/* แถวบน: ผู้ส่ง | วิธีจัดส่ง + บาร์โค้ด (เลขออเดอร์อยู่ในบาร์โค้ด + กล่องใบงานด้านล่างแล้ว) */}
             <div className="flex items-start justify-between gap-6 border-b-2 border-slate-900 pb-3">
               <div>
@@ -246,6 +260,7 @@ export default function PrintOrderPage() {
                 ✂ ตัดตามเส้นนี้ — ส่วนบนติดหน้ากล่อง · ส่วนล่างเก็บเป็นใบงาน
               </span>
             </div>
+            </>)}
 
             {/* หัวใบงาน + QR มือถือ — พนักงานแพ็คสแกนเพื่อเปิดหน้าออเดอร์ เช็คของตามภาพจริง */}
             <div className="keep flex items-center justify-between gap-4 rounded border border-slate-300 bg-slate-50 px-4 py-3">
@@ -419,7 +434,7 @@ export default function PrintOrderPage() {
         )}
 
         {/* ═══════════ ใบเสร็จ ═══════════ */}
-        {docs.receipt && seesMoney && (
+        {docs.receipt && seesMoney && fullyPaid && (
           <section className="sheet rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
             <div className="flex items-start justify-between border-b-2 border-slate-900 pb-3">
               <div>
