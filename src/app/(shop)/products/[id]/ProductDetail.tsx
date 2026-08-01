@@ -42,6 +42,10 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   const [note, setNote] = useState("");
   // ลิงก์ไฟล์ลาย / อีเมล (ไม่อัปโหลดขึ้นเว็บ — กันไฟล์ถูกบีบอัด)
   const [artLink, setArtLink] = useState("");
+  // ภาพลายที่ลูกค้าแนบขึ้นเว็บ (เก็บไฟล์ต้นฉบับ — ใช้เป็นแนวทางให้กราฟฟิก)
+  const [artFiles, setArtFiles] = useState<{ url: string; name: string; w: number; h: number }[]>([]);
+  const [artBusy, setArtBusy] = useState(false);
+  const [artErr, setArtErr] = useState("");
 
   // โหลดเวอร์ชันล่าสุด (Supabase หรือ localStorage) — ถ้ามีให้ใช้แทนข้อมูลตั้งต้น
   useEffect(() => {
@@ -91,10 +95,41 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     canAccessAdmin().then(setIsAdmin);
   }, []);
 
+  /** อัปโหลดภาพลาย — ส่งไฟล์ต้นฉบับขึ้นเก็บ แล้วอ่านความละเอียดจริงไว้เตือนถ้าภาพเล็กเกินไป */
+  async function uploadArtwork(files: FileList | null) {
+    if (!files?.length) return;
+    setArtErr("");
+    setArtBusy(true);
+    for (const f of Array.from(files).slice(0, 5 - artFiles.length)) {
+      try {
+        const fd = new FormData();
+        fd.append("file", f);
+        const res = await fetch("/api/orders/artwork", { method: "POST", body: fd });
+        const j = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
+        if (!res.ok || !j?.url) {
+          setArtErr(j?.error ?? "อัปโหลดไม่สำเร็จ");
+          break;
+        }
+        const dim = await new Promise<{ w: number; h: number }>((resolve) => {
+          const img = new window.Image();
+          img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+          img.onerror = () => resolve({ w: 0, h: 0 });
+          img.src = URL.createObjectURL(f);
+        });
+        setArtFiles((cur) => [...cur, { url: j.url!, name: f.name, ...dim }]);
+      } catch {
+        setArtErr("อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง");
+        break;
+      }
+    }
+    setArtBusy(false);
+  }
+
   function handleAdd() {
     // แนบข้อมูลเพิ่มไปกับรายการ (ไม่กระทบราคา): ลิงก์ไฟล์ลาย/อีเมล + หมายเหตุ
     const extra: Record<string, string> = {};
     if (artLink.trim()) extra["ลิงก์ไฟล์ลาย/อีเมล"] = artLink.trim();
+    if (artFiles.length) extra["ภาพลายที่แนบ"] = artFiles.map((f) => f.url).join(" | ");
     if (note.trim()) extra["หมายเหตุ"] = note.trim();
     if (useCustom) {
       if (!custom || !customValid) return; // ต้องกรอกขนาดให้ครบก่อน
@@ -105,6 +140,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     }
     setNote("");
     setArtLink("");
+    setArtFiles([]);
     setAdded(true);
     setTimeout(() => setAdded(false), 1800);
   }
@@ -382,14 +418,76 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
             </div>
           )}
 
-          {/* ลิงก์ไฟล์ลาย / อีเมล (ไม่อัปโหลดขึ้นเว็บ) */}
+          {/* ── ลายของลูกค้า: อัปโหลดภาพตัวอย่าง + ลิงก์ไฟล์ต้นฉบับ ── */}
           <div className="mt-5 rounded-2xl bg-sky-50/70 p-4 ring-1 ring-sky-200">
-            <label htmlFor="art-link" className="block text-sm font-bold text-stone-700">
-              🎨 แนบลิงก์ไฟล์ลาย หรือ อีเมล <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
+            <p className="text-sm font-bold text-stone-700">
+              🎨 แนบลายของคุณ <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
+            </p>
+
+            {/* 1) อัปโหลดภาพ */}
+            <p className="mt-2 text-[11px] font-bold text-stone-600">1) อัปโหลดภาพตัวอย่าง (JPG / PNG)</p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-stone-500">
+              ระบบเก็บไฟล์<strong className="text-stone-700">ตามต้นฉบับที่คุณเลือก ไม่บีบอัดซ้ำ</strong> — แต่ภาพที่ส่งต่อมาจากแชท/มือถือมักถูกลดคุณภาพมาตั้งแต่ต้นทาง
+              ภาพตรงนี้จึงใช้ <strong className="text-sky-700">ให้กราฟฟิกดูเป็นแนวทางในการทำแบบเท่านั้น</strong> · ไฟล์งานพิมพ์คุณภาพเต็ม รบกวนแนบเป็นลิงก์ในช่องข้อ 2 ครับ
+            </p>
+
+            {artFiles.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {artFiles.map((f, i) => (
+                  <div key={f.url} className="relative">
+                    <a href={f.url} target="_blank" rel="noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={f.url} alt={f.name} className="h-20 w-20 rounded-xl object-cover ring-1 ring-sky-200" />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setArtFiles((cur) => cur.filter((_, j) => j !== i))}
+                      className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow"
+                      aria-label="ลบภาพนี้"
+                    >
+                      ✕
+                    </button>
+                    {f.w > 0 && (
+                      <p className={`mt-0.5 w-20 text-center text-[9px] leading-tight ${Math.max(f.w, f.h) < 1500 ? "font-bold text-amber-600" : "text-stone-400"}`}>
+                        {f.w}×{f.h}
+                        {Math.max(f.w, f.h) < 1500 ? " · ภาพเล็ก" : ""}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {artFiles.some((f) => f.w > 0 && Math.max(f.w, f.h) < 1500) && (
+              <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-semibold leading-relaxed text-amber-700 ring-1 ring-amber-200">
+                ⚠️ มีภาพความละเอียดต่ำ — พิมพ์ออกมาอาจแตก/ไม่คม รบกวนแนบไฟล์ต้นฉบับเป็นลิงก์ในข้อ 2 ด้วยครับ
+              </p>
+            )}
+
+            {artFiles.length < 5 && (
+              <label className="mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-sky-300 bg-white px-4 py-3 text-xs font-bold text-sky-700 transition hover:bg-sky-50">
+                {artBusy ? "กำลังอัปโหลด…" : `📎 เลือกรูปลาย (สูงสุด 5 รูป · ไฟล์ละไม่เกิน 15MB)`}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  className="hidden"
+                  disabled={artBusy}
+                  onChange={(e) => {
+                    void uploadArtwork(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            )}
+            {artErr && <p className="mt-1.5 text-[11px] font-semibold text-rose-600">⚠️ {artErr}</p>}
+
+            {/* 2) ลิงก์ไฟล์ต้นฉบับ */}
+            <label htmlFor="art-link" className="mt-4 block text-[11px] font-bold text-stone-600">
+              2) แนบลิงก์ไฟล์ลาย หรือ อีเมล <span className="font-normal text-sky-700">(แนะนำ — ได้ไฟล์ต้นฉบับคุณภาพเต็ม)</span>
             </label>
-            <p className="mt-1 mb-2 text-[11px] leading-relaxed text-stone-500">
-              วางลิงก์ไฟล์ (Google Drive / Dropbox / OneDrive) หรืออีเมลที่ส่งไฟล์ไว้ — เราจะดึง
-              <strong className="text-sky-700">ไฟล์ต้นฉบับคุณภาพเต็ม</strong> ไม่ต้องอัปโหลดผ่านเว็บ (กันไฟล์ถูกบีบอัด สีเพี้ยน)
+            <p className="mt-0.5 mb-2 text-[11px] leading-relaxed text-stone-500">
+              วางลิงก์ไฟล์ (Google Drive / Dropbox / OneDrive) หรืออีเมลที่ส่งไฟล์ไว้ — เราจะดึงไฟล์ต้นฉบับไปใช้ผลิต (ไม่ผ่านการบีบอัดของเว็บ/แชท)
             </p>
             <input
               id="art-link"

@@ -219,14 +219,21 @@ export default function CheckoutPage() {
   const total = Math.max(0, subtotal - discount + shippingCost);
 
   async function submit() {
-    const orderItems = items.map((it) => ({
-      productId: it.productId,
-      name: productOf(it.productId)?.name ?? it.productId,
-      selections: Object.entries(it.selections).map(([k, v]) => `${k}: ${v}`).join(" · "),
-      sel: it.selections,
-      qty: it.qty,
-      unitPrice: it.unitPrice,
-    }));
+    const orderItems = items.map((it) => {
+      // ภาพลายที่ลูกค้าแนบ เก็บมาในตะกร้าเป็น URL คั่น " | " → แยกเป็นฟิลด์ของตัวเอง
+      // (ไม่ปนกับข้อความตัวเลือก ไม่งั้น URL ยาวจะรกทั้งใบงานและหน้าออเดอร์)
+      const { "ภาพลายที่แนบ": artRaw, ...restSel } = it.selections;
+      const artworkUrls = (artRaw ?? "").split(" | ").map((u) => u.trim()).filter(Boolean);
+      return {
+        productId: it.productId,
+        name: productOf(it.productId)?.name ?? it.productId,
+        selections: Object.entries(restSel).map(([k, v]) => `${k}: ${v}`).join(" · "),
+        sel: restSel,
+        qty: it.qty,
+        unitPrice: it.unitPrice,
+        ...(artworkUrls.length ? { artworkUrls } : {}),
+      };
+    });
 
     // ── โหมดสั่งเพิ่ม: ต่อท้ายออเดอร์เดิม ไม่ต้องกรอกที่อยู่ใหม่ ──
     if (appendTo) {
@@ -276,6 +283,7 @@ export default function CheckoutPage() {
     orderItems.forEach((it, i) => {
       lines.push(`${i + 1}) ${it.name} ×${it.qty} = ${it.unitPrice > 0 ? formatPrice(it.unitPrice * it.qty) : "รอตีราคา"}`);
       if (it.selections) lines.push(`   • ${it.selections}`);
+      if (it.artworkUrls?.length) lines.push(`   🎨 แนบภาพลาย ${it.artworkUrls.length} รูป (ดูในลิงก์ออเดอร์)`);
     });
     lines.push("━━━━━━━━━━━━━━");
     lines.push(`รวม ${totalQty} ชิ้น · จัดส่ง ${freeShipping ? "ฟรี" : formatPrice(shippingCost)}`);

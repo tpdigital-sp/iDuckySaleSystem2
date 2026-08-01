@@ -698,6 +698,17 @@ export default function CustomerOrderPage() {
                   <div className="min-w-0">
                     <p className="font-bold text-amber-950">{it.name}</p>
                     {it.selections && <p className="mt-0.5 text-xs text-stone-400">{it.selections}</p>}
+                    {(it.artworkUrls?.length ?? 0) > 0 && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11px] font-semibold text-sky-700">🎨 ลายที่คุณแนบ:</span>
+                        {(it.artworkUrls ?? []).map((u, k) => (
+                          <a key={u} href={u} target="_blank" rel="noreferrer">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={u} alt={`ลายที่แนบ ${k + 1}`} className="h-12 w-12 rounded-lg object-cover ring-1 ring-sky-200" />
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <span className="shrink-0 text-right text-sm font-bold text-amber-950">
                     {it.qty} × {formatPrice(it.unitPrice)}

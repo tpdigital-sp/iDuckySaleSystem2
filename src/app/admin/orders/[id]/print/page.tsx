@@ -346,6 +346,17 @@ export default function PrintOrderPage() {
                         {cleanSelections(it.selections) && (
                           <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{cleanSelections(it.selections)}</p>
                         )}
+                        {(it.artworkUrls?.length ?? 0) > 0 && (
+                          <div className="mt-1.5">
+                            <p className="text-[10px] font-bold text-slate-500">🎨 ภาพลายจากลูกค้า (แนวทางทำแบบ)</p>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {(it.artworkUrls ?? []).slice(0, 4).map((u, k) => (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img key={u} src={u} alt={`ภาพลาย ${k + 1}`} className="h-14 w-14 rounded border border-slate-300 object-cover" />
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         {noteHasText(it.adminNote) && (
                           <p
                             className="mt-1 leading-snug text-slate-900"

@@ -1015,6 +1015,28 @@ export default function AdminOrderDetailPage() {
 
                   {/* รายละเอียด (ตัวเลือก) + ยืนยันอ่านของกราฟฟิก (การยืนยันของแพ็คอยู่ในโหมดแพ็ค) */}
                   {it.selections && <p className={`mt-1 text-xs ${faint}`}>{it.selections}</p>}
+
+                  {/* 🎨 ภาพลายที่ลูกค้าแนบตอนสั่ง — กราฟฟิกใช้เป็นแนวทางทำแบบ (ไม่ใช่ไฟล์งานพิมพ์) */}
+                  {(it.artworkUrls?.length ?? 0) > 0 && (
+                    <div className="mt-2 rounded-xl bg-sky-50/70 p-2.5 ring-1 ring-sky-100">
+                      <p className="text-[11px] font-bold text-sky-800">
+                        🎨 ภาพลายจากลูกค้า ({it.artworkUrls!.length} รูป)
+                        <span className="ml-1 font-normal text-slate-500">— ใช้เป็นแนวทางทำแบบ · ไฟล์คุณภาพเต็มดูจากลิงก์/อีเมลในรายละเอียด</span>
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {(it.artworkUrls ?? []).map((u, j) => (
+                          <a key={u} href={u} target="_blank" rel="noreferrer" title="เปิดไฟล์เต็ม / ดาวน์โหลด">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={u}
+                              alt={`ภาพลายที่ลูกค้าแนบ ${j + 1}`}
+                              className="h-16 w-16 rounded-lg object-cover ring-1 ring-sky-200 transition hover:ring-2 hover:ring-sky-400"
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {mayProof && (
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <button
@@ -2174,6 +2196,9 @@ function SpecialItemAdder({ onAdd }: { onAdd: (item: OrderItem) => void }) {
   const [qty, setQty] = useState("1");
   const [price, setPrice] = useState("");
   const [err, setErr] = useState("");
+  // ภาพลายที่ลูกค้าส่งมาทางแชท — แอดมินแนบให้กราฟฟิกดูตอนสั่งงานพิเศษ
+  const [art, setArt] = useState<string[]>([]);
+  const [artBusy, setArtBusy] = useState(false);
   // คลังสินค้าพิเศษ (นำเข้าจากระบบเดิม/เพิ่มเอง) — โหลดครั้งเดียวตอนเปิดฟอร์ม
   const [catalog, setCatalog] = useState<{ name: string; detail: string }[]>([]);
   const [showSug, setShowSug] = useState(false);
@@ -2193,13 +2218,32 @@ function SpecialItemAdder({ onAdd }: { onAdd: (item: OrderItem) => void }) {
     const p = Math.max(0, Number(price) || 0);
     if (!n) return setErr("ใส่ชื่องานก่อน");
     if (!Number(qty) || Number(qty) < 1) return setErr("จำนวนต้องอย่างน้อย 1");
-    onAdd({ productId: "special-item", name: n, selections: spec.trim(), qty: q, unitPrice: p });
+    onAdd({ productId: "special-item", name: n, selections: spec.trim(), qty: q, unitPrice: p, ...(art.length ? { artworkUrls: art } : {}) });
     setOpen(false);
     setName("");
     setSpec("");
     setQty("1");
     setPrice("");
+    setArt([]);
     setErr("");
+  }
+
+  async function uploadArt(files: FileList | null) {
+    if (!files?.length) return;
+    setErr("");
+    setArtBusy(true);
+    for (const f of Array.from(files).slice(0, 5 - art.length)) {
+      const fd = new FormData();
+      fd.append("file", f);
+      const res = await fetch("/api/orders/artwork", { method: "POST", body: fd });
+      const j = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
+      if (!res.ok || !j?.url) {
+        setErr(j?.error ?? "อัปโหลดภาพไม่สำเร็จ");
+        break;
+      }
+      setArt((cur) => [...cur, j.url!]);
+    }
+    setArtBusy(false);
   }
 
   const inp =
@@ -2263,6 +2307,50 @@ function SpecialItemAdder({ onAdd }: { onAdd: (item: OrderItem) => void }) {
             ราคา/ชิ้น (บาท) — 0 = รอตีราคา
             <input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} className={`${inp} mt-1`} placeholder="เช่น 1500" />
           </label>
+        </div>
+
+        {/* 🎨 ภาพลายจากลูกค้า (แชท/อีเมล) — ให้กราฟฟิกใช้เป็นแนวทางทำแบบ */}
+        <div className="rounded-xl bg-white p-2.5 ring-1 ring-slate-200">
+          <p className="text-xs font-semibold text-slate-600">🎨 แนบภาพลายจากลูกค้า (JPG / PNG)</p>
+          <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
+            เก็บไฟล์ตามต้นฉบับที่เลือก ไม่บีบอัดซ้ำ — ภาพจากแชทมักถูกลดคุณภาพมาแล้ว ใช้เป็นแนวทางให้กราฟฟิก ไฟล์งานพิมพ์จริงขอลิงก์/อีเมลจากลูกค้าเพิ่ม
+          </p>
+          {art.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {art.map((u, i) => (
+                <div key={u} className="relative">
+                  <a href={u} target="_blank" rel="noreferrer">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={u} alt={`ภาพลาย ${i + 1}`} className="h-16 w-16 rounded-lg object-cover ring-1 ring-slate-200" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setArt((cur) => cur.filter((_, j) => j !== i))}
+                    className="absolute -right-1.5 -top-1.5 grid h-4 w-4 place-items-center rounded-full bg-rose-500 text-[9px] font-bold text-white"
+                    aria-label="ลบภาพ"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {art.length < 5 && (
+            <label className="mt-2 flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-300 py-2 text-[11px] font-bold text-slate-500 transition hover:border-amber-300 hover:text-amber-600">
+              {artBusy ? "กำลังอัปโหลด…" : "📎 เลือกรูป (สูงสุด 5 รูป)"}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                className="hidden"
+                disabled={artBusy}
+                onChange={(e) => {
+                  void uploadArt(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          )}
         </div>
       </div>
       {err && <p className="mt-2 text-xs font-semibold text-rose-600">{err}</p>}
