@@ -121,8 +121,6 @@ function RichNoteEditor({
   const lastPushed = useRef<string>(value ?? "");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [empty, setEmpty] = useState(!noteHasText(value));
-  // แถบจัดรูปแบบซ่อนไว้จนกว่าจะคลิกในช่อง — นาน ๆ ใช้ที แต่กินที่ทุกหน้าจอ
-  const [tools, setTools] = useState(false);
 
   // เคลียร์ตัวตั้งเวลาเซฟตอน unmount
   useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
@@ -194,7 +192,6 @@ function RichNoteEditor({
           contentEditable
           suppressContentEditableWarning
           onInput={handleInput}
-          onFocus={() => setTools(true)}
           onBlur={handleBlur}
           className="min-h-[58px] w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm leading-snug focus:border-amber-300 focus:outline-none"
         />
@@ -202,72 +199,51 @@ function RichNoteEditor({
           <span className="pointer-events-none absolute left-2.5 top-1.5 text-sm text-slate-400">{placeholder}</span>
         )}
       </div>
-      {!tools ? (
-        <button
-          type="button"
-          onMouseDown={keepSel}
-          onClick={() => setTools(true)}
-          className="text-[10px] font-bold text-slate-400 transition hover:text-slate-600"
-        >
-          🎨 จัดรูปแบบตัวอักษร (สี / ขนาด / น้ำหนัก)
-        </button>
-      ) : (
-        <div className="space-y-1.5 rounded-lg bg-slate-50/80 p-2 ring-1 ring-slate-100">
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] text-slate-400">✏️ ไฮไลต์คำที่ต้องการก่อน แล้วกดสี/ขนาด/น้ำหนัก</p>
-            <button
-              type="button"
-              onMouseDown={keepSel}
-              onClick={() => setTools(false)}
-              className="rounded px-1 text-[10px] font-bold text-slate-400 transition hover:text-slate-600"
-            >
-              ✕ ซ่อน
-            </button>
+      <div className="space-y-1.5 rounded-lg bg-slate-50/80 p-2 ring-1 ring-slate-100">
+        <p className="text-[10px] text-slate-400">✏️ ไฮไลต์คำที่ต้องการก่อน แล้วกดสี/ขนาด/น้ำหนัก</p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <div className="flex items-center gap-1.5">
+            {(Object.keys(NOTE_COLORS) as NoteColor[]).map((c) => (
+              <button
+                key={c}
+                type="button"
+                title={NOTE_COLORS[c].label}
+                onMouseDown={keepSel}
+                onClick={() => applyStyle({ color: NOTE_COLORS[c].hex })}
+                className="h-5 w-5 rounded-full ring-2 ring-transparent transition hover:ring-slate-300"
+                style={{ backgroundColor: NOTE_COLORS[c].hex }}
+              />
+            ))}
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <div className="flex items-center gap-1.5">
-              {(Object.keys(NOTE_COLORS) as NoteColor[]).map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  title={NOTE_COLORS[c].label}
-                  onMouseDown={keepSel}
-                  onClick={() => applyStyle({ color: NOTE_COLORS[c].hex })}
-                  className="h-5 w-5 rounded-full ring-2 ring-transparent transition hover:ring-slate-300"
-                  style={{ backgroundColor: NOTE_COLORS[c].hex }}
-                />
-              ))}
-            </div>
-            <div className="inline-flex overflow-hidden rounded-md ring-1 ring-slate-200">
-              {(Object.keys(NOTE_SIZES) as NoteSize[]).map((sz) => (
-                <button
-                  key={sz}
-                  type="button"
-                  onMouseDown={keepSel}
-                  onClick={() => applyStyle({ fontSize: `${NOTE_SIZES[sz].px}px` })}
-                  className="border-r border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 transition last:border-r-0 hover:bg-slate-100"
-                >
-                  {NOTE_SIZES[sz].label}
-                </button>
-              ))}
-            </div>
-            <div className="inline-flex overflow-hidden rounded-md ring-1 ring-slate-200">
-              {(Object.keys(NOTE_WEIGHTS) as NoteWeight[]).map((w) => (
-                <button
-                  key={w}
-                  type="button"
-                  onMouseDown={keepSel}
-                  onClick={() => applyStyle({ fontWeight: String(NOTE_WEIGHTS[w].css) })}
-                  style={{ fontWeight: NOTE_WEIGHTS[w].css }}
-                  className="border-r border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500 transition last:border-r-0 hover:bg-slate-100"
-                >
-                  {NOTE_WEIGHTS[w].label}
-                </button>
-              ))}
-            </div>
+          <div className="inline-flex overflow-hidden rounded-md ring-1 ring-slate-200">
+            {(Object.keys(NOTE_SIZES) as NoteSize[]).map((sz) => (
+              <button
+                key={sz}
+                type="button"
+                onMouseDown={keepSel}
+                onClick={() => applyStyle({ fontSize: `${NOTE_SIZES[sz].px}px` })}
+                className="border-r border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 transition last:border-r-0 hover:bg-slate-100"
+              >
+                {NOTE_SIZES[sz].label}
+              </button>
+            ))}
+          </div>
+          <div className="inline-flex overflow-hidden rounded-md ring-1 ring-slate-200">
+            {(Object.keys(NOTE_WEIGHTS) as NoteWeight[]).map((w) => (
+              <button
+                key={w}
+                type="button"
+                onMouseDown={keepSel}
+                onClick={() => applyStyle({ fontWeight: String(NOTE_WEIGHTS[w].css) })}
+                style={{ fontWeight: NOTE_WEIGHTS[w].css }}
+                className="border-r border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500 transition last:border-r-0 hover:bg-slate-100"
+              >
+                {NOTE_WEIGHTS[w].label}
+              </button>
+            ))}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
