@@ -260,6 +260,29 @@ export default function AdminOrderDetailPage() {
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [err, setErr] = useState("");
+  /** กล่องยืนยันของระบบเอง — แทน confirm() ของเบราว์เซอร์ (หน้าตาเข้ากับหลังบ้าน บอกผลของการกดชัดกว่า) */
+  const [confirmBox, setConfirmBox] = useState<{
+    icon: string;
+    title: string;
+    detail?: string;
+    confirmLabel: string;
+    danger: boolean;
+    resolve: (ok: boolean) => void;
+  } | null>(null);
+  const askConfirm = useCallback(
+    (o: { icon?: string; title: string; detail?: string; confirmLabel?: string; danger?: boolean }) =>
+      new Promise<boolean>((resolve) =>
+        setConfirmBox({
+          icon: o.icon ?? "❓",
+          title: o.title,
+          detail: o.detail,
+          confirmLabel: o.confirmLabel ?? "ยืนยัน",
+          danger: o.danger ?? false,
+          resolve,
+        })
+      ),
+    []
+  );
   const [artDropIdx, setArtDropIdx] = useState<number | null>(null);
   const [addPicIdx, setAddPicIdx] = useState<number | null>(null); // เปิดเมนู "เพิ่มรูป" ของรายการไหนอยู่
   // ช่องส่วนลดรายรายการ — ซ่อนไว้ กดป้าย "＋ ใส่ส่วนลด" ท้ายแถวถึงจะโผล่ (นาน ๆ ใช้ที)
@@ -363,7 +386,7 @@ export default function AdminOrderDetailPage() {
   /** ลบสลิป (เฉพาะผู้ดูแลระบบ) — รีเซ็ตการแจ้งโอน ออเดอร์กลับเป็น รอชำระเงิน */
   async function deleteSlip() {
     if (!order) return;
-    if (!confirm(`ลบสลิปของ ${order.id}?\n\nการแจ้งโอนจะถูกรีเซ็ต ออเดอร์กลับเป็น "รอชำระเงิน" ให้ลูกค้าแนบใหม่`)) return;
+    if (!(await askConfirm({ icon: "🧾", title: `ลบสลิปของ ${order.id}?`, detail: 'การแจ้งโอนจะถูกรีเซ็ต ออเดอร์กลับเป็น "รอชำระเงิน" ให้ลูกค้าแนบใหม่', confirmLabel: "ลบสลิป", danger: true }))) return;
     const res = await fetch("/api/admin/orders/slip", {
       method: "DELETE",
       headers: { "content-type": "application/json" },
@@ -521,16 +544,16 @@ export default function AdminOrderDetailPage() {
     applyOrder(withLog({ ...order, deposit: { amount: amt } }, actor, "เปิดโหมดมัดจำ 50%", `มัดจำ ${amt} บาท จากยอด ${orderTotal(order)} บาท`));
   }
 
-  function cancelDeposit() {
+  async function cancelDeposit() {
     if (!order?.deposit || order.deposit.firstPaidAt) return;
-    if (!window.confirm("ยกเลิกโหมดมัดจำ 50% — กลับไปเก็บเต็มจำนวน?")) return;
+    if (!(await askConfirm({ icon: "➗", title: "ยกเลิกโหมดมัดจำ 50%?", detail: "ออเดอร์นี้จะกลับไปเก็บเงินเต็มจำนวน", confirmLabel: "ยกเลิกโหมดมัดจำ", danger: true }))) return;
     applyOrder(withLog({ ...order, deposit: undefined }, actor, "ยกเลิกโหมดมัดจำ 50%"));
   }
 
   /** แอดมินตรวจสลิปมัดจำเองแล้วกดยืนยัน (กรณี SlipOK ไม่ผ่าน/โอนช่องทางอื่น) */
-  function confirmDepositFirst() {
+  async function confirmDepositFirst() {
     if (!order?.deposit || order.deposit.firstPaidAt) return;
-    if (!window.confirm(`ยืนยันว่าได้รับมัดจำ ${formatPrice(order.deposit.amount)} แล้ว? ออเดอร์จะเริ่มงานได้ทันที`)) return;
+    if (!(await askConfirm({ icon: "💰", title: `ยืนยันว่าได้รับมัดจำ ${formatPrice(order.deposit.amount)} แล้ว?`, detail: "ระบบจะบันทึกว่าเก็บงวดแรกแล้ว เริ่มงานได้เลย", confirmLabel: "ยืนยันรับมัดจำ" }))) return;
     const now = new Date().toISOString();
     applyOrder(
       withLog(
@@ -548,10 +571,10 @@ export default function AdminOrderDetailPage() {
   }
 
   /** แอดมินยืนยันว่าเก็บยอดคงเหลือครบแล้ว — ปลดล็อกพิมพ์เอกสาร/ยิงเลขพัสดุ */
-  function confirmDepositSettled() {
+  async function confirmDepositSettled() {
     if (!order?.deposit || !order.deposit.firstPaidAt || order.deposit.settledAt) return;
     const bal = Math.max(0, orderTotal(order) - (order.paidTotal ?? order.deposit.amount));
-    if (!window.confirm(`ยืนยันว่าได้รับยอดคงเหลือ ${formatPrice(bal)} ครบแล้ว?`)) return;
+    if (!(await askConfirm({ icon: "💰", title: `ยืนยันว่าได้รับยอดคงเหลือ ${formatPrice(bal)} แล้ว?`, detail: "ครบ 100% แล้วจะปลดล็อกการพิมพ์ใบงาน/ใบเสร็จ และยิงเลขพัสดุได้", confirmLabel: "ยืนยันรับครบแล้ว" }))) return;
     const now = new Date().toISOString();
     applyOrder(
       withLog(
@@ -564,12 +587,12 @@ export default function AdminOrderDetailPage() {
   }
 
   /** แอดมินเช็คสต๊อก/คิวผลิตแล้วกดยืนยัน → เคลียร์ธง + ระบบแจ้งลูกค้าทางไลน์ให้อัตโนมัติ */
-  function confirmStock(itemIndex: number) {
+  async function confirmStock(itemIndex: number) {
     if (!order) return;
     const it = order.items[itemIndex];
     if (!it?.needStockCheck) return;
     const ship = order.shipDate?.from ? ` (วันส่งที่ตั้งไว้: ${order.shipDate.from})` : "";
-    if (!window.confirm(`ยืนยันว่าเช็คสต๊อก/คิวผลิตแล้ว ผลิต "${it.name}" ได้ ${it.qty.toLocaleString("th-TH")} ชิ้น?${ship}\n\nระบบจะแจ้งลูกค้าทางไลน์ให้ทันที`)) return;
+    if (!(await askConfirm({ icon: "📦", title: "ยืนยันว่าเช็คสต๊อก/คิวผลิตแล้ว?", detail: `${it.name} × ${it.qty.toLocaleString("th-TH")} ชิ้น${ship} — ระบบจะแจ้งลูกค้าว่ารับผลิตได้`, confirmLabel: "ยืนยัน — แจ้งลูกค้า" }))) return;
     const items = order.items.map((x, i) => (i === itemIndex ? { ...x, needStockCheck: undefined } : x));
     applyOrder(
       withLog({ ...order, items }, actor, "ยืนยันสต๊อก/คิวผลิต", `${it.name} × ${it.qty} — แจ้งลูกค้าแล้ว`)
@@ -604,7 +627,7 @@ export default function AdminOrderDetailPage() {
   /** ลบภาพก่อนปิดกล่อง (ถ่ายผิด/ซ้ำ) */
   async function deletePackPhoto(index: number) {
     if (!order) return;
-    if (!window.confirm("ลบภาพก่อนปิดกล่องรูปนี้?")) return;
+    if (!(await askConfirm({ icon: "📸", title: "ลบภาพก่อนปิดกล่องรูปนี้?", confirmLabel: "ลบรูป", danger: true }))) return;
     if (demo) {
       const photos = (order.packPhotos ?? []).filter((_, i) => i !== index);
       setOrder({ ...order, packPhotos: photos.length ? photos : undefined });
@@ -693,6 +716,34 @@ export default function AdminOrderDetailPage() {
       acked ? "ยกเลิกยืนยันใส่งานตัวอย่าง" : "ยืนยันใส่งานตัวอย่างลงกล่องแล้ว",
       item?.name
     );
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
+
+  /** ส่งลายที่แนบไว้ "ทุกรูป" ของรายการนี้ให้ลูกค้าตรวจทีเดียว */
+  function sendAllArtAsProofs(itemIndex: number) {
+    if (!order) return;
+    if (!paidOk && !overrideLock) {
+      setErr(`ออเดอร์นี้ยังไม่ได้ยืนยันการชำระเงิน (สถานะ “${order.status}”) — กด “ทำแบบก่อนได้” ด้านบนถ้าจงใจ`);
+      return;
+    }
+    const now = new Date().toISOString();
+    let added = 0;
+    const items = order.items.map((it, i) => {
+      if (i !== itemIndex) return it;
+      const have = new Set(proofsOf(it).map((p) => p.url));
+      const fresh = (it.artworkUrls ?? []).filter((u) => !have.has(u));
+      added = fresh.length;
+      if (!fresh.length) return it;
+      return {
+        ...it,
+        proofs: [...proofsOf(it), ...fresh.map((url) => ({ url, at: now }))],
+        proofStatus: "รอตรวจ" as ProofStatus,
+        proofUpdatedAt: now,
+      };
+    });
+    if (!added) return;
+    const next = withLog({ ...order, items }, actor, "ส่งแบบให้ลูกค้าตรวจ", `${order.items[itemIndex]?.name} — ใช้ลายที่แนบ ${added} รูป`);
     setOrder(next);
     if (!demo) void saveOrderAdmin(next);
   }
@@ -879,6 +930,23 @@ export default function AdminOrderDetailPage() {
           onTrackingSave={saveTracking}
           onZoom={showProof}
         />
+        {confirmBox && (
+          <ConfirmModal
+            icon={confirmBox.icon}
+            title={confirmBox.title}
+            detail={confirmBox.detail}
+            confirmLabel={confirmBox.confirmLabel}
+            danger={confirmBox.danger}
+            onCancel={() => {
+              confirmBox.resolve(false);
+              setConfirmBox(null);
+            }}
+            onConfirm={() => {
+              confirmBox.resolve(true);
+              setConfirmBox(null);
+            }}
+          />
+        )}
         {lightbox && (
           <ImageLightbox
             src={lightbox.src}
@@ -1147,8 +1215,14 @@ export default function AdminOrderDetailPage() {
                               {pic.kind === "art" && mayProof && !proofs.some((pf) => pf.url === pic.u) && (
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    if (confirm("ส่งรูปนี้ให้ลูกค้าตรวจ/อนุมัติเลยไหม? (จะขึ้นเป็นแบบงานในหน้าลูกค้า)")) useArtAsProof(i, pic.u);
+                                  onClick={async () => {
+                                    const ok = await askConfirm({
+                                      icon: "🎨",
+                                      title: "ส่งรูปนี้ให้ลูกค้าตรวจเลยไหม?",
+                                      detail: "รูปจะขึ้นเป็นแบบงานในหน้าลูกค้า พร้อมปุ่มอนุมัติ / ขอแก้ไข",
+                                      confirmLabel: "ส่งให้ลูกค้าตรวจ",
+                                    });
+                                    if (ok) useArtAsProof(i, pic.u);
                                   }}
                                   title="ใช้รูปนี้เป็นแบบให้ลูกค้ากดอนุมัติ/ขอแก้ไข"
                                   className="absolute -left-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-violet-600 text-[9px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100"
@@ -1159,8 +1233,18 @@ export default function AdminOrderDetailPage() {
                               {((pic.kind === "art" && mayEdit) || (pic.kind === "proof" && mayProof)) && (
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    if (!confirm(pic.kind === "proof" ? "ลบแบบงานรูปนี้?" : "ลบภาพลายรูปนี้ออกจากรายการ?")) return;
+                                  onClick={async () => {
+                                    const ok = await askConfirm({
+                                      icon: "🗑",
+                                      title: pic.kind === "proof" ? "ลบแบบงานรูปนี้?" : "ลบภาพลายรูปนี้?",
+                                      detail:
+                                        pic.kind === "proof"
+                                          ? "ลูกค้าจะไม่เห็นแบบรูปนี้อีก — ถ้าไม่เหลือแบบเลย รายการจะกลับไปสถานะรอกราฟฟิกทำแบบ"
+                                          : "เอารูปออกจากรายการนี้ (ไฟล์ยังอยู่ในคลัง)",
+                                      confirmLabel: "ลบรูป",
+                                      danger: true,
+                                    });
+                                    if (!ok) return;
                                     if (pic.kind === "proof") removeProof(i, pic.at);
                                     else removeArtwork(i, pic.u);
                                   }}
@@ -1451,6 +1535,31 @@ export default function AdminOrderDetailPage() {
                     )}
                   </div>
 
+                  {/* ลายที่แนบยังไม่ได้ส่งให้ลูกค้าตรวจ → ส่งทีเดียวทุกรูป */}
+                  {mayProof &&
+                    (() => {
+                      const have = new Set(proofs.map((p) => p.url));
+                      const pending = (it.artworkUrls ?? []).filter((u) => !have.has(u));
+                      if (!pending.length) return null;
+                      return (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const ok = await askConfirm({
+                              icon: "🎨",
+                              title: `ส่งลายที่แนบ ${pending.length} รูป ให้ลูกค้าตรวจ?`,
+                              detail: "รูปทั้งหมดจะขึ้นเป็นแบบงานในหน้าลูกค้า พร้อมปุ่มอนุมัติ / ขอแก้ไข",
+                              confirmLabel: "ส่งให้ลูกค้าตรวจ",
+                            });
+                            if (ok) sendAllArtAsProofs(i);
+                          }}
+                          className="mt-2 rounded-xl bg-violet-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-violet-700"
+                        >
+                          🎨 ส่งลายที่แนบให้ลูกค้าตรวจ ({pending.length} รูป)
+                        </button>
+                      );
+                    })()}
+
                   {it.proofStatus === "ขอแก้ไข" && it.proofNote && (
                     <p className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-100">
                       ลูกค้าขอแก้: “{it.proofNote}”
@@ -1567,15 +1676,15 @@ export default function AdminOrderDetailPage() {
                     <div className="mt-3 border-t border-slate-100 pt-3">
                       <button
                         type="button"
-                        onClick={() => setNoteOpen((cur) => ({ ...cur, [i]: !(cur[i] ?? true) }))}
+                        onClick={() => setNoteOpen((cur) => ({ ...cur, [i]: !(cur[i] ?? noteHasText(it.adminNote)) }))}
                         className={`text-xs font-bold transition ${
                           noteHasText(it.adminNote) ? "text-teal-700 hover:text-teal-800" : "text-slate-400 hover:text-slate-600"
                         }`}
                       >
                         📝 หมายเหตุใบงานของรายการนี้{noteHasText(it.adminNote) ? " (มีข้อความ)" : ""}{" "}
-                        {(noteOpen[i] ?? true) ? "▴" : "▾"}
+                        {(noteOpen[i] ?? noteHasText(it.adminNote)) ? "▴" : "▾"}
                       </button>
-                      {(noteOpen[i] ?? true) && (
+                      {(noteOpen[i] ?? noteHasText(it.adminNote)) && (
                         <div className="mt-2 rounded-xl bg-teal-50/40 p-2.5 ring-1 ring-teal-100">
                           <RichNoteEditor
                             value={it.adminNote}
@@ -2202,6 +2311,23 @@ export default function AdminOrderDetailPage() {
       {skipGate && <SkipGateModal reasons={skipGate} onCancel={cancelSkipGate} onConfirm={confirmSkipGate} />}
 
       {/* หน้าตรวจสอบออเดอร์: ขยายรูปดูอย่างเดียว (ไม่มีปุ่มตรวจนับ — งานแพ็คอยู่ในโหมดแพ็ค) */}
+      {confirmBox && (
+        <ConfirmModal
+          icon={confirmBox.icon}
+          title={confirmBox.title}
+          detail={confirmBox.detail}
+          confirmLabel={confirmBox.confirmLabel}
+          danger={confirmBox.danger}
+          onCancel={() => {
+            confirmBox.resolve(false);
+            setConfirmBox(null);
+          }}
+          onConfirm={() => {
+            confirmBox.resolve(true);
+            setConfirmBox(null);
+          }}
+        />
+      )}
       {lightbox && (
         <ImageLightbox
           src={lightbox.src}
@@ -2966,6 +3092,69 @@ function ThaiPostStatus({ number }: { number: string }) {
   );
 }
 
+
+/** กล่องยืนยันทั่วไปของหลังบ้าน — แทน confirm() ของเบราว์เซอร์ */
+function ConfirmModal({
+  icon,
+  title,
+  detail,
+  confirmLabel,
+  danger,
+  onCancel,
+  onConfirm,
+}: {
+  icon: string;
+  title: string;
+  detail?: string;
+  confirmLabel: string;
+  danger: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+      if (e.key === "Enter") onConfirm();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel, onConfirm]);
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onCancel}>
+      <div
+        className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        role="alertdialog"
+        aria-modal="true"
+      >
+        <div className={`px-5 pb-4 pt-5 text-center ring-1 ring-inset ${danger ? "bg-rose-50 ring-rose-100" : "bg-sky-50 ring-sky-100"}`}>
+          <span className="text-3xl">{icon}</span>
+          <p className="mt-1.5 text-base font-extrabold leading-snug text-slate-900">{title}</p>
+          {detail && <p className="mt-1 text-xs leading-relaxed text-slate-500">{detail}</p>}
+        </div>
+        <div className="flex gap-2 p-4">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50"
+          >
+            ยกเลิก
+          </button>
+          <button
+            type="button"
+            autoFocus
+            onClick={onConfirm}
+            className={`flex-1 rounded-xl py-2.5 text-sm font-extrabold text-white shadow-sm transition ${
+              danger ? "bg-rose-600 hover:bg-rose-700" : "bg-emerald-600 hover:bg-emerald-700"
+            }`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** โมดัลยืนยัน "ข้ามด่านตรวจแพ็ค" — แทน confirm() เดิม เน้นให้เห็นชัดว่าขาดอะไรและมีผลอะไร */
 function SkipGateModal({ reasons, onCancel, onConfirm }: { reasons: string[]; onCancel: () => void; onConfirm: () => void }) {
