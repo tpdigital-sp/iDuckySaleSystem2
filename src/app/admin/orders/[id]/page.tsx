@@ -1409,7 +1409,7 @@ export default function AdminOrderDetailPage() {
                   </div>
 
                   {/* ── รูปงาน แยกชัดว่าใครเป็นคนใส่ · ใครเห็น ── */}
-                  <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                  <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)]">
                     {/* ซ้าย: ลายที่ลูกค้าส่งมา (ทีมงานเห็นเท่านั้น) */}
                     <div className="rounded-xl border border-sky-200 bg-sky-50/40 p-3">
                       <p className="text-xs font-bold text-sky-800">
@@ -1515,62 +1515,86 @@ export default function AdminOrderDetailPage() {
                           {proofDropIdx === i ? "⬇️ ปล่อยไฟล์ตรงนี้ได้เลย" : "ยังไม่ได้ส่งแบบให้ลูกค้า — ลากไฟล์มาวาง กดปุ่มด้านล่าง หรือกด “ใช้ลายนี้เป็นแบบ” จากฝั่งซ้าย"}
                         </p>
                       ) : (
-                        <div className="mt-2 space-y-1.5">
+                        <div className="mt-2 flex flex-wrap gap-2">
                           {proofs.map((pf, j) => (
                             <div
                               key={`${pf.url}-${j}`}
-                              className={`flex items-center gap-2 rounded-lg bg-white p-1.5 ring-1 ${
-                                pf.review === "ขอแก้ไข" ? "ring-rose-300" : pf.review === "อนุมัติ" ? "ring-teal-300" : "ring-violet-100"
+                              className={`w-36 overflow-hidden rounded-xl border bg-white ${
+                                pf.review === "ขอแก้ไข"
+                                  ? "border-rose-300 ring-2 ring-rose-200"
+                                  : pf.review === "อนุมัติ"
+                                    ? "border-teal-300 ring-2 ring-teal-100"
+                                    : "border-violet-200"
                               }`}
                             >
-                              <button
-                                type="button"
-                                onClick={() => showProof(i, j)}
-                                className="relative block h-14 w-14 shrink-0 overflow-hidden rounded-lg ring-1 ring-slate-200"
-                                title="ดูรูปเต็ม"
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={pf.url} alt={`แบบ ${j + 1}`} className="h-full w-full object-cover" />
-                                <span className="absolute bottom-0 left-0 rounded-tr bg-slate-900/60 px-1 text-[8px] font-bold text-white">
-                                  {j + 1}
+                              <div className="relative">
+                                <button
+                                  type="button"
+                                  onClick={() => showProof(i, j)}
+                                  aria-label={`ขยายดูแบบงาน ${it.name} รูปที่ ${j + 1}`}
+                                  className="block aspect-[4/3] w-full cursor-zoom-in bg-slate-50"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={pf.url} alt={`แบบงาน ${it.name} รูปที่ ${j + 1}`} className="h-full w-full object-contain" />
+                                </button>
+                                <span className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-slate-900/60 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                                  รูปที่ {j + 1}
                                 </span>
-                              </button>
-                              <div className="min-w-0 flex-1">
-                                <p className="text-[11px] font-bold">
-                                  {pf.review === "อนุมัติ" ? (
-                                    <span className="text-teal-700">✓ ลูกค้าอนุมัติแล้ว</span>
-                                  ) : pf.review === "ขอแก้ไข" ? (
-                                    <span className="text-rose-700">✏️ ลูกค้าขอแก้: “{pf.reviewNote || "-"}”</span>
-                                  ) : (
-                                    <span className="text-slate-400">รอลูกค้าตรวจ</span>
-                                  )}
-                                </p>
+                                {pf.review && (
+                                  <span
+                                    className={`pointer-events-none absolute left-1.5 top-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${
+                                      pf.review === "อนุมัติ" ? "bg-teal-50 text-teal-700 ring-teal-200" : "bg-rose-50 text-rose-700 ring-rose-200"
+                                    }`}
+                                  >
+                                    {pf.review === "อนุมัติ" ? "✔ อนุมัติ" : "✏️ ขอแก้ไข"}
+                                  </span>
+                                )}
                                 {mayProof && (
-                                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const ok = await askConfirm({ icon: "🗑", title: `ลบแบบรูปที่ ${j + 1}?`, detail: "ลูกค้าจะไม่เห็นแบบรูปนี้อีก", confirmLabel: "ลบแบบ", danger: true });
+                                      if (ok) removeProof(i, j);
+                                    }}
+                                    aria-label="ลบรูปนี้"
+                                    className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-slate-900/60 text-xs font-bold text-white transition hover:bg-rose-600"
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                              </div>
+                              {mayProof ? (
+                                <div className="space-y-1.5 p-2">
+                                  <label className="flex items-center gap-1.5">
+                                    <span className="text-[10px] font-bold text-slate-400">จำนวน</span>
                                     <input
                                       type="number"
                                       min={1}
                                       value={pf.qty ?? ""}
-                                      placeholder="จำนวน"
+                                      placeholder="—"
                                       onChange={(e) => patchProof(i, j, { qty: Math.max(0, Number(e.target.value) || 0) || undefined })}
-                                      className="w-16 rounded-md border border-slate-200 px-1.5 py-0.5 text-center text-[11px] focus:border-violet-300 focus:outline-none"
+                                      className="w-full min-w-0 rounded-md border border-slate-200 px-1.5 py-0.5 text-center text-[11px] focus:border-violet-300 focus:outline-none"
                                     />
-                                    <input
-                                      value={pf.note ?? ""}
-                                      placeholder="รายละเอียด เช่น ลายหน้า"
-                                      onChange={(e) => patchProof(i, j, { note: e.target.value || undefined })}
-                                      className="min-w-0 flex-1 rounded-md border border-slate-200 px-1.5 py-0.5 text-[11px] focus:border-violet-300 focus:outline-none"
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                              {mayProof && (
-                                <div className="flex shrink-0 flex-col gap-1">
+                                    <span className="text-[10px] text-slate-400">ชิ้น</span>
+                                  </label>
+                                  <input
+                                    value={pf.note ?? ""}
+                                    placeholder="รายละเอียด เช่น ลายหน้า"
+                                    onChange={(e) => patchProof(i, j, { note: e.target.value || undefined })}
+                                    className="w-full rounded-md border border-slate-200 px-1.5 py-0.5 text-[11px] focus:border-violet-300 focus:outline-none"
+                                  />
+                                  {pf.review === "ขอแก้ไข" && pf.reviewNote && (
+                                    <p className="rounded-md bg-rose-50 px-1.5 py-1 text-[10px] font-bold leading-snug text-rose-700">
+                                      ลูกค้าขอแก้: “{pf.reviewNote}”
+                                    </p>
+                                  )}
                                   <label
                                     title="อัปรูปใหม่ทับตำแหน่งเดิม (ไม่ต้องลบก่อน)"
-                                    className="cursor-pointer rounded-md bg-indigo-600 px-2 py-1 text-center text-[10px] font-bold text-white transition hover:bg-indigo-700"
+                                    className={`block cursor-pointer rounded-lg px-2 py-1 text-center text-[11px] font-bold transition ${
+                                      pf.review === "ขอแก้ไข" ? "bg-rose-500 text-white hover:bg-rose-600" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                    } ${uploadingIdx === i ? "pointer-events-none opacity-50" : ""}`}
                                   >
-                                    🔄 เปลี่ยน
+                                    {uploadingIdx === i ? "กำลังอัปโหลด…" : "🔄 เปลี่ยนรูปนี้"}
                                     <input
                                       type="file"
                                       accept="image/png,image/jpeg,image/webp,image/gif"
@@ -1581,16 +1605,14 @@ export default function AdminOrderDetailPage() {
                                       }}
                                     />
                                   </label>
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      const ok = await askConfirm({ icon: "🗑", title: `ลบแบบรูปที่ ${j + 1}?`, detail: "ลูกค้าจะไม่เห็นแบบรูปนี้อีก", confirmLabel: "ลบแบบ", danger: true });
-                                      if (ok) removeProof(i, j);
-                                    }}
-                                    className="rounded-md border border-slate-200 px-2 py-1 text-[10px] font-bold text-slate-500 transition hover:bg-rose-50 hover:text-rose-600"
-                                  >
-                                    ✕ ลบ
-                                  </button>
+                                </div>
+                              ) : (
+                                <div className="p-2 text-[11px] leading-snug text-slate-600">
+                                  {pf.qty ? <strong>{pf.qty} ชิ้น</strong> : <span className="text-slate-400">ไม่ระบุจำนวน</span>}
+                                  {pf.note ? <span className="block text-slate-500">{pf.note}</span> : null}
+                                  {pf.review === "ขอแก้ไข" && pf.reviewNote && (
+                                    <span className="block text-rose-600">ลูกค้าขอแก้: “{pf.reviewNote}”</span>
+                                  )}
                                 </div>
                               )}
                             </div>
