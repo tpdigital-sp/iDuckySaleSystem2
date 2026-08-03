@@ -259,6 +259,8 @@ export default function AdminOrderDetailPage() {
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [err, setErr] = useState("");
+  // ช่องหมายเหตุใบงานของแต่ละรายการ — ซ่อนไว้ กดที่รายการนั้นเพื่อเปิด
+  const [noteOpen, setNoteOpen] = useState<Record<number, boolean>>({});
   // ยุบ/กางรายละเอียดของแต่ละรายการ — ออเดอร์ที่มีหลายรายการจะได้ไม่ยาวจนหาของไม่เจอ
   const [itemOpen, setItemOpen] = useState<Record<number, boolean>>({});
   const [lightbox, setLightbox] = useState<{
@@ -995,44 +997,73 @@ export default function AdminOrderDetailPage() {
               ⚠️ {err}
             </p>
           )}
-          <div className="mt-3 space-y-3">
+          {/* หัวตาราง (จอกว้าง) — อ่านรายการแบบใบสั่งงาน */}
+          <div className="mt-3 hidden items-center gap-3 px-4 text-[11px] font-bold uppercase tracking-wide text-slate-400 sm:flex">
+            <span className="w-6 shrink-0 text-center">#</span>
+            <span className="w-14 shrink-0 text-center">รูป</span>
+            <span className="min-w-0 flex-1">ชื่อสินค้า / รายละเอียด</span>
+            <span className="w-12 shrink-0 text-center">จำนวน</span>
+            {seesMoney && <span className="w-28 shrink-0 text-right">ราคา/หน่วย</span>}
+            {seesMoney && <span className="w-24 shrink-0 text-right">ยอดรวม</span>}
+          </div>
+          <div className="mt-1.5 space-y-2">
             {order.items.map((it, i) => {
               const proofs = proofsOf(it);
               const proofQty = proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
               const open = itemOpen[i] ?? autoOpen(it);
               return (
                 <div key={`${it.productId}-${i}`} className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
-                  {/* หัวรายการ — เลขตรงกับช่องหมายเหตุฝั่งขวา · กดที่หัวเพื่อยุบ/กาง */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-start gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setItemOpen((cur) => ({ ...cur, [i]: !open }))}
-                        title={open ? "ยุบรายการนี้" : "กางรายการนี้"}
-                        className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-indigo-50 text-[11px] font-bold text-indigo-700 ring-1 ring-indigo-200 transition hover:bg-indigo-100"
-                      >
-                        {i + 1}
-                      </button>
-                      <div className="min-w-0">
+                  {/* แถวรายการ — อ่านเป็นตาราง: # · รูป · รายละเอียด · จำนวน · ราคา/หน่วย · ยอดรวม */}
+                  <div className="flex items-start gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setItemOpen((cur) => ({ ...cur, [i]: !open }))}
+                      title={open ? "ยุบรายการนี้" : "กางรายการนี้"}
+                      className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-indigo-50 text-[11px] font-bold text-indigo-700 ring-1 ring-indigo-200 transition hover:bg-indigo-100"
+                    >
+                      {i + 1}
+                    </button>
+                    {/* รูปประจำรายการ — ภาพลายจากลูกค้า ถ้ายังไม่มีก็ใช้แบบงานที่กราฟฟิกทำ */}
+                    {(() => {
+                      const thumb = it.artworkUrls?.[0] ?? proofs[0]?.url;
+                      return (
                         <button
                           type="button"
                           onClick={() => setItemOpen((cur) => ({ ...cur, [i]: !open }))}
-                          className="text-left font-bold text-slate-800 hover:text-indigo-700"
+                          className="shrink-0"
+                          title={open ? "ยุบรายการนี้" : "กางรายการนี้"}
                         >
-                          {it.name} <span className="text-xs font-normal text-slate-400">{open ? "▴" : "▾"}</span>
+                          {thumb ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img src={thumb} alt={it.name} className="h-14 w-14 rounded-lg object-cover ring-1 ring-slate-200" />
+                          ) : (
+                            <span className="grid h-14 w-14 place-items-center rounded-lg bg-slate-50 text-lg text-slate-300 ring-1 ring-slate-200">🖼️</span>
+                          )}
                         </button>
-                        {!open && (
-                          <p className="mt-0.5 text-[11px] text-slate-400">
-                            {it.proofStatus ? `แบบ: ${it.proofStatus === "รอตรวจ" ? "รอลูกค้าตรวจ" : it.proofStatus === "อนุมัติ" ? "ลูกค้าอนุมัติแล้ว" : "ลูกค้าขอแก้ไข"}` : "แบบ: รอกราฟฟิกทำแบบ"}
-                            {proofs.length > 0 ? ` · ${proofs.length} แบบ` : ""}
-                            {(it.artworkUrls?.length ?? 0) > 0 ? ` · 🎨 ภาพลาย ${it.artworkUrls!.length}` : ""}
-                            {it.needStockCheck ? " · 📦 รอเช็คสต๊อก" : ""}
-                          </p>
-                        )}
-                      </div>
+                      );
+                    })()}
+                    <div className="min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => setItemOpen((cur) => ({ ...cur, [i]: !open }))}
+                        className="text-left font-bold text-slate-800 hover:text-indigo-700"
+                      >
+                        {it.name} <span className="text-xs font-normal text-slate-400">{open ? "▴" : "▾"}</span>
+                      </button>
+                      {it.selections && (
+                        <p className={`mt-0.5 whitespace-pre-line text-xs text-slate-500 ${open ? "" : "line-clamp-2"}`}>{it.selections}</p>
+                      )}
+                      <p className="mt-0.5 text-[11px] text-slate-400">
+                        {it.proofStatus ? `แบบ: ${it.proofStatus === "รอตรวจ" ? "รอลูกค้าตรวจ" : it.proofStatus === "อนุมัติ" ? "ลูกค้าอนุมัติแล้ว" : "ลูกค้าขอแก้ไข"}` : "แบบ: รอกราฟฟิกทำแบบ"}
+                        {proofs.length > 0 ? ` · ${proofs.length} แบบ` : ""}
+                        {(it.artworkUrls?.length ?? 0) > 0 ? ` · 🎨 ภาพลาย ${it.artworkUrls!.length}` : ""}
+                        {noteHasText(it.adminNote) ? " · 📝 มีหมายเหตุ" : ""}
+                        {it.needStockCheck ? " · 📦 รอเช็คสต๊อก" : ""}
+                      </p>
                     </div>
-                    <span className="shrink-0 text-right text-sm font-bold text-slate-900">
-                      {it.qty} × {formatPrice(it.unitPrice)}
+                    <span className="w-12 shrink-0 text-center text-sm font-semibold text-slate-700">{it.qty}</span>
+                    <span className={`w-28 shrink-0 text-right text-sm font-bold text-slate-900 ${seesMoney ? "" : "hidden"}`}>
+                      {formatPrice(it.unitPrice)}
                       {/* ส่วนลดเฉพาะรายการนี้ — เลือกได้ทั้งบาทและ % (บันทึกตอนออกจากช่อง พร้อมลง log) */}
                       {mayEdit && seesMoney ? (
                         <span className="mt-1 flex items-center justify-end gap-1 text-[11px] font-semibold text-rose-500">
@@ -1109,12 +1140,14 @@ export default function AdminOrderDetailPage() {
                         </span>
                       ) : null}
                     </span>
+                    <span className={`w-24 shrink-0 text-right text-sm font-extrabold text-slate-900 ${seesMoney ? "" : "hidden"}`}>
+                      {formatPrice(it.qty * it.unitPrice - itemDiscountAmount(it))}
+                    </span>
                   </div>
 
                   {open && (
                     <>
-                  {/* รายละเอียด (ตัวเลือก) + ยืนยันอ่านของกราฟฟิก (การยืนยันของแพ็คอยู่ในโหมดแพ็ค) */}
-                  {it.selections && <p className={`mt-1 text-xs ${faint}`}>{it.selections}</p>}
+                  {/* ยืนยันอ่านของกราฟฟิก (การยืนยันของแพ็คอยู่ในโหมดแพ็ค) — รายละเอียดงานอยู่บนแถวด้านบนแล้ว */}
 
                   {/* 📦 สั่งจำนวนมาก — ต้องเช็คสต๊อก/คิวผลิตแล้วยืนยันกับลูกค้าก่อนเริ่มงาน */}
                   {it.needStockCheck && (
@@ -1383,6 +1416,31 @@ export default function AdminOrderDetailPage() {
                     </div>
                     )}
                   </div>
+
+                  {/* 📝 หมายเหตุใบงานของรายการนี้ — อยู่ติดกับรายการเลย ไม่ต้องไปหาที่คอลัมน์ขวา */}
+                  {mayEdit && (
+                    <div className="mt-3 border-t border-slate-100 pt-3">
+                      <button
+                        type="button"
+                        onClick={() => setNoteOpen((cur) => ({ ...cur, [i]: !(cur[i] ?? noteHasText(it.adminNote)) }))}
+                        className={`text-xs font-bold transition ${
+                          noteHasText(it.adminNote) ? "text-teal-700 hover:text-teal-800" : "text-slate-400 hover:text-slate-600"
+                        }`}
+                      >
+                        📝 หมายเหตุใบงานของรายการนี้{noteHasText(it.adminNote) ? " (มีข้อความ)" : ""}{" "}
+                        {(noteOpen[i] ?? noteHasText(it.adminNote)) ? "▴" : "▾"}
+                      </button>
+                      {(noteOpen[i] ?? noteHasText(it.adminNote)) && (
+                        <div className="mt-2 rounded-xl bg-teal-50/40 p-2.5 ring-1 ring-teal-100">
+                          <RichNoteEditor
+                            value={it.adminNote}
+                            onChange={(html, commit) => setNote(i, html, commit)}
+                            placeholder="หมายเหตุรายการนี้ (เช่น ห่อแยก / งานด่วน) — จะพิมพ์ลงใบงาน"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                     </>
                   )}
                 </div>
@@ -1745,25 +1803,6 @@ export default function AdminOrderDetailPage() {
                     </div>
                   );
                 })()}
-
-                {/* หมายเหตุแต่ละรายการ */}
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold text-slate-600">📝 หมายเหตุตรงรายการสินค้า</p>
-                  <div className="space-y-2.5">
-                    {order.items.map((it, idx) => (
-                      <div key={idx} className="rounded-lg bg-slate-50 p-2.5 ring-1 ring-slate-200">
-                        <p className="mb-1.5 truncate text-xs font-bold text-slate-600">
-                          {idx + 1}. {it.name}
-                        </p>
-                        <RichNoteEditor
-                          value={it.adminNote}
-                          onChange={(html, commit) => setNote(idx, html, commit)}
-                          placeholder="หมายเหตุรายการนี้ (เช่น ห่อแยก / งานด่วน)"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
 
                 {/* หมายเหตุท้ายบิล */}
                 <div>
