@@ -46,6 +46,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   const [artFiles, setArtFiles] = useState<{ url: string; name: string; w: number; h: number }[]>([]);
   const [artBusy, setArtBusy] = useState(false);
   const [artErr, setArtErr] = useState("");
+  const [artDrag, setArtDrag] = useState(false); // ลากไฟล์อยู่เหนือกล่องแนบลาย
 
   // โหลดเวอร์ชันล่าสุด (Supabase หรือ localStorage) — ถ้ามีให้ใช้แทนข้อมูลตั้งต้น
   useEffect(() => {
@@ -94,6 +95,32 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   useEffect(() => {
     canAccessAdmin().then(setIsAdmin);
   }, []);
+
+  // โยนไฟล์พลาดนอกกรอบ = เบราว์เซอร์จะเปิดไฟล์นั้นแทนหน้าเว็บ → กันไว้ทั้งหน้า
+  useEffect(() => {
+    const stop = (e: DragEvent) => e.preventDefault();
+    window.addEventListener("dragover", stop);
+    window.addEventListener("drop", stop);
+    return () => {
+      window.removeEventListener("dragover", stop);
+      window.removeEventListener("drop", stop);
+    };
+  }, []);
+
+  // วางรูปจากคลิปบอร์ดได้เลย (ก๊อปจากแชท/โปรแกรมแต่งรูปแล้ว ⌘/Ctrl+V)
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/"));
+      if (!files.length) return;
+      e.preventDefault();
+      const dt = new DataTransfer();
+      files.forEach((f) => dt.items.add(f));
+      void uploadArtwork(dt.files);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [artFiles.length]);
 
   /** อัปโหลดภาพลาย — ส่งไฟล์ต้นฉบับขึ้นเก็บ แล้วอ่านความละเอียดจริงไว้เตือนถ้าภาพเล็กเกินไป */
   async function uploadArtwork(files: FileList | null) {
@@ -419,7 +446,24 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
           )}
 
           {/* ── ลายของลูกค้า: อัปโหลดภาพตัวอย่าง + ลิงก์ไฟล์ต้นฉบับ ── */}
-          <div className="mt-5 rounded-2xl bg-sky-50/70 p-4 ring-1 ring-sky-200">
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (artFiles.length < 5) setArtDrag(true);
+            }}
+            onDragLeave={(e) => {
+              // ออกจากกล่องจริง ๆ เท่านั้น (ไม่ใช่แค่ย้ายข้ามลูกใน)
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) setArtDrag(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setArtDrag(false);
+              void uploadArtwork(e.dataTransfer.files);
+            }}
+            className={`mt-5 rounded-2xl p-4 transition ${
+              artDrag ? "bg-sky-100 ring-2 ring-dashed ring-sky-400" : "bg-sky-50/70 ring-1 ring-sky-200"
+            }`}
+          >
             <p className="text-sm font-bold text-stone-700">
               🎨 แนบลายของคุณ <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
             </p>
@@ -465,8 +509,33 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
             )}
 
             {artFiles.length < 5 && (
-              <label className="mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-sky-300 bg-white px-4 py-3 text-xs font-bold text-sky-700 transition hover:bg-sky-50">
-                {artBusy ? "กำลังอัปโหลด…" : `📎 เลือกรูปลาย (สูงสุด 5 รูป · ไฟล์ละไม่เกิน 15MB)`}
+              <label
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setArtDrag(true);
+                }}
+                onDrop={(e) => {
+                  // หยุด bubble — กล่องนอกก็เป็น dropzone ถ้าไม่หยุดจะอัปซ้ำ 2 รอบ
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setArtDrag(false);
+                  void uploadArtwork(e.dataTransfer.files);
+                }}
+                className={`mt-2 flex cursor-pointer flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed px-4 py-5 text-center transition ${
+                  artDrag ? "border-sky-500 bg-sky-100" : "border-sky-300 bg-white hover:border-sky-400 hover:bg-sky-50"
+                }`}
+              >
+                {artBusy ? (
+                  <span className="text-xs font-bold text-sky-700">กำลังอัปโหลด…</span>
+                ) : artDrag ? (
+                  <span className="text-sm font-extrabold text-sky-700">⬇️ ปล่อยไฟล์ตรงนี้ได้เลย</span>
+                ) : (
+                  <>
+                    <span className="text-2xl leading-none">🖼️</span>
+                    <span className="text-xs font-extrabold text-sky-700">ลากรูปมาวางตรงนี้ · แตะเพื่อเลือกไฟล์ · หรือกด ⌘/Ctrl+V วางรูปที่ก๊อปไว้</span>
+                    <span className="text-[11px] font-normal text-stone-400">JPG / PNG / WEBP · สูงสุด 5 รูป · ไฟล์ละไม่เกิน 15MB</span>
+                  </>
+                )}
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp"

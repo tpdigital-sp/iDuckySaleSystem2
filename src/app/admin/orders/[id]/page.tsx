@@ -2199,6 +2199,7 @@ function SpecialItemAdder({ onAdd }: { onAdd: (item: OrderItem) => void }) {
   // ภาพลายที่ลูกค้าส่งมาทางแชท — แอดมินแนบให้กราฟฟิกดูตอนสั่งงานพิเศษ
   const [art, setArt] = useState<string[]>([]);
   const [artBusy, setArtBusy] = useState(false);
+  const [artDrag, setArtDrag] = useState(false);
   // คลังสินค้าพิเศษ (นำเข้าจากระบบเดิม/เพิ่มเอง) — โหลดครั้งเดียวตอนเปิดฟอร์ม
   const [catalog, setCatalog] = useState<{ name: string; detail: string }[]>([]);
   const [showSug, setShowSug] = useState(false);
@@ -2227,6 +2228,29 @@ function SpecialItemAdder({ onAdd }: { onAdd: (item: OrderItem) => void }) {
     setArt([]);
     setErr("");
   }
+
+  // ฟอร์มเปิดอยู่ → รับรูปจากคลิปบอร์ด (⌘/Ctrl+V) และกันเบราว์เซอร์เปิดไฟล์ที่โยนพลาดนอกกรอบ
+  useEffect(() => {
+    if (!open) return;
+    const stop = (e: DragEvent) => e.preventDefault();
+    const onPaste = (e: ClipboardEvent) => {
+      const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/"));
+      if (!files.length) return;
+      e.preventDefault();
+      const dt = new DataTransfer();
+      files.forEach((f) => dt.items.add(f));
+      void uploadArt(dt.files);
+    };
+    window.addEventListener("dragover", stop);
+    window.addEventListener("drop", stop);
+    window.addEventListener("paste", onPaste);
+    return () => {
+      window.removeEventListener("dragover", stop);
+      window.removeEventListener("drop", stop);
+      window.removeEventListener("paste", onPaste);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, art.length]);
 
   async function uploadArt(files: FileList | null) {
     if (!files?.length) return;
@@ -2336,8 +2360,33 @@ function SpecialItemAdder({ onAdd }: { onAdd: (item: OrderItem) => void }) {
             </div>
           )}
           {art.length < 5 && (
-            <label className="mt-2 flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-300 py-2 text-[11px] font-bold text-slate-500 transition hover:border-amber-300 hover:text-amber-600">
-              {artBusy ? "กำลังอัปโหลด…" : "📎 เลือกรูป (สูงสุด 5 รูป)"}
+            <label
+              onDragOver={(e) => {
+                e.preventDefault();
+                setArtDrag(true);
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) setArtDrag(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setArtDrag(false);
+                void uploadArt(e.dataTransfer.files);
+              }}
+              className={`mt-2 flex cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-2 border-dashed py-4 text-center transition ${
+                artDrag ? "border-amber-400 bg-amber-50" : "border-slate-300 hover:border-amber-300"
+              }`}
+            >
+              {artBusy ? (
+                <span className="text-[11px] font-bold text-slate-500">กำลังอัปโหลด…</span>
+              ) : artDrag ? (
+                <span className="text-xs font-extrabold text-amber-700">⬇️ ปล่อยไฟล์ตรงนี้</span>
+              ) : (
+                <>
+                  <span className="text-lg leading-none">🖼️</span>
+                  <span className="text-[11px] font-bold text-slate-500">ลากรูปมาวาง · คลิกเลือกไฟล์ · หรือ ⌘/Ctrl+V วางรูปที่ก๊อปจากแชท</span>
+                </>
+              )}
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
