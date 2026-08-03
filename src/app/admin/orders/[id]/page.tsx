@@ -784,6 +784,25 @@ export default function AdminOrderDetailPage() {
     if (!demo) void saveOrderAdmin(next);
   }
 
+  /** ลบรายการออกจากออเดอร์ — ลง log ทุกครั้ง (ใคร ลบอะไร ยอดหายไปเท่าไร) */
+  function removeItemFromOrder(itemIndex: number) {
+    if (!order) return;
+    const it = order.items[itemIndex];
+    if (!it) return;
+    const lost = it.qty * it.unitPrice - itemDiscountAmount(it);
+    const items = order.items.filter((_, i) => i !== itemIndex);
+    const next = withLog(
+      { ...order, items },
+      actor,
+      "ลบรายการออกจากออเดอร์",
+      `${it.name} ×${it.qty} @${formatPrice(it.unitPrice)}${lost > 0 ? ` · ยอดลดลง ${formatPrice(lost)}` : ""}` +
+        `${proofsOf(it).length ? ` · มีแบบงาน ${proofsOf(it).length} รูป` : ""}` +
+        `${(it.artworkUrls?.length ?? 0) ? ` · ลายลูกค้า ${it.artworkUrls!.length} รูป` : ""}`
+    );
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
+
   /** ใช้ลายที่แนบไว้เป็นแบบให้ลูกค้ากดอนุมัติ/ขอแก้ไข (บางงานร้านใช้ลายลูกค้าเป็นแบบเลย) */
   function useArtAsProof(itemIndex: number, url: string) {
     if (!order) return;
@@ -1260,7 +1279,36 @@ export default function AdminOrderDetailPage() {
                     <span className={`text-xs font-extrabold ${i % 2 === 0 ? "text-indigo-800" : "text-sky-800"}`}>
                       รายการที่ {i + 1} / {order.items.length}
                     </span>
-                    <span className="truncate text-xs font-bold text-slate-400">{it.name}</span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-xs font-bold text-slate-400">{it.name}</span>
+                      {mayEdit && (
+                        <button
+                          type="button"
+                          title="ลบรายการนี้ออกจากออเดอร์ (ระบบลงประวัติทุกครั้ง)"
+                          onClick={async () => {
+                            const lost = it.qty * it.unitPrice - itemDiscountAmount(it);
+                            const ok = await askConfirm({
+                              icon: "🗑",
+                              title: `ลบ “${it.name}” ออกจากออเดอร์?`,
+                              detail: [
+                                `⚠️ ยอดออเดอร์จะลดลง ${formatPrice(lost)} (เหลือ ${order.items.length - 1} รายการ)`,
+                                proofsOf(it).length ? `⚠️ แบบงาน ${proofsOf(it).length} รูปของรายการนี้จะหายจากหน้าลูกค้าด้วย` : "",
+                                (it.artworkUrls?.length ?? 0) ? `⚠️ ลายที่ลูกค้าแนบ ${it.artworkUrls!.length} รูปจะไม่แสดงในออเดอร์นี้อีก (ไฟล์ยังอยู่ในคลัง)` : "",
+                                "📝 ระบบจะบันทึกในประวัติว่าใครลบ ลบอะไร และยอดลดลงเท่าไร",
+                              ]
+                                .filter(Boolean)
+                                .join("\n"),
+                              confirmLabel: "ลบรายการนี้",
+                              danger: true,
+                            });
+                            if (ok) removeItemFromOrder(i);
+                          }}
+                          className="shrink-0 rounded-lg px-1.5 py-0.5 text-xs font-bold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                        >
+                          🗑 ลบรายการ
+                        </button>
+                      )}
+                    </span>
                   </div>
                   <div className="p-4">
                   {/* แถวรายการ — อ่านเป็นตาราง: # · รูป · รายละเอียด · จำนวน · ราคา/หน่วย · ยอดรวม */}
@@ -1879,6 +1927,17 @@ export default function AdminOrderDetailPage() {
           {mayEdit && (
             <SpecialItemAdder
               orderId={order.id}
+              onShopAdd={() => {
+                // ใช้กลไกเดียวกับที่ลูกค้ากด "สั่งเพิ่มในออเดอร์นี้" — ของที่หยิบจะเข้าออเดอร์นี้ ไม่คิดค่าส่งซ้ำ
+                try {
+                  localStorage.setItem(
+                    "iducky-append-order-v1",
+                    JSON.stringify({ id: order.id, key: order.key ?? "", customer: order.customer })
+                  );
+                  localStorage.removeItem("iducky-append-picks-v1");
+                } catch {}
+                window.open("/products", "_blank", "noopener");
+              }}
               onAdd={(item) => {
                 const next = withLog(
                   { ...order, items: [...order.items, item] },
@@ -2877,7 +2936,7 @@ function Actor({ by }: { by: string }) {
 }
 
 /** ฟอร์มเพิ่มรายการพิเศษ (งานสั่งทำที่ไม่มีหน้าเว็บ) — พิมพ์ชื่อแล้วมีคลังสินค้าพิเศษขึ้นให้เลือก (เติมสเปคอัตโนมัติ) */
-function SpecialItemAdder({ onAdd, orderId }: { onAdd: (item: OrderItem) => void; orderId: string }) {
+function SpecialItemAdder({ onAdd, orderId, onShopAdd }: { onAdd: (item: OrderItem) => void; orderId: string; onShopAdd: () => void }) {
   const [open, setOpen] = useState(false);
   /** เพิ่มได้ 2 แบบ — สินค้าที่มีในเว็บ (ผูก productId จริง) หรืองานพิเศษที่ไม่มีหน้าเว็บ */
   const [mode, setMode] = useState<"web" | "special">("web");
@@ -3027,13 +3086,24 @@ function SpecialItemAdder({ onAdd, orderId }: { onAdd: (item: OrderItem) => void
 
   if (!open)
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="mt-3 w-full rounded-xl border-2 border-dashed border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-500 transition hover:border-amber-300 hover:bg-amber-50/40 hover:text-amber-700"
-      >
-        ＋ เพิ่มรายการพิเศษ (งานที่ไม่มีหน้าเว็บ)
-      </button>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="rounded-xl border-2 border-dashed border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-500 transition hover:border-amber-300 hover:bg-amber-50/40 hover:text-amber-700"
+        >
+          ＋ เพิ่มรายการเอง (กรอกชื่อ/ราคาเอง)
+        </button>
+        {/* เลือกจากหน้าร้านจริง — ได้ตัวเลือกครบ (ขนาด/เคลือบ/ราคาขั้นบันได) เหมือนลูกค้าสั่งเอง */}
+        <button
+          type="button"
+          onClick={onShopAdd}
+          title="เปิดหน้าร้าน แล้วหยิบสินค้าใส่ตะกร้า — ระบบจะเพิ่มเข้าออเดอร์นี้ให้เอง ไม่คิดค่าส่งซ้ำ"
+          className="rounded-xl border-2 border-dashed border-teal-300 bg-teal-50/40 px-4 py-2.5 text-sm font-bold text-teal-700 transition hover:bg-teal-50"
+        >
+          🛍️ สั่งเพิ่มจากหน้าร้าน (ได้ตัวเลือกครบ)
+        </button>
+      </div>
     );
 
   return (
