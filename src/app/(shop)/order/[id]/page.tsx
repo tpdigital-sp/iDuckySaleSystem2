@@ -755,10 +755,9 @@ export default function CustomerOrderPage() {
                   )}
                 </div>
 
-                {/* ลายที่ลูกค้าแนบ — อยู่ในกลุ่มเดียวกับแบบจากร้าน จะได้ดูเทียบกันได้ */}
-                {(it.artworkUrls?.length ?? 0) > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {(it.artworkUrls ?? []).map((u, k) => (
+                {/* แถวรูปเดียว: ลายที่คุณส่ง + แบบจากร้าน (ยังไม่มีแบบ = ช่องรอในแถวเดียวกัน) */}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {(it.artworkUrls ?? []).map((u, k) => (
                       <a key={u} href={u} target="_blank" rel="noreferrer" className="w-24" title="ลายที่คุณส่งมา — แตะเพื่อดูเต็ม">
                         <span className="relative block aspect-[4/3] overflow-hidden rounded-xl ring-1 ring-sky-200 transition hover:ring-2 hover:ring-sky-400">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -769,12 +768,16 @@ export default function CustomerOrderPage() {
                         </span>
                       </a>
                     ))}
-                  </div>
-                )}
+                  {!proofs.length && (
+                    <span className="grid w-24 place-items-center rounded-xl border-2 border-dashed border-stone-200 bg-stone-50/60 px-1 text-center text-[10px] font-bold leading-tight text-stone-400 aspect-[4/3]">
+                      🎨 รอแบบ<br />จากร้าน
+                    </span>
+                  )}
+                </div>
                 {!proofs.length ? (
-                  <div className="mt-2 rounded-xl border-2 border-dashed border-stone-200 bg-stone-50/60 px-4 py-3 text-center text-xs leading-relaxed text-stone-400">
-                    🎨 ยังไม่มีแบบงาน — ทีมกราฟฟิกกำลังจัดทำ เดี๋ยวจะแจ้งให้ตรวจครับ
-                  </div>
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-stone-400">
+                    ทีมกราฟฟิกกำลังจัดทำแบบจากลายของคุณ เดี๋ยวจะแจ้งให้เข้ามาตรวจครับ
+                  </p>
                 ) : (
                   <>
                     <div className="mt-2 flex flex-wrap gap-2">
