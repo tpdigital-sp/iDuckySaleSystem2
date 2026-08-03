@@ -5,6 +5,7 @@ import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
+import { fetchProducts } from "@/lib/product-repo";
 import { adminDiscountAmount, amountDueNow, itemDiscountAmount, orderBalance, orderItemDiscounts, orderTotal, PROOF_STYLES, proofsOf, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchOrderForCustomer, reportPayment, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
@@ -84,6 +85,23 @@ export default function CustomerOrderPage() {
 
   /* คู่มือวิธีตรวจ/อนุมัติแบบงาน — เด้งเองครั้งแรกที่มีแบบรอตรวจ (จำต่อออเดอร์ต่อเครื่อง) */
   const [showGuide, setShowGuide] = useState(false);
+  // ข้อควรทราบ/เงื่อนไขงานของสินค้าแต่ละตัว (แอดมินตั้งในหลังบ้าน) — ย้ำให้ลูกค้าเห็นในออเดอร์ด้วย
+  const [termsById, setTermsById] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let alive = true;
+    fetchProducts()
+      .then((list) => {
+        if (!alive) return;
+        const map: Record<string, string> = {};
+        for (const p of list) if (p.terms?.trim()) map[p.id] = p.terms.trim();
+        setTermsById(map);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   useEffect(() => {
     if (!order) return;
     const pending = order.items.some((it) => it.proofStatus !== "อนุมัติ" && proofsOf(it).some((p) => !p.review));
@@ -725,6 +743,28 @@ export default function CustomerOrderPage() {
                   <div className="min-w-0">
                     <p className="font-bold text-amber-950">{it.name}</p>
                     {it.selections && <p className="mt-0.5 text-xs text-stone-400">{it.selections}</p>}
+                    {/* ⚠️ ข้อควรทราบของสินค้าตัวนี้ — ย้ำอีกครั้งหลังสั่ง กันเข้าใจผิด/เคลมทีหลัง */}
+                    {termsById[it.productId] && (
+                      <details className="group mt-1.5">
+                        <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100">
+                          ⚠️ ข้อควรทราบของงานนี้
+                          <span className="text-rose-400 group-open:hidden">· แตะอ่าน</span>
+                          <span className="hidden text-rose-400 group-open:inline">· ย่อ</span>
+                        </summary>
+                        <ul className="mt-1.5 space-y-1 rounded-xl bg-rose-50/70 p-2.5 ring-1 ring-rose-100">
+                          {termsById[it.productId]
+                            .split(/\n+/)
+                            .map((line) => line.replace(/^[-•*\s]+/, "").trim())
+                            .filter(Boolean)
+                            .map((line, k) => (
+                              <li key={k} className="flex gap-1.5 text-[11px] leading-relaxed text-rose-800">
+                                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-rose-400" />
+                                {line}
+                              </li>
+                            ))}
+                        </ul>
+                      </details>
+                    )}
                   </div>
                   <span className="shrink-0 text-right text-sm font-bold text-amber-950">
                     {it.qty} × {formatPrice(it.unitPrice)}

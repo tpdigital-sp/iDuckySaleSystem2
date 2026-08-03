@@ -13,6 +13,8 @@ import {
   tiersConfigOf,
   welcomeCouponOf,
   shopInfoOf,
+  imageCleanupOf,
+  type ImageCleanupConfig,
   type BankAccount,
   type ShippingMethod,
   type ShopPayment,
@@ -34,7 +36,7 @@ import { btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
 const newId = (p = "b") =>
   typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${p}-${Date.now()}-${Math.floor(Math.random() * 1e4)}`;
 
-type Tab = "shop" | "pay" | "ship" | "tier" | "welcome" | "roles";
+type Tab = "shop" | "pay" | "ship" | "tier" | "welcome" | "roles" | "files";
 
 function AdminSettingsPageInner() {
   const [tab, setTab] = useState<Tab>("pay");
@@ -54,6 +56,12 @@ function AdminSettingsPageInner() {
 
   // ── คูปองต้อนรับ ──
   const [welcome, setWelcome] = useState<WelcomeCouponConfig>(welcomeCouponOf(null));
+
+  // ── ล้างรูปออเดอร์เก่า ──
+  const [cleanup, setCleanup] = useState<ImageCleanupConfig>(imageCleanupOf(null));
+  const [dryRun, setDryRun] = useState<{ orders: number; files: number; list: { id: string; status: string; files: number }[] } | null>(null);
+  const [dryBusy, setDryBusy] = useState(false);
+  const [dryErr, setDryErr] = useState("");
 
   // ── ข้อมูลร้าน (แสดงบนใบงาน/ใบปะหน้า/ใบเสร็จ) ──
   const [info, setInfo] = useState<ShopInfo>(shopInfoOf(null));
@@ -148,6 +156,7 @@ function AdminSettingsPageInner() {
       setTiers(tiersConfigOf(p));
       setWelcome(welcomeCouponOf(p));
       setInfo(shopInfoOf(p));
+      setCleanup(imageCleanupOf(p));
       setLoading(false);
     });
   }, []);
@@ -221,6 +230,10 @@ function AdminSettingsPageInner() {
         phone: info.phone.trim(),
         taxId: info.taxId?.trim() || undefined,
       },
+      imageCleanup: {
+        ...cleanup,
+        days: Math.max(1, Number(cleanup.days) || 30),
+      },
       welcomeCoupon: {
         enabled: welcome.enabled,
         type: welcome.type,
@@ -262,6 +275,7 @@ function AdminSettingsPageInner() {
             ["tier", "🏅 ระดับสมาชิก"],
             ["welcome", "🎁 คูปองต้อนรับ"],
             ["roles", "👥 บทบาท"],
+            ["files", "🧹 ล้างรูปเก่า"],
           ] as [Tab, string][]
         ).map(([k, label]) => (
           <button
@@ -688,6 +702,129 @@ function AdminSettingsPageInner() {
           )}
 
           {/* ══════ บทบาท & สิทธิ์ — ผู้ดูแลระบบติ๊กแก้สิทธิ์/เพิ่มบทบาทได้ ══════ */}
+          {tab === "files" && (
+            <div className="space-y-4">
+              <div className="rounded-2xl bg-sky-50 p-4 text-xs leading-relaxed text-sky-900 ring-1 ring-sky-100">
+                <p className="font-bold">🧹 ล้างรูปของออเดอร์เก่าอัตโนมัติ</p>
+                <p className="mt-1">
+                  ไฟล์แบบงาน/ลายลูกค้าเป็นก้อนที่ใหญ่ที่สุดของระบบ (หลาย MB ต่อรูป) ออเดอร์ที่ปิดงานไปนานแล้วแทบไม่มีใครเปิดดูรูปอีก
+                  ระบบจะลบเฉพาะ “ไฟล์รูป” — ข้อมูลออเดอร์ (ชื่อ/ราคา/ที่อยู่/ประวัติ) ยังอยู่ครบ และหน้าออเดอร์จะขึ้นข้อความแทนรูปแตก
+                </p>
+                <p className="mt-1 font-semibold">ระบบรันให้เองวันละครั้ง (ตี 3 ครึ่ง) — ลบแล้วกู้คืนไม่ได้ ควรกด “ลองดูก่อน” ทุกครั้งที่เปลี่ยนค่า</p>
+              </div>
+
+              <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+                <input
+                  type="checkbox"
+                  checked={cleanup.enabled}
+                  onChange={(e) => setCleanup({ ...cleanup, enabled: e.target.checked })}
+                  className="h-4 w-4 accent-amber-500"
+                />
+                <span className="text-sm font-bold text-slate-800">เปิดใช้การล้างรูปอัตโนมัติ</span>
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block rounded-xl bg-white p-3 ring-1 ring-slate-200">
+                  <span className="text-xs font-bold text-slate-500">ลบรูปเมื่อออเดอร์เก่ากว่า (วัน)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={cleanup.days}
+                    onChange={(e) => setCleanup({ ...cleanup, days: Math.max(1, Number(e.target.value) || 1) })}
+                    className="mt-1 w-28 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-bold text-slate-800 focus:border-amber-300 focus:outline-none"
+                  />
+                  <span className="ml-2 text-xs text-slate-400">นับจากวันที่สร้างออเดอร์</span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={cleanup.onlyClosed}
+                    onChange={(e) => setCleanup({ ...cleanup, onlyClosed: e.target.checked })}
+                    className="mt-0.5 h-4 w-4 accent-amber-500"
+                  />
+                  <span className="text-xs leading-relaxed text-slate-700">
+                    <strong className="block text-sm">ล้างเฉพาะออเดอร์ที่ปิดงานแล้ว</strong>
+                    เสร็จสิ้น / ยกเลิก เท่านั้น — ถ้าเอาติ๊กออก จะล้างทุกออเดอร์ที่ครบอายุ แม้ยังทำงานอยู่ (ไม่แนะนำ)
+                  </span>
+                </label>
+              </div>
+
+              <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
+                <p className="text-xs font-bold text-slate-500">ล้างไฟล์ชนิดไหนบ้าง</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {(
+                    [
+                      ["proofs", "🖼 แบบงานที่ส่งให้ลูกค้าตรวจ", "ไฟล์ใหญ่ที่สุด — ลบได้เมื่อจบงาน"],
+                      ["artwork", "🎨 ลายที่ลูกค้าแนบมา", "ต้นฉบับจริงลูกค้าเก็บเอง/ส่งลิงก์ไว้แล้ว"],
+                      ["packPhotos", "📸 ภาพก่อนปิดกล่อง", "หลักฐานตอนส่ง — เก็บไว้เผื่อเคลม"],
+                      ["slips", "🧾 สลิปโอนเงิน", "หลักฐานการเงิน — ไม่แนะนำให้ลบ"],
+                    ] as [keyof ImageCleanupConfig["targets"], string, string][]
+                  ).map(([k, label, hint]) => (
+                    <label key={k} className="flex cursor-pointer items-start gap-2 rounded-lg bg-slate-50 p-2.5">
+                      <input
+                        type="checkbox"
+                        checked={cleanup.targets[k]}
+                        onChange={(e) => setCleanup({ ...cleanup, targets: { ...cleanup.targets, [k]: e.target.checked } })}
+                        className="mt-0.5 h-4 w-4 accent-amber-500"
+                      />
+                      <span className="text-xs leading-relaxed text-slate-700">
+                        <strong className="block">{label}</strong>
+                        <span className="text-slate-400">{hint}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
+                <button
+                  type="button"
+                  disabled={dryBusy}
+                  onClick={async () => {
+                    setDryBusy(true);
+                    setDryErr("");
+                    setDryRun(null);
+                    try {
+                      const r = await fetch(`/api/admin/cleanup-preview?days=${cleanup.days}&closed=${cleanup.onlyClosed ? 1 : 0}`);
+                      const j = await r.json();
+                      if (!r.ok) setDryErr(j.error ?? "ลองดูไม่สำเร็จ");
+                      else setDryRun(j);
+                    } catch {
+                      setDryErr("เชื่อมต่อไม่ได้");
+                    }
+                    setDryBusy(false);
+                  }}
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white transition hover:bg-slate-700 disabled:opacity-40"
+                >
+                  {dryBusy ? "กำลังตรวจ…" : "🔍 ลองดูก่อน — ถ้ารันตอนนี้จะลบอะไรบ้าง"}
+                </button>
+                {dryErr && <p className="mt-2 text-xs font-bold text-rose-600">{dryErr}</p>}
+                {dryRun && (
+                  <div className="mt-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
+                    <p className="font-bold">
+                      จะล้าง {dryRun.orders} ออเดอร์ · {dryRun.files} ไฟล์
+                    </p>
+                    {dryRun.list?.length > 0 && (
+                      <ul className="mt-1.5 space-y-0.5 text-[11px] text-slate-500">
+                        {dryRun.list.map((o) => (
+                          <li key={o.id}>
+                            {o.id} · {o.status} · {o.files} ไฟล์
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {dryRun.orders === 0 && <p className="mt-1 text-slate-400">ยังไม่มีออเดอร์ไหนเข้าเงื่อนไข</p>}
+                  </div>
+                )}
+                {cleanup.lastRunAt && (
+                  <p className="mt-2 text-[11px] text-slate-400">
+                    รันล่าสุด {new Date(cleanup.lastRunAt).toLocaleString("th-TH")} · ลบไป {cleanup.lastDeleted ?? 0} ไฟล์
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {tab === "roles" &&
             (() => {
               const EMOJI: Record<string, string> = { [DEPT_ADMIN]: "🧑‍💼", [DEPT_PACKING]: "📦", [DEPT_CONTENT]: "🖋️" };

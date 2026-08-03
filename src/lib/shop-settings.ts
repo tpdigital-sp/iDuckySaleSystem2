@@ -10,6 +10,8 @@
 import { getSupabase } from "./supabase";
 import { DEFAULT_TIERS, type Tier } from "./tiers";
 import { SHOP } from "./shop-info";
+export { DEFAULT_IMAGE_CLEANUP, imageCleanupOf, type ImageCleanupConfig } from "./image-cleanup";
+import type { ImageCleanupConfig as _ImageCleanupConfig } from "./image-cleanup";
 
 export interface BankAccount {
   id: string;
@@ -46,6 +48,8 @@ export interface ShopPayment {
   welcomeCoupon?: WelcomeCouponConfig;
   /** ข้อมูลร้าน (ชื่อ/บริษัท/ที่อยู่/โทร) — ใช้บนใบงาน/ใบปะหน้า/ใบเสร็จ · ไม่ตั้ง = ใช้ค่าในโค้ด */
   shopInfo?: ShopInfo;
+  /** ล้างไฟล์รูปของออเดอร์เก่าอัตโนมัติ (ประหยัดพื้นที่ + หน้าโหลดเร็ว) */
+  imageCleanup?: _ImageCleanupConfig;
 }
 
 /** ข้อมูลร้านที่แอดมินแก้เองได้ (แสดงบนเอกสารพิมพ์ทุกใบ) */
