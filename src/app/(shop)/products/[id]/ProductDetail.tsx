@@ -299,14 +299,14 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
         </Link>
       )}
       {/* breadcrumb */}
-      <nav className="text-xs text-stone-400">
-        <Link href="/" className="hover:text-amber-600">หน้าแรก</Link>
-        {" › "}
-        <Link href={`/products?category=${category.id}`} className="hover:text-amber-600">
+      <nav className="flex items-center gap-1 overflow-hidden whitespace-nowrap text-[11px] text-stone-400">
+        <Link href="/" className="shrink-0 hover:text-amber-600">หน้าแรก</Link>
+        <span className="shrink-0">›</span>
+        <Link href={`/products?category=${category.id}`} className="shrink-0 hover:text-amber-600">
           {category.name}
         </Link>
-        {" › "}
-        <span className="text-stone-600">{product.name}</span>
+        <span className="shrink-0">›</span>
+        <span className="truncate text-stone-600">{product.name}</span>
       </nav>
 
       {/* ═══ โครง 3 คอลัมน์: รูป | รายละเอียด | แผงสั่งซื้อ (ติดหนึบ) ═══ */}
@@ -354,7 +354,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
           <span className="text-xs font-semibold text-amber-500">
             {category.emoji} {category.name}
           </span>
-          <h1 className="mt-1 text-2xl font-extrabold text-stone-900 md:text-3xl">
+          <h1 className="mt-1 text-base font-extrabold leading-snug text-stone-900 md:text-xl">
             {product.name}
           </h1>
           <div className="mt-2 flex items-center gap-3 text-sm text-stone-500">
@@ -363,20 +363,20 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
             <span>ขายแล้ว {product.sold.toLocaleString("th-TH")} ชิ้น</span>
           </div>
 
-          <p className="mt-4 text-sm leading-relaxed text-stone-600">{product.description}</p>
+          <p className="mt-3 text-[13px] leading-relaxed text-stone-600">{product.description}</p>
 
           {/* ═══ ข้อควรทราบ / เงื่อนไขงาน — อ่านก่อนสั่ง (แอดมินตั้งต่อสินค้าในหลังบ้าน) ═══ */}
           {product.terms?.trim() && (
             <div className="mt-4 overflow-hidden rounded-2xl border-2 border-rose-200 bg-rose-50/60 shadow-sm">
               <div className="flex items-center gap-2 bg-rose-500 px-4 py-2">
                 <span className="text-base leading-none">⚠️</span>
-                <p className="text-sm font-extrabold tracking-tight text-white">ข้อควรทราบก่อนสั่ง — รบกวนอ่านก่อนนะครับ</p>
+                <p className="text-xs font-extrabold tracking-tight text-white">ข้อควรทราบก่อนสั่ง — รบกวนอ่านก่อนนะครับ</p>
               </div>
               <ul className="space-y-2 px-4 py-3">
                 {termLines(product.terms).map((t, i) => (
                   <li key={i} className="flex gap-2">
                     <span className="mt-[3px] shrink-0 text-[9px] leading-none text-rose-500">🔴</span>
-                    <span className="whitespace-pre-line text-xs font-medium leading-relaxed text-rose-950">{t}</span>
+                    <span className="whitespace-pre-line text-[11px] font-medium leading-relaxed text-rose-950">{t}</span>
                   </li>
                 ))}
               </ul>
@@ -397,7 +397,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
           <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
             <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">ราคา</p>
             <div className="mt-4 flex items-baseline gap-2">
-              <span className="text-3xl font-extrabold text-amber-600">{formatPrice(unitPrice)}</span>
+              <span className="text-2xl font-extrabold text-amber-600">{formatPrice(unitPrice)}</span>
               {product.pricing ? (
                 <span className="text-sm font-semibold text-stone-500">/ {product.pricing.unit}</span>
               ) : (
@@ -705,8 +705,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                 {/* 1) อัปโหลดภาพ */}
                 <p className="mt-2 text-[11px] font-bold text-stone-600">1) อัปโหลดภาพตัวอย่าง (JPG / PNG)</p>
                 <p className="mt-0.5 text-[11px] leading-relaxed text-stone-500">
-                  ระบบเก็บไฟล์<strong className="text-stone-700">ตามต้นฉบับที่คุณเลือก ไม่บีบอัดซ้ำ</strong> — แต่ภาพที่ส่งต่อมาจากแชท/มือถือมักถูกลดคุณภาพมาตั้งแต่ต้นทาง
-                  ภาพตรงนี้จึงใช้ <strong className="text-sky-700">ให้กราฟฟิกดูเป็นแนวทางในการทำแบบเท่านั้น</strong> · ไฟล์งานพิมพ์คุณภาพเต็ม รบกวนแนบเป็นลิงก์ในช่องข้อ 2 ครับ
+                  ใช้<strong className="text-sky-700">เป็นแนวทางให้กราฟฟิกเท่านั้น</strong> — ไฟล์งานพิมพ์คุณภาพเต็ม แนบเป็นลิงก์ในข้อ 2 ครับ
                 </p>
 
                 {artFiles.length > 0 && (
@@ -766,8 +765,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                     ) : (
                       <>
                         <span className="text-2xl leading-none">🖼️</span>
-                        <span className="text-xs font-extrabold text-sky-700">ลากรูปมาวางตรงนี้ · แตะเพื่อเลือกไฟล์ · หรือกด ⌘/Ctrl+V วางรูปที่ก๊อปไว้</span>
-                        <span className="text-[11px] font-normal text-stone-400">JPG / PNG / WEBP · สูงสุด 5 รูป · ไฟล์ละไม่เกิน 15MB</span>
+                        <span className="text-xs font-extrabold text-sky-700">แตะเพื่อเลือกไฟล์ · ลากรูปมาวาง · หรือ ⌘/Ctrl+V</span>
+                        <span className="text-[11px] font-normal text-stone-400">JPG / PNG / WEBP · สูงสุด 5 รูป · ไม่เกิน 15MB</span>
                       </>
                     )}
                     <input
@@ -787,10 +786,10 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
 
                 {/* 2) ลิงก์ไฟล์ต้นฉบับ */}
                 <label htmlFor="art-link" className="mt-4 block text-[11px] font-bold text-stone-600">
-                  2) แนบลิงก์ไฟล์ลาย หรือ อีเมล <span className="font-normal text-sky-700">(แนะนำ — ได้ไฟล์ต้นฉบับคุณภาพเต็ม)</span>
+                  2) แนบลิงก์ไฟล์ลาย หรือ อีเมล <span className="font-normal text-sky-700">(แนะนำ — ได้ไฟล์คุณภาพเต็ม)</span>
                 </label>
                 <p className="mt-0.5 mb-2 text-[11px] leading-relaxed text-stone-500">
-                  วางลิงก์ไฟล์ (Google Drive / Dropbox / OneDrive) หรืออีเมลที่ส่งไฟล์ไว้ — เราจะดึงไฟล์ต้นฉบับไปใช้ผลิต (ไม่ผ่านการบีบอัดของเว็บ/แชท)
+                  Google Drive / Dropbox / OneDrive หรืออีเมลที่ส่งไฟล์ไว้ — เราดึงไฟล์ต้นฉบับไปใช้ผลิต
                 </p>
                 <input
                   id="art-link"

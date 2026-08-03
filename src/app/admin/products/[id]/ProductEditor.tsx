@@ -346,9 +346,11 @@ export default function ProductEditor({ product }: { product: Product }) {
       type="button"
       onClick={() => toggleSec(id)}
       aria-label={closedSecs[id] ? "ขยายหัวข้อนี้" : "ยุบหัวข้อนี้"}
-      className="sec-toggle absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+      title={closedSecs[id] ? "ขยายหัวข้อนี้" : "ยุบหัวข้อนี้"}
+      // ลอยคร่อมขอบบนของการ์ด — กันไปทับปุ่ม/ข้อความในแถวหัวข้อ (เช่น ＋ เพิ่มท่อนเนื้อหา)
+      className="sec-toggle absolute -top-3 right-5 z-10 grid h-6 w-10 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-slate-300 transition hover:bg-slate-50 hover:text-slate-900 hover:ring-slate-400"
     >
-      <span className={`text-xs transition ${closedSecs[id] ? "" : "rotate-180"}`}>▾</span>
+      <span className={`text-xs font-bold leading-none transition ${closedSecs[id] ? "" : "rotate-180"}`}>▾</span>
     </button>
   );
 
