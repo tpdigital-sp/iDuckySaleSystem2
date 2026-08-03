@@ -260,6 +260,7 @@ export default function AdminOrderDetailPage() {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [err, setErr] = useState("");
   const [artDropIdx, setArtDropIdx] = useState<number | null>(null);
+  const [addPicIdx, setAddPicIdx] = useState<number | null>(null); // เปิดเมนู "เพิ่มรูป" ของรายการไหนอยู่
   // ช่องส่วนลดรายรายการ — ซ่อนไว้ กดป้าย "＋ ใส่ส่วนลด" ท้ายแถวถึงจะโผล่ (นาน ๆ ใช้ที)
   const [discOpen, setDiscOpen] = useState<Record<number, boolean>>({});
   // ช่องหมายเหตุใบงานของแต่ละรายการ — ซ่อนไว้ กดที่รายการนั้นเพื่อเปิด
@@ -1135,43 +1136,64 @@ export default function AdminOrderDetailPage() {
                               )}
                             </span>
                           ))}
-                          {/* ปุ่มเพิ่มรูป — ลาย (ของลูกค้า) กับ แบบ (ที่กราฟฟิกทำ) อยู่ที่เดียวกัน */}
-                          {mayEdit && (
-                            <label
-                              className="grid h-16 cursor-pointer place-items-center rounded-lg border-2 border-dashed border-amber-300 bg-white text-center text-[10px] font-bold leading-tight text-amber-600 transition hover:bg-amber-50"
-                              title="แนบภาพลายจากลูกค้า (ลากวางก็ได้)"
-                            >
-                              {artUpIdx === i ? "อัป…" : <span>＋<br />ลาย</span>}
-                              <input
-                                type="file"
-                                accept="image/jpeg,image/png,image/webp"
-                                multiple
-                                className="hidden"
-                                disabled={artUpIdx === i}
-                                onChange={(e) => {
-                                  void addArtwork(i, e.target.files);
-                                  e.target.value = "";
-                                }}
-                              />
-                            </label>
-                          )}
-                          {mayProof && (
-                            <label
-                              className="grid h-16 cursor-pointer place-items-center rounded-lg border-2 border-dashed border-violet-300 bg-white text-center text-[10px] font-bold leading-tight text-violet-600 transition hover:bg-violet-50"
-                              title="อัปโหลดแบบงานให้ลูกค้าตรวจ"
-                            >
-                              {uploadingIdx === i ? "อัป…" : <span>＋<br />แบบ</span>}
-                              <input
-                                type="file"
-                                accept="image/png,image/jpeg,image/webp,image/gif"
-                                multiple
-                                className="hidden"
-                                onChange={(e) => {
-                                  void sendProofs(i, e.target.files);
-                                  e.target.value = "";
-                                }}
-                              />
-                            </label>
+                          {/* ปุ่มเพิ่มรูปปุ่มเดียว — กดแล้วเลือกว่าเป็นลายของลูกค้า หรือแบบที่ทำให้ตรวจ */}
+                          {(mayEdit || mayProof) && (
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() => setAddPicIdx(addPicIdx === i ? null : i)}
+                                title="เพิ่มรูปให้รายการนี้"
+                                className={`grid h-16 w-full place-items-center rounded-lg border-2 border-dashed text-center text-[10px] font-bold leading-tight transition ${
+                                  addPicIdx === i
+                                    ? "border-amber-400 bg-amber-50 text-amber-700"
+                                    : "border-slate-300 bg-white text-slate-400 hover:border-amber-300 hover:text-amber-600"
+                                }`}
+                              >
+                                {artUpIdx === i || uploadingIdx === i ? (
+                                  "อัป…"
+                                ) : (
+                                  <span>
+                                    ＋<br />เพิ่มรูป
+                                  </span>
+                                )}
+                              </button>
+                              {addPicIdx === i && (
+                                <div className="absolute left-0 top-full z-20 mt-1 w-40 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                                  {mayEdit && (
+                                    <label className="flex cursor-pointer items-center gap-1.5 border-b border-slate-100 px-2.5 py-2 text-[11px] font-bold text-slate-700 hover:bg-amber-50">
+                                      🎨 ลายจากลูกค้า
+                                      <input
+                                        type="file"
+                                        accept="image/jpeg,image/png,image/webp"
+                                        multiple
+                                        className="hidden"
+                                        onChange={(e) => {
+                                          void addArtwork(i, e.target.files);
+                                          e.target.value = "";
+                                          setAddPicIdx(null);
+                                        }}
+                                      />
+                                    </label>
+                                  )}
+                                  {mayProof && (
+                                    <label className="flex cursor-pointer items-center gap-1.5 px-2.5 py-2 text-[11px] font-bold text-slate-700 hover:bg-violet-50">
+                                      🖼 แบบให้ลูกค้าตรวจ
+                                      <input
+                                        type="file"
+                                        accept="image/png,image/jpeg,image/webp,image/gif"
+                                        multiple
+                                        className="hidden"
+                                        onChange={(e) => {
+                                          void sendProofs(i, e.target.files);
+                                          e.target.value = "";
+                                          setAddPicIdx(null);
+                                        }}
+                                      />
+                                    </label>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
                       );
