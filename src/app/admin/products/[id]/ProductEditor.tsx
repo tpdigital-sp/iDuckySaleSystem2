@@ -1001,7 +1001,7 @@ export default function ProductEditor({ product }: { product: Product }) {
         </p>
 
         <div
-          className={`grid grid-cols-3 gap-3 rounded-2xl p-3 transition sm:grid-cols-5 ${
+          className={`flex flex-wrap gap-3 rounded-2xl p-3 transition ${
             dragOver ? "bg-emerald-50 ring-2 ring-emerald-300" : "bg-slate-50 ring-1 ring-slate-100"
           }`}
         >
@@ -1033,13 +1033,14 @@ export default function ProductEditor({ product }: { product: Product }) {
                 dragPhotoRef.current = null;
                 setDragPhoto(null);
               }}
-              className={`group relative aspect-square cursor-grab overflow-hidden rounded-xl ring-1 transition active:cursor-grabbing ${
-                dragPhoto === i ? "opacity-40 ring-2 ring-emerald-400" : "ring-slate-200"
+              className={`group relative h-34 w-34 shrink-0 cursor-grab overflow-hidden rounded-xl bg-white ring-1 transition active:cursor-grabbing ${
+                dragPhoto === i ? "opacity-40 ring-2 ring-emerald-400" : "ring-slate-200 hover:ring-amber-300"
               }`}
+              style={{ height: "8.5rem", width: "8.5rem" }}
               title="ลากเพื่อสลับตำแหน่ง"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={src} alt={`รูปสินค้า ${i + 1}`} className="h-full w-full object-cover" draggable={false} />
+              <img src={src} alt={`รูปสินค้า ${i + 1}`} className="h-full w-full object-contain p-1" draggable={false} />
               {i === 0 && (
                 <span className="absolute left-1 top-1 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white">
                   รูปหลัก
@@ -1080,7 +1081,8 @@ export default function ProductEditor({ product }: { product: Product }) {
           ))}
           {draft.photos.length < MAX_PHOTOS && (
             <label
-              className={`flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed text-center transition ${
+              style={{ height: "8.5rem", width: "8.5rem" }}
+              className={`flex shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed text-center transition ${
                 uploading
                   ? "border-emerald-300 bg-emerald-50 text-emerald-600"
                   : "border-amber-300 text-amber-500 hover:bg-amber-50"
