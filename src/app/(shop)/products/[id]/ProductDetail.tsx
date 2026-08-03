@@ -309,10 +309,13 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
         <span className="truncate text-stone-600">{product.name}</span>
       </nav>
 
-      {/* ═══ โครง 3 คอลัมน์: รูป | รายละเอียด | แผงสั่งซื้อ (ติดหนึบ) ═══ */}
+      {/* ═══ โครง 3 คอลัมน์: รูป | รายละเอียด | แผงสั่งซื้อ (ติดหนึบ)
+           ฝั่งซ้าย (รูป+รายละเอียด) เป็นบล็อกเดียวกัน — ข้อมูลประกอบจึงไหลต่อขึ้นมาเติมได้
+           แทนที่จะทิ้งช่องขาวยาว ๆ ไว้ข้างแผงสั่งซื้อ ═══ */}
       <div className="mt-4 grid gap-6 lg:grid-cols-12 lg:items-start lg:gap-8">
+        <div className="grid gap-6 sm:grid-cols-2 sm:items-start lg:col-span-8 lg:gap-8">
         {/* ── ซ้าย: รูปสินค้า ── */}
-        <div className="lg:col-span-4">
+        <div>
           {/* รูปสินค้า — ติดหนึบตอนเลื่อนอ่านตัวเลือกยาว ๆ (จอใหญ่) */}
           <div className="lg:sticky lg:top-24">
             <ProductVisual
@@ -350,7 +353,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
         </div>
 
         {/* ── กลาง: ชื่อ · รายละเอียด · ข้อควรทราบ ── */}
-        <div className="lg:col-span-4">
+        <div>
           <span className="text-xs font-semibold text-amber-500">
             {category.emoji} {category.name}
           </span>
@@ -390,6 +393,81 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
             <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">🚚 ส่งไว<br />ทั่วไทย</li>
             <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">💬 ทักไลน์<br />ปรึกษาฟรี</li>
           </ul>
+        </div>
+
+      {/* ═══ ข้อมูลประกอบ — ไหลต่อจากรูป/รายละเอียด (เดิมอยู่ท้ายหน้า ทำให้ตรงนี้เป็นช่องขาว) ═══ */}
+      <div className="grid gap-6 sm:col-span-2 lg:grid-cols-2">
+        <div>
+          <p className="text-sm font-bold text-stone-700">💰 ราคาต่อหน่วยตามจำนวน</p>
+          {/* ตารางราคาขั้นบันได (rate card) — คอลัมน์เยอะโชว์เฉพาะที่เลือกอยู่ */}
+          {product.pricing &&
+            (() => {
+              const allKeys = Object.keys(product.pricing.cells);
+              const selectedKey = priceMatrixKey(product.pricing, effective);
+              const cols = allKeys.length <= 6 ? allKeys : allKeys.filter((k) => k === selectedKey);
+              const fmtCol = (k: string) => k.split("│").join(" · ");
+              return (
+                <div className="mt-2 overflow-x-auto rounded-2xl ring-1 ring-stone-200">
+                  {allKeys.length > 6 && (
+                    <p className="bg-stone-50 px-3 py-1.5 text-[11px] text-stone-500">
+                      💡 เรทราคาของตัวเลือกที่คุณเลือก — เปลี่ยนตัวเลือกด้านบนเพื่อดูราคาชนิดอื่น
+                    </p>
+                  )}
+                  <table className="w-full border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-sky-100 text-sky-900">
+                        <th className="whitespace-nowrap px-3 py-2 text-left font-bold">จำนวน ({product.pricing.unit})</th>
+                        {cols.map((col) => (
+                          <th key={col} className="whitespace-nowrap px-3 py-2 text-center font-bold">
+                            {fmtCol(col)}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {product.pricing.tiers.map((tier, ti) => {
+                        const active = ti === currentTier;
+                        return (
+                          <tr
+                            key={tier.label}
+                            className={active ? "bg-stone-100 font-bold text-stone-900" : "odd:bg-white even:bg-stone-50"}
+                          >
+                            <td className="whitespace-nowrap px-3 py-2">
+                              {active && "▶ "}
+                              {tier.label}
+                            </td>
+                            {cols.map((col) => {
+                              const isChosen = active && selectedKey === col;
+                              return (
+                                <td key={col} className={`px-3 py-2 text-center ${isChosen ? "text-amber-700" : ""}`}>
+                                  {formatPrice(product.pricing!.cells[col][ti])}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
+        </div>
+        <div>
+          <p className="text-sm font-bold text-stone-700">✨ จุดเด่นของงานนี้</p>
+          {/* จุดเด่น */}
+          <ul className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {product.highlights.map((h) => (
+              <li
+                key={h}
+                className="flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-sm text-stone-600 ring-1 ring-amber-100"
+              >
+                <span className="text-amber-500">✔</span> {h}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
         </div>
 
         {/* ── ขวา: แผงสั่งซื้อ ติดหนึบตอนเลื่อน ── */}
@@ -846,78 +924,6 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
         </div>
       </div>
 
-      {/* ═══ ข้อมูลประกอบ (อ่านทีหลังได้ ไม่ต้องแย่งที่กับปุ่มซื้อ) ═══ */}
-      <div className="mt-10 grid gap-6 lg:grid-cols-2">
-        <div>
-          {/* ตารางราคาขั้นบันได (rate card) — คอลัมน์เยอะโชว์เฉพาะที่เลือกอยู่ */}
-          {product.pricing &&
-            (() => {
-              const allKeys = Object.keys(product.pricing.cells);
-              const selectedKey = priceMatrixKey(product.pricing, effective);
-              const cols = allKeys.length <= 6 ? allKeys : allKeys.filter((k) => k === selectedKey);
-              const fmtCol = (k: string) => k.split("│").join(" · ");
-              return (
-                <div className="mt-4 overflow-x-auto rounded-2xl ring-1 ring-stone-200">
-                  {allKeys.length > 6 && (
-                    <p className="bg-stone-50 px-3 py-1.5 text-[11px] text-stone-500">
-                      💡 เรทราคาของตัวเลือกที่คุณเลือก — เปลี่ยนตัวเลือกด้านบนเพื่อดูราคาชนิดอื่น
-                    </p>
-                  )}
-                  <table className="w-full border-collapse text-xs">
-                    <thead>
-                      <tr className="bg-sky-100 text-sky-900">
-                        <th className="whitespace-nowrap px-3 py-2 text-left font-bold">จำนวน ({product.pricing.unit})</th>
-                        {cols.map((col) => (
-                          <th key={col} className="whitespace-nowrap px-3 py-2 text-center font-bold">
-                            {fmtCol(col)}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {product.pricing.tiers.map((tier, ti) => {
-                        const active = ti === currentTier;
-                        return (
-                          <tr
-                            key={tier.label}
-                            className={active ? "bg-stone-100 font-bold text-stone-900" : "odd:bg-white even:bg-stone-50"}
-                          >
-                            <td className="whitespace-nowrap px-3 py-2">
-                              {active && "▶ "}
-                              {tier.label}
-                            </td>
-                            {cols.map((col) => {
-                              const isChosen = active && selectedKey === col;
-                              return (
-                                <td key={col} className={`px-3 py-2 text-center ${isChosen ? "text-amber-700" : ""}`}>
-                                  {formatPrice(product.pricing!.cells[col][ti])}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              );
-            })()}
-        </div>
-        <div>
-          <p className="text-sm font-bold text-stone-700">✨ จุดเด่นของงานนี้</p>
-          {/* จุดเด่น */}
-          <ul className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {product.highlights.map((h) => (
-              <li
-                key={h}
-                className="flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-sm text-stone-600 ring-1 ring-amber-100"
-              >
-                <span className="text-amber-500">✔</span> {h}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
 
       {/* รายละเอียดสินค้า (body) */}
       {(product.body ?? []).length > 0 && (
