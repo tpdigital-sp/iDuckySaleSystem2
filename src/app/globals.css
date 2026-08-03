@@ -39,8 +39,9 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* หัวข้อในหน้าแก้ไขสินค้าที่ถูกยุบ — โชว์เฉพาะแถวหัวข้อกับปุ่มยุบ */
-.sec-collapsed > *:not(:first-child):not(.sec-toggle) {
+/* หัวข้อในหน้าแก้ไขสินค้าที่ถูกยุบ — โชว์เฉพาะ "แถวหัวข้อ" (ลูกตัวแรกที่ไม่ใช่ปุ่มยุบ) กับปุ่มยุบ
+   ใช้ ~ เพื่อซ่อนเฉพาะตัวที่มีพี่น้องก่อนหน้าที่ไม่ใช่ปุ่ม = ทุกอย่างหลังแถวหัวข้อ */
+.sec-collapsed > :not(.sec-toggle) ~ :not(.sec-toggle) {
   display: none;
 }
 .sec-collapsed {
