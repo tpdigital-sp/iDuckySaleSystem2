@@ -2879,6 +2879,18 @@ function Actor({ by }: { by: string }) {
 /** ฟอร์มเพิ่มรายการพิเศษ (งานสั่งทำที่ไม่มีหน้าเว็บ) — พิมพ์ชื่อแล้วมีคลังสินค้าพิเศษขึ้นให้เลือก (เติมสเปคอัตโนมัติ) */
 function SpecialItemAdder({ onAdd, orderId }: { onAdd: (item: OrderItem) => void; orderId: string }) {
   const [open, setOpen] = useState(false);
+  /** เพิ่มได้ 2 แบบ — สินค้าที่มีในเว็บ (ผูก productId จริง) หรืองานพิเศษที่ไม่มีหน้าเว็บ */
+  const [mode, setMode] = useState<"web" | "special">("web");
+  const [webList, setWebList] = useState<{ id: string; name: string; price: number }[]>([]);
+  const [webPick, setWebPick] = useState<{ id: string; name: string; price: number } | null>(null);
+  const [webQuery, setWebQuery] = useState("");
+  useEffect(() => {
+    if (!open || mode !== "web" || webList.length) return;
+    fetch("/api/admin/products-lite", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => setWebList(j.list ?? []))
+      .catch(() => {});
+  }, [open, mode, webList.length]);
   const [name, setName] = useState("");
   const [spec, setSpec] = useState("");
   const [qty, setQty] = useState("1");
@@ -2947,7 +2959,16 @@ function SpecialItemAdder({ onAdd, orderId }: { onAdd: (item: OrderItem) => void
     const p = Math.max(0, Number(price) || 0);
     if (!n) return setErr("ใส่ชื่องานก่อน");
     if (!Number(qty) || Number(qty) < 1) return setErr("จำนวนต้องอย่างน้อย 1");
-    onAdd({ productId: "special-item", name: n, selections: spec.trim(), qty: q, unitPrice: p, ...(art.length ? { artworkUrls: art } : {}) });
+    onAdd({
+      productId: mode === "web" && webPick ? webPick.id : "special-item",
+      name: n,
+      selections: spec.trim(),
+      qty: q,
+      unitPrice: p,
+      ...(art.length ? { artworkUrls: art } : {}),
+    });
+    setWebPick(null);
+    setWebQuery("");
     try {
       localStorage.removeItem(DRAFT_KEY);
     } catch {}
@@ -3017,7 +3038,76 @@ function SpecialItemAdder({ onAdd, orderId }: { onAdd: (item: OrderItem) => void
 
   return (
     <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
-      <p className="mb-3 text-sm font-bold text-slate-800">＋ เพิ่มรายการพิเศษ (งานที่ไม่มีหน้าเว็บ)</p>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <p className="text-sm font-bold text-slate-800">＋ เพิ่มรายการเข้าออเดอร์</p>
+        <div className="flex overflow-hidden rounded-full ring-1 ring-slate-200">
+          {(
+            [
+              ["web", "🏷 สินค้าในเว็บ"],
+              ["special", "🛠 งานพิเศษ (ไม่มีหน้าเว็บ)"],
+            ] as ["web" | "special", string][]
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setMode(k)}
+              className={`px-3 py-1 text-xs font-bold transition ${
+                mode === k ? "bg-amber-500 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {mode === "web" && (
+        <div className="mb-3 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+          <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-400">
+            เลือกสินค้าจากหน้าเว็บ
+            <input
+              value={webQuery}
+              onChange={(e) => {
+                setWebQuery(e.target.value);
+                setWebPick(null);
+              }}
+              placeholder="พิมพ์ชื่อสินค้า เช่น สติกเกอร์ · เสื้อยืด"
+              className={`${inp} mt-1 font-semibold normal-case tracking-normal`}
+            />
+          </label>
+          {!webPick && webQuery.trim() && (
+            <div className="mt-1.5 max-h-44 overflow-y-auto rounded-xl border border-slate-200">
+              {webList
+                .filter((p) => p.name.toLowerCase().includes(webQuery.trim().toLowerCase()))
+                .slice(0, 12)
+                .map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      setWebPick(p);
+                      setWebQuery(p.name);
+                      setName(p.name);
+                      setPrice(String(p.price));
+                    }}
+                    className="flex w-full items-center justify-between gap-2 border-b border-slate-100 px-3 py-1.5 text-left text-sm last:border-0 hover:bg-amber-50"
+                  >
+                    <span className="truncate text-slate-700">{p.name}</span>
+                    <span className="shrink-0 text-xs font-bold text-slate-500">{formatPrice(p.price)}</span>
+                  </button>
+                ))}
+              {webList.filter((p) => p.name.toLowerCase().includes(webQuery.trim().toLowerCase())).length === 0 && (
+                <p className="px-3 py-2 text-xs text-slate-400">ไม่พบสินค้าชื่อนี้ — สลับไปแท็บ “งานพิเศษ” ได้</p>
+              )}
+            </div>
+          )}
+          {webPick && (
+            <p className="mt-1.5 text-[11px] font-bold text-emerald-700">
+              ✓ เลือกแล้ว: {webPick.name} · ราคาเว็บ {formatPrice(webPick.price)} (แก้ราคา/สเปคด้านล่างได้)
+            </p>
+          )}
+        </div>
+      )}
       {/* วางเป็นแถวเดียวกับตารางรายการ: รูป · ชื่อ/สเปค · จำนวน · ราคา/ชิ้น */}
       <div className="grid gap-3 sm:grid-cols-[8rem_minmax(0,1fr)] lg:grid-cols-[8rem_minmax(0,1fr)_5.5rem_9rem]">
         {/* 🎨 ภาพลายจากลูกค้า (แชท/อีเมล) — ให้กราฟฟิกใช้เป็นแนวทางทำแบบ */}
