@@ -725,17 +725,6 @@ export default function CustomerOrderPage() {
                   <div className="min-w-0">
                     <p className="font-bold text-amber-950">{it.name}</p>
                     {it.selections && <p className="mt-0.5 text-xs text-stone-400">{it.selections}</p>}
-                    {(it.artworkUrls?.length ?? 0) > 0 && (
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                        <span className="text-[11px] font-semibold text-sky-700">🎨 ลายที่คุณแนบ:</span>
-                        {(it.artworkUrls ?? []).map((u, k) => (
-                          <a key={u} href={u} target="_blank" rel="noreferrer">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={u} alt={`ลายที่แนบ ${k + 1}`} className="h-12 w-12 rounded-lg object-cover ring-1 ring-sky-200" />
-                          </a>
-                        ))}
-                      </div>
-                    )}
                   </div>
                   <span className="shrink-0 text-right text-sm font-bold text-amber-950">
                     {it.qty} × {formatPrice(it.unitPrice)}
@@ -747,9 +736,17 @@ export default function CustomerOrderPage() {
                   </span>
                 </div>
 
-                <div className="mt-3 flex items-center gap-2">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <span className="text-xs font-bold text-stone-600">
-                    แบบตัวอย่าง{proofs.length > 1 ? ` (${proofs.length} แบบ)` : ""}
+                    🖼 รูปงานนี้
+                    <span className="ml-1 font-normal text-stone-400">
+                      {[
+                        (it.artworkUrls?.length ?? 0) > 0 ? `ลายที่คุณส่ง ${it.artworkUrls!.length} รูป` : "",
+                        proofs.length ? `แบบจากร้าน ${proofs.length} รูป` : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
                   </span>
                   {it.proofStatus && (
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${PROOF_STYLES[it.proofStatus]}`}>
@@ -758,6 +755,22 @@ export default function CustomerOrderPage() {
                   )}
                 </div>
 
+                {/* ลายที่ลูกค้าแนบ — อยู่ในกลุ่มเดียวกับแบบจากร้าน จะได้ดูเทียบกันได้ */}
+                {(it.artworkUrls?.length ?? 0) > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(it.artworkUrls ?? []).map((u, k) => (
+                      <a key={u} href={u} target="_blank" rel="noreferrer" className="w-24" title="ลายที่คุณส่งมา — แตะเพื่อดูเต็ม">
+                        <span className="relative block aspect-[4/3] overflow-hidden rounded-xl ring-1 ring-sky-200 transition hover:ring-2 hover:ring-sky-400">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={u} alt={`ลายที่คุณส่ง ${k + 1}`} className="h-full w-full bg-stone-50 object-cover" />
+                          <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-sky-600/85 px-1 py-0.5 text-[9px] font-bold text-white">
+                            ลายของคุณ
+                          </span>
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                )}
                 {!proofs.length ? (
                   <div className="mt-2 rounded-xl border-2 border-dashed border-stone-200 bg-stone-50/60 px-4 py-3 text-center text-xs leading-relaxed text-stone-400">
                     🎨 ยังไม่มีแบบงาน — ทีมกราฟฟิกกำลังจัดทำ เดี๋ยวจะแจ้งให้ตรวจครับ
