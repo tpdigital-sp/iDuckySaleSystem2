@@ -738,10 +738,21 @@ export default function CustomerOrderPage() {
           {order.items.map((it, i) => {
             const proofs = proofsOf(it);
             return (
-              <div key={`${it.productId}-${i}`} className="rounded-2xl bg-white p-4 ring-1 ring-stone-200 sm:p-5">
+              <div
+                key={`${it.productId}-${i}`}
+                /* สลับสีคู่/คี่ — ออเดอร์ที่มีหลายรายการจะไล่สายตาแยกออกง่ายขึ้น */
+                className={`rounded-2xl p-4 ring-1 sm:p-5 ${i % 2 === 0 ? "bg-white ring-stone-200" : "bg-sky-50/50 ring-sky-200"}`}
+              >
                 <div className="flex justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-bold text-amber-950">{it.name}</p>
+                    <p className="font-bold text-amber-950">
+                      {order.items.length > 1 && (
+                        <span className={`mr-1.5 text-xs font-extrabold ${i % 2 === 0 ? "text-stone-400" : "text-sky-500"}`}>
+                          {i + 1}.
+                        </span>
+                      )}
+                      {it.name}
+                    </p>
                     {it.selections && <p className="mt-0.5 text-xs text-stone-400">{it.selections}</p>}
                     {/* ⚠️ ข้อควรทราบของสินค้าตัวนี้ — ย้ำอีกครั้งหลังสั่ง กันเข้าใจผิด/เคลมทีหลัง */}
                     {termsById[it.productId] && (
