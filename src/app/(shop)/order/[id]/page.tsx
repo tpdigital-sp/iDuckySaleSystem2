@@ -738,15 +738,8 @@ export default function CustomerOrderPage() {
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <span className="text-xs font-bold text-stone-600">
-                    🖼 รูปงานนี้
-                    <span className="ml-1 font-normal text-stone-400">
-                      {[
-                        (it.artworkUrls?.length ?? 0) > 0 ? `ลายที่คุณส่ง ${it.artworkUrls!.length} รูป` : "",
-                        proofs.length ? `แบบจากร้าน ${proofs.length} รูป` : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </span>
+                    🖼 แบบงาน
+                    {proofs.length > 1 && <span className="ml-1 font-normal text-stone-400">{proofs.length} รูป</span>}
                   </span>
                   {it.proofStatus && (
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${PROOF_STYLES[it.proofStatus]}`}>
@@ -755,25 +748,13 @@ export default function CustomerOrderPage() {
                   )}
                 </div>
 
-                {/* แถวรูปเดียว: ลายที่คุณส่ง + แบบจากร้าน (ยังไม่มีแบบ = ช่องรอในแถวเดียวกัน) */}
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {(it.artworkUrls ?? []).map((u, k) => (
-                      <a key={u} href={u} target="_blank" rel="noreferrer" className="w-24" title="ลายที่คุณส่งมา — แตะเพื่อดูเต็ม">
-                        <span className="relative block aspect-[4/3] overflow-hidden rounded-xl ring-1 ring-sky-200 transition hover:ring-2 hover:ring-sky-400">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={u} alt={`ลายที่คุณส่ง ${k + 1}`} className="h-full w-full bg-stone-50 object-cover" />
-                          <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-sky-600/85 px-1 py-0.5 text-[9px] font-bold text-white">
-                            ลายของคุณ
-                          </span>
-                        </span>
-                      </a>
-                    ))}
-                  {!proofs.length && (
-                    <span className="grid w-24 place-items-center rounded-xl border-2 border-dashed border-stone-200 bg-stone-50/60 px-1 text-center text-[10px] font-bold leading-tight text-stone-400 aspect-[4/3]">
+                {!proofs.length && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span className="grid aspect-[4/3] w-24 place-items-center rounded-xl border-2 border-dashed border-stone-200 bg-stone-50/60 px-1 text-center text-[10px] font-bold leading-tight text-stone-400">
                       🎨 รอแบบ<br />จากร้าน
                     </span>
-                  )}
-                </div>
+                  </div>
+                )}
                 {!proofs.length ? (
                   <p className="mt-1.5 text-[11px] leading-relaxed text-stone-400">
                     ทีมกราฟฟิกกำลังจัดทำแบบจากลายของคุณ เดี๋ยวจะแจ้งให้เข้ามาตรวจครับ
