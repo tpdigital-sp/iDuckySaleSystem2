@@ -852,7 +852,7 @@ export default function AdminOrderDetailPage() {
     : "";
 
   return (
-    <div className={`mx-auto max-w-7xl overflow-hidden ${card}`}>
+    <div className={`mx-auto w-full max-w-[112rem] overflow-hidden ${card}`}>
       {/* ── แถบหัว ── */}
       <div className="flex flex-wrap items-center gap-4 border-b border-slate-200/70 bg-slate-50/70 px-6 py-5">
         <div>
@@ -939,7 +939,7 @@ export default function AdminOrderDetailPage() {
         </div>
       )}
 
-      <div className="grid lg:grid-cols-[1.45fr_0.95fr]">
+      <div className="grid lg:grid-cols-[1.85fr_0.85fr]">
         {/* ── ซ้าย: งานแบบ ── */}
         <div className="px-6 py-6">
           <div className="flex flex-wrap items-center justify-between gap-2">

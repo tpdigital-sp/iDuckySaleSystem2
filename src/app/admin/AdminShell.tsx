@@ -28,6 +28,22 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  // พับแถบข้างเป็นแถวไอคอน (เดสก์ท็อป) — จำไว้ต่อเครื่อง
+  const [railed, setRailed] = useState(false);
+  useEffect(() => {
+    try {
+      setRailed(localStorage.getItem("admin.sidebar.railed") === "1");
+    } catch {}
+  }, []);
+  function toggleRail() {
+    setRailed((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem("admin.sidebar.railed", next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  }
   // สถานะสิทธิ์: null = กำลังตรวจ, true/false = ผลลัพธ์
   const [allowed, setAllowed] = useState<boolean | null>(null);
   // ตั้งค่า Firebase auth แล้วหรือยัง (โหมดจริง vs เดโม)
@@ -125,62 +141,103 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     </div>
   ) : null;
 
-  const nav = (
+  const navFor = (rail: boolean) => (
     <nav className="space-y-0.5">
       {menu.map((m) => {
         const active = m.href === activeHref;
+        const badge = m.href === "/admin/ratings" && newRatings > 0;
         return (
           <Link
             key={m.href}
             href={m.href}
             onClick={() => setOpen(false)}
             aria-current={active ? "page" : undefined}
-            className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+            title={rail ? m.label : undefined}
+            className={`relative flex items-center rounded-xl py-2.5 text-sm font-medium transition ${
+              rail ? "justify-center px-0" : "gap-3 px-3"
+            } ${
               active
                 ? "bg-amber-500 text-white shadow-sm"
                 : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
             }`}
           >
-            <span className={`text-base ${active ? "" : "opacity-80"}`}>{m.emoji}</span> {m.label}
-            {m.href === "/admin/ratings" && newRatings > 0 && (
-              <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[11px] font-bold text-white">
-                {newRatings > 99 ? "99+" : newRatings}
-              </span>
-            )}
+            <span className={`text-base ${active ? "" : "opacity-80"}`}>{m.emoji}</span>
+            {!rail && m.label}
+            {badge &&
+              (rail ? (
+                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white" />
+              ) : (
+                <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[11px] font-bold text-white">
+                  {newRatings > 99 ? "99+" : newRatings}
+                </span>
+              ))}
           </Link>
         );
       })}
     </nav>
   );
+  const nav = navFor(false);
 
   return (
     <PermProvider value={{ perms, role: roleName, name: userName }}>
     <div className="flex min-h-screen bg-slate-50 text-slate-800">
       {/* แถบข้าง (เดสก์ท็อป) */}
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-slate-200 bg-white p-3 md:flex print:hidden">
-        <Link href="/admin" className="mb-5 flex items-center gap-2.5 px-2 py-1">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-ducky text-xl shadow-sm">🦆</span>
-          <span className="leading-tight">
-            <span className="block text-sm font-bold text-slate-900">iDucky Admin</span>
-            <span className="block text-[11px] text-slate-400">ระบบหลังบ้าน</span>
-          </span>
-        </Link>
-        {nav}
+      <aside
+        className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-slate-200 bg-white p-3 transition-[width] duration-200 md:flex print:hidden ${
+          railed ? "w-20 items-stretch" : "w-60"
+        }`}
+      >
+        <div className={`mb-4 flex items-center ${railed ? "flex-col gap-2" : "justify-between gap-2"}`}>
+          <Link href="/admin" className={`flex items-center gap-2.5 py-1 ${railed ? "" : "px-2"}`} title="iDucky Admin">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-ducky text-xl shadow-sm">🦆</span>
+            {!railed && (
+              <span className="leading-tight">
+                <span className="block text-sm font-bold text-slate-900">iDucky Admin</span>
+                <span className="block text-[11px] text-slate-400">ระบบหลังบ้าน</span>
+              </span>
+            )}
+          </Link>
+          <button
+            type="button"
+            onClick={toggleRail}
+            title={railed ? "กางแถบเมนู" : "พับแถบเมนู"}
+            aria-label={railed ? "กางแถบเมนู" : "พับแถบเมนู"}
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-slate-400 ring-1 ring-slate-200 transition hover:bg-slate-100 hover:text-slate-700"
+          >
+            {railed ? "»" : "«"}
+          </button>
+        </div>
+        {navFor(railed)}
         <div className="mt-auto space-y-0.5 border-t border-slate-100 pt-2">
-          {userCard && <div className="mb-1.5">{userCard}</div>}
+          {userCard &&
+            (railed ? (
+              <div className="mb-1.5 flex justify-center" title={`${userName}${roleName ? ` · ${roleName}` : ""}`}>
+                <span className="grid h-9 w-9 place-items-center rounded-full bg-ducky text-sm font-bold text-slate-800">
+                  {userName.trim().charAt(0) || "?"}
+                </span>
+              </div>
+            ) : (
+              <div className="mb-1.5">{userCard}</div>
+            ))}
           <Link
             href="/"
-            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+            title={railed ? "กลับหน้าร้าน" : undefined}
+            className={`flex items-center rounded-xl py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 ${
+              railed ? "justify-center px-0" : "gap-3 px-3"
+            }`}
           >
-            <span className="text-base opacity-80">🏪</span> กลับหน้าร้าน
+            <span className="text-base opacity-80">🏪</span> {!railed && "กลับหน้าร้าน"}
           </Link>
           {configured && (
             <button
               type="button"
               onClick={handleSignOut}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+              title={railed ? "ออกจากระบบ" : undefined}
+              className={`flex w-full items-center rounded-xl py-2.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50 ${
+                railed ? "justify-center px-0" : "gap-3 px-3"
+              }`}
             >
-              <span className="text-base opacity-80">🚪</span> ออกจากระบบ
+              <span className="text-base opacity-80">🚪</span> {!railed && "ออกจากระบบ"}
             </button>
           )}
         </div>
