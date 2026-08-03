@@ -1006,13 +1006,16 @@ export default function AdminOrderDetailPage() {
             {seesMoney && <span className="w-28 shrink-0 text-right">ราคา/หน่วย</span>}
             {seesMoney && <span className="w-24 shrink-0 text-right">ยอดรวม</span>}
           </div>
-          <div className="mt-1.5 space-y-2">
+          <div className="mt-1.5 overflow-hidden rounded-2xl border border-slate-200/80">
             {order.items.map((it, i) => {
               const proofs = proofsOf(it);
               const proofQty = proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
               const open = itemOpen[i] ?? autoOpen(it);
               return (
-                <div key={`${it.productId}-${i}`} className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+                <div
+                  key={`${it.productId}-${i}`}
+                  className={`p-4 transition ${i % 2 === 0 ? "bg-slate-50/70" : "bg-white"} ${i > 0 ? "border-t border-slate-200/70" : ""}`}
+                >
                   {/* แถวรายการ — อ่านเป็นตาราง: # · รูป · รายละเอียด · จำนวน · ราคา/หน่วย · ยอดรวม */}
                   <div className="flex items-start gap-3">
                     <button
@@ -2574,66 +2577,18 @@ function SpecialItemAdder({ onAdd, orderId }: { onAdd: (item: OrderItem) => void
 
   return (
     <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
-      <p className="mb-3 text-sm font-bold text-slate-800">＋ เพิ่มรายการพิเศษ</p>
-      <div className="space-y-2.5">
-        <div className="relative">
-          <input
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value);
-              setShowSug(true);
-            }}
-            onFocus={() => setShowSug(true)}
-            onBlur={() => setTimeout(() => setShowSug(false), 150)}
-            className={inp}
-            placeholder="พิมพ์ชื่องาน — มีคลังสินค้าพิเศษขึ้นให้เลือก"
-          />
-          {showSug && suggestions.length > 0 && (
-            <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
-              {suggestions.map((p) => (
-                <button
-                  key={p.name}
-                  type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    setName(p.name);
-                    setSpec(p.detail);
-                    setShowSug(false);
-                  }}
-                  className="block w-full border-b border-slate-100 px-3 py-2 text-left last:border-0 hover:bg-amber-50"
-                >
-                  <span className="block text-sm font-semibold text-slate-800">{p.name}</span>
-                  <span className="block truncate text-[11px] text-slate-400">{p.detail.split("\n")[0]}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <textarea value={spec} onChange={(e) => setSpec(e.target.value)} rows={2} className={`${inp} resize-y`} placeholder="สเปค/รายละเอียด (ไม่บังคับ) เช่น หนา 5 มม. · พิมพ์ UV 2 ด้าน" />
-        <div className="grid grid-cols-2 gap-2.5">
-          <label className="block text-xs font-semibold text-slate-500">
-            จำนวน
-            <input type="number" min={1} value={qty} onChange={(e) => setQty(e.target.value)} className={`${inp} mt-1`} />
-          </label>
-          <label className="block text-xs font-semibold text-slate-500">
-            ราคา/ชิ้น (บาท) — 0 = รอตีราคา
-            <input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} className={`${inp} mt-1`} placeholder="เช่น 1500" />
-          </label>
-        </div>
-
+      <p className="mb-3 text-sm font-bold text-slate-800">＋ เพิ่มรายการพิเศษ (งานที่ไม่มีหน้าเว็บ)</p>
+      {/* วางเป็นแถวเดียวกับตารางรายการ: รูป · ชื่อ/สเปค · จำนวน · ราคา/ชิ้น */}
+      <div className="grid gap-3 sm:grid-cols-[8rem_minmax(0,1fr)] lg:grid-cols-[8rem_minmax(0,1fr)_5.5rem_9rem]">
         {/* 🎨 ภาพลายจากลูกค้า (แชท/อีเมล) — ให้กราฟฟิกใช้เป็นแนวทางทำแบบ */}
-        <div className="rounded-xl bg-white p-2.5 ring-1 ring-slate-200">
-          <p className="text-xs font-semibold text-slate-600">🎨 แนบภาพลายจากลูกค้า (JPG / PNG)</p>
-          <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
-            เก็บไฟล์ตามต้นฉบับที่เลือก ไม่บีบอัดซ้ำ — ภาพจากแชทมักถูกลดคุณภาพมาแล้ว ใช้เป็นแนวทางให้กราฟฟิก ไฟล์งานพิมพ์จริงขอลิงก์/อีเมลจากลูกค้าเพิ่ม
-          </p>
+        <div className="sm:row-span-2 lg:row-span-1">
           {art.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
+            <div className="mb-1.5 flex flex-wrap gap-1.5">
               {art.map((u, i) => (
                 <div key={u} className="relative">
                   <a href={u} target="_blank" rel="noreferrer">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={u} alt={`ภาพลาย ${i + 1}`} className="h-16 w-16 rounded-lg object-cover ring-1 ring-slate-200" />
+                    <img src={u} alt={`ภาพลาย ${i + 1}`} className="h-14 w-14 rounded-lg object-cover ring-1 ring-slate-200" />
                   </a>
                   <button
                     type="button"
@@ -2661,18 +2616,20 @@ function SpecialItemAdder({ onAdd, orderId }: { onAdd: (item: OrderItem) => void
                 setArtDrag(false);
                 void uploadArt(e.dataTransfer.files);
               }}
-              className={`mt-2 flex cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-2 border-dashed py-4 text-center transition ${
-                artDrag ? "border-amber-400 bg-amber-50" : "border-slate-300 hover:border-amber-300"
+              title="ลากรูปมาวาง · คลิกเลือกไฟล์ · หรือ ⌘/Ctrl+V วางรูปที่ก๊อปจากแชท"
+              className={`flex aspect-square w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed px-2 text-center transition ${
+                artDrag ? "border-amber-400 bg-amber-50" : "border-slate-300 bg-white hover:border-amber-300"
               }`}
             >
               {artBusy ? (
                 <span className="text-[11px] font-bold text-slate-500">กำลังอัปโหลด…</span>
               ) : artDrag ? (
-                <span className="text-xs font-extrabold text-amber-700">⬇️ ปล่อยไฟล์ตรงนี้</span>
+                <span className="text-xs font-extrabold text-amber-700">⬇️ ปล่อยตรงนี้</span>
               ) : (
                 <>
-                  <span className="text-lg leading-none">🖼️</span>
-                  <span className="text-[11px] font-bold text-slate-500">ลากรูปมาวาง · คลิกเลือกไฟล์ · หรือ ⌘/Ctrl+V วางรูปที่ก๊อปจากแชท</span>
+                  <span className="text-xl leading-none">🖼️</span>
+                  <span className="text-[10px] font-bold leading-tight text-slate-500">แนบภาพลาย
+                    <br />ลาก · คลิก · ⌘V</span>
                 </>
               )}
               <input
@@ -2689,7 +2646,84 @@ function SpecialItemAdder({ onAdd, orderId }: { onAdd: (item: OrderItem) => void
             </label>
           )}
         </div>
+
+        {/* ชื่องาน + สเปค */}
+        <div className="space-y-2">
+          <div className="relative">
+            <input
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                setShowSug(true);
+              }}
+              onFocus={() => setShowSug(true)}
+              onBlur={() => setTimeout(() => setShowSug(false), 150)}
+              className={`${inp} font-semibold`}
+              placeholder="ชื่องาน — พิมพ์แล้วมีคลังสินค้าพิเศษขึ้นให้เลือก"
+            />
+            {showSug && suggestions.length > 0 && (
+              <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                {suggestions.map((p) => (
+                  <button
+                    key={p.name}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setName(p.name);
+                      setSpec(p.detail);
+                      setShowSug(false);
+                    }}
+                    className="block w-full border-b border-slate-100 px-3 py-2 text-left last:border-0 hover:bg-amber-50"
+                  >
+                    <span className="block text-sm font-semibold text-slate-800">{p.name}</span>
+                    <span className="block truncate text-[11px] text-slate-400">{p.detail.split("\n")[0]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <textarea
+            value={spec}
+            onChange={(e) => setSpec(e.target.value)}
+            rows={3}
+            className={`${inp} resize-y`}
+            placeholder="สเปค/รายละเอียด (ไม่บังคับ) เช่น หนา 5 มม. · พิมพ์ UV 2 ด้าน"
+          />
+        </div>
+
+        {/* จำนวน */}
+        <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-400">
+          จำนวน
+          <input
+            type="number"
+            min={1}
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            className={`${inp} mt-1 text-center text-sm font-bold`}
+          />
+        </label>
+
+        {/* ราคา/ชิ้น + ยอดรวมที่คิดได้ */}
+        <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-400">
+          ราคา/ชิ้น (บาท)
+          <input
+            type="number"
+            min={0}
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            className={`${inp} mt-1 text-right text-sm font-bold`}
+            placeholder="เช่น 1500"
+          />
+          <span className="mt-1 block text-right text-[11px] font-bold normal-case tracking-normal text-slate-500">
+            {Number(price) > 0
+              ? `รวม ${formatPrice(Math.max(1, Math.floor(Number(qty) || 0)) * Number(price))}`
+              : "0 = รอตีราคา"}
+          </span>
+        </label>
       </div>
+      <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+        🎨 ภาพลาย: เก็บไฟล์ตามต้นฉบับที่เลือก ไม่บีบอัดซ้ำ — ภาพจากแชทมักถูกลดคุณภาพมาแล้ว ใช้เป็นแนวทางให้กราฟฟิก ไฟล์งานพิมพ์จริงขอลิงก์/อีเมลจากลูกค้าเพิ่ม
+      </p>
       {err && <p className="mt-2 text-xs font-semibold text-rose-600">{err}</p>}
       {dirty && (
         <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 ring-1 ring-rose-200">
