@@ -38,3 +38,11 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
+
+/* หัวข้อในหน้าแก้ไขสินค้าที่ถูกยุบ — โชว์เฉพาะแถวหัวข้อกับปุ่มยุบ */
+.sec-collapsed > *:not(:first-child):not(.sec-toggle) {
+  display: none;
+}
+.sec-collapsed {
+  padding-bottom: 0.85rem;
+}

@@ -306,6 +306,36 @@ export default function ProductEditor({ product }: { product: Product }) {
   const [savedAt, setSavedAt] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  // ── ยุบ/ขยายแต่ละหัวข้อ (จำไว้ในเบราว์เซอร์) — หน้ายาวมาก เปิดทุกอันพร้อมกันหาอะไรไม่เจอ ──
+  const [closedSecs, setClosedSecs] = useState<Record<string, boolean>>({ seo: true, body: true, terms: true, rules: true });
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("admin.product.closedSecs");
+      if (saved) setClosedSecs(JSON.parse(saved));
+    } catch {}
+  }, []);
+  function toggleSec(id: string) {
+    setClosedSecs((cur) => {
+      const next = { ...cur, [id]: !cur[id] };
+      try {
+        localStorage.setItem("admin.product.closedSecs", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }
+  /** คลาสของ section + ปุ่มยุบ — ซ่อนเนื้อหาด้วย CSS (ดู .sec-collapsed ใน globals.css) */
+  const secCls = (id: string) => (closedSecs[id] ? " sec-collapsed" : "");
+  const SecToggle = ({ id }: { id: string }) => (
+    <button
+      type="button"
+      onClick={() => toggleSec(id)}
+      aria-label={closedSecs[id] ? "ขยายหัวข้อนี้" : "ยุบหัวข้อนี้"}
+      className="sec-toggle absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+    >
+      <span className={`text-xs transition ${closedSecs[id] ? "" : "rotate-180"}`}>▾</span>
+    </button>
+  );
+
   const [pricingOpen, setPricingOpen] = useState(false);
   // ── ดึงข้อมูลจาก URL มาเติม/แก้สินค้านี้ ──
   const [impOpen, setImpOpen] = useState(false);
@@ -733,6 +763,8 @@ export default function ProductEditor({ product }: { product: Product }) {
               href={`#${s.id}`}
               onClick={(e) => {
                 e.preventDefault();
+                const key = s.id.replace("sec-", "");
+                if (closedSecs[key]) toggleSec(key); // ยุบอยู่ → เปิดให้เลย ไม่ต้องกดสองที
                 document.getElementById(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
                 history.replaceState(null, "", `#${s.id}`);
               }}
@@ -846,7 +878,8 @@ export default function ProductEditor({ product }: { product: Product }) {
         <div className="min-w-0 space-y-4">
 
       {/* ข้อมูลหลัก */}
-      <section id="sec-basic" className="scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <section id="sec-basic" className={`relative scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("basic")}`}>
+        <SecToggle id="basic" />
         <h2 className="mb-3 text-sm font-semibold text-slate-800">📝 ข้อมูลหลัก</h2>
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -979,7 +1012,8 @@ export default function ProductEditor({ product }: { product: Product }) {
 
       {/* จุดเด่น */}
       {/* ── ข้อควรทราบ / เงื่อนไขงาน — โชว์หน้าสินค้าให้ลูกค้าอ่านก่อนสั่ง ── */}
-      <section id="sec-terms" className="mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <section id="sec-terms" className={`relative mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("terms")}`}>
+        <SecToggle id="terms" />
         <h2 className="text-sm font-semibold text-slate-800">⚠️ ข้อควรทราบ / เงื่อนไขงาน</h2>
         <p className="mt-1 text-xs text-slate-500">
           เขียนสิ่งที่ลูกค้าต้องรู้ก่อนสั่ง — จะแสดงเป็นกล่องเตือนในหน้าสินค้า (กันเข้าใจผิด/เคลมทีหลัง) · ขึ้นบรรทัดใหม่ได้ตามต้องการ
@@ -996,7 +1030,8 @@ export default function ProductEditor({ product }: { product: Product }) {
         </p>
       </section>
 
-      <section id="sec-highlights" className="mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <section id="sec-highlights" className={`relative mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("highlights")}`}>
+        <SecToggle id="highlights" />
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-800">✔ จุดเด่นสินค้า ({draft.highlights.length})</h2>
           <button
@@ -1033,7 +1068,8 @@ export default function ProductEditor({ product }: { product: Product }) {
       </section>
 
       {/* ตัวเลือกสินค้า */}
-      <section id="sec-options" className="mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <section id="sec-options" className={`relative mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("options")}`}>
+        <SecToggle id="options" />
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-800">🎛️ ตัวเลือกสินค้า ({draft.options.length} กลุ่ม)</h2>
           <div className="flex items-center gap-2">
@@ -1257,7 +1293,8 @@ export default function ProductEditor({ product }: { product: Product }) {
 
 
       {/* ราคาขั้นบันได (rate card) — สรุปย่อ กด "แก้ตารางราคา" เพื่อกางเต็มกว้าง */}
-      <section id="sec-pricing" className="mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <section id="sec-pricing" className={`relative mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("pricing")}`}>
+        <SecToggle id="pricing" />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-800">💰 ราคาขั้นบันได (ตามจำนวน × ตัวเลือก)</h2>
           <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
@@ -1352,7 +1389,8 @@ export default function ProductEditor({ product }: { product: Product }) {
       </section>
 
       {/* ตัวเลือกกำหนดเอง (custom) — งานสั่งทำนอกเหนือขนาดมาตรฐาน */}
-      <section id="sec-custom" className="mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <section id="sec-custom" className={`relative mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("custom")}`}>
+        <SecToggle id="custom" />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-800">📐 ตัวเลือกกำหนดเอง (งานสั่งทำ)</h2>
           <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
@@ -1751,7 +1789,8 @@ export default function ProductEditor({ product }: { product: Product }) {
       )}
 
       {/* เนื้อหารายละเอียดสินค้า (body) */}
-      <section id="sec-body" className="mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <section id="sec-body" className={`relative mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("body")}`}>
+        <SecToggle id="body" />
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-800">📄 เนื้อหารายละเอียดสินค้า ({draft.body.length} ท่อน)</h2>
           <button
@@ -1850,7 +1889,8 @@ export default function ProductEditor({ product }: { product: Product }) {
       </section>
 
       {/* SEO / AEO */}
-      <section id="sec-seo" className="scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <section id="sec-seo" className={`relative scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("seo")}`}>
+        <SecToggle id="seo" />
         <div className="mb-1 flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-800">🔎 SEO / AEO (ค้นหา + ให้ AI ตอบ)</h2>
           <button
@@ -1999,7 +2039,8 @@ export default function ProductEditor({ product }: { product: Product }) {
           {/* กติกาเงื่อนไข (ย้ายมาไว้แถบข้าง) */}
           {/* กฎเงื่อนไขตัวเลือก */}
       {/* ── สั่งจำนวนมาก: ต้องเช็คสต๊อกก่อน ── */}
-      <section id="sec-bulk" className="mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <section id="sec-bulk" className={`relative mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("bulk")}`}>
+        <SecToggle id="bulk" />
         <h2 className="text-sm font-semibold text-slate-800">📦 สั่งจำนวนมาก — เช็คสต๊อกก่อน</h2>
         <p className="mt-1 text-xs text-slate-500">
           ลูกค้าสั่งถึงจำนวนนี้ หน้าสินค้าจะขึ้นเตือนให้ทักแอดมินเช็คสต๊อก/คิวผลิตก่อน (สั่งได้ตามปกติ แต่ออเดอร์จะติดธง &ldquo;รอเช็คสต๊อก&rdquo; ให้ทีมยืนยันจำนวน)
@@ -2036,7 +2077,8 @@ export default function ProductEditor({ product }: { product: Product }) {
         </div>
       </section>
 
-      <section id="sec-rules" className="mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <section id="sec-rules" className={`relative mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("rules")}`}>
+        <SecToggle id="rules" />
         <div className="mb-1 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-800">🔗 กฎเงื่อนไขตัวเลือก ({draft.rules.length})</h2>
           <button
