@@ -41,6 +41,25 @@ import { useActor, useCan, useRoleLabel } from "@/lib/perm-context";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
 
+/** ขั้นถัดไปที่ "ปกติจะกด" ของแต่ละสถานะ — ทำเป็นปุ่มเดียวจบ ไม่ต้องเปิดลิสต์ยาว */
+const NEXT_STATUS: Partial<Record<OrderStatus, { to: OrderStatus; label: string }>> = {
+  รอชำระเงิน: { to: "ชำระแล้ว", label: "ยืนยันว่าเงินเข้าแล้ว" },
+  รอตรวจสอบ: { to: "ชำระแล้ว", label: "สลิปถูกต้อง — ชำระแล้ว" },
+  ชำระแล้ว: { to: "รอตรวจแบบ", label: "ส่งแบบให้ลูกค้าตรวจ" },
+  รอตรวจแบบ: { to: "อนุมัติแบบ", label: "ลูกค้าอนุมัติแบบแล้ว" },
+  แก้ไขแบบ: { to: "รอตรวจแบบ", label: "ส่งแบบที่แก้แล้วให้ตรวจ" },
+  อนุมัติแบบ: { to: "กำลังผลิต", label: "เริ่มผลิต" },
+  กำลังผลิต: { to: "จัดส่งแล้ว", label: "ส่งของแล้ว" },
+  จัดส่งแล้ว: { to: "เสร็จสิ้น", label: "ปิดงาน — เสร็จสิ้น" },
+};
+
+/** จัดกลุ่มสถานะในเมนู "เปลี่ยนสถานะ" ให้หาง่ายกว่ารายการยาว 10 บรรทัด */
+const STATUS_GROUPS: { title: string; items: OrderStatus[] }[] = [
+  { title: "💰 การเงิน", items: ["รอชำระเงิน", "รอตรวจสอบ", "ชำระแล้ว"] },
+  { title: "🎨 แบบงาน", items: ["รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"] },
+  { title: "📦 ผลิต · จัดส่ง", items: ["กำลังผลิต", "จัดส่งแล้ว", "เสร็จสิ้น"] },
+];
+
 const LBL = "text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400";
 const SOFT = "rounded-xl border border-slate-200/70 bg-white p-4";
 
@@ -283,6 +302,7 @@ export default function AdminOrderDetailPage() {
       ),
     []
   );
+  const [statusMenu, setStatusMenu] = useState(false);
   const [artDropIdx, setArtDropIdx] = useState<number | null>(null);
   const [proofDropIdx, setProofDropIdx] = useState<number | null>(null);
   const [replaceDrop, setReplaceDrop] = useState<string | null>(null); // "itemIndex:proofIndex" ที่กำลังลากไฟล์ทับเพื่อเปลี่ยนรูป
@@ -1036,17 +1056,71 @@ export default function AdminOrderDetailPage() {
             ))}
           </div>
           {mayEdit ? (
-            <select
-              value={order.status}
-              onChange={(e) => changeStatus(e.target.value as OrderStatus)}
-              className={`rounded-xl px-3.5 py-2.5 text-sm font-bold ring-1 focus:outline-none focus:ring-2 focus:ring-amber-300 ${STATUS_STYLES[order.status]}`}
-            >
-              {ORDER_STATUSES.filter((s) => s !== "ยกเลิก" || mayCancel || order.status === "ยกเลิก").map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`rounded-xl px-3 py-2 text-sm font-bold ring-1 ${STATUS_STYLES[order.status]}`}>{order.status}</span>
+              {/* ปุ่มเดียวสำหรับ "ขั้นถัดไป" ที่ปกติจะกด — ไม่ต้องไล่หาในลิสต์ */}
+              {NEXT_STATUS[order.status] && (
+                <button
+                  type="button"
+                  onClick={() => changeStatus(NEXT_STATUS[order.status]!.to)}
+                  className="rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-slate-700"
+                  title={`เปลี่ยนสถานะเป็น “${NEXT_STATUS[order.status]!.to}”`}
+                >
+                  {NEXT_STATUS[order.status]!.label} →
+                </button>
+              )}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setStatusMenu((v) => !v)}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-500 transition hover:bg-slate-50"
+                  aria-expanded={statusMenu}
+                >
+                  เปลี่ยนสถานะ ▾
+                </button>
+                {statusMenu && (
+                  <>
+                    <button type="button" className="fixed inset-0 z-30 cursor-default" aria-label="ปิดเมนู" onClick={() => setStatusMenu(false)} />
+                    <div className="absolute right-0 top-full z-40 mt-1 w-60 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                      {STATUS_GROUPS.map((g) => (
+                        <div key={g.title} className="border-b border-slate-100 py-1 last:border-0">
+                          <p className="px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{g.title}</p>
+                          {g.items.map((st) => (
+                            <button
+                              key={st}
+                              type="button"
+                              onClick={() => {
+                                setStatusMenu(false);
+                                if (st !== order.status) changeStatus(st);
+                              }}
+                              className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-sm transition hover:bg-slate-50 ${
+                                st === order.status ? "font-bold text-slate-900" : "text-slate-600"
+                              }`}
+                            >
+                              {st}
+                              {st === order.status && <span className="text-xs text-emerald-600">● ตอนนี้</span>}
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                      {(mayCancel || order.status === "ยกเลิก") && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStatusMenu(false);
+                            if (order.status !== "ยกเลิก") changeStatus("ยกเลิก");
+                          }}
+                          className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-bold text-rose-600 transition hover:bg-rose-50"
+                        >
+                          ❌ ยกเลิกออเดอร์
+                          {order.status === "ยกเลิก" && <span className="text-xs">● ตอนนี้</span>}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           ) : (
             <span className={`rounded-xl px-3.5 py-2.5 text-sm font-bold ring-1 ${STATUS_STYLES[order.status]}`}>
               {order.status}
