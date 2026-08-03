@@ -309,44 +309,48 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
         <span className="text-stone-600">{product.name}</span>
       </nav>
 
-      <div className="mt-4 grid gap-8 lg:grid-cols-2 lg:items-start">
-        {/* รูปสินค้า — ติดหนึบตอนเลื่อนอ่านตัวเลือกยาว ๆ (จอใหญ่) */}
-        <div className="lg:sticky lg:top-24">
-          <ProductVisual
-            emoji={product.images[imageIndex].emoji}
-            gradient={product.images[imageIndex].gradient}
-            src={product.images[imageIndex].src ?? (imageIndex === 0 ? product.imageSrc : undefined)}
-            alt={`${product.name} — ${product.images[imageIndex].label}`}
-            size="text-[8rem]"
-            eager
-            className="aspect-square w-full rounded-[2rem] shadow-inner"
-          />
-          <div className="mt-3 flex gap-2">
-            {product.images.map((img, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setImageIndex(i)}
-                className={`overflow-hidden rounded-2xl transition ${
-                  i === imageIndex
-                    ? "ring-3 ring-ducky"
-                    : "opacity-60 ring-1 ring-amber-100 hover:opacity-100"
-                }`}
-                aria-label={`ดูรูป${img.label}`}
-              >
-                <ProductVisual emoji={img.emoji} gradient={img.gradient} src={img.src ?? (i === 0 ? product.imageSrc : undefined)} alt={img.label} size="text-3xl" className="h-16 w-16" />
-              </button>
-            ))}
+      {/* ═══ โครง 3 คอลัมน์: รูป | รายละเอียด | แผงสั่งซื้อ (ติดหนึบ) ═══ */}
+      <div className="mt-4 grid gap-6 lg:grid-cols-12 lg:items-start lg:gap-8">
+        {/* ── ซ้าย: รูปสินค้า ── */}
+        <div className="lg:col-span-5">
+          {/* รูปสินค้า — ติดหนึบตอนเลื่อนอ่านตัวเลือกยาว ๆ (จอใหญ่) */}
+          <div className="lg:sticky lg:top-24">
+            <ProductVisual
+              emoji={product.images[imageIndex].emoji}
+              gradient={product.images[imageIndex].gradient}
+              src={product.images[imageIndex].src ?? (imageIndex === 0 ? product.imageSrc : undefined)}
+              alt={`${product.name} — ${product.images[imageIndex].label}`}
+              size="text-[8rem]"
+              eager
+              className="aspect-square w-full rounded-[2rem] shadow-inner"
+            />
+            <div className="mt-3 flex gap-2">
+              {product.images.map((img, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setImageIndex(i)}
+                  className={`overflow-hidden rounded-2xl transition ${
+                    i === imageIndex
+                      ? "ring-3 ring-ducky"
+                      : "opacity-60 ring-1 ring-amber-100 hover:opacity-100"
+                  }`}
+                  aria-label={`ดูรูป${img.label}`}
+                >
+                  <ProductVisual emoji={img.emoji} gradient={img.gradient} src={img.src ?? (i === 0 ? product.imageSrc : undefined)} alt={img.label} size="text-3xl" className="h-16 w-16" />
+                </button>
+              ))}
+            </div>
+            {product.images[imageIndex].label && (
+              <p className="mt-2 text-center text-xs text-stone-400">
+                มุมมอง: {product.images[imageIndex].label}
+              </p>
+            )}
           </div>
-          {product.images[imageIndex].label && (
-            <p className="mt-2 text-center text-xs text-stone-400">
-              มุมมอง: {product.images[imageIndex].label}
-            </p>
-          )}
         </div>
 
-        {/* ข้อมูลสินค้า */}
-        <div>
+        {/* ── กลาง: ชื่อ · รายละเอียด · ข้อควรทราบ ── */}
+        <div className="lg:col-span-3">
           <span className="text-xs font-semibold text-amber-500">
             {category.emoji} {category.name}
           </span>
@@ -359,31 +363,63 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
             <span>ขายแล้ว {product.sold.toLocaleString("th-TH")} ชิ้น</span>
           </div>
 
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-3xl font-extrabold text-amber-600">{formatPrice(unitPrice)}</span>
+          <p className="mt-4 text-sm leading-relaxed text-stone-600">{product.description}</p>
+
+          {/* ═══ ข้อควรทราบ / เงื่อนไขงาน — อ่านก่อนสั่ง (แอดมินตั้งต่อสินค้าในหลังบ้าน) ═══ */}
+          {product.terms?.trim() && (
+            <div className="mt-4 overflow-hidden rounded-2xl border-2 border-rose-200 bg-rose-50/60 shadow-sm">
+              <div className="flex items-center gap-2 bg-rose-500 px-4 py-2">
+                <span className="text-base leading-none">⚠️</span>
+                <p className="text-sm font-extrabold tracking-tight text-white">ข้อควรทราบก่อนสั่ง — รบกวนอ่านก่อนนะครับ</p>
+              </div>
+              <ul className="space-y-2 px-4 py-3">
+                {termLines(product.terms).map((t, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="mt-[3px] shrink-0 text-[9px] leading-none text-rose-500">🔴</span>
+                    <span className="whitespace-pre-line text-xs font-medium leading-relaxed text-rose-950">{t}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* ═══ ความมั่นใจก่อนกดสั่ง ═══ */}
+          <ul className="mt-4 grid grid-cols-2 gap-2 text-[11px] font-semibold text-stone-500 sm:grid-cols-4">
+            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">🖼️ ส่งแบบให้ตรวจ<br />ก่อนผลิตทุกงาน</li>
+            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">✅ แก้แบบได้<br />จนกว่าจะพอใจ</li>
+            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">🚚 ส่งไว<br />ทั่วไทย</li>
+            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">💬 ทักไลน์<br />ปรึกษาฟรี</li>
+          </ul>
+        </div>
+
+        {/* ── ขวา: แผงสั่งซื้อ ติดหนึบตอนเลื่อน ── */}
+        <div className="lg:col-span-4 lg:sticky lg:top-24">
+          <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">ราคา</p>
+            <div className="mt-4 flex items-baseline gap-2">
+              <span className="text-3xl font-extrabold text-amber-600">{formatPrice(unitPrice)}</span>
+              {product.pricing ? (
+                <span className="text-sm font-semibold text-stone-500">/ {product.pricing.unit}</span>
+              ) : (
+                product.oldPrice && (
+                  <span className="text-base text-stone-400 line-through">
+                    {formatPrice(product.oldPrice)}
+                  </span>
+                )
+              )}
+            </div>
             {product.pricing ? (
-              <span className="text-sm font-semibold text-stone-500">/ {product.pricing.unit}</span>
+              <p className="mt-1 text-xs text-stone-400">
+                💡 เรทราคา {formatPriceRange(product)} ต่อ{product.pricing.unit} — ยิ่งสั่งเยอะ ยิ่งถูก (ราคาปรับตามจำนวน)
+              </p>
             ) : (
-              product.oldPrice && (
-                <span className="text-base text-stone-400 line-through">
-                  {formatPrice(product.oldPrice)}
-                </span>
+              priceRange(product).max > priceRange(product).min && (
+                <p className="mt-1 text-xs text-stone-400">
+                  💡 เรทราคา {formatPriceRange(product)} ขึ้นกับตัวเลือกที่เลือก
+                </p>
               )
             )}
           </div>
-          {product.pricing ? (
-            <p className="mt-1 text-xs text-stone-400">
-              💡 เรทราคา {formatPriceRange(product)} ต่อ{product.pricing.unit} — ยิ่งสั่งเยอะ ยิ่งถูก (ราคาปรับตามจำนวน)
-            </p>
-          ) : (
-            priceRange(product).max > priceRange(product).min && (
-              <p className="mt-1 text-xs text-stone-400">
-                💡 เรทราคา {formatPriceRange(product)} ขึ้นกับตัวเลือกที่เลือก
-              </p>
-            )
-          )}
-
-          <p className="mt-4 text-sm leading-relaxed text-stone-600">{product.description}</p>
 
           {/* ตัวเลือกสินค้า (กรอง/ล็อกตามกฎเงื่อนไข) */}
           <div className="mt-5 space-y-4">
@@ -608,24 +644,6 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
             </div>
           </div>
 
-          {/* ═══ ข้อควรทราบ / เงื่อนไขงาน — อ่านก่อนสั่ง (แอดมินตั้งต่อสินค้าในหลังบ้าน) ═══ */}
-          {product.terms?.trim() && (
-            <div className="mt-4 overflow-hidden rounded-2xl border-2 border-rose-200 bg-rose-50/60 shadow-sm">
-              <div className="flex items-center gap-2 bg-rose-500 px-4 py-2">
-                <span className="text-base leading-none">⚠️</span>
-                <p className="text-sm font-extrabold tracking-tight text-white">ข้อควรทราบก่อนสั่ง — รบกวนอ่านก่อนนะครับ</p>
-              </div>
-              <ul className="space-y-2 px-4 py-3">
-                {termLines(product.terms).map((t, i) => (
-                  <li key={i} className="flex gap-2">
-                    <span className="mt-[3px] shrink-0 text-[9px] leading-none text-rose-500">🔴</span>
-                    <span className="whitespace-pre-line text-xs font-medium leading-relaxed text-rose-950">{t}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
           {/* ═══ เพิ่มเติม (ไม่บังคับ) — ยุบไว้ ไม่ให้บังปุ่มซื้อ · โยนรูปลงหน้าไหนก็เปิดให้เอง ═══ */}
           <div className="mt-4 overflow-hidden rounded-3xl bg-white ring-1 ring-stone-200">
             <button
@@ -826,13 +844,6 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
             </div>
           </div>
 
-          {/* ═══ ความมั่นใจก่อนกดสั่ง ═══ */}
-          <ul className="mt-4 grid grid-cols-2 gap-2 text-[11px] font-semibold text-stone-500 sm:grid-cols-4">
-            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">🖼️ ส่งแบบให้ตรวจ<br />ก่อนผลิตทุกงาน</li>
-            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">✅ แก้แบบได้<br />จนกว่าจะพอใจ</li>
-            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">🚚 ส่งไว<br />ทั่วไทย</li>
-            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">💬 ทักไลน์<br />ปรึกษาฟรี</li>
-          </ul>
         </div>
       </div>
 
