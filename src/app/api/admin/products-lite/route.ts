@@ -12,12 +12,12 @@ export async function GET() {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ list: [] });
 
-  const { data, error } = await sb.from("products").select("id,name,price").order("sort", { ascending: true });
+  const { data, error } = await sb.from("products").select("id,name,price,category").order("sort", { ascending: true });
   if (error) return NextResponse.json({ error: error.message, list: [] }, { status: 500 });
 
   const list = (data ?? [])
     .filter((r) => !String(r.id).startsWith("__")) // ตัดแถวตั้งค่าร้านออก
-    .map((r) => ({ id: String(r.id), name: String(r.name ?? ""), price: Number(r.price ?? 0) }))
+    .map((r) => ({ id: String(r.id), name: String(r.name ?? ""), price: Number(r.price ?? 0), category: String(r.category ?? "") }))
     .filter((p) => p.name);
   return NextResponse.json({ list });
 }

@@ -22,6 +22,7 @@ import {
   type ShopInfo,
 } from "@/lib/shop-settings";
 import { DEFAULT_TIERS, type Tier } from "@/lib/tiers";
+import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import {
   DEPT_ADMIN,
   DEPT_CONTENT,
@@ -36,7 +37,7 @@ import { btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
 const newId = (p = "b") =>
   typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${p}-${Date.now()}-${Math.floor(Math.random() * 1e4)}`;
 
-type Tab = "shop" | "pay" | "ship" | "tier" | "welcome" | "roles" | "files";
+type Tab = "shop" | "pay" | "ship" | "tier" | "welcome" | "roles" | "files" | "cats";
 
 function AdminSettingsPageInner() {
   const [tab, setTab] = useState<Tab>("pay");
@@ -56,6 +57,55 @@ function AdminSettingsPageInner() {
 
   // ── คูปองต้อนรับ ──
   const [welcome, setWelcome] = useState<WelcomeCouponConfig>(welcomeCouponOf(null));
+
+  // ── หมวดหมู่สินค้า ──
+  const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
+  const [catCounts, setCatCounts] = useState<Record<string, number>>({});
+  const [catSaving, setCatSaving] = useState(false);
+  const [catSaved, setCatSaved] = useState(false);
+  const [catErr, setCatErr] = useState("");
+  useEffect(() => {
+    fetchCategories().then(setCats);
+    // นับสินค้าต่อหมวด — กันลบหมวดที่ยังมีสินค้าอยู่
+    fetch("/api/admin/products-lite", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j: { list?: { id: string; category?: string }[] }) => {
+        const map: Record<string, number> = {};
+        for (const p of j.list ?? []) if (p.category) map[p.category] = (map[p.category] ?? 0) + 1;
+        setCatCounts(map);
+      })
+      .catch(() => {});
+  }, []);
+  const patchCat = (i: number, patch: Partial<ShopCategory>) =>
+    setCats((cur) => cur.map((c, k) => (k === i ? { ...c, ...patch } : c)));
+  const moveCat = (i: number, dir: -1 | 1) =>
+    setCats((cur) => {
+      const j = i + dir;
+      if (j < 0 || j >= cur.length) return cur;
+      const next = [...cur];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  async function saveCats() {
+    setCatSaving(true);
+    setCatErr("");
+    try {
+      const res = await fetch("/api/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ list: cats }),
+      });
+      const j = await res.json();
+      if (!res.ok) setCatErr(j.error ?? "บันทึกไม่สำเร็จ");
+      else {
+        setCatSaved(true);
+        setTimeout(() => setCatSaved(false), 2500);
+      }
+    } catch {
+      setCatErr("เชื่อมต่อไม่ได้");
+    }
+    setCatSaving(false);
+  }
 
   // ── ล้างรูปออเดอร์เก่า ──
   const [cleanup, setCleanup] = useState<ImageCleanupConfig>(imageCleanupOf(null));
@@ -275,6 +325,7 @@ function AdminSettingsPageInner() {
             ["tier", "🏅 ระดับสมาชิก"],
             ["welcome", "🎁 คูปองต้อนรับ"],
             ["roles", "👥 บทบาท"],
+            ["cats", "🗂 หมวดหมู่สินค้า"],
             ["files", "🧹 ล้างรูปเก่า"],
           ] as [Tab, string][]
         ).map(([k, label]) => (
@@ -702,6 +753,120 @@ function AdminSettingsPageInner() {
           )}
 
           {/* ══════ บทบาท & สิทธิ์ — ผู้ดูแลระบบติ๊กแก้สิทธิ์/เพิ่มบทบาทได้ ══════ */}
+          {tab === "cats" && (
+            <div className="space-y-3">
+              <div className="rounded-2xl bg-sky-50 p-4 text-xs leading-relaxed text-sky-900 ring-1 ring-sky-100">
+                <p className="font-bold">🗂 หมวดหมู่สินค้า</p>
+                <p className="mt-1">
+                  ชื่อ/อีโมจิ/ลำดับที่ตั้งตรงนี้จะขึ้นบนหน้าแรก · หน้าสินค้าทั้งหมด · และช่องเลือกหมวดในหลังบ้าน
+                  · ติ๊ก “ซ่อน” เพื่อพักหมวดจากหน้าร้านโดยไม่ลบสินค้า
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                {cats.map((c, i) => (
+                  <div key={c.id} className={`rounded-2xl p-3 ring-1 ${c.hidden ? "bg-slate-50 ring-slate-200" : "bg-white ring-amber-100"}`}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="flex flex-col">
+                        <button
+                          type="button"
+                          onClick={() => moveCat(i, -1)}
+                          disabled={i === 0}
+                          className="px-1 text-[10px] text-slate-400 disabled:opacity-25"
+                          aria-label="เลื่อนขึ้น"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveCat(i, 1)}
+                          disabled={i === cats.length - 1}
+                          className="px-1 text-[10px] text-slate-400 disabled:opacity-25"
+                          aria-label="เลื่อนลง"
+                        >
+                          ▼
+                        </button>
+                      </span>
+                      <input
+                        value={c.emoji}
+                        onChange={(e) => patchCat(i, { emoji: e.target.value })}
+                        className="w-12 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-lg"
+                        aria-label="อีโมจิ"
+                      />
+                      <input
+                        value={c.name}
+                        onChange={(e) => patchCat(i, { name: e.target.value })}
+                        placeholder="ชื่อหมวด (ไทย)"
+                        className="min-w-40 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-bold text-slate-800 focus:border-amber-300 focus:outline-none"
+                      />
+                      <input
+                        value={c.nameEn}
+                        onChange={(e) => patchCat(i, { nameEn: e.target.value })}
+                        placeholder="ชื่ออังกฤษ"
+                        className="w-36 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 focus:border-amber-300 focus:outline-none"
+                      />
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(c.hidden)}
+                          onChange={(e) => patchCat(i, { hidden: e.target.checked })}
+                          className="h-4 w-4 accent-slate-500"
+                        />
+                        ซ่อน
+                      </label>
+                      <span className="text-[11px] text-slate-400">
+                        {catCounts[c.id] ?? 0} สินค้า · <span className="font-mono">{c.id}</span>
+                      </span>
+                      <button
+                        type="button"
+                        disabled={(catCounts[c.id] ?? 0) > 0}
+                        onClick={() => setCats((cur) => cur.filter((_, k) => k !== i))}
+                        title={(catCounts[c.id] ?? 0) > 0 ? "ลบไม่ได้ — ยังมีสินค้าอยู่ในหมวดนี้ (ใช้ ‘ซ่อน’ แทน)" : "ลบหมวดนี้"}
+                        className="rounded-lg px-2 py-1 text-xs font-bold text-rose-500 transition hover:bg-rose-50 disabled:opacity-30"
+                      >
+                        ✕ ลบ
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setCats((cur) => [
+                    ...cur,
+                    {
+                      id: `cat-${Date.now().toString(36)}`,
+                      name: "",
+                      nameEn: "",
+                      emoji: "🏷️",
+                      gradient: "from-amber-100 to-amber-200",
+                      description: "",
+                    },
+                  ])
+                }
+                className="rounded-full border border-dashed border-amber-300 px-4 py-2 text-xs font-bold text-amber-700 transition hover:bg-amber-50"
+              >
+                ＋ เพิ่มหมวดใหม่
+              </button>
+
+              <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
+                <button
+                  type="button"
+                  onClick={saveCats}
+                  disabled={catSaving}
+                  className={`${btnPrimary} disabled:opacity-40`}
+                >
+                  {catSaving ? "กำลังบันทึก…" : "💾 บันทึกหมวดหมู่"}
+                </button>
+                {catSaved && <span className="text-xs font-bold text-emerald-600">✓ บันทึกแล้ว</span>}
+                {catErr && <span className="text-xs font-bold text-rose-600">{catErr}</span>}
+                <span className="text-[11px] text-slate-400">หมวดที่มีสินค้าอยู่ลบไม่ได้ — ใช้ “ซ่อน” แทน</span>
+              </div>
+            </div>
+          )}
+
           {tab === "files" && (
             <div className="space-y-4">
               <div className="rounded-2xl bg-sky-50 p-4 text-xs leading-relaxed text-sky-900 ring-1 ring-sky-100">

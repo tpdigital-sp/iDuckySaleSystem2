@@ -2,13 +2,19 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { CATEGORIES, PRODUCTS, type Product } from "@/lib/products";
+import { PRODUCTS, type Product } from "@/lib/products";
+import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { fetchProductsLite } from "@/lib/product-repo";
 import ProductCard from "@/components/ProductCard";
 
 export default function HomePage() {
   // โหลดสินค้า (Supabase หรือ localStorage) หลัง mount
   const [all, setAll] = useState<Product[]>(PRODUCTS);
+  // หมวดหมู่ที่แอดมินตั้งไว้ในหลังบ้าน (ยังไม่เคยตั้ง = ค่าเริ่มต้นในโค้ด)
+  const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
+  useEffect(() => {
+    fetchCategories().then((list) => setCats(list.filter((c) => !c.hidden)));
+  }, []);
   useEffect(() => {
     let active = true;
     fetchProductsLite().then((ps) => {
@@ -94,7 +100,7 @@ export default function HomePage() {
           </Link>
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {CATEGORIES.map((c) => (
+          {cats.map((c) => (
             <Link
               key={c.id}
               href={`/products?category=${c.id}`}

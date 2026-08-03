@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CATEGORIES, PRODUCTS, type CategoryId, type Product } from "@/lib/products";
+import { PRODUCTS, type CategoryId, type Product } from "@/lib/products";
+import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { fetchProductsLite } from "@/lib/product-repo";
 import ProductCard from "@/components/ProductCard";
 
@@ -20,6 +21,10 @@ export default function ProductListing() {
   const params = useSearchParams();
   const category = (params.get("category") as CategoryId | null) ?? "all";
   const [search, setSearch] = useState("");
+  const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
+  useEffect(() => {
+    fetchCategories().then((list) => setCats(list.filter((c) => !c.hidden)));
+  }, []);
   const [sort, setSort] = useState<SortKey>(
     (params.get("sort") as SortKey | null) ?? "popular"
   );
@@ -116,7 +121,7 @@ export default function ProductListing() {
         >
           ✨ ทั้งหมด
         </button>
-        {CATEGORIES.map((c) => (
+        {cats.map((c) => (
           <button
             key={c.id}
             type="button"
