@@ -564,6 +564,14 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
             </div>
           </div>
 
+          {/* ═══ ข้อควรทราบ / เงื่อนไขงาน — อ่านก่อนสั่ง (แอดมินตั้งต่อสินค้าในหลังบ้าน) ═══ */}
+          {product.terms?.trim() && (
+            <div className="mt-4 rounded-2xl bg-amber-50/70 p-4 ring-1 ring-amber-200">
+              <p className="text-sm font-extrabold text-amber-900">⚠️ ข้อควรทราบก่อนสั่ง</p>
+              <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-amber-900/90">{product.terms.trim()}</p>
+            </div>
+          )}
+
           {/* ═══ เพิ่มเติม (ไม่บังคับ) — ยุบไว้ ไม่ให้บังปุ่มซื้อ · โยนรูปลงหน้าไหนก็เปิดให้เอง ═══ */}
           <div className="mt-4 overflow-hidden rounded-3xl bg-white ring-1 ring-stone-200">
             <button

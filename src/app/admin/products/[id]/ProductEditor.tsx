@@ -85,6 +85,8 @@ type Draft = {
   custom: DraftCustom;
   /** สั่งกี่ชิ้นขึ้นไปต้องถามสต๊อกก่อน (ว่าง = ใช้ค่ากลาง) */
   bulkAskQty: string;
+  /** ข้อควรทราบ/เงื่อนไขงาน (แสดงหน้าสินค้า) */
+  terms: string;
   /** สถานะตรวจสอบหลังบ้าน (มีค่า = ตรวจแล้ว) */
   reviewed?: ProductReview;
 };
@@ -237,6 +239,7 @@ function toDraft(p: Product): Draft {
       note: p.custom?.note ?? "",
     },
     bulkAskQty: p.bulkAskQty != null && p.bulkAskQty > 0 ? String(p.bulkAskQty) : "",
+    terms: p.terms ?? "",
     reviewed: p.reviewed,
   };
 }
@@ -545,6 +548,7 @@ export default function ProductEditor({ product }: { product: Product }) {
       seo: buildSeo(draft.seo),
       custom,
       bulkAskQty: Number(draft.bulkAskQty) > 0 ? Math.floor(Number(draft.bulkAskQty)) : undefined,
+      terms: draft.terms.trim() || undefined,
       reviewed: draft.reviewed,
     };
     const res = await persistProduct(updated);
@@ -651,6 +655,7 @@ export default function ProductEditor({ product }: { product: Product }) {
   const NAV_SECTIONS = [
     { id: "sec-basic", label: "ข้อมูลหลัก" },
     { id: "sec-photos", label: "รูป" },
+    { id: "sec-terms", label: "ข้อควรทราบ" },
     { id: "sec-highlights", label: "จุดเด่น" },
     { id: "sec-options", label: "ตัวเลือก" },
     { id: "sec-rules", label: "กติกา" },
@@ -969,6 +974,24 @@ export default function ProductEditor({ product }: { product: Product }) {
       </section>
 
       {/* จุดเด่น */}
+      {/* ── ข้อควรทราบ / เงื่อนไขงาน — โชว์หน้าสินค้าให้ลูกค้าอ่านก่อนสั่ง ── */}
+      <section id="sec-terms" className="mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <h2 className="text-sm font-semibold text-slate-800">⚠️ ข้อควรทราบ / เงื่อนไขงาน</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          เขียนสิ่งที่ลูกค้าต้องรู้ก่อนสั่ง — จะแสดงเป็นกล่องเตือนในหน้าสินค้า (กันเข้าใจผิด/เคลมทีหลัง) · ขึ้นบรรทัดใหม่ได้ตามต้องการ
+        </p>
+        <textarea
+          value={draft.terms}
+          onChange={(e) => patch({ terms: e.target.value })}
+          rows={6}
+          placeholder={"เช่น\n* ขนาดยึดตามด้านที่ยาวที่สุดของอะคริลิค หากต้องการระบุด้านกรุณาแจ้ง\n* ระยะสกรีนอาจคลาดเคลื่อน ±3–7 มม. เนื่องจากผ้าแต่ละผืนขนาดไม่เท่ากัน\n* งานผ้าอาจมีจุดจากฝุ่นและรอยยับเล็กน้อย ไม่กระทบการใช้งาน"}
+          className={`${inputCls} mt-3 w-full resize-y whitespace-pre-wrap font-mono text-[13px] leading-relaxed`}
+        />
+        <p className="mt-1.5 text-[11px] text-slate-400">
+          {draft.terms.trim() ? `${draft.terms.trim().split("\n").filter(Boolean).length} บรรทัด · จะขึ้นในหน้าสินค้า` : "เว้นว่าง = ไม่แสดงกล่องนี้ในหน้าสินค้า"}
+        </p>
+      </section>
+
       <section id="sec-highlights" className="mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-800">✔ จุดเด่นสินค้า ({draft.highlights.length})</h2>
