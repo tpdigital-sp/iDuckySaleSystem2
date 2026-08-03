@@ -1229,13 +1229,21 @@ export default function AdminOrderDetailPage() {
               return (
                 <div
                   key={`${it.productId}-${i}`}
-                  className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-[0_2px_10px_rgba(15,23,42,0.05)]"
+                  className={`overflow-hidden rounded-2xl border-2 shadow-[0_2px_10px_rgba(15,23,42,0.05)] ${
+                    i % 2 === 0 ? "border-slate-200 bg-white" : "border-sky-200 bg-sky-50/40"
+                  }`}
                 >
-                  {/* แถบหัวรายการ — บอกขอบเขตของแต่ละรายการให้ชัด */}
-                  <div className={`flex items-center justify-between gap-2 border-b-2 px-4 py-2 ${
-                    open ? "border-indigo-100 bg-indigo-50/70" : "border-slate-100 bg-slate-50"
-                  }`}>
-                    <span className="text-xs font-extrabold text-indigo-800">
+                  {/* แถบหัวรายการ — สลับสีคู่/คี่ ให้ไล่สายตาแยกรายการได้ง่ายเวลามีหลายรายการ */}
+                  <div
+                    className={`flex items-center justify-between gap-2 border-b-2 px-4 py-2 ${
+                      open
+                        ? "border-indigo-100 bg-indigo-50/70"
+                        : i % 2 === 0
+                          ? "border-slate-100 bg-slate-50"
+                          : "border-sky-100 bg-sky-100/60"
+                    }`}
+                  >
+                    <span className={`text-xs font-extrabold ${i % 2 === 0 ? "text-indigo-800" : "text-sky-800"}`}>
                       รายการที่ {i + 1} / {order.items.length}
                     </span>
                     <span className="truncate text-xs font-bold text-slate-400">{it.name}</span>
