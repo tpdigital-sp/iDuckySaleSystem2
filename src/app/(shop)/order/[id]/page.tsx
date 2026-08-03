@@ -714,7 +714,7 @@ export default function CustomerOrderPage() {
       {actionErr && <p className="mt-4 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{actionErr}</p>}
 
       {/* ── 2 คอลัมน์: ซ้าย=แบบงาน/รายการ · ขวา=สรุป (ติดหนึบ) ── */}
-      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:items-start">
+      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
         {/* ซ้าย */}
         <div className="space-y-4">
           {order.items.map((it, i) => {
