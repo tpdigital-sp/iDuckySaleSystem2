@@ -1214,6 +1214,34 @@ export default function AdminOrderDetailPage() {
                                   {pic.kind === "proof" ? `แบบ ${pic.at + 1}` : "ลาย"}
                                 </span>
                               </button>
+                              {/* ผลตรวจของลูกค้า (เฉพาะแบบงาน) */}
+                              {pic.kind === "proof" && proofs[pic.at]?.review && (
+                                <span
+                                  className={`pointer-events-none absolute left-0.5 top-0.5 rounded-full px-1 py-px text-[8px] font-bold text-white ${
+                                    proofs[pic.at].review === "อนุมัติ" ? "bg-teal-500" : "bg-rose-500"
+                                  }`}
+                                >
+                                  {proofs[pic.at].review === "อนุมัติ" ? "✓" : "✏️"}
+                                </span>
+                              )}
+                              {/* เปลี่ยนรูปนี้ — อัปทับตำแหน่งเดิม ไม่ต้องลบก่อน (เลขรูปกับผลตรวจของลูกค้าคงเดิม) */}
+                              {pic.kind === "proof" && mayProof && (
+                                <label
+                                  title="เปลี่ยนรูปนี้ — อัปทับตำแหน่งเดิมได้เลย ไม่ต้องลบก่อน"
+                                  className="absolute -left-1 -top-1 grid h-4 w-4 cursor-pointer place-items-center rounded-full bg-indigo-600 text-[8px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100"
+                                >
+                                  🔄
+                                  <input
+                                    type="file"
+                                    accept="image/png,image/jpeg,image/webp,image/gif"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      void replaceProof(i, pic.at, e.target.files?.[0] ?? null);
+                                      e.target.value = "";
+                                    }}
+                                  />
+                                </label>
+                              )}
                               {pic.kind === "art" && mayProof && !proofs.some((pf) => pf.url === pic.u) && (
                                 <button
                                   type="button"
@@ -1568,110 +1596,55 @@ export default function AdminOrderDetailPage() {
                     </p>
                   )}
 
-                  {/* แกลเลอรีแบบงาน — หลายรูป แต่ละรูประบุจำนวน/รายละเอียด */}
-                  <div className="mt-3 flex flex-wrap gap-3">
-                    {proofs.map((p, j) => (
-                      <div
-                        key={`${p.url}-${j}`}
-                        className={`w-36 overflow-hidden rounded-xl border bg-white ${
-                          p.review === "ขอแก้ไข" ? "border-rose-300 ring-2 ring-rose-200" : "border-slate-200"
-                        }`}
-                      >
-                        <div className="relative">
+                  {/* จำนวน/รายละเอียดต่อรูปแบบงาน — รูปอยู่ที่คอลัมน์รูปแล้ว ตรงนี้เหลือเฉพาะข้อมูล */}
+                  {proofs.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {proofs.map((p, j) => (
+                        <div
+                          key={`${p.url}-${j}`}
+                          className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 ring-1 ${
+                            p.review === "ขอแก้ไข" ? "bg-rose-50 ring-rose-200" : "bg-slate-50 ring-slate-200"
+                          }`}
+                        >
                           <button
                             type="button"
                             onClick={() => showProof(i, j)}
-                            aria-label={`ขยายดูแบบงาน ${it.name} รูปที่ ${j + 1}`}
-                            className="block aspect-[4/3] w-full cursor-zoom-in bg-slate-50"
+                            className="text-[11px] font-bold text-slate-500 hover:text-indigo-700"
+                            title="ดูรูปเต็ม"
                           >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={p.url} alt={`แบบงาน ${it.name} รูปที่ ${j + 1}`} className="h-full w-full object-contain" />
+                            แบบ {j + 1}
                           </button>
-                          {/* เลขรูป — ให้ตรงกับที่ลูกค้าอ้างถึง ("รูปที่ 8") ไม่ต้องนั่งนับ */}
-                          <span className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-slate-900/60 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                            รูปที่ {j + 1}
-                          </span>
-                          {/* ผลตรวจของลูกค้า "ต่อรูปนี้" — ไม่มีค่า = ลูกค้ายังไม่ตรวจรูปนี้ */}
-                          {p.review && (
-                            <span
-                              className={`pointer-events-none absolute left-1.5 top-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${PROOF_STYLES[p.review]}`}
-                            >
-                              {p.review === "อนุมัติ" ? "✔ อนุมัติ" : "✏️ ขอแก้ไข"}
-                            </span>
-                          )}
-                          {mayProof && (
-                            <button
-                              type="button"
-                              onClick={() => removeProof(i, j)}
-                              aria-label="ลบรูปนี้"
-                              className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-slate-900/60 text-xs text-white transition hover:bg-rose-600"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
-                        {mayProof ? (
-                          <div className="space-y-1.5 p-2">
-                            <label className="flex items-center gap-1.5">
-                              <span className="text-[10px] font-bold text-slate-400">จำนวน</span>
+                          {mayProof ? (
+                            <>
                               <input
                                 type="number"
                                 min={1}
                                 value={p.qty ?? ""}
-                                placeholder="—"
-                                onChange={(e) => patchProof(i, j, { qty: e.target.value ? Number(e.target.value) : undefined })}
-                                onBlur={persist}
-                                className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs focus:border-amber-300 focus:outline-none"
+                                placeholder="จำนวน"
+                                onChange={(e) => patchProof(i, j, { qty: Math.max(0, Number(e.target.value) || 0) || undefined })}
+                                className="w-16 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-center text-[11px] focus:border-amber-300 focus:outline-none"
                               />
                               <span className="text-[10px] text-slate-400">ชิ้น</span>
-                            </label>
-                            <input
-                              type="text"
-                              value={p.note ?? ""}
-                              placeholder="รายละเอียด เช่น ลายหน้า"
-                              onChange={(e) => patchProof(i, j, { note: e.target.value })}
-                              onBlur={persist}
-                              className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs focus:border-amber-300 focus:outline-none"
-                            />
-                            {p.review === "ขอแก้ไข" && p.reviewNote && (
-                              <p className="rounded-lg bg-rose-50 px-2 py-1 text-[10px] leading-snug text-rose-700 ring-1 ring-rose-100">
-                                ลูกค้าขอแก้: “{p.reviewNote}”
-                              </p>
-                            )}
-                            {/* เปลี่ยนรูปทับตำแหน่งเดิม — ไม่ต้องลบแล้วอัปใหม่ เลขรูปไม่เลื่อน */}
-                            <label
-                              className={`block cursor-pointer rounded-lg px-2 py-1 text-center text-[11px] font-bold transition ${
-                                p.review === "ขอแก้ไข"
-                                  ? "bg-rose-500 text-white hover:bg-rose-600"
-                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                              } ${uploadingIdx === i ? "pointer-events-none opacity-50" : ""}`}
-                            >
-                              {uploadingIdx === i ? "กำลังอัปโหลด…" : "🔄 เปลี่ยนรูปนี้"}
                               <input
-                                type="file"
-                                accept="image/png,image/jpeg,image/webp,image/gif"
-                                className="hidden"
-                                onChange={(e) => {
-                                  void replaceProof(i, j, e.target.files?.[0] ?? null);
-                                  e.target.value = "";
-                                }}
+                                value={p.note ?? ""}
+                                placeholder="รายละเอียด"
+                                onChange={(e) => patchProof(i, j, { note: e.target.value || undefined })}
+                                className="w-28 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] focus:border-amber-300 focus:outline-none"
                               />
-                            </label>
-                          </div>
-                        ) : (
-                          /* ฝ่ายแพ็ค — อ่านอย่างเดียว แก้ไม่ได้ */
-                          <div className="p-2 text-[11px] leading-snug text-slate-600">
-                            {p.qty ? <strong>{p.qty} ชิ้น</strong> : <span className="text-slate-400">ไม่ระบุจำนวน</span>}
-                            {p.note ? <span className="block text-slate-500">{p.note}</span> : null}
-                            {p.review === "ขอแก้ไข" && p.reviewNote && (
-                              <span className="block text-rose-600">ลูกค้าขอแก้: “{p.reviewNote}”</span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-
-                  </div>
+                            </>
+                          ) : (
+                            <span className="text-[11px] text-slate-600">
+                              {p.qty ? `${p.qty} ชิ้น` : "ยังไม่ระบุจำนวน"}
+                              {p.note ? ` · ${p.note}` : ""}
+                            </span>
+                          )}
+                          {p.review === "ขอแก้ไข" && p.reviewNote && (
+                            <span className="text-[10px] font-bold text-rose-600">ขอแก้: “{p.reviewNote}”</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {/* 📝 หมายเหตุใบงานของรายการนี้ — อยู่ติดกับรายการเลย ไม่ต้องไปหาที่คอลัมน์ขวา */}
                   {mayEdit && (
