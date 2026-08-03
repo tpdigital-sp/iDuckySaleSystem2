@@ -377,7 +377,11 @@ export default function AdminOrderDetailPage() {
   /** อัปเดต order + บันทึกทันที (ใช้กับ select สี/ขนาด/วันที่ ที่ไม่มี blur) */
   function applyOrder(next: Order) {
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (demo) return;
+    // บันทึกจริงลงฐาน — ถ้าพลาด ต้องขึ้นให้เห็น (เดิมเงียบ แล้วข้อมูลหายตอนรีเฟรช)
+    void saveOrderAdmin(next).then((ok) => {
+      if (!ok) setErr("บันทึกลงฐานข้อมูลไม่สำเร็จ — อย่าเพิ่งปิดหน้านี้ ลองแก้ค่าอีกครั้งหรือเช็คอินเทอร์เน็ต");
+    });
   }
 
   /** บันทึกหมายเหตุ (HTML) ของท้ายบิล หรือของรายการที่ index (itemIdx = null → ท้ายบิล) · commit = บันทึกลง DB */
@@ -1339,6 +1343,7 @@ export default function AdminOrderDetailPage() {
           {/* เพิ่มรายการพิเศษ — งานสั่งทำที่ไม่มีหน้าเว็บ (เฉพาะคนที่แก้ออเดอร์ได้) */}
           {mayEdit && (
             <SpecialItemAdder
+              orderId={order.id}
               onAdd={(item) => {
                 const next = withLog(
                   { ...order, items: [...order.items, item] },
@@ -2340,7 +2345,7 @@ function Actor({ by }: { by: string }) {
 }
 
 /** ฟอร์มเพิ่มรายการพิเศษ (งานสั่งทำที่ไม่มีหน้าเว็บ) — พิมพ์ชื่อแล้วมีคลังสินค้าพิเศษขึ้นให้เลือก (เติมสเปคอัตโนมัติ) */
-function SpecialItemAdder({ onAdd }: { onAdd: (item: OrderItem) => void }) {
+function SpecialItemAdder({ onAdd, orderId }: { onAdd: (item: OrderItem) => void; orderId: string }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [spec, setSpec] = useState("");
@@ -2349,6 +2354,46 @@ function SpecialItemAdder({ onAdd }: { onAdd: (item: OrderItem) => void }) {
   const [err, setErr] = useState("");
   // ภาพลายที่ลูกค้าส่งมาทางแชท — แอดมินแนบให้กราฟฟิกดูตอนสั่งงานพิเศษ
   const [art, setArt] = useState<string[]>([]);
+  // ── กันกรอกเสร็จแล้วรีเฟรชทิ้ง: เก็บร่างไว้ในเครื่อง จนกว่าจะกด "เพิ่มเข้าออเดอร์" หรือยกเลิก ──
+  const DRAFT_KEY = `admin.order.${orderId}.specialDraft`;
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const d = JSON.parse(raw) as { name?: string; spec?: string; qty?: string; price?: string; art?: string[] };
+        if (d.name || d.spec || d.price || (d.art?.length ?? 0)) {
+          setName(d.name ?? "");
+          setSpec(d.spec ?? "");
+          setQty(d.qty ?? "1");
+          setPrice(d.price ?? "");
+          setArt(d.art ?? []);
+          setOpen(true);
+        }
+      }
+    } catch {}
+    setDraftLoaded(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId]);
+  const dirty = open && Boolean(name.trim() || spec.trim() || price.trim() || art.length);
+  useEffect(() => {
+    if (!draftLoaded) return;
+    try {
+      if (dirty) localStorage.setItem(DRAFT_KEY, JSON.stringify({ name, spec, qty, price, art }));
+      else localStorage.removeItem(DRAFT_KEY);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftLoaded, dirty, name, spec, qty, price, art]);
+  // เตือนก่อนปิด/รีเฟรชหน้าทั้งที่ยังไม่ได้กดเพิ่มเข้าออเดอร์
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
   const [artBusy, setArtBusy] = useState(false);
   const [artDrag, setArtDrag] = useState(false);
   // คลังสินค้าพิเศษ (นำเข้าจากระบบเดิม/เพิ่มเอง) — โหลดครั้งเดียวตอนเปิดฟอร์ม
@@ -2371,6 +2416,9 @@ function SpecialItemAdder({ onAdd }: { onAdd: (item: OrderItem) => void }) {
     if (!n) return setErr("ใส่ชื่องานก่อน");
     if (!Number(qty) || Number(qty) < 1) return setErr("จำนวนต้องอย่างน้อย 1");
     onAdd({ productId: "special-item", name: n, selections: spec.trim(), qty: q, unitPrice: p, ...(art.length ? { artworkUrls: art } : {}) });
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+    } catch {}
     setOpen(false);
     setName("");
     setSpec("");
@@ -2554,11 +2602,39 @@ function SpecialItemAdder({ onAdd }: { onAdd: (item: OrderItem) => void }) {
         </div>
       </div>
       {err && <p className="mt-2 text-xs font-semibold text-rose-600">{err}</p>}
+      {dirty && (
+        <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 ring-1 ring-rose-200">
+          ⚠️ ยังไม่ได้เพิ่มเข้าออเดอร์ — ต้องกดปุ่ม “✅ เพิ่มเข้าออเดอร์” ด้านล่างก่อน ข้อมูลถึงจะบันทึกลงฐาน
+          <span className="block font-semibold text-rose-600">(ถ้าเผลอปิดหน้าไป ระบบจำร่างไว้ให้ เปิดหน้านี้ใหม่จะเห็นที่กรอกค้างไว้)</span>
+        </p>
+      )}
       <div className="mt-3 flex gap-2">
-        <button type="button" onClick={submit} className="rounded-full bg-amber-500 px-5 py-1.5 text-xs font-bold text-white transition hover:bg-amber-600">
-          เพิ่มเข้าออเดอร์
+        <button
+          type="button"
+          onClick={submit}
+          className={`rounded-full px-5 py-1.5 text-xs font-bold text-white transition ${
+            dirty ? "bg-emerald-600 shadow-sm hover:bg-emerald-700" : "bg-amber-500 hover:bg-amber-600"
+          }`}
+        >
+          ✅ เพิ่มเข้าออเดอร์
         </button>
-        <button type="button" onClick={() => { setOpen(false); setErr(""); }} className="rounded-full px-4 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100">
+        <button
+          type="button"
+          onClick={() => {
+            if (dirty && !confirm("ทิ้งข้อมูลที่กรอกไว้ใช่ไหม? (ยังไม่ได้เพิ่มเข้าออเดอร์)")) return;
+            try {
+              localStorage.removeItem(DRAFT_KEY);
+            } catch {}
+            setName("");
+            setSpec("");
+            setQty("1");
+            setPrice("");
+            setArt([]);
+            setOpen(false);
+            setErr("");
+          }}
+          className="rounded-full px-4 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100"
+        >
           ยกเลิก
         </button>
       </div>
