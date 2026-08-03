@@ -80,7 +80,14 @@ export async function POST(req: Request) {
       if (i !== itemIndex) return it;
       const proofs = proofsOf(it).map((p, j) =>
         j === replaceIndex
-          ? { url: pub.publicUrl, at: now, ...(p.qty ? { qty: p.qty } : {}), ...(p.note ? { note: p.note } : {}) }
+          ? {
+              url: pub.publicUrl,
+              at: now,
+              ...(p.qty ? { qty: p.qty } : {}),
+              ...(p.note ? { note: p.note } : {}),
+              // แก้ตามที่ลูกค้าขอ → ติดป้าย "แก้ไขให้แล้ว" ให้ลูกค้าเห็นว่ารูปนี้อัปเดตแล้ว
+              ...(p.review === "ขอแก้ไข" ? { revisedAt: now, ...(p.reviewNote ? { revisedFromNote: p.reviewNote } : {}) } : {}),
+            }
           : p
       );
       // สถานะรายการคิดใหม่จากผลตรวจรายรูป (ตรรกะเดียวกับตอนลูกค้าตรวจ)

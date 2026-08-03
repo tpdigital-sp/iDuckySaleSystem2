@@ -1571,7 +1571,7 @@ export default function AdminOrderDetailPage() {
                                 <span className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-slate-900/60 px-1.5 py-0.5 text-[10px] font-bold text-white">
                                   รูปที่ {j + 1}
                                 </span>
-                                {pf.review && (
+                                {pf.review ? (
                                   <span
                                     className={`pointer-events-none absolute left-1.5 top-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${
                                       pf.review === "อนุมัติ" ? "bg-teal-50 text-teal-700 ring-teal-200" : "bg-rose-50 text-rose-700 ring-rose-200"
@@ -1579,7 +1579,11 @@ export default function AdminOrderDetailPage() {
                                   >
                                     {pf.review === "อนุมัติ" ? "✔ อนุมัติ" : "✏️ ขอแก้ไข"}
                                   </span>
-                                )}
+                                ) : pf.revisedAt ? (
+                                  <span className="pointer-events-none absolute left-1.5 top-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 ring-1 ring-amber-200">
+                                    🔄 แก้แล้ว · รอตรวจ
+                                  </span>
+                                ) : null}
                                 {mayProof && (
                                   <button
                                     type="button"
@@ -1636,11 +1640,16 @@ export default function AdminOrderDetailPage() {
                                     onChange={(e) => patchProof(i, j, { note: e.target.value || undefined })}
                                     className="w-full rounded-md border border-slate-200 px-1.5 py-0.5 text-[11px] focus:border-violet-300 focus:outline-none"
                                   />
-                                  {pf.review === "ขอแก้ไข" && pf.reviewNote && (
+                                  {pf.review === "ขอแก้ไข" && pf.reviewNote ? (
                                     <p className="rounded-md bg-rose-50 px-1.5 py-1 text-[10px] font-bold leading-snug text-rose-700">
                                       ลูกค้าขอแก้: “{pf.reviewNote}”
                                     </p>
-                                  )}
+                                  ) : !pf.review && pf.revisedAt ? (
+                                    <p className="rounded-md bg-amber-50 px-1.5 py-1 text-[10px] font-bold leading-snug text-amber-700">
+                                      🔄 ส่งฉบับแก้ให้ลูกค้าแล้ว {shortTime(pf.revisedAt)}
+                                      {pf.revisedFromNote ? <span className="block font-normal">เดิมขอ: “{pf.revisedFromNote}”</span> : null}
+                                    </p>
+                                  ) : null}
                                   <label
                                     title="อัปรูปใหม่ทับตำแหน่งเดิม (ไม่ต้องลบก่อน)"
                                     className={`block cursor-pointer rounded-lg px-2 py-1 text-center text-[11px] font-bold transition ${

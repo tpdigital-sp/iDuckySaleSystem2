@@ -787,7 +787,19 @@ export default function CustomerOrderPage() {
                                 {p.review === "อนุมัติ" ? "✓" : "✏"}
                               </span>
                             )}
+                            {/* กราฟฟิกแก้ตามที่ขอแล้ว และยังไม่ได้ตรวจรอบใหม่ */}
+                            {!p.review && p.revisedAt && (
+                              <span className="absolute left-1 top-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white shadow">
+                                🔄 แก้ไขให้แล้ว
+                              </span>
+                            )}
                           </button>
+                          {!p.review && p.revisedAt && (
+                            <p className="mt-1 rounded-lg bg-amber-50 px-1.5 py-1 text-[10px] font-bold leading-snug text-amber-700 ring-1 ring-amber-100">
+                              🔄 แก้ไขให้แล้ว — รบกวนตรวจอีกครั้ง
+                              {p.revisedFromNote ? <span className="block font-normal text-amber-600">แก้ตามที่ขอ: “{p.revisedFromNote}”</span> : null}
+                            </p>
+                          )}
                           {(p.qty || p.note) && (
                             <p className="mt-1 text-[11px] leading-tight text-stone-500">
                               {p.qty ? <span className="font-bold text-stone-700">{p.qty} ชิ้น</span> : null}
