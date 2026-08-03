@@ -654,6 +654,7 @@ export default function ProductEditor({ product }: { product: Product }) {
     { id: "sec-highlights", label: "จุดเด่น" },
     { id: "sec-options", label: "ตัวเลือก" },
     { id: "sec-rules", label: "กติกา" },
+    { id: "sec-bulk", label: "สั่งเยอะ" },
     { id: "sec-pricing", label: "ราคา" },
     { id: "sec-custom", label: "กำหนดเอง" },
     { id: "sec-body", label: "เนื้อหา" },
@@ -1971,7 +1972,7 @@ export default function ProductEditor({ product }: { product: Product }) {
           {/* กติกาเงื่อนไข (ย้ายมาไว้แถบข้าง) */}
           {/* กฎเงื่อนไขตัวเลือก */}
       {/* ── สั่งจำนวนมาก: ต้องเช็คสต๊อกก่อน ── */}
-      <section className="mt-4 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <section id="sec-bulk" className="mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <h2 className="text-sm font-semibold text-slate-800">📦 สั่งจำนวนมาก — เช็คสต๊อกก่อน</h2>
         <p className="mt-1 text-xs text-slate-500">
           ลูกค้าสั่งถึงจำนวนนี้ หน้าสินค้าจะขึ้นเตือนให้ทักแอดมินเช็คสต๊อก/คิวผลิตก่อน (สั่งได้ตามปกติ แต่ออเดอร์จะติดธง &ldquo;รอเช็คสต๊อก&rdquo; ให้ทีมยืนยันจำนวน)

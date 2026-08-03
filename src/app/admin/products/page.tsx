@@ -13,6 +13,7 @@ import {
   PRODUCTS,
   type CategoryId,
   type Product,
+  BULK_ASK_DEFAULT,
 } from "@/lib/products";
 import { loadOverrides, resetAll } from "@/lib/product-store";
 import { deleteProductDb, fetchProductRaw, fetchProducts, persistProduct } from "@/lib/product-repo";
@@ -102,6 +103,17 @@ export default function AdminProductsPage() {
     const raw = (await fetchProductRaw(p.id)) ?? p;
     const res = await persistProduct({ ...raw, reviewed });
     if (!res.ok) refresh(); // ล้มเหลว → ดึงสถานะจริงกลับมา
+  }
+
+  /** ตั้ง "สั่งกี่ชิ้นถึงต้องถามสต๊อก" ของสินค้าตัวนี้ — บันทึกทันที (ค่าว่าง/0 = ใช้ค่ากลาง) */
+  async function setBulkAsk(p: Product, value: string) {
+    const n = Math.floor(Number(value) || 0);
+    const bulkAskQty = n > 0 ? n : undefined;
+    if ((p.bulkAskQty ?? 0) === (bulkAskQty ?? 0)) return; // ไม่เปลี่ยน → ไม่ต้องเขียน
+    setProducts((ps) => ps.map((x) => (x.id === p.id ? { ...x, bulkAskQty } : x)));
+    const raw = (await fetchProductRaw(p.id)) ?? p;
+    const res = await persistProduct({ ...raw, bulkAskQty });
+    if (!res.ok) refresh();
   }
 
   // จำมุมมองที่เลือกไว้ในเบราว์เซอร์
@@ -329,14 +341,14 @@ export default function AdminProductsPage() {
                   <span className="text-sm">{c.emoji}</span> {c.name}
                   <span className="font-normal normal-case text-slate-300">· {inCat.length} รายการ</span>
                 </h2>
-                <TableList items={inCat} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} />
+                <TableList items={inCat} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onBulkAsk={setBulkAsk} />
               </section>
             );
           })}
         </div>
       ) : (
         <div className="mt-5">
-          <TableList items={sorted} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} />
+          <TableList items={sorted} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onBulkAsk={setBulkAsk} />
         </div>
       )}
     </div>
@@ -473,17 +485,42 @@ function NameTags({ p, edited }: { p: Product; edited: boolean }) {
   );
 }
 
+/** ช่องตั้ง "สั่งเยอะเท่าไหร่ถึงต้องถามสต๊อก" — แก้ตรงลิสต์ได้เลย บันทึกตอนออกจากช่อง */
+function BulkAskField({ p, onSave }: { p: Product; onSave: (p: Product, v: string) => void }) {
+  const [v, setV] = useState(p.bulkAskQty ? String(p.bulkAskQty) : "");
+  useEffect(() => setV(p.bulkAskQty ? String(p.bulkAskQty) : ""), [p.bulkAskQty]);
+  return (
+    <label
+      className="flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-50 px-2 py-1 ring-1 ring-slate-200"
+      title="ลูกค้าสั่งถึงจำนวนนี้ หน้าสินค้าจะเตือนให้เช็คสต๊อกกับแอดมินก่อน · เว้นว่าง = ใช้ค่ากลาง"
+    >
+      <span className="text-[11px] font-semibold text-slate-500">📦 สั่งเยอะ ≥</span>
+      <input
+        value={v}
+        onChange={(e) => setV(e.target.value.replace(/\D/g, ""))}
+        onBlur={() => onSave(p, v)}
+        onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+        placeholder={String(BULK_ASK_DEFAULT)}
+        inputMode="numeric"
+        className="w-14 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-center text-xs font-bold text-slate-700 focus:border-amber-400 focus:outline-none"
+      />
+    </label>
+  );
+}
+
 /* ── มุมมองตาราง ── */
 function TableList({
   items,
   overriddenIds,
   onRemove,
   onToggleReview,
+  onBulkAsk,
 }: {
   items: Product[];
   overriddenIds: Set<string>;
   onRemove: (id: string) => void;
   onToggleReview: (p: Product) => void;
+  onBulkAsk: (p: Product, v: string) => void;
 }) {
   return (
     <div className={`overflow-hidden ${card}`}>
@@ -515,6 +552,7 @@ function TableList({
                   : ""}
               </p>
             </div>
+            <BulkAskField p={p} onSave={onBulkAsk} />
             <PriceBlock p={p} />
             <RowActions p={p} onRemove={onRemove} onToggleReview={onToggleReview} />
           </li>
