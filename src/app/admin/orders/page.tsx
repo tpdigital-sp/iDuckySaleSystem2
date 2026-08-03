@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import {
+  daysToUseBy,
   MOCK_ORDERS,
   ORDER_STATUSES,
   orderTotal,
@@ -245,9 +246,28 @@ export default function AdminOrdersPage() {
                         i % 2 === 1 ? "bg-amber-50/70" : ""
                       }`}
                     >
-                      <td className="px-4 py-3.5 align-middle">
-                        <p className="font-bold tabular-nums text-slate-900">{o.id}</p>
-                        <p className="text-xs text-slate-400">{o.date}</p>
+                      <td className={`px-4 py-3.5 align-middle ${o.rush ? "border-l-4 border-l-rose-500" : ""}`}>
+                        <p className="flex flex-wrap items-center gap-1.5 font-bold tabular-nums text-slate-900">
+                          {o.id}
+                          {o.rush && (
+                            <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold text-white" title="งานเร่ง">
+                              🔥 เร่ง
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {o.date}
+                          {(() => {
+                            const d = o.useByDate ? daysToUseBy(o) : null;
+                            if (d == null || o.status === "เสร็จสิ้น" || o.status === "ยกเลิก") return null;
+                            const tone = d < 0 ? "text-rose-600" : d <= 3 ? "text-orange-600" : "text-slate-400";
+                            return (
+                              <span className={`ml-1 font-bold ${tone}`} title="วันที่ลูกค้าต้องใช้งาน">
+                                · ⏱ {d < 0 ? `เลย ${Math.abs(d)} วัน` : d === 0 ? "ใช้งานวันนี้" : `อีก ${d} วัน`}
+                              </span>
+                            );
+                          })()}
+                        </p>
                       </td>
                       <td className="px-4 py-3.5 align-middle">
                         <p className="text-slate-700">{o.customer}</p>

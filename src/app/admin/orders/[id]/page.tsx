@@ -848,7 +848,19 @@ export default function AdminOrderDetailPage() {
           <Link href="/admin/orders" className="text-xs text-slate-400 hover:text-slate-600">
             ← คำสั่งซื้อทั้งหมด
           </Link>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">{order.id}</h1>
+          <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold tracking-tight text-slate-900">
+            {order.id}
+            {order.rush && (
+              <span className="rounded-full bg-rose-500 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">🔥 งานเร่ง</span>
+            )}
+            {(() => {
+              const d = order.useByDate ? daysToUseBy(order) : null;
+              if (d == null || order.status === "เสร็จสิ้น" || order.status === "ยกเลิก") return null;
+              if (d < 0) return <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200">เลยวันใช้งาน {Math.abs(d)} วัน</span>;
+              if (d <= 3) return <span className="rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-bold text-orange-700 ring-1 ring-orange-200">{d === 0 ? "ต้องใช้งานวันนี้" : `อีก ${d} วันถึงวันใช้งาน`}</span>;
+              return null;
+            })()}
+          </h1>
           <p className={`text-xs ${faint}`}>
             {order.date}
             {demo && <span className="ml-1">· ตัวอย่าง</span>}
@@ -1629,35 +1641,55 @@ export default function AdminOrderDetailPage() {
                   </div>
                 </div>
 
-                {/* 🔥 วันที่ลูกค้าต้องใช้งาน + งานเร่ง */}
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold text-slate-600">🔥 วันที่ลูกค้าต้องใช้งาน (วันเร่ง)</p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      type="date"
-                      value={order.useByDate ?? ""}
-                      onChange={(e) => applyOrder({ ...order, useByDate: e.target.value || undefined })}
-                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800 focus:border-amber-300 focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => applyOrder({ ...order, rush: !order.rush })}
-                      className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-                        order.rush ? "bg-rose-500 text-white hover:bg-rose-600" : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                      }`}
-                    >
-                      {order.rush ? "🔥 งานเร่ง" : "ทำเป็นงานเร่ง"}
-                    </button>
-                  </div>
-                  {order.useByDate && (() => {
-                    const d = daysToUseBy(order);
-                    return d == null ? null : (
-                      <p className={`mt-1 text-[11px] font-bold ${d < 0 ? "text-rose-600" : d <= 7 ? "text-amber-600" : "text-slate-400"}`}>
-                        {d < 0 ? `⚠️ เลยวันใช้งานมาแล้ว ${Math.abs(d)} วัน` : d === 0 ? "⚠️ ต้องใช้งานวันนี้!" : `เหลืออีก ${d} วันถึงวันใช้งาน`}
+                {/* 🔥 วันที่ลูกค้าต้องใช้งาน + งานเร่ง — สีบอกความด่วนตั้งแต่เหลือบมอง */}
+                {(() => {
+                  const d = order.useByDate ? daysToUseBy(order) : null;
+                  const late = d != null && d < 0;
+                  const soon = d != null && d >= 0 && d <= 3;
+                  const box = order.rush || late
+                    ? "border-rose-300 bg-rose-50"
+                    : soon
+                      ? "border-orange-300 bg-orange-50"
+                      : "border-slate-200 bg-slate-50/70";
+                  const head = order.rush || late ? "text-rose-700" : soon ? "text-orange-700" : "text-slate-600";
+                  return (
+                    <div className={`rounded-xl border p-2.5 transition ${box}`}>
+                      <p className={`mb-1.5 flex flex-wrap items-center gap-1.5 text-xs font-bold ${head}`}>
+                        🔥 วันที่ลูกค้าต้องใช้งาน
+                        {order.rush && (
+                          <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">งานเร่ง</span>
+                        )}
                       </p>
-                    );
-                  })()}
-                </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="date"
+                          value={order.useByDate ?? ""}
+                          onChange={(e) => applyOrder({ ...order, useByDate: e.target.value || undefined })}
+                          className={`min-w-0 flex-1 rounded-lg border bg-white px-2 py-1.5 text-sm focus:outline-none ${
+                            order.rush || late ? "border-rose-300 font-bold text-rose-700" : soon ? "border-orange-300 font-bold text-orange-700" : "border-slate-200 text-slate-800 focus:border-amber-300"
+                          }`}
+                        />
+                        <button
+                          type="button"
+                          title={order.rush ? "กดอีกครั้งเพื่อยกเลิกงานเร่ง" : "ทำเครื่องหมายว่าเป็นงานเร่ง"}
+                          onClick={() => applyOrder({ ...order, rush: !order.rush })}
+                          className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                            order.rush
+                              ? "bg-rose-500 text-white shadow-sm hover:bg-rose-600"
+                              : "border border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
+                          }`}
+                        >
+                          {order.rush ? "🔥 งานเร่ง (กดเพื่อยกเลิก)" : "🔥 ทำเป็นงานเร่ง"}
+                        </button>
+                      </div>
+                      {d != null && (
+                        <p className={`mt-1 text-[11px] font-bold ${late ? "text-rose-600" : soon ? "text-orange-600" : d <= 7 ? "text-orange-500" : "text-slate-400"}`}>
+                          {late ? `⚠️ เลยวันใช้งานมาแล้ว ${Math.abs(d)} วัน` : d === 0 ? "⚠️ ต้องใช้งานวันนี้!" : `เหลืออีก ${d} วันถึงวันใช้งาน`}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* หมายเหตุแต่ละรายการ */}
                 <div>
