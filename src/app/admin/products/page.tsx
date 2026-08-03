@@ -318,6 +318,18 @@ export default function AdminProductsPage() {
         ))}
       </div>
 
+      {/* คำอธิบายช่องตั้งค่าในแถว — บอกครั้งเดียวใช้ได้ทั้งหน้า */}
+      {view === "table" && sorted.length > 0 && (
+        <p className="mt-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded-xl bg-slate-50 px-3 py-2 text-[11px] text-slate-500 ring-1 ring-slate-200">
+          <span className="rounded-md bg-white px-1.5 py-0.5 font-bold text-slate-600 ring-1 ring-slate-200">📦 สั่งเยอะ ≥</span>
+          <span>
+            = <strong className="text-slate-700">จำนวนที่ลูกค้าสั่งแล้วต้องเช็คสต๊อกก่อน</strong> — สั่งถึงจำนวนนี้ หน้าสินค้าจะขึ้นเตือนให้ทักแอดมินเช็คของ/คิวผลิต
+            และออเดอร์จะติดธง &ldquo;รอเช็คสต๊อก&rdquo; ให้ทีมยืนยันจำนวนก่อนเริ่มงาน (ลูกค้ายังกดสั่งได้ตามปกติ)
+          </span>
+          <span className="text-slate-400">· เว้นว่าง = ใช้ค่ากลาง {BULK_ASK_DEFAULT} ชิ้น · แก้ในช่องแล้วบันทึกทันที</span>
+        </p>
+      )}
+
       {/* ผลลัพธ์ */}
       {sorted.length === 0 ? (
         <div className={`mt-5 p-10 text-center text-sm ${muted} ${card}`}>
@@ -492,9 +504,11 @@ function BulkAskField({ p, onSave }: { p: Product; onSave: (p: Product, v: strin
   return (
     <label
       className="flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-50 px-2 py-1 ring-1 ring-slate-200"
-      title="ลูกค้าสั่งถึงจำนวนนี้ หน้าสินค้าจะเตือนให้เช็คสต๊อกกับแอดมินก่อน · เว้นว่าง = ใช้ค่ากลาง"
+      title={`ลูกค้าสั่งถึงจำนวนนี้ = หน้าสินค้าเตือนให้ทักแอดมินเช็คสต๊อก/คิวผลิตก่อน และออเดอร์ติดธง "รอเช็คสต๊อก" ให้ทีมยืนยันจำนวน · เว้นว่าง = ใช้ค่ากลาง ${BULK_ASK_DEFAULT} ชิ้น`}
     >
-      <span className="text-[11px] font-semibold text-slate-500">📦 สั่งเยอะ ≥</span>
+      <span className="text-[11px] font-semibold text-slate-500">
+        📦 สั่งเยอะ ≥<span className="ml-0.5 text-slate-300" aria-hidden>ⓘ</span>
+      </span>
       <input
         value={v}
         onChange={(e) => setV(e.target.value.replace(/\D/g, ""))}
