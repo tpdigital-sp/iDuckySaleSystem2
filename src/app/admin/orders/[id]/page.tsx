@@ -1046,7 +1046,7 @@ export default function AdminOrderDetailPage() {
           {/* หัวตาราง (จอกว้าง) — อ่านรายการแบบใบสั่งงาน */}
           <div className="mt-3 hidden items-center gap-3 px-4 text-[11px] font-bold uppercase tracking-wide text-slate-400 sm:flex">
             <span className="w-6 shrink-0 text-center">#</span>
-            <span className="w-44 shrink-0 text-center">รูป</span>
+            <span className="w-72 shrink-0 text-center">รูป</span>
             <span className="min-w-0 flex-1">ชื่อสินค้า / รายละเอียด</span>
             <span className="w-12 shrink-0 text-center">จำนวน</span>
             {seesMoney && <span className="w-28 shrink-0 text-right">ราคา/หน่วย</span>}
@@ -1095,7 +1095,7 @@ export default function AdminOrderDetailPage() {
                             void addArtwork(i, e.dataTransfer.files);
                           }}
                           title={mayEdit ? "ลากรูปมาวาง = แนบภาพลายจากลูกค้า" : undefined}
-                          className={`grid w-44 shrink-0 grid-cols-2 gap-1.5 rounded-lg p-0.5 ring-1 transition ${
+                          className={`grid w-72 shrink-0 grid-cols-4 gap-1.5 rounded-lg p-0.5 ring-1 transition ${
                             artDropIdx === i ? "bg-amber-50 ring-2 ring-amber-400" : "ring-transparent"
                           }`}
                         >
@@ -1114,7 +1114,7 @@ export default function AdminOrderDetailPage() {
                                 title={pic.kind === "proof" ? "แบบงานที่กราฟฟิกทำ — กดดูเต็ม" : "ภาพลายจากลูกค้า — กดดูเต็ม"}
                               >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={pic.u} alt={it.name} className="h-[5.25rem] w-full object-cover" />
+                                <img src={pic.u} alt={it.name} className="h-16 w-full object-cover" />
                                 <span className="pointer-events-none absolute bottom-0.5 left-0.5 rounded bg-slate-900/60 px-1 text-[8px] font-bold text-white">
                                   {pic.kind === "proof" ? `แบบ ${pic.at + 1}` : "ลาย"}
                                 </span>
@@ -1138,7 +1138,7 @@ export default function AdminOrderDetailPage() {
                           {/* ปุ่มเพิ่มรูป — ลาย (ของลูกค้า) กับ แบบ (ที่กราฟฟิกทำ) อยู่ที่เดียวกัน */}
                           {mayEdit && (
                             <label
-                              className="grid h-[5.25rem] cursor-pointer place-items-center rounded-lg border-2 border-dashed border-amber-300 bg-white text-center text-[11px] font-bold leading-tight text-amber-600 transition hover:bg-amber-50"
+                              className="grid h-16 cursor-pointer place-items-center rounded-lg border-2 border-dashed border-amber-300 bg-white text-center text-[10px] font-bold leading-tight text-amber-600 transition hover:bg-amber-50"
                               title="แนบภาพลายจากลูกค้า (ลากวางก็ได้)"
                             >
                               {artUpIdx === i ? "อัป…" : <span>＋<br />ลาย</span>}
@@ -1157,7 +1157,7 @@ export default function AdminOrderDetailPage() {
                           )}
                           {mayProof && (
                             <label
-                              className="grid h-[5.25rem] cursor-pointer place-items-center rounded-lg border-2 border-dashed border-violet-300 bg-white text-center text-[11px] font-bold leading-tight text-violet-600 transition hover:bg-violet-50"
+                              className="grid h-16 cursor-pointer place-items-center rounded-lg border-2 border-dashed border-violet-300 bg-white text-center text-[10px] font-bold leading-tight text-violet-600 transition hover:bg-violet-50"
                               title="อัปโหลดแบบงานให้ลูกค้าตรวจ"
                             >
                               {uploadingIdx === i ? "อัป…" : <span>＋<br />แบบ</span>}
