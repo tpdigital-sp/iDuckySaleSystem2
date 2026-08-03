@@ -259,6 +259,7 @@ export default function AdminOrderDetailPage() {
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [err, setErr] = useState("");
+  const [artDropIdx, setArtDropIdx] = useState<number | null>(null);
   // ช่องส่วนลดรายรายการ — ซ่อนไว้ กดป้าย "＋ ใส่ส่วนลด" ท้ายแถวถึงจะโผล่ (นาน ๆ ใช้ที)
   const [discOpen, setDiscOpen] = useState<Record<number, boolean>>({});
   // ช่องหมายเหตุใบงานของแต่ละรายการ — ซ่อนไว้ กดที่รายการนั้นเพื่อเปิด
@@ -694,6 +695,49 @@ export default function AdminOrderDetailPage() {
     if (!demo) void saveOrderAdmin(next);
   }
 
+  /** ลบภาพลายของลูกค้าออกจากรายการ (ไฟล์ยังอยู่ในคลัง แต่ไม่ผูกกับออเดอร์แล้ว) */
+  function removeArtwork(itemIndex: number, url: string) {
+    if (!order) return;
+    const items = order.items.map((it, i) =>
+      i === itemIndex ? { ...it, artworkUrls: (it.artworkUrls ?? []).filter((u) => u !== url) } : it
+    );
+    const next = withLog({ ...order, items }, actor, "ลบภาพลาย", order.items[itemIndex]?.name);
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
+
+  /** แนบภาพลายเพิ่มให้รายการนี้ (ลากวาง/เลือกไฟล์ที่คอลัมน์รูป) */
+  const [artUpIdx, setArtUpIdx] = useState<number | null>(null);
+  async function addArtwork(itemIndex: number, fileList: FileList | File[] | null) {
+    if (!order || !fileList) return;
+    const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    setArtUpIdx(itemIndex);
+    const urls: string[] = [];
+    for (const f of files.slice(0, 8)) {
+      const fd = new FormData();
+      fd.append("file", f);
+      const res = await fetch("/api/orders/artwork", { method: "POST", body: fd });
+      const j = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
+      if (!res.ok || !j?.url) {
+        setErr(j?.error ?? "อัปโหลดภาพลายไม่สำเร็จ");
+        break;
+      }
+      urls.push(j.url);
+    }
+    setArtUpIdx(null);
+    if (!urls.length) return;
+    setOrder((cur) => {
+      if (!cur) return cur;
+      const items = cur.items.map((it, i) =>
+        i === itemIndex ? { ...it, artworkUrls: [...(it.artworkUrls ?? []), ...urls] } : it
+      );
+      const next = withLog({ ...cur, items }, actor, "แนบภาพลาย", `${cur.items[itemIndex]?.name} +${urls.length} รูป`);
+      if (!demo) void saveOrderAdmin(next);
+      return next;
+    });
+  }
+
   function removeProof(itemIndex: number, proofIndex: number) {
     if (!order) return;
     const items = order.items.map((it, i) => {
@@ -1028,46 +1072,94 @@ export default function AdminOrderDetailPage() {
                     >
                       {i + 1}
                     </button>
-                    {/* รูปประจำรายการ — ภาพลายจากลูกค้า + แบบงานที่กราฟฟิกทำ (โชว์ได้หลายรูป) */}
+                    {/* รูปประจำรายการ = ภาพลายจากลูกค้า — จุดเดียวที่ดู/เพิ่ม/ลบภาพลาย
+                        (แบบงานที่กราฟฟิกทำอยู่ในแกลเลอรีด้านล่าง พร้อมจำนวน/ผลตรวจของลูกค้า) */}
                     {(() => {
-                      const pics = [...(it.artworkUrls ?? []), ...proofs.map((pf) => pf.url).filter(Boolean)];
-                      const shown = pics.slice(0, 4);
-                      const more = pics.length - shown.length;
-                      if (!shown.length)
-                        return (
-                          <button
-                            type="button"
-                            onClick={() => setItemOpen((cur) => ({ ...cur, [i]: !open }))}
-                            className="grid h-14 w-28 shrink-0 place-items-center rounded-lg bg-slate-50 text-lg text-slate-300 ring-1 ring-slate-200"
-                            title="ยังไม่มีรูป — กดเพื่อกางรายการแล้วแนบแบบงาน"
-                          >
-                            🖼️
-                          </button>
-                        );
+                      const pics = it.artworkUrls ?? [];
                       return (
-                        <div className={`grid w-28 shrink-0 gap-1 ${shown.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
-                          {shown.map((u, k) => (
-                            <button
-                              key={`${u}-${k}`}
-                              type="button"
-                              onClick={() => setLightbox({ src: u, alt: `${it.name} รูปที่ ${k + 1}`, caption: it.name })}
-                              className="relative overflow-hidden rounded-lg ring-1 ring-slate-200 transition hover:ring-2 hover:ring-amber-300"
-                              title="กดดูรูปเต็ม"
+                        <label
+                          onDragOver={(e) => {
+                            if (!mayEdit) return;
+                            e.preventDefault();
+                            setArtDropIdx(i);
+                          }}
+                          onDragLeave={(e) => {
+                            if (!e.currentTarget.contains(e.relatedTarget as Node)) setArtDropIdx(null);
+                          }}
+                          onDrop={(e) => {
+                            if (!mayEdit) return;
+                            e.preventDefault();
+                            setArtDropIdx(null);
+                            void addArtwork(i, e.dataTransfer.files);
+                          }}
+                          title={mayEdit ? "ลากรูปมาวางเพื่อแนบภาพลาย" : undefined}
+                          className={`grid w-28 shrink-0 grid-cols-2 gap-1 rounded-lg p-0.5 ring-1 transition ${
+                            artDropIdx === i ? "bg-amber-50 ring-2 ring-amber-400" : "ring-transparent"
+                          }`}
+                        >
+                          {pics.map((u, k) => (
+                            <span key={`${u}-${k}`} className="group relative block">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setLightbox({ src: u, alt: `${it.name} ภาพลาย ${k + 1}`, caption: it.name });
+                                }}
+                                className="block w-full overflow-hidden rounded-lg ring-1 ring-slate-200 transition hover:ring-2 hover:ring-amber-300"
+                                title="กดดูรูปเต็ม"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={u}
+                                  alt={`${it.name} ภาพลาย ${k + 1}`}
+                                  className="h-[3.25rem] w-full object-cover"
+                                />
+                              </button>
+                              {mayEdit && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    if (confirm("ลบภาพลายรูปนี้ออกจากรายการ?")) removeArtwork(i, u);
+                                  }}
+                                  aria-label="ลบภาพลายรูปนี้"
+                                  className="absolute -right-1 -top-1 grid h-4.5 w-4.5 place-items-center rounded-full bg-rose-500 text-[9px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </span>
+                          ))}
+                          {mayEdit && (
+                            <span
+                              className={`grid cursor-pointer place-items-center rounded-lg border-2 border-dashed border-slate-300 bg-white text-center text-slate-400 transition hover:border-amber-300 hover:text-amber-600 ${
+                                pics.length === 0 ? "col-span-2 h-20" : "h-[3.25rem]"
+                              }`}
+                              title="แนบภาพลาย (ลากวาง / คลิกเลือกไฟล์)"
                             >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={u}
-                                alt={`${it.name} รูปที่ ${k + 1}`}
-                                className={`w-full object-cover ${shown.length === 1 ? "h-20" : "h-[3.25rem]"}`}
-                              />
-                              {k === 3 && more > 0 && (
-                                <span className="absolute inset-0 grid place-items-center bg-slate-900/55 text-[11px] font-bold text-white">
-                                  +{more}
+                              {artUpIdx === i ? (
+                                <span className="text-[9px] font-bold">กำลังอัป…</span>
+                              ) : (
+                                <span className="text-[10px] font-bold leading-tight">
+                                  ＋<br />ภาพลาย
                                 </span>
                               )}
-                            </button>
-                          ))}
-                        </div>
+                            </span>
+                          )}
+                          {mayEdit && (
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              multiple
+                              className="hidden"
+                              disabled={artUpIdx === i}
+                              onChange={(e) => {
+                                void addArtwork(i, e.target.files);
+                                e.target.value = "";
+                              }}
+                            />
+                          )}
+                        </label>
                       );
                     })()}
                     <div className="min-w-0 flex-1">
