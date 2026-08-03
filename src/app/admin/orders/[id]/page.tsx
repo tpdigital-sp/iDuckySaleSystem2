@@ -67,7 +67,7 @@ function GH({ t, children }: { t: string; children: React.ReactNode }) {
   );
 }
 /** การ์ดของกลุ่ม — ขอบซ้ายสีเดียวกับหัวข้อ */
-const soft = (t: string) => `rounded-xl border border-slate-200/70 border-l-4 ${(GTONE[t] ?? GTONE.slate).card} bg-white p-4`;
+const soft = (t: string) => `rounded-xl border border-slate-200/70 border-l-4 ${(GTONE[t] ?? GTONE.slate).card} bg-white p-3`;
 
 /** sanitize HTML หมายเหตุ — เก็บเฉพาะ span/div/br + inline style color/font-size/font-weight (กัน XSS) */
 function sanitizeNoteHtml(html: string): string {
@@ -193,7 +193,7 @@ function RichNoteEditor({
           suppressContentEditableWarning
           onInput={handleInput}
           onBlur={handleBlur}
-          className="min-h-[58px] w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm leading-snug focus:border-amber-300 focus:outline-none"
+          className="min-h-[44px] w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-[13px] leading-snug focus:border-amber-300 focus:outline-none"
         />
         {empty && placeholder && (
           <span className="pointer-events-none absolute left-2.5 top-1.5 text-sm text-slate-400">{placeholder}</span>
@@ -210,7 +210,7 @@ function RichNoteEditor({
                 title={NOTE_COLORS[c].label}
                 onMouseDown={keepSel}
                 onClick={() => applyStyle({ color: NOTE_COLORS[c].hex })}
-                className="h-5 w-5 rounded-full ring-2 ring-transparent transition hover:ring-slate-300"
+                className="h-4 w-4 rounded-full ring-2 ring-transparent transition hover:ring-slate-300"
                 style={{ backgroundColor: NOTE_COLORS[c].hex }}
               />
             ))}
@@ -222,7 +222,7 @@ function RichNoteEditor({
                 type="button"
                 onMouseDown={keepSel}
                 onClick={() => applyStyle({ fontSize: `${NOTE_SIZES[sz].px}px` })}
-                className="border-r border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 transition last:border-r-0 hover:bg-slate-100"
+                className="border-r border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 transition last:border-r-0 hover:bg-slate-100"
               >
                 {NOTE_SIZES[sz].label}
               </button>
@@ -236,7 +236,7 @@ function RichNoteEditor({
                 onMouseDown={keepSel}
                 onClick={() => applyStyle({ fontWeight: String(NOTE_WEIGHTS[w].css) })}
                 style={{ fontWeight: NOTE_WEIGHTS[w].css }}
-                className="border-r border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500 transition last:border-r-0 hover:bg-slate-100"
+                className="border-r border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-500 transition last:border-r-0 hover:bg-slate-100"
               >
                 {NOTE_WEIGHTS[w].label}
               </button>
@@ -1676,7 +1676,7 @@ export default function AdminOrderDetailPage() {
         </div>
 
         {/* ── ขวา: ข้อมูล ── */}
-        <div className="space-y-6 border-t border-slate-200/70 bg-slate-50/50 px-6 py-6 lg:border-l lg:border-t-0">
+        <div className="space-y-4 border-t border-slate-200/70 bg-slate-50/50 px-4 py-5 lg:border-l lg:border-t-0">
           <div>
             <GH t="sky">👤 ลูกค้า / จัดส่ง</GH>
             <div className={`mt-2 ${soft("sky")}`}>
@@ -1689,7 +1689,7 @@ export default function AdminOrderDetailPage() {
                       onChange={(e) => setOrder((cur) => (cur ? { ...cur, customer: e.target.value } : cur))}
                       onBlur={persist}
                       placeholder="ชื่อลูกค้า"
-                      className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-bold text-slate-800 focus:border-amber-300 focus:outline-none"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[13px] font-bold text-slate-800 focus:border-amber-300 focus:outline-none"
                     />
                     <input
                       value={order.phone}
@@ -1697,7 +1697,7 @@ export default function AdminOrderDetailPage() {
                       onBlur={persist}
                       inputMode="tel"
                       placeholder="เบอร์โทร"
-                      className="w-32 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 focus:border-amber-300 focus:outline-none"
+                      className="w-28 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[13px] text-slate-700 focus:border-amber-300 focus:outline-none"
                     />
                   </div>
                   <textarea
@@ -1706,7 +1706,7 @@ export default function AdminOrderDetailPage() {
                     onBlur={persist}
                     rows={2}
                     placeholder="ที่อยู่จัดส่ง"
-                    className="w-full resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 focus:border-amber-300 focus:outline-none"
+                    className="w-full resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[13px] text-slate-700 focus:border-amber-300 focus:outline-none"
                   />
                   <p className={`text-xs ${faint}`}>
                     {order.payment} · {order.shippingLabel || order.shipping}
@@ -1745,14 +1745,14 @@ export default function AdminOrderDetailPage() {
                       type="date"
                       value={order.shipDate?.from ?? ""}
                       onChange={(e) => applyOrder({ ...order, shipDate: { ...order.shipDate, from: e.target.value } })}
-                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800 focus:border-amber-300 focus:outline-none"
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1 text-[13px] text-slate-800 focus:border-amber-300 focus:outline-none"
                     />
                     <span className="shrink-0 text-slate-400">–</span>
                     <input
                       type="date"
                       value={order.shipDate?.to ?? ""}
                       onChange={(e) => applyOrder({ ...order, shipDate: { ...order.shipDate, to: e.target.value } })}
-                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800 focus:border-amber-300 focus:outline-none"
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1 text-[13px] text-slate-800 focus:border-amber-300 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -1781,7 +1781,7 @@ export default function AdminOrderDetailPage() {
                           type="date"
                           value={order.useByDate ?? ""}
                           onChange={(e) => applyOrder({ ...order, useByDate: e.target.value || undefined })}
-                          className={`min-w-0 flex-1 rounded-lg border bg-white px-2 py-1.5 text-sm focus:outline-none ${
+                          className={`min-w-0 flex-1 rounded-lg border bg-white px-2 py-1 text-[13px] focus:outline-none ${
                             order.rush || late ? "border-rose-300 font-bold text-rose-700" : soon ? "border-orange-300 font-bold text-orange-700" : "border-slate-200 text-slate-800 focus:border-amber-300"
                           }`}
                         />
@@ -1970,7 +1970,7 @@ export default function AdminOrderDetailPage() {
                 onChange={(e) => setOrder((cur) => (cur ? { ...cur, tracking: e.target.value } : cur))}
                 onBlur={saveTracking}
                 placeholder="ยิง QR หรือพิมพ์เลขพัสดุ"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm text-slate-800 placeholder:font-sans placeholder:text-slate-400 focus:border-amber-300 focus:outline-none"
+                className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 font-mono text-[13px] text-slate-800 placeholder:font-sans placeholder:text-slate-400 focus:border-amber-300 focus:outline-none"
               />
               <p className={`mt-1.5 text-[11px] ${faint}`}>
                 กรอกแล้วสถานะจะเปลี่ยนเป็น “จัดส่งแล้ว” · ลูกค้าจะเห็นเลขนี้ในหน้าเช็คออเดอร์
