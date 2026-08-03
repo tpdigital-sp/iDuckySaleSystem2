@@ -259,6 +259,8 @@ export default function AdminOrderDetailPage() {
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [err, setErr] = useState("");
+  // ช่องส่วนลดรายรายการ — ซ่อนไว้ กดป้าย "＋ ใส่ส่วนลด" ท้ายแถวถึงจะโผล่ (นาน ๆ ใช้ที)
+  const [discOpen, setDiscOpen] = useState<Record<number, boolean>>({});
   // ช่องหมายเหตุใบงานของแต่ละรายการ — ซ่อนไว้ กดที่รายการนั้นเพื่อเปิด
   const [noteOpen, setNoteOpen] = useState<Record<number, boolean>>({});
   // ยุบ/กางรายละเอียดของแต่ละรายการ — ออเดอร์ที่มีหลายรายการจะได้ไม่ยาวจนหาของไม่เจอ
@@ -939,7 +941,7 @@ export default function AdminOrderDetailPage() {
         </div>
       )}
 
-      <div className="grid lg:grid-cols-[1.85fr_0.85fr]">
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_20rem]">
         {/* ── ซ้าย: งานแบบ ── */}
         <div className="px-6 py-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1000,7 +1002,7 @@ export default function AdminOrderDetailPage() {
           {/* หัวตาราง (จอกว้าง) — อ่านรายการแบบใบสั่งงาน */}
           <div className="mt-3 hidden items-center gap-3 px-4 text-[11px] font-bold uppercase tracking-wide text-slate-400 sm:flex">
             <span className="w-6 shrink-0 text-center">#</span>
-            <span className="w-14 shrink-0 text-center">รูป</span>
+            <span className="w-28 shrink-0 text-center">รูป</span>
             <span className="min-w-0 flex-1">ชื่อสินค้า / รายละเอียด</span>
             <span className="w-12 shrink-0 text-center">จำนวน</span>
             {seesMoney && <span className="w-28 shrink-0 text-right">ราคา/หน่วย</span>}
@@ -1026,23 +1028,46 @@ export default function AdminOrderDetailPage() {
                     >
                       {i + 1}
                     </button>
-                    {/* รูปประจำรายการ — ภาพลายจากลูกค้า ถ้ายังไม่มีก็ใช้แบบงานที่กราฟฟิกทำ */}
+                    {/* รูปประจำรายการ — ภาพลายจากลูกค้า + แบบงานที่กราฟฟิกทำ (โชว์ได้หลายรูป) */}
                     {(() => {
-                      const thumb = it.artworkUrls?.[0] ?? proofs[0]?.url;
+                      const pics = [...(it.artworkUrls ?? []), ...proofs.map((pf) => pf.url).filter(Boolean)];
+                      const shown = pics.slice(0, 4);
+                      const more = pics.length - shown.length;
+                      if (!shown.length)
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setItemOpen((cur) => ({ ...cur, [i]: !open }))}
+                            className="grid h-14 w-28 shrink-0 place-items-center rounded-lg bg-slate-50 text-lg text-slate-300 ring-1 ring-slate-200"
+                            title="ยังไม่มีรูป — กดเพื่อกางรายการแล้วแนบแบบงาน"
+                          >
+                            🖼️
+                          </button>
+                        );
                       return (
-                        <button
-                          type="button"
-                          onClick={() => setItemOpen((cur) => ({ ...cur, [i]: !open }))}
-                          className="shrink-0"
-                          title={open ? "ยุบรายการนี้" : "กางรายการนี้"}
-                        >
-                          {thumb ? (
-                            /* eslint-disable-next-line @next/next/no-img-element */
-                            <img src={thumb} alt={it.name} className="h-14 w-14 rounded-lg object-cover ring-1 ring-slate-200" />
-                          ) : (
-                            <span className="grid h-14 w-14 place-items-center rounded-lg bg-slate-50 text-lg text-slate-300 ring-1 ring-slate-200">🖼️</span>
-                          )}
-                        </button>
+                        <div className={`grid w-28 shrink-0 gap-1 ${shown.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
+                          {shown.map((u, k) => (
+                            <button
+                              key={`${u}-${k}`}
+                              type="button"
+                              onClick={() => setLightbox({ src: u, alt: `${it.name} รูปที่ ${k + 1}`, caption: it.name })}
+                              className="relative overflow-hidden rounded-lg ring-1 ring-slate-200 transition hover:ring-2 hover:ring-amber-300"
+                              title="กดดูรูปเต็ม"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={u}
+                                alt={`${it.name} รูปที่ ${k + 1}`}
+                                className={`w-full object-cover ${shown.length === 1 ? "h-20" : "h-[3.25rem]"}`}
+                              />
+                              {k === 3 && more > 0 && (
+                                <span className="absolute inset-0 grid place-items-center bg-slate-900/55 text-[11px] font-bold text-white">
+                                  +{more}
+                                </span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
                       );
                     })()}
                     <div className="min-w-0 flex-1">
@@ -1068,7 +1093,7 @@ export default function AdminOrderDetailPage() {
                     <span className={`w-28 shrink-0 text-right text-sm font-bold text-slate-900 ${seesMoney ? "" : "hidden"}`}>
                       {formatPrice(it.unitPrice)}
                       {/* ส่วนลดเฉพาะรายการนี้ — เลือกได้ทั้งบาทและ % (บันทึกตอนออกจากช่อง พร้อมลง log) */}
-                      {mayEdit && seesMoney ? (
+                      {mayEdit && seesMoney && (discOpen[i] || itemDiscountAmount(it) > 0) ? (
                         <span className="mt-1 flex items-center justify-end gap-1 text-[11px] font-semibold text-rose-500">
                           ลด
                           <input
@@ -1143,8 +1168,24 @@ export default function AdminOrderDetailPage() {
                         </span>
                       ) : null}
                     </span>
-                    <span className={`w-24 shrink-0 text-right text-sm font-extrabold text-slate-900 ${seesMoney ? "" : "hidden"}`}>
-                      {formatPrice(it.qty * it.unitPrice - itemDiscountAmount(it))}
+                    <span className={`w-24 shrink-0 text-right ${seesMoney ? "" : "hidden"}`}>
+                      <span className="block text-sm font-extrabold text-slate-900">
+                        {formatPrice(it.qty * it.unitPrice - itemDiscountAmount(it))}
+                      </span>
+                      {itemDiscountAmount(it) > 0 ? (
+                        <span className="mt-0.5 block text-[10px] font-bold text-rose-500">
+                          ลดแล้ว −{formatPrice(itemDiscountAmount(it))}
+                        </span>
+                      ) : mayEdit && seesMoney && !discOpen[i] ? (
+                        <button
+                          type="button"
+                          onClick={() => setDiscOpen((cur) => ({ ...cur, [i]: true }))}
+                          title="ใส่ส่วนลดเฉพาะรายการนี้"
+                          className="mt-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold text-slate-400 ring-1 ring-slate-200 transition hover:bg-rose-50 hover:text-rose-600 hover:ring-rose-200"
+                        >
+                          ＋ ใส่ส่วนลด
+                        </button>
+                      ) : null}
                     </span>
                   </div>
 
