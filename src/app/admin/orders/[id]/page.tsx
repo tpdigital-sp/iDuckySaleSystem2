@@ -1597,13 +1597,22 @@ export default function AdminOrderDetailPage() {
                 {shortcutExt === "webloc" ? " (ปุ่มบนให้ไฟล์ .webloc สำหรับ Mac)" : shortcutExt === "url" ? " (ปุ่มบนให้ไฟล์ .url สำหรับ Windows)" : ""}
                 {shortcutExt && (
                   <>
-                    {" · โฟลเดอร์นี้มีคนใช้อีกระบบด้วย? "}
+                    {" · ทีมใช้เครื่องคนละระบบ? "}
                     <button
                       type="button"
                       onClick={() => downloadOrderShortcut(order.id, customerUrl, shortcutExt === "webloc" ? "url" : "webloc")}
                       className="font-bold text-amber-600 underline decoration-amber-300 underline-offset-2 hover:text-amber-700"
                     >
                       โหลดแบบ{shortcutExt === "webloc" ? " Windows (.url)" : " Mac (.webloc)"}
+                    </button>
+                    {" · "}
+                    <button
+                      type="button"
+                      onClick={() => downloadOrderShortcut(order.id, customerUrl, "html")}
+                      title="ไฟล์เดียวเปิดได้ทั้ง Mac / Windows / มือถือ — เด้งเข้าออเดอร์ให้เอง"
+                      className="font-bold text-amber-600 underline decoration-amber-300 underline-offset-2 hover:text-amber-700"
+                    >
+                      ใช้ได้ทุกเครื่อง (.html)
                     </button>
                   </>
                 )}
@@ -2568,18 +2577,23 @@ function shortcutKind(): "webloc" | "url" {
  *   • macOS → .webloc (plist ของ Apple — Finder รู้จักเป็น "ตำแหน่งที่ตั้งอินเทอร์เน็ต")
  *   • Windows → .url (Internet Shortcut)
  */
-function downloadOrderShortcut(orderId: string, url: string, kind?: "webloc" | "url") {
+function downloadOrderShortcut(orderId: string, url: string, kind?: "webloc" | "url" | "html") {
   if (!url) return;
-  const mac = (kind ?? shortcutKind()) === "webloc";
-  const esc = (u: string) => u.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const body = mac
-    ? `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n\t<key>URL</key>\n\t<string>${esc(url)}</string>\n</dict>\n</plist>\n`
-    : `[InternetShortcut]\r\nURL=${url}\r\nIconIndex=0\r\n`;
-  const blob = new Blob([body], { type: mac ? "application/xml" : "application/internet-shortcut" });
+  const k = kind ?? shortcutKind();
+  const esc = (u: string) => u.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const body =
+    k === "webloc"
+      ? `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n\t<key>URL</key>\n\t<string>${esc(url)}</string>\n</dict>\n</plist>\n`
+      : k === "html"
+        ? // ใช้ได้ทุกเครื่อง (Mac / Windows / มือถือ) — เด้งเข้าออเดอร์ทันที มีลิงก์สำรองถ้า JS ถูกปิด
+          `<!doctype html>\n<html lang="th">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>${esc(orderId)} — iDucky</title>\n<meta http-equiv="refresh" content="0;url=${esc(url)}">\n<script>location.replace(${JSON.stringify(url)});</script>\n</head>\n<body style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;text-align:center;padding:56px 20px;color:#44403c">\n<p style="font-size:15px">🦆 กำลังเปิดออเดอร์ <b>${esc(orderId)}</b>…</p>\n<p style="font-size:13px;color:#a8a29e">ถ้าไม่เปิดอัตโนมัติ กดลิงก์ด้านล่าง</p>\n<p><a href="${esc(url)}" style="display:inline-block;margin-top:8px;background:#fbbf24;color:#fff;text-decoration:none;font-weight:700;padding:11px 22px;border-radius:999px">เปิดหน้าออเดอร์</a></p>\n</body>\n</html>\n`
+        : `[InternetShortcut]\r\nURL=${url}\r\nIconIndex=0\r\n`;
+  const type = k === "webloc" ? "application/xml" : k === "html" ? "text/html;charset=utf-8" : "application/internet-shortcut";
+  const blob = new Blob([body], { type });
   const href = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = href;
-  a.download = `${orderId}.${mac ? "webloc" : "url"}`;
+  a.download = `${orderId}.${k}`;
   document.body.appendChild(a);
   a.click();
   a.remove();
