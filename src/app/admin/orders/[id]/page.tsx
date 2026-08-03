@@ -1165,187 +1165,29 @@ export default function AdminOrderDetailPage() {
                     >
                       {i + 1}
                     </button>
-                    {/* รูปของรายการนี้ — จุดเดียวที่ดู/เพิ่ม/ลบ ทั้งภาพลายลูกค้าและแบบงานที่กราฟฟิกทำ */}
+                    {/* รูปตัวอย่างในแถว — กดเพื่อกาง แล้วจัดการรูปทั้งหมดด้านล่าง */}
                     {(() => {
-                      // หลังบ้านเห็นครบทั้งสองชนิด (แบบขึ้นก่อน เพราะคือของที่ลูกค้าเห็น)
-                      // — ฝั่งลูกค้าโชว์เฉพาะ "แบบ" อยู่แล้ว ลายเป็นของทีมงานใช้อ้างอิง
-                      const pics = [
-                        ...proofs.map((pf, j) => ({ u: pf.url, kind: "proof" as const, at: j })),
-                        ...(it.artworkUrls ?? []).map((u) => ({ u, kind: "art" as const, at: -1 })),
-                      ];
+                      const cover = proofs[proofs.length - 1]?.url ?? it.artworkUrls?.[0];
                       return (
-                        <div
-                          onDragOver={(e) => {
-                            if (!mayEdit) return;
-                            e.preventDefault();
-                            setArtDropIdx(i);
-                          }}
-                          onDragLeave={(e) => {
-                            if (!e.currentTarget.contains(e.relatedTarget as Node)) setArtDropIdx(null);
-                          }}
-                          onDrop={(e) => {
-                            if (!mayEdit) return;
-                            e.preventDefault();
-                            setArtDropIdx(null);
-                            void addArtwork(i, e.dataTransfer.files);
-                          }}
-                          title={mayEdit ? "ลากรูปมาวาง = แนบภาพลายจากลูกค้า" : undefined}
-                          className={`grid w-72 shrink-0 grid-cols-4 gap-1.5 rounded-lg p-0.5 ring-1 transition ${
-                            artDropIdx === i ? "bg-amber-50 ring-2 ring-amber-400" : "ring-transparent"
-                          }`}
+                        <button
+                          type="button"
+                          onClick={() => setItemOpen((cur) => ({ ...cur, [i]: !open }))}
+                          className="w-20 shrink-0 text-left"
+                          title={open ? "ยุบรายการนี้" : "กางเพื่อจัดการรูป"}
                         >
-                          {pics.map((pic, k) => (
-                            <span key={`${pic.u}-${k}`} className="group relative block">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  pic.kind === "proof"
-                                    ? showProof(i, pic.at)
-                                    : setLightbox({ src: pic.u, alt: `${it.name} ภาพลาย`, caption: it.name })
-                                }
-                                className={`block w-full overflow-hidden rounded-lg ring-1 transition hover:ring-2 ${
-                                  pic.kind === "proof" ? "ring-violet-300 hover:ring-violet-400" : "ring-slate-200 hover:ring-amber-300"
-                                }`}
-                                title={pic.kind === "proof" ? "แบบงานที่กราฟฟิกทำ — กดดูเต็ม" : "ภาพลายจากลูกค้า — กดดูเต็ม"}
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={pic.u} alt={it.name} className="h-16 w-full object-cover" />
-                                <span className="pointer-events-none absolute bottom-0.5 left-0.5 rounded bg-slate-900/60 px-1 text-[8px] font-bold text-white">
-                                  {pic.kind === "proof" ? `แบบ ${pic.at + 1}` : "ลาย"}
-                                </span>
-                              </button>
-                              {/* ผลตรวจของลูกค้า (เฉพาะแบบงาน) */}
-                              {pic.kind === "proof" && proofs[pic.at]?.review && (
-                                <span
-                                  className={`pointer-events-none absolute left-0.5 top-0.5 rounded-full px-1 py-px text-[8px] font-bold text-white ${
-                                    proofs[pic.at].review === "อนุมัติ" ? "bg-teal-500" : "bg-rose-500"
-                                  }`}
-                                >
-                                  {proofs[pic.at].review === "อนุมัติ" ? "✓" : "✏️"}
-                                </span>
-                              )}
-                              {/* เปลี่ยนรูปนี้ — อัปทับตำแหน่งเดิม ไม่ต้องลบก่อน (เลขรูปกับผลตรวจของลูกค้าคงเดิม) */}
-                              {pic.kind === "proof" && mayProof && (
-                                <label
-                                  title="เปลี่ยนรูปนี้ — อัปทับตำแหน่งเดิมได้เลย ไม่ต้องลบก่อน"
-                                  className="absolute -left-1 -top-1 grid h-4 w-4 cursor-pointer place-items-center rounded-full bg-indigo-600 text-[8px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100"
-                                >
-                                  🔄
-                                  <input
-                                    type="file"
-                                    accept="image/png,image/jpeg,image/webp,image/gif"
-                                    className="hidden"
-                                    onChange={(e) => {
-                                      void replaceProof(i, pic.at, e.target.files?.[0] ?? null);
-                                      e.target.value = "";
-                                    }}
-                                  />
-                                </label>
-                              )}
-                              {pic.kind === "art" && mayProof && !proofs.some((pf) => pf.url === pic.u) && (
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    const ok = await askConfirm({
-                                      icon: "🎨",
-                                      title: "ส่งรูปนี้ให้ลูกค้าตรวจเลยไหม?",
-                                      detail: "รูปจะขึ้นเป็นแบบงานในหน้าลูกค้า พร้อมปุ่มอนุมัติ / ขอแก้ไข",
-                                      confirmLabel: "ส่งให้ลูกค้าตรวจ",
-                                    });
-                                    if (ok) useArtAsProof(i, pic.u);
-                                  }}
-                                  title="ใช้รูปนี้เป็นแบบให้ลูกค้ากดอนุมัติ/ขอแก้ไข"
-                                  className="absolute -left-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-violet-600 text-[9px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100"
-                                >
-                                  ✓
-                                </button>
-                              )}
-                              {((pic.kind === "art" && mayEdit) || (pic.kind === "proof" && mayProof)) && (
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    const ok = await askConfirm({
-                                      icon: "🗑",
-                                      title: pic.kind === "proof" ? "ลบแบบงานรูปนี้?" : "ลบภาพลายรูปนี้?",
-                                      detail:
-                                        pic.kind === "proof"
-                                          ? "ลูกค้าจะไม่เห็นแบบรูปนี้อีก — ถ้าไม่เหลือแบบเลย รายการจะกลับไปสถานะรอกราฟฟิกทำแบบ"
-                                          : "เอารูปออกจากรายการนี้ (ไฟล์ยังอยู่ในคลัง)",
-                                      confirmLabel: "ลบรูป",
-                                      danger: true,
-                                    });
-                                    if (!ok) return;
-                                    if (pic.kind === "proof") removeProof(i, pic.at);
-                                    else removeArtwork(i, pic.u);
-                                  }}
-                                  aria-label={pic.kind === "proof" ? "ลบแบบงานรูปนี้" : "ลบภาพลายรูปนี้"}
-                                  className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-rose-500 text-[9px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100"
-                                >
-                                  ✕
-                                </button>
-                              )}
+                          {cover ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img src={cover} alt={it.name} className="h-20 w-20 rounded-lg object-cover ring-1 ring-slate-200" />
+                          ) : (
+                            <span className="grid h-20 w-20 place-items-center rounded-lg bg-slate-50 text-xl text-slate-300 ring-1 ring-slate-200">
+                              🖼️
                             </span>
-                          ))}
-                          {/* ปุ่มเพิ่มรูปปุ่มเดียว — กดแล้วเลือกว่าเป็นลายของลูกค้า หรือแบบที่ทำให้ตรวจ */}
-                          {(mayEdit || mayProof) && (
-                            <div className="relative">
-                              <button
-                                type="button"
-                                onClick={() => setAddPicIdx(addPicIdx === i ? null : i)}
-                                title="เพิ่มรูปให้รายการนี้"
-                                className={`grid h-16 w-full place-items-center rounded-lg border-2 border-dashed text-center text-[10px] font-bold leading-tight transition ${
-                                  addPicIdx === i
-                                    ? "border-amber-400 bg-amber-50 text-amber-700"
-                                    : "border-slate-300 bg-white text-slate-400 hover:border-amber-300 hover:text-amber-600"
-                                }`}
-                              >
-                                {artUpIdx === i || uploadingIdx === i ? (
-                                  "อัป…"
-                                ) : (
-                                  <span>
-                                    ＋<br />เพิ่มรูป
-                                  </span>
-                                )}
-                              </button>
-                              {addPicIdx === i && (
-                                <div className="absolute left-0 top-full z-20 mt-1 w-40 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
-                                  {mayEdit && (
-                                    <label className="flex cursor-pointer items-center gap-1.5 border-b border-slate-100 px-2.5 py-2 text-[11px] font-bold text-slate-700 hover:bg-amber-50">
-                                      🎨 ลายจากลูกค้า
-                                      <input
-                                        type="file"
-                                        accept="image/jpeg,image/png,image/webp"
-                                        multiple
-                                        className="hidden"
-                                        onChange={(e) => {
-                                          void addArtwork(i, e.target.files);
-                                          e.target.value = "";
-                                          setAddPicIdx(null);
-                                        }}
-                                      />
-                                    </label>
-                                  )}
-                                  {mayProof && (
-                                    <label className="flex cursor-pointer items-center gap-1.5 px-2.5 py-2 text-[11px] font-bold text-slate-700 hover:bg-violet-50">
-                                      🖼 แบบให้ลูกค้าตรวจ
-                                      <input
-                                        type="file"
-                                        accept="image/png,image/jpeg,image/webp,image/gif"
-                                        multiple
-                                        className="hidden"
-                                        onChange={(e) => {
-                                          void sendProofs(i, e.target.files);
-                                          e.target.value = "";
-                                          setAddPicIdx(null);
-                                        }}
-                                      />
-                                    </label>
-                                  )}
-                                </div>
-                              )}
-                            </div>
                           )}
-                        </div>
+                          <span className="mt-0.5 block text-[10px] leading-tight text-slate-400">
+                            {proofs.length ? `🖼 แบบ ${proofs.length}` : "ยังไม่มีแบบ"}
+                            {(it.artworkUrls?.length ?? 0) > 0 ? ` · 🎨 ลาย ${it.artworkUrls!.length}` : ""}
+                          </span>
+                        </button>
                       );
                     })()}
                     <div className="min-w-0 max-w-xl flex-1">
@@ -1565,86 +1407,199 @@ export default function AdminOrderDetailPage() {
                     )}
                   </div>
 
-                  {/* ลายที่แนบยังไม่ได้ส่งให้ลูกค้าตรวจ → ส่งทีเดียวทุกรูป */}
-                  {mayProof &&
-                    (() => {
-                      const have = new Set(proofs.map((p) => p.url));
-                      const pending = (it.artworkUrls ?? []).filter((u) => !have.has(u));
-                      if (!pending.length) return null;
-                      return (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const ok = await askConfirm({
-                              icon: "🎨",
-                              title: `ส่งลายที่แนบ ${pending.length} รูป ให้ลูกค้าตรวจ?`,
-                              detail: "รูปทั้งหมดจะขึ้นเป็นแบบงานในหน้าลูกค้า พร้อมปุ่มอนุมัติ / ขอแก้ไข",
-                              confirmLabel: "ส่งให้ลูกค้าตรวจ",
-                            });
-                            if (ok) sendAllArtAsProofs(i);
-                          }}
-                          className="mt-2 rounded-xl bg-violet-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-violet-700"
-                        >
-                          🎨 ส่งลายที่แนบให้ลูกค้าตรวจ ({pending.length} รูป)
-                        </button>
-                      );
-                    })()}
-
-                  {it.proofStatus === "ขอแก้ไข" && it.proofNote && (
-                    <p className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-100">
-                      ลูกค้าขอแก้: “{it.proofNote}”
-                    </p>
-                  )}
-
-                  {/* จำนวน/รายละเอียดต่อรูปแบบงาน — รูปอยู่ที่คอลัมน์รูปแล้ว ตรงนี้เหลือเฉพาะข้อมูล */}
-                  {proofs.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {proofs.map((p, j) => (
-                        <div
-                          key={`${p.url}-${j}`}
-                          className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 ring-1 ${
-                            p.review === "ขอแก้ไข" ? "bg-rose-50 ring-rose-200" : "bg-slate-50 ring-slate-200"
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => showProof(i, j)}
-                            className="text-[11px] font-bold text-slate-500 hover:text-indigo-700"
-                            title="ดูรูปเต็ม"
+                  {/* ── รูปงาน แยกชัดว่าใครเป็นคนใส่ · ใครเห็น ── */}
+                  <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                    {/* ซ้าย: ลายที่ลูกค้าส่งมา (ทีมงานเห็นเท่านั้น) */}
+                    <div className="rounded-xl border border-sky-200 bg-sky-50/40 p-3">
+                      <p className="text-xs font-bold text-sky-800">
+                        🎨 ลายจากลูกค้า ({it.artworkUrls?.length ?? 0})
+                        <span className="ml-1 font-normal text-sky-600">— ทีมงานเห็นเท่านั้น ลูกค้าไม่เห็นในหน้าเช็คออเดอร์</span>
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {(it.artworkUrls ?? []).map((u, k) => (
+                          <span key={`${u}-${k}`} className="group relative block">
+                            <button
+                              type="button"
+                              onClick={() => setLightbox({ src: u, alt: `${it.name} ลายที่ลูกค้าส่ง ${k + 1}`, caption: it.name })}
+                              className="block h-16 w-16 overflow-hidden rounded-lg ring-1 ring-sky-200 transition hover:ring-2 hover:ring-sky-400"
+                              title="ดูรูปเต็ม"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={u} alt={`ลาย ${k + 1}`} className="h-full w-full object-cover" />
+                            </button>
+                            {mayEdit && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const ok = await askConfirm({ icon: "🗑", title: "ลบลายรูปนี้?", detail: "เอารูปออกจากรายการนี้ (ไฟล์ยังอยู่ในคลัง)", confirmLabel: "ลบรูป", danger: true });
+                                  if (ok) removeArtwork(i, u);
+                                }}
+                                aria-label="ลบลายรูปนี้"
+                                className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-rose-500 text-[9px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                        {mayEdit && (
+                          <label
+                            className="grid h-16 w-16 cursor-pointer place-items-center rounded-lg border-2 border-dashed border-sky-300 bg-white text-center text-[10px] font-bold leading-tight text-sky-600 transition hover:bg-sky-50"
+                            title="แนบลายจากลูกค้าเพิ่ม (ลากวางก็ได้)"
                           >
-                            แบบ {j + 1}
-                          </button>
-                          {mayProof ? (
-                            <>
-                              <input
-                                type="number"
-                                min={1}
-                                value={p.qty ?? ""}
-                                placeholder="จำนวน"
-                                onChange={(e) => patchProof(i, j, { qty: Math.max(0, Number(e.target.value) || 0) || undefined })}
-                                className="w-16 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-center text-[11px] focus:border-amber-300 focus:outline-none"
-                              />
-                              <span className="text-[10px] text-slate-400">ชิ้น</span>
-                              <input
-                                value={p.note ?? ""}
-                                placeholder="รายละเอียด"
-                                onChange={(e) => patchProof(i, j, { note: e.target.value || undefined })}
-                                className="w-28 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] focus:border-amber-300 focus:outline-none"
-                              />
-                            </>
-                          ) : (
-                            <span className="text-[11px] text-slate-600">
-                              {p.qty ? `${p.qty} ชิ้น` : "ยังไม่ระบุจำนวน"}
-                              {p.note ? ` · ${p.note}` : ""}
-                            </span>
-                          )}
-                          {p.review === "ขอแก้ไข" && p.reviewNote && (
-                            <span className="text-[10px] font-bold text-rose-600">ขอแก้: “{p.reviewNote}”</span>
-                          )}
-                        </div>
-                      ))}
+                            {artUpIdx === i ? "อัป…" : <span>＋<br />แนบลาย</span>}
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              multiple
+                              className="hidden"
+                              disabled={artUpIdx === i}
+                              onChange={(e) => {
+                                void addArtwork(i, e.target.files);
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                        )}
+                      </div>
+                      {mayProof &&
+                        (() => {
+                          const have = new Set(proofs.map((pf) => pf.url));
+                          const pending = (it.artworkUrls ?? []).filter((u) => !have.has(u));
+                          if (!pending.length) return null;
+                          return (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const ok = await askConfirm({
+                                  icon: "🎨",
+                                  title: `ใช้ลาย ${pending.length} รูปนี้เป็นแบบเลยไหม?`,
+                                  detail: "คัดลอกไปฝั่งขวา (แบบที่เราส่งให้ตรวจ) ลูกค้าจะเห็นและกดอนุมัติได้",
+                                  confirmLabel: "ใช้เป็นแบบ",
+                                });
+                                if (ok) sendAllArtAsProofs(i);
+                              }}
+                              className="mt-2 rounded-lg bg-sky-600 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-sky-700"
+                            >
+                              ใช้ลายนี้เป็นแบบ → ({pending.length} รูป)
+                            </button>
+                          );
+                        })()}
                     </div>
-                  )}
+
+                    {/* ขวา: แบบที่ร้านส่งให้ลูกค้าตรวจ */}
+                    <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-3">
+                      <p className="text-xs font-bold text-violet-800">
+                        🖼 แบบที่เราส่งให้ตรวจ ({proofs.length})
+                        <span className="ml-1 font-normal text-violet-600">— ลูกค้าเห็นชุดนี้ และกดอนุมัติ / ขอแก้ไข</span>
+                      </p>
+                      {proofs.length === 0 ? (
+                        <p className="mt-2 rounded-lg border-2 border-dashed border-violet-200 bg-white px-3 py-3 text-center text-[11px] text-slate-400">
+                          ยังไม่ได้ส่งแบบให้ลูกค้า — อัปแบบที่ทำเสร็จ หรือกด “ใช้ลายนี้เป็นแบบ” จากฝั่งซ้าย
+                        </p>
+                      ) : (
+                        <div className="mt-2 space-y-1.5">
+                          {proofs.map((pf, j) => (
+                            <div
+                              key={`${pf.url}-${j}`}
+                              className={`flex items-center gap-2 rounded-lg bg-white p-1.5 ring-1 ${
+                                pf.review === "ขอแก้ไข" ? "ring-rose-300" : pf.review === "อนุมัติ" ? "ring-teal-300" : "ring-violet-100"
+                              }`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => showProof(i, j)}
+                                className="relative block h-14 w-14 shrink-0 overflow-hidden rounded-lg ring-1 ring-slate-200"
+                                title="ดูรูปเต็ม"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={pf.url} alt={`แบบ ${j + 1}`} className="h-full w-full object-cover" />
+                                <span className="absolute bottom-0 left-0 rounded-tr bg-slate-900/60 px-1 text-[8px] font-bold text-white">
+                                  {j + 1}
+                                </span>
+                              </button>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-[11px] font-bold">
+                                  {pf.review === "อนุมัติ" ? (
+                                    <span className="text-teal-700">✓ ลูกค้าอนุมัติแล้ว</span>
+                                  ) : pf.review === "ขอแก้ไข" ? (
+                                    <span className="text-rose-700">✏️ ลูกค้าขอแก้: “{pf.reviewNote || "-"}”</span>
+                                  ) : (
+                                    <span className="text-slate-400">รอลูกค้าตรวจ</span>
+                                  )}
+                                </p>
+                                {mayProof && (
+                                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      value={pf.qty ?? ""}
+                                      placeholder="จำนวน"
+                                      onChange={(e) => patchProof(i, j, { qty: Math.max(0, Number(e.target.value) || 0) || undefined })}
+                                      className="w-16 rounded-md border border-slate-200 px-1.5 py-0.5 text-center text-[11px] focus:border-violet-300 focus:outline-none"
+                                    />
+                                    <input
+                                      value={pf.note ?? ""}
+                                      placeholder="รายละเอียด เช่น ลายหน้า"
+                                      onChange={(e) => patchProof(i, j, { note: e.target.value || undefined })}
+                                      className="min-w-0 flex-1 rounded-md border border-slate-200 px-1.5 py-0.5 text-[11px] focus:border-violet-300 focus:outline-none"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                              {mayProof && (
+                                <div className="flex shrink-0 flex-col gap-1">
+                                  <label
+                                    title="อัปรูปใหม่ทับตำแหน่งเดิม (ไม่ต้องลบก่อน)"
+                                    className="cursor-pointer rounded-md bg-indigo-600 px-2 py-1 text-center text-[10px] font-bold text-white transition hover:bg-indigo-700"
+                                  >
+                                    🔄 เปลี่ยน
+                                    <input
+                                      type="file"
+                                      accept="image/png,image/jpeg,image/webp,image/gif"
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        void replaceProof(i, j, e.target.files?.[0] ?? null);
+                                        e.target.value = "";
+                                      }}
+                                    />
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const ok = await askConfirm({ icon: "🗑", title: `ลบแบบรูปที่ ${j + 1}?`, detail: "ลูกค้าจะไม่เห็นแบบรูปนี้อีก", confirmLabel: "ลบแบบ", danger: true });
+                                      if (ok) removeProof(i, j);
+                                    }}
+                                    className="rounded-md border border-slate-200 px-2 py-1 text-[10px] font-bold text-slate-500 transition hover:bg-rose-50 hover:text-rose-600"
+                                  >
+                                    ✕ ลบ
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {mayProof && (
+                        <label
+                          className="mt-2 block cursor-pointer rounded-lg bg-violet-600 px-3 py-1.5 text-center text-[11px] font-bold text-white transition hover:bg-violet-700"
+                          title="อัปแบบที่กราฟฟิกทำเสร็จ ให้ลูกค้าตรวจ"
+                        >
+                          {uploadingIdx === i ? "กำลังอัปโหลด…" : "＋ อัปแบบใหม่ให้ลูกค้าตรวจ"}
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/gif"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => {
+                              void sendProofs(i, e.target.files);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
 
                   {/* 📝 หมายเหตุใบงานของรายการนี้ — อยู่ติดกับรายการเลย ไม่ต้องไปหาที่คอลัมน์ขวา */}
                   {mayEdit && (
