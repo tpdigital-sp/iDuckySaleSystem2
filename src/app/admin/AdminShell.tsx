@@ -14,7 +14,7 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm }[] = [
   { href: "/admin/orders", label: "คำสั่งซื้อ", emoji: "📦", perm: "orders.view" },
   { href: "/admin/orders/scan", label: "แพ็ค–ส่ง", emoji: "📮", perm: "pack.ship" },
   { href: "/admin/products", label: "สินค้า", emoji: "🏷️", perm: "products.view" },
-  { href: "/admin/special-products", label: "สินค้าสั่งพิเศษ", emoji: "🛠️", perm: "orders.edit" },
+  { href: "/admin/special-products", label: "รูปแบบการสินค้าสั่งพิเศษ", emoji: "🛠️", perm: "orders.edit" },
   { href: "/admin/stock", label: "คลังสต๊อก", emoji: "📦", perm: "orders.edit" },
   { href: "/admin/options", label: "คลังตัวเลือก", emoji: "🎛️", perm: "presets.manage" },
   { href: "/admin/coupons", label: "คูปอง", emoji: "🎟️", perm: "coupons.manage" },

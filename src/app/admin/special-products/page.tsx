@@ -75,7 +75,7 @@ function SpecialProductsInner() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h1 className={h1}>🛠️ สินค้าสั่งพิเศษ</h1>
+      <h1 className={h1}>🛠️ รูปแบบการสินค้าสั่งพิเศษ</h1>
       <p className={`mt-1 ${muted}`}>
         คลังแม่แบบงานสั่งทำ {list ? `${list.length} รายการ` : ""} (นำเข้าจากระบบเดิม) — ใช้ตอนกด “เพิ่มรายการพิเศษ” ในออเดอร์
       </p>
@@ -91,7 +91,7 @@ function SpecialProductsInner() {
           </ul>
         </div>
         <div className="rounded-2xl bg-amber-50/60 p-4 ring-1 ring-amber-200">
-          <p className="text-sm font-bold text-slate-800">🛠️ สินค้าสั่งพิเศษ (หน้านี้)</p>
+          <p className="text-sm font-bold text-slate-800">🛠️ รูปแบบการสินค้าสั่งพิเศษ (หน้านี้)</p>
           <ul className="mt-2 space-y-1 text-xs text-slate-600">
             <li>• <strong>ไม่โชว์บนหน้าเว็บ</strong> — ลูกค้าสั่งเองไม่ได้ ต้องให้พนักงานคีย์ให้</li>
             <li>• เป็นแค่ “แม่แบบชื่องาน+สเปค” — พนักงานเลือกจากคลังนี้ตอนกด “เพิ่มรายการพิเศษ” ในออเดอร์ แล้วกรอกจำนวน/ราคาเองเป็นงาน ๆ ไป</li>

@@ -166,7 +166,7 @@ export default function AdminOrdersPage() {
           หยิบใส่ตะกร้าแล้วติ๊ก 🧑‍💼 สั่งแทนลูกค้า (ได้ตัวเลือก/ราคาอัตโนมัติ) · งานสั่งทำที่<strong>ไม่มีบนเว็บ</strong> → กด
           “🛠️ สร้างออเดอร์งานพิเศษ” แล้วเพิ่มรายการจาก{" "}
           <Link href="/admin/special-products" className="font-bold underline underline-offset-2 hover:text-sky-600">
-            คลังสินค้าสั่งพิเศษ
+            รูปแบบการสินค้าสั่งพิเศษ
           </Link>
         </p>
       )}
