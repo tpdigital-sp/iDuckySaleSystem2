@@ -61,7 +61,7 @@ type DraftPricing = {
 /** สินค้าที่ scrape มาจาก URL (จาก /api/admin/import) */
 type ScrapedProduct = {
   name: string; unit: string; price: number;
-  options: ProductOption[]; pricing: PriceMatrix; imageUrl?: string; kind: string;
+  options: ProductOption[]; pricing: PriceMatrix; imageUrl?: string; imageUrls?: string[]; kind: string;
 };
 type DraftFaq = { q: string; a: string };
 type DraftSeo = { title: string; description: string; keywords: string; faqs: DraftFaq[] };
@@ -343,6 +343,8 @@ export default function ProductEditor({ product }: { product: Product }) {
   const [impLoading, setImpLoading] = useState(false);
   const [impErr, setImpErr] = useState("");
   const [impList, setImpList] = useState<ScrapedProduct[]>([]);
+  /** รูปที่เลือกจะนำเข้า — คีย์ = ลำดับสินค้าในผลลัพธ์ (ค่าเริ่มต้น: เลือกทุกรูปเท่าที่ใส่ได้) */
+  const [impPick, setImpPick] = useState<Record<number, string[]>>({});
   const [uploading, setUploading] = useState(false);
   // คลังหน่วยขนาด (ส่วนกลาง) + โมดัลจัดการหน่วย
   const [units, setUnits] = useState<CustomUnit[]>([]);
@@ -637,7 +639,11 @@ export default function ProductEditor({ product }: { product: Product }) {
     }
   }
   // เติมข้อมูลจากสินค้าที่ scrape มาลง draft (ราคา/ตัวเลือก/ราคาขั้นบันได/รูป)
-  function importFill(p: ScrapedProduct) {
+  function importFill(p: ScrapedProduct, index?: number) {
+    // รูปที่แอดมินติ๊กไว้ (ถ้าไม่ระบุ = ทุกรูปที่เจอ) จำกัดตามช่องรูปที่เหลือ
+    const all = p.imageUrls?.length ? p.imageUrls : p.imageUrl ? [p.imageUrl] : [];
+    const picked = index != null && impPick[index] ? impPick[index] : all;
+    const photos = picked.slice(0, MAX_PHOTOS);
     patch({
       name: p.name,
       price: String(p.price),
@@ -653,9 +659,9 @@ export default function ProductEditor({ product }: { product: Product }) {
         tiers: p.pricing.tiers.map((t) => ({ upTo: t.upTo == null ? "" : String(t.upTo), label: t.label })),
         cells: Object.fromEntries(Object.entries(p.pricing.cells).map(([k, v]) => [k, v.map(String)])),
       },
-      ...(p.imageUrl ? { photos: [p.imageUrl] } : {}),
+      ...(photos.length ? { photos } : {}),
     });
-    setImpOpen(false); setImpList([]); setImpUrl("");
+    setImpOpen(false); setImpList([]); setImpUrl(""); setImpPick({});
   }
 
   // เคลียร์ป้าย "บันทึกแล้ว" ทันทีที่มีการแก้ไขใหม่ (ให้รู้ว่ายังไม่ได้เซฟ)
@@ -824,33 +830,69 @@ export default function ProductEditor({ product }: { product: Product }) {
           {impList.length > 0 && (
             <div className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white">
               <p className="border-b border-slate-100 px-3 py-1.5 text-[11px] text-slate-400">
-                พบ {impList.length} สินค้าในหน้านี้ — กด “ใช้ตัวนี้” เพื่อเติมลงสินค้าที่กำลังแก้
+                พบ {impList.length} สินค้าในหน้านี้ — เลือกรูปที่ต้องการแล้วกด “ใช้ตัวนี้” เพื่อเติมลงสินค้าที่กำลังแก้
               </p>
               <ul className="divide-y divide-slate-100">
                 {impList.map((p, i) => (
-                  <li key={i} className="flex items-center gap-3 p-2">
-                    <span className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-                      {p.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.imageUrl} alt="" className="h-10 w-10 object-cover" />
-                      ) : (
-                        <span className="grid h-10 w-10 place-items-center text-slate-300">📦</span>
-                      )}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-slate-800">{p.name}</p>
-                      <p className="truncate text-[11px] text-slate-400">
-                        ฿{p.price} / {p.unit} · {p.pricing.tiers.length} ช่วง
-                        {p.pricing.driverLabels.length ? ` × ${Object.keys(p.pricing.cells).length} ตัวเลือก` : ""}
-                      </p>
+                  <li key={i} className="p-2.5">
+                    <div className="flex items-center gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-800">{p.name}</p>
+                        <p className="truncate text-[11px] text-slate-400">
+                          ฿{p.price} / {p.unit} · {p.pricing.tiers.length} ช่วง
+                          {p.pricing.driverLabels.length ? ` × ${Object.keys(p.pricing.cells).length} ตัวเลือก` : ""}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => importFill(p, i)}
+                        className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                      >
+                        ใช้ตัวนี้ →
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => importFill(p)}
-                      className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
-                    >
-                      ใช้ตัวนี้ →
-                    </button>
+
+                    {/* รูปที่เจอในหน้านี้ — ติ๊กเลือกได้ (ค่าเริ่มต้นเลือกทุกรูปเท่าที่ใส่ได้) */}
+                    {(p.imageUrls?.length ?? 0) > 0 && (() => {
+                      const all = p.imageUrls ?? [];
+                      const picked = impPick[i] ?? all.slice(0, MAX_PHOTOS);
+                      const toggle = (u: string) =>
+                        setImpPick((cur) => {
+                          const now = cur[i] ?? all.slice(0, MAX_PHOTOS);
+                          const next = now.includes(u) ? now.filter((x) => x !== u) : [...now, u].slice(0, MAX_PHOTOS);
+                          return { ...cur, [i]: next };
+                        });
+                      return (
+                        <div className="mt-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {all.map((u) => {
+                              const on = picked.includes(u);
+                              const order = picked.indexOf(u) + 1;
+                              return (
+                                <button
+                                  key={u}
+                                  type="button"
+                                  onClick={() => toggle(u)}
+                                  title={on ? `เลือกไว้ (รูปที่ ${order})` : "กดเพื่อเลือกรูปนี้"}
+                                  className={`relative h-12 w-12 overflow-hidden rounded-lg ring-2 transition ${on ? "ring-emerald-500" : "opacity-50 ring-transparent hover:opacity-100"}`}
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={u} alt="" className="h-12 w-12 object-cover" />
+                                  {on && (
+                                    <span className="absolute right-0.5 top-0.5 grid h-4 w-4 place-items-center rounded-full bg-emerald-500 text-[9px] font-bold text-white">
+                                      {order}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <p className="mt-1 text-[10px] text-slate-400">
+                            พบ {all.length} รูป · เลือกไว้ {picked.length}/{MAX_PHOTOS} (รูปแรกที่เลือก = รูปหลัก) — กดรูปเพื่อเลือก/ยกเลิก
+                          </p>
+                        </div>
+                      );
+                    })()}
                   </li>
                 ))}
               </ul>

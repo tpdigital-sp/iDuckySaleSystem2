@@ -9,6 +9,8 @@ export interface DetectedProduct {
   options: ProductOption[];
   pricing: PriceMatrix;
   imageUrl?: string;
+  /** รูปทั้งหมดที่เจอในช่วงของสินค้านี้ (เรียงใหญ่→เล็ก) — ให้แอดมินเลือกตอนนำเข้า */
+  imageUrls?: string[];
   /** ชนิดตารางที่ตรวจได้ (ไว้โชว์ให้ผู้ใช้เข้าใจ) */
   kind: "tiers" | "matrix" | "size";
 }
@@ -126,8 +128,15 @@ export async function scrapeWixPage(inputUrl: string): Promise<{ products: Detec
       // (เดิมจับจากช่วงก่อนตาราง ทำให้สินค้าตัวแรกได้โลโก้ และตัวถัดๆ ได้รูปของสินค้าก่อนหน้า — เพี้ยนทั้งหมด)
       const cands = imgs.filter((im) => im.pos > end && im.pos < nextStart);
       if (cands.length) {
-        const best = cands.sort((a, b) => b.w - a.w)[0];
-        detected.imageUrl = `https://static.wixstatic.com/media/${best.id}/v1/fill/w_900,h_675,al_c,q_85/file.jpg`;
+        // เก็บทุกรูปในช่วงนี้ (ไม่ซ้ำ, เรียงใหญ่→เล็ก, สูงสุด 8) ให้แอดมินเลือกตอนนำเข้า
+        const seen = new Set<string>();
+        const urls = cands
+          .sort((a, b) => b.w - a.w)
+          .filter((im) => (seen.has(im.id) ? false : (seen.add(im.id), true)))
+          .slice(0, 8)
+          .map((im) => `https://static.wixstatic.com/media/${im.id}/v1/fill/w_900,h_675,al_c,q_85/file.jpg`);
+        detected.imageUrls = urls;
+        detected.imageUrl = urls[0];
       }
       products.push(detected);
     } else {
