@@ -302,6 +302,20 @@ export default function AdminOrderDetailPage() {
       ),
     []
   );
+  // แอดมินแก้ "รายละเอียดงาน" ของรายการที่ลูกค้าสั่งได้ (แก้ได้เฉพาะรายละเอียด — ชื่อ/จำนวน/ราคาไม่แตะ)
+  const [editSel, setEditSel] = useState<number | null>(null);
+  const [selDraft, setSelDraft] = useState("");
+  function saveSelections(itemIndex: number, text: string) {
+    if (!order) return;
+    const before = order.items[itemIndex]?.selections ?? "";
+    const value = text.trim();
+    setEditSel(null);
+    if (value === before.trim()) return;
+    const items = order.items.map((it, i) => (i === itemIndex ? { ...it, selections: value } : it));
+    const next = withLog({ ...order, items }, actor, "แก้รายละเอียดรายการ", `${order.items[itemIndex]?.name}`);
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
   const [statusMenu, setStatusMenu] = useState(false);
   const [artDropIdx, setArtDropIdx] = useState<number | null>(null);
   const [proofDropIdx, setProofDropIdx] = useState<number | null>(null);
@@ -1292,8 +1306,45 @@ export default function AdminOrderDetailPage() {
                       >
                         {it.name} <span className="text-xs font-normal text-slate-400">{open ? "▴" : "▾"}</span>
                       </button>
-                      {it.selections && (
-                        <p className={`mt-0.5 whitespace-pre-line text-[11px] leading-snug text-slate-500 ${open ? "" : "line-clamp-2"}`}>{it.selections}</p>
+                      {editSel === i ? (
+                        <div className="mt-1">
+                          <textarea
+                            autoFocus
+                            value={selDraft}
+                            onChange={(e) => setSelDraft(e.target.value)}
+                            onBlur={() => saveSelections(i, selDraft)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") setEditSel(null);
+                              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveSelections(i, selDraft);
+                            }}
+                            rows={4}
+                            placeholder="รายละเอียดงาน เช่น ขนาด · สี · ตำแหน่งลาย"
+                            className="w-full resize-y rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-[11px] leading-snug text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                          />
+                          <p className="mt-0.5 text-[10px] text-slate-400">
+                            คลิกนอกช่องเพื่อบันทึก · Esc = ยกเลิก · ระบบลงประวัติว่าใครแก้
+                          </p>
+                        </div>
+                      ) : (
+                        <p
+                          className={`mt-0.5 whitespace-pre-line text-[11px] leading-snug text-slate-500 ${open ? "" : "line-clamp-2"}`}
+                        >
+                          {it.selections || (mayEdit ? <span className="text-slate-300">— ยังไม่มีรายละเอียด —</span> : null)}
+                          {mayEdit && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelDraft(it.selections ?? "");
+                                setEditSel(i);
+                                setItemOpen((cur) => ({ ...cur, [i]: true }));
+                              }}
+                              title="แก้รายละเอียดของรายการนี้ (ชื่อ/จำนวน/ราคาแก้ไม่ได้)"
+                              className="ml-1 whitespace-nowrap rounded px-1 text-[10px] font-bold text-amber-600 transition hover:bg-amber-50"
+                            >
+                              ✏️ แก้รายละเอียด
+                            </button>
+                          )}
+                        </p>
                       )}
                       <p className="mt-0.5 text-[11px] text-slate-400">
                         {it.proofStatus ? `แบบ: ${it.proofStatus === "รอตรวจ" ? "รอลูกค้าตรวจ" : it.proofStatus === "อนุมัติ" ? "ลูกค้าอนุมัติแล้ว" : "ลูกค้าขอแก้ไข"}` : "แบบ: รอกราฟฟิกทำแบบ"}
