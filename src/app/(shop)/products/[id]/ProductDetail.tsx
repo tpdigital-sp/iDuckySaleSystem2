@@ -15,8 +15,10 @@ import {
   resolveSelections,
   tierIndex,
   unitPriceFor,
+  needsStockCheck,
   type Product,
 } from "@/lib/products";
+import { LINE_URL } from "@/components/LineButton";
 import { useCart } from "@/lib/cart-context";
 import { canAccessAdmin } from "@/lib/auth";
 import { fetchProduct } from "@/lib/product-repo";
@@ -178,11 +180,16 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     setArtBusy(false);
   }
 
+  // สั่งถึงเกณฑ์จำนวนมากไหม (ตั้งต่อสินค้าได้ในหลังบ้าน)
+  const bulkAsk = needsStockCheck(product, qty);
+
   function handleAdd() {
     // แนบข้อมูลเพิ่มไปกับรายการ (ไม่กระทบราคา): ลิงก์ไฟล์ลาย/อีเมล + หมายเหตุ
     const extra: Record<string, string> = {};
     if (artLink.trim()) extra["ลิงก์ไฟล์ลาย/อีเมล"] = artLink.trim();
     if (artFiles.length) extra["ภาพลายที่แนบ"] = artFiles.map((f) => f.url).join(" | ");
+    // สั่งจำนวนมาก → ติดธงให้ทีมเช็คสต๊อก/คิวผลิตแล้วยืนยันจำนวนกับลูกค้าก่อนเริ่มงาน
+    if (bulkAsk) extra["รอเช็คสต๊อก"] = "สั่งจำนวนมาก — รอทีมงานยืนยันจำนวน";
     if (note.trim()) extra["หมายเหตุ"] = note.trim();
     if (useCustom) {
       if (!custom || !customValid) return; // ต้องกรอกขนาดให้ครบก่อน
@@ -468,6 +475,27 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                   </p>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ═══ สั่งจำนวนมาก → ชวนเช็คสต๊อกก่อน (ไม่บล็อกการสั่ง) ═══ */}
+          {bulkAsk && (
+            <div className="mt-5 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
+              <p className="text-sm font-extrabold text-amber-900">
+                📦 สั่ง {qty.toLocaleString("th-TH")} {product.pricing?.unit ?? "ชิ้น"} — รบกวนเช็คสต๊อกกับแอดมินก่อนนะครับ
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-amber-800">
+                จำนวนนี้อาจต้องสั่งวัสดุเพิ่มหรือจองคิวผลิต — ทักไลน์เช็คของกับรอบผลิตก่อนได้เลย
+                หรือ<strong>กดสั่งไว้ก่อนก็ได้</strong> ทางร้านจะรีบยืนยันจำนวน/วันส่งให้ทางแชท (ยังไม่ต้องโอนจนกว่าจะยืนยัน)
+              </p>
+              <a
+                href={LINE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
+              >
+                💬 ทักไลน์เช็คสต๊อก
+              </a>
             </div>
           )}
 

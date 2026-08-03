@@ -1019,6 +1019,13 @@ export default function AdminOrderDetailPage() {
                   {/* รายละเอียด (ตัวเลือก) + ยืนยันอ่านของกราฟฟิก (การยืนยันของแพ็คอยู่ในโหมดแพ็ค) */}
                   {it.selections && <p className={`mt-1 text-xs ${faint}`}>{it.selections}</p>}
 
+                  {/* 📦 สั่งจำนวนมาก — ต้องเช็คสต๊อก/คิวผลิตแล้วยืนยันกับลูกค้าก่อนเริ่มงาน */}
+                  {it.needStockCheck && (
+                    <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 ring-1 ring-amber-200">
+                      📦 สั่งจำนวนมาก ({it.qty.toLocaleString("th-TH")} ชิ้น) — เช็คสต๊อก/คิวผลิตแล้วยืนยันจำนวน-วันส่งกับลูกค้าก่อนเริ่มงาน
+                    </p>
+                  )}
+
                   {/* 🎨 ภาพลายที่ลูกค้าแนบตอนสั่ง — กราฟฟิกใช้เป็นแนวทางทำแบบ (ไม่ใช่ไฟล์งานพิมพ์) */}
                   {(it.artworkUrls?.length ?? 0) > 0 && (
                     <div className="mt-2 rounded-xl bg-sky-50/70 p-2.5 ring-1 ring-sky-100">

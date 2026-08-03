@@ -121,6 +121,11 @@ export interface Product {
   pricing?: PriceMatrix;
   /** ข้อมูล SEO/AEO (ไม่มี = ใช้ค่าจากชื่อ/รายละเอียดอัตโนมัติ) */
   seo?: ProductSeo;
+  /**
+   * สั่งตั้งแต่กี่ชิ้นขึ้นไป = ต้องเช็คสต๊อก/คิวผลิตกับแอดมินก่อน (0 หรือไม่ตั้ง = ใช้ค่ากลาง BULK_ASK_DEFAULT)
+   * ไม่ได้บล็อกการสั่ง — แค่เตือนลูกค้า + ติดธงให้แอดมินยืนยันจำนวนก่อนเริ่มงาน
+   */
+  bulkAskQty?: number;
   /** สถานะตรวจสอบหลังบ้าน — มีค่า = ทีมงานเช็คสินค้านี้แล้ว (ใช้กันเช็คซ้ำเมื่อหลายคนช่วยกัน) */
   reviewed?: ProductReview;
   /** ตัวเลือก "กำหนดขนาด/สเปกเอง" (custom) สำหรับงานสั่งทำนอกเหนือขนาดมาตรฐาน */
@@ -207,6 +212,15 @@ export const CATEGORIES: Category[] = [
   { id: "fabric", name: "ผ้า / หมอน / ผ้าห่ม", nameEn: "Fabric", emoji: "🧶", gradient: "from-emerald-200 to-teal-300", description: "ปลอกหมอน ผ้าห่ม ผ้าขนหนู ยางรัดผม ผ้าหลา" },
   { id: "gifts", name: "ของขวัญ / ปัก / ตุ๊กตา", nameEn: "Gifts", emoji: "🧸", gradient: "from-rose-200 to-pink-300", description: "อาร์มปัก ตุ๊กตาปัก ของขวัญชิ้นเล็ก" },
 ];
+
+/** ค่ากลาง: สั่งตั้งแต่เท่านี้ขึ้นไปให้ถามสต๊อกก่อน (สินค้าที่ไม่ได้ตั้งค่าเอง) */
+export const BULK_ASK_DEFAULT = 100;
+
+/** สั่งจำนวนนี้ต้องเช็คสต๊อกกับแอดมินก่อนไหม */
+export function needsStockCheck(p: Product, qty: number): boolean {
+  const limit = p.bulkAskQty && p.bulkAskQty > 0 ? p.bulkAskQty : BULK_ASK_DEFAULT;
+  return qty >= limit;
+}
 
 export function getCategory(id: CategoryId): Category {
   return CATEGORIES.find((c) => c.id === id)!;

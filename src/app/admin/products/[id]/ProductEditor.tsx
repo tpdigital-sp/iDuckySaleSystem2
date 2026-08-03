@@ -19,6 +19,7 @@ import {
   type ProductSeo,
 } from "@/lib/products";
 import { autoSeoOf } from "@/lib/auto-seo";
+import { BULK_ASK_DEFAULT } from "@/lib/products";
 import { hasOverride, resetOverride } from "@/lib/product-store";
 import { deleteProductDb, fetchProductRaw, persistProduct } from "@/lib/product-repo";
 import { getAdminSession } from "@/lib/auth";
@@ -82,6 +83,8 @@ type Draft = {
   body: DraftBody[];
   seo: DraftSeo;
   custom: DraftCustom;
+  /** สั่งกี่ชิ้นขึ้นไปต้องถามสต๊อกก่อน (ว่าง = ใช้ค่ากลาง) */
+  bulkAskQty: string;
   /** สถานะตรวจสอบหลังบ้าน (มีค่า = ตรวจแล้ว) */
   reviewed?: ProductReview;
 };
@@ -233,6 +236,7 @@ function toDraft(p: Product): Draft {
       minPrice: p.custom?.minPrice != null ? String(p.custom.minPrice) : "",
       note: p.custom?.note ?? "",
     },
+    bulkAskQty: p.bulkAskQty != null && p.bulkAskQty > 0 ? String(p.bulkAskQty) : "",
     reviewed: p.reviewed,
   };
 }
@@ -540,6 +544,7 @@ export default function ProductEditor({ product }: { product: Product }) {
       body,
       seo: buildSeo(draft.seo),
       custom,
+      bulkAskQty: Number(draft.bulkAskQty) > 0 ? Math.floor(Number(draft.bulkAskQty)) : undefined,
       reviewed: draft.reviewed,
     };
     const res = await persistProduct(updated);
@@ -1965,6 +1970,28 @@ export default function ProductEditor({ product }: { product: Product }) {
 
           {/* กติกาเงื่อนไข (ย้ายมาไว้แถบข้าง) */}
           {/* กฎเงื่อนไขตัวเลือก */}
+      {/* ── สั่งจำนวนมาก: ต้องเช็คสต๊อกก่อน ── */}
+      <section className="mt-4 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <h2 className="text-sm font-semibold text-slate-800">📦 สั่งจำนวนมาก — เช็คสต๊อกก่อน</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          ลูกค้าสั่งถึงจำนวนนี้ หน้าสินค้าจะขึ้นเตือนให้ทักแอดมินเช็คสต๊อก/คิวผลิตก่อน (สั่งได้ตามปกติ แต่ออเดอร์จะติดธง &ldquo;รอเช็คสต๊อก&rdquo; ให้ทีมยืนยันจำนวน)
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label className="text-xs font-semibold text-slate-600">สั่งตั้งแต่</label>
+          <input
+            value={draft.bulkAskQty}
+            onChange={(e) => patch({ bulkAskQty: e.target.value.replace(/\D/g, "") })}
+            inputMode="numeric"
+            placeholder={String(BULK_ASK_DEFAULT)}
+            className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+          />
+          <span className="text-xs font-semibold text-slate-600">ชิ้นขึ้นไป</span>
+          <span className="text-[11px] text-slate-400">
+            {Number(draft.bulkAskQty) > 0 ? `· ตอนนี้ใช้ ${Number(draft.bulkAskQty).toLocaleString("th-TH")} ชิ้น` : `· เว้นว่าง = ใช้ค่ากลาง ${BULK_ASK_DEFAULT} ชิ้น`}
+          </span>
+        </div>
+      </section>
+
       <section id="sec-rules" className="mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <div className="mb-1 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-800">🔗 กฎเงื่อนไขตัวเลือก ({draft.rules.length})</h2>

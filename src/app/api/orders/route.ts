@@ -150,5 +150,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "ระบบยังไม่พร้อม — ผู้ดูแลต้องสร้างตาราง orders ก่อน (รัน supabase/orders.sql)" }, { status: 503 });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  // 📦 มีรายการสั่งจำนวนมาก → แจ้งร้านทาง LINE ให้รีบเช็คสต๊อก/คิวผลิตแล้วยืนยันกับลูกค้า
+  const bulk = order.items.filter((i) => i.needStockCheck);
+  if (bulk.length) {
+    const to = process.env.LINE_STOCK_ALERT_TO;
+    const token = process.env.LINE_MESSAGING_ACCESS_TOKEN;
+    if (to && token) {
+      const lines = bulk.map((i) => `• ${i.name} ×${i.qty.toLocaleString("th-TH")}`).join("\n");
+      void fetch("https://api.line.me/v2/bot/message/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          to,
+          messages: [
+            {
+              type: "text",
+              text: `📦 ออเดอร์สั่งจำนวนมาก ${id}\n${order.customer} · ${order.phone}\n${lines}\n\nเช็คสต๊อก/คิวผลิตแล้วยืนยันกับลูกค้าด้วยครับ`,
+            },
+          ],
+        }),
+        signal: AbortSignal.timeout(10_000),
+      }).catch(() => {});
+    }
+  }
+
   return NextResponse.json({ ok: true, id, key, coupon });
 }

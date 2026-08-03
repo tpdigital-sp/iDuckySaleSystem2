@@ -255,6 +255,9 @@ export default function AdminOrdersPage() {
                           {qtyOf(o)} ชิ้น
                           {o.slipUrl && <span className="ml-1 font-semibold text-orange-600">· 📎</span>}
                           {open > 0 && <span className="ml-1 font-semibold text-violet-600">· 🎨 {open}</span>}
+                          {o.items.some((i) => i.needStockCheck) && (
+                            <span className="ml-1 font-semibold text-amber-600" title="สั่งจำนวนมาก — ต้องเช็คสต๊อก/คิวผลิตแล้วยืนยันกับลูกค้า">· 📦 รอเช็คสต๊อก</span>
+                          )}
                         {(openByPhone[(o.phone ?? "").replace(/\D/g, "")] ?? 0) > 1 && (
                           <span className="ml-1 font-semibold text-orange-600">· ⚠️ ออเดอร์ซ้ำ</span>
                         )}
