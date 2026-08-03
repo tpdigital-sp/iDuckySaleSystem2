@@ -43,6 +43,32 @@ import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-se
 const LBL = "text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400";
 const SOFT = "rounded-xl border border-slate-200/70 bg-white p-4";
 
+/** สีประจำกลุ่มข้อมูลในหน้าออเดอร์ — กวาดตาหาหัวข้อที่ต้องการได้เร็วขึ้น */
+const GTONE: Record<string, { text: string; bar: string; card: string }> = {
+  indigo: { text: "text-indigo-700", bar: "bg-indigo-400", card: "border-l-indigo-400" },
+  emerald: { text: "text-emerald-700", bar: "bg-emerald-400", card: "border-l-emerald-400" },
+  sky: { text: "text-sky-700", bar: "bg-sky-400", card: "border-l-sky-400" },
+  violet: { text: "text-violet-700", bar: "bg-violet-400", card: "border-l-violet-400" },
+  green: { text: "text-green-700", bar: "bg-green-500", card: "border-l-green-500" },
+  orange: { text: "text-orange-700", bar: "bg-orange-400", card: "border-l-orange-400" },
+  cyan: { text: "text-cyan-700", bar: "bg-cyan-400", card: "border-l-cyan-400" },
+  teal: { text: "text-teal-700", bar: "bg-teal-400", card: "border-l-teal-400" },
+  rose: { text: "text-rose-700", bar: "bg-rose-400", card: "border-l-rose-400" },
+  slate: { text: "text-slate-500", bar: "bg-slate-300", card: "border-l-slate-300" },
+};
+/** หัวข้อกลุ่ม: ขีดสี + ตัวหนังสือสีเดียวกับแถบซ้ายของการ์ดข้างล่าง */
+function GH({ t, children }: { t: string; children: React.ReactNode }) {
+  const g = GTONE[t] ?? GTONE.slate;
+  return (
+    <p className={`flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.09em] ${g.text}`}>
+      <span className={`inline-block h-3 w-1 shrink-0 rounded-full ${g.bar}`} />
+      {children}
+    </p>
+  );
+}
+/** การ์ดของกลุ่ม — ขอบซ้ายสีเดียวกับหัวข้อ */
+const soft = (t: string) => `rounded-xl border border-slate-200/70 border-l-4 ${(GTONE[t] ?? GTONE.slate).card} bg-white p-4`;
+
 /** sanitize HTML หมายเหตุ — เก็บเฉพาะ span/div/br + inline style color/font-size/font-weight (กัน XSS) */
 function sanitizeNoteHtml(html: string): string {
   if (typeof document === "undefined") return html;
@@ -95,6 +121,8 @@ function RichNoteEditor({
   const lastPushed = useRef<string>(value ?? "");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [empty, setEmpty] = useState(!noteHasText(value));
+  // แถบจัดรูปแบบซ่อนไว้จนกว่าจะคลิกในช่อง — นาน ๆ ใช้ที แต่กินที่ทุกหน้าจอ
+  const [tools, setTools] = useState(false);
 
   // เคลียร์ตัวตั้งเวลาเซฟตอน unmount
   useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
@@ -166,6 +194,7 @@ function RichNoteEditor({
           contentEditable
           suppressContentEditableWarning
           onInput={handleInput}
+          onFocus={() => setTools(true)}
           onBlur={handleBlur}
           className="min-h-[58px] w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm leading-snug focus:border-amber-300 focus:outline-none"
         />
@@ -173,58 +202,72 @@ function RichNoteEditor({
           <span className="pointer-events-none absolute left-2.5 top-1.5 text-sm text-slate-400">{placeholder}</span>
         )}
       </div>
-      <p className="text-[10px] text-slate-400">✏️ เลือก (ไฮไลต์) คำที่ต้องการก่อน แล้วกดสี/ขนาด/น้ำหนัก — ใช้เฉพาะคำที่เลือก</p>
-      <div className="space-y-2 rounded-lg bg-slate-50/80 p-2.5 ring-1 ring-slate-100">
-        <div className="flex items-center gap-2.5">
-          <span className="w-12 shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">สี</span>
-          <div className="flex items-center gap-1.5">
-            {(Object.keys(NOTE_COLORS) as NoteColor[]).map((c) => (
-              <button
-                key={c}
-                type="button"
-                title={NOTE_COLORS[c].label}
-                onMouseDown={keepSel}
-                onClick={() => applyStyle({ color: NOTE_COLORS[c].hex })}
-                className="h-6 w-6 rounded-full ring-2 ring-transparent transition hover:ring-slate-300"
-                style={{ backgroundColor: NOTE_COLORS[c].hex }}
-              />
-            ))}
+      {!tools ? (
+        <button
+          type="button"
+          onMouseDown={keepSel}
+          onClick={() => setTools(true)}
+          className="text-[10px] font-bold text-slate-400 transition hover:text-slate-600"
+        >
+          🎨 จัดรูปแบบตัวอักษร (สี / ขนาด / น้ำหนัก)
+        </button>
+      ) : (
+        <div className="space-y-1.5 rounded-lg bg-slate-50/80 p-2 ring-1 ring-slate-100">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] text-slate-400">✏️ ไฮไลต์คำที่ต้องการก่อน แล้วกดสี/ขนาด/น้ำหนัก</p>
+            <button
+              type="button"
+              onMouseDown={keepSel}
+              onClick={() => setTools(false)}
+              className="rounded px-1 text-[10px] font-bold text-slate-400 transition hover:text-slate-600"
+            >
+              ✕ ซ่อน
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <div className="flex items-center gap-1.5">
+              {(Object.keys(NOTE_COLORS) as NoteColor[]).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  title={NOTE_COLORS[c].label}
+                  onMouseDown={keepSel}
+                  onClick={() => applyStyle({ color: NOTE_COLORS[c].hex })}
+                  className="h-5 w-5 rounded-full ring-2 ring-transparent transition hover:ring-slate-300"
+                  style={{ backgroundColor: NOTE_COLORS[c].hex }}
+                />
+              ))}
+            </div>
+            <div className="inline-flex overflow-hidden rounded-md ring-1 ring-slate-200">
+              {(Object.keys(NOTE_SIZES) as NoteSize[]).map((sz) => (
+                <button
+                  key={sz}
+                  type="button"
+                  onMouseDown={keepSel}
+                  onClick={() => applyStyle({ fontSize: `${NOTE_SIZES[sz].px}px` })}
+                  className="border-r border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 transition last:border-r-0 hover:bg-slate-100"
+                >
+                  {NOTE_SIZES[sz].label}
+                </button>
+              ))}
+            </div>
+            <div className="inline-flex overflow-hidden rounded-md ring-1 ring-slate-200">
+              {(Object.keys(NOTE_WEIGHTS) as NoteWeight[]).map((w) => (
+                <button
+                  key={w}
+                  type="button"
+                  onMouseDown={keepSel}
+                  onClick={() => applyStyle({ fontWeight: String(NOTE_WEIGHTS[w].css) })}
+                  style={{ fontWeight: NOTE_WEIGHTS[w].css }}
+                  className="border-r border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500 transition last:border-r-0 hover:bg-slate-100"
+                >
+                  {NOTE_WEIGHTS[w].label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-2.5">
-          <span className="w-12 shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">ขนาด</span>
-          <div className="inline-flex overflow-hidden rounded-md ring-1 ring-slate-200">
-            {(Object.keys(NOTE_SIZES) as NoteSize[]).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onMouseDown={keepSel}
-                onClick={() => applyStyle({ fontSize: `${NOTE_SIZES[s].px}px` })}
-                className="border-r border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-500 transition last:border-r-0 hover:bg-slate-100"
-              >
-                {NOTE_SIZES[s].label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <span className="w-12 shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">น้ำหนัก</span>
-          <div className="inline-flex overflow-hidden rounded-md ring-1 ring-slate-200">
-            {(Object.keys(NOTE_WEIGHTS) as NoteWeight[]).map((w) => (
-              <button
-                key={w}
-                type="button"
-                onMouseDown={keepSel}
-                onClick={() => applyStyle({ fontWeight: String(NOTE_WEIGHTS[w].css) })}
-                style={{ fontWeight: NOTE_WEIGHTS[w].css }}
-                className="border-r border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-500 transition last:border-r-0 hover:bg-slate-100"
-              >
-                {NOTE_WEIGHTS[w].label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -900,7 +943,7 @@ export default function AdminOrderDetailPage() {
       <div className="grid lg:grid-cols-[1.45fr_0.95fr]">
         {/* ── ซ้าย: งานแบบ ── */}
         <div className="px-6 py-6">
-          <p className={LBL}>งานแบบ · {order.items.length} รายการ</p>
+          <GH t="indigo">🎨 งานแบบ · {order.items.length} รายการ</GH>
           {!paidOk && (
             <div className="mt-2 rounded-xl bg-yellow-50 p-3 ring-1 ring-yellow-200">
               <p className="text-xs font-bold text-yellow-800">
@@ -1322,8 +1365,8 @@ export default function AdminOrderDetailPage() {
 
           {/* ยอดเงิน — ย้ายมาไว้ใต้รายการสินค้า (มองไล่จากบนลงล่างจบในคอลัมน์เดียว) */}
           <div className={seesMoney ? "" : "hidden"}>
-            <p className={LBL}>ยอดเงิน</p>
-            <div className={`mt-2 ${SOFT}`}>
+            <GH t="emerald">💰 ยอดเงิน</GH>
+            <div className={`mt-2 ${soft("emerald")}`}>
               <div className="flex justify-between text-sm">
                 <span className={muted}>รวมสินค้า ({qty} ชิ้น)</span>
                 <span>{formatPrice(subtotal)}</span>
@@ -1526,13 +1569,51 @@ export default function AdminOrderDetailPage() {
               )}
             </div>
           </div>
+          {/* ── หมายเหตุที่จะพิมพ์ลงใบงาน (ตรงรายการ + ท้ายบิล) ── */}
+          {mayEdit && (
+            <div className="mt-6">
+              <GH t="teal">📝 หมายเหตุใบงาน</GH>
+              <div className={`mt-2 space-y-4 ${soft("teal")}`}>
+                {/* หมายเหตุแต่ละรายการ */}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold text-slate-600">📝 หมายเหตุตรงรายการสินค้า</p>
+                  <div className="space-y-2.5">
+                    {order.items.map((it, idx) => (
+                      <div key={idx} className="rounded-lg bg-slate-50 p-2.5 ring-1 ring-slate-200">
+                        <p className="mb-1.5 truncate text-xs font-bold text-slate-600">
+                          {idx + 1}. {it.name}
+                        </p>
+                        <RichNoteEditor
+                          value={it.adminNote}
+                          onChange={(html, commit) => setNote(idx, html, commit)}
+                          placeholder="หมายเหตุรายการนี้ (เช่น ห่อแยก / งานด่วน)"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* หมายเหตุท้ายบิล */}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold text-slate-600">📄 หมายเหตุท้ายบิล</p>
+                  <RichNoteEditor
+                    value={order.billNote}
+                    onChange={(html, commit) => setNote(null, html, commit)}
+                    placeholder="เช่น ขอบคุณที่อุดหนุน 🦆 / นัดรับหน้าร้าน"
+                  />
+                </div>
+
+                <p className={`text-[11px] ${faint}`}>บันทึกอัตโนมัติ · แสดงบนใบงานตอนปริ้น</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── ขวา: ข้อมูล ── */}
         <div className="space-y-6 border-t border-slate-200/70 bg-slate-50/50 px-6 py-6 lg:border-l lg:border-t-0">
           <div>
-            <p className={LBL}>ลูกค้า / จัดส่ง</p>
-            <div className={`mt-2 ${SOFT}`}>
+            <GH t="sky">👤 ลูกค้า / จัดส่ง</GH>
+            <div className={`mt-2 ${soft("sky")}`}>
               {mayEdit ? (
                 /* แอดมินแก้ข้อมูลลูกค้าตรงนี้ได้เลย (บันทึกอัตโนมัติตอนออกจากช่อง) — ใช้กับออเดอร์ที่สร้างจากหลังบ้านด้วย */
                 <div className="space-y-2">
@@ -1585,10 +1666,68 @@ export default function AdminOrderDetailPage() {
             </div>
           </div>
 
+          {/* ── กำหนดส่ง + วันที่ลูกค้าต้องใช้งาน (โชว์บนใบงานตอนปริ้น) ── */}
+          {mayEdit && (
+            <div>
+              <GH t="teal">📅 กำหนดส่ง · วันใช้งาน</GH>
+              <div className={`mt-2 space-y-4 ${soft("teal")}`}>
+                {/* วันที่จัดส่ง */}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold text-slate-600">📅 วันที่จัดส่ง (จาก–ถึง)</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={order.shipDate?.from ?? ""}
+                      onChange={(e) => applyOrder({ ...order, shipDate: { ...order.shipDate, from: e.target.value } })}
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800 focus:border-amber-300 focus:outline-none"
+                    />
+                    <span className="shrink-0 text-slate-400">–</span>
+                    <input
+                      type="date"
+                      value={order.shipDate?.to ?? ""}
+                      onChange={(e) => applyOrder({ ...order, shipDate: { ...order.shipDate, to: e.target.value } })}
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800 focus:border-amber-300 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* 🔥 วันที่ลูกค้าต้องใช้งาน + งานเร่ง */}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold text-slate-600">🔥 วันที่ลูกค้าต้องใช้งาน (วันเร่ง)</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="date"
+                      value={order.useByDate ?? ""}
+                      onChange={(e) => applyOrder({ ...order, useByDate: e.target.value || undefined })}
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800 focus:border-amber-300 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => applyOrder({ ...order, rush: !order.rush })}
+                      className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                        order.rush ? "bg-rose-500 text-white hover:bg-rose-600" : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                      }`}
+                    >
+                      {order.rush ? "🔥 งานเร่ง" : "ทำเป็นงานเร่ง"}
+                    </button>
+                  </div>
+                  {order.useByDate && (() => {
+                    const d = daysToUseBy(order);
+                    return d == null ? null : (
+                      <p className={`mt-1 text-[11px] font-bold ${d < 0 ? "text-rose-600" : d <= 7 ? "text-amber-600" : "text-slate-400"}`}>
+                        {d < 0 ? `⚠️ เลยวันใช้งานมาแล้ว ${Math.abs(d)} วัน` : d === 0 ? "⚠️ ต้องใช้งานวันนี้!" : `เหลืออีก ${d} วันถึงวันใช้งาน`}
+                      </p>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ลิงก์ที่ลูกค้าใช้เปิดดูออเดอร์/ตรวจแบบ — ก๊อปส่งให้ลูกค้าได้เลย */}
           <div>
-            <p className={LBL}>ลิงก์สำหรับลูกค้า</p>
-            <div className={`mt-2 ${SOFT}`}>
+            <GH t="violet">🔗 ลิงก์สำหรับลูกค้า</GH>
+            <div className={`mt-2 ${soft("violet")}`}>
               <p className={`text-xs ${muted}`}>ลูกค้าใช้ลิงก์นี้เช็คสถานะ · ดูแบบงาน · กดอนุมัติ</p>
               <p className="mt-1.5 break-all rounded-lg bg-slate-50 px-2.5 py-2 font-mono text-[11px] text-slate-600 ring-1 ring-slate-200">
                 {customerUrl || "…"}
@@ -1660,7 +1799,7 @@ export default function AdminOrderDetailPage() {
 
           {order.slipUrl && seesMoney && (
             <div>
-              <p className={LBL}>หลักฐานการโอน</p>
+              <GH t="green">🧾 หลักฐานการโอน</GH>
               {/* ผลตรวจสลิปอัตโนมัติ (SlipOK) */}
               {order.slipVerify && (
                 <p
@@ -1680,7 +1819,7 @@ export default function AdminOrderDetailPage() {
                   )}
                 </p>
               )}
-              <div className={`mt-2 flex items-center gap-3 ${SOFT}`}>
+              <div className={`mt-2 flex items-center gap-3 ${soft("green")}`}>
                 <button
                   type="button"
                   onClick={() => setLightbox({ src: order.slipUrl!, alt: "สลิปการโอน", caption: `${order.id} · ${formatPrice(orderTotal(order))}` })}
@@ -1726,8 +1865,8 @@ export default function AdminOrderDetailPage() {
           )}
 
           <div>
-            <p className={LBL}>เลขพัสดุ</p>
-            <div className={`mt-2 ${SOFT}`}>
+            <GH t="orange">📮 เลขพัสดุ</GH>
+            <div className={`mt-2 ${soft("orange")}`}>
               <input
                 value={order.tracking ?? ""}
                 onChange={(e) => setOrder((cur) => (cur ? { ...cur, tracking: e.target.value } : cur))}
@@ -1748,8 +1887,8 @@ export default function AdminOrderDetailPage() {
           {/* 📸 ภาพที่ฝ่ายแพ็คถ่ายก่อนปิดกล่อง — โชว์ในหน้าตรวจสอบด้วย (จัดการรูปทำในโหมดแพ็ค) */}
           {(order.packPhotos?.length ?? 0) > 0 && (
             <div>
-              <p className={LBL}>ภาพก่อนปิดกล่อง ({order.packPhotos!.length})</p>
-              <div className={`mt-2 ${SOFT}`}>
+              <GH t="cyan">📸 ภาพก่อนปิดกล่อง ({order.packPhotos!.length})</GH>
+              <div className={`mt-2 ${soft("cyan")}`}>
                 <div className="grid grid-cols-3 gap-2">
                   {(order.packPhotos ?? []).map((ph, i) => (
                     <a key={`${ph.url}-${i}`} href={ph.url} target="_blank" rel="noreferrer" className="group">
@@ -1770,104 +1909,16 @@ export default function AdminOrderDetailPage() {
             </div>
           )}
 
-          {/* ── ข้อมูลใบงาน: วันที่จัดส่ง + หมายเหตุ (โชว์ตอนปริ้น) ── */}
-          {mayEdit && (
-            <div>
-              <p className={LBL}>ใบงาน · การจัดส่ง</p>
-              <div className={`mt-2 space-y-4 ${SOFT}`}>
-                {/* วันที่จัดส่ง */}
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold text-slate-600">📅 วันที่จัดส่ง (จาก–ถึง)</p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      value={order.shipDate?.from ?? ""}
-                      onChange={(e) => applyOrder({ ...order, shipDate: { ...order.shipDate, from: e.target.value } })}
-                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800 focus:border-amber-300 focus:outline-none"
-                    />
-                    <span className="shrink-0 text-slate-400">–</span>
-                    <input
-                      type="date"
-                      value={order.shipDate?.to ?? ""}
-                      onChange={(e) => applyOrder({ ...order, shipDate: { ...order.shipDate, to: e.target.value } })}
-                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800 focus:border-amber-300 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* 🔥 วันที่ลูกค้าต้องใช้งาน + งานเร่ง */}
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold text-slate-600">🔥 วันที่ลูกค้าต้องใช้งาน (วันเร่ง)</p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      type="date"
-                      value={order.useByDate ?? ""}
-                      onChange={(e) => applyOrder({ ...order, useByDate: e.target.value || undefined })}
-                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800 focus:border-amber-300 focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => applyOrder({ ...order, rush: !order.rush })}
-                      className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-                        order.rush ? "bg-rose-500 text-white hover:bg-rose-600" : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                      }`}
-                    >
-                      {order.rush ? "🔥 งานเร่ง" : "ทำเป็นงานเร่ง"}
-                    </button>
-                  </div>
-                  {order.useByDate && (() => {
-                    const d = daysToUseBy(order);
-                    return d == null ? null : (
-                      <p className={`mt-1 text-[11px] font-bold ${d < 0 ? "text-rose-600" : d <= 7 ? "text-amber-600" : "text-slate-400"}`}>
-                        {d < 0 ? `⚠️ เลยวันใช้งานมาแล้ว ${Math.abs(d)} วัน` : d === 0 ? "⚠️ ต้องใช้งานวันนี้!" : `เหลืออีก ${d} วันถึงวันใช้งาน`}
-                      </p>
-                    );
-                  })()}
-                </div>
-
-                {/* หมายเหตุแต่ละรายการ */}
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold text-slate-600">📝 หมายเหตุตรงรายการสินค้า</p>
-                  <div className="space-y-2.5">
-                    {order.items.map((it, idx) => (
-                      <div key={idx} className="rounded-lg bg-slate-50 p-2.5 ring-1 ring-slate-200">
-                        <p className="mb-1.5 truncate text-xs font-bold text-slate-600">
-                          {idx + 1}. {it.name}
-                        </p>
-                        <RichNoteEditor
-                          value={it.adminNote}
-                          onChange={(html, commit) => setNote(idx, html, commit)}
-                          placeholder="หมายเหตุรายการนี้ (เช่น ห่อแยก / งานด่วน)"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* หมายเหตุท้ายบิล */}
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold text-slate-600">📄 หมายเหตุท้ายบิล</p>
-                  <RichNoteEditor
-                    value={order.billNote}
-                    onChange={(html, commit) => setNote(null, html, commit)}
-                    placeholder="เช่น ขอบคุณที่อุดหนุน 🦆 / นัดรับหน้าร้าน"
-                  />
-                </div>
-
-                <p className={`text-[11px] ${faint}`}>บันทึกอัตโนมัติ · แสดงบนใบงานตอนปริ้น</p>
-              </div>
-            </div>
-          )}
 
           {order.note && (
             <div>
-              <p className={LBL}>หมายเหตุลูกค้า</p>
+              <GH t="rose">💬 หมายเหตุลูกค้า</GH>
               <p className="mt-2 rounded-xl bg-amber-50/60 p-3 text-sm text-slate-600 ring-1 ring-amber-100">{order.note}</p>
             </div>
           )}
 
           <div>
-            <p className={LBL}>ประวัติการทำงาน{order.log?.length ? ` (${order.log.length})` : ""}</p>
+            <GH t="slate">🕘 ประวัติการทำงาน{order.log?.length ? ` (${order.log.length})` : ""}</GH>
             {!order.log?.length ? (
               <p className={`mt-2 text-xs ${faint}`}>ยังไม่มีประวัติ — จะบันทึกอัตโนมัติเมื่อมีการเปลี่ยนแปลง</p>
             ) : (
