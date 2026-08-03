@@ -1706,6 +1706,19 @@ export default function AdminOrderDetailPage() {
                         <span className="ml-1 font-normal text-violet-600">— ลูกค้าเห็นชุดนี้ และกดอนุมัติ / ขอแก้ไข</span>
                         {mayProof && <span className="ml-1 font-normal text-violet-400">· ลากไฟล์มาวางในกล่องนี้ได้เลย</span>}
                       </p>
+                      {/* ออเดอร์ยังไม่ยืนยันการชำระ = อัปแบบไม่ได้ (กันทำงานฟรี) — บอกตรงนี้เลย ไม่ต้องเดา */}
+                      {!paidOk && !overrideLock && (
+                        <div className="mt-2 rounded-lg bg-yellow-50 px-3 py-2 text-[11px] leading-relaxed text-yellow-800 ring-1 ring-yellow-300">
+                          <strong>⚠️ ยังอัปแบบไม่ได้</strong> — ออเดอร์นี้สถานะ “{order.status}” ระบบล็อกไว้กันทำงานฟรี
+                          <button
+                            type="button"
+                            onClick={() => setOverrideLock(true)}
+                            className="ml-1 rounded border border-yellow-400 bg-white px-1.5 py-0.5 text-[10px] font-bold text-yellow-800 transition hover:bg-yellow-100"
+                          >
+                            ปลดล็อก — ทำแบบก่อนได้
+                          </button>
+                        </div>
+                      )}
                       {proofs.length === 0 ? (
                         <p className="mt-2 rounded-lg border-2 border-dashed border-violet-200 bg-white px-3 py-3 text-center text-[11px] text-slate-400">
                           {proofDropIdx === i ? "⬇️ ปล่อยไฟล์ตรงนี้ได้เลย" : "ยังไม่ได้ส่งแบบให้ลูกค้า — ลากไฟล์มาวาง กดปุ่มด้านล่าง หรือกด “ใช้ลายนี้เป็นแบบ” จากฝั่งซ้าย"}
