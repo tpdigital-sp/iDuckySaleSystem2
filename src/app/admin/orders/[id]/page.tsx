@@ -1594,7 +1594,19 @@ export default function AdminOrderDetailPage() {
               </div>
               <p className={`mt-1.5 text-[11px] ${faint}`}>
                 💡 ทางลัดเปิดออเดอร์ — เก็บในโฟลเดอร์งานลูกค้าคู่กับไฟล์ลาย ดับเบิลคลิกเปิดได้ทันที
-                {shortcutExt === "webloc" ? " (ไฟล์ .webloc สำหรับ Mac)" : shortcutExt === "url" ? " (ไฟล์ .url สำหรับ Windows)" : ""}
+                {shortcutExt === "webloc" ? " (ปุ่มบนให้ไฟล์ .webloc สำหรับ Mac)" : shortcutExt === "url" ? " (ปุ่มบนให้ไฟล์ .url สำหรับ Windows)" : ""}
+                {shortcutExt && (
+                  <>
+                    {" · โฟลเดอร์นี้มีคนใช้อีกระบบด้วย? "}
+                    <button
+                      type="button"
+                      onClick={() => downloadOrderShortcut(order.id, customerUrl, shortcutExt === "webloc" ? "url" : "webloc")}
+                      className="font-bold text-amber-600 underline decoration-amber-300 underline-offset-2 hover:text-amber-700"
+                    >
+                      โหลดแบบ{shortcutExt === "webloc" ? " Windows (.url)" : " Mac (.webloc)"}
+                    </button>
+                  </>
+                )}
               </p>
               {!order.key && (
                 <p className="mt-2 text-[11px] text-amber-700">
@@ -2556,9 +2568,9 @@ function shortcutKind(): "webloc" | "url" {
  *   • macOS → .webloc (plist ของ Apple — Finder รู้จักเป็น "ตำแหน่งที่ตั้งอินเทอร์เน็ต")
  *   • Windows → .url (Internet Shortcut)
  */
-function downloadOrderShortcut(orderId: string, url: string) {
+function downloadOrderShortcut(orderId: string, url: string, kind?: "webloc" | "url") {
   if (!url) return;
-  const mac = shortcutKind() === "webloc";
+  const mac = (kind ?? shortcutKind()) === "webloc";
   const esc = (u: string) => u.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const body = mac
     ? `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n\t<key>URL</key>\n\t<string>${esc(url)}</string>\n</dict>\n</plist>\n`
