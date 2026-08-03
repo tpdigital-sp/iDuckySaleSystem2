@@ -1871,62 +1871,61 @@ export default function AdminOrderDetailPage() {
               <p className="mt-1.5 break-all rounded-lg bg-slate-50 px-2.5 py-2 font-mono text-[11px] text-slate-600 ring-1 ring-slate-200">
                 {customerUrl || "…"}
               </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={!customerUrl}
-                  onClick={() => {
-                    navigator.clipboard?.writeText(customerUrl).catch(() => {});
-                    setLinkCopied(true);
-                    setTimeout(() => setLinkCopied(false), 2000);
-                  }}
-                  className="rounded-xl bg-amber-500 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-40"
-                >
-                  {linkCopied ? "✓ คัดลอกแล้ว" : "🔗 คัดลอกลิงก์"}
-                </button>
+              {/* ปุ่มหลัก = คัดลอกลิงก์ (เต็มแถว) · ปุ่มรองแบ่งครึ่ง · ตัวเลือกไฟล์ทางลัดเป็นลิงก์เล็กใต้ปุ่ม */}
+              <button
+                type="button"
+                disabled={!customerUrl}
+                onClick={() => {
+                  navigator.clipboard?.writeText(customerUrl).catch(() => {});
+                  setLinkCopied(true);
+                  setTimeout(() => setLinkCopied(false), 2000);
+                }}
+                className={`mt-2 w-full rounded-xl px-3 py-2 text-xs font-bold text-white shadow-sm transition disabled:opacity-40 ${
+                  linkCopied ? "bg-emerald-600" : "bg-amber-500 hover:bg-amber-600"
+                }`}
+              >
+                {linkCopied ? "✓ คัดลอกแล้ว" : "🔗 คัดลอกลิงก์"}
+              </button>
+              <div className="mt-1.5 grid grid-cols-2 gap-1.5">
                 <button
                   type="button"
                   disabled={!customerUrl}
                   onClick={() => downloadOrderShortcut(order.id, customerUrl)}
                   title="วางในโฟลเดอร์งานของลูกค้า ดับเบิลคลิกเปิดหน้าออเดอร์ได้ทันที"
-                  className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
+                  className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-[11px] font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
                 >
-                  ⬇️ ดาวน์โหลดทางลัด{shortcutExt ? ` (.${shortcutExt})` : ""}
+                  ⬇️ ทางลัด{shortcutExt ? ` .${shortcutExt}` : ""}
                 </button>
                 <a
                   href={customerUrl || "#"}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                  className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-center text-[11px] font-bold text-slate-700 transition hover:bg-slate-50"
                 >
-                  ดูแบบที่ลูกค้าเห็น ↗
+                  ↗ หน้าลูกค้า
                 </a>
               </div>
-              <p className={`mt-1.5 text-[11px] ${faint}`}>
-                💡 ทางลัดเปิดออเดอร์ — เก็บในโฟลเดอร์งานลูกค้าคู่กับไฟล์ลาย ดับเบิลคลิกเปิดได้ทันที
-                {shortcutExt === "webloc" ? " (ปุ่มบนให้ไฟล์ .webloc สำหรับ Mac)" : shortcutExt === "url" ? " (ปุ่มบนให้ไฟล์ .url สำหรับ Windows)" : ""}
-                {shortcutExt && (
-                  <>
-                    {" · ทีมใช้เครื่องคนละระบบ? "}
-                    <button
-                      type="button"
-                      onClick={() => downloadOrderShortcut(order.id, customerUrl, shortcutExt === "webloc" ? "url" : "webloc")}
-                      className="font-bold text-amber-600 underline decoration-amber-300 underline-offset-2 hover:text-amber-700"
-                    >
-                      โหลดแบบ{shortcutExt === "webloc" ? " Windows (.url)" : " Mac (.webloc)"}
-                    </button>
-                    {" · "}
-                    <button
-                      type="button"
-                      onClick={() => downloadOrderShortcut(order.id, customerUrl, "html")}
-                      title="ไฟล์เดียวเปิดได้ทั้ง Mac / Windows / มือถือ — เด้งเข้าออเดอร์ให้เอง"
-                      className="font-bold text-amber-600 underline decoration-amber-300 underline-offset-2 hover:text-amber-700"
-                    >
-                      ใช้ได้ทุกเครื่อง (.html)
-                    </button>
-                  </>
-                )}
-              </p>
+              {shortcutExt && (
+                <p className={`mt-1.5 text-[10px] leading-relaxed ${faint}`}>
+                  ทางลัด = ไฟล์เปิดออเดอร์นี้ เก็บไว้ในโฟลเดอร์งานลูกค้าคู่กับไฟล์ลาย · เครื่องอื่น:{" "}
+                  <button
+                    type="button"
+                    onClick={() => downloadOrderShortcut(order.id, customerUrl, shortcutExt === "webloc" ? "url" : "webloc")}
+                    className="font-bold text-amber-600 underline decoration-amber-300 underline-offset-2 hover:text-amber-700"
+                  >
+                    {shortcutExt === "webloc" ? "Windows (.url)" : "Mac (.webloc)"}
+                  </button>
+                  {" · "}
+                  <button
+                    type="button"
+                    onClick={() => downloadOrderShortcut(order.id, customerUrl, "html")}
+                    title="ไฟล์เดียวเปิดได้ทั้ง Mac / Windows / มือถือ"
+                    className="font-bold text-amber-600 underline decoration-amber-300 underline-offset-2 hover:text-amber-700"
+                  >
+                    ทุกเครื่อง (.html)
+                  </button>
+                </p>
+              )}
               {!order.key && (
                 <p className="mt-2 text-[11px] text-amber-700">
                   ⚠️ ออเดอร์นี้สร้างก่อนมีระบบรหัส — ลิงก์ไม่มี key (ยังเปิดได้ปกติ)
