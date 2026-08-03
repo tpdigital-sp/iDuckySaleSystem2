@@ -251,7 +251,10 @@ export default function AdminOrderDetailPage() {
   const [overrideLock, setOverrideLock] = useState(false); // แอดมินยืนยันให้ทำแบบก่อนจ่ายเงิน
   const [packMode, setPackMode] = useState(false); // แอดมินสลับเข้าโหมดแพ็ค (ตรวจนับ/ยืนยันอ่าน) เอง
   const [logOpen, setLogOpen] = useState(false); // ประวัติการทำงาน: หุบไว้ (โชว์ 3 รายการล่าสุด) กดค่อยขยาย
+
+  useEffect(() => setShortcutExt(shortcutKind()), []);
   const [skipGate, setSkipGate] = useState<string[] | null>(null); // โมดัลยืนยันข้ามด่านแพ็ค (เหตุผลที่ยังไม่ครบ)
+  const [shortcutExt, setShortcutExt] = useState<"webloc" | "url" | "">(""); // นามสกุลทางลัดตามเครื่องที่เปิด (รู้หลัง mount)
   const trackingRef = useRef<string>(""); // เลขพัสดุที่บันทึกไปแล้ว กันบันทึกซ้ำตอน blur
 
   const can = useCan();
@@ -1575,10 +1578,10 @@ export default function AdminOrderDetailPage() {
                   type="button"
                   disabled={!customerUrl}
                   onClick={() => downloadOrderShortcut(order.id, customerUrl)}
-                  title="ได้ไฟล์ .url — วางในโฟลเดอร์งานของลูกค้า ดับเบิลคลิกเปิดออเดอร์ได้เลย"
+                  title="วางในโฟลเดอร์งานของลูกค้า ดับเบิลคลิกเปิดหน้าออเดอร์ได้ทันที"
                   className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
                 >
-                  ⬇️ ดาวน์โหลดลิงก์ (.url)
+                  ⬇️ ดาวน์โหลดทางลัด{shortcutExt ? ` (.${shortcutExt})` : ""}
                 </button>
                 <a
                   href={customerUrl || "#"}
@@ -1590,7 +1593,8 @@ export default function AdminOrderDetailPage() {
                 </a>
               </div>
               <p className={`mt-1.5 text-[11px] ${faint}`}>
-                💡 ไฟล์ .url = ทางลัดเปิดออเดอร์ — เก็บไว้ในโฟลเดอร์งานลูกค้าคู่กับไฟล์ลาย ดับเบิลคลิกเปิดได้ทันที
+                💡 ทางลัดเปิดออเดอร์ — เก็บในโฟลเดอร์งานลูกค้าคู่กับไฟล์ลาย ดับเบิลคลิกเปิดได้ทันที
+                {shortcutExt === "webloc" ? " (ไฟล์ .webloc สำหรับ Mac)" : shortcutExt === "url" ? " (ไฟล์ .url สำหรับ Windows)" : ""}
               </p>
               {!order.key && (
                 <p className="mt-2 text-[11px] text-amber-700">
@@ -2541,20 +2545,29 @@ function SkipGateModal({ reasons, onCancel, onConfirm }: { reasons: string[]; on
   );
 }
 
+/** Mac เปิด .url ไม่ได้ (มองเป็นไฟล์ข้อความ) — ต้องใช้ .webloc ของ Apple · Windows ใช้ .url */
+function shortcutKind(): "webloc" | "url" {
+  return typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.userAgent) ? "webloc" : "url";
+}
+
 /**
- * ดาวน์โหลด "ทางลัดเปิดออเดอร์" เป็นไฟล์ .url (Internet Shortcut)
- * เอาไปวางในโฟลเดอร์งานของลูกค้าคู่กับไฟล์ลาย → ดับเบิลคลิกเปิดหน้าออเดอร์ได้เลย
- * (รูปแบบเดียวกันทั้ง Windows และ macOS)
+ * ดาวน์โหลด "ทางลัดเปิดออเดอร์" — ดับเบิลคลิกแล้วเปิดหน้าออเดอร์ในเบราว์เซอร์ทันที
+ * เอาไปวางในโฟลเดอร์งานของลูกค้าคู่กับไฟล์ลายได้เลย
+ *   • macOS → .webloc (plist ของ Apple — Finder รู้จักเป็น "ตำแหน่งที่ตั้งอินเทอร์เน็ต")
+ *   • Windows → .url (Internet Shortcut)
  */
 function downloadOrderShortcut(orderId: string, url: string) {
   if (!url) return;
-  // CRLF + [InternetShortcut] คือรูปแบบมาตรฐานของไฟล์ .url
-  const body = `[InternetShortcut]\r\nURL=${url}\r\nIconIndex=0\r\n`;
-  const blob = new Blob([body], { type: "application/internet-shortcut" });
+  const mac = shortcutKind() === "webloc";
+  const esc = (u: string) => u.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const body = mac
+    ? `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n\t<key>URL</key>\n\t<string>${esc(url)}</string>\n</dict>\n</plist>\n`
+    : `[InternetShortcut]\r\nURL=${url}\r\nIconIndex=0\r\n`;
+  const blob = new Blob([body], { type: mac ? "application/xml" : "application/internet-shortcut" });
   const href = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = href;
-  a.download = `${orderId}.url`;
+  a.download = `${orderId}.${mac ? "webloc" : "url"}`;
   document.body.appendChild(a);
   a.click();
   a.remove();
