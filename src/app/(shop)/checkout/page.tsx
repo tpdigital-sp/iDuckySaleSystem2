@@ -334,7 +334,15 @@ export default function CheckoutPage() {
           <span className="text-5xl">🛍️</span>
           <h1 className="mt-3 text-2xl font-extrabold text-emerald-800">เพิ่มเข้าออเดอร์เดิมแล้ว!</h1>
           <p className="mt-1 text-sm text-stone-600">
-            รายการใหม่ถูกเพิ่มเข้า <span className="font-bold text-stone-900">{appendTo.id}</span> เรียบร้อย
+            รายการใหม่ถูกเพิ่มเข้า{" "}
+            <Link
+              href={staffName ? `/admin/orders/${appendTo.id}` : `/order/${appendTo.id}?key=${encodeURIComponent(appendTo.key)}`}
+              className="font-bold text-stone-900 underline decoration-amber-300 decoration-2 underline-offset-2 hover:text-amber-700"
+              title={staffName ? "เปิดออเดอร์นี้ในหลังบ้าน" : "เปิดหน้าออเดอร์"}
+            >
+              {appendTo.id}
+            </Link>{" "}
+            เรียบร้อย
           </p>
           {appendDone.owed > 0 && (
             <p className="mt-3 rounded-xl bg-white px-4 py-3 text-sm ring-1 ring-amber-200">
@@ -344,12 +352,22 @@ export default function CheckoutPage() {
             </p>
           )}
         </div>
-        <Link
-          href={`/order/${appendTo.id}?key=${encodeURIComponent(appendTo.key)}`}
-          className="mt-5 inline-block rounded-full bg-amber-500 px-8 py-3.5 text-sm font-bold text-white shadow-lg transition hover:bg-amber-600"
-        >
-          ไปหน้าออเดอร์ เพื่อแจ้งโอน →
-        </Link>
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+          <Link
+            href={`/order/${appendTo.id}?key=${encodeURIComponent(appendTo.key)}`}
+            className="inline-block rounded-full bg-amber-500 px-8 py-3.5 text-sm font-bold text-white shadow-lg transition hover:bg-amber-600"
+          >
+            ไปหน้าออเดอร์ เพื่อแจ้งโอน →
+          </Link>
+          {staffName && (
+            <Link
+              href={`/admin/orders/${appendTo.id}`}
+              className="inline-block rounded-full border-2 border-slate-300 bg-white px-6 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+            >
+              🛠 เปิดในหลังบ้าน
+            </Link>
+          )}
+        </div>
       </div>
     );
   }

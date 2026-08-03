@@ -6,6 +6,7 @@ import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import { fetchProducts } from "@/lib/product-repo";
+import ProductVisual from "@/components/ProductVisual";
 import { adminDiscountAmount, amountDueNow, itemDiscountAmount, orderBalance, orderItemDiscounts, orderTotal, PROOF_STYLES, proofsOf, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchOrderForCustomer, reportPayment, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
@@ -87,14 +88,21 @@ export default function CustomerOrderPage() {
   const [showGuide, setShowGuide] = useState(false);
   // ข้อควรทราบ/เงื่อนไขงานของสินค้าแต่ละตัว (แอดมินตั้งในหลังบ้าน) — ย้ำให้ลูกค้าเห็นในออเดอร์ด้วย
   const [termsById, setTermsById] = useState<Record<string, string>>({});
+  /** ข้อมูลสินค้าไว้โชว์รูปประกอบรายการ (ลูกค้าจะได้รู้ว่าสั่งอะไรไว้ แม้ยังไม่มีแบบงาน) */
+  const [picById, setPicById] = useState<Record<string, { emoji: string; gradient: string; imageSrc?: string }>>({});
   useEffect(() => {
     let alive = true;
     fetchProducts()
       .then((list) => {
         if (!alive) return;
         const map: Record<string, string> = {};
-        for (const p of list) if (p.terms?.trim()) map[p.id] = p.terms.trim();
+        const pics: Record<string, { emoji: string; gradient: string; imageSrc?: string }> = {};
+        for (const p of list) {
+          if (p.terms?.trim()) map[p.id] = p.terms.trim();
+          pics[p.id] = { emoji: p.emoji, gradient: p.gradient, imageSrc: p.imageSrc };
+        }
         setTermsById(map);
+        setPicById(pics);
       })
       .catch(() => {});
     return () => {
@@ -744,7 +752,17 @@ export default function CustomerOrderPage() {
                 className={`rounded-2xl p-4 ring-1 sm:p-5 ${i % 2 === 0 ? "bg-white ring-stone-200" : "bg-sky-50/50 ring-sky-200"}`}
               >
                 <div className="flex justify-between gap-3">
-                  <div className="min-w-0">
+                  {picById[it.productId] && (
+                    <ProductVisual
+                      emoji={picById[it.productId].emoji}
+                      gradient={picById[it.productId].gradient}
+                      src={picById[it.productId].imageSrc}
+                      alt={it.name}
+                      size="text-3xl"
+                      className="h-16 w-16 shrink-0 rounded-2xl"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
                     <p className="font-bold text-amber-950">
                       {order.items.length > 1 && (
                         <span className={`mr-1.5 text-xs font-extrabold ${i % 2 === 0 ? "text-stone-400" : "text-sky-500"}`}>
