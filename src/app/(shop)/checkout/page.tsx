@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatPrice } from "@/lib/products";
 import { useCart } from "@/lib/cart-context";
+import { getAppendPicks, clearAppendPicks } from "@/lib/append-order";
 import { useCustomer } from "@/lib/customer-context";
 import {
   fetchShopPayment,
@@ -32,7 +33,15 @@ interface Placed {
 }
 
 export default function CheckoutPage() {
-  const { items, subtotal, totalQty, productOf, clear } = useCart();
+  const { items: allItems, productOf, clear, removeItem } = useCart();
+  /** โหมดสั่งเพิ่ม: ลูกค้าติ๊กเลือกได้ว่าจะส่งรายการไหนเข้าออเดอร์เดิม (ไม่เลือก = ทั้งตะกร้า) */
+  const [picks, setPicks] = useState<string[] | null>(null);
+  useEffect(() => {
+    setPicks(getAppendPicks());
+  }, []);
+  const items = picks === null ? allItems : allItems.filter((i) => picks.includes(i.key));
+  const subtotal = items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0);
+  const totalQty = items.reduce((sum, i) => sum + i.qty, 0);
   const { customer } = useCustomer();
   const [payment, setPayment] = useState<ShopPayment>(EMPTY_PAYMENT);
   const [methods, setMethods] = useState<ShippingMethod[]>(DEFAULT_SHIPPING);
@@ -255,7 +264,10 @@ export default function CheckoutPage() {
       }
       clearAppendTarget();
       setAppendDone({ owed: res.owed ?? 0 });
-      clear();
+      // เอาเฉพาะรายการที่ส่งเข้าออเดอร์เดิมออกจากตะกร้า — ที่ไม่ได้ติ๊กยังอยู่ให้สั่งทีหลัง
+      if (picks === null) clear();
+      else items.forEach((it) => removeItem(it.key));
+      clearAppendPicks();
       return;
     }
 

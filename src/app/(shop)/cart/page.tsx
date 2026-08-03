@@ -14,18 +14,33 @@ import {
 } from "@/lib/shop-settings";
 import { useCart } from "@/lib/cart-context";
 import ProductVisual from "@/components/ProductVisual";
-import { getAppendTarget, clearAppendTarget, type AppendTarget } from "@/lib/append-order";
+import { getAppendTarget, clearAppendTarget, setAppendPicks, getAppendPicks, clearAppendPicks, type AppendTarget } from "@/lib/append-order";
 
 const USE_BY_KEY = "ducky-use-by-date";
 
 export default function CartPage() {
-  const { items, subtotal, totalQty, setQty, removeItem, clear, productOf } = useCart();
+  const { items, subtotal: cartSubtotal, totalQty: cartQty, setQty, removeItem, clear, productOf } = useCart();
   const router = useRouter();
   // สั่งเป็นออเดอร์ใหม่ หรือเพิ่มเข้าออเดอร์เดิม (ลูกค้ากดมาจากหน้าออเดอร์)
   const [appendTo, setAppendTo] = useState<AppendTarget | null>(null);
+  /** รายการที่เลือกส่งเข้าออเดอร์เดิม (คีย์ของ cart item) — null = ยังไม่เคยเลือก (ถือว่าเลือกทุกอัน) */
+  const [picks, setPicks] = useState<string[] | null>(null);
   useEffect(() => {
     setAppendTo(getAppendTarget());
+    setPicks(getAppendPicks());
   }, []);
+  const isPicked = (key: string) => !appendTo || picks === null || picks.includes(key);
+  const pickedItems = items.filter((i) => isPicked(i.key));
+  const subtotal = appendTo ? pickedItems.reduce((n, i) => n + i.unitPrice * i.qty, 0) : cartSubtotal;
+  const totalQty = appendTo ? pickedItems.reduce((n, i) => n + i.qty, 0) : cartQty;
+  function togglePick(key: string) {
+    setPicks((cur) => {
+      const base = cur ?? items.map((i) => i.key);
+      const next = base.includes(key) ? base.filter((k) => k !== key) : [...base, key];
+      setAppendPicks(next);
+      return next;
+    });
+  }
 
   // วันที่ต้องใช้งาน — เก็บไว้ให้หน้า checkout ส่งเข้าออเดอร์
   const [useBy, setUseBy] = useState("");
@@ -67,7 +82,8 @@ export default function CartPage() {
 
   const shippingMethod = methods.find((s) => s.id === shippingId) ?? methods[0];
   const freeShipping = freeMin > 0 && subtotal >= freeMin;
-  const shippingCost = freeShipping ? 0 : shippingMethod.price;
+  // สั่งเพิ่มเข้าออเดอร์เดิม = ส่งรวมกล่องเดียวกัน ไม่คิดค่าส่งซ้ำ
+  const shippingCost = appendTo ? 0 : freeShipping ? 0 : shippingMethod.price;
   const total = subtotal + shippingCost;
   const remainForFree = freeMin - subtotal;
 
@@ -104,8 +120,21 @@ export default function CartPage() {
             return (
               <div
                 key={item.key}
-                className="flex gap-4 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-amber-100"
+                className={`flex gap-4 rounded-3xl p-4 shadow-sm ring-1 transition ${
+                  appendTo && !isPicked(item.key) ? "bg-stone-50 opacity-60 ring-stone-200" : "bg-white ring-amber-100"
+                }`}
               >
+                {/* เลือกว่าจะส่งรายการนี้เข้าออเดอร์เดิมไหม (เห็นเฉพาะโหมดสั่งเพิ่ม) */}
+                {appendTo && (
+                  <label className="flex shrink-0 cursor-pointer items-start pt-1" title="ติ๊ก = ส่งรายการนี้เข้าออเดอร์เดิม">
+                    <input
+                      type="checkbox"
+                      checked={isPicked(item.key)}
+                      onChange={() => togglePick(item.key)}
+                      className="h-5 w-5 accent-sky-600"
+                    />
+                  </label>
+                )}
                 {(() => {
                   // ลายที่ลูกค้าแนบ (เก็บมาในตัวเลือกเป็น url คั่นด้วย " | ") — โชว์ลายจริงแทนรูปสินค้า
                   const artUrls = String(item.selections["ภาพลายที่แนบ"] ?? "")
@@ -244,13 +273,19 @@ export default function CartPage() {
                 <span className="text-xs leading-relaxed text-stone-700">
                   <strong className="block text-sm text-sky-800">➕ เพิ่มเข้าออเดอร์เดิม {appendTo.id}</strong>
                   ใช้ชื่อ/ที่อยู่เดิม · <strong className="text-emerald-700">ไม่คิดค่าส่งเพิ่ม</strong> เพราะส่งรวมกล่องเดียวกัน
+                  <span className="mt-1 block font-bold text-sky-700">
+                    ติ๊กเลือกรายการที่จะส่งเข้าออเดอร์เดิมได้ — เลือกแล้ว {items.filter((i) => isPicked(i.key)).length}/{items.length} รายการ
+                    <span className="block font-normal text-stone-500">รายการที่ไม่ติ๊กจะยังอยู่ในตะกร้า สั่งทีหลังได้</span>
+                  </span>
                 </span>
               </label>
               <button
                 type="button"
                 onClick={() => {
                   clearAppendTarget();
+                  clearAppendPicks();
                   setAppendTo(null);
+                  setPicks(null);
                 }}
                 className="flex w-full cursor-pointer items-start gap-2 rounded-xl bg-white p-2.5 text-left ring-1 ring-stone-200 transition hover:ring-stone-300"
               >
@@ -316,7 +351,7 @@ export default function CartPage() {
               <dd className="font-semibold">{formatPrice(subtotal)}</dd>
             </div>
             <div className="flex justify-between text-stone-600">
-              <dt>ค่าจัดส่ง</dt>
+              <dt>{appendTo ? "ค่าจัดส่ง (รวมกล่องเดิม)" : "ค่าจัดส่ง"}</dt>
               <dd className="font-semibold">
                 {freeShipping ? (
                   <span className="text-emerald-600">ฟรี!</span>
