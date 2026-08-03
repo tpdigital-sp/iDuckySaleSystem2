@@ -844,8 +844,8 @@ export default function AdminOrderDetailPage() {
       o.status !== "ยกเลิก"
   );
   /** รายการไหนควรกางไว้เองตั้งแต่แรก — ออเดอร์ยาว ๆ กางเฉพาะอันที่ยังมีเรื่องต้องจัดการ */
-  const autoOpen = (it: OrderItem) =>
-    order.items.length <= 2 || Boolean(it.needStockCheck) || it.proofStatus === "ขอแก้ไข";
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const autoOpen = (_it: OrderItem) => true;
   const subtotal = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
   const qty = order.items.reduce((s, i) => s + i.qty, 0);
   // ลิงก์ฝั่งลูกค้า (ต้องมี key ถึงเปิดได้) — origin ตั้งใน useEffect กัน SSR mismatch
@@ -1211,27 +1211,6 @@ export default function AdminOrderDetailPage() {
                     </div>
                   )}
 
-                  {/* 🎨 ภาพลายที่ลูกค้าแนบตอนสั่ง — กราฟฟิกใช้เป็นแนวทางทำแบบ (ไม่ใช่ไฟล์งานพิมพ์) */}
-                  {(it.artworkUrls?.length ?? 0) > 0 && (
-                    <div className="mt-2 rounded-xl bg-sky-50/70 p-2.5 ring-1 ring-sky-100">
-                      <p className="text-[11px] font-bold text-sky-800">
-                        🎨 ภาพลายจากลูกค้า ({it.artworkUrls!.length} รูป)
-                        <span className="ml-1 font-normal text-slate-500">— ใช้เป็นแนวทางทำแบบ · ไฟล์คุณภาพเต็มดูจากลิงก์/อีเมลในรายละเอียด</span>
-                      </p>
-                      <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        {(it.artworkUrls ?? []).map((u, j) => (
-                          <a key={u} href={u} target="_blank" rel="noreferrer" title="เปิดไฟล์เต็ม / ดาวน์โหลด">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={u}
-                              alt={`ภาพลายที่ลูกค้าแนบ ${j + 1}`}
-                              className="h-16 w-16 rounded-lg object-cover ring-1 ring-sky-200 transition hover:ring-2 hover:ring-sky-400"
-                            />
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                   {mayProof && (
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <button
@@ -1466,15 +1445,15 @@ export default function AdminOrderDetailPage() {
                     <div className="mt-3 border-t border-slate-100 pt-3">
                       <button
                         type="button"
-                        onClick={() => setNoteOpen((cur) => ({ ...cur, [i]: !(cur[i] ?? noteHasText(it.adminNote)) }))}
+                        onClick={() => setNoteOpen((cur) => ({ ...cur, [i]: !(cur[i] ?? true) }))}
                         className={`text-xs font-bold transition ${
                           noteHasText(it.adminNote) ? "text-teal-700 hover:text-teal-800" : "text-slate-400 hover:text-slate-600"
                         }`}
                       >
                         📝 หมายเหตุใบงานของรายการนี้{noteHasText(it.adminNote) ? " (มีข้อความ)" : ""}{" "}
-                        {(noteOpen[i] ?? noteHasText(it.adminNote)) ? "▴" : "▾"}
+                        {(noteOpen[i] ?? true) ? "▴" : "▾"}
                       </button>
-                      {(noteOpen[i] ?? noteHasText(it.adminNote)) && (
+                      {(noteOpen[i] ?? true) && (
                         <div className="mt-2 rounded-xl bg-teal-50/40 p-2.5 ring-1 ring-teal-100">
                           <RichNoteEditor
                             value={it.adminNote}
