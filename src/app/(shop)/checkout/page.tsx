@@ -219,6 +219,13 @@ export default function CheckoutPage() {
   const total = Math.max(0, subtotal - discount + shippingCost);
 
   async function submit() {
+    const useByDate = (() => {
+      try {
+        return localStorage.getItem("ducky-use-by-date") || "";
+      } catch {
+        return "";
+      }
+    })();
     const orderItems = items.map((it) => {
       // ภาพลายที่ลูกค้าแนบ เก็บมาในตะกร้าเป็น URL คั่น " | " → แยกเป็นฟิลด์ของตัวเอง
       // (ไม่ปนกับข้อความตัวเลือก ไม่งั้น URL ยาวจะรกทั้งใบงานและหน้าออเดอร์)
@@ -271,6 +278,7 @@ export default function CheckoutPage() {
       couponCode: staffMode ? undefined : couponPreview?.code,
       staffOrder: staffMode || undefined,
       items: orderItems,
+        ...(useByDate ? { useByDate } : {}),
     });
     setPlacing(false);
     if (!res.ok || !res.orderId) {

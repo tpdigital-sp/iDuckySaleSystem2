@@ -10,6 +10,7 @@ import {
   ORDER_STATUSES,
   adminDiscountAmount,
   amountDueNow,
+  daysToUseBy,
   itemDiscountAmount,
   orderItemDiscounts,
   orderTotal,
@@ -1792,6 +1793,36 @@ export default function AdminOrderDetailPage() {
                       className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800 focus:border-amber-300 focus:outline-none"
                     />
                   </div>
+                </div>
+
+                {/* 🔥 วันที่ลูกค้าต้องใช้งาน + งานเร่ง */}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold text-slate-600">🔥 วันที่ลูกค้าต้องใช้งาน (วันเร่ง)</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="date"
+                      value={order.useByDate ?? ""}
+                      onChange={(e) => applyOrder({ ...order, useByDate: e.target.value || undefined })}
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800 focus:border-amber-300 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => applyOrder({ ...order, rush: !order.rush })}
+                      className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                        order.rush ? "bg-rose-500 text-white hover:bg-rose-600" : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                      }`}
+                    >
+                      {order.rush ? "🔥 งานเร่ง" : "ทำเป็นงานเร่ง"}
+                    </button>
+                  </div>
+                  {order.useByDate && (() => {
+                    const d = daysToUseBy(order);
+                    return d == null ? null : (
+                      <p className={`mt-1 text-[11px] font-bold ${d < 0 ? "text-rose-600" : d <= 7 ? "text-amber-600" : "text-slate-400"}`}>
+                        {d < 0 ? `⚠️ เลยวันใช้งานมาแล้ว ${Math.abs(d)} วัน` : d === 0 ? "⚠️ ต้องใช้งานวันนี้!" : `เหลืออีก ${d} วันถึงวันใช้งาน`}
+                      </p>
+                    );
+                  })()}
                 </div>
 
                 {/* หมายเหตุแต่ละรายการ */}

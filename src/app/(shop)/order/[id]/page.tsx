@@ -278,6 +278,13 @@ export default function CustomerOrderPage() {
   /* ชุดชำระเงิน/สลิป — มือถือโชว์บนสุด (CTA ต้องเจอทันที) · เดสก์ท็อปย้ายไปคอลัมน์ขวา */
   const payFlow = (
     <>
+      {order.useByDate && (
+        <p className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-stone-700 ring-1 ring-stone-200">
+          📅 วันที่คุณแจ้งว่าต้องใช้งาน: <strong className="text-amber-700">{order.useByDate}</strong>
+          {order.rush ? <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">🔥 งานเร่ง</span> : null}
+        </p>
+      )}
+
       {/* ── สั่งจำนวนมาก: รอร้านเช็คสต๊อก/คิวผลิตแล้วยืนยันกลับ ── */}
       {order.items.some((it) => it.needStockCheck) && !cancelled && (
         <div className="mt-4 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">

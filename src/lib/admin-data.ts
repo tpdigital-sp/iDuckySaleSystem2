@@ -230,6 +230,13 @@ export interface Order {
   printedAt?: string;
   /** ช่วงวันที่จัดส่ง (แอดมินระบุ) — โชว์บนใบงาน · เก็บเป็น yyyy-mm-dd */
   shipDate?: { from?: string; to?: string };
+  /**
+   * วันที่ลูกค้าต้องใช้งาน (YYYY-MM-DD) — ลูกค้าระบุตอนสั่ง หรือแอดมินกรอกให้ทีหลัง
+   * ฝ่ายผลิตใช้จัดคิว · ใบงานโชว์เด่น · ใกล้ถึงวัน = งานเร่ง
+   */
+  useByDate?: string;
+  /** งานเร่ง — แอดมินติ๊กเอง (โชว์ป้ายแดงทุกที่) */
+  rush?: boolean;
   /** หมายเหตุท้ายบิล (แอดมินพิมพ์ลงใบงาน) — rich text HTML (สี/ขนาด/น้ำหนักต่อคำ) */
   billNote?: string;
   /** กุญแจลับต่อออเดอร์ (สุ่มตอนสร้าง) — ใช้ยืนยันสิทธิ์ตอนแจ้งโอน/ดูแบบ (public endpoint) */
@@ -383,6 +390,16 @@ export function packGate(order: Order): PackGate {
     noPhoto,
     unpaidBalance,
   };
+}
+
+/** เหลืออีกกี่วันถึงวันใช้งาน (null = ไม่ได้ระบุ) · ติดลบ = เลยกำหนดแล้ว */
+export function daysToUseBy(o: Order): number | null {
+  if (!o.useByDate) return null;
+  const d = new Date(o.useByDate + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((d.getTime() - today.getTime()) / 86400000);
 }
 
 /** เพิ่ม 1 บรรทัดลงประวัติออเดอร์ (คืน Order ใหม่ ไม่แก้ของเดิม) */

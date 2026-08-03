@@ -273,6 +273,12 @@ export default function PrintOrderPage() {
                 {(order.tracking ?? "").trim() && (
                   <p className="mt-0.5 font-mono text-sm font-bold text-slate-800">📮 เลขพัสดุ: {order.tracking}</p>
                 )}
+                {order.useByDate && (
+                  <p className="mt-1.5 block w-fit rounded border-2 border-red-600 bg-white px-2 py-1 text-base font-extrabold" style={{ color: "#dc2626" }}>
+                    🔥 ต้องใช้งาน: {fmtThaiDate(order.useByDate)}
+                    {order.rush ? " · งานเร่ง!" : ""}
+                  </p>
+                )}
                 {(order.shipDate?.from || order.shipDate?.to) && (
                   <p className="mt-1.5 inline-block rounded bg-white px-2 py-1 text-base font-bold ring-1 ring-slate-300">
                     📅 วันที่จัดส่ง: {fmtThaiDate(order.shipDate?.from)}

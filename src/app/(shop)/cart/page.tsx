@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { LINE_URL } from "@/components/LineButton";
 import { formatPrice } from "@/lib/products";
 import {
   fetchShopPayment,
@@ -14,9 +15,25 @@ import {
 import { useCart } from "@/lib/cart-context";
 import ProductVisual from "@/components/ProductVisual";
 
+const USE_BY_KEY = "ducky-use-by-date";
+
 export default function CartPage() {
   const { items, subtotal, totalQty, setQty, removeItem, clear, productOf } = useCart();
   const router = useRouter();
+  // วันที่ต้องใช้งาน — เก็บไว้ให้หน้า checkout ส่งเข้าออเดอร์
+  const [useBy, setUseBy] = useState("");
+  useEffect(() => {
+    try {
+      setUseBy(localStorage.getItem(USE_BY_KEY) ?? "");
+    } catch {}
+  }, []);
+  function saveUseBy(v: string) {
+    setUseBy(v);
+    try {
+      if (v) localStorage.setItem(USE_BY_KEY, v);
+      else localStorage.removeItem(USE_BY_KEY);
+    } catch {}
+  }
   // รูปแบบจัดส่ง + โปรส่งฟรี ดึงจากที่แอดมินตั้งค่าไว้ (ระหว่างโหลดใช้ค่าเริ่มต้นไปก่อน)
   const [methods, setMethods] = useState<ShippingMethod[]>(DEFAULT_SHIPPING);
   const [freeMin, setFreeMin] = useState(0);
@@ -238,6 +255,40 @@ export default function CartPage() {
               <dd className="text-amber-600">{formatPrice(total)}</dd>
             </div>
           </dl>
+
+          {/* 📅 วันที่ต้องใช้งาน — ทักเช็คคิวงานกับแอดมินก่อน */}
+          <div className="mt-5 rounded-2xl bg-sky-50/70 p-4 ring-1 ring-sky-200">
+            <label htmlFor="use-by" className="block text-sm font-bold text-stone-700">
+              📅 ต้องใช้งานวันไหน? <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
+            </label>
+            <p className="mt-1 text-[11px] leading-relaxed text-stone-500">
+              มีกำหนดใช้งาน (อีเวนต์ · วันเกิด · ของขวัญ) ระบุไว้ได้เลย —{" "}
+              <strong className="text-sky-700">รบกวนทักแอดมินเช็คคิวงานก่อนนะครับ</strong> ทางร้านจะยืนยันว่าทันไหมก่อนเริ่มผลิต
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <input
+                id="use-by"
+                type="date"
+                value={useBy}
+                min={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => saveUseBy(e.target.value)}
+                className="rounded-xl bg-white px-3 py-2 text-sm text-stone-700 ring-1 ring-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-300"
+              />
+              {useBy && (
+                <button type="button" onClick={() => saveUseBy("")} className="rounded-full px-3 py-1 text-xs font-bold text-stone-400 hover:bg-white hover:text-stone-600">
+                  ล้างวันที่
+                </button>
+              )}
+              <a
+                href={LINE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-auto inline-flex items-center gap-1 rounded-full bg-[#06C755] px-3.5 py-1.5 text-xs font-bold text-white transition hover:brightness-95"
+              >
+                💬 ทักเช็คคิวงาน
+              </a>
+            </div>
+          </div>
 
           <button
             type="button"

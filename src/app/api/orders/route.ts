@@ -34,6 +34,7 @@ export async function POST(req: Request) {
     shippingCost?: number;
     items?: Order["items"];
     note?: string;
+    useByDate?: string;
     couponCode?: string;
     /** โหมดพนักงานสั่งแทนลูกค้า — ต้องล็อกอินหลังบ้านและมีสิทธิ์ orders.edit (ตรวจจากคุกกี้ฝั่งเซิร์ฟเวอร์) */
     staffOrder?: boolean;
@@ -131,6 +132,7 @@ export async function POST(req: Request) {
     shippingCost: Number(input.shippingCost) || 0,
     status: "รอชำระเงิน",
     note: input.note?.trim() || undefined,
+    ...(/^\d{4}-\d{2}-\d{2}$/.test(input.useByDate ?? "") ? { useByDate: input.useByDate } : {}),
     items: input.items,
     ...(cid ? { customerId: cid } : {}),
     ...(input.email?.trim() ? { email: input.email.trim() } : {}),
