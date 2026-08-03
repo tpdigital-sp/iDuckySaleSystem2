@@ -530,6 +530,19 @@ export default function AdminOrderDetailPage() {
     );
   }
 
+  /** แอดมินเช็คสต๊อก/คิวผลิตแล้วกดยืนยัน → เคลียร์ธง + ระบบแจ้งลูกค้าทางไลน์ให้อัตโนมัติ */
+  function confirmStock(itemIndex: number) {
+    if (!order) return;
+    const it = order.items[itemIndex];
+    if (!it?.needStockCheck) return;
+    const ship = order.shipDate?.from ? ` (วันส่งที่ตั้งไว้: ${order.shipDate.from})` : "";
+    if (!window.confirm(`ยืนยันว่าเช็คสต๊อก/คิวผลิตแล้ว ผลิต "${it.name}" ได้ ${it.qty.toLocaleString("th-TH")} ชิ้น?${ship}\n\nระบบจะแจ้งลูกค้าทางไลน์ให้ทันที`)) return;
+    const items = order.items.map((x, i) => (i === itemIndex ? { ...x, needStockCheck: undefined } : x));
+    applyOrder(
+      withLog({ ...order, items }, actor, "ยืนยันสต๊อก/คิวผลิต", `${it.name} × ${it.qty} — แจ้งลูกค้าแล้ว`)
+    );
+  }
+
   /** ฝ่ายแพ็คถ่าย/แนบภาพของในกล่องก่อนปิด — บังคับอย่างน้อย 1 รูปก่อนยิงเลขพัสดุ */
   async function addPackPhotos(files: FileList | null) {
     if (!order || !files?.length) return;
@@ -1021,9 +1034,20 @@ export default function AdminOrderDetailPage() {
 
                   {/* 📦 สั่งจำนวนมาก — ต้องเช็คสต๊อก/คิวผลิตแล้วยืนยันกับลูกค้าก่อนเริ่มงาน */}
                   {it.needStockCheck && (
-                    <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 ring-1 ring-amber-200">
-                      📦 สั่งจำนวนมาก ({it.qty.toLocaleString("th-TH")} ชิ้น) — เช็คสต๊อก/คิวผลิตแล้วยืนยันจำนวน-วันส่งกับลูกค้าก่อนเริ่มงาน
-                    </p>
+                    <div className="mt-2 rounded-xl bg-amber-50 px-3 py-2.5 ring-1 ring-amber-200">
+                      <p className="text-xs font-bold text-amber-800">
+                        📦 สั่งจำนวนมาก ({it.qty.toLocaleString("th-TH")} ชิ้น) — เช็คสต๊อก/คิวผลิตก่อนเริ่มงาน
+                      </p>
+                      {mayEdit && (
+                        <button
+                          type="button"
+                          onClick={() => confirmStock(i)}
+                          className="mt-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-amber-600"
+                        >
+                          ✅ ยืนยันของพอ/ผลิตได้ — แจ้งลูกค้า
+                        </button>
+                      )}
+                    </div>
                   )}
 
                   {/* 🎨 ภาพลายที่ลูกค้าแนบตอนสั่ง — กราฟฟิกใช้เป็นแนวทางทำแบบ (ไม่ใช่ไฟล์งานพิมพ์) */}

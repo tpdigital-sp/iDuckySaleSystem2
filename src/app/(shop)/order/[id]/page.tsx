@@ -278,6 +278,26 @@ export default function CustomerOrderPage() {
   /* ชุดชำระเงิน/สลิป — มือถือโชว์บนสุด (CTA ต้องเจอทันที) · เดสก์ท็อปย้ายไปคอลัมน์ขวา */
   const payFlow = (
     <>
+      {/* ── สั่งจำนวนมาก: รอร้านเช็คสต๊อก/คิวผลิตแล้วยืนยันกลับ ── */}
+      {order.items.some((it) => it.needStockCheck) && !cancelled && (
+        <div className="mt-4 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
+          <p className="text-sm font-extrabold text-amber-900">📦 รายการสั่งจำนวนมาก — รอทางร้านยืนยัน</p>
+          <p className="mt-1 text-xs leading-relaxed text-amber-800">
+            ทางร้านกำลังเช็คสต๊อกและคิวผลิตของรายการที่สั่งจำนวนมาก จะรีบแจ้ง<strong>จำนวนที่ผลิตได้และวันจัดส่ง</strong>กลับทางไลน์ให้ครับ
+            {order.status === "รอชำระเงิน" ? " — รอผลยืนยันก่อนโอนได้เลย ไม่ต้องรีบครับ" : ""}
+          </p>
+          <ul className="mt-2 space-y-0.5">
+            {order.items
+              .filter((it) => it.needStockCheck)
+              .map((it, i) => (
+                <li key={i} className="text-xs font-semibold text-amber-900">
+                  • {it.name} × {it.qty.toLocaleString("th-TH")}
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
+
       {/* ── ชำระเงิน / แจ้งสลิป ── */}
       {order.status === "รอชำระเงิน" && (
         <div

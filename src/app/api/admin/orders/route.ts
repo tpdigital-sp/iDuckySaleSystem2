@@ -218,6 +218,23 @@ export async function PATCH(req: Request) {
       void notifyCustomer(sb, toSave, `🚚 ออเดอร์ ${toSave.id} จัดส่งแล้ว${toSave.tracking ? `\nเลขพัสดุ: ${toSave.tracking}` : ""}\n${link}`);
   }
 
+  // 📦 แอดมินเพิ่งยืนยันสต๊อก/คิวผลิตของรายการที่สั่งจำนวนมาก → แจ้งลูกค้าทางไลน์ทันที
+  const stockJustConfirmed = existing.items.filter(
+    (old, i) => old.needStockCheck && !toSave.items[i]?.needStockCheck && old.name === toSave.items[i]?.name
+  );
+  if (stockJustConfirmed.length) {
+    const origin = new URL(req.url).origin;
+    const lines = stockJustConfirmed.map((i) => `• ${i.name} ×${i.qty.toLocaleString("th-TH")}`).join("\n");
+    const ship = toSave.shipDate?.from
+      ? `\nกำหนดส่ง: ${toSave.shipDate.from}${toSave.shipDate.to && toSave.shipDate.to !== toSave.shipDate.from ? ` – ${toSave.shipDate.to}` : ""}`
+      : "";
+    void notifyCustomer(
+      sb,
+      toSave,
+      `✅ เช็คสต๊อกเรียบร้อยแล้วครับ — ผลิตได้ตามจำนวนที่สั่ง\n${lines}${ship}\nออเดอร์ ${toSave.id}\n${orderLink(origin, toSave)}`
+    );
+  }
+
   // มัดจำ: แอดมินยืนยันรับยอดคงเหลือครบในคำขอนี้ → แจ้งลูกค้า + ส่งเรคอร์ดงวดหลังเข้า msVerify
   if (toSave.deposit?.settledAt && !existing.deposit?.settledAt) {
     const origin = new URL(req.url).origin;
