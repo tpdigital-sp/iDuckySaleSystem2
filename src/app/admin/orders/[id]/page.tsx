@@ -1571,6 +1571,15 @@ export default function AdminOrderDetailPage() {
                 >
                   {linkCopied ? "✓ คัดลอกแล้ว" : "🔗 คัดลอกลิงก์"}
                 </button>
+                <button
+                  type="button"
+                  disabled={!customerUrl}
+                  onClick={() => downloadOrderShortcut(order.id, customerUrl)}
+                  title="ได้ไฟล์ .url — วางในโฟลเดอร์งานของลูกค้า ดับเบิลคลิกเปิดออเดอร์ได้เลย"
+                  className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
+                >
+                  ⬇️ ดาวน์โหลดลิงก์ (.url)
+                </button>
                 <a
                   href={customerUrl || "#"}
                   target="_blank"
@@ -1580,6 +1589,9 @@ export default function AdminOrderDetailPage() {
                   ดูแบบที่ลูกค้าเห็น ↗
                 </a>
               </div>
+              <p className={`mt-1.5 text-[11px] ${faint}`}>
+                💡 ไฟล์ .url = ทางลัดเปิดออเดอร์ — เก็บไว้ในโฟลเดอร์งานลูกค้าคู่กับไฟล์ลาย ดับเบิลคลิกเปิดได้ทันที
+              </p>
               {!order.key && (
                 <p className="mt-2 text-[11px] text-amber-700">
                   ⚠️ ออเดอร์นี้สร้างก่อนมีระบบรหัส — ลิงก์ไม่มี key (ยังเปิดได้ปกติ)
@@ -2527,4 +2539,24 @@ function SkipGateModal({ reasons, onCancel, onConfirm }: { reasons: string[]; on
       </div>
     </div>
   );
+}
+
+/**
+ * ดาวน์โหลด "ทางลัดเปิดออเดอร์" เป็นไฟล์ .url (Internet Shortcut)
+ * เอาไปวางในโฟลเดอร์งานของลูกค้าคู่กับไฟล์ลาย → ดับเบิลคลิกเปิดหน้าออเดอร์ได้เลย
+ * (รูปแบบเดียวกันทั้ง Windows และ macOS)
+ */
+function downloadOrderShortcut(orderId: string, url: string) {
+  if (!url) return;
+  // CRLF + [InternetShortcut] คือรูปแบบมาตรฐานของไฟล์ .url
+  const body = `[InternetShortcut]\r\nURL=${url}\r\nIconIndex=0\r\n`;
+  const blob = new Blob([body], { type: "application/internet-shortcut" });
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = `${orderId}.url`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 1000);
 }
