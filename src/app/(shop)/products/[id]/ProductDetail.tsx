@@ -312,7 +312,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
       {/* ═══ โครง 3 คอลัมน์: รูป | รายละเอียด | แผงสั่งซื้อ (ติดหนึบ) ═══ */}
       <div className="mt-4 grid gap-6 lg:grid-cols-12 lg:items-start lg:gap-8">
         {/* ── ซ้าย: รูปสินค้า ── */}
-        <div className="lg:col-span-5">
+        <div className="lg:col-span-4">
           {/* รูปสินค้า — ติดหนึบตอนเลื่อนอ่านตัวเลือกยาว ๆ (จอใหญ่) */}
           <div className="lg:sticky lg:top-24">
             <ProductVisual
@@ -350,7 +350,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
         </div>
 
         {/* ── กลาง: ชื่อ · รายละเอียด · ข้อควรทราบ ── */}
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-4">
           <span className="text-xs font-semibold text-amber-500">
             {category.emoji} {category.name}
           </span>
@@ -384,7 +384,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
           )}
 
           {/* ═══ ความมั่นใจก่อนกดสั่ง ═══ */}
-          <ul className="mt-4 grid grid-cols-2 gap-2 text-[11px] font-semibold text-stone-500 sm:grid-cols-4">
+          <ul className="mt-4 grid grid-cols-2 gap-2 text-[11px] font-semibold text-stone-500">
             <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">🖼️ ส่งแบบให้ตรวจ<br />ก่อนผลิตทุกงาน</li>
             <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">✅ แก้แบบได้<br />จนกว่าจะพอใจ</li>
             <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">🚚 ส่งไว<br />ทั่วไทย</li>

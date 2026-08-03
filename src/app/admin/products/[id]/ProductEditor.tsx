@@ -296,6 +296,20 @@ function syncLinkedDraft(options: DraftOption[], presets: OptionPreset[]): Draft
   });
 }
 
+const NAV_TONE: Record<string, string> = {
+  basic: "bg-sky-100 text-sky-700 hover:bg-sky-200",
+  photos: "bg-violet-100 text-violet-700 hover:bg-violet-200",
+  terms: "bg-rose-100 text-rose-700 hover:bg-rose-200",
+  highlights: "bg-emerald-100 text-emerald-700 hover:bg-emerald-200",
+  options: "bg-orange-100 text-orange-700 hover:bg-orange-200",
+  bulk: "bg-lime-100 text-lime-700 hover:bg-lime-200",
+  rules: "bg-cyan-100 text-cyan-700 hover:bg-cyan-200",
+  pricing: "bg-teal-100 text-teal-700 hover:bg-teal-200",
+  custom: "bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200",
+  body: "bg-indigo-100 text-indigo-700 hover:bg-indigo-200",
+  seo: "bg-purple-100 text-purple-700 hover:bg-purple-200",
+};
+
 export default function ProductEditor({ product }: { product: Product }) {
   const router = useRouter();
   const productId = product.id;
@@ -785,7 +799,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                 document.getElementById(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
                 history.replaceState(null, "", `#${s.id}`);
               }}
-              className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500 transition hover:bg-slate-200 hover:text-slate-900"
+              className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition ${NAV_TONE[s.id.replace("sec-", "")] ?? "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
             >
               {s.label}
             </a>
@@ -931,7 +945,7 @@ export default function ProductEditor({ product }: { product: Product }) {
         <div className="min-w-0 space-y-4">
 
       {/* ข้อมูลหลัก */}
-      <section id="sec-basic" className={`relative scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("basic")}`}>
+      <section id="sec-basic" className={`relative border-l-4 border-l-sky-400 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("basic")}`}>
         <SecToggle id="basic" />
         <h2 className="mb-3 text-sm font-semibold text-slate-800">📝 ข้อมูลหลัก</h2>
         <div className="flex flex-wrap items-center gap-2">
@@ -981,7 +995,8 @@ export default function ProductEditor({ product }: { product: Product }) {
       {/* รูปสินค้า — ลากวางได้ สูงสุด 5 รูป */}
       <section
         id="sec-photos"
-        className="mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+        // relative เพื่อวางปุ่มยุบมุมขวาบน
+        className={`relative mt-4 scroll-mt-32 rounded-2xl border border-l-4 border-l-violet-400 border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("photos")}`}
         onDragOver={(e) => {
           e.preventDefault();
           setDragOver(true);
@@ -993,7 +1008,8 @@ export default function ProductEditor({ product }: { product: Product }) {
           addPhotos(e.dataTransfer.files);
         }}
       >
-        <h2 className="text-sm font-semibold text-slate-800">
+        <SecToggle id="photos" />
+        <h2 className="text-sm font-bold text-violet-800">
           🖼️ รูปสินค้า ({draft.photos.length}/{MAX_PHOTOS})
         </h2>
         <p className="mb-3 mt-0.5 text-[11px] text-slate-400">
@@ -1121,9 +1137,9 @@ export default function ProductEditor({ product }: { product: Product }) {
 
       {/* จุดเด่น */}
       {/* ── ข้อควรทราบ / เงื่อนไขงาน — โชว์หน้าสินค้าให้ลูกค้าอ่านก่อนสั่ง ── */}
-      <section id="sec-terms" className={`relative mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("terms")}`}>
+      <section id="sec-terms" className={`relative border-l-4 border-l-rose-400 mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("terms")}`}>
         <SecToggle id="terms" />
-        <h2 className="text-sm font-semibold text-slate-800">⚠️ ข้อควรทราบ / เงื่อนไขงาน</h2>
+        <h2 className="text-sm font-bold text-rose-800">⚠️ ข้อควรทราบ / เงื่อนไขงาน</h2>
         <p className="mt-1 text-xs text-slate-500">
           เขียนสิ่งที่ลูกค้าต้องรู้ก่อนสั่ง — จะแสดงเป็นกล่องเตือนในหน้าสินค้า (กันเข้าใจผิด/เคลมทีหลัง) · ขึ้นบรรทัดใหม่ได้ตามต้องการ
         </p>
@@ -1139,10 +1155,10 @@ export default function ProductEditor({ product }: { product: Product }) {
         </p>
       </section>
 
-      <section id="sec-highlights" className={`relative mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("highlights")}`}>
+      <section id="sec-highlights" className={`relative border-l-4 border-l-emerald-400 mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("highlights")}`}>
         <SecToggle id="highlights" />
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-800">✔ จุดเด่นสินค้า ({draft.highlights.length})</h2>
+          <h2 className="text-sm font-bold text-emerald-800">✔ จุดเด่นสินค้า ({draft.highlights.length})</h2>
           <button
             type="button"
             onClick={() => patch({ highlights: [...draft.highlights, ""] })}
@@ -1177,10 +1193,10 @@ export default function ProductEditor({ product }: { product: Product }) {
       </section>
 
       {/* ตัวเลือกสินค้า */}
-      <section id="sec-options" className={`relative mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("options")}`}>
+      <section id="sec-options" className={`relative border-l-4 border-l-orange-400 mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("options")}`}>
         <SecToggle id="options" />
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-slate-800">🎛️ ตัวเลือกสินค้า ({draft.options.length} กลุ่ม)</h2>
+          <h2 className="text-sm font-bold text-orange-800">🎛️ ตัวเลือกสินค้า ({draft.options.length} กลุ่ม)</h2>
           <div className="flex items-center gap-2">
             {presets.length > 0 && (
               <select
@@ -1402,10 +1418,10 @@ export default function ProductEditor({ product }: { product: Product }) {
 
 
       {/* ราคาขั้นบันได (rate card) — สรุปย่อ กด "แก้ตารางราคา" เพื่อกางเต็มกว้าง */}
-      <section id="sec-pricing" className={`relative mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("pricing")}`}>
+      <section id="sec-pricing" className={`relative border-l-4 border-l-teal-400 mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("pricing")}`}>
         <SecToggle id="pricing" />
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-slate-800">💰 ราคาขั้นบันได (ตามจำนวน × ตัวเลือก)</h2>
+          <h2 className="text-sm font-bold text-teal-800">💰 ราคาขั้นบันได (ตามจำนวน × ตัวเลือก)</h2>
           <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
             <input
               type="checkbox"
@@ -1498,10 +1514,10 @@ export default function ProductEditor({ product }: { product: Product }) {
       </section>
 
       {/* ตัวเลือกกำหนดเอง (custom) — งานสั่งทำนอกเหนือขนาดมาตรฐาน */}
-      <section id="sec-custom" className={`relative mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("custom")}`}>
+      <section id="sec-custom" className={`relative border-l-4 border-l-fuchsia-400 mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("custom")}`}>
         <SecToggle id="custom" />
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-slate-800">📐 ตัวเลือกกำหนดเอง (งานสั่งทำ)</h2>
+          <h2 className="text-sm font-bold text-fuchsia-800">📐 ตัวเลือกกำหนดเอง (งานสั่งทำ)</h2>
           <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
             <input
               type="checkbox"
@@ -1898,10 +1914,10 @@ export default function ProductEditor({ product }: { product: Product }) {
       )}
 
       {/* เนื้อหารายละเอียดสินค้า (body) */}
-      <section id="sec-body" className={`relative mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("body")}`}>
+      <section id="sec-body" className={`relative border-l-4 border-l-indigo-400 mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("body")}`}>
         <SecToggle id="body" />
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-800">📄 เนื้อหารายละเอียดสินค้า ({draft.body.length} ท่อน)</h2>
+          <h2 className="text-sm font-bold text-indigo-800">📄 เนื้อหารายละเอียดสินค้า ({draft.body.length} ท่อน)</h2>
           <button
             type="button"
             onClick={() =>
@@ -1998,10 +2014,10 @@ export default function ProductEditor({ product }: { product: Product }) {
       </section>
 
       {/* SEO / AEO */}
-      <section id="sec-seo" className={`relative scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("seo")}`}>
+      <section id="sec-seo" className={`relative border-l-4 border-l-purple-400 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("seo")}`}>
         <SecToggle id="seo" />
         <div className="mb-1 flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-slate-800">🔎 SEO / AEO (ค้นหา + ให้ AI ตอบ)</h2>
+          <h2 className="text-sm font-bold text-purple-800">🔎 SEO / AEO (ค้นหา + ให้ AI ตอบ)</h2>
           <button
             type="button"
             onClick={autoFillSeo}
@@ -2148,9 +2164,9 @@ export default function ProductEditor({ product }: { product: Product }) {
           {/* กติกาเงื่อนไข (ย้ายมาไว้แถบข้าง) */}
           {/* กฎเงื่อนไขตัวเลือก */}
       {/* ── สั่งจำนวนมาก: ต้องเช็คสต๊อกก่อน ── */}
-      <section id="sec-bulk" className={`relative mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("bulk")}`}>
+      <section id="sec-bulk" className={`relative border-l-4 border-l-lime-400 mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("bulk")}`}>
         <SecToggle id="bulk" />
-        <h2 className="text-sm font-semibold text-slate-800">📦 สั่งจำนวนมาก — เช็คสต๊อกก่อน</h2>
+        <h2 className="text-sm font-bold text-lime-800">📦 สั่งจำนวนมาก — เช็คสต๊อกก่อน</h2>
         <p className="mt-1 text-xs text-slate-500">
           ลูกค้าสั่งถึงจำนวนนี้ หน้าสินค้าจะขึ้นเตือนให้ทักแอดมินเช็คสต๊อก/คิวผลิตก่อน (สั่งได้ตามปกติ แต่ออเดอร์จะติดธง &ldquo;รอเช็คสต๊อก&rdquo; ให้ทีมยืนยันจำนวน)
         </p>
@@ -2186,10 +2202,10 @@ export default function ProductEditor({ product }: { product: Product }) {
         </div>
       </section>
 
-      <section id="sec-rules" className={`relative mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("rules")}`}>
+      <section id="sec-rules" className={`relative border-l-4 border-l-cyan-400 mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("rules")}`}>
         <SecToggle id="rules" />
         <div className="mb-1 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-800">🔗 กฎเงื่อนไขตัวเลือก ({draft.rules.length})</h2>
+          <h2 className="text-sm font-bold text-cyan-800">🔗 กฎเงื่อนไขตัวเลือก ({draft.rules.length})</h2>
           <button
             type="button"
             onClick={() =>
