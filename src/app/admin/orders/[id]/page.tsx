@@ -27,6 +27,7 @@ import {
   type OrderItem,
   type OrderStatus,
   type Proof,
+  type ProofStatus,
   type NoteColor,
   type NoteSize,
   type NoteWeight,
@@ -696,6 +697,29 @@ export default function AdminOrderDetailPage() {
     if (!demo) void saveOrderAdmin(next);
   }
 
+  /** ใช้ลายที่แนบไว้เป็นแบบให้ลูกค้ากดอนุมัติ/ขอแก้ไข (บางงานร้านใช้ลายลูกค้าเป็นแบบเลย) */
+  function useArtAsProof(itemIndex: number, url: string) {
+    if (!order) return;
+    if (!paidOk && !overrideLock) {
+      setErr(`ออเดอร์นี้ยังไม่ได้ยืนยันการชำระเงิน (สถานะ “${order.status}”) — กด “ทำแบบก่อนได้” ด้านบนถ้าจงใจ`);
+      return;
+    }
+    const now = new Date().toISOString();
+    const items = order.items.map((it, i) => {
+      if (i !== itemIndex) return it;
+      if (proofsOf(it).some((p) => p.url === url)) return it; // ส่งไปแล้ว
+      return {
+        ...it,
+        proofs: [...proofsOf(it), { url, at: now }],
+        proofStatus: "รอตรวจ" as ProofStatus,
+        proofUpdatedAt: now,
+      };
+    });
+    const next = withLog({ ...order, items }, actor, "ส่งแบบให้ลูกค้าตรวจ", `${order.items[itemIndex]?.name} — ใช้ลายที่แนบไว้`);
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
+
   /** ลบภาพลายของลูกค้าออกจากรายการ (ไฟล์ยังอยู่ในคลัง แต่ไม่ผูกกับออเดอร์แล้ว) */
   function removeArtwork(itemIndex: number, url: string) {
     if (!order) return;
@@ -1120,6 +1144,18 @@ export default function AdminOrderDetailPage() {
                                   {pic.kind === "proof" ? `แบบ ${pic.at + 1}` : "ลาย"}
                                 </span>
                               </button>
+                              {pic.kind === "art" && mayProof && !proofs.some((pf) => pf.url === pic.u) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (confirm("ส่งรูปนี้ให้ลูกค้าตรวจ/อนุมัติเลยไหม? (จะขึ้นเป็นแบบงานในหน้าลูกค้า)")) useArtAsProof(i, pic.u);
+                                  }}
+                                  title="ใช้รูปนี้เป็นแบบให้ลูกค้ากดอนุมัติ/ขอแก้ไข"
+                                  className="absolute -left-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-violet-600 text-[9px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100"
+                                >
+                                  ✓
+                                </button>
+                              )}
                               {((pic.kind === "art" && mayEdit) || (pic.kind === "proof" && mayProof)) && (
                                 <button
                                   type="button"
