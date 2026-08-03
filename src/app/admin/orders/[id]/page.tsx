@@ -1167,10 +1167,12 @@ export default function AdminOrderDetailPage() {
                     </button>
                     {/* รูปของรายการนี้ — จุดเดียวที่ดู/เพิ่ม/ลบ ทั้งภาพลายลูกค้าและแบบงานที่กราฟฟิกทำ */}
                     {(() => {
-                      // มีแบบจากกราฟฟิกแล้ว → แบบแทนที่ลายไปเลย (ลายใช้เป็นตัวตั้งต้นตอนยังไม่มีแบบ)
-                      const pics = proofs.length
-                        ? proofs.map((pf, j) => ({ u: pf.url, kind: "proof" as const, at: j }))
-                        : (it.artworkUrls ?? []).map((u) => ({ u, kind: "art" as const, at: -1 }));
+                      // หลังบ้านเห็นครบทั้งสองชนิด (แบบขึ้นก่อน เพราะคือของที่ลูกค้าเห็น)
+                      // — ฝั่งลูกค้าโชว์เฉพาะ "แบบ" อยู่แล้ว ลายเป็นของทีมงานใช้อ้างอิง
+                      const pics = [
+                        ...proofs.map((pf, j) => ({ u: pf.url, kind: "proof" as const, at: j })),
+                        ...(it.artworkUrls ?? []).map((u) => ({ u, kind: "art" as const, at: -1 })),
+                      ];
                       return (
                         <div
                           onDragOver={(e) => {
