@@ -285,6 +285,7 @@ export default function AdminOrderDetailPage() {
   );
   const [artDropIdx, setArtDropIdx] = useState<number | null>(null);
   const [proofDropIdx, setProofDropIdx] = useState<number | null>(null);
+  const [replaceDrop, setReplaceDrop] = useState<string | null>(null); // "itemIndex:proofIndex" ที่กำลังลากไฟล์ทับเพื่อเปลี่ยนรูป
   const [addPicIdx, setAddPicIdx] = useState<number | null>(null); // เปิดเมนู "เพิ่มรูป" ของรายการไหนอยู่
   // ช่องส่วนลดรายรายการ — ซ่อนไว้ กดป้าย "＋ ใส่ส่วนลด" ท้ายแถวถึงจะโผล่ (นาน ๆ ใช้ที)
   const [discOpen, setDiscOpen] = useState<Record<number, boolean>>({});
@@ -1146,7 +1147,7 @@ export default function AdminOrderDetailPage() {
             {seesMoney && <span className="w-28 shrink-0 text-right">ราคา/หน่วย</span>}
             {seesMoney && <span className="w-24 shrink-0 text-right">ยอดรวม</span>}
           </div>
-          <div className="mt-1.5 overflow-hidden rounded-2xl border border-slate-200/80">
+          <div className="mt-1.5 space-y-4">
             {order.items.map((it, i) => {
               const proofs = proofsOf(it);
               const proofQty = proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
@@ -1154,8 +1155,18 @@ export default function AdminOrderDetailPage() {
               return (
                 <div
                   key={`${it.productId}-${i}`}
-                  className={`p-4 transition ${i % 2 === 0 ? "bg-slate-50/70" : "bg-white"} ${i > 0 ? "border-t border-slate-200/70" : ""}`}
+                  className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-[0_2px_10px_rgba(15,23,42,0.05)]"
                 >
+                  {/* แถบหัวรายการ — บอกขอบเขตของแต่ละรายการให้ชัด */}
+                  <div className={`flex items-center justify-between gap-2 border-b-2 px-4 py-2 ${
+                    open ? "border-indigo-100 bg-indigo-50/70" : "border-slate-100 bg-slate-50"
+                  }`}>
+                    <span className="text-xs font-extrabold text-indigo-800">
+                      รายการที่ {i + 1} / {order.items.length}
+                    </span>
+                    <span className="truncate text-xs font-bold text-slate-400">{it.name}</span>
+                  </div>
+                  <div className="p-4">
                   {/* แถวรายการ — อ่านเป็นตาราง: # · รูป · รายละเอียด · จำนวน · ราคา/หน่วย · ยอดรวม */}
                   <div className="flex items-start gap-3">
                     <button
@@ -1519,12 +1530,32 @@ export default function AdminOrderDetailPage() {
                           {proofs.map((pf, j) => (
                             <div
                               key={`${pf.url}-${j}`}
-                              className={`w-36 overflow-hidden rounded-xl border bg-white ${
-                                pf.review === "ขอแก้ไข"
-                                  ? "border-rose-300 ring-2 ring-rose-200"
-                                  : pf.review === "อนุมัติ"
-                                    ? "border-teal-300 ring-2 ring-teal-100"
-                                    : "border-violet-200"
+                              onDragOver={(e) => {
+                                if (!mayProof) return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setReplaceDrop(`${i}:${j}`);
+                              }}
+                              onDragLeave={(e) => {
+                                if (!e.currentTarget.contains(e.relatedTarget as Node)) setReplaceDrop(null);
+                              }}
+                              onDrop={(e) => {
+                                if (!mayProof) return;
+                                e.preventDefault();
+                                e.stopPropagation(); // อย่าให้กล่องแม่รับไปเพิ่มเป็นรูปใหม่
+                                setReplaceDrop(null);
+                                setProofDropIdx(null);
+                                void replaceProof(i, j, e.dataTransfer.files?.[0] ?? null);
+                              }}
+                              title={mayProof ? "ลากรูปมาวางบนการ์ดนี้ = เปลี่ยนรูปนี้" : undefined}
+                              className={`w-36 overflow-hidden rounded-xl border bg-white transition ${
+                                replaceDrop === `${i}:${j}`
+                                  ? "border-indigo-500 ring-2 ring-indigo-400"
+                                  : pf.review === "ขอแก้ไข"
+                                    ? "border-rose-300 ring-2 ring-rose-200"
+                                    : pf.review === "อนุมัติ"
+                                      ? "border-teal-300 ring-2 ring-teal-100"
+                                      : "border-violet-200"
                               }`}
                             >
                               <div className="relative">
@@ -1594,7 +1625,11 @@ export default function AdminOrderDetailPage() {
                                       pf.review === "ขอแก้ไข" ? "bg-rose-500 text-white hover:bg-rose-600" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                                     } ${uploadingIdx === i ? "pointer-events-none opacity-50" : ""}`}
                                   >
-                                    {uploadingIdx === i ? "กำลังอัปโหลด…" : "🔄 เปลี่ยนรูปนี้"}
+                                    {uploadingIdx === i
+                                      ? "กำลังอัปโหลด…"
+                                      : replaceDrop === `${i}:${j}`
+                                        ? "⬇️ ปล่อยเพื่อเปลี่ยนรูป"
+                                        : "🔄 เปลี่ยนรูปนี้ (ลากรูปมาวางก็ได้)"}
                                     <input
                                       type="file"
                                       accept="image/png,image/jpeg,image/webp,image/gif"
@@ -1666,6 +1701,7 @@ export default function AdminOrderDetailPage() {
                   )}
                     </>
                   )}
+                  </div>
                 </div>
               );
             })}
