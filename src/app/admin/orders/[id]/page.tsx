@@ -1072,12 +1072,14 @@ export default function AdminOrderDetailPage() {
                     >
                       {i + 1}
                     </button>
-                    {/* รูปประจำรายการ = ภาพลายจากลูกค้า — จุดเดียวที่ดู/เพิ่ม/ลบภาพลาย
-                        (แบบงานที่กราฟฟิกทำอยู่ในแกลเลอรีด้านล่าง พร้อมจำนวน/ผลตรวจของลูกค้า) */}
+                    {/* รูปของรายการนี้ — จุดเดียวที่ดู/เพิ่ม/ลบ ทั้งภาพลายลูกค้าและแบบงานที่กราฟฟิกทำ */}
                     {(() => {
-                      const pics = it.artworkUrls ?? [];
+                      const pics = [
+                        ...(it.artworkUrls ?? []).map((u) => ({ u, kind: "art" as const, at: -1 })),
+                        ...proofs.map((pf, j) => ({ u: pf.url, kind: "proof" as const, at: j })),
+                      ];
                       return (
-                        <label
+                        <div
                           onDragOver={(e) => {
                             if (!mayEdit) return;
                             e.preventDefault();
@@ -1092,74 +1094,88 @@ export default function AdminOrderDetailPage() {
                             setArtDropIdx(null);
                             void addArtwork(i, e.dataTransfer.files);
                           }}
-                          title={mayEdit ? "ลากรูปมาวางเพื่อแนบภาพลาย" : undefined}
+                          title={mayEdit ? "ลากรูปมาวาง = แนบภาพลายจากลูกค้า" : undefined}
                           className={`grid w-28 shrink-0 grid-cols-2 gap-1 rounded-lg p-0.5 ring-1 transition ${
                             artDropIdx === i ? "bg-amber-50 ring-2 ring-amber-400" : "ring-transparent"
                           }`}
                         >
-                          {pics.map((u, k) => (
-                            <span key={`${u}-${k}`} className="group relative block">
+                          {pics.map((pic, k) => (
+                            <span key={`${pic.u}-${k}`} className="group relative block">
                               <button
                                 type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  setLightbox({ src: u, alt: `${it.name} ภาพลาย ${k + 1}`, caption: it.name });
-                                }}
-                                className="block w-full overflow-hidden rounded-lg ring-1 ring-slate-200 transition hover:ring-2 hover:ring-amber-300"
-                                title="กดดูรูปเต็ม"
+                                onClick={() =>
+                                  pic.kind === "proof"
+                                    ? showProof(i, pic.at)
+                                    : setLightbox({ src: pic.u, alt: `${it.name} ภาพลาย`, caption: it.name })
+                                }
+                                className={`block w-full overflow-hidden rounded-lg ring-1 transition hover:ring-2 ${
+                                  pic.kind === "proof" ? "ring-violet-300 hover:ring-violet-400" : "ring-slate-200 hover:ring-amber-300"
+                                }`}
+                                title={pic.kind === "proof" ? "แบบงานที่กราฟฟิกทำ — กดดูเต็ม" : "ภาพลายจากลูกค้า — กดดูเต็ม"}
                               >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={u}
-                                  alt={`${it.name} ภาพลาย ${k + 1}`}
-                                  className="h-[3.25rem] w-full object-cover"
-                                />
+                                <img src={pic.u} alt={it.name} className="h-[3.25rem] w-full object-cover" />
+                                <span className="pointer-events-none absolute bottom-0.5 left-0.5 rounded bg-slate-900/60 px-1 text-[8px] font-bold text-white">
+                                  {pic.kind === "proof" ? `แบบ ${pic.at + 1}` : "ลาย"}
+                                </span>
                               </button>
-                              {mayEdit && (
+                              {((pic.kind === "art" && mayEdit) || (pic.kind === "proof" && mayProof)) && (
                                 <button
                                   type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    if (confirm("ลบภาพลายรูปนี้ออกจากรายการ?")) removeArtwork(i, u);
+                                  onClick={() => {
+                                    if (!confirm(pic.kind === "proof" ? "ลบแบบงานรูปนี้?" : "ลบภาพลายรูปนี้ออกจากรายการ?")) return;
+                                    if (pic.kind === "proof") removeProof(i, pic.at);
+                                    else removeArtwork(i, pic.u);
                                   }}
-                                  aria-label="ลบภาพลายรูปนี้"
-                                  className="absolute -right-1 -top-1 grid h-4.5 w-4.5 place-items-center rounded-full bg-rose-500 text-[9px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100"
+                                  aria-label={pic.kind === "proof" ? "ลบแบบงานรูปนี้" : "ลบภาพลายรูปนี้"}
+                                  className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-rose-500 text-[9px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100"
                                 >
                                   ✕
                                 </button>
                               )}
                             </span>
                           ))}
+                          {/* ปุ่มเพิ่มรูป — ลาย (ของลูกค้า) กับ แบบ (ที่กราฟฟิกทำ) อยู่ที่เดียวกัน */}
                           {mayEdit && (
-                            <span
-                              className={`grid cursor-pointer place-items-center rounded-lg border-2 border-dashed border-slate-300 bg-white text-center text-slate-400 transition hover:border-amber-300 hover:text-amber-600 ${
-                                pics.length === 0 ? "col-span-2 h-20" : "h-[3.25rem]"
+                            <label
+                              className={`grid cursor-pointer place-items-center rounded-lg border-2 border-dashed border-amber-300 bg-white text-center text-[10px] font-bold leading-tight text-amber-600 transition hover:bg-amber-50 ${
+                                pics.length === 0 ? "h-[3.25rem]" : "h-[3.25rem]"
                               }`}
-                              title="แนบภาพลาย (ลากวาง / คลิกเลือกไฟล์)"
+                              title="แนบภาพลายจากลูกค้า (ลากวางก็ได้)"
                             >
-                              {artUpIdx === i ? (
-                                <span className="text-[9px] font-bold">กำลังอัป…</span>
-                              ) : (
-                                <span className="text-[10px] font-bold leading-tight">
-                                  ＋<br />ภาพลาย
-                                </span>
-                              )}
-                            </span>
+                              {artUpIdx === i ? "อัป…" : <span>＋<br />ลาย</span>}
+                              <input
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                multiple
+                                className="hidden"
+                                disabled={artUpIdx === i}
+                                onChange={(e) => {
+                                  void addArtwork(i, e.target.files);
+                                  e.target.value = "";
+                                }}
+                              />
+                            </label>
                           )}
-                          {mayEdit && (
-                            <input
-                              type="file"
-                              accept="image/jpeg,image/png,image/webp"
-                              multiple
-                              className="hidden"
-                              disabled={artUpIdx === i}
-                              onChange={(e) => {
-                                void addArtwork(i, e.target.files);
-                                e.target.value = "";
-                              }}
-                            />
+                          {mayProof && (
+                            <label
+                              className="grid h-[3.25rem] cursor-pointer place-items-center rounded-lg border-2 border-dashed border-violet-300 bg-white text-center text-[10px] font-bold leading-tight text-violet-600 transition hover:bg-violet-50"
+                              title="อัปโหลดแบบงานให้ลูกค้าตรวจ"
+                            >
+                              {uploadingIdx === i ? "อัป…" : <span>＋<br />แบบ</span>}
+                              <input
+                                type="file"
+                                accept="image/png,image/jpeg,image/webp,image/gif"
+                                multiple
+                                className="hidden"
+                                onChange={(e) => {
+                                  void sendProofs(i, e.target.files);
+                                  e.target.value = "";
+                                }}
+                              />
+                            </label>
                           )}
-                        </label>
+                        </div>
                       );
                     })()}
                     <div className="min-w-0 flex-1">
@@ -1488,48 +1504,6 @@ export default function AdminOrderDetailPage() {
                       </div>
                     ))}
 
-                    {/* กล่องเพิ่มรูป — ลากมาวาง หรือแตะ (เฉพาะคนที่จัดการแบบงานได้) */}
-                    {mayProof && (
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`เพิ่มแบบงาน ${it.name}`}
-                      onClick={(e) => e.currentTarget.querySelector<HTMLInputElement>("input[type=file]")?.click()}
-                      onKeyDown={(e) => {
-                        if (e.key !== "Enter" && e.key !== " ") return;
-                        e.preventDefault();
-                        e.currentTarget.querySelector<HTMLInputElement>("input[type=file]")?.click();
-                      }}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        setDragIdx(i);
-                      }}
-                      onDragLeave={() => setDragIdx(null)}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        setDragIdx(null);
-                        void sendProofs(i, e.dataTransfer.files);
-                      }}
-                      className={`grid aspect-[4/3] w-36 cursor-pointer place-items-center self-start rounded-xl px-2 text-center text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
-                        dragIdx === i
-                          ? "border-2 border-dashed border-amber-400 bg-amber-50 text-amber-700"
-                          : "border-2 border-dashed border-slate-200 bg-slate-50/60 text-slate-500 hover:border-amber-300 hover:bg-amber-50/40"
-                      }`}
-                    >
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp,image/gif"
-                        multiple
-                        className="hidden"
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => {
-                          void sendProofs(i, e.target.files);
-                          e.target.value = "";
-                        }}
-                      />
-                      {uploadingIdx === i ? "กำลังอัปโหลด…" : dragIdx === i ? "วางรูปที่นี่" : "＋ ลากหลายรูปมาวาง"}
-                    </div>
-                    )}
                   </div>
 
                   {/* 📝 หมายเหตุใบงานของรายการนี้ — อยู่ติดกับรายการเลย ไม่ต้องไปหาที่คอลัมน์ขวา */}
