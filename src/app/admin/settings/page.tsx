@@ -34,6 +34,71 @@ import {
 } from "@/lib/permissions";
 import { btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
 
+/** ไอคอนหมวดหมู่ให้เลือก — จัดกลุ่มตามชนิดงานของร้าน (พิมพ์อีโมจิอื่นเองก็ได้) */
+const CAT_ICONS: { group: string; items: string[] }[] = [
+  { group: "อะคริลิค · สแตนดี้", items: ["🔑", "🪟", "🧍", "💡", "🪞", "🧲", "🏷️", "📛", "🪪"] },
+  { group: "กระดาษ · การ์ด · ป้าย", items: ["🎴", "🗂️", "📇", "📄", "📋", "📣", "🖼️", "📅", "📓", "✉️"] },
+  { group: "ผ้า · ของใช้", items: ["👕", "🧢", "👜", "🎒", "🧶", "🛏️", "🧸", "🧦", "🩳", "☂️"] },
+  { group: "บ้าน · แก้ว · แก็ดเจ็ต", items: ["🏠", "☕", "🥤", "🍶", "🖱️", "📱", "⌚", "🎧", "🔌", "💻"] },
+  { group: "ของขวัญ · ตกแต่ง", items: ["🎁", "🎀", "🎈", "✨", "🌸", "⭐", "❤️", "🐶", "🐱", "🎨"] },
+];
+
+/** ปุ่มเลือกไอคอน — กดแล้วมีชุดให้เลือก หรือพิมพ์อีโมจิเองในช่องด้านล่าง */
+function IconPicker({ value, onPick }: { value: string; onPick: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title="เลือกไอคอนหมวดนี้"
+        className={`grid h-10 w-12 place-items-center rounded-lg border text-xl transition ${
+          open ? "border-amber-400 bg-amber-50" : "border-slate-200 bg-white hover:border-amber-300"
+        }`}
+      >
+        {value || "🏷️"}
+      </button>
+      {open && (
+        <>
+          <button type="button" aria-label="ปิด" onClick={() => setOpen(false)} className="fixed inset-0 z-30 cursor-default" />
+          <div className="absolute left-0 top-full z-40 mt-1 w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+            {CAT_ICONS.map((g) => (
+              <div key={g.group} className="mb-1.5 last:mb-0">
+                <p className="px-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{g.group}</p>
+                <div className="mt-0.5 flex flex-wrap gap-0.5">
+                  {g.items.map((ic) => (
+                    <button
+                      key={ic}
+                      type="button"
+                      onClick={() => {
+                        onPick(ic);
+                        setOpen(false);
+                      }}
+                      className={`grid h-8 w-8 place-items-center rounded-lg text-lg transition hover:bg-amber-50 ${
+                        ic === value ? "bg-amber-100 ring-1 ring-amber-300" : ""
+                      }`}
+                    >
+                      {ic}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <label className="mt-1 block border-t border-slate-100 pt-1.5 text-[10px] font-bold text-slate-400">
+              หรือพิมพ์อีโมจิเอง
+              <input
+                value={value}
+                onChange={(e) => onPick(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-center text-lg focus:border-amber-300 focus:outline-none"
+              />
+            </label>
+          </div>
+        </>
+      )}
+    </span>
+  );
+}
+
 const newId = (p = "b") =>
   typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${p}-${Date.now()}-${Math.floor(Math.random() * 1e4)}`;
 
@@ -787,12 +852,7 @@ function AdminSettingsPageInner() {
                           ▼
                         </button>
                       </span>
-                      <input
-                        value={c.emoji}
-                        onChange={(e) => patchCat(i, { emoji: e.target.value })}
-                        className="w-12 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-lg"
-                        aria-label="อีโมจิ"
-                      />
+                      <IconPicker value={c.emoji} onPick={(v) => patchCat(i, { emoji: v })} />
                       <input
                         value={c.name}
                         onChange={(e) => patchCat(i, { name: e.target.value })}
