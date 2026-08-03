@@ -1569,44 +1569,6 @@ export default function AdminOrderDetailPage() {
               )}
             </div>
           </div>
-          {/* ── หมายเหตุที่จะพิมพ์ลงใบงาน (ตรงรายการ + ท้ายบิล) ── */}
-          {mayEdit && (
-            <div className="mt-6">
-              <GH t="teal">📝 หมายเหตุใบงาน</GH>
-              <div className={`mt-2 space-y-4 ${soft("teal")}`}>
-                {/* หมายเหตุแต่ละรายการ */}
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold text-slate-600">📝 หมายเหตุตรงรายการสินค้า</p>
-                  <div className="space-y-2.5">
-                    {order.items.map((it, idx) => (
-                      <div key={idx} className="rounded-lg bg-slate-50 p-2.5 ring-1 ring-slate-200">
-                        <p className="mb-1.5 truncate text-xs font-bold text-slate-600">
-                          {idx + 1}. {it.name}
-                        </p>
-                        <RichNoteEditor
-                          value={it.adminNote}
-                          onChange={(html, commit) => setNote(idx, html, commit)}
-                          placeholder="หมายเหตุรายการนี้ (เช่น ห่อแยก / งานด่วน)"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* หมายเหตุท้ายบิล */}
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold text-slate-600">📄 หมายเหตุท้ายบิล</p>
-                  <RichNoteEditor
-                    value={order.billNote}
-                    onChange={(html, commit) => setNote(null, html, commit)}
-                    placeholder="เช่น ขอบคุณที่อุดหนุน 🦆 / นัดรับหน้าร้าน"
-                  />
-                </div>
-
-                <p className={`text-[11px] ${faint}`}>บันทึกอัตโนมัติ · แสดงบนใบงานตอนปริ้น</p>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* ── ขวา: ข้อมูล ── */}
@@ -1666,10 +1628,10 @@ export default function AdminOrderDetailPage() {
             </div>
           </div>
 
-          {/* ── กำหนดส่ง + วันที่ลูกค้าต้องใช้งาน (โชว์บนใบงานตอนปริ้น) ── */}
+          {/* ── ข้อมูลใบงาน: วันที่จัดส่ง + หมายเหตุ (โชว์ตอนปริ้น) ── */}
           {mayEdit && (
             <div>
-              <GH t="teal">📅 กำหนดส่ง · วันใช้งาน</GH>
+              <GH t="teal">🖨 ใบงาน · การจัดส่ง</GH>
               <div className={`mt-2 space-y-4 ${soft("teal")}`}>
                 {/* วันที่จัดส่ง */}
                 <div>
@@ -1720,6 +1682,37 @@ export default function AdminOrderDetailPage() {
                     );
                   })()}
                 </div>
+
+                {/* หมายเหตุแต่ละรายการ */}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold text-slate-600">📝 หมายเหตุตรงรายการสินค้า</p>
+                  <div className="space-y-2.5">
+                    {order.items.map((it, idx) => (
+                      <div key={idx} className="rounded-lg bg-slate-50 p-2.5 ring-1 ring-slate-200">
+                        <p className="mb-1.5 truncate text-xs font-bold text-slate-600">
+                          {idx + 1}. {it.name}
+                        </p>
+                        <RichNoteEditor
+                          value={it.adminNote}
+                          onChange={(html, commit) => setNote(idx, html, commit)}
+                          placeholder="หมายเหตุรายการนี้ (เช่น ห่อแยก / งานด่วน)"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* หมายเหตุท้ายบิล */}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold text-slate-600">📄 หมายเหตุท้ายบิล</p>
+                  <RichNoteEditor
+                    value={order.billNote}
+                    onChange={(html, commit) => setNote(null, html, commit)}
+                    placeholder="เช่น ขอบคุณที่อุดหนุน 🦆 / นัดรับหน้าร้าน"
+                  />
+                </div>
+
+                <p className={`text-[11px] ${faint}`}>บันทึกอัตโนมัติ · แสดงบนใบงานตอนปริ้น</p>
               </div>
             </div>
           )}
