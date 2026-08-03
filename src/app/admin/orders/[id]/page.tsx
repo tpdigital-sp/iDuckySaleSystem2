@@ -1356,7 +1356,11 @@ export default function AdminOrderDetailPage() {
                     </div>
                     <span className="w-12 shrink-0 text-center text-sm font-semibold text-slate-700">{it.qty}</span>
                     <span className={`w-28 shrink-0 text-right text-sm font-bold text-slate-900 ${seesMoney ? "" : "hidden"}`}>
-                      {formatPrice(it.unitPrice)}
+                      {it.unitPrice > 0 ? (
+                        formatPrice(it.unitPrice)
+                      ) : (
+                        <span className="text-[11px] font-bold text-amber-600">รอตีราคา</span>
+                      )}
                       {/* ส่วนลดเฉพาะรายการนี้ — เลือกได้ทั้งบาทและ % (บันทึกตอนออกจากช่อง พร้อมลง log) */}
                       {mayEdit && seesMoney && (discOpen[i] || itemDiscountAmount(it) > 0) ? (
                         <span className="mt-1 flex items-center justify-end gap-1 text-[11px] font-semibold text-rose-500">

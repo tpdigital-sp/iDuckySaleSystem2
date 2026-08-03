@@ -778,7 +778,14 @@ export default function CustomerOrderPage() {
                     )}
                   </div>
                   <span className="shrink-0 text-right text-sm font-bold text-amber-950">
-                    {it.qty} × {formatPrice(it.unitPrice)}
+                    {it.unitPrice > 0 ? (
+                      `${it.qty} × ${formatPrice(it.unitPrice)}`
+                    ) : (
+                      /* งานสั่งทำที่ร้านยังไม่ได้ตีราคา — บอกตรง ๆ ดีกว่าโชว์ ฿0 */
+                      <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 ring-1 ring-amber-200">
+                        {it.qty} ชิ้น · รอร้านแจ้งราคา
+                      </span>
+                    )}
                     {itemDiscountAmount(it) > 0 && (
                       <span className="block text-[11px] font-semibold text-emerald-600">
                         ส่วนลด{(it.discountPct ?? 0) > 0 ? ` ${it.discountPct}%` : ""} −{formatPrice(itemDiscountAmount(it))}

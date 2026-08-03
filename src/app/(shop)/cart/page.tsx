@@ -14,12 +14,19 @@ import {
 } from "@/lib/shop-settings";
 import { useCart } from "@/lib/cart-context";
 import ProductVisual from "@/components/ProductVisual";
+import { getAppendTarget, clearAppendTarget, type AppendTarget } from "@/lib/append-order";
 
 const USE_BY_KEY = "ducky-use-by-date";
 
 export default function CartPage() {
   const { items, subtotal, totalQty, setQty, removeItem, clear, productOf } = useCart();
   const router = useRouter();
+  // สั่งเป็นออเดอร์ใหม่ หรือเพิ่มเข้าออเดอร์เดิม (ลูกค้ากดมาจากหน้าออเดอร์)
+  const [appendTo, setAppendTo] = useState<AppendTarget | null>(null);
+  useEffect(() => {
+    setAppendTo(getAppendTarget());
+  }, []);
+
   // วันที่ต้องใช้งาน — เก็บไว้ให้หน้า checkout ส่งเข้าออเดอร์
   const [useBy, setUseBy] = useState("");
   useEffect(() => {
@@ -99,16 +106,39 @@ export default function CartPage() {
                 key={item.key}
                 className="flex gap-4 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-amber-100"
               >
-                <Link href={`/products/${product.id}`} className="shrink-0">
-                  <ProductVisual
-                    emoji={product.emoji}
-                    gradient={product.gradient}
-                    src={product.imageSrc}
-                    alt={product.name}
-                    size="text-4xl"
-                    className="h-24 w-24 rounded-2xl"
-                  />
-                </Link>
+                {(() => {
+                  // ลายที่ลูกค้าแนบ (เก็บมาในตัวเลือกเป็น url คั่นด้วย " | ") — โชว์ลายจริงแทนรูปสินค้า
+                  const artUrls = String(item.selections["ภาพลายที่แนบ"] ?? "")
+                    .split("|")
+                    .map((u) => u.trim())
+                    .filter(Boolean);
+                  return (
+                    <Link href={`/products/${product.id}`} className="relative shrink-0">
+                      {artUrls[0] ? (
+                        <>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={artUrls[0]}
+                            alt={`ลายที่แนบของ ${product.name}`}
+                            className="h-24 w-24 rounded-2xl object-cover ring-1 ring-sky-200"
+                          />
+                          <span className="absolute bottom-1 left-1 rounded bg-sky-600/85 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                            🎨 ลายของคุณ{artUrls.length > 1 ? ` +${artUrls.length - 1}` : ""}
+                          </span>
+                        </>
+                      ) : (
+                        <ProductVisual
+                          emoji={product.emoji}
+                          gradient={product.gradient}
+                          src={product.imageSrc}
+                          alt={product.name}
+                          size="text-4xl"
+                          className="h-24 w-24 rounded-2xl"
+                        />
+                      )}
+                    </Link>
+                  );
+                })()}
                 <div className="flex min-w-0 flex-1 flex-col">
                   <div className="flex items-start justify-between gap-2">
                     <Link
@@ -126,13 +156,24 @@ export default function CartPage() {
                       ✕ ลบ
                     </button>
                   </div>
-                  {Object.entries(item.selections).length > 0 && (
-                    <p className="mt-0.5 line-clamp-1 text-xs text-stone-400">
-                      {Object.entries(item.selections)
-                        .map(([k, v]) => `${k}: ${v}`)
-                        .join(" · ")}
-                    </p>
-                  )}
+                  {(() => {
+                    // ซ่อน url ลาย/ธงภายในระบบ — สรุปเป็นข้อความสั้นแทน
+                    const artCount = String(item.selections["ภาพลายที่แนบ"] ?? "").split("|").filter((u) => u.trim()).length;
+                    const shown = Object.entries(item.selections).filter(
+                      ([k]) => k !== "ภาพลายที่แนบ" && k !== "รอเช็คสต๊อก"
+                    );
+                    if (!shown.length && !artCount) return null;
+                    return (
+                      <p className="mt-0.5 line-clamp-2 text-xs text-stone-400">
+                        {shown.map(([k, v]) => `${k}: ${v}`).join(" · ")}
+                        {artCount > 0 && (
+                          <span className="ml-1 font-semibold text-sky-600">
+                            {shown.length ? "· " : ""}🎨 แนบลายแล้ว {artCount} รูป
+                          </span>
+                        )}
+                      </p>
+                    );
+                  })()}
                   <div className="mt-auto flex items-center justify-between pt-2">
                     <div className="flex items-center rounded-full bg-amber-50 ring-1 ring-amber-200">
                       <button
@@ -187,6 +228,40 @@ export default function CartPage() {
         {/* สรุปยอด */}
         <aside className="h-fit rounded-3xl bg-white p-6 shadow-sm ring-1 ring-amber-100 lg:sticky lg:top-20">
           <h2 className="text-lg font-extrabold text-amber-950">สรุปคำสั่งซื้อ</h2>
+
+          {/* ── ออเดอร์ใหม่ หรือ เพิ่มเข้าออเดอร์เดิม — เลือกให้ชัดก่อนไปหน้าชำระเงิน ── */}
+          {appendTo && (
+            <div className="mt-3 space-y-2 rounded-2xl bg-sky-50 p-3 ring-1 ring-sky-200">
+              <p className="text-xs font-bold text-sky-900">สั่งซื้อแบบไหน?</p>
+              <label className="flex cursor-pointer items-start gap-2 rounded-xl bg-white p-2.5 ring-1 ring-sky-200">
+                <input
+                  type="radio"
+                  name="order-mode"
+                  checked
+                  readOnly
+                  className="mt-0.5 h-4 w-4 accent-sky-600"
+                />
+                <span className="text-xs leading-relaxed text-stone-700">
+                  <strong className="block text-sm text-sky-800">➕ เพิ่มเข้าออเดอร์เดิม {appendTo.id}</strong>
+                  ใช้ชื่อ/ที่อยู่เดิม · <strong className="text-emerald-700">ไม่คิดค่าส่งเพิ่ม</strong> เพราะส่งรวมกล่องเดียวกัน
+                </span>
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  clearAppendTarget();
+                  setAppendTo(null);
+                }}
+                className="flex w-full cursor-pointer items-start gap-2 rounded-xl bg-white p-2.5 text-left ring-1 ring-stone-200 transition hover:ring-stone-300"
+              >
+                <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full ring-1 ring-stone-300" />
+                <span className="text-xs leading-relaxed text-stone-600">
+                  <strong className="block text-sm text-stone-700">🆕 สั่งเป็นออเดอร์ใหม่</strong>
+                  แยกออเดอร์ · คิดค่าส่งใหม่ · กรอกที่อยู่ใหม่ได้
+                </span>
+              </button>
+            </div>
+          )}
 
           {!freeShipping && remainForFree > 0 && (
             <div className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800 ring-1 ring-amber-200">
