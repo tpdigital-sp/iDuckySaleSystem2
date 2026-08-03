@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -306,6 +306,8 @@ export default function ProductEditor({ product }: { product: Product }) {
   const [savedAt, setSavedAt] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const dragPhotoRef = useRef<number | null>(null); // รูปที่กำลังลาก (ref — อ่านได้ทันทีตอน drop)
+  const [dragPhoto, setDragPhoto] = useState<number | null>(null); // ไว้ทำ visual feedback
   // ── ยุบ/ขยายแต่ละหัวข้อ (จำไว้ในเบราว์เซอร์) — หน้ายาวมาก เปิดทุกอันพร้อมกันหาอะไรไม่เจอ ──
   const [closedSecs, setClosedSecs] = useState<Record<string, boolean>>({ seo: true, body: true, terms: true, rules: true });
   useEffect(() => {
@@ -404,6 +406,15 @@ export default function ProductEditor({ product }: { product: Product }) {
     if (urls.length) {
       setDraft((d) => ({ ...d, photos: [...d.photos, ...urls].slice(0, MAX_PHOTOS) }));
     }
+  }
+
+  /** สลับตำแหน่งรูป (ลากวาง หรือปุ่มลูกศร) — รูปแรกเสมอคือรูปหลักบนการ์ด */
+  function movePhoto(from: number, to: number) {
+    if (from === to || to < 0 || to >= draft.photos.length) return;
+    const next = [...draft.photos];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    patch({ photos: next });
   }
 
   function removePhoto(i: number) {
@@ -986,7 +997,7 @@ export default function ProductEditor({ product }: { product: Product }) {
           🖼️ รูปสินค้า ({draft.photos.length}/{MAX_PHOTOS})
         </h2>
         <p className="mb-3 mt-0.5 text-[11px] text-slate-400">
-          ลากไฟล์รูปมาวางที่นี่ หรือกดช่อง + เพื่อเลือก · รูปแรกคือรูปหลักบนการ์ด · สูงสุด {MAX_PHOTOS} รูป · ย่อ + อัปโหลดขึ้นคลาวด์ (Supabase Storage) ให้อัตโนมัติ
+          ลากไฟล์รูปมาวางที่นี่ หรือกดช่อง + เพื่อเลือก · <strong>ลากรูปสลับตำแหน่งได้</strong> (หรือกดปุ่ม ‹ ›) · รูปแรกคือรูปหลักบนการ์ด · สูงสุด {MAX_PHOTOS} รูป · ย่อ + อัปโหลดขึ้นคลาวด์ (Supabase Storage) ให้อัตโนมัติ
         </p>
 
         <div
@@ -995,9 +1006,40 @@ export default function ProductEditor({ product }: { product: Product }) {
           }`}
         >
           {draft.photos.map((src, i) => (
-            <div key={i} className="relative aspect-square overflow-hidden rounded-xl ring-1 ring-slate-200">
+            <div
+              key={i}
+              draggable
+              onDragStart={(e) => {
+                dragPhotoRef.current = i;
+                setDragPhoto(i);
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", String(i)); // บาง browser ต้องมี data ถึงจะเริ่มลาก
+              }}
+              onDragEnd={() => {
+                dragPhotoRef.current = null;
+                setDragPhoto(null);
+              }}
+              onDragOver={(e) => {
+                if (dragPhotoRef.current === null) return; // ลากไฟล์จากเครื่อง = ปล่อยให้กล่องใหญ่รับไปอัปโหลด
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDrop={(e) => {
+                const from = dragPhotoRef.current;
+                if (from === null) return;
+                e.preventDefault();
+                e.stopPropagation();
+                movePhoto(from, i);
+                dragPhotoRef.current = null;
+                setDragPhoto(null);
+              }}
+              className={`group relative aspect-square cursor-grab overflow-hidden rounded-xl ring-1 transition active:cursor-grabbing ${
+                dragPhoto === i ? "opacity-40 ring-2 ring-emerald-400" : "ring-slate-200"
+              }`}
+              title="ลากเพื่อสลับตำแหน่ง"
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={src} alt={`รูปสินค้า ${i + 1}`} className="h-full w-full object-cover" />
+              <img src={src} alt={`รูปสินค้า ${i + 1}`} className="h-full w-full object-cover" draggable={false} />
               {i === 0 && (
                 <span className="absolute left-1 top-1 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white">
                   รูปหลัก
@@ -1011,6 +1053,29 @@ export default function ProductEditor({ product }: { product: Product }) {
               >
                 ✕
               </button>
+
+              {/* ปุ่มเลื่อนลำดับ (มือถือ/คนที่ไม่ถนัดลาก) — โชว์เมื่อชี้เมาส์หรือบนจอสัมผัส */}
+              <div className="absolute inset-x-1 bottom-1 flex items-center justify-between gap-1 opacity-0 transition group-hover:opacity-100 max-sm:opacity-100">
+                <button
+                  type="button"
+                  onClick={() => movePhoto(i, i - 1)}
+                  disabled={i === 0}
+                  className="grid h-6 w-6 place-items-center rounded-full bg-white/90 text-xs font-bold text-slate-600 shadow transition hover:bg-white disabled:opacity-30"
+                  aria-label="เลื่อนไปข้างหน้า"
+                >
+                  ‹
+                </button>
+                <span className="rounded-full bg-slate-900/70 px-1.5 text-[10px] font-bold text-white">{i + 1}</span>
+                <button
+                  type="button"
+                  onClick={() => movePhoto(i, i + 1)}
+                  disabled={i === draft.photos.length - 1}
+                  className="grid h-6 w-6 place-items-center rounded-full bg-white/90 text-xs font-bold text-slate-600 shadow transition hover:bg-white disabled:opacity-30"
+                  aria-label="เลื่อนไปข้างหลัง"
+                >
+                  ›
+                </button>
+              </div>
             </div>
           ))}
           {draft.photos.length < MAX_PHOTOS && (
