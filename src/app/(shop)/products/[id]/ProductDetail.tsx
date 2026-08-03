@@ -1,7 +1,7 @@
 "use client";
 
 import { productAutoSeo } from "@/lib/auto-seo";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   allowedChoices,
@@ -47,6 +47,11 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   const [artBusy, setArtBusy] = useState(false);
   const [artErr, setArtErr] = useState("");
   const [artDrag, setArtDrag] = useState(false); // ลากไฟล์อยู่เหนือกล่องแนบลาย
+  // ส่วน "เพิ่มเติม" ยุบไว้ทีละอัน — ไม่ให้ฟอร์มที่ไม่บังคับดันปุ่มซื้อตกจอ
+  const [extraOpen, setExtraOpen] = useState<"art" | "note" | null>(null);
+  // แถบซื้อลอยล่างจอ (มือถือ) — โผล่เมื่อกล่องสั่งซื้อหลักเลื่อนพ้นจอ
+  const orderBoxRef = useRef<HTMLDivElement>(null);
+  const [showBuyBar, setShowBuyBar] = useState(false);
 
   // โหลดเวอร์ชันล่าสุด (Supabase หรือ localStorage) — ถ้ามีให้ใช้แทนข้อมูลตั้งต้น
   useEffect(() => {
@@ -96,16 +101,36 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     canAccessAdmin().then(setIsAdmin);
   }, []);
 
-  // โยนไฟล์พลาดนอกกรอบ = เบราว์เซอร์จะเปิดไฟล์นั้นแทนหน้าเว็บ → กันไว้ทั้งหน้า
+  // แถบซื้อลอยล่างจอ: โชว์เมื่อกล่องสั่งซื้อหลักหลุดจอไปแล้ว
   useEffect(() => {
-    const stop = (e: DragEvent) => e.preventDefault();
-    window.addEventListener("dragover", stop);
-    window.addEventListener("drop", stop);
-    return () => {
-      window.removeEventListener("dragover", stop);
-      window.removeEventListener("drop", stop);
-    };
+    const el = orderBoxRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => setShowBuyBar(!e.isIntersecting), { rootMargin: "-80px 0px 0px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
   }, []);
+
+  // โยนรูปลงตรงไหนของหน้าก็ได้ → เปิดกล่องแนบลายให้เองแล้วอัปโหลดทันที
+  // (ถ้าไม่ใช่รูป ก็แค่กันเบราว์เซอร์เปิดไฟล์นั้นแทนหน้าเว็บ)
+  useEffect(() => {
+    const over = (e: DragEvent) => e.preventDefault();
+    const drop = (e: DragEvent) => {
+      e.preventDefault();
+      const imgs = Array.from(e.dataTransfer?.files ?? []).filter((f) => f.type.startsWith("image/"));
+      if (!imgs.length) return;
+      setExtraOpen("art");
+      const dt = new DataTransfer();
+      imgs.forEach((f) => dt.items.add(f));
+      void uploadArtwork(dt.files);
+    };
+    window.addEventListener("dragover", over);
+    window.addEventListener("drop", drop);
+    return () => {
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("drop", drop);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [artFiles.length]);
 
   // วางรูปจากคลิปบอร์ดได้เลย (ก๊อปจากแชท/โปรแกรมแต่งรูปแล้ว ⌘/Ctrl+V)
   useEffect(() => {
@@ -113,6 +138,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
       const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/"));
       if (!files.length) return;
       e.preventDefault();
+      setExtraOpen("art");
       const dt = new DataTransfer();
       files.forEach((f) => dt.items.add(f));
       void uploadArtwork(dt.files);
@@ -247,9 +273,9 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
         <span className="text-stone-600">{product.name}</span>
       </nav>
 
-      <div className="mt-4 grid gap-8 lg:grid-cols-2">
-        {/* รูปสินค้า */}
-        <div>
+      <div className="mt-4 grid gap-8 lg:grid-cols-2 lg:items-start">
+        {/* รูปสินค้า — ติดหนึบตอนเลื่อนอ่านตัวเลือกยาว ๆ (จอใหญ่) */}
+        <div className="lg:sticky lg:top-24">
           <ProductVisual
             emoji={product.images[imageIndex].emoji}
             gradient={product.images[imageIndex].gradient}
@@ -445,209 +471,272 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
             </div>
           )}
 
-          {/* ── ลายของลูกค้า: อัปโหลดภาพตัวอย่าง + ลิงก์ไฟล์ต้นฉบับ ── */}
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              if (artFiles.length < 5) setArtDrag(true);
-            }}
-            onDragLeave={(e) => {
-              // ออกจากกล่องจริง ๆ เท่านั้น (ไม่ใช่แค่ย้ายข้ามลูกใน)
-              if (!e.currentTarget.contains(e.relatedTarget as Node)) setArtDrag(false);
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              setArtDrag(false);
-              void uploadArtwork(e.dataTransfer.files);
-            }}
-            className={`mt-5 rounded-2xl p-4 transition ${
-              artDrag ? "bg-sky-100 ring-2 ring-dashed ring-sky-400" : "bg-sky-50/70 ring-1 ring-sky-200"
-            }`}
-          >
-            <p className="text-sm font-bold text-stone-700">
-              🎨 แนบลายของคุณ <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
-            </p>
-
-            {/* 1) อัปโหลดภาพ */}
-            <p className="mt-2 text-[11px] font-bold text-stone-600">1) อัปโหลดภาพตัวอย่าง (JPG / PNG)</p>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-stone-500">
-              ระบบเก็บไฟล์<strong className="text-stone-700">ตามต้นฉบับที่คุณเลือก ไม่บีบอัดซ้ำ</strong> — แต่ภาพที่ส่งต่อมาจากแชท/มือถือมักถูกลดคุณภาพมาตั้งแต่ต้นทาง
-              ภาพตรงนี้จึงใช้ <strong className="text-sky-700">ให้กราฟฟิกดูเป็นแนวทางในการทำแบบเท่านั้น</strong> · ไฟล์งานพิมพ์คุณภาพเต็ม รบกวนแนบเป็นลิงก์ในช่องข้อ 2 ครับ
-            </p>
-
-            {artFiles.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {artFiles.map((f, i) => (
-                  <div key={f.url} className="relative">
-                    <a href={f.url} target="_blank" rel="noreferrer">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={f.url} alt={f.name} className="h-20 w-20 rounded-xl object-cover ring-1 ring-sky-200" />
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => setArtFiles((cur) => cur.filter((_, j) => j !== i))}
-                      className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow"
-                      aria-label="ลบภาพนี้"
-                    >
-                      ✕
-                    </button>
-                    {f.w > 0 && (
-                      <p className={`mt-0.5 w-20 text-center text-[9px] leading-tight ${Math.max(f.w, f.h) < 1500 ? "font-bold text-amber-600" : "text-stone-400"}`}>
-                        {f.w}×{f.h}
-                        {Math.max(f.w, f.h) < 1500 ? " · ภาพเล็ก" : ""}
-                      </p>
-                    )}
-                  </div>
-                ))}
+          {/* ═══ กล่องสั่งซื้อ — จำนวน + ยอด + ปุ่ม (ติดกับตัวเลือก ไม่ให้ของไม่บังคับมาคั่น) ═══ */}
+          <div ref={orderBoxRef} className="mt-6 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
+            {/* จำนวน + เพิ่มลงตะกร้า */}
+            <div className="mt-6">
+              {product.pricing && (
+                <label className="mb-1.5 block text-sm font-bold text-stone-700">
+                  จำนวน ({product.pricing.unit})
+                </label>
+              )}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center rounded-full bg-white ring-1 ring-amber-200">
+                  <button
+                    type="button"
+                    onClick={() => setQty((q) => Math.max(1, q - 1))}
+                    className="h-12 w-12 rounded-l-full text-lg font-bold text-stone-600 hover:bg-amber-50"
+                    aria-label="ลดจำนวน"
+                  >
+                    −
+                  </button>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={qty}
+                    onChange={(e) => {
+                      const n = parseInt(e.target.value.replace(/\D/g, ""), 10);
+                      setQty(Number.isFinite(n) && n > 0 ? Math.min(n, 99999) : 1);
+                    }}
+                    className="w-16 bg-transparent text-center text-sm font-bold focus:outline-none"
+                    aria-label="จำนวน"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setQty((q) => Math.min(product.pricing ? 99999 : 99, q + 1))}
+                    className="h-12 w-12 rounded-r-full text-lg font-bold text-stone-600 hover:bg-amber-50"
+                    aria-label="เพิ่มจำนวน"
+                  >
+                    +
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAdd}
+                  disabled={useCustom && !customValid}
+                  className={`flex-1 rounded-full px-6 py-3.5 text-sm font-bold shadow-lg transition sm:flex-none sm:px-10 ${
+                    added
+                      ? "bg-emerald-500 text-white"
+                      : "bg-amber-400 text-white hover:scale-105 hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+                  }`}
+                >
+                  {added
+                    ? "✓ เพิ่มลงตะกร้าแล้ว!"
+                    : useCustom && custom?.mode === "quote"
+                      ? "🛒 เพิ่มลงตะกร้า (รอตีราคา)"
+                      : `🛒 เพิ่มลงตะกร้า — ${formatPrice(unitPrice * qty)}`}
+                </button>
               </div>
-            )}
+              {product.pricing && (
+                <p className="mt-2 text-sm text-stone-500">
+                  {formatPrice(unitPrice)} / {product.pricing.unit} × {qty.toLocaleString("th-TH")} ={" "}
+                  <span className="font-extrabold text-amber-600">{formatPrice(unitPrice * qty)}</span>
+                </p>
+              )}
+            </div>
+          </div>
 
-            {artFiles.some((f) => f.w > 0 && Math.max(f.w, f.h) < 1500) && (
-              <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-semibold leading-relaxed text-amber-700 ring-1 ring-amber-200">
-                ⚠️ มีภาพความละเอียดต่ำ — พิมพ์ออกมาอาจแตก/ไม่คม รบกวนแนบไฟล์ต้นฉบับเป็นลิงก์ในข้อ 2 ด้วยครับ
-              </p>
-            )}
-
-            {artFiles.length < 5 && (
-              <label
+          {/* ═══ เพิ่มเติม (ไม่บังคับ) — ยุบไว้ ไม่ให้บังปุ่มซื้อ · โยนรูปลงหน้าไหนก็เปิดให้เอง ═══ */}
+          <div className="mt-4 overflow-hidden rounded-3xl bg-white ring-1 ring-stone-200">
+            <button
+              type="button"
+              onClick={() => setExtraOpen((o) => (o === "art" ? null : "art"))}
+              aria-expanded={extraOpen === "art"}
+              className="flex w-full items-center gap-2 px-4 py-3 text-left transition hover:bg-sky-50/60"
+            >
+              <span className="text-lg leading-none">🎨</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-bold text-stone-700">
+                  แนบลายของคุณ
+                  {artFiles.length > 0 ? (
+                    <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">แนบแล้ว {artFiles.length} รูป</span>
+                  ) : (
+                    <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700">แนะนำ</span>
+                  )}
+                </span>
+                <span className="block text-[11px] text-stone-400">อัปโหลดรูป (ลากมาวางได้) · หรือแนบลิงก์ไฟล์ / อีเมล</span>
+              </span>
+              <span className={`shrink-0 text-stone-400 transition ${extraOpen === "art" ? "rotate-180" : ""}`}>⌄</span>
+            </button>
+            {extraOpen === "art" && <div className="px-4 pb-4">
+              {/* ── ลายของลูกค้า: อัปโหลดภาพตัวอย่าง + ลิงก์ไฟล์ต้นฉบับ ── */}
+              <div
                 onDragOver={(e) => {
                   e.preventDefault();
-                  setArtDrag(true);
+                  if (artFiles.length < 5) setArtDrag(true);
+                }}
+                onDragLeave={(e) => {
+                  // ออกจากกล่องจริง ๆ เท่านั้น (ไม่ใช่แค่ย้ายข้ามลูกใน)
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setArtDrag(false);
                 }}
                 onDrop={(e) => {
-                  // หยุด bubble — กล่องนอกก็เป็น dropzone ถ้าไม่หยุดจะอัปซ้ำ 2 รอบ
                   e.preventDefault();
-                  e.stopPropagation();
                   setArtDrag(false);
                   void uploadArtwork(e.dataTransfer.files);
                 }}
-                className={`mt-2 flex cursor-pointer flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed px-4 py-5 text-center transition ${
-                  artDrag ? "border-sky-500 bg-sky-100" : "border-sky-300 bg-white hover:border-sky-400 hover:bg-sky-50"
+                className={`mt-5 rounded-2xl p-4 transition ${
+                  artDrag ? "bg-sky-100 ring-2 ring-dashed ring-sky-400" : "bg-sky-50/70 ring-1 ring-sky-200"
                 }`}
               >
-                {artBusy ? (
-                  <span className="text-xs font-bold text-sky-700">กำลังอัปโหลด…</span>
-                ) : artDrag ? (
-                  <span className="text-sm font-extrabold text-sky-700">⬇️ ปล่อยไฟล์ตรงนี้ได้เลย</span>
-                ) : (
-                  <>
-                    <span className="text-2xl leading-none">🖼️</span>
-                    <span className="text-xs font-extrabold text-sky-700">ลากรูปมาวางตรงนี้ · แตะเพื่อเลือกไฟล์ · หรือกด ⌘/Ctrl+V วางรูปที่ก๊อปไว้</span>
-                    <span className="text-[11px] font-normal text-stone-400">JPG / PNG / WEBP · สูงสุด 5 รูป · ไฟล์ละไม่เกิน 15MB</span>
-                  </>
+                <p className="text-sm font-bold text-stone-700">
+                  🎨 แนบลายของคุณ <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
+                </p>
+
+                {/* 1) อัปโหลดภาพ */}
+                <p className="mt-2 text-[11px] font-bold text-stone-600">1) อัปโหลดภาพตัวอย่าง (JPG / PNG)</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-stone-500">
+                  ระบบเก็บไฟล์<strong className="text-stone-700">ตามต้นฉบับที่คุณเลือก ไม่บีบอัดซ้ำ</strong> — แต่ภาพที่ส่งต่อมาจากแชท/มือถือมักถูกลดคุณภาพมาตั้งแต่ต้นทาง
+                  ภาพตรงนี้จึงใช้ <strong className="text-sky-700">ให้กราฟฟิกดูเป็นแนวทางในการทำแบบเท่านั้น</strong> · ไฟล์งานพิมพ์คุณภาพเต็ม รบกวนแนบเป็นลิงก์ในช่องข้อ 2 ครับ
+                </p>
+
+                {artFiles.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {artFiles.map((f, i) => (
+                      <div key={f.url} className="relative">
+                        <a href={f.url} target="_blank" rel="noreferrer">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={f.url} alt={f.name} className="h-20 w-20 rounded-xl object-cover ring-1 ring-sky-200" />
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => setArtFiles((cur) => cur.filter((_, j) => j !== i))}
+                          className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow"
+                          aria-label="ลบภาพนี้"
+                        >
+                          ✕
+                        </button>
+                        {f.w > 0 && (
+                          <p className={`mt-0.5 w-20 text-center text-[9px] leading-tight ${Math.max(f.w, f.h) < 1500 ? "font-bold text-amber-600" : "text-stone-400"}`}>
+                            {f.w}×{f.h}
+                            {Math.max(f.w, f.h) < 1500 ? " · ภาพเล็ก" : ""}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  multiple
-                  className="hidden"
-                  disabled={artBusy}
-                  onChange={(e) => {
-                    void uploadArtwork(e.target.files);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-            )}
-            {artErr && <p className="mt-1.5 text-[11px] font-semibold text-rose-600">⚠️ {artErr}</p>}
 
-            {/* 2) ลิงก์ไฟล์ต้นฉบับ */}
-            <label htmlFor="art-link" className="mt-4 block text-[11px] font-bold text-stone-600">
-              2) แนบลิงก์ไฟล์ลาย หรือ อีเมล <span className="font-normal text-sky-700">(แนะนำ — ได้ไฟล์ต้นฉบับคุณภาพเต็ม)</span>
-            </label>
-            <p className="mt-0.5 mb-2 text-[11px] leading-relaxed text-stone-500">
-              วางลิงก์ไฟล์ (Google Drive / Dropbox / OneDrive) หรืออีเมลที่ส่งไฟล์ไว้ — เราจะดึงไฟล์ต้นฉบับไปใช้ผลิต (ไม่ผ่านการบีบอัดของเว็บ/แชท)
-            </p>
-            <input
-              id="art-link"
-              type="text"
-              value={artLink}
-              onChange={(e) => setArtLink(e.target.value.slice(0, 500))}
-              placeholder="เช่น https://drive.google.com/…  หรือ  yourmail@gmail.com"
-              className="w-full rounded-xl bg-white px-4 py-2.5 text-sm text-stone-700 ring-1 ring-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-300"
-            />
-          </div>
+                {artFiles.some((f) => f.w > 0 && Math.max(f.w, f.h) < 1500) && (
+                  <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-semibold leading-relaxed text-amber-700 ring-1 ring-amber-200">
+                    ⚠️ มีภาพความละเอียดต่ำ — พิมพ์ออกมาอาจแตก/ไม่คม รบกวนแนบไฟล์ต้นฉบับเป็นลิงก์ในข้อ 2 ด้วยครับ
+                  </p>
+                )}
 
-          {/* จำนวน + เพิ่มลงตะกร้า */}
-          <div className="mt-6">
-            {product.pricing && (
-              <label className="mb-1.5 block text-sm font-bold text-stone-700">
-                จำนวน ({product.pricing.unit})
-              </label>
-            )}
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center rounded-full bg-white ring-1 ring-amber-200">
-                <button
-                  type="button"
-                  onClick={() => setQty((q) => Math.max(1, q - 1))}
-                  className="h-12 w-12 rounded-l-full text-lg font-bold text-stone-600 hover:bg-amber-50"
-                  aria-label="ลดจำนวน"
-                >
-                  −
-                </button>
+                {artFiles.length < 5 && (
+                  <label
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setArtDrag(true);
+                    }}
+                    onDrop={(e) => {
+                      // หยุด bubble — กล่องนอกก็เป็น dropzone ถ้าไม่หยุดจะอัปซ้ำ 2 รอบ
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setArtDrag(false);
+                      void uploadArtwork(e.dataTransfer.files);
+                    }}
+                    className={`mt-2 flex cursor-pointer flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed px-4 py-5 text-center transition ${
+                      artDrag ? "border-sky-500 bg-sky-100" : "border-sky-300 bg-white hover:border-sky-400 hover:bg-sky-50"
+                    }`}
+                  >
+                    {artBusy ? (
+                      <span className="text-xs font-bold text-sky-700">กำลังอัปโหลด…</span>
+                    ) : artDrag ? (
+                      <span className="text-sm font-extrabold text-sky-700">⬇️ ปล่อยไฟล์ตรงนี้ได้เลย</span>
+                    ) : (
+                      <>
+                        <span className="text-2xl leading-none">🖼️</span>
+                        <span className="text-xs font-extrabold text-sky-700">ลากรูปมาวางตรงนี้ · แตะเพื่อเลือกไฟล์ · หรือกด ⌘/Ctrl+V วางรูปที่ก๊อปไว้</span>
+                        <span className="text-[11px] font-normal text-stone-400">JPG / PNG / WEBP · สูงสุด 5 รูป · ไฟล์ละไม่เกิน 15MB</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      multiple
+                      className="hidden"
+                      disabled={artBusy}
+                      onChange={(e) => {
+                        void uploadArtwork(e.target.files);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                )}
+                {artErr && <p className="mt-1.5 text-[11px] font-semibold text-rose-600">⚠️ {artErr}</p>}
+
+                {/* 2) ลิงก์ไฟล์ต้นฉบับ */}
+                <label htmlFor="art-link" className="mt-4 block text-[11px] font-bold text-stone-600">
+                  2) แนบลิงก์ไฟล์ลาย หรือ อีเมล <span className="font-normal text-sky-700">(แนะนำ — ได้ไฟล์ต้นฉบับคุณภาพเต็ม)</span>
+                </label>
+                <p className="mt-0.5 mb-2 text-[11px] leading-relaxed text-stone-500">
+                  วางลิงก์ไฟล์ (Google Drive / Dropbox / OneDrive) หรืออีเมลที่ส่งไฟล์ไว้ — เราจะดึงไฟล์ต้นฉบับไปใช้ผลิต (ไม่ผ่านการบีบอัดของเว็บ/แชท)
+                </p>
                 <input
+                  id="art-link"
                   type="text"
-                  inputMode="numeric"
-                  value={qty}
-                  onChange={(e) => {
-                    const n = parseInt(e.target.value.replace(/\D/g, ""), 10);
-                    setQty(Number.isFinite(n) && n > 0 ? Math.min(n, 99999) : 1);
-                  }}
-                  className="w-16 bg-transparent text-center text-sm font-bold focus:outline-none"
-                  aria-label="จำนวน"
+                  value={artLink}
+                  onChange={(e) => setArtLink(e.target.value.slice(0, 500))}
+                  placeholder="เช่น https://drive.google.com/…  หรือ  yourmail@gmail.com"
+                  className="w-full rounded-xl bg-white px-4 py-2.5 text-sm text-stone-700 ring-1 ring-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-300"
                 />
-                <button
-                  type="button"
-                  onClick={() => setQty((q) => Math.min(product.pricing ? 99999 : 99, q + 1))}
-                  className="h-12 w-12 rounded-r-full text-lg font-bold text-stone-600 hover:bg-amber-50"
-                  aria-label="เพิ่มจำนวน"
-                >
-                  +
-                </button>
               </div>
+            </div>}
+
+            <div className="border-t border-stone-100">
               <button
                 type="button"
-                onClick={handleAdd}
-                disabled={useCustom && !customValid}
-                className={`flex-1 rounded-full px-6 py-3.5 text-sm font-bold shadow-lg transition sm:flex-none sm:px-10 ${
-                  added
-                    ? "bg-emerald-500 text-white"
-                    : "bg-amber-400 text-white hover:scale-105 hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
-                }`}
+                onClick={() => setExtraOpen((o) => (o === "note" ? null : "note"))}
+                aria-expanded={extraOpen === "note"}
+                className="flex w-full items-center gap-2 px-4 py-3 text-left transition hover:bg-amber-50/60"
               >
-                {added
-                  ? "✓ เพิ่มลงตะกร้าแล้ว!"
-                  : useCustom && custom?.mode === "quote"
-                    ? "🛒 เพิ่มลงตะกร้า (รอตีราคา)"
-                    : `🛒 เพิ่มลงตะกร้า — ${formatPrice(unitPrice * qty)}`}
+                <span className="text-lg leading-none">📝</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold text-stone-700">
+                    หมายเหตุถึงร้าน
+                    {note.trim() && (
+                      <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">มีข้อความ</span>
+                    )}
+                  </span>
+                  <span className="block text-[11px] text-stone-400">สีที่ต้องการ · ข้อความที่อยากให้ใส่ · รายละเอียดเพิ่มเติม</span>
+                </span>
+                <span className={`shrink-0 text-stone-400 transition ${extraOpen === "note" ? "rotate-180" : ""}`}>⌄</span>
               </button>
+              {extraOpen === "note" && <div className="px-4 pb-4">
+                {/* หมายเหตุถึงร้าน (อยู่ใต้จำนวน+เพิ่มลงตะกร้า) */}
+                <div className="mt-5">
+                  <label htmlFor="order-note" className="mb-1.5 block text-sm font-bold text-stone-700">
+                    📝 หมายเหตุถึงร้าน <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
+                  </label>
+                  <textarea
+                    id="order-note"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value.slice(0, 500))}
+                    rows={2}
+                    placeholder="เช่น สีที่ต้องการ · ข้อความที่อยากให้ใส่ · รายละเอียดเพิ่มเติม"
+                    className="w-full resize-y rounded-2xl bg-white px-4 py-2.5 text-sm text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                  />
+                  {note.trim() && (
+                    <p className="mt-1 text-right text-[11px] text-stone-400">{note.length}/500</p>
+                  )}
+                </div>
+              </div>}
             </div>
-            {product.pricing && (
-              <p className="mt-2 text-sm text-stone-500">
-                {formatPrice(unitPrice)} / {product.pricing.unit} × {qty.toLocaleString("th-TH")} ={" "}
-                <span className="font-extrabold text-amber-600">{formatPrice(unitPrice * qty)}</span>
-              </p>
-            )}
           </div>
 
-          {/* หมายเหตุถึงร้าน (อยู่ใต้จำนวน+เพิ่มลงตะกร้า) */}
-          <div className="mt-5">
-            <label htmlFor="order-note" className="mb-1.5 block text-sm font-bold text-stone-700">
-              📝 หมายเหตุถึงร้าน <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
-            </label>
-            <textarea
-              id="order-note"
-              value={note}
-              onChange={(e) => setNote(e.target.value.slice(0, 500))}
-              rows={2}
-              placeholder="เช่น สีที่ต้องการ · ข้อความที่อยากให้ใส่ · รายละเอียดเพิ่มเติม"
-              className="w-full resize-y rounded-2xl bg-white px-4 py-2.5 text-sm text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-            />
-            {note.trim() && (
-              <p className="mt-1 text-right text-[11px] text-stone-400">{note.length}/500</p>
-            )}
-          </div>
+          {/* ═══ ความมั่นใจก่อนกดสั่ง ═══ */}
+          <ul className="mt-4 grid grid-cols-2 gap-2 text-[11px] font-semibold text-stone-500 sm:grid-cols-4">
+            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">🖼️ ส่งแบบให้ตรวจ<br />ก่อนผลิตทุกงาน</li>
+            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">✅ แก้แบบได้<br />จนกว่าจะพอใจ</li>
+            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">🚚 ส่งไว<br />ทั่วไทย</li>
+            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">💬 ทักไลน์<br />ปรึกษาฟรี</li>
+          </ul>
+        </div>
+      </div>
 
+      {/* ═══ ข้อมูลประกอบ (อ่านทีหลังได้ ไม่ต้องแย่งที่กับปุ่มซื้อ) ═══ */}
+      <div className="mt-10 grid gap-6 lg:grid-cols-2">
+        <div>
           {/* ตารางราคาขั้นบันได (rate card) — คอลัมน์เยอะโชว์เฉพาะที่เลือกอยู่ */}
           {product.pricing &&
             (() => {
@@ -701,12 +790,9 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                 </div>
               );
             })()}
-
-          <p className="mt-3 rounded-2xl bg-sky-50 px-4 py-3 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
-            🎨 <strong>อยากใส่ลายของตัวเอง?</strong> ระบบอัปโหลดลายพร้อมพรีวิวบนสินค้ากำลังจะเปิดให้ใช้เร็ว ๆ นี้
-            — ตอนนี้สั่งซื้อก่อนแล้วส่งไฟล์ลายให้แอดมินทาง LINE ได้เลย
-          </p>
-
+        </div>
+        <div>
+          <p className="text-sm font-bold text-stone-700">✨ จุดเด่นของงานนี้</p>
           {/* จุดเด่น */}
           <ul className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {product.highlights.map((h) => (
@@ -799,6 +885,35 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
           </div>
         </section>
       )}
+
+      {/* ═══ แถบซื้อลอยล่างจอ (มือถือ) — ราคาปัจจุบัน + ปุ่มสั่ง ไม่ต้องเลื่อนกลับขึ้นไป ═══ */}
+      <div
+        className={`fixed inset-x-0 bottom-0 z-40 border-t border-amber-100 bg-white/95 px-4 py-2.5 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] backdrop-blur transition-transform duration-200 lg:hidden ${
+          showBuyBar ? "translate-y-0" : "translate-y-full"
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-[11px] text-stone-400">
+              {qty.toLocaleString("th-TH")} {product.pricing?.unit ?? "ชิ้น"}
+              {artFiles.length > 0 ? ` · แนบลาย ${artFiles.length} รูป` : ""}
+            </p>
+            <p className="text-lg font-extrabold leading-tight text-amber-600">{formatPrice(unitPrice * qty)}</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleAdd}
+            disabled={useCustom && !customValid}
+            className={`ml-auto shrink-0 rounded-full px-6 py-3 text-sm font-bold text-white shadow-lg transition ${
+              added ? "bg-emerald-500" : "bg-amber-400 hover:bg-amber-500 disabled:opacity-40"
+            }`}
+          >
+            {added ? "✓ เพิ่มแล้ว!" : "🛒 เพิ่มลงตะกร้า"}
+          </button>
+        </div>
+      </div>
+      {/* กันแถบลอยบังเนื้อหาท้ายหน้า */}
+      <div className="h-20 lg:hidden" aria-hidden />
     </div>
   );
 }
