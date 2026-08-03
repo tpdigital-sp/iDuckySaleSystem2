@@ -1584,10 +1584,32 @@ export default function AdminOrderDetailPage() {
                                   <button
                                     type="button"
                                     onClick={async () => {
-                                      const ok = await askConfirm({ icon: "🗑", title: `ลบแบบรูปที่ ${j + 1}?`, detail: "ลูกค้าจะไม่เห็นแบบรูปนี้อีก", confirmLabel: "ลบแบบ", danger: true });
+                                      // ลบแล้วเลขรูปที่อยู่หลังจะเลื่อนขึ้น — ความเห็นลูกค้าที่อ้าง "รูปที่ N" จะไม่ตรงกัน
+                                      const after = proofs.length - 1 - j;
+                                      const warn = [
+                                        after > 0
+                                          ? `⚠️ เลขรูปจะเลื่อน — รูปที่ ${j + 2}${after > 1 ? `–${proofs.length}` : ""} จะกลายเป็นรูปที่ ${j + 1}${after > 1 ? `–${proofs.length - 1}` : ""} ถ้าลูกค้าเคยทักถึง “รูปที่ …” ไว้ จะอ้างกันคนละรูปทันที`
+                                          : "",
+                                        pf.review === "ขอแก้ไข"
+                                          ? `⚠️ รูปนี้ลูกค้ากำลังขอแก้อยู่ (“${pf.reviewNote || "-"}”) — ลบแล้วคำขอนี้จะหายไปด้วย`
+                                          : pf.review === "อนุมัติ"
+                                            ? "⚠️ รูปนี้ลูกค้าอนุมัติแล้ว — ลบแล้วผลอนุมัติจะหายไปด้วย"
+                                            : "",
+                                        "💡 ถ้าจะแก้งานรูปนี้ ใช้ปุ่ม “🔄 เปลี่ยนรูปนี้” แทน จะได้คงเลขรูปและความเห็นของลูกค้าไว้",
+                                      ]
+                                        .filter(Boolean)
+                                        .join("\n");
+                                      const ok = await askConfirm({
+                                        icon: "🗑",
+                                        title: `ลบแบบรูปที่ ${j + 1}?`,
+                                        detail: warn,
+                                        confirmLabel: "ลบทิ้งเลย",
+                                        danger: true,
+                                      });
                                       if (ok) removeProof(i, j);
                                     }}
                                     aria-label="ลบรูปนี้"
+                                    title="ลบรูปนี้ (เลขรูปของรูปถัดไปจะเลื่อน — ถ้าจะแก้งาน ใช้ “เปลี่ยนรูปนี้” ดีกว่า)"
                                     className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-slate-900/60 text-xs font-bold text-white transition hover:bg-rose-600"
                                   >
                                     ✕
@@ -3153,7 +3175,7 @@ function ConfirmModal({
         <div className={`px-5 pb-4 pt-5 text-center ring-1 ring-inset ${danger ? "bg-rose-50 ring-rose-100" : "bg-sky-50 ring-sky-100"}`}>
           <span className="text-3xl">{icon}</span>
           <p className="mt-1.5 text-base font-extrabold leading-snug text-slate-900">{title}</p>
-          {detail && <p className="mt-1 text-xs leading-relaxed text-slate-500">{detail}</p>}
+          {detail && <p className="mt-1 whitespace-pre-line text-left text-xs leading-relaxed text-slate-600">{detail}</p>}
         </div>
         <div className="flex gap-2 p-4">
           <button
