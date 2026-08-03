@@ -87,6 +87,8 @@ type Draft = {
   bulkAskQty: string;
   /** ข้อควรทราบ/เงื่อนไขงาน (แสดงหน้าสินค้า) */
   terms: string;
+  /** บังคับแนบลายก่อนสั่ง (ค่าเริ่มต้น = บังคับ) */
+  artworkRequired: boolean;
   /** สถานะตรวจสอบหลังบ้าน (มีค่า = ตรวจแล้ว) */
   reviewed?: ProductReview;
 };
@@ -240,6 +242,7 @@ function toDraft(p: Product): Draft {
     },
     bulkAskQty: p.bulkAskQty != null && p.bulkAskQty > 0 ? String(p.bulkAskQty) : "",
     terms: p.terms ?? "",
+    artworkRequired: p.artworkRequired !== false,
     reviewed: p.reviewed,
   };
 }
@@ -549,6 +552,7 @@ export default function ProductEditor({ product }: { product: Product }) {
       custom,
       bulkAskQty: Number(draft.bulkAskQty) > 0 ? Math.floor(Number(draft.bulkAskQty)) : undefined,
       terms: draft.terms.trim() || undefined,
+      artworkRequired: draft.artworkRequired ? undefined : false, // undefined = บังคับ (ค่าเริ่มต้น)
       reviewed: draft.reviewed,
     };
     const res = await persistProduct(updated);
@@ -2000,6 +2004,22 @@ export default function ProductEditor({ product }: { product: Product }) {
         <p className="mt-1 text-xs text-slate-500">
           ลูกค้าสั่งถึงจำนวนนี้ หน้าสินค้าจะขึ้นเตือนให้ทักแอดมินเช็คสต๊อก/คิวผลิตก่อน (สั่งได้ตามปกติ แต่ออเดอร์จะติดธง &ldquo;รอเช็คสต๊อก&rdquo; ให้ทีมยืนยันจำนวน)
         </p>
+        <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+          <input
+            type="checkbox"
+            checked={draft.artworkRequired}
+            onChange={(e) => patch({ artworkRequired: e.target.checked })}
+            className="mt-0.5 h-4 w-4 accent-rose-500"
+          />
+          <span className="text-xs">
+            <span className="block font-bold text-slate-700">🎨 บังคับแนบลายก่อนกดสั่ง</span>
+            <span className="block text-slate-500">
+              ลูกค้าต้องอัปโหลดรูป หรือใส่ลิงก์ไฟล์/อีเมล อย่างน้อย 1 อย่าง ถึงจะกดเพิ่มลงตะกร้าได้ —
+              เอาติ๊กออกสำหรับของเปล่า/วัสดุที่ไม่ต้องใช้ลาย
+            </span>
+          </span>
+        </label>
+
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <label className="text-xs font-semibold text-slate-600">สั่งตั้งแต่</label>
           <input

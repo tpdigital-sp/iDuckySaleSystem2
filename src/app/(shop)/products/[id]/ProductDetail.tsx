@@ -16,6 +16,7 @@ import {
   tierIndex,
   unitPriceFor,
   needsStockCheck,
+  artworkIsRequired,
   type Product,
 } from "@/lib/products";
 import { LINE_URL } from "@/components/LineButton";
@@ -24,6 +25,22 @@ import { canAccessAdmin } from "@/lib/auth";
 import { fetchProduct } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
 import ProductCard from "@/components/ProductCard";
+
+/**
+ * แยก "ข้อควรทราบ" เป็นข้อ ๆ — บรรทัดที่ขึ้นต้นด้วย * / ** / *** = ข้อใหม่
+ * บรรทัดถัดไปที่ไม่ได้ขึ้นต้นด้วย * ถือเป็นบรรทัดต่อของข้อเดิม (คงการขึ้นบรรทัดไว้)
+ */
+function termLines(raw: string): string[] {
+  const out: string[] = [];
+  for (const line of raw.split("\n")) {
+    const t = line.trim();
+    if (!t) continue;
+    if (/^[*•]/.test(t)) out.push(t.replace(/^[*•\s]+/, ""));
+    else if (out.length) out[out.length - 1] += "\n" + t;
+    else out.push(t);
+  }
+  return out.filter(Boolean);
+}
 
 export default function ProductDetail({ product: initialProduct }: { product: Product }) {
   const [product, setProduct] = useState<Product>(initialProduct);
@@ -51,6 +68,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   const [artDrag, setArtDrag] = useState(false); // ลากไฟล์อยู่เหนือกล่องแนบลาย
   // ส่วน "เพิ่มเติม" ยุบไว้ทีละอัน — ไม่ให้ฟอร์มที่ไม่บังคับดันปุ่มซื้อตกจอ
   const [extraOpen, setExtraOpen] = useState<"art" | "note" | null>(null);
+  // สินค้าที่บังคับแนบลาย → เปิดกล่องค้างไว้จนกว่าลูกค้าจะแตะปิดเอง
+  const [artTouched, setArtTouched] = useState(false);
   // แถบซื้อลอยล่างจอ (มือถือ) — โผล่เมื่อกล่องสั่งซื้อหลักเลื่อนพ้นจอ
   const orderBoxRef = useRef<HTMLDivElement>(null);
   const [showBuyBar, setShowBuyBar] = useState(false);
@@ -183,7 +202,17 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   // สั่งถึงเกณฑ์จำนวนมากไหม (ตั้งต่อสินค้าได้ในหลังบ้าน)
   const bulkAsk = needsStockCheck(product, qty);
 
+  // 🎨 ต้องแนบลายก่อนสั่งไหม — ต้องมีรูปอัปโหลด หรือ ลิงก์/อีเมล อย่างน้อยหนึ่งอย่าง
+  const artRequired = artworkIsRequired(product);
+  const artProvided = artFiles.length > 0 || artLink.trim().length > 0;
+  const artBlocked = artRequired && !artProvided;
+
   function handleAdd() {
+    if (artBlocked) {
+      setArtTouched(false);
+      setExtraOpen("art");
+      return;
+    }
     // แนบข้อมูลเพิ่มไปกับรายการ (ไม่กระทบราคา): ลิงก์ไฟล์ลาย/อีเมล + หมายเหตุ
     const extra: Record<string, string> = {};
     if (artLink.trim()) extra["ลิงก์ไฟล์ลาย/อีเมล"] = artLink.trim();
@@ -541,7 +570,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                 <button
                   type="button"
                   onClick={handleAdd}
-                  disabled={useCustom && !customValid}
+                  disabled={(useCustom && !customValid) || artBlocked}
                   className={`flex-1 rounded-full px-6 py-3.5 text-sm font-bold shadow-lg transition sm:flex-none sm:px-10 ${
                     added
                       ? "bg-emerald-500 text-white"
@@ -550,11 +579,26 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                 >
                   {added
                     ? "✓ เพิ่มลงตะกร้าแล้ว!"
-                    : useCustom && custom?.mode === "quote"
+                    : artBlocked
+                      ? "🎨 แนบลายก่อนถึงจะสั่งได้"
+                      : useCustom && custom?.mode === "quote"
                       ? "🛒 เพิ่มลงตะกร้า (รอตีราคา)"
                       : `🛒 เพิ่มลงตะกร้า — ${formatPrice(unitPrice * qty)}`}
                 </button>
               </div>
+              {artBlocked && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setArtTouched(false);
+                    setExtraOpen("art");
+                    document.getElementById("art-link")?.scrollIntoView({ block: "center", behavior: "smooth" });
+                  }}
+                  className="mt-2 w-full rounded-xl bg-rose-50 px-3 py-2 text-left text-xs font-bold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100"
+                >
+                  🎨 สินค้านี้ต้องแนบลายก่อนสั่ง — แตะเพื่ออัปโหลดรูป หรือใส่ลิงก์ไฟล์/อีเมล
+                </button>
+              )}
               {product.pricing && (
                 <p className="mt-2 text-sm text-stone-500">
                   {formatPrice(unitPrice)} / {product.pricing.unit} × {qty.toLocaleString("th-TH")} ={" "}
@@ -566,9 +610,19 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
 
           {/* ═══ ข้อควรทราบ / เงื่อนไขงาน — อ่านก่อนสั่ง (แอดมินตั้งต่อสินค้าในหลังบ้าน) ═══ */}
           {product.terms?.trim() && (
-            <div className="mt-4 rounded-2xl bg-amber-50/70 p-4 ring-1 ring-amber-200">
-              <p className="text-sm font-extrabold text-amber-900">⚠️ ข้อควรทราบก่อนสั่ง</p>
-              <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-amber-900/90">{product.terms.trim()}</p>
+            <div className="mt-4 overflow-hidden rounded-2xl border-2 border-rose-200 bg-rose-50/60 shadow-sm">
+              <div className="flex items-center gap-2 bg-rose-500 px-4 py-2">
+                <span className="text-base leading-none">⚠️</span>
+                <p className="text-sm font-extrabold tracking-tight text-white">ข้อควรทราบก่อนสั่ง — รบกวนอ่านก่อนนะครับ</p>
+              </div>
+              <ul className="space-y-2 px-4 py-3">
+                {termLines(product.terms).map((t, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="mt-[3px] shrink-0 text-[9px] leading-none text-rose-500">🔴</span>
+                    <span className="whitespace-pre-line text-xs font-medium leading-relaxed text-rose-950">{t}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -576,7 +630,10 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
           <div className="mt-4 overflow-hidden rounded-3xl bg-white ring-1 ring-stone-200">
             <button
               type="button"
-              onClick={() => setExtraOpen((o) => (o === "art" ? null : "art"))}
+              onClick={() => {
+                setArtTouched(true);
+                setExtraOpen((o) => (o === "art" ? null : "art"));
+              }}
               aria-expanded={extraOpen === "art"}
               className="flex w-full items-center gap-2 px-4 py-3 text-left transition hover:bg-sky-50/60"
             >
@@ -584,8 +641,12 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-bold text-stone-700">
                   แนบลายของคุณ
-                  {artFiles.length > 0 ? (
-                    <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">แนบแล้ว {artFiles.length} รูป</span>
+                  {artProvided ? (
+                    <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                      {artFiles.length > 0 ? `แนบแล้ว ${artFiles.length} รูป` : "ใส่ลิงก์แล้ว"}
+                    </span>
+                  ) : artRequired ? (
+                    <span className="ml-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">จำเป็น *</span>
                   ) : (
                     <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700">แนะนำ</span>
                   )}
@@ -594,7 +655,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
               </span>
               <span className={`shrink-0 text-stone-400 transition ${extraOpen === "art" ? "rotate-180" : ""}`}>⌄</span>
             </button>
-            {extraOpen === "art" && <div className="px-4 pb-4">
+            {(extraOpen === "art" || (artBlocked && !artTouched)) && <div className="px-4 pb-4">
               {/* ── ลายของลูกค้า: อัปโหลดภาพตัวอย่าง + ลิงก์ไฟล์ต้นฉบับ ── */}
               <div
                 onDragOver={(e) => {
@@ -615,7 +676,12 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                 }`}
               >
                 <p className="text-sm font-bold text-stone-700">
-                  🎨 แนบลายของคุณ <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
+                  🎨 แนบลายของคุณ{" "}
+                  {artRequired ? (
+                    <span className="font-bold text-rose-600">(จำเป็น — ต้องแนบก่อนสั่ง)</span>
+                  ) : (
+                    <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
+                  )}
                 </p>
 
                 {/* 1) อัปโหลดภาพ */}
@@ -939,12 +1005,12 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
           <button
             type="button"
             onClick={handleAdd}
-            disabled={useCustom && !customValid}
+            disabled={(useCustom && !customValid) || artBlocked}
             className={`ml-auto shrink-0 rounded-full px-6 py-3 text-sm font-bold text-white shadow-lg transition ${
               added ? "bg-emerald-500" : "bg-amber-400 hover:bg-amber-500 disabled:opacity-40"
             }`}
           >
-            {added ? "✓ เพิ่มแล้ว!" : "🛒 เพิ่มลงตะกร้า"}
+            {added ? "✓ เพิ่มแล้ว!" : artBlocked ? "🎨 แนบลายก่อน" : "🛒 เพิ่มลงตะกร้า"}
           </button>
         </div>
       </div>
