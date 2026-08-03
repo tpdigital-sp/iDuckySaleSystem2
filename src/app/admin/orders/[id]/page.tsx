@@ -259,6 +259,8 @@ export default function AdminOrderDetailPage() {
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [err, setErr] = useState("");
+  // ยุบ/กางรายละเอียดของแต่ละรายการ — ออเดอร์ที่มีหลายรายการจะได้ไม่ยาวจนหาของไม่เจอ
+  const [itemOpen, setItemOpen] = useState<Record<number, boolean>>({});
   const [lightbox, setLightbox] = useState<{
     src: string;
     alt: string;
@@ -837,6 +839,9 @@ export default function AdminOrderDetailPage() {
       o.status !== "เสร็จสิ้น" &&
       o.status !== "ยกเลิก"
   );
+  /** รายการไหนควรกางไว้เองตั้งแต่แรก — ออเดอร์ยาว ๆ กางเฉพาะอันที่ยังมีเรื่องต้องจัดการ */
+  const autoOpen = (it: OrderItem) =>
+    order.items.length <= 2 || Boolean(it.needStockCheck) || it.proofStatus === "ขอแก้ไข";
   const subtotal = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
   const qty = order.items.reduce((s, i) => s + i.qty, 0);
   // ลิงก์ฝั่งลูกค้า (ต้องมี key ถึงเปิดได้) — origin ตั้งใน useEffect กัน SSR mismatch
@@ -935,7 +940,23 @@ export default function AdminOrderDetailPage() {
       <div className="grid lg:grid-cols-[1.45fr_0.95fr]">
         {/* ── ซ้าย: งานแบบ ── */}
         <div className="px-6 py-6">
-          <GH t="indigo">🎨 งานแบบ · {order.items.length} รายการ</GH>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <GH t="indigo">🎨 งานแบบ · {order.items.length} รายการ</GH>
+            {order.items.length > 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const anyOpen = order.items.some((it, i) => itemOpen[i] ?? autoOpen(it));
+                  const next: Record<number, boolean> = {};
+                  order.items.forEach((_, i) => (next[i] = !anyOpen));
+                  setItemOpen(next);
+                }}
+                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-500 transition hover:bg-slate-50"
+              >
+                {order.items.some((it, i) => itemOpen[i] ?? autoOpen(it)) ? "▴ ยุบทุกรายการ" : "▾ กางทุกรายการ"}
+              </button>
+            )}
+          </div>
           {!paidOk && (
             <div className="mt-2 rounded-xl bg-yellow-50 p-3 ring-1 ring-yellow-200">
               <p className="text-xs font-bold text-yellow-800">
@@ -974,16 +995,41 @@ export default function AdminOrderDetailPage() {
               ⚠️ {err}
             </p>
           )}
-          <div className="mt-3 divide-y divide-slate-100">
+          <div className="mt-3 space-y-3">
             {order.items.map((it, i) => {
               const proofs = proofsOf(it);
               const proofQty = proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
+              const open = itemOpen[i] ?? autoOpen(it);
               return (
-                <div key={`${it.productId}-${i}`} className="py-5">
-                  {/* หัวรายการ */}
+                <div key={`${it.productId}-${i}`} className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+                  {/* หัวรายการ — เลขตรงกับช่องหมายเหตุฝั่งขวา · กดที่หัวเพื่อยุบ/กาง */}
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-bold text-slate-800">{it.name}</p>
+                    <div className="flex min-w-0 items-start gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setItemOpen((cur) => ({ ...cur, [i]: !open }))}
+                        title={open ? "ยุบรายการนี้" : "กางรายการนี้"}
+                        className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-indigo-50 text-[11px] font-bold text-indigo-700 ring-1 ring-indigo-200 transition hover:bg-indigo-100"
+                      >
+                        {i + 1}
+                      </button>
+                      <div className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => setItemOpen((cur) => ({ ...cur, [i]: !open }))}
+                          className="text-left font-bold text-slate-800 hover:text-indigo-700"
+                        >
+                          {it.name} <span className="text-xs font-normal text-slate-400">{open ? "▴" : "▾"}</span>
+                        </button>
+                        {!open && (
+                          <p className="mt-0.5 text-[11px] text-slate-400">
+                            {it.proofStatus ? `แบบ: ${it.proofStatus === "รอตรวจ" ? "รอลูกค้าตรวจ" : it.proofStatus === "อนุมัติ" ? "ลูกค้าอนุมัติแล้ว" : "ลูกค้าขอแก้ไข"}` : "แบบ: รอกราฟฟิกทำแบบ"}
+                            {proofs.length > 0 ? ` · ${proofs.length} แบบ` : ""}
+                            {(it.artworkUrls?.length ?? 0) > 0 ? ` · 🎨 ภาพลาย ${it.artworkUrls!.length}` : ""}
+                            {it.needStockCheck ? " · 📦 รอเช็คสต๊อก" : ""}
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <span className="shrink-0 text-right text-sm font-bold text-slate-900">
                       {it.qty} × {formatPrice(it.unitPrice)}
@@ -1065,6 +1111,8 @@ export default function AdminOrderDetailPage() {
                     </span>
                   </div>
 
+                  {open && (
+                    <>
                   {/* รายละเอียด (ตัวเลือก) + ยืนยันอ่านของกราฟฟิก (การยืนยันของแพ็คอยู่ในโหมดแพ็ค) */}
                   {it.selections && <p className={`mt-1 text-xs ${faint}`}>{it.selections}</p>}
 
@@ -1335,6 +1383,8 @@ export default function AdminOrderDetailPage() {
                     </div>
                     )}
                   </div>
+                    </>
+                  )}
                 </div>
               );
             })}
