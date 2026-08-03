@@ -284,6 +284,7 @@ export default function AdminOrderDetailPage() {
     []
   );
   const [artDropIdx, setArtDropIdx] = useState<number | null>(null);
+  const [proofDropIdx, setProofDropIdx] = useState<number | null>(null);
   const [addPicIdx, setAddPicIdx] = useState<number | null>(null); // เปิดเมนู "เพิ่มรูป" ของรายการไหนอยู่
   // ช่องส่วนลดรายรายการ — ซ่อนไว้ กดป้าย "＋ ใส่ส่วนลด" ท้ายแถวถึงจะโผล่ (นาน ๆ ใช้ที)
   const [discOpen, setDiscOpen] = useState<Record<number, boolean>>({});
@@ -1427,19 +1428,16 @@ export default function AdminOrderDetailPage() {
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img src={u} alt={`ลาย ${k + 1}`} className="h-full w-full object-cover" />
                             </button>
-                            {mayEdit && (
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  const ok = await askConfirm({ icon: "🗑", title: "ลบลายรูปนี้?", detail: "เอารูปออกจากรายการนี้ (ไฟล์ยังอยู่ในคลัง)", confirmLabel: "ลบรูป", danger: true });
-                                  if (ok) removeArtwork(i, u);
-                                }}
-                                aria-label="ลบลายรูปนี้"
-                                className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-rose-500 text-[9px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100"
-                              >
-                                ✕
-                              </button>
-                            )}
+                            {/* ลายของลูกค้าลบไม่ได้ (เป็นหลักฐานงาน) — โหลดเก็บไปทำงานได้ */}
+                            <button
+                              type="button"
+                              onClick={() => void downloadImage(u, `${order.id}-item${i + 1}-ลายลูกค้า-${k + 1}.${(u.split(".").pop() || "jpg").split("?")[0]}`)}
+                              title="โหลดรูปนี้เก็บลงเครื่อง"
+                              aria-label="ดาวน์โหลดลายรูปนี้"
+                              className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-sky-600 text-[10px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100"
+                            >
+                              ⬇
+                            </button>
                           </span>
                         ))}
                         {mayEdit && (
@@ -1487,15 +1485,34 @@ export default function AdminOrderDetailPage() {
                         })()}
                     </div>
 
-                    {/* ขวา: แบบที่ร้านส่งให้ลูกค้าตรวจ */}
-                    <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-3">
+                    {/* ขวา: แบบที่ร้านส่งให้ลูกค้าตรวจ — โยนไฟล์ลงกล่องนี้ได้เลย */}
+                    <div
+                      onDragOver={(e) => {
+                        if (!mayProof) return;
+                        e.preventDefault();
+                        setProofDropIdx(i);
+                      }}
+                      onDragLeave={(e) => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node)) setProofDropIdx(null);
+                      }}
+                      onDrop={(e) => {
+                        if (!mayProof) return;
+                        e.preventDefault();
+                        setProofDropIdx(null);
+                        void sendProofs(i, e.dataTransfer.files);
+                      }}
+                      className={`rounded-xl border p-3 transition ${
+                        proofDropIdx === i ? "border-violet-500 bg-violet-100 ring-2 ring-violet-400" : "border-violet-200 bg-violet-50/40"
+                      }`}
+                    >
                       <p className="text-xs font-bold text-violet-800">
                         🖼 แบบที่เราส่งให้ตรวจ ({proofs.length})
                         <span className="ml-1 font-normal text-violet-600">— ลูกค้าเห็นชุดนี้ และกดอนุมัติ / ขอแก้ไข</span>
+                        {mayProof && <span className="ml-1 font-normal text-violet-400">· ลากไฟล์มาวางในกล่องนี้ได้เลย</span>}
                       </p>
                       {proofs.length === 0 ? (
                         <p className="mt-2 rounded-lg border-2 border-dashed border-violet-200 bg-white px-3 py-3 text-center text-[11px] text-slate-400">
-                          ยังไม่ได้ส่งแบบให้ลูกค้า — อัปแบบที่ทำเสร็จ หรือกด “ใช้ลายนี้เป็นแบบ” จากฝั่งซ้าย
+                          {proofDropIdx === i ? "⬇️ ปล่อยไฟล์ตรงนี้ได้เลย" : "ยังไม่ได้ส่งแบบให้ลูกค้า — ลากไฟล์มาวาง กดปุ่มด้านล่าง หรือกด “ใช้ลายนี้เป็นแบบ” จากฝั่งซ้าย"}
                         </p>
                       ) : (
                         <div className="mt-2 space-y-1.5">
@@ -3022,6 +3039,24 @@ function ThaiPostStatus({ number }: { number: string }) {
   );
 }
 
+
+/** โหลดรูปเก็บลงเครื่อง (ลายของลูกค้า) — ดึงเป็น blob ก่อน กันเบราว์เซอร์เปิดแท็บใหม่แทนการเซฟ */
+async function downloadImage(url: string, filename: string) {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 1000);
+  } catch {
+    window.open(url, "_blank", "noopener");
+  }
+}
 
 /** กล่องยืนยันทั่วไปของหลังบ้าน — แทน confirm() ของเบราว์เซอร์ */
 function ConfirmModal({
