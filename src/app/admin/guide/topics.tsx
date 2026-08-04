@@ -1467,6 +1467,142 @@ export const TOPICS: Topic[] = [
     ),
   },
   {
+    id: "qr-scan",
+    group: "pack",
+    icon: "📱",
+    title: "สแกน QR — เปิดออเดอร์บนมือถือ",
+    roles: ["แพ็คของ", "กราฟฟิก", "แอดมิน"],
+    keywords: "qr คิวอาร์ สแกน กล้อง มือถือ เปิดออเดอร์ เช็คของ บาร์โค้ด ต่างกัน ล็อกอิน",
+    body: (
+      <>
+        <p>
+          QR ในระบบนี้<B>ไม่ใช่เลขออเดอร์</B> แต่เป็น<B>ลิงก์เปิดหน้าออเดอร์</B> — สแกนแล้วหน้าออเดอร์เด้งขึ้นบนมือถือทันที
+          ใช้ยืนของขึ้นมาเทียบกับภาพแบบงานได้เลย ไม่ต้องเดินไปดูที่คอม
+        </p>
+
+        <p className="pt-1 font-bold text-slate-800">QR อยู่ 2 จุด</p>
+        <Bullets
+          items={[
+            <>
+              <B>บนใบงานที่ปริ้นออกมา</B> — มุมขวาของกล่อง “ใบงาน / Packing list” (ครึ่งล่างที่เก็บไว้)
+            </>,
+            <>
+              <B>ในหน้าออเดอร์</B> — การ์ด <Key>🖨 ใบงาน · การจัดส่ง</Key> → บล็อก 📷 สแกนจากจอนี้ได้เลย
+              (ใช้ตอนยังไม่ปริ้นใบงาน)
+            </>,
+          ]}
+        />
+
+        <p className="pt-1 font-bold text-slate-800">สแกนได้ 2 แบบ</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="rounded-lg bg-sky-50/70 p-3 ring-1 ring-sky-200">
+            <p className="text-[0.8rem] font-bold text-sky-800">📱 กล้องมือถือ</p>
+            <p className="mt-1 text-[0.8rem] text-slate-600">
+              เปิดกล้องส่อง → แตะลิงก์ที่เด้งขึ้น → เข้าหน้าออเดอร์ · ใช้บ่อยที่สุดตอนแพ็ค
+            </p>
+          </div>
+          <div className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
+            <p className="text-[0.8rem] font-bold text-slate-700">🔫 เครื่องยิงแบบ 2D</p>
+            <p className="mt-1 text-[0.8rem] text-slate-600">
+              ยิง QR เข้าช่องสแกนที่สถานีได้เลย — ได้ลิงก์ยาว ๆ มา แต่<B>ระบบตัดเอาเฉพาะเลขออเดอร์ให้เอง</B>
+            </p>
+          </div>
+        </div>
+        <Warn>
+          <B>เครื่องยิงเลเซอร์เส้นเดียว (1D) อ่าน QR ไม่ได้</B> — ต้องใช้บาร์โค้ดบนใบปะหน้าแทน
+          หรือถ้าเป็นออเดอร์มัดจำที่ใบปะหน้าไม่ออก ให้ยิงบาร์โค้ดจากจอในหน้าออเดอร์
+        </Warn>
+
+        <p className="pt-1 font-bold text-slate-800">ครั้งแรกบนมือถือ ต้องล็อกอินก่อน</p>
+        <Steps
+          tone="sky"
+          items={[
+            <>
+              สแกน QR แล้วถ้ายังไม่เคยล็อกอินบนมือถือเครื่องนั้น จะ<B>เด้งไปหน้าล็อกอินหลังบ้าน</B>
+            </>,
+            <>
+              ล็อกอินด้วยบัญชีพนักงานของตัวเอง — ระบบ<Mark>จำปลายทางไว้ให้ พากลับเข้าออเดอร์เดิมอัตโนมัติ</Mark>
+            </>,
+            <>ครั้งต่อ ๆ ไปสแกนแล้วเข้าได้เลย ไม่ต้องล็อกอินซ้ำ</>,
+          ]}
+        />
+
+        <p className="pt-1 font-bold text-slate-800">สแกนแล้วเจออะไร</p>
+        <Shot caption="สิ่งที่ฝ่ายแพ็คเห็นบนมือถือหลังสแกน (ข้อมูลสมมติ)">
+          <ShotImg src="/guide/scan-result-mobile.png" alt="หน้าออเดอร์บนมือถือหลังสแกน QR" max="15rem" />
+        </Shot>
+        <Bullets
+          items={[
+            <>
+              ฝ่ายแพ็คจะเข้า<B>โหมดแพ็คให้อัตโนมัติ</B> — เห็นเฉพาะที่ต้องใช้ ไม่มีราคา ไม่มีปุ่มแก้ออเดอร์
+            </>,
+            <>
+              หัวจอบอกทันทีว่า <B>“เหลืออีก N จุดต้องยืนยัน”</B> — รู้เลยว่ายังขาดอะไร
+            </>,
+            <>
+              กด <Key>✓ ครบ</Key> / <Key>✕ ไม่ครบ</Key> · ยืนยันอ่านรายละเอียด · ถ่ายรูปก่อนปิดกล่อง —
+              <B>ทำได้ครบจากมือถือเครื่องเดียว</B>
+            </>,
+          ]}
+        />
+
+        <p className="pt-1 font-bold text-slate-800">QR ต่างจากบาร์โค้ดยังไง</p>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[24rem] text-left text-[0.85rem]">
+            <thead className="text-[0.72rem] font-bold uppercase tracking-wide text-slate-400">
+              <tr>
+                <th className="pb-1"> </th>
+                <th className="pb-1">📱 QR</th>
+                <th className="pb-1">🔫 บาร์โค้ด</th>
+              </tr>
+            </thead>
+            <tbody className="text-slate-600">
+              <tr className="border-t border-slate-100">
+                <td className="py-1 font-semibold text-slate-700">ข้างในคืออะไร</td>
+                <td className="py-1">ลิงก์หน้าออเดอร์</td>
+                <td className="py-1">เลขออเดอร์ล้วน</td>
+              </tr>
+              <tr className="border-t border-slate-100">
+                <td className="py-1 font-semibold text-slate-700">ใช้กับ</td>
+                <td className="py-1">กล้องมือถือ · เครื่องยิง 2D</td>
+                <td className="py-1">เครื่องยิงทุกแบบ</td>
+              </tr>
+              <tr className="border-t border-slate-100">
+                <td className="py-1 font-semibold text-slate-700">อยู่ตรงไหน</td>
+                <td className="py-1">ใบงาน (ครึ่งล่าง) · หน้าออเดอร์</td>
+                <td className="py-1">ใบปะหน้า (ครึ่งบน) · หน้าออเดอร์</td>
+              </tr>
+              <tr className="border-t border-slate-100">
+                <td className="py-1 font-semibold text-slate-700">ไว้ทำอะไร</td>
+                <td className="py-1">เปิดดูงาน · ตรวจนับจากมือถือ</td>
+                <td className="py-1">ยิงเข้าสถานีเพื่อผูกเลขพัสดุ</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <Tip>
+          <B>ของหลุดไปกับกล่องไม่ได้</B> — QR อยู่บนครึ่งล่างที่ร้านเก็บไว้ ไม่ได้ติดไปกับกล่อง ·
+          ต่อให้เผลอใส่ใบงานลงกล่องไป คนนอกสแกนก็เจอแค่<B>หน้าล็อกอินหลังบ้าน</B> เปิดดูข้อมูลไม่ได้
+        </Tip>
+
+        <p className="pt-1 font-bold text-slate-800">สแกนไม่ติด ทำไง</p>
+        <Bullets
+          items={[
+            <>หมึกจาง/กระดาษยับตรง QR → ปริ้นใบใหม่ หรือใช้ QR จากจอในหน้าออเดอร์แทน</>,
+            <>
+              สแกนแล้วขึ้นหน้าล็อกอินทุกครั้ง → มือถือเครื่องนั้น<B>ล็อกเอาต์ไปแล้ว</B> ล็อกอินใหม่ครั้งเดียวจบ
+            </>,
+            <>
+              สแกนแล้วขึ้น <B>🔒 หน้านี้ไม่ได้เปิดให้ตำแหน่งของคุณ</B> → บัญชีที่ล็อกอินอยู่ไม่มีสิทธิ์ตรวจแพ็ค
+              แจ้งผู้ดูแลระบบเช็คแผนกให้
+            </>,
+          ]}
+        />
+      </>
+    ),
+  },
+  {
     id: "pack-count",
     group: "pack",
     icon: "🔢",
