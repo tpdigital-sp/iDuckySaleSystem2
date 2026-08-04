@@ -16,6 +16,7 @@ import { useCart } from "@/lib/cart-context";
 import ProductVisual from "@/components/ProductVisual";
 import { getAppendTarget, clearAppendTarget, setAppendPicks, getAppendPicks, clearAppendPicks, type AppendTarget } from "@/lib/append-order";
 import { getQuoteTarget, clearQuoteTarget, type QuoteTarget } from "@/lib/append-quote";
+import { pickShipping, shippingAllowed } from "@/lib/shipping-auto";
 
 const USE_BY_KEY = "ducky-use-by-date";
 
@@ -117,6 +118,20 @@ export default function CartPage() {
   useEffect(() => {
     localStorage.setItem("iducky-shipping-v1", shippingId);
   }, [shippingId]);
+
+  // 🚚 ระบบเลือกวิธีจัดส่งให้เอง — ของเยอะ/ของชิ้นใหญ่ ต้องกล่องใหญ่ ไม่ปล่อยให้ค้างที่กล่องเล็ก
+  const auto = pickShipping(methods, {
+    totalQty,
+    subtotal,
+    requiredIds: items.map((i) => productOf(i.productId)?.shippingId).filter(Boolean) as string[],
+  });
+  // ลูกค้าเปลี่ยนเองได้ แต่ถ้าตะกร้าเปลี่ยนจนต้องใช้กล่องใหญ่ขึ้น ระบบยกระดับให้ทันที
+  useEffect(() => {
+    if (!methods.length || !auto.id) return;
+    const cur = methods.find((m) => m.id === shippingId);
+    if (!cur || !shippingAllowed(cur, methods, auto)) setShippingId(auto.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auto.id, auto.floorId, methods.length, shippingId]);
 
   const shippingMethod = methods.find((s) => s.id === shippingId) ?? methods[0];
   const freeShipping = freeMin > 0 && subtotal >= freeMin;
@@ -390,31 +405,44 @@ export default function CartPage() {
 
           <div className="mt-4">
             <span className="mb-2 block text-sm font-bold text-stone-700">วิธีจัดส่ง</span>
+            {auto.reason && (
+              <p className="mb-2 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-200">
+                🚚 ระบบเลือกกล่องที่พอดีกับออเดอร์นี้ให้แล้ว — {auto.reason}
+              </p>
+            )}
             <div className="space-y-2">
-              {methods.map((s) => (
-                <label
-                  key={s.id}
-                  className={`flex cursor-pointer items-center justify-between rounded-2xl px-4 py-3 text-sm ring-1 transition ${
-                    shippingId === s.id
-                      ? "bg-amber-50 font-bold ring-ducky"
-                      : "ring-amber-100 hover:bg-amber-50/50"
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name="shipping"
-                      checked={shippingId === s.id}
-                      onChange={() => setShippingId(s.id)}
-                      className="accent-amber-500"
-                    />
-                    {s.name}
-                  </span>
-                  <span className={freeShipping ? "text-stone-400 line-through" : ""}>
-                    {formatPrice(s.price)}
-                  </span>
-                </label>
-              ))}
+              {methods.map((s) => {
+                const ok = shippingAllowed(s, methods, auto);
+                return (
+                  <label
+                    key={s.id}
+                    title={ok ? undefined : "ออเดอร์นี้ของเยอะเกินกล่องนี้"}
+                    className={`flex items-center justify-between rounded-2xl px-4 py-3 text-sm ring-1 transition ${
+                      !ok
+                        ? "cursor-not-allowed bg-stone-50 text-stone-300 ring-stone-100"
+                        : shippingId === s.id
+                          ? "cursor-pointer bg-amber-50 font-bold ring-ducky"
+                          : "cursor-pointer ring-amber-100 hover:bg-amber-50/50"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="shipping"
+                        disabled={!ok}
+                        checked={shippingId === s.id}
+                        onChange={() => setShippingId(s.id)}
+                        className="accent-amber-500"
+                      />
+                      {s.name}
+                      {!ok && <span className="text-[11px] font-semibold text-stone-400">· ของใส่ไม่พอ</span>}
+                    </span>
+                    <span className={freeShipping && ok ? "text-stone-400 line-through" : ""}>
+                      {formatPrice(s.price)}
+                    </span>
+                  </label>
+                );
+              })}
             </div>
           </div>
 

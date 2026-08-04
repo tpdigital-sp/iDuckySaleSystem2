@@ -315,7 +315,14 @@ function AdminSettingsPageInner() {
     setSaving(true);
     setError("");
     const cleanShipping = shipping
-      .map((s) => ({ ...s, name: s.name.trim(), price: Number(s.price) || 0 }))
+      .map((s) => ({
+        ...s,
+        name: s.name.trim(),
+        price: Number(s.price) || 0,
+        // เกณฑ์เลือกอัตโนมัติ — 0/ว่าง = ไม่ใช้ ตัดออกไม่ให้ค้างในฐาน
+        ...(Number(s.minQty) > 0 ? { minQty: Math.floor(Number(s.minQty)) } : { minQty: undefined }),
+        ...(Number(s.minSubtotal) > 0 ? { minSubtotal: Math.floor(Number(s.minSubtotal)) } : { minSubtotal: undefined }),
+      }))
       .filter((s) => s.name);
 
     if (cleanShipping.length === 0) {
@@ -557,7 +564,10 @@ function AdminSettingsPageInner() {
                     ＋ เพิ่มรูปแบบ
                   </button>
                 </div>
-                <p className={`mt-1 text-xs ${faint}`}>ลูกค้าจะเลือกจากรายการนี้ในหน้าตะกร้า · เรียงจากบนลงล่างตามที่แสดง</p>
+                <p className={`mt-1 text-xs ${faint}`}>
+                  ลูกค้าจะเลือกจากรายการนี้ในหน้าตะกร้า · เรียงจากบนลงล่างตามที่แสดง ·
+                  ตั้ง “เด้งมาใช้เมื่อ” ไว้ ระบบจะเลือกกล่องที่พอดีให้ลูกค้าเอง (ของเยอะ = กล่องใหญ่)
+                </p>
 
                 {shipping.length === 0 && (
                   <p className="mt-3 rounded-xl bg-rose-50 p-4 text-center text-xs font-semibold text-rose-600">
@@ -594,6 +604,41 @@ function AdminSettingsPageInner() {
                       >
                         🗑 ลบ
                       </button>
+
+                      {/* เงื่อนไขเลือกอัตโนมัติ — ของเยอะ/ยอดสูง ระบบยกระดับมาใช้กล่องนี้เอง */}
+                      <div className="flex w-full flex-wrap items-center gap-2 border-t border-slate-200 pt-2 text-xs text-slate-500">
+                        <span className="font-semibold text-slate-600">เด้งมาใช้เมื่อ</span>
+                        <label className="flex items-center gap-1.5">
+                          สั่งตั้งแต่
+                          <input
+                            type="number"
+                            min={0}
+                            value={s.minQty ?? ""}
+                            placeholder="—"
+                            onChange={(e) =>
+                              patchShip(s.id, { minQty: e.target.value ? Math.max(0, Number(e.target.value)) : undefined })
+                            }
+                            className={`${inputCls} w-20 text-right tabular-nums`}
+                          />
+                          ชิ้นขึ้นไป
+                        </label>
+                        <span className="text-slate-300">หรือ</span>
+                        <label className="flex items-center gap-1.5">
+                          ยอดถึง
+                          <input
+                            type="number"
+                            min={0}
+                            value={s.minSubtotal ?? ""}
+                            placeholder="—"
+                            onChange={(e) =>
+                              patchShip(s.id, { minSubtotal: e.target.value ? Math.max(0, Number(e.target.value)) : undefined })
+                            }
+                            className={`${inputCls} w-24 text-right tabular-nums`}
+                          />
+                          บาท
+                        </label>
+                        <span className="text-slate-400">· เว้นว่าง = ไม่เด้ง</span>
+                      </div>
                     </div>
                   ))}
                 </div>

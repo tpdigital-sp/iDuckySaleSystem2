@@ -29,6 +29,7 @@ import { type OptionPreset } from "@/lib/option-presets";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import GradientPicker from "@/components/GradientPicker";
 import { publicOrigin } from "@/lib/shop-info";
+import { fetchShopPayment, shippingOf, DEFAULT_SHIPPING, type ShippingMethod } from "@/lib/shop-settings";
 
 type DraftChoice = { name: string; extra: string };
 /** presetId มี = กลุ่มนี้ "ลิงก์" คลังตัวเลือกกลาง (label+choices มาจากคลัง แก้ในกลุ่มไม่ได้จนกว่าจะตัดลิงก์) */
@@ -85,6 +86,8 @@ type Draft = {
   custom: DraftCustom;
   /** สั่งกี่ชิ้นขึ้นไปต้องถามสต๊อกก่อน (ว่าง = ใช้ค่ากลาง) */
   bulkAskQty: string;
+  /** วิธีจัดส่งขั้นต่ำของสินค้านี้ ('' = ไม่บังคับ) */
+  shippingId: string;
   /** ข้อควรทราบ/เงื่อนไขงาน (แสดงหน้าสินค้า) */
   terms: string;
   /** บังคับแนบลายก่อนสั่ง (ค่าเริ่มต้น = บังคับ) */
@@ -241,6 +244,7 @@ function toDraft(p: Product): Draft {
       note: p.custom?.note ?? "",
     },
     bulkAskQty: p.bulkAskQty != null && p.bulkAskQty > 0 ? String(p.bulkAskQty) : "",
+    shippingId: p.shippingId ?? "",
     terms: p.terms ?? "",
     artworkRequired: p.artworkRequired !== false,
     reviewed: p.reviewed,
@@ -318,6 +322,11 @@ export default function ProductEditor({ product }: { product: Product }) {
   const [deleting, setDeleting] = useState(false);
   const [overridden, setOverridden] = useState(false);
   const [savedAt, setSavedAt] = useState(false);
+  // รูปแบบจัดส่งที่ร้านตั้งไว้ — ใช้เป็นตัวเลือก "ค่าส่งขั้นต่ำของสินค้านี้"
+  const [shipMethods, setShipMethods] = useState<ShippingMethod[]>(DEFAULT_SHIPPING);
+  useEffect(() => {
+    void fetchShopPayment().then((p) => setShipMethods(shippingOf(p)));
+  }, []);
   const [saveError, setSaveError] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const dragPhotoRef = useRef<number | null>(null); // รูปที่กำลังลาก (ref — อ่านได้ทันทีตอน drop)
@@ -610,6 +619,7 @@ export default function ProductEditor({ product }: { product: Product }) {
       seo: buildSeo(draft.seo),
       custom,
       bulkAskQty: Number(draft.bulkAskQty) > 0 ? Math.floor(Number(draft.bulkAskQty)) : undefined,
+      shippingId: draft.shippingId || undefined,
       terms: draft.terms.trim() || undefined,
       artworkRequired: draft.artworkRequired ? undefined : false, // undefined = บังคับ (ค่าเริ่มต้น)
       reviewed: draft.reviewed,
@@ -2200,6 +2210,26 @@ export default function ProductEditor({ product }: { product: Product }) {
           <span className="text-xs font-semibold text-slate-600">ชิ้นขึ้นไป</span>
           <span className="text-[11px] text-slate-400">
             {Number(draft.bulkAskQty) > 0 ? `· ตอนนี้ใช้ ${Number(draft.bulkAskQty).toLocaleString("th-TH")} ชิ้น` : `· เว้นว่าง = ใช้ค่ากลาง ${BULK_ASK_DEFAULT} ชิ้น`}
+          </span>
+        </div>
+
+        {/* 🚚 ของชิ้นใหญ่ที่ยังไงก็ต้องกล่องใหญ่ — มีในตะกร้าเมื่อไหร่ ระบบยกระดับค่าส่งให้เอง */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label className="text-xs font-semibold text-slate-600">🚚 ค่าส่งขั้นต่ำของสินค้านี้</label>
+          <select
+            value={draft.shippingId}
+            onChange={(e) => patch({ shippingId: e.target.value })}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+          >
+            <option value="">— ไม่บังคับ (คิดตามจำนวน/ยอดตามปกติ) —</option>
+            {shipMethods.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name} · {m.price} บาท
+              </option>
+            ))}
+          </select>
+          <span className="text-[11px] text-slate-400">
+            เลือกไว้ = มีสินค้านี้ในตะกร้าเมื่อไหร่ ระบบจะไม่ให้ลูกค้าเลือกค่าส่งที่ถูกกว่านี้
           </span>
         </div>
       </section>
