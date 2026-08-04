@@ -5,7 +5,7 @@ import {
   ShotSlip, ShotDiscount, ShotCancel, ShotQuoteList, ShotQuoteAccept, ShotStaffOrder, ShotDeleteItem, ShotNotes,
   ShotRush, ShotBulk, ShotPrint, ShotCustomerLink, ShotNotify, ShotGfxQueue, ShotApprove, ShotAck,
   ShotScan, ShotCount, ShotPackGate, ShotProductBlocks, ShotImport, ShotPresets, ShotStock, ShotStaff,
-  ShotSettingsTabs, ShotRatings, ShotRate, ShotUrlBar, ShotImportPanel, ShotImportPage,
+  ShotSettingsTabs, ShotRatings, ShotRate, ShotUrlBar, ShotImportPanel, ShotImportPage, ShotPrintQueue,
 } from "./mockups";
 
 /**
@@ -1296,6 +1296,48 @@ export const TOPICS: Topic[] = [
   },
 
   /* ───────── แพ็คของ ───────── */
+  {
+    id: "print-queue",
+    group: "pack",
+    icon: "🖨",
+    title: "คิวปริ้น — ใบไหนพร้อมปริ้นบ้าง",
+    roles: ["แพ็คของ", "แอดมิน"],
+    keywords: "คิวปริ้น ปริ้น รอปริ้น อนุมัติแบบ ใบงาน เรียงคิว งานเร่ง",
+    body: (
+      <>
+        <p>
+          เมนู <A href="/admin/print">🖨 คิวปริ้น</A> รวมใบงานที่<B>พร้อมปริ้นแล้วจริง ๆ</B> —
+          เอาเฉพาะสถานะ <Mark>อนุมัติแบบ</Mark> เท่านั้น
+        </p>
+        <Shot caption="หน้าคิวปริ้น">
+          <ShotPrintQueue />
+        </Shot>
+        <Bullets
+          items={[
+            <>
+              ทำไมต้องรออนุมัติแบบก่อน — ก่อนหน้านั้น<B>แบบยังเปลี่ยนได้</B> ปริ้นไปก่อนก็ต้องทิ้งใบแล้วปริ้นใหม่
+            </>,
+            <>
+              <B>เรียงให้อัตโนมัติ</B> — 🔥 งานเร่งขึ้นบนสุด แล้วตามด้วยงานที่ใกล้วันใช้งานที่สุด
+              ไม่ต้องมาไล่ดูเองว่าใบไหนด่วน
+            </>,
+            <>
+              3 แท็บ: <B>ยังไม่ปริ้น</B> (ค่าเริ่มต้น — คือคิวงานจริง) · <B>ปริ้นแล้ว</B> · <B>ทั้งหมด</B> ·
+              ปริ้นเสร็จใบจะย้ายไปแท็บ “ปริ้นแล้ว” ให้เอง
+            </>,
+            <>
+              ป้ายเตือนบนแถวบอกก่อนกด — <B>🔒 ไม่มีใบปะหน้า</B> (ยังเก็บเงินไม่ครบ) ·{" "}
+              <B>⚠️ มีรายการยังไม่มีแบบ</B> (กราฟฟิกยังอัปไม่ครบ)
+            </>,
+          ]}
+        />
+        <Tip>
+          ใบที่เคยปริ้นแล้วปุ่มจะเปลี่ยนเป็น <Key>🖨 ปริ้นซ้ำ</Key> และบอกว่าปริ้นไปแล้วกี่ครั้ง —
+          เห็นตั้งแต่ในคิว ไม่ต้องเข้าไปดูทีละใบ
+        </Tip>
+      </>
+    ),
+  },
   {
     id: "pack-start",
     group: "pack",

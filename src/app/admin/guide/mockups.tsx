@@ -967,3 +967,42 @@ export function ShotImportPage() {
     </MCard>
   );
 }
+
+/** คิวปริ้น — เฉพาะออเดอร์ที่อนุมัติแบบแล้ว เรียงตามความเร่ง */
+export function ShotPrintQueue() {
+  const rows: [string, string, string, string, boolean][] = [
+    ["OD-260101-1001", "ก. งานเร่ง", "rush", "อีก 9 วัน", false],
+    ["OD-260101-1002", "ข. ใกล้กำหนด", "", "อีก 2 วัน", true],
+    ["OD-260101-1003", "ค. ยังไม่ครบเงิน", "", "อีก 20 วัน", false],
+  ];
+  return (
+    <div className="mx-auto max-w-lg">
+      <div className="mb-1.5 flex gap-1.5">
+        <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-[0.65rem] font-bold text-white">🖨 ยังไม่ปริ้น (2)</span>
+        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[0.65rem] font-bold text-slate-500">✓ ปริ้นแล้ว (1)</span>
+      </div>
+      <MCard className="p-0">
+        {rows.map(([id, who, rush, due, printed]) => (
+          <div key={id} className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 px-2.5 py-2 last:border-b-0">
+            <span className="min-w-24 flex-1">
+              <span className="block text-[0.72rem] font-bold tabular-nums text-slate-900">{id}</span>
+              <span className="block text-[0.58rem] text-slate-400">1 รายการ · 2 ชิ้น</span>
+            </span>
+            <span className="min-w-16 text-[0.68rem] text-slate-600">{who}</span>
+            {rush && <MTag tone="rose">🔥 งานเร่ง</MTag>}
+            <MTag tone={due === "อีก 2 วัน" ? "orange" : "slate"}>{due}</MTag>
+            {printed ? <MTag>🖨 ปริ้นแล้ว 1 ครั้ง</MTag> : <MTag tone="amber">ยังไม่ปริ้น</MTag>}
+            {id.endsWith("1003") && <MTag tone="rose">🔒 ไม่มีใบปะหน้า</MTag>}
+            <span
+              className={`ml-auto rounded-lg px-2.5 py-1 text-[0.65rem] font-bold ${
+                printed ? "border border-slate-200 bg-white text-slate-600" : "bg-amber-500 text-white"
+              }`}
+            >
+              {printed ? "🖨 ปริ้นซ้ำ" : "🖨 ปริ้นใบงาน"}
+            </span>
+          </div>
+        ))}
+      </MCard>
+    </div>
+  );
+}

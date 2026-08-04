@@ -12,6 +12,7 @@ import { markRatingsSeen, unseenRatingCount } from "@/lib/ratings";
 const MENU: { href: string; label: string; emoji: string; perm: Perm }[] = [
   { href: "/admin", label: "ภาพรวม", emoji: "📊", perm: "orders.view" },
   { href: "/admin/orders", label: "คำสั่งซื้อ", emoji: "📦", perm: "orders.view" },
+  { href: "/admin/print", label: "คิวปริ้น", emoji: "🖨", perm: "pack.ship" },
   { href: "/admin/orders/scan", label: "แพ็ค–ส่ง", emoji: "📮", perm: "pack.ship" },
   { href: "/admin/quotes", label: "ใบเสนอราคา", emoji: "📄", perm: "orders.edit" },
   { href: "/admin/products", label: "สินค้า", emoji: "🏷️", perm: "products.view" },
