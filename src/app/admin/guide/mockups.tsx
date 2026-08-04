@@ -633,33 +633,7 @@ export function ShotAck() {
 
 /* ── 📮 แพ็ค–ส่ง ── */
 
-/** ช่องสแกนออเดอร์ */
-export function ShotScan() {
-  return (
-    <MCard className="mx-auto max-w-sm text-center">
-      <p className="text-2xl">📷</p>
-      <p className="mt-1 text-[0.78rem] font-bold text-slate-700">ยิงบาร์โค้ดบนใบงาน</p>
-      <div className="mt-2">
-        <MField placeholder="หรือพิมพ์เลขออเดอร์เอง เช่น OD-260101-1234" />
-      </div>
-      <p className="mt-1.5 text-[0.62rem] text-slate-400">ยิง QR ของมือถือก็ได้ ระบบดึงเลขให้เอง</p>
-    </MCard>
-  );
-}
 
-/** ปุ่มตรวจนับใต้ภาพ */
-export function ShotCount() {
-  return (
-    <MCard className="mx-auto max-w-xs text-center">
-      <span className="mx-auto grid h-20 w-20 place-items-center rounded-lg bg-slate-100 text-2xl">🖼️</span>
-      <p className="mt-1.5 text-[0.72rem] text-slate-500">สแตนดี้ อะคริลิค · ต้องได้ 10 ชิ้น</p>
-      <div className="mt-2 flex justify-center gap-2">
-        <MBtn tone="ok">✓ ครบ</MBtn>
-        <MBtn tone="danger">✕ ไม่ครบ</MBtn>
-      </div>
-    </MCard>
-  );
-}
 
 /** ด่านตรวจก่อนยิงเลขพัสดุ */
 export function ShotPackGate() {
@@ -709,26 +683,6 @@ export function ShotProductBlocks() {
   );
 }
 
-/** นำเข้าสินค้าจากลิงก์ */
-export function ShotImport() {
-  return (
-    <MCard className="mx-auto max-w-sm">
-      <MField label="ลิงก์หน้ารายการราคา" value="https://…/price-list" />
-      <div className="mt-1.5">
-        <MBtn tone="brand">ดึงข้อมูล</MBtn>
-      </div>
-      <div className="mt-2 space-y-1 border-t border-slate-100 pt-2">
-        {["สแตนดี้ อะคริลิค 15 ซม.", "กรอบรูปแคนวาส A4"].map((n) => (
-          <div key={n} className="flex items-center gap-2 rounded bg-slate-50 px-2 py-1 text-[0.72rem] text-slate-600">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-white text-sm ring-1 ring-slate-200">🖼️</span>
-            <span className="flex-1 truncate">{n}</span>
-            <MTag tone="amber">ตรวจก่อนบันทึก</MTag>
-          </div>
-        ))}
-      </div>
-    </MCard>
-  );
-}
 
 /** คลังตัวเลือก — ป้ายบอกว่ามีสินค้าลิงก์อยู่กี่ตัว */
 export function ShotPresets() {
@@ -1003,6 +957,86 @@ export function ShotPrintQueue() {
           </div>
         ))}
       </MCard>
+    </div>
+  );
+}
+
+/** สถานีแพ็ค–ส่ง — 2 แท็บ + ช่องยิง + ประวัติ */
+export function ShotScanStation() {
+  return (
+    <div className="mx-auto max-w-md space-y-2">
+      <div className="flex gap-1.5 rounded-2xl bg-slate-100 p-1">
+        <span className="flex-1 rounded-xl bg-white py-1.5 text-center text-[0.72rem] font-bold text-slate-900 shadow-sm">
+          📮 ยิงเลขพัสดุ <span className="rounded-full bg-green-100 px-1.5 text-[0.62rem] text-green-700">3</span>
+        </span>
+        <span className="flex-1 py-1.5 text-center text-[0.72rem] font-bold text-slate-500">
+          🖨️ รอปริ้น/แพ็ค <span className="rounded-full bg-amber-100 px-1.5 text-[0.62rem] text-amber-700">5</span>
+        </span>
+      </div>
+
+      <div className="rounded-2xl border-2 border-green-400 bg-green-50/50 p-3">
+        <p className="text-[0.6rem] font-bold uppercase tracking-widest text-slate-500">รอยิง QR เลขออเดอร์</p>
+        <p className="mt-1 font-mono text-lg font-bold tracking-wide text-slate-300">ยิง QR หรือพิมพ์เลขออเดอร์ แล้วกด Enter</p>
+        <p className="mt-0.5 text-[0.6rem] text-slate-400">ช่องนี้โฟกัสอยู่ตลอด — ยิงได้เลย</p>
+      </div>
+
+      <p className="rounded-xl bg-green-50 px-3 py-2 text-[0.7rem] font-semibold text-green-800 ring-1 ring-green-200">
+        บันทึกแล้ว — OD-260101-1234 · EX123456789TH
+      </p>
+
+      <MCard className="p-2.5">
+        <p className="text-[0.62rem] font-bold uppercase tracking-wide text-slate-400">ยิงล่าสุด</p>
+        {[
+          ["OD-260101-1234", "EX123456789TH", "14:02"],
+          ["OD-260101-1198", "EX123456712TH", "13:58"],
+        ].map(([id, tr, at]) => (
+          <p key={id} className="mt-1 flex items-center gap-2 text-[0.68rem] tabular-nums text-slate-600">
+            <span className="font-bold">{id}</span>
+            <span className="font-mono text-slate-500">{tr}</span>
+            <span className="ml-auto text-slate-300">{at}</span>
+          </p>
+        ))}
+      </MCard>
+    </div>
+  );
+}
+
+/** หน้าต่างแดงตอนยิงแล้วยังตรวจแพ็คไม่ครบ */
+export function ShotBlocked() {
+  return (
+    <div className="mx-auto max-w-xs rounded-2xl bg-white p-4 shadow-lg ring-1 ring-slate-200">
+      <p className="text-2xl">🚫</p>
+      <p className="mt-1 text-base font-extrabold text-slate-900">ยังยิงเลขพัสดุไม่ได้</p>
+      <p className="font-mono text-[0.7rem] font-bold text-slate-700">OD-260101-1234</p>
+      <p className="text-[0.7rem] text-slate-500">คุณลูกค้าทดสอบ</p>
+      <div className="mt-2 rounded-xl bg-rose-50 p-2.5 ring-1 ring-rose-200">
+        <p className="text-[0.65rem] font-bold text-rose-800">ต้องทำให้ครบก่อน:</p>
+        <ul className="mt-1 space-y-0.5 text-[0.68rem] leading-relaxed text-rose-700">
+          <li>• ยังไม่ได้ตรวจนับของ 2 รูป</li>
+          <li>• ยังไม่ได้ยืนยันอ่านรายละเอียด 1 รายการ</li>
+          <li className="font-bold">• 🎁 ยังไม่ได้ยืนยันใส่งานตัวอย่าง: สแตนดี้</li>
+          <li className="font-bold">• ของไม่ครบ: เคสใส — นับได้ 3 จาก 5 ชิ้น</li>
+        </ul>
+      </div>
+      <div className="mt-2.5 flex gap-2">
+        <span className="flex-1 rounded-xl bg-slate-900 py-2 text-center text-[0.68rem] font-bold text-white">เปิดหน้าออเดอร์เพื่อตรวจ</span>
+        <span className="rounded-xl border border-slate-200 px-3 py-2 text-[0.68rem] font-bold text-slate-500">ปิด</span>
+      </div>
+    </div>
+  );
+}
+
+/** แผงตรวจนับที่เด้งใต้ภาพตอนแตะรูป */
+export function ShotCountPanel() {
+  return (
+    <div className="mx-auto max-w-[16rem] rounded-2xl bg-white p-3 shadow-lg ring-1 ring-slate-200">
+      <p className="text-[0.6rem] font-bold uppercase tracking-[0.09em] text-slate-400">ตรวจนับของตามภาพนี้</p>
+      <p className="mt-0.5 text-[0.78rem] font-bold text-slate-800">ต้องได้ 10 ชิ้น · ห่อกันกระแทกทุกชิ้น</p>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <span className="rounded-xl bg-green-600 py-2 text-center text-[0.72rem] font-bold text-white">✅ ครบ</span>
+        <span className="rounded-xl bg-rose-600 py-2 text-center text-[0.72rem] font-bold text-white">⚠️ ยังไม่ครบ</span>
+      </div>
+      <p className="mt-1.5 text-[0.6rem] text-slate-400">กด “ยังไม่ครบ” จะให้ใส่ว่านับได้กี่ชิ้น</p>
     </div>
   );
 }
