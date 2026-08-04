@@ -828,65 +828,79 @@ function AdminSettingsPageInner() {
                 </p>
               </div>
 
-              <div className="space-y-2">
+              {/* หัวคอลัมน์ (จอกว้าง) — ให้แถวด้านล่างอ่านเป็นตาราง */}
+              <div className="hidden items-center gap-2 px-3 text-[10px] font-bold uppercase tracking-wide text-slate-400 lg:grid lg:grid-cols-[2.5rem_3rem_minmax(0,1fr)_11rem_4.5rem_9rem_3.5rem]">
+                <span>ลำดับ</span>
+                <span className="text-center">ไอคอน</span>
+                <span>ชื่อหมวด (ไทย)</span>
+                <span>ชื่ออังกฤษ</span>
+                <span className="text-center">ซ่อน</span>
+                <span className="text-right">สินค้า · รหัส</span>
+                <span />
+              </div>
+
+              <div className="space-y-1.5">
                 {cats.map((c, i) => (
-                  <div key={c.id} className={`rounded-2xl p-3 ring-1 ${c.hidden ? "bg-slate-50 ring-slate-200" : "bg-white ring-amber-100"}`}>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="flex flex-col">
-                        <button
-                          type="button"
-                          onClick={() => moveCat(i, -1)}
-                          disabled={i === 0}
-                          className="px-1 text-[10px] text-slate-400 disabled:opacity-25"
-                          aria-label="เลื่อนขึ้น"
-                        >
-                          ▲
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => moveCat(i, 1)}
-                          disabled={i === cats.length - 1}
-                          className="px-1 text-[10px] text-slate-400 disabled:opacity-25"
-                          aria-label="เลื่อนลง"
-                        >
-                          ▼
-                        </button>
-                      </span>
-                      <IconPicker value={c.emoji} onPick={(v) => patchCat(i, { emoji: v })} />
-                      <input
-                        value={c.name}
-                        onChange={(e) => patchCat(i, { name: e.target.value })}
-                        placeholder="ชื่อหมวด (ไทย)"
-                        className="min-w-40 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-bold text-slate-800 focus:border-amber-300 focus:outline-none"
-                      />
-                      <input
-                        value={c.nameEn}
-                        onChange={(e) => patchCat(i, { nameEn: e.target.value })}
-                        placeholder="ชื่ออังกฤษ"
-                        className="w-36 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 focus:border-amber-300 focus:outline-none"
-                      />
-                      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(c.hidden)}
-                          onChange={(e) => patchCat(i, { hidden: e.target.checked })}
-                          className="h-4 w-4 accent-slate-500"
-                        />
-                        ซ่อน
-                      </label>
-                      <span className="text-[11px] text-slate-400">
-                        {catCounts[c.id] ?? 0} สินค้า · <span className="font-mono">{c.id}</span>
-                      </span>
+                  <div
+                    key={c.id}
+                    className={`items-center gap-2 rounded-xl p-2 ring-1 max-lg:flex max-lg:flex-wrap lg:grid lg:grid-cols-[2.5rem_3rem_minmax(0,1fr)_11rem_4.5rem_9rem_3.5rem] ${
+                      c.hidden ? "bg-slate-50 ring-slate-200" : "bg-white ring-amber-100"
+                    }`}
+                  >
+                    <span className="flex justify-center gap-0.5">
                       <button
                         type="button"
-                        disabled={(catCounts[c.id] ?? 0) > 0}
-                        onClick={() => setCats((cur) => cur.filter((_, k) => k !== i))}
-                        title={(catCounts[c.id] ?? 0) > 0 ? "ลบไม่ได้ — ยังมีสินค้าอยู่ในหมวดนี้ (ใช้ ‘ซ่อน’ แทน)" : "ลบหมวดนี้"}
-                        className="rounded-lg px-2 py-1 text-xs font-bold text-rose-500 transition hover:bg-rose-50 disabled:opacity-30"
+                        onClick={() => moveCat(i, -1)}
+                        disabled={i === 0}
+                        className="rounded px-1 text-[10px] text-slate-400 transition hover:bg-slate-100 disabled:opacity-25"
+                        aria-label="เลื่อนขึ้น"
                       >
-                        ✕ ลบ
+                        ▲
                       </button>
-                    </div>
+                      <button
+                        type="button"
+                        onClick={() => moveCat(i, 1)}
+                        disabled={i === cats.length - 1}
+                        className="rounded px-1 text-[10px] text-slate-400 transition hover:bg-slate-100 disabled:opacity-25"
+                        aria-label="เลื่อนลง"
+                      >
+                        ▼
+                      </button>
+                    </span>
+                    <IconPicker value={c.emoji} onPick={(v) => patchCat(i, { emoji: v })} />
+                    <input
+                      value={c.name}
+                      onChange={(e) => patchCat(i, { name: e.target.value })}
+                      placeholder="ชื่อหมวด (ไทย)"
+                      className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-bold text-slate-800 focus:border-amber-300 focus:outline-none"
+                    />
+                    <input
+                      value={c.nameEn}
+                      onChange={(e) => patchCat(i, { nameEn: e.target.value })}
+                      placeholder="ชื่ออังกฤษ (ไม่ใส่ก็ได้)"
+                      className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-500 focus:border-amber-300 focus:outline-none"
+                    />
+                    <label className="flex items-center justify-center gap-1 text-[11px] font-semibold text-slate-500">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(c.hidden)}
+                        onChange={(e) => patchCat(i, { hidden: e.target.checked })}
+                        className="h-4 w-4 accent-slate-500"
+                      />
+                      ซ่อน
+                    </label>
+                    <span className="truncate text-right text-[11px] text-slate-400" title={c.id}>
+                      {catCounts[c.id] ?? 0} สินค้า · <span className="font-mono">{c.id}</span>
+                    </span>
+                    <button
+                      type="button"
+                      disabled={(catCounts[c.id] ?? 0) > 0}
+                      onClick={() => setCats((cur) => cur.filter((_, k) => k !== i))}
+                      title={(catCounts[c.id] ?? 0) > 0 ? "ลบไม่ได้ — ยังมีสินค้าอยู่ในหมวดนี้ (ใช้ ‘ซ่อน’ แทน)" : "ลบหมวดนี้"}
+                      className="justify-self-end rounded-lg px-2 py-1 text-xs font-bold text-rose-500 transition hover:bg-rose-50 disabled:opacity-25"
+                    >
+                      ✕ ลบ
+                    </button>
                   </div>
                 ))}
               </div>
