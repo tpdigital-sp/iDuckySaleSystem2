@@ -38,6 +38,8 @@ import { card, faint, muted, shortTime } from "@/lib/admin-ui";
 import ImageLightbox from "@/components/ImageLightbox";
 import PackCheckPanel from "@/components/PackCheckPanel";
 import ItemAdder from "@/components/admin/ItemAdder";
+import Barcode from "@/components/Barcode";
+import { QRCodeSVG } from "qrcode.react";
 import { useActor, useCan, useRoleLabel } from "@/lib/perm-context";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
@@ -2315,6 +2317,33 @@ export default function AdminOrderDetailPage() {
             <div>
               <GH t="teal">🖨 ใบงาน · การจัดส่ง</GH>
               <div className={`mt-2 space-y-4 ${soft("teal")}`}>
+                {/*
+                  📷 โค้ดสำหรับสแกน — เดิมมีแต่บนใบงานที่ปริ้นออกมา
+                  ถ้ายังไม่ได้ปริ้น (หรือใบหาย) ก็ยิงจากจอนี้ได้เลย
+                  บาร์โค้ด = เลขออเดอร์ล้วน สำหรับเครื่องยิงที่สถานีแพ็ค
+                  QR = ลิงก์หน้านี้ สำหรับเปิดบนมือถือ
+                */}
+                <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
+                  <p className="text-xs font-semibold text-slate-600">📷 สแกนจากจอนี้ได้เลย</p>
+                  <div className="mt-2 flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <Barcode value={order.id} displayValue={false} height={34} width={1.1} />
+                      <p className="mt-0.5 text-[10px] leading-tight text-slate-400">
+                        ยิงด้วยเครื่องยิงที่{" "}
+                        <Link href="/admin/orders/scan" className="font-semibold text-amber-600 hover:underline">
+                          สถานีแพ็ค–ส่ง
+                        </Link>
+                      </p>
+                    </div>
+                    {origin && (
+                      <div className="shrink-0 text-center">
+                        <QRCodeSVG value={`${origin}/admin/orders/${encodeURIComponent(order.id)}`} size={62} level="M" marginSize={0} />
+                        <p className="mt-0.5 text-[10px] leading-tight text-slate-400">📱 เปิดบนมือถือ</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {/* วันที่จัดส่ง */}
                 <div>
                   <p className="mb-1.5 text-xs font-semibold text-slate-600">📅 วันที่จัดส่ง (จาก–ถึง)</p>
@@ -2979,6 +3008,13 @@ function PackView({
             ? "✅ ตรวจครบแล้ว — ยิงเลขพัสดุได้"
             : `⏳ เหลืออีก ${gate.uncounted.length + gate.unread.length + gate.unsampled.length + (gate.noPhoto ? 1 : 0) + (gate.unpaidBalance ? 1 : 0)} จุดต้องยืนยัน`}
         </p>
+        {/* ตรวจครบแล้วค่อยโชว์บาร์โค้ด — ยิงจากจอนี้เข้าสถานีได้เลย ไม่ต้องหาใบงาน */}
+        {gate.ready && (
+          <div className="mt-3 rounded-xl bg-white p-2 text-center">
+            <Barcode value={order.id} displayValue={false} height={38} width={1.3} />
+            <p className="text-[10px] leading-tight text-slate-400">ยิงบาร์โค้ดนี้ที่สถานีแพ็ค–ส่ง</p>
+          </div>
+        )}
       </div>
 
       {/* รายการ */}

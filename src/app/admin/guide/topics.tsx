@@ -6,7 +6,7 @@ import {
   ShotRush, ShotBulk, ShotPrint, ShotCustomerLink, ShotNotify, ShotGfxQueue, ShotApprove, ShotAck,
   ShotPackGate, ShotProductBlocks, ShotPresets, ShotStock, ShotStaff,
   ShotSettingsTabs, ShotRatings, ShotRate, ShotUrlBar, ShotImportPanel, ShotImportPage, ShotPrintQueue,
-  ShotScanStation, ShotBlocked, ShotCountPanel,
+  ShotScanStation, ShotBlocked, ShotCountPanel, ShotScanCodes,
 } from "./mockups";
 
 /**
@@ -1384,8 +1384,8 @@ export const TOPICS: Topic[] = [
           tone="teal"
           items={[
             <>
-              <B>ยิงครั้งที่ 1 — เลขออเดอร์</B> · ยิงบาร์โค้ดบนใบงาน หรือ QR บนใบงานก็ได้
-              (ยิง QR แล้วได้ลิงก์ยาว ๆ ระบบตัดเอาเฉพาะเลขออเดอร์ให้เอง) · พิมพ์มือแล้วกด Enter ก็ได้
+              <B>ยิงครั้งที่ 1 — เลขออเดอร์</B> · ยิงได้ 3 ทาง: บาร์โค้ดบนใบงาน · QR บนใบงาน ·
+              หรือ<Mark>บาร์โค้ดบนหน้าออเดอร์ในจอ</Mark> (ไม่ต้องหาใบงาน) · พิมพ์มือแล้วกด Enter ก็ได้
             </>,
             <>
               ระบบขึ้นว่า <B>“ยิงเลขพัสดุต่อได้เลย”</B> → <B>ยิงครั้งที่ 2 — เลขพัสดุ</B> จากสติกเกอร์ขนส่ง
@@ -1399,6 +1399,29 @@ export const TOPICS: Topic[] = [
         <Tip>
           ช่องยิง<B>โฟกัสอยู่ตลอด</B> เผลอคลิกที่อื่นเดี๋ยวเด้งกลับให้เอง · สลับไปหน้าอื่นแล้วกลับมา ก็โฟกัสคืนให้ ·
           มี<B>ประวัติยิงล่าสุด</B>โชว์ไว้ 12 รายการ เช็คย้อนได้ว่าเพิ่งยิงใบไหนไป
+        </Tip>
+
+        <p className="pt-1 font-bold text-slate-800">โค้ดสำหรับยิง อยู่ตรงไหนบ้าง</p>
+        <Shot caption="บล็อกในหน้าออเดอร์ · การ์ด “ใบงาน · การจัดส่ง”">
+          <ShotScanCodes />
+        </Shot>
+        <Bullets
+          items={[
+            <>
+              <B>บนใบงานที่ปริ้นออกมา</B> — บาร์โค้ดมุมขวาบน (ใต้ชื่อวิธีจัดส่ง) และ QR ในกล่องใบงาน
+            </>,
+            <>
+              <B>ในหน้าออเดอร์</B> การ์ด <Key>🖨 ใบงาน · การจัดส่ง</Key> → บล็อก{" "}
+              <B>📷 สแกนจากจอนี้ได้เลย</B> — ยิงจากจอตรง ๆ ได้เลย ใช้ตอนใบงานยังไม่ปริ้น/หาไม่เจอ
+            </>,
+            <>
+              <B>ในโหมดแพ็ค</B> — พอตรวจครบทุกข้อ บาร์โค้ดจะโผล่ที่หัวจอสีเข้ม ยิงต่อได้เลยไม่ต้องกลับหน้าอื่น
+            </>,
+          ]}
+        />
+        <Tip>
+          <B>บาร์โค้ด</B> = เลขออเดอร์ล้วน สำหรับ<B>เครื่องยิง</B> · <B>QR</B> = ลิงก์หน้าออเดอร์ สำหรับ<B>กล้องมือถือ</B> —
+          ยิง QR เข้าช่องสแกนก็ได้ ระบบตัดเอาเฉพาะเลขออเดอร์ให้เอง
         </Tip>
 
         <p className="pt-1 font-bold text-slate-800">เจอแบบนี้แปลว่าอะไร</p>
