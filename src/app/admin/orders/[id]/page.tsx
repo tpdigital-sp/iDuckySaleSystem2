@@ -1485,6 +1485,9 @@ export default function AdminOrderDetailPage() {
                     <span className={`w-28 shrink-0 text-right text-sm font-bold text-slate-900 ${seesMoney ? "" : "hidden"}`}>
                       {it.unitPrice > 0 ? (
                         formatPrice(it.unitPrice)
+                      ) : order.claimOf ? (
+                        // งานเคลมตั้งใจให้ ฿0 อยู่แล้ว — อย่าให้ขึ้น "รอตีราคา" จนทีมงานนึกว่าต้องไปตั้งราคา
+                        <span className="text-[11px] font-bold text-emerald-600">เคลม · ฟรี</span>
                       ) : (
                         <span className="text-[11px] font-bold text-amber-600">รอตีราคา</span>
                       )}

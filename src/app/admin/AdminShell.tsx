@@ -23,6 +23,7 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm }[] = [
   { href: "/admin/staff", label: "พนักงาน", emoji: "👥", perm: "staff.manage" },
   { href: "/admin/import", label: "นำเข้าสินค้า", emoji: "📥", perm: "products.import" },
   { href: "/admin/settings", label: "ตั้งค่าระบบ", emoji: "⚙️", perm: "settings.manage" },
+  { href: "/admin/guide", label: "วิธีใช้ระบบ", emoji: "📋", perm: "admin.access" },
 ];
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
