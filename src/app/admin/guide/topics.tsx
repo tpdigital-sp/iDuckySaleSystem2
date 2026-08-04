@@ -109,6 +109,245 @@ const A = ({ href, children }: { href: string; children: React.ReactNode }) => (
   </Link>
 );
 
+/* ── ตัวอย่างหน้าจอ ──
+   จำลองหน้าตาจริงด้วยโค้ด (ไม่ใช่ภาพถ่ายหน้าจอ) เพราะ
+   1) ภาพถ่ายจะมีชื่อ/ออเดอร์ลูกค้าจริงติดไปด้วย   2) พอหน้าจอเปลี่ยน ภาพจะเก่าทันที
+   กดไม่ได้ทุกอัน — เป็นภาพประกอบเฉย ๆ                                            */
+
+export function Shot({ caption, children }: { caption: string; children: React.ReactNode }) {
+  return (
+    <figure className="overflow-hidden rounded-xl border border-dashed border-slate-300 bg-slate-50">
+      <figcaption className="border-b border-dashed border-slate-200 bg-white/60 px-3 py-1.5 text-[0.7rem] font-bold uppercase tracking-[0.1em] text-slate-400">
+        ตัวอย่างหน้าจอ · {caption}
+      </figcaption>
+      <div className="pointer-events-none select-none p-3" aria-hidden="true">
+        {children}
+      </div>
+    </figure>
+  );
+}
+
+/** ปุ่ม ♻️ ทำใหม่ / เคลม อย่างที่เห็นบนแถบหัวออเดอร์ */
+export function ShotRedoButton() {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm">
+        🧾 ใบงาน + ใบปะหน้า
+      </span>
+      <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm">💳 ใบเสร็จ</span>
+      <span className="rounded-lg border-2 border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm">
+        ♻️ ทำใหม่ / เคลม
+      </span>
+    </div>
+  );
+}
+
+/** หน้าต่าง "ทำงานใหม่จากออเดอร์" — ตัวเลือกโหมด + ติ๊กรายการ */
+export function ShotRedoModal({ mode = "claim" }: { mode?: "claim" | "reorder" }) {
+  const claim = mode === "claim";
+  const items: [string, number, number][] = [
+    ["สแตนดี้ อะคริลิค 15 ซม.", 10, 200],
+    ["เคสใสพรีเมี่ยม", 5, 350],
+    ["กรอบรูปแคนวาส", 1, 550],
+  ];
+  return (
+    <div className="mx-auto max-w-md overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-200">
+      <div className="border-b border-slate-100 px-4 py-3">
+        <p className="text-sm font-extrabold text-slate-900">♻️ ทำงานใหม่จากออเดอร์ OD-260101-1234</p>
+        <p className="mt-0.5 text-[0.72rem] text-slate-500">ระบบจะสร้างออเดอร์ใหม่ ใช้ชื่อ/ที่อยู่/สเปคงาน/ลายของลูกค้าชุดเดิม</p>
+      </div>
+
+      <div className="grid gap-2 p-4 sm:grid-cols-2">
+        <div className={`rounded-xl border-2 p-2.5 ${claim ? "border-emerald-400 bg-emerald-50/60" : "border-slate-200 bg-white"}`}>
+          <p className="text-[0.78rem] font-extrabold text-slate-900">♻️ งานเคลม</p>
+          <p className="mt-0.5 text-[0.68rem] leading-snug text-slate-500">งานเสีย/พิมพ์ผิด/ส่งผิด — ทำส่งใหม่ให้ฟรี</p>
+          <p className="mt-0.5 text-[0.68rem] font-bold text-rose-600">ราคา ฿0 · ค่าส่ง ฿0 · เริ่มงานได้เลย</p>
+        </div>
+        <div className={`rounded-xl border-2 p-2.5 ${claim ? "border-slate-200 bg-white" : "border-sky-400 bg-sky-50/60"}`}>
+          <p className="text-[0.78rem] font-extrabold text-slate-900">🔁 สั่งซ้ำ (ออเดอร์ใหม่)</p>
+          <p className="mt-0.5 text-[0.68rem] leading-snug text-slate-500">ลูกค้าอยากได้อีก — คิดเงินตามปกติ</p>
+          <p className="mt-0.5 text-[0.68rem] font-bold text-sky-700">ราคาเดิม · เริ่มที่ “รอชำระเงิน”</p>
+        </div>
+      </div>
+
+      {claim && (
+        <div className="px-4 pb-2">
+          <p className="text-[0.72rem] font-bold text-slate-700">
+            เหตุผลที่ต้องเคลม <span className="text-rose-500">*</span>
+          </p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {["งานพิมพ์เสีย/สีเพี้ยน", "ทำผิดสเปค", "ส่งผิดรายการ", "ชำรุดจากขนส่ง", "ของหาย/ไม่ครบ"].map((r, i) => (
+              <span
+                key={r}
+                className={`rounded-full px-2.5 py-1 text-[0.68rem] font-semibold ring-1 ${
+                  i === 1 ? "bg-emerald-500 text-white ring-emerald-500" : "bg-white text-slate-500 ring-slate-200"
+                }`}
+              >
+                {r}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="px-4 pb-3">
+        <p className="mb-1.5 text-[0.72rem] font-bold text-slate-700">ทำใหม่รายการไหน (ค่าเริ่มต้น = ทั้งหมด)</p>
+        <div className="space-y-1">
+          {items.map(([name, qty, price], i) => (
+            <div key={name} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5">
+              <span className="flex items-center gap-2 text-[0.75rem] text-slate-700">
+                <span
+                  className={`grid h-4 w-4 shrink-0 place-items-center rounded text-[0.6rem] font-bold text-white ${
+                    i === 2 ? "bg-white ring-1 ring-slate-300" : "bg-teal-500"
+                  }`}
+                >
+                  {i === 2 ? "" : "✓"}
+                </span>
+                {i + 1}. {name}
+              </span>
+              <span className="shrink-0 text-[0.7rem] tabular-nums text-slate-400">
+                ×{qty} · ฿{claim ? 0 : price}
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-2 text-[0.66rem] leading-snug text-slate-400">
+          แบบงานเก่าไม่ถูกคัดลอกไป (ต้องทำ/ตรวจใหม่อยู่ดี) แต่ลายที่ลูกค้าแนบมาจะติดไปให้
+        </p>
+      </div>
+
+      <div className="flex gap-2 border-t border-slate-100 p-3">
+        <span className="flex-1 rounded-full border border-slate-200 py-2 text-center text-xs font-bold text-slate-500">ยกเลิก</span>
+        <span
+          className={`flex-1 rounded-full py-2 text-center text-xs font-bold text-white ${claim ? "bg-emerald-600" : "bg-sky-600"}`}
+        >
+          {claim ? "สร้างงานเคลม (ฟรี)" : "สร้างออเดอร์สั่งซ้ำ"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** แบนเนอร์บนหัวออเดอร์เคลม */
+export function ShotClaimBanner() {
+  return (
+    <div className="rounded-xl bg-emerald-50 p-3 ring-1 ring-emerald-200">
+      <p className="text-sm font-extrabold text-emerald-800">♻️ งานเคลม — ไม่คิดเงินกับลูกค้า</p>
+      <p className="mt-0.5 text-[0.75rem] text-emerald-700">
+        จากออเดอร์ <span className="font-bold underline">OD-260101-1234</span> · เหตุผล: ทำผิดสเปค
+      </p>
+    </div>
+  );
+}
+
+/** กล่องมัดจำ 50% ในคอลัมน์ขวาของหน้าออเดอร์ */
+export function ShotDepositBox() {
+  return (
+    <div className="mx-auto max-w-[17rem] space-y-1.5 rounded-xl bg-violet-50/60 p-2.5 ring-1 ring-violet-100">
+      <div className="flex items-center justify-between text-xs font-semibold">
+        <span className="text-violet-700">➗ มัดจำ 50% · รับแล้ว ✓</span>
+        <span className="text-emerald-600">฿2,500</span>
+      </div>
+      <div className="flex items-center justify-between text-xs font-semibold">
+        <span className="text-violet-700">ยอดคงเหลือ · เก็บก่อนส่ง</span>
+        <span className="text-rose-600">฿2,500</span>
+      </div>
+      <div className="w-full rounded-lg bg-emerald-600 py-1.5 text-center text-[11px] font-bold text-white">
+        ✔️ ยืนยันรับยอดคงเหลือครบ (ตรวจเอง)
+      </div>
+      <p className="text-[10px] leading-snug text-violet-500">ยังพิมพ์ใบงาน/ใบเสร็จและยิงเลขพัสดุไม่ได้ จนกว่าจะเก็บครบ 100%</p>
+    </div>
+  );
+}
+
+/** ปุ่มคู่สำหรับเพิ่มรายการ */
+export function ShotAddButtons() {
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      <span className="rounded-xl border-2 border-dashed border-slate-200 px-4 py-2.5 text-center text-sm font-semibold text-slate-500">
+        ＋ เพิ่มรายการเอง (กรอกชื่อ/ราคาเอง)
+      </span>
+      <span className="rounded-xl border-2 border-dashed border-teal-300 bg-teal-50/40 px-4 py-2.5 text-center text-sm font-bold text-teal-700">
+        🛍️ หยิบจากหน้าร้าน (ได้ตัวเลือกครบ)
+      </span>
+    </div>
+  );
+}
+
+/** วิธีจัดส่งในตะกร้าตอนระบบเลือกกล่องใหญ่ให้เอง */
+export function ShotShipping() {
+  return (
+    <div className="mx-auto max-w-sm space-y-2">
+      <p className="rounded-xl bg-sky-50 px-3 py-2 text-[0.72rem] leading-relaxed text-sky-800 ring-1 ring-sky-200">
+        🚚 ระบบเลือกกล่องที่พอดีกับออเดอร์นี้ให้แล้ว — สั่ง 60 ชิ้น (ตั้งแต่ 50 ชิ้นขึ้นไป)
+      </p>
+      {[
+        ["EMS (50)", "฿50", "locked"],
+        ["EMS (100)", "฿100", "picked"],
+        ["มารับเอง", "฿0", "idle"],
+      ].map(([name, price, state]) => (
+        <div
+          key={name}
+          className={`flex items-center justify-between rounded-2xl px-4 py-2.5 text-sm ring-1 ${
+            state === "locked"
+              ? "bg-stone-50 text-stone-300 ring-stone-100"
+              : state === "picked"
+                ? "bg-amber-50 font-bold ring-ducky"
+                : "ring-amber-100"
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <span
+              className={`grid h-3.5 w-3.5 place-items-center rounded-full ring-1 ${
+                state === "picked" ? "ring-amber-500" : "ring-stone-300"
+              }`}
+            >
+              {state === "picked" && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
+            </span>
+            {name}
+            {state === "locked" && <span className="text-[11px] font-semibold text-stone-400">· ของใส่ไม่พอ</span>}
+          </span>
+          <span>{price}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 2 ฝั่งรูปในรายการงานแบบ */
+export function ShotProofPanels() {
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      <div className="rounded-xl bg-white p-2.5 ring-1 ring-slate-200">
+        <p className="text-[0.7rem] font-bold text-slate-700">🎨 ลายจากลูกค้า (1)</p>
+        <p className="text-[0.62rem] text-slate-400">ทีมงานเห็นเท่านั้น</p>
+        <div className="mt-1.5 flex gap-1.5">
+          <span className="grid h-12 w-12 place-items-center rounded-lg bg-slate-100 text-lg">🖼️</span>
+          <span className="grid h-12 flex-1 place-items-center rounded-lg border-2 border-dashed border-slate-200 text-[0.62rem] text-slate-400">
+            ＋ แนบลาย
+          </span>
+        </div>
+        <p className="mt-1.5 rounded bg-slate-50 py-1 text-center text-[0.62rem] font-semibold text-slate-500">
+          ใช้ลายนี้เป็นแบบ → (1 รูป)
+        </p>
+      </div>
+      <div className="rounded-xl bg-white p-2.5 ring-1 ring-violet-200">
+        <p className="text-[0.7rem] font-bold text-violet-800">🖼 แบบที่เราส่งให้ตรวจ (1)</p>
+        <p className="text-[0.62rem] text-violet-400">ลูกค้าเห็นชุดนี้ · ลากไฟล์มาวางได้</p>
+        <div className="mt-1.5 flex gap-1.5">
+          <span className="relative grid h-12 w-12 place-items-center rounded-lg bg-violet-50 text-lg ring-1 ring-violet-200">
+            🖼️
+            <span className="absolute -bottom-1 rounded-full bg-emerald-500 px-1 text-[0.5rem] font-bold text-white">แก้ไขแล้ว</span>
+          </span>
+          <span className="grid h-12 flex-1 place-items-center rounded-lg border-2 border-dashed border-violet-200 text-[0.62rem] text-violet-400">
+            ลากไฟล์มาวางทับได้เลย
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ══════════════════════════════════════════════════════ */
 
 export const TOPICS: Topic[] = [
@@ -171,6 +410,10 @@ export const TOPICS: Topic[] = [
           ]}
         />
 
+        <Shot caption="กล่องมัดจำในคอลัมน์ขวาของหน้าออเดอร์">
+          <ShotDepositBox />
+        </Shot>
+
         <p className="pt-1 font-bold text-slate-800">หลังรับ “งวดแรก” แล้ว (ยังไม่ครบ 100%)</p>
         <CanTable
           rows={[
@@ -205,6 +448,9 @@ export const TOPICS: Topic[] = [
           งานเสีย/พิมพ์ผิด/ส่งผิด <B>ไม่ต้องสร้างออเดอร์ใหม่เอง</B> — เปิดออเดอร์เดิมแล้วกด{" "}
           <Key>♻️ ทำใหม่ / เคลม</Key> ที่แถบบนสุด ระบบจะก๊อปลูกค้า/ที่อยู่/สเปค/ลายให้ทั้งหมด
         </p>
+        <Shot caption="ปุ่มอยู่แถบบนสุดของหน้าออเดอร์">
+          <ShotRedoButton />
+        </Shot>
         <Steps
           tone="violet"
           items={[
@@ -225,6 +471,9 @@ export const TOPICS: Topic[] = [
             <>กดสร้าง → ระบบพาไปที่ออเดอร์ใหม่ให้เลย</>,
           ]}
         />
+        <Shot caption="หน้าต่างที่เด้งขึ้นมา (โหมดเคลม)">
+          <ShotRedoModal mode="claim" />
+        </Shot>
 
         <p className="pt-1 font-bold text-slate-800">เคลม vs สั่งซ้ำ ต่างกันตรงไหน</p>
         <div className="overflow-x-auto">
@@ -275,6 +524,9 @@ export const TOPICS: Topic[] = [
             </>,
           ]}
         />
+        <Shot caption="ออเดอร์เคลมที่สร้างเสร็จ — แบนเนอร์บนหัว">
+          <ShotClaimBanner />
+        </Shot>
         <Tip>
           ในออเดอร์เคลมจะมีแบนเนอร์ <B>♻️ งานเคลม — ไม่คิดเงินกับลูกค้า</B> พร้อมเหตุผลติดไว้บนหัว
           ทุกคนที่เปิดดูจะรู้ทันทีว่าเป็นงานทำใหม่ ราคาที่ขึ้น ฿0 คือตั้งใจ ไม่ใช่ลืมตีราคา
@@ -348,6 +600,10 @@ export const TOPICS: Topic[] = [
             ลูกค้าสั่งเอง → ทาง C
           </span>
         </div>
+
+        <Shot caption="ปุ่มคู่ ใต้รายการสินค้าในออเดอร์">
+          <ShotAddButtons />
+        </Shot>
 
         <div className="grid gap-3 lg:grid-cols-3">
           <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
@@ -479,6 +735,9 @@ export const TOPICS: Topic[] = [
             </>,
           ]}
         />
+        <Shot caption="สิ่งที่ลูกค้าเห็นในหน้าตะกร้า">
+          <ShotShipping />
+        </Shot>
         <Tip>
           ลูกค้าจะเห็นเหตุผลว่า <B>“ระบบเลือกกล่องที่พอดีกับออเดอร์นี้ให้แล้ว — สั่ง 60 ชิ้น”</B> ·
           กล่องที่เล็กเกินขึ้นว่า “ของใส่ไม่พอ” กดไม่ได้ · <B>มารับเอง (฿0) ไม่เคยโดนล็อก</B>
@@ -567,6 +826,9 @@ export const TOPICS: Topic[] = [
             </p>
           </div>
         </div>
+        <Shot caption="สองฝั่งในรายการเดียวกัน">
+          <ShotProofPanels />
+        </Shot>
         <Steps
           items={[
             <>
