@@ -111,11 +111,26 @@ function PrintQueueInner() {
           <p className="p-10 text-center text-sm text-slate-400">กำลังโหลด…</p>
         ) : shown.length === 0 ? (
           <div className="p-10 text-center">
-            <span className="text-4xl">🖨</span>
-            <p className="mt-2 text-sm font-semibold text-slate-600">
-              {tab === "todo" ? "ไม่มีใบงานรอปริ้น — เคลียร์หมดแล้ว 🎉" : "ไม่มีออเดอร์ในหมวดนี้"}
-            </p>
-            <p className="mt-1 text-xs text-slate-400">คิวนี้จะขึ้นเมื่อลูกค้ากดอนุมัติแบบเรียบร้อย</p>
+            {/* กำลังค้นอยู่ = ไม่เจอคำค้น · ไม่ได้ค้น = คิวว่างจริง (อย่าบอกว่าเคลียร์หมดทั้งที่ยังมีงานค้าง) */}
+            <span className="text-4xl">{kw ? "🔍" : "🖨"}</span>
+            {kw ? (
+              <>
+                <p className="mt-2 text-sm font-semibold text-slate-600">ไม่เจอ “{q.trim()}” ในหมวดนี้</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  ลองดูแท็บอื่น หรือ
+                  <button type="button" onClick={() => setQ("")} className="ml-1 font-bold text-amber-600 hover:underline">
+                    ล้างคำค้น
+                  </button>
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="mt-2 text-sm font-semibold text-slate-600">
+                  {tab === "todo" ? "ไม่มีใบงานรอปริ้น — เคลียร์หมดแล้ว 🎉" : "ไม่มีออเดอร์ในหมวดนี้"}
+                </p>
+                <p className="mt-1 text-xs text-slate-400">คิวนี้จะขึ้นเมื่อลูกค้ากดอนุมัติแบบเรียบร้อย</p>
+              </>
+            )}
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
