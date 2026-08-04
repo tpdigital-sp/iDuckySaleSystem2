@@ -177,6 +177,18 @@ export default function PrintOrderPage() {
           </label>
         </div>
 
+        {/* เคยปริ้นแล้ว — เตือนก่อนกดซ้ำ กันของออกสองรอบ */}
+        {(order.printCount ?? 0) > 0 && (
+          <span
+            className="rounded-full bg-orange-50 px-3 py-1.5 text-xs font-bold text-orange-700 ring-1 ring-orange-200"
+            title={order.lastPrintedAt ? `ล่าสุด ${new Date(order.lastPrintedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}` : undefined}
+          >
+            🖨 ใบนี้ปริ้นไปแล้ว {order.printCount} ครั้ง
+            {order.lastPrintedAt && ` · ล่าสุด ${new Date(order.lastPrintedAt).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`}
+            {" — กดพิมพ์อีกจะบันทึกเป็นปริ้นซ้ำ"}
+          </span>
+        )}
+
         {!fullyPaid && (
           <span className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">
             🔒 ยังไม่จ่ายครบ 100% — พิมพ์ได้เฉพาะใบงาน (ไม่มีใบปะหน้า) · ใบเสร็จยังออกไม่ได้
@@ -185,14 +197,24 @@ export default function PrintOrderPage() {
         <button
           type="button"
           onClick={() => {
-            // ปริ้นใบปะหน้า (มีที่อยู่) = ล็อกที่อยู่ฝั่งลูกค้า — ตั้ง printedAt เฉพาะเมื่อใบปะหน้าถูกพิมพ์จริง (จ่ายครบ)
-            if (fullyPaid && docs.work && order && !order.printedAt) {
+            // บันทึกทุกครั้งที่กดพิมพ์ รวมปริ้นซ้ำ — ประวัติจะเห็นว่าใครปริ้น เอกสารอะไร ครั้งที่เท่าไร
+            // (ครั้งแรกที่พิมพ์ใบปะหน้าจริง = ล็อกที่อยู่ฝั่งลูกค้าด้วย)
+            if (order && chosen.length > 0) {
               fetch("/api/admin/orders/printed", {
                 method: "POST",
                 headers: { "content-type": "application/json" },
-                body: JSON.stringify({ orderId: order.id }),
+                body: JSON.stringify({ orderId: order.id, docs: chosen }),
               }).catch(() => {});
-              setOrder((o) => (o ? { ...o, printedAt: new Date().toISOString() } : o));
+              setOrder((o) =>
+                o
+                  ? {
+                      ...o,
+                      printedAt: o.printedAt ?? new Date().toISOString(),
+                      printCount: (o.printCount ?? (o.printedAt ? 1 : 0)) + 1,
+                      lastPrintedAt: new Date().toISOString(),
+                    }
+                  : o
+              );
             }
             window.print();
           }}

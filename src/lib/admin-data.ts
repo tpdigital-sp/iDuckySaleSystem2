@@ -232,6 +232,10 @@ export interface Order {
   slipVerify?: { status: "pass" | "fail"; detail?: string; amount?: number; transRef?: string; at: string };
   /** เวลาที่แอดมินปริ้นใบงานครั้งแรก (ISO) — มีค่า = ล็อกที่อยู่ ลูกค้าแก้ไม่ได้แล้ว */
   printedAt?: string;
+  /** ปริ้นไปแล้วกี่ครั้ง (รวมปริ้นซ้ำ) — กันของไปสองรอบ ดูรายละเอียดแต่ละครั้งได้ในประวัติ */
+  printCount?: number;
+  /** เวลาที่ปริ้นครั้งล่าสุด (ISO) */
+  lastPrintedAt?: string;
   /** ช่วงวันที่จัดส่ง (แอดมินระบุ) — โชว์บนใบงาน · เก็บเป็น yyyy-mm-dd */
   shipDate?: { from?: string; to?: string };
   /**

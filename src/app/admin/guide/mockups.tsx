@@ -522,6 +522,9 @@ export function ShotBulk() {
 export function ShotPrint() {
   return (
     <MCard className="mx-auto max-w-sm">
+      <p className="mb-1.5 rounded-full bg-orange-50 px-2.5 py-1 text-[0.65rem] font-bold text-orange-700 ring-1 ring-orange-200">
+        🖨 ใบนี้ปริ้นไปแล้ว 2 ครั้ง · ล่าสุด 4 ส.ค. 17:36 — กดพิมพ์อีกจะบันทึกเป็นปริ้นซ้ำ
+      </p>
       <p className="text-[0.75rem] font-bold text-slate-700">เลือกเอกสารที่จะพิมพ์</p>
       <div className="mt-2 space-y-1.5">
         <MCheck on>ใบงาน + ใบปะหน้าพัสดุ</MCheck>
