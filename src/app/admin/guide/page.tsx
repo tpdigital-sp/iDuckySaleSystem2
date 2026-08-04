@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import RequirePerm from "@/components/RequirePerm";
 import { card, h1 } from "@/lib/admin-ui";
@@ -26,6 +26,13 @@ const GROUPS: { key: Group; emoji: string; label: string; blurb: string }[] = [
   { key: "product", emoji: "🏷️", label: "สินค้า & ราคา", blurb: "เพิ่มสินค้า · ตัวเลือก · ราคาขั้นบันได · นำเข้า" },
   { key: "setup", emoji: "⚙️", label: "ตั้งค่า & ของหลังบ้าน", blurb: "ค่าส่ง · สต๊อก · สิทธิ์ · ตั้งค่าระบบ" },
 ];
+
+/** กดชิปตำแหน่งไหน → ดันหมวด "งานหลัก" ของตำแหน่งนั้นขึ้นบนสุด (แอดมินไม่ต้อง — หมวดแรกเป็นของเขาอยู่แล้ว) */
+const ROLE_HOME: Partial<Record<Role, Group>> = {
+  กราฟฟิก: "gfx",
+  แพ็คของ: "pack",
+  คอนเทนต์: "product",
+};
 
 const ROLE_TONE: Record<Role, string> = {
   แอดมิน: "bg-amber-500/15 text-amber-700",
@@ -114,11 +121,26 @@ function GuideInner() {
   );
   const filtering = kw.length > 0 || role !== "all";
 
-  /** หัวข้อที่เหลือ แยกตามหมวด (หมวดว่างไม่ต้องโชว์) */
-  const sections = useMemo(
-    () => GROUPS.map((g) => ({ ...g, items: shown.filter((t) => t.group === g.key) })).filter((g) => g.items.length),
-    [shown]
-  );
+  /** หัวข้อที่เหลือ แยกตามหมวด (หมวดว่างไม่ต้องโชว์) · เลือกตำแหน่งไหน หมวดงานหลักของตำแหน่งนั้นขึ้นก่อน */
+  const sections = useMemo(() => {
+    const list = GROUPS.map((g) => ({ ...g, items: shown.filter((t) => t.group === g.key) })).filter((g) => g.items.length);
+    const home = role !== "all" ? ROLE_HOME[role] : undefined;
+    return home ? [...list].sort((a, b) => Number(b.key === home) - Number(a.key === home)) : list;
+  }, [shown, role]);
+
+  /**
+   * เปลี่ยนตัวกรอง/คำค้น → เลื่อนกลับไปต้นเนื้อหา
+   * ไม่งั้นกดชิป "กราฟฟิก" ตอนเลื่อนอยู่กลางหน้า เนื้อหาจะสั้นลงจนจอค้างอยู่ท้ายหน้า เหมือนกดแล้วไม่มีอะไรเกิดขึ้น
+   */
+  const contentTop = useRef<HTMLDivElement>(null);
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    contentTop.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [role, kw]);
 
   /** ไฮไลต์หัวข้อที่กำลังอ่านอยู่ในสารบัญ */
   useEffect(() => {
@@ -251,7 +273,7 @@ function GuideInner() {
 
       {tocOpen && <div className={`${card} no-print mt-2 max-h-80 overflow-y-auto p-3 lg:hidden`}>{toc}</div>}
 
-      <div className="guide-grid mt-3 grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
+      <div ref={contentTop} className="guide-grid mt-3 grid scroll-mt-40 gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
         {/* ── สารบัญ (จอกว้าง) ── */}
         <aside className="no-print hidden lg:block">
           <div className="sticky top-[9.5rem] max-h-[calc(100vh-11rem)] overflow-y-auto pb-6 pr-1">{toc}</div>
