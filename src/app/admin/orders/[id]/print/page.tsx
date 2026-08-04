@@ -149,7 +149,8 @@ export default function PrintOrderPage() {
 
         <div className="flex flex-wrap items-center gap-3 text-sm">
           {(([
-            ["work", "ใบงาน + ใบปะหน้า"],
+            // ยังเก็บเงินไม่ครบ = ใบปะหน้า (ที่อยู่จัดส่ง) ไม่ออก — ป้ายต้องบอกตรง ๆ ว่าจะได้แค่ใบงาน
+            ["work", fullyPaid ? "ใบงาน + ใบปะหน้าพัสดุ" : "ใบงาน"],
             // ใบเสร็จมีราคา — เฉพาะคนที่เห็นข้อมูลเงินได้
             ...(seesMoney ? [["receipt", "ใบเสร็จ"]] : []),
           ] as [DocKey, string][])).map(([k, label]) => (
@@ -162,6 +163,9 @@ export default function PrintOrderPage() {
                 className="h-4 w-4 accent-amber-500"
               />
               {label}
+              {k === "work" && !fullyPaid && (
+                <span className="text-xs font-semibold text-rose-500">· ใบปะหน้ายังไม่ออก 🔒</span>
+              )}
               {k === "receipt" && !fullyPaid ? " 🔒" : ""}
             </label>
           ))}
@@ -191,7 +195,7 @@ export default function PrintOrderPage() {
 
         {!fullyPaid && (
           <span className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">
-            🔒 ยังไม่จ่ายครบ 100% — พิมพ์ได้เฉพาะใบงาน (ไม่มีใบปะหน้า) · ใบเสร็จยังออกไม่ได้
+            🔒 ยังเก็บเงินไม่ครบ 100% — พิมพ์ได้เฉพาะ “ใบงาน” · ใบปะหน้าพัสดุและใบเสร็จยังออกไม่ได้
           </span>
         )}
         <button

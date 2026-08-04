@@ -527,7 +527,9 @@ export function ShotPrint() {
       </p>
       <p className="text-[0.75rem] font-bold text-slate-700">เลือกเอกสารที่จะพิมพ์</p>
       <div className="mt-2 space-y-1.5">
-        <MCheck on>ใบงาน + ใบปะหน้าพัสดุ</MCheck>
+        <MCheck on>
+          ใบงาน <span className="text-[0.68rem] font-bold text-rose-500">· ใบปะหน้ายังไม่ออก 🔒</span>
+        </MCheck>
         <span className="flex items-start gap-2 text-[0.78rem] text-slate-300">
           <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded bg-white ring-1 ring-slate-200" />
           ใบเสร็จ <span className="text-[0.68rem] font-bold text-rose-400">· ยังเก็บเงินไม่ครบ</span>
