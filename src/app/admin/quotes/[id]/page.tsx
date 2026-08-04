@@ -16,6 +16,8 @@ import {
 import type { OrderItem } from "@/lib/admin-data";
 import { card, faint, h1, muted } from "@/lib/admin-ui";
 import { useActor } from "@/lib/perm-context";
+import ItemAdder from "@/components/admin/ItemAdder";
+import { setQuoteTarget } from "@/lib/append-quote";
 
 /** หน้าแก้ไขใบเสนอราคา — กรอกลูกค้า/รายการ/ราคา แล้วส่งให้ลูกค้าดู หรือแปลงเป็นออเดอร์เมื่อตกลง */
 function QuoteDetailInner() {
@@ -184,55 +186,101 @@ function QuoteDetailInner() {
         {/* ── ซ้าย: รายการ ── */}
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400">รายการที่เสนอ</p>
-          <div className="mt-2 space-y-2">
+
+          {/* หัวตาราง — คอลัมน์ตรงกับแถวด้านล่าง อ่านง่ายเวลามีหลายรายการ */}
+          {quote.items.length > 0 && (
+            <div className="mt-2 hidden gap-2 px-3 pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400 lg:grid lg:grid-cols-[1.75rem_5rem_minmax(0,1fr)_4.5rem_6.5rem_6rem_1.75rem]">
+              <span>#</span>
+              <span>รูป</span>
+              <span>ชื่องาน / สเปคที่เสนอ</span>
+              <span className="text-center">จำนวน</span>
+              <span className="text-right">ราคา/หน่วย</span>
+              <span className="text-right">ยอดรวม</span>
+              <span />
+            </div>
+          )}
+
+          <div className="space-y-2">
             {quote.items.map((it, i) => (
-              <div key={i} className="rounded-xl border border-slate-200 bg-white p-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-slate-100 text-[11px] font-bold text-slate-600">
-                    {i + 1}
-                  </span>
+              <div
+                key={i}
+                className={`grid items-start gap-2 rounded-xl border border-slate-200 p-3 lg:grid-cols-[1.75rem_5rem_minmax(0,1fr)_4.5rem_6.5rem_6rem_1.75rem] ${
+                  i % 2 ? "bg-slate-50/70" : "bg-white"
+                }`}
+              >
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-slate-100 text-[11px] font-bold text-slate-600">
+                  {i + 1}
+                </span>
+
+                {/* ภาพลายที่แนบมาจากตอนหยิบของ (ถ้ามี) */}
+                <div className="flex flex-wrap gap-1">
+                  {(it.artworkUrls ?? []).slice(0, 4).map((u, k) => (
+                    <a key={k} href={u} target="_blank" rel="noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={u} alt="" className="h-9 w-9 rounded-md object-cover ring-1 ring-slate-200" />
+                    </a>
+                  ))}
+                  {!it.artworkUrls?.length && (
+                    <span className="grid h-9 w-9 place-items-center rounded-md bg-slate-100 text-sm text-slate-300">🖼️</span>
+                  )}
+                </div>
+
+                <div className="min-w-0 space-y-1.5">
                   <input
                     value={it.name}
                     disabled={locked}
                     onChange={(e) => patchItem(i, { name: e.target.value })}
                     placeholder="ชื่องาน"
-                    className={`${inp} min-w-40 flex-1 font-bold`}
+                    className={`${inp} font-bold`}
                   />
+                  <textarea
+                    value={it.selections ?? ""}
+                    disabled={locked}
+                    onChange={(e) => patchItem(i, { selections: e.target.value })}
+                    rows={2}
+                    placeholder="สเปค/รายละเอียดที่เสนอ เช่น ขนาด · วัสดุ · จำนวนสี"
+                    className={`${inp} resize-y text-xs`}
+                  />
+                </div>
+
+                <label className="block lg:mt-0">
+                  <span className="mb-0.5 block text-[10px] font-bold text-slate-400 lg:hidden">จำนวน</span>
                   <input
                     type="number"
                     min={1}
                     value={it.qty}
                     disabled={locked}
                     onChange={(e) => patchItem(i, { qty: Math.max(1, Number(e.target.value) || 1) })}
-                    className={`${inp} w-20 text-center`}
+                    className={`${inp} text-center font-bold`}
                   />
+                </label>
+
+                <label className="block">
+                  <span className="mb-0.5 block text-[10px] font-bold text-slate-400 lg:hidden">ราคา/หน่วย</span>
                   <input
                     type="number"
                     min={0}
                     value={it.unitPrice}
                     disabled={locked}
                     onChange={(e) => patchItem(i, { unitPrice: Math.max(0, Number(e.target.value) || 0) })}
-                    className={`${inp} w-28 text-right`}
+                    className={`${inp} text-right font-bold`}
                   />
-                  <span className="w-24 text-right text-sm font-bold text-slate-900">{formatPrice(it.qty * it.unitPrice)}</span>
-                  {!locked && (
-                    <button
-                      type="button"
-                      onClick={() => patch({ items: quote.items.filter((_, k) => k !== i) })}
-                      className="rounded-lg px-2 py-1 text-xs font-bold text-rose-500 transition hover:bg-rose-50"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-                <textarea
-                  value={it.selections ?? ""}
-                  disabled={locked}
-                  onChange={(e) => patchItem(i, { selections: e.target.value })}
-                  rows={2}
-                  placeholder="สเปค/รายละเอียดที่เสนอ เช่น ขนาด · วัสดุ · จำนวนสี"
-                  className={`${inp} mt-1.5 resize-y text-xs`}
-                />
+                </label>
+
+                <span className="pt-2 text-right text-sm font-extrabold text-slate-900">{formatPrice(it.qty * it.unitPrice)}</span>
+
+                {!locked ? (
+                  <button
+                    type="button"
+                    onClick={() => patch({ items: quote.items.filter((_, k) => k !== i) })}
+                    title="ลบรายการนี้"
+                    className="mt-1 justify-self-end rounded-lg px-2 py-1 text-xs font-bold text-rose-500 transition hover:bg-rose-50"
+                  >
+                    ✕
+                  </button>
+                ) : (
+                  <span />
+                )}
               </div>
             ))}
             {!quote.items.length && (
@@ -242,16 +290,17 @@ function QuoteDetailInner() {
             )}
           </div>
 
+          {/* ตัวเพิ่มรายการชุดเดียวกับหน้าออเดอร์งานพิเศษ — กรอกเอง (มีคลังสินค้าพิเศษ/แนบภาพลาย) หรือหยิบจากหน้าร้านจริง */}
           {!locked && (
-            <button
-              type="button"
-              onClick={() =>
-                patch({ items: [...quote.items, { productId: "special-item", name: "", selections: "", qty: 1, unitPrice: 0 }] })
-              }
-              className="mt-2 w-full rounded-xl border-2 border-dashed border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-500 transition hover:border-amber-300 hover:bg-amber-50/40 hover:text-amber-700"
-            >
-              ＋ เพิ่มรายการ
-            </button>
+            <ItemAdder
+              draftKey={`quote.${quote.id}`}
+              target="ใบเสนอราคา"
+              onAdd={(item) => patch({ items: [...quote.items, item] })}
+              onShopAdd={() => {
+                setQuoteTarget({ id: quote.id, customer: quote.customer });
+                window.open("/products", "_blank", "noopener");
+              }}
+            />
           )}
 
           {/* เงื่อนไข/หมายเหตุ */}

@@ -15,6 +15,7 @@ import {
 import { useCart } from "@/lib/cart-context";
 import ProductVisual from "@/components/ProductVisual";
 import { getAppendTarget, clearAppendTarget, setAppendPicks, getAppendPicks, clearAppendPicks, type AppendTarget } from "@/lib/append-order";
+import { getQuoteTarget, clearQuoteTarget, type QuoteTarget } from "@/lib/append-quote";
 
 const USE_BY_KEY = "ducky-use-by-date";
 
@@ -25,10 +26,47 @@ export default function CartPage() {
   const [appendTo, setAppendTo] = useState<AppendTarget | null>(null);
   /** รายการที่เลือกส่งเข้าออเดอร์เดิม (คีย์ของ cart item) — null = ยังไม่เคยเลือก (ถือว่าเลือกทุกอัน) */
   const [picks, setPicks] = useState<string[] | null>(null);
+  // 📄 โหมดหยิบใส่ใบเสนอราคา (แอดมินกดมาจากหน้าใบเสนอราคา) — ของที่หยิบจะเข้าใบนั้น ไม่สร้างออเดอร์
+  const [quoteTo, setQuoteTo] = useState<QuoteTarget | null>(null);
+  const [quoteBusy, setQuoteBusy] = useState(false);
+  const [quoteErr, setQuoteErr] = useState("");
   useEffect(() => {
     setAppendTo(getAppendTarget());
     setPicks(getAppendPicks());
+    setQuoteTo(getQuoteTarget());
   }, []);
+
+  async function sendToQuote() {
+    if (!quoteTo) return;
+    setQuoteBusy(true);
+    setQuoteErr("");
+    const res = await fetch("/api/admin/quotes/append", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: quoteTo.id,
+        items: items.map((i) => {
+          // แยกภาพลาย/ธงเช็คสต๊อกออกจากข้อความตัวเลือก (เหมือนตอน checkout) ไม่งั้น URL ยาวจะรกใบเสนอราคา
+          const { "ภาพลายที่แนบ": artRaw, "รอเช็คสต๊อก": _bulk, ...restSel } = i.selections;
+          const artworkUrls = (artRaw ?? "").split(" | ").map((u) => u.trim()).filter(Boolean);
+          return {
+            productId: i.productId,
+            name: productOf(i.productId)?.name ?? i.productId,
+            selections: Object.entries(restSel).map(([k, v]) => `${k}: ${v}`).join(" · "),
+            qty: i.qty,
+            unitPrice: i.unitPrice,
+            ...(artworkUrls.length ? { artworkUrls } : {}),
+          };
+        }),
+      }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setQuoteBusy(false);
+    if (!res.ok) return setQuoteErr(j.error ?? "เพิ่มเข้าใบเสนอราคาไม่สำเร็จ");
+    clear();
+    clearQuoteTarget();
+    router.push(`/admin/quotes/${encodeURIComponent(quoteTo.id)}`);
+  }
   const isPicked = (key: string) => !appendTo || picks === null || picks.includes(key);
   const pickedItems = items.filter((i) => isPicked(i.key));
   const subtotal = appendTo ? pickedItems.reduce((n, i) => n + i.unitPrice * i.qty, 0) : cartSubtotal;
@@ -110,6 +148,41 @@ export default function CartPage() {
       <h1 className="text-2xl font-extrabold text-amber-950 md:text-3xl">
         🛒 ตะกร้าสินค้า <span className="text-base font-semibold text-stone-400">({totalQty} ชิ้น)</span>
       </h1>
+
+      {/* 📄 แอดมินกำลังหยิบของใส่ใบเสนอราคา — ไม่ต้องผ่านหน้าชำระเงิน โยนเข้าใบได้เลย */}
+      {quoteTo && (
+        <div className="mt-4 rounded-3xl bg-teal-50 p-4 ring-1 ring-teal-200">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-extrabold text-teal-900">📄 กำลังหยิบใส่ใบเสนอราคา {quoteTo.id}</p>
+              <p className="mt-0.5 text-xs text-teal-700">
+                ลูกค้า: {quoteTo.customer} · หยิบสินค้าให้ครบก่อน แล้วกดปุ่มขวาเพื่อโยนเข้าใบทีเดียว (ยังไม่สร้างออเดอร์)
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void sendToQuote()}
+                disabled={quoteBusy}
+                className="rounded-full bg-teal-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-teal-700 disabled:opacity-40"
+              >
+                {quoteBusy ? "กำลังเพิ่ม…" : `➕ ใส่ในใบเสนอราคา (${items.length} รายการ)`}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearQuoteTarget();
+                  setQuoteTo(null);
+                }}
+                className="rounded-full px-3 py-2 text-xs font-semibold text-teal-700 hover:bg-teal-100"
+              >
+                ยกเลิกโหมดนี้
+              </button>
+            </div>
+          </div>
+          {quoteErr && <p className="mt-2 text-xs font-bold text-rose-600">{quoteErr}</p>}
+        </div>
+      )}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
         {/* รายการสินค้า */}
