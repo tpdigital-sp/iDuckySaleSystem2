@@ -366,6 +366,7 @@ export default function ProductEditor({ product }: { product: Product }) {
   const [pricingOpen, setPricingOpen] = useState(false);
   // ── ดึงข้อมูลจาก URL มาเติม/แก้สินค้านี้ ──
   const [impOpen, setImpOpen] = useState(false);
+  const [urlCopied, setUrlCopied] = useState(false);
   const [impUrl, setImpUrl] = useState("");
   const [impLoading, setImpLoading] = useState(false);
   const [impErr, setImpErr] = useState("");
@@ -819,32 +820,63 @@ export default function ProductEditor({ product }: { product: Product }) {
         </nav>
       </div>
 
-      {/* URL ของสินค้า */}
+      {/*
+        ── ลิงก์หน้าร้านของสินค้านี้ ──
+        แยกจากปุ่มนำเข้าคนละแถว เพราะเดิมสองปุ่มติดกันแล้วสับสน:
+        "คัดลอก" ทำกับลิงก์ที่โชว์อยู่ · "ดึงจาก URL" ให้ไปวางลิงก์อีกอันคนละเว็บ
+      */}
       <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-white p-3 ring-1 ring-slate-200">
-        <span className="text-xs font-bold text-slate-500">🔗 URL:</span>
-        <code className="flex-1 truncate rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-600">{fullUrl}</code>
+        <span className="shrink-0 text-xs font-bold text-slate-500">🔗 ลิงก์หน้าร้านของสินค้านี้</span>
+        <code className="min-w-40 flex-1 truncate rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-600">{fullUrl}</code>
         <button
           type="button"
-          onClick={() => navigator.clipboard?.writeText(fullUrl)}
-          className="rounded-full bg-slate-100 px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-200"
+          onClick={() => {
+            navigator.clipboard?.writeText(fullUrl);
+            setUrlCopied(true);
+            setTimeout(() => setUrlCopied(false), 1500);
+          }}
+          className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
+            urlCopied ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+          }`}
         >
-          📋 คัดลอก
+          {urlCopied ? "คัดลอกแล้ว ✓" : "📋 คัดลอกลิงก์"}
         </button>
-        <button
-          type="button"
-          onClick={() => setImpOpen((v) => !v)}
-          className="rounded-full bg-amber-500 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-amber-600"
-          title="ดึงข้อมูลจากเว็บ Wix มาเติม/แก้สินค้านี้"
+        <a
+          href={fullUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="shrink-0 rounded-full bg-slate-100 px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-200"
         >
-          📥 ดึงจาก URL
-        </button>
+          ↗ เปิดดูหน้าร้าน
+        </a>
       </div>
+
+      {/* ── นำเข้าข้อมูลจากเว็บราคา (คนละเรื่องกับลิงก์ด้านบน) ── */}
+      <button
+        type="button"
+        onClick={() => setImpOpen((v) => !v)}
+        className={`mt-2 flex w-full flex-wrap items-center gap-2 rounded-2xl border-2 border-dashed p-3 text-left transition ${
+          impOpen ? "border-amber-400 bg-amber-50" : "border-amber-200 bg-amber-50/40 hover:bg-amber-50"
+        }`}
+      >
+        <span className="text-base">📥</span>
+        <span className="min-w-40 flex-1">
+          <span className="block text-xs font-bold text-amber-800">ดึงราคา/ตัวเลือกจากเว็บรายการราคา (Wix) มาเติมสินค้านี้</span>
+          <span className="block text-[11px] text-slate-500">
+            คนละลิงก์กับด้านบน — ใช้ลิงก์หน้ารายการราคา แล้วระบบเติม ชื่อ/ราคา/ตัวเลือก/ตารางราคา/รูป ให้
+          </span>
+        </span>
+        <span className="shrink-0 rounded-full bg-amber-500 px-3.5 py-1.5 text-xs font-bold text-white">
+          {impOpen ? "ปิด ▴" : "เปิด ▾"}
+        </span>
+      </button>
 
       {/* ── พาเนล: ดึงข้อมูลจาก URL มาเติมสินค้านี้ ── */}
       {impOpen && (
-        <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50/40 p-3">
-          <p className="mb-2 text-xs font-semibold text-slate-600">
-            📥 ดึงข้อมูลจากเว็บ Wix → เลือกสินค้ามาเติมช่อง (ชื่อ/ราคา/ตัวเลือก/ราคาขั้นบันได/รูป) แล้วกด 💾 บันทึก
+        <div className="mt-2 rounded-2xl border-2 border-t-0 border-dashed border-amber-400 bg-amber-50/40 p-3">
+          <p className="mb-2 text-xs font-bold text-slate-600">
+            <span className="mr-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] text-white">1</span>
+            วางลิงก์<span className="text-amber-800">หน้ารายการราคา</span> แล้วกดดึง
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -866,8 +898,11 @@ export default function ProductEditor({ product }: { product: Product }) {
           {impErr && <p className="mt-2 text-xs font-medium text-rose-600">{impErr}</p>}
           {impList.length > 0 && (
             <div className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white">
-              <p className="border-b border-slate-100 px-3 py-1.5 text-[11px] text-slate-400">
-                พบ {impList.length} สินค้าในหน้านี้ — เลือกรูปที่ต้องการแล้วกด “ใช้ตัวนี้” เพื่อเติมลงสินค้าที่กำลังแก้
+              <p className="border-b border-slate-100 px-3 py-1.5 text-[11px] text-slate-500">
+                <span className="mr-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">2</span>
+                พบ {impList.length} สินค้าในหน้านี้ — เลือกรูป แล้วกด “ใช้ตัวนี้” ·{" "}
+                <span className="font-bold text-rose-600">จะเขียนทับ ชื่อ/ราคา/ตัวเลือก/รูป ของสินค้านี้ทั้งชุด</span>{" "}
+                (ยังไม่กด 💾 บันทึก = ยังเปลี่ยนใจได้)
               </p>
               <ul className="divide-y divide-slate-100">
                 {impList.map((p, i) => (

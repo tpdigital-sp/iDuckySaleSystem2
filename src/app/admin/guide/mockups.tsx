@@ -845,16 +845,26 @@ export function ShotRate() {
   );
 }
 
-/** แถบ URL บนหัวหน้าแก้ไขสินค้า — จุดเริ่มของการดึงจาก URL */
+/** 2 แถวบนหัวหน้าแก้ไขสินค้า — ลิงก์ของสินค้า (บน) กับปุ่มนำเข้า (ล่าง) แยกกันคนละเรื่อง */
 export function ShotUrlBar() {
   return (
-    <div className="mx-auto flex max-w-lg flex-wrap items-center gap-2 rounded-2xl bg-white p-2.5 ring-1 ring-slate-200">
-      <span className="text-[0.68rem] font-bold text-slate-500">🔗 URL:</span>
-      <code className="flex-1 truncate rounded-lg bg-slate-50 px-2.5 py-1 text-[0.65rem] text-slate-500">
-        iduckystore.com/products/jibbitz-shoe
-      </code>
-      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[0.68rem] font-bold text-slate-700">📋 คัดลอก</span>
-      <span className="rounded-full bg-amber-500 px-2.5 py-1 text-[0.68rem] font-bold text-white">📥 ดึงจาก URL</span>
+    <div className="mx-auto max-w-lg space-y-2">
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-white p-2.5 ring-1 ring-slate-200">
+        <span className="shrink-0 text-[0.65rem] font-bold text-slate-500">🔗 ลิงก์หน้าร้านของสินค้านี้</span>
+        <code className="min-w-24 flex-1 truncate rounded-lg bg-slate-50 px-2 py-1 text-[0.62rem] text-slate-500">
+          iduckystore.com/products/jibbitz-shoe
+        </code>
+        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[0.65rem] font-bold text-slate-700">📋 คัดลอกลิงก์</span>
+        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[0.65rem] font-bold text-slate-700">↗ เปิดดูหน้าร้าน</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border-2 border-dashed border-amber-200 bg-amber-50/40 p-2.5">
+        <span className="text-base">📥</span>
+        <span className="min-w-24 flex-1">
+          <span className="block text-[0.65rem] font-bold text-amber-800">ดึงราคา/ตัวเลือกจากเว็บรายการราคา (Wix) มาเติมสินค้านี้</span>
+          <span className="block text-[0.58rem] text-slate-500">คนละลิงก์กับด้านบน — ใช้ลิงก์หน้ารายการราคา</span>
+        </span>
+        <span className="rounded-full bg-amber-500 px-2.5 py-1 text-[0.65rem] font-bold text-white">เปิด ▾</span>
+      </div>
     </div>
   );
 }
