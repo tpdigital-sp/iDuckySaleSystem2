@@ -34,6 +34,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!quote) return NextResponse.json({ error: "ไม่พบใบเสนอราคานี้" }, { status: 404 });
   if (quote.key !== key) return NextResponse.json({ error: "ลิงก์ไม่ถูกต้อง" }, { status: 403 });
   if (quote.orderId) return NextResponse.json({ ok: true, already: true });
+  if (quote.status === "ลูกค้าตกลง") return NextResponse.json({ ok: true, already: true });
+  // ใบที่ร้านปิดไปแล้ว (ลูกค้าเลือกใบอื่น/ยกเลิก) ลิงก์เก่ายังอยู่ในแชทลูกค้า — ต้องกันไม่ให้กดตกลงย้อนหลัง
+  if (quote.status === "ไม่รับ")
+    return NextResponse.json(
+      { error: "ใบเสนอราคานี้ปิดไปแล้ว (อาจเลือกใบอื่นไปแล้ว) — รบกวนทักร้านเพื่อขอใบใหม่" },
+      { status: 400 }
+    );
   if (quoteExpired(quote)) return NextResponse.json({ error: "ใบเสนอราคานี้หมดอายุแล้ว — รบกวนทักร้านเพื่อขอใบใหม่" }, { status: 400 });
 
   const next = withQuoteLog({ ...quote, status: "ลูกค้าตกลง" }, "ลูกค้า", "ลูกค้ากดตกลงจากลิงก์");
