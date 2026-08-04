@@ -2323,26 +2323,19 @@ export default function AdminOrderDetailPage() {
                   บาร์โค้ด = เลขออเดอร์ล้วน สำหรับเครื่องยิงที่สถานีแพ็ค
                   QR = ลิงก์หน้านี้ สำหรับเปิดบนมือถือ
                 */}
-                <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
-                  <p className="text-xs font-semibold text-slate-600">📷 สแกนจากจอนี้ได้เลย</p>
-                  <div className="mt-2 flex items-center gap-3">
-                    <div className="min-w-0 flex-1">
-                      <Barcode value={order.id} displayValue={false} height={34} width={1.1} />
-                      <p className="mt-0.5 text-[10px] leading-tight text-slate-400">
-                        ยิงด้วยเครื่องยิงที่{" "}
-                        <Link href="/admin/orders/scan" className="font-semibold text-amber-600 hover:underline">
-                          สถานีแพ็ค–ส่ง
-                        </Link>
+                {origin && (
+                  <div className="flex items-center gap-3 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+                    <div className="shrink-0">
+                      <QRCodeSVG value={`${origin}/admin/orders/${encodeURIComponent(order.id)}`} size={68} level="M" marginSize={0} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-slate-600">📱 สแกนเปิดบนมือถือ</p>
+                      <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
+                        ส่องด้วยกล้องมือถือ → เปิดหน้าออเดอร์นี้ เช็คของตามภาพได้เลย ไม่ต้องรอปริ้นใบงาน
                       </p>
                     </div>
-                    {origin && (
-                      <div className="shrink-0 text-center">
-                        <QRCodeSVG value={`${origin}/admin/orders/${encodeURIComponent(order.id)}`} size={62} level="M" marginSize={0} />
-                        <p className="mt-0.5 text-[10px] leading-tight text-slate-400">📱 เปิดบนมือถือ</p>
-                      </div>
-                    )}
                   </div>
-                </div>
+                )}
 
                 {/* วันที่จัดส่ง */}
                 <div>
