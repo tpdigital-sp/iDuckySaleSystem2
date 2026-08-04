@@ -739,6 +739,17 @@ export default function CustomerOrderPage() {
 
       {actionErr && <p className="mt-4 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{actionErr}</p>}
 
+      {/* งานเคลม — บอกลูกค้าชัดว่าไม่มีค่าใช้จ่าย ร้านทำส่งใหม่ให้ */}
+      {order.claimOf && (
+        <div className="mt-4 rounded-2xl bg-rose-50 p-4 ring-1 ring-rose-200">
+          <p className="text-sm font-extrabold text-rose-800">♻️ งานทำใหม่ให้ (เคลม) — ไม่มีค่าใช้จ่าย</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-rose-700">
+            ทางร้านจัดทำงานชิ้นนี้ใหม่ให้จากออเดอร์ <span className="font-mono font-bold">{order.claimOf}</span>
+            {order.claimReason ? ` · เหตุผล: ${order.claimReason}` : ""} — ไม่ต้องโอนเงินเพิ่มครับ
+          </p>
+        </div>
+      )}
+
       {/* ── 2 คอลัมน์: ซ้าย=แบบงาน/รายการ · ขวา=สรุป (ติดหนึบ) ── */}
       <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
         {/* ซ้าย */}

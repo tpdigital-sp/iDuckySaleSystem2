@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import {
   MOCK_ORDERS,
@@ -270,6 +270,7 @@ function RichNoteEditor({
 
 export default function AdminOrderDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const orderId = decodeURIComponent(String(params?.id ?? ""));
 
   const [order, setOrder] = useState<Order | null>(null);
@@ -315,6 +316,37 @@ export default function AdminOrderDetailPage() {
     const next = withLog({ ...order, items }, actor, "แก้รายละเอียดรายการ", `${order.items[itemIndex]?.name}`);
     setOrder(next);
     if (!demo) void saveOrderAdmin(next);
+  }
+  // ♻️ ทำงานใหม่จากออเดอร์นี้ — เคลม (ฟรี) หรือสั่งซ้ำ (คิดเงิน)
+  const [redoOpen, setRedoOpen] = useState(false);
+  const [redoMode, setRedoMode] = useState<"claim" | "reorder">("claim");
+  const [redoReason, setRedoReason] = useState("");
+  const [redoPicks, setRedoPicks] = useState<Record<number, boolean>>({});
+  const [redoBusy, setRedoBusy] = useState(false);
+  const [redoErr, setRedoErr] = useState("");
+  async function submitRedo() {
+    if (!order) return;
+    const picks = order.items
+      .map((_, i) => i)
+      .filter((i) => redoPicks[i] ?? true)
+      .map((i) => ({ index: i }));
+    if (!picks.length) return setRedoErr("เลือกอย่างน้อย 1 รายการ");
+    if (redoMode === "claim" && !redoReason.trim()) return setRedoErr("งานเคลมต้องระบุเหตุผล");
+    setRedoBusy(true);
+    setRedoErr("");
+    try {
+      const res = await fetch("/api/admin/orders/redo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromId: order.id, mode: redoMode, picks, reason: redoReason.trim() }),
+      });
+      const j = await res.json();
+      if (!res.ok) setRedoErr(j.error ?? "สร้างงานใหม่ไม่สำเร็จ");
+      else router.push(`/admin/orders/${encodeURIComponent(j.id)}`);
+    } catch {
+      setRedoErr("เชื่อมต่อไม่ได้");
+    }
+    setRedoBusy(false);
   }
   const [statusMenu, setStatusMenu] = useState(false);
   const [artDropIdx, setArtDropIdx] = useState<number | null>(null);
@@ -1088,6 +1120,20 @@ export default function AdminOrderDetailPage() {
               </Link>
             ))}
           </div>
+          {mayEdit && (
+            <button
+              type="button"
+              onClick={() => {
+                setRedoOpen(true);
+                setRedoErr("");
+                setRedoPicks({});
+              }}
+              title="ทำงานชิ้นนี้ใหม่ — เคลม (ไม่คิดเงิน) หรือสั่งซ้ำ (คิดเงินปกติ)"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+            >
+              ♻️ ทำใหม่ / เคลม
+            </button>
+          )}
           {mayEdit ? (
             <div className="flex flex-wrap items-center gap-2">
               <span className={`rounded-xl px-3 py-2 text-sm font-bold ring-1 ${STATUS_STYLES[order.status]}`}>{order.status}</span>
@@ -1184,6 +1230,38 @@ export default function AdminOrderDetailPage() {
               </Link>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ── งานเคลม / สั่งซ้ำ — โยงกันสองทางให้กดข้ามไปมาได้ ── */}
+      {(order.claimOf || order.reorderOf || (order.redoOrders?.length ?? 0) > 0) && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/70 px-6 py-3">
+          {order.claimOf && (
+            <span className="inline-flex flex-wrap items-center gap-1.5 rounded-xl bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 ring-1 ring-rose-200">
+              ♻️ งานเคลม — ไม่คิดเงินกับลูกค้า
+              <Link href={`/admin/orders/${encodeURIComponent(order.claimOf)}`} className="underline decoration-rose-300 underline-offset-2">
+                จากออเดอร์ {order.claimOf}
+              </Link>
+              {order.claimReason && <span className="font-normal text-rose-600">· เหตุผล: {order.claimReason}</span>}
+            </span>
+          )}
+          {order.reorderOf && (
+            <span className="inline-flex items-center gap-1.5 rounded-xl bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-700 ring-1 ring-sky-200">
+              🔁 สั่งซ้ำ
+              <Link href={`/admin/orders/${encodeURIComponent(order.reorderOf)}`} className="underline decoration-sky-300 underline-offset-2">
+                จากออเดอร์ {order.reorderOf}
+              </Link>
+            </span>
+          )}
+          {(order.redoOrders ?? []).map((rid) => (
+            <Link
+              key={rid}
+              href={`/admin/orders/${encodeURIComponent(rid)}`}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700 ring-1 ring-violet-200 transition hover:bg-violet-100"
+            >
+              ♻️ มีงานที่ทำใหม่จากออเดอร์นี้ · {rid} →
+            </Link>
+          ))}
         </div>
       )}
 
@@ -2556,6 +2634,129 @@ export default function AdminOrderDetailPage() {
       {skipGate && <SkipGateModal reasons={skipGate} onCancel={cancelSkipGate} onConfirm={confirmSkipGate} />}
 
       {/* หน้าตรวจสอบออเดอร์: ขยายรูปดูอย่างเดียว (ไม่มีปุ่มตรวจนับ — งานแพ็คอยู่ในโหมดแพ็ค) */}
+      {redoOpen && (
+        <div className="fixed inset-0 z-[115] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={() => setRedoOpen(false)}>
+          <div
+            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="border-b border-slate-100 px-5 py-4">
+              <p className="text-lg font-extrabold text-slate-900">♻️ ทำงานใหม่จากออเดอร์ {order.id}</p>
+              <p className="mt-0.5 text-xs text-slate-500">ระบบจะสร้างออเดอร์ใหม่ ใช้ชื่อ/ที่อยู่/สเปคงาน/ลายของลูกค้าชุดเดิม</p>
+            </div>
+
+            <div className="space-y-3 p-5">
+              {/* เลือกแบบงาน */}
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setRedoMode("claim")}
+                  className={`rounded-xl border-2 p-3 text-left transition ${
+                    redoMode === "claim" ? "border-rose-400 bg-rose-50" : "border-slate-200 bg-white hover:border-rose-200"
+                  }`}
+                >
+                  <p className="text-sm font-extrabold text-rose-700">♻️ งานเคลม</p>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">
+                    งานเสีย/พิมพ์ผิด/ส่งผิด — ทำส่งใหม่ให้ฟรี
+                    <span className="mt-0.5 block font-bold text-rose-600">ราคา ฿0 · ค่าส่ง ฿0 · เริ่มงานได้เลย</span>
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRedoMode("reorder")}
+                  className={`rounded-xl border-2 p-3 text-left transition ${
+                    redoMode === "reorder" ? "border-sky-400 bg-sky-50" : "border-slate-200 bg-white hover:border-sky-200"
+                  }`}
+                >
+                  <p className="text-sm font-extrabold text-sky-700">🔁 สั่งซ้ำ (ออเดอร์ใหม่)</p>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">
+                    ลูกค้าอยากได้อีก — คิดเงินตามปกติ
+                    <span className="mt-0.5 block font-bold text-sky-600">ราคาเดิม · เริ่มที่ “รอชำระเงิน”</span>
+                  </p>
+                </button>
+              </div>
+
+              {/* เหตุผล (บังคับเฉพาะงานเคลม) */}
+              {redoMode === "claim" && (
+                <div>
+                  <p className="text-xs font-bold text-slate-600">เหตุผลที่ต้องเคลม *</p>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {["งานพิมพ์เสีย/สีเพี้ยน", "ทำผิดสเปค", "ส่งผิดรายการ", "ชำรุดจากขนส่ง", "ของหาย/ไม่ครบ"].map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setRedoReason(r)}
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 transition ${
+                          redoReason === r ? "bg-rose-500 text-white ring-rose-500" : "bg-white text-slate-600 ring-slate-200 hover:bg-rose-50"
+                        }`}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    value={redoReason}
+                    onChange={(e) => setRedoReason(e.target.value)}
+                    placeholder="หรือพิมพ์เหตุผลเอง — จะบันทึกไว้ในประวัติทั้งสองออเดอร์"
+                    className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-rose-300 focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {/* เลือกรายการ */}
+              <div>
+                <p className="text-xs font-bold text-slate-600">ทำใหม่รายการไหน (ค่าเริ่มต้น = ทั้งหมด)</p>
+                <div className="mt-1 space-y-1">
+                  {order.items.map((it, i) => (
+                    <label key={i} className="flex cursor-pointer items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={redoPicks[i] ?? true}
+                        onChange={(e) => setRedoPicks((cur) => ({ ...cur, [i]: e.target.checked }))}
+                        className="h-4 w-4 accent-amber-500"
+                      />
+                      <span className="min-w-0 flex-1 truncate font-semibold">
+                        {i + 1}. {it.name}
+                      </span>
+                      <span className="shrink-0 text-slate-400">
+                        ×{it.qty} · {redoMode === "claim" ? "฿0" : formatPrice(it.unitPrice)}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {redoErr && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">{redoErr}</p>}
+              <p className="text-[11px] leading-relaxed text-slate-400">
+                แบบงานเก่าไม่ถูกคัดลอกไป (ต้องทำ/ตรวจใหม่อยู่ดี) แต่ลายที่ลูกค้าแนบมาจะติดไปให้ · ทั้งสองออเดอร์จะลิงก์ถึงกันและลงประวัติไว้
+              </p>
+            </div>
+
+            <div className="flex gap-2 border-t border-slate-100 p-4">
+              <button
+                type="button"
+                onClick={() => setRedoOpen(false)}
+                className="flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={submitRedo}
+                disabled={redoBusy}
+                className={`flex-1 rounded-xl py-2.5 text-sm font-extrabold text-white shadow-sm transition disabled:opacity-40 ${
+                  redoMode === "claim" ? "bg-rose-600 hover:bg-rose-700" : "bg-sky-600 hover:bg-sky-700"
+                }`}
+              >
+                {redoBusy ? "กำลังสร้าง…" : redoMode === "claim" ? "สร้างงานเคลม (ฟรี)" : "สร้างออเดอร์สั่งซ้ำ"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmBox && (
         <ConfirmModal
           icon={confirmBox.icon}

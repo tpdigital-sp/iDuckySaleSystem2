@@ -254,6 +254,16 @@ export default function AdminOrdersPage() {
                               🔥 เร่ง
                             </span>
                           )}
+                          {o.claimOf && (
+                            <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 ring-1 ring-rose-200" title={`งานเคลมจาก ${o.claimOf}${o.claimReason ? ` — ${o.claimReason}` : ""}`}>
+                              ♻️ เคลม
+                            </span>
+                          )}
+                          {o.reorderOf && (
+                            <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200" title={`สั่งซ้ำจาก ${o.reorderOf}`}>
+                              🔁 สั่งซ้ำ
+                            </span>
+                          )}
                         </p>
                         <p className="text-xs text-slate-400">
                           {o.date}
