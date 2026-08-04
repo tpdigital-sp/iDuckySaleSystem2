@@ -317,13 +317,24 @@ export default function PrintOrderPage() {
                   </p>
                 )}
               </div>
-              {orderUrl && (
-                <div className="shrink-0 text-center">
-                  <QRCodeSVG value={orderUrl} size={82} level="M" marginSize={0} />
-                  <p className="mt-1 text-[9px] font-bold leading-tight text-slate-600">📱 มือถือ</p>
-                  <p className="text-[9px] leading-tight text-slate-500">เปิดหน้าออเดอร์ · เช็คของ</p>
+              <div className="flex shrink-0 items-start gap-4">
+                {/*
+                  บาร์โค้ดของ "ใบงาน" — ต้องมีเสมอไม่ว่าจ่ายครบหรือยัง
+                  (ตัวบนใบปะหน้าถูกกันไว้ตอนเก็บเงินไม่ครบ ออเดอร์มัดจำเลยไม่มีอะไรให้เครื่องยิงอ่าน)
+                */}
+                <div className="text-center">
+                  <Barcode value={order.id} displayValue={false} height={34} width={1.2} />
+                  <p className="mt-1 text-[9px] font-bold leading-tight text-slate-600">🔫 เครื่องยิง</p>
+                  <p className="text-[9px] leading-tight text-slate-500">อยู่กับใบงาน · ตัดใบปะหน้าไปแล้วยังยิงได้</p>
                 </div>
-              )}
+                {orderUrl && (
+                  <div className="text-center">
+                    <QRCodeSVG value={orderUrl} size={82} level="M" marginSize={0} />
+                    <p className="mt-1 text-[9px] font-bold leading-tight text-slate-600">📱 มือถือ</p>
+                    <p className="text-[9px] leading-tight text-slate-500">เปิดหน้าออเดอร์ · เช็คของ</p>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* ตารางงาน — โซนที่ตัดได้ถ้าเกิน A4 (หัว/ท้ายอยู่นอกโซนนี้ ไม่โดนตัด) */}
