@@ -109,6 +109,126 @@ const CHIPS: [string, string, string][] = [
   ["เสร็จสิ้น", "bg-slate-200 text-slate-700 ring-slate-300/70", "ปิดงาน ลูกค้าได้ของแล้ว"],
 ];
 
+/** 3 ทางในการเพิ่มของเข้าออเดอร์ — ต่างกันที่ใครกด และได้ตัวเลือก/ราคาอัตโนมัติไหม */
+const LANES: {
+  tag: string;
+  who: string;
+  emoji: string;
+  title: string;
+  use: string;
+  steps: React.ReactNode[];
+  noteTitle: string;
+  note: React.ReactNode;
+  box: string;
+  tagColor: string;
+  line: string;
+  dot: string;
+  noteBox: string;
+}[] = [
+  {
+    tag: "A",
+    who: "แอดมินกด",
+    emoji: "✍️",
+    title: "＋ เพิ่มรายการเอง",
+    use: "งานสั่งทำที่ไม่มีขายบนหน้าเว็บ — กรอกชื่อ/ราคาเอง",
+    steps: [
+      <>
+        เปิดออเดอร์ (หรือใบเสนอราคา) → กด <Key>＋ เพิ่มรายการเอง</Key>
+      </>,
+      <>
+        เลือกแท็บ <Key>🛠 งานพิเศษ</Key> (ถ้าของมีบนเว็บให้ใช้แท็บ <Key>🏷 สินค้าในเว็บ</Key> แทน)
+      </>,
+      <>
+        พิมพ์ชื่องาน — <B>คลังแม่แบบจะเด้งขึ้นให้เลือก</B> กดแล้วสเปคเติมให้เอง
+      </>,
+      <>
+        ใส่จำนวนกับราคา/ชิ้น · ยังไม่รู้ราคาใส่ <B>0</B> ได้ จะขึ้นป้าย “รอตีราคา”
+      </>,
+      <>
+        แนบภาพลายจากแชท — ลากมาวาง คลิกเลือกไฟล์ หรือ <B>⌘/Ctrl+V</B> ก็ได้
+      </>,
+      <>
+        กด <Key>✅ เพิ่มเข้าออเดอร์</Key> — ยังไม่กด = ยังไม่บันทึกลงฐาน
+      </>,
+    ],
+    noteTitle: "⚠️ ระวัง",
+    note: (
+      <>
+        ทางนี้<B> ไม่มีราคาขั้นบันไดให้</B> ต้องคิดราคาเอง · ถ้าของมีบนเว็บให้ใช้ทาง B จะไม่มีทางคิดราคาพลาด
+      </>
+    ),
+    box: "border-slate-200 bg-slate-50/60",
+    tagColor: "text-slate-500",
+    line: "bg-slate-200",
+    dot: "bg-slate-400",
+    noteBox: "bg-white ring-1 ring-slate-200 text-slate-700",
+  },
+  {
+    tag: "B",
+    who: "แอดมินกด",
+    emoji: "🛍️",
+    title: "🛍️ หยิบจากหน้าร้าน",
+    use: "สินค้าที่ขายบนเว็บอยู่แล้ว — ได้ตัวเลือกและราคาครบอัตโนมัติ",
+    steps: [
+      <>
+        ในออเดอร์/ใบเสนอราคา กด <Key>🛍️ หยิบจากหน้าร้าน</Key> — ระบบเปิดหน้าร้านให้ในแท็บใหม่
+      </>,
+      <>
+        เลือกสินค้าและตัวเลือกเหมือนลูกค้าสั่งเอง → ใส่ตะกร้า (หยิบหลายชิ้นได้)
+      </>,
+      <>
+        กลับมาที่ตะกร้า จะเห็น<B>แถบบอกปลายทาง</B>ว่ากำลังหยิบใส่ออเดอร์/ใบไหน
+      </>,
+      <>
+        กดปุ่มบนแถบนั้นเพื่อโยนเข้าไปทีเดียว — ตะกร้าจะถูกล้างและเด้งกลับหน้าเดิมให้เอง
+      </>,
+    ],
+    noteTitle: "✅ ดีตรงนี้",
+    note: (
+      <>
+        ได้<B>ราคาขั้นบันไดจริง</B> (สั่งเยอะถูกลง) · ตัวเลือกครบไม่ตกหล่น · <B>ไม่คิดค่าส่งซ้ำ</B>
+      </>
+    ),
+    box: "border-teal-200 bg-teal-50/50",
+    tagColor: "text-teal-600",
+    line: "bg-teal-200",
+    dot: "bg-teal-500",
+    noteBox: "bg-white ring-1 ring-teal-200 text-teal-800",
+  },
+  {
+    tag: "C",
+    who: "ลูกค้ากดเอง",
+    emoji: "📱",
+    title: "สั่งเพิ่มในออเดอร์นี้",
+    use: "ลูกค้านึกได้ทีหลังว่าอยากได้เพิ่ม — กดจากหน้าออเดอร์ของตัวเอง",
+    steps: [
+      <>
+        ลูกค้าเปิดลิงก์ออเดอร์ของตัวเอง เลื่อนลงล่างสุดจะเจอ <Key>🛍️ สั่งเพิ่มในออเดอร์นี้</Key>
+      </>,
+      <>เลือกสินค้าใส่ตะกร้าตามปกติ</>,
+      <>
+        ที่ตะกร้าจะมีให้เลือกว่า <B>เพิ่มเข้าออเดอร์เดิม</B> หรือ <B>สั่งเป็นออเดอร์ใหม่</B> ·
+        ติ๊กได้ด้วยว่ารายการไหนเข้าออเดอร์เดิม (ที่ไม่ติ๊กยังค้างในตะกร้า)
+      </>,
+      <>
+        ยืนยัน → ของเข้าออเดอร์เดิมทันที และมี log ว่า “ลูกค้าสั่งเพิ่มในออเดอร์เดิม”
+      </>,
+    ],
+    noteTitle: "📌 กติกาที่ต้องรู้",
+    note: (
+      <>
+        <B>ไม่คิดค่าส่งซ้ำ</B> เพราะส่งกล่องเดียวกัน · เพิ่มได้เฉพาะออเดอร์ที่<B>ยังไม่เข้าผลิต</B> ·
+        พอมียอดค้าง สถานะจะเด้งกลับ <B>รอชำระเงิน</B> ให้ลูกค้าโอนเฉพาะส่วนต่าง
+      </>
+    ),
+    box: "border-sky-200 bg-sky-50/50",
+    tagColor: "text-sky-600",
+    line: "bg-sky-200",
+    dot: "bg-sky-500",
+    noteBox: "bg-white ring-1 ring-sky-200 text-sky-800",
+  },
+];
+
 /** เมนูหลังบ้าน — อันไหนมีไว้ทำอะไร ใช้ตอนไหน */
 const MENUS: { emoji: string; label: string; href: string; what: string; when: string }[] = [
   {
@@ -290,6 +410,66 @@ function GuideInner() {
             </section>
           ))}
         </div>
+
+        {/* ── 3 ทางในการเพิ่มของเข้าออเดอร์ ── */}
+        <section className={`${card} guide-block p-6`}>
+          <h3 className="text-lg font-extrabold tracking-tight text-slate-900">เพิ่มของเข้าออเดอร์ — มี 3 ทาง เลือกให้ถูก</h3>
+          <p className="mt-0.5 text-sm text-slate-500">
+            ทั้ง 3 ทางลงที่ออเดอร์เดียวกัน ต่างกันแค่ “ใครกด” กับ “ได้ตัวเลือก/ราคาอัตโนมัติไหม”
+          </p>
+
+          {/* ตัวช่วยตัดสินใจ 1 บรรทัด */}
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 px-4 py-3 text-sm ring-1 ring-slate-200">
+            <span className="font-bold text-slate-700">ถามตัวเองก่อน:</span>
+            <span className="text-slate-600">ของชิ้นนี้มีขายบนเว็บอยู่แล้วไหม?</span>
+            <span className="rounded-full bg-white px-3 py-1 text-[0.8rem] font-semibold text-teal-700 ring-1 ring-teal-200">
+              มี → ทาง B
+            </span>
+            <span className="rounded-full bg-white px-3 py-1 text-[0.8rem] font-semibold text-slate-600 ring-1 ring-slate-200">
+              ไม่มี (งานสั่งทำ) → ทาง A
+            </span>
+            <span className="rounded-full bg-white px-3 py-1 text-[0.8rem] font-semibold text-sky-700 ring-1 ring-sky-200">
+              ลูกค้าอยากสั่งเองเพิ่ม → ทาง C
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-3">
+            {LANES.map((lane) => (
+              <div key={lane.tag} className={`flex flex-col rounded-2xl border p-4 ${lane.box}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className={`text-[11px] font-bold uppercase tracking-[0.12em] ${lane.tagColor}`}>
+                      ทาง {lane.tag} · {lane.who}
+                    </p>
+                    <p className="mt-0.5 text-base font-extrabold text-slate-900">{lane.title}</p>
+                  </div>
+                  <span className="shrink-0 text-2xl">{lane.emoji}</span>
+                </div>
+                <p className="mt-1 text-[0.85rem] leading-relaxed text-slate-600">{lane.use}</p>
+
+                {/* ขั้นตอน — เส้นเชื่อมลงมาเหมือนสายพาน */}
+                <ol className="relative mt-3 flex flex-1 flex-col gap-2.5 pl-7">
+                  <span className={`absolute bottom-3 left-[0.68rem] top-3 w-px ${lane.line}`} />
+                  {lane.steps.map((step, i) => (
+                    <li key={i} className="relative text-[0.85rem] leading-relaxed text-slate-600">
+                      <span
+                        className={`absolute -left-7 grid h-[1.4rem] w-[1.4rem] place-items-center rounded-full text-[0.7rem] font-bold text-white ${lane.dot}`}
+                      >
+                        {i + 1}
+                      </span>
+                      {step}
+                    </li>
+                  ))}
+                </ol>
+
+                <div className={`mt-3 rounded-lg p-3 text-[0.8rem] leading-relaxed ${lane.noteBox}`}>
+                  <p className="font-bold">{lane.noteTitle}</p>
+                  <p className="mt-0.5 text-slate-600">{lane.note}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
 
         {/* ── ป้ายสถานะ ── */}
         <section className={`${card} guide-block p-6`}>
