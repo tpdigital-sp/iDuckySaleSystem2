@@ -6,7 +6,7 @@ import {
   ShotRush, ShotBulk, ShotCustomerLink, ShotNotify, ShotGfxQueue, ShotApprove, ShotAck,
   ShotPackGate, ShotProductBlocks, ShotPresets, ShotStock, ShotStaff,
   ShotSettingsTabs, ShotRatings, ShotRate, ShotUrlBar, ShotImportPanel, ShotImportPage,
-  ShotBlocked, ShotCountPanel, ShotScanCodes, ShotImg,
+  ShotBlocked, ShotCountPanel, ShotImg,
 } from "./mockups";
 
 /**
@@ -1419,7 +1419,7 @@ export const TOPICS: Topic[] = [
 
         <p className="pt-1 font-bold text-slate-800">โค้ดสำหรับยิง อยู่ตรงไหนบ้าง</p>
         <Shot caption="บล็อกในหน้าออเดอร์ · การ์ด “ใบงาน · การจัดส่ง”">
-          <ShotScanCodes />
+          <ShotImg src="/guide/qr-on-screen.png" alt="บาร์โค้ดและ QR ในหน้าออเดอร์" max="22rem" />
         </Shot>
         <Bullets
           items={[
@@ -1480,18 +1480,25 @@ export const TOPICS: Topic[] = [
           ใช้ยืนของขึ้นมาเทียบกับภาพแบบงานได้เลย ไม่ต้องเดินไปดูที่คอม
         </p>
 
-        <p className="pt-1 font-bold text-slate-800">QR อยู่ 2 จุด</p>
-        <Bullets
-          items={[
-            <>
-              <B>บนใบงานที่ปริ้นออกมา</B> — มุมขวาของกล่อง “ใบงาน / Packing list” (ครึ่งล่างที่เก็บไว้)
-            </>,
-            <>
-              <B>ในหน้าออเดอร์</B> — การ์ด <Key>🖨 ใบงาน · การจัดส่ง</Key> → บล็อก 📷 สแกนจากจอนี้ได้เลย
-              (ใช้ตอนยังไม่ปริ้นใบงาน)
-            </>,
-          ]}
-        />
+        <p className="pt-1 font-bold text-slate-800">QR อยู่ 2 จุด — หน้าตาแบบนี้</p>
+        <div className="grid gap-3 lg:grid-cols-2">
+          <div>
+            <p className="mb-1 text-[0.8rem] font-bold text-slate-700">1️⃣ บนใบงานที่ปริ้นออกมา</p>
+            <Shot caption="กล่อง “ใบงาน / Packing list” — ครึ่งล่างที่ร้านเก็บไว้">
+              <ShotImg src="/guide/qr-on-sheet.png" alt="QR บนใบงานที่ปริ้นออกมา" max="26rem" />
+            </Shot>
+          </div>
+          <div>
+            <p className="mb-1 text-[0.8rem] font-bold text-slate-700">2️⃣ ในหน้าออเดอร์ (ยังไม่ต้องปริ้น)</p>
+            <Shot caption="การ์ด “ใบงาน · การจัดส่ง” → บล็อก 📷 สแกนจากจอนี้ได้เลย">
+              <ShotImg src="/guide/qr-on-screen.png" alt="บาร์โค้ดและ QR ในหน้าออเดอร์" max="20rem" />
+            </Shot>
+          </div>
+        </div>
+        <p className="text-[0.85rem] text-slate-500">
+          บนจอมีทั้ง <B>บาร์โค้ด</B> (ซ้าย — สำหรับเครื่องยิง) และ <B>QR</B> (ขวา — สำหรับมือถือ) อยู่คู่กัน ·
+          บนกระดาษแยกกันคนละครึ่ง
+        </p>
 
         <p className="pt-1 font-bold text-slate-800">สแกนได้ 2 แบบ</p>
         <div className="grid gap-2 sm:grid-cols-2">

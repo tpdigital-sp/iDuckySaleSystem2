@@ -957,25 +957,3 @@ export function ShotCountPanel() {
   );
 }
 
-/** บล็อกโค้ดสแกนในหน้าออเดอร์ */
-export function ShotScanCodes() {
-  return (
-    <MCard className="mx-auto max-w-xs">
-      <p className="text-[0.68rem] font-semibold text-slate-600">📷 สแกนจากจอนี้ได้เลย</p>
-      <div className="mt-2 flex items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex h-8 items-end gap-[1.5px]">
-            {"1101001011010011010110100101101001101011".split("").map((b, i) => (
-              <span key={i} className={`h-full ${b === "1" ? "w-[2px] bg-slate-900" : "w-[1.5px] bg-transparent"}`} />
-            ))}
-          </div>
-          <p className="mt-0.5 text-[0.55rem] leading-tight text-slate-400">ยิงด้วยเครื่องยิงที่ สถานีแพ็ค–ส่ง</p>
-        </div>
-        <div className="shrink-0 text-center">
-          <span className="grid h-14 w-14 place-items-center rounded bg-slate-900 text-[1.6rem] text-white">▨</span>
-          <p className="mt-0.5 text-[0.55rem] leading-tight text-slate-400">📱 เปิดบนมือถือ</p>
-        </div>
-      </div>
-    </MCard>
-  );
-}
