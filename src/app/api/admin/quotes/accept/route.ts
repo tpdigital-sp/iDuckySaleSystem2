@@ -82,7 +82,8 @@ export async function POST(req: Request) {
     for (const r of all ?? []) {
       const q = r.data as Quote;
       if (q.id === id || q.orderId) continue;
-      if (q.status === "ไม่รับ" || q.status === "ลูกค้าตกลง") continue;
+      // ปิดรวมถึงใบที่ลูกค้าเผลอกดตกลงไว้หลายใบ (ยังไม่ได้แปลงเป็นออเดอร์) — กันแอดมินแปลงซ้ำเป็น 2 ออเดอร์
+      if (q.status === "ไม่รับ") continue;
       const same = phoneKey && (q.phone ?? "").replace(/\D/g, "") === phoneKey;
       if (!same) continue;
       const closedQ = withQuoteLog(
