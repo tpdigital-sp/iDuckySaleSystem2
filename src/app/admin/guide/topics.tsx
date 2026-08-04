@@ -6,10 +6,14 @@ import { BULK_ASK_DEFAULT } from "@/lib/products";
  * แยกไฟล์ออกมาเพื่อให้หน้า /admin/guide ทำแค่ค้นหา/กรอง/จัดวาง
  */
 
-export type Role = "แอดมิน" | "กราฟฟิก" | "แพ็คของ";
+export type Role = "แอดมิน" | "กราฟฟิก" | "แพ็คของ" | "คอนเทนต์";
+
+/** หมวดที่หัวข้อนี้อยู่ (ใช้จัดสารบัญด้านซ้าย) */
+export type Group = "money" | "order" | "gfx" | "pack" | "product" | "setup";
 
 export interface Topic {
   id: string;
+  group: Group;
   icon: string;
   title: string;
   /** ใครต้องรู้เรื่องนี้ */
@@ -355,6 +359,7 @@ export const TOPICS: Topic[] = [
   /* ───────── แอดมิน ───────── */
   {
     id: "order-new",
+    group: "money",
     icon: "📥",
     title: "ออเดอร์เข้ามาใหม่ ทำอะไรก่อน",
     roles: ["แอดมิน"],
@@ -386,6 +391,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "deposit",
+    group: "money",
     icon: "➗",
     title: "มัดจำ 50% — ทำอะไรได้ / ไม่ได้",
     roles: ["แอดมิน", "กราฟฟิก", "แพ็คของ"],
@@ -439,6 +445,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "claim",
+    group: "order",
     icon: "♻️",
     title: "ระบบเคลม ใช้งานยังไง",
     roles: ["แอดมิน"],
@@ -537,6 +544,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "quote",
+    group: "order",
     icon: "📄",
     title: "ใบเสนอราคา — เสนอหลายใบไม่ให้กราฟฟิกงง",
     roles: ["แอดมิน"],
@@ -583,6 +591,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "add-items",
+    group: "order",
     icon: "🛒",
     title: "เพิ่มของเข้าออเดอร์ — 3 ทาง",
     roles: ["แอดมิน"],
@@ -686,6 +695,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "edit-delete",
+    group: "order",
     icon: "🗑",
     title: "แก้ไข / ลบรายการในออเดอร์",
     roles: ["แอดมิน"],
@@ -713,6 +723,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "shipping-auto",
+    group: "setup",
     icon: "🚚",
     title: "ค่าส่งเลือกให้อัตโนมัติ (ขายส่งได้กล่องใหญ่เอง)",
     roles: ["แอดมิน"],
@@ -749,6 +760,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "discount",
+    group: "money",
     icon: "🎟️",
     title: "ส่วนลด & คูปอง",
     roles: ["แอดมิน"],
@@ -773,6 +785,7 @@ export const TOPICS: Topic[] = [
   /* ───────── งานประจำวัน (เพิ่มเติม) ───────── */
   {
     id: "rush",
+    group: "order",
     icon: "🔥",
     title: "งานเร่ง & วันที่ต้องใช้งาน",
     roles: ["แอดมิน", "กราฟฟิก", "แพ็คของ"],
@@ -800,6 +813,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "notes",
+    group: "order",
     icon: "📝",
     title: "หมายเหตุมี 3 ที่ ใส่ผิดที่คนไม่เห็น",
     roles: ["แอดมิน", "กราฟฟิก", "แพ็คของ"],
@@ -834,6 +848,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "print",
+    group: "order",
     icon: "🖨",
     title: "พิมพ์ใบงาน · ใบปะหน้า · ใบเสร็จ",
     roles: ["แอดมิน", "แพ็คของ"],
@@ -867,6 +882,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "customer-link",
+    group: "order",
     icon: "🔗",
     title: "ลิงก์ลูกค้า — เขาทำอะไรได้เองบ้าง",
     roles: ["แอดมิน"],
@@ -902,6 +918,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "notify",
+    group: "order",
     icon: "🔔",
     title: "ระบบส่งไลน์หาลูกค้าเองตอนไหนบ้าง",
     roles: ["แอดมิน", "กราฟฟิก"],
@@ -933,6 +950,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "cancel",
+    group: "money",
     icon: "❌",
     title: "ยกเลิกออเดอร์",
     roles: ["แอดมิน"],
@@ -956,6 +974,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "staff-order",
+    group: "order",
     icon: "🧑‍💼",
     title: "สั่งแทนลูกค้าจากหน้าร้าน",
     roles: ["แอดมิน"],
@@ -982,6 +1001,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "bulk-stock",
+    group: "order",
     icon: "📦",
     title: "ป้าย “รอเช็คสต๊อก” (ลูกค้าสั่งเยอะ)",
     roles: ["แอดมิน"],
@@ -1004,10 +1024,90 @@ export const TOPICS: Topic[] = [
     ),
   },
   {
+    id: "product-new",
+    group: "product",
+    icon: "➕",
+    title: "เพิ่มสินค้าใหม่ ทีละขั้น",
+    roles: ["คอนเทนต์", "แอดมิน"],
+    keywords: "เพิ่มสินค้า สินค้าใหม่ ลงสินค้า สร้างสินค้า ขายของใหม่ หน้าร้าน",
+    body: (
+      <>
+        <p>
+          ทุกอย่างทำที่ <A href="/admin/products">หน้าสินค้า</A> → ปุ่ม <Key>＋ เพิ่มสินค้า</Key> ·
+          กรอกไปเรื่อย ๆ ตามบล็อก ไม่ต้องกรอกครบทีเดียวก็บันทึกได้
+        </p>
+        <Steps
+          items={[
+            <>
+              <B>ข้อมูลหลัก</B> — ชื่อสินค้า · หมวดหมู่ · คำอธิบายสั้น · รูปหน้าปก
+            </>,
+            <>
+              <B>ราคา</B> — ราคาเดียว หรือ <A href="#ref-price">ราคาขั้นบันได</A> (สั่งเยอะถูกลง)
+            </>,
+            <>
+              <B>ตัวเลือก</B> — ดึงจาก <A href="#ref-preset">คลังตัวเลือก</A> ก่อนเสมอ เหลือที่ไม่มีค่อยพิมพ์เอง ·
+              ตั้งกฎให้ตัวเลือกขึ้นต่อกันได้ (เลือกกระดาษแบบนี้ → ล็อกเคลือบบางแบบ)
+            </>,
+            <>
+              <B>รูปสินค้า</B> — ใส่ได้หลายรูป ลากสลับลำดับได้ · รูปแรกคือรูปที่โชว์บนการ์ด
+            </>,
+            <>
+              <B>ข้อควรทราบ</B> — เงื่อนไขงานของสินค้านี้ เช่น ค่าคลาดเคลื่อนงานสกรีน ·{" "}
+              <Mark>เขียนไว้ให้ดี ลดเคลมทีหลังได้เยอะ</Mark>
+            </>,
+            <>
+              <B>SEO</B> — ระบบร่างให้อัตโนมัติจากชื่อ/คำอธิบาย แก้ทับได้ถ้าอยากเจาะคำค้นเอง
+            </>,
+            <>
+              ตรวจครบแล้วติ๊ก <Key>✓ ตรวจแล้ว</Key> — ทีมงานจะได้ไม่ต้องมาไล่เช็คซ้ำ
+            </>,
+          ]}
+        />
+        <Tip>
+          อยากได้ของสั่งทำที่ไม่มีขนาดมาตรฐาน → เปิด <B>กำหนดขนาดเอง</B> ให้ลูกค้าใส่กว้าง×ยาวเอง
+          ระบบคิดราคาตามพื้นที่ให้อัตโนมัติ
+        </Tip>
+        <Warn>
+          ก่อนกดเผยแพร่ ลองเปิดหน้าสินค้าฝั่งลูกค้าดูจริงหนึ่งรอบ — กดเลือกตัวเลือกให้ครบทุกแบบ ดูว่าราคาขึ้นถูกไหม
+        </Warn>
+      </>
+    ),
+  },
+  {
+    id: "product-import",
+    group: "product",
+    icon: "📥",
+    title: "นำเข้าสินค้าจากลิงก์ (ทีละหลายตัว)",
+    roles: ["คอนเทนต์", "แอดมิน"],
+    keywords: "นำเข้า import ดึงสินค้า wix ย้ายเว็บ ตารางราคา",
+    body: (
+      <>
+        <p>
+          มีสินค้าจากเว็บเดิมเยอะ ไม่ต้องพิมพ์ใหม่ทีละตัว — <A href="/admin/import">นำเข้าสินค้า</A>{" "}
+          วางลิงก์หน้ารายการราคา ระบบดึงชื่อ · ตารางราคา · รูป มาให้
+        </p>
+        <Bullets
+          items={[
+            <>
+              ราคาขั้นบันไดในตาราง ระบบ<B>แปลงให้อัตโนมัติ</B>
+            </>,
+            <>
+              <Mark>ต้องตรวจ/แก้ก่อนกดบันทึกเสมอ</Mark> — ชื่อที่ดึงมามักยาวเกินและตัวเลือกอาจไม่ครบ
+            </>,
+            <>
+              การ<B>นำเข้าทับสินค้าเดิม</B> (ทับราคา/ตัวเลือกที่มีอยู่) เป็นสิทธิ์แยกอีกอัน — ไม่ใช่ทุกคนกดได้
+            </>,
+          ]}
+        />
+      </>
+    ),
+  },
+  {
     id: "product-edit",
+    group: "product",
     icon: "🏷️",
-    title: "เพิ่ม / แก้สินค้าบนเว็บ",
-    roles: ["แอดมิน"],
+    title: "แก้สินค้าที่มีอยู่แล้ว",
+    roles: ["คอนเทนต์", "แอดมิน"],
     keywords: "สินค้า เพิ่มสินค้า แก้ราคา ตัวเลือก seo รูป ตรวจแล้ว กำหนดขนาดเอง นำเข้า import",
     body: (
       <>
@@ -1041,6 +1141,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "roles",
+    group: "setup",
     icon: "👥",
     title: "บทบาท & สิทธิ์พนักงาน",
     roles: ["แอดมิน"],
@@ -1074,6 +1175,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "settings-all",
+    group: "setup",
     icon: "⚙️",
     title: "ตั้งค่าระบบ — มีอะไรบ้าง",
     roles: ["แอดมิน"],
@@ -1110,6 +1212,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "ratings",
+    group: "setup",
     icon: "💬",
     title: "ความพึงพอใจของลูกค้า",
     roles: ["แอดมิน"],
@@ -1132,6 +1235,7 @@ export const TOPICS: Topic[] = [
   /* ───────── กราฟฟิก ───────── */
   {
     id: "gfx-queue",
+    group: "gfx",
     icon: "🎯",
     title: "งานของฉันอยู่ตรงไหน",
     roles: ["กราฟฟิก"],
@@ -1163,6 +1267,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "gfx-proof",
+    group: "gfx",
     icon: "🖼",
     title: "ใส่แบบให้ลูกค้าตรวจ",
     roles: ["กราฟฟิก"],
@@ -1216,6 +1321,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "gfx-approve",
+    group: "gfx",
     icon: "✅",
     title: "ลูกค้าอนุมัติ / ขอแก้ไข",
     roles: ["กราฟฟิก", "แอดมิน"],
@@ -1238,6 +1344,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "gfx-ack",
+    group: "gfx",
     icon: "☑️",
     title: "ยืนยันว่าอ่านรายละเอียดแล้ว",
     roles: ["กราฟฟิก", "แพ็คของ"],
@@ -1260,6 +1367,7 @@ export const TOPICS: Topic[] = [
   /* ───────── แพ็คของ ───────── */
   {
     id: "pack-start",
+    group: "pack",
     icon: "📮",
     title: "เริ่มแพ็ค — สแกนออเดอร์",
     roles: ["แพ็คของ"],
@@ -1287,6 +1395,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "pack-count",
+    group: "pack",
     icon: "🔢",
     title: "ตรวจนับของทีละรูป",
     roles: ["แพ็คของ"],
@@ -1314,6 +1423,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "pack-ship",
+    group: "pack",
     icon: "🏷",
     title: "ยิงเลขพัสดุ — ต้องผ่าน 6 ข้อนี้",
     roles: ["แพ็คของ", "แอดมิน"],
@@ -1344,9 +1454,10 @@ export const TOPICS: Topic[] = [
   /* ───────── อ้างอิง ───────── */
   {
     id: "ref-preset",
+    group: "product",
     icon: "🎛️",
     title: "คลังตัวเลือก มีไว้ทำไม",
-    roles: ["แอดมิน"],
+    roles: ["คอนเทนต์", "แอดมิน"],
     keywords: "คลังตัวเลือก preset ชนิดกระดาษ เคลือบ ลิงก์ ตัดลิงก์ ปรับเฉพาะตัว",
     body: (
       <>
@@ -1382,9 +1493,10 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "ref-price",
+    group: "product",
     icon: "💰",
     title: "ราคาขั้นบันได (สั่งเยอะถูกลง)",
-    roles: ["แอดมิน"],
+    roles: ["คอนเทนต์", "แอดมิน"],
     keywords: "ราคา ขั้นบันได rate card สั่งเยอะ ถูกลง ตั้งราคา",
     body: (
       <>
@@ -1424,6 +1536,7 @@ export const TOPICS: Topic[] = [
   },
   {
     id: "ref-stock",
+    group: "setup",
     icon: "📦",
     title: "คลังสต๊อก — ทำไมแก้ยอดตรง ๆ ไม่ได้",
     roles: ["แอดมิน"],
