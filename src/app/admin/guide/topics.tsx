@@ -1,5 +1,12 @@
 import Link from "next/link";
 import { BULK_ASK_DEFAULT } from "@/lib/products";
+import {
+  Shot, ShotRedoButton, ShotRedoModal, ShotClaimBanner, ShotDepositBox, ShotAddButtons, ShotShipping, ShotProofPanels,
+  ShotSlip, ShotDiscount, ShotCancel, ShotQuoteList, ShotQuoteAccept, ShotStaffOrder, ShotDeleteItem, ShotNotes,
+  ShotRush, ShotBulk, ShotPrint, ShotCustomerLink, ShotNotify, ShotGfxQueue, ShotApprove, ShotAck,
+  ShotScan, ShotCount, ShotPackGate, ShotProductBlocks, ShotImport, ShotPresets, ShotStock, ShotStaff,
+  ShotSettingsTabs, ShotRatings, ShotRate,
+} from "./mockups";
 
 /**
  * เนื้อหาคู่มือทั้งหมด แยกเป็น "หัวข้อ" ก้อนละเรื่อง
@@ -114,245 +121,6 @@ const A = ({ href, children }: { href: string; children: React.ReactNode }) => (
   </Link>
 );
 
-/* ── ตัวอย่างหน้าจอ ──
-   จำลองหน้าตาจริงด้วยโค้ด (ไม่ใช่ภาพถ่ายหน้าจอ) เพราะ
-   1) ภาพถ่ายจะมีชื่อ/ออเดอร์ลูกค้าจริงติดไปด้วย   2) พอหน้าจอเปลี่ยน ภาพจะเก่าทันที
-   กดไม่ได้ทุกอัน — เป็นภาพประกอบเฉย ๆ                                            */
-
-export function Shot({ caption, children }: { caption: string; children: React.ReactNode }) {
-  return (
-    <figure className="overflow-hidden rounded-xl border border-dashed border-slate-300 bg-slate-50">
-      <figcaption className="border-b border-dashed border-slate-200 bg-white/60 px-3 py-1.5 text-[0.7rem] font-bold uppercase tracking-[0.1em] text-slate-400">
-        ตัวอย่างหน้าจอ · {caption}
-      </figcaption>
-      <div className="pointer-events-none select-none p-3" aria-hidden="true">
-        {children}
-      </div>
-    </figure>
-  );
-}
-
-/** ปุ่ม ♻️ ทำใหม่ / เคลม อย่างที่เห็นบนแถบหัวออเดอร์ */
-export function ShotRedoButton() {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm">
-        🧾 ใบงาน + ใบปะหน้า
-      </span>
-      <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm">💳 ใบเสร็จ</span>
-      <span className="rounded-lg border-2 border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm">
-        ♻️ ทำใหม่ / เคลม
-      </span>
-    </div>
-  );
-}
-
-/** หน้าต่าง "ทำงานใหม่จากออเดอร์" — ตัวเลือกโหมด + ติ๊กรายการ */
-export function ShotRedoModal({ mode = "claim" }: { mode?: "claim" | "reorder" }) {
-  const claim = mode === "claim";
-  const items: [string, number, number][] = [
-    ["สแตนดี้ อะคริลิค 15 ซม.", 10, 200],
-    ["เคสใสพรีเมี่ยม", 5, 350],
-    ["กรอบรูปแคนวาส", 1, 550],
-  ];
-  return (
-    <div className="mx-auto max-w-md overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-200">
-      <div className="border-b border-slate-100 px-4 py-3">
-        <p className="text-sm font-extrabold text-slate-900">♻️ ทำงานใหม่จากออเดอร์ OD-260101-1234</p>
-        <p className="mt-0.5 text-[0.72rem] text-slate-500">ระบบจะสร้างออเดอร์ใหม่ ใช้ชื่อ/ที่อยู่/สเปคงาน/ลายของลูกค้าชุดเดิม</p>
-      </div>
-
-      <div className="grid gap-2 p-4 sm:grid-cols-2">
-        <div className={`rounded-xl border-2 p-2.5 ${claim ? "border-emerald-400 bg-emerald-50/60" : "border-slate-200 bg-white"}`}>
-          <p className="text-[0.78rem] font-extrabold text-slate-900">♻️ งานเคลม</p>
-          <p className="mt-0.5 text-[0.68rem] leading-snug text-slate-500">งานเสีย/พิมพ์ผิด/ส่งผิด — ทำส่งใหม่ให้ฟรี</p>
-          <p className="mt-0.5 text-[0.68rem] font-bold text-rose-600">ราคา ฿0 · ค่าส่ง ฿0 · เริ่มงานได้เลย</p>
-        </div>
-        <div className={`rounded-xl border-2 p-2.5 ${claim ? "border-slate-200 bg-white" : "border-sky-400 bg-sky-50/60"}`}>
-          <p className="text-[0.78rem] font-extrabold text-slate-900">🔁 สั่งซ้ำ (ออเดอร์ใหม่)</p>
-          <p className="mt-0.5 text-[0.68rem] leading-snug text-slate-500">ลูกค้าอยากได้อีก — คิดเงินตามปกติ</p>
-          <p className="mt-0.5 text-[0.68rem] font-bold text-sky-700">ราคาเดิม · เริ่มที่ “รอชำระเงิน”</p>
-        </div>
-      </div>
-
-      {claim && (
-        <div className="px-4 pb-2">
-          <p className="text-[0.72rem] font-bold text-slate-700">
-            เหตุผลที่ต้องเคลม <span className="text-rose-500">*</span>
-          </p>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {["งานพิมพ์เสีย/สีเพี้ยน", "ทำผิดสเปค", "ส่งผิดรายการ", "ชำรุดจากขนส่ง", "ของหาย/ไม่ครบ"].map((r, i) => (
-              <span
-                key={r}
-                className={`rounded-full px-2.5 py-1 text-[0.68rem] font-semibold ring-1 ${
-                  i === 1 ? "bg-emerald-500 text-white ring-emerald-500" : "bg-white text-slate-500 ring-slate-200"
-                }`}
-              >
-                {r}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="px-4 pb-3">
-        <p className="mb-1.5 text-[0.72rem] font-bold text-slate-700">ทำใหม่รายการไหน (ค่าเริ่มต้น = ทั้งหมด)</p>
-        <div className="space-y-1">
-          {items.map(([name, qty, price], i) => (
-            <div key={name} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5">
-              <span className="flex items-center gap-2 text-[0.75rem] text-slate-700">
-                <span
-                  className={`grid h-4 w-4 shrink-0 place-items-center rounded text-[0.6rem] font-bold text-white ${
-                    i === 2 ? "bg-white ring-1 ring-slate-300" : "bg-teal-500"
-                  }`}
-                >
-                  {i === 2 ? "" : "✓"}
-                </span>
-                {i + 1}. {name}
-              </span>
-              <span className="shrink-0 text-[0.7rem] tabular-nums text-slate-400">
-                ×{qty} · ฿{claim ? 0 : price}
-              </span>
-            </div>
-          ))}
-        </div>
-        <p className="mt-2 text-[0.66rem] leading-snug text-slate-400">
-          แบบงานเก่าไม่ถูกคัดลอกไป (ต้องทำ/ตรวจใหม่อยู่ดี) แต่ลายที่ลูกค้าแนบมาจะติดไปให้
-        </p>
-      </div>
-
-      <div className="flex gap-2 border-t border-slate-100 p-3">
-        <span className="flex-1 rounded-full border border-slate-200 py-2 text-center text-xs font-bold text-slate-500">ยกเลิก</span>
-        <span
-          className={`flex-1 rounded-full py-2 text-center text-xs font-bold text-white ${claim ? "bg-emerald-600" : "bg-sky-600"}`}
-        >
-          {claim ? "สร้างงานเคลม (ฟรี)" : "สร้างออเดอร์สั่งซ้ำ"}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-/** แบนเนอร์บนหัวออเดอร์เคลม */
-export function ShotClaimBanner() {
-  return (
-    <div className="rounded-xl bg-emerald-50 p-3 ring-1 ring-emerald-200">
-      <p className="text-sm font-extrabold text-emerald-800">♻️ งานเคลม — ไม่คิดเงินกับลูกค้า</p>
-      <p className="mt-0.5 text-[0.75rem] text-emerald-700">
-        จากออเดอร์ <span className="font-bold underline">OD-260101-1234</span> · เหตุผล: ทำผิดสเปค
-      </p>
-    </div>
-  );
-}
-
-/** กล่องมัดจำ 50% ในคอลัมน์ขวาของหน้าออเดอร์ */
-export function ShotDepositBox() {
-  return (
-    <div className="mx-auto max-w-[17rem] space-y-1.5 rounded-xl bg-violet-50/60 p-2.5 ring-1 ring-violet-100">
-      <div className="flex items-center justify-between text-xs font-semibold">
-        <span className="text-violet-700">➗ มัดจำ 50% · รับแล้ว ✓</span>
-        <span className="text-emerald-600">฿2,500</span>
-      </div>
-      <div className="flex items-center justify-between text-xs font-semibold">
-        <span className="text-violet-700">ยอดคงเหลือ · เก็บก่อนส่ง</span>
-        <span className="text-rose-600">฿2,500</span>
-      </div>
-      <div className="w-full rounded-lg bg-emerald-600 py-1.5 text-center text-[11px] font-bold text-white">
-        ✔️ ยืนยันรับยอดคงเหลือครบ (ตรวจเอง)
-      </div>
-      <p className="text-[10px] leading-snug text-violet-500">ยังพิมพ์ใบงาน/ใบเสร็จและยิงเลขพัสดุไม่ได้ จนกว่าจะเก็บครบ 100%</p>
-    </div>
-  );
-}
-
-/** ปุ่มคู่สำหรับเพิ่มรายการ */
-export function ShotAddButtons() {
-  return (
-    <div className="grid gap-2 sm:grid-cols-2">
-      <span className="rounded-xl border-2 border-dashed border-slate-200 px-4 py-2.5 text-center text-sm font-semibold text-slate-500">
-        ＋ เพิ่มรายการเอง (กรอกชื่อ/ราคาเอง)
-      </span>
-      <span className="rounded-xl border-2 border-dashed border-teal-300 bg-teal-50/40 px-4 py-2.5 text-center text-sm font-bold text-teal-700">
-        🛍️ หยิบจากหน้าร้าน (ได้ตัวเลือกครบ)
-      </span>
-    </div>
-  );
-}
-
-/** วิธีจัดส่งในตะกร้าตอนระบบเลือกกล่องใหญ่ให้เอง */
-export function ShotShipping() {
-  return (
-    <div className="mx-auto max-w-sm space-y-2">
-      <p className="rounded-xl bg-sky-50 px-3 py-2 text-[0.72rem] leading-relaxed text-sky-800 ring-1 ring-sky-200">
-        🚚 ระบบเลือกกล่องที่พอดีกับออเดอร์นี้ให้แล้ว — สั่ง 60 ชิ้น (ตั้งแต่ 50 ชิ้นขึ้นไป)
-      </p>
-      {[
-        ["EMS (50)", "฿50", "locked"],
-        ["EMS (100)", "฿100", "picked"],
-        ["มารับเอง", "฿0", "idle"],
-      ].map(([name, price, state]) => (
-        <div
-          key={name}
-          className={`flex items-center justify-between rounded-2xl px-4 py-2.5 text-sm ring-1 ${
-            state === "locked"
-              ? "bg-stone-50 text-stone-300 ring-stone-100"
-              : state === "picked"
-                ? "bg-amber-50 font-bold ring-ducky"
-                : "ring-amber-100"
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            <span
-              className={`grid h-3.5 w-3.5 place-items-center rounded-full ring-1 ${
-                state === "picked" ? "ring-amber-500" : "ring-stone-300"
-              }`}
-            >
-              {state === "picked" && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
-            </span>
-            {name}
-            {state === "locked" && <span className="text-[11px] font-semibold text-stone-400">· ของใส่ไม่พอ</span>}
-          </span>
-          <span>{price}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/** 2 ฝั่งรูปในรายการงานแบบ */
-export function ShotProofPanels() {
-  return (
-    <div className="grid gap-2 sm:grid-cols-2">
-      <div className="rounded-xl bg-white p-2.5 ring-1 ring-slate-200">
-        <p className="text-[0.7rem] font-bold text-slate-700">🎨 ลายจากลูกค้า (1)</p>
-        <p className="text-[0.62rem] text-slate-400">ทีมงานเห็นเท่านั้น</p>
-        <div className="mt-1.5 flex gap-1.5">
-          <span className="grid h-12 w-12 place-items-center rounded-lg bg-slate-100 text-lg">🖼️</span>
-          <span className="grid h-12 flex-1 place-items-center rounded-lg border-2 border-dashed border-slate-200 text-[0.62rem] text-slate-400">
-            ＋ แนบลาย
-          </span>
-        </div>
-        <p className="mt-1.5 rounded bg-slate-50 py-1 text-center text-[0.62rem] font-semibold text-slate-500">
-          ใช้ลายนี้เป็นแบบ → (1 รูป)
-        </p>
-      </div>
-      <div className="rounded-xl bg-white p-2.5 ring-1 ring-violet-200">
-        <p className="text-[0.7rem] font-bold text-violet-800">🖼 แบบที่เราส่งให้ตรวจ (1)</p>
-        <p className="text-[0.62rem] text-violet-400">ลูกค้าเห็นชุดนี้ · ลากไฟล์มาวางได้</p>
-        <div className="mt-1.5 flex gap-1.5">
-          <span className="relative grid h-12 w-12 place-items-center rounded-lg bg-violet-50 text-lg ring-1 ring-violet-200">
-            🖼️
-            <span className="absolute -bottom-1 rounded-full bg-emerald-500 px-1 text-[0.5rem] font-bold text-white">แก้ไขแล้ว</span>
-          </span>
-          <span className="grid h-12 flex-1 place-items-center rounded-lg border-2 border-dashed border-violet-200 text-[0.62rem] text-violet-400">
-            ลากไฟล์มาวางทับได้เลย
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ══════════════════════════════════════════════════════ */
 
 export const TOPICS: Topic[] = [
@@ -366,6 +134,9 @@ export const TOPICS: Topic[] = [
     keywords: "สลิป slipok ตรวจเงิน ชำระเงิน โอน รอตรวจสอบ ยืนยันเงินเข้า",
     body: (
       <>
+        <Shot caption="สลิปที่ลูกค้าแนบ + ปุ่มยืนยัน">
+          <ShotSlip />
+        </Shot>
         <Steps
           items={[
             <>
@@ -551,6 +322,9 @@ export const TOPICS: Topic[] = [
     keywords: "ใบเสนอราคา quote เสนอราคา ตีราคา ลูกค้าตกลง ยืนราคา หมดอายุ",
     body: (
       <>
+        <Shot caption="หน้ารายการใบเสนอราคา">
+          <ShotQuoteList />
+        </Shot>
         <p>
           ใบเสนอราคา<B>ไม่เข้าคิวกราฟฟิก</B> จนกว่าลูกค้าจะตกลง — เสนอกี่ใบก็ได้โดยไม่ปนกับงานจริง (
           <A href="/admin/quotes">เปิดหน้าใบเสนอราคา</A>)
@@ -702,6 +476,9 @@ export const TOPICS: Topic[] = [
     keywords: "ลบรายการ แก้รายละเอียด log ประวัติ เหตุผล ส่วนลด",
     body: (
       <>
+        <Shot caption="ลบรายการ — ต้องใส่เหตุผล">
+          <ShotDeleteItem />
+        </Shot>
         <Bullets
           items={[
             <>
@@ -766,18 +543,23 @@ export const TOPICS: Topic[] = [
     roles: ["แอดมิน"],
     keywords: "คูปอง ส่วนลด โค้ด สมาชิก ระดับ tier ชดเชย",
     body: (
-      <Bullets
-        items={[
-          <>
-            ส่วนลดมี 2 ชั้น — <B>ระดับสมาชิก</B> (อัตโนมัติตามยอดสะสม) และ <B>คูปอง</B> (โค้ด/ลิงก์ที่แจก)
-          </>,
-          <>
-            คูปอง<B>ใช้ได้ครั้งเดียวต่อใบ</B> ระบบตัดฝั่งเซิร์ฟเวอร์ กันใช้ซ้ำ — สร้างที่{" "}
-            <A href="/admin/coupons">หน้าคูปอง</A>
-          </>,
-          <>ลูกค้าไม่พอใจอยากชดเชย → แจกคูปองดีกว่าลดราคาในบิล เพราะตามสถิติได้ และไม่ทำให้ยอดบิลเพี้ยน</>,
-        ]}
-      />
+      <>
+        <Shot caption="ส่วนลดรายรายการ และคูปอง">
+          <ShotDiscount />
+        </Shot>
+        <Bullets
+          items={[
+            <>
+              ส่วนลดมี 2 ชั้น — <B>ระดับสมาชิก</B> (อัตโนมัติตามยอดสะสม) และ <B>คูปอง</B> (โค้ด/ลิงก์ที่แจก)
+            </>,
+            <>
+              คูปอง<B>ใช้ได้ครั้งเดียวต่อใบ</B> ระบบตัดฝั่งเซิร์ฟเวอร์ กันใช้ซ้ำ — สร้างที่{" "}
+              <A href="/admin/coupons">หน้าคูปอง</A>
+            </>,
+            <>ลูกค้าไม่พอใจอยากชดเชย → แจกคูปองดีกว่าลดราคาในบิล เพราะตามสถิติได้ และไม่ทำให้ยอดบิลเพี้ยน</>,
+          ]}
+        />
+      </>
     ),
   },
 
@@ -792,6 +574,9 @@ export const TOPICS: Topic[] = [
     keywords: "งานเร่ง ด่วน rush วันใช้งาน กำหนดส่ง deadline วันที่ต้องใช้ คิว",
     body: (
       <>
+        <Shot caption="ป้ายงานเร่ง + นับถอยหลัง">
+          <ShotRush />
+        </Shot>
         <Bullets
           items={[
             <>
@@ -820,6 +605,9 @@ export const TOPICS: Topic[] = [
     keywords: "หมายเหตุ note ใบงาน ท้ายบิล ลูกค้าเขียน adminNote billNote",
     body: (
       <>
+        <Shot caption="หมายเหตุทั้ง 3 ที่">
+          <ShotNotes />
+        </Shot>
         <div className="grid gap-2">
           <div className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
             <p className="text-[0.8rem] font-bold text-slate-700">💬 หมายเหตุลูกค้า</p>
@@ -855,6 +643,9 @@ export const TOPICS: Topic[] = [
     keywords: "พิมพ์ ปริ้น ใบงาน ใบปะหน้า ใบเสร็จ เอกสาร a4 qr",
     body: (
       <>
+        <Shot caption="หน้าจอเลือกเอกสารก่อนพิมพ์">
+          <ShotPrint />
+        </Shot>
         <Steps
           items={[
             <>
@@ -889,6 +680,9 @@ export const TOPICS: Topic[] = [
     keywords: "ลิงก์ ลูกค้า เช็คออเดอร์ key ติดตาม อัปสลิป ใบเสร็จ สมัครสมาชิก line login",
     body: (
       <>
+        <Shot caption="กล่องลิงก์ในหน้าออเดอร์">
+          <ShotCustomerLink />
+        </Shot>
         <p>
           ทุกออเดอร์มีลิงก์เฉพาะตัวพร้อม<B>คีย์ลับ</B> — ส่งให้ลูกค้าทางไลน์ได้เลย ใครไม่มีลิงก์เปิดไม่ได้
           (กดคัดลอกจากกล่อง <Key>🔗 ลิงก์สำหรับลูกค้า</Key> ในหน้าออเดอร์)
@@ -925,6 +719,9 @@ export const TOPICS: Topic[] = [
     keywords: "แจ้งเตือน line notify ไลน์ ส่งข้อความ อัตโนมัติ",
     body: (
       <>
+        <Shot caption="ข้อความที่ลูกค้าได้รับ">
+          <ShotNotify />
+        </Shot>
         <p>ลูกค้าที่ล็อกอินด้วย LINE จะได้ข้อความอัตโนมัติ (คนที่ไม่ได้ผูกไลน์จะไม่ได้รับ ต้องทักเอง)</p>
         <Bullets
           items={[
@@ -956,20 +753,25 @@ export const TOPICS: Topic[] = [
     roles: ["แอดมิน"],
     keywords: "ยกเลิก cancel คืนเงิน คืนสต๊อก ลบออเดอร์",
     body: (
-      <Bullets
-        items={[
-          <>
-            เปลี่ยนสถานะเป็น <B>ยกเลิก</B> — ทำได้เฉพาะคนที่มีสิทธิ์ “ยกเลิกออเดอร์”
-          </>,
-          <>
-            ถ้าเคยตัดสต๊อกไปแล้ว (จากตอนกดชำระแล้ว) ระบบ<B>คืนวัสดุเข้าคลังให้อัตโนมัติ</B>
-          </>,
-          <>
-            ออเดอร์ที่ยกเลิกยัง<B>อยู่ในระบบ</B> ไม่ได้ถูกลบ — ดูย้อนหลังและดูประวัติได้เสมอ
-          </>,
-          <>เรื่องคืนเงินให้ลูกค้าเป็นงานนอกระบบ — โอนคืนแล้วจดไว้ในประวัติออเดอร์ด้วย</>,
-        ]}
-      />
+      <>
+        <Shot caption="เมนูเปลี่ยนสถานะ">
+          <ShotCancel />
+        </Shot>
+        <Bullets
+          items={[
+            <>
+              เปลี่ยนสถานะเป็น <B>ยกเลิก</B> — ทำได้เฉพาะคนที่มีสิทธิ์ “ยกเลิกออเดอร์”
+            </>,
+            <>
+              ถ้าเคยตัดสต๊อกไปแล้ว (จากตอนกดชำระแล้ว) ระบบ<B>คืนวัสดุเข้าคลังให้อัตโนมัติ</B>
+            </>,
+            <>
+              ออเดอร์ที่ยกเลิกยัง<B>อยู่ในระบบ</B> ไม่ได้ถูกลบ — ดูย้อนหลังและดูประวัติได้เสมอ
+            </>,
+            <>เรื่องคืนเงินให้ลูกค้าเป็นงานนอกระบบ — โอนคืนแล้วจดไว้ในประวัติออเดอร์ด้วย</>,
+          ]}
+        />
+      </>
     ),
   },
   {
@@ -981,6 +783,9 @@ export const TOPICS: Topic[] = [
     keywords: "สั่งแทนลูกค้า staff order หน้าร้าน ตะกร้า แทนลูกค้า",
     body: (
       <>
+        <Shot caption="ติ๊กในหน้าชำระเงิน">
+          <ShotStaffOrder />
+        </Shot>
         <p>
           ลูกค้าสั่งเองไม่เป็น/ทักมาทางไลน์ — แอดมินหยิบของให้ได้จากหน้าร้านจริง แล้วติ๊ก{" "}
           <Key>🧑‍💼 สั่งแทนลูกค้า</Key> ตอนชำระเงิน (เห็นเฉพาะคนที่ล็อกอินหลังบ้าน)
@@ -1008,6 +813,9 @@ export const TOPICS: Topic[] = [
     keywords: "รอเช็คสต๊อก สั่งเยอะ จำนวนมาก ขายส่ง bulk ยืนยันจำนวน",
     body: (
       <>
+        <Shot caption="ป้ายที่ขึ้นในออเดอร์">
+          <ShotBulk />
+        </Shot>
         <p>
           ลูกค้าสั่งเกินจำนวนที่ตั้งไว้ (ค่ากลาง <B>{BULK_ASK_DEFAULT} ชิ้น</B> ตั้งต่อสินค้าได้) ระบบ<B>ไม่บล็อกการสั่ง</B> แต่
           ติดธง <B>📦 รอเช็คสต๊อก</B> ให้แอดมินเห็น
@@ -1032,6 +840,9 @@ export const TOPICS: Topic[] = [
     keywords: "เพิ่มสินค้า สินค้าใหม่ ลงสินค้า สร้างสินค้า ขายของใหม่ หน้าร้าน",
     body: (
       <>
+        <Shot caption="บล็อกในหน้าแก้ไขสินค้า">
+          <ShotProductBlocks />
+        </Shot>
         <p>
           ทุกอย่างทำที่ <A href="/admin/products">หน้าสินค้า</A> → ปุ่ม <Key>＋ เพิ่มสินค้า</Key> ·
           กรอกไปเรื่อย ๆ ตามบล็อก ไม่ต้องกรอกครบทีเดียวก็บันทึกได้
@@ -1082,6 +893,9 @@ export const TOPICS: Topic[] = [
     keywords: "นำเข้า import ดึงสินค้า wix ย้ายเว็บ ตารางราคา",
     body: (
       <>
+        <Shot caption="หน้านำเข้าสินค้า">
+          <ShotImport />
+        </Shot>
         <p>
           มีสินค้าจากเว็บเดิมเยอะ ไม่ต้องพิมพ์ใหม่ทีละตัว — <A href="/admin/import">นำเข้าสินค้า</A>{" "}
           วางลิงก์หน้ารายการราคา ระบบดึงชื่อ · ตารางราคา · รูป มาให้
@@ -1111,6 +925,9 @@ export const TOPICS: Topic[] = [
     keywords: "สินค้า เพิ่มสินค้า แก้ราคา ตัวเลือก seo รูป ตรวจแล้ว กำหนดขนาดเอง นำเข้า import",
     body: (
       <>
+        <Shot caption="บล็อกในหน้าแก้ไขสินค้า">
+          <ShotProductBlocks />
+        </Shot>
         <Bullets
           items={[
             <>
@@ -1148,6 +965,9 @@ export const TOPICS: Topic[] = [
     keywords: "พนักงาน บทบาท สิทธิ์ แผนก administrator เข้าไม่ได้ ล็อกอินไม่ได้",
     body: (
       <>
+        <Shot caption="หน้าพนักงาน">
+          <ShotStaff />
+        </Shot>
         <Bullets
           items={[
             <>
@@ -1182,6 +1002,9 @@ export const TOPICS: Topic[] = [
     keywords: "ตั้งค่า settings บัญชี พร้อมเพย์ ค่าส่ง ระดับสมาชิก คูปองต้อนรับ หมวดหมู่ ล้างรูป 30 วัน",
     body: (
       <>
+        <Shot caption="แท็บในหน้าตั้งค่าระบบ">
+          <ShotSettingsTabs />
+        </Shot>
         <p>
           แท็บใน <A href="/admin/settings">ตั้งค่าระบบ</A> — <B>กระทบทั้งเว็บ</B> ควรให้หัวหน้าเป็นคนแก้
         </p>
@@ -1218,17 +1041,22 @@ export const TOPICS: Topic[] = [
     roles: ["แอดมิน"],
     keywords: "ความพึงพอใจ rating คะแนน รีวิว ประเมิน นิรนาม",
     body: (
-      <Bullets
-        items={[
-          <>ลูกค้าเห็นแบบประเมินในหน้าออเดอร์ของตัวเองเมื่อได้รับสินค้าแล้ว</>,
-          <>
-            <B>ประเมินแบบนิรนาม</B> — ระบบไม่บันทึกว่าใครให้คะแนน (เก็บเวลาแค่ระดับเดือน) เพื่อให้ลูกค้ากล้าบอกตรง ๆ
-          </>,
-          <>
-            ดูสรุปย้อนหลังได้ที่ <A href="/admin/ratings">หน้าความพึงพอใจ</A> — คะแนนตกช่วงไหน ไปไล่ดูว่างานช่วงนั้นมีปัญหาอะไร
-          </>,
-        ]}
-      />
+      <>
+        <Shot caption="สรุปคะแนนย้อนหลัง">
+          <ShotRatings />
+        </Shot>
+        <Bullets
+          items={[
+            <>ลูกค้าเห็นแบบประเมินในหน้าออเดอร์ของตัวเองเมื่อได้รับสินค้าแล้ว</>,
+            <>
+              <B>ประเมินแบบนิรนาม</B> — ระบบไม่บันทึกว่าใครให้คะแนน (เก็บเวลาแค่ระดับเดือน) เพื่อให้ลูกค้ากล้าบอกตรง ๆ
+            </>,
+            <>
+              ดูสรุปย้อนหลังได้ที่ <A href="/admin/ratings">หน้าความพึงพอใจ</A> — คะแนนตกช่วงไหน ไปไล่ดูว่างานช่วงนั้นมีปัญหาอะไร
+            </>,
+          ]}
+        />
+      </>
     ),
   },
 
@@ -1242,6 +1070,9 @@ export const TOPICS: Topic[] = [
     keywords: "คิวงาน กราฟฟิก เริ่มงาน สถานะ ชำระแล้ว รอตรวจแบบ แก้ไขแบบ",
     body: (
       <>
+        <Shot caption="คิวงานในหน้าคำสั่งซื้อ">
+          <ShotGfxQueue />
+        </Shot>
         <p>
           เปิด <A href="/admin/orders">คำสั่งซื้อ</A> แล้วดูป้ายสถานะ — 3 สถานะนี้คืองานที่รอเราอยู่
         </p>
@@ -1327,19 +1158,24 @@ export const TOPICS: Topic[] = [
     roles: ["กราฟฟิก", "แอดมิน"],
     keywords: "อนุมัติ ขอแก้ไข ตรวจแบบ ลูกค้าตอบ รอบแก้",
     body: (
-      <Bullets
-        items={[
-          <>
-            ลูกค้ากดเองจากลิงก์ออเดอร์ของเขา — เราไม่ต้องกดแทน (ถ้ากดแทนจะไม่มีหลักฐานว่าลูกค้าอนุมัติจริง)
-          </>,
-          <>
-            ลูกค้ากด <B>ขอแก้ไข</B> จะพิมพ์บอกด้วยว่าอยากแก้อะไร ข้อความขึ้นในรายการนั้นเลย
-          </>,
-          <>
-            อนุมัติครบทุกรายการ → เปลี่ยนสถานะเป็น <B>อนุมัติแบบ</B> แล้วส่งเข้าผลิต
-          </>,
-        ]}
-      />
+      <>
+        <Shot caption="ฝั่งลูกค้า + สิ่งที่เขาเขียนกลับมา">
+          <ShotApprove />
+        </Shot>
+        <Bullets
+          items={[
+            <>
+              ลูกค้ากดเองจากลิงก์ออเดอร์ของเขา — เราไม่ต้องกดแทน (ถ้ากดแทนจะไม่มีหลักฐานว่าลูกค้าอนุมัติจริง)
+            </>,
+            <>
+              ลูกค้ากด <B>ขอแก้ไข</B> จะพิมพ์บอกด้วยว่าอยากแก้อะไร ข้อความขึ้นในรายการนั้นเลย
+            </>,
+            <>
+              อนุมัติครบทุกรายการ → เปลี่ยนสถานะเป็น <B>อนุมัติแบบ</B> แล้วส่งเข้าผลิต
+            </>,
+          ]}
+        />
+      </>
     ),
   },
   {
@@ -1351,6 +1187,9 @@ export const TOPICS: Topic[] = [
     keywords: "ยืนยันอ่าน noteAck หมายเหตุ ข้อควรทราบ ตรวจนับ",
     body: (
       <>
+        <Shot caption="ช่องติ๊กในแต่ละรายการ">
+          <ShotAck />
+        </Shot>
         <p>
           ทุกรายการมีช่อง <Key>☐ ยืนยันว่าอ่านรายละเอียดแล้ว</Key> — ต้องติ๊กก่อน ระบบถึงจะยอมให้ยิงเลขพัสดุ
         </p>
@@ -1374,6 +1213,9 @@ export const TOPICS: Topic[] = [
     keywords: "สแกน บาร์โค้ด qr แพ็ค สถานี มือถือ",
     body: (
       <>
+        <Shot caption="หน้าสแกนออเดอร์">
+          <ShotScan />
+        </Shot>
         <Steps
           items={[
             <>
@@ -1402,6 +1244,9 @@ export const TOPICS: Topic[] = [
     keywords: "ตรวจนับ นับของ ไม่ครบ ของขาด ตัวอย่าง sample ถ่ายรูป",
     body: (
       <>
+        <Shot caption="ปุ่มใต้ภาพตอนขยาย">
+          <ShotCount />
+        </Shot>
         <Bullets
           items={[
             <>
@@ -1430,6 +1275,9 @@ export const TOPICS: Topic[] = [
     keywords: "ยิงเลขพัสดุ tracking ส่งของ ปณ ไปรษณีย์ บล็อก ส่งไม่ได้",
     body: (
       <>
+        <Shot caption="ตอนยังผ่านด่านไม่ครบ">
+          <ShotPackGate />
+        </Shot>
         <p>ระบบจะไม่ยอมให้ยิงเลขพัสดุ ถ้ายังติดข้อใดข้อหนึ่ง — เช็คตามนี้</p>
         <CanTable
           rows={[
@@ -1461,6 +1309,9 @@ export const TOPICS: Topic[] = [
     keywords: "คลังตัวเลือก preset ชนิดกระดาษ เคลือบ ลิงก์ ตัดลิงก์ ปรับเฉพาะตัว",
     body: (
       <>
+        <Shot caption="หน้าคลังตัวเลือก">
+          <ShotPresets />
+        </Shot>
         <p>
           ชนิดกระดาษชุดเดียวถูกใช้กับสินค้าเป็นสิบตัว ถ้าพิมพ์ซ้ำในทุกสินค้า พอ<B>เลิกขายกระดาษ 1 ชนิด</B>{" "}
           ต้องไล่แก้ทีละตัวจนหลุดแน่ — คลังตัวเลือกคือเก็บชุดนั้นไว้ที่เดียว (
@@ -1503,6 +1354,9 @@ export const TOPICS: Topic[] = [
         <p>
           สินค้าส่วนใหญ่คิดราคาตามจำนวน และบางตัวขึ้นกับตัวเลือกด้วย (ขนาด × ชนิดกระดาษ) — ระบบคิดให้เองตั้งแต่หน้าร้าน
         </p>
+        <Shot caption="ราคาที่ลูกค้าเห็นเปลี่ยนตามจำนวน">
+          <ShotRate />
+        </Shot>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[18rem] text-left text-[0.82rem]">
             <thead className="text-[0.72rem] font-bold uppercase tracking-wide text-slate-400">
@@ -1543,6 +1397,9 @@ export const TOPICS: Topic[] = [
     keywords: "สต๊อก คลัง วัสดุ นับจริง เบิก ของเสีย ledger",
     body: (
       <>
+        <Shot caption="แถวในหน้าคลังสต๊อก">
+          <ShotStock />
+        </Shot>
         <p>
           ยอดคงเหลือ<B>คำนวณจากประวัติการเคลื่อนไหวเท่านั้น</B> (รับเข้า · ขายตัด · เบิกผลิต · ของเสีย)
           ถ้าพิมพ์ตัวเลขทับได้ ของหายแล้วจะไม่มีใครรู้ว่าหายตอนไหน
