@@ -844,3 +844,111 @@ export function ShotRate() {
     </MCard>
   );
 }
+
+/** แถบ URL บนหัวหน้าแก้ไขสินค้า — จุดเริ่มของการดึงจาก URL */
+export function ShotUrlBar() {
+  return (
+    <div className="mx-auto flex max-w-lg flex-wrap items-center gap-2 rounded-2xl bg-white p-2.5 ring-1 ring-slate-200">
+      <span className="text-[0.68rem] font-bold text-slate-500">🔗 URL:</span>
+      <code className="flex-1 truncate rounded-lg bg-slate-50 px-2.5 py-1 text-[0.65rem] text-slate-500">
+        iduckystore.com/products/jibbitz-shoe
+      </code>
+      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[0.68rem] font-bold text-slate-700">📋 คัดลอก</span>
+      <span className="rounded-full bg-amber-500 px-2.5 py-1 text-[0.68rem] font-bold text-white">📥 ดึงจาก URL</span>
+    </div>
+  );
+}
+
+/** พาเนลดึงจาก URL ที่กางออกมา — ผลลัพธ์ + เลือกรูป */
+export function ShotImportPanel() {
+  const pick = [1, 2, 3, 4, 5];
+  return (
+    <div className="mx-auto max-w-lg rounded-2xl border border-amber-200 bg-amber-50/40 p-2.5">
+      <p className="mb-2 text-[0.65rem] font-semibold text-slate-600">
+        📥 ดึงข้อมูลจากเว็บ Wix → เลือกสินค้ามาเติมช่อง (ชื่อ/ราคา/ตัวเลือก/ราคาขั้นบันได/รูป) แล้วกด 💾 บันทึก
+      </p>
+      <div className="flex items-center gap-2">
+        <span className="flex-1 truncate rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[0.7rem] text-slate-600">
+          https://www.iduckyofficial-pricelists.com/pricestandy
+        </span>
+        <span className="rounded-lg bg-amber-500 px-3 py-1.5 text-[0.68rem] font-bold text-white">🔍 ดึง</span>
+      </div>
+
+      <div className="mt-2 rounded-xl border border-slate-200 bg-white">
+        <p className="border-b border-slate-100 px-2.5 py-1 text-[0.6rem] text-slate-400">
+          พบ 1 สินค้าในหน้านี้ — เลือกรูปที่ต้องการแล้วกด “ใช้ตัวนี้” เพื่อเติมลงสินค้าที่กำลังแก้
+        </p>
+        <div className="p-2.5">
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[0.78rem] font-semibold text-slate-800">ข้อความหรือจุดที่เล็กๆ ไม่แนะนำให้เคลือบ Spot uv</p>
+              <p className="text-[0.62rem] text-slate-400">฿10 / ชิ้น · 1 ช่วง × 4 ตัวเลือก</p>
+            </div>
+            <span className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1 text-[0.68rem] font-semibold text-white">ใช้ตัวนี้ →</span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {[1, 2, 3, 4, 5, 6, 7].map((n) => {
+              const on = pick.includes(n);
+              return (
+                <span
+                  key={n}
+                  className={`relative grid h-10 w-10 place-items-center overflow-hidden rounded-lg bg-slate-100 text-sm ring-2 ${
+                    on ? "ring-emerald-500" : "opacity-50 ring-transparent"
+                  }`}
+                >
+                  🖼️
+                  {on && (
+                    <span className="absolute right-0.5 top-0.5 grid h-3.5 w-3.5 place-items-center rounded-full bg-emerald-500 text-[0.5rem] font-bold text-white">
+                      {n}
+                    </span>
+                  )}
+                </span>
+              );
+            })}
+          </div>
+          <p className="mt-1 text-[0.58rem] text-slate-400">
+            พบ 7 รูป · เลือกไว้ 5/5 (รูปแรกที่เลือก = รูปหลัก) — กดรูปเพื่อเลือก/ยกเลิก
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** หน้า /admin/import — นำเข้าทีละหลายตัว */
+export function ShotImportPage() {
+  return (
+    <MCard className="mx-auto max-w-lg">
+      <div className="flex items-center gap-2">
+        <span className="flex-1 truncate rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[0.7rem] text-slate-600">
+          https://www.iduckyofficial-pricelists.com/keyring
+        </span>
+        <MBtn tone="brand">🔍 ดึง</MBtn>
+      </div>
+      <div className="mt-2 flex items-center gap-2 border-t border-slate-100 pt-2">
+        <span className="flex-1 rounded border border-slate-200 px-2 py-1 text-[0.65rem] text-slate-300">ค้นหาสินค้าในหน้านี้…</span>
+        <span className="text-[0.62rem] font-bold text-slate-400">เลือกไว้ 12 / 18</span>
+      </div>
+      <div className="mt-1.5 space-y-1">
+        {[
+          ["พวงกุญแจอะคริลิค 5 ซม.", "อะคริลิค", true],
+          ["พวงกุญแจยาง 2 ด้าน", "— เลือก —", true],
+          ["พวงกุญแจโลหะ", "อะคริลิค", false],
+        ].map(([n, cat, on]) => (
+          <div key={n as string} className="flex items-center gap-2 rounded bg-slate-50 px-2 py-1">
+            <MCheck on={on as boolean}>
+              <span className="text-[0.7rem]">{n}</span>
+            </MCheck>
+            <span className={`ml-auto rounded border px-1.5 py-0.5 text-[0.62rem] ${cat === "— เลือก —" ? "border-rose-200 text-rose-500" : "border-slate-200 text-slate-500"}`}>
+              {cat} ▾
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2">
+        <span className="text-[0.62rem] text-rose-500">สินค้าที่มีอยู่แล้วจะถูกข้าม</span>
+        <MBtn tone="ok">📥 นำเข้า 12 รายการ</MBtn>
+      </div>
+    </MCard>
+  );
+}
