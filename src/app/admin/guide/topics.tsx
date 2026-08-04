@@ -3,10 +3,10 @@ import { BULK_ASK_DEFAULT } from "@/lib/products";
 import {
   Shot, ShotRedoButton, ShotRedoModal, ShotClaimBanner, ShotDepositBox, ShotAddButtons, ShotShipping, ShotProofPanels,
   ShotSlip, ShotDiscount, ShotCancel, ShotQuoteList, ShotQuoteAccept, ShotStaffOrder, ShotDeleteItem, ShotNotes,
-  ShotRush, ShotBulk, ShotPrint, ShotCustomerLink, ShotNotify, ShotGfxQueue, ShotApprove, ShotAck,
+  ShotRush, ShotBulk, ShotCustomerLink, ShotNotify, ShotGfxQueue, ShotApprove, ShotAck,
   ShotPackGate, ShotProductBlocks, ShotPresets, ShotStock, ShotStaff,
-  ShotSettingsTabs, ShotRatings, ShotRate, ShotUrlBar, ShotImportPanel, ShotImportPage, ShotPrintQueue,
-  ShotScanStation, ShotBlocked, ShotCountPanel, ShotScanCodes,
+  ShotSettingsTabs, ShotRatings, ShotRate, ShotUrlBar, ShotImportPanel, ShotImportPage,
+  ShotBlocked, ShotCountPanel, ShotScanCodes, ShotImg,
 } from "./mockups";
 
 /**
@@ -647,9 +647,25 @@ export const TOPICS: Topic[] = [
     keywords: "พิมพ์ ปริ้น ใบงาน ใบปะหน้า ใบเสร็จ เอกสาร a4 qr",
     body: (
       <>
-        <Shot caption="หน้าจอเลือกเอกสาร + แถบเตือนว่าเคยปริ้นแล้ว">
-          <ShotPrint />
+        <Shot caption="แถบเลือกเอกสารด้านบน">
+          <ShotImg src="/guide/print-toolbar.png" alt="แถบเลือกเอกสารก่อนพิมพ์" max="34rem" />
         </Shot>
+        <Shot caption="ใบงานที่พิมพ์ออกมาจริง (ข้อมูลสมมติ)">
+          <ShotImg src="/guide/print-sheet.png" alt="ใบงาน + ใบปะหน้าพัสดุ ที่พิมพ์ออกมา" max="30rem" />
+        </Shot>
+        <Bullets
+          items={[
+            <>
+              <B>ครึ่งบน</B> = ใบปะหน้าพัสดุ (ผู้ส่ง · ผู้รับ · บาร์โค้ด) → <B>ตัดตามเส้นประไปติดกล่อง</B>
+            </>,
+            <>
+              <B>ครึ่งล่าง</B> = ใบงาน (เลขออเดอร์ · QR · ตารางแบบงาน) → <B>เก็บไว้ใช้ตอนแพ็ค</B>
+            </>,
+            <>
+              กรอบแดงคือสิ่งที่<Mark>ห้ามพลาด</Mark> — 🔥 วันที่ต้องใช้งาน/งานเร่ง และ 🎁 งานตัวอย่างที่ต้องแนบไปด้วย
+            </>,
+          ]}
+        />
         <Steps
           items={[
             <>
@@ -1314,7 +1330,7 @@ export const TOPICS: Topic[] = [
           เอาเฉพาะสถานะ <Mark>อนุมัติแบบ</Mark> เท่านั้น
         </p>
         <Shot caption="หน้าคิวปริ้น">
-          <ShotPrintQueue />
+          <ShotImg src="/guide/print-queue.png" alt="หน้าคิวปริ้น" max="34rem" />
         </Shot>
         <Bullets
           items={[
@@ -1356,7 +1372,7 @@ export const TOPICS: Topic[] = [
           เปิดทิ้งไว้หน้าโต๊ะ แล้วยิงทีละใบไปเรื่อย ๆ
         </p>
         <Shot caption="หน้าสถานีแพ็ค–ส่ง">
-          <ShotScanStation />
+          <ShotImg src="/guide/scan-station.png" alt="หน้าสถานีแพ็ค–ส่ง" max="34rem" />
         </Shot>
 
         <p className="pt-1 font-bold text-slate-800">2 แท็บ = 2 กองงาน แบ่งให้อัตโนมัติ</p>

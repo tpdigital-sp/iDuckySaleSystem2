@@ -6,6 +6,23 @@
 
 /* ── ชิ้นส่วนพื้นฐาน ── */
 
+/**
+ * ภาพถ่ายหน้าจอจริง (อยู่ใน /public/guide)
+ * ถ่ายจากออเดอร์ตัวอย่างที่ข้อมูลสมมติทั้งหมด — ไม่มีข้อมูลลูกค้าจริง
+ * ถ่ายใหม่ได้ด้วยสคริปต์ headless Chrome ตอนหน้าจอเปลี่ยน
+ */
+export function ShotImg({ src, alt, max = "28rem" }: { src: string; alt: string; max?: string }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      style={{ maxWidth: max }}
+      className="mx-auto block w-full rounded-lg ring-1 ring-slate-200"
+    />
+  );
+}
+
 /** กรอบรูปตัวอย่าง พร้อมคำบรรยาย */
 export function Shot({ caption, children }: { caption: string; children: React.ReactNode }) {
   return (
@@ -518,30 +535,6 @@ export function ShotBulk() {
   );
 }
 
-/** หน้าเลือกเอกสารก่อนพิมพ์ */
-export function ShotPrint() {
-  return (
-    <MCard className="mx-auto max-w-sm">
-      <p className="mb-1.5 rounded-full bg-orange-50 px-2.5 py-1 text-[0.65rem] font-bold text-orange-700 ring-1 ring-orange-200">
-        🖨 ใบนี้ปริ้นไปแล้ว 2 ครั้ง · ล่าสุด 4 ส.ค. 17:36 — กดพิมพ์อีกจะบันทึกเป็นปริ้นซ้ำ
-      </p>
-      <p className="text-[0.75rem] font-bold text-slate-700">เลือกเอกสารที่จะพิมพ์</p>
-      <div className="mt-2 space-y-1.5">
-        <MCheck on>
-          ใบงาน <span className="text-[0.68rem] font-bold text-rose-500">· ใบปะหน้ายังไม่ออก 🔒</span>
-        </MCheck>
-        <span className="flex items-start gap-2 text-[0.78rem] text-slate-300">
-          <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded bg-white ring-1 ring-slate-200" />
-          ใบเสร็จ <span className="text-[0.68rem] font-bold text-rose-400">· ยังเก็บเงินไม่ครบ</span>
-        </span>
-      </div>
-      <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2">
-        <span className="text-[0.65rem] text-slate-400">ใบงานมี QR เปิดออเดอร์บนมือถือ</span>
-        <MBtn tone="brand">🖨 พิมพ์</MBtn>
-      </div>
-    </MCard>
-  );
-}
 
 /** กล่องลิงก์สำหรับลูกค้า */
 export function ShotCustomerLink() {
@@ -922,84 +915,7 @@ export function ShotImportPage() {
   );
 }
 
-/** คิวปริ้น — เฉพาะออเดอร์ที่อนุมัติแบบแล้ว เรียงตามความเร่ง */
-export function ShotPrintQueue() {
-  const rows: [string, string, string, string, boolean][] = [
-    ["OD-260101-1001", "ก. งานเร่ง", "rush", "อีก 9 วัน", false],
-    ["OD-260101-1002", "ข. ใกล้กำหนด", "", "อีก 2 วัน", true],
-    ["OD-260101-1003", "ค. ยังไม่ครบเงิน", "", "อีก 20 วัน", false],
-  ];
-  return (
-    <div className="mx-auto max-w-lg">
-      <div className="mb-1.5 flex gap-1.5">
-        <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-[0.65rem] font-bold text-white">🖨 ยังไม่ปริ้น (2)</span>
-        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[0.65rem] font-bold text-slate-500">✓ ปริ้นแล้ว (1)</span>
-      </div>
-      <MCard className="p-0">
-        {rows.map(([id, who, rush, due, printed]) => (
-          <div key={id} className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 px-2.5 py-2 last:border-b-0">
-            <span className="min-w-24 flex-1">
-              <span className="block text-[0.72rem] font-bold tabular-nums text-slate-900">{id}</span>
-              <span className="block text-[0.58rem] text-slate-400">1 รายการ · 2 ชิ้น</span>
-            </span>
-            <span className="min-w-16 text-[0.68rem] text-slate-600">{who}</span>
-            {rush && <MTag tone="rose">🔥 งานเร่ง</MTag>}
-            <MTag tone={due === "อีก 2 วัน" ? "orange" : "slate"}>{due}</MTag>
-            {printed ? <MTag>🖨 ปริ้นแล้ว 1 ครั้ง</MTag> : <MTag tone="amber">ยังไม่ปริ้น</MTag>}
-            {id.endsWith("1003") && <MTag tone="rose">🔒 ไม่มีใบปะหน้า</MTag>}
-            <span
-              className={`ml-auto rounded-lg px-2.5 py-1 text-[0.65rem] font-bold ${
-                printed ? "border border-slate-200 bg-white text-slate-600" : "bg-amber-500 text-white"
-              }`}
-            >
-              {printed ? "🖨 ปริ้นซ้ำ" : "🖨 ปริ้นใบงาน"}
-            </span>
-          </div>
-        ))}
-      </MCard>
-    </div>
-  );
-}
 
-/** สถานีแพ็ค–ส่ง — 2 แท็บ + ช่องยิง + ประวัติ */
-export function ShotScanStation() {
-  return (
-    <div className="mx-auto max-w-md space-y-2">
-      <div className="flex gap-1.5 rounded-2xl bg-slate-100 p-1">
-        <span className="flex-1 rounded-xl bg-white py-1.5 text-center text-[0.72rem] font-bold text-slate-900 shadow-sm">
-          📮 ยิงเลขพัสดุ <span className="rounded-full bg-green-100 px-1.5 text-[0.62rem] text-green-700">3</span>
-        </span>
-        <span className="flex-1 py-1.5 text-center text-[0.72rem] font-bold text-slate-500">
-          🖨️ รอปริ้น/แพ็ค <span className="rounded-full bg-amber-100 px-1.5 text-[0.62rem] text-amber-700">5</span>
-        </span>
-      </div>
-
-      <div className="rounded-2xl border-2 border-green-400 bg-green-50/50 p-3">
-        <p className="text-[0.6rem] font-bold uppercase tracking-widest text-slate-500">รอยิง QR เลขออเดอร์</p>
-        <p className="mt-1 font-mono text-lg font-bold tracking-wide text-slate-300">ยิง QR หรือพิมพ์เลขออเดอร์ แล้วกด Enter</p>
-        <p className="mt-0.5 text-[0.6rem] text-slate-400">ช่องนี้โฟกัสอยู่ตลอด — ยิงได้เลย</p>
-      </div>
-
-      <p className="rounded-xl bg-green-50 px-3 py-2 text-[0.7rem] font-semibold text-green-800 ring-1 ring-green-200">
-        บันทึกแล้ว — OD-260101-1234 · EX123456789TH
-      </p>
-
-      <MCard className="p-2.5">
-        <p className="text-[0.62rem] font-bold uppercase tracking-wide text-slate-400">ยิงล่าสุด</p>
-        {[
-          ["OD-260101-1234", "EX123456789TH", "14:02"],
-          ["OD-260101-1198", "EX123456712TH", "13:58"],
-        ].map(([id, tr, at]) => (
-          <p key={id} className="mt-1 flex items-center gap-2 text-[0.68rem] tabular-nums text-slate-600">
-            <span className="font-bold">{id}</span>
-            <span className="font-mono text-slate-500">{tr}</span>
-            <span className="ml-auto text-slate-300">{at}</span>
-          </p>
-        ))}
-      </MCard>
-    </div>
-  );
-}
 
 /** หน้าต่างแดงตอนยิงแล้วยังตรวจแพ็คไม่ครบ */
 export function ShotBlocked() {
