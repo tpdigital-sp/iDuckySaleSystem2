@@ -37,7 +37,7 @@ function RatingsPageInner() {
   const comments = ratings.filter((r) => r.comment);
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto max-w-6xl">
       <h1 className={h1}>💬 ความพึงพอใจลูกค้า</h1>
       <p className={`mt-1 ${muted}`}>ประเมินแบบนิรนาม — ระบบไม่บันทึกว่าใครประเมิน (เก็บเวลาแค่ระดับเดือน)</p>
 
@@ -90,7 +90,7 @@ function RatingsPageInner() {
             {comments.length === 0 ? (
               <p className={`text-sm ${faint}`}>ยังไม่มีคอมเมนต์ — ลูกค้าให้คะแนนอย่างเดียวก็ได้</p>
             ) : (
-              <ul className="space-y-2.5">
+              <ul className="grid gap-2.5 lg:grid-cols-2">
                 {comments.map((r) => (
                   <li key={r.id} className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700 ring-1 ring-slate-100">
                     <span className="mr-1.5 text-base">{face(r.score)}</span>

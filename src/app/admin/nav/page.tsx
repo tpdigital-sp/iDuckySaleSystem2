@@ -35,7 +35,7 @@ import { btnNeutral, btnPrimary, btnSmDanger, btnSmGhost, card, faint, h1, muted
  * ตัวอย่างทุกจุดใช้คอมโพเนนต์ตัวเดียวกับหน้าร้านจริง — เห็นยังไง ลูกค้าเห็นอย่างนั้น
  */
 
-type Tab = "tiles" | "menu" | "mega" | "perks";
+type Tab = "hero" | "tiles" | "menu" | "mega" | "perks";
 
 /** หน้าที่ลิงก์ไปได้ (ให้เลือกจากรายการ จะได้ไม่พิมพ์ผิด) */
 const PAGES: { href: string; label: string }[] = [
@@ -358,9 +358,9 @@ function NavEditorInner() {
     <div className="mx-auto max-w-5xl pb-24">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className={h1}>🧭 เมนูหน้าร้าน</h1>
+          <h1 className={h1}>🧭 หน้าร้าน — เมนู &amp; หน้าแรก</h1>
           <p className={`mt-1 text-sm ${muted}`}>
-            จัดการ์ดนำทางบนหน้าแรก และลิงก์บนแถบเมนูด้านบน — แก้แล้วลูกค้าเห็นทันที
+            คุมทุกอย่างที่ลูกค้าเห็นบนหัวเว็บและหน้าแรก — แก้แล้วกด 💾 บันทึก ลูกค้าเห็นทันที
           </p>
         </div>
         <Link href="/" target="_blank" className={`${btnNeutral} text-xs`}>
@@ -368,35 +368,55 @@ function NavEditorInner() {
         </Link>
       </div>
 
+      {/* ── แผนผังหน้าแรก: ส่วนไหนแก้ที่แท็บไหน (เรียงจากบนลงล่างตามที่ลูกค้าเห็น) ── */}
+      <section className={`mt-5 p-4 ${card}`}>
+        <h2 className="text-sm font-semibold text-slate-800">🗺 หน้าแรกมีอะไรบ้าง — กดเพื่อไปแก้ส่วนนั้น</h2>
+        <p className={`mt-0.5 text-xs ${faint}`}>เรียงจากบนลงล่างตามที่ลูกค้าเห็นจริง</p>
+        <div className="mt-3 space-y-1.5">
+          {(
+            [
+              ["1", "🔗", "แถบเมนูด้านบน", "โลโก้ร้าน + ลิงก์หน้า (หน้าแรก · สินค้าทั้งหมด …)", "menu" as Tab, true],
+              ["2", "🗂", "แถบหมวดสินค้า (เมนูดรอปดาวน์)", "DIGITAL PRINT · SIMPLE GIFTS … ชี้เมาส์แล้วกางแผงใหญ่", "mega" as Tab, true],
+              ["3", "🎉", "แบนเนอร์ใหญ่", "ป้ายโปร + หัวข้อ + คำโปรย + ปุ่ม (แก้ข้อความได้แล้ว)", "hero" as Tab, nav.hero.on],
+              ["4", "🧱", "การ์ดนำทาง", "How To Order · All Product · Review … เลื่อนขึ้น-ลงได้ 3 ตำแหน่ง", "tiles" as Tab, nav.tilesOn],
+              ["5", "⭐", "จุดเด่นร้าน", "แถวการ์ดเล็ก (ลายของคุณเอง · ส่งไวทั่วไทย …)", "perks" as Tab, nav.perksOn],
+            ] as [string, string, string, string, Tab, boolean][]
+          ).map(([no, icon, title, desc, key, on]) => (
+            <button
+              key={no}
+              type="button"
+              onClick={() => setTab(key)}
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition ${
+                tab === key ? "bg-amber-50 ring-1 ring-amber-300" : "bg-slate-50 hover:bg-slate-100"
+              }`}
+            >
+              <span className="w-4 shrink-0 text-center text-xs font-bold text-slate-300">{no}</span>
+              <span className="shrink-0 text-base">{icon}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-bold text-slate-800">{title}</span>
+                <span className={`block truncate text-[11px] ${faint}`}>{desc}</span>
+              </span>
+              {!on && (
+                <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                  ปิดอยู่
+                </span>
+              )}
+              <span className="shrink-0 text-xs text-slate-300">แก้ →</span>
+            </button>
+          ))}
+        </div>
+        <p className={`mt-2.5 text-[11px] ${faint}`}>
+          💡 ส่วนอื่นของหน้าแรกที่ไม่ได้อยู่หน้านี้: <strong className="font-semibold text-slate-600">หมวดหมู่สินค้า</strong> แก้ที่{" "}
+          <Link href="/admin/settings" className="font-semibold text-amber-600 underline">ตั้งค่าระบบ</Link> ·{" "}
+          <strong className="font-semibold text-slate-600">สินค้าแนะนำ/ขายดี</strong> ตั้งในหน้าแก้ไขสินค้าแต่ละตัว
+        </p>
+      </section>
+
       {/* ── ตัวอย่าง (ใช้คอมโพเนนต์เดียวกับหน้าร้าน) ── */}
       <section className={`mt-5 p-5 ${card}`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-800">👀 ตัวอย่างที่ลูกค้าเห็น</h2>
-          <span className="flex flex-wrap items-center gap-3">
-            <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
-              <input
-                type="checkbox"
-                checked={nav.tilesOn}
-                onChange={(e) => edit((n) => ({ ...n, tilesOn: e.target.checked }))}
-                className="h-4 w-4 accent-amber-500"
-              />
-              แสดงการ์ดนำทางบนหน้าแรก
-            </label>
-            {nav.tilesOn && (
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
-                ตำแหน่ง:
-                <select
-                  value={nav.tilesPos ?? "hero"}
-                  onChange={(e) => edit((n) => ({ ...n, tilesPos: e.target.value as SiteNav["tilesPos"] }))}
-                  className={inputBase}
-                >
-                  <option value="top">บนสุด (ก่อนแบนเนอร์ใหญ่)</option>
-                  <option value="hero">ใต้แบนเนอร์ใหญ่</option>
-                  <option value="features">ใต้จุดเด่นร้าน (ต่ำลงมาอีก)</option>
-                </select>
-              </label>
-            )}
-          </span>
+          <span className={`text-[11px] ${faint}`}>ภาพจริงจากหน้าร้าน · แก้ในแท็บด้านล่างแล้วดูผลตรงนี้ได้เลย</span>
         </div>
 
         {/* แถบเมนูด้านบน */}
@@ -446,10 +466,11 @@ function NavEditorInner() {
       <div className="mt-5 flex flex-wrap gap-2">
         {(
           [
-            ["mega", `🗂 เมนูดรอปดาวน์ (${nav.mega.length})`],
+            ["menu", `🔗 แถบเมนู + โลโก้ (${nav.menu.length})`],
+            ["mega", `🗂 หมวดสินค้า (${nav.mega.length})`],
+            ["hero", "🎉 แบนเนอร์ใหญ่"],
             ["tiles", `🧱 การ์ดนำทาง (${nav.tiles.length})`],
             ["perks", `⭐ จุดเด่นร้าน (${nav.perks.length})`],
-            ["menu", `🔗 แถบเมนูด้านบน (${nav.menu.length})`],
           ] as [Tab, string][]
         ).map(([k, label]) => (
           <button
@@ -468,9 +489,187 @@ function NavEditorInner() {
         ))}
       </div>
 
+      {/* ══════ แบนเนอร์ใหญ่ (hero) ══════ */}
+      {tab === "hero" && (
+        <section className={`mt-4 p-5 ${card}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-800">🎉 แบนเนอร์ใหญ่บนหน้าแรก</h2>
+              <p className={`mt-0.5 text-xs ${faint}`}>
+                กล่องใหญ่สุดบนหน้าแรก — ป้ายโปร + หัวข้อ + คำโปรย + ปุ่ม 2 ปุ่ม
+              </p>
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
+              <input
+                type="checkbox"
+                checked={nav.hero.on}
+                onChange={(e) => edit((n) => ({ ...n, hero: { ...n.hero, on: e.target.checked } }))}
+                className="h-4 w-4 accent-amber-500"
+              />
+              แสดงแบนเนอร์นี้
+            </label>
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            <label className="block">
+              <span className="text-[11px] font-semibold text-slate-400">ป้ายเล็กบนสุด (เว้นว่าง = ไม่แสดง)</span>
+              <input
+                value={nav.hero.badge}
+                onChange={(e) => edit((n) => ({ ...n, hero: { ...n.hero, badge: e.target.value } }))}
+                placeholder="🎉 โปรเปิดร้าน ลดสูงสุด 25%"
+                className={`mt-1 w-full ${inputBase}`}
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11px] font-semibold text-slate-400">รูปด้านขวา (เว้นว่าง = ใช้อีโมจิเป็ด 🦆)</span>
+              <div className="mt-1 flex items-center gap-2">
+                {nav.hero.image && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={nav.hero.image} alt="" className="h-10 w-10 rounded-lg object-contain ring-1 ring-slate-200" />
+                )}
+                <label className={`cursor-pointer ${btnNeutral} text-xs`}>
+                  📤 อัปโหลดรูป
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!f) return;
+                      const r = await uploadNavImage(f);
+                      if (r.url) edit((n) => ({ ...n, hero: { ...n.hero, image: r.url } }));
+                    }}
+                  />
+                </label>
+                {nav.hero.image && (
+                  <button
+                    type="button"
+                    onClick={() => edit((n) => ({ ...n, hero: { ...n.hero, image: undefined } }))}
+                    className="rounded-full px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50"
+                  >
+                    ✕ เอาออก
+                  </button>
+                )}
+              </div>
+            </label>
+          </div>
+
+          <label className="mt-3 block">
+            <span className="text-[11px] font-semibold text-slate-400">หัวข้อใหญ่ (กด Enter ขึ้นบรรทัดใหม่ได้)</span>
+            <textarea
+              value={nav.hero.title}
+              onChange={(e) => edit((n) => ({ ...n, hero: { ...n.hero, title: e.target.value } }))}
+              rows={2}
+              className={`mt-1 w-full ${inputBase} font-bold`}
+            />
+          </label>
+          <label className="mt-3 block">
+            <span className="text-[11px] font-semibold text-slate-400">คำโปรย (กด Enter ขึ้นบรรทัดใหม่ได้)</span>
+            <textarea
+              value={nav.hero.subtitle}
+              onChange={(e) => edit((n) => ({ ...n, hero: { ...n.hero, subtitle: e.target.value } }))}
+              rows={2}
+              className={`mt-1 w-full ${inputBase}`}
+            />
+          </label>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+              <p className="text-xs font-bold text-slate-600">ปุ่มหลัก (สีเหลือง)</p>
+              <input
+                value={nav.hero.btn1Label}
+                onChange={(e) => edit((n) => ({ ...n, hero: { ...n.hero, btn1Label: e.target.value } }))}
+                placeholder="🛍️ ช้อปเลย"
+                className={`mt-2 w-full ${inputBase}`}
+              />
+              <div className="mt-2">
+                <LinkPicker
+                  value={nav.hero.btn1Href}
+                  cats={cats}
+                  onChange={(v) => edit((n) => ({ ...n, hero: { ...n.hero, btn1Href: v } }))}
+                />
+              </div>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+              <p className="text-xs font-bold text-slate-600">ปุ่มรอง (สีขาว) — เว้นชื่อว่าง = ไม่แสดง</p>
+              <input
+                value={nav.hero.btn2Label}
+                onChange={(e) => edit((n) => ({ ...n, hero: { ...n.hero, btn2Label: e.target.value } }))}
+                placeholder="📖 วิธีสั่งซื้อ"
+                className={`mt-2 w-full ${inputBase}`}
+              />
+              <div className="mt-2">
+                <LinkPicker
+                  value={nav.hero.btn2Href}
+                  cats={cats}
+                  onChange={(v) => edit((n) => ({ ...n, hero: { ...n.hero, btn2Href: v } }))}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ตัวอย่างแบนเนอร์ */}
+          <div className="mt-4">
+            <p className={`mb-1.5 text-[11px] font-semibold ${faint}`}>ตัวอย่าง</p>
+            <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-amber-200 via-amber-100 to-ducky p-5">
+              {nav.hero.badge && (
+                <span className="inline-block rounded-full bg-white/70 px-3 py-1 text-[11px] font-bold text-amber-800">
+                  {nav.hero.badge}
+                </span>
+              )}
+              <p className="mt-2 whitespace-pre-line text-xl font-extrabold leading-tight text-amber-950">
+                {nav.hero.title}
+              </p>
+              <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-amber-900/80">{nav.hero.subtitle}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {nav.hero.btn1Label && (
+                  <span className="rounded-full bg-amber-400 px-4 py-2 text-xs font-bold text-white shadow">
+                    {nav.hero.btn1Label}
+                  </span>
+                )}
+                {nav.hero.btn2Label && (
+                  <span className="rounded-full bg-white/80 px-4 py-2 text-xs font-bold text-amber-900 shadow">
+                    {nav.hero.btn2Label}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ══════ การ์ดนำทาง ══════ */}
       {tab === "tiles" && (
         <section className="mt-4 space-y-3">
+          {/* เปิด/ปิด + ตำแหน่งบล็อกบนหน้าแรก (ย้ายมาอยู่ที่นี่ให้ตรงกับสิ่งที่กำลังแก้) */}
+          <div className={`flex flex-wrap items-center gap-x-5 gap-y-3 p-4 ${card}`}>
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
+              <input
+                type="checkbox"
+                checked={nav.tilesOn}
+                onChange={(e) => edit((n) => ({ ...n, tilesOn: e.target.checked }))}
+                className="h-4 w-4 accent-amber-500"
+              />
+              แสดงบล็อกการ์ดนำทางบนหน้าแรก
+            </label>
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+              วางไว้ตรงไหน:
+              <select
+                value={nav.tilesPos ?? "hero"}
+                onChange={(e) => edit((n) => ({ ...n, tilesPos: e.target.value as SiteNav["tilesPos"] }))}
+                className={inputBase}
+                disabled={!nav.tilesOn}
+              >
+                <option value="top">บนสุด — ก่อนแบนเนอร์ใหญ่</option>
+                <option value="hero">กลาง — ใต้แบนเนอร์ใหญ่ (ค่าเริ่มต้น)</option>
+                <option value="features">ล่าง — ใต้จุดเด่นร้าน</option>
+              </select>
+            </label>
+            <span className={`w-full text-[11px] ${faint}`}>
+              💡 ตำแหน่งนี้เทียบกับ &ldquo;แบนเนอร์ใหญ่&rdquo; และ &ldquo;จุดเด่นร้าน&rdquo; — เลื่อนแล้วดูผลได้ที่ตัวอย่างด้านบน
+            </span>
+          </div>
           <div className={`flex flex-wrap items-center gap-4 p-4 ${card}`}>
             <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
               แถบพื้นหลัง

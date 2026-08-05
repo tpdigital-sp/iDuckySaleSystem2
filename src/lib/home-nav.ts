@@ -122,9 +122,43 @@ export interface SiteNav {
   tilesPos?: "top" | "hero" | "features";
   /** โลโก้ร้านบนแถบเมนู (URL รูปที่อัปโหลด) — ไม่ตั้ง = ใช้โลโก้เป็ด+ข้อความเดิม */
   logo?: string;
+  /** แบนเนอร์ใหญ่บนหน้าแรก (hero) */
+  hero: HeroBanner;
+}
+
+/** แบนเนอร์ใหญ่หน้าแรก — ข้อความ/ปุ่ม/รูป แก้ได้จากหลังบ้าน */
+export interface HeroBanner {
+  /** ปิดแบนเนอร์โดยไม่ต้องลบข้อความ */
+  on: boolean;
+  /** ป้ายเล็กบนสุด เช่น "🎉 โปรเปิดร้าน ลดสูงสุด 25%" (เว้นว่าง = ไม่แสดง) */
+  badge: string;
+  /** หัวข้อใหญ่ — ขึ้นบรรทัดใหม่ด้วย Enter ได้ */
+  title: string;
+  /** คำโปรยใต้หัวข้อ — ขึ้นบรรทัดใหม่ด้วย Enter ได้ */
+  subtitle: string;
+  /** ปุ่มหลัก (สีเข้ม) */
+  btn1Label: string;
+  btn1Href: string;
+  /** ปุ่มรอง (สีขาว) — เว้นชื่อว่าง = ไม่แสดงปุ่มนี้ */
+  btn2Label: string;
+  btn2Href: string;
+  /** รูปด้านขวา (URL) — ไม่ใส่ = ใช้อีโมจิเป็ดตามเดิม */
+  image?: string;
 }
 
 export const NAV_ROW_ID = "__site_nav__";
+
+/** แบนเนอร์ใหญ่ค่าเริ่มต้น = ข้อความที่เคยเขียนตายตัวในหน้าแรก */
+export const DEFAULT_HERO: HeroBanner = {
+  on: true,
+  badge: "🎉 โปรเปิดร้าน ลดสูงสุด 25%",
+  title: "พิมพ์ลายของคุณ\nลงบนของที่คุณรัก 💛",
+  subtitle: "แก้วน้ำ เสื้อยืด เคสมือถือ กรอบผ้าใบ และอีกมากมาย\nอัปโหลดลาย → เลือกสินค้า → รอรับที่บ้าน ง่ายแค่นี้!",
+  btn1Label: "🛍️ ช้อปเลย",
+  btn1Href: "/products",
+  btn2Label: "📖 วิธีสั่งซื้อ",
+  btn2Href: "/how-to-order",
+};
 
 /** ลิงก์บนแถบเมนูด้านบน (ค่าเริ่มต้น = ของเดิมที่เคยเขียนตายตัวใน Navbar) */
 export const DEFAULT_MENU: NavLink[] = [
@@ -392,6 +426,7 @@ export const DEFAULT_SITE_NAV: SiteNav = {
   mega: DEFAULT_MEGA,
   tiles: DEFAULT_TILES,
   tilesOn: true,
+  hero: DEFAULT_HERO,
   tilesBg: DEFAULT_TILES_BG,
   tilesWave: true,
   tilesPos: "hero",
@@ -403,6 +438,28 @@ const str = (v: unknown, fallback = "") => (typeof v === "string" ? v : fallback
  * ค่าที่ใช้จริง — ล้างข้อมูลจากฐานให้อยู่ในรูปที่หน้าเว็บใช้ได้เสมอ
  * ไม่มี/ว่าง = ตกไปใช้ค่าเริ่มต้น (กันหน้าแรกโล่งเพราะเซฟพลาด)
  */
+/** ทำความสะอาดค่าแบนเนอร์ใหญ่ (ช่องว่าง = ใช้ค่าเริ่มต้นของช่องนั้น) */
+function heroOf(raw: Partial<HeroBanner> | null | undefined): HeroBanner {
+  const t = (v: unknown, fallback: string) => (typeof v === "string" && v.trim() ? v.trim() : fallback);
+  const href = (v: unknown, fallback: string) => {
+    const s0 = typeof v === "string" ? v.trim() : "";
+    return /^(\/|https?:\/\/)/.test(s0) ? s0 : fallback;
+  };
+  const img = typeof raw?.image === "string" ? raw.image.trim() : "";
+  return {
+    on: raw?.on !== false,
+    // ป้าย/ปุ่มรอง ปล่อยว่างได้ (= ไม่แสดง) จึงไม่เติมค่าเริ่มต้นทับ
+    badge: typeof raw?.badge === "string" ? raw.badge.trim() : DEFAULT_HERO.badge,
+    title: t(raw?.title, DEFAULT_HERO.title).slice(0, 200),
+    subtitle: t(raw?.subtitle, DEFAULT_HERO.subtitle).slice(0, 400),
+    btn1Label: t(raw?.btn1Label, DEFAULT_HERO.btn1Label),
+    btn1Href: href(raw?.btn1Href, DEFAULT_HERO.btn1Href),
+    btn2Label: typeof raw?.btn2Label === "string" ? raw.btn2Label.trim() : DEFAULT_HERO.btn2Label,
+    btn2Href: href(raw?.btn2Href, DEFAULT_HERO.btn2Href),
+    ...(/^(\/|https?:\/\/)/.test(img) ? { image: img } : {}),
+  };
+}
+
 export function siteNavOf(raw: Partial<SiteNav> | null | undefined): SiteNav {
   const menu = (Array.isArray(raw?.menu) ? raw.menu : [])
     .filter((l) => l && str(l.label).trim() && str(l.href).trim())
@@ -489,6 +546,7 @@ export function siteNavOf(raw: Partial<SiteNav> | null | undefined): SiteNav {
     tilesPos: (["top", "hero", "features"] as const).includes(raw?.tilesPos as "top") ? raw?.tilesPos : "hero",
     // โลโก้รับเฉพาะ path ภายใน หรือ URL http(s) (กัน javascript: หลุดเข้า src)
     logo: /^(\/|https?:\/\/)/.test(str(raw?.logo).trim()) ? str(raw?.logo).trim() : undefined,
+    hero: heroOf(raw?.hero),
   };
 }
 

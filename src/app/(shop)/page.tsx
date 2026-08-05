@@ -16,7 +16,7 @@ export default function HomePage() {
   const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
   // การ์ดนำทาง (แอดมินตั้งเองได้ที่ /admin/nav)
   const [tiles, setTiles] = useState<NavTile[]>(visibleTiles(DEFAULT_SITE_NAV));
-  const [navStyle, setNavStyle] = useState<Pick<SiteNav, "tilesBg" | "tilesWave" | "tilesPos">>(DEFAULT_SITE_NAV);
+  const [navStyle, setNavStyle] = useState<Pick<SiteNav, "tilesBg" | "tilesWave" | "tilesPos" | "hero">>(DEFAULT_SITE_NAV);
   // จุดเด่นร้าน (แก้ได้ที่หลังบ้าน → เมนูหน้าร้าน)
   const [perks, setPerks] = useState<NavPerk[]>(visiblePerks(DEFAULT_SITE_NAV));
   useEffect(() => {
@@ -26,7 +26,7 @@ export default function HomePage() {
     fetchSiteNav().then((n) => {
       setTiles(visibleTiles(n));
       setPerks(visiblePerks(n));
-      setNavStyle({ tilesBg: n.tilesBg, tilesWave: n.tilesWave, tilesPos: n.tilesPos });
+      setNavStyle({ tilesBg: n.tilesBg, tilesWave: n.tilesWave, tilesPos: n.tilesPos, hero: n.hero });
     });
   }, []);
   useEffect(() => {
@@ -39,6 +39,7 @@ export default function HomePage() {
     };
   }, []);
 
+  const hero = navStyle.hero ?? DEFAULT_SITE_NAV.hero;
   const featured = all.filter((p) => p.featured);
   const bestSellers = [...all].sort((a, b) => b.sold - a.sold).slice(0, 4);
 
@@ -54,47 +55,58 @@ export default function HomePage() {
     <div className="mx-auto max-w-6xl px-4">
       {navBlock("top")}
 
-      {/* แบนเนอร์โปรโมชัน */}
+      {/* แบนเนอร์โปรโมชัน — ข้อความ/ปุ่ม/รูป แก้ได้ที่หลังบ้าน → เมนูหน้าร้าน → แบนเนอร์ใหญ่ */}
+      {hero.on && (
       <section className="mt-6 overflow-hidden rounded-[2rem] bg-gradient-to-br from-amber-200 via-amber-100 to-ducky shadow-[0_10px_40px_rgba(63,161,182,0.22)]">
         <div className="flex flex-col items-center gap-6 px-6 py-10 text-center md:flex-row md:px-12 md:py-14 md:text-left">
           <div className="flex-1">
-            <span className="inline-block rounded-full bg-white/70 px-4 py-1.5 text-xs font-bold text-amber-800">
-              🎉 โปรเปิดร้าน ลดสูงสุด 25%
-            </span>
-            <h1 className="mt-4 text-3xl font-extrabold leading-tight text-amber-950 md:text-5xl">
-              พิมพ์ลายของคุณ
-              <br />
-              ลงบนของที่คุณรัก 💛
+            {hero.badge && (
+              <span className="inline-block rounded-full bg-white/70 px-4 py-1.5 text-xs font-bold text-amber-800">
+                {hero.badge}
+              </span>
+            )}
+            <h1 className="mt-4 whitespace-pre-line text-3xl font-extrabold leading-tight text-amber-950 md:text-5xl">
+              {hero.title}
             </h1>
-            <p className="mt-3 text-sm leading-relaxed text-amber-900/80 md:text-base">
-              แก้วน้ำ เสื้อยืด เคสมือถือ กรอบผ้าใบ และอีกมากมาย
-              <br className="hidden md:block" />
-              อัปโหลดลาย → เลือกสินค้า → รอรับที่บ้าน ง่ายแค่นี้!
+            <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-amber-900/80 md:text-base">
+              {hero.subtitle}
             </p>
             <div className="mt-6 flex flex-wrap justify-center gap-3 md:justify-start">
-              <Link
-                href="/products"
-                className="rounded-full bg-amber-400 px-7 py-3.5 text-sm font-bold text-white shadow-lg transition hover:scale-105 hover:bg-amber-500"
-              >
-                🛍️ ช้อปเลย
-              </Link>
-              <Link
-                href="/how-to-order"
-                className="rounded-full bg-white/80 px-7 py-3.5 text-sm font-bold text-amber-900 shadow transition hover:scale-105 hover:bg-white"
-              >
-                📖 วิธีสั่งซื้อ
-              </Link>
+              {hero.btn1Label && (
+                <Link
+                  href={hero.btn1Href}
+                  className="rounded-full bg-amber-400 px-7 py-3.5 text-sm font-bold text-white shadow-lg transition hover:scale-105 hover:bg-amber-500"
+                >
+                  {hero.btn1Label}
+                </Link>
+              )}
+              {hero.btn2Label && (
+                <Link
+                  href={hero.btn2Href}
+                  className="rounded-full bg-white/80 px-7 py-3.5 text-sm font-bold text-amber-900 shadow transition hover:scale-105 hover:bg-white"
+                >
+                  {hero.btn2Label}
+                </Link>
+              )}
             </div>
           </div>
           <div className="relative hidden h-52 w-52 shrink-0 md:block">
-            <span className="absolute inset-0 flex items-center justify-center rounded-full bg-white/40 text-[7rem] shadow-inner">
-              🦆
-            </span>
-            <span className="absolute -left-4 top-2 animate-bounce text-4xl">✨</span>
-            <span className="absolute -right-2 bottom-4 text-4xl">🎨</span>
+            {hero.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={hero.image} alt="" className="h-52 w-52 rounded-3xl object-contain drop-shadow" />
+            ) : (
+              <>
+                <span className="absolute inset-0 flex items-center justify-center rounded-full bg-white/40 text-[7rem] shadow-inner">
+                  🦆
+                </span>
+                <span className="absolute -left-4 top-2 animate-bounce text-4xl">✨</span>
+                <span className="absolute -right-2 bottom-4 text-4xl">🎨</span>
+              </>
+            )}
           </div>
         </div>
       </section>
+      )}
 
       {/* การ์ดนำทาง — เลื่อนตำแหน่งได้จากหลังบ้าน (ก่อนแบนเนอร์ / ใต้แบนเนอร์ / ใต้จุดเด่นร้าน) */}
       {navBlock("hero")}

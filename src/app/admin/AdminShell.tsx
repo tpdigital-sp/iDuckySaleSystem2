@@ -46,12 +46,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  // พับแถบข้างเป็นแถวไอคอน (เดสก์ท็อป) — เริ่มต้นพับไว้ ได้พื้นที่ทำงานกว้าง · จำที่เลือกไว้ต่อเครื่อง
-  const [railed, setRailed] = useState(true);
+  // พับแถบข้างเป็นแถวไอคอน (เดสก์ท็อป) — จำไว้ต่อเครื่อง
+  const [railed, setRailed] = useState(false);
   useEffect(() => {
     try {
-      // ไม่เคยตั้ง = พับ · "0" = เคยกดกางไว้ ให้กางตามนั้น
-      setRailed(localStorage.getItem("admin.sidebar.railed") !== "0");
+      setRailed(localStorage.getItem("admin.sidebar.railed") === "1");
     } catch {}
   }, []);
   function toggleRail() {
@@ -74,12 +73,19 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   // badge แจ้งจำนวนประเมินความพึงพอใจใหม่ที่ยังไม่ได้เปิดดู (นับต่อเครื่องด้วย localStorage)
   const [newRatings, setNewRatings] = useState(0);
 
-  // กลุ่มเมนูที่หุบอยู่ — จำไว้ต่อเครื่อง (เมนูเยอะ หุบกลุ่มที่ไม่ได้ใช้ให้สั้นลง)
-  const [foldedGroups, setFoldedGroups] = useState<Record<string, boolean>>({});
+  /**
+   * กลุ่มเมนูที่หุบอยู่ — เริ่มต้น "หุบทุกกลุ่ม" (เมนูเยอะ เห็นภาพรวมง่ายกว่า)
+   * กดหัวกลุ่มเพื่อกาง แล้วระบบจำไว้ต่อเครื่อง
+   */
+  const ALL_FOLDED: Record<string, boolean> = Object.fromEntries(MENU_GROUPS.map((g) => [g.key, true]));
+  const [foldedGroups, setFoldedGroups] = useState<Record<string, boolean>>(ALL_FOLDED);
   useEffect(() => {
     try {
-      setFoldedGroups(JSON.parse(localStorage.getItem("admin.sidebar.folded") ?? "{}") as Record<string, boolean>);
+      const saved = localStorage.getItem("admin.sidebar.folded");
+      // ไม่เคยตั้งค่า = หุบทุกกลุ่ม · เคยตั้งแล้วใช้ตามนั้น (กลุ่มที่ไม่มีในค่าเก่า = หุบ)
+      setFoldedGroups(saved ? { ...ALL_FOLDED, ...(JSON.parse(saved) as Record<string, boolean>) } : ALL_FOLDED);
     } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   function toggleGroup(key: string) {
     setFoldedGroups((m) => {
@@ -90,12 +96,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       return next;
     });
   }
-  // เข้าหน้าไหน กางกลุ่มของหน้านั้นให้เอง (ไม่งั้นไฮไลต์หน้าปัจจุบันหายไปในกลุ่มที่หุบ)
-  useEffect(() => {
-    const g = MENU.filter((m) => pathname === m.href || pathname.startsWith(`${m.href}/`))
-      .sort((a, b) => b.href.length - a.href.length)[0]?.group;
-    if (g) setFoldedGroups((m) => (m[g] ? { ...m, [g]: false } : m));
-  }, [pathname]);
+  /** กลุ่มที่มีหน้าที่เปิดอยู่ — ใช้ไฮไลต์หัวกลุ่มตอนหุบ (ไม่กางให้เอง จะได้หุบตามที่ตั้งไว้) */
+  const activeGroup = MENU.filter((m) => pathname === m.href || pathname.startsWith(`${m.href}/`))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.group;
 
   useEffect(() => {
     if (pathname === "/admin/login" || !perms.includes("orders.viewAll")) return;
@@ -201,14 +204,22 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               onClick={() => toggleGroup(key)}
               aria-expanded={!folded}
               title={folded ? "กางกลุ่มนี้" : "หุบกลุ่มนี้"}
-              className={`flex w-full items-center gap-1.5 rounded-lg px-3 pb-1 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400 transition hover:text-slate-600 ${
+              className={`flex w-full items-center gap-1.5 rounded-lg px-3 pb-1 text-left text-[10px] font-bold uppercase tracking-wider transition hover:text-slate-600 ${
                 groupIdx > 0 ? "mt-4" : "mt-1"
-              }`}
+              } ${activeGroup === key ? "text-teal-600" : "text-slate-400"}`}
             >
               <span className={`text-[8px] transition-transform ${folded ? "-rotate-90" : ""}`}>▼</span>
               {label}
+              {/* หุบอยู่แต่มีหน้าที่เปิดค้างในกลุ่มนี้ → จุดบอกให้รู้ว่าอยู่ตรงไหน */}
+              {folded && activeGroup === key && (
+                <span className="h-1.5 w-1.5 rounded-full bg-teal-500" aria-label="อยู่ในกลุ่มนี้" />
+              )}
               {folded && (
-                <span className="ml-auto rounded-full bg-slate-100 px-1.5 text-[10px] font-bold text-slate-400">
+                <span
+                  className={`ml-auto rounded-full px-1.5 text-[10px] font-bold ${
+                    activeGroup === key ? "bg-teal-100 text-teal-700" : "bg-slate-100 text-slate-400"
+                  }`}
+                >
                   {items.length}
                 </span>
               )}
