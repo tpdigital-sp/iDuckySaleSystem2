@@ -11,12 +11,12 @@ export const metadata: Metadata = {
 /** อีเมลติดต่อร้าน (ตามหน้าเกี่ยวกับเราของเว็บหลัก) */
 const SHOP_EMAIL = "iduckyshop03@gmail.com";
 
-/** โซเชียลของร้าน (ชุดเดียวกับ footer เว็บหลัก iduckyprintsstudio) */
+/** โซเชียลของร้าน (ลิงก์ชุดเดียวกับ footer เว็บหลัก · โลโก้จริงจากคลังงานของร้าน) */
 const SOCIALS = [
-  { name: "Facebook", icon: "👍", href: "https://www.facebook.com/iduckyshop" },
-  { name: "Instagram", icon: "📸", href: "https://www.instagram.com/iduckyshop1" },
-  { name: "TikTok", icon: "🎵", href: "https://www.tiktok.com/@iduckyofficial" },
-  { name: "X", icon: "🐦", href: "https://x.com/iduckyshop" },
+  { name: "Facebook", icon: "/about/social/facebook.png", href: "https://www.facebook.com/iduckyshop" },
+  { name: "Instagram", icon: "/about/social/instagram.png", href: "https://www.instagram.com/iduckyshop1" },
+  { name: "TikTok", icon: "/about/social/tiktok.png", href: "https://www.tiktok.com/@iduckyofficial" },
+  { name: "X", icon: "/about/social/x.png", href: "https://x.com/iduckyshop" },
 ];
 
 const MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
@@ -107,9 +107,11 @@ export default function AboutPage() {
                 href={s.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-full bg-stone-100 px-4 py-2 text-xs font-bold text-stone-600 transition hover:bg-amber-100 hover:text-amber-800"
+                className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-4 py-2 text-xs font-bold text-stone-600 transition hover:bg-amber-100 hover:text-amber-800"
               >
-                {s.icon} {s.name}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={s.icon} alt="" className="h-4 w-4 rounded-[3px]" />
+                {s.name}
               </a>
             ))}
           </div>
