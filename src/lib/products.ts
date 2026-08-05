@@ -101,6 +101,49 @@ export interface ShipTier {
   price: number;
 }
 
+/**
+ * เรทราคา 1 แบบของสินค้า — สินค้าบางตัวมีหลายเรท (เช่น พิน: เรทคละดีเทล / เรทไม่คละดีเทล)
+ * แต่ละเรทมีตารางขั้นบันไดของตัวเอง (ช่วงจำนวนคนละชุดได้) + เงื่อนไขการสั่ง
+ */
+export interface PriceRate {
+  id: string;
+  /** ชื่อเรทที่ลูกค้าเห็น เช่น "เรทที่ 1 แบบคละดีเทล" */
+  label: string;
+  /** คำอธิบายสั้น ๆ ใต้ชื่อ เช่น "อะคริลิคใส / ขาวขุ่น C-02 (เงา 2 ด้าน)" */
+  desc?: string;
+  /** ยอดสั่งรวมขั้นต่ำของเรทนี้ เช่น เรท 2 ต้องสั่ง 50 ชิ้นขึ้นไป */
+  minQty?: number;
+  /** คละลายขั้นต่ำลายละกี่ชิ้น เช่น 25 → สั่ง 50 คละได้ 2 ลาย */
+  minPerDesign?: number;
+  /** คละลายเกินโควตาได้ โดยคิดเพิ่มลายละ (บาท) — ไม่ตั้ง = คละเกินโควตาไม่ได้ */
+  extraDesignFee?: number;
+  pricing: PriceMatrix;
+}
+
+/** ชื่อกลุ่มที่ใช้เก็บเรทที่ลูกค้าเลือกไว้ใน selections (แสดงในตะกร้า/ออเดอร์เหมือนตัวเลือกทั่วไป) */
+export const RATE_LABEL = "เรทราคา";
+/** ชื่อกลุ่มที่เก็บจำนวนลายที่ลูกค้าจะคละ เช่น "3 ลาย" */
+export const DESIGN_LABEL = "จำนวนลาย";
+
+/** จำนวนลายที่ "รวมในราคา" ตามจำนวนที่สั่ง = ⌊จำนวน ÷ ขั้นต่ำต่อลาย⌋ (อย่างน้อย 1) */
+export function includedDesigns(rate: PriceRate, qty: number): number {
+  if (!rate.minPerDesign || rate.minPerDesign <= 0) return 0;
+  return Math.max(1, Math.floor(qty / rate.minPerDesign));
+}
+
+/**
+ * ค่าคละลายเกินโควตา (บาท ทั้งรายการ) — ลูกค้าเลือกจำนวนลายมากกว่าที่รวมในราคา
+ * และเรทนั้นเปิดให้คละเกินได้ (extraDesignFee) → ส่วนเกินคิดลายละ extraDesignFee
+ */
+export function designFeeFor(product: Product, selections: Record<string, string>, qty: number): number {
+  const r = activeRate(product, selections);
+  if (!r?.minPerDesign || !r.extraDesignFee) return 0;
+  const n = parseInt(String(selections[DESIGN_LABEL] ?? ""), 10);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  const extra = n - includedDesigns(r, qty);
+  return extra > 0 ? extra * r.extraDesignFee : 0;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -125,6 +168,11 @@ export interface Product {
   body?: BodySection[];
   /** ตารางราคาขั้นบันได (ไม่มี = ใช้ราคาเดียว price + option.extra) */
   pricing?: PriceMatrix;
+  /**
+   * หลายเรทราคา (เช่น พิน: เรทคละดีเทล / เรทไม่คละดีเทล) — มีเมื่อไหร่ใช้แทน pricing
+   * เรทแรกคือค่าเริ่มต้น · pricing จะถูกตั้งเป็นตารางของเรทแรกไว้ด้วยเสมอ (ให้โค้ดเดิมทำงานต่อได้)
+   */
+  priceRates?: PriceRate[];
   /** ข้อมูล SEO/AEO (ไม่มี = ใช้ค่าจากชื่อ/รายละเอียดอัตโนมัติ) */
   seo?: ProductSeo;
   /**
@@ -1805,8 +1853,24 @@ export function formatPrice(n: number): string {
   return `฿${n.toLocaleString("th-TH")}`;
 }
 
+/** เรทที่ลูกค้าเลือกอยู่ (จาก selections) — ไม่เจอ/ไม่ได้เลือก = เรทแรก · สินค้าไม่มีหลายเรท = undefined */
+export function activeRate(p: Product, selections: Record<string, string>): PriceRate | undefined {
+  const rs = p.priceRates;
+  if (!rs?.length) return undefined;
+  return rs.find((r) => r.label === selections[RATE_LABEL]) ?? rs[0];
+}
+
+/** ตารางราคาที่ใช้จริงตามเรทที่เลือก — สินค้าเรทเดียวคืน pricing เดิม */
+export function activeMatrix(p: Product, selections: Record<string, string>): PriceMatrix | undefined {
+  return activeRate(p, selections)?.pricing ?? p.pricing;
+}
+
 /** ช่วงราคาต่ำสุด–สูงสุดของสินค้า — ถ้ามีตารางราคาขั้นบันไดคิดจากทุกช่อง, ไม่งั้นคิดจากราคาตั้งต้น + option.extra */
 export function priceRange(p: Product): { min: number; max: number } {
+  if (p.priceRates?.length) {
+    const all = p.priceRates.flatMap((r) => Object.values(r.pricing.cells).flat()).filter((n) => n > 0);
+    if (all.length) return { min: Math.min(...all), max: Math.max(...all) };
+  }
   if (p.pricing) {
     const all = Object.values(p.pricing.cells).flat();
     if (all.length) return { min: Math.min(...all), max: Math.max(...all) };
@@ -1848,7 +1912,7 @@ export function unitPriceFor(
     const dims = parseCustomDims(selections[c.label]);
     if (dims) return c.mode === "quote" ? 0 : customUnitPrice(c, dims.w, dims.h);
   }
-  const m = product.pricing;
+  const m = activeMatrix(product, selections);
   if (m) {
     const cells = m.cells[priceMatrixKey(m, selections)];
     if (cells && cells.length) return cells[tierIndex(m, qty)] ?? product.price;

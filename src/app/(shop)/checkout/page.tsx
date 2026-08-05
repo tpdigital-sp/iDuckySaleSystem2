@@ -41,7 +41,7 @@ export default function CheckoutPage() {
     setPicks(getAppendPicks());
   }, []);
   const items = picks === null ? allItems : allItems.filter((i) => picks.includes(i.key));
-  const subtotal = items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0);
+  const subtotal = items.reduce((sum, i) => sum + i.unitPrice * i.qty + (i.extraFee ?? 0), 0);
   const totalQty = items.reduce((sum, i) => sum + i.qty, 0);
   const { customer } = useCustomer();
   const [payment, setPayment] = useState<ShopPayment>(EMPTY_PAYMENT);
@@ -284,6 +284,19 @@ export default function CheckoutPage() {
         ...(bulkFlag ? { needStockCheck: true } : {}),
       };
     });
+    // ค่าคละลายเกินโควตา → แยกเป็นบรรทัดของตัวเอง (โชว์ชัดในออเดอร์/ใบเสร็จ · id ต่อท้าย #designfee ไม่ไปตัดสต๊อก)
+    for (const it of items) {
+      const fee = it.extraFee ?? 0;
+      if (fee <= 0) continue;
+      orderItems.push({
+        productId: `${it.productId}#designfee`,
+        name: `🎨 ค่าคละลายเพิ่ม — ${productOf(it.productId)?.name ?? it.productId} (${it.selections["จำนวนลาย"] ?? ""})`.trim(),
+        selections: "",
+        sel: {},
+        qty: 1,
+        unitPrice: fee,
+      });
+    }
 
     // ── โหมดสั่งเพิ่ม: ต่อท้ายออเดอร์เดิม ไม่ต้องกรอกที่อยู่ใหม่ ──
     if (appendTo) {

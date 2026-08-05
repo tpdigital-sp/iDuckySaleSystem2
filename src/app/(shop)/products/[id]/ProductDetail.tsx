@@ -4,14 +4,18 @@ import { productAutoSeo } from "@/lib/auto-seo";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
+  activeMatrix,
   allowedChoices,
   customUnitPrice,
+  DESIGN_LABEL,
   formatPrice,
   formatPriceRange,
   getCategory,
+  includedDesigns,
   priceMatrixKey,
   priceRange,
   PRODUCTS,
+  RATE_LABEL,
   resolveSelections,
   tierIndex,
   unitPriceFor,
@@ -90,10 +94,36 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   }, [initialProduct]);
 
   // ปรับตามกฎเงื่อนไขเสมอ เช่น กระดาษที่เคลือบไม่ได้ → เคลือบถูกบังคับเป็น "ไม่เคลือบ"
-  const effective = useMemo(
+  const resolved = useMemo(
     () => resolveSelections(product, selections),
     [product, selections]
   );
+
+  // ── หลายเรทราคา (เช่น พิน: คละดีเทล / ไม่คละดีเทล) ──
+  const rates = useMemo(() => product.priceRates ?? [], [product]);
+  const [rateLabel, setRateLabel] = useState("");
+  const rate = rates.length ? (rates.find((r) => r.label === rateLabel) ?? rates[0]) : undefined;
+  // เรทที่เลือกติดไปกับ selections → ตะกร้า/ออเดอร์เห็นเป็น "เรทราคา: …" และคิดราคาตามเรทนั้น
+  const effective = useMemo(
+    () => (rate ? { ...resolved, [RATE_LABEL]: rate.label } : resolved),
+    [resolved, rate]
+  );
+  const rateMinQty = rate?.minQty ?? 1;
+  // เปลี่ยนเรทแล้วจำนวนต่ำกว่าขั้นต่ำของเรทใหม่ → ดันขึ้นให้ถึงขั้นต่ำ
+  useEffect(() => {
+    if (rateMinQty > 1) setQty((q) => Math.max(q, rateMinQty));
+  }, [rateMinQty]);
+
+  // ── จำนวนลายที่คละ (เรทที่กำหนดขั้นต่ำต่อลาย) ──
+  const [designs, setDesigns] = useState(1);
+  // ลายที่รวมในราคาตามจำนวนที่สั่ง · เรทที่เปิด extraDesignFee คละเกินได้ (จ่ายเพิ่มต่อลาย ไม่เกินจำนวนชิ้น)
+  const included = rate?.minPerDesign ? includedDesigns(rate, qty) : 0;
+  const maxDesigns = rate?.minPerDesign ? (rate.extraDesignFee ? qty : included) : 0;
+  useEffect(() => {
+    if (maxDesigns > 0) setDesigns((d) => Math.min(Math.max(1, d), maxDesigns));
+  }, [maxDesigns]);
+  const extraDesigns = rate?.extraDesignFee ? Math.max(0, designs - included) : 0;
+  const designFee = extraDesigns * (rate?.extraDesignFee ?? 0);
 
   const custom = product.custom?.enabled ? product.custom : null;
   const cW = parseFloat(customW), cH = parseFloat(customH);
@@ -107,11 +137,14 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   );
   const unitPrice = useCustom ? customPrice : baseUnitPrice;
 
+  // ตารางราคาที่ใช้อยู่ (ตามเรทที่เลือก — สินค้าเรทเดียวคือ pricing เดิม)
+  const matrix = useMemo(() => activeMatrix(product, effective), [product, effective]);
+
   // tier ปัจจุบันของราคาขั้นบันได (ถ้ามี)
   const currentTier = useMemo(() => {
-    if (!product.pricing) return null;
-    return tierIndex(product.pricing, qty);
-  }, [product, qty]);
+    if (!matrix) return null;
+    return tierIndex(matrix, qty);
+  }, [matrix, qty]);
 
   const related = PRODUCTS.filter(
     (p) => p.category === product.category && p.id !== product.id
@@ -220,6 +253,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     // สั่งจำนวนมาก → ติดธงให้ทีมเช็คสต๊อก/คิวผลิตแล้วยืนยันจำนวนกับลูกค้าก่อนเริ่มงาน
     if (bulkAsk) extra["รอเช็คสต๊อก"] = "สั่งจำนวนมาก — รอทีมงานยืนยันจำนวน";
     if (note.trim()) extra["หมายเหตุ"] = note.trim();
+    // จำนวนลายที่คละ (เฉพาะเรทที่มีระบบลาย) — เก็บเป็นตัวเลือกให้เห็นในตะกร้า/ออเดอร์
+    if (rate?.minPerDesign && designs >= 1) extra[DESIGN_LABEL] = `${designs} ลาย`;
     if (useCustom) {
       if (!custom || !customValid) return; // ต้องกรอกขนาดให้ครบก่อน
       // เก็บขนาดที่ระบุลง selections (เป็น key ของตะกร้า + ใช้คิดราคาซ้ำ)
@@ -398,12 +433,15 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
       {/* ═══ ข้อมูลประกอบ — ไหลต่อจากรูป/รายละเอียด (เดิมอยู่ท้ายหน้า ทำให้ตรงนี้เป็นช่องขาว) ═══ */}
       <div className="grid gap-6 sm:col-span-2 lg:grid-cols-2">
         <div>
-          <p className="text-sm font-bold text-stone-700">💰 ราคาต่อหน่วยตามจำนวน</p>
+          <p className="text-sm font-bold text-stone-700">
+            💰 ราคาต่อหน่วยตามจำนวน
+            {rate && <span className="ml-1 font-semibold text-teal-700">· {rate.label}</span>}
+          </p>
           {/* ตารางราคาขั้นบันได (rate card) — คอลัมน์เยอะโชว์เฉพาะที่เลือกอยู่ */}
-          {product.pricing &&
+          {matrix &&
             (() => {
-              const allKeys = Object.keys(product.pricing.cells);
-              const selectedKey = priceMatrixKey(product.pricing, effective);
+              const allKeys = Object.keys(matrix.cells);
+              const selectedKey = priceMatrixKey(matrix, effective);
               const cols = allKeys.length <= 6 ? allKeys : allKeys.filter((k) => k === selectedKey);
               const fmtCol = (k: string) => k.split("│").join(" · ");
               return (
@@ -416,7 +454,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                   <table className="w-full border-collapse text-xs">
                     <thead>
                       <tr className="bg-sky-100 text-sky-900">
-                        <th className="whitespace-nowrap px-3 py-2 text-left font-bold">จำนวน ({product.pricing.unit})</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-left font-bold">จำนวน ({matrix.unit})</th>
                         {cols.map((col) => (
                           <th key={col} className="whitespace-nowrap px-3 py-2 text-center font-bold">
                             {fmtCol(col)}
@@ -425,7 +463,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                       </tr>
                     </thead>
                     <tbody>
-                      {product.pricing.tiers.map((tier, ti) => {
+                      {matrix.tiers.map((tier, ti) => {
                         const active = ti === currentTier;
                         return (
                           <tr
@@ -440,7 +478,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                               const isChosen = active && selectedKey === col;
                               return (
                                 <td key={col} className={`px-3 py-2 text-center ${isChosen ? "text-amber-700" : ""}`}>
-                                  {formatPrice(product.pricing!.cells[col][ti])}
+                                  {formatPrice(matrix.cells[col][ti])}
                                 </td>
                               );
                             })}
@@ -452,6 +490,12 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                 </div>
               );
             })()}
+          {rate?.minPerDesign != null && rate.minPerDesign > 0 && (
+            <p className="mt-2 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
+              🎨 เรทนี้คละลายขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
+              {rate.minQty ? ` · สั่งรวมขั้นต่ำ ${rate.minQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}` : ""}
+            </p>
+          )}
         </div>
         <div>
           <p className="text-sm font-bold text-stone-700">✨ จุดเด่นของงานนี้</p>
@@ -476,8 +520,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
             <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">ราคา</p>
             <div className="mt-4 flex items-baseline gap-2">
               <span className="text-2xl font-extrabold text-amber-600">{formatPrice(unitPrice)}</span>
-              {product.pricing ? (
-                <span className="text-sm font-semibold text-stone-500">/ {product.pricing.unit}</span>
+              {matrix ? (
+                <span className="text-sm font-semibold text-stone-500">/ {matrix.unit}</span>
               ) : (
                 product.oldPrice && (
                   <span className="text-base text-stone-400 line-through">
@@ -486,9 +530,9 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                 )
               )}
             </div>
-            {product.pricing ? (
+            {matrix ? (
               <p className="mt-1 text-xs text-stone-400">
-                💡 เรทราคา {formatPriceRange(product)} ต่อ{product.pricing.unit} — ยิ่งสั่งเยอะ ยิ่งถูก (ราคาปรับตามจำนวน)
+                💡 เรทราคา {formatPriceRange(product)} ต่อ{matrix.unit} — ยิ่งสั่งเยอะ ยิ่งถูก (ราคาปรับตามจำนวน)
               </p>
             ) : (
               priceRange(product).max > priceRange(product).min && (
@@ -498,6 +542,50 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
               )
             )}
           </div>
+
+          {/* เลือกเรทราคา (สินค้าที่มีหลายเรท เช่น คละดีเทล / ไม่คละดีเทล) */}
+          {rates.length > 1 && rate && (
+            <div className="mt-5">
+              <span className="mb-2 block text-sm font-bold text-stone-700">
+                {RATE_LABEL}: <span className="font-semibold text-amber-600">{rate.label}</span>
+              </span>
+              <div className="grid gap-2">
+                {rates.map((r) => {
+                  const on = r.label === rate.label;
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => setRateLabel(r.label)}
+                      className={`rounded-2xl px-4 py-3 text-left text-sm transition ${
+                        on
+                          ? "bg-amber-50 font-bold text-amber-900 ring-2 ring-amber-400"
+                          : "bg-white text-stone-600 ring-1 ring-stone-200 hover:ring-amber-300"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${on ? "border-amber-500" : "border-stone-300"}`}>
+                          {on && <span className="h-2 w-2 rounded-full bg-amber-500" />}
+                        </span>
+                        {r.label}
+                      </span>
+                      {r.desc && <span className="mt-0.5 block pl-6 text-xs font-normal text-stone-500">{r.desc}</span>}
+                      {(r.minQty || r.minPerDesign) && (
+                        <span className="mt-0.5 block pl-6 text-[11px] font-semibold text-teal-700">
+                          {[
+                            r.minQty ? `สั่งรวม ${r.minQty.toLocaleString("th-TH")} ${r.pricing.unit}ขึ้นไป` : "",
+                            r.minPerDesign ? `คละลายขั้นต่ำลายละ ${r.minPerDesign.toLocaleString("th-TH")} ${r.pricing.unit}` : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* ตัวเลือกสินค้า (กรอง/ล็อกตามกฎเงื่อนไข) */}
           <div className="mt-5 space-y-4">
@@ -625,7 +713,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
           {bulkAsk && (
             <div className="mt-5 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
               <p className="text-sm font-extrabold text-amber-900">
-                📦 สั่ง {qty.toLocaleString("th-TH")} {product.pricing?.unit ?? "ชิ้น"} — รบกวนเช็คสต๊อกกับแอดมินก่อนนะครับ
+                📦 สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} — รบกวนเช็คสต๊อกกับแอดมินก่อนนะครับ
               </p>
               <p className="mt-1 text-xs leading-relaxed text-amber-800">
                 จำนวนนี้อาจต้องสั่งวัสดุเพิ่มหรือจองคิวผลิต — ทักไลน์เช็คของกับรอบผลิตก่อนได้เลย
@@ -646,16 +734,16 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
           <div ref={orderBoxRef} className="mt-6 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
             {/* จำนวน + เพิ่มลงตะกร้า */}
             <div className="mt-6">
-              {product.pricing && (
+              {matrix && (
                 <label className="mb-1.5 block text-sm font-bold text-stone-700">
-                  จำนวน ({product.pricing.unit})
+                  จำนวน ({matrix.unit})
                 </label>
               )}
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center rounded-full bg-white ring-1 ring-amber-200">
                   <button
                     type="button"
-                    onClick={() => setQty((q) => Math.max(1, q - 1))}
+                    onClick={() => setQty((q) => Math.max(rateMinQty, q - 1))}
                     className="h-12 w-12 rounded-l-full text-lg font-bold text-stone-600 hover:bg-amber-50"
                     aria-label="ลดจำนวน"
                   >
@@ -674,7 +762,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                   />
                   <button
                     type="button"
-                    onClick={() => setQty((q) => Math.min(product.pricing ? 99999 : 99, q + 1))}
+                    onClick={() => setQty((q) => Math.min(matrix ? 99999 : 99, q + 1))}
                     className="h-12 w-12 rounded-r-full text-lg font-bold text-stone-600 hover:bg-amber-50"
                     aria-label="เพิ่มจำนวน"
                   >
@@ -684,7 +772,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                 <button
                   type="button"
                   onClick={handleAdd}
-                  disabled={(useCustom && !customValid) || artBlocked}
+                  disabled={(useCustom && !customValid) || artBlocked || qty < rateMinQty}
                   className={`flex-1 rounded-full px-6 py-3.5 text-sm font-bold shadow-lg transition sm:flex-none sm:px-10 ${
                     added
                       ? "bg-emerald-500 text-white"
@@ -695,9 +783,11 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                     ? "✓ เพิ่มลงตะกร้าแล้ว!"
                     : artBlocked
                       ? "🎨 แนบลายก่อนถึงจะสั่งได้"
+                      : qty < rateMinQty
+                      ? `เรทนี้สั่งขั้นต่ำ ${rateMinQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}`
                       : useCustom && custom?.mode === "quote"
                       ? "🛒 เพิ่มลงตะกร้า (รอตีราคา)"
-                      : `🛒 เพิ่มลงตะกร้า — ${formatPrice(unitPrice * qty)}`}
+                      : `🛒 เพิ่มลงตะกร้า — ${formatPrice(unitPrice * qty + designFee)}`}
                 </button>
               </div>
               {artBlocked && (
@@ -713,11 +803,50 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                   🎨 สินค้านี้ต้องแนบลายก่อนสั่ง — แตะเพื่ออัปโหลดรูป หรือใส่ลิงก์ไฟล์/อีเมล
                 </button>
               )}
-              {product.pricing && (
+              {matrix && (
                 <p className="mt-2 text-sm text-stone-500">
-                  {formatPrice(unitPrice)} / {product.pricing.unit} × {qty.toLocaleString("th-TH")} ={" "}
-                  <span className="font-extrabold text-amber-600">{formatPrice(unitPrice * qty)}</span>
+                  {formatPrice(unitPrice)} / {matrix.unit} × {qty.toLocaleString("th-TH")}
+                  {designFee > 0 && <> + ค่าคละลาย {formatPrice(designFee)}</>} ={" "}
+                  <span className="font-extrabold text-amber-600">{formatPrice(unitPrice * qty + designFee)}</span>
                 </p>
+              )}
+              {/* จำนวนลายที่คละ (เรทที่กำหนดขั้นต่ำต่อลาย) */}
+              {rate?.minPerDesign != null && rate.minPerDesign > 0 && maxDesigns >= 1 && (
+                <div className="mt-2 rounded-2xl bg-teal-50 px-3 py-2.5 ring-1 ring-teal-100">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <span className="text-xs font-bold text-teal-900">🎨 คละกี่ลาย:</span>
+                    <div className="flex items-center rounded-full bg-white ring-1 ring-teal-200">
+                      <button
+                        type="button"
+                        onClick={() => setDesigns((d) => Math.max(1, d - 1))}
+                        disabled={designs <= 1}
+                        className="h-8 w-8 rounded-l-full text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
+                        aria-label="ลดจำนวนลาย"
+                      >
+                        −
+                      </button>
+                      <span className="w-10 text-center text-sm font-bold text-teal-900">{designs}</span>
+                      <button
+                        type="button"
+                        onClick={() => setDesigns((d) => Math.min(maxDesigns, d + 1))}
+                        disabled={designs >= maxDesigns}
+                        className="h-8 w-8 rounded-r-full text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
+                        aria-label="เพิ่มจำนวนลาย"
+                      >
+                        +
+                      </button>
+                    </div>
+                    {designFee > 0 && (
+                      <span className="text-xs font-bold text-amber-700">+{formatPrice(designFee)}</span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
+                    รวมในราคา {included.toLocaleString("th-TH")} ลาย (ขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"})
+                    {rate.extraDesignFee
+                      ? ` · คละเกินได้ ลายละ +${formatPrice(rate.extraDesignFee)}`
+                      : " · เพิ่มลายได้ด้วยการเพิ่มจำนวนสั่ง"}
+                  </p>
+                </div>
               )}
             </div>
           </div>
@@ -1015,10 +1144,10 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
         <div className="flex items-center gap-3">
           <div className="min-w-0">
             <p className="truncate text-[11px] text-stone-400">
-              {qty.toLocaleString("th-TH")} {product.pricing?.unit ?? "ชิ้น"}
+              {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
               {artFiles.length > 0 ? ` · แนบลาย ${artFiles.length} รูป` : ""}
             </p>
-            <p className="text-lg font-extrabold leading-tight text-amber-600">{formatPrice(unitPrice * qty)}</p>
+            <p className="text-lg font-extrabold leading-tight text-amber-600">{formatPrice(unitPrice * qty + designFee)}</p>
           </div>
           <button
             type="button"

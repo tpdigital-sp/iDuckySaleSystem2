@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { getProduct, unitPriceFor, type Product } from "./products";
+import { designFeeFor, getProduct, unitPriceFor, type Product } from "./products";
 import { fetchProducts } from "./product-repo";
 
 export interface CartItem {
@@ -19,6 +19,8 @@ export interface CartItem {
   /** ตัวเลือกที่ลูกค้าเลือก เช่น { "ขนาด": "M", "สีเสื้อ": "ขาว" } */
   selections: Record<string, string>;
   unitPrice: number;
+  /** ค่าคละลายเกินโควตา (บาท ทั้งรายการ) — คำนวณใหม่ตามจำนวนเสมอ */
+  extraFee?: number;
 }
 
 interface CartState {
@@ -55,7 +57,8 @@ function reducer(state: CartState, action: CartAction): CartState {
       if (action.qty < 1) return state;
       return {
         items: state.items.map((i) =>
-          i.key === action.key ? { ...i, qty: Math.min(action.qty, 99) } : i
+          // เพดาน 99999 — สินค้าราคาขั้นบันได/หลายเรทสั่งกันหลักพันหลักหมื่นชิ้น (เดิม 99 ไว้กันพิมพ์ผิดของชิ้นเดี่ยว)
+          i.key === action.key ? { ...i, qty: Math.min(action.qty, 99999) } : i
         ),
       };
     case "clear":
@@ -138,10 +141,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
     // คำนวณราคา/หน่วยใหม่ทุกครั้งตามจำนวนปัจจุบัน (รองรับราคาขั้นบันได)
     const items: CartItem[] = state.items.map((i) => {
       const product = productOf(i.productId);
-      return product ? { ...i, unitPrice: unitPriceFor(product, i.selections, i.qty) } : i;
+      if (!product) return i;
+      return {
+        ...i,
+        unitPrice: unitPriceFor(product, i.selections, i.qty),
+        extraFee: designFeeFor(product, i.selections, i.qty),
+      };
     });
     const totalQty = items.reduce((s, i) => s + i.qty, 0);
-    const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+    const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice + (i.extraFee ?? 0), 0);
     return {
       items,
       totalQty,

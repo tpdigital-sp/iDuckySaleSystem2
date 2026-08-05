@@ -61,6 +61,11 @@ type DraftPricing = {
   /** key คอลัมน์ → ราคาต่อ tier (เป็น string เพื่อกรอกในช่อง) */
   cells: Record<string, string[]>;
 };
+/** ข้อมูลกำกับเรทราคา (ชื่อ + เงื่อนไขการสั่ง) */
+type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string };
+/** เรทเพิ่มเติม — มีช่วงจำนวน+ตารางราคาของตัวเอง (คอลัมน์/หน่วยใช้ร่วมกับเรทหลัก) */
+type DraftExtraRate = DraftRateMeta & { id: string; tiers: DraftTier[]; cells: Record<string, string[]> };
+const EMPTY_RATE_META: DraftRateMeta = { label: "", desc: "", minQty: "", minPerDesign: "", extraDesignFee: "" };
 /** สินค้าที่ scrape มาจาก URL (จาก /api/admin/import) */
 type ScrapedProduct = {
   name: string; unit: string; price: number;
@@ -81,6 +86,10 @@ type Draft = {
   options: DraftOption[];
   rules: DraftRule[];
   pricing: DraftPricing;
+  /** ชื่อ/เงื่อนไขของเรทหลัก (ตาราง pricing) — ใช้เมื่อสินค้ามีหลายเรทหรือมีเงื่อนไขขั้นต่ำ */
+  rateMeta: DraftRateMeta;
+  /** เรทราคาเพิ่มเติม (เช่น เรทไม่คละดีเทล) — แต่ละเรทมีช่วงจำนวน+ราคาของตัวเอง */
+  extraRates: DraftExtraRate[];
   highlights: string[];
   images: DraftImage[];
   body: DraftBody[];
@@ -233,6 +242,25 @@ function toDraft(p: Product): Draft {
           ),
         }
       : { enabled: false, unit: "ชิ้น", driverLabels: [], tiers: [], cells: {} },
+    rateMeta: p.priceRates?.[0]
+      ? {
+          label: p.priceRates[0].label,
+          desc: p.priceRates[0].desc ?? "",
+          minQty: p.priceRates[0].minQty != null ? String(p.priceRates[0].minQty) : "",
+          minPerDesign: p.priceRates[0].minPerDesign != null ? String(p.priceRates[0].minPerDesign) : "",
+          extraDesignFee: p.priceRates[0].extraDesignFee != null ? String(p.priceRates[0].extraDesignFee) : "",
+        }
+      : { ...EMPTY_RATE_META },
+    extraRates: (p.priceRates ?? []).slice(1).map((r) => ({
+      id: r.id,
+      label: r.label,
+      desc: r.desc ?? "",
+      minQty: r.minQty != null ? String(r.minQty) : "",
+      minPerDesign: r.minPerDesign != null ? String(r.minPerDesign) : "",
+      extraDesignFee: r.extraDesignFee != null ? String(r.extraDesignFee) : "",
+      tiers: r.pricing.tiers.map((t) => ({ upTo: t.upTo == null ? "" : String(t.upTo), label: t.label })),
+      cells: Object.fromEntries(Object.entries(r.pricing.cells).map(([k, v]) => [k, v.map((n) => String(n))])),
+    })),
     highlights: [...p.highlights],
     images: p.images.map((im) => ({ ...im })),
     body: (p.body ?? []).map((b) => ({
@@ -447,22 +475,24 @@ export default function ProductEditor({ product }: { product: Product }) {
       if (!group) return d;
       const oldName = group.choices[ci]?.name ?? "";
       const di = d.pricing.driverLabels.indexOf(group.label); // กลุ่มนี้เป็นแกนของตารางราคาไหม
-      let cells = d.pricing.cells;
-      if (di >= 0 && oldName && oldName !== newName) {
-        cells = Object.fromEntries(
+      // ย้ายคีย์ราคาไปชื่อใหม่ — ทั้งตารางเรทหลักและทุกเรทเพิ่มเติม (ใช้คีย์คอลัมน์ร่วมกัน)
+      const remap = (cells: Record<string, string[]>): Record<string, string[]> => {
+        if (di < 0 || !oldName || oldName === newName) return cells;
+        return Object.fromEntries(
           Object.entries(cells).map(([key, v]) => {
             const parts = key.split("│");
             if (parts[di] === oldName) parts[di] = newName;
             return [parts.join("│"), v];
           })
         );
-      }
+      };
       return {
         ...d,
         options: d.options.map((op, i) =>
           i === gi ? { ...op, choices: op.choices.map((c, j) => (j === ci ? { ...c, name: newName } : c)) } : op
         ),
-        pricing: { ...d.pricing, cells },
+        pricing: { ...d.pricing, cells: remap(d.pricing.cells) },
+        extraRates: d.extraRates.map((r) => ({ ...r, cells: remap(r.cells) })),
         rules: d.rules.map((r) => ({
           ...r,
           whenChoice: r.whenLabel === group.label && r.whenChoice === oldName ? newName : r.whenChoice,
@@ -621,6 +651,62 @@ export default function ProductEditor({ product }: { product: Product }) {
     });
   }
 
+  // ── หลายเรทราคาในโมดัล: rateIdx 0 = เรทหลัก (ตาราง pricing), 1..n = extraRates[n-1] ──
+  const [rateIdx, setRateIdx] = useState(0);
+  const activeExtra = rateIdx > 0 ? draft.extraRates[rateIdx - 1] : undefined;
+  const activeTiers = rateIdx === 0 ? draft.pricing.tiers : (activeExtra?.tiers ?? []);
+  const activeCells = rateIdx === 0 ? draft.pricing.cells : (activeExtra?.cells ?? {});
+  const activeMeta: DraftRateMeta = rateIdx === 0 ? draft.rateMeta : (activeExtra ?? EMPTY_RATE_META);
+
+  function patchActiveTiers(tiers: DraftTier[]) {
+    if (rateIdx === 0) patchPricing({ tiers });
+    else setDraft((d) => ({ ...d, extraRates: d.extraRates.map((r, i) => (i === rateIdx - 1 ? { ...r, tiers } : r)) }));
+  }
+  function setActiveCell(key: string, ti: number, val: string) {
+    if (rateIdx === 0) {
+      setCell(key, ti, val);
+      return;
+    }
+    setDraft((d) => ({
+      ...d,
+      extraRates: d.extraRates.map((r, i) => {
+        if (i !== rateIdx - 1) return r;
+        const arr = [...(r.cells[key] ?? [])];
+        arr[ti] = val;
+        return { ...r, cells: { ...r.cells, [key]: arr } };
+      }),
+    }));
+  }
+  function patchActiveMeta(pt: Partial<DraftRateMeta>) {
+    if (rateIdx === 0) setDraft((d) => ({ ...d, rateMeta: { ...d.rateMeta, ...pt } }));
+    else setDraft((d) => ({ ...d, extraRates: d.extraRates.map((r, i) => (i === rateIdx - 1 ? { ...r, ...pt } : r)) }));
+  }
+  function addRate() {
+    setDraft((d) => ({
+      ...d,
+      extraRates: [
+        ...d.extraRates,
+        {
+          id: `r${d.extraRates.length + 2}-${Math.random().toString(36).slice(2, 7)}`,
+          label: "",
+          desc: "",
+          minQty: "",
+          minPerDesign: "",
+          extraDesignFee: "",
+          // เริ่มด้วยช่วงจำนวนชุดเดียวกับเรทหลัก (แก้ทีหลังได้) — ราคาให้กรอกใหม่
+          tiers: d.pricing.tiers.map((t) => ({ ...t })),
+          cells: {},
+        },
+      ],
+    }));
+    setRateIdx(draft.extraRates.length + 1);
+  }
+  function removeRate(extraIdx: number) {
+    if (!window.confirm("ลบเรทนี้ทั้งตาราง?")) return;
+    setDraft((d) => ({ ...d, extraRates: d.extraRates.filter((_, i) => i !== extraIdx) }));
+    setRateIdx(0);
+  }
+
   async function save() {
     const price = Number(draft.price);
     const oldPrice = draft.oldPrice ? Number(draft.oldPrice) : undefined;
@@ -717,6 +803,48 @@ export default function ProductEditor({ product }: { product: Product }) {
       }
     }
 
+    // หลายเรทราคา — เรทหลัก = ตาราง pricing ข้างบน + เรทเพิ่มเติมแต่ละอันสร้างตารางของตัวเอง
+    let priceRates: Product["priceRates"];
+    const metaHasValue =
+      draft.rateMeta.label.trim() || Number(draft.rateMeta.minQty) > 0 || Number(draft.rateMeta.minPerDesign) > 0;
+    if (pricing && (draft.extraRates.length > 0 || metaHasValue)) {
+      const buildRateMatrix = (tiersDraft: DraftTier[], cellsDraft: Record<string, string[]>): PriceMatrix | undefined => {
+        if (!tiersDraft.length) return undefined;
+        const tiers = tiersDraft.map((t) => ({
+          upTo: t.upTo.trim() === "" ? null : Number(t.upTo),
+          label: t.label.trim() || `≤ ${t.upTo}`,
+        }));
+        const cols = pricingColumns(draft.options, draft.pricing.driverLabels);
+        const cells: Record<string, number[]> = {};
+        for (const combo of cols) {
+          const key = columnKey(combo);
+          const raw = cellsDraft[key] ?? [];
+          cells[key] = tiers.map((_, ti) => {
+            const n = Number(raw[ti]);
+            return Number.isFinite(n) && n >= 0 ? n : 0;
+          });
+        }
+        if (!Object.keys(cells).length) return undefined;
+        return { unit: pricing!.unit, driverLabels: [...pricing!.driverLabels], tiers, cells };
+      };
+      const metaOf = (m: DraftRateMeta, fallbackLabel: string) => ({
+        label: m.label.trim() || fallbackLabel,
+        ...(m.desc.trim() ? { desc: m.desc.trim() } : {}),
+        ...(Number(m.minQty) > 0 ? { minQty: Math.floor(Number(m.minQty)) } : {}),
+        ...(Number(m.minPerDesign) > 0 ? { minPerDesign: Math.floor(Number(m.minPerDesign)) } : {}),
+        ...(Number(m.extraDesignFee) > 0 ? { extraDesignFee: Number(m.extraDesignFee) } : {}),
+      });
+      const list: NonNullable<Product["priceRates"]> = [
+        { id: "r1", ...metaOf(draft.rateMeta, "เรทที่ 1"), pricing },
+      ];
+      draft.extraRates.forEach((r, i) => {
+        const m = buildRateMatrix(r.tiers, r.cells);
+        if (m) list.push({ id: r.id, ...metaOf(r, `เรทที่ ${i + 2}`), pricing: m });
+      });
+      // เรทเดียวและไม่มีเงื่อนไขอะไรเลย = ไม่ต้องเก็บเป็นหลายเรท
+      priceRates = list.length > 1 || metaHasValue ? list : undefined;
+    }
+
     // งานกำหนดขนาดเอง (custom)
     let custom: CustomOption | undefined;
     if (draft.custom.enabled && draft.custom.label.trim()) {
@@ -752,6 +880,7 @@ export default function ProductEditor({ product }: { product: Product }) {
       options: fromDraftOptions(draft.options),
       ...(rules.length > 0 ? { rules } : { rules: undefined }),
       pricing,
+      priceRates,
       highlights: draft.highlights.map((h) => h.trim()).filter(Boolean),
       images,
       body,
@@ -1631,6 +1760,11 @@ export default function ProductEditor({ product }: { product: Product }) {
               <div className="text-xs text-slate-600">
                 <span className="font-bold text-slate-700">เปิดใช้</span> · หน่วย {draft.pricing.unit || "—"} ·{" "}
                 {draft.pricing.tiers.length} ช่วง × {pricingColumns(draft.options, draft.pricing.driverLabels).length} คู่ตัวเลือก
+                {draft.extraRates.length > 0 && (
+                  <span className="ml-1 rounded-full bg-teal-100 px-2 py-0.5 font-bold text-teal-700">
+                    {draft.extraRates.length + 1} เรทราคา
+                  </span>
+                )}
               </div>
               <button
                 type="button"
@@ -1949,6 +2083,95 @@ export default function ProductEditor({ product }: { product: Product }) {
             const cols = pricingColumns(draft.options, draft.pricing.driverLabels);
             return (
               <div className="mt-3 space-y-4">
+                {/* แท็บเรทราคา — สินค้าบางตัวมีหลายเรท (เช่น พิน: คละดีเทล / ไม่คละดีเทล) */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[draft.rateMeta, ...draft.extraRates].map((m, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setRateIdx(i)}
+                      className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
+                        rateIdx === i ? "bg-teal-600 text-white shadow" : "bg-slate-100 text-slate-500 hover:bg-teal-50"
+                      }`}
+                    >
+                      {m.label.trim() || `เรทที่ ${i + 1}`}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addRate}
+                    className="rounded-full bg-white px-3.5 py-1.5 text-xs font-bold text-teal-700 ring-1 ring-teal-300 hover:bg-teal-50"
+                  >
+                    ＋ เพิ่มเรทราคา
+                  </button>
+                  {rateIdx > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => removeRate(rateIdx - 1)}
+                      className="rounded-full px-3 py-1.5 text-xs font-bold text-rose-500 hover:bg-rose-50"
+                    >
+                      🗑 ลบเรทนี้
+                    </button>
+                  )}
+                </div>
+
+                {/* ชื่อ + เงื่อนไขของเรทที่แก้อยู่ (สินค้าเรทเดียวเว้นว่างได้) */}
+                <div className="flex flex-wrap items-end gap-3 rounded-2xl bg-teal-50/60 p-3 ring-1 ring-teal-100">
+                  <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                    ชื่อเรท (ลูกค้าเห็น)
+                    <input
+                      value={activeMeta.label}
+                      onChange={(e) => patchActiveMeta({ label: e.target.value })}
+                      placeholder={rateIdx === 0 ? "เช่น เรทที่ 1 แบบคละดีเทล" : `เรทที่ ${rateIdx + 1}`}
+                      className="w-52 rounded-xl bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                    คำอธิบายสั้น ๆ
+                    <input
+                      value={activeMeta.desc}
+                      onChange={(e) => patchActiveMeta({ desc: e.target.value })}
+                      placeholder="เช่น คละลาย อะคริลิคใส / ขาวขุ่น C-02"
+                      className="w-64 rounded-xl bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                    สั่งรวมขั้นต่ำ ({draft.pricing.unit || "ชิ้น"})
+                    <input
+                      value={activeMeta.minQty}
+                      onChange={(e) => patchActiveMeta({ minQty: e.target.value })}
+                      inputMode="numeric"
+                      placeholder="เช่น 50"
+                      className="w-24 rounded-xl bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                    คละลายขั้นต่ำลายละ
+                    <input
+                      value={activeMeta.minPerDesign}
+                      onChange={(e) => patchActiveMeta({ minPerDesign: e.target.value })}
+                      inputMode="numeric"
+                      placeholder="เช่น 25"
+                      className="w-24 rounded-xl bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                    คละเกินโควตา ลายละ +฿
+                    <input
+                      value={activeMeta.extraDesignFee}
+                      onChange={(e) => patchActiveMeta({ extraDesignFee: e.target.value })}
+                      inputMode="numeric"
+                      placeholder="เช่น 10"
+                      className="w-24 rounded-xl bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
+                    />
+                  </label>
+                  <p className="w-full text-[11px] text-slate-400">
+                    💡 เช่น เรท 2 สั่งรวม 50 ขึ้นไป + ลายละ 25 → สั่ง 50 ชิ้นคละได้ 2 ลายในราคา ·
+                    ใส่ &quot;คละเกินโควตา ลายละ +฿&quot; (เช่น 10) = ลูกค้าเพิ่มลายเกินโควตาได้ โดยจ่ายเพิ่มลายละ 10 บาท · เว้นว่าง = คละเกินไม่ได้ · ทุกเรทใช้คอลัมน์ตัวเลือกชุดเดียวกัน
+                  </p>
+                </div>
+
+                {rateIdx === 0 ? (
                 <div className="flex flex-wrap items-center gap-3">
                   <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
                     หน่วยนับ
@@ -1985,31 +2208,32 @@ export default function ProductEditor({ product }: { product: Product }) {
                     </div>
                   </div>
                 </div>
+                ) : (
+                  <p className="text-[11px] text-slate-400">
+                    หน่วยนับและคอลัมน์ตัวเลือกใช้ร่วมกับเรทหลัก — เรทนี้ตั้งได้เฉพาะช่วงจำนวน + ราคาของตัวเอง
+                  </p>
+                )}
 
-                {/* ช่วงจำนวน (tiers) */}
+                {/* ช่วงจำนวน (tiers) — ของเรทที่แก้อยู่ */}
                 <div>
                   <div className="mb-2 flex items-center justify-between">
-                    <h3 className="text-xs font-bold text-slate-600">ช่วงจำนวน ({draft.pricing.tiers.length})</h3>
+                    <h3 className="text-xs font-bold text-slate-600">ช่วงจำนวน ({activeTiers.length})</h3>
                     <button
                       type="button"
-                      onClick={() =>
-                        patchPricing({ tiers: [...draft.pricing.tiers, { upTo: "", label: "" }] })
-                      }
+                      onClick={() => patchActiveTiers([...activeTiers, { upTo: "", label: "" }])}
                       className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-500 hover:bg-slate-100"
                     >
                       ＋ เพิ่มช่วง
                     </button>
                   </div>
                   <div className="space-y-1.5">
-                    {draft.pricing.tiers.map((t, ti) => (
+                    {activeTiers.map((t, ti) => (
                       <div key={ti} className="flex flex-wrap items-center gap-2">
                         <span className="w-4 text-center text-xs text-slate-300">{ti + 1}</span>
                         <input
                           value={t.label}
                           onChange={(e) =>
-                            patchPricing({
-                              tiers: draft.pricing.tiers.map((x, j) => (j === ti ? { ...x, label: e.target.value } : x)),
-                            })
+                            patchActiveTiers(activeTiers.map((x, j) => (j === ti ? { ...x, label: e.target.value } : x)))
                           }
                           placeholder="ชื่อช่วง เช่น 1-10 ชิ้น"
                           className="min-w-40 flex-1 rounded-xl bg-slate-50 px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
@@ -2020,9 +2244,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                           <input
                             value={t.upTo}
                             onChange={(e) =>
-                              patchPricing({
-                                tiers: draft.pricing.tiers.map((x, j) => (j === ti ? { ...x, upTo: e.target.value } : x)),
-                              })
+                              patchActiveTiers(activeTiers.map((x, j) => (j === ti ? { ...x, upTo: e.target.value } : x)))
                             }
                             inputMode="numeric"
                             placeholder="∞"
@@ -2032,7 +2254,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                         </label>
                         <button
                           type="button"
-                          onClick={() => patchPricing({ tiers: draft.pricing.tiers.filter((_, j) => j !== ti) })}
+                          onClick={() => patchActiveTiers(activeTiers.filter((_, j) => j !== ti))}
                           className="shrink-0 rounded-full px-2 py-1 text-xs font-bold text-rose-400 hover:bg-rose-50"
                           aria-label={`ลบช่วงที่ ${ti + 1}`}
                         >
@@ -2045,7 +2267,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                 </div>
 
                 {/* ตารางราคา — แถว = คู่ตัวเลือก (เลื่อนลง), คอลัมน์ = ช่วงจำนวน (พอดีจอ), ตรึงชื่อตัวเลือกไว้ซ้าย */}
-                {cols.length > 0 && draft.pricing.tiers.length > 0 ? (
+                {cols.length > 0 && activeTiers.length > 0 ? (
                   <div className="overflow-x-auto rounded-2xl ring-1 ring-slate-200">
                     <table className="w-full border-collapse text-xs">
                       <thead>
@@ -2053,7 +2275,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                           <th className="sticky left-0 z-10 bg-slate-100 px-3 py-2 text-left font-bold">
                             ตัวเลือก <span className="font-normal text-slate-400">({cols.length})</span>
                           </th>
-                          {draft.pricing.tiers.map((t, ti) => (
+                          {activeTiers.map((t, ti) => (
                             <th key={ti} className="whitespace-nowrap px-2 py-2 text-center font-bold">
                               {t.label || `ช่วง ${ti + 1}`}
                             </th>
@@ -2072,11 +2294,11 @@ export default function ProductEditor({ product }: { product: Product }) {
                               >
                                 {combo.length ? combo.join(" · ") : `ราคา / ${draft.pricing.unit || "หน่วย"}`}
                               </td>
-                              {draft.pricing.tiers.map((t, ti) => (
+                              {activeTiers.map((t, ti) => (
                                 <td key={ti} className={`px-2 py-2 text-center ${rowBg}`}>
                                   <input
-                                    value={draft.pricing.cells[key]?.[ti] ?? ""}
-                                    onChange={(e) => setCell(key, ti, e.target.value)}
+                                    value={activeCells[key]?.[ti] ?? ""}
+                                    onChange={(e) => setActiveCell(key, ti, e.target.value)}
                                     inputMode="numeric"
                                     placeholder="0"
                                     className="w-16 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-sm focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-200"
