@@ -43,9 +43,11 @@ type DraftImage = { emoji: string; gradient: string; label: string; src?: string
 type DraftBody = {
   heading: string;
   text: string;
-  emoji: string; // ว่าง = ไม่มีรูป
+  emoji: string; // ว่าง (และไม่มีรูปจริง) = ไม่มีรูป
   gradient: string;
   imgLabel: string;
+  /** รูปจริงที่อัปโหลด — มีแล้วใช้แทนอีโมจิ+สีพื้น */
+  src: string;
   align: "left" | "right";
 };
 /** กฎ: เมื่อเลือก [whenLabel = whenChoice] → จำกัดกลุ่ม [limitLabel] เหลือเฉพาะ allow[] */
@@ -233,6 +235,7 @@ function toDraft(p: Product): Draft {
       emoji: b.image?.emoji ?? "",
       gradient: b.image?.gradient ?? "from-sky-100 to-blue-200",
       imgLabel: b.image?.label ?? "",
+      src: b.image?.src ?? "",
       align: b.align ?? "left",
     })),
     seo: {
@@ -612,8 +615,15 @@ export default function ProductEditor({ product }: { product: Product }) {
         heading: b.heading.trim(),
         text: b.text.trim(),
         align: b.align,
-        ...(b.emoji.trim()
-          ? { image: { emoji: b.emoji.trim(), gradient: b.gradient, label: b.imgLabel.trim() || b.heading.trim() } }
+        ...(b.emoji.trim() || b.src
+          ? {
+              image: {
+                emoji: b.emoji.trim() || "🖼",
+                gradient: b.gradient,
+                label: b.imgLabel.trim() || b.heading.trim(),
+                ...(b.src ? { src: b.src } : {}),
+              },
+            }
           : {}),
       }));
 
@@ -2068,7 +2078,7 @@ export default function ProductEditor({ product }: { product: Product }) {
               patch({
                 body: [
                   ...draft.body,
-                  { heading: "", text: "", emoji: "", gradient: "from-sky-100 to-blue-200", imgLabel: "", align: draft.body.length % 2 === 0 ? "left" : "right" },
+                  { heading: "", text: "", emoji: "", gradient: "from-sky-100 to-blue-200", imgLabel: "", src: "", align: draft.body.length % 2 === 0 ? "left" : "right" },
                 ],
               })
             }
@@ -2125,14 +2135,57 @@ export default function ProductEditor({ product }: { product: Product }) {
               />
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="text-xs font-semibold text-slate-500">รูปประกอบ:</span>
+                {b.src && (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={b.src} alt="" className="h-10 w-14 rounded-lg object-cover ring-1 ring-slate-200" />
+                )}
+                <label className="cursor-pointer rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-slate-200">
+                  {b.src ? "🖼 เปลี่ยนรูป" : "🖼 อัปโหลดรูป"}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!f) return;
+                      try {
+                        const blob = await fileToBlob(f);
+                        const fd = new FormData();
+                        fd.append("file", blob, "body.jpg");
+                        fd.append("productId", productId);
+                        const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+                        // โหมดเดโมยังไม่ตั้ง Supabase → เก็บ base64 แทน (เหมือนรูปสินค้า)
+                        const src =
+                          res.status === 503
+                            ? await fileToDataUrl(f)
+                            : ((await res.json().catch(() => ({}))) as { url?: string }).url;
+                        if (src) patch({ body: draft.body.map((x, j) => (j === i ? { ...x, src } : x)) });
+                        else setSaveError("อัปโหลดรูปไม่สำเร็จ");
+                      } catch {
+                        setSaveError("อัปโหลดรูปไม่สำเร็จ");
+                      }
+                    }}
+                  />
+                </label>
+                {b.src && (
+                  <button
+                    type="button"
+                    onClick={() => patch({ body: draft.body.map((x, j) => (j === i ? { ...x, src: "" } : x)) })}
+                    className="rounded-full px-2 py-1.5 text-xs font-bold text-rose-500 hover:bg-rose-50"
+                  >
+                    เอารูปออก
+                  </button>
+                )}
                 <input
                   value={b.emoji}
                   onChange={(e) => patch({ body: draft.body.map((x, j) => (j === i ? { ...x, emoji: e.target.value } : x)) })}
-                  placeholder="(ว่าง=ไม่มี)"
-                  className="w-20 rounded-xl bg-slate-50 px-2 py-1.5 text-center text-base ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                  placeholder={b.src ? "อีโมจิ (ไม่ใช้แล้ว)" : "หรืออีโมจิ"}
+                  title="ไม่มีรูปจริง ใช้อีโมจิ+สีพื้นแทนได้"
+                  className="w-24 rounded-xl bg-slate-50 px-2 py-1.5 text-center text-base ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
                   aria-label={`อีโมจิรูปท่อนที่ ${i + 1}`}
                 />
-                {b.emoji.trim() && (
+                {(b.emoji.trim() || b.src) && (
                   <>
                     <GradientPicker
                       value={b.gradient}

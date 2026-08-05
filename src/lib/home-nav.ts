@@ -105,6 +105,8 @@ export interface SiteNav {
   tilesBg?: string;
   /** ขอบหยักคลื่นใต้แถบการ์ด */
   tilesWave?: boolean;
+  /** ตำแหน่งบล็อกการ์ดบนหน้าแรก — top ก่อนแบนเนอร์ · hero ใต้แบนเนอร์ (เดิม) · features ใต้จุดเด่นร้าน */
+  tilesPos?: "top" | "hero" | "features";
 }
 
 export const NAV_ROW_ID = "__site_nav__";
@@ -366,6 +368,7 @@ export const DEFAULT_SITE_NAV: SiteNav = {
   tilesOn: true,
   tilesBg: DEFAULT_TILES_BG,
   tilesWave: true,
+  tilesPos: "hero",
 };
 
 const str = (v: unknown, fallback = "") => (typeof v === "string" ? v : fallback);
@@ -445,6 +448,7 @@ export function siteNavOf(raw: Partial<SiteNav> | null | undefined): SiteNav {
     // สีต้องเป็นรหัสสีจริงเท่านั้น (ค่านี้ถูกยัดลง style ตรง ๆ)
     tilesBg: /^#[0-9a-f]{3,8}$/i.test(str(raw?.tilesBg)) ? str(raw?.tilesBg) : undefined,
     tilesWave: Boolean(raw?.tilesWave),
+    tilesPos: (["top", "hero", "features"] as const).includes(raw?.tilesPos as "top") ? raw?.tilesPos : "hero",
   };
 }
 

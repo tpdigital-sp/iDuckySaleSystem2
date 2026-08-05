@@ -941,6 +941,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                   <ProductVisual
                     emoji={sec.image.emoji}
                     gradient={sec.image.gradient}
+                    src={sec.image.src}
+                    alt={sec.image.label || sec.heading}
                     size="text-[6rem]"
                     className={`aspect-[4/3] w-full rounded-[2rem] shadow-sm ${
                       sec.align === "right" ? "md:order-2" : ""

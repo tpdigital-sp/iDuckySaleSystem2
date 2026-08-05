@@ -369,15 +369,31 @@ function NavEditorInner() {
       <section className={`mt-5 p-5 ${card}`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-800">👀 ตัวอย่างที่ลูกค้าเห็น</h2>
-          <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
-            <input
-              type="checkbox"
-              checked={nav.tilesOn}
-              onChange={(e) => edit((n) => ({ ...n, tilesOn: e.target.checked }))}
-              className="h-4 w-4 accent-amber-500"
-            />
-            แสดงการ์ดนำทางบนหน้าแรก
-          </label>
+          <span className="flex flex-wrap items-center gap-3">
+            <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
+              <input
+                type="checkbox"
+                checked={nav.tilesOn}
+                onChange={(e) => edit((n) => ({ ...n, tilesOn: e.target.checked }))}
+                className="h-4 w-4 accent-amber-500"
+              />
+              แสดงการ์ดนำทางบนหน้าแรก
+            </label>
+            {nav.tilesOn && (
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                ตำแหน่ง:
+                <select
+                  value={nav.tilesPos ?? "hero"}
+                  onChange={(e) => edit((n) => ({ ...n, tilesPos: e.target.value as SiteNav["tilesPos"] }))}
+                  className={inputBase}
+                >
+                  <option value="top">บนสุด (ก่อนแบนเนอร์ใหญ่)</option>
+                  <option value="hero">ใต้แบนเนอร์ใหญ่</option>
+                  <option value="features">ใต้จุดเด่นร้าน (ต่ำลงมาอีก)</option>
+                </select>
+              </label>
+            )}
+          </span>
         </div>
 
         {/* แถบเมนูด้านบน */}

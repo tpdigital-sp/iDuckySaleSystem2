@@ -16,14 +16,14 @@ export default function HomePage() {
   const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
   // การ์ดนำทาง (แอดมินตั้งเองได้ที่ /admin/nav)
   const [tiles, setTiles] = useState<NavTile[]>(visibleTiles(DEFAULT_SITE_NAV));
-  const [navStyle, setNavStyle] = useState<Pick<SiteNav, "tilesBg" | "tilesWave">>(DEFAULT_SITE_NAV);
+  const [navStyle, setNavStyle] = useState<Pick<SiteNav, "tilesBg" | "tilesWave" | "tilesPos">>(DEFAULT_SITE_NAV);
   useEffect(() => {
     fetchCategories().then((list) => setCats(list.filter((c) => !c.hidden)));
   }, []);
   useEffect(() => {
     fetchSiteNav().then((n) => {
       setTiles(visibleTiles(n));
-      setNavStyle({ tilesBg: n.tilesBg, tilesWave: n.tilesWave });
+      setNavStyle({ tilesBg: n.tilesBg, tilesWave: n.tilesWave, tilesPos: n.tilesPos });
     });
   }, []);
   useEffect(() => {
@@ -39,8 +39,18 @@ export default function HomePage() {
   const featured = all.filter((p) => p.featured);
   const bestSellers = [...all].sort((a, b) => b.sold - a.sold).slice(0, 4);
 
+  // บล็อกการ์ดนำทาง — วางตามตำแหน่งที่แอดมินตั้ง (เรนเดอร์จุดเดียว จุดอื่นเป็น null)
+  const navBlock = (slot: "top" | "hero" | "features") =>
+    tiles.length > 0 && (navStyle.tilesPos ?? "hero") === slot ? (
+      <section className={slot === "top" ? "mt-6" : "mt-8"}>
+        <NavTiles tiles={tiles} bg={navStyle.tilesBg} wave={navStyle.tilesWave} />
+      </section>
+    ) : null;
+
   return (
     <div className="mx-auto max-w-6xl px-4">
+      {navBlock("top")}
+
       {/* แบนเนอร์โปรโมชัน */}
       <section className="mt-6 overflow-hidden rounded-[2rem] bg-gradient-to-br from-amber-200 via-amber-100 to-ducky shadow-[0_10px_40px_rgba(63,161,182,0.22)]">
         <div className="flex flex-col items-center gap-6 px-6 py-10 text-center md:flex-row md:px-12 md:py-14 md:text-left">
@@ -83,13 +93,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* การ์ดนำทาง — ทางลัดไปหน้าที่ลูกค้าใช้บ่อย (ตั้งค่าที่หลังบ้าน → เมนูหน้าร้าน)
-          แถบสีอยู่ในความกว้างหน้า มุมบนโค้ง + ขอบหยักล่าง แบบแบนเนอร์เว็บหลัก */}
-      {tiles.length > 0 && (
-        <section className="mt-8">
-          <NavTiles tiles={tiles} bg={navStyle.tilesBg} wave={navStyle.tilesWave} />
-        </section>
-      )}
+      {/* การ์ดนำทาง — เลื่อนตำแหน่งได้จากหลังบ้าน (ก่อนแบนเนอร์ / ใต้แบนเนอร์ / ใต้จุดเด่นร้าน) */}
+      {navBlock("hero")}
 
       {/* จุดเด่นร้าน */}
       <section className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -109,6 +114,8 @@ export default function HomePage() {
           </div>
         ))}
       </section>
+
+      {navBlock("features")}
 
       {/* หมวดหมู่สินค้า */}
       <section className="mt-12">
