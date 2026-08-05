@@ -376,6 +376,64 @@ export default function ProductEditor({ product }: { product: Product }) {
   );
 
   const [pricingOpen, setPricingOpen] = useState(false);
+
+  /**
+   * เปลี่ยนชื่อ "กลุ่มตัวเลือก" — ราคาขั้นบันได (driverLabels) และกฎเงื่อนไขอ้างชื่อกลุ่มด้วย
+   * ต้องเปลี่ยนตามพร้อมกัน ไม่งั้นตอนบันทึกระบบหากลุ่มไม่เจอแล้วทิ้งตารางราคาทั้งตาราง
+   */
+  function renameOptionGroup(gi: number, newLabel: string) {
+    setDraft((d) => {
+      const oldLabel = d.options[gi]?.label ?? "";
+      return {
+        ...d,
+        options: d.options.map((op, i) => (i === gi ? { ...op, label: newLabel } : op)),
+        pricing: {
+          ...d.pricing,
+          driverLabels: d.pricing.driverLabels.map((l) => (l === oldLabel ? newLabel : l)),
+        },
+        rules: d.rules.map((r) => ({
+          ...r,
+          whenLabel: r.whenLabel === oldLabel ? newLabel : r.whenLabel,
+          limitLabel: r.limitLabel === oldLabel ? newLabel : r.limitLabel,
+        })),
+      };
+    });
+  }
+
+  /**
+   * เปลี่ยนชื่อ "ตัวเลือกในกลุ่ม" — ช่องราคาขั้นบันไดใช้ชื่อตัวเลือกเป็นคีย์ (คั่นด้วย │)
+   * ต้องย้ายค่าราคาไปคีย์ใหม่ด้วย ไม่งั้นราคาที่กรอกไว้กลายเป็น 0 หมด · กฎเงื่อนไขก็อ้างชื่อนี้
+   */
+  function renameOptionChoice(gi: number, ci: number, newName: string) {
+    setDraft((d) => {
+      const group = d.options[gi];
+      if (!group) return d;
+      const oldName = group.choices[ci]?.name ?? "";
+      const di = d.pricing.driverLabels.indexOf(group.label); // กลุ่มนี้เป็นแกนของตารางราคาไหม
+      let cells = d.pricing.cells;
+      if (di >= 0 && oldName && oldName !== newName) {
+        cells = Object.fromEntries(
+          Object.entries(cells).map(([key, v]) => {
+            const parts = key.split("│");
+            if (parts[di] === oldName) parts[di] = newName;
+            return [parts.join("│"), v];
+          })
+        );
+      }
+      return {
+        ...d,
+        options: d.options.map((op, i) =>
+          i === gi ? { ...op, choices: op.choices.map((c, j) => (j === ci ? { ...c, name: newName } : c)) } : op
+        ),
+        pricing: { ...d.pricing, cells },
+        rules: d.rules.map((r) => ({
+          ...r,
+          whenChoice: r.whenLabel === group.label && r.whenChoice === oldName ? newName : r.whenChoice,
+          allow: r.limitLabel === group.label ? r.allow.map((a) => (a === oldName ? newName : a)) : r.allow,
+        })),
+      };
+    });
+  }
   // ── ดึงข้อมูลจาก URL มาเติม/แก้สินค้านี้ ──
   const [impOpen, setImpOpen] = useState(false);
   const [urlCopied, setUrlCopied] = useState(false);
@@ -591,6 +649,26 @@ export default function ProductEditor({ product }: { product: Product }) {
           tiers,
           cells,
         };
+      } else {
+        // กันเหนียว: แกนตารางชี้กลุ่มที่หาไม่เจอ (เช่นลบกลุ่มไป) — เก็บช่องราคาที่กรอกไว้ตามเดิม
+        // ดีกว่าลบเงียบ ๆ แล้วราคาที่กรอกไว้หายทั้งตาราง (ค่อยกลับมาแก้แกนทีหลังได้)
+        const kept = Object.fromEntries(
+          Object.entries(draft.pricing.cells).map(([k, v]) => [
+            k,
+            tiers.map((_, ti) => {
+              const n = Number(v[ti]);
+              return Number.isFinite(n) && n >= 0 ? n : 0;
+            }),
+          ])
+        );
+        if (Object.keys(kept).length > 0) {
+          pricing = {
+            unit: draft.pricing.unit.trim() || "ชิ้น",
+            driverLabels: [...draft.pricing.driverLabels],
+            tiers,
+            cells: kept,
+          };
+        }
       }
     }
 
@@ -1399,9 +1477,7 @@ export default function ProductEditor({ product }: { product: Product }) {
               <div className="flex items-center gap-2">
                 <input
                   value={opt.label}
-                  onChange={(e) =>
-                    patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, label: e.target.value } : o)) })
-                  }
+                  onChange={(e) => renameOptionGroup(gi, e.target.value)}
                   placeholder="ชื่อกลุ่ม เช่น ขนาด, สี, วัสดุ"
                   className={`flex-1 font-bold ${inputCls}`}
                   aria-label={`ชื่อกลุ่มตัวเลือกที่ ${gi + 1}`}
@@ -1439,15 +1515,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                     <span className="w-4 text-center text-xs text-slate-300">{ci + 1}</span>
                     <input
                       value={ch.name}
-                      onChange={(e) =>
-                        patch({
-                          options: draft.options.map((o, i) =>
-                            i === gi
-                              ? { ...o, choices: o.choices.map((c, j) => (j === ci ? { ...c, name: e.target.value } : c)) }
-                              : o
-                          ),
-                        })
-                      }
+                      onChange={(e) => renameOptionChoice(gi, ci, e.target.value)}
                       placeholder="ชื่อตัวเลือก"
                       className={`flex-1 ${smallInputCls}`}
                       aria-label={`ตัวเลือกที่ ${ci + 1} ของกลุ่ม ${opt.label || gi + 1}`}
