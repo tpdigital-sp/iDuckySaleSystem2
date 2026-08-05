@@ -12,7 +12,9 @@ import {
   formatPriceRange,
   getCategory,
   includedDesigns,
+  isFreeMix,
   matrixChoiceAvailable,
+  maxDesignsFor,
   optionExtraApplies,
   priceMatrixKey,
   priceRange,
@@ -143,7 +145,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   const [designsTouched, setDesignsTouched] = useState(false);
   // ลายที่รวมในราคาตามจำนวนที่สั่ง · เรทที่เปิด extraDesignFee คละเกินได้ (จ่ายเพิ่มต่อลาย ไม่เกินจำนวนชิ้น)
   const included = rate?.minPerDesign ? includedDesigns(rate, qty) : 0;
-  const maxDesigns = rate?.minPerDesign ? (rate.extraDesignFee ? qty : included) : 0;
+  const maxDesigns = rate?.minPerDesign ? maxDesignsFor(rate, qty) : 0;
+  const freeMix = !!rate && rate.minPerDesign != null && isFreeMix(rate, qty);
   useEffect(() => {
     if (maxDesigns > 0) setDesigns((d) => Math.min(Math.max(1, d), maxDesigns));
   }, [maxDesigns]);
@@ -168,8 +171,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
       const needDesigns = designsTouched ? designs : Math.max(artFiles.length, 1);
       const fitsDesigns = (r: (typeof rates)[number]) => {
         if (!r.minPerDesign) return true;
-        const maxD = r.extraDesignFee ? qty : Math.max(1, Math.floor(qty / r.minPerDesign));
-        return maxD >= needDesigns;
+        return maxDesignsFor(r, qty) >= needDesigns;
       };
       const qualified = rates.filter((r) => qty >= (r.minQty ?? 1));
       if (!rateTouched) {
@@ -980,12 +982,21 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                       <span className="text-xs font-bold text-amber-700">+{formatPrice(designFee)}</span>
                     )}
                   </div>
+                  {freeMix ? (
+                    <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
+                      ✨ ช่วงราคาปลีกคละลายได้อิสระ — ลายละกี่ชิ้นก็ได้ ไม่คิดเพิ่ม (สูงสุด {qty.toLocaleString("th-TH")} ลาย)
+                      {rate.freeMixBelowQty
+                        ? ` · สั่งตั้งแต่ ${rate.freeMixBelowQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป ขั้นต่ำลายละ ${rate.minPerDesign.toLocaleString("th-TH")}`
+                        : ""}
+                    </p>
+                  ) : (
                   <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
                     รวมในราคา {included.toLocaleString("th-TH")} ลาย (ขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"})
                     {rate.extraDesignFee
                       ? ` · คละเกินได้ ลายละ +${formatPrice(rate.extraDesignFee)}`
                       : " · เพิ่มลายได้ด้วยการเพิ่มจำนวนสั่ง"}
                   </p>
+                  )}
                   {/* แนบภาพลายมากกว่าจำนวนลายที่นับไว้ → เตือน (ราคา/เงื่อนไขคิดตามจำนวนลาย) */}
                   {artFiles.length > designs &&
                     (designs >= maxDesigns ? (

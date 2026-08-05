@@ -128,7 +128,25 @@ export interface PriceRate {
   minPerDesign?: number;
   /** คละลายเกินโควตาได้ โดยคิดเพิ่มลายละ (บาท) — ไม่ตั้ง = คละเกินโควตาไม่ได้ */
   extraDesignFee?: number;
+  /**
+   * สั่งต่ำกว่ากี่ชิ้น = คละลายได้อิสระ (ไม่ติดขั้นต่ำต่อลาย ไม่คิดค่าคละเพิ่ม)
+   * เช่น ราคาปลีก 1-10 ชิ้น คละได้ทุกชิ้น · ตั้ง 11 = ต่ำกว่า 11 อิสระ ถึง 11 ค่อยใช้ minPerDesign
+   */
+  freeMixBelowQty?: number;
   pricing: PriceMatrix;
+}
+
+/** ช่วงจำนวนนี้คละลายอิสระไหม (ช่วงราคาปลีก) */
+export function isFreeMix(rate: PriceRate, qty: number): boolean {
+  return !!rate.freeMixBelowQty && qty < rate.freeMixBelowQty;
+}
+
+/** จำนวนลายสูงสุดที่คละได้ ณ จำนวนนี้ (รวมส่วนที่จ่ายเพิ่มได้) */
+export function maxDesignsFor(rate: PriceRate, qty: number): number {
+  if (!rate.minPerDesign || rate.minPerDesign <= 0) return qty;
+  if (isFreeMix(rate, qty)) return qty;
+  const included = Math.max(1, Math.floor(qty / rate.minPerDesign));
+  return rate.extraDesignFee ? qty : included;
 }
 
 /** ชื่อกลุ่มที่ใช้เก็บเรทที่ลูกค้าเลือกไว้ใน selections (แสดงในตะกร้า/ออเดอร์เหมือนตัวเลือกทั่วไป) */
@@ -139,6 +157,7 @@ export const DESIGN_LABEL = "จำนวนลาย";
 /** จำนวนลายที่ "รวมในราคา" ตามจำนวนที่สั่ง = ⌊จำนวน ÷ ขั้นต่ำต่อลาย⌋ (อย่างน้อย 1) */
 export function includedDesigns(rate: PriceRate, qty: number): number {
   if (!rate.minPerDesign || rate.minPerDesign <= 0) return 0;
+  if (isFreeMix(rate, qty)) return qty; // ช่วงปลีกคละอิสระ — ทุกชิ้นเป็นคนละลายได้ ไม่คิดเพิ่ม
   return Math.max(1, Math.floor(qty / rate.minPerDesign));
 }
 

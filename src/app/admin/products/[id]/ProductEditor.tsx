@@ -64,10 +64,10 @@ type DraftPricing = {
   cells: Record<string, string[]>;
 };
 /** ข้อมูลกำกับเรทราคา (ชื่อ + เงื่อนไขการสั่ง) */
-type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string };
+type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; freeMixBelowQty: string };
 /** เรทเพิ่มเติม — มีช่วงจำนวน+ตารางราคาของตัวเอง (คอลัมน์/หน่วยใช้ร่วมกับเรทหลัก) */
 type DraftExtraRate = DraftRateMeta & { id: string; tiers: DraftTier[]; cells: Record<string, string[]> };
-const EMPTY_RATE_META: DraftRateMeta = { label: "", desc: "", minQty: "", minPerDesign: "", extraDesignFee: "" };
+const EMPTY_RATE_META: DraftRateMeta = { label: "", desc: "", minQty: "", minPerDesign: "", extraDesignFee: "", freeMixBelowQty: "" };
 /** ชื่อเรทมาตรฐานของร้าน (ตามหน้ารายการราคา) — เลือกจากลิสต์ได้ ไม่ต้องพิมพ์เอง */
 const RATE_NAME_PRESETS = [
   "เรทที่ 1 แบบคละดีเทล",
@@ -260,6 +260,7 @@ function toDraft(p: Product): Draft {
           minQty: p.priceRates[0].minQty != null ? String(p.priceRates[0].minQty) : "",
           minPerDesign: p.priceRates[0].minPerDesign != null ? String(p.priceRates[0].minPerDesign) : "",
           extraDesignFee: p.priceRates[0].extraDesignFee != null ? String(p.priceRates[0].extraDesignFee) : "",
+          freeMixBelowQty: p.priceRates[0].freeMixBelowQty != null ? String(p.priceRates[0].freeMixBelowQty) : "",
         }
       : { ...EMPTY_RATE_META },
     extraRates: (p.priceRates ?? []).slice(1).map((r) => ({
@@ -269,6 +270,7 @@ function toDraft(p: Product): Draft {
       minQty: r.minQty != null ? String(r.minQty) : "",
       minPerDesign: r.minPerDesign != null ? String(r.minPerDesign) : "",
       extraDesignFee: r.extraDesignFee != null ? String(r.extraDesignFee) : "",
+      freeMixBelowQty: r.freeMixBelowQty != null ? String(r.freeMixBelowQty) : "",
       tiers: r.pricing.tiers.map((t) => ({ upTo: t.upTo == null ? "" : String(t.upTo), label: t.label })),
       cells: Object.fromEntries(Object.entries(r.pricing.cells).map(([k, v]) => [k, v.map((n) => String(n))])),
     })),
@@ -717,6 +719,7 @@ export default function ProductEditor({ product }: { product: Product }) {
           minQty: "",
           minPerDesign: "",
           extraDesignFee: "",
+          freeMixBelowQty: "",
           // เริ่มด้วยช่วงจำนวนชุดเดียวกับเรทหลัก (แก้ทีหลังได้) — ราคาให้กรอกใหม่
           tiers: d.pricing.tiers.map((t) => ({ ...t })),
           cells: {},
@@ -861,6 +864,7 @@ export default function ProductEditor({ product }: { product: Product }) {
         ...(Number(m.minQty) > 0 ? { minQty: Math.floor(Number(m.minQty)) } : {}),
         ...(Number(m.minPerDesign) > 0 ? { minPerDesign: Math.floor(Number(m.minPerDesign)) } : {}),
         ...(Number(m.extraDesignFee) > 0 ? { extraDesignFee: Number(m.extraDesignFee) } : {}),
+        ...(Number(m.freeMixBelowQty) > 0 ? { freeMixBelowQty: Math.floor(Number(m.freeMixBelowQty)) } : {}),
       });
       const list: NonNullable<Product["priceRates"]> = [
         { id: "r1", ...metaOf(draft.rateMeta, "เรทที่ 1"), pricing },
@@ -2258,6 +2262,19 @@ export default function ProductEditor({ product }: { product: Product }) {
                       onChange={(e) => patchActiveMeta({ extraDesignFee: e.target.value })}
                       inputMode="numeric"
                       placeholder="เช่น 10"
+                      className="w-24 rounded-xl bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
+                    />
+                  </label>
+                  <label
+                    className="flex flex-col gap-1 text-xs font-semibold text-slate-500"
+                    title="ช่วงราคาปลีก คละลายได้ทุกชิ้นไม่ติดขั้นต่ำต่อลาย เช่น ใส่ 11 = สั่ง 1-10 ชิ้นคละอิสระ"
+                  >
+                    คละอิสระเมื่อต่ำกว่า (ชิ้น)
+                    <input
+                      value={activeMeta.freeMixBelowQty}
+                      onChange={(e) => patchActiveMeta({ freeMixBelowQty: e.target.value })}
+                      inputMode="numeric"
+                      placeholder="เช่น 11"
                       className="w-24 rounded-xl bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
                     />
                   </label>
