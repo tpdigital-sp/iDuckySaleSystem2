@@ -389,6 +389,8 @@ export default function ProductEditor({ product }: { product: Product }) {
   const [deleting, setDeleting] = useState(false);
   const [overridden, setOverridden] = useState(false);
   const [savedAt, setSavedAt] = useState(false);
+  /** savedAt ของข้อมูลที่โหลดมา — ส่งกลับตอนบันทึกเพื่อให้เซิร์ฟเวอร์กันแท็บเก่าเขียนทับ */
+  const [baseSavedAt, setBaseSavedAt] = useState<string>("");
   // รูปแบบจัดส่งที่ร้านตั้งไว้ — ใช้เป็นตัวเลือก "ค่าส่งขั้นต่ำของสินค้านี้"
   const [shipMethods, setShipMethods] = useState<ShippingMethod[]>(DEFAULT_SHIPPING);
   useEffect(() => {
@@ -620,6 +622,7 @@ export default function ProductEditor({ product }: { product: Product }) {
       setPresets(ps);
       if (p) {
         const d = toDraft(p);
+        setBaseSavedAt(p.savedAt ?? "");
         setDraft(withAutoSeo({ ...d, options: syncLinkedDraft(d.options, ps) }));
       } else {
         setDraft((cur) => withAutoSeo(cur));
@@ -952,7 +955,7 @@ export default function ProductEditor({ product }: { product: Product }) {
       artworkRequired: draft.artworkRequired ? undefined : false, // undefined = บังคับ (ค่าเริ่มต้น)
       reviewed: draft.reviewed,
     };
-    const res = await persistProduct(updated);
+    const res = await persistProduct(updated, baseSavedAt);
     if (!res.ok) {
       setSaveError(
         res.error === "storage-full"
@@ -961,6 +964,8 @@ export default function ProductEditor({ product }: { product: Product }) {
       );
       return;
     }
+    // บันทึกผ่าน → ข้อมูลในมือกลายเป็นเวอร์ชันล่าสุด (บันทึกซ้ำได้โดยไม่ติดกันทับ)
+    if (res.savedAt) setBaseSavedAt(res.savedAt);
     setSaveError("");
     setOverridden(true);
     setSavedAt(true);

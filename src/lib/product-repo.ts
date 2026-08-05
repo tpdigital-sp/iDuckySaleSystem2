@@ -110,11 +110,19 @@ export async function fetchProductRaw(id: string): Promise<Product | undefined> 
 }
 
 /** บันทึกสินค้า (แอดมิน) — ผ่าน API route ฝั่งเซิร์ฟเวอร์ (ตรวจสิทธิ์+เขียน Supabase); ยังไม่ตั้งค่า → localStorage */
-export async function persistProduct(p: Product): Promise<{ ok: boolean; error?: string }> {
+export async function persistProduct(
+  p: Product,
+  /** savedAt ของข้อมูลที่โหลดมาตอนเปิดหน้า — ส่งมาด้วยเพื่อให้เซิร์ฟเวอร์กันแท็บเก่าบันทึกทับ */
+  baseSavedAt?: string
+): Promise<{ ok: boolean; error?: string; savedAt?: string }> {
   try {
     const res = await fetch("/api/admin/products", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // ส่งเสมอเมื่อมาจากหน้าแก้ไข — ค่าว่าง = ยังไม่เคยบันทึกด้วยระบบใหม่ (ผ่านได้)
+        ...(baseSavedAt !== undefined ? { "x-base-saved-at": baseSavedAt || "new" } : {}),
+      },
       body: JSON.stringify(p),
     });
     if (res.status === 503) {
@@ -126,8 +134,8 @@ export async function persistProduct(p: Product): Promise<{ ok: boolean; error?:
         return { ok: false, error: "storage-full" };
       }
     }
-    const data = await res.json().catch(() => ({}));
-    return res.ok ? { ok: true } : { ok: false, error: data.error ?? "บันทึกไม่สำเร็จ" };
+    const data = (await res.json().catch(() => ({}))) as { error?: string; savedAt?: string };
+    return res.ok ? { ok: true, savedAt: data.savedAt } : { ok: false, error: data.error ?? "บันทึกไม่สำเร็จ" };
   } catch {
     return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
   }
