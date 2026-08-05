@@ -6,6 +6,7 @@ import { verifySlipWithSlipOK } from "@/lib/server/slipok";
 import { notifyCustomer, orderLink } from "@/lib/server/notify";
 import { reportPaidToTP } from "@/lib/server/tp-report";
 import { cutStockForOrder } from "@/lib/server/stock";
+import { bumpSoldForOrder } from "@/lib/server/sold";
 
 export const runtime = "nodejs";
 
@@ -137,6 +138,7 @@ export async function POST(req: Request) {
       void reportPaidToTP(updated, "SlipOK อัตโนมัติ"); // ส่งเข้า msVerify ระบบ Admin (fire-and-forget)
     }
     if (!balancePhase) void cutStockForOrder(updated); // ตัดสต๊อกวัสดุที่ผูกไว้ (มัดจำ = เริ่มงานแล้วก็ตัดเลย)
+    void bumpSoldForOrder(updated.id); // ยอด "ขายแล้ว" หน้าเว็บ (กันซ้ำในตัวเอง)
   }
 
   return NextResponse.json({ ok: true, verified: verify.status === "pass" });

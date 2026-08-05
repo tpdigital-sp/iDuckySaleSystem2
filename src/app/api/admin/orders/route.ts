@@ -5,6 +5,7 @@ import { can } from "@/lib/permissions";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { notifyCustomer, orderLink } from "@/lib/server/notify";
 import { reportPaidToTP } from "@/lib/server/tp-report";
+import { bumpSoldForOrder, unbumpSoldForOrder } from "@/lib/server/sold";
 import { cutStockForOrder, restoreStockForOrder } from "@/lib/server/stock";
 import { orderTotal, packGate, proofsOf, withLog, type Order, type OrderStatus, type PackGate } from "@/lib/admin-data";
 
@@ -213,6 +214,9 @@ export async function PATCH(req: Request) {
       );
     // ตัดสต๊อกวัสดุอัตโนมัติ (idempotent ต่อออเดอร์) · ยกเลิก → คืนของที่เคยตัด
     if (toSave.status === "ชำระแล้ว") void cutStockForOrder(toSave);
+    // ยอด "ขายแล้ว" บนหน้าเว็บ บวก/ถอนอัตโนมัติ (idempotent เช่นกัน)
+    if (toSave.status === "ชำระแล้ว") void bumpSoldForOrder(toSave.id);
+    if (toSave.status === "ยกเลิก") void unbumpSoldForOrder(toSave.id);
     if (toSave.status === "ยกเลิก") void restoreStockForOrder(toSave);
     else if (toSave.status === "จัดส่งแล้ว")
       void notifyCustomer(sb, toSave, `🚚 ออเดอร์ ${toSave.id} จัดส่งแล้ว${toSave.tracking ? `\nเลขพัสดุ: ${toSave.tracking}` : ""}\n${link}`);

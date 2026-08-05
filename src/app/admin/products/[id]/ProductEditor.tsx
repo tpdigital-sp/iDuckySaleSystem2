@@ -86,6 +86,12 @@ type Draft = {
   body: DraftBody[];
   seo: DraftSeo;
   custom: DraftCustom;
+  /** ⭐ ขึ้นบล็อก "สินค้าแนะนำ" บนหน้าแรก */
+  featured: boolean;
+  /** ป้ายบนการ์ดสินค้า ('' = ไม่มี) */
+  badge: string;
+  /** ยอดขายสะสมตั้งต้น (ระบบบวกต่อให้เองเมื่อมีออเดอร์ชำระแล้ว) */
+  soldStr: string;
   /** สั่งกี่ชิ้นขึ้นไปต้องถามสต๊อกก่อน (ว่าง = ใช้ค่ากลาง) */
   bulkAskQty: string;
   /** วิธีจัดส่งขั้นต่ำของสินค้านี้ ('' = ไม่บังคับ) */
@@ -254,6 +260,9 @@ function toDraft(p: Product): Draft {
       minPrice: p.custom?.minPrice != null ? String(p.custom.minPrice) : "",
       note: p.custom?.note ?? "",
     },
+    featured: !!p.featured,
+    badge: p.badge ?? "",
+    soldStr: String(p.sold ?? 0),
     bulkAskQty: p.bulkAskQty != null && p.bulkAskQty > 0 ? String(p.bulkAskQty) : "",
     shippingId: p.shippingId ?? "",
     shipTiers: (p.shipTiers ?? []).map((t) => ({ minQty: String(t.minQty), price: String(t.price) })),
@@ -732,6 +741,9 @@ export default function ProductEditor({ product }: { product: Product }) {
       ...original,
       name: draft.name.trim(),
       category: draft.category,
+      featured: draft.featured,
+      badge: (draft.badge || undefined) as Product["badge"],
+      sold: Math.max(0, Math.floor(Number(draft.soldStr)) || 0),
       price,
       oldPrice,
       emoji,
@@ -2698,16 +2710,52 @@ export default function ProductEditor({ product }: { product: Product }) {
         </div>
       </section>
 
-          {/* สรุป */}
+          {/* สรุป + การแสดงบนหน้าแรก */}
           <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-            <p className="mb-2 text-xs font-semibold text-slate-500">📊 สรุป</p>
-            <div className="flex justify-between text-xs text-slate-600">
+            <p className="mb-2 text-xs font-semibold text-slate-500">🏠 การแสดงบนหน้าร้าน</p>
+
+            <label className="flex cursor-pointer items-center justify-between gap-2 text-xs text-slate-600">
+              <span>💛 ขึ้นบล็อก "สินค้าแนะนำ" หน้าแรก</span>
+              <input
+                type="checkbox"
+                checked={draft.featured}
+                onChange={(e) => patch({ featured: e.target.checked })}
+                className="h-4 w-4 accent-amber-500"
+              />
+            </label>
+
+            <label className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-600">
+              <span>ป้ายบนการ์ด</span>
+              <select
+                value={draft.badge}
+                onChange={(e) => patch({ badge: e.target.value })}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 focus:border-amber-300 focus:outline-none"
+              >
+                <option value="">ไม่มี</option>
+                <option value="ใหม่">🔵 ใหม่</option>
+                <option value="ขายดี">🔴 ขายดี</option>
+                <option value="ลดราคา">🟠 ลดราคา</option>
+              </select>
+            </label>
+
+            <label className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-600">
+              <span>ยอดขายสะสม (ขายแล้ว)</span>
+              <input
+                value={draft.soldStr}
+                onChange={(e) => patch({ soldStr: e.target.value.replace(/\D/g, "") })}
+                inputMode="numeric"
+                className="w-24 rounded-lg border border-slate-200 bg-white px-2 py-1 text-right text-xs text-slate-800 focus:border-amber-300 focus:outline-none"
+                aria-label="ยอดขายสะสม"
+              />
+            </label>
+            <p className="mt-1 text-[10px] leading-snug text-slate-400">
+              🔥 "สินค้าขายดี" หน้าแรกเรียงจากยอดนี้ 4 อันดับแรก — ระบบ<strong>บวกต่อให้เอง</strong>ทุกครั้งที่ออเดอร์ชำระเงินแล้ว
+              (ยกเลิกออเดอร์ = ถอนคืน) · ตั้งยอดตั้งต้นได้ตรงนี้
+            </p>
+
+            <div className="mt-3 flex justify-between border-t border-slate-100 pt-2 text-xs text-slate-600">
               <span>⭐ เรตติ้ง</span>
               <span className="font-semibold text-slate-800">{original.rating}</span>
-            </div>
-            <div className="mt-1.5 flex justify-between text-xs text-slate-600">
-              <span>ขายแล้ว</span>
-              <span className="font-semibold text-slate-800">{original.sold.toLocaleString("th-TH")}</span>
             </div>
             <div className="mt-1.5 flex justify-between text-xs text-slate-600">
               <span>หมวดหมู่</span>
