@@ -645,7 +645,8 @@ export default function ProductEditor({ product }: { product: Product }) {
               image: {
                 emoji: b.emoji.trim() || "🖼",
                 gradient: b.gradient,
-                label: b.imgLabel.trim() || b.heading.trim(),
+                // คำบรรยายรูปเฉพาะที่พิมพ์เอง — เดิม fallback เป็นชื่อหัวข้อ ทำให้ขึ้นซ้ำใต้รูปโดยไม่ตั้งใจ
+                label: b.imgLabel.trim(),
                 ...(b.src ? { src: b.src } : {}),
               },
             }
