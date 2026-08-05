@@ -46,11 +46,12 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  // พับแถบข้างเป็นแถวไอคอน (เดสก์ท็อป) — จำไว้ต่อเครื่อง
-  const [railed, setRailed] = useState(false);
+  // พับแถบข้างเป็นแถวไอคอน (เดสก์ท็อป) — เริ่มต้นพับไว้ ได้พื้นที่ทำงานกว้าง · จำที่เลือกไว้ต่อเครื่อง
+  const [railed, setRailed] = useState(true);
   useEffect(() => {
     try {
-      setRailed(localStorage.getItem("admin.sidebar.railed") === "1");
+      // ไม่เคยตั้ง = พับ · "0" = เคยกดกางไว้ ให้กางตามนั้น
+      setRailed(localStorage.getItem("admin.sidebar.railed") !== "0");
     } catch {}
   }, []);
   function toggleRail() {
