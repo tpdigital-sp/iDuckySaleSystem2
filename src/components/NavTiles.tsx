@@ -170,8 +170,9 @@ export default function NavTiles({
         </div>
       )}
       {rest.length > 0 && (
-        // justify-between: แถบกว้างชิดบน · แถวเล็กชิดล่าง — ขอบล่างเสมอกับการ์ดใหญ่แบบงานต้นฉบับ
-        <div className="flex flex-col justify-between gap-3 md:gap-4">
+        // justify-between: แถบกว้างชิดบน · แถวเล็กชิดล่าง
+        // pb 3.1% = ยกแถวเล็กให้เสมอ "ขอบขาวล่าง" ของการ์ดใหญ่ (ไฟล์ how-to มีสติกเกอร์ยื่นใต้การ์ด 5.6% ของสูงภาพ)
+        <div className="flex flex-col justify-between gap-3 md:gap-4 md:pb-[3.1%]">
           {rows.map((row, ri) =>
             row[0].size === "small" ? (
               row.every((t) => t.image) ? (
