@@ -6,6 +6,7 @@ import RequirePerm from "@/components/RequirePerm";
 import { useCan } from "@/lib/perm-context";
 import RichEditor from "@/components/RichEditor";
 import { PAGE_OVERRIDES, articleOf, blocksToHtml, isPageSlug, slugify, thaiDate, type Article } from "@/lib/articles";
+import { PAGE_STARTERS } from "@/lib/page-starters";
 import { btnNeutral, btnPrimary, btnSmDanger, btnSmGhost, card, faint, h1, muted, shortTime } from "@/lib/admin-ui";
 
 /**
@@ -115,9 +116,9 @@ function ArticlesInner() {
     setIsNew(false);
     setMsg("");
   }
-  /** เริ่มเขียนทับหน้าเว็บหลัก (วิธีสั่งซื้อ/เกี่ยวกับเรา) — slug ถูกจองตายตัว */
+  /** เริ่มเขียนทับหน้าเว็บหลัก — เปิดมาพร้อมเนื้อหาปัจจุบันของหน้านั้น แก้ต่อได้เลย */
   function startPage(slug: string, label: string) {
-    setEditing({ ...EMPTY, slug, title: label, excerpt: "", html: "" });
+    setEditing({ ...EMPTY, slug, title: label, excerpt: "", html: PAGE_STARTERS[slug] ?? "" });
     setIsNew(true);
     setMsg("");
   }
@@ -158,7 +159,7 @@ function ArticlesInner() {
   /* ── โหมดแก้ไข ── */
   if (editing) {
     return (
-      <div className="mx-auto max-w-3xl pb-24">
+      <div className="mx-auto max-w-5xl pb-24">
         <div className="flex items-center justify-between">
           <h1 className={h1}>{isNew ? "✍️ เขียนบทความใหม่" : "✍️ แก้บทความ"}</h1>
           <button type="button" onClick={() => setEditing(null)} className={btnNeutral}>
@@ -246,7 +247,7 @@ function ArticlesInner() {
 
         {/* ── แถบบันทึกลอยล่าง ── */}
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
-          <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-end gap-3">
+          <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-end gap-3">
             {msg && <span className="text-sm font-semibold text-rose-600">{msg}</span>}
             {editing.published && (
               <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200">
@@ -268,7 +269,7 @@ function ArticlesInner() {
   /* ── รายการ ── */
   const blogList = list.filter((a) => !isPageSlug(a.slug));
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto max-w-5xl">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className={h1}>✍️ บทความ</h1>
