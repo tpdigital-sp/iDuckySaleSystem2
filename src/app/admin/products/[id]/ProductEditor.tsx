@@ -667,9 +667,10 @@ export default function ProductEditor({ product }: { product: Product }) {
 
   // ── หลายเรทราคาในโมดัล: rateIdx 0 = เรทหลัก (ตาราง pricing), 1..n = extraRates[n-1] ──
   const [rateIdx, setRateIdx] = useState(0);
-  // ยุบ/กางกลุ่มตัวเลือกสินค้า (คีย์ = ลำดับกลุ่ม)
+  // ยุบ/กางกลุ่มตัวเลือกสินค้า (คีย์ = ลำดับกลุ่ม · ไม่เคยแตะ = ยุบไว้ก่อน)
   const [optFolded, setOptFolded] = useState<Record<number, boolean>>({});
-  const toggleOptFold = (gi: number) => setOptFolded((f) => ({ ...f, [gi]: !f[gi] }));
+  const isOptFolded = (gi: number) => optFolded[gi] ?? true;
+  const toggleOptFold = (gi: number) => setOptFolded((f) => ({ ...f, [gi]: !(f[gi] ?? true) }));
   const activeExtra = rateIdx > 0 ? draft.extraRates[rateIdx - 1] : undefined;
   const activeTiers = rateIdx === 0 ? draft.pricing.tiers : (activeExtra?.tiers ?? []);
   const activeCells = rateIdx === 0 ? draft.pricing.cells : (activeExtra?.cells ?? {});
@@ -1630,10 +1631,10 @@ export default function ProductEditor({ product }: { product: Product }) {
                       type="button"
                       onClick={() => toggleOptFold(gi)}
                       className="rounded-full bg-white px-2.5 py-1.5 text-xs font-bold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50"
-                      aria-expanded={!optFolded[gi]}
-                      title={optFolded[gi] ? "กางกลุ่มนี้" : "ยุบกลุ่มนี้"}
+                      aria-expanded={!isOptFolded(gi)}
+                      title={isOptFolded(gi) ? "กางกลุ่มนี้" : "ยุบกลุ่มนี้"}
                     >
-                      {optFolded[gi] ? "▸ กาง" : "▾ ยุบ"}
+                      {isOptFolded(gi) ? "▸ กาง" : "▾ ยุบ"}
                     </button>
                     <button
                       type="button"
@@ -1658,7 +1659,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                     </button>
                   </div>
                 </div>
-                {!optFolded[gi] && (
+                {!isOptFolded(gi) && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {opt.choices.map((c, ci) => (
                     <span
@@ -1670,7 +1671,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                   ))}
                 </div>
                 )}
-                {!optFolded[gi] && (
+                {!isOptFolded(gi) && (
                 <>
                 <div className="mt-2 flex items-center gap-2">
                   <span className="text-[11px] font-semibold text-slate-400">แสดงหน้าร้าน:</span>
@@ -1730,10 +1731,10 @@ export default function ProductEditor({ product }: { product: Product }) {
                   type="button"
                   onClick={() => toggleOptFold(gi)}
                   className="shrink-0 rounded-full bg-slate-50 px-2.5 py-2 text-xs font-bold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
-                  aria-expanded={!optFolded[gi]}
-                  title={optFolded[gi] ? "กางกลุ่มนี้" : "ยุบกลุ่มนี้"}
+                  aria-expanded={!isOptFolded(gi)}
+                  title={isOptFolded(gi) ? "กางกลุ่มนี้" : "ยุบกลุ่มนี้"}
                 >
-                  {optFolded[gi] ? "▸ กาง" : "▾ ยุบ"}
+                  {isOptFolded(gi) ? "▸ กาง" : "▾ ยุบ"}
                 </button>
                 <button
                   type="button"
@@ -1743,13 +1744,13 @@ export default function ProductEditor({ product }: { product: Product }) {
                   🗑 ลบกลุ่ม
                 </button>
               </div>
-              {optFolded[gi] && (
+              {isOptFolded(gi) && (
                 <p className="mt-2 truncate text-xs text-slate-400">
                   {opt.choices.length} ตัวเลือก · {opt.choices.slice(0, 6).map((c) => c.name).filter(Boolean).join(" · ")}
                   {opt.choices.length > 6 ? " …" : ""}
                 </p>
               )}
-              {!optFolded[gi] && (
+              {!isOptFolded(gi) && (
               <>
               <div className="mt-2 flex items-center gap-2">
                 <span className="text-[11px] font-semibold text-slate-400">แสดงหน้าร้าน:</span>
