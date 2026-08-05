@@ -12,6 +12,7 @@ import {
   formatPriceRange,
   getCategory,
   includedDesigns,
+  matrixChoiceAvailable,
   priceMatrixKey,
   priceRange,
   PRODUCTS,
@@ -102,6 +103,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   // ── หลายเรทราคา (เช่น พิน: คละดีเทล / ไม่คละดีเทล) ──
   const rates = useMemo(() => product.priceRates ?? [], [product]);
   const [rateLabel, setRateLabel] = useState("");
+  // ลูกค้ากดเลือกเรทเอง = หยุดสลับอัตโนมัติ (เช่น ตั้งใจอยู่เรท 1 เพื่อคละดีเทล)
+  const [rateTouched, setRateTouched] = useState(false);
   const rate = rates.length ? (rates.find((r) => r.label === rateLabel) ?? rates[0]) : undefined;
   // เรทที่เลือกติดไปกับ selections → ตะกร้า/ออเดอร์เห็นเป็น "เรทราคา: …" และคิดราคาตามเรทนั้น
   const effective = useMemo(
@@ -113,6 +116,15 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   useEffect(() => {
     if (rateMinQty > 1) setQty((q) => Math.max(q, rateMinQty));
   }, [rateMinQty]);
+  // ✨ จำนวนถึงขั้นต่ำของเรทไหน → สลับไปเรทนั้นให้อัตโนมัติ (เรทที่ขั้นต่ำสูงสุดที่จำนวนถึง)
+  // จนกว่าลูกค้าจะกดเลือกเรทเอง
+  useEffect(() => {
+    if (rateTouched || rates.length < 2) return;
+    const best = rates
+      .filter((r) => qty >= (r.minQty ?? 1))
+      .sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
+    if (best) setRateLabel((cur) => (cur === best.label ? cur : best.label));
+  }, [qty, rates, rateTouched]);
 
   // ── จำนวนลายที่คละ (เรทที่กำหนดขั้นต่ำต่อลาย) ──
   const [designs, setDesigns] = useState(1);
@@ -146,6 +158,26 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
 
   // ตารางราคาที่ใช้อยู่ (ตามเรทที่เลือก — สินค้าเรทเดียวคือ pricing เดิม)
   const matrix = useMemo(() => activeMatrix(product, effective), [product, effective]);
+
+  // ตัวเลือกที่แอดมินล้างราคาทิ้งในเรทนี้ (ไม่ขาย) → ถ้าลูกค้าค้างอยู่ที่ตัวนั้น สลับให้เป็นตัวแรกที่ขาย
+  useEffect(() => {
+    if (!matrix) return;
+    setSelections((sel) => {
+      let changed = false;
+      const next = { ...sel };
+      for (const opt of product.options) {
+        const cur = next[opt.label];
+        if (cur && !matrixChoiceAvailable(matrix, opt.label, cur)) {
+          const alt = opt.choices.map((c) => c.name).find((n) => matrixChoiceAvailable(matrix, opt.label, n));
+          if (alt) {
+            next[opt.label] = alt;
+            changed = true;
+          }
+        }
+      }
+      return changed ? next : sel;
+    });
+  }, [matrix, product]);
 
   // tier ปัจจุบันของราคาขั้นบันได (ถ้ามี)
   const currentTier = useMemo(() => {
@@ -563,7 +595,10 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                     <button
                       key={r.id}
                       type="button"
-                      onClick={() => setRateLabel(r.label)}
+                      onClick={() => {
+                        setRateTouched(true);
+                        setRateLabel(r.label);
+                      }}
                       className={`rounded-2xl px-4 py-3 text-left text-sm transition ${
                         on
                           ? "bg-amber-50 font-bold text-amber-900 ring-2 ring-amber-400"
@@ -597,7 +632,10 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
           {/* ตัวเลือกสินค้า (กรอง/ล็อกตามกฎเงื่อนไข) */}
           <div className="mt-5 space-y-4">
             {product.options.map((opt) => {
-              const allowed = allowedChoices(product, effective, opt.label);
+              const allowedByRules = allowedChoices(product, effective, opt.label);
+              // ตัดตัวที่ไม่มีราคาขายในเรทที่เลือกอยู่ (แอดมินล้างแถวทิ้ง) — ตัดหมดแล้วคงชุดเดิมไว้กันหน้าพัง
+              const byRate = matrix ? allowedByRules.filter((n) => matrixChoiceAvailable(matrix, opt.label, n)) : allowedByRules;
+              const allowed = byRate.length > 0 ? byRate : allowedByRules;
               const locked = allowed.length === 1;
               return (
                 <div key={opt.label}>
@@ -750,7 +788,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                 <div className="flex items-center rounded-full bg-white ring-1 ring-amber-200">
                   <button
                     type="button"
-                    onClick={() => setQty((q) => Math.max(rateMinQty, q - 1))}
+                    // โหมดเด้งเรทอัตโนมัติ: ลดต่ำกว่าขั้นต่ำเรทปัจจุบันได้ ระบบจะสลับลงเรทที่เหมาะเอง
+                    onClick={() => setQty((q) => Math.max(rateTouched ? rateMinQty : 1, q - 1))}
                     className="h-12 w-12 rounded-l-full text-lg font-bold text-stone-600 hover:bg-amber-50"
                     aria-label="ลดจำนวน"
                   >

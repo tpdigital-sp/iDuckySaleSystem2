@@ -685,6 +685,18 @@ export default function ProductEditor({ product }: { product: Product }) {
       }),
     }));
   }
+  /** ล้างราคาทั้งแถวของเรทที่แก้อยู่ — แถวว่าง = ไม่ขายคู่ตัวเลือกนี้ในเรทนี้ (หน้าร้านซ่อนให้) */
+  function clearActiveRow(key: string) {
+    const empty = activeTiers.map(() => "");
+    if (rateIdx === 0) {
+      setDraft((d) => ({ ...d, pricing: { ...d.pricing, cells: { ...d.pricing.cells, [key]: empty } } }));
+    } else {
+      setDraft((d) => ({
+        ...d,
+        extraRates: d.extraRates.map((r, i) => (i === rateIdx - 1 ? { ...r, cells: { ...r.cells, [key]: empty } } : r)),
+      }));
+    }
+  }
   function patchActiveMeta(pt: Partial<DraftRateMeta>) {
     if (rateIdx === 0) setDraft((d) => ({ ...d, rateMeta: { ...d.rateMeta, ...pt } }));
     else setDraft((d) => ({ ...d, extraRates: d.extraRates.map((r, i) => (i === rateIdx - 1 ? { ...r, ...pt } : r)) }));
@@ -776,6 +788,8 @@ export default function ProductEditor({ product }: { product: Product }) {
       for (const combo of cols) {
         const key = columnKey(combo);
         const raw = draft.pricing.cells[key] ?? [];
+        // แถวที่ล้างราคาไว้ทั้งแถว = ไม่ขายคู่ตัวเลือกนี้ในเรทนี้ → ไม่เก็บคีย์ (หน้าร้านซ่อนให้)
+        if (tiers.every((_, ti) => !String(raw[ti] ?? "").trim())) continue;
         cells[key] = tiers.map((_, ti) => {
           const n = Number(raw[ti]);
           return Number.isFinite(n) && n >= 0 ? n : 0;
@@ -827,6 +841,8 @@ export default function ProductEditor({ product }: { product: Product }) {
         for (const combo of cols) {
           const key = columnKey(combo);
           const raw = cellsDraft[key] ?? [];
+          // แถวว่างทั้งแถว = ไม่ขายคู่ตัวเลือกนี้ในเรทนี้
+          if (tiers.every((_, ti) => !String(raw[ti] ?? "").trim())) continue;
           cells[key] = tiers.map((_, ti) => {
             const n = Number(raw[ti]);
             return Number.isFinite(n) && n >= 0 ? n : 0;
@@ -1705,6 +1721,29 @@ export default function ProductEditor({ product }: { product: Product }) {
                       className={`flex-1 ${smallInputCls}`}
                       aria-label={`ตัวเลือกที่ ${ci + 1} ของกลุ่ม ${opt.label || gi + 1}`}
                     />
+                    {/* บวกเพิ่มต่อหน่วยเมื่อเลือกตัวนี้ — ใช้กับกลุ่มที่ไม่ใช่แกนตารางราคา (เช่น อะไหล่พิเศษ) */}
+                    <label
+                      className="flex shrink-0 items-center gap-1 text-[11px] font-semibold text-slate-400"
+                      title="บวกเพิ่มต่อหน่วยเมื่อลูกค้าเลือกตัวเลือกนี้ (ใช้กับกลุ่มที่ไม่ได้เป็นคอลัมน์ของตารางราคา)"
+                    >
+                      +฿
+                      <input
+                        value={ch.extra}
+                        onChange={(e) =>
+                          patch({
+                            options: draft.options.map((o, i) =>
+                              i === gi
+                                ? { ...o, choices: o.choices.map((c, j) => (j === ci ? { ...c, extra: e.target.value } : c)) }
+                                : o
+                            ),
+                          })
+                        }
+                        inputMode="numeric"
+                        placeholder="0"
+                        className="w-14 rounded-lg bg-slate-50 px-2 py-1.5 text-center text-xs ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                        aria-label={`ราคาบวกเพิ่มของตัวเลือกที่ ${ci + 1}`}
+                      />
+                    </label>
                     <button
                       type="button"
                       onClick={() =>
@@ -2299,6 +2338,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                               {t.label || `ช่วง ${ti + 1}`}
                             </th>
                           ))}
+                          <th className="px-1 py-2" aria-label="ล้างแถว" />
                         </tr>
                       </thead>
                       <tbody>
@@ -2319,12 +2359,23 @@ export default function ProductEditor({ product }: { product: Product }) {
                                     value={activeCells[key]?.[ti] ?? ""}
                                     onChange={(e) => setActiveCell(key, ti, e.target.value)}
                                     inputMode="numeric"
-                                    placeholder="0"
+                                    placeholder="—"
                                     className="w-16 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-sm focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-200"
                                     aria-label={`ราคา ${combo.join(" ")} ${t.label || `ช่วง ${ti + 1}`}`}
                                   />
                                 </td>
                               ))}
+                              <td className={`px-1 py-2 text-center ${rowBg}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => clearActiveRow(key)}
+                                  className="rounded-full px-1.5 py-0.5 text-xs font-bold text-rose-300 transition hover:bg-rose-50 hover:text-rose-500"
+                                  title="ล้างราคาแถวนี้ทั้งแถว — แถวว่าง = ไม่ขายตัวเลือกนี้ในเรทนี้ (หน้าร้านซ่อนให้)"
+                                  aria-label={`ล้างราคาแถว ${combo.join(" ")}`}
+                                >
+                                  ✕
+                                </button>
+                              </td>
                             </tr>
                           );
                         })}

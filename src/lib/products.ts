@@ -1865,6 +1865,16 @@ export function activeMatrix(p: Product, selections: Record<string, string>): Pr
   return activeRate(p, selections)?.pricing ?? p.pricing;
 }
 
+/**
+ * ตัวเลือกนี้มีราคาขายในตารางนี้ไหม — แถวที่แอดมินล้างราคาทิ้ง (ไม่ขายในเรทนั้น)
+ * จะไม่มีคีย์ในตาราง → หน้าร้านซ่อนตัวเลือกนั้นเมื่อลูกค้าเลือกเรทนั้นอยู่
+ */
+export function matrixChoiceAvailable(m: PriceMatrix, label: string, choice: string): boolean {
+  const di = m.driverLabels.indexOf(label);
+  if (di < 0) return true; // กลุ่มที่ไม่ใช่แกนตาราง ไม่เกี่ยวกับตาราง
+  return Object.keys(m.cells).some((k) => k.split("│")[di] === choice);
+}
+
 /** ช่วงราคาต่ำสุด–สูงสุดของสินค้า — ถ้ามีตารางราคาขั้นบันไดคิดจากทุกช่อง, ไม่งั้นคิดจากราคาตั้งต้น + option.extra */
 export function priceRange(p: Product): { min: number; max: number } {
   if (p.priceRates?.length) {
@@ -1915,8 +1925,14 @@ export function unitPriceFor(
   const m = activeMatrix(product, selections);
   if (m) {
     const cells = m.cells[priceMatrixKey(m, selections)];
-    if (cells && cells.length) return cells[tierIndex(m, qty)] ?? product.price;
-    return product.price;
+    let base = cells && cells.length ? (cells[tierIndex(m, qty)] ?? product.price) : product.price;
+    // กลุ่มตัวเลือกที่ไม่ใช่แกนตาราง (เช่น อะไหล่พิเศษ) บวกเพิ่มต่อหน่วยตาม extra ของตัวที่เลือก
+    for (const opt of product.options) {
+      if (m.driverLabels.includes(opt.label)) continue;
+      const chosen = opt.choices.find((c) => c.name === selections[opt.label]);
+      if (chosen?.extra) base += chosen.extra;
+    }
+    return base;
   }
   let price = product.price;
   for (const opt of product.options) {
