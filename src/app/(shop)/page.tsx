@@ -127,23 +127,35 @@ export default function HomePage() {
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {cats.map((c) => (
+            /* มีรูป = รูปเต็มใบ ชื่อทับล่างบนเงาไล่เฉด · ไม่มีรูป = อีโมจิ+สีพื้นแบบเดิม
+               บังคับสัดส่วน 4:3 ทุกใบ การ์ดสองแบบอยู่ตารางเดียวกันแล้วเท่ากันเป๊ะ */
             <Link
               key={c.id}
               href={`/products?category=${c.id}`}
-              className={`group flex flex-col items-center gap-2 rounded-3xl bg-gradient-to-br ${c.gradient} p-5 text-center shadow-sm transition hover:-translate-y-1 hover:shadow-md`}
+              className={`group relative aspect-[4/3] overflow-hidden rounded-3xl text-center shadow-sm transition hover:-translate-y-1 hover:shadow-md ${
+                c.image ? "" : `bg-gradient-to-br ${c.gradient}`
+              }`}
             >
               {c.image ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={c.image}
-                  alt=""
-                  className="h-16 w-16 rounded-2xl object-cover shadow-sm transition-transform group-hover:scale-110"
-                />
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={c.image}
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  />
+                  <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/25 to-transparent px-2 pb-2.5 pt-10">
+                    <span className="block text-sm font-bold leading-tight text-white drop-shadow">{c.name}</span>
+                    {c.nameEn && <span className="mt-0.5 block text-[11px] text-white/85">{c.nameEn}</span>}
+                  </span>
+                </>
               ) : (
-                <span className="text-4xl transition-transform group-hover:scale-110">{c.emoji}</span>
+                <span className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 p-3">
+                  <span className="text-4xl transition-transform group-hover:scale-110">{c.emoji}</span>
+                  <span className="text-sm font-bold leading-tight text-stone-800">{c.name}</span>
+                  {c.nameEn && <span className="text-[11px] text-stone-600/80">{c.nameEn}</span>}
+                </span>
               )}
-              <span className="text-sm font-bold text-stone-800">{c.name}</span>
-              <span className="text-[11px] text-stone-600/80">{c.nameEn}</span>
             </Link>
           ))}
         </div>
