@@ -14,12 +14,15 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
   const a = await getArticleServer(slug);
   if (!a) return { title: "ไม่พบบทความ" };
+  const title = a.seo?.title || a.title;
+  const description = a.seo?.description || a.excerpt || `${a.title} — บทความจาก ${SHOP.name}`;
   return {
-    title: a.title,
-    description: a.excerpt || `${a.title} — บทความจาก ${SHOP.name}`,
+    title,
+    description,
+    ...(a.seo?.keywords ? { keywords: a.seo.keywords } : {}),
     openGraph: {
-      title: a.title,
-      description: a.excerpt,
+      title,
+      description,
       type: "article",
       ...(a.cover ? { images: [{ url: a.cover }] } : {}),
     },

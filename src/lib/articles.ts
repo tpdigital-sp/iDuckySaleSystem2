@@ -30,6 +30,8 @@ export interface Article {
    * ผ่านการกรองแท็กอันตรายฝั่งเซิร์ฟเวอร์ก่อนบันทึกเสมอ
    */
   html?: string;
+  /** SEO ต่อบทความ (ไม่ใส่ = ใช้ชื่อเรื่อง/เกริ่นอัตโนมัติ) */
+  seo?: { title?: string; description?: string; keywords?: string };
   /** ยังไม่เผยแพร่ = เห็นเฉพาะหลังบ้าน */
   published: boolean;
   author?: string;
@@ -74,6 +76,14 @@ export function articleOf(raw: Partial<Article> | null | undefined): Article | n
         align: b.align === "right" ? ("right" as const) : ("left" as const),
       })),
     html: str(raw.html) || undefined,
+    seo:
+      raw.seo && (str(raw.seo.title).trim() || str(raw.seo.description).trim() || str(raw.seo.keywords).trim())
+        ? {
+            title: str(raw.seo.title).trim() || undefined,
+            description: str(raw.seo.description).trim() || undefined,
+            keywords: str(raw.seo.keywords).trim() || undefined,
+          }
+        : undefined,
     tags: (Array.isArray(raw.tags) ? raw.tags : []).map((t) => str(t).trim()).filter(Boolean),
     published: raw.published !== false,
     author: str(raw.author).trim() || undefined,

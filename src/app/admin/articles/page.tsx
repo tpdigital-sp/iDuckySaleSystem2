@@ -159,7 +159,7 @@ function ArticlesInner() {
   /* ── โหมดแก้ไข ── */
   if (editing) {
     return (
-      <div className="mx-auto max-w-5xl pb-24">
+      <div className="mx-auto max-w-6xl pb-24">
         <div className="flex items-center justify-between">
           <h1 className={h1}>{isNew ? "✍️ เขียนบทความใหม่" : "✍️ แก้บทความ"}</h1>
           <button type="button" onClick={() => setEditing(null)} className={btnNeutral}>
@@ -245,9 +245,47 @@ function ArticlesInner() {
           />
         </section>
 
+        {/* ── SEO (แบบ lnwshop) ── */}
+        <section className={`mt-4 p-5 ${card}`}>
+          <h2 className="text-sm font-bold text-slate-800">🔎 SEO</h2>
+          <p className={`mt-0.5 text-xs ${faint}`}>
+            ไม่กรอก = ใช้ชื่อเรื่องกับเกริ่นอัตโนมัติ · กรอกเมื่ออยากคุมคำที่ขึ้นบน Google เอง
+          </p>
+          <div className="mt-3 space-y-3">
+            <label className="block">
+              <span className="text-xs font-semibold text-slate-600">Title</span>
+              <input
+                value={editing.seo?.title ?? ""}
+                onChange={(e) => patch({ seo: { ...editing.seo, title: e.target.value } })}
+                placeholder={editing.title || "หัวข้อที่จะขึ้นบน Google"}
+                className={`mt-1 ${input}`}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold text-slate-600">Description</span>
+              <textarea
+                value={editing.seo?.description ?? ""}
+                onChange={(e) => patch({ seo: { ...editing.seo, description: e.target.value } })}
+                rows={2}
+                placeholder={editing.excerpt || "คำอธิบายใต้หัวข้อในผลค้นหา (~150 ตัวอักษร)"}
+                className={`mt-1 ${input}`}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold text-slate-600">Keywords (คั่นด้วย ,)</span>
+              <input
+                value={editing.seo?.keywords ?? ""}
+                onChange={(e) => patch({ seo: { ...editing.seo, keywords: e.target.value } })}
+                placeholder="เช่น สั่งทำกระเป๋าปากบีบ, ของแจกงานแต่ง"
+                className={`mt-1 ${input}`}
+              />
+            </label>
+          </div>
+        </section>
+
         {/* ── แถบบันทึกลอยล่าง ── */}
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
-          <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-end gap-3">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-3">
             {msg && <span className="text-sm font-semibold text-rose-600">{msg}</span>}
             {editing.published && (
               <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200">
@@ -269,7 +307,7 @@ function ArticlesInner() {
   /* ── รายการ ── */
   const blogList = list.filter((a) => !isPageSlug(a.slug));
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-6xl">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className={h1}>✍️ บทความ</h1>

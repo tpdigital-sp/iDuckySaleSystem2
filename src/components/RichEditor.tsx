@@ -5,11 +5,11 @@ import { ARTICLE_PROSE } from "@/components/ArticleHtml";
 
 /**
  * ✍️ ตัวเขียนแบบ rich text (สไตล์เดียวกับบล็อก lnwshop)
- * — พิมพ์แล้วจัดรูปแบบได้เลย: หนา/เอียง/ขีดเส้น หัวข้อ รายการ ลิงก์ แทรกรูปในเนื้อหา
+ * — หนา/เอียง/ขีด · สี+ไฮไลต์ · จัดวางซ้าย-กลาง-ขวา · หัวข้อ/quote/ย่อหน้า
+ *   รายการ · ลิงก์ · แทรกรูป (ปุ่ม/ลาก/paste) · ขนาดตัวอักษร · ดูโค้ด HTML
  * เก็บเป็น HTML (ฝั่งเซิร์ฟเวอร์กรองแท็กอันตรายก่อนบันทึกอีกชั้น)
  */
 
-/** อัปโหลดรูปเข้าโฟลเดอร์บทความ → URL */
 async function uploadImage(file: File): Promise<string | null> {
   try {
     const fd = new FormData();
@@ -24,7 +24,54 @@ async function uploadImage(file: File): Promise<string | null> {
 }
 
 const btn =
-  "rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-slate-200 active:bg-slate-300";
+  "rounded-lg px-2 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-slate-200 active:bg-slate-300";
+const sel = "rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-700 focus:outline-none";
+
+/** สีให้เลือกเร็ว (แบรนด์ + สีพื้นฐาน) */
+const COLORS = ["#1a3843", "#3fa1b6", "#e11d48", "#ea580c", "#16a34a", "#7c3aed", "#78716c", "#000000"];
+const HILITES = ["#fff3c4", "#d6edf2", "#fee2e2", "#dcfce7", "#f3e8ff", "#ffffff"];
+
+/** ดรอปดาวน์จานสีเล็ก ๆ */
+function ColorMenu({
+  label,
+  title,
+  colors,
+  onPick,
+}: {
+  label: React.ReactNode;
+  title: string;
+  colors: string[];
+  onPick: (c: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative">
+      <button type="button" onClick={() => setOpen((v) => !v)} className={btn} title={title}>
+        {label}
+      </button>
+      {open && (
+        <>
+          <button type="button" aria-label="ปิด" onClick={() => setOpen(false)} className="fixed inset-0 z-30 cursor-default" />
+          <span className="absolute left-0 top-full z-40 mt-1 flex w-36 flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+            {colors.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => {
+                  onPick(c);
+                  setOpen(false);
+                }}
+                className="h-6 w-6 rounded-md ring-1 ring-slate-200 transition hover:scale-110"
+                style={{ backgroundColor: c }}
+                aria-label={c}
+              />
+            ))}
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
 
 export default function RichEditor({
   initialHtml,
@@ -36,8 +83,10 @@ export default function RichEditor({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
+  // โหมดดูโค้ด HTML (แบบปุ่ม <> ของ lnwshop)
+  const [srcMode, setSrcMode] = useState(false);
+  const [srcText, setSrcText] = useState("");
 
-  // ใส่เนื้อหาเริ่มต้นครั้งเดียว — ไม่ sync ทุก render ไม่งั้น caret เด้ง
   useEffect(() => {
     if (ref.current && ref.current.innerHTML !== initialHtml) ref.current.innerHTML = initialHtml;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -45,7 +94,6 @@ export default function RichEditor({
 
   const emit = () => ref.current && onChange(ref.current.innerHTML);
 
-  /** สั่งจัดรูปแบบ ณ ตำแหน่ง cursor (execCommand เก่าแต่ใช้ได้ทุกเบราว์เซอร์) */
   function cmd(name: string, value?: string) {
     ref.current?.focus();
     document.execCommand(name, false, value);
@@ -58,6 +106,19 @@ export default function RichEditor({
     const url = await uploadImage(f);
     setBusy(false);
     if (url) cmd("insertImage", url);
+  }
+
+  function toggleSource() {
+    if (!ref.current) return;
+    if (srcMode) {
+      // กลับจากโหมดโค้ด → ใช้โค้ดที่แก้
+      ref.current.innerHTML = srcText;
+      emit();
+      setSrcMode(false);
+    } else {
+      setSrcText(ref.current.innerHTML);
+      setSrcMode(true);
+    }
   }
 
   return (
@@ -76,24 +137,57 @@ export default function RichEditor({
         <button type="button" onClick={() => cmd("strikeThrough")} className={`${btn} line-through`} title="ขีดฆ่า">
           S
         </button>
+        <ColorMenu label={<span className="border-b-2 border-rose-500">A</span>} title="สีตัวอักษร" colors={COLORS} onPick={(c) => cmd("foreColor", c)} />
+        <ColorMenu label={<span className="bg-yellow-200 px-0.5">A</span>} title="ไฮไลต์ข้อความ" colors={HILITES} onPick={(c) => cmd("hiliteColor", c)} />
         <span className="mx-1 h-5 w-px bg-slate-200" />
-        <button type="button" onClick={() => cmd("formatBlock", "<h2>")} className={btn} title="หัวข้อใหญ่">
-          H2
-        </button>
-        <button type="button" onClick={() => cmd("formatBlock", "<h3>")} className={btn} title="หัวข้อรอง">
-          H3
-        </button>
-        <button type="button" onClick={() => cmd("formatBlock", "<p>")} className={btn} title="ข้อความปกติ">
-          ¶
-        </button>
+
+        <button type="button" onClick={() => cmd("justifyLeft")} className={btn} title="ชิดซ้าย">⇤</button>
+        <button type="button" onClick={() => cmd("justifyCenter")} className={btn} title="กึ่งกลาง">↔</button>
+        <button type="button" onClick={() => cmd("justifyRight")} className={btn} title="ชิดขวา">⇥</button>
         <span className="mx-1 h-5 w-px bg-slate-200" />
+
+        <select
+          defaultValue=""
+          onChange={(e) => {
+            if (e.target.value) cmd("formatBlock", e.target.value);
+            e.target.value = "";
+          }}
+          className={sel}
+          title="รูปแบบย่อหน้า"
+        >
+          <option value="" disabled>ย่อหน้า</option>
+          <option value="<p>">ข้อความปกติ</option>
+          <option value="<h2>">หัวข้อใหญ่ (H2)</option>
+          <option value="<h3>">หัวข้อรอง (H3)</option>
+          <option value="<blockquote>">“ คำพูด/ไฮไลต์</option>
+        </select>
+        <select
+          defaultValue=""
+          onChange={(e) => {
+            if (e.target.value) cmd("fontSize", e.target.value);
+            e.target.value = "";
+          }}
+          className={sel}
+          title="ขนาดตัวอักษร"
+        >
+          <option value="" disabled>ขนาด</option>
+          <option value="2">เล็ก</option>
+          <option value="3">ปกติ</option>
+          <option value="5">ใหญ่</option>
+          <option value="6">ใหญ่มาก</option>
+        </select>
+        <span className="mx-1 h-5 w-px bg-slate-200" />
+
         <button type="button" onClick={() => cmd("insertUnorderedList")} className={btn} title="รายการจุด">
           • รายการ
         </button>
         <button type="button" onClick={() => cmd("insertOrderedList")} className={btn} title="รายการตัวเลข">
-          1. รายการ
+          1.
         </button>
+        <button type="button" onClick={() => cmd("outdent")} className={btn} title="ลดย่อหน้า">⇦</button>
+        <button type="button" onClick={() => cmd("indent")} className={btn} title="เพิ่มย่อหน้า">⇨</button>
         <span className="mx-1 h-5 w-px bg-slate-200" />
+
         <button
           type="button"
           onClick={() => {
@@ -103,10 +197,13 @@ export default function RichEditor({
           className={btn}
           title="แทรกลิงก์"
         >
-          🔗 ลิงก์
+          🔗
         </button>
-        <label className={`${btn} cursor-pointer`} title="แทรกรูปตรงตำแหน่งที่พิมพ์อยู่ (ลากรูปมาวางในพื้นที่เขียนก็ได้)">
-          {busy ? "⏳ กำลังอัป…" : "🖼 แทรกรูป"}
+        <button type="button" onClick={() => cmd("unlink")} className={btn} title="เอาลิงก์ออก">
+          🔗✕
+        </button>
+        <label className={`${btn} cursor-pointer`} title="แทรกรูปตรงตำแหน่งที่พิมพ์ (ลากมาวาง หรือ paste รูปก็ได้)">
+          {busy ? "⏳" : "🖼 รูป"}
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp,image/gif"
@@ -120,21 +217,40 @@ export default function RichEditor({
           />
         </label>
         <span className="mx-1 h-5 w-px bg-slate-200" />
-        <button type="button" onClick={() => cmd("undo")} className={btn} title="ย้อนกลับ">
-          ↶
-        </button>
-        <button type="button" onClick={() => cmd("redo")} className={btn} title="ทำซ้ำ">
-          ↷
-        </button>
+
+        <button type="button" onClick={() => cmd("undo")} className={btn} title="ย้อนกลับ">↶</button>
+        <button type="button" onClick={() => cmd("redo")} className={btn} title="ทำซ้ำ">↷</button>
         <button type="button" onClick={() => cmd("removeFormat")} className={btn} title="ล้างรูปแบบข้อความที่เลือก">
-          ⌫ ล้างรูปแบบ
+          Tx
+        </button>
+        <button
+          type="button"
+          onClick={toggleSource}
+          className={`${btn} ${srcMode ? "bg-slate-800 text-white hover:bg-slate-700" : ""}`}
+          title="ดู/แก้โค้ด HTML"
+        >
+          &lt;&gt;
         </button>
       </div>
 
-      {/* ── พื้นที่เขียน (สไตล์เดียวกับหน้าเว็บจริง) ── */}
+      {/* ── โหมดโค้ด HTML ── */}
+      {srcMode ? (
+        <textarea
+          value={srcText}
+          onChange={(e) => {
+            setSrcText(e.target.value);
+            onChange(e.target.value);
+          }}
+          rows={18}
+          className="w-full resize-y bg-slate-900 px-4 py-3 font-mono text-xs leading-relaxed text-emerald-200 outline-none"
+          spellCheck={false}
+        />
+      ) : null}
+
+      {/* ── พื้นที่เขียน (สไตล์เดียวกับหน้าเว็บจริง) — ซ่อนไว้ตอนอยู่โหมดโค้ด ── */}
       <div
         ref={ref}
-        contentEditable
+        contentEditable={!srcMode}
         suppressContentEditableWarning
         onInput={emit}
         onBlur={emit}
@@ -147,14 +263,13 @@ export default function RichEditor({
           }
         }}
         onPaste={(e) => {
-          // วางรูปจากคลิปบอร์ดได้เลย (เช่น screenshot)
           const f = [...e.clipboardData.items].find((i) => i.type.startsWith("image/"))?.getAsFile();
           if (f) {
             e.preventDefault();
             void insertImage(f);
           }
         }}
-        className={`min-h-72 px-4 py-3 outline-none ${ARTICLE_PROSE}`}
+        className={`min-h-72 px-4 py-3 outline-none ${ARTICLE_PROSE} ${srcMode ? "hidden" : ""}`}
         data-placeholder="พิมพ์เนื้อหาบทความที่นี่… เลือกข้อความแล้วกดปุ่มด้านบนเพื่อจัดรูปแบบ"
       />
     </div>
