@@ -42,6 +42,7 @@ const PAGES: { href: string; label: string }[] = [
   { href: "/products", label: "สินค้าทั้งหมด" },
   { href: "/products?sort=popular", label: "สินค้าขายดี" },
   { href: "/how-to-order", label: "วิธีสั่งซื้อ" },
+  { href: "/about", label: "เกี่ยวกับเรา" },
   { href: "/cart", label: "ตะกร้าสินค้า" },
   { href: "/account", label: "บัญชีของฉัน" },
   { href: "/account/orders", label: "ประวัติการสั่งซื้อ" },

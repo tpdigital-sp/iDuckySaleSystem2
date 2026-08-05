@@ -155,7 +155,7 @@ export const DEFAULT_TILES: NavTile[] = [
     id: "about",
     title: "About Us",
     subtitle: "เกี่ยวกับเรา",
-    href: "https://www.iduckyprintsstudio.com/about-Me/",
+    href: "/about",
     image: "/nav/about-us.png",
     emoji: "🦆",
     gradient: "from-amber-100 to-yellow-200",
