@@ -23,6 +23,7 @@ import type { Order } from "@/lib/admin-data";
 import { appendToOrder, placeOrder, reportPayment } from "@/lib/order-repo";
 import { clearAppendTarget, getAppendTarget, type AppendTarget } from "@/lib/append-order";
 import { publicOrigin } from "@/lib/shop-info";
+import { cartQtyShipFee } from "@/lib/shipping-auto";
 
 interface Placed {
   id: string;
@@ -146,8 +147,24 @@ export default function CheckoutPage() {
 
   const shippingMethod = methods.find((s) => s.id === shippingId) ?? methods[0];
   const freeShipping = freeMin > 0 && subtotal >= freeMin;
+
+  // 📦 สินค้าที่คิดค่าส่งตามจำนวนชิ้น (คิดแบบเดียวกับหน้าตะกร้า — สองหน้าต้องได้เลขเดียวกัน)
+  const qtyShipFee = (() => {
+    const perProduct = new Map<string, number>();
+    for (const i of items) perProduct.set(i.productId, (perProduct.get(i.productId) ?? 0) + i.qty);
+    return cartQtyShipFee(
+      [...perProduct.entries()]
+        .map(([pid, qty]) => {
+          const p = productOf(pid);
+          return { name: p?.name ?? pid, qty, tiers: p?.shipTiers, extra: p?.shipTierExtra };
+        })
+        .filter((x) => x.tiers?.length)
+    ).fee;
+  })();
+
   // สั่งเพิ่มในออเดอร์เดิม → ไม่คิดค่าส่งซ้ำ (จ่ายไปแล้วในออเดอร์แรก)
-  const shippingCost = appendTo ? 0 : freeShipping ? 0 : shippingMethod.price;
+  // ของหนักคิดตามจำนวน → ใช้ค่าที่แพงกว่าระหว่างวิธีที่เลือกกับค่าตามจำนวน
+  const shippingCost = appendTo ? 0 : freeShipping ? 0 : Math.max(shippingMethod.price, qtyShipFee);
 
   // ── ส่วนลดระดับสมาชิก (โชว์เป็นตัวอย่าง — เซิร์ฟเวอร์คิดจริงตอนสร้างออเดอร์) ──
   const [tier, setTier] = useState<{ name: string; icon: string; pct: number } | null>(null);
@@ -631,7 +648,10 @@ export default function CheckoutPage() {
           </div>
         )}
         <div className="mt-1 flex justify-between text-sm text-stone-600">
-          <span>ค่าจัดส่ง{appendTo ? "" : ` (${shippingMethod.name})`}</span>
+          <span>
+            ค่าจัดส่ง
+            {appendTo ? "" : qtyShipFee > shippingMethod.price ? " (ตามจำนวนชิ้น 📦)" : ` (${shippingMethod.name})`}
+          </span>
           <span>{appendTo ? "รวมกับออเดอร์เดิมแล้ว" : freeShipping ? "ฟรี" : formatPrice(shippingCost)}</span>
         </div>
         <div className="mt-2 flex justify-between border-t border-amber-100 pt-2 text-base font-extrabold text-amber-950"><span>{appendTo ? "ยอดที่ต้องโอนเพิ่ม" : "ยอดชำระ"}</span><span className="text-amber-600">{formatPrice(total)}</span></div>

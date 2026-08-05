@@ -189,7 +189,11 @@ export function MegaBar({ groups, pathname }: { groups: MegaGroup[]; pathname: s
   const open = groups.find((g) => g.id === openId) ?? null;
 
   return (
-    <div className="hidden md:flex md:items-center" onMouseLeave={scheduleClose} onMouseEnter={cancelClose}>
+    <div
+      className="mx-auto flex max-w-7xl items-stretch justify-center gap-1 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      onMouseLeave={scheduleClose}
+      onMouseEnter={cancelClose}
+    >
       {groups.map((g) => (
         <button
           key={g.id}
@@ -202,12 +206,14 @@ export function MegaBar({ groups, pathname }: { groups: MegaGroup[]; pathname: s
           onClick={() => setOpenId((v) => (v === g.id ? null : g.id))}
           aria-expanded={openId === g.id}
           aria-haspopup="true"
-          className={`flex items-center gap-0.5 whitespace-nowrap rounded-full px-3 py-2 text-[0.85rem] font-semibold transition lg:px-3.5 ${
-            openId === g.id ? "bg-amber-100 text-amber-900" : "text-stone-600 hover:bg-amber-50 hover:text-amber-800"
+          className={`flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3.5 py-2.5 text-[0.85rem] font-bold uppercase tracking-wide transition lg:px-4 ${
+            openId === g.id
+              ? "border-[#26b6cf] text-[#26b6cf]"
+              : "border-transparent text-stone-500 hover:text-amber-800"
           }`}
         >
           {g.label}
-          <span className={`text-[0.55rem] text-stone-400 transition ${openId === g.id ? "rotate-180 text-amber-700" : ""}`}>▼</span>
+          <span className={`text-[0.55rem] opacity-60 transition ${openId === g.id ? "rotate-180" : ""}`}>▼</span>
         </button>
       ))}
 
@@ -218,10 +224,10 @@ export function MegaBar({ groups, pathname }: { groups: MegaGroup[]; pathname: s
             type="button"
             aria-label="ปิดเมนู"
             onClick={() => setOpenId(null)}
-            className="fixed inset-0 top-16 z-30 cursor-default bg-stone-900/10"
+            className="absolute inset-x-0 top-full z-30 h-screen cursor-default bg-stone-900/10"
           />
           <div
-            className="fixed inset-x-0 top-16 z-40 max-h-[calc(100vh-4rem)] overflow-y-auto border-t border-amber-100 bg-white shadow-xl"
+            className="absolute inset-x-0 top-full z-40 max-h-[calc(100vh-7.5rem)] overflow-y-auto border-t border-amber-100 bg-white shadow-xl"
             onMouseEnter={cancelClose}
             onMouseLeave={scheduleClose}
           >

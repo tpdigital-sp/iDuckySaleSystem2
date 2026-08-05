@@ -65,12 +65,12 @@ export default function Navbar() {
           </span>
         </Link>
 
-        <div className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 overflow-x-auto [scrollbar-width:none] md:flex lg:gap-1 [&::-webkit-scrollbar]:hidden">
+        <div className="hidden min-w-0 flex-1 items-center justify-center gap-1 md:flex">
           {links.map((l) => (
             <Link
               key={l.id}
               href={l.href}
-              className={`whitespace-nowrap rounded-full px-3 py-2 text-[0.85rem] font-semibold transition lg:px-3.5 ${
+              className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
                 pathname === l.href
                   ? "bg-amber-100 text-amber-900"
                   : "text-stone-600 hover:bg-amber-50 hover:text-amber-800"
@@ -79,7 +79,6 @@ export default function Navbar() {
               {l.label}
             </Link>
           ))}
-          <MegaBar groups={mega} pathname={pathname} />
         </div>
 
         <div className="flex items-center gap-2">
@@ -159,6 +158,13 @@ export default function Navbar() {
           </button>
         </div>
       </nav>
+
+      {/* ชั้นล่าง — หมวดสินค้า (mega menu) แยกแถวให้หายใจ ไม่เบียดลิงก์หน้า */}
+      {mega.length > 0 && (
+        <div className="hidden border-t border-amber-100/70 md:block">
+          <MegaBar groups={mega} pathname={pathname} />
+        </div>
+      )}
 
       {open && (
         <div className="border-t border-amber-100 bg-white px-4 py-2 md:hidden">

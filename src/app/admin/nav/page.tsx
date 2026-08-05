@@ -315,27 +315,34 @@ function NavEditorInner() {
         </div>
 
         {/* แถบเมนูด้านบน */}
-        <div className="mt-3 flex flex-wrap items-center gap-1 rounded-2xl bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200">
-          <span className="mr-1 text-lg">🦆</span>
-          {nav.menu.filter((l) => !l.hidden).length === 0 ? (
-            <span className={`text-xs ${faint}`}>(ไม่มีลิงก์บนแถบเมนู)</span>
-          ) : (
-            nav.menu
-              .filter((l) => !l.hidden)
-              .map((l) => (
-                <span key={l.id} className="rounded-full px-3 py-1 text-xs font-semibold text-stone-600">
-                  {l.label}
-                </span>
-              ))
+        {/* หัวเว็บ 2 ชั้น — ชั้นบนลิงก์หน้า · ชั้นล่างหมวดสินค้า (ตรงกับหน้าร้านจริง) */}
+        <div className="mt-3 overflow-hidden rounded-2xl ring-1 ring-slate-200">
+          <div className="flex flex-wrap items-center gap-1 bg-slate-50 px-3 py-2.5">
+            <span className="mr-1 text-lg">🦆</span>
+            {nav.menu.filter((l) => !l.hidden).length === 0 ? (
+              <span className={`text-xs ${faint}`}>(ไม่มีลิงก์บนแถบเมนู)</span>
+            ) : (
+              nav.menu
+                .filter((l) => !l.hidden)
+                .map((l) => (
+                  <span key={l.id} className="rounded-full px-3 py-1 text-xs font-semibold text-stone-600">
+                    {l.label}
+                  </span>
+                ))
+            )}
+            <span className="ml-auto flex gap-1 text-sm">🔑 🛒</span>
+          </div>
+          {nav.mega.filter((g) => !g.hidden).length > 0 && (
+            <div className="flex flex-wrap items-center justify-center gap-1 border-t border-slate-200 bg-white px-3 py-1.5">
+              {nav.mega
+                .filter((g) => !g.hidden)
+                .map((g) => (
+                  <span key={g.id} className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-stone-500">
+                    {g.label} ▾
+                  </span>
+                ))}
+            </div>
           )}
-          {nav.mega
-            .filter((g) => !g.hidden)
-            .map((g) => (
-              <span key={g.id} className="rounded-full px-2 py-1 text-[11px] font-bold text-stone-500">
-                {g.label} ▾
-              </span>
-            ))}
-          <span className="ml-auto flex gap-1 text-sm">🔑 🛒</span>
         </div>
 
         {/* การ์ดนำทาง */}

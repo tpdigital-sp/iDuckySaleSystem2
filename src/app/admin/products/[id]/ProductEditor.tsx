@@ -88,6 +88,10 @@ type Draft = {
   bulkAskQty: string;
   /** วิธีจัดส่งขั้นต่ำของสินค้านี้ ('' = ไม่บังคับ) */
   shippingId: string;
+  /** ค่าส่งขั้นบันไดตามจำนวนชิ้น (แถวว่าง = ไม่ใช้) */
+  shipTiers: { minQty: string; price: string }[];
+  /** เกินขั้นสุดท้าย คิดเพิ่มชิ้นละ (บาท) */
+  shipTierExtra: string;
   /** ข้อควรทราบ/เงื่อนไขงาน (แสดงหน้าสินค้า) */
   terms: string;
   /** บังคับแนบลายก่อนสั่ง (ค่าเริ่มต้น = บังคับ) */
@@ -245,6 +249,8 @@ function toDraft(p: Product): Draft {
     },
     bulkAskQty: p.bulkAskQty != null && p.bulkAskQty > 0 ? String(p.bulkAskQty) : "",
     shippingId: p.shippingId ?? "",
+    shipTiers: (p.shipTiers ?? []).map((t) => ({ minQty: String(t.minQty), price: String(t.price) })),
+    shipTierExtra: p.shipTierExtra != null && p.shipTierExtra > 0 ? String(p.shipTierExtra) : "",
     terms: p.terms ?? "",
     artworkRequired: p.artworkRequired !== false,
     reviewed: p.reviewed,
@@ -621,6 +627,17 @@ export default function ProductEditor({ product }: { product: Product }) {
       custom,
       bulkAskQty: Number(draft.bulkAskQty) > 0 ? Math.floor(Number(draft.bulkAskQty)) : undefined,
       shippingId: draft.shippingId || undefined,
+      shipTiers: (() => {
+        const rows = draft.shipTiers
+          .map((t) => ({ minQty: Math.floor(Number(t.minQty)), price: Number(t.price) }))
+          .filter((t) => t.minQty > 0 && t.price >= 0)
+          .sort((a, b) => a.minQty - b.minQty);
+        return rows.length ? rows : undefined;
+      })(),
+      shipTierExtra:
+        Number(draft.shipTierExtra) > 0 && draft.shipTiers.some((t) => Number(t.minQty) > 0)
+          ? Number(draft.shipTierExtra)
+          : undefined,
       terms: draft.terms.trim() || undefined,
       artworkRequired: draft.artworkRequired ? undefined : false, // undefined = บังคับ (ค่าเริ่มต้น)
       reviewed: draft.reviewed,
@@ -2266,6 +2283,78 @@ export default function ProductEditor({ product }: { product: Product }) {
           <span className="text-[11px] text-slate-400">
             เลือกไว้ = มีสินค้านี้ในตะกร้าเมื่อไหร่ ระบบจะไม่ให้ลูกค้าเลือกค่าส่งที่ถูกกว่านี้
           </span>
+        </div>
+
+        {/* 📦 ของหนักที่ค่าส่งขึ้นกับจำนวน (เช่น แผ่นหินรองแก้ว) — ตั้งเป็นขั้นบันได */}
+        <div className="mt-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label className="text-xs font-semibold text-slate-600">📦 ค่าส่งตามจำนวนชิ้น (ของหนัก)</label>
+            <button
+              type="button"
+              onClick={() => patch({ shipTiers: [...draft.shipTiers, { minQty: "", price: "" }] })}
+              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600 hover:border-amber-300"
+            >
+              ＋ เพิ่มขั้น
+            </button>
+          </div>
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+            เช่น แผ่นหินรองแก้ว: สั่ง 1 แผ่น = 50 บาท · ตั้งแต่ 5 แผ่น = 90 บาท — ระบบคิดจากจำนวนที่ลูกค้าสั่งเอง
+            แล้วใช้<strong className="text-slate-500">ค่าที่แพงกว่า</strong>ระหว่างวิธีส่งที่เลือกกับค่าตามจำนวนนี้ ·
+            ไม่ตั้ง = คิดตามวิธีส่งปกติ
+          </p>
+
+          {draft.shipTiers.length > 0 && (
+            <div className="mt-2 space-y-1.5">
+              {draft.shipTiers.map((t, i) => (
+                <div key={i} className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-xs text-slate-500">สั่งตั้งแต่</span>
+                  <input
+                    value={t.minQty}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/\D/g, "");
+                      patch({ shipTiers: draft.shipTiers.map((x, xi) => (xi === i ? { ...x, minQty: v } : x)) });
+                    }}
+                    inputMode="numeric"
+                    placeholder="1"
+                    className="w-20 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
+                  />
+                  <span className="text-xs text-slate-500">ชิ้น → ค่าส่ง</span>
+                  <input
+                    value={t.price}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/[^\d.]/g, "");
+                      patch({ shipTiers: draft.shipTiers.map((x, xi) => (xi === i ? { ...x, price: v } : x)) });
+                    }}
+                    inputMode="decimal"
+                    placeholder="50"
+                    className="w-24 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
+                  />
+                  <span className="text-xs text-slate-500">บาท</span>
+                  <button
+                    type="button"
+                    onClick={() => patch({ shipTiers: draft.shipTiers.filter((_, xi) => xi !== i) })}
+                    className="rounded-lg px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50"
+                    aria-label="ลบขั้นนี้"
+                  >
+                    ลบ
+                  </button>
+                </div>
+              ))}
+
+              <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2 text-sm">
+                <span className="text-xs text-slate-500">เกินขั้นสุดท้ายแล้ว คิดเพิ่มชิ้นละ</span>
+                <input
+                  value={draft.shipTierExtra}
+                  onChange={(e) => patch({ shipTierExtra: e.target.value.replace(/[^\d.]/g, "") })}
+                  inputMode="decimal"
+                  placeholder="ไม่คิดเพิ่ม"
+                  className="w-24 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
+                />
+                <span className="text-xs text-slate-500">บาท</span>
+                <span className="text-[11px] text-slate-400">· เว้นว่าง = ใช้ราคาขั้นสุดท้ายไปเรื่อย ๆ</span>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 

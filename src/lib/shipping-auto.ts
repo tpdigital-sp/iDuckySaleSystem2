@@ -1,4 +1,5 @@
 import type { ShippingMethod } from "@/lib/shop-settings";
+import type { ShipTier } from "@/lib/products";
 
 /**
  * 🚚 เลือกวิธีจัดส่งให้อัตโนมัติ
@@ -67,6 +68,51 @@ export function pickShipping(methods: ShippingMethod[], input: AutoShippingInput
 
   // ถูกกว่าที่เลือกไว้ = ของใส่ไม่พอ ล็อกไม่ให้เลือก (เฉพาะตอนที่มีเหตุผลจริง ๆ)
   return { id: best.id, ...(reason ? { floorId: best.id, reason } : {}) };
+}
+
+/* ── 📦 ค่าส่งขั้นบันไดตามจำนวนชิ้น (ต่อสินค้า) ──
+ * ของหนักอย่างแผ่นหินรองแก้ว ค่าส่งจริงขึ้นกับจำนวนแผ่น ไม่ใช่กล่องแบน ๆ ราคาเดียว
+ * แอดมินตั้งตารางไว้ที่หน้าแก้ไขสินค้า → ระบบคิดจากจำนวนที่ลูกค้าสั่งเอง
+ */
+
+/** ค่าส่งของสินค้าตัวเดียวตามจำนวนที่สั่ง (0 = ไม่ได้ตั้งตาราง/จำนวนไม่ถึงขั้นแรก) */
+export function qtyShipFee(qty: number, tiers: ShipTier[] | undefined, extraPerPiece?: number): number {
+  const rows = (tiers ?? [])
+    .filter((t) => t.minQty > 0 && t.price >= 0)
+    .sort((a, b) => a.minQty - b.minQty);
+  if (!rows.length || qty <= 0) return 0;
+
+  let hit: ShipTier | null = null;
+  for (const r of rows) if (qty >= r.minQty) hit = r;
+  if (!hit) return rows[0].price; // สั่งน้อยกว่าขั้นแรก = คิดขั้นแรก (มีของก็ต้องส่ง)
+
+  const last = rows[rows.length - 1];
+  // เกินขั้นสุดท้าย + ตั้งราคาต่อชิ้นส่วนเกินไว้ → บวกเพิ่มตามชิ้นที่เกิน
+  if (hit === last && extraPerPiece && extraPerPiece > 0 && qty > last.minQty) {
+    return last.price + (qty - last.minQty) * extraPerPiece;
+  }
+  return hit.price;
+}
+
+export interface QtyShipLine {
+  name: string;
+  qty: number;
+  fee: number;
+}
+
+/**
+ * รวมค่าส่งตามจำนวนของทั้งตะกร้า (คิดแยกทีละสินค้า แล้วบวกกัน)
+ * คืน fee รวม + รายละเอียดต่อสินค้า (ไว้โชว์ให้ลูกค้าเห็นว่ามาจากไหน)
+ */
+export function cartQtyShipFee(
+  items: { name: string; qty: number; tiers?: ShipTier[]; extra?: number }[]
+): { fee: number; lines: QtyShipLine[] } {
+  const lines: QtyShipLine[] = [];
+  for (const it of items) {
+    const fee = qtyShipFee(it.qty, it.tiers, it.extra);
+    if (fee > 0) lines.push({ name: it.name, qty: it.qty, fee });
+  }
+  return { fee: lines.reduce((s, l) => s + l.fee, 0), lines };
 }
 
 /** วิธีนี้เลือกได้ไหม เทียบกับขั้นต่ำที่ระบบคำนวณไว้ */

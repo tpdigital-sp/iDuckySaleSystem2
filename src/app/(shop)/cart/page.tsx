@@ -16,7 +16,7 @@ import { useCart } from "@/lib/cart-context";
 import ProductVisual from "@/components/ProductVisual";
 import { getAppendTarget, clearAppendTarget, setAppendPicks, getAppendPicks, clearAppendPicks, type AppendTarget } from "@/lib/append-order";
 import { getQuoteTarget, clearQuoteTarget, type QuoteTarget } from "@/lib/append-quote";
-import { pickShipping, shippingAllowed } from "@/lib/shipping-auto";
+import { cartQtyShipFee, pickShipping, shippingAllowed } from "@/lib/shipping-auto";
 
 const USE_BY_KEY = "ducky-use-by-date";
 
@@ -135,8 +135,26 @@ export default function CartPage() {
 
   const shippingMethod = methods.find((s) => s.id === shippingId) ?? methods[0];
   const freeShipping = freeMin > 0 && subtotal >= freeMin;
+
+  // 📦 สินค้าที่ตั้ง "ค่าส่งตามจำนวนชิ้น" ไว้ (ของหนัก เช่น แผ่นหินรองแก้ว)
+  // รวมจำนวนต่อสินค้า (สินค้าเดียวกันอาจอยู่หลายแถวเพราะเลือกตัวเลือกต่างกัน)
+  const qtyShip = (() => {
+    const perProduct = new Map<string, number>();
+    for (const i of items) perProduct.set(i.productId, (perProduct.get(i.productId) ?? 0) + i.qty);
+    return cartQtyShipFee(
+      [...perProduct.entries()]
+        .map(([pid, qty]) => {
+          const p = productOf(pid);
+          return { name: p?.name ?? pid, qty, tiers: p?.shipTiers, extra: p?.shipTierExtra };
+        })
+        .filter((x) => x.tiers?.length)
+    );
+  })();
+
   // สั่งเพิ่มเข้าออเดอร์เดิม = ส่งรวมกล่องเดียวกัน ไม่คิดค่าส่งซ้ำ
-  const shippingCost = appendTo ? 0 : freeShipping ? 0 : shippingMethod.price;
+  // มีของคิดตามจำนวน = ใช้ค่าที่แพงกว่าระหว่างวิธีที่เลือกกับค่าตามจำนวน (ค่าตามจำนวนรวมค่ากล่องแล้ว)
+  const shippingCost = appendTo ? 0 : freeShipping ? 0 : Math.max(shippingMethod.price, qtyShip.fee);
+  const qtyShipApplied = !appendTo && !freeShipping && qtyShip.fee > shippingMethod.price;
   const total = subtotal + shippingCost;
   const remainForFree = freeMin - subtotal;
 
@@ -408,6 +426,13 @@ export default function CartPage() {
             {auto.reason && (
               <p className="mb-2 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-200">
                 🚚 ระบบเลือกกล่องที่พอดีกับออเดอร์นี้ให้แล้ว — {auto.reason}
+              </p>
+            )}
+            {qtyShipApplied && (
+              <p className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 ring-1 ring-amber-200">
+                📦 ออเดอร์นี้มีสินค้าที่<strong>คิดค่าส่งตามจำนวนชิ้น</strong> (ของมีน้ำหนัก):{" "}
+                {qtyShip.lines.map((l) => `${l.name} ${l.qty} ชิ้น = ${formatPrice(l.fee)}`).join(" · ")} —
+                ระบบใช้ค่านี้แทนราคาวิธีส่งที่เลือก เพราะครอบคลุมค่ากล่อง/น้ำหนักแล้ว
               </p>
             )}
             <div className="space-y-2">
