@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import RequirePerm from "@/components/RequirePerm";
 import NavTiles from "@/components/NavTiles";
+import { BLOCK_META, defaultHomeBlocks, makeBlock, type HomeBlock, type HomeBlockKind } from "@/lib/home-layout";
 import GradientPicker from "@/components/GradientPicker";
 import { fetchCategories, type ShopCategory } from "@/lib/categories";
 import {
@@ -235,6 +236,14 @@ function NavEditorInner() {
   const [tab, setTab] = useState<Tab>("mega");
   /** กำลังอัปโหลดภาพแบนเนอร์จากกล่องตัวอย่างอยู่ */
   const [heroBusy, setHeroBusy] = useState(false);
+  // ── Home Builder ──
+  const [addOpen, setAddOpen] = useState(false);
+  const [openBlock, setOpenBlock] = useState("");
+  /** ผังปัจจุบัน — ยังไม่เคยจัด = ผังมาตรฐานจาก tilesPos (แตะครั้งแรกค่อยบันทึกลง nav.home) */
+  const home = nav.home ?? defaultHomeBlocks(nav.tilesPos ?? "hero");
+  const setHome = (blocks: HomeBlock[]) => edit((n) => ({ ...n, home: blocks }));
+  const patchBlock = (id: string, patch: Partial<HomeBlock>) =>
+    setHome(home.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   /** หัวข้อที่กางอยู่ในตัวแก้ไข และหัวข้อที่กดดูตัวอย่างแผงอยู่ */
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [previewGroup, setPreviewGroup] = useState<string | null>(null);
@@ -370,70 +379,269 @@ function NavEditorInner() {
         </Link>
       </div>
 
-      {/* ── แผนผังหน้าแรก: ส่วนไหนแก้ที่แท็บไหน (เรียงจากบนลงล่างตามที่ลูกค้าเห็น) ── */}
+      {/* ── 🏠 ผังหน้าแรก (Home Builder) — เพิ่ม/ลบ/เลื่อน/ซ่อน บล็อกได้เหมือน page builder ── */}
       <section className={`mt-5 p-4 ${card}`}>
-        <h2 className="text-sm font-semibold text-slate-800">🗺 หน้าแรกมีอะไรบ้าง — กดเพื่อไปแก้ส่วนนั้น</h2>
-        <p className={`mt-0.5 text-xs ${faint}`}>เรียงจากบนลงล่างตามที่ลูกค้าเห็นจริง</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-800">🏠 ผังหน้าแรก — เรียงจากบนลงล่างตามที่ลูกค้าเห็น</h2>
+            <p className={`mt-0.5 text-xs ${faint}`}>
+              ลาก ↑↓ สลับลำดับ · 👁 ซ่อนชั่วคราว · กดชื่อบล็อกเพื่อตั้งค่า · อย่าลืมกด 💾 บันทึก
+            </p>
+          </div>
+          <button type="button" onClick={() => setAddOpen((v) => !v)} className={btnPrimary}>
+            {addOpen ? "✕ ปิด" : "＋ เพิ่มบล็อก"}
+          </button>
+        </div>
+
+        {/* จานเลือกชนิดบล็อก */}
+        {addOpen && (
+          <div className="mt-3 grid gap-2 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200 sm:grid-cols-2 lg:grid-cols-4">
+            {(Object.keys(BLOCK_META) as HomeBlockKind[]).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => {
+                  const b = makeBlock(k);
+                  setHome([...home, b]);
+                  setOpenBlock(b.id);
+                  setAddOpen(false);
+                }}
+                className="rounded-xl bg-white p-3 text-left ring-1 ring-slate-200 transition hover:ring-amber-300"
+              >
+                <span className="block text-sm font-bold text-slate-800">
+                  {BLOCK_META[k].icon} {BLOCK_META[k].label}
+                </span>
+                <span className={`mt-0.5 block text-[11px] ${faint}`}>{BLOCK_META[k].desc}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="mt-3 space-y-1.5">
-          {(() => {
-            // ลำดับเดียวกับหน้าแรกจริง — บล็อกการ์ดนำทางแทรกตรงตำแหน่งที่ตั้งไว้ (top / hero / features)
-            type Row = { icon: string; title: string; desc: string; key?: Tab; href?: string; on: boolean };
-            const tilesRow: Row = {
-              icon: "🧱",
-              title: "การ์ดนำทาง",
-              desc: "How To Order · All Product · Review · เกี่ยวกับเรา · Member Card",
-              key: "tiles",
-              on: nav.tilesOn,
-            };
-            const pos = nav.tilesPos ?? "hero";
-            const rows: Row[] = [
-              { icon: "🔗", title: "แถบเมนูด้านบน", desc: "โลโก้ร้าน + ลิงก์หน้า (หน้าแรก · สินค้าทั้งหมด …)", key: "menu", on: true },
-              { icon: "🗂", title: "แถบหมวดสินค้า (เมนูดรอปดาวน์)", desc: "DIGITAL PRINT · SIMPLE GIFTS … ชี้เมาส์แล้วกางแผงใหญ่", key: "mega", on: nav.mega.some((g) => !g.hidden) },
-              ...(pos === "top" ? [tilesRow] : []),
-              { icon: "🎉", title: "แบนเนอร์ใหญ่", desc: "ป้ายโปร + หัวข้อ + คำโปรย + ปุ่ม", key: "hero", on: nav.hero.on },
-              ...(pos === "hero" ? [tilesRow] : []),
-              { icon: "⭐", title: "จุดเด่นร้าน", desc: "แถวการ์ดเล็ก (ลายของคุณเอง · ส่งไวทั่วไทย …)", key: "perks", on: nav.perksOn },
-              ...(pos === "features" ? [tilesRow] : []),
-              { icon: "🗂️", title: "หมวดหมู่สินค้า", desc: "การ์ดหมวด (สติกเกอร์ · แก้วน้ำ …) — แก้ที่ตั้งค่าระบบ", href: "/admin/settings?tab=cats", on: true },
-              { icon: "🔥", title: "สินค้าขายดี", desc: "เรียงอัตโนมัติจากยอดขายจริง — ตั้งยอดตั้งต้นในหน้าแก้ไขสินค้า", href: "/admin/products", on: true },
-              { icon: "💛", title: "สินค้าแนะนำ", desc: "ติ๊ก “สินค้าแนะนำ” ในหน้าแก้ไขสินค้าแต่ละตัว", href: "/admin/products", on: true },
-            ];
-            return rows.map((r, i) => {
-              const active = r.key && tab === r.key;
-              const inner = (
-                <>
+          {home.map((b, i) => {
+            const meta = BLOCK_META[b.kind];
+            const open = openBlock === b.id;
+            /** ป้ายสรุปสั้น ๆ ต่อบล็อก */
+            const summary =
+              b.kind === "products"
+                ? b.heading || (b.source === "featured" ? "สินค้าแนะนำ" : b.source === "category" ? `หมวด ${b.category ?? "-"}` : "สินค้าขายดี")
+                : b.kind === "image"
+                  ? b.image
+                    ? "มีภาพแล้ว"
+                    : "ยังไม่ได้ใส่ภาพ"
+                  : b.kind === "text" || b.kind === "cta"
+                    ? b.heading || meta.desc
+                    : meta.desc;
+            return (
+              <div key={b.id} className={`rounded-xl ring-1 transition ${b.hidden ? "opacity-55" : ""} ${open ? "bg-amber-50/60 ring-amber-300" : "bg-slate-50 ring-slate-100"}`}>
+                <div className="flex w-full items-center gap-2 px-3 py-2">
                   <span className="w-4 shrink-0 text-center text-xs font-bold text-slate-300">{i + 1}</span>
-                  <span className="shrink-0 text-base">{r.icon}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-bold text-slate-800">{r.title}</span>
-                    <span className={`block truncate text-[11px] ${faint}`}>{r.desc}</span>
-                  </span>
-                  {!r.on && (
-                    <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-500">
-                      ปิดอยู่
+                  <button
+                    type="button"
+                    onClick={() => setOpenBlock(open ? "" : b.id)}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  >
+                    <span className="shrink-0 text-base">{meta.icon}</span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-bold text-slate-800">{meta.label}</span>
+                      <span className={`block truncate text-[11px] ${faint}`}>{summary}</span>
                     </span>
-                  )}
-                  <span className="shrink-0 text-xs text-slate-300">{r.href ? "ไปหน้านั้น ↗" : "แก้ →"}</span>
-                </>
-              );
-              const cls = `flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition ${
-                active ? "bg-amber-50 ring-1 ring-amber-300" : r.href ? "bg-white ring-1 ring-slate-100 hover:bg-slate-50" : "bg-slate-50 hover:bg-slate-100"
-              }`;
-              return r.href ? (
-                <Link key={r.title} href={r.href} className={cls}>
-                  {inner}
-                </Link>
-              ) : (
-                <button key={r.title} type="button" onClick={() => r.key && setTab(r.key)} className={cls}>
-                  {inner}
-                </button>
-              );
-            });
-          })()}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => i > 0 && setHome(move(home, i, -1))}
+                    disabled={i === 0}
+                    className={`${btnSmGhost} disabled:opacity-30`}
+                    aria-label="เลื่อนขึ้น"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => i < home.length - 1 && setHome(move(home, i, 1))}
+                    disabled={i === home.length - 1}
+                    className={`${btnSmGhost} disabled:opacity-30`}
+                    aria-label="เลื่อนลง"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHome(home.map((x) => (x.id === b.id ? { ...x, hidden: !x.hidden } : x)))}
+                    className={btnSmGhost}
+                    title={b.hidden ? "แสดงบล็อกนี้" : "ซ่อนบล็อกนี้ (ยังไม่ลบ)"}
+                  >
+                    {b.hidden ? "🚫" : "👁"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!window.confirm(`ลบบล็อก “${meta.label}” ออกจากหน้าแรก?`)) return;
+                      setHome(home.filter((x) => x.id !== b.id));
+                    }}
+                    className={btnSmDanger}
+                    aria-label="ลบบล็อก"
+                  >
+                    ลบ
+                  </button>
+                </div>
+
+                {/* ตั้งค่าของบล็อก (กางเมื่อกดชื่อ) */}
+                {open && (
+                  <div className="border-t border-amber-200/60 px-3 py-3">
+                    {(b.kind === "hero" || b.kind === "tiles" || b.kind === "perks") && (
+                        <button
+                          type="button"
+                          onClick={() => setTab(b.kind as Tab)}
+                          className={`${btnNeutral} text-xs`}
+                        >
+                          ✎ ตั้งค่า{meta.label} (เปิดแท็บด้านล่าง)
+                        </button>
+                      )}
+                    {b.kind === "categories" && (
+                      <div className="flex flex-wrap items-center gap-3">
+                        <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+                          หัวข้อ
+                          <input
+                            value={b.heading ?? ""}
+                            onChange={(e) => patchBlock(b.id, { heading: e.target.value })}
+                            placeholder="🗂️ หมวดหมู่สินค้า"
+                            className={`w-64 ${inputBase}`}
+                          />
+                        </label>
+                        <Link href="/admin/settings?tab=cats" className={`${btnNeutral} text-xs`}>
+                          ✎ แก้รูป/ชื่อหมวด (ตั้งค่าระบบ) ↗
+                        </Link>
+                      </div>
+                    )}
+                    {b.kind === "image" && (
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {b.image && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={b.image} alt="" className="h-14 w-auto max-w-56 rounded-lg object-contain ring-1 ring-slate-200" />
+                          )}
+                          <label className={`cursor-pointer ${btnNeutral} text-xs`}>
+                            📤 {b.image ? "เปลี่ยนภาพ" : "อัปโหลดภาพ"}
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const f = e.target.files?.[0];
+                                e.target.value = "";
+                                if (!f) return;
+                                const r = await uploadNavImage(f);
+                                if (r.url) patchBlock(b.id, { image: r.url });
+                              }}
+                            />
+                          </label>
+                          <span className={`text-[11px] ${faint}`}>แนะนำกว้าง 1600px ขึ้นไป · กดที่ภาพแล้วไปลิงก์ด้านล่าง</span>
+                        </div>
+                        <div className="max-w-md">
+                          <LinkPicker value={b.href ?? "/products"} cats={cats} onChange={(v) => patchBlock(b.id, { href: v })} />
+                        </div>
+                      </div>
+                    )}
+                    {b.kind === "products" && (
+                      <div className="flex flex-wrap items-end gap-3">
+                        <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                          หัวข้อแถว
+                          <input
+                            value={b.heading ?? ""}
+                            onChange={(e) => patchBlock(b.id, { heading: e.target.value })}
+                            placeholder="🔥 สินค้าขายดี"
+                            className={`w-56 ${inputBase}`}
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                          ดึงสินค้าจาก
+                          <select
+                            value={b.source ?? "best"}
+                            onChange={(e) => patchBlock(b.id, { source: e.target.value as HomeBlock["source"] })}
+                            className={inputBase}
+                          >
+                            <option value="best">🔥 ขายดี (ตามยอดขายจริง)</option>
+                            <option value="featured">💛 สินค้าแนะนำ (ที่ติ๊กไว้)</option>
+                            <option value="category">🗂️ ตามหมวด…</option>
+                          </select>
+                        </label>
+                        {b.source === "category" && (
+                          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                            หมวด
+                            <select
+                              value={b.category ?? ""}
+                              onChange={(e) => patchBlock(b.id, { category: e.target.value })}
+                              className={inputBase}
+                            >
+                              <option value="">— เลือกหมวด —</option>
+                              {cats.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                        <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                          จำนวนชิ้น
+                          <select
+                            value={b.limit ?? 4}
+                            onChange={(e) => patchBlock(b.id, { limit: Number(e.target.value) })}
+                            className={inputBase}
+                          >
+                            {[4, 8, 12].map((n) => (
+                              <option key={n} value={n}>
+                                {n}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                    )}
+                    {(b.kind === "text" || b.kind === "cta") && (
+                      <div className="space-y-2">
+                        <input
+                          value={b.heading ?? ""}
+                          onChange={(e) => patchBlock(b.id, { heading: e.target.value })}
+                          placeholder="หัวข้อ"
+                          className={`w-full font-bold ${inputBase}`}
+                        />
+                        <textarea
+                          value={b.body ?? ""}
+                          onChange={(e) => patchBlock(b.id, { body: e.target.value })}
+                          placeholder="ข้อความ (กด Enter ขึ้นบรรทัดใหม่ได้)"
+                          rows={2}
+                          className={`w-full ${inputBase}`}
+                        />
+                        {b.kind === "cta" && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <input
+                              value={b.btnLabel ?? ""}
+                              onChange={(e) => patchBlock(b.id, { btnLabel: e.target.value })}
+                              placeholder="ข้อความบนปุ่ม"
+                              className={`w-56 ${inputBase}`}
+                            />
+                            <div className="min-w-56 flex-1">
+                              <LinkPicker
+                                value={b.btnHref ?? "/products"}
+                                cats={cats}
+                                onChange={(v) => patchBlock(b.id, { btnHref: v })}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
         <p className={`mt-2.5 text-[11px] ${faint}`}>
-          💡 ลำดับนี้ตรงกับที่ลูกค้าเลื่อนดูจริง — เปลี่ยนตำแหน่ง<strong className="font-semibold text-slate-600">การ์ดนำทาง</strong>
-          ได้ในแท็บของมัน แล้วแถวในผังนี้จะขยับตาม
+          💡 <strong className="font-semibold text-slate-600">สินค้าขายดี</strong>เรียงจากยอดขายจริงอัตโนมัติ ·{" "}
+          <strong className="font-semibold text-slate-600">สินค้าแนะนำ</strong>ติ๊กในหน้าแก้ไขสินค้าแต่ละตัว
         </p>
       </section>
 

@@ -12,6 +12,8 @@
  * ยังไม่เคยตั้งค่า = ใช้ค่าเริ่มต้นในไฟล์นี้ (หน้าเว็บจึงไม่มีวันว่าง)
  */
 
+import { homeBlocksOf, type HomeBlock } from "./home-layout";
+
 /** ขนาดการ์ดบนตาราง 5 ช่อง — ใหญ่ 2ช่อง×2แถว · กว้าง 3ช่อง · เล็ก 1ช่อง */
 export type TileSize = "big" | "wide" | "small";
 
@@ -124,6 +126,11 @@ export interface SiteNav {
   logo?: string;
   /** แบนเนอร์ใหญ่บนหน้าแรก (hero) */
   hero: HeroBanner;
+  /**
+   * ผังหน้าแรกแบบบล็อกเรียงลงมา (Home Builder) — ไม่ตั้ง = ผังมาตรฐานตาม tilesPos
+   * ดูชนิดบล็อก/ตัวช่วยได้ที่ src/lib/home-layout.ts
+   */
+  home?: HomeBlock[];
 }
 
 /** แบนเนอร์ใหญ่หน้าแรก — ข้อความ/ปุ่ม/รูป แก้ได้จากหลังบ้าน */
@@ -556,6 +563,7 @@ export function siteNavOf(raw: Partial<SiteNav> | null | undefined): SiteNav {
     // โลโก้รับเฉพาะ path ภายใน หรือ URL http(s) (กัน javascript: หลุดเข้า src)
     logo: /^(\/|https?:\/\/)/.test(str(raw?.logo).trim()) ? str(raw?.logo).trim() : undefined,
     hero: heroOf(raw?.hero),
+    ...(homeBlocksOf(raw?.home) ? { home: homeBlocksOf(raw?.home) } : {}),
   };
 }
 
