@@ -7,24 +7,32 @@ import NavTiles from "@/components/NavTiles";
 import GradientPicker from "@/components/GradientPicker";
 import { fetchCategories, type ShopCategory } from "@/lib/categories";
 import {
+  DEFAULT_MEGA,
   DEFAULT_SITE_NAV,
   clearSiteNavCache,
   siteNavOf,
+  type MegaBadge,
+  type MegaColumn,
+  type MegaGroup,
+  type MegaItem,
   type NavLink,
   type NavTile,
   type SiteNav,
   type TileSize,
 } from "@/lib/home-nav";
+import { MegaPanel } from "@/components/MegaMenu";
+import { fetchProductsLite } from "@/lib/product-repo";
+import type { Product } from "@/lib/products";
 import { btnNeutral, btnPrimary, btnSmDanger, btnSmGhost, card, faint, h1, muted } from "@/lib/admin-ui";
 
 /**
  * 🧭 เมนูหน้าร้าน — แอดมินจัดเมนูเองได้ ไม่ต้องแก้โค้ด
  *
- * 2 ส่วน: การ์ดนำทางบนหน้าแรก (บล็อกใหญ่/กว้าง/เล็ก) และลิงก์บนแถบเมนูด้านบน
- * ตัวอย่างด้านบนใช้คอมโพเนนต์ตัวเดียวกับหน้าร้านจริง — เห็นยังไง ลูกค้าเห็นอย่างนั้น
+ * 3 ส่วน: การ์ดนำทางบนหน้าแรก · ลิงก์บนแถบเมนูด้านบน · เมนูดรอปดาวน์เต็มความกว้าง
+ * ตัวอย่างทุกจุดใช้คอมโพเนนต์ตัวเดียวกับหน้าร้านจริง — เห็นยังไง ลูกค้าเห็นอย่างนั้น
  */
 
-type Tab = "tiles" | "menu";
+type Tab = "tiles" | "menu" | "mega";
 
 /** หน้าที่ลิงก์ไปได้ (ให้เลือกจากรายการ จะได้ไม่พิมพ์ผิด) */
 const PAGES: { href: string; label: string }[] = [
@@ -115,8 +123,18 @@ function LinkPicker({
   );
 }
 
-/** ปุ่มอัปโหลดรูปการ์ด (ใส่แล้วรูปจะแทนพื้นสี+ตัวหนังสือทั้งใบ) */
-function TileImage({ tile, onChange }: { tile: NavTile; onChange: (v: string | undefined) => void }) {
+/** ปุ่มอัปโหลดรูป — ใช้ได้ทั้งรูปการ์ด รูปโปรโมทในเมนู และรูปหัวคอลัมน์ */
+function ImageField({
+  value,
+  onChange,
+  label = "รูป (ไม่ใส่ก็ได้)",
+  hint,
+}: {
+  value?: string;
+  onChange: (v: string | undefined) => void;
+  label?: string;
+  hint?: string;
+}) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -140,13 +158,15 @@ function TileImage({ tile, onChange }: { tile: NavTile; onChange: (v: string | u
 
   return (
     <div>
-      <p className="text-xs font-semibold text-slate-600">รูปการ์ด (ไม่ใส่ก็ได้)</p>
-      <p className={`mt-0.5 text-[11px] leading-relaxed ${faint}`}>
-        ใส่รูปที่ออกแบบมาแล้ว = ใช้รูปเต็มใบแทนพื้นสีและตัวหนังสือ
-      </p>
+      <p className="text-xs font-semibold text-slate-600">{label}</p>
+      {hint && <p className={`mt-0.5 text-[11px] leading-relaxed ${faint}`}>{hint}</p>}
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        {value && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src={value} alt="" className="h-10 w-14 rounded-lg object-cover ring-1 ring-slate-200" />
+        )}
         <label className={`${btnNeutral} cursor-pointer text-xs`}>
-          {busy ? "กำลังอัปโหลด…" : tile.image ? "🖼 เปลี่ยนรูป" : "🖼 อัปโหลดรูป"}
+          {busy ? "กำลังอัปโหลด…" : value ? "🖼 เปลี่ยนรูป" : "🖼 อัปโหลดรูป"}
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp,image/gif"
@@ -159,7 +179,7 @@ function TileImage({ tile, onChange }: { tile: NavTile; onChange: (v: string | u
             }}
           />
         </label>
-        {tile.image && (
+        {value && (
           <button type="button" onClick={() => onChange(undefined)} className={btnSmDanger}>
             เอารูปออก
           </button>
@@ -173,7 +193,12 @@ function TileImage({ tile, onChange }: { tile: NavTile; onChange: (v: string | u
 function NavEditorInner() {
   const [nav, setNav] = useState<SiteNav>(DEFAULT_SITE_NAV);
   const [cats, setCats] = useState<ShopCategory[]>([]);
-  const [tab, setTab] = useState<Tab>("tiles");
+  const [tab, setTab] = useState<Tab>("mega");
+  /** หัวข้อที่กางอยู่ในตัวแก้ไข และหัวข้อที่กดดูตัวอย่างแผงอยู่ */
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [previewGroup, setPreviewGroup] = useState<string | null>(null);
+  /** สินค้าจริง — ใช้แสดงตัวอย่างคอลัมน์ที่ตั้งให้ดึงอัตโนมัติ */
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
@@ -193,6 +218,11 @@ function NavEditorInner() {
     })();
   }, []);
 
+  useEffect(() => {
+    if (tab !== "mega" || products.length) return;
+    void fetchProductsLite().then(setProducts);
+  }, [tab, products.length]);
+
   const edit = useCallback((fn: (n: SiteNav) => SiteNav) => {
     setNav((n) => fn(n));
     setDirty(true);
@@ -203,6 +233,15 @@ function NavEditorInner() {
     edit((n) => ({ ...n, tiles: n.tiles.map((t) => (t.id === id ? { ...t, ...patch } : t)) }));
   const setLink = (id: string, patch: Partial<NavLink>) =>
     edit((n) => ({ ...n, menu: n.menu.map((l) => (l.id === id ? { ...l, ...patch } : l)) }));
+
+  const setGroup = (gid: string, patch: Partial<MegaGroup>) =>
+    edit((n) => ({ ...n, mega: n.mega.map((g) => (g.id === gid ? { ...g, ...patch } : g)) }));
+  const setCols = (gid: string, fn: (cols: MegaColumn[]) => MegaColumn[]) =>
+    edit((n) => ({ ...n, mega: n.mega.map((g) => (g.id === gid ? { ...g, columns: fn(g.columns) } : g)) }));
+  const setCol = (gid: string, cid: string, patch: Partial<MegaColumn>) =>
+    setCols(gid, (cols) => cols.map((c) => (c.id === cid ? { ...c, ...patch } : c)));
+  const setItems = (gid: string, cid: string, fn: (items: MegaItem[]) => MegaItem[]) =>
+    setCols(gid, (cols) => cols.map((c) => (c.id === cid ? { ...c, items: fn(c.items) } : c)));
 
   /** เลื่อนขึ้น/ลง — ใช้แทนการลาก (ลากบนมือถือพลาดง่าย) */
   function move<T>(list: T[], i: number, dir: -1 | 1): T[] {
@@ -285,6 +324,13 @@ function NavEditorInner() {
                 </span>
               ))
           )}
+          {nav.mega
+            .filter((g) => !g.hidden)
+            .map((g) => (
+              <span key={g.id} className="rounded-full px-2 py-1 text-[11px] font-bold text-stone-500">
+                {g.label} ▾
+              </span>
+            ))}
           <span className="ml-auto flex gap-1 text-sm">🔑 🛒</span>
         </div>
 
@@ -304,6 +350,7 @@ function NavEditorInner() {
       <div className="mt-5 flex flex-wrap gap-2">
         {(
           [
+            ["mega", `🗂 เมนูดรอปดาวน์ (${nav.mega.length})`],
             ["tiles", `🧱 การ์ดนำทาง (${nav.tiles.length})`],
             ["menu", `🔗 แถบเมนูด้านบน (${nav.menu.length})`],
           ] as [Tab, string][]
@@ -457,7 +504,12 @@ function NavEditorInner() {
                   </div>
                 )}
 
-                <TileImage tile={t} onChange={(v) => setTile(t.id, { image: v })} />
+                <ImageField
+                  value={t.image}
+                  onChange={(v) => setTile(t.id, { image: v })}
+                  label="รูปการ์ด (ไม่ใส่ก็ได้)"
+                  hint="ใส่รูปที่ออกแบบมาแล้ว = ใช้รูปเต็มใบแทนพื้นสีและตัวหนังสือ"
+                />
               </div>
             </div>
           ))}
@@ -485,6 +537,339 @@ function NavEditorInner() {
           >
             ＋ เพิ่มการ์ด
           </button>
+        </section>
+      )}
+
+      {/* ══════ เมนูดรอปดาวน์ (mega) ══════ */}
+      {tab === "mega" && (
+        <section className="mt-4 space-y-3">
+          <div className={`p-4 ${card}`}>
+            <p className="text-sm font-semibold text-slate-800">🗂 เมนูดรอปดาวน์เต็มความกว้าง</p>
+            <p className={`mt-1 text-xs leading-relaxed ${muted}`}>
+              หัวข้อพวกนี้อยู่บนแถบเมนูด้านบน · ลูกค้าชี้เมาส์แล้วแผงกางเต็มความกว้าง ·
+              บนมือถือจะกลายเป็นหัวข้อพับ–กางในปุ่ม ☰ ·{" "}
+              <strong className="text-slate-600">คอลัมน์ที่ตั้ง “ดึงอัตโนมัติ” ไว้ จะอัปเดตเองเมื่อเพิ่มสินค้าใหม่</strong>
+            </p>
+          </div>
+
+          {nav.mega.map((g, gi) => {
+            const expanded = openGroup === g.id;
+            return (
+              <div key={g.id} className={`p-4 ${card} ${g.hidden ? "opacity-60" : ""}`}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    value={g.label}
+                    onChange={(e) => setGroup(g.id, { label: e.target.value })}
+                    placeholder="ชื่อหัวข้อ เช่น DIGITAL PRINT"
+                    className={`w-52 font-bold ${inputBase}`}
+                  />
+                  <span className={`text-xs ${faint}`}>{g.columns.length} คอลัมน์</span>
+
+                  <span className="ml-auto flex flex-wrap items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewGroup(previewGroup === g.id ? null : g.id)}
+                      className={btnSmGhost}
+                    >
+                      {previewGroup === g.id ? "ซ่อนตัวอย่าง" : "👀 ดูตัวอย่าง"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => edit((n) => ({ ...n, mega: move(n.mega, gi, -1) }))}
+                      disabled={gi === 0}
+                      className={`${btnSmGhost} disabled:opacity-30`}
+                      aria-label="เลื่อนขึ้น"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => edit((n) => ({ ...n, mega: move(n.mega, gi, 1) }))}
+                      disabled={gi === nav.mega.length - 1}
+                      className={`${btnSmGhost} disabled:opacity-30`}
+                      aria-label="เลื่อนลง"
+                    >
+                      ↓
+                    </button>
+                    <button type="button" onClick={() => setGroup(g.id, { hidden: !g.hidden })} className={btnSmGhost}>
+                      {g.hidden ? "🚫 ซ่อนอยู่" : "👁 แสดงอยู่"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => edit((n) => ({ ...n, mega: n.mega.filter((x) => x.id !== g.id) }))}
+                      className={btnSmDanger}
+                    >
+                      ลบ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOpenGroup(expanded ? null : g.id)}
+                      className={`${btnNeutral} text-xs`}
+                    >
+                      {expanded ? "ปิด ▲" : "แก้ไข ▼"}
+                    </button>
+                  </span>
+                </div>
+
+                {previewGroup === g.id && (
+                  <div className="mt-3 overflow-x-auto rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                    <MegaPanel group={g} products={products} preview />
+                  </div>
+                )}
+
+                {expanded && (
+                  <div className="mt-4 space-y-4 border-t border-slate-100 pt-4">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="block">
+                        <span className="block text-xs font-semibold text-slate-600">หัวเรื่องในแผง</span>
+                        <input
+                          value={g.heading ?? ""}
+                          onChange={(e) => setGroup(g.id, { heading: e.target.value })}
+                          placeholder="สินค้าแนะนำ"
+                          className={`mt-1 ${input}`}
+                        />
+                      </label>
+                      <div>
+                        <span className="block text-xs font-semibold text-slate-600">ภาพโปรโมทกดแล้วไปที่</span>
+                        <div className="mt-1">
+                          <LinkPicker
+                            value={g.imageHref ?? "/products"}
+                            cats={cats}
+                            onChange={(v) => setGroup(g.id, { imageHref: v })}
+                          />
+                        </div>
+                      </div>
+                      <ImageField
+                        value={g.image}
+                        onChange={(v) => setGroup(g.id, { image: v })}
+                        label="ภาพโปรโมทด้านซ้ายของแผง (ไม่ใส่ก็ได้)"
+                        hint="แนวตั้ง อัตราส่วนประมาณ 3:4 · แสดงเฉพาะจอกว้าง"
+                      />
+                    </div>
+
+                    {/* ── คอลัมน์ ── */}
+                    <div className="space-y-3">
+                      {g.columns.map((c, ci) => (
+                        <div key={c.id} className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <input
+                              value={c.title}
+                              onChange={(e) => setCol(g.id, c.id, { title: e.target.value })}
+                              placeholder="ชื่อคอลัมน์"
+                              className={`w-56 font-semibold ${inputBase}`}
+                            />
+                            <span className="ml-auto flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setCols(g.id, (cols) => move(cols, ci, -1))}
+                                disabled={ci === 0}
+                                className={`${btnSmGhost} disabled:opacity-30`}
+                                aria-label="เลื่อนคอลัมน์ขึ้น"
+                              >
+                                ←
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setCols(g.id, (cols) => move(cols, ci, 1))}
+                                disabled={ci === g.columns.length - 1}
+                                className={`${btnSmGhost} disabled:opacity-30`}
+                                aria-label="เลื่อนคอลัมน์ลง"
+                              >
+                                →
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setCols(g.id, (cols) => cols.filter((x) => x.id !== c.id))}
+                                className={btnSmDanger}
+                              >
+                                ลบคอลัมน์
+                              </button>
+                            </span>
+                          </div>
+
+                          <div className="mt-3 grid gap-3 md:grid-cols-2">
+                            <div>
+                              <span className="block text-xs font-semibold text-slate-600">กดที่ชื่อคอลัมน์แล้วไปที่</span>
+                              <div className="mt-1">
+                                <LinkPicker
+                                  value={c.href ?? "/products"}
+                                  cats={cats}
+                                  onChange={(v) => setCol(g.id, c.id, { href: v })}
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <span className="block text-xs font-semibold text-slate-600">รายการในคอลัมน์</span>
+                              <select
+                                value={c.autoCategory ?? "__manual__"}
+                                onChange={(e) =>
+                                  setCol(g.id, c.id, {
+                                    autoCategory: e.target.value === "__manual__" ? undefined : e.target.value,
+                                  })
+                                }
+                                className={`mt-1 ${input}`}
+                              >
+                                <option value="__manual__">✏️ พิมพ์รายการเอง</option>
+                                {cats.map((cat) => (
+                                  <option key={cat.id} value={cat.id}>
+                                    🔄 ดึงสินค้าจากหมวด {cat.name} อัตโนมัติ
+                                  </option>
+                                ))}
+                              </select>
+                              {c.autoCategory && (
+                                <label className="mt-1.5 flex items-center gap-2 text-xs text-slate-600">
+                                  แสดงกี่รายการ
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={20}
+                                    value={c.autoLimit ?? 6}
+                                    onChange={(e) =>
+                                      setCol(g.id, c.id, { autoLimit: Math.max(1, Number(e.target.value) || 6) })
+                                    }
+                                    className={`w-20 ${inputBase}`}
+                                  />
+                                </label>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="mt-3">
+                            <ImageField
+                              value={c.image}
+                              onChange={(v) => setCol(g.id, c.id, { image: v })}
+                              label="รูปหัวคอลัมน์ (ไม่ใส่ก็ได้)"
+                            />
+                          </div>
+
+                          {/* รายการที่พิมพ์เอง */}
+                          {c.autoCategory && c.items.length === 0 ? (
+                            <p className={`mt-3 rounded-lg bg-white p-2.5 text-xs ${muted} ring-1 ring-slate-200`}>
+                              🔄 คอลัมน์นี้ดึงสินค้าจากหมวด{" "}
+                              <strong className="text-slate-700">
+                                {cats.find((x) => x.id === c.autoCategory)?.name ?? c.autoCategory}
+                              </strong>{" "}
+                              มาแสดงเอง {c.autoLimit ?? 6} รายการ — ไม่ต้องพิมพ์ · ถ้าเพิ่มรายการเองด้านล่าง
+                              จะใช้รายการที่พิมพ์แทน
+                            </p>
+                          ) : null}
+
+                          <div className="mt-3 space-y-2">
+                            {c.items.map((it, ii) => (
+                              <div key={it.id} className="flex flex-wrap items-start gap-2">
+                                <input
+                                  value={it.label}
+                                  onChange={(e) => setItems(g.id, c.id, (xs) => xs.map((x) => (x.id === it.id ? { ...x, label: e.target.value } : x)))}
+                                  placeholder="ชื่อรายการ"
+                                  className={`w-44 ${inputBase}`}
+                                />
+                                <div className="min-w-52 flex-1">
+                                  <LinkPicker
+                                    value={it.href}
+                                    cats={cats}
+                                    onChange={(v) => setItems(g.id, c.id, (xs) => xs.map((x) => (x.id === it.id ? { ...x, href: v } : x)))}
+                                  />
+                                </div>
+                                <select
+                                  value={it.badge ?? ""}
+                                  onChange={(e) => setItems(g.id, c.id, (xs) => xs.map((x) => (x.id === it.id ? { ...x, badge: e.target.value as MegaBadge } : x)))}
+                                  className={`w-28 ${inputBase}`}
+                                  aria-label="ป้าย"
+                                >
+                                  <option value="">ไม่มีป้าย</option>
+                                  <option value="N">🔴 N มาใหม่</option>
+                                  <option value="H">🟠 H ขายดี</option>
+                                </select>
+                                <span className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setItems(g.id, c.id, (xs) => move(xs, ii, -1))}
+                                    disabled={ii === 0}
+                                    className={`${btnSmGhost} disabled:opacity-30`}
+                                    aria-label="เลื่อนขึ้น"
+                                  >
+                                    ↑
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setItems(g.id, c.id, (xs) => move(xs, ii, 1))}
+                                    disabled={ii === c.items.length - 1}
+                                    className={`${btnSmGhost} disabled:opacity-30`}
+                                    aria-label="เลื่อนลง"
+                                  >
+                                    ↓
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setItems(g.id, c.id, (xs) => xs.filter((x) => x.id !== it.id))}
+                                    className={btnSmDanger}
+                                  >
+                                    ลบ
+                                  </button>
+                                </span>
+                              </div>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setItems(g.id, c.id, (xs) => [
+                                  ...xs,
+                                  { id: newId("i"), label: "รายการใหม่", href: "/products", badge: "" as MegaBadge },
+                                ])
+                              }
+                              className={`${btnNeutral} text-xs`}
+                            >
+                              ＋ เพิ่มรายการเอง
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCols(g.id, (cols) => [
+                            ...cols,
+                            { id: newId("c"), title: "คอลัมน์ใหม่", href: "/products", items: [] },
+                          ])
+                        }
+                        className={btnNeutral}
+                      >
+                        ＋ เพิ่มคอลัมน์
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                edit((n) => ({
+                  ...n,
+                  mega: [...n.mega, { id: newId("g"), label: "หัวข้อใหม่", heading: "สินค้าแนะนำ", columns: [] }],
+                }))
+              }
+              className={btnNeutral}
+            >
+              ＋ เพิ่มหัวข้อ
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm("สร้างเมนูดรอปดาวน์ใหม่จากชุดเริ่มต้น? ของเดิมจะถูกแทนที่ (ยังต้องกดบันทึกอีกครั้ง)")) {
+                  edit((n) => ({ ...n, mega: DEFAULT_MEGA }));
+                }
+              }}
+              className={btnNeutral}
+            >
+              🔄 สร้างจากหมวดหมู่สินค้าให้อัตโนมัติ
+            </button>
+          </div>
         </section>
       )}
 

@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { useCart } from "@/lib/cart-context";
 import { useCustomer } from "@/lib/customer-context";
 import { signOut } from "@/lib/customer-auth";
-import { fetchSiteNav, visibleMenu, DEFAULT_SITE_NAV, type NavLink } from "@/lib/home-nav";
+import { fetchSiteNav, visibleMenu, visibleMega, DEFAULT_SITE_NAV, type MegaGroup, type NavLink } from "@/lib/home-nav";
+import { MegaBar, MegaMobile } from "@/components/MegaMenu";
 
 /** เมนูในดรอปดาวน์บัญชี */
 const ACCOUNT_MENU = [
@@ -25,8 +26,12 @@ export default function Navbar() {
   const acctRef = useRef<HTMLDivElement>(null);
   // ลิงก์เมนูที่แอดมินตั้งไว้ (แสดงค่าเริ่มต้นไปก่อน แล้วสลับเมื่อโหลดเสร็จ — ไม่มีจังหวะเมนูหาย)
   const [links, setLinks] = useState<NavLink[]>(visibleMenu(DEFAULT_SITE_NAV));
+  const [mega, setMega] = useState<MegaGroup[]>(visibleMega(DEFAULT_SITE_NAV));
   useEffect(() => {
-    fetchSiteNav().then((n) => setLinks(visibleMenu(n)));
+    fetchSiteNav().then((n) => {
+      setLinks(visibleMenu(n));
+      setMega(visibleMega(n));
+    });
   }, []);
 
   // ปิดดรอปดาวน์เมื่อคลิกนอกพื้นที่ หรือเปลี่ยนหน้า
@@ -47,7 +52,7 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-amber-100 bg-white/90 backdrop-blur">
-      <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4">
+      <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4">
         <Link href="/" className="flex items-center gap-2" onClick={() => setOpen(false)}>
           <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-ducky text-2xl shadow-sm">
             🦆
@@ -60,12 +65,12 @@ export default function Navbar() {
           </span>
         </Link>
 
-        <div className="hidden items-center gap-1 md:flex">
+        <div className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 overflow-x-auto [scrollbar-width:none] md:flex [&::-webkit-scrollbar]:hidden">
           {links.map((l) => (
             <Link
               key={l.id}
               href={l.href}
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+              className={`whitespace-nowrap rounded-full px-3 py-2 text-sm font-semibold transition ${
                 pathname === l.href
                   ? "bg-amber-100 text-amber-900"
                   : "text-stone-600 hover:bg-amber-50 hover:text-amber-800"
@@ -74,6 +79,7 @@ export default function Navbar() {
               {l.label}
             </Link>
           ))}
+          <MegaBar groups={mega} pathname={pathname} />
         </div>
 
         <div className="flex items-center gap-2">
@@ -168,6 +174,7 @@ export default function Navbar() {
               {l.label}
             </Link>
           ))}
+          <MegaMobile groups={mega} onNavigate={() => setOpen(false)} />
         </div>
       )}
     </header>
