@@ -379,6 +379,29 @@ export default function ProductEditor({ product }: { product: Product }) {
   );
 
   const [pricingOpen, setPricingOpen] = useState(false);
+  /** ท่อนเนื้อหาที่กำลังลากรูปค้างอยู่ (ไฮไลต์กรอบ) */
+  const [bodyDragOver, setBodyDragOver] = useState<number | null>(null);
+
+  /** อัปโหลดรูปเข้าท่อนเนื้อหา — ใช้ทั้งปุ่มเลือกไฟล์และลากมาวาง */
+  async function uploadBodyImage(i: number, f: File) {
+    if (!f.type.startsWith("image/")) return;
+    try {
+      const blob = await fileToBlob(f);
+      const fd = new FormData();
+      fd.append("file", blob, "body.jpg");
+      fd.append("productId", productId);
+      const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+      // โหมดเดโมยังไม่ตั้ง Supabase → เก็บ base64 แทน (เหมือนรูปสินค้า)
+      const src =
+        res.status === 503
+          ? await fileToDataUrl(f)
+          : ((await res.json().catch(() => ({}))) as { url?: string }).url;
+      if (src) setDraft((d) => ({ ...d, body: d.body.map((x, j) => (j === i ? { ...x, src } : x)) }));
+      else setSaveError("อัปโหลดรูปไม่สำเร็จ");
+    } catch {
+      setSaveError("อัปโหลดรูปไม่สำเร็จ");
+    }
+  }
 
   /**
    * เปลี่ยนชื่อ "กลุ่มตัวเลือก" — ราคาขั้นบันได (driverLabels) และกฎเงื่อนไขอ้างชื่อกลุ่มด้วย
@@ -2094,7 +2117,25 @@ export default function ProductEditor({ product }: { product: Product }) {
         )}
         <div className="space-y-3">
           {draft.body.map((b, i) => (
-            <div key={i} className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
+            <div
+              key={i}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setBodyDragOver(i);
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) setBodyDragOver(null);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setBodyDragOver(null);
+                const f = e.dataTransfer.files?.[0];
+                if (f) void uploadBodyImage(i, f);
+              }}
+              className={`rounded-2xl bg-white p-3 transition ${
+                bodyDragOver === i ? "ring-2 ring-amber-400 bg-amber-50/50" : "ring-1 ring-slate-200"
+              }`}
+            >
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-slate-400">ท่อนที่ {i + 1}</span>
                 <div className="ml-auto flex items-center gap-2">
@@ -2134,7 +2175,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                 aria-label={`เนื้อหาท่อนที่ ${i + 1}`}
               />
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold text-slate-500">รูปประกอบ:</span>
+                <span className="text-xs font-semibold text-slate-500">รูปประกอบ: <span className="font-normal text-slate-400">(ลากรูปมาวางที่ท่อนนี้ได้เลย)</span></span>
                 {b.src && (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img src={b.src} alt="" className="h-10 w-14 rounded-lg object-cover ring-1 ring-slate-200" />
@@ -2145,26 +2186,10 @@ export default function ProductEditor({ product }: { product: Product }) {
                     type="file"
                     accept="image/png,image/jpeg,image/webp,image/gif"
                     className="hidden"
-                    onChange={async (e) => {
+                    onChange={(e) => {
                       const f = e.target.files?.[0];
                       e.target.value = "";
-                      if (!f) return;
-                      try {
-                        const blob = await fileToBlob(f);
-                        const fd = new FormData();
-                        fd.append("file", blob, "body.jpg");
-                        fd.append("productId", productId);
-                        const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
-                        // โหมดเดโมยังไม่ตั้ง Supabase → เก็บ base64 แทน (เหมือนรูปสินค้า)
-                        const src =
-                          res.status === 503
-                            ? await fileToDataUrl(f)
-                            : ((await res.json().catch(() => ({}))) as { url?: string }).url;
-                        if (src) patch({ body: draft.body.map((x, j) => (j === i ? { ...x, src } : x)) });
-                        else setSaveError("อัปโหลดรูปไม่สำเร็จ");
-                      } catch {
-                        setSaveError("อัปโหลดรูปไม่สำเร็จ");
-                      }
+                      if (f) void uploadBodyImage(i, f);
                     }}
                   />
                 </label>
