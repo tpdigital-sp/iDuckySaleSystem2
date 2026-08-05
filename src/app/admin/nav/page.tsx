@@ -766,11 +766,9 @@ function NavEditorInner() {
                       </div>
                     </div>
                   )}
-                  {/* ชั้นคลุมตอนชี้เมาส์ — บอกว่ากดเปลี่ยนภาพได้ */}
-                  <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-900/0 opacity-0 transition group-hover:bg-slate-900/45 group-hover:opacity-100">
-                    <span className="rounded-full bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-lg">
-                      {heroBusy ? "⏳ กำลังอัปโหลด…" : nav.hero.bgImage ? "📤 กดเพื่อเปลี่ยนภาพ" : "📤 กดเพื่อใส่ภาพออกแบบเต็มใบ"}
-                    </span>
+                  {/* ป้ายบอกว่ากดเปลี่ยนภาพได้ — โชว์ค้างมุมขวาล่างตลอด */}
+                  <span className="pointer-events-none absolute bottom-3 right-3 rounded-full bg-white/95 px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-lg ring-1 ring-slate-200 transition group-hover:bg-white">
+                    {heroBusy ? "⏳ กำลังอัปโหลด…" : nav.hero.bgImage ? "📤 กดเพื่อเปลี่ยนภาพ" : "📤 กดเพื่อใส่ภาพออกแบบเต็มใบ"}
                   </span>
                 </label>
                 {nav.hero.bgImage && (
@@ -840,51 +838,6 @@ function NavEditorInner() {
               />
               แสดงแบนเนอร์นี้
             </label>
-          </div>
-
-          {/* ทางเลือกที่ 1 — ใช้ภาพออกแบบเต็มใบ (ข้อความอยู่ในภาพแล้ว) */}
-          <div className="mt-4 rounded-2xl bg-teal-50/60 p-4 ring-1 ring-teal-200">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="text-sm font-bold text-teal-900">🖼 ใช้ภาพออกแบบเต็มใบ</p>
-                <p className="mt-0.5 text-[11px] text-teal-800">
-                  มีไฟล์แบนเนอร์ที่ออกแบบไว้แล้ว (มีข้อความในภาพ) — อัปโหลดที่นี่ ระบบใช้ภาพแทนทั้งกล่อง
-                  · กดที่ภาพ = ไปหน้าปลายทางของปุ่มหลักด้านล่าง · แนะนำกว้าง 1600px ขึ้นไป
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className={`cursor-pointer ${btnNeutral} text-xs`}>
-                  📤 อัปโหลดภาพเต็มใบ
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    className="hidden"
-                    onChange={async (e) => {
-                      const f = e.target.files?.[0];
-                      e.target.value = "";
-                      if (!f) return;
-                      const r = await uploadNavImage(f);
-                      if (r.url) edit((n) => ({ ...n, hero: { ...n.hero, bgImage: r.url } }));
-                    }}
-                  />
-                </label>
-                {nav.hero.bgImage && (
-                  <button
-                    type="button"
-                    onClick={() => edit((n) => ({ ...n, hero: { ...n.hero, bgImage: undefined } }))}
-                    className="rounded-full px-3 py-1.5 text-xs font-bold text-rose-500 hover:bg-rose-50"
-                  >
-                    ✕ เอาภาพออก (กลับไปใช้ข้อความ)
-                  </button>
-                )}
-              </div>
-            </div>
-            {nav.hero.bgImage && (
-              <div className="mt-3 overflow-hidden rounded-xl ring-1 ring-teal-200">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={nav.hero.bgImage} alt="" className="w-full" />
-              </div>
-            )}
           </div>
 
           {nav.hero.bgImage ? (
