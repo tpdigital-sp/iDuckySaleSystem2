@@ -4,6 +4,7 @@
  */
 export const ARTICLE_PROSE =
   "text-[0.95rem] leading-relaxed text-stone-600 " +
+  "[&_h1]:mt-6 [&_h1]:text-2xl [&_h1]:font-extrabold [&_h1]:text-amber-950 " +
   "[&_h2]:mt-6 [&_h2]:text-xl [&_h2]:font-extrabold [&_h2]:text-stone-800 " +
   "[&_h3]:mt-4 [&_h3]:text-base [&_h3]:font-bold [&_h3]:text-stone-800 " +
   "[&_p]:mt-3 [&_ul]:mt-3 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:mt-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mt-1 " +

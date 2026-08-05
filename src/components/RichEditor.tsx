@@ -175,6 +175,7 @@ export default function RichEditor({
           >
             <option value="" disabled>ย่อหน้า</option>
             <option value="<p>">ข้อความปกติ</option>
+            <option value="<h1>">หัวข้อหลัก (H1)</option>
             <option value="<h2>">หัวข้อใหญ่ (H2)</option>
             <option value="<h3>">หัวข้อรอง (H3)</option>
             <option value="<blockquote>">“ คำพูด</option>
@@ -292,7 +293,7 @@ export default function RichEditor({
           const f = [...e.clipboardData.items].find((i) => i.type.startsWith("image/"))?.getAsFile();
           if (f) { e.preventDefault(); void insertImage(f); }
         }}
-        className={`min-h-72 rounded-b-2xl px-4 py-3 outline-none ${ARTICLE_PROSE} ${srcMode ? "hidden" : ""}`}
+        className={`min-h-72 resize-y overflow-auto rounded-b-2xl px-4 py-3 outline-none ${ARTICLE_PROSE} ${srcMode ? "hidden" : ""}`}
         data-placeholder="พิมพ์เนื้อหาบทความที่นี่… เลือกข้อความแล้วกดปุ่มด้านบนเพื่อจัดรูปแบบ"
       />
     </div>
