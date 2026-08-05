@@ -9,23 +9,37 @@ import type { Perm } from "@/lib/permissions";
 import { markRatingsSeen, unseenRatingCount } from "@/lib/ratings";
 
 /** เมนู + สิทธิ์ที่ต้องมีถึงจะเห็น */
-const MENU: { href: string; label: string; emoji: string; perm: Perm }[] = [
-  { href: "/admin", label: "ภาพรวม", emoji: "📊", perm: "orders.view" },
-  { href: "/admin/orders", label: "คำสั่งซื้อ", emoji: "📦", perm: "orders.view" },
-  { href: "/admin/print", label: "คิวปริ้น", emoji: "🖨", perm: "pack.ship" },
-  { href: "/admin/orders/scan", label: "แพ็ค–ส่ง", emoji: "📮", perm: "pack.ship" },
-  { href: "/admin/quotes", label: "ใบเสนอราคา", emoji: "📄", perm: "orders.edit" },
-  { href: "/admin/products", label: "สินค้า", emoji: "🏷️", perm: "products.view" },
-  { href: "/admin/special-products", label: "รูปแบบการสินค้าสั่งพิเศษ", emoji: "🛠️", perm: "orders.edit" },
-  { href: "/admin/stock", label: "คลังสต๊อก", emoji: "📦", perm: "orders.edit" },
-  { href: "/admin/options", label: "คลังตัวเลือก", emoji: "🎛️", perm: "presets.manage" },
-  { href: "/admin/coupons", label: "คูปอง", emoji: "🎟️", perm: "coupons.manage" },
-  { href: "/admin/ratings", label: "ความพึงพอใจ", emoji: "💬", perm: "orders.viewAll" },
-  { href: "/admin/staff", label: "พนักงาน", emoji: "👥", perm: "staff.manage" },
-  { href: "/admin/import", label: "นำเข้าสินค้า", emoji: "📥", perm: "products.import" },
-  { href: "/admin/nav", label: "เมนูหน้าร้าน", emoji: "🧭", perm: "settings.manage" },
-  { href: "/admin/settings", label: "ตั้งค่าระบบ", emoji: "⚙️", perm: "settings.manage" },
-  { href: "/admin/guide", label: "วิธีใช้ระบบ", emoji: "📋", perm: "admin.access" },
+/** เมนูแบ่งเป็นกลุ่มตามงาน — เมนูยาวขึ้นเรื่อย ๆ ไล่หาทีละบรรทัดไม่ไหวแล้ว */
+const MENU: { href: string; label: string; emoji: string; perm: Perm; group: string }[] = [
+  // 📦 งานขายรายวัน
+  { href: "/admin", label: "ภาพรวม", emoji: "📊", perm: "orders.view", group: "งานขาย" },
+  { href: "/admin/orders", label: "คำสั่งซื้อ", emoji: "📦", perm: "orders.view", group: "งานขาย" },
+  { href: "/admin/print", label: "คิวปริ้น", emoji: "🖨", perm: "pack.ship", group: "งานขาย" },
+  { href: "/admin/orders/scan", label: "แพ็ค–ส่ง", emoji: "📮", perm: "pack.ship", group: "งานขาย" },
+  { href: "/admin/quotes", label: "ใบเสนอราคา", emoji: "📄", perm: "orders.edit", group: "งานขาย" },
+  // 🏷️ ของที่ขาย
+  { href: "/admin/products", label: "สินค้า", emoji: "🏷️", perm: "products.view", group: "สินค้า" },
+  { href: "/admin/import", label: "นำเข้าสินค้า", emoji: "📥", perm: "products.import", group: "สินค้า" },
+  { href: "/admin/options", label: "คลังตัวเลือก", emoji: "🎛️", perm: "presets.manage", group: "สินค้า" },
+  { href: "/admin/special-products", label: "รูปแบบการสินค้าสั่งพิเศษ", emoji: "🛠️", perm: "orders.edit", group: "สินค้า" },
+  { href: "/admin/stock", label: "คลังสต๊อก", emoji: "📦", perm: "orders.edit", group: "สินค้า" },
+  // 💛 ลูกค้า & การตลาด
+  { href: "/admin/coupons", label: "คูปอง", emoji: "🎟️", perm: "coupons.manage", group: "ลูกค้า" },
+  { href: "/admin/ratings", label: "ความพึงพอใจ", emoji: "💬", perm: "orders.viewAll", group: "ลูกค้า" },
+  { href: "/admin/articles", label: "บทความ", emoji: "✍️", perm: "products.view", group: "ลูกค้า" },
+  // ⚙️ ร้าน & ระบบ
+  { href: "/admin/nav", label: "เมนูหน้าร้าน", emoji: "🧭", perm: "settings.manage", group: "ระบบ" },
+  { href: "/admin/settings", label: "ตั้งค่าระบบ", emoji: "⚙️", perm: "settings.manage", group: "ระบบ" },
+  { href: "/admin/staff", label: "พนักงาน", emoji: "👥", perm: "staff.manage", group: "ระบบ" },
+  { href: "/admin/guide", label: "วิธีใช้ระบบ", emoji: "📋", perm: "admin.access", group: "ระบบ" },
+];
+
+/** ป้ายหัวกลุ่ม (เรียงตามนี้) */
+const MENU_GROUPS: { key: string; label: string }[] = [
+  { key: "งานขาย", label: "📦 งานขาย" },
+  { key: "สินค้า", label: "🏷️ สินค้า" },
+  { key: "ลูกค้า", label: "💛 ลูกค้า & การตลาด" },
+  { key: "ระบบ", label: "⚙️ ร้าน & ระบบ" },
 ];
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
@@ -147,7 +161,25 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
   const navFor = (rail: boolean) => (
     <nav className="space-y-0.5">
-      {menu.map((m) => {
+      {MENU_GROUPS.flatMap(({ key, label }, groupIdx) => {
+        const items = menu.filter((m) => m.group === key);
+        if (!items.length) return [];
+        return [
+          rail ? (
+            groupIdx > 0 ? (
+              <div key={`h-${key}`} className="mx-2 my-2 border-t border-slate-200" aria-hidden="true" />
+            ) : null
+          ) : (
+            <p
+              key={`h-${key}`}
+              className={`px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 ${
+                groupIdx > 0 ? "pt-4" : "pt-1"
+              }`}
+            >
+              {label}
+            </p>
+          ),
+          ...items.map((m) => {
         const active = m.href === activeHref;
         const badge = m.href === "/admin/ratings" && newRatings > 0;
         return (
@@ -177,6 +209,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               ))}
           </Link>
         );
+          }),
+        ];
       })}
     </nav>
   );
