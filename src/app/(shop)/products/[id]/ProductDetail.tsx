@@ -143,34 +143,47 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   const [autoRateNote, setAutoRateNote] = useState("");
   useEffect(() => {
     if (rates.length < 2) return;
-    const needDesigns = designsTouched ? designs : Math.max(artFiles.length, 1);
-    const fitsDesigns = (r: (typeof rates)[number]) => {
-      if (!r.minPerDesign) return true;
-      const maxD = r.extraDesignFee ? qty : Math.max(1, Math.floor(qty / r.minPerDesign));
-      return maxD >= needDesigns;
-    };
-    const qualified = rates.filter((r) => qty >= (r.minQty ?? 1));
-    if (!rateTouched) {
-      const pool = qualified.filter(fitsDesigns);
-      const best = (pool.length ? pool : qualified).sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
-      if (best) setRateLabel((cur) => (cur === best.label ? cur : best.label));
-      setAutoRateNote("");
-      return;
-    }
-    if (rate && !fitsDesigns(rate)) {
-      const alt = qualified
-        .filter(fitsDesigns)
-        .sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
-      if (alt && alt.label !== rate.label) {
-        setRateLabel(alt.label);
-        setAutoRateNote(
-          `สลับเป็น “${alt.label}” ให้อัตโนมัติ — ลายที่แนบ ${needDesigns} ลาย เกินที่เรทเดิมคละได้`
-        );
+    // หน่วงสั้น ๆ กันเด้งเรทกลางคันตอนกำลังพิมพ์จำนวน (เช่น จะพิมพ์ 150 แต่ผ่านค่า 1 ก่อน)
+    const t = setTimeout(() => {
+      const needDesigns = designsTouched ? designs : Math.max(artFiles.length, 1);
+      const fitsDesigns = (r: (typeof rates)[number]) => {
+        if (!r.minPerDesign) return true;
+        const maxD = r.extraDesignFee ? qty : Math.max(1, Math.floor(qty / r.minPerDesign));
+        return maxD >= needDesigns;
+      };
+      const qualified = rates.filter((r) => qty >= (r.minQty ?? 1));
+      if (!rateTouched) {
+        let best: (typeof rates)[number] | undefined;
+        if (qualified.length) {
+          // จำนวนถึงขั้นต่ำหลายเรท → เอาเรทที่ขั้นต่ำสูงสุด (เรทส่ง ราคาถูกกว่า) ที่รองรับจำนวนลาย
+          const pool = qualified.filter(fitsDesigns);
+          best = (pool.length ? pool : qualified).sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
+        } else {
+          // จำนวนยังไม่ถึงขั้นต่ำสักเรท (เช่น ใส่ 1 ชิ้น) → เลือกเรทที่ขั้นต่ำต่ำสุด
+          // จะได้เห็นเงื่อนไขที่ใกล้เคียงที่สุด ไม่ค้างอยู่เรทที่ต้องสั่ง 50
+          const pool = rates.filter(fitsDesigns);
+          best = [...(pool.length ? pool : rates)].sort((a, b) => (a.minQty ?? 1) - (b.minQty ?? 1))[0];
+        }
+        if (best) setRateLabel((cur) => (cur === best.label ? cur : best.label));
+        setAutoRateNote("");
         return;
       }
-    }
-    // ทุกเรทรองรับจำนวนลายแล้ว (เช่น ลบรูปออก) → เหตุผลของป้ายหมดไป เก็บป้ายออก
-    if (qualified.length > 0 && qualified.every(fitsDesigns)) setAutoRateNote("");
+      if (rate && !fitsDesigns(rate)) {
+        const alt = (qualified.length ? qualified : rates)
+          .filter(fitsDesigns)
+          .sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
+        if (alt && alt.label !== rate.label) {
+          setRateLabel(alt.label);
+          setAutoRateNote(
+            `สลับเป็น “${alt.label}” ให้อัตโนมัติ — ลายที่แนบ ${needDesigns} ลาย เกินที่เรทเดิมคละได้`
+          );
+          return;
+        }
+      }
+      // ทุกเรทรองรับจำนวนลายแล้ว (เช่น ลบรูปออก) → เหตุผลของป้ายหมดไป เก็บป้ายออก
+      if (rate && fitsDesigns(rate) && rates.every(fitsDesigns)) setAutoRateNote("");
+    }, 450);
+    return () => clearTimeout(t);
   }, [qty, rates, rateTouched, designs, designsTouched, artFiles.length, rate]);
 
   const custom = product.custom?.enabled ? product.custom : null;
