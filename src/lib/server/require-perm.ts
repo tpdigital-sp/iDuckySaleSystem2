@@ -24,15 +24,19 @@ export async function currentActor(): Promise<Actor | null> {
  *   const gate = await requirePerm("products.manage");
  *   if (gate.res) return gate.res;
  *   // ใช้ gate.actor ต่อได้
+ *
+ * ส่งเป็นอาร์เรย์ = มีสิทธิ์ข้อใดข้อหนึ่งก็ผ่าน (เช่นอัปโหลดรูป ใช้ได้ทั้งฝ่ายสินค้าและคนตั้งค่าระบบ)
  */
 export async function requirePerm(
-  perm: Perm
+  perm: Perm | Perm[]
 ): Promise<{ actor: Actor; res: null } | { actor: null; res: NextResponse }> {
   const actor = await currentActor();
   if (!actor) {
     return { actor: null, res: NextResponse.json({ error: "ต้องล็อกอินก่อน" }, { status: 401 }) };
   }
-  if (!can(actor, perm, await loadRolePerms())) {
+  const wanted = Array.isArray(perm) ? perm : [perm];
+  const rolePerms = await loadRolePerms();
+  if (!wanted.some((p) => can(actor, p, rolePerms))) {
     return {
       actor: null,
       res: NextResponse.json({ error: "บัญชีนี้ไม่มีสิทธิ์ทำรายการนี้" }, { status: 403 }),

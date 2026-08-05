@@ -56,7 +56,27 @@
       "Bash(kill 36597 36596 36580)",
       "Bash(lsof -tnP -iTCP:3001 -sTCP:LISTEN)",
       "Bash(curl -s -I -L --max-time 20 \"https://iduckysalesystem.netlify.app\")",
-      "Bash(curl -s -L --max-time 20 \"https://iduckysalesystem.netlify.app\")"
+      "Bash(curl -s -L --max-time 20 \"https://iduckysalesystem.netlify.app\")",
+      "Bash(lsof -iTCP -sTCP:LISTEN -P)",
+      "Bash(git fetch *)",
+      "Bash(git rev-list *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code} · %{size_download} bytes\\\\n\" \"http://localhost:3001/_next/static/css/app/layout.css\")",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" https://iduckysalesystem.netlify.app/)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" -X POST https://iduckysalesystem.netlify.app/api/orders/slip)",
+      "Bash(/usr/bin/curl -s -o /dev/null -w \"home GET: %{http_code}\\\\n\" https://iduckysalesystem.netlify.app/)",
+      "Bash(/usr/bin/curl -s -o /dev/null -w \"GET /api/orders: %{http_code}\\\\n\" https://iduckysalesystem.netlify.app/api/orders)",
+      "Bash(/usr/bin/curl -s -o /dev/null -w \"GET /api/orders/slip: %{http_code}\\\\n\" https://iduckysalesystem.netlify.app/api/orders/slip)",
+      "Bash(/usr/bin/curl -s -o /dev/null -w \"POST /api/orders: %{http_code}\\\\n\" -X POST -H \"Content-Type: application/json\" -d '{}' https://iduckysalesystem.netlify.app/api/orders)",
+      "Bash(/usr/bin/curl -s -o /dev/null -w \"slip route: %{http_code}\\\\n\" https://iduckysalesystem.netlify.app/api/orders/slip)",
+      "Bash(/usr/bin/curl -s -o /dev/null -w \"checkout: %{http_code}\\\\n\" http://localhost:3001/checkout)",
+      "Skill(artifact-design)",
+      "Skill(artifact-design:*)",
+      "Bash(/usr/bin/curl -s -o /dev/null -w \"served: HTTP %{http_code}\\\\n\" http://localhost:3001/_preview-drawer.html)",
+      "Bash(/usr/bin/curl -s -o /dev/null -w \"customer page: %{http_code}\\\\n\" \"http://localhost:3001/order/OD-260722-8143?key=au2AJFu_9toYrctb1SXHAiD0S7fw5nfs\")",
+      "Bash(/usr/bin/curl -s \"http://localhost:3001/order/OD-260722-8143?key=au2AJFu_9toYrctb1SXHAiD0S7fw5nfs\")"
     ]
   }
 }

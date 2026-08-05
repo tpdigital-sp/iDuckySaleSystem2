@@ -6,14 +6,21 @@ import { PRODUCTS, type Product } from "@/lib/products";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { fetchProductsLite } from "@/lib/product-repo";
 import ProductCard from "@/components/ProductCard";
+import NavTiles from "@/components/NavTiles";
+import { fetchSiteNav, visibleTiles, DEFAULT_SITE_NAV, type NavTile } from "@/lib/home-nav";
 
 export default function HomePage() {
   // โหลดสินค้า (Supabase หรือ localStorage) หลัง mount
   const [all, setAll] = useState<Product[]>(PRODUCTS);
   // หมวดหมู่ที่แอดมินตั้งไว้ในหลังบ้าน (ยังไม่เคยตั้ง = ค่าเริ่มต้นในโค้ด)
   const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
+  // การ์ดนำทาง (แอดมินตั้งเองได้ที่ /admin/nav)
+  const [tiles, setTiles] = useState<NavTile[]>(visibleTiles(DEFAULT_SITE_NAV));
   useEffect(() => {
     fetchCategories().then((list) => setCats(list.filter((c) => !c.hidden)));
+  }, []);
+  useEffect(() => {
+    fetchSiteNav().then((n) => setTiles(visibleTiles(n)));
   }, []);
   useEffect(() => {
     let active = true;
@@ -71,6 +78,13 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* การ์ดนำทาง — ทางลัดไปหน้าที่ลูกค้าใช้บ่อย (ตั้งค่าที่หลังบ้าน → เมนูหน้าร้าน) */}
+      {tiles.length > 0 && (
+        <section className="mt-6">
+          <NavTiles tiles={tiles} />
+        </section>
+      )}
 
       {/* จุดเด่นร้าน */}
       <section className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-4">

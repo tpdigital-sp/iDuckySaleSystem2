@@ -6,12 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useCart } from "@/lib/cart-context";
 import { useCustomer } from "@/lib/customer-context";
 import { signOut } from "@/lib/customer-auth";
-
-const LINKS = [
-  { href: "/", label: "หน้าแรก" },
-  { href: "/products", label: "สินค้าทั้งหมด" },
-  { href: "/how-to-order", label: "วิธีสั่งซื้อ" },
-];
+import { fetchSiteNav, visibleMenu, DEFAULT_SITE_NAV, type NavLink } from "@/lib/home-nav";
 
 /** เมนูในดรอปดาวน์บัญชี */
 const ACCOUNT_MENU = [
@@ -28,6 +23,11 @@ export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [acctOpen, setAcctOpen] = useState(false);
   const acctRef = useRef<HTMLDivElement>(null);
+  // ลิงก์เมนูที่แอดมินตั้งไว้ (แสดงค่าเริ่มต้นไปก่อน แล้วสลับเมื่อโหลดเสร็จ — ไม่มีจังหวะเมนูหาย)
+  const [links, setLinks] = useState<NavLink[]>(visibleMenu(DEFAULT_SITE_NAV));
+  useEffect(() => {
+    fetchSiteNav().then((n) => setLinks(visibleMenu(n)));
+  }, []);
 
   // ปิดดรอปดาวน์เมื่อคลิกนอกพื้นที่ หรือเปลี่ยนหน้า
   useEffect(() => {
@@ -61,9 +61,9 @@ export default function Navbar() {
         </Link>
 
         <div className="hidden items-center gap-1 md:flex">
-          {LINKS.map((l) => (
+          {links.map((l) => (
             <Link
-              key={l.href}
+              key={l.id}
               href={l.href}
               className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
                 pathname === l.href
@@ -156,9 +156,9 @@ export default function Navbar() {
 
       {open && (
         <div className="border-t border-amber-100 bg-white px-4 py-2 md:hidden">
-          {LINKS.map((l) => (
+          {links.map((l) => (
             <Link
-              key={l.href}
+              key={l.id}
               href={l.href}
               onClick={() => setOpen(false)}
               className={`block rounded-xl px-4 py-3 text-sm font-semibold ${

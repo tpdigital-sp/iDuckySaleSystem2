@@ -17,7 +17,8 @@ const EXT: Record<string, string> = {
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
-  const gate = await requirePerm("products.manage");
+  // ฝ่ายสินค้าใช้ลงรูปสินค้า · คนตั้งค่าระบบใช้ลงรูปการ์ดนำทางหน้าแรก
+  const gate = await requirePerm(["products.manage", "settings.manage"]);
   if (gate.res) return gate.res;
 
   let form: FormData;
