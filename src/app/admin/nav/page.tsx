@@ -435,53 +435,136 @@ function NavEditorInner() {
         </p>
       </section>
 
-      {/* ── ตัวอย่าง (ใช้คอมโพเนนต์เดียวกับหน้าร้าน) ── */}
+      {/* ── ตัวอย่าง: แสดงเฉพาะส่วนของแท็บที่กำลังแก้อยู่ (จะได้รู้ว่ากำลังแก้อะไร) ── */}
       <section className={`mt-5 p-5 ${card}`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-slate-800">👀 ตัวอย่างที่ลูกค้าเห็น</h2>
-          <span className={`text-[11px] ${faint}`}>ภาพจริงจากหน้าร้าน · แก้ในแท็บด้านล่างแล้วดูผลตรงนี้ได้เลย</span>
+          <h2 className="text-sm font-semibold text-slate-800">
+            👀 ตัวอย่างที่ลูกค้าเห็น ·{" "}
+            <span className="text-teal-700">
+              {tab === "menu"
+                ? "แถบเมนูด้านบน"
+                : tab === "mega"
+                  ? "แถบหมวดสินค้า"
+                  : tab === "hero"
+                    ? "แบนเนอร์ใหญ่"
+                    : tab === "tiles"
+                      ? "การ์ดนำทาง"
+                      : "จุดเด่นร้าน"}
+            </span>
+          </h2>
+          <span className={`text-[11px] ${faint}`}>แก้ด้านล่างแล้วดูผลตรงนี้ได้ทันที</span>
         </div>
 
-        {/* แถบเมนูด้านบน */}
-        {/* หัวเว็บ 2 ชั้น — ชั้นบนลิงก์หน้า · ชั้นล่างหมวดสินค้า (ตรงกับหน้าร้านจริง) */}
-        <div className="mt-3 overflow-hidden rounded-2xl ring-1 ring-slate-200">
-          <div className="flex flex-wrap items-center gap-1 bg-slate-50 px-3 py-2.5">
-            <span className="mr-1 text-lg">🦆</span>
-            {nav.menu.filter((l) => !l.hidden).length === 0 ? (
-              <span className={`text-xs ${faint}`}>(ไม่มีลิงก์บนแถบเมนู)</span>
-            ) : (
-              nav.menu
-                .filter((l) => !l.hidden)
-                .map((l) => (
-                  <span key={l.id} className="rounded-full px-3 py-1 text-xs font-semibold text-stone-600">
-                    {l.label}
-                  </span>
-                ))
-            )}
-            <span className="ml-auto flex gap-1 text-sm">🔑 🛒</span>
-          </div>
-          {nav.mega.filter((g) => !g.hidden).length > 0 && (
-            <div className="flex flex-wrap items-center justify-center gap-1 border-t border-slate-200 bg-white px-3 py-1.5">
-              {nav.mega
-                .filter((g) => !g.hidden)
-                .map((g) => (
-                  <span key={g.id} className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-stone-500">
-                    {g.label} ▾
-                  </span>
-                ))}
+        <div className="mt-3">
+          {/* 1 · แถบเมนูด้านบน — โลโก้ + ลิงก์หน้า */}
+          {tab === "menu" && (
+            <div className="overflow-hidden rounded-2xl ring-1 ring-slate-200">
+              <div className="flex flex-wrap items-center gap-1 bg-slate-50 px-3 py-2.5">
+                {nav.logo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={nav.logo} alt="" className="mr-2 h-9 w-auto max-w-40 object-contain" />
+                ) : (
+                  <span className="mr-1 text-lg">🦆</span>
+                )}
+                {nav.menu.filter((l) => !l.hidden).length === 0 ? (
+                  <span className={`text-xs ${faint}`}>(ไม่มีลิงก์บนแถบเมนู)</span>
+                ) : (
+                  nav.menu
+                    .filter((l) => !l.hidden)
+                    .map((l) => (
+                      <span key={l.id} className="rounded-full px-3 py-1 text-xs font-semibold text-stone-600">
+                        {l.label}
+                      </span>
+                    ))
+                )}
+                <span className="ml-auto flex gap-1 text-sm">🔑 🛒</span>
+              </div>
             </div>
           )}
-        </div>
 
-        {/* การ์ดนำทาง */}
-        <div className="mt-3 overflow-hidden rounded-2xl">
-          {shownTiles.length ? (
-            <NavTiles tiles={shownTiles} preview bg={nav.tilesBg} wave={nav.tilesWave} />
-          ) : (
-            <p className={`rounded-2xl bg-slate-50 p-8 text-center text-sm ${faint}`}>
-              {nav.tilesOn ? "ยังไม่มีการ์ดที่เปิดแสดง" : "ปิดการ์ดนำทางอยู่ — หน้าแรกจะไม่มีบล็อกนี้"}
-            </p>
+          {/* 2 · แถบหมวดสินค้า (เมนูดรอปดาวน์) */}
+          {tab === "mega" && (
+            <div className="overflow-hidden rounded-2xl ring-1 ring-slate-200">
+              {nav.mega.filter((g) => !g.hidden).length === 0 ? (
+                <p className={`bg-slate-50 p-6 text-center text-sm ${faint}`}>ยังไม่มีหมวดที่เปิดแสดง</p>
+              ) : (
+                <div className="flex flex-wrap items-center justify-center gap-1 bg-white px-3 py-2">
+                  {nav.mega
+                    .filter((g) => !g.hidden)
+                    .map((g) => (
+                      <span key={g.id} className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-stone-500">
+                        {g.label} ▾
+                      </span>
+                    ))}
+                </div>
+              )}
+            </div>
           )}
+
+          {/* 3 · แบนเนอร์ใหญ่ */}
+          {tab === "hero" &&
+            (nav.hero.on ? (
+              <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-amber-200 via-amber-100 to-ducky p-5">
+                {nav.hero.badge && (
+                  <span className="inline-block rounded-full bg-white/70 px-3 py-1 text-[11px] font-bold text-amber-800">
+                    {nav.hero.badge}
+                  </span>
+                )}
+                <p className="mt-2 whitespace-pre-line text-xl font-extrabold leading-tight text-amber-950">
+                  {nav.hero.title}
+                </p>
+                <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-amber-900/80">{nav.hero.subtitle}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {nav.hero.btn1Label && (
+                    <span className="rounded-full bg-amber-400 px-4 py-2 text-xs font-bold text-white shadow">
+                      {nav.hero.btn1Label}
+                    </span>
+                  )}
+                  {nav.hero.btn2Label && (
+                    <span className="rounded-full bg-white/80 px-4 py-2 text-xs font-bold text-amber-900 shadow">
+                      {nav.hero.btn2Label}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className={`rounded-2xl bg-slate-50 p-8 text-center text-sm ${faint}`}>
+                ปิดแบนเนอร์ใหญ่อยู่ — หน้าแรกจะไม่มีบล็อกนี้
+              </p>
+            ))}
+
+          {/* 4 · การ์ดนำทาง */}
+          {tab === "tiles" && (
+            <div className="overflow-hidden rounded-2xl">
+              {shownTiles.length ? (
+                <NavTiles tiles={shownTiles} preview bg={nav.tilesBg} wave={nav.tilesWave} />
+              ) : (
+                <p className={`rounded-2xl bg-slate-50 p-8 text-center text-sm ${faint}`}>
+                  {nav.tilesOn ? "ยังไม่มีการ์ดที่เปิดแสดง" : "ปิดการ์ดนำทางอยู่ — หน้าแรกจะไม่มีบล็อกนี้"}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* 5 · จุดเด่นร้าน */}
+          {tab === "perks" &&
+            (nav.perksOn && nav.perks.some((x) => !x.hidden) ? (
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                {nav.perks
+                  .filter((x) => !x.hidden)
+                  .map((x) => (
+                    <div key={x.id} className="rounded-2xl bg-white p-3 text-center ring-1 ring-amber-100">
+                      <p className="text-xl">{x.emoji}</p>
+                      <p className="mt-1 text-xs font-bold text-stone-700">{x.title}</p>
+                      <p className={`mt-0.5 text-[10px] ${faint}`}>{x.desc}</p>
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <p className={`rounded-2xl bg-slate-50 p-8 text-center text-sm ${faint}`}>
+                {nav.perksOn ? "ยังไม่มีจุดเด่นที่เปิดแสดง" : "ปิดแถวจุดเด่นร้านอยู่ — หน้าแรกจะไม่มีบล็อกนี้"}
+              </p>
+            ))}
         </div>
       </section>
 
@@ -634,33 +717,6 @@ function NavEditorInner() {
             </div>
           </div>
 
-          {/* ตัวอย่างแบนเนอร์ */}
-          <div className="mt-4">
-            <p className={`mb-1.5 text-[11px] font-semibold ${faint}`}>ตัวอย่าง</p>
-            <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-amber-200 via-amber-100 to-ducky p-5">
-              {nav.hero.badge && (
-                <span className="inline-block rounded-full bg-white/70 px-3 py-1 text-[11px] font-bold text-amber-800">
-                  {nav.hero.badge}
-                </span>
-              )}
-              <p className="mt-2 whitespace-pre-line text-xl font-extrabold leading-tight text-amber-950">
-                {nav.hero.title}
-              </p>
-              <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-amber-900/80">{nav.hero.subtitle}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {nav.hero.btn1Label && (
-                  <span className="rounded-full bg-amber-400 px-4 py-2 text-xs font-bold text-white shadow">
-                    {nav.hero.btn1Label}
-                  </span>
-                )}
-                {nav.hero.btn2Label && (
-                  <span className="rounded-full bg-white/80 px-4 py-2 text-xs font-bold text-amber-900 shadow">
-                    {nav.hero.btn2Label}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
         </section>
       )}
 
