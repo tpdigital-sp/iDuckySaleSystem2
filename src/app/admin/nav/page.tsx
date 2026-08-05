@@ -233,6 +233,8 @@ function NavEditorInner() {
   const [nav, setNav] = useState<SiteNav>(DEFAULT_SITE_NAV);
   const [cats, setCats] = useState<ShopCategory[]>([]);
   const [tab, setTab] = useState<Tab>("mega");
+  /** กำลังอัปโหลดภาพแบนเนอร์จากกล่องตัวอย่างอยู่ */
+  const [heroBusy, setHeroBusy] = useState(false);
   /** หัวข้อที่กางอยู่ในตัวแก้ไข และหัวข้อที่กดดูตัวอย่างแผงอยู่ */
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [previewGroup, setPreviewGroup] = useState<string | null>(null);
@@ -507,34 +509,72 @@ function NavEditorInner() {
               <p className={`rounded-2xl bg-slate-50 p-8 text-center text-sm ${faint}`}>
                 ปิดแบนเนอร์ใหญ่อยู่ — หน้าแรกจะไม่มีบล็อกนี้
               </p>
-            ) : nav.hero.bgImage ? (
-              <div className="overflow-hidden rounded-2xl ring-1 ring-slate-200">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={nav.hero.bgImage} alt="" className="w-full" />
-              </div>
             ) : (
-              <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-amber-200 via-amber-100 to-ducky p-5">
-                {nav.hero.badge && (
-                  <span className="inline-block rounded-full bg-white/70 px-3 py-1 text-[11px] font-bold text-amber-800">
-                    {nav.hero.badge}
+              // กดที่ตัวอย่างเพื่อเปลี่ยน/ใส่ภาพแบนเนอร์ได้เลย (ไม่ต้องเลื่อนไปหาช่องอัปโหลด)
+              <div className="group relative overflow-hidden rounded-2xl ring-1 ring-slate-200">
+                <label className="block cursor-pointer" title="กดเพื่อเลือกภาพแบนเนอร์เต็มใบ">
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!f) return;
+                      setHeroBusy(true);
+                      const r = await uploadNavImage(f);
+                      setHeroBusy(false);
+                      if (r.url) edit((n) => ({ ...n, hero: { ...n.hero, bgImage: r.url } }));
+                      else if (r.error) alert(r.error);
+                    }}
+                  />
+                  {nav.hero.bgImage ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={nav.hero.bgImage} alt="" className="w-full" />
+                  ) : (
+                    <div className="bg-gradient-to-br from-amber-200 via-amber-100 to-ducky p-5">
+                      {nav.hero.badge && (
+                        <span className="inline-block rounded-full bg-white/70 px-3 py-1 text-[11px] font-bold text-amber-800">
+                          {nav.hero.badge}
+                        </span>
+                      )}
+                      <p className="mt-2 whitespace-pre-line text-xl font-extrabold leading-tight text-amber-950">
+                        {nav.hero.title}
+                      </p>
+                      <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-amber-900/80">
+                        {nav.hero.subtitle}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {nav.hero.btn1Label && (
+                          <span className="rounded-full bg-amber-400 px-4 py-2 text-xs font-bold text-white shadow">
+                            {nav.hero.btn1Label}
+                          </span>
+                        )}
+                        {nav.hero.btn2Label && (
+                          <span className="rounded-full bg-white/80 px-4 py-2 text-xs font-bold text-amber-900 shadow">
+                            {nav.hero.btn2Label}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {/* ชั้นคลุมตอนชี้เมาส์ — บอกว่ากดเปลี่ยนภาพได้ */}
+                  <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-900/0 opacity-0 transition group-hover:bg-slate-900/45 group-hover:opacity-100">
+                    <span className="rounded-full bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-lg">
+                      {heroBusy ? "⏳ กำลังอัปโหลด…" : nav.hero.bgImage ? "📤 กดเพื่อเปลี่ยนภาพ" : "📤 กดเพื่อใส่ภาพออกแบบเต็มใบ"}
+                    </span>
                   </span>
+                </label>
+                {nav.hero.bgImage && (
+                  <button
+                    type="button"
+                    onClick={() => edit((n) => ({ ...n, hero: { ...n.hero, bgImage: undefined } }))}
+                    className="absolute right-2 top-2 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-rose-500 shadow transition hover:bg-white"
+                    title="เอาภาพออก แล้วกลับไปใช้แบบพิมพ์ข้อความ"
+                  >
+                    ✕ เอาภาพออก
+                  </button>
                 )}
-                <p className="mt-2 whitespace-pre-line text-xl font-extrabold leading-tight text-amber-950">
-                  {nav.hero.title}
-                </p>
-                <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-amber-900/80">{nav.hero.subtitle}</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {nav.hero.btn1Label && (
-                    <span className="rounded-full bg-amber-400 px-4 py-2 text-xs font-bold text-white shadow">
-                      {nav.hero.btn1Label}
-                    </span>
-                  )}
-                  {nav.hero.btn2Label && (
-                    <span className="rounded-full bg-white/80 px-4 py-2 text-xs font-bold text-amber-900 shadow">
-                      {nav.hero.btn2Label}
-                    </span>
-                  )}
-                </div>
               </div>
             ))}
 
