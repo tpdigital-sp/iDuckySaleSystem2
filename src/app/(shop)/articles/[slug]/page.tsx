@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import ArticleHtml from "@/components/ArticleHtml";
 import { getArticleServer, listArticlesServer } from "@/lib/server/articles-server";
-import { thaiDate } from "@/lib/articles";
+import { PAGE_OVERRIDES, thaiDate } from "@/lib/articles";
 import { SHOP, SITE_URL } from "@/lib/shop-info";
 
 export const revalidate = 300;
@@ -27,6 +28,9 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
 export default async function ArticlePage({ params }: Params) {
   const { slug } = await params;
+  // slug ของหน้าเว็บหลัก → พาไปหน้าจริง (เนื้อหาแสดงที่นั่น)
+  const pg = PAGE_OVERRIDES.find((x) => x.slug === slug);
+  if (pg) redirect(pg.path);
   const a = await getArticleServer(slug);
   if (!a) notFound();
 
@@ -80,6 +84,11 @@ export default async function ArticlePage({ params }: Params) {
 
       {a.excerpt && <p className="mt-5 text-base font-semibold leading-relaxed text-stone-600">{a.excerpt}</p>}
 
+      {a.html ? (
+        <div className="mt-4">
+          <ArticleHtml html={a.html} />
+        </div>
+      ) : (
       <div className="mt-6 space-y-8">
         {a.blocks.map((b, i) => (
           <section key={i}>
@@ -95,6 +104,7 @@ export default async function ArticlePage({ params }: Params) {
           </section>
         ))}
       </div>
+      )}
 
       {/* ชวนไปช้อป */}
       <div className="mt-12 rounded-3xl bg-gradient-to-r from-sky-100 to-amber-100 p-6 text-center">

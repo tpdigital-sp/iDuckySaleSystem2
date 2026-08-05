@@ -129,6 +129,7 @@ export const DEFAULT_MENU: NavLink[] = [
   { id: "home", label: "หน้าแรก", href: "/" },
   { id: "products", label: "สินค้าทั้งหมด", href: "/products" },
   { id: "howto", label: "วิธีสั่งซื้อ", href: "/how-to-order" },
+  { id: "articles", label: "บทความ", href: "/articles" },
 ];
 
 /**

@@ -5,6 +5,21 @@ import { ARTICLE_CATEGORY, articleOf, articleRowId, byNewest, type Article } fro
 
 export const runtime = "nodejs";
 
+/**
+ * กรอง HTML จากตัวเขียน rich text — ตัด script/iframe/on* /javascript: ทิ้ง
+ * (ตัวเขียนอยู่หลังล็อกอินก็จริง แต่เนื้อหาขึ้นหน้าเว็บสาธารณะ กรองไว้เสมอปลอดภัยกว่า)
+ */
+function sanitizeHtml(h: string): string {
+  return h
+    .replace(/<\s*(script|style|iframe|object|embed|form|input|button|link|meta)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "")
+    .replace(/<\s*(script|style|iframe|object|embed|form|input|button|link|meta)[^>]*\/?\s*>/gi, "")
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, "")
+    .replace(/\son\w+\s*=\s*[^\s>]+/gi, "")
+    .replace(/(href|src)\s*=\s*(['"]?)\s*javascript:[^'">\s]*\2/gi, '$1="#"')
+    .slice(0, 300000);
+}
+
 /** รายการบทความทั้งหมด (รวมฉบับร่าง) — เฉพาะหลังบ้าน */
 export async function GET() {
   const gate = await requirePerm("products.view");
@@ -44,7 +59,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "slug ใช้ได้เฉพาะ a-z 0-9 และขีดกลาง" }, { status: 400 });
 
   // คนเขียนล่าสุดคือคนแก้ (โชว์ท้ายบทความ)
-  const article: Article = { ...a, author: a.author || gate.actor.name || gate.actor.username, updatedAt: new Date().toISOString() };
+  const article: Article = {
+    ...a,
+    html: a.html ? sanitizeHtml(a.html) : undefined,
+    author: a.author || gate.actor.name || gate.actor.username,
+    updatedAt: new Date().toISOString(),
+  };
 
   const { error } = await sb.from("products").upsert(
     {

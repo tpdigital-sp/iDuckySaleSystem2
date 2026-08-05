@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import RequirePerm from "@/components/RequirePerm";
 import { useCan } from "@/lib/perm-context";
-import { articleOf, slugify, thaiDate, type Article, type ArticleBlock } from "@/lib/articles";
+import RichEditor from "@/components/RichEditor";
+import { PAGE_OVERRIDES, articleOf, blocksToHtml, isPageSlug, slugify, thaiDate, type Article } from "@/lib/articles";
 import { btnNeutral, btnPrimary, btnSmDanger, btnSmGhost, card, faint, h1, muted, shortTime } from "@/lib/admin-ui";
 
 /**
@@ -19,7 +20,8 @@ const EMPTY: Article = {
   slug: "",
   title: "",
   excerpt: "",
-  blocks: [{ heading: "", text: "" }],
+  blocks: [],
+  html: "",
   tags: [],
   published: false,
   createdAt: "",
@@ -98,24 +100,35 @@ function ArticlesInner() {
   }, [load]);
 
   function startNew() {
-    setEditing({ ...EMPTY, blocks: [{ heading: "", text: "" }] });
+    setEditing({ ...EMPTY });
     setIsNew(true);
     setMsg("");
   }
   function startEdit(a: Article) {
-    setEditing(JSON.parse(JSON.stringify(a)) as Article);
+    const copy = JSON.parse(JSON.stringify(a)) as Article;
+    // บทความเก่าแบบท่อน → แปลงเป็น rich text ให้แก้ต่อได้เลย
+    if (!copy.html && copy.blocks.length) {
+      copy.html = blocksToHtml(copy.blocks);
+      copy.blocks = [];
+    }
+    setEditing(copy);
     setIsNew(false);
+    setMsg("");
+  }
+  /** เริ่มเขียนทับหน้าเว็บหลัก (วิธีสั่งซื้อ/เกี่ยวกับเรา) — slug ถูกจองตายตัว */
+  function startPage(slug: string, label: string) {
+    setEditing({ ...EMPTY, slug, title: label, excerpt: "", html: "" });
+    setIsNew(true);
     setMsg("");
   }
 
   const patch = (p: Partial<Article>) => setEditing((a) => (a ? { ...a, ...p } : a));
-  const patchBlock = (i: number, p: Partial<ArticleBlock>) =>
-    setEditing((a) => (a ? { ...a, blocks: a.blocks.map((b, j) => (j === i ? { ...b, ...p } : b)) } : a));
 
   async function save(publish?: boolean) {
     if (!editing) return;
     const a: Article = {
       ...editing,
+      blocks: [], // เขียนด้วย rich text แล้ว — เก็บ html อย่างเดียว
       slug: editing.slug.trim() || slugify(editing.title),
       published: publish ?? editing.published,
       createdAt: editing.createdAt || new Date().toISOString(),
@@ -178,8 +191,14 @@ function ArticlesInner() {
                   onChange={(e) => patch({ slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })}
                   placeholder="print-file-tips"
                   className={input}
-                  disabled={!isNew}
-                  title={isNew ? undefined : "เปลี่ยน slug หลังเผยแพร่จะทำให้ลิงก์เดิมเสีย จึงล็อกไว้"}
+                  disabled={!isNew || isPageSlug(editing.slug)}
+                  title={
+                    isPageSlug(editing.slug)
+                      ? "slug ของหน้าเว็บหลัก ถูกจองไว้ตายตัว"
+                      : isNew
+                        ? undefined
+                        : "เปลี่ยน slug หลังเผยแพร่จะทำให้ลิงก์เดิมเสีย จึงล็อกไว้"
+                  }
                 />
               </div>
             </label>
@@ -213,90 +232,16 @@ function ArticlesInner() {
           </div>
         </section>
 
-        {/* ── เนื้อหาเป็นท่อน ๆ ── */}
-        <section className="mt-4 space-y-3">
-          {editing.blocks.map((b, i) => (
-            <div key={i} className={`p-4 ${card}`}>
-              <div className="flex items-center justify-between gap-2">
-                <span className={`text-xs font-bold ${muted}`}>ท่อนที่ {i + 1}</span>
-                <span className="flex gap-1">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setEditing((a) => {
-                        if (!a || i === 0) return a;
-                        const bs = [...a.blocks];
-                        [bs[i - 1], bs[i]] = [bs[i], bs[i - 1]];
-                        return { ...a, blocks: bs };
-                      })
-                    }
-                    disabled={i === 0}
-                    className={`${btnSmGhost} disabled:opacity-30`}
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setEditing((a) => {
-                        if (!a || i === a.blocks.length - 1) return a;
-                        const bs = [...a.blocks];
-                        [bs[i], bs[i + 1]] = [bs[i + 1], bs[i]];
-                        return { ...a, blocks: bs };
-                      })
-                    }
-                    disabled={i === editing.blocks.length - 1}
-                    className={`${btnSmGhost} disabled:opacity-30`}
-                  >
-                    ↓
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditing((a) => (a ? { ...a, blocks: a.blocks.filter((_, j) => j !== i) } : a))}
-                    className={btnSmDanger}
-                  >
-                    ลบท่อน
-                  </button>
-                </span>
-              </div>
-              <input
-                value={b.heading}
-                onChange={(e) => patchBlock(i, { heading: e.target.value })}
-                placeholder="หัวข้อท่อนนี้ (เว้นว่างได้)"
-                className={`mt-2 font-bold ${input}`}
-              />
-              <textarea
-                value={b.text}
-                onChange={(e) => patchBlock(i, { text: e.target.value })}
-                rows={5}
-                placeholder="เนื้อหา… กด Enter ขึ้นบรรทัดใหม่ได้เลย หน้าเว็บจะขึ้นตาม"
-                className={`mt-2 leading-relaxed ${input}`}
-              />
-              <div className="mt-2 flex flex-wrap items-center gap-3">
-                <ImgBtn value={b.image} onChange={(v) => patchBlock(i, { image: v })} label="แนบรูปท่อนนี้" />
-                {b.image && (
-                  <label className="flex items-center gap-1.5 text-xs text-slate-600">
-                    รูปอยู่
-                    <select
-                      value={b.align ?? "left"}
-                      onChange={(e) => patchBlock(i, { align: e.target.value as "left" | "right" })}
-                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"
-                    >
-                      <option value="left">ซ้ายของข้อความ</option>
-                      <option value="right">ขวาของข้อความ</option>
-                    </select>
-                  </label>
-                )}
-              </div>
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={() => setEditing((a) => (a ? { ...a, blocks: [...a.blocks, { heading: "", text: "" }] } : a))}
-            className={btnNeutral}
-          >
-            ＋ เพิ่มท่อนเนื้อหา
-          </button>
+        {/* ── เนื้อหาแบบ rich text (สไตล์ lnwshop) ── */}
+        <section className="mt-4">
+          <p className={`mb-1.5 text-xs font-semibold text-slate-600`}>
+            เนื้อหา <span className={`font-normal ${faint}`}>— เลือกข้อความแล้วกดปุ่มจัดรูปแบบ · แทรกรูปได้ทั้งกดปุ่ม ลากมาวาง หรือวาง (paste) จากคลิปบอร์ด</span>
+          </p>
+          <RichEditor
+            key={`${editing.slug}|${isNew}`}
+            initialHtml={editing.html ?? ""}
+            onChange={(html) => patch({ html })}
+          />
         </section>
 
         {/* ── แถบบันทึกลอยล่าง ── */}
@@ -321,6 +266,7 @@ function ArticlesInner() {
   }
 
   /* ── รายการ ── */
+  const blogList = list.filter((a) => !isPageSlug(a.slug));
   return (
     <div className="mx-auto max-w-4xl">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -339,10 +285,76 @@ function ArticlesInner() {
 
       {msg && <p className="mt-3 text-sm font-semibold text-emerald-600">{msg}</p>}
 
+      {/* ── หน้าเว็บหลักที่เขียนทับได้ ── */}
+      <section className={`mt-5 p-4 ${card}`}>
+        <h2 className="text-sm font-semibold text-slate-800">📄 หน้าเว็บหลัก (เขียนทับได้)</h2>
+        <p className={`mt-0.5 text-xs ${faint}`}>
+          เขียนเนื้อหาของตัวเองทับหน้าสำเร็จรูปได้ — เผยแพร่เมื่อไหร่หน้านั้นใช้เนื้อหาที่เขียน ·
+          ลบทิ้ง = กลับไปใช้หน้าสำเร็จรูปเดิมทันที
+        </p>
+        <div className="mt-3 space-y-2">
+          {PAGE_OVERRIDES.map((pg) => {
+            const ov = list.find((a) => a.slug === pg.slug);
+            return (
+              <div key={pg.slug} className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-3">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold text-slate-800">{pg.label}</span>
+                  <span className={`block text-xs ${faint}`}>{pg.path}</span>
+                </span>
+                {ov ? (
+                  <>
+                    <span
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${
+                        ov.published
+                          ? "bg-amber-50 text-amber-700 ring-amber-200"
+                          : "bg-slate-100 text-slate-500 ring-slate-200"
+                      }`}
+                    >
+                      {ov.published ? "✍️ ใช้ฉบับที่เขียนเอง" : "ร่าง (หน้าเดิมยังแสดงอยู่)"}
+                    </span>
+                    {mayManage && (
+                      <>
+                        <button type="button" onClick={() => startEdit(ov)} className={`${btnSmGhost} font-bold`}>
+                          แก้ไข
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`ลบฉบับที่เขียนเอง แล้วกลับไปใช้หน้า ${pg.label} สำเร็จรูปเดิม?`))
+                              void fetch(`/api/admin/articles?slug=${pg.slug}`, { method: "DELETE" }).then(() => load());
+                          }}
+                          className={btnSmDanger}
+                        >
+                          กลับหน้าเดิม
+                        </button>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200">
+                      ใช้หน้าสำเร็จรูป
+                    </span>
+                    {mayManage && (
+                      <button type="button" onClick={() => startPage(pg.slug, pg.label)} className={`${btnNeutral} text-xs`}>
+                        ✍️ เขียนทับหน้านี้
+                      </button>
+                    )}
+                  </>
+                )}
+                <a href={pg.path} target="_blank" rel="noopener noreferrer" className={btnSmGhost}>
+                  ดู ↗
+                </a>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
       <div className={`mt-5 overflow-hidden ${card}`}>
         {loading ? (
           <p className="p-10 text-center text-sm text-slate-400">กำลังโหลด…</p>
-        ) : list.length === 0 ? (
+        ) : blogList.length === 0 ? (
           <div className="p-12 text-center">
             <span className="text-5xl">✍️</span>
             <p className="mt-3 text-sm font-semibold text-slate-600">ยังไม่มีบทความ — เริ่มเขียนเรื่องแรกเลย</p>
@@ -350,7 +362,7 @@ function ArticlesInner() {
           </div>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {list.map((a) => (
+            {blogList.map((a) => (
               <li key={a.slug} className="flex flex-wrap items-center gap-3 p-4 transition hover:bg-slate-50/70">
                 {a.cover ? (
                   /* eslint-disable-next-line @next/next/no-img-element */

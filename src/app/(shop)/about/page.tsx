@@ -2,6 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SHOP } from "@/lib/shop-info";
 import { LINE_URL } from "@/components/LineButton";
+import PageOverride from "@/components/PageOverride";
+import { getArticleServer } from "@/lib/server/articles-server";
+
+// เนื้อหาเขียนทับได้จากหลังบ้าน (บทความ → หน้าเว็บหลัก)
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: "เกี่ยวกับเรา",
@@ -27,7 +32,10 @@ const MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURICom
  * 🦆 เกี่ยวกับเรา — แบนเนอร์โลโก้ + การ์ดแยกเรื่อง (ที่อยู่ / LINE / โทร–อีเมล / โซเชียล)
  * LINE เป็นการ์ดเด่นสุดเพราะเป็นช่องทางหลักที่ลูกค้าใช้จริง
  */
-export default function AboutPage() {
+export default async function AboutPage() {
+  const override = await getArticleServer("page-about");
+  if (override) return <PageOverride article={override} />;
+
   return (
     <div className="mx-auto max-w-4xl px-4 pb-16 pt-8">
       {/* ── แบนเนอร์โลโก้ ── */}

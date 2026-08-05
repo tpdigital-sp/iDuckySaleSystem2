@@ -25,6 +25,11 @@ export interface Article {
   cover?: string;
   blocks: ArticleBlock[];
   tags: string[];
+  /**
+   * เนื้อหาแบบ rich text (HTML จากตัวเขียนแบบ lnwshop) — มีค่านี้แล้วใช้แทน blocks
+   * ผ่านการกรองแท็กอันตรายฝั่งเซิร์ฟเวอร์ก่อนบันทึกเสมอ
+   */
+  html?: string;
   /** ยังไม่เผยแพร่ = เห็นเฉพาะหลังบ้าน */
   published: boolean;
   author?: string;
@@ -68,6 +73,7 @@ export function articleOf(raw: Partial<Article> | null | undefined): Article | n
         image: str(b.image).trim() || undefined,
         align: b.align === "right" ? ("right" as const) : ("left" as const),
       })),
+    html: str(raw.html) || undefined,
     tags: (Array.isArray(raw.tags) ? raw.tags : []).map((t) => str(t).trim()).filter(Boolean),
     published: raw.published !== false,
     author: str(raw.author).trim() || undefined,
@@ -76,8 +82,32 @@ export function articleOf(raw: Partial<Article> | null | undefined): Article | n
   };
 }
 
+/**
+ * หน้าเว็บหลักที่ "เขียนทับ" ด้วยระบบบทความได้ — slug จองไว้
+ * มีบทความ slug นี้ + เผยแพร่ = หน้านั้นแสดงเนื้อหาที่เขียนแทนหน้าสำเร็จรูป · ลบ = กลับหน้าเดิม
+ */
+export const PAGE_OVERRIDES: { slug: string; label: string; path: string }[] = [
+  { slug: "page-how-to-order", label: "วิธีสั่งซื้อ", path: "/how-to-order" },
+  { slug: "page-about", label: "เกี่ยวกับเรา", path: "/about" },
+];
+export const isPageSlug = (slug: string) => PAGE_OVERRIDES.some((p) => p.slug === slug);
+
 /** เรียงใหม่สุดก่อน */
 export const byNewest = (a: Article, b: Article) => (a.createdAt < b.createdAt ? 1 : -1);
+
+/** แปลงเนื้อหาแบบท่อนเดิม → HTML สำหรับตัวเขียน rich text (ใช้ตอนเปิดแก้บทความเก่า) */
+export function blocksToHtml(blocks: ArticleBlock[]): string {
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return blocks
+    .map((b) => {
+      const parts: string[] = [];
+      if (b.heading) parts.push(`<h2>${esc(b.heading)}</h2>`);
+      if (b.image) parts.push(`<img src="${b.image}" alt="" />`);
+      if (b.text) parts.push(`<p>${esc(b.text).replace(/\n/g, "<br>")}</p>`);
+      return parts.join("");
+    })
+    .join("");
+}
 
 /** วันที่แบบไทยสั้น ๆ "5 ส.ค. 2569" */
 export function thaiDate(iso: string): string {

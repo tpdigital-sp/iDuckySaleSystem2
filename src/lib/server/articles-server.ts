@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { ARTICLE_CATEGORY, articleOf, byNewest, type Article } from "@/lib/articles";
+import { ARTICLE_CATEGORY, articleOf, byNewest, isPageSlug, type Article } from "@/lib/articles";
 
 /**
  * อ่านบทความฝั่งเซิร์ฟเวอร์ (หน้า /articles + generateMetadata)
@@ -13,7 +13,7 @@ function serverClient() {
   return url && key ? createClient(url, key, { auth: { persistSession: false } }) : null;
 }
 
-export const listArticlesServer = cache(async (): Promise<Article[]> => {
+const listAll = cache(async (): Promise<Article[]> => {
   const sb = serverClient();
   if (!sb) return [];
   const { data, error } = await sb.from("products").select("data").eq("category", ARTICLE_CATEGORY);
@@ -24,7 +24,12 @@ export const listArticlesServer = cache(async (): Promise<Article[]> => {
     .sort(byNewest);
 });
 
+/** เฉพาะบทความบล็อก (ตัดหน้าทับ page-* ออก — พวกนั้นแสดงในหน้าของตัวเอง) */
+export const listArticlesServer = cache(async (): Promise<Article[]> => {
+  return (await listAll()).filter((a) => !isPageSlug(a.slug));
+});
+
+/** หาได้ทั้งบทความบล็อกและหน้าทับ */
 export const getArticleServer = cache(async (slug: string): Promise<Article | null> => {
-  const list = await listArticlesServer();
-  return list.find((a) => a.slug === slug) ?? null;
+  return (await listAll()).find((a) => a.slug === slug) ?? null;
 });

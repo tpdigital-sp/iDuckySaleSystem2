@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import FreeShipNote from "./FreeShipNote";
+import PageOverride from "@/components/PageOverride";
+import { getArticleServer } from "@/lib/server/articles-server";
+
+// เนื้อหาเขียนทับได้จากหลังบ้าน (บทความ → หน้าเว็บหลัก) — เช็คของใหม่ทุก 5 นาที
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: "วิธีสั่งซื้อ",
@@ -116,7 +121,11 @@ const FAQS = [
   },
 ];
 
-export default function HowToOrderPage() {
+export default async function HowToOrderPage() {
+  // มีฉบับที่แอดมินเขียนเอง (เผยแพร่แล้ว) → ใช้แทนหน้าสำเร็จรูปทั้งหน้า
+  const override = await getArticleServer("page-how-to-order");
+  if (override) return <PageOverride article={override} />;
+
   return (
     <div className="mx-auto max-w-4xl px-4 pt-6">
       <div className="text-center">
