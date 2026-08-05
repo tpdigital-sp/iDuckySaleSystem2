@@ -27,8 +27,9 @@ export const getProductServer = cache(async (id: string): Promise<Product | unde
   if (!product) product = getProduct(id);
   if (!product) return undefined;
   if (sb && product.options?.some((o) => o.presetId)) {
-    const { data } = await sb.from("option_presets").select("data").order("label", { ascending: true });
-    const presets = (data ?? []).map((r) => r.data as OptionPreset);
+    // คลังตัวเลือกเก็บเป็นแถวพิเศษ category "__presets__" ในตาราง products
+    const { data } = await sb.from("products").select("data").eq("category", "__presets__");
+    const presets = (data ?? []).map((r) => r.data as OptionPreset).filter((p) => p?.id);
     if (presets.length) product = { ...product, options: resolveOptions(product.options, presets) };
   }
   return product;

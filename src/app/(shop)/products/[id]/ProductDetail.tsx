@@ -116,15 +116,6 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   useEffect(() => {
     if (rateMinQty > 1) setQty((q) => Math.max(q, rateMinQty));
   }, [rateMinQty]);
-  // ✨ จำนวนถึงขั้นต่ำของเรทไหน → สลับไปเรทนั้นให้อัตโนมัติ (เรทที่ขั้นต่ำสูงสุดที่จำนวนถึง)
-  // จนกว่าลูกค้าจะกดเลือกเรทเอง
-  useEffect(() => {
-    if (rateTouched || rates.length < 2) return;
-    const best = rates
-      .filter((r) => qty >= (r.minQty ?? 1))
-      .sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
-    if (best) setRateLabel((cur) => (cur === best.label ? cur : best.label));
-  }, [qty, rates, rateTouched]);
 
   // ── จำนวนลายที่คละ (เรทที่กำหนดขั้นต่ำต่อลาย) ──
   const [designs, setDesigns] = useState(1);
@@ -143,6 +134,23 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   }, [artFiles.length, maxDesigns, designsTouched]);
   const extraDesigns = rate?.extraDesignFee ? Math.max(0, designs - included) : 0;
   const designFee = extraDesigns * (rate?.extraDesignFee ?? 0);
+
+  // ✨ เลือกเรทให้อัตโนมัติจากจำนวน + จำนวนลาย (จนกว่าลูกค้าจะกดเลือกเรทเอง)
+  // ปกติเลือกเรทที่ขั้นต่ำสูงสุดที่จำนวนถึง (50 ชิ้น → เรท 2) · แต่ถ้าแนบลายมามากกว่า
+  // ที่เรทนั้นคละได้ (เช่น 3 ลาย แต่เรท 2 คละได้ 2) → เด้งไปเรทที่คละได้ (เรท 1)
+  useEffect(() => {
+    if (rateTouched || rates.length < 2) return;
+    const needDesigns = designsTouched ? designs : Math.max(artFiles.length, 1);
+    const fitsDesigns = (r: (typeof rates)[number]) => {
+      if (!r.minPerDesign) return true;
+      const maxD = r.extraDesignFee ? qty : Math.max(1, Math.floor(qty / r.minPerDesign));
+      return maxD >= needDesigns;
+    };
+    const qualified = rates.filter((r) => qty >= (r.minQty ?? 1));
+    const pool = qualified.filter(fitsDesigns);
+    const best = (pool.length ? pool : qualified).sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
+    if (best) setRateLabel((cur) => (cur === best.label ? cur : best.label));
+  }, [qty, rates, rateTouched, designs, designsTouched, artFiles.length]);
 
   const custom = product.custom?.enabled ? product.custom : null;
   const cW = parseFloat(customW), cH = parseFloat(customH);

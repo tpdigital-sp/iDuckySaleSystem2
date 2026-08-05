@@ -12,19 +12,19 @@ import {
   upsertPresetLocal,
 } from "./preset-store";
 
-/** ดึงคลังทั้งหมด (Supabase → ตาราง option_presets; ไม่มีคีย์ → localStorage/ตั้งต้น) */
+/**
+ * ดึงคลังทั้งหมด — เก็บเป็นแถวพิเศษ category "__presets__" ในตาราง products
+ * (ตาราง option_presets ไม่มีจริงใน Supabase — การบันทึกคลังเคยพังเงียบเพราะเหตุนี้)
+ * ไม่มีคีย์/ยังไม่มีแถว → localStorage/คลังตั้งต้น
+ */
 export async function fetchPresets(): Promise<OptionPreset[]> {
   const sb = getSupabase();
   if (!sb) return loadPresetsLocal();
-  const { data, error } = await sb
-    .from("option_presets")
-    .select("data")
-    .order("label", { ascending: true });
-  if (error || !data) return loadPresetsLocal();
-  // ตารางว่าง (ยังไม่ seed) → ใช้คลังตั้งต้นไปก่อน เพื่อให้ editor มีของให้ลิงก์
-  if (data.length === 0) return DEFAULT_PRESETS;
-  // กรอง reserved id (เช่น __shop_payment__ ที่เก็บตั้งค่าร้านในตารางเดียวกัน) ออกจากคลังตัวเลือก
-  return data.map((r) => r.data as OptionPreset).filter((p) => p && !p.id?.startsWith("__"));
+  const { data, error } = await sb.from("products").select("data").eq("category", "__presets__");
+  if (error || !data || data.length === 0) return loadPresetsLocal();
+  return (data.map((r) => r.data as OptionPreset).filter((p) => p?.id && p.label) as OptionPreset[]).sort((a, b) =>
+    a.label.localeCompare(b.label, "th")
+  );
 }
 
 /** บันทึก/อัปเดตคลังหนึ่งรายการ — ผ่าน API route (ตรวจสิทธิ์+เขียน Supabase); ยังไม่ตั้งค่า → localStorage */

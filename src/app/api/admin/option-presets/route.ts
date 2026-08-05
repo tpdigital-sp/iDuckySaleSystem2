@@ -22,8 +22,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "ข้อมูลคลังไม่ครบ" }, { status: 400 });
   }
 
-  const { error } = await sb.from("option_presets").upsert(
-    { id: preset.id, label: preset.label, data: preset },
+  // เก็บเป็นแถวพิเศษในตาราง products (ตาราง option_presets ไม่มีจริงใน Supabase —
+  // ใช้แพตเทิร์นเดียวกับตั้งค่าร้าน __shop_payment__ / บทความ __article_*)
+  const { error } = await sb.from("products").upsert(
+    {
+      id: `__preset_${preset.id}`,
+      name: `(คลังตัวเลือก) ${preset.label}`.slice(0, 120),
+      category: "__presets__",
+      price: 0,
+      data: preset,
+    },
     { onConflict: "id" }
   );
   return error
@@ -39,7 +47,7 @@ export async function DELETE(req: Request) {
   if (gate.res) return gate.res;
   const id = new URL(req.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "ไม่มี id" }, { status: 400 });
-  const { error } = await sb.from("option_presets").delete().eq("id", id);
+  const { error } = await sb.from("products").delete().eq("id", `__preset_${id}`).eq("category", "__presets__");
   return error
     ? NextResponse.json({ error: error.message }, { status: 500 })
     : NextResponse.json({ ok: true });

@@ -54,7 +54,9 @@ function AdminOptionsPageInner() {
       id: p.id,
       label: p.label.trim(),
       note: p.note?.trim() || undefined,
-      choices: p.choices.filter((c) => c.name.trim()).map((c) => ({ name: c.name.trim() })),
+      choices: p.choices
+        .filter((c) => c.name.trim())
+        .map((c) => ({ name: c.name.trim(), ...(c.extra ? { extra: c.extra } : {}) })),
     };
     if (!clean.label || clean.choices.length === 0) {
       setError("ต้องมีชื่อคลังและตัวเลือกอย่างน้อย 1 รายการ");
@@ -294,12 +296,37 @@ function AdminOptionsPageInner() {
                       value={c.name}
                       onChange={(e) =>
                         patch(selected, {
-                          choices: sel.choices.map((x, j) => (j === ci ? { name: e.target.value } : x)),
+                          choices: sel.choices.map((x, j) => (j === ci ? { ...x, name: e.target.value } : x)),
                         })
                       }
                       placeholder="ชื่อตัวเลือก เช่น เคลือบด้าน"
                       className="flex-1 rounded-md border border-transparent bg-slate-50 px-2.5 py-1.5 text-sm text-slate-700 outline-none focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-100"
                     />
+                    {/* บวกเพิ่มต่อหน่วยเมื่อเลือกตัวนี้ — มีผลกับทุกสินค้าที่ลิงก์คลังนี้ */}
+                    <label
+                      className="flex shrink-0 items-center gap-1 text-[11px] font-semibold text-slate-400"
+                      title="บวกเพิ่มต่อหน่วยเมื่อลูกค้าเลือกตัวเลือกนี้ (มีผลทุกสินค้าที่ลิงก์คลังนี้ · กลุ่มที่เป็นคอลัมน์ตารางราคาใช้ราคาในตารางแทน)"
+                    >
+                      +฿
+                      <input
+                        value={c.extra ?? ""}
+                        onChange={(e) => {
+                          const raw = e.target.value.trim();
+                          const n = Number(raw);
+                          patch(selected, {
+                            choices: sel.choices.map((x, j) =>
+                              j === ci
+                                ? { ...x, extra: raw === "" ? undefined : Number.isFinite(n) && n >= 0 ? n : x.extra }
+                                : x
+                            ),
+                          });
+                        }}
+                        inputMode="numeric"
+                        placeholder="0"
+                        className="w-14 rounded-md border border-transparent bg-slate-50 px-2 py-1.5 text-center text-xs text-slate-700 outline-none focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-100"
+                        aria-label={`ราคาบวกเพิ่มของตัวเลือกที่ ${ci + 1}`}
+                      />
+                    </label>
                     <button
                       type="button"
                       onClick={() => patch(selected, { choices: sel.choices.filter((_, j) => j !== ci) })}
