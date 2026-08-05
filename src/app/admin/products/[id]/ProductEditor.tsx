@@ -66,6 +66,14 @@ type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign
 /** เรทเพิ่มเติม — มีช่วงจำนวน+ตารางราคาของตัวเอง (คอลัมน์/หน่วยใช้ร่วมกับเรทหลัก) */
 type DraftExtraRate = DraftRateMeta & { id: string; tiers: DraftTier[]; cells: Record<string, string[]> };
 const EMPTY_RATE_META: DraftRateMeta = { label: "", desc: "", minQty: "", minPerDesign: "", extraDesignFee: "" };
+/** ชื่อเรทมาตรฐานของร้าน (ตามหน้ารายการราคา) — เลือกจากลิสต์ได้ ไม่ต้องพิมพ์เอง */
+const RATE_NAME_PRESETS = [
+  "เรทที่ 1 แบบคละดีเทล",
+  "เรทที่ 2 แบบไม่คละดีเทล",
+  "เรทราคาปลีก",
+  "เรทราคาส่ง",
+  "เรทตัวแทนจำหน่าย",
+];
 /** สินค้าที่ scrape มาจาก URL (จาก /api/admin/import) */
 type ScrapedProduct = {
   name: string; unit: string; price: number;
@@ -2119,12 +2127,30 @@ export default function ProductEditor({ product }: { product: Product }) {
                 <div className="flex flex-wrap items-end gap-3 rounded-2xl bg-teal-50/60 p-3 ring-1 ring-teal-100">
                   <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
                     ชื่อเรท (ลูกค้าเห็น)
-                    <input
-                      value={activeMeta.label}
-                      onChange={(e) => patchActiveMeta({ label: e.target.value })}
-                      placeholder={rateIdx === 0 ? "เช่น เรทที่ 1 แบบคละดีเทล" : `เรทที่ ${rateIdx + 1}`}
-                      className="w-52 rounded-xl bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
-                    />
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <select
+                        value={RATE_NAME_PRESETS.includes(activeMeta.label) ? activeMeta.label : ""}
+                        onChange={(e) => {
+                          if (e.target.value) patchActiveMeta({ label: e.target.value });
+                        }}
+                        className="rounded-xl bg-white px-2 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
+                        aria-label="เลือกชื่อเรทมาตรฐาน"
+                      >
+                        <option value="">— เลือกชื่อมาตรฐาน —</option>
+                        {RATE_NAME_PRESETS.map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        value={activeMeta.label}
+                        onChange={(e) => patchActiveMeta({ label: e.target.value })}
+                        placeholder="หรือพิมพ์ชื่อเอง"
+                        className="w-44 rounded-xl bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
+                        aria-label="ชื่อเรท"
+                      />
+                    </span>
                   </label>
                   <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
                     คำอธิบายสั้น ๆ

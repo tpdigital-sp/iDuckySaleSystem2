@@ -846,6 +846,14 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                       ? ` · คละเกินได้ ลายละ +${formatPrice(rate.extraDesignFee)}`
                       : " · เพิ่มลายได้ด้วยการเพิ่มจำนวนสั่ง"}
                   </p>
+                  {/* ลูกค้าแนบภาพลายมากกว่าจำนวนลายที่เลือก → เตือนให้ปรับ (ราคา/เงื่อนไขคิดตามจำนวนลาย) */}
+                  {artFiles.length > designs && (
+                    <p className="mt-1.5 rounded-xl bg-amber-100/80 px-3 py-2 text-[11px] font-bold leading-relaxed text-amber-900 ring-1 ring-amber-300">
+                      ⚠️ คุณแนบภาพลายมา {artFiles.length} รูป แต่เลือกคละ {designs} ลาย —
+                      ถ้าเป็นลายคนละแบบ กด + เพิ่ม &ldquo;คละกี่ลาย&rdquo; ให้ตรงด้วยนะครับ
+                      (ทางร้านนับจำนวนลายจริงจากไฟล์ ถ้าไม่ตรงแอดมินจะทักยืนยันก่อนเริ่มงาน)
+                    </p>
+                  )}
                 </div>
               )}
             </div>
