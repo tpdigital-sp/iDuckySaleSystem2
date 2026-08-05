@@ -1,35 +1,25 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import type { NavTile, TileSize } from "@/lib/home-nav";
 
 /**
- * การ์ดนำทางหน้าแรก — วางแบบเดียวกับหน้าเว็บหลักของร้าน
+ * การ์ดนำทางหน้าแรก — วางแบบเดียวกับแบนเนอร์เว็บหลักของร้าน
  *
- *   ┌──────────┬────────────────────┐
- *   │          │   กว้าง (span 3)    │
- *   │  ใหญ่     ├──────┬──────┬──────┤
- *   │ (span 2) │ เล็ก │ เล็ก │ เล็ก │
- *   └──────────┴──────┴──────┴──────┘
+ *   ╭────────────────────────────────╮  ← แถบสีมุมบนโค้ง
+ *   │ ┌────────┐ ┌────────────────┐ │
+ *   │ │        │ │  กว้าง (บนขวา)  │ │
+ *   │ │  ใหญ่   │ ├────┬────┬────┤ │
+ *   │ │        │ │เล็ก│เล็ก│เล็ก│ │  ← เล็กชิดขอบล่างเสมอกับใหญ่
+ *   │ └────────┘ └────┴────┴────┘ │
+ *   ╰◡◡◡◡◡◡◡◡◡◡◡◡◡◡◡◡◡◡◡◡◡◡╯  ← ขอบหยักคลื่น
  *
- * การ์ดที่ใส่รูปงานออกแบบไว้ = แสดงรูปตามสัดส่วนจริงของไฟล์ (ไม่ครอบ ไม่ยืด)
- * เพราะรูปพวกนี้มีกรอบ/ตัวหนังสือมาในภาพอยู่แล้ว
+ * สัดส่วนซ้าย 36% / ขวา 64% อิงงานออกแบบต้นฉบับ — ใช้ไฟล์ชุดเดิมแล้วความสูงสองฝั่งจะพอดีกัน
+ * การ์ดที่ใส่รูปงานออกแบบ = แสดงรูปตามสัดส่วนจริง (ไม่ครอบ ไม่ยืด) เพราะกรอบ/ตัวหนังสืออยู่ในภาพแล้ว
  *
  * ⚠️ คลาส Tailwind ต้องเขียนเป็นข้อความเต็ม ๆ (ต่อสตริงเองแล้ว build จะไม่เห็น)
  */
-
-const SPAN: Record<TileSize, string> = {
-  big: "col-span-2 row-span-2 md:col-span-2",
-  wide: "col-span-2 md:col-span-3",
-  small: "col-span-1",
-};
-
-/** ความสูงขั้นต่ำ — ใช้เฉพาะการ์ดที่ไม่ได้ใส่รูป (ไม่งั้นการ์ดจะแบน) */
-const MIN_H: Record<TileSize, string> = {
-  big: "min-h-56 md:min-h-72",
-  wide: "min-h-28 md:min-h-32",
-  small: "min-h-28 md:min-h-32",
-};
 
 const TITLE: Record<TileSize, string> = {
   big: "text-2xl md:text-3xl",
@@ -40,6 +30,12 @@ const EMOJI: Record<TileSize, string> = {
   big: "text-5xl md:text-6xl",
   wide: "text-4xl md:text-5xl",
   small: "text-3xl md:text-4xl",
+};
+/** ความสูงขั้นต่ำ — เฉพาะการ์ดที่ไม่ได้ใส่รูป (กันการ์ดแบน) */
+const MIN_H: Record<TileSize, string> = {
+  big: "min-h-56 md:min-h-72",
+  wide: "min-h-24 md:min-h-32",
+  small: "min-h-24 md:min-h-32",
 };
 
 function TileFace({ t }: { t: NavTile }) {
@@ -72,6 +68,78 @@ function TileFace({ t }: { t: NavTile }) {
   );
 }
 
+function Tile({ t, preview, extra = "" }: { t: NavTile; preview: boolean; extra?: string }) {
+  const cls = t.image
+    ? `group block overflow-hidden transition hover:-translate-y-0.5 ${extra}`
+    : `group relative overflow-hidden rounded-[1.5rem] bg-gradient-to-br ${t.gradient} ${MIN_H[t.size]} shadow-sm ring-1 ring-black/5 transition hover:-translate-y-0.5 hover:shadow-lg ${extra}`;
+  // หน้าตัวอย่างในหลังบ้าน — กดแล้วต้องไม่หลุดออกจากหน้าแก้ไข
+  return preview ? (
+    <div className={cls}>
+      <TileFace t={t} />
+    </div>
+  ) : (
+    <Link href={t.href} className={cls}>
+      <TileFace t={t} />
+    </Link>
+  );
+}
+
+/**
+ * แถวการ์ดเล็กแบบรูปล้วน — แบ่งความกว้างตามสัดส่วนรูปจริง ให้ทุกใบ "สูงเท่ากัน"
+ * (รูปงานออกแบบแต่ละใบสัดส่วนไม่เท่ากัน ถ้าแบ่ง 3 ช่องเท่ากันใบที่กว้างกว่าจะเตี้ยหลุดแถว)
+ */
+function SmallImgRow({ tiles, preview }: { tiles: NavTile[]; preview: boolean }) {
+  const [ratios, setRatios] = useState<Record<string, number>>({});
+  return (
+    <div className="flex gap-3 md:gap-4">
+      {tiles.map((t) => {
+        // เก็บสัดส่วนเมื่อรู้ขนาดจริง — เช็คทั้งตอน mount (รูปมาจากแคช onLoad ไม่ยิง) และตอนโหลดเสร็จ
+        const readRatio = (im: HTMLImageElement | null) => {
+          if (!im || !im.complete || im.naturalHeight === 0) return;
+          const ar = im.naturalWidth / im.naturalHeight;
+          setRatios((m) => (Math.abs((m[t.id] ?? 0) - ar) < 0.001 ? m : { ...m, [t.id]: ar }));
+        };
+        const inner = (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={t.image}
+              alt={`${t.title} ${t.subtitle}`.trim()}
+              ref={readRatio}
+              onLoad={(e) => readRatio(e.currentTarget)}
+              className="block w-full transition-transform duration-300 group-hover:scale-[1.03]"
+            />
+            <span className="sr-only">
+              {t.title} {t.subtitle}
+            </span>
+          </>
+        );
+        const style = { flexGrow: ratios[t.id] ?? 1.25, flexBasis: 0, minWidth: 0 };
+        return preview ? (
+          <div key={t.id} style={style} className="group overflow-hidden transition hover:-translate-y-0.5">
+            {inner}
+          </div>
+        ) : (
+          <Link key={t.id} href={t.href} style={style} className="group overflow-hidden transition hover:-translate-y-0.5">
+            {inner}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+/** จับ "เล็ก" ที่อยู่ติดกันมัดเป็นแถวละ 3 — ที่เหลือ (กว้าง) กินเต็มแถว */
+function chunkRest(rest: NavTile[]): NavTile[][] {
+  const out: NavTile[][] = [];
+  for (const t of rest) {
+    const last = out[out.length - 1];
+    if (t.size === "small" && last && last[0].size === "small" && last.length < 3) last.push(t);
+    else out.push([t]);
+  }
+  return out;
+}
+
 export default function NavTiles({
   tiles,
   preview = false,
@@ -87,25 +155,39 @@ export default function NavTiles({
 }) {
   if (!tiles.length) return null;
 
-  const grid = (
-    <div className="grid grid-cols-2 items-start gap-3 md:grid-cols-5 md:gap-4">
-      {tiles.map((t) => {
-        // การ์ดที่มีรูปงานออกแบบ: ปล่อยรูปล้วน ๆ ไม่ใส่กรอบ/สีพื้น (รูปมีกรอบมาเองแล้ว)
-        const cls = t.image
-          ? `group block overflow-hidden ${SPAN[t.size]} transition hover:-translate-y-0.5`
-          : `group relative overflow-hidden rounded-[1.75rem] bg-gradient-to-br ${t.gradient} ${SPAN[t.size]} ${MIN_H[t.size]} shadow-sm ring-1 ring-black/5 transition hover:-translate-y-0.5 hover:shadow-lg`;
+  const bigs = tiles.filter((t) => t.size === "big");
+  const rest = tiles.filter((t) => t.size !== "big");
+  const rows = chunkRest(rest);
 
-        // หน้าตัวอย่างในหลังบ้าน — กดแล้วต้องไม่หลุดออกจากหน้าแก้ไข
-        return preview ? (
-          <div key={t.id} className={cls}>
-            <TileFace t={t} />
-          </div>
-        ) : (
-          <Link key={t.id} href={t.href} className={cls}>
-            <TileFace t={t} />
-          </Link>
-        );
-      })}
+  const grid = (
+    <div className={bigs.length && rest.length ? "grid gap-3 md:grid-cols-[36%_1fr] md:gap-4" : "grid gap-3 md:gap-4"}>
+      {bigs.length > 0 && (
+        <div className="flex flex-col gap-3 md:gap-4">
+          {bigs.map((t) => (
+            <Tile key={t.id} t={t} preview={preview} />
+          ))}
+        </div>
+      )}
+      {rest.length > 0 && (
+        // justify-between: แถบกว้างชิดบน · แถวเล็กชิดล่าง — ขอบล่างเสมอกับการ์ดใหญ่แบบงานต้นฉบับ
+        <div className="flex flex-col justify-between gap-3 md:gap-4">
+          {rows.map((row, ri) =>
+            row[0].size === "small" ? (
+              row.every((t) => t.image) ? (
+                <SmallImgRow key={ri} tiles={row} preview={preview} />
+              ) : (
+                <div key={ri} className="grid grid-cols-3 gap-3 md:gap-4">
+                  {row.map((t) => (
+                    <Tile key={t.id} t={t} preview={preview} />
+                  ))}
+                </div>
+              )
+            ) : (
+              <Tile key={row[0].id} t={row[0]} preview={preview} />
+            )
+          )}
+        </div>
+      )}
     </div>
   );
 
@@ -113,13 +195,14 @@ export default function NavTiles({
 
   return (
     <div>
-      <div className="px-4 py-6 md:py-8" style={{ backgroundColor: bg }}>
-        <div className="mx-auto max-w-6xl">{grid}</div>
+      {/* แถบสีมุมบนโค้ง อยู่ในความกว้างหน้าเหมือนแบนเนอร์ต้นฉบับ (ไม่กินเต็มจอ) */}
+      <div className="rounded-t-[2rem] px-4 pb-6 pt-5 md:px-8 md:pb-8 md:pt-7" style={{ backgroundColor: bg }}>
+        {grid}
       </div>
       {wave && (
-        // ขอบหยักคลื่น — วาดด้วย CSS ครึ่งวงกลมเรียงกัน (ยืดตามความกว้างจอเอง)
+        // ขอบหยักคลื่น — ครึ่งวงกลมเรียงกัน ยืดตามความกว้างเอง
         <div
-          className="h-4 w-full md:h-6"
+          className="h-4 w-full md:h-5"
           style={{
             backgroundImage: `radial-gradient(circle at 50% 0, ${bg} 0 50%, transparent 51%)`,
             backgroundSize: "2rem 100%",

@@ -84,9 +84,9 @@ export default function HomePage() {
       </section>
 
       {/* การ์ดนำทาง — ทางลัดไปหน้าที่ลูกค้าใช้บ่อย (ตั้งค่าที่หลังบ้าน → เมนูหน้าร้าน)
-          แถบสีต้องกินเต็มความกว้างจอ จึงดันออกนอกกรอบ max-w-6xl ของหน้า */}
+          แถบสีอยู่ในความกว้างหน้า มุมบนโค้ง + ขอบหยักล่าง แบบแบนเนอร์เว็บหลัก */}
       {tiles.length > 0 && (
-        <section className={navStyle.tilesBg ? "mt-8 -mx-4 md:-mx-[calc(50vw-50%)]" : "mt-8"}>
+        <section className="mt-8">
           <NavTiles tiles={tiles} bg={navStyle.tilesBg} wave={navStyle.tilesWave} />
         </section>
       )}
