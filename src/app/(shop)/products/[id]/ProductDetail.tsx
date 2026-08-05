@@ -131,10 +131,11 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     [resolved, rate]
   );
   const rateMinQty = rate?.minQty ?? 1;
-  // เปลี่ยนเรทแล้วจำนวนต่ำกว่าขั้นต่ำของเรทใหม่ → ดันขึ้นให้ถึงขั้นต่ำ
+  // ลูกค้า "กดเลือกเรทเอง" แล้วจำนวนต่ำกว่าขั้นต่ำของเรทนั้น → ดันขึ้นให้ถึงขั้นต่ำ
+  // (โหมดอัตโนมัติไม่ดัน — เปิดหน้ามาเริ่มที่ 1 ชิ้นเสมอ เรทปรับตามจำนวนเอง)
   useEffect(() => {
-    if (rateMinQty > 1) setQty((q) => Math.max(q, rateMinQty));
-  }, [rateMinQty]);
+    if (rateTouched && rateMinQty > 1) setQty((q) => Math.max(q, rateMinQty));
+  }, [rateMinQty, rateTouched]);
 
   // ── จำนวนลายที่คละ (เรทที่กำหนดขั้นต่ำต่อลาย) ──
   const [designs, setDesigns] = useState(1);
