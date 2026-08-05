@@ -125,6 +125,21 @@ function LinkPicker({
   );
 }
 
+/** อัปโหลดรูปขึ้นคลังของเมนู (ใช้ร่วมกันทั้งปุ่มเลือกไฟล์และการลากวาง) */
+async function uploadNavImage(file: File): Promise<{ url?: string; error?: string }> {
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("productId", "sitenav");
+    const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+    const j = (await res.json()) as { url?: string; error?: string };
+    if (!res.ok || !j.url) return { error: j.error ?? "อัปโหลดไม่สำเร็จ" };
+    return { url: j.url };
+  } catch {
+    return { error: "อัปโหลดไม่สำเร็จ" };
+  }
+}
+
 /** ปุ่มอัปโหลดรูป — ใช้ได้ทั้งรูปการ์ด รูปโปรโมทในเมนู และรูปหัวคอลัมน์ */
 function ImageField({
   value,
@@ -143,19 +158,10 @@ function ImageField({
   async function upload(file: File) {
     setBusy(true);
     setErr("");
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("productId", "sitenav");
-      const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
-      const j = (await res.json()) as { url?: string; error?: string };
-      if (!res.ok || !j.url) setErr(j.error ?? "อัปโหลดไม่สำเร็จ");
-      else onChange(j.url);
-    } catch {
-      setErr("อัปโหลดไม่สำเร็จ");
-    } finally {
-      setBusy(false);
-    }
+    const r = await uploadNavImage(file);
+    if (r.url) onChange(r.url);
+    else setErr(r.error ?? "อัปโหลดไม่สำเร็จ");
+    setBusy(false);
   }
 
   return (
@@ -201,6 +207,10 @@ function NavEditorInner() {
   const [previewGroup, setPreviewGroup] = useState<string | null>(null);
   /** สินค้าจริง — ใช้แสดงตัวอย่างคอลัมน์ที่ตั้งให้ดึงอัตโนมัติ */
   const [products, setProducts] = useState<Product[]>([]);
+  /** โซนที่กำลังลากรูปค้างอยู่ ("gid" = ทั้งแถว · "gid|promoId" = ทับการ์ดใบนั้น) */
+  const [dragOver, setDragOver] = useState<string | null>(null);
+  const [dropBusy, setDropBusy] = useState(0);
+  const [dropErr, setDropErr] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
@@ -246,6 +256,32 @@ function NavEditorInner() {
     setCols(gid, (cols) => cols.map((c) => (c.id === cid ? { ...c, items: fn(c.items) } : c)));
   const setPromos = (gid: string, fn: (ps: MegaPromo[]) => MegaPromo[]) =>
     edit((n) => ({ ...n, mega: n.mega.map((g) => (g.id === gid ? { ...g, promos: fn(g.promos ?? []) } : g)) }));
+
+  /** ลากรูปมาวางในแถวภาพสินค้าแนะนำ — วางลงแถว = แทรกต่อท้าย · วางทับการ์ด = เปลี่ยนรูปใบนั้น */
+  async function dropPromoFiles(gid: string, files: File[], replacePromoId?: string) {
+    const imgs = files.filter((f) => f.type.startsWith("image/"));
+    setDragOver(null);
+    if (!imgs.length) return;
+    setDropErr("");
+    setDropBusy(imgs.length);
+    for (const f of imgs) {
+      const r = await uploadNavImage(f);
+      if (r.url) {
+        const url = r.url;
+        // ต้องเก็บใส่ตัวแปรใหม่ก่อน — updater ของ React ทำงานทีหลัง ถ้าอ้าง replacePromoId ตรง ๆ จะเจอค่าที่ถูกล้างไปแล้ว
+        const target = replacePromoId;
+        replacePromoId = undefined; // ลากมาหลายรูป: รูปแรกแทนที่ ที่เหลือแทรกต่อท้าย
+        if (target) {
+          setPromos(gid, (ps) => ps.map((x) => (x.id === target ? { ...x, image: url } : x)));
+        } else {
+          setPromos(gid, (ps) => [...ps, { id: newId("p"), image: url, href: "/products" }]);
+        }
+      } else {
+        setDropErr(r.error ?? "อัปโหลดไม่สำเร็จ");
+      }
+      setDropBusy((n) => n - 1);
+    }
+  }
 
   /** เลื่อนขึ้น/ลง — ใช้แทนการลาก (ลากบนมือถือพลาดง่าย) */
   function move<T>(list: T[], i: number, dir: -1 | 1): T[] {
@@ -693,14 +729,58 @@ function NavEditorInner() {
                       />
                     </div>
 
-                    {/* ── ภาพสินค้าแนะนำ (แถวบนของแผง) ── */}
-                    <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                    {/* ── ภาพสินค้าแนะนำ (แถวบนของแผง) — ลากรูปมาวางได้เลย ── */}
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragOver((cur) => (cur?.startsWith(`${g.id}|`) ? cur : g.id));
+                      }}
+                      onDragLeave={(e) => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        void dropPromoFiles(g.id, [...e.dataTransfer.files]);
+                      }}
+                      className={`rounded-xl p-3 ring-1 transition ${
+                        dragOver === g.id
+                          ? "bg-amber-50 ring-2 ring-amber-400 ring-dashed"
+                          : "bg-slate-50 ring-slate-200"
+                      }`}
+                    >
                       <p className="text-xs font-semibold text-slate-600">
                         🖼 ภาพสินค้าแนะนำ (แถวบนของแผง — {(g.promos ?? []).length} รูป)
                       </p>
+                      <p className={`mt-0.5 text-[11px] ${faint}`}>
+                        🖐 <strong className="text-slate-500">ลากรูปมาวางตรงนี้ได้เลย</strong> (หลายรูปพร้อมกันได้) —
+                        วางทับรูปเดิม = เปลี่ยนรูปนั้น · วางที่ว่าง = แทรกต่อท้าย
+                        {dropBusy > 0 && (
+                          <strong className="ml-1 text-amber-600">· ⏳ กำลังอัปโหลดอีก {dropBusy} รูป…</strong>
+                        )}
+                        {dropErr && <strong className="ml-1 text-rose-600">· {dropErr}</strong>}
+                      </p>
                       <div className="mt-2 flex flex-wrap gap-3">
                         {(g.promos ?? []).map((pm, pi) => (
-                          <div key={pm.id} className="w-40 rounded-lg bg-white p-2 ring-1 ring-slate-200">
+                          <div
+                            key={pm.id}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setDragOver(`${g.id}|${pm.id}`);
+                            }}
+                            onDragLeave={(e) => {
+                              e.stopPropagation();
+                              if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(g.id);
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              void dropPromoFiles(g.id, [...e.dataTransfer.files], pm.id);
+                            }}
+                            className={`w-40 rounded-lg bg-white p-2 ring-1 transition ${
+                              dragOver === `${g.id}|${pm.id}` ? "ring-2 ring-amber-400" : "ring-slate-200"
+                            }`}
+                          >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={pm.image} alt="" className="aspect-square w-full rounded object-cover" />
                             <div className="mt-1.5">
