@@ -16,16 +16,17 @@ import type { Product } from "@/lib/products";
  * โหลดข้อมูลสินค้าตอนเปิดแผงครั้งแรกเท่านั้น (ไม่ถ่วงทุกหน้า)
  */
 
+/** ป้ายท้ายรายการ ตามสไตล์เว็บหลักของร้าน — N กรอบแดงโปร่ง · H พื้นแดงทึบ */
 const BADGE_STYLE: Record<Exclude<MegaBadge, "">, string> = {
-  N: "bg-rose-500",
-  H: "bg-orange-500",
+  N: "border border-red-500 text-red-500",
+  H: "border border-red-500 bg-red-500 text-white",
 };
 
 function Badge({ badge }: { badge?: MegaBadge }) {
   if (!badge) return null;
   return (
     <span
-      className={`ml-1.5 inline-grid h-4 w-4 place-items-center rounded text-[10px] font-bold text-white ${BADGE_STYLE[badge]}`}
+      className={`ml-1.5 inline-block shrink-0 rounded-[5px] px-[5px] py-px text-[10px] font-semibold leading-4 ${BADGE_STYLE[badge]}`}
       title={badge === "N" ? "มาใหม่" : "ขายดี"}
     >
       {badge}
@@ -80,7 +81,7 @@ export function MegaPanel({
       )}
 
       <div className="min-w-0 flex-1">
-        {group.heading && <p className="mb-3 text-base font-extrabold text-stone-800">{group.heading}</p>}
+        {group.heading && <p className="mb-3 text-[16px] font-semibold text-stone-800">{group.heading}</p>}
 
         {/* แถวภาพสินค้าแนะนำ */}
         {(group.promos?.length ?? 0) > 0 && (
@@ -113,12 +114,12 @@ export function MegaPanel({
                 {col.href ? (
                   <A
                     href={col.href}
-                    className="block text-sm font-extrabold text-stone-800 transition hover:text-amber-600"
+                    className="block text-[16px] font-semibold text-stone-800 transition hover:text-[#26b6cf]"
                   >
                     {col.title}
                   </A>
                 ) : (
-                  <p className="text-sm font-extrabold text-stone-800">{col.title}</p>
+                  <p className="text-[16px] font-semibold text-stone-800">{col.title}</p>
                 )}
 
                 <ul className="mt-2 space-y-1.5">
@@ -126,7 +127,7 @@ export function MegaPanel({
                     <li key={it.id}>
                       <A
                         href={it.href}
-                        className="flex items-start text-[0.82rem] leading-snug text-stone-600 transition hover:text-amber-600"
+                        className="flex w-fit items-start text-sm leading-snug text-stone-600 transition duration-200 hover:translate-x-[5px] hover:text-[#26b6cf]"
                       >
                         {/* ชื่อสินค้าจริงยาวกว่าเมนูที่พิมพ์เอง — ตัด 2 บรรทัดแทนตัดกลางคำ */}
                         <span className="line-clamp-2">{it.label}</span>
@@ -266,7 +267,7 @@ export function MegaMobile({ groups, onNavigate }: { groups: MegaGroup[]; onNavi
                           <Link
                             href={it.href}
                             onClick={onNavigate}
-                            className="flex items-start py-0.5 text-[0.82rem] leading-snug text-stone-600"
+                            className="flex items-start py-0.5 text-sm leading-snug text-stone-600"
                           >
                             <span className="line-clamp-2">{it.label}</span>
                             <Badge badge={it.badge} />
