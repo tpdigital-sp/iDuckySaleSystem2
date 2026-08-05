@@ -373,42 +373,65 @@ function NavEditorInner() {
         <h2 className="text-sm font-semibold text-slate-800">🗺 หน้าแรกมีอะไรบ้าง — กดเพื่อไปแก้ส่วนนั้น</h2>
         <p className={`mt-0.5 text-xs ${faint}`}>เรียงจากบนลงล่างตามที่ลูกค้าเห็นจริง</p>
         <div className="mt-3 space-y-1.5">
-          {(
-            [
-              ["1", "🔗", "แถบเมนูด้านบน", "โลโก้ร้าน + ลิงก์หน้า (หน้าแรก · สินค้าทั้งหมด …)", "menu" as Tab, true],
-              ["2", "🗂", "แถบหมวดสินค้า (เมนูดรอปดาวน์)", "DIGITAL PRINT · SIMPLE GIFTS … ชี้เมาส์แล้วกางแผงใหญ่", "mega" as Tab, true],
-              ["3", "🎉", "แบนเนอร์ใหญ่", "ป้ายโปร + หัวข้อ + คำโปรย + ปุ่ม (แก้ข้อความได้แล้ว)", "hero" as Tab, nav.hero.on],
-              ["4", "🧱", "การ์ดนำทาง", "How To Order · All Product · Review … เลื่อนขึ้น-ลงได้ 3 ตำแหน่ง", "tiles" as Tab, nav.tilesOn],
-              ["5", "⭐", "จุดเด่นร้าน", "แถวการ์ดเล็ก (ลายของคุณเอง · ส่งไวทั่วไทย …)", "perks" as Tab, nav.perksOn],
-            ] as [string, string, string, string, Tab, boolean][]
-          ).map(([no, icon, title, desc, key, on]) => (
-            <button
-              key={no}
-              type="button"
-              onClick={() => setTab(key)}
-              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition ${
-                tab === key ? "bg-amber-50 ring-1 ring-amber-300" : "bg-slate-50 hover:bg-slate-100"
-              }`}
-            >
-              <span className="w-4 shrink-0 text-center text-xs font-bold text-slate-300">{no}</span>
-              <span className="shrink-0 text-base">{icon}</span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-bold text-slate-800">{title}</span>
-                <span className={`block truncate text-[11px] ${faint}`}>{desc}</span>
-              </span>
-              {!on && (
-                <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-500">
-                  ปิดอยู่
-                </span>
-              )}
-              <span className="shrink-0 text-xs text-slate-300">แก้ →</span>
-            </button>
-          ))}
+          {(() => {
+            // ลำดับเดียวกับหน้าแรกจริง — บล็อกการ์ดนำทางแทรกตรงตำแหน่งที่ตั้งไว้ (top / hero / features)
+            type Row = { icon: string; title: string; desc: string; key?: Tab; href?: string; on: boolean };
+            const tilesRow: Row = {
+              icon: "🧱",
+              title: "การ์ดนำทาง",
+              desc: "How To Order · All Product · Review · เกี่ยวกับเรา · Member Card",
+              key: "tiles",
+              on: nav.tilesOn,
+            };
+            const pos = nav.tilesPos ?? "hero";
+            const rows: Row[] = [
+              { icon: "🔗", title: "แถบเมนูด้านบน", desc: "โลโก้ร้าน + ลิงก์หน้า (หน้าแรก · สินค้าทั้งหมด …)", key: "menu", on: true },
+              { icon: "🗂", title: "แถบหมวดสินค้า (เมนูดรอปดาวน์)", desc: "DIGITAL PRINT · SIMPLE GIFTS … ชี้เมาส์แล้วกางแผงใหญ่", key: "mega", on: nav.mega.some((g) => !g.hidden) },
+              ...(pos === "top" ? [tilesRow] : []),
+              { icon: "🎉", title: "แบนเนอร์ใหญ่", desc: "ป้ายโปร + หัวข้อ + คำโปรย + ปุ่ม", key: "hero", on: nav.hero.on },
+              ...(pos === "hero" ? [tilesRow] : []),
+              { icon: "⭐", title: "จุดเด่นร้าน", desc: "แถวการ์ดเล็ก (ลายของคุณเอง · ส่งไวทั่วไทย …)", key: "perks", on: nav.perksOn },
+              ...(pos === "features" ? [tilesRow] : []),
+              { icon: "🗂️", title: "หมวดหมู่สินค้า", desc: "การ์ดหมวด (สติกเกอร์ · แก้วน้ำ …) — แก้ที่ตั้งค่าระบบ", href: "/admin/settings", on: true },
+              { icon: "🔥", title: "สินค้าขายดี", desc: "เรียงอัตโนมัติจากยอดขายจริง — ตั้งยอดตั้งต้นในหน้าแก้ไขสินค้า", href: "/admin/products", on: true },
+              { icon: "💛", title: "สินค้าแนะนำ", desc: "ติ๊ก “สินค้าแนะนำ” ในหน้าแก้ไขสินค้าแต่ละตัว", href: "/admin/products", on: true },
+            ];
+            return rows.map((r, i) => {
+              const active = r.key && tab === r.key;
+              const inner = (
+                <>
+                  <span className="w-4 shrink-0 text-center text-xs font-bold text-slate-300">{i + 1}</span>
+                  <span className="shrink-0 text-base">{r.icon}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-bold text-slate-800">{r.title}</span>
+                    <span className={`block truncate text-[11px] ${faint}`}>{r.desc}</span>
+                  </span>
+                  {!r.on && (
+                    <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                      ปิดอยู่
+                    </span>
+                  )}
+                  <span className="shrink-0 text-xs text-slate-300">{r.href ? "ไปหน้านั้น ↗" : "แก้ →"}</span>
+                </>
+              );
+              const cls = `flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition ${
+                active ? "bg-amber-50 ring-1 ring-amber-300" : r.href ? "bg-white ring-1 ring-slate-100 hover:bg-slate-50" : "bg-slate-50 hover:bg-slate-100"
+              }`;
+              return r.href ? (
+                <Link key={r.title} href={r.href} className={cls}>
+                  {inner}
+                </Link>
+              ) : (
+                <button key={r.title} type="button" onClick={() => r.key && setTab(r.key)} className={cls}>
+                  {inner}
+                </button>
+              );
+            });
+          })()}
         </div>
         <p className={`mt-2.5 text-[11px] ${faint}`}>
-          💡 ส่วนอื่นของหน้าแรกที่ไม่ได้อยู่หน้านี้: <strong className="font-semibold text-slate-600">หมวดหมู่สินค้า</strong> แก้ที่{" "}
-          <Link href="/admin/settings" className="font-semibold text-amber-600 underline">ตั้งค่าระบบ</Link> ·{" "}
-          <strong className="font-semibold text-slate-600">สินค้าแนะนำ/ขายดี</strong> ตั้งในหน้าแก้ไขสินค้าแต่ละตัว
+          💡 ลำดับนี้ตรงกับที่ลูกค้าเลื่อนดูจริง — เปลี่ยนตำแหน่ง<strong className="font-semibold text-slate-600">การ์ดนำทาง</strong>
+          ได้ในแท็บของมัน แล้วแถวในผังนี้จะขยับตาม
         </p>
       </section>
 
@@ -466,11 +489,13 @@ function NavEditorInner() {
       <div className="mt-5 flex flex-wrap gap-2">
         {(
           [
-            ["menu", `🔗 แถบเมนู + โลโก้ (${nav.menu.length})`],
-            ["mega", `🗂 หมวดสินค้า (${nav.mega.length})`],
-            ["hero", "🎉 แบนเนอร์ใหญ่"],
-            ["tiles", `🧱 การ์ดนำทาง (${nav.tiles.length})`],
-            ["perks", `⭐ จุดเด่นร้าน (${nav.perks.length})`],
+            ["menu", `1 · 🔗 แถบเมนู + โลโก้ (${nav.menu.length})`],
+            ["mega", `2 · 🗂 หมวดสินค้า (${nav.mega.length})`],
+            ...((nav.tilesPos ?? "hero") === "top"
+              ? ([["tiles", `3 · 🧱 การ์ดนำทาง (${nav.tiles.length})`], ["hero", "4 · 🎉 แบนเนอร์ใหญ่"], ["perks", `5 · ⭐ จุดเด่นร้าน (${nav.perks.length})`]] as [Tab, string][])
+              : (nav.tilesPos ?? "hero") === "features"
+                ? ([["hero", "3 · 🎉 แบนเนอร์ใหญ่"], ["perks", `4 · ⭐ จุดเด่นร้าน (${nav.perks.length})`], ["tiles", `5 · 🧱 การ์ดนำทาง (${nav.tiles.length})`]] as [Tab, string][])
+                : ([["hero", "3 · 🎉 แบนเนอร์ใหญ่"], ["tiles", `4 · 🧱 การ์ดนำทาง (${nav.tiles.length})`], ["perks", `5 · ⭐ จุดเด่นร้าน (${nav.perks.length})`]] as [Tab, string][])),
           ] as [Tab, string][]
         ).map(([k, label]) => (
           <button
