@@ -73,6 +73,29 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   // badge แจ้งจำนวนประเมินความพึงพอใจใหม่ที่ยังไม่ได้เปิดดู (นับต่อเครื่องด้วย localStorage)
   const [newRatings, setNewRatings] = useState(0);
 
+  // กลุ่มเมนูที่หุบอยู่ — จำไว้ต่อเครื่อง (เมนูเยอะ หุบกลุ่มที่ไม่ได้ใช้ให้สั้นลง)
+  const [foldedGroups, setFoldedGroups] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    try {
+      setFoldedGroups(JSON.parse(localStorage.getItem("admin.sidebar.folded") ?? "{}") as Record<string, boolean>);
+    } catch {}
+  }, []);
+  function toggleGroup(key: string) {
+    setFoldedGroups((m) => {
+      const next = { ...m, [key]: !m[key] };
+      try {
+        localStorage.setItem("admin.sidebar.folded", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }
+  // เข้าหน้าไหน กางกลุ่มของหน้านั้นให้เอง (ไม่งั้นไฮไลต์หน้าปัจจุบันหายไปในกลุ่มที่หุบ)
+  useEffect(() => {
+    const g = MENU.filter((m) => pathname === m.href || pathname.startsWith(`${m.href}/`))
+      .sort((a, b) => b.href.length - a.href.length)[0]?.group;
+    if (g) setFoldedGroups((m) => (m[g] ? { ...m, [g]: false } : m));
+  }, [pathname]);
+
   useEffect(() => {
     if (pathname === "/admin/login" || !perms.includes("orders.viewAll")) return;
     let active = true;
@@ -164,22 +187,33 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       {MENU_GROUPS.flatMap(({ key, label }, groupIdx) => {
         const items = menu.filter((m) => m.group === key);
         if (!items.length) return [];
+        const folded = !!foldedGroups[key];
         return [
           rail ? (
             groupIdx > 0 ? (
               <div key={`h-${key}`} className="mx-2 my-2 border-t border-slate-200" aria-hidden="true" />
             ) : null
           ) : (
-            <p
+            <button
               key={`h-${key}`}
-              className={`px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 ${
-                groupIdx > 0 ? "pt-4" : "pt-1"
+              type="button"
+              onClick={() => toggleGroup(key)}
+              aria-expanded={!folded}
+              title={folded ? "กางกลุ่มนี้" : "หุบกลุ่มนี้"}
+              className={`flex w-full items-center gap-1.5 rounded-lg px-3 pb-1 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400 transition hover:text-slate-600 ${
+                groupIdx > 0 ? "mt-4" : "mt-1"
               }`}
             >
+              <span className={`text-[8px] transition-transform ${folded ? "-rotate-90" : ""}`}>▼</span>
               {label}
-            </p>
+              {folded && (
+                <span className="ml-auto rounded-full bg-slate-100 px-1.5 text-[10px] font-bold text-slate-400">
+                  {items.length}
+                </span>
+              )}
+            </button>
           ),
-          ...items.map((m) => {
+          ...(folded && !rail ? [] : items).map((m) => {
         const active = m.href === activeHref;
         const badge = m.href === "/admin/ratings" && newRatings > 0;
         return (
