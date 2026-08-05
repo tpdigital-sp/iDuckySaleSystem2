@@ -352,10 +352,10 @@ function NavEditorInner() {
 
   const shownTiles = nav.tilesOn ? nav.tiles.filter((t) => !t.hidden) : [];
 
-  if (loading) return <div className={`mx-auto max-w-5xl p-10 text-center text-sm ${muted} ${card}`}>กำลังโหลด…</div>;
+  if (loading) return <div className={`mx-auto max-w-7xl p-10 text-center text-sm ${muted} ${card}`}>กำลังโหลด…</div>;
 
   return (
-    <div className="mx-auto max-w-5xl pb-24">
+    <div className="mx-auto max-w-7xl pb-24">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className={h1}>🧭 หน้าร้าน — เมนู &amp; หน้าแรก</h1>
@@ -1544,7 +1544,7 @@ function NavEditorInner() {
 
       {/* ── แถบบันทึก (ลอยล่าง — เลื่อนแก้ไปเรื่อย ๆ ก็ยังกดบันทึกได้) ── */}
       <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-end gap-3">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-end gap-3">
           {msg && (
             <span className={`text-sm font-semibold ${msg.includes("✓") ? "text-emerald-600" : "text-rose-600"}`}>
               {msg}
