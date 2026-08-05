@@ -184,7 +184,9 @@ export default function NavTiles({
                 </div>
               )
             ) : (
-              <Tile key={row[0].id} t={row[0]} preview={preview} />
+              // แถบกว้างแบบรูป: ไฟล์งานมีที่ว่างโปร่งใสด้านบนเผื่อสติกเกอร์ยื่น (~11.6% ของสูง)
+              // ดันขึ้นให้ "แถบขาว" เสมอกับขอบบนการ์ดใหญ่ แบบเดียวกับ fix-position-img ของเว็บต้นฉบับ
+              <Tile key={row[0].id} t={row[0]} preview={preview} extra={row[0].image ? "md:-mt-[3.2%]" : ""} />
             )
           )}
         </div>
