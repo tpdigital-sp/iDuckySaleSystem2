@@ -54,6 +54,12 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   const { addItem } = useCart();
   const [imageIndex, setImageIndex] = useState(0);
   const [qty, setQty] = useState(1);
+  // ข้อความในช่องจำนวนระหว่างพิมพ์ — แยกจาก qty เพื่อให้ลบจนว่างแล้วพิมพ์ใหม่ได้
+  const [qtyText, setQtyText] = useState("1");
+  useEffect(() => {
+    // qty เปลี่ยนจากปุ่ม +/− หรือเด้งตามขั้นต่ำเรท → ปรับข้อความตาม (ตอนช่องว่างอยู่ = กำลังพิมพ์ ไม่ทับ)
+    setQtyText((t) => (t === "" ? t : String(qty)));
+  }, [qty]);
   const [added, setAdded] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [selections, setSelections] = useState<Record<string, string>>(() =>
@@ -858,11 +864,15 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                   <input
                     type="text"
                     inputMode="numeric"
-                    value={qty}
+                    value={qtyText}
                     onChange={(e) => {
-                      const n = parseInt(e.target.value.replace(/\D/g, ""), 10);
-                      setQty(Number.isFinite(n) && n > 0 ? Math.min(n, 99999) : 1);
+                      // ปล่อยให้ลบจนว่างได้ระหว่างพิมพ์ (เดิมยัด 1 กลับทันที ลบแล้วพิมพ์ใหม่ไม่ได้)
+                      const raw = e.target.value.replace(/\D/g, "").slice(0, 5);
+                      setQtyText(raw);
+                      const n = parseInt(raw, 10);
+                      if (Number.isFinite(n) && n > 0) setQty(Math.min(n, 99999));
                     }}
+                    onBlur={() => setQtyText(String(qty))}
                     className="w-16 bg-transparent text-center text-sm font-bold focus:outline-none"
                     aria-label="จำนวน"
                   />
