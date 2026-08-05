@@ -53,7 +53,7 @@ type DraftBody = {
   align: "left" | "right";
 };
 /** กฎ: เมื่อเลือก [whenLabel = whenChoice] → จำกัดกลุ่ม [limitLabel] เหลือเฉพาะ allow[] */
-type DraftRule = { whenLabel: string; whenChoice: string; limitLabel: string; allow: string[] };
+type DraftRule = { whenLabel: string; whenChoice: string; whenChoices: string[]; limitLabel: string; allow: string[] };
 type DraftTier = { upTo: string; label: string };
 type DraftPricing = {
   enabled: boolean;
@@ -239,6 +239,7 @@ function toDraft(p: Product): Draft {
     rules: (p.rules ?? []).map((r) => ({
       whenLabel: r.when.label,
       whenChoice: r.when.choice,
+      whenChoices: r.when.choices?.length ? [...r.when.choices] : r.when.choice ? [r.when.choice] : [],
       limitLabel: r.limit.label,
       allow: [...r.limit.allow],
     })),
@@ -510,6 +511,8 @@ export default function ProductEditor({ product }: { product: Product }) {
         rules: d.rules.map((r) => ({
           ...r,
           whenChoice: r.whenLabel === group.label && r.whenChoice === oldName ? newName : r.whenChoice,
+          whenChoices:
+            r.whenLabel === group.label ? r.whenChoices.map((a) => (a === oldName ? newName : a)) : r.whenChoices,
           allow: r.limitLabel === group.label ? r.allow.map((a) => (a === oldName ? newName : a)) : r.allow,
         })),
       };
@@ -781,11 +784,15 @@ export default function ProductEditor({ product }: { product: Product }) {
 
     // เก็บเฉพาะกฎที่กรอกครบและตัวเลือกที่อนุญาตมีอย่างน้อย 1
     const rules: OptionRule[] = draft.rules
-      .filter((r) => r.whenLabel && r.whenChoice && r.limitLabel && r.allow.length > 0)
-      .map((r) => ({
-        when: { label: r.whenLabel, choice: r.whenChoice },
-        limit: { label: r.limitLabel, allow: [...r.allow] },
-      }));
+      .filter((r) => r.whenLabel && (r.whenChoices.length > 0 || r.whenChoice) && r.limitLabel && r.allow.length > 0)
+      .map((r) => {
+        const whenChoices = r.whenChoices.length ? [...r.whenChoices] : [r.whenChoice];
+        return {
+          // choice ตัวแรกคงไว้เพื่อ backward-compat · choices = เงื่อนไขจริง (หลายตัวในกฎเดียว)
+          when: { label: r.whenLabel, choice: whenChoices[0], choices: whenChoices },
+          limit: { label: r.limitLabel, allow: [...r.allow] },
+        };
+      });
 
     // สร้างตารางราคาขั้นบันได (ถ้าเปิดใช้) — รองรับทั้งแบบมี driver และแบบตามจำนวนล้วน (driverLabels ว่าง)
     let pricing: PriceMatrix | undefined;
@@ -2979,7 +2986,7 @@ export default function ProductEditor({ product }: { product: Product }) {
           <button
             type="button"
             onClick={() =>
-              patch({ rules: [...draft.rules, { whenLabel: "", whenChoice: "", limitLabel: "", allow: [] }] })
+              patch({ rules: [...draft.rules, { whenLabel: "", whenChoice: "", whenChoices: [], limitLabel: "", allow: [] }] })
             }
             className="rounded-full bg-amber-500 px-4 py-1.5 text-xs font-bold text-white hover:bg-amber-600"
           >
@@ -3019,7 +3026,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                   <span className="font-semibold">เมื่อเลือก</span>
                   <select
                     value={rule.whenLabel}
-                    onChange={(e) => setRule({ whenLabel: e.target.value, whenChoice: "" })}
+                    onChange={(e) => setRule({ whenLabel: e.target.value, whenChoice: "", whenChoices: [] })}
                     className="min-w-0 max-w-full rounded-xl bg-white px-2 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
                     aria-label={`กลุ่มเงื่อนไขของกฎที่ ${ri + 1}`}
                   >
@@ -3028,20 +3035,69 @@ export default function ProductEditor({ product }: { product: Product }) {
                       <option key={o.label} value={o.label}>{o.label}</option>
                     ))}
                   </select>
-                  <span className="font-semibold">=</span>
-                  <select
-                    value={rule.whenChoice}
-                    onChange={(e) => setRule({ whenChoice: e.target.value })}
-                    disabled={!whenGroup}
-                    className="min-w-0 max-w-full rounded-xl bg-white px-2 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:opacity-50"
-                    aria-label={`ตัวเลือกเงื่อนไขของกฎที่ ${ri + 1}`}
-                  >
-                    <option value="">— เลือก —</option>
-                    {whenGroup?.choices.map((c) => (
-                      <option key={c.name} value={c.name}>{c.name}</option>
-                    ))}
-                  </select>
+                  <span className="font-semibold">= ตัวไหนก็ได้ใน:</span>
+                  {whenGroup && (
+                    <span className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setRule({ whenChoices: whenGroup.choices.map((c) => c.name).filter(Boolean) })}
+                        className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500 hover:bg-slate-200"
+                      >
+                        ทั้งหมด
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setRule({
+                            whenChoices: whenGroup.choices
+                              .map((c) => c.name)
+                              .filter((nm) => nm && !rule.whenChoices.includes(nm)),
+                          })
+                        }
+                        className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500 hover:bg-slate-200"
+                        title="สลับ: ตัวที่ติ๊กอยู่เอาออก ตัวที่ไม่ได้ติ๊กใส่แทน — สะดวกกับ 'ทุกตัวยกเว้น…'"
+                      >
+                        กลับด้าน
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRule({ whenChoices: [] })}
+                        className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500 hover:bg-slate-200"
+                      >
+                        ล้าง
+                      </button>
+                      <span className="text-[11px] text-slate-400">ติ๊กแล้ว {rule.whenChoices.length}</span>
+                    </span>
+                  )}
                 </div>
+                {whenGroup && (
+                  <div className="mt-2 flex max-h-40 flex-wrap gap-1.5 overflow-y-auto rounded-xl bg-slate-50 p-2 ring-1 ring-slate-100">
+                    {whenGroup.choices.map((c) => {
+                      const checked = rule.whenChoices.includes(c.name);
+                      return (
+                        <button
+                          key={c.name}
+                          type="button"
+                          onClick={() =>
+                            setRule({
+                              whenChoices: checked
+                                ? rule.whenChoices.filter((n) => n !== c.name)
+                                : [...rule.whenChoices, c.name],
+                            })
+                          }
+                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                            checked
+                              ? "bg-teal-600 text-white shadow"
+                              : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-teal-50"
+                          }`}
+                        >
+                          {checked ? "✓ " : ""}
+                          {c.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-600">
                   <span className="font-semibold">→ จำกัดกลุ่ม</span>

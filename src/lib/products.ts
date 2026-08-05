@@ -81,8 +81,20 @@ export interface BodySection {
  * ถ้ากลุ่มไหนเหลือตัวเลือกเดียว หน้าเว็บจะแสดงเป็นข้อความล็อกไว้ ลูกค้าสั่งผิดไม่ได้
  */
 export interface OptionRule {
-  when: { label: string; choice: string };
+  /**
+   * เงื่อนไข: กลุ่ม + ตัวเลือกที่ทำให้กฎทำงาน
+   * choices (ใหม่) = หลายตัวเลือกในกฎเดียว เช่น สีพิเศษ 44 สี → ชนิดพิเศษ (กฎเดียวจบ)
+   * choice (เดิม) = ตัวเดียว — ยังอ่านได้เพื่อข้อมูลเก่า
+   */
+  when: { label: string; choice: string; choices?: string[] };
   limit: { label: string; allow: string[] };
+}
+
+/** ตัวเลือกที่เลือกอยู่เข้าเงื่อนไขของกฎนี้ไหม (รองรับทั้งแบบตัวเดียวและหลายตัว) */
+export function ruleWhenMatches(rule: OptionRule, selections: Record<string, string>): boolean {
+  const cur = selections[rule.when.label];
+  if (!cur) return false;
+  return rule.when.choices?.length ? rule.when.choices.includes(cur) : cur === rule.when.choice;
 }
 
 /** ช่วงจำนวน (tier) สำหรับราคาขั้นบันได */
@@ -1995,7 +2007,7 @@ export function allowedChoices(
   let allowed = group.choices.map((c) => c.name);
   for (const rule of product.rules ?? []) {
     if (rule.limit.label !== label) continue;
-    if (selections[rule.when.label] === rule.when.choice) {
+    if (ruleWhenMatches(rule, selections)) {
       allowed = allowed.filter((n) => rule.limit.allow.includes(n));
     }
   }
