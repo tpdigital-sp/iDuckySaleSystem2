@@ -56,7 +56,16 @@ export default function HomePage() {
       {navBlock("top")}
 
       {/* แบนเนอร์โปรโมชัน — ข้อความ/ปุ่ม/รูป แก้ได้ที่หลังบ้าน → เมนูหน้าร้าน → แบนเนอร์ใหญ่ */}
-      {hero.on && (
+      {hero.on && hero.bgImage && (
+        // ภาพออกแบบเต็มใบ — กดทั้งใบไปหน้าปลายทางของปุ่มหลัก
+        <section className="mt-6">
+          <Link href={hero.btn1Href} className="block overflow-hidden rounded-[2rem] shadow-[0_10px_40px_rgba(63,161,182,0.22)] transition hover:brightness-[0.97]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={hero.bgImage} alt={hero.title} className="w-full" />
+          </Link>
+        </section>
+      )}
+      {hero.on && !hero.bgImage && (
       <section className="mt-6 overflow-hidden rounded-[2rem] bg-gradient-to-br from-amber-200 via-amber-100 to-ducky shadow-[0_10px_40px_rgba(63,161,182,0.22)]">
         <div className="flex flex-col items-center gap-6 px-6 py-10 text-center md:flex-row md:px-12 md:py-14 md:text-left">
           <div className="flex-1">

@@ -182,8 +182,15 @@ const newId = (p = "b") =>
 
 type Tab = "shop" | "pay" | "ship" | "tier" | "welcome" | "roles" | "files" | "cats";
 
+const TAB_KEYS: Tab[] = ["shop", "pay", "ship", "tier", "welcome", "roles", "files", "cats"];
+
 function AdminSettingsPageInner() {
   const [tab, setTab] = useState<Tab>("pay");
+  // เปิดแท็บตามลิงก์ได้ เช่น /admin/settings?tab=cats (ใช้จากผังหน้าแรกในเมนูหน้าร้าน)
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab") as Tab | null;
+    if (t && TAB_KEYS.includes(t)) setTab(t);
+  }, []);
 
   // ── ชำระเงิน ──
   const [banks, setBanks] = useState<BankAccount[]>([]);

@@ -392,7 +392,7 @@ function NavEditorInner() {
               ...(pos === "hero" ? [tilesRow] : []),
               { icon: "⭐", title: "จุดเด่นร้าน", desc: "แถวการ์ดเล็ก (ลายของคุณเอง · ส่งไวทั่วไทย …)", key: "perks", on: nav.perksOn },
               ...(pos === "features" ? [tilesRow] : []),
-              { icon: "🗂️", title: "หมวดหมู่สินค้า", desc: "การ์ดหมวด (สติกเกอร์ · แก้วน้ำ …) — แก้ที่ตั้งค่าระบบ", href: "/admin/settings", on: true },
+              { icon: "🗂️", title: "หมวดหมู่สินค้า", desc: "การ์ดหมวด (สติกเกอร์ · แก้วน้ำ …) — แก้ที่ตั้งค่าระบบ", href: "/admin/settings?tab=cats", on: true },
               { icon: "🔥", title: "สินค้าขายดี", desc: "เรียงอัตโนมัติจากยอดขายจริง — ตั้งยอดตั้งต้นในหน้าแก้ไขสินค้า", href: "/admin/products", on: true },
               { icon: "💛", title: "สินค้าแนะนำ", desc: "ติ๊ก “สินค้าแนะนำ” ในหน้าแก้ไขสินค้าแต่ละตัว", href: "/admin/products", on: true },
             ];
@@ -503,7 +503,16 @@ function NavEditorInner() {
 
           {/* 3 · แบนเนอร์ใหญ่ */}
           {tab === "hero" &&
-            (nav.hero.on ? (
+            (!nav.hero.on ? (
+              <p className={`rounded-2xl bg-slate-50 p-8 text-center text-sm ${faint}`}>
+                ปิดแบนเนอร์ใหญ่อยู่ — หน้าแรกจะไม่มีบล็อกนี้
+              </p>
+            ) : nav.hero.bgImage ? (
+              <div className="overflow-hidden rounded-2xl ring-1 ring-slate-200">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={nav.hero.bgImage} alt="" className="w-full" />
+              </div>
+            ) : (
               <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-amber-200 via-amber-100 to-ducky p-5">
                 {nav.hero.badge && (
                   <span className="inline-block rounded-full bg-white/70 px-3 py-1 text-[11px] font-bold text-amber-800">
@@ -527,10 +536,6 @@ function NavEditorInner() {
                   )}
                 </div>
               </div>
-            ) : (
-              <p className={`rounded-2xl bg-slate-50 p-8 text-center text-sm ${faint}`}>
-                ปิดแบนเนอร์ใหญ่อยู่ — หน้าแรกจะไม่มีบล็อกนี้
-              </p>
             ))}
 
           {/* 4 · การ์ดนำทาง */}
@@ -568,35 +573,6 @@ function NavEditorInner() {
         </div>
       </section>
 
-      {/* ── แท็บ ── */}
-      <div className="mt-5 flex flex-wrap gap-2">
-        {(
-          [
-            ["menu", `1 · 🔗 แถบเมนู + โลโก้ (${nav.menu.length})`],
-            ["mega", `2 · 🗂 หมวดสินค้า (${nav.mega.length})`],
-            ...((nav.tilesPos ?? "hero") === "top"
-              ? ([["tiles", `3 · 🧱 การ์ดนำทาง (${nav.tiles.length})`], ["hero", "4 · 🎉 แบนเนอร์ใหญ่"], ["perks", `5 · ⭐ จุดเด่นร้าน (${nav.perks.length})`]] as [Tab, string][])
-              : (nav.tilesPos ?? "hero") === "features"
-                ? ([["hero", "3 · 🎉 แบนเนอร์ใหญ่"], ["perks", `4 · ⭐ จุดเด่นร้าน (${nav.perks.length})`], ["tiles", `5 · 🧱 การ์ดนำทาง (${nav.tiles.length})`]] as [Tab, string][])
-                : ([["hero", "3 · 🎉 แบนเนอร์ใหญ่"], ["tiles", `4 · 🧱 การ์ดนำทาง (${nav.tiles.length})`], ["perks", `5 · ⭐ จุดเด่นร้าน (${nav.perks.length})`]] as [Tab, string][])),
-          ] as [Tab, string][]
-        ).map(([k, label]) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => setTab(k)}
-            aria-pressed={tab === k}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-              tab === k
-                ? "bg-amber-500 text-white shadow-sm"
-                : "border border-slate-200 bg-white text-slate-600 hover:border-amber-200 hover:text-slate-900"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
       {/* ══════ แบนเนอร์ใหญ่ (hero) ══════ */}
       {tab === "hero" && (
         <section className={`mt-4 p-5 ${card}`}>
@@ -618,6 +594,59 @@ function NavEditorInner() {
             </label>
           </div>
 
+          {/* ทางเลือกที่ 1 — ใช้ภาพออกแบบเต็มใบ (ข้อความอยู่ในภาพแล้ว) */}
+          <div className="mt-4 rounded-2xl bg-teal-50/60 p-4 ring-1 ring-teal-200">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-bold text-teal-900">🖼 ใช้ภาพออกแบบเต็มใบ</p>
+                <p className="mt-0.5 text-[11px] text-teal-800">
+                  มีไฟล์แบนเนอร์ที่ออกแบบไว้แล้ว (มีข้อความในภาพ) — อัปโหลดที่นี่ ระบบใช้ภาพแทนทั้งกล่อง
+                  · กดที่ภาพ = ไปหน้าปลายทางของปุ่มหลักด้านล่าง · แนะนำกว้าง 1600px ขึ้นไป
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className={`cursor-pointer ${btnNeutral} text-xs`}>
+                  📤 อัปโหลดภาพเต็มใบ
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!f) return;
+                      const r = await uploadNavImage(f);
+                      if (r.url) edit((n) => ({ ...n, hero: { ...n.hero, bgImage: r.url } }));
+                    }}
+                  />
+                </label>
+                {nav.hero.bgImage && (
+                  <button
+                    type="button"
+                    onClick={() => edit((n) => ({ ...n, hero: { ...n.hero, bgImage: undefined } }))}
+                    className="rounded-full px-3 py-1.5 text-xs font-bold text-rose-500 hover:bg-rose-50"
+                  >
+                    ✕ เอาภาพออก (กลับไปใช้ข้อความ)
+                  </button>
+                )}
+              </div>
+            </div>
+            {nav.hero.bgImage && (
+              <div className="mt-3 overflow-hidden rounded-xl ring-1 ring-teal-200">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={nav.hero.bgImage} alt="" className="w-full" />
+              </div>
+            )}
+          </div>
+
+          {nav.hero.bgImage ? (
+            <p className={`mt-4 rounded-xl bg-slate-50 p-3 text-center text-xs ${faint}`}>
+              กำลังใช้<strong className="font-semibold text-slate-600">ภาพเต็มใบ</strong>อยู่ — ช่องข้อความ/ปุ่มด้านล่างจะไม่แสดงบนหน้าร้าน
+              (เก็บไว้ให้ ถ้าเอาภาพออกเมื่อไหร่ก็กลับมาใช้ได้)
+            </p>
+          ) : null}
+
+          {/* ทางเลือกที่ 2 — พิมพ์ข้อความเอง (ค่าเริ่มต้น) */}
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
             <label className="block">
               <span className="text-[11px] font-semibold text-slate-400">ป้ายเล็กบนสุด (เว้นว่าง = ไม่แสดง)</span>

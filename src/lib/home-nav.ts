@@ -144,6 +144,11 @@ export interface HeroBanner {
   btn2Href: string;
   /** รูปด้านขวา (URL) — ไม่ใส่ = ใช้อีโมจิเป็ดตามเดิม */
   image?: string;
+  /**
+   * ภาพแบนเนอร์เต็มใบ (URL) — ใส่แล้วใช้ภาพนี้แทนทั้งกล่อง (พื้นสี+ข้อความ+ปุ่ม)
+   * เหมาะกับงานออกแบบที่มีข้อความอยู่ในภาพแล้ว · กดที่ภาพ = ไปลิงก์ของปุ่มหลัก
+   */
+  bgImage?: string;
 }
 
 export const NAV_ROW_ID = "__site_nav__";
@@ -457,6 +462,10 @@ function heroOf(raw: Partial<HeroBanner> | null | undefined): HeroBanner {
     btn2Label: typeof raw?.btn2Label === "string" ? raw.btn2Label.trim() : DEFAULT_HERO.btn2Label,
     btn2Href: href(raw?.btn2Href, DEFAULT_HERO.btn2Href),
     ...(/^(\/|https?:\/\/)/.test(img) ? { image: img } : {}),
+    ...(() => {
+      const bg = typeof raw?.bgImage === "string" ? raw.bgImage.trim() : "";
+      return /^(\/|https?:\/\/)/.test(bg) ? { bgImage: bg } : {};
+    })(),
   };
 }
 
