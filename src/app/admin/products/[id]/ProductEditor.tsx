@@ -2127,30 +2127,23 @@ export default function ProductEditor({ product }: { product: Product }) {
                 <div className="flex flex-wrap items-end gap-3 rounded-2xl bg-teal-50/60 p-3 ring-1 ring-teal-100">
                   <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
                     ชื่อเรท (ลูกค้าเห็น)
-                    <span className="flex flex-wrap items-center gap-1.5">
-                      <select
-                        value={RATE_NAME_PRESETS.includes(activeMeta.label) ? activeMeta.label : ""}
-                        onChange={(e) => {
-                          if (e.target.value) patchActiveMeta({ label: e.target.value });
-                        }}
-                        className="rounded-xl bg-white px-2 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
-                        aria-label="เลือกชื่อเรทมาตรฐาน"
-                      >
-                        <option value="">— เลือกชื่อมาตรฐาน —</option>
-                        {RATE_NAME_PRESETS.map((n) => (
-                          <option key={n} value={n}>
-                            {n}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        value={activeMeta.label}
-                        onChange={(e) => patchActiveMeta({ label: e.target.value })}
-                        placeholder="หรือพิมพ์ชื่อเอง"
-                        className="w-44 rounded-xl bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
-                        aria-label="ชื่อเรท"
-                      />
-                    </span>
+                    <select
+                      value={activeMeta.label}
+                      onChange={(e) => patchActiveMeta({ label: e.target.value })}
+                      className="w-52 rounded-xl bg-white px-2 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
+                      aria-label="เลือกชื่อเรท"
+                    >
+                      <option value="">— เลือกชื่อเรท —</option>
+                      {/* ชื่อเดิมที่ไม่อยู่ในลิสต์มาตรฐาน (ตั้งไว้ก่อนหน้า) คงไว้ให้เลือกต่อได้ */}
+                      {activeMeta.label && !RATE_NAME_PRESETS.includes(activeMeta.label) && (
+                        <option value={activeMeta.label}>{activeMeta.label}</option>
+                      )}
+                      {RATE_NAME_PRESETS.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
                     คำอธิบายสั้น ๆ

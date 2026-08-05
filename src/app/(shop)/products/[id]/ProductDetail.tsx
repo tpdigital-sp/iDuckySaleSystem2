@@ -116,12 +116,19 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
 
   // ── จำนวนลายที่คละ (เรทที่กำหนดขั้นต่ำต่อลาย) ──
   const [designs, setDesigns] = useState(1);
+  // ลูกค้ากดปรับเองแล้ว = หยุดนับอัตโนมัติ (บางงานลาย 1 แบบแนบรูปหลายมุม)
+  const [designsTouched, setDesignsTouched] = useState(false);
   // ลายที่รวมในราคาตามจำนวนที่สั่ง · เรทที่เปิด extraDesignFee คละเกินได้ (จ่ายเพิ่มต่อลาย ไม่เกินจำนวนชิ้น)
   const included = rate?.minPerDesign ? includedDesigns(rate, qty) : 0;
   const maxDesigns = rate?.minPerDesign ? (rate.extraDesignFee ? qty : included) : 0;
   useEffect(() => {
     if (maxDesigns > 0) setDesigns((d) => Math.min(Math.max(1, d), maxDesigns));
   }, [maxDesigns]);
+  // ✨ นับจำนวนลายอัตโนมัติตามรูปลายที่แนบ (จนกว่าลูกค้าจะปรับเอง)
+  useEffect(() => {
+    if (designsTouched || maxDesigns < 1) return;
+    setDesigns(Math.min(Math.max(artFiles.length, 1), maxDesigns));
+  }, [artFiles.length, maxDesigns, designsTouched]);
   const extraDesigns = rate?.extraDesignFee ? Math.max(0, designs - included) : 0;
   const designFee = extraDesigns * (rate?.extraDesignFee ?? 0);
 
@@ -818,7 +825,10 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                     <div className="flex items-center rounded-full bg-white ring-1 ring-teal-200">
                       <button
                         type="button"
-                        onClick={() => setDesigns((d) => Math.max(1, d - 1))}
+                        onClick={() => {
+                          setDesignsTouched(true);
+                          setDesigns((d) => Math.max(1, d - 1));
+                        }}
                         disabled={designs <= 1}
                         className="h-8 w-8 rounded-l-full text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
                         aria-label="ลดจำนวนลาย"
@@ -828,7 +838,10 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                       <span className="w-10 text-center text-sm font-bold text-teal-900">{designs}</span>
                       <button
                         type="button"
-                        onClick={() => setDesigns((d) => Math.min(maxDesigns, d + 1))}
+                        onClick={() => {
+                          setDesignsTouched(true);
+                          setDesigns((d) => Math.min(maxDesigns, d + 1));
+                        }}
                         disabled={designs >= maxDesigns}
                         className="h-8 w-8 rounded-r-full text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
                         aria-label="เพิ่มจำนวนลาย"
@@ -836,6 +849,11 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                         +
                       </button>
                     </div>
+                    {!designsTouched && artFiles.length > 0 && (
+                      <span className="rounded-full bg-teal-600/10 px-2 py-0.5 text-[10px] font-bold text-teal-700" title="นับตามรูปลายที่แนบ — กด +/− เพื่อปรับเอง">
+                        ✨ นับตามรูปที่แนบ
+                      </span>
+                    )}
                     {designFee > 0 && (
                       <span className="text-xs font-bold text-amber-700">+{formatPrice(designFee)}</span>
                     )}
@@ -846,14 +864,21 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                       ? ` · คละเกินได้ ลายละ +${formatPrice(rate.extraDesignFee)}`
                       : " · เพิ่มลายได้ด้วยการเพิ่มจำนวนสั่ง"}
                   </p>
-                  {/* ลูกค้าแนบภาพลายมากกว่าจำนวนลายที่เลือก → เตือนให้ปรับ (ราคา/เงื่อนไขคิดตามจำนวนลาย) */}
-                  {artFiles.length > designs && (
-                    <p className="mt-1.5 rounded-xl bg-amber-100/80 px-3 py-2 text-[11px] font-bold leading-relaxed text-amber-900 ring-1 ring-amber-300">
-                      ⚠️ คุณแนบภาพลายมา {artFiles.length} รูป แต่เลือกคละ {designs} ลาย —
-                      ถ้าเป็นลายคนละแบบ กด + เพิ่ม &ldquo;คละกี่ลาย&rdquo; ให้ตรงด้วยนะครับ
-                      (ทางร้านนับจำนวนลายจริงจากไฟล์ ถ้าไม่ตรงแอดมินจะทักยืนยันก่อนเริ่มงาน)
-                    </p>
-                  )}
+                  {/* แนบภาพลายมากกว่าจำนวนลายที่นับไว้ → เตือน (ราคา/เงื่อนไขคิดตามจำนวนลาย) */}
+                  {artFiles.length > designs &&
+                    (designs >= maxDesigns ? (
+                      <p className="mt-1.5 rounded-xl bg-amber-100/80 px-3 py-2 text-[11px] font-bold leading-relaxed text-amber-900 ring-1 ring-amber-300">
+                        ⚠️ แนบภาพลายมา {artFiles.length} รูป แต่จำนวน {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}{" "}
+                        เรทนี้คละได้สูงสุด {maxDesigns.toLocaleString("th-TH")} ลาย —
+                        ถ้าเป็นลายคนละแบบ เพิ่มจำนวนสั่งเพื่อคละได้มากขึ้น (หรือแอดมินจะทักยืนยันก่อนเริ่มงาน)
+                      </p>
+                    ) : (
+                      <p className="mt-1.5 rounded-xl bg-amber-100/80 px-3 py-2 text-[11px] font-bold leading-relaxed text-amber-900 ring-1 ring-amber-300">
+                        ⚠️ คุณแนบภาพลายมา {artFiles.length} รูป แต่เลือกคละ {designs} ลาย —
+                        ถ้าเป็นลายคนละแบบ กด + เพิ่ม &ldquo;คละกี่ลาย&rdquo; ให้ตรงด้วยนะครับ
+                        (ทางร้านนับจำนวนลายจริงจากไฟล์ ถ้าไม่ตรงแอดมินจะทักยืนยันก่อนเริ่มงาน)
+                      </p>
+                    ))}
                 </div>
               )}
             </div>
