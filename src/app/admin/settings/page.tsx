@@ -43,6 +43,84 @@ const CAT_ICONS: { group: string; items: string[] }[] = [
   { group: "ของขวัญ · ตกแต่ง", items: ["🎁", "🎀", "🎈", "✨", "🌸", "⭐", "❤️", "🐶", "🐱", "🎨"] },
 ];
 
+/** อัปโหลดรูปหมวดขึ้นคลัง (ใช้ทั้งปุ่มเลือกไฟล์และลากวาง) */
+async function uploadCatImage(file: File): Promise<{ url?: string; error?: string }> {
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("productId", "categories");
+    const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+    const j = (await res.json()) as { url?: string; error?: string };
+    if (!res.ok || !j.url) return { error: j.error ?? "อัปโหลดไม่สำเร็จ" };
+    return { url: j.url };
+  } catch {
+    return { error: "อัปโหลดไม่สำเร็จ" };
+  }
+}
+
+/** รูปหมวด: thumbnail + ปุ่มอัปโหลด + รับลากรูปมาวาง */
+function CatImage({ value, onChange }: { value?: string; onChange: (v: string | undefined) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [over, setOver] = useState(false);
+  async function up(f: File) {
+    if (!f.type.startsWith("image/")) return;
+    setBusy(true);
+    const r = await uploadCatImage(f);
+    if (r.url) onChange(r.url);
+    setBusy(false);
+  }
+  return (
+    <span
+      onDragOver={(e) => {
+        e.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        const f = e.dataTransfer.files?.[0];
+        if (f) void up(f);
+      }}
+      className={`flex items-center gap-1 rounded-lg p-0.5 transition ${over ? "ring-2 ring-amber-400 bg-amber-50" : ""}`}
+      title="ลากรูปมาวางตรงนี้ได้เลย"
+    >
+      {value ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={value} alt="" className="h-9 w-9 rounded-lg object-cover ring-1 ring-slate-200" />
+          <button
+            type="button"
+            onClick={() => onChange(undefined)}
+            className="rounded px-1 text-[10px] font-bold text-rose-500 hover:bg-rose-50"
+            title="เอารูปออก (กลับไปใช้อีโมจิ)"
+          >
+            ✕
+          </button>
+        </>
+      ) : (
+        <label
+          className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg border border-dashed border-slate-300 text-xs text-slate-400 transition hover:border-amber-400 hover:text-amber-600"
+          title="อัปโหลดรูปหมวด หรือลากรูปมาวาง"
+        >
+          {busy ? "…" : "🖼"}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+            disabled={busy}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) void up(f);
+            }}
+          />
+        </label>
+      )}
+    </span>
+  );
+}
+
 /** ปุ่มเลือกไอคอน — กดแล้วมีชุดให้เลือก หรือพิมพ์อีโมจิเองในช่องด้านล่าง */
 function IconPicker({ value, onPick }: { value: string; onPick: (v: string) => void }) {
   const [open, setOpen] = useState(false);
@@ -874,9 +952,10 @@ function AdminSettingsPageInner() {
               </div>
 
               {/* หัวคอลัมน์ (จอกว้าง) — ให้แถวด้านล่างอ่านเป็นตาราง */}
-              <div className="hidden items-center gap-2 px-3 text-[10px] font-bold uppercase tracking-wide text-slate-400 lg:grid lg:grid-cols-[2.5rem_3rem_minmax(0,1fr)_11rem_4.5rem_9rem_3.5rem]">
+              <div className="hidden items-center gap-2 px-3 text-[10px] font-bold uppercase tracking-wide text-slate-400 lg:grid lg:grid-cols-[2.5rem_3rem_4.5rem_minmax(0,1fr)_11rem_4.5rem_9rem_3.5rem]">
                 <span>ลำดับ</span>
                 <span className="text-center">ไอคอน</span>
+                <span className="text-center">รูป</span>
                 <span>ชื่อหมวด (ไทย)</span>
                 <span>ชื่ออังกฤษ</span>
                 <span className="text-center">ซ่อน</span>
@@ -888,7 +967,7 @@ function AdminSettingsPageInner() {
                 {cats.map((c, i) => (
                   <div
                     key={c.id}
-                    className={`items-center gap-2 rounded-xl p-2 ring-1 max-lg:flex max-lg:flex-wrap lg:grid lg:grid-cols-[2.5rem_3rem_minmax(0,1fr)_11rem_4.5rem_9rem_3.5rem] ${
+                    className={`items-center gap-2 rounded-xl p-2 ring-1 max-lg:flex max-lg:flex-wrap lg:grid lg:grid-cols-[2.5rem_3rem_4.5rem_minmax(0,1fr)_11rem_4.5rem_9rem_3.5rem] ${
                       c.hidden ? "bg-slate-50 ring-slate-200" : "bg-white ring-amber-100"
                     }`}
                   >
@@ -913,6 +992,7 @@ function AdminSettingsPageInner() {
                       </button>
                     </span>
                     <IconPicker value={c.emoji} onPick={(v) => patchCat(i, { emoji: v })} />
+                    <CatImage value={c.image} onChange={(v) => patchCat(i, { image: v })} />
                     <input
                       value={c.name}
                       onChange={(e) => patchCat(i, { name: e.target.value })}

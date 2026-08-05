@@ -132,7 +132,16 @@ export default function HomePage() {
               href={`/products?category=${c.id}`}
               className={`group flex flex-col items-center gap-2 rounded-3xl bg-gradient-to-br ${c.gradient} p-5 text-center shadow-sm transition hover:-translate-y-1 hover:shadow-md`}
             >
-              <span className="text-4xl transition-transform group-hover:scale-110">{c.emoji}</span>
+              {c.image ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={c.image}
+                  alt=""
+                  className="h-16 w-16 rounded-2xl object-cover shadow-sm transition-transform group-hover:scale-110"
+                />
+              ) : (
+                <span className="text-4xl transition-transform group-hover:scale-110">{c.emoji}</span>
+              )}
               <span className="text-sm font-bold text-stone-800">{c.name}</span>
               <span className="text-[11px] text-stone-600/80">{c.nameEn}</span>
             </Link>

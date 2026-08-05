@@ -15,6 +15,8 @@ export interface ShopCategory {
   emoji: string;
   gradient: string;
   description: string;
+  /** รูปหมวด (URL) — มีแล้วการ์ดหมวดบนหน้าแรกโชว์รูปนี้แทนอีโมจิ */
+  image?: string;
   /** ซ่อนจากหน้าร้าน (ยังอยู่ในระบบ สินค้าเดิมไม่หาย) */
   hidden?: boolean;
 }
@@ -40,6 +42,7 @@ export function categoriesOf(rows: ShopCategory[] | null | undefined): ShopCateg
       emoji: String(c.emoji ?? "🏷️"),
       gradient: String(c.gradient ?? "from-amber-100 to-amber-200"),
       description: String(c.description ?? ""),
+      image: typeof c.image === "string" && c.image.trim() ? c.image.trim() : undefined,
       hidden: Boolean(c.hidden),
     }));
 }
