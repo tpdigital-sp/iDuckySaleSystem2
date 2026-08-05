@@ -11,7 +11,8 @@ export const ARTICLE_PROSE =
   "[&_img]:my-4 [&_img]:max-w-full [&_img]:rounded-2xl [&_img]:ring-1 [&_img]:ring-amber-100 " +
   "[&_a]:font-semibold [&_a]:text-sky-600 [&_a]:underline " +
   "[&_strong]:font-bold [&_strong]:text-stone-700 [&_blockquote]:mt-3 [&_blockquote]:border-l-4 " +
-  "[&_blockquote]:border-amber-200 [&_blockquote]:pl-3 [&_blockquote]:text-stone-500";
+  "[&_blockquote]:border-amber-200 [&_blockquote]:pl-3 [&_blockquote]:text-stone-500 " +
+  "[&_iframe]:my-4 [&_iframe]:w-full [&_table]:mt-3 [&_table]:w-full";
 
 export default function ArticleHtml({ html }: { html: string }) {
   // HTML ผ่าน sanitize ฝั่งเซิร์ฟเวอร์ตั้งแต่ตอนบันทึก (ตัด script/on*/javascript:)
