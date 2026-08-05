@@ -159,7 +159,16 @@ function useLazyProducts(needed: boolean) {
 }
 
 /** แถบหัวข้อ + แผงดรอปดาวน์ (จอใหญ่) */
-export function MegaBar({ groups, pathname }: { groups: MegaGroup[]; pathname: string }) {
+export function MegaBar({
+  groups,
+  pathname,
+  align = "center",
+}: {
+  groups: MegaGroup[];
+  pathname: string;
+  /** center = กึ่งกลางเต็มแถว (เดิม) · end = ชิดขวาในคอลัมน์ของตัวเอง (เลย์เอาต์โลโก้คร่อมสองแถว) */
+  align?: "center" | "end";
+}) {
   const [openId, setOpenId] = useState<string | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const products = useLazyProducts(openId !== null);
@@ -190,7 +199,9 @@ export function MegaBar({ groups, pathname }: { groups: MegaGroup[]; pathname: s
 
   return (
     <div
-      className="mx-auto flex max-w-7xl items-stretch justify-center gap-1 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className={`flex items-stretch gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+        align === "end" ? "justify-end" : "mx-auto max-w-7xl justify-center px-4"
+      }`}
       onMouseLeave={scheduleClose}
       onMouseEnter={cancelClose}
     >

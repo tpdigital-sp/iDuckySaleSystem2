@@ -7,6 +7,7 @@ import { useCart } from "@/lib/cart-context";
 import { useCustomer } from "@/lib/customer-context";
 import { signOut } from "@/lib/customer-auth";
 import { fetchSiteNav, visibleMenu, visibleMega, DEFAULT_SITE_NAV, type MegaGroup, type NavLink } from "@/lib/home-nav";
+/* eslint-disable @next/next/no-img-element */
 import { MegaBar, MegaMobile } from "@/components/MegaMenu";
 
 /** เมนูในดรอปดาวน์บัญชี */
@@ -28,10 +29,12 @@ export default function Navbar() {
   // ลิงก์เมนูที่แอดมินตั้งไว้ (แสดงค่าเริ่มต้นไปก่อน แล้วสลับเมื่อโหลดเสร็จ — ไม่มีจังหวะเมนูหาย)
   const [links, setLinks] = useState<NavLink[]>(visibleMenu(DEFAULT_SITE_NAV));
   const [mega, setMega] = useState<MegaGroup[]>(visibleMega(DEFAULT_SITE_NAV));
+  const [logo, setLogo] = useState<string>("");
   useEffect(() => {
     fetchSiteNav().then((n) => {
       setLinks(visibleMenu(n));
       setMega(visibleMega(n));
+      setLogo(n.logo ?? "");
     });
   }, []);
 
@@ -53,36 +56,49 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-amber-100 bg-white/90 backdrop-blur">
-      <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4">
-        <Link href="/" className="flex items-center gap-2" onClick={() => setOpen(false)}>
-          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-ducky text-2xl shadow-sm">
-            🦆
-          </span>
-          <span className="leading-tight">
-            <span className="block text-base font-bold text-amber-900">iDucky Prints</span>
-            <span className="block text-[11px] font-medium tracking-wide text-amber-500">
-              STUDIO • พิมพ์ตามสั่ง
-            </span>
-          </span>
+      {/* เลย์เอาต์แบบเว็บต้นแบบ: โลโก้ใหญ่ซ้ายคร่อมสองแถว · ขวาบนเมนู+บัญชี+ตะกร้า · เส้นคั่น · แถวหมวดชิดขวา */}
+      <nav className="mx-auto flex max-w-7xl items-center gap-3 px-4 md:gap-8">
+        <Link href="/" className="flex shrink-0 items-center gap-2 py-2" onClick={() => setOpen(false)}>
+          {logo ? (
+            <img
+              src={logo}
+              alt="iDucky Prints Studio"
+              className="h-12 w-auto max-w-[220px] object-contain md:h-[4.5rem] md:max-w-[280px]"
+            />
+          ) : (
+            <>
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-ducky text-2xl shadow-sm md:h-12 md:w-12 md:text-3xl">
+                🦆
+              </span>
+              <span className="leading-tight">
+                <span className="block text-base font-bold text-amber-900 md:text-lg">iDucky Prints</span>
+                <span className="block text-[11px] font-medium tracking-wide text-amber-500">
+                  STUDIO • พิมพ์ตามสั่ง
+                </span>
+              </span>
+            </>
+          )}
         </Link>
 
-        <div className="hidden min-w-0 flex-1 items-center justify-center gap-1 md:flex">
-          {links.map((l) => (
-            <Link
-              key={l.id}
-              href={l.href}
-              className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
-                pathname === l.href
-                  ? "bg-amber-100 text-amber-900"
-                  : "text-stone-600 hover:bg-amber-50 hover:text-amber-800"
-              }`}
-            >
-              {l.label}
-            </Link>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-2">
+        {/* คอลัมน์ขวา: แถวบน (เมนู+บัญชี+ตะกร้า) · เส้นคั่นเริ่มหลังโลโก้ · แถวหมวด (เดสก์ท็อป) */}
+        <div className="flex min-w-0 flex-1 flex-col self-stretch justify-center">
+        <div className="flex items-center justify-end gap-2 py-2">
+          <div className="hidden min-w-0 items-center gap-1 md:flex">
+            {links.map((l) => (
+              <Link
+                key={l.id}
+                href={l.href}
+                className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  pathname === l.href
+                    ? "bg-amber-100 text-amber-900"
+                    : "text-stone-600 hover:bg-amber-50 hover:text-amber-800"
+                }`}
+              >
+                {l.label}
+              </Link>
+            ))}
+            <span className="mx-1.5 hidden h-6 w-px bg-amber-100 md:block" aria-hidden />
+          </div>
           {customer ? (
             <div ref={acctRef} className="relative">
               <button
@@ -158,14 +174,15 @@ export default function Navbar() {
             {open ? "✕" : "☰"}
           </button>
         </div>
-      </nav>
 
-      {/* ชั้นล่าง — หมวดสินค้า (mega menu) แยกแถวให้หายใจ ไม่เบียดลิงก์หน้า */}
-      {mega.length > 0 && (
-        <div className="hidden border-t border-amber-100/70 md:block">
-          <MegaBar groups={mega} pathname={pathname} />
+        {/* แถวหมวดสินค้า (เดสก์ท็อป) — ชิดขวา · เส้นคั่นเริ่มหลังโลโก้แบบเว็บต้นแบบ */}
+        {mega.length > 0 && (
+          <div className="hidden justify-end border-t border-amber-100/70 md:flex">
+            <MegaBar groups={mega} pathname={pathname} align="end" />
+          </div>
+        )}
         </div>
-      )}
+      </nav>
 
       {open && (
         <div className="border-t border-amber-100 bg-white px-4 py-2 md:hidden">

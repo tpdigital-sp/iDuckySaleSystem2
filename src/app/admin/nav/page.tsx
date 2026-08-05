@@ -1230,6 +1230,53 @@ function NavEditorInner() {
 
       {/* ══════ แถบเมนูด้านบน ══════ */}
       {tab === "menu" && (
+        <>
+        <section className={`mt-4 p-5 ${card}`}>
+          <h2 className="text-sm font-semibold text-slate-800">🖼 โลโก้ร้าน</h2>
+          <p className={`mt-0.5 text-xs ${faint}`}>
+            แสดงมุมซ้ายของแถบเมนูทุกหน้า · แนะนำ PNG พื้นใส แนวนอน สูงอย่างน้อย 144px · ไม่ใส่ = โลโก้เป็ด 🦆 + ข้อความเดิม
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-4">
+            <div className="flex h-24 min-w-48 items-center justify-center rounded-xl bg-slate-50 px-4 ring-1 ring-slate-200">
+              {nav.logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={nav.logo} alt="โลโก้ร้าน" className="max-h-20 w-auto max-w-64 object-contain" />
+              ) : (
+                <span className="flex items-center gap-2 text-sm text-slate-400">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-ducky text-xl">🦆</span>
+                  iDucky Prints (ค่าเริ่มต้น)
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="cursor-pointer rounded-full bg-amber-500 px-4 py-2 text-center text-xs font-bold text-white transition hover:bg-amber-600">
+                📤 อัปโหลดโลโก้ใหม่
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!f) return;
+                    const r = await uploadNavImage(f);
+                    if (r.url) edit((n) => ({ ...n, logo: r.url }));
+                  }}
+                />
+              </label>
+              {nav.logo && (
+                <button
+                  type="button"
+                  onClick={() => edit((n) => ({ ...n, logo: undefined }))}
+                  className="rounded-full px-4 py-1.5 text-xs font-bold text-rose-500 transition hover:bg-rose-50"
+                >
+                  ✕ ลบโลโก้ (กลับไปใช้ค่าเริ่มต้น)
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+
         <section className={`mt-4 p-5 ${card}`}>
           <h2 className="text-sm font-semibold text-slate-800">🔗 ลิงก์บนแถบเมนูด้านบน</h2>
           <p className={`mt-0.5 text-xs ${faint}`}>อยู่ข้างโลโก้ทุกหน้า · บนมือถือจะอยู่ในเมนู ☰</p>
@@ -1293,6 +1340,7 @@ function NavEditorInner() {
             ＋ เพิ่มลิงก์
           </button>
         </section>
+        </>
       )}
 
       {/* ── แถบบันทึก (ลอยล่าง — เลื่อนแก้ไปเรื่อย ๆ ก็ยังกดบันทึกได้) ── */}

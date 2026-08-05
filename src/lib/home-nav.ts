@@ -120,6 +120,8 @@ export interface SiteNav {
   tilesWave?: boolean;
   /** ตำแหน่งบล็อกการ์ดบนหน้าแรก — top ก่อนแบนเนอร์ · hero ใต้แบนเนอร์ (เดิม) · features ใต้จุดเด่นร้าน */
   tilesPos?: "top" | "hero" | "features";
+  /** โลโก้ร้านบนแถบเมนู (URL รูปที่อัปโหลด) — ไม่ตั้ง = ใช้โลโก้เป็ด+ข้อความเดิม */
+  logo?: string;
 }
 
 export const NAV_ROW_ID = "__site_nav__";
@@ -485,6 +487,8 @@ export function siteNavOf(raw: Partial<SiteNav> | null | undefined): SiteNav {
     tilesBg: /^#[0-9a-f]{3,8}$/i.test(str(raw?.tilesBg)) ? str(raw?.tilesBg) : undefined,
     tilesWave: Boolean(raw?.tilesWave),
     tilesPos: (["top", "hero", "features"] as const).includes(raw?.tilesPos as "top") ? raw?.tilesPos : "hero",
+    // โลโก้รับเฉพาะ path ภายใน หรือ URL http(s) (กัน javascript: หลุดเข้า src)
+    logo: /^(\/|https?:\/\/)/.test(str(raw?.logo).trim()) ? str(raw?.logo).trim() : undefined,
   };
 }
 
