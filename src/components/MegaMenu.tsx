@@ -71,16 +71,33 @@ export function MegaPanel({
   return (
     <div className="flex gap-6">
       {group.image && (
-        <div className="hidden w-64 shrink-0 lg:block">
-          <A href={group.imageHref || "/products"} className="block overflow-hidden rounded-2xl">
+        <div className="hidden w-60 shrink-0 self-stretch lg:block">
+          <A href={group.imageHref || "/products"} className="block h-full overflow-hidden rounded-2xl">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={group.image} alt={group.label} className="h-full w-full object-cover" />
+            <img src={group.image} alt={group.label} className="h-full w-full object-cover transition-transform duration-300 hover:scale-105" />
           </A>
         </div>
       )}
 
       <div className="min-w-0 flex-1">
-        {group.heading && <p className="mb-4 text-base font-extrabold text-stone-800">{group.heading}</p>}
+        {group.heading && <p className="mb-3 text-base font-extrabold text-stone-800">{group.heading}</p>}
+
+        {/* แถวภาพสินค้าแนะนำ */}
+        {(group.promos?.length ?? 0) > 0 && (
+          <div className="mb-5 grid grid-cols-3 gap-3 sm:grid-cols-5">
+            {group.promos!.map((pm) => (
+              <A key={pm.id} href={pm.href} className="group/promo block overflow-hidden rounded-xl">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={pm.image}
+                  alt=""
+                  loading="lazy"
+                  className="aspect-square w-full object-cover transition-transform duration-200 group-hover/promo:scale-105"
+                />
+              </A>
+            ))}
+          </div>
+        )}
 
         <div className="grid gap-x-6 gap-y-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {group.columns.map((col) => {
@@ -184,12 +201,12 @@ export function MegaBar({ groups, pathname }: { groups: MegaGroup[]; pathname: s
           onClick={() => setOpenId((v) => (v === g.id ? null : g.id))}
           aria-expanded={openId === g.id}
           aria-haspopup="true"
-          className={`flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-2 text-[0.78rem] font-bold tracking-wide transition lg:px-3 lg:text-[0.85rem] ${
+          className={`flex items-center gap-0.5 whitespace-nowrap rounded-full px-3 py-2 text-[0.85rem] font-semibold transition lg:px-3.5 ${
             openId === g.id ? "bg-amber-100 text-amber-900" : "text-stone-600 hover:bg-amber-50 hover:text-amber-800"
           }`}
         >
           {g.label}
-          <span className={`text-[0.6rem] transition ${openId === g.id ? "rotate-180" : ""}`}>▼</span>
+          <span className={`text-[0.55rem] text-stone-400 transition ${openId === g.id ? "rotate-180 text-amber-700" : ""}`}>▼</span>
         </button>
       ))}
 

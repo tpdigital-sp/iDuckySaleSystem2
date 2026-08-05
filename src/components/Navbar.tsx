@@ -65,12 +65,12 @@ export default function Navbar() {
           </span>
         </Link>
 
-        <div className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 overflow-x-auto [scrollbar-width:none] md:flex [&::-webkit-scrollbar]:hidden">
+        <div className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 overflow-x-auto [scrollbar-width:none] md:flex lg:gap-1 [&::-webkit-scrollbar]:hidden">
           {links.map((l) => (
             <Link
               key={l.id}
               href={l.href}
-              className={`whitespace-nowrap rounded-full px-3 py-2 text-sm font-semibold transition ${
+              className={`whitespace-nowrap rounded-full px-3 py-2 text-[0.85rem] font-semibold transition lg:px-3.5 ${
                 pathname === l.href
                   ? "bg-amber-100 text-amber-900"
                   : "text-stone-600 hover:bg-amber-50 hover:text-amber-800"

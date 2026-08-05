@@ -9,12 +9,14 @@ import { fetchCategories, type ShopCategory } from "@/lib/categories";
 import {
   DEFAULT_MEGA,
   DEFAULT_SITE_NAV,
+  DEFAULT_TILES_BG,
   clearSiteNavCache,
   siteNavOf,
   type MegaBadge,
   type MegaColumn,
   type MegaGroup,
   type MegaItem,
+  type MegaPromo,
   type NavLink,
   type NavTile,
   type SiteNav,
@@ -242,6 +244,8 @@ function NavEditorInner() {
     setCols(gid, (cols) => cols.map((c) => (c.id === cid ? { ...c, ...patch } : c)));
   const setItems = (gid: string, cid: string, fn: (items: MegaItem[]) => MegaItem[]) =>
     setCols(gid, (cols) => cols.map((c) => (c.id === cid ? { ...c, items: fn(c.items) } : c)));
+  const setPromos = (gid: string, fn: (ps: MegaPromo[]) => MegaPromo[]) =>
+    edit((n) => ({ ...n, mega: n.mega.map((g) => (g.id === gid ? { ...g, promos: fn(g.promos ?? []) } : g)) }));
 
   /** เลื่อนขึ้น/ลง — ใช้แทนการลาก (ลากบนมือถือพลาดง่าย) */
   function move<T>(list: T[], i: number, dir: -1 | 1): T[] {
@@ -335,9 +339,9 @@ function NavEditorInner() {
         </div>
 
         {/* การ์ดนำทาง */}
-        <div className="mt-3">
+        <div className="mt-3 overflow-hidden rounded-2xl">
           {shownTiles.length ? (
-            <NavTiles tiles={shownTiles} preview />
+            <NavTiles tiles={shownTiles} preview bg={nav.tilesBg} wave={nav.tilesWave} />
           ) : (
             <p className={`rounded-2xl bg-slate-50 p-8 text-center text-sm ${faint}`}>
               {nav.tilesOn ? "ยังไม่มีการ์ดที่เปิดแสดง" : "ปิดการ์ดนำทางอยู่ — หน้าแรกจะไม่มีบล็อกนี้"}
@@ -374,6 +378,41 @@ function NavEditorInner() {
       {/* ══════ การ์ดนำทาง ══════ */}
       {tab === "tiles" && (
         <section className="mt-4 space-y-3">
+          <div className={`flex flex-wrap items-center gap-4 p-4 ${card}`}>
+            <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+              แถบพื้นหลัง
+              <input
+                type="checkbox"
+                checked={!!nav.tilesBg}
+                onChange={(e) => edit((n) => ({ ...n, tilesBg: e.target.checked ? DEFAULT_TILES_BG : undefined }))}
+                className="h-4 w-4 accent-amber-500"
+              />
+            </label>
+            {nav.tilesBg && (
+              <>
+                <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                  สี
+                  <input
+                    type="color"
+                    value={nav.tilesBg}
+                    onChange={(e) => edit((n) => ({ ...n, tilesBg: e.target.value }))}
+                    className="h-8 w-12 cursor-pointer rounded border border-slate-200"
+                    aria-label="สีแถบพื้นหลัง"
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={!!nav.tilesWave}
+                    onChange={(e) => edit((n) => ({ ...n, tilesWave: e.target.checked }))}
+                    className="h-4 w-4 accent-amber-500"
+                  />
+                  ขอบหยักคลื่นด้านล่าง
+                </label>
+              </>
+            )}
+            <span className={`text-[11px] ${faint}`}>แถบสีเต็มความกว้างจอ แบบเว็บหลักของร้าน</span>
+          </div>
           <p className={`text-xs leading-relaxed ${muted}`}>
             เรียงตามลำดับในรายการนี้ · ขนาดที่เข้ากันสวยที่สุดคือ <strong>ใหญ่ 1 + กว้าง 1 + เล็ก 3</strong>{" "}
             (เหมือนบล็อกบนหน้าร้าน) แต่จะใส่กี่ใบก็ได้
@@ -645,6 +684,67 @@ function NavEditorInner() {
                         label="ภาพโปรโมทด้านซ้ายของแผง (ไม่ใส่ก็ได้)"
                         hint="แนวตั้ง อัตราส่วนประมาณ 3:4 · แสดงเฉพาะจอกว้าง"
                       />
+                    </div>
+
+                    {/* ── ภาพสินค้าแนะนำ (แถวบนของแผง) ── */}
+                    <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                      <p className="text-xs font-semibold text-slate-600">
+                        🖼 ภาพสินค้าแนะนำ (แถวบนของแผง — {(g.promos ?? []).length} รูป)
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-3">
+                        {(g.promos ?? []).map((pm, pi) => (
+                          <div key={pm.id} className="w-40 rounded-lg bg-white p-2 ring-1 ring-slate-200">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={pm.image} alt="" className="aspect-square w-full rounded object-cover" />
+                            <div className="mt-1.5">
+                              <LinkPicker
+                                value={pm.href}
+                                cats={cats}
+                                onChange={(v) => setPromos(g.id, (ps) => ps.map((x) => (x.id === pm.id ? { ...x, href: v } : x)))}
+                              />
+                            </div>
+                            <div className="mt-1 flex items-center justify-between">
+                              <span className="flex gap-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setPromos(g.id, (ps) => move(ps, pi, -1))}
+                                  disabled={pi === 0}
+                                  className={`${btnSmGhost} disabled:opacity-30`}
+                                  aria-label="เลื่อนซ้าย"
+                                >
+                                  ←
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setPromos(g.id, (ps) => move(ps, pi, 1))}
+                                  disabled={pi === (g.promos ?? []).length - 1}
+                                  className={`${btnSmGhost} disabled:opacity-30`}
+                                  aria-label="เลื่อนขวา"
+                                >
+                                  →
+                                </button>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setPromos(g.id, (ps) => ps.filter((x) => x.id !== pm.id))}
+                                className={btnSmDanger}
+                              >
+                                ลบ
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="w-40">
+                          <ImageField
+                            value={undefined}
+                            onChange={(v) => {
+                              if (v) setPromos(g.id, (ps) => [...ps, { id: newId("p"), image: v, href: "/products" }]);
+                            }}
+                            label="เพิ่มรูป"
+                            hint="สี่เหลี่ยมจัตุรัสสวยสุด"
+                          />
+                        </div>
+                      </div>
                     </div>
 
                     {/* ── คอลัมน์ ── */}

@@ -7,7 +7,7 @@ import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/ca
 import { fetchProductsLite } from "@/lib/product-repo";
 import ProductCard from "@/components/ProductCard";
 import NavTiles from "@/components/NavTiles";
-import { fetchSiteNav, visibleTiles, DEFAULT_SITE_NAV, type NavTile } from "@/lib/home-nav";
+import { fetchSiteNav, visibleTiles, DEFAULT_SITE_NAV, type NavTile, type SiteNav } from "@/lib/home-nav";
 
 export default function HomePage() {
   // โหลดสินค้า (Supabase หรือ localStorage) หลัง mount
@@ -16,11 +16,15 @@ export default function HomePage() {
   const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
   // การ์ดนำทาง (แอดมินตั้งเองได้ที่ /admin/nav)
   const [tiles, setTiles] = useState<NavTile[]>(visibleTiles(DEFAULT_SITE_NAV));
+  const [navStyle, setNavStyle] = useState<Pick<SiteNav, "tilesBg" | "tilesWave">>(DEFAULT_SITE_NAV);
   useEffect(() => {
     fetchCategories().then((list) => setCats(list.filter((c) => !c.hidden)));
   }, []);
   useEffect(() => {
-    fetchSiteNav().then((n) => setTiles(visibleTiles(n)));
+    fetchSiteNav().then((n) => {
+      setTiles(visibleTiles(n));
+      setNavStyle({ tilesBg: n.tilesBg, tilesWave: n.tilesWave });
+    });
   }, []);
   useEffect(() => {
     let active = true;
@@ -79,10 +83,11 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* การ์ดนำทาง — ทางลัดไปหน้าที่ลูกค้าใช้บ่อย (ตั้งค่าที่หลังบ้าน → เมนูหน้าร้าน) */}
+      {/* การ์ดนำทาง — ทางลัดไปหน้าที่ลูกค้าใช้บ่อย (ตั้งค่าที่หลังบ้าน → เมนูหน้าร้าน)
+          แถบสีต้องกินเต็มความกว้างจอ จึงดันออกนอกกรอบ max-w-6xl ของหน้า */}
       {tiles.length > 0 && (
-        <section className="mt-6">
-          <NavTiles tiles={tiles} />
+        <section className={navStyle.tilesBg ? "mt-8 -mx-4 md:-mx-[calc(50vw-50%)]" : "mt-8"}>
+          <NavTiles tiles={tiles} bg={navStyle.tilesBg} wave={navStyle.tilesWave} />
         </section>
       )}
 
