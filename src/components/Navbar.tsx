@@ -19,7 +19,8 @@ const ACCOUNT_MENU = [
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { totalQty } = useCart();
+  const { items } = useCart();
+  const itemCount = items.length; // ป้ายตะกร้านับ "รายการ" ไม่ใช่จำนวนชิ้น (สั่งแก้ว 100 ใบ = 1 รายการ ไม่ใช่ 99+)
   const { customer } = useCustomer();
   const [open, setOpen] = useState(false);
   const [acctOpen, setAcctOpen] = useState(false);
@@ -138,12 +139,12 @@ export default function Navbar() {
           <Link
             href="/cart"
             className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-xl transition hover:bg-amber-200"
-            aria-label={`ตะกร้าสินค้า มี ${totalQty} ชิ้น`}
+            aria-label={`ตะกร้าสินค้า มี ${itemCount} รายการ`}
           >
             🛒
-            {totalQty > 0 && (
+            {itemCount > 0 && (
               <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">
-                {totalQty > 99 ? "99+" : totalQty}
+                {itemCount > 99 ? "99+" : itemCount}
               </span>
             )}
           </Link>

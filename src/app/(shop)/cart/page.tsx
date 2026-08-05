@@ -215,7 +215,7 @@ export default function CartPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 pt-6">
       <h1 className="text-2xl font-extrabold text-amber-950 md:text-3xl">
-        🛒 ตะกร้าสินค้า <span className="text-base font-semibold text-stone-400">({totalQty} ชิ้น)</span>
+        🛒 ตะกร้าสินค้า <span className="text-base font-semibold text-stone-400">({items.length} รายการ · {totalQty} ชิ้น)</span>
       </h1>
 
       {/* 📄 แอดมินกำลังหยิบของใส่ใบเสนอราคา — ไม่ต้องผ่านหน้าชำระเงิน โยนเข้าใบได้เลย */}
