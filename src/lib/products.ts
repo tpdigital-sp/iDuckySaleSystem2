@@ -40,6 +40,17 @@ export interface ProductOption {
   presetId?: string;
   /** รูปแบบแสดงบนหน้าร้าน: 'dropdown' = เมนูเลือก (เหมาะกับตัวเลือกเยอะ) · ไม่ระบุ/'pills' = ปุ่มแยก (ค่าเริ่มต้น) */
   display?: "pills" | "dropdown";
+  /**
+   * ราคาบวกเพิ่ม (+฿) ของกลุ่มนี้ มีผลเมื่อสั่งตั้งแต่กี่ชิ้นขึ้นไป
+   * เช่น อะไหล่เข็มกลัด ตั้ง 11 = ช่วงปลีก 1-10 ชิ้น ราคารวมอะไหล่แล้ว (ไม่บวกเพิ่ม)
+   * สั่ง 11 ชิ้นขึ้นไปค่อยคิดเพิ่มต่อชิ้นตามตัวเลือก · ไม่ตั้ง = บวกเพิ่มทุกจำนวน
+   */
+  extraFromQty?: number;
+}
+
+/** ราคาบวกเพิ่มของกลุ่มนี้ใช้กับจำนวนนี้ไหม (ต่ำกว่าเกณฑ์ = รวมในราคาแล้ว) */
+export function optionExtraApplies(opt: ProductOption, qty: number): boolean {
+  return !opt.extraFromQty || qty >= opt.extraFromQty;
 }
 
 export interface ProductImage {
@@ -1927,8 +1938,10 @@ export function unitPriceFor(
     const cells = m.cells[priceMatrixKey(m, selections)];
     let base = cells && cells.length ? (cells[tierIndex(m, qty)] ?? product.price) : product.price;
     // กลุ่มตัวเลือกที่ไม่ใช่แกนตาราง (เช่น อะไหล่พิเศษ) บวกเพิ่มต่อหน่วยตาม extra ของตัวที่เลือก
+    // (กลุ่มที่ตั้ง extraFromQty ไว้ ต่ำกว่าเกณฑ์ = ราคารวมแล้ว ไม่บวก)
     for (const opt of product.options) {
       if (m.driverLabels.includes(opt.label)) continue;
+      if (!optionExtraApplies(opt, qty)) continue;
       const chosen = opt.choices.find((c) => c.name === selections[opt.label]);
       if (chosen?.extra) base += chosen.extra;
     }
@@ -1936,6 +1949,7 @@ export function unitPriceFor(
   }
   let price = product.price;
   for (const opt of product.options) {
+    if (!optionExtraApplies(opt, qty)) continue;
     const chosen = opt.choices.find((c) => c.name === selections[opt.label]);
     if (chosen?.extra) price += chosen.extra;
   }

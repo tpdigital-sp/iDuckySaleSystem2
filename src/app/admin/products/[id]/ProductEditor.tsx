@@ -38,6 +38,8 @@ type DraftOption = {
   choices: DraftChoice[];
   presetId?: string;
   display: "pills" | "dropdown";
+  /** +฿ ของกลุ่มนี้มีผลเมื่อสั่งตั้งแต่กี่ชิ้นขึ้นไป (ว่าง = ทุกจำนวน) */
+  extraFromQty?: string;
 };
 type DraftImage = { emoji: string; gradient: string; label: string; src?: string };
 type DraftBody = {
@@ -232,6 +234,7 @@ function toDraft(p: Product): Draft {
       choices: o.choices.map((c) => ({ name: c.name, extra: c.extra ? String(c.extra) : "" })),
       ...(o.presetId ? { presetId: o.presetId } : {}),
       display: o.display ?? "pills",
+      ...(o.extraFromQty ? { extraFromQty: String(o.extraFromQty) } : {}),
     })),
     rules: (p.rules ?? []).map((r) => ({
       whenLabel: r.when.label,
@@ -342,6 +345,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
         }),
       ...(o.presetId ? { presetId: o.presetId } : {}),
       ...(o.display === "dropdown" ? { display: "dropdown" as const } : {}),
+      ...(Number(o.extraFromQty) > 0 ? { extraFromQty: Math.floor(Number(o.extraFromQty)) } : {}),
     }))
     .filter((o) => o.label && o.choices.length > 0);
 }
@@ -1666,6 +1670,23 @@ export default function ProductEditor({ product }: { product: Product }) {
                       </button>
                     ))}
                   </div>
+                  <label
+                    className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-slate-400"
+                    title="ต่ำกว่าเกณฑ์นี้ ราคาถือว่ารวมตัวเลือกกลุ่มนี้แล้ว (ไม่บวก +฿) เช่น อะไหล่ตะขอ ใส่ 11 = ปลีก 1-10 ชิ้นรวมอะไหล่แล้ว"
+                  >
+                    +฿ มีผลเมื่อสั่งครบ
+                    <input
+                      value={opt.extraFromQty ?? ""}
+                      onChange={(e) =>
+                        patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, extraFromQty: e.target.value } : o)) })
+                      }
+                      inputMode="numeric"
+                      placeholder="ทุกจำนวน"
+                      className="w-16 rounded-lg bg-slate-50 px-1.5 py-1 text-center text-[11px] ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                      aria-label={`เกณฑ์จำนวนที่ +฿ มีผล ของกลุ่ม ${opt.label || gi + 1}`}
+                    />
+                    ชิ้นขึ้นไป
+                  </label>
                 </div>
                 <p className="mt-2 text-[11px] text-sky-600">
                   แก้ตัวเลือกกลุ่มนี้ได้ที่{" "}
@@ -1709,6 +1730,23 @@ export default function ProductEditor({ product }: { product: Product }) {
                     </button>
                   ))}
                 </div>
+                <label
+                  className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-slate-400"
+                  title="ต่ำกว่าเกณฑ์นี้ ราคาถือว่ารวมตัวเลือกกลุ่มนี้แล้ว (ไม่บวก +฿) เช่น อะไหล่ตะขอ ใส่ 11 = ปลีก 1-10 ชิ้นรวมอะไหล่แล้ว"
+                >
+                  +฿ มีผลเมื่อสั่งครบ
+                  <input
+                    value={opt.extraFromQty ?? ""}
+                    onChange={(e) =>
+                      patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, extraFromQty: e.target.value } : o)) })
+                    }
+                    inputMode="numeric"
+                    placeholder="ทุกจำนวน"
+                    className="w-16 rounded-lg bg-slate-50 px-1.5 py-1 text-center text-[11px] ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    aria-label={`เกณฑ์จำนวนที่ +฿ มีผล ของกลุ่ม ${opt.label || gi + 1}`}
+                  />
+                  ชิ้นขึ้นไป
+                </label>
               </div>
               <div className="mt-2 space-y-1.5">
                 {opt.choices.map((ch, ci) => (

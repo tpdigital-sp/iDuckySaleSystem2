@@ -13,6 +13,7 @@ import {
   getCategory,
   includedDesigns,
   matrixChoiceAvailable,
+  optionExtraApplies,
   priceMatrixKey,
   priceRange,
   PRODUCTS,
@@ -712,7 +713,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                         .map((c) => (
                           <option key={c.name} value={c.name}>
                             {c.name}
-                            {c.extra ? ` +${formatPrice(c.extra)}` : ""}
+                            {c.extra && optionExtraApplies(opt, qty) ? ` +${formatPrice(c.extra)}` : ""}
                           </option>
                         ))}
                     </select>
@@ -734,11 +735,22 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                             }`}
                           >
                             {c.name}
-                            {c.extra ? ` +${formatPrice(c.extra)}` : ""}
+                            {c.extra && optionExtraApplies(opt, qty) ? ` +${formatPrice(c.extra)}` : ""}
                           </button>
                         ))}
                     </div>
                   )}
+                  {/* กลุ่มที่ตั้งเกณฑ์ +฿ ไว้ และจำนวนยังต่ำกว่าเกณฑ์ = ราคารวมตัวเลือกนี้แล้ว */}
+                  {!locked &&
+                    opt.extraFromQty != null &&
+                    opt.extraFromQty > 0 &&
+                    opt.choices.some((c) => c.extra) &&
+                    !optionExtraApplies(opt, qty) && (
+                      <p className="mt-1.5 text-[11px] text-stone-400">
+                        💡 จำนวนนี้ราคารวม{opt.label}แล้ว · สั่งตั้งแต่ {opt.extraFromQty.toLocaleString("th-TH")}{" "}
+                        {matrix?.unit ?? "ชิ้น"}ขึ้นไปคิดเพิ่มตามตัวเลือก
+                      </p>
+                    )}
                 </div>
               );
             })}
