@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { ARTICLE_PROSE } from "@/components/ArticleHtml";
 
 /**
- * ✍️ ตัวเขียนแบบ rich text (สไตล์เดียวกับบล็อก lnwshop)
- * — หนา/เอียง/ขีด · สี+ไฮไลต์ · จัดวางซ้าย-กลาง-ขวา · หัวข้อ/quote/ย่อหน้า
- *   รายการ · ลิงก์ · แทรกรูป (ปุ่ม/ลาก/paste) · ขนาดตัวอักษร · ดูโค้ด HTML
+ * ✍️ ตัวเขียนแบบ rich text หน้าตาเดียวกับบล็อก lnwshop (TinyMCE)
+ * ปุ่มจัดกลุ่มเป็นกล่องขาว 2 แถว: จัดรูปแบบ/สี/จัดวาง/quote/รายการ แถวบน
+ * ย่อหน้า/ฟอนต์/ขนาด/ลิงก์/รูป/อีโมจิ/ตาราง/ล้างรูปแบบ/โค้ด แถวล่าง
  * เก็บเป็น HTML (ฝั่งเซิร์ฟเวอร์กรองแท็กอันตรายก่อนบันทึกอีกชั้น)
  */
 
@@ -23,55 +23,43 @@ async function uploadImage(file: File): Promise<string | null> {
   }
 }
 
-const btn =
-  "rounded-lg px-2 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-slate-200 active:bg-slate-300";
-const sel = "rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-700 focus:outline-none";
+/* ── ชิ้นส่วน UI แบบ TinyMCE: กลุ่มปุ่มกล่องขาว + ปุ่มสี่เหลี่ยม ── */
 
-/** สีให้เลือกเร็ว (แบรนด์ + สีพื้นฐาน) */
-const COLORS = ["#1a3843", "#3fa1b6", "#e11d48", "#ea580c", "#16a34a", "#7c3aed", "#78716c", "#000000"];
-const HILITES = ["#fff3c4", "#d6edf2", "#fee2e2", "#dcfce7", "#f3e8ff", "#ffffff"];
+function Group({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-stretch divide-x divide-slate-200 overflow-hidden rounded-lg border border-slate-300 bg-white shadow-[0_1px_1px_rgba(15,23,42,.04)]">
+      {children}
+    </span>
+  );
+}
 
-/** ดรอปดาวน์จานสีเล็ก ๆ */
-function ColorMenu({
-  label,
-  title,
-  colors,
-  onPick,
-}: {
-  label: React.ReactNode;
-  title: string;
-  colors: string[];
-  onPick: (c: string) => void;
-}) {
+const BTN = "grid min-w-9 place-items-center px-2.5 py-2 text-sm text-slate-700 transition hover:bg-slate-100 active:bg-slate-200";
+const SEL = "cursor-pointer bg-white px-2 py-2 text-xs text-slate-700 outline-none transition hover:bg-slate-100";
+
+/** ดรอปดาวน์เล็ก ๆ ใต้ปุ่ม (จานสี / อีโมจิ / ตาราง) */
+function Drop({ label, title, children }: { label: React.ReactNode; title: string; children: (close: () => void) => React.ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
-    <span className="relative">
-      <button type="button" onClick={() => setOpen((v) => !v)} className={btn} title={title}>
+    <span className="relative inline-flex">
+      <button type="button" onClick={() => setOpen((v) => !v)} className={`${BTN} gap-0.5`} title={title}>
         {label}
+        <span className="text-[8px] text-slate-400">▾</span>
       </button>
       {open && (
         <>
           <button type="button" aria-label="ปิด" onClick={() => setOpen(false)} className="fixed inset-0 z-30 cursor-default" />
-          <span className="absolute left-0 top-full z-40 mt-1 flex w-36 flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
-            {colors.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => {
-                  onPick(c);
-                  setOpen(false);
-                }}
-                className="h-6 w-6 rounded-md ring-1 ring-slate-200 transition hover:scale-110"
-                style={{ backgroundColor: c }}
-                aria-label={c}
-              />
-            ))}
+          <span className="absolute left-0 top-full z-40 mt-1 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+            {children(() => setOpen(false))}
           </span>
         </>
       )}
     </span>
   );
 }
+
+const COLORS = ["#1a3843", "#3fa1b6", "#e11d48", "#ea580c", "#ca8a04", "#16a34a", "#7c3aed", "#78716c", "#a8a29e", "#000000"];
+const HILITES = ["#fff3c4", "#d6edf2", "#fee2e2", "#dcfce7", "#f3e8ff", "#fce7f3", "#ffffff"];
+const EMOJI = ["😀","😍","🥰","😆","🥹","😅","🙏","👍","👏","💪","✨","🎉","🎁","💛","❤️","🔥","⭐","✅","❌","⚠️","📌","📞","🚚","🐥"];
 
 export default function RichEditor({
   initialHtml,
@@ -83,7 +71,6 @@ export default function RichEditor({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
-  // โหมดดูโค้ด HTML (แบบปุ่ม <> ของ lnwshop)
   const [srcMode, setSrcMode] = useState(false);
   const [srcText, setSrcText] = useState("");
 
@@ -108,10 +95,17 @@ export default function RichEditor({
     if (url) cmd("insertImage", url);
   }
 
+  function insertTable(rows: number, cols: number) {
+    const cell = '<td style="border:1px solid #d6d3d1;padding:8px;min-width:60px"><br></td>';
+    const html = `<table style="border-collapse:collapse;width:100%;margin:12px 0">${Array.from({ length: rows })
+      .map(() => `<tr>${cell.repeat(cols)}</tr>`)
+      .join("")}</table><p><br></p>`;
+    cmd("insertHTML", html);
+  }
+
   function toggleSource() {
     if (!ref.current) return;
     if (srcMode) {
-      // กลับจากโหมดโค้ด → ใช้โค้ดที่แก้
       ref.current.innerHTML = srcText;
       emit();
       setSrcMode(false);
@@ -122,132 +116,167 @@ export default function RichEditor({
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-      {/* ── แถบเครื่องมือ ── */}
-      <div className="flex flex-wrap items-center gap-0.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5">
-        <button type="button" onClick={() => cmd("bold")} className={btn} title="ตัวหนา">
-          <b>B</b>
-        </button>
-        <button type="button" onClick={() => cmd("italic")} className={`${btn} italic`} title="ตัวเอียง">
-          I
-        </button>
-        <button type="button" onClick={() => cmd("underline")} className={`${btn} underline`} title="ขีดเส้นใต้">
-          U
-        </button>
-        <button type="button" onClick={() => cmd("strikeThrough")} className={`${btn} line-through`} title="ขีดฆ่า">
-          S
-        </button>
-        <ColorMenu label={<span className="border-b-2 border-rose-500">A</span>} title="สีตัวอักษร" colors={COLORS} onPick={(c) => cmd("foreColor", c)} />
-        <ColorMenu label={<span className="bg-yellow-200 px-0.5">A</span>} title="ไฮไลต์ข้อความ" colors={HILITES} onPick={(c) => cmd("hiliteColor", c)} />
-        <span className="mx-1 h-5 w-px bg-slate-200" />
+    <div className="overflow-visible rounded-2xl border border-slate-200 bg-white">
+      {/* ── แถบเครื่องมือ 2 แถว แบบ TinyMCE ── */}
+      <div className="flex flex-wrap items-center gap-1.5 rounded-t-2xl border-b border-slate-200 bg-slate-50/80 px-2.5 py-2">
+        <Group>
+          <button type="button" onClick={() => cmd("bold")} className={`${BTN} font-extrabold`} title="ตัวหนา">B</button>
+          <button type="button" onClick={() => cmd("italic")} className={`${BTN} italic`} title="ตัวเอียง">I</button>
+          <button type="button" onClick={() => cmd("underline")} className={`${BTN} underline`} title="ขีดเส้นใต้">U</button>
+          <button type="button" onClick={() => cmd("strikeThrough")} className={`${BTN} line-through`} title="ขีดฆ่า">S</button>
+        </Group>
 
-        <button type="button" onClick={() => cmd("justifyLeft")} className={btn} title="ชิดซ้าย">⇤</button>
-        <button type="button" onClick={() => cmd("justifyCenter")} className={btn} title="กึ่งกลาง">↔</button>
-        <button type="button" onClick={() => cmd("justifyRight")} className={btn} title="ชิดขวา">⇥</button>
-        <span className="mx-1 h-5 w-px bg-slate-200" />
+        <Group>
+          <Drop label={<span className="border-b-[3px] border-rose-500 font-bold leading-none">A</span>} title="สีตัวอักษร">
+            {(close) => (
+              <span className="flex w-40 flex-wrap gap-1">
+                {COLORS.map((c) => (
+                  <button key={c} type="button" onClick={() => { cmd("foreColor", c); close(); }}
+                    className="h-6 w-6 rounded-md ring-1 ring-slate-200 transition hover:scale-110" style={{ backgroundColor: c }} aria-label={c} />
+                ))}
+              </span>
+            )}
+          </Drop>
+          <Drop label={<span className="bg-yellow-200 px-1 font-bold leading-none">A</span>} title="ไฮไลต์ข้อความ">
+            {(close) => (
+              <span className="flex w-32 flex-wrap gap-1">
+                {HILITES.map((c) => (
+                  <button key={c} type="button" onClick={() => { cmd("hiliteColor", c); close(); }}
+                    className="h-6 w-6 rounded-md ring-1 ring-slate-200 transition hover:scale-110" style={{ backgroundColor: c }} aria-label={c} />
+                ))}
+              </span>
+            )}
+          </Drop>
+        </Group>
 
-        <select
-          defaultValue=""
-          onChange={(e) => {
-            if (e.target.value) cmd("formatBlock", e.target.value);
-            e.target.value = "";
-          }}
-          className={sel}
-          title="รูปแบบย่อหน้า"
-        >
-          <option value="" disabled>ย่อหน้า</option>
-          <option value="<p>">ข้อความปกติ</option>
-          <option value="<h2>">หัวข้อใหญ่ (H2)</option>
-          <option value="<h3>">หัวข้อรอง (H3)</option>
-          <option value="<blockquote>">“ คำพูด/ไฮไลต์</option>
-        </select>
-        <select
-          defaultValue=""
-          onChange={(e) => {
-            if (e.target.value) cmd("fontSize", e.target.value);
-            e.target.value = "";
-          }}
-          className={sel}
-          title="ขนาดตัวอักษร"
-        >
-          <option value="" disabled>ขนาด</option>
-          <option value="2">เล็ก</option>
-          <option value="3">ปกติ</option>
-          <option value="5">ใหญ่</option>
-          <option value="6">ใหญ่มาก</option>
-        </select>
-        <span className="mx-1 h-5 w-px bg-slate-200" />
+        <Group>
+          <button type="button" onClick={() => cmd("justifyLeft")} className={BTN} title="ชิดซ้าย">☰̲</button>
+          <button type="button" onClick={() => cmd("justifyCenter")} className={BTN} title="กึ่งกลาง">≡</button>
+          <button type="button" onClick={() => cmd("justifyRight")} className={BTN} title="ชิดขวา">☰</button>
+          <button type="button" onClick={() => cmd("justifyFull")} className={BTN} title="เต็มแนว">▤</button>
+        </Group>
 
-        <button type="button" onClick={() => cmd("insertUnorderedList")} className={btn} title="รายการจุด">
-          • รายการ
-        </button>
-        <button type="button" onClick={() => cmd("insertOrderedList")} className={btn} title="รายการตัวเลข">
-          1.
-        </button>
-        <button type="button" onClick={() => cmd("outdent")} className={btn} title="ลดย่อหน้า">⇦</button>
-        <button type="button" onClick={() => cmd("indent")} className={btn} title="เพิ่มย่อหน้า">⇨</button>
-        <span className="mx-1 h-5 w-px bg-slate-200" />
+        <Group>
+          <button type="button" onClick={() => cmd("formatBlock", "<blockquote>")} className={`${BTN} font-serif text-lg leading-none`} title="คำพูด / ไฮไลต์ท่อน">
+            &ldquo;
+          </button>
+          <button type="button" onClick={() => cmd("insertUnorderedList")} className={BTN} title="รายการจุด">☷</button>
+          <button type="button" onClick={() => cmd("insertOrderedList")} className={BTN} title="รายการตัวเลข">≣</button>
+          <button type="button" onClick={() => cmd("outdent")} className={BTN} title="ลดย่อหน้า">⇤</button>
+          <button type="button" onClick={() => cmd("indent")} className={BTN} title="เพิ่มย่อหน้า">⇥</button>
+        </Group>
 
-        <button
-          type="button"
-          onClick={() => {
-            const url = prompt("ลิงก์ไปที่ (เช่น /products หรือ https://…)");
-            if (url) cmd("createLink", url);
-          }}
-          className={btn}
-          title="แทรกลิงก์"
-        >
-          🔗
-        </button>
-        <button type="button" onClick={() => cmd("unlink")} className={btn} title="เอาลิงก์ออก">
-          🔗✕
-        </button>
-        <label className={`${btn} cursor-pointer`} title="แทรกรูปตรงตำแหน่งที่พิมพ์ (ลากมาวาง หรือ paste รูปก็ได้)">
-          {busy ? "⏳" : "🖼 รูป"}
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            className="hidden"
-            disabled={busy}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              e.target.value = "";
-              if (f) void insertImage(f);
-            }}
-          />
-        </label>
-        <span className="mx-1 h-5 w-px bg-slate-200" />
+        {/* ── แถว 2 (wrap เอง) ── */}
+        <Group>
+          <select
+            defaultValue=""
+            onChange={(e) => { if (e.target.value) cmd("formatBlock", e.target.value); e.target.value = ""; }}
+            className={SEL} title="รูปแบบย่อหน้า"
+          >
+            <option value="" disabled>ย่อหน้า</option>
+            <option value="<p>">ข้อความปกติ</option>
+            <option value="<h2>">หัวข้อใหญ่ (H2)</option>
+            <option value="<h3>">หัวข้อรอง (H3)</option>
+            <option value="<blockquote>">“ คำพูด</option>
+          </select>
+          <select
+            defaultValue=""
+            onChange={(e) => { if (e.target.value) cmd("fontName", e.target.value); e.target.value = ""; }}
+            className={SEL} title="ฟอนต์"
+          >
+            <option value="" disabled>ฟอนต์</option>
+            <option value="Prompt">Prompt (ของเว็บ)</option>
+            <option value="Sarabun">Sarabun</option>
+            <option value="Arial">Arial</option>
+            <option value="Georgia">Georgia</option>
+            <option value="monospace">Monospace</option>
+          </select>
+          <select
+            defaultValue=""
+            onChange={(e) => { if (e.target.value) cmd("fontSize", e.target.value); e.target.value = ""; }}
+            className={SEL} title="ขนาดตัวอักษร"
+          >
+            <option value="" disabled>16px</option>
+            <option value="1">10px</option>
+            <option value="2">13px</option>
+            <option value="3">16px</option>
+            <option value="4">18px</option>
+            <option value="5">24px</option>
+            <option value="6">32px</option>
+          </select>
+        </Group>
 
-        <button type="button" onClick={() => cmd("undo")} className={btn} title="ย้อนกลับ">↶</button>
-        <button type="button" onClick={() => cmd("redo")} className={btn} title="ทำซ้ำ">↷</button>
-        <button type="button" onClick={() => cmd("removeFormat")} className={btn} title="ล้างรูปแบบข้อความที่เลือก">
-          Tx
-        </button>
-        <button
-          type="button"
-          onClick={toggleSource}
-          className={`${btn} ${srcMode ? "bg-slate-800 text-white hover:bg-slate-700" : ""}`}
-          title="ดู/แก้โค้ด HTML"
-        >
-          &lt;&gt;
-        </button>
+        <Group>
+          <button
+            type="button"
+            onClick={() => { const url = prompt("ลิงก์ไปที่ (เช่น /products หรือ https://…)"); if (url) cmd("createLink", url); }}
+            className={BTN} title="แทรกลิงก์"
+          >
+            🔗
+          </button>
+          <button type="button" onClick={() => cmd("unlink")} className={BTN} title="เอาลิงก์ออก">⛓️‍💥</button>
+        </Group>
+
+        <Group>
+          <label className={`${BTN} cursor-pointer`} title="แทรกรูป (ลากมาวาง หรือ paste รูปในพื้นที่เขียนก็ได้)">
+            {busy ? "⏳" : "🖼"}
+            <input
+              type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" disabled={busy}
+              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void insertImage(f); }}
+            />
+          </label>
+          <Drop label="😊" title="แทรกอีโมจิ">
+            {(close) => (
+              <span className="grid w-48 grid-cols-8 gap-0.5">
+                {EMOJI.map((em) => (
+                  <button key={em} type="button" onClick={() => { cmd("insertText", em); close(); }}
+                    className="rounded p-1 text-base transition hover:bg-slate-100">{em}</button>
+                ))}
+              </span>
+            )}
+          </Drop>
+          <Drop label="▦" title="แทรกตาราง">
+            {(close) => (
+              <span className="flex flex-col gap-1 text-xs">
+                {[[2, 2], [3, 2], [3, 3], [4, 3]].map(([r, c]) => (
+                  <button key={`${r}x${c}`} type="button" onClick={() => { insertTable(r, c); close(); }}
+                    className="rounded-lg px-3 py-1.5 text-left font-semibold text-slate-600 transition hover:bg-slate-100">
+                    ▦ {r} แถว × {c} ช่อง
+                  </button>
+                ))}
+              </span>
+            )}
+          </Drop>
+        </Group>
+
+        <Group>
+          <button type="button" onClick={() => cmd("undo")} className={BTN} title="ย้อนกลับ">↶</button>
+          <button type="button" onClick={() => cmd("redo")} className={BTN} title="ทำซ้ำ">↷</button>
+          <button type="button" onClick={() => cmd("removeFormat")} className={`${BTN} text-xs font-bold`} title="ล้างรูปแบบข้อความที่เลือก">
+            <span className="italic">T</span>ₓ
+          </button>
+        </Group>
+
+        <Group>
+          <button type="button" onClick={toggleSource}
+            className={`${BTN} text-xs font-bold ${srcMode ? "bg-slate-800 text-white hover:bg-slate-700" : ""}`} title="ดู/แก้โค้ด HTML">
+            &lt;&gt;
+          </button>
+        </Group>
       </div>
 
       {/* ── โหมดโค้ด HTML ── */}
-      {srcMode ? (
+      {srcMode && (
         <textarea
           value={srcText}
-          onChange={(e) => {
-            setSrcText(e.target.value);
-            onChange(e.target.value);
-          }}
+          onChange={(e) => { setSrcText(e.target.value); onChange(e.target.value); }}
           rows={18}
           className="w-full resize-y bg-slate-900 px-4 py-3 font-mono text-xs leading-relaxed text-emerald-200 outline-none"
           spellCheck={false}
         />
-      ) : null}
+      )}
 
-      {/* ── พื้นที่เขียน (สไตล์เดียวกับหน้าเว็บจริง) — ซ่อนไว้ตอนอยู่โหมดโค้ด ── */}
+      {/* ── พื้นที่เขียน (สไตล์เดียวกับหน้าเว็บจริง) ── */}
       <div
         ref={ref}
         contentEditable={!srcMode}
@@ -257,19 +286,13 @@ export default function RichEditor({
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           const f = e.dataTransfer.files?.[0];
-          if (f && f.type.startsWith("image/")) {
-            e.preventDefault();
-            void insertImage(f);
-          }
+          if (f && f.type.startsWith("image/")) { e.preventDefault(); void insertImage(f); }
         }}
         onPaste={(e) => {
           const f = [...e.clipboardData.items].find((i) => i.type.startsWith("image/"))?.getAsFile();
-          if (f) {
-            e.preventDefault();
-            void insertImage(f);
-          }
+          if (f) { e.preventDefault(); void insertImage(f); }
         }}
-        className={`min-h-72 px-4 py-3 outline-none ${ARTICLE_PROSE} ${srcMode ? "hidden" : ""}`}
+        className={`min-h-72 rounded-b-2xl px-4 py-3 outline-none ${ARTICLE_PROSE} ${srcMode ? "hidden" : ""}`}
         data-placeholder="พิมพ์เนื้อหาบทความที่นี่… เลือกข้อความแล้วกดปุ่มด้านบนเพื่อจัดรูปแบบ"
       />
     </div>
