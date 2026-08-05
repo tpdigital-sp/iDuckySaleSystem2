@@ -85,18 +85,19 @@ function Tile({ t, preview, extra = "" }: { t: NavTile; preview: boolean; extra?
 }
 
 /**
- * แถวการ์ดเล็กแบบรูปล้วน — แบ่งความกว้างตามสัดส่วนรูปจริง ให้ทุกใบ "สูงเท่ากัน"
- * (รูปงานออกแบบแต่ละใบสัดส่วนไม่เท่ากัน ถ้าแบ่ง 3 ช่องเท่ากันใบที่กว้างกว่าจะเตี้ยหลุดแถว)
+ * แถวการ์ดเล็กแบบรูปล้วน — ทุกใบใช้ "สเกลเดียวกัน" แบบงานต้นฉบับ
+ * ความกว้างแบ่งตามขนาดจริงของไฟล์ (ใบไหนต้นฉบับกว้างกว่าก็ได้พื้นที่กว้างกว่า)
+ * สูงไม่เท่ากันได้ แต่ชิดขอบล่างเสมอกัน — ตำแหน่ง/สัดส่วนจึงตรงกับงานออกแบบเป๊ะ
  */
 function SmallImgRow({ tiles, preview }: { tiles: NavTile[]; preview: boolean }) {
   const [ratios, setRatios] = useState<Record<string, number>>({});
   return (
-    <div className="flex gap-3 md:gap-4">
+    <div className="flex items-end gap-2.5 md:gap-3">
       {tiles.map((t) => {
-        // เก็บสัดส่วนเมื่อรู้ขนาดจริง — เช็คทั้งตอน mount (รูปมาจากแคช onLoad ไม่ยิง) และตอนโหลดเสร็จ
+        // เก็บความกว้างจริงเมื่อรู้ขนาด — เช็คทั้งตอน mount (รูปมาจากแคช onLoad ไม่ยิง) และตอนโหลดเสร็จ
         const readRatio = (im: HTMLImageElement | null) => {
           if (!im || !im.complete || im.naturalHeight === 0) return;
-          const ar = im.naturalWidth / im.naturalHeight;
+          const ar = im.naturalWidth; // สเกลเท่ากันทุกใบ → กว้างตามขนาดไฟล์จริง
           setRatios((m) => (Math.abs((m[t.id] ?? 0) - ar) < 0.001 ? m : { ...m, [t.id]: ar }));
         };
         const inner = (
@@ -114,7 +115,7 @@ function SmallImgRow({ tiles, preview }: { tiles: NavTile[]; preview: boolean })
             </span>
           </>
         );
-        const style = { flexGrow: ratios[t.id] ?? 1.25, flexBasis: 0, minWidth: 0 };
+        const style = { flexGrow: ratios[t.id] ?? 700, flexBasis: 0, minWidth: 0 };
         return preview ? (
           <div key={t.id} style={style} className="group overflow-hidden transition hover:-translate-y-0.5">
             {inner}
