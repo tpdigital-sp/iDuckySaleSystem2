@@ -553,7 +553,14 @@ function TableList({
             </span>
             <div className="min-w-0 flex-1">
               <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-slate-800">
-                <span className="truncate">{p.name}</span>
+                {/* กดชื่อ = เข้าหน้าแก้ไขเลย ไม่ต้องเล็งปุ่มเล็กด้านขวา */}
+                <Link
+                  href={`/admin/products/${p.id}`}
+                  className="truncate transition hover:text-amber-600 hover:underline"
+                  title="เปิดหน้าแก้ไขสินค้านี้"
+                >
+                  {p.name}
+                </Link>
                 <NameTags p={p} edited={overriddenIds.has(p.id)} />
               </p>
               <p className={`truncate text-xs ${faint}`}>

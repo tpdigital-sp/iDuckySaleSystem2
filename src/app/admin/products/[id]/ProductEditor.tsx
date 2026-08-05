@@ -90,8 +90,12 @@ type Draft = {
   shippingId: string;
   /** ค่าส่งขั้นบันไดตามจำนวนชิ้น (แถวว่าง = ไม่ใช้) */
   shipTiers: { minQty: string; price: string }[];
+  /** เกินขั้นสุดท้ายทำยังไง: ใช้ราคาขั้นสุดท้าย / คิดเพิ่มต่อชิ้น / เปลี่ยนวิธีส่ง */
+  shipTierMode: "last" | "extra" | "method";
   /** เกินขั้นสุดท้าย คิดเพิ่มชิ้นละ (บาท) */
   shipTierExtra: string;
+  /** เกินขั้นสุดท้าย เปลี่ยนเป็นวิธีส่งนี้ (id จากตั้งค่าระบบ) */
+  shipTierMethodId: string;
   /** ข้อควรทราบ/เงื่อนไขงาน (แสดงหน้าสินค้า) */
   terms: string;
   /** บังคับแนบลายก่อนสั่ง (ค่าเริ่มต้น = บังคับ) */
@@ -250,7 +254,9 @@ function toDraft(p: Product): Draft {
     bulkAskQty: p.bulkAskQty != null && p.bulkAskQty > 0 ? String(p.bulkAskQty) : "",
     shippingId: p.shippingId ?? "",
     shipTiers: (p.shipTiers ?? []).map((t) => ({ minQty: String(t.minQty), price: String(t.price) })),
+    shipTierMode: p.shipTierMethodId ? "method" : p.shipTierExtra && p.shipTierExtra > 0 ? "extra" : "last",
     shipTierExtra: p.shipTierExtra != null && p.shipTierExtra > 0 ? String(p.shipTierExtra) : "",
+    shipTierMethodId: p.shipTierMethodId ?? "",
     terms: p.terms ?? "",
     artworkRequired: p.artworkRequired !== false,
     reviewed: p.reviewed,
@@ -635,8 +641,14 @@ export default function ProductEditor({ product }: { product: Product }) {
         return rows.length ? rows : undefined;
       })(),
       shipTierExtra:
-        Number(draft.shipTierExtra) > 0 && draft.shipTiers.some((t) => Number(t.minQty) > 0)
+        draft.shipTierMode === "extra" &&
+        Number(draft.shipTierExtra) > 0 &&
+        draft.shipTiers.some((t) => Number(t.minQty) > 0)
           ? Number(draft.shipTierExtra)
+          : undefined,
+      shipTierMethodId:
+        draft.shipTierMode === "method" && draft.shipTierMethodId && draft.shipTiers.some((t) => Number(t.minQty) > 0)
+          ? draft.shipTierMethodId
           : undefined,
       terms: draft.terms.trim() || undefined,
       artworkRequired: draft.artworkRequired ? undefined : false, // undefined = บังคับ (ค่าเริ่มต้น)
@@ -2342,16 +2354,51 @@ export default function ProductEditor({ product }: { product: Product }) {
               ))}
 
               <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2 text-sm">
-                <span className="text-xs text-slate-500">เกินขั้นสุดท้ายแล้ว คิดเพิ่มชิ้นละ</span>
-                <input
-                  value={draft.shipTierExtra}
-                  onChange={(e) => patch({ shipTierExtra: e.target.value.replace(/[^\d.]/g, "") })}
-                  inputMode="decimal"
-                  placeholder="ไม่คิดเพิ่ม"
-                  className="w-24 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
-                />
-                <span className="text-xs text-slate-500">บาท</span>
-                <span className="text-[11px] text-slate-400">· เว้นว่าง = ใช้ราคาขั้นสุดท้ายไปเรื่อย ๆ</span>
+                <span className="text-xs text-slate-500">เกินขั้นสุดท้ายแล้ว</span>
+                <select
+                  value={draft.shipTierMode}
+                  onChange={(e) => patch({ shipTierMode: e.target.value as "last" | "extra" | "method" })}
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
+                >
+                  <option value="last">ใช้ราคาขั้นสุดท้ายไปเรื่อย ๆ</option>
+                  <option value="extra">คิดเพิ่มต่อชิ้น (ระบุราคา)</option>
+                  <option value="method">เปลี่ยนเป็นวิธีส่งอื่น (เช่น ส่งแมส)</option>
+                </select>
+
+                {draft.shipTierMode === "extra" && (
+                  <>
+                    <span className="text-xs text-slate-500">ชิ้นละ</span>
+                    <input
+                      value={draft.shipTierExtra}
+                      onChange={(e) => patch({ shipTierExtra: e.target.value.replace(/[^\d.]/g, "") })}
+                      inputMode="decimal"
+                      placeholder="10"
+                      className="w-24 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
+                    />
+                    <span className="text-xs text-slate-500">บาท</span>
+                  </>
+                )}
+
+                {draft.shipTierMode === "method" && (
+                  <>
+                    <select
+                      value={draft.shipTierMethodId}
+                      onChange={(e) => patch({ shipTierMethodId: e.target.value })}
+                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
+                    >
+                      <option value="">— เลือกวิธีส่ง —</option>
+                      {shipMethods.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} · {m.price} บาท
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-[11px] text-slate-400">
+                      สั่งเกินขั้นสุดท้ายเมื่อไหร่ ระบบบังคับวิธีส่งนี้ให้เลย (ไม่คิดตามตาราง) ·
+                      ยังไม่มีวิธีส่งแมส? ไปเพิ่มที่ ตั้งค่าระบบ → การจัดส่ง ก่อน
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           )}

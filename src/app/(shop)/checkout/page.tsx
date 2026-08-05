@@ -149,22 +149,36 @@ export default function CheckoutPage() {
   const freeShipping = freeMin > 0 && subtotal >= freeMin;
 
   // 📦 สินค้าที่คิดค่าส่งตามจำนวนชิ้น (คิดแบบเดียวกับหน้าตะกร้า — สองหน้าต้องได้เลขเดียวกัน)
-  const qtyShipFee = (() => {
+  const qtyShipCalc = (() => {
     const perProduct = new Map<string, number>();
     for (const i of items) perProduct.set(i.productId, (perProduct.get(i.productId) ?? 0) + i.qty);
     return cartQtyShipFee(
       [...perProduct.entries()]
         .map(([pid, qty]) => {
           const p = productOf(pid);
-          return { name: p?.name ?? pid, qty, tiers: p?.shipTiers, extra: p?.shipTierExtra };
+          return {
+            name: p?.name ?? pid,
+            qty,
+            tiers: p?.shipTiers,
+            extra: p?.shipTierExtra,
+            overflowMethodId: p?.shipTierMethodId,
+          };
         })
-        .filter((x) => x.tiers?.length)
-    ).fee;
+        .filter((x) => x.tiers?.length),
+      methods
+    );
   })();
+  const qtyShipFee = qtyShipCalc.fee;
+  // สินค้าเกินเกณฑ์จนต้องเปลี่ยนวิธีส่ง (หน้าตะกร้าสลับให้แล้ว — ที่นี่กันหลุดอีกชั้นเผื่อเข้าลิงก์ตรง)
+  const forcedMethod = qtyShipCalc.forceIds
+    .map((id) => methods.find((m) => m.id === id))
+    .filter(Boolean)
+    .sort((a, b) => b!.price - a!.price)[0];
+  const effectiveMethod = forcedMethod && forcedMethod.price > shippingMethod.price ? forcedMethod : shippingMethod;
 
   // สั่งเพิ่มในออเดอร์เดิม → ไม่คิดค่าส่งซ้ำ (จ่ายไปแล้วในออเดอร์แรก)
-  // ของหนักคิดตามจำนวน → ใช้ค่าที่แพงกว่าระหว่างวิธีที่เลือกกับค่าตามจำนวน
-  const shippingCost = appendTo ? 0 : freeShipping ? 0 : Math.max(shippingMethod.price, qtyShipFee);
+  // ของหนักคิดตามจำนวน → ใช้ค่าที่แพงกว่าระหว่างวิธีที่ใช้จริงกับค่าตามจำนวน
+  const shippingCost = appendTo ? 0 : freeShipping ? 0 : Math.max(effectiveMethod.price, qtyShipFee);
 
   // ── ส่วนลดระดับสมาชิก (โชว์เป็นตัวอย่าง — เซิร์ฟเวอร์คิดจริงตอนสร้างออเดอร์) ──
   const [tier, setTier] = useState<{ name: string; icon: string; pct: number } | null>(null);
@@ -300,7 +314,7 @@ export default function CheckoutPage() {
       address,
       email: staffMode ? undefined : customer?.email,
       customerId: staffMode ? undefined : customer?.id,
-      shipping: shippingMethod.name,
+      shipping: effectiveMethod.name,
       shippingCost,
       subtotal,
       total,
@@ -650,7 +664,7 @@ export default function CheckoutPage() {
         <div className="mt-1 flex justify-between text-sm text-stone-600">
           <span>
             ค่าจัดส่ง
-            {appendTo ? "" : qtyShipFee > shippingMethod.price ? " (ตามจำนวนชิ้น 📦)" : ` (${shippingMethod.name})`}
+            {appendTo ? "" : qtyShipFee > effectiveMethod.price ? " (ตามจำนวนชิ้น 📦)" : ` (${effectiveMethod.name})`}
           </span>
           <span>{appendTo ? "รวมกับออเดอร์เดิมแล้ว" : freeShipping ? "ฟรี" : formatPrice(shippingCost)}</span>
         </div>

@@ -98,21 +98,34 @@ export interface QtyShipLine {
   name: string;
   qty: number;
   fee: number;
+  /** เกินขั้นสุดท้ายจนต้องเปลี่ยนเป็นวิธีส่งนี้ (เช่น ส่งแมสเซนเจอร์) */
+  switchedTo?: ShippingMethod;
 }
 
 /**
  * รวมค่าส่งตามจำนวนของทั้งตะกร้า (คิดแยกทีละสินค้า แล้วบวกกัน)
- * คืน fee รวม + รายละเอียดต่อสินค้า (ไว้โชว์ให้ลูกค้าเห็นว่ามาจากไหน)
+ * คืน fee รวม + รายละเอียดต่อสินค้า + วิธีส่งที่สินค้าบางตัวบังคับเปลี่ยน (เกินขั้นสุดท้าย)
  */
 export function cartQtyShipFee(
-  items: { name: string; qty: number; tiers?: ShipTier[]; extra?: number }[]
-): { fee: number; lines: QtyShipLine[] } {
+  items: { name: string; qty: number; tiers?: ShipTier[]; extra?: number; overflowMethodId?: string }[],
+  methods: ShippingMethod[] = []
+): { fee: number; lines: QtyShipLine[]; forceIds: string[] } {
   const lines: QtyShipLine[] = [];
+  const forceIds: string[] = [];
   for (const it of items) {
+    const rows = (it.tiers ?? []).filter((t) => t.minQty > 0).sort((a, b) => a.minQty - b.minQty);
+    const last = rows[rows.length - 1];
+    const m = it.overflowMethodId ? methods.find((x) => x.id === it.overflowMethodId) : undefined;
+    // เกินขั้นสุดท้าย + ตั้ง "เปลี่ยนเป็นวิธีส่ง" ไว้ → ไม่คิดตามตาราง ใช้วิธีนั้นแทน (ราคาวิธีคุมเอง)
+    if (last && m && it.qty > last.minQty) {
+      lines.push({ name: it.name, qty: it.qty, fee: 0, switchedTo: m });
+      forceIds.push(m.id);
+      continue;
+    }
     const fee = qtyShipFee(it.qty, it.tiers, it.extra);
     if (fee > 0) lines.push({ name: it.name, qty: it.qty, fee });
   }
-  return { fee: lines.reduce((s, l) => s + l.fee, 0), lines };
+  return { fee: lines.reduce((s, l) => s + l.fee, 0), lines, forceIds };
 }
 
 /** วิธีนี้เลือกได้ไหม เทียบกับขั้นต่ำที่ระบบคำนวณไว้ */

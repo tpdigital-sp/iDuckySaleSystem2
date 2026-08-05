@@ -198,6 +198,34 @@ function ImageField({
   );
 }
 
+/** หัวข้อส่วนย่อยในตัวแก้ไขเมนูดรอปดาวน์ — เลขตรงกับผังด้านบน */
+function SectionHead({ no, title, desc }: { no: string; title: string; desc: string }) {
+  return (
+    <div className="flex items-start gap-2">
+      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-slate-900 text-[11px] font-bold text-white">
+        {no}
+      </span>
+      <div>
+        <p className="text-sm font-bold text-slate-800">{title}</p>
+        <p className="text-[11px] leading-snug text-slate-400">{desc}</p>
+      </div>
+    </div>
+  );
+}
+
+/** ผังแผงดรอปดาวน์ — ให้เห็นว่าส่วน ①②③ อยู่ตรงไหนของจริง */
+function PanelMap() {
+  return (
+    <div className="flex h-28 w-full max-w-xs select-none gap-1.5 rounded-xl bg-white p-2 ring-1 ring-slate-200">
+      <div className="grid w-1/4 place-items-center rounded-lg bg-sky-100 text-xs font-bold text-sky-700">①</div>
+      <div className="flex flex-1 flex-col gap-1.5">
+        <div className="grid h-2/5 place-items-center rounded-lg bg-amber-100 text-xs font-bold text-amber-700">②</div>
+        <div className="grid flex-1 place-items-center rounded-lg bg-emerald-100 text-xs font-bold text-emerald-700">③</div>
+      </div>
+    </div>
+  );
+}
+
 function NavEditorInner() {
   const [nav, setNav] = useState<SiteNav>(DEFAULT_SITE_NAV);
   const [cats, setCats] = useState<ShopCategory[]>([]);
@@ -701,35 +729,53 @@ function NavEditorInner() {
 
                 {expanded && (
                   <div className="mt-4 space-y-4 border-t border-slate-100 pt-4">
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <label className="block">
-                        <span className="block text-xs font-semibold text-slate-600">หัวเรื่องในแผง</span>
-                        <input
-                          value={g.heading ?? ""}
-                          onChange={(e) => setGroup(g.id, { heading: e.target.value })}
-                          placeholder="สินค้าแนะนำ"
-                          className={`mt-1 ${input}`}
-                        />
-                      </label>
-                      <div>
-                        <span className="block text-xs font-semibold text-slate-600">ภาพโปรโมทกดแล้วไปที่</span>
-                        <div className="mt-1">
-                          <LinkPicker
-                            value={g.imageHref ?? "/products"}
-                            cats={cats}
-                            onChange={(v) => setGroup(g.id, { imageHref: v })}
-                          />
-                        </div>
-                      </div>
-                      <ImageField
-                        value={g.image}
-                        onChange={(v) => setGroup(g.id, { image: v })}
-                        label="ภาพโปรโมทด้านซ้ายของแผง (ไม่ใส่ก็ได้)"
-                        hint="แนวตั้ง อัตราส่วนประมาณ 3:4 · แสดงเฉพาะจอกว้าง"
-                      />
+                    {/* ผังบอกตำแหน่ง — เลข ①②③ ตรงกับส่วนแก้ไขด้านล่าง */}
+                    <div className="flex flex-wrap items-center gap-4">
+                      <PanelMap />
+                      <p className={`max-w-56 text-[11px] leading-relaxed ${faint}`}>
+                        ผังแผงที่ลูกค้าเห็น — <strong className="text-sky-600">① ภาพโปรโมทซ้าย</strong> ·{" "}
+                        <strong className="text-amber-600">② แถวภาพสินค้าแนะนำ</strong> ·{" "}
+                        <strong className="text-emerald-600">③ คอลัมน์รายการ</strong> · แก้เสร็จกด 👀
+                        ดูตัวอย่างด้านบนได้เลย
+                      </p>
                     </div>
 
-                    {/* ── ภาพสินค้าแนะนำ (แถวบนของแผง) — ลากรูปมาวางได้เลย ── */}
+                    {/* ══ ① แผงด้านซ้าย ══ */}
+                    <div className="rounded-xl border-l-4 border-l-sky-300 bg-slate-50 p-3 ring-1 ring-slate-200">
+                      <SectionHead
+                        no="①"
+                        title="ภาพโปรโมทด้านซ้าย + หัวเรื่อง"
+                        desc="ภาพแนวตั้ง (ประมาณ 3:4) โชว์เฉพาะจอกว้าง · หัวเรื่องขึ้นเหนือแถวภาพสินค้าแนะนำ"
+                      />
+                      <div className="mt-3 grid gap-3 md:grid-cols-3">
+                        <ImageField
+                          value={g.image}
+                          onChange={(v) => setGroup(g.id, { image: v })}
+                          label="ภาพโปรโมท (ไม่ใส่ก็ได้)"
+                        />
+                        <div>
+                          <span className="block text-xs font-semibold text-slate-600">กดภาพแล้วไปที่</span>
+                          <div className="mt-1">
+                            <LinkPicker
+                              value={g.imageHref ?? "/products"}
+                              cats={cats}
+                              onChange={(v) => setGroup(g.id, { imageHref: v })}
+                            />
+                          </div>
+                        </div>
+                        <label className="block">
+                          <span className="block text-xs font-semibold text-slate-600">หัวเรื่องในแผง</span>
+                          <input
+                            value={g.heading ?? ""}
+                            onChange={(e) => setGroup(g.id, { heading: e.target.value })}
+                            placeholder="สินค้าแนะนำ"
+                            className={`mt-1 ${input}`}
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* ══ ② แถวภาพสินค้าแนะนำ — ลากรูปมาวางได้เลย ══ */}
                     <div
                       onDragOver={(e) => {
                         e.preventDefault();
@@ -742,16 +788,18 @@ function NavEditorInner() {
                         e.preventDefault();
                         void dropPromoFiles(g.id, [...e.dataTransfer.files]);
                       }}
-                      className={`rounded-xl p-3 ring-1 transition ${
+                      className={`rounded-xl border-l-4 border-l-amber-300 p-3 ring-1 transition ${
                         dragOver === g.id
                           ? "bg-amber-50 ring-2 ring-amber-400 ring-dashed"
                           : "bg-slate-50 ring-slate-200"
                       }`}
                     >
-                      <p className="text-xs font-semibold text-slate-600">
-                        🖼 ภาพสินค้าแนะนำ (แถวบนของแผง — {(g.promos ?? []).length} รูป)
-                      </p>
-                      <p className={`mt-0.5 text-[11px] ${faint}`}>
+                      <SectionHead
+                        no="②"
+                        title={`แถวภาพสินค้าแนะนำ (${(g.promos ?? []).length} รูป)`}
+                        desc="รูปสี่เหลี่ยมจัตุรัสเรียงแถวบนของแผง กดแล้วไปหน้าที่ตั้งไว้"
+                      />
+                      <p className={`mt-1.5 text-[11px] ${faint}`}>
                         🖐 <strong className="text-slate-500">ลากรูปมาวางตรงนี้ได้เลย</strong> (หลายรูปพร้อมกันได้) —
                         วางทับรูปเดิม = เปลี่ยนรูปนั้น · วางที่ว่าง = แทรกต่อท้าย
                         {dropBusy > 0 && (
@@ -834,8 +882,14 @@ function NavEditorInner() {
                       </div>
                     </div>
 
-                    {/* ── คอลัมน์ ── */}
-                    <div className="space-y-3">
+                    {/* ══ ③ คอลัมน์รายการ ══ */}
+                    <div className="rounded-xl border-l-4 border-l-emerald-300 bg-slate-50/60 p-3 ring-1 ring-slate-200">
+                      <SectionHead
+                        no="③"
+                        title={`คอลัมน์รายการ (${g.columns.length} คอลัมน์)`}
+                        desc="แต่ละคอลัมน์ = ชื่อหมวด + รายชื่อสินค้าข้างใต้ · ตั้งดึงอัตโนมัติได้ ไม่ต้องพิมพ์เอง"
+                      />
+                      <div className="mt-3 space-y-3">
                       {g.columns.map((c, ci) => (
                         <div key={c.id} className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
                           <div className="flex flex-wrap items-center gap-2">
@@ -1025,6 +1079,7 @@ function NavEditorInner() {
                       >
                         ＋ เพิ่มคอลัมน์
                       </button>
+                      </div>
                     </div>
                   </div>
                 )}
