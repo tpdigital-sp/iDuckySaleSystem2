@@ -54,6 +54,18 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   const { addItem } = useCart();
   const [imageIndex, setImageIndex] = useState(0);
   const [qty, setQty] = useState(1);
+  // 🔍 รูปที่กำลังเปิดดูขนาดใหญ่ (lightbox) — ว่าง = ปิดอยู่
+  const [zoomSrc, setZoomSrc] = useState("");
+  useEffect(() => {
+    if (!zoomSrc) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setZoomSrc("");
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [zoomSrc]);
   // ข้อความในช่องจำนวนระหว่างพิมพ์ — แยกจาก qty เพื่อให้ลบจนว่างแล้วพิมพ์ใหม่ได้
   const [qtyText, setQtyText] = useState("1");
   useEffect(() => {
@@ -1208,18 +1220,38 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                 key={`${sec.heading}-${i}`}
                 className={`grid items-center gap-6 md:gap-10 ${sec.image ? "md:grid-cols-2" : ""}`}
               >
-                {sec.image && (
-                  <ProductVisual
-                    emoji={sec.image.emoji}
-                    gradient={sec.image.gradient}
-                    src={sec.image.src}
-                    alt={sec.image.label || sec.heading}
-                    size="text-[6rem]"
-                    className={`aspect-[4/3] w-full rounded-[2rem] shadow-sm ${
-                      sec.align === "right" ? "md:order-2" : ""
-                    }`}
-                  />
-                )}
+                {sec.image &&
+                  (sec.image.src ? (
+                    // รูปจริง: โชว์เต็มสัดส่วนไม่ครอป + กดเพื่อดูขนาดใหญ่
+                    <button
+                      type="button"
+                      onClick={() => setZoomSrc(sec.image!.src!)}
+                      className={`group relative cursor-zoom-in ${sec.align === "right" ? "md:order-2" : ""}`}
+                      aria-label={`ขยายรูป ${sec.image.label || sec.heading || "ประกอบสินค้า"}`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={sec.image.src}
+                        alt={sec.image.label || sec.heading}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full rounded-[2rem] shadow-sm ring-1 ring-amber-100/70 transition group-hover:brightness-95"
+                      />
+                      <span className="absolute bottom-3 right-3 rounded-full bg-white/85 px-2.5 py-1 text-[11px] font-bold text-stone-500 shadow-sm backdrop-blur transition group-hover:bg-white">
+                        🔍 กดเพื่อขยาย
+                      </span>
+                    </button>
+                  ) : (
+                    <ProductVisual
+                      emoji={sec.image.emoji}
+                      gradient={sec.image.gradient}
+                      alt={sec.image.label || sec.heading}
+                      size="text-[6rem]"
+                      className={`aspect-[4/3] w-full rounded-[2rem] shadow-sm ${
+                        sec.align === "right" ? "md:order-2" : ""
+                      }`}
+                    />
+                  ))}
                 <div className={`text-center ${sec.align === "right" ? "md:order-1" : ""}`}>
                   {sec.heading && (
                     <h3 className="text-xl font-extrabold text-amber-600">{sec.heading}</h3>
@@ -1305,6 +1337,32 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
       </div>
       {/* กันแถบลอยบังเนื้อหาท้ายหน้า */}
       <div className="h-20 lg:hidden" aria-hidden />
+
+      {/* 🔍 ดูรูปขนาดใหญ่ (กดพื้นหลัง/ปุ่มปิด/Esc เพื่อออก) */}
+      {zoomSrc && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
+          onClick={() => setZoomSrc("")}
+          role="dialog"
+          aria-modal="true"
+          aria-label="ดูรูปขนาดใหญ่"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={zoomSrc}
+            alt=""
+            className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            onClick={() => setZoomSrc("")}
+            className="absolute right-4 top-4 rounded-full bg-white/90 px-4 py-2 text-sm font-bold text-stone-700 shadow-lg transition hover:bg-white"
+          >
+            ✕ ปิด
+          </button>
+        </div>
+      )}
     </div>
   );
 }
