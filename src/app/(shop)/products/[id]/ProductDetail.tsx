@@ -135,11 +135,14 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   const extraDesigns = rate?.extraDesignFee ? Math.max(0, designs - included) : 0;
   const designFee = extraDesigns * (rate?.extraDesignFee ?? 0);
 
-  // ✨ เลือกเรทให้อัตโนมัติจากจำนวน + จำนวนลาย (จนกว่าลูกค้าจะกดเลือกเรทเอง)
-  // ปกติเลือกเรทที่ขั้นต่ำสูงสุดที่จำนวนถึง (50 ชิ้น → เรท 2) · แต่ถ้าแนบลายมามากกว่า
-  // ที่เรทนั้นคละได้ (เช่น 3 ลาย แต่เรท 2 คละได้ 2) → เด้งไปเรทที่คละได้ (เรท 1)
+  // ✨ เลือกเรทให้อัตโนมัติจากจำนวน + จำนวนลาย
+  // - ยังไม่เคยกดเลือกเรทเอง: เลือกเรทที่ขั้นต่ำสูงสุดที่จำนวนถึง (50 ชิ้น → เรท 2)
+  //   และถ้าลายที่แนบเกินที่เรทนั้นคละได้ → เลือกเรทที่คละได้แทน (เช่น เรท 1)
+  // - กดเลือกเรทเองแล้ว: เคารพที่เลือก ยกเว้นลายเกินที่เรทนั้นรองรับ (และคละเกินไม่ได้)
+  //   → สลับไปเรทที่รองรับให้ พร้อมแจ้งเหตุผล (ค้างเรทเดิมไว้ = สั่งไม่ได้อยู่ดี)
+  const [autoRateNote, setAutoRateNote] = useState("");
   useEffect(() => {
-    if (rateTouched || rates.length < 2) return;
+    if (rates.length < 2) return;
     const needDesigns = designsTouched ? designs : Math.max(artFiles.length, 1);
     const fitsDesigns = (r: (typeof rates)[number]) => {
       if (!r.minPerDesign) return true;
@@ -147,10 +150,28 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
       return maxD >= needDesigns;
     };
     const qualified = rates.filter((r) => qty >= (r.minQty ?? 1));
-    const pool = qualified.filter(fitsDesigns);
-    const best = (pool.length ? pool : qualified).sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
-    if (best) setRateLabel((cur) => (cur === best.label ? cur : best.label));
-  }, [qty, rates, rateTouched, designs, designsTouched, artFiles.length]);
+    if (!rateTouched) {
+      const pool = qualified.filter(fitsDesigns);
+      const best = (pool.length ? pool : qualified).sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
+      if (best) setRateLabel((cur) => (cur === best.label ? cur : best.label));
+      setAutoRateNote("");
+      return;
+    }
+    if (rate && !fitsDesigns(rate)) {
+      const alt = qualified
+        .filter(fitsDesigns)
+        .sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
+      if (alt && alt.label !== rate.label) {
+        setRateLabel(alt.label);
+        setAutoRateNote(
+          `สลับเป็น “${alt.label}” ให้อัตโนมัติ — ลายที่แนบ ${needDesigns} ลาย เกินที่เรทเดิมคละได้`
+        );
+        return;
+      }
+    }
+    // ทุกเรทรองรับจำนวนลายแล้ว (เช่น ลบรูปออก) → เหตุผลของป้ายหมดไป เก็บป้ายออก
+    if (qualified.length > 0 && qualified.every(fitsDesigns)) setAutoRateNote("");
+  }, [qty, rates, rateTouched, designs, designsTouched, artFiles.length, rate]);
 
   const custom = product.custom?.enabled ? product.custom : null;
   const cW = parseFloat(customW), cH = parseFloat(customH);
@@ -606,6 +627,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                       onClick={() => {
                         setRateTouched(true);
                         setRateLabel(r.label);
+                        setAutoRateNote("");
                       }}
                       className={`rounded-2xl px-4 py-3 text-left text-sm transition ${
                         on
@@ -634,6 +656,11 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                   );
                 })}
               </div>
+              {autoRateNote && (
+                <p className="mt-2 rounded-xl bg-teal-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-teal-800 ring-1 ring-teal-100">
+                  ✨ {autoRateNote}
+                </p>
+              )}
             </div>
           )}
 
