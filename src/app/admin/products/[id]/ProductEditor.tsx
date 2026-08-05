@@ -381,6 +381,8 @@ export default function ProductEditor({ product }: { product: Product }) {
   const [pricingOpen, setPricingOpen] = useState(false);
   /** ท่อนเนื้อหาที่กำลังลากรูปค้างอยู่ (ไฮไลต์กรอบ) */
   const [bodyDragOver, setBodyDragOver] = useState<number | null>(null);
+  /** ท่อนเนื้อหาที่พับอยู่ (เนื้อหายาว ๆ พับเก็บให้หน้าโล่ง) */
+  const [bodyFolded, setBodyFolded] = useState<Record<number, boolean>>({});
 
   /** อัปโหลดรูปเข้าท่อนเนื้อหา — ใช้ทั้งปุ่มเลือกไฟล์และลากมาวาง */
   async function uploadBodyImage(i: number, f: File) {
@@ -2137,8 +2139,24 @@ export default function ProductEditor({ product }: { product: Product }) {
               }`}
             >
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-400">ท่อนที่ {i + 1}</span>
-                <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBodyFolded((m) => ({ ...m, [i]: !m[i] }))}
+                  aria-expanded={!bodyFolded[i]}
+                  title={bodyFolded[i] ? "กางท่อนนี้" : "พับท่อนนี้"}
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-0.5 text-left transition hover:bg-slate-50"
+                >
+                  <span className={`text-[10px] text-slate-400 transition ${bodyFolded[i] ? "-rotate-90" : ""}`}>▼</span>
+                  <span className="shrink-0 text-xs font-bold text-slate-400">ท่อนที่ {i + 1}</span>
+                  {bodyFolded[i] && (
+                    <span className="min-w-0 truncate text-xs font-semibold text-slate-600">
+                      {b.src && "🖼 "}
+                      {b.heading.trim() || b.text.trim().slice(0, 60) || "(ยังไม่มีเนื้อหา)"}
+                    </span>
+                  )}
+                </button>
+                <div className="ml-auto flex shrink-0 items-center gap-2">
+                  {!bodyFolded[i] && (
                   <select
                     value={b.align}
                     onChange={(e) =>
@@ -2150,6 +2168,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                     <option value="left">รูปอยู่ซ้าย</option>
                     <option value="right">รูปอยู่ขวา</option>
                   </select>
+                  )}
                   <button
                     type="button"
                     onClick={() => patch({ body: draft.body.filter((_, j) => j !== i) })}
@@ -2159,6 +2178,8 @@ export default function ProductEditor({ product }: { product: Product }) {
                   </button>
                 </div>
               </div>
+              {!bodyFolded[i] && (
+              <>
               <input
                 value={b.heading}
                 onChange={(e) => patch({ body: draft.body.map((x, j) => (j === i ? { ...x, heading: e.target.value } : x)) })}
@@ -2230,6 +2251,8 @@ export default function ProductEditor({ product }: { product: Product }) {
                   </>
                 )}
               </div>
+              </>
+              )}
             </div>
           ))}
         </div>
