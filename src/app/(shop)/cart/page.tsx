@@ -164,8 +164,33 @@ export default function CartPage() {
 
   // สั่งเพิ่มเข้าออเดอร์เดิม = ส่งรวมกล่องเดียวกัน ไม่คิดค่าส่งซ้ำ
   // มีของคิดตามจำนวน = ใช้ค่าที่แพงกว่าระหว่างวิธีที่เลือกกับค่าตามจำนวน (ค่าตามจำนวนรวมค่ากล่องแล้ว)
-  const shippingCost = appendTo ? 0 : freeShipping ? 0 : Math.max(shippingMethod.price, qtyShip.fee);
-  const qtyShipApplied = !appendTo && !freeShipping && qtyShip.fee > shippingMethod.price;
+  // มารับเอง (ราคา 0) = ไม่มีพัสดุ ไม่คิดค่าตามจำนวน · วิธีส่งจริงคิดค่าที่แพงกว่า
+  const shippingCost =
+    appendTo ? 0 : freeShipping ? 0 : shippingMethod.price === 0 ? 0 : Math.max(shippingMethod.price, qtyShip.fee);
+  const qtyShipApplied = !appendTo && !freeShipping && qtyShip.fee > 0;
+
+  // 📦 มีค่าตามจำนวน → วิธีส่งที่ถูกกว่าค่านี้จ่ายเท่ากันหมด ยุบรวมเป็นแถวเดียวราคาตรงกับที่จ่ายจริง
+  // (กันลูกค้างงว่าทำไมติ๊ก EMS 50 แต่โดนคิด 100) · วิธีที่แพงกว่า กับมารับเอง ยังแยกแถวปกติ
+  const shipRows: { id: string; name: string; price: number; note?: string; covers?: string[] }[] = (() => {
+    if (!qtyShipApplied) return methods;
+    const paid = methods.filter((m) => m.price > 0);
+    const covered = paid.filter((m) => m.price <= qtyShip.fee);
+    const rows: { id: string; name: string; price: number; note?: string; covers?: string[] }[] = [];
+    if (covered.length) {
+      // ตัวแทนแถวยุบ: ใช้วิธีที่ระบบเลือก (ถ้าอยู่ในกลุ่ม) ไม่งั้นตัวแพงสุดในกลุ่ม (กล่องใหญ่สุดที่คุ้มแล้ว)
+      const rep = covered.find((m) => m.id === auto.id) ?? covered[covered.length - 1];
+      rows.push({
+        id: rep.id,
+        name: "📦 ส่งพัสดุ (คิดตามจำนวนชิ้น)",
+        price: qtyShip.fee,
+        note: "รวมค่ากล่อง/น้ำหนักของออเดอร์นี้แล้ว",
+        covers: covered.map((m) => m.id),
+      });
+    }
+    rows.push(...paid.filter((m) => m.price > qtyShip.fee));
+    rows.push(...methods.filter((m) => m.price === 0));
+    return rows;
+  })();
   const total = subtotal + shippingCost;
   const remainForFree = freeMin - subtotal;
 
@@ -449,20 +474,22 @@ export default function CartPage() {
                       : `${l.name} ${l.qty} ชิ้น = ${formatPrice(l.fee)}`
                   )
                   .join(" · ")}
-                {qtyShipApplied && <> — ระบบใช้ค่านี้แทนราคาวิธีส่งที่เลือก เพราะครอบคลุมค่ากล่อง/น้ำหนักแล้ว</>}
+                {qtyShip.fee > 0 && <> — เลือก "มารับเอง" ได้ ไม่คิดค่าส่งส่วนนี้</>}
               </p>
             )}
             <div className="space-y-2">
-              {methods.map((s) => {
-                const ok = shippingAllowed(s, methods, auto);
+              {shipRows.map((s) => {
+                const real = methods.find((m) => m.id === s.id);
+                const ok = !real || shippingAllowed(real, methods, auto);
+                const checked = s.covers ? s.covers.includes(shippingId) : shippingId === s.id;
                 return (
                   <label
-                    key={s.id}
+                    key={s.covers ? "__qty__" : s.id}
                     title={ok ? undefined : "ออเดอร์นี้ของเยอะเกินกล่องนี้"}
                     className={`flex items-center justify-between rounded-2xl px-4 py-3 text-sm ring-1 transition ${
                       !ok
                         ? "cursor-not-allowed bg-stone-50 text-stone-300 ring-stone-100"
-                        : shippingId === s.id
+                        : checked
                           ? "cursor-pointer bg-amber-50 font-bold ring-ducky"
                           : "cursor-pointer ring-amber-100 hover:bg-amber-50/50"
                     }`}
@@ -472,12 +499,15 @@ export default function CartPage() {
                         type="radio"
                         name="shipping"
                         disabled={!ok}
-                        checked={shippingId === s.id}
+                        checked={checked}
                         onChange={() => setShippingId(s.id)}
                         className="accent-amber-500"
                       />
-                      {s.name}
-                      {!ok && <span className="text-[11px] font-semibold text-stone-400">· ของใส่ไม่พอ</span>}
+                      <span>
+                        {s.name}
+                        {!ok && <span className="ml-1 text-[11px] font-semibold text-stone-400">· ของใส่ไม่พอ</span>}
+                        {s.note && <span className="block text-[11px] font-normal text-stone-400">{s.note}</span>}
+                      </span>
                     </span>
                     <span className={freeShipping && ok ? "text-stone-400 line-through" : ""}>
                       {formatPrice(s.price)}

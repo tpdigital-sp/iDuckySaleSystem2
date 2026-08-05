@@ -178,7 +178,9 @@ export default function CheckoutPage() {
 
   // สั่งเพิ่มในออเดอร์เดิม → ไม่คิดค่าส่งซ้ำ (จ่ายไปแล้วในออเดอร์แรก)
   // ของหนักคิดตามจำนวน → ใช้ค่าที่แพงกว่าระหว่างวิธีที่ใช้จริงกับค่าตามจำนวน
-  const shippingCost = appendTo ? 0 : freeShipping ? 0 : Math.max(effectiveMethod.price, qtyShipFee);
+  // มารับเอง (ราคา 0) = ไม่มีพัสดุ ไม่คิดค่าตามจำนวน (ตรงกับหน้าตะกร้า)
+  const shippingCost =
+    appendTo ? 0 : freeShipping ? 0 : effectiveMethod.price === 0 ? 0 : Math.max(effectiveMethod.price, qtyShipFee);
 
   // ── ส่วนลดระดับสมาชิก (โชว์เป็นตัวอย่าง — เซิร์ฟเวอร์คิดจริงตอนสร้างออเดอร์) ──
   const [tier, setTier] = useState<{ name: string; icon: string; pct: number } | null>(null);
@@ -664,7 +666,11 @@ export default function CheckoutPage() {
         <div className="mt-1 flex justify-between text-sm text-stone-600">
           <span>
             ค่าจัดส่ง
-            {appendTo ? "" : qtyShipFee > effectiveMethod.price ? " (ตามจำนวนชิ้น 📦)" : ` (${effectiveMethod.name})`}
+            {appendTo
+              ? ""
+              : effectiveMethod.price > 0 && qtyShipFee > effectiveMethod.price
+                ? " (ตามจำนวนชิ้น 📦)"
+                : ` (${effectiveMethod.name})`}
           </span>
           <span>{appendTo ? "รวมกับออเดอร์เดิมแล้ว" : freeShipping ? "ฟรี" : formatPrice(shippingCost)}</span>
         </div>

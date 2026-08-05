@@ -84,7 +84,9 @@ export function qtyShipFee(qty: number, tiers: ShipTier[] | undefined, extraPerP
 
   let hit: ShipTier | null = null;
   for (const r of rows) if (qty >= r.minQty) hit = r;
-  if (!hit) return rows[0].price; // สั่งน้อยกว่าขั้นแรก = คิดขั้นแรก (มีของก็ต้องส่ง)
+  // ต่ำกว่าขั้นแรก = ยังไม่เข้าเกณฑ์ตาราง → คิดตามวิธีส่งปกติ
+  // (ร้านตั้งตารางเริ่ม 11 ชิ้นได้ แปลว่าต่ำกว่านั้นกล่องธรรมดาเอาอยู่)
+  if (!hit) return 0;
 
   const last = rows[rows.length - 1];
   // เกินขั้นสุดท้าย + ตั้งราคาต่อชิ้นส่วนเกินไว้ → บวกเพิ่มตามชิ้นที่เกิน
