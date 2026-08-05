@@ -57,6 +57,29 @@ function Drop({ label, title, children }: { label: React.ReactNode; title: strin
   );
 }
 
+/** ไอคอนเส้นแบบ TinyMCE — วาดเองด้วย SVG จะได้คมและหน้าตาเหมือนกันทุกเครื่อง */
+function Ic({ d, children }: { d?: string; children?: React.ReactNode }) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {d && <path d={d} />}
+      {children}
+    </svg>
+  );
+}
+const IC = {
+  alignL: "M2 3h12 M2 6.3h8 M2 9.7h12 M2 13h8",
+  alignC: "M2 3h12 M4 6.3h8 M2 9.7h12 M4 13h8",
+  alignR: "M2 3h12 M6 6.3h8 M2 9.7h12 M6 13h8",
+  alignJ: "M2 3h12 M2 6.3h12 M2 9.7h12 M2 13h12",
+  ul: "M2.2 3.5h.01 M5.5 3.5h8.5 M2.2 8h.01 M5.5 8h8.5 M2.2 12.5h.01 M5.5 12.5h8.5",
+  outdent: "M7 3h7 M7 6.3h7 M7 9.7h7 M7 13h7 M4.5 6l-2 2 2 2",
+  indent: "M7 3h7 M7 6.3h7 M7 9.7h7 M7 13h7 M2.5 6l2 2-2 2",
+  undo: "M6.5 3.5L3.5 6.5l3 3 M3.5 6.5H10a3.5 3.5 0 010 7H7",
+  redo: "M9.5 3.5l3 3-3 3 M12.5 6.5H6a3.5 3.5 0 000 7h3",
+  link: "M6.5 9.5l3-3 M5.2 7.2l-1.9 1.9a2.6 2.6 0 003.6 3.6l1.9-1.9 M10.8 8.8l1.9-1.9a2.6 2.6 0 00-3.6-3.6L7.2 5.2",
+  unlink: "M5.2 7.2l-1.9 1.9a2.6 2.6 0 003.6 3.6l1.9-1.9 M10.8 8.8l1.9-1.9a2.6 2.6 0 00-3.6-3.6L7.2 5.2 M3 13.5L13 2.5",
+};
+
 const COLORS = ["#1a3843", "#3fa1b6", "#e11d48", "#ea580c", "#ca8a04", "#16a34a", "#7c3aed", "#78716c", "#a8a29e", "#000000"];
 const HILITES = ["#fff3c4", "#d6edf2", "#fee2e2", "#dcfce7", "#f3e8ff", "#fce7f3", "#ffffff"];
 const EMOJI = ["😀","😍","🥰","😆","🥹","😅","🙏","👍","👏","💪","✨","🎉","🎁","💛","❤️","🔥","⭐","✅","❌","⚠️","📌","📞","🚚","🐥"];
@@ -150,23 +173,31 @@ export default function RichEditor({
         </Group>
 
         <Group>
-          <button type="button" onClick={() => cmd("justifyLeft")} className={BTN} title="ชิดซ้าย">☰̲</button>
-          <button type="button" onClick={() => cmd("justifyCenter")} className={BTN} title="กึ่งกลาง">≡</button>
-          <button type="button" onClick={() => cmd("justifyRight")} className={BTN} title="ชิดขวา">☰</button>
-          <button type="button" onClick={() => cmd("justifyFull")} className={BTN} title="เต็มแนว">▤</button>
+          <button type="button" onClick={() => cmd("justifyLeft")} className={BTN} title="ชิดซ้าย"><Ic d={IC.alignL} /></button>
+          <button type="button" onClick={() => cmd("justifyCenter")} className={BTN} title="กึ่งกลาง"><Ic d={IC.alignC} /></button>
+          <button type="button" onClick={() => cmd("justifyRight")} className={BTN} title="ชิดขวา"><Ic d={IC.alignR} /></button>
+          <button type="button" onClick={() => cmd("justifyFull")} className={BTN} title="เต็มแนว"><Ic d={IC.alignJ} /></button>
         </Group>
 
         <Group>
           <button type="button" onClick={() => cmd("formatBlock", "<blockquote>")} className={`${BTN} font-serif text-lg leading-none`} title="คำพูด / ไฮไลต์ท่อน">
             &ldquo;
           </button>
-          <button type="button" onClick={() => cmd("insertUnorderedList")} className={BTN} title="รายการจุด">☷</button>
-          <button type="button" onClick={() => cmd("insertOrderedList")} className={BTN} title="รายการตัวเลข">≣</button>
-          <button type="button" onClick={() => cmd("outdent")} className={BTN} title="ลดย่อหน้า">⇤</button>
-          <button type="button" onClick={() => cmd("indent")} className={BTN} title="เพิ่มย่อหน้า">⇥</button>
+          <button type="button" onClick={() => cmd("insertUnorderedList")} className={BTN} title="รายการจุด"><Ic d={IC.ul} /></button>
+          <button type="button" onClick={() => cmd("insertOrderedList")} className={BTN} title="รายการตัวเลข">
+            <Ic d="M5.5 3.5h8.5 M5.5 8h8.5 M5.5 12.5h8.5">
+              <text x="1" y="5" fontSize="4.5" stroke="none" fill="currentColor">1</text>
+              <text x="1" y="9.5" fontSize="4.5" stroke="none" fill="currentColor">2</text>
+              <text x="1" y="14" fontSize="4.5" stroke="none" fill="currentColor">3</text>
+            </Ic>
+          </button>
+          <button type="button" onClick={() => cmd("outdent")} className={BTN} title="ลดย่อหน้า"><Ic d={IC.outdent} /></button>
+          <button type="button" onClick={() => cmd("indent")} className={BTN} title="เพิ่มย่อหน้า"><Ic d={IC.indent} /></button>
         </Group>
 
-        {/* ── แถว 2 (wrap เอง) ── */}
+        {/* ── ขึ้นแถวที่ 2 ตายตัว (ไม่ปล่อยตัดบรรทัดตามดวง) ── */}
+        <span className="basis-full" aria-hidden="true" />
+
         <Group>
           <select
             defaultValue=""
@@ -213,9 +244,9 @@ export default function RichEditor({
             onClick={() => { const url = prompt("ลิงก์ไปที่ (เช่น /products หรือ https://…)"); if (url) cmd("createLink", url); }}
             className={BTN} title="แทรกลิงก์"
           >
-            🔗
+            <Ic d={IC.link} />
           </button>
-          <button type="button" onClick={() => cmd("unlink")} className={BTN} title="เอาลิงก์ออก">⛓️‍💥</button>
+          <button type="button" onClick={() => cmd("unlink")} className={BTN} title="เอาลิงก์ออก"><Ic d={IC.unlink} /></button>
         </Group>
 
         <Group>
@@ -251,8 +282,8 @@ export default function RichEditor({
         </Group>
 
         <Group>
-          <button type="button" onClick={() => cmd("undo")} className={BTN} title="ย้อนกลับ">↶</button>
-          <button type="button" onClick={() => cmd("redo")} className={BTN} title="ทำซ้ำ">↷</button>
+          <button type="button" onClick={() => cmd("undo")} className={BTN} title="ย้อนกลับ"><Ic d={IC.undo} /></button>
+          <button type="button" onClick={() => cmd("redo")} className={BTN} title="ทำซ้ำ"><Ic d={IC.redo} /></button>
           <button type="button" onClick={() => cmd("removeFormat")} className={`${BTN} text-xs font-bold`} title="ล้างรูปแบบข้อความที่เลือก">
             <span className="italic">T</span>ₓ
           </button>

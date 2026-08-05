@@ -81,8 +81,13 @@ export default async function ArticlePage({ params }: Params) {
       </p>
 
       {a.cover && (
+        // มือถือใช้รูปปกมือถือถ้าตั้งไว้ · จอใหญ่ใช้รูปปกปกติ
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={a.cover} alt={a.title} className="mt-5 w-full rounded-3xl shadow-sm ring-1 ring-amber-100" />
+        <img src={a.cover} alt={a.title} className={`mt-5 w-full rounded-3xl shadow-sm ring-1 ring-amber-100 ${a.coverMobile ? "hidden md:block" : ""}`} />
+      )}
+      {a.coverMobile && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={a.coverMobile} alt={a.title} className="mt-5 w-full rounded-3xl shadow-sm ring-1 ring-amber-100 md:hidden" />
       )}
 
       {a.excerpt && <p className="mt-5 text-base font-semibold leading-relaxed text-stone-600">{a.excerpt}</p>}

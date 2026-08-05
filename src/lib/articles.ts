@@ -23,6 +23,8 @@ export interface Article {
   excerpt: string;
   /** รูปปก (URL) */
   cover?: string;
+  /** รูปปกสำหรับมือถือ (ไม่ใส่ = ใช้รูปปกปกติ) */
+  coverMobile?: string;
   blocks: ArticleBlock[];
   tags: string[];
   /**
@@ -67,6 +69,7 @@ export function articleOf(raw: Partial<Article> | null | undefined): Article | n
     title: str(raw.title).trim(),
     excerpt: str(raw.excerpt).trim(),
     cover: str(raw.cover).trim() || undefined,
+    coverMobile: str(raw.coverMobile).trim() || undefined,
     blocks: (Array.isArray(raw.blocks) ? raw.blocks : [])
       .filter((b) => b && (str(b.heading).trim() || str(b.text).trim() || str(b.image).trim()))
       .map((b) => ({

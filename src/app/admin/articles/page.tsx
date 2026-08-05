@@ -225,10 +225,19 @@ function ArticlesInner() {
             />
           </label>
 
-          <div>
-            <span className="text-xs font-semibold text-slate-600">รูปปก</span>
-            <div className="mt-1">
-              <ImgBtn value={editing.cover} onChange={(v) => patch({ cover: v })} label="อัปโหลดรูปปก" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <span className="text-xs font-semibold text-slate-600">รูปปก (ฟีเจอร์)</span>
+              <div className="mt-1">
+                <ImgBtn value={editing.cover} onChange={(v) => patch({ cover: v })} label="เลือกรูปภาพ" />
+              </div>
+            </div>
+            <div>
+              <span className="text-xs font-semibold text-slate-600">รูปปกสำหรับมือถือ</span>
+              <p className={`text-[11px] ${faint}`}>ไม่ใส่ = ใช้รูปปกปกติ · แนะนำแนวตั้ง/จัตุรัสให้พอดีจอเล็ก</p>
+              <div className="mt-1">
+                <ImgBtn value={editing.coverMobile} onChange={(v) => patch({ coverMobile: v })} label="เลือกรูปภาพ" />
+              </div>
             </div>
           </div>
         </section>

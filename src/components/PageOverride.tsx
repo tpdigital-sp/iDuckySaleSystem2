@@ -13,7 +13,11 @@ export default function PageOverride({ article }: { article: Article }) {
       <p className="mt-1 text-xs text-stone-400">อัปเดตล่าสุด {thaiDate(article.updatedAt)}</p>
       {article.cover && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={article.cover} alt={article.title} className="mt-5 w-full rounded-3xl shadow-sm ring-1 ring-amber-100" />
+        <img src={article.cover} alt={article.title} className={`mt-5 w-full rounded-3xl shadow-sm ring-1 ring-amber-100 ${article.coverMobile ? "hidden md:block" : ""}`} />
+      )}
+      {article.coverMobile && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={article.coverMobile} alt={article.title} className="mt-5 w-full rounded-3xl shadow-sm ring-1 ring-amber-100 md:hidden" />
       )}
       <div className="mt-4">
         <ArticleHtml html={html} />
