@@ -92,9 +92,22 @@ export interface MegaGroup {
   hidden?: boolean;
 }
 
+/** การ์ดจุดเด่นร้าน (แถวใต้แบนเนอร์ เช่น ลายของคุณเอง · ส่งไวทั่วไทย) */
+export interface NavPerk {
+  id: string;
+  emoji: string;
+  title: string;
+  desc: string;
+  hidden?: boolean;
+}
+
 export interface SiteNav {
   /** ลิงก์บนแถบเมนูด้านบน */
   menu: NavLink[];
+  /** จุดเด่นร้าน — แถวการ์ดเล็ก 4 ใบใต้แบนเนอร์ */
+  perks: NavPerk[];
+  /** ปิดทั้งแถวจุดเด่นโดยไม่ต้องลบ */
+  perksOn: boolean;
   /** เมนูดรอปดาวน์เต็มความกว้าง (mega menu) */
   mega: MegaGroup[];
   /** การ์ดนำทางหน้าแรก */
@@ -358,11 +371,21 @@ export const DEFAULT_MEGA: MegaGroup[] = [
   },
 ];
 
+/** จุดเด่นร้านเริ่มต้น (= ของเดิมที่เคยเขียนตายในหน้าแรก) */
+export const DEFAULT_PERKS: NavPerk[] = [
+  { id: "art", emoji: "🎨", title: "ลายของคุณเอง", desc: "อัปโหลดรูป/โลโก้ได้เลย" },
+  { id: "ship", emoji: "🚚", title: "ส่งไวทั่วไทย", desc: "มีโปรส่งฟรีเมื่อสั่งครบยอด" },
+  { id: "quality", emoji: "💎", title: "งานพิมพ์คุณภาพ", desc: "สีสด คมชัด ทนทาน" },
+  { id: "admin", emoji: "💬", title: "แอดมินใจดี", desc: "ปรึกษาลายฟรีทาง LINE" },
+];
+
 /** สีแถบพื้นหลังเริ่มต้น — ฟ้าอ่อนแบบเว็บหลักของร้าน */
 export const DEFAULT_TILES_BG = "#c9e1f2";
 
 export const DEFAULT_SITE_NAV: SiteNav = {
   menu: DEFAULT_MENU,
+  perks: DEFAULT_PERKS,
+  perksOn: true,
   mega: DEFAULT_MEGA,
   tiles: DEFAULT_TILES,
   tilesOn: true,
@@ -439,8 +462,20 @@ export function siteNavOf(raw: Partial<SiteNav> | null | undefined): SiteNav {
         })),
     }));
 
+  const perks = (Array.isArray(raw?.perks) ? raw.perks : [])
+    .filter((x) => x && str(x.title).trim())
+    .map((x, i) => ({
+      id: str(x.id) || `pk${i}`,
+      emoji: str(x.emoji) || "✨",
+      title: str(x.title).trim(),
+      desc: str(x.desc).trim(),
+      hidden: Boolean(x.hidden),
+    }));
+
   return {
     menu: menu.length ? menu : DEFAULT_MENU,
+    perks: perks.length ? perks : DEFAULT_PERKS,
+    perksOn: raw?.perksOn !== false,
     // เมนูดรอปดาวน์ "ว่างได้" — ลบหมดคือตั้งใจไม่เอา ไม่ใช่ตั้งค่าพลาด
     mega: Array.isArray(raw?.mega) ? mega : DEFAULT_MEGA,
     tiles: tiles.length ? tiles : DEFAULT_TILES,
@@ -455,6 +490,7 @@ export function siteNavOf(raw: Partial<SiteNav> | null | undefined): SiteNav {
 /** เฉพาะที่ลูกค้าเห็น (ตัดที่ซ่อนไว้ออก) */
 export const visibleMenu = (n: SiteNav) => n.menu.filter((l) => !l.hidden);
 export const visibleMega = (n: SiteNav) => n.mega.filter((g) => !g.hidden && g.columns.length);
+export const visiblePerks = (n: SiteNav) => (n.perksOn ? n.perks.filter((x) => !x.hidden) : []);
 export const visibleTiles = (n: SiteNav) => (n.tilesOn ? n.tiles.filter((t) => !t.hidden) : []);
 
 /**

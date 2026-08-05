@@ -18,6 +18,7 @@ import {
   type MegaItem,
   type MegaPromo,
   type NavLink,
+  type NavPerk,
   type NavTile,
   type SiteNav,
   type TileSize,
@@ -34,7 +35,7 @@ import { btnNeutral, btnPrimary, btnSmDanger, btnSmGhost, card, faint, h1, muted
  * ตัวอย่างทุกจุดใช้คอมโพเนนต์ตัวเดียวกับหน้าร้านจริง — เห็นยังไง ลูกค้าเห็นอย่างนั้น
  */
 
-type Tab = "tiles" | "menu" | "mega";
+type Tab = "tiles" | "menu" | "mega" | "perks";
 
 /** หน้าที่ลิงก์ไปได้ (ให้เลือกจากรายการ จะได้ไม่พิมพ์ผิด) */
 const PAGES: { href: string; label: string }[] = [
@@ -275,6 +276,8 @@ function NavEditorInner() {
     edit((n) => ({ ...n, tiles: n.tiles.map((t) => (t.id === id ? { ...t, ...patch } : t)) }));
   const setLink = (id: string, patch: Partial<NavLink>) =>
     edit((n) => ({ ...n, menu: n.menu.map((l) => (l.id === id ? { ...l, ...patch } : l)) }));
+  const setPerk = (id: string, patch: Partial<NavPerk>) =>
+    edit((n) => ({ ...n, perks: n.perks.map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
 
   const setGroup = (gid: string, patch: Partial<MegaGroup>) =>
     edit((n) => ({ ...n, mega: n.mega.map((g) => (g.id === gid ? { ...g, ...patch } : g)) }));
@@ -445,6 +448,7 @@ function NavEditorInner() {
           [
             ["mega", `🗂 เมนูดรอปดาวน์ (${nav.mega.length})`],
             ["tiles", `🧱 การ์ดนำทาง (${nav.tiles.length})`],
+            ["perks", `⭐ จุดเด่นร้าน (${nav.perks.length})`],
             ["menu", `🔗 แถบเมนูด้านบน (${nav.menu.length})`],
           ] as [Tab, string][]
         ).map(([k, label]) => (
@@ -1130,6 +1134,97 @@ function NavEditorInner() {
               🔄 สร้างจากหมวดหมู่สินค้าให้อัตโนมัติ
             </button>
           </div>
+        </section>
+      )}
+
+      {/* ══════ จุดเด่นร้าน ══════ */}
+      {tab === "perks" && (
+        <section className={`mt-4 p-5 ${card}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-800">⭐ จุดเด่นร้าน</h2>
+              <p className={`mt-0.5 text-xs ${faint}`}>แถวการ์ดเล็กใต้แบนเนอร์หน้าแรก (อีโมจิ + หัวข้อ + คำอธิบาย)</p>
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
+              <input
+                type="checkbox"
+                checked={nav.perksOn}
+                onChange={(e) => edit((n) => ({ ...n, perksOn: e.target.checked }))}
+                className="h-4 w-4 accent-amber-500"
+              />
+              แสดงบนหน้าแรก
+            </label>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {nav.perks.map((x, i) => (
+              <div
+                key={x.id}
+                className={`flex flex-wrap items-start gap-2 rounded-xl bg-slate-50 p-3 ${x.hidden ? "opacity-60" : ""}`}
+              >
+                <input
+                  value={x.emoji}
+                  onChange={(e) => setPerk(x.id, { emoji: e.target.value })}
+                  maxLength={4}
+                  className={`w-16 text-center text-lg ${inputBase}`}
+                  aria-label="อีโมจิ"
+                />
+                <input
+                  value={x.title}
+                  onChange={(e) => setPerk(x.id, { title: e.target.value })}
+                  placeholder="หัวข้อ เช่น ส่งไวทั่วไทย"
+                  className={`w-44 font-bold ${inputBase}`}
+                />
+                <input
+                  value={x.desc}
+                  onChange={(e) => setPerk(x.id, { desc: e.target.value })}
+                  placeholder="คำอธิบายสั้น ๆ"
+                  className={`min-w-52 flex-1 ${inputBase}`}
+                />
+                <span className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => edit((n) => ({ ...n, perks: move(n.perks, i, -1) }))}
+                    disabled={i === 0}
+                    className={`${btnSmGhost} disabled:opacity-30`}
+                    aria-label="เลื่อนขึ้น"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => edit((n) => ({ ...n, perks: move(n.perks, i, 1) }))}
+                    disabled={i === nav.perks.length - 1}
+                    className={`${btnSmGhost} disabled:opacity-30`}
+                    aria-label="เลื่อนลง"
+                  >
+                    ↓
+                  </button>
+                  <button type="button" onClick={() => setPerk(x.id, { hidden: !x.hidden })} className={btnSmGhost}>
+                    {x.hidden ? "🚫 ซ่อนอยู่" : "👁 แสดงอยู่"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => edit((n) => ({ ...n, perks: n.perks.filter((p) => p.id !== x.id) }))}
+                    className={btnSmDanger}
+                  >
+                    ลบ
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              edit((n) => ({ ...n, perks: [...n.perks, { id: newId("pk"), emoji: "✨", title: "จุดเด่นใหม่", desc: "" }] }))
+            }
+            className={`mt-3 ${btnNeutral}`}
+          >
+            ＋ เพิ่มจุดเด่น
+          </button>
+          <p className={`mt-2 text-[11px] ${faint}`}>จอใหญ่เรียง 4 ใบต่อแถวสวยสุด · มือถือเรียง 2 ใบเสมอ</p>
         </section>
       )}
 

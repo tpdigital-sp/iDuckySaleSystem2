@@ -7,7 +7,7 @@ import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/ca
 import { fetchProductsLite } from "@/lib/product-repo";
 import ProductCard from "@/components/ProductCard";
 import NavTiles from "@/components/NavTiles";
-import { fetchSiteNav, visibleTiles, DEFAULT_SITE_NAV, type NavTile, type SiteNav } from "@/lib/home-nav";
+import { fetchSiteNav, visiblePerks, visibleTiles, DEFAULT_SITE_NAV, type NavPerk, type NavTile, type SiteNav } from "@/lib/home-nav";
 
 export default function HomePage() {
   // โหลดสินค้า (Supabase หรือ localStorage) หลัง mount
@@ -17,12 +17,15 @@ export default function HomePage() {
   // การ์ดนำทาง (แอดมินตั้งเองได้ที่ /admin/nav)
   const [tiles, setTiles] = useState<NavTile[]>(visibleTiles(DEFAULT_SITE_NAV));
   const [navStyle, setNavStyle] = useState<Pick<SiteNav, "tilesBg" | "tilesWave" | "tilesPos">>(DEFAULT_SITE_NAV);
+  // จุดเด่นร้าน (แก้ได้ที่หลังบ้าน → เมนูหน้าร้าน)
+  const [perks, setPerks] = useState<NavPerk[]>(visiblePerks(DEFAULT_SITE_NAV));
   useEffect(() => {
     fetchCategories().then((list) => setCats(list.filter((c) => !c.hidden)));
   }, []);
   useEffect(() => {
     fetchSiteNav().then((n) => {
       setTiles(visibleTiles(n));
+      setPerks(visiblePerks(n));
       setNavStyle({ tilesBg: n.tilesBg, tilesWave: n.tilesWave, tilesPos: n.tilesPos });
     });
   }, []);
@@ -96,24 +99,23 @@ export default function HomePage() {
       {/* การ์ดนำทาง — เลื่อนตำแหน่งได้จากหลังบ้าน (ก่อนแบนเนอร์ / ใต้แบนเนอร์ / ใต้จุดเด่นร้าน) */}
       {navBlock("hero")}
 
-      {/* จุดเด่นร้าน */}
-      <section className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-4">
-        {[
-          { emoji: "🎨", title: "ลายของคุณเอง", desc: "อัปโหลดรูป/โลโก้ได้เลย" },
-          { emoji: "🚚", title: "ส่งไวทั่วไทย", desc: "ส่งฟรีเมื่อครบ ฿999" },
-          { emoji: "💎", title: "งานพิมพ์คุณภาพ", desc: "สีสด คมชัด ทนทาน" },
-          { emoji: "💬", title: "แอดมินใจดี", desc: "ปรึกษาลายฟรีทาง LINE" },
-        ].map((f) => (
-          <div
-            key={f.title}
-            className="rounded-3xl bg-white p-4 text-center shadow-sm ring-1 ring-amber-100"
-          >
-            <span className="text-3xl">{f.emoji}</span>
-            <h3 className="mt-1.5 text-sm font-bold text-stone-800">{f.title}</h3>
-            <p className="mt-0.5 text-xs text-stone-500">{f.desc}</p>
-          </div>
-        ))}
-      </section>
+      {/* จุดเด่นร้าน — แก้ข้อความ/เพิ่ม/ซ่อนได้ที่หลังบ้าน → เมนูหน้าร้าน */}
+      {perks.length > 0 && (
+        <section
+          className={`mt-8 grid grid-cols-2 gap-3 ${
+            // คลาส Tailwind ต้องเป็นข้อความเต็ม — เลือกตามจำนวนใบ
+            perks.length <= 2 ? "md:grid-cols-2" : perks.length === 3 ? "md:grid-cols-3" : "md:grid-cols-4"
+          }`}
+        >
+          {perks.map((f) => (
+            <div key={f.id} className="rounded-3xl bg-white p-4 text-center shadow-sm ring-1 ring-amber-100">
+              <span className="text-3xl">{f.emoji}</span>
+              <h3 className="mt-1.5 text-sm font-bold text-stone-800">{f.title}</h3>
+              {f.desc && <p className="mt-0.5 text-xs text-stone-500">{f.desc}</p>}
+            </div>
+          ))}
+        </section>
+      )}
 
       {navBlock("features")}
 
