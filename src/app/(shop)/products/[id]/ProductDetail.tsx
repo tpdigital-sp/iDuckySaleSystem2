@@ -711,7 +711,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                           >
                             {shortComboParts(col).map((part, i) => (
                               <span key={i} className="block whitespace-nowrap">
-                                <span className="mr-1 text-sky-400">-</span>
+                                <span className="mr-1 text-sky-400">•</span>
                                 {part}
                               </span>
                             ))}

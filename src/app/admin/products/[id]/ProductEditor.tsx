@@ -380,6 +380,35 @@ function syncLinkedDraft(options: DraftOption[], presets: OptionPreset[]): Draft
   });
 }
 
+/**
+ * สถานะ "ยุบ/กาง" ผูกกับลำดับรายการ — ลบหรือสลับที่แล้วต้องขยับตาม ไม่งั้นการ์ดอื่นจะยุบ/กางแทนกัน
+ */
+function foldAfterRemove(rec: Record<number, boolean>, removed: number, total: number): Record<number, boolean> {
+  const arr = Array.from({ length: total }, (_, i) => rec[i] ?? true);
+  arr.splice(removed, 1);
+  return Object.fromEntries(arr.map((v, i) => [i, v]));
+}
+function foldAfterSwap(rec: Record<number, boolean>, a: number, b: number, total: number): Record<number, boolean> {
+  const arr = Array.from({ length: total }, (_, i) => rec[i] ?? true);
+  [arr[a], arr[b]] = [arr[b], arr[a]];
+  return Object.fromEntries(arr.map((v, i) => [i, v]));
+}
+
+/** ปุ่มยุบ/กางของการ์ดย่อย (กฎ / แท็บ) — หน้าตาเดียวกับปุ่มของกลุ่มตัวเลือก */
+function FoldBtn({ folded, onClick, what }: { folded: boolean; onClick: () => void; what: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={!folded}
+      title={folded ? `กาง${what}นี้` : `ยุบ${what}นี้`}
+      className="shrink-0 rounded-full bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
+    >
+      {folded ? "▸ กาง" : "▾ ยุบ"}
+    </button>
+  );
+}
+
 /** ปุ่มเลื่อนลำดับ ขึ้น/ลง — ใช้ทั้งกับกลุ่มตัวเลือกและตัวเลือกในกลุ่ม */
 function MoveBtns({
   onUp,
@@ -725,6 +754,14 @@ export default function ProductEditor({ product }: { product: Product }) {
   const [optFolded, setOptFolded] = useState<Record<number, boolean>>({});
   const isOptFolded = (gi: number) => optFolded[gi] ?? true;
   const toggleOptFold = (gi: number) => setOptFolded((f) => ({ ...f, [gi]: !(f[gi] ?? true) }));
+  // ยุบ/กางรายกฎ และรายแท็บ (ค่าเริ่มต้น = ยุบ · หน้ายาวมากถ้ากางหมดพร้อมกันหาอะไรไม่เจอ)
+  const [ruleFolded, setRuleFolded] = useState<Record<number, boolean>>({});
+  const isRuleFolded = (i: number) => ruleFolded[i] ?? true;
+  const toggleRuleFold = (i: number) => setRuleFolded((f) => ({ ...f, [i]: !(f[i] ?? true) }));
+  const [tabFolded, setTabFolded] = useState<Record<number, boolean>>({});
+  const isTabFolded = (i: number) => tabFolded[i] ?? true;
+  const toggleTabFold = (i: number) => setTabFolded((f) => ({ ...f, [i]: !(f[i] ?? true) }));
+
   /** กลุ่มที่กำลังลากอยู่ (ref อ่านได้ทันทีตอน drop · state ไว้ทำไฮไลต์) */
   const dragOptRef = useRef<number | null>(null);
   const [dragOpt, setDragOpt] = useState<number | null>(null);
@@ -2764,7 +2801,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                                 {combo.length ? (
                                   combo.map((part, pi) => (
                                     <span key={pi} className={`block whitespace-nowrap ${pi === 0 ? "" : "text-slate-500"}`}>
-                                      <span className="mr-1 text-slate-400">-</span>
+                                      <span className="mr-1 text-slate-400">•</span>
                                       {shortChoice(part)}
                                     </span>
                                   ))
@@ -2848,6 +2885,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                   placeholder="ชื่อแท็บ เช่น รายละเอียดเพิ่มเติม"
                   className="min-w-0 flex-1 rounded-xl bg-white px-3 py-2 text-sm font-bold ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
                 />
+                <FoldBtn folded={isTabFolded(i)} onClick={() => toggleTabFold(i)} what="แท็บ" />
                 <button
                   type="button"
                   disabled={i === 0}
@@ -2855,6 +2893,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                     const c = [...draft.tabs];
                     [c[i - 1], c[i]] = [c[i], c[i - 1]];
                     patch({ tabs: c });
+                    setTabFolded((f) => foldAfterSwap(f, i - 1, i, draft.tabs.length));
                   }}
                   className="rounded-full px-2.5 py-1 text-xs text-slate-500 ring-1 ring-slate-200 hover:bg-white disabled:opacity-30"
                   aria-label="เลื่อนแท็บไปก่อนหน้า"
@@ -2868,6 +2907,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                     const c = [...draft.tabs];
                     [c[i + 1], c[i]] = [c[i], c[i + 1]];
                     patch({ tabs: c });
+                    setTabFolded((f) => foldAfterSwap(f, i, i + 1, draft.tabs.length));
                   }}
                   className="rounded-full px-2.5 py-1 text-xs text-slate-500 ring-1 ring-slate-200 hover:bg-white disabled:opacity-30"
                   aria-label="เลื่อนแท็บไปถัดไป"
@@ -2876,19 +2916,30 @@ export default function ProductEditor({ product }: { product: Product }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => patch({ tabs: draft.tabs.filter((_, j) => j !== i) })}
+                  onClick={() => {
+                    patch({ tabs: draft.tabs.filter((_, j) => j !== i) });
+                    setTabFolded((f) => foldAfterRemove(f, i, draft.tabs.length));
+                  }}
                   className="rounded-full px-2.5 py-1 text-xs font-bold text-rose-500 ring-1 ring-rose-200 hover:bg-rose-50"
                 >
                   ลบ
                 </button>
               </div>
-              <textarea
-                value={t.text}
-                onChange={(e) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })}
-                rows={7}
-                placeholder={"• ข้อแรก\n• ข้อสอง\n\nหัวข้อย่อย::\nข้อความอธิบาย"}
-                className="mt-2 w-full resize-y rounded-xl bg-white px-3 py-2 text-sm leading-relaxed ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-              />
+              {isTabFolded(i) ? (
+                <p className="mt-2 truncate text-xs text-slate-400">
+                  {t.text.trim()
+                    ? `${t.text.trim().split("\n").filter(Boolean).length} บรรทัด · ${t.text.trim().split("\n")[0]}`
+                    : "ยังไม่มีเนื้อหา — กด “กาง” เพื่อพิมพ์"}
+                </p>
+              ) : (
+                <textarea
+                  value={t.text}
+                  onChange={(e) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })}
+                  rows={7}
+                  placeholder={"• ข้อแรก\n• ข้อสอง\n\nหัวข้อย่อย::\nข้อความอธิบาย"}
+                  className="mt-2 w-full resize-y rounded-xl bg-white px-3 py-2 text-sm leading-relaxed ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                />
+              )}
             </div>
           ))}
         </div>
@@ -3410,15 +3461,31 @@ export default function ProductEditor({ product }: { product: Product }) {
             return (
               <div key={ri} className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-slate-500">กฎที่ {ri + 1}</span>
+                  <span className="min-w-0 flex-1 truncate text-xs font-bold text-slate-500">
+                    กฎที่ {ri + 1}
+                    {/* ยุบอยู่ = สรุปกฎให้อ่านรู้เรื่องโดยไม่ต้องกาง */}
+                    {isRuleFolded(ri) && (
+                      <span className="ml-2 font-medium text-slate-400">
+                        {rule.whenLabel || "— ยังไม่ตั้งเงื่อนไข —"}
+                        {rule.whenLabel ? ` = ${rule.whenChoices.length} ตัว` : ""}
+                        {rule.limitLabel ? ` → จำกัด ${rule.limitLabel} เหลือ ${rule.allow.length} ตัว` : ""}
+                      </span>
+                    )}
+                  </span>
+                  <FoldBtn folded={isRuleFolded(ri)} onClick={() => toggleRuleFold(ri)} what="กฎ" />
                   <button
                     type="button"
-                    onClick={() => patch({ rules: draft.rules.filter((_, j) => j !== ri) })}
+                    onClick={() => {
+                      patch({ rules: draft.rules.filter((_, j) => j !== ri) });
+                      setRuleFolded((f) => foldAfterRemove(f, ri, draft.rules.length));
+                    }}
                     className="shrink-0 rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-rose-500 hover:bg-rose-100"
                   >
                     🗑 ลบ
                   </button>
                 </div>
+                {!isRuleFolded(ri) && (
+                <>
                 <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
                   <span className="font-semibold">เมื่อเลือก</span>
                   <select
@@ -3541,6 +3608,8 @@ export default function ProductEditor({ product }: { product: Product }) {
                       );
                     })}
                   </div>
+                )}
+                </>
                 )}
               </div>
             );
