@@ -22,6 +22,10 @@ export type HomeBlockKind =
   | "cards" // การ์ดรูป+ข้อความ+ปุ่ม 2-4 ใบ (แบบ three column with card)
   | "cta"; // กล่องชวนซื้อท้ายหน้า
 
+/** สัดส่วนกรอบภาพของแกลเลอรี (ค่าที่เลือกได้ — กันค่าเพี้ยนหลุดลง CSS) */
+export const GALLERY_RATIOS = ["16/12", "16/9", "21/9", "1/1", "3/4"] as const;
+export type GalleryRatio = (typeof GALLERY_RATIOS)[number];
+
 /** การ์ด 1 ใบในบล็อก "cards" */
 export interface HomeCard {
   image?: string;
@@ -65,6 +69,10 @@ export interface HomeBlock {
   cols?: number;
   /** kind "gallery": grid = ตาราง · slider = สไลด์เลื่อน (แบบ ALL PRODUCT เว็บหลัก) */
   display?: "grid" | "slider";
+  /** kind "gallery": การแสดงภาพในกรอบ — cover = ครอปให้เต็มกรอบ (เดิม) · contain = เห็นเต็มภาพไม่ครอป */
+  fit?: "cover" | "contain";
+  /** kind "gallery": สัดส่วนกรอบภาพ เช่น "16/9" (ไม่ตั้ง = 16/12 แบบเดิม) */
+  ratio?: GalleryRatio;
   /** kind "html": โค้ดที่กรองแล้วจากเซิร์ฟเวอร์ */
   html?: string;
   /** kind "video": ลิงก์ YouTube / Vimeo (เก็บลิงก์ที่วางมา — ตอนแสดงแปลงเป็น embed เอง) */
@@ -273,6 +281,8 @@ export function homeBlocksOf(raw: unknown): HomeBlock[] | undefined {
           : {}),
         ...(Number(o.cols) >= 1 && Number(o.cols) <= 4 ? { cols: Math.floor(Number(o.cols)) } : {}),
         ...(o.display === "slider" || o.display === "grid" ? { display: o.display } : {}),
+        ...(o.fit === "cover" || o.fit === "contain" ? { fit: o.fit } : {}),
+        ...(GALLERY_RATIOS.includes(o.ratio as GalleryRatio) ? { ratio: o.ratio as GalleryRatio } : {}),
         ...(str(o.html) ? { html: str(o.html).slice(0, 100000) } : {}),
         // ลิงก์วิดีโอเก็บเฉพาะที่แปลงเป็น embed ได้จริง (YouTube / Vimeo เท่านั้น)
         ...(videoEmbedUrl(str(o.videoUrl)) ? { videoUrl: str(o.videoUrl).trim() } : {}),

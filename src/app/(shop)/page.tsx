@@ -273,7 +273,14 @@ export default function HomePage() {
         if (!blk.images?.length) return null;
         return (
           <section key={blk.id} className="mt-12">
-            <HomeGallery heading={blk.heading} images={blk.images} cols={blk.cols ?? 3} display={blk.display ?? "grid"} />
+            <HomeGallery
+              heading={blk.heading}
+              images={blk.images}
+              cols={blk.cols ?? 3}
+              display={blk.display ?? "grid"}
+              fit={blk.fit ?? "cover"}
+              ratio={blk.ratio ?? "16/12"}
+            />
           </section>
         );
 

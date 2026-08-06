@@ -21,11 +21,17 @@ export default function HomeGallery({
   images,
   cols = 3,
   display = "grid",
+  fit = "cover",
+  ratio = "16/12",
 }: {
   heading?: string;
   images: GalleryImage[];
   cols?: number;
   display?: "grid" | "slider";
+  /** cover = ครอปให้เต็มกรอบ (เดิม) · contain = เห็นเต็มภาพไม่ครอป */
+  fit?: "cover" | "contain";
+  /** สัดส่วนกรอบภาพ เช่น "16/9" */
+  ratio?: string;
 }) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -58,13 +64,24 @@ export default function HomeGallery({
   if (!images.length) return null;
 
   const cell = (im: GalleryImage, i: number, className: string) => {
-    const img = <img src={im.src} alt="" loading="lazy" decoding="async" className="h-full w-full rounded-2xl object-cover" />;
+    const img = (
+      <img
+        src={im.src}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        className={`h-full w-full rounded-2xl ${fit === "contain" ? "object-contain" : "object-cover"}`}
+      />
+    );
+    // โหมดเห็นเต็มภาพ: พื้นขาวหลังภาพ (ภาพที่สัดส่วนไม่พอดีกรอบจะมีขอบ ไม่โดนครอป)
+    const cls = `${className} ${fit === "contain" ? "bg-white" : ""}`;
+    const style = { aspectRatio: ratio };
     return im.href ? (
-      <Link key={i} href={im.href} className={`${className} transition hover:brightness-95`}>
+      <Link key={i} href={im.href} style={style} className={`${cls} transition hover:brightness-95`}>
         {img}
       </Link>
     ) : (
-      <span key={i} className={className}>
+      <span key={i} style={style} className={cls}>
         {img}
       </span>
     );
@@ -76,7 +93,7 @@ export default function HomeGallery({
       <div>
         {heading && <h2 className="mb-5 text-center text-2xl font-extrabold tracking-wide text-stone-700 md:text-4xl">{heading}</h2>}
         <div className={`grid grid-cols-2 gap-3 md:gap-4 ${colCls}`}>
-          {images.map((im, i) => cell(im, i, "block aspect-[16/12] overflow-hidden rounded-2xl"))}
+          {images.map((im, i) => cell(im, i, "block overflow-hidden rounded-2xl"))}
         </div>
       </div>
     );
@@ -118,7 +135,7 @@ export default function HomeGallery({
         >
           {images.map((im, i) => (
             <div key={i} className="shrink-0 px-1.5 md:px-2.5" style={{ flexBasis: `${step}%` }}>
-              {cell(im, i, "block aspect-[16/12] overflow-hidden rounded-2xl")}
+              {cell(im, i, "block overflow-hidden rounded-2xl")}
             </div>
           ))}
         </div>

@@ -8,13 +8,16 @@ import {
   BLOCK_CATS,
   BLOCK_LIBRARY,
   BLOCK_META,
+  GALLERY_RATIOS,
   defaultHomeBlocks,
   makeBlock,
   videoEmbedUrl,
   type BlockCat,
+  type GalleryRatio,
   type HomeBlock,
   type HomeBlockKind,
 } from "@/lib/home-layout";
+import HomeGallery from "@/components/HomeGallery";
 import GradientPicker from "@/components/GradientPicker";
 import { fetchCategories, type ShopCategory } from "@/lib/categories";
 import {
@@ -485,6 +488,8 @@ function NavEditorInner() {
   const [openBlock, setOpenBlock] = useState("");
   /** หมวดที่เลือกในจานเลือกบล็อก (all = ทุกหมวด · fav = ที่กดหัวใจไว้) */
   const [blockCat, setBlockCat] = useState<"all" | "fav" | BlockCat>("all");
+  /** เปิดพรีวิวแกลเลอรี/สไลด์แบบที่ลูกค้าเห็น (ของบล็อกที่กางอยู่) */
+  const [galleryPreview, setGalleryPreview] = useState(false);
   /** ตัวเลือกบล็อกที่กดหัวใจไว้ (จำในเครื่องของแอดมินคนนั้น) */
   const [blockFavs, setBlockFavs] = useState<string[]>([]);
   useEffect(() => {
@@ -1077,7 +1082,54 @@ function NavEditorInner() {
                               ))}
                             </select>
                           </label>
+                          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                            สัดส่วนภาพ
+                            <select
+                              value={b.ratio ?? "16/12"}
+                              onChange={(e) => patchBlock(b.id, { ratio: e.target.value as GalleryRatio })}
+                              className={inputBase}
+                            >
+                              <option value="16/12">แนวนอน 16:12 (เดิม)</option>
+                              <option value="16/9">จอกว้าง 16:9</option>
+                              <option value="21/9">แบนเนอร์กว้าง 21:9</option>
+                              <option value="1/1">จัตุรัส 1:1</option>
+                              <option value="3/4">แนวตั้ง 3:4</option>
+                            </select>
+                          </label>
+                          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                            การแสดงภาพ
+                            <select
+                              value={b.fit ?? "cover"}
+                              onChange={(e) => patchBlock(b.id, { fit: e.target.value as HomeBlock["fit"] })}
+                              className={inputBase}
+                            >
+                              <option value="cover">✂️ ครอปให้เต็มกรอบ (เดิม)</option>
+                              <option value="contain">🖼 เห็นเต็มภาพ ไม่ครอป</option>
+                            </select>
+                          </label>
+                          {(b.images ?? []).length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setGalleryPreview((v) => !v)}
+                              className={`${galleryPreview ? btnPrimary : btnNeutral} text-xs`}
+                            >
+                              {galleryPreview ? "✕ ปิดพรีวิว" : "👀 ดูพรีวิวแบบที่ลูกค้าเห็น"}
+                            </button>
+                          )}
                         </div>
+                        {/* พรีวิวของจริง — คอมโพเนนต์เดียวกับหน้าร้าน (สไลด์เลื่อนเอง กดลูกศร/จุดได้) */}
+                        {galleryPreview && (b.images ?? []).length > 0 && (
+                          <div className="rounded-2xl bg-white p-2 ring-2 ring-sky-200">
+                            <HomeGallery
+                              heading={b.heading}
+                              images={b.images ?? []}
+                              cols={b.cols ?? 3}
+                              display={b.display ?? "grid"}
+                              fit={b.fit ?? "cover"}
+                              ratio={b.ratio ?? "16/12"}
+                            />
+                          </div>
+                        )}
                         {/* เรียงรูปเป็นตารางตามจำนวนคอลัมน์ที่ตั้ง — เห็นผังเหมือนหน้าร้านจริง */}
                         {b.display !== "grid" && (b.images ?? []).length > 0 && (
                           <p className={`text-[11px] ${faint}`}>🎠 บนหน้าร้านจะเลื่อนเป็นสไลด์ — ลำดับซ้าย→ขวาตามนี้</p>
@@ -1090,7 +1142,12 @@ function NavEditorInner() {
                             <div key={ii} className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
                               <div className="relative">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={im.src} alt="" className="aspect-[16/12] w-full object-cover" />
+                                <img
+                                  src={im.src}
+                                  alt=""
+                                  style={{ aspectRatio: b.ratio ?? "16/12" }}
+                                  className={`w-full ${b.fit === "contain" ? "object-contain" : "object-cover"}`}
+                                />
                                 <span className="absolute right-1.5 top-1.5 flex gap-1">
                                   <button
                                     type="button"
