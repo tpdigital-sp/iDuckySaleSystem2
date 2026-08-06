@@ -41,6 +41,12 @@ type DraftOption = {
   display: "pills" | "dropdown";
   /** +฿ ของกลุ่มนี้มีผลเมื่อสั่งตั้งแต่กี่ชิ้นขึ้นไป (ว่าง = ทุกจำนวน) */
   extraFromQty?: string;
+  /** ค่าธรรมเนียมช่วงสั่งน้อย เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น (ยกเว้นบางตัวเลือก) */
+  smallFee?: string;
+  smallUpTo?: string;
+  smallFree?: string[];
+  smallWhenLabel?: string;
+  smallWhenChoices?: string[];
 };
 type DraftImage = { emoji: string; gradient: string; label: string; src?: string };
 type DraftBody = {
@@ -245,6 +251,15 @@ function toDraft(p: Product): Draft {
       ...(o.presetId ? { presetId: o.presetId } : {}),
       display: o.display ?? "pills",
       ...(o.extraFromQty ? { extraFromQty: String(o.extraFromQty) } : {}),
+      ...(o.smallQtyFee
+        ? {
+            smallFee: String(o.smallQtyFee.fee),
+            smallUpTo: String(o.smallQtyFee.upToQty),
+            smallFree: [...(o.smallQtyFee.freeChoices ?? [])],
+            smallWhenLabel: o.smallQtyFee.when?.label ?? "",
+            smallWhenChoices: [...(o.smallQtyFee.when?.choices ?? [])],
+          }
+        : {}),
     })),
     rules: (p.rules ?? []).map((r) => ({
       whenLabel: r.when.label,
@@ -362,6 +377,18 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       ...(o.presetId ? { presetId: o.presetId } : {}),
       ...(o.display === "dropdown" ? { display: "dropdown" as const } : {}),
       ...(Number(o.extraFromQty) > 0 ? { extraFromQty: Math.floor(Number(o.extraFromQty)) } : {}),
+      ...(Number(o.smallFee) > 0 && Number(o.smallUpTo) > 0
+        ? {
+            smallQtyFee: {
+              fee: Number(o.smallFee),
+              upToQty: Math.floor(Number(o.smallUpTo)),
+              ...((o.smallFree ?? []).length ? { freeChoices: [...o.smallFree!] } : {}),
+              ...(o.smallWhenLabel && (o.smallWhenChoices ?? []).length
+                ? { when: { label: o.smallWhenLabel, choices: [...o.smallWhenChoices!] } }
+                : {}),
+            },
+          }
+        : {}),
     }))
     .filter((o) => o.label && o.choices.length > 0);
 }
@@ -709,6 +736,121 @@ export default function ProductEditor({ product }: { product: Product }) {
 
   // ลิงก์ตามที่ตั้งในดราฟต์ — slug ภาษาไทยโชว์ตรง ๆ อ่านรู้เรื่อง (เบราว์เซอร์ encode ให้เองตอนเปิด)
   const draftSlug = slugifyProductName(draft.slug);
+
+  /**
+   * แถวตั้ง "ค่าธรรมเนียมช่วงสั่งน้อย" ของกลุ่มตัวเลือก (เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น)
+   * เขียนเป็นฟังก์ชันคืน JSX (ไม่ใช่คอมโพเนนต์ย่อย) เพื่อไม่ให้ช่องกรอกถูก remount ทุกครั้งที่พิมพ์
+   */
+  function smallFeeRow(gi: number, opt: DraftOption) {
+    const on = Number(opt.smallFee) > 0 || Number(opt.smallUpTo) > 0;
+    const setOpt = (patchObj: Partial<DraftOption>) =>
+      patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, ...patchObj } : o)) });
+    const whenGroup = draft.options.find((o) => o.label === opt.smallWhenLabel);
+    return (
+      <div className="mt-2 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+        <label className="flex cursor-pointer items-center gap-2 text-[11px] font-bold text-slate-600">
+          <input
+            type="checkbox"
+            checked={on}
+            onChange={(e) =>
+              setOpt(
+                e.target.checked
+                  ? { smallFee: "10", smallUpTo: "10", smallFree: [], smallWhenLabel: "", smallWhenChoices: [] }
+                  : { smallFee: "", smallUpTo: "", smallFree: [], smallWhenLabel: "", smallWhenChoices: [] }
+              )
+            }
+            className="h-3.5 w-3.5 accent-amber-500"
+          />
+          💰 ค่าธรรมเนียมช่วงสั่งน้อย (เช่น ปลีกเลือกตะขอ บวกชิ้นละ 10)
+        </label>
+        {on && (
+          <div className="mt-1.5 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+              สั่งไม่เกิน
+              <input
+                value={opt.smallUpTo ?? ""}
+                onChange={(e) => setOpt({ smallUpTo: e.target.value.replace(/\D/g, "") })}
+                inputMode="numeric"
+                className="w-14 rounded-lg bg-white px-1.5 py-1 text-center ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                aria-label="คิดค่าธรรมเนียมเมื่อสั่งไม่เกินกี่ชิ้น"
+              />
+              ชิ้น · บวกชิ้นละ
+              <input
+                value={opt.smallFee ?? ""}
+                onChange={(e) => setOpt({ smallFee: e.target.value.replace(/[^\d.]/g, "") })}
+                inputMode="numeric"
+                className="w-14 rounded-lg bg-white px-1.5 py-1 text-center ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                aria-label="ค่าธรรมเนียมต่อชิ้น"
+              />
+              บาท
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="text-[11px] text-slate-400">ยกเว้น (ไม่คิด):</span>
+              {opt.choices.filter((c) => c.name.trim()).map((c) => {
+                const off = (opt.smallFree ?? []).includes(c.name);
+                return (
+                  <button
+                    key={c.name}
+                    type="button"
+                    onClick={() =>
+                      setOpt({
+                        smallFree: off
+                          ? (opt.smallFree ?? []).filter((n) => n !== c.name)
+                          : [...(opt.smallFree ?? []), c.name],
+                      })
+                    }
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold transition ${
+                      off ? "bg-emerald-500 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {off ? "✓ " : ""}
+                    {c.name.length > 22 ? c.name.slice(0, 22) + "…" : c.name}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="text-[11px] text-slate-400">เฉพาะเมื่อ:</span>
+              <select
+                value={opt.smallWhenLabel ?? ""}
+                onChange={(e) => setOpt({ smallWhenLabel: e.target.value, smallWhenChoices: [] })}
+                className="rounded-lg bg-white px-2 py-1 text-[11px] ring-1 ring-slate-200 focus:outline-none"
+                aria-label="จำกัดค่าธรรมเนียมเฉพาะเมื่อกลุ่มนี้ถูกเลือก"
+              >
+                <option value="">— ทุกกรณี —</option>
+                {draft.options.filter((o) => o.label && o.label !== opt.label).map((o) => (
+                  <option key={o.label} value={o.label}>{o.label}</option>
+                ))}
+              </select>
+              {whenGroup?.choices.filter((c) => c.name.trim()).map((c) => {
+                const sel = (opt.smallWhenChoices ?? []).includes(c.name);
+                return (
+                  <button
+                    key={c.name}
+                    type="button"
+                    onClick={() =>
+                      setOpt({
+                        smallWhenChoices: sel
+                          ? (opt.smallWhenChoices ?? []).filter((n) => n !== c.name)
+                          : [...(opt.smallWhenChoices ?? []), c.name],
+                      })
+                    }
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold transition ${
+                      sel ? "bg-teal-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {sel ? "✓ " : ""}
+                    {c.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const productUrl = `/products/${draftSlug || productId}`;
   // เติมโดเมนหลัง mount เพื่อให้ HTML ฝั่งเซิร์ฟเวอร์/เบราว์เซอร์ตรงกัน
   const [fullUrl, setFullUrl] = useState(productUrl);
@@ -1963,6 +2105,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                     ชิ้นขึ้นไป
                   </label>
                 </div>
+                {smallFeeRow(gi, opt)}
                 <p className="mt-2 text-[11px] text-sky-600">
                   แก้ตัวเลือกกลุ่มนี้ได้ที่{" "}
                   <Link href="/admin/options" className="font-semibold underline">คลังตัวเลือก</Link>{" "}
@@ -2077,6 +2220,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                   ชิ้นขึ้นไป
                 </label>
               </div>
+              {smallFeeRow(gi, opt)}
               <div className="mt-2 space-y-1.5">
                 {opt.choices.map((ch, ci) => (
                   <div key={ci} className="flex items-center gap-2">

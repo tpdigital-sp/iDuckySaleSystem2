@@ -46,11 +46,44 @@ export interface ProductOption {
    * สั่ง 11 ชิ้นขึ้นไปค่อยคิดเพิ่มต่อชิ้นตามตัวเลือก · ไม่ตั้ง = บวกเพิ่มทุกจำนวน
    */
   extraFromQty?: number;
+  /**
+   * ค่าธรรมเนียม "ช่วงสั่งน้อย" ของกลุ่มนี้ — คิดเพิ่มต่อชิ้นเมื่อสั่งไม่เกินจำนวนที่กำหนด
+   * เช่น พวงกุญแจ 3mm ช่วงปลีก 1-10 ชิ้น เลือกตะขอบวกชิ้นละ 10 บาท (ยกเว้นห่วงแถมฟรี Z1/Z2)
+   * คิด "เพิ่มจาก" ราคาของตัวเลือกนั้นตามปกติ · ตัวเลือกใน freeChoices ไม่คิด
+   */
+  smallQtyFee?: {
+    /** บวกเพิ่มต่อชิ้น (บาท) */
+    fee: number;
+    /** คิดเมื่อสั่งไม่เกินกี่ชิ้น (เช่น 10 = คิดเฉพาะ 1-10 ชิ้น) */
+    upToQty: number;
+    /** ตัวเลือกที่ยกเว้น ไม่คิดค่าธรรมเนียมนี้ (เช่น ห่วงที่แถมฟรี) */
+    freeChoices?: string[];
+    /** จำกัดเฉพาะเมื่อกลุ่มอื่นเลือกค่าเหล่านี้ (เช่น ความหนาอะคริลิค = 3mm) — ไม่ตั้ง = ทุกกรณี */
+    when?: { label: string; choices: string[] };
+  };
 }
 
 /** ราคาบวกเพิ่มของกลุ่มนี้ใช้กับจำนวนนี้ไหม (ต่ำกว่าเกณฑ์ = รวมในราคาแล้ว) */
 export function optionExtraApplies(opt: ProductOption, qty: number): boolean {
   return !opt.extraFromQty || qty >= opt.extraFromQty;
+}
+
+/**
+ * ค่าธรรมเนียมช่วงสั่งน้อยของกลุ่มนี้ ณ ตัวเลือก/จำนวนนี้ (บาทต่อชิ้น · 0 = ไม่คิด)
+ * เงื่อนไขครบทุกข้อถึงคิด: จำนวนไม่เกินเกณฑ์ · ตัวเลือกที่เลือกไม่อยู่ในรายการยกเว้น · ตรงกับเงื่อนไขกลุ่มอื่น (ถ้าตั้งไว้)
+ */
+export function smallQtyFeeOf(
+  opt: ProductOption,
+  selections: Record<string, string>,
+  qty: number
+): number {
+  const f = opt.smallQtyFee;
+  if (!f || !(f.fee > 0) || !(f.upToQty > 0) || qty > f.upToQty) return 0;
+  const chosen = selections[opt.label];
+  if (!chosen) return 0;
+  if ((f.freeChoices ?? []).includes(chosen)) return 0;
+  if (f.when && !f.when.choices.includes(selections[f.when.label])) return 0;
+  return f.fee;
 }
 
 export interface ProductImage {
@@ -2069,6 +2102,7 @@ export function unitPriceFor(
     // กลุ่มตัวเลือกที่ไม่ใช่แกนตาราง (เช่น อะไหล่พิเศษ) บวกเพิ่มต่อหน่วยตาม extra ของตัวที่เลือก
     // (กลุ่มที่ตั้ง extraFromQty ไว้ ต่ำกว่าเกณฑ์ = ราคารวมแล้ว ไม่บวก)
     for (const opt of product.options) {
+      base += smallQtyFeeOf(opt, selections, qty); // ค่าธรรมเนียมช่วงปลีก (ถ้าตั้งไว้)
       if (m.driverLabels.includes(opt.label)) continue;
       if (!optionExtraApplies(opt, qty)) continue;
       const chosen = opt.choices.find((c) => c.name === selections[opt.label]);
@@ -2078,6 +2112,7 @@ export function unitPriceFor(
   }
   let price = product.price;
   for (const opt of product.options) {
+    price += smallQtyFeeOf(opt, selections, qty);
     if (!optionExtraApplies(opt, qty)) continue;
     const chosen = opt.choices.find((c) => c.name === selections[opt.label]);
     if (chosen?.extra) price += chosen.extra;
