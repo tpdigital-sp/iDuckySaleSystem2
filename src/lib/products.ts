@@ -51,6 +51,16 @@ export interface ProductOption {
    * เช่น พวงกุญแจ 3mm ช่วงปลีก 1-10 ชิ้น เลือกตะขอบวกชิ้นละ 10 บาท (ยกเว้นห่วงแถมฟรี Z1/Z2)
    * คิด "เพิ่มจาก" ราคาของตัวเลือกนั้นตามปกติ · ตัวเลือกใน freeChoices ไม่คิด
    */
+  /**
+   * "ฟรีเมื่อ" — ตัวเลือกที่ระบุไม่คิด +฿ เมื่อกลุ่มอื่นเลือกค่าที่กำหนด
+   * เช่น ห่วง Z1/Z2 ฟรีเมื่อความหนา = 3mm · ความหนาอื่นคิด +฿ ตามปกติ
+   */
+  freeWhen?: {
+    /** ตัวเลือกในกลุ่มนี้ที่ได้ฟรี */
+    choices: string[];
+    /** เงื่อนไขจากกลุ่มอื่น */
+    when: { label: string; choices: string[] };
+  };
   smallQtyFee?: {
     /** บวกเพิ่มต่อชิ้น (บาท) */
     fee: number;
@@ -66,6 +76,22 @@ export interface ProductOption {
 /** ราคาบวกเพิ่มของกลุ่มนี้ใช้กับจำนวนนี้ไหม (ต่ำกว่าเกณฑ์ = รวมในราคาแล้ว) */
 export function optionExtraApplies(opt: ProductOption, qty: number): boolean {
   return !opt.extraFromQty || qty >= opt.extraFromQty;
+}
+
+/**
+ * ราคาบวกเพิ่ม (+฿) ของตัวเลือกที่เลือกในกลุ่มนี้ หลังหักเงื่อนไข "ฟรีเมื่อ"
+ * ใช้ทั้งตอนคิดราคาและตอนแสดงป้าย +฿ บนหน้าร้าน จะได้ตรงกันเสมอ
+ */
+export function choiceExtraOf(
+  opt: ProductOption,
+  selections: Record<string, string>,
+  choiceName: string
+): number {
+  const extra = opt.choices.find((c) => c.name === choiceName)?.extra ?? 0;
+  if (!extra) return 0;
+  const f = opt.freeWhen;
+  if (f && f.choices.includes(choiceName) && f.when.choices.includes(selections[f.when.label])) return 0;
+  return extra;
 }
 
 /**
@@ -2105,8 +2131,7 @@ export function unitPriceFor(
       base += smallQtyFeeOf(opt, selections, qty); // ค่าธรรมเนียมช่วงปลีก (ถ้าตั้งไว้)
       if (m.driverLabels.includes(opt.label)) continue;
       if (!optionExtraApplies(opt, qty)) continue;
-      const chosen = opt.choices.find((c) => c.name === selections[opt.label]);
-      if (chosen?.extra) base += chosen.extra;
+      base += choiceExtraOf(opt, selections, selections[opt.label]);
     }
     return base;
   }
@@ -2114,8 +2139,7 @@ export function unitPriceFor(
   for (const opt of product.options) {
     price += smallQtyFeeOf(opt, selections, qty);
     if (!optionExtraApplies(opt, qty)) continue;
-    const chosen = opt.choices.find((c) => c.name === selections[opt.label]);
-    if (chosen?.extra) price += chosen.extra;
+    price += choiceExtraOf(opt, selections, selections[opt.label]);
   }
   return price;
 }

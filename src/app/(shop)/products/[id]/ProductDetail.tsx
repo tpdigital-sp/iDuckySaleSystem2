@@ -21,6 +21,7 @@ import {
   PRODUCTS,
   RATE_LABEL,
   resolveSelections,
+  choiceExtraOf,
   shortComboParts,
   smallQtyFeeOf,
   tierIndex,
@@ -925,7 +926,9 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                         .map((c) => (
                           <option key={c.name} value={c.name}>
                             {c.name}
-                            {c.extra && optionExtraApplies(opt, qty) ? ` +${formatPrice(c.extra)}` : ""}
+                            {optionExtraApplies(opt, qty) && choiceExtraOf(opt, effective, c.name) > 0
+                              ? ` +${formatPrice(choiceExtraOf(opt, effective, c.name))}`
+                              : ""}
                           </option>
                         ))}
                     </select>
@@ -947,7 +950,9 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                             }`}
                           >
                             {c.name}
-                            {c.extra && optionExtraApplies(opt, qty) ? ` +${formatPrice(c.extra)}` : ""}
+                            {optionExtraApplies(opt, qty) && choiceExtraOf(opt, effective, c.name) > 0
+                              ? ` +${formatPrice(choiceExtraOf(opt, effective, c.name))}`
+                              : ""}
                           </button>
                         ))}
                     </div>

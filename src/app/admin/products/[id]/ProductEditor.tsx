@@ -47,6 +47,10 @@ type DraftOption = {
   smallFree?: string[];
   smallWhenLabel?: string;
   smallWhenChoices?: string[];
+  /** "ฟรีเมื่อ" — ตัวเลือกที่ไม่คิด +฿ เมื่อกลุ่มอื่นเลือกค่าที่กำหนด */
+  freeChoices?: string[];
+  freeWhenLabel?: string;
+  freeWhenChoices?: string[];
 };
 type DraftImage = { emoji: string; gradient: string; label: string; src?: string };
 type DraftBody = {
@@ -260,6 +264,13 @@ function toDraft(p: Product): Draft {
             smallWhenChoices: [...(o.smallQtyFee.when?.choices ?? [])],
           }
         : {}),
+      ...(o.freeWhen
+        ? {
+            freeChoices: [...o.freeWhen.choices],
+            freeWhenLabel: o.freeWhen.when.label,
+            freeWhenChoices: [...o.freeWhen.when.choices],
+          }
+        : {}),
     })),
     rules: (p.rules ?? []).map((r) => ({
       whenLabel: r.when.label,
@@ -388,6 +399,9 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
                 : {}),
             },
           }
+        : {}),
+      ...((o.freeChoices ?? []).length && o.freeWhenLabel && (o.freeWhenChoices ?? []).length
+        ? { freeWhen: { choices: [...o.freeChoices!], when: { label: o.freeWhenLabel, choices: [...o.freeWhenChoices!] } } }
         : {}),
     }))
     .filter((o) => o.label && o.choices.length > 0);
@@ -847,6 +861,72 @@ export default function ProductEditor({ product }: { product: Product }) {
             </div>
           </div>
         )}
+        {/* ── ฟรีเมื่อ: ตัวเลือกไหนไม่คิด +฿ เมื่อกลุ่มอื่นเลือกค่านี้ (เช่น ห่วงฟรีเฉพาะหนา 3mm) ── */}
+        <div className="mt-1.5 border-t border-dashed border-slate-200 pt-1.5">
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="text-[11px] font-bold text-slate-500">🎁 ฟรีเมื่อ</span>
+            <select
+              value={opt.freeWhenLabel ?? ""}
+              onChange={(e) => setOpt({ freeWhenLabel: e.target.value, freeWhenChoices: [] })}
+              className="rounded-lg bg-white px-2 py-1 text-[11px] ring-1 ring-slate-200 focus:outline-none"
+              aria-label="กลุ่มเงื่อนไขของตัวเลือกที่ได้ฟรี"
+            >
+              <option value="">— ไม่ใช้ —</option>
+              {draft.options.filter((o) => o.label && o.label !== opt.label).map((o) => (
+                <option key={o.label} value={o.label}>{o.label}</option>
+              ))}
+            </select>
+            {draft.options.find((o) => o.label === opt.freeWhenLabel)?.choices.filter((c) => c.name.trim()).map((c) => {
+              const sel = (opt.freeWhenChoices ?? []).includes(c.name);
+              return (
+                <button
+                  key={c.name}
+                  type="button"
+                  onClick={() =>
+                    setOpt({
+                      freeWhenChoices: sel
+                        ? (opt.freeWhenChoices ?? []).filter((n) => n !== c.name)
+                        : [...(opt.freeWhenChoices ?? []), c.name],
+                    })
+                  }
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold transition ${
+                    sel ? "bg-teal-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
+                  }`}
+                >
+                  {sel ? "✓ " : ""}
+                  {c.name}
+                </button>
+              );
+            })}
+          </div>
+          {opt.freeWhenLabel && (
+            <div className="mt-1 flex flex-wrap items-center gap-1">
+              <span className="text-[11px] text-slate-400">ตัวเลือกที่ได้ฟรี:</span>
+              {opt.choices.filter((c) => c.name.trim()).map((c) => {
+                const sel = (opt.freeChoices ?? []).includes(c.name);
+                return (
+                  <button
+                    key={c.name}
+                    type="button"
+                    onClick={() =>
+                      setOpt({
+                        freeChoices: sel
+                          ? (opt.freeChoices ?? []).filter((n) => n !== c.name)
+                          : [...(opt.freeChoices ?? []), c.name],
+                      })
+                    }
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold transition ${
+                      sel ? "bg-emerald-500 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {sel ? "✓ " : ""}
+                    {c.name.length > 22 ? c.name.slice(0, 22) + "…" : c.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     );
   }
