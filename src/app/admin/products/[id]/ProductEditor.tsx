@@ -779,6 +779,17 @@ export default function ProductEditor({ product }: { product: Product }) {
         </label>
         {on && (
           <div className="mt-1.5 space-y-1.5">
+            <p className="rounded-lg bg-white/70 px-2 py-1.5 text-[10px] leading-relaxed text-slate-500 ring-1 ring-slate-200">
+              📖 <b className="font-bold text-slate-600">อ่านเป็นประโยคเดียว:</b> “ถ้า
+              <span className="font-bold text-teal-700"> [เฉพาะเมื่อ] </span>ตรง และลูกค้าสั่ง
+              <span className="font-bold"> ไม่เกิน N ชิ้น</span> → ตัวเลือกในกลุ่มนี้
+              <span className="font-bold"> คิดเพิ่มชิ้นละ X บาท</span> ยกเว้นตัวที่
+              <span className="font-bold text-emerald-600"> ติ๊กเขียว</span>”
+              <br />
+              ตัวอย่างที่ใช้จริง: หนา 3mm · สั่ง 1-10 ชิ้น · เลือกตะขอบวกชิ้นละ 10 บาท (Z1/Z2 ติ๊กเขียว = ไม่คิด)
+              <br />
+              💡 บวก<b>เพิ่มจาก</b>ราคาตะขอปกติ · สั่งเกิน N ชิ้นเมื่อไหร่ ค่าธรรมเนียมนี้หายไปเอง
+            </p>
             <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
               สั่งไม่เกิน
               <input
@@ -867,7 +878,9 @@ export default function ProductEditor({ product }: { product: Product }) {
         {/* ── ฟรีเมื่อ: ตัวเลือกไหนไม่คิด +฿ เมื่อกลุ่มอื่นเลือกค่านี้ (เช่น ห่วงฟรีเฉพาะหนา 3mm) ── */}
         <div className="mt-1.5 border-t border-dashed border-slate-200 pt-1.5">
           <div className="flex flex-wrap items-center gap-1">
-            <span className="text-[11px] font-bold text-slate-500">🎁 ฟรีเมื่อ</span>
+            <span className="text-[11px] font-bold text-slate-500" title="ยกเว้นราคา +฿ ของตัวเลือกบางตัว เมื่อกลุ่มอื่นเลือกค่าที่กำหนด">
+              🎁 ฟรีเมื่อ
+            </span>
             <select
               value={opt.freeWhenLabel ?? ""}
               onChange={(e) => setOpt({ freeWhenLabel: e.target.value, freeWhenChoices: [] })}
@@ -902,6 +915,15 @@ export default function ProductEditor({ product }: { product: Product }) {
               );
             })}
           </div>
+          {opt.freeWhenLabel && (
+            <p className="mt-1 rounded-lg bg-white/70 px-2 py-1.5 text-[10px] leading-relaxed text-slate-500 ring-1 ring-slate-200">
+              📖 อ่านว่า: “เมื่อ <b className="font-bold text-teal-700">{opt.freeWhenLabel}</b> = ค่าที่ติ๊กไว้ด้านบน →
+              ตัวเลือกที่ <b className="font-bold text-emerald-600">ติ๊กเขียว</b> ข้างล่างนี้
+              <b className="font-bold"> ไม่คิดราคา +฿</b> (กรณีอื่นคิดตามปกติ)”
+              <br />
+              ตัวอย่างที่ใช้จริง: ห่วง Z1/Z2 ราคา +฿2 แต่ฟรีเมื่อหนา 3mm · หนา 2mm/1mm ยังคิด +฿2 ตามเดิม
+            </p>
+          )}
           {opt.freeWhenLabel && (
             <div className="mt-1 flex flex-wrap items-center gap-1">
               <span className="text-[11px] text-slate-400" title="ติ๊กเขียว = ตัวเลือกนั้นไม่คิด +฿ เมื่อเข้าเงื่อนไขด้านบน">

@@ -243,18 +243,31 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
         if (!r.minPerDesign) return true;
         return maxDesignsFor(r, qty) >= needDesigns;
       };
+      /**
+       * เรทนี้ยังขายตัวเลือกที่ลูกค้าเลือกอยู่ไหม (เช่น เรท 2 ไม่มีตาราง 1mm)
+       * ถ้าไม่เช็ค ระบบจะเด้งไปเรทที่ไม่มีของ แล้วตัวเลือกที่เลือกไว้จะหายไปเฉย ๆ
+       */
+      const fitsSelections = (r: (typeof rates)[number]) =>
+        r.pricing.driverLabels.every((label) => {
+          const chosen = effective[label];
+          return !chosen || matrixChoiceAvailable(r.pricing, label, chosen);
+        });
       const qualified = rates.filter((r) => qty >= (r.minQty ?? 1));
       if (!rateTouched) {
         let best: (typeof rates)[number] | undefined;
+        const pick = (list: typeof rates, sorter: (a: (typeof rates)[number], b: (typeof rates)[number]) => number) => {
+          // ไล่จากเงื่อนไขครบสุด → ผ่อนลงทีละข้อ (ตัวเลือกที่เลือกไว้สำคัญกว่าการได้เรทถูกสุด)
+          const both = list.filter((r) => fitsDesigns(r) && fitsSelections(r));
+          const byDesign = list.filter(fitsDesigns);
+          return [...(both.length ? both : byDesign.length ? byDesign : list)].sort(sorter)[0];
+        };
         if (qualified.length) {
-          // จำนวนถึงขั้นต่ำหลายเรท → เอาเรทที่ขั้นต่ำสูงสุด (เรทส่ง ราคาถูกกว่า) ที่รองรับจำนวนลาย
-          const pool = qualified.filter(fitsDesigns);
-          best = (pool.length ? pool : qualified).sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
+          // จำนวนถึงขั้นต่ำหลายเรท → เอาเรทที่ขั้นต่ำสูงสุด (เรทส่ง ราคาถูกกว่า) ที่ยังขายของที่เลือกอยู่
+          best = pick(qualified, (a, b) => (b.minQty ?? 1) - (a.minQty ?? 1));
         } else {
           // จำนวนยังไม่ถึงขั้นต่ำสักเรท (เช่น ใส่ 1 ชิ้น) → เลือกเรทที่ขั้นต่ำต่ำสุด
           // จะได้เห็นเงื่อนไขที่ใกล้เคียงที่สุด ไม่ค้างอยู่เรทที่ต้องสั่ง 50
-          const pool = rates.filter(fitsDesigns);
-          best = [...(pool.length ? pool : rates)].sort((a, b) => (a.minQty ?? 1) - (b.minQty ?? 1))[0];
+          best = pick(rates, (a, b) => (a.minQty ?? 1) - (b.minQty ?? 1));
         }
         if (best) setRateLabel((cur) => (cur === best.label ? cur : best.label));
         setAutoRateNote("");
@@ -276,7 +289,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
       if (rate && fitsDesigns(rate) && rates.every(fitsDesigns)) setAutoRateNote("");
     }, 450);
     return () => clearTimeout(t);
-  }, [qty, rates, rateTouched, designs, designsTouched, artFiles.length, rate]);
+  }, [qty, rates, rateTouched, designs, designsTouched, artFiles.length, rate, effective]);
 
   const custom = product.custom?.enabled ? product.custom : null;
   const cW = parseFloat(customW), cH = parseFloat(customH);
