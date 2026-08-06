@@ -799,7 +799,10 @@ export default function ProductEditor({ product }: { product: Product }) {
               บาท
             </div>
             <div className="flex flex-wrap items-center gap-1">
-              <span className="text-[11px] text-slate-400">ยกเว้น (ไม่คิด):</span>
+              <span className="text-[11px] text-slate-400" title="ติ๊กเขียว = ตัวเลือกนั้นไม่ต้องจ่ายค่าธรรมเนียมนี้">
+                🟢 ติ๊ก = <b className="font-bold text-emerald-600">ไม่คิด</b>ค่าธรรมเนียม ·{" "}
+                <span className="text-slate-300">ไม่ติ๊ก = คิดตามที่ตั้งไว้</span>
+              </span>
               {opt.choices.filter((c) => c.name.trim()).map((c) => {
                 const off = (opt.smallFree ?? []).includes(c.name);
                 return (
@@ -901,7 +904,9 @@ export default function ProductEditor({ product }: { product: Product }) {
           </div>
           {opt.freeWhenLabel && (
             <div className="mt-1 flex flex-wrap items-center gap-1">
-              <span className="text-[11px] text-slate-400">ตัวเลือกที่ได้ฟรี:</span>
+              <span className="text-[11px] text-slate-400" title="ติ๊กเขียว = ตัวเลือกนั้นไม่คิด +฿ เมื่อเข้าเงื่อนไขด้านบน">
+                🟢 ติ๊ก = ตัวเลือกที่<b className="font-bold text-emerald-600">ได้ฟรี</b> (ไม่คิด +฿)
+              </span>
               {opt.choices.filter((c) => c.name.trim()).map((c) => {
                 const sel = (opt.freeChoices ?? []).includes(c.name);
                 return (
