@@ -172,7 +172,25 @@ export function MegaBar({
   const [openId, setOpenId] = useState<string | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const products = useLazyProducts(openId !== null);
+
+  // คลิกนอกแผง = ปิดเมนู "โดยไม่กินคลิก" — ลิงก์/ปุ่มที่ลูกค้าคลิกทำงานทันทีในคลิกเดียว
+  // (เดิมใช้ฉากหลังเป็นปุ่มเต็มจอ คลิกแรกโดนฉากหลังกิน ต้องคลิกซ้ำถึงจะไปหน้าอื่น)
+  useEffect(() => {
+    if (!openId) return;
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      const t = e.target as Node | null;
+      if (t && rootRef.current?.contains(t)) return; // คลิกในแถบ/แผงเอง — ปล่อยตามปกติ
+      setOpenId(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("touchstart", onDown);
+    };
+  }, [openId]);
 
   const cancelClose = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
@@ -217,6 +235,7 @@ export function MegaBar({
 
   return (
     <div
+      ref={rootRef}
       className={`flex items-stretch gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
         align === "end" ? "justify-end" : "mx-auto max-w-7xl justify-center px-4"
       }`}
@@ -260,12 +279,10 @@ export function MegaBar({
 
       {open && (
         <>
-          {/* ฉากหลังจาง — กดที่ไหนก็ปิด */}
-          <button
-            type="button"
-            aria-label="ปิดเมนู"
-            onClick={() => setOpenId(null)}
-            className="absolute inset-x-0 top-full z-30 h-screen cursor-default bg-stone-900/10"
+          {/* ฉากหลังจาง — แค่ภาพ ไม่กินคลิก (ปิดเมนูด้วย listener ด้านบน คลิกเดียวทั้งปิดเมนูและไปหน้าที่คลิก) */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-full z-30 h-screen bg-stone-900/10"
           />
           <div
             className="absolute inset-x-0 top-full z-40 max-h-[calc(100vh-7.5rem)] overflow-y-auto border-t border-amber-100 bg-white shadow-xl"
