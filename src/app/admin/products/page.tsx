@@ -17,7 +17,7 @@ import {
   BULK_ASK_DEFAULT,
 } from "@/lib/products";
 import { loadOverrides, resetAll } from "@/lib/product-store";
-import { deleteProductDb, fetchProductRaw, fetchProducts, persistProduct } from "@/lib/product-repo";
+import { deleteProductDb, fetchProductRaw, fetchProducts, fetchProductSort, persistProduct } from "@/lib/product-repo";
 import { getAdminSession } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { badge, btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
@@ -55,6 +55,8 @@ export default function AdminProductsPage() {
   // ชื่อผู้ตรวจ (คนที่ล็อกอินอยู่) — โหมดเดโมที่ไม่มีชื่อใช้ "ทีมงาน"
   const [reviewer, setReviewer] = useState("ทีมงาน");
   const [creating, setCreating] = useState(false);
+  /** id ของสินค้าที่กำลังทำซ้ำอยู่ (กันกดรัว = ได้สำเนาหลายตัว) */
+  const [duplicating, setDuplicating] = useState<string | null>(null);
   const mayManage = useCan()("products.manage"); // ฝ่ายแอดมินดูได้อย่างเดียว
   const router = useRouter();
 
@@ -82,6 +84,43 @@ export default function AdminProductsPage() {
     } else {
       setCreating(false);
       alert(`สร้างสินค้าไม่สำเร็จ: ${res.error ?? "เกิดข้อผิดพลาด"}`);
+    }
+  }
+
+  /**
+   * ทำซ้ำสินค้า — ก๊อปข้อมูลทั้งชุด (ตัวเลือก/ตารางราคา/แท็บ/SEO) เป็นสินค้าใหม่ แล้วเปิดหน้าแก้ไขให้เลย
+   * สำเนาได้รหัสใหม่ · ลิงก์ตามชื่อ (slug) และยอดขาย/สถานะตรวจแล้ว ไม่ก๊อปมา (กันลิงก์ชนและตัวเลขหลอก)
+   */
+  async function duplicate(p: Product) {
+    if (duplicating) return;
+    setDuplicating(p.id);
+    try {
+      const taken = new Set(products.map((x) => x.id));
+      let id = `${p.id}-copy`;
+      for (let n = 2; taken.has(id); n++) id = `${p.id}-copy${n}`;
+      // ดึงข้อมูลดิบ (คงกลุ่มตัวเลือกที่ลิงก์คลังไว้ ไม่คลี่เป็นสำเนา)
+      const raw = (await fetchProductRaw(p.id)) ?? p;
+      const copy: Product = {
+        ...raw,
+        id,
+        name: `${raw.name} (สำเนา)`,
+        slug: undefined,
+        sold: 0,
+        featured: false,
+        reviewed: undefined,
+        savedAt: undefined,
+      };
+      const sort = await fetchProductSort(p.id);
+      const res = await persistProduct(copy, undefined, sort ?? undefined);
+      if (!res.ok) {
+        setDuplicating(null);
+        alert(`ทำซ้ำไม่สำเร็จ: ${res.error ?? "เกิดข้อผิดพลาด"}`);
+        return;
+      }
+      router.push(`/admin/products/${id}`);
+    } catch {
+      setDuplicating(null);
+      alert("ทำซ้ำไม่สำเร็จ — เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
     }
   }
 
@@ -342,6 +381,8 @@ export default function AdminProductsPage() {
           overriddenIds={overriddenIds}
           onRemove={remove}
           onToggleReview={toggleReview}
+          onDuplicate={duplicate}
+          duplicating={duplicating}
         />
       ) : grouped ? (
         <div className="mt-5 space-y-6">
@@ -354,14 +395,14 @@ export default function AdminProductsPage() {
                   <span className="text-sm">{c.emoji}</span> {c.name}
                   <span className="font-normal normal-case text-slate-300">· {inCat.length} รายการ</span>
                 </h2>
-                <TableList items={inCat} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onBulkAsk={setBulkAsk} />
+                <TableList items={inCat} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onBulkAsk={setBulkAsk} onDuplicate={duplicate} duplicating={duplicating} />
               </section>
             );
           })}
         </div>
       ) : (
         <div className="mt-5">
-          <TableList items={sorted} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onBulkAsk={setBulkAsk} />
+          <TableList items={sorted} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onBulkAsk={setBulkAsk} onDuplicate={duplicate} duplicating={duplicating} />
         </div>
       )}
     </div>
@@ -445,7 +486,19 @@ function ReviewToggle({ p, onToggle, size = "sm" }: { p: Product; onToggle: (p: 
   );
 }
 
-function RowActions({ p, onRemove, onToggleReview }: { p: Product; onRemove: (id: string) => void; onToggleReview: (p: Product) => void }) {
+function RowActions({
+  p,
+  onRemove,
+  onToggleReview,
+  onDuplicate,
+  duplicating,
+}: {
+  p: Product;
+  onRemove: (id: string) => void;
+  onToggleReview: (p: Product) => void;
+  onDuplicate: (p: Product) => void;
+  duplicating: string | null;
+}) {
   const mayManage = useCan()("products.manage");
   return (
     <div className="flex shrink-0 items-center gap-1">
@@ -457,6 +510,17 @@ function RowActions({ p, onRemove, onToggleReview }: { p: Product; onRemove: (id
         >
           แก้ไข
         </Link>
+      )}
+      {mayManage && (
+        <button
+          type="button"
+          onClick={() => onDuplicate(p)}
+          disabled={!!duplicating}
+          title="สร้างสินค้าใหม่โดยก๊อปข้อมูลทั้งชุดจากตัวนี้ (ตัวเลือก/ตารางราคา/แท็บ/SEO)"
+          className="rounded-lg px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-50 disabled:opacity-40"
+        >
+          {duplicating === p.id ? "กำลังทำซ้ำ…" : "ทำซ้ำ"}
+        </button>
       )}
       <a
         href={productPath(p)}
@@ -530,12 +594,16 @@ function TableList({
   onRemove,
   onToggleReview,
   onBulkAsk,
+  onDuplicate,
+  duplicating,
 }: {
   items: Product[];
   overriddenIds: Set<string>;
   onRemove: (id: string) => void;
   onToggleReview: (p: Product) => void;
   onBulkAsk: (p: Product, v: string) => void;
+  onDuplicate: (p: Product) => void;
+  duplicating: string | null;
 }) {
   return (
     <div className={`overflow-hidden ${card}`}>
@@ -576,7 +644,13 @@ function TableList({
             </div>
             <BulkAskField p={p} onSave={onBulkAsk} />
             <PriceBlock p={p} />
-            <RowActions p={p} onRemove={onRemove} onToggleReview={onToggleReview} />
+            <RowActions
+              p={p}
+              onRemove={onRemove}
+              onToggleReview={onToggleReview}
+              onDuplicate={onDuplicate}
+              duplicating={duplicating}
+            />
           </li>
         ))}
       </ul>
@@ -590,11 +664,15 @@ function CardGrid({
   overriddenIds,
   onRemove,
   onToggleReview,
+  onDuplicate,
+  duplicating,
 }: {
   items: Product[];
   overriddenIds: Set<string>;
   onRemove: (id: string) => void;
   onToggleReview: (p: Product) => void;
+  onDuplicate: (p: Product) => void;
+  duplicating: string | null;
 }) {
   const mayManage = useCan()("products.manage");
   return (
@@ -641,6 +719,17 @@ function CardGrid({
               >
                 ดู
               </a>
+              {mayManage && (
+                <button
+                  type="button"
+                  onClick={() => onDuplicate(p)}
+                  disabled={!!duplicating}
+                  className="rounded-lg px-2 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-50 disabled:opacity-40"
+                  title="ทำซ้ำ — ก๊อปข้อมูลทั้งชุดเป็นสินค้าใหม่"
+                >
+                  {duplicating === p.id ? "…" : "ทำซ้ำ"}
+                </button>
+              )}
               {mayManage && (
                 <button
                   type="button"

@@ -127,11 +127,21 @@ export async function fetchProductRaw(id: string): Promise<Product | undefined> 
   return (data?.data as Product | undefined) ?? undefined;
 }
 
+/** ลำดับในลิสต์ของสินค้าตัวนี้ (คอลัมน์ sort) — ใช้ตอนทำซ้ำ ให้สำเนาไปอยู่ติดตัวต้นฉบับ */
+export async function fetchProductSort(id: string): Promise<number | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data } = await sb.from("products").select("sort").eq("id", id).maybeSingle();
+  return (data?.sort as number | null) ?? null;
+}
+
 /** บันทึกสินค้า (แอดมิน) — ผ่าน API route ฝั่งเซิร์ฟเวอร์ (ตรวจสิทธิ์+เขียน Supabase); ยังไม่ตั้งค่า → localStorage */
 export async function persistProduct(
   p: Product,
   /** savedAt ของข้อมูลที่โหลดมาตอนเปิดหน้า — ส่งมาด้วยเพื่อให้เซิร์ฟเวอร์กันแท็บเก่าบันทึกทับ */
-  baseSavedAt?: string
+  baseSavedAt?: string,
+  /** ตั้งลำดับในลิสต์ด้วย (ไม่ส่ง = ไม่แตะลำดับเดิม) */
+  sort?: number
 ): Promise<{ ok: boolean; error?: string; savedAt?: string }> {
   try {
     const res = await fetch("/api/admin/products", {
@@ -141,7 +151,7 @@ export async function persistProduct(
         // ส่งเสมอเมื่อมาจากหน้าแก้ไข — ค่าว่าง = ยังไม่เคยบันทึกด้วยระบบใหม่ (ผ่านได้)
         ...(baseSavedAt !== undefined ? { "x-base-saved-at": baseSavedAt || "new" } : {}),
       },
-      body: JSON.stringify(p),
+      body: JSON.stringify(typeof sort === "number" ? { ...p, sort } : p),
     });
     if (res.status === 503) {
       // ยังไม่ตั้งค่า Firebase/Supabase → โหมดเดโม

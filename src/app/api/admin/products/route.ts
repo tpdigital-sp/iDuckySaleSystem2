@@ -13,9 +13,10 @@ export async function POST(req: Request) {
   const gate = await requirePerm("products.manage");
   if (gate.res) return gate.res;
 
-  let p: Product;
+  // sort = ลำดับในลิสต์ (คอลัมน์แยก ไม่เก็บใน data) — ส่งมาเฉพาะตอนทำซ้ำ ให้สำเนาอยู่ติดตัวต้นฉบับ
+  let p: Product & { sort?: number };
   try {
-    p = (await req.json()) as Product;
+    p = (await req.json()) as Product & { sort?: number };
   } catch {
     return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
   }
@@ -42,7 +43,8 @@ export async function POST(req: Request) {
     }
   }
 
-  const saved: Product = { ...p, savedAt: new Date().toISOString() };
+  const { sort, ...product } = p;
+  const saved: Product = { ...product, savedAt: new Date().toISOString() };
   const { error } = await sb.from("products").upsert(
     {
       id: saved.id,
@@ -52,6 +54,8 @@ export async function POST(req: Request) {
       sold: saved.sold,
       featured: saved.featured ?? false,
       badge: saved.badge ?? null,
+      // ไม่ส่ง sort มา = ไม่แตะลำดับเดิม (การบันทึกทั่วไปห้ามล้างลำดับที่จัดไว้)
+      ...(typeof sort === "number" ? { sort } : {}),
       data: saved,
     },
     { onConflict: "id" }
