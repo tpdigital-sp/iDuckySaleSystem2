@@ -580,19 +580,26 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
         <div className="grid gap-6 sm:grid-cols-2 sm:items-start lg:col-span-8 lg:gap-8">
         {/* ── ซ้าย: รูปสินค้า ── */}
         <div>
-          {/* รูปสินค้า — ติดหนึบตอนเลื่อนอ่านตัวเลือกยาว ๆ (จอใหญ่) */}
+          {/* รูปสินค้า — ติดหนึบตอนเลื่อนอ่านตัวเลือกยาว ๆ (จอใหญ่)
+              สินค้าที่ยังไม่ใส่รูปเลย = ใช้อีโมจิ+พื้นสีของสินค้าแทน (กันหน้าพังตอนแอดมินเพิ่งสร้างสินค้า) */}
+          {(() => {
+            const gallery = product.images.length
+              ? product.images
+              : [{ emoji: product.emoji, gradient: product.gradient, label: "" }];
+            const shown = gallery[Math.min(imageIndex, gallery.length - 1)];
+            return (
           <div className="lg:sticky lg:top-24">
             <ProductVisual
-              emoji={product.images[imageIndex].emoji}
-              gradient={product.images[imageIndex].gradient}
-              src={product.images[imageIndex].src ?? (imageIndex === 0 ? product.imageSrc : undefined)}
-              alt={`${product.name} — ${product.images[imageIndex].label}`}
+              emoji={shown.emoji}
+              gradient={shown.gradient}
+              src={shown.src ?? (imageIndex === 0 ? product.imageSrc : undefined)}
+              alt={`${product.name} — ${shown.label}`}
               size="text-[8rem]"
               eager
               className="aspect-square w-full rounded-[2rem] shadow-inner"
             />
             <div className="mt-3 flex gap-2">
-              {product.images.map((img, i) => (
+              {gallery.map((img, i) => (
                 <button
                   key={i}
                   type="button"
@@ -608,12 +615,14 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                 </button>
               ))}
             </div>
-            {product.images[imageIndex].label && (
+            {shown.label && (
               <p className="mt-2 text-center text-xs text-stone-400">
-                มุมมอง: {product.images[imageIndex].label}
+                มุมมอง: {shown.label}
               </p>
             )}
           </div>
+            );
+          })()}
         </div>
 
         {/* ── กลาง: ชื่อ · รายละเอียด · ข้อควรทราบ ── */}
