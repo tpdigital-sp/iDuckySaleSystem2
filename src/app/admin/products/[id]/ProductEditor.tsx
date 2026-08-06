@@ -22,7 +22,7 @@ import { autoSeoOf } from "@/lib/auto-seo";
 import { BULK_ASK_DEFAULT } from "@/lib/products";
 import { hasOverride, resetOverride } from "@/lib/product-store";
 import { deleteProductDb, fetchProductNamesLite, fetchProductRaw, persistProduct } from "@/lib/product-repo";
-import { slugifyProductName } from "@/lib/products";
+import { shortChoice, slugifyProductName } from "@/lib/products";
 import { getAdminSession } from "@/lib/auth";
 import { loadUnits, upsertUnit, removeUnit, unitToMeter, type CustomUnit } from "@/lib/units";
 import { fetchPresets } from "@/lib/preset-repo";
@@ -2210,8 +2210,11 @@ export default function ProductEditor({ product }: { product: Product }) {
                         const vals = draft.pricing.cells[columnKey(combo)] ?? [];
                         return (
                           <tr key={ci} className="border-t border-slate-100">
-                            <td className="whitespace-nowrap px-2.5 py-1.5 font-medium text-slate-600">
-                              {combo.length ? combo.join(" · ") : "ราคา / หน่วย"}
+                            <td
+                              className="whitespace-nowrap px-2.5 py-1.5 font-medium text-slate-600"
+                              title={combo.length ? combo.join(" · ") : "ทุกจำนวน"}
+                            >
+                              {combo.length ? combo.map(shortChoice).join(" · ") : "ราคา / หน่วย"}
                             </td>
                             {shownTiers.map((_, ti) => (
                               <td key={ti} className="px-2.5 py-1.5 text-right tabular-nums text-slate-700">
@@ -2754,10 +2757,19 @@ export default function ProductEditor({ product }: { product: Product }) {
                           return (
                             <tr key={key} className="border-t border-slate-100">
                               <td
-                                className={`sticky left-0 z-10 max-w-[220px] px-3 py-2 align-middle font-medium leading-snug text-slate-700 ${rowBg}`}
+                                className={`sticky left-0 z-10 max-w-[220px] px-3 py-2 align-middle font-medium leading-tight text-slate-700 ${rowBg}`}
                                 title={combo.length ? combo.join(" · ") : "ทุกจำนวน"}
                               >
-                                {combo.length ? combo.join(" · ") : `ราคา / ${draft.pricing.unit || "หน่วย"}`}
+                                {/* คู่ตัวเลือก 4 กลุ่มยาวเกินคอลัมน์ — แยกบรรทัดละกลุ่ม + ย่อคำในวงเล็บ */}
+                                {combo.length ? (
+                                  combo.map((part, pi) => (
+                                    <span key={pi} className={`block whitespace-nowrap ${pi === 0 ? "" : "text-slate-500"}`}>
+                                      {shortChoice(part)}
+                                    </span>
+                                  ))
+                                ) : (
+                                  `ราคา / ${draft.pricing.unit || "หน่วย"}`
+                                )}
                               </td>
                               {activeTiers.map((t, ti) => (
                                 <td key={ti} className={`px-2 py-2 text-center ${rowBg}`}>

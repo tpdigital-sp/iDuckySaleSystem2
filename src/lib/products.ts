@@ -354,6 +354,26 @@ export function slugifyProductName(name: string): string {
     .replace(/\s+/g, "-");
 }
 
+/**
+ * ย่อชื่อตัวเลือกสำหรับ "ป้ายกำกับ" (หัวตารางราคา / ชื่อแถวคู่ตัวเลือก)
+ * — ตัดคำอธิบายในวงเล็บ เช่น "สีพิเศษ (โฮโลแกรม/กลิสเตอร์/สี)" → "สีพิเศษ"
+ * — บีบช่องว่างรอบ "/" เช่น "ใส / ขาวขุ่น C-02" → "ใส/ขาวขุ่น C-02"
+ * ชื่อเต็มยังใช้เป็นคีย์ราคาและแสดงในกลุ่มตัวเลือกตามเดิม (ย่อเฉพาะตอนแสดงผล)
+ */
+export function shortChoice(name: string): string {
+  const s = name
+    .replace(/\s*\([^)]*\)/g, "")
+    .replace(/\s*\/\s*/g, "/")
+    .replace(/\s+/g, " ")
+    .trim();
+  return s || name.trim();
+}
+
+/** ชิ้นส่วนของคีย์คู่ตัวเลือก (a│b│c) แบบย่อแล้ว — ใช้แสดงทีละบรรทัด ไม่ให้ป้ายยาวเป็นพืด */
+export function shortComboParts(key: string): string[] {
+  return key.split("│").filter(Boolean).map(shortChoice);
+}
+
 /** ลิงก์หน้าสินค้า — ใช้ slug (ลิงก์ตามชื่อ) ถ้าตั้งไว้ ไม่งั้นใช้ id ตามเดิม */
 export function productPath(p: { id: string; slug?: string }): string {
   const s = (p.slug ?? "").trim();

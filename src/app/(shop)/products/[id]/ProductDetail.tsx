@@ -21,6 +21,7 @@ import {
   PRODUCTS,
   RATE_LABEL,
   resolveSelections,
+  shortComboParts,
   tierIndex,
   tierQtyFor,
   unitPriceFor,
@@ -689,7 +690,6 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
               const allKeys = Object.keys(matrix.cells);
               const selectedKey = priceMatrixKey(matrix, effective);
               const cols = allKeys.length <= 6 ? allKeys : allKeys.filter((k) => k === selectedKey);
-              const fmtCol = (k: string) => k.split("│").join(" · ");
               return (
                 <div className="mt-2 overflow-x-auto rounded-2xl ring-1 ring-stone-200">
                   {allKeys.length > 6 && (
@@ -701,9 +701,18 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                     <thead>
                       <tr className="bg-sky-100 text-sky-900">
                         <th className="whitespace-nowrap px-3 py-2 text-left font-bold">จำนวน ({matrix.unit})</th>
+                        {/* ชื่อคู่ตัวเลือกยาวมาก (4 กลุ่ม) — แยกบรรทัดละส่วนและย่อคำในวงเล็บ ให้หัวตารางไม่ยืดจนล้น */}
                         {cols.map((col) => (
-                          <th key={col} className="whitespace-nowrap px-3 py-2 text-center font-bold">
-                            {fmtCol(col)}
+                          <th
+                            key={col}
+                            title={col.split("│").join(" · ")}
+                            className="px-3 py-2 text-center font-bold leading-tight"
+                          >
+                            {shortComboParts(col).map((part, i) => (
+                              <span key={i} className="block whitespace-nowrap">
+                                {part}
+                              </span>
+                            ))}
                           </th>
                         ))}
                       </tr>
