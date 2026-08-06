@@ -38,7 +38,7 @@ import {
   type TileSize,
 } from "@/lib/home-nav";
 import { MegaPanel } from "@/components/MegaMenu";
-import { fetchProductsLite } from "@/lib/product-repo";
+import { fetchProductNamesLite } from "@/lib/product-repo";
 import type { Product } from "@/lib/products";
 import { btnNeutral, btnPrimary, btnSmDanger, btnSmGhost, card, faint, h1, muted } from "@/lib/admin-ui";
 
@@ -545,7 +545,7 @@ function NavEditorInner() {
 
   useEffect(() => {
     if (tab !== "mega" || products.length) return;
-    void fetchProductsLite().then(setProducts);
+    void fetchProductNamesLite().then(setProducts);
   }, [tab, products.length]);
 
   // กันเบราว์เซอร์เปิดไฟล์รูปทับหน้า ถ้าเผลอปล่อยรูปนอกกรอบวาง

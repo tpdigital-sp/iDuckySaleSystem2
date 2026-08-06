@@ -41,6 +41,23 @@ export async function fetchProducts(): Promise<Product[]> {
  * ดึงเฉพาะฟิลด์ที่การ์ดหน้ารายการ/หน้าแรกต้องใช้ (เบา) — ไม่ดึงก้อน options/rules/body ที่หนัก
  * ใช้ JSON projection ของ Supabase เพื่อลดข้อมูลที่โหลดเมื่อสินค้าเยอะ · ดึงเต็มเฉพาะตอนเปิดหน้ารายละเอียด
  */
+/**
+ * รายชื่อสินค้าอย่างเดียว (id / ชื่อ / หมวด / ป้าย) — สำหรับเมนูดรอปดาวน์และลิสต์ชื่อ
+ * ไม่ดึงรูป+ตารางราคา จึงเร็วกว่า fetchProductsLite ~5 เท่า (345 สินค้า: ~35KB vs ~200KB)
+ */
+export async function fetchProductNamesLite(): Promise<Product[]> {
+  const sb = getSupabase();
+  if (!sb) return mergedProducts();
+  const { data, error } = await sb
+    .from("products")
+    .select("id,name,category,badge,sort")
+    .order("sort", { ascending: true });
+  if (error || !data) return mergedProducts();
+  return (data as unknown as Record<string, unknown>[])
+    .filter((r) => !String(r.id).startsWith("__"))
+    .map((r) => ({ ...r, badge: (r.badge ?? undefined) as Product["badge"] }) as unknown as Product);
+}
+
 export async function fetchProductsLite(): Promise<Product[]> {
   const sb = getSupabase();
   if (!sb) return mergedProducts();

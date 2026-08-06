@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MegaBadge, MegaColumn, MegaGroup, MegaItem } from "@/lib/home-nav";
-import { fetchProductsLite } from "@/lib/product-repo";
+import { fetchProductNamesLite } from "@/lib/product-repo";
 import type { Product } from "@/lib/products";
 
 /**
@@ -153,7 +153,7 @@ function useLazyProducts(needed: boolean) {
   useEffect(() => {
     if (!needed || asked.current) return;
     asked.current = true;
-    void fetchProductsLite().then(setProducts);
+    void fetchProductNamesLite().then(setProducts);
   }, [needed]);
   return products;
 }
