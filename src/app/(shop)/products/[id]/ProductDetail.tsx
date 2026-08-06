@@ -823,10 +823,10 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
           {/* เลือกเรทราคา (สินค้าที่มีหลายเรท เช่น คละดีเทล / ไม่คละดีเทล) — ใช้ขนาดกำหนดเองอยู่ = ปิดชั่วคราว */}
           {rates.length > 1 && rate && (
             <div className={`mt-5 ${useCustom ? "pointer-events-none select-none opacity-40" : ""}`} aria-disabled={useCustom}>
-              <span className="mb-2 block text-sm font-bold text-stone-700">
+              <span className="mb-1.5 block text-[13px] font-bold text-stone-700">
                 {RATE_LABEL}: <span className="font-semibold text-amber-600">{rate.label}</span>
               </span>
-              <div className="grid gap-2">
+              <div className="grid gap-1.5">
                 {rates.map((r) => {
                   const on = r.label === rate.label;
                   return (
@@ -838,7 +838,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                         setRateLabel(r.label);
                         setAutoRateNote("");
                       }}
-                      className={`rounded-2xl px-4 py-3 text-left text-sm transition ${
+                      className={`rounded-xl px-3 py-2 text-left text-[13px] transition ${
                         on
                           ? "bg-amber-50 font-bold text-amber-900 ring-2 ring-amber-400"
                           : "bg-white text-stone-600 ring-1 ring-stone-200 hover:ring-amber-300"
@@ -850,9 +850,9 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                         </span>
                         {r.label}
                       </span>
-                      {r.desc && <span className="mt-0.5 block pl-6 text-xs font-normal text-stone-500">{r.desc}</span>}
+                      {r.desc && <span className="mt-0.5 block pl-6 text-[11px] font-normal leading-snug text-stone-500">{r.desc}</span>}
                       {(r.minQty || r.minPerDesign) && (
-                        <span className="mt-0.5 block pl-6 text-[11px] font-semibold text-teal-700">
+                        <span className="mt-0.5 block pl-6 text-[10px] font-semibold leading-snug text-teal-700">
                           {[
                             r.minQty ? `สั่งรวม ${r.minQty.toLocaleString("th-TH")} ${r.pricing.unit}ขึ้นไป` : "",
                             r.minPerDesign ? `คละลายขั้นต่ำลายละ ${r.minPerDesign.toLocaleString("th-TH")} ${r.pricing.unit}` : "",
@@ -884,7 +884,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
               (เอาติ๊กออกเพื่อกลับมาเลือกทั้งหมด)
             </p>
           )}
-          <div className="mt-5 space-y-4">
+          <div className="mt-4 space-y-3">
             {product.options.map((opt) => {
               // ล็อกกลุ่มนี้เพราะใช้ขนาดกำหนดเองอยู่ และแอดมินไม่ได้เปิดให้เลือกต่อ
               const customLocked = useCustom && !(custom?.keepOptions ?? []).includes(opt.label);
@@ -899,13 +899,13 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                   className={customLocked ? "pointer-events-none select-none opacity-40" : undefined}
                   aria-disabled={customLocked || undefined}
                 >
-                  <span className="mb-2 block text-sm font-bold text-stone-700">
+                  <span className="mb-1 block text-[13px] font-bold text-stone-700">
                     {opt.label}:{" "}
                     <span className="font-semibold text-amber-600">{effective[opt.label]}</span>
                   </span>
                   {locked ? (
                     <div>
-                      <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-500 ring-1 ring-stone-200">
+                      <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1.5 text-[13px] font-semibold text-stone-500 ring-1 ring-stone-200">
                         🔒 {effective[opt.label]}
                       </span>
                       <p className="mt-1.5 text-[11px] text-stone-400">
@@ -916,7 +916,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                     <select
                       value={effective[opt.label]}
                       onChange={(e) => setSelections((s) => ({ ...s, [opt.label]: e.target.value }))}
-                      className="w-full rounded-2xl bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                      className="w-full rounded-xl bg-white px-3 py-2 text-[13px] font-semibold text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
                       aria-label={opt.label}
                     >
                       {opt.choices
@@ -929,7 +929,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                         ))}
                     </select>
                   ) : (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-1.5">
                       {opt.choices
                         .filter((c) => allowed.includes(c.name))
                         .map((c) => (
@@ -939,7 +939,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                             onClick={() =>
                               setSelections((s) => ({ ...s, [opt.label]: c.name }))
                             }
-                            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                            className={`rounded-full px-3 py-1.5 text-[13px] font-semibold transition ${
                               effective[opt.label] === c.name
                                 ? "bg-amber-400 text-white shadow"
                                 : "bg-white text-stone-600 ring-1 ring-amber-200 hover:bg-amber-50"
@@ -1047,11 +1047,11 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
           )}
 
           {/* ═══ กล่องสั่งซื้อ — จำนวน + ยอด + ปุ่ม (ติดกับตัวเลือก ไม่ให้ของไม่บังคับมาคั่น) ═══ */}
-          <div ref={orderBoxRef} className="mt-6 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
+          <div ref={orderBoxRef} className="mt-5 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-amber-100">
             {/* จำนวน + เพิ่มลงตะกร้า */}
-            <div className="mt-6">
+            <div>
               {matrix && (
-                <label className="mb-1.5 block text-sm font-bold text-stone-700">
+                <label className="mb-1 block text-[13px] font-bold text-stone-700">
                   จำนวน ({matrix.unit})
                 </label>
               )}
@@ -1061,7 +1061,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                     type="button"
                     // โหมดเด้งเรทอัตโนมัติ: ลดต่ำกว่าขั้นต่ำเรทปัจจุบันได้ ระบบจะสลับลงเรทที่เหมาะเอง
                     onClick={() => setQty((q) => Math.max(rateTouched ? rateMinQty : 1, q - 1))}
-                    className="h-12 w-12 rounded-l-full text-lg font-bold text-stone-600 hover:bg-amber-50"
+                    className="h-10 w-10 rounded-l-full text-base font-bold text-stone-600 hover:bg-amber-50"
                     aria-label="ลดจำนวน"
                   >
                     −
@@ -1078,13 +1078,13 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                       if (Number.isFinite(n) && n > 0) setQty(Math.min(n, 99999));
                     }}
                     onBlur={() => setQtyText(String(qty))}
-                    className="w-16 bg-transparent text-center text-sm font-bold focus:outline-none"
+                    className="w-14 bg-transparent text-center text-sm font-bold focus:outline-none"
                     aria-label="จำนวน"
                   />
                   <button
                     type="button"
                     onClick={() => setQty((q) => Math.min(matrix ? 99999 : 99, q + 1))}
-                    className="h-12 w-12 rounded-r-full text-lg font-bold text-stone-600 hover:bg-amber-50"
+                    className="h-10 w-10 rounded-r-full text-base font-bold text-stone-600 hover:bg-amber-50"
                     aria-label="เพิ่มจำนวน"
                   >
                     +
@@ -1095,7 +1095,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                   onClick={handleAdd}
                   // ขนาดกำหนดเอง = ราคาไม่อิงเรทปกติ → ไม่ติดขั้นต่ำของเรทด้วย (สั่งกี่ชิ้นก็ได้ แอดมินตีราคาตามจริง)
                   disabled={(useCustom && !customValid) || artBlocked || (!useCustom && qty < rateMinQty)}
-                  className={`flex-1 rounded-full px-6 py-3.5 text-sm font-bold shadow-lg transition sm:flex-none sm:px-10 ${
+                  className={`flex-1 rounded-full px-5 py-3 text-[13px] font-bold shadow-lg transition sm:flex-none sm:px-8 ${
                     added
                       ? "bg-emerald-500 text-white"
                       : "bg-amber-400 text-white hover:scale-105 hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
@@ -1140,7 +1140,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
               {needDesignsChoice && (
                 <div
                   id="designs-box"
-                  className={`mt-2 rounded-2xl px-3.5 py-3 ring-2 transition ${
+                  className={`mt-2 rounded-xl px-3 py-2.5 ring-2 transition ${
                     designsSet
                       ? "bg-teal-50 ring-teal-200"
                       : designsWarn
@@ -1148,8 +1148,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                         : "bg-amber-50 ring-amber-300"
                   }`}
                 >
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    <span className="text-sm font-extrabold text-teal-900">🎨 คละกี่ลาย:</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[13px] font-extrabold text-teal-900">🎨 คละกี่ลาย:</span>
                     {!designsSet && (
                       <span
                         className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold text-white ${designsWarn ? "bg-rose-500" : "bg-amber-500"}`}
@@ -1166,7 +1166,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                           setDesigns((d) => Math.max(1, d - 1));
                         }}
                         disabled={designsSet && designs <= 1}
-                        className="h-9 w-9 rounded-l-full text-base font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
+                        className="h-8 w-8 rounded-l-full text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
                         aria-label="ลดจำนวนลาย"
                       >
                         −
@@ -1189,7 +1189,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                         }}
                         inputMode="numeric"
                         aria-label="จำนวนลายที่คละ (พิมพ์เลขได้)"
-                        className="w-14 bg-transparent text-center text-base font-extrabold text-teal-900 outline-none"
+                        className="w-12 bg-transparent text-center text-sm font-extrabold text-teal-900 outline-none"
                       />
                       <button
                         type="button"
@@ -1199,7 +1199,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                           setDesigns((d) => Math.min(maxDesigns, d + 1));
                         }}
                         disabled={designs >= maxDesigns}
-                        className="h-9 w-9 rounded-r-full text-base font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
+                        className="h-8 w-8 rounded-r-full text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
                         aria-label="เพิ่มจำนวนลาย"
                       >
                         +
@@ -1215,7 +1215,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                     )}
                   </div>
                   {!designsSet && (
-                    <p className={`mt-1.5 text-[11px] font-bold ${designsWarn ? "text-rose-600" : "text-amber-700"}`}>
+                    <p className={`mt-1 text-[10px] font-bold leading-snug ${designsWarn ? "text-rose-600" : "text-amber-700"}`}>
                       👉 กด + / − หรือแตะที่ตัวเลขเพื่อระบุจำนวนลายที่จะคละ — แนบรูปลายแล้วระบบจะนับให้อัตโนมัติ
                     </p>
                   )}
