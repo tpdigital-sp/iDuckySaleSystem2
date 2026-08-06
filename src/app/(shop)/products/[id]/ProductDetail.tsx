@@ -706,10 +706,12 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                           <th
                             key={col}
                             title={col.split("│").join(" · ")}
-                            className="px-3 py-2 text-center font-bold leading-tight"
+                            // ชิดซ้าย เพื่อให้ขีดนำหน้าแต่ละบรรทัดเรียงตรงกัน (ตรงกลางจะดูรุ่งริ่ง)
+                            className="px-3 py-2 text-left font-bold leading-tight"
                           >
                             {shortComboParts(col).map((part, i) => (
                               <span key={i} className="block whitespace-nowrap">
+                                <span className="mr-1 text-sky-400">-</span>
                                 {part}
                               </span>
                             ))}

@@ -2764,6 +2764,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                                 {combo.length ? (
                                   combo.map((part, pi) => (
                                     <span key={pi} className={`block whitespace-nowrap ${pi === 0 ? "" : "text-slate-500"}`}>
+                                      <span className="mr-1 text-slate-400">-</span>
                                       {shortChoice(part)}
                                     </span>
                                   ))
