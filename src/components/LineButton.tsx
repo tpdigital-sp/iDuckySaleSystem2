@@ -20,7 +20,8 @@ export function LineFloat() {
       target="_blank"
       rel="noopener noreferrer"
       aria-label="แชทกับร้านทาง LINE"
-      className="fixed bottom-5 left-5 z-40 flex items-center gap-2 rounded-full bg-[#06C755] px-4 py-3 text-sm font-bold text-white shadow-lg ring-4 ring-[#06C755]/20 transition hover:scale-105 hover:bg-[#05b34c]"
+      // มุมขวาล่างตามดีไซน์ — มุมซ้ายล่างเป็นแถวไอคอนโซเชียลของหน้าแรก
+      className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-[#06C755] px-4 py-3 text-sm font-bold text-white shadow-lg ring-4 ring-[#06C755]/20 transition hover:scale-105 hover:bg-[#05b34c]"
     >
       <ChatIcon />
       <span className="hidden sm:inline">แชทกับร้าน (LINE)</span>

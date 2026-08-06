@@ -26,6 +26,8 @@ export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [acctOpen, setAcctOpen] = useState(false);
   const acctRef = useRef<HTMLDivElement>(null);
+  /** เลื่อนหน้าลงแล้วแถบเมนูหดลง (คลาส .small ตามดีไซน์) */
+  const [small, setSmall] = useState(false);
   // ลิงก์เมนูที่แอดมินตั้งไว้ (แสดงค่าเริ่มต้นไปก่อน แล้วสลับเมื่อโหลดเสร็จ — ไม่มีจังหวะเมนูหาย)
   const [links, setLinks] = useState<NavLink[]>(visibleMenu(DEFAULT_SITE_NAV));
   const [mega, setMega] = useState<MegaGroup[]>(visibleMega(DEFAULT_SITE_NAV));
@@ -38,6 +40,13 @@ export default function Navbar() {
     });
   }, []);
 
+  useEffect(() => {
+    const onScroll = () => setSmall(window.scrollY > 30);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   // ปิดดรอปดาวน์เมื่อคลิกนอกพื้นที่ หรือเปลี่ยนหน้า
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -46,7 +55,10 @@ export default function Navbar() {
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
-  useEffect(() => setAcctOpen(false), [pathname]);
+  useEffect(() => {
+    setAcctOpen(false);
+    setOpen(false);
+  }, [pathname]);
 
   async function logout() {
     setAcctOpen(false);
@@ -55,152 +67,123 @@ export default function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-amber-100 bg-white/90 backdrop-blur">
-      {/* เลย์เอาต์แบบเว็บต้นแบบ: โลโก้ใหญ่ซ้ายคร่อมสองแถว · ขวาบนเมนู+บัญชี+ตะกร้า · เส้นคั่น · แถวหมวดชิดขวา */}
-      <nav className="mx-auto flex max-w-7xl items-center gap-3 px-4 md:gap-8">
-        <Link href="/" className="flex shrink-0 items-center gap-2 py-2" onClick={() => setOpen(false)}>
-          {logo ? (
-            <img
-              src={logo}
-              alt="iDucky Prints Studio"
-              className="h-12 w-auto max-w-[220px] object-contain md:h-[4.5rem] md:max-w-[280px]"
-            />
-          ) : (
-            <>
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-ducky text-2xl shadow-sm md:h-12 md:w-12 md:text-3xl">
-                🦆
-              </span>
-              <span className="leading-tight">
-                <span className="block text-base font-bold text-amber-900 md:text-lg">iDucky Prints</span>
-                <span className="block text-[11px] font-medium tracking-wide text-amber-500">
-                  STUDIO • พิมพ์ตามสั่ง
+    <header className={`nav${small ? " small" : ""}`} id="nav">
+      <div className="wrap">
+        <nav className="nav-in">
+          <Link href="/" className="logo" onClick={() => setOpen(false)}>
+            {logo ? (
+              <img src={logo} alt="iDucky Prints Studio" className="h-11 w-auto max-w-[210px] object-contain" />
+            ) : (
+              <>
+                <img className="duck-mini" src="/landing/logo-duck.webp" alt="" aria-hidden="true" />
+                <span>
+                  i<b>DUCKY</b>
                 </span>
-              </span>
-            </>
-          )}
-        </Link>
+              </>
+            )}
+          </Link>
 
-        {/* คอลัมน์ขวา: แถวบน (เมนู+บัญชี+ตะกร้า) · เส้นคั่นเริ่มหลังโลโก้ · แถวหมวด (เดสก์ท็อป) */}
-        <div className="flex min-w-0 flex-1 flex-col self-stretch justify-center">
-        <div className="flex items-center justify-end gap-2 py-2">
-          <div className="hidden min-w-0 items-center gap-1 md:flex">
+          <div className={`menu${open ? " open" : ""}`} id="menu" onClick={() => setOpen(false)}>
             {links.map((l) => (
-              <Link
-                key={l.id}
-                href={l.href}
-                className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
-                  pathname === l.href
-                    ? "bg-amber-100 text-amber-900"
-                    : "text-stone-600 hover:bg-amber-50 hover:text-amber-800"
-                }`}
-              >
+              <Link key={l.id} href={l.href} className={pathname === l.href ? "on" : undefined}>
                 {l.label}
               </Link>
             ))}
-            <span className="mx-1.5 hidden h-6 w-px bg-amber-100 md:block" aria-hidden />
-          </div>
-          {customer ? (
-            <div ref={acctRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setAcctOpen((v) => !v)}
-                className="flex h-11 items-center gap-1.5 rounded-2xl bg-amber-100 px-3 text-sm font-semibold text-amber-900 transition hover:bg-amber-200"
-                aria-haspopup="menu"
-                aria-expanded={acctOpen}
-              >
-                <span className="text-lg">👤</span>
-                <span className="hidden max-w-24 truncate sm:inline">{customer.name || "บัญชี"}</span>
-                <span className={`text-xs transition ${acctOpen ? "rotate-180" : ""}`}>▾</span>
-              </button>
-              {acctOpen && (
-                <div
-                  role="menu"
-                  className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-2xl border border-amber-100 bg-white py-1 shadow-xl"
-                >
-                  <div className="border-b border-amber-50 px-4 py-2">
-                    <p className="truncate text-sm font-bold text-amber-950">{customer.name || "สมาชิก"}</p>
-                    <p className="truncate text-[11px] text-stone-400">{customer.email}</p>
-                  </div>
-                  {ACCOUNT_MENU.map((m) => (
-                    <Link
-                      key={m.href}
-                      href={m.href}
-                      role="menuitem"
-                      className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-stone-700 transition hover:bg-amber-50"
-                    >
-                      <span className="text-base">{m.icon}</span> {m.label}
-                    </Link>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={logout}
-                    role="menuitem"
-                    className="flex w-full items-center gap-2.5 border-t border-amber-50 px-4 py-2.5 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
-                  >
-                    <span className="text-base">🚪</span> ออกจากระบบ
-                  </button>
-                </div>
-              )}
+            {/* มือถือ: หมวดสินค้าทั้งหมดอยู่ในเมนูที่กางออก */}
+            <div className="md:hidden">
+              <MegaMobile groups={mega} onNavigate={() => setOpen(false)} />
             </div>
-          ) : (
-            <Link
-              href="/account/login"
-              className="flex h-11 items-center gap-1.5 rounded-2xl bg-amber-100 px-3 text-sm font-semibold text-amber-900 transition hover:bg-amber-200"
-              aria-label="เข้าสู่ระบบ"
-            >
-              <span className="text-lg">🔑</span>
-              <span className="hidden sm:inline">เข้าสู่ระบบ</span>
-            </Link>
-          )}
-          <Link
-            href="/cart"
-            className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-xl transition hover:bg-amber-200"
-            aria-label={`ตะกร้าสินค้า มี ${itemCount} รายการ`}
-          >
-            🛒
-            {itemCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">
-                {itemCount > 99 ? "99+" : itemCount}
-              </span>
-            )}
-          </Link>
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-xl md:hidden"
-            aria-label="เปิดเมนู"
-            aria-expanded={open}
-          >
-            {open ? "✕" : "☰"}
-          </button>
-        </div>
+          </div>
 
-        {/* แถวหมวดสินค้า (เดสก์ท็อป) — ชิดขวา · เส้นคั่นเริ่มหลังโลโก้แบบเว็บต้นแบบ */}
+          <div className="nav-cta">
+            {customer ? (
+              <div ref={acctRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setAcctOpen((v) => !v)}
+                  className="icon-btn"
+                  aria-haspopup="menu"
+                  aria-expanded={acctOpen}
+                  aria-label={`บัญชีของ ${customer.name || "สมาชิก"}`}
+                  title={customer.name || "บัญชีของฉัน"}
+                >
+                  👤
+                </button>
+                {acctOpen && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-2xl bg-white py-1 shadow-xl ring-1 ring-sky-100"
+                  >
+                    <div className="border-b border-sky-50 px-4 py-2">
+                      <p className="truncate text-sm font-bold text-[#173A6B]">{customer.name || "สมาชิก"}</p>
+                      <p className="truncate text-[11px] text-[#4A6A96]">{customer.email}</p>
+                    </div>
+                    {ACCOUNT_MENU.map((m) => (
+                      <Link
+                        key={m.href}
+                        href={m.href}
+                        role="menuitem"
+                        className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-[#4A6A96] transition hover:bg-sky-50"
+                      >
+                        <span className="text-base">{m.icon}</span> {m.label}
+                      </Link>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={logout}
+                      role="menuitem"
+                      className="flex w-full items-center gap-2.5 border-t border-sky-50 px-4 py-2.5 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
+                    >
+                      <span className="text-base">🚪</span> ออกจากระบบ
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Link href="/account/login" className="icon-btn" aria-label="เข้าสู่ระบบ" title="เข้าสู่ระบบ">
+                🔑
+              </Link>
+            )}
+
+            <Link
+              href="/cart"
+              className="icon-btn relative"
+              aria-label={`ตะกร้าสินค้า มี ${itemCount} รายการ`}
+              title="ตะกร้าสินค้า"
+            >
+              🛒
+              {itemCount > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">
+                  {itemCount > 99 ? "99+" : itemCount}
+                </span>
+              )}
+            </Link>
+
+            <Link href="/products" className="btn btn-yolk hidden sm:inline-flex">
+              ช้อปเลย <span className="dot">→</span>
+            </Link>
+
+            <button
+              type="button"
+              className="icon-btn burger"
+              onClick={() => setOpen((v) => !v)}
+              aria-label="เปิดเมนู"
+              aria-expanded={open}
+            >
+              {open ? "✕" : "☰"}
+            </button>
+          </div>
+        </nav>
+
+        {/* แถวหมวดสินค้า (เดสก์ท็อป) — เมกะเมนูเดิม วางใต้แถบกระจก */}
         {mega.length > 0 && (
-          <div className="hidden justify-end border-t border-amber-100/70 md:flex">
-            <MegaBar groups={mega} pathname={pathname} align="end" />
+          <div className="mt-2 hidden justify-center md:flex">
+            <div className="rounded-full bg-white/75 px-2 shadow-[0_6px_18px_rgba(44,129,196,.10)] ring-1 ring-white/70 backdrop-blur">
+              <MegaBar groups={mega} pathname={pathname} align="center" />
+            </div>
           </div>
         )}
-        </div>
-      </nav>
-
-      {open && (
-        <div className="border-t border-amber-100 bg-white px-4 py-2 md:hidden">
-          {links.map((l) => (
-            <Link
-              key={l.id}
-              href={l.href}
-              onClick={() => setOpen(false)}
-              className={`block rounded-xl px-4 py-3 text-sm font-semibold ${
-                pathname === l.href ? "bg-amber-100 text-amber-900" : "text-stone-600"
-              }`}
-            >
-              {l.label}
-            </Link>
-          ))}
-          <MegaMobile groups={mega} onNavigate={() => setOpen(false)} />
-        </div>
-      )}
+      </div>
     </header>
   );
 }

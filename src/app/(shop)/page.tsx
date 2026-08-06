@@ -1,394 +1,579 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { PRODUCTS, type Product } from "@/lib/products";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { formatPriceRange, PRODUCTS, productPath, type Product } from "@/lib/products";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { fetchProductsLite } from "@/lib/product-repo";
-import ProductCard from "@/components/ProductCard";
-import NavTiles from "@/components/NavTiles";
-import { fetchSiteNav, visiblePerks, visibleTiles, DEFAULT_SITE_NAV, type NavPerk, type NavTile, type SiteNav } from "@/lib/home-nav";
-import { defaultHomeBlocks, videoEmbedUrl, visibleBlocks, type HomeBlock } from "@/lib/home-layout";
-import HomeGallery from "@/components/HomeGallery";
+
+/**
+ * หน้าแรก — ดีไซน์ตามไฟล์ต้นแบบ iducky-landing-v8_83.html
+ * สไตล์ทั้งหมดอยู่ใน (shop)/landing.css (ครอบด้วยคลาส .dl) · รูปประกอบอยู่ /public/landing
+ * เนื้อหาที่เป็น "ของจริง" ดึงจากฐานข้อมูล: หมวดสินค้า · รายการสินค้าในแต่ละหมวด · สินค้าขายดี
+ */
+
+/** จัดหมวดจริงของร้านเข้ากลุ่มแท็บ 4 กลุ่มตามดีไซน์ */
+const TAB_GROUPS: { id: string; label: string; cats: string[] }[] = [
+  { id: "acrylic", label: "อะคริลิค & สแตนดี้", cats: ["acrylic", "acrylic-bending", "standee", "light", "mirror-magnet"] },
+  { id: "paper", label: "งานกระดาษ & สติกเกอร์", cats: ["sticker-paper", "card-photo", "banner", "calendar-frame"] },
+  { id: "goods", label: "ของใช้ & แก็ดเจ็ต", cats: ["phone-gadget", "home", "bag"] },
+  { id: "wear", label: "เสื้อผ้า & ของขวัญ", cats: ["apparel", "fabric", "gifts"] },
+];
+
+/** ไอคอนวาดมือของหมวดหลัก (จากไฟล์ต้นแบบ) — หมวดอื่นใช้อีโมจิของหมวดนั้น */
+const CAT_ICON: Record<string, string> = {
+  acrylic: "/landing/cat-ico-1.webp",
+  standee: "/landing/cat-ico-2.webp",
+  "card-photo": "/landing/cat-ico-3.webp",
+  "sticker-paper": "/landing/cat-ico-4.webp",
+  home: "/landing/cat-ico-5.webp",
+};
+
+const groupOf = (catId: string) => TAB_GROUPS.find((g) => g.cats.includes(catId))?.id ?? "goods";
+
+/**
+ * ค่อย ๆ โผล่ตอนเลื่อนถึง (คลาส .rv → .in ตามดีไซน์)
+ * ใช้การวัดตำแหน่งตอนเลื่อน ไม่ใช้ IntersectionObserver — IO ไม่ยิงตอนแท็บอยู่เบื้องหลัง
+ * ถ้าพลาดจะกลายเป็นเนื้อหาโปร่งใสถาวร (เคยเจอตอนทดสอบ) แบบนี้ปลอดภัยกว่า
+ */
+function useReveal() {
+  useEffect(() => {
+    let raf = 0;
+    const check = () => {
+      raf = 0;
+      const els = document.querySelectorAll<HTMLElement>(".dl .rv:not(.in)");
+      els.forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.top < window.innerHeight * 0.92 && r.bottom > 0) el.classList.add("in");
+      });
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(check);
+    };
+    check();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    // กันเหนียว: ถ้าอะไรผิดพลาด เนื้อหาต้องไม่หายถาวร
+    const t = setTimeout(() => document.querySelectorAll(".dl .rv").forEach((el) => el.classList.add("in")), 4000);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      clearTimeout(t);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+}
 
 export default function HomePage() {
-  // โหลดสินค้า (Supabase หรือ localStorage) หลัง mount
   const [all, setAll] = useState<Product[]>(PRODUCTS);
-  // หมวดหมู่ที่แอดมินตั้งไว้ในหลังบ้าน (ยังไม่เคยตั้ง = ค่าเริ่มต้นในโค้ด)
   const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
-  // การ์ดนำทาง (แอดมินตั้งเองได้ที่ /admin/nav)
-  const [tiles, setTiles] = useState<NavTile[]>(visibleTiles(DEFAULT_SITE_NAV));
-  const [navStyle, setNavStyle] = useState<Pick<SiteNav, "tilesBg" | "tilesWave" | "tilesPos" | "hero" | "home">>(DEFAULT_SITE_NAV);
-  // จุดเด่นร้าน (แก้ได้ที่หลังบ้าน → เมนูหน้าร้าน)
-  const [perks, setPerks] = useState<NavPerk[]>(visiblePerks(DEFAULT_SITE_NAV));
+  const [tab, setTab] = useState<string>("all");
+
   useEffect(() => {
     fetchCategories().then((list) => setCats(list.filter((c) => !c.hidden)));
   }, []);
   useEffect(() => {
-    fetchSiteNav().then((n) => {
-      setTiles(visibleTiles(n));
-      setPerks(visiblePerks(n));
-      setNavStyle({ tilesBg: n.tilesBg, tilesWave: n.tilesWave, tilesPos: n.tilesPos, hero: n.hero, home: n.home });
-    });
-  }, []);
-  useEffect(() => {
     let active = true;
     fetchProductsLite().then((ps) => {
-      if (active) setAll(ps);
+      if (active && ps.length) setAll(ps);
     });
     return () => {
       active = false;
     };
   }, []);
+  useReveal();
 
-  const hero = navStyle.hero ?? DEFAULT_SITE_NAV.hero;
-  const featured = all.filter((p) => p.featured);
-  const bestSellers = [...all].sort((a, b) => b.sold - a.sold).slice(0, 4);
+  /** สินค้าตัวอย่างในแต่ละหมวด (โชว์ในเมนูย่อยของการ์ดหมวด) */
+  const byCat = useMemo(() => {
+    const m = new Map<string, Product[]>();
+    for (const p of all) {
+      const list = m.get(p.category) ?? [];
+      if (list.length < 5) list.push(p);
+      m.set(p.category, list);
+    }
+    return m;
+  }, [all]);
 
-  // ── เรนเดอร์ทีละบล็อกตามผังที่แอดมินจัด (ไม่เคยจัด = ผังมาตรฐานเดิม) ──
-  const blocks = navStyle.home?.length
-    ? visibleBlocks(navStyle.home)
-    : visibleBlocks(defaultHomeBlocks(navStyle.tilesPos ?? "hero"));
+  /** ขายดี 8 อันดับ — ตัดสินค้าที่ยังไม่เคยขายออกถ้ามีตัวที่ขายแล้วพอ */
+  const best = useMemo(() => {
+    const sorted = [...all].sort((a, b) => b.sold - a.sold || (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
+    return sorted.slice(0, 8);
+  }, [all]);
 
-  function renderBlock(blk: HomeBlock) {
-    switch (blk.kind) {
-      case "image":
-        if (!blk.image) return null;
-        return (
-          <section key={blk.id} className="mt-6">
-            <Link
-              href={blk.href ?? "/products"}
-              className="block overflow-hidden rounded-[2rem] shadow-[0_10px_40px_rgba(63,161,182,0.18)] transition hover:brightness-[0.97]"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={blk.image} alt="" className="w-full" />
-            </Link>
-          </section>
-        );
+  const catName = (id: string) => cats.find((c) => c.id === id)?.name ?? id;
 
-      case "hero":
-        if (!hero.on) return null;
-        if (hero.bgImage)
-          return (
-            <section key={blk.id} className="mt-6">
-              <Link
-                href={hero.btn1Href}
-                className="block overflow-hidden rounded-[2rem] shadow-[0_10px_40px_rgba(63,161,182,0.22)] transition hover:brightness-[0.97]"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={hero.bgImage} alt={hero.title} className="w-full" />
-              </Link>
-            </section>
-          );
-        return (
-          <section
-            key={blk.id}
-            className="mt-6 overflow-hidden rounded-[2rem] bg-gradient-to-br from-amber-200 via-amber-100 to-ducky shadow-[0_10px_40px_rgba(63,161,182,0.22)]"
-          >
-            <div className="flex flex-col items-center gap-6 px-6 py-10 text-center md:flex-row md:px-12 md:py-14 md:text-left">
-              <div className="flex-1">
-                {hero.badge && (
-                  <span className="inline-block rounded-full bg-white/70 px-4 py-1.5 text-xs font-bold text-amber-800">
-                    {hero.badge}
+  return (
+    <div className="dl dl-page">
+      {/* พื้นหลังวงกลมพาสเทลลอยช้า ๆ */}
+      <div className="bg-fx" aria-hidden="true">
+        <div className="bg-orb o1" />
+        <div className="bg-orb o2" />
+      </div>
+
+      <div className="top-stack">
+        {/* ── HERO ── */}
+        <section className="hero" id="top">
+          <img className="bg-cloud bc1" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+          <img className="bg-cloud bc2" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+          <img className="bg-cloud bc3" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+          <div className="wrap hero-grid">
+            <div>
+              <span className="eyebrow">
+                โรงพิมพ์สินค้าตามสั่ง &amp; ของสะสม <span className="beat">♥</span>
+              </span>
+              <h1 className="title">
+                <span className="word" style={{ animationDelay: ".05s" }}>
+                  พิมพ์ลายของคุณ
+                </span>
+                <span className="l2">
+                  <span className="word" style={{ animationDelay: ".2s" }}>
+                    ลงบน<span className="mark">ของที่คุณรัก</span>
                   </span>
-                )}
-                <h1 className="mt-4 whitespace-pre-line text-3xl font-extrabold leading-tight text-amber-950 md:text-5xl">
-                  {hero.title}
-                </h1>
-                <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-amber-900/80 md:text-base">
-                  {hero.subtitle}
-                </p>
-                <div className="mt-6 flex flex-wrap justify-center gap-3 md:justify-start">
-                  {hero.btn1Label && (
-                    <Link
-                      href={hero.btn1Href}
-                      className="rounded-full bg-amber-400 px-7 py-3.5 text-sm font-bold text-white shadow-lg transition hover:scale-105 hover:bg-amber-500"
-                    >
-                      {hero.btn1Label}
-                    </Link>
-                  )}
-                  {hero.btn2Label && (
-                    <Link
-                      href={hero.btn2Href}
-                      className="rounded-full bg-white/80 px-7 py-3.5 text-sm font-bold text-amber-900 shadow transition hover:scale-105 hover:bg-white"
-                    >
-                      {hero.btn2Label}
-                    </Link>
-                  )}
+                </span>
+                <span className="l3">
+                  <span className="word" style={{ animationDelay: ".35s" }}>
+                    ได้ทุกชิ้น 💛
+                  </span>
+                </span>
+              </h1>
+              <p className="lead">
+                พวงกุญแจ · สแตนดี้ · สติกเกอร์ · เสื้อยืด · แก้วมัค · เคสมือถือ
+                <br />
+                และอีกกว่า <b>{cats.length} หมวด</b> ครบจบในที่เดียว
+              </p>
+              <div className="chips">
+                <div className="chip">
+                  <i style={{ background: "var(--sky-200)" }}>💎</i>
+                  <span>
+                    <b>งานคุณภาพ</b>
+                    <small>สีสด คมชัด ทนทาน</small>
+                  </span>
+                </div>
+                <div className="chip">
+                  <i style={{ background: "var(--yolk-soft)" }}>⚡</i>
+                  <span>
+                    <b>ผลิตไว</b>
+                    <small>ส่งตรงเวลา</small>
+                  </span>
+                </div>
+                <div className="chip">
+                  <i style={{ background: "#FFE0E6" }}>💬</i>
+                  <span>
+                    <b>แอดมินใจดี</b>
+                    <small>ปรึกษาลายฟรี</small>
+                  </span>
                 </div>
               </div>
-              <div className="relative hidden h-52 w-52 shrink-0 md:block">
-                {hero.image ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={hero.image} alt="" className="h-52 w-52 rounded-3xl object-contain drop-shadow" />
-                ) : (
-                  <>
-                    <span className="absolute inset-0 flex items-center justify-center rounded-full bg-white/40 text-[7rem] shadow-inner">
-                      🦆
-                    </span>
-                    <span className="absolute -left-4 top-2 animate-bounce text-4xl">✨</span>
-                    <span className="absolute -right-2 bottom-4 text-4xl">🎨</span>
-                  </>
-                )}
-              </div>
-            </div>
-          </section>
-        );
-
-      case "tiles":
-        if (!tiles.length) return null;
-        return (
-          <section key={blk.id} className="mt-8">
-            <NavTiles tiles={tiles} bg={navStyle.tilesBg} wave={navStyle.tilesWave} />
-          </section>
-        );
-
-      case "perks":
-        if (!perks.length) return null;
-        return (
-          <section
-            key={blk.id}
-            className={`mt-8 grid grid-cols-2 gap-3 ${
-              perks.length <= 2 ? "md:grid-cols-2" : perks.length === 3 ? "md:grid-cols-3" : "md:grid-cols-4"
-            }`}
-          >
-            {perks.map((f) => (
-              <div key={f.id} className="rounded-3xl bg-white p-4 text-center shadow-sm ring-1 ring-amber-100">
-                <span className="text-3xl">{f.emoji}</span>
-                <h3 className="mt-1.5 text-sm font-bold text-stone-800">{f.title}</h3>
-                {f.desc && <p className="mt-0.5 text-xs text-stone-500">{f.desc}</p>}
-              </div>
-            ))}
-          </section>
-        );
-
-      case "categories":
-        return (
-          <section key={blk.id} className="mt-12">
-            <div className="mb-5 flex items-end justify-between">
-              <h2 className="text-xl font-extrabold text-amber-950 md:text-2xl">{blk.heading || "🗂️ หมวดหมู่สินค้า"}</h2>
-              <Link href="/products" className="text-sm font-semibold text-amber-600 hover:text-amber-700">
-                ดูทั้งหมด →
-              </Link>
-            </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-              {cats.map((c) => (
-                <Link
-                  key={c.id}
-                  href={`/products?category=${c.id}`}
-                  className="group overflow-hidden rounded-3xl bg-white text-center shadow-sm ring-1 ring-amber-100 transition hover:-translate-y-1 hover:shadow-md"
-                >
-                  <span
-                    className={`relative block aspect-[4/3] overflow-hidden ${c.image ? "" : `bg-gradient-to-br ${c.gradient}`}`}
-                  >
-                    {c.image ? (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img
-                        src={c.image}
-                        alt=""
-                        className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      />
-                    ) : (
-                      <span className="absolute inset-0 grid place-items-center text-5xl transition-transform group-hover:scale-110">
-                        {c.emoji}
-                      </span>
-                    )}
-                  </span>
-                  <span className="block px-2 py-2.5">
-                    <span className="block text-sm font-bold leading-tight text-stone-800">{c.name}</span>
-                    {c.nameEn && <span className="mt-0.5 block text-[11px] text-stone-500">{c.nameEn}</span>}
-                  </span>
+              <div className="hero-btns">
+                <Link className="btn btn-primary" href="/products">
+                  ดูสินค้าทั้งหมด <span className="dot">→</span>
                 </Link>
-              ))}
-            </div>
-          </section>
-        );
-
-      case "products": {
-        const limit = blk.limit ?? 4;
-        const list =
-          blk.source === "featured"
-            ? featured.slice(0, limit)
-            : blk.source === "category"
-              ? all.filter((x) => x.category === blk.category).slice(0, limit)
-              : bestSellers.slice(0, limit);
-        if (!list.length) return null;
-        const moreHref =
-          blk.source === "category" && blk.category
-            ? `/products?category=${blk.category}`
-            : blk.source === "best"
-              ? "/products?sort=popular"
-              : "/products";
-        return (
-          <section key={blk.id} className="mt-12">
-            <div className="mb-5 flex items-end justify-between">
-              <h2 className="text-xl font-extrabold text-amber-950 md:text-2xl">
-                {blk.heading || (blk.source === "featured" ? "💛 สินค้าแนะนำ" : "🔥 สินค้าขายดี")}
-              </h2>
-              <Link href={moreHref} className="text-sm font-semibold text-amber-600 hover:text-amber-700">
-                ดูทั้งหมด →
-              </Link>
-            </div>
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-              {list.map((x) => (
-                <ProductCard key={x.id} product={x} />
-              ))}
-            </div>
-          </section>
-        );
-      }
-
-      case "imagetext":
-        if (!blk.image && !blk.heading) return null;
-        return (
-          <section key={blk.id} className="mt-12">
-            <div className={`grid items-center gap-6 md:grid-cols-2 md:gap-10`}>
-              {blk.image && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={blk.image}
-                  alt={blk.heading ?? ""}
-                  className={`w-full rounded-[2rem] shadow-sm ${blk.align === "right" ? "md:order-2" : ""}`}
-                />
-              )}
-              <div className={`text-center ${blk.align === "right" ? "md:order-1" : ""}`}>
-                {blk.heading && <h2 className="text-xl font-extrabold text-amber-950 md:text-2xl">{blk.heading}</h2>}
-                {blk.body && (
-                  <p className="mx-auto mt-3 max-w-lg whitespace-pre-line text-sm leading-relaxed text-stone-600">{blk.body}</p>
-                )}
-                {blk.btnLabel && (
-                  <Link
-                    href={blk.btnHref || "/products"}
-                    className="mt-5 inline-block rounded-full bg-amber-400 px-7 py-3 text-sm font-bold text-white shadow transition hover:scale-105 hover:bg-amber-500"
-                  >
-                    {blk.btnLabel}
-                  </Link>
-                )}
+                <Link className="btn btn-ghost" href="/how-to-order">
+                  วิธีสั่งซื้อ 📖
+                </Link>
               </div>
             </div>
-          </section>
-        );
 
-      case "gallery":
-        if (!blk.images?.length) return null;
-        return (
-          <section key={blk.id} className="mt-12">
-            <HomeGallery
-              heading={blk.heading}
-              images={blk.images}
-              cols={blk.cols ?? 3}
-              display={blk.display ?? "grid"}
-              fit={blk.fit ?? "cover"}
-              ratio={blk.ratio ?? "16/12"}
-            />
-          </section>
-        );
-
-      case "video": {
-        const src = videoEmbedUrl(blk.videoUrl);
-        if (!src) return null;
-        return (
-          <section key={blk.id} className="mt-12">
-            {blk.heading && (
-              <h2 className="mb-5 text-center text-xl font-extrabold text-amber-950 md:text-2xl">{blk.heading}</h2>
-            )}
-            <div className="overflow-hidden rounded-[2rem] bg-black shadow-[0_10px_40px_rgba(63,161,182,0.18)]">
-              <iframe
-                src={src}
-                title={blk.heading || "วิดีโอ"}
-                className="aspect-video w-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
+            <div className="stage">
+              <img className="duck" src="/landing/hero-duck.webp" alt="มาสคอตเป็ด iDucky ถือพวงกุญแจอะคริลิคหน้าร้าน" />
+              <img
+                className="deco d-cloud1"
+                style={{ top: "3%", left: "13%", width: "13%", opacity: 0.92 }}
+                src="/landing/cloud.webp"
+                alt=""
+                aria-hidden="true"
+              />
+              <img
+                className="deco d-cloud2"
+                style={{ top: "26%", right: "-6%", width: "23%", opacity: 0.97 }}
+                src="/landing/cloud.webp"
+                alt=""
+                aria-hidden="true"
+              />
+              <div className="deco d-cart" style={{ top: "18%", left: "14%", width: "15%" }} aria-hidden="true">
+                <img src="/landing/cart-balloon.webp" alt="" />
+              </div>
+              <img
+                className="deco d-star1"
+                style={{ top: "4%", right: "-17%", width: "7.5%", animationDuration: "5.2s", animationDelay: "-.7s" }}
+                src="/landing/star.webp"
+                alt=""
+                aria-hidden="true"
+              />
+              <img
+                className="deco d-star2"
+                style={{ bottom: "44%", left: "-1%", width: "5.5%", animationDuration: "7.4s", animationDelay: "-3.1s" }}
+                src="/landing/star.webp"
+                alt=""
+                aria-hidden="true"
+              />
+              <img
+                className="deco d-star3"
+                style={{ top: "56%", right: "-19%", width: "6.5%", animationDuration: "6.1s", animationDelay: "-4.6s" }}
+                src="/landing/star.webp"
+                alt=""
+                aria-hidden="true"
               />
             </div>
-          </section>
-        );
-      }
+          </div>
+        </section>
 
-      case "cards": {
-        const cards = (blk.cards ?? []).filter((c) => c.title || c.image);
-        if (!cards.length) return null;
-        const colCls = cards.length === 2 ? "md:grid-cols-2" : cards.length === 4 ? "md:grid-cols-4" : "md:grid-cols-3";
-        return (
-          <section key={blk.id} className="mt-12">
-            {blk.heading && (
-              <h2 className="mb-5 text-center text-xl font-extrabold text-amber-950 md:text-2xl">{blk.heading}</h2>
-            )}
-            <div className={`grid gap-4 sm:grid-cols-2 ${colCls}`}>
-              {cards.map((c, i) => (
-                <div key={i} className="flex flex-col overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-amber-100">
-                  {c.image && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={c.image} alt={c.title} className="aspect-[16/11] w-full object-cover" />
-                  )}
-                  <div className="flex flex-1 flex-col p-4 text-center">
-                    {c.title && <h3 className="text-sm font-bold text-stone-800">{c.title}</h3>}
-                    {c.body && <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-stone-500">{c.body}</p>}
-                    {c.btnLabel && (
-                      <Link
-                        href={c.btnHref || "/products"}
-                        className="mx-auto mt-auto inline-block pt-3"
-                      >
-                        <span className="inline-block rounded-full bg-amber-400 px-5 py-2 text-xs font-bold text-white shadow transition hover:scale-105 hover:bg-amber-500">
-                          {c.btnLabel}
-                        </span>
-                      </Link>
+        {/* ── หมวดสินค้า ── */}
+        <section id="categories" className="shop-band rv">
+          <img
+            className="shop-cloud"
+            style={{ width: 210, top: "4%", left: -58, opacity: 0.9, animation: "bgFloat1 19s ease-in-out infinite, bgPuff 8s ease-in-out infinite" }}
+            src="/landing/cloud.webp"
+            alt=""
+            aria-hidden="true"
+          />
+          <img
+            className="shop-cloud"
+            style={{ width: 150, top: "30%", right: -40, opacity: 0.75, animation: "bgFloat2 24s ease-in-out infinite, bgPuff 10s ease-in-out infinite reverse" }}
+            src="/landing/cloud.webp"
+            alt=""
+            aria-hidden="true"
+          />
+          <img
+            className="shop-cloud"
+            style={{ width: 110, bottom: "8%", left: "9%", opacity: 0.55, animation: "bgFloat3 16s ease-in-out infinite, bgPuff 9s ease-in-out infinite" }}
+            src="/landing/cloud.webp"
+            alt=""
+            aria-hidden="true"
+          />
+          <div className="wrap">
+            <div className="head">
+              <span className="kicker kicker-yolk">
+                <i className="folder">🗂️</i>เมนูสินค้าของร้าน
+              </span>
+              <h2>
+                สินค้าและบริการ<em>ของเรา</em>
+              </h2>
+              <div className="tabs" role="tablist">
+                <button className={`tab${tab === "all" ? " on" : ""}`} onClick={() => setTab("all")}>
+                  ทั้งหมด
+                </button>
+                {TAB_GROUPS.map((g) => (
+                  <button key={g.id} className={`tab${tab === g.id ? " on" : ""}`} onClick={() => setTab(g.id)}>
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+              <p>รับผลิตสินค้าคุณภาพหลากหลาย ครบจบในที่เดียว</p>
+            </div>
+
+            <div className="cats">
+              {cats.map((c, i) => {
+                const group = groupOf(c.id);
+                const show = tab === "all" || group === tab;
+                const items = byCat.get(c.id) ?? [];
+                const href = `/products?category=${c.id}`;
+                return (
+                  <div
+                    key={c.id}
+                    className={`cat${show ? " is-in" : " is-hide"}`}
+                    data-group={group}
+                    style={{ animationDelay: `${(i % 10) * 45}ms` }}
+                  >
+                    <Link className="cat-link" href={href}>
+                      {c.image ? (
+                        <img className="cat-ico" src={c.image} alt="" aria-hidden="true" />
+                      ) : CAT_ICON[c.id] ? (
+                        <img className="cat-ico" src={CAT_ICON[c.id]} alt="" aria-hidden="true" />
+                      ) : (
+                        <em>{c.emoji}</em>
+                      )}
+                      <b>{c.name}</b>
+                      <small>{c.description || c.nameEn}</small>
+                    </Link>
+                    {items.length > 0 && (
+                      <div className="sub">
+                        <span className="sub-title">สินค้าในหมวดนี้</span>
+                        {items.map((p) => (
+                          <Link key={p.id} href={productPath(p)}>
+                            {p.name}
+                            <span>›</span>
+                          </Link>
+                        ))}
+                        <Link className="sub-all" href={href}>
+                          ดูทั้งหมดในหมวดนี้ →
+                        </Link>
+                      </div>
                     )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          </section>
-        );
-      }
+            <div className="center">
+              <Link className="btn btn-primary" href="/products">
+                ดูสินค้าทั้งหมด <span className="dot">→</span>
+              </Link>
+            </div>
+          </div>
+        </section>
 
-      case "html":
-        if (!blk.html) return null;
-        return (
-          <section
-            key={blk.id}
-            className="mt-12 overflow-x-auto"
-            // โค้ดผ่านการกรองฝั่งเซิร์ฟเวอร์ตอนบันทึกแล้ว (ตัด script/on*)
-            dangerouslySetInnerHTML={{ __html: blk.html }}
-          />
-        );
+        {/* ── แถบข้อความวิ่ง ── */}
+        <div className="ticker" aria-hidden="true">
+          <div className="ticker-track">
+            {[0, 1].map((k) => (
+              <span key={k} style={{ display: "contents" }}>
+                <span>ไม่มีขั้นต่ำ เริ่มที่ 1 ชิ้น</span>
+                <span>ออกแบบฟรีทุกออเดอร์</span>
+                <span>ยืนยันแบบก่อนผลิตทุกงาน</span>
+                <span>แพ็คกันกระแทกอย่างดี</span>
+                <span>ส่งไวทั่วไทย</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
 
-      case "text":
-        if (!blk.heading && !blk.body) return null;
-        return (
-          <section key={blk.id} className="mt-12 text-center">
-            {blk.heading && <h2 className="text-xl font-extrabold text-amber-950 md:text-2xl">{blk.heading}</h2>}
-            {blk.body && (
-              <p className="mx-auto mt-2 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-stone-600">
-                {blk.body}
-              </p>
-            )}
-          </section>
-        );
+      {/* ── สินค้าขายดี ── */}
+      <section id="bestseller" className="wrap rv gap">
+        <div className="head">
+          <span className="kicker kicker-fire">
+            <i className="flame">🔥</i>ขายดีประจำร้าน
+          </span>
+          <h2>
+            ลูกค้า<em>สั่งซ้ำ</em>บ่อยที่สุด
+          </h2>
+          <p>ราคานี้รวมพิมพ์ลายของคุณแล้ว สั่งชิ้นเดียวก็ทำได้</p>
+        </div>
+        <div className="rail in">
+          {best.map((p, i) => (
+            <BestCard key={p.id} p={p} catLabel={catName(p.category)} rank={i} />
+          ))}
+        </div>
+      </section>
 
-      case "cta":
-        return (
-          <section
-            key={blk.id}
-            className="mt-14 rounded-[2rem] bg-gradient-to-r from-pink-200 via-rose-100 to-amber-100 p-8 text-center md:p-12"
-          >
-            <span className="text-4xl">🎁</span>
-            <h2 className="mt-3 text-2xl font-extrabold text-stone-800">
-              {blk.heading || "มีลายในใจแล้วใช่ไหม? มาเริ่มกันเลย!"}
+      {/* ── ทำไมต้องเรา + ขั้นตอน ── */}
+      <div className="ws-band">
+        <div className="ws-bg" aria-hidden="true" />
+        <img
+          className="ws-cloud"
+          style={{ width: 190, top: "6%", left: -40, opacity: 0.85, animation: "bgFloat1 22s ease-in-out infinite, bgPuff 9s ease-in-out infinite" }}
+          src="/landing/cloud.webp"
+          alt=""
+          aria-hidden="true"
+        />
+        <img
+          className="ws-cloud"
+          style={{ width: 140, bottom: "14%", right: -30, opacity: 0.7, animation: "bgFloat2 27s ease-in-out infinite, bgPuff 11s ease-in-out infinite reverse" }}
+          src="/landing/cloud.webp"
+          alt=""
+          aria-hidden="true"
+        />
+        <img className="ws-star" style={{ top: "12%", right: "8%", width: 30 }} src="/landing/star.webp" alt="" aria-hidden="true" />
+        <img className="ws-star" style={{ top: "52%", left: "5%", width: 22, animationDelay: "-2.6s" }} src="/landing/star.webp" alt="" aria-hidden="true" />
+
+        <section id="why" className="wrap rv">
+          <div className="why">
+            <img className="why-float wf-heart" src="/landing/heart.webp" alt="" aria-hidden="true" />
+            <img className="why-float wf-star" src="/landing/star4.webp" alt="" aria-hidden="true" />
+            <img className="hug" src="/landing/duck-hug.webp" alt="มาสคอตเป็ด iDucky ถือหัวใจ" />
+            <div>
+              <div className="why-head">
+                <span className="kicker kicker-why">
+                  <i className="beat-heart">💗</i>เหตุผลที่ลูกค้าไว้ใจ
+                </span>
+                <h2>
+                  ทำไมต้องเลือก <span style={{ color: "var(--yolk-deep)" }}>iDucky?</span>
+                </h2>
+              </div>
+              <div className="why-grid">
+                <div className="why-item">
+                  <div className="orb o-blue">💎</div>
+                  <h3>งานคุณภาพพรีเมียม</h3>
+                  <p>พิถีพิถันทุกขั้นตอน ใส่ใจทุกรายละเอียด</p>
+                </div>
+                <div className="why-item">
+                  <div className="orb o-yolk">🕐</div>
+                  <h3>ผลิตรวดเร็ว</h3>
+                  <p>แจ้งคิวชัดเจน ส่งตรงเวลาที่นัดไว้</p>
+                </div>
+                <div className="why-item">
+                  <div className="orb o-peach">🎨</div>
+                  <h3>พิมพ์สีสวย คมชัด</h3>
+                  <p>ด้วยเทคโนโลยีการพิมพ์คุณภาพสูง</p>
+                </div>
+                <div className="why-item">
+                  <div className="orb o-mint">💛</div>
+                  <h3>บริการใส่ใจ</h3>
+                  <p>ให้คำแนะนำ ดูแลทุกออเดอร์จนถึงมือ</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="steps" className="wrap rv">
+          <div className="head">
+            <span className="kicker">📖 ขั้นตอนการสั่งซื้อ</span>
+            <h2>
+              สั่งง่าย <em>แค่ 3 ขั้นตอน</em>
             </h2>
-            <p className="mt-2 whitespace-pre-line text-sm text-stone-600">
-              {blk.body || "เลือกสินค้าที่ชอบ แล้วอัปโหลดลายของคุณ เดี๋ยวเราจัดการที่เหลือให้เอง"}
-            </p>
-            <Link
-              href={blk.btnHref || "/products"}
-              className="mt-5 inline-block rounded-full bg-rose-500 px-8 py-3.5 text-sm font-bold text-white shadow-lg transition hover:scale-105 hover:bg-rose-600"
-            >
-              {blk.btnLabel || "เริ่มออกแบบสินค้าของฉัน →"}
-            </Link>
-          </section>
-        );
-    }
-  }
+          </div>
+          <div className="steps">
+            <div className="step">
+              <em>🎨</em>
+              <h3>อัปโหลดลายของคุณ</h3>
+              <p>ส่งรูป โลโก้ หรือไฟล์งานเข้ามา ยังไม่มีลาย? ทีมออกแบบช่วยจัดให้ฟรี</p>
+            </div>
+            <div className="step">
+              <em>🛍️</em>
+              <h3>เลือกสินค้าและจำนวน</h3>
+              <p>เลือกจากกว่า {cats.length} หมวด เริ่มต้นชิ้นเดียวก็สั่งได้ ยืนยันแบบก่อนผลิตทุกครั้ง</p>
+            </div>
+            <div className="step">
+              <em>🚚</em>
+              <h3>รอรับที่บ้าน</h3>
+              <p>แพ็คกันกระแทกอย่างดี ส่งไวทั่วไทย พร้อมเลขพัสดุติดตามได้</p>
+            </div>
+          </div>
+          <div className="promise">
+            <div className="pr">
+              <em>🐣</em>
+              <span>
+                <b>ไม่มีขั้นต่ำ</b>
+                <small>เริ่มผลิตจำนวนน้อยได้</small>
+              </span>
+            </div>
+            <div className="pr">
+              <em>✏️</em>
+              <span>
+                <b>ออกแบบฟรี</b>
+                <small>มีทีมงานช่วยออกแบบ</small>
+              </span>
+            </div>
+            <div className="pr">
+              <em>📦</em>
+              <span>
+                <b>จัดส่งทั่วประเทศ</b>
+                <small>แพ็คสินค้าอย่างดี</small>
+              </span>
+            </div>
+            <div className="pr">
+              <em>🛡️</em>
+              <span>
+                <b>ตรวจสลิปอัตโนมัติ</b>
+                <small>ยืนยันยอดไว ไม่ต้องรอ</small>
+              </span>
+            </div>
+          </div>
+        </section>
+      </div>
 
-  return <div className="mx-auto max-w-6xl px-4">{blocks.map(renderBlock)}</div>;
+      {/* ── ปิดท้าย ── */}
+      <section className="wrap rv gap">
+        <div className="cta">
+          <img className="cta-cloud" style={{ width: 230, top: -26, left: "8%" }} src="/landing/cloud.webp" alt="" aria-hidden="true" />
+          <img className="cta-star" style={{ top: "14%", left: "4%", width: 26 }} src="/landing/star.webp" alt="" aria-hidden="true" />
+          <img className="cta-star" style={{ bottom: "18%", left: "16%", width: 18, animationDelay: "-2.4s" }} src="/landing/star.webp" alt="" aria-hidden="true" />
+          <div>
+            <h2>
+              มีลายในใจแล้วใช่ไหม? <em>มาเริ่มกันเลย!</em>
+            </h2>
+            <p>เลือกสินค้าที่ชอบ แล้วอัปโหลดลายของคุณ เดี๋ยวเราจัดการที่เหลือให้เอง 🦆💛</p>
+            <div className="btns">
+              <Link className="btn btn-yolk" href="/products">
+                เริ่มออกแบบสินค้าของฉัน <span className="dot">→</span>
+              </Link>
+              <a className="btn btn-ghost" href="https://lin.ee/x8GkqGZ" target="_blank" rel="noreferrer">
+                ปรึกษาแอดมินทาง LINE <span className="dot">💬</span>
+              </a>
+            </div>
+          </div>
+          <svg className="cta-duck" viewBox="0 0 220 220" role="img" aria-label="เป็ดกอดหัวใจ">
+            <ellipse cx="110" cy="206" rx="58" ry="8" fill="#2C81C4" opacity=".12" />
+            <ellipse cx="110" cy="128" rx="70" ry="68" fill="#FFD447" />
+            <ellipse cx="110" cy="92" rx="55" ry="52" fill="#FFDD63" />
+            <ellipse className="eye" cx="90" cy="88" rx="8" ry="9" fill="#173A6B" />
+            <ellipse className="eye" cx="132" cy="88" rx="8" ry="9" fill="#173A6B" />
+            <circle cx="87.5" cy="84.5" r="3" fill="#fff" />
+            <circle cx="129.5" cy="84.5" r="3" fill="#fff" />
+            <ellipse cx="74" cy="107" rx="12" ry="8" fill="#FF9EB0" opacity=".7" />
+            <ellipse cx="148" cy="107" rx="12" ry="8" fill="#FF9EB0" opacity=".7" />
+            <path d="M94 104h34c7 0 10 5 10 9 0 7-9 12-27 12s-27-5-27-12c0-4 3-9 10-9z" fill="#FFA83D" />
+            <path d="M110 186c-15 0-25-13-25-25 0-10 8-18 18-18 3 0 7 2 7 2s4-2 7-2c10 0 18 8 18 18 0 12-10 25-25 25z" fill="#FF9EB0" />
+          </svg>
+        </div>
+      </section>
+
+      {/* ── ช่องทางโซเชียลลอยมุมจอ ── */}
+      <nav className="social-dock" aria-label="ช่องทางโซเชียลของร้าน">
+        <a className="sd-fb" data-label="Facebook" href="https://www.facebook.com/iduckyshop" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M22 12a10 10 0 10-11.6 9.9v-7H7.9V12h2.5V9.8c0-2.5 1.5-3.9 3.8-3.9 1.1 0 2.2.2 2.2.2v2.5h-1.3c-1.2 0-1.6.8-1.6 1.6V12h2.8l-.4 2.9h-2.4v7A10 10 0 0022 12z" />
+          </svg>
+        </a>
+        <a className="sd-ig" data-label="Instagram" href="https://www.instagram.com/iduckyshop1" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="5.4" />
+            <circle cx="12" cy="12" r="4.2" />
+            <circle cx="17.4" cy="6.6" r="1.2" fill="currentColor" stroke="none" />
+          </svg>
+        </a>
+        <a className="sd-tt" data-label="TikTok" href="https://www.tiktok.com/@iduckyofficial" target="_blank" rel="noopener noreferrer" aria-label="TikTok">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M16.5 2h-2.9v13.2a2.5 2.5 0 11-2.1-2.5v-3a5.5 5.5 0 105.1 5.5V9.1a6.6 6.6 0 003.9 1.3V7.5a3.8 3.8 0 01-3.9-3.8V2z" />
+          </svg>
+        </a>
+        <a className="sd-x" data-label="X (Twitter)" href="https://x.com/iduckyshop" target="_blank" rel="noopener noreferrer" aria-label="X">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M17.5 3h3.1l-6.8 7.8L21.8 21h-6.2l-4.4-5.7L6 21H2.9l7.3-8.3L2.5 3h6.4l4 5.3L17.5 3z" />
+          </svg>
+        </a>
+      </nav>
+    </div>
+  );
+}
+
+/** การ์ดสินค้าขายดี — เอียงตามเมาส์เล็กน้อยเหมือนไฟล์ต้นแบบ */
+function BestCard({ p, catLabel, rank }: { p: Product; catLabel: string; rank: number }) {
+  const ref = useRef<HTMLAnchorElement>(null);
+  function onMove(e: React.MouseEvent<HTMLAnchorElement>) {
+    const el = ref.current;
+    if (!el || !window.matchMedia("(hover:hover)").matches) return;
+    const r = el.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width - 0.5;
+    const y = (e.clientY - r.top) / r.height - 0.5;
+    el.style.transform = `translateY(-9px) rotateY(${(x * 7).toFixed(2)}deg) rotateX(${(-y * 7).toFixed(2)}deg)`;
+  }
+  function onLeave() {
+    if (ref.current) ref.current.style.transform = "";
+  }
+  return (
+    <Link ref={ref} className="card" href={productPath(p)} onMouseMove={onMove} onMouseLeave={onLeave}>
+      <div className="thumb">
+        {rank < 3 && p.sold > 0 && (
+          <span className="tag tag-hot">
+            <i className="flame">🔥</i>ขายดี
+          </span>
+        )}
+        {!p.sold && p.badge === "ใหม่" && (
+          <span className="tag tag-new">
+            <i className="sparkle">✨</i>NEW
+          </span>
+        )}
+        {p.imageSrc ? (
+          <img src={p.imageSrc} alt={p.name} />
+        ) : (
+          <span className={`grid h-full w-full place-items-center bg-gradient-to-br text-6xl ${p.gradient}`}>{p.emoji}</span>
+        )}
+      </div>
+      <div className="card-body">
+        <span className="cat-l">{catLabel}</span>
+        <h3>{p.name}</h3>
+        <div className="meta">
+          <span className="price">{formatPriceRange(p)}</span>
+          <span className="stars">
+            ⭐ {p.rating} · ขายแล้ว {p.sold.toLocaleString("th-TH")}
+          </span>
+        </div>
+        <span className="add">เลือกลาย</span>
+      </div>
+    </Link>
+  );
 }

@@ -1,11 +1,25 @@
 import type { Metadata, Viewport } from "next";
-import { Prompt } from "next/font/google";
+import { IBM_Plex_Sans_Thai_Looped, Mitr, Prompt } from "next/font/google";
 import "./globals.css";
 
 const prompt = Prompt({
   subsets: ["thai", "latin"],
   weight: ["300", "400", "500", "600", "700", "800"],
   variable: "--font-prompt",
+  display: "swap",
+});
+
+// ฟอนต์ดีไซน์หน้าแรก/หัว-ท้ายเว็บ (ตามไฟล์ต้นแบบ): Mitr = หัวเรื่อง/ปุ่ม · Plex Looped = เนื้อความ
+const mitr = Mitr({
+  subsets: ["thai", "latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-mitr",
+  display: "swap",
+});
+const looped = IBM_Plex_Sans_Thai_Looped({
+  subsets: ["thai", "latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-looped",
   display: "swap",
 });
 
@@ -26,7 +40,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="th" className={prompt.variable}>
+    <html lang="th" className={`${prompt.variable} ${mitr.variable} ${looped.variable}`}>
       <body className="min-h-screen antialiased">{children}</body>
     </html>
   );
