@@ -194,6 +194,13 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   useEffect(() => {
     if (maxDesigns > 0) setDesigns((d) => Math.min(Math.max(1, d), maxDesigns));
   }, [maxDesigns]);
+  // ✨ แนบรูปมากกว่าจำนวนที่สั่ง (สินค้าคิดเรทต่อลาย) → เพิ่มจำนวนชิ้นให้อัตโนมัติขั้นต่ำลายละ 1 ชิ้น
+  // ไม่งั้นเพดานจำนวนลาย (= จำนวนชิ้น) จะกดไว้ ทำให้นับลายตามรูปไม่ได้ (แนบ 2 รูปแต่ค้าง 1 ลาย)
+  useEffect(() => {
+    if (!tierByDesign || artFiles.length < 1) return;
+    setQty((q) => Math.max(q, artFiles.length));
+  }, [artFiles.length, tierByDesign]);
+
   // ✨ นับจำนวนลายอัตโนมัติตามรูปลายที่แนบ
   // ยังไม่เคยปรับเอง = ตามจำนวนรูปเป๊ะ · เคยปรับเองแล้ว = ไม่ลดให้ แต่ถ้าแนบรูป "เกิน" ที่ตั้งไว้
   // ดันขึ้นตามรูปเสมอ (ทางร้านนับลายจากไฟล์จริง — ราคาต้องขยับตาม ไม่ใช่แค่ป้ายเตือน)
