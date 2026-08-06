@@ -145,6 +145,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   const [designs, setDesigns] = useState(1);
   // ลูกค้ากดปรับเองแล้ว = หยุดนับอัตโนมัติ (บางงานลาย 1 แบบแนบรูปหลายมุม)
   const [designsTouched, setDesignsTouched] = useState(false);
+  // ข้อความในช่องพิมพ์จำนวนลายระหว่างแก้ (ยอมว่างชั่วคราว — ลบทิ้งแล้วพิมพ์ใหม่ได้) · null = โชว์ค่าจริง
+  const [designsDraft, setDesignsDraft] = useState<string | null>(null);
   // สินค้าที่ตั้ง "คิดเรทตามชิ้นต่อลาย" — คละกี่ลายก็ได้ แต่เรทราคาคิดจาก ⌊จำนวน ÷ ลาย⌋
   const tierByDesign = !!product.tierByDesign;
   // ลายที่รวมในราคาตามจำนวนที่สั่ง · เรทที่เปิด extraDesignFee คละเกินได้ (จ่ายเพิ่มต่อลาย ไม่เกินจำนวนชิ้น)
@@ -1013,6 +1015,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                         type="button"
                         onClick={() => {
                           setDesignsTouched(true);
+                          setDesignsDraft(null);
                           setDesigns((d) => Math.max(1, d - 1));
                         }}
                         disabled={designs <= 1}
@@ -1021,13 +1024,17 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                       >
                         −
                       </button>
+                      {/* พิมพ์เลขเองได้ — ระหว่างพิมพ์ปล่อยช่องว่างได้ (ลบทิ้งแล้วพิมพ์ใหม่) ออกจากช่องค่อยปรับเป็นค่าที่ใช้จริง */}
                       <input
-                        value={designs}
+                        value={designsDraft ?? String(designs)}
                         onChange={(e) => {
                           setDesignsTouched(true);
-                          const n = parseInt(e.target.value.replace(/\D/g, ""), 10);
-                          setDesigns(Number.isFinite(n) ? Math.min(Math.max(1, n), Math.max(1, maxDesigns)) : 1);
+                          const raw = e.target.value.replace(/\D/g, "").slice(0, 5);
+                          setDesignsDraft(raw);
+                          const n = parseInt(raw, 10);
+                          if (Number.isFinite(n) && n >= 1) setDesigns(Math.min(n, Math.max(1, maxDesigns)));
                         }}
+                        onBlur={() => setDesignsDraft(null)}
                         onFocus={(e) => e.target.select()}
                         inputMode="numeric"
                         aria-label="จำนวนลายที่คละ (พิมพ์เลขได้)"
@@ -1037,6 +1044,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                         type="button"
                         onClick={() => {
                           setDesignsTouched(true);
+                          setDesignsDraft(null);
                           setDesigns((d) => Math.min(maxDesigns, d + 1));
                         }}
                         disabled={designs >= maxDesigns}
