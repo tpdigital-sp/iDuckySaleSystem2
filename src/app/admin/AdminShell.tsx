@@ -264,11 +264,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               onClick={() => toggleGroup(key)}
               aria-expanded={!folded}
               title={folded ? "กางกลุ่มนี้" : "หุบกลุ่มนี้"}
-              className={`flex w-full items-center gap-2 rounded-lg px-3 pb-1 text-left text-sm font-bold uppercase tracking-wide transition hover:text-slate-600 ${
+              className={`flex w-full items-center gap-1.5 rounded-lg px-3 pb-1 text-left text-xs font-bold uppercase tracking-wide transition hover:text-slate-600 ${
                 groupIdx > 0 ? "mt-4" : "mt-1"
               } ${activeGroup === key ? "text-teal-600" : "text-slate-500"}`}
             >
-              <span className={`text-[10px] transition-transform ${folded ? "-rotate-90" : ""}`}>▼</span>
+              <span className={`text-[9px] transition-transform ${folded ? "-rotate-90" : ""}`}>▼</span>
               {label}
               {/* หุบอยู่แต่มีหน้าที่เปิดค้างในกลุ่มนี้ → จุดบอกให้รู้ว่าอยู่ตรงไหน */}
               {folded && activeGroup === key && (
@@ -276,7 +276,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               )}
               {folded && (
                 <span
-                  className={`ml-auto rounded-full px-2 py-0.5 text-xs font-bold ${
+                  className={`ml-auto rounded-full px-1.5 text-[11px] font-bold ${
                     activeGroup === key ? "bg-teal-100 text-teal-700" : "bg-slate-100 text-slate-400"
                   }`}
                 >
@@ -295,7 +295,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             onClick={() => setOpen(false)}
             aria-current={active ? "page" : undefined}
             title={rail ? m.label : undefined}
-            className={`relative flex items-center rounded-xl py-2.5 text-[15px] font-medium transition ${
+            className={`relative flex items-center rounded-xl py-2.5 text-sm font-medium transition ${
               rail ? "justify-center px-0" : "gap-3 px-3"
             } ${
               active
