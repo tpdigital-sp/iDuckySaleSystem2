@@ -44,11 +44,12 @@ const MENU_GROUPS: {
   badge: string;
   line: string;
 }[] = [
-  // ใช้โทน orange แท้ — คลาส amber ถูก remap เป็นฟ้าตามธีมรีแบรนด์ทั้งเว็บ
+  // ชุดสีตามโลโก้ iDucky: ส้มปากเป็ด · เหลืองเป็ด · น้ำตาลอ่อน · น้ำตาลเข้มเส้นขอบโลโก้
+  // (คลาส amber ถูก remap เป็นฟ้าตามธีมรีแบรนด์ จึงใช้ orange/yellow แท้ + รหัสสีตรงสำหรับโทนน้ำตาล)
   { key: "งานขาย", label: "📦 งานขาย", text: "text-orange-500 hover:text-orange-600", dot: "bg-orange-500", badge: "bg-orange-100 text-orange-600", line: "border-orange-200" },
-  { key: "สินค้า", label: "🏷️ สินค้า", text: "text-sky-600 hover:text-sky-700", dot: "bg-sky-500", badge: "bg-sky-100 text-sky-700", line: "border-sky-200" },
-  { key: "ลูกค้า", label: "💛 ลูกค้า & การตลาด", text: "text-rose-500 hover:text-rose-600", dot: "bg-rose-500", badge: "bg-rose-100 text-rose-600", line: "border-rose-200" },
-  { key: "ระบบ", label: "⚙️ ร้าน & ระบบ", text: "text-violet-500 hover:text-violet-600", dot: "bg-violet-500", badge: "bg-violet-100 text-violet-600", line: "border-violet-200" },
+  { key: "สินค้า", label: "🏷️ สินค้า", text: "text-yellow-600 hover:text-yellow-700", dot: "bg-yellow-500", badge: "bg-yellow-100 text-yellow-700", line: "border-yellow-200" },
+  { key: "ลูกค้า", label: "💛 ลูกค้า & การตลาด", text: "text-[#a9741f] hover:text-[#8a5c14]", dot: "bg-[#c98f2e]", badge: "bg-[#f7ecd8] text-[#a9741f]", line: "border-[#ecdcc0]" },
+  { key: "ระบบ", label: "⚙️ ร้าน & ระบบ", text: "text-[#6d4c33] hover:text-[#54382a]", dot: "bg-[#6d4c33]", badge: "bg-[#efe6dd] text-[#6d4c33]", line: "border-[#e0d2c5]" },
 ];
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
