@@ -686,93 +686,6 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
           </ul>
         </div>
       </div>
-
-      {/* ═══ รายละเอียดสินค้า — ไหลต่อในฝั่งซ้าย ให้สองฝั่งยาวคู่กัน (แผงสั่งซื้อขวา sticky อยู่ข้างตลอดตอนอ่าน) ═══ */}
-      {(product.body ?? []).length > 0 && (
-        <section className="mt-4 sm:col-span-2">
-          <h2 className="text-center text-2xl font-extrabold text-amber-950">
-            รายละเอียดสินค้า {product.name}
-          </h2>
-          <div className="mt-8 space-y-12">
-            {(product.body ?? []).map((sec, i) => (
-              <div
-                key={`${sec.heading}-${i}`}
-                className={`grid items-center gap-6 md:gap-10 ${sec.image ? "md:grid-cols-2" : ""}`}
-              >
-                {sec.image &&
-                  (sec.image.src ? (
-                    // รูปจริง: โชว์เต็มสัดส่วนไม่ครอป + กดเพื่อดูขนาดใหญ่
-                    <button
-                      type="button"
-                      onClick={() => setZoomSrc(sec.image!.src!)}
-                      className={`group relative cursor-zoom-in ${sec.align === "right" ? "md:order-2" : ""}`}
-                      aria-label={`ขยายรูป ${sec.image.label || sec.heading || "ประกอบสินค้า"}`}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={sec.image.src}
-                        alt={sec.image.label || sec.heading}
-                        loading="lazy"
-                        decoding="async"
-                        className="w-full rounded-[2rem] shadow-sm ring-1 ring-amber-100/70 transition group-hover:brightness-95"
-                      />
-                      <span className="absolute bottom-3 right-3 rounded-full bg-white/85 px-2.5 py-1 text-[11px] font-bold text-stone-500 shadow-sm backdrop-blur transition group-hover:bg-white">
-                        🔍 กดเพื่อขยาย
-                      </span>
-                    </button>
-                  ) : (
-                    <ProductVisual
-                      emoji={sec.image.emoji}
-                      gradient={sec.image.gradient}
-                      alt={sec.image.label || sec.heading}
-                      size="text-[6rem]"
-                      className={`aspect-[4/3] w-full rounded-[2rem] shadow-sm ${
-                        sec.align === "right" ? "md:order-2" : ""
-                      }`}
-                    />
-                  ))}
-                <div className={`text-center ${sec.align === "right" ? "md:order-1" : ""}`}>
-                  {sec.heading && (
-                    <h3 className="text-xl font-extrabold text-amber-600">{sec.heading}</h3>
-                  )}
-                  <div className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-stone-600">
-                    {sec.text.split("\n").map((line, j) =>
-                      line.trim().startsWith("•") ? (
-                        <p key={j} className="text-left md:pl-10">
-                          {line}
-                        </p>
-                      ) : (
-                        <p key={j}>{line}</p>
-                      )
-                    )}
-                  </div>
-                  {sec.image?.label && (
-                    <p className="mt-2 text-xs text-stone-400">({sec.image.label})</p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* คำถามที่พบบ่อย (AEO) — ไหลต่อในฝั่งซ้ายเช่นกัน */}
-      {faqs.length > 0 && (
-        <section className="mt-4 sm:col-span-2">
-          <h2 className="mb-5 text-xl font-extrabold text-amber-950">❓ คำถามที่พบบ่อย</h2>
-          <div className="space-y-3">
-            {faqs.map((f, i) => (
-              <details key={i} className="group rounded-2xl border border-amber-100 bg-white p-4 open:shadow-sm">
-                <summary className="flex cursor-pointer list-none items-center justify-between font-bold text-amber-950">
-                  {f.q}
-                  <span className="ml-3 text-amber-400 transition group-open:rotate-45">＋</span>
-                </summary>
-                <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-stone-600">{f.a}</p>
-              </details>
-            ))}
-          </div>
-        </section>
-      )}
         </div>
 
         {/* ── ขวา: แผงสั่งซื้อ ติดหนึบตอนเลื่อน ── */}
@@ -1432,6 +1345,93 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
         </div>
       </div>
 
+
+      {/* รายละเอียดสินค้า (body) */}
+      {(product.body ?? []).length > 0 && (
+        <section className="mt-16">
+          <h2 className="text-center text-2xl font-extrabold text-amber-950">
+            รายละเอียดสินค้า {product.name}
+          </h2>
+          <div className="mt-8 space-y-12">
+            {(product.body ?? []).map((sec, i) => (
+              <div
+                key={`${sec.heading}-${i}`}
+                className={`grid items-center gap-6 md:gap-10 ${sec.image ? "md:grid-cols-2" : ""}`}
+              >
+                {sec.image &&
+                  (sec.image.src ? (
+                    // รูปจริง: โชว์เต็มสัดส่วนไม่ครอป + กดเพื่อดูขนาดใหญ่
+                    <button
+                      type="button"
+                      onClick={() => setZoomSrc(sec.image!.src!)}
+                      className={`group relative cursor-zoom-in ${sec.align === "right" ? "md:order-2" : ""}`}
+                      aria-label={`ขยายรูป ${sec.image.label || sec.heading || "ประกอบสินค้า"}`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={sec.image.src}
+                        alt={sec.image.label || sec.heading}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full rounded-[2rem] shadow-sm ring-1 ring-amber-100/70 transition group-hover:brightness-95"
+                      />
+                      <span className="absolute bottom-3 right-3 rounded-full bg-white/85 px-2.5 py-1 text-[11px] font-bold text-stone-500 shadow-sm backdrop-blur transition group-hover:bg-white">
+                        🔍 กดเพื่อขยาย
+                      </span>
+                    </button>
+                  ) : (
+                    <ProductVisual
+                      emoji={sec.image.emoji}
+                      gradient={sec.image.gradient}
+                      alt={sec.image.label || sec.heading}
+                      size="text-[6rem]"
+                      className={`aspect-[4/3] w-full rounded-[2rem] shadow-sm ${
+                        sec.align === "right" ? "md:order-2" : ""
+                      }`}
+                    />
+                  ))}
+                <div className={`text-center ${sec.align === "right" ? "md:order-1" : ""}`}>
+                  {sec.heading && (
+                    <h3 className="text-xl font-extrabold text-amber-600">{sec.heading}</h3>
+                  )}
+                  <div className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-stone-600">
+                    {sec.text.split("\n").map((line, j) =>
+                      line.trim().startsWith("•") ? (
+                        <p key={j} className="text-left md:pl-10">
+                          {line}
+                        </p>
+                      ) : (
+                        <p key={j}>{line}</p>
+                      )
+                    )}
+                  </div>
+                  {sec.image?.label && (
+                    <p className="mt-2 text-xs text-stone-400">({sec.image.label})</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* คำถามที่พบบ่อย (AEO) */}
+      {faqs.length > 0 && (
+        <section className="mt-14">
+          <h2 className="mb-5 text-xl font-extrabold text-amber-950">❓ คำถามที่พบบ่อย</h2>
+          <div className="space-y-3">
+            {faqs.map((f, i) => (
+              <details key={i} className="group rounded-2xl border border-amber-100 bg-white p-4 open:shadow-sm">
+                <summary className="flex cursor-pointer list-none items-center justify-between font-bold text-amber-950">
+                  {f.q}
+                  <span className="ml-3 text-amber-400 transition group-open:rotate-45">＋</span>
+                </summary>
+                <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-stone-600">{f.a}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* สินค้าใกล้เคียง */}
       {related.length > 0 && (
