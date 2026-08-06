@@ -184,9 +184,14 @@ export function designCountOf(selections: Record<string, string>): number {
  * สินค้าที่ตั้ง tierByDesign = คิดเรทตามจำนวนชิ้นต่อลาย ⌊จำนวน ÷ ลาย⌋ (อย่างน้อย 1)
  * เช่น เคส 11 ชิ้นคละ 11 ลาย → 1 ชิ้น/ลาย → เรทราคาปลีก (ไม่ใช่เรท 11 ชิ้น)
  * ส่วน "ราคารวม" ยังคูณจำนวนชิ้นจริงทั้งหมดตามเดิม
+ *
+ * ⚠️ ยกเว้นเรทที่ตั้ง "คละลายขั้นต่ำลายละ N" ไว้แล้ว — เรทนั้นคุมจำนวนลายด้วยกติกาของตัวเอง
+ * (เช่น ขั้นต่ำ 11 ชิ้น ลายละ 3 → สั่ง 12 ชิ้นคละ 4 ลาย ผ่านเงื่อนไข = คิดเรทตามยอดรวม 12 ชิ้นเต็ม ๆ)
+ * ถ้าหารต่อลายซ้ำอีกชั้นจะโดนลงโทษสองต่อทั้งที่ทำตามเงื่อนไขแล้ว
  */
 export function tierQtyFor(product: Product, selections: Record<string, string>, qty: number): number {
   if (!product.tierByDesign) return qty;
+  if (activeRate(product, selections)?.minPerDesign) return qty;
   return Math.max(1, Math.floor(qty / designCountOf(selections)));
 }
 
