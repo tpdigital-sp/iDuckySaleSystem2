@@ -169,8 +169,9 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   // ลูกค้า "กดเลือกเรทเอง" แล้วจำนวนต่ำกว่าขั้นต่ำของเรทนั้น → ดันขึ้นให้ถึงขั้นต่ำ
   // (โหมดอัตโนมัติไม่ดัน — เปิดหน้ามาเริ่มที่ 1 ชิ้นเสมอ เรทปรับตามจำนวนเอง)
   useEffect(() => {
-    if (rateTouched && rateMinQty > 1) setQty((q) => Math.max(q, rateMinQty));
-  }, [rateMinQty, rateTouched]);
+    // ขนาดกำหนดเองไม่อิงเรท — ไม่ต้องดันจำนวนขึ้นตามขั้นต่ำของเรท
+    if (rateTouched && rateMinQty > 1 && !useCustom) setQty((q) => Math.max(q, rateMinQty));
+  }, [rateMinQty, rateTouched, useCustom]);
 
   // ── จำนวนลายที่คละ (เรทที่กำหนดขั้นต่ำต่อลาย / สินค้าที่คิดเรทตามชิ้นต่อลาย) ──
   const [designs, setDesigns] = useState(1);
@@ -770,9 +771,17 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
               )}
             </div>
             {useCustom ? (
-              <p className="mt-1 text-xs text-sky-700">
-                📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตัวเลือก/ตารางเรทปกติ
-              </p>
+              custom?.mode === "quote" ? (
+                // อธิบายขั้นตอนชัด ๆ — ลูกค้าถามว่า "รอตีราคา" ต้องทำยังไงต่อ
+                <p className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
+                  📐 ใช้ขนาดกำหนดเองอยู่ — <strong className="font-bold">กดสั่งซื้อเข้ามาได้เลย ไม่ต้องรอ</strong>{" "}
+                  แอดมินจะคำนวณราคาขนาดที่ระบุ แล้วทักแจ้งให้ยืนยันก่อนเริ่มงาน (ยังไม่มีการคิดเงินส่วนนี้ตอนกดสั่ง)
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-sky-700">
+                  📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตัวเลือก/ตารางเรทปกติ
+                </p>
+              )
             ) : matrix ? (
               <p className="mt-1 text-xs text-stone-400">
                 💡 เรทราคา {formatPriceRange(product)} ต่อ{matrix.unit} — ยิ่งสั่งเยอะ ยิ่งถูก (ราคาปรับตามจำนวน)
@@ -1049,7 +1058,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                 <button
                   type="button"
                   onClick={handleAdd}
-                  disabled={(useCustom && !customValid) || artBlocked || qty < rateMinQty}
+                  // ขนาดกำหนดเอง = ราคาไม่อิงเรทปกติ → ไม่ติดขั้นต่ำของเรทด้วย (สั่งกี่ชิ้นก็ได้ แอดมินตีราคาตามจริง)
+                  disabled={(useCustom && !customValid) || artBlocked || (!useCustom && qty < rateMinQty)}
                   className={`flex-1 rounded-full px-6 py-3.5 text-sm font-bold shadow-lg transition sm:flex-none sm:px-10 ${
                     added
                       ? "bg-emerald-500 text-white"
@@ -1060,10 +1070,10 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                     ? "✓ เพิ่มลงตะกร้าแล้ว!"
                     : artBlocked
                       ? "🎨 แนบลายก่อนถึงจะสั่งได้"
-                      : qty < rateMinQty
+                      : !useCustom && qty < rateMinQty
                       ? `เรทนี้สั่งขั้นต่ำ ${rateMinQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}`
                       : useCustom && custom?.mode === "quote"
-                      ? "🛒 เพิ่มลงตะกร้า (รอตีราคา)"
+                      ? "🛒 สั่งเลย — แอดมินตีราคาแล้วแจ้งกลับ"
                       : `🛒 เพิ่มลงตะกร้า — ${formatPrice(unitPrice * qty + designFee)}`}
                 </button>
               </div>
