@@ -144,6 +144,8 @@ type DraftCustom = {
   baseFee: string;
   minPrice: string;
   note: string;
+  /** กลุ่มตัวเลือกที่ยังให้ลูกค้าเลือกได้ตอนใช้กำหนดขนาดเอง (ไม่ติ๊ก = ปิดกลุ่มนั้น) */
+  keepOptions: string[];
 };
 
 /** แปลงโค้ดหน่วยเดิม (cm/inch/m) → ป้ายหน่วยในคลัง (backward-compat) */
@@ -307,6 +309,7 @@ function toDraft(p: Product): Draft {
       baseFee: p.custom?.baseFee != null ? String(p.custom.baseFee) : "",
       minPrice: p.custom?.minPrice != null ? String(p.custom.minPrice) : "",
       note: p.custom?.note ?? "",
+      keepOptions: [...(p.custom?.keepOptions ?? [])],
     },
     featured: !!p.featured,
     badge: p.badge ?? "",
@@ -914,6 +917,11 @@ export default function ProductEditor({ product }: { product: Product }) {
             }
           : {}),
         ...(draft.custom.note.trim() ? { note: draft.custom.note.trim() } : {}),
+        // เก็บเฉพาะกลุ่มที่ยังมีอยู่จริง (กันชื่อกลุ่มถูกลบ/เปลี่ยนแล้วค้าง)
+        ...(() => {
+          const keep = draft.custom.keepOptions.filter((l) => draft.options.some((o) => o.label === l));
+          return keep.length ? { keepOptions: keep } : {};
+        })(),
       };
     }
 
@@ -2146,6 +2154,45 @@ export default function ProductEditor({ product }: { product: Product }) {
                 className="mt-1 block w-full rounded-xl bg-white px-3 py-1.5 text-sm text-slate-800 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
               />
             </label>
+
+            {/* กลุ่มตัวเลือกไหนยังให้เลือกได้ ตอนลูกค้าติ๊กกำหนดขนาดเอง */}
+            {draft.options.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs font-semibold text-slate-500">
+                  กลุ่มตัวเลือกที่ &ldquo;ยังให้ลูกค้าเลือกได้&rdquo; ตอนใช้กำหนดขนาดเอง
+                </p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
+                  ไม่ติ๊ก = กลุ่มนั้นถูกปิด (จาง กดไม่ได้) ระหว่างใช้ขนาดกำหนดเอง — เช่น ปิด &ldquo;ขนาด&rdquo; เพราะแทนด้วยขนาดที่กรอก
+                  แต่เปิด &ldquo;สี&rdquo; ให้เลือกต่อได้ · ตัวเลือกที่เปิดไว้จะติดไปกับออเดอร์ด้วย
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {draft.options.map((o) => {
+                    const on = draft.custom.keepOptions.includes(o.label);
+                    return (
+                      <button
+                        key={o.label}
+                        type="button"
+                        onClick={() =>
+                          patchCustom({
+                            keepOptions: on
+                              ? draft.custom.keepOptions.filter((x) => x !== o.label)
+                              : [...draft.custom.keepOptions, o.label],
+                          })
+                        }
+                        className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${
+                          on
+                            ? "bg-emerald-100 text-emerald-700 ring-emerald-300"
+                            : "bg-white text-slate-400 ring-slate-200 hover:text-slate-600"
+                        }`}
+                      >
+                        {on ? "✓ เลือกได้ · " : "🔒 ปิด · "}
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>

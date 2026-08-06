@@ -483,7 +483,11 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     if (useCustom) {
       if (!custom || !customValid) return; // ต้องกรอกขนาดให้ครบก่อน
       // เก็บขนาดที่ระบุลง selections (เป็น key ของตะกร้า + ใช้คิดราคาซ้ำ)
-      addItem(product.id, { [custom.label]: `${cW}×${cH} ${custom.unit}`, ...extra }, qty);
+      // + กลุ่มตัวเลือกที่แอดมินเปิดให้เลือกต่อได้ (keepOptions) ติดไปกับออเดอร์ด้วย
+      const kept = Object.fromEntries(
+        Object.entries(effective).filter(([k]) => (custom.keepOptions ?? []).includes(k))
+      );
+      addItem(product.id, { ...kept, [custom.label]: `${cW}×${cH} ${custom.unit}`, ...extra }, qty);
     } else {
       addItem(product.id, { ...effectiveWithDesigns, ...extra }, qty);
     }
@@ -849,22 +853,32 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
             </div>
           )}
 
-          {/* ตัวเลือกสินค้า (กรอง/ล็อกตามกฎเงื่อนไข) — ใช้ขนาดกำหนดเองอยู่ = ปิดทั้งชุด กันเข้าใจผิดว่าราคาอิงตัวเลือก */}
+          {/* ตัวเลือกสินค้า (กรอง/ล็อกตามกฎเงื่อนไข)
+              ใช้ขนาดกำหนดเองอยู่ = ปิดเฉพาะกลุ่มที่แอดมินไม่ได้ตั้งให้ "ยังเลือกได้" (custom.keepOptions) */}
           {useCustom && (
             <p className="mt-5 rounded-xl bg-sky-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-sky-800 ring-1 ring-sky-200">
-              📐 กำลังใช้ &ldquo;{custom?.label ?? "กำหนดขนาดเอง"}&rdquo; — ตัวเลือกด้านล่างถูกปิดไว้ ราคาไม่อิงตัวเลือก/ตารางเรทปกติ
-              (เอาติ๊กออกเพื่อกลับมาเลือกตามปกติ)
+              📐 กำลังใช้ &ldquo;{custom?.label ?? "กำหนดขนาดเอง"}&rdquo; — ราคาไม่อิงตารางเรทปกติ
+              {(custom?.keepOptions?.length ?? 0) > 0
+                ? ` · ยังเลือก ${custom!.keepOptions!.join(" / ")} ได้ตามปกติ ส่วนกลุ่มอื่นถูกปิดไว้`
+                : " ตัวเลือกด้านล่างถูกปิดไว้"}{" "}
+              (เอาติ๊กออกเพื่อกลับมาเลือกทั้งหมด)
             </p>
           )}
-          <div className={`mt-5 space-y-4 ${useCustom ? "pointer-events-none select-none opacity-40" : ""}`} aria-disabled={useCustom}>
+          <div className="mt-5 space-y-4">
             {product.options.map((opt) => {
+              // ล็อกกลุ่มนี้เพราะใช้ขนาดกำหนดเองอยู่ และแอดมินไม่ได้เปิดให้เลือกต่อ
+              const customLocked = useCustom && !(custom?.keepOptions ?? []).includes(opt.label);
               const allowedByRules = allowedChoices(product, effective, opt.label);
               // ตัดตัวที่ไม่มีราคาขายในเรทที่เลือกอยู่ (แอดมินล้างแถวทิ้ง) — ตัดหมดแล้วคงชุดเดิมไว้กันหน้าพัง
               const byRate = matrix ? allowedByRules.filter((n) => matrixChoiceAvailable(matrix, opt.label, n)) : allowedByRules;
               const allowed = byRate.length > 0 ? byRate : allowedByRules;
               const locked = allowed.length === 1;
               return (
-                <div key={opt.label}>
+                <div
+                  key={opt.label}
+                  className={customLocked ? "pointer-events-none select-none opacity-40" : undefined}
+                  aria-disabled={customLocked || undefined}
+                >
                   <span className="mb-2 block text-sm font-bold text-stone-700">
                     {opt.label}:{" "}
                     <span className="font-semibold text-amber-600">{effective[opt.label]}</span>
