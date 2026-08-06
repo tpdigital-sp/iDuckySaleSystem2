@@ -1048,12 +1048,28 @@ export default function ProductEditor({ product }: { product: Product }) {
       setImpLoading(false);
     }
   }
-  // เติมข้อมูลจากสินค้าที่ scrape มาลง draft (ราคา/ตัวเลือก/ราคาขั้นบันได/รูป)
-  function importFill(p: ScrapedProduct, index?: number) {
-    // รูปที่แอดมินติ๊กไว้ (ถ้าไม่ระบุ = ทุกรูปที่เจอ) จำกัดตามช่องรูปที่เหลือ
+  /** รูปที่แอดมินติ๊กไว้ในรายการที่ scrape มา (ไม่ติ๊ก = ทุกรูปที่เจอ) จำกัดตามช่องรูปที่ใส่ได้ */
+  function importedPhotos(p: ScrapedProduct, index?: number): string[] {
     const all = p.imageUrls?.length ? p.imageUrls : p.imageUrl ? [p.imageUrl] : [];
     const picked = index != null && impPick[index] ? impPick[index] : all;
-    const photos = picked.slice(0, MAX_PHOTOS);
+    return picked.slice(0, MAX_PHOTOS);
+  }
+
+  /**
+   * เอาเฉพาะรูปมาใส่ ไม่แตะข้อมูลอื่น — กรณีราคา/ตัวเลือกในระบบถูกอยู่แล้ว ขาดแค่รูป
+   * รูปที่มีอยู่เดิมยังอยู่ รูปใหม่ต่อท้าย (ตัดรูปซ้ำ) จนเต็มโควตา
+   */
+  function importPhotosOnly(p: ScrapedProduct, index?: number) {
+    const incoming = importedPhotos(p, index);
+    if (!incoming.length) return;
+    const merged = [...new Set([...draft.photos, ...incoming])].slice(0, MAX_PHOTOS);
+    patch({ photos: merged });
+    setImpOpen(false); setImpList([]); setImpUrl(""); setImpPick({});
+  }
+
+  // เติมข้อมูลจากสินค้าที่ scrape มาลง draft (ราคา/ตัวเลือก/ราคาขั้นบันได/รูป)
+  function importFill(p: ScrapedProduct, index?: number) {
+    const photos = importedPhotos(p, index);
     patch({
       name: p.name,
       price: String(p.price),
@@ -1307,8 +1323,9 @@ export default function ProductEditor({ product }: { product: Product }) {
             <div className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white">
               <p className="border-b border-slate-100 px-3 py-1.5 text-[11px] text-slate-500">
                 <span className="mr-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">2</span>
-                พบ {impList.length} สินค้าในหน้านี้ — เลือกรูป แล้วกด “ใช้ตัวนี้” ·{" "}
-                <span className="font-bold text-rose-600">จะเขียนทับ ชื่อ/ราคา/ตัวเลือก/รูป ของสินค้านี้ทั้งชุด</span>{" "}
+                พบ {impList.length} สินค้าในหน้านี้ — ติ๊กเลือกรูปก่อน แล้วเลือกว่าจะเอาอะไร ·{" "}
+                <span className="font-bold text-sky-700">🖼 เอาแค่รูป</span> = ใส่เฉพาะรูป ข้อมูลเดิมไม่ถูกแตะ ·{" "}
+                <span className="font-bold text-rose-600">ใช้ทั้งชุด = เขียนทับ ชื่อ/ราคา/ตัวเลือก/รูป</span>{" "}
                 (ยังไม่กด 💾 บันทึก = ยังเปลี่ยนใจได้)
               </p>
               <ul className="divide-y divide-slate-100">
@@ -1322,13 +1339,26 @@ export default function ProductEditor({ product }: { product: Product }) {
                           {p.pricing.driverLabels.length ? ` × ${Object.keys(p.pricing.cells).length} ตัวเลือก` : ""}
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => importFill(p, i)}
-                        className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
-                      >
-                        ใช้ตัวนี้ →
-                      </button>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {/* ข้อมูลถูกอยู่แล้ว ขาดแค่รูป → เอาเฉพาะรูป ไม่เขียนทับอย่างอื่น */}
+                        <button
+                          type="button"
+                          onClick={() => importPhotosOnly(p, i)}
+                          disabled={(p.imageUrls?.length ?? (p.imageUrl ? 1 : 0)) === 0}
+                          title="ใส่เฉพาะรูปที่เลือก — ชื่อ/ราคา/ตัวเลือก/ตารางราคา คงเดิมทั้งหมด"
+                          className="rounded-lg bg-sky-100 px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-200 disabled:opacity-40"
+                        >
+                          🖼 เอาแค่รูป
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => importFill(p, i)}
+                          title="เขียนทับ ชื่อ/ราคา/ตัวเลือก/ตารางราคา/รูป ด้วยข้อมูลจากหน้านี้"
+                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                        >
+                          ใช้ทั้งชุด →
+                        </button>
+                      </div>
                     </div>
 
                     {/* รูปที่เจอในหน้านี้ — ติ๊กเลือกได้ (ค่าเริ่มต้นเลือกทุกรูปเท่าที่ใส่ได้) */}
