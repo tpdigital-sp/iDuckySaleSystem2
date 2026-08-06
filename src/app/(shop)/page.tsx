@@ -96,10 +96,15 @@ export default function HomePage() {
     return m;
   }, [all]);
 
-  /** ขายดี 8 อันดับ — ตัดสินค้าที่ยังไม่เคยขายออกถ้ามีตัวที่ขายแล้วพอ */
+  /**
+   * ขายดี 8 ใบ — เอาสินค้าที่ติดธง "แนะนำ" ขึ้นก่อน (ร้านคุมได้ว่าจะโชว์ตัวไหนหน้าแรก)
+   * แล้วค่อยเติมด้วยตัวที่ขายดีที่สุดจนครบ · ในแต่ละกลุ่มเรียงตามยอดขายจริง
+   */
   const best = useMemo(() => {
-    const sorted = [...all].sort((a, b) => b.sold - a.sold || (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
-    return sorted.slice(0, 8);
+    const bySold = (a: Product, b: Product) => b.sold - a.sold;
+    const picked = all.filter((p) => p.featured).sort(bySold);
+    const rest = all.filter((p) => !p.featured).sort(bySold);
+    return [...picked, ...rest].slice(0, 8);
   }, [all]);
 
   const catName = (id: string) => cats.find((c) => c.id === id)?.name ?? id;
