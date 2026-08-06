@@ -50,7 +50,7 @@ export async function fetchProductNamesLite(): Promise<Product[]> {
   if (!sb) return mergedProducts();
   const { data, error } = await sb
     .from("products")
-    .select("id,name,category,badge,sort")
+    .select("id,name,category,badge,sort,slug:data->>slug")
     .order("sort", { ascending: true });
   if (error || !data) return mergedProducts();
   return (data as unknown as Record<string, unknown>[])
@@ -64,7 +64,7 @@ export async function fetchProductsLite(): Promise<Product[]> {
   const { data, error } = await sb
     .from("products")
     .select(
-      "id,name,category,price,sold,featured,badge,sort," +
+      "id,name,category,price,sold,featured,badge,sort,slug:data->>slug," +
         "emoji:data->>emoji,gradient:data->>gradient,imageSrc:data->>imageSrc," +
         "rating:data->rating,oldPrice:data->oldPrice,pricing:data->pricing,priceRates:data->priceRates"
     )
@@ -77,6 +77,7 @@ export async function fetchProductsLite(): Promise<Product[]> {
     (r) =>
       ({
         id: r.id,
+        slug: (r.slug as string | null) ?? undefined,
         name: r.name,
         category: r.category,
         price: r.price ?? 0,

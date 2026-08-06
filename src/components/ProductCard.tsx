@@ -4,6 +4,7 @@ import {
   formatPriceRange,
   getCategory,
   priceRange,
+  productPath,
   type Product,
 } from "@/lib/products";
 import ProductVisual from "./ProductVisual";
@@ -20,7 +21,7 @@ export default function ProductCard({ product }: { product: Product }) {
   const isRange = range.max > range.min;
   return (
     <Link
-      href={`/products/${product.id}`}
+      href={productPath(product)}
       className="group flex flex-col overflow-hidden rounded-3xl bg-white shadow-[0_4px_20px_rgba(245,180,0,0.10)] ring-1 ring-amber-100 transition hover:-translate-y-1 hover:shadow-[0_10px_30px_rgba(245,180,0,0.20)]"
     >
       <div className="relative">

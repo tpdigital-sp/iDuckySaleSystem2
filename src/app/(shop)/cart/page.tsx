@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LINE_URL } from "@/components/LineButton";
-import { activeRate, formatPrice } from "@/lib/products";
+import { activeRate, formatPrice, productPath } from "@/lib/products";
 import {
   fetchShopPayment,
   freeShippingMinOf,
@@ -284,7 +284,7 @@ export default function CartPage() {
                     .map((u) => u.trim())
                     .filter(Boolean);
                   return (
-                    <Link href={`/products/${product.id}`} className="relative shrink-0">
+                    <Link href={productPath(product)} className="relative shrink-0">
                       {artUrls[0] ? (
                         <>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -313,7 +313,7 @@ export default function CartPage() {
                 <div className="flex min-w-0 flex-1 flex-col">
                   <div className="flex items-start justify-between gap-2">
                     <Link
-                      href={`/products/${product.id}`}
+                      href={productPath(product)}
                       className="line-clamp-1 text-sm font-bold text-stone-800 hover:text-amber-700"
                     >
                       {product.name}

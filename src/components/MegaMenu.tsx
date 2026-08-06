@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MegaBadge, MegaColumn, MegaGroup, MegaItem } from "@/lib/home-nav";
 import { fetchProductNamesLite } from "@/lib/product-repo";
-import type { Product } from "@/lib/products";
+import { productPath, type Product } from "@/lib/products";
 
 /**
  * เมนูดรอปดาวน์เต็มความกว้าง (mega menu) — แบบเดียวกับหน้าเว็บหลักของร้าน
@@ -44,7 +44,7 @@ function itemsOf(col: MegaColumn, products: Product[]): MegaItem[] {
   return products
     .filter((p) => p.category === col.autoCategory)
     .slice(0, col.autoLimit ?? 6)
-    .map((p) => ({ id: p.id, label: p.name, href: `/products/${p.id}`, badge: badgeOf(p) }));
+    .map((p) => ({ id: p.id, label: p.name, href: productPath(p), badge: badgeOf(p) }));
 }
 
 /** เนื้อในของแผง — ใช้ทั้งหน้าร้านจริงและหน้าตัวอย่างในหลังบ้าน */

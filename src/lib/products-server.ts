@@ -17,12 +17,22 @@ function serverClient() {
   return url && key ? createClient(url, key, { auth: { persistSession: false } }) : null;
 }
 
-export const getProductServer = cache(async (id: string): Promise<Product | undefined> => {
+export const getProductServer = cache(async (rawId: string): Promise<Product | undefined> => {
+  // ลิงก์ภาษาไทย (slug) มาถึงแบบ percent-encoded — ถอดก่อนค้น (id อังกฤษเดิมไม่กระทบ)
+  let id = rawId;
+  try {
+    id = decodeURIComponent(rawId);
+  } catch {}
   const sb = serverClient();
   let product: Product | undefined;
   if (sb) {
     const { data } = await sb.from("products").select("data").eq("id", id).maybeSingle();
     product = (data?.data as Product | undefined) ?? undefined;
+    if (!product) {
+      // ไม่เจอด้วย id → ลองค้นด้วยลิงก์ตามชื่อ (slug) ที่ตั้งจากหลังบ้าน
+      const { data: bySlug } = await sb.from("products").select("data").eq("data->>slug", id).limit(1);
+      product = (bySlug?.[0]?.data as Product | undefined) ?? undefined;
+    }
   }
   if (!product) product = getProduct(id);
   if (!product) return undefined;

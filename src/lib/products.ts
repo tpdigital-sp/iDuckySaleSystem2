@@ -225,6 +225,11 @@ export function designFeeFor(product: Product, selections: Record<string, string
 
 export interface Product {
   id: string;
+  /**
+   * ลิงก์ตามชื่อ (slug) — ตั้งได้จากหลังบ้าน ให้ URL หน้าสินค้าอ่านรู้เรื่อง เช่น /products/ส่วนเสริม-ติ่งห้อย-2cm
+   * ไม่ตั้ง = ใช้ id ตามเดิม · ลิงก์เก่าแบบ id ยังเปิดได้เสมอ (หน้าเซิร์ฟเวอร์ค้นทั้งสองแบบ)
+   */
+  slug?: string;
   name: string;
   category: CategoryId;
   price: number;
@@ -335,6 +340,24 @@ export interface CustomOption {
    * ไม่ตั้ง/ว่าง = ปิดทุกกลุ่ม
    */
   keepOptions?: string[];
+}
+
+/**
+ * แปลงข้อความ (เช่น ชื่อสินค้า) เป็น slug สำหรับลิงก์ — คงภาษาไทยไว้
+ * เว้นวรรค→ขีดกลาง · ตัดอักขระที่มีความหมายพิเศษใน URL ออก
+ */
+export function slugifyProductName(name: string): string {
+  return name
+    .trim()
+    .replace(/[()[\]{}<>#%?&=+/\\'"`!,;:@^|~*$]/g, " ")
+    .trim()
+    .replace(/\s+/g, "-");
+}
+
+/** ลิงก์หน้าสินค้า — ใช้ slug (ลิงก์ตามชื่อ) ถ้าตั้งไว้ ไม่งั้นใช้ id ตามเดิม */
+export function productPath(p: { id: string; slug?: string }): string {
+  const s = (p.slug ?? "").trim();
+  return `/products/${encodeURIComponent(s || p.id)}`;
 }
 
 /** ตัวแปลงหน่วยเดิม (backward-compat กับสินค้าที่บันทึกก่อนมีคลังหน่วย) */

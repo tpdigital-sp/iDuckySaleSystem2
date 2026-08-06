@@ -21,7 +21,8 @@ import {
 import { autoSeoOf } from "@/lib/auto-seo";
 import { BULK_ASK_DEFAULT } from "@/lib/products";
 import { hasOverride, resetOverride } from "@/lib/product-store";
-import { deleteProductDb, fetchProductRaw, persistProduct } from "@/lib/product-repo";
+import { deleteProductDb, fetchProductNamesLite, fetchProductRaw, persistProduct } from "@/lib/product-repo";
+import { slugifyProductName } from "@/lib/products";
 import { getAdminSession } from "@/lib/auth";
 import { loadUnits, upsertUnit, removeUnit, unitToMeter, type CustomUnit } from "@/lib/units";
 import { fetchPresets } from "@/lib/preset-repo";
@@ -87,6 +88,8 @@ type DraftFaq = { q: string; a: string };
 type DraftSeo = { title: string; description: string; keywords: string; faqs: DraftFaq[] };
 type Draft = {
   name: string;
+  /** ลิงก์ตามชื่อ (slug) ของหน้าสินค้า — ว่าง = ใช้ id ตามเดิม */
+  slug: string;
   category: CategoryId;
   price: string;
   oldPrice: string;
@@ -228,6 +231,7 @@ function fileToBlob(file: File, max = 1200, quality = 0.82): Promise<Blob> {
 function toDraft(p: Product): Draft {
   return {
     name: p.name,
+    slug: p.slug ?? "",
     category: p.category,
     price: String(p.price),
     oldPrice: p.oldPrice ? String(p.oldPrice) : "",
@@ -641,7 +645,9 @@ export default function ProductEditor({ product }: { product: Product }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId]);
 
-  const productUrl = `/products/${productId}`;
+  // ลิงก์ตามที่ตั้งในดราฟต์ — slug ภาษาไทยโชว์ตรง ๆ อ่านรู้เรื่อง (เบราว์เซอร์ encode ให้เองตอนเปิด)
+  const draftSlug = slugifyProductName(draft.slug);
+  const productUrl = `/products/${draftSlug || productId}`;
   // เติมโดเมนหลัง mount เพื่อให้ HTML ฝั่งเซิร์ฟเวอร์/เบราว์เซอร์ตรงกัน
   const [fullUrl, setFullUrl] = useState(productUrl);
   useEffect(() => {
@@ -757,6 +763,17 @@ export default function ProductEditor({ product }: { product: Product }) {
     const price = Number(draft.price);
     const oldPrice = draft.oldPrice ? Number(draft.oldPrice) : undefined;
     if (!draft.name.trim() || !Number.isFinite(price) || price <= 0) return;
+
+    // ลิงก์ตามชื่อ (slug) — กันชนกับสินค้าตัวอื่น (ทั้ง id และ slug ของเขา) ก่อนบันทึก
+    const slug = slugifyProductName(draft.slug);
+    if (slug && slug !== productId) {
+      const all = await fetchProductNamesLite();
+      const dup = all.find((p) => p.id !== productId && (p.id === slug || (p.slug ?? "") === slug));
+      if (dup) {
+        setSaveError(`ลิงก์ "${slug}" ถูกใช้กับสินค้า "${dup.name}" อยู่แล้ว — ตั้งเป็นอย่างอื่น`);
+        return;
+      }
+    }
 
     const emoji = draft.emoji.trim() || "🦆";
     const photos = draft.photos.filter(Boolean).slice(0, MAX_PHOTOS);
@@ -928,6 +945,7 @@ export default function ProductEditor({ product }: { product: Product }) {
     const updated: Product = {
       ...original,
       name: draft.name.trim(),
+      slug: slug && slug !== productId ? slug : undefined,
       category: draft.category,
       featured: draft.featured,
       badge: (draft.badge || undefined) as Product["badge"],
@@ -1180,30 +1198,64 @@ export default function ProductEditor({ product }: { product: Product }) {
         แยกจากปุ่มนำเข้าคนละแถว เพราะเดิมสองปุ่มติดกันแล้วสับสน:
         "คัดลอก" ทำกับลิงก์ที่โชว์อยู่ · "ดึงจาก URL" ให้ไปวางลิงก์อีกอันคนละเว็บ
       */}
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-white p-3 ring-1 ring-slate-200">
-        <span className="shrink-0 text-xs font-bold text-slate-500">🔗 ลิงก์หน้าร้านของสินค้านี้</span>
-        <code className="min-w-40 flex-1 truncate rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-600">{fullUrl}</code>
-        <button
-          type="button"
-          onClick={() => {
-            navigator.clipboard?.writeText(fullUrl);
-            setUrlCopied(true);
-            setTimeout(() => setUrlCopied(false), 1500);
-          }}
-          className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
-            urlCopied ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-          }`}
-        >
-          {urlCopied ? "คัดลอกแล้ว ✓" : "📋 คัดลอกลิงก์"}
-        </button>
-        <a
-          href={fullUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="shrink-0 rounded-full bg-slate-100 px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-200"
-        >
-          ↗ เปิดดูหน้าร้าน
-        </a>
+      <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="shrink-0 text-xs font-bold text-slate-500">🔗 ลิงก์หน้าร้านของสินค้านี้</span>
+          <code className="min-w-40 flex-1 truncate rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-600">{fullUrl}</code>
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard?.writeText(fullUrl);
+              setUrlCopied(true);
+              setTimeout(() => setUrlCopied(false), 1500);
+            }}
+            className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
+              urlCopied ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+            }`}
+          >
+            {urlCopied ? "คัดลอกแล้ว ✓" : "📋 คัดลอกลิงก์"}
+          </button>
+          <a
+            href={fullUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="shrink-0 rounded-full bg-slate-100 px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-200"
+          >
+            ↗ เปิดดูหน้าร้าน
+          </a>
+        </div>
+        {/* ── ตั้งลิงก์เอง (slug) — ให้ URL อ่านรู้เรื่องตามชื่อสินค้า แทนรหัสอย่าง /products/2cm ── */}
+        <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-dashed border-slate-200 pt-2">
+          <span className="shrink-0 text-xs font-semibold text-slate-500">✏️ ตั้งลิงก์เอง</span>
+          <input
+            value={draft.slug}
+            onChange={(e) => patch({ slug: e.target.value })}
+            onBlur={() => patch({ slug: slugifyProductName(draft.slug) })}
+            placeholder={`ว่าง = ใช้รหัสเดิม (${productId})`}
+            className="min-w-40 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-700 focus:border-sky-400 focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => patch({ slug: slugifyProductName(draft.name) })}
+            className="shrink-0 rounded-full bg-sky-100 px-3.5 py-1.5 text-xs font-bold text-sky-700 hover:bg-sky-200"
+            title="สร้างลิงก์จากชื่อสินค้าให้อัตโนมัติ"
+          >
+            ✨ ตั้งตามชื่อสินค้า
+          </button>
+          {draft.slug && (
+            <button
+              type="button"
+              onClick={() => patch({ slug: "" })}
+              className="shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-500 hover:bg-slate-200"
+              title="กลับไปใช้รหัสเดิม"
+            >
+              ✕ ล้าง
+            </button>
+          )}
+          <span className="w-full text-[11px] text-slate-400">
+            มีผลหลังกดบันทึก · ลิงก์เดิม /products/{productId} ยังเปิดได้ตามปกติ (ไม่ตายจากที่แชร์ไปแล้ว)
+          </span>
+        </div>
       </div>
 
       {/* ── นำเข้าข้อมูลจากเว็บราคา (คนละเรื่องกับลิงก์ด้านบน) ── */}
