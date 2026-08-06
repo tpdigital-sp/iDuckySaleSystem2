@@ -89,7 +89,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   // ลิงก์ไฟล์ลาย / อีเมล (ไม่อัปโหลดขึ้นเว็บ — กันไฟล์ถูกบีบอัด)
   const [artLink, setArtLink] = useState("");
   // ภาพลายที่ลูกค้าแนบขึ้นเว็บ (เก็บไฟล์ต้นฉบับ — ใช้เป็นแนวทางให้กราฟฟิก)
-  const [artFiles, setArtFiles] = useState<{ url: string; name: string; w: number; h: number }[]>([]);
+  const [artFiles, setArtFiles] = useState<{ url: string; name: string; w: number; h: number; hash?: string }[]>([]);
   const [artBusy, setArtBusy] = useState(false);
   const [artErr, setArtErr] = useState("");
   const [artDrag, setArtDrag] = useState(false); // ลากไฟล์อยู่เหนือกล่องแนบลาย
@@ -317,12 +317,60 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [artFiles.length]);
 
-  /** อัปโหลดภาพลาย — ส่งไฟล์ต้นฉบับขึ้นเก็บ แล้วอ่านความละเอียดจริงไว้เตือนถ้าภาพเล็กเกินไป */
+  /**
+   * อัปโหลดภาพลาย — ตรวจก่อนขึ้นเซิร์ฟเวอร์ทีละชั้น:
+   * ① ชนิดไฟล์ต้องเป็นรูป (JPG/PNG/WEBP) ② ขนาดไม่เกิน 15MB ③ เปิดอ่านได้จริง (ไฟล์ไม่เสีย)
+   * ④ ไม่ซ้ำกับรูปที่แนบไปแล้ว (เทียบเนื้อไฟล์จริงด้วย SHA-256 — รูปซ้ำทำให้นับจำนวนลายเพี้ยน)
+   * ผ่านครบแล้วค่อยอัปโหลด + อ่านความละเอียดไว้เตือนถ้าภาพเล็ก
+   */
   async function uploadArtwork(files: FileList | null) {
     if (!files?.length) return;
     setArtErr("");
     setArtBusy(true);
+    const skipped: string[] = [];
+    // เนื้อไฟล์ที่มีอยู่แล้ว (รูปเก่าก่อนมีระบบ hash จะไม่มีค่า — ข้ามการเทียบ)
+    const seen = new Set(artFiles.map((x) => x.hash).filter(Boolean) as string[]);
     for (const f of Array.from(files).slice(0, 5 - artFiles.length)) {
+      // ① ชนิดไฟล์
+      if (!/^image\/(jpeg|png|webp)$/i.test(f.type)) {
+        skipped.push(`“${f.name}” ไม่ใช่ไฟล์รูป JPG/PNG`);
+        continue;
+      }
+      // ② ขนาดไฟล์
+      if (f.size > 15 * 1024 * 1024) {
+        skipped.push(`“${f.name}” ใหญ่เกิน 15MB`);
+        continue;
+      }
+      // ③ เปิดอ่านได้จริง
+      const dim = await new Promise<{ w: number; h: number }>((resolve) => {
+        const img = new window.Image();
+        const obj = URL.createObjectURL(f);
+        img.onload = () => {
+          URL.revokeObjectURL(obj);
+          resolve({ w: img.naturalWidth, h: img.naturalHeight });
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(obj);
+          resolve({ w: 0, h: 0 });
+        };
+        img.src = obj;
+      });
+      if (!dim.w || !dim.h) {
+        skipped.push(`“${f.name}” ไฟล์เสีย เปิดไม่ได้ — ลองบันทึกใหม่แล้วแนบอีกครั้ง`);
+        continue;
+      }
+      // ④ รูปซ้ำ
+      let hash = "";
+      try {
+        const buf = await crypto.subtle.digest("SHA-256", await f.arrayBuffer());
+        hash = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+      } catch {
+        /* เบราว์เซอร์เก่าไม่มี crypto.subtle = ข้ามชั้นนี้ไป */
+      }
+      if (hash && seen.has(hash)) {
+        skipped.push(`“${f.name}” เป็นรูปเดียวกับที่แนบไปแล้ว — ข้ามให้ (กันนับจำนวนลายซ้ำ)`);
+        continue;
+      }
       try {
         const fd = new FormData();
         fd.append("file", f);
@@ -332,18 +380,19 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
           setArtErr(j?.error ?? "อัปโหลดไม่สำเร็จ");
           break;
         }
-        const dim = await new Promise<{ w: number; h: number }>((resolve) => {
-          const img = new window.Image();
-          img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
-          img.onerror = () => resolve({ w: 0, h: 0 });
-          img.src = URL.createObjectURL(f);
-        });
-        setArtFiles((cur) => [...cur, { url: j.url!, name: f.name, ...dim }]);
+        if (hash) seen.add(hash);
+        // กันซ้ำอีกชั้นตอนบันทึกจริง — เผื่อวางรูปเดิมรัว ๆ ระหว่างไฟล์แรกยังอัปโหลดไม่เสร็จ
+        setArtFiles((cur) =>
+          hash && cur.some((x) => x.hash === hash)
+            ? cur
+            : [...cur, { url: j.url!, name: f.name, ...dim, ...(hash ? { hash } : {}) }]
+        );
       } catch {
         setArtErr("อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง");
         break;
       }
     }
+    if (skipped.length) setArtErr((cur) => [cur, ...skipped].filter(Boolean).join(" · "));
     setArtBusy(false);
   }
 
@@ -971,7 +1020,18 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                       >
                         −
                       </button>
-                      <span className="w-10 text-center text-sm font-bold text-teal-900">{designs}</span>
+                      <input
+                        value={designs}
+                        onChange={(e) => {
+                          setDesignsTouched(true);
+                          const n = parseInt(e.target.value.replace(/\D/g, ""), 10);
+                          setDesigns(Number.isFinite(n) ? Math.min(Math.max(1, n), Math.max(1, maxDesigns)) : 1);
+                        }}
+                        onFocus={(e) => e.target.select()}
+                        inputMode="numeric"
+                        aria-label="จำนวนลายที่คละ (พิมพ์เลขได้)"
+                        className="w-12 bg-transparent text-center text-sm font-bold text-teal-900 outline-none"
+                      />
                       <button
                         type="button"
                         onClick={() => {
