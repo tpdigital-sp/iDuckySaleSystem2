@@ -105,6 +105,8 @@ type Draft = {
   highlights: string[];
   images: DraftImage[];
   body: DraftBody[];
+  /** แท็บข้อมูลสินค้า (รายละเอียดเพิ่มเติม / วิธีสั่งงาน / การรับประกัน ฯลฯ) */
+  tabs: { title: string; text: string }[];
   seo: DraftSeo;
   custom: DraftCustom;
   /** ⭐ ขึ้นบล็อก "สินค้าแนะนำ" บนหน้าแรก */
@@ -280,6 +282,7 @@ function toDraft(p: Product): Draft {
     })),
     highlights: [...p.highlights],
     images: p.images.map((im) => ({ ...im })),
+    tabs: (p.tabs ?? []).map((t) => ({ title: t.title, text: t.text })),
     body: (p.body ?? []).map((b) => ({
       heading: b.heading,
       text: b.text,
@@ -935,6 +938,12 @@ export default function ProductEditor({ product }: { product: Product }) {
       highlights: draft.highlights.map((h) => h.trim()).filter(Boolean),
       images,
       body,
+      tabs: (() => {
+        const list = draft.tabs
+          .map((t) => ({ title: t.title.trim(), text: t.text.trim() }))
+          .filter((t) => t.title && t.text);
+        return list.length ? list : undefined;
+      })(),
       seo: buildSeo(draft.seo),
       custom,
       bulkAskQty: Number(draft.bulkAskQty) > 0 ? Math.floor(Number(draft.bulkAskQty)) : undefined,
@@ -2521,6 +2530,84 @@ export default function ProductEditor({ product }: { product: Product }) {
           </div>
         </div>
       )}
+
+      {/* แท็บข้อมูลสินค้า — แสดงเป็นแถบแท็บท้ายหน้าสินค้า (แบบหน้ารายการราคาเว็บเดิม) */}
+      <section className="relative mt-4 rounded-2xl border border-l-4 border-slate-200/70 border-l-sky-400 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-bold text-sky-800">📑 แท็บข้อมูลสินค้า ({draft.tabs.length} แท็บ)</h2>
+          <button
+            type="button"
+            onClick={() => patch({ tabs: [...draft.tabs, { title: "", text: "" }] })}
+            className="rounded-full bg-amber-500 px-4 py-1.5 text-xs font-bold text-white hover:bg-amber-600"
+          >
+            ＋ เพิ่มแท็บ
+          </button>
+        </div>
+        <p className="mb-3 text-[11px] leading-relaxed text-slate-400">
+          แสดงเป็นแถบแท็บท้ายหน้าสินค้า เช่น รายละเอียดเพิ่มเติม · วิธีสั่งงาน · การรับประกันสินค้า —
+          ขึ้นต้นบรรทัดด้วย &ldquo;•&rdquo; = รายการมีจุดนำ · ลงท้ายบรรทัดด้วย &ldquo;::&rdquo; = หัวข้อย่อยตัวหนา
+        </p>
+        {draft.tabs.length === 0 && (
+          <p className="rounded-2xl bg-slate-50 p-4 text-center text-xs text-slate-400">
+            ยังไม่มีแท็บ — กด &ldquo;เพิ่มแท็บ&rdquo; เพื่อใส่ เช่น รายละเอียดเพิ่มเติม / วิธีสั่งงาน / การรับประกันสินค้า
+          </p>
+        )}
+        <div className="space-y-3">
+          {draft.tabs.map((t, i) => (
+            <div key={i} className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+              <div className="flex items-center gap-2">
+                <span className="shrink-0 text-xs font-bold text-slate-400">แท็บ {i + 1}</span>
+                <input
+                  value={t.title}
+                  onChange={(e) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)) })}
+                  placeholder="ชื่อแท็บ เช่น รายละเอียดเพิ่มเติม"
+                  className="min-w-0 flex-1 rounded-xl bg-white px-3 py-2 text-sm font-bold ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                />
+                <button
+                  type="button"
+                  disabled={i === 0}
+                  onClick={() => {
+                    const c = [...draft.tabs];
+                    [c[i - 1], c[i]] = [c[i], c[i - 1]];
+                    patch({ tabs: c });
+                  }}
+                  className="rounded-full px-2.5 py-1 text-xs text-slate-500 ring-1 ring-slate-200 hover:bg-white disabled:opacity-30"
+                  aria-label="เลื่อนแท็บไปก่อนหน้า"
+                >
+                  ←
+                </button>
+                <button
+                  type="button"
+                  disabled={i === draft.tabs.length - 1}
+                  onClick={() => {
+                    const c = [...draft.tabs];
+                    [c[i + 1], c[i]] = [c[i], c[i + 1]];
+                    patch({ tabs: c });
+                  }}
+                  className="rounded-full px-2.5 py-1 text-xs text-slate-500 ring-1 ring-slate-200 hover:bg-white disabled:opacity-30"
+                  aria-label="เลื่อนแท็บไปถัดไป"
+                >
+                  →
+                </button>
+                <button
+                  type="button"
+                  onClick={() => patch({ tabs: draft.tabs.filter((_, j) => j !== i) })}
+                  className="rounded-full px-2.5 py-1 text-xs font-bold text-rose-500 ring-1 ring-rose-200 hover:bg-rose-50"
+                >
+                  ลบ
+                </button>
+              </div>
+              <textarea
+                value={t.text}
+                onChange={(e) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })}
+                rows={7}
+                placeholder={"• ข้อแรก\n• ข้อสอง\n\nหัวข้อย่อย::\nข้อความอธิบาย"}
+                className="mt-2 w-full resize-y rounded-xl bg-white px-3 py-2 text-sm leading-relaxed ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+              />
+            </div>
+          ))}
+        </div>
+      </section>
 
       {/* เนื้อหารายละเอียดสินค้า (body) */}
       <section id="sec-body" className={`relative border-l-4 border-l-indigo-400 mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("body")}`}>

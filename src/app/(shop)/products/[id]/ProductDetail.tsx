@@ -39,6 +39,35 @@ import ProductCard from "@/components/ProductCard";
  * แยก "ข้อควรทราบ" เป็นข้อ ๆ — บรรทัดที่ขึ้นต้นด้วย * / ** / *** = ข้อใหม่
  * บรรทัดถัดไปที่ไม่ได้ขึ้นต้นด้วย * ถือเป็นบรรทัดต่อของข้อเดิม (คงการขึ้นบรรทัดไว้)
  */
+/**
+ * เนื้อหาในแท็บข้อมูลสินค้า — บรรทัดขึ้นต้น "•" = รายการมีจุดนำ ·
+ * บรรทัดที่ครอบ/ลงท้ายด้วย "::" = หัวข้อย่อยตัวหนา · บรรทัดว่าง = เว้นช่วง
+ */
+function ProductTabText({ text }: { text: string }) {
+  return (
+    <div className="space-y-2 text-sm leading-relaxed text-stone-600">
+      {text.split("\n").map((line, i) => {
+        const t = line.trim();
+        if (!t) return <div key={i} className="h-2" />;
+        if (t.startsWith("•"))
+          return (
+            <p key={i} className="flex gap-2.5 pl-1">
+              <span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" />
+              <span className="min-w-0 flex-1">{t.replace(/^•\s*/, "")}</span>
+            </p>
+          );
+        if (/^::.*::$|::$/.test(t))
+          return (
+            <p key={i} className="pt-2 text-[15px] font-extrabold text-sky-800">
+              {t.replace(/^::|::$/g, "").trim()}
+            </p>
+          );
+        return <p key={i}>{t}</p>;
+      })}
+    </div>
+  );
+}
+
 function termLines(raw: string): string[] {
   const out: string[] = [];
   for (const line of raw.split("\n")) {
@@ -56,6 +85,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   const category = getCategory(product.category);
   const { addItem } = useCart();
   const [imageIndex, setImageIndex] = useState(0);
+  // แท็บข้อมูลสินค้า (รายละเอียดเพิ่มเติม / วิธีสั่งงาน ฯลฯ)
+  const [tabIndex, setTabIndex] = useState(0);
   const [qty, setQty] = useState(1);
   // 🔍 รูปที่กำลังเปิดดูขนาดใหญ่ (lightbox) — ว่าง = ปิดอยู่
   const [zoomSrc, setZoomSrc] = useState("");
@@ -1345,6 +1376,32 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
         </div>
       </div>
 
+
+      {/* ═══ แท็บข้อมูลสินค้า — รายละเอียดเพิ่มเติม / วิธีสั่งงาน / การรับประกัน (แบบหน้า pricelist เว็บเดิม) ═══ */}
+      {(product.tabs?.length ?? 0) > 0 && (
+        <section className="mt-14">
+          <div className="flex overflow-x-auto rounded-t-2xl bg-[#8fb6d6] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {product.tabs!.map((t, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setTabIndex(i)}
+                aria-selected={i === Math.min(tabIndex, product.tabs!.length - 1)}
+                className={`flex-1 whitespace-nowrap px-5 py-3 text-center text-sm font-bold transition md:text-[15px] ${
+                  i === Math.min(tabIndex, product.tabs!.length - 1)
+                    ? "bg-[#b9d6ec] text-stone-800"
+                    : "text-white hover:bg-white/15"
+                }`}
+              >
+                {t.title}
+              </button>
+            ))}
+          </div>
+          <div className="rounded-b-2xl bg-white px-5 py-6 ring-1 ring-stone-200 md:px-8">
+            <ProductTabText text={product.tabs![Math.min(tabIndex, product.tabs!.length - 1)].text} />
+          </div>
+        </section>
+      )}
 
       {/* รายละเอียดสินค้า (body) */}
       {(product.body ?? []).length > 0 && (
