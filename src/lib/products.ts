@@ -173,6 +173,23 @@ export function includedDesigns(rate: PriceRate, qty: number): number {
   return Math.max(1, Math.floor(qty / rate.minPerDesign));
 }
 
+/** จำนวนลายที่เลือกไว้ใน selections — "3 ลาย" → 3 (ไม่ได้เลือก = 1 ลาย) */
+export function designCountOf(selections: Record<string, string>): number {
+  const n = parseInt(String(selections[DESIGN_LABEL] ?? ""), 10);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+/**
+ * จำนวนที่ใช้ "หาเรทราคา" ในตารางขั้นบันได
+ * สินค้าที่ตั้ง tierByDesign = คิดเรทตามจำนวนชิ้นต่อลาย ⌊จำนวน ÷ ลาย⌋ (อย่างน้อย 1)
+ * เช่น เคส 11 ชิ้นคละ 11 ลาย → 1 ชิ้น/ลาย → เรทราคาปลีก (ไม่ใช่เรท 11 ชิ้น)
+ * ส่วน "ราคารวม" ยังคูณจำนวนชิ้นจริงทั้งหมดตามเดิม
+ */
+export function tierQtyFor(product: Product, selections: Record<string, string>, qty: number): number {
+  if (!product.tierByDesign) return qty;
+  return Math.max(1, Math.floor(qty / designCountOf(selections)));
+}
+
 /**
  * ค่าคละลายเกินโควตา (บาท ทั้งรายการ) — ลูกค้าเลือกจำนวนลายมากกว่าที่รวมในราคา
  * และเรทนั้นเปิดให้คละเกินได้ (extraDesignFee) → ส่วนเกินคิดลายละ extraDesignFee
@@ -215,6 +232,11 @@ export interface Product {
    * เรทแรกคือค่าเริ่มต้น · pricing จะถูกตั้งเป็นตารางของเรทแรกไว้ด้วยเสมอ (ให้โค้ดเดิมทำงานต่อได้)
    */
   priceRates?: PriceRate[];
+  /**
+   * คิดเรทราคาตามจำนวนชิ้น "ต่อลาย" ไม่ใช่ยอดรวม — สำหรับสินค้าที่คละลายแล้วต้นทุนไม่ลด
+   * เช่น เคส 11 ชิ้นคละ 11 ลาย = ลายละ 1 ชิ้น → คิดเรทราคาปลีก (ราคารวมยังคูณ 11 ชิ้นตามเดิม)
+   */
+  tierByDesign?: boolean;
   /** ข้อมูล SEO/AEO (ไม่มี = ใช้ค่าจากชื่อ/รายละเอียดอัตโนมัติ) */
   seo?: ProductSeo;
   /**
@@ -1972,7 +1994,8 @@ export function unitPriceFor(
   const m = activeMatrix(product, selections);
   if (m) {
     const cells = m.cells[priceMatrixKey(m, selections)];
-    let base = cells && cells.length ? (cells[tierIndex(m, qty)] ?? product.price) : product.price;
+    // สินค้าที่ตั้ง "คิดเรทตามชิ้นต่อลาย" — หาเรทจาก ⌊จำนวน ÷ ลาย⌋ แทนยอดรวม
+    let base = cells && cells.length ? (cells[tierIndex(m, tierQtyFor(product, selections, qty))] ?? product.price) : product.price;
     // กลุ่มตัวเลือกที่ไม่ใช่แกนตาราง (เช่น อะไหล่พิเศษ) บวกเพิ่มต่อหน่วยตาม extra ของตัวที่เลือก
     // (กลุ่มที่ตั้ง extraFromQty ไว้ ต่ำกว่าเกณฑ์ = ราคารวมแล้ว ไม่บวก)
     for (const opt of product.options) {

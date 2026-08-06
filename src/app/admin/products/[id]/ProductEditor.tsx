@@ -62,6 +62,8 @@ type DraftPricing = {
   tiers: DraftTier[];
   /** key คอลัมน์ → ราคาต่อ tier (เป็น string เพื่อกรอกในช่อง) */
   cells: Record<string, string[]>;
+  /** คิดเรทตามจำนวนชิ้น "ต่อลาย" — คละ 11 ลายใน 11 ชิ้น = เรทราคาปลีก (กันคละลายเยอะแต่ได้เรทส่ง) */
+  tierByDesign: boolean;
 };
 /** ข้อมูลกำกับเรทราคา (ชื่อ + เงื่อนไขการสั่ง) */
 type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; freeMixBelowQty: string };
@@ -252,8 +254,9 @@ function toDraft(p: Product): Draft {
           cells: Object.fromEntries(
             Object.entries(p.pricing.cells).map(([k, v]) => [k, v.map((n) => String(n))])
           ),
+          tierByDesign: !!p.tierByDesign,
         }
-      : { enabled: false, unit: "ชิ้น", driverLabels: [], tiers: [], cells: {} },
+      : { enabled: false, unit: "ชิ้น", driverLabels: [], tiers: [], cells: {}, tierByDesign: !!p.tierByDesign },
     rateMeta: p.priceRates?.[0]
       ? {
           label: p.priceRates[0].label,
@@ -927,6 +930,8 @@ export default function ProductEditor({ product }: { product: Product }) {
       ...(rules.length > 0 ? { rules } : { rules: undefined }),
       pricing,
       priceRates,
+      // คิดเรทตามชิ้นต่อลาย — มีผลเฉพาะเมื่อเปิดตารางราคาขั้นบันไดอยู่
+      tierByDesign: pricing && draft.pricing.tierByDesign ? true : undefined,
       highlights: draft.highlights.map((h) => h.trim()).filter(Boolean),
       images,
       body,
@@ -1028,6 +1033,7 @@ export default function ProductEditor({ product }: { product: Product }) {
         driverLabels: [...p.pricing.driverLabels],
         tiers: p.pricing.tiers.map((t) => ({ upTo: t.upTo == null ? "" : String(t.upTo), label: t.label })),
         cells: Object.fromEntries(Object.entries(p.pricing.cells).map(([k, v]) => [k, v.map(String)])),
+        tierByDesign: draft.pricing.tierByDesign,
       },
       ...(photos.length ? { photos } : {}),
     });
@@ -1895,6 +1901,20 @@ export default function ProductEditor({ product }: { product: Product }) {
 
         {draft.pricing.enabled ? (
           <div className="mt-3 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+            {/* เงื่อนไขคละลาย: เรทราคาคิดจากจำนวนชิ้นต่อลาย ไม่ใช่ยอดรวม */}
+            <label className="mb-2.5 flex cursor-pointer items-start gap-2 rounded-xl bg-teal-50 px-3 py-2.5 ring-1 ring-teal-100">
+              <input
+                type="checkbox"
+                checked={draft.pricing.tierByDesign}
+                onChange={(e) => patchPricing({ tierByDesign: e.target.checked })}
+                className="mt-0.5 h-4 w-4 accent-teal-600"
+              />
+              <span className="text-xs leading-relaxed text-teal-900">
+                <span className="font-bold">🎨 คิดเรทราคาตามจำนวนชิ้น &ldquo;ต่อลาย&rdquo;</span> — ลูกค้าคละลายแล้วเรทคิดจาก
+                ⌊จำนวน ÷ ลาย⌋ เช่น สั่ง 11 ชิ้นคละ 11 ลาย = ลายละ 1 ชิ้น → ได้เรทราคาปลีก ไม่ใช่เรท 11 ชิ้น
+                (หน้าสินค้าจะมีช่อง &ldquo;คละกี่ลาย&rdquo; ให้ลูกค้าเลือก และนับอัตโนมัติตามรูปลายที่แนบ)
+              </span>
+            </label>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="text-xs text-slate-600">
                 <span className="font-bold text-slate-700">เปิดใช้</span> · หน่วย {draft.pricing.unit || "—"} ·{" "}

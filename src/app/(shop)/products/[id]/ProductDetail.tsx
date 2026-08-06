@@ -22,6 +22,7 @@ import {
   RATE_LABEL,
   resolveSelections,
   tierIndex,
+  tierQtyFor,
   unitPriceFor,
   needsStockCheck,
   artworkIsRequired,
@@ -128,6 +129,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   const [rateTouched, setRateTouched] = useState(false);
   const rate = rates.length ? (rates.find((r) => r.label === rateLabel) ?? rates[0]) : undefined;
   // เรทที่เลือกติดไปกับ selections → ตะกร้า/ออเดอร์เห็นเป็น "เรทราคา: …" และคิดราคาตามเรทนั้น
+  // (จำนวนลายเติมทีหลังตรง effectiveWithDesigns — ต้องประกาศ designs ก่อน)
   const effective = useMemo(
     () => (rate ? { ...resolved, [RATE_LABEL]: rate.label } : resolved),
     [resolved, rate]
@@ -139,13 +141,15 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     if (rateTouched && rateMinQty > 1) setQty((q) => Math.max(q, rateMinQty));
   }, [rateMinQty, rateTouched]);
 
-  // ── จำนวนลายที่คละ (เรทที่กำหนดขั้นต่ำต่อลาย) ──
+  // ── จำนวนลายที่คละ (เรทที่กำหนดขั้นต่ำต่อลาย / สินค้าที่คิดเรทตามชิ้นต่อลาย) ──
   const [designs, setDesigns] = useState(1);
   // ลูกค้ากดปรับเองแล้ว = หยุดนับอัตโนมัติ (บางงานลาย 1 แบบแนบรูปหลายมุม)
   const [designsTouched, setDesignsTouched] = useState(false);
+  // สินค้าที่ตั้ง "คิดเรทตามชิ้นต่อลาย" — คละกี่ลายก็ได้ แต่เรทราคาคิดจาก ⌊จำนวน ÷ ลาย⌋
+  const tierByDesign = !!product.tierByDesign;
   // ลายที่รวมในราคาตามจำนวนที่สั่ง · เรทที่เปิด extraDesignFee คละเกินได้ (จ่ายเพิ่มต่อลาย ไม่เกินจำนวนชิ้น)
   const included = rate?.minPerDesign ? includedDesigns(rate, qty) : 0;
-  const maxDesigns = rate?.minPerDesign ? maxDesignsFor(rate, qty) : 0;
+  const maxDesigns = rate?.minPerDesign ? maxDesignsFor(rate, qty) : tierByDesign ? qty : 0;
   const freeMix = !!rate && rate.minPerDesign != null && isFreeMix(rate, qty);
   useEffect(() => {
     if (maxDesigns > 0) setDesigns((d) => Math.min(Math.max(1, d), maxDesigns));
@@ -157,6 +161,14 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   }, [artFiles.length, maxDesigns, designsTouched]);
   const extraDesigns = rate?.extraDesignFee ? Math.max(0, designs - included) : 0;
   const designFee = extraDesigns * (rate?.extraDesignFee ?? 0);
+  // จำนวนลายติดไปกับ selections ตั้งแต่ตอนดูราคา → ราคาสด/ตะกร้า/ออเดอร์คิดเรทตามชิ้นต่อลายตรงกัน
+  const effectiveWithDesigns = useMemo(
+    () =>
+      (rate?.minPerDesign || tierByDesign) && designs >= 1
+        ? { ...effective, [DESIGN_LABEL]: `${designs} ลาย` }
+        : effective,
+    [effective, rate, tierByDesign, designs]
+  );
 
   // ✨ เลือกเรทให้อัตโนมัติจากจำนวน + จำนวนลาย
   // - ยังไม่เคยกดเลือกเรทเอง: เลือกเรทที่ขั้นต่ำสูงสุดที่จำนวนถึง (50 ชิ้น → เรท 2)
@@ -215,8 +227,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   const customPrice = custom && customValid && custom.mode === "area" ? customUnitPrice(custom, cW, cH) : 0;
 
   const baseUnitPrice = useMemo(
-    () => unitPriceFor(product, effective, qty),
-    [product, effective, qty]
+    () => unitPriceFor(product, effectiveWithDesigns, qty),
+    [product, effectiveWithDesigns, qty]
   );
   const unitPrice = useCustom ? customPrice : baseUnitPrice;
 
@@ -243,11 +255,11 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     });
   }, [matrix, product]);
 
-  // tier ปัจจุบันของราคาขั้นบันได (ถ้ามี)
+  // tier ปัจจุบันของราคาขั้นบันได (ถ้ามี) — สินค้าคิดเรทตามชิ้นต่อลาย ไฮไลต์เรทของ ⌊จำนวน ÷ ลาย⌋
   const currentTier = useMemo(() => {
     if (!matrix) return null;
-    return tierIndex(matrix, qty);
-  }, [matrix, qty]);
+    return tierIndex(matrix, tierQtyFor(product, effectiveWithDesigns, qty));
+  }, [matrix, qty, product, effectiveWithDesigns]);
 
   const related = PRODUCTS.filter(
     (p) => p.category === product.category && p.id !== product.id
@@ -356,14 +368,14 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     // สั่งจำนวนมาก → ติดธงให้ทีมเช็คสต๊อก/คิวผลิตแล้วยืนยันจำนวนกับลูกค้าก่อนเริ่มงาน
     if (bulkAsk) extra["รอเช็คสต๊อก"] = "สั่งจำนวนมาก — รอทีมงานยืนยันจำนวน";
     if (note.trim()) extra["หมายเหตุ"] = note.trim();
-    // จำนวนลายที่คละ (เฉพาะเรทที่มีระบบลาย) — เก็บเป็นตัวเลือกให้เห็นในตะกร้า/ออเดอร์
-    if (rate?.minPerDesign && designs >= 1) extra[DESIGN_LABEL] = `${designs} ลาย`;
+    // จำนวนลายที่คละ (เรทที่มีระบบลาย / สินค้าคิดเรทตามชิ้นต่อลาย) — เก็บเป็นตัวเลือกให้เห็นในตะกร้า/ออเดอร์
+    if ((rate?.minPerDesign || tierByDesign) && designs >= 1) extra[DESIGN_LABEL] = `${designs} ลาย`;
     if (useCustom) {
       if (!custom || !customValid) return; // ต้องกรอกขนาดให้ครบก่อน
       // เก็บขนาดที่ระบุลง selections (เป็น key ของตะกร้า + ใช้คิดราคาซ้ำ)
       addItem(product.id, { [custom.label]: `${cW}×${cH} ${custom.unit}`, ...extra }, qty);
     } else {
-      addItem(product.id, { ...effective, ...extra }, qty);
+      addItem(product.id, { ...effectiveWithDesigns, ...extra }, qty);
     }
     setNote("");
     setArtLink("");
@@ -941,8 +953,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                   <span className="font-extrabold text-amber-600">{formatPrice(unitPrice * qty + designFee)}</span>
                 </p>
               )}
-              {/* จำนวนลายที่คละ (เรทที่กำหนดขั้นต่ำต่อลาย) */}
-              {rate?.minPerDesign != null && rate.minPerDesign > 0 && maxDesigns >= 1 && (
+              {/* จำนวนลายที่คละ (เรทที่กำหนดขั้นต่ำต่อลาย / สินค้าคิดเรทตามชิ้นต่อลาย) */}
+              {((rate?.minPerDesign ?? 0) > 0 || tierByDesign) && maxDesigns >= 1 && (
                 <div className="mt-2 rounded-2xl bg-teal-50 px-3 py-2.5 ring-1 ring-teal-100">
                   <div className="flex flex-wrap items-center gap-2.5">
                     <span className="text-xs font-bold text-teal-900">🎨 คละกี่ลาย:</span>
@@ -982,21 +994,29 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                       <span className="text-xs font-bold text-amber-700">+{formatPrice(designFee)}</span>
                     )}
                   </div>
-                  {freeMix ? (
+                  {tierByDesign && !rate?.minPerDesign ? (
+                    // สินค้าคิดเรทตามชิ้นต่อลาย — โชว์วิธีคิดให้ลูกค้าเห็นเลยว่าเรทมาจากไหน
+                    <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
+                      💡 ราคา/{matrix?.unit ?? "ชิ้น"} คิดตามจำนวน &ldquo;ต่อลาย&rdquo;: {qty.toLocaleString("th-TH")} ÷ {designs.toLocaleString("th-TH")} ลาย
+                      ≈ {Math.max(1, Math.floor(qty / Math.max(1, designs))).toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}/ลาย
+                      → ใช้เรทราคาของ {Math.max(1, Math.floor(qty / Math.max(1, designs))).toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
+                      {designs > 1 ? " · อยากได้เรทถูกลง ลดจำนวนลายหรือเพิ่มจำนวนสั่ง" : ""}
+                    </p>
+                  ) : freeMix && rate?.minPerDesign ? (
                     <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
                       ✨ ช่วงราคาปลีกคละลายได้อิสระ — ลายละกี่ชิ้นก็ได้ ไม่คิดเพิ่ม (สูงสุด {qty.toLocaleString("th-TH")} ลาย)
                       {rate.freeMixBelowQty
                         ? ` · สั่งตั้งแต่ ${rate.freeMixBelowQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป ขั้นต่ำลายละ ${rate.minPerDesign.toLocaleString("th-TH")}`
                         : ""}
                     </p>
-                  ) : (
+                  ) : rate?.minPerDesign ? (
                   <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
                     รวมในราคา {included.toLocaleString("th-TH")} ลาย (ขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"})
                     {rate.extraDesignFee
                       ? ` · คละเกินได้ ลายละ +${formatPrice(rate.extraDesignFee)}`
                       : " · เพิ่มลายได้ด้วยการเพิ่มจำนวนสั่ง"}
                   </p>
-                  )}
+                  ) : null}
                   {/* แนบภาพลายมากกว่าจำนวนลายที่นับไว้ → เตือน (ราคา/เงื่อนไขคิดตามจำนวนลาย) */}
                   {artFiles.length > designs &&
                     (designs >= maxDesigns ? (
