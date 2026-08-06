@@ -73,6 +73,66 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   // badge แจ้งจำนวนประเมินความพึงพอใจใหม่ที่ยังไม่ได้เปิดดู (นับต่อเครื่องด้วย localStorage)
   const [newRatings, setNewRatings] = useState(0);
 
+  // ── โลโก้หลังบ้าน — กดที่โลโก้มุมซ้ายบนเพื่อเปลี่ยนรูปได้เลย (เก็บในแถวเมนู __site_nav__) ──
+  const [adminLogo, setAdminLogo] = useState<string | undefined>(undefined);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const canEditLogo = perms.includes("settings.manage");
+  useEffect(() => {
+    fetch("/api/nav", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const u = (j as { nav?: { adminLogo?: string } } | null)?.nav?.adminLogo;
+        if (typeof u === "string" && u) setAdminLogo(u);
+      })
+      .catch(() => {});
+  }, []);
+  /** บันทึกโลโก้ (undefined = กลับไปใช้เป็ด 🦆) — โหลดเมนูล่าสุดมาก่อน กันเขียนทับส่วนอื่น */
+  async function saveAdminLogo(url?: string) {
+    setLogoBusy(true);
+    try {
+      const r = await fetch("/api/nav", { cache: "no-store" });
+      const j = (await r.json().catch(() => null)) as { nav?: Record<string, unknown> } | null;
+      const res = await fetch("/api/nav", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nav: { ...(j?.nav ?? {}), adminLogo: url } }),
+      });
+      if (res.ok) setAdminLogo(url);
+      else alert("บันทึกโลโก้ไม่สำเร็จ");
+    } catch {
+      alert("บันทึกโลโก้ไม่สำเร็จ");
+    } finally {
+      setLogoBusy(false);
+    }
+  }
+  async function pickAdminLogo(f: File) {
+    setLogoBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      fd.append("productId", "sitenav");
+      const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+      const j = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
+      if (!res.ok || !j?.url) {
+        alert(j?.error ?? "อัปโหลดไม่สำเร็จ");
+        setLogoBusy(false);
+        return;
+      }
+      await saveAdminLogo(j.url);
+    } catch {
+      alert("อัปโหลดไม่สำเร็จ");
+      setLogoBusy(false);
+    }
+  }
+  /** ไอคอนโลโก้ — รูปที่ตั้งไว้ หรือเป็ด 🦆 เดิม */
+  const logoIcon = (size: string, rounded: string) =>
+    adminLogo ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={adminLogo} alt="โลโก้หลังบ้าน" className={`${size} shrink-0 ${rounded} bg-white object-cover shadow-sm ring-1 ring-slate-200`} />
+    ) : (
+      <span className={`flex ${size} shrink-0 items-center justify-center ${rounded} bg-ducky text-xl shadow-sm`}>🦆</span>
+    );
+
   /**
    * กลุ่มเมนูที่หุบอยู่ — เริ่มต้น "หุบทุกกลุ่ม" (เมนูเยอะ เห็นภาพรวมง่ายกว่า)
    * กดหัวกลุ่มเพื่อกาง แล้วระบบจำไว้ต่อเครื่อง
@@ -272,15 +332,53 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         }`}
       >
         <div className={`mb-4 flex items-center ${railed ? "flex-col gap-2" : "justify-between gap-2"}`}>
-          <Link href="/admin" className={`flex items-center gap-2.5 py-1 ${railed ? "" : "px-2"}`} title="iDucky Admin">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-ducky text-xl shadow-sm">🦆</span>
+          <div className={`flex items-center gap-2.5 py-1 ${railed ? "" : "px-2"}`}>
+            {/* กดที่โลโก้เพื่อเปลี่ยนรูปได้เลย (เฉพาะคนมีสิทธิ์ตั้งค่าระบบ · โหมดพับใช้เป็นลิงก์ตามเดิม) */}
+            {canEditLogo && !railed ? (
+              <label className="group/logo relative h-9 w-9 shrink-0 cursor-pointer" title="กดเพื่อเปลี่ยนโลโก้หลังบ้าน">
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                  className="hidden"
+                  disabled={logoBusy}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (f) void pickAdminLogo(f);
+                  }}
+                />
+                {logoIcon("h-9 w-9", "rounded-xl")}
+                <span
+                  className={`absolute inset-0 ${logoBusy ? "grid" : "hidden group-hover/logo:grid"} place-items-center rounded-xl bg-slate-900/50 text-xs text-white`}
+                >
+                  {logoBusy ? "⏳" : "📤"}
+                </span>
+                {adminLogo && !logoBusy && (
+                  <button
+                    type="button"
+                    title="เอารูปออก — กลับไปใช้เป็ด 🦆"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void saveAdminLogo(undefined);
+                    }}
+                    className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 place-items-center rounded-full bg-white text-[10px] font-bold text-rose-500 shadow ring-1 ring-slate-200 group-hover/logo:grid"
+                  >
+                    ✕
+                  </button>
+                )}
+              </label>
+            ) : (
+              <Link href="/admin" title="iDucky Admin" className="shrink-0">
+                {logoIcon("h-9 w-9", "rounded-xl")}
+              </Link>
+            )}
             {!railed && (
-              <span className="leading-tight">
+              <Link href="/admin" className="leading-tight" title="iDucky Admin">
                 <span className="block text-sm font-bold text-slate-900">iDucky Admin</span>
                 <span className="block text-[11px] text-slate-400">ระบบหลังบ้าน</span>
-              </span>
+              </Link>
             )}
-          </Link>
+          </div>
           <button
             type="button"
             onClick={toggleRail}
@@ -331,7 +429,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         {/* แถบบน (มือถือ) */}
         <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-slate-200 bg-white/90 px-4 backdrop-blur md:hidden print:hidden">
           <Link href="/admin" className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-ducky text-lg">🦆</span>
+            {logoIcon("h-8 w-8", "rounded-lg")}
             <span className="text-sm font-bold text-slate-900">iDucky Admin</span>
           </Link>
           <button

@@ -124,6 +124,8 @@ export interface SiteNav {
   tilesPos?: "top" | "hero" | "features";
   /** โลโก้ร้านบนแถบเมนู (URL รูปที่อัปโหลด) — ไม่ตั้ง = ใช้โลโก้เป็ด+ข้อความเดิม */
   logo?: string;
+  /** โลโก้ระบบหลังบ้าน (มุมซ้ายบน sidebar) — กดที่โลโก้ในหลังบ้านเพื่อเปลี่ยนได้เลย · ไม่ตั้ง = เป็ด 🦆 */
+  adminLogo?: string;
   /** แบนเนอร์ใหญ่บนหน้าแรก (hero) */
   hero: HeroBanner;
   /**
@@ -562,6 +564,7 @@ export function siteNavOf(raw: Partial<SiteNav> | null | undefined): SiteNav {
     tilesPos: (["top", "hero", "features"] as const).includes(raw?.tilesPos as "top") ? raw?.tilesPos : "hero",
     // โลโก้รับเฉพาะ path ภายใน หรือ URL http(s) (กัน javascript: หลุดเข้า src)
     logo: /^(\/|https?:\/\/)/.test(str(raw?.logo).trim()) ? str(raw?.logo).trim() : undefined,
+    adminLogo: /^(\/|https?:\/\/)/.test(str(raw?.adminLogo).trim()) ? str(raw?.adminLogo).trim() : undefined,
     hero: heroOf(raw?.hero),
     ...(homeBlocksOf(raw?.home) ? { home: homeBlocksOf(raw?.home) } : {}),
   };
