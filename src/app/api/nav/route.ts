@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { requirePerm } from "@/lib/server/require-perm";
 import { DEFAULT_SITE_NAV, NAV_ROW_ID, siteNavOf, type SiteNav } from "@/lib/home-nav";
+import { sanitizeHtml } from "@/lib/server/sanitize-html";
 
 export const runtime = "nodejs";
 
@@ -32,6 +33,8 @@ export async function POST(req: Request) {
   }
 
   const nav = siteNavOf(body.nav);
+  // บล็อกโค้ด HTML บนหน้าแรก — กรองแท็กอันตรายก่อนเก็บ (ขึ้นหน้าเว็บสาธารณะ)
+  if (nav.home) nav.home = nav.home.map((b) => (b.html ? { ...b, html: sanitizeHtml(b.html) } : b));
 
   // id ห้ามซ้ำ — ใช้เป็น key ตอนวาดรายการ ถ้าซ้ำแล้วลบ/เลื่อนจะสลับผิดตัว
   for (const [what, list] of [

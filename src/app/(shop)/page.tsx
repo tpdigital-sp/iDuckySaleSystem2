@@ -9,6 +9,7 @@ import ProductCard from "@/components/ProductCard";
 import NavTiles from "@/components/NavTiles";
 import { fetchSiteNav, visiblePerks, visibleTiles, DEFAULT_SITE_NAV, type NavPerk, type NavTile, type SiteNav } from "@/lib/home-nav";
 import { defaultHomeBlocks, visibleBlocks, type HomeBlock } from "@/lib/home-layout";
+import HomeGallery from "@/components/HomeGallery";
 
 export default function HomePage() {
   // โหลดสินค้า (Supabase หรือ localStorage) หลัง mount
@@ -236,6 +237,56 @@ export default function HomePage() {
           </section>
         );
       }
+
+      case "imagetext":
+        if (!blk.image && !blk.heading) return null;
+        return (
+          <section key={blk.id} className="mt-12">
+            <div className={`grid items-center gap-6 md:grid-cols-2 md:gap-10`}>
+              {blk.image && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={blk.image}
+                  alt={blk.heading ?? ""}
+                  className={`w-full rounded-[2rem] shadow-sm ${blk.align === "right" ? "md:order-2" : ""}`}
+                />
+              )}
+              <div className={`text-center ${blk.align === "right" ? "md:order-1" : ""}`}>
+                {blk.heading && <h2 className="text-xl font-extrabold text-amber-950 md:text-2xl">{blk.heading}</h2>}
+                {blk.body && (
+                  <p className="mx-auto mt-3 max-w-lg whitespace-pre-line text-sm leading-relaxed text-stone-600">{blk.body}</p>
+                )}
+                {blk.btnLabel && (
+                  <Link
+                    href={blk.btnHref || "/products"}
+                    className="mt-5 inline-block rounded-full bg-amber-400 px-7 py-3 text-sm font-bold text-white shadow transition hover:scale-105 hover:bg-amber-500"
+                  >
+                    {blk.btnLabel}
+                  </Link>
+                )}
+              </div>
+            </div>
+          </section>
+        );
+
+      case "gallery":
+        if (!blk.images?.length) return null;
+        return (
+          <section key={blk.id} className="mt-12">
+            <HomeGallery heading={blk.heading} images={blk.images} cols={blk.cols ?? 3} display={blk.display ?? "grid"} />
+          </section>
+        );
+
+      case "html":
+        if (!blk.html) return null;
+        return (
+          <section
+            key={blk.id}
+            className="mt-12 overflow-x-auto"
+            // โค้ดผ่านการกรองฝั่งเซิร์ฟเวอร์ตอนบันทึกแล้ว (ตัด script/on*)
+            dangerouslySetInnerHTML={{ __html: blk.html }}
+          />
+        );
 
       case "text":
         if (!blk.heading && !blk.body) return null;

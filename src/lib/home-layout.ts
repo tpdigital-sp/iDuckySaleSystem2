@@ -15,6 +15,9 @@ export type HomeBlockKind =
   | "categories" // การ์ดหมวดหมู่สินค้า
   | "products" // แถวสินค้า (ขายดี / แนะนำ / ตามหมวด)
   | "text" // ข้อความอิสระ (หัวข้อ + คำบรรยาย)
+  | "imagetext" // รูป + ข้อความ 2 คอลัมน์
+  | "gallery" // แกลเลอรีรูป 2-4 คอลัมน์
+  | "html" // โค้ด HTML (สำหรับคนที่เขียนเองเป็น — ระบบกรองแท็กอันตรายให้)
   | "cta"; // กล่องชวนซื้อท้ายหน้า
 
 export interface HomeBlock {
@@ -39,9 +42,20 @@ export interface HomeBlock {
   /** ข้อความบรรยาย (text / cta) */
   body?: string;
 
-  /** kind "cta": ปุ่ม */
+  /** kind "cta" / "imagetext": ปุ่ม */
   btnLabel?: string;
   btnHref?: string;
+
+  /** kind "imagetext": รูปอยู่ซ้ายหรือขวา */
+  align?: "left" | "right";
+  /** kind "gallery": รูปหลายใบ (แต่ละใบมีลิงก์ของตัวเองได้) */
+  images?: { src: string; href?: string }[];
+  /** kind "gallery": กี่คอลัมน์ (2-4) */
+  cols?: number;
+  /** kind "gallery": grid = ตาราง · slider = สไลด์เลื่อน (แบบ ALL PRODUCT เว็บหลัก) */
+  display?: "grid" | "slider";
+  /** kind "html": โค้ดที่กรองแล้วจากเซิร์ฟเวอร์ */
+  html?: string;
 }
 
 /** ชื่อ + คำอธิบายของแต่ละชนิดบล็อก (ใช้ทั้งในลิสต์และหน้าจอเลือกบล็อก) */
@@ -53,6 +67,9 @@ export const BLOCK_META: Record<HomeBlockKind, { icon: string; label: string; de
   categories: { icon: "🗂️", label: "หมวดหมู่สินค้า", desc: "การ์ดหมวด — แก้รูป/ชื่อที่ตั้งค่าระบบ" },
   products: { icon: "🔥", label: "แถวสินค้า", desc: "ขายดี / แนะนำ / ตามหมวด" },
   text: { icon: "📝", label: "ข้อความ", desc: "หัวข้อ + คำบรรยาย (ประกาศร้าน ฯลฯ)" },
+  imagetext: { icon: "🖼️", label: "รูป + ข้อความ", desc: "2 คอลัมน์ รูปซ้ายหรือขวา + หัวข้อ/ข้อความ/ปุ่ม" },
+  gallery: { icon: "🧩", label: "แกลเลอรีรูป / สไลด์", desc: "รูปหลายใบ เลื่อนเป็นสไลด์อัตโนมัติ หรือเรียงตาราง · กดแต่ละใบไปลิงก์ได้" },
+  html: { icon: "🧑‍💻", label: "โค้ด HTML", desc: "วางโค้ดเอง (ระบบกรองแท็กอันตรายให้)" },
   cta: { icon: "📣", label: "กล่องชวนซื้อ", desc: "กล่องสีท้ายหน้า + ปุ่ม" },
 };
 
@@ -69,6 +86,12 @@ export function makeBlock(kind: HomeBlockKind): HomeBlock {
       return { ...base, source: "best", limit: 4, heading: "🔥 สินค้าขายดี" };
     case "text":
       return { ...base, heading: "หัวข้อ", body: "ข้อความที่อยากบอกลูกค้า" };
+    case "imagetext":
+      return { ...base, align: "left", heading: "หัวข้อ", body: "ข้อความประกอบรูป", btnLabel: "", btnHref: "/products" };
+    case "gallery":
+      return { ...base, cols: 3, images: [], display: "slider", heading: "ALL PRODUCT" };
+    case "html":
+      return { ...base, html: "<div style=\"text-align:center;padding:24px\">\n  <h2>เขียน HTML ตรงนี้</h2>\n</div>" };
     case "cta":
       return {
         ...base,
@@ -127,6 +150,19 @@ export function homeBlocksOf(raw: unknown): HomeBlock[] | undefined {
         ...(str(o.body) ? { body: str(o.body).slice(0, 1000) } : {}),
         ...(str(o.btnLabel) ? { btnLabel: str(o.btnLabel).slice(0, 100) } : {}),
         ...(url(o.btnHref) ? { btnHref: url(o.btnHref) } : {}),
+        ...(o.align === "right" ? { align: "right" as const } : o.align === "left" ? { align: "left" as const } : {}),
+        ...(Array.isArray(o.images)
+          ? {
+              images: o.images
+                .map((im) => ({ src: url((im as { src?: string })?.src) ?? "", href: url((im as { href?: string })?.href) }))
+                .filter((im) => im.src)
+                .slice(0, 12)
+                .map((im) => ({ src: im.src, ...(im.href ? { href: im.href } : {}) })),
+            }
+          : {}),
+        ...(Number(o.cols) >= 2 && Number(o.cols) <= 4 ? { cols: Math.floor(Number(o.cols)) } : {}),
+        ...(o.display === "slider" || o.display === "grid" ? { display: o.display } : {}),
+        ...(str(o.html) ? { html: str(o.html).slice(0, 100000) } : {}),
       };
     })
     .filter((x): x is HomeBlock => !!x);

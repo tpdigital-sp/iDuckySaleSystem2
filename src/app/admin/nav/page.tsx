@@ -203,6 +203,122 @@ function ImageField({
 }
 
 /** หัวข้อส่วนย่อยในตัวแก้ไขเมนูดรอปดาวน์ — เลขตรงกับผังด้านบน */
+/** ภาพจำลองหน้าตาบล็อก (วาดด้วยกล่องสี) — ใช้ในจานเลือกบล็อกของ Home Builder */
+function BlockPreview({ kind }: { kind: HomeBlockKind }) {
+  const box = "rounded bg-slate-300";
+  switch (kind) {
+    case "image":
+      return <span className="block h-12 w-full max-w-40 rounded-md bg-gradient-to-br from-sky-300 to-teal-200" />;
+    case "hero":
+      return (
+        <span className="block w-full max-w-40 rounded-md bg-gradient-to-br from-amber-200 to-yellow-100 p-1.5">
+          <span className="block h-1.5 w-10 rounded bg-white/80" />
+          <span className="mt-1 block h-2 w-20 rounded bg-amber-900/50" />
+          <span className="mt-0.5 block h-1.5 w-16 rounded bg-amber-900/30" />
+          <span className="mt-1.5 flex gap-1">
+            <span className="h-2.5 w-8 rounded-full bg-amber-400" />
+            <span className="h-2.5 w-8 rounded-full bg-white" />
+          </span>
+        </span>
+      );
+    case "tiles":
+      return (
+        <span className="grid w-full max-w-40 grid-cols-5 gap-0.5">
+          <span className="col-span-2 row-span-2 h-11 rounded bg-sky-200" />
+          <span className="col-span-3 h-5 rounded bg-cyan-200" />
+          <span className="h-5 rounded bg-teal-200" />
+          <span className="h-5 rounded bg-amber-200" />
+          <span className="h-5 rounded bg-yellow-200" />
+        </span>
+      );
+    case "perks":
+      return (
+        <span className="flex w-full max-w-40 gap-1">
+          {[0, 1, 2, 3].map((i) => (
+            <span key={i} className="h-8 flex-1 rounded bg-white ring-1 ring-slate-200" />
+          ))}
+        </span>
+      );
+    case "categories":
+      return (
+        <span className="flex w-full max-w-40 gap-1">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <span key={i} className="flex-1">
+              <span className={`block h-6 ${box}`} />
+              <span className="mt-0.5 block h-1.5 rounded bg-slate-200" />
+            </span>
+          ))}
+        </span>
+      );
+    case "products":
+      return (
+        <span className="w-full max-w-40">
+          <span className="mb-1 block h-2 w-16 rounded bg-slate-400" />
+          <span className="flex gap-1">
+            {[0, 1, 2, 3].map((i) => (
+              <span key={i} className="flex-1">
+                <span className={`block h-7 ${box}`} />
+                <span className="mt-0.5 block h-1 rounded bg-slate-200" />
+              </span>
+            ))}
+          </span>
+        </span>
+      );
+    case "text":
+      return (
+        <span className="w-full max-w-32 text-center">
+          <span className="mx-auto block h-2 w-20 rounded bg-slate-400" />
+          <span className="mx-auto mt-1 block h-1.5 w-28 rounded bg-slate-300" />
+          <span className="mx-auto mt-0.5 block h-1.5 w-24 rounded bg-slate-300" />
+        </span>
+      );
+    case "imagetext":
+      return (
+        <span className="flex w-full max-w-40 items-center gap-1.5">
+          <span className={`h-12 w-1/2 ${box}`} />
+          <span className="flex-1">
+            <span className="block h-2 w-12 rounded bg-slate-400" />
+            <span className="mt-1 block h-1.5 rounded bg-slate-300" />
+            <span className="mt-0.5 block h-1.5 w-3/4 rounded bg-slate-300" />
+            <span className="mt-1 block h-2.5 w-10 rounded-full bg-amber-400" />
+          </span>
+        </span>
+      );
+    case "gallery":
+      return (
+        <span className="w-full max-w-40">
+          <span className="flex items-center gap-1">
+            <span className="text-[10px] text-slate-400">❮</span>
+            {[0, 1, 2].map((i) => (
+              <span key={i} className={`h-9 flex-1 ${box}`} />
+            ))}
+            <span className="text-[10px] text-slate-400">❯</span>
+          </span>
+          <span className="mt-1 flex justify-center gap-0.5">
+            <span className="h-1 w-1 rounded-full bg-sky-500" />
+            <span className="h-1 w-1 rounded-full bg-slate-300" />
+            <span className="h-1 w-1 rounded-full bg-slate-300" />
+          </span>
+        </span>
+      );
+    case "html":
+      return (
+        <span className="block w-full max-w-32 rounded-md bg-slate-800 p-1.5 text-left">
+          <span className="block h-1.5 w-16 rounded bg-emerald-400/70" />
+          <span className="mt-0.5 block h-1.5 w-20 rounded bg-sky-400/60" />
+          <span className="mt-0.5 block h-1.5 w-12 rounded bg-emerald-400/70" />
+        </span>
+      );
+    case "cta":
+      return (
+        <span className="block w-full max-w-36 rounded-md bg-gradient-to-r from-pink-200 to-amber-100 p-2 text-center">
+          <span className="mx-auto block h-2 w-20 rounded bg-stone-500/60" />
+          <span className="mx-auto mt-1.5 block h-3 w-16 rounded-full bg-rose-400" />
+        </span>
+      );
+  }
+}
+
 function SectionHead({ no, title, desc }: { no: string; title: string; desc: string }) {
   return (
     <div className="flex items-start gap-2">
@@ -395,7 +511,7 @@ function NavEditorInner() {
 
         {/* จานเลือกชนิดบล็อก */}
         {addOpen && (
-          <div className="mt-3 grid gap-2 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-3 grid gap-2.5 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200 sm:grid-cols-2 lg:grid-cols-4">
             {(Object.keys(BLOCK_META) as HomeBlockKind[]).map((k) => (
               <button
                 key={k}
@@ -406,12 +522,16 @@ function NavEditorInner() {
                   setOpenBlock(b.id);
                   setAddOpen(false);
                 }}
-                className="rounded-xl bg-white p-3 text-left ring-1 ring-slate-200 transition hover:ring-amber-300"
+                className="group rounded-xl bg-white p-3 text-left ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-md hover:ring-amber-300"
               >
+                {/* พรีวิวหน้าตาบล็อก (วาดด้วยกล่องสี — เห็นภาพก่อนเพิ่ม) */}
+                <span className="mb-2 flex h-20 items-center justify-center overflow-hidden rounded-lg bg-slate-100 p-2">
+                  <BlockPreview kind={k} />
+                </span>
                 <span className="block text-sm font-bold text-slate-800">
                   {BLOCK_META[k].icon} {BLOCK_META[k].label}
                 </span>
-                <span className={`mt-0.5 block text-[11px] ${faint}`}>{BLOCK_META[k].desc}</span>
+                <span className={`mt-0.5 block text-[11px] leading-snug ${faint}`}>{BLOCK_META[k].desc}</span>
               </button>
             ))}
           </div>
@@ -597,6 +717,196 @@ function NavEditorInner() {
                             ))}
                           </select>
                         </label>
+                      </div>
+                    )}
+                    {b.kind === "imagetext" && (
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {b.image && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={b.image} alt="" className="h-14 w-auto max-w-40 rounded-lg object-cover ring-1 ring-slate-200" />
+                          )}
+                          <label className={`cursor-pointer ${btnNeutral} text-xs`}>
+                            📤 {b.image ? "เปลี่ยนรูป" : "อัปโหลดรูป"}
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const f = e.target.files?.[0];
+                                e.target.value = "";
+                                if (!f) return;
+                                const r = await uploadNavImage(f);
+                                if (r.url) patchBlock(b.id, { image: r.url });
+                              }}
+                            />
+                          </label>
+                          <div className="inline-flex overflow-hidden rounded-lg ring-1 ring-slate-200">
+                            {(["left", "right"] as const).map((al) => (
+                              <button
+                                key={al}
+                                type="button"
+                                onClick={() => patchBlock(b.id, { align: al })}
+                                className={`px-2.5 py-1 text-[11px] font-semibold ${(b.align ?? "left") === al ? "bg-slate-900 text-white" : "bg-white text-slate-500"}`}
+                              >
+                                {al === "left" ? "รูปซ้าย" : "รูปขวา"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <input
+                          value={b.heading ?? ""}
+                          onChange={(e) => patchBlock(b.id, { heading: e.target.value })}
+                          placeholder="หัวข้อ"
+                          className={`w-full font-bold ${inputBase}`}
+                        />
+                        <textarea
+                          value={b.body ?? ""}
+                          onChange={(e) => patchBlock(b.id, { body: e.target.value })}
+                          placeholder="ข้อความประกอบรูป"
+                          rows={2}
+                          className={`w-full ${inputBase}`}
+                        />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            value={b.btnLabel ?? ""}
+                            onChange={(e) => patchBlock(b.id, { btnLabel: e.target.value })}
+                            placeholder="ข้อความบนปุ่ม (เว้นว่าง = ไม่มีปุ่ม)"
+                            className={`w-64 ${inputBase}`}
+                          />
+                          <div className="min-w-56 flex-1">
+                            <LinkPicker value={b.btnHref ?? "/products"} cats={cats} onChange={(v) => patchBlock(b.id, { btnHref: v })} />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {b.kind === "gallery" && (
+                      <div className="space-y-2.5">
+                        <div className="flex flex-wrap items-end gap-3">
+                          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                            หัวข้อ (เว้นว่าง = ไม่แสดง)
+                            <input
+                              value={b.heading ?? ""}
+                              onChange={(e) => patchBlock(b.id, { heading: e.target.value })}
+                              placeholder="ALL PRODUCT"
+                              className={`w-56 ${inputBase}`}
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                            รูปแบบ
+                            <select
+                              value={b.display ?? "grid"}
+                              onChange={(e) => patchBlock(b.id, { display: e.target.value as HomeBlock["display"] })}
+                              className={inputBase}
+                            >
+                              <option value="slider">🎠 สไลด์เลื่อนอัตโนมัติ (แบบ ALL PRODUCT)</option>
+                              <option value="grid">▦ ตารางนิ่ง</option>
+                            </select>
+                          </label>
+                          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                            เห็นพร้อมกัน (จอใหญ่)
+                            <select
+                              value={b.cols ?? 3}
+                              onChange={(e) => patchBlock(b.id, { cols: Number(e.target.value) })}
+                              className={inputBase}
+                            >
+                              {[2, 3, 4].map((n) => (
+                                <option key={n} value={n}>{n} ใบ</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className={`cursor-pointer ${btnNeutral} text-xs`}>
+                            📤 เพิ่มรูป (เลือกได้หลายไฟล์)
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              multiple
+                              className="hidden"
+                              onChange={async (e) => {
+                                const files = [...(e.target.files ?? [])];
+                                e.target.value = "";
+                                // อัปโหลดให้ครบก่อน แล้วค่อยเติมทีเดียวผ่านค่า state ล่าสุด
+                                // (เติมทีละใบระหว่าง await จะอ่านค่าเก่า รูปทับกันเหลือใบเดียว)
+                                const urls: string[] = [];
+                                for (const f of files) {
+                                  const r = await uploadNavImage(f);
+                                  if (r.url) urls.push(r.url);
+                                }
+                                if (urls.length)
+                                  edit((n) => ({
+                                    ...n,
+                                    home: (n.home ?? defaultHomeBlocks(n.tilesPos ?? "hero")).map((x) =>
+                                      x.id === b.id
+                                        ? { ...x, images: [...(x.images ?? []), ...urls.map((src) => ({ src }))] }
+                                        : x
+                                    ),
+                                  }));
+                              }}
+                            />
+                          </label>
+                        </div>
+                        {(b.images ?? []).length === 0 ? (
+                          <p className={`rounded-xl bg-white p-4 text-center text-xs ${faint}`}>ยังไม่มีรูป — กด &ldquo;เพิ่มรูป&rdquo; (แนะนำสัดส่วน 16:12 ขนาดเท่ากันทุกใบ)</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {(b.images ?? []).map((im, ii) => (
+                              <div key={ii} className="flex items-center gap-2 rounded-xl bg-white p-1.5 ring-1 ring-slate-200">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={im.src} alt="" className="h-11 w-16 shrink-0 rounded-lg object-cover" />
+                                <div className="min-w-0 flex-1">
+                                  <LinkPicker
+                                    value={im.href ?? ""}
+                                    cats={cats}
+                                    onChange={(v) =>
+                                      patchBlock(b.id, { images: (b.images ?? []).map((x, j) => (j === ii ? { ...x, href: v } : x)) })
+                                    }
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => ii > 0 && patchBlock(b.id, { images: move(b.images ?? [], ii, -1) })}
+                                  disabled={ii === 0}
+                                  className={`${btnSmGhost} disabled:opacity-30`}
+                                  aria-label="เลื่อนรูปขึ้น"
+                                >
+                                  ↑
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => ii < (b.images ?? []).length - 1 && patchBlock(b.id, { images: move(b.images ?? [], ii, 1) })}
+                                  disabled={ii === (b.images ?? []).length - 1}
+                                  className={`${btnSmGhost} disabled:opacity-30`}
+                                  aria-label="เลื่อนรูปลง"
+                                >
+                                  ↓
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => patchBlock(b.id, { images: (b.images ?? []).filter((_, j) => j !== ii) })}
+                                  className={btnSmDanger}
+                                  aria-label="ลบรูปนี้"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {b.kind === "html" && (
+                      <div className="space-y-1.5">
+                        <textarea
+                          value={b.html ?? ""}
+                          onChange={(e) => patchBlock(b.id, { html: e.target.value })}
+                          rows={10}
+                          spellCheck={false}
+                          className="w-full resize-y rounded-xl bg-slate-900 px-3 py-2.5 font-mono text-xs leading-relaxed text-emerald-200 outline-none"
+                          placeholder="<div>...</div>"
+                        />
+                        <p className={`text-[11px] ${faint}`}>
+                          💡 ใส่ HTML + style ในตัวได้ · ระบบตัด script / on-event / iframe (ยกเว้น YouTube) ให้อัตโนมัติตอนบันทึก
+                        </p>
                       </div>
                     )}
                     {(b.kind === "text" || b.kind === "cta") && (
