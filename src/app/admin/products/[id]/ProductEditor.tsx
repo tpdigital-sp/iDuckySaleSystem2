@@ -380,6 +380,39 @@ function syncLinkedDraft(options: DraftOption[], presets: OptionPreset[]): Draft
   });
 }
 
+/** ปุ่มเลื่อนลำดับ ขึ้น/ลง — ใช้ทั้งกับกลุ่มตัวเลือกและตัวเลือกในกลุ่ม */
+function MoveBtns({
+  onUp,
+  onDown,
+  upDisabled,
+  downDisabled,
+  what,
+  size = "sm",
+}: {
+  onUp: () => void;
+  onDown: () => void;
+  upDisabled: boolean;
+  downDisabled: boolean;
+  what: string;
+  size?: "sm" | "xs";
+}) {
+  const cls =
+    size === "xs"
+      ? "h-4 w-5 text-[9px] leading-none"
+      : "h-4 w-6 text-[10px] leading-none";
+  const base = `grid place-items-center rounded bg-slate-100 font-bold text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 disabled:opacity-30 disabled:hover:bg-slate-100 ${cls}`;
+  return (
+    <div className="flex shrink-0 flex-col gap-0.5">
+      <button type="button" onClick={onUp} disabled={upDisabled} className={base} title={`เลื่อน${what}ขึ้น`} aria-label={`เลื่อน${what}ขึ้น`}>
+        ▲
+      </button>
+      <button type="button" onClick={onDown} disabled={downDisabled} className={base} title={`เลื่อน${what}ลง`} aria-label={`เลื่อน${what}ลง`}>
+        ▼
+      </button>
+    </div>
+  );
+}
+
 const NAV_TONE: Record<string, string> = {
   basic: "bg-sky-100 text-sky-700 hover:bg-sky-200",
   photos: "bg-violet-100 text-violet-700 hover:bg-violet-200",
@@ -692,6 +725,38 @@ export default function ProductEditor({ product }: { product: Product }) {
   const [optFolded, setOptFolded] = useState<Record<number, boolean>>({});
   const isOptFolded = (gi: number) => optFolded[gi] ?? true;
   const toggleOptFold = (gi: number) => setOptFolded((f) => ({ ...f, [gi]: !(f[gi] ?? true) }));
+  /** กลุ่มที่กำลังลากอยู่ (ref อ่านได้ทันทีตอน drop · state ไว้ทำไฮไลต์) */
+  const dragOptRef = useRef<number | null>(null);
+  const [dragOpt, setDragOpt] = useState<number | null>(null);
+
+  /**
+   * ย้ายลำดับกลุ่มตัวเลือก — ลำดับนี้คือลำดับที่ลูกค้าเห็นบนหน้าสินค้า
+   * สถานะยุบ/กางผูกกับ "ลำดับ" จึงต้องสลับตามไปด้วย ไม่งั้นกลุ่มที่กางอยู่จะสลับที่กันเอง
+   * (ตารางราคาไม่กระทบ — คีย์ช่องราคาอ้างชื่อตัวเลือก ไม่ได้อ้างลำดับกลุ่ม)
+   */
+  function moveOptionGroup(from: number, to: number) {
+    if (from === to || to < 0 || to >= draft.options.length) return;
+    const next = [...draft.options];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    patch({ options: next });
+    setOptFolded((f) => {
+      const arr = draft.options.map((_, i) => f[i] ?? true);
+      const [m] = arr.splice(from, 1);
+      arr.splice(to, 0, m);
+      return Object.fromEntries(arr.map((v, i) => [i, v]));
+    });
+  }
+
+  /** ย้ายลำดับตัวเลือกภายในกลุ่ม (ตัวแรก = ค่าเริ่มต้นบนหน้าสินค้า) */
+  function moveOptionChoice(gi: number, from: number, to: number) {
+    const opt = draft.options[gi];
+    if (!opt || from === to || to < 0 || to >= opt.choices.length) return;
+    const choices = [...opt.choices];
+    const [moved] = choices.splice(from, 1);
+    choices.splice(to, 0, moved);
+    patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, choices } : o)) });
+  }
   const activeExtra = rateIdx > 0 ? draft.extraRates[rateIdx - 1] : undefined;
   const activeTiers = rateIdx === 0 ? draft.pricing.tiers : (activeExtra?.tiers ?? []);
   const activeCells = rateIdx === 0 ? draft.pricing.cells : (activeExtra?.cells ?? {});
@@ -1731,9 +1796,44 @@ export default function ProductEditor({ product }: { product: Product }) {
         <div className="space-y-3">
           {draft.options.map((opt, gi) =>
             opt.presetId ? (
-              <div key={gi} className="rounded-2xl bg-sky-50/60 p-3 ring-1 ring-sky-200">
+              <div
+                key={gi}
+                onDragOver={(e) => {
+                  if (dragOptRef.current !== null) e.preventDefault();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragOptRef.current !== null) moveOptionGroup(dragOptRef.current, gi);
+                  dragOptRef.current = null;
+                  setDragOpt(null);
+                }}
+                className={`rounded-2xl bg-sky-50/60 p-3 ring-1 ring-sky-200 ${dragOpt === gi ? "opacity-50" : ""}`}
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
+                    <span
+                      draggable
+                      onDragStart={() => {
+                        dragOptRef.current = gi;
+                        setDragOpt(gi);
+                      }}
+                      onDragEnd={() => {
+                        dragOptRef.current = null;
+                        setDragOpt(null);
+                      }}
+                      className="cursor-grab select-none px-1 text-sm text-slate-300 active:cursor-grabbing"
+                      title="ลากเพื่อสลับลำดับกลุ่ม"
+                      aria-hidden
+                    >
+                      ⠿
+                    </span>
+                    <MoveBtns
+                      what="กลุ่ม"
+                      onUp={() => moveOptionGroup(gi, gi - 1)}
+                      onDown={() => moveOptionGroup(gi, gi + 1)}
+                      upDisabled={gi === 0}
+                      downDisabled={gi === draft.options.length - 1}
+                    />
                     <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-700">
                       🔗 ลิงก์คลัง
                     </span>
@@ -1835,8 +1935,43 @@ export default function ProductEditor({ product }: { product: Product }) {
                 )}
               </div>
             ) : (
-            <div key={gi} className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
+            <div
+              key={gi}
+              onDragOver={(e) => {
+                if (dragOptRef.current !== null) e.preventDefault();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dragOptRef.current !== null) moveOptionGroup(dragOptRef.current, gi);
+                dragOptRef.current = null;
+                setDragOpt(null);
+              }}
+              className={`rounded-2xl bg-white p-3 ring-1 ring-slate-200 ${dragOpt === gi ? "opacity-50" : ""}`}
+            >
               <div className="flex items-center gap-2">
+                <span
+                  draggable
+                  onDragStart={() => {
+                    dragOptRef.current = gi;
+                    setDragOpt(gi);
+                  }}
+                  onDragEnd={() => {
+                    dragOptRef.current = null;
+                    setDragOpt(null);
+                  }}
+                  className="cursor-grab select-none px-1 text-sm text-slate-300 active:cursor-grabbing"
+                  title="ลากเพื่อสลับลำดับกลุ่ม"
+                  aria-hidden
+                >
+                  ⠿
+                </span>
+                <MoveBtns
+                  what="กลุ่ม"
+                  onUp={() => moveOptionGroup(gi, gi - 1)}
+                  onDown={() => moveOptionGroup(gi, gi + 1)}
+                  upDisabled={gi === 0}
+                  downDisabled={gi === draft.options.length - 1}
+                />
                 <input
                   value={opt.label}
                   onChange={(e) => renameOptionGroup(gi, e.target.value)}
@@ -1909,6 +2044,14 @@ export default function ProductEditor({ product }: { product: Product }) {
                 {opt.choices.map((ch, ci) => (
                   <div key={ci} className="flex items-center gap-2">
                     <span className="w-4 text-center text-xs text-slate-300">{ci + 1}</span>
+                    <MoveBtns
+                      size="xs"
+                      what="ตัวเลือก"
+                      onUp={() => moveOptionChoice(gi, ci, ci - 1)}
+                      onDown={() => moveOptionChoice(gi, ci, ci + 1)}
+                      upDisabled={ci === 0}
+                      downDisabled={ci === opt.choices.length - 1}
+                    />
                     <input
                       value={ch.name}
                       onChange={(e) => renameOptionChoice(gi, ci, e.target.value)}
