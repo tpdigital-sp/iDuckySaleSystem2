@@ -1317,24 +1317,17 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                   setArtDrag(false);
                   void uploadArtwork(e.dataTransfer.files);
                 }}
-                className={`mt-5 rounded-2xl p-4 transition ${
+                className={`mt-3 rounded-2xl p-3.5 transition ${
                   artDrag ? "bg-sky-100 ring-2 ring-dashed ring-sky-400" : "bg-sky-50/70 ring-1 ring-sky-200"
                 }`}
               >
-                <p className="text-sm font-bold text-stone-700">
-                  🎨 แนบลายของคุณ{" "}
-                  {artRequired ? (
-                    <span className="font-bold text-rose-600">(จำเป็น — ต้องแนบก่อนสั่ง)</span>
-                  ) : (
-                    <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
-                  )}
-                </p>
-
-                {/* 1) อัปโหลดภาพ */}
-                <p className="mt-2 text-[11px] font-bold text-stone-600">1) อัปโหลดภาพตัวอย่าง (JPG / PNG)</p>
-                <p className="mt-0.5 text-[11px] leading-relaxed text-stone-500">
-                  ใช้<strong className="text-sky-700">เป็นแนวทางให้กราฟฟิกเท่านั้น</strong> — ไฟล์งานพิมพ์คุณภาพเต็ม แนบเป็นลิงก์ในข้อ 2 ครับ
-                </p>
+                {/* 1) อัปโหลดภาพ — หัวข้อใหญ่ซ้ำกับแถบพับด้านบน จึงตัดออก เข้าเรื่องเป็นขั้นตอนเลย */}
+                <div className="flex items-center gap-2">
+                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-sky-600 text-[11px] font-bold text-white">1</span>
+                  <p className="text-xs font-bold text-stone-700">
+                    อัปโหลดภาพตัวอย่าง <span className="font-normal text-stone-400">— ใช้เป็นแนวทางให้กราฟฟิก</span>
+                  </p>
+                </div>
 
                 {artFiles.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -1382,7 +1375,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                       setArtDrag(false);
                       void uploadArtwork(e.dataTransfer.files);
                     }}
-                    className={`mt-2 flex cursor-pointer flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed px-4 py-5 text-center transition ${
+                    className={`mt-2 flex cursor-pointer flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed px-3 py-3 text-center transition ${
                       artDrag ? "border-sky-500 bg-sky-100" : "border-sky-300 bg-white hover:border-sky-400 hover:bg-sky-50"
                     }`}
                   >
@@ -1392,9 +1385,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                       <span className="text-sm font-extrabold text-sky-700">⬇️ ปล่อยไฟล์ตรงนี้ได้เลย</span>
                     ) : (
                       <>
-                        <span className="text-2xl leading-none">🖼️</span>
-                        <span className="text-xs font-extrabold text-sky-700">แตะเพื่อเลือกไฟล์ · ลากรูปมาวาง · หรือ ⌘/Ctrl+V</span>
-                        <span className="text-[11px] font-normal text-stone-400">JPG / PNG / WEBP · สูงสุด 5 รูป · ไม่เกิน 15MB</span>
+                        <span className="text-xs font-extrabold text-sky-700">🖼️ แตะเลือกไฟล์ · ลากมาวาง · ⌘/Ctrl+V</span>
+                        <span className="text-[10px] font-normal text-stone-400">JPG / PNG / WEBP · สูงสุด 5 รูป · ไม่เกิน 15MB</span>
                       </>
                     )}
                     <input
@@ -1413,20 +1405,23 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                 {artErr && <p className="mt-1.5 text-[11px] font-semibold text-rose-600">⚠️ {artErr}</p>}
 
                 {/* 2) ลิงก์ไฟล์ต้นฉบับ */}
-                <label htmlFor="art-link" className="mt-4 block text-[11px] font-bold text-stone-600">
-                  2) แนบลิงก์ไฟล์ลาย หรือ อีเมล <span className="font-normal text-sky-700">(แนะนำ — ได้ไฟล์คุณภาพเต็ม)</span>
-                </label>
-                <p className="mt-0.5 mb-2 text-[11px] leading-relaxed text-stone-500">
-                  Google Drive / Dropbox / OneDrive หรืออีเมลที่ส่งไฟล์ไว้ — เราดึงไฟล์ต้นฉบับไปใช้ผลิต
-                </p>
+                <div className="mt-3.5 flex items-center gap-2">
+                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-sky-600 text-[11px] font-bold text-white">2</span>
+                  <label htmlFor="art-link" className="text-xs font-bold text-stone-700">
+                    ลิงก์ไฟล์งานจริง / อีเมล <span className="font-semibold text-sky-700">(แนะนำ — ได้ไฟล์คุณภาพเต็ม)</span>
+                  </label>
+                </div>
                 <input
                   id="art-link"
                   type="text"
                   value={artLink}
                   onChange={(e) => setArtLink(e.target.value.slice(0, 500))}
                   placeholder="เช่น https://drive.google.com/…  หรือ  yourmail@gmail.com"
-                  className="w-full rounded-xl bg-white px-4 py-2.5 text-sm text-stone-700 ring-1 ring-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-300"
+                  className="mt-1.5 w-full rounded-xl bg-white px-3.5 py-2 text-sm text-stone-700 ring-1 ring-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-300"
                 />
+                <p className="mt-1 text-[10px] leading-relaxed text-stone-400">
+                  Google Drive / Dropbox / OneDrive หรืออีเมลที่ส่งไฟล์ไว้ — เราดึงไฟล์ต้นฉบับไปใช้ผลิต
+                </p>
               </div>
             </div>}
 
