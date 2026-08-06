@@ -1,10 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from "react";
 import Link from "next/link";
 import RequirePerm from "@/components/RequirePerm";
 import NavTiles from "@/components/NavTiles";
-import { BLOCK_META, defaultHomeBlocks, makeBlock, type HomeBlock, type HomeBlockKind } from "@/lib/home-layout";
+import {
+  BLOCK_CATS,
+  BLOCK_LIBRARY,
+  BLOCK_META,
+  defaultHomeBlocks,
+  makeBlock,
+  videoEmbedUrl,
+  type BlockCat,
+  type HomeBlock,
+  type HomeBlockKind,
+} from "@/lib/home-layout";
 import GradientPicker from "@/components/GradientPicker";
 import { fetchCategories, type ShopCategory } from "@/lib/categories";
 import {
@@ -144,6 +154,59 @@ async function uploadNavImage(file: File): Promise<{ url?: string; error?: strin
   }
 }
 
+/**
+ * ครอบพื้นที่ไหนก็ได้ให้ "โยนรูปมาวาง" ได้ — ไฮไลต์ฟ้าตอนลากทับ แล้วส่งไฟล์รูปให้ onFiles
+ * ปุ่มเลือกไฟล์เดิมยังใช้ได้เหมือนเดิม (อันนี้เป็นทางลัดเพิ่ม)
+ */
+function DropZone({
+  onFiles,
+  className = "",
+  children,
+}: {
+  onFiles: (files: File[]) => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  const [over, setOver] = useState(false);
+  // dragenter/leave ยิงซ้ำทุกครั้งที่ลากผ่านลูกข้างใน — นับชั้นไว้กันไฮไลต์กะพริบ
+  const depth = useRef(0);
+  const hasFiles = (e: ReactDragEvent) => e.dataTransfer.types.includes("Files");
+  return (
+    <div
+      onDragEnter={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        depth.current += 1;
+        setOver(true);
+      }}
+      onDragOver={(e) => {
+        if (hasFiles(e)) e.preventDefault();
+      }}
+      onDragLeave={() => {
+        depth.current = Math.max(0, depth.current - 1);
+        if (!depth.current) setOver(false);
+      }}
+      onDrop={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        depth.current = 0;
+        setOver(false);
+        const imgs = [...e.dataTransfer.files].filter((f) => f.type.startsWith("image/"));
+        if (imgs.length) onFiles(imgs);
+      }}
+      className={`relative rounded-xl transition ${over ? "ring-2 ring-sky-400" : ""} ${className}`}
+    >
+      {children}
+      {over && (
+        <span className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-xl bg-sky-100/80 text-sm font-bold text-sky-700">
+          🖼 วางรูปตรงนี้เลย
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** ปุ่มอัปโหลดรูป — ใช้ได้ทั้งรูปการ์ด รูปโปรโมทในเมนู และรูปหัวคอลัมน์ */
 function ImageField({
   value,
@@ -172,7 +235,7 @@ function ImageField({
     <div>
       <p className="text-xs font-semibold text-slate-600">{label}</p>
       {hint && <p className={`mt-0.5 text-[11px] leading-relaxed ${faint}`}>{hint}</p>}
-      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+      <DropZone className="mt-1.5 flex flex-wrap items-center gap-2 p-1" onFiles={(fs) => void upload(fs[0])}>
         {value && (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img src={value} alt="" className="h-10 w-14 rounded-lg object-cover ring-1 ring-slate-200" />
@@ -196,16 +259,81 @@ function ImageField({
             เอารูปออก
           </button>
         )}
-      </div>
+      </DropZone>
       {err && <p className="mt-1 text-xs font-semibold text-rose-600">{err}</p>}
     </div>
   );
 }
 
 /** หัวข้อส่วนย่อยในตัวแก้ไขเมนูดรอปดาวน์ — เลขตรงกับผังด้านบน */
-/** ภาพจำลองหน้าตาบล็อก (วาดด้วยกล่องสี) — ใช้ในจานเลือกบล็อกของ Home Builder */
-function BlockPreview({ kind }: { kind: HomeBlockKind }) {
+/**
+ * ภาพจำลองหน้าตาบล็อก (วาดด้วยกล่องสี) — ใช้ในจานเลือกบล็อกของ Home Builder
+ * pv = id ของตัวเลือกใน BLOCK_LIBRARY (ตัวเลือกชนิดเดียวกันแต่คนละแบบ ได้พรีวิวคนละภาพ)
+ */
+function BlockPreview({ pv }: { pv: string }) {
   const box = "rounded bg-slate-300";
+  // ตารางรูปนิ่ง 2-4 คอลัมน์
+  const gridMatch = pv.match(/^gallery-grid-(\d)$/);
+  if (gridMatch) {
+    const n = Number(gridMatch[1]);
+    return (
+      <span className="grid w-full max-w-40 gap-1" style={{ gridTemplateColumns: `repeat(${n}, 1fr)` }}>
+        {Array.from({ length: n }, (_, i) => (
+          <span key={i} className={`${n === 2 ? "h-12" : n === 3 ? "h-10" : "h-8"} ${box}`} />
+        ))}
+      </span>
+    );
+  }
+  switch (pv) {
+    case "gallery-banner":
+      return (
+        <span className="w-full max-w-40">
+          <span className="flex items-center gap-1">
+            <span className="text-[10px] text-slate-400">❮</span>
+            <span className="h-11 flex-1 rounded-md bg-gradient-to-br from-sky-300 to-teal-200" />
+            <span className="text-[10px] text-slate-400">❯</span>
+          </span>
+          <span className="mt-1 flex justify-center gap-0.5">
+            <span className="h-1 w-1 rounded-full bg-sky-500" />
+            <span className="h-1 w-1 rounded-full bg-slate-300" />
+            <span className="h-1 w-1 rounded-full bg-slate-300" />
+          </span>
+        </span>
+      );
+    case "video":
+      return (
+        <span className="grid h-14 w-full max-w-40 place-items-center rounded-md bg-slate-800">
+          <span className="grid h-7 w-7 place-items-center rounded-full bg-rose-500 text-[10px] text-white">▶</span>
+        </span>
+      );
+    case "cards":
+      return (
+        <span className="flex w-full max-w-40 gap-1">
+          {[0, 1, 2].map((i) => (
+            <span key={i} className="flex-1 rounded bg-white p-0.5 ring-1 ring-slate-200">
+              <span className={`block h-5 ${box}`} />
+              <span className="mt-0.5 block h-1 rounded bg-slate-400" />
+              <span className="mt-0.5 block h-1 w-3/4 rounded bg-slate-200" />
+              <span className="mx-auto mt-0.5 block h-1.5 w-2/3 rounded-full bg-amber-400" />
+            </span>
+          ))}
+        </span>
+      );
+    case "imagetext-right":
+      return (
+        <span className="flex w-full max-w-40 items-center gap-1.5">
+          <span className="flex-1">
+            <span className="block h-2 w-12 rounded bg-slate-400" />
+            <span className="mt-1 block h-1.5 rounded bg-slate-300" />
+            <span className="mt-0.5 block h-1.5 w-3/4 rounded bg-slate-300" />
+            <span className="mt-1 block h-2.5 w-10 rounded-full bg-amber-400" />
+          </span>
+          <span className={`h-12 w-1/2 ${box}`} />
+        </span>
+      );
+  }
+  // ตัวเลือกที่เหลือ พรีวิวตามชนิดบล็อก
+  const kind = (BLOCK_LIBRARY.find((v) => v.id === pv)?.kind ?? pv) as HomeBlockKind;
   switch (kind) {
     case "image":
       return <span className="block h-12 w-full max-w-40 rounded-md bg-gradient-to-br from-sky-300 to-teal-200" />;
@@ -355,6 +483,28 @@ function NavEditorInner() {
   // ── Home Builder ──
   const [addOpen, setAddOpen] = useState(false);
   const [openBlock, setOpenBlock] = useState("");
+  /** หมวดที่เลือกในจานเลือกบล็อก (all = ทุกหมวด · fav = ที่กดหัวใจไว้) */
+  const [blockCat, setBlockCat] = useState<"all" | "fav" | BlockCat>("all");
+  /** ตัวเลือกบล็อกที่กดหัวใจไว้ (จำในเครื่องของแอดมินคนนั้น) */
+  const [blockFavs, setBlockFavs] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("iducky-block-favs") ?? "[]") as unknown;
+      if (Array.isArray(saved)) setBlockFavs(saved.filter((x): x is string => typeof x === "string"));
+    } catch {
+      /* ค่าเสียในเครื่อง = เริ่มว่าง */
+    }
+  }, []);
+  const toggleBlockFav = (id: string) =>
+    setBlockFavs((f) => {
+      const next = f.includes(id) ? f.filter((x) => x !== id) : [...f, id];
+      try {
+        localStorage.setItem("iducky-block-favs", JSON.stringify(next));
+      } catch {
+        /* โหมดไม่ให้เก็บ = ใช้ได้แค่ในหน้านี้ */
+      }
+      return next;
+    });
   /** ผังปัจจุบัน — ยังไม่เคยจัด = ผังมาตรฐานจาก tilesPos (แตะครั้งแรกค่อยบันทึกลง nav.home) */
   const home = nav.home ?? defaultHomeBlocks(nav.tilesPos ?? "hero");
   const setHome = (blocks: HomeBlock[]) => edit((n) => ({ ...n, home: blocks }));
@@ -392,6 +542,17 @@ function NavEditorInner() {
     if (tab !== "mega" || products.length) return;
     void fetchProductsLite().then(setProducts);
   }, [tab, products.length]);
+
+  // กันเบราว์เซอร์เปิดไฟล์รูปทับหน้า ถ้าเผลอปล่อยรูปนอกกรอบวาง
+  useEffect(() => {
+    const block = (e: globalThis.DragEvent) => e.preventDefault();
+    window.addEventListener("dragover", block);
+    window.addEventListener("drop", block);
+    return () => {
+      window.removeEventListener("dragover", block);
+      window.removeEventListener("drop", block);
+    };
+  }, []);
 
   const edit = useCallback((fn: (n: SiteNav) => SiteNav) => {
     setNav((n) => fn(n));
@@ -509,31 +670,70 @@ function NavEditorInner() {
           </button>
         </div>
 
-        {/* จานเลือกชนิดบล็อก */}
+        {/* จานเลือกชนิดบล็อก — กรองตามหมวดแบบ Shopware + กดหัวใจเก็บที่ใช้บ่อย */}
         {addOpen && (
-          <div className="mt-3 grid gap-2.5 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200 sm:grid-cols-2 lg:grid-cols-4">
-            {(Object.keys(BLOCK_META) as HomeBlockKind[]).map((k) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => {
-                  const b = makeBlock(k);
-                  setHome([...home, b]);
-                  setOpenBlock(b.id);
-                  setAddOpen(false);
-                }}
-                className="group rounded-xl bg-white p-3 text-left ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-md hover:ring-amber-300"
-              >
-                {/* พรีวิวหน้าตาบล็อก (วาดด้วยกล่องสี — เห็นภาพก่อนเพิ่ม) */}
-                <span className="mb-2 flex h-20 items-center justify-center overflow-hidden rounded-lg bg-slate-100 p-2">
-                  <BlockPreview kind={k} />
-                </span>
-                <span className="block text-sm font-bold text-slate-800">
-                  {BLOCK_META[k].icon} {BLOCK_META[k].label}
-                </span>
-                <span className={`mt-0.5 block text-[11px] leading-snug ${faint}`}>{BLOCK_META[k].desc}</span>
-              </button>
-            ))}
+          <div className="mt-3 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {[
+                { id: "all" as const, label: "ทั้งหมด" },
+                ...(blockFavs.length ? [{ id: "fav" as const, label: "❤️ ที่ใช้บ่อย" }] : []),
+                ...BLOCK_CATS,
+              ].map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setBlockCat(c.id)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                    blockCat === c.id ? "bg-slate-900 text-white shadow" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+              {BLOCK_LIBRARY.filter((v) =>
+                blockCat === "all" ? true : blockCat === "fav" ? blockFavs.includes(v.id) : v.cat === blockCat
+              ).map((v) => (
+                <div
+                  key={v.id}
+                  className="group relative rounded-xl bg-white ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-md hover:ring-amber-300"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const b = { ...makeBlock(v.kind), ...v.preset };
+                      setHome([...home, b]);
+                      setOpenBlock(b.id);
+                      setAddOpen(false);
+                    }}
+                    className="block w-full p-3 text-left"
+                  >
+                    {/* พรีวิวหน้าตาบล็อก (วาดด้วยกล่องสี — เห็นภาพก่อนเพิ่ม) */}
+                    <span className="mb-2 flex h-20 items-center justify-center overflow-hidden rounded-lg bg-slate-100 p-2">
+                      <BlockPreview pv={v.id} />
+                    </span>
+                    <span className="block text-sm font-bold text-slate-800">
+                      {v.icon} {v.label}
+                    </span>
+                    <span className={`mt-0.5 block text-[11px] leading-snug ${faint}`}>{v.desc}</span>
+                  </button>
+                  {/* หัวใจเก็บเข้า "ที่ใช้บ่อย" (แบบ Favourites ของ Shopware) */}
+                  <button
+                    type="button"
+                    onClick={() => toggleBlockFav(v.id)}
+                    title={blockFavs.includes(v.id) ? "เอาออกจากที่ใช้บ่อย" : "เก็บเข้าที่ใช้บ่อย"}
+                    className={`absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full text-sm transition ${
+                      blockFavs.includes(v.id)
+                        ? "bg-rose-100 text-rose-500"
+                        : "bg-white/80 text-slate-300 opacity-0 ring-1 ring-slate-200 hover:text-rose-400 group-hover:opacity-100"
+                    }`}
+                  >
+                    {blockFavs.includes(v.id) ? "❤️" : "♡"}
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -549,9 +749,15 @@ function NavEditorInner() {
                   ? b.image
                     ? "มีภาพแล้ว"
                     : "ยังไม่ได้ใส่ภาพ"
-                  : b.kind === "text" || b.kind === "cta"
-                    ? b.heading || meta.desc
-                    : meta.desc;
+                  : b.kind === "video"
+                    ? b.videoUrl
+                      ? "มีวิดีโอแล้ว"
+                      : "ยังไม่ได้วางลิงก์วิดีโอ"
+                    : b.kind === "cards"
+                      ? b.heading || `การ์ด ${(b.cards ?? []).length} ใบ`
+                      : b.kind === "text" || b.kind === "cta"
+                        ? b.heading || meta.desc
+                        : meta.desc;
             return (
               <div key={b.id} className={`rounded-xl ring-1 transition ${b.hidden ? "opacity-55" : ""} ${open ? "bg-amber-50/60 ring-amber-300" : "bg-slate-50 ring-slate-100"}`}>
                 <div className="flex w-full items-center gap-2 px-3 py-2">
@@ -634,34 +840,49 @@ function NavEditorInner() {
                         </Link>
                       </div>
                     )}
+                    {/* ตัวแก้ไขเรียงตามโครงสร้างบล็อกจริง — เห็นยังไง ลูกค้าเห็นอย่างนั้น */}
                     {b.kind === "image" && (
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {b.image && (
+                      <DropZone
+                        className="space-y-2 p-1"
+                        onFiles={async (fs) => {
+                          const r = await uploadNavImage(fs[0]);
+                          if (r.url) patchBlock(b.id, { image: r.url });
+                        }}
+                      >
+                        <label className="group/img relative block cursor-pointer overflow-hidden rounded-xl">
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const f = e.target.files?.[0];
+                              e.target.value = "";
+                              if (!f) return;
+                              const r = await uploadNavImage(f);
+                              if (r.url) patchBlock(b.id, { image: r.url });
+                            }}
+                          />
+                          {b.image ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={b.image} alt="" className="h-14 w-auto max-w-56 rounded-lg object-contain ring-1 ring-slate-200" />
+                            <img src={b.image} alt="" className="w-full rounded-xl ring-1 ring-slate-200" />
+                          ) : (
+                            <span className="grid h-36 place-items-center rounded-xl border-2 border-dashed border-slate-300 bg-white text-center text-xs font-semibold text-slate-400">
+                              🖼 กดหรือลากรูปมาวางตรงนี้
+                              <br />
+                              (ภาพเต็มความกว้าง · แนะนำกว้าง 1600px ขึ้นไป)
+                            </span>
                           )}
-                          <label className={`cursor-pointer ${btnNeutral} text-xs`}>
-                            📤 {b.image ? "เปลี่ยนภาพ" : "อัปโหลดภาพ"}
-                            <input
-                              type="file"
-                              accept="image/png,image/jpeg,image/webp"
-                              className="hidden"
-                              onChange={async (e) => {
-                                const f = e.target.files?.[0];
-                                e.target.value = "";
-                                if (!f) return;
-                                const r = await uploadNavImage(f);
-                                if (r.url) patchBlock(b.id, { image: r.url });
-                              }}
-                            />
-                          </label>
-                          <span className={`text-[11px] ${faint}`}>แนะนำกว้าง 1600px ขึ้นไป · กดที่ภาพแล้วไปลิงก์ด้านล่าง</span>
+                          <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-white/95 px-3 py-1 text-[11px] font-bold text-slate-700 shadow ring-1 ring-slate-200">
+                            📤 {b.image ? "กดเพื่อเปลี่ยนภาพ" : "กดเพื่อใส่ภาพ"}
+                          </span>
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <span className={`shrink-0 text-[11px] font-semibold ${faint}`}>กดที่ภาพแล้วไป →</span>
+                          <div className="max-w-md flex-1">
+                            <LinkPicker value={b.href ?? "/products"} cats={cats} onChange={(v) => patchBlock(b.id, { href: v })} />
+                          </div>
                         </div>
-                        <div className="max-w-md">
-                          <LinkPicker value={b.href ?? "/products"} cats={cats} onChange={(v) => patchBlock(b.id, { href: v })} />
-                        </div>
-                      </div>
+                      </DropZone>
                     )}
                     {b.kind === "products" && (
                       <div className="flex flex-wrap items-end gap-3">
@@ -720,14 +941,34 @@ function NavEditorInner() {
                       </div>
                     )}
                     {b.kind === "imagetext" && (
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {b.image && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={b.image} alt="" className="h-14 w-auto max-w-40 rounded-lg object-cover ring-1 ring-slate-200" />
-                          )}
-                          <label className={`cursor-pointer ${btnNeutral} text-xs`}>
-                            📤 {b.image ? "เปลี่ยนรูป" : "อัปโหลดรูป"}
+                      <DropZone
+                        className="p-1"
+                        onFiles={async (fs) => {
+                          const r = await uploadNavImage(fs[0]);
+                          if (r.url) patchBlock(b.id, { image: r.url });
+                        }}
+                      >
+                        {/* สลับซ้าย/ขวา — ผังด้านล่างสลับตามให้เห็นเลยว่าลูกค้าจะเห็นแบบไหน */}
+                        <div className="mb-2 flex items-center gap-2">
+                          <span className={`text-[11px] font-semibold ${faint}`}>ตำแหน่งรูป</span>
+                          <div className="inline-flex overflow-hidden rounded-lg ring-1 ring-slate-200">
+                            {(["left", "right"] as const).map((al) => (
+                              <button
+                                key={al}
+                                type="button"
+                                onClick={() => patchBlock(b.id, { align: al })}
+                                className={`px-2.5 py-1 text-[11px] font-semibold ${(b.align ?? "left") === al ? "bg-slate-900 text-white" : "bg-white text-slate-500"}`}
+                              >
+                                {al === "left" ? "◧ รูปซ้าย" : "◨ รูปขวา"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="grid items-stretch gap-3 md:grid-cols-2">
+                          {/* คอลัมน์รูป — อยู่ฝั่งเดียวกับที่ลูกค้าเห็นจริง */}
+                          <label
+                            className={`relative block min-h-36 cursor-pointer overflow-hidden rounded-xl ${b.align === "right" ? "md:order-2" : ""}`}
+                          >
                             <input
                               type="file"
                               accept="image/png,image/jpeg,image/webp"
@@ -740,48 +981,69 @@ function NavEditorInner() {
                                 if (r.url) patchBlock(b.id, { image: r.url });
                               }}
                             />
+                            {b.image ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={b.image} alt="" className="h-full w-full rounded-xl object-cover ring-1 ring-slate-200" />
+                            ) : (
+                              <span className="grid h-full min-h-36 place-items-center rounded-xl border-2 border-dashed border-slate-300 bg-white text-center text-xs font-semibold text-slate-400">
+                                🖼 กดหรือลากรูปมาวางตรงนี้
+                              </span>
+                            )}
+                            <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-white/95 px-3 py-1 text-[11px] font-bold text-slate-700 shadow ring-1 ring-slate-200">
+                              📤 {b.image ? "เปลี่ยนรูป" : "ใส่รูป"}
+                            </span>
                           </label>
-                          <div className="inline-flex overflow-hidden rounded-lg ring-1 ring-slate-200">
-                            {(["left", "right"] as const).map((al) => (
-                              <button
-                                key={al}
-                                type="button"
-                                onClick={() => patchBlock(b.id, { align: al })}
-                                className={`px-2.5 py-1 text-[11px] font-semibold ${(b.align ?? "left") === al ? "bg-slate-900 text-white" : "bg-white text-slate-500"}`}
-                              >
-                                {al === "left" ? "รูปซ้าย" : "รูปขวา"}
-                              </button>
-                            ))}
+                          {/* คอลัมน์ข้อความ — หัวข้อ / ข้อความ / ปุ่ม เรียงเหมือนหน้าร้าน */}
+                          <div className={`flex flex-col gap-2 ${b.align === "right" ? "md:order-1" : ""}`}>
+                            <input
+                              value={b.heading ?? ""}
+                              onChange={(e) => patchBlock(b.id, { heading: e.target.value })}
+                              placeholder="หัวข้อ"
+                              className={`w-full font-bold ${inputBase}`}
+                            />
+                            <textarea
+                              value={b.body ?? ""}
+                              onChange={(e) => patchBlock(b.id, { body: e.target.value })}
+                              placeholder="ข้อความประกอบรูป"
+                              rows={3}
+                              className={`w-full flex-1 ${inputBase}`}
+                            />
+                            <div className="flex flex-wrap items-center gap-2">
+                              <input
+                                value={b.btnLabel ?? ""}
+                                onChange={(e) => patchBlock(b.id, { btnLabel: e.target.value })}
+                                placeholder="ข้อความบนปุ่ม (เว้นว่าง = ไม่มีปุ่ม)"
+                                className={`w-48 ${inputBase}`}
+                              />
+                              <div className="min-w-44 flex-1">
+                                <LinkPicker value={b.btnHref ?? "/products"} cats={cats} onChange={(v) => patchBlock(b.id, { btnHref: v })} />
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <input
-                          value={b.heading ?? ""}
-                          onChange={(e) => patchBlock(b.id, { heading: e.target.value })}
-                          placeholder="หัวข้อ"
-                          className={`w-full font-bold ${inputBase}`}
-                        />
-                        <textarea
-                          value={b.body ?? ""}
-                          onChange={(e) => patchBlock(b.id, { body: e.target.value })}
-                          placeholder="ข้อความประกอบรูป"
-                          rows={2}
-                          className={`w-full ${inputBase}`}
-                        />
-                        <div className="flex flex-wrap items-center gap-2">
-                          <input
-                            value={b.btnLabel ?? ""}
-                            onChange={(e) => patchBlock(b.id, { btnLabel: e.target.value })}
-                            placeholder="ข้อความบนปุ่ม (เว้นว่าง = ไม่มีปุ่ม)"
-                            className={`w-64 ${inputBase}`}
-                          />
-                          <div className="min-w-56 flex-1">
-                            <LinkPicker value={b.btnHref ?? "/products"} cats={cats} onChange={(v) => patchBlock(b.id, { btnHref: v })} />
-                          </div>
-                        </div>
-                      </div>
+                      </DropZone>
                     )}
                     {b.kind === "gallery" && (
-                      <div className="space-y-2.5">
+                      <DropZone
+                        className="space-y-2.5 p-1"
+                        onFiles={async (files) => {
+                          // ลากมาหลายรูป = อัปโหลดครบก่อน แล้วค่อยเติมทีเดียวผ่านค่า state ล่าสุด (กันรูปทับกัน)
+                          const urls: string[] = [];
+                          for (const f of files) {
+                            const r = await uploadNavImage(f);
+                            if (r.url) urls.push(r.url);
+                          }
+                          if (urls.length)
+                            edit((n) => ({
+                              ...n,
+                              home: (n.home ?? defaultHomeBlocks(n.tilesPos ?? "hero")).map((x) =>
+                                x.id === b.id
+                                  ? { ...x, images: [...(x.images ?? []), ...urls.map((src) => ({ src }))] }
+                                  : x
+                              ),
+                            }));
+                        }}
+                      >
                         <div className="flex flex-wrap items-end gap-3">
                           <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
                             หัวข้อ (เว้นว่าง = ไม่แสดง)
@@ -815,8 +1077,63 @@ function NavEditorInner() {
                               ))}
                             </select>
                           </label>
-                          <label className={`cursor-pointer ${btnNeutral} text-xs`}>
-                            📤 เพิ่มรูป (เลือกได้หลายไฟล์)
+                        </div>
+                        {/* เรียงรูปเป็นตารางตามจำนวนคอลัมน์ที่ตั้ง — เห็นผังเหมือนหน้าร้านจริง */}
+                        {b.display !== "grid" && (b.images ?? []).length > 0 && (
+                          <p className={`text-[11px] ${faint}`}>🎠 บนหน้าร้านจะเลื่อนเป็นสไลด์ — ลำดับซ้าย→ขวาตามนี้</p>
+                        )}
+                        <div
+                          className="grid gap-2"
+                          style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(b.cols ?? 3, 1), 4)}, minmax(0, 1fr))` }}
+                        >
+                          {(b.images ?? []).map((im, ii) => (
+                            <div key={ii} className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+                              <div className="relative">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={im.src} alt="" className="aspect-[16/12] w-full object-cover" />
+                                <span className="absolute right-1.5 top-1.5 flex gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => ii > 0 && patchBlock(b.id, { images: move(b.images ?? [], ii, -1) })}
+                                    disabled={ii === 0}
+                                    className="grid h-6 w-6 place-items-center rounded-full bg-white/90 text-xs text-slate-600 shadow disabled:opacity-30"
+                                    aria-label="เลื่อนรูปไปก่อนหน้า"
+                                  >
+                                    ←
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => ii < (b.images ?? []).length - 1 && patchBlock(b.id, { images: move(b.images ?? [], ii, 1) })}
+                                    disabled={ii === (b.images ?? []).length - 1}
+                                    className="grid h-6 w-6 place-items-center rounded-full bg-white/90 text-xs text-slate-600 shadow disabled:opacity-30"
+                                    aria-label="เลื่อนรูปไปถัดไป"
+                                  >
+                                    →
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => patchBlock(b.id, { images: (b.images ?? []).filter((_, j) => j !== ii) })}
+                                    className="grid h-6 w-6 place-items-center rounded-full bg-white/90 text-xs font-bold text-rose-500 shadow"
+                                    aria-label="ลบรูปนี้"
+                                  >
+                                    ✕
+                                  </button>
+                                </span>
+                              </div>
+                              <div className="p-1.5">
+                                <LinkPicker
+                                  value={im.href ?? ""}
+                                  cats={cats}
+                                  onChange={(v) =>
+                                    patchBlock(b.id, { images: (b.images ?? []).map((x, j) => (j === ii ? { ...x, href: v } : x)) })
+                                  }
+                                />
+                              </div>
+                            </div>
+                          ))}
+                          {/* ช่องเพิ่มรูปต่อท้าย — กดเลือกไฟล์ หรือลากรูปมาวางที่ไหนก็ได้ในบล็อกนี้ */}
+                          <label className="grid min-h-28 cursor-pointer place-items-center rounded-xl border-2 border-dashed border-slate-300 bg-white text-center text-xs font-semibold text-slate-400 transition hover:border-sky-400 hover:text-sky-500">
+                            ＋ เพิ่มรูป
                             <input
                               type="file"
                               accept="image/png,image/jpeg,image/webp"
@@ -825,8 +1142,6 @@ function NavEditorInner() {
                               onChange={async (e) => {
                                 const files = [...(e.target.files ?? [])];
                                 e.target.value = "";
-                                // อัปโหลดให้ครบก่อน แล้วค่อยเติมทีเดียวผ่านค่า state ล่าสุด
-                                // (เติมทีละใบระหว่าง await จะอ่านค่าเก่า รูปทับกันเหลือใบเดียว)
                                 const urls: string[] = [];
                                 for (const f of files) {
                                   const r = await uploadNavImage(f);
@@ -845,53 +1160,199 @@ function NavEditorInner() {
                             />
                           </label>
                         </div>
-                        {(b.images ?? []).length === 0 ? (
-                          <p className={`rounded-xl bg-white p-4 text-center text-xs ${faint}`}>ยังไม่มีรูป — กด &ldquo;เพิ่มรูป&rdquo; (แนะนำสัดส่วน 16:12 ขนาดเท่ากันทุกใบ)</p>
+                      </DropZone>
+                    )}
+                    {b.kind === "video" && (
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-end gap-3">
+                          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                            หัวข้อ (เว้นว่าง = ไม่แสดง)
+                            <input
+                              value={b.heading ?? ""}
+                              onChange={(e) => patchBlock(b.id, { heading: e.target.value })}
+                              placeholder="🎬 วิดีโอแนะนำร้าน"
+                              className={`w-56 ${inputBase}`}
+                            />
+                          </label>
+                          <label className="flex min-w-64 flex-1 flex-col gap-1 text-xs font-semibold text-slate-500">
+                            ลิงก์วิดีโอ (YouTube / Vimeo)
+                            <input
+                              value={b.videoUrl ?? ""}
+                              onChange={(e) => patchBlock(b.id, { videoUrl: e.target.value })}
+                              placeholder="https://www.youtube.com/watch?v=…"
+                              className={`w-full ${inputBase}`}
+                            />
+                          </label>
+                        </div>
+                        {b.videoUrl?.trim() ? (
+                          videoEmbedUrl(b.videoUrl) ? (
+                            <iframe
+                              src={videoEmbedUrl(b.videoUrl)!}
+                              title="ตัวอย่างวิดีโอ"
+                              className="aspect-video w-full max-w-md rounded-xl bg-black"
+                              allowFullScreen
+                            />
+                          ) : (
+                            <p className="text-xs font-semibold text-rose-600">
+                              ลิงก์นี้ใช้ไม่ได้ — รองรับเฉพาะ YouTube (youtube.com / youtu.be) และ Vimeo
+                            </p>
+                          )
                         ) : (
-                          <div className="space-y-1.5">
-                            {(b.images ?? []).map((im, ii) => (
-                              <div key={ii} className="flex items-center gap-2 rounded-xl bg-white p-1.5 ring-1 ring-slate-200">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={im.src} alt="" className="h-11 w-16 shrink-0 rounded-lg object-cover" />
-                                <div className="min-w-0 flex-1">
-                                  <LinkPicker
-                                    value={im.href ?? ""}
-                                    cats={cats}
-                                    onChange={(v) =>
-                                      patchBlock(b.id, { images: (b.images ?? []).map((x, j) => (j === ii ? { ...x, href: v } : x)) })
-                                    }
-                                  />
-                                </div>
+                          <p className={`text-[11px] ${faint}`}>
+                            💡 คัดลอกลิงก์จากช่อง URL ของ YouTube มาวางได้เลย (รองรับทั้งคลิปปกติ / Shorts / youtu.be)
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {b.kind === "cards" && (
+                      <div className="space-y-2.5">
+                        <div className="flex flex-wrap items-end gap-3">
+                          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                            หัวข้อเหนือการ์ด (เว้นว่าง = ไม่แสดง)
+                            <input
+                              value={b.heading ?? ""}
+                              onChange={(e) => patchBlock(b.id, { heading: e.target.value })}
+                              placeholder="บริการของเรา"
+                              className={`w-64 ${inputBase}`}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            disabled={(b.cards ?? []).length >= 4}
+                            onClick={() =>
+                              patchBlock(b.id, {
+                                cards: [...(b.cards ?? []), { title: `หัวข้อการ์ด ${(b.cards ?? []).length + 1}`, body: "", btnLabel: "", btnHref: "/products" }],
+                              })
+                            }
+                            className={`${btnNeutral} text-xs disabled:opacity-40`}
+                          >
+                            ＋ เพิ่มการ์ด (สูงสุด 4 ใบ)
+                          </button>
+                        </div>
+                        {/* การ์ดเรียงแถวเดียวกันเหมือนหน้าร้านจริง — รูปบน · หัวข้อ · คำอธิบาย · ปุ่มล่าง */}
+                        <div
+                          className="grid items-stretch gap-2.5"
+                          style={{ gridTemplateColumns: `repeat(${Math.min(Math.max((b.cards ?? []).length, 2), 4)}, minmax(0, 1fr))` }}
+                        >
+                          {(b.cards ?? []).map((cd, ci) => (
+                            <DropZone
+                              key={ci}
+                              className="flex flex-col overflow-hidden bg-white ring-1 ring-slate-200"
+                              onFiles={async (fs) => {
+                                const r = await uploadNavImage(fs[0]);
+                                if (r.url)
+                                  patchBlock(b.id, {
+                                    cards: (b.cards ?? []).map((x, j) => (j === ci ? { ...x, image: r.url } : x)),
+                                  });
+                              }}
+                            >
+                              {/* แถบคุมบาง ๆ บนหัวการ์ด */}
+                              <div className="flex items-center gap-1 bg-slate-50 px-2 py-1">
+                                <span className="flex-1 text-[10px] font-bold text-slate-400">ใบที่ {ci + 1}</span>
                                 <button
                                   type="button"
-                                  onClick={() => ii > 0 && patchBlock(b.id, { images: move(b.images ?? [], ii, -1) })}
-                                  disabled={ii === 0}
-                                  className={`${btnSmGhost} disabled:opacity-30`}
-                                  aria-label="เลื่อนรูปขึ้น"
+                                  onClick={() => ci > 0 && patchBlock(b.id, { cards: move(b.cards ?? [], ci, -1) })}
+                                  disabled={ci === 0}
+                                  className="grid h-5 w-5 place-items-center rounded-full text-[10px] text-slate-500 hover:bg-white disabled:opacity-30"
+                                  aria-label="เลื่อนการ์ดไปก่อนหน้า"
                                 >
-                                  ↑
+                                  ←
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => ii < (b.images ?? []).length - 1 && patchBlock(b.id, { images: move(b.images ?? [], ii, 1) })}
-                                  disabled={ii === (b.images ?? []).length - 1}
-                                  className={`${btnSmGhost} disabled:opacity-30`}
-                                  aria-label="เลื่อนรูปลง"
+                                  onClick={() => ci < (b.cards ?? []).length - 1 && patchBlock(b.id, { cards: move(b.cards ?? [], ci, 1) })}
+                                  disabled={ci === (b.cards ?? []).length - 1}
+                                  className="grid h-5 w-5 place-items-center rounded-full text-[10px] text-slate-500 hover:bg-white disabled:opacity-30"
+                                  aria-label="เลื่อนการ์ดไปถัดไป"
                                 >
-                                  ↓
+                                  →
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => patchBlock(b.id, { images: (b.images ?? []).filter((_, j) => j !== ii) })}
-                                  className={btnSmDanger}
-                                  aria-label="ลบรูปนี้"
+                                  onClick={() => patchBlock(b.id, { cards: (b.cards ?? []).filter((_, j) => j !== ci) })}
+                                  className="grid h-5 w-5 place-items-center rounded-full text-[10px] font-bold text-rose-500 hover:bg-rose-50"
+                                  aria-label="ลบการ์ดนี้"
                                 >
                                   ✕
                                 </button>
                               </div>
-                            ))}
-                          </div>
-                        )}
+                              {/* รูปบนสุดของการ์ด — กด/ลากวางเพื่อใส่ */}
+                              <label className="relative block cursor-pointer">
+                                <input
+                                  type="file"
+                                  accept="image/png,image/jpeg,image/webp"
+                                  className="hidden"
+                                  onChange={async (e) => {
+                                    const f = e.target.files?.[0];
+                                    e.target.value = "";
+                                    if (!f) return;
+                                    const r = await uploadNavImage(f);
+                                    if (r.url)
+                                      patchBlock(b.id, {
+                                        cards: (b.cards ?? []).map((x, j) => (j === ci ? { ...x, image: r.url } : x)),
+                                      });
+                                  }}
+                                />
+                                {cd.image ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={cd.image} alt="" className="aspect-[16/11] w-full object-cover" />
+                                ) : (
+                                  <span className="grid aspect-[16/11] w-full place-items-center border-b-2 border-dashed border-slate-200 bg-slate-50 text-center text-[11px] font-semibold text-slate-400">
+                                    🖼 กด/ลากรูป
+                                    <br />
+                                    มาวางตรงนี้
+                                  </span>
+                                )}
+                                {cd.image && (
+                                  <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded-full bg-white/95 px-2 py-0.5 text-[10px] font-bold text-slate-600 shadow">
+                                    📤 เปลี่ยนรูป
+                                  </span>
+                                )}
+                              </label>
+                              {/* ข้อความกลางการ์ด + ปุ่มล่าง — ตำแหน่งเดียวกับของจริง */}
+                              <div className="flex flex-1 flex-col gap-1.5 p-2">
+                                <input
+                                  value={cd.title}
+                                  onChange={(e) =>
+                                    patchBlock(b.id, { cards: (b.cards ?? []).map((x, j) => (j === ci ? { ...x, title: e.target.value } : x)) })
+                                  }
+                                  placeholder="หัวข้อการ์ด"
+                                  className={`w-full text-center font-bold ${inputBase}`}
+                                />
+                                <textarea
+                                  value={cd.body ?? ""}
+                                  onChange={(e) =>
+                                    patchBlock(b.id, { cards: (b.cards ?? []).map((x, j) => (j === ci ? { ...x, body: e.target.value } : x)) })
+                                  }
+                                  placeholder="คำอธิบายสั้น ๆ"
+                                  rows={2}
+                                  className={`w-full flex-1 text-center ${inputBase}`}
+                                />
+                                <input
+                                  value={cd.btnLabel ?? ""}
+                                  onChange={(e) =>
+                                    patchBlock(b.id, {
+                                      cards: (b.cards ?? []).map((x, j) => (j === ci ? { ...x, btnLabel: e.target.value } : x)),
+                                    })
+                                  }
+                                  placeholder="ปุ่ม (ว่าง = ไม่มี)"
+                                  className={`w-full text-center ${inputBase}`}
+                                />
+                                {(cd.btnLabel ?? "").trim() && (
+                                  <LinkPicker
+                                    value={cd.btnHref ?? "/products"}
+                                    cats={cats}
+                                    onChange={(v) =>
+                                      patchBlock(b.id, {
+                                        cards: (b.cards ?? []).map((x, j) => (j === ci ? { ...x, btnHref: v } : x)),
+                                      })
+                                    }
+                                  />
+                                )}
+                              </div>
+                            </DropZone>
+                          ))}
+                        </div>
                       </div>
                     )}
                     {b.kind === "html" && (
@@ -909,38 +1370,56 @@ function NavEditorInner() {
                         </p>
                       </div>
                     )}
-                    {(b.kind === "text" || b.kind === "cta") && (
-                      <div className="space-y-2">
+                    {b.kind === "text" && (
+                      // ข้อความจริงจัดกึ่งกลาง — ตัวแก้ไขก็กึ่งกลางเหมือนกัน
+                      <div className="mx-auto max-w-2xl space-y-2 text-center">
                         <input
                           value={b.heading ?? ""}
                           onChange={(e) => patchBlock(b.id, { heading: e.target.value })}
                           placeholder="หัวข้อ"
-                          className={`w-full font-bold ${inputBase}`}
+                          className={`w-full text-center text-base font-extrabold ${inputBase}`}
                         />
                         <textarea
                           value={b.body ?? ""}
                           onChange={(e) => patchBlock(b.id, { body: e.target.value })}
                           placeholder="ข้อความ (กด Enter ขึ้นบรรทัดใหม่ได้)"
                           rows={2}
-                          className={`w-full ${inputBase}`}
+                          className={`w-full text-center ${inputBase}`}
                         />
-                        {b.kind === "cta" && (
-                          <div className="flex flex-wrap items-center gap-2">
-                            <input
-                              value={b.btnLabel ?? ""}
-                              onChange={(e) => patchBlock(b.id, { btnLabel: e.target.value })}
-                              placeholder="ข้อความบนปุ่ม"
-                              className={`w-56 ${inputBase}`}
+                      </div>
+                    )}
+                    {b.kind === "cta" && (
+                      // กล่องสีชมพูเหมือนบนหน้าร้านจริง — พิมพ์ลงไปในกล่องได้เลย
+                      <div className="space-y-2 rounded-2xl bg-gradient-to-r from-pink-200 via-rose-100 to-amber-100 p-5 text-center">
+                        <span className="text-2xl">🎁</span>
+                        <input
+                          value={b.heading ?? ""}
+                          onChange={(e) => patchBlock(b.id, { heading: e.target.value })}
+                          placeholder="มีลายในใจแล้วใช่ไหม? มาเริ่มกันเลย!"
+                          className={`w-full bg-white/80 text-center text-base font-extrabold ${inputBase}`}
+                        />
+                        <textarea
+                          value={b.body ?? ""}
+                          onChange={(e) => patchBlock(b.id, { body: e.target.value })}
+                          placeholder="ข้อความ (กด Enter ขึ้นบรรทัดใหม่ได้)"
+                          rows={2}
+                          className={`w-full bg-white/80 text-center ${inputBase}`}
+                        />
+                        <div className="mx-auto flex max-w-xl flex-wrap items-center justify-center gap-2">
+                          <input
+                            value={b.btnLabel ?? ""}
+                            onChange={(e) => patchBlock(b.id, { btnLabel: e.target.value })}
+                            placeholder="ข้อความบนปุ่ม"
+                            className="w-56 rounded-full bg-rose-500 px-4 py-2 text-center text-xs font-bold text-white placeholder-rose-200 outline-none ring-rose-300 focus:ring-2"
+                          />
+                          <div className="min-w-52 flex-1">
+                            <LinkPicker
+                              value={b.btnHref ?? "/products"}
+                              cats={cats}
+                              onChange={(v) => patchBlock(b.id, { btnHref: v })}
                             />
-                            <div className="min-w-56 flex-1">
-                              <LinkPicker
-                                value={b.btnHref ?? "/products"}
-                                cats={cats}
-                                onChange={(v) => patchBlock(b.id, { btnHref: v })}
-                              />
-                            </div>
                           </div>
-                        )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1028,7 +1507,16 @@ function NavEditorInner() {
                 ปิดแบนเนอร์ใหญ่อยู่ — หน้าแรกจะไม่มีบล็อกนี้
               </p>
             ) : (
-              // กดที่ตัวอย่างเพื่อเปลี่ยน/ใส่ภาพแบนเนอร์ได้เลย (ไม่ต้องเลื่อนไปหาช่องอัปโหลด)
+              // กดที่ตัวอย่าง (หรือลากรูปมาวางทับ) เพื่อเปลี่ยน/ใส่ภาพแบนเนอร์ได้เลย
+              <DropZone
+                onFiles={async (fs) => {
+                  setHeroBusy(true);
+                  const r = await uploadNavImage(fs[0]);
+                  setHeroBusy(false);
+                  if (r.url) edit((n) => ({ ...n, hero: { ...n.hero, bgImage: r.url } }));
+                  else if (r.error) alert(r.error);
+                }}
+              >
               <div className="group relative overflow-hidden rounded-2xl ring-1 ring-slate-200">
                 <label className="block cursor-pointer" title="กดเพื่อเลือกภาพแบนเนอร์เต็มใบ">
                   <input
@@ -1092,6 +1580,7 @@ function NavEditorInner() {
                   </button>
                 )}
               </div>
+              </DropZone>
             ))}
 
           {/* 4 · การ์ดนำทาง */}
@@ -1170,7 +1659,13 @@ function NavEditorInner() {
             </label>
             <label className="block">
               <span className="text-[11px] font-semibold text-slate-400">รูปด้านขวา (เว้นว่าง = ใช้อีโมจิเป็ด 🦆)</span>
-              <div className="mt-1 flex items-center gap-2">
+              <DropZone
+                className="mt-1 flex items-center gap-2 p-1"
+                onFiles={async (fs) => {
+                  const r = await uploadNavImage(fs[0]);
+                  if (r.url) edit((n) => ({ ...n, hero: { ...n.hero, image: r.url } }));
+                }}
+              >
                 {nav.hero.image && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={nav.hero.image} alt="" className="h-10 w-10 rounded-lg object-contain ring-1 ring-slate-200" />
@@ -1199,7 +1694,7 @@ function NavEditorInner() {
                     ✕ เอาออก
                   </button>
                 )}
-              </div>
+              </DropZone>
             </label>
           </div>
 
@@ -2056,7 +2551,13 @@ function NavEditorInner() {
           <p className={`mt-0.5 text-xs ${faint}`}>
             แสดงมุมซ้ายของแถบเมนูทุกหน้า · แนะนำ PNG พื้นใส แนวนอน สูงอย่างน้อย 144px · ไม่ใส่ = โลโก้เป็ด 🦆 + ข้อความเดิม
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-4">
+          <DropZone
+            className="mt-3 flex flex-wrap items-center gap-4 p-1"
+            onFiles={async (fs) => {
+              const r = await uploadNavImage(fs[0]);
+              if (r.url) edit((n) => ({ ...n, logo: r.url }));
+            }}
+          >
             <div className="flex h-24 min-w-48 items-center justify-center rounded-xl bg-slate-50 px-4 ring-1 ring-slate-200">
               {nav.logo ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -2094,7 +2595,7 @@ function NavEditorInner() {
                 </button>
               )}
             </div>
-          </div>
+          </DropZone>
         </section>
 
         <section className={`mt-4 p-5 ${card}`}>

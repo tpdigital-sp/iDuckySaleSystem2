@@ -8,7 +8,7 @@ import { fetchProductsLite } from "@/lib/product-repo";
 import ProductCard from "@/components/ProductCard";
 import NavTiles from "@/components/NavTiles";
 import { fetchSiteNav, visiblePerks, visibleTiles, DEFAULT_SITE_NAV, type NavPerk, type NavTile, type SiteNav } from "@/lib/home-nav";
-import { defaultHomeBlocks, visibleBlocks, type HomeBlock } from "@/lib/home-layout";
+import { defaultHomeBlocks, videoEmbedUrl, visibleBlocks, type HomeBlock } from "@/lib/home-layout";
 import HomeGallery from "@/components/HomeGallery";
 
 export default function HomePage() {
@@ -276,6 +276,64 @@ export default function HomePage() {
             <HomeGallery heading={blk.heading} images={blk.images} cols={blk.cols ?? 3} display={blk.display ?? "grid"} />
           </section>
         );
+
+      case "video": {
+        const src = videoEmbedUrl(blk.videoUrl);
+        if (!src) return null;
+        return (
+          <section key={blk.id} className="mt-12">
+            {blk.heading && (
+              <h2 className="mb-5 text-center text-xl font-extrabold text-amber-950 md:text-2xl">{blk.heading}</h2>
+            )}
+            <div className="overflow-hidden rounded-[2rem] bg-black shadow-[0_10px_40px_rgba(63,161,182,0.18)]">
+              <iframe
+                src={src}
+                title={blk.heading || "วิดีโอ"}
+                className="aspect-video w-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            </div>
+          </section>
+        );
+      }
+
+      case "cards": {
+        const cards = (blk.cards ?? []).filter((c) => c.title || c.image);
+        if (!cards.length) return null;
+        const colCls = cards.length === 2 ? "md:grid-cols-2" : cards.length === 4 ? "md:grid-cols-4" : "md:grid-cols-3";
+        return (
+          <section key={blk.id} className="mt-12">
+            {blk.heading && (
+              <h2 className="mb-5 text-center text-xl font-extrabold text-amber-950 md:text-2xl">{blk.heading}</h2>
+            )}
+            <div className={`grid gap-4 sm:grid-cols-2 ${colCls}`}>
+              {cards.map((c, i) => (
+                <div key={i} className="flex flex-col overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-amber-100">
+                  {c.image && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={c.image} alt={c.title} className="aspect-[16/11] w-full object-cover" />
+                  )}
+                  <div className="flex flex-1 flex-col p-4 text-center">
+                    {c.title && <h3 className="text-sm font-bold text-stone-800">{c.title}</h3>}
+                    {c.body && <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-stone-500">{c.body}</p>}
+                    {c.btnLabel && (
+                      <Link
+                        href={c.btnHref || "/products"}
+                        className="mx-auto mt-auto inline-block pt-3"
+                      >
+                        <span className="inline-block rounded-full bg-amber-400 px-5 py-2 text-xs font-bold text-white shadow transition hover:scale-105 hover:bg-amber-500">
+                          {c.btnLabel}
+                        </span>
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      }
 
       case "html":
         if (!blk.html) return null;
