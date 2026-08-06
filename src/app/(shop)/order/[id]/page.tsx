@@ -13,6 +13,7 @@ import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
 import { setAppendTarget } from "@/lib/append-order";
 import ImageLightbox from "@/components/ImageLightbox";
+import { LINE_URL } from "@/components/LineButton";
 
 /** ป้ายขั้นตอนฝั่งลูกค้า (คำอ่านง่ายกว่าฝั่งหลังบ้าน) — ลำดับตรงกับ STEP_OF */
 const STEPS = ["สั่งซื้อ", "ชำระเงิน", "ตรวจแบบงาน", "ผลิต", "จัดส่ง"];
@@ -35,6 +36,8 @@ export default function CustomerOrderPage() {
   const orderId = decodeURIComponent(String(params?.id ?? ""));
 
   const [orderKey, setOrderKey] = useState("");
+  // ป้าย "คัดลอกลิงก์ออเดอร์แล้ว" (กล่องรอตีราคา — ให้ลูกค้าส่งลิงก์ให้แอดมินใส่ราคา)
+  const [linkCopied, setLinkCopied] = useState(false);
   const [order, setOrder] = useState<Order | null>(null);
   const [loadErr, setLoadErr] = useState("");
   const [loading, setLoading] = useState(true);
@@ -352,6 +355,32 @@ export default function CustomerOrderPage() {
               </li>
             ))}
           </ul>
+          {/* ให้เร็วขึ้น: copy ลิงก์ออเดอร์นี้ส่งให้แอดมินทางไลน์ เพื่อให้ใส่ราคาได้ทันที */}
+          <p className="mt-3 text-xs font-bold text-amber-900">
+            ⚡ อยากได้ราคาไว ๆ — คัดลอกลิงก์ออเดอร์นี้ส่งให้แอดมินทางไลน์ได้เลย
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard?.writeText(window.location.href).then(() => {
+                  setLinkCopied(true);
+                  setTimeout(() => setLinkCopied(false), 2500);
+                });
+              }}
+              className={`rounded-full px-4 py-2 text-xs font-bold text-white transition ${linkCopied ? "bg-emerald-500" : "bg-amber-500 hover:bg-amber-600"}`}
+            >
+              {linkCopied ? "✓ คัดลอกแล้ว — ส่งให้แอดมินได้เลย" : "📋 คัดลอกลิงก์ออเดอร์ (copy)"}
+            </button>
+            <a
+              href={LINE_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
+            >
+              💬 ทักไลน์ร้าน — ให้แอดมินใส่ราคา
+            </a>
+          </div>
         </div>
       )}
 

@@ -772,10 +772,11 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
             </div>
             {useCustom ? (
               custom?.mode === "quote" ? (
-                // สั้น ๆ ชัด ๆ: สั่งเลย → แอดมินใส่ราคา → ค่อยโอน (หน้าแจ้งโอนเปิดเมื่อราคาครบ)
+                // สั้น ๆ: สั่งเลย → copy ลิงก์ออเดอร์ส่งแอดมินให้ใส่ราคา → ค่อยโอน
                 <p className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
-                  📐 <strong className="font-bold">สั่งเข้ามาได้เลย</strong> — แอดมินจะใส่ราคาให้ก่อน
-                  แล้วหน้าแจ้งโอนถึงจะเปิด <strong className="font-bold">ยังไม่ต้องโอนตอนสั่ง</strong>
+                  📐 <strong className="font-bold">สั่งเข้ามาได้เลย ยังไม่ต้องโอน</strong> — หลังสั่งเสร็จ
+                  กด <strong className="font-bold">คัดลอก (copy) ลิงก์ออเดอร์ส่งให้แอดมินทางไลน์</strong>{" "}
+                  เพื่อให้ใส่ราคาก่อน แล้วหน้าแจ้งโอนถึงจะเปิดให้โอนได้
                 </p>
               ) : (
                 <p className="mt-1 text-xs text-sky-700">
