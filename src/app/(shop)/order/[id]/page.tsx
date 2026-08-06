@@ -293,6 +293,10 @@ export default function CustomerOrderPage() {
     .filter((it) => proofsOf(it).length && it.proofStatus !== "อนุมัติ")
     .reduce((s, it) => s + proofsOf(it).filter((p) => !p.review).length, 0);
   const subtotal = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+  // รายการที่ยังรอแอดมินตีราคา (งานกำหนดขนาดเอง ฯลฯ ราคายัง ฿0) — ต้องใส่ราคาครบก่อนถึงเปิดหน้าแจ้งโอน
+  // กันลูกค้าโอนทั้งที่ยอดรวมยังไม่ครบทุกรายการ · ออเดอร์เคลมตั้งใจ ฿0 ไม่นับ
+  const pendingQuote =
+    order.claimOf || order.claimReason ? [] : order.items.filter((it) => it.qty > 0 && it.unitPrice <= 0);
   const step = STEP_OF[order.status];
   const balance = orderBalance(order);
   // สั่งเพิ่มได้เฉพาะออเดอร์ที่ยังไม่เข้าสายการผลิต
@@ -331,8 +335,28 @@ export default function CustomerOrderPage() {
         </div>
       )}
 
+      {/* ── มีรายการรอตีราคา: ยังไม่เปิดหน้าแจ้งโอน — กันโอนเงินทั้งที่ยอดรวมยังไม่ครบ ── */}
+      {order.status === "รอชำระเงิน" && pendingQuote.length > 0 && (
+        <div className="mt-4 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
+          <p className="text-sm font-extrabold text-amber-900">
+            ⏳ รอทางร้านใส่ราคา {pendingQuote.length.toLocaleString("th-TH")} รายการ — <u>ยังไม่ต้องโอนตอนนี้</u>
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-amber-800">
+            ออเดอร์นี้มีงานที่แอดมินต้องตีราคาก่อน (เช่น งานกำหนดขนาดเอง) — เมื่อใส่ราคาครบทุกรายการ
+            หน้าแจ้งโอนพร้อมยอดรวมที่ถูกต้องจะเปิดให้อัตโนมัติ ทางร้านจะรีบทักไปแจ้งครับ
+          </p>
+          <ul className="mt-2 space-y-0.5">
+            {pendingQuote.map((it, i) => (
+              <li key={i} className="text-xs font-semibold text-amber-900">
+                • {it.name} × {it.qty.toLocaleString("th-TH")} — 💬 รอตีราคา
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* ── ชำระเงิน / แจ้งสลิป ── */}
-      {order.status === "รอชำระเงิน" && (
+      {order.status === "รอชำระเงิน" && pendingQuote.length === 0 && (
         <div
           onDragOver={(e) => {
             e.preventDefault();

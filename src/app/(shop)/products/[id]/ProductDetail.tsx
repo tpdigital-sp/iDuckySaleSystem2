@@ -772,10 +772,10 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
             </div>
             {useCustom ? (
               custom?.mode === "quote" ? (
-                // อธิบายขั้นตอนชัด ๆ — ลูกค้าถามว่า "รอตีราคา" ต้องทำยังไงต่อ
+                // สั้น ๆ ชัด ๆ: สั่งเลย → แอดมินใส่ราคา → ค่อยโอน (หน้าแจ้งโอนเปิดเมื่อราคาครบ)
                 <p className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
-                  📐 ใช้ขนาดกำหนดเองอยู่ — <strong className="font-bold">กดสั่งซื้อเข้ามาได้เลย ไม่ต้องรอ</strong>{" "}
-                  แอดมินจะคำนวณราคาขนาดที่ระบุ แล้วทักแจ้งให้ยืนยันก่อนเริ่มงาน (ยังไม่มีการคิดเงินส่วนนี้ตอนกดสั่ง)
+                  📐 <strong className="font-bold">สั่งเข้ามาได้เลย</strong> — แอดมินจะใส่ราคาให้ก่อน
+                  แล้วหน้าแจ้งโอนถึงจะเปิด <strong className="font-bold">ยังไม่ต้องโอนตอนสั่ง</strong>
                 </p>
               ) : (
                 <p className="mt-1 text-xs text-sky-700">
