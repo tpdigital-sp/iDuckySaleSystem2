@@ -34,12 +34,21 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   { href: "/admin/guide", label: "วิธีใช้ระบบ", emoji: "📋", perm: "admin.access", group: "ระบบ" },
 ];
 
-/** ป้ายหัวกลุ่ม (เรียงตามนี้) */
-const MENU_GROUPS: { key: string; label: string }[] = [
-  { key: "งานขาย", label: "📦 งานขาย" },
-  { key: "สินค้า", label: "🏷️ สินค้า" },
-  { key: "ลูกค้า", label: "💛 ลูกค้า & การตลาด" },
-  { key: "ระบบ", label: "⚙️ ร้าน & ระบบ" },
+/** ป้ายหัวกลุ่ม (เรียงตามนี้) — แต่ละกลุ่มมีสีประจำตัว ให้กวาดตาหาง่าย */
+const MENU_GROUPS: {
+  key: string;
+  label: string;
+  /** สีข้อความหัวกลุ่ม / จุดสถานะ / ป้ายจำนวน / แถบคั่นโหมดพับ */
+  text: string;
+  dot: string;
+  badge: string;
+  line: string;
+}[] = [
+  // ใช้โทน orange แท้ — คลาส amber ถูก remap เป็นฟ้าตามธีมรีแบรนด์ทั้งเว็บ
+  { key: "งานขาย", label: "📦 งานขาย", text: "text-orange-500 hover:text-orange-600", dot: "bg-orange-500", badge: "bg-orange-100 text-orange-600", line: "border-orange-200" },
+  { key: "สินค้า", label: "🏷️ สินค้า", text: "text-sky-600 hover:text-sky-700", dot: "bg-sky-500", badge: "bg-sky-100 text-sky-700", line: "border-sky-200" },
+  { key: "ลูกค้า", label: "💛 ลูกค้า & การตลาด", text: "text-rose-500 hover:text-rose-600", dot: "bg-rose-500", badge: "bg-rose-100 text-rose-600", line: "border-rose-200" },
+  { key: "ระบบ", label: "⚙️ ร้าน & ระบบ", text: "text-violet-500 hover:text-violet-600", dot: "bg-violet-500", badge: "bg-violet-100 text-violet-600", line: "border-violet-200" },
 ];
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
@@ -248,14 +257,14 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
   const navFor = (rail: boolean) => (
     <nav className="space-y-0.5">
-      {MENU_GROUPS.flatMap(({ key, label }, groupIdx) => {
+      {MENU_GROUPS.flatMap(({ key, label, text, dot, badge, line }, groupIdx) => {
         const items = menu.filter((m) => m.group === key);
         if (!items.length) return [];
         const folded = !!foldedGroups[key];
         return [
           rail ? (
             groupIdx > 0 ? (
-              <div key={`h-${key}`} className="mx-2 my-2 border-t border-slate-200" aria-hidden="true" />
+              <div key={`h-${key}`} className={`mx-2 my-2 border-t ${line}`} aria-hidden="true" />
             ) : null
           ) : (
             <button
@@ -264,22 +273,18 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               onClick={() => toggleGroup(key)}
               aria-expanded={!folded}
               title={folded ? "กางกลุ่มนี้" : "หุบกลุ่มนี้"}
-              className={`flex w-full items-center gap-1.5 rounded-lg px-3 pb-1 text-left text-xs font-bold uppercase tracking-wide transition hover:text-slate-600 ${
+              className={`flex w-full items-center gap-1.5 rounded-lg px-3 pb-1 text-left text-[13px] font-bold uppercase tracking-wide transition ${
                 groupIdx > 0 ? "mt-4" : "mt-1"
-              } ${activeGroup === key ? "text-teal-600" : "text-slate-500"}`}
+              } ${text}`}
             >
               <span className={`text-[9px] transition-transform ${folded ? "-rotate-90" : ""}`}>▼</span>
               {label}
               {/* หุบอยู่แต่มีหน้าที่เปิดค้างในกลุ่มนี้ → จุดบอกให้รู้ว่าอยู่ตรงไหน */}
               {folded && activeGroup === key && (
-                <span className="h-1.5 w-1.5 rounded-full bg-teal-500" aria-label="อยู่ในกลุ่มนี้" />
+                <span className={`h-1.5 w-1.5 rounded-full ${dot}`} aria-label="อยู่ในกลุ่มนี้" />
               )}
               {folded && (
-                <span
-                  className={`ml-auto rounded-full px-1.5 text-[11px] font-bold ${
-                    activeGroup === key ? "bg-teal-100 text-teal-700" : "bg-slate-100 text-slate-400"
-                  }`}
-                >
+                <span className={`ml-auto rounded-full px-2 text-[11px] font-bold ${badge}`}>
                   {items.length}
                 </span>
               )}
