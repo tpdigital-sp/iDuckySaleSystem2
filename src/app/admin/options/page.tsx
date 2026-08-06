@@ -25,6 +25,9 @@ function AdminOptionsPageInner() {
   const [selected, setSelected] = useState(0);
   const [query, setQuery] = useState("");
   const dragFrom = useRef<number | null>(null);
+  /** คลังที่กำลังลากในลิสต์ซ้าย (ref อ่านได้ทันทีตอน drop · state ไว้ทำจาง) */
+  const dragPreset = useRef<number | null>(null);
+  const [dragPresetAt, setDragPresetAt] = useState<number | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -48,16 +51,60 @@ function AdminOptionsPageInner() {
     setPresets((ps) => ps.map((p, j) => (j === i ? { ...p, ...next, _dirty: true } : p)));
   }
 
-  async function save(i: number) {
-    const p = presets[i];
-    const clean: OptionPreset = {
+  /** ตัดช่องว่าง/ตัวเลือกที่ว่างออก ก่อนเขียนลงฐานข้อมูล */
+  function cleanOf(p: Draft): OptionPreset {
+    return {
       id: p.id,
       label: p.label.trim(),
       note: p.note?.trim() || undefined,
       choices: p.choices
         .filter((c) => c.name.trim())
         .map((c) => ({ name: c.name.trim(), ...(c.extra ? { extra: c.extra } : {}) })),
+      ...(typeof p.sort === "number" ? { sort: p.sort } : {}),
+      ...(p.hidden ? { hidden: true } : {}),
     };
+  }
+
+  /**
+   * ลากสลับลำดับคลังในลิสต์ — บันทึกลำดับใหม่ทันที (ไม่ต้องกดบันทึกทีละอัน)
+   * ข้ามอันที่ยังกรอกไม่ครบ (ไม่มีชื่อ/ไม่มีตัวเลือก) — เก็บลำดับไว้ในหน้าจอจนกว่าจะบันทึกเอง
+   */
+  async function movePreset(from: number, to: number) {
+    if (from === to || from < 0 || to < 0 || to >= presets.length) return;
+    const arr = [...presets];
+    const [moved] = arr.splice(from, 1);
+    arr.splice(to, 0, moved);
+    const next = arr.map((p, i) => ({ ...p, sort: i }));
+    setPresets(next);
+    // ให้คลังที่เลือกอยู่ยังเป็นอันเดิมหลังสลับที่
+    const selId = presets[selected]?.id;
+    const at = next.findIndex((p) => p.id === selId);
+    if (at >= 0) setSelected(at);
+    for (const p of next) {
+      if (presets.find((x) => x.id === p.id)?.sort === p.sort) continue; // ลำดับไม่เปลี่ยน
+      const clean = cleanOf(p);
+      if (!clean.label || clean.choices.length === 0) continue;
+      await persistPreset(clean);
+    }
+  }
+
+  /** ปิด/เปิดใช้งานคลัง — ปิดแล้วจะไม่ขึ้นให้เลือกในเมนู "แทรกจากคลัง" ของสินค้า */
+  async function toggleHidden(i: number) {
+    const p = presets[i];
+    const hidden = !p.hidden;
+    setPresets((ps) => ps.map((x, j) => (j === i ? { ...x, hidden } : x)));
+    const clean = cleanOf({ ...p, hidden });
+    if (!clean.label || clean.choices.length === 0) return;
+    const res = await persistPreset(clean);
+    if (!res.ok) {
+      setError(res.error ?? "บันทึกไม่สำเร็จ");
+      setPresets((ps) => ps.map((x, j) => (j === i ? { ...x, hidden: p.hidden } : x)));
+    }
+  }
+
+  async function save(i: number) {
+    const p = presets[i];
+    const clean: OptionPreset = cleanOf(p);
     if (!clean.label || clean.choices.length === 0) {
       setError("ต้องมีชื่อคลังและตัวเลือกอย่างน้อย 1 รายการ");
       return;
@@ -192,26 +239,80 @@ function AdminOptionsPageInner() {
               {filtered.map(({ p, i }) => {
                 const used = usage[p.id] ?? 0;
                 const active = i === selected;
+                const canDrag = !query; // กำลังค้นหา = ลำดับที่เห็นไม่ตรงกับลำดับจริง จึงลากไม่ได้
                 return (
-                  <li key={i}>
+                  <li
+                    key={i}
+                    draggable={canDrag}
+                    onDragStart={() => {
+                      dragPreset.current = i;
+                      setDragPresetAt(i);
+                    }}
+                    onDragEnd={() => {
+                      dragPreset.current = null;
+                      setDragPresetAt(null);
+                    }}
+                    onDragOver={(e) => {
+                      if (dragPreset.current !== null) e.preventDefault();
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const from = dragPreset.current;
+                      dragPreset.current = null;
+                      setDragPresetAt(null);
+                      if (from !== null) void movePreset(from, i);
+                    }}
+                    className={`group relative flex items-stretch border-b border-slate-100 transition ${
+                      active ? "border-l-2 border-l-amber-500 bg-amber-50" : "hover:bg-slate-50"
+                    } ${dragPresetAt === i ? "opacity-40" : ""}`}
+                  >
+                    {canDrag && (
+                      <span
+                        className="grid w-5 shrink-0 cursor-grab place-items-center text-slate-300 active:cursor-grabbing"
+                        title="ลากเพื่อสลับลำดับ"
+                        aria-hidden
+                      >
+                        ⠿
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => setSelected(i)}
-                      className={`flex w-full flex-col items-start gap-1 border-b border-slate-100 px-3 py-2.5 text-left transition ${
-                        active ? "border-l-2 border-l-amber-500 bg-amber-50" : "hover:bg-slate-50"
-                      }`}
+                      className="flex min-w-0 flex-1 flex-col items-start gap-1 py-2.5 pl-1 pr-1 text-left"
                     >
                       <span className="flex w-full items-center gap-1.5 text-sm font-semibold text-slate-800">
-                        <span className="truncate">{p.label || "(ยังไม่ตั้งชื่อ)"}</span>
+                        <span className={`truncate ${p.hidden ? "text-slate-400 line-through" : ""}`}>
+                          {p.label || "(ยังไม่ตั้งชื่อ)"}
+                        </span>
                         {p._dirty && <span className="ml-auto shrink-0 text-[10px] text-amber-600">● ยังไม่บันทึก</span>}
                       </span>
-                      <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                      <span className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
                         {p.choices.length} ตัวเลือก
-                        {used > 0 && (
-                          <span className={`${badge} bg-emerald-50 text-emerald-700`}>ใช้ {used}</span>
-                        )}
+                        {used > 0 && <span className={`${badge} bg-emerald-50 text-emerald-700`}>ใช้ {used}</span>}
+                        {p.hidden && <span className={`${badge} bg-slate-100 text-slate-500`}>ปิดอยู่</span>}
                       </span>
                     </button>
+                    {/* ปุ่มปิดใช้งาน / ลบ — โผล่ตอนชี้เมาส์ (ปิด = ยังอยู่ในระบบ แต่ไม่ให้แทรกเข้าสินค้าใหม่) */}
+                    <span className="flex shrink-0 items-center gap-0.5 pr-1.5 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
+                      <button
+                        type="button"
+                        onClick={() => void toggleHidden(i)}
+                        title={p.hidden ? "เปิดใช้งานคลังนี้" : "ปิดใช้งาน — ซ่อนจากเมนูแทรกในสินค้า (ของเดิมไม่กระทบ)"}
+                        aria-label={p.hidden ? "เปิดใช้งาน" : "ปิดใช้งาน"}
+                        className="rounded-md px-1.5 py-1 text-xs text-slate-400 transition hover:bg-white hover:text-slate-700"
+                      >
+                        {p.hidden ? "🚫" : "👁"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void remove(i)}
+                        title={used > 0 ? `ลบไม่ได้ — ใช้อยู่ ${used} สินค้า` : "ลบคลังนี้"}
+                        aria-label="ลบคลัง"
+                        className="rounded-md px-1.5 py-1 text-xs text-rose-300 transition hover:bg-rose-50 hover:text-rose-600"
+                      >
+                        🗑
+                      </button>
+                    </span>
                   </li>
                 );
               })}

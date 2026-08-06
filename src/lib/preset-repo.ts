@@ -22,8 +22,9 @@ export async function fetchPresets(): Promise<OptionPreset[]> {
   if (!sb) return loadPresetsLocal();
   const { data, error } = await sb.from("products").select("data").eq("category", "__presets__");
   if (error || !data || data.length === 0) return loadPresetsLocal();
-  return (data.map((r) => r.data as OptionPreset).filter((p) => p?.id && p.label) as OptionPreset[]).sort((a, b) =>
-    a.label.localeCompare(b.label, "th")
+  // เรียงตามลำดับที่แอดมินลากไว้ก่อน (ยังไม่เคยจัด = ไปต่อท้าย เรียงตามชื่อ)
+  return (data.map((r) => r.data as OptionPreset).filter((p) => p?.id && p.label) as OptionPreset[]).sort(
+    (a, b) => (a.sort ?? 9999) - (b.sort ?? 9999) || a.label.localeCompare(b.label, "th")
   );
 }
 

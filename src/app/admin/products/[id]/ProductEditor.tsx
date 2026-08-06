@@ -1809,7 +1809,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                 aria-label="แทรกกลุ่มตัวเลือกจากคลัง"
               >
                 <option value="">🔗 แทรกจากคลัง…</option>
-                {presets.map((p) => {
+                {presets.filter((p) => !p.hidden).map((p) => {
                   const linked = draft.options.some((o) => o.presetId === p.id);
                   return (
                     <option key={p.id} value={p.id} disabled={linked}>
