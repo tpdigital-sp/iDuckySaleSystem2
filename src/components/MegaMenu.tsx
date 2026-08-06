@@ -171,19 +171,37 @@ export function MegaBar({
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const products = useLazyProducts(openId !== null);
 
   const cancelClose = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
     closeTimer.current = null;
   };
+  const cancelOpen = () => {
+    if (openTimer.current) clearTimeout(openTimer.current);
+    openTimer.current = null;
+  };
   // หน่วงนิดหนึ่งตอนเมาส์ออก — เผื่อคนลากเมาส์ผ่านช่องว่างระหว่างปุ่มกับแผง
   const scheduleClose = useCallback(() => {
     cancelClose();
     closeTimer.current = setTimeout(() => setOpenId(null), 160);
   }, []);
+  /**
+   * เปิดแบบหน่วง (hover-intent) — เมาส์แค่ "ลากผ่าน" หัวข้อระหว่างจะไปคลิกอย่างอื่น
+   * ไม่ควรเด้งแผง+ฉากหลังมาดักคลิก (เคยทำให้ต้องคลิกซ้ำถึงจะไปหน้าอื่นได้)
+   * ต้องชี้ค้าง ~140ms ถึงเปิด · แต่ถ้าแผงเปิดอยู่แล้ว เลื่อนข้ามหัวข้อ = สลับทันทีตามเดิม
+   */
+  const scheduleOpen = useCallback((id: string) => {
+    cancelClose();
+    cancelOpen();
+    openTimer.current = setTimeout(() => setOpenId(id), 140);
+  }, []);
 
-  useEffect(() => () => cancelClose(), []);
+  useEffect(() => () => {
+    cancelClose();
+    cancelOpen();
+  }, []);
   useEffect(() => setOpenId(null), [pathname]); // เปลี่ยนหน้าแล้วปิด
 
   useEffect(() => {
@@ -202,7 +220,10 @@ export function MegaBar({
       className={`flex items-stretch gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
         align === "end" ? "justify-end" : "mx-auto max-w-7xl justify-center px-4"
       }`}
-      onMouseLeave={scheduleClose}
+      onMouseLeave={() => {
+        cancelOpen();
+        scheduleClose();
+      }}
       onMouseEnter={cancelClose}
     >
       {groups.map((g) => (
@@ -210,11 +231,20 @@ export function MegaBar({
           key={g.id}
           type="button"
           onMouseEnter={() => {
-            cancelClose();
-            setOpenId(g.id);
+            // แผงเปิดอยู่แล้ว = สลับหัวข้อทันที · ยังไม่เปิด = รอชี้ค้างก่อน (กันเด้งมาดักคลิก)
+            if (openId) {
+              cancelClose();
+              setOpenId(g.id);
+            } else {
+              scheduleOpen(g.id);
+            }
           }}
+          onMouseLeave={cancelOpen}
           onFocus={() => setOpenId(g.id)}
-          onClick={() => setOpenId((v) => (v === g.id ? null : g.id))}
+          onClick={() => {
+            cancelOpen();
+            setOpenId((v) => (v === g.id ? null : g.id));
+          }}
           aria-expanded={openId === g.id}
           aria-haspopup="true"
           className={`flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3.5 py-2.5 text-[0.85rem] font-bold uppercase tracking-wide transition lg:px-4 ${
