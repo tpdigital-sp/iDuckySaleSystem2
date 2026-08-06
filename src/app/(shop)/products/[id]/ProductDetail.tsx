@@ -1057,10 +1057,10 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                   {tierByDesign && !rate?.minPerDesign ? (
                     // สินค้าคิดเรทตามชิ้นต่อลาย — โชว์วิธีคิดให้ลูกค้าเห็นเลยว่าเรทมาจากไหน
                     <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
-                      💡 ราคา/{matrix?.unit ?? "ชิ้น"} คิดตามจำนวน &ldquo;ต่อลาย&rdquo;: {qty.toLocaleString("th-TH")} ÷ {designs.toLocaleString("th-TH")} ลาย
-                      ≈ {Math.max(1, Math.floor(qty / Math.max(1, designs))).toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}/ลาย
-                      → ใช้เรทราคาของ {Math.max(1, Math.floor(qty / Math.max(1, designs))).toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
-                      {designs > 1 ? " · อยากได้เรทถูกลง ลดจำนวนลายหรือเพิ่มจำนวนสั่ง" : ""}
+                      💡 สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} คละ {designs.toLocaleString("th-TH")} ลาย
+                      = ตกลายละ {Math.max(1, Math.floor(qty / Math.max(1, designs))).toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}{" "}
+                      ราคาจึงคิดตามเรท {Math.max(1, Math.floor(qty / Math.max(1, designs))).toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
+                      {designs > 1 ? " — อยากได้ราคาถูกลง ลองลดจำนวนลาย หรือเพิ่มจำนวนสั่งดูนะครับ" : ""}
                     </p>
                   ) : freeMix && rate?.minPerDesign ? (
                     <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
