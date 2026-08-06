@@ -52,6 +52,9 @@ const MENU_GROUPS: {
   { key: "ระบบ", label: "⚙️ ร้าน & ระบบ", text: "text-[#6d4c33] hover:text-[#54382a]", dot: "bg-[#6d4c33]", badge: "bg-[#efe6dd] text-[#6d4c33]", line: "border-[#e0d2c5]" },
 ];
 
+/** แคชป้ายจำนวนประเมินใหม่ (module scope — อยู่ข้ามการเปลี่ยนหน้า) กันดึงเรตติ้งทั้งชุดซ้ำทุกคลิก */
+let ratingsBadgeCache: { at: number; rows: { id: string }[] } | null = null;
+
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -172,12 +175,19 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     if (pathname === "/admin/login" || !perms.includes("orders.viewAll")) return;
+    // แคชผลไว้ 2 นาที — เดิมยิงดึงเรตติ้งทั้งชุดใหม่ "ทุกคลิกเปลี่ยนหน้า" ทำให้หลังบ้านหน่วงโดยไม่จำเป็น
+    const cached = ratingsBadgeCache && Date.now() - ratingsBadgeCache.at < 120_000 ? ratingsBadgeCache.rows : null;
+    if (cached && pathname !== "/admin/ratings") {
+      setNewRatings(unseenRatingCount(cached));
+      return;
+    }
     let active = true;
     fetch("/api/admin/ratings", { cache: "no-store" })
       .then((r) => r.json())
       .then((j) => {
         if (!active) return;
         const rows = (j.ratings ?? []) as { id: string }[];
+        ratingsBadgeCache = { at: Date.now(), rows };
         if (pathname === "/admin/ratings") {
           // กำลังเปิดหน้าประเมินอยู่ → ถือว่าเห็นครบแล้ว
           markRatingsSeen(rows.map((r) => r.id));

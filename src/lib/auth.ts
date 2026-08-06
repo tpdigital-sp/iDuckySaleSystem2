@@ -18,6 +18,7 @@ export async function signInAdmin(
       body: JSON.stringify({ username, password }),
     });
     const data = await res.json().catch(() => ({}));
+    if (res.ok) clearSessionCache(); // สถานะล็อกอินใหม่ต้องเห็นทันที
     return res.ok ? { ok: true } : { ok: false, error: data.error ?? "เข้าสู่ระบบไม่สำเร็จ" };
   } catch {
     return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
@@ -29,6 +30,8 @@ export async function signOut(): Promise<void> {
     await fetch("/api/admin/logout", { method: "POST" });
   } catch {
     // ข้าม
+  } finally {
+    clearSessionCache();
   }
 }
 
@@ -44,11 +47,26 @@ interface SessionInfo {
 
 const EMPTY: SessionInfo = { configured: false, loggedIn: false, name: null, role: "", perms: [] };
 
+/**
+ * แคชผลตรวจ session ไว้ 60 วิ — AdminShell เรียกทุกครั้งที่เปลี่ยนหน้า
+ * ถ้าไม่แคช ทุกคลิกในหลังบ้านต้องรอ round-trip ตรวจสิทธิ์ก่อนแสดงหน้า (หน่วงทั้งระบบ)
+ */
+let sessionCache: { at: number; value: SessionInfo } | null = null;
+
+/** ล้างแคช session — เรียกหลังล็อกอิน/ล็อกเอาต์ ให้สถานะใหม่มีผลทันที */
+export function clearSessionCache() {
+  sessionCache = null;
+}
+
 export async function getAdminSession(): Promise<SessionInfo> {
+  if (sessionCache && Date.now() - sessionCache.at < 60_000) return sessionCache.value;
   try {
     const res = await fetch("/api/admin/session", { cache: "no-store" });
     if (!res.ok) return EMPTY;
-    return (await res.json()) as SessionInfo;
+    const value = (await res.json()) as SessionInfo;
+    // แคชเฉพาะผลที่ล็อกอินแล้ว/โหมดเดโม — สถานะ "ไม่ผ่าน" ไม่แคช (ล็อกอินเสร็จจะได้เข้าได้ทันที)
+    if (!value.configured || value.loggedIn) sessionCache = { at: Date.now(), value };
+    return value;
   } catch {
     return EMPTY;
   }
