@@ -656,7 +656,15 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
 
       {/* ═══ ข้อมูลประกอบ — ไหลต่อจากรูป/รายละเอียด (เดิมอยู่ท้ายหน้า ทำให้ตรงนี้เป็นช่องขาว) ═══ */}
       <div className="grid gap-6 sm:col-span-2 lg:grid-cols-2">
-        <div>
+        <div className="relative">
+          {/* ใช้ขนาดกำหนดเองอยู่ — คลุมตารางไว้ กันเข้าใจผิดว่าราคาอิงเรทขนาดปกติ */}
+          {useCustom && (
+            <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/70">
+              <p className="rounded-full bg-sky-600 px-4 py-2 text-center text-xs font-bold text-white shadow-lg">
+                📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตารางนี้
+              </p>
+            </div>
+          )}
           <p className="text-sm font-bold text-stone-700">
             💰 ราคาต่อหน่วยตามจำนวน
             {rate && <span className="ml-1 font-semibold text-teal-700">· {rate.label}</span>}
@@ -743,18 +751,29 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
           <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
             <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">ราคา</p>
             <div className="mt-4 flex items-baseline gap-2">
-              <span className="text-2xl font-extrabold text-amber-600">{formatPrice(unitPrice)}</span>
-              {matrix ? (
-                <span className="text-sm font-semibold text-stone-500">/ {matrix.unit}</span>
+              {useCustom && custom?.mode === "quote" ? (
+                // ขนาดกำหนดเอง (โหมดตีราคา) — ไม่โชว์ ฿0 ให้งง
+                <span className="text-xl font-extrabold text-sky-700">💬 รอแอดมินตีราคา</span>
               ) : (
-                product.oldPrice && (
-                  <span className="text-base text-stone-400 line-through">
-                    {formatPrice(product.oldPrice)}
-                  </span>
-                )
+                <>
+                  <span className="text-2xl font-extrabold text-amber-600">{formatPrice(unitPrice)}</span>
+                  {matrix ? (
+                    <span className="text-sm font-semibold text-stone-500">/ {matrix.unit}</span>
+                  ) : (
+                    product.oldPrice && (
+                      <span className="text-base text-stone-400 line-through">
+                        {formatPrice(product.oldPrice)}
+                      </span>
+                    )
+                  )}
+                </>
               )}
             </div>
-            {matrix ? (
+            {useCustom ? (
+              <p className="mt-1 text-xs text-sky-700">
+                📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตัวเลือก/ตารางเรทปกติ
+              </p>
+            ) : matrix ? (
               <p className="mt-1 text-xs text-stone-400">
                 💡 เรทราคา {formatPriceRange(product)} ต่อ{matrix.unit} — ยิ่งสั่งเยอะ ยิ่งถูก (ราคาปรับตามจำนวน)
               </p>
@@ -767,9 +786,9 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
             )}
           </div>
 
-          {/* เลือกเรทราคา (สินค้าที่มีหลายเรท เช่น คละดีเทล / ไม่คละดีเทล) */}
+          {/* เลือกเรทราคา (สินค้าที่มีหลายเรท เช่น คละดีเทล / ไม่คละดีเทล) — ใช้ขนาดกำหนดเองอยู่ = ปิดชั่วคราว */}
           {rates.length > 1 && rate && (
-            <div className="mt-5">
+            <div className={`mt-5 ${useCustom ? "pointer-events-none select-none opacity-40" : ""}`} aria-disabled={useCustom}>
               <span className="mb-2 block text-sm font-bold text-stone-700">
                 {RATE_LABEL}: <span className="font-semibold text-amber-600">{rate.label}</span>
               </span>
@@ -820,8 +839,14 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
             </div>
           )}
 
-          {/* ตัวเลือกสินค้า (กรอง/ล็อกตามกฎเงื่อนไข) */}
-          <div className="mt-5 space-y-4">
+          {/* ตัวเลือกสินค้า (กรอง/ล็อกตามกฎเงื่อนไข) — ใช้ขนาดกำหนดเองอยู่ = ปิดทั้งชุด กันเข้าใจผิดว่าราคาอิงตัวเลือก */}
+          {useCustom && (
+            <p className="mt-5 rounded-xl bg-sky-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-sky-800 ring-1 ring-sky-200">
+              📐 กำลังใช้ &ldquo;{custom?.label ?? "กำหนดขนาดเอง"}&rdquo; — ตัวเลือกด้านล่างถูกปิดไว้ ราคาไม่อิงตัวเลือก/ตารางเรทปกติ
+              (เอาติ๊กออกเพื่อกลับมาเลือกตามปกติ)
+            </p>
+          )}
+          <div className={`mt-5 space-y-4 ${useCustom ? "pointer-events-none select-none opacity-40" : ""}`} aria-disabled={useCustom}>
             {product.options.map((opt) => {
               const allowedByRules = allowedChoices(product, effective, opt.label);
               // ตัดตัวที่ไม่มีราคาขายในเรทที่เลือกอยู่ (แอดมินล้างแถวทิ้ง) — ตัดหมดแล้วคงชุดเดิมไว้กันหน้าพัง
@@ -1055,13 +1080,17 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                   🎨 สินค้านี้ต้องแนบลายก่อนสั่ง — แตะเพื่ออัปโหลดรูป หรือใส่ลิงก์ไฟล์/อีเมล
                 </button>
               )}
-              {matrix && (
+              {useCustom && custom?.mode === "quote" ? (
+                <p className="mt-2 text-sm font-semibold text-sky-700">
+                  💬 สั่งได้เลย — แอดมินจะตีราคาขนาด {customValid ? `${cW}×${cH} ${custom.unit}` : "ที่ระบุ"} ให้หลังสั่ง
+                </p>
+              ) : matrix ? (
                 <p className="mt-2 text-sm text-stone-500">
                   {formatPrice(unitPrice)} / {matrix.unit} × {qty.toLocaleString("th-TH")}
                   {designFee > 0 && <> + ค่าคละลาย {formatPrice(designFee)}</>} ={" "}
                   <span className="font-extrabold text-amber-600">{formatPrice(unitPrice * qty + designFee)}</span>
                 </p>
-              )}
+              ) : null}
               {/* จำนวนลายที่คละ — ต้องระบุก่อนสั่ง (แตะปุ่ม/พิมพ์เลข หรือแนบรูปให้ระบบนับอัตโนมัติ) */}
               {needDesignsChoice && (
                 <div
