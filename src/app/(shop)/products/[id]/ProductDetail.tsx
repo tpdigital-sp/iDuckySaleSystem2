@@ -149,7 +149,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   const tierByDesign = !!product.tierByDesign;
   // ลายที่รวมในราคาตามจำนวนที่สั่ง · เรทที่เปิด extraDesignFee คละเกินได้ (จ่ายเพิ่มต่อลาย ไม่เกินจำนวนชิ้น)
   const included = rate?.minPerDesign ? includedDesigns(rate, qty) : 0;
-  const maxDesigns = rate?.minPerDesign ? maxDesignsFor(rate, qty) : tierByDesign ? qty : 0;
+  // สินค้าที่คิดเรทตามชิ้นต่อลาย: คละได้ถึงจำนวนชิ้นเสมอ (เกินโควตาเรท = ราคาปรับเป็นเรทต่อลายเอง ไม่บล็อก)
+  const maxDesigns = tierByDesign ? qty : rate?.minPerDesign ? maxDesignsFor(rate, qty) : 0;
   const freeMix = !!rate && rate.minPerDesign != null && isFreeMix(rate, qty);
   useEffect(() => {
     if (maxDesigns > 0) setDesigns((d) => Math.min(Math.max(1, d), maxDesigns));
@@ -1054,7 +1055,25 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                       <span className="text-xs font-bold text-amber-700">+{formatPrice(designFee)}</span>
                     )}
                   </div>
-                  {tierByDesign && !rate?.minPerDesign ? (
+                  {tierByDesign && rate?.minPerDesign && !freeMix && designs > included ? (
+                    // คละเกินโควตาของเรท — ไม่บล็อก แต่ราคาตกไปคิดตามชิ้นต่อลาย (บอกลูกค้าตรง ๆ ว่าจ่ายเรทไหน)
+                    (() => {
+                      const unit = matrix?.unit ?? "ชิ้น";
+                      const perDesign = Math.max(1, Math.floor(qty / Math.max(1, designs)));
+                      const tierLabel = matrix ? matrix.tiers[tierIndex(matrix, perDesign)]?.label?.trim() : "";
+                      return (
+                        <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
+                          💡 คละ {designs.toLocaleString("th-TH")} ลาย เกินโควตาเรทนี้ (รวมในราคา {included.toLocaleString("th-TH")} ลาย ·
+                          ขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {unit}) — ราคาจึงคิดตามชิ้นต่อลาย:
+                          ตกลายละ {perDesign.toLocaleString("th-TH")} {unit} → ใช้เรท{" "}
+                          <strong className="font-bold">
+                            &ldquo;{tierLabel || `${perDesign.toLocaleString("th-TH")} ${unit}`}&rdquo;
+                          </strong>{" "}
+                          · ลดเหลือ {included.toLocaleString("th-TH")} ลาย (หรือเพิ่มจำนวนสั่ง) เมื่อไหร่ กลับไปเรทยอดรวมทันที
+                        </p>
+                      );
+                    })()
+                  ) : tierByDesign && !rate?.minPerDesign ? (
                     // สินค้าคิดเรทตามชิ้นต่อลาย — โชว์วิธีคิด + เรียกชื่อเรท/ช่วงตามที่แอดมินตั้งไว้ในตารางราคา
                     (() => {
                       const unit = matrix?.unit ?? "ชิ้น";
@@ -1084,7 +1103,9 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                     รวมในราคา {included.toLocaleString("th-TH")} ลาย (ขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"})
                     {rate.extraDesignFee
                       ? ` · คละเกินได้ ลายละ +${formatPrice(rate.extraDesignFee)}`
-                      : " · เพิ่มลายได้ด้วยการเพิ่มจำนวนสั่ง"}
+                      : tierByDesign
+                        ? " · คละเกินได้เลย — ราคาจะปรับเป็นเรทตามชิ้นต่อลาย"
+                        : " · เพิ่มลายได้ด้วยการเพิ่มจำนวนสั่ง"}
                   </p>
                   ) : null}
                   {/* แนบภาพลายมากกว่าจำนวนลายที่นับไว้ → เตือน (ราคา/เงื่อนไขคิดตามจำนวนลาย) */}

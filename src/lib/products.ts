@@ -185,14 +185,20 @@ export function designCountOf(selections: Record<string, string>): number {
  * เช่น เคส 11 ชิ้นคละ 11 ลาย → 1 ชิ้น/ลาย → เรทราคาปลีก (ไม่ใช่เรท 11 ชิ้น)
  * ส่วน "ราคารวม" ยังคูณจำนวนชิ้นจริงทั้งหมดตามเดิม
  *
- * ⚠️ ยกเว้นเรทที่ตั้ง "คละลายขั้นต่ำลายละ N" ไว้แล้ว — เรทนั้นคุมจำนวนลายด้วยกติกาของตัวเอง
- * (เช่น ขั้นต่ำ 11 ชิ้น ลายละ 3 → สั่ง 12 ชิ้นคละ 4 ลาย ผ่านเงื่อนไข = คิดเรทตามยอดรวม 12 ชิ้นเต็ม ๆ)
- * ถ้าหารต่อลายซ้ำอีกชั้นจะโดนลงโทษสองต่อทั้งที่ทำตามเงื่อนไขแล้ว
+ * เรทที่ตั้ง "คละลายขั้นต่ำลายละ N" ไว้:
+ * - คละอยู่ในโควตา (เช่น 12 ชิ้นลายละ 3 คละ 4 ลาย) = ทำตามเงื่อนไข → คิดเรทตามยอดรวมเต็ม ๆ
+ * - คละ "เกิน" โควตา (เช่น 11 ชิ้นคละ 4 ลาย) = ไม่บล็อก แต่ราคาตกไปคิดตามชิ้นต่อลาย
+ *   (ลูกค้าอยากคละเยอะยอมจ่ายราคาปลีกได้เอง — ระบบปรับเรทให้เห็นตรง ๆ ไม่ใช่แค่ป้ายเตือน)
  */
 export function tierQtyFor(product: Product, selections: Record<string, string>, qty: number): number {
   if (!product.tierByDesign) return qty;
-  if (activeRate(product, selections)?.minPerDesign) return qty;
-  return Math.max(1, Math.floor(qty / designCountOf(selections)));
+  const r = activeRate(product, selections);
+  const d = designCountOf(selections);
+  if (r?.minPerDesign) {
+    if (isFreeMix(r, qty) || d <= includedDesigns(r, qty)) return qty;
+    return Math.max(1, Math.floor(qty / d));
+  }
+  return Math.max(1, Math.floor(qty / d));
 }
 
 /**
