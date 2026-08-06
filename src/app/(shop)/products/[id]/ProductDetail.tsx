@@ -157,10 +157,17 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   useEffect(() => {
     if (maxDesigns > 0) setDesigns((d) => Math.min(Math.max(1, d), maxDesigns));
   }, [maxDesigns]);
-  // ✨ นับจำนวนลายอัตโนมัติตามรูปลายที่แนบ (จนกว่าลูกค้าจะปรับเอง)
+  // ✨ นับจำนวนลายอัตโนมัติตามรูปลายที่แนบ
+  // ยังไม่เคยปรับเอง = ตามจำนวนรูปเป๊ะ · เคยปรับเองแล้ว = ไม่ลดให้ แต่ถ้าแนบรูป "เกิน" ที่ตั้งไว้
+  // ดันขึ้นตามรูปเสมอ (ทางร้านนับลายจากไฟล์จริง — ราคาต้องขยับตาม ไม่ใช่แค่ป้ายเตือน)
   useEffect(() => {
-    if (designsTouched || maxDesigns < 1) return;
-    setDesigns(Math.min(Math.max(artFiles.length, 1), maxDesigns));
+    if (maxDesigns < 1) return;
+    setDesigns((d) => {
+      const target = designsTouched ? Math.max(d, artFiles.length) : Math.max(artFiles.length, 1);
+      const next = Math.min(Math.max(1, target), maxDesigns);
+      if (next !== d) setDesignsDraft(null); // ค่าเปลี่ยนเพราะนับรูป — ล้างข้อความค้างในช่องให้โชว์ค่าจริง
+      return next;
+    });
   }, [artFiles.length, maxDesigns, designsTouched]);
   const extraDesigns = rate?.extraDesignFee ? Math.max(0, designs - included) : 0;
   const designFee = extraDesigns * (rate?.extraDesignFee ?? 0);
