@@ -178,12 +178,18 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   const [designsTouched, setDesignsTouched] = useState(false);
   // ข้อความในช่องพิมพ์จำนวนลายระหว่างแก้ (ยอมว่างชั่วคราว — ลบทิ้งแล้วพิมพ์ใหม่ได้) · null = โชว์ค่าจริง
   const [designsDraft, setDesignsDraft] = useState<string | null>(null);
+  // กดสั่งโดยยังไม่ระบุจำนวนลาย → ไฮไลต์กล่องเตือน
+  const [designsWarn, setDesignsWarn] = useState(false);
   // สินค้าที่ตั้ง "คิดเรทตามชิ้นต่อลาย" — คละกี่ลายก็ได้ แต่เรทราคาคิดจาก ⌊จำนวน ÷ ลาย⌋
   const tierByDesign = !!product.tierByDesign;
+  // "ระบุจำนวนลายแล้ว" = แตะ +/− หรือพิมพ์เลขเอง หรือแนบรูปให้ระบบนับ — สินค้าที่มีระบบลายต้องระบุก่อนสั่ง
+  const designsSet = designsTouched || artFiles.length > 0;
   // ลายที่รวมในราคาตามจำนวนที่สั่ง · เรทที่เปิด extraDesignFee คละเกินได้ (จ่ายเพิ่มต่อลาย ไม่เกินจำนวนชิ้น)
   const included = rate?.minPerDesign ? includedDesigns(rate, qty) : 0;
   // สินค้าที่คิดเรทตามชิ้นต่อลาย: คละได้ถึงจำนวนชิ้นเสมอ (เกินโควตาเรท = ราคาปรับเป็นเรทต่อลายเอง ไม่บล็อก)
   const maxDesigns = tierByDesign ? qty : rate?.minPerDesign ? maxDesignsFor(rate, qty) : 0;
+  /** สินค้านี้มีระบบจำนวนลาย → ลูกค้าต้องระบุจำนวนลายก่อนสั่ง */
+  const needDesignsChoice = ((rate?.minPerDesign ?? 0) > 0 || tierByDesign) && maxDesigns >= 1;
   const freeMix = !!rate && rate.minPerDesign != null && isFreeMix(rate, qty);
   useEffect(() => {
     if (maxDesigns > 0) setDesigns((d) => Math.min(Math.max(1, d), maxDesigns));
@@ -449,6 +455,12 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     if (artBlocked) {
       setArtTouched(false);
       setExtraOpen("art");
+      return;
+    }
+    // สินค้าที่มีระบบลาย: ต้องระบุจำนวนลายก่อน (แตะ +/− พิมพ์เลข หรือแนบรูปให้นับอัตโนมัติ)
+    if (needDesignsChoice && !designsSet) {
+      setDesignsWarn(true);
+      document.getElementById("designs-box")?.scrollIntoView({ block: "center", behavior: "smooth" });
       return;
     }
     // แนบข้อมูลเพิ่มไปกับรายการ (ไม่กระทบราคา): ลิงก์ไฟล์ลาย/อีเมล + หมายเหตุ
@@ -1043,12 +1055,28 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                   <span className="font-extrabold text-amber-600">{formatPrice(unitPrice * qty + designFee)}</span>
                 </p>
               )}
-              {/* จำนวนลายที่คละ (เรทที่กำหนดขั้นต่ำต่อลาย / สินค้าคิดเรทตามชิ้นต่อลาย) */}
-              {((rate?.minPerDesign ?? 0) > 0 || tierByDesign) && maxDesigns >= 1 && (
-                <div className="mt-2 rounded-2xl bg-teal-50 px-3 py-2.5 ring-1 ring-teal-100">
+              {/* จำนวนลายที่คละ — ต้องระบุก่อนสั่ง (แตะปุ่ม/พิมพ์เลข หรือแนบรูปให้ระบบนับอัตโนมัติ) */}
+              {needDesignsChoice && (
+                <div
+                  id="designs-box"
+                  className={`mt-2 rounded-2xl px-3.5 py-3 ring-2 transition ${
+                    designsSet
+                      ? "bg-teal-50 ring-teal-200"
+                      : designsWarn
+                        ? "bg-rose-50 ring-rose-400"
+                        : "bg-amber-50 ring-amber-300"
+                  }`}
+                >
                   <div className="flex flex-wrap items-center gap-2.5">
-                    <span className="text-xs font-bold text-teal-900">🎨 คละกี่ลาย:</span>
-                    <div className="flex items-center rounded-full bg-white ring-1 ring-teal-200">
+                    <span className="text-sm font-extrabold text-teal-900">🎨 คละกี่ลาย:</span>
+                    {!designsSet && (
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold text-white ${designsWarn ? "bg-rose-500" : "bg-amber-500"}`}
+                      >
+                        ต้องระบุก่อนสั่ง *
+                      </span>
+                    )}
+                    <div className="flex items-center rounded-full bg-white shadow-sm ring-1 ring-teal-200">
                       <button
                         type="button"
                         onClick={() => {
@@ -1056,8 +1084,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                           setDesignsDraft(null);
                           setDesigns((d) => Math.max(1, d - 1));
                         }}
-                        disabled={designs <= 1}
-                        className="h-8 w-8 rounded-l-full text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
+                        disabled={designsSet && designs <= 1}
+                        className="h-9 w-9 rounded-l-full text-base font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
                         aria-label="ลดจำนวนลาย"
                       >
                         −
@@ -1073,10 +1101,14 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                           if (Number.isFinite(n) && n >= 1) setDesigns(Math.min(n, Math.max(1, maxDesigns)));
                         }}
                         onBlur={() => setDesignsDraft(null)}
-                        onFocus={(e) => e.target.select()}
+                        onFocus={(e) => {
+                          // แตะที่ตัวเลขก็นับเป็น "ระบุแล้ว" — ลูกค้าลายเดียวยืนยันได้โดยไม่ต้องกดปุ่ม
+                          setDesignsTouched(true);
+                          e.target.select();
+                        }}
                         inputMode="numeric"
                         aria-label="จำนวนลายที่คละ (พิมพ์เลขได้)"
-                        className="w-12 bg-transparent text-center text-sm font-bold text-teal-900 outline-none"
+                        className="w-14 bg-transparent text-center text-base font-extrabold text-teal-900 outline-none"
                       />
                       <button
                         type="button"
@@ -1086,7 +1118,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                           setDesigns((d) => Math.min(maxDesigns, d + 1));
                         }}
                         disabled={designs >= maxDesigns}
-                        className="h-8 w-8 rounded-r-full text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
+                        className="h-9 w-9 rounded-r-full text-base font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
                         aria-label="เพิ่มจำนวนลาย"
                       >
                         +
@@ -1101,6 +1133,11 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                       <span className="text-xs font-bold text-amber-700">+{formatPrice(designFee)}</span>
                     )}
                   </div>
+                  {!designsSet && (
+                    <p className={`mt-1.5 text-[11px] font-bold ${designsWarn ? "text-rose-600" : "text-amber-700"}`}>
+                      👉 กด + / − หรือแตะที่ตัวเลขเพื่อระบุจำนวนลายที่จะคละ — แนบรูปลายแล้วระบบจะนับให้อัตโนมัติ
+                    </p>
+                  )}
                   {tierByDesign && rate?.minPerDesign && !freeMix && designs > included ? (
                     // คละเกินโควตาของเรท — ไม่บล็อก แต่ราคาตกไปคิดตามชิ้นต่อลาย (บอกลูกค้าตรง ๆ ว่าจ่ายเรทไหน)
                     (() => {
