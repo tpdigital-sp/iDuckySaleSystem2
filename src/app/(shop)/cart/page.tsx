@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LINE_URL } from "@/components/LineButton";
-import { activeRate, formatPrice, productPath } from "@/lib/products";
+import { activeRate, formatPrice, productPath, RATE_LABEL } from "@/lib/products";
 import {
   fetchShopPayment,
   freeShippingMinOf,
@@ -22,7 +22,7 @@ import { cartQtyShipFee, pickShipping, shipProfileOf, shippingAllowed } from "@/
 const USE_BY_KEY = "ducky-use-by-date";
 
 export default function CartPage() {
-  const { items, setQty, removeItem, clear, productOf } = useCart();
+  const { items, setQty, removeItem, addItem, clear, productOf } = useCart();
   const router = useRouter();
   // สั่งเป็นออเดอร์ใหม่ หรือเพิ่มเข้าออเดอร์เดิม (ลูกค้ากดมาจากหน้าออเดอร์)
   const [appendTo, setAppendTo] = useState<AppendTarget | null>(null);
@@ -88,6 +88,28 @@ export default function CartPage() {
   /** ติ๊กทั้งหมด / เอาออกทั้งหมด */
   function togglePickAll() {
     commitUnpicked(allPicked ? items.map((i) => i.key) : []);
+  }
+  /**
+   * ปรับจำนวนในตะกร้า — ร้านรับสั่งขั้นต่ำ 1 ชิ้นเสมอ ห้ามล็อกเพราะ "เรทที่เลือกไว้" มีขั้นต่ำสูง
+   * ลดต่ำกว่าขั้นต่ำของเรท → สลับลงเรทที่รับจำนวนนั้นได้ (ปกติคือเรทปลีก) เหมือนหน้าสินค้า
+   * ไม่งั้นลูกค้าจะได้ราคาเรทส่งทั้งที่สั่งไม่ถึงเกณฑ์
+   */
+  function changeQty(item: (typeof items)[number], next: number) {
+    if (next < 1) return;
+    const p = productOf(item.productId);
+    const rates = p?.priceRates ?? [];
+    const cur = p ? activeRate(p, item.selections) : undefined;
+    if (p && rates.length > 1 && cur && (cur.minQty ?? 1) > next) {
+      const fit = [...rates]
+        .filter((r) => (r.minQty ?? 1) <= next)
+        .sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
+      if (fit && fit.label !== cur.label) {
+        removeItem(item.key);
+        addItem(item.productId, { ...item.selections, [RATE_LABEL]: fit.label }, next, p);
+        return;
+      }
+    }
+    setQty(item.key, next);
   }
   function removePicked() {
     pickedItems.forEach((i) => removeItem(i.key));
@@ -401,17 +423,15 @@ export default function CartPage() {
                     );
                   })()}
                   {(() => {
-                    // ขั้นต่ำของเรทที่เลือก (สินค้าหลายเรท) — ลดต่ำกว่านี้ไม่ได้ / เตือนถ้าหลุดเกณฑ์
-                    const itemRate = activeRate(product, item.selections);
-                    const minQ = itemRate?.minQty ?? 1;
+                    // ร้านรับสั่งขั้นต่ำ 1 ชิ้นทุกสินค้า — ลดต่ำกว่าขั้นต่ำของเรทได้ ระบบสลับเรทให้เอง
                     return (
                   <div className="mt-auto flex items-center justify-between pt-2">
                     <div>
                     <div className="flex items-center rounded-full bg-amber-50 ring-1 ring-amber-200">
                       <button
                         type="button"
-                        onClick={() => setQty(item.key, Math.max(minQ, item.qty - 1))}
-                        disabled={item.qty <= minQ}
+                        onClick={() => changeQty(item, item.qty - 1)}
+                        disabled={item.qty <= 1}
                         className="h-9 w-9 rounded-l-full font-bold text-stone-600 hover:bg-amber-100 disabled:opacity-30"
                         aria-label="ลดจำนวน"
                       >
@@ -420,18 +440,13 @@ export default function CartPage() {
                       <span className="w-8 text-center text-sm font-bold">{item.qty}</span>
                       <button
                         type="button"
-                        onClick={() => setQty(item.key, item.qty + 1)}
+                        onClick={() => changeQty(item, item.qty + 1)}
                         className="h-9 w-9 rounded-r-full font-bold text-stone-600 hover:bg-amber-100"
                         aria-label="เพิ่มจำนวน"
                       >
                         +
                       </button>
                     </div>
-                    {item.qty < minQ && (
-                      <p className="mt-1 text-[11px] font-bold text-rose-600">
-                        ⚠️ เรทนี้สั่งขั้นต่ำ {minQ.toLocaleString("th-TH")} ชิ้น
-                      </p>
-                    )}
                     </div>
                     <div className="text-right">
                       {item.unitPrice <= 0 ? (
@@ -655,37 +670,21 @@ export default function CartPage() {
             </div>
           </div>
 
-          {(() => {
-            // รายการที่จำนวนต่ำกว่าขั้นต่ำของเรทที่เลือก — กันหลุดไปหน้าชำระเงิน (ดูเฉพาะที่ติ๊กจะสั่ง)
-            const below = pickedItems.filter((it) => {
-              const p = productOf(it.productId);
-              const r = p ? activeRate(p, it.selections) : undefined;
-              return r?.minQty != null && it.qty < r.minQty;
-            });
-            const nothingPicked = pickedItems.length === 0;
-            return (
-              <>
-                {below.length > 0 && (
-                  <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-2.5 text-xs font-bold leading-relaxed text-rose-700 ring-1 ring-rose-200">
-                    ⚠️ มี {below.length} รายการที่จำนวนยังไม่ถึงขั้นต่ำของเรทราคาที่เลือก — เพิ่มจำนวนก่อนสั่งซื้อ
-                  </p>
-                )}
-                {nothingPicked && (
-                  <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-2.5 text-xs font-bold leading-relaxed text-amber-800 ring-1 ring-amber-200">
-                    ☑️ ยังไม่ได้ติ๊กเลือกรายการที่จะสั่ง — ติ๊กอย่างน้อย 1 รายการก่อนนะครับ
-                  </p>
-                )}
-                <button
-                  type="button"
-                  onClick={() => router.push("/checkout")}
-                  disabled={below.length > 0 || nothingPicked}
-                  className="mt-5 w-full rounded-full bg-amber-400 px-6 py-3.5 text-base font-bold text-white shadow-lg transition hover:scale-[1.02] hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
-                >
-                  ✅ ยืนยันการสั่งซื้อ{allPicked ? "" : ` (${pickedItems.length} รายการ)`}
-                </button>
-              </>
-            );
-          })()}
+          {/* ร้านรับสั่งขั้นต่ำ 1 ชิ้นทุกสินค้า — ขั้นต่ำของเรทไม่บล็อกการสั่งอีกต่อไป
+              (จำนวนต่ำกว่าเกณฑ์เรท = ระบบสลับลงเรทที่เหมาะให้เอง ราคาถูกต้องตามช่วงจำนวน) */}
+          {pickedItems.length === 0 && (
+            <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-2.5 text-xs font-bold leading-relaxed text-amber-800 ring-1 ring-amber-200">
+              ☑️ ยังไม่ได้ติ๊กเลือกรายการที่จะสั่ง — ติ๊กอย่างน้อย 1 รายการก่อนนะครับ
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => router.push("/checkout")}
+            disabled={pickedItems.length === 0}
+            className="mt-5 w-full rounded-full bg-amber-400 px-6 py-3.5 text-base font-bold text-white shadow-lg transition hover:scale-[1.02] hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+          >
+            ✅ ยืนยันการสั่งซื้อ{allPicked ? "" : ` (${pickedItems.length} รายการ)`}
+          </button>
           <p className="mt-2 text-center text-[11px] leading-relaxed text-stone-500">
             ตรวจสอบรายการ · ตัวเลือก · ลิงก์ไฟล์ลาย ให้ครบ แล้วไปหน้าแจ้งโอนเงิน
           </p>
