@@ -22,7 +22,7 @@ import {
   PRODUCTS,
   RATE_LABEL,
   resolveSelections,
-  choiceAddOf,
+  choiceBadgeOf,
   shortComboParts,
   smallQtyFeeOf,
   tierIndex,
@@ -1099,8 +1099,8 @@ export default function ProductDetail({
                                 ✓
                               </span>
                               {c.name}
-                              {choiceAddOf(opt, effective, c.name, feeQty) > 0
-                                ? ` +${formatPrice(choiceAddOf(opt, effective, c.name, feeQty))}`
+                              {choiceBadgeOf(opt, effective, c.name, feeQty) > 0
+                                ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty))}`
                                 : ""}
                             </button>
                           );
@@ -1127,8 +1127,8 @@ export default function ProductDetail({
                         .map((c) => (
                           <option key={c.name} value={c.name}>
                             {c.name}
-                            {choiceAddOf(opt, effective, c.name, feeQty) > 0
-                              ? ` +${formatPrice(choiceAddOf(opt, effective, c.name, feeQty))}`
+                            {choiceBadgeOf(opt, effective, c.name, feeQty) > 0
+                              ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty))}`
                               : ""}
                           </option>
                         ))}
@@ -1151,8 +1151,8 @@ export default function ProductDetail({
                             }`}
                           >
                             {c.name}
-                            {choiceAddOf(opt, effective, c.name, feeQty) > 0
-                              ? ` +${formatPrice(choiceAddOf(opt, effective, c.name, feeQty))}`
+                            {choiceBadgeOf(opt, effective, c.name, feeQty) > 0
+                              ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty))}`
                               : ""}
                           </button>
                         ))}

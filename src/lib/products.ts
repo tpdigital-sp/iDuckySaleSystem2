@@ -196,20 +196,21 @@ export function groupAddOf(opt: ProductOption, selections: Record<string, string
 }
 
 /**
- * ราคาที่บวกจริงต่อชิ้น "ถ้าเลือกตัวนี้" — ใช้โชว์ป้าย +฿ ข้างตัวเลือกให้ตรงกับที่คิดเงินจริง
- * (กลุ่มที่ติ๊กได้หลายอย่างคิดค่าธรรมเนียมทั้งกลุ่ม ไม่ใช่ต่อตัว จึงโชว์ราคาตัวเลือกตามเดิม)
+ * ป้าย +฿ ที่ควรโชว์ข้างตัวเลือก (0 = ไม่ต้องโชว์)
+ *
+ * ตัวที่โดนค่าธรรมเนียมเหมาไม่ต้องโชว์ราคา — ในช่วงนั้นทุกตัวราคาเท่ากันหมด
+ * ขึ้น "+฿10" ทุกบรรทัดรกเปล่า ๆ · ยอดเหมาบอกไว้ในบรรทัดสรุปใต้กลุ่มแล้ว
+ * ส่วนตัวที่ติ๊กยกเว้น (ไม่โดนเหมา) ยังโชว์ราคาตัวเองตามปกติ
  */
-export function choiceAddOf(
+export function choiceBadgeOf(
   opt: ProductOption,
   selections: Record<string, string>,
   choiceName: string,
   qty: number
 ): number {
   const view = { ...selections, [opt.label]: choiceName };
-  const fee = smallQtyFeeOf(opt, view, qty);
-  if (fee > 0 && !isMultiOption(opt)) return fee;
-  const extra = optionExtraApplies(opt, qty) ? choiceExtraOf(opt, view, choiceName) : 0;
-  return isMultiOption(opt) ? extra : extra + fee;
+  if (!isMultiOption(opt) && smallQtyFeeOf(opt, view, qty) > 0) return 0;
+  return optionExtraApplies(opt, qty) ? choiceExtraOf(opt, view, choiceName) : 0;
 }
 
 export interface ProductImage {
