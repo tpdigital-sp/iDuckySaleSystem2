@@ -22,7 +22,7 @@ import {
   PRODUCTS,
   RATE_LABEL,
   resolveSelections,
-  choiceExtraOf,
+  choiceAddOf,
   shortComboParts,
   smallQtyFeeOf,
   tierIndex,
@@ -1099,8 +1099,8 @@ export default function ProductDetail({
                                 ✓
                               </span>
                               {c.name}
-                              {optionExtraApplies(opt, feeQty) && choiceExtraOf(opt, effective, c.name) > 0
-                                ? ` +${formatPrice(choiceExtraOf(opt, effective, c.name))}`
+                              {choiceAddOf(opt, effective, c.name, feeQty) > 0
+                                ? ` +${formatPrice(choiceAddOf(opt, effective, c.name, feeQty))}`
                                 : ""}
                             </button>
                           );
@@ -1127,8 +1127,8 @@ export default function ProductDetail({
                         .map((c) => (
                           <option key={c.name} value={c.name}>
                             {c.name}
-                            {optionExtraApplies(opt, feeQty) && choiceExtraOf(opt, effective, c.name) > 0
-                              ? ` +${formatPrice(choiceExtraOf(opt, effective, c.name))}`
+                            {choiceAddOf(opt, effective, c.name, feeQty) > 0
+                              ? ` +${formatPrice(choiceAddOf(opt, effective, c.name, feeQty))}`
                               : ""}
                           </option>
                         ))}
@@ -1151,8 +1151,8 @@ export default function ProductDetail({
                             }`}
                           >
                             {c.name}
-                            {optionExtraApplies(opt, feeQty) && choiceExtraOf(opt, effective, c.name) > 0
-                              ? ` +${formatPrice(choiceExtraOf(opt, effective, c.name))}`
+                            {choiceAddOf(opt, effective, c.name, feeQty) > 0
+                              ? ` +${formatPrice(choiceAddOf(opt, effective, c.name, feeQty))}`
                               : ""}
                           </button>
                         ))}
@@ -1168,9 +1168,9 @@ export default function ProductDetail({
                         {opt.label}
                         {fee < 0
                           ? `ลดให้ ${formatPrice(-fee)}/${unit}`
-                          : `คิดเพิ่ม ${formatPrice(fee)}/${unit}`}
+                          : `คิดเหมา ${formatPrice(fee)}/${unit} (แทนราคา${opt.label}ปกติ ไม่บวกซ้ำ)`}
                         {(opt.smallQtyFee!.freeChoices ?? []).length > 0
-                          ? ` (ยกเว้น ${opt.smallQtyFee!.freeChoices!.join(" / ")}${fee < 0 ? " ไม่ลด" : " ฟรี"})`
+                          ? ` (ยกเว้น ${opt.smallQtyFee!.freeChoices!.join(" / ")}${fee < 0 ? " ไม่ลด" : " คิดราคาปกติ"})`
                           : ""}
                       </p>
                     );

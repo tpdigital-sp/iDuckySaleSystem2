@@ -180,6 +180,38 @@ export function smallQtyFeeOf(
   return f.fee;
 }
 
+/**
+ * ราคาที่บวกจริงต่อชิ้นของ "ทั้งกลุ่ม" ณ ตัวเลือก/จำนวนนี้
+ *
+ * กติกาสำคัญ: ค่าธรรมเนียมช่วงสั่งน้อย (ค่าบวก) คิด **แทน** ราคาตัวเลือกในกลุ่มนั้น ไม่ใช่บวกซ้ำ
+ * เช่น ช่วงปลีกเลือกตะขอคิดเหมาชิ้นละ 10 → ตะขอ C (+฿3) ก็คิด 10 ไม่ใช่ 13
+ * ตัวที่ติ๊กยกเว้น (freeChoices) ไม่โดนค่าธรรมเนียม จึงคิดราคาตัวเลือกตามปกติ
+ * ค่าธรรมเนียมติดลบ (= ส่วนลด) ไม่แทนที่ราคาตัวเลือก แต่ลดจากราคารวมของกลุ่ม
+ */
+export function groupAddOf(opt: ProductOption, selections: Record<string, string>, qty: number): number {
+  const fee = smallQtyFeeOf(opt, selections, qty);
+  if (fee > 0) return fee;
+  const extra = optionExtraApplies(opt, qty) ? groupExtraOf(opt, selections) : 0;
+  return extra + fee; // fee ติดลบ = ลดให้
+}
+
+/**
+ * ราคาที่บวกจริงต่อชิ้น "ถ้าเลือกตัวนี้" — ใช้โชว์ป้าย +฿ ข้างตัวเลือกให้ตรงกับที่คิดเงินจริง
+ * (กลุ่มที่ติ๊กได้หลายอย่างคิดค่าธรรมเนียมทั้งกลุ่ม ไม่ใช่ต่อตัว จึงโชว์ราคาตัวเลือกตามเดิม)
+ */
+export function choiceAddOf(
+  opt: ProductOption,
+  selections: Record<string, string>,
+  choiceName: string,
+  qty: number
+): number {
+  const view = { ...selections, [opt.label]: choiceName };
+  const fee = smallQtyFeeOf(opt, view, qty);
+  if (fee > 0 && !isMultiOption(opt)) return fee;
+  const extra = optionExtraApplies(opt, qty) ? choiceExtraOf(opt, view, choiceName) : 0;
+  return isMultiOption(opt) ? extra : extra + fee;
+}
+
 export interface ProductImage {
   emoji: string;
   gradient: string;
@@ -2227,10 +2259,12 @@ export function unitPriceFor(
     // (กลุ่มที่ตั้ง extraFromQty ไว้ ต่ำกว่าเกณฑ์ = ราคารวมแล้ว ไม่บวก)
     for (const opt of product.options) {
       if (!optionVisible(opt, selections)) continue; // กลุ่มที่ถูกซ่อนอยู่ = ไม่คิดเงิน
-      base += smallQtyFeeOf(opt, selections, tierQty); // ค่าธรรมเนียมช่วงปลีก (ถ้าตั้งไว้)
-      if (m.driverLabels.includes(opt.label)) continue;
-      if (!optionExtraApplies(opt, tierQty)) continue;
-      base += groupExtraOf(opt, selections);
+      // กลุ่มที่เป็นแกนตาราง ราคาอยู่ในช่องตารางแล้ว — เหลือแค่ค่าธรรมเนียมช่วงปลีกของกลุ่มนั้น
+      if (m.driverLabels.includes(opt.label)) {
+        base += smallQtyFeeOf(opt, selections, tierQty);
+        continue;
+      }
+      base += groupAddOf(opt, selections, tierQty);
     }
     // ค่าธรรมเนียมช่วงปลีกใส่ค่าติดลบได้ (ลดให้) — กันหักจนราคาติดลบ
     return Math.max(0, base);
@@ -2238,9 +2272,7 @@ export function unitPriceFor(
   let price = product.price;
   for (const opt of product.options) {
     if (!optionVisible(opt, selections)) continue; // กลุ่มที่ถูกซ่อนอยู่ = ไม่คิดเงิน
-    price += smallQtyFeeOf(opt, selections, tierQty);
-    if (!optionExtraApplies(opt, tierQty)) continue;
-    price += groupExtraOf(opt, selections);
+    price += groupAddOf(opt, selections, tierQty);
   }
   return Math.max(0, price);
 }
