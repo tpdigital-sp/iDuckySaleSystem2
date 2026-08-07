@@ -958,6 +958,52 @@ export default function ProductEditor({ product }: { product: Product }) {
     );
   }
 
+
+  /**
+   * เปลี่ยน "คลังตัวเลือก" ที่กลุ่มนี้ลิงก์อยู่ (เช่น จาก สีตะขอ → สีตะขอ G)
+   * ชื่อกลุ่มเปลี่ยนตามคลังใหม่ → ต้องลากชื่อในแกนตารางราคาและในกฎไปด้วย (ใช้ renameOptionGroup)
+   * ⚠️ ตัวเลือกในกลุ่มเปลี่ยนชุด — ถ้ากลุ่มนี้เป็นแกนตารางราคา ราคาที่กรอกไว้ของคู่เดิมจะไม่ตรงกับตัวเลือกใหม่
+   */
+  function relinkPreset(gi: number, presetId: string) {
+    const preset = presets.find((p) => p.id === presetId);
+    const cur = draft.options[gi];
+    if (!preset || !cur || preset.id === cur.presetId) return;
+    const isDriver = draft.pricing.driverLabels.includes(cur.label);
+    if (
+      isDriver &&
+      !window.confirm(
+        `กลุ่ม “${cur.label}” เป็นแกนของตารางราคา — เปลี่ยนไปคลัง “${preset.label}” แล้วราคาที่กรอกไว้จะไม่ตรงกับตัวเลือกชุดใหม่ ต้องกรอกราคาใหม่\n\nยืนยันเปลี่ยน?`
+      )
+    )
+      return;
+    // ทำทีเดียวจบ: สลับคลัง + ลากชื่อกลุ่มเดิมที่ค้างอยู่ในแกนตารางราคา/กฎ ไปเป็นชื่อใหม่
+    // (แยกเป็นสอง setDraft ไม่ได้ — รอบสองจะอ่าน label ใหม่ไปแล้ว หาชื่อเดิมไม่เจอ กฎเลยไม่ถูกแก้)
+    const oldLabel = cur.label;
+    const newLabel = preset.label;
+    setDraft((d) => ({
+      ...d,
+      options: d.options.map((o, i) =>
+        i === gi
+          ? {
+              ...o,
+              presetId: preset.id,
+              label: newLabel,
+              choices: preset.choices.map((c) => ({ name: c.name, extra: c.extra ? String(c.extra) : "" })),
+            }
+          : o
+      ),
+      pricing: {
+        ...d.pricing,
+        driverLabels: d.pricing.driverLabels.map((l) => (l === oldLabel ? newLabel : l)),
+      },
+      rules: d.rules.map((r) => ({
+        ...r,
+        whenLabel: r.whenLabel === oldLabel ? newLabel : r.whenLabel,
+        limitLabel: r.limitLabel === oldLabel ? newLabel : r.limitLabel,
+      })),
+    }));
+  }
+
   const productUrl = `/products/${draftSlug || productId}`;
   // เติมโดเมนหลัง mount เพื่อให้ HTML ฝั่งเซิร์ฟเวอร์/เบราว์เซอร์ตรงกัน
   const [fullUrl, setFullUrl] = useState(productUrl);
@@ -2130,6 +2176,31 @@ export default function ProductEditor({ product }: { product: Product }) {
                       🔗 ลิงก์คลัง ↗
                     </Link>
                     <span className="text-sm font-bold text-slate-800">{opt.label}</span>
+                    {/* เปลี่ยนไปลิงก์คลังอื่นได้เลย ไม่ต้องลบกลุ่มแล้วแทรกใหม่ */}
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        e.target.value = "";
+                        if (id) relinkPreset(gi, id);
+                      }}
+                      title="เปลี่ยนไปลิงก์กับคลังตัวเลือกอันอื่น"
+                      aria-label={`เปลี่ยนคลังของกลุ่ม ${opt.label}`}
+                      className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    >
+                      <option value="">🔄 เปลี่ยนคลัง…</option>
+                      {presets
+                        .filter((p) => !p.hidden || p.id === opt.presetId)
+                        .map((p) => {
+                          const usedElsewhere = draft.options.some((o, i) => i !== gi && o.presetId === p.id);
+                          return (
+                            <option key={p.id} value={p.id} disabled={usedElsewhere || p.id === opt.presetId}>
+                              {p.label} ({p.choices.length})
+                              {p.id === opt.presetId ? " · ใช้อยู่" : usedElsewhere ? " · ลิงก์แล้วในกลุ่มอื่น" : ""}
+                            </option>
+                          );
+                        })}
+                    </select>
                     <span className="text-xs text-slate-400">
                       {opt.choices.length} ตัวเลือก
                       {/* บอกว่าตัวเลือกในกลุ่มนี้มีอะไรบ้าง (ตัวอย่าง 4 ตัวแรก) โดยไม่ต้องกางกลุ่ม */}
