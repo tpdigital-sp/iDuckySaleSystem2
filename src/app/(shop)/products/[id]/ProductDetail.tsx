@@ -1282,6 +1282,24 @@ export default function ProductDetail({
                       <span className="font-semibold text-amber-600">💬 สอบถามราคา — แอดมินจะตีราคาให้หลังสั่ง</span>
                     )}
                   </p>
+                  {/* งานตีราคา: ลูกค้าส่วนใหญ่อยากรู้ราคาก่อนกดสั่ง — เปิดทางทักไลน์ไว้ตรงนี้เลย */}
+                  {custom.mode === "quote" && (
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                      <a
+                        href={LINE_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
+                      >
+                        💬 ทักไลน์สอบถามราคา
+                      </a>
+                      <span className="text-[11px] text-stone-500">
+                        {customValid
+                          ? `ส่งขนาด ${cW}×${cH} ${custom.unit} ให้แอดมินดูก่อนได้`
+                          : "อยากรู้ราคาก่อนสั่ง ทักมาถามได้เลย"}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1390,6 +1408,15 @@ export default function ProductDetail({
               {useCustom && custom?.mode === "quote" ? (
                 <p className="mt-2 text-sm font-semibold text-sky-700">
                   💬 สั่งได้เลย — แอดมินจะตีราคาขนาด {customValid ? `${cW}×${cH} ${custom.unit}` : "ที่ระบุ"} ให้หลังสั่ง
+                  {" · "}
+                  <a
+                    href={LINE_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-bold text-[#06C755] underline decoration-dotted underline-offset-2 hover:brightness-90"
+                  >
+                    หรือทักไลน์ถามราคาก่อน
+                  </a>
                 </p>
               ) : matrix ? (
                 <p className="mt-2 text-sm text-stone-500">
