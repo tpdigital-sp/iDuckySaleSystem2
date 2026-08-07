@@ -30,11 +30,14 @@ function AdminOptionsPageInner() {
   /** คลังที่กำลังลากในลิสต์ซ้าย (ref อ่านได้ทันทีตอน drop · state ไว้ทำจาง) */
   const dragPreset = useRef<number | null>(null);
   const [dragPresetAt, setDragPresetAt] = useState<number | null>(null);
+  /** สำเนาคลังตอนเปิดหน้า (id → JSON) — ใช้เตือนถ้ามีคนแก้จากที่อื่นระหว่างที่หน้านี้เปิดค้างอยู่ */
+  const loadedAt = useRef<Record<string, string>>({});
 
   async function refresh() {
     setLoading(true);
     const [list, products] = await Promise.all([fetchPresets(), fetchProducts()]);
     setPresets(list.map((p) => ({ ...p })));
+    loadedAt.current = Object.fromEntries(list.map((p) => [p.id, JSON.stringify(p)]));
     setSelected(0);
     // นับว่าคลังแต่ละอันถูกใช้ (ลิงก์) กี่สินค้า
     const count: Record<string, number> = {};
@@ -96,9 +99,13 @@ function AdminOptionsPageInner() {
     const selId = presets[selected]?.id;
     const at = next.findIndex((p) => p.id === selId);
     if (at >= 0) setSelected(at);
+    // ⚠️ บันทึก "เฉพาะลำดับ" บนข้อมูลสดจากฐานข้อมูล ไม่ใช่ของที่ค้างอยู่ในหน้าจอ —
+    // หน้านี้อาจเปิดค้างไว้นาน ถ้าเขียนทั้งก้อนจากหน้าจอ จะทับของที่คนอื่น (หรือหน้าอื่น) แก้ไปแล้ว
+    const fresh = await fetchPresets();
     for (const p of next) {
       if (presets.find((x) => x.id === p.id)?.sort === p.sort) continue; // ลำดับไม่เปลี่ยน
-      const clean = cleanOf(p);
+      const latest = fresh.find((f) => f.id === p.id);
+      const clean = cleanOf({ ...(latest ?? p), sort: p.sort } as Draft);
       if (!clean.label || clean.choices.length === 0) continue;
       await persistPreset(clean);
     }
@@ -109,7 +116,9 @@ function AdminOptionsPageInner() {
     const p = presets[i];
     const hidden = !p.hidden;
     setPresets((ps) => ps.map((x, j) => (j === i ? { ...x, hidden } : x)));
-    const clean = cleanOf({ ...p, hidden });
+    // เขียนบนข้อมูลสด (เหมือน movePreset) — ปุ่มนี้ตั้งใจแก้แค่ "เปิด/ปิด" ไม่ควรทับตัวเลือก/ราคา
+    const latest = (await fetchPresets()).find((f) => f.id === p.id);
+    const clean = cleanOf({ ...(latest ?? p), hidden } as Draft);
     if (!clean.label || clean.choices.length === 0) return;
     const res = await persistPreset(clean);
     if (!res.ok) {
@@ -126,6 +135,17 @@ function AdminOptionsPageInner() {
       return;
     }
     setError("");
+    // มีคนแก้คลังนี้จากที่อื่นหลังจากเราเปิดหน้าไว้ → ถามก่อน ไม่ทับเงียบ ๆ
+    const latest = (await fetchPresets()).find((f) => f.id === clean.id);
+    const before = loadedAt.current[clean.id];
+    if (latest && before && JSON.stringify(latest) !== before) {
+      const ok = window.confirm(
+        `คลัง "${clean.label}" ถูกแก้จากที่อื่นหลังจากคุณเปิดหน้านี้\n` +
+          `(ในฐานข้อมูลมี ${latest.choices.length} ตัวเลือก · ในหน้าจอคุณมี ${clean.choices.length})\n\n` +
+          `กดตกลง = บันทึกทับด้วยของในหน้าจอ\nกดยกเลิก = ไม่บันทึก (กด F5 โหลดของล่าสุดมาก่อน)`
+      );
+      if (!ok) return;
+    }
     setPresets((ps) => ps.map((x, j) => (j === i ? { ...x, _saving: true } : x)));
     const res = await persistPreset(clean);
     if (!res.ok) {
@@ -133,6 +153,7 @@ function AdminOptionsPageInner() {
       setPresets((ps) => ps.map((x, j) => (j === i ? { ...x, _saving: false } : x)));
       return;
     }
+    loadedAt.current[clean.id] = JSON.stringify(clean); // ของในมือกลายเป็นเวอร์ชันล่าสุด
     setPresets((ps) => ps.map((x, j) => (j === i ? { ...x, _saving: false, _dirty: false } : x)));
   }
 
