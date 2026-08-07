@@ -6,6 +6,14 @@ import { productAutoSeo } from "@/lib/auto-seo";
 import { currentActor } from "@/lib/server/require-perm";
 import ProductDetail from "./ProductDetail";
 
+/**
+ * ให้ CDN เก็บหน้าไว้ 5 นาที แล้วค่อยสร้างใหม่เบื้องหลัง (ISR)
+ * วัดจากเว็บจริง: หน้าที่ CDN ยังไม่มีสำเนา ใช้ 0.8-1.3 วิ · ถ้ามีสำเนาแล้วเหลือ 0.12 วิ
+ * ราคา/ตัวเลือกไม่ค้าง เพราะหน้าสินค้าดึงข้อมูลล่าสุดจากฐานข้อมูลซ้ำอีกรอบฝั่งเบราว์เซอร์อยู่แล้ว
+ * (สินค้าที่ปิดการมองเห็นจะกลายเป็นหน้าแบบไม่แคชเองอัตโนมัติ เพราะต้องอ่านคุกกี้เช็คว่าเป็นทีมงานไหม)
+ */
+export const revalidate = 300;
+
 export function generateStaticParams() {
   return PRODUCTS.map((p) => ({ id: p.id }));
 }
