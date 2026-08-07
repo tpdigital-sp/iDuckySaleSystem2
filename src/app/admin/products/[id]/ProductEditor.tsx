@@ -401,7 +401,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       ...(o.presetId ? { presetId: o.presetId } : {}),
       ...(o.display === "dropdown" || o.display === "multi" ? { display: o.display } : {}),
       ...(Number(o.extraFromQty) > 0 ? { extraFromQty: Math.floor(Number(o.extraFromQty)) } : {}),
-      ...(Number(o.smallFee) > 0 && Number(o.smallUpTo) > 0
+      ...(Number.isFinite(Number(o.smallFee)) && Number(o.smallFee) !== 0 && String(o.smallFee ?? "").trim() !== "" && Number(o.smallUpTo) > 0
         ? {
             smallQtyFee: {
               fee: Number(o.smallFee),
@@ -1033,7 +1033,10 @@ export default function ProductEditor({ product }: { product: Product }) {
    * เขียนเป็นฟังก์ชันคืน JSX (ไม่ใช่คอมโพเนนต์ย่อย) เพื่อไม่ให้ช่องกรอกถูก remount ทุกครั้งที่พิมพ์
    */
   function smallFeeRow(gi: number, opt: DraftOption) {
-    const on = Number(opt.smallFee) > 0 || Number(opt.smallUpTo) > 0;
+    const feeNum = Number(opt.smallFee);
+    // ติดลบ = ลดให้ต่อชิ้นในช่วงนั้น (คำอธิบาย/ป้ายในแถวนี้พลิกตามเครื่องหมาย)
+    const minus = Number.isFinite(feeNum) && feeNum < 0;
+    const on = (Number.isFinite(feeNum) && feeNum !== 0) || Number(opt.smallUpTo) > 0;
     const setOpt = (patchObj: Partial<DraftOption>) =>
       patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, ...patchObj } : o)) });
     const whenGroup = draft.options.find((o) => o.label === opt.smallWhenLabel);
@@ -1052,7 +1055,7 @@ export default function ProductEditor({ product }: { product: Product }) {
             }
             className="h-3.5 w-3.5 accent-amber-500"
           />
-          💰 ค่าธรรมเนียมช่วงสั่งน้อย (เช่น ปลีกเลือกตะขอ บวกชิ้นละ 10)
+          💰 ค่าธรรมเนียมช่วงสั่งน้อย (เช่น ปลีกเลือกตะขอ บวกชิ้นละ 10 · ใส่ติดลบ = ลดให้)
         </label>
         {on && (
           <div className="mt-1.5 space-y-1.5">
@@ -1060,12 +1063,15 @@ export default function ProductEditor({ product }: { product: Product }) {
               📖 <b className="font-bold text-slate-600">อ่านเป็นประโยคเดียว:</b> “ถ้า
               <span className="font-bold text-teal-700"> [เฉพาะเมื่อ] </span>ตรง และลูกค้าสั่ง
               <span className="font-bold"> ไม่เกิน N ชิ้น</span> → ตัวเลือกในกลุ่มนี้
-              <span className="font-bold"> คิดเพิ่มชิ้นละ X บาท</span> ยกเว้นตัวที่
+              <span className="font-bold">{minus ? " ลดให้ชิ้นละ X บาท" : " คิดเพิ่มชิ้นละ X บาท"}</span> ยกเว้นตัวที่
               <span className="font-bold text-emerald-600"> ติ๊กเขียว</span>”
               <br />
               ตัวอย่างที่ใช้จริง: หนา 3mm · สั่ง 1-10 ชิ้น · เลือกตะขอบวกชิ้นละ 10 บาท (Z1/Z2 ติ๊กเขียว = ไม่คิด)
               <br />
               💡 บวก<b>เพิ่มจาก</b>ราคาตะขอปกติ · สั่งเกิน N ชิ้นเมื่อไหร่ ค่าธรรมเนียมนี้หายไปเอง
+              <br />
+              ➖ <b className="font-bold text-slate-600">ใส่ตัวเลขติดลบได้</b> (เช่น −10) = ช่วงนั้น
+              <b>ลดให้</b>ชิ้นละ 10 บาทแทนการบวกเพิ่ม · ราคาสุทธิไม่ต่ำกว่า 0
             </p>
             <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
               สั่งไม่เกิน
@@ -1076,15 +1082,28 @@ export default function ProductEditor({ product }: { product: Product }) {
                 className="w-14 rounded-lg bg-white px-1.5 py-1 text-center ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
                 aria-label="คิดค่าธรรมเนียมเมื่อสั่งไม่เกินกี่ชิ้น"
               />
-              ชิ้น · บวกชิ้นละ
+              ชิ้น · {minus ? "ลดชิ้นละ" : "บวกชิ้นละ"}
               <input
                 value={opt.smallFee ?? ""}
-                onChange={(e) => setOpt({ smallFee: e.target.value.replace(/[^\d.]/g, "") })}
-                inputMode="numeric"
-                className="w-14 rounded-lg bg-white px-1.5 py-1 text-center ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                aria-label="ค่าธรรมเนียมต่อชิ้น"
+                /* ยอมให้ใส่ − นำหน้า (ลดให้) — ขีดกลาง/ลบยาวที่คีย์บอร์ดไทยพิมพ์มาก็แปลงเป็น - ให้ */
+                onChange={(e) =>
+                  setOpt({
+                    smallFee: e.target.value
+                      .replace(/[–—−]/g, "-")
+                      .replace(/[^\d.-]/g, "")
+                      .replace(/(?!^)-/g, ""),
+                  })
+                }
+                inputMode="text"
+                placeholder="10"
+                title="ใส่ติดลบได้ เช่น -10 = ลดให้ชิ้นละ 10 บาทในช่วงนี้"
+                className={`w-16 rounded-lg bg-white px-1.5 py-1 text-center ring-1 focus:outline-none focus:ring-2 focus:ring-amber-300 ${
+                  minus ? "font-bold text-emerald-700 ring-emerald-300" : "ring-slate-200"
+                }`}
+                aria-label="ค่าธรรมเนียมต่อชิ้น (ติดลบ = ลดให้)"
               />
               บาท
+              {minus && <span className="font-bold text-emerald-600">(ลดให้)</span>}
             </div>
             <div className="flex flex-wrap items-center gap-1">
               <span className="text-[11px] text-slate-400" title="ติ๊กเขียว = ตัวเลือกนั้นไม่ต้องจ่ายค่าธรรมเนียมนี้">

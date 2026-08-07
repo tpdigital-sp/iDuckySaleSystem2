@@ -1155,16 +1155,23 @@ export default function ProductDetail({
                         ))}
                     </div>
                   )}
-                  {/* ค่าธรรมเนียมช่วงสั่งน้อย เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น */}
-                  {smallQtyFeeOf(opt, effective, feeQty) > 0 && (
-                    <p className="mt-1 text-[11px] font-semibold text-amber-700">
-                      💡 ช่วงสั่งไม่เกิน {opt.smallQtyFee!.upToQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} · เลือก
-                      {opt.label}คิดเพิ่ม {formatPrice(smallQtyFeeOf(opt, effective, feeQty))}/{matrix?.unit ?? "ชิ้น"}
-                      {(opt.smallQtyFee!.freeChoices ?? []).length > 0
-                        ? ` (ยกเว้น ${opt.smallQtyFee!.freeChoices!.join(" / ")} ฟรี)`
-                        : ""}
-                    </p>
-                  )}
+                  {/* ค่าธรรมเนียมช่วงสั่งน้อย เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น · ค่าติดลบ = ช่วงนั้นลดให้ */}
+                  {smallQtyFeeOf(opt, effective, feeQty) !== 0 && (() => {
+                    const fee = smallQtyFeeOf(opt, effective, feeQty);
+                    const unit = matrix?.unit ?? "ชิ้น";
+                    return (
+                      <p className={`mt-1 text-[11px] font-semibold ${fee < 0 ? "text-emerald-700" : "text-amber-700"}`}>
+                        {fee < 0 ? "🎉" : "💡"} ช่วงสั่งไม่เกิน {opt.smallQtyFee!.upToQty.toLocaleString("th-TH")} {unit} · เลือก
+                        {opt.label}
+                        {fee < 0
+                          ? `ลดให้ ${formatPrice(-fee)}/${unit}`
+                          : `คิดเพิ่ม ${formatPrice(fee)}/${unit}`}
+                        {(opt.smallQtyFee!.freeChoices ?? []).length > 0
+                          ? ` (ยกเว้น ${opt.smallQtyFee!.freeChoices!.join(" / ")}${fee < 0 ? " ไม่ลด" : " ฟรี"})`
+                          : ""}
+                      </p>
+                    );
+                  })()}
                   {/* กลุ่มที่ตั้งเกณฑ์ +฿ ไว้ และจำนวนยังต่ำกว่าเกณฑ์ = ราคารวมตัวเลือกนี้แล้ว */}
                   {!locked &&
                     opt.extraFromQty != null &&

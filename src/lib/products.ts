@@ -75,7 +75,7 @@ export interface ProductOption {
     when: { label: string; choices: string[] };
   };
   smallQtyFee?: {
-    /** บวกเพิ่มต่อชิ้น (บาท) */
+    /** บวกเพิ่มต่อชิ้น (บาท) — ใส่ค่าติดลบได้ = ลดให้ต่อชิ้นในช่วงนั้นแทน */
     fee: number;
     /** คิดเมื่อสั่งไม่เกินกี่ชิ้น (เช่น 10 = คิดเฉพาะ 1-10 ชิ้น) */
     upToQty: number;
@@ -162,6 +162,7 @@ export function groupExtraOf(opt: ProductOption, selections: Record<string, stri
 
 /**
  * ค่าธรรมเนียมช่วงสั่งน้อยของกลุ่มนี้ ณ ตัวเลือก/จำนวนนี้ (บาทต่อชิ้น · 0 = ไม่คิด)
+ * ค่าติดลบ = ลดให้ต่อชิ้นในช่วงนั้น (เช่น ช่วงปลีกเลือกแบบที่ทำง่ายกว่า ลดชิ้นละ 10)
  * เงื่อนไขครบทุกข้อถึงคิด: จำนวนไม่เกินเกณฑ์ · ตัวเลือกที่เลือกไม่อยู่ในรายการยกเว้น · ตรงกับเงื่อนไขกลุ่มอื่น (ถ้าตั้งไว้)
  */
 export function smallQtyFeeOf(
@@ -170,7 +171,7 @@ export function smallQtyFeeOf(
   qty: number
 ): number {
   const f = opt.smallQtyFee;
-  if (!f || !(f.fee > 0) || !(f.upToQty > 0) || qty > f.upToQty) return 0;
+  if (!f || !f.fee || !Number.isFinite(f.fee) || !(f.upToQty > 0) || qty > f.upToQty) return 0;
   const chosen = selectedNames(opt, selections);
   if (!chosen.length) return 0;
   // กลุ่มติ๊กหลายอย่าง: ติ๊กแต่ตัวที่ยกเว้นไว้ = ไม่คิด · มีตัวที่ไม่ยกเว้นแม้ตัวเดียว = คิดค่าธรรมเนียม
@@ -2221,7 +2222,8 @@ export function unitPriceFor(
       if (!optionExtraApplies(opt, tierQty)) continue;
       base += groupExtraOf(opt, selections);
     }
-    return base;
+    // ค่าธรรมเนียมช่วงปลีกใส่ค่าติดลบได้ (ลดให้) — กันหักจนราคาติดลบ
+    return Math.max(0, base);
   }
   let price = product.price;
   for (const opt of product.options) {
@@ -2230,7 +2232,7 @@ export function unitPriceFor(
     if (!optionExtraApplies(opt, tierQty)) continue;
     price += groupExtraOf(opt, selections);
   }
-  return price;
+  return Math.max(0, price);
 }
 
 /** ข้อความราคา: แสดงเป็นช่วง "฿ต่ำสุด – ฿สูงสุด" ถ้าตัวเลือกทำให้ราคาต่างกัน */
