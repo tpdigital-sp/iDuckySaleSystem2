@@ -1597,32 +1597,6 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
       </div>
 
 
-      {/* ═══ แท็บข้อมูลสินค้า — รายละเอียดเพิ่มเติม / วิธีสั่งงาน / การรับประกัน (แบบหน้า pricelist เว็บเดิม) ═══ */}
-      {(product.tabs?.length ?? 0) > 0 && (
-        <section className="mt-14">
-          <div className="flex overflow-x-auto rounded-t-2xl bg-[#8fb6d6] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {product.tabs!.map((t, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setTabIndex(i)}
-                aria-selected={i === Math.min(tabIndex, product.tabs!.length - 1)}
-                className={`flex-1 whitespace-nowrap px-5 py-3 text-center text-sm font-bold transition md:text-[15px] ${
-                  i === Math.min(tabIndex, product.tabs!.length - 1)
-                    ? "bg-[#b9d6ec] text-stone-800"
-                    : "text-white hover:bg-white/15"
-                }`}
-              >
-                {t.title}
-              </button>
-            ))}
-          </div>
-          <div className="rounded-b-2xl bg-white px-5 py-6 ring-1 ring-stone-200 md:px-8">
-            <ProductTabText text={product.tabs![Math.min(tabIndex, product.tabs!.length - 1)].text} />
-          </div>
-        </section>
-      )}
-
       {/* รายละเอียดสินค้า (body) */}
       {(product.body ?? []).length > 0 && (
         <section className="mt-16">
@@ -1688,6 +1662,32 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* ═══ แท็บข้อมูลสินค้า — รายละเอียดเพิ่มเติม / วิธีสั่งงาน / การรับประกัน (แบบหน้า pricelist เว็บเดิม) ═══ */}
+      {(product.tabs?.length ?? 0) > 0 && (
+        <section className="mt-14">
+          <div className="flex overflow-x-auto rounded-t-2xl bg-[#8fb6d6] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {product.tabs!.map((t, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setTabIndex(i)}
+                aria-selected={i === Math.min(tabIndex, product.tabs!.length - 1)}
+                className={`flex-1 whitespace-nowrap px-5 py-3 text-center text-sm font-bold transition md:text-[15px] ${
+                  i === Math.min(tabIndex, product.tabs!.length - 1)
+                    ? "bg-[#b9d6ec] text-stone-800"
+                    : "text-white hover:bg-white/15"
+                }`}
+              >
+                {t.title}
+              </button>
+            ))}
+          </div>
+          <div className="rounded-b-2xl bg-white px-5 py-6 ring-1 ring-stone-200 md:px-8">
+            <ProductTabText text={product.tabs![Math.min(tabIndex, product.tabs!.length - 1)].text} />
           </div>
         </section>
       )}
