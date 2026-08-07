@@ -66,6 +66,8 @@ type DraftBody = {
   /** รูปจริงที่อัปโหลด — มีแล้วใช้แทนอีโมจิ+สีพื้น */
   src: string;
   align: "left" | "right";
+  /** โซนที่ไปแสดงในหน้าสินค้า: "side" = ช่องข้างแผงสั่งซื้อ · ไม่ระบุ = ใต้แผงสั่งซื้อเต็มความกว้าง */
+  slot?: "side";
 };
 /** กฎ: เมื่อเลือก [whenLabel = whenChoice] → จำกัดกลุ่ม [limitLabel] เหลือเฉพาะ allow[] */
 type DraftRule = { whenLabel: string; whenChoice: string; whenChoices: string[]; limitLabel: string; allow: string[] };
@@ -330,6 +332,7 @@ function toDraft(p: Product): Draft {
       imgLabel: b.image?.label ?? "",
       src: b.image?.src ?? "",
       align: b.align ?? "left",
+      ...(b.slot === "side" ? { slot: "side" as const } : {}),
     })),
     seo: {
       title: p.seo?.title ?? "",
@@ -583,6 +586,217 @@ export default function ProductEditor({ product }: { product: Product }) {
     } catch {
       setSaveError("อัปโหลดรูปไม่สำเร็จ");
     }
+  }
+
+  /**
+   * การ์ดแก้ "เนื้อหารายละเอียดสินค้า" — แยกตามโซนที่จะไปโผล่ในหน้าสินค้า
+   * side = ช่องข้างแผงสั่งซื้อ (คอลัมน์ซ้าย) · wide = ใต้แผงสั่งซื้อเต็มความกว้าง
+   * ทั้งสองการ์ดแก้ draft.body ก้อนเดียวกัน (i = ตำแหน่งจริงในอาร์เรย์) แค่กรองคนละโซน
+   */
+  function bodyCard(zone: "side" | "wide") {
+    const side = zone === "side";
+    const secId = side ? "body" : "bodyWide";
+    const items = draft.body.map((b, i) => ({ b, i })).filter(({ b }) => (b.slot ?? "wide") === zone);
+    return (
+        <section id={side ? "sec-body" : "sec-body-wide"} className={`relative border-l-4 ${side ? "border-l-teal-400" : "border-l-indigo-400"} mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls(secId)}`}>
+          <SecToggle id={secId} />
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h2 className={`text-sm font-bold ${side ? "text-teal-800" : "text-indigo-800"}`}>
+                {side ? "🧩 เนื้อหาข้างแผงสั่งซื้อ" : "📄 เนื้อหารายละเอียดสินค้า (ด้านล่าง)"} ({items.length} ท่อน)
+              </h2>
+              <p className="mt-0.5 text-[11px] text-slate-400">
+                {side
+                  ? "แสดงในหน้าสินค้าตรงช่องข้าง ๆ แผงสั่งซื้อ (คอลัมน์ซ้าย) — เหมาะกับรูป/ข้อความสั้น"
+                  : "แสดงใต้แผงสั่งซื้อ เต็มความกว้างหน้าจอ — เหมาะกับรูปใหญ่/เนื้อหายาว"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                patch({
+                  body: [
+                    ...draft.body,
+                    {
+                      heading: "",
+                      text: "",
+                      emoji: "",
+                      gradient: "from-sky-100 to-blue-200",
+                      imgLabel: "",
+                      src: "",
+                      align: items.length % 2 === 0 ? "left" : "right",
+                      ...(side ? { slot: "side" as const } : {}),
+                    },
+                  ],
+                })
+              }
+              className="rounded-full bg-amber-500 px-4 py-1.5 text-xs font-bold text-white hover:bg-amber-600"
+            >
+              ＋ เพิ่มท่อนเนื้อหา
+            </button>
+          </div>
+          {items.length === 0 && (
+            <p className="rounded-2xl bg-slate-50 p-4 text-center text-xs text-slate-400">
+              {side
+                ? "ยังไม่มีเนื้อหาโซนนี้ — เพิ่มท่อน หรือกด ⇄ ย้ายท่อนจากโซนด้านล่างขึ้นมา"
+                : "ยังไม่มีเนื้อหา — เพิ่มท่อนเนื้อหาเพื่อเล่ารายละเอียดสินค้า เช่น จุดขาย ขนาด วิธีสั่งซื้อ"}
+            </p>
+          )}
+          <div className="space-y-3">
+            {items.map(({ b, i }, n) => (
+              <div
+                key={i}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setBodyDragOver(i);
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setBodyDragOver(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setBodyDragOver(null);
+                  const f = e.dataTransfer.files?.[0];
+                  if (f) void uploadBodyImage(i, f);
+                }}
+                className={`rounded-2xl bg-white p-3 transition ${
+                  bodyDragOver === i ? "ring-2 ring-amber-400 bg-amber-50/50" : "ring-1 ring-slate-200"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBodyFolded((m) => ({ ...m, [i]: !m[i] }))}
+                    aria-expanded={!bodyFolded[i]}
+                    title={bodyFolded[i] ? "กางท่อนนี้" : "พับท่อนนี้"}
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-0.5 text-left transition hover:bg-slate-50"
+                  >
+                    <span className={`text-[10px] text-slate-400 transition ${bodyFolded[i] ? "-rotate-90" : ""}`}>▼</span>
+                    <span className="shrink-0 text-xs font-bold text-slate-400">ท่อนที่ {n + 1}</span>
+                    {bodyFolded[i] && (
+                      <span className="min-w-0 truncate text-xs font-semibold text-slate-600">
+                        {b.src && "🖼 "}
+                        {b.heading.trim() || b.text.trim().slice(0, 60) || "(ยังไม่มีเนื้อหา)"}
+                      </span>
+                    )}
+                  </button>
+                  <div className="ml-auto flex shrink-0 items-center gap-2">
+                    {!bodyFolded[i] && (
+                    <select
+                      value={b.align}
+                      onChange={(e) =>
+                        patch({ body: draft.body.map((x, j) => (j === i ? { ...x, align: e.target.value as "left" | "right" } : x)) })
+                      }
+                      className="rounded-xl bg-white px-2 py-1.5 text-xs ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                      aria-label={`ตำแหน่งรูปท่อนที่ ${n + 1}`}
+                    >
+                      <option value="left">รูปอยู่ซ้าย</option>
+                      <option value="right">รูปอยู่ขวา</option>
+                    </select>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        patch({
+                          body: draft.body.map((x, j) =>
+                            j === i ? { ...x, slot: side ? undefined : ("side" as const) } : x
+                          ),
+                        })
+                      }
+                      title={side ? "ย้ายท่อนนี้ไปโซนด้านล่าง (เต็มความกว้าง)" : "ย้ายท่อนนี้ไปโซนข้างแผงสั่งซื้อ"}
+                      className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-200"
+                    >
+                      ⇄ {side ? "ย้ายลงล่าง" : "ย้ายไปข้างแผงสั่งซื้อ"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => patch({ body: draft.body.filter((_, j) => j !== i) })}
+                      className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-500 hover:bg-rose-100"
+                    >
+                      🗑 ลบท่อน
+                    </button>
+                  </div>
+                </div>
+                {!bodyFolded[i] && (
+                <>
+                <input
+                  value={b.heading}
+                  onChange={(e) => patch({ body: draft.body.map((x, j) => (j === i ? { ...x, heading: e.target.value } : x)) })}
+                  placeholder="หัวข้อ เช่น โปสการ์ด (POSTCARD)"
+                  className={`mt-2 w-full font-bold ${inputCls}`}
+                  aria-label={`หัวข้อท่อนที่ ${n + 1}`}
+                />
+                <textarea
+                  value={b.text}
+                  onChange={(e) => patch({ body: draft.body.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })}
+                  placeholder={"เนื้อหา… ขึ้นบรรทัดใหม่ได้\nบรรทัดที่ขึ้นต้นด้วย • จะเป็นรายการ"}
+                  rows={4}
+                  className={`mt-2 w-full resize-y ${inputCls}`}
+                  aria-label={`เนื้อหาท่อนที่ ${n + 1}`}
+                />
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-500">รูปประกอบ: <span className="font-normal text-slate-400">(ลากรูปมาวางที่ท่อนนี้ได้เลย)</span></span>
+                  {b.src && (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={b.src} alt="" className="h-10 w-14 rounded-lg object-cover ring-1 ring-slate-200" />
+                  )}
+                  <label className="cursor-pointer rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-slate-200">
+                    {b.src ? "🖼 เปลี่ยนรูป" : "🖼 อัปโหลดรูป"}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        if (f) void uploadBodyImage(i, f);
+                      }}
+                    />
+                  </label>
+                  {b.src && (
+                    <button
+                      type="button"
+                      onClick={() => patch({ body: draft.body.map((x, j) => (j === i ? { ...x, src: "" } : x)) })}
+                      className="rounded-full px-2 py-1.5 text-xs font-bold text-rose-500 hover:bg-rose-50"
+                    >
+                      เอารูปออก
+                    </button>
+                  )}
+                  <input
+                    value={b.emoji}
+                    onChange={(e) => patch({ body: draft.body.map((x, j) => (j === i ? { ...x, emoji: e.target.value } : x)) })}
+                    placeholder={b.src ? "อีโมจิ (ไม่ใช้แล้ว)" : "หรืออีโมจิ"}
+                    title="ไม่มีรูปจริง ใช้อีโมจิ+สีพื้นแทนได้"
+                    className="w-24 rounded-xl bg-slate-50 px-2 py-1.5 text-center text-base ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    aria-label={`อีโมจิรูปท่อนที่ ${n + 1}`}
+                  />
+                  {(b.emoji.trim() || b.src) && (
+                    <>
+                      <GradientPicker
+                        value={b.gradient}
+                        emoji={b.emoji}
+                        onChange={(v) => patch({ body: draft.body.map((x, j) => (j === i ? { ...x, gradient: v } : x)) })}
+                        ariaLabel={`สีพื้นรูปท่อนที่ ${n + 1}`}
+                      />
+                      <input
+                        value={b.imgLabel}
+                        onChange={(e) =>
+                          patch({ body: draft.body.map((x, j) => (j === i ? { ...x, imgLabel: e.target.value } : x)) })
+                        }
+                        placeholder="คำบรรยายรูป"
+                        className={`min-w-28 flex-1 ${smallInputCls}`}
+                        aria-label={`คำบรรยายรูปท่อนที่ ${n + 1}`}
+                      />
+                    </>
+                  )}
+                </div>
+                </>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+    );
   }
 
   /**
@@ -1307,6 +1521,7 @@ export default function ProductEditor({ product }: { product: Product }) {
         heading: b.heading.trim(),
         text: b.text.trim(),
         align: b.align,
+        ...(b.slot === "side" ? { slot: "side" as const } : {}),
         ...(b.emoji.trim() || b.src
           ? {
               image: {
@@ -3285,171 +3500,9 @@ export default function ProductEditor({ product }: { product: Product }) {
         </div>
       )}
 
-      {/* เนื้อหารายละเอียดสินค้า (body) */}
-      <section id="sec-body" className={`relative border-l-4 border-l-indigo-400 mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("body")}`}>
-        <SecToggle id="body" />
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-bold text-indigo-800">📄 เนื้อหารายละเอียดสินค้า ({draft.body.length} ท่อน)</h2>
-          <button
-            type="button"
-            onClick={() =>
-              patch({
-                body: [
-                  ...draft.body,
-                  { heading: "", text: "", emoji: "", gradient: "from-sky-100 to-blue-200", imgLabel: "", src: "", align: draft.body.length % 2 === 0 ? "left" : "right" },
-                ],
-              })
-            }
-            className="rounded-full bg-amber-500 px-4 py-1.5 text-xs font-bold text-white hover:bg-amber-600"
-          >
-            ＋ เพิ่มท่อนเนื้อหา
-          </button>
-        </div>
-        {draft.body.length === 0 && (
-          <p className="rounded-2xl bg-slate-50 p-4 text-center text-xs text-slate-400">
-            ยังไม่มีเนื้อหา — เพิ่มท่อนเนื้อหาเพื่อเล่ารายละเอียดสินค้า เช่น จุดขาย ขนาด วิธีสั่งซื้อ
-          </p>
-        )}
-        <div className="space-y-3">
-          {draft.body.map((b, i) => (
-            <div
-              key={i}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setBodyDragOver(i);
-              }}
-              onDragLeave={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node)) setBodyDragOver(null);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                setBodyDragOver(null);
-                const f = e.dataTransfer.files?.[0];
-                if (f) void uploadBodyImage(i, f);
-              }}
-              className={`rounded-2xl bg-white p-3 transition ${
-                bodyDragOver === i ? "ring-2 ring-amber-400 bg-amber-50/50" : "ring-1 ring-slate-200"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setBodyFolded((m) => ({ ...m, [i]: !m[i] }))}
-                  aria-expanded={!bodyFolded[i]}
-                  title={bodyFolded[i] ? "กางท่อนนี้" : "พับท่อนนี้"}
-                  className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-0.5 text-left transition hover:bg-slate-50"
-                >
-                  <span className={`text-[10px] text-slate-400 transition ${bodyFolded[i] ? "-rotate-90" : ""}`}>▼</span>
-                  <span className="shrink-0 text-xs font-bold text-slate-400">ท่อนที่ {i + 1}</span>
-                  {bodyFolded[i] && (
-                    <span className="min-w-0 truncate text-xs font-semibold text-slate-600">
-                      {b.src && "🖼 "}
-                      {b.heading.trim() || b.text.trim().slice(0, 60) || "(ยังไม่มีเนื้อหา)"}
-                    </span>
-                  )}
-                </button>
-                <div className="ml-auto flex shrink-0 items-center gap-2">
-                  {!bodyFolded[i] && (
-                  <select
-                    value={b.align}
-                    onChange={(e) =>
-                      patch({ body: draft.body.map((x, j) => (j === i ? { ...x, align: e.target.value as "left" | "right" } : x)) })
-                    }
-                    className="rounded-xl bg-white px-2 py-1.5 text-xs ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                    aria-label={`ตำแหน่งรูปท่อนที่ ${i + 1}`}
-                  >
-                    <option value="left">รูปอยู่ซ้าย</option>
-                    <option value="right">รูปอยู่ขวา</option>
-                  </select>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => patch({ body: draft.body.filter((_, j) => j !== i) })}
-                    className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-500 hover:bg-rose-100"
-                  >
-                    🗑 ลบท่อน
-                  </button>
-                </div>
-              </div>
-              {!bodyFolded[i] && (
-              <>
-              <input
-                value={b.heading}
-                onChange={(e) => patch({ body: draft.body.map((x, j) => (j === i ? { ...x, heading: e.target.value } : x)) })}
-                placeholder="หัวข้อ เช่น โปสการ์ด (POSTCARD)"
-                className={`mt-2 w-full font-bold ${inputCls}`}
-                aria-label={`หัวข้อท่อนที่ ${i + 1}`}
-              />
-              <textarea
-                value={b.text}
-                onChange={(e) => patch({ body: draft.body.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })}
-                placeholder={"เนื้อหา… ขึ้นบรรทัดใหม่ได้\nบรรทัดที่ขึ้นต้นด้วย • จะเป็นรายการ"}
-                rows={4}
-                className={`mt-2 w-full resize-y ${inputCls}`}
-                aria-label={`เนื้อหาท่อนที่ ${i + 1}`}
-              />
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold text-slate-500">รูปประกอบ: <span className="font-normal text-slate-400">(ลากรูปมาวางที่ท่อนนี้ได้เลย)</span></span>
-                {b.src && (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={b.src} alt="" className="h-10 w-14 rounded-lg object-cover ring-1 ring-slate-200" />
-                )}
-                <label className="cursor-pointer rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-slate-200">
-                  {b.src ? "🖼 เปลี่ยนรูป" : "🖼 อัปโหลดรูป"}
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif"
-                    className="hidden"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      e.target.value = "";
-                      if (f) void uploadBodyImage(i, f);
-                    }}
-                  />
-                </label>
-                {b.src && (
-                  <button
-                    type="button"
-                    onClick={() => patch({ body: draft.body.map((x, j) => (j === i ? { ...x, src: "" } : x)) })}
-                    className="rounded-full px-2 py-1.5 text-xs font-bold text-rose-500 hover:bg-rose-50"
-                  >
-                    เอารูปออก
-                  </button>
-                )}
-                <input
-                  value={b.emoji}
-                  onChange={(e) => patch({ body: draft.body.map((x, j) => (j === i ? { ...x, emoji: e.target.value } : x)) })}
-                  placeholder={b.src ? "อีโมจิ (ไม่ใช้แล้ว)" : "หรืออีโมจิ"}
-                  title="ไม่มีรูปจริง ใช้อีโมจิ+สีพื้นแทนได้"
-                  className="w-24 rounded-xl bg-slate-50 px-2 py-1.5 text-center text-base ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                  aria-label={`อีโมจิรูปท่อนที่ ${i + 1}`}
-                />
-                {(b.emoji.trim() || b.src) && (
-                  <>
-                    <GradientPicker
-                      value={b.gradient}
-                      emoji={b.emoji}
-                      onChange={(v) => patch({ body: draft.body.map((x, j) => (j === i ? { ...x, gradient: v } : x)) })}
-                      ariaLabel={`สีพื้นรูปท่อนที่ ${i + 1}`}
-                    />
-                    <input
-                      value={b.imgLabel}
-                      onChange={(e) =>
-                        patch({ body: draft.body.map((x, j) => (j === i ? { ...x, imgLabel: e.target.value } : x)) })
-                      }
-                      placeholder="คำบรรยายรูป"
-                      className={`min-w-28 flex-1 ${smallInputCls}`}
-                      aria-label={`คำบรรยายรูปท่อนที่ ${i + 1}`}
-                    />
-                  </>
-                )}
-              </div>
-              </>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
+      {/* เนื้อหารายละเอียดสินค้า — 2 โซน: ข้างแผงสั่งซื้อ / ใต้แผงสั่งซื้อเต็มความกว้าง */}
+      {bodyCard("side")}
+      {bodyCard("wide")}
 
       {/* แท็บข้อมูลสินค้า — แสดงเป็นแถบแท็บท้ายหน้าสินค้า (แบบหน้ารายการราคาเว็บเดิม) */}
       <section className="relative mt-4 rounded-2xl border border-l-4 border-slate-200/70 border-l-sky-400 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">

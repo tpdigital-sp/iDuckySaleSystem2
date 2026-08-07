@@ -149,13 +149,6 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   // แถบซื้อลอยล่างจอ (มือถือ) — โผล่เมื่อกล่องสั่งซื้อหลักเลื่อนพ้นจอ
   const orderBoxRef = useRef<HTMLDivElement>(null);
   const [showBuyBar, setShowBuyBar] = useState(false);
-  // ── เติมช่องขาวข้างแผงสั่งซื้อ ──
-  // จอใหญ่: ถ้าฝั่งซ้าย (รูป+ข้อมูลประกอบ) สั้นกว่าแผงสั่งซื้อจนเหลือช่องขาวยาว ๆ
-  // ให้ดึงบล็อก "รายละเอียดสินค้า" ขึ้นมาเติมตรงนั้นแทนที่จะทิ้งว่างไว้ · ไม่เหลือช่อง = อยู่ที่เดิม
-  const leftColRef = useRef<HTMLDivElement>(null);
-  const sideColRef = useRef<HTMLDivElement>(null);
-  const gapFillRef = useRef<HTMLDivElement>(null);
-  const [fillGap, setFillGap] = useState(false);
 
   // โหลดเวอร์ชันล่าสุด (Supabase หรือ localStorage) — ถ้ามีให้ใช้แทนข้อมูลตั้งต้น
   useEffect(() => {
@@ -380,38 +373,6 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     return () => io.disconnect();
   }, []);
 
-  // เติมช่องขาวข้างแผงสั่งซื้อด้วยบล็อก "รายละเอียดสินค้า" (เฉพาะจอ lg ขึ้นไปที่แบ่ง 2 คอลัมน์)
-  // วัดความสูงฝั่งซ้าย "แบบไม่นับบล็อกที่ย้ายมา" เสมอ → ผลการวัดไม่ขึ้นกับผลลัพธ์ตัวเอง (ไม่สลับไปมา)
-  // เผื่อระยะกันสั่น: ว่างเกิน 280px ค่อยดึงขึ้นมา · เหลือไม่ถึง 180px ค่อยส่งกลับที่เดิม
-  useEffect(() => {
-    const left = leftColRef.current;
-    const side = sideColRef.current;
-    if (!left || !side) return;
-    const wide = window.matchMedia("(min-width: 1024px)");
-    const measure = () => {
-      // จอเล็ก = เรียงลงมาคอลัมน์เดียวอยู่แล้ว ไม่มีช่องข้างให้เติม (และห้ามแทรกก่อนแผงสั่งซื้อ)
-      if (!wide.matches) {
-        setFillGap(false);
-        return;
-      }
-      const moved = gapFillRef.current;
-      const movedH = moved ? moved.getBoundingClientRect().height : 0;
-      const gap = side.getBoundingClientRect().height - (left.getBoundingClientRect().height - movedH);
-      setFillGap((cur) => (cur ? gap >= 180 : gap >= 280));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(left);
-    ro.observe(side);
-    window.addEventListener("resize", measure);
-    wide.addEventListener("change", measure); // ข้ามเส้น lg ต้องสลับให้ทันเสมอ
-    return () => {
-      wide.removeEventListener("change", measure);
-      ro.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [product]);
-
   // โยนรูปลงตรงไหนของหน้าก็ได้ → เปิดกล่องแนบลายให้เองแล้วอัปโหลดทันที
   // (ถ้าไม่ใช่รูป ก็แค่กันเบราว์เซอร์เปิดไฟล์นั้นแทนหน้าเว็บ)
   useEffect(() => {
@@ -627,17 +588,25 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   }, [product, faqs]);
 
   /**
-   * บล็อก "รายละเอียดสินค้า" — เรนเดอร์ได้ 2 ที่: เติมช่องว่างข้างแผงสั่งซื้อ (จอใหญ่ที่ฝั่งซ้ายสั้นกว่า)
-   * หรือตำแหน่งปกติเต็มความกว้างใต้แผงสั่งซื้อ · ดู fillGap
+   * บล็อก "รายละเอียดสินค้า" — แอดมินเลือกโซนได้ต่อท่อน (ดู BodySection.slot)
+   * "side" = ช่องข้าง ๆ แผงสั่งซื้อ (คอลัมน์ซ้าย) · ไม่ระบุ = ใต้แผงสั่งซื้อเต็มความกว้าง
+   * หัวข้อ "รายละเอียดสินค้า …" ขึ้นครั้งเดียวที่โซนแรกที่มีเนื้อหา
    */
-  const detailsSection = (mtCls: string) =>
-    (product.body ?? []).length > 0 ? (
+  const bodyOf = (zone: "side" | "wide") =>
+    (product.body ?? []).filter((b) => (b.slot ?? "wide") === zone);
+  const detailsSection = (zone: "side" | "wide", mtCls: string) => {
+    const sections = bodyOf(zone);
+    if (sections.length === 0) return null;
+    const withHeading = zone === "side" || bodyOf("side").length === 0;
+    return (
       <section className={mtCls}>
-        <h2 className="text-center text-2xl font-extrabold text-amber-950">
-          รายละเอียดสินค้า {product.name}
-        </h2>
-        <div className="mt-8 space-y-12">
-          {(product.body ?? []).map((sec, i) => (
+        {withHeading && (
+          <h2 className="text-center text-2xl font-extrabold text-amber-950">
+            รายละเอียดสินค้า {product.name}
+          </h2>
+        )}
+        <div className={`space-y-12 ${withHeading ? "mt-8" : ""}`}>
+          {sections.map((sec, i) => (
             <div
               key={`${sec.heading}-${i}`}
               className={`grid items-center gap-6 md:gap-10 ${sec.image ? "md:grid-cols-2" : ""}`}
@@ -697,7 +666,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
           ))}
         </div>
       </section>
-    ) : null;
+    );
+  };
 
   return (
     <div className="mx-auto max-w-6xl px-4 pt-6">
@@ -734,7 +704,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
            ฝั่งซ้าย (รูป+รายละเอียด) เป็นบล็อกเดียวกัน — ข้อมูลประกอบจึงไหลต่อขึ้นมาเติมได้
            แทนที่จะทิ้งช่องขาวยาว ๆ ไว้ข้างแผงสั่งซื้อ ═══ */}
       <div className="mt-4 grid gap-6 lg:grid-cols-12 lg:items-start lg:gap-8">
-        <div ref={leftColRef} className="grid gap-6 sm:grid-cols-2 sm:items-start lg:col-span-8 lg:gap-8">
+        <div className="grid gap-6 sm:grid-cols-2 sm:items-start lg:col-span-8 lg:gap-8">
         {/* ── ซ้าย: รูปสินค้า ── */}
         <div>
           {/* รูปสินค้า — ติดหนึบตอนเลื่อนอ่านตัวเลือกยาว ๆ (จอใหญ่)
@@ -926,16 +896,14 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
         </div>
       </div>
 
-      {/* รายละเอียดสินค้า — ขึ้นมาเติมช่องขาวข้างแผงสั่งซื้อ (เฉพาะตอนที่ฝั่งซ้ายสั้นกว่าจริง ๆ) */}
-      {fillGap && (
-        <div ref={gapFillRef} className="sm:col-span-2">
-          {detailsSection("mt-2")}
-        </div>
+      {/* รายละเอียดสินค้า โซน "ข้างแผงสั่งซื้อ" — ท่อนที่แอดมินตั้ง slot: side ไว้ */}
+      {bodyOf("side").length > 0 && (
+        <div className="sm:col-span-2">{detailsSection("side", "mt-2")}</div>
       )}
         </div>
 
         {/* ── ขวา: แผงสั่งซื้อ ติดหนึบตอนเลื่อน ── */}
-        <div ref={sideColRef} className="lg:col-span-4 lg:sticky lg:top-24">
+        <div className="lg:col-span-4 lg:sticky lg:top-24">
           <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
             <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">ราคา</p>
             <div className="mt-4 flex items-baseline gap-2">
@@ -1721,8 +1689,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
         </div>
       </div>
 
-      {/* รายละเอียดสินค้า (body) — ตำแหน่งปกติ เต็มความกว้าง (ตอนไม่มีช่องขาวให้เติม) */}
-      {!fillGap && detailsSection("mt-16")}
+      {/* รายละเอียดสินค้า โซน "ด้านล่าง" — เต็มความกว้าง (ค่าเริ่มต้นของทุกท่อนที่ไม่ได้ตั้ง slot) */}
+      {detailsSection("wide", "mt-16")}
 
       {/* ═══ แท็บข้อมูลสินค้า — รายละเอียดเพิ่มเติม / วิธีสั่งงาน / การรับประกัน (แบบหน้า pricelist เว็บเดิม) ═══ */}
       {(product.tabs?.length ?? 0) > 0 && (
