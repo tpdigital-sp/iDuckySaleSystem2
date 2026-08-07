@@ -26,6 +26,8 @@ import { useCan } from "@/lib/perm-context";
 type ViewMode = "table" | "cards";
 type SortMode = "default" | "price-asc" | "price-desc" | "sold-desc";
 type ReviewFilter = "all" | "checked" | "unchecked";
+/** ตัวกรองการมองเห็นบนหน้าร้าน */
+type ShowFilter = "all" | "shown" | "hidden";
 
 /** ป้ายวันที่ตรวจแบบสั้น เช่น "21 ก.ค." */
 function reviewedTitle(p: Product): string {
@@ -52,6 +54,7 @@ export default function AdminProductsPage() {
   const [catFilter, setCatFilter] = useState<CategoryId | "all">("all");
   const [sort, setSort] = useState<SortMode>("default");
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>("all");
+  const [showFilter, setShowFilter] = useState<ShowFilter>("all");
   // ชื่อผู้ตรวจ (คนที่ล็อกอินอยู่) — โหมดเดโมที่ไม่มีชื่อใช้ "ทีมงาน"
   const [reviewer, setReviewer] = useState("ทีมงาน");
   const [creating, setCreating] = useState(false);
@@ -145,6 +148,19 @@ export default function AdminProductsPage() {
     if (!res.ok) refresh(); // ล้มเหลว → ดึงสถานะจริงกลับมา
   }
 
+  /**
+   * เปิด-ปิดการมองเห็นบนหน้าร้าน — บันทึกทันที
+   * ปิด = ลูกค้าไม่เห็นในหน้ารายการ/หน้าแรก/ค้นหา/sitemap และเปิดลิงก์ตรงก็ไม่เจอ
+   * (ทีมงานที่ล็อกอินยังเปิดพรีวิวได้ · ใช้แทนการลบสำหรับของที่ยังไม่พร้อมขาย)
+   */
+  async function toggleHidden(p: Product) {
+    const hidden = p.hidden ? undefined : true;
+    setProducts((ps) => ps.map((x) => (x.id === p.id ? { ...x, hidden } : x)));
+    const raw = (await fetchProductRaw(p.id)) ?? p;
+    const res = await persistProduct({ ...raw, hidden });
+    if (!res.ok) refresh(); // ล้มเหลว → ดึงสถานะจริงกลับมา
+  }
+
   /** ตั้ง "สั่งกี่ชิ้นถึงต้องถามสต๊อก" ของสินค้าตัวนี้ — บันทึกทันที (ค่าว่าง/0 = ใช้ค่ากลาง) */
   async function setBulkAsk(p: Product, value: string) {
     const n = Math.floor(Number(value) || 0);
@@ -185,6 +201,7 @@ export default function AdminProductsPage() {
   // สรุปตัวเลขภาพรวม
   const totalSold = useMemo(() => products.reduce((s, p) => s + p.sold, 0), [products]);
   const reviewedCount = useMemo(() => products.filter((p) => p.reviewed).length, [products]);
+  const hiddenCount = useMemo(() => products.filter((p) => p.hidden).length, [products]);
 
   // กรอง + ค้นหา
   const filtered = useMemo(() => {
@@ -193,10 +210,12 @@ export default function AdminProductsPage() {
       if (catFilter !== "all" && p.category !== catFilter) return false;
       if (reviewFilter === "checked" && !p.reviewed) return false;
       if (reviewFilter === "unchecked" && p.reviewed) return false;
+      if (showFilter === "shown" && p.hidden) return false;
+      if (showFilter === "hidden" && !p.hidden) return false;
       if (q && !p.name.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [products, catFilter, reviewFilter, query]);
+  }, [products, catFilter, reviewFilter, showFilter, query]);
 
   // เรียงลำดับ
   const sorted = useMemo(() => {
@@ -260,7 +279,7 @@ export default function AdminProductsPage() {
           value={`${reviewedCount}/${products.length}`}
           accent={reviewedCount > 0}
         />
-        <StatTile label="หมวดหมู่" value={catCounts.size.toString()} />
+        <StatTile label="ปิดการมองเห็น" value={hiddenCount.toString()} accent={hiddenCount > 0} />
         <StatTile label="ยอดขายรวม" value={totalSold.toLocaleString("th-TH")} />
       </div>
 
@@ -305,6 +324,29 @@ export default function AdminProductsPage() {
                 reviewFilter === id
                   ? id === "checked"
                     ? "bg-emerald-600 text-white"
+                    : "bg-slate-900 text-white"
+                  : "bg-white text-slate-500 hover:bg-slate-50"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="inline-flex overflow-hidden rounded-lg border border-slate-200" role="group" aria-label="กรองการมองเห็นบนหน้าร้าน">
+          {([
+            ["all", "ทั้งหมด"],
+            ["shown", "👁 แสดงอยู่"],
+            ["hidden", "🚫 ปิดอยู่"],
+          ] as const).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setShowFilter(id)}
+              aria-pressed={showFilter === id}
+              className={`px-3 py-2 text-xs font-semibold transition ${
+                showFilter === id
+                  ? id === "hidden"
+                    ? "bg-rose-600 text-white"
                     : "bg-slate-900 text-white"
                   : "bg-white text-slate-500 hover:bg-slate-50"
               }`}
@@ -381,6 +423,7 @@ export default function AdminProductsPage() {
           overriddenIds={overriddenIds}
           onRemove={remove}
           onToggleReview={toggleReview}
+          onToggleHidden={toggleHidden}
           onDuplicate={duplicate}
           duplicating={duplicating}
         />
@@ -395,14 +438,14 @@ export default function AdminProductsPage() {
                   <span className="text-sm">{c.emoji}</span> {c.name}
                   <span className="font-normal normal-case text-slate-300">· {inCat.length} รายการ</span>
                 </h2>
-                <TableList items={inCat} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onBulkAsk={setBulkAsk} onDuplicate={duplicate} duplicating={duplicating} />
+                <TableList items={inCat} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onToggleHidden={toggleHidden} onBulkAsk={setBulkAsk} onDuplicate={duplicate} duplicating={duplicating} />
               </section>
             );
           })}
         </div>
       ) : (
         <div className="mt-5">
-          <TableList items={sorted} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onBulkAsk={setBulkAsk} onDuplicate={duplicate} duplicating={duplicating} />
+          <TableList items={sorted} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onToggleHidden={toggleHidden} onBulkAsk={setBulkAsk} onDuplicate={duplicate} duplicating={duplicating} />
         </div>
       )}
     </div>
@@ -486,22 +529,50 @@ function ReviewToggle({ p, onToggle, size = "sm" }: { p: Product; onToggle: (p: 
   );
 }
 
+/** ปุ่มเปิด-ปิดการมองเห็นบนหน้าร้าน — 👁 = ลูกค้าเห็น, 🚫 = ซ่อนอยู่ (กดสลับ บันทึกทันที) */
+function ShowToggle({ p, onToggle, size = "sm" }: { p: Product; onToggle: (p: Product) => void; size?: "sm" | "xs" }) {
+  const hidden = !!p.hidden;
+  const pad = size === "xs" ? "px-2 py-1.5" : "px-2.5 py-1.5";
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(p)}
+      title={
+        hidden
+          ? "ซ่อนจากหน้าร้านอยู่ (ลูกค้าไม่เห็น · เปิดลิงก์ตรงก็ไม่เจอ) — กดเพื่อเปิดขาย"
+          : "ลูกค้าเห็นสินค้านี้อยู่ — กดเพื่อซ่อนจากหน้าร้าน"
+      }
+      aria-pressed={hidden}
+      className={`rounded-lg ${pad} text-xs font-semibold transition ${
+        hidden
+          ? "bg-rose-50 text-rose-600 ring-1 ring-rose-200 hover:bg-rose-100"
+          : "bg-sky-50 text-sky-700 ring-1 ring-sky-200 hover:bg-sky-100"
+      }`}
+    >
+      {hidden ? "🚫 ซ่อนอยู่" : "👁 แสดงอยู่"}
+    </button>
+  );
+}
+
 function RowActions({
   p,
   onRemove,
   onToggleReview,
+  onToggleHidden,
   onDuplicate,
   duplicating,
 }: {
   p: Product;
   onRemove: (id: string) => void;
   onToggleReview: (p: Product) => void;
+  onToggleHidden: (p: Product) => void;
   onDuplicate: (p: Product) => void;
   duplicating: string | null;
 }) {
   const mayManage = useCan()("products.manage");
   return (
     <div className="flex shrink-0 items-center gap-1">
+      {mayManage && <ShowToggle p={p} onToggle={onToggleHidden} />}
       <ReviewToggle p={p} onToggle={onToggleReview} />
       {mayManage && (
         <Link
@@ -547,6 +618,11 @@ function RowActions({
 function NameTags({ p, edited }: { p: Product; edited: boolean }) {
   return (
     <>
+      {p.hidden && (
+        <span className={`${badge} bg-rose-50 text-rose-600`} title="ปิดการมองเห็น — ลูกค้าไม่เห็นสินค้านี้บนหน้าร้าน">
+          🚫 ซ่อนอยู่
+        </span>
+      )}
       {p.reviewed && (
         <span className={`${badge} bg-emerald-50 text-emerald-700`} title={reviewedTitle(p)}>
           ✓ ตรวจแล้ว
@@ -593,6 +669,7 @@ function TableList({
   overriddenIds,
   onRemove,
   onToggleReview,
+  onToggleHidden,
   onBulkAsk,
   onDuplicate,
   duplicating,
@@ -601,6 +678,7 @@ function TableList({
   overriddenIds: Set<string>;
   onRemove: (id: string) => void;
   onToggleReview: (p: Product) => void;
+  onToggleHidden: (p: Product) => void;
   onBulkAsk: (p: Product, v: string) => void;
   onDuplicate: (p: Product) => void;
   duplicating: string | null;
@@ -648,6 +726,7 @@ function TableList({
               p={p}
               onRemove={onRemove}
               onToggleReview={onToggleReview}
+              onToggleHidden={onToggleHidden}
               onDuplicate={onDuplicate}
               duplicating={duplicating}
             />
@@ -664,6 +743,7 @@ function CardGrid({
   overriddenIds,
   onRemove,
   onToggleReview,
+  onToggleHidden,
   onDuplicate,
   duplicating,
 }: {
@@ -671,6 +751,7 @@ function CardGrid({
   overriddenIds: Set<string>;
   onRemove: (id: string) => void;
   onToggleReview: (p: Product) => void;
+  onToggleHidden: (p: Product) => void;
   onDuplicate: (p: Product) => void;
   duplicating: string | null;
 }) {
@@ -701,6 +782,7 @@ function CardGrid({
               <PriceBlock p={p} />
             </div>
             <div className="mt-2.5 flex items-center gap-1 border-t border-slate-100 pt-2">
+              {mayManage && <ShowToggle p={p} onToggle={onToggleHidden} size="xs" />}
               <ReviewToggle p={p} onToggle={onToggleReview} size="xs" />
               {mayManage && (
                 <Link

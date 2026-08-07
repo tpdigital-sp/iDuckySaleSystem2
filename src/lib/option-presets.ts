@@ -62,12 +62,17 @@ export function resolveOptions(
   options: ProductOption[],
   presets: OptionPreset[]
 ): ProductOption[] {
-  return options.map((o) => {
-    if (!o.presetId) return o;
-    const preset = presets.find((p) => p.id === o.presetId);
-    if (!preset) return o; // คลังหาย → ใช้สำเนาสำรองในสินค้า
-    return { ...o, label: preset.label, choices: preset.choices };
-  });
+  return options
+    .map((o) => {
+      if (!o.presetId) return o;
+      const preset = presets.find((p) => p.id === o.presetId);
+      if (!preset) return o; // คลังหาย → ใช้สำเนาสำรองในสินค้า
+      // คลังถูก "ปิดใช้งาน" ที่หน้าคลังตัวเลือก = เลิกใช้แล้ว → ไม่ต้องโชว์/ไม่คิดเงินบนหน้าร้าน
+      // (ลิงก์ยังอยู่ในสินค้า หน้าแก้ไขยังเห็นและเปิดกลับได้ที่ /admin/options)
+      if (preset.hidden) return null;
+      return { ...o, label: preset.label, choices: preset.choices };
+    })
+    .filter((o): o is ProductOption => o !== null);
 }
 
 /** สร้างกลุ่มตัวเลือกแบบ "ลิงก์คลัง" จาก preset (เก็บ snapshot ไว้เป็นสำรอง) */

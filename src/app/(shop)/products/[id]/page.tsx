@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { PRODUCTS } from "@/lib/products";
 import { getProductServer } from "@/lib/products-server";
 import { productAutoSeo } from "@/lib/auto-seo";
+import { currentActor } from "@/lib/server/require-perm";
 import ProductDetail from "./ProductDetail";
 
 export function generateStaticParams() {
@@ -24,6 +25,8 @@ export async function generateMetadata({
   return {
     title,
     description,
+    // ปิดการมองเห็นไว้ = ไม่ให้ Google เก็บ (เผื่อเคยถูกเก็บไว้ตอนยังเปิดอยู่)
+    ...(product.hidden ? { robots: { index: false, follow: false } } : {}),
     keywords: product.seo?.keywords?.length ? product.seo.keywords : auto.keywords,
     openGraph: {
       title,
@@ -42,5 +45,8 @@ export default async function ProductPage({
   const { id } = await params;
   const product = await getProductServer(id);
   if (!product) notFound();
-  return <ProductDetail product={product} />;
+  // ปิดการมองเห็นไว้ → ลูกค้าเปิดลิงก์ตรงก็ไม่เจอ · ทีมงานที่ล็อกอินหลังบ้านยังเปิดพรีวิวได้
+  const staff = product.hidden ? await currentActor() : null;
+  if (product.hidden && !staff) notFound();
+  return <ProductDetail product={product} preview={!!staff && !!product.hidden} />;
 }

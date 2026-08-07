@@ -77,7 +77,8 @@ export default function HomePage() {
   useEffect(() => {
     let active = true;
     fetchProductsLite().then((ps) => {
-      if (active && ps.length) setAll(ps);
+      // ตัดสินค้าที่ปิดการมองเห็นไว้ออกก่อน — หน้าแรกโชว์เฉพาะของที่ขายจริง
+      if (active && ps.length) setAll(ps.filter((p) => !p.hidden));
     });
     return () => {
       active = false;

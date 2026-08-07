@@ -42,7 +42,8 @@ export default function ProductListing() {
   }, []);
 
   const filtered = useMemo(() => {
-    let list = all;
+    // สินค้าที่ปิดการมองเห็นไว้ (หลังบ้าน) ไม่ต้องขึ้นในหน้ารายการ/ค้นหา
+    let list = all.filter((p) => !p.hidden);
     if (category !== "all") list = list.filter((p) => p.category === category);
     const q = search.trim().toLowerCase();
     if (q) {

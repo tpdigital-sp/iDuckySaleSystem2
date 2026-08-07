@@ -98,7 +98,14 @@ function initialSelections(options: ProductOption[]): Record<string, string> {
   );
 }
 
-export default function ProductDetail({ product: initialProduct }: { product: Product }) {
+export default function ProductDetail({
+  product: initialProduct,
+  /** เปิดดูสินค้าที่ "ปิดการมองเห็น" อยู่ (เฉพาะทีมงานที่ล็อกอิน) — ขึ้นแถบเตือนไว้กันเข้าใจผิด */
+  preview = false,
+}: {
+  product: Product;
+  preview?: boolean;
+}) {
   const [product, setProduct] = useState<Product>(initialProduct);
   const category = getCategory(product.category);
   const { addItem } = useCart();
@@ -671,6 +678,13 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
 
   return (
     <div className="mx-auto max-w-6xl px-4 pt-6">
+      {/* สินค้าที่ปิดการมองเห็นไว้ — ลูกค้าเปิดไม่ได้ (404) หน้านี้เห็นเฉพาะทีมงานที่ล็อกอิน */}
+      {preview && (
+        <div className="mb-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 ring-1 ring-rose-200">
+          🚫 สินค้านี้ <span className="underline">ปิดการมองเห็น</span> อยู่ — ลูกค้าไม่เห็นในหน้ารายการ/ค้นหา และเปิดลิงก์ตรงก็ไม่เจอ
+          <span className="font-semibold"> (คุณเห็นหน้านี้เพราะล็อกอินหลังบ้านอยู่)</span>
+        </div>
+      )}
       {jsonLd.map((obj, i) => (
         <script
           key={i}

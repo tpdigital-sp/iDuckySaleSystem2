@@ -50,7 +50,7 @@ export async function fetchProductNamesLite(): Promise<Product[]> {
   if (!sb) return mergedProducts();
   const { data, error } = await sb
     .from("products")
-    .select("id,name,category,badge,sort,slug:data->>slug")
+    .select("id,name,category,badge,sort,slug:data->>slug,hidden:data->hidden")
     .order("sort", { ascending: true });
   if (error || !data) return mergedProducts();
   return (data as unknown as Record<string, unknown>[])
@@ -64,7 +64,7 @@ export async function fetchProductsLite(): Promise<Product[]> {
   const { data, error } = await sb
     .from("products")
     .select(
-      "id,name,category,price,sold,featured,badge,sort,slug:data->>slug," +
+      "id,name,category,price,sold,featured,badge,sort,slug:data->>slug,hidden:data->hidden," +
         "emoji:data->>emoji,gradient:data->>gradient,imageSrc:data->>imageSrc," +
         "rating:data->rating,oldPrice:data->oldPrice,pricing:data->pricing,priceRates:data->priceRates"
     )
@@ -84,6 +84,7 @@ export async function fetchProductsLite(): Promise<Product[]> {
         sold: r.sold ?? 0,
         featured: r.featured ?? false,
         badge: (r.badge as string | null) ?? undefined,
+        hidden: (r.hidden as boolean | null) ?? undefined,
         emoji: (r.emoji as string | null) ?? "🦆",
         gradient: (r.gradient as string | null) ?? "from-amber-100 to-amber-200",
         imageSrc: (r.imageSrc as string | null) ?? undefined,

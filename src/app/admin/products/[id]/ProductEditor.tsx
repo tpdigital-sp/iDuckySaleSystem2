@@ -152,6 +152,8 @@ type Draft = {
   artworkRequired: boolean;
   /** สถานะตรวจสอบหลังบ้าน (มีค่า = ตรวจแล้ว) */
   reviewed?: ProductReview;
+  /** ปิดการมองเห็นบนหน้าร้าน (ตั้งจากหน้ารายการสินค้า) — พกผ่านดราฟต์ไว้ ไม่ให้หายตอนบันทึก */
+  hidden?: boolean;
 };
 
 type DraftCustom = {
@@ -363,6 +365,7 @@ function toDraft(p: Product): Draft {
     terms: p.terms ?? "",
     artworkRequired: p.artworkRequired !== false,
     reviewed: p.reviewed,
+    hidden: p.hidden,
   };
 }
 
@@ -1718,6 +1721,7 @@ export default function ProductEditor({ product }: { product: Product }) {
       terms: draft.terms.trim() || undefined,
       artworkRequired: draft.artworkRequired ? undefined : false, // undefined = บังคับ (ค่าเริ่มต้น)
       reviewed: draft.reviewed,
+      hidden: draft.hidden,
     };
     const res = await persistProduct(updated, baseSavedAt);
     if (!res.ok) {
@@ -2503,6 +2507,15 @@ export default function ProductEditor({ product }: { product: Product }) {
                       🔗 ลิงก์คลัง ↗
                     </Link>
                     <span className="text-sm font-bold text-slate-800">{opt.label}</span>
+                    {/* คลังถูกปิดใช้งาน = กลุ่มนี้ไม่โผล่บนหน้าร้านแล้ว (ลิงก์ยังอยู่ เปิดกลับได้ที่หน้าคลัง) */}
+                    {presets.find((p) => p.id === opt.presetId)?.hidden && (
+                      <span
+                        className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200"
+                        title="คลังนี้ถูกปิดใช้งานที่หน้าคลังตัวเลือก — กลุ่มนี้จึงไม่แสดงบนหน้าร้าน (เปิดกลับได้ที่ /admin/options)"
+                      >
+                        ⛔ คลังปิดอยู่ · ไม่โชว์หน้าร้าน
+                      </span>
+                    )}
                     {/* เปลี่ยนไปลิงก์คลังอื่นได้เลย ไม่ต้องลบกลุ่มแล้วแทรกใหม่ */}
                     <select
                       value=""

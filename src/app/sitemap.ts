@@ -27,7 +27,7 @@ async function allProducts(): Promise<Product[]> {
   return (data as Array<{ id: string; data: Product }>)
     .filter((r) => !String(r.id).startsWith("__")) // ตัดแถวตั้งค่า/คลัง/บทความออก
     .map((r) => r.data)
-    .filter((p) => p?.id && p?.name);
+    .filter((p) => p?.id && p?.name && !p.hidden); // สินค้าที่ปิดการมองเห็น ไม่ส่งให้ Google เก็บ
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
