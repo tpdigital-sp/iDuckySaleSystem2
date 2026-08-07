@@ -11,7 +11,7 @@ import {
 } from "@/lib/option-presets";
 import { deletePreset, fetchPresets, persistPreset } from "@/lib/preset-repo";
 import { resetPresetsLocal } from "@/lib/preset-store";
-import { fetchProducts } from "@/lib/product-repo";
+import { fetchPresetUsage } from "@/lib/product-repo";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { badge, btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
 
@@ -35,7 +35,8 @@ function AdminOptionsPageInner() {
 
   async function refresh() {
     setLoading(true);
-    const [list, products] = await Promise.all([fetchPresets(), fetchProducts()]);
+    // ดึงแค่ id/ชื่อ/กลุ่มตัวเลือกของสินค้า (เดิมโหลดสินค้าทั้งร้านเต็มก้อนเพื่อนับว่าใครใช้คลังไหน)
+    const [list, products] = await Promise.all([fetchPresets(), fetchPresetUsage()]);
     setPresets(list.map((p) => ({ ...p })));
     loadedAt.current = Object.fromEntries(list.map((p) => [p.id, JSON.stringify(p)]));
     setSelected(0);
@@ -43,11 +44,10 @@ function AdminOptionsPageInner() {
     const count: Record<string, number> = {};
     const by: Record<string, { id: string; name: string }[]> = {};
     for (const prod of products)
-      for (const o of prod.options ?? [])
-        if (o.presetId) {
-          count[o.presetId] = (count[o.presetId] ?? 0) + 1;
-          (by[o.presetId] ??= []).push({ id: prod.id, name: prod.name });
-        }
+      for (const pid of prod.presetIds) {
+        count[pid] = (count[pid] ?? 0) + 1;
+        (by[pid] ??= []).push({ id: prod.id, name: prod.name });
+      }
     setUsage(count);
     setUsedBy(by);
     setLoading(false);

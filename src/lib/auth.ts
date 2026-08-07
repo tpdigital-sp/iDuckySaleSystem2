@@ -60,18 +60,27 @@ export function clearSessionCache() {
   sessionCache = null;
 }
 
+/** คำขอที่กำลังวิ่งอยู่ — หลายส่วนของหน้าเดียวกันถามพร้อมกัน ให้ยิงจริงครั้งเดียวแล้วแชร์ผล */
+let inFlight: Promise<SessionInfo> | null = null;
+
 export async function getAdminSession(): Promise<SessionInfo> {
   if (sessionCache && Date.now() - sessionCache.at < 60_000) return sessionCache.value;
-  try {
-    const res = await fetch("/api/admin/session", { cache: "no-store" });
-    if (!res.ok) return EMPTY;
-    const value = (await res.json()) as SessionInfo;
-    // แคชเฉพาะผลที่ล็อกอินแล้ว/โหมดเดโม — สถานะ "ไม่ผ่าน" ไม่แคช (ล็อกอินเสร็จจะได้เข้าได้ทันที)
-    if (!value.configured || value.loggedIn) sessionCache = { at: Date.now(), value };
-    return value;
-  } catch {
-    return EMPTY;
-  }
+  if (inFlight) return inFlight;
+  inFlight = (async () => {
+    try {
+      const res = await fetch("/api/admin/session", { cache: "no-store" });
+      if (!res.ok) return EMPTY;
+      const value = (await res.json()) as SessionInfo;
+      // แคชเฉพาะผลที่ล็อกอินแล้ว/โหมดเดโม — สถานะ "ไม่ผ่าน" ไม่แคช (ล็อกอินเสร็จจะได้เข้าได้ทันที)
+      if (!value.configured || value.loggedIn) sessionCache = { at: Date.now(), value };
+      return value;
+    } catch {
+      return EMPTY;
+    } finally {
+      inFlight = null;
+    }
+  })();
+  return inFlight;
 }
 
 /** เข้าหลังบ้านได้ไหม: โหมดเดโม (ยังไม่ตั้งค่า) → ได้เลย, โหมดจริง → ต้องล็อกอิน */

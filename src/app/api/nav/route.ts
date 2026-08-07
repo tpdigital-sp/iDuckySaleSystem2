@@ -6,15 +6,24 @@ import { sanitizeHtml } from "@/lib/server/sanitize-html";
 
 export const runtime = "nodejs";
 
-/** หน้าร้านอ่านเมนู (public — Navbar กับหน้าแรกต้องใช้) */
+/**
+ * หน้าร้านอ่านเมนู (public — Navbar กับหน้าแรกต้องใช้)
+ * เมนูแทบไม่เปลี่ยน แต่ถูกยิงทุกหน้าที่เปิด → ให้เบราว์เซอร์/CDN แคชไว้ 1 นาที
+ * (stale-while-revalidate = โชว์ของเดิมทันที แล้วค่อยดึงใหม่เบื้องหลัง — แก้เมนูแล้วเห็นผลใน ~1 นาที)
+ */
+const NAV_CACHE = { "Cache-Control": "public, max-age=60, stale-while-revalidate=600" };
+
 export async function GET() {
   const sb = getSupabaseAdmin();
-  if (!sb) return NextResponse.json({ nav: DEFAULT_SITE_NAV });
+  if (!sb) return NextResponse.json({ nav: DEFAULT_SITE_NAV }, { headers: NAV_CACHE });
 
   const { data, error } = await sb.from("products").select("data").eq("id", NAV_ROW_ID).maybeSingle();
-  if (error || !data) return NextResponse.json({ nav: DEFAULT_SITE_NAV });
+  if (error || !data) return NextResponse.json({ nav: DEFAULT_SITE_NAV }, { headers: NAV_CACHE });
 
-  return NextResponse.json({ nav: siteNavOf((data.data as { nav?: Partial<SiteNav> })?.nav) });
+  return NextResponse.json(
+    { nav: siteNavOf((data.data as { nav?: Partial<SiteNav> })?.nav) },
+    { headers: NAV_CACHE }
+  );
 }
 
 /** แอดมินบันทึกเมนู (ต้องมีสิทธิ์ตั้งค่าระบบ) */

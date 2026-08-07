@@ -5,7 +5,7 @@ import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
-import { fetchProducts } from "@/lib/product-repo";
+import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
 import { adminDiscountAmount, amountDueNow, itemDiscountAmount, orderBalance, orderItemDiscounts, orderTotal, PROOF_STYLES, proofsOf, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchOrderForCustomer, reportPayment, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
@@ -93,9 +93,13 @@ export default function CustomerOrderPage() {
   const [termsById, setTermsById] = useState<Record<string, string>>({});
   /** ข้อมูลสินค้าไว้โชว์รูปประกอบรายการ (ลูกค้าจะได้รู้ว่าสั่งอะไรไว้ แม้ยังไม่มีแบบงาน) */
   const [picById, setPicById] = useState<Record<string, { emoji: string; gradient: string; imageSrc?: string }>>({});
+  // รายการ id สินค้าในออเดอร์นี้ (คีย์คงที่ ไม่ให้ effect วิ่งซ้ำทุกครั้งที่ order อัปเดต)
+  const itemIdsKey = (order?.items ?? []).map((i) => i.productId).sort().join(",");
   useEffect(() => {
     let alive = true;
-    fetchProducts()
+    const ids = itemIdsKey ? itemIdsKey.split(",") : [];
+    if (ids.length === 0) return;
+    fetchProductsByIds(ids)
       .then((list) => {
         if (!alive) return;
         const map: Record<string, string> = {};
@@ -111,7 +115,7 @@ export default function CustomerOrderPage() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [itemIdsKey]);
 
   useEffect(() => {
     if (!order) return;

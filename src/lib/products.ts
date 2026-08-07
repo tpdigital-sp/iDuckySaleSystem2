@@ -437,6 +437,12 @@ export interface Product {
   /** สถานะตรวจสอบหลังบ้าน — มีค่า = ทีมงานเช็คสินค้านี้แล้ว (ใช้กันเช็คซ้ำเมื่อหลายคนช่วยกัน) */
   reviewed?: ProductReview;
   /**
+   * ช่วงราคาที่คำนวณไว้ตอนบันทึก (ต่ำสุด/สูงสุดจากตารางราคา) — เซิร์ฟเวอร์เขียนให้เอง
+   * มีไว้ให้หน้ารายการ/หน้าแรกโชว์ราคาได้โดยไม่ต้องโหลดตารางราคาทั้งก้อน (หนัก ~320 KB รวมทุกสินค้า)
+   */
+  priceMin?: number;
+  priceMax?: number;
+  /**
    * ซ่อนจากหน้าร้าน — true = ลูกค้าไม่เห็นทั้งในหน้ารายการ/หน้าแรก/ค้นหา/sitemap
    * และเปิดลิงก์ตรงก็ไม่เจอ (ยกเว้นทีมงานที่ล็อกอินหลังบ้าน — เอาไว้พรีวิวก่อนเปิดขาย)
    * ไม่ตั้ง/false = ขายปกติ · ของที่ยังทำไม่เสร็จหรือเลิกขายชั่วคราว ใช้อันนี้แทนการลบ
@@ -2162,6 +2168,10 @@ export function priceRange(p: Product): { min: number; max: number } {
   if (p.pricing) {
     const all = Object.values(p.pricing.cells).flat();
     if (all.length) return { min: Math.min(...all), max: Math.max(...all) };
+  }
+  // ข้อมูลแบบเบา (การ์ดหน้ารายการ) ไม่มีตารางราคามาด้วย → ใช้ช่วงที่คำนวณไว้ตอนบันทึก
+  if (typeof p.priceMin === "number" && typeof p.priceMax === "number") {
+    return { min: p.priceMin, max: p.priceMax };
   }
   let min = p.price;
   let max = p.price;

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import type { Product } from "@/lib/products";
+import { priceRange, type Product } from "@/lib/products";
 
 export const runtime = "nodejs";
 
@@ -44,7 +44,14 @@ export async function POST(req: Request) {
   }
 
   const { sort, ...product } = p;
-  const saved: Product = { ...product, savedAt: new Date().toISOString() };
+  // เก็บช่วงราคาที่คำนวณไว้ด้วย — หน้ารายการ/หน้าแรกจะได้โชว์ราคาโดยไม่ต้องโหลดตารางราคาทั้งก้อน
+  const range = priceRange(product as Product);
+  const saved: Product = {
+    ...product,
+    priceMin: range.min,
+    priceMax: range.max,
+    savedAt: new Date().toISOString(),
+  };
   const { error } = await sb.from("products").upsert(
     {
       id: saved.id,

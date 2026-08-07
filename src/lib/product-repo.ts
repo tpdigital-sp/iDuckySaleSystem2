@@ -38,6 +38,47 @@ export async function fetchProducts(): Promise<Product[]> {
 }
 
 /**
+ * ดึงสินค้าเฉพาะ id ที่ต้องใช้ (เต็มก้อน) — สำหรับตะกร้า/ออเดอร์ที่ต้องคิดราคาใหม่
+ * ก่อนหน้านี้ตะกร้าดึงสินค้า "ทั้งร้าน" (~1.4 MB) ทุกครั้งที่เปิดหน้า ทั้งที่ใช้แค่ไม่กี่ตัว
+ */
+export async function fetchProductsByIds(ids: string[]): Promise<Product[]> {
+  const want = [...new Set(ids.filter(Boolean))];
+  if (want.length === 0) return [];
+  const sb = getSupabase();
+  if (!sb) return mergedProducts().filter((p) => want.includes(p.id));
+  const { data, error } = await sb.from("products").select("id,data").in("id", want);
+  if (error || !data) return mergedProducts().filter((p) => want.includes(p.id));
+  const products = (data as Array<{ id: string; data: Product }>).map((r) => r.data as Product);
+  if (!products.some((p) => p.options?.some((o) => o.presetId))) return products;
+  const presets = await fetchPresets();
+  return products.map((p) => resolveProduct(p, presets));
+}
+
+/**
+ * "คลังไหนถูกสินค้าไหนใช้อยู่บ้าง" สำหรับหน้าคลังตัวเลือก — ดึงแค่ id/ชื่อ/กลุ่มตัวเลือก
+ * (เดิมดึงสินค้าทั้งร้านเต็มก้อนเพื่อนับ ทั้งที่ใช้แค่ presetId)
+ */
+export async function fetchPresetUsage(): Promise<{ id: string; name: string; presetIds: string[] }[]> {
+  const sb = getSupabase();
+  const fromList = (list: Product[]) =>
+    list.map((p) => ({
+      id: p.id,
+      name: p.name,
+      presetIds: (p.options ?? []).map((o) => o.presetId).filter((x): x is string => !!x),
+    }));
+  if (!sb) return fromList(mergedProducts());
+  const { data, error } = await sb.from("products").select("id,name,options:data->options");
+  if (error || !data) return fromList(mergedProducts());
+  return (data as unknown as Array<{ id: string; name: string; options: Product["options"] | null }>)
+    .filter((r) => !String(r.id).startsWith("__"))
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      presetIds: (r.options ?? []).map((o) => o.presetId).filter((x): x is string => !!x),
+    }));
+}
+
+/**
  * ดึงเฉพาะฟิลด์ที่การ์ดหน้ารายการ/หน้าแรกต้องใช้ (เบา) — ไม่ดึงก้อน options/rules/body ที่หนัก
  * ใช้ JSON projection ของ Supabase เพื่อลดข้อมูลที่โหลดเมื่อสินค้าเยอะ · ดึงเต็มเฉพาะตอนเปิดหน้ารายละเอียด
  */
@@ -112,7 +153,7 @@ export async function fetchProductsLite(): Promise<Product[]> {
     .select(
       "id,name,category,price,sold,featured,badge,sort,slug:data->>slug,hidden:data->hidden," +
         "emoji:data->>emoji,gradient:data->>gradient,imageSrc:data->>imageSrc," +
-        "rating:data->rating,oldPrice:data->oldPrice,pricing:data->pricing,priceRates:data->priceRates"
+        "rating:data->rating,oldPrice:data->oldPrice,priceMin:data->priceMin,priceMax:data->priceMax"
     )
     .order("sort", { ascending: true });
   if (error || !data) return mergedProducts();
@@ -136,8 +177,8 @@ export async function fetchProductsLite(): Promise<Product[]> {
         imageSrc: (r.imageSrc as string | null) ?? undefined,
         rating: r.rating ?? 5,
         oldPrice: (r.oldPrice as number | null) ?? undefined,
-        pricing: (r.pricing as Product["pricing"]) ?? undefined,
-        priceRates: (r.priceRates as Product["priceRates"]) ?? undefined,
+        priceMin: (r.priceMin as number | null) ?? undefined,
+        priceMax: (r.priceMax as number | null) ?? undefined,
         // ฟิลด์หนักที่การ์ดไม่ใช้ — เว้นว่างไว้ (priceRange ใช้ pricing/price ได้อยู่แล้ว)
         options: [],
         rules: [],

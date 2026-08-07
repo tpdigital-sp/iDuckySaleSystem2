@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { designFeeFor, getProduct, unitPriceFor, type Product } from "./products";
-import { fetchProducts } from "./product-repo";
+import { fetchProductsByIds } from "./product-repo";
 
 export interface CartItem {
   key: string;
@@ -101,15 +101,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // แคตตาล็อกจาก Supabase (รองรับสินค้าที่นำเข้าฐานข้อมูล ไม่ใช่แค่ static array)
   const [catalog, setCatalog] = useState<Map<string, Product>>(new Map());
-  useEffect(() => {
-    let active = true;
-    fetchProducts().then((ps) => {
-      if (active) setCatalog(new Map(ps.map((p) => [p.id, p])));
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
   const productOf = useMemo(
     () => (id: string): Product | undefined => catalog.get(id) ?? getProduct(id),
     [catalog]
@@ -136,6 +127,27 @@ export function CartProvider({ children }: { children: ReactNode }) {
       // storage เต็มหรือถูกปิด — ข้ามการบันทึก
     }
   }, [state.items]);
+
+  /**
+   * โหลด "เฉพาะสินค้าที่อยู่ในตะกร้า" ไว้คิดราคาใหม่ตามจำนวน
+   * ตะกร้าว่าง = ไม่ยิงฐานข้อมูลเลย (เดิมดึงสินค้าทั้งร้าน ~1.4 MB ทุกหน้าที่เปิด แม้ไม่มีของในตะกร้า)
+   */
+  useEffect(() => {
+    const missing = [...new Set(state.items.map((i) => i.productId))].filter((id) => !catalog.has(id));
+    if (missing.length === 0) return;
+    let active = true;
+    fetchProductsByIds(missing).then((ps) => {
+      if (!active || ps.length === 0) return;
+      setCatalog((prev) => {
+        const next = new Map(prev);
+        for (const p of ps) next.set(p.id, p);
+        return next;
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [state.items, catalog]);
 
   const value = useMemo<CartContextValue>(() => {
     // คำนวณราคา/หน่วยใหม่ทุกครั้งตามจำนวนปัจจุบัน (รองรับราคาขั้นบันได)
