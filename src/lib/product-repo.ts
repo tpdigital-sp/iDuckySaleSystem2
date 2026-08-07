@@ -58,6 +58,52 @@ export async function fetchProductNamesLite(): Promise<Product[]> {
     .map((r) => ({ ...r, badge: (r.badge ?? undefined) as Product["badge"] }) as unknown as Product);
 }
 
+/**
+ * รายการสินค้าสำหรับ "หน้ารายการหลังบ้าน" — เอาเฉพาะฟิลด์ที่ลิสต์ใช้จริง
+ * ของหนักที่ลิสต์ไม่ได้ใช้ (tabs · seo · rules · body ยาว ๆ · description) ไม่ต้องโหลด
+ * ก้อนเดิม (id,data ทั้งแถว) = ~1.4 MB / 364 สินค้า · แบบนี้เหลือราวครึ่งเดียว
+ */
+export async function fetchProductsAdminLite(): Promise<Product[]> {
+  const sb = getSupabase();
+  if (!sb) return mergedProducts();
+  const { data, error } = await sb
+    .from("products")
+    .select(
+      "id,name,category,price,sold,featured,badge,sort,slug:data->>slug," +
+        "emoji:data->>emoji,gradient:data->>gradient,imageSrc:data->>imageSrc," +
+        "rating:data->rating,oldPrice:data->oldPrice,pricing:data->pricing,priceRates:data->priceRates," +
+        "hidden:data->hidden,reviewed:data->reviewed,bulkAskQty:data->bulkAskQty,custom:data->custom," +
+        "options:data->options,images:data->images,highlights:data->highlights,body:data->body"
+    )
+    .order("sort", { ascending: true });
+  if (error || !data) return mergedProducts();
+  const rows = (data as unknown as Record<string, unknown>[]).filter((r) => !String(r.id).startsWith("__"));
+  const products = rows.map(
+    (r) =>
+      ({
+        ...r,
+        slug: (r.slug as string | null) ?? undefined,
+        badge: (r.badge as string | null) ?? undefined,
+        emoji: (r.emoji as string | null) ?? "🦆",
+        gradient: (r.gradient as string | null) ?? "from-amber-100 to-amber-200",
+        imageSrc: (r.imageSrc as string | null) ?? undefined,
+        rating: r.rating ?? 5,
+        oldPrice: (r.oldPrice as number | null) ?? undefined,
+        hidden: (r.hidden as boolean | null) ?? undefined,
+        options: (r.options as Product["options"]) ?? [],
+        images: (r.images as Product["images"]) ?? [],
+        highlights: (r.highlights as Product["highlights"]) ?? [],
+        body: (r.body as Product["body"]) ?? [],
+        rules: [],
+        description: "",
+      }) as unknown as Product
+  );
+  // คลี่ตัวเลือกที่ลิงก์คลัง เพื่อให้สรุป "ชื่อกลุ่ม (จำนวนตัวเลือก)" ตรงกับของจริง
+  if (!products.some((p) => p.options?.some((o) => o.presetId))) return products;
+  const presets = await fetchPresets();
+  return products.map((p) => resolveProduct(p, presets));
+}
+
 export async function fetchProductsLite(): Promise<Product[]> {
   const sb = getSupabase();
   if (!sb) return mergedProducts();

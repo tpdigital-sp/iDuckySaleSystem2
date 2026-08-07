@@ -529,6 +529,10 @@ export default function ProductEditor({ product }: { product: Product }) {
     void fetchShopPayment().then((p) => setShipMethods(shippingOf(p)));
   }, []);
   const [saveError, setSaveError] = useState("");
+  /** กำลังยิงบันทึกอยู่ — กันกดซ้ำระหว่างรอ (เคยกดรัวเพราะไม่มีอะไรตอบสนอง) */
+  const [saving, setSaving] = useState(false);
+  /** บันทึกไม่ผ่านเพราะข้อมูลถูกแก้จากที่อื่น (409) — โชว์ปุ่มโหลดใหม่/บันทึกทับข้างปุ่มบันทึก */
+  const [conflict, setConflict] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const dragPhotoRef = useRef<number | null>(null); // รูปที่กำลังลาก (ref — อ่านได้ทันทีตอน drop)
   const [dragPhoto, setDragPhoto] = useState<number | null>(null); // ไว้ทำ visual feedback
@@ -1485,7 +1489,12 @@ export default function ProductEditor({ product }: { product: Product }) {
     setRateIdx(0);
   }
 
-  async function save() {
+  /**
+   * บันทึก — รับ force=true เมื่อผู้ใช้ยืนยัน "บันทึกทับ" หลังชนกับการแก้จากที่อื่น (409)
+   * กันกดซ้ำระหว่างรอด้วย saving (เมื่อก่อนไม่มีอะไรตอบสนอง เลยกดรัวกันหลายที)
+   */
+  async function save(force = false) {
+    if (saving) return;
     const price = Number(draft.price);
     const oldPrice = draft.oldPrice ? Number(draft.oldPrice) : undefined;
     if (!draft.name.trim() || !Number.isFinite(price) || price <= 0) return;
@@ -1723,8 +1732,14 @@ export default function ProductEditor({ product }: { product: Product }) {
       reviewed: draft.reviewed,
       hidden: draft.hidden,
     };
-    const res = await persistProduct(updated, baseSavedAt);
+    setSaving(true);
+    // force = ยอมทับของใหม่กว่า → ใช้ savedAt ล่าสุดจากฐานข้อมูลเป็นฐาน ด่านกันชนจะปล่อยผ่าน
+    const base = force ? ((await fetchProductRaw(productId))?.savedAt ?? "") : baseSavedAt;
+    const res = await persistProduct(updated, base);
+    setSaving(false);
     if (!res.ok) {
+      const clash = /บันทึกสินค้านี้จากที่อื่น/.test(res.error ?? "");
+      setConflict(clash);
       setSaveError(
         res.error === "storage-full"
           ? "บันทึกไม่สำเร็จ — พื้นที่เก็บข้อมูลในเบราว์เซอร์เต็ม (รูปที่อัปโหลดรวมกันใหญ่เกินไป) ลองลดจำนวนรูปหรือใช้รูปเล็กลง"
@@ -1735,6 +1750,7 @@ export default function ProductEditor({ product }: { product: Product }) {
     // บันทึกผ่าน → ข้อมูลในมือกลายเป็นเวอร์ชันล่าสุด (บันทึกซ้ำได้โดยไม่ติดกันทับ)
     if (res.savedAt) setBaseSavedAt(res.savedAt);
     setSaveError("");
+    setConflict(false);
     setOverridden(true);
     setSavedAt(true);
     setTimeout(() => setSavedAt(false), 2000);
@@ -1907,15 +1923,55 @@ export default function ProductEditor({ product }: { product: Product }) {
             </a>
             <button
               type="button"
-              onClick={save}
+              onClick={() => save()}
+              disabled={saving}
               className={`rounded-full px-6 py-2 text-sm font-bold text-white shadow-sm transition ${
-                savedAt ? "bg-emerald-600" : "bg-emerald-500 hover:bg-emerald-600"
+                saving
+                  ? "cursor-wait bg-slate-400"
+                  : savedAt
+                    ? "bg-emerald-600"
+                    : "bg-emerald-500 hover:bg-emerald-600"
               }`}
             >
-              💾 {savedAt ? "บันทึกแล้ว" : "บันทึก"}<span className="hidden sm:inline">{savedAt ? "!" : "การแก้ไข"}</span>
+              {saving ? (
+                <>⏳ กำลังบันทึก…</>
+              ) : (
+                <>
+                  💾 {savedAt ? "บันทึกแล้ว" : "บันทึก"}
+                  <span className="hidden sm:inline">{savedAt ? "!" : "การแก้ไข"}</span>
+                </>
+              )}
             </button>
           </div>
         </div>
+        {/* ผลการบันทึก — ต้องอยู่ติดปุ่ม ไม่งั้นกดแล้วเหมือนไม่มีอะไรเกิดขึ้น */}
+        {saveError && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 ring-1 ring-rose-200">
+            <span>⚠️ {saveError}</span>
+            {conflict && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="rounded-full bg-white px-3 py-1 font-bold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                  title="โหลดข้อมูลล่าสุดจากฐานข้อมูล (สิ่งที่แก้ค้างไว้ในหน้านี้จะหาย)"
+                >
+                  🔄 โหลดข้อมูลล่าสุด
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm("บันทึกทับด้วยข้อมูลในหน้านี้?\nสิ่งที่คนอื่นแก้ไว้หลังจากคุณเปิดหน้านี้จะหายไป")) void save(true);
+                  }}
+                  className="rounded-full bg-rose-600 px-3 py-1 font-bold text-white hover:bg-rose-700"
+                  title="ยืนยันว่าจะใช้ข้อมูลในหน้านี้ทับของในฐานข้อมูล"
+                >
+                  บันทึกทับเลย
+                </button>
+              </>
+            )}
+          </div>
+        )}
         {/* เมนูลัดไปแต่ละส่วน */}
         <nav className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
           {NAV_SECTIONS.map((s) => (
@@ -2338,11 +2394,6 @@ export default function ProductEditor({ product }: { product: Product }) {
         {draft.photos.length === 0 && (
           <p className="mt-2 text-[11px] text-slate-400">
             ยังไม่มีรูปจริง — สินค้าจะแสดงเป็นไอคอน placeholder จนกว่าจะเพิ่มรูป
-          </p>
-        )}
-        {saveError && (
-          <p className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600 ring-1 ring-rose-200">
-            ⚠️ {saveError}
           </p>
         )}
       </section>

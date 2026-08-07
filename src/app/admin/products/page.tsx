@@ -17,7 +17,7 @@ import {
   BULK_ASK_DEFAULT,
 } from "@/lib/products";
 import { loadOverrides, resetAll } from "@/lib/product-store";
-import { deleteProductDb, fetchProductRaw, fetchProducts, fetchProductSort, persistProduct } from "@/lib/product-repo";
+import { deleteProductDb, fetchProductRaw, fetchProductsAdminLite, fetchProductSort, persistProduct } from "@/lib/product-repo";
 import { getAdminSession } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { badge, btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
@@ -128,7 +128,7 @@ export default function AdminProductsPage() {
   }
 
   async function refresh() {
-    setProducts(await fetchProducts());
+    setProducts(await fetchProductsAdminLite());
     // ป้าย "แก้ไขแล้ว" ใช้เฉพาะโหมดเดโม (localStorage)
     setOverriddenIds(isSupabaseConfigured ? new Set() : new Set(Object.keys(loadOverrides())));
   }
