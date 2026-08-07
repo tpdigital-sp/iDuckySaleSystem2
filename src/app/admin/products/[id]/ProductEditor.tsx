@@ -159,7 +159,7 @@ type Draft = {
 type DraftCustom = {
   enabled: boolean;
   label: string;
-  mode: "area" | "quote";
+  mode: "area" | "quote" | "size" | "chat";
   unit: string;
   ratePerSqm: string;
   baseFee: string;
@@ -3038,6 +3038,8 @@ export default function ProductEditor({ product }: { product: Product }) {
                 >
                   <option value="area">คิดตามพื้นที่ (อัตโนมัติ)</option>
                   <option value="quote">ให้แอดมินตีราคา (สอบถาม)</option>
+                  <option value="size">ระบุขนาดตามที่ต้องการ (ราคาตามตารางปกติ)</option>
+                  <option value="chat">ทักแชทคุยกับแอดมิน (คุยรายละเอียด)</option>
                 </select>
               </label>
               <div className="text-xs font-semibold text-slate-500">
@@ -3122,6 +3124,18 @@ export default function ProductEditor({ product }: { product: Product }) {
                   );
                 })()}
               </>
+            ) : draft.custom.mode === "size" ? (
+              <p className="rounded-xl bg-white px-3 py-2 text-xs text-slate-500 ring-1 ring-slate-200">
+                มี<strong className="text-slate-700">ช่องกรอกกว้าง × ยาว</strong>ให้ลูกค้าระบุขนาดที่ต้องการ →
+                <strong className="text-slate-700"> ราคายังคิดตามตารางราคาปกติ</strong> (ไม่ใช่ตามพื้นที่ ไม่ต้องรอตีราคา) ·
+                ขนาดที่กรอกติดไปกับออเดอร์ให้ทีมผลิตเห็น — เหมาะกับงานที่ราคาเท่ากันแต่ลูกค้าเลือกขนาดเองได้
+              </p>
+            ) : draft.custom.mode === "chat" ? (
+              <p className="rounded-xl bg-white px-3 py-2 text-xs text-slate-500 ring-1 ring-slate-200">
+                <strong className="text-slate-700">ไม่มีช่องให้กรอก</strong> — หน้าสินค้าจะขึ้นข้อความชวนคุยรายละเอียด พร้อม
+                <strong className="text-emerald-600"> ปุ่มทักไลน์</strong> · ลูกค้าจะทักมาคุยก่อน หรือกดสั่งไว้แบบ “รอตีราคา” ก็ได้ —
+                เหมาะกับงานสั่งทำที่ต้องคุยแบบ/สเปกก่อนถึงจะตีราคาได้
+              </p>
             ) : (
               <p className="rounded-xl bg-white px-3 py-2 text-xs text-slate-500 ring-1 ring-slate-200">
                 ลูกค้ากรอกขนาดที่ต้องการ → ระบบไม่คิดราคาอัตโนมัติ แสดง “สอบถามราคา” และเพิ่มลงตะกร้าแบบ “รอตีราคา” ให้แอดมินตีราคาในคำสั่งซื้อ

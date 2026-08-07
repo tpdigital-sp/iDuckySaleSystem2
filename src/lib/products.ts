@@ -494,13 +494,15 @@ export interface Product {
  * ตัวเลือกกำหนดเอง (custom) — ลูกค้าระบุขนาดเอง (กว้าง × ยาว) สำหรับงานสั่งทำ
  * คิดราคาพิเศษนอกเหนือจากตารางราคาปกติ:
  *  - mode "area"  = คิดอัตโนมัติจากพื้นที่ (baseFee + ตร.ม. × ratePerSqm, ไม่ต่ำกว่า minPrice)
- *  - mode "quote" = ไม่คิดอัตโนมัติ ให้แอดมินตีราคา (ลูกค้าเห็น "สอบถามราคา")
+ *  - mode "quote" = กรอกขนาดได้ แต่ไม่คิดราคาอัตโนมัติ ให้แอดมินตีราคา (ลูกค้าเห็น "สอบถามราคา")
+ *  - mode "size"  = กรอกขนาดที่ต้องการ แต่ราคายังคิดตามตารางราคาปกติ (ขนาดติดไปกับออเดอร์ให้ทีมผลิต)
+ *  - mode "chat"  = ไม่ต้องกรอกอะไร โชว์ปุ่มทักไลน์ให้คุยรายละเอียดกับแอดมินก่อน (ราคา = สอบถาม)
  */
 export interface CustomOption {
   enabled: boolean;
   /** ป้ายกลุ่ม เช่น "กำหนดขนาดเอง" */
   label: string;
-  mode: "area" | "quote";
+  mode: "area" | "quote" | "size" | "chat";
   /** หน่วยที่ลูกค้ากรอก (area) — ป้ายหน่วย เช่น "ซม." "หลา" (มาจากคลังหน่วย) */
   unit: string;
   /** ตัวแปลง 1 หน่วย → เมตร (area) เก็บติดสินค้าไว้ให้คิดพื้นที่ได้เองแม้คลังเปลี่ยน */
@@ -561,7 +563,7 @@ export function productPath(p: { id: string; slug?: string }): string {
 /** ตัวแปลงหน่วยเดิม (backward-compat กับสินค้าที่บันทึกก่อนมีคลังหน่วย) */
 const UNIT_TO_M: Record<string, number> = { cm: 0.01, inch: 0.0254, m: 1, "ซม.": 0.01, "นิ้ว": 0.0254, "เมตร": 1 };
 
-/** ราคา/ชิ้น ของงานกำหนดขนาดเอง (area mode) จากกว้าง×ยาว ตามหน่วยที่ตั้งไว้ · quote คืน 0 */
+/** ราคา/ชิ้น ของงานกำหนดขนาดเอง (area mode) จากกว้าง×ยาว ตามหน่วยที่ตั้งไว้ · โหมดอื่นคืน 0 */
 export function customUnitPrice(c: CustomOption, width: number, height: number): number {
   if (c.mode !== "area" || !(width > 0) || !(height > 0)) return 0;
   const m = c.unitToMeter ?? UNIT_TO_M[c.unit] ?? 0.01;
@@ -2245,8 +2247,10 @@ export function unitPriceFor(
   // งานกำหนดขนาดเอง (custom) มาก่อน — ราคาพิเศษแทนตารางปกติ
   const c = product.custom;
   if (c?.enabled) {
+    // โหมด "chat" = คุยกับแอดมินก่อน ยังไม่มีราคา · โหมด "size" = ระบุขนาดเฉย ๆ ราคาคิดตามตารางปกติ
+    if (c.mode === "chat" && selections[c.label]) return 0;
     const dims = parseCustomDims(selections[c.label]);
-    if (dims) return c.mode === "quote" ? 0 : customUnitPrice(c, dims.w, dims.h);
+    if (dims && c.mode !== "size") return c.mode === "quote" ? 0 : customUnitPrice(c, dims.w, dims.h);
   }
   // จำนวนที่ใช้ "เทียบช่วงราคา" — สินค้าที่คิดเรทตามชิ้นต่อลายจะเป็น ⌊จำนวน ÷ ลาย⌋
   // เงื่อนไขที่ผูกกับช่วงราคา (ค่าธรรมเนียมช่วงปลีก · extraFromQty) ต้องใช้ตัวเลขเดียวกับที่เลือกช่วงราคา

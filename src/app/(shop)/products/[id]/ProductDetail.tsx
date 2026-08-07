@@ -316,15 +316,20 @@ export default function ProductDetail({
 
   const custom = product.custom?.enabled ? product.custom : null;
   const cW = parseFloat(customW), cH = parseFloat(customH);
-  const customValid = useCustom && cW > 0 && cH > 0;
-  // ราคา custom: area = คำนวณจากพื้นที่ · quote = ยังไม่รู้ราคา (ให้แอดมินตี)
+  /** โหมด "คุยกับแอดมิน" ไม่ต้องกรอกขนาด — โหมดอื่นต้องกรอกกว้าง×ยาวให้ครบ */
+  const customChat = custom?.mode === "chat";
+  /** โหมดที่ยังไม่รู้ราคาตอนสั่ง (แอดมินตีให้ทีหลัง) */
+  const customAsk = custom?.mode === "quote" || customChat;
+  const customValid = useCustom && (customChat || (cW > 0 && cH > 0));
+  // ราคา custom: area = คำนวณจากพื้นที่ · quote/chat = ยังไม่รู้ราคา · size = ใช้ราคาตามตารางปกติ
   const customPrice = custom && customValid && custom.mode === "area" ? customUnitPrice(custom, cW, cH) : 0;
 
   const baseUnitPrice = useMemo(
     () => unitPriceFor(product, effectiveWithDesigns, qty),
     [product, effectiveWithDesigns, qty]
   );
-  const unitPrice = useCustom ? customPrice : baseUnitPrice;
+  // โหมด "size" ลูกค้าแค่ระบุขนาด — ราคายังคิดจากตารางปกติ · โหมดอื่นใช้ราคาของงานกำหนดเอง
+  const unitPrice = useCustom && custom?.mode !== "size" ? customPrice : baseUnitPrice;
 
   // ตารางราคาที่ใช้อยู่ (ตามเรทที่เลือก — สินค้าเรทเดียวคือ pricing เดิม)
   const matrix = useMemo(() => activeMatrix(product, effective), [product, effective]);
@@ -537,7 +542,8 @@ export default function ProductDetail({
       const kept = Object.fromEntries(
         Object.entries(effective).filter(([k]) => (custom.keepOptions ?? []).includes(k))
       );
-      addItem(product.id, { ...kept, [custom.label]: `${cW}×${cH} ${custom.unit}`, ...extra }, qty);
+      const customValue = customChat ? "คุยรายละเอียดกับแอดมิน" : `${cW}×${cH} ${custom.unit}`;
+      addItem(product.id, { ...kept, [custom.label]: customValue, ...extra }, qty);
     } else {
       // กลุ่มที่ถูกซ่อนอยู่ (showWhen ไม่ตรง) ไม่ต้องติดไปกับตะกร้า/ออเดอร์ — ลูกค้าไม่ได้เลือกเอง
       const hidden = product.options.filter((o) => !optionVisible(o, effective)).map((o) => o.label);
@@ -816,8 +822,9 @@ export default function ProductDetail({
       {/* ═══ ข้อมูลประกอบ — ไหลต่อจากรูป/รายละเอียด (เดิมอยู่ท้ายหน้า ทำให้ตรงนี้เป็นช่องขาว) ═══ */}
       <div className="grid gap-6 sm:col-span-2 lg:grid-cols-2">
         <div className="relative">
-          {/* ใช้ขนาดกำหนดเองอยู่ — คลุมตารางไว้ กันเข้าใจผิดว่าราคาอิงเรทขนาดปกติ */}
-          {useCustom && (
+          {/* ใช้ขนาดกำหนดเองอยู่ — คลุมตารางไว้ กันเข้าใจผิดว่าราคาอิงเรทขนาดปกติ
+              (โหมด "ระบุขนาด" ไม่ต้องคลุม เพราะราคายังคิดจากตารางนี้จริง ๆ) */}
+          {useCustom && custom?.mode !== "size" && (
             <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/70">
               <p className="rounded-full bg-sky-600 px-4 py-2 text-center text-xs font-bold text-white shadow-lg">
                 📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตารางนี้
@@ -925,9 +932,11 @@ export default function ProductDetail({
           <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
             <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">ราคา</p>
             <div className="mt-4 flex items-baseline gap-2">
-              {useCustom && custom?.mode === "quote" ? (
-                // ขนาดกำหนดเอง (โหมดตีราคา) — ไม่โชว์ ฿0 ให้งง
-                <span className="text-xl font-extrabold text-sky-700">💬 รอแอดมินตีราคา</span>
+              {useCustom && customAsk ? (
+                // ขนาดกำหนดเอง (โหมดตีราคา/คุยกับแอดมิน) — ไม่โชว์ ฿0 ให้งง
+                <span className="text-xl font-extrabold text-sky-700">
+                  {customChat ? "💬 คุยรายละเอียดกับแอดมิน" : "💬 รอแอดมินตีราคา"}
+                </span>
               ) : (
                 <>
                   <span className="text-2xl font-extrabold text-amber-600">{formatPrice(unitPrice)}</span>
@@ -944,16 +953,19 @@ export default function ProductDetail({
               )}
             </div>
             {useCustom ? (
-              custom?.mode === "quote" ? (
+              customAsk ? (
                 // สั้น ๆ: สั่งเลย → copy ลิงก์ออเดอร์ส่งแอดมินให้ใส่ราคา → ค่อยโอน
                 <p className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
-                  📐 <strong className="font-bold">สั่งเข้ามาได้เลย ยังไม่ต้องโอน</strong> — หลังสั่งเสร็จ
+                  {customChat ? "💬 " : "📐 "}
+                  <strong className="font-bold">สั่งเข้ามาได้เลย ยังไม่ต้องโอน</strong> — หลังสั่งเสร็จ
                   กด <strong className="font-bold">คัดลอก (copy) ลิงก์ออเดอร์ส่งให้แอดมินทางไลน์</strong>{" "}
                   เพื่อให้ใส่ราคาก่อน แล้วหน้าแจ้งโอนถึงจะเปิดให้โอนได้
                 </p>
               ) : (
                 <p className="mt-1 text-xs text-sky-700">
-                  📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตัวเลือก/ตารางเรทปกติ
+                  {custom?.mode === "size"
+                    ? "📐 ระบุขนาดเองอยู่ — ราคายังคิดตามตารางเรทปกติ"
+                    : "📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตัวเลือก/ตารางเรทปกติ"}
                 </p>
               )
             ) : matrix ? (
@@ -1026,7 +1038,7 @@ export default function ProductDetail({
               ใช้ขนาดกำหนดเองอยู่ = ปิดเฉพาะกลุ่มที่แอดมินไม่ได้ตั้งให้ "ยังเลือกได้" (custom.keepOptions) */}
           {useCustom && (
             <p className="mt-5 rounded-xl bg-sky-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-sky-800 ring-1 ring-sky-200">
-              📐 กำลังใช้ &ldquo;{custom?.label ?? "กำหนดขนาดเอง"}&rdquo; — ราคาไม่อิงตารางเรทปกติ
+              📐 กำลังใช้ &ldquo;{custom?.label ?? "กำหนดขนาดเอง"}&rdquo;{custom?.mode === "size" ? "" : " — ราคาไม่อิงตารางเรทปกติ"}
               {(custom?.keepOptions?.length ?? 0) > 0
                 ? ` · ยังเลือก ${custom!.keepOptions!.join(" / ")} ได้ตามปกติ ส่วนกลุ่มอื่นถูกปิดไว้`
                 : " ตัวเลือกด้านล่างถูกปิดไว้"}{" "}
@@ -1242,7 +1254,26 @@ export default function ProductDetail({
                 <span className="text-sm font-bold text-stone-700">📐 {custom.label}</span>
               </label>
               {custom.note && <p className="mt-1.5 pl-7 text-[11px] text-stone-500">{custom.note}</p>}
-              {useCustom && (
+              {useCustom && customChat && (
+                // โหมดคุยกับแอดมิน — ไม่มีอะไรให้กรอก มีแค่ทางลัดไปแชท
+                <div className="mt-3 pl-7">
+                  <p className="text-sm text-sky-800">
+                    💬 งานแบบนี้ขอคุยรายละเอียดกับแอดมินก่อนนะครับ — แจ้งขนาด/แบบที่ต้องการทางไลน์ได้เลย
+                  </p>
+                  <a
+                    href={LINE_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
+                  >
+                    💬 ทักไลน์คุยกับแอดมิน
+                  </a>
+                  <p className="mt-1.5 text-[11px] text-stone-500">
+                    หรือกดสั่งไว้ก่อนก็ได้ — แอดมินจะตีราคาให้หลังคุยกันเสร็จ
+                  </p>
+                </div>
+              )}
+              {useCustom && !customChat && (
                 <div className="mt-3 pl-7">
                   <div className="flex flex-wrap items-end gap-2">
                     <label className="text-xs font-semibold text-stone-600">
@@ -1272,7 +1303,13 @@ export default function ProductDetail({
                   </div>
                   <p className="mt-2 text-sm">
                     {!customValid ? (
-                      <span className="text-stone-400">กรอกกว้าง × ยาว เพื่อคิดราคา</span>
+                      <span className="text-stone-400">
+                        {custom.mode === "size" ? "กรอกกว้าง × ยาว ที่ต้องการ" : "กรอกกว้าง × ยาว เพื่อคิดราคา"}
+                      </span>
+                    ) : custom.mode === "size" ? (
+                      <span className="text-stone-600">
+                        📐 ระบุขนาด <span className="font-bold">{cW}×{cH} {custom.unit}</span> — ราคาคิดตามตารางราคาปกติ
+                      </span>
                     ) : custom.mode === "area" ? (
                       <>
                         ราคา/ชิ้น <span className="font-extrabold text-amber-600">{formatPrice(customPrice)}</span>
@@ -1387,7 +1424,7 @@ export default function ProductDetail({
                       ? "🎨 แนบลายก่อนถึงจะสั่งได้"
                       : !useCustom && qty < rateMinQty
                       ? `เรทนี้สั่งขั้นต่ำ ${rateMinQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}`
-                      : useCustom && custom?.mode === "quote"
+                      : useCustom && customAsk
                       ? "🛒 สั่งเลย — แอดมินตีราคาแล้วแจ้งกลับ"
                       : `🛒 เพิ่มลงตะกร้า — ${formatPrice(unitPrice * qty + designFee)}`}
                 </button>
@@ -1405,9 +1442,10 @@ export default function ProductDetail({
                   🎨 สินค้านี้ต้องแนบลายก่อนสั่ง — แตะเพื่ออัปโหลดรูป หรือใส่ลิงก์ไฟล์/อีเมล
                 </button>
               )}
-              {useCustom && custom?.mode === "quote" ? (
+              {useCustom && customAsk ? (
                 <p className="mt-2 text-sm font-semibold text-sky-700">
-                  💬 สั่งได้เลย — แอดมินจะตีราคาขนาด {customValid ? `${cW}×${cH} ${custom.unit}` : "ที่ระบุ"} ให้หลังสั่ง
+                  💬 สั่งได้เลย — แอดมินจะตีราคา
+                  {customChat ? "ให้หลังคุยรายละเอียด" : `ขนาด ${customValid ? `${cW}×${cH} ${custom!.unit}` : "ที่ระบุ"} ให้หลังสั่ง`}
                   {" · "}
                   <a
                     href={LINE_URL}
