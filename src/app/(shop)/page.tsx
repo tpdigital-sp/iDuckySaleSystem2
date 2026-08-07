@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { formatPriceRange, PRODUCTS, productPath, type Product } from "@/lib/products";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { fetchProductsLite } from "@/lib/product-repo";
+import { fallbackToOriginal, imgProps } from "@/lib/img";
 
 /**
  * หน้าแรก — ดีไซน์ตามไฟล์ต้นแบบ iducky-landing-v8_83.html
@@ -285,7 +286,7 @@ export default function HomePage() {
                   >
                     <Link className="cat-link" href={href}>
                       {c.image ? (
-                        <img className="cat-ico" src={c.image} alt="" aria-hidden="true" />
+                        <img className="cat-ico" {...imgProps(c.image, "96px", 160)} alt="" aria-hidden="true" loading="lazy" decoding="async" onError={fallbackToOriginal(c.image)} />
                       ) : CAT_ICON[c.id] ? (
                         <img className="cat-ico" src={CAT_ICON[c.id]} alt="" aria-hidden="true" />
                       ) : (
@@ -564,7 +565,7 @@ function BestCard({ p, catLabel, rank }: { p: Product; catLabel: string; rank: n
           </span>
         )}
         {p.imageSrc ? (
-          <img src={p.imageSrc} alt={p.name} />
+          <img {...imgProps(p.imageSrc, "(max-width: 768px) 45vw, 260px")} alt={p.name} loading="lazy" decoding="async" onError={fallbackToOriginal(p.imageSrc)} />
         ) : (
           <span className={`grid h-full w-full place-items-center bg-gradient-to-br text-6xl ${p.gradient}`}>{p.emoji}</span>
         )}

@@ -7,16 +7,21 @@ export const runtime = "nodejs";
 
 const ROW_ID = "__categories__";
 
-/** ลูกค้า/หลังบ้านอ่านหมวดหมู่ (public — หน้าร้านต้องใช้) */
+/**
+ * ลูกค้า/หลังบ้านอ่านหมวดหมู่ (public — หน้าร้านต้องใช้)
+ * หมวดหมู่แทบไม่เปลี่ยน แต่ถูกยิงทุกหน้า → แคช 1 นาทีเหมือนเมนู (แก้แล้วเห็นผลใน ~1 นาที)
+ */
+const CAT_CACHE = { "Cache-Control": "public, max-age=60, stale-while-revalidate=600" };
+
 export async function GET() {
   const sb = getSupabaseAdmin();
-  if (!sb) return NextResponse.json({ list: DEFAULT_CATEGORIES });
+  if (!sb) return NextResponse.json({ list: DEFAULT_CATEGORIES }, { headers: CAT_CACHE });
 
   const { data, error } = await sb.from("products").select("data").eq("id", ROW_ID).maybeSingle();
-  if (error || !data) return NextResponse.json({ list: DEFAULT_CATEGORIES });
+  if (error || !data) return NextResponse.json({ list: DEFAULT_CATEGORIES }, { headers: CAT_CACHE });
 
   const list = (data.data as { categories?: ShopCategory[] })?.categories;
-  return NextResponse.json({ list: categoriesOf(list) });
+  return NextResponse.json({ list: categoriesOf(list) }, { headers: CAT_CACHE });
 }
 
 /** แอดมินบันทึกหมวดหมู่ (ต้องมีสิทธิ์ตั้งค่าระบบ) */

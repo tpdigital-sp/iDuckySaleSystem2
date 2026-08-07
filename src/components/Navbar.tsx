@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { fallbackToOriginal, imgProps } from "@/lib/img";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useCart } from "@/lib/cart-context";
@@ -72,7 +73,12 @@ export default function Navbar() {
         <nav className="nav-in">
           <Link href="/" className="logo" onClick={() => setOpen(false)}>
             {logo ? (
-              <img src={logo} alt="iDucky Prints Studio" className="h-11 w-auto max-w-[210px] object-contain" />
+              <img
+                {...imgProps(logo, "210px", 384)}
+                onError={fallbackToOriginal(logo)}
+                alt="iDucky Prints Studio"
+                className="h-11 w-auto max-w-[210px] object-contain"
+              />
             ) : (
               <>
                 <img className="duck-mini" src="/landing/logo-duck.webp" alt="" aria-hidden="true" />
@@ -177,8 +183,8 @@ export default function Navbar() {
 
         {/* แถวหมวดสินค้า (เดสก์ท็อป) — เมกะเมนูเดิม วางใต้แถบกระจก */}
         {mega.length > 0 && (
-          <div className="mt-2 hidden justify-center md:flex">
-            <div className="rounded-full bg-white/75 px-2 shadow-[0_6px_18px_rgba(44,129,196,.10)] ring-1 ring-white/70 backdrop-blur">
+          <div className={`hidden justify-center transition-all duration-300 md:flex ${small ? "mt-1.5" : "mt-2.5"}`}>
+            <div className="max-w-full rounded-full border border-white/70 bg-white/70 p-1 shadow-[0_8px_22px_rgba(44,129,196,.13)] backdrop-blur-[18px] backdrop-saturate-150">
               <MegaBar groups={mega} pathname={pathname} align="center" />
             </div>
           </div>
