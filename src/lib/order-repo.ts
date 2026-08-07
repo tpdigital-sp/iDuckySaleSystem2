@@ -187,6 +187,19 @@ export async function fetchOrdersAdmin(): Promise<{ orders: Order[]; needsSetup:
   }
 }
 
+/**
+ * ดึงออเดอร์เดียว (หน้ารายละเอียด) — เบากว่าดึงทั้งตาราง และได้ลิงก์สลิปที่เซ็นแล้วมาด้วย
+ */
+export async function fetchOrderAdmin(id: string): Promise<{ order?: Order; needsSetup: boolean }> {
+  try {
+    const res = await fetch(`/api/admin/orders?id=${encodeURIComponent(id)}`, { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    return { order: (data.orders ?? [])[0], needsSetup: !!data.needsSetup };
+  } catch {
+    return { needsSetup: false };
+  }
+}
+
 /** แอดมินอัปเดตออเดอร์ (เช่น เปลี่ยนสถานะ) */
 export async function saveOrderAdmin(order: Order): Promise<boolean> {
   try {

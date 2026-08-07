@@ -59,14 +59,25 @@ function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Or
   return merged;
 }
 
-/** แอดมินดึงออเดอร์จริงทั้งหมด (ใหม่→เก่า) */
-export async function GET() {
+/**
+ * แอดมินดึงออเดอร์ (ใหม่→เก่า)
+ *   /api/admin/orders          = ทั้งหมด (หน้ารายการ · หน้าสแกน · ใบงาน) — ไม่เซ็นลิงก์สลิป
+ *   /api/admin/orders?id=XXXX  = ออเดอร์เดียว (หน้ารายละเอียด) — เซ็นลิงก์สลิปให้ดูรูปได้
+ *
+ * เดิมเซ็นลิงก์สลิป "ทุกใบ" ทุกครั้งที่เรียก (หน้ารายการถามซ้ำทุก 15 วิ) = ยิง Storage ทีละใบ
+ * วัดจริง 21 ออเดอร์: ดึงข้อมูลเปล่า ~300 ms แต่ผ่าน API ~890 ms — ส่วนต่างคือการเซ็นลิงก์
+ * หน้ารายการใช้แค่ป้าย 📎 ซึ่งดูจาก slipPath ได้อยู่แล้ว จึงไม่ต้องเซ็น
+ */
+export async function GET(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ orders: [] });
   const gate = await requirePerm("orders.view");
   if (gate.res) return gate.res;
 
-  const { data, error } = await sb.from("orders").select("data").order("created_at", { ascending: false });
+  const wantId = new URL(req.url).searchParams.get("id");
+  let q = sb.from("orders").select("data").order("created_at", { ascending: false });
+  if (wantId) q = q.eq("id", wantId);
+  const { data, error } = await q;
   if (error) {
     // ตารางยังไม่ถูกสร้าง → บอกให้รัน SQL (ไม่ถือเป็น error ร้ายแรง)
     if (error.code === "42P01" || error.code === "PGRST205" || /schema cache|does not exist/i.test(error.message))
@@ -75,16 +86,18 @@ export async function GET() {
   }
 
   const orders = (data ?? []).map((r) => r.data as Order);
-  // เซ็น signed URL ชั่วคราวสำหรับสลิปที่อยู่ใน bucket ส่วนตัว (ออเดอร์ใหม่) — ไม่แก้ข้อมูลในฐาน
-  const withSlip = orders.filter((o) => o.slipPath);
-  if (withSlip.length) {
-    const signed = await Promise.all(
-      withSlip.map((o) => sb.storage.from("payment-slips-private").createSignedUrl(o.slipPath!, 3600))
-    );
-    withSlip.forEach((o, i) => {
-      const url = signed[i].data?.signedUrl;
-      if (url) o.slipUrl = url; // ชั่วคราว ใช้แสดงผลเท่านั้น ไม่ persist
-    });
+  // เซ็น signed URL ชั่วคราวสำหรับสลิปใน bucket ส่วนตัว — เฉพาะตอนขอออเดอร์เดียว (หน้ารายละเอียด)
+  if (wantId) {
+    const withSlip = orders.filter((o) => o.slipPath);
+    if (withSlip.length) {
+      const signed = await Promise.all(
+        withSlip.map((o) => sb.storage.from("payment-slips-private").createSignedUrl(o.slipPath!, 3600))
+      );
+      withSlip.forEach((o, i) => {
+        const url = signed[i].data?.signedUrl;
+        if (url) o.slipUrl = url; // ชั่วคราว ใช้แสดงผลเท่านั้น ไม่ persist
+      });
+    }
   }
   return NextResponse.json({ orders });
 }

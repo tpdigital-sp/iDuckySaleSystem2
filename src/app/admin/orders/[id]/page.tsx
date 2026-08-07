@@ -32,7 +32,7 @@ import {
   type NoteSize,
   type NoteWeight,
 } from "@/lib/admin-data";
-import { fetchOrdersAdmin, saveOrderAdmin, uploadProof } from "@/lib/order-repo";
+import { fetchOrderAdmin, fetchOrdersAdmin, saveOrderAdmin, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
 import { card, faint, muted, shortTime } from "@/lib/admin-ui";
 import ImageLightbox from "@/components/ImageLightbox";
@@ -391,11 +391,12 @@ export default function AdminOrderDetailPage() {
   useEffect(() => setOrigin(publicOrigin()), []); // ลิงก์นี้ส่งให้ลูกค้า ต้องไม่ใช่ localhost
 
   const load = useCallback(async () => {
-    const r = await fetchOrdersAdmin();
+    // ออเดอร์ใบนี้ (มีลิงก์สลิปที่เซ็นแล้ว) + รายการทั้งหมด (ไว้หา "ออเดอร์อื่นของลูกค้าคนเดียวกัน")
+    const [one, r] = await Promise.all([fetchOrderAdmin(orderId), fetchOrdersAdmin()]);
     const list = r.orders.length > 0 ? r.orders : MOCK_ORDERS;
     setDemo(r.orders.length === 0);
     setAllOrders(list);
-    setOrder(list.find((o) => o.id === orderId) ?? null);
+    setOrder(one.order ?? list.find((o) => o.id === orderId) ?? null);
     setLoading(false);
   }, [orderId]);
 
@@ -416,9 +417,8 @@ export default function AdminOrderDetailPage() {
     )
       return;
 
-    const r = await fetchOrdersAdmin();
-    if (r.orders.length === 0) return;
-    const found = r.orders.find((o) => o.id === orderId);
+    // ถามซ้ำทุก 15 วิ — ขอเฉพาะออเดอร์ใบนี้ใบเดียว (เดิมดึงทั้งตาราง + เซ็นลิงก์สลิปทุกใบ)
+    const found = (await fetchOrderAdmin(orderId)).order;
     if (!found) return;
     setOrder((cur) => (JSON.stringify(cur) === JSON.stringify(found) ? cur : found));
   }, [orderId, uploadingIdx]);
