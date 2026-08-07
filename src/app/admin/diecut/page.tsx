@@ -40,6 +40,7 @@ function DiecutLabInner() {
   const [widthMm, setWidthMm] = useState("50");
   const [offsetMm, setOffsetMm] = useState("2"); // ค่าที่ร้านใช้ประจำ
   const [smoothMm, setSmoothMm] = useState("1.2"); // เก็บขอบให้ลื่นแบบงานจริง
+  const [curveTol, setCurveTol] = useState("0.15"); // ความละเอียดตอนแปลงเป็นเส้นโค้ง
   const [fillHoles, setFillHoles] = useState(true);
   const [alphaThreshold, setAlphaThreshold] = useState("128");
   const [ringOn, setRingOn] = useState(true);
@@ -48,6 +49,7 @@ function DiecutLabInner() {
   const [ringOverlap, setRingOverlap] = useState("2.5");
   const [ringPos, setRingPos] = useState<RingTab["position"]>("left");
 
+  const [showAnchors, setShowAnchors] = useState(false);
   const [result, setResult] = useState<DiecutResult | null>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
 
@@ -97,6 +99,7 @@ function DiecutLabInner() {
             widthMm: wMm,
             offsetMm: Number.isFinite(oMm) ? oMm : 0,
             smoothMm: Number(smoothMm) || 0,
+            curveTolMm: Number(curveTol) || 0.15,
             fillHoles,
             alphaThreshold: Number(alphaThreshold) || 128,
           },
@@ -105,7 +108,7 @@ function DiecutLabInner() {
       );
     }, 120); // หน่วงสั้น ๆ กันคำนวณรัวตอนลากสไลเดอร์
     return () => clearTimeout(t);
-  }, [trace, widthMm, offsetMm, smoothMm, fillHoles, alphaThreshold, ringOn, tabDia, ringDia, ringOverlap, ringPos]);
+  }, [trace, widthMm, offsetMm, smoothMm, curveTol, fillHoles, alphaThreshold, ringOn, tabDia, ringDia, ringOverlap, ringPos]);
 
   // วาดตัวอย่าง: ลาย + เส้นไดคัทสีบานเย็น
   useEffect(() => {
@@ -135,26 +138,35 @@ function DiecutLabInner() {
     tmp.getContext("2d")!.putImageData(embed, 0, 0);
     ctx.drawImage(tmp, padX, padY, result.widthMm * pxPerMm, result.heightMm * pxPerMm);
 
+    // วาดจากเส้นโค้งชุดเดียวกับที่จะเขียนลงไฟล์ — เห็นบนจอยังไง ได้ไฟล์อย่างนั้น
     ctx.strokeStyle = "#e2007a";
     ctx.lineWidth = 1.5;
     ctx.lineJoin = "round";
-    for (const loop of result.paths) {
+    const CX = (mm: number) => padX + mm * pxPerMm;
+    const CY = (mm: number) => padY + mm * pxPerMm;
+    for (const c of result.curves) {
+      if (!c.segs.length) continue;
       ctx.beginPath();
-      loop.forEach((p, i) => {
-        const x = padX + p.x * pxPerMm;
-        const y = padY + p.y * pxPerMm;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
+      ctx.moveTo(CX(c.start.x), CY(c.start.y));
+      for (const s of c.segs) ctx.bezierCurveTo(CX(s.c1.x), CY(s.c1.y), CX(s.c2.x), CY(s.c2.y), CX(s.to.x), CY(s.to.y));
       ctx.closePath();
       ctx.stroke();
+    }
+    // จุดแองเคอร์ (เหมือนที่จะเห็นตอนเปิดใน Illustrator)
+    if (showAnchors) {
+      ctx.fillStyle = "#0ea5e9";
+      for (const c of result.curves) for (const s of c.segs) {
+        ctx.beginPath();
+        ctx.arc(CX(s.to.x), CY(s.to.y), 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
     if (result.hole) {
       ctx.beginPath();
       ctx.arc(padX + result.hole.cx * pxPerMm, padY + result.hole.cy * pxPerMm, result.hole.r * pxPerMm, 0, Math.PI * 2);
       ctx.stroke();
     }
-  }, [embed, result]);
+  }, [embed, result, showAnchors]);
 
   const download = (blob: Blob, name: string) => {
     const url = URL.createObjectURL(blob);
@@ -177,7 +189,7 @@ function DiecutLabInner() {
         pxHeight: embed.height,
         widthMm: result.widthMm,
         heightMm: result.heightMm,
-        paths: result.paths,
+        curves: result.curves,
         hole: result.hole,
         ...exportFrame(result, 5),
         title: baseName,
@@ -192,7 +204,7 @@ function DiecutLabInner() {
 
   function downloadSvg() {
     if (!result) return;
-    const d = toSvgPath(result.paths, result.hole);
+    const d = toSvgPath(result.curves, result.hole);
     const f = exportFrame(result, 5);
     // viewBox เริ่มที่มุมซ้ายบนของกรอบ (พิกัดเส้นตัดติดลบได้ จึงเลื่อนด้วย artX/artY)
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${f.pageWidthMm.toFixed(2)}mm" height="${f.pageHeightMm.toFixed(2)}mm" viewBox="${(-f.artXMm).toFixed(2)} ${(-f.artYMm).toFixed(2)} ${f.pageWidthMm.toFixed(2)} ${f.pageHeightMm.toFixed(2)}">
@@ -252,8 +264,12 @@ function DiecutLabInner() {
 
           {result && (
             <div className="mt-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className={h2}>ตัวอย่างเส้นตัด</h2>
+                <label className="flex cursor-pointer items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+                  <input type="checkbox" checked={showAnchors} onChange={(e) => setShowAnchors(e.target.checked)} className="h-3.5 w-3.5 accent-sky-500" />
+                  โชว์จุดแองเคอร์
+                </label>
                 <span className={`text-[11px] ${muted}`}>
                   งานจริง {result.widthMm.toFixed(1)} × {result.heightMm.toFixed(1)} มม. · เส้นสีบานเย็น = แนวตัด
                 </span>
@@ -304,6 +320,21 @@ function DiecutLabInner() {
               />
               <span className={`text-[11px] ${faint}`}>
                 0 = วิ่งตามหยักของลายเป๊ะ · ยิ่งมากยิ่งลื่น (กลืนร่องแคบ ๆ ระหว่างตัวอักษรให้เป็นเส้นเดียว)
+              </span>
+            </label>
+            <label className="mt-3 block text-[11px] font-semibold text-slate-500">
+              ความละเอียดเส้นโค้ง: ±{curveTol} มม.
+              <input
+                type="range"
+                min={0.03}
+                max={0.6}
+                step={0.01}
+                value={curveTol}
+                onChange={(e) => setCurveTol(e.target.value)}
+                className="mt-1 w-full accent-amber-500"
+              />
+              <span className={`text-[11px] ${faint}`}>
+                เส้นถูกแปลงเป็นโค้งเบซิเยร์แบบโปรแกรมตัด · น้อย = เกาะลายแน่นแต่จุดเยอะ · มาก = จุดน้อย เส้นลื่น แก้ต่อง่ายใน Illustrator
               </span>
             </label>
             <label className="mt-3 flex cursor-pointer items-center gap-2 text-[12px] font-semibold text-slate-600">
@@ -390,9 +421,9 @@ function DiecutLabInner() {
             {result && (
               <p className={`mt-3 text-[11px] ${muted}`}>
                 ชิ้นงาน {result.pieces} ชิ้น
-                {result.innerHoles > 0 ? ` · รูตัดทะลุ ${result.innerHoles} รู` : ""} · จุดทั้งหมด{" "}
-                {result.paths.reduce((n, p) => n + p.length, 0).toLocaleString("th-TH")} จุด
-                {result.hole ? " · มีรูร้อยห่วง" : ""}
+                {result.innerHoles > 0 ? ` · รูตัดทะลุ ${result.innerHoles} รู` : ""} · จุดแองเคอร์{" "}
+                {result.anchors.toLocaleString("th-TH")} จุด
+                {result.hole ? " · มีหูร้อยห่วง" : ""}
               </p>
             )}
           </div>

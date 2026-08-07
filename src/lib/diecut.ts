@@ -1,11 +1,14 @@
 /**
  * สร้าง "เส้นไดคัท" จากลายที่ลูกค้าส่งมา (PNG พื้นใส) — คำนวณล้วน ๆ ไม่แตะ DOM
  *
- * ขั้นตอน: alpha → มาสก์ → ขยายออกตามค่าตัดเผื่อ (mm) → ปิดรูใน (ถ้าเลือก)
- *          → ไล่เส้นขอบเป็นรูปหลายเหลี่ยม → ลบมุมบันได → ลดจำนวนจุด → แปลงเป็นมิลลิเมตร
+ * ขั้นตอน: alpha → มาสก์ → ขยายออกตามค่าตัดเผื่อ (mm) → เก็บขอบให้เรียบ → ปิดรูใน (ถ้าเลือก)
+ *          → ไล่เส้นขอบเป็นรูปหลายเหลี่ยม → ลบมุมบันได → แปลงเป็นมิลลิเมตร
+ *          → ฟิตเป็นเส้นโค้งเบซิเยร์ (แบบโปรแกรมตัดสติกเกอร์ทำ) = จุดแองเคอร์น้อย แก้ต่อง่าย
  *
  * หน่วยภายในทั้งหมดเป็น "พิกเซลของภาพ" (x ขวา · y ลง) แล้วค่อยคูณ mmPerPx ตอนท้าย
  */
+
+import { fitClosedCurve, type CubicSeg } from "./bezier-fit";
 
 export interface DiecutSettings {
   /** ตัดเผื่อรอบลาย (มม.) — ค่าที่ร้านใช้ประจำคือ 2 */
@@ -21,6 +24,11 @@ export interface DiecutSettings {
    * เส้นจะลื่นแบบงานสติกเกอร์จริง · 0 = ตามขอบลายเป๊ะ (หยักตามลาย)
    */
   smoothMm: number;
+  /**
+   * ความคลาดเคลื่อนตอนแปลงเป็นเส้นโค้งเบซิเยร์ (มม.) — เหมือนค่า "ความละเอียด" ของโปรแกรมตัด
+   * น้อย = เกาะลายแน่น จุดแองเคอร์เยอะ · มาก = เส้นลื่น จุดน้อย แก้ต่อง่าย (แนะนำ 0.1–0.25)
+   */
+  curveTolMm: number;
 }
 
 /** หูร้อยห่วงแบบ "แท็บกลม" ยื่นออกจากตัวงาน (แบบพวงกุญแจอะคริลิคทั่วไป) */
@@ -37,6 +45,10 @@ export interface RingTab {
 export interface DiecutResult {
   /** เส้นไดคัทเป็นมิลลิเมตร (x ขวา · y ลง · อ้างอิงมุมซ้ายบนของลาย · ติดลบได้ถ้าเส้นล้นออกนอกลาย) */
   paths: { x: number; y: number }[][];
+  /** เส้นเดียวกันในรูปโค้งเบซิเยร์ (เรียงตรงกับ paths) — อันนี้คือของที่ส่งออกไฟล์จริง */
+  curves: { start: { x: number; y: number }; segs: CubicSeg[] }[];
+  /** จำนวนจุดแองเคอร์รวมของเส้นโค้ง (ยิ่งน้อยยิ่งแก้ง่ายใน Illustrator) */
+  anchors: number;
   /** รูร้อยห่วง (มม.) — ไม่ได้เปิดใช้ = undefined */
   hole?: { cx: number; cy: number; r: number };
   widthMm: number;
@@ -309,6 +321,8 @@ export function buildDiecut(
   for (let i = 0; i < src.length; i++) inkPx += src[i];
   const emptyResult: DiecutResult = {
     paths: [],
+    curves: [],
+    anchors: 0,
     widthMm: s.widthMm,
     heightMm: h0 * mmPerPx,
     mmPerPx,
@@ -417,6 +431,10 @@ export function buildDiecut(
     warnings.push(`มีรูตัดทะลุกลางงาน ${innerHoles} รู — ไม่ต้องการให้ตัดทะลุ ให้ติ๊ก “ปิดรูกลางลาย”`);
   }
 
+  // ฟิตเป็นเส้นโค้ง — นี่คือของที่เขียนลงไฟล์จริง (paths เก็บไว้วัด/วาดตัวอย่าง)
+  const curves = paths.map((loop) => ({ start: loop[0], segs: fitClosedCurve(loop, Math.max(0.01, s.curveTolMm)) }));
+  const anchors = curves.reduce((n, c) => n + c.segs.length, 0);
+
   const all = paths.flat();
   const bounds = {
     x0: Math.min(...all.map((q) => q.x), hole ? hole.cx - hole.r : Infinity),
@@ -425,7 +443,7 @@ export function buildDiecut(
     y1: Math.max(...all.map((q) => q.y), hole ? hole.cy + hole.r : -Infinity),
   };
 
-  return { paths, hole, widthMm: s.widthMm, heightMm: h0 * mmPerPx, mmPerPx, pieces, innerHoles, bounds, warnings };
+  return { paths, curves, anchors, hole, widthMm: s.widthMm, heightMm: h0 * mmPerPx, mmPerPx, pieces, innerHoles, bounds, warnings };
 }
 
 /**
@@ -446,10 +464,16 @@ export function exportFrame(r: DiecutResult, marginMm = 5) {
   };
 }
 
-/** เส้นไดคัทเป็น path ของ SVG (หน่วยมิลลิเมตร) */
-export function toSvgPath(paths: Pt[][], hole?: DiecutResult["hole"]): string {
-  const d = paths
-    .map((loop) => `M ${loop.map((p) => `${p.x.toFixed(3)} ${p.y.toFixed(3)}`).join(" L ")} Z`)
+/** เส้นไดคัทเป็น path ของ SVG (หน่วยมิลลิเมตร · โค้งเบซิเยร์เหมือนที่เขียนลงไฟล์ .ai) */
+export function toSvgPath(curves: DiecutResult["curves"], hole?: DiecutResult["hole"]): string {
+  const n = (v: number) => v.toFixed(3);
+  const d = curves
+    .map(
+      (c) =>
+        `M ${n(c.start.x)} ${n(c.start.y)} ` +
+        c.segs.map((s) => `C ${n(s.c1.x)} ${n(s.c1.y)} ${n(s.c2.x)} ${n(s.c2.y)} ${n(s.to.x)} ${n(s.to.y)}`).join(" ") +
+        " Z"
+    )
     .join(" ");
   if (!hole) return d;
   const { cx, cy, r } = hole;

@@ -19,8 +19,8 @@ export interface AiFileInput {
   /** ขนาดจริงของลาย (มม.) */
   widthMm: number;
   heightMm: number;
-  /** เส้นไดคัท (มม. · y นับจากขอบบนของลาย · ติดลบได้ถ้าล้นออกนอกลาย) */
-  paths: Pt[][];
+  /** เส้นไดคัทแบบโค้งเบซิเยร์ (มม. · y นับจากขอบบนของลาย · ติดลบได้ถ้าล้นออกนอกลาย) */
+  curves: { start: Pt; segs: { c1: Pt; c2: Pt; to: Pt }[] }[];
   hole?: { cx: number; cy: number; r: number };
   /** ขนาดกรอบไฟล์ + ตำแหน่งที่วางลายในกรอบ (จาก exportFrame) */
   pageWidthMm: number;
@@ -74,14 +74,16 @@ class PdfWriter {
 }
 
 /** เส้นไดคัทเป็นคำสั่งวาดของ PDF (หน่วย point · y นับขึ้นจากขอบล่าง) */
-function pathOps(paths: Pt[][], hole: AiFileInput["hole"], artX: number, artY: number, pageHmm: number): string {
+function pathOps(curves: AiFileInput["curves"], hole: AiFileInput["hole"], artX: number, artY: number, pageHmm: number): string {
   const X = (mm: number) => ((mm + artX) * PT_PER_MM).toFixed(3);
   const Y = (mm: number) => ((pageHmm - (mm + artY)) * PT_PER_MM).toFixed(3);
   const out: string[] = [];
-  for (const loop of paths) {
-    if (loop.length < 3) continue;
-    out.push(`${X(loop[0].x)} ${Y(loop[0].y)} m`);
-    for (let i = 1; i < loop.length; i++) out.push(`${X(loop[i].x)} ${Y(loop[i].y)} l`);
+  for (const c of curves) {
+    if (!c.segs.length) continue;
+    out.push(`${X(c.start.x)} ${Y(c.start.y)} m`);
+    for (const s of c.segs) {
+      out.push(`${X(s.c1.x)} ${Y(s.c1.y)} ${X(s.c2.x)} ${Y(s.c2.y)} ${X(s.to.x)} ${Y(s.to.y)} c`);
+    }
     out.push("h");
   }
   if (hole) {
@@ -127,7 +129,7 @@ export async function buildAiFile(input: AiFileInput): Promise<Blob> {
     "1 SCN",
     "0.25 w",
     "1 J 1 j",
-    pathOps(input.paths, input.hole, input.artXMm, input.artYMm, pageH),
+    pathOps(input.curves, input.hole, input.artXMm, input.artYMm, pageH),
     "S",
   ].join("\n");
 
