@@ -86,7 +86,8 @@ interface CartContextValue {
   items: CartItem[];
   totalQty: number;
   subtotal: number;
-  addItem: (productId: string, selections: Record<string, string>, qty: number) => void;
+  /** known = ตัวสินค้าเต็ม ๆ จากหน้าที่กดสั่ง (ส่งมาด้วยได้ ไม่ต้องให้ตะกร้าไปหาเอง) */
+  addItem: (productId: string, selections: Record<string, string>, qty: number, known?: Product) => void;
   removeItem: (key: string) => void;
   setQty: (key: string, qty: number) => void;
   clear: () => void;
@@ -166,18 +167,32 @@ export function CartProvider({ children }: { children: ReactNode }) {
       items,
       totalQty,
       subtotal,
-      addItem: (productId, selections, qty) => {
-        const product = productOf(productId);
-        if (!product) return;
-        dispatch({
-          type: "add",
-          item: {
-            key: cartItemKey(productId, selections),
-            productId,
-            selections,
-            qty,
-            unitPrice: unitPriceFor(product, selections, qty),
-          },
+      addItem: (productId, selections, qty, known) => {
+        const put = (p: Product) => {
+          // จำสินค้าไว้ในแคตตาล็อก — ตะกร้าคิดราคาใหม่ได้ทันทีโดยไม่ต้องรอยิงฐานข้อมูลซ้ำ
+          setCatalog((prev) => (prev.has(p.id) ? prev : new Map(prev).set(p.id, p)));
+          dispatch({
+            type: "add",
+            item: {
+              key: cartItemKey(productId, selections),
+              productId,
+              selections,
+              qty,
+              unitPrice: unitPriceFor(p, selections, qty),
+            },
+          });
+        };
+        // หน้าสินค้าส่งตัวสินค้ามาด้วย = ใส่ตะกร้าได้เลย
+        // (แคตตาล็อกในตะกร้าโหลดเฉพาะของที่อยู่ในตะกร้าแล้ว — ตะกร้าว่างจะยังไม่รู้จักสินค้าฐานข้อมูล)
+        const product = known ?? productOf(productId);
+        if (product) {
+          put(product);
+          return;
+        }
+        // รู้แค่ id (เช่น กดสั่งซ้ำจากประวัติออเดอร์) → ดึงจากฐานข้อมูลก่อนค่อยใส่ตะกร้า
+        fetchProductsByIds([productId]).then((ps) => {
+          const p = ps.find((x) => x.id === productId);
+          if (p) put(p);
         });
       },
       removeItem: (key) => dispatch({ type: "remove", key }),

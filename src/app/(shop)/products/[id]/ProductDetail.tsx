@@ -549,7 +549,7 @@ export default function ProductDetail({
         Object.entries(effective).filter(([k]) => (custom.keepOptions ?? []).includes(k))
       );
       const customValue = customChat ? "คุยรายละเอียดกับแอดมิน" : `${cW}×${cH} ${custom.unit}`;
-      addItem(product.id, { ...kept, [custom.label]: customValue, ...extra }, qty);
+      addItem(product.id, { ...kept, [custom.label]: customValue, ...extra }, qty, product);
     } else {
       // กลุ่มที่ถูกซ่อนอยู่ (showWhen ไม่ตรง) ไม่ต้องติดไปกับตะกร้า/ออเดอร์ — ลูกค้าไม่ได้เลือกเอง
       const hidden = product.options.filter((o) => !optionVisible(o, effective)).map((o) => o.label);
@@ -557,7 +557,7 @@ export default function ProductDetail({
       const shown = Object.fromEntries(
         Object.entries(effectiveWithDesigns).filter(([k, v]) => !hidden.includes(k) && v !== "")
       );
-      addItem(product.id, { ...shown, ...extra }, qty);
+      addItem(product.id, { ...shown, ...extra }, qty, product);
     }
     setNote("");
     setArtLink("");
