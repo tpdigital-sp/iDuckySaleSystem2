@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PRODUCTS, type CategoryId, type Product } from "@/lib/products";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
@@ -69,6 +69,39 @@ export default function ProductListing() {
     }
     return sorted;
   }, [all, category, search, sort]);
+
+  /**
+   * ทยอยวาดการ์ดทีละชุด — เดิมวาดทั้ง 400 ใบพร้อมกัน (DOM ~4,500 ชิ้น) มือถือกระตุกตั้งแต่เปิดหน้า
+   * เลื่อนถึงท้ายลิสต์แล้วค่อยเติมชุดถัดไปให้เอง (ไม่ต้องกดปุ่ม · ของครบเหมือนเดิม)
+   */
+  const PAGE = 48;
+  const [shown, setShown] = useState(PAGE);
+  useEffect(() => setShown(PAGE), [category, search, sort]);
+  const sentinel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (shown >= filtered.length) return;
+    // วัดตำแหน่งตอนเลื่อนเอง — ไม่ใช้ IntersectionObserver (เคยเจอว่ามันไม่ยิงเมื่อแท็บไม่ได้อยู่หน้าสุด)
+    let raf = 0;
+    const check = () => {
+      raf = 0;
+      const el = sentinel.current;
+      if (!el) return;
+      // เหลืออีกไม่ถึง 1 จอก็เติมชุดถัดไปเลย จะได้ไม่เห็นรอยต่อ
+      if (el.getBoundingClientRect().top < window.innerHeight + 600) setShown((n) => n + PAGE);
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(check);
+    };
+    check();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [shown, filtered.length]);
+  const visible = useMemo(() => filtered.slice(0, shown), [filtered, shown]);
 
   function selectCategory(id: string) {
     router.replace(id === "all" ? "/products" : `/products?category=${id}`, {
@@ -147,11 +180,24 @@ export default function ProductListing() {
           <p className="mt-1 text-sm text-stone-500">ลองเปลี่ยนคำค้นหรือเลือกหมวดอื่นดูนะ</p>
         </div>
       ) : (
-        <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-          {filtered.map((p) => (
-            <ProductCard key={p.id} product={p} />
-          ))}
-        </div>
+        <>
+          <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+            {visible.map((p) => (
+              <ProductCard key={p.id} product={p} />
+            ))}
+          </div>
+          {shown < filtered.length && (
+            <div ref={sentinel} className="mt-6 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setShown((n) => n + PAGE)}
+                className="rounded-full bg-white px-6 py-2.5 text-sm font-bold text-stone-600 shadow-sm ring-1 ring-amber-200 hover:bg-amber-50"
+              >
+                แสดงเพิ่ม ({filtered.length - shown} รายการ)
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

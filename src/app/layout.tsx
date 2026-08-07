@@ -7,7 +7,8 @@ import "./globals.css";
 
 const prompt = Prompt({
   subsets: ["thai", "latin"],
-  weight: ["300", "400", "500", "600", "700", "800"],
+  // ตัดน้ำหนักที่ไม่มีที่ไหนเรียกใช้ออก (300 = font-light ไม่ถูกใช้เลย) — ฟอนต์ไทยไฟล์ละ ~20 KB
+  weight: ["400", "500", "600", "700", "800"],
   variable: "--font-prompt",
   display: "swap",
 });
@@ -15,7 +16,8 @@ const prompt = Prompt({
 // ฟอนต์ดีไซน์หน้าแรก/หัว-ท้ายเว็บ (ตามไฟล์ต้นแบบ): Mitr = หัวเรื่อง/ปุ่ม · Plex Looped = เนื้อความ
 const mitr = Mitr({
   subsets: ["thai", "latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  // ใช้กับหัวเรื่อง/ปุ่มในดีไซน์หน้าแรกเท่านั้น — CSS เรียกแค่ 300/400/500/600 (ไม่มี 700)
+  weight: ["300", "400", "500", "600"],
   variable: "--font-mitr",
   display: "swap",
 });

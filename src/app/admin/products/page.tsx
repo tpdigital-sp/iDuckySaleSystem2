@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ProductVisual from "@/components/ProductVisual";
@@ -226,6 +226,37 @@ export default function AdminProductsPage() {
     return arr;
   }, [filtered, sort]);
 
+  /**
+   * ทยอยวาดทีละชุด — เดิมวาดครบ 341 รายการพร้อมกัน (DOM ~7,900 ชิ้น)
+   * ทำให้เปิดหน้าช้าและพิมพ์ค้นหาแล้วหน่วง (ทุกตัวอักษร = วาดใหม่ทั้งลิสต์)
+   * เลื่อนถึงท้ายลิสต์ค่อยเติมชุดถัดไปให้เอง · ตัวเลข "พบ N รายการ" ยังนับจากของทั้งหมด
+   */
+  const PAGE = 60;
+  const [shown, setShown] = useState(PAGE);
+  useEffect(() => setShown(PAGE), [catFilter, reviewFilter, showFilter, query, sort]);
+  const moreRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (shown >= sorted.length) return;
+    let raf = 0;
+    const check = () => {
+      raf = 0;
+      const el = moreRef.current;
+      if (el && el.getBoundingClientRect().top < window.innerHeight + 500) setShown((n) => n + PAGE);
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(check);
+    };
+    check();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [shown, sorted.length]);
+  const visible = useMemo(() => sorted.slice(0, shown), [sorted, shown]);
+
   // จัดกลุ่มตามหมวดเฉพาะเมื่อดูทั้งหมด + เรียงตามหมวด
   const grouped = catFilter === "all" && sort === "default";
 
@@ -419,7 +450,7 @@ export default function AdminProductsPage() {
         </div>
       ) : view === "cards" ? (
         <CardGrid
-          items={sorted}
+          items={visible}
           overriddenIds={overriddenIds}
           onRemove={remove}
           onToggleReview={toggleReview}
@@ -430,7 +461,7 @@ export default function AdminProductsPage() {
       ) : grouped ? (
         <div className="mt-5 space-y-6">
           {CATEGORIES.map((c) => {
-            const inCat = sorted.filter((p) => p.category === c.id);
+            const inCat = visible.filter((p) => p.category === c.id);
             if (inCat.length === 0) return null;
             return (
               <section key={c.id}>
@@ -445,7 +476,20 @@ export default function AdminProductsPage() {
         </div>
       ) : (
         <div className="mt-5">
-          <TableList items={sorted} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onToggleHidden={toggleHidden} onBulkAsk={setBulkAsk} onDuplicate={duplicate} duplicating={duplicating} />
+          <TableList items={visible} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onToggleHidden={toggleHidden} onBulkAsk={setBulkAsk} onDuplicate={duplicate} duplicating={duplicating} />
+        </div>
+      )}
+
+      {/* เลื่อนถึงตรงนี้ = เติมชุดถัดไปให้เอง (กดปุ่มเองก็ได้) */}
+      {shown < sorted.length && (
+        <div ref={moreRef} className="mt-5 flex justify-center">
+          <button
+            type="button"
+            onClick={() => setShown((n) => n + PAGE)}
+            className="rounded-full bg-white px-6 py-2.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+          >
+            แสดงเพิ่ม (เหลืออีก {(sorted.length - shown).toLocaleString("th-TH")} รายการ)
+          </button>
         </div>
       )}
     </div>
