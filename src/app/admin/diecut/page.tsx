@@ -1,0 +1,358 @@
+"use client";
+
+import RequirePerm from "@/components/RequirePerm";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { buildDiecut, toSvgPath, type DiecutResult, type RingHole } from "@/lib/diecut";
+import { buildAiFile } from "@/lib/diecut-ai";
+import { btnNeutral, btnPrimary, card, faint, h1, h2, muted } from "@/lib/admin-ui";
+
+/** ขนาดที่ใช้คำนวณเส้น (ยิ่งเล็กยิ่งไว) และขนาดรูปที่ฝังลงไฟล์ .ai */
+const TRACE_MAX = 1200;
+const EMBED_MAX = 2400;
+
+const inputCls =
+  "w-full rounded-xl bg-slate-50 px-3 py-2 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300";
+
+/** ย่อรูปลงแคนวาสตามด้านยาวสุดที่กำหนด แล้วอ่านพิกเซลออกมา */
+function toImageData(bmp: ImageBitmap, maxSide: number) {
+  const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  const w = Math.max(1, Math.round(bmp.width * scale));
+  const h = Math.max(1, Math.round(bmp.height * scale));
+  const cv = document.createElement("canvas");
+  cv.width = w;
+  cv.height = h;
+  const ctx = cv.getContext("2d", { willReadFrequently: true })!;
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(bmp, 0, 0, w, h);
+  return ctx.getImageData(0, 0, w, h);
+}
+
+function DiecutLabInner() {
+  const [fileName, setFileName] = useState("");
+  const [trace, setTrace] = useState<ImageData | null>(null);
+  const [embed, setEmbed] = useState<ImageData | null>(null);
+  const [natural, setNatural] = useState({ w: 0, h: 0 });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [dragOver, setDragOver] = useState(false);
+
+  // ── ค่าตั้งงาน ──
+  const [widthMm, setWidthMm] = useState("50");
+  const [offsetMm, setOffsetMm] = useState("2"); // ค่าที่ร้านใช้ประจำ
+  const [fillHoles, setFillHoles] = useState(true);
+  const [alphaThreshold, setAlphaThreshold] = useState("16");
+  const [ringOn, setRingOn] = useState(true);
+  const [ringDia, setRingDia] = useState("4");
+  const [ringInset, setRingInset] = useState("4");
+  const [ringPos, setRingPos] = useState<RingHole["position"]>("top-center");
+
+  const [result, setResult] = useState<DiecutResult | null>(null);
+  const previewRef = useRef<HTMLCanvasElement>(null);
+
+  const loadFile = useCallback(async (f: File) => {
+    setErr("");
+    if (!/^image\/(png|webp)$/.test(f.type)) {
+      setErr("ไฟล์ลายต้องเป็น PNG (หรือ WEBP) ที่พื้นหลังโปร่งใส — JPG ไม่มีพื้นใส ตัดขอบไม่ได้");
+      return;
+    }
+    setBusy(true);
+    try {
+      const bmp = await createImageBitmap(f);
+      setNatural({ w: bmp.width, h: bmp.height });
+      setTrace(toImageData(bmp, TRACE_MAX));
+      setEmbed(toImageData(bmp, EMBED_MAX));
+      setFileName(f.name);
+      bmp.close();
+    } catch {
+      setErr("เปิดไฟล์รูปไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  // คำนวณเส้นใหม่ทุกครั้งที่ลาย/ค่าตั้งเปลี่ยน
+  useEffect(() => {
+    if (!trace) {
+      setResult(null);
+      return;
+    }
+    const wMm = Number(widthMm);
+    const oMm = Number(offsetMm);
+    if (!(wMm > 0)) return;
+    const t = setTimeout(() => {
+      const ring: RingHole | undefined = ringOn
+        ? { diameterMm: Number(ringDia) || 0, insetMm: Number(ringInset) || 0, position: ringPos }
+        : undefined;
+      setResult(
+        buildDiecut(trace, { widthMm: wMm, offsetMm: Number.isFinite(oMm) ? oMm : 0, fillHoles, alphaThreshold: Number(alphaThreshold) || 16 }, ring)
+      );
+    }, 120); // หน่วงสั้น ๆ กันคำนวณรัวตอนลากสไลเดอร์
+    return () => clearTimeout(t);
+  }, [trace, widthMm, offsetMm, fillHoles, alphaThreshold, ringOn, ringDia, ringInset, ringPos]);
+
+  // วาดตัวอย่าง: ลาย + เส้นไดคัทสีบานเย็น
+  useEffect(() => {
+    const cv = previewRef.current;
+    if (!cv || !embed || !result) return;
+    const pad = 24;
+    const scale = Math.min(1, 520 / Math.max(embed.width, embed.height));
+    cv.width = Math.round(embed.width * scale) + pad * 2;
+    cv.height = Math.round(embed.height * scale) + pad * 2;
+    const ctx = cv.getContext("2d")!;
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    // ตารางหมากรุก = พื้นโปร่งใส
+    const sq = 10;
+    for (let y = 0; y < cv.height; y += sq) {
+      for (let x = 0; x < cv.width; x += sq) {
+        ctx.fillStyle = ((x / sq + y / sq) & 1) === 0 ? "#f8fafc" : "#eef2f7";
+        ctx.fillRect(x, y, sq, sq);
+      }
+    }
+    const tmp = document.createElement("canvas");
+    tmp.width = embed.width;
+    tmp.height = embed.height;
+    tmp.getContext("2d")!.putImageData(embed, 0, 0);
+    ctx.drawImage(tmp, pad, pad, embed.width * scale, embed.height * scale);
+
+    const pxPerMm = (embed.width * scale) / result.widthMm;
+    ctx.strokeStyle = "#e2007a";
+    ctx.lineWidth = 1.5;
+    ctx.lineJoin = "round";
+    for (const loop of result.paths) {
+      ctx.beginPath();
+      loop.forEach((p, i) => {
+        const x = pad + p.x * pxPerMm;
+        const y = pad + p.y * pxPerMm;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.closePath();
+      ctx.stroke();
+    }
+    if (result.hole) {
+      ctx.beginPath();
+      ctx.arc(pad + result.hole.cx * pxPerMm, pad + result.hole.cy * pxPerMm, result.hole.r * pxPerMm, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }, [embed, result]);
+
+  const download = (blob: Blob, name: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  };
+
+  const baseName = (fileName.replace(/\.[^.]+$/, "") || "diecut") + `-cut${offsetMm}mm`;
+
+  async function downloadAi() {
+    if (!embed || !result) return;
+    setBusy(true);
+    try {
+      const blob = await buildAiFile({
+        rgba: embed.data,
+        pxWidth: embed.width,
+        pxHeight: embed.height,
+        widthMm: result.widthMm,
+        heightMm: result.heightMm,
+        paths: result.paths,
+        hole: result.hole,
+        title: baseName,
+      });
+      download(blob, `${baseName}.ai`);
+    } catch {
+      setErr("สร้างไฟล์ .ai ไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function downloadSvg() {
+    if (!result) return;
+    const d = toSvgPath(result.paths, result.hole);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${result.widthMm}mm" height="${result.heightMm}mm" viewBox="0 0 ${result.widthMm} ${result.heightMm}">
+  <g id="CutContour" fill="none" stroke="#e2007a" stroke-width="0.25"><path d="${d}"/></g>
+</svg>`;
+    download(new Blob([svg], { type: "image/svg+xml" }), `${baseName}.svg`);
+  }
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-6">
+      <div>
+        <h1 className={h1}>✂️ เส้นไดคัท</h1>
+        <p className="mt-1 rounded-xl bg-amber-50 px-3 py-2 text-[13px] font-semibold text-amber-800 ring-1 ring-amber-200">
+          🧪 โหมดทดลอง — หน้านี้อยู่ในหลังบ้านอย่างเดียว ลูกค้าหน้าร้านยังไม่เห็นและยังไม่มีผลกับออเดอร์ใด ๆ
+        </p>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+        {/* ซ้าย: ลาย + ตัวอย่างเส้น */}
+        <div className={`${card} p-4`}>
+          <label
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              const f = e.dataTransfer.files?.[0];
+              if (f) void loadFile(f);
+            }}
+            className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 py-6 text-center transition ${
+              dragOver ? "border-amber-400 bg-amber-50" : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+            }`}
+          >
+            <input
+              type="file"
+              accept="image/png,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) void loadFile(f);
+              }}
+            />
+            <span className="text-sm font-bold text-slate-700">🖼️ เลือกไฟล์ลาย · หรือลากมาวางตรงนี้</span>
+            <span className={`mt-1 text-[11px] ${faint}`}>PNG พื้นใส (ไล่พื้นหลังออกแล้ว) · WEBP ก็ได้</span>
+            {fileName && (
+              <span className="mt-2 rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200">
+                {fileName} · {natural.w}×{natural.h} px
+              </span>
+            )}
+          </label>
+
+          {err && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-[13px] font-semibold text-rose-700 ring-1 ring-rose-200">{err}</p>}
+
+          {result && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between">
+                <h2 className={h2}>ตัวอย่างเส้นตัด</h2>
+                <span className={`text-[11px] ${muted}`}>
+                  งานจริง {result.widthMm.toFixed(1)} × {result.heightMm.toFixed(1)} มม. · เส้นสีบานเย็น = แนวตัด
+                </span>
+              </div>
+              <div className="mt-2 overflow-auto rounded-2xl ring-1 ring-slate-200">
+                <canvas ref={previewRef} className="block" />
+              </div>
+              {result.warnings.length > 0 && (
+                <ul className="mt-3 space-y-1">
+                  {result.warnings.map((warn, i) => (
+                    <li key={i} className="rounded-xl bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-800 ring-1 ring-amber-200">
+                      ⚠️ {warn}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ขวา: ค่าตั้ง + ปุ่มโหลดไฟล์ */}
+        <div className="space-y-4">
+          <div className={`${card} p-4`}>
+            <h2 className={h2}>ขนาด & ค่าตัดเผื่อ</h2>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <label className="text-[11px] font-semibold text-slate-500">
+                ความกว้างงานจริง (มม.)
+                <input value={widthMm} onChange={(e) => setWidthMm(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" className={`mt-1 ${inputCls}`} />
+              </label>
+              <label className="text-[11px] font-semibold text-slate-500">
+                ตัดเผื่อรอบลาย (มม.)
+                <input value={offsetMm} onChange={(e) => setOffsetMm(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" className={`mt-1 ${inputCls}`} />
+              </label>
+            </div>
+            <p className={`mt-2 text-[11px] ${faint}`}>
+              สูงคำนวณให้เองตามสัดส่วนภาพ · ค่าตัดเผื่อมาตรฐานของร้าน = 2 มม.
+            </p>
+            <label className="mt-3 flex cursor-pointer items-center gap-2 text-[12px] font-semibold text-slate-600">
+              <input type="checkbox" checked={fillHoles} onChange={(e) => setFillHoles(e.target.checked)} className="h-4 w-4 accent-amber-500" />
+              ปิดรูกลางลาย (ไม่ตัดทะลุช่องว่างในตัวอักษร)
+            </label>
+            <label className="mt-3 block text-[11px] font-semibold text-slate-500">
+              ความไวขอบลาย (alpha ≥ {alphaThreshold})
+              <input
+                type="range"
+                min={1}
+                max={200}
+                value={alphaThreshold}
+                onChange={(e) => setAlphaThreshold(e.target.value)}
+                className="mt-1 w-full accent-amber-500"
+              />
+              <span className={`text-[11px] ${faint}`}>ลายที่ขอบฟุ้ง/มีเงา ถ้าเส้นตัดกินเงามาด้วยให้เลื่อนไปทางขวา</span>
+            </label>
+          </div>
+
+          <div className={`${card} p-4`}>
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-bold text-slate-700">
+              <input type="checkbox" checked={ringOn} onChange={(e) => setRingOn(e.target.checked)} className="h-4 w-4 accent-amber-500" />
+              🔗 เจาะรูร้อยห่วง
+            </label>
+            {ringOn && (
+              <>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <label className="text-[11px] font-semibold text-slate-500">
+                    ขนาดรู (มม.)
+                    <input value={ringDia} onChange={(e) => setRingDia(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" className={`mt-1 ${inputCls}`} />
+                  </label>
+                  <label className="text-[11px] font-semibold text-slate-500">
+                    ห่างจากขอบ (มม.)
+                    <input value={ringInset} onChange={(e) => setRingInset(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" className={`mt-1 ${inputCls}`} />
+                  </label>
+                </div>
+                <div className="mt-3 flex gap-1.5">
+                  {([["top-left", "◤ ซ้ายบน"], ["top-center", "▲ บนกลาง"], ["top-right", "◥ ขวาบน"]] as const).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setRingPos(id)}
+                      className={`flex-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition ${
+                        ringPos === id ? "bg-slate-900 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className={`${card} p-4`}>
+            <h2 className={h2}>ไฟล์ส่งเข้าเครื่องตัด</h2>
+            <p className={`mt-1 text-[11px] ${faint}`}>
+              ไฟล์ .ai เปิดใน Illustrator ได้เลย — ในไฟล์มีรูปลายขนาดจริง + เส้นตัดเป็นเวกเตอร์สี spot ชื่อ <b>CutContour</b>
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" onClick={downloadAi} disabled={!result || busy} className={btnPrimary}>
+                {busy ? "กำลังสร้าง…" : "⬇️ ดาวน์โหลด .ai"}
+              </button>
+              <button type="button" onClick={downloadSvg} disabled={!result} className={btnNeutral}>
+                ⬇️ .svg (เส้นอย่างเดียว)
+              </button>
+            </div>
+            {result && (
+              <p className={`mt-3 text-[11px] ${muted}`}>
+                ชิ้นงาน {result.pieces} ชิ้น
+                {result.innerHoles > 0 ? ` · รูตัดทะลุ ${result.innerHoles} รู` : ""} · จุดทั้งหมด{" "}
+                {result.paths.reduce((n, p) => n + p.length, 0).toLocaleString("th-TH")} จุด
+                {result.hole ? " · มีรูร้อยห่วง" : ""}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function DiecutLabPage() {
+  return (
+    <RequirePerm perm="products.manage">
+      <DiecutLabInner />
+    </RequirePerm>
+  );
+}

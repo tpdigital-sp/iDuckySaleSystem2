@@ -23,6 +23,8 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   { href: "/admin/options", label: "คลังตัวเลือก", emoji: "🎛️", perm: "presets.manage", group: "สินค้า" },
   { href: "/admin/special-products", label: "รูปแบบการสินค้าสั่งพิเศษ", emoji: "🛠️", perm: "orders.edit", group: "สินค้า" },
   { href: "/admin/stock", label: "คลังสต๊อก", emoji: "📦", perm: "orders.edit", group: "สินค้า" },
+  // 🧪 ยังทดลองอยู่ — หน้าร้านไม่เห็น ใช้ทดสอบทำเส้นไดคัทจากลายลูกค้า
+  { href: "/admin/diecut", label: "เส้นไดคัท (ทดลอง)", emoji: "✂️", perm: "products.manage", group: "สินค้า" },
   // 💛 ลูกค้า & การตลาด
   { href: "/admin/coupons", label: "คูปอง", emoji: "🎟️", perm: "coupons.manage", group: "ลูกค้า" },
   { href: "/admin/ratings", label: "ความพึงพอใจ", emoji: "💬", perm: "orders.viewAll", group: "ลูกค้า" },

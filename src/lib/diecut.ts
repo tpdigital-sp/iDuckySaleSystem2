@@ -1,0 +1,336 @@
+/**
+ * สร้าง "เส้นไดคัท" จากลายที่ลูกค้าส่งมา (PNG พื้นใส) — คำนวณล้วน ๆ ไม่แตะ DOM
+ *
+ * ขั้นตอน: alpha → มาสก์ → ขยายออกตามค่าตัดเผื่อ (mm) → ปิดรูใน (ถ้าเลือก)
+ *          → ไล่เส้นขอบเป็นรูปหลายเหลี่ยม → ลบมุมบันได → ลดจำนวนจุด → แปลงเป็นมิลลิเมตร
+ *
+ * หน่วยภายในทั้งหมดเป็น "พิกเซลของภาพ" (x ขวา · y ลง) แล้วค่อยคูณ mmPerPx ตอนท้าย
+ */
+
+export interface DiecutSettings {
+  /** ตัดเผื่อรอบลาย (มม.) — ค่าที่ร้านใช้ประจำคือ 2 */
+  offsetMm: number;
+  /** ความกว้างงานจริง (มม.) — ใช้กำหนดสเกลจากพิกเซล → มิลลิเมตร */
+  widthMm: number;
+  /** ปิดรูที่อยู่กลางลาย (เช่น ช่องว่างในตัวอักษร) = ไม่ตัดทะลุ */
+  fillHoles: boolean;
+  /** ค่า alpha ที่ถือว่า "มีลาย" (0-255) */
+  alphaThreshold: number;
+}
+
+export interface RingHole {
+  /** เส้นผ่านศูนย์กลางรู (มม.) */
+  diameterMm: number;
+  /** ระยะจากขอบไดคัทถึงจุดกึ่งกลางรู (มม.) */
+  insetMm: number;
+  position: "top-center" | "top-left" | "top-right";
+}
+
+export interface DiecutResult {
+  /** เส้นไดคัทเป็นมิลลิเมตร (x ขวา · y ลง · อ้างอิงมุมซ้ายบนของภาพ) */
+  paths: { x: number; y: number }[][];
+  /** รูร้อยห่วง (มม.) — ไม่ได้เปิดใช้ = undefined */
+  hole?: { cx: number; cy: number; r: number };
+  widthMm: number;
+  heightMm: number;
+  mmPerPx: number;
+  /** จำนวนชิ้นงานที่ตัดแยกกัน (ไม่นับรูตรงกลาง) */
+  pieces: number;
+  /** จำนวนรูที่ตัดทะลุกลางงาน */
+  innerHoles: number;
+  /** เตือนก่อนส่งเข้าเครื่องตัด */
+  warnings: string[];
+}
+
+/** ลายมีพื้นใสจริงไหม (ไม่ใส = ทั้งภาพทึบ → ไดคัทได้แค่กรอบสี่เหลี่ยม) */
+export function hasAlpha(data: Uint8ClampedArray, threshold = 250): boolean {
+  for (let i = 3; i < data.length; i += 4) if (data[i] < threshold) return true;
+  return false;
+}
+
+/** มาสก์ 1 = มีลาย (alpha ถึงเกณฑ์) */
+export function maskFromAlpha(data: Uint8ClampedArray, alphaThreshold: number): Uint8Array {
+  const n = data.length / 4;
+  const mask = new Uint8Array(n);
+  for (let i = 0; i < n; i++) mask[i] = data[i * 4 + 3] >= alphaThreshold ? 1 : 0;
+  return mask;
+}
+
+/** ระยะกำลังสองถึงจุดที่มีลายที่ใกล้ที่สุด (Felzenszwalb & Huttenlocher — เร็วพอสำหรับภาพหลักพันพิกเซล) */
+function distanceSq(mask: Uint8Array, w: number, h: number): Float64Array {
+  const INF = 1e20;
+  const f = new Float64Array(Math.max(w, h));
+  const d = new Float64Array(Math.max(w, h));
+  const v = new Int32Array(Math.max(w, h));
+  const z = new Float64Array(Math.max(w, h) + 1);
+  const out = new Float64Array(w * h);
+
+  const pass = (n: number, get: (i: number) => number, set: (i: number, val: number) => void) => {
+    for (let i = 0; i < n; i++) f[i] = get(i);
+    let k = 0;
+    v[0] = 0;
+    z[0] = -INF;
+    z[1] = INF;
+    for (let q = 1; q < n; q++) {
+      let s = (f[q] + q * q - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+      while (s <= z[k]) {
+        k--;
+        s = (f[q] + q * q - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+      }
+      k++;
+      v[k] = q;
+      z[k] = s;
+      z[k + 1] = INF;
+    }
+    k = 0;
+    for (let q = 0; q < n; q++) {
+      while (z[k + 1] < q) k++;
+      d[q] = (q - v[k]) * (q - v[k]) + f[v[k]];
+    }
+    for (let i = 0; i < n; i++) set(i, d[i]);
+  };
+
+  for (let i = 0; i < w * h; i++) out[i] = mask[i] ? 0 : INF;
+  for (let x = 0; x < w; x++) pass(h, (y) => out[y * w + x], (y, val) => { out[y * w + x] = val; });
+  for (let y = 0; y < h; y++) pass(w, (x) => out[y * w + x], (x, val) => { out[y * w + x] = val; });
+  return out;
+}
+
+/** ขยายมาสก์ออกรอบทิศทาง r พิกเซล (ขอบโค้งมนเหมือนดอกกัดจริง) */
+export function dilate(mask: Uint8Array, w: number, h: number, rPx: number): Uint8Array {
+  if (rPx <= 0) return mask.slice();
+  const d2 = distanceSq(mask, w, h);
+  const rr = rPx * rPx;
+  const out = new Uint8Array(w * h);
+  for (let i = 0; i < out.length; i++) out[i] = d2[i] <= rr ? 1 : 0;
+  return out;
+}
+
+/** ปิดรูที่ไม่ติดขอบภาพ (พื้นหลังที่ถูกลายล้อมไว้) = ไม่ตัดทะลุกลางงาน */
+export function fillEnclosedHoles(mask: Uint8Array, w: number, h: number): Uint8Array {
+  const out = mask.slice();
+  const seen = new Uint8Array(w * h);
+  const stack: number[] = [];
+  const push = (i: number) => {
+    if (!seen[i] && !mask[i]) {
+      seen[i] = 1;
+      stack.push(i);
+    }
+  };
+  for (let x = 0; x < w; x++) {
+    push(x);
+    push((h - 1) * w + x);
+  }
+  for (let y = 0; y < h; y++) {
+    push(y * w);
+    push(y * w + w - 1);
+  }
+  while (stack.length) {
+    const i = stack.pop()!;
+    const x = i % w;
+    const y = (i - x) / w;
+    if (x > 0) push(i - 1);
+    if (x < w - 1) push(i + 1);
+    if (y > 0) push(i - w);
+    if (y < h - 1) push(i + w);
+  }
+  for (let i = 0; i < out.length; i++) if (!mask[i] && !seen[i]) out[i] = 1;
+  return out;
+}
+
+type Pt = { x: number; y: number };
+
+/**
+ * ไล่เส้นขอบของมาสก์ → รูปปิดหลายวง (หน่วยพิกเซล)
+ * เก็บ "ขอบของพิกเซล" ทีละด้าน แล้วต่อกันเป็นวง — ได้ขอบแบบขั้นบันได ค่อยไปลบมุมทีหลัง
+ */
+export function traceContours(mask: Uint8Array, w: number, h: number): Pt[][] {
+  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : mask[y * w + x]);
+  const key = (x: number, y: number) => y * (w + 1) + x;
+  /** จุดเริ่ม → ปลายทางที่ยังไม่ได้เดิน */
+  const edges = new Map<number, Pt[]>();
+  const add = (a: Pt, b: Pt) => {
+    const k = key(a.x, a.y);
+    const list = edges.get(k);
+    if (list) list.push(b);
+    else edges.set(k, [b]);
+  };
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!at(x, y)) continue;
+      // เดินตามเข็มนาฬิกาในระบบพิกัด y ลง (ลายอยู่ด้านขวาของทิศเดิน)
+      if (!at(x, y - 1)) add({ x, y }, { x: x + 1, y });
+      if (!at(x + 1, y)) add({ x: x + 1, y }, { x: x + 1, y: y + 1 });
+      if (!at(x, y + 1)) add({ x: x + 1, y: y + 1 }, { x, y: y + 1 });
+      if (!at(x - 1, y)) add({ x, y: y + 1 }, { x, y });
+    }
+  }
+  const loops: Pt[][] = [];
+  for (const [startKey, list] of edges) {
+    while (list.length) {
+      const start: Pt = { x: startKey % (w + 1), y: Math.floor(startKey / (w + 1)) };
+      const loop: Pt[] = [start];
+      let cur = list.pop()!;
+      let guard = 0;
+      while ((cur.x !== start.x || cur.y !== start.y) && guard++ < 4 * w * h) {
+        loop.push(cur);
+        const nexts = edges.get(key(cur.x, cur.y));
+        if (!nexts || !nexts.length) break; // ขอบขาด (ไม่ควรเกิด) — ทิ้งวงนี้
+        cur = nexts.pop()!;
+      }
+      if (loop.length > 7) loops.push(loop);
+    }
+  }
+  return loops;
+}
+
+/** ลบมุมขั้นบันไดให้เส้นลื่นขึ้น (Chaikin) */
+export function smoothLoop(pts: Pt[], rounds = 2): Pt[] {
+  let cur = pts;
+  for (let r = 0; r < rounds; r++) {
+    const next: Pt[] = [];
+    for (let i = 0; i < cur.length; i++) {
+      const a = cur[i];
+      const b = cur[(i + 1) % cur.length];
+      next.push({ x: a.x * 0.75 + b.x * 0.25, y: a.y * 0.75 + b.y * 0.25 });
+      next.push({ x: a.x * 0.25 + b.x * 0.75, y: a.y * 0.25 + b.y * 0.75 });
+    }
+    cur = next;
+  }
+  return cur;
+}
+
+/** ลดจำนวนจุดโดยรูปทรงยังเหมือนเดิม (Ramer–Douglas–Peucker) */
+export function simplifyLoop(pts: Pt[], eps: number): Pt[] {
+  if (pts.length < 4) return pts;
+  const keep = new Uint8Array(pts.length);
+  keep[0] = 1;
+  keep[pts.length - 1] = 1;
+  const stack: [number, number][] = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [i0, i1] = stack.pop()!;
+    const a = pts[i0];
+    const b = pts[i1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    let far = -1;
+    let best = eps;
+    for (let i = i0 + 1; i < i1; i++) {
+      const d = Math.abs((pts[i].x - a.x) * dy - (pts[i].y - a.y) * dx) / len;
+      if (d > best) {
+        best = d;
+        far = i;
+      }
+    }
+    if (far > 0) {
+      keep[far] = 1;
+      stack.push([i0, far], [far, i1]);
+    }
+  }
+  return pts.filter((_, i) => keep[i]);
+}
+
+/** พื้นที่แบบมีเครื่องหมาย — เครื่องหมายบอกว่าเป็นเส้นรอบนอกหรือรูใน (ทิศเดินตรงข้ามกัน) */
+function signedArea(pts: Pt[]): number {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    const q = pts[(i + 1) % pts.length];
+    a += p.x * q.y - q.x * p.y;
+  }
+  return a / 2;
+}
+
+/** พื้นที่ของรูปปิด (ตร.พิกเซล · ค่าสัมบูรณ์) — ใช้ทิ้งเศษจุดเล็ก ๆ */
+function areaOf(pts: Pt[]): number {
+  return Math.abs(signedArea(pts));
+}
+
+/**
+ * คำนวณเส้นไดคัททั้งชุดจาก ImageData ของลาย
+ * @param img ภาพลาย (ควรเป็น PNG พื้นใส) · ขนาดที่ส่งเข้ามาคือขนาดที่ใช้คำนวณ
+ */
+export function buildDiecut(
+  img: { data: Uint8ClampedArray; width: number; height: number },
+  s: DiecutSettings,
+  ring?: RingHole
+): DiecutResult {
+  const { width: w, height: h } = img;
+  const mmPerPx = s.widthMm / w;
+  const warnings: string[] = [];
+
+  if (!hasAlpha(img.data)) {
+    warnings.push("ลายนี้ไม่มีพื้นใส (ทั้งภาพทึบ) — เส้นไดคัทจะออกมาเป็นกรอบสี่เหลี่ยม ต้องไล่พื้นหลังออกก่อน");
+  }
+  const dpi = 25.4 / mmPerPx;
+  if (dpi < 150) {
+    warnings.push(`ความละเอียดลายเทียบกับขนาดจริงได้ ~${Math.round(dpi)} DPI (ต่ำกว่า 150) — พิมพ์ออกมาอาจไม่คม`);
+  }
+
+  let mask = maskFromAlpha(img.data, s.alphaThreshold);
+  const inkPx = mask.reduce((n, v) => n + v, 0);
+  if (inkPx === 0) {
+    return { paths: [], widthMm: s.widthMm, heightMm: h * mmPerPx, mmPerPx, pieces: 0, innerHoles: 0, warnings: ["ไม่พบลายในไฟล์ (โปร่งใสทั้งภาพ)"] };
+  }
+  mask = dilate(mask, w, h, s.offsetMm / mmPerPx);
+  if (s.fillHoles) mask = fillEnclosedHoles(mask, w, h);
+
+  // ทิ้งเศษเล็กกว่า 1 ตร.มม. (จุดฝุ่น/ขอบลายที่หลุดมา) แล้วเกลาเส้น
+  const minArea = 1 / (mmPerPx * mmPerPx);
+  const paths = traceContours(mask, w, h)
+    .filter((loop) => areaOf(loop) >= minArea)
+    .map((loop) => simplifyLoop(smoothLoop(loop, 2), 0.6))
+    .map((loop) => loop.map((p) => ({ x: p.x * mmPerPx, y: p.y * mmPerPx })));
+
+  // แยก "เส้นรอบชิ้นงาน" ออกจาก "รูตรงกลาง" ด้วยทิศการเดินของเส้น (ตรงข้ามกันเสมอ)
+  const outerSign = paths.length ? Math.sign(signedArea(paths.reduce((a, b) => (areaOf(a) >= areaOf(b) ? a : b)))) : 1;
+  const pieces = paths.filter((p) => Math.sign(signedArea(p)) === outerSign).length;
+  const innerHoles = paths.length - pieces;
+  if (pieces > 1) {
+    warnings.push(`ลายนี้แยกเป็น ${pieces} ชิ้นที่ไม่ติดกัน — ถ้าต้องการชิ้นเดียวให้เพิ่มค่าตัดเผื่อ หรือแก้ลายให้เชื่อมกัน`);
+  }
+  if (innerHoles > 0) {
+    warnings.push(`มีรูตัดทะลุกลางงาน ${innerHoles} รู — ไม่ต้องการให้ตัดทะลุ ให้ติ๊ก “ปิดรูกลางลาย”`);
+  }
+
+  // รูร้อยห่วง — วางจากขอบบนของเส้นไดคัทจริง ไม่ใช่ขอบภาพ
+  let hole: DiecutResult["hole"];
+  if (ring && ring.diameterMm > 0) {
+    const all = paths.flat();
+    if (all.length) {
+      const minX = Math.min(...all.map((p) => p.x));
+      const maxX = Math.max(...all.map((p) => p.x));
+      const span = maxX - minX;
+      const cx =
+        ring.position === "top-left" ? minX + span * 0.15 : ring.position === "top-right" ? maxX - span * 0.15 : (minX + maxX) / 2;
+      // หาขอบบนของงานตรงคอลัมน์นั้น (อ่านจากมาสก์ที่ขยายแล้ว)
+      const col = Math.min(w - 1, Math.max(0, Math.round(cx / mmPerPx)));
+      let topPx = -1;
+      for (let y = 0; y < h; y++) {
+        if (mask[y * w + col]) {
+          topPx = y;
+          break;
+        }
+      }
+      const topMm = topPx >= 0 ? topPx * mmPerPx : Math.min(...all.map((p) => p.y));
+      hole = { cx, cy: topMm + ring.insetMm, r: ring.diameterMm / 2 };
+      if (ring.insetMm < ring.diameterMm / 2 + 1) {
+        warnings.push("รูร้อยห่วงอยู่ชิดขอบเกินไป — ควรให้ระยะจากขอบมากกว่ารัศมีรูอย่างน้อย 1 มม. กันงานปริ");
+      }
+    }
+  }
+
+  return { paths, hole, widthMm: s.widthMm, heightMm: h * mmPerPx, mmPerPx, pieces, innerHoles, warnings };
+}
+
+/** เส้นไดคัทเป็น path ของ SVG (หน่วยมิลลิเมตร) */
+export function toSvgPath(paths: Pt[][], hole?: DiecutResult["hole"]): string {
+  const d = paths
+    .map((loop) => `M ${loop.map((p) => `${p.x.toFixed(3)} ${p.y.toFixed(3)}`).join(" L ")} Z`)
+    .join(" ");
+  if (!hole) return d;
+  const { cx, cy, r } = hole;
+  // วงกลมด้วยส่วนโค้ง 2 ท่อน (ทิศตรงข้ามกับเส้นนอก = เจาะทะลุ)
+  return `${d} M ${(cx - r).toFixed(3)} ${cy.toFixed(3)} A ${r} ${r} 0 1 0 ${(cx + r).toFixed(3)} ${cy.toFixed(3)} A ${r} ${r} 0 1 0 ${(cx - r).toFixed(3)} ${cy.toFixed(3)} Z`;
+}
