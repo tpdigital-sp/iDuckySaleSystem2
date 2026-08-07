@@ -133,6 +133,8 @@ export default function ProductDetail({
     setQtyText((t) => (t === "" ? t : String(qty)));
   }, [qty]);
   const [added, setAdded] = useState(false);
+  /** ล็อกกันกดปุ่ม "เพิ่มลงตะกร้า" รัว ๆ (แตะสองทีบนมือถือ = ได้สองรายการ) */
+  const addLock = useRef(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [selections, setSelections] = useState<Record<string, string>>(() =>
     initialSelections(initialProduct.options)
@@ -522,6 +524,10 @@ export default function ProductDetail({
   const artBlocked = artRequired && !artProvided;
 
   function handleAdd() {
+    // 🔒 กันกดรัว/แตะซ้ำบนมือถือ — 1 คลิก = 1 รายการเสมอ
+    // (กดครั้งแรกสำเร็จ ระบบเคลียร์ลาย/หมายเหตุทิ้ง ครั้งที่สองจึงกลายเป็น "อีกรายการ" คนละใบงาน)
+    // ล็อกเฉพาะตอนที่เพิ่มเข้าตะกร้าได้จริง — โดนเตือนแล้วกดแก้ต่อได้ทันที ไม่ต้องรอ
+    if (addLock.current) return;
     if (artBlocked) {
       setArtTouched(false);
       setExtraOpen("art");
@@ -560,6 +566,11 @@ export default function ProductDetail({
       );
       addItem(product.id, { ...shown, ...extra }, qty, product);
     }
+    // เพิ่มสำเร็จแล้วค่อยล็อก — กันแตะซ้ำภายในไม่กี่ร้อยมิลลิวินาทีกลายเป็นสองใบงาน
+    addLock.current = true;
+    setTimeout(() => {
+      addLock.current = false;
+    }, 1200);
     setNote("");
     setArtLink("");
     setArtFiles([]);
