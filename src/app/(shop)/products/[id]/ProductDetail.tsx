@@ -25,6 +25,7 @@ import {
   choiceBadgeOf,
   shortComboParts,
   smallQtyFeeOf,
+  groupAddOf,
   tierIndex,
   tierQtyFor,
   unitPriceFor,
@@ -1158,34 +1159,71 @@ export default function ProductDetail({
                         ))}
                     </div>
                   )}
-                  {/* ค่าธรรมเนียมช่วงสั่งน้อย เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น · ค่าติดลบ = ช่วงนั้นลดให้ */}
-                  {smallQtyFeeOf(opt, effective, feeQty) !== 0 && (() => {
+                  {/* ค่าธรรมเนียมช่วงสั่งน้อย — บอกทั้งตอนอยู่ในช่วง (คิดเหมา) และตอนพ้นช่วงแล้ว (คิดตามตัวเลือก) */}
+                  {opt.smallQtyFee != null && opt.smallQtyFee.upToQty > 0 && (() => {
+                    const s = opt.smallQtyFee!;
                     const fee = smallQtyFeeOf(opt, effective, feeQty);
                     const unit = matrix?.unit ?? "ชิ้น";
+                    // สินค้าที่คิดเรทตามชิ้นต่อลาย ช่วงราคานับ "ต่อลาย" ไม่ใช่ยอดรวม — ต้องบอกให้ตรง
+                    const perDesign = tierByDesign || (rate?.minPerDesign ?? 0) > 0;
+                    const unitTxt = perDesign ? `${unit}ต่อลาย` : unit;
+                    const inRange = feeQty <= s.upToQty;
+                    const exempt = (s.freeChoices ?? []).join(" / ");
+                    if (inRange && fee !== 0) {
+                      return (
+                        <p className={`mt-1 text-[11px] font-semibold ${fee < 0 ? "text-emerald-700" : "text-amber-700"}`}>
+                          {fee < 0 ? "🎉" : "💡"} ช่วงสั่งไม่เกิน {s.upToQty.toLocaleString("th-TH")} {unitTxt} · เลือก{opt.label}
+                          {fee < 0
+                            ? `ลดให้ ${formatPrice(-fee)}/${unit}`
+                            : `คิดเหมา ${formatPrice(fee)}/${unit} (แทนราคา${opt.label}ปกติ ไม่บวกซ้ำ)`}
+                          {exempt ? ` (ยกเว้น ${exempt}${fee < 0 ? " ไม่ลด" : " คิดราคาปกติ"})` : ""}
+                        </p>
+                      );
+                    }
+                    if (inRange) {
+                      // อยู่ในช่วงแต่ตัวที่เลือกได้รับยกเว้น (เช่น ห่วงแถม) — คิดราคาตัวเลือกตามปกติ
+                      return (
+                        <p className="mt-1 text-[11px] font-semibold text-stone-500">
+                          💡 ช่วงสั่งไม่เกิน {s.upToQty.toLocaleString("th-TH")} {unitTxt} · {opt.label}ที่เลือกอยู่ไม่คิดค่าเหมา ฿
+                          {Math.abs(s.fee).toLocaleString("th-TH")} — คิดราคาตามตัวเลือกตามปกติ
+                        </p>
+                      );
+                    }
+                    // พ้นช่วงเหมาแล้ว — บอกว่าตอนนี้คิดตามราคาตัวเลือก และตัวที่เลือกอยู่บวกเท่าไร
+                    const now = groupAddOf(opt, effective, feeQty);
                     return (
-                      <p className={`mt-1 text-[11px] font-semibold ${fee < 0 ? "text-emerald-700" : "text-amber-700"}`}>
-                        {fee < 0 ? "🎉" : "💡"} ช่วงสั่งไม่เกิน {opt.smallQtyFee!.upToQty.toLocaleString("th-TH")} {unit} · เลือก
-                        {opt.label}
-                        {fee < 0
-                          ? `ลดให้ ${formatPrice(-fee)}/${unit}`
-                          : `คิดเหมา ${formatPrice(fee)}/${unit} (แทนราคา${opt.label}ปกติ ไม่บวกซ้ำ)`}
-                        {(opt.smallQtyFee!.freeChoices ?? []).length > 0
-                          ? ` (ยกเว้น ${opt.smallQtyFee!.freeChoices!.join(" / ")}${fee < 0 ? " ไม่ลด" : " คิดราคาปกติ"})`
-                          : ""}
+                      <p className="mt-1 text-[11px] font-semibold text-teal-700">
+                        💡 สั่งตั้งแต่ {(s.upToQty + 1).toLocaleString("th-TH")} {unitTxt}ขึ้นไป · ไม่คิดค่าเหมา ฿
+                        {Math.abs(s.fee).toLocaleString("th-TH")}/{unit} แล้ว — {opt.label}คิดตามราคาตัวเลือก{" "}
+                        {now > 0 ? `(ตอนนี้ +${formatPrice(now)}/${unit})` : "(ตอนนี้ไม่คิดเพิ่ม)"}
                       </p>
                     );
                   })()}
-                  {/* กลุ่มที่ตั้งเกณฑ์ +฿ ไว้ และจำนวนยังต่ำกว่าเกณฑ์ = ราคารวมตัวเลือกนี้แล้ว */}
+                  {/* กลุ่มที่ตั้งเกณฑ์ +฿ ไว้ — บอกทั้งตอนต่ำกว่าเกณฑ์ (รวมในราคาแล้ว) และตอนถึงเกณฑ์ (คิดเพิ่มเท่าไร) */}
                   {!locked &&
                     opt.extraFromQty != null &&
                     opt.extraFromQty > 0 &&
                     opt.choices.some((c) => c.extra) &&
-                    !optionExtraApplies(opt, feeQty) && (
-                      <p className="mt-1.5 text-[11px] text-stone-400">
-                        💡 จำนวนนี้ราคารวม{opt.label}แล้ว · สั่งตั้งแต่ {opt.extraFromQty.toLocaleString("th-TH")}{" "}
-                        {matrix?.unit ?? "ชิ้น"}ขึ้นไปคิดเพิ่มตามตัวเลือก
-                      </p>
-                    )}
+                    (() => {
+                      const unit = matrix?.unit ?? "ชิ้น";
+                      const perDesign = tierByDesign || (rate?.minPerDesign ?? 0) > 0;
+                      const unitTxt = perDesign ? `${unit}ต่อลาย` : unit;
+                      const from = opt.extraFromQty!.toLocaleString("th-TH");
+                      if (!optionExtraApplies(opt, feeQty)) {
+                        return (
+                          <p className="mt-1.5 text-[11px] text-stone-400">
+                            💡 จำนวนนี้ราคารวม{opt.label}แล้ว · สั่งตั้งแต่ {from} {unitTxt}ขึ้นไปคิดเพิ่มตามตัวเลือก
+                          </p>
+                        );
+                      }
+                      const now = groupAddOf(opt, effective, feeQty);
+                      return (
+                        <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
+                          💡 สั่งตั้งแต่ {from} {unitTxt}ขึ้นไป · {opt.label}คิดเพิ่มตามตัวเลือก{" "}
+                          {now > 0 ? `(ตอนนี้ +${formatPrice(now)}/${unit})` : "(ตอนนี้ไม่คิดเพิ่ม)"}
+                        </p>
+                      );
+                    })()}
                 </div>
               );
             })}
