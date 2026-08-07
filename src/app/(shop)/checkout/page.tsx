@@ -187,11 +187,12 @@ export default function CheckoutPage() {
   const effectiveMethod =
     forcedMethod && shippingMethod.price > 0 && forcedMethod.price > shippingMethod.price ? forcedMethod : shippingMethod;
 
-  // สั่งเพิ่มในออเดอร์เดิม → ไม่คิดค่าส่งซ้ำ (จ่ายไปแล้วในออเดอร์แรก)
-  // ของหนักคิดตามจำนวน → ใช้ค่าที่แพงกว่าระหว่างวิธีที่ใช้จริงกับค่าตามจำนวน
-  // มารับเอง (ราคา 0) = ไม่มีพัสดุ ไม่คิดค่าตามจำนวน (ตรงกับหน้าตะกร้า)
+  // 🚚 ค่ากล่องปกติถูกยกเว้น (ส่งฟรีตามยอด / สั่งเพิ่มในออเดอร์เดิม = จ่ายไปแล้วในออเดอร์แรก)
+  // 📦 แต่ค่าส่งตามจำนวนของหนักยังคิดเสมอ — ต้นทุนกล่อง/น้ำหนักจริงที่โปรไม่ครอบคลุม
+  // มารับเอง (ราคา 0) = ไม่มีพัสดุ ไม่คิดอะไรเลย · ต้องได้เลขตรงกับหน้าตะกร้าเป๊ะ
+  const methodFree = !!appendTo || freeShipping;
   const shippingCost =
-    appendTo ? 0 : freeShipping ? 0 : effectiveMethod.price === 0 ? 0 : Math.max(effectiveMethod.price, qtyShipFee);
+    effectiveMethod.price === 0 ? 0 : methodFree ? qtyShipFee : Math.max(effectiveMethod.price, qtyShipFee);
 
   // ── ส่วนลดระดับสมาชิก (โชว์เป็นตัวอย่าง — เซิร์ฟเวอร์คิดจริงตอนสร้างออเดอร์) ──
   const [tier, setTier] = useState<{ name: string; icon: string; pct: number } | null>(null);
@@ -364,7 +365,7 @@ export default function CheckoutPage() {
       if (it.needStockCheck) lines.push(`   📦 สั่งจำนวนมาก — รอร้านยืนยันสต๊อก/คิวผลิต`);
     });
     lines.push("━━━━━━━━━━━━━━");
-    lines.push(`รวม ${totalQty} ชิ้น · จัดส่ง ${freeShipping ? "ฟรี" : formatPrice(shippingCost)}`);
+    lines.push(`รวม ${totalQty} ชิ้น · จัดส่ง ${shippingCost > 0 ? formatPrice(shippingCost) : "ฟรี"}`);
     lines.push(`ยอดชำระ: ${formatPrice(total)}`);
     lines.push("(โอนแล้วแนบรูปสลิปในแชทนี้ได้เลย)");
     lines.push(`🔗 เช็คออเดอร์/ดูแบบงาน: ${orderUrl}`);
@@ -691,13 +692,19 @@ export default function CheckoutPage() {
         <div className="mt-1 flex justify-between text-sm text-stone-600">
           <span>
             ค่าจัดส่ง
-            {appendTo
-              ? ""
-              : effectiveMethod.price > 0 && qtyShipFee > effectiveMethod.price
-                ? " (ตามจำนวนชิ้น 📦)"
+            {effectiveMethod.price > 0 && qtyShipFee > 0 && (methodFree || qtyShipFee > effectiveMethod.price)
+              ? " (ตามจำนวนชิ้น 📦)"
+              : appendTo
+                ? ""
                 : ` (${effectiveMethod.name})`}
           </span>
-          <span>{appendTo ? "รวมกับออเดอร์เดิมแล้ว" : freeShipping ? "ฟรี" : formatPrice(shippingCost)}</span>
+          <span>
+            {shippingCost > 0
+              ? formatPrice(shippingCost)
+              : appendTo
+                ? "รวมกับออเดอร์เดิมแล้ว"
+                : "ฟรี"}
+          </span>
         </div>
         <div className="mt-2 flex justify-between border-t border-amber-100 pt-2 text-base font-extrabold text-amber-950"><span>{appendTo ? "ยอดที่ต้องโอนเพิ่ม" : "ยอดชำระ"}</span><span className="text-amber-600">{formatPrice(total)}</span></div>
       </div>

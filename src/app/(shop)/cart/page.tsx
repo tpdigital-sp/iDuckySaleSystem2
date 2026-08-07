@@ -182,19 +182,22 @@ export default function CartPage() {
   const shippingMethod = methods.find((s) => s.id === shippingId) ?? methods[0];
   const freeShipping = freeMin > 0 && subtotal >= freeMin;
 
-  // สั่งเพิ่มเข้าออเดอร์เดิม = ส่งรวมกล่องเดียวกัน ไม่คิดค่าส่งซ้ำ
-  // มีของคิดตามจำนวน = ใช้ค่าที่แพงกว่าระหว่างวิธีที่เลือกกับค่าตามจำนวน (ค่าตามจำนวนรวมค่ากล่องแล้ว)
-  // มารับเอง (ราคา 0) = ไม่มีพัสดุ ไม่คิดค่าตามจำนวน · วิธีส่งจริงคิดค่าที่แพงกว่า
+  // 🚚 ค่ากล่องปกติถูกยกเว้นไหม — ส่งฟรีตามยอด / สั่งเพิ่มเข้าออเดอร์เดิม (ส่งรวมกล่องเดิม)
+  const methodFree = !!appendTo || freeShipping;
+  // 📦 ค่าส่งตามจำนวนชิ้น (ของหนัก) = ต้นทุนกล่อง/น้ำหนักจริง — โปรส่งฟรีและการสั่งเพิ่ม "ไม่ล้าง" ส่วนนี้
+  // (ของหนักใส่กล่องเดิมไม่ได้/ค่าขนส่งจริงแพงกว่าพัสดุปกติมาก ร้านออกให้ไม่ไหว)
+  // มารับเอง (ราคา 0) = ไม่มีพัสดุ ไม่คิดอะไรเลย
   const shippingCost =
-    appendTo ? 0 : freeShipping ? 0 : shippingMethod.price === 0 ? 0 : Math.max(shippingMethod.price, qtyShip.fee);
-  const qtyShipApplied = !appendTo && !freeShipping && qtyShip.fee > 0;
+    shippingMethod.price === 0 ? 0 : methodFree ? qtyShip.fee : Math.max(shippingMethod.price, qtyShip.fee);
+  const qtyShipApplied = shippingMethod.price !== 0 && qtyShip.fee > 0;
 
   // 📦 มีค่าตามจำนวน → วิธีส่งที่ถูกกว่าค่านี้จ่ายเท่ากันหมด ยุบรวมเป็นแถวเดียวราคาตรงกับที่จ่ายจริง
   // (กันลูกค้างงว่าทำไมติ๊ก EMS 50 แต่โดนคิด 100) · วิธีที่แพงกว่า กับมารับเอง ยังแยกแถวปกติ
   const shipRows: { id: string; name: string; price: number; note?: string; covers?: string[] }[] = (() => {
     if (!qtyShipApplied) return methods;
     const paid = methods.filter((m) => m.price > 0);
-    const covered = paid.filter((m) => m.price <= qtyShip.fee);
+    // ค่ากล่องปกติถูกยกเว้นอยู่แล้ว (ส่งฟรี/ส่งรวมกล่องเดิม) → ทุกวิธีจ่ายเท่ากันหมด = ค่าของหนักอย่างเดียว
+    const covered = methodFree ? paid : paid.filter((m) => m.price <= qtyShip.fee);
     const rows: { id: string; name: string; price: number; note?: string; covers?: string[] }[] = [];
     if (covered.length) {
       // ตัวแทนแถวยุบ: ใช้วิธีที่ระบบเลือก (ถ้าอยู่ในกลุ่ม) ไม่งั้นตัวแพงสุดในกลุ่ม (กล่องใหญ่สุดที่คุ้มแล้ว)
@@ -203,11 +206,13 @@ export default function CartPage() {
         id: rep.id,
         name: "📦 ส่งพัสดุ (คิดตามจำนวนชิ้น)",
         price: qtyShip.fee,
-        note: "รวมค่ากล่อง/น้ำหนักของออเดอร์นี้แล้ว",
+        note: methodFree
+          ? "ค่ากล่องปกติฟรีแล้ว — เหลือเฉพาะค่าน้ำหนักของชิ้นใหญ่"
+          : "รวมค่ากล่อง/น้ำหนักของออเดอร์นี้แล้ว",
         covers: covered.map((m) => m.id),
       });
     }
-    rows.push(...paid.filter((m) => m.price > qtyShip.fee));
+    rows.push(...paid.filter((m) => !covered.includes(m)));
     rows.push(...methods.filter((m) => m.price === 0));
     return rows;
   })();
@@ -519,6 +524,11 @@ export default function CartPage() {
           {freeShipping && (
             <div className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
               🎉 ยินดีด้วย! คุณได้รับสิทธิ์ส่งฟรี
+              {qtyShipApplied && (
+                <span className="mt-1 block font-normal text-emerald-800">
+                  (ยกเว้นของชิ้นใหญ่/ของหนักที่ต้องคิดค่าขนส่งตามน้ำหนัก {formatPrice(qtyShip.fee)})
+                </span>
+              )}
             </div>
           )}
 
@@ -574,7 +584,8 @@ export default function CartPage() {
                         {s.note && <span className="block text-[11px] font-normal text-stone-400">{s.note}</span>}
                       </span>
                     </span>
-                    <span className={freeShipping && ok ? "text-stone-400 line-through" : ""}>
+                    {/* ขีดฆ่าเฉพาะตอนส่งฟรีล้วน ๆ — ถ้ามีค่าของหนัก แถวยุบโชว์ราคาที่จ่ายจริงอยู่แล้ว */}
+                    <span className={freeShipping && ok && !qtyShipApplied ? "text-stone-400 line-through" : ""}>
                       {formatPrice(s.price)}
                     </span>
                   </label>
@@ -589,9 +600,15 @@ export default function CartPage() {
               <dd className="font-semibold">{formatPrice(subtotal)}</dd>
             </div>
             <div className="flex justify-between text-stone-600">
-              <dt>{appendTo ? "ค่าจัดส่ง (รวมกล่องเดิม)" : "ค่าจัดส่ง"}</dt>
+              <dt>
+                {qtyShipApplied && methodFree
+                  ? "ค่าจัดส่ง (ของหนัก — กล่องเพิ่ม)"
+                  : appendTo
+                    ? "ค่าจัดส่ง (รวมกล่องเดิม)"
+                    : "ค่าจัดส่ง"}
+              </dt>
               <dd className="font-semibold">
-                {freeShipping ? (
+                {shippingCost === 0 ? (
                   <span className="text-emerald-600">ฟรี!</span>
                 ) : (
                   formatPrice(shippingCost)
