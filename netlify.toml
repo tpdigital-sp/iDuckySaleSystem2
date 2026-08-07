@@ -9,6 +9,14 @@
 [build]
   command = "next build"
   publish = ".next"
+  # ── ข้าม build เมื่อคอมมิตไม่ได้แตะไฟล์ที่ขึ้นเว็บจริง ──
+  # แผนฟรีมีเวลา build เดือนละ 300 นาที (ครั้งละ ~2-4 นาที) — เคยใช้หมดกลางเดือนมาแล้ว
+  # กติกา: ออก 0 = ข้าม build · ออก 1 = build ต่อ
+  #   ดู diff เฉพาะพาธที่มีผลกับเว็บ (src, public, ไฟล์ตั้งค่า, dependency)
+  #   ถ้าไม่มีอะไรเปลี่ยนในนั้น = คอมมิตนี้แตะแค่ .md / scripts / supabase(.sql) / .claude → ข้ามได้
+  #   หา CACHED_COMMIT_REF ไม่เจอ (build แรก/แคชหาย) = build ไว้ก่อน ปลอดภัยกว่า
+  #   กด "Trigger deploy" เองบน Netlify (คอมมิตเดิม) = ต้อง build เสมอ ไม่งั้นสั่ง deploy ซ้ำไม่ได้
+  ignore = "if [ -z \"$CACHED_COMMIT_REF\" ] || [ -z \"$COMMIT_REF\" ] || [ \"$CACHED_COMMIT_REF\" = \"$COMMIT_REF\" ]; then exit 1; fi; git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- src public netlify package.json package-lock.json next.config.ts netlify.toml postcss.config.mjs tsconfig.json .nvmrc"
 
 [build.environment]
   NODE_VERSION = "22"
