@@ -583,7 +583,8 @@ export const visibleTiles = (n: SiteNav) => (n.tilesOn ? n.tiles.filter((t) => !
 let cached: Promise<SiteNav> | null = null;
 
 export function fetchSiteNav(): Promise<SiteNav> {
-  cached ??= fetch("/api/nav", { cache: "no-store" })
+  // ใช้แคช 60 วิที่ API ตั้งไว้ (เมนูแทบไม่เปลี่ยน · แก้แล้วเห็นผลใน ~1 นาที)
+  cached ??= fetch("/api/nav")
     .then((r) => (r.ok ? r.json() : null))
     .then((j: { nav?: Partial<SiteNav> } | null) => siteNavOf(j?.nav))
     .catch(() => DEFAULT_SITE_NAV);

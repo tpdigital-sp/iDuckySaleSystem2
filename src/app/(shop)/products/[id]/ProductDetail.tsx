@@ -367,8 +367,11 @@ export default function ProductDetail({
   ).slice(0, 4);
 
   // แสดงปุ่มลัดไปหลังบ้านเฉพาะแอดมิน (โหมดเดโม = เห็นเสมอ, โหมดจริง = ต้องล็อกอิน)
+  // ถามตอนเบราว์เซอร์ว่างแล้ว — ปุ่มนี้ไม่เร่งด่วน ลูกค้าทั่วไปไม่ควรต้องรอคำขอนี้ตอนเปิดหน้า
   useEffect(() => {
-    canAccessAdmin().then(setIsAdmin);
+    const idle = window.requestIdleCallback?.bind(window) ?? ((fn: () => void) => setTimeout(fn, 1200));
+    const id = idle(() => void canAccessAdmin().then(setIsAdmin));
+    return () => window.cancelIdleCallback?.(id as number);
   }, []);
 
   // แถบซื้อลอยล่างจอ: โชว์เมื่อกล่องสั่งซื้อหลักหลุดจอไปแล้ว

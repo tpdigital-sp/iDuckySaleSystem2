@@ -94,7 +94,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [logoBusy, setLogoBusy] = useState(false);
   const canEditLogo = perms.includes("settings.manage");
   useEffect(() => {
-    fetch("/api/nav", { cache: "no-store" })
+    // โลโก้หลังบ้านเปลี่ยนน้อยมาก → ใช้แคชของ API ได้ (เดิม no-store ทำให้โหลด 16 KB ใหม่ทุกหน้า)
+    fetch("/api/nav")
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         const u = (j as { nav?: { adminLogo?: string } } | null)?.nav?.adminLogo;

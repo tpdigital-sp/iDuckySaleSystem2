@@ -50,7 +50,8 @@ export function categoriesOf(rows: ShopCategory[] | null | undefined): ShopCateg
 /** อ่านหมวดหมู่ (ฝั่งเบราว์เซอร์) — ใช้ในหน้าร้านและหลังบ้าน */
 export async function fetchCategories(): Promise<ShopCategory[]> {
   try {
-    const res = await fetch("/api/categories", { cache: "no-store" });
+    // ใช้แคช 60 วิที่ API ตั้งไว้ — หมวดหมู่ถูกยิงทุกหน้า ไม่ต้องโหลดใหม่ทุกครั้ง
+    const res = await fetch("/api/categories");
     if (!res.ok) return DEFAULT_CATEGORIES;
     const j = (await res.json()) as { list?: ShopCategory[] };
     return categoriesOf(j.list);
