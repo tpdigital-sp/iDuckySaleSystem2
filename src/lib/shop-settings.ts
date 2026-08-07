@@ -10,6 +10,8 @@
 import { getSupabase } from "./supabase";
 import { DEFAULT_TIERS, type Tier } from "./tiers";
 import { SHOP } from "./shop-info";
+import { SETTINGS_ID as SETTINGS_ID_SHARED, type SeoConfig } from "./settings-shared";
+export { seoOf, type SeoConfig } from "./settings-shared";
 export { DEFAULT_IMAGE_CLEANUP, imageCleanupOf, type ImageCleanupConfig } from "./image-cleanup";
 import type { ImageCleanupConfig as _ImageCleanupConfig } from "./image-cleanup";
 
@@ -54,6 +56,8 @@ export interface ShopPayment {
   shopInfo?: ShopInfo;
   /** ล้างไฟล์รูปของออเดอร์เก่าอัตโนมัติ (ประหยัดพื้นที่ + หน้าโหลดเร็ว) */
   imageCleanup?: _ImageCleanupConfig;
+  /** เชื่อมกับ Google (Search Console / Analytics / Tag Manager) + คุมการเก็บข้อมูลของเว็บ */
+  seo?: SeoConfig;
 }
 
 /** ข้อมูลร้านที่แอดมินแก้เองได้ (แสดงบนเอกสารพิมพ์ทุกใบ) */
@@ -113,7 +117,7 @@ export function welcomeCouponOf(s: ShopPayment | null | undefined): WelcomeCoupo
   return { ...DEFAULT_WELCOME_COUPON, ...(s?.welcomeCoupon ?? {}) };
 }
 
-export const SETTINGS_ID = "__shop_payment__";
+export const SETTINGS_ID = SETTINGS_ID_SHARED;
 const LOCAL_KEY = "iducky-payment-v1";
 export const EMPTY_PAYMENT: ShopPayment = { banks: [] };
 

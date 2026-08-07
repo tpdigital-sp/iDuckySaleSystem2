@@ -20,6 +20,7 @@ import {
   type ShopPayment,
   type WelcomeCouponConfig,
   type ShopInfo,
+  type SeoConfig,
 } from "@/lib/shop-settings";
 import { DEFAULT_TIERS, type Tier } from "@/lib/tiers";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
@@ -180,9 +181,9 @@ function IconPicker({ value, onPick }: { value: string; onPick: (v: string) => v
 const newId = (p = "b") =>
   typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${p}-${Date.now()}-${Math.floor(Math.random() * 1e4)}`;
 
-type Tab = "shop" | "pay" | "ship" | "tier" | "welcome" | "roles" | "files" | "cats";
+type Tab = "shop" | "pay" | "ship" | "tier" | "welcome" | "roles" | "files" | "cats" | "google";
 
-const TAB_KEYS: Tab[] = ["shop", "pay", "ship", "tier", "welcome", "roles", "files", "cats"];
+const TAB_KEYS: Tab[] = ["shop", "pay", "ship", "tier", "welcome", "roles", "files", "cats", "google"];
 
 function AdminSettingsPageInner() {
   const [tab, setTab] = useState<Tab>("pay");
@@ -265,6 +266,10 @@ function AdminSettingsPageInner() {
 
   // ── ข้อมูลร้าน (แสดงบนใบงาน/ใบปะหน้า/ใบเสร็จ) ──
   const [info, setInfo] = useState<ShopInfo>(shopInfoOf(null));
+
+  // ── Google & SEO (แอดมินเอารหัสจาก Search Console/Analytics มาวางเอง) ──
+  const [seo, setSeo] = useState<SeoConfig>({});
+  const patchSeo = (v: Partial<SeoConfig>) => setSeo((c) => ({ ...c, ...v }));
   const patchInfo = (patch: Partial<ShopInfo>) => {
     setInfo((v) => ({ ...v, ...patch }));
     touch();
@@ -357,6 +362,7 @@ function AdminSettingsPageInner() {
       setWelcome(welcomeCouponOf(p));
       setInfo(shopInfoOf(p));
       setCleanup(imageCleanupOf(p));
+      setSeo(p?.seo ?? {});
       setLoading(false);
     });
   }, []);
@@ -441,6 +447,13 @@ function AdminSettingsPageInner() {
         ...cleanup,
         days: Math.max(1, Number(cleanup.days) || 30),
       },
+      seo: {
+        googleVerification: seo.googleVerification?.trim() || undefined,
+        bingVerification: seo.bingVerification?.trim() || undefined,
+        ga4Id: seo.ga4Id?.trim() || undefined,
+        gtmId: seo.gtmId?.trim() || undefined,
+        noindex: !!seo.noindex,
+      },
       welcomeCoupon: {
         enabled: welcome.enabled,
         type: welcome.type,
@@ -484,6 +497,7 @@ function AdminSettingsPageInner() {
             ["roles", "👥 บทบาท"],
             ["cats", "🗂 หมวดหมู่สินค้า"],
             ["files", "🧹 ล้างรูปเก่า"],
+            ["google", "🔍 Google & SEO"],
           ] as [Tab, string][]
         ).map(([k, label]) => (
           <button
@@ -1194,6 +1208,115 @@ function AdminSettingsPageInner() {
                 )}
               </div>
             </div>
+          )}
+
+          {/* ══════ Google & SEO ══════ */}
+          {tab === "google" && (
+            <section className={`mt-4 p-5 ${card}`}>
+              <h2 className="text-sm font-semibold text-slate-800">🔍 เชื่อมกับ Google &amp; การค้นหา</h2>
+              <p className={`mt-0.5 text-xs ${faint}`}>
+                เอารหัสจากบริการของ Google มาวางที่นี่ · ช่องไหนเว้นว่าง = ไม่ใช้ตัวนั้น (เว็บไม่โหลดสคริปต์เกินจำเป็น)
+              </p>
+
+              {/* พร้อมใช้อยู่แล้ว ไม่ต้องตั้งค่า */}
+              <div className="mt-4 rounded-xl bg-emerald-50/70 p-3 text-xs ring-1 ring-emerald-100">
+                <p className="font-bold text-emerald-800">✅ พร้อมอยู่แล้ว ไม่ต้องทำอะไร</p>
+                <ul className="mt-1.5 space-y-1 text-slate-600">
+                  <li>
+                    • <a className="font-semibold text-emerald-700 underline" href="/sitemap.xml" target="_blank" rel="noreferrer">/sitemap.xml</a>{" "}
+                    — รายชื่อหน้าทั้งหมด (หน้าหลัก · หมวด · สินค้าทุกตัว · บทความ) สร้างสดจากฐานข้อมูล เพิ่มสินค้าใหม่ไม่ต้องมาแก้
+                  </li>
+                  <li>
+                    • <a className="font-semibold text-emerald-700 underline" href="/robots.txt" target="_blank" rel="noreferrer">/robots.txt</a>{" "}
+                    — บอกบอทว่าเก็บอะไรได้ · ปิดหลังบ้าน/ตะกร้า/ข้อมูลลูกค้าไว้แล้ว และชี้ไปที่ sitemap
+                  </li>
+                  <li>• ทุกหน้าสินค้ามี meta + FAQ + ข้อมูลโครงสร้าง (JSON-LD) ให้ Google/AI ดึงไปตอบอยู่แล้ว</li>
+                </ul>
+              </div>
+
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">
+                    Google Search Console — โค้ดยืนยันสิทธิ์
+                  </span>
+                  <input
+                    value={seo.googleVerification ?? ""}
+                    onChange={(e) => patchSeo({ googleVerification: e.target.value })}
+                    className={inputCls}
+                    placeholder="เช่น 4Ab1c…  (หรือวางทั้งแท็ก <meta …> ก็ได้)"
+                  />
+                  <span className="mt-1 block text-[11px] text-slate-400">
+                    เอามาจาก Search Console → เพิ่มพร็อพเพอร์ตี้ → <b>แท็ก HTML</b> · วางแล้วกดบันทึก แล้วค่อยกดยืนยันฝั่ง Google
+                  </span>
+                </label>
+
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">Bing Webmaster — โค้ดยืนยัน (ถ้ามี)</span>
+                  <input
+                    value={seo.bingVerification ?? ""}
+                    onChange={(e) => patchSeo({ bingVerification: e.target.value })}
+                    className={inputCls}
+                    placeholder="msvalidate.01"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">Google Analytics 4 (GA4)</span>
+                  <input
+                    value={seo.ga4Id ?? ""}
+                    onChange={(e) => patchSeo({ ga4Id: e.target.value })}
+                    className={inputCls}
+                    placeholder="G-XXXXXXXXXX"
+                  />
+                  <span className="mt-1 block text-[11px] text-slate-400">ใส่แล้วเว็บจะเก็บสถิติผู้เข้าชมให้อัตโนมัติ</span>
+                </label>
+
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">Google Tag Manager (ถ้าใช้)</span>
+                  <input
+                    value={seo.gtmId ?? ""}
+                    onChange={(e) => patchSeo({ gtmId: e.target.value })}
+                    className={inputCls}
+                    placeholder="GTM-XXXXXXX"
+                  />
+                  <span className="mt-1 block text-[11px] text-slate-400">
+                    ใช้ GTM แล้วไม่ต้องใส่ GA4 ซ้ำ (ตั้ง GA4 ในตัว GTM แทน)
+                  </span>
+                </label>
+              </div>
+
+              <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-xl bg-rose-50/70 p-3 ring-1 ring-rose-100">
+                <input
+                  type="checkbox"
+                  checked={!!seo.noindex}
+                  onChange={(e) => patchSeo({ noindex: e.target.checked })}
+                  className="mt-0.5 h-4 w-4 accent-rose-500"
+                />
+                <span className="text-xs text-slate-700">
+                  <b className="text-rose-700">ปิดไม่ให้ Google เก็บทั้งเว็บ</b> (ใช้ตอนเว็บยังไม่พร้อมเปิดจริง) —
+                  ติ๊กแล้ว robots.txt จะห้ามทุกบอท และ sitemap จะว่าง{" "}
+                  <b>อย่าลืมเอาติ๊กออกตอนเปิดร้านจริง</b> ไม่งั้นเว็บจะไม่ขึ้นในผลค้นหาเลย
+                </span>
+              </label>
+
+              <div className="mt-4 rounded-xl bg-sky-50/70 p-3 text-xs leading-relaxed text-slate-600 ring-1 ring-sky-100">
+                <p className="font-bold text-sky-800">📖 ขั้นตอนเชื่อม Search Console (ครั้งเดียวจบ)</p>
+                <ol className="mt-1.5 list-decimal space-y-1 pl-4">
+                  <li>
+                    เปิด{" "}
+                    <a className="font-semibold text-sky-700 underline" href="https://search.google.com/search-console" target="_blank" rel="noreferrer">
+                      Google Search Console
+                    </a>{" "}
+                    → เพิ่มพร็อพเพอร์ตี้แบบ <b>คำนำหน้า URL</b> ใส่ที่อยู่เว็บร้าน
+                  </li>
+                  <li>เลือกวิธียืนยัน <b>แท็ก HTML</b> → ก๊อปโค้ดมาวางในช่องด้านบน → กด <b>บันทึก</b> ที่หน้านี้</li>
+                  <li>กลับไปกด <b>ยืนยัน</b> ใน Search Console</li>
+                  <li>
+                    เมนู <b>Sitemaps</b> → ใส่ <b>sitemap.xml</b> → ส่ง (ทำครั้งเดียว Google จะมาดึงเองเรื่อย ๆ)
+                  </li>
+                </ol>
+              </div>
+            </section>
           )}
 
           {tab === "roles" &&

@@ -1636,6 +1636,16 @@ export const TOPICS: Topic[] = [
           ]}
         />
 
+        <p className="pt-1 text-[0.95rem] font-extrabold text-teal-800">🔍 การค้นหา</p>
+        <Bullets
+          items={[
+            <>
+              <A href="#google-seo">เชื่อมกับ Google ได้จากหลังบ้าน</A> — วางโค้ดยืนยัน Search Console / GA4 / GTM ·
+              มี <Key>/sitemap.xml</Key> และ <Key>/robots.txt</Key> ให้พร้อมใช้ (สร้างสดจากฐานข้อมูล)
+            </>,
+          ]}
+        />
+
         <p className="pt-1 text-[0.95rem] font-extrabold text-teal-800">🏠 หน้าร้าน</p>
         <Bullets
           items={[
@@ -2821,6 +2831,71 @@ export const TOPICS: Topic[] = [
             </>,
           ]}
         />
+      </>
+    ),
+  },
+  {
+    id: "google-seo",
+    group: "setup",
+    icon: "🔍",
+    title: "เชื่อมกับ Google (Search Console · Analytics · Sitemap)",
+    roles: ["แอดมิน", "คอนเทนต์"],
+    keywords: "google search console gsc sitemap robots analytics ga4 gtm tag manager seo ยืนยันสิทธิ์ ดัชนี index",
+    body: (
+      <>
+        <p>
+          ที่ <A href="/admin/settings?tab=google">ตั้งค่าระบบ → 🔍 Google &amp; SEO</A> —
+          เอารหัสจาก Google มาวางในช่อง แล้วกดบันทึก · <B>ช่องไหนเว้นว่าง = ไม่ใช้ตัวนั้น</B> (เว็บไม่โหลดสคริปต์เกินจำเป็น)
+        </p>
+
+        <p className="pt-1 text-[0.95rem] font-extrabold text-emerald-800">✅ มีให้อยู่แล้ว ไม่ต้องตั้งค่า</p>
+        <Bullets
+          items={[
+            <>
+              <Key>/sitemap.xml</Key> — รายชื่อหน้าทั้งหมด (หน้าหลัก · หมวด · <B>สินค้าทุกตัว</B> · บทความ)
+              สร้างสดจากฐานข้อมูล <Mark>เพิ่มสินค้าใหม่ไม่ต้องมาแก้อะไร</Mark>
+            </>,
+            <>
+              <Key>/robots.txt</Key> — ปิดหลังบ้าน/ตะกร้า/ข้อมูลลูกค้าไม่ให้ขึ้นผลค้นหา และชี้ทางไป sitemap ให้
+            </>,
+            <>ทุกหน้าสินค้ามี meta + คำถามพบบ่อย + ข้อมูลโครงสร้าง (JSON-LD) ให้ Google/AI ดึงไปตอบอยู่แล้ว</>,
+          ]}
+        />
+
+        <p className="pt-1 text-[0.95rem] font-extrabold text-teal-800">🔗 เชื่อม Search Console (ทำครั้งเดียว)</p>
+        <Steps
+          items={[
+            <>
+              เปิด Search Console → เพิ่มพร็อพเพอร์ตี้แบบ <B>คำนำหน้า URL</B> ใส่ที่อยู่เว็บร้าน
+            </>,
+            <>
+              เลือกยืนยันด้วย <B>แท็ก HTML</B> → ก๊อปโค้ดมาวางในช่อง &ldquo;โค้ดยืนยันสิทธิ์&rdquo; →
+              กด <Key>บันทึก</Key> (<B>วางทั้งแท็ก &lt;meta …&gt; ก็ได้</B> ระบบดึงเฉพาะรหัสให้เอง)
+            </>,
+            <>กลับไปกด <B>ยืนยัน</B> ใน Search Console</>,
+            <>
+              เมนู <B>Sitemaps</B> → ใส่ <Key>sitemap.xml</Key> → ส่ง · จบแล้ว Google จะมาดึงเองเรื่อย ๆ
+            </>,
+          ]}
+        />
+
+        <p className="pt-1 text-[0.95rem] font-extrabold text-teal-800">📊 สถิติผู้เข้าชม</p>
+        <Bullets
+          items={[
+            <>
+              <B>Google Analytics 4</B> — วางรหัส <Key>G-XXXXXXXXXX</Key> ระบบติดตั้งให้เอง
+            </>,
+            <>
+              <B>Google Tag Manager</B> — วางรหัส <Key>GTM-XXXXXXX</Key> · ใช้ GTM แล้ว<B>ไม่ต้องใส่ GA4 ซ้ำ</B>
+              (ไปตั้ง GA4 ในตัว GTM แทน)
+            </>,
+          ]}
+        />
+
+        <p className="rounded-lg bg-rose-50 p-2.5 text-[0.85rem] text-rose-900 ring-1 ring-rose-100">
+          ⚠️ ช่อง <B>&ldquo;ปิดไม่ให้ Google เก็บทั้งเว็บ&rdquo;</B> ใช้เฉพาะตอนเว็บยังไม่พร้อมเปิดจริง —{" "}
+          <Mark>ติ๊กค้างไว้ = เว็บไม่ขึ้นในผลค้นหาเลย</Mark> อย่าลืมเอาออกตอนเปิดร้าน
+        </p>
       </>
     ),
   },
