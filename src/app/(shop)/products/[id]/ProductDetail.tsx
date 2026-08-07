@@ -149,6 +149,13 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   // แถบซื้อลอยล่างจอ (มือถือ) — โผล่เมื่อกล่องสั่งซื้อหลักเลื่อนพ้นจอ
   const orderBoxRef = useRef<HTMLDivElement>(null);
   const [showBuyBar, setShowBuyBar] = useState(false);
+  // ── เติมช่องขาวข้างแผงสั่งซื้อ ──
+  // จอใหญ่: ถ้าฝั่งซ้าย (รูป+ข้อมูลประกอบ) สั้นกว่าแผงสั่งซื้อจนเหลือช่องขาวยาว ๆ
+  // ให้ดึงบล็อก "รายละเอียดสินค้า" ขึ้นมาเติมตรงนั้นแทนที่จะทิ้งว่างไว้ · ไม่เหลือช่อง = อยู่ที่เดิม
+  const leftColRef = useRef<HTMLDivElement>(null);
+  const sideColRef = useRef<HTMLDivElement>(null);
+  const gapFillRef = useRef<HTMLDivElement>(null);
+  const [fillGap, setFillGap] = useState(false);
 
   // โหลดเวอร์ชันล่าสุด (Supabase หรือ localStorage) — ถ้ามีให้ใช้แทนข้อมูลตั้งต้น
   useEffect(() => {
@@ -343,11 +350,17 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     });
   }, [matrix, product]);
 
+  /**
+   * จำนวนที่ใช้เทียบ "ช่วงราคา" — สินค้าคิดเรทตามชิ้นต่อลายจะเป็น ⌊จำนวน ÷ ลาย⌋
+   * ป้าย +฿ และข้อความค่าธรรมเนียมช่วงปลีกต้องอิงตัวเลขเดียวกับที่คิดราคาจริง (ดู unitPriceFor)
+   */
+  const feeQty = useMemo(
+    () => tierQtyFor(product, effectiveWithDesigns, qty),
+    [product, effectiveWithDesigns, qty]
+  );
+
   // tier ปัจจุบันของราคาขั้นบันได (ถ้ามี) — สินค้าคิดเรทตามชิ้นต่อลาย ไฮไลต์เรทของ ⌊จำนวน ÷ ลาย⌋
-  const currentTier = useMemo(() => {
-    if (!matrix) return null;
-    return tierIndex(matrix, tierQtyFor(product, effectiveWithDesigns, qty));
-  }, [matrix, qty, product, effectiveWithDesigns]);
+  const currentTier = useMemo(() => (matrix ? tierIndex(matrix, feeQty) : null), [matrix, feeQty]);
 
   const related = PRODUCTS.filter(
     (p) => p.category === product.category && p.id !== product.id
@@ -366,6 +379,34 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     io.observe(el);
     return () => io.disconnect();
   }, []);
+
+  // เติมช่องขาวข้างแผงสั่งซื้อด้วยบล็อก "รายละเอียดสินค้า" (เฉพาะจอ lg ขึ้นไปที่แบ่ง 2 คอลัมน์)
+  // วัดความสูงฝั่งซ้าย "แบบไม่นับบล็อกที่ย้ายมา" เสมอ → ผลการวัดไม่ขึ้นกับผลลัพธ์ตัวเอง (ไม่สลับไปมา)
+  // เผื่อระยะกันสั่น: ว่างเกิน 280px ค่อยดึงขึ้นมา · เหลือไม่ถึง 180px ค่อยส่งกลับที่เดิม
+  useEffect(() => {
+    const left = leftColRef.current;
+    const side = sideColRef.current;
+    if (!left || !side) return;
+    const measure = () => {
+      if (!window.matchMedia("(min-width: 1024px)").matches) {
+        setFillGap(false);
+        return;
+      }
+      const moved = gapFillRef.current;
+      const movedH = moved ? moved.getBoundingClientRect().height : 0;
+      const gap = side.getBoundingClientRect().height - (left.getBoundingClientRect().height - movedH);
+      setFillGap((cur) => (cur ? gap >= 180 : gap >= 280));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(left);
+    ro.observe(side);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [product]);
 
   // โยนรูปลงตรงไหนของหน้าก็ได้ → เปิดกล่องแนบลายให้เองแล้วอัปโหลดทันที
   // (ถ้าไม่ใช่รูป ก็แค่กันเบราว์เซอร์เปิดไฟล์นั้นแทนหน้าเว็บ)
@@ -581,6 +622,79 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     return graph;
   }, [product, faqs]);
 
+  /**
+   * บล็อก "รายละเอียดสินค้า" — เรนเดอร์ได้ 2 ที่: เติมช่องว่างข้างแผงสั่งซื้อ (จอใหญ่ที่ฝั่งซ้ายสั้นกว่า)
+   * หรือตำแหน่งปกติเต็มความกว้างใต้แผงสั่งซื้อ · ดู fillGap
+   */
+  const detailsSection = (mtCls: string) =>
+    (product.body ?? []).length > 0 ? (
+      <section className={mtCls}>
+        <h2 className="text-center text-2xl font-extrabold text-amber-950">
+          รายละเอียดสินค้า {product.name}
+        </h2>
+        <div className="mt-8 space-y-12">
+          {(product.body ?? []).map((sec, i) => (
+            <div
+              key={`${sec.heading}-${i}`}
+              className={`grid items-center gap-6 md:gap-10 ${sec.image ? "md:grid-cols-2" : ""}`}
+            >
+              {sec.image &&
+                (sec.image.src ? (
+                  // รูปจริง: โชว์เต็มสัดส่วนไม่ครอป + กดเพื่อดูขนาดใหญ่
+                  <button
+                    type="button"
+                    onClick={() => setZoomSrc(sec.image!.src!)}
+                    className={`group relative cursor-zoom-in ${sec.align === "right" ? "md:order-2" : ""}`}
+                    aria-label={`ขยายรูป ${sec.image.label || sec.heading || "ประกอบสินค้า"}`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={sec.image.src}
+                      alt={sec.image.label || sec.heading}
+                      loading="lazy"
+                      decoding="async"
+                      className="w-full rounded-[2rem] shadow-sm ring-1 ring-amber-100/70 transition group-hover:brightness-95"
+                    />
+                    <span className="absolute bottom-3 right-3 rounded-full bg-white/85 px-2.5 py-1 text-[11px] font-bold text-stone-500 shadow-sm backdrop-blur transition group-hover:bg-white">
+                      🔍 กดเพื่อขยาย
+                    </span>
+                  </button>
+                ) : (
+                  <ProductVisual
+                    emoji={sec.image.emoji}
+                    gradient={sec.image.gradient}
+                    alt={sec.image.label || sec.heading}
+                    size="text-[6rem]"
+                    className={`aspect-[4/3] w-full rounded-[2rem] shadow-sm ${
+                      sec.align === "right" ? "md:order-2" : ""
+                    }`}
+                  />
+                ))}
+              <div className={`text-center ${sec.align === "right" ? "md:order-1" : ""}`}>
+                {sec.heading && (
+                  <h3 className="text-xl font-extrabold text-amber-600">{sec.heading}</h3>
+                )}
+                <div className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-stone-600">
+                  {sec.text.split("\n").map((line, j) =>
+                    line.trim().startsWith("•") ? (
+                      <p key={j} className="text-left md:pl-10">
+                        {line}
+                      </p>
+                    ) : (
+                      <p key={j}>{line}</p>
+                    )
+                  )}
+                </div>
+                {sec.image?.label && (
+                  <p className="mt-2 text-xs text-stone-400">({sec.image.label})</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    ) : null;
+
   return (
     <div className="mx-auto max-w-6xl px-4 pt-6">
       {jsonLd.map((obj, i) => (
@@ -616,7 +730,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
            ฝั่งซ้าย (รูป+รายละเอียด) เป็นบล็อกเดียวกัน — ข้อมูลประกอบจึงไหลต่อขึ้นมาเติมได้
            แทนที่จะทิ้งช่องขาวยาว ๆ ไว้ข้างแผงสั่งซื้อ ═══ */}
       <div className="mt-4 grid gap-6 lg:grid-cols-12 lg:items-start lg:gap-8">
-        <div className="grid gap-6 sm:grid-cols-2 sm:items-start lg:col-span-8 lg:gap-8">
+        <div ref={leftColRef} className="grid gap-6 sm:grid-cols-2 sm:items-start lg:col-span-8 lg:gap-8">
         {/* ── ซ้าย: รูปสินค้า ── */}
         <div>
           {/* รูปสินค้า — ติดหนึบตอนเลื่อนอ่านตัวเลือกยาว ๆ (จอใหญ่)
@@ -807,10 +921,17 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
           </ul>
         </div>
       </div>
+
+      {/* รายละเอียดสินค้า — ขึ้นมาเติมช่องขาวข้างแผงสั่งซื้อ (เฉพาะตอนที่ฝั่งซ้ายสั้นกว่าจริง ๆ) */}
+      {fillGap && (
+        <div ref={gapFillRef} className="sm:col-span-2">
+          {detailsSection("mt-2")}
+        </div>
+      )}
         </div>
 
         {/* ── ขวา: แผงสั่งซื้อ ติดหนึบตอนเลื่อน ── */}
-        <div className="lg:col-span-4 lg:sticky lg:top-24">
+        <div ref={sideColRef} className="lg:col-span-4 lg:sticky lg:top-24">
           <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
             <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">ราคา</p>
             <div className="mt-4 flex items-baseline gap-2">
@@ -989,7 +1110,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                                 ✓
                               </span>
                               {c.name}
-                              {optionExtraApplies(opt, qty) && choiceExtraOf(opt, effective, c.name) > 0
+                              {optionExtraApplies(opt, feeQty) && choiceExtraOf(opt, effective, c.name) > 0
                                 ? ` +${formatPrice(choiceExtraOf(opt, effective, c.name))}`
                                 : ""}
                             </button>
@@ -1017,7 +1138,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                         .map((c) => (
                           <option key={c.name} value={c.name}>
                             {c.name}
-                            {optionExtraApplies(opt, qty) && choiceExtraOf(opt, effective, c.name) > 0
+                            {optionExtraApplies(opt, feeQty) && choiceExtraOf(opt, effective, c.name) > 0
                               ? ` +${formatPrice(choiceExtraOf(opt, effective, c.name))}`
                               : ""}
                           </option>
@@ -1041,7 +1162,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                             }`}
                           >
                             {c.name}
-                            {optionExtraApplies(opt, qty) && choiceExtraOf(opt, effective, c.name) > 0
+                            {optionExtraApplies(opt, feeQty) && choiceExtraOf(opt, effective, c.name) > 0
                               ? ` +${formatPrice(choiceExtraOf(opt, effective, c.name))}`
                               : ""}
                           </button>
@@ -1049,10 +1170,10 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                     </div>
                   )}
                   {/* ค่าธรรมเนียมช่วงสั่งน้อย เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น */}
-                  {smallQtyFeeOf(opt, effective, qty) > 0 && (
+                  {smallQtyFeeOf(opt, effective, feeQty) > 0 && (
                     <p className="mt-1 text-[11px] font-semibold text-amber-700">
                       💡 ช่วงสั่งไม่เกิน {opt.smallQtyFee!.upToQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} · เลือก
-                      {opt.label}คิดเพิ่ม {formatPrice(smallQtyFeeOf(opt, effective, qty))}/{matrix?.unit ?? "ชิ้น"}
+                      {opt.label}คิดเพิ่ม {formatPrice(smallQtyFeeOf(opt, effective, feeQty))}/{matrix?.unit ?? "ชิ้น"}
                       {(opt.smallQtyFee!.freeChoices ?? []).length > 0
                         ? ` (ยกเว้น ${opt.smallQtyFee!.freeChoices!.join(" / ")} ฟรี)`
                         : ""}
@@ -1063,7 +1184,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                     opt.extraFromQty != null &&
                     opt.extraFromQty > 0 &&
                     opt.choices.some((c) => c.extra) &&
-                    !optionExtraApplies(opt, qty) && (
+                    !optionExtraApplies(opt, feeQty) && (
                       <p className="mt-1.5 text-[11px] text-stone-400">
                         💡 จำนวนนี้ราคารวม{opt.label}แล้ว · สั่งตั้งแต่ {opt.extraFromQty.toLocaleString("th-TH")}{" "}
                         {matrix?.unit ?? "ชิ้น"}ขึ้นไปคิดเพิ่มตามตัวเลือก
@@ -1596,75 +1717,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
         </div>
       </div>
 
-
-      {/* รายละเอียดสินค้า (body) */}
-      {(product.body ?? []).length > 0 && (
-        <section className="mt-16">
-          <h2 className="text-center text-2xl font-extrabold text-amber-950">
-            รายละเอียดสินค้า {product.name}
-          </h2>
-          <div className="mt-8 space-y-12">
-            {(product.body ?? []).map((sec, i) => (
-              <div
-                key={`${sec.heading}-${i}`}
-                className={`grid items-center gap-6 md:gap-10 ${sec.image ? "md:grid-cols-2" : ""}`}
-              >
-                {sec.image &&
-                  (sec.image.src ? (
-                    // รูปจริง: โชว์เต็มสัดส่วนไม่ครอป + กดเพื่อดูขนาดใหญ่
-                    <button
-                      type="button"
-                      onClick={() => setZoomSrc(sec.image!.src!)}
-                      className={`group relative cursor-zoom-in ${sec.align === "right" ? "md:order-2" : ""}`}
-                      aria-label={`ขยายรูป ${sec.image.label || sec.heading || "ประกอบสินค้า"}`}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={sec.image.src}
-                        alt={sec.image.label || sec.heading}
-                        loading="lazy"
-                        decoding="async"
-                        className="w-full rounded-[2rem] shadow-sm ring-1 ring-amber-100/70 transition group-hover:brightness-95"
-                      />
-                      <span className="absolute bottom-3 right-3 rounded-full bg-white/85 px-2.5 py-1 text-[11px] font-bold text-stone-500 shadow-sm backdrop-blur transition group-hover:bg-white">
-                        🔍 กดเพื่อขยาย
-                      </span>
-                    </button>
-                  ) : (
-                    <ProductVisual
-                      emoji={sec.image.emoji}
-                      gradient={sec.image.gradient}
-                      alt={sec.image.label || sec.heading}
-                      size="text-[6rem]"
-                      className={`aspect-[4/3] w-full rounded-[2rem] shadow-sm ${
-                        sec.align === "right" ? "md:order-2" : ""
-                      }`}
-                    />
-                  ))}
-                <div className={`text-center ${sec.align === "right" ? "md:order-1" : ""}`}>
-                  {sec.heading && (
-                    <h3 className="text-xl font-extrabold text-amber-600">{sec.heading}</h3>
-                  )}
-                  <div className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-stone-600">
-                    {sec.text.split("\n").map((line, j) =>
-                      line.trim().startsWith("•") ? (
-                        <p key={j} className="text-left md:pl-10">
-                          {line}
-                        </p>
-                      ) : (
-                        <p key={j}>{line}</p>
-                      )
-                    )}
-                  </div>
-                  {sec.image?.label && (
-                    <p className="mt-2 text-xs text-stone-400">({sec.image.label})</p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      {/* รายละเอียดสินค้า (body) — ตำแหน่งปกติ เต็มความกว้าง (ตอนไม่มีช่องขาวให้เติม) */}
+      {!fillGap && detailsSection("mt-16")}
 
       {/* ═══ แท็บข้อมูลสินค้า — รายละเอียดเพิ่มเติม / วิธีสั่งงาน / การรับประกัน (แบบหน้า pricelist เว็บเดิม) ═══ */}
       {(product.tabs?.length ?? 0) > 0 && (

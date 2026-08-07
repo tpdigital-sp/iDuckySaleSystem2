@@ -2192,18 +2192,21 @@ export function unitPriceFor(
     const dims = parseCustomDims(selections[c.label]);
     if (dims) return c.mode === "quote" ? 0 : customUnitPrice(c, dims.w, dims.h);
   }
+  // จำนวนที่ใช้ "เทียบช่วงราคา" — สินค้าที่คิดเรทตามชิ้นต่อลายจะเป็น ⌊จำนวน ÷ ลาย⌋
+  // เงื่อนไขที่ผูกกับช่วงราคา (ค่าธรรมเนียมช่วงปลีก · extraFromQty) ต้องใช้ตัวเลขเดียวกับที่เลือกช่วงราคา
+  // ไม่งั้นจะกลายเป็น "ได้ราคาช่วงปลีก แต่ไม่โดนค่าธรรมเนียมช่วงปลีก" (สั่ง 11 ชิ้น คละ 3 ลาย = ตกลายละ 3)
+  const tierQty = tierQtyFor(product, selections, qty);
   const m = activeMatrix(product, selections);
   if (m) {
     const cells = m.cells[priceMatrixKey(m, selections)];
-    // สินค้าที่ตั้ง "คิดเรทตามชิ้นต่อลาย" — หาเรทจาก ⌊จำนวน ÷ ลาย⌋ แทนยอดรวม
-    let base = cells && cells.length ? (cells[tierIndex(m, tierQtyFor(product, selections, qty))] ?? product.price) : product.price;
+    let base = cells && cells.length ? (cells[tierIndex(m, tierQty)] ?? product.price) : product.price;
     // กลุ่มตัวเลือกที่ไม่ใช่แกนตาราง (เช่น อะไหล่พิเศษ) บวกเพิ่มต่อหน่วยตาม extra ของตัวที่เลือก
     // (กลุ่มที่ตั้ง extraFromQty ไว้ ต่ำกว่าเกณฑ์ = ราคารวมแล้ว ไม่บวก)
     for (const opt of product.options) {
       if (!optionVisible(opt, selections)) continue; // กลุ่มที่ถูกซ่อนอยู่ = ไม่คิดเงิน
-      base += smallQtyFeeOf(opt, selections, qty); // ค่าธรรมเนียมช่วงปลีก (ถ้าตั้งไว้)
+      base += smallQtyFeeOf(opt, selections, tierQty); // ค่าธรรมเนียมช่วงปลีก (ถ้าตั้งไว้)
       if (m.driverLabels.includes(opt.label)) continue;
-      if (!optionExtraApplies(opt, qty)) continue;
+      if (!optionExtraApplies(opt, tierQty)) continue;
       base += groupExtraOf(opt, selections);
     }
     return base;
@@ -2211,8 +2214,8 @@ export function unitPriceFor(
   let price = product.price;
   for (const opt of product.options) {
     if (!optionVisible(opt, selections)) continue; // กลุ่มที่ถูกซ่อนอยู่ = ไม่คิดเงิน
-    price += smallQtyFeeOf(opt, selections, qty);
-    if (!optionExtraApplies(opt, qty)) continue;
+    price += smallQtyFeeOf(opt, selections, tierQty);
+    if (!optionExtraApplies(opt, tierQty)) continue;
     price += groupExtraOf(opt, selections);
   }
   return price;
