@@ -2,7 +2,7 @@
 
 import RequirePerm from "@/components/RequirePerm";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { buildDiecut, toSvgPath, type DiecutResult, type RingHole } from "@/lib/diecut";
+import { buildDiecut, exportFrame, toSvgPath, type DiecutResult, type RingTab } from "@/lib/diecut";
 import { buildAiFile } from "@/lib/diecut-ai";
 import { btnNeutral, btnPrimary, card, faint, h1, h2, muted } from "@/lib/admin-ui";
 
@@ -39,12 +39,14 @@ function DiecutLabInner() {
   // ── ค่าตั้งงาน ──
   const [widthMm, setWidthMm] = useState("50");
   const [offsetMm, setOffsetMm] = useState("2"); // ค่าที่ร้านใช้ประจำ
+  const [smoothMm, setSmoothMm] = useState("1.2"); // เก็บขอบให้ลื่นแบบงานจริง
   const [fillHoles, setFillHoles] = useState(true);
-  const [alphaThreshold, setAlphaThreshold] = useState("16");
+  const [alphaThreshold, setAlphaThreshold] = useState("128");
   const [ringOn, setRingOn] = useState(true);
+  const [tabDia, setTabDia] = useState("9"); // แท็บกลมยื่นออกมา
   const [ringDia, setRingDia] = useState("4");
-  const [ringInset, setRingInset] = useState("4");
-  const [ringPos, setRingPos] = useState<RingHole["position"]>("top-center");
+  const [ringOverlap, setRingOverlap] = useState("2.5");
+  const [ringPos, setRingPos] = useState<RingTab["position"]>("left");
 
   const [result, setResult] = useState<DiecutResult | null>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
@@ -80,24 +82,43 @@ function DiecutLabInner() {
     const oMm = Number(offsetMm);
     if (!(wMm > 0)) return;
     const t = setTimeout(() => {
-      const ring: RingHole | undefined = ringOn
-        ? { diameterMm: Number(ringDia) || 0, insetMm: Number(ringInset) || 0, position: ringPos }
+      const ring: RingTab | undefined = ringOn
+        ? {
+            tabDiameterMm: Number(tabDia) || 0,
+            holeDiameterMm: Number(ringDia) || 0,
+            overlapMm: Number(ringOverlap) || 0,
+            position: ringPos,
+          }
         : undefined;
       setResult(
-        buildDiecut(trace, { widthMm: wMm, offsetMm: Number.isFinite(oMm) ? oMm : 0, fillHoles, alphaThreshold: Number(alphaThreshold) || 16 }, ring)
+        buildDiecut(
+          trace,
+          {
+            widthMm: wMm,
+            offsetMm: Number.isFinite(oMm) ? oMm : 0,
+            smoothMm: Number(smoothMm) || 0,
+            fillHoles,
+            alphaThreshold: Number(alphaThreshold) || 128,
+          },
+          ring
+        )
       );
     }, 120); // หน่วงสั้น ๆ กันคำนวณรัวตอนลากสไลเดอร์
     return () => clearTimeout(t);
-  }, [trace, widthMm, offsetMm, fillHoles, alphaThreshold, ringOn, ringDia, ringInset, ringPos]);
+  }, [trace, widthMm, offsetMm, smoothMm, fillHoles, alphaThreshold, ringOn, tabDia, ringDia, ringOverlap, ringPos]);
 
   // วาดตัวอย่าง: ลาย + เส้นไดคัทสีบานเย็น
   useEffect(() => {
     const cv = previewRef.current;
     if (!cv || !embed || !result) return;
-    const pad = 24;
-    const scale = Math.min(1, 520 / Math.max(embed.width, embed.height));
-    cv.width = Math.round(embed.width * scale) + pad * 2;
-    cv.height = Math.round(embed.height * scale) + pad * 2;
+    // กรอบตัวอย่าง = กรอบไฟล์ส่งออก (เส้นตัด/แท็บหูร้อยล้นออกนอกลายได้ ต้องเห็นครบ)
+    const frame = exportFrame(result, 3);
+    // ขยายให้เต็มกรอบตัวอย่างเสมอ (งานจริงมักเล็กแค่ 5 ซม. — ถ้าวาดเท่าขนาดจริงจะจิ๋วจนดูไม่ออก)
+    const pxPerMm = Math.min(24, 640 / Math.max(frame.pageWidthMm, frame.pageHeightMm));
+    cv.width = Math.round(frame.pageWidthMm * pxPerMm);
+    cv.height = Math.round(frame.pageHeightMm * pxPerMm);
+    const padX = frame.artXMm * pxPerMm;
+    const padY = frame.artYMm * pxPerMm;
     const ctx = cv.getContext("2d")!;
     ctx.clearRect(0, 0, cv.width, cv.height);
     // ตารางหมากรุก = พื้นโปร่งใส
@@ -112,17 +133,16 @@ function DiecutLabInner() {
     tmp.width = embed.width;
     tmp.height = embed.height;
     tmp.getContext("2d")!.putImageData(embed, 0, 0);
-    ctx.drawImage(tmp, pad, pad, embed.width * scale, embed.height * scale);
+    ctx.drawImage(tmp, padX, padY, result.widthMm * pxPerMm, result.heightMm * pxPerMm);
 
-    const pxPerMm = (embed.width * scale) / result.widthMm;
     ctx.strokeStyle = "#e2007a";
     ctx.lineWidth = 1.5;
     ctx.lineJoin = "round";
     for (const loop of result.paths) {
       ctx.beginPath();
       loop.forEach((p, i) => {
-        const x = pad + p.x * pxPerMm;
-        const y = pad + p.y * pxPerMm;
+        const x = padX + p.x * pxPerMm;
+        const y = padY + p.y * pxPerMm;
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       });
@@ -131,7 +151,7 @@ function DiecutLabInner() {
     }
     if (result.hole) {
       ctx.beginPath();
-      ctx.arc(pad + result.hole.cx * pxPerMm, pad + result.hole.cy * pxPerMm, result.hole.r * pxPerMm, 0, Math.PI * 2);
+      ctx.arc(padX + result.hole.cx * pxPerMm, padY + result.hole.cy * pxPerMm, result.hole.r * pxPerMm, 0, Math.PI * 2);
       ctx.stroke();
     }
   }, [embed, result]);
@@ -159,6 +179,7 @@ function DiecutLabInner() {
         heightMm: result.heightMm,
         paths: result.paths,
         hole: result.hole,
+        ...exportFrame(result, 5),
         title: baseName,
       });
       download(blob, `${baseName}.ai`);
@@ -172,7 +193,9 @@ function DiecutLabInner() {
   function downloadSvg() {
     if (!result) return;
     const d = toSvgPath(result.paths, result.hole);
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${result.widthMm}mm" height="${result.heightMm}mm" viewBox="0 0 ${result.widthMm} ${result.heightMm}">
+    const f = exportFrame(result, 5);
+    // viewBox เริ่มที่มุมซ้ายบนของกรอบ (พิกัดเส้นตัดติดลบได้ จึงเลื่อนด้วย artX/artY)
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${f.pageWidthMm.toFixed(2)}mm" height="${f.pageHeightMm.toFixed(2)}mm" viewBox="${(-f.artXMm).toFixed(2)} ${(-f.artYMm).toFixed(2)} ${f.pageWidthMm.toFixed(2)} ${f.pageHeightMm.toFixed(2)}">
   <g id="CutContour" fill="none" stroke="#e2007a" stroke-width="0.25"><path d="${d}"/></g>
 </svg>`;
     download(new Blob([svg], { type: "image/svg+xml" }), `${baseName}.svg`);
@@ -268,6 +291,21 @@ function DiecutLabInner() {
             <p className={`mt-2 text-[11px] ${faint}`}>
               สูงคำนวณให้เองตามสัดส่วนภาพ · ค่าตัดเผื่อมาตรฐานของร้าน = 2 มม.
             </p>
+            <label className="mt-3 block text-[11px] font-semibold text-slate-500">
+              เก็บขอบให้เรียบ: {smoothMm} มม.
+              <input
+                type="range"
+                min={0}
+                max={5}
+                step={0.1}
+                value={smoothMm}
+                onChange={(e) => setSmoothMm(e.target.value)}
+                className="mt-1 w-full accent-amber-500"
+              />
+              <span className={`text-[11px] ${faint}`}>
+                0 = วิ่งตามหยักของลายเป๊ะ · ยิ่งมากยิ่งลื่น (กลืนร่องแคบ ๆ ระหว่างตัวอักษรให้เป็นเส้นเดียว)
+              </span>
+            </label>
             <label className="mt-3 flex cursor-pointer items-center gap-2 text-[12px] font-semibold text-slate-600">
               <input type="checkbox" checked={fillHoles} onChange={(e) => setFillHoles(e.target.checked)} className="h-4 w-4 accent-amber-500" />
               ปิดรูกลางลาย (ไม่ตัดทะลุช่องว่างในตัวอักษร)
@@ -289,27 +327,42 @@ function DiecutLabInner() {
           <div className={`${card} p-4`}>
             <label className="flex cursor-pointer items-center gap-2 text-sm font-bold text-slate-700">
               <input type="checkbox" checked={ringOn} onChange={(e) => setRingOn(e.target.checked)} className="h-4 w-4 accent-amber-500" />
-              🔗 เจาะรูร้อยห่วง
+              🔗 หูร้อยห่วง
             </label>
             {ringOn && (
               <>
-                <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="mt-3 grid grid-cols-3 gap-2">
                   <label className="text-[11px] font-semibold text-slate-500">
-                    ขนาดรู (มม.)
+                    แท็บกลม (มม.)
+                    <input value={tabDia} onChange={(e) => setTabDia(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" className={`mt-1 ${inputCls}`} />
+                  </label>
+                  <label className="text-[11px] font-semibold text-slate-500">
+                    รูเจาะ (มม.)
                     <input value={ringDia} onChange={(e) => setRingDia(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" className={`mt-1 ${inputCls}`} />
                   </label>
                   <label className="text-[11px] font-semibold text-slate-500">
-                    ห่างจากขอบ (มม.)
-                    <input value={ringInset} onChange={(e) => setRingInset(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" className={`mt-1 ${inputCls}`} />
+                    ซ้อนงาน (มม.)
+                    <input value={ringOverlap} onChange={(e) => setRingOverlap(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" className={`mt-1 ${inputCls}`} />
                   </label>
                 </div>
-                <div className="mt-3 flex gap-1.5">
-                  {([["top-left", "◤ ซ้ายบน"], ["top-center", "▲ บนกลาง"], ["top-right", "◥ ขวาบน"]] as const).map(([id, label]) => (
+                <p className={`mt-1.5 text-[11px] ${faint}`}>
+                  แท็บกลม = วงกลมยื่นออกจากตัวงานสำหรับร้อยห่วง (ใส่ 0 = ไม่ทำแท็บ เจาะรูบนตัวงานเลย) · ซ้อนงาน = ให้แท็บทับตัวงานกี่ มม. จะได้เป็นชิ้นเดียว
+                </p>
+                <div className="mt-3 grid grid-cols-3 gap-1.5">
+                  {(
+                    [
+                      ["left", "◀ ซ้าย"],
+                      ["top-center", "▲ บนกลาง"],
+                      ["right", "▶ ขวา"],
+                      ["top-left", "◤ ซ้ายบน"],
+                      ["top-right", "◥ ขวาบน"],
+                    ] as const
+                  ).map(([id, label]) => (
                     <button
                       key={id}
                       type="button"
                       onClick={() => setRingPos(id)}
-                      className={`flex-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition ${
+                      className={`rounded-lg px-2 py-1.5 text-[11px] font-semibold transition ${
                         ringPos === id ? "bg-slate-900 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50"
                       }`}
                     >

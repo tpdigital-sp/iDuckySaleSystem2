@@ -16,18 +16,26 @@ export interface DiecutSettings {
   fillHoles: boolean;
   /** ค่า alpha ที่ถือว่า "มีลาย" (0-255) */
   alphaThreshold: number;
+  /**
+   * เก็บขอบให้เรียบ (มม.) — ลบรอยหยัก/ร่องเล็ก ๆ ที่เล็กกว่าค่านี้ทิ้ง
+   * เส้นจะลื่นแบบงานสติกเกอร์จริง · 0 = ตามขอบลายเป๊ะ (หยักตามลาย)
+   */
+  smoothMm: number;
 }
 
-export interface RingHole {
-  /** เส้นผ่านศูนย์กลางรู (มม.) */
-  diameterMm: number;
-  /** ระยะจากขอบไดคัทถึงจุดกึ่งกลางรู (มม.) */
-  insetMm: number;
-  position: "top-center" | "top-left" | "top-right";
+/** หูร้อยห่วงแบบ "แท็บกลม" ยื่นออกจากตัวงาน (แบบพวงกุญแจอะคริลิคทั่วไป) */
+export interface RingTab {
+  /** เส้นผ่านศูนย์กลางแท็บกลม (มม.) — 0 = ไม่ทำแท็บ เจาะรูบนตัวงานเลย */
+  tabDiameterMm: number;
+  /** เส้นผ่านศูนย์กลางรูที่เจาะ (มม.) */
+  holeDiameterMm: number;
+  /** แท็บซ้อนทับตัวงานกี่ มม. (ให้เชื่อมเป็นชิ้นเดียว ไม่หลุด) */
+  overlapMm: number;
+  position: "left" | "right" | "top-center" | "top-left" | "top-right";
 }
 
 export interface DiecutResult {
-  /** เส้นไดคัทเป็นมิลลิเมตร (x ขวา · y ลง · อ้างอิงมุมซ้ายบนของภาพ) */
+  /** เส้นไดคัทเป็นมิลลิเมตร (x ขวา · y ลง · อ้างอิงมุมซ้ายบนของลาย · ติดลบได้ถ้าเส้นล้นออกนอกลาย) */
   paths: { x: number; y: number }[][];
   /** รูร้อยห่วง (มม.) — ไม่ได้เปิดใช้ = undefined */
   hole?: { cx: number; cy: number; r: number };
@@ -38,6 +46,8 @@ export interface DiecutResult {
   pieces: number;
   /** จำนวนรูที่ตัดทะลุกลางงาน */
   innerHoles: number;
+  /** กรอบรวมของเส้นตัดทั้งหมด (มม.) — ใช้กำหนดขนาดไฟล์ส่งออก */
+  bounds: { x0: number; y0: number; x1: number; y1: number };
   /** เตือนก่อนส่งเข้าเครื่องตัด */
   warnings: string[];
 }
@@ -104,6 +114,27 @@ export function dilate(mask: Uint8Array, w: number, h: number, rPx: number): Uin
   const out = new Uint8Array(w * h);
   for (let i = 0; i < out.length; i++) out[i] = d2[i] <= rr ? 1 : 0;
   return out;
+}
+
+/** หดมาสก์เข้า r พิกเซล (= ขยายพื้นหลังแล้วกลับด้าน) */
+export function erode(mask: Uint8Array, w: number, h: number, rPx: number): Uint8Array {
+  if (rPx <= 0) return mask.slice();
+  const inv = new Uint8Array(w * h);
+  for (let i = 0; i < inv.length; i++) inv[i] = mask[i] ? 0 : 1;
+  const grown = dilate(inv, w, h, rPx);
+  const out = new Uint8Array(w * h);
+  for (let i = 0; i < out.length; i++) out[i] = grown[i] ? 0 : 1;
+  return out;
+}
+
+/**
+ * เก็บขอบให้เรียบ — ปิดร่อง/รอยหยักที่แคบกว่า r ก่อน (closing) แล้วปาดติ่งเล็ก ๆ ทิ้ง (opening)
+ * ผลคือเส้นลื่นแบบไดคัทงานจริง ไม่วิ่งตามหยักของลายทุกจุด
+ */
+export function smoothMask(mask: Uint8Array, w: number, h: number, rPx: number): Uint8Array {
+  if (rPx <= 0) return mask;
+  const closed = erode(dilate(mask, w, h, rPx), w, h, rPx);
+  return dilate(erode(closed, w, h, rPx), w, h, rPx);
 }
 
 /** ปิดรูที่ไม่ติดขอบภาพ (พื้นหลังที่ถูกลายล้อมไว้) = ไม่ตัดทะลุกลางงาน */
@@ -249,16 +280,21 @@ function areaOf(pts: Pt[]): number {
 
 /**
  * คำนวณเส้นไดคัททั้งชุดจาก ImageData ของลาย
+ *
+ * ทำงานบนผืนที่ "เผื่อขอบ" ไว้รอบภาพ เพราะเส้นตัดต้องล้นออกนอกลายเสมอ
+ * (ลายที่ชิดขอบไฟล์จะได้เส้นครบ ไม่โดนตัดหัวท้าย) พิกัดที่คืนออกไปจึงติดลบได้
+ *
  * @param img ภาพลาย (ควรเป็น PNG พื้นใส) · ขนาดที่ส่งเข้ามาคือขนาดที่ใช้คำนวณ
  */
 export function buildDiecut(
   img: { data: Uint8ClampedArray; width: number; height: number },
   s: DiecutSettings,
-  ring?: RingHole
+  ring?: RingTab
 ): DiecutResult {
-  const { width: w, height: h } = img;
-  const mmPerPx = s.widthMm / w;
+  const { width: w0, height: h0 } = img;
+  const mmPerPx = s.widthMm / w0;
   const warnings: string[] = [];
+  const px = (mm: number) => mm / mmPerPx;
 
   if (!hasAlpha(img.data)) {
     warnings.push("ลายนี้ไม่มีพื้นใส (ทั้งภาพทึบ) — เส้นไดคัทจะออกมาเป็นกรอบสี่เหลี่ยม ต้องไล่พื้นหลังออกก่อน");
@@ -268,60 +304,146 @@ export function buildDiecut(
     warnings.push(`ความละเอียดลายเทียบกับขนาดจริงได้ ~${Math.round(dpi)} DPI (ต่ำกว่า 150) — พิมพ์ออกมาอาจไม่คม`);
   }
 
-  let mask = maskFromAlpha(img.data, s.alphaThreshold);
-  const inkPx = mask.reduce((n, v) => n + v, 0);
-  if (inkPx === 0) {
-    return { paths: [], widthMm: s.widthMm, heightMm: h * mmPerPx, mmPerPx, pieces: 0, innerHoles: 0, warnings: ["ไม่พบลายในไฟล์ (โปร่งใสทั้งภาพ)"] };
+  const src = maskFromAlpha(img.data, s.alphaThreshold);
+  let inkPx = 0;
+  for (let i = 0; i < src.length; i++) inkPx += src[i];
+  const emptyResult: DiecutResult = {
+    paths: [],
+    widthMm: s.widthMm,
+    heightMm: h0 * mmPerPx,
+    mmPerPx,
+    pieces: 0,
+    innerHoles: 0,
+    bounds: { x0: 0, y0: 0, x1: s.widthMm, y1: h0 * mmPerPx },
+    warnings: ["ไม่พบลายในไฟล์ (โปร่งใสทั้งภาพ)"],
+  };
+  if (inkPx === 0) return emptyResult;
+
+  /** กรอบสี่เหลี่ยมที่ล้อมส่วนที่เป็นลายไว้ (หน่วยพิกเซล) */
+  const bboxOfMask = (m: Uint8Array, w: number, h: number) => {
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++)
+        if (m[y * w + x]) {
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+    return { x0, y0, x1, y1 };
+  };
+  // ลายกินพื้นที่เกือบเต็มกรอบ = น่าจะติดพื้นหลัง/เงาฟุ้งมาด้วย (เส้นตัดจะออกมาเป็นกล่อง)
+  const bb = bboxOfMask(src, w0, h0);
+  const fill = inkPx / Math.max(1, (bb.x1 - bb.x0 + 1) * (bb.y1 - bb.y0 + 1));
+  if (fill > 0.9) {
+    warnings.push(
+      "ลายเต็มกรอบเกือบทั้งผืน — ถ้าไฟล์มีเงา/แสงฟุ้งจาง ๆ ระบบจะนับเป็นลายด้วย ทำให้เส้นตัดออกมาเป็นกล่อง · ลองเลื่อน “ความไวขอบลาย” ไปทางขวา"
+    );
   }
-  mask = dilate(mask, w, h, s.offsetMm / mmPerPx);
+
+  // เผื่อขอบผืนคำนวณให้พอกับ ตัดเผื่อ + เก็บขอบ + แท็บหูร้อย
+  const tabPx = ring && ring.tabDiameterMm > 0 ? px(ring.tabDiameterMm) : 0;
+  const pad = Math.ceil(px(s.offsetMm) + px(s.smoothMm) * 2 + tabPx + 4);
+  const w = w0 + pad * 2;
+  const h = h0 + pad * 2;
+  let mask: Uint8Array = new Uint8Array(w * h);
+  for (let y = 0; y < h0; y++) for (let x = 0; x < w0; x++) if (src[y * w0 + x]) mask[(y + pad) * w + (x + pad)] = 1;
+
+  mask = dilate(mask, w, h, px(s.offsetMm));
+  mask = smoothMask(mask, w, h, px(s.smoothMm));
+
+  // แท็บหูร้อยห่วง: วงกลมยื่นออกจากขอบงาน ซ้อนทับไว้นิดหน่อยให้เป็นชิ้นเดียวกัน
+  let hole: DiecutResult["hole"];
+  if (ring && ring.holeDiameterMm > 0) {
+    const b = bboxOfMask(mask, w, h);
+    const tabR = tabPx / 2;
+    const overlap = px(ring.overlapMm);
+    let cx: number;
+    let cy: number;
+    if (ring.position === "left") {
+      cy = (b.y0 + b.y1) / 2;
+      cx = b.x0 + overlap - tabR;
+    } else if (ring.position === "right") {
+      cy = (b.y0 + b.y1) / 2;
+      cx = b.x1 - overlap + tabR;
+    } else {
+      cx =
+        ring.position === "top-left"
+          ? b.x0 + (b.x1 - b.x0) * 0.15
+          : ring.position === "top-right"
+            ? b.x1 - (b.x1 - b.x0) * 0.15
+            : (b.x0 + b.x1) / 2;
+      // ไล่หาขอบบนของงานตรงคอลัมน์นั้น แล้ววางแท็บให้ซ้อนลงมา
+      let top = b.y0;
+      const col = Math.round(cx);
+      for (let y = 0; y < h; y++) if (mask[y * w + col]) { top = y; break; }
+      cy = top - tabR + overlap;
+    }
+    if (tabR > 0) {
+      const r2 = tabR * tabR;
+      const yA = Math.max(0, Math.floor(cy - tabR));
+      const yB = Math.min(h - 1, Math.ceil(cy + tabR));
+      const xA = Math.max(0, Math.floor(cx - tabR));
+      const xB = Math.min(w - 1, Math.ceil(cx + tabR));
+      for (let y = yA; y <= yB; y++)
+        for (let x = xA; x <= xB; x++)
+          if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r2) mask[y * w + x] = 1;
+    }
+    hole = { cx: (cx - pad) * mmPerPx, cy: (cy - pad) * mmPerPx, r: ring.holeDiameterMm / 2 };
+    if (tabPx > 0 && ring.tabDiameterMm < ring.holeDiameterMm + 4) {
+      warnings.push("แท็บหูร้อยเล็กกว่ารูมาก — ควรให้แท็บใหญ่กว่ารูอย่างน้อย 4 มม. ไม่งั้นขอบบางจนฉีกง่าย");
+    }
+  }
+
   if (s.fillHoles) mask = fillEnclosedHoles(mask, w, h);
 
   // ทิ้งเศษเล็กกว่า 1 ตร.มม. (จุดฝุ่น/ขอบลายที่หลุดมา) แล้วเกลาเส้น
   const minArea = 1 / (mmPerPx * mmPerPx);
   const paths = traceContours(mask, w, h)
     .filter((loop) => areaOf(loop) >= minArea)
-    .map((loop) => simplifyLoop(smoothLoop(loop, 2), 0.6))
-    .map((loop) => loop.map((p) => ({ x: p.x * mmPerPx, y: p.y * mmPerPx })));
+    .map((loop) => simplifyLoop(smoothLoop(loop, 3), 0.4))
+    .map((loop) => loop.map((q) => ({ x: (q.x - pad) * mmPerPx, y: (q.y - pad) * mmPerPx })));
+
+  if (!paths.length) return { ...emptyResult, warnings };
 
   // แยก "เส้นรอบชิ้นงาน" ออกจาก "รูตรงกลาง" ด้วยทิศการเดินของเส้น (ตรงข้ามกันเสมอ)
-  const outerSign = paths.length ? Math.sign(signedArea(paths.reduce((a, b) => (areaOf(a) >= areaOf(b) ? a : b)))) : 1;
-  const pieces = paths.filter((p) => Math.sign(signedArea(p)) === outerSign).length;
+  const outerSign = Math.sign(signedArea(paths.reduce((a, b) => (areaOf(a) >= areaOf(b) ? a : b))));
+  const pieces = paths.filter((q) => Math.sign(signedArea(q)) === outerSign).length;
   const innerHoles = paths.length - pieces;
   if (pieces > 1) {
-    warnings.push(`ลายนี้แยกเป็น ${pieces} ชิ้นที่ไม่ติดกัน — ถ้าต้องการชิ้นเดียวให้เพิ่มค่าตัดเผื่อ หรือแก้ลายให้เชื่อมกัน`);
+    warnings.push(`ลายนี้แยกเป็น ${pieces} ชิ้นที่ไม่ติดกัน — ถ้าต้องการชิ้นเดียวให้เพิ่มค่าตัดเผื่อ/ค่าเก็บขอบ หรือแก้ลายให้เชื่อมกัน`);
   }
   if (innerHoles > 0) {
     warnings.push(`มีรูตัดทะลุกลางงาน ${innerHoles} รู — ไม่ต้องการให้ตัดทะลุ ให้ติ๊ก “ปิดรูกลางลาย”`);
   }
 
-  // รูร้อยห่วง — วางจากขอบบนของเส้นไดคัทจริง ไม่ใช่ขอบภาพ
-  let hole: DiecutResult["hole"];
-  if (ring && ring.diameterMm > 0) {
-    const all = paths.flat();
-    if (all.length) {
-      const minX = Math.min(...all.map((p) => p.x));
-      const maxX = Math.max(...all.map((p) => p.x));
-      const span = maxX - minX;
-      const cx =
-        ring.position === "top-left" ? minX + span * 0.15 : ring.position === "top-right" ? maxX - span * 0.15 : (minX + maxX) / 2;
-      // หาขอบบนของงานตรงคอลัมน์นั้น (อ่านจากมาสก์ที่ขยายแล้ว)
-      const col = Math.min(w - 1, Math.max(0, Math.round(cx / mmPerPx)));
-      let topPx = -1;
-      for (let y = 0; y < h; y++) {
-        if (mask[y * w + col]) {
-          topPx = y;
-          break;
-        }
-      }
-      const topMm = topPx >= 0 ? topPx * mmPerPx : Math.min(...all.map((p) => p.y));
-      hole = { cx, cy: topMm + ring.insetMm, r: ring.diameterMm / 2 };
-      if (ring.insetMm < ring.diameterMm / 2 + 1) {
-        warnings.push("รูร้อยห่วงอยู่ชิดขอบเกินไป — ควรให้ระยะจากขอบมากกว่ารัศมีรูอย่างน้อย 1 มม. กันงานปริ");
-      }
-    }
-  }
+  const all = paths.flat();
+  const bounds = {
+    x0: Math.min(...all.map((q) => q.x), hole ? hole.cx - hole.r : Infinity),
+    y0: Math.min(...all.map((q) => q.y), hole ? hole.cy - hole.r : Infinity),
+    x1: Math.max(...all.map((q) => q.x), hole ? hole.cx + hole.r : -Infinity),
+    y1: Math.max(...all.map((q) => q.y), hole ? hole.cy + hole.r : -Infinity),
+  };
 
-  return { paths, hole, widthMm: s.widthMm, heightMm: h * mmPerPx, mmPerPx, pieces, innerHoles, warnings };
+  return { paths, hole, widthMm: s.widthMm, heightMm: h0 * mmPerPx, mmPerPx, pieces, innerHoles, bounds, warnings };
+}
+
+/**
+ * กรอบไฟล์ส่งออก = เส้นตัดทั้งหมด + ตัวลาย + เว้นขอบ · คืนตำแหน่งที่ต้องวางลายในกรอบด้วย
+ * (เส้นตัดล้นออกนอกลายได้ เช่น แท็บหูร้อย — ถ้าไม่ขยายกรอบจะโดนตัดหาย)
+ */
+export function exportFrame(r: DiecutResult, marginMm = 5) {
+  const x0 = Math.min(0, r.bounds.x0) - marginMm;
+  const y0 = Math.min(0, r.bounds.y0) - marginMm;
+  const x1 = Math.max(r.widthMm, r.bounds.x1) + marginMm;
+  const y1 = Math.max(r.heightMm, r.bounds.y1) + marginMm;
+  return {
+    pageWidthMm: x1 - x0,
+    pageHeightMm: y1 - y0,
+    /** ตำแหน่งมุมซ้ายบนของลายภายในกรอบ */
+    artXMm: -x0,
+    artYMm: -y0,
+  };
 }
 
 /** เส้นไดคัทเป็น path ของ SVG (หน่วยมิลลิเมตร) */

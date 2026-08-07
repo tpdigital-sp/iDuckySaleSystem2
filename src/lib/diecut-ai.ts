@@ -19,11 +19,14 @@ export interface AiFileInput {
   /** ขนาดจริงของลาย (มม.) */
   widthMm: number;
   heightMm: number;
-  /** เส้นไดคัท (มม. · y นับจากขอบบนของลาย) */
+  /** เส้นไดคัท (มม. · y นับจากขอบบนของลาย · ติดลบได้ถ้าล้นออกนอกลาย) */
   paths: Pt[][];
   hole?: { cx: number; cy: number; r: number };
-  /** เว้นขอบกระดาษรอบงาน (มม.) */
-  marginMm?: number;
+  /** ขนาดกรอบไฟล์ + ตำแหน่งที่วางลายในกรอบ (จาก exportFrame) */
+  pageWidthMm: number;
+  pageHeightMm: number;
+  artXMm: number;
+  artYMm: number;
   /** ชื่องาน — เขียนลง metadata ให้รู้ว่าไฟล์มาจากออเดอร์ไหน */
   title?: string;
 }
@@ -71,9 +74,9 @@ class PdfWriter {
 }
 
 /** เส้นไดคัทเป็นคำสั่งวาดของ PDF (หน่วย point · y นับขึ้นจากขอบล่าง) */
-function pathOps(paths: Pt[][], hole: AiFileInput["hole"], offMm: number, pageHmm: number): string {
-  const X = (mm: number) => ((mm + offMm) * PT_PER_MM).toFixed(3);
-  const Y = (mm: number) => ((pageHmm - (mm + offMm)) * PT_PER_MM).toFixed(3);
+function pathOps(paths: Pt[][], hole: AiFileInput["hole"], artX: number, artY: number, pageHmm: number): string {
+  const X = (mm: number) => ((mm + artX) * PT_PER_MM).toFixed(3);
+  const Y = (mm: number) => ((pageHmm - (mm + artY)) * PT_PER_MM).toFixed(3);
   const out: string[] = [];
   for (const loop of paths) {
     if (loop.length < 3) continue;
@@ -97,9 +100,8 @@ function pathOps(paths: Pt[][], hole: AiFileInput["hole"], offMm: number, pageHm
 
 /** สร้างไฟล์ .ai (PDF-compatible) — คืน Blob เอาไปดาวน์โหลดได้เลย */
 export async function buildAiFile(input: AiFileInput): Promise<Blob> {
-  const margin = input.marginMm ?? 5;
-  const pageW = input.widthMm + margin * 2;
-  const pageH = input.heightMm + margin * 2;
+  const pageW = input.pageWidthMm;
+  const pageH = input.pageHeightMm;
 
   // แยก RGB กับ alpha (PDF เก็บความโปร่งใสเป็นภาพ SMask ต่างหาก)
   const n = input.pxWidth * input.pxHeight;
@@ -114,16 +116,18 @@ export async function buildAiFile(input: AiFileInput): Promise<Blob> {
   const rgbZ = await deflate(rgb);
   const alphaZ = await deflate(alpha);
 
+  // วางลายตามตำแหน่งที่คำนวณไว้ (y ของ PDF นับขึ้น จึงวัดจากขอบล่างของกรอบ)
+  const artBottomMm = pageH - input.artYMm - input.heightMm;
   const content = [
     "q",
-    `${(input.widthMm * PT_PER_MM).toFixed(3)} 0 0 ${(input.heightMm * PT_PER_MM).toFixed(3)} ${(margin * PT_PER_MM).toFixed(3)} ${(margin * PT_PER_MM).toFixed(3)} cm`,
+    `${(input.widthMm * PT_PER_MM).toFixed(3)} 0 0 ${(input.heightMm * PT_PER_MM).toFixed(3)} ${(input.artXMm * PT_PER_MM).toFixed(3)} ${(artBottomMm * PT_PER_MM).toFixed(3)} cm`,
     "/Im0 Do",
     "Q",
     "/CS0 CS",
     "1 SCN",
     "0.25 w",
     "1 J 1 j",
-    pathOps(input.paths, input.hole, margin, pageH),
+    pathOps(input.paths, input.hole, input.artXMm, input.artYMm, pageH),
     "S",
   ].join("\n");
 
