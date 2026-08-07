@@ -23,7 +23,7 @@ import type { Order } from "@/lib/admin-data";
 import { appendToOrder, placeOrder, reportPayment } from "@/lib/order-repo";
 import { clearAppendTarget, getAppendTarget, type AppendTarget } from "@/lib/append-order";
 import { publicOrigin } from "@/lib/shop-info";
-import { cartQtyShipFee } from "@/lib/shipping-auto";
+import { cartQtyShipFee, shipProfileOf } from "@/lib/shipping-auto";
 
 interface Placed {
   id: string;
@@ -150,31 +150,42 @@ export default function CheckoutPage() {
 
   // 📦 สินค้าที่คิดค่าส่งตามจำนวนชิ้น (คิดแบบเดียวกับหน้าตะกร้า — สองหน้าต้องได้เลขเดียวกัน)
   const qtyShipCalc = (() => {
-    const perProduct = new Map<string, number>();
-    for (const i of items) perProduct.set(i.productId, (perProduct.get(i.productId) ?? 0) + i.qty);
-    return cartQtyShipFee(
-      [...perProduct.entries()]
-        .map(([pid, qty]) => {
-          const p = productOf(pid);
-          return {
-            name: p?.name ?? pid,
-            qty,
-            tiers: p?.shipTiers,
-            extra: p?.shipTierExtra,
-            overflowMethodId: p?.shipTierMethodId,
-          };
-        })
-        .filter((x) => x.tiers?.length),
-      methods
-    );
+    const groups = new Map<
+      string,
+      { name: string; qty: number; tiers?: ReturnType<typeof shipProfileOf>["tiers"]; extra?: number; overflowMethodId?: string }
+    >();
+    for (const i of items) {
+      const p = productOf(i.productId);
+      const prof = shipProfileOf(p, i.selections);
+      const key = `${i.productId}|${prof.ruleKey}`;
+      const cur = groups.get(key);
+      if (cur) {
+        cur.qty += i.qty;
+        continue;
+      }
+      groups.set(key, {
+        name: (p?.name ?? i.productId) + (prof.ruleKey ? ` (${prof.ruleLabel})` : ""),
+        qty: i.qty,
+        tiers: prof.tiers,
+        extra: prof.extra,
+        overflowMethodId: prof.overflowMethodId,
+      });
+    }
+    return cartQtyShipFee([...groups.values()].filter((x) => x.tiers?.length), methods);
   })();
   const qtyShipFee = qtyShipCalc.fee;
-  // สินค้าเกินเกณฑ์จนต้องเปลี่ยนวิธีส่ง (หน้าตะกร้าสลับให้แล้ว — ที่นี่กันหลุดอีกชั้นเผื่อเข้าลิงก์ตรง)
-  const forcedMethod = qtyShipCalc.forceIds
+  // สินค้าเกินเกณฑ์จนต้องเปลี่ยนวิธีส่ง + ค่าส่งขั้นต่ำที่สินค้า/ตัวเลือกบังคับไว้
+  // (หน้าตะกร้าสลับให้แล้ว — ที่นี่กันหลุดอีกชั้นเผื่อเข้าลิงก์ตรง)
+  const forcedMethod = [
+    ...qtyShipCalc.forceIds,
+    ...(items.map((i) => shipProfileOf(productOf(i.productId), i.selections).shippingId).filter(Boolean) as string[]),
+  ]
     .map((id) => methods.find((m) => m.id === id))
     .filter(Boolean)
     .sort((a, b) => b!.price - a!.price)[0];
-  const effectiveMethod = forcedMethod && forcedMethod.price > shippingMethod.price ? forcedMethod : shippingMethod;
+  // มารับเอง/ส่งฟรี (ราคา 0) = ไม่ใช่กล่องพัสดุ ห้ามยกระดับทับ (ตรงกับกติกาหน้าตะกร้า)
+  const effectiveMethod =
+    forcedMethod && shippingMethod.price > 0 && forcedMethod.price > shippingMethod.price ? forcedMethod : shippingMethod;
 
   // สั่งเพิ่มในออเดอร์เดิม → ไม่คิดค่าส่งซ้ำ (จ่ายไปแล้วในออเดอร์แรก)
   // ของหนักคิดตามจำนวน → ใช้ค่าที่แพงกว่าระหว่างวิธีที่ใช้จริงกับค่าตามจำนวน

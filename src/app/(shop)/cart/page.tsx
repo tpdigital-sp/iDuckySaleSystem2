@@ -16,7 +16,7 @@ import { useCart } from "@/lib/cart-context";
 import ProductVisual from "@/components/ProductVisual";
 import { getAppendTarget, clearAppendTarget, setAppendPicks, getAppendPicks, clearAppendPicks, type AppendTarget } from "@/lib/append-order";
 import { getQuoteTarget, clearQuoteTarget, type QuoteTarget } from "@/lib/append-quote";
-import { cartQtyShipFee, pickShipping, shippingAllowed } from "@/lib/shipping-auto";
+import { cartQtyShipFee, pickShipping, shipProfileOf, shippingAllowed } from "@/lib/shipping-auto";
 
 const USE_BY_KEY = "ducky-use-by-date";
 
@@ -121,24 +121,30 @@ export default function CartPage() {
 
   // 📦 สินค้าที่ตั้ง "ค่าส่งตามจำนวนชิ้น" ไว้ (ของหนัก เช่น แผ่นหินรองแก้ว)
   // รวมจำนวนต่อสินค้า (สินค้าเดียวกันอาจอยู่หลายแถวเพราะเลือกตัวเลือกต่างกัน)
+  // 🎛️ ขนาดที่แอดมินตั้งตารางค่าส่งของตัวเองไว้ = นับแยกกลุ่ม (คนละกล่อง คนละตาราง)
   const qtyShip = (() => {
-    const perProduct = new Map<string, number>();
-    for (const i of items) perProduct.set(i.productId, (perProduct.get(i.productId) ?? 0) + i.qty);
-    return cartQtyShipFee(
-      [...perProduct.entries()]
-        .map(([pid, qty]) => {
-          const p = productOf(pid);
-          return {
-            name: p?.name ?? pid,
-            qty,
-            tiers: p?.shipTiers,
-            extra: p?.shipTierExtra,
-            overflowMethodId: p?.shipTierMethodId,
-          };
-        })
-        .filter((x) => x.tiers?.length),
-      methods
-    );
+    const groups = new Map<
+      string,
+      { name: string; qty: number; tiers?: ReturnType<typeof shipProfileOf>["tiers"]; extra?: number; overflowMethodId?: string }
+    >();
+    for (const i of items) {
+      const p = productOf(i.productId);
+      const prof = shipProfileOf(p, i.selections);
+      const key = `${i.productId}|${prof.ruleKey}`;
+      const cur = groups.get(key);
+      if (cur) {
+        cur.qty += i.qty;
+        continue;
+      }
+      groups.set(key, {
+        name: (p?.name ?? i.productId) + (prof.ruleKey ? ` (${prof.ruleLabel})` : ""),
+        qty: i.qty,
+        tiers: prof.tiers,
+        extra: prof.extra,
+        overflowMethodId: prof.overflowMethodId,
+      });
+    }
+    return cartQtyShipFee([...groups.values()].filter((x) => x.tiers?.length), methods);
   })();
 
   // 🚚 ระบบเลือกวิธีจัดส่งให้เอง — ของเยอะ/ของชิ้นใหญ่ ต้องกล่องใหญ่ ไม่ปล่อยให้ค้างที่กล่องเล็ก
@@ -147,7 +153,8 @@ export default function CartPage() {
     totalQty,
     subtotal,
     requiredIds: [
-      ...(items.map((i) => productOf(i.productId)?.shippingId).filter(Boolean) as string[]),
+      // ค่าส่งขั้นต่ำ — เอาตามตัวเลือกที่เลือกจริง (ขนาดใหญ่บังคับกล่องใหญ่ได้)
+      ...(items.map((i) => shipProfileOf(productOf(i.productId), i.selections).shippingId).filter(Boolean) as string[]),
       ...qtyShip.forceIds,
     ],
   });

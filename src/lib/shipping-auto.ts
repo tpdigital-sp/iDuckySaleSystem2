@@ -1,5 +1,5 @@
 import type { ShippingMethod } from "@/lib/shop-settings";
-import type { ShipTier } from "@/lib/products";
+import type { ShipOptionRule, ShipTier } from "@/lib/products";
 
 /**
  * 🚚 เลือกวิธีจัดส่งให้อัตโนมัติ
@@ -74,6 +74,76 @@ export function pickShipping(methods: ShippingMethod[], input: AutoShippingInput
  * ของหนักอย่างแผ่นหินรองแก้ว ค่าส่งจริงขึ้นกับจำนวนแผ่น ไม่ใช่กล่องแบน ๆ ราคาเดียว
  * แอดมินตั้งตารางไว้ที่หน้าแก้ไขสินค้า → ระบบคิดจากจำนวนที่ลูกค้าสั่งเอง
  */
+
+/* ── 🎛️ ค่าส่งที่ขึ้นกับตัวเลือก (ขนาดมีผลกับกล่อง) ──
+ * สินค้าตัวเดียวกันแต่คนละขนาด ค่าส่งไม่เท่ากัน — แอดมินตั้งเงื่อนไขต่อตัวเลือกได้
+ * เข้าเงื่อนไขข้อไหน = ใช้ค่าของข้อนั้นแทนค่ากลางของสินค้า
+ */
+
+/** สินค้าเท่าที่การคิดค่าส่งต้องใช้ (รับ Product ตรง ๆ ได้ ไม่ต้อง import ทั้งก้อน) */
+export interface ShipConfig {
+  shippingId?: string;
+  shipTiers?: ShipTier[];
+  shipTierExtra?: number;
+  shipTierMethodId?: string;
+  shipRules?: ShipOptionRule[];
+}
+
+/** ค่าส่งที่ใช้จริงของแถวหนึ่งในตะกร้า (หลังเอาเงื่อนไขตัวเลือกมาทับค่ากลางแล้ว) */
+export interface ShipProfile {
+  /** วิธีจัดส่งขั้นต่ำ */
+  shippingId?: string;
+  tiers?: ShipTier[];
+  extra?: number;
+  overflowMethodId?: string;
+  /** เงื่อนไขที่เข้า (มีค่า = ตารางตามจำนวนมาจากเงื่อนไขนี้ ต้องแยกกลุ่มนับจำนวน) */
+  ruleKey: string;
+  /** ป้ายกำกับเงื่อนไขไว้โชว์ในตะกร้า เช่น "ขนาด: A2" */
+  ruleLabel?: string;
+}
+
+/** เงื่อนไขข้อแรกที่ตรงกับตัวเลือกที่ลูกค้าเลือก (ไม่ตรงข้อไหน = undefined) */
+function matchShipRule(
+  rules: ShipOptionRule[] | undefined,
+  selections: Record<string, string>
+): { rule: ShipOptionRule; index: number } | undefined {
+  const list = rules ?? [];
+  for (let i = 0; i < list.length; i++) {
+    const r = list[i];
+    if (!r.label || !r.choices?.length) continue;
+    const chosen = selections[r.label];
+    if (chosen && r.choices.includes(chosen)) return { rule: r, index: i };
+  }
+  return undefined;
+}
+
+/**
+ * รวมค่าส่งของสินค้า + เงื่อนไขตามตัวเลือก ให้เหลือชุดเดียวที่เอาไปคิดเงินได้
+ * เงื่อนไขทับเฉพาะส่วนที่ตั้งไว้ — ตั้งแค่วิธีส่งขั้นต่ำ ตารางตามจำนวนก็ยังใช้ของกลาง
+ * (ตารางของเงื่อนไขมาเป็นชุด: ตาราง+ส่วนเกิน+วิธีส่งสำรอง ไม่ผสมกับของกลาง)
+ */
+export function shipProfileOf(p: ShipConfig | undefined, selections: Record<string, string> = {}): ShipProfile {
+  const base: ShipProfile = {
+    shippingId: p?.shippingId,
+    tiers: p?.shipTiers,
+    extra: p?.shipTierExtra,
+    overflowMethodId: p?.shipTierMethodId,
+    ruleKey: "",
+  };
+  const hit = matchShipRule(p?.shipRules, selections);
+  if (!hit) return base;
+  const { rule, index } = hit;
+  const ownTiers = (rule.shipTiers ?? []).filter((t) => t.minQty > 0).length > 0;
+  return {
+    shippingId: rule.shippingId || base.shippingId,
+    tiers: ownTiers ? rule.shipTiers : base.tiers,
+    extra: ownTiers ? rule.shipTierExtra : base.extra,
+    overflowMethodId: ownTiers ? rule.shipTierMethodId : base.overflowMethodId,
+    // ตารางคนละชุด = ต้องนับจำนวนแยกกลุ่ม (ใช้ตารางกลาง = รวมนับกับแถวอื่นเหมือนเดิม)
+    ruleKey: ownTiers ? `r${index}` : "",
+    ruleLabel: `${rule.label}: ${selections[rule.label]}`,
+  };
+}
 
 /** ค่าส่งของสินค้าตัวเดียวตามจำนวนที่สั่ง (0 = ไม่ได้ตั้งตาราง/จำนวนไม่ถึงขั้นแรก) */
 export function qtyShipFee(qty: number, tiers: ShipTier[] | undefined, extraPerPiece?: number): number {

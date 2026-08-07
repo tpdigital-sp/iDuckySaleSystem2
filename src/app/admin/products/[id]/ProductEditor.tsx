@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -17,6 +17,8 @@ import {
   type ProductOption,
   type ProductReview,
   type ProductSeo,
+  type ShipOptionRule,
+  type ShipTier,
 } from "@/lib/products";
 import { autoSeoOf } from "@/lib/auto-seo";
 import { BULK_ASK_DEFAULT } from "@/lib/products";
@@ -146,6 +148,8 @@ type Draft = {
   shipTierExtra: string;
   /** เกินขั้นสุดท้าย เปลี่ยนเป็นวิธีส่งนี้ (id จากตั้งค่าระบบ) */
   shipTierMethodId: string;
+  /** ค่าส่งเฉพาะบางตัวเลือก (ขนาดมีผลกับกล่อง) — ว่าง = ใช้ค่ากลางของสินค้าอย่างเดียว */
+  shipRules: DraftShipRule[];
   /** ข้อควรทราบ/เงื่อนไขงาน (แสดงหน้าสินค้า) */
   terms: string;
   /** บังคับแนบลายก่อนสั่ง (ค่าเริ่มต้น = บังคับ) */
@@ -154,6 +158,16 @@ type Draft = {
   reviewed?: ProductReview;
   /** ปิดการมองเห็นบนหน้าร้าน (ตั้งจากหน้ารายการสินค้า) — พกผ่านดราฟต์ไว้ ไม่ให้หายตอนบันทึก */
   hidden?: boolean;
+};
+
+/** เงื่อนไขค่าส่งตามตัวเลือก 1 ข้อ — เช่น "ขนาด = A2 → ขั้นต่ำส่งแมส" */
+type DraftShipRule = DraftShipTiers & {
+  /** ชื่อกลุ่มตัวเลือก เช่น "ขนาด" */
+  label: string;
+  /** ค่าที่เข้าเงื่อนไข (ติ๊กได้หลายค่า) */
+  choices: string[];
+  /** วิธีจัดส่งขั้นต่ำเมื่อเข้าเงื่อนไขนี้ ('' = ใช้ของสินค้า) */
+  shippingId: string;
 };
 
 type DraftCustom = {
@@ -362,6 +376,15 @@ function toDraft(p: Product): Draft {
     shipTierMode: p.shipTierMethodId ? "method" : p.shipTierExtra && p.shipTierExtra > 0 ? "extra" : "last",
     shipTierExtra: p.shipTierExtra != null && p.shipTierExtra > 0 ? String(p.shipTierExtra) : "",
     shipTierMethodId: p.shipTierMethodId ?? "",
+    shipRules: (p.shipRules ?? []).map((r) => ({
+      label: r.label ?? "",
+      choices: [...(r.choices ?? [])],
+      shippingId: r.shippingId ?? "",
+      tiers: (r.shipTiers ?? []).map((t) => ({ minQty: String(t.minQty), price: String(t.price) })),
+      mode: r.shipTierMethodId ? "method" : r.shipTierExtra && r.shipTierExtra > 0 ? "extra" : "last",
+      extra: r.shipTierExtra != null && r.shipTierExtra > 0 ? String(r.shipTierExtra) : "",
+      methodId: r.shipTierMethodId ?? "",
+    })),
     terms: p.terms ?? "",
     artworkRequired: p.artworkRequired !== false,
     reviewed: p.reviewed,
@@ -495,6 +518,155 @@ function MoveBtns({
       <button type="button" onClick={onDown} disabled={downDisabled} className={base} title={`เลื่อน${what}ลง`} aria-label={`เลื่อน${what}ลง`}>
         ▼
       </button>
+    </div>
+  );
+}
+
+/** ค่าตารางค่าส่งตามจำนวน 1 ชุด (ใช้ทั้งของสินค้าและของเงื่อนไขตามตัวเลือก) */
+type DraftShipTiers = {
+  tiers: { minQty: string; price: string }[];
+  /** เกินขั้นสุดท้ายทำยังไง: ใช้ราคาขั้นสุดท้าย / คิดเพิ่มต่อชิ้น / เปลี่ยนวิธีส่ง */
+  mode: "last" | "extra" | "method";
+  extra: string;
+  methodId: string;
+};
+
+const EMPTY_SHIP_TIERS: DraftShipTiers = { tiers: [], mode: "last", extra: "", methodId: "" };
+
+/** DraftShipTiers → ฟิลด์ค่าส่งของ Product (ตัดแถวว่าง + ค่าที่โหมดปัจจุบันไม่ได้ใช้ทิ้ง) */
+function buildShipTiers(v: DraftShipTiers): {
+  shipTiers?: ShipTier[];
+  shipTierExtra?: number;
+  shipTierMethodId?: string;
+} {
+  const rows = v.tiers
+    .map((t) => ({ minQty: Math.floor(Number(t.minQty)), price: Number(t.price) }))
+    .filter((t) => t.minQty > 0 && t.price >= 0)
+    .sort((a, b) => a.minQty - b.minQty);
+  if (!rows.length) return {};
+  return {
+    shipTiers: rows,
+    shipTierExtra: v.mode === "extra" && Number(v.extra) > 0 ? Number(v.extra) : undefined,
+    shipTierMethodId: v.mode === "method" && v.methodId ? v.methodId : undefined,
+  };
+}
+
+/** ตัวแก้ตารางค่าส่งตามจำนวนชิ้น — ใช้ซ้ำได้ทั้งระดับสินค้าและระดับตัวเลือก */
+function ShipTierBox({
+  title,
+  hint,
+  value,
+  onChange,
+  methods,
+}: {
+  title: string;
+  hint: ReactNode;
+  value: DraftShipTiers;
+  onChange: (v: DraftShipTiers) => void;
+  methods: ShippingMethod[];
+}) {
+  const set = (p: Partial<DraftShipTiers>) => onChange({ ...value, ...p });
+  return (
+    <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <label className="text-xs font-semibold text-slate-600">{title}</label>
+        <button
+          type="button"
+          onClick={() => set({ tiers: [...value.tiers, { minQty: "", price: "" }] })}
+          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600 hover:border-amber-300"
+        >
+          ＋ เพิ่มขั้น
+        </button>
+      </div>
+      <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{hint}</p>
+
+      {value.tiers.length > 0 && (
+        <div className="mt-2 space-y-1.5">
+          {value.tiers.map((t, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-xs text-slate-500">สั่งตั้งแต่</span>
+              <input
+                value={t.minQty}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/\D/g, "");
+                  set({ tiers: value.tiers.map((x, xi) => (xi === i ? { ...x, minQty: v } : x)) });
+                }}
+                inputMode="numeric"
+                placeholder="1"
+                className="w-20 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
+              />
+              <span className="text-xs text-slate-500">ชิ้น → ค่าส่ง</span>
+              <input
+                value={t.price}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/[^\d.]/g, "");
+                  set({ tiers: value.tiers.map((x, xi) => (xi === i ? { ...x, price: v } : x)) });
+                }}
+                inputMode="decimal"
+                placeholder="50"
+                className="w-24 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
+              />
+              <span className="text-xs text-slate-500">บาท</span>
+              <button
+                type="button"
+                onClick={() => set({ tiers: value.tiers.filter((_, xi) => xi !== i) })}
+                className="rounded-lg px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50"
+                aria-label="ลบขั้นนี้"
+              >
+                ลบ
+              </button>
+            </div>
+          ))}
+
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2 text-sm">
+            <span className="text-xs text-slate-500">เกินขั้นสุดท้ายแล้ว</span>
+            <select
+              value={value.mode}
+              onChange={(e) => set({ mode: e.target.value as DraftShipTiers["mode"] })}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
+            >
+              <option value="last">ใช้ราคาขั้นสุดท้ายไปเรื่อย ๆ</option>
+              <option value="extra">คิดเพิ่มต่อชิ้น (ระบุราคา)</option>
+              <option value="method">เปลี่ยนเป็นวิธีส่งอื่น (เช่น ส่งแมส)</option>
+            </select>
+
+            {value.mode === "extra" && (
+              <>
+                <span className="text-xs text-slate-500">ชิ้นละ</span>
+                <input
+                  value={value.extra}
+                  onChange={(e) => set({ extra: e.target.value.replace(/[^\d.]/g, "") })}
+                  inputMode="decimal"
+                  placeholder="10"
+                  className="w-24 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
+                />
+                <span className="text-xs text-slate-500">บาท</span>
+              </>
+            )}
+
+            {value.mode === "method" && (
+              <>
+                <select
+                  value={value.methodId}
+                  onChange={(e) => set({ methodId: e.target.value })}
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
+                >
+                  <option value="">— เลือกวิธีส่ง —</option>
+                  {methods.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} · {m.price} บาท
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[11px] text-slate-400">
+                  สั่งเกินขั้นสุดท้ายเมื่อไหร่ ระบบบังคับวิธีส่งนี้ให้เลย (ไม่คิดตามตาราง) ·
+                  ยังไม่มีวิธีส่งแมส? ไปเพิ่มที่ ตั้งค่าระบบ → การจัดส่ง ก่อน
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1747,6 +1919,19 @@ export default function ProductEditor({ product }: { product: Product }) {
         draft.shipTierMode === "method" && draft.shipTierMethodId && draft.shipTiers.some((t) => Number(t.minQty) > 0)
           ? draft.shipTierMethodId
           : undefined,
+      // 🎛️ ค่าส่งเฉพาะบางตัวเลือก — เก็บเฉพาะข้อที่เลือกกลุ่ม+ค่า และตั้งค่าส่งไว้จริง
+      shipRules: (() => {
+        const list: ShipOptionRule[] = draft.shipRules
+          .filter((r) => r.label.trim() && r.choices.length > 0)
+          .map((r) => ({
+            label: r.label.trim(),
+            choices: [...r.choices],
+            shippingId: r.shippingId || undefined,
+            ...buildShipTiers(r),
+          }))
+          .filter((r) => r.shippingId || r.shipTiers?.length);
+        return list.length ? list : undefined;
+      })(),
       terms: draft.terms.trim() || undefined,
       artworkRequired: draft.artworkRequired ? undefined : false, // undefined = บังคับ (ค่าเริ่มต้น)
       reviewed: draft.reviewed,
@@ -3903,108 +4088,163 @@ export default function ProductEditor({ product }: { product: Product }) {
         </div>
 
         {/* 📦 ของหนักที่ค่าส่งขึ้นกับจำนวน (เช่น แผ่นหินรองแก้ว) — ตั้งเป็นขั้นบันได */}
-        <div className="mt-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+        <div className="mt-3">
+          <ShipTierBox
+            title="📦 ค่าส่งตามจำนวนชิ้น (ของหนัก)"
+            hint={
+              <>
+                เช่น แผ่นหินรองแก้ว: สั่ง 1 แผ่น = 50 บาท · ตั้งแต่ 5 แผ่น = 90 บาท — ระบบคิดจากจำนวนที่ลูกค้าสั่งเอง
+                แล้วใช้<strong className="text-slate-500">ค่าที่แพงกว่า</strong>ระหว่างวิธีส่งที่เลือกกับค่าตามจำนวนนี้ ·
+                ไม่ตั้ง = คิดตามวิธีส่งปกติ
+              </>
+            }
+            value={{
+              tiers: draft.shipTiers,
+              mode: draft.shipTierMode,
+              extra: draft.shipTierExtra,
+              methodId: draft.shipTierMethodId,
+            }}
+            onChange={(v) =>
+              patch({ shipTiers: v.tiers, shipTierMode: v.mode, shipTierExtra: v.extra, shipTierMethodId: v.methodId })
+            }
+            methods={shipMethods}
+          />
+        </div>
+
+        {/* 🎛️ ขนาด/วัสดุมีผลกับกล่อง — ตั้งค่าส่งแยกตามตัวเลือกที่ลูกค้าเลือกได้ */}
+        <div className="mt-3 rounded-xl bg-amber-50/60 p-3 ring-1 ring-amber-200">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <label className="text-xs font-semibold text-slate-600">📦 ค่าส่งตามจำนวนชิ้น (ของหนัก)</label>
+            <label className="text-xs font-semibold text-slate-600">🎛️ ค่าส่งเฉพาะบางตัวเลือก (ขนาดมีผลกับค่าส่ง)</label>
             <button
               type="button"
-              onClick={() => patch({ shipTiers: [...draft.shipTiers, { minQty: "", price: "" }] })}
-              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600 hover:border-amber-300"
+              onClick={() => patch({ shipRules: [...draft.shipRules, { label: "", choices: [], shippingId: "", ...EMPTY_SHIP_TIERS }] })}
+              className="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-bold text-amber-700 hover:bg-amber-100"
             >
-              ＋ เพิ่มขั้น
+              ＋ เพิ่มเงื่อนไข
             </button>
           </div>
-          <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
-            เช่น แผ่นหินรองแก้ว: สั่ง 1 แผ่น = 50 บาท · ตั้งแต่ 5 แผ่น = 90 บาท — ระบบคิดจากจำนวนที่ลูกค้าสั่งเอง
-            แล้วใช้<strong className="text-slate-500">ค่าที่แพงกว่า</strong>ระหว่างวิธีส่งที่เลือกกับค่าตามจำนวนนี้ ·
-            ไม่ตั้ง = คิดตามวิธีส่งปกติ
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+            สินค้าชิ้นเดียวกันแต่คนละขนาด กล่องคนละใบ — เช่น &ldquo;ขนาด = A2, A1 → ขั้นต่ำ ส่งแมส&rdquo; ·
+            ลูกค้าเลือกตัวเลือกที่เข้าเงื่อนไขเมื่อไหร่ ระบบใช้ค่าของข้อนั้นแทนค่ากลางด้านบน ·
+            เข้าหลายข้อ = ใช้<strong className="text-slate-600">ข้อบนสุด</strong>
           </p>
 
-          {draft.shipTiers.length > 0 && (
-            <div className="mt-2 space-y-1.5">
-              {draft.shipTiers.map((t, i) => (
-                <div key={i} className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className="text-xs text-slate-500">สั่งตั้งแต่</span>
-                  <input
-                    value={t.minQty}
-                    onChange={(e) => {
-                      const v = e.target.value.replace(/\D/g, "");
-                      patch({ shipTiers: draft.shipTiers.map((x, xi) => (xi === i ? { ...x, minQty: v } : x)) });
-                    }}
-                    inputMode="numeric"
-                    placeholder="1"
-                    className="w-20 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
-                  />
-                  <span className="text-xs text-slate-500">ชิ้น → ค่าส่ง</span>
-                  <input
-                    value={t.price}
-                    onChange={(e) => {
-                      const v = e.target.value.replace(/[^\d.]/g, "");
-                      patch({ shipTiers: draft.shipTiers.map((x, xi) => (xi === i ? { ...x, price: v } : x)) });
-                    }}
-                    inputMode="decimal"
-                    placeholder="50"
-                    className="w-24 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
-                  />
-                  <span className="text-xs text-slate-500">บาท</span>
-                  <button
-                    type="button"
-                    onClick={() => patch({ shipTiers: draft.shipTiers.filter((_, xi) => xi !== i) })}
-                    className="rounded-lg px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50"
-                    aria-label="ลบขั้นนี้"
-                  >
-                    ลบ
-                  </button>
-                </div>
-              ))}
+          {draft.shipRules.length === 0 ? (
+            <p className="mt-2 rounded-xl bg-white/70 p-3 text-center text-[11px] text-slate-400">
+              ยังไม่มีเงื่อนไข — ทุกตัวเลือกใช้ค่าส่งกลางด้านบนเหมือนกันหมด
+            </p>
+          ) : (
+            <div className="mt-2 space-y-2">
+              {draft.shipRules.map((r, ri) => {
+                const group = draft.options.find((o) => o.label === r.label);
+                const setR = (p: Partial<DraftShipRule>) =>
+                  patch({ shipRules: draft.shipRules.map((x, j) => (j === ri ? { ...x, ...p } : x)) });
+                return (
+                  <div key={ri} className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
+                    <div className="mb-2 flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                      <span className="text-xs font-bold text-slate-400">ข้อ {ri + 1}</span>
+                      <span className="text-xs font-semibold">เมื่อเลือก</span>
+                      <select
+                        value={r.label}
+                        onChange={(e) => setR({ label: e.target.value, choices: [] })}
+                        className="min-w-0 max-w-full rounded-xl bg-white px-2 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                        aria-label={`กลุ่มตัวเลือกของเงื่อนไขค่าส่งข้อที่ ${ri + 1}`}
+                      >
+                        <option value="">— เลือกกลุ่ม —</option>
+                        {draft.options.map((o) => (
+                          <option key={o.label} value={o.label}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      {group && (
+                        <>
+                          <span className="text-xs font-semibold">= ตัวไหนก็ได้ใน:</span>
+                          <button
+                            type="button"
+                            onClick={() => setR({ choices: group.choices.map((c) => c.name).filter(Boolean) })}
+                            className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500 hover:bg-slate-200"
+                          >
+                            ทั้งหมด
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setR({ choices: [] })}
+                            className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500 hover:bg-slate-200"
+                          >
+                            ล้าง
+                          </button>
+                          <span className="text-[11px] text-slate-400">ติ๊กแล้ว {r.choices.length}</span>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => patch({ shipRules: draft.shipRules.filter((_, j) => j !== ri) })}
+                        className="ml-auto shrink-0 rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-rose-500 hover:bg-rose-100"
+                      >
+                        🗑 ลบ
+                      </button>
+                    </div>
 
-              <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2 text-sm">
-                <span className="text-xs text-slate-500">เกินขั้นสุดท้ายแล้ว</span>
-                <select
-                  value={draft.shipTierMode}
-                  onChange={(e) => patch({ shipTierMode: e.target.value as "last" | "extra" | "method" })}
-                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
-                >
-                  <option value="last">ใช้ราคาขั้นสุดท้ายไปเรื่อย ๆ</option>
-                  <option value="extra">คิดเพิ่มต่อชิ้น (ระบุราคา)</option>
-                  <option value="method">เปลี่ยนเป็นวิธีส่งอื่น (เช่น ส่งแมส)</option>
-                </select>
+                    {group && (
+                      <div className="mb-2 flex max-h-40 flex-wrap gap-1.5 overflow-y-auto rounded-xl bg-slate-50 p-2 ring-1 ring-slate-100">
+                        {group.choices.map((c) => {
+                          const checked = r.choices.includes(c.name);
+                          return (
+                            <button
+                              key={c.name}
+                              type="button"
+                              onClick={() =>
+                                setR({
+                                  choices: checked ? r.choices.filter((n) => n !== c.name) : [...r.choices, c.name],
+                                })
+                              }
+                              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                                checked
+                                  ? "bg-teal-600 text-white shadow"
+                                  : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-teal-50"
+                              }`}
+                            >
+                              {checked ? "✓ " : ""}
+                              {c.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
 
-                {draft.shipTierMode === "extra" && (
-                  <>
-                    <span className="text-xs text-slate-500">ชิ้นละ</span>
-                    <input
-                      value={draft.shipTierExtra}
-                      onChange={(e) => patch({ shipTierExtra: e.target.value.replace(/[^\d.]/g, "") })}
-                      inputMode="decimal"
-                      placeholder="10"
-                      className="w-24 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <label className="text-xs font-semibold text-slate-600">🚚 ค่าส่งขั้นต่ำเมื่อเข้าเงื่อนไขนี้</label>
+                      <select
+                        value={r.shippingId}
+                        onChange={(e) => setR({ shippingId: e.target.value })}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                        aria-label={`ค่าส่งขั้นต่ำของเงื่อนไขข้อที่ ${ri + 1}`}
+                      >
+                        <option value="">— ใช้ค่าของสินค้า —</option>
+                        {shipMethods.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} · {m.price} บาท
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <ShipTierBox
+                      title="📦 ค่าส่งตามจำนวนชิ้นของตัวเลือกนี้"
+                      hint={
+                        <>
+                          ไม่ตั้ง = ใช้ตารางกลางด้านบน · ตั้งไว้ = ระบบ<strong className="text-slate-500">นับจำนวนแยก</strong>
+                          จากขนาดอื่น แล้วคิดตามตารางนี้ (ขนาดใหญ่กล่องคนละใบ)
+                        </>
+                      }
+                      value={r}
+                      onChange={(v) => setR(v)}
+                      methods={shipMethods}
                     />
-                    <span className="text-xs text-slate-500">บาท</span>
-                  </>
-                )}
-
-                {draft.shipTierMode === "method" && (
-                  <>
-                    <select
-                      value={draft.shipTierMethodId}
-                      onChange={(e) => patch({ shipTierMethodId: e.target.value })}
-                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
-                    >
-                      <option value="">— เลือกวิธีส่ง —</option>
-                      {shipMethods.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name} · {m.price} บาท
-                        </option>
-                      ))}
-                    </select>
-                    <span className="text-[11px] text-slate-400">
-                      สั่งเกินขั้นสุดท้ายเมื่อไหร่ ระบบบังคับวิธีส่งนี้ให้เลย (ไม่คิดตามตาราง) ·
-                      ยังไม่มีวิธีส่งแมส? ไปเพิ่มที่ ตั้งค่าระบบ → การจัดส่ง ก่อน
-                    </span>
-                  </>
-                )}
-              </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
