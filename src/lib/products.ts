@@ -41,6 +41,13 @@ export interface ProductOption {
   /** รูปแบบแสดงบนหน้าร้าน: 'dropdown' = เมนูเลือก (เหมาะกับตัวเลือกเยอะ) · ไม่ระบุ/'pills' = ปุ่มแยก (ค่าเริ่มต้น) */
   display?: "pills" | "dropdown";
   /**
+   * "แสดงเมื่อ" — โชว์กลุ่มนี้เฉพาะตอนกลุ่มอื่นเลือกค่าที่กำหนด · ไม่ตรง = ซ่อนทั้งกลุ่ม
+   * (ไม่ถามลูกค้า ไม่คิดเงิน ไม่ติดไปกับตะกร้า/ออเดอร์)
+   * เช่น กลุ่ม "สีตะขอ C" แสดงเมื่อ ตะขอ = C เท่านั้น — ต่างจากกฎเงื่อนไขที่กรองได้แค่ "ตัวเลือกในกลุ่ม"
+   * ไม่ตั้ง = แสดงตลอด
+   */
+  showWhen?: { label: string; choices: string[] };
+  /**
    * ราคาบวกเพิ่ม (+฿) ของกลุ่มนี้ มีผลเมื่อสั่งตั้งแต่กี่ชิ้นขึ้นไป
    * เช่น อะไหล่เข็มกลัด ตั้ง 11 = ช่วงปลีก 1-10 ชิ้น ราคารวมอะไหล่แล้ว (ไม่บวกเพิ่ม)
    * สั่ง 11 ชิ้นขึ้นไปค่อยคิดเพิ่มต่อชิ้นตามตัวเลือก · ไม่ตั้ง = บวกเพิ่มทุกจำนวน
@@ -71,6 +78,16 @@ export interface ProductOption {
     /** จำกัดเฉพาะเมื่อกลุ่มอื่นเลือกค่าเหล่านี้ (เช่น ความหนาอะคริลิค = 3mm) — ไม่ตั้ง = ทุกกรณี */
     when?: { label: string; choices: string[] };
   };
+}
+
+/**
+ * กลุ่มนี้ต้องโชว์ให้ลูกค้าเลือกไหม ณ ตัวเลือกชุดนี้ (ดู ProductOption.showWhen)
+ * ซ่อนอยู่ = ไม่แสดงในหน้าสินค้า ไม่คิดราคา และไม่ติดไปกับตะกร้า/ออเดอร์
+ */
+export function optionVisible(opt: ProductOption, selections: Record<string, string>): boolean {
+  const s = opt.showWhen;
+  if (!s?.label || !s.choices?.length) return true;
+  return s.choices.includes(selections[s.label]);
 }
 
 /** ราคาบวกเพิ่มของกลุ่มนี้ใช้กับจำนวนนี้ไหม (ต่ำกว่าเกณฑ์ = รวมในราคาแล้ว) */
@@ -2128,6 +2145,7 @@ export function unitPriceFor(
     // กลุ่มตัวเลือกที่ไม่ใช่แกนตาราง (เช่น อะไหล่พิเศษ) บวกเพิ่มต่อหน่วยตาม extra ของตัวที่เลือก
     // (กลุ่มที่ตั้ง extraFromQty ไว้ ต่ำกว่าเกณฑ์ = ราคารวมแล้ว ไม่บวก)
     for (const opt of product.options) {
+      if (!optionVisible(opt, selections)) continue; // กลุ่มที่ถูกซ่อนอยู่ = ไม่คิดเงิน
       base += smallQtyFeeOf(opt, selections, qty); // ค่าธรรมเนียมช่วงปลีก (ถ้าตั้งไว้)
       if (m.driverLabels.includes(opt.label)) continue;
       if (!optionExtraApplies(opt, qty)) continue;
@@ -2137,6 +2155,7 @@ export function unitPriceFor(
   }
   let price = product.price;
   for (const opt of product.options) {
+    if (!optionVisible(opt, selections)) continue; // กลุ่มที่ถูกซ่อนอยู่ = ไม่คิดเงิน
     price += smallQtyFeeOf(opt, selections, qty);
     if (!optionExtraApplies(opt, qty)) continue;
     price += choiceExtraOf(opt, selections, selections[opt.label]);

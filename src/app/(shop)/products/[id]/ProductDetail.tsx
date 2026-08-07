@@ -16,6 +16,7 @@ import {
   matrixChoiceAvailable,
   maxDesignsFor,
   optionExtraApplies,
+  optionVisible,
   priceMatrixKey,
   priceRange,
   PRODUCTS,
@@ -505,7 +506,12 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
       );
       addItem(product.id, { ...kept, [custom.label]: `${cW}×${cH} ${custom.unit}`, ...extra }, qty);
     } else {
-      addItem(product.id, { ...effectiveWithDesigns, ...extra }, qty);
+      // กลุ่มที่ถูกซ่อนอยู่ (showWhen ไม่ตรง) ไม่ต้องติดไปกับตะกร้า/ออเดอร์ — ลูกค้าไม่ได้เลือกเอง
+      const hidden = product.options.filter((o) => !optionVisible(o, effective)).map((o) => o.label);
+      const shown = Object.fromEntries(
+        Object.entries(effectiveWithDesigns).filter(([k]) => !hidden.includes(k))
+      );
+      addItem(product.id, { ...shown, ...extra }, qty);
     }
     setNote("");
     setArtLink("");
@@ -900,7 +906,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
             </p>
           )}
           <div className="mt-4 space-y-3">
-            {product.options.map((opt) => {
+            {/* กลุ่มที่ตั้ง "แสดงเมื่อ" ไว้ และเงื่อนไขยังไม่ตรง → ไม่ต้องโชว์ (เช่น สีตะขอของแบบที่ไม่ได้เลือก) */}
+            {product.options.filter((opt) => optionVisible(opt, effective)).map((opt) => {
               // ล็อกกลุ่มนี้เพราะใช้ขนาดกำหนดเองอยู่ และแอดมินไม่ได้เปิดให้เลือกต่อ
               const customLocked = useCustom && !(custom?.keepOptions ?? []).includes(opt.label);
               const allowedByRules = allowedChoices(product, effective, opt.label);

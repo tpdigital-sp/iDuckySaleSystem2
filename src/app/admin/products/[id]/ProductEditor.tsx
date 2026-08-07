@@ -51,6 +51,9 @@ type DraftOption = {
   freeChoices?: string[];
   freeWhenLabel?: string;
   freeWhenChoices?: string[];
+  /** "แสดงเมื่อ" — โชว์ทั้งกลุ่มเฉพาะตอนกลุ่มอื่นเลือกค่าที่กำหนด (ว่าง = แสดงตลอด) */
+  showWhenLabel?: string;
+  showWhenChoices?: string[];
 };
 type DraftImage = { emoji: string; gradient: string; label: string; src?: string };
 type DraftBody = {
@@ -271,6 +274,9 @@ function toDraft(p: Product): Draft {
             freeWhenChoices: [...o.freeWhen.when.choices],
           }
         : {}),
+      ...(o.showWhen
+        ? { showWhenLabel: o.showWhen.label, showWhenChoices: [...o.showWhen.choices] }
+        : {}),
     })),
     rules: (p.rules ?? []).map((r) => ({
       whenLabel: r.when.label,
@@ -402,6 +408,9 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
         : {}),
       ...((o.freeChoices ?? []).length && o.freeWhenLabel && (o.freeWhenChoices ?? []).length
         ? { freeWhen: { choices: [...o.freeChoices!], when: { label: o.freeWhenLabel, choices: [...o.freeWhenChoices!] } } }
+        : {}),
+      ...(o.showWhenLabel && (o.showWhenChoices ?? []).length
+        ? { showWhen: { label: o.showWhenLabel, choices: [...o.showWhenChoices!] } }
         : {}),
     }))
     .filter((o) => o.label && o.choices.length > 0);
@@ -952,6 +961,62 @@ export default function ProductEditor({ product }: { product: Product }) {
                 );
               })}
             </div>
+          )}
+        </div>
+        {/* ── แสดงเมื่อ: โชว์ทั้งกลุ่มเฉพาะตอนกลุ่มอื่นเลือกค่านี้ (เช่น สีตะขอ C โผล่เฉพาะตอนเลือกตะขอ C) ── */}
+        <div className="mt-1.5 border-t border-dashed border-slate-200 pt-1.5">
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="text-[11px] font-bold text-slate-500" title="ซ่อนทั้งกลุ่มไว้ จนกว่ากลุ่มอื่นจะเลือกค่าที่กำหนด">
+              👁 แสดงเมื่อ
+            </span>
+            <select
+              value={opt.showWhenLabel ?? ""}
+              onChange={(e) => setOpt({ showWhenLabel: e.target.value, showWhenChoices: [] })}
+              className="rounded-lg bg-white px-2 py-1 text-[11px] ring-1 ring-slate-200 focus:outline-none"
+              aria-label="กลุ่มเงื่อนไขที่ทำให้กลุ่มนี้แสดง"
+            >
+              <option value="">— แสดงตลอด —</option>
+              {draft.options.filter((o) => o.label && o.label !== opt.label).map((o) => (
+                <option key={o.label} value={o.label}>{o.label}</option>
+              ))}
+            </select>
+            {draft.options.find((o) => o.label === opt.showWhenLabel)?.choices.filter((c) => c.name.trim()).map((c) => {
+              const sel = (opt.showWhenChoices ?? []).includes(c.name);
+              return (
+                <button
+                  key={c.name}
+                  type="button"
+                  onClick={() =>
+                    setOpt({
+                      showWhenChoices: sel
+                        ? (opt.showWhenChoices ?? []).filter((n) => n !== c.name)
+                        : [...(opt.showWhenChoices ?? []), c.name],
+                    })
+                  }
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold transition ${
+                    sel ? "bg-indigo-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
+                  }`}
+                >
+                  {sel ? "✓ " : ""}
+                  {c.name.length > 22 ? c.name.slice(0, 22) + "…" : c.name}
+                </button>
+              );
+            })}
+          </div>
+          {opt.showWhenLabel && (
+            <p className="mt-1 rounded-lg bg-white/70 px-2 py-1.5 text-[10px] leading-relaxed text-slate-500 ring-1 ring-slate-200">
+              📖 อ่านว่า: “กลุ่ม <b className="font-bold text-indigo-700">{opt.label}</b> จะโผล่ให้ลูกค้าเลือก
+              <b className="font-bold"> เฉพาะเมื่อ {opt.showWhenLabel} = ค่าที่ติ๊กไว้</b> · กรณีอื่น
+              <b className="font-bold"> ซ่อนทั้งกลุ่ม</b> (ไม่ถาม ไม่คิดเงิน ไม่ติดไปกับออเดอร์)”
+              <br />
+              ตัวอย่างที่ใช้จริง: กลุ่ม “สีตะขอ C” แสดงเมื่อ ตะขอ = C เท่านั้น
+              {(opt.showWhenChoices ?? []).length === 0 && (
+                <>
+                  <br />
+                  <b className="font-bold text-rose-500">⚠️ ยังไม่ได้ติ๊กค่าไหนเลย — ตอนนี้ยังแสดงตลอด</b>
+                </>
+              )}
+            </p>
           )}
         </div>
       </div>
