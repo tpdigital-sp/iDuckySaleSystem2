@@ -187,7 +187,10 @@ export function cartQtyShipFee(
   for (const it of items) {
     const rows = (it.tiers ?? []).filter((t) => t.minQty > 0).sort((a, b) => a.minQty - b.minQty);
     const last = rows[rows.length - 1];
-    const m = it.overflowMethodId ? methods.find((x) => x.id === it.overflowMethodId) : undefined;
+    const m0 = it.overflowMethodId ? methods.find((x) => x.id === it.overflowMethodId) : undefined;
+    // ⚠️ วิธีส่งราคา 0 (มารับเอง/ส่งฟรี) ใช้เป็น "วิธีส่งตอนเกินขั้น" ไม่ได้ —
+    // ไม่งั้นสั่งเยอะ ๆ กลายเป็นส่งฟรี (ร้านเสียค่าส่งเอง) · ตั้งพลาดไว้ = คิดตามตารางตามปกติแทน
+    const m = m0 && m0.price > 0 ? m0 : undefined;
     // เกินขั้นสุดท้าย + ตั้ง "เปลี่ยนเป็นวิธีส่ง" ไว้ → ไม่คิดตามตาราง ใช้วิธีนั้นแทน (ราคาวิธีคุมเอง)
     if (last && m && it.qty > last.minQty) {
       lines.push({ name: it.name, qty: it.qty, fee: 0, switchedTo: m });

@@ -652,15 +652,21 @@ function ShipTierBox({
                   className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
                 >
                   <option value="">— เลือกวิธีส่ง —</option>
-                  {methods.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} · {m.price} บาท
-                    </option>
-                  ))}
+                  {/* วิธีที่ราคา 0 (มารับเอง/ส่งฟรี) เลือกไม่ได้ — ตั้งแล้วสั่งเยอะจะกลายเป็นส่งฟรี */}
+                  {methods
+                    .filter((m) => m.price > 0)
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} · {m.price} บาท
+                      </option>
+                    ))}
                 </select>
                 <span className="text-[11px] text-slate-400">
                   สั่งเกินขั้นสุดท้ายเมื่อไหร่ ระบบบังคับวิธีส่งนี้ให้เลย (ไม่คิดตามตาราง) ·
                   ยังไม่มีวิธีส่งแมส? ไปเพิ่มที่ ตั้งค่าระบบ → การจัดส่ง ก่อน
+                  <strong className="block text-amber-600">
+                    ⚠️ &ldquo;มารับเอง&rdquo; ใช้ตรงนี้ไม่ได้ (ค่าส่ง 0 = สั่งเยอะแล้วกลายเป็นส่งฟรี)
+                  </strong>
                 </span>
               </>
             )}
