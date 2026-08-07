@@ -11,12 +11,43 @@ import { fetchSiteNav, visibleMenu, visibleMega, DEFAULT_SITE_NAV, type MegaGrou
 /* eslint-disable @next/next/no-img-element */
 import { MegaBar, MegaMobile } from "@/components/MegaMenu";
 
+/**
+ * ไอคอนเส้นบาง ๆ ชุดเดียวกันทั้งเมนูบัญชี (เดิมใช้อีโมจิคนละสไตล์ 🏠🧾👤🚪 ดูไม่เป็นชุดเดียวกัน)
+ * ใช้ currentColor เพื่อให้เปลี่ยนสีตามสถานะ hover ได้
+ */
+const ICON = {
+  home: "M3 10.5 12 3l9 7.5M5.5 9.5V20h13V9.5M9.5 20v-6h5v6",
+  receipt: "M6 3h12v18l-2.5-1.6L13 21l-2.5-1.6L8 21l-2-1.6V3Zm3 5h6M9 12h6M9 16h4",
+  user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0",
+  logout: "M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4M6 12h11",
+} as const;
+
 /** เมนูในดรอปดาวน์บัญชี */
 const ACCOUNT_MENU = [
-  { href: "/account", label: "บัญชีของฉัน", icon: "🏠" },
-  { href: "/account/orders", label: "ประวัติการสั่งซื้อ", icon: "🧾" },
-  { href: "/account/profile", label: "ข้อมูลส่วนตัว", icon: "👤" },
+  { href: "/account", label: "บัญชีของฉัน", icon: ICON.home, hint: "ภาพรวม · คูปองของฉัน" },
+  { href: "/account/orders", label: "ประวัติการสั่งซื้อ", icon: ICON.receipt, hint: "ติดตามงาน · สั่งซ้ำ" },
+  { href: "/account/profile", label: "ข้อมูลส่วนตัว", icon: ICON.user, hint: "ชื่อ · เบอร์ · ที่อยู่" },
 ];
+
+/** ไอคอนเส้นขนาดเดียวกันทุกอัน */
+function LineIcon({ d, className = "" }: { d: string; className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"
+      strokeLinejoin="round" className={`h-[18px] w-[18px] ${className}`} aria-hidden="true">
+      <path d={d} />
+    </svg>
+  );
+}
+
+/**
+ * ป้ายบอกวิธีเข้าสู่ระบบ — บัญชีที่ล็อกอินด้วย LINE จะได้อีเมลปลอมยาว ๆ (line_u039af…)
+ * โชว์ให้ลูกค้าเห็นก็ไม่มีประโยชน์ เลยแปลงเป็นข้อความที่อ่านรู้เรื่องแทน
+ */
+function loginLabel(email: string): { text: string; line: boolean } {
+  const e = (email || "").trim();
+  const viaLine = /^line[_-]/i.test(e) || !e.includes("@");
+  return viaLine ? { text: "เข้าสู่ระบบด้วย LINE", line: true } : { text: e, line: false };
+}
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -116,32 +147,54 @@ export default function Navbar() {
                   👤
                 </button>
                 {acctOpen && (
-                  <div
-                    role="menu"
-                    className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-2xl bg-white py-1 shadow-xl ring-1 ring-sky-100"
-                  >
-                    <div className="border-b border-sky-50 px-4 py-2">
-                      <p className="truncate text-sm font-bold text-[#173A6B]">{customer.name || "สมาชิก"}</p>
-                      <p className="truncate text-[11px] text-[#4A6A96]">{customer.email}</p>
+                  <div role="menu" className="acct-pop">
+                    {/* หัวการ์ด: ตัวอักษรแรกของชื่อ + ชื่อ + ป้ายบอกว่าล็อกอินมาทางไหน */}
+                    <div className="acct-head">
+                      <span className="acct-ava">{(customer.name || "ส").trim().charAt(0).toUpperCase()}</span>
+                      <span className="acct-who">
+                        <span className="acct-name">{customer.name || "สมาชิก"}</span>
+                        {(() => {
+                          const l = loginLabel(customer.email);
+                          return (
+                            <span className={`acct-chip${l.line ? " line" : ""}`} title={customer.email}>
+                              {l.line && <span className="dot" />}
+                              {l.text}
+                            </span>
+                          );
+                        })()}
+                      </span>
                     </div>
-                    {ACCOUNT_MENU.map((m) => (
-                      <Link
-                        key={m.href}
-                        href={m.href}
-                        role="menuitem"
-                        className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-[#4A6A96] transition hover:bg-sky-50"
-                      >
-                        <span className="text-base">{m.icon}</span> {m.label}
-                      </Link>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={logout}
-                      role="menuitem"
-                      className="flex w-full items-center gap-2.5 border-t border-sky-50 px-4 py-2.5 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
-                    >
-                      <span className="text-base">🚪</span> ออกจากระบบ
-                    </button>
+
+                    <div className="acct-sep" />
+                    <div className="acct-list">
+                      {ACCOUNT_MENU.map((m) => (
+                        <Link key={m.href} href={m.href} role="menuitem" className="acct-item">
+                          <span className="acct-ico">
+                            <LineIcon d={m.icon} />
+                          </span>
+                          <span className="acct-txt">
+                            <span className="acct-lb">{m.label}</span>
+                            <span className="acct-hint">{m.hint}</span>
+                          </span>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+                            strokeLinecap="round" strokeLinejoin="round" className="acct-arrow" aria-hidden="true">
+                            <path d="m9 6 6 6-6 6" />
+                          </svg>
+                        </Link>
+                      ))}
+                    </div>
+
+                    <div className="acct-sep" />
+                    <div className="acct-list">
+                      <button type="button" onClick={logout} role="menuitem" className="acct-item out">
+                        <span className="acct-ico">
+                          <LineIcon d={ICON.logout} />
+                        </span>
+                        <span className="acct-txt">
+                          <span className="acct-lb">ออกจากระบบ</span>
+                        </span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
