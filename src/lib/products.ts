@@ -38,8 +38,14 @@ export interface ProductOption {
    * choices ที่เก็บไว้เป็นสำเนาสำรอง (snapshot) เผื่อคลังถูกลบ · ไม่มี = กลุ่มอิสระ (พิมพ์เอง)
    */
   presetId?: string;
-  /** รูปแบบแสดงบนหน้าร้าน: 'dropdown' = เมนูเลือก (เหมาะกับตัวเลือกเยอะ) · ไม่ระบุ/'pills' = ปุ่มแยก (ค่าเริ่มต้น) */
-  display?: "pills" | "dropdown";
+  /**
+   * รูปแบบแสดงบนหน้าร้าน:
+   * - ไม่ระบุ/'pills' = ปุ่มแยก (ค่าเริ่มต้น) — เลือกได้ 1 อย่าง
+   * - 'dropdown' = เมนูเลือก (เหมาะกับตัวเลือกเยอะ) — เลือกได้ 1 อย่าง
+   * - 'multi' = ติ๊กเลือกได้หลายอย่าง (เช่น อุปกรณ์เสริม/ลูกเล่นที่สั่งพร้อมกันได้) — เลือก 0 ถึงหลายอย่าง
+   *   ค่าที่เลือกเก็บรวมเป็นข้อความเดียวคั่นด้วย MULTI_SEP · +฿ คิดรวมทุกตัวที่ติ๊ก
+   */
+  display?: "pills" | "dropdown" | "multi";
   /**
    * "แสดงเมื่อ" — โชว์กลุ่มนี้เฉพาะตอนกลุ่มอื่นเลือกค่าที่กำหนด · ไม่ตรง = ซ่อนทั้งกลุ่ม
    * (ไม่ถามลูกค้า ไม่คิดเงิน ไม่ติดไปกับตะกร้า/ออเดอร์)
@@ -80,6 +86,42 @@ export interface ProductOption {
   };
 }
 
+/** ตัวคั่นค่าของกลุ่ม "เลือกได้หลายอย่าง" (display: 'multi') เมื่อเก็บลง selections */
+export const MULTI_SEP = " + ";
+
+/** กลุ่มนี้ให้ลูกค้าติ๊กเลือกได้หลายอย่างไหม */
+export function isMultiOption(opt: ProductOption): boolean {
+  return opt.display === "multi";
+}
+
+/** แยกค่าที่เก็บรวมไว้กลับเป็นรายชื่อตัวเลือก ("ซิปใน + สายสะพาย" → ["ซิปใน","สายสะพาย"]) */
+export function splitMulti(value: string | undefined): string[] {
+  return (value ?? "").split(MULTI_SEP).map((s) => s.trim()).filter(Boolean);
+}
+
+/** รวมรายชื่อตัวเลือกที่ติ๊กไว้เป็นข้อความเดียว (ว่าง = ไม่ได้เลือกอะไรเลย) */
+export function joinMulti(names: string[]): string {
+  return names.join(MULTI_SEP);
+}
+
+/** ตัวเลือกที่เลือกอยู่ของกลุ่มนี้ — กลุ่มปกติได้ 1 ตัว · กลุ่ม multi ได้ 0 ถึงหลายตัว */
+export function selectedNames(opt: ProductOption, selections: Record<string, string>): string[] {
+  const cur = selections[opt.label];
+  if (!cur) return [];
+  return isMultiOption(opt) ? splitMulti(cur) : [cur];
+}
+
+/**
+ * ค่าที่เลือกอยู่ของกลุ่มหนึ่ง เข้าเงื่อนไข "ต้องเป็นหนึ่งใน wanted" ไหม
+ * รองรับกลุ่ม multi ด้วย — ติ๊กไว้หลายตัว ถ้ามีตัวใดตรงก็ถือว่าเข้าเงื่อนไข
+ * (เช็คค่าตรง ๆ ก่อนเสมอ กันชื่อตัวเลือกที่มี " + " อยู่ในตัวถูกแยกผิด)
+ */
+function valueMatchesAny(current: string | undefined, wanted: string[]): boolean {
+  if (!current) return false;
+  if (wanted.includes(current)) return true;
+  return splitMulti(current).some((v) => wanted.includes(v));
+}
+
 /**
  * กลุ่มนี้ต้องโชว์ให้ลูกค้าเลือกไหม ณ ตัวเลือกชุดนี้ (ดู ProductOption.showWhen)
  * ซ่อนอยู่ = ไม่แสดงในหน้าสินค้า ไม่คิดราคา และไม่ติดไปกับตะกร้า/ออเดอร์
@@ -87,7 +129,7 @@ export interface ProductOption {
 export function optionVisible(opt: ProductOption, selections: Record<string, string>): boolean {
   const s = opt.showWhen;
   if (!s?.label || !s.choices?.length) return true;
-  return s.choices.includes(selections[s.label]);
+  return valueMatchesAny(selections[s.label], s.choices);
 }
 
 /** ราคาบวกเพิ่มของกลุ่มนี้ใช้กับจำนวนนี้ไหม (ต่ำกว่าเกณฑ์ = รวมในราคาแล้ว) */
@@ -107,8 +149,15 @@ export function choiceExtraOf(
   const extra = opt.choices.find((c) => c.name === choiceName)?.extra ?? 0;
   if (!extra) return 0;
   const f = opt.freeWhen;
-  if (f && f.choices.includes(choiceName) && f.when.choices.includes(selections[f.when.label])) return 0;
+  if (f && f.choices.includes(choiceName) && valueMatchesAny(selections[f.when.label], f.when.choices)) return 0;
   return extra;
+}
+
+/**
+ * +฿ รวมของกลุ่มนี้ตามที่ลูกค้าเลือกไว้ — กลุ่มปกติ = ตัวที่เลือก · กลุ่ม multi = บวกทุกตัวที่ติ๊ก
+ */
+export function groupExtraOf(opt: ProductOption, selections: Record<string, string>): number {
+  return selectedNames(opt, selections).reduce((sum, name) => sum + choiceExtraOf(opt, selections, name), 0);
 }
 
 /**
@@ -122,10 +171,11 @@ export function smallQtyFeeOf(
 ): number {
   const f = opt.smallQtyFee;
   if (!f || !(f.fee > 0) || !(f.upToQty > 0) || qty > f.upToQty) return 0;
-  const chosen = selections[opt.label];
-  if (!chosen) return 0;
-  if ((f.freeChoices ?? []).includes(chosen)) return 0;
-  if (f.when && !f.when.choices.includes(selections[f.when.label])) return 0;
+  const chosen = selectedNames(opt, selections);
+  if (!chosen.length) return 0;
+  // กลุ่มติ๊กหลายอย่าง: ติ๊กแต่ตัวที่ยกเว้นไว้ = ไม่คิด · มีตัวที่ไม่ยกเว้นแม้ตัวเดียว = คิดค่าธรรมเนียม
+  if (chosen.every((n) => (f.freeChoices ?? []).includes(n))) return 0;
+  if (f.when && !valueMatchesAny(selections[f.when.label], f.when.choices)) return 0;
   return f.fee;
 }
 
@@ -179,7 +229,7 @@ export interface OptionRule {
 export function ruleWhenMatches(rule: OptionRule, selections: Record<string, string>): boolean {
   const cur = selections[rule.when.label];
   if (!cur) return false;
-  return rule.when.choices?.length ? rule.when.choices.includes(cur) : cur === rule.when.choice;
+  return valueMatchesAny(cur, rule.when.choices?.length ? rule.when.choices : [rule.when.choice]);
 }
 
 /** ช่วงจำนวน (tier) สำหรับราคาขั้นบันได */
@@ -2105,6 +2155,11 @@ export function priceRange(p: Product): { min: number; max: number } {
   for (const opt of p.options) {
     if (opt.choices.length === 0) continue;
     const extras = opt.choices.map((c) => c.extra ?? 0);
+    if (isMultiOption(opt)) {
+      // ติ๊กได้หลายอย่าง: ไม่ติ๊กเลย = ไม่บวก · ติ๊กครบ = บวกทุกตัว
+      max += extras.reduce((s, e) => s + Math.max(0, e), 0);
+      continue;
+    }
     min += Math.min(...extras);
     max += Math.max(...extras);
   }
@@ -2149,7 +2204,7 @@ export function unitPriceFor(
       base += smallQtyFeeOf(opt, selections, qty); // ค่าธรรมเนียมช่วงปลีก (ถ้าตั้งไว้)
       if (m.driverLabels.includes(opt.label)) continue;
       if (!optionExtraApplies(opt, qty)) continue;
-      base += choiceExtraOf(opt, selections, selections[opt.label]);
+      base += groupExtraOf(opt, selections);
     }
     return base;
   }
@@ -2158,7 +2213,7 @@ export function unitPriceFor(
     if (!optionVisible(opt, selections)) continue; // กลุ่มที่ถูกซ่อนอยู่ = ไม่คิดเงิน
     price += smallQtyFeeOf(opt, selections, qty);
     if (!optionExtraApplies(opt, qty)) continue;
-    price += choiceExtraOf(opt, selections, selections[opt.label]);
+    price += groupExtraOf(opt, selections);
   }
   return price;
 }
@@ -2203,6 +2258,11 @@ export function resolveSelections(
     const view = { ...selections, ...resolved };
     const allowed = allowedChoices(product, view, opt.label);
     const current = selections[opt.label];
+    if (isMultiOption(opt)) {
+      // ติ๊กได้หลายอย่าง: เก็บเฉพาะตัวที่ยังอนุญาต · ไม่เหลือเลยก็ได้ (กลุ่มนี้ไม่บังคับเลือก)
+      resolved[opt.label] = joinMulti(splitMulti(current).filter((n) => allowed.includes(n)));
+      continue;
+    }
     resolved[opt.label] = current && allowed.includes(current) ? current : allowed[0];
   }
   return resolved;

@@ -30,7 +30,11 @@ import {
   unitPriceFor,
   needsStockCheck,
   artworkIsRequired,
+  isMultiOption,
+  splitMulti,
+  joinMulti,
   type Product,
+  type ProductOption,
 } from "@/lib/products";
 import { LINE_URL } from "@/components/LineButton";
 import { useCart } from "@/lib/cart-context";
@@ -84,6 +88,16 @@ function termLines(raw: string): string[] {
   return out.filter(Boolean);
 }
 
+/**
+ * ตัวเลือกตั้งต้นตอนเปิดหน้าสินค้า — กลุ่มปกติเริ่มที่ตัวแรก
+ * กลุ่ม "ติ๊กได้หลายอย่าง" เริ่มที่ยังไม่ติ๊กอะไรเลย (ของเสริม ไม่ควรบวกเงินให้เอง)
+ */
+function initialSelections(options: ProductOption[]): Record<string, string> {
+  return Object.fromEntries(
+    options.map((o) => [o.label, isMultiOption(o) ? "" : (o.choices[0]?.name ?? "")])
+  );
+}
+
 export default function ProductDetail({ product: initialProduct }: { product: Product }) {
   const [product, setProduct] = useState<Product>(initialProduct);
   const category = getCategory(product.category);
@@ -113,7 +127,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
   const [added, setAdded] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [selections, setSelections] = useState<Record<string, string>>(() =>
-    Object.fromEntries(initialProduct.options.map((o) => [o.label, o.choices[0].name]))
+    initialSelections(initialProduct.options)
   );
   // งานกำหนดขนาดเอง (custom)
   const [useCustom, setUseCustom] = useState(false);
@@ -142,7 +156,7 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     fetchProduct(initialProduct.id).then((m) => {
       if (active && m) {
         setProduct(m);
-        setSelections(Object.fromEntries(m.options.map((o) => [o.label, o.choices[0].name])));
+        setSelections(initialSelections(m.options));
         setImageIndex(0);
       }
     });
@@ -314,6 +328,8 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
       let changed = false;
       const next = { ...sel };
       for (const opt of product.options) {
+        // กลุ่มติ๊กหลายอย่างไม่ใช่แกนตารางราคา (ห้ามไว้ในหลังบ้าน) — ไม่ต้องสลับให้
+        if (isMultiOption(opt)) continue;
         const cur = next[opt.label];
         if (cur && !matrixChoiceAvailable(matrix, opt.label, cur)) {
           const alt = opt.choices.map((c) => c.name).find((n) => matrixChoiceAvailable(matrix, opt.label, n));
@@ -508,8 +524,9 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     } else {
       // กลุ่มที่ถูกซ่อนอยู่ (showWhen ไม่ตรง) ไม่ต้องติดไปกับตะกร้า/ออเดอร์ — ลูกค้าไม่ได้เลือกเอง
       const hidden = product.options.filter((o) => !optionVisible(o, effective)).map((o) => o.label);
+      // ค่าว่าง = กลุ่มติ๊กหลายอย่างที่ลูกค้าไม่ได้ติ๊กอะไรเลย — ไม่ต้องโชว์เป็นบรรทัดเปล่าในตะกร้า/ออเดอร์
       const shown = Object.fromEntries(
-        Object.entries(effectiveWithDesigns).filter(([k]) => !hidden.includes(k))
+        Object.entries(effectiveWithDesigns).filter(([k, v]) => !hidden.includes(k) && v !== "")
       );
       addItem(product.id, { ...shown, ...extra }, qty);
     }
@@ -914,7 +931,10 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
               // ตัดตัวที่ไม่มีราคาขายในเรทที่เลือกอยู่ (แอดมินล้างแถวทิ้ง) — ตัดหมดแล้วคงชุดเดิมไว้กันหน้าพัง
               const byRate = matrix ? allowedByRules.filter((n) => matrixChoiceAvailable(matrix, opt.label, n)) : allowedByRules;
               const allowed = byRate.length > 0 ? byRate : allowedByRules;
-              const locked = allowed.length === 1;
+              const multi = isMultiOption(opt);
+              // กลุ่มติ๊กหลายอย่างไม่ล็อกอัตโนมัติ — เหลือตัวเลือกเดียวก็ยังต้องให้ติ๊ก/ไม่ติ๊กเองได้
+              const locked = !multi && allowed.length === 1;
+              const picked = multi ? splitMulti(effective[opt.label]) : [];
               return (
                 <div
                   key={opt.label}
@@ -923,9 +943,60 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
                 >
                   <span className="mb-1 block text-[13px] font-bold text-stone-700">
                     {opt.label}:{" "}
-                    <span className="font-semibold text-amber-600">{effective[opt.label]}</span>
+                    <span className={multi && !picked.length ? "font-semibold text-stone-400" : "font-semibold text-amber-600"}>
+                      {multi ? (picked.length ? picked.join(", ") : "ไม่เลือก") : effective[opt.label]}
+                    </span>
+                    {multi && (
+                      <span className="ml-1 rounded-full bg-teal-50 px-1.5 py-0.5 text-[10px] font-bold text-teal-700 ring-1 ring-teal-100">
+                        ☑ เลือกได้หลายอย่าง
+                      </span>
+                    )}
                   </span>
-                  {locked ? (
+                  {multi ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {opt.choices
+                        .filter((c) => allowed.includes(c.name))
+                        .map((c) => {
+                          const on = picked.includes(c.name);
+                          return (
+                            <button
+                              key={c.name}
+                              type="button"
+                              role="checkbox"
+                              aria-checked={on}
+                              onClick={() =>
+                                setSelections((s) => {
+                                  const cur = splitMulti(s[opt.label]);
+                                  // เก็บตามลำดับตัวเลือกในกลุ่มเสมอ — ติ๊กสลับไปมาแล้วข้อความ (และ key ตะกร้า) ไม่เปลี่ยนตาม
+                                  const next = opt.choices
+                                    .map((x) => x.name)
+                                    .filter((n) => (n === c.name ? !on : cur.includes(n)));
+                                  return { ...s, [opt.label]: joinMulti(next) };
+                                })
+                              }
+                              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition ${
+                                on
+                                  ? "bg-amber-400 text-white shadow"
+                                  : "bg-white text-stone-600 ring-1 ring-amber-200 hover:bg-amber-50"
+                              }`}
+                            >
+                              <span
+                                className={`grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] leading-none ${
+                                  on ? "border-white bg-white/25 text-white" : "border-stone-300 text-transparent"
+                                }`}
+                                aria-hidden
+                              >
+                                ✓
+                              </span>
+                              {c.name}
+                              {optionExtraApplies(opt, qty) && choiceExtraOf(opt, effective, c.name) > 0
+                                ? ` +${formatPrice(choiceExtraOf(opt, effective, c.name))}`
+                                : ""}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  ) : locked ? (
                     <div>
                       <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1.5 text-[13px] font-semibold text-stone-500 ring-1 ring-stone-200">
                         🔒 {effective[opt.label]}

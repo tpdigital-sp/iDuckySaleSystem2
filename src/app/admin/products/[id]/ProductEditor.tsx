@@ -38,7 +38,8 @@ type DraftOption = {
   label: string;
   choices: DraftChoice[];
   presetId?: string;
-  display: "pills" | "dropdown";
+  /** pills/dropdown = เลือกได้ 1 อย่าง · multi = ติ๊กได้หลายอย่าง */
+  display: "pills" | "dropdown" | "multi";
   /** +฿ ของกลุ่มนี้มีผลเมื่อสั่งตั้งแต่กี่ชิ้นขึ้นไป (ว่าง = ทุกจำนวน) */
   extraFromQty?: string;
   /** ค่าธรรมเนียมช่วงสั่งน้อย เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น (ยกเว้นบางตัวเลือก) */
@@ -392,7 +393,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             : { name: c.name.trim() };
         }),
       ...(o.presetId ? { presetId: o.presetId } : {}),
-      ...(o.display === "dropdown" ? { display: "dropdown" as const } : {}),
+      ...(o.display === "dropdown" || o.display === "multi" ? { display: o.display } : {}),
       ...(Number(o.extraFromQty) > 0 ? { extraFromQty: Math.floor(Number(o.extraFromQty)) } : {}),
       ...(Number(o.smallFee) > 0 && Number(o.smallUpTo) > 0
         ? {
@@ -759,6 +760,52 @@ export default function ProductEditor({ product }: { product: Product }) {
 
   // ลิงก์ตามที่ตั้งในดราฟต์ — slug ภาษาไทยโชว์ตรง ๆ อ่านรู้เรื่อง (เบราว์เซอร์ encode ให้เองตอนเปิด)
   const draftSlug = slugifyProductName(draft.slug);
+
+  /**
+   * ปุ่มเลือก "แสดงหน้าร้าน" ของกลุ่มตัวเลือก — ปุ่มแยก / dropdown (เลือกได้ 1 อย่าง) · ☑ ติ๊กหลายอย่าง
+   * กลุ่มที่เป็นแกนตารางราคา (คอลัมน์) ติ๊กหลายอย่างไม่ได้ — ราคาต่อคอลัมน์จะหาไม่เจอ
+   */
+  function displayModeRow(gi: number, opt: DraftOption) {
+    const isDriver = draft.pricing.driverLabels.includes(opt.label);
+    const MODES = [
+      { id: "pills", text: "▭ ปุ่มแยก", tip: "ปุ่มเรียงกัน เลือกได้ 1 อย่าง" },
+      { id: "dropdown", text: "▾ dropdown", tip: "เมนูเลื่อน เลือกได้ 1 อย่าง (เหมาะกับตัวเลือกเยอะ)" },
+      {
+        id: "multi",
+        text: "☑ ติ๊กหลายอย่าง",
+        tip: isDriver
+          ? "กลุ่มนี้เป็นคอลัมน์ของตารางราคา — ต้องเลือกได้อย่างเดียว ถ้าจะให้ติ๊กหลายอย่างต้องเอาออกจากคอลัมน์ตารางก่อน"
+          : "ลูกค้าติ๊กได้หลายอย่างพร้อมกัน (หรือไม่ติ๊กเลย) · +฿ บวกรวมทุกตัวที่ติ๊ก",
+      },
+    ] as const;
+    return (
+      <div className="inline-flex overflow-hidden rounded-lg bg-white ring-1 ring-slate-200">
+        {MODES.map((mode) => {
+          const disabled = mode.id === "multi" && isDriver;
+          return (
+            <button
+              key={mode.id}
+              type="button"
+              disabled={disabled}
+              title={mode.tip}
+              onClick={() =>
+                patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, display: mode.id } : o)) })
+              }
+              className={`px-2.5 py-1 text-[11px] font-semibold transition ${
+                opt.display === mode.id
+                  ? "bg-slate-900 text-white"
+                  : disabled
+                    ? "bg-white text-slate-300"
+                    : "bg-white text-slate-500 hover:bg-slate-50"
+              }`}
+            >
+              {mode.text}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
 
   /**
    * แถวตั้ง "ค่าธรรมเนียมช่วงสั่งน้อย" ของกลุ่มตัวเลือก (เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น)
@@ -2329,22 +2376,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                 <>
                 <div className="mt-2 flex items-center gap-2">
                   <span className="text-[11px] font-semibold text-slate-400">แสดงหน้าร้าน:</span>
-                  <div className="inline-flex overflow-hidden rounded-lg ring-1 ring-slate-200 bg-white">
-                    {(["pills", "dropdown"] as const).map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() =>
-                          patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, display: mode } : o)) })
-                        }
-                        className={`px-2.5 py-1 text-[11px] font-semibold transition ${
-                          opt.display === mode ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
-                        }`}
-                      >
-                        {mode === "pills" ? "▭ ปุ่มแยก" : "▾ dropdown"}
-                      </button>
-                    ))}
-                  </div>
+                  {displayModeRow(gi, opt)}
                   <label
                     className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-slate-400"
                     title="ต่ำกว่าเกณฑ์นี้ ราคาถือว่ารวมตัวเลือกกลุ่มนี้แล้ว (ไม่บวก +฿) เช่น อะไหล่ตะขอ ใส่ 11 = ปลีก 1-10 ชิ้นรวมอะไหล่แล้ว"
@@ -2444,22 +2476,7 @@ export default function ProductEditor({ product }: { product: Product }) {
               <>
               <div className="mt-2 flex items-center gap-2">
                 <span className="text-[11px] font-semibold text-slate-400">แสดงหน้าร้าน:</span>
-                <div className="inline-flex overflow-hidden rounded-lg ring-1 ring-slate-200">
-                  {(["pills", "dropdown"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() =>
-                        patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, display: mode } : o)) })
-                      }
-                      className={`px-2.5 py-1 text-[11px] font-semibold transition ${
-                        opt.display === mode ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
-                      }`}
-                    >
-                      {mode === "pills" ? "▭ ปุ่มแยก" : "▾ dropdown"}
-                    </button>
-                  ))}
-                </div>
+                {displayModeRow(gi, opt)}
                 <label
                   className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-slate-400"
                   title="ต่ำกว่าเกณฑ์นี้ ราคาถือว่ารวมตัวเลือกกลุ่มนี้แล้ว (ไม่บวก +฿) เช่น อะไหล่ตะขอ ใส่ 11 = ปลีก 1-10 ชิ้นรวมอะไหล่แล้ว"
@@ -3097,17 +3114,30 @@ export default function ProductEditor({ product }: { product: Product }) {
                       )}
                       {draft.options.map((o) => {
                         const on = draft.pricing.driverLabels.includes(o.label);
+                        // กลุ่มติ๊กหลายอย่างเป็นคอลัมน์ไม่ได้ — ราคาต่อคอลัมน์อิงตัวเลือกเดียวเท่านั้น
+                        const multi = o.display === "multi";
                         return (
                           <button
                             key={o.label}
                             type="button"
+                            disabled={multi && !on}
+                            title={
+                              multi
+                                ? "กลุ่มนี้ตั้งเป็น ☑ ติ๊กหลายอย่าง — เป็นคอลัมน์ตารางราคาไม่ได้ (เปลี่ยนเป็นปุ่มแยก/dropdown ก่อน)"
+                                : undefined
+                            }
                             onClick={() => toggleDriver(o.label)}
                             className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                              on ? "bg-amber-500 text-white shadow" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-amber-50"
+                              on
+                                ? "bg-amber-500 text-white shadow"
+                                : multi
+                                  ? "bg-white text-slate-300 ring-1 ring-slate-100"
+                                  : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-amber-50"
                             }`}
                           >
                             {on ? "✓ " : ""}
                             {o.label}
+                            {multi ? " ☑" : ""}
                           </button>
                         );
                       })}
