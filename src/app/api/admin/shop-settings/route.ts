@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
+import { ROLE_ADMINISTRATOR } from "@/lib/permissions";
 import type { ShopPayment } from "@/lib/shop-settings";
 
 export const runtime = "nodejs";
@@ -20,6 +21,23 @@ export async function POST(req: Request) {
     p = (await req.json()) as ShopPayment;
   } catch {
     return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
+  }
+
+  /**
+   * ของอ่อนไหว (บัญชีรับเงินของร้าน · โค้ดเชื่อม Google) แก้ได้เฉพาะผู้ดูแลระบบ
+   * ตำแหน่งอื่นบันทึกแท็บอื่นได้ตามปกติ — ระบบคงค่าเดิมของ 2 ส่วนนี้ไว้ให้ (ไม่ใช่แค่ซ่อนช่องในหน้าจอ)
+   */
+  if (gate.actor.role !== ROLE_ADMINISTRATOR) {
+    const { data: cur } = await sb.from("products").select("data").eq("id", SHOP_PAYMENT_ID).maybeSingle();
+    const prev = (cur?.data as ShopPayment | undefined) ?? ({ banks: [] } as ShopPayment);
+    p = {
+      ...p,
+      banks: prev.banks ?? [],
+      promptpay: prev.promptpay,
+      promptpayName: prev.promptpayName,
+      note: prev.note,
+      seo: prev.seo,
+    };
   }
 
   // เก็บเป็นแถวพิเศษในตาราง products (category "__settings__" + id reserved กันชนสินค้าจริง)

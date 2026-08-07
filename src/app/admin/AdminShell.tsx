@@ -83,6 +83,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [perms, setPerms] = useState<Perm[]>([]);
   const [roleName, setRoleName] = useState("");
   const [userName, setUserName] = useState(""); // ชื่อคนที่ล็อกอินอยู่
+  const [isAdministrator, setIsAdministrator] = useState(false);
   // badge แจ้งจำนวนประเมินความพึงพอใจใหม่ที่ยังไม่ได้เปิดดู (นับต่อเครื่องด้วย localStorage)
   const [newRatings, setNewRatings] = useState(0);
 
@@ -213,6 +214,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       setPerms(s.perms ?? []);
       setRoleName(s.role ?? "");
       setUserName(s.name ?? "");
+      setIsAdministrator(!!s.isAdministrator);
       const ok = !s.configured || s.loggedIn;
       setAllowed(ok);
       // เก็บปลายทางเดิม (เช่น ลิงก์ลึก ?order=) ไว้ใน ?next= เพื่อพากลับหลังล็อกอิน
@@ -339,7 +341,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const nav = navFor(false);
 
   return (
-    <PermProvider value={{ perms, role: roleName, name: userName }}>
+    <PermProvider value={{ perms, role: roleName, name: userName, isAdministrator }}>
     <div className="flex min-h-screen bg-slate-50 text-slate-800">
       {/* แถบข้าง (เดสก์ท็อป) */}
       <aside

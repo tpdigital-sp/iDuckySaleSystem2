@@ -1,6 +1,7 @@
 "use client";
 
 import RequirePerm from "@/components/RequirePerm";
+import { useIsAdministrator } from "@/lib/perm-context";
 
 import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
@@ -185,8 +186,34 @@ type Tab = "shop" | "pay" | "ship" | "tier" | "welcome" | "roles" | "files" | "c
 
 const TAB_KEYS: Tab[] = ["shop", "pay", "ship", "tier", "welcome", "roles", "files", "cats", "google"];
 
+/** ป้ายบอกว่าหน้านี้/แท็บนี้เห็นได้เฉพาะผู้ดูแลระบบ */
+function AdminOnlyBadge({ className = "" }: { className?: string }) {
+  return (
+    <span
+      title="เฉพาะผู้ดูแลระบบ (Administrator) เท่านั้นที่เห็นและแก้ได้"
+      className={`inline-flex items-center gap-1 rounded-full bg-slate-900/85 px-2 py-0.5 text-[10px] font-bold text-white ${className}`}
+    >
+      🔒 ผู้ดูแลระบบ
+    </span>
+  );
+}
+
+/** ป้ายบอกว่าดูได้อย่างเดียว แก้ไม่ได้ */
+function ViewOnlyBadge({ className = "" }: { className?: string }) {
+  return (
+    <span
+      title="ตำแหน่งของคุณดูได้อย่างเดียว — แก้ไขได้เฉพาะผู้ดูแลระบบ"
+      className={`inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500 ${className}`}
+    >
+      👁 ดูอย่างเดียว
+    </span>
+  );
+}
+
 function AdminSettingsPageInner() {
   const [tab, setTab] = useState<Tab>("pay");
+  /** ผู้ดูแลระบบเท่านั้นที่แก้บัญชีร้าน/บทบาท และเห็นแท็บเชื่อม Google */
+  const isAdmin = useIsAdministrator();
   // เปิดแท็บตามลิงก์ได้ เช่น /admin/settings?tab=cats (ใช้จากผังหน้าแรกในเมนูหน้าร้าน)
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab") as Tab | null;
@@ -497,7 +524,7 @@ function AdminSettingsPageInner() {
             ["roles", "👥 บทบาท"],
             ["cats", "🗂 หมวดหมู่สินค้า"],
             ["files", "🧹 ล้างรูปเก่า"],
-            ["google", "🔍 Google & SEO"],
+            ...((isAdmin ? [["google", "🔍 Google & SEO"]] : []) as [Tab, string][]),
           ] as [Tab, string][]
         ).map(([k, label]) => (
           <button
@@ -512,6 +539,14 @@ function AdminSettingsPageInner() {
             }`}
           >
             {label}
+            {/* ป้ายบอกว่าแท็บนี้เฉพาะผู้ดูแลระบบ / ตำแหน่งอื่นดูได้อย่างเดียว */}
+            {k === "google" && <AdminOnlyBadge className="ml-1.5 align-middle" />}
+            {(k === "pay" || k === "roles") &&
+              (isAdmin ? (
+                <AdminOnlyBadge className="ml-1.5 align-middle" />
+              ) : (
+                <ViewOnlyBadge className="ml-1.5 align-middle" />
+              ))}
           </button>
         ))}
       </div>
@@ -553,7 +588,13 @@ function AdminSettingsPageInner() {
 
           {/* ══════ ชำระเงิน ══════ */}
           {tab === "pay" && (
-            <>
+            <fieldset disabled={!isAdmin} className={!isAdmin ? "opacity-95" : undefined}>
+              {!isAdmin && (
+                <p className="mt-4 rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                  👁 ตำแหน่งของคุณ<b className="mx-1">ดูได้อย่างเดียว</b>— บัญชีรับเงินของร้านแก้ได้เฉพาะผู้ดูแลระบบ
+                  (กันเลขบัญชีถูกเปลี่ยนโดยไม่ตั้งใจ)
+                </p>
+              )}
               <section className={`mt-4 p-5 ${card}`}>
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-semibold text-slate-800">🏦 บัญชีธนาคาร ({banks.length})</h2>
@@ -646,7 +687,7 @@ function AdminSettingsPageInner() {
                   />
                 </section>
               </div>
-            </>
+          </fieldset>
           )}
 
           {/* ══════ การจัดส่ง ══════ */}

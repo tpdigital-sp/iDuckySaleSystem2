@@ -43,9 +43,11 @@ interface SessionInfo {
   role?: string;
   /** สิทธิ์ที่ใช้ซ่อน/แสดงเมนูและปุ่ม (ของจริงบังคับที่ API) */
   perms?: Perm[];
+  /** เป็นผู้ดูแลระบบไหม — ใช้ซ่อนของที่อ่อนไหว (บัญชีร้าน · บทบาท · เชื่อม Google) */
+  isAdministrator?: boolean;
 }
 
-const EMPTY: SessionInfo = { configured: false, loggedIn: false, name: null, role: "", perms: [] };
+const EMPTY: SessionInfo = { configured: false, loggedIn: false, name: null, role: "", perms: [], isAdministrator: false };
 
 /**
  * แคชผลตรวจ session ไว้ 60 วิ — AdminShell เรียกทุกครั้งที่เปลี่ยนหน้า
