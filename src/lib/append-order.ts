@@ -34,29 +34,4 @@ export function clearAppendTarget() {
   localStorage.removeItem(KEY);
 }
 
-/** คีย์ของรายการในตะกร้าที่ลูกค้าเลือก "ส่งเข้าออเดอร์เดิม" (null = ยังไม่เคยเลือก → ถือว่าทั้งตะกร้า) */
-const PICKS_KEY = "iducky-append-picks-v1";
-
-export function getAppendPicks(): string[] | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(PICKS_KEY);
-    if (!raw) return null;
-    const arr = JSON.parse(raw) as string[];
-    return Array.isArray(arr) ? arr : null;
-  } catch {
-    return null;
-  }
-}
-
-export function setAppendPicks(keys: string[]) {
-  try {
-    localStorage.setItem(PICKS_KEY, JSON.stringify(keys));
-  } catch {}
-}
-
-export function clearAppendPicks() {
-  try {
-    localStorage.removeItem(PICKS_KEY);
-  } catch {}
-}
+/** ติ๊กเลือกรายการที่จะสั่ง → ย้ายไปอยู่ที่ lib/cart-select (ใช้ได้ทุกโหมด ไม่ใช่แค่ตอนสั่งเพิ่ม) */

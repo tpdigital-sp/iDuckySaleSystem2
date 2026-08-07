@@ -14,26 +14,27 @@ import {
 } from "@/lib/shop-settings";
 import { useCart } from "@/lib/cart-context";
 import ProductVisual from "@/components/ProductVisual";
-import { getAppendTarget, clearAppendTarget, setAppendPicks, getAppendPicks, clearAppendPicks, type AppendTarget } from "@/lib/append-order";
+import { getAppendTarget, clearAppendTarget, type AppendTarget } from "@/lib/append-order";
+import { getUnpicked, setUnpicked as saveUnpicked, clearUnpicked } from "@/lib/cart-select";
 import { getQuoteTarget, clearQuoteTarget, type QuoteTarget } from "@/lib/append-quote";
 import { cartQtyShipFee, pickShipping, shipProfileOf, shippingAllowed } from "@/lib/shipping-auto";
 
 const USE_BY_KEY = "ducky-use-by-date";
 
 export default function CartPage() {
-  const { items, subtotal: cartSubtotal, totalQty: cartQty, setQty, removeItem, clear, productOf } = useCart();
+  const { items, setQty, removeItem, clear, productOf } = useCart();
   const router = useRouter();
   // สั่งเป็นออเดอร์ใหม่ หรือเพิ่มเข้าออเดอร์เดิม (ลูกค้ากดมาจากหน้าออเดอร์)
   const [appendTo, setAppendTo] = useState<AppendTarget | null>(null);
-  /** รายการที่เลือกส่งเข้าออเดอร์เดิม (คีย์ของ cart item) — null = ยังไม่เคยเลือก (ถือว่าเลือกทุกอัน) */
-  const [picks, setPicks] = useState<string[] | null>(null);
+  /** รายการที่ลูกค้าเอาติ๊กออก (คีย์ของ cart item) — ที่เหลือ = สั่งรอบนี้ · ของที่เพิ่งหยิบเข้ามาถือว่าเลือกไว้เสมอ */
+  const [unpicked, setUnpicked] = useState<string[]>([]);
   // 📄 โหมดหยิบใส่ใบเสนอราคา (แอดมินกดมาจากหน้าใบเสนอราคา) — ของที่หยิบจะเข้าใบนั้น ไม่สร้างออเดอร์
   const [quoteTo, setQuoteTo] = useState<QuoteTarget | null>(null);
   const [quoteBusy, setQuoteBusy] = useState(false);
   const [quoteErr, setQuoteErr] = useState("");
   useEffect(() => {
     setAppendTo(getAppendTarget());
-    setPicks(getAppendPicks());
+    setUnpicked(getUnpicked());
     setQuoteTo(getQuoteTarget());
   }, []);
 
@@ -46,7 +47,7 @@ export default function CartPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: quoteTo.id,
-        items: items.map((i) => {
+        items: pickedItems.map((i) => {
           // แยกภาพลาย/ธงเช็คสต๊อกออกจากข้อความตัวเลือก (เหมือนตอน checkout) ไม่งั้น URL ยาวจะรกใบเสนอราคา
           const { "ภาพลายที่แนบ": artRaw, "รอเช็คสต๊อก": _bulk, ...restSel } = i.selections;
           const artworkUrls = (artRaw ?? "").split(" | ").map((u) => u.trim()).filter(Boolean);
@@ -64,21 +65,33 @@ export default function CartPage() {
     const j = await res.json().catch(() => ({}));
     setQuoteBusy(false);
     if (!res.ok) return setQuoteErr(j.error ?? "เพิ่มเข้าใบเสนอราคาไม่สำเร็จ");
-    clear();
+    // เอาเฉพาะที่โยนเข้าใบไปแล้วออกจากตะกร้า — ที่ไม่ได้ติ๊กยังอยู่ต่อ
+    pickedItems.forEach((i) => removeItem(i.key));
+    clearUnpicked();
+    setUnpicked([]);
     clearQuoteTarget();
     router.push(`/admin/quotes/${encodeURIComponent(quoteTo.id)}`);
   }
-  const isPicked = (key: string) => !appendTo || picks === null || picks.includes(key);
+  // ✅ ติ๊กเลือกเฉพาะรายการที่จะสั่งรอบนี้ — ยอดรวม/ค่าส่ง/ปุ่มสั่งซื้อ คิดจากที่ติ๊กไว้เท่านั้น
+  const isPicked = (key: string) => !unpicked.includes(key);
   const pickedItems = items.filter((i) => isPicked(i.key));
-  const subtotal = appendTo ? pickedItems.reduce((n, i) => n + i.unitPrice * i.qty + (i.extraFee ?? 0), 0) : cartSubtotal;
-  const totalQty = appendTo ? pickedItems.reduce((n, i) => n + i.qty, 0) : cartQty;
+  const allPicked = pickedItems.length === items.length;
+  const subtotal = pickedItems.reduce((n, i) => n + i.unitPrice * i.qty + (i.extraFee ?? 0), 0);
+  const totalQty = pickedItems.reduce((n, i) => n + i.qty, 0);
+  function commitUnpicked(next: string[]) {
+    setUnpicked(next);
+    saveUnpicked(next);
+  }
   function togglePick(key: string) {
-    setPicks((cur) => {
-      const base = cur ?? items.map((i) => i.key);
-      const next = base.includes(key) ? base.filter((k) => k !== key) : [...base, key];
-      setAppendPicks(next);
-      return next;
-    });
+    commitUnpicked(unpicked.includes(key) ? unpicked.filter((k) => k !== key) : [...unpicked, key]);
+  }
+  /** ติ๊กทั้งหมด / เอาออกทั้งหมด */
+  function togglePickAll() {
+    commitUnpicked(allPicked ? items.map((i) => i.key) : []);
+  }
+  function removePicked() {
+    pickedItems.forEach((i) => removeItem(i.key));
+    commitUnpicked(unpicked.filter((k) => !pickedItems.some((i) => i.key === k)));
   }
 
   // วันที่ต้องใช้งาน — เก็บไว้ให้หน้า checkout ส่งเข้าออเดอร์
@@ -127,7 +140,7 @@ export default function CartPage() {
       string,
       { name: string; qty: number; tiers?: ReturnType<typeof shipProfileOf>["tiers"]; extra?: number; overflowMethodId?: string }
     >();
-    for (const i of items) {
+    for (const i of pickedItems) {
       const p = productOf(i.productId);
       const prof = shipProfileOf(p, i.selections);
       const key = `${i.productId}|${prof.ruleKey}`;
@@ -154,7 +167,7 @@ export default function CartPage() {
     subtotal,
     requiredIds: [
       // ค่าส่งขั้นต่ำ — เอาตามตัวเลือกที่เลือกจริง (ขนาดใหญ่บังคับกล่องใหญ่ได้)
-      ...(items.map((i) => shipProfileOf(productOf(i.productId), i.selections).shippingId).filter(Boolean) as string[]),
+      ...(pickedItems.map((i) => shipProfileOf(productOf(i.productId), i.selections).shippingId).filter(Boolean) as string[]),
       ...qtyShip.forceIds,
     ],
   });
@@ -222,7 +235,10 @@ export default function CartPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 pt-6">
       <h1 className="text-2xl font-extrabold text-amber-950 md:text-3xl">
-        🛒 ตะกร้าสินค้า <span className="text-base font-semibold text-stone-400">({items.length} รายการ · {totalQty} ชิ้น)</span>
+        🛒 ตะกร้าสินค้า{" "}
+        <span className="text-base font-semibold text-stone-400">
+          ({items.length} รายการ · เลือกสั่ง {pickedItems.length} รายการ {totalQty} ชิ้น)
+        </span>
       </h1>
 
       {/* 📄 แอดมินกำลังหยิบของใส่ใบเสนอราคา — ไม่ต้องผ่านหน้าชำระเงิน โยนเข้าใบได้เลย */}
@@ -242,7 +258,7 @@ export default function CartPage() {
                 disabled={quoteBusy}
                 className="rounded-full bg-teal-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-teal-700 disabled:opacity-40"
               >
-                {quoteBusy ? "กำลังเพิ่ม…" : `➕ ใส่ในใบเสนอราคา (${items.length} รายการ)`}
+                {quoteBusy ? "กำลังเพิ่ม…" : `➕ ใส่ในใบเสนอราคา (${pickedItems.length} รายการ)`}
               </button>
               <button
                 type="button"
@@ -263,6 +279,31 @@ export default function CartPage() {
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
         {/* รายการสินค้า */}
         <div className="space-y-3">
+          {/* ✅ แถบเลือกรายการ — ติ๊กเฉพาะที่จะสั่งรอบนี้ ที่เหลือค้างไว้ในตะกร้า */}
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white px-4 py-2.5 shadow-sm ring-1 ring-amber-100">
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-bold text-stone-700">
+              <input
+                type="checkbox"
+                checked={allPicked}
+                onChange={togglePickAll}
+                className="h-5 w-5 accent-amber-500"
+              />
+              เลือกทั้งหมด
+            </label>
+            <span className="text-xs text-stone-400">
+              เลือกแล้ว <strong className="text-amber-700">{pickedItems.length}</strong>/{items.length} รายการ ·
+              ที่ไม่ติ๊กจะยังอยู่ในตะกร้า สั่งทีหลังได้
+            </span>
+            {pickedItems.length > 0 && (
+              <button
+                type="button"
+                onClick={removePicked}
+                className="ml-auto rounded-full px-3 py-1 text-xs font-bold text-stone-400 transition hover:bg-rose-50 hover:text-rose-600"
+              >
+                🗑 ลบที่เลือก
+              </button>
+            )}
+          </div>
           {items.map((item) => {
             const product = productOf(item.productId);
             if (!product) return null;
@@ -270,20 +311,22 @@ export default function CartPage() {
               <div
                 key={item.key}
                 className={`flex gap-4 rounded-3xl p-4 shadow-sm ring-1 transition ${
-                  appendTo && !isPicked(item.key) ? "bg-stone-50 opacity-60 ring-stone-200" : "bg-white ring-amber-100"
+                  isPicked(item.key) ? "bg-white ring-amber-100" : "bg-stone-50 opacity-60 ring-stone-200"
                 }`}
               >
-                {/* เลือกว่าจะส่งรายการนี้เข้าออเดอร์เดิมไหม (เห็นเฉพาะโหมดสั่งเพิ่ม) */}
-                {appendTo && (
-                  <label className="flex shrink-0 cursor-pointer items-start pt-1" title="ติ๊ก = ส่งรายการนี้เข้าออเดอร์เดิม">
-                    <input
-                      type="checkbox"
-                      checked={isPicked(item.key)}
-                      onChange={() => togglePick(item.key)}
-                      className="h-5 w-5 accent-sky-600"
-                    />
-                  </label>
-                )}
+                {/* ✅ ติ๊ก = สั่งรายการนี้รอบนี้ · เอาติ๊กออก = พักไว้ในตะกร้าก่อน */}
+                <label
+                  className="flex shrink-0 cursor-pointer items-start pt-1"
+                  title={appendTo ? "ติ๊ก = ส่งรายการนี้เข้าออเดอร์เดิม" : "ติ๊ก = สั่งรายการนี้"}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isPicked(item.key)}
+                    onChange={() => togglePick(item.key)}
+                    className="h-5 w-5 accent-amber-500"
+                    aria-label={`เลือกสั่ง ${product.name}`}
+                  />
+                </label>
                 {(() => {
                   // ลายที่ลูกค้าแนบ (เก็บมาในตัวเลือกเป็น url คั่นด้วย " | ") — โชว์ลายจริงแทนรูปสินค้า
                   const artUrls = String(item.selections["ภาพลายที่แนบ"] ?? "")
@@ -438,7 +481,7 @@ export default function CartPage() {
                   <strong className="block text-sm text-sky-800">➕ เพิ่มเข้าออเดอร์เดิม {appendTo.id}</strong>
                   ใช้ชื่อ/ที่อยู่เดิม · <strong className="text-emerald-700">ไม่คิดค่าส่งเพิ่ม</strong> เพราะส่งรวมกล่องเดียวกัน
                   <span className="mt-1 block font-bold text-sky-700">
-                    ติ๊กเลือกรายการที่จะส่งเข้าออเดอร์เดิมได้ — เลือกแล้ว {items.filter((i) => isPicked(i.key)).length}/{items.length} รายการ
+                    ติ๊กเลือกรายการที่จะส่งเข้าออเดอร์เดิมได้ — เลือกแล้ว {pickedItems.length}/{items.length} รายการ
                     <span className="block font-normal text-stone-500">รายการที่ไม่ติ๊กจะยังอยู่ในตะกร้า สั่งทีหลังได้</span>
                   </span>
                 </span>
@@ -447,9 +490,9 @@ export default function CartPage() {
                 type="button"
                 onClick={() => {
                   clearAppendTarget();
-                  clearAppendPicks();
+                  clearUnpicked();
                   setAppendTo(null);
-                  setPicks(null);
+                  setUnpicked([]);
                 }}
                 className="flex w-full cursor-pointer items-start gap-2 rounded-xl bg-white p-2.5 text-left ring-1 ring-stone-200 transition hover:ring-stone-300"
               >
@@ -596,12 +639,13 @@ export default function CartPage() {
           </div>
 
           {(() => {
-            // รายการที่จำนวนต่ำกว่าขั้นต่ำของเรทที่เลือก — กันหลุดไปหน้าชำระเงิน
-            const below = items.filter((it) => {
+            // รายการที่จำนวนต่ำกว่าขั้นต่ำของเรทที่เลือก — กันหลุดไปหน้าชำระเงิน (ดูเฉพาะที่ติ๊กจะสั่ง)
+            const below = pickedItems.filter((it) => {
               const p = productOf(it.productId);
               const r = p ? activeRate(p, it.selections) : undefined;
               return r?.minQty != null && it.qty < r.minQty;
             });
+            const nothingPicked = pickedItems.length === 0;
             return (
               <>
                 {below.length > 0 && (
@@ -609,13 +653,18 @@ export default function CartPage() {
                     ⚠️ มี {below.length} รายการที่จำนวนยังไม่ถึงขั้นต่ำของเรทราคาที่เลือก — เพิ่มจำนวนก่อนสั่งซื้อ
                   </p>
                 )}
+                {nothingPicked && (
+                  <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-2.5 text-xs font-bold leading-relaxed text-amber-800 ring-1 ring-amber-200">
+                    ☑️ ยังไม่ได้ติ๊กเลือกรายการที่จะสั่ง — ติ๊กอย่างน้อย 1 รายการก่อนนะครับ
+                  </p>
+                )}
                 <button
                   type="button"
                   onClick={() => router.push("/checkout")}
-                  disabled={below.length > 0}
+                  disabled={below.length > 0 || nothingPicked}
                   className="mt-5 w-full rounded-full bg-amber-400 px-6 py-3.5 text-base font-bold text-white shadow-lg transition hover:scale-[1.02] hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
                 >
-                  ✅ ยืนยันการสั่งซื้อ
+                  ✅ ยืนยันการสั่งซื้อ{allPicked ? "" : ` (${pickedItems.length} รายการ)`}
                 </button>
               </>
             );

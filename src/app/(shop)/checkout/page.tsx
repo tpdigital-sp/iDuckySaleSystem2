@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatPrice } from "@/lib/products";
 import { useCart } from "@/lib/cart-context";
-import { getAppendPicks, clearAppendPicks } from "@/lib/append-order";
+import { getUnpicked, clearUnpicked } from "@/lib/cart-select";
 import { useCustomer } from "@/lib/customer-context";
 import {
   fetchShopPayment,
@@ -34,13 +34,13 @@ interface Placed {
 }
 
 export default function CheckoutPage() {
-  const { items: allItems, productOf, clear, removeItem } = useCart();
-  /** โหมดสั่งเพิ่ม: ลูกค้าติ๊กเลือกได้ว่าจะส่งรายการไหนเข้าออเดอร์เดิม (ไม่เลือก = ทั้งตะกร้า) */
-  const [picks, setPicks] = useState<string[] | null>(null);
+  const { items: allItems, productOf, removeItem } = useCart();
+  /** รายการที่ลูกค้าเอาติ๊กออกในหน้าตะกร้า — ไม่เอาเข้าออเดอร์รอบนี้ (ยังค้างในตะกร้าต่อ) */
+  const [unpicked, setUnpicked] = useState<string[]>([]);
   useEffect(() => {
-    setPicks(getAppendPicks());
+    setUnpicked(getUnpicked());
   }, []);
-  const items = picks === null ? allItems : allItems.filter((i) => picks.includes(i.key));
+  const items = allItems.filter((i) => !unpicked.includes(i.key));
   const subtotal = items.reduce((sum, i) => sum + i.unitPrice * i.qty + (i.extraFee ?? 0), 0);
   const totalQty = items.reduce((sum, i) => sum + i.qty, 0);
   const { customer } = useCustomer();
@@ -322,9 +322,8 @@ export default function CheckoutPage() {
       clearAppendTarget();
       setAppendDone({ owed: res.owed ?? 0 });
       // เอาเฉพาะรายการที่ส่งเข้าออเดอร์เดิมออกจากตะกร้า — ที่ไม่ได้ติ๊กยังอยู่ให้สั่งทีหลัง
-      if (picks === null) clear();
-      else items.forEach((it) => removeItem(it.key));
-      clearAppendPicks();
+      items.forEach((it) => removeItem(it.key));
+      clearUnpicked();
       return;
     }
 
@@ -371,7 +370,9 @@ export default function CheckoutPage() {
     lines.push(`🔗 เช็คออเดอร์/ดูแบบงาน: ${orderUrl}`);
     if (res.coupon?.applied) localStorage.removeItem("ducky_coupon"); // คูปองถูกตัดใช้แล้ว
     setPlaced({ id: res.orderId, text: lines.join("\n"), total, url: orderUrl, key: res.key });
-    clear();
+    // เอาเฉพาะรายการที่สั่งไปออกจากตะกร้า — ที่ไม่ได้ติ๊กยังอยู่ให้สั่งรอบหน้า
+    items.forEach((it) => removeItem(it.key));
+    clearUnpicked();
   }
 
   function shareToLine(text: string) {
