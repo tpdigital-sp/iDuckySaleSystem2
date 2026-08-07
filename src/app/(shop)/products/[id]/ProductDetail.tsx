@@ -387,8 +387,10 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     const left = leftColRef.current;
     const side = sideColRef.current;
     if (!left || !side) return;
+    const wide = window.matchMedia("(min-width: 1024px)");
     const measure = () => {
-      if (!window.matchMedia("(min-width: 1024px)").matches) {
+      // จอเล็ก = เรียงลงมาคอลัมน์เดียวอยู่แล้ว ไม่มีช่องข้างให้เติม (และห้ามแทรกก่อนแผงสั่งซื้อ)
+      if (!wide.matches) {
         setFillGap(false);
         return;
       }
@@ -402,7 +404,9 @@ export default function ProductDetail({ product: initialProduct }: { product: Pr
     ro.observe(left);
     ro.observe(side);
     window.addEventListener("resize", measure);
+    wide.addEventListener("change", measure); // ข้ามเส้น lg ต้องสลับให้ทันเสมอ
     return () => {
+      wide.removeEventListener("change", measure);
       ro.disconnect();
       window.removeEventListener("resize", measure);
     };
