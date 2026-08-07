@@ -2120,11 +2120,26 @@ export default function ProductEditor({ product }: { product: Product }) {
                       upDisabled={gi === 0}
                       downDisabled={gi === draft.options.length - 1}
                     />
-                    <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-700">
-                      🔗 ลิงก์คลัง
-                    </span>
+                    {/* กดที่ป้าย = เปิดคลังตัวเลือกอันที่ลิงก์อยู่ (จะได้รู้ว่าลิงก์กับอะไร แก้ที่ไหน) */}
+                    <Link
+                      href={`/admin/options?id=${encodeURIComponent(opt.presetId ?? "")}`}
+                      target="_blank"
+                      title={`ลิงก์กับคลัง “${presets.find((p) => p.id === opt.presetId)?.label ?? opt.label}” (รหัส ${opt.presetId}) — กดเพื่อเปิดดู/แก้`}
+                      className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-700 transition hover:bg-sky-200"
+                    >
+                      🔗 ลิงก์คลัง ↗
+                    </Link>
                     <span className="text-sm font-bold text-slate-800">{opt.label}</span>
-                    <span className="text-xs text-slate-400">{opt.choices.length} ตัวเลือก</span>
+                    <span className="text-xs text-slate-400">
+                      {opt.choices.length} ตัวเลือก
+                      {/* บอกว่าตัวเลือกในกลุ่มนี้มีอะไรบ้าง (ตัวอย่าง 4 ตัวแรก) โดยไม่ต้องกางกลุ่ม */}
+                      {opt.choices.length > 0 && (
+                        <span className="ml-1 text-slate-300">
+                          · {opt.choices.slice(0, 4).map((c) => c.name).filter(Boolean).join(" · ")}
+                          {opt.choices.length > 4 ? " …" : ""}
+                        </span>
+                      )}
+                    </span>
                     {!presets.some((p) => p.id === opt.presetId) && (
                       <span className="text-xs font-semibold text-rose-500">คลังถูกลบ — ใช้สำเนาสำรอง</span>
                     )}

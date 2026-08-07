@@ -20,6 +20,8 @@ type Draft = OptionPreset & { _saving?: boolean; _dirty?: boolean };
 function AdminOptionsPageInner() {
   const [presets, setPresets] = useState<Draft[]>([]);
   const [usage, setUsage] = useState<Record<string, number>>({});
+  /** สินค้าที่ลิงก์คลังแต่ละอัน (ชื่อ+id) — ไว้ตอบว่า "คลังนี้ใครใช้อยู่บ้าง" */
+  const [usedBy, setUsedBy] = useState<Record<string, { id: string; name: string }[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(0);
@@ -36,16 +38,30 @@ function AdminOptionsPageInner() {
     setSelected(0);
     // นับว่าคลังแต่ละอันถูกใช้ (ลิงก์) กี่สินค้า
     const count: Record<string, number> = {};
+    const by: Record<string, { id: string; name: string }[]> = {};
     for (const prod of products)
       for (const o of prod.options ?? [])
-        if (o.presetId) count[o.presetId] = (count[o.presetId] ?? 0) + 1;
+        if (o.presetId) {
+          count[o.presetId] = (count[o.presetId] ?? 0) + 1;
+          (by[o.presetId] ??= []).push({ id: prod.id, name: prod.name });
+        }
     setUsage(count);
+    setUsedBy(by);
     setLoading(false);
   }
 
   useEffect(() => {
     refresh();
   }, []);
+
+  // เปิดคลังที่ระบุมาในลิงก์ได้เลย เช่น /admin/options?id=9 (มาจากปุ่ม "🔗 ลิงก์คลัง" ในหน้าสินค้า)
+  useEffect(() => {
+    if (!presets.length) return;
+    const want = new URLSearchParams(window.location.search).get("id");
+    if (!want) return;
+    const at = presets.findIndex((p) => p.id === want);
+    if (at >= 0) setSelected(at);
+  }, [presets]);
 
   function patch(i: number, next: Partial<Draft>) {
     setPresets((ps) => ps.map((p, j) => (j === i ? { ...p, ...next, _dirty: true } : p)));
@@ -366,6 +382,28 @@ function AdminOptionsPageInner() {
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-500 outline-none focus:border-amber-400"
                 />
               </label>
+
+              {/* คลังนี้ถูกใช้กับสินค้าตัวไหนบ้าง — กดชื่อเพื่อเปิดหน้าแก้ไขสินค้านั้นได้เลย */}
+              {(usedBy[sel.id] ?? []).length > 0 && (
+                <div className="mt-4 rounded-xl bg-emerald-50/60 p-3 ring-1 ring-emerald-100">
+                  <p className="text-[11px] font-bold text-emerald-800">
+                    🔗 ลิงก์อยู่กับสินค้า {usedBy[sel.id].length} ตัว — แก้คลังนี้ = เปลี่ยนทุกตัวพร้อมกัน
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {usedBy[sel.id].map((u) => (
+                      <Link
+                        key={u.id}
+                        href={`/admin/products/${u.id}`}
+                        target="_blank"
+                        title={`เปิดหน้าแก้ไข “${u.name}”`}
+                        className="max-w-full truncate rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200 transition hover:bg-emerald-100"
+                      >
+                        {u.name} ↗
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-4 flex items-center justify-between">
                 <p className="text-xs font-semibold text-slate-600">
