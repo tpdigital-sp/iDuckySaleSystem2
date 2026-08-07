@@ -139,6 +139,48 @@
 .dl .logo b{transition:color .25s ease}
 .dl .logo:hover b{color:var(--coral)}
 .dl .burger{display:none}
+
+/* ───────── แถบหมวดสินค้า (ใต้แถบเมนู · เดสก์ท็อป) ─────────
+   เขียนเป็น CSS ที่นี่ ไม่ใช้คลาส padding/margin ของ Tailwind
+   เพราะ `.dl *{margin:0;padding:0}` ด้านบนอยู่นอก @layer จึงชนะ utility เสมอ */
+.dl .catbar-row{display:none;padding-top:10px;transition:padding .3s ease}
+.dl header.nav.small .catbar-row{padding-top:6px}
+@media(min-width:768px){.dl .catbar-row{display:block}}
+.dl .catbar{display:flex;justify-content:center}
+.dl .catbar.end{justify-content:flex-end}
+.dl .catbar-in{display:flex;align-items:center;gap:4px;max-width:100%;overflow-x:auto;padding:5px 8px;border-radius:999px;
+  border:1px solid rgba(255,255,255,.7);background:linear-gradient(135deg,rgba(255,255,255,.82),rgba(255,255,255,.62));
+  box-shadow:0 8px 22px rgba(44,129,196,.13),inset 0 1px 0 rgba(255,255,255,.7);
+  -webkit-backdrop-filter:blur(18px) saturate(150%);backdrop-filter:blur(18px) saturate(150%);
+  scrollbar-width:none}
+.dl .catbar-in::-webkit-scrollbar{display:none}
+.dl .catbar-btn{display:inline-flex;align-items:center;gap:8px;flex:none;white-space:nowrap;cursor:pointer;border:0;background:transparent;
+  font-family:var(--display);font-size:.8rem;font-weight:400;letter-spacing:.06em;text-transform:uppercase;color:var(--navy-soft);
+  padding:9px 17px;border-radius:999px;
+  transition:background .22s ease,color .22s ease,box-shadow .22s ease,transform .22s cubic-bezier(.34,1.56,.64,1)}
+.dl .catbar-btn:hover{background:var(--sky-100);color:var(--navy);transform:translateY(-1px)}
+.dl .catbar-btn .chev{width:10px;height:6px;flex:none;color:var(--sky-300);transition:transform .25s ease,color .22s ease}
+.dl .catbar-btn:hover .chev{color:var(--blue)}
+.dl .catbar-btn.on{background:var(--navy);color:#fff;box-shadow:0 8px 18px rgba(23,58,107,.28)}
+.dl .catbar-btn.on .chev{color:var(--yolk);transform:rotate(180deg)}
+.dl .catbar-scrim{position:absolute;left:0;right:0;top:100%;z-index:30;height:100vh;background:rgba(23,58,107,.10);pointer-events:none}
+.dl .catbar-panel{position:absolute;left:50%;top:100%;z-index:40;translate:-50% 0;margin-top:10px;
+  width:min(var(--wrap),calc(100vw - 40px));max-height:calc(100vh - 9.5rem);overflow-y:auto;
+  border-radius:26px;border:1px solid var(--sky-200);background:rgba(255,255,255,.97);box-shadow:var(--shadow-l);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);animation:catPanel .2s ease-out both}
+@keyframes catPanel{from{opacity:0;transform:translateY(-8px)}
+to{opacity:1;transform:none}}
+.dl .catbar-panel .catbar-panel-in{padding:24px 26px 26px}
+/* ระยะห่างในแผง — utility ของ Tailwind ถูกรีเซ็ตไปเช่นกัน จึงกำหนดตรงนี้ */
+.dl .catbar-panel .mega-heading{margin-bottom:14px;color:var(--navy)}
+.dl .catbar-panel .mega-promos{margin-bottom:20px}
+.dl .catbar-panel .mega-col-img{margin-bottom:10px}
+.dl .catbar-panel .mega-col-title{color:var(--navy)}
+.dl .catbar-panel .mega-list{display:grid;gap:7px;margin-top:10px}
+.dl .catbar-panel .mega-list a{color:var(--navy-soft)}
+.dl .catbar-panel .mega-list a:hover{color:var(--blue-deep)}
+.dl .catbar-panel .mega-badge{margin-left:6px;padding:0 5px}
+
 .dl .hero{position:relative;padding:36px 0 76px;margin-bottom:0}
 .dl .top-stack{position:relative;width:100vw;margin-left:calc(50% - 50vw);margin-top:-200px;padding-top:200px;border-radius:0;padding-bottom:0;
   background:linear-gradient(168deg,var(--sky-200) 0%,var(--sky-100) 20%,var(--sky-50) 42%,#EAF6FE 62%,#F5FBFF 82%,#FFFFFF 100%)}

@@ -26,7 +26,7 @@ function Badge({ badge }: { badge?: MegaBadge }) {
   if (!badge) return null;
   return (
     <span
-      className={`ml-1.5 inline-block shrink-0 rounded-[5px] px-[5px] py-px text-[10px] font-semibold leading-4 ${BADGE_STYLE[badge]}`}
+      className={`mega-badge ml-1.5 inline-block shrink-0 rounded-[5px] px-[5px] py-px text-[10px] font-semibold leading-4 ${BADGE_STYLE[badge]}`}
       title={badge === "N" ? "มาใหม่" : "ขายดี"}
     >
       {badge}
@@ -81,11 +81,11 @@ export function MegaPanel({
       )}
 
       <div className="min-w-0 flex-1">
-        {group.heading && <p className="mb-3 text-[16px] font-semibold text-stone-800">{group.heading}</p>}
+        {group.heading && <p className="mega-heading mb-3 text-[16px] font-semibold text-stone-800">{group.heading}</p>}
 
         {/* แถวภาพสินค้าแนะนำ */}
         {(group.promos?.length ?? 0) > 0 && (
-          <div className="mb-5 grid grid-cols-3 gap-3 sm:grid-cols-5">
+          <div className="mega-promos mb-5 grid grid-cols-3 gap-3 sm:grid-cols-5">
             {group.promos!.map((pm) => (
               <A key={pm.id} href={pm.href} className="group/promo block overflow-hidden rounded-xl">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -106,7 +106,7 @@ export function MegaPanel({
             return (
               <div key={col.id} className="min-w-0">
                 {col.image && (
-                  <A href={col.href || "/products"} className="mb-2 block overflow-hidden rounded-xl">
+                  <A href={col.href || "/products"} className="mega-col-img mb-2 block overflow-hidden rounded-xl">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={col.image} alt={col.title} className="aspect-[4/3] w-full object-cover" />
                   </A>
@@ -114,15 +114,15 @@ export function MegaPanel({
                 {col.href ? (
                   <A
                     href={col.href}
-                    className="block text-[16px] font-semibold text-stone-800 transition hover:text-[#26b6cf]"
+                    className="mega-col-title block text-[16px] font-semibold text-stone-800 transition hover:text-[#26b6cf]"
                   >
                     {col.title}
                   </A>
                 ) : (
-                  <p className="text-[16px] font-semibold text-stone-800">{col.title}</p>
+                  <p className="mega-col-title text-[16px] font-semibold text-stone-800">{col.title}</p>
                 )}
 
-                <ul className="mt-2 space-y-1.5">
+                <ul className="mega-list mt-2 space-y-1.5">
                   {items.map((it) => (
                     <li key={it.id}>
                       <A
@@ -236,60 +236,52 @@ export function MegaBar({
   return (
     <div
       ref={rootRef}
-      className={`flex items-stretch gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
-        align === "end" ? "justify-end" : "mx-auto max-w-7xl justify-center px-4"
-      }`}
+      className={`catbar${align === "end" ? " end" : ""}`}
       onMouseLeave={() => {
         cancelOpen();
         scheduleClose();
       }}
       onMouseEnter={cancelClose}
     >
-      {groups.map((g) => (
-        <button
-          key={g.id}
-          type="button"
-          onMouseEnter={() => {
-            // แผงเปิดอยู่แล้ว = สลับหัวข้อทันที · ยังไม่เปิด = รอชี้ค้างก่อน (กันเด้งมาดักคลิก)
-            if (openId) {
-              cancelClose();
-              setOpenId(g.id);
-            } else {
-              scheduleOpen(g.id);
-            }
-          }}
-          onMouseLeave={cancelOpen}
-          onFocus={() => setOpenId(g.id)}
-          onClick={() => {
-            cancelOpen();
-            setOpenId((v) => (v === g.id ? null : g.id));
-          }}
-          aria-expanded={openId === g.id}
-          aria-haspopup="true"
-          className={`flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3.5 py-2.5 text-[0.85rem] font-bold uppercase tracking-wide transition lg:px-4 ${
-            openId === g.id
-              ? "border-[#26b6cf] text-[#26b6cf]"
-              : "border-transparent text-stone-500 hover:text-amber-800"
-          }`}
-        >
-          {g.label}
-          <span className={`text-[0.55rem] opacity-60 transition ${openId === g.id ? "rotate-180" : ""}`}>▼</span>
-        </button>
-      ))}
+      {/* แคปซูลแก้วใบเล็ก — เข้าชุดกับแถบเมนูด้านบน · เลื่อนแนวนอนได้ถ้าหมวดเยอะ */}
+      <div className="catbar-in">
+        {groups.map((g) => (
+          <button
+            key={g.id}
+            type="button"
+            onMouseEnter={() => {
+              // แผงเปิดอยู่แล้ว = สลับหัวข้อทันที · ยังไม่เปิด = รอชี้ค้างก่อน (กันเด้งมาดักคลิก)
+              if (openId) {
+                cancelClose();
+                setOpenId(g.id);
+              } else {
+                scheduleOpen(g.id);
+              }
+            }}
+            onMouseLeave={cancelOpen}
+            onFocus={() => setOpenId(g.id)}
+            onClick={() => {
+              cancelOpen();
+              setOpenId((v) => (v === g.id ? null : g.id));
+            }}
+            aria-expanded={openId === g.id}
+            aria-haspopup="true"
+            className={`catbar-btn${openId === g.id ? " on" : ""}`}
+          >
+            {g.label}
+            <svg viewBox="0 0 10 6" aria-hidden="true" className="chev">
+              <path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        ))}
+      </div>
 
       {open && (
         <>
           {/* ฉากหลังจาง — แค่ภาพ ไม่กินคลิก (ปิดเมนูด้วย listener ด้านบน คลิกเดียวทั้งปิดเมนูและไปหน้าที่คลิก) */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-full z-30 h-screen bg-stone-900/10"
-          />
-          <div
-            className="absolute inset-x-0 top-full z-40 max-h-[calc(100vh-7.5rem)] overflow-y-auto border-t border-amber-100 bg-white shadow-xl"
-            onMouseEnter={cancelClose}
-            onMouseLeave={scheduleClose}
-          >
-            <div className="mx-auto max-w-6xl px-4 py-6">
+          <div aria-hidden="true" className="catbar-scrim" />
+          <div className="catbar-panel" onMouseEnter={cancelClose} onMouseLeave={scheduleClose}>
+            <div className="catbar-panel-in">
               <MegaPanel group={open} products={products} onNavigate={() => setOpenId(null)} />
             </div>
           </div>

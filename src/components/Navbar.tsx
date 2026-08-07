@@ -183,10 +183,8 @@ export default function Navbar() {
 
         {/* แถวหมวดสินค้า (เดสก์ท็อป) — เมกะเมนูเดิม วางใต้แถบกระจก */}
         {mega.length > 0 && (
-          <div className={`hidden justify-center transition-all duration-300 md:flex ${small ? "mt-1.5" : "mt-2.5"}`}>
-            <div className="max-w-full rounded-full border border-white/70 bg-white/70 p-1 shadow-[0_8px_22px_rgba(44,129,196,.13)] backdrop-blur-[18px] backdrop-saturate-150">
-              <MegaBar groups={mega} pathname={pathname} align="center" />
-            </div>
+          <div className="catbar-row">
+            <MegaBar groups={mega} pathname={pathname} align="center" />
           </div>
         )}
       </div>
