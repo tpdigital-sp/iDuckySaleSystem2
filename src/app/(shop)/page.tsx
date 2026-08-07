@@ -30,6 +30,11 @@ const CAT_ICON: Record<string, string> = {
   "card-photo": "/landing/cat-ico-3.webp",
   "sticker-paper": "/landing/cat-ico-4.webp",
   home: "/landing/cat-ico-5.webp",
+  light: "/landing/cat-ico-6.webp",
+  "phone-gadget": "/landing/cat-ico-7.webp",
+  apparel: "/landing/cat-ico-8.webp",
+  fabric: "/landing/cat-ico-9.webp",
+  gifts: "/landing/cat-ico-10.webp",
 };
 
 const groupOf = (catId: string) => TAB_GROUPS.find((g) => g.cats.includes(catId))?.id ?? "goods";
@@ -152,21 +157,27 @@ export default function HomePage() {
               </p>
               <div className="chips">
                 <div className="chip">
-                  <i style={{ background: "var(--sky-200)" }}>💎</i>
+                  <i style={{ background: "var(--sky-200)", color: "#3E9BD4" }}>
+                    <img src="/landing/chip-ico-1.webp" alt="" aria-hidden="true" />
+                  </i>
                   <span>
                     <b>งานคุณภาพ</b>
-                    <small>สีสด คมชัด ทนทาน</small>
+                    <small>สีสด คมชัด</small>
                   </span>
                 </div>
                 <div className="chip">
-                  <i style={{ background: "var(--yolk-soft)" }}>⚡</i>
+                  <i style={{ background: "var(--yolk-soft)", color: "#D79A15" }}>
+                    <img src="/landing/chip-ico-2.webp" alt="" aria-hidden="true" />
+                  </i>
                   <span>
                     <b>ผลิตไว</b>
                     <small>ส่งตรงเวลา</small>
                   </span>
                 </div>
                 <div className="chip">
-                  <i style={{ background: "#FFE0E6" }}>💬</i>
+                  <i style={{ background: "#FFE0E6", color: "#E37D93" }}>
+                    <img src="/landing/chip-ico-3.webp" alt="" aria-hidden="true" />
+                  </i>
                   <span>
                     <b>แอดมินใจดี</b>
                     <small>ปรึกษาลายฟรี</small>
@@ -201,6 +212,11 @@ export default function HomePage() {
               />
               <div className="deco d-cart" style={{ top: "18%", left: "14%", width: "15%" }} aria-hidden="true">
                 <img src="/landing/cart-balloon.webp" alt="" />
+                {/* เส้นแสงวิ่งผ่านป้าย — ตัดตามรูปทรงด้วย mask */}
+                <span
+                  className="cart-shine"
+                  style={{ WebkitMaskImage: "url(/landing/cart-balloon.webp)", maskImage: "url(/landing/cart-balloon.webp)" }}
+                />
               </div>
               <img
                 className="deco d-star1"
@@ -377,6 +393,7 @@ export default function HomePage() {
 
         <section id="why" className="wrap rv">
           <div className="why">
+            <img className="why-gift" src="/landing/cat-ico-5.webp" alt="" aria-hidden="true" />
             <img className="why-float wf-heart" src="/landing/heart.webp" alt="" aria-hidden="true" />
             <img className="why-float wf-star" src="/landing/star4.webp" alt="" aria-hidden="true" />
             <img className="hug" src="/landing/duck-hug.webp" alt="มาสคอตเป็ด iDucky ถือหัวใจ" />
@@ -391,22 +408,30 @@ export default function HomePage() {
               </div>
               <div className="why-grid">
                 <div className="why-item">
-                  <div className="orb o-blue">💎</div>
+                  <div className="orb o-blue">
+                    <img src="/landing/why-ico-1.webp" alt="" aria-hidden="true" />
+                  </div>
                   <h3>งานคุณภาพพรีเมียม</h3>
                   <p>พิถีพิถันทุกขั้นตอน ใส่ใจทุกรายละเอียด</p>
                 </div>
                 <div className="why-item">
-                  <div className="orb o-yolk">🕐</div>
+                  <div className="orb o-yolk">
+                    <img src="/landing/why-ico-2.webp" alt="" aria-hidden="true" />
+                  </div>
                   <h3>ผลิตรวดเร็ว</h3>
                   <p>แจ้งคิวชัดเจน ส่งตรงเวลาที่นัดไว้</p>
                 </div>
                 <div className="why-item">
-                  <div className="orb o-peach">🎨</div>
+                  <div className="orb o-peach">
+                    <img src="/landing/why-ico-3.webp" alt="" aria-hidden="true" />
+                  </div>
                   <h3>พิมพ์สีสวย คมชัด</h3>
                   <p>ด้วยเทคโนโลยีการพิมพ์คุณภาพสูง</p>
                 </div>
                 <div className="why-item">
-                  <div className="orb o-mint">💛</div>
+                  <div className="orb o-mint">
+                    <img src="/landing/why-ico-4.webp" alt="" aria-hidden="true" />
+                  </div>
                   <h3>บริการใส่ใจ</h3>
                   <p>ให้คำแนะนำ ดูแลทุกออเดอร์จนถึงมือ</p>
                 </div>
@@ -415,98 +440,111 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="steps" className="wrap rv">
+      </div>
+
+      {/* ── ปิดท้าย: ขั้นตอนสั่งซื้อเล่าผ่านหน้าจอแชทตัวอย่าง ── */}
+      <div className="chat-band" id="steps">
+        <div className="chat-bg" aria-hidden="true" />
+        <section className="wrap rv">
           <div className="head">
-            <span className="kicker">📖 ขั้นตอนการสั่งซื้อ</span>
+            <span className="kicker">💬 สั่งง่ายเหมือนคุยกับเพื่อน</span>
             <h2>
-              สั่งง่าย <em>แค่ 3 ขั้นตอน</em>
+              แค่ <em>ทักมา</em> ที่เหลือเราจัดให้
             </h2>
           </div>
-          <div className="steps">
-            <div className="step">
-              <em>🎨</em>
-              <h3>อัปโหลดลายของคุณ</h3>
-              <p>ส่งรูป โลโก้ หรือไฟล์งานเข้ามา ยังไม่มีลาย? ทีมออกแบบช่วยจัดให้ฟรี</p>
+
+          <div className="chat">
+            <div className="chat-top">
+              <img className="chat-av" src="/landing/logo-duck.webp" alt="" aria-hidden="true" />
+              <div className="chat-who">
+                <b>iDucky Prints</b>
+                <small>
+                  <span className="dot-live" />
+                  ตอบไวทุกวัน 09:00–18:00 น.
+                </small>
+              </div>
+              <span className="chat-tag">แชทตัวอย่าง</span>
             </div>
-            <div className="step">
-              <em>🛍️</em>
-              <h3>เลือกสินค้าและจำนวน</h3>
-              <p>เลือกจากกว่า {cats.length} หมวด เริ่มต้นชิ้นเดียวก็สั่งได้ ยืนยันแบบก่อนผลิตทุกครั้ง</p>
+
+            <div className="chat-body">
+              <div className="msg out">
+                <span className="mbub">มีลายอยากทำพวงกุญแจอะค่ะ ต้องทำยังไงบ้าง</span>
+                <time>10:24</time>
+              </div>
+              <div className="msg in">
+                <span className="mbub">
+                  <b className="stepno">ขั้นที่ 1</b>ส่งรูป โลโก้ หรือไฟล์งานเข้ามาได้เลยครับ ยังไม่มีลายก็ได้ ทีมออกแบบช่วยจัดให้ฟรี 🎨
+                </span>
+                <time>10:25</time>
+              </div>
+              <div className="msg out">
+                <span className="mbub">อยากได้ 20 ชิ้น ทำได้ไหมคะ</span>
+                <time>10:26</time>
+              </div>
+              <div className="msg in">
+                <span className="mbub">
+                  <b className="stepno">ขั้นที่ 2</b>ได้เลยครับ เลือกจากกว่า {cats.length} หมวด เริ่มชิ้นเดียวก็ทำได้ เดี๋ยวส่งแบบให้ยืนยันก่อนผลิตนะครับ 🛍️
+                </span>
+                <time>10:27</time>
+              </div>
+              <div className="msg out">
+                <span className="mbub">ส่งถึงเมื่อไหร่คะ</span>
+                <time>10:28</time>
+              </div>
+              <div className="msg in">
+                <span className="mbub">
+                  <b className="stepno">ขั้นที่ 3</b>แพ็คกันกระแทกอย่างดี ส่งไวทั่วไทย พร้อมเลขพัสดุติดตามได้ครับ 🚚
+                </span>
+                <time>10:29</time>
+              </div>
+              <div className="msg in typing">
+                <span className="mbub mbub-typing">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              </div>
             </div>
-            <div className="step">
-              <em>🚚</em>
-              <h3>รอรับที่บ้าน</h3>
-              <p>แพ็คกันกระแทกอย่างดี ส่งไวทั่วไทย พร้อมเลขพัสดุติดตามได้</p>
+
+            <div className="chat-quick">
+              <span className="qk">
+                <i>🐣</i>ไม่มีขั้นต่ำ
+              </span>
+              <span className="qk">
+                <i>✏️</i>ออกแบบฟรี
+              </span>
+              <span className="qk">
+                <i>📦</i>ส่งทั่วประเทศ
+              </span>
+              <span className="qk">
+                <i>🛡️</i>ตรวจสลิปอัตโนมัติ
+              </span>
+            </div>
+
+            <div className="chat-foot">
+              <span className="chat-input">พิมพ์ข้อความถึงร้าน…</span>
+              <a className="chat-send" href="https://lin.ee/x8GkqGZ" target="_blank" rel="noreferrer" aria-label="ทักแชทกับร้าน">
+                ➤
+              </a>
             </div>
           </div>
-          <div className="promise">
-            <div className="pr">
-              <em>🐣</em>
-              <span>
-                <b>ไม่มีขั้นต่ำ</b>
-                <small>เริ่มผลิตจำนวนน้อยได้</small>
-              </span>
+
+          <div className="chat-cta">
+            <div className="cc-text">
+              <h3>มีลายในใจแล้วใช่ไหม?</h3>
+              <p>เลือกสินค้าที่ชอบ แล้วอัปโหลดลายของคุณ เดี๋ยวเราจัดการที่เหลือให้เอง</p>
             </div>
-            <div className="pr">
-              <em>✏️</em>
-              <span>
-                <b>ออกแบบฟรี</b>
-                <small>มีทีมงานช่วยออกแบบ</small>
-              </span>
-            </div>
-            <div className="pr">
-              <em>📦</em>
-              <span>
-                <b>จัดส่งทั่วประเทศ</b>
-                <small>แพ็คสินค้าอย่างดี</small>
-              </span>
-            </div>
-            <div className="pr">
-              <em>🛡️</em>
-              <span>
-                <b>ตรวจสลิปอัตโนมัติ</b>
-                <small>ยืนยันยอดไว ไม่ต้องรอ</small>
-              </span>
+            <div className="cc-btns">
+              <Link className="btn btn-yolk" href="/products">
+                เริ่มออกแบบสินค้าของฉัน <span className="dot">→</span>
+              </Link>
+              <a className="btn btn-line" href="https://lin.ee/x8GkqGZ" target="_blank" rel="noreferrer">
+                ทักแอดมินทาง LINE <span className="dot">💬</span>
+              </a>
             </div>
           </div>
         </section>
       </div>
-
-      {/* ── ปิดท้าย ── */}
-      <section className="wrap rv gap">
-        <div className="cta">
-          <img className="cta-cloud" style={{ width: 230, top: -26, left: "8%" }} src="/landing/cloud.webp" alt="" aria-hidden="true" />
-          <img className="cta-star" style={{ top: "14%", left: "4%", width: 26 }} src="/landing/star.webp" alt="" aria-hidden="true" />
-          <img className="cta-star" style={{ bottom: "18%", left: "16%", width: 18, animationDelay: "-2.4s" }} src="/landing/star.webp" alt="" aria-hidden="true" />
-          <div>
-            <h2>
-              มีลายในใจแล้วใช่ไหม? <em>มาเริ่มกันเลย!</em>
-            </h2>
-            <p>เลือกสินค้าที่ชอบ แล้วอัปโหลดลายของคุณ เดี๋ยวเราจัดการที่เหลือให้เอง 🦆💛</p>
-            <div className="btns">
-              <Link className="btn btn-yolk" href="/products">
-                เริ่มออกแบบสินค้าของฉัน <span className="dot">→</span>
-              </Link>
-              <a className="btn btn-ghost" href="https://lin.ee/x8GkqGZ" target="_blank" rel="noreferrer">
-                ปรึกษาแอดมินทาง LINE <span className="dot">💬</span>
-              </a>
-            </div>
-          </div>
-          <svg className="cta-duck" viewBox="0 0 220 220" role="img" aria-label="เป็ดกอดหัวใจ">
-            <ellipse cx="110" cy="206" rx="58" ry="8" fill="#2C81C4" opacity=".12" />
-            <ellipse cx="110" cy="128" rx="70" ry="68" fill="#FFD447" />
-            <ellipse cx="110" cy="92" rx="55" ry="52" fill="#FFDD63" />
-            <ellipse className="eye" cx="90" cy="88" rx="8" ry="9" fill="#173A6B" />
-            <ellipse className="eye" cx="132" cy="88" rx="8" ry="9" fill="#173A6B" />
-            <circle cx="87.5" cy="84.5" r="3" fill="#fff" />
-            <circle cx="129.5" cy="84.5" r="3" fill="#fff" />
-            <ellipse cx="74" cy="107" rx="12" ry="8" fill="#FF9EB0" opacity=".7" />
-            <ellipse cx="148" cy="107" rx="12" ry="8" fill="#FF9EB0" opacity=".7" />
-            <path d="M94 104h34c7 0 10 5 10 9 0 7-9 12-27 12s-27-5-27-12c0-4 3-9 10-9z" fill="#FFA83D" />
-            <path d="M110 186c-15 0-25-13-25-25 0-10 8-18 18-18 3 0 7 2 7 2s4-2 7-2c10 0 18 8 18 18 0 12-10 25-25 25z" fill="#FF9EB0" />
-          </svg>
-        </div>
-      </section>
 
       {/* ── ช่องทางโซเชียลลอยมุมจอ ── */}
       <nav className="social-dock" aria-label="ช่องทางโซเชียลของร้าน">

@@ -25,7 +25,7 @@
 /* ตัวครอบ Navbar/Footer: display:contents เพื่อไม่ให้กลายเป็นกล่องที่ทำให้ position:sticky ของแถบเมนูตายก่อนเวลา */
 .dl-contents{display:contents}
 .dl .bg-fx{position:fixed;inset:0;z-index:-10;overflow:hidden;pointer-events:none;background:#fff}
-.dl .bg-orb{position:absolute;border-radius:50%;opacity:.55;isolation:isolate}
+.dl .bg-orb{position:absolute;border-radius:50%;opacity:.32;isolation:isolate}
 .dl .bg-orb::after{content:"";position:absolute;inset:0;border-radius:50%;mix-blend-mode:soft-light;opacity:.28;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
   background-size:220px 220px;
@@ -222,13 +222,45 @@ to{opacity:1;transform:none}}
 .dl .lead{font-family:var(--display);font-weight:300;margin-top:20px;font-size:1.02rem;line-height:1.85;
   letter-spacing:.005em;color:#4E6B90;max-width:46ch}
 .dl .lead b{font-weight:500;color:var(--navy)}
-.dl .chips{display:flex;flex-wrap:wrap;gap:12px;margin-top:40px}
-.dl .chip{display:flex;align-items:center;gap:10px;background:#fff;padding:10px 17px 10px 11px;border-radius:999px;
-  box-shadow:var(--shadow-s);font-size:.9rem;transition:.22s cubic-bezier(.34,1.56,.64,1)}
-.dl .chip:hover{transform:translateY(-4px) rotate(-1.5deg);box-shadow:var(--shadow-m)}
-.dl .chip i{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:.85rem}
-.dl .chip b{font-family:var(--display);font-weight:400;display:block;font-size:.93rem;line-height:1.25}
-.dl .chip small{color:var(--navy-soft);font-size:.76rem}
+/* ===== ชิปจุดเด่น 3 อัน — กระจกฝ้า มีชีวิต ===== */
+.dl .chips{display:flex;flex-wrap:nowrap;gap:10px;margin-top:40px;max-width:96%}
+.dl .chip{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 9px;border-radius:999px;font-size:.9rem;flex:1 1 0;min-width:0;
+  position:relative;overflow:hidden;isolation:isolate;
+  background:rgba(255,255,255,.66);-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);
+  border:1px solid rgba(255,255,255,.9);box-shadow:0 6px 16px rgba(44,129,196,.10);
+  transition:transform .28s cubic-bezier(.34,1.56,.64,1),box-shadow .28s ease,background .28s ease}
+/* แสงวาดผ่านตอน hover */
+.dl .chip::after{content:"";position:absolute;top:-40%;bottom:-40%;left:-60%;width:40%;pointer-events:none;z-index:-1;
+  background:linear-gradient(100deg,rgba(255,255,255,0),rgba(255,255,255,.75),rgba(255,255,255,0));
+  transform:skewX(-18deg);transition:left .6s cubic-bezier(.22,1,.36,1)}
+.dl .chip:hover::after{left:130%}
+.dl .chip:hover{transform:translateY(-5px) rotate(-1.5deg);background:rgba(255,255,255,.9);
+  box-shadow:0 16px 30px rgba(44,129,196,.18)}
+/* วงไอคอน — มีวงแหวนบางล้อมรอบ */
+.dl .chip i{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-style:normal;flex:none;position:relative;
+  box-shadow:inset 0 2px 4px rgba(255,255,255,.75),0 4px 10px rgba(44,129,196,.14);
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1)}
+.dl .chip i::before{content:"";position:absolute;inset:-4px;border-radius:50%;border:1.5px solid currentColor;opacity:.22;
+  transition:.3s cubic-bezier(.34,1.56,.64,1)}
+.dl .chip:hover i{transform:rotate(-8deg) scale(1.08)}
+.dl .chip:hover i::before{inset:-7px;opacity:.45}
+.dl .chip i img{width:22px;height:22px;object-fit:contain;display:block}
+/* ไอคอนขยับเบา ๆ ตลอดเวลา คนละจังหวะ */
+.dl .chip:nth-child(1) i img{animation:chipGem 4.6s ease-in-out infinite}
+.dl .chip:nth-child(2) i img{animation:chipBolt 3.4s ease-in-out infinite}
+.dl .chip:nth-child(3) i img{animation:chipChat 3.8s ease-in-out infinite}
+@keyframes chipGem{0%,100%{transform:rotate(-4deg) translateY(0)}
+50%{transform:rotate(4deg) translateY(-2px)}}
+@keyframes chipBolt{0%,72%,100%{transform:scale(1) rotate(0)}
+78%{transform:scale(1.2) rotate(-9deg)}
+84%{transform:scale(1.04) rotate(6deg)}
+90%{transform:scale(1) rotate(0)}}
+@keyframes chipChat{0%,66%,100%{transform:translateY(0) rotate(0)}
+74%{transform:translateY(-4px) rotate(-6deg)}
+82%{transform:translateY(-1px) rotate(4deg)}
+90%{transform:translateY(0) rotate(0)}}
+.dl .chip b{font-family:var(--display);font-weight:400;display:block;font-size:.9rem;line-height:1.25;white-space:nowrap}
+.dl .chip small{color:var(--navy-soft);font-size:.74rem;display:block;white-space:nowrap}
 .dl .hero-btns{display:flex;gap:13px;margin-top:38px;flex-wrap:wrap}
 .dl .stage{position:relative;aspect-ratio:3/2;display:grid;place-items:center;overflow:visible}
 .dl .duck{width:132%;max-width:none;height:auto;position:relative;left:5%;z-index:3;animation:bobble 4.2s ease-in-out infinite}
@@ -491,11 +523,6 @@ to{opacity:1;transform:none}}
 .dl .ws-cloud{position:absolute;z-index:1;pointer-events:none;height:auto;filter:drop-shadow(0 10px 16px rgba(44,129,196,.1))}
 .dl .ws-star{position:absolute;z-index:1;pointer-events:none;height:auto;animation:starfloat 6s ease-in-out infinite}
 .dl .ws-band .why{background:none;padding:0;border-radius:0;overflow:visible}
-.dl .ws-band #steps{margin-top:96px}
-.dl .ws-band .step{background:rgba(255,255,255,.86);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
-  border:1px solid rgba(255,255,255,.9)}
-.dl .ws-band .pr{background:rgba(255,255,255,.86);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
-  border:1px solid rgba(255,255,255,.9)}
 @media(max-width:900px){.dl .ws-band{padding:96px 0 100px}
 .dl .ws-bg{clip-path:polygon(0 7vw,100% 0,100% 100%,0 calc(100% - 7vw))}}
 .dl .why{background:linear-gradient(150deg,var(--sky-100),var(--sky-50));border-radius:var(--r-xl);padding:52px 46px;
@@ -556,61 +583,157 @@ to{opacity:1;transform:none}}
 .dl .why-item:hover{transform:translateY(-6px)}
 .dl .why-item h3{font-size:1rem;font-weight:400;margin-top:14px}
 .dl .why-item p{font-size:.84rem;color:var(--navy-soft);line-height:1.6;margin-top:4px}
+.dl .orb img{width:52px;height:52px;object-fit:contain;display:block}
+/* ===== ไอคอน 4 ข้อดี ขยับตามบุคลิกของตัวเอง ===== */
+/* เพชร — เอียงไปมา + วิ้งวาวเป็นระยะ */
+.dl .o-blue img{animation:gemTilt 5s ease-in-out infinite}
+@keyframes gemTilt{0%,100%{transform:rotate(-5deg) translateY(0)}
+35%{transform:rotate(5deg) translateY(-3px)}
+70%{transform:rotate(-2deg) translateY(-1px)}}
+/* นาฬิกา — สั่นแบบนาฬิกาปลุกเป็นระยะ */
+.dl .o-yolk img{animation:clockRing 4.6s ease-in-out infinite}
+@keyframes clockRing{0%,68%,100%{transform:rotate(0) scale(1)}
+72%{transform:rotate(-11deg) scale(1.05)}
+76%{transform:rotate(9deg) scale(1.04)}
+80%{transform:rotate(-7deg) scale(1.03)}
+84%{transform:rotate(4deg) scale(1.01)}
+90%{transform:rotate(0) scale(1)}}
+/* จานสี — โยกเหมือนกำลังระบายสี */
+.dl .o-peach img{animation:paletteSway 4.2s ease-in-out infinite}
+@keyframes paletteSway{0%,100%{transform:rotate(-6deg) translate(0,0)}
+30%{transform:rotate(4deg) translate(2px,-3px)}
+60%{transform:rotate(-3deg) translate(-2px,-1px)}
+82%{transform:rotate(3deg) translate(1px,-2px)}}
+/* หัวใจ — เต้นเป็นจังหวะชีพจร */
+.dl .o-mint img{animation:heartPulse 2s ease-in-out infinite}
+@keyframes heartPulse{0%,58%,100%{transform:scale(1)}
+64%{transform:scale(1.2)}
+70%{transform:scale(1.02)}
+76%{transform:scale(1.13)}
+84%{transform:scale(1)}}
+/* hover แล้วหยุดอนิเมชั่นในตัว ไม่ให้ชนกับการหมุนของวงกลม */
+.dl .why-item:hover .orb img{animation-play-state:paused}
 .dl .orb{width:84px;height:84px;border-radius:50%;display:grid;place-items:center;font-size:2.1rem;margin-inline:auto;
   position:relative;transition:.32s cubic-bezier(.34,1.56,.64,1)}
 .dl .orb::before{content:"";position:absolute;inset:-7px;border-radius:50%;border:2px solid currentColor;opacity:.28;
   transition:.32s cubic-bezier(.34,1.56,.64,1)}
 .dl .o-blue{background:linear-gradient(150deg,#E4F3FE,#fff 70%);color:#2C81C4;box-shadow:0 12px 24px rgba(44,129,196,.16)}
+/* แถบแสงวาดผ่าน — ตัดตามวงกลมด้วย mask จะได้ไม่ต้องใช้ overflow (วงแหวนไม่โดนตัด) */
+.dl .o-blue::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:2;
+  /* ตัดแสงตามรูปทรงเพชร — วิ่งเฉพาะบนตัวไอคอน */
+  -webkit-mask-image:url("/landing/why-ico-1.webp");mask-image:url("/landing/why-ico-1.webp");
+  -webkit-mask-size:52px auto;mask-size:52px auto;
+  -webkit-mask-position:center;mask-position:center;
+  -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+  background:linear-gradient(100deg,rgba(255,255,255,0) 40%,rgba(255,255,255,.9) 50%,rgba(255,255,255,0) 60%);
+  background-size:260% 100%;background-repeat:no-repeat;background-position:-160% 0;
+  animation:orbShine 5.6s ease-in-out infinite}
+@keyframes orbShine{0%,52%{background-position:-160% 0}
+92%,100%{background-position:260% 0}}
 .dl .o-yolk{background:linear-gradient(150deg,#FFF3CE,#fff 70%);color:#D79A15;box-shadow:0 12px 24px rgba(215,154,21,.16)}
 .dl .o-peach{background:linear-gradient(150deg,#FFE6EA,#fff 70%);color:#E37D93;box-shadow:0 12px 24px rgba(227,125,147,.16)}
 .dl .o-mint{background:linear-gradient(150deg,#DFF7EE,#fff 70%);color:#3FAE8B;box-shadow:0 12px 24px rgba(63,174,139,.16)}
 .dl .why-item:hover .orb{transform:rotate(-7deg) scale(1.07)}
 .dl .why-item:hover .orb::before{inset:-12px;opacity:.55}
-.dl .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;counter-reset:s}
-.dl .step{background:#fff;border-radius:var(--r-l);padding:38px 26px 28px;box-shadow:var(--shadow-s);position:relative;transition:.26s}
-.dl .step:hover{transform:translateY(-7px);box-shadow:var(--shadow-m)}
-.dl .step::before{counter-increment:s;content:counter(s,decimal-leading-zero);position:absolute;top:-18px;left:26px;width:52px;height:52px;
-  border-radius:50%;background:var(--yolk);color:var(--navy);display:grid;place-items:center;font-family:var(--display);font-weight:500;box-shadow:0 6px 0 var(--yolk-deep)}
-.dl .step em{font-style:normal;font-size:2.2rem;display:block;text-align:right;margin-top:-8px}
-.dl .step h3{margin:14px 0 6px;font-size:1.12rem}
-.dl .step p{color:var(--navy-soft);font-size:.9rem}
-.dl .promise{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:26px}
-.dl .pr{display:flex;gap:13px;align-items:center;background:#fff;border-radius:var(--r-m);padding:16px 18px;box-shadow:var(--shadow-s);transition:.24s}
-.dl .pr:hover{transform:translateY(-5px);box-shadow:var(--shadow-m)}
-.dl .pr em{font-style:normal;font-size:1.5rem;width:46px;height:46px;border-radius:50%;background:var(--yolk-soft);display:grid;place-items:center;flex:none}
-.dl .pr b{font-family:var(--display);font-weight:400;font-size:.94rem;display:block}
-.dl .pr small{color:var(--navy-soft);font-size:.78rem}
-.dl .cta{background:radial-gradient(125% 130% at 84% 4%,#27548F 0%,var(--navy) 52%,#0F2748 100%);
-  color:#fff;border-radius:56px;padding:62px 54px;position:relative;overflow:hidden;
-  display:grid;grid-template-columns:1.35fr .65fr;gap:26px;align-items:center}
-.dl .cta::before,.dl .cta::after{content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.05)}
-.dl .cta::before{width:340px;height:340px;top:-130px;right:-40px}
-.dl .cta::after{width:220px;height:220px;bottom:-110px;left:6%}
-.dl .cta-star{position:absolute;z-index:1;pointer-events:none;height:auto;animation:starfloat 6s ease-in-out infinite}
-.dl .cta-cloud{position:absolute;z-index:1;pointer-events:none;height:auto;opacity:.13;
-  filter:drop-shadow(0 8px 14px rgba(0,0,0,.25))}
-.dl .cta > div{position:relative;z-index:2}
-.dl .cta-duck{width:100%;max-width:190px;display:block;margin:0 auto;position:relative;z-index:2;
-  filter:drop-shadow(0 16px 22px rgba(0,0,0,.28));animation:bobble 5s ease-in-out infinite}
-.dl .cta .btn-ghost{background:#06C755;color:#fff;border-color:#06C755;box-shadow:0 8px 22px rgba(6,199,85,.45)}
-.dl .cta .btn-ghost .dot{background:rgba(255,255,255,.24);color:#fff}
-.dl .cta .btn-ghost:hover{background:#05B44C;border-color:#05B44C;box-shadow:0 14px 30px rgba(6,199,85,.6)}
-.dl .cta .btn-ghost:hover .dot{background:#fff;color:#06C755}
-.dl .cta h2{font-size:clamp(1.7rem,3.4vw,2.5rem);position:relative}
-.dl .cta h2 em{font-style:normal;color:var(--yolk)}
-.dl .cta p{color:#C3D6EE;margin:12px 0 26px;position:relative;max-width:46ch}
-.dl .cta .btns{display:flex;gap:12px;flex-wrap:wrap;position:relative}
-@keyframes drive{0%,100%{transform:translateX(-10px)}
-50%{transform:translateX(10px)}}
-.dl footer{background:var(--sky-100);margin-top:90px;padding:56px 0 26px;border-radius:60px 60px 0 0}
-.dl .f-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr 1.2fr;gap:34px}
-.dl .f-grid h4{font-size:1rem;margin-bottom:14px}
-.dl .f-grid a,.dl .f-grid p{display:block;color:var(--navy-soft);font-size:.9rem;padding:3px 0;transition:.2s}
-.dl .f-grid a:hover{color:var(--blue-deep);transform:translateX(4px)}
-.dl .socials{display:flex;gap:9px;margin-top:14px}
-.dl .socials a{width:42px;height:42px;border-radius:50%;background:#fff;display:grid;place-items:center;box-shadow:var(--shadow-s);transition:.24s cubic-bezier(.34,1.56,.64,1);padding:0}
-.dl .socials a:hover{transform:translateY(-4px) rotate(-10deg);background:var(--yolk)}
-.dl .f-bottom{margin-top:38px;padding-top:20px;border-top:2px dashed var(--sky-200);display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-size:.83rem;color:var(--navy-soft)}
+/* ===== โซนสั่งซื้อแบบหน้าจอแชท ===== */
+.dl .chat-band{position:relative;width:100vw;margin-left:calc(50% - 50vw);margin-top:-40px;padding:118px 0 104px}
+.dl .chat-bg{position:absolute;inset:0;z-index:0;pointer-events:none;
+  background:linear-gradient(180deg,#F4FAFF 0%,#EAF6FE 38%,#E3F2FD 72%,#DCEFFC 100%)}
+.dl .chat-bg::after{content:"";position:absolute;inset:0;opacity:.4;
+  background-image:radial-gradient(rgba(44,129,196,.14) 1.4px,transparent 1.4px);background-size:32px 32px;
+  -webkit-mask-image:linear-gradient(180deg,transparent,#000 20%,#000 84%,transparent);
+          mask-image:linear-gradient(180deg,transparent,#000 20%,#000 84%,transparent)}
+.dl .chat-band > section{position:relative;z-index:2}
+.dl .chat-band .kicker{background:rgba(255,255,255,.9)}
+/* กรอบหน้าจอแชท */
+.dl .chat{width:min(100%,760px);margin:0 auto;background:#fff;border-radius:34px;overflow:hidden;
+  border:1px solid rgba(255,255,255,.9);box-shadow:0 26px 56px rgba(23,58,107,.14)}
+.dl .chat-top{display:flex;align-items:center;gap:12px;padding:16px 20px;background:var(--navy);color:#fff}
+.dl .chat-av{width:38px;height:auto;flex:none;border-radius:50%;background:#fff;padding:3px}
+.dl .chat-who b{font-family:var(--display);font-weight:400;font-size:.98rem;display:block}
+.dl .chat-who small{color:#A9C4E2;font-size:.76rem;display:flex;align-items:center;gap:6px}
+.dl .dot-live{width:7px;height:7px;border-radius:50%;background:#4ED88B;display:inline-block;
+  box-shadow:0 0 0 0 rgba(78,216,139,.7);animation:liveDot 2.2s ease-out infinite}
+@keyframes liveDot{0%{box-shadow:0 0 0 0 rgba(78,216,139,.7)}
+70%,100%{box-shadow:0 0 0 8px rgba(78,216,139,0)}}
+.dl .chat-tag{margin-left:auto;font-family:var(--display);font-size:.7rem;color:#CFE6FA;
+  background:rgba(255,255,255,.14);padding:5px 12px;border-radius:999px}
+/* พื้นห้องแชท */
+.dl .chat-body{padding:22px 20px 6px;background:#F6FAFE;display:flex;flex-direction:column;gap:14px}
+.dl .msg{display:flex;align-items:flex-end;gap:8px;max-width:86%}
+.dl .msg time{font-size:.68rem;color:#9BB2CC;flex:none;padding-bottom:3px}
+.dl .mbub{font-size:.92rem;line-height:1.65;padding:12px 16px;border-radius:20px;display:block}
+.dl .msg.out{align-self:flex-end;flex-direction:row-reverse}
+.dl .msg.out .mbub{background:var(--sky-200);color:var(--navy);border-bottom-right-radius:7px}
+.dl .msg.in .mbub{background:#fff;color:var(--navy);border-bottom-left-radius:7px;
+  border:1px solid var(--sky-100);box-shadow:0 6px 16px rgba(23,58,107,.06)}
+.dl .stepno{display:inline-block;font-family:var(--display);font-weight:400;font-size:.7rem;color:#fff;
+  background:var(--yolk-deep);padding:3px 11px;border-radius:999px;margin-bottom:8px}
+/* จุดกำลังพิมพ์ */
+.dl .mbub-typing{display:flex;gap:5px;padding:14px 18px}
+.dl .mbub-typing i{width:7px;height:7px;border-radius:50%;background:var(--sky-300);display:block;
+  animation:typeDot 1.3s ease-in-out infinite}
+.dl .mbub-typing i:nth-child(2){animation-delay:.18s}
+.dl .mbub-typing i:nth-child(3){animation-delay:.36s}
+@keyframes typeDot{0%,60%,100%{transform:translateY(0);opacity:.45}
+30%{transform:translateY(-5px);opacity:1}}
+/* ปุ่มตอบเร็ว = การันตี */
+.dl .chat-quick{display:flex;flex-wrap:wrap;gap:8px;padding:16px 20px 4px;background:#F6FAFE}
+.dl .qk{display:inline-flex;align-items:center;gap:7px;font-family:var(--display);font-size:.82rem;color:var(--blue-deep);
+  background:#fff;border:1px solid var(--sky-200);padding:7px 14px 7px 9px;border-radius:999px;
+  transition:transform .24s cubic-bezier(.34,1.56,.64,1),background .24s ease}
+.dl .qk:hover{transform:translateY(-3px);background:var(--sky-50)}
+.dl .qk i{font-style:normal;font-size:.95rem}
+/* ช่องพิมพ์ */
+.dl .chat-foot{display:flex;align-items:center;gap:10px;padding:16px 20px;background:#F6FAFE}
+.dl .chat-input{flex:1;background:#fff;border:1px solid var(--sky-200);border-radius:999px;padding:12px 18px;
+  color:#9BB2CC;font-size:.88rem}
+.dl .chat-send{width:44px;height:44px;flex:none;border-radius:50%;background:#06C755;color:#fff;
+  display:grid;place-items:center;font-size:1rem;box-shadow:0 8px 18px rgba(6,199,85,.4);
+  transition:transform .26s cubic-bezier(.34,1.56,.64,1)}
+.dl .chat-send:hover{transform:scale(1.08) rotate(-8deg)}
+/* แถบปิดท้ายใต้แชท */
+.dl .chat-cta{width:min(100%,760px);margin:26px auto 0;display:flex;flex-wrap:wrap;align-items:center;gap:20px;
+  justify-content:space-between;background:var(--navy);border-radius:30px;padding:30px 32px;color:#fff}
+.dl .chat-cta h3{font-size:1.24rem;margin:0 0 5px}
+.dl .chat-cta p{color:#B6CDE6;font-size:.9rem;max-width:38ch}
+.dl .cc-btns{display:flex;gap:10px;flex-wrap:wrap}
+.dl .btn-line{background:#06C755;color:#fff;box-shadow:0 8px 20px rgba(6,199,85,.4)}
+.dl .btn-line .dot{background:rgba(255,255,255,.25);color:#fff}
+.dl .btn-line:hover{background:#05B44C;transform:translateY(-3px);box-shadow:0 14px 28px rgba(6,199,85,.5)}
+@media(max-width:900px){.dl .chat-band{padding:80px 0 70px}
+.dl .chat-cta{flex-direction:column;align-items:flex-start;padding:24px 22px}
+.dl .msg{max-width:96%}}
+/* ===== FOOTER — แถบน้ำเงินเข้ม ===== */
+/* ต้นแบบให้ท้ายเว็บชนกับโซนแชทพอดี (margin-top:0) — แต่ท้ายเว็บใช้ร่วมกับหน้าอื่นด้วย
+   หน้าอื่นจึงเว้นระยะไว้ แล้วตัดระยะทิ้งเฉพาะหน้าแรก (หน้าที่มี .dl-page) */
+.dl footer{position:relative;margin-top:72px;padding:74px 0 26px;overflow:hidden;color:#fff;
+  background:radial-gradient(120% 120% at 80% 0%,#27548F 0%,var(--navy) 52%,#0E2545 100%)}
+main:has(.dl-page) + .dl footer{margin-top:0}
+.dl footer::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+  background-image:radial-gradient(rgba(255,255,255,.16) 1.4px,transparent 1.4px);background-size:30px 30px;
+  -webkit-mask-image:linear-gradient(180deg,#000,transparent 72%);mask-image:linear-gradient(180deg,#000,transparent 72%)}
+.dl footer::after{content:"";position:absolute;top:-160px;left:8%;width:420px;height:320px;pointer-events:none;
+  background:radial-gradient(circle,rgba(255,212,71,.14),rgba(255,212,71,0) 68%)}
+.dl footer .wrap{position:relative;z-index:2}
+.dl .f-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1.25fr;gap:38px}
+.dl .f-grid h4{font-size:.98rem;margin-bottom:16px;color:#fff;position:relative;padding-bottom:10px;width:max-content}
+.dl .f-grid h4::after{content:"";position:absolute;left:0;bottom:0;width:26px;height:3px;border-radius:3px;background:var(--yolk)}
+.dl .f-grid a,.dl .f-grid p{display:block;color:#AEC7E4;font-size:.9rem;padding:4px 0;transition:.22s}
+.dl .f-grid a{position:relative;width:max-content}
+.dl .f-grid a:hover{color:#fff;transform:translateX(5px)}
+.dl .f-grid a::before{content:"";position:absolute;left:-11px;top:50%;translate:0 -50%;width:5px;height:5px;border-radius:50%;
+  background:var(--yolk);opacity:0;transition:.22s}
+.dl .f-grid a:hover::before{opacity:1;left:-9px}
+.dl footer .logo{color:#fff}
+.dl footer .logo b{color:var(--yolk)}
+.dl .socials{display:flex;gap:10px;margin-top:18px}
+.dl .socials a svg{width:19px;height:19px}
+.dl .socials a{width:42px;height:42px;border-radius:14px;background:rgba(255,255,255,.1);color:#fff;display:grid;place-items:center;
+  border:1px solid rgba(255,255,255,.16);box-shadow:none;padding:0;transition:.26s cubic-bezier(.34,1.56,.64,1)}
+.dl .socials a:hover{transform:translateY(-4px) rotate(-8deg);background:var(--yolk);color:var(--navy);border-color:var(--yolk)}
+.dl .f-bottom{margin-top:44px;padding-top:22px;border-top:1px solid rgba(255,255,255,.14);
+  display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-size:.83rem;color:#93AECF}
 .dl .line-fab{position:fixed;right:22px;bottom:22px;z-index:80;display:flex;align-items:center;gap:10px;background:#06C755;color:#fff;
   padding:14px 22px;border-radius:999px;font-family:var(--display);box-shadow:0 12px 28px rgba(6,199,85,.42);transition:.24s cubic-bezier(.34,1.56,.64,1)}
 .dl .line-fab:hover{transform:translateY(-4px) scale(1.04)}
@@ -645,6 +768,8 @@ to{opacity:1;transform:none}}
 .dl .rv{opacity:0;transform:translateY(30px);transition:opacity .7s ease,transform .7s cubic-bezier(.22,1,.36,1)}
 .dl .rv.in{opacity:1;transform:none}
 @media(max-width:1000px){.dl .hero-grid{grid-template-columns:1fr;gap:10px}
+.dl .chips{flex-wrap:wrap}
+.dl .chip{flex:0 1 auto}
 .dl .stage{max-width:520px;margin-inline:auto;order:-1;overflow:hidden}
 .dl .duck{width:100%;left:0}
 .dl .deco{display:none}
@@ -653,19 +778,14 @@ to{opacity:1;transform:none}}
 .dl .rail{grid-template-columns:repeat(2,1fr)}
 .dl .why{grid-template-columns:1fr;padding:38px 26px}
 .dl .why-grid{grid-template-columns:repeat(2,1fr)}
-.dl .steps{grid-template-columns:1fr}
-.dl .cta{grid-template-columns:1fr;padding:40px 28px}
-.dl .cta-duck{max-width:150px}
-.dl .promise{grid-template-columns:repeat(2,1fr)}
 .dl .f-grid{grid-template-columns:1fr 1fr}
 .dl .menu{display:none}
 .dl .menu.open{display:flex;position:absolute;top:72px;left:0;right:0;flex-direction:column;background:#fff;padding:14px;border-radius:var(--r-m);box-shadow:var(--shadow-l)}
 .dl .burger{display:grid}}
 @media(max-width:560px){.dl .cats{grid-template-columns:repeat(2,1fr)}
 .dl .rail{grid-template-columns:1fr}
-.dl .why-grid,.dl .promise,.dl .f-grid{grid-template-columns:1fr}
+.dl .why-grid,.dl .f-grid{grid-template-columns:1fr}
 .dl .hero{padding-bottom:56px}
-.dl footer{border-radius:36px 36px 0 0}
 .dl .line-fab span{display:none}
 .dl .gap{margin-top:64px}}
 @media(prefers-reduced-motion:reduce){.dl *{animation:none!important;transition-duration:.01ms!important}
@@ -673,11 +793,5 @@ to{opacity:1;transform:none}}
 .dl h1.title .word{opacity:1;transform:none}
 .dl .mark::after{transform:scaleX(1)}}
 /* ── เพิ่มเติมสำหรับเว็บจริง (ไม่มีในไฟล์ต้นแบบ) ── */
-/* ตากะพริบของเป็ดในกล่องปิดท้าย — ต้นแบบใช้ JS เราทำด้วย CSS แทน */
-.dl .cta-duck .eye{transform-box:fill-box;transform-origin:center;animation:duckBlink 4.6s ease-in-out infinite}
-@keyframes duckBlink{0%,95%,100%{transform:scaleY(1)}97%{transform:scaleY(.12)}}
 /* การ์ดขายดีเป็นลิงก์ทั้งใบ — ป้าย "เลือกลาย" จึงเป็นข้อความ ไม่ใช่ปุ่มซ้อนลิงก์ */
 .dl .card .add{display:block;text-align:center}
-@media(prefers-reduced-motion:reduce){
-  .dl .cta-duck .eye{animation:none}
-}
