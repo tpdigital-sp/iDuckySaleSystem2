@@ -143,7 +143,12 @@
 /* ───────── แถบหมวดสินค้า (ใต้แถบเมนู · เดสก์ท็อป) ─────────
    เขียนเป็น CSS ที่นี่ ไม่ใช้คลาส padding/margin ของ Tailwind
    เพราะ `.dl *{margin:0;padding:0}` ด้านบนอยู่นอก @layer จึงชนะ utility เสมอ */
-.dl .catbar-row{display:none;padding-top:10px;transition:padding .3s ease}
+/* .nav-in มี backdrop-filter = สร้างเลเยอร์ของตัวเอง → เมนูบัญชีที่กางลงมาถูกจำกัดอยู่ในเลเยอร์นี้
+   ถ้าไม่กำหนด z-index ให้ .nav-in แถบหมวด (สืบมาทีหลัง) จะทับเมนูบัญชี — เคยเจอเมนูซ้อนกันมาแล้ว
+   ลำดับที่ถูก: แถวเมนูบน (40) > แถบหมวด (20) */
+.dl .nav-in{z-index:40}
+.dl .nav-in>.nav-cta{z-index:70}
+.dl .catbar-row{position:relative;z-index:20;display:none;padding-top:10px;transition:padding .3s ease}
 .dl header.nav.small .catbar-row{padding-top:6px}
 @media(min-width:768px){.dl .catbar-row{display:block}}
 .dl .catbar{display:flex;justify-content:center}

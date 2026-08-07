@@ -192,12 +192,18 @@ export default function ProductDetail({
     [resolved, rate]
   );
   const rateMinQty = rate?.minQty ?? 1;
-  // ลูกค้า "กดเลือกเรทเอง" แล้วจำนวนต่ำกว่าขั้นต่ำของเรทนั้น → ดันขึ้นให้ถึงขั้นต่ำ
-  // (โหมดอัตโนมัติไม่ดัน — เปิดหน้ามาเริ่มที่ 1 ชิ้นเสมอ เรทปรับตามจำนวนเอง)
+  /**
+   * ร้านรับสั่งขั้นต่ำ 1 ชิ้นเสมอ — ห้ามบล็อกการสั่งเพราะ "เรทที่เลือกไว้" มีขั้นต่ำสูง
+   * ลูกค้ากดเลือกเรทส่งเองแล้วลดจำนวนลงต่ำกว่าขั้นต่ำ → สลับลงเรทที่รับจำนวนนั้นได้ (ปกติคือเรทปลีก)
+   * ราคาจึงถูกต้องเสมอ และปุ่มสั่งซื้อไม่ตายอีก
+   */
   useEffect(() => {
-    // ขนาดกำหนดเองไม่อิงเรท — ไม่ต้องดันจำนวนขึ้นตามขั้นต่ำของเรท
-    if (rateTouched && rateMinQty > 1 && !useCustom) setQty((q) => Math.max(q, rateMinQty));
-  }, [rateMinQty, rateTouched, useCustom]);
+    if (useCustom || rates.length === 0 || qty >= rateMinQty) return;
+    const fit = [...rates]
+      .filter((r) => (r.minQty ?? 1) <= qty)
+      .sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
+    if (fit && fit.label !== rate?.label) setRateLabel(fit.label);
+  }, [qty, rateMinQty, useCustom, rates, rate]);
 
   // ── จำนวนลายที่คละ (เรทที่กำหนดขั้นต่ำต่อลาย / สินค้าที่คิดเรทตามชิ้นต่อลาย) ──
   const [designs, setDesigns] = useState(1);
@@ -901,7 +907,11 @@ export default function ProductDetail({
           {rate?.minPerDesign != null && rate.minPerDesign > 0 && (
             <p className="mt-2 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
               🎨 เรทนี้คละลายขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
-              {rate.minQty ? ` · สั่งรวมขั้นต่ำ ${rate.minQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}` : ""}
+              {/* ร้านรับสั่งขั้นต่ำ 1 ชิ้นเสมอ — ตัวเลขนี้คือ "เรทนี้เริ่มใช้ที่เท่าไหร่" ไม่ใช่ห้ามสั่งน้อยกว่า
+                  (สั่งน้อยกว่านี้ระบบสลับไปเรทที่ถูกต้องให้เอง) */}
+              {rate.minQty && rate.minQty > 1
+                ? ` · เรทนี้เริ่มใช้ที่ ${rate.minQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป (สั่งน้อยกว่านี้ได้ ระบบคิดราคาตามช่วงจำนวนให้)`
+                : ""}
             </p>
           )}
         </div>
@@ -1376,8 +1386,8 @@ export default function ProductDetail({
                 <div className="flex items-center rounded-full bg-white ring-1 ring-amber-200">
                   <button
                     type="button"
-                    // โหมดเด้งเรทอัตโนมัติ: ลดต่ำกว่าขั้นต่ำเรทปัจจุบันได้ ระบบจะสลับลงเรทที่เหมาะเอง
-                    onClick={() => setQty((q) => Math.max(rateTouched ? rateMinQty : 1, q - 1))}
+                    // ลดได้ถึง 1 เสมอ — ถ้าต่ำกว่าขั้นต่ำของเรทที่เลือกไว้ ระบบจะสลับลงเรทที่เหมาะเอง
+                    onClick={() => setQty((q) => Math.max(1, q - 1))}
                     className="h-10 w-10 rounded-l-full text-base font-bold text-stone-600 hover:bg-amber-50"
                     aria-label="ลดจำนวน"
                   >
@@ -1411,7 +1421,7 @@ export default function ProductDetail({
                   type="button"
                   onClick={handleAdd}
                   // ขนาดกำหนดเอง = ราคาไม่อิงเรทปกติ → ไม่ติดขั้นต่ำของเรทด้วย (สั่งกี่ชิ้นก็ได้ แอดมินตีราคาตามจริง)
-                  disabled={(useCustom && !customValid) || artBlocked || (!useCustom && qty < rateMinQty)}
+                  disabled={(useCustom && !customValid) || artBlocked}
                   className={`flex-1 rounded-full px-5 py-3 text-[13px] font-bold shadow-lg transition sm:flex-none sm:px-8 ${
                     added
                       ? "bg-emerald-500 text-white"
@@ -1422,8 +1432,6 @@ export default function ProductDetail({
                     ? "✓ เพิ่มลงตะกร้าแล้ว!"
                     : artBlocked
                       ? "🎨 แนบลายก่อนถึงจะสั่งได้"
-                      : !useCustom && qty < rateMinQty
-                      ? `เรทนี้สั่งขั้นต่ำ ${rateMinQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}`
                       : useCustom && customAsk
                       ? "🛒 สั่งเลย — แอดมินตีราคาแล้วแจ้งกลับ"
                       : `🛒 เพิ่มลงตะกร้า — ${formatPrice(unitPrice * qty + designFee)}`}

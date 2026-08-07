@@ -3221,7 +3221,8 @@ export default function ProductEditor({ product }: { product: Product }) {
                   onChange={(e) => patchCustom({ mode: e.target.value as DraftCustom["mode"] })}
                   className="mt-1 block rounded-xl bg-white px-3 py-1.5 text-sm text-slate-800 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
                 >
-                  <option value="area">คิดตามพื้นที่ (อัตโนมัติ)</option>
+                  {/* "คิดตามพื้นที่" เลิกใช้แล้ว — โชว์เฉพาะสินค้าเก่าที่ยังตั้งค่านี้ค้างไว้ จะได้เปลี่ยนออกได้ */}
+                  {draft.custom.mode === "area" && <option value="area">คิดตามพื้นที่ (อัตโนมัติ · เลิกใช้แล้ว)</option>}
                   <option value="quote">ให้แอดมินตีราคา (สอบถาม)</option>
                   <option value="size">ระบุขนาดตามที่ต้องการ (ราคาตามตารางปกติ)</option>
                   <option value="chat">ทักแชทคุยกับแอดมิน (คุยรายละเอียด)</option>
