@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { PRODUCTS } from "@/lib/products";
-import { getProductServer } from "@/lib/products-server";
+import { getProductServer, getProductTemplates } from "@/lib/products-server";
 import { productAutoSeo } from "@/lib/auto-seo";
 import { currentActor } from "@/lib/server/require-perm";
 import ProductDetail from "./ProductDetail";
@@ -56,5 +56,7 @@ export default async function ProductPage({
   // ปิดการมองเห็นไว้ → ลูกค้าเปิดลิงก์ตรงก็ไม่เจอ · ทีมงานที่ล็อกอินหลังบ้านยังเปิดพรีวิวได้
   const staff = product.hidden ? await currentActor() : null;
   if (product.hidden && !staff) notFound();
-  return <ProductDetail product={product} preview={!!staff && !!product.hidden} />;
+  // 📐 เทมเพลตไฟล์งานที่ผูกไว้ — ดึงฝั่งเซิร์ฟเวอร์ให้ลิงก์โหลดติดมากับหน้าเลย
+  const templates = await getProductTemplates(product.templateIds ?? []);
+  return <ProductDetail product={product} templates={templates} preview={!!staff && !!product.hidden} />;
 }

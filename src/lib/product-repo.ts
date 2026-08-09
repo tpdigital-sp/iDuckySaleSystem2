@@ -91,7 +91,7 @@ export async function fetchProductNamesLite(): Promise<Product[]> {
   if (!sb) return mergedProducts();
   const { data, error } = await sb
     .from("products")
-    .select("id,name,category,badge,sort,slug:data->>slug,hidden:data->hidden")
+    .select("id,name,category,badge,sort,slug:data->>slug,hidden:data->hidden,templateIds:data->templateIds")
     .order("sort", { ascending: true });
   if (error || !data) return mergedProducts();
   return (data as unknown as Record<string, unknown>[])

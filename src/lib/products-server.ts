@@ -3,6 +3,7 @@ import { cache } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { getProduct, type Product } from "./products";
 import { resolveOptions, type OptionPreset } from "./option-presets";
+import { sortTemplates, templateReady, type DesignTemplate } from "./design-templates";
 
 /**
  * ดึงสินค้ารายตัวฝั่งเซิร์ฟเวอร์ (สำหรับ generateMetadata + หน้าสินค้า)
@@ -43,4 +44,19 @@ export const getProductServer = cache(async (rawId: string): Promise<Product | u
     if (presets.length) product = { ...product, options: resolveOptions(product.options, presets) };
   }
   return product;
+});
+
+/**
+ * เทมเพลตไฟล์งานที่สินค้าตัวนี้ผูกไว้ (สำหรับหน้าสินค้า — เรนเดอร์ฝั่งเซิร์ฟเวอร์ Google เห็นด้วย)
+ * เก็บเป็นแถวพิเศษ category "__templates__" ในตาราง products แบบเดียวกับคลังตัวเลือก
+ * เอาเฉพาะอันที่พร้อมโหลดจริง (ไม่ซ่อน + มีไฟล์หรือลิงก์) · เรียงตามที่ผูกไว้ในสินค้า
+ */
+export const getProductTemplates = cache(async (ids: string[]): Promise<DesignTemplate[]> => {
+  if (!ids.length) return [];
+  const sb = serverClient();
+  if (!sb) return [];
+  const { data } = await sb.from("products").select("data").eq("category", "__templates__");
+  const all = (data ?? []).map((r) => r.data as DesignTemplate).filter((t) => t?.id && t.name);
+  const picked = all.filter((t) => ids.includes(t.id) && templateReady(t));
+  return sortTemplates(picked);
 });

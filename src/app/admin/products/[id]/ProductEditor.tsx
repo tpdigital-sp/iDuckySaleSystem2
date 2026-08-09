@@ -33,6 +33,8 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 import GradientPicker from "@/components/GradientPicker";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, DEFAULT_SHIPPING, type ShippingMethod } from "@/lib/shop-settings";
+import { formatFileSize, type DesignTemplate } from "@/lib/design-templates";
+import { fetchTemplates } from "@/lib/template-repo";
 
 type DraftChoice = { name: string; extra: string };
 /** presetId มี = กลุ่มนี้ "ลิงก์" คลังตัวเลือกกลาง (label+choices มาจากคลัง แก้ในกลุ่มไม่ได้จนกว่าจะตัดลิงก์) */
@@ -150,6 +152,8 @@ type Draft = {
   shipTierMethodId: string;
   /** ค่าส่งเฉพาะบางตัวเลือก (ขนาดมีผลกับกล่อง) — ว่าง = ใช้ค่ากลางของสินค้าอย่างเดียว */
   shipRules: DraftShipRule[];
+  /** 📐 เทมเพลตไฟล์งานที่ผูกกับสินค้านี้ (id จากคลังเทมเพลต) */
+  templateIds: string[];
   /** ข้อควรทราบ/เงื่อนไขงาน (แสดงหน้าสินค้า) */
   terms: string;
   /** บังคับแนบลายก่อนสั่ง (ค่าเริ่มต้น = บังคับ) */
@@ -385,6 +389,7 @@ function toDraft(p: Product): Draft {
       extra: r.shipTierExtra != null && r.shipTierExtra > 0 ? String(r.shipTierExtra) : "",
       methodId: r.shipTierMethodId ?? "",
     })),
+    templateIds: [...(p.templateIds ?? [])],
     terms: p.terms ?? "",
     artworkRequired: p.artworkRequired !== false,
     reviewed: p.reviewed,
@@ -705,6 +710,11 @@ export default function ProductEditor({ product }: { product: Product }) {
   const [shipMethods, setShipMethods] = useState<ShippingMethod[]>(DEFAULT_SHIPPING);
   useEffect(() => {
     void fetchShopPayment().then((p) => setShipMethods(shippingOf(p)));
+  }, []);
+  // 📐 คลังเทมเพลตไฟล์งาน — ให้ติ๊กเลือกว่าสินค้านี้ใช้เทมเพลตไหนบ้าง
+  const [templates, setTemplates] = useState<DesignTemplate[]>([]);
+  useEffect(() => {
+    void fetchTemplates().then(setTemplates);
   }, []);
   const [saveError, setSaveError] = useState("");
   /** กำลังยิงบันทึกอยู่ — กันกดซ้ำระหว่างรอ (เคยกดรัวเพราะไม่มีอะไรตอบสนอง) */
@@ -1938,6 +1948,7 @@ export default function ProductEditor({ product }: { product: Product }) {
           .filter((r) => r.shippingId || r.shipTiers?.length);
         return list.length ? list : undefined;
       })(),
+      templateIds: draft.templateIds.length ? [...draft.templateIds] : undefined,
       terms: draft.terms.trim() || undefined,
       artworkRequired: draft.artworkRequired ? undefined : false, // undefined = บังคับ (ค่าเริ่มต้น)
       reviewed: draft.reviewed,
@@ -2078,6 +2089,7 @@ export default function ProductEditor({ product }: { product: Product }) {
     { id: "sec-basic", label: "ข้อมูลหลัก" },
     { id: "sec-photos", label: "รูป" },
     { id: "sec-terms", label: "ข้อควรทราบ" },
+    { id: "sec-templates", label: "เทมเพลต" },
     { id: "sec-highlights", label: "จุดเด่น" },
     { id: "sec-options", label: "ตัวเลือก" },
     { id: "sec-rules", label: "กติกา" },
@@ -2627,6 +2639,76 @@ export default function ProductEditor({ product }: { product: Product }) {
         <p className="mt-1.5 text-[11px] text-slate-400">
           {draft.terms.trim() ? `${draft.terms.trim().split("\n").filter(Boolean).length} บรรทัด · จะขึ้นในหน้าสินค้า` : "เว้นว่าง = ไม่แสดงกล่องนี้ในหน้าสินค้า"}
         </p>
+      </section>
+
+      {/* ── 📐 เทมเพลตไฟล์งาน — ติ๊กเลือกจากคลังกลาง ลูกค้าโหลดได้จากหน้าสินค้า ── */}
+      <section id="sec-templates" className={`relative border-l-4 border-l-blue-400 mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("templates")}`}>
+        <SecToggle id="templates" />
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-bold text-blue-800">📐 เทมเพลตไฟล์งาน ({draft.templateIds.length})</h2>
+          <a
+            href="/admin/templates"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600 hover:border-blue-300"
+          >
+            🗂 จัดการคลังเทมเพลต
+          </a>
+        </div>
+        <p className="mb-3 text-[11px] text-slate-400">
+          ติ๊กเทมเพลตที่ใช้กับสินค้านี้ — หน้าสินค้าจะขึ้นปุ่มให้ลูกค้าโหลดไฟล์ .ai ไปวางลาย ·
+          ไฟล์อยู่ในคลังกลาง แก้ที่เดียวสินค้าทุกตัวอัปเดตตาม
+        </p>
+        {templates.length === 0 ? (
+          <p className="rounded-2xl bg-slate-50 p-4 text-center text-xs text-slate-400">
+            ยังไม่มีเทมเพลตในคลัง — ไปเพิ่มที่{" "}
+            <a href="/admin/templates" target="_blank" rel="noopener noreferrer" className="font-bold text-blue-600 underline">
+              คลังเทมเพลตไฟล์งาน
+            </a>{" "}
+            ก่อน
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {templates.map((t) => {
+              const on = draft.templateIds.includes(t.id);
+              return (
+                <label
+                  key={t.id}
+                  className={`flex cursor-pointer items-center gap-3 rounded-xl p-2.5 ring-1 transition ${
+                    on ? "bg-blue-50 ring-blue-300" : "bg-white ring-slate-200 hover:bg-slate-50"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={() =>
+                      patch({
+                        templateIds: on
+                          ? draft.templateIds.filter((x) => x !== t.id)
+                          : [...draft.templateIds, t.id],
+                      })
+                    }
+                    className="h-4 w-4 accent-blue-600"
+                  />
+                  {t.previewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={t.previewUrl} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover ring-1 ring-slate-200" />
+                  ) : (
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-100 text-lg">📐</span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-800">{t.name}</span>
+                    <span className="block truncate text-[11px] text-slate-400">
+                      {t.fileName ?? (t.linkUrl ? "ลิงก์ภายนอก" : "⚠️ ยังไม่มีไฟล์")}
+                      {t.fileSize ? ` · ${formatFileSize(t.fileSize)}` : ""}
+                      {t.hidden ? " · 🚫 ซ่อนอยู่" : ""}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       <section id="sec-highlights" className={`relative border-l-4 border-l-emerald-400 mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("highlights")}`}>

@@ -38,6 +38,7 @@ import {
   type ProductOption,
 } from "@/lib/products";
 import { LINE_URL } from "@/components/LineButton";
+import { formatFileSize, templateHref, type DesignTemplate } from "@/lib/design-templates";
 import { useCart } from "@/lib/cart-context";
 import { canAccessAdmin } from "@/lib/auth";
 import { fetchProduct } from "@/lib/product-repo";
@@ -101,10 +102,13 @@ function initialSelections(options: ProductOption[]): Record<string, string> {
 
 export default function ProductDetail({
   product: initialProduct,
+  /** 📐 เทมเพลตไฟล์งานที่ลูกค้าโหลดไปวางลายได้ (ดึงมาให้แล้วจากเซิร์ฟเวอร์) */
+  templates = [],
   /** เปิดดูสินค้าที่ "ปิดการมองเห็น" อยู่ (เฉพาะทีมงานที่ล็อกอิน) — ขึ้นแถบเตือนไว้กันเข้าใจผิด */
   preview = false,
 }: {
   product: Product;
+  templates?: DesignTemplate[];
   preview?: boolean;
 }) {
   const [product, setProduct] = useState<Product>(initialProduct);
@@ -825,6 +829,60 @@ export default function ProductDetail({
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {/* ═══ 📐 เทมเพลตไฟล์งาน — โหลดไปวางลายก่อนส่งกลับมาให้ร้าน (ไม่ต้องล็อกอิน) ═══ */}
+          {templates.length > 0 && (
+            <div className="mt-4 overflow-hidden rounded-2xl border-2 border-sky-200 bg-sky-50/60 shadow-sm">
+              <div className="flex items-center gap-2 bg-sky-600 px-4 py-2">
+                <span className="text-base leading-none">📐</span>
+                <p className="text-xs font-extrabold tracking-tight text-white">
+                  เทมเพลตไฟล์งาน — โหลดไปวางลายได้เลย
+                </p>
+              </div>
+              <ul className="space-y-2 px-3 py-3">
+                {templates.map((t) => {
+                  const href = templateHref(t);
+                  if (!href) return null;
+                  const outside = !t.fileUrl;
+                  return (
+                    <li key={t.id} className="flex items-center gap-3 rounded-xl bg-white p-2.5 ring-1 ring-sky-100">
+                      {t.previewUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={t.previewUrl}
+                          alt={`ตัวอย่างเทมเพลต ${t.name}`}
+                          className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-sky-100"
+                        />
+                      ) : (
+                        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-sky-50 text-xl">📐</span>
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-bold text-stone-800">{t.name}</span>
+                        {t.note && <span className="block text-[11px] leading-snug text-stone-500">{t.note}</span>}
+                        <span className="block text-[10px] text-stone-400">
+                          {outside ? "เปิดลิงก์ไฟล์" : t.fileName ?? "ไฟล์เทมเพลต"}
+                          {t.fileSize ? ` · ${formatFileSize(t.fileSize)}` : ""}
+                        </span>
+                      </span>
+                      <a
+                        href={href}
+                        {...(outside
+                          ? { target: "_blank", rel: "noopener noreferrer" }
+                          : { download: t.fileName ?? "" })}
+                        className="shrink-0 rounded-full bg-sky-600 px-4 py-2 text-xs font-bold text-white shadow transition hover:bg-sky-700"
+                      >
+                        {outside ? "🔗 เปิดลิงก์" : "⬇️ ดาวน์โหลด"}
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="px-4 pb-3 text-[10px] leading-relaxed text-sky-800">
+                วางลายในเทมเพลตแล้วส่งไฟล์กลับมาทางช่อง <strong>&ldquo;แนบลายของคุณ&rdquo;</strong> ด้านล่าง
+                (หรือแนบลิงก์ไฟล์ต้นฉบับ) — งานจะได้ขนาด/ตำแหน่งตรงตามที่ผลิตจริง
+              </p>
             </div>
           )}
 
