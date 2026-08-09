@@ -16,8 +16,15 @@ import {
   type DesignTemplate,
   type TemplateFile,
 } from "@/lib/design-templates";
-import { deleteTemplate, fetchTemplates, persistTemplate, uploadTemplateFile } from "@/lib/template-repo";
-import { fetchOptionGroups, fetchProductNamesLite } from "@/lib/product-repo";
+import {
+  deleteTemplate,
+  fetchTemplateCategories,
+  fetchTemplates,
+  persistTemplate,
+  persistTemplateCategories,
+  uploadTemplateFile,
+} from "@/lib/template-repo";
+import { fetchProduct, fetchProductNamesLite } from "@/lib/product-repo";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { badge, btnNeutral, btnPrimary, btnSmDanger, btnSmNeutral, card, faint, h1, muted } from "@/lib/admin-ui";
 
@@ -42,39 +49,122 @@ function AdminTemplatesInner() {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [dropOn, setDropOn] = useState<string | null>(null);
   const [usedBy, setUsedBy] = useState<Record<string, { id: string; name: string }[]>>({});
-  /** กลุ่มตัวเลือกทั้งร้าน (โหลดครั้งเดียวตอนต้องใช้) — ไว้ผูกไฟล์กับรุ่น/ขนาด */
-  const [groups, setGroups] = useState<{ label: string; choices: string[] }[] | null>(null);
-  const [groupsBusy, setGroupsBusy] = useState(false);
+  /** รายชื่อสินค้าทั้งร้าน (id + ชื่อ) — ให้เลือก "สินค้าอ้างอิง" ตอนผูกไฟล์กับตัวเลือก */
+  const [productList, setProductList] = useState<{ id: string; name: string }[]>([]);
+  /**
+   * ตัวเลือกของ "สินค้าอ้างอิง" แต่ละตัว (โหลดทีละสินค้าเมื่อเลือก — เบากว่าดึงทั้งร้าน)
+   * productId → [{ label, choices }]
+   */
+  const [prodOpts, setProdOpts] = useState<Record<string, { label: string; choices: string[] }[]>>({});
+  const [optsBusy, setOptsBusy] = useState<string | null>(null);
   /** ชุดที่กำลังลากจัดลำดับ (เก็บเป็น id — ลิสต์ที่เห็นถูกกรอง/จัดกลุ่ม ใช้ index ไม่ได้) */
   const dragId = useRef<string | null>(null);
   const [dragAt, setDragAt] = useState<string | null>(null);
   /** ตัวกรองหมวด ("" = ทุกหมวด) */
   const [cat, setCat] = useState("");
+  /** รายชื่อหมวดที่แอดมินตั้งไว้ (จัดลำดับเองได้ · หมวดว่างก็เก็บไว้ได้) */
+  const [catList, setCatList] = useState<string[]>([]);
+  const [catPanel, setCatPanel] = useState(false);
+  const [newCat, setNewCat] = useState("");
 
   async function refresh() {
     setLoading(true);
-    const [tpls, products] = await Promise.all([fetchTemplates(), fetchProductNamesLite()]);
+    const [tpls, products, cats] = await Promise.all([
+      fetchTemplates(),
+      fetchProductNamesLite(),
+      fetchTemplateCategories(),
+    ]);
     setList(tpls.map((t) => ({ ...normalizeTemplate(t) })));
+    setCatList(cats);
     const by: Record<string, { id: string; name: string }[]> = {};
     for (const p of products)
       for (const id of p.templateIds ?? []) (by[id] ??= []).push({ id: p.id, name: p.name });
     setUsedBy(by);
+    setProductList(products.map((p) => ({ id: p.id, name: p.name })));
     setLoading(false);
   }
   useEffect(() => {
     void refresh();
   }, []);
 
-  /** โหลดรายชื่อกลุ่มตัวเลือกเมื่อเริ่มใช้จริง (ดึงตัวเลือกของสินค้าทั้งร้าน — หนักกว่าปกติ) */
-  async function ensureGroups() {
-    if (groups || groupsBusy) return;
-    setGroupsBusy(true);
-    setGroups(await fetchOptionGroups());
-    setGroupsBusy(false);
+  /** โหลดตัวเลือกของสินค้าอ้างอิงตัวหนึ่ง (ครั้งเดียวต่อสินค้า) */
+  async function ensureProductOptions(pid: string) {
+    if (!pid || prodOpts[pid] || optsBusy === pid) return;
+    setOptsBusy(pid);
+    const p = await fetchProduct(pid);
+    const groups = (p?.options ?? [])
+      .map((o) => ({
+        label: o.label?.trim() ?? "",
+        choices: (o.choices ?? []).map((c) => c.name?.trim()).filter((n): n is string => !!n),
+      }))
+      .filter((g) => g.label && g.choices.length);
+    setProdOpts((cur) => ({ ...cur, [pid]: groups }));
+    setOptsBusy(null);
   }
+  /** โหลดตัวเลือกของสินค้าอ้างอิงที่ชุดต่าง ๆ ตั้งไว้แล้ว (ตอนกางการ์ด) */
+  useEffect(() => {
+    for (const t of list) if (t.optionProductId) void ensureProductOptions(t.optionProductId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list.length]);
 
   function patch(id: string, p: Partial<Draft>) {
     setList((cur) => cur.map((t) => (t.id === id ? { ...t, ...p, _dirty: true } : t)));
+  }
+
+  // ── จัดการหมวดหมู่ ──
+  async function saveCats(next: string[]) {
+    setCatList(next);
+    const res = await persistTemplateCategories(next);
+    if (!res.ok) setError(res.error ?? "บันทึกหมวดไม่สำเร็จ");
+  }
+  async function addCat() {
+    const name = newCat.trim();
+    if (!name) return;
+    if (catList.includes(name)) return setError(`มีหมวด “${name}” อยู่แล้ว`);
+    setNewCat("");
+    await saveCats([...catList, name]);
+  }
+  /** เปลี่ยนชื่อหมวด — ต้องไล่อัปเดตทุกชุดที่ใช้ชื่อเดิมด้วย ไม่งั้นชุดจะหลุดไปกองรวม */
+  async function renameCat(from: string) {
+    const to = prompt(`เปลี่ยนชื่อหมวด “${from}” เป็น`, from)?.trim();
+    if (!to || to === from) return;
+    if (catList.includes(to)) return setError(`มีหมวด “${to}” อยู่แล้ว`);
+    await saveCats(catList.map((c) => (c === from ? to : c)));
+    const affected = list.filter((t) => t.category?.trim() === from);
+    setList((cur) => cur.map((t) => (t.category?.trim() === from ? { ...t, category: to } : t)));
+    for (const t of affected) {
+      const { _dirty, ...clean } = t;
+      void _dirty;
+      await persistTemplate({ ...clean, category: to });
+    }
+  }
+  async function removeCat(name: string) {
+    const affected = list.filter((t) => t.category?.trim() === name);
+    if (
+      !confirm(
+        affected.length
+          ? `ลบหมวด “${name}”?\n\n${affected.length} ชุดที่อยู่ในหมวดนี้จะย้ายไป “${NO_CATEGORY}” (ไฟล์ไม่หาย)`
+          : `ลบหมวด “${name}”?`
+      )
+    )
+      return;
+    await saveCats(catList.filter((c) => c !== name));
+    if (affected.length) {
+      setList((cur) => cur.map((t) => (t.category?.trim() === name ? { ...t, category: undefined } : t)));
+      for (const t of affected) {
+        const { _dirty, ...clean } = t;
+        void _dirty;
+        await persistTemplate({ ...clean, category: undefined });
+      }
+    }
+    if (cat === name) setCat("");
+  }
+  async function moveCat(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= catList.length) return;
+    const next = [...catList];
+    [next[i], next[j]] = [next[j], next[i]];
+    await saveCats(next);
   }
   function patchFile(tid: string, fid: string, p: Partial<TemplateFile>) {
     setList((cur) =>
@@ -115,7 +205,10 @@ function AdminTemplatesInner() {
     if (!files.length) return;
     setError("");
     const label = t.optionLabel?.trim();
-    const choices = label ? (groups ?? []).find((g) => g.label === label)?.choices ?? [] : [];
+    const choices =
+      label && t.optionProductId
+        ? (prodOpts[t.optionProductId] ?? []).find((g) => g.label === label)?.choices ?? []
+        : [];
     const added: TemplateFile[] = [];
     for (let i = 0; i < files.length; i++) {
       setBusy((b) => ({ ...b, [t.id]: `${i + 1}/${files.length}` }));
@@ -170,7 +263,6 @@ function AdminTemplatesInner() {
     const t: Draft = { id: rid("tpl"), name: "", files: [], sort: list.length, _dirty: true };
     setList((cur) => [...cur, t]);
     setOpen((o) => ({ ...o, [t.id]: true }));
-    void ensureGroups();
   }
 
   /** วางชุดที่ลากไว้ลงตำแหน่งของชุดเป้าหมาย (อ้างด้วย id — ปลอดภัยแม้ลิสต์ถูกกรอง/จัดกลุ่ม) */
@@ -215,10 +307,18 @@ function AdminTemplatesInner() {
           .includes(q)
     );
   const totalFiles = list.reduce((n, t) => n + (t.files?.length ?? 0), 0);
-  const cats = templateCategories(list);
+  /** หมวดที่ตั้งไว้ (ตามลำดับที่จัด) + หมวดที่ชุดใช้อยู่แต่ยังไม่ได้ตั้ง (ข้อมูลเก่า) ต่อท้าย */
+  const cats = [...catList, ...templateCategories(list).filter((c) => !catList.includes(c))];
   const noCatCount = list.filter((t) => !t.category?.trim()).length;
   /** จัดกลุ่มตามหมวดเมื่อดูรวมทุกหมวด · เลือกหมวดเดียวอยู่แล้วไม่ต้องมีหัวกลุ่มซ้ำ */
-  const catGroups = cat ? [{ category: cat, items: shown }] : groupByCategory(shown);
+  const catGroups = cat
+    ? [{ category: cat, items: shown }]
+    : groupByCategory(shown).sort((a, b) => {
+        // เรียงตามลำดับหมวดที่แอดมินจัดไว้ · "ยังไม่จัดหมวด" ท้ายสุดเสมอ
+        if (a.category === NO_CATEGORY) return 1;
+        if (b.category === NO_CATEGORY) return -1;
+        return cats.indexOf(a.category) - cats.indexOf(b.category);
+      });
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
@@ -231,10 +331,93 @@ function AdminTemplatesInner() {
             ลูกค้าเลือกรุ่นไหน ก็เห็นไฟล์ของรุ่นนั้น
           </p>
         </div>
-        <button type="button" onClick={add} className={btnPrimary}>
-          ＋ เพิ่มชุดเทมเพลต
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setCatPanel((v) => !v)} className={btnNeutral}>
+            🗂 ตั้งค่าหมวดหมู่{catList.length ? ` (${catList.length})` : ""}
+          </button>
+          <button type="button" onClick={add} className={btnPrimary}>
+            ＋ เพิ่มชุดเทมเพลต
+          </button>
+        </div>
       </div>
+
+      {/* ── ตั้งค่าหมวดหมู่: เพิ่ม / เปลี่ยนชื่อ / ลบ / จัดลำดับ ── */}
+      {catPanel && (
+        <div className={`mt-3 ${card} p-4`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-bold text-slate-800">🗂 หมวดหมู่ของคลังเทมเพลต</p>
+            <button type="button" onClick={() => setCatPanel(false)} className={btnSmNeutral}>
+              ปิด
+            </button>
+          </div>
+          <p className={`mt-1 text-xs ${muted}`}>
+            ตั้งไว้ที่นี่แล้วในแต่ละชุดจะเลือกจากรายการนี้ได้เลย ไม่ต้องพิมพ์ซ้ำ ·
+            เปลี่ยนชื่อหมวด ระบบไล่อัปเดตชุดที่ใช้อยู่ให้เอง · ลำดับที่จัดไว้ = ลำดับกลุ่มในหน้าคลัง
+          </p>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <input
+              value={newCat}
+              onChange={(e) => setNewCat(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void addCat();
+                }
+              }}
+              placeholder="ชื่อหมวดใหม่ เช่น เคสมือถือ"
+              className={`${input} max-w-xs`}
+            />
+            <button type="button" onClick={() => void addCat()} disabled={!newCat.trim()} className={btnPrimary}>
+              ＋ เพิ่มหมวด
+            </button>
+          </div>
+
+          {catList.length === 0 ? (
+            <p className={`mt-3 rounded-xl bg-slate-50 p-3 text-center text-xs ${faint}`}>
+              ยังไม่มีหมวด — เพิ่มหมวดแรกได้เลย
+            </p>
+          ) : (
+            <ul className="mt-3 space-y-1">
+              {catList.map((c, i) => {
+                const n = list.filter((t) => t.category?.trim() === c).length;
+                return (
+                  <li key={c} className="flex items-center gap-2 rounded-lg px-2 py-1.5 ring-1 ring-slate-100 hover:bg-slate-50">
+                    <span className="flex flex-col">
+                      <button
+                        type="button"
+                        onClick={() => void moveCat(i, -1)}
+                        disabled={i === 0}
+                        className="h-3.5 text-[9px] leading-none text-slate-400 disabled:opacity-20"
+                        aria-label={`เลื่อน ${c} ขึ้น`}
+                      >
+                        ▲
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void moveCat(i, 1)}
+                        disabled={i === catList.length - 1}
+                        className="h-3.5 text-[9px] leading-none text-slate-400 disabled:opacity-20"
+                        aria-label={`เลื่อน ${c} ลง`}
+                      >
+                        ▼
+                      </button>
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">🗂 {c}</span>
+                    <span className={`text-[11px] ${faint}`}>{n} ชุด</span>
+                    <button type="button" onClick={() => void renameCat(c)} className={btnSmNeutral}>
+                      ✏️ เปลี่ยนชื่อ
+                    </button>
+                    <button type="button" onClick={() => void removeCat(c)} className={btnSmDanger}>
+                      🗑 ลบ
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
 
       {!isSupabaseConfigured && (
         <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
@@ -338,7 +521,8 @@ function AdminTemplatesInner() {
             const used = usedBy[t.id] ?? [];
             const files = t.files ?? [];
             const label = t.optionLabel?.trim();
-            const groupChoices = label ? (groups ?? []).find((g) => g.label === label)?.choices ?? [] : [];
+            const prodGroups = t.optionProductId ? prodOpts[t.optionProductId] ?? [] : [];
+            const groupChoices = label ? prodGroups.find((g) => g.label === label)?.choices ?? [] : [];
             const expanded = !!open[t.id];
             const missing = files.filter((f) => !fileReady(f)).length;
             const uploading = busy[t.id];
@@ -389,7 +573,6 @@ function AdminTemplatesInner() {
                   <button
                     type="button"
                     onClick={() => {
-                      void ensureGroups(); // กางการ์ด = กำลังจะแก้ → เตรียมรายชื่อกลุ่มตัวเลือกไว้เลย
                       setOpen((o) => ({ ...o, [t.id]: !o[t.id] }));
                     }}
                     className="min-w-0 flex-1 text-left"
@@ -414,7 +597,6 @@ function AdminTemplatesInner() {
                   <button
                     type="button"
                     onClick={() => {
-                      void ensureGroups(); // กางการ์ด = กำลังจะแก้ → เตรียมรายชื่อกลุ่มตัวเลือกไว้เลย
                       setOpen((o) => ({ ...o, [t.id]: !o[t.id] }));
                     }}
                     className={`${btnSmNeutral} shrink-0`}
@@ -439,57 +621,98 @@ function AdminTemplatesInner() {
                         className={input}
                       />
                     </div>
-                    {/* หมวดหมู่ — พิมพ์ใหม่ได้เลย หรือเลือกจากหมวดที่เคยใช้ */}
+                    {/* หมวดหมู่ — เลือกจากรายการที่ตั้งไว้ (เพิ่มหมวดใหม่ที่ปุ่ม 🗂 ตั้งค่าหมวดหมู่ ด้านบน) */}
                     <div className="flex flex-wrap items-center gap-2">
                       <label className="text-xs font-semibold text-slate-600">🗂 หมวดหมู่</label>
-                      <input
-                        value={t.category ?? ""}
-                        onChange={(e) => patch(t.id, { category: e.target.value.trim() || undefined })}
-                        list="tpl-cats"
-                        placeholder="เช่น เคสมือถือ · สแตนดี้ (เว้นว่าง = ยังไม่จัดหมวด)"
-                        className={`${input} max-w-xs`}
-                      />
-                      {cats.length > 0 && (
-                        <span className={`text-[11px] ${faint}`}>
-                          หมวดที่มีอยู่:{" "}
-                          {cats.map((c) => (
-                            <button
-                              key={c}
-                              type="button"
-                              onClick={() => patch(t.id, { category: c })}
-                              className="mr-1 rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600 hover:bg-slate-200"
-                            >
-                              {c}
-                            </button>
-                          ))}
-                        </span>
-                      )}
+                      <select
+                        value={t.category?.trim() ?? ""}
+                        onChange={(e) => patch(t.id, { category: e.target.value || undefined })}
+                        className={`${inputSm} max-w-[16rem] py-2`}
+                      >
+                        <option value="">— {NO_CATEGORY} —</option>
+                        {cats.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setCatPanel(true)}
+                        className={`${btnSmNeutral} shrink-0`}
+                        title="เพิ่ม/แก้ชื่อ/ลบหมวด"
+                      >
+                        ⚙️ ตั้งค่าหมวด
+                      </button>
                     </div>
 
-                    {/* ── ผูกไฟล์กับตัวเลือกสินค้า ── */}
-                    <div className="rounded-xl bg-slate-50 p-2.5 ring-1 ring-slate-200">
+                    {/* ── ผูกไฟล์กับตัวเลือกสินค้า: เลือกสินค้าก่อน → ค่อยเลือกกลุ่มตัวเลือกของสินค้านั้น ── */}
+                    <div className="space-y-2 rounded-xl bg-slate-50 p-2.5 ring-1 ring-slate-200">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xs font-semibold text-slate-600">🎛️ แยกไฟล์ตามตัวเลือก</span>
+                        <span className={`text-[11px] ${faint}`}>
+                          เลือกสินค้าก่อน แล้วเลือกว่าจะแยกตามกลุ่มไหนของสินค้านั้น (เช่น เคสมือถือ → รุ่น)
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] font-semibold text-slate-500">1️⃣ สินค้า</span>
+                        <select
+                          value={t.optionProductId ?? ""}
+                          onChange={(e) => {
+                            const pid = e.target.value;
+                            void ensureProductOptions(pid);
+                            // เปลี่ยนสินค้า = กลุ่มเดิมอาจไม่มีในสินค้าใหม่ → ล้างกลุ่มไว้ก่อน
+                            patch(t.id, { optionProductId: pid || undefined, optionLabel: undefined });
+                          }}
+                          className={`${inputSm} max-w-[16rem]`}
+                        >
+                          <option value="">— เลือกสินค้า —</option>
+                          {/* สินค้าที่ผูกชุดนี้อยู่แล้วขึ้นก่อน จะได้ไม่ต้องไล่หา */}
+                          {used.length > 0 && (
+                            <optgroup label="สินค้าที่ผูกชุดนี้อยู่">
+                              {used.map((u) => (
+                                <option key={u.id} value={u.id}>
+                                  {u.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          <optgroup label="สินค้าทั้งหมด">
+                            {productList.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        </select>
+                        {optsBusy === t.optionProductId && (
+                          <span className={`text-[11px] ${faint}`}>กำลังโหลดตัวเลือก…</span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] font-semibold text-slate-500">2️⃣ กลุ่มตัวเลือก</span>
                         <select
                           value={label ?? ""}
-                          onFocus={ensureGroups}
+                          disabled={!t.optionProductId}
                           onChange={(e) => patch(t.id, { optionLabel: e.target.value || undefined })}
-                          className={inputSm}
+                          className={`${inputSm} max-w-[16rem] disabled:bg-slate-100 disabled:text-slate-400`}
                         >
                           <option value="">— ไม่แยก (โชว์ทุกไฟล์) —</option>
-                          {label && !(groups ?? []).some((g) => g.label === label) && (
-                            <option value={label}>{label}</option>
+                          {label && !prodGroups.some((g) => g.label === label) && (
+                            <option value={label}>{label} (ไม่มีในสินค้านี้แล้ว)</option>
                           )}
-                          {(groups ?? []).map((g) => (
+                          {prodGroups.map((g) => (
                             <option key={g.label} value={g.label}>
                               {g.label} ({g.choices.length})
                             </option>
                           ))}
                         </select>
-                        {groupsBusy && <span className={`text-[11px] ${faint}`}>กำลังโหลดกลุ่มตัวเลือก…</span>}
-                        <span className={`text-[11px] ${faint}`}>
-                          เช่น เลือก &ldquo;รุ่น&rdquo; แล้วกำหนดว่าไฟล์ไหนของรุ่นไหน — ลูกค้าเลือกรุ่นแล้วเห็นไฟล์ของรุ่นนั้น
-                        </span>
+                        {!t.optionProductId && <span className={`text-[11px] ${faint}`}>← เลือกสินค้าก่อน</span>}
+                        {t.optionProductId && prodGroups.length === 0 && optsBusy !== t.optionProductId && (
+                          <span className="text-[11px] font-semibold text-amber-600">
+                            สินค้านี้ยังไม่มีกลุ่มตัวเลือก
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -528,7 +751,6 @@ function AdminTemplatesInner() {
                             {label ? (
                               <select
                                 value={f.choice ?? ""}
-                                onFocus={ensureGroups}
                                 onChange={(e) => patchFile(t.id, f.id, { choice: e.target.value || undefined })}
                                 className={`${inputSm} w-44 shrink-0 ${f.choice ? "" : "text-slate-400"}`}
                                 aria-label={`${label} ของไฟล์ที่ ${fi + 1}`}
@@ -639,13 +861,6 @@ function AdminTemplatesInner() {
           ))}
         </div>
       )}
-
-      {/* รายชื่อหมวดที่เคยใช้ — ให้ช่องหมวดหมู่ในทุกการ์ดเลือกซ้ำได้ ไม่ต้องพิมพ์ใหม่ */}
-      <datalist id="tpl-cats">
-        {cats.map((c) => (
-          <option key={c} value={c} />
-        ))}
-      </datalist>
 
       <p className={`mt-6 text-xs ${faint}`}>
         ผูกชุดเทมเพลตกับสินค้าได้ที่ <Link href="/admin/products" className="underline">หน้าแก้ไขสินค้า</Link> →

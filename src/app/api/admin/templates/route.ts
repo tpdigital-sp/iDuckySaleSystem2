@@ -7,6 +7,9 @@ export const runtime = "nodejs";
 
 const BUCKET = "design-templates";
 
+/** แถวเก็บ "รายชื่อหมวดหมู่" ของคลัง (จัดลำดับเองได้ · หมวดว่างที่ยังไม่มีชุดก็อยู่ได้) */
+const CATS_ID = "__template_cats__";
+
 /** บันทึก/อัปเดตเทมเพลตไฟล์งาน (เฉพาะคนที่มีสิทธิ์จัดการสินค้า) */
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
@@ -14,12 +17,28 @@ export async function POST(req: Request) {
   const gate = await requirePerm("products.manage");
   if (gate.res) return gate.res;
 
-  let t: DesignTemplate;
+  let body: unknown;
   try {
-    t = (await req.json()) as DesignTemplate;
+    body = await req.json();
   } catch {
     return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
   }
+
+  // ── บันทึกรายชื่อหมวดหมู่ (ส่งมาเป็น { categories: [...] }) ──
+  if (body && typeof body === "object" && Array.isArray((body as { categories?: unknown }).categories)) {
+    const cats = [...new Set(((body as { categories: unknown[] }).categories as unknown[])
+      .map((c) => String(c ?? "").trim())
+      .filter(Boolean))].slice(0, 100);
+    const { error } = await sb.from("products").upsert(
+      { id: CATS_ID, name: "(หมวดหมู่เทมเพลต)", category: "__templates__", price: 0, data: { categories: cats } },
+      { onConflict: "id" }
+    );
+    return error
+      ? NextResponse.json({ error: error.message }, { status: 500 })
+      : NextResponse.json({ ok: true, categories: cats });
+  }
+
+  const t = body as DesignTemplate;
   if (!t?.id || !t.name?.trim()) return NextResponse.json({ error: "ต้องมีชื่อเทมเพลต" }, { status: 400 });
 
   const row: DesignTemplate = { ...t, name: t.name.trim(), savedAt: new Date().toISOString() };

@@ -71,6 +71,47 @@ export async function deleteTemplate(id: string): Promise<{ ok: boolean; error?:
   }
 }
 
+/**
+ * รายชื่อหมวดหมู่ของคลัง (ที่แอดมินตั้งไว้เอง)
+ * เก็บเป็นแถวพิเศษ __template_cats__ · รวมกับหมวดที่ชุดต่าง ๆ ใช้อยู่จริงตอนแสดงผล
+ * (เผื่อข้อมูลเก่าที่พิมพ์หมวดไว้ก่อนมีระบบตั้งค่า จะได้ไม่หาย)
+ */
+export async function fetchTemplateCategories(): Promise<string[]> {
+  const sb = getSupabase();
+  if (!sb) {
+    try {
+      const arr = JSON.parse(localStorage.getItem(`${LOCAL_KEY}-cats`) ?? "[]") as string[];
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  }
+  const { data } = await sb.from("products").select("data").eq("id", "__template_cats__").maybeSingle();
+  const cats = (data?.data as { categories?: unknown } | undefined)?.categories;
+  return Array.isArray(cats) ? cats.map((c) => String(c)).filter(Boolean) : [];
+}
+
+/** บันทึกรายชื่อหมวดหมู่ (ทั้งชุด — ลำดับตามที่ส่งมา) */
+export async function persistTemplateCategories(cats: string[]): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/admin/templates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ categories: cats }),
+    });
+    if (res.status === 503) {
+      try {
+        localStorage.setItem(`${LOCAL_KEY}-cats`, JSON.stringify(cats));
+      } catch {}
+      return { ok: true };
+    }
+    const j = await res.json().catch(() => ({}));
+    return res.ok ? { ok: true } : { ok: false, error: j.error ?? "บันทึกหมวดไม่สำเร็จ" };
+  } catch {
+    return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
+  }
+}
+
 /** อัปโหลดไฟล์เทมเพลต (.ai ฯลฯ) หรือรูปตัวอย่าง → คืน url สาธารณะ */
 export async function uploadTemplateFile(
   file: File,
