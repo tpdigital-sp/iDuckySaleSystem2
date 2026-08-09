@@ -125,8 +125,12 @@ function AdminTemplatesInner() {
   const [prodQ, setProdQ] = useState<Record<string, string>>({});
   /** การ์ดที่กำลังเปิดลิสต์ค้นหาสินค้าอยู่ */
   const [prodOpen, setProdOpen] = useState<string | null>(null);
-  /** ไฟล์ที่กำลังทำรูปตัวอย่างอยู่ (กดปุ่ม 🖼) — บอกสถานะที่ปุ่มเลย ไม่ต้องขึ้นป้ายบนหัวการ์ด */
+  /** ไฟล์ที่ระบบกำลังทำรูปตัวอย่างให้อยู่ — โชว์เป็นช่องกะพริบแทนรูป ไม่มีปุ่มให้กด */
   const [thumbBusy, setThumbBusy] = useState<string | null>(null);
+  /** ชุดที่ไล่เติมรูปย้อนหลังไปแล้ว — กันทำซ้ำทุกครั้งที่กางการ์ด */
+  const backfilled = useRef<Set<string>>(new Set());
+  /** รูปที่กำลังเปิดดูขนาดใหญ่ */
+  const [zoom, setZoom] = useState<{ src: string; name: string } | null>(null);
   /** ชุดที่กำลังลากจัดลำดับ (เก็บเป็น id — ลิสต์ที่เห็นถูกกรอง/จัดกลุ่ม ใช้ index ไม่ได้) */
   const dragId = useRef<string | null>(null);
   const [dragAt, setDragAt] = useState<string | null>(null);
@@ -156,6 +160,16 @@ function AdminTemplatesInner() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  /** กด Esc ปิดรูปที่เปิดดูอยู่ */
+  useEffect(() => {
+    if (!zoom) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setZoom(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoom]);
 
   /** โหลดตัวเลือกของสินค้าอ้างอิงตัวหนึ่ง (ครั้งเดียวต่อสินค้า) */
   async function ensureProductOptions(pid: string) {
@@ -364,7 +378,6 @@ function AdminTemplatesInner() {
   /** ดึงไฟล์ที่อัปไว้แล้วกลับมาทำรูปตัวอย่าง (ปุ่มในแถวไฟล์) */
   async function previewFromUploaded(tid: string, f: TemplateFile) {
     if (!f.fileUrl || !f.fileName) return;
-    // สถานะอยู่ที่ปุ่มของไฟล์นั้น (quiet = ไม่ขึ้นป้าย "ทำรูปตัวอย่าง" บนหัวการ์ด)
     setThumbBusy(f.id);
     try {
       const blob = await fetch(f.fileUrl).then((r) => r.blob());
@@ -374,6 +387,33 @@ function AdminTemplatesInner() {
     } finally {
       setThumbBusy((c) => (c === f.id ? null : c));
     }
+  }
+
+  /**
+   * เติมรูปตัวอย่างย้อนหลังให้ไฟล์ที่ยังไม่มี — ทำเองอัตโนมัติตอนกางการ์ด
+   * (ไฟล์ที่อัปไว้ก่อนมีฟีเจอร์นี้จะได้รูปโดยไม่ต้องให้แอดมินไปกดทีละไฟล์)
+   * เสร็จแล้วบันทึกให้เลย จะได้ไม่ค้างเป็น "ยังไม่บันทึก" ทั้งที่ผู้ใช้ไม่ได้แก้อะไร
+   */
+  async function backfillPreviews(t: Draft) {
+    if (backfilled.current.has(t.id)) return;
+    const need = (t.files ?? []).filter((f) => f.fileUrl && !f.previewUrl && canThumbnail(f.fileName ?? ""));
+    if (!need.length) return;
+    backfilled.current.add(t.id);
+    for (const f of need) await previewFromUploaded(t.id, f);
+    // อ่านสถานะล่าสุดแล้วบันทึก (ระหว่างทำรูป state ถูกอัปเดตไปหลายรอบ)
+    setList((cur) => {
+      const latest = cur.find((x) => x.id === t.id);
+      if (latest) {
+        const { _dirty, fileUrl, fileName, fileSize, linkUrl, ...clean } = latest;
+        void _dirty;
+        void fileUrl;
+        void fileName;
+        void fileSize;
+        void linkUrl;
+        void persistTemplate(clean);
+      }
+      return cur.map((x) => (x.id === t.id ? { ...x, _dirty: false } : x));
+    });
   }
 
   async function pickPreview(t: Draft, f: File) {
@@ -775,6 +815,7 @@ function AdminTemplatesInner() {
                   <button
                     type="button"
                     onClick={() => {
+                      void backfillPreviews(t); // กางการ์ด = เติมรูปให้ไฟล์ที่ยังไม่มีเอง
                       setOpen((o) => ({ ...o, [t.id]: !o[t.id] }));
                     }}
                     className="min-w-0 flex-1 text-left"
@@ -799,6 +840,7 @@ function AdminTemplatesInner() {
                   <button
                     type="button"
                     onClick={() => {
+                      void backfillPreviews(t); // กางการ์ด = เติมรูปให้ไฟล์ที่ยังไม่มีเอง
                       setOpen((o) => ({ ...o, [t.id]: !o[t.id] }));
                     }}
                     className={`${btnSmNeutral} shrink-0`}
@@ -984,16 +1026,25 @@ function AdminTemplatesInner() {
                         {files.map((f, fi) => (
                           <div key={f.id} className="flex flex-wrap items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50">
                             <span className={`w-6 shrink-0 text-right text-[11px] ${faint}`}>{fi + 1}</span>
-                            {/* รูปตัวอย่างของไฟล์นี้ — กดขยายดูเต็มได้ */}
+                            {/* รูปตัวอย่างของไฟล์นี้ — ระบบทำให้เองตอนอัป · กดที่รูปเพื่อขยาย */}
                             {f.previewUrl ? (
-                              <a href={f.previewUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setZoom({ src: f.previewUrl!, name: f.fileName ?? t.name })}
+                                className="shrink-0 rounded-md ring-1 ring-slate-200 transition hover:ring-amber-400"
+                                title="กดเพื่อดูรูปใหญ่"
+                              >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
                                   src={f.previewUrl}
                                   alt={`ตัวอย่าง ${f.fileName ?? ""}`}
-                                  className="h-9 w-9 rounded-md bg-white object-contain ring-1 ring-slate-200"
+                                  className="h-9 w-9 rounded-md bg-white object-contain"
                                 />
-                              </a>
+                              </button>
+                            ) : thumbBusy === f.id ? (
+                              <span className="grid h-9 w-9 shrink-0 animate-pulse place-items-center rounded-md bg-amber-50 text-xs text-amber-500">
+                                ⏳
+                              </span>
                             ) : (
                               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-slate-100 text-xs text-slate-400">
                                 📄
@@ -1034,17 +1085,6 @@ function AdminTemplatesInner() {
                             )}
                             <span className={`shrink-0 text-[11px] ${faint}`}>{formatFileSize(f.fileSize)}</span>
                             {/* ใช้ไฟล์นี้ทำรูปตัวอย่างของชุด (เรนเดอร์หน้าแรกในเบราว์เซอร์) */}
-                            {f.fileUrl && canThumbnail(f.fileName ?? "") && (
-                              <button
-                                type="button"
-                                onClick={() => void previewFromUploaded(t.id, f)}
-                                disabled={thumbBusy === f.id}
-                                className={`${btnSmNeutral} shrink-0`}
-                                title={f.previewUrl ? "ทำรูปตัวอย่างใหม่จากไฟล์นี้" : "ทำรูปตัวอย่างจากไฟล์นี้"}
-                              >
-                                {thumbBusy === f.id ? "⏳" : "🖼"}
-                              </button>
-                            )}
                             <button
                               type="button"
                               onClick={() =>
@@ -1127,6 +1167,41 @@ function AdminTemplatesInner() {
       )}
         </div>
       </div>
+
+      {/* ── ดูรูปตัวอย่างขนาดใหญ่ (กดพื้นหลัง/ปุ่มปิด/Esc เพื่อออก) ── */}
+      {zoom && (
+        <div
+          role="dialog"
+          aria-label={`รูปตัวอย่าง ${zoom.name}`}
+          onClick={() => setZoom(null)}
+          className="fixed inset-0 z-50 grid place-items-center bg-slate-900/70 p-4 backdrop-blur-sm"
+        >
+          <div className="max-h-full w-full max-w-2xl overflow-auto rounded-2xl bg-white p-3 shadow-2xl">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-700">{zoom.name}</span>
+              <a
+                href={zoom.src}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className={btnSmNeutral}
+              >
+                เปิดแท็บใหม่
+              </a>
+              <button type="button" onClick={() => setZoom(null)} className={btnSmNeutral}>
+                ✕ ปิด
+              </button>
+            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={zoom.src}
+              alt={`รูปตัวอย่าง ${zoom.name}`}
+              onClick={(e) => e.stopPropagation()}
+              className="mx-auto max-h-[70vh] w-auto rounded-xl bg-white object-contain ring-1 ring-slate-200"
+            />
+          </div>
+        </div>
+      )}
 
       <p className={`mt-6 text-xs ${faint}`}>
         ผูกชุดเทมเพลตกับสินค้าได้ที่ <Link href="/admin/products" className="underline">หน้าแก้ไขสินค้า</Link> →
