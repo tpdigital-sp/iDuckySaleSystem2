@@ -34,6 +34,49 @@ export const pillIdle = `${pill} border border-slate-200 bg-white text-slate-600
 // ── badge สถานะ/ป้าย (โทนนุ่ม) ──
 export const badge = "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold";
 
+/* ──────────────────────────────────────────────────────────────
+   🎨 โทนแบรนด์ (ฟ้า–เหลืองเป็ด) — ชุดเสริมสำหรับหน้าหลังบ้านที่ต้องการสีสัน
+   ให้เข้ากับหน้าแรกร้าน (landing.css: sky #E2F3FE · blue #57B6E8 ·
+   blue-deep #2C81C4 · navy #173A6B · yolk #FFD447)
+   ⚠️ ramp "amber-*" ของ Tailwind ถูกรีแมปเป็นฟ้า-teal ใน globals.css แล้ว
+   ส่วน "yellow-*" ยังเป็นเหลืองจริง → ใช้ yellow เป็นสีเน้น (accent)
+   ใช้เท่าที่ช่วยแยกโซน อย่าให้กลบเนื้อหา — พื้นหลัก ๆ ยังเป็นขาว/slate
+   ────────────────────────────────────────────────────────────── */
+
+/** การ์ดโทนแบรนด์ — ขอบฟ้าอ่อน เงาอมฟ้า มุมมนกว่าการ์ดปกติ */
+export const brandCard =
+  "rounded-[22px] border border-amber-100 bg-white shadow-[0_6px_18px_rgba(44,129,196,0.08)]";
+/** แถบหัวเรื่องของหน้า (ไล่สีฟ้าอ่อน) */
+export const brandHero =
+  "rounded-[22px] border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-amber-50/60 p-5 shadow-[0_6px_18px_rgba(44,129,196,0.07)]";
+/** แถบหัวข้อย่อย/หัวกลุ่มในลิสต์ */
+export const brandStrip = "rounded-xl bg-amber-50/70 px-3 py-2 ring-1 ring-amber-100";
+/** เมนูด้านข้าง (หมวดหมู่) — สถานะปกติ/ถูกเลือก */
+export const navItem =
+  "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium transition";
+export const navItemIdle = `${navItem} text-slate-600 hover:bg-amber-50`;
+export const navItemActive = `${navItem} bg-amber-500 text-white shadow-[0_4px_12px_rgba(44,129,196,0.25)]`;
+/** ปุ่มเน้น (เหลืองเป็ด) — ใช้กับ action หลักที่อยากให้สะดุดตาบนพื้นฟ้า */
+export const btnDucky =
+  "inline-flex items-center justify-center gap-1.5 rounded-lg bg-[var(--color-ducky)] px-4 py-2 text-sm font-bold text-amber-950 shadow-sm transition hover:bg-[var(--color-ducky-dark)] disabled:cursor-not-allowed disabled:opacity-50";
+/** ป้ายตัวเลข/สถานะโทนแบรนด์ */
+export const chipBrand = `${badge} bg-amber-50 text-amber-800 ring-1 ring-amber-200`;
+export const chipDucky = `${badge} bg-[var(--color-ducky)]/25 text-amber-900 ring-1 ring-[var(--color-ducky)]`;
+export const chipMuted = `${badge} bg-slate-100 text-slate-500`;
+
+/**
+ * สีประจำหมวด — วนจากจานสีหน้าแรกร้าน (ฟ้า/เหลืองเป็ด/มินต์/คอรัล/ลิแลค/ฟ้าเข้ม)
+ * เลือกจากชื่อหมวดแบบคงที่ (hash) → หมวดเดิมได้สีเดิมทุกครั้ง ไม่ต้องเก็บสีในฐานข้อมูล
+ * ใช้เป็นจุดนำสายตาเวลาหมวดเยอะ (แถบข้างการ์ด/จุดหน้าเมนู)
+ */
+const CATEGORY_TONES = ["#57B6E8", "#FFD447", "#A9E5D2", "#FF9EB0", "#C7C4F5", "#2C81C4"] as const;
+export function categoryTone(name: string): string {
+  if (!name) return "#CBD5E1"; // ยังไม่จัดหมวด = เทา
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return CATEGORY_TONES[h % CATEGORY_TONES.length];
+}
+
 /** เวลาแบบสั้น "23 ก.ค. 14:05" — ใช้กำกับว่าใครทำอะไรเมื่อไหร่ */
 export function shortTime(iso: string): string {
   return new Date(iso).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });

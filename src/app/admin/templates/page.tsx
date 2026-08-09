@@ -25,8 +25,29 @@ import {
   uploadTemplateFile,
 } from "@/lib/template-repo";
 import { fetchProduct, fetchProductNamesLite } from "@/lib/product-repo";
+import { canThumbnail, thumbnailFromDesignFile } from "@/lib/ai-thumbnail";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { badge, btnNeutral, btnPrimary, btnSmDanger, btnSmNeutral, card, faint, h1, muted } from "@/lib/admin-ui";
+import {
+  badge,
+  brandCard,
+  brandHero,
+  brandStrip,
+  btnDucky,
+  btnNeutral,
+  btnPrimary,
+  btnSmDanger,
+  btnSmNeutral,
+  card,
+  categoryTone,
+  chipBrand,
+  chipDucky,
+  chipMuted,
+  faint,
+  h1,
+  muted,
+  navItemActive,
+  navItemIdle,
+} from "@/lib/admin-ui";
 
 const input =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-slate-100";
@@ -249,6 +270,54 @@ function AdminTemplatesInner() {
       )
     );
     setOpen((o) => ({ ...o, [t.id]: true }));
+    // 🖼 ยังไม่มีรูปตัวอย่าง → เรนเดอร์หน้าแรกของไฟล์ .ai/.pdf ไฟล์แรกมาใช้ให้เลย
+    if (!t.previewUrl) {
+      const src = files.find((f) => canThumbnail(f.name));
+      if (src) void makePreviewFrom(t.id, src);
+    }
+  }
+
+  /** สร้างรูปตัวอย่างจากไฟล์งาน (.ai/.pdf) แล้วอัปขึ้นเป็น previewUrl ของชุด */
+  async function makePreviewFrom(tid: string, file: File) {
+    setBusy((b) => ({ ...b, [tid]: "ทำรูปตัวอย่าง" }));
+    const png = await thumbnailFromDesignFile(file);
+    if (!png) {
+      setBusy((b) => {
+        const n = { ...b };
+        delete n[tid];
+        return n;
+      });
+      // .ai ที่ปิด PDF compatibility เปิดไม่ได้ — บอกทางออกไปเลย ไม่ปล่อยให้งง
+      setError(
+        `ทำรูปตัวอย่างจาก “${file.name}” ไม่ได้ — ไฟล์ .ai ต้องเซฟแบบ Create PDF Compatible File · ใช้ปุ่ม 🖼 รูปตัวอย่าง อัปรูปเองแทนได้`
+      );
+      return;
+    }
+    const res = await uploadTemplateFile(png, "preview");
+    setBusy((b) => {
+      const n = { ...b };
+      delete n[tid];
+      return n;
+    });
+    if (!res.ok) return setError(res.error ?? "อัปรูปตัวอย่างไม่สำเร็จ");
+    patch(tid, { previewUrl: res.url });
+  }
+
+  /** ดึงไฟล์ที่อัปไว้แล้วกลับมาทำรูปตัวอย่าง (ปุ่มในแถวไฟล์) */
+  async function previewFromUploaded(tid: string, f: TemplateFile) {
+    if (!f.fileUrl || !f.fileName) return;
+    setBusy((b) => ({ ...b, [tid]: "ดึงไฟล์" }));
+    try {
+      const blob = await fetch(f.fileUrl).then((r) => r.blob());
+      await makePreviewFrom(tid, new File([blob], f.fileName, { type: blob.type }));
+    } catch {
+      setBusy((b) => {
+        const n = { ...b };
+        delete n[tid];
+        return n;
+      });
+      setError("โหลดไฟล์มาทำรูปตัวอย่างไม่สำเร็จ");
+    }
   }
 
   async function pickPreview(t: Draft, f: File) {
@@ -325,24 +394,41 @@ function AdminTemplatesInner() {
       });
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className={h1}>📐 คลังเทมเพลตไฟล์งาน</h1>
-          <p className={`mt-1 text-sm ${muted}`}>
-            <strong>ลากไฟล์ .ai มาวางได้เลย</strong> (ทีละหลายไฟล์) — 1 ชุดมีหลายไฟล์ได้
-            แล้วผูกแต่ละไฟล์กับ<strong>ตัวเลือกสินค้า</strong> เช่น เคสมือถือ ผูกไฟล์กับ &ldquo;รุ่น&rdquo; ·
-            ลูกค้าเลือกรุ่นไหน ก็เห็นไฟล์ของรุ่นนั้น
-          </p>
+    <div className="mx-auto max-w-6xl px-4 py-6">
+      {/* ── หัวหน้า (โทนแบรนด์ฟ้า-เหลืองเป็ด ให้เข้ากับหน้าร้าน) ── */}
+      <div className={brandHero}>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className={h1}>📐 คลังเทมเพลตไฟล์งาน</h1>
+            <p className={`mt-1 max-w-2xl text-sm ${muted}`}>
+              <strong>ลากไฟล์ .ai มาวางได้เลย</strong> (ทีละหลายไฟล์) — 1 ชุดมีหลายไฟล์ได้
+              แล้วผูกแต่ละไฟล์กับ<strong>ตัวเลือกสินค้า</strong> เช่น เคสมือถือ ผูกไฟล์กับ &ldquo;รุ่น&rdquo; ·
+              ลูกค้าเลือกรุ่นไหน ก็เห็นไฟล์ของรุ่นนั้น
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setCatPanel((v) => !v)} className={btnNeutral}>
+              🗂 ตั้งค่าหมวดหมู่{catList.length ? ` (${catList.length})` : ""}
+            </button>
+            <button type="button" onClick={add} className={btnDucky}>
+              ＋ เพิ่มชุดเทมเพลต
+            </button>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setCatPanel((v) => !v)} className={btnNeutral}>
-            🗂 ตั้งค่าหมวดหมู่{catList.length ? ` (${catList.length})` : ""}
-          </button>
-          <button type="button" onClick={add} className={btnPrimary}>
-            ＋ เพิ่มชุดเทมเพลต
-          </button>
-        </div>
+        {/* สรุปตัวเลข — เห็นภาพรวมคลังทันทีโดยไม่ต้องเลื่อน */}
+        {list.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className={chipBrand}>📦 {list.length} ชุด</span>
+            <span className={chipBrand}>📎 {totalFiles} ไฟล์</span>
+            <span className={chipDucky}>🗂 {cats.length} หมวด</span>
+            {noCatCount > 0 && <span className={chipMuted}>ยังไม่จัดหมวด {noCatCount}</span>}
+            {list.some((t) => t._dirty) && (
+              <span className={`${badge} bg-rose-50 text-rose-600 ring-1 ring-rose-200`}>
+                ● มีชุดที่ยังไม่บันทึก
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── ตั้งค่าหมวดหมู่: เพิ่ม / เปลี่ยนชื่อ / ลบ / จัดลำดับ ── */}
@@ -437,22 +523,91 @@ function AdminTemplatesInner() {
         </p>
       )}
 
+      {/* ══ สองคอลัมน์: เมนูหมวดด้านซ้าย (ค้างไว้) + เนื้อหาด้านขวา ══ */}
+      <div className="mt-4 grid gap-4 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start">
+        {/* ── เมนูหมวดหมู่ — ทำงานทีละหมวดได้แม้คลังใหญ่ (มือถือ = เลื่อนแนวนอน) ── */}
+        {list.length > 0 && (
+          <aside className={`${brandCard} p-2 lg:sticky lg:top-20`}>
+            <p className="px-2 pb-1 pt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">หมวดหมู่</p>
+            <nav className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
+              <button
+                type="button"
+                onClick={() => setCat("")}
+                className={`${cat === "" ? navItemActive : navItemIdle} shrink-0`}
+              >
+                <span className="flex-1 truncate">📚 ทั้งหมด</span>
+                <span className={`text-[11px] ${cat === "" ? "text-white/80" : "text-slate-400"}`}>{list.length}</span>
+              </button>
+              {cats.map((c) => {
+                const n = list.filter((t) => t.category?.trim() === c).length;
+                const nf = list
+                  .filter((t) => t.category?.trim() === c)
+                  .reduce((s, t) => s + (t.files?.length ?? 0), 0);
+                const on = c === cat;
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCat(on ? "" : c)}
+                    title={`${n} ชุด · ${nf} ไฟล์`}
+                    className={`${on ? navItemActive : navItemIdle} shrink-0`}
+                  >
+                    {/* จุดสีประจำหมวด — กวาดตาหาหมวดได้เร็วเวลาหมวดเยอะ */}
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white/60"
+                      style={{ backgroundColor: categoryTone(c) }}
+                    />
+                    <span className="flex-1 truncate">{c}</span>
+                    <span className={`text-[11px] ${on ? "text-white/80" : "text-slate-400"}`}>{n}</span>
+                  </button>
+                );
+              })}
+              {noCatCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setCat(cat === NO_CATEGORY ? "" : NO_CATEGORY)}
+                  className={`${cat === NO_CATEGORY ? navItemActive : navItemIdle} shrink-0`}
+                >
+                  <span className={`flex-1 truncate ${cat === NO_CATEGORY ? "" : "text-slate-400"}`}>
+                    📂 {NO_CATEGORY}
+                  </span>
+                  <span className={`text-[11px] ${cat === NO_CATEGORY ? "text-white/80" : "text-slate-400"}`}>
+                    {noCatCount}
+                  </span>
+                </button>
+              )}
+            </nav>
+            <button
+              type="button"
+              onClick={() => setCatPanel(true)}
+              className={`${btnSmNeutral} mt-2 w-full justify-center`}
+            >
+              ⚙️ จัดการหมวด
+            </button>
+          </aside>
+        )}
+
+        {/* ── เนื้อหา ── */}
+        <div className="min-w-0">
       {list.length > 0 && (
-        <div className="mt-4 flex flex-wrap items-center gap-3">
+        <div className={`mb-3 flex flex-wrap items-center gap-2 ${brandStrip}`}>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="🔍 ค้นหาชื่อชุด · ชื่อไฟล์ · รุ่น · หมวด…"
             className={`${input} flex-1 sm:max-w-sm`}
           />
-          <span className={`text-xs ${faint}`}>
-            {list.length} ชุด · {totalFiles} ไฟล์
-            {q || cat ? ` · ตรงเงื่อนไข ${shown.length} ชุด` : ""}
+          <span className="text-xs font-semibold text-amber-800">
+            {cat ? `🗂 ${cat}` : "📚 ทุกหมวด"}
+            <span className="ml-1 font-normal text-amber-700/70">
+              · {shown.length} ชุด
+              {q ? " (ตรงคำค้น)" : ""}
+            </span>
           </span>
           <div className="ml-auto flex gap-2">
             <button
               type="button"
-              onClick={() => setOpen(Object.fromEntries(list.map((t) => [t.id, true])))}
+              onClick={() => setOpen(Object.fromEntries(shown.map((t) => [t.id, true])))}
               className={btnSmNeutral}
             >
               กางทั้งหมด
@@ -461,38 +616,6 @@ function AdminTemplatesInner() {
               ยุบทั้งหมด
             </button>
           </div>
-        </div>
-      )}
-
-      {/* ── ตัวกรองหมวด — คลิกเพื่อดูเฉพาะหมวดนั้น ── */}
-      {(cats.length > 0 || noCatCount > 0) && list.length > 1 && (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setCat("")}
-            className={`${badge} ${cat === "" ? "bg-slate-900 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"}`}
-          >
-            ทุกหมวด ({list.length})
-          </button>
-          {cats.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setCat(c === cat ? "" : c)}
-              className={`${badge} ${c === cat ? "bg-slate-900 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"}`}
-            >
-              🗂 {c} ({list.filter((t) => t.category?.trim() === c).length})
-            </button>
-          ))}
-          {noCatCount > 0 && (
-            <button
-              type="button"
-              onClick={() => setCat(NO_CATEGORY === cat ? "" : NO_CATEGORY)}
-              className={`${badge} ${cat === NO_CATEGORY ? "bg-slate-900 text-white" : "bg-white text-slate-400 ring-1 ring-slate-200 hover:bg-slate-50"}`}
-            >
-              {NO_CATEGORY} ({noCatCount})
-            </button>
-          )}
         </div>
       )}
 
@@ -505,22 +628,24 @@ function AdminTemplatesInner() {
           <p className={`mt-1 text-xs ${muted}`}>กด &ldquo;＋ เพิ่มชุดเทมเพลต&rdquo; แล้วลากไฟล์ .ai มาวางได้เลย</p>
         </div>
       ) : (
-        <div className="mt-3 space-y-4">
+        <div className="space-y-5">
           {shown.length === 0 && (
-            <p className={`${card} p-6 text-center text-sm ${faint}`}>ไม่มีชุดที่ตรงกับที่กรองไว้</p>
+            <p className={`${brandCard} p-6 text-center text-sm ${faint}`}>ไม่มีชุดที่ตรงกับที่กรองไว้</p>
           )}
           {catGroups.map((grp) => (
-        <div key={grp.category} className="space-y-2.5">
+        <div key={grp.category}>
           {/* หัวกลุ่มหมวด — โผล่เฉพาะตอนดูรวมทุกหมวดและมีมากกว่า 1 กลุ่ม */}
           {!cat && catGroups.length > 1 && (
-            <p className="flex items-center gap-2 pt-1 text-xs font-bold text-slate-500">
+            <p className="mb-2 flex items-center gap-2 text-xs font-bold text-amber-800">
               <span className={grp.category === NO_CATEGORY ? "text-slate-400" : ""}>
                 {grp.category === NO_CATEGORY ? "📂" : "🗂"} {grp.category}
               </span>
               <span className={`font-normal ${faint}`}>({grp.items.length})</span>
-              <span className="h-px flex-1 bg-slate-200" />
+              <span className="h-px flex-1 bg-amber-100" />
             </p>
           )}
+          {/* ยุบอยู่ = การ์ดเรียงเป็นกริด (เห็นได้เยอะต่อหน้าจอ) · กางแล้วขยายเต็มแถวให้พื้นที่แก้ไข */}
+          <div className="grid gap-2.5 xl:grid-cols-2">
           {grp.items.map((t) => {
             const used = usedBy[t.id] ?? [];
             const files = t.files ?? [];
@@ -575,9 +700,13 @@ function AdminTemplatesInner() {
                     void dropOnTemplate(t.id);
                   }
                 }}
-                className={`${card} transition ${dragAt === t.id ? "opacity-40" : ""} ${
-                  dropOn === t.id ? "ring-2 ring-sky-400 ring-offset-1" : ""
-                } ${t.hidden ? "bg-slate-50" : ""}`}
+                className={`${brandCard} transition ${expanded ? "xl:col-span-2" : ""} ${
+                  dragAt === t.id ? "opacity-40" : ""
+                } ${dropOn === t.id ? "ring-2 ring-amber-400 ring-offset-1" : ""} ${
+                  t.hidden ? "bg-slate-50" : ""
+                } border-l-4`}
+                /* แถบสีซ้าย = สีประจำหมวด (ดูรวมทุกหมวดแล้วยังแยกออกว่าใบไหนหมวดอะไร) */
+                style={{ borderLeftColor: categoryTone(t.category?.trim() ?? "") }}
               >
                 {/* ── หัวการ์ด: อ่านภาพรวมได้โดยไม่ต้องกาง ── */}
                 <div className="flex items-center gap-3 p-3">
@@ -838,6 +967,17 @@ function AdminTemplatesInner() {
                               />
                             )}
                             <span className={`shrink-0 text-[11px] ${faint}`}>{formatFileSize(f.fileSize)}</span>
+                            {/* ใช้ไฟล์นี้ทำรูปตัวอย่างของชุด (เรนเดอร์หน้าแรกในเบราว์เซอร์) */}
+                            {f.fileUrl && canThumbnail(f.fileName ?? "") && (
+                              <button
+                                type="button"
+                                onClick={() => void previewFromUploaded(t.id, f)}
+                                className={`${btnSmNeutral} shrink-0`}
+                                title="ใช้ไฟล์นี้ทำรูปตัวอย่างของชุด"
+                              >
+                                🖼
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() =>
@@ -913,10 +1053,13 @@ function AdminTemplatesInner() {
               </div>
             );
           })}
+          </div>
         </div>
           ))}
         </div>
       )}
+        </div>
+      </div>
 
       <p className={`mt-6 text-xs ${faint}`}>
         ผูกชุดเทมเพลตกับสินค้าได้ที่ <Link href="/admin/products" className="underline">หน้าแก้ไขสินค้า</Link> →

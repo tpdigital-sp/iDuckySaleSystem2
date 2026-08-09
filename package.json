@@ -8,13 +8,15 @@
     "start": "next start",
     "lint": "next lint",
     "seed": "tsx scripts/seed-supabase.ts",
-    "dev:webpack": "next dev"
+    "dev:webpack": "next dev",
+    "prebuild": "node scripts/copy-pdf-worker.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",
     "firebase-admin": "^12.7.0",
     "jsbarcode": "^3.12.3",
     "next": "^15.3.0",
+    "pdfjs-dist": "4.10.38",
     "qrcode.react": "^4.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
