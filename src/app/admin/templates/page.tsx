@@ -125,6 +125,8 @@ function AdminTemplatesInner() {
   const [prodQ, setProdQ] = useState<Record<string, string>>({});
   /** การ์ดที่กำลังเปิดลิสต์ค้นหาสินค้าอยู่ */
   const [prodOpen, setProdOpen] = useState<string | null>(null);
+  /** ไฟล์ที่กำลังทำรูปตัวอย่างอยู่ (กดปุ่ม 🖼) — บอกสถานะที่ปุ่มเลย ไม่ต้องขึ้นป้ายบนหัวการ์ด */
+  const [thumbBusy, setThumbBusy] = useState<string | null>(null);
   /** ชุดที่กำลังลากจัดลำดับ (เก็บเป็น id — ลิสต์ที่เห็นถูกกรอง/จัดกลุ่ม ใช้ index ไม่ได้) */
   const dragId = useRef<string | null>(null);
   const [dragAt, setDragAt] = useState<string | null>(null);
@@ -362,17 +364,15 @@ function AdminTemplatesInner() {
   /** ดึงไฟล์ที่อัปไว้แล้วกลับมาทำรูปตัวอย่าง (ปุ่มในแถวไฟล์) */
   async function previewFromUploaded(tid: string, f: TemplateFile) {
     if (!f.fileUrl || !f.fileName) return;
-    setBusy((b) => ({ ...b, [tid]: "ดึงไฟล์" }));
+    // สถานะอยู่ที่ปุ่มของไฟล์นั้น (quiet = ไม่ขึ้นป้าย "ทำรูปตัวอย่าง" บนหัวการ์ด)
+    setThumbBusy(f.id);
     try {
       const blob = await fetch(f.fileUrl).then((r) => r.blob());
-      await makePreviewFrom(tid, new File([blob], f.fileName, { type: blob.type }), f.id);
+      await makePreviewFrom(tid, new File([blob], f.fileName, { type: blob.type }), f.id, true);
     } catch {
-      setBusy((b) => {
-        const n = { ...b };
-        delete n[tid];
-        return n;
-      });
       setError("โหลดไฟล์มาทำรูปตัวอย่างไม่สำเร็จ");
+    } finally {
+      setThumbBusy((c) => (c === f.id ? null : c));
     }
   }
 
@@ -1038,10 +1038,11 @@ function AdminTemplatesInner() {
                               <button
                                 type="button"
                                 onClick={() => void previewFromUploaded(t.id, f)}
+                                disabled={thumbBusy === f.id}
                                 className={`${btnSmNeutral} shrink-0`}
-                                title="ใช้ไฟล์นี้ทำรูปตัวอย่างของชุด"
+                                title={f.previewUrl ? "ทำรูปตัวอย่างใหม่จากไฟล์นี้" : "ทำรูปตัวอย่างจากไฟล์นี้"}
                               >
-                                🖼
+                                {thumbBusy === f.id ? "⏳" : "🖼"}
                               </button>
                             )}
                             <button
