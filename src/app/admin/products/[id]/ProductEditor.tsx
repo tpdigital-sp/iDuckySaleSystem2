@@ -33,7 +33,7 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 import GradientPicker from "@/components/GradientPicker";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, DEFAULT_SHIPPING, type ShippingMethod } from "@/lib/shop-settings";
-import { formatFileSize, type DesignTemplate } from "@/lib/design-templates";
+import { fileReady, templateFiles, type DesignTemplate } from "@/lib/design-templates";
 import { fetchTemplates } from "@/lib/template-repo";
 
 type DraftChoice = { name: string; extra: string };
@@ -2699,8 +2699,13 @@ export default function ProductEditor({ product }: { product: Product }) {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-slate-800">{t.name}</span>
                     <span className="block truncate text-[11px] text-slate-400">
-                      {t.fileName ?? (t.linkUrl ? "ลิงก์ภายนอก" : "⚠️ ยังไม่มีไฟล์")}
-                      {t.fileSize ? ` · ${formatFileSize(t.fileSize)}` : ""}
+                      {(() => {
+                        const fs = templateFiles(t).filter(fileReady);
+                        if (!fs.length) return "⚠️ ยังไม่มีไฟล์";
+                        const opt = t.optionLabel?.trim();
+                        // ชุดที่แยกตามตัวเลือก บอกว่าครอบคลุมกี่ค่า (เช่น "12 ไฟล์ · แยกตามรุ่น")
+                        return `${fs.length} ไฟล์${opt ? ` · แยกตาม${opt}` : ""}`;
+                      })()}
                       {t.hidden ? " · 🚫 ซ่อนอยู่" : ""}
                     </span>
                   </span>

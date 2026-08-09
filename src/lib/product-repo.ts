@@ -79,6 +79,41 @@ export async function fetchPresetUsage(): Promise<{ id: string; name: string; pr
 }
 
 /**
+ * รายชื่อ "กลุ่มตัวเลือก" ทั้งร้าน พร้อมค่าที่เป็นไปได้ (รวมค่าจากทุกสินค้าที่ใช้ชื่อกลุ่มเดียวกัน)
+ * ใช้ตอนผูกไฟล์เทมเพลตกับตัวเลือก เช่น เลือกกลุ่ม "รุ่น" แล้วได้รายชื่อรุ่นทั้งหมดมาให้เลือก
+ * ดึงเฉพาะ options (ไม่เอารูป/ตารางราคา) และเรียกเฉพาะตอนแอดมินเปิดใช้จริง
+ */
+export async function fetchOptionGroups(): Promise<{ label: string; choices: string[] }[]> {
+  const sb = getSupabase();
+  const fromList = (list: Product[]) => {
+    const map = new Map<string, Set<string>>();
+    for (const p of list)
+      for (const o of p.options ?? []) {
+        const label = o.label?.trim();
+        if (!label) continue;
+        const set = map.get(label) ?? new Set<string>();
+        for (const c of o.choices ?? []) if (c.name?.trim()) set.add(c.name.trim());
+        map.set(label, set);
+      }
+    return [...map.entries()]
+      .map(([label, set]) => ({ label, choices: [...set] }))
+      .filter((g) => g.choices.length > 0)
+      .sort((a, b) => b.choices.length - a.choices.length || a.label.localeCompare(b.label, "th"));
+  };
+  if (!sb) return fromList(mergedProducts());
+  const { data, error } = await sb.from("products").select("id,options:data->options");
+  if (error || !data) return fromList(mergedProducts());
+  const rows = (data as unknown as Array<{ id: string; options: Product["options"] | null }>).filter(
+    (r) => !String(r.id).startsWith("__")
+  );
+  const products = rows.map((r) => ({ options: r.options ?? [] }) as Product);
+  // คลี่ตัวเลือกที่ลิงก์คลังก่อน ไม่งั้นกลุ่มที่ลิงก์คลังจะไม่มีรายชื่อค่าให้เลือก
+  if (!products.some((p) => p.options?.some((o) => o.presetId))) return fromList(products);
+  const presets = await fetchPresets();
+  return fromList(products.map((p) => resolveProduct(p, presets)));
+}
+
+/**
  * ดึงเฉพาะฟิลด์ที่การ์ดหน้ารายการ/หน้าแรกต้องใช้ (เบา) — ไม่ดึงก้อน options/rules/body ที่หนัก
  * ใช้ JSON projection ของ Supabase เพื่อลดข้อมูลที่โหลดเมื่อสินค้าเยอะ · ดึงเต็มเฉพาะตอนเปิดหน้ารายละเอียด
  */

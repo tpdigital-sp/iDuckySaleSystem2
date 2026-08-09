@@ -38,7 +38,7 @@ import {
   type ProductOption,
 } from "@/lib/products";
 import { LINE_URL } from "@/components/LineButton";
-import { formatFileSize, templateHref, type DesignTemplate } from "@/lib/design-templates";
+import { fileHref, filesForSelections, formatFileSize, type DesignTemplate } from "@/lib/design-templates";
 import { useCart } from "@/lib/cart-context";
 import { canAccessAdmin } from "@/lib/auth";
 import { fetchProduct } from "@/lib/product-repo";
@@ -843,40 +843,54 @@ export default function ProductDetail({
               </div>
               <ul className="space-y-2 px-3 py-3">
                 {templates.map((t) => {
-                  const href = templateHref(t);
-                  if (!href) return null;
-                  const outside = !t.fileUrl;
-                  return (
-                    <li key={t.id} className="flex items-center gap-3 rounded-xl bg-white p-2.5 ring-1 ring-sky-100">
-                      {t.previewUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={t.previewUrl}
-                          alt={`ตัวอย่างเทมเพลต ${t.name}`}
-                          className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-sky-100"
-                        />
-                      ) : (
-                        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-sky-50 text-xl">📐</span>
-                      )}
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] font-bold text-stone-800">{t.name}</span>
-                        {t.note && <span className="block text-[11px] leading-snug text-stone-500">{t.note}</span>}
-                        <span className="block text-[10px] text-stone-400">
-                          {outside ? "เปิดลิงก์ไฟล์" : t.fileName ?? "ไฟล์เทมเพลต"}
-                          {t.fileSize ? ` · ${formatFileSize(t.fileSize)}` : ""}
+                  // ชุดที่ผูกกับตัวเลือก (เช่น "รุ่น") → เอาเฉพาะไฟล์ของค่าที่ลูกค้าเลือกอยู่
+                  const picked = filesForSelections(t, effective);
+                  if (!picked.length) return null;
+                  const optLabel = t.optionLabel?.trim();
+                  const chosen = optLabel ? (effective[optLabel] ?? "").trim() : "";
+                  return picked.map((f) => {
+                    const href = fileHref(f);
+                    if (!href) return null;
+                    const outside = !f.fileUrl;
+                    return (
+                      <li key={f.id} className="flex items-center gap-3 rounded-xl bg-white p-2.5 ring-1 ring-sky-100">
+                        {t.previewUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={t.previewUrl}
+                            alt={`ตัวอย่างเทมเพลต ${t.name}`}
+                            className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-sky-100"
+                          />
+                        ) : (
+                          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-sky-50 text-xl">📐</span>
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] font-bold text-stone-800">
+                            {t.name}
+                            {f.choice && (
+                              <span className="ml-1 font-semibold text-sky-700">· {f.choice}</span>
+                            )}
+                          </span>
+                          {t.note && <span className="block text-[11px] leading-snug text-stone-500">{t.note}</span>}
+                          <span className="block text-[10px] text-stone-400">
+                            {outside ? "เปิดลิงก์ไฟล์" : f.fileName ?? "ไฟล์เทมเพลต"}
+                            {f.fileSize ? ` · ${formatFileSize(f.fileSize)}` : ""}
+                            {/* ไม่มีไฟล์ตรงรุ่นที่เลือก → บอกตรง ๆ ว่าที่ให้โหลดเป็นไฟล์กลาง */}
+                            {optLabel && chosen && !f.choice ? ` · ใช้ได้ทุก${optLabel}` : ""}
+                          </span>
                         </span>
-                      </span>
-                      <a
-                        href={href}
-                        {...(outside
-                          ? { target: "_blank", rel: "noopener noreferrer" }
-                          : { download: t.fileName ?? "" })}
-                        className="shrink-0 rounded-full bg-sky-600 px-4 py-2 text-xs font-bold text-white shadow transition hover:bg-sky-700"
-                      >
-                        {outside ? "🔗 เปิดลิงก์" : "⬇️ ดาวน์โหลด"}
-                      </a>
-                    </li>
-                  );
+                        <a
+                          href={href}
+                          {...(outside
+                            ? { target: "_blank", rel: "noopener noreferrer" }
+                            : { download: f.fileName ?? "" })}
+                          className="shrink-0 rounded-full bg-sky-600 px-4 py-2 text-xs font-bold text-white shadow transition hover:bg-sky-700"
+                        >
+                          {outside ? "🔗 เปิดลิงก์" : "⬇️ ดาวน์โหลด"}
+                        </a>
+                      </li>
+                    );
+                  });
                 })}
               </ul>
               <p className="px-4 pb-3 text-[10px] leading-relaxed text-sky-800">

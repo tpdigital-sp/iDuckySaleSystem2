@@ -2,33 +2,57 @@
  * 📐 คลังเทมเพลตไฟล์งาน (Design Templates)
  * — ไฟล์ .ai / .pdf ฯลฯ ที่ลูกค้าโหลดไปวางลายก่อนส่งกลับมาให้ร้านผลิต
  * — อัปครั้งเดียวในคลังกลาง แล้วติ๊กเลือกไปใช้กับสินค้ากี่ตัวก็ได้ (แบบเดียวกับคลังตัวเลือก)
- * — แก้ไฟล์ที่เดียว สินค้าทุกตัวที่ผูกไว้อัปเดตตามทันที
+ * — 1 ชุดเทมเพลตมีได้หลายไฟล์ แยกตาม "ตัวเลือกสินค้า" เช่น เคสมือถือ 1 ชุด มีไฟล์ของแต่ละรุ่น
+ *   ลูกค้าเลือกรุ่นไหนบนหน้าสินค้า ก็เห็นไฟล์ของรุ่นนั้น
  */
 
-export interface DesignTemplate {
+/** ไฟล์ 1 ไฟล์ในชุดเทมเพลต */
+export interface TemplateFile {
   id: string;
-  /** ชื่อที่ลูกค้าเห็น เช่น "เทมเพลตพวงกุญแจอะคริลิค 5×5 ซม." */
-  name: string;
-  /** คำแนะนำสั้น ๆ เช่น "เซฟเป็น .ai หรือ PDF · โหมดสี CMYK · ตัวหนังสือ create outline" */
-  note?: string;
+  /**
+   * ค่าตัวเลือกที่ไฟล์นี้ใช้ เช่น "iPhone 17 Pro Max"
+   * ว่าง = ไฟล์กลาง ใช้ได้กับทุกตัวเลือก (โชว์เมื่อไม่มีไฟล์ที่ตรงรุ่นกว่า)
+   */
+  choice?: string;
   /** ไฟล์ที่อัปเข้าระบบ (Supabase Storage) */
   fileUrl?: string;
   fileName?: string;
-  /** ขนาดไฟล์ (bytes) — โชว์ให้ลูกค้ารู้ก่อนกดโหลด */
   fileSize?: number;
-  /**
-   * ลิงก์ไฟล์ภายนอก (Google Drive / Dropbox) — ใช้กับไฟล์ใหญ่ที่ไม่อยากเปลืองพื้นที่ระบบ
-   * มีทั้งไฟล์และลิงก์ได้ · ไม่มีสักอย่าง = ยังไม่พร้อมให้โหลด (คลังจะเตือน)
-   */
+  /** ลิงก์ไฟล์ภายนอก (Google Drive / Dropbox) — ใช้กับไฟล์ใหญ่เกินลิมิต */
   linkUrl?: string;
-  /** รูปตัวอย่างเทมเพลต (PNG/JPG) — ให้ลูกค้าเห็นหน้าตาก่อนโหลด */
+}
+
+export interface DesignTemplate {
+  id: string;
+  /** ชื่อชุดที่ลูกค้าเห็น เช่น "เทมเพลตเคสมือถือ (ทุกรุ่น)" */
+  name: string;
+  /** คำแนะนำสั้น ๆ เช่น "เซฟเป็น .ai · โหมดสี CMYK · ตัวหนังสือ create outline" */
+  note?: string;
+  /**
+   * ชื่อกลุ่มตัวเลือกที่ไฟล์ในชุดนี้ผูกอยู่ เช่น "รุ่น"
+   * ว่าง = ชุดนี้ไม่แยกตามตัวเลือก (ไฟล์ทั้งหมดโชว์หมด)
+   */
+  optionLabel?: string;
+  /** ไฟล์ในชุด (ชุดเก่าที่มีไฟล์เดียวถูกแปลงเข้ามาที่นี่ตอนอ่าน — ดู normalizeTemplate) */
+  files?: TemplateFile[];
+  /** รูปตัวอย่างของทั้งชุด (PNG/JPG) */
   previewUrl?: string;
   /** ลำดับในลิสต์ (ไม่ตั้ง = ไปต่อท้าย เรียงตามชื่อ) */
   sort?: number;
-  /** ซ่อน — ไม่โชว์บนหน้าสินค้า และเลือกใหม่ไม่ได้ (ของเก่าที่ผูกไว้ก็ไม่โชว์ด้วย) */
+  /** ซ่อน — ไม่โชว์บนหน้าสินค้า */
   hidden?: boolean;
   /** เวลาที่บันทึกล่าสุด (เซิร์ฟเวอร์เขียนให้) */
   savedAt?: string;
+
+  // ── ฟิลด์รุ่นเก่า (ชุดละไฟล์เดียว) — อ่านอย่างเดียว เก็บไว้ให้ข้อมูลเดิมไม่หาย ──
+  /** @deprecated ใช้ files[] แทน */
+  fileUrl?: string;
+  /** @deprecated */
+  fileName?: string;
+  /** @deprecated */
+  fileSize?: number;
+  /** @deprecated */
+  linkUrl?: string;
 }
 
 /** ไฟล์เทมเพลตที่รับ — .ai เป็นตัวหลัก ที่เหลือเผื่อร้านมีไฟล์คนละแบบ */
@@ -40,6 +64,27 @@ export const TEMPLATE_EXT = ["ai", "pdf", "eps", "svg", "psd", "zip"] as const;
  */
 export const TEMPLATE_MAX_MB = 50;
 
+/** ชุดเก่า (ไฟล์เดียวเก็บไว้ระดับชุด) → แปลงเป็น files[] ให้โค้ดใหม่ใช้ทางเดียว */
+export function normalizeTemplate(t: DesignTemplate): DesignTemplate {
+  if (t.files?.length) return t;
+  if (!t.fileUrl && !t.linkUrl) return { ...t, files: [] };
+  return {
+    ...t,
+    files: [
+      {
+        id: `${t.id}-legacy`,
+        ...(t.fileUrl ? { fileUrl: t.fileUrl, fileName: t.fileName, fileSize: t.fileSize } : {}),
+        ...(t.linkUrl ? { linkUrl: t.linkUrl } : {}),
+      },
+    ],
+  };
+}
+
+/** ไฟล์ในชุด (แปลงข้อมูลเก่าให้แล้ว) */
+export function templateFiles(t: DesignTemplate): TemplateFile[] {
+  return normalizeTemplate(t).files ?? [];
+}
+
 /**
  * ที่อยู่ไฟล์ที่ใช้จริง — ไฟล์ในระบบมาก่อน ไม่มีค่อยใช้ลิงก์ภายนอก
  *
@@ -48,16 +93,38 @@ export const TEMPLATE_MAX_MB = 50;
  * ลูกค้าจะได้ไฟล์ชื่อเดิมที่ร้านตั้งไว้ (เช่น "17pro max พรีเมี่ยม.ai")
  * ไม่ใช่ชื่อสุ่มในพาธ และเบราว์เซอร์บันทึกลงเครื่องแทนที่จะเปิดค้างในแท็บ
  */
-export function templateHref(t: DesignTemplate): string | undefined {
-  if (t.fileUrl) {
-    return t.fileName ? `${t.fileUrl}?download=${encodeURIComponent(t.fileName)}` : t.fileUrl;
-  }
-  return t.linkUrl || undefined;
+export function fileHref(f: TemplateFile): string | undefined {
+  if (f.fileUrl) return f.fileName ? `${f.fileUrl}?download=${encodeURIComponent(f.fileName)}` : f.fileUrl;
+  return f.linkUrl || undefined;
 }
 
-/** พร้อมให้ลูกค้าโหลดไหม (ต้องไม่ซ่อน + มีไฟล์หรือลิงก์) */
+/** ไฟล์นี้พร้อมให้โหลดไหม */
+export function fileReady(f: TemplateFile): boolean {
+  return !!(f.fileUrl || f.linkUrl);
+}
+
+/** ชุดนี้พร้อมโชว์บนหน้าสินค้าไหม (ไม่ซ่อน + มีไฟล์ที่โหลดได้อย่างน้อย 1) */
 export function templateReady(t: DesignTemplate): boolean {
-  return !t.hidden && !!templateHref(t);
+  return !t.hidden && templateFiles(t).some(fileReady);
+}
+
+/**
+ * ไฟล์ที่ควรโชว์ให้ลูกค้า ตามตัวเลือกที่เลือกอยู่
+ * — ชุดที่ผูกกับกลุ่มตัวเลือก: เอาไฟล์ที่ตรงค่าที่เลือก · ไม่ตรง = ไฟล์กลาง (ไม่ระบุค่า)
+ * — ชุดที่ไม่ผูกตัวเลือก: โชว์ทุกไฟล์
+ */
+export function filesForSelections(
+  t: DesignTemplate,
+  selections: Record<string, string> = {}
+): TemplateFile[] {
+  const files = templateFiles(t).filter(fileReady);
+  const label = t.optionLabel?.trim();
+  if (!label) return files;
+  const chosen = (selections[label] ?? "").trim();
+  const exact = chosen ? files.filter((f) => (f.choice ?? "").trim() === chosen) : [];
+  if (exact.length) return exact;
+  // ไม่มีไฟล์ของค่าที่เลือก → ไฟล์กลางที่ไม่ได้ระบุค่า (ถ้ามี)
+  return files.filter((f) => !(f.choice ?? "").trim());
 }
 
 /** ขนาดไฟล์อ่านง่าย เช่น "12.4 MB" */
@@ -72,4 +139,21 @@ export function sortTemplates(list: DesignTemplate[]): DesignTemplate[] {
   return [...list].sort(
     (a, b) => (a.sort ?? 9999) - (b.sort ?? 9999) || a.name.localeCompare(b.name, "th")
   );
+}
+
+/**
+ * เดาว่าไฟล์นี้เป็นของตัวเลือกไหน จากชื่อไฟล์ (ตอนลากไฟล์เข้ามาทีละหลายไฟล์)
+ * เทียบแบบตัดช่องว่าง/ขีด/ตัวพิมพ์ เช่น "17pro max พรีเมี่ยม.ai" ↔ "iPhone 17 Pro Max"
+ * เดาไม่ออกก็คืนค่าว่าง ให้แอดมินเลือกเอง
+ */
+export function guessChoice(fileName: string, choices: string[]): string {
+  const norm = (s: string) => s.toLowerCase().replace(/[\s._-]+/g, "");
+  const f = norm(fileName.replace(/\.[^.]+$/, ""));
+  // ตัวที่ยาวที่สุดที่อยู่ในชื่อไฟล์ชนะ (กัน "17" ไปแมตช์ก่อน "17 Pro Max")
+  let best = "";
+  for (const c of choices) {
+    const n = norm(c);
+    if (n && f.includes(n) && n.length > norm(best).length) best = c;
+  }
+  return best;
 }
