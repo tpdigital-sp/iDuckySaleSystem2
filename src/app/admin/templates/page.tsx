@@ -57,6 +57,10 @@ function AdminTemplatesInner() {
    */
   const [prodOpts, setProdOpts] = useState<Record<string, { label: string; choices: string[] }[]>>({});
   const [optsBusy, setOptsBusy] = useState<string | null>(null);
+  /** ช่องค้นหาสินค้าในการ์ด (สินค้ามี 300+ ตัว เลื่อนหาในดรอปดาวน์ไม่ไหว) */
+  const [prodQ, setProdQ] = useState<Record<string, string>>({});
+  /** การ์ดที่กำลังเปิดลิสต์ค้นหาสินค้าอยู่ */
+  const [prodOpen, setProdOpen] = useState<string | null>(null);
   /** ชุดที่กำลังลากจัดลำดับ (เก็บเป็น id — ลิสต์ที่เห็นถูกกรอง/จัดกลุ่ม ใช้ index ไม่ได้) */
   const dragId = useRef<string | null>(null);
   const [dragAt, setDragAt] = useState<string | null>(null);
@@ -523,6 +527,24 @@ function AdminTemplatesInner() {
             const label = t.optionLabel?.trim();
             const prodGroups = t.optionProductId ? prodOpts[t.optionProductId] ?? [] : [];
             const groupChoices = label ? prodGroups.find((g) => g.label === label)?.choices ?? [] : [];
+            const pickedProduct = productList.find((p) => p.id === t.optionProductId);
+            /** ผลค้นหาสินค้า — ที่ผูกชุดนี้อยู่ขึ้นก่อน แล้วค่อยชื่อที่ขึ้นต้นตรงคำค้น */
+            const pq = (prodQ[t.id] ?? "").trim().toLowerCase();
+            const prodHits = productList
+              .filter((p) => !pq || p.name.toLowerCase().includes(pq))
+              .sort((a, b) => {
+                const ua = used.some((u) => u.id === a.id) ? 0 : 1;
+                const ub = used.some((u) => u.id === b.id) ? 0 : 1;
+                if (ua !== ub) return ua - ub;
+                if (pq) {
+                  const sa = a.name.toLowerCase().startsWith(pq) ? 0 : 1;
+                  const sb = b.name.toLowerCase().startsWith(pq) ? 0 : 1;
+                  if (sa !== sb) return sa - sb;
+                }
+                return a.name.localeCompare(b.name, "th");
+              });
+            const prodMatches = prodHits.slice(0, 40);
+            const prodMoreCount = prodHits.length - prodMatches.length;
             const expanded = !!open[t.id];
             const missing = files.filter((f) => !fileReady(f)).length;
             const uploading = busy[t.id];
@@ -656,35 +678,69 @@ function AdminTemplatesInner() {
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[11px] font-semibold text-slate-500">1️⃣ สินค้า</span>
-                        <select
-                          value={t.optionProductId ?? ""}
-                          onChange={(e) => {
-                            const pid = e.target.value;
-                            void ensureProductOptions(pid);
-                            // เปลี่ยนสินค้า = กลุ่มเดิมอาจไม่มีในสินค้าใหม่ → ล้างกลุ่มไว้ก่อน
-                            patch(t.id, { optionProductId: pid || undefined, optionLabel: undefined });
-                          }}
-                          className={`${inputSm} max-w-[16rem]`}
-                        >
-                          <option value="">— เลือกสินค้า —</option>
-                          {/* สินค้าที่ผูกชุดนี้อยู่แล้วขึ้นก่อน จะได้ไม่ต้องไล่หา */}
-                          {used.length > 0 && (
-                            <optgroup label="สินค้าที่ผูกชุดนี้อยู่">
-                              {used.map((u) => (
-                                <option key={u.id} value={u.id}>
-                                  {u.name}
-                                </option>
-                              ))}
-                            </optgroup>
+                        {/* ช่องค้นหาสินค้า — ร้านมี 300+ ตัว ดรอปดาวน์ธรรมดาเลื่อนหาไม่ไหว */}
+                        <div className="relative">
+                          <input
+                            value={prodOpen === t.id ? prodQ[t.id] ?? "" : pickedProduct?.name ?? ""}
+                            onFocus={() => {
+                              setProdOpen(t.id);
+                              setProdQ((q) => ({ ...q, [t.id]: "" }));
+                            }}
+                            onBlur={() => setTimeout(() => setProdOpen((c) => (c === t.id ? null : c)), 150)}
+                            onChange={(e) => setProdQ((q) => ({ ...q, [t.id]: e.target.value }))}
+                            placeholder="🔍 พิมพ์ชื่อสินค้าเพื่อค้นหา…"
+                            className={`${inputSm} w-64 py-1.5`}
+                            aria-label="ค้นหาสินค้าอ้างอิง"
+                          />
+                          {prodOpen === t.id && (
+                            <ul className="absolute z-20 mt-1 max-h-64 w-72 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                              {prodMatches.length === 0 ? (
+                                <li className={`px-3 py-2 text-xs ${faint}`}>ไม่เจอสินค้าที่ตรงกับคำค้น</li>
+                              ) : (
+                                prodMatches.map((p) => (
+                                  <li key={p.id}>
+                                    <button
+                                      type="button"
+                                      // onMouseDown มาก่อน onBlur ของช่องค้นหา — ไม่งั้นลิสต์ปิดก่อนคลิกติด
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        void ensureProductOptions(p.id);
+                                        // เปลี่ยนสินค้า = กลุ่มเดิมอาจไม่มีในสินค้าใหม่ → ล้างกลุ่มไว้ก่อน
+                                        patch(t.id, { optionProductId: p.id, optionLabel: undefined });
+                                        setProdOpen(null);
+                                      }}
+                                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-amber-50 ${
+                                        p.id === t.optionProductId ? "font-bold text-amber-700" : "text-slate-700"
+                                      }`}
+                                    >
+                                      <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                                      {used.some((u) => u.id === p.id) && (
+                                        <span className="shrink-0 rounded-full bg-slate-100 px-1.5 text-[10px] text-slate-500">
+                                          ผูกอยู่
+                                        </span>
+                                      )}
+                                    </button>
+                                  </li>
+                                ))
+                              )}
+                              {prodMoreCount > 0 && (
+                                <li className={`px-3 py-1.5 text-[11px] ${faint}`}>
+                                  …อีก {prodMoreCount} รายการ — พิมพ์เพิ่มเพื่อกรองให้แคบลง
+                                </li>
+                              )}
+                            </ul>
                           )}
-                          <optgroup label="สินค้าทั้งหมด">
-                            {productList.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name}
-                              </option>
-                            ))}
-                          </optgroup>
-                        </select>
+                        </div>
+                        {t.optionProductId && (
+                          <button
+                            type="button"
+                            onClick={() => patch(t.id, { optionProductId: undefined, optionLabel: undefined })}
+                            className={btnSmDanger}
+                            title="ล้างสินค้าที่เลือก"
+                          >
+                            ✕ ล้าง
+                          </button>
+                        )}
                         {optsBusy === t.optionProductId && (
                           <span className={`text-[11px] ${faint}`}>กำลังโหลดตัวเลือก…</span>
                         )}
