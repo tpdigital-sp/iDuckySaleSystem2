@@ -7,8 +7,11 @@ import {
   fileHref,
   fileReady,
   formatFileSize,
+  groupByCategory,
   guessChoice,
+  NO_CATEGORY,
   normalizeTemplate,
+  templateCategories,
   TEMPLATE_MAX_MB,
   type DesignTemplate,
   type TemplateFile,
@@ -42,8 +45,11 @@ function AdminTemplatesInner() {
   /** กลุ่มตัวเลือกทั้งร้าน (โหลดครั้งเดียวตอนต้องใช้) — ไว้ผูกไฟล์กับรุ่น/ขนาด */
   const [groups, setGroups] = useState<{ label: string; choices: string[] }[] | null>(null);
   const [groupsBusy, setGroupsBusy] = useState(false);
-  const dragFrom = useRef<number | null>(null);
-  const [dragAt, setDragAt] = useState<number | null>(null);
+  /** ชุดที่กำลังลากจัดลำดับ (เก็บเป็น id — ลิสต์ที่เห็นถูกกรอง/จัดกลุ่ม ใช้ index ไม่ได้) */
+  const dragId = useRef<string | null>(null);
+  const [dragAt, setDragAt] = useState<string | null>(null);
+  /** ตัวกรองหมวด ("" = ทุกหมวด) */
+  const [cat, setCat] = useState("");
 
   async function refresh() {
     setLoading(true);
@@ -167,14 +173,20 @@ function AdminTemplatesInner() {
     void ensureGroups();
   }
 
-  async function drop(to: number) {
-    const from = dragFrom.current;
-    dragFrom.current = null;
+  /** วางชุดที่ลากไว้ลงตำแหน่งของชุดเป้าหมาย (อ้างด้วย id — ปลอดภัยแม้ลิสต์ถูกกรอง/จัดกลุ่ม) */
+  async function dropOnTemplate(targetId: string) {
+    const from = dragId.current;
+    dragId.current = null;
     setDragAt(null);
-    if (from === null || from === to) return;
+    if (!from || from === targetId) return;
+    const fi = list.findIndex((t) => t.id === from);
+    const ti = list.findIndex((t) => t.id === targetId);
+    if (fi < 0 || ti < 0) return;
     const next = [...list];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
+    const [moved] = next.splice(fi, 1);
+    // ลากข้ามหมวด = ย้ายหมวดตามปลายทางไปด้วย (ตรงกับที่ตาเห็น)
+    const targetCat = list[ti].category;
+    next.splice(ti, 0, { ...moved, category: targetCat });
     const renumbered = next.map((t, i) => ({ ...t, sort: i }));
     setList(renumbered);
     for (const t of renumbered) {
@@ -185,14 +197,28 @@ function AdminTemplatesInner() {
   }
 
   const q = query.trim().toLowerCase();
-  const shown = q
-    ? list.filter((t) =>
-        (t.name + " " + (t.note ?? "") + " " + (t.files ?? []).map((f) => `${f.fileName ?? ""} ${f.choice ?? ""}`).join(" "))
+  const shown = list
+    .filter((t) => !cat || (cat === NO_CATEGORY ? !t.category?.trim() : t.category?.trim() === cat))
+    .filter(
+      (t) =>
+        !q ||
+        (
+          t.name +
+          " " +
+          (t.note ?? "") +
+          " " +
+          (t.category ?? "") +
+          " " +
+          (t.files ?? []).map((f) => `${f.fileName ?? ""} ${f.choice ?? ""}`).join(" ")
+        )
           .toLowerCase()
           .includes(q)
-      )
-    : list;
+    );
   const totalFiles = list.reduce((n, t) => n + (t.files?.length ?? 0), 0);
+  const cats = templateCategories(list);
+  const noCatCount = list.filter((t) => !t.category?.trim()).length;
+  /** จัดกลุ่มตามหมวดเมื่อดูรวมทุกหมวด · เลือกหมวดเดียวอยู่แล้วไม่ต้องมีหัวกลุ่มซ้ำ */
+  const catGroups = cat ? [{ category: cat, items: shown }] : groupByCategory(shown);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
@@ -229,12 +255,12 @@ function AdminTemplatesInner() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="🔍 ค้นหาชื่อชุด · ชื่อไฟล์ · รุ่น…"
+            placeholder="🔍 ค้นหาชื่อชุด · ชื่อไฟล์ · รุ่น · หมวด…"
             className={`${input} flex-1 sm:max-w-sm`}
           />
           <span className={`text-xs ${faint}`}>
             {list.length} ชุด · {totalFiles} ไฟล์
-            {q ? ` · ตรงคำค้น ${shown.length} ชุด` : ""}
+            {q || cat ? ` · ตรงเงื่อนไข ${shown.length} ชุด` : ""}
           </span>
           <div className="ml-auto flex gap-2">
             <button
@@ -251,6 +277,38 @@ function AdminTemplatesInner() {
         </div>
       )}
 
+      {/* ── ตัวกรองหมวด — คลิกเพื่อดูเฉพาะหมวดนั้น ── */}
+      {(cats.length > 0 || noCatCount > 0) && list.length > 1 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setCat("")}
+            className={`${badge} ${cat === "" ? "bg-slate-900 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"}`}
+          >
+            ทุกหมวด ({list.length})
+          </button>
+          {cats.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setCat(c === cat ? "" : c)}
+              className={`${badge} ${c === cat ? "bg-slate-900 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"}`}
+            >
+              🗂 {c} ({list.filter((t) => t.category?.trim() === c).length})
+            </button>
+          ))}
+          {noCatCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setCat(NO_CATEGORY === cat ? "" : NO_CATEGORY)}
+              className={`${badge} ${cat === NO_CATEGORY ? "bg-slate-900 text-white" : "bg-white text-slate-400 ring-1 ring-slate-200 hover:bg-slate-50"}`}
+            >
+              {NO_CATEGORY} ({noCatCount})
+            </button>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <p className={`mt-6 text-sm ${faint}`}>กำลังโหลด…</p>
       ) : list.length === 0 ? (
@@ -260,8 +318,23 @@ function AdminTemplatesInner() {
           <p className={`mt-1 text-xs ${muted}`}>กด &ldquo;＋ เพิ่มชุดเทมเพลต&rdquo; แล้วลากไฟล์ .ai มาวางได้เลย</p>
         </div>
       ) : (
-        <div className="mt-3 space-y-2.5">
-          {shown.map((t, i) => {
+        <div className="mt-3 space-y-4">
+          {shown.length === 0 && (
+            <p className={`${card} p-6 text-center text-sm ${faint}`}>ไม่มีชุดที่ตรงกับที่กรองไว้</p>
+          )}
+          {catGroups.map((grp) => (
+        <div key={grp.category} className="space-y-2.5">
+          {/* หัวกลุ่มหมวด — โผล่เฉพาะตอนดูรวมทุกหมวดและมีมากกว่า 1 กลุ่ม */}
+          {!cat && catGroups.length > 1 && (
+            <p className="flex items-center gap-2 pt-1 text-xs font-bold text-slate-500">
+              <span className={grp.category === NO_CATEGORY ? "text-slate-400" : ""}>
+                {grp.category === NO_CATEGORY ? "📂" : "🗂"} {grp.category}
+              </span>
+              <span className={`font-normal ${faint}`}>({grp.items.length})</span>
+              <span className="h-px flex-1 bg-slate-200" />
+            </p>
+          )}
+          {grp.items.map((t) => {
             const used = usedBy[t.id] ?? [];
             const files = t.files ?? [];
             const label = t.optionLabel?.trim();
@@ -274,11 +347,11 @@ function AdminTemplatesInner() {
                 key={t.id}
                 draggable={!expanded}
                 onDragStart={() => {
-                  dragFrom.current = i;
-                  setDragAt(i);
+                  dragId.current = t.id;
+                  setDragAt(t.id);
                 }}
                 onDragEnd={() => {
-                  dragFrom.current = null;
+                  dragId.current = null;
                   setDragAt(null);
                 }}
                 onDragOver={(e) => {
@@ -293,10 +366,10 @@ function AdminTemplatesInner() {
                     setDropOn(null);
                     void addFiles(t, dropped);
                   } else {
-                    void drop(i);
+                    void dropOnTemplate(t.id);
                   }
                 }}
-                className={`${card} transition ${dragAt === i ? "opacity-40" : ""} ${
+                className={`${card} transition ${dragAt === t.id ? "opacity-40" : ""} ${
                   dropOn === t.id ? "ring-2 ring-sky-400 ring-offset-1" : ""
                 } ${t.hidden ? "bg-slate-50" : ""}`}
               >
@@ -365,6 +438,32 @@ function AdminTemplatesInner() {
                         placeholder="คำแนะนำสั้น ๆ เช่น โหมดสี CMYK · create outline"
                         className={input}
                       />
+                    </div>
+                    {/* หมวดหมู่ — พิมพ์ใหม่ได้เลย หรือเลือกจากหมวดที่เคยใช้ */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="text-xs font-semibold text-slate-600">🗂 หมวดหมู่</label>
+                      <input
+                        value={t.category ?? ""}
+                        onChange={(e) => patch(t.id, { category: e.target.value.trim() || undefined })}
+                        list="tpl-cats"
+                        placeholder="เช่น เคสมือถือ · สแตนดี้ (เว้นว่าง = ยังไม่จัดหมวด)"
+                        className={`${input} max-w-xs`}
+                      />
+                      {cats.length > 0 && (
+                        <span className={`text-[11px] ${faint}`}>
+                          หมวดที่มีอยู่:{" "}
+                          {cats.map((c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              onClick={() => patch(t.id, { category: c })}
+                              className="mr-1 rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600 hover:bg-slate-200"
+                            >
+                              {c}
+                            </button>
+                          ))}
+                        </span>
+                      )}
                     </div>
 
                     {/* ── ผูกไฟล์กับตัวเลือกสินค้า ── */}
@@ -537,7 +636,16 @@ function AdminTemplatesInner() {
             );
           })}
         </div>
+          ))}
+        </div>
       )}
+
+      {/* รายชื่อหมวดที่เคยใช้ — ให้ช่องหมวดหมู่ในทุกการ์ดเลือกซ้ำได้ ไม่ต้องพิมพ์ใหม่ */}
+      <datalist id="tpl-cats">
+        {cats.map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
 
       <p className={`mt-6 text-xs ${faint}`}>
         ผูกชุดเทมเพลตกับสินค้าได้ที่ <Link href="/admin/products" className="underline">หน้าแก้ไขสินค้า</Link> →

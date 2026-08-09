@@ -33,7 +33,7 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 import GradientPicker from "@/components/GradientPicker";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, DEFAULT_SHIPPING, type ShippingMethod } from "@/lib/shop-settings";
-import { fileReady, templateFiles, type DesignTemplate } from "@/lib/design-templates";
+import { fileReady, groupByCategory, NO_CATEGORY, templateFiles, type DesignTemplate } from "@/lib/design-templates";
 import { fetchTemplates } from "@/lib/template-repo";
 
 type DraftChoice = { name: string; extra: string };
@@ -2668,8 +2668,15 @@ export default function ProductEditor({ product }: { product: Product }) {
             ก่อน
           </p>
         ) : (
-          <div className="space-y-1.5">
-            {templates.map((t) => {
+          <div className="max-h-96 space-y-2 overflow-y-auto">
+            {groupByCategory(templates).map((grp) => (
+              <div key={grp.category} className="space-y-1.5">
+                {/* หัวหมวด — คลังโตขึ้นแล้วหาง่ายกว่าเลื่อนยาว ๆ */}
+                <p className="flex items-center gap-2 pt-1 text-[11px] font-bold text-slate-400">
+                  <span>{grp.category === NO_CATEGORY ? "📂" : "🗂"} {grp.category}</span>
+                  <span className="h-px flex-1 bg-slate-100" />
+                </p>
+            {grp.items.map((t) => {
               const on = draft.templateIds.includes(t.id);
               return (
                 <label
@@ -2712,6 +2719,8 @@ export default function ProductEditor({ product }: { product: Product }) {
                 </label>
               );
             })}
+              </div>
+            ))}
           </div>
         )}
       </section>

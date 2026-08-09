@@ -29,6 +29,11 @@ export interface DesignTemplate {
   /** คำแนะนำสั้น ๆ เช่น "เซฟเป็น .ai · โหมดสี CMYK · ตัวหนังสือ create outline" */
   note?: string;
   /**
+   * หมวดหมู่ในคลัง เช่น "เคสมือถือ" · "สแตนดี้" — ไว้จัดกลุ่มตอนเทมเพลตเยอะ
+   * ว่าง = อยู่กลุ่ม "ยังไม่จัดหมวด"
+   */
+  category?: string;
+  /**
    * ชื่อกลุ่มตัวเลือกที่ไฟล์ในชุดนี้ผูกอยู่ เช่น "รุ่น"
    * ว่าง = ชุดนี้ไม่แยกตามตัวเลือก (ไฟล์ทั้งหมดโชว์หมด)
    */
@@ -132,6 +137,33 @@ export function formatFileSize(bytes?: number): string {
   if (!bytes || bytes <= 0) return "";
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/** ป้ายกลุ่มของชุดที่ยังไม่ได้ใส่หมวด */
+export const NO_CATEGORY = "ยังไม่จัดหมวด";
+
+/** ชื่อหมวดที่ใช้จริงในคลัง (ไม่ซ้ำ เรียงไทย) — ไว้ทำตัวกรอง/ช่องแนะนำ */
+export function templateCategories(list: DesignTemplate[]): string[] {
+  const set = new Set<string>();
+  for (const t of list) {
+    const c = t.category?.trim();
+    if (c) set.add(c);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, "th"));
+}
+
+/** จัดชุดเทมเพลตเป็นกลุ่มตามหมวด (กลุ่ม "ยังไม่จัดหมวด" ไปท้ายสุดเสมอ) */
+export function groupByCategory<T extends DesignTemplate>(list: T[]): { category: string; items: T[] }[] {
+  const map = new Map<string, T[]>();
+  for (const t of list) {
+    const key = t.category?.trim() || NO_CATEGORY;
+    (map.get(key) ?? map.set(key, []).get(key)!).push(t);
+  }
+  return [...map.entries()]
+    .map(([category, items]) => ({ category, items }))
+    .sort((a, b) =>
+      a.category === NO_CATEGORY ? 1 : b.category === NO_CATEGORY ? -1 : a.category.localeCompare(b.category, "th")
+    );
 }
 
 /** เรียงตามลำดับที่แอดมินจัดไว้ (ยังไม่จัด = ต่อท้าย เรียงตามชื่อไทย) */
