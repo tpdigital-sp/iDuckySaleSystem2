@@ -20,6 +20,11 @@ export interface TemplateFile {
   fileSize?: number;
   /** ลิงก์ไฟล์ภายนอก (Google Drive / Dropbox) — ใช้กับไฟล์ใหญ่เกินลิมิต */
   linkUrl?: string;
+  /**
+   * รูปตัวอย่างของไฟล์นี้ (PNG) — เรนเดอร์จากหน้าแรกของ .ai/.pdf ตอนอัป
+   * ทำให้เห็นว่าแต่ละรุ่นหน้าตาเป็นยังไงโดยไม่ต้องเปิดไฟล์
+   */
+  previewUrl?: string;
 }
 
 export interface DesignTemplate {

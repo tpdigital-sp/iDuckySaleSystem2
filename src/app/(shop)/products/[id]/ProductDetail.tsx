@@ -854,12 +854,13 @@ export default function ProductDetail({
                     const outside = !f.fileUrl;
                     return (
                       <li key={f.id} className="flex items-center gap-3 rounded-xl bg-white p-2.5 ring-1 ring-sky-100">
-                        {t.previewUrl ? (
+                        {/* รูปของไฟล์นั้นมาก่อน (แต่ละรุ่นหน้าตาไม่เหมือนกัน) ไม่มีค่อยใช้รูปปกของชุด */}
+                        {f.previewUrl || t.previewUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
-                            src={t.previewUrl}
-                            alt={`ตัวอย่างเทมเพลต ${t.name}`}
-                            className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-sky-100"
+                            src={f.previewUrl || t.previewUrl}
+                            alt={`ตัวอย่างเทมเพลต ${t.name}${f.choice ? ` ${f.choice}` : ""}`}
+                            className="h-12 w-12 shrink-0 rounded-lg bg-white object-contain ring-1 ring-sky-100"
                           />
                         ) : (
                           <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-sky-50 text-xl">📐</span>

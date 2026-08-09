@@ -33,6 +33,7 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 import GradientPicker from "@/components/GradientPicker";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, DEFAULT_SHIPPING, type ShippingMethod } from "@/lib/shop-settings";
+import { categoryTone } from "@/lib/admin-ui";
 import { fileReady, groupByCategory, NO_CATEGORY, templateFiles, type DesignTemplate } from "@/lib/design-templates";
 import { fetchTemplates } from "@/lib/template-repo";
 
@@ -2697,12 +2698,13 @@ export default function ProductEditor({ product }: { product: Product }) {
                     }
                     className="h-4 w-4 accent-blue-600"
                   />
-                  {t.previewUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={t.previewUrl} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover ring-1 ring-slate-200" />
-                  ) : (
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-100 text-lg">📐</span>
-                  )}
+                  {/* ไอคอนสีตามหมวด — งานไดคัทเป็นเส้นบาง ย่อเป็นรูปเล็กแล้วมองไม่เห็น */}
+                  <span
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-lg"
+                    style={{ backgroundColor: `${categoryTone(t.category?.trim() ?? "")}24` }}
+                  >
+                    📐
+                  </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-slate-800">{t.name}</span>
                     <span className="block truncate text-[11px] text-slate-400">

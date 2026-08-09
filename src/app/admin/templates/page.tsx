@@ -58,6 +58,49 @@ type Draft = DesignTemplate & { _dirty?: boolean };
 
 const rid = (p: string) => `${p}-${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36).slice(-3)}`;
 
+/**
+ * ไอคอนประจำชุดเทมเพลต — "อาร์ตบอร์ด + เส้นตัดมุม" สื่อถึงไฟล์งานไดคัท
+ * ใช้แทนรูปย่อจากไฟล์ .ai ตรงหัวการ์ด เพราะงานไดคัทเป็นเส้นบาง พอย่อเหลือ 40px แล้วจางจนไม่เห็น
+ * (รูปจริงยังโชว์ในแถวไฟล์ที่ขนาดพอดี และบนหน้าสินค้า)
+ * ระบายด้วยสีประจำหมวด → กวาดตาแยกหมวดได้จากไอคอนเลย
+ */
+function TemplateIcon({ tone, size = 40 }: { tone: string; size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 40 40"
+      aria-hidden
+      className="shrink-0"
+      style={{ color: tone }}
+    >
+      <rect width="40" height="40" rx="11" fill="currentColor" opacity="0.14" />
+      {/* อาร์ตบอร์ด */}
+      <rect x="11" y="9" width="18" height="22" rx="3" fill="#fff" stroke="currentColor" strokeWidth="1.6" />
+      {/* พื้นที่พิมพ์ด้านใน (เส้นประ) */}
+      <rect
+        x="14.5"
+        y="12.5"
+        width="11"
+        height="15"
+        rx="2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.1"
+        strokeDasharray="2.4 2"
+        opacity="0.75"
+      />
+      {/* เส้นตัดมุม */}
+      <g stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity="0.9">
+        <path d="M7 9h2.5M8.2 7.8v2.4" />
+        <path d="M30.5 9H33M31.8 7.8v2.4" />
+        <path d="M7 31h2.5M8.2 29.8v2.4" />
+        <path d="M30.5 31H33M31.8 29.8v2.4" />
+      </g>
+    </svg>
+  );
+}
+
 function AdminTemplatesInner() {
   const [list, setList] = useState<Draft[]>([]);
   const [loading, setLoading] = useState(true);
@@ -270,23 +313,36 @@ function AdminTemplatesInner() {
       )
     );
     setOpen((o) => ({ ...o, [t.id]: true }));
-    // 🖼 ยังไม่มีรูปตัวอย่าง → เรนเดอร์หน้าแรกของไฟล์ .ai/.pdf ไฟล์แรกมาใช้ให้เลย
-    if (!t.previewUrl) {
-      const src = files.find((f) => canThumbnail(f.name));
-      if (src) void makePreviewFrom(t.id, src);
+    // 🖼 ทำรูปตัวอย่างให้ทุกไฟล์ที่เพิ่งอัป (ไฟล์ .ai/.pdf) — เห็นหน้าตาแต่ละรุ่นได้เลยไม่ต้องเปิดไฟล์
+    for (let i = 0; i < added.length; i++) {
+      const src = files.find((f) => f.name === added[i].fileName);
+      if (src && canThumbnail(src.name)) {
+        setBusy((b) => ({ ...b, [t.id]: `รูป ${i + 1}/${added.length}` }));
+        await makePreviewFrom(t.id, src, added[i].id, true);
+      }
     }
+    setBusy((b) => {
+      const n = { ...b };
+      delete n[t.id];
+      return n;
+    });
   }
 
-  /** สร้างรูปตัวอย่างจากไฟล์งาน (.ai/.pdf) แล้วอัปขึ้นเป็น previewUrl ของชุด */
-  async function makePreviewFrom(tid: string, file: File) {
-    setBusy((b) => ({ ...b, [tid]: "ทำรูปตัวอย่าง" }));
+  /**
+   * เรนเดอร์หน้าแรกของไฟล์งานเป็นรูปตัวอย่าง แล้วอัปขึ้น storage
+   * fileId = ใส่เป็นรูปของไฟล์นั้น (โชว์ในแถวไฟล์) · ชุดที่ยังไม่มีรูปปก จะใช้รูปนี้เป็นปกให้ด้วย
+   */
+  async function makePreviewFrom(tid: string, file: File, fileId?: string, quiet = false) {
+    if (!quiet) setBusy((b) => ({ ...b, [tid]: "ทำรูปตัวอย่าง" }));
     const png = await thumbnailFromDesignFile(file);
-    if (!png) {
+    const done = () =>
       setBusy((b) => {
         const n = { ...b };
         delete n[tid];
         return n;
       });
+    if (!png) {
+      if (!quiet) done();
       // .ai ที่ปิด PDF compatibility เปิดไม่ได้ — บอกทางออกไปเลย ไม่ปล่อยให้งง
       setError(
         `ทำรูปตัวอย่างจาก “${file.name}” ไม่ได้ — ไฟล์ .ai ต้องเซฟแบบ Create PDF Compatible File · ใช้ปุ่ม 🖼 รูปตัวอย่าง อัปรูปเองแทนได้`
@@ -294,13 +350,13 @@ function AdminTemplatesInner() {
       return;
     }
     const res = await uploadTemplateFile(png, "preview");
-    setBusy((b) => {
-      const n = { ...b };
-      delete n[tid];
-      return n;
-    });
+    if (!quiet) done();
     if (!res.ok) return setError(res.error ?? "อัปรูปตัวอย่างไม่สำเร็จ");
-    patch(tid, { previewUrl: res.url });
+    if (fileId) patchFile(tid, fileId, { previewUrl: res.url });
+    // ชุดยังไม่มีรูปปก → ใช้รูปแรกที่ทำได้เป็นปกไปเลย
+    setList((cur) =>
+      cur.map((x) => (x.id === tid && !x.previewUrl ? { ...x, previewUrl: res.url, _dirty: true } : x))
+    );
   }
 
   /** ดึงไฟล์ที่อัปไว้แล้วกลับมาทำรูปตัวอย่าง (ปุ่มในแถวไฟล์) */
@@ -309,7 +365,7 @@ function AdminTemplatesInner() {
     setBusy((b) => ({ ...b, [tid]: "ดึงไฟล์" }));
     try {
       const blob = await fetch(f.fileUrl).then((r) => r.blob());
-      await makePreviewFrom(tid, new File([blob], f.fileName, { type: blob.type }));
+      await makePreviewFrom(tid, new File([blob], f.fileName, { type: blob.type }), f.id);
     } catch {
       setBusy((b) => {
         const n = { ...b };
@@ -715,12 +771,7 @@ function AdminTemplatesInner() {
                       ⋮⋮
                     </span>
                   )}
-                  {t.previewUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={t.previewUrl} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover ring-1 ring-slate-200" />
-                  ) : (
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-100 text-lg">📐</span>
-                  )}
+                  <TemplateIcon tone={categoryTone(t.category?.trim() ?? "")} />
                   <button
                     type="button"
                     onClick={() => {
@@ -933,6 +984,21 @@ function AdminTemplatesInner() {
                         {files.map((f, fi) => (
                           <div key={f.id} className="flex flex-wrap items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50">
                             <span className={`w-6 shrink-0 text-right text-[11px] ${faint}`}>{fi + 1}</span>
+                            {/* รูปตัวอย่างของไฟล์นี้ — กดขยายดูเต็มได้ */}
+                            {f.previewUrl ? (
+                              <a href={f.previewUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={f.previewUrl}
+                                  alt={`ตัวอย่าง ${f.fileName ?? ""}`}
+                                  className="h-9 w-9 rounded-md bg-white object-contain ring-1 ring-slate-200"
+                                />
+                              </a>
+                            ) : (
+                              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-slate-100 text-xs text-slate-400">
+                                📄
+                              </span>
+                            )}
                             {label ? (
                               <select
                                 value={f.choice ?? ""}
