@@ -89,12 +89,16 @@ function AdminTemplatesInner() {
     const res = await uploadTemplateFile(f, kind);
     setBusy(null);
     if (!res.ok) return setError(res.error ?? "อัปโหลดไม่สำเร็จ");
-    patch(
-      t.id,
-      kind === "preview"
-        ? { previewUrl: res.url }
-        : { fileUrl: res.url, fileName: res.name, fileSize: res.size }
-    );
+    if (kind === "preview") return patch(t.id, { previewUrl: res.url });
+    patch(t.id, {
+      fileUrl: res.url,
+      fileName: res.name,
+      fileSize: res.size,
+      // ยังไม่ได้พิมพ์คำแนะนำ → เติมชื่อไฟล์ให้เลย (แก้ทับได้) ไม่ต้องพิมพ์ซ้ำ
+      ...(t.note?.trim() ? {} : { note: res.name }),
+      // ยังไม่ได้ตั้งชื่อเทมเพลต → ใช้ชื่อไฟล์ (ตัดนามสกุล) เป็นตัวตั้งต้นให้
+      ...(t.name.trim() ? {} : { name: (res.name ?? "").replace(/\.[^.]+$/, "") }),
+    });
   }
 
   function add() {
@@ -219,7 +223,7 @@ function AdminTemplatesInner() {
                     <input
                       value={t.note ?? ""}
                       onChange={(e) => patch(t.id, { note: e.target.value })}
-                      placeholder="คำแนะนำสั้น ๆ (ไม่บังคับ) เช่น โหมดสี CMYK · ตัวหนังสือ create outline"
+                      placeholder="คำแนะนำสั้น ๆ (อัปไฟล์แล้วเติมชื่อไฟล์ให้อัตโนมัติ · แก้ทับได้)"
                       className={`${input} text-xs`}
                     />
 
