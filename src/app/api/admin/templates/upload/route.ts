@@ -72,8 +72,15 @@ export async function POST(req: Request) {
     );
   }
 
-  // ชื่อไฟล์เดิมติดไปด้วย เพื่อให้ลูกค้าโหลดแล้วได้ชื่อที่อ่านรู้เรื่อง (ตัดอักขระที่ทำ URL พัง)
-  const safe = file.name.replace(/\.[^.]+$/, "").replace(/[^\w฀-๿.-]+/g, "-").slice(0, 60) || "template";
+  // ⚠️ พาธใน Supabase Storage รับเฉพาะ ASCII — ชื่อไฟล์ไทยจะโดนตีกลับ "Invalid key"
+  // เลยตัดเหลือ a-z0-9 สำหรับพาธ ส่วนชื่อไทยตัวจริงเก็บไว้ในฟิลด์ fileName
+  // (ตอนลูกค้าโหลด ต่อ ?download=<ชื่อไทย> ให้ Supabase ส่งชื่อเดิมกลับไป — ดู templateHref)
+  const safe =
+    file.name
+      .replace(/\.[^.]+$/, "")
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/^[-.]+|[-.]+$/g, "")
+      .slice(0, 50) || "template";
   const path = `${preview ? "preview" : "file"}/${randomUUID().slice(0, 8)}-${safe}.${ext}`;
   const bytes = new Uint8Array(await file.arrayBuffer()); // ต้นฉบับล้วน
 

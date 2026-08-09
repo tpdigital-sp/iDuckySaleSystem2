@@ -40,9 +40,19 @@ export const TEMPLATE_EXT = ["ai", "pdf", "eps", "svg", "psd", "zip"] as const;
  */
 export const TEMPLATE_MAX_MB = 50;
 
-/** ที่อยู่ไฟล์ที่ใช้จริง — ไฟล์ในระบบมาก่อน ไม่มีค่อยใช้ลิงก์ภายนอก */
+/**
+ * ที่อยู่ไฟล์ที่ใช้จริง — ไฟล์ในระบบมาก่อน ไม่มีค่อยใช้ลิงก์ภายนอก
+ *
+ * ⚠️ attribute `download` ของ <a> ใช้ไม่ได้กับไฟล์ข้ามโดเมน (ไฟล์อยู่บน supabase.co)
+ * เลยต่อ `?download=<ชื่อไฟล์>` ให้ Supabase ใส่ Content-Disposition มาเอง —
+ * ลูกค้าจะได้ไฟล์ชื่อเดิมที่ร้านตั้งไว้ (เช่น "17pro max พรีเมี่ยม.ai")
+ * ไม่ใช่ชื่อสุ่มในพาธ และเบราว์เซอร์บันทึกลงเครื่องแทนที่จะเปิดค้างในแท็บ
+ */
 export function templateHref(t: DesignTemplate): string | undefined {
-  return t.fileUrl || t.linkUrl || undefined;
+  if (t.fileUrl) {
+    return t.fileName ? `${t.fileUrl}?download=${encodeURIComponent(t.fileName)}` : t.fileUrl;
+  }
+  return t.linkUrl || undefined;
 }
 
 /** พร้อมให้ลูกค้าโหลดไหม (ต้องไม่ซ่อน + มีไฟล์หรือลิงก์) */
