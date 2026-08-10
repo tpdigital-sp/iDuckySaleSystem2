@@ -3,7 +3,7 @@
 import RequirePerm from "@/components/RequirePerm";
 import { useEffect, useState } from "react";
 import { faint, h1, muted } from "@/lib/admin-ui";
-import { DEPT_ADMIN, DEPT_CONTENT, DEPT_PACKING, ROLE_ADMINISTRATOR, ROLE_STAFF } from "@/lib/permissions";
+import { DEPT_ADMIN, DEPT_CONTENT, DEPT_GRAPHIC, DEPT_PACKING, ROLE_ADMINISTRATOR, ROLE_STAFF } from "@/lib/permissions";
 
 interface Staff {
   id: string;
@@ -18,7 +18,7 @@ interface Staff {
   hasAccess: boolean;
 }
 
-const DEFAULT_DEPTS = [DEPT_ADMIN, DEPT_PACKING, DEPT_CONTENT];
+const DEFAULT_DEPTS = [DEPT_ADMIN, DEPT_GRAPHIC, DEPT_PACKING, DEPT_CONTENT];
 
 /** แถวพนักงาน 1 คน — แก้บทบาท/แผนก/สถานะ แล้วบันทึกเป็นรายคน */
 function StaffRow({
@@ -211,12 +211,13 @@ function StaffPageInner() {
     const d = s.department.trim();
     if (!d) return "❔ ยังไม่ระบุแผนก";
     if (d === DEPT_ADMIN) return `🧑‍💼 ${DEPT_ADMIN}`;
+    if (d === DEPT_GRAPHIC) return `🎨 ${DEPT_GRAPHIC}`;
     if (d === DEPT_PACKING) return `📦 ${DEPT_PACKING}`;
     if (d.toLowerCase() === "content" || d === DEPT_CONTENT) return `🖋️ ${DEPT_CONTENT}`;
     return `🏭 ${d}`;
   };
   // ลำดับกลุ่มหลักก่อน แผนกอื่นเรียงชื่อ ก-ฮ ต่อท้าย
-  const GROUP_ORDER = ["👑 ผู้ดูแลระบบ", `🧑‍💼 ${DEPT_ADMIN}`, `📦 ${DEPT_PACKING}`, `🖋️ ${DEPT_CONTENT}`];
+  const GROUP_ORDER = ["👑 ผู้ดูแลระบบ", `🧑‍💼 ${DEPT_ADMIN}`, `🎨 ${DEPT_GRAPHIC}`, `📦 ${DEPT_PACKING}`, `🖋️ ${DEPT_CONTENT}`];
   const groupsOf = (list: Staff[]) => {
     const m = new Map<string, Staff[]>();
     list.forEach((s) => {

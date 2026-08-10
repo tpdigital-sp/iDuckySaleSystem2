@@ -12,6 +12,8 @@ export const DEPT_ADMIN = "แอดมิน";
 export const DEPT_PACKING = "แพ็คของ";
 /** แผนกคอนเทนต์ — ดูแลหน้าเว็บ/สินค้า/ราคา (ใน Firebase พิมพ์ "คอนเทนต์" หรือ "content" ก็ได้) */
 export const DEPT_CONTENT = "คอนเทนต์";
+/** แผนกกราฟฟิก — ทำแบบงานให้ลูกค้าตรวจ (ไม่เห็นเรื่องเงิน) */
+export const DEPT_GRAPHIC = "กราฟฟิก";
 /** พนักงานที่ยังทำงานอยู่เท่านั้นถึงล็อกอินได้ (allowlist — สถานะอื่นปิดไว้ก่อน) */
 export const WORK_STATUS_ACTIVE = "working";
 
@@ -87,12 +89,25 @@ const STAFF_CONTENT: Perm[] = [
   "presets.manage",
 ];
 
+/**
+ * สิทธิ์ของพนักงานฝ่ายกราฟฟิก (ทำแบบงาน — อัปโหลดแบบให้ลูกค้าตรวจ)
+ * ไม่มี orders.money → ไม่เห็นราคา/สลิป · ไม่มี orders.edit → เปลี่ยนสถานะ/ที่อยู่ไม่ได้
+ */
+const STAFF_GRAPHIC: Perm[] = [
+  "admin.access",
+  "orders.view",
+  "orders.viewAll",
+  "proof.manage",
+  "products.view",
+];
+
 /** ชุดสิทธิ์ต่อแผนก — แก้/เพิ่มบทบาทได้ที่ ตั้งค่าระบบ → แท็บบทบาท (เก็บใน DB, ตัวนี้คือค่าเริ่มต้น) */
 export type RolePermsMap = Record<string, Perm[]>;
 export const DEFAULT_ROLE_PERMS: RolePermsMap = {
   [DEPT_ADMIN]: STAFF_ADMIN,
   [DEPT_PACKING]: STAFF_PACKING,
   [DEPT_CONTENT]: STAFF_CONTENT,
+  [DEPT_GRAPHIC]: STAFF_GRAPHIC,
 };
 
 /** กรองค่าจาก DB ให้เหลือเฉพาะสิทธิ์ที่ระบบรู้จัก (กันข้อมูลเก่า/พิมพ์ผิด) */
@@ -195,3 +210,9 @@ export function roleLabel(actor: Actor | null | undefined): string {
  * (ไม่มีสิทธิ์ orders.viewAll → กรองด้วยรายการนี้)
  */
 export const PACKING_QUEUE_STATUSES = ["อนุมัติแบบ", "กำลังผลิต", "จัดส่งแล้ว"];
+
+/**
+ * สถานะออเดอร์ที่ "เป็นงานของกราฟฟิก" — ตั้งแต่เงินเข้าจนลูกค้าอนุมัติแบบ
+ * เลย "อนุมัติแบบ" ไปแล้วถือว่างานแบบจบ ส่งต่อฝ่ายผลิต/แพ็ค
+ */
+export const GRAPHIC_QUEUE_STATUSES = ["ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ"];

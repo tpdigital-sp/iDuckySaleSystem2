@@ -14,6 +14,7 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   // 📦 งานขายรายวัน
   { href: "/admin", label: "ภาพรวม", emoji: "📊", perm: "orders.view", group: "งานขาย" },
   { href: "/admin/orders", label: "คำสั่งซื้อ", emoji: "📦", perm: "orders.view", group: "งานขาย" },
+  { href: "/admin/graphics", label: "งานกราฟฟิก", emoji: "🎨", perm: "proof.manage", group: "งานขาย" },
   { href: "/admin/print", label: "คิวปริ้น", emoji: "🖨", perm: "pack.ship", group: "งานขาย" },
   { href: "/admin/orders/scan", label: "แพ็ค–ส่ง", emoji: "📮", perm: "pack.ship", group: "งานขาย" },
   { href: "/admin/quotes", label: "ใบเสนอราคา", emoji: "📄", perm: "orders.edit", group: "งานขาย" },

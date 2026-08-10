@@ -326,6 +326,14 @@ export function proofsOf(item: OrderItem): Proof[] {
 }
 
 /**
+ * รายการนี้ "ลูกค้าจัดวางลายบนเทมเพลตเองมา" หรือเปล่า
+ * ดูจากบรรทัดพิกัดของทีมผลิตที่จอวางลายแนบมาให้ (ออเดอร์ที่แนบไฟล์เฉย ๆ จะไม่มี)
+ */
+export function isSelfDesigned(item: OrderItem): boolean {
+  return !!item.sel?.["ตำแหน่งลาย (ทีมผลิต)"];
+}
+
+/**
  * งานที่ "ลูกค้าจัดวางลายบนเทมเพลตเองมาแล้ว" ทุกรายการ และแบบผ่านการอนุมัติครบ
  * — ใช้ตัดสินว่าข้ามขั้นตอนทำแบบ/รอลูกค้าตรวจได้เลยไหม
  */
@@ -334,10 +342,27 @@ export function allSelfDesignedApproved(order: Order): boolean {
   return order.items.every((it) => {
     const proofs = proofsOf(it);
     if (!proofs.length) return false;
-    // แบบชุดนี้ต้องมาจากจอวางลายของลูกค้า (มีบรรทัดพิกัดของทีมผลิตติดมา) และอนุมัติครบทุกรูป
-    const fromStudio = !!it.sel?.["ตำแหน่งลาย (ทีมผลิต)"];
-    return fromStudio && proofs.every((p) => p.review === "อนุมัติ");
+    // แบบชุดนี้ต้องมาจากจอวางลายของลูกค้า และอนุมัติครบทุกรูป
+    return isSelfDesigned(it) && proofs.every((p) => p.review === "อนุมัติ");
   });
+}
+
+/**
+ * รายการที่กราฟฟิก "ต้องลงมือทำ" ในออเดอร์นี้
+ * = ลูกค้าไม่ได้จัดวางเอง และ (ยังไม่มีแบบ หรือ ลูกค้าขอแก้)
+ */
+export function graphicTodoItems(order: Order): OrderItem[] {
+  return order.items.filter((it) => {
+    if (isSelfDesigned(it)) return false; // ลูกค้าทำมาแล้ว กราฟฟิกไม่ต้องแตะ
+    return !proofsOf(it).length || it.proofStatus === "ขอแก้ไข";
+  });
+}
+
+/** รายการที่ส่งแบบให้ลูกค้าแล้ว กำลังรอลูกค้ากดตรวจ */
+export function graphicWaitingItems(order: Order): OrderItem[] {
+  return order.items.filter(
+    (it) => !isSelfDesigned(it) && proofsOf(it).length > 0 && it.proofStatus !== "ขอแก้ไข" && it.proofStatus !== "อนุมัติ",
+  );
 }
 
 /**

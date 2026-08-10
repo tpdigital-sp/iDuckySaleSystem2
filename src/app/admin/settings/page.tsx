@@ -28,6 +28,7 @@ import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/ca
 import {
   DEPT_ADMIN,
   DEPT_CONTENT,
+  DEPT_GRAPHIC,
   DEPT_PACKING,
   PERM_INFO,
   ROLE_ADMINISTRATOR,
@@ -1362,8 +1363,8 @@ function AdminSettingsPageInner() {
 
           {tab === "roles" &&
             (() => {
-              const EMOJI: Record<string, string> = { [DEPT_ADMIN]: "🧑‍💼", [DEPT_PACKING]: "📦", [DEPT_CONTENT]: "🖋️" };
-              const BUILTIN = [DEPT_ADMIN, DEPT_PACKING, DEPT_CONTENT];
+              const EMOJI: Record<string, string> = { [DEPT_ADMIN]: "🧑‍💼", [DEPT_GRAPHIC]: "🎨", [DEPT_PACKING]: "📦", [DEPT_CONTENT]: "🖋️" };
+              const BUILTIN = [DEPT_ADMIN, DEPT_GRAPHIC, DEPT_PACKING, DEPT_CONTENT];
               const depts = rolesMap ? Object.keys(rolesMap) : [];
               return (
                 <section className={`mt-5 p-5 ${card} sm:p-6`}>

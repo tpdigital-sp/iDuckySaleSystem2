@@ -1,6 +1,6 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import type { RolePermsMap } from "@/lib/permissions";
+import { DEFAULT_ROLE_PERMS, type RolePermsMap } from "@/lib/permissions";
 
 /**
  * ชุดสิทธิ์บทบาทที่แอดมินแก้เองจากหน้า ตั้งค่าระบบ → แท็บบทบาท
@@ -19,7 +19,13 @@ export async function loadRolePerms(): Promise<RolePermsMap | undefined> {
   if (!sb) return undefined;
   const { data, error } = await sb.from("products").select("data").eq("id", ROLE_PERMS_ID).maybeSingle();
   if (error) return undefined; // อ่านไม่ได้ → ใช้ค่าเริ่มต้น (ปลอดภัยกว่าล็อกทุกคนออก)
-  const map = ((data?.data as { roles?: RolePermsMap } | undefined)?.roles ?? null) as RolePermsMap | null;
+  const saved = ((data?.data as { roles?: RolePermsMap } | undefined)?.roles ?? null) as RolePermsMap | null;
+  /**
+   * เติมบทบาทมาตรฐานที่ "ไม่เคยมีในชุดที่บันทึกไว้" ให้ครบ
+   * — เพิ่มแผนกใหม่ในโค้ด (เช่น กราฟฟิก) แล้วโผล่ในระบบทันที ไม่ต้องไปกดบันทึกบทบาทก่อน
+   * แผนกที่แอดมินตั้งใจปิดสิทธิ์จะเก็บเป็น [] ในชุดที่บันทึก จึงไม่โดนเติมทับ
+   */
+  const map = saved ? { ...DEFAULT_ROLE_PERMS, ...saved } : null;
   cache = { at: Date.now(), map };
   return map ?? undefined;
 }
