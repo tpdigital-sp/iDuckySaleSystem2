@@ -959,8 +959,6 @@ export default function ProductDetail({
                     const href = fileHref(f);
                     if (!href) return null;
                     const outside = !f.fileUrl;
-                    /** กรอบงานจริง — อาร์ตบอร์ดของไฟล์มาก่อน ไม่มีก็เดาจากค่าตัวเลือกที่ลูกค้าเลือก */
-                    const frame = templateFrame(t, f, f.choice || chosen);
                     return (
                       <li key={f.id} className="flex items-center gap-3 rounded-xl bg-white p-2.5 ring-1 ring-sky-100">
                         {/* รูปของไฟล์นั้นมาก่อน (แต่ละรุ่นหน้าตาไม่เหมือนกัน) ไม่มีค่อยใช้รูปปกของชุด */}
@@ -989,38 +987,16 @@ export default function ProductDetail({
                             {optLabel && chosen && !f.choice ? ` · ใช้ได้ทุก${optLabel}` : ""}
                           </span>
                         </span>
-                        <span className="flex shrink-0 flex-col gap-1.5">
-                          {/* ทางหลัก: วางลายบนเว็บได้เลย ไม่ต้องมีโปรแกรมกราฟฟิก */}
-                          {frame && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setStudio({
-                                  title: `${t.name}${f.choice ? ` · ${f.choice}` : ""}`,
-                                  frame,
-                                  guideUrl: f.previewUrl || t.previewUrl,
-                                })
-                              }
-                              className="rounded-full bg-sky-600 px-4 py-2 text-xs font-bold text-white shadow transition hover:bg-sky-700"
-                            >
-                              🖼 วางลายบนเว็บ
-                            </button>
-                          )}
-                          {/* ทางเดิม: โหลดไฟล์ .ai ไปทำเองสำหรับคนที่มีโปรแกรม */}
-                          <a
-                            href={href}
-                            {...(outside
-                              ? { target: "_blank", rel: "noopener noreferrer" }
-                              : { download: f.fileName ?? "" })}
-                            className={
-                              frame
-                                ? "rounded-full bg-white px-4 py-1.5 text-center text-[11px] font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-50"
-                                : "rounded-full bg-sky-600 px-4 py-2 text-xs font-bold text-white shadow transition hover:bg-sky-700"
-                            }
-                          >
-                            {outside ? "🔗 เปิดลิงก์" : "⬇️ ดาวน์โหลด"}
-                          </a>
-                        </span>
+                        {/* ที่นี่มีแค่ปุ่มโหลดไฟล์ — การวางลายบนเว็บใช้ปุ่ม "เริ่มสร้าง" ในกล่องสั่งซื้อ */}
+                        <a
+                          href={href}
+                          {...(outside
+                            ? { target: "_blank", rel: "noopener noreferrer" }
+                            : { download: f.fileName ?? "" })}
+                          className="shrink-0 rounded-full bg-sky-600 px-4 py-2 text-xs font-bold text-white shadow transition hover:bg-sky-700"
+                        >
+                          {outside ? "🔗 เปิดลิงก์" : "⬇️ ดาวน์โหลด"}
+                        </a>
                       </li>
                     );
                   });
