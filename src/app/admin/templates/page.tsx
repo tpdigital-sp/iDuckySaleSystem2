@@ -146,7 +146,8 @@ function AdminTemplatesInner() {
   const [cat, setCat] = useState("");
   /** รายชื่อหมวดที่แอดมินตั้งไว้ (จัดลำดับเองได้ · หมวดว่างก็เก็บไว้ได้) */
   const [catList, setCatList] = useState<string[]>([]);
-  const [catPanel, setCatPanel] = useState(false);
+  /** แท็บบนสุด — แยก "เทมเพลต" กับ "หมวดหมู่" ออกจากกัน (เดิมพาเนลหมวดกางทับดันเนื้อหาลงไปทั้งหน้า) */
+  const [tab, setTab] = useState<"templates" | "cats">("templates");
   const [newCat, setNewCat] = useState("");
 
   async function refresh() {
@@ -617,9 +618,6 @@ function AdminTemplatesInner() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => setCatPanel((v) => !v)} className={btnNeutral}>
-              🗂 ตั้งค่าหมวดหมู่{catList.length ? ` (${catList.length})` : ""}
-            </button>
             {/* เลือกหมวดอยู่ = เพิ่มเข้าหมวดนั้นเลย ไม่ต้องมาเลือกหมวดทีหลัง */}
             <button
               type="button"
@@ -648,13 +646,36 @@ function AdminTemplatesInner() {
         )}
       </div>
 
+      {/* ── แท็บ: เทมเพลต | หมวดหมู่ ── */}
+      <div className="mt-4 flex gap-1 border-b border-slate-200">
+        {(
+          [
+            ["templates", `📐 เทมเพลต${list.length ? ` (${list.length})` : ""}`],
+            ["cats", `🗂 หมวดหมู่${catList.length ? ` (${catList.length})` : ""}`],
+          ] as const
+        ).map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setTab(k)}
+            className={`-mb-px rounded-t-xl border-b-2 px-4 py-2 text-sm font-bold transition ${
+              tab === k
+                ? "border-amber-500 text-amber-700"
+                : "border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* ── ตั้งค่าหมวดหมู่: เพิ่ม / เปลี่ยนชื่อ / ลบ / จัดลำดับ ── */}
-      {catPanel && (
+      {tab === "cats" && (
         <div className={`mt-3 ${card} p-4`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-bold text-slate-800">🗂 หมวดหมู่ของคลังเทมเพลต</p>
-            <button type="button" onClick={() => setCatPanel(false)} className={btnSmNeutral}>
-              ปิด
+            <button type="button" onClick={() => setTab("templates")} className={btnSmNeutral}>
+              ← กลับไปหน้าเทมเพลต
             </button>
           </div>
           <p className={`mt-1 text-xs ${muted}`}>
@@ -740,8 +761,12 @@ function AdminTemplatesInner() {
         </p>
       )}
 
-      {/* ══ สองคอลัมน์: เมนูหมวดด้านซ้าย (ค้างไว้) + เนื้อหาด้านขวา ══ */}
-      <div className="mt-4 grid gap-4 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start">
+      {/* ══ แท็บเทมเพลต — สองคอลัมน์: เมนูหมวดด้านซ้าย (ค้างไว้) + เนื้อหาด้านขวา ══ */}
+      <div
+        className={`mt-4 gap-4 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start ${
+          tab === "templates" ? "grid" : "hidden"
+        }`}
+      >
         {/* ── เมนูหมวดหมู่ — ทำงานทีละหมวดได้แม้คลังใหญ่ (มือถือ = เลื่อนแนวนอน) ── */}
         {list.length > 0 && (
           <aside className={`${brandCard} p-2 lg:sticky lg:top-20`}>
@@ -796,7 +821,7 @@ function AdminTemplatesInner() {
             </nav>
             <button
               type="button"
-              onClick={() => setCatPanel(true)}
+              onClick={() => setTab("cats")}
               className={`${btnSmNeutral} mt-2 w-full justify-center`}
             >
               ⚙️ จัดการหมวด
@@ -1086,7 +1111,7 @@ function AdminTemplatesInner() {
                       </select>
                       <button
                         type="button"
-                        onClick={() => setCatPanel(true)}
+                        onClick={() => setTab("cats")}
                         className={`${btnSmNeutral} shrink-0`}
                         title="เพิ่ม/แก้ชื่อ/ลบหมวด"
                       >
