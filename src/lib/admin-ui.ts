@@ -59,6 +59,8 @@ export const navItemActive = `${navItem} bg-amber-500 text-white shadow-[0_4px_1
 /** ปุ่มเน้น (เหลืองเป็ด) — ใช้กับ action หลักที่อยากให้สะดุดตาบนพื้นฟ้า */
 export const btnDucky =
   "inline-flex items-center justify-center gap-1.5 rounded-lg bg-[var(--color-ducky)] px-4 py-2 text-sm font-bold text-amber-950 shadow-sm transition hover:bg-[var(--color-ducky-dark)] disabled:cursor-not-allowed disabled:opacity-50";
+/** ปุ่มเน้นขนาดเล็ก (เหลืองเป็ด) — action หลักในแถบเครื่องมือ/หัวกลุ่ม */
+export const btnSmDucky = `${btnSm} bg-[var(--color-ducky)] font-bold text-amber-950 shadow-sm hover:bg-[var(--color-ducky-dark)]`;
 /** ป้ายตัวเลข/สถานะโทนแบรนด์ */
 export const chipBrand = `${badge} bg-amber-50 text-amber-800 ring-1 ring-amber-200`;
 export const chipDucky = `${badge} bg-[var(--color-ducky)]/25 text-amber-900 ring-1 ring-[var(--color-ducky)]`;

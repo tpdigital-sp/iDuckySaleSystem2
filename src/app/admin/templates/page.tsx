@@ -36,6 +36,7 @@ import {
   btnNeutral,
   btnPrimary,
   btnSmDanger,
+  btnSmDucky,
   btnSmNeutral,
   card,
   categoryTone,
@@ -428,10 +429,26 @@ function AdminTemplatesInner() {
     patch(t.id, { previewUrl: res.url });
   }
 
-  function add() {
-    const t: Draft = { id: rid("tpl"), name: "", files: [], sort: list.length, _dirty: true };
+  /**
+   * เพิ่มชุดใหม่ — ใส่หมวดให้เลยถ้ากำลังดูหมวดใดหมวดหนึ่งอยู่
+   * (ไม่งั้นชุดใหม่จะไปโผล่ใน "ยังไม่จัดหมวด" แล้วต้องมาเลือกหมวดซ้ำ)
+   */
+  function add(category?: string) {
+    const c = category?.trim();
+    const t: Draft = {
+      id: rid("tpl"),
+      name: "",
+      files: [],
+      sort: list.length,
+      _dirty: true,
+      ...(c && c !== NO_CATEGORY ? { category: c } : {}),
+    };
     setList((cur) => [...cur, t]);
     setOpen((o) => ({ ...o, [t.id]: true }));
+    // เลื่อนไปที่การ์ดใหม่ให้เห็นเลย (คลังใหญ่ ๆ ชุดใหม่อยู่ท้ายสุด)
+    setTimeout(() => {
+      document.getElementById(`tpl-${t.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
   }
 
   /** วางชุดที่ลากไว้ลงตำแหน่งของชุดเป้าหมาย (อ้างด้วย id — ปลอดภัยแม้ลิสต์ถูกกรอง/จัดกลุ่ม) */
@@ -506,8 +523,15 @@ function AdminTemplatesInner() {
             <button type="button" onClick={() => setCatPanel((v) => !v)} className={btnNeutral}>
               🗂 ตั้งค่าหมวดหมู่{catList.length ? ` (${catList.length})` : ""}
             </button>
-            <button type="button" onClick={add} className={btnDucky}>
+            {/* เลือกหมวดอยู่ = เพิ่มเข้าหมวดนั้นเลย ไม่ต้องมาเลือกหมวดทีหลัง */}
+            <button
+              type="button"
+              onClick={() => add(cat)}
+              className={btnDucky}
+              title={cat && cat !== NO_CATEGORY ? `เพิ่มชุดใหม่ในหมวด ${cat}` : "เพิ่มชุดใหม่"}
+            >
               ＋ เพิ่มชุดเทมเพลต
+              {cat && cat !== NO_CATEGORY ? <span className="font-normal opacity-90"> ใน &ldquo;{cat}&rdquo;</span> : ""}
             </button>
           </div>
         </div>
@@ -701,6 +725,16 @@ function AdminTemplatesInner() {
             </span>
           </span>
           <div className="ml-auto flex gap-2">
+            {cat && (
+              <button
+                type="button"
+                onClick={() => add(cat)}
+                className={btnSmDucky}
+                title={cat === NO_CATEGORY ? "เพิ่มชุดใหม่แบบยังไม่จัดหมวด" : `เพิ่มชุดใหม่ในหมวด ${cat}`}
+              >
+                {cat === NO_CATEGORY ? "＋ เพิ่มชุดใหม่" : "＋ เพิ่มชุดในหมวดนี้"}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setOpen(Object.fromEntries(shown.map((t) => [t.id, true])))}
@@ -726,7 +760,22 @@ function AdminTemplatesInner() {
       ) : (
         <div className="space-y-5">
           {shown.length === 0 && (
-            <p className={`${brandCard} p-6 text-center text-sm ${faint}`}>ไม่มีชุดที่ตรงกับที่กรองไว้</p>
+            <div className={`${brandCard} p-6 text-center`}>
+              <p className={`text-sm ${faint}`}>
+                {q
+                  ? "ไม่มีชุดที่ตรงกับคำค้น"
+                  : cat === NO_CATEGORY
+                    ? "ทุกชุดจัดหมวดไว้ครบแล้ว"
+                    : cat
+                      ? `ยังไม่มีชุดในหมวด “${cat}”`
+                      : "ไม่มีชุดที่ตรงกับที่กรองไว้"}
+              </p>
+              {cat && !q && (
+                <button type="button" onClick={() => add(cat)} className={`${btnDucky} mt-3`}>
+                  {cat === NO_CATEGORY ? "＋ เพิ่มชุดใหม่" : "＋ เพิ่มชุดแรกในหมวดนี้"}
+                </button>
+              )}
+            </div>
           )}
           {catGroups.map((grp) => (
         <div key={grp.category}>
@@ -772,6 +821,7 @@ function AdminTemplatesInner() {
             return (
               <div
                 key={t.id}
+                id={`tpl-${t.id}`}
                 draggable={!expanded}
                 onDragStart={() => {
                   dragId.current = t.id;
