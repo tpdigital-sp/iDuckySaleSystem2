@@ -71,8 +71,13 @@ export async function DELETE(req: Request) {
   // อ่านก่อนลบ เพื่อรู้ว่าต้องลบไฟล์ไหนใน storage
   const { data: rows } = await sb.from("products").select("data").eq("id", `__template_${id}`).limit(1);
   const t = rows?.[0]?.data as DesignTemplate | undefined;
-  // ไฟล์ทุกไฟล์ในชุด + รูปตัวอย่าง (รวมฟิลด์รุ่นเก่าที่ชุดเดิมเก็บไฟล์ไว้ระดับชุด)
-  const urls = [...(t?.files ?? []).map((f) => f.fileUrl), t?.fileUrl, t?.previewUrl];
+  // ไฟล์ทุกไฟล์ในชุด + รูปตัวอย่าง + สกินสินค้า (รวมฟิลด์รุ่นเก่าที่ชุดเดิมเก็บไฟล์ไว้ระดับชุด)
+  const urls = [
+    ...(t?.files ?? []).flatMap((f) => [f.fileUrl, f.previewUrl, f.skinUrl]),
+    t?.fileUrl,
+    t?.previewUrl,
+    t?.skinUrl,
+  ];
   const paths = urls
     .map((u) => (u ? u.split(`/${BUCKET}/`)[1] : undefined))
     .filter(Boolean) as string[];

@@ -39,6 +39,7 @@ import {
   btnPrimary,
   btnSmDanger,
   btnSmDucky,
+  btnSmGhost,
   btnSmNeutral,
   card,
   categoryTone,
@@ -525,6 +526,24 @@ function AdminTemplatesInner() {
     });
     if (!res.ok) return setError(res.error ?? "อัปโหลดรูปไม่สำเร็จ");
     patch(t.id, { previewUrl: res.url });
+  }
+
+  /**
+   * 👕 สกินสินค้า — PNG พื้นโปร่งใสที่วางทับลายในจอวางลายของลูกค้า
+   * fileId = ตั้งเฉพาะไฟล์นั้น (เช่น เคสแต่ละรุ่นรูกล้องไม่เหมือนกัน) · ไม่ใส่ = ตั้งให้ทั้งชุด
+   */
+  async function pickSkin(t: Draft, f: File, fileId?: string) {
+    if (!/\.png$/i.test(f.name)) return setError("สกินต้องเป็นไฟล์ .png ที่พื้นหลังโปร่งใส (ไม่งั้นจะบังลายจนมองไม่เห็น)");
+    setBusy((b) => ({ ...b, [t.id]: "สกิน" }));
+    const res = await uploadTemplateFile(f, "preview");
+    setBusy((b) => {
+      const n = { ...b };
+      delete n[t.id];
+      return n;
+    });
+    if (!res.ok) return setError(res.error ?? "อัปโหลดสกินไม่สำเร็จ");
+    if (fileId) patchFile(t.id, fileId, { skinUrl: res.url });
+    else patch(t.id, { skinUrl: res.url });
   }
 
   /**
@@ -1340,6 +1359,39 @@ function AdminTemplatesInner() {
                               />
                               มม.
                             </span>
+                            {/* 👕 สกินเฉพาะไฟล์นี้ — ทับสกินของทั้งชุด (เคสคนละรุ่นรูกล้องไม่เท่ากัน) */}
+                            <label
+                              className={`${btnSmNeutral} shrink-0 cursor-pointer ${
+                                f.skinUrl ? "!border-emerald-300 !text-emerald-700" : ""
+                              }`}
+                              title={
+                                f.skinUrl
+                                  ? "ไฟล์นี้มีสกินของตัวเอง — กดเพื่อเปลี่ยนรูป"
+                                  : "ใส่สกินเฉพาะไฟล์นี้ (PNG พื้นโปร่งใส) — ไม่ใส่ = ใช้สกินของทั้งชุด"
+                              }
+                            >
+                              {f.skinUrl ? "👕 มีสกิน" : "👕 สกิน"}
+                              <input
+                                type="file"
+                                accept="image/png"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const img = e.target.files?.[0];
+                                  e.target.value = "";
+                                  if (img) void pickSkin(t, img, f.id);
+                                }}
+                              />
+                            </label>
+                            {f.skinUrl && (
+                              <button
+                                type="button"
+                                onClick={() => patchFile(t.id, f.id, { skinUrl: undefined })}
+                                className={`${btnSmGhost} shrink-0`}
+                                title="เอาสกินของไฟล์นี้ออก (กลับไปใช้สกินของทั้งชุด)"
+                              >
+                                ↺
+                              </button>
+                            )}
                             {/* ใช้ไฟล์นี้ทำรูปตัวอย่างของชุด (เรนเดอร์หน้าแรกในเบราว์เซอร์) */}
                             <button
                               type="button"
@@ -1359,6 +1411,42 @@ function AdminTemplatesInner() {
                     {/* ── ค่าที่ใช้ตอนลูกค้า "วางลายบนเว็บ" ── */}
                     <div className="flex flex-wrap items-center gap-2 rounded-xl bg-sky-50/70 px-3 py-2 ring-1 ring-sky-100">
                       <span className="text-[11px] font-bold text-sky-800">🖼 ตอนลูกค้าวางลายบนเว็บ</span>
+                      {/* 👕 สกินสินค้าของทั้งชุด — วางทับลายให้ลูกค้าเห็นเป็นสินค้าจริง (ไม่ติดไปกับไฟล์พิมพ์) */}
+                      <span className="flex items-center gap-1.5">
+                        {t.skinUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setZoom({ src: t.skinUrl!, name: `สกิน ${t.name}` })}
+                            className="rounded-md ring-1 ring-slate-200 transition hover:ring-amber-400"
+                            title="กดเพื่อดูสกินแบบเต็ม"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={t.skinUrl}
+                              alt="สกินสินค้า"
+                              className="h-7 w-7 rounded-md bg-[repeating-conic-gradient(#e2e8f0_0_25%,#fff_0_50%)] bg-[length:8px_8px] object-contain"
+                            />
+                          </button>
+                        )}
+                        <label className={`${btnSmNeutral} cursor-pointer`} title="PNG พื้นโปร่งใส วางทับลายให้เห็นเป็นสินค้าจริง — เป็นภาพพรีวิว ไม่ติดไปกับไฟล์ที่ส่งพิมพ์">
+                          {t.skinUrl ? "👕 เปลี่ยนสกิน" : "👕 สกินสินค้า (PNG)"}
+                          <input
+                            type="file"
+                            accept="image/png"
+                            className="hidden"
+                            onChange={(e) => {
+                              const img = e.target.files?.[0];
+                              e.target.value = "";
+                              if (img) void pickSkin(t, img);
+                            }}
+                          />
+                        </label>
+                        {t.skinUrl && (
+                          <button type="button" onClick={() => patch(t.id, { skinUrl: undefined })} className={btnSmDanger}>
+                            ลบสกิน
+                          </button>
+                        )}
+                      </span>
                       <label className="flex items-center gap-1 text-[11px] text-slate-600">
                         ตัดตก
                         <input

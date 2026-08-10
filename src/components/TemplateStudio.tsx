@@ -56,6 +56,11 @@ interface Props {
   /** รูปเทมเพลตจาก .ai — วางเป็นไกด์จาง ๆ ทับลาย (ถ้ามี) */
   guideUrl?: string;
   /**
+   * 👕 สกินสินค้า (PNG พื้นโปร่งใส) — วางทับลายแบบเต็มสี ให้ลูกค้าเห็นเป็นสินค้าจริง
+   * เป็นภาพพรีวิวล้วน ๆ ไม่ถูกรวมเข้าไฟล์ที่ส่งโรงพิมพ์ (buildComposite วาดแค่ลาย)
+   */
+  skinUrl?: string;
+  /**
    * เปิดมาเพื่อ "แก้ไขลายเดิม" — โหลดรูปเดิมกลับมาพร้อมตำแหน่ง/ขนาดที่เคยวางไว้
    * มีไฟล์ในเครื่องใช้ไฟล์ก่อน (ไม่ต้องโหลดใหม่) ไม่มีค่อยดึงจาก url
    */
@@ -72,7 +77,7 @@ const DPI_BAD = 100;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-export default function TemplateStudio({ open, onClose, title, frame, guideUrl, initial, onApply }: Props) {
+export default function TemplateStudio({ open, onClose, title, frame, guideUrl, skinUrl, initial, onApply }: Props) {
   /**
    * สลับแนวงาน — ใช้เมื่อขนาดมาจากชื่อตัวเลือก ("30x60" ไม่บอกว่าด้านไหนกว้าง)
    * ถ้าขนาดมาจากไฟล์จริงแล้วก็ไม่ต้องสลับ (ไฟล์บอกแนวมาเองแล้ว)
@@ -98,6 +103,8 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
   const [src, setSrc] = useState<{ file: File; url: string; w: number; h: number } | null>(null);
   const [pl, setPl] = useState<Placement | null>(null);
   const [showGuide, setShowGuide] = useState(true);
+  /** โชว์สกินสินค้าทับลาย — เปิดไว้ก่อน ลูกค้าจะได้เห็นของจริงตั้งแต่วางลายเสร็จ */
+  const [showSkin, setShowSkin] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   /** กำลังลากไฟล์มาโยนอยู่เหนือพื้นที่วางลาย */
@@ -712,6 +719,20 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
                   className="absolute inset-0 h-full w-full object-fill opacity-25 mix-blend-multiply"
                 />
               )}
+
+              {/*
+                👕 สกินสินค้า — ภาพสินค้าพื้นโปร่งใสวางทับลายแบบเต็มสี
+                อยู่บนสุดของผืนผ้าใบ (แต่ยังต่ำกว่ากรอบ transform) ให้เห็นเหมือนของจริง
+                ⚠️ พรีวิวเท่านั้น — ไฟล์ที่ส่งโรงพิมพ์ไม่มีสกินติดไป
+              */}
+              {skinUrl && showSkin && (
+                <img
+                  src={skinUrl}
+                  alt=""
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 h-full w-full object-fill"
+                />
+              )}
             </div>
 
             {/* ── กรอบ transform — โผล่เมื่อคลิกเลือกลาย (คลิกที่ว่างเพื่อเอาออก) ── */}
@@ -901,6 +922,16 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
             {guideUrl && (
               <button type="button" onClick={() => setShowGuide((v) => !v)} className={toolBtn}>
                 {showGuide ? "👁 ซ่อนไกด์" : "👁 แสดงไกด์"}
+              </button>
+            )}
+            {skinUrl && (
+              <button
+                type="button"
+                onClick={() => setShowSkin((v) => !v)}
+                className={toolBtn}
+                title="สกินคือภาพสินค้าที่วางทับให้ดูเหมือนของจริง — ไม่ติดไปกับไฟล์ที่ส่งพิมพ์"
+              >
+                {showSkin ? "👕 ซ่อนสกิน" : "👕 แสดงสกิน"}
               </button>
             )}
           </div>

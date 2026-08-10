@@ -26,6 +26,12 @@ export interface TemplateFile {
    */
   previewUrl?: string;
   /**
+   * 👕 สกินสินค้าของไฟล์นี้ (PNG พื้นโปร่งใส) — วางทับลายในจอวางลายของลูกค้า
+   * ให้เห็นเป็นสินค้าจริง (ขอบเคส รูกล้อง เงาผ้า ฯลฯ) · เป็นแค่ภาพพรีวิว ไม่ติดไปกับไฟล์พิมพ์
+   * ไม่มีค่า = ใช้สกินระดับชุด (DesignTemplate.skinUrl)
+   */
+  skinUrl?: string;
+  /**
    * ขนาดงานจริงของไฟล์นี้ (มม.) — อ่านจากขนาดอาร์ตบอร์ดของ .ai/.pdf ตอนอัปโหลด
    * ใช้เป็นขนาดผืนผ้าใบตอนลูกค้า "วางลายบนเว็บ" (ไม่มีค่า = เดาจากชื่อตัวเลือก)
    */
@@ -59,6 +65,11 @@ export interface DesignTemplate {
   files?: TemplateFile[];
   /** รูปตัวอย่างของทั้งชุด (PNG/JPG) */
   previewUrl?: string;
+  /**
+   * 👕 สกินสินค้าของทั้งชุด (PNG พื้นโปร่งใส) — ใช้เมื่อไฟล์ในชุดไม่ได้ตั้งสกินของตัวเอง
+   * ดูคำอธิบายที่ TemplateFile.skinUrl
+   */
+  skinUrl?: string;
   /**
    * ตัดตก (มม.) — ลายต้องเลยขอบงานออกไปเท่านี้ กันขาวขอบเวลาตัด
    * ไม่ตั้ง = ใช้ค่ากลาง DEFAULT_BLEED_MM
@@ -112,6 +123,14 @@ export function normalizeTemplate(t: DesignTemplate): DesignTemplate {
 /** ไฟล์ในชุด (แปลงข้อมูลเก่าให้แล้ว) */
 export function templateFiles(t: DesignTemplate): TemplateFile[] {
   return normalizeTemplate(t).files ?? [];
+}
+
+/**
+ * 👕 สกินสินค้าที่จะวางทับลายในจอวางลาย — ของไฟล์นั้นมาก่อน ไม่มีค่อยใช้ของทั้งชุด
+ * (เคสมือถือแต่ละรุ่นรูกล้องไม่เหมือนกัน เลยตั้งรายไฟล์ได้ · งานที่หน้าตาเหมือนกันหมดตั้งครั้งเดียวที่ชุด)
+ */
+export function skinOf(t: DesignTemplate, f?: TemplateFile): string | undefined {
+  return f?.skinUrl || t.skinUrl || undefined;
 }
 
 /**

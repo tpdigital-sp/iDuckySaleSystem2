@@ -42,6 +42,7 @@ import {
   fileHref,
   filesForSelections,
   formatFileSize,
+  skinOf,
   PLACEMENT_LABEL,
   PLACEMENT_SPEC_LABEL,
   templateFrame,
@@ -174,6 +175,7 @@ export default function ProductDetail({
     title: string;
     frame: TemplateFrame;
     guideUrl?: string;
+    skinUrl?: string;
     initial?: { file?: File; url?: string; placement: StudioPlacement; swapped?: boolean };
   } | null>(null);
   const [placed, setPlaced] = useState<
@@ -582,6 +584,7 @@ export default function ProductDetail({
             title: `${t.name}${f.choice ? ` · ${f.choice}` : ""}`,
             frame: fr,
             guideUrl: f.previewUrl || t.previewUrl,
+            skinUrl: skinOf(t, f),
           };
       }
     }
@@ -2352,6 +2355,7 @@ export default function ProductDetail({
           title={studio.title}
           frame={studio.frame}
           guideUrl={studio.guideUrl}
+          skinUrl={studio.skinUrl}
           initial={studio.initial}
           onApply={applyStudio}
         />
