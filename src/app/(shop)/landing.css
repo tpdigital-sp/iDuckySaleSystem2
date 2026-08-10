@@ -110,6 +110,10 @@
   background:var(--sky-300);translate:-50% 0;transition:width .28s cubic-bezier(.34,1.56,.64,1)}
 .dl .menu a:not(.on):hover::after{width:18px}
 .dl .nav-cta{display:flex;gap:8px;align-items:center}
+/* ⚠️ ปุ่ม "ช้อปเลย" ในแถบเมนูต้องหายบนจอเล็ก — คลาส .dl .btn ด้านบนมี specificity สูงกว่า
+   utility "hidden" ของ Tailwind (0,2,0 > 0,1,0) มันเลยไม่ถูกซ่อนจริง แถบเมนูกว้างเกินจอมือถือ
+   ทำให้ทั้งหน้าเลื่อนซ้าย-ขวาได้ (เนื้อหากว้าง 467px ในจอ 375px) — ซ่อนจากตรงนี้ให้ชนะแน่นอน */
+@media (max-width:639px){.dl .nav-cta .btn{display:none}}
 .dl .nav-cta .btn-yolk{box-shadow:none;animation:shopBounce 3.4s ease-in-out infinite}
 .dl .nav-cta .btn-yolk:hover{transform:translateY(-3px) scale(1.04);box-shadow:none;animation:none}
 .dl .nav-cta .btn-yolk:active{transform:translateY(1px) scale(.99)}

@@ -626,7 +626,9 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
 
         {/* พื้นที่วางลาย — ลากไฟล์รูปมาโยนลงตรงไหนก็ได้ในโซนนี้ */}
         <div
-          className={`relative flex-1 overflow-auto p-4 transition ${dropOn ? "bg-sky-50" : "bg-stone-50"}`}
+          className={`relative flex flex-1 flex-col items-center justify-center overflow-auto p-4 transition ${
+            dropOn ? "bg-sky-50" : "bg-stone-50"
+          }`}
           onDragOver={(e) => {
             if (!e.dataTransfer.types.includes("Files")) return;
             e.preventDefault();
@@ -772,7 +774,10 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
               <label className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center gap-2 text-center">
                 <span className="text-4xl">🖼</span>
                 <span className="text-sm font-bold text-stone-700">ลากรูปมาวางตรงนี้ หรือกดเพื่อเลือกไฟล์</span>
-                <span className="text-[11px] text-stone-400">JPG · PNG · WEBP (ไม่เกิน 15MB) · วางจากคลิปบอร์ดด้วย Ctrl+V ก็ได้</span>
+                <span className="text-[11px] text-stone-400">
+                  JPG · PNG · WEBP (ไม่เกิน 15MB)
+                  <span className="hidden sm:inline"> · วางจากคลิปบอร์ดด้วย Ctrl+V ก็ได้</span>
+                </span>
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
@@ -783,10 +788,15 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
             )}
           </div>
 
-          {/* ป้ายบอกวิธีใช้ */}
+          {/* ป้ายบอกวิธีใช้ — มือถือเอาสั้น ๆ พอ (ที่จอน้อย) จอใหญ่บอกครบ */}
           <p className="mt-2 text-center text-[11px] text-stone-400">
-            <strong>คลิกที่ลายเพื่อปรับ</strong> แล้วลากเลื่อน · ลากมุมย่อ-ขยาย · ลากหู ↻ หมุน ·
-            ล้อเมาส์/สองนิ้วซูม · กด <strong>Delete</strong> ลบลาย · คลิกพื้นที่ว่างเพื่อดูงานแบบไม่มีเส้นกรอบ
+            <span className="sm:hidden">
+              <strong>แตะที่ลายเพื่อปรับ</strong> · ลากเลื่อน · ลากมุมย่อ-ขยาย · สองนิ้วซูม
+            </span>
+            <span className="hidden sm:inline">
+              <strong>คลิกที่ลายเพื่อปรับ</strong> แล้วลากเลื่อน · ลากมุมย่อ-ขยาย · ลากหู ↻ หมุน ·
+              ล้อเมาส์/สองนิ้วซูม · กด <strong>Delete</strong> ลบลาย · คลิกพื้นที่ว่างเพื่อดูงานแบบไม่มีเส้นกรอบ
+            </span>
           </p>
 
           {/* ลากไฟล์อยู่เหนือจอ — บอกให้ชัดว่าปล่อยได้เลย */}

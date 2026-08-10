@@ -963,9 +963,9 @@ export default function ProductDetail({
            ฝั่งซ้าย (รูป+รายละเอียด) เป็นบล็อกเดียวกัน — ข้อมูลประกอบจึงไหลต่อขึ้นมาเติมได้
            แทนที่จะทิ้งช่องขาวยาว ๆ ไว้ข้างแผงสั่งซื้อ ═══ */}
       <div className="mt-4 grid gap-6 lg:grid-cols-12 lg:items-start lg:gap-8">
-        <div className="grid gap-6 sm:grid-cols-2 sm:items-start lg:col-span-8 lg:gap-8">
+        <div className="grid min-w-0 gap-6 sm:grid-cols-2 sm:items-start lg:col-span-8 lg:gap-8">
         {/* ── ซ้าย: รูปสินค้า ── */}
-        <div>
+        <div className="min-w-0">
           {/* รูปสินค้า — ติดหนึบตอนเลื่อนอ่านตัวเลือกยาว ๆ (จอใหญ่)
               สินค้าที่ยังไม่ใส่รูปเลย = ใช้อีโมจิ+พื้นสีของสินค้าแทน (กันหน้าพังตอนแอดมินเพิ่งสร้างสินค้า) */}
           {(() => {
@@ -984,13 +984,13 @@ export default function ProductDetail({
               eager
               className="aspect-square w-full rounded-[2rem] shadow-inner"
             />
-            <div className="mt-3 flex gap-2">
+            <div className="-mx-1 mt-3 flex gap-2 overflow-x-auto px-1 pb-1">
               {gallery.map((img, i) => (
                 <button
                   key={i}
                   type="button"
                   onClick={() => setImageIndex(i)}
-                  className={`overflow-hidden rounded-2xl transition ${
+                  className={`shrink-0 overflow-hidden rounded-2xl transition ${
                     i === imageIndex
                       ? "ring-3 ring-ducky"
                       : "opacity-60 ring-1 ring-amber-100 hover:opacity-100"
@@ -1012,7 +1012,8 @@ export default function ProductDetail({
         </div>
 
         {/* ── กลาง: ชื่อ · รายละเอียด · ข้อควรทราบ ── */}
-        <div>
+        {/* min-w-0: เป็น grid item ที่ min-width:auto ถ้าไม่ปลด เนื้อหายาว ๆ จะดันคอลัมน์กว้างเกินจอมือถือ */}
+        <div className="min-w-0">
           <span className="text-xs font-semibold text-amber-500">
             {category.emoji} {category.name}
           </span>
