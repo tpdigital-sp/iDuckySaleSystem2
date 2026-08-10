@@ -307,6 +307,81 @@ function SelText({ text, plain = false }: { text: string; plain?: boolean }) {
   );
 }
 
+
+/** ชื่อหัวข้อที่ไม่ต้องโชว์ในรายละเอียด (มีที่แสดงของตัวเองอยู่แล้ว) */
+const SEL_HIDE = ["ภาพลายที่แนบ", "รอเช็คสต๊อก"];
+const SEL_SPEC = "ตำแหน่งลาย (ทีมผลิต)";
+
+/** ตัดค่าที่มีหลายลายให้เป็นบรรทัดละลาย */
+function selLines(v: string): string[] {
+  return v
+    .split(" | ")
+    .flatMap((part) => part.split(/\s·\s(?=ลายที่\s)/))
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+/**
+ * รายละเอียดของรายการ — บรรทัดละหัวข้อ · หลายลายแยกบรรทัดของใครของมัน
+ * พิกัดของทีมผลิตยุบไว้ (กดกางเมื่อจะทำไฟล์เอง) เพราะยาวและไม่ได้ใช้ทุกครั้ง
+ */
+function SelDetails({ sel, text }: { sel?: Record<string, string>; text?: string }) {
+  const entries = Object.entries(sel ?? {}).filter(([k, v]) => v && !SEL_HIDE.includes(k));
+  if (!entries.length) {
+    return text ? (
+      <p className="whitespace-pre-line">
+        <SelText text={text} />
+      </p>
+    ) : (
+      <span className="text-slate-300">— ยังไม่มีรายละเอียด —</span>
+    );
+  }
+  return (
+    <div className="space-y-0.5">
+      {entries.map(([k, v]) => {
+        const lines = selLines(v);
+        const label = <span className="font-semibold text-slate-600">{k}:</span>;
+        if (k === SEL_SPEC) {
+          return (
+            <details key={k} className="group">
+              <summary className="cursor-pointer list-none text-slate-400 transition hover:text-slate-600">
+                ▸ พิกัดสำหรับทำไฟล์เอง{lines.length > 1 ? ` (${lines.length} ลาย)` : ""}
+              </summary>
+              <div className="mt-0.5 space-y-0.5 border-l-2 border-slate-100 pl-2">
+                {lines.map((x, n) => (
+                  <p key={n}>
+                    <SelText text={x} />
+                  </p>
+                ))}
+              </div>
+            </details>
+          );
+        }
+        return (
+          <div key={k}>
+            {lines.length > 1 ? (
+              <>
+                <p>{label}</p>
+                <div className="space-y-0.5 pl-3">
+                  {lines.map((x, n) => (
+                    <p key={n}>
+                      <SelText text={x} />
+                    </p>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p>
+                {label} <SelText text={lines[0] ?? v} />
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function AdminOrderDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -1493,14 +1568,8 @@ export default function AdminOrderDetailPage() {
                           </p>
                         </div>
                       ) : (
-                        <p
-                          className={`mt-0.5 whitespace-pre-line text-[11px] leading-snug text-slate-500 ${open ? "" : "line-clamp-2"}`}
-                        >
-                          {it.selections ? (
-                            <SelText text={it.selections} />
-                          ) : mayEdit ? (
-                            <span className="text-slate-300">— ยังไม่มีรายละเอียด —</span>
-                          ) : null}
+                        <div className={`mt-0.5 text-[11px] leading-snug text-slate-500 ${open ? "" : "line-clamp-2"}`}>
+                          <SelDetails sel={it.sel} text={it.selections} />
                           {mayEdit && (
                             <button
                               type="button"
@@ -1510,12 +1579,12 @@ export default function AdminOrderDetailPage() {
                                 setItemOpen((cur) => ({ ...cur, [i]: true }));
                               }}
                               title="แก้รายละเอียดของรายการนี้ (ชื่อ/จำนวน/ราคาแก้ไม่ได้)"
-                              className="ml-1 whitespace-nowrap rounded px-1 text-[10px] font-bold text-amber-600 transition hover:bg-amber-50"
+                              className="mt-0.5 whitespace-nowrap rounded px-1 text-[10px] font-bold text-amber-600 transition hover:bg-amber-50"
                             >
                               ✏️ แก้รายละเอียด
                             </button>
                           )}
-                        </p>
+                        </div>
                       )}
                       <p className="mt-0.5 text-[11px] text-slate-400">
                         {it.proofStatus ? `แบบ: ${it.proofStatus === "รอตรวจ" ? "รอลูกค้าตรวจ" : it.proofStatus === "อนุมัติ" ? "ลูกค้าอนุมัติแล้ว" : "ลูกค้าขอแก้ไข"}` : "แบบ: รอกราฟฟิกทำแบบ"}
@@ -1816,6 +1885,21 @@ export default function AdminOrderDetailPage() {
                             >
                               ⬇
                             </button>
+                            {/* เอารูปที่ไม่ใช้ออก (เช่นรูปซ้ำจากที่ลูกค้าอัปมาสองรอบ) — ระบบลงประวัติว่าใครลบ */}
+                            {mayEdit && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`เอารูปลายที่ ${k + 1} ออกจากออเดอร์นี้?\n(ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับออเดอร์)`))
+                                    removeArtwork(i, u);
+                                }}
+                                title="เอารูปนี้ออกจากออเดอร์"
+                                aria-label="เอารูปลายนี้ออก"
+                                className="absolute -left-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-rose-500 text-[10px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100"
+                              >
+                                ✕
+                              </button>
+                            )}
                           </span>
                         ))}
                         {mayEdit && (
