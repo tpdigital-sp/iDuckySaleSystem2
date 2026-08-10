@@ -321,6 +321,11 @@ export default function PrintOrderPage() {
                 headers: { "content-type": "application/json" },
                 body: JSON.stringify({ orderId: order.id, docs: chosen }),
               }).catch(() => {});
+              // ปริ้นใบงาน/ใบปะหน้า (เก็บเงินครบแล้ว) = งานเข้าไลน์ผลิต → เลื่อนสถานะให้ตรงกับฝั่งเซิร์ฟเวอร์
+              const toProduction =
+                chosen.includes("work") &&
+                fullyPaid &&
+                ["รอชำระเงิน", "รอตรวจสอบ", "ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"].includes(order.status);
               setOrder((o) =>
                 o
                   ? {
@@ -328,6 +333,7 @@ export default function PrintOrderPage() {
                       printedAt: o.printedAt ?? new Date().toISOString(),
                       printCount: (o.printCount ?? (o.printedAt ? 1 : 0)) + 1,
                       lastPrintedAt: new Date().toISOString(),
+                      ...(toProduction ? { status: "กำลังผลิต" as const } : {}),
                     }
                   : o
               );
