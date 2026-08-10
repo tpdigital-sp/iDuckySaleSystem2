@@ -154,6 +154,7 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
       const f = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"))?.getAsFile();
       if (f) {
         e.preventDefault();
+        e.stopPropagation(); // อย่าให้หน้าเว็บด้านหลังรับไปแนบซ้ำอีกใบ
         void pick(f);
       }
     };
@@ -639,6 +640,8 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
           onDrop={(e) => {
             if (!e.dataTransfer.files?.length) return;
             e.preventDefault();
+            // กันไม่ให้ event ไหลออกไปถึงหน้าเว็บด้านหลัง (ไม่งั้นรูปเดียวถูกแนบซ้ำอีกทาง)
+            e.stopPropagation();
             setDropOn(false);
             void pick(e.dataTransfer.files[0]);
           }}

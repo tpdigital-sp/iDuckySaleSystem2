@@ -273,6 +273,40 @@ function RichNoteEditor({
   );
 }
 
+
+/**
+ * ข้อความรายละเอียดของรายการ — URL ยาวเหยียด (ลิงก์ไฟล์ต้นฉบับ) ทำให้อ่านไม่รู้เรื่อง
+ * แทนด้วยไอคอน 🔗 กดเปิดไฟล์ได้ · ใช้ในที่ที่ห้ามมี <a> (เช่นในปุ่ม) ให้ส่ง plain
+ */
+function SelText({ text, plain = false }: { text: string; plain?: boolean }) {
+  const parts = text.split(/(https?:\/\/\S+)/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        !/^https?:\/\//.test(part) ? (
+          <span key={i}>{part}</span>
+        ) : plain ? (
+          <span key={i} className="text-sky-600">
+            🔗
+          </span>
+        ) : (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noreferrer"
+            title={part}
+            onClick={(e) => e.stopPropagation()}
+            className="mx-0.5 inline-flex items-center rounded bg-sky-50 px-1 align-middle text-sky-600 ring-1 ring-sky-200 transition hover:bg-sky-100"
+          >
+            🔗
+          </a>
+        ),
+      )}
+    </>
+  );
+}
+
 export default function AdminOrderDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -1462,7 +1496,11 @@ export default function AdminOrderDetailPage() {
                         <p
                           className={`mt-0.5 whitespace-pre-line text-[11px] leading-snug text-slate-500 ${open ? "" : "line-clamp-2"}`}
                         >
-                          {it.selections || (mayEdit ? <span className="text-slate-300">— ยังไม่มีรายละเอียด —</span> : null)}
+                          {it.selections ? (
+                            <SelText text={it.selections} />
+                          ) : mayEdit ? (
+                            <span className="text-slate-300">— ยังไม่มีรายละเอียด —</span>
+                          ) : null}
                           {mayEdit && (
                             <button
                               type="button"
@@ -3126,7 +3164,9 @@ function PackView({
               >
                 <span className="text-lg">{it.noteAck ? "✅" : "📄"}</span>
                 <span className="min-w-0 flex-1 text-xs">
-                  <span className="block font-bold text-slate-700">{it.selections || "ไม่มีรายละเอียดเพิ่มเติม"}</span>
+                  <span className="block font-bold text-slate-700">
+                    {it.selections ? <SelText text={it.selections} plain /> : "ไม่มีรายละเอียดเพิ่มเติม"}
+                  </span>
                   <span className={it.noteAck ? "text-green-700" : "font-bold text-amber-700"}>
                     {it.noteAck ? "ยืนยันอ่านแล้ว" : "แตะเพื่อยืนยันว่าอ่านแล้ว"}
                   </span>

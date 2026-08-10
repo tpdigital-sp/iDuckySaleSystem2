@@ -441,12 +441,20 @@ export default function ProductDetail({
     return () => io.disconnect();
   }, []);
 
+  /**
+   * ⚠️ ห้ามให้ "โยน/วางรูปลงหน้าเว็บ" ไปแนบลายอัตโนมัติเมื่อ:
+   *   ① จอวางลายเปิดอยู่ — รูปที่โยนเข้าจอจะถูกนับซ้ำเป็นลายอีกใบ (บั๊ค 3 ลายกลายเป็น 6 รูป)
+   *   ② สินค้าที่ออกแบบบนเว็บได้ — ช่อง "แนบลายของคุณ" ถูกซ่อนไว้ ลายต้องมาจากจอวางลายเท่านั้น
+   */
+  const noPageDropRef = useRef(false);
+
   // โยนรูปลงตรงไหนของหน้าก็ได้ → เปิดกล่องแนบลายให้เองแล้วอัปโหลดทันที
   // (ถ้าไม่ใช่รูป ก็แค่กันเบราว์เซอร์เปิดไฟล์นั้นแทนหน้าเว็บ)
   useEffect(() => {
     const over = (e: DragEvent) => e.preventDefault();
     const drop = (e: DragEvent) => {
       e.preventDefault();
+      if (noPageDropRef.current) return;
       const imgs = Array.from(e.dataTransfer?.files ?? []).filter((f) => f.type.startsWith("image/"));
       if (!imgs.length) return;
       setExtraOpen("art");
@@ -466,6 +474,7 @@ export default function ProductDetail({
   // วางรูปจากคลิปบอร์ดได้เลย (ก๊อปจากแชท/โปรแกรมแต่งรูปแล้ว ⌘/Ctrl+V)
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
+      if (noPageDropRef.current) return;
       const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/"));
       if (!files.length) return;
       e.preventDefault();
@@ -580,6 +589,10 @@ export default function ProductDetail({
   })();
   /** โหมดออกแบบบนเว็บ — ข้ามขั้นตอน "แนบลายของคุณ" ไปเลย */
   const studioMode = !!studioTarget;
+  // (ดูคำอธิบาย noPageDropRef ด้านบน) — อัปเดตค่าให้ตัวรับ drop/paste ระดับหน้าเว็บใช้
+  useEffect(() => {
+    noPageDropRef.current = !!studio || studioMode;
+  }, [studio, studioMode]);
   const designDone = placed.length > 0;
 
   function openStudio(index: number | null = null) {
