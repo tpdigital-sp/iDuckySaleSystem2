@@ -77,6 +77,14 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
   const artW = bleedW - bleedX * 2;
   const artH = bleedH - bleedY * 2;
   const safeMm = frame.safeMm;
+  /**
+   * พื้นที่ว่างรอบกรอบงานบนจอ (สัดส่วนของกรอบ) — ไม่ใช่ส่วนของงานพิมพ์
+   * มีไว้ให้เห็นลายส่วนที่ล้นออกนอกกรอบ (ส่วนที่จะโดนตัดทิ้ง) และจับมุมลากย่อ-ขยายได้
+   */
+  const padX = bleedW * 0.18;
+  const padY = bleedH * 0.18;
+  const fullW = bleedW + padX * 2;
+  const fullH = bleedH + padY * 2;
 
   const [src, setSrc] = useState<{ file: File; url: string; w: number; h: number } | null>(null);
   const [pl, setPl] = useState<Placement | null>(null);
@@ -85,6 +93,8 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
   const [err, setErr] = useState("");
   /** กำลังลากไฟล์มาโยนอยู่เหนือพื้นที่วางลาย */
   const [dropOn, setDropOn] = useState(false);
+  /** ค่าล่าสุดของการวาง — ให้ตัวจัดการล้อเมาส์ (ผูกครั้งเดียว) อ่านได้โดยไม่ต้องผูกใหม่ทุกครั้ง */
+  const plRef = useRef<Placement | null>(null);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -94,9 +104,9 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
 
   /** มม. ต่อพิกเซลบนจอ — แปลงระยะลากนิ้วเป็นระยะบนงานจริง */
   const mmPerPx = useCallback(() => {
-    const el = stageRef.current;
-    return el ? bleedW / el.clientWidth : 1;
-  }, [bleedW]);
+    const w = stageRef.current?.clientWidth ?? 0;
+    return w >= 1 ? fullW / w : 0; // วัดไม่ได้ = ถือว่าไม่ขยับ ดีกว่าเลื่อนมั่ว
+  }, [fullW]);
 
   /** วางลายให้คลุมเต็มพื้นที่ตัดตก (ค่าเริ่มต้น — งานแผ่นรองเมาส์/สติกเกอร์ต้องเต็มขอบ) */
   const fill = useCallback(
@@ -160,6 +170,10 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
   // ล้าง object URL ทิ้งเมื่อเปลี่ยนรูป/ปิดจอ
   useEffect(() => () => { if (src) URL.revokeObjectURL(src.url); }, [src]);
 
+  useEffect(() => {
+    plRef.current = pl;
+  }, [pl]);
+
   async function pick(file?: File | null) {
     if (!file) return;
     setErr("");
@@ -186,7 +200,11 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
   // ── ลาก / ซูมด้วยนิ้วหรือเมาส์ ──
   function onPointerDown(e: React.PointerEvent) {
     if (!pl) return;
-    (e.target as Element).setPointerCapture?.(e.pointerId);
+    try {
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    } catch {
+      /* จับตัวชี้ไม่ได้ก็ลากต่อได้ */
+    }
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     startGesture();
   }
@@ -228,8 +246,108 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
     else gesture.current = null;
   }
 
-  function zoomBy(f: number) {
-    setPl((p) => (p ? { ...p, wMm: p.wMm * f, hMm: p.hMm * f } : p));
+  /**
+   * จุดบนงานจริง (มม.) ของตำแหน่งเมาส์/นิ้ว
+   * คืน null เมื่อวัดขนาดจอไม่ได้ (จอยังไม่ได้จัดวาง/ถูกซ่อน) — ผู้เรียกต้องข้ามไป
+   * ไม่งั้นจะได้พิกัดมั่ว ๆ แล้วลายหดเหลือนิดเดียว
+   */
+  const toMm = useCallback(
+    (clientX: number, clientY: number) => {
+      const r = stageRef.current?.getBoundingClientRect();
+      if (!r || r.width < 1 || r.height < 1) return null;
+      return {
+        x: ((clientX - r.left) / r.width) * fullW - padX,
+        y: ((clientY - r.top) / r.height) * fullH - padY,
+      };
+    },
+    [fullW, fullH, padX, padY],
+  );
+
+  /** เพดานย่อ-ขยาย — เล็กสุด 5% ของกรอบ ใหญ่สุด 12 เท่า (พอสำหรับซูมดูรายละเอียด) */
+  const sizeLimits = useCallback(() => ({ min: bleedW * 0.05, max: bleedW * 12 }), [bleedW]);
+
+  /**
+   * ย่อ-ขยายรอบจุดที่กำหนด (ค่าเริ่มต้น = กลางลาย)
+   * ซูมที่ตำแหน่งเมาส์ = จุดใต้เมาส์อยู่กับที่ ทำให้เล็งตำแหน่งได้ง่ายกว่าซูมจากกลางเสมอ
+   */
+  const zoomBy = useCallback(
+    (f: number, at?: { x: number; y: number }) => {
+      setPl((p) => {
+        if (!p) return p;
+        const { min, max } = sizeLimits();
+        const nw = clamp(p.wMm * f, min, max);
+        const k = nw / p.wMm;
+        const a = at ?? { x: p.cxMm, y: p.cyMm };
+        return {
+          ...p,
+          wMm: p.wMm * k,
+          hMm: p.hMm * k,
+          cxMm: a.x + (p.cxMm - a.x) * k,
+          cyMm: a.y + (p.cyMm - a.y) * k,
+        };
+      });
+    },
+    [sizeLimits],
+  );
+
+  /** ตั้งขนาดลายตรง ๆ จากแถบเลื่อน (คงอัตราส่วนและจุดกึ่งกลางเดิม) */
+  function setWidthMm(w: number) {
+    setPl((p) => {
+      if (!p) return p;
+      const { min, max } = sizeLimits();
+      const nw = clamp(w, min, max);
+      return { ...p, wMm: nw, hMm: (p.hMm / p.wMm) * nw };
+    });
+  }
+
+  // ล้อเมาส์ = ย่อ-ขยายที่ตำแหน่งเคอร์เซอร์ (ต้องผูกเองแบบ non-passive ถึงจะกันหน้าเลื่อนได้)
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el || !open) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!plRef.current) return;
+      e.preventDefault();
+      zoomBy(e.deltaY < 0 ? 1.08 : 1 / 1.08, toMm(e.clientX, e.clientY) ?? undefined);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [open, src, zoomBy, toMm]);
+
+  /** ลากมุมกรอบเพื่อขยาย — เก็บระยะจากกึ่งกลางตอนเริ่มลากไว้เทียบสัดส่วน */
+  const resizing = useRef<{ dist: number; w: number; h: number } | null>(null);
+
+  function onHandleDown(e: React.PointerEvent) {
+    if (!pl) return;
+    e.stopPropagation();
+    try {
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    } catch {
+      /* บางเบราว์เซอร์/ตัวชี้จับไม่ได้ — ลากต่อได้ตามปกติ */
+    }
+    const m = toMm(e.clientX, e.clientY);
+    if (!m) return;
+    resizing.current = {
+      dist: Math.max(1, Math.hypot(m.x - pl.cxMm, m.y - pl.cyMm)),
+      w: pl.wMm,
+      h: pl.hMm,
+    };
+  }
+
+  function onHandleMove(e: React.PointerEvent) {
+    const r = resizing.current;
+    if (!r || !pl) return;
+    e.stopPropagation();
+    const m = toMm(e.clientX, e.clientY);
+    if (!m) return;
+    const k = Math.hypot(m.x - pl.cxMm, m.y - pl.cyMm) / r.dist;
+    const { min, max } = sizeLimits();
+    const nw = clamp(r.w * k, min, max);
+    setPl({ ...pl, wMm: nw, hMm: (r.h / r.w) * nw });
+  }
+
+  function onHandleUp(e: React.PointerEvent) {
+    e.stopPropagation();
+    resizing.current = null;
   }
 
   function rotate(deg: number) {
@@ -238,6 +356,9 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
 
   /** ความละเอียดของลาย ณ ขนาดที่วางอยู่ */
   const dpi = src && pl ? Math.round(src.w / (pl.wMm / 25.4)) : 0;
+  /** ขนาดที่ "คลุมเต็มกรอบพอดี" = 100% ของแถบเลื่อน */
+  const fillW = src ? src.w * Math.max(bleedW / src.w, bleedH / src.h) : 1;
+  const zoomPct = pl ? clamp((pl.wMm / fillW) * 100, 5, 400) : 100;
   /** ลายคลุมถึงขอบตัดตกครบไหม (เช็คแบบกรอบสี่เหลี่ยม — พอสำหรับเตือน) */
   const covers = (() => {
     if (!pl) return false;
@@ -311,8 +432,11 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
   if (!open) return null;
 
   // เปอร์เซ็นต์ของกรอบตัดตก — ใช้วางเส้นไกด์/รูปด้วย CSS ให้ยืดตามจอเอง
-  const pctW = (mm: number) => `${(mm / bleedW) * 100}%`;
-  const pctH = (mm: number) => `${(mm / bleedH) * 100}%`;
+  const pctW = (mm: number) => `${((mm + padX) / fullW) * 100}%`;
+  const pctH = (mm: number) => `${((mm + padY) / fullH) * 100}%`;
+  /** ความยาว (ไม่ใช่ตำแหน่ง) เป็น % ของกรอบเต็ม */
+  const lenW = (mm: number) => `${(mm / fullW) * 100}%`;
+  const lenH = (mm: number) => `${(mm / fullH) * 100}%`;
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col bg-stone-900/70 backdrop-blur-sm" role="dialog" aria-modal="true">
@@ -361,9 +485,21 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
-            className="relative mx-auto max-h-full touch-none select-none overflow-hidden rounded-lg bg-white shadow-[0_2px_14px_rgba(28,25,23,.12)]"
-            style={{ aspectRatio: `${bleedW} / ${bleedH}`, width: "100%", maxWidth: `min(100%, ${bleedW / bleedH * 60}vh)`, cursor: pl ? "move" : "default" }}
+            className="relative mx-auto max-h-full touch-none select-none overflow-hidden rounded-lg"
+            style={{
+              aspectRatio: `${fullW} / ${fullH}`,
+              width: "100%",
+              // 48vh = สูงสุดที่ยังพอดีจอโดยไม่ต้องเลื่อน (หัว + แถบเครื่องมือกินที่เหลือ)
+              maxWidth: `min(100%, ${(fullW / fullH) * 48}vh)`,
+              cursor: pl ? "move" : "default",
+            }}
           >
+            {/* พื้นขาวของกรอบงาน (ลายพื้นโปร่ง/วางไม่เต็มจะเห็นเป็นขาว เหมือนตอนพิมพ์จริง) */}
+            <div
+              className="pointer-events-none absolute bg-white shadow-[0_2px_14px_rgba(28,25,23,.12)]"
+              style={{ left: pctW(0), top: pctH(0), width: lenW(bleedW), height: lenH(bleedH) }}
+            />
+
             {/* ลายของลูกค้า */}
             {src && pl && (
               <img
@@ -375,8 +511,8 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
                 style={{
                   left: pctW(pl.cxMm - pl.wMm / 2),
                   top: pctH(pl.cyMm - pl.hMm / 2),
-                  width: pctW(pl.wMm),
-                  height: pctH(pl.hMm),
+                  width: lenW(pl.wMm),
+                  height: lenH(pl.hMm),
                   // ⚠️ ต้องปลดเพดานของ preflight (img{max-width:100%}) ไม่งั้นลายที่ซูมเกินกรอบ
                   // จะถูกบีบให้เท่ากรอบ → ที่เห็นบนจอไม่ตรงกับไฟล์ที่ประกอบออกมา
                   maxWidth: "none",
@@ -392,14 +528,27 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
                 src={guideUrl}
                 alt=""
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-0 h-full w-full object-fill opacity-25 mix-blend-multiply"
+                className="pointer-events-none absolute object-fill opacity-25 mix-blend-multiply"
+                style={{ left: pctW(0), top: pctH(0), width: lenW(bleedW), height: lenH(bleedH) }}
               />
             )}
+
+            {/* กรอบพื้นที่พิมพ์ — หรี่ทุกอย่างที่ล้นออกไปนอกกรอบ (ส่วนนั้นจะโดนตัดทิ้ง) */}
+            <div
+              className="pointer-events-none absolute rounded-[2px] ring-1 ring-stone-300"
+              style={{
+                left: pctW(0),
+                top: pctH(0),
+                width: lenW(bleedW),
+                height: lenH(bleedH),
+                boxShadow: "0 0 0 9999px rgba(250,250,249,.82)",
+              }}
+            />
 
             {/* เส้นไกด์: ขอบงานจริง (ตัดตามนี้) + เขตปลอดภัย */}
             <div
               className="pointer-events-none absolute border-2 border-dashed border-rose-500/70"
-              style={{ left: pctW(bleedX), top: pctH(bleedY), width: pctW(artW), height: pctH(artH) }}
+              style={{ left: pctW(bleedX), top: pctH(bleedY), width: lenW(artW), height: lenH(artH) }}
             />
             {safeMm > 0 && (
               <div
@@ -407,10 +556,44 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
                 style={{
                   left: pctW(bleedX + safeMm),
                   top: pctH(bleedY + safeMm),
-                  width: pctW(Math.max(0, artW - safeMm * 2)),
-                  height: pctH(Math.max(0, artH - safeMm * 2)),
+                  width: lenW(Math.max(0, artW - safeMm * 2)),
+                  height: lenH(Math.max(0, artH - safeMm * 2)),
                 }}
               />
+            )}
+
+            {/* กรอบลาย + มุมสำหรับลากขยาย — วางทับตำแหน่งเดียวกับลาย (หมุนตามด้วย) */}
+            {src && pl && (
+              <div
+                className="pointer-events-none absolute origin-center border border-sky-400/70"
+                style={{
+                  left: pctW(pl.cxMm - pl.wMm / 2),
+                  top: pctH(pl.cyMm - pl.hMm / 2),
+                  width: lenW(pl.wMm),
+                  height: lenH(pl.hMm),
+                  transform: `rotate(${pl.rotDeg}deg)`,
+                }}
+              >
+                {(
+                  [
+                    ["-top-2 -left-2", "nwse-resize"],
+                    ["-top-2 -right-2", "nesw-resize"],
+                    ["-bottom-2 -left-2", "nesw-resize"],
+                    ["-bottom-2 -right-2", "nwse-resize"],
+                  ] as const
+                ).map(([pos, cursor]) => (
+                  <span
+                    key={pos}
+                    onPointerDown={onHandleDown}
+                    onPointerMove={onHandleMove}
+                    onPointerUp={onHandleUp}
+                    onPointerCancel={onHandleUp}
+                    style={{ cursor, touchAction: "none" }}
+                    className={`pointer-events-auto absolute ${pos} h-4 w-4 rounded-full border-2 border-sky-500 bg-white shadow`}
+                    aria-label="ลากเพื่อย่อ-ขยายลาย"
+                  />
+                ))}
+              </div>
             )}
 
             {!src && (
@@ -431,8 +614,8 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
           {/* ป้ายบอกเส้น */}
           <p className="mt-2 text-center text-[11px] text-stone-400">
             <span className="text-rose-500">▬</span> เส้นตัดจริง · <span className="text-emerald-500">▬</span> เขตปลอดภัย
-            (อย่าให้ข้อความเลยออกไป) · ลากเพื่อเลื่อน · หุบ-กางสองนิ้วเพื่อย่อ-ขยาย ·
-            โยนรูปใหม่มาวางทับได้ตลอด
+            (อย่าให้ข้อความเลยออกไป) · ลากเพื่อเลื่อน · <strong>ลากมุมฟ้าหรือหมุนล้อเมาส์เพื่อย่อ-ขยาย</strong> ·
+            หุบ-กางสองนิ้วบนมือถือ · โยนรูปใหม่มาวางทับได้ตลอด
           </p>
 
           {/* ลากไฟล์อยู่เหนือจอ — บอกให้ชัดว่าปล่อยได้เลย */}
@@ -468,6 +651,31 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
             </div>
           )}
 
+          {/* แถบเลื่อนย่อ-ขยาย — ปรับขนาดลายได้ละเอียดกว่ากด ＋/− และเห็นขนาดจริงเป็นเซนติเมตร */}
+          {src && pl && (
+            <div className="mb-2.5 flex items-center gap-2.5">
+              <button type="button" onClick={() => zoomBy(1 / 1.1)} className={`${toolBtn} px-2.5`} aria-label="ย่อ">
+                −
+              </button>
+              <input
+                type="range"
+                min={5}
+                max={400}
+                step={1}
+                value={Math.round(zoomPct)}
+                onChange={(e) => setWidthMm((fillW * Number(e.target.value)) / 100)}
+                aria-label="ย่อ-ขยายลาย"
+                className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-stone-200 accent-sky-600"
+              />
+              <button type="button" onClick={() => zoomBy(1.1)} className={`${toolBtn} px-2.5`} aria-label="ขยาย">
+                ＋
+              </button>
+              <span className="w-32 shrink-0 text-right text-[11px] font-semibold tabular-nums text-stone-500">
+                {Math.round(zoomPct)}% · {Math.round(pl.wMm) / 10}×{Math.round(pl.hMm) / 10} ซม.
+              </span>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-1.5">
             <label className="cursor-pointer rounded-full bg-stone-100 px-3 py-1.5 text-xs font-bold text-stone-700 transition hover:bg-stone-200">
               {src ? "🔄 เปลี่ยนรูป" : "🖼 เลือกรูป"}
@@ -483,12 +691,6 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
             </button>
             <button type="button" onClick={fit} disabled={!src} className={toolBtn}>
               ⧉ พอดีกรอบ
-            </button>
-            <button type="button" onClick={() => zoomBy(1.1)} disabled={!src} className={toolBtn}>
-              ＋
-            </button>
-            <button type="button" onClick={() => zoomBy(1 / 1.1)} disabled={!src} className={toolBtn}>
-              −
             </button>
             <button type="button" onClick={() => rotate(90)} disabled={!src} className={toolBtn}>
               ↻ หมุน
