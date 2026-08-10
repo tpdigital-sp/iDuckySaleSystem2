@@ -49,7 +49,7 @@ import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-se
 import { filesForSelections, parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { fetchTemplates } from "@/lib/template-repo";
 import { fetchProduct } from "@/lib/product-repo";
-import { buildPrintAi, buildPrintBundle, downloadBlob } from "@/lib/print-ai";
+import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 
 /** ขั้นถัดไปที่ "ปกติจะกด" ของแต่ละสถานะ — ทำเป็นปุ่มเดียวจบ ไม่ต้องเปิดลิสต์ยาว */
 const NEXT_STATUS: Partial<Record<OrderStatus, { to: OrderStatus; label: string }>> = {
@@ -1958,24 +1958,15 @@ export default function AdminOrderDetailPage() {
                                                  */
                                                 // ออเดอร์เก่าไม่ได้จดที่อยู่ไฟล์ไว้ → ไปหาจากสินค้า+ตัวเลือกให้
                                                 const tplUrl = r.frame.tplUrl ?? (await resolveTplUrl(it));
-                                                const bundle = tplUrl
-                                                  ? await buildPrintBundle({
-                                                      templateUrl: tplUrl,
-                                                      imageUrl: r.u,
-                                                      baseName: r.name.replace(/-พร้อมพิมพ์\.ai$/, ""),
-                                                    })
-                                                  : null;
-                                                if (bundle) {
-                                                  downloadBlob(bundle, r.name.replace(/\.ai$/, ".zip"));
-                                                } else {
-                                                  const blob = await buildPrintAi({
-                                                    imageUrl: r.u,
-                                                    widthMm: r.frame.widthMm,
-                                                    heightMm: r.frame.heightMm,
-                                                    title: `${order.id} ${it.name} ลายที่ ${r.no}`,
-                                                  });
-                                                  downloadBlob(blob, r.name);
-                                                }
+                                                const blob = await buildPrintAi({
+                                                  imageUrl: r.u,
+                                                  widthMm: r.frame.widthMm,
+                                                  heightMm: r.frame.heightMm,
+                                                  title: `${order.id} ${it.name} ลายที่ ${r.no}`,
+                                                  // มีไฟล์เทมเพลต = วางลายลงในไฟล์จริง ได้เส้นตัด/ไกด์มาด้วย
+                                                  templateUrl: tplUrl,
+                                                });
+                                                downloadBlob(blob, r.name);
                                               } catch (e) {
                                                 alert(e instanceof Error ? e.message : "สร้างไฟล์ .ai ไม่สำเร็จ");
                                               } finally {
