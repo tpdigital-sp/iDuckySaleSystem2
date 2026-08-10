@@ -325,6 +325,29 @@ export function proofsOf(item: OrderItem): Proof[] {
   return item.proofUrl ? [{ url: item.proofUrl, at: item.proofUpdatedAt ?? "" }] : [];
 }
 
+/**
+ * งานที่ "ลูกค้าจัดวางลายบนเทมเพลตเองมาแล้ว" ทุกรายการ และแบบผ่านการอนุมัติครบ
+ * — ใช้ตัดสินว่าข้ามขั้นตอนทำแบบ/รอลูกค้าตรวจได้เลยไหม
+ */
+export function allSelfDesignedApproved(order: Order): boolean {
+  if (!order.items.length) return false;
+  return order.items.every((it) => {
+    const proofs = proofsOf(it);
+    if (!proofs.length) return false;
+    // แบบชุดนี้ต้องมาจากจอวางลายของลูกค้า (มีบรรทัดพิกัดของทีมผลิตติดมา) และอนุมัติครบทุกรูป
+    const fromStudio = !!it.sel?.["ตำแหน่งลาย (ทีมผลิต)"];
+    return fromStudio && proofs.every((p) => p.review === "อนุมัติ");
+  });
+}
+
+/**
+ * สถานะที่ควรเป็น "หลังเงินเข้าครบ"
+ * งานที่ลูกค้าออกแบบเองมาแล้วไม่ต้องรอทำแบบ/รอตรวจ → ข้ามไป "อนุมัติแบบ" เลย
+ */
+export function paidStatusFor(order: Order): OrderStatus {
+  return allSelfDesignedApproved(order) ? "อนุมัติแบบ" : "ชำระแล้ว";
+}
+
 /** ผลตรวจ "พร้อมส่งหรือยัง" ของพนักงานแพ็ค */
 /** ภาพถ่ายของจริงในกล่อง "ก่อนปิดกล่อง" — ฝ่ายแพ็คถ่ายเก็บเป็นหลักฐานทุกออเดอร์ */
 export interface PackPhoto {

@@ -6,6 +6,7 @@ import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import {
+  allSelfDesignedApproved,
   MOCK_ORDERS,
   ORDER_STATUSES,
   adminDiscountAmount,
@@ -1036,6 +1037,26 @@ export default function AdminOrderDetailPage() {
     void saveOrderAdmin(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.id, mayEdit, demo]);
+  /**
+   * งานที่ลูกค้าจัดวางลายเองมาครบทุกรายการ = ไม่มีอะไรให้กราฟฟิกทำ
+   * พอเงินเข้าแล้วจึงข้ามขั้น "ส่งแบบให้ลูกค้าตรวจ" ไป "อนุมัติแบบ" ให้เลย
+   * (ทำซ้ำไม่ได้ผล — พอเป็นอนุมัติแบบแล้วเงื่อนไขจะไม่เข้าอีก)
+   */
+  const selfDesignedReady = order ? allSelfDesignedApproved(order) : false;
+  useEffect(() => {
+    if (!order || !mayEdit || demo || !selfDesignedReady) return;
+    if (order.status !== "ชำระแล้ว" && order.status !== "รอตรวจแบบ") return;
+    const next = withLog(
+      { ...order, status: "อนุมัติแบบ" as OrderStatus },
+      actor,
+      "ข้ามขั้นทำแบบ — ลูกค้าออกแบบเองมาแล้ว",
+      `${order.status} → อนุมัติแบบ`,
+    );
+    setOrder(next);
+    void saveOrderAdmin(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.id, order?.status, selfDesignedReady, mayEdit, demo]);
+
   async function addArtwork(itemIndex: number, fileList: FileList | File[] | null) {
     if (!order || !fileList) return;
     const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { amountDueNow, orderTotal, withLog, type Order } from "@/lib/admin-data";
+import { amountDueNow, orderTotal, withLog, type Order, paidStatusFor } from "@/lib/admin-data";
 import { verifySlipWithSlipOK } from "@/lib/server/slipok";
 import { notifyCustomer, orderLink } from "@/lib/server/notify";
 import { reportPaidToTP } from "@/lib/server/tp-report";
@@ -105,7 +105,9 @@ export async function POST(req: Request) {
       // จำยอดที่รับ ณ งวดนี้ — ออเดอร์มัดจำเก็บแค่ยอดงวดแรกก่อน
       paidTotal: expected,
       // ผ่านการตรวจอัตโนมัติเท่านั้นถึงยืนยันให้เลย — นอกนั้นรอแอดมินตรวจตามเดิม
-      status: verify.status === "pass" ? "ชำระแล้ว" : "รอตรวจสอบ",
+      // ผ่านแล้ว: งานที่ลูกค้าจัดวางลายบนเทมเพลตเองมาครบ ข้ามไป "อนุมัติแบบ" เลย
+      // (กราฟฟิกไม่ต้องทำแบบ ลูกค้าไม่ต้องตรวจซ้ำ) · งานอื่นเป็น "ชำระแล้ว" ตามเดิม
+      status: verify.status === "pass" ? paidStatusFor(order) : "รอตรวจสอบ",
       ...(depositPhase && verify.status === "pass" ? { deposit: { ...order.deposit!, firstPaidAt: now } } : {}),
     };
     if (verify.status === "pass")
