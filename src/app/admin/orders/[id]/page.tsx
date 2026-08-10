@@ -46,9 +46,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useActor, useCan, useIsAdministrator, useRoleLabel } from "@/lib/perm-context";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
-import { filesForSelections, parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
-import { fetchTemplates } from "@/lib/template-repo";
-import { fetchProduct } from "@/lib/product-repo";
+import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 
 /** ขั้นถัดไปที่ "ปกติจะกด" ของแต่ละสถานะ — ทำเป็นปุ่มเดียวจบ ไม่ต้องเปิดลิสต์ยาว */
@@ -401,38 +399,6 @@ export default function AdminOrderDetailPage() {
   const [err, setErr] = useState("");
   /** กล่องยืนยันของระบบเอง — แทน confirm() ของเบราว์เซอร์ (ใช้ตัวเดียวกับหน้าอื่นในหลังบ้าน) */
   const { confirm: askConfirm, dialog: confirmDialog } = useConfirm();
-  /**
-   * หาไฟล์ .ai ของเทมเพลตให้ "ออเดอร์เก่า" ที่ยังไม่ได้จดที่อยู่ไฟล์ไว้ตอนวางลาย
-   * ไล่จาก สินค้า → ชุดเทมเพลตที่ผูกไว้ → ไฟล์ที่ตรงกับตัวเลือกที่ลูกค้าเลือก
-   * (ออเดอร์ใหม่มีที่อยู่ติดมากับบรรทัดพิกัดอยู่แล้ว ไม่ต้องมาหาแบบนี้)
-   */
-  const tplLookup = useRef(new Map<string, string | undefined>());
-  const resolveTplUrl = useCallback(async (it: OrderItem): Promise<string | undefined> => {
-    const key = `${it.productId}|${it.sel ? JSON.stringify(it.sel) : ""}`;
-    const cached = tplLookup.current;
-    if (cached.has(key)) return cached.get(key);
-    let url: string | undefined;
-    try {
-      const p = await fetchProduct(it.productId);
-      const ids = p?.templateIds ?? [];
-      if (ids.length) {
-        const all = await fetchTemplates();
-        for (const t of all) {
-          if (!ids.includes(t.id)) continue;
-          const f = filesForSelections(t, it.sel ?? {}).find((x) => x.fileUrl);
-          if (f?.fileUrl) {
-            url = f.fileUrl;
-            break;
-          }
-        }
-      }
-    } catch {
-      /* หาไม่เจอก็ถอยไปให้ไฟล์ที่มีแต่ลายเหมือนเดิม */
-    }
-    cached.set(key, url);
-    return url;
-  }, []);
-
   // แอดมินแก้ "รายละเอียดงาน" ของรายการที่ลูกค้าสั่งได้ (แก้ได้เฉพาะรายละเอียด — ชื่อ/จำนวน/ราคาไม่แตะ)
   const [editSel, setEditSel] = useState<number | null>(null);
   const [selDraft, setSelDraft] = useState("");
@@ -1956,15 +1922,16 @@ export default function AdminOrderDetailPage() {
                                                  * (เทมเพลตต้นฉบับเลเยอร์ครบ + ลาย + สคริปต์วางให้อัตโนมัติ)
                                                  * เอา .ai ไฟล์เดียวไม่ได้ — Illustrator เปิด PDF แล้วยุบเหลือเลเยอร์เดียวเสมอ
                                                  */
-                                                // ออเดอร์เก่าไม่ได้จดที่อยู่ไฟล์ไว้ → ไปหาจากสินค้า+ตัวเลือกให้
-                                                const tplUrl = r.frame.tplUrl ?? (await resolveTplUrl(it));
+                                                /**
+                                                 * ไฟล์นี้มีแต่ "ลายของลูกค้า" ล้วน ๆ ขนาดเท่ากรอบงานจริง (รวมตัดตก)
+                                                 * ไม่รวมงานของเทมเพลตเข้ามา — กราฟฟิกเปิดเทมเพลตจากคลังแล้ววางลายเอง
+                                                 * จะได้เลเยอร์เดิมของเทมเพลตครบ (ถ้ารวมให้ Illustrator จะยุบเหลือเลเยอร์เดียว)
+                                                 */
                                                 const blob = await buildPrintAi({
                                                   imageUrl: r.u,
                                                   widthMm: r.frame.widthMm,
                                                   heightMm: r.frame.heightMm,
                                                   title: `${order.id} ${it.name} ลายที่ ${r.no}`,
-                                                  // มีไฟล์เทมเพลต = วางลายลงในไฟล์จริง ได้เส้นตัด/ไกด์มาด้วย
-                                                  templateUrl: tplUrl,
                                                 });
                                                 downloadBlob(blob, r.name);
                                               } catch (e) {
