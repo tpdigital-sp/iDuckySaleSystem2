@@ -55,7 +55,10 @@ export default function CartPage() {
           return {
             productId: i.productId,
             name: productOf(i.productId)?.name ?? i.productId,
-            selections: Object.entries(restSel).map(([k, v]) => `${k}: ${v}`).join(" · "),
+            selections: Object.entries(restSel)
+              .filter(([k]) => k !== PLACEMENT_SPEC_LABEL)
+              .map(([k, v]) => `${k}: ${v}`)
+              .join(" · "),
             qty: i.qty,
             unitPrice: i.unitPrice,
             ...(artworkUrls.length ? { artworkUrls } : {}),

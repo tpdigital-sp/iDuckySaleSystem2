@@ -184,6 +184,9 @@ export default function ProductDetail({
       /** ภาพที่ประกอบแล้วของลายนี้ — ผูกไว้กับตัวลายเลย ไม่ต้องไปหยิบจาก artFiles ตามลำดับ */
       artUrl: string;
       qty: number;
+      /** ส่วนที่ทุกลายเหมือนกัน (ชื่อแบบ + ขนาด) และความคมชัดของลายนี้ */
+      head: string;
+      dpi: number;
       /** ของที่ใช้เปิดกลับมาแก้ไขให้เหมือนเดิม (ไฟล์ต้นฉบับ + ตำแหน่ง + แนวงาน) */
       sourceFile?: File;
       placement: StudioPlacement;
@@ -665,6 +668,8 @@ export default function ProductDetail({
       const file = { url, name: r.composite.name, ...dim };
       const entry = {
         summary: r.summary,
+        head: r.head,
+        dpi: r.dpi,
         spec: r.spec,
         sourceUrl,
         artUrl: url,
@@ -728,9 +733,11 @@ export default function ProductDetail({
     // ลายที่วางบนเทมเพลตผ่านหน้าเว็บ — สรุปให้ลูกค้าอ่าน + ตัวเลขให้ทีมผลิตวางในไฟล์จริง
     if (placed.length) {
       const many = placed.length > 1;
-      extra[PLACEMENT_LABEL] = placed
-        .map((p, i) => (many ? `ลายที่ ${i + 1} × ${p.qty} ชิ้น: ${p.summary}` : p.summary))
-        .join(" | ");
+      // ยุบส่วนที่ซ้ำกันทุกลาย (ชื่อแบบ+ขนาด) ไว้ครั้งเดียว — ลูกค้าเห็นบรรทัดสั้น ๆ ในออเดอร์
+      extra[PLACEMENT_LABEL] = many
+        ? `${placed.length} ลาย · ${placed[0].head} · ` +
+          placed.map((p, i) => `ลายที่ ${i + 1} × ${p.qty} ชิ้น (${p.dpi} DPI)`).join(" · ")
+        : `${placed[0].head} · ${placed[0].dpi} DPI`;
       extra[PLACEMENT_SPEC_LABEL] = placed
         .map(
           (p, i) =>

@@ -839,7 +839,19 @@ export default function CustomerOrderPage() {
                       )}
                       {it.name}
                     </p>
-                    {it.selections && <p className="mt-0.5 text-xs text-stone-400">{it.selections}</p>}
+                    {it.selections && (
+                      /*
+                        ออเดอร์เก่าที่บันทึกก่อนแยกบรรทัดทีมผลิตออก จะมีพิกัด/ลิงก์ยาวเหยียดปนมาด้วย
+                        → ตัดลิงก์ทิ้งและจำกัด 2 บรรทัดตอนแสดง (ข้อมูลเต็มยังอยู่ในออเดอร์ให้ทีมงาน)
+                      */
+                      <p className="mt-0.5 line-clamp-2 text-xs text-stone-400" title={it.selections}>
+                        {it.selections
+                          .replace(/https?:\/\/\S+/g, "")
+                          .replace(/\s·\s·\s/g, " · ")
+                          .replace(/·\s*[^·:]*:\s*$/, "")
+                          .trim()}
+                      </p>
+                    )}
                     {/* ⚠️ ข้อควรทราบของสินค้าตัวนี้ — ย้ำอีกครั้งหลังสั่ง กันเข้าใจผิด/เคลมทีหลัง */}
                     {termsById[it.productId] && (
                       <details className="group mt-1.5">

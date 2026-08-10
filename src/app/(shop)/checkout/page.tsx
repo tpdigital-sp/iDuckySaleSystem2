@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatPrice } from "@/lib/products";
 import { useCart } from "@/lib/cart-context";
+import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { getUnpicked, clearUnpicked } from "@/lib/cart-select";
 import { useCustomer } from "@/lib/customer-context";
 import {
@@ -288,7 +289,12 @@ export default function CheckoutPage() {
       return {
         productId: it.productId,
         name: productOf(it.productId)?.name ?? it.productId,
-        selections: Object.entries(restSel).map(([k, v]) => `${k}: ${v}`).join(" · "),
+        // ข้อความที่ลูกค้าเห็น: ตัดบรรทัดพิกัด/ลิงก์ของทีมผลิตออก (ยาวและรกมาก)
+        // — ตัวเลขยังอยู่ครบใน sel ด้านล่าง หลังบ้านใช้ออกไฟล์ .ai ได้เหมือนเดิม
+        selections: Object.entries(restSel)
+          .filter(([k]) => k !== PLACEMENT_SPEC_LABEL)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(" · "),
         sel: restSel,
         qty: it.qty,
         unitPrice: it.unitPrice,

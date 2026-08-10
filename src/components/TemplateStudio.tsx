@@ -38,6 +38,8 @@ export interface StudioResult {
   dpi: number;
   /** สรุปสั้น ๆ ให้ลูกค้าอ่านในตะกร้า */
   summary: string;
+  /** ส่วนที่ทุกลายเหมือนกัน (ชื่อแบบ + ขนาดงาน) — เอาไปยุบให้ข้อความสั้นตอนมีหลายลาย */
+  head: string;
   /** บรรทัดตัวเลขให้ทีมผลิตวางในไฟล์จริง */
   spec: string;
   /** สลับแนวงานอยู่ไหมตอนวาง — ใช้กู้สภาพเดิมเวลากลับมาแก้ */
@@ -575,6 +577,8 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
         placement: pl,
         dpi,
         swapped,
+        // ชื่อแบบ/ขนาดที่เลือกโชว์อยู่ในบรรทัด "ขนาด:" ของรายการอยู่แล้ว — ตรงนี้เอาแค่ขนาดงานจริง
+        head: `${n(artW / 10)}×${n(artH / 10)} ซม.`,
         summary: `${title} · ${n(artW / 10)}×${n(artH / 10)} ซม. · ${dpi} DPI`,
         spec:
           `กรอบ ${n(bleedW)}×${n(bleedH)}mm (งานจริง ${n(artW)}×${n(artH)} + ตัดตก ${n(bleedX)}/${n(bleedY)}) · ` +
