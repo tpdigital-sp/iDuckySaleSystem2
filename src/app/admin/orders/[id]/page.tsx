@@ -43,7 +43,14 @@ import { QRCodeSVG } from "qrcode.react";
 import { useActor, useCan, useRoleLabel } from "@/lib/perm-context";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
-import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
+import {
+  fileHref,
+  filesForSelections,
+  parsePrintFrame,
+  PLACEMENT_SPEC_LABEL,
+  type DesignTemplate,
+} from "@/lib/design-templates";
+import { fetchTemplates } from "@/lib/template-repo";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 
 /** ขั้นถัดไปที่ "ปกติจะกด" ของแต่ละสถานะ — ทำเป็นปุ่มเดียวจบ ไม่ต้องเปิดลิสต์ยาว */
@@ -987,6 +994,27 @@ export default function AdminOrderDetailPage() {
   const [artUpIdx, setArtUpIdx] = useState<number | null>(null);
   /** กำลังสร้างไฟล์ .ai พร้อมพิมพ์ของรายการไหนอยู่ (คีย์ = ออเดอร์-ลำดับรายการ) */
   const [aiBusy, setAiBusy] = useState<string | null>(null);
+  /** คลังเทมเพลตไฟล์งาน — ไว้ให้กราฟฟิกโหลดไฟล์ .ai ต้นแบบของสินค้านั้นได้จากหน้าออเดอร์เลย */
+  const [templates, setTemplates] = useState<DesignTemplate[]>([]);
+  useEffect(() => {
+    void fetchTemplates().then(setTemplates);
+  }, []);
+  /**
+   * หาไฟล์เทมเพลตต้นแบบของลายนั้น — จับคู่จาก "ขนาดอาร์ตบอร์ด" ที่บันทึกไว้ในออเดอร์
+   * (กรอบงานในออเดอร์มาจากอาร์ตบอร์ดของไฟล์นั้นตรง ๆ เลยชี้กลับได้แม่น)
+   * มีหลายไฟล์ขนาดเท่ากัน → เลือกอันที่ค่าตัวเลือกตรงกับที่ลูกค้าสั่ง
+   */
+  const templateFileFor = useCallback(
+    (frame: { widthMm: number; heightMm: number }, sel?: Record<string, string>) => {
+      const picked = Object.values(sel ?? {}).join(" ");
+      const cands = templates
+        .flatMap((t) => filesForSelections(t, sel ?? {}).concat(t.files ?? []).map((f) => ({ t, f })))
+        .filter(({ f }) => f.widthMm === frame.widthMm && f.heightMm === frame.heightMm && (f.fileUrl || f.linkUrl));
+      if (!cands.length) return null;
+      return cands.find(({ f }) => f.choice && picked.includes(f.choice)) ?? cands[0];
+    },
+    [templates],
+  );
   async function addArtwork(itemIndex: number, fileList: FileList | File[] | null) {
     if (!order || !fileList) return;
     const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
@@ -1903,6 +1931,23 @@ export default function AdminOrderDetailPage() {
                                             {r.dpi ? ` · ${r.dpi} DPI` : ""}
                                           </span>
                                         </span>
+                                        {r.frame &&
+                                          (() => {
+                                            const tpl = templateFileFor(r.frame, it.sel);
+                                            const href = tpl ? fileHref(tpl.f) : null;
+                                            if (!href) return null;
+                                            return (
+                                              <a
+                                                href={href}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="shrink-0 rounded-lg bg-white px-2 py-1 text-[10px] font-bold text-slate-600 ring-1 ring-slate-300 transition hover:bg-slate-50"
+                                                title={`ไฟล์เทมเพลตต้นแบบ: ${tpl!.f.fileName ?? tpl!.t.name}`}
+                                              >
+                                                📐 เทมเพลต .ai
+                                              </a>
+                                            );
+                                          })()}
                                         {r.source && (
                                           <a
                                             href={r.source}

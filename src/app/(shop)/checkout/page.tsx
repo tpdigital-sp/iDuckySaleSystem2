@@ -20,7 +20,7 @@ import {
 } from "@/lib/shop-settings";
 import { getAccessToken } from "@/lib/customer-auth";
 import { paidSpend, tierForSpend, tierDiscountAmount } from "@/lib/tiers";
-import type { Order } from "@/lib/admin-data";
+import type { Order, Proof } from "@/lib/admin-data";
 import { appendToOrder, placeOrder, reportPayment } from "@/lib/order-repo";
 import { clearAppendTarget, getAppendTarget, type AppendTarget } from "@/lib/append-order";
 import { publicOrigin } from "@/lib/shop-info";
@@ -32,6 +32,32 @@ interface Placed {
   total: number;
   url: string;
   key?: string;
+}
+
+
+/**
+ * ลูกค้าออกแบบเองบนเทมเพลต → แปลงภาพที่ประกอบแล้วเป็น "แบบที่อนุมัติแล้ว" ให้เลย
+ * เงื่อนไข: มีบรรทัดพิกัดของทีมผลิต (มาจากจอวางลาย) และจำนวนรูปตรงกับจำนวนลาย
+ * ไม่เข้าเงื่อนไข = คืนอ็อบเจกต์ว่าง (ออเดอร์เดินขั้นตอนเดิม: กราฟฟิกทำแบบ → ลูกค้าตรวจ)
+ */
+function selfDesignedProof(
+  sel: Record<string, string>,
+  artworkUrls: string[],
+  at: string,
+): { proofs?: Proof[]; proofStatus?: "อนุมัติ"; proofUpdatedAt?: string } {
+  const specs = (sel[PLACEMENT_SPEC_LABEL] ?? "").split(" | ").filter(Boolean);
+  if (!specs.length || specs.length !== artworkUrls.length) return {};
+  const proofs: Proof[] = artworkUrls.map((url, i) => {
+    const qty = Number(specs[i]?.match(/×\s*(\d+)\s*ชิ้น/)?.[1]);
+    return {
+      url,
+      at,
+      review: "อนุมัติ" as const,
+      note: `ลายที่ ${i + 1} — ลูกค้าจัดวางเองบนเทมเพลต (อนุมัติอัตโนมัติ)`,
+      ...(Number.isFinite(qty) && qty > 0 ? { qty } : {}),
+    };
+  });
+  return { proofs, proofStatus: "อนุมัติ", proofUpdatedAt: at };
 }
 
 export default function CheckoutPage() {
@@ -298,6 +324,13 @@ export default function CheckoutPage() {
         sel: restSel,
         qty: it.qty,
         unitPrice: it.unitPrice,
+        /*
+          ลูกค้าจัดวางลายบนเทมเพลตเองมาแล้ว = "แบบ" เสร็จตั้งแต่หน้าเว็บ
+          → ใส่เป็นแบบที่ส่งตรวจ + ถือว่าอนุมัติเลย ข้ามขั้นกราฟฟิกทำแบบและรอลูกค้าอนุมัติ
+          (ลูกค้าเห็นภาพจริงตอนกด "ใช้ลายนี้" แล้ว ไม่ต้องยืนยันซ้ำ)
+          ลายที่แนบมาเฉย ๆ ไม่เข้าเงื่อนไขนี้ — ยังเดินขั้นตอนเดิมทุกอย่าง
+        */
+        ...selfDesignedProof(restSel, artworkUrls, new Date().toISOString()),
         ...(artworkUrls.length ? { artworkUrls } : {}),
         ...(bulkFlag ? { needStockCheck: true } : {}),
       };
