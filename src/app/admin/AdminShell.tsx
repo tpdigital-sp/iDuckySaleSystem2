@@ -18,7 +18,8 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   { href: "/admin/orders/scan", label: "แพ็ค–ส่ง", emoji: "📮", perm: "pack.ship", group: "งานขาย" },
   { href: "/admin/quotes", label: "ใบเสนอราคา", emoji: "📄", perm: "orders.edit", group: "งานขาย" },
   // 🎨 งานแบบ — ฝ่ายกราฟฟิกเปิดหมวดนี้หมวดเดียวก็ทำงานได้ครบ
-  { href: "/admin/graphics", label: "คิวงานกราฟฟิก", emoji: "🎨", perm: "proof.manage", group: "กราฟฟิก" },
+  { href: "/admin/graphics", label: "ออเดอร์กราฟฟิก", emoji: "🎨", perm: "proof.manage", group: "กราฟฟิก" },
+  { href: "/admin/graphics/designs", label: "ลายจากลูกค้า", emoji: "🖼", perm: "proof.manage", group: "กราฟฟิก" },
   // 🏷️ ของที่ขาย
   { href: "/admin/products", label: "สินค้า", emoji: "🏷️", perm: "products.view", group: "สินค้า" },
   { href: "/admin/import", label: "นำเข้าสินค้า", emoji: "📥", perm: "products.import", group: "สินค้า" },
