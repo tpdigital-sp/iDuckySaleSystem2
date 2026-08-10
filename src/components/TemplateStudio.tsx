@@ -40,6 +40,8 @@ export interface StudioResult {
   summary: string;
   /** บรรทัดตัวเลขให้ทีมผลิตวางในไฟล์จริง */
   spec: string;
+  /** สลับแนวงานอยู่ไหมตอนวาง — ใช้กู้สภาพเดิมเวลากลับมาแก้ */
+  swapped: boolean;
 }
 
 interface Props {
@@ -51,6 +53,11 @@ interface Props {
   frame: TemplateFrame;
   /** รูปเทมเพลตจาก .ai — วางเป็นไกด์จาง ๆ ทับลาย (ถ้ามี) */
   guideUrl?: string;
+  /**
+   * เปิดมาเพื่อ "แก้ไขลายเดิม" — โหลดรูปเดิมกลับมาพร้อมตำแหน่ง/ขนาดที่เคยวางไว้
+   * มีไฟล์ในเครื่องใช้ไฟล์ก่อน (ไม่ต้องโหลดใหม่) ไม่มีค่อยดึงจาก url
+   */
+  initial?: { file?: File; url?: string; placement: Placement; swapped?: boolean };
   onApply: (r: StudioResult) => void | Promise<void>;
 }
 
@@ -63,12 +70,12 @@ const DPI_BAD = 100;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-export default function TemplateStudio({ open, onClose, title, frame, guideUrl, onApply }: Props) {
+export default function TemplateStudio({ open, onClose, title, frame, guideUrl, initial, onApply }: Props) {
   /**
    * สลับแนวงาน — ใช้เมื่อขนาดมาจากชื่อตัวเลือก ("30x60" ไม่บอกว่าด้านไหนกว้าง)
    * ถ้าขนาดมาจากไฟล์จริงแล้วก็ไม่ต้องสลับ (ไฟล์บอกแนวมาเองแล้ว)
    */
-  const [swapped, setSwapped] = useState(false);
+  const [swapped, setSwapped] = useState(!!initial?.swapped);
   const bleedW = swapped ? frame.canvasHMm : frame.canvasWMm;
   const bleedH = swapped ? frame.canvasWMm : frame.canvasHMm;
   const bleedX = swapped ? frame.bleedYMm : frame.bleedXMm;
@@ -200,6 +207,44 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, src, sel, clearArt]);
+
+  /** เปิดมาแก้ไขลายเดิม → เอารูปเดิมกลับขึ้นจอพร้อมตำแหน่งที่เคยวางไว้เป๊ะ */
+  useEffect(() => {
+    if (!open || !initial) return;
+    let dead = false;
+    (async () => {
+      let file = initial.file;
+      if (!file && initial.url) {
+        try {
+          const b = await fetch(initial.url).then((r) => r.blob());
+          file = new File([b], "artwork", { type: b.type || "image/jpeg" });
+        } catch {
+          setErr("โหลดลายเดิมไม่สำเร็จ — เลือกรูปใหม่ได้เลย");
+          return;
+        }
+      }
+      if (!file || dead) return;
+      const url = URL.createObjectURL(file);
+      const dim = await new Promise<{ w: number; h: number }>((res) => {
+        const im = new window.Image();
+        im.onload = () => res({ w: im.naturalWidth, h: im.naturalHeight });
+        im.onerror = () => res({ w: 0, h: 0 });
+        im.src = url;
+      });
+      if (dead || !dim.w) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      setSrc({ file, url, ...dim });
+      setPl(initial.placement);
+      setSel(true);
+    })();
+    return () => {
+      dead = true;
+    };
+    // ตั้งใจให้ทำงานครั้งเดียวตอนเปิดจอ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function pick(file?: File | null) {
     if (!file) return;
@@ -528,6 +573,7 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
         source: src.file,
         placement: pl,
         dpi,
+        swapped,
         summary: `${title} · ${n(artW / 10)}×${n(artH / 10)} ซม. · ${dpi} DPI`,
         spec:
           `กรอบ ${n(bleedW)}×${n(bleedH)}mm (งานจริง ${n(artW)}×${n(artH)} + ตัดตก ${n(bleedX)}/${n(bleedY)}) · ` +

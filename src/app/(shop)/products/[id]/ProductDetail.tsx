@@ -48,7 +48,7 @@ import {
   type DesignTemplate,
   type TemplateFrame,
 } from "@/lib/design-templates";
-import TemplateStudio, { type StudioResult } from "@/components/TemplateStudio";
+import TemplateStudio, { type Placement as StudioPlacement, type StudioResult } from "@/components/TemplateStudio";
 import { useCart } from "@/lib/cart-context";
 import { canAccessAdmin } from "@/lib/auth";
 import { fetchProduct } from "@/lib/product-repo";
@@ -170,8 +170,24 @@ export default function ProductDetail({
    * 🖼 จอวางลายบนเทมเพลต — เปิดจากการ์ดเทมเพลต (null = ปิดอยู่)
    * ผลลัพธ์: ภาพที่ประกอบแล้วเข้าไปอยู่ในรายการลายที่แนบ + จดตัวเลขตำแหน่งไว้ให้ทีมผลิต
    */
-  const [studio, setStudio] = useState<{ title: string; frame: TemplateFrame; guideUrl?: string } | null>(null);
-  const [placed, setPlaced] = useState<{ summary: string; spec: string; sourceUrl?: string; qty: number }[]>([]);
+  const [studio, setStudio] = useState<{
+    title: string;
+    frame: TemplateFrame;
+    guideUrl?: string;
+    initial?: { file?: File; url?: string; placement: StudioPlacement; swapped?: boolean };
+  } | null>(null);
+  const [placed, setPlaced] = useState<
+    {
+      summary: string;
+      spec: string;
+      sourceUrl?: string;
+      qty: number;
+      /** ของที่ใช้เปิดกลับมาแก้ไขให้เหมือนเดิม (ไฟล์ต้นฉบับ + ตำแหน่ง + แนวงาน) */
+      sourceFile?: File;
+      placement: StudioPlacement;
+      swapped: boolean;
+    }[]
+  >([]);
   /** กำลังแก้ไขลายที่เท่าไหร่ (null = สร้างลายใหม่) — กัน "แก้ไขแบบ" กลายเป็นเพิ่มลายซ้ำ */
   const [editIndex, setEditIndex] = useState<number | null>(null);
   // ส่วน "เพิ่มเติม" ยุบไว้ทีละอัน — ไม่ให้ฟอร์มที่ไม่บังคับดันปุ่มซื้อตกจอ
@@ -562,8 +578,17 @@ export default function ProductDetail({
   const designDone = placed.length > 0;
 
   function openStudio(index: number | null = null) {
+    if (!studioTarget) return;
     setEditIndex(index);
-    if (studioTarget) setStudio(studioTarget);
+    const d = index !== null ? placed[index] : null;
+    setStudio(
+      d
+        ? {
+            ...studioTarget,
+            initial: { file: d.sourceFile, url: d.sourceUrl, placement: d.placement, swapped: d.swapped },
+          }
+        : studioTarget,
+    );
   }
 
   /** ลบลายที่สร้างไว้ (ทั้งภาพที่ประกอบแล้วและตัวเลขตำแหน่ง) */
@@ -636,7 +661,14 @@ export default function ProductDetail({
         im.src = obj;
       });
       const file = { url, name: r.composite.name, ...dim };
-      const entry = { summary: r.summary, spec: r.spec, sourceUrl };
+      const entry = {
+        summary: r.summary,
+        spec: r.spec,
+        sourceUrl,
+        sourceFile: r.source,
+        placement: r.placement,
+        swapped: r.swapped,
+      };
       if (editIndex !== null) {
         setArtFiles((cur) => cur.map((x, i) => (i === editIndex ? file : x)));
         setPlaced((cur) => cur.map((x, i) => (i === editIndex ? { ...entry, qty: x.qty } : x)));
@@ -2292,6 +2324,7 @@ export default function ProductDetail({
           title={studio.title}
           frame={studio.frame}
           guideUrl={studio.guideUrl}
+          initial={studio.initial}
           onApply={applyStudio}
         />
       )}
