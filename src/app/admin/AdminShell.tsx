@@ -14,10 +14,11 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   // 📦 งานขายรายวัน
   { href: "/admin", label: "ภาพรวม", emoji: "📊", perm: "orders.view", group: "งานขาย" },
   { href: "/admin/orders", label: "คำสั่งซื้อ", emoji: "📦", perm: "orders.view", group: "งานขาย" },
-  { href: "/admin/graphics", label: "งานกราฟฟิก", emoji: "🎨", perm: "proof.manage", group: "งานขาย" },
   { href: "/admin/print", label: "คิวปริ้น", emoji: "🖨", perm: "pack.ship", group: "งานขาย" },
   { href: "/admin/orders/scan", label: "แพ็ค–ส่ง", emoji: "📮", perm: "pack.ship", group: "งานขาย" },
   { href: "/admin/quotes", label: "ใบเสนอราคา", emoji: "📄", perm: "orders.edit", group: "งานขาย" },
+  // 🎨 งานแบบ — ฝ่ายกราฟฟิกเปิดหมวดนี้หมวดเดียวก็ทำงานได้ครบ
+  { href: "/admin/graphics", label: "คิวงานกราฟฟิก", emoji: "🎨", perm: "proof.manage", group: "กราฟฟิก" },
   // 🏷️ ของที่ขาย
   { href: "/admin/products", label: "สินค้า", emoji: "🏷️", perm: "products.view", group: "สินค้า" },
   { href: "/admin/import", label: "นำเข้าสินค้า", emoji: "📥", perm: "products.import", group: "สินค้า" },
@@ -51,6 +52,7 @@ const MENU_GROUPS: {
   // ชุดสีตามโลโก้ iDucky: ส้มปากเป็ด · เหลืองเป็ด · น้ำตาลอ่อน · น้ำตาลเข้มเส้นขอบโลโก้
   // (คลาส amber ถูก remap เป็นฟ้าตามธีมรีแบรนด์ จึงใช้ orange/yellow แท้ + รหัสสีตรงสำหรับโทนน้ำตาล)
   { key: "งานขาย", label: "📦 งานขาย", text: "text-orange-500 hover:text-orange-600", dot: "bg-orange-500", badge: "bg-orange-100 text-orange-600", line: "border-orange-200" },
+  { key: "กราฟฟิก", label: "🎨 กราฟฟิก", text: "text-rose-500 hover:text-rose-600", dot: "bg-rose-500", badge: "bg-rose-100 text-rose-600", line: "border-rose-200" },
   { key: "สินค้า", label: "🏷️ สินค้า", text: "text-yellow-600 hover:text-yellow-700", dot: "bg-yellow-500", badge: "bg-yellow-100 text-yellow-700", line: "border-yellow-200" },
   { key: "ลูกค้า", label: "💛 ลูกค้า & การตลาด", text: "text-[#a9741f] hover:text-[#8a5c14]", dot: "bg-[#c98f2e]", badge: "bg-[#f7ecd8] text-[#a9741f]", line: "border-[#ecdcc0]" },
   { key: "ระบบ", label: "⚙️ ร้าน & ระบบ", text: "text-[#6d4c33] hover:text-[#54382a]", dot: "bg-[#6d4c33]", badge: "bg-[#efe6dd] text-[#6d4c33]", line: "border-[#e0d2c5]" },

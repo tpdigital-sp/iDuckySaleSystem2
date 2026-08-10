@@ -27,13 +27,40 @@ import { PLACEMENT_LABEL, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
  * ตัดพวกพิกัด/ลิงก์/สรุปการวางลายออก เพราะป้ายต้องอ่านจากไกลได้ในบรรทัดเดียวสองบรรทัด
  */
 function boxSummary(it: Order["items"][number]): string {
-  const skip = ["ภาพลายที่แนบ", "รอเช็คสต๊อก", PLACEMENT_SPEC_LABEL, PLACEMENT_LABEL];
-  const entries = Object.entries(it.sel ?? {}).filter(([k, v]) => v && !skip.includes(k));
-  if (entries.length) return entries.map(([k, v]) => `${k}: ${v}`).join(" · ");
+  const opts = optionText(it);
+  if (opts) return opts;
   // ออเดอร์เก่าที่ไม่มีตัวเลือกแบบ key-value — ตัดให้สั้นพอติดกล่อง
   const t = cleanSelections(it.selections);
   return t.length > 90 ? `${t.slice(0, 90)}…` : t;
 }
+
+/** ตัวเลือกสินค้าล้วน ๆ (ขนาด/สี/รุ่น) — ตัดพิกัด/ลิงก์/สรุปการวางลายออก */
+function optionText(it: Order["items"][number]): string {
+  const skip = ["ภาพลายที่แนบ", "รอเช็คสต๊อก", "ลิงก์ไฟล์ลาย/อีเมล", PLACEMENT_SPEC_LABEL, PLACEMENT_LABEL];
+  return Object.entries(it.sel ?? {})
+    .filter(([k, v]) => v && !skip.includes(k))
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(" · ");
+}
+
+/**
+ * งานที่ลูกค้าวางลายเอง — ใบงานเอาแค่ "ตัวเลือก + ลายที่เท่าไหร่ กี่ชิ้น" บรรทัดละลาย
+ * (พิกัด/DPI/ขนาดกรอบยาวเป็นพรืด อ่านบนกระดาษไม่ไหว · ตัวเลขจริงดูจากไฟล์ .ai ที่โหลดไป)
+ * คืนอาเรย์ว่าง = ไม่ใช่งานวางลายเอง ให้แสดงตัวเลือกแบบเดิม
+ */
+function designLines(it: Order["items"][number]): string[] {
+  if (!it.sel?.[PLACEMENT_SPEC_LABEL]) return [];
+  const proofs = proofsOf(it);
+  if (!proofs.length) return [];
+  const opts = optionText(it);
+  return proofs.map((p, i) =>
+    [opts, `ลายที่ ${i + 1}${p.qty ? ` × ${p.qty} ชิ้น` : ""}`].filter(Boolean).join(" · "),
+  );
+}
+
+/** คำบรรยายใต้รูปแบบงาน — ตัดหางที่บอกที่มาของแบบออก ใบงานเอาแค่ "ลายที่ N" */
+const shortProofNote = (note?: string) =>
+  (note ?? "").replace(/\s*—\s*ลูกค้าจัดวางเองบนเทมเพลต.*$/, "").trim();
 
 /** work = ใบงาน+ใบปะหน้าพัสดุ (ใบเดียวจบ) · receipt = ใบเสร็จให้ลูกค้า · box = ใบแปะหน้ากล่อง */
 type DocKey = "work" | "receipt" | "box";
@@ -477,8 +504,8 @@ export default function PrintOrderPage() {
                                 />
                                 <p className="mt-0.5 text-[9px] leading-tight text-slate-600">
                                   {p.qty ? <strong>{p.qty} ชิ้น</strong> : null}
-                                  {p.qty && p.note ? " · " : null}
-                                  {p.note}
+                                  {p.qty && shortProofNote(p.note) ? " · " : null}
+                                  {shortProofNote(p.note)}
                                 </p>
                               </div>
                             ))}
@@ -494,8 +521,16 @@ export default function PrintOrderPage() {
                             🎁 มีงานตัวอย่าง — แนบใส่กล่องให้ลูกค้าด้วย
                           </p>
                         )}
-                        {cleanSelections(it.selections) && (
-                          <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{cleanSelections(it.selections)}</p>
+                        {designLines(it).length > 0 ? (
+                          <div className="mt-0.5 text-xs leading-relaxed text-slate-600">
+                            {designLines(it).map((line, k) => (
+                              <p key={k}>{line}</p>
+                            ))}
+                          </div>
+                        ) : (
+                          cleanSelections(it.selections) && (
+                            <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{cleanSelections(it.selections)}</p>
+                          )
                         )}
                         {(it.artworkUrls?.length ?? 0) > 0 && (
                           <div className="mt-1.5">
