@@ -55,6 +55,13 @@ export default function PrintOrderPage() {
   const [loading, setLoading] = useState(true);
   const [docs, setDocs] = useState<Record<DocKey, boolean>>({ work: true, receipt: false, box: false });
   const [withProofs, setWithProofs] = useState(true);
+  /**
+   * 🏷 ใบแปะกล่อง — งานขายส่งแพ็คแยกลาย (กล่องละลาย กล่องละ N ชิ้น)
+   * เลยให้ตั้งได้ต่อ "ลาย" ว่าพิมพ์กี่ใบ และหนึ่งกล่องใส่กี่ชิ้น
+   * คีย์ = "ลำดับรายการ-ลำดับลาย" · ชิ้น/กล่องเว้นว่าง = เว้นช่องให้คนแพ็คเขียนเอง
+   */
+  const [boxCopies, setBoxCopies] = useState<Record<string, number>>({});
+  const [boxPerBox, setBoxPerBox] = useState<Record<string, string>>({});
   const [origin, setOrigin] = useState(""); // สำหรับ QR มือถือ (ต้องอ่านฝั่งเบราว์เซอร์)
   const [shop, setShop] = useState<ShopInfo>(shopInfoOf(null)); // ข้อมูลร้าน (แอดมินแก้ได้ที่ตั้งค่าระบบ)
   const seesMoney = useCan()("orders.money"); // ฝ่ายแพ็คไม่เห็นใบเสร็จ (มีราคา)
@@ -134,6 +141,20 @@ export default function PrintOrderPage() {
   // 🔒 ยังไม่ได้รับเงินครบ (รวมออเดอร์มัดจำที่ค้างยอดหลัง) → พิมพ์เอกสารไม่ได้
   const fullyPaid = orderFullyPaid(order);
   const chosen = (Object.keys(docs) as DocKey[]).filter((k) => docs[k]);
+  /**
+   * แตกออเดอร์เป็น "ลาย" — งานขายส่งแพ็คแยกลาย ใบแปะกล่องจึงต้องออกทีละลาย
+   * ใช้แบบที่อนุมัติแล้วเป็นหลัก (มีจำนวนต่อลายติดมาด้วย) ไม่มีก็ใช้ลายที่ลูกค้าแนบ
+   */
+  const boxUnits = order.items.flatMap((it, i) => {
+    const proofs = proofsOf(it);
+    const list =
+      proofs.length > 0
+        ? proofs.map((pf, k) => ({ url: pf.url, qty: pf.qty, no: k + 1 }))
+        : (it.artworkUrls ?? []).length > 0
+          ? (it.artworkUrls ?? []).map((u, k) => ({ url: u, qty: undefined as number | undefined, no: k + 1 }))
+          : [{ url: undefined as string | undefined, qty: it.qty, no: 1 }];
+    return list.map((d) => ({ ...d, i, it, total: list.length, key: `${i}-${d.no}` }));
+  });
   /** ลิงก์เต็มสำหรับ QR มือถือ — เปิดหน้าออเดอร์เพื่อเช็คของตามภาพ */
   const orderUrl = origin ? `${origin}/admin/orders/${encodeURIComponent(order.id)}` : "";
 
@@ -208,6 +229,80 @@ export default function PrintOrderPage() {
             {order.lastPrintedAt && ` · ล่าสุด ${new Date(order.lastPrintedAt).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`}
             {" — กดพิมพ์อีกจะบันทึกเป็นปริ้นซ้ำ"}
           </span>
+        )}
+
+        {docs.box && (
+          <div className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-bold text-slate-700">
+              🏷 ตั้งค่าใบแปะกล่อง — งานขายส่งแพ็คแยกลาย ตั้งได้ทีละลาย
+            </p>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              “จำนวนใบ” = พิมพ์กี่แผ่น A4 (กล่องละแผ่น) · “ชิ้น/กล่อง” ใส่ตัวเลขไว้ก็ได้
+              หรือเว้นว่างให้คนแพ็คเขียนเองหน้างาน
+            </p>
+            <div className="mt-2 grid gap-1.5">
+              {boxUnits.map((u) => {
+                const copies = boxCopies[u.key] ?? 1;
+                return (
+                  <div key={u.key} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-2 py-1.5 ring-1 ring-slate-200">
+                    {u.url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={u.url} alt="" className="h-9 w-9 shrink-0 rounded object-cover ring-1 ring-slate-200" />
+                    ) : (
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded bg-slate-100 text-[10px] text-slate-400">—</span>
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-slate-700">
+                      {order.items.length > 1 ? `รายการ ${u.i + 1} · ` : ""}
+                      {u.total > 1 ? `ลายที่ ${u.no}` : u.it.name}
+                      {u.qty ? <span className="ml-1 font-normal text-slate-400">({u.qty} ชิ้น)</span> : null}
+                    </span>
+                    <label className="flex items-center gap-1 text-[11px] text-slate-600">
+                      ชิ้น/กล่อง
+                      <input
+                        value={boxPerBox[u.key] ?? ""}
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/\D/g, "");
+                          setBoxPerBox((c) => ({ ...c, [u.key]: v }));
+                          // ใส่ชิ้น/กล่องแล้ว คำนวณจำนวนใบให้เลย (แก้ทับได้)
+                          const per = Number(v);
+                          if (per > 0 && u.qty) setBoxCopies((c) => ({ ...c, [u.key]: Math.max(1, Math.ceil(u.qty! / per)) }));
+                        }}
+                        inputMode="numeric"
+                        placeholder="เขียนเอง"
+                        className="w-20 rounded border border-slate-300 px-1.5 py-0.5 text-center text-[11px]"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1 text-[11px] text-slate-600">
+                      จำนวนใบ
+                      <button
+                        type="button"
+                        onClick={() => setBoxCopies((c) => ({ ...c, [u.key]: Math.max(0, copies - 1) }))}
+                        className="h-6 w-6 rounded border border-slate-300 bg-white text-sm font-bold text-slate-600 hover:bg-slate-50"
+                      >
+                        −
+                      </button>
+                      <input
+                        value={copies}
+                        onChange={(e) => setBoxCopies((c) => ({ ...c, [u.key]: Math.min(99, Math.max(0, Number(e.target.value.replace(/\D/g, "")) || 0)) }))}
+                        inputMode="numeric"
+                        className="w-12 rounded border border-slate-300 px-1 py-0.5 text-center text-[11px] font-bold"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setBoxCopies((c) => ({ ...c, [u.key]: Math.min(99, copies + 1) }))}
+                        className="h-6 w-6 rounded border border-slate-300 bg-white text-sm font-bold text-slate-600 hover:bg-slate-50"
+                      >
+                        +
+                      </button>
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-[11px] font-bold text-slate-600">
+              รวมพิมพ์ {boxUnits.reduce((n, u) => n + (boxCopies[u.key] ?? 1), 0)} แผ่น
+            </p>
+          </div>
         )}
 
         {!fullyPaid && (
@@ -496,52 +591,46 @@ export default function PrintOrderPage() {
 
         {/* ═══════════ ใบเสร็จ ═══════════ */}
         {/*
-          ── 🏷 ใบแปะหน้ากล่อง — หนึ่งใบต่อหนึ่งรายการ ──
-          ออกแบบให้อ่านจากไกล: เลขออเดอร์ตัวโต · รูปงานจริง · ชื่อผู้รับ · จำนวนตัวใหญ่สุด
-          ไม่มีราคา/ที่อยู่ ฝ่ายแพ็คใช้แปะข้างกล่องได้เลย
+          ── 🏷 ใบแปะหน้ากล่อง — หนึ่งแผ่นต่อหนึ่งกล่อง ──
+          งานขายส่งแพ็คแยกลาย (กล่องละลาย) จึงออกทีละลาย และพิมพ์ซ้ำได้ตามจำนวนกล่อง
+          ช่อง "จำนวน" ใส่เลขไว้ก่อนก็ได้ หรือเว้นเส้นให้คนแพ็คเขียนหน้างาน
         */}
         {docs.box &&
-          order.items.map((it, i) => {
-            const pics = (proofsOf(it).map((p) => p.url).concat(it.artworkUrls ?? [])).slice(0, 3);
-            return (
+          boxUnits.flatMap((u) => {
+            const copies = boxCopies[u.key] ?? 1;
+            const per = (boxPerBox[u.key] ?? "").trim();
+            return Array.from({ length: copies }, (_, c) => (
               <section
-                key={`box-${i}`}
+                key={`box-${u.key}-${c}`}
                 className="sheet flex flex-col rounded-xl border border-slate-200 bg-white p-8 shadow-sm"
               >
                 <div className="flex flex-1 flex-col rounded-2xl border-4 border-slate-900 p-6">
-                  {/* หัว: รายละเอียดสั้น ๆ ซ้าย · เลขออเดอร์ตัวโตขวา */}
+                  {/* หัว: สินค้า/ตัวเลือกซ้าย · เลขออเดอร์ตัวโตขวา */}
                   <div className="flex items-start justify-between gap-6 border-b-4 border-slate-900 pb-4">
                     <div className="min-w-0">
-                      <p className="text-2xl font-extrabold leading-tight">{it.name}</p>
-                      <p className="mt-1 text-xl font-semibold leading-snug text-slate-700">{boxSummary(it)}</p>
-                      {proofsOf(it).length > 1 && (
-                        <p className="mt-1 text-lg font-bold text-slate-500">{proofsOf(it).length} ลาย</p>
+                      <p className="text-2xl font-extrabold leading-tight">{u.it.name}</p>
+                      <p className="mt-1 text-xl font-semibold leading-snug text-slate-700">{boxSummary(u.it)}</p>
+                      {u.total > 1 && (
+                        <p className="mt-1 text-3xl font-extrabold text-slate-900">ลายที่ {u.no}</p>
                       )}
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="font-mono text-4xl font-extrabold tracking-tight">{order.id}</p>
                       <p className="mt-1 text-sm font-bold text-slate-500">
-                        รายการที่ {i + 1} / {order.items.length}
+                        {order.items.length > 1 ? `รายการที่ ${u.i + 1} / ${order.items.length} · ` : ""}
+                        กล่องที่ {c + 1} / {copies}
                       </p>
                     </div>
                   </div>
 
-                  {/* กลาง: รูปงานจริง + ชื่อผู้รับตัวโต */}
+                  {/* กลาง: รูปลายใหญ่ ๆ + ชื่อผู้รับ */}
                   <div className="flex flex-1 items-center gap-6 py-6">
-                    {/* รูปงานยืดหดตามที่เหลือ · ชื่อผู้รับกันที่ไว้ 2/5 ของความกว้าง (ไม่ให้ทับกัน) */}
-                    <div className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-3">
-                      {pics.length ? (
-                        pics.map((u, k) => (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            key={`${u}-${k}`}
-                            src={u}
-                            alt=""
-                            className="h-36 w-36 rounded-xl border-2 border-slate-300 object-contain"
-                          />
-                        ))
+                    <div className="flex min-w-0 flex-1 items-center justify-center">
+                      {u.url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={u.url} alt="" className="max-h-64 max-w-full rounded-xl border-2 border-slate-300 object-contain" />
                       ) : (
-                        <span className="grid h-36 w-36 place-items-center rounded-xl border-2 border-dashed border-slate-300 text-sm text-slate-400">
+                        <span className="grid h-48 w-48 place-items-center rounded-xl border-2 border-dashed border-slate-300 text-sm text-slate-400">
                           ไม่มีรูปงาน
                         </span>
                       )}
@@ -553,19 +642,26 @@ export default function PrintOrderPage() {
                     </div>
                   </div>
 
-                  {/* ล่าง: จำนวนตัวใหญ่สุด — ฝ่ายแพ็คนับตามนี้ */}
+                  {/* ล่าง: จำนวนในกล่องนี้ — ใส่เลขมาแล้ว หรือเว้นเส้นให้เขียนเอง */}
                   <div className="flex items-end justify-between gap-6 border-t-4 border-slate-900 pt-4">
                     <p className="text-sm text-slate-500">
                       {order.date} · {order.shipping}
                       {(order.tracking ?? "").trim() ? ` · ${order.tracking}` : ""}
+                      {u.qty ? ` · ลายนี้รวม ${u.qty.toLocaleString("th-TH")} ชิ้น` : ""}
                     </p>
-                    <p className="text-5xl font-extrabold tabular-nums">
-                      จำนวน {it.qty.toLocaleString("th-TH")} ชิ้น
+                    <p className="flex items-end gap-3 text-5xl font-extrabold tabular-nums">
+                      จำนวน
+                      {per ? (
+                        <span>{Number(per).toLocaleString("th-TH")}</span>
+                      ) : (
+                        <span className="inline-block w-40 border-b-4 border-slate-900" />
+                      )}
+                      ชิ้น
                     </p>
                   </div>
                 </div>
               </section>
-            );
+            ));
           })}
 
         {docs.receipt && seesMoney && fullyPaid && (
