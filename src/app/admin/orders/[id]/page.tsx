@@ -1886,20 +1886,22 @@ export default function AdminOrderDetailPage() {
                                     return (
                                       <li
                                         key={r.u}
-                                        className="flex items-center gap-2 rounded-lg bg-white p-1.5 ring-1 ring-sky-200"
+                                        className="flex items-start gap-2 rounded-lg bg-white p-1.5 ring-1 ring-sky-200"
                                       >
-                                        <span className="w-4 shrink-0 text-center text-[11px] font-bold text-slate-400">
+                                        <span className="w-4 shrink-0 pt-1 text-center text-[11px] font-bold text-slate-400">
                                           {r.no}.
                                         </span>
                                         <button
                                           type="button"
                                           onClick={() => setLightbox({ src: r.u, alt: `${it.name} ลายที่ ${r.no}`, caption: it.name })}
-                                          className="h-10 w-10 shrink-0 overflow-hidden rounded ring-1 ring-sky-200 transition hover:ring-2 hover:ring-sky-400"
+                                          className="h-12 w-12 shrink-0 overflow-hidden rounded ring-1 ring-sky-200 transition hover:ring-2 hover:ring-sky-400"
                                           title="ดูรูปเต็ม"
                                         >
                                           {/* eslint-disable-next-line @next/next/no-img-element */}
                                           <img src={r.u} alt={`ลายที่ ${r.no}`} className="h-full w-full object-cover" />
                                         </button>
+                                        {/* ชื่อไฟล์ · ข้อมูลกรอบ · ปุ่มดาวน์โหลด — เรียงลงมาในคอลัมน์เดียว
+                                            (แผงนี้แคบ ถ้าวางปุ่มด้านข้างข้อความจะถูกบีบจนอ่านไม่ออก) */}
                                         <span className="min-w-0 flex-1">
                                           <button
                                             type="button"
@@ -1921,44 +1923,46 @@ export default function AdminOrderDetailPage() {
                                                 setAiBusy(null);
                                               }
                                             }}
-                                            className="block max-w-full truncate text-left text-[11px] font-bold text-sky-700 underline decoration-sky-300 underline-offset-2 transition hover:text-sky-900 disabled:no-underline disabled:opacity-60"
-                                            title="กดเพื่อสร้างและดาวน์โหลดไฟล์ .ai ขนาดเท่างานจริง"
+                                            className="block w-full truncate text-left text-[11px] font-bold text-sky-700 underline decoration-sky-300 underline-offset-2 transition hover:text-sky-900 disabled:no-underline disabled:opacity-60"
+                                            title={`กดเพื่อสร้างและดาวน์โหลด ${r.name}`}
                                           >
                                             {aiBusy === aiKey ? "กำลังสร้างไฟล์…" : `⬇️ ${r.name}`}
                                           </button>
-                                          <span className={`block text-[10px] ${faint}`}>
-                                            {r.frame ? `กรอบ ${r.frame.widthMm}×${r.frame.heightMm} มม. (รวมตัดตก)` : "ไม่มีข้อมูลกรอบงาน"}
+                                          <span className={`block text-[10px] leading-snug ${faint}`}>
+                                            {r.frame ? `กรอบ ${r.frame.widthMm}×${r.frame.heightMm} มม.` : "ไม่มีข้อมูลกรอบงาน"}
                                             {r.dpi ? ` · ${r.dpi} DPI` : ""}
                                           </span>
-                                        </span>
-                                        {r.frame &&
-                                          (() => {
-                                            const tpl = templateFileFor(r.frame, it.sel);
-                                            const href = tpl ? fileHref(tpl.f) : null;
-                                            if (!href) return null;
-                                            return (
+                                          <span className="mt-1 flex flex-wrap gap-1">
+                                            {r.frame &&
+                                              (() => {
+                                                const tpl = templateFileFor(r.frame, it.sel);
+                                                const href = tpl ? fileHref(tpl.f) : null;
+                                                if (!href) return null;
+                                                return (
+                                                  <a
+                                                    href={href}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="rounded bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-600 ring-1 ring-slate-300 transition hover:bg-slate-50"
+                                                    title={`ไฟล์เทมเพลตต้นแบบ: ${tpl!.f.fileName ?? tpl!.t.name}`}
+                                                  >
+                                                    📐 เทมเพลต
+                                                  </a>
+                                                );
+                                              })()}
+                                            {r.source && (
                                               <a
-                                                href={href}
+                                                href={r.source}
                                                 target="_blank"
                                                 rel="noreferrer"
-                                                className="shrink-0 rounded-lg bg-white px-2 py-1 text-[10px] font-bold text-slate-600 ring-1 ring-slate-300 transition hover:bg-slate-50"
-                                                title={`ไฟล์เทมเพลตต้นแบบ: ${tpl!.f.fileName ?? tpl!.t.name}`}
+                                                className="rounded bg-white px-1.5 py-0.5 text-[10px] font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-50"
+                                                title="ไฟล์รูปที่ลูกค้าอัปมาก่อนจัดวาง (ความละเอียดเต็ม)"
                                               >
-                                                📐 เทมเพลต .ai
+                                                🖼 ต้นฉบับ
                                               </a>
-                                            );
-                                          })()}
-                                        {r.source && (
-                                          <a
-                                            href={r.source}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="shrink-0 rounded-lg bg-white px-2 py-1 text-[10px] font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-50"
-                                            title="ไฟล์รูปที่ลูกค้าอัปมาก่อนจัดวาง (ความละเอียดเต็ม)"
-                                          >
-                                            🖼 ต้นฉบับ
-                                          </a>
-                                        )}
+                                            )}
+                                          </span>
+                                        </span>
                                         {mayEdit && (
                                           <button
                                             type="button"
@@ -1968,7 +1972,7 @@ export default function AdminOrderDetailPage() {
                                             }}
                                             title="เอารูปนี้ออกจากออเดอร์"
                                             aria-label="เอารูปลายนี้ออก"
-                                            className="shrink-0 rounded px-1.5 py-1 text-[11px] font-bold text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
+                                            className="shrink-0 rounded px-1 py-0.5 text-[11px] font-bold text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
                                           >
                                             ✕
                                           </button>
