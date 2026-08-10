@@ -120,6 +120,8 @@ function AdminTemplatesInner() {
   /** การ์ดที่กางอยู่ (คลังไฟล์เยอะ — ค่าเริ่มต้นยุบหมด เห็นภาพรวมก่อน) */
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [dropOn, setDropOn] = useState<string | null>(null);
+  /** ปุ่มสกินที่กำลังถูกลากไฟล์มาจ่ออยู่ — "<template>:<file|set>" */
+  const [skinDrop, setSkinDrop] = useState<string | null>(null);
   const [usedBy, setUsedBy] = useState<Record<string, { id: string; name: string }[]>>({});
   /** รายชื่อสินค้าทั้งร้าน (id + ชื่อ) — ให้เลือก "สินค้าอ้างอิง" ตอนผูกไฟล์กับตัวเลือก */
   const [productList, setProductList] = useState<{ id: string; name: string }[]>([]);
@@ -603,6 +605,35 @@ function AdminTemplatesInner() {
     });
     if (!res.ok) return setError(res.error ?? "อัปโหลดรูปไม่สำเร็จ");
     patch(t.id, { previewUrl: res.url });
+  }
+
+  /**
+   * ปุ่มสกินรับไฟล์แบบ "ลากมาวาง" ได้ด้วย
+   * ⚠️ ต้อง stopPropagation ทุกอีเวนต์ — ไม่งั้นการ์ดชั้นนอกจะคว้าไฟล์ไปเพิ่มเป็น "ไฟล์เทมเพลต" แทน
+   */
+  function skinDropProps(t: Draft, fileId?: string) {
+    const key = `${t.id}:${fileId ?? "set"}`;
+    return {
+      on: skinDrop === key,
+      handlers: {
+        onDragOver: (e: React.DragEvent) => {
+          if (!e.dataTransfer.types.includes("Files")) return;
+          e.preventDefault();
+          e.stopPropagation();
+          setDropOn(null);
+          setSkinDrop(key);
+        },
+        onDragLeave: () => setSkinDrop((c) => (c === key ? null : c)),
+        onDrop: (e: React.DragEvent) => {
+          const img = [...(e.dataTransfer.files ?? [])][0];
+          if (!img) return;
+          e.preventDefault();
+          e.stopPropagation();
+          setSkinDrop(null);
+          void pickSkin(t, img, fileId);
+        },
+      },
+    };
   }
 
   /**
@@ -1463,16 +1494,21 @@ function AdminTemplatesInner() {
                             </span>
                             {/* 👕 สกินเฉพาะไฟล์นี้ — ทับสกินของทั้งชุด (เคสคนละรุ่นรูกล้องไม่เท่ากัน) */}
                             <label
+                              {...skinDropProps(t, f.id).handlers}
                               className={`${btnSmNeutral} shrink-0 cursor-pointer ${
-                                f.skinUrl ? "!border-emerald-300 !text-emerald-700" : ""
+                                skinDropProps(t, f.id).on
+                                  ? "!border-emerald-500 !bg-emerald-50 !text-emerald-700 ring-2 ring-emerald-300"
+                                  : f.skinUrl
+                                    ? "!border-emerald-300 !text-emerald-700"
+                                    : ""
                               }`}
                               title={
                                 f.skinUrl
-                                  ? "ไฟล์นี้มีสกินของตัวเอง — กดเพื่อเปลี่ยนรูป"
-                                  : "ใส่สกินเฉพาะไฟล์นี้ (PNG พื้นโปร่งใส) — ไม่ใส่ = ใช้สกินของทั้งชุด"
+                                  ? "ไฟล์นี้มีสกินของตัวเอง — กดหรือลากรูปมาวางเพื่อเปลี่ยน"
+                                  : "ใส่สกินเฉพาะไฟล์นี้ (PNG พื้นโปร่งใส) — กดเลือกหรือลากไฟล์มาวางก็ได้ · ไม่ใส่ = ใช้สกินของทั้งชุด"
                               }
                             >
-                              {f.skinUrl ? "👕 มีสกิน" : "👕 สกิน"}
+                              {skinDropProps(t, f.id).on ? "👕 วางเลย" : f.skinUrl ? "👕 มีสกิน" : "👕 สกิน"}
                               <input
                                 type="file"
                                 accept="image/png"
@@ -1530,8 +1566,18 @@ function AdminTemplatesInner() {
                             />
                           </button>
                         )}
-                        <label className={`${btnSmNeutral} cursor-pointer`} title="PNG พื้นโปร่งใส วางทับลายให้เห็นเป็นสินค้าจริง — เป็นภาพพรีวิว ไม่ติดไปกับไฟล์ที่ส่งพิมพ์">
-                          {t.skinUrl ? "👕 เปลี่ยนสกิน" : "👕 สกินสินค้า (PNG)"}
+                        <label
+                          {...skinDropProps(t).handlers}
+                          className={`${btnSmNeutral} cursor-pointer ${
+                            skinDropProps(t).on ? "!border-emerald-500 !bg-emerald-50 !text-emerald-700 ring-2 ring-emerald-300" : ""
+                          }`}
+                          title="PNG พื้นโปร่งใส วางทับลายให้เห็นเป็นสินค้าจริง — กดเลือกหรือลากไฟล์มาวางก็ได้ · เป็นภาพพรีวิว ไม่ติดไปกับไฟล์ที่ส่งพิมพ์"
+                        >
+                          {skinDropProps(t).on
+                            ? "👕 วางเลย"
+                            : t.skinUrl
+                              ? "👕 เปลี่ยนสกิน"
+                              : "👕 สกินสินค้า (PNG) · ลากวางได้"}
                           <input
                             type="file"
                             accept="image/png"
