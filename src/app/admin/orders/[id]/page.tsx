@@ -40,17 +40,10 @@ import PackCheckPanel from "@/components/PackCheckPanel";
 import ItemAdder from "@/components/admin/ItemAdder";
 import Barcode from "@/components/Barcode";
 import { QRCodeSVG } from "qrcode.react";
-import { useActor, useCan, useRoleLabel } from "@/lib/perm-context";
+import { useActor, useCan, useIsAdministrator, useRoleLabel } from "@/lib/perm-context";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
-import {
-  fileHref,
-  filesForSelections,
-  parsePrintFrame,
-  PLACEMENT_SPEC_LABEL,
-  type DesignTemplate,
-} from "@/lib/design-templates";
-import { fetchTemplates } from "@/lib/template-repo";
+import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 
 /** ขั้นถัดไปที่ "ปกติจะกด" ของแต่ละสถานะ — ทำเป็นปุ่มเดียวจบ ไม่ต้องเปิดลิสต์ยาว */
@@ -994,27 +987,55 @@ export default function AdminOrderDetailPage() {
   const [artUpIdx, setArtUpIdx] = useState<number | null>(null);
   /** กำลังสร้างไฟล์ .ai พร้อมพิมพ์ของรายการไหนอยู่ (คีย์ = ออเดอร์-ลำดับรายการ) */
   const [aiBusy, setAiBusy] = useState<string | null>(null);
-  /** คลังเทมเพลตไฟล์งาน — ไว้ให้กราฟฟิกโหลดไฟล์ .ai ต้นแบบของสินค้านั้นได้จากหน้าออเดอร์เลย */
-  const [templates, setTemplates] = useState<DesignTemplate[]>([]);
-  useEffect(() => {
-    void fetchTemplates().then(setTemplates);
-  }, []);
+  /** ลบรูปลายออกจากออเดอร์ได้เฉพาะเจ้าของระบบ — พนักงานคนอื่นเห็นแต่โหลดไฟล์ */
+  const isOwner = useIsAdministrator();
   /**
-   * หาไฟล์เทมเพลตต้นแบบของลายนั้น — จับคู่จาก "ขนาดอาร์ตบอร์ด" ที่บันทึกไว้ในออเดอร์
-   * (กรอบงานในออเดอร์มาจากอาร์ตบอร์ดของไฟล์นั้นตรง ๆ เลยชี้กลับได้แม่น)
-   * มีหลายไฟล์ขนาดเท่ากัน → เลือกอันที่ค่าตัวเลือกตรงกับที่ลูกค้าสั่ง
+   * ลูกค้าจัดวางลายบนเทมเพลตเองแล้ว = "แบบ" เสร็จตั้งแต่หน้าเว็บ
+   * ออเดอร์ที่สั่งก่อนมีระบบนี้ (หรือถูกลบแบบทิ้ง) จะยังไม่มีแบบในฝั่งขวา
+   * → เติมให้อัตโนมัติครั้งเดียวตอนเปิดหน้า พร้อมตั้งเป็นอนุมัติแล้ว
+   *   (ไม่ต้องให้กราฟฟิกทำแบบใหม่ · ลูกค้าไม่ต้องกดอนุมัติซ้ำ — เขาเห็นภาพจริงตอนสั่งแล้ว)
+   * ทำเฉพาะคนที่มีสิทธิ์แก้ และเฉพาะรายการที่ยังไม่มีแบบเลย
    */
-  const templateFileFor = useCallback(
-    (frame: { widthMm: number; heightMm: number }, sel?: Record<string, string>) => {
-      const picked = Object.values(sel ?? {}).join(" ");
-      const cands = templates
-        .flatMap((t) => filesForSelections(t, sel ?? {}).concat(t.files ?? []).map((f) => ({ t, f })))
-        .filter(({ f }) => f.widthMm === frame.widthMm && f.heightMm === frame.heightMm && (f.fileUrl || f.linkUrl));
-      if (!cands.length) return null;
-      return cands.find(({ f }) => f.choice && picked.includes(f.choice)) ?? cands[0];
-    },
-    [templates],
-  );
+  const autoProofDone = useRef(false);
+  useEffect(() => {
+    if (!order || !mayEdit || demo || autoProofDone.current) return;
+    const at = new Date().toISOString();
+    let changed = false;
+    const items = order.items.map((it) => {
+      if (proofsOf(it).length) return it;
+      const specs = (it.sel?.[PLACEMENT_SPEC_LABEL] ?? "").split(" | ").filter(Boolean);
+      if (!specs.length) return it;
+      const arts = it.artworkUrls ?? [];
+      const sourceSet = new Set(specs.map((sp) => sp.match(/ต้นฉบับ:\s*(\S+)/)?.[1]).filter(Boolean) as string[]);
+      const ready =
+        arts.length === specs.length
+          ? arts
+          : arts.filter((u) => !sourceSet.has(u) && /\.jpe?g(\?|$)/i.test(u));
+      if (ready.length !== specs.length) return it; // จับคู่ไม่ลงตัว ปล่อยให้ทีมงานจัดการเอง
+      changed = true;
+      return {
+        ...it,
+        proofs: ready.map((url, k) => {
+          const qty = Number(specs[k]?.match(/×\s*(\d+)\s*ชิ้น/)?.[1]);
+          return {
+            url,
+            at,
+            review: "อนุมัติ" as const,
+            note: `ลายที่ ${k + 1} — ลูกค้าจัดวางเองบนเทมเพลต (อนุมัติอัตโนมัติ)`,
+            ...(Number.isFinite(qty) && qty > 0 ? { qty } : {}),
+          };
+        }),
+        proofStatus: "อนุมัติ" as const,
+        proofUpdatedAt: at,
+      };
+    });
+    if (!changed) return;
+    autoProofDone.current = true;
+    const next = withLog({ ...order, items }, actor, "ใช้แบบที่ลูกค้าออกแบบเอง (อนุมัติอัตโนมัติ)");
+    setOrder(next);
+    void saveOrderAdmin(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.id, mayEdit, demo]);
   async function addArtwork(itemIndex: number, fileList: FileList | File[] | null) {
     if (!order || !fileList) return;
     const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
@@ -1932,38 +1953,8 @@ export default function AdminOrderDetailPage() {
                                             {r.frame ? `กรอบ ${r.frame.widthMm}×${r.frame.heightMm} มม.` : "ไม่มีข้อมูลกรอบงาน"}
                                             {r.dpi ? ` · ${r.dpi} DPI` : ""}
                                           </span>
-                                          <span className="mt-1 flex flex-wrap gap-1">
-                                            {r.frame &&
-                                              (() => {
-                                                const tpl = templateFileFor(r.frame, it.sel);
-                                                const href = tpl ? fileHref(tpl.f) : null;
-                                                if (!href) return null;
-                                                return (
-                                                  <a
-                                                    href={href}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="rounded bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-600 ring-1 ring-slate-300 transition hover:bg-slate-50"
-                                                    title={`ไฟล์เทมเพลตต้นแบบ: ${tpl!.f.fileName ?? tpl!.t.name}`}
-                                                  >
-                                                    📐 เทมเพลต
-                                                  </a>
-                                                );
-                                              })()}
-                                            {r.source && (
-                                              <a
-                                                href={r.source}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="rounded bg-white px-1.5 py-0.5 text-[10px] font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-50"
-                                                title="ไฟล์รูปที่ลูกค้าอัปมาก่อนจัดวาง (ความละเอียดเต็ม)"
-                                              >
-                                                🖼 ต้นฉบับ
-                                              </a>
-                                            )}
-                                          </span>
                                         </span>
-                                        {mayEdit && (
+                                        {isOwner && (
                                           <button
                                             type="button"
                                             onClick={() => {
@@ -2012,7 +2003,7 @@ export default function AdminOrderDetailPage() {
                                       >
                                         ⬇
                                       </button>
-                                      {mayEdit && (
+                                      {isOwner && (
                                         <button
                                           type="button"
                                           onClick={() => {
@@ -2106,6 +2097,13 @@ export default function AdminOrderDetailPage() {
                         <span className="ml-1 font-normal text-violet-600">— ลูกค้าเห็นชุดนี้ และกดอนุมัติ / ขอแก้ไข</span>
                         {mayProof && <span className="ml-1 font-normal text-violet-400">· ลากไฟล์มาวางในกล่องนี้ได้เลย</span>}
                       </p>
+                      {/* ลูกค้าออกแบบเอง = ชุดนี้ผ่านการอนุมัติมาแล้ว ไม่ต้องรอลูกค้าตรวจซ้ำ */}
+                      {proofs.length > 0 && proofs.every((pf) => /ลูกค้าจัดวางเองบนเทมเพลต/.test(pf.note ?? "")) && (
+                        <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-emerald-800 ring-1 ring-emerald-200">
+                          ✅ ลูกค้าออกแบบเองบนเทมเพลต — ระบบใส่แบบให้และอนุมัติอัตโนมัติแล้ว
+                          <span className="font-normal"> ไม่ต้องทำแบบใหม่ ไม่ต้องรอลูกค้าตรวจ ส่งผลิตได้เลย</span>
+                        </p>
+                      )}
                       {/* ออเดอร์ยังไม่ยืนยันการชำระ = อัปแบบไม่ได้ (กันทำงานฟรี) — บอกตรงนี้เลย ไม่ต้องเดา */}
                       {!paidOk && !overrideLock && (
                         <div className="mt-2 rounded-lg bg-yellow-50 px-3 py-2 text-[11px] leading-relaxed text-yellow-800 ring-1 ring-yellow-300">
