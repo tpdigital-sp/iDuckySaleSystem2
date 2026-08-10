@@ -21,6 +21,36 @@ export function canThumbnail(fileName: string): boolean {
   return ext === "ai" || ext === "pdf";
 }
 
+/** จุด (PDF point) → มิลลิเมตร */
+const MM_PER_PT = 25.4 / 72;
+
+/**
+ * 📏 ขนาดอาร์ตบอร์ดจริงของไฟล์ (มม.) — .ai/.pdf เก็บขนาดเป็น point อยู่แล้ว
+ * ใช้เป็นขนาดผืนผ้าใบตอนลูกค้าวางลายบนเว็บ แอดมินไม่ต้องพิมพ์เอง
+ * คืน null เมื่อเปิดไฟล์ไม่ได้ (เช่น .ai ที่ปิด PDF compatibility)
+ */
+export async function readDesignSizeMm(file: File): Promise<{ widthMm: number; heightMm: number } | null> {
+  if (!canThumbnail(file.name)) return null;
+  try {
+    const pdfjs = await import("pdfjs-dist");
+    pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+    const doc = await pdfjs.getDocument({
+      data: new Uint8Array(await file.arrayBuffer()),
+      disableFontFace: true,
+      isEvalSupported: false,
+    }).promise;
+    const page = await doc.getPage(1);
+    // getViewport เผื่อไฟล์ที่หมุนหน้า (rotate 90) มาแล้ว — ได้ด้านที่ตาเห็นจริง
+    const vp = page.getViewport({ scale: 1 });
+    void doc.destroy();
+    const widthMm = Math.round(vp.width * MM_PER_PT * 10) / 10;
+    const heightMm = Math.round(vp.height * MM_PER_PT * 10) / 10;
+    return widthMm > 0 && heightMm > 0 ? { widthMm, heightMm } : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * เรนเดอร์หน้าแรกของไฟล์เป็น PNG (พื้นขาว — งาน .ai ส่วนใหญ่พื้นโปร่ง เห็นเป็นดำถ้าไม่รอง)
  * คืน null เมื่อเปิดไฟล์ไม่ได้/ไม่ใช่ PDF ข้างใน

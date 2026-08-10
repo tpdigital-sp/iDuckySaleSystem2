@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import RequirePerm from "@/components/RequirePerm";
 import {
+  DEFAULT_BLEED_MM,
+  DEFAULT_SAFE_MM,
   fileHref,
   fileReady,
   formatFileSize,
@@ -25,7 +27,7 @@ import {
   uploadTemplateFile,
 } from "@/lib/template-repo";
 import { fetchProduct, fetchProductNamesLite } from "@/lib/product-repo";
-import { canThumbnail, thumbnailFromDesignFile } from "@/lib/ai-thumbnail";
+import { canThumbnail, readDesignSizeMm, thumbnailFromDesignFile } from "@/lib/ai-thumbnail";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   badge,
@@ -130,6 +132,8 @@ function AdminTemplatesInner() {
   const [thumbBusy, setThumbBusy] = useState<string | null>(null);
   /** ชุดที่ไล่เติมรูปย้อนหลังไปแล้ว — กันทำซ้ำทุกครั้งที่กางการ์ด */
   const backfilled = useRef<Set<string>>(new Set());
+  /** ชุดที่เติม "ขนาดงานจริง" ย้อนหลังไปแล้ว (ทำครั้งเดียวต่อรอบเปิดหน้า) */
+  const sizeFilled = useRef<Set<string>>(new Set());
   /** รูปที่กำลังเปิดดูขนาดใหญ่ */
   const [zoom, setZoom] = useState<{ src: string; name: string } | null>(null);
   /** ชุดที่กำลังลากจัดลำดับ (เก็บเป็น id — ลิสต์ที่เห็นถูกกรอง/จัดกลุ่ม ใช้ index ไม่ได้) */
@@ -302,11 +306,14 @@ function AdminTemplatesInner() {
         setError(`${files[i].name}: ${res.error ?? "อัปโหลดไม่สำเร็จ"}`);
         continue;
       }
+      // 📏 ขนาดอาร์ตบอร์ดจริง — ใช้เป็นกรอบตอนลูกค้าวางลายบนเว็บ (อ่านจากไฟล์ ไม่ต้องพิมพ์เอง)
+      const size = await readDesignSizeMm(files[i]);
       added.push({
         id: rid("f"),
         fileUrl: res.url,
         fileName: res.name,
         fileSize: res.size,
+        ...(size ?? {}),
         ...(choices.length ? { choice: guessChoice(res.name ?? "", choices) || undefined } : {}),
       });
     }
@@ -411,6 +418,40 @@ function AdminTemplatesInner() {
         void fileName;
         void fileSize;
         void linkUrl;
+        void persistTemplate(clean);
+      }
+      return cur.map((x) => (x.id === t.id ? { ...x, _dirty: false } : x));
+    });
+  }
+
+  /**
+   * 📏 เติม "ขนาดงานจริง" ย้อนหลังให้ไฟล์ที่อัปไว้ก่อนมีฟีเจอร์วางลายบนเว็บ
+   * โหลดไฟล์กลับมาอ่านขนาดอาร์ตบอร์ด แล้วบันทึกให้เลย (ทำครั้งเดียวต่อชุด)
+   */
+  async function backfillSizes(t: Draft) {
+    if (sizeFilled.current.has(t.id)) return;
+    const need = (t.files ?? []).filter((f) => f.fileUrl && !f.widthMm && canThumbnail(f.fileName ?? ""));
+    if (!need.length) return;
+    sizeFilled.current.add(t.id);
+    let got = false;
+    for (const f of need) {
+      try {
+        const blob = await fetch(f.fileUrl!).then((r) => r.blob());
+        const size = await readDesignSizeMm(new File([blob], f.fileName!, { type: blob.type }));
+        if (size) {
+          patchFile(t.id, f.id, size);
+          got = true;
+        }
+      } catch {
+        /* อ่านไม่ได้ก็ปล่อย — แอดมินพิมพ์ขนาดเองได้ในแถวไฟล์ */
+      }
+    }
+    if (!got) return;
+    setList((cur) => {
+      const latest = cur.find((x) => x.id === t.id);
+      if (latest) {
+        const { _dirty, ...clean } = latest;
+        void _dirty;
         void persistTemplate(clean);
       }
       return cur.map((x) => (x.id === t.id ? { ...x, _dirty: false } : x));
@@ -866,6 +907,7 @@ function AdminTemplatesInner() {
                     type="button"
                     onClick={() => {
                       void backfillPreviews(t); // กางการ์ด = เติมรูปให้ไฟล์ที่ยังไม่มีเอง
+                      void backfillSizes(t); // + อ่านขนาดงานจริงจากไฟล์ (ใช้ตอนลูกค้าวางลายบนเว็บ)
                       setOpen((o) => ({ ...o, [t.id]: !o[t.id] }));
                     }}
                     className="min-w-0 flex-1 text-left"
@@ -891,6 +933,7 @@ function AdminTemplatesInner() {
                     type="button"
                     onClick={() => {
                       void backfillPreviews(t); // กางการ์ด = เติมรูปให้ไฟล์ที่ยังไม่มีเอง
+                      void backfillSizes(t); // + อ่านขนาดงานจริงจากไฟล์ (ใช้ตอนลูกค้าวางลายบนเว็บ)
                       setOpen((o) => ({ ...o, [t.id]: !o[t.id] }));
                     }}
                     className={`${btnSmNeutral} shrink-0`}
@@ -1134,6 +1177,33 @@ function AdminTemplatesInner() {
                               />
                             )}
                             <span className={`shrink-0 text-[11px] ${faint}`}>{formatFileSize(f.fileSize)}</span>
+                            {/* 📏 ขนาดงานจริง — อ่านจากอาร์ตบอร์ดให้เอง แก้เองได้ถ้าไฟล์อ่านไม่ออก */}
+                            <span
+                              className="flex shrink-0 items-center gap-1 rounded-lg bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-500"
+                              title="ขนาดงานจริง (มม.) — ใช้เป็นกรอบตอนลูกค้าวางลายบนเว็บ"
+                            >
+                              📏
+                              <input
+                                value={f.widthMm ?? ""}
+                                onChange={(e) =>
+                                  patchFile(t.id, f.id, { widthMm: Number(e.target.value) || undefined })
+                                }
+                                inputMode="decimal"
+                                placeholder="กว้าง"
+                                className="w-12 bg-transparent text-center outline-none placeholder:text-slate-300"
+                              />
+                              ×
+                              <input
+                                value={f.heightMm ?? ""}
+                                onChange={(e) =>
+                                  patchFile(t.id, f.id, { heightMm: Number(e.target.value) || undefined })
+                                }
+                                inputMode="decimal"
+                                placeholder="สูง"
+                                className="w-12 bg-transparent text-center outline-none placeholder:text-slate-300"
+                              />
+                              มม.
+                            </span>
                             {/* ใช้ไฟล์นี้ทำรูปตัวอย่างของชุด (เรนเดอร์หน้าแรกในเบราว์เซอร์) */}
                             <button
                               type="button"
@@ -1149,6 +1219,36 @@ function AdminTemplatesInner() {
                         ))}
                       </div>
                     )}
+
+                    {/* ── ค่าที่ใช้ตอนลูกค้า "วางลายบนเว็บ" ── */}
+                    <div className="flex flex-wrap items-center gap-2 rounded-xl bg-sky-50/70 px-3 py-2 ring-1 ring-sky-100">
+                      <span className="text-[11px] font-bold text-sky-800">🖼 ตอนลูกค้าวางลายบนเว็บ</span>
+                      <label className="flex items-center gap-1 text-[11px] text-slate-600">
+                        ตัดตก
+                        <input
+                          value={t.bleedMm ?? ""}
+                          onChange={(e) => patch(t.id, { bleedMm: Number(e.target.value) || undefined })}
+                          inputMode="decimal"
+                          placeholder={String(DEFAULT_BLEED_MM)}
+                          className={`${inputSm} w-14 text-center`}
+                        />
+                        มม.
+                      </label>
+                      <label className="flex items-center gap-1 text-[11px] text-slate-600">
+                        เขตปลอดภัย
+                        <input
+                          value={t.safeMm ?? ""}
+                          onChange={(e) => patch(t.id, { safeMm: Number(e.target.value) || undefined })}
+                          inputMode="decimal"
+                          placeholder={String(DEFAULT_SAFE_MM)}
+                          className={`${inputSm} w-14 text-center`}
+                        />
+                        มม.
+                      </label>
+                      <span className={`text-[11px] ${faint}`}>
+                        ไฟล์ที่ยังไม่มีขนาด 📏 ลูกค้าจะวางลายบนเว็บไม่ได้ (ระบบเดาจากชื่อตัวเลือกให้แทน)
+                      </span>
+                    </div>
 
                     <div className="flex flex-wrap items-center gap-2">
                       <button

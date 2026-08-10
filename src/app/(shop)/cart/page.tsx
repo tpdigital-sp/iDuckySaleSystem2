@@ -13,6 +13,7 @@ import {
   type ShippingMethod,
 } from "@/lib/shop-settings";
 import { useCart } from "@/lib/cart-context";
+import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import ProductVisual from "@/components/ProductVisual";
 import { getAppendTarget, clearAppendTarget, type AppendTarget } from "@/lib/append-order";
 import { getUnpicked, setUnpicked as saveUnpicked, clearUnpicked } from "@/lib/cart-select";
@@ -407,8 +408,9 @@ export default function CartPage() {
                   {(() => {
                     // ซ่อน url ลาย/ธงภายในระบบ — สรุปเป็นข้อความสั้นแทน
                     const artCount = String(item.selections["ภาพลายที่แนบ"] ?? "").split("|").filter((u) => u.trim()).length;
+                    // ซ่อนบรรทัดตัวเลขของทีมผลิตด้วย — ลูกค้าไม่ต้องอ่าน แต่ยังติดไปกับออเดอร์
                     const shown = Object.entries(item.selections).filter(
-                      ([k]) => k !== "ภาพลายที่แนบ" && k !== "รอเช็คสต๊อก"
+                      ([k]) => k !== "ภาพลายที่แนบ" && k !== "รอเช็คสต๊อก" && k !== PLACEMENT_SPEC_LABEL
                     );
                     if (!shown.length && !artCount) return null;
                     return (

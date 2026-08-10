@@ -25,6 +25,12 @@ export interface TemplateFile {
    * ทำให้เห็นว่าแต่ละรุ่นหน้าตาเป็นยังไงโดยไม่ต้องเปิดไฟล์
    */
   previewUrl?: string;
+  /**
+   * ขนาดงานจริงของไฟล์นี้ (มม.) — อ่านจากขนาดอาร์ตบอร์ดของ .ai/.pdf ตอนอัปโหลด
+   * ใช้เป็นขนาดผืนผ้าใบตอนลูกค้า "วางลายบนเว็บ" (ไม่มีค่า = เดาจากชื่อตัวเลือก)
+   */
+  widthMm?: number;
+  heightMm?: number;
 }
 
 export interface DesignTemplate {
@@ -53,6 +59,13 @@ export interface DesignTemplate {
   files?: TemplateFile[];
   /** รูปตัวอย่างของทั้งชุด (PNG/JPG) */
   previewUrl?: string;
+  /**
+   * ตัดตก (มม.) — ลายต้องเลยขอบงานออกไปเท่านี้ กันขาวขอบเวลาตัด
+   * ไม่ตั้ง = ใช้ค่ากลาง DEFAULT_BLEED_MM
+   */
+  bleedMm?: number;
+  /** เขตปลอดภัย (มม.) — ข้อความ/ของสำคัญต้องอยู่ห่างขอบงานเข้ามาเท่านี้ */
+  safeMm?: number;
   /** ลำดับในลิสต์ (ไม่ตั้ง = ไปต่อท้าย เรียงตามชื่อ) */
   sort?: number;
   /** ซ่อน — ไม่โชว์บนหน้าสินค้า */
@@ -141,6 +154,138 @@ export function filesForSelections(
   if (exact.length) return exact;
   // ไม่มีไฟล์ของค่าที่เลือก → ไฟล์กลางที่ไม่ได้ระบุค่า (ถ้ามี)
   return files.filter((f) => !(f.choice ?? "").trim());
+}
+
+// ══════════ ขนาดงานจริง (มม.) — ใช้ตอนลูกค้าวางลายบนเว็บ ══════════
+
+/** ตัดตก/เขตปลอดภัยมาตรฐานของร้าน (มม.) เมื่อชุดนั้นไม่ได้ตั้งค่าไว้เอง */
+export const DEFAULT_BLEED_MM = 3;
+export const DEFAULT_SAFE_MM = 3;
+
+export interface SizeMm {
+  widthMm: number;
+  heightMm: number;
+}
+
+/**
+ * อ่านขนาดจากข้อความ เช่น "30x60cm" · "18 x 21 ซม." · "600x300 mm" · "MousePad 40x90"
+ * ไม่ระบุหน่วย = เซนติเมตร (ค่าที่ร้านใช้ในชื่อตัวเลือกทั้งหมด)
+ * คืน null เมื่อหาเลขคู่ไม่เจอ
+ */
+export function parseSizeMm(text?: string): SizeMm | null {
+  if (!text) return null;
+  const m = text.match(/(\d+(?:[.,]\d+)?)\s*[x×*]\s*(\d+(?:[.,]\d+)?)\s*(mm|มม\.?|cm|ซม\.?|นิ้ว|in(?:ch)?)?/i);
+  if (!m) return null;
+  const a = parseFloat(m[1].replace(",", "."));
+  const b = parseFloat(m[2].replace(",", "."));
+  if (!(a > 0) || !(b > 0)) return null;
+  const unit = (m[3] ?? "").toLowerCase();
+  const k = /^(mm|มม)/.test(unit) ? 1 : /^(in|นิ้ว)/.test(unit) ? 25.4 : 10;
+  return { widthMm: a * k, heightMm: b * k };
+}
+
+/**
+ * กรอบงานสำหรับจอวางลาย — ทุกค่าเป็นมิลลิเมตรของงานจริง
+ *
+ * ⚠️ อาร์ตบอร์ดของไฟล์ .ai ที่ร้านทำไว้ "รวมตัดตกมาแล้ว"
+ * (เช่น แผ่นรองเมาส์ 60×30 ซม. อาร์ตบอร์ดจริง 610×310 มม. = เผื่อด้านละ 5 มม.)
+ * เลยยึดอาร์ตบอร์ดเป็นผืนผ้าใบทั้งผืน แล้วถอยเข้ามาเป็นเส้นตัด — ไม่ใช่เอาตัดตกไปบวกเพิ่มอีก
+ */
+export interface TemplateFrame {
+  /** ผืนผ้าใบทั้งผืน (รวมตัดตก) — ลายต้องคลุมเต็มขนาดนี้ */
+  canvasWMm: number;
+  canvasHMm: number;
+  /** ตัดตกซ้าย-ขวา / บน-ล่าง (บางไฟล์เผื่อไม่เท่ากันสองแกน) */
+  bleedXMm: number;
+  bleedYMm: number;
+  /** ขนาดงานจริงหลังตัด */
+  trimWMm: number;
+  trimHMm: number;
+  /** เขตปลอดภัย นับเข้ามาจากเส้นตัด */
+  safeMm: number;
+  /** ขนาดมาจากอาร์ตบอร์ดจริงของไฟล์ (ไม่ได้เดาจากชื่อ) */
+  fromFile: boolean;
+}
+
+/**
+ * ชื่อบรรทัดที่ติดไปกับรายการในตะกร้า/ออเดอร์เมื่อลูกค้าวางลายบนเว็บ
+ * — PLACEMENT_LABEL: สรุปให้ลูกค้าอ่าน
+ * — PLACEMENT_SPEC_LABEL: ตัวเลขให้ทีมผลิตวางในไฟล์จริง (ซ่อนจากบรรทัดสรุปในตะกร้า แต่ยังไปถึงออเดอร์)
+ */
+export const PLACEMENT_LABEL = "วางบนเทมเพลต";
+export const PLACEMENT_SPEC_LABEL = "ตำแหน่งลาย (ทีมผลิต)";
+
+/** ตัดตกที่ยอมรับว่า "สมเหตุสมผล" ตอนถอดจากส่วนต่างอาร์ตบอร์ด−ขนาดงาน */
+const MAX_DERIVED_BLEED_MM = 25;
+
+/**
+ * กรอบงานที่จะใช้เป็นผืนผ้าใบ — ไล่จากแม่นสุดไปเดาสุด
+ * ① อาร์ตบอร์ดจริงของไฟล์ (ถอดตัดตกจากส่วนต่างกับขนาดที่ลูกค้าเลือก)
+ * ② ชื่อตัวเลือกที่ลูกค้าเลือก เช่น "30x60cm" (บวกตัดตกมาตรฐานเข้าไปเอง)
+ * ③ ชื่อไฟล์ / ชื่อชุด
+ * เดาไม่ออกคืน null → หน้าสินค้าไม่ต้องขึ้นปุ่มวางลาย
+ */
+export function templateFrame(t: DesignTemplate, f?: TemplateFile, choice?: string): TemplateFrame | null {
+  const safeMm = t.safeMm ?? DEFAULT_SAFE_MM;
+  const setBleed = t.bleedMm ?? DEFAULT_BLEED_MM;
+  /** ขนาดงานจริงตามชื่อ (ยังไม่รู้ว่าด้านไหนกว้าง) */
+  const named = parseSizeMm(choice) ?? parseSizeMm(f?.fileName) ?? parseSizeMm(t.name);
+
+  if (f?.widthMm && f?.heightMm) {
+    const canvasWMm = f.widthMm;
+    const canvasHMm = f.heightMm;
+    // จับคู่ชื่อขนาดกับแนวของอาร์ตบอร์ด (ชื่อ "30x60" ไม่ได้บอกว่าด้านไหนกว้าง)
+    let trimWMm = 0;
+    let trimHMm = 0;
+    if (named) {
+      const a = { w: named.widthMm, h: named.heightMm };
+      const b = { w: named.heightMm, h: named.widthMm };
+      const fitScore = (s: { w: number; h: number }) =>
+        Math.abs(canvasWMm - s.w) + Math.abs(canvasHMm - s.h);
+      const best = fitScore(a) <= fitScore(b) ? a : b;
+      const bx = (canvasWMm - best.w) / 2;
+      const by = (canvasHMm - best.h) / 2;
+      if (bx >= 0 && by >= 0 && bx <= MAX_DERIVED_BLEED_MM && by <= MAX_DERIVED_BLEED_MM) {
+        trimWMm = best.w;
+        trimHMm = best.h;
+      }
+    }
+    if (!trimWMm) {
+      // ถอดไม่ได้ → ใช้ตัดตกที่ตั้งไว้ในชุด (แต่ไม่ให้ติดลบถ้าอาร์ตบอร์ดเล็กมาก)
+      const bx = Math.min(setBleed, canvasWMm / 4);
+      const by = Math.min(setBleed, canvasHMm / 4);
+      trimWMm = canvasWMm - bx * 2;
+      trimHMm = canvasHMm - by * 2;
+    }
+    return {
+      canvasWMm,
+      canvasHMm,
+      bleedXMm: Math.round(((canvasWMm - trimWMm) / 2) * 10) / 10,
+      bleedYMm: Math.round(((canvasHMm - trimHMm) / 2) * 10) / 10,
+      trimWMm,
+      trimHMm,
+      safeMm,
+      fromFile: true,
+    };
+  }
+
+  if (!named) return null;
+  return {
+    canvasWMm: named.widthMm + setBleed * 2,
+    canvasHMm: named.heightMm + setBleed * 2,
+    bleedXMm: setBleed,
+    bleedYMm: setBleed,
+    trimWMm: named.widthMm,
+    trimHMm: named.heightMm,
+    safeMm,
+    fromFile: false,
+  };
+}
+
+/** ขนาดอ่านง่ายเป็นเซนติเมตร เช่น "60 × 30 ซม." */
+export function formatSizeCm(s: SizeMm): string {
+  const n = (v: number) => (Math.round(v / 10 * 10) / 10).toString().replace(/\.0$/, "");
+  return `${n(s.widthMm)} × ${n(s.heightMm)} ซม.`;
 }
 
 /** ขนาดไฟล์อ่านง่าย เช่น "12.4 MB" */

@@ -38,7 +38,17 @@ import {
   type ProductOption,
 } from "@/lib/products";
 import { LINE_URL } from "@/components/LineButton";
-import { fileHref, filesForSelections, formatFileSize, type DesignTemplate } from "@/lib/design-templates";
+import {
+  fileHref,
+  filesForSelections,
+  formatFileSize,
+  PLACEMENT_LABEL,
+  PLACEMENT_SPEC_LABEL,
+  templateFrame,
+  type DesignTemplate,
+  type TemplateFrame,
+} from "@/lib/design-templates";
+import TemplateStudio, { type StudioResult } from "@/components/TemplateStudio";
 import { useCart } from "@/lib/cart-context";
 import { canAccessAdmin } from "@/lib/auth";
 import { fetchProduct } from "@/lib/product-repo";
@@ -156,6 +166,12 @@ export default function ProductDetail({
   const [artBusy, setArtBusy] = useState(false);
   const [artErr, setArtErr] = useState("");
   const [artDrag, setArtDrag] = useState(false); // ลากไฟล์อยู่เหนือกล่องแนบลาย
+  /**
+   * 🖼 จอวางลายบนเทมเพลต — เปิดจากการ์ดเทมเพลต (null = ปิดอยู่)
+   * ผลลัพธ์: ภาพที่ประกอบแล้วเข้าไปอยู่ในรายการลายที่แนบ + จดตัวเลขตำแหน่งไว้ให้ทีมผลิต
+   */
+  const [studio, setStudio] = useState<{ title: string; frame: TemplateFrame; guideUrl?: string } | null>(null);
+  const [placed, setPlaced] = useState<{ summary: string; spec: string; sourceUrl?: string }[]>([]);
   // ส่วน "เพิ่มเติม" ยุบไว้ทีละอัน — ไม่ให้ฟอร์มที่ไม่บังคับดันปุ่มซื้อตกจอ
   const [extraOpen, setExtraOpen] = useState<"art" | "note" | null>(null);
   // สินค้าที่บังคับแนบลาย → เปิดกล่องค้างไว้จนกว่าลูกค้าจะแตะปิดเอง
@@ -519,6 +535,55 @@ export default function ProductDetail({
     setArtBusy(false);
   }
 
+  /** อัปโหลดไฟล์เดียวแล้วคืน url (ใช้กับภาพที่ประกอบจากจอวางลาย) */
+  async function uploadOne(f: File): Promise<string> {
+    const fd = new FormData();
+    fd.append("file", f);
+    const res = await fetch("/api/orders/artwork", { method: "POST", body: fd });
+    const j = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
+    if (!res.ok || !j?.url) throw new Error(j?.error ?? "อัปโหลดไม่สำเร็จ");
+    return j.url;
+  }
+
+  /**
+   * ลูกค้ากด "ใช้ลายนี้" จากจอวางลาย
+   * — ภาพที่ประกอบแล้ว = ลายที่แนบไปกับออเดอร์ (นับเป็น 1 ลาย เท่ากับแนบรูปปกติ)
+   * — ไฟล์ต้นฉบับอัปตามไปด้วย แต่ไม่นับเป็นอีกลาย ทีมผลิตเอาไปทำไฟล์พิมพ์ความละเอียดเต็ม
+   */
+  async function applyStudio(r: StudioResult) {
+    setArtErr("");
+    setArtBusy(true);
+    try {
+      const url = await uploadOne(r.composite);
+      let sourceUrl = "";
+      try {
+        sourceUrl = await uploadOne(r.source);
+      } catch {
+        /* ต้นฉบับอัปไม่ขึ้นก็ยังสั่งได้ — ภาพที่ประกอบแล้วพอผลิตได้ */
+      }
+      const dim = await new Promise<{ w: number; h: number }>((resolve) => {
+        const im = new window.Image();
+        const obj = URL.createObjectURL(r.composite);
+        im.onload = () => {
+          URL.revokeObjectURL(obj);
+          resolve({ w: im.naturalWidth, h: im.naturalHeight });
+        };
+        im.onerror = () => {
+          URL.revokeObjectURL(obj);
+          resolve({ w: 0, h: 0 });
+        };
+        im.src = obj;
+      });
+      setArtFiles((cur) => [...cur, { url, name: r.composite.name, ...dim }]);
+      setPlaced((cur) => [...cur, { summary: r.summary, spec: r.spec, sourceUrl }]);
+      setExtraOpen("art");
+    } catch (e) {
+      setArtErr(e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง");
+    } finally {
+      setArtBusy(false);
+    }
+  }
+
   // สั่งถึงเกณฑ์จำนวนมากไหม (ตั้งต่อสินค้าได้ในหลังบ้าน)
   const bulkAsk = needsStockCheck(product, qty);
 
@@ -547,6 +612,13 @@ export default function ProductDetail({
     const extra: Record<string, string> = {};
     if (artLink.trim()) extra["ลิงก์ไฟล์ลาย/อีเมล"] = artLink.trim();
     if (artFiles.length) extra["ภาพลายที่แนบ"] = artFiles.map((f) => f.url).join(" | ");
+    // ลายที่วางบนเทมเพลตผ่านหน้าเว็บ — สรุปให้ลูกค้าอ่าน + ตัวเลขให้ทีมผลิตวางในไฟล์จริง
+    if (placed.length) {
+      extra[PLACEMENT_LABEL] = placed.map((p) => p.summary).join(" | ");
+      extra[PLACEMENT_SPEC_LABEL] = placed
+        .map((p) => p.spec + (p.sourceUrl ? ` · ต้นฉบับ: ${p.sourceUrl}` : ""))
+        .join(" | ");
+    }
     // สั่งจำนวนมาก → ติดธงให้ทีมเช็คสต๊อก/คิวผลิตแล้วยืนยันจำนวนกับลูกค้าก่อนเริ่มงาน
     if (bulkAsk) extra["รอเช็คสต๊อก"] = "สั่งจำนวนมาก — รอทีมงานยืนยันจำนวน";
     if (note.trim()) extra["หมายเหตุ"] = note.trim();
@@ -578,6 +650,7 @@ export default function ProductDetail({
     setNote("");
     setArtLink("");
     setArtFiles([]);
+    setPlaced([]);
     setAdded(true);
     setTimeout(() => setAdded(false), 1800);
   }
@@ -852,6 +925,8 @@ export default function ProductDetail({
                     const href = fileHref(f);
                     if (!href) return null;
                     const outside = !f.fileUrl;
+                    /** กรอบงานจริง — อาร์ตบอร์ดของไฟล์มาก่อน ไม่มีก็เดาจากค่าตัวเลือกที่ลูกค้าเลือก */
+                    const frame = templateFrame(t, f, f.choice || chosen);
                     return (
                       <li key={f.id} className="flex items-center gap-3 rounded-xl bg-white p-2.5 ring-1 ring-sky-100">
                         {/* รูปของไฟล์นั้นมาก่อน (แต่ละรุ่นหน้าตาไม่เหมือนกัน) ไม่มีค่อยใช้รูปปกของชุด */}
@@ -880,23 +955,48 @@ export default function ProductDetail({
                             {optLabel && chosen && !f.choice ? ` · ใช้ได้ทุก${optLabel}` : ""}
                           </span>
                         </span>
-                        <a
-                          href={href}
-                          {...(outside
-                            ? { target: "_blank", rel: "noopener noreferrer" }
-                            : { download: f.fileName ?? "" })}
-                          className="shrink-0 rounded-full bg-sky-600 px-4 py-2 text-xs font-bold text-white shadow transition hover:bg-sky-700"
-                        >
-                          {outside ? "🔗 เปิดลิงก์" : "⬇️ ดาวน์โหลด"}
-                        </a>
+                        <span className="flex shrink-0 flex-col gap-1.5">
+                          {/* ทางหลัก: วางลายบนเว็บได้เลย ไม่ต้องมีโปรแกรมกราฟฟิก */}
+                          {frame && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setStudio({
+                                  title: `${t.name}${f.choice ? ` · ${f.choice}` : ""}`,
+                                  frame,
+                                  guideUrl: f.previewUrl || t.previewUrl,
+                                })
+                              }
+                              className="rounded-full bg-sky-600 px-4 py-2 text-xs font-bold text-white shadow transition hover:bg-sky-700"
+                            >
+                              🖼 วางลายบนเว็บ
+                            </button>
+                          )}
+                          {/* ทางเดิม: โหลดไฟล์ .ai ไปทำเองสำหรับคนที่มีโปรแกรม */}
+                          <a
+                            href={href}
+                            {...(outside
+                              ? { target: "_blank", rel: "noopener noreferrer" }
+                              : { download: f.fileName ?? "" })}
+                            className={
+                              frame
+                                ? "rounded-full bg-white px-4 py-1.5 text-center text-[11px] font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-50"
+                                : "rounded-full bg-sky-600 px-4 py-2 text-xs font-bold text-white shadow transition hover:bg-sky-700"
+                            }
+                          >
+                            {outside ? "🔗 เปิดลิงก์" : "⬇️ ดาวน์โหลด"}
+                          </a>
+                        </span>
                       </li>
                     );
                   });
                 })}
               </ul>
               <p className="px-4 pb-3 text-[10px] leading-relaxed text-sky-800">
-                วางลายในเทมเพลตแล้วส่งไฟล์กลับมาทางช่อง <strong>&ldquo;แนบลายของคุณ&rdquo;</strong> ด้านล่าง
-                (หรือแนบลิงก์ไฟล์ต้นฉบับ) — งานจะได้ขนาด/ตำแหน่งตรงตามที่ผลิตจริง
+                กด <strong>&ldquo;🖼 วางลายบนเว็บ&rdquo;</strong> แล้วเลือกรูปของคุณมาวางในกรอบงานจริงได้เลย
+                ระบบจัดขนาด/ตำแหน่งให้ตรงกับที่ผลิตจริง แล้วแนบเข้าตะกร้าให้อัตโนมัติ ·
+                ถ้ามีโปรแกรมกราฟฟิกอยู่แล้ว จะกด <strong>ดาวน์โหลด</strong> ไฟล์ .ai ไปทำเองแล้วส่งกลับทางช่อง
+                &ldquo;แนบลายของคุณ&rdquo; ด้านล่างก็ได้
               </p>
             </div>
           )}
@@ -2023,6 +2123,18 @@ export default function ProductDetail({
             ✕ ปิด
           </button>
         </div>
+      )}
+
+      {/* 🖼 จอวางลายบนเทมเพลต — เปิดจากการ์ดเทมเพลตด้านบน */}
+      {studio && (
+        <TemplateStudio
+          open
+          onClose={() => setStudio(null)}
+          title={studio.title}
+          frame={studio.frame}
+          guideUrl={studio.guideUrl}
+          onApply={applyStudio}
+        />
       )}
     </div>
   );
