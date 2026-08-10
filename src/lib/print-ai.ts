@@ -98,105 +98,6 @@ export interface PrintAiInput {
   heightMm: number;
   /** ชื่องาน — เขียนลง metadata ให้รู้ว่ามาจากออเดอร์ไหน */
   title?: string;
-  /**
-   * ไฟล์ .ai ต้นฉบับของเทมเพลต — มีค่า = เอาลายไปวาง "ใต้" งานเดิมในไฟล์นั้น
-   * เลเยอร์เส้นตัด/ไกด์/ข้อความกำกับของโรงพิมพ์เลยยังอยู่ครบ
-   * โหลดไม่ได้/อ่านไม่ออก = ถอยไปสร้างไฟล์เปล่าที่มีแต่ลาย (ดีกว่าโหลดไม่ได้เลย)
-   */
-  templateUrl?: string;
-}
-
-/**
- * วางลายลงในไฟล์ .ai ต้นฉบับ — ลายอยู่ "ล่างสุด" งานเดิมของเทมเพลตทับอยู่ข้างบน
- *
- * ทำไมต้องล่างสุด: เส้นตัด เส้นพับ และไกด์ต่าง ๆ ในเทมเพลตต้องมองเห็นทับลาย
- * ถ้าวางลายทับไปข้างบนจะบังหมด กราฟฟิกก็ตัดงานไม่ได้
- *
- * ⚠️ ต้องตัด /PieceInfo (ข้อมูลส่วนตัวของ Illustrator) ทิ้งด้วย
- * เพราะถ้ายังอยู่ Illustrator จะ "สร้างเอกสารใหม่จากข้อมูลก้อนนั้น" แล้ว
- * ทิ้งเนื้อหา PDF ที่เราเพิ่งเติมลายเข้าไปทั้งหมด — เปิดมาก็เห็นแต่เทมเพลตเปล่า ๆ
- * (ข้อมูลก้อนนั้นเป็นรูปแบบปิดของ Adobe เขียนเพิ่มเองไม่ได้)
- * ตัดทิ้งแล้ว Illustrator จะอ่านแบบ PDF ปกติ — ได้ทั้งลาย เส้นเวกเตอร์ และเลเยอร์ครบ
- *
- * คืน null เมื่อทำไม่สำเร็จ (ผู้เรียกถอยไปใช้ไฟล์เปล่า)
- */
-async function drawOnTemplate(
-  templateUrl: string,
-  jpeg: Uint8Array,
-  title?: string,
-): Promise<Blob | null> {
-  try {
-    const res = await fetch(templateUrl);
-    if (!res.ok) return null;
-    const tpl = new Uint8Array(await res.arrayBuffer());
-    // .ai ที่เซฟแบบ "Create PDF Compatible File" คือ PDF — ไฟล์ที่ไม่ใช่ PDF อ่านไม่ได้
-    if (String.fromCharCode(...tpl.slice(0, 5)) !== "%PDF-") return null;
-
-    const { PDFDocument, PDFName, PDFArray, PDFDict, PDFHexString } = await import("pdf-lib");
-    const doc = await PDFDocument.load(tpl, { ignoreEncryption: true, updateMetadata: false });
-    const page = doc.getPages()[0];
-    if (!page) return null;
-
-    const img = await doc.embedJpg(jpeg);
-    const box = page.getMediaBox();
-    const xName = "IDuckyArtwork";
-    page.node.setXObject(PDFName.of(xName), img.ref);
-
-    /**
-     * ใส่ลายไว้ในเลเยอร์ของตัวเอง (OCG) — Illustrator จะโชว์เป็นเลเยอร์ชื่อ "ลายลูกค้า"
-     * ปิด/ย้ายลำดับได้เหมือนเลเยอร์ปกติ · ทำไม่สำเร็จก็แค่ไม่มีเลเยอร์แยก ลายยังอยู่
-     */
-    let ocName = "";
-    try {
-      const ocgRef = doc.context.register(
-        doc.context.obj({ Type: "OCG", Name: PDFHexString.fromText("ลายลูกค้า (iDucky)") }),
-      );
-      const ocp = doc.catalog.lookup(PDFName.of("OCProperties"), PDFDict);
-      const ocgs = ocp?.lookup(PDFName.of("OCGs"), PDFArray);
-      const cfg = ocp?.lookup(PDFName.of("D"), PDFDict);
-      if (ocgs && cfg) {
-        ocgs.push(ocgRef);
-        cfg.lookup(PDFName.of("Order"), PDFArray)?.push(ocgRef);
-        cfg.lookup(PDFName.of("ON"), PDFArray)?.push(ocgRef);
-        const resources = page.node.Resources();
-        let props = resources?.lookup(PDFName.of("Properties"), PDFDict) ?? undefined;
-        if (resources && !props) {
-          const created = doc.context.obj({});
-          resources.set(PDFName.of("Properties"), created);
-          props = resources.lookup(PDFName.of("Properties"), PDFDict) ?? undefined;
-        }
-        if (props) {
-          ocName = "IDuckyOC";
-          props.set(PDFName.of(ocName), ocgRef);
-        }
-      }
-    } catch {
-      ocName = ""; // ไม่มีเลเยอร์แยกก็ยังใช้งานได้
-    }
-
-    // วาดเต็มหน้ากระดาษ (ภาพที่ประกอบมามีขนาดเท่ากรอบงานรวมตัดตกอยู่แล้ว)
-    const draw = `q\n${box.width.toFixed(3)} 0 0 ${box.height.toFixed(3)} ${box.x.toFixed(3)} ${box.y.toFixed(3)} cm\n/${xName} Do\nQ\n`;
-    const ops = ocName ? `/OC /${ocName} BDC\n${draw}EMC\n` : draw;
-    const artRef = doc.context.register(doc.context.stream(ops));
-
-    // แทรกไว้หน้าสุดของสายเนื้อหา = ถูกวาดก่อน = อยู่ล่างสุด
-    const contents = page.node.get(PDFName.of("Contents"));
-    const next = PDFArray.withContext(doc.context);
-    next.push(artRef);
-    if (contents instanceof PDFArray) contents.asArray().forEach((r) => next.push(r));
-    else if (contents) next.push(contents);
-    page.node.set(PDFName.of("Contents"), next);
-
-    // ตัดข้อมูลส่วนตัวของ Illustrator ทิ้ง (ดูเหตุผลในคอมเมนต์หัวฟังก์ชัน)
-    for (const k of ["PieceInfo", "LastModified", "Thumb"]) page.node.delete(PDFName.of(k));
-
-    if (title) doc.setTitle(title);
-    doc.setProducer("iDucky Prints Studio");
-    const out = await doc.save({ useObjectStreams: false });
-    return new Blob([out as BlobPart], { type: "application/postscript" });
-  } catch {
-    return null;
-  }
 }
 
 export async function buildPrintAi(input: PrintAiInput): Promise<Blob> {
@@ -207,12 +108,6 @@ export async function buildPrintAi(input: PrintAiInput): Promise<Blob> {
 
   const info = jpegInfo(raw);
   const img = info ? { bytes: raw, ...info } : await toJpegBytes(blob);
-
-  // มีไฟล์เทมเพลตต้นฉบับ → วางลายลงในไฟล์นั้นเลย (ได้เลเยอร์เส้นตัด/ไกด์มาด้วย)
-  if (input.templateUrl) {
-    const onTpl = await drawOnTemplate(input.templateUrl, img.bytes, input.title);
-    if (onTpl) return onTpl;
-  }
 
   // ภาพขาวดำล้วนใช้ DeviceGray · 4 ช่อง = CMYK · นอกนั้น RGB
   const colorSpace = img.comps === 1 ? "/DeviceGray" : img.comps === 4 ? "/DeviceCMYK" : "/DeviceRGB";
@@ -280,4 +175,98 @@ export function downloadBlob(blob: Blob, fileName: string) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+import { makeZip } from "@/lib/zip";
+
+/**
+ * 📦 ชุดไฟล์พร้อมพิมพ์ (.zip) — เทมเพลตต้นฉบับ + ลายลูกค้า + สคริปต์วางให้อัตโนมัติ
+ *
+ * ทำไมไม่ยัดลายเข้าไฟล์ .ai ให้เลย: เลเยอร์ที่ Illustrator เห็นมาจากข้อมูลส่วนตัวของ Adobe
+ * (`/PieceInfo` → `%AI24_ZStandard_Data` = PGF บีบด้วย Zstandard) เป็นรูปแบบปิด เขียนเพิ่มจากข้างนอกไม่ได้
+ * ถ้าตัดข้อมูลก้อนนั้นทิ้งเพื่อยัดลาย เลเยอร์เดิมของเทมเพลตจะหายกลายเป็น Layer 1 อันเดียว
+ *
+ * ชุดนี้เลยให้ "เทมเพลตต้นฉบับที่ยังครบทุกเลเยอร์" แล้วเพิ่มลายเป็นเลเยอร์ใหม่ด้วยสคริปต์แทน
+ * (ExtendScript เป็นของมาตรฐานที่ Illustrator รองรับ — เมนู File → Scripts)
+ */
+export async function buildPrintBundle(input: {
+  templateUrl: string;
+  imageUrl: string;
+  /** ชื่อฐานของไฟล์ในซิป เช่น "OD-260810-7686-item1-ลาย1" */
+  baseName: string;
+}): Promise<Blob | null> {
+  try {
+    const [tplRes, artRes] = await Promise.all([fetch(input.templateUrl), fetch(input.imageUrl)]);
+    if (!tplRes.ok || !artRes.ok) return null;
+    const tpl = new Uint8Array(await tplRes.arrayBuffer());
+    const art = new Uint8Array(await artRes.arrayBuffer());
+
+    /**
+     * ชื่อไฟล์ในซิปใช้ภาษาอังกฤษล้วน — โปรแกรมแตกซิปรุ่นเก่าบางตัวอ่านชื่อไทยไม่ออก
+     * (ชื่อออเดอร์ภาษาไทยอยู่ที่ชื่อไฟล์ .zip ข้างนอกและในไฟล์ README แทน)
+     */
+    const aiName = "TEMPLATE.ai";
+    const artName = "ARTWORK.jpg";
+
+    /**
+     * สคริปต์ ExtendScript — เปิดเทมเพลตแล้วสร้างเลเยอร์ "ลายลูกค้า (iDucky)" ไว้ล่างสุด
+     * วางลายให้เต็มอาร์ตบอร์ดพอดี แล้วฝังไฟล์เข้าเอกสาร (จะได้ไม่ต้องพกไฟล์ลายไปด้วย)
+     */
+    const jsx = [
+      "// วางลายลูกค้าลงบนเทมเพลตอัตโนมัติ — iDucky Prints Studio",
+      "// วิธีใช้: เปิด Illustrator → File → Scripts → Other Script… → เลือกไฟล์นี้",
+      "#target illustrator",
+      "(function () {",
+      "  var here = new File($.fileName).parent;",
+      `  var tplFile = new File(here.fsName + "/" + ${JSON.stringify(aiName)});`,
+      `  var artFile = new File(here.fsName + "/" + ${JSON.stringify(artName)});`,
+      '  if (!artFile.exists) { alert("ไม่พบไฟล์ลายในโฟลเดอร์เดียวกับสคริปต์"); return; }',
+      "  var doc = app.documents.length ? app.activeDocument : (tplFile.exists ? app.open(tplFile) : null);",
+      '  if (!doc) { alert("เปิดไฟล์เทมเพลตก่อน แล้วค่อยรันสคริปต์นี้"); return; }',
+      "  var layer = doc.layers.add();",
+      '  layer.name = "ลายลูกค้า (iDucky)";',
+      "  var placed = layer.placedItems.add();",
+      "  placed.file = artFile;",
+      "  var ab = doc.artboards[doc.artboards.getActiveArtboardIndex()].artboardRect;",
+      "  placed.width = ab[2] - ab[0];",
+      "  placed.height = ab[1] - ab[3];",
+      "  placed.position = [ab[0], ab[1]];",
+      "  try { placed.embed(); } catch (e) {}",
+      "  layer.zOrder(ZOrderMethod.SENDTOBACK);",
+      '  alert("วางลายลงเลเยอร์ “ลายลูกค้า (iDucky)” เรียบร้อย");',
+      "})();",
+      "",
+    ].join("\n");
+
+    const readme = [
+      "ชุดไฟล์พร้อมพิมพ์ — iDucky Prints Studio",
+      `งาน: ${input.baseName}`,
+      "",
+      `1) ${aiName}   = เทมเพลตต้นฉบับ (เลเยอร์ครบเหมือนไฟล์ในคลัง ไม่ถูกแก้อะไรเลย)`,
+      `2) ${artName}  = ลายของลูกค้า ขนาดเท่ากรอบงานรวมตัดตกพอดี`,
+      "3) PLACE-ARTWORK.jsx = สคริปต์วางลายให้อัตโนมัติ",
+      "",
+      "วิธีที่เร็วที่สุด",
+      `  • เปิด ${aiName} ใน Illustrator`,
+      "  • File → Scripts → Other Script… → เลือก PLACE-ARTWORK.jsx",
+      "  • ได้เลเยอร์ใหม่ชื่อ “ลายลูกค้า (iDucky)” อยู่ล่างสุด วางเต็มอาร์ตบอร์ดพอดี",
+      "",
+      "หรือทำเองก็ได้",
+      `  • เปิด ${aiName} → สร้างเลเยอร์ใหม่ → File → Place → เลือก ${artName}`,
+      "  • ลากให้เต็มอาร์ตบอร์ด แล้วย้ายเลเยอร์ลงล่างสุด",
+      "",
+      "หมายเหตุ: ยัดลายเข้าไฟล์ .ai ให้เลยไม่ได้ เพราะเลเยอร์ของ Illustrator",
+      "เก็บอยู่ในข้อมูลรูปแบบปิดของ Adobe ที่เขียนเพิ่มจากโปรแกรมอื่นไม่ได้",
+      "",
+    ].join("\r\n");
+
+    return makeZip([
+      { name: aiName, data: tpl },
+      { name: artName, data: art },
+      { name: "PLACE-ARTWORK.jsx", data: jsx },
+      { name: "READ-ME.txt", data: readme },
+    ]);
+  } catch {
+    return null;
+  }
 }
