@@ -13,6 +13,7 @@ import {
   amountDueNow,
   daysToUseBy,
   itemDiscountAmount,
+  lineChatOf,
   orderItemDiscounts,
   orderTotal,
   packGate,
@@ -2644,6 +2645,16 @@ export default function AdminOrderDetailPage() {
                   🧑‍💼 พนักงานสั่งแทนลูกค้า — {order.placedBy}
                 </p>
               )}
+              <LineChatBox
+                order={order}
+                allOrders={allOrders}
+                mayEdit={mayEdit}
+                onSave={(url) => {
+                  const next = { ...order, lineChatUrl: url || undefined };
+                  setOrder(next);
+                  if (!demo) void saveOrderAdmin(next);
+                }}
+              />
             </div>
           </div>
 
@@ -3742,4 +3753,134 @@ function downloadOrderShortcut(orderId: string, url: string, kind?: "webloc" | "
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(href), 1000);
+}
+
+/**
+ * 🟢 ห้องแชท LINE ของลูกค้า — พนักงานวางลิงก์ห้องแชท (chat.line.biz/…/chat/…) ครั้งเดียว
+ *
+ * ทำไมต้องเก็บ: ลูกค้าทักมาทาง LINE OA แต่หน้าออเดอร์ไม่มีทางกระโดดกลับไปห้องแชทเขาได้
+ * ต้องไปไล่หาในคอนโซล LINE เอง ทั้งที่พนักงานคนที่คุยรู้อยู่แล้วว่าห้องไหน
+ * เก็บไว้กับออเดอร์ แล้วออเดอร์ถัดไปของลูกค้าคนเดิมระบบดึงมาให้เอง (จับคู่จาก customerId/เบอร์/อีเมล)
+ */
+function LineChatBox({
+  order,
+  allOrders,
+  mayEdit,
+  onSave,
+}: {
+  order: Order;
+  allOrders: Order[];
+  mayEdit: boolean;
+  onSave: (url: string) => void;
+}) {
+  const found = lineChatOf(order, allOrders);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [err, setErr] = useState("");
+
+  function open() {
+    setDraft(found?.url ?? "");
+    setErr("");
+    setEditing(true);
+  }
+  function save() {
+    const url = draft.trim();
+    if (url && !/^https?:\/\//i.test(url)) {
+      setErr("ต้องเป็นลิงก์เต็ม ขึ้นต้นด้วย https://");
+      return;
+    }
+    onSave(url);
+    setEditing(false);
+  }
+
+  if (editing)
+    return (
+      <div className="mt-2 space-y-1.5 rounded-xl bg-white p-2.5 ring-1 ring-slate-200">
+        <p className="text-[11px] font-semibold text-slate-600">🟢 ลิงก์ห้องแชท LINE ของลูกค้า</p>
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save();
+            if (e.key === "Escape") setEditing(false);
+          }}
+          autoFocus
+          placeholder="https://chat.line.biz/…/chat/…"
+          className="w-full rounded-lg border border-slate-200 px-2.5 py-1 text-[12px] text-slate-700 focus:border-amber-300 focus:outline-none"
+        />
+        {err && <p className="text-[11px] font-semibold text-rose-600">{err}</p>}
+        <p className="text-[10px] leading-snug text-slate-400">
+          เปิดห้องแชทลูกค้าใน LINE OA แล้วก๊อป URL จากแถบที่อยู่มาวาง — ออเดอร์ถัดไปของลูกค้าคนนี้ไม่ต้องกรอกอีก
+        </p>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            onClick={save}
+            className="rounded-lg bg-slate-900 px-3 py-1 text-[11px] font-bold text-white transition hover:bg-slate-700"
+          >
+            บันทึก
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            className="rounded-lg px-3 py-1 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-100"
+          >
+            ยกเลิก
+          </button>
+          {found?.source === "self" && (
+            <button
+              type="button"
+              onClick={() => {
+                onSave("");
+                setEditing(false);
+              }}
+              className="ml-auto rounded-lg px-3 py-1 text-[11px] font-semibold text-rose-600 transition hover:bg-rose-50"
+            >
+              ลบลิงก์
+            </button>
+          )}
+        </div>
+      </div>
+    );
+
+  if (!found)
+    return mayEdit ? (
+      <button
+        type="button"
+        onClick={open}
+        className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-500 transition hover:border-[#06C755] hover:text-[#06C755]"
+      >
+        ＋ ใส่ลิงก์แชท LINE ของลูกค้า
+      </button>
+    ) : null;
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <a
+        href={found.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-3 py-1.5 text-[11px] font-bold text-white shadow-sm transition hover:bg-[#05b34c]"
+      >
+        💬 เปิดแชทลูกค้า (LINE)
+      </a>
+      {found.source === "prev" && (
+        <span
+          className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500"
+          title={`ดึงมาจากออเดอร์ ${found.from} ของลูกค้าคนเดียวกัน`}
+        >
+          จำจาก {found.from}
+        </span>
+      )}
+      {mayEdit && (
+        <button
+          type="button"
+          onClick={open}
+          className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+        >
+          แก้ไข
+        </button>
+      )}
+    </div>
+  );
 }

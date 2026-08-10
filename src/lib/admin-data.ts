@@ -220,6 +220,11 @@ export interface Order {
   /** ชื่อพนักงานที่สั่งแทนลูกค้า (โหมดพนักงานที่ checkout) — ไม่มี = ลูกค้าสั่งเอง */
   placedBy?: string;
   /**
+   * ลิงก์ห้องแชท LINE OA ของลูกค้าคนนี้ (chat.line.biz/…/chat/…)
+   * พนักงานวางครั้งเดียว — ออเดอร์ถัดไปของลูกค้าคนเดิมระบบดึงมาให้เอง (จับคู่จาก customerId/เบอร์โทร)
+   */
+  lineChatUrl?: string;
+  /**
    * หลักฐานการโอน — สำหรับออเดอร์ใหม่จะเป็น signed URL ชั่วคราวที่ฝั่งเซิร์ฟเวอร์เซ็นให้ตอนแอดมินดึงข้อมูล
    * (ออเดอร์เก่าเก็บเป็น public URL ถาวร) · มีค่า = ลูกค้าแจ้งโอนแล้ว
    */
@@ -317,6 +322,28 @@ export function orderTotal(o: Order): number {
 /** ยอดที่ลูกค้ายังค้างชำระ (มากกว่า 0 = ต้องโอนเพิ่ม เช่น หลังสั่งเพิ่มในออเดอร์เดิม) */
 export function orderBalance(o: Order): number {
   return Math.max(0, orderTotal(o) - (o.paidTotal ?? 0));
+}
+
+/**
+ * ลิงก์แชท LINE ของลูกค้าคนนี้ — ของใบนี้เอง หรือดึงจากออเดอร์เก่าของลูกค้าคนเดียวกัน
+ * จับคู่จาก customerId ก่อน (แม่นสุด) ไม่มีค่อยใช้เบอร์โทร แล้วค่อยอีเมล
+ * คืน source = "self" เมื่อเป็นของใบนี้ · "prev" เมื่อดึงมาจากใบก่อนหน้า (พนักงานไม่ต้องกรอกซ้ำ)
+ */
+export function lineChatOf(order: Order, all: Order[]): { url: string; source: "self" | "prev"; from?: string } | null {
+  if (order.lineChatUrl) return { url: order.lineChatUrl, source: "self" };
+  const phone = (order.phone ?? "").replace(/\D/g, "");
+  const email = (order.email ?? "").trim().toLowerCase();
+  const same = (o: Order) =>
+    (order.customerId && o.customerId === order.customerId) ||
+    (phone.length >= 8 && (o.phone ?? "").replace(/\D/g, "") === phone) ||
+    (!!email && (o.email ?? "").trim().toLowerCase() === email);
+  // ใบใหม่สุดที่มีลิงก์ = ห้องแชทล่าสุดที่พนักงานใช้จริง
+  for (let i = all.length - 1; i >= 0; i--) {
+    const o = all[i];
+    if (o.id === order.id || !o.lineChatUrl || !same(o)) continue;
+    return { url: o.lineChatUrl, source: "prev", from: o.id };
+  }
+  return null;
 }
 
 /** รูปแบบงานของรายการ — รองรับออเดอร์เก่าที่เก็บเป็น proofUrl รูปเดียว */

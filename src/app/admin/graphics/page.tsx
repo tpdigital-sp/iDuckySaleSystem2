@@ -132,7 +132,7 @@ export default function GraphicsOrdersPage() {
             href="/admin/graphics/designs"
             className="rounded-full bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
           >
-            🖼 ลายจากลูกค้า
+            📋 รายงานแบบงาน
           </Link>
           <label className="flex min-w-[240px] items-center gap-2 rounded-full border-2 border-amber-200 bg-white px-4 py-2.5 focus-within:border-amber-400">
             <span className="text-sm text-amber-500">🔍</span>
