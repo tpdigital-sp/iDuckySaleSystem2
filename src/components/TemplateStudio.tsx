@@ -83,6 +83,8 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
   const [showGuide, setShowGuide] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  /** กำลังลากไฟล์มาโยนอยู่เหนือพื้นที่วางลาย */
+  const [dropOn, setDropOn] = useState(false);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -123,14 +125,36 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
   useEffect(() => {
     if (!open) return;
     const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // วางรูปจากคลิปบอร์ด (Ctrl+V / Cmd+V) — แคปหน้าจอมาวางได้เลย
+    const paste = (e: ClipboardEvent) => {
+      const f = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"))?.getAsFile();
+      if (f) {
+        e.preventDefault();
+        void pick(f);
+      }
+    };
+    /**
+     * เบราว์เซอร์จะ "เปิดไฟล์ทับหน้าเว็บ" ถ้าปล่อยรูปนอกกรอบที่รับ
+     * ระหว่างเปิดจอนี้เลยกันไว้ทั้งหน้า — ลากพลาดนิดหน่อยก็ไม่หลุดออกจากตะกร้า
+     */
+    const swallow = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+    };
     document.addEventListener("keydown", esc);
+    document.addEventListener("paste", paste);
+    window.addEventListener("dragover", swallow);
+    window.addEventListener("drop", swallow);
     // กันหน้าเว็บด้านหลังเลื่อนตามตอนลากลายบนมือถือ
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", esc);
+      document.removeEventListener("paste", paste);
+      window.removeEventListener("dragover", swallow);
+      window.removeEventListener("drop", swallow);
       document.body.style.overflow = prev;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, onClose]);
 
   // ล้าง object URL ทิ้งเมื่อเปลี่ยนรูป/ปิดจอ
@@ -311,8 +335,26 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
           </button>
         </div>
 
-        {/* พื้นที่วางลาย */}
-        <div className="flex-1 overflow-auto bg-stone-50 p-4">
+        {/* พื้นที่วางลาย — ลากไฟล์รูปมาโยนลงตรงไหนก็ได้ในโซนนี้ */}
+        <div
+          className={`relative flex-1 overflow-auto p-4 transition ${dropOn ? "bg-sky-50" : "bg-stone-50"}`}
+          onDragOver={(e) => {
+            if (!e.dataTransfer.types.includes("Files")) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+            setDropOn(true);
+          }}
+          onDragLeave={(e) => {
+            // ออกจากโซนจริง ๆ เท่านั้น (ลากผ่านลูก ๆ ข้างในไม่นับ)
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropOn(false);
+          }}
+          onDrop={(e) => {
+            if (!e.dataTransfer.files?.length) return;
+            e.preventDefault();
+            setDropOn(false);
+            void pick(e.dataTransfer.files[0]);
+          }}
+        >
           <div
             ref={stageRef}
             onPointerDown={onPointerDown}
@@ -374,8 +416,8 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
             {!src && (
               <label className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center gap-2 text-center">
                 <span className="text-4xl">🖼</span>
-                <span className="text-sm font-bold text-stone-700">เลือกรูปลายของคุณ</span>
-                <span className="text-[11px] text-stone-400">JPG · PNG · WEBP (ไม่เกิน 15MB)</span>
+                <span className="text-sm font-bold text-stone-700">ลากรูปมาวางตรงนี้ หรือกดเพื่อเลือกไฟล์</span>
+                <span className="text-[11px] text-stone-400">JPG · PNG · WEBP (ไม่เกิน 15MB) · วางจากคลิปบอร์ดด้วย Ctrl+V ก็ได้</span>
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
@@ -389,8 +431,16 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
           {/* ป้ายบอกเส้น */}
           <p className="mt-2 text-center text-[11px] text-stone-400">
             <span className="text-rose-500">▬</span> เส้นตัดจริง · <span className="text-emerald-500">▬</span> เขตปลอดภัย
-            (อย่าให้ข้อความเลยออกไป) · ลากเพื่อเลื่อน · หุบ-กางสองนิ้วเพื่อย่อ-ขยาย
+            (อย่าให้ข้อความเลยออกไป) · ลากเพื่อเลื่อน · หุบ-กางสองนิ้วเพื่อย่อ-ขยาย ·
+            โยนรูปใหม่มาวางทับได้ตลอด
           </p>
+
+          {/* ลากไฟล์อยู่เหนือจอ — บอกให้ชัดว่าปล่อยได้เลย */}
+          {dropOn && (
+            <div className="pointer-events-none absolute inset-3 z-10 flex items-center justify-center rounded-2xl border-4 border-dashed border-sky-400 bg-sky-50/85">
+              <p className="text-base font-extrabold text-sky-700">🖼 ปล่อยรูปตรงนี้ได้เลย</p>
+            </div>
+          )}
         </div>
 
         {/* แถบเครื่องมือ + สถานะ */}
