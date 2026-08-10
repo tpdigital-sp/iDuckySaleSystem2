@@ -211,20 +211,26 @@ export async function buildPrintBundle(input: {
     /**
      * สคริปต์ ExtendScript — เปิดเทมเพลตแล้วสร้างเลเยอร์ "ลายลูกค้า (iDucky)" ไว้ล่างสุด
      * วางลายให้เต็มอาร์ตบอร์ดพอดี แล้วฝังไฟล์เข้าเอกสาร (จะได้ไม่ต้องพกไฟล์ลายไปด้วย)
+     *
+     * ⚠️ ตัวสคริปต์ต้องเป็น ASCII ล้วน — ExtendScript อ่านไฟล์ตามการเข้ารหัสของเครื่อง
+     * ถ้าใส่ตัวอักษรไทยตรง ๆ บางเครื่องจะอ่านเพี้ยนจนตั้งชื่อเลเยอร์ไม่ได้ (กลายเป็น "Layer 3")
+     * เลยแปลงข้อความไทยทุกตัวเป็น \uXXXX ก่อน
      */
+    const th = (t: string) =>
+      `"${[...t].map((c) => (c.charCodeAt(0) < 128 ? c : `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`)).join("")}"`;
     const jsx = [
-      "// วางลายลูกค้าลงบนเทมเพลตอัตโนมัติ — iDucky Prints Studio",
-      "// วิธีใช้: เปิด Illustrator → File → Scripts → Other Script… → เลือกไฟล์นี้",
+      "// Place customer artwork onto the template - iDucky Prints Studio",
+      "// Illustrator: File > Scripts > Other Script... then pick this file",
       "#target illustrator",
       "(function () {",
       "  var here = new File($.fileName).parent;",
       `  var tplFile = new File(here.fsName + "/" + ${JSON.stringify(aiName)});`,
       `  var artFile = new File(here.fsName + "/" + ${JSON.stringify(artName)});`,
-      '  if (!artFile.exists) { alert("ไม่พบไฟล์ลายในโฟลเดอร์เดียวกับสคริปต์"); return; }',
+      `  if (!artFile.exists) { alert(${th("ไม่พบไฟล์ลายในโฟลเดอร์เดียวกับสคริปต์")}); return; }`,
       "  var doc = app.documents.length ? app.activeDocument : (tplFile.exists ? app.open(tplFile) : null);",
-      '  if (!doc) { alert("เปิดไฟล์เทมเพลตก่อน แล้วค่อยรันสคริปต์นี้"); return; }',
+      `  if (!doc) { alert(${th("เปิดไฟล์เทมเพลตก่อน แล้วค่อยรันสคริปต์นี้")}); return; }`,
       "  var layer = doc.layers.add();",
-      '  layer.name = "ลายลูกค้า (iDucky)";',
+      `  try { layer.name = ${th("ลายลูกค้า (iDucky)")}; } catch (e) { layer.name = "Customer Artwork (iDucky)"; }`,
       "  var placed = layer.placedItems.add();",
       "  placed.file = artFile;",
       "  var ab = doc.artboards[doc.artboards.getActiveArtboardIndex()].artboardRect;",
@@ -233,7 +239,7 @@ export async function buildPrintBundle(input: {
       "  placed.position = [ab[0], ab[1]];",
       "  try { placed.embed(); } catch (e) {}",
       "  layer.zOrder(ZOrderMethod.SENDTOBACK);",
-      '  alert("วางลายลงเลเยอร์ “ลายลูกค้า (iDucky)” เรียบร้อย");',
+      `  alert(${th("วางลายลงเลเยอร์ ลายลูกค้า (iDucky) เรียบร้อย")});`,
       "})();",
       "",
     ].join("\n");
