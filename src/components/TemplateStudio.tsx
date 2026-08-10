@@ -257,7 +257,10 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
   function onPointerUp(e: React.PointerEvent) {
     pointers.current.delete(e.pointerId);
     if (pointers.current.size) startGesture();
-    else gesture.current = null;
+    else {
+      gesture.current = null;
+      setPl((p) => (p ? snapToCover(p) : p));
+    }
   }
 
   /**
@@ -275,6 +278,27 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
       };
     },
     [fullW, fullH, padX, padY],
+  );
+
+  /**
+   * ดูดให้คลุมเต็มกรอบเมื่อ "ขาดอีกนิดเดียว" — ลากมุม/แตะแถบเลื่อนพลาดนิดหน่อย
+   * แล้วเหลือขอบขาวบาง ๆ 1-2 มม. ตอนพิมพ์จะเห็นเป็นเส้นขาวรอบงาน
+   * ห่างเกิน 2.5% ของกรอบ = ตั้งใจวางให้เล็ก (เช่น "พอดีกรอบ" ที่อยากได้พื้นขาว) ไม่ไปยุ่ง
+   */
+  const snapToCover = useCallback(
+    (p: Placement): Placement => {
+      const rad = (p.rotDeg * Math.PI) / 180;
+      const w = Math.abs(p.wMm * Math.cos(rad)) + Math.abs(p.hMm * Math.sin(rad));
+      const h = Math.abs(p.wMm * Math.sin(rad)) + Math.abs(p.hMm * Math.cos(rad));
+      const gaps = [p.cxMm - w / 2, bleedW - (p.cxMm + w / 2), p.cyMm - h / 2, bleedH - (p.cyMm + h / 2)];
+      if (gaps.every((g) => g <= 0.05)) return p; // คลุมอยู่แล้ว
+      const tolX = bleedW * 0.025;
+      const tolY = bleedH * 0.025;
+      if (gaps[0] > tolX || gaps[1] > tolX || gaps[2] > tolY || gaps[3] > tolY) return p;
+      const k = Math.max(bleedW / w, bleedH / h, 1);
+      return { ...p, wMm: p.wMm * k, hMm: p.hMm * k, cxMm: bleedW / 2, cyMm: bleedH / 2 };
+    },
+    [bleedW, bleedH],
   );
 
   /** จุดนี้อยู่บนตัวลายไหม — หมุนพิกัดกลับตามมุมของลายก่อนเทียบกรอบ */
@@ -377,6 +401,7 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
   function onHandleUp(e: React.PointerEvent) {
     e.stopPropagation();
     resizing.current = null;
+    setPl((p) => (p ? snapToCover(p) : p));
   }
 
   /** ลากหูหมุน — มุมจากกึ่งกลางลายไปหาเคอร์เซอร์ (หูอยู่เหนือกรอบ เลยชดเชย 90°) */
@@ -430,8 +455,8 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
   })();
 
   /** ประกอบภาพจริงตามตัวเลขที่วางไว้ (ขนาดเท่าพื้นที่ตัดตก) */
-  async function buildComposite(): Promise<File | null> {
-    if (!src || !pl) return null;
+  async function buildComposite(pl: Placement): Promise<File | null> {
+    if (!src) return null;
     const scale = Math.min(EXPORT_DPI / 25.4, EXPORT_MAX_EDGE / Math.max(bleedW, bleedH));
     const W = Math.max(1, Math.round(bleedW * scale));
     const H = Math.max(1, Math.round(bleedH * scale));
@@ -462,11 +487,15 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
   }
 
   async function apply() {
-    if (!src || !pl || busy) return;
+    const pl0 = pl;
+    if (!src || !pl0 || busy) return;
     setBusy(true);
     setErr("");
     try {
-      const composite = await buildComposite();
+      // ดูดให้เต็มกรอบอีกรอบก่อนส่งออก (กันขอบขาวบาง ๆ ที่ตาแทบไม่เห็นบนจอ)
+      const pl = snapToCover(pl0);
+      setPl(pl);
+      const composite = await buildComposite(pl);
       if (!composite) {
         setErr("ประกอบภาพไม่สำเร็จ ลองใหม่อีกครั้ง");
         return;
@@ -596,23 +625,6 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
               )}
             </div>
 
-            {/* เส้นไกด์: ขอบงานจริง (ตัดตามนี้) + เขตปลอดภัย */}
-            <div
-              className="pointer-events-none absolute border-2 border-dashed border-rose-500/70"
-              style={{ left: pctW(bleedX), top: pctH(bleedY), width: lenW(artW), height: lenH(artH) }}
-            />
-            {safeMm > 0 && (
-              <div
-                className="pointer-events-none absolute border border-dashed border-emerald-500/70"
-                style={{
-                  left: pctW(bleedX + safeMm),
-                  top: pctH(bleedY + safeMm),
-                  width: lenW(Math.max(0, artW - safeMm * 2)),
-                  height: lenH(Math.max(0, artH - safeMm * 2)),
-                }}
-              />
-            )}
-
             {/* ── กรอบ transform — โผล่เมื่อคลิกเลือกลาย (คลิกที่ว่างเพื่อเอาออก) ── */}
             {src && pl && sel && (
               <div
@@ -693,11 +705,10 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
             )}
           </div>
 
-          {/* ป้ายบอกเส้น */}
+          {/* ป้ายบอกวิธีใช้ */}
           <p className="mt-2 text-center text-[11px] text-stone-400">
-            <span className="text-rose-500">▬</span> เส้นตัดจริง · <span className="text-emerald-500">▬</span> เขตปลอดภัย
-            (อย่าให้ข้อความเลยออกไป) · <strong>คลิกที่ลายเพื่อปรับ</strong> แล้วลากเลื่อน · ลากมุมย่อ-ขยาย ·
-            ลากหู ↻ หมุน · ล้อเมาส์/สองนิ้วซูม · คลิกพื้นที่ว่างเพื่อดูงานแบบไม่มีเส้นกรอบ
+            <strong>คลิกที่ลายเพื่อปรับ</strong> แล้วลากเลื่อน · ลากมุมย่อ-ขยาย · ลากหู ↻ หมุน ·
+            ล้อเมาส์/สองนิ้วซูม · คลิกพื้นที่ว่างเพื่อดูงานแบบไม่มีเส้นกรอบ
           </p>
 
           {/* ลากไฟล์อยู่เหนือจอ — บอกให้ชัดว่าปล่อยได้เลย */}

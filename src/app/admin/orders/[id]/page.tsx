@@ -1701,45 +1701,58 @@ export default function AdminOrderDetailPage() {
                         <span className="ml-1 font-normal text-sky-600">— ทีมงานเห็นเท่านั้น ลูกค้าไม่เห็นในหน้าเช็คออเดอร์</span>
                       </p>
                       {/*
-                        ลูกค้าวางลายเองบนเว็บ (มีขนาดกรอบงานติดมาด้วย) → ออกไฟล์ .ai ขนาดเท่างานจริงได้เลย
-                        กราฟฟิกไม่ต้องจัดหน้าใหม่ ถือว่าลูกค้าอนุมัติแบบมาแล้วตั้งแต่หน้าเว็บ
+                        ลูกค้าวางลายเองบนเว็บ → ออกไฟล์ .ai ขนาดเท่างานจริงได้เลย ทีละลาย
+                        (สั่งหลายลายในรายการเดียวได้ — บรรทัดของทีมผลิตคั่นแต่ละลายด้วย " | "
+                        เรียงลำดับเดียวกับรูปลายที่แนบมา)
                       */}
                       {(() => {
-                        const frame = parsePrintFrame(it.sel?.[PLACEMENT_SPEC_LABEL]);
-                        const art = it.artworkUrls?.[0];
-                        if (!frame || !art) return null;
-                        const key = `${order.id}-${i}`;
+                        const specs = (it.sel?.[PLACEMENT_SPEC_LABEL] ?? "").split(" | ");
+                        const jobs = (it.artworkUrls ?? [])
+                          .map((url, k) => ({ url, k, frame: parsePrintFrame(specs[k] ?? specs[0]) }))
+                          .filter((j) => j.frame);
+                        if (!jobs.length) return null;
                         return (
                           <div className="mt-2 rounded-lg bg-white p-2 ring-1 ring-sky-200">
                             <p className="text-[11px] font-bold text-sky-900">
                               ✅ ลูกค้าออกแบบมาเองแล้ว — ไม่ต้องทำแบบใหม่
+                              {jobs.length > 1 ? ` (${jobs.length} ลาย)` : ""}
                             </p>
-                            <p className={`text-[10px] ${faint}`}>
-                              กรอบงาน {frame.widthMm}×{frame.heightMm} มม. (รวมตัดตก)
-                            </p>
-                            <button
-                              type="button"
-                              disabled={aiBusy === key}
-                              onClick={async () => {
-                                setAiBusy(key);
-                                try {
-                                  const blob = await buildPrintAi({
-                                    imageUrl: art,
-                                    widthMm: frame.widthMm,
-                                    heightMm: frame.heightMm,
-                                    title: `${order.id} ${it.name}`,
-                                  });
-                                  downloadBlob(blob, `${order.id}-item${i + 1}-พร้อมพิมพ์.ai`);
-                                } catch (e) {
-                                  alert(e instanceof Error ? e.message : "สร้างไฟล์ .ai ไม่สำเร็จ");
-                                } finally {
-                                  setAiBusy(null);
-                                }
-                              }}
-                              className="mt-1.5 w-full rounded-lg bg-sky-600 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-sky-700 disabled:opacity-50"
-                            >
-                              {aiBusy === key ? "กำลังสร้างไฟล์…" : "⬇️ ไฟล์ .ai พร้อมพิมพ์"}
-                            </button>
+                            <div className="mt-1.5 flex flex-wrap gap-1.5">
+                              {jobs.map((j) => {
+                                const key = `${order.id}-${i}-${j.k}`;
+                                return (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    disabled={aiBusy === key}
+                                    onClick={async () => {
+                                      setAiBusy(key);
+                                      try {
+                                        const blob = await buildPrintAi({
+                                          imageUrl: j.url,
+                                          widthMm: j.frame!.widthMm,
+                                          heightMm: j.frame!.heightMm,
+                                          title: `${order.id} ${it.name} ลายที่ ${j.k + 1}`,
+                                        });
+                                        downloadBlob(blob, `${order.id}-item${i + 1}-ลาย${j.k + 1}-พร้อมพิมพ์.ai`);
+                                      } catch (e) {
+                                        alert(e instanceof Error ? e.message : "สร้างไฟล์ .ai ไม่สำเร็จ");
+                                      } finally {
+                                        setAiBusy(null);
+                                      }
+                                    }}
+                                    className="rounded-lg bg-sky-600 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-sky-700 disabled:opacity-50"
+                                    title={`กรอบงาน ${j.frame!.widthMm}×${j.frame!.heightMm} มม. (รวมตัดตก)`}
+                                  >
+                                    {aiBusy === key
+                                      ? "กำลังสร้าง…"
+                                      : jobs.length > 1
+                                        ? `⬇️ .ai ลายที่ ${j.k + 1}`
+                                        : "⬇️ ไฟล์ .ai พร้อมพิมพ์"}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
                         );
                       })()}

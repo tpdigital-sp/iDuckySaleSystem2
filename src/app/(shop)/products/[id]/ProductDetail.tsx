@@ -171,7 +171,9 @@ export default function ProductDetail({
    * ผลลัพธ์: ภาพที่ประกอบแล้วเข้าไปอยู่ในรายการลายที่แนบ + จดตัวเลขตำแหน่งไว้ให้ทีมผลิต
    */
   const [studio, setStudio] = useState<{ title: string; frame: TemplateFrame; guideUrl?: string } | null>(null);
-  const [placed, setPlaced] = useState<{ summary: string; spec: string; sourceUrl?: string }[]>([]);
+  const [placed, setPlaced] = useState<{ summary: string; spec: string; sourceUrl?: string; qty: number }[]>([]);
+  /** กำลังแก้ไขลายที่เท่าไหร่ (null = สร้างลายใหม่) — กัน "แก้ไขแบบ" กลายเป็นเพิ่มลายซ้ำ */
+  const [editIndex, setEditIndex] = useState<number | null>(null);
   // ส่วน "เพิ่มเติม" ยุบไว้ทีละอัน — ไม่ให้ฟอร์มที่ไม่บังคับดันปุ่มซื้อตกจอ
   const [extraOpen, setExtraOpen] = useState<"art" | "note" | null>(null);
   // สินค้าที่บังคับแนบลาย → เปิดกล่องค้างไว้จนกว่าลูกค้าจะแตะปิดเอง
@@ -559,9 +561,40 @@ export default function ProductDetail({
   const studioMode = !!studioTarget;
   const designDone = placed.length > 0;
 
-  function openStudio() {
+  function openStudio(index: number | null = null) {
+    setEditIndex(index);
     if (studioTarget) setStudio(studioTarget);
   }
+
+  /** ลบลายที่สร้างไว้ (ทั้งภาพที่ประกอบแล้วและตัวเลขตำแหน่ง) */
+  function removeDesign(index: number) {
+    setArtFiles((cur) => cur.filter((_, i) => i !== index));
+    setPlaced((cur) => cur.filter((_, i) => i !== index));
+  }
+
+  /** จำนวนชิ้นของลายนั้น (อย่างน้อย 1) */
+  function setDesignQty(index: number, n: number) {
+    setPlaced((cur) => cur.map((p, i) => (i === index ? { ...p, qty: Math.max(1, Math.min(9999, n)) } : p)));
+  }
+
+  /**
+   * บวก/ลบจำนวนของลายนั้น — อ่านค่าล่าสุดจากใน setState เสมอ
+   * (กดรัว ๆ แล้วอ่านค่าจากตัวแปรที่เรนเดอร์ไว้ จะได้ค่าเก่า → กดสิบทีขึ้นแค่ทีเดียว)
+   */
+  function bumpDesignQty(index: number, delta: number) {
+    setPlaced((cur) =>
+      cur.map((p, i) => (i === index ? { ...p, qty: Math.max(1, Math.min(9999, p.qty + delta)) } : p)),
+    );
+  }
+
+  /** จำนวนรวมของทุกลาย = จำนวนที่สั่งจริง */
+  const designTotalQty = placed.reduce((n, p) => n + p.qty, 0);
+
+  // โหมดออกแบบบนเว็บ: จำนวนที่สั่ง = ผลรวมจำนวนของทุกลาย (ลูกค้าปรับที่ลายแต่ละอัน)
+  useEffect(() => {
+    if (!studioMode || placed.length === 0) return;
+    setQty(designTotalQty);
+  }, [studioMode, placed.length, designTotalQty]);
 
   /** อัปโหลดไฟล์เดียวแล้วคืน url (ใช้กับภาพที่ประกอบจากจอวางลาย) */
   async function uploadOne(f: File): Promise<string> {
@@ -602,9 +635,16 @@ export default function ProductDetail({
         };
         im.src = obj;
       });
-      setArtFiles((cur) => [...cur, { url, name: r.composite.name, ...dim }]);
-      setPlaced((cur) => [...cur, { summary: r.summary, spec: r.spec, sourceUrl }]);
-      setExtraOpen("art");
+      const file = { url, name: r.composite.name, ...dim };
+      const entry = { summary: r.summary, spec: r.spec, sourceUrl };
+      if (editIndex !== null) {
+        setArtFiles((cur) => cur.map((x, i) => (i === editIndex ? file : x)));
+        setPlaced((cur) => cur.map((x, i) => (i === editIndex ? { ...entry, qty: x.qty } : x)));
+      } else {
+        setArtFiles((cur) => [...cur, file]);
+        setPlaced((cur) => [...cur, { ...entry, qty: 1 }]);
+      }
+      setEditIndex(null);
     } catch (e) {
       setArtErr(e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง");
     } finally {
@@ -648,9 +688,16 @@ export default function ProductDetail({
     if (artFiles.length) extra["ภาพลายที่แนบ"] = artFiles.map((f) => f.url).join(" | ");
     // ลายที่วางบนเทมเพลตผ่านหน้าเว็บ — สรุปให้ลูกค้าอ่าน + ตัวเลขให้ทีมผลิตวางในไฟล์จริง
     if (placed.length) {
-      extra[PLACEMENT_LABEL] = placed.map((p) => p.summary).join(" | ");
+      const many = placed.length > 1;
+      extra[PLACEMENT_LABEL] = placed
+        .map((p, i) => (many ? `ลายที่ ${i + 1} × ${p.qty} ชิ้น: ${p.summary}` : p.summary))
+        .join(" | ");
       extra[PLACEMENT_SPEC_LABEL] = placed
-        .map((p) => p.spec + (p.sourceUrl ? ` · ต้นฉบับ: ${p.sourceUrl}` : ""))
+        .map(
+          (p, i) =>
+            `${many ? `ลายที่ ${i + 1} × ${p.qty} ชิ้น — ` : ""}${p.spec}` +
+            (p.sourceUrl ? ` · ต้นฉบับ: ${p.sourceUrl}` : ""),
+        )
         .join(" | ");
     }
     // สั่งจำนวนมาก → ติดธงให้ทีมเช็คสต๊อก/คิวผลิตแล้วยืนยันจำนวนกับลูกค้าก่อนเริ่มงาน
@@ -1570,12 +1617,14 @@ export default function ProductDetail({
           <div ref={orderBoxRef} className="mt-5 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-amber-100">
             {/* จำนวน + เพิ่มลงตะกร้า */}
             <div>
-              {matrix && (
+              {matrix && !(studioMode && designDone) && (
                 <label className="mb-1 block text-[13px] font-bold text-stone-700">
                   จำนวน ({matrix.unit})
                 </label>
               )}
               <div className="flex flex-wrap items-center gap-3">
+                {/* มีลายแล้ว = คุมจำนวนที่ลายแต่ละอันแทน (กันตัวเลขสองที่ไม่ตรงกัน) */}
+                {!(studioMode && designDone) && (
                 <div className="flex items-center rounded-full bg-white ring-1 ring-amber-200">
                   <button
                     type="button"
@@ -1610,11 +1659,13 @@ export default function ProductDetail({
                     +
                   </button>
                 </div>
+                )}
+
                 {/* โหมดออกแบบบนเว็บ: ปุ่มแรกคือ "เริ่มสร้าง" · วางลายเสร็จแล้วค่อยกลายเป็นปุ่มใส่ตะกร้า */}
                 {studioMode && !designDone ? (
                   <button
                     type="button"
-                    onClick={openStudio}
+                    onClick={() => openStudio(null)}
                     className="flex-1 rounded-full bg-sky-600 px-5 py-3 text-[13px] font-bold text-white shadow-lg transition hover:scale-105 hover:bg-sky-700 sm:flex-none sm:px-8"
                   >
                     🎨 เริ่มสร้าง — วางลายบนสินค้า
@@ -1641,26 +1692,78 @@ export default function ProductDetail({
                   </button>
                 )}
               </div>
-              {/* แบบที่ลูกค้าวางเองแล้ว — เห็นรูปจริง แก้ไข/ทำใหม่ได้ก่อนใส่ตะกร้า */}
+              {/* แบบที่ลูกค้าวางเอง — สั่งหลายลายในรายการเดียวได้ กำหนดจำนวนแยกแต่ละลาย */}
               {studioMode && designDone && (
-                <div className="mt-3 flex items-center gap-3 rounded-2xl bg-sky-50 p-2.5 ring-1 ring-sky-200">
-                  {artFiles[artFiles.length - 1] && (
-                    <img
-                      src={artFiles[artFiles.length - 1].url}
-                      alt="แบบที่คุณสร้าง"
-                      className="h-14 w-14 shrink-0 rounded-xl object-cover ring-1 ring-sky-300"
-                    />
-                  )}
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[13px] font-extrabold text-sky-900">✓ แบบพร้อมผลิตแล้ว</span>
-                    <span className="block truncate text-[11px] text-sky-700">{placed[placed.length - 1]?.summary}</span>
-                  </span>
+                <div className="mt-3 rounded-2xl bg-sky-50 p-2.5 ring-1 ring-sky-200">
+                  <p className="mb-2 flex items-center gap-2 px-1 text-[12px] font-extrabold text-sky-900">
+                    ✓ แบบพร้อมผลิต {placed.length} ลาย
+                    <span className="font-bold text-sky-700">· รวม {designTotalQty.toLocaleString("th-TH")} ชิ้น</span>
+                  </p>
+                  <div className="space-y-1.5">
+                    {placed.map((d, i) => (
+                      <div key={i} className="flex items-center gap-2 rounded-xl bg-white p-2 ring-1 ring-sky-100">
+                        {artFiles[i] && (
+                          <img
+                            src={artFiles[i].url}
+                            alt={`แบบที่ ${i + 1}`}
+                            className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-sky-200"
+                          />
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[12px] font-bold text-stone-800">ลายที่ {i + 1}</span>
+                          <span className="block truncate text-[10px] text-stone-400">{d.summary}</span>
+                        </span>
+                        {/* จำนวนของลายนี้ — ทีมผลิตอ่านจากตรงนี้ว่าลายไหนกี่ชิ้น */}
+                        <span className="flex shrink-0 items-center rounded-full bg-amber-50 ring-1 ring-amber-200">
+                          <button
+                            type="button"
+                            onClick={() => bumpDesignQty(i, -1)}
+                            className="h-8 w-8 rounded-l-full text-sm font-bold text-stone-600 hover:bg-amber-100"
+                            aria-label={`ลดจำนวนลายที่ ${i + 1}`}
+                          >
+                            −
+                          </button>
+                          <input
+                            value={d.qty}
+                            onChange={(e) => setDesignQty(i, parseInt(e.target.value.replace(/\D/g, ""), 10) || 1)}
+                            inputMode="numeric"
+                            className="w-9 bg-transparent text-center text-xs font-bold focus:outline-none"
+                            aria-label={`จำนวนลายที่ ${i + 1}`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => bumpDesignQty(i, 1)}
+                            className="h-8 w-8 rounded-r-full text-sm font-bold text-stone-600 hover:bg-amber-100"
+                            aria-label={`เพิ่มจำนวนลายที่ ${i + 1}`}
+                          >
+                            +
+                          </button>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => openStudio(i)}
+                          title="แก้ไขแบบนี้"
+                          className="shrink-0 rounded-full bg-white px-2 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-100"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeDesign(i)}
+                          title="ลบลายนี้"
+                          className="shrink-0 rounded-full px-2 py-1.5 text-[11px] font-bold text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                   <button
                     type="button"
-                    onClick={openStudio}
-                    className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-100"
+                    onClick={() => openStudio(null)}
+                    className="mt-2 w-full rounded-xl border-2 border-dashed border-sky-300 bg-white px-3 py-2 text-[12px] font-bold text-sky-700 transition hover:bg-sky-100"
                   >
-                    ✏️ แก้ไขแบบ
+                    ＋ เพิ่มลายอีกแบบ (สั่งหลายลายในออเดอร์เดียวได้)
                   </button>
                 </div>
               )}
@@ -2133,7 +2236,7 @@ export default function ProductDetail({
           {studioMode && !designDone ? (
             <button
               type="button"
-              onClick={openStudio}
+              onClick={() => openStudio(null)}
               className="ml-auto shrink-0 rounded-full bg-sky-600 px-6 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-sky-700"
             >
               🎨 เริ่มสร้าง
