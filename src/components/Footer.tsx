@@ -49,10 +49,7 @@ export default function Footer() {
         <div className="f-grid">
           <div>
             <Link href="/" className="logo" style={{ marginBottom: 12 }}>
-              <img className="duck-mini" src="/landing/logo-duck.webp" alt="" aria-hidden="true" />
-              <span>
-                i<b>DUCKY</b> Prints
-              </span>
+              <img className="logo-img" src="/landing/logo-word.webp" alt="iDucky Prints Studio" width={722} height={243} />
             </Link>
             <p>ทำด้วยใจ พิมพ์ด้วยรัก — รับผลิตสินค้าตามสั่งครบวงจร เริ่มต้นที่ 1 ชิ้น</p>
             <div className="socials">

@@ -111,12 +111,7 @@ export default function Navbar() {
                 className="h-11 w-auto max-w-[210px] object-contain"
               />
             ) : (
-              <>
-                <img className="duck-mini" src="/landing/logo-duck.webp" alt="" aria-hidden="true" />
-                <span>
-                  i<b>DUCKY</b>
-                </span>
-              </>
+              <img className="logo-img" src="/landing/logo-word.webp" alt="iDucky Prints Studio" width={722} height={243} />
             )}
           </Link>
 

@@ -24,6 +24,16 @@ const TAB_GROUPS: { id: string; label: string; cats: string[] }[] = [
   { id: "wear", label: "เสื้อผ้า & ของขวัญ", cats: ["apparel", "fabric", "gifts"] },
 ];
 
+/** รีวิวลูกค้าที่โชว์บนหน้าแรก (ภาพงานจริง + คำชม) — แก้ข้อความ/รูปได้ที่นี่ */
+const REVIEWS: { photo: string; text: string; name: string; item: string }[] = [
+  { photo: "/landing/review-1.webp", text: "งานคมมาก สีตรงกับไฟล์ที่ส่งไปเป๊ะ แอดมินตอบไวสุด ๆ", name: "คุณนุ่น", item: "พวงกุญแจอะคริลิค · 30 ชิ้น" },
+  { photo: "/landing/review-2.webp", text: "ไม่มีลายเลย ทีมงานช่วยออกแบบให้ฟรีจนได้งานที่ชอบ สั่งซ้ำมา 4 รอบแล้ว", name: "คุณกันต์", item: "สแตนดี้ + สติกเกอร์" },
+  { photo: "/landing/review-3.webp", text: "สั่งชิ้นเดียวก็ทำให้ แพ็คมาดีไม่มีรอยเลย ส่งเร็วกว่านัด", name: "คุณแพร", item: "แก้วมัคพิมพ์ลาย" },
+  { photo: "/landing/review-4.webp", text: "เนื้อผ้าดี งานพิมพ์ไม่แตก ซักแล้วสีไม่ตก ประทับใจมากครับ", name: "คุณต้า", item: "เสื้อยืดพิมพ์ลาย 12 ตัว" },
+  { photo: "/landing/review-5.webp", text: "กระดาษหนาดี สีสวยมาก ลูกค้าร้านเราชมกันเยอะเลยค่ะ", name: "คุณมิ้นท์", item: "โปสการ์ด + การ์ดขอบคุณ" },
+  { photo: "/landing/review-6.webp", text: "ลายชัด ขอบไม่เบลอ ราคาน่ารักมาก จะกลับมาสั่งอีกแน่นอน", name: "คุณอาย", item: "เคสมือถือ · สั่ง 5 ชิ้น" },
+];
+
 /** ไอคอนวาดมือของหมวดหลัก (จากไฟล์ต้นแบบ) — หมวดอื่นใช้อีโมจิของหมวดนั้น */
 const CAT_ICON: Record<string, string> = {
   acrylic: "/landing/cat-ico-1.webp",
@@ -446,6 +456,13 @@ export default function HomePage() {
       {/* ── ปิดท้าย: ขั้นตอนสั่งซื้อ + ช่องแชทที่คุยกับผู้ช่วยร้านได้จริง ── */}
       <div className="chat-band" id="steps">
         <div className="chat-bg" aria-hidden="true" />
+        <img className="cb-deco cbd-cloud1" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+        <img className="cb-deco cbd-cloud2" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+        <img className="cb-deco cbd-star1" src="/landing/star.webp" alt="" aria-hidden="true" />
+        <img className="cb-deco cbd-star2" src="/landing/star.webp" alt="" aria-hidden="true" />
+        <span className="cb-bub b1" aria-hidden="true" />
+        <span className="cb-bub b2" aria-hidden="true" />
+        <span className="cb-bub b3" aria-hidden="true" />
         <section className="wrap rv">
           <div className="head">
             <span className="kicker">💬 ถามได้เลย ไม่ต้องรอแอดมิน</span>
@@ -473,6 +490,37 @@ export default function HomePage() {
           </div>
         </section>
       </div>
+
+      {/* ── รีวิวลูกค้า: การ์ดเลื่อนอัตโนมัติ (ชี้เมาส์ = หยุด) ── */}
+      <section className="rv reviews-sec">
+        <div className="head">
+          <span className="kicker">⭐ รีวิวจากลูกค้า</span>
+          <h2>
+            ลูกค้า<em>พูดถึงเรา</em>ว่ายังไง
+          </h2>
+        </div>
+        <div className="rv-marquee">
+          {/* วนสองชุดต่อกัน ให้เลื่อนแล้วต่อเนื่องไม่มีรอยต่อ */}
+          <div className="rv-track">
+            {[...REVIEWS, ...REVIEWS].map((r, i) => (
+              <figure className="rvc" key={i}>
+                <div className="rvc-shot">
+                  <img src={r.photo} alt="ภาพรีวิวจากลูกค้า" loading="lazy" decoding="async" />
+                </div>
+                <figcaption>
+                  <div className="rvc-star">★★★★★</div>
+                  <p>{r.text}</p>
+                  <span className="rvc-who">
+                    <i>{r.name.replace(/^คุณ/, "").charAt(0)}</i>
+                    <b>{r.name}</b>
+                    <small>{r.item}</small>
+                  </span>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* ── ช่องทางโซเชียลลอยมุมจอ ── */}
       <nav className="social-dock" aria-label="ช่องทางโซเชียลของร้าน">
