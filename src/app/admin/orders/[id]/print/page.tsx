@@ -20,9 +20,23 @@ import { fetchOrdersAdmin } from "@/lib/order-repo";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shopInfoOf, type ShopInfo } from "@/lib/shop-settings";
 import { useCan } from "@/lib/perm-context";
+import { PLACEMENT_LABEL, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 
-/** work = ใบงาน+ใบปะหน้าพัสดุ (ใบเดียวจบ) · receipt = ใบเสร็จให้ลูกค้า */
-type DocKey = "work" | "receipt";
+/**
+ * ข้อความสั้นบนป้ายแปะกล่อง — เอาเฉพาะตัวเลือกสินค้า (ขนาด/สี/รุ่น)
+ * ตัดพวกพิกัด/ลิงก์/สรุปการวางลายออก เพราะป้ายต้องอ่านจากไกลได้ในบรรทัดเดียวสองบรรทัด
+ */
+function boxSummary(it: Order["items"][number]): string {
+  const skip = ["ภาพลายที่แนบ", "รอเช็คสต๊อก", PLACEMENT_SPEC_LABEL, PLACEMENT_LABEL];
+  const entries = Object.entries(it.sel ?? {}).filter(([k, v]) => v && !skip.includes(k));
+  if (entries.length) return entries.map(([k, v]) => `${k}: ${v}`).join(" · ");
+  // ออเดอร์เก่าที่ไม่มีตัวเลือกแบบ key-value — ตัดให้สั้นพอติดกล่อง
+  const t = cleanSelections(it.selections);
+  return t.length > 90 ? `${t.slice(0, 90)}…` : t;
+}
+
+/** work = ใบงาน+ใบปะหน้าพัสดุ (ใบเดียวจบ) · receipt = ใบเสร็จให้ลูกค้า · box = ใบแปะหน้ากล่อง */
+type DocKey = "work" | "receipt" | "box";
 
 /** ตัดลิงก์ไฟล์ลาย/อีเมล (URL) ออกจากตัวเลือก — ไม่จำเป็นบนใบงานกระดาษ */
 function cleanSelections(sel?: string): string {
@@ -39,7 +53,7 @@ export default function PrintOrderPage() {
 
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
-  const [docs, setDocs] = useState<Record<DocKey, boolean>>({ work: true, receipt: false });
+  const [docs, setDocs] = useState<Record<DocKey, boolean>>({ work: true, receipt: false, box: false });
   const [withProofs, setWithProofs] = useState(true);
   const [origin, setOrigin] = useState(""); // สำหรับ QR มือถือ (ต้องอ่านฝั่งเบราว์เซอร์)
   const [shop, setShop] = useState<ShopInfo>(shopInfoOf(null)); // ข้อมูลร้าน (แอดมินแก้ได้ที่ตั้งค่าระบบ)
@@ -71,8 +85,9 @@ export default function PrintOrderPage() {
     // ?doc=work|receipt (รองรับลิงก์เก่า job/label → work)
     setOrigin(publicOrigin()); // ต้องเป็นโดเมนจริง มือถือถึงสแกนแล้วเปิดได้
     const only = new URLSearchParams(window.location.search).get("doc");
-    if (only === "receipt") setDocs({ work: false, receipt: true });
-    else if (only) setDocs({ work: true, receipt: false });
+    if (only === "receipt") setDocs({ work: false, receipt: true, box: false });
+    else if (only === "box") setDocs({ work: false, receipt: false, box: true });
+    else if (only) setDocs({ work: true, receipt: false, box: false });
     void fetchShopPayment().then((p) => setShop(shopInfoOf(p)));
     void load();
   }, [load]);
@@ -151,6 +166,8 @@ export default function PrintOrderPage() {
           {(([
             // ยังเก็บเงินไม่ครบ = ใบปะหน้า (ที่อยู่จัดส่ง) ไม่ออก — ป้ายต้องบอกตรง ๆ ว่าจะได้แค่ใบงาน
             ["work", fullyPaid ? "ใบงาน + ใบปะหน้าพัสดุ" : "ใบงาน"],
+            // ป้ายแปะหน้ากล่อง — ตัวใหญ่ อ่านจากไกล ไม่มีราคา ฝ่ายแพ็คใช้ได้
+            ["box", "🏷 ใบแปะหน้ากล่อง"],
             // ใบเสร็จมีราคา — เฉพาะคนที่เห็นข้อมูลเงินได้
             ...(seesMoney ? [["receipt", "ใบเสร็จ"]] : []),
           ] as [DocKey, string][])).map(([k, label]) => (
@@ -478,6 +495,78 @@ export default function PrintOrderPage() {
         )}
 
         {/* ═══════════ ใบเสร็จ ═══════════ */}
+        {/*
+          ── 🏷 ใบแปะหน้ากล่อง — หนึ่งใบต่อหนึ่งรายการ ──
+          ออกแบบให้อ่านจากไกล: เลขออเดอร์ตัวโต · รูปงานจริง · ชื่อผู้รับ · จำนวนตัวใหญ่สุด
+          ไม่มีราคา/ที่อยู่ ฝ่ายแพ็คใช้แปะข้างกล่องได้เลย
+        */}
+        {docs.box &&
+          order.items.map((it, i) => {
+            const pics = (proofsOf(it).map((p) => p.url).concat(it.artworkUrls ?? [])).slice(0, 3);
+            return (
+              <section
+                key={`box-${i}`}
+                className="sheet flex flex-col rounded-xl border border-slate-200 bg-white p-8 shadow-sm"
+              >
+                <div className="flex flex-1 flex-col rounded-2xl border-4 border-slate-900 p-6">
+                  {/* หัว: รายละเอียดสั้น ๆ ซ้าย · เลขออเดอร์ตัวโตขวา */}
+                  <div className="flex items-start justify-between gap-6 border-b-4 border-slate-900 pb-4">
+                    <div className="min-w-0">
+                      <p className="text-2xl font-extrabold leading-tight">{it.name}</p>
+                      <p className="mt-1 text-xl font-semibold leading-snug text-slate-700">{boxSummary(it)}</p>
+                      {proofsOf(it).length > 1 && (
+                        <p className="mt-1 text-lg font-bold text-slate-500">{proofsOf(it).length} ลาย</p>
+                      )}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="font-mono text-4xl font-extrabold tracking-tight">{order.id}</p>
+                      <p className="mt-1 text-sm font-bold text-slate-500">
+                        รายการที่ {i + 1} / {order.items.length}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* กลาง: รูปงานจริง + ชื่อผู้รับตัวโต */}
+                  <div className="flex flex-1 items-center gap-8 py-6">
+                    <div className="flex flex-1 flex-wrap items-center justify-center gap-3">
+                      {pics.length ? (
+                        pics.map((u, k) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            key={`${u}-${k}`}
+                            src={u}
+                            alt=""
+                            className="h-48 w-48 rounded-xl border-2 border-slate-300 object-contain"
+                          />
+                        ))
+                      ) : (
+                        <span className="grid h-48 w-48 place-items-center rounded-xl border-2 border-dashed border-slate-300 text-sm text-slate-400">
+                          ไม่มีรูปงาน
+                        </span>
+                      )}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-sm font-bold uppercase tracking-widest text-slate-400">ผู้รับ</p>
+                      <p className="text-4xl font-extrabold leading-tight text-sky-700">{order.customer}</p>
+                      {order.rush && <p className="mt-2 text-2xl font-extrabold text-rose-600">🔥 งานเร่ง</p>}
+                    </div>
+                  </div>
+
+                  {/* ล่าง: จำนวนตัวใหญ่สุด — ฝ่ายแพ็คนับตามนี้ */}
+                  <div className="flex items-end justify-between gap-6 border-t-4 border-slate-900 pt-4">
+                    <p className="text-sm text-slate-500">
+                      {order.date} · {order.shipping}
+                      {(order.tracking ?? "").trim() ? ` · ${order.tracking}` : ""}
+                    </p>
+                    <p className="text-5xl font-extrabold tabular-nums">
+                      จำนวน {it.qty.toLocaleString("th-TH")} ชิ้น
+                    </p>
+                  </div>
+                </div>
+              </section>
+            );
+          })}
+
         {docs.receipt && seesMoney && fullyPaid && (
           <section className="sheet rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
             <div className="flex items-start justify-between border-b-2 border-slate-900 pb-3">
