@@ -143,48 +143,75 @@ async function drawOnTemplate(
     page.node.setXObject(PDFName.of(xName), img.ref);
 
     /**
-     * ใส่ลายไว้ในเลเยอร์ของตัวเอง (OCG) — Illustrator จะโชว์เป็นเลเยอร์ชื่อ "ลายลูกค้า"
-     * ปิด/ย้ายลำดับได้เหมือนเลเยอร์ปกติ · ทำไม่สำเร็จก็แค่ไม่มีเลเยอร์แยก ลายยังอยู่
+     * แยกเป็น 2 เลเยอร์ (OCG): "ลายลูกค้า" กับ "เทมเพลต"
+     *
+     * ⚠️ ทำไมได้แค่ 2 ไม่ใช่เลเยอร์เดิมของเทมเพลตทั้งหมด:
+     * ไฟล์ .ai ประกาศชื่อเลเยอร์เดิมไว้ใน /OCProperties ก็จริง (เช่น "clip", "Layer 4")
+     * แต่เนื้อหาในฝั่ง PDF **ไม่ได้ถูกแท็กว่าเส้นไหนอยู่เลเยอร์ไหนเลย** (ไม่มี /OC … BDC สักตัว)
+     * ข้อมูลนั้นอยู่ในก้อนส่วนตัวของ Adobe ก้อนเดียว ซึ่งเป็นรูปแบบปิด อ่าน/เขียนไม่ได้
+     * เราจึงแยกได้แค่ "ของเราเอง (ลาย)" กับ "ของเทมเพลตทั้งก้อน" — และต้องแท็กเองทั้งคู่
      */
-    let ocName = "";
+    const oc = { art: "", tpl: "" };
     try {
-      const ocgRef = doc.context.register(
-        doc.context.obj({ Type: "OCG", Name: PDFHexString.fromText("ลายลูกค้า (iDucky)") }),
-      );
-      const ocp = doc.catalog.lookup(PDFName.of("OCProperties"), PDFDict);
-      const ocgs = ocp?.lookup(PDFName.of("OCGs"), PDFArray);
-      const cfg = ocp?.lookup(PDFName.of("D"), PDFDict);
-      if (ocgs && cfg) {
-        ocgs.push(ocgRef);
-        cfg.lookup(PDFName.of("Order"), PDFArray)?.push(ocgRef);
-        cfg.lookup(PDFName.of("ON"), PDFArray)?.push(ocgRef);
-        const resources = page.node.Resources();
-        let props = resources?.lookup(PDFName.of("Properties"), PDFDict) ?? undefined;
-        if (resources && !props) {
-          const created = doc.context.obj({});
-          resources.set(PDFName.of("Properties"), created);
-          props = resources.lookup(PDFName.of("Properties"), PDFDict) ?? undefined;
-        }
-        if (props) {
-          ocName = "IDuckyOC";
-          props.set(PDFName.of(ocName), ocgRef);
-        }
+      const mkOcg = (name: string) =>
+        doc.context.register(doc.context.obj({ Type: "OCG", Name: PDFHexString.fromText(name) }));
+      const artOcg = mkOcg("ลายลูกค้า (iDucky)");
+      const tplOcg = mkOcg("เทมเพลต (เส้นตัด/ไกด์)");
+
+      const resources = page.node.Resources();
+      let props = resources?.lookup(PDFName.of("Properties"), PDFDict) ?? undefined;
+      if (resources && !props) {
+        resources.set(PDFName.of("Properties"), doc.context.obj({}));
+        props = resources.lookup(PDFName.of("Properties"), PDFDict) ?? undefined;
+      }
+      if (props) {
+        oc.art = "OCArt";
+        oc.tpl = "OCTpl";
+        props.set(PDFName.of(oc.art), artOcg);
+        props.set(PDFName.of(oc.tpl), tplOcg);
+
+        /**
+         * เขียน /OCProperties ใหม่ทั้งก้อน — เก็บเฉพาะ 2 เลเยอร์ที่ "มีเนื้อหาแท็กไว้จริง"
+         * ชื่อเลเยอร์เดิมที่ประกาศลอย ๆ ไว้แต่ไม่มีเนื้อหาผูก ถ้าปล่อยไว้จะกลายเป็นเลเยอร์ว่างเปล่า
+         */
+        const list = PDFArray.withContext(doc.context);
+        list.push(tplOcg);
+        list.push(artOcg);
+        const order = PDFArray.withContext(doc.context);
+        order.push(tplOcg); // บนสุดในพาเนล = วาดทีหลัง = เทมเพลตทับลาย
+        order.push(artOcg);
+        const on = PDFArray.withContext(doc.context);
+        on.push(tplOcg);
+        on.push(artOcg);
+        const cfg = doc.context.obj({});
+        cfg.set(PDFName.of("Order"), order);
+        cfg.set(PDFName.of("ON"), on);
+        const ocp = doc.context.obj({});
+        ocp.set(PDFName.of("OCGs"), list);
+        ocp.set(PDFName.of("D"), cfg);
+        doc.catalog.set(PDFName.of("OCProperties"), ocp);
       }
     } catch {
-      ocName = ""; // ไม่มีเลเยอร์แยกก็ยังใช้งานได้
+      oc.art = "";
+      oc.tpl = ""; // แยกเลเยอร์ไม่ได้ก็ยังได้ไฟล์ที่มีลาย+เทมเพลตครบ
     }
 
     // วาดเต็มหน้ากระดาษ (ภาพที่ประกอบมามีขนาดเท่ากรอบงานรวมตัดตกอยู่แล้ว)
     const draw = `q\n${box.width.toFixed(3)} 0 0 ${box.height.toFixed(3)} ${box.x.toFixed(3)} ${box.y.toFixed(3)} cm\n/${xName} Do\nQ\n`;
-    const ops = ocName ? `/OC /${ocName} BDC\n${draw}EMC\n` : draw;
-    const artRef = doc.context.register(doc.context.stream(ops));
+    const artRef = doc.context.register(doc.context.stream(oc.art ? `/OC /${oc.art} BDC\n${draw}EMC\n` : draw));
 
-    // แทรกไว้หน้าสุดของสายเนื้อหา = ถูกวาดก่อน = อยู่ล่างสุด
+    /**
+     * เรียงเนื้อหาใหม่: [ลาย] [เปิดแท็กเทมเพลต] [เนื้อหาเดิมของเทมเพลต] [ปิดแท็ก]
+     * ลายอยู่หน้าสุด = วาดก่อน = อยู่ล่างสุด · เส้นตัด/ไกด์ของเทมเพลตทับอยู่ข้างบนตามเดิม
+     * (PDF ต่อสายเนื้อหาทุกก้อนเป็นชิ้นเดียวก่อนตีความ BDC/EMC จึงคร่อมข้ามก้อนได้)
+     */
     const contents = page.node.get(PDFName.of("Contents"));
     const next = PDFArray.withContext(doc.context);
     next.push(artRef);
+    if (oc.tpl) next.push(doc.context.register(doc.context.stream(`/OC /${oc.tpl} BDC\n`)));
     if (contents instanceof PDFArray) contents.asArray().forEach((r) => next.push(r));
     else if (contents) next.push(contents);
+    if (oc.tpl) next.push(doc.context.register(doc.context.stream("EMC\n")));
     page.node.set(PDFName.of("Contents"), next);
 
     // ตัดข้อมูลส่วนตัวของ Illustrator ทิ้ง (ดูเหตุผลในคอมเมนต์หัวฟังก์ชัน)
