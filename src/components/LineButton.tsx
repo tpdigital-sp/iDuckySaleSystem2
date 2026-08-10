@@ -19,7 +19,7 @@ export function LineFloat() {
       href={LINE_URL}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label="แชทกับร้านทาง LINE"
+      aria-label="คุยกับแอดมินตัวจริงทาง LINE"
       /*
        * มุมขวาล่างตามดีไซน์ (มุมซ้ายล่างเป็นแถวไอคอนโซเชียลของหน้าแรก)
        * ยกสูงขึ้น 1 ระดับ เพื่อไม่ทับปุ่ม "🔧 แก้ไขในหลังบ้าน" ที่ลอยมุมเดียวกันเวลาแอดมินล็อกอินอยู่
@@ -27,7 +27,7 @@ export function LineFloat() {
       className="fixed bottom-20 right-5 z-40 flex items-center gap-2 rounded-full bg-[#06C755] px-4 py-3 text-sm font-bold text-white shadow-lg ring-4 ring-[#06C755]/20 transition hover:scale-105 hover:bg-[#05b34c]"
     >
       <ChatIcon />
-      <span className="hidden sm:inline">แชทกับร้าน (LINE)</span>
+      <span className="hidden sm:inline">คุยกับแอดมิน (LINE)</span>
     </a>
   );
 }

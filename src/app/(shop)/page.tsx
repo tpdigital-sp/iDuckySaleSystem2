@@ -443,15 +443,16 @@ export default function HomePage() {
 
       </div>
 
-      {/* ── ปิดท้าย: ขั้นตอนสั่งซื้อเล่าผ่านหน้าจอแชทตัวอย่าง ── */}
+      {/* ── ปิดท้าย: ขั้นตอนสั่งซื้อ + ช่องแชทที่คุยกับผู้ช่วยร้านได้จริง ── */}
       <div className="chat-band" id="steps">
         <div className="chat-bg" aria-hidden="true" />
         <section className="wrap rv">
           <div className="head">
-            <span className="kicker">💬 สั่งง่ายเหมือนคุยกับเพื่อน</span>
+            <span className="kicker">💬 ถามได้เลย ไม่ต้องรอแอดมิน</span>
             <h2>
-              แค่ <em>ทักมา</em> ที่เหลือเราจัดให้
+              พิมพ์ถามตรงนี้ได้เลย <em>ตอบทันที</em>
             </h2>
+            <p>ถามราคา ขนาด วัสดุ หรือขั้นตอนสั่งทำ ผู้ช่วยของร้านตอบให้ทันทีตลอด 24 ชม. — คุยได้จริง ไม่ใช่ภาพตัวอย่าง</p>
           </div>
 
           <HomeChat catCount={cats.length} />

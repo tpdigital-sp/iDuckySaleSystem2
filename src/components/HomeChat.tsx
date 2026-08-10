@@ -16,12 +16,12 @@ type Msg = { id: number; side: "in" | "out"; text: string; step?: string; time: 
 
 const LINE_URL = "https://lin.ee/x8GkqGZ";
 
-/** ปุ่มตอบเร็ว — กดแล้วส่งคำถามนี้เข้าแชทจริง */
+/** ปุ่มตอบเร็ว — เขียนเป็น "คำถาม" ให้รู้ว่ากดแล้วถามจริง ไม่ใช่ป้ายโฆษณา */
 const QUICK: { icon: string; label: string; ask: string }[] = [
-  { icon: "🐣", label: "ไม่มีขั้นต่ำ", ask: "สั่งขั้นต่ำกี่ชิ้นคะ" },
-  { icon: "✏️", label: "ออกแบบฟรี", ask: "ถ้ายังไม่มีไฟล์ลาย ช่วยออกแบบให้ได้ไหมคะ" },
-  { icon: "📦", label: "ส่งทั่วประเทศ", ask: "ค่าส่งเท่าไหร่ กี่วันถึงคะ" },
-  { icon: "🛡️", label: "ตรวจสลิปอัตโนมัติ", ask: "ชำระเงินยังไงบ้างคะ" },
+  { icon: "🐣", label: "สั่งขั้นต่ำกี่ชิ้น?", ask: "สั่งขั้นต่ำกี่ชิ้นคะ" },
+  { icon: "✏️", label: "ไม่มีลาย ออกแบบให้ไหม?", ask: "ถ้ายังไม่มีไฟล์ลาย ช่วยออกแบบให้ได้ไหมคะ" },
+  { icon: "📦", label: "ค่าส่งเท่าไหร่?", ask: "ค่าส่งเท่าไหร่ กี่วันถึงคะ" },
+  { icon: "🛡️", label: "จ่ายเงินยังไง?", ask: "ชำระเงินยังไงบ้างคะ" },
 ];
 
 const clock = () =>
@@ -55,7 +55,7 @@ const demoMessages = (catCount: number): Msg[] => [
 ];
 
 const GREETING =
-  "สวัสดีครับ 👋 ผมผู้ช่วยของ iDucky Prints ถามราคา วัสดุ ขนาด หรือขั้นตอนสั่งทำได้เลยครับ";
+  "สวัสดีครับ 👋 ผมผู้ช่วยของ iDucky Prints ถามราคา วัสดุ ขนาด หรือขั้นตอนสั่งทำได้เลยครับ พิมพ์มาได้เลย เดี๋ยวตอบให้ทันที";
 
 /** ตัวหนา **x** + ลิงก์ในบรรทัดเดียว (ไม่ใช้ dangerouslySetInnerHTML) */
 function inline(line: string, key: string) {
@@ -179,15 +179,15 @@ export default function HomeChat({ catCount }: { catCount: number }) {
           <b>iDucky Prints</b>
           <small>
             <span className="dot-live" />
-            {live ? "ผู้ช่วยออนไลน์ ตอบทันที" : "ตอบไวทุกวัน 09:00–18:00 น."}
+            {live ? "กำลังคุยอยู่ · ตอบทันที" : "ออนไลน์ตอนนี้ · พิมพ์ถามได้ 24 ชม."}
           </small>
         </div>
         {live ? (
-          <button type="button" className="chat-tag chat-reset" onClick={reset} title="เริ่มบทสนทนาใหม่">
+          <button type="button" className="chat-tag chat-reset" onClick={reset} title="ล้างบทสนทนา เริ่มถามใหม่">
             ↺ เริ่มใหม่
           </button>
         ) : (
-          <span className="chat-tag">แชทตัวอย่าง</span>
+          <span className="chat-tag">คุยได้จริง</span>
         )}
       </div>
 
@@ -201,7 +201,7 @@ export default function HomeChat({ catCount }: { catCount: number }) {
             <time>{m.time}</time>
           </div>
         ))}
-        {(busy || !live) && (
+        {busy && (
           <div className="msg in typing">
             <span className="mbub mbub-typing">
               <i />
@@ -210,11 +210,18 @@ export default function HomeChat({ catCount }: { catCount: number }) {
             </span>
           </div>
         )}
+        {/* บอกให้ชัดว่าที่เห็นข้างบนคือตัวอย่าง ส่วนช่องข้างล่างคุยได้จริง */}
+        {!live && (
+          <p className="chat-cue">
+            ⬆️ ข้างบนคือตัวอย่างบทสนทนา — <b>ช่องพิมพ์ข้างล่างคุยได้จริง</b> ลองถามราคาดูได้เลย ตอบให้ทันที
+          </p>
+        )}
       </div>
 
       <div className="chat-quick">
+        <span className="qk-lead">{live ? "ถามต่อได้เลย:" : "กดถามได้เลย:"}</span>
         {QUICK.map((q) => (
-          <button key={q.label} type="button" className="qk" onClick={() => send(q.ask)} disabled={busy} title={q.ask}>
+          <button key={q.label} type="button" className="qk" onClick={() => send(q.ask)} disabled={busy} title={`ถาม: ${q.ask}`}>
             <i>{q.icon}</i>
             {q.label}
           </button>
@@ -232,10 +239,10 @@ export default function HomeChat({ catCount }: { catCount: number }) {
           className="chat-input"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder={busy ? "กำลังตอบ…" : "พิมพ์ข้อความถึงร้าน…"}
+          placeholder={busy ? "กำลังพิมพ์ตอบ…" : "พิมพ์คำถามที่นี่ เช่น พวงกุญแจ 20 ชิ้น ราคาเท่าไหร่"}
           maxLength={1000}
           disabled={busy}
-          aria-label="พิมพ์ข้อความถึงร้าน"
+          aria-label="พิมพ์คำถามถึงร้าน"
         />
         <button type="submit" className="chat-send" disabled={busy || !draft.trim()} aria-label="ส่งข้อความ">
           {busy ? "…" : "➤"}
@@ -243,7 +250,7 @@ export default function HomeChat({ catCount }: { catCount: number }) {
       </form>
 
       <p className="chat-note">
-        ตอบอัตโนมัติด้วยผู้ช่วย AI ของร้าน · ต้องการคุยกับแอดมินตัวจริง{" "}
+        แชทนี้ตอบอัตโนมัติด้วยผู้ช่วย AI ของร้าน ถามได้ทุกเวลา · อยากคุยกับแอดมินตัวจริง{" "}
         <a href={LINE_URL} target="_blank" rel="noreferrer">
           ทักไลน์ได้เลย
         </a>

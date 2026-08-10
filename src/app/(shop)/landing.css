@@ -719,8 +719,13 @@ to{opacity:1;transform:none}}
 .dl .mbub-typing i:nth-child(3){animation-delay:.36s}
 @keyframes typeDot{0%,60%,100%{transform:translateY(0);opacity:.45}
 30%{transform:translateY(-5px);opacity:1}}
-/* ปุ่มตอบเร็ว = การันตี */
-.dl .chat-quick{display:flex;flex-wrap:wrap;gap:8px;padding:16px 20px 4px;background:#F6FAFE}
+/* บรรทัดบอกว่า "ข้างล่างคุยได้จริง" (โหมดตัวอย่าง) */
+.dl .chat-cue{margin:2px 0 0;padding:11px 14px;border:1px dashed var(--sky-300);border-radius:16px;
+  background:#fff;text-align:center;font-size:.82rem;line-height:1.6;color:var(--navy-soft)}
+.dl .chat-cue b{color:var(--blue-deep);font-weight:700}
+/* ปุ่มตอบเร็ว = คำถามที่กดถามได้เลย */
+.dl .chat-quick{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:16px 20px 4px;background:#F6FAFE}
+.dl .qk-lead{font-family:var(--display);font-size:.78rem;color:#7E97B4}
 .dl .qk{display:inline-flex;align-items:center;gap:7px;font-family:var(--display);font-size:.82rem;color:var(--blue-deep);
   background:#fff;border:1px solid var(--sky-200);padding:7px 14px 7px 9px;border-radius:999px;
   transition:transform .24s cubic-bezier(.34,1.56,.64,1),background .24s ease}
