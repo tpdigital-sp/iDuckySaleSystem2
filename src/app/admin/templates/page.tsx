@@ -132,6 +132,9 @@ function AdminTemplatesInner() {
   const [thumbBusy, setThumbBusy] = useState<string | null>(null);
   /** ชุดที่ไล่เติมรูปย้อนหลังไปแล้ว — กันทำซ้ำทุกครั้งที่กางการ์ด */
   const backfilled = useRef<Set<string>>(new Set());
+  /** ความคืบหน้าตอนโยนไฟล์ทีเดียวหลายไฟล์ */
+  const [bulk, setBulk] = useState<{ done: number; total: number; name: string } | null>(null);
+  const [bulkDrag, setBulkDrag] = useState(false);
   /** ชุดที่เติม "ขนาดงานจริง" ย้อนหลังไปแล้ว (ทำครั้งเดียวต่อรอบเปิดหน้า) */
   const sizeFilled = useRef<Set<string>>(new Set());
   /** รูปที่กำลังเปิดดูขนาดใหญ่ */
@@ -456,6 +459,59 @@ function AdminTemplatesInner() {
       }
       return cur.map((x) => (x.id === t.id ? { ...x, _dirty: false } : x));
     });
+  }
+
+  /** ทำรูปตัวอย่างจากไฟล์งานแล้วคืน url (ไม่ยุ่งกับ state — ใช้ตอนสร้างชุดทีละหลายไฟล์) */
+  async function previewUrlOf(file: File): Promise<string | undefined> {
+    if (!canThumbnail(file.name)) return undefined;
+    const png = await thumbnailFromDesignFile(file);
+    if (!png) return undefined;
+    const res = await uploadTemplateFile(png, "preview");
+    return res.ok ? res.url : undefined;
+  }
+
+  /**
+   * 📥 โยนไฟล์ทีเดียวหลายไฟล์ — ได้ "ชุดใหม่ไฟล์ละชุด" เข้าหมวดที่กำลังกรองอยู่
+   * (เทมเพลตของร้านมักเป็นไฟล์ละขนาด/ละรุ่น = คนละชุดกัน ไม่ใช่หลายไฟล์ในชุดเดียว)
+   * ตั้งชื่อชุดจากชื่อไฟล์ · อ่านขนาดอาร์ตบอร์ด · ทำรูปตัวอย่าง · บันทึกให้เลยทีละไฟล์
+   */
+  async function bulkAdd(fileList: FileList | File[] | null) {
+    const files = Array.from(fileList ?? []);
+    if (!files.length) return;
+    setError("");
+    const category = cat && cat !== NO_CATEGORY ? cat : undefined;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      setBulk({ done: i, total: files.length, name: file.name });
+      const up = await uploadTemplateFile(file, "file");
+      if (!up.ok) {
+        setError(`${file.name}: ${up.error ?? "อัปโหลดไม่สำเร็จ"}`);
+        continue;
+      }
+      const size = await readDesignSizeMm(file);
+      const previewUrl = await previewUrlOf(file);
+      const t: DesignTemplate = {
+        id: rid("tpl"),
+        name: (up.name ?? file.name).replace(/\.[^.]+$/, ""),
+        ...(category ? { category } : {}),
+        ...(previewUrl ? { previewUrl } : {}),
+        sort: list.length + i,
+        files: [
+          {
+            id: rid("f"),
+            fileUrl: up.url,
+            fileName: up.name,
+            fileSize: up.size,
+            ...(size ?? {}),
+            ...(previewUrl ? { previewUrl } : {}),
+          },
+        ],
+      };
+      setList((cur) => [...cur, t]);
+      const res = await persistTemplate(t);
+      if (!res.ok) setError(res.error ?? "บันทึกไม่สำเร็จ");
+    }
+    setBulk(null);
   }
 
   async function pickPreview(t: Draft, f: File) {
@@ -789,6 +845,61 @@ function AdminTemplatesInner() {
           </div>
         </div>
       )}
+
+      {/* ── โยนไฟล์ทีเดียวหลายไฟล์ = ได้ชุดใหม่ไฟล์ละชุด (เข้าหมวดที่กรองอยู่) ── */}
+      <div
+        onDragOver={(e) => {
+          if (!e.dataTransfer.types.includes("Files")) return;
+          e.preventDefault();
+          setBulkDrag(true);
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setBulkDrag(false);
+        }}
+        onDrop={(e) => {
+          if (!e.dataTransfer.files?.length) return;
+          e.preventDefault();
+          setBulkDrag(false);
+          void bulkAdd(e.dataTransfer.files);
+        }}
+        className={`mb-3 rounded-2xl border-2 border-dashed p-4 text-center transition ${
+          bulkDrag ? "border-sky-400 bg-sky-50" : "border-amber-200 bg-amber-50/40"
+        }`}
+      >
+        {bulk ? (
+          <p className="text-sm font-bold text-slate-700">
+            ⏳ กำลังเพิ่ม {bulk.done + 1}/{bulk.total} — {bulk.name}
+          </p>
+        ) : (
+          <>
+            <label className="cursor-pointer text-sm font-bold text-slate-700">
+              📥 ลากไฟล์ .ai มาวางตรงนี้ทีเดียวหลายไฟล์ — ได้ชุดใหม่ <u>ไฟล์ละชุด</u>
+              <input
+                type="file"
+                accept=".ai,.pdf,.eps,.svg,.psd,.zip"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  void bulkAdd(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            <p className={`mt-0.5 text-[11px] ${faint}`}>
+              ตั้งชื่อชุดจากชื่อไฟล์ · อ่านขนาดงานจากไฟล์ · ทำรูปตัวอย่างให้เอง
+              {cat && cat !== NO_CATEGORY ? (
+                <>
+                  {" "}
+                  · เข้าหมวด <span className="font-bold text-amber-700">{cat}</span> อัตโนมัติ
+                </>
+              ) : (
+                <> · เลือกหมวดทางซ้ายก่อน ชุดใหม่จะเข้าหมวดนั้นให้เลย</>
+              )}
+              {" "}· อยากได้หลายไฟล์ในชุดเดียว ให้ลากไปวางบนการ์ดของชุดนั้นแทน
+            </p>
+          </>
+        )}
+      </div>
 
       {loading ? (
         <p className={`mt-6 text-sm ${faint}`}>กำลังโหลด…</p>
