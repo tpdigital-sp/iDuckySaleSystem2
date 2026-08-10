@@ -28,7 +28,7 @@ import {
   persistTemplateCategories,
   uploadTemplateFile,
 } from "@/lib/template-repo";
-import { fetchProduct, fetchProductNamesLite } from "@/lib/product-repo";
+import { fetchProduct, fetchProductNamesLite, fetchProductRaw, persistProduct } from "@/lib/product-repo";
 import { canThumbnail, readDesignSizeMm, thumbnailFromDesignFile } from "@/lib/ai-thumbnail";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
@@ -314,6 +314,61 @@ function AdminTemplatesInner() {
     const res = await deleteTemplate(t.id);
     if (!res.ok) return setError(res.error ?? "ลบไม่สำเร็จ");
     setList((cur) => cur.filter((x) => x.id !== t.id));
+  }
+
+  /**
+   * 🔗 ผูกชุดนี้เข้ากับ "สินค้าที่เลือกไว้ในช่อง 1️⃣" ให้เลย
+   *
+   * ทำไมต้องมี: เลือกสินค้าตรงนั้นเป็นแค่การ "ยืมกลุ่มตัวเลือก" มาแยกไฟล์ ไม่ได้แปลว่าผูกกับสินค้า
+   * ทีมงานเลยตั้งค่าครบแล้วแต่หน้าสินค้าไม่ขึ้นเทมเพลต ต้องไปกดติ๊กในหน้าแก้ไขสินค้าอีกที
+   * ปุ่มนี้ย่อขั้นตอนนั้นให้เหลือคลิกเดียว (เขียน templateIds ลงในตัวสินค้า)
+   */
+  async function linkToProduct(t: Draft) {
+    const pid = t.optionProductId;
+    if (!pid) return;
+    if (t._dirty) await save(t); // ชุดที่ยังไม่บันทึกยังไม่มีในฐาน ผูกไปก็ชี้ไม่เจอ
+    setBusy((b) => ({ ...b, [t.id]: "ผูกสินค้า" }));
+    const clear = () =>
+      setBusy((b) => {
+        const n = { ...b };
+        delete n[t.id];
+        return n;
+      });
+    const p = await fetchProductRaw(pid);
+    if (!p) {
+      clear();
+      return setError("โหลดข้อมูลสินค้าไม่สำเร็จ");
+    }
+    const ids = p.templateIds ?? [];
+    if (ids.includes(t.id)) {
+      clear();
+      setUsedBy((u) => ({ ...u, [t.id]: [...(u[t.id] ?? []), { id: p.id, name: p.name }] }));
+      return;
+    }
+    const res = await persistProduct({ ...p, templateIds: [...ids, t.id] }, p.savedAt);
+    clear();
+    if (!res.ok) return setError(res.error ?? "ผูกกับสินค้าไม่สำเร็จ");
+    setUsedBy((u) => ({ ...u, [t.id]: [...(u[t.id] ?? []), { id: p.id, name: p.name }] }));
+  }
+
+  /** เอาชุดนี้ออกจากสินค้าตัวนั้น (ตรงข้ามกับ linkToProduct) */
+  async function unlinkFromProduct(t: Draft, productId: string) {
+    setBusy((b) => ({ ...b, [t.id]: "ปลดสินค้า" }));
+    const clear = () =>
+      setBusy((b) => {
+        const n = { ...b };
+        delete n[t.id];
+        return n;
+      });
+    const p = await fetchProductRaw(productId);
+    if (!p) {
+      clear();
+      return setError("โหลดข้อมูลสินค้าไม่สำเร็จ");
+    }
+    const res = await persistProduct({ ...p, templateIds: (p.templateIds ?? []).filter((x) => x !== t.id) }, p.savedAt);
+    clear();
+    if (!res.ok) return setError(res.error ?? "ปลดออกจากสินค้าไม่สำเร็จ");
+    setUsedBy((u) => ({ ...u, [t.id]: (u[t.id] ?? []).filter((x) => x.id !== productId) }));
   }
 
   /** อัปหลายไฟล์รวดเดียว (ลากวาง/เลือกหลายไฟล์) — เดารุ่นจากชื่อไฟล์ให้ด้วย */
@@ -1236,6 +1291,31 @@ function AdminTemplatesInner() {
                         {optsBusy === t.optionProductId && (
                           <span className={`text-[11px] ${faint}`}>กำลังโหลดตัวเลือก…</span>
                         )}
+                        {/*
+                          เลือกสินค้าตรงนี้ = ยืมกลุ่มตัวเลือกมาแยกไฟล์เท่านั้น ยังไม่ได้ผูกกับสินค้า
+                          ถ้ายังไม่ผูก หน้าสินค้าจะไม่ขึ้นเทมเพลตเลย — บอกให้ชัดแล้วให้กดผูกได้จากตรงนี้
+                        */}
+                        {t.optionProductId &&
+                          (used.some((u) => u.id === t.optionProductId) ? (
+                            <span className={`${badge} bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200`}>
+                              🔗 ผูกกับสินค้านี้แล้ว
+                            </span>
+                          ) : (
+                            <>
+                              <span className="text-[11px] font-semibold text-rose-600">
+                                ⚠️ ยังไม่ได้ผูกกับสินค้านี้ — หน้าสินค้าจะไม่ขึ้นเทมเพลต
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => void linkToProduct(t)}
+                                disabled={!!busy[t.id]}
+                                className={`${btnSmDucky} disabled:opacity-50`}
+                                title="ผูกชุดนี้เข้ากับสินค้าที่เลือกไว้ — เท่ากับไปติ๊กในหน้าแก้ไขสินค้า"
+                              >
+                                🔗 ผูกกับสินค้านี้เลย
+                              </button>
+                            </>
+                          ))}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[11px] font-semibold text-slate-500">2️⃣ กลุ่มตัวเลือก</span>
@@ -1531,11 +1611,25 @@ function AdminTemplatesInner() {
                         />
                         ซ่อนทั้งชุด
                       </label>
-                      {used.length > 0 && (
-                        <span className={`${badge} bg-slate-100 text-slate-600`} title={used.map((u) => u.name).join("\n")}>
-                          ใช้ใน {used.length} สินค้า
+                      {/* สินค้าที่ผูกชุดนี้อยู่ — กด ✕ เพื่อปลดออกได้จากตรงนี้เลย */}
+                      {used.map((u) => (
+                        <span
+                          key={u.id}
+                          className={`${badge} gap-1 bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200`}
+                          title={`${u.name} ใช้ชุดนี้อยู่`}
+                        >
+                          🔗 <span className="max-w-[10rem] truncate">{u.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => void unlinkFromProduct(t, u.id)}
+                            disabled={!!busy[t.id]}
+                            className="text-emerald-500 transition hover:text-rose-600 disabled:opacity-40"
+                            title="ปลดชุดนี้ออกจากสินค้าตัวนี้"
+                          >
+                            ✕
+                          </button>
                         </span>
-                      )}
+                      ))}
 
                       <div className="ml-auto flex items-center gap-2">
                         <button type="button" onClick={() => remove(t)} className={btnSmDanger}>
