@@ -527,8 +527,9 @@ export default function PrintOrderPage() {
                   </div>
 
                   {/* กลาง: รูปงานจริง + ชื่อผู้รับตัวโต */}
-                  <div className="flex flex-1 items-center gap-8 py-6">
-                    <div className="flex flex-1 flex-wrap items-center justify-center gap-3">
+                  <div className="flex flex-1 items-center gap-6 py-6">
+                    {/* รูปงานยืดหดตามที่เหลือ · ชื่อผู้รับกันที่ไว้ 2/5 ของความกว้าง (ไม่ให้ทับกัน) */}
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-3">
                       {pics.length ? (
                         pics.map((u, k) => (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -536,19 +537,19 @@ export default function PrintOrderPage() {
                             key={`${u}-${k}`}
                             src={u}
                             alt=""
-                            className="h-48 w-48 rounded-xl border-2 border-slate-300 object-contain"
+                            className="h-36 w-36 rounded-xl border-2 border-slate-300 object-contain"
                           />
                         ))
                       ) : (
-                        <span className="grid h-48 w-48 place-items-center rounded-xl border-2 border-dashed border-slate-300 text-sm text-slate-400">
+                        <span className="grid h-36 w-36 place-items-center rounded-xl border-2 border-dashed border-slate-300 text-sm text-slate-400">
                           ไม่มีรูปงาน
                         </span>
                       )}
                     </div>
-                    <div className="shrink-0 text-right">
-                      <p className="text-sm font-bold uppercase tracking-widest text-slate-400">ผู้รับ</p>
-                      <p className="text-4xl font-extrabold leading-tight text-sky-700">{order.customer}</p>
-                      {order.rush && <p className="mt-2 text-2xl font-extrabold text-rose-600">🔥 งานเร่ง</p>}
+                    <div className="w-2/5 shrink-0 text-right">
+                      <p className="text-base font-bold uppercase tracking-widest text-slate-400">ผู้รับ</p>
+                      <p className="break-words text-4xl font-extrabold leading-tight text-sky-700">{order.customer}</p>
+                      {order.rush && <p className="mt-2 text-3xl font-extrabold text-rose-600">🔥 งานเร่ง</p>}
                     </div>
                   </div>
 
