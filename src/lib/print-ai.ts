@@ -112,6 +112,12 @@ export interface PrintAiInput {
  * ทำไมต้องล่างสุด: เส้นตัด เส้นพับ และไกด์ต่าง ๆ ในเทมเพลตต้องมองเห็นทับลาย
  * ถ้าวางลายทับไปข้างบนจะบังหมด กราฟฟิกก็ตัดงานไม่ได้
  *
+ * ⚠️ ต้องตัด /PieceInfo (ข้อมูลส่วนตัวของ Illustrator) ทิ้งด้วย
+ * เพราะถ้ายังอยู่ Illustrator จะ "สร้างเอกสารใหม่จากข้อมูลก้อนนั้น" แล้ว
+ * ทิ้งเนื้อหา PDF ที่เราเพิ่งเติมลายเข้าไปทั้งหมด — เปิดมาก็เห็นแต่เทมเพลตเปล่า ๆ
+ * (ข้อมูลก้อนนั้นเป็นรูปแบบปิดของ Adobe เขียนเพิ่มเองไม่ได้)
+ * ตัดทิ้งแล้ว Illustrator จะอ่านแบบ PDF ปกติ — ได้ทั้งลาย เส้นเวกเตอร์ และเลเยอร์ครบ
+ *
  * คืน null เมื่อทำไม่สำเร็จ (ผู้เรียกถอยไปใช้ไฟล์เปล่า)
  */
 async function drawOnTemplate(
@@ -126,18 +132,51 @@ async function drawOnTemplate(
     // .ai ที่เซฟแบบ "Create PDF Compatible File" คือ PDF — ไฟล์ที่ไม่ใช่ PDF อ่านไม่ได้
     if (String.fromCharCode(...tpl.slice(0, 5)) !== "%PDF-") return null;
 
-    const { PDFDocument, PDFName, PDFArray } = await import("pdf-lib");
+    const { PDFDocument, PDFName, PDFArray, PDFDict, PDFHexString } = await import("pdf-lib");
     const doc = await PDFDocument.load(tpl, { ignoreEncryption: true, updateMetadata: false });
     const page = doc.getPages()[0];
     if (!page) return null;
 
     const img = await doc.embedJpg(jpeg);
     const box = page.getMediaBox();
-    const name = "IDuckyArtwork";
-    page.node.setXObject(PDFName.of(name), img.ref);
+    const xName = "IDuckyArtwork";
+    page.node.setXObject(PDFName.of(xName), img.ref);
+
+    /**
+     * ใส่ลายไว้ในเลเยอร์ของตัวเอง (OCG) — Illustrator จะโชว์เป็นเลเยอร์ชื่อ "ลายลูกค้า"
+     * ปิด/ย้ายลำดับได้เหมือนเลเยอร์ปกติ · ทำไม่สำเร็จก็แค่ไม่มีเลเยอร์แยก ลายยังอยู่
+     */
+    let ocName = "";
+    try {
+      const ocgRef = doc.context.register(
+        doc.context.obj({ Type: "OCG", Name: PDFHexString.fromText("ลายลูกค้า (iDucky)") }),
+      );
+      const ocp = doc.catalog.lookup(PDFName.of("OCProperties"), PDFDict);
+      const ocgs = ocp?.lookup(PDFName.of("OCGs"), PDFArray);
+      const cfg = ocp?.lookup(PDFName.of("D"), PDFDict);
+      if (ocgs && cfg) {
+        ocgs.push(ocgRef);
+        cfg.lookup(PDFName.of("Order"), PDFArray)?.push(ocgRef);
+        cfg.lookup(PDFName.of("ON"), PDFArray)?.push(ocgRef);
+        const resources = page.node.Resources();
+        let props = resources?.lookup(PDFName.of("Properties"), PDFDict) ?? undefined;
+        if (resources && !props) {
+          const created = doc.context.obj({});
+          resources.set(PDFName.of("Properties"), created);
+          props = resources.lookup(PDFName.of("Properties"), PDFDict) ?? undefined;
+        }
+        if (props) {
+          ocName = "IDuckyOC";
+          props.set(PDFName.of(ocName), ocgRef);
+        }
+      }
+    } catch {
+      ocName = ""; // ไม่มีเลเยอร์แยกก็ยังใช้งานได้
+    }
 
     // วาดเต็มหน้ากระดาษ (ภาพที่ประกอบมามีขนาดเท่ากรอบงานรวมตัดตกอยู่แล้ว)
-    const ops = `q\n${box.width.toFixed(3)} 0 0 ${box.height.toFixed(3)} ${box.x.toFixed(3)} ${box.y.toFixed(3)} cm\n/${name} Do\nQ\n`;
+    const draw = `q\n${box.width.toFixed(3)} 0 0 ${box.height.toFixed(3)} ${box.x.toFixed(3)} ${box.y.toFixed(3)} cm\n/${xName} Do\nQ\n`;
+    const ops = ocName ? `/OC /${ocName} BDC\n${draw}EMC\n` : draw;
     const artRef = doc.context.register(doc.context.stream(ops));
 
     // แทรกไว้หน้าสุดของสายเนื้อหา = ถูกวาดก่อน = อยู่ล่างสุด
@@ -148,6 +187,9 @@ async function drawOnTemplate(
     else if (contents) next.push(contents);
     page.node.set(PDFName.of("Contents"), next);
 
+    // ตัดข้อมูลส่วนตัวของ Illustrator ทิ้ง (ดูเหตุผลในคอมเมนต์หัวฟังก์ชัน)
+    for (const k of ["PieceInfo", "LastModified", "Thumb"]) page.node.delete(PDFName.of(k));
+
     if (title) doc.setTitle(title);
     doc.setProducer("iDucky Prints Studio");
     const out = await doc.save({ useObjectStreams: false });
@@ -157,10 +199,6 @@ async function drawOnTemplate(
   }
 }
 
-/**
- * สร้างไฟล์ .ai หน้าเดียว ขนาดเท่างานจริง มีลายเต็มหน้าพอดี
- * โยน Error เมื่อโหลดภาพไม่ได้ — ผู้เรียกเอาไปแสดงข้อความให้ทีมงาน
- */
 export async function buildPrintAi(input: PrintAiInput): Promise<Blob> {
   const res = await fetch(input.imageUrl);
   if (!res.ok) throw new Error(`โหลดภาพไม่สำเร็จ (${res.status})`);
