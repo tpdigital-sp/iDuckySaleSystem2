@@ -238,18 +238,21 @@ export const PLACEMENT_SPEC_LABEL = "ตำแหน่งลาย (ทีม�
  * โทเคนขนาดกรอบงานที่ต่อท้ายบรรทัดของทีมผลิต เช่น "[ai:230x190]"
  * หลังบ้านอ่านค่านี้ไปตั้งขนาดหน้าไฟล์ .ai ให้ตรงงานจริงตอนกดดาวน์โหลด
  */
-export function printFrameToken(widthMm: number, heightMm: number): string {
+export function printFrameToken(widthMm: number, heightMm: number, tplUrl?: string): string {
   const n = (v: number) => Math.round(v * 10) / 10;
-  return `[ai:${n(widthMm)}x${n(heightMm)}]`;
+  // แนบที่อยู่ไฟล์เทมเพลตต้นฉบับไปด้วย — ตอนกราฟฟิกโหลดไฟล์พร้อมพิมพ์
+  // ระบบจะเอาลายไปวางใน .ai ตัวจริง เลเยอร์เส้นตัด/ไกด์ของโรงพิมพ์เลยยังอยู่ครบ
+  return `[ai:${n(widthMm)}x${n(heightMm)}${tplUrl ? `|tpl:${tplUrl}` : ""}]`;
 }
 
 /** อ่านขนาดกรอบงานกลับจากบรรทัดของทีมผลิต — ไม่มีโทเคน = ออเดอร์เก่าที่ยังไม่ได้วางลายบนเว็บ */
-export function parsePrintFrame(text?: string): SizeMm | null {
-  const m = (text ?? "").match(/\[ai:(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)\]/);
+export function parsePrintFrame(text?: string): (SizeMm & { tplUrl?: string }) | null {
+  const m = (text ?? "").match(/\[ai:(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(?:\|tpl:([^\]\s]+))?\]/);
   if (!m) return null;
   const widthMm = parseFloat(m[1]);
   const heightMm = parseFloat(m[2]);
-  return widthMm > 0 && heightMm > 0 ? { widthMm, heightMm } : null;
+  if (!(widthMm > 0 && heightMm > 0)) return null;
+  return { widthMm, heightMm, ...(m[3] ? { tplUrl: m[3] } : {}) };
 }
 
 /** ตัดตกที่ยอมรับว่า "สมเหตุสมผล" ตอนถอดจากส่วนต่างอาร์ตบอร์ด−ขนาดงาน */

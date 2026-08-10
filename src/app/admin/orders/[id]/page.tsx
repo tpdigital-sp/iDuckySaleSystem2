@@ -1922,6 +1922,8 @@ export default function AdminOrderDetailPage() {
                                                   widthMm: r.frame.widthMm,
                                                   heightMm: r.frame.heightMm,
                                                   title: `${order.id} ${it.name} ลายที่ ${r.no}`,
+                                                  // มีที่อยู่ .ai ต้นฉบับ = วางลายลงในไฟล์จริง ได้เลเยอร์เส้นตัด/ไกด์มาด้วย
+                                                  templateUrl: r.frame.tplUrl,
                                                 });
                                                 downloadBlob(blob, r.name);
                                               } catch (e) {

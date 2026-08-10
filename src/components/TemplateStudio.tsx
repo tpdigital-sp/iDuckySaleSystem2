@@ -61,6 +61,12 @@ interface Props {
    */
   skinUrl?: string;
   /**
+   * ที่อยู่ไฟล์ .ai ต้นฉบับของเทมเพลตนี้ — จดติดไปกับออเดอร์
+   * ตอนกราฟฟิกโหลด "ไฟล์พร้อมพิมพ์" ระบบจะเอาลายไปวางในไฟล์ตัวจริง
+   * เลเยอร์เส้นตัด/ไกด์ของโรงพิมพ์จะได้ยังอยู่ครบ ไม่ใช่ได้แต่รูปเปล่า ๆ
+   */
+  tplUrl?: string;
+  /**
    * เปิดมาเพื่อ "แก้ไขลายเดิม" — โหลดรูปเดิมกลับมาพร้อมตำแหน่ง/ขนาดที่เคยวางไว้
    * มีไฟล์ในเครื่องใช้ไฟล์ก่อน (ไม่ต้องโหลดใหม่) ไม่มีค่อยดึงจาก url
    */
@@ -77,7 +83,7 @@ const DPI_BAD = 100;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-export default function TemplateStudio({ open, onClose, title, frame, guideUrl, skinUrl, initial, onApply }: Props) {
+export default function TemplateStudio({ open, onClose, title, frame, guideUrl, skinUrl, tplUrl, initial, onApply }: Props) {
   /**
    * สลับแนวงาน — ใช้เมื่อขนาดมาจากชื่อตัวเลือก ("30x60" ไม่บอกว่าด้านไหนกว้าง)
    * ถ้าขนาดมาจากไฟล์จริงแล้วก็ไม่ต้องสลับ (ไฟล์บอกแนวมาเองแล้ว)
@@ -591,7 +597,7 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
         spec:
           `กรอบ ${n(bleedW)}×${n(bleedH)}mm (งานจริง ${n(artW)}×${n(artH)} + ตัดตก ${n(bleedX)}/${n(bleedY)}) · ` +
           `ลาย ${n(pl.wMm)}×${n(pl.hMm)}mm กึ่งกลางที่ ${n(pl.cxMm)},${n(pl.cyMm)}mm · หมุน ${n(pl.rotDeg)}° · ${dpi} DPI ` +
-          printFrameToken(bleedW, bleedH),
+          printFrameToken(bleedW, bleedH, tplUrl),
       });
       onClose();
     } catch (e) {

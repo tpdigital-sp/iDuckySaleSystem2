@@ -98,6 +98,63 @@ export interface PrintAiInput {
   heightMm: number;
   /** ชื่องาน — เขียนลง metadata ให้รู้ว่ามาจากออเดอร์ไหน */
   title?: string;
+  /**
+   * ไฟล์ .ai ต้นฉบับของเทมเพลต — มีค่า = เอาลายไปวาง "ใต้" งานเดิมในไฟล์นั้น
+   * เลเยอร์เส้นตัด/ไกด์/ข้อความกำกับของโรงพิมพ์เลยยังอยู่ครบ
+   * โหลดไม่ได้/อ่านไม่ออก = ถอยไปสร้างไฟล์เปล่าที่มีแต่ลาย (ดีกว่าโหลดไม่ได้เลย)
+   */
+  templateUrl?: string;
+}
+
+/**
+ * วางลายลงในไฟล์ .ai ต้นฉบับ — ลายอยู่ "ล่างสุด" งานเดิมของเทมเพลตทับอยู่ข้างบน
+ *
+ * ทำไมต้องล่างสุด: เส้นตัด เส้นพับ และไกด์ต่าง ๆ ในเทมเพลตต้องมองเห็นทับลาย
+ * ถ้าวางลายทับไปข้างบนจะบังหมด กราฟฟิกก็ตัดงานไม่ได้
+ *
+ * คืน null เมื่อทำไม่สำเร็จ (ผู้เรียกถอยไปใช้ไฟล์เปล่า)
+ */
+async function drawOnTemplate(
+  templateUrl: string,
+  jpeg: Uint8Array,
+  title?: string,
+): Promise<Blob | null> {
+  try {
+    const res = await fetch(templateUrl);
+    if (!res.ok) return null;
+    const tpl = new Uint8Array(await res.arrayBuffer());
+    // .ai ที่เซฟแบบ "Create PDF Compatible File" คือ PDF — ไฟล์ที่ไม่ใช่ PDF อ่านไม่ได้
+    if (String.fromCharCode(...tpl.slice(0, 5)) !== "%PDF-") return null;
+
+    const { PDFDocument, PDFName, PDFArray } = await import("pdf-lib");
+    const doc = await PDFDocument.load(tpl, { ignoreEncryption: true, updateMetadata: false });
+    const page = doc.getPages()[0];
+    if (!page) return null;
+
+    const img = await doc.embedJpg(jpeg);
+    const box = page.getMediaBox();
+    const name = "IDuckyArtwork";
+    page.node.setXObject(PDFName.of(name), img.ref);
+
+    // วาดเต็มหน้ากระดาษ (ภาพที่ประกอบมามีขนาดเท่ากรอบงานรวมตัดตกอยู่แล้ว)
+    const ops = `q\n${box.width.toFixed(3)} 0 0 ${box.height.toFixed(3)} ${box.x.toFixed(3)} ${box.y.toFixed(3)} cm\n/${name} Do\nQ\n`;
+    const artRef = doc.context.register(doc.context.stream(ops));
+
+    // แทรกไว้หน้าสุดของสายเนื้อหา = ถูกวาดก่อน = อยู่ล่างสุด
+    const contents = page.node.get(PDFName.of("Contents"));
+    const next = PDFArray.withContext(doc.context);
+    next.push(artRef);
+    if (contents instanceof PDFArray) contents.asArray().forEach((r) => next.push(r));
+    else if (contents) next.push(contents);
+    page.node.set(PDFName.of("Contents"), next);
+
+    if (title) doc.setTitle(title);
+    doc.setProducer("iDucky Prints Studio");
+    const out = await doc.save({ useObjectStreams: false });
+    return new Blob([out as BlobPart], { type: "application/postscript" });
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -112,6 +169,13 @@ export async function buildPrintAi(input: PrintAiInput): Promise<Blob> {
 
   const info = jpegInfo(raw);
   const img = info ? { bytes: raw, ...info } : await toJpegBytes(blob);
+
+  // มีไฟล์เทมเพลตต้นฉบับ → วางลายลงในไฟล์นั้นเลย (ได้เลเยอร์เส้นตัด/ไกด์มาด้วย)
+  if (input.templateUrl) {
+    const onTpl = await drawOnTemplate(input.templateUrl, img.bytes, input.title);
+    if (onTpl) return onTpl;
+  }
+
   // ภาพขาวดำล้วนใช้ DeviceGray · 4 ช่อง = CMYK · นอกนั้น RGB
   const colorSpace = img.comps === 1 ? "/DeviceGray" : img.comps === 4 ? "/DeviceCMYK" : "/DeviceRGB";
 

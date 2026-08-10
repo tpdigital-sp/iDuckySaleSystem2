@@ -176,6 +176,7 @@ export default function ProductDetail({
     frame: TemplateFrame;
     guideUrl?: string;
     skinUrl?: string;
+    tplUrl?: string;
     initial?: { file?: File; url?: string; placement: StudioPlacement; swapped?: boolean };
   } | null>(null);
   const [placed, setPlaced] = useState<
@@ -585,6 +586,7 @@ export default function ProductDetail({
             frame: fr,
             guideUrl: f.previewUrl || t.previewUrl,
             skinUrl: skinOf(t, f),
+            tplUrl: f.fileUrl,
           };
       }
     }
@@ -2356,6 +2358,7 @@ export default function ProductDetail({
           frame={studio.frame}
           guideUrl={studio.guideUrl}
           skinUrl={studio.skinUrl}
+          tplUrl={studio.tplUrl}
           initial={studio.initial}
           onApply={applyStudio}
         />
