@@ -731,7 +731,7 @@ function AdminTemplatesInner() {
                         ▼
                       </button>
                     </span>
-                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">🗂 {c}</span>
+                    <span className="min-w-0 flex-1 break-words text-sm font-semibold leading-snug text-slate-700">🗂 {c}</span>
                     <span className={`text-[11px] ${faint}`}>{n} ชุด</span>
                     <button type="button" onClick={() => void renameCat(c)} className={btnSmNeutral}>
                       ✏️ เปลี่ยนชื่อ
@@ -777,7 +777,7 @@ function AdminTemplatesInner() {
                 onClick={() => setCat("")}
                 className={`${cat === "" ? navItemActive : navItemIdle} shrink-0`}
               >
-                <span className="flex-1 truncate">📚 ทั้งหมด</span>
+                <span className="flex-1 whitespace-nowrap lg:whitespace-normal lg:break-words lg:leading-snug">📚 ทั้งหมด</span>
                 <span className={`text-[11px] ${cat === "" ? "text-white/80" : "text-slate-400"}`}>{list.length}</span>
               </button>
               {cats.map((c) => {
@@ -799,7 +799,7 @@ function AdminTemplatesInner() {
                       className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white/60"
                       style={{ backgroundColor: categoryTone(c) }}
                     />
-                    <span className="flex-1 truncate">{c}</span>
+                    <span className="flex-1 whitespace-nowrap lg:whitespace-normal lg:break-words lg:leading-snug">{c}</span>
                     <span className={`text-[11px] ${on ? "text-white/80" : "text-slate-400"}`}>{n}</span>
                   </button>
                 );
@@ -810,7 +810,7 @@ function AdminTemplatesInner() {
                   onClick={() => setCat(cat === NO_CATEGORY ? "" : NO_CATEGORY)}
                   className={`${cat === NO_CATEGORY ? navItemActive : navItemIdle} shrink-0`}
                 >
-                  <span className={`flex-1 truncate ${cat === NO_CATEGORY ? "" : "text-slate-400"}`}>
+                  <span className={`flex-1 whitespace-nowrap lg:whitespace-normal lg:break-words lg:leading-snug ${cat === NO_CATEGORY ? "" : "text-slate-400"}`}>
                     📂 {NO_CATEGORY}
                   </span>
                   <span className={`text-[11px] ${cat === NO_CATEGORY ? "text-white/80" : "text-slate-400"}`}>
