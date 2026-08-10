@@ -93,6 +93,11 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
   const [err, setErr] = useState("");
   /** กำลังลากไฟล์มาโยนอยู่เหนือพื้นที่วางลาย */
   const [dropOn, setDropOn] = useState(false);
+  /**
+   * เลือกลายอยู่ไหม — คลิกที่ลาย = เลือก (ขึ้นกรอบ transform) · คลิกพื้นที่ว่าง = ยกเลิก
+   * ยกเลิกแล้วจะเห็นงานสะอาด ๆ ไม่มีเส้นกรอบบัง เหมือนตอนพิมพ์จริง
+   */
+  const [sel, setSel] = useState(false);
   /** ค่าล่าสุดของการวาง — ให้ตัวจัดการล้อเมาส์ (ผูกครั้งเดียว) อ่านได้โดยไม่ต้องผูกใหม่ทุกครั้ง */
   const plRef = useRef<Placement | null>(null);
 
@@ -195,11 +200,20 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
       return { file, url, ...dim };
     });
     fill(dim);
+    setSel(true);
   }
 
   // ── ลาก / ซูมด้วยนิ้วหรือเมาส์ ──
   function onPointerDown(e: React.PointerEvent) {
     if (!pl) return;
+    const onArt = hitsArt(toMm(e.clientX, e.clientY));
+    // แตะพื้นที่ว่างทั้งที่ยังไม่ได้เลือกลาย = แค่ยกเลิกการเลือก ไม่ลากลายตาม
+    if (!onArt && !sel) return;
+    if (!onArt && pointers.current.size === 0) {
+      setSel(false);
+      return;
+    }
+    setSel(true);
     try {
       (e.target as Element).setPointerCapture?.(e.pointerId);
     } catch {
@@ -261,6 +275,21 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
       };
     },
     [fullW, fullH, padX, padY],
+  );
+
+  /** จุดนี้อยู่บนตัวลายไหม — หมุนพิกัดกลับตามมุมของลายก่อนเทียบกรอบ */
+  const hitsArt = useCallback(
+    (m: { x: number; y: number } | null) => {
+      if (!m || !plRef.current) return false;
+      const p = plRef.current;
+      const r = (-p.rotDeg * Math.PI) / 180;
+      const dx = m.x - p.cxMm;
+      const dy = m.y - p.cyMm;
+      const lx = dx * Math.cos(r) - dy * Math.sin(r);
+      const ly = dx * Math.sin(r) + dy * Math.cos(r);
+      return Math.abs(lx) <= p.wMm / 2 && Math.abs(ly) <= p.hMm / 2;
+    },
+    [],
   );
 
   /** เพดานย่อ-ขยาย — เล็กสุด 5% ของกรอบ ใหญ่สุด 12 เท่า (พอสำหรับซูมดูรายละเอียด) */
@@ -348,6 +377,36 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
   function onHandleUp(e: React.PointerEvent) {
     e.stopPropagation();
     resizing.current = null;
+  }
+
+  /** ลากหูหมุน — มุมจากกึ่งกลางลายไปหาเคอร์เซอร์ (หูอยู่เหนือกรอบ เลยชดเชย 90°) */
+  const rotating = useRef(false);
+
+  function onRotateDown(e: React.PointerEvent) {
+    e.stopPropagation();
+    try {
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    } catch {
+      /* ไม่จับก็ลากได้ */
+    }
+    rotating.current = true;
+  }
+
+  function onRotateMove(e: React.PointerEvent) {
+    if (!rotating.current || !pl) return;
+    e.stopPropagation();
+    const m = toMm(e.clientX, e.clientY);
+    if (!m) return;
+    const deg = (Math.atan2(m.y - pl.cyMm, m.x - pl.cxMm) * 180) / Math.PI + 90;
+    // ใกล้มุมกลม ๆ (ทุก 15°) ให้ดูดเข้าหา — จัดตรงง่ายกว่าเล็งเอง
+    const snapped = Math.round(deg / 15) * 15;
+    const use = Math.abs(deg - snapped) <= 4 ? snapped : deg;
+    setPl({ ...pl, rotDeg: ((use % 360) + 360) % 360 });
+  }
+
+  function onRotateUp(e: React.PointerEvent) {
+    e.stopPropagation();
+    rotating.current = false;
   }
 
   function rotate(deg: number) {
@@ -562,10 +621,10 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
               />
             )}
 
-            {/* กรอบลาย + มุมสำหรับลากขยาย — วางทับตำแหน่งเดียวกับลาย (หมุนตามด้วย) */}
-            {src && pl && (
+            {/* ── กรอบ transform — โผล่เมื่อคลิกเลือกลาย (คลิกที่ว่างเพื่อเอาออก) ── */}
+            {src && pl && sel && (
               <div
-                className="pointer-events-none absolute origin-center border border-sky-400/70"
+                className="pointer-events-none absolute origin-center border border-sky-500"
                 style={{
                   left: pctW(pl.cxMm - pl.wMm / 2),
                   top: pctH(pl.cyMm - pl.hMm / 2),
@@ -574,6 +633,7 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
                   transform: `rotate(${pl.rotDeg}deg)`,
                 }}
               >
+                {/* มุมสี่มุม = ย่อ-ขยาย (คงอัตราส่วน) */}
                 {(
                   [
                     ["-top-2 -left-2", "nwse-resize"],
@@ -593,7 +653,37 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
                     aria-label="ลากเพื่อย่อ-ขยายลาย"
                   />
                 ))}
+
+                {/* หูหมุน — ยื่นออกเหนือกรอบ ลากเพื่อหมุนอิสระ (ดูดเข้าทุก 15°) */}
+                <span className="pointer-events-none absolute -top-7 left-1/2 h-7 w-px -translate-x-1/2 bg-sky-500/70" />
+                <span
+                  onPointerDown={onRotateDown}
+                  onPointerMove={onRotateMove}
+                  onPointerUp={onRotateUp}
+                  onPointerCancel={onRotateUp}
+                  style={{ touchAction: "none" }}
+                  className="pointer-events-auto absolute -top-11 left-1/2 grid h-7 w-7 -translate-x-1/2 cursor-grab place-items-center rounded-full border-2 border-sky-500 bg-white text-xs text-sky-600 shadow active:cursor-grabbing"
+                  aria-label="ลากเพื่อหมุนลาย"
+                >
+                  ↻
+                </span>
+
+                {/* ป้ายบอกขนาด/มุม ณ ตอนนี้ — ติดใต้กรอบ หมุนกลับให้อ่านตรงเสมอ */}
+                <span
+                  className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-sky-600 px-2 py-0.5 text-[10px] font-bold text-white shadow"
+                  style={{ transform: `translateX(-50%) rotate(${-pl.rotDeg}deg)` }}
+                >
+                  {Math.round(pl.wMm) / 10}×{Math.round(pl.hMm) / 10} ซม.
+                  {pl.rotDeg ? ` · ${Math.round(pl.rotDeg)}°` : ""}
+                </span>
               </div>
+            )}
+
+            {/* ยังไม่ได้เลือก — ใบ้ให้รู้ว่าคลิกที่ลายแล้วปรับได้ */}
+            {src && pl && !sel && (
+              <span className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-stone-900/70 px-3 py-1 text-[11px] font-bold text-white">
+                คลิกที่ลายเพื่อปรับขนาด/ตำแหน่ง
+              </span>
             )}
 
             {!src && (
@@ -614,8 +704,8 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
           {/* ป้ายบอกเส้น */}
           <p className="mt-2 text-center text-[11px] text-stone-400">
             <span className="text-rose-500">▬</span> เส้นตัดจริง · <span className="text-emerald-500">▬</span> เขตปลอดภัย
-            (อย่าให้ข้อความเลยออกไป) · ลากเพื่อเลื่อน · <strong>ลากมุมฟ้าหรือหมุนล้อเมาส์เพื่อย่อ-ขยาย</strong> ·
-            หุบ-กางสองนิ้วบนมือถือ · โยนรูปใหม่มาวางทับได้ตลอด
+            (อย่าให้ข้อความเลยออกไป) · <strong>คลิกที่ลายเพื่อปรับ</strong> แล้วลากเลื่อน · ลากมุมย่อ-ขยาย ·
+            ลากหู ↻ หมุน · ล้อเมาส์/สองนิ้วซูม · คลิกพื้นที่ว่างเพื่อดูงานแบบไม่มีเส้นกรอบ
           </p>
 
           {/* ลากไฟล์อยู่เหนือจอ — บอกให้ชัดว่าปล่อยได้เลย */}
