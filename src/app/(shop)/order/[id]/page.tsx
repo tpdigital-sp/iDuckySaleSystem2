@@ -14,6 +14,7 @@ import { usePolling } from "@/lib/use-polling";
 import { setAppendTarget } from "@/lib/append-order";
 import ImageLightbox from "@/components/ImageLightbox";
 import { LINE_URL } from "@/components/LineButton";
+import { canAccessAdmin } from "@/lib/auth";
 
 /** ป้ายขั้นตอนฝั่งลูกค้า (คำอ่านง่ายกว่าฝั่งหลังบ้าน) — ลำดับตรงกับ STEP_OF */
 const STEPS = ["สั่งซื้อ", "ชำระเงิน", "ตรวจแบบงาน", "ผลิต", "จัดส่ง"];
@@ -39,6 +40,11 @@ export default function CustomerOrderPage() {
   // ป้าย "คัดลอกลิงก์ออเดอร์แล้ว" (กล่องรอตีราคา — ให้ลูกค้าส่งลิงก์ให้แอดมินใส่ราคา)
   const [linkCopied, setLinkCopied] = useState(false);
   const [order, setOrder] = useState<Order | null>(null);
+  /** ทีมงานที่ล็อกอินหลังบ้านอยู่ (แอดมิน/กราฟฟิก/เจ้าของ) — ขึ้นปุ่มลัดเข้าออเดอร์นี้ในหลังบ้าน */
+  const [isStaff, setIsStaff] = useState(false);
+  useEffect(() => {
+    void canAccessAdmin().then(setIsStaff);
+  }, []);
   const [loadErr, setLoadErr] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -525,6 +531,21 @@ export default function CustomerOrderPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
+      {/*
+        ทีมงานที่ล็อกอินหลังบ้านอยู่ (แอดมิน/กราฟฟิก/เจ้าของ) เปิดลิงก์ลูกค้ามาดู
+        → มีปุ่มลัดเข้าออเดอร์นี้ในหลังบ้านเลย ไม่ต้องไปไล่หาในรายการออเดอร์
+        (ลูกค้าทั่วไปไม่เห็นปุ่มนี้ เพราะไม่มี session หลังบ้าน)
+      */}
+      {isStaff && (
+        <Link
+          href={`/admin/orders/${encodeURIComponent(order.id)}`}
+          className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-stone-800 px-4 py-2.5 text-sm font-bold text-white shadow-lg ring-1 ring-black/10 transition hover:scale-105 hover:bg-stone-900"
+          title="เปิดออเดอร์นี้ในระบบหลังบ้าน"
+        >
+          🔧 เปิดในหลังบ้าน
+        </Link>
+      )}
+
       {/* ── หัวออเดอร์ + แถบขั้นตอน ── */}
       <div className="rounded-2xl bg-white p-5 ring-1 ring-stone-200">
         <div className="flex flex-wrap items-start justify-between gap-3">
