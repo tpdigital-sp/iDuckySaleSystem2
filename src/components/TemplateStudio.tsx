@@ -610,6 +610,28 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
   const lenW = (mm: number) => `${(mm / fullW) * 100}%`;
   const lenH = (mm: number) => `${(mm / fullH) * 100}%`;
 
+  /**
+   * จุดจับของกรอบ transform — คำนวณเป็นพิกัดจริงในเวทีแล้ว "หนีบ" ไม่ให้หลุดออกนอกเวที
+   *
+   * ทำไม: ขยายลายใหญ่กว่ากรอบมาก ๆ มุมของกรอบจะไปอยู่ไกลจนโดนตัดหาย ย่อกลับไม่ได้
+   * (ต้องไปพึ่งแถบเลื่อน/ปุ่มพอดีกรอบแทน) · การย่อ-ขยายคิดจาก "ระยะจากจุดกึ่งกลางถึงเคอร์เซอร์"
+   * ไม่ได้ใช้ตำแหน่งจุดจับ เลยหนีบตำแหน่งที่วาดได้โดยไม่กระทบการลาก
+   */
+  const insX = fullW * 0.022;
+  const insY = fullH * 0.022;
+  const clampX = (mm: number) => clamp(mm, -padX + insX, bleedW + padX - insX);
+  const clampY = (mm: number) => clamp(mm, -padY + insY, bleedH + padY - insY);
+  /** จุดบนกรอบลาย (หน่วย มม. ในระบบพิกัดของกรอบงาน) เมื่อออฟเซ็ตจากกึ่งกลาง แล้วหมุนตามลาย */
+  const boxPoint = (dxMm: number, dyMm: number) => {
+    const rad = ((pl?.rotDeg ?? 0) * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    return {
+      x: (pl?.cxMm ?? 0) + dxMm * cos - dyMm * sin,
+      y: (pl?.cyMm ?? 0) + dxMm * sin + dyMm * cos,
+    };
+  };
+
   return (
     <div
       className="fixed inset-0 z-[70] flex flex-col justify-center bg-stone-900/70 backdrop-blur-sm"
@@ -737,60 +759,81 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
 
             {/* ── กรอบ transform — โผล่เมื่อคลิกเลือกลาย (คลิกที่ว่างเพื่อเอาออก) ── */}
             {src && pl && sel && (
-              <div
-                className="pointer-events-none absolute origin-center border border-sky-500"
-                style={{
-                  left: pctW(pl.cxMm - pl.wMm / 2),
-                  top: pctH(pl.cyMm - pl.hMm / 2),
-                  width: lenW(pl.wMm),
-                  height: lenH(pl.hMm),
-                  transform: `rotate(${pl.rotDeg}deg)`,
-                }}
-              >
-                {/* มุมสี่มุม = ย่อ-ขยาย (คงอัตราส่วน) */}
+              <>
+                {/* เส้นขอบของลาย (ส่วนที่เลยเวทีจะโดนตัด — แค่บอกขอบเขต ไม่ต้องจับ) */}
+                <div
+                  className="pointer-events-none absolute origin-center border border-sky-500"
+                  style={{
+                    left: pctW(pl.cxMm - pl.wMm / 2),
+                    top: pctH(pl.cyMm - pl.hMm / 2),
+                    width: lenW(pl.wMm),
+                    height: lenH(pl.hMm),
+                    transform: `rotate(${pl.rotDeg}deg)`,
+                  }}
+                />
+
+                {/* มุมสี่มุม = ย่อ-ขยาย (คงอัตราส่วน) — หนีบไว้ในเวทีเสมอ ลายใหญ่แค่ไหนก็ยังจับได้ */}
                 {(
                   [
-                    ["-top-2 -left-2", "nwse-resize"],
-                    ["-top-2 -right-2", "nesw-resize"],
-                    ["-bottom-2 -left-2", "nesw-resize"],
-                    ["-bottom-2 -right-2", "nwse-resize"],
+                    [-1, -1, "nwse-resize"],
+                    [1, -1, "nesw-resize"],
+                    [-1, 1, "nesw-resize"],
+                    [1, 1, "nwse-resize"],
                   ] as const
-                ).map(([pos, cursor]) => (
-                  <span
-                    key={pos}
-                    onPointerDown={onHandleDown}
-                    onPointerMove={onHandleMove}
-                    onPointerUp={onHandleUp}
-                    onPointerCancel={onHandleUp}
-                    style={{ cursor, touchAction: "none" }}
-                    className={`pointer-events-auto absolute ${pos} h-4 w-4 rounded-full border-2 border-sky-500 bg-white shadow`}
-                    aria-label="ลากเพื่อย่อ-ขยายลาย"
-                  />
-                ))}
+                ).map(([sx, sy, cursor]) => {
+                  const pt = boxPoint((sx * pl.wMm) / 2, (sy * pl.hMm) / 2);
+                  const cx = clampX(pt.x);
+                  const cy = clampY(pt.y);
+                  const off = cx !== pt.x || cy !== pt.y; // มุมจริงอยู่นอกจอ → จุดจับนี้คือตัวแทน
+                  return (
+                    <span
+                      key={`${sx}${sy}`}
+                      onPointerDown={onHandleDown}
+                      onPointerMove={onHandleMove}
+                      onPointerUp={onHandleUp}
+                      onPointerCancel={onHandleUp}
+                      style={{ cursor, touchAction: "none", left: pctW(cx), top: pctH(cy) }}
+                      className={`pointer-events-auto absolute z-10 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-sky-500 shadow ${
+                        off ? "bg-sky-100" : "bg-white"
+                      }`}
+                      aria-label="ลากเพื่อย่อ-ขยายลาย"
+                      title={off ? "มุมลายอยู่นอกจอ — ลากจุดนี้เข้าเพื่อย่อลง" : "ลากเพื่อย่อ-ขยายลาย"}
+                    />
+                  );
+                })}
 
                 {/* หูหมุน — ยื่นออกเหนือกรอบ ลากเพื่อหมุนอิสระ (ดูดเข้าทุก 15°) */}
-                <span className="pointer-events-none absolute -top-7 left-1/2 h-7 w-px -translate-x-1/2 bg-sky-500/70" />
-                <span
-                  onPointerDown={onRotateDown}
-                  onPointerMove={onRotateMove}
-                  onPointerUp={onRotateUp}
-                  onPointerCancel={onRotateUp}
-                  style={{ touchAction: "none" }}
-                  className="pointer-events-auto absolute -top-11 left-1/2 grid h-7 w-7 -translate-x-1/2 cursor-grab place-items-center rounded-full border-2 border-sky-500 bg-white text-xs text-sky-600 shadow active:cursor-grabbing"
-                  aria-label="ลากเพื่อหมุนลาย"
-                >
-                  ↻
-                </span>
+                {(() => {
+                  const pt = boxPoint(0, -pl.hMm / 2 - fullH * 0.05);
+                  return (
+                    <span
+                      onPointerDown={onRotateDown}
+                      onPointerMove={onRotateMove}
+                      onPointerUp={onRotateUp}
+                      onPointerCancel={onRotateUp}
+                      style={{ touchAction: "none", left: pctW(clampX(pt.x)), top: pctH(clampY(pt.y)) }}
+                      className="pointer-events-auto absolute z-10 grid h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab place-items-center rounded-full border-2 border-sky-500 bg-white text-xs text-sky-600 shadow active:cursor-grabbing"
+                      aria-label="ลากเพื่อหมุนลาย"
+                    >
+                      ↻
+                    </span>
+                  );
+                })()}
 
-                {/* ป้ายบอกขนาด/มุม ณ ตอนนี้ — ติดใต้กรอบ หมุนกลับให้อ่านตรงเสมอ */}
-                <span
-                  className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-sky-600 px-2 py-0.5 text-[10px] font-bold text-white shadow"
-                  style={{ transform: `translateX(-50%) rotate(${-pl.rotDeg}deg)` }}
-                >
-                  {Math.round(pl.wMm) / 10}×{Math.round(pl.hMm) / 10} ซม.
-                  {pl.rotDeg ? ` · ${Math.round(pl.rotDeg)}°` : ""}
-                </span>
-              </div>
+                {/* ป้ายบอกขนาด/มุม ณ ตอนนี้ — เกาะใต้กรอบ แต่ไม่หลุดออกนอกเวที */}
+                {(() => {
+                  const pt = boxPoint(0, pl.hMm / 2 + fullH * 0.045);
+                  return (
+                    <span
+                      className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-sky-600 px-2 py-0.5 text-[10px] font-bold text-white shadow"
+                      style={{ left: pctW(clampX(pt.x)), top: pctH(clampY(pt.y)) }}
+                    >
+                      {Math.round(pl.wMm) / 10}×{Math.round(pl.hMm) / 10} ซม.
+                      {pl.rotDeg ? ` · ${Math.round(pl.rotDeg)}°` : ""}
+                    </span>
+                  );
+                })()}
+              </>
             )}
 
             {/* ยังไม่ได้เลือก — ใบ้ให้รู้ว่าคลิกที่ลายแล้วปรับได้ */}
