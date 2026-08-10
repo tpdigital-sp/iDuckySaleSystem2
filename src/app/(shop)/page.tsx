@@ -8,6 +8,7 @@ import { formatPriceRange, PRODUCTS, productPath, type Product } from "@/lib/pro
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { fetchProductsLite } from "@/lib/product-repo";
 import { fallbackToOriginal, imgProps } from "@/lib/img";
+import HomeChat from "@/components/HomeChat";
 
 /**
  * หน้าแรก — ดีไซน์ตามไฟล์ต้นแบบ iducky-landing-v8_83.html
@@ -453,81 +454,7 @@ export default function HomePage() {
             </h2>
           </div>
 
-          <div className="chat">
-            <div className="chat-top">
-              <img className="chat-av" src="/landing/logo-duck.webp" alt="" aria-hidden="true" />
-              <div className="chat-who">
-                <b>iDucky Prints</b>
-                <small>
-                  <span className="dot-live" />
-                  ตอบไวทุกวัน 09:00–18:00 น.
-                </small>
-              </div>
-              <span className="chat-tag">แชทตัวอย่าง</span>
-            </div>
-
-            <div className="chat-body">
-              <div className="msg out">
-                <span className="mbub">มีลายอยากทำพวงกุญแจอะค่ะ ต้องทำยังไงบ้าง</span>
-                <time>10:24</time>
-              </div>
-              <div className="msg in">
-                <span className="mbub">
-                  <b className="stepno">ขั้นที่ 1</b>ส่งรูป โลโก้ หรือไฟล์งานเข้ามาได้เลยครับ ยังไม่มีลายก็ได้ ทีมออกแบบช่วยจัดให้ฟรี 🎨
-                </span>
-                <time>10:25</time>
-              </div>
-              <div className="msg out">
-                <span className="mbub">อยากได้ 20 ชิ้น ทำได้ไหมคะ</span>
-                <time>10:26</time>
-              </div>
-              <div className="msg in">
-                <span className="mbub">
-                  <b className="stepno">ขั้นที่ 2</b>ได้เลยครับ เลือกจากกว่า {cats.length} หมวด เริ่มชิ้นเดียวก็ทำได้ เดี๋ยวส่งแบบให้ยืนยันก่อนผลิตนะครับ 🛍️
-                </span>
-                <time>10:27</time>
-              </div>
-              <div className="msg out">
-                <span className="mbub">ส่งถึงเมื่อไหร่คะ</span>
-                <time>10:28</time>
-              </div>
-              <div className="msg in">
-                <span className="mbub">
-                  <b className="stepno">ขั้นที่ 3</b>แพ็คกันกระแทกอย่างดี ส่งไวทั่วไทย พร้อมเลขพัสดุติดตามได้ครับ 🚚
-                </span>
-                <time>10:29</time>
-              </div>
-              <div className="msg in typing">
-                <span className="mbub mbub-typing">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-              </div>
-            </div>
-
-            <div className="chat-quick">
-              <span className="qk">
-                <i>🐣</i>ไม่มีขั้นต่ำ
-              </span>
-              <span className="qk">
-                <i>✏️</i>ออกแบบฟรี
-              </span>
-              <span className="qk">
-                <i>📦</i>ส่งทั่วประเทศ
-              </span>
-              <span className="qk">
-                <i>🛡️</i>ตรวจสลิปอัตโนมัติ
-              </span>
-            </div>
-
-            <div className="chat-foot">
-              <span className="chat-input">พิมพ์ข้อความถึงร้าน…</span>
-              <a className="chat-send" href="https://lin.ee/x8GkqGZ" target="_blank" rel="noreferrer" aria-label="ทักแชทกับร้าน">
-                ➤
-              </a>
-            </div>
-          </div>
+          <HomeChat catCount={cats.length} />
 
           <div className="chat-cta">
             <div className="cc-text">

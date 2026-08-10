@@ -733,7 +733,32 @@ to{opacity:1;transform:none}}
 .dl .chat-send{width:44px;height:44px;flex:none;border-radius:50%;background:#06C755;color:#fff;
   display:grid;place-items:center;font-size:1rem;box-shadow:0 8px 18px rgba(6,199,85,.4);
   transition:transform .26s cubic-bezier(.34,1.56,.64,1)}
-.dl .chat-send:hover{transform:scale(1.08) rotate(-8deg)}
+.dl .chat-send:hover:not(:disabled){transform:scale(1.08) rotate(-8deg)}
+/* ── โหมดคุยจริง (HomeChat.tsx) — ต่อ n8n ตัวเดียวกับหน้าแชทแอดมิน ── */
+.dl .chat-reset{border:0;cursor:pointer;font-family:var(--display);transition:background .2s ease}
+.dl .chat-reset:hover{background:rgba(255,255,255,.26)}
+/* ตอนคุยจริงห้องแชทสูงคงที่ + เลื่อนได้ ไม่ให้หน้าเว็บยืดตามข้อความ */
+.dl .chat-body.is-live{height:min(58vh,430px);overflow-y:auto;scroll-behavior:smooth}
+.dl .chat-body.is-live::-webkit-scrollbar{width:6px}
+.dl .chat-body.is-live::-webkit-scrollbar-thumb{background:var(--sky-200);border-radius:99px}
+.dl .mbub .mlink{color:var(--blue-deep);text-decoration:underline;word-break:break-all}
+/* คำตอบ AI มาเป็น markdown อ่อน ๆ — จัดบรรทัด/บุลเล็ตในบับเบิล */
+.dl .mbub .mrow,.dl .mbub .mli{display:block}
+.dl .mbub .mli{padding-left:15px;position:relative}
+.dl .mbub .mli::before{content:"•";position:absolute;left:2px;color:var(--sky-300)}
+.dl .mbub .mgap{display:block;height:7px}
+.dl .mbub b{font-weight:700}
+/* ปุ่มตอบเร็ว/ช่องพิมพ์/ปุ่มส่ง เป็น <button>/<input> จริงแล้ว — ล้างสไตล์ default ของเบราว์เซอร์ */
+.dl button.qk{cursor:pointer;font-family:var(--display);line-height:1.5}
+.dl button.qk:disabled{opacity:.55;cursor:not-allowed;transform:none}
+.dl input.chat-input{color:var(--navy);font-family:inherit;outline:none;min-width:0;
+  transition:border-color .2s ease,box-shadow .2s ease}
+.dl input.chat-input::placeholder{color:#9BB2CC}
+.dl input.chat-input:focus{border-color:var(--sky-300);box-shadow:0 0 0 3px rgba(120,180,240,.18)}
+.dl button.chat-send{border:0;cursor:pointer;font-family:inherit}
+.dl button.chat-send:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+.dl .chat-note{margin:0;padding:0 20px 15px;background:#F6FAFE;text-align:center;font-size:.75rem;color:#7E97B4}
+.dl .chat-note a{color:var(--blue-deep);text-decoration:underline}
 /* แถบปิดท้ายใต้แชท */
 .dl .chat-cta{width:min(100%,760px);margin:26px auto 0;display:flex;flex-wrap:wrap;align-items:center;gap:20px;
   justify-content:space-between;background:var(--navy);border-radius:30px;padding:30px 32px;color:#fff}
