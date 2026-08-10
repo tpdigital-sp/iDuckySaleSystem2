@@ -179,6 +179,28 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
     plRef.current = pl;
   }, [pl]);
 
+  /** เอาลายออก กลับไปหน้าจอเปล่าให้เลือกรูปใหม่ */
+  const clearArt = useCallback(() => {
+    setSrc(null);
+    setPl(null);
+    setSel(false);
+    setErr("");
+  }, []);
+
+  // ปุ่ม Delete / Backspace = ลบลายที่เลือกอยู่ (ไม่ทำงานตอนโฟกัสอยู่ในช่องกรอก)
+  useEffect(() => {
+    if (!open || !src || !sel) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      e.preventDefault();
+      clearArt();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, src, sel, clearArt]);
+
   async function pick(file?: File | null) {
     if (!file) return;
     setErr("");
@@ -708,7 +730,7 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
           {/* ป้ายบอกวิธีใช้ */}
           <p className="mt-2 text-center text-[11px] text-stone-400">
             <strong>คลิกที่ลายเพื่อปรับ</strong> แล้วลากเลื่อน · ลากมุมย่อ-ขยาย · ลากหู ↻ หมุน ·
-            ล้อเมาส์/สองนิ้วซูม · คลิกพื้นที่ว่างเพื่อดูงานแบบไม่มีเส้นกรอบ
+            ล้อเมาส์/สองนิ้วซูม · กด <strong>Delete</strong> ลบลาย · คลิกพื้นที่ว่างเพื่อดูงานแบบไม่มีเส้นกรอบ
           </p>
 
           {/* ลากไฟล์อยู่เหนือจอ — บอกให้ชัดว่าปล่อยได้เลย */}
@@ -791,6 +813,16 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
             <button type="button" onClick={() => setSwapped((v) => !v)} className={toolBtn}>
               ⇄ สลับแนว
             </button>
+            {src && (
+              <button
+                type="button"
+                onClick={clearArt}
+                className={`${toolBtn} bg-rose-50 text-rose-600 hover:bg-rose-100`}
+                title="ลบลายออก (กดปุ่ม Delete บนคีย์บอร์ดก็ได้)"
+              >
+                🗑 ลบลาย
+              </button>
+            )}
             {guideUrl && (
               <button type="button" onClick={() => setShowGuide((v) => !v)} className={toolBtn}>
                 {showGuide ? "👁 ซ่อนไกด์" : "👁 แสดงไกด์"}
