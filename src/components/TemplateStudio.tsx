@@ -553,56 +553,47 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
               cursor: pl ? "move" : "default",
             }}
           >
-            {/* พื้นขาวของกรอบงาน (ลายพื้นโปร่ง/วางไม่เต็มจะเห็นเป็นขาว เหมือนตอนพิมพ์จริง) */}
+            {/*
+              กรอบงาน = พื้นขาว + ตัดทุกอย่างที่ล้นออกนอกกรอบทิ้ง
+              (ส่วนที่ล้นคือส่วนที่จะโดนตัดจริงตอนผลิต — ไม่โชว์ให้สับสนว่าจะได้ติดมาด้วย)
+              จุดจับ transform อยู่นอกกล่องนี้ เลยยังลากได้แม้ลายใหญ่กว่ากรอบ
+            */}
             <div
-              className="pointer-events-none absolute bg-white shadow-[0_2px_14px_rgba(28,25,23,.12)]"
+              className="pointer-events-none absolute overflow-hidden bg-white shadow-[0_2px_14px_rgba(28,25,23,.12)] ring-1 ring-stone-300"
               style={{ left: pctW(0), top: pctH(0), width: lenW(bleedW), height: lenH(bleedH) }}
-            />
+            >
+              {/* ลายของลูกค้า (พิกัดในกล่องนี้อ้างอิงกรอบงาน ไม่รวมพื้นที่ว่างรอบ ๆ) */}
+              {src && pl && (
+                <img
+                  ref={imgRef}
+                  src={src.url}
+                  alt="ลายที่กำลังวาง"
+                  draggable={false}
+                  className="absolute origin-center"
+                  style={{
+                    left: `${((pl.cxMm - pl.wMm / 2) / bleedW) * 100}%`,
+                    top: `${((pl.cyMm - pl.hMm / 2) / bleedH) * 100}%`,
+                    width: `${(pl.wMm / bleedW) * 100}%`,
+                    height: `${(pl.hMm / bleedH) * 100}%`,
+                    // ⚠️ ต้องปลดเพดานของ preflight (img{max-width:100%}) ไม่งั้นลายที่ซูมเกินกรอบ
+                    // จะถูกบีบให้เท่ากรอบ → ที่เห็นบนจอไม่ตรงกับไฟล์ที่ประกอบออกมา
+                    maxWidth: "none",
+                    maxHeight: "none",
+                    transform: `rotate(${pl.rotDeg}deg)`,
+                  }}
+                />
+              )}
 
-            {/* ลายของลูกค้า */}
-            {src && pl && (
-              <img
-                ref={imgRef}
-                src={src.url}
-                alt="ลายที่กำลังวาง"
-                draggable={false}
-                className="pointer-events-none absolute origin-center"
-                style={{
-                  left: pctW(pl.cxMm - pl.wMm / 2),
-                  top: pctH(pl.cyMm - pl.hMm / 2),
-                  width: lenW(pl.wMm),
-                  height: lenH(pl.hMm),
-                  // ⚠️ ต้องปลดเพดานของ preflight (img{max-width:100%}) ไม่งั้นลายที่ซูมเกินกรอบ
-                  // จะถูกบีบให้เท่ากรอบ → ที่เห็นบนจอไม่ตรงกับไฟล์ที่ประกอบออกมา
-                  maxWidth: "none",
-                  maxHeight: "none",
-                  transform: `rotate(${pl.rotDeg}deg)`,
-                }}
-              />
-            )}
-
-            {/* รูปจากไฟล์เทมเพลตจริง — ไกด์จาง ๆ ให้เห็นว่างานหน้าตาแบบไหน */}
-            {guideUrl && showGuide && (
-              <img
-                src={guideUrl}
-                alt=""
-                aria-hidden="true"
-                className="pointer-events-none absolute object-fill opacity-25 mix-blend-multiply"
-                style={{ left: pctW(0), top: pctH(0), width: lenW(bleedW), height: lenH(bleedH) }}
-              />
-            )}
-
-            {/* กรอบพื้นที่พิมพ์ — หรี่ทุกอย่างที่ล้นออกไปนอกกรอบ (ส่วนนั้นจะโดนตัดทิ้ง) */}
-            <div
-              className="pointer-events-none absolute rounded-[2px] ring-1 ring-stone-300"
-              style={{
-                left: pctW(0),
-                top: pctH(0),
-                width: lenW(bleedW),
-                height: lenH(bleedH),
-                boxShadow: "0 0 0 9999px rgba(250,250,249,.82)",
-              }}
-            />
+              {/* รูปจากไฟล์เทมเพลตจริง — ไกด์จาง ๆ ให้เห็นว่างานหน้าตาแบบไหน */}
+              {guideUrl && showGuide && (
+                <img
+                  src={guideUrl}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 h-full w-full object-fill opacity-25 mix-blend-multiply"
+                />
+              )}
+            </div>
 
             {/* เส้นไกด์: ขอบงานจริง (ตัดตามนี้) + เขตปลอดภัย */}
             <div
