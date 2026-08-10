@@ -181,6 +181,8 @@ export default function ProductDetail({
       summary: string;
       spec: string;
       sourceUrl?: string;
+      /** ภาพที่ประกอบแล้วของลายนี้ — ผูกไว้กับตัวลายเลย ไม่ต้องไปหยิบจาก artFiles ตามลำดับ */
+      artUrl: string;
       qty: number;
       /** ของที่ใช้เปิดกลับมาแก้ไขให้เหมือนเดิม (ไฟล์ต้นฉบับ + ตำแหน่ง + แนวงาน) */
       sourceFile?: File;
@@ -665,6 +667,7 @@ export default function ProductDetail({
         summary: r.summary,
         spec: r.spec,
         sourceUrl,
+        artUrl: url,
         sourceFile: r.source,
         placement: r.placement,
         swapped: r.swapped,
@@ -678,7 +681,11 @@ export default function ProductDetail({
       }
       setEditIndex(null);
     } catch (e) {
-      setArtErr(e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง");
+      const msg = e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง";
+      setArtErr(msg);
+      // โยนต่อให้จอวางลายรู้ว่าไม่สำเร็จ — ไม่งั้นจอปิดไปเฉย ๆ ทั้งที่ยังไม่ได้ลาย
+      // (ในโหมดออกแบบบนเว็บ ช่อง "แนบลายของคุณ" ถูกซ่อน ข้อความเตือนเลยไม่มีที่โผล่)
+      throw new Error(msg);
     } finally {
       setArtBusy(false);
     }
@@ -1734,9 +1741,9 @@ export default function ProductDetail({
                   <div className="space-y-1.5">
                     {placed.map((d, i) => (
                       <div key={i} className="flex items-center gap-2 rounded-xl bg-white p-2 ring-1 ring-sky-100">
-                        {artFiles[i] && (
+                        {d.artUrl && (
                           <img
-                            src={artFiles[i].url}
+                            src={d.artUrl}
                             alt={`แบบที่ ${i + 1}`}
                             className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-sky-200"
                           />

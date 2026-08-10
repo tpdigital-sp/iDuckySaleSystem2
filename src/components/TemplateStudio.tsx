@@ -568,6 +568,7 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
         return;
       }
       const n = (v: number) => Math.round(v * 10) / 10;
+      // ผู้เรียกโยน error = อัปโหลดไม่ผ่าน → คาจอไว้ให้กดใหม่ ไม่ปิดทิ้งเงียบ ๆ
       await onApply({
         composite,
         source: src.file,
@@ -581,6 +582,8 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
           printFrameToken(bleedW, bleedH),
       });
       onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "บันทึกลายไม่สำเร็จ ลองกดใหม่อีกครั้ง");
     } finally {
       setBusy(false);
     }

@@ -20,8 +20,10 @@ const EXT: Record<string, string> = {
 const MAX_BYTES = 15 * 1024 * 1024;
 
 // กันสแปม endpoint สาธารณะแบบเบา ๆ (ต่อ IP ต่อชั่วโมง) — รีเซ็ตเมื่อ process ใหม่ พอสำหรับกันยิงรัว
+// ⚠️ โหมดออกแบบบนเว็บใช้ 2 ไฟล์ต่อลาย (ภาพที่ประกอบแล้ว + ต้นฉบับ) ลูกค้าที่สั่งหลายลาย
+//    และแก้แบบไปมาจะกินโควตาเร็วมาก — 40 เดิมตันได้จริง เลยขยับเป็น 120
 const hits = new Map<string, { n: number; until: number }>();
-const LIMIT = 40;
+const LIMIT = 120;
 function overLimit(ip: string): boolean {
   const now = Date.now();
   const cur = hits.get(ip);
