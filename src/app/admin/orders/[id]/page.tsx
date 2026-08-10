@@ -43,6 +43,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { useActor, useCan, useRoleLabel } from "@/lib/perm-context";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
+import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
+import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 
 /** ขั้นถัดไปที่ "ปกติจะกด" ของแต่ละสถานะ — ทำเป็นปุ่มเดียวจบ ไม่ต้องเปิดลิสต์ยาว */
 const NEXT_STATUS: Partial<Record<OrderStatus, { to: OrderStatus; label: string }>> = {
@@ -874,6 +876,8 @@ export default function AdminOrderDetailPage() {
 
   /** แนบภาพลายเพิ่มให้รายการนี้ (ลากวาง/เลือกไฟล์ที่คอลัมน์รูป) */
   const [artUpIdx, setArtUpIdx] = useState<number | null>(null);
+  /** กำลังสร้างไฟล์ .ai พร้อมพิมพ์ของรายการไหนอยู่ (คีย์ = ออเดอร์-ลำดับรายการ) */
+  const [aiBusy, setAiBusy] = useState<string | null>(null);
   async function addArtwork(itemIndex: number, fileList: FileList | File[] | null) {
     if (!order || !fileList) return;
     const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
@@ -1696,6 +1700,49 @@ export default function AdminOrderDetailPage() {
                         🎨 ลายจากลูกค้า ({it.artworkUrls?.length ?? 0})
                         <span className="ml-1 font-normal text-sky-600">— ทีมงานเห็นเท่านั้น ลูกค้าไม่เห็นในหน้าเช็คออเดอร์</span>
                       </p>
+                      {/*
+                        ลูกค้าวางลายเองบนเว็บ (มีขนาดกรอบงานติดมาด้วย) → ออกไฟล์ .ai ขนาดเท่างานจริงได้เลย
+                        กราฟฟิกไม่ต้องจัดหน้าใหม่ ถือว่าลูกค้าอนุมัติแบบมาแล้วตั้งแต่หน้าเว็บ
+                      */}
+                      {(() => {
+                        const frame = parsePrintFrame(it.sel?.[PLACEMENT_SPEC_LABEL]);
+                        const art = it.artworkUrls?.[0];
+                        if (!frame || !art) return null;
+                        const key = `${order.id}-${i}`;
+                        return (
+                          <div className="mt-2 rounded-lg bg-white p-2 ring-1 ring-sky-200">
+                            <p className="text-[11px] font-bold text-sky-900">
+                              ✅ ลูกค้าออกแบบมาเองแล้ว — ไม่ต้องทำแบบใหม่
+                            </p>
+                            <p className={`text-[10px] ${faint}`}>
+                              กรอบงาน {frame.widthMm}×{frame.heightMm} มม. (รวมตัดตก)
+                            </p>
+                            <button
+                              type="button"
+                              disabled={aiBusy === key}
+                              onClick={async () => {
+                                setAiBusy(key);
+                                try {
+                                  const blob = await buildPrintAi({
+                                    imageUrl: art,
+                                    widthMm: frame.widthMm,
+                                    heightMm: frame.heightMm,
+                                    title: `${order.id} ${it.name}`,
+                                  });
+                                  downloadBlob(blob, `${order.id}-item${i + 1}-พร้อมพิมพ์.ai`);
+                                } catch (e) {
+                                  alert(e instanceof Error ? e.message : "สร้างไฟล์ .ai ไม่สำเร็จ");
+                                } finally {
+                                  setAiBusy(null);
+                                }
+                              }}
+                              className="mt-1.5 w-full rounded-lg bg-sky-600 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-sky-700 disabled:opacity-50"
+                            >
+                              {aiBusy === key ? "กำลังสร้างไฟล์…" : "⬇️ ไฟล์ .ai พร้อมพิมพ์"}
+                            </button>
+                          </div>
+                        );
+                      })()}
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {(it.artworkUrls ?? []).map((u, k) => (
                           <span key={`${u}-${k}`} className="group relative block">

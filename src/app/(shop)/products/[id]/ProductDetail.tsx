@@ -535,6 +535,34 @@ export default function ProductDetail({
     setArtBusy(false);
   }
 
+  /**
+   * 🎨 สินค้าตัวนี้ "ออกแบบบนเว็บได้เลย" ไหม — มีเทมเพลตที่ถอดขนาดงานจริงได้ตามตัวเลือกที่เลือกอยู่
+   * ถ้ามี: หน้าสินค้าเปลี่ยนเป็นโหมด "เริ่มสร้าง" (ไม่ต้องให้ลูกค้าแนบไฟล์ลายเอง)
+   */
+  const studioTarget = (() => {
+    for (const t of templates) {
+      const label = t.optionLabel?.trim();
+      const chosen = label ? (effective[label] ?? "").trim() : "";
+      for (const f of filesForSelections(t, effective)) {
+        const fr = templateFrame(t, f, f.choice || chosen);
+        if (fr)
+          return {
+            title: `${t.name}${f.choice ? ` · ${f.choice}` : ""}`,
+            frame: fr,
+            guideUrl: f.previewUrl || t.previewUrl,
+          };
+      }
+    }
+    return null;
+  })();
+  /** โหมดออกแบบบนเว็บ — ข้ามขั้นตอน "แนบลายของคุณ" ไปเลย */
+  const studioMode = !!studioTarget;
+  const designDone = placed.length > 0;
+
+  function openStudio() {
+    if (studioTarget) setStudio(studioTarget);
+  }
+
   /** อัปโหลดไฟล์เดียวแล้วคืน url (ใช้กับภาพที่ประกอบจากจอวางลาย) */
   async function uploadOne(f: File): Promise<string> {
     const fd = new FormData();
@@ -590,13 +618,19 @@ export default function ProductDetail({
   // 🎨 ต้องแนบลายก่อนสั่งไหม — ต้องมีรูปอัปโหลด หรือ ลิงก์/อีเมล อย่างน้อยหนึ่งอย่าง
   const artRequired = artworkIsRequired(product);
   const artProvided = artFiles.length > 0 || artLink.trim().length > 0;
-  const artBlocked = artRequired && !artProvided;
+  // โหมดออกแบบบนเว็บ: "แบบที่ลูกค้าวางเอง" คือลายอยู่แล้ว ไม่ต้องมีช่องแนบไฟล์
+  const artBlocked = studioMode ? false : artRequired && !artProvided;
 
   function handleAdd() {
     // 🔒 กันกดรัว/แตะซ้ำบนมือถือ — 1 คลิก = 1 รายการเสมอ
     // (กดครั้งแรกสำเร็จ ระบบเคลียร์ลาย/หมายเหตุทิ้ง ครั้งที่สองจึงกลายเป็น "อีกรายการ" คนละใบงาน)
     // ล็อกเฉพาะตอนที่เพิ่มเข้าตะกร้าได้จริง — โดนเตือนแล้วกดแก้ต่อได้ทันที ไม่ต้องรอ
     if (addLock.current) return;
+    // โหมดออกแบบบนเว็บ: ต้องวางลายให้เสร็จก่อนถึงจะใส่ตะกร้าได้
+    if (studioMode && !designDone) {
+      openStudio();
+      return;
+    }
     if (artBlocked) {
       setArtTouched(false);
       setExtraOpen("art");
@@ -911,7 +945,7 @@ export default function ProductDetail({
               <div className="flex items-center gap-2 bg-sky-600 px-4 py-2">
                 <span className="text-base leading-none">📐</span>
                 <p className="text-xs font-extrabold tracking-tight text-white">
-                  เทมเพลตไฟล์งาน — โหลดไปวางลายได้เลย
+                  {studioMode ? "ไฟล์เทมเพลต — สำหรับคนที่ทำแบบเองในโปรแกรม" : "เทมเพลตไฟล์งาน — โหลดไปวางลายได้เลย"}
                 </p>
               </div>
               <ul className="space-y-2 px-3 py-3">
@@ -993,10 +1027,8 @@ export default function ProductDetail({
                 })}
               </ul>
               <p className="px-4 pb-3 text-[10px] leading-relaxed text-sky-800">
-                กด <strong>&ldquo;🖼 วางลายบนเว็บ&rdquo;</strong> แล้วเลือกรูปของคุณมาวางในกรอบงานจริงได้เลย
-                ระบบจัดขนาด/ตำแหน่งให้ตรงกับที่ผลิตจริง แล้วแนบเข้าตะกร้าให้อัตโนมัติ ·
-                ถ้ามีโปรแกรมกราฟฟิกอยู่แล้ว จะกด <strong>ดาวน์โหลด</strong> ไฟล์ .ai ไปทำเองแล้วส่งกลับทางช่อง
-                &ldquo;แนบลายของคุณ&rdquo; ด้านล่างก็ได้
+                วิธีที่ง่ายที่สุดคือกดปุ่ม <strong>&ldquo;🎨 เริ่มสร้าง&rdquo;</strong> แล้ววางรูปของคุณบนแบบได้เลย
+                ระบบจัดขนาด/ตำแหน่งให้ตรงกับที่ผลิตจริง · ส่วนไฟล์ .ai ตรงนี้มีไว้ให้คนที่อยากทำแบบเองในโปรแกรมกราฟฟิก
               </p>
             </div>
           )}
@@ -1602,26 +1634,60 @@ export default function ProductDetail({
                     +
                   </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleAdd}
-                  // ขนาดกำหนดเอง = ราคาไม่อิงเรทปกติ → ไม่ติดขั้นต่ำของเรทด้วย (สั่งกี่ชิ้นก็ได้ แอดมินตีราคาตามจริง)
-                  disabled={(useCustom && !customValid) || artBlocked}
-                  className={`flex-1 rounded-full px-5 py-3 text-[13px] font-bold shadow-lg transition sm:flex-none sm:px-8 ${
-                    added
-                      ? "bg-emerald-500 text-white"
-                      : "bg-amber-400 text-white hover:scale-105 hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
-                  }`}
-                >
-                  {added
-                    ? "✓ เพิ่มลงตะกร้าแล้ว!"
-                    : artBlocked
-                      ? "🎨 แนบลายก่อนถึงจะสั่งได้"
-                      : useCustom && customAsk
-                      ? "🛒 สั่งเลย — แอดมินตีราคาแล้วแจ้งกลับ"
-                      : `🛒 เพิ่มลงตะกร้า — ${formatPrice(unitPrice * qty + designFee)}`}
-                </button>
+                {/* โหมดออกแบบบนเว็บ: ปุ่มแรกคือ "เริ่มสร้าง" · วางลายเสร็จแล้วค่อยกลายเป็นปุ่มใส่ตะกร้า */}
+                {studioMode && !designDone ? (
+                  <button
+                    type="button"
+                    onClick={openStudio}
+                    className="flex-1 rounded-full bg-sky-600 px-5 py-3 text-[13px] font-bold text-white shadow-lg transition hover:scale-105 hover:bg-sky-700 sm:flex-none sm:px-8"
+                  >
+                    🎨 เริ่มสร้าง — วางลายบนสินค้า
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleAdd}
+                    // ขนาดกำหนดเอง = ราคาไม่อิงเรทปกติ → ไม่ติดขั้นต่ำของเรทด้วย (สั่งกี่ชิ้นก็ได้ แอดมินตีราคาตามจริง)
+                    disabled={(useCustom && !customValid) || artBlocked}
+                    className={`flex-1 rounded-full px-5 py-3 text-[13px] font-bold shadow-lg transition sm:flex-none sm:px-8 ${
+                      added
+                        ? "bg-emerald-500 text-white"
+                        : "bg-amber-400 text-white hover:scale-105 hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+                    }`}
+                  >
+                    {added
+                      ? "✓ เพิ่มลงตะกร้าแล้ว!"
+                      : artBlocked
+                        ? "🎨 แนบลายก่อนถึงจะสั่งได้"
+                        : useCustom && customAsk
+                        ? "🛒 สั่งเลย — แอดมินตีราคาแล้วแจ้งกลับ"
+                        : `🛒 เพิ่มลงตะกร้า — ${formatPrice(unitPrice * qty + designFee)}`}
+                  </button>
+                )}
               </div>
+              {/* แบบที่ลูกค้าวางเองแล้ว — เห็นรูปจริง แก้ไข/ทำใหม่ได้ก่อนใส่ตะกร้า */}
+              {studioMode && designDone && (
+                <div className="mt-3 flex items-center gap-3 rounded-2xl bg-sky-50 p-2.5 ring-1 ring-sky-200">
+                  {artFiles[artFiles.length - 1] && (
+                    <img
+                      src={artFiles[artFiles.length - 1].url}
+                      alt="แบบที่คุณสร้าง"
+                      className="h-14 w-14 shrink-0 rounded-xl object-cover ring-1 ring-sky-300"
+                    />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-extrabold text-sky-900">✓ แบบพร้อมผลิตแล้ว</span>
+                    <span className="block truncate text-[11px] text-sky-700">{placed[placed.length - 1]?.summary}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={openStudio}
+                    className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-100"
+                  >
+                    ✏️ แก้ไขแบบ
+                  </button>
+                </div>
+              )}
               {artBlocked && (
                 <button
                   type="button"
@@ -1812,8 +1878,12 @@ export default function ProductDetail({
             </div>
           </div>
 
-          {/* ═══ เพิ่มเติม (ไม่บังคับ) — ยุบไว้ ไม่ให้บังปุ่มซื้อ · โยนรูปลงหน้าไหนก็เปิดให้เอง ═══ */}
-          <div className="mt-4 overflow-hidden rounded-3xl bg-white ring-1 ring-stone-200">
+          {/*
+            ═══ เพิ่มเติม (ไม่บังคับ) — ยุบไว้ ไม่ให้บังปุ่มซื้อ · โยนรูปลงหน้าไหนก็เปิดให้เอง ═══
+            สินค้าที่ออกแบบบนเว็บได้ (มีเทมเพลต) ข้ามช่อง "แนบลายของคุณ" ไปเลย —
+            ลายมาจากแบบที่ลูกค้าวางเองในจอสร้างงาน ไม่ต้องให้อัปไฟล์ซ้ำอีกทาง
+          */}
+          <div className={`mt-4 overflow-hidden rounded-3xl bg-white ring-1 ring-stone-200 ${studioMode ? "hidden" : ""}`}>
             <button
               type="button"
               onClick={() => {
@@ -2084,16 +2154,26 @@ export default function ProductDetail({
             </p>
             <p className="text-lg font-extrabold leading-tight text-amber-600">{formatPrice(unitPrice * qty + designFee)}</p>
           </div>
-          <button
-            type="button"
-            onClick={handleAdd}
-            disabled={(useCustom && !customValid) || artBlocked}
-            className={`ml-auto shrink-0 rounded-full px-6 py-3 text-sm font-bold text-white shadow-lg transition ${
-              added ? "bg-emerald-500" : "bg-amber-400 hover:bg-amber-500 disabled:opacity-40"
-            }`}
-          >
-            {added ? "✓ เพิ่มแล้ว!" : artBlocked ? "🎨 แนบลายก่อน" : "🛒 เพิ่มลงตะกร้า"}
-          </button>
+          {studioMode && !designDone ? (
+            <button
+              type="button"
+              onClick={openStudio}
+              className="ml-auto shrink-0 rounded-full bg-sky-600 px-6 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-sky-700"
+            >
+              🎨 เริ่มสร้าง
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleAdd}
+              disabled={(useCustom && !customValid) || artBlocked}
+              className={`ml-auto shrink-0 rounded-full px-6 py-3 text-sm font-bold text-white shadow-lg transition ${
+                added ? "bg-emerald-500" : "bg-amber-400 hover:bg-amber-500 disabled:opacity-40"
+              }`}
+            >
+              {added ? "✓ เพิ่มแล้ว!" : artBlocked ? "🎨 แนบลายก่อน" : "🛒 เพิ่มลงตะกร้า"}
+            </button>
+          )}
         </div>
       </div>
       {/* กันแถบลอยบังเนื้อหาท้ายหน้า */}

@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { TemplateFrame } from "@/lib/design-templates";
+import { printFrameToken, type TemplateFrame } from "@/lib/design-templates";
 
 export interface Placement {
   /** จุดกึ่งกลางของลาย นับจากมุมซ้ายบนของพื้นที่ตัดตก (มม.) */
@@ -480,7 +480,8 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
         summary: `${title} · ${n(artW / 10)}×${n(artH / 10)} ซม. · ${dpi} DPI`,
         spec:
           `กรอบ ${n(bleedW)}×${n(bleedH)}mm (งานจริง ${n(artW)}×${n(artH)} + ตัดตก ${n(bleedX)}/${n(bleedY)}) · ` +
-          `ลาย ${n(pl.wMm)}×${n(pl.hMm)}mm กึ่งกลางที่ ${n(pl.cxMm)},${n(pl.cyMm)}mm · หมุน ${n(pl.rotDeg)}° · ${dpi} DPI`,
+          `ลาย ${n(pl.wMm)}×${n(pl.hMm)}mm กึ่งกลางที่ ${n(pl.cxMm)},${n(pl.cyMm)}mm · หมุน ${n(pl.rotDeg)}° · ${dpi} DPI ` +
+          printFrameToken(bleedW, bleedH),
       });
       onClose();
     } finally {

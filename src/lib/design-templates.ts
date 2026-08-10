@@ -215,6 +215,24 @@ export interface TemplateFrame {
 export const PLACEMENT_LABEL = "วางบนเทมเพลต";
 export const PLACEMENT_SPEC_LABEL = "ตำแหน่งลาย (ทีมผลิต)";
 
+/**
+ * โทเคนขนาดกรอบงานที่ต่อท้ายบรรทัดของทีมผลิต เช่น "[ai:230x190]"
+ * หลังบ้านอ่านค่านี้ไปตั้งขนาดหน้าไฟล์ .ai ให้ตรงงานจริงตอนกดดาวน์โหลด
+ */
+export function printFrameToken(widthMm: number, heightMm: number): string {
+  const n = (v: number) => Math.round(v * 10) / 10;
+  return `[ai:${n(widthMm)}x${n(heightMm)}]`;
+}
+
+/** อ่านขนาดกรอบงานกลับจากบรรทัดของทีมผลิต — ไม่มีโทเคน = ออเดอร์เก่าที่ยังไม่ได้วางลายบนเว็บ */
+export function parsePrintFrame(text?: string): SizeMm | null {
+  const m = (text ?? "").match(/\[ai:(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)\]/);
+  if (!m) return null;
+  const widthMm = parseFloat(m[1]);
+  const heightMm = parseFloat(m[2]);
+  return widthMm > 0 && heightMm > 0 ? { widthMm, heightMm } : null;
+}
+
 /** ตัดตกที่ยอมรับว่า "สมเหตุสมผล" ตอนถอดจากส่วนต่างอาร์ตบอร์ด−ขนาดงาน */
 const MAX_DERIVED_BLEED_MM = 25;
 
