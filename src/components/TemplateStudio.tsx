@@ -604,8 +604,17 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
   const lenH = (mm: number) => `${(mm / fullH) * 100}%`;
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-stone-900/70 backdrop-blur-sm" role="dialog" aria-modal="true">
-      <div className="mx-auto flex h-full w-full max-w-3xl flex-col bg-white sm:my-4 sm:h-[calc(100%-2rem)] sm:rounded-3xl sm:shadow-2xl">
+    <div
+      className="fixed inset-0 z-[70] flex flex-col justify-center bg-stone-900/70 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+    >
+      {/*
+        มือถือ: สูงเท่าเนื้อหา (ไม่ยืดเต็มจอ) แล้ววางกลางจอ — งานแนวนอนบนจอตั้ง
+        ถ้ายืดเต็มจะเหลือที่ว่างเปล่าเกินครึ่ง ปุ่มก็ไปอยู่ไกลนิ้ว
+        จอใหญ่: สูงเกือบเต็มจอเหมือนเดิม (มีที่ให้ลากลายเยอะ ๆ)
+      */}
+      <div className="mx-auto flex max-h-full w-full max-w-3xl flex-col overflow-hidden bg-white sm:my-4 sm:h-[calc(100%-2rem)] sm:rounded-3xl sm:shadow-2xl">
         {/* หัว */}
         <div className="flex items-center gap-3 border-b border-stone-100 px-4 py-3">
           <div className="min-w-0 flex-1">
