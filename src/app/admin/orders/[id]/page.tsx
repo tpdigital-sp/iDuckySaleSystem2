@@ -38,6 +38,7 @@ import { fetchOrderAdmin, fetchOrdersAdmin, saveOrderAdmin, uploadProof } from "
 import { usePolling } from "@/lib/use-polling";
 import { card, faint, muted, shortTime } from "@/lib/admin-ui";
 import ImageLightbox from "@/components/ImageLightbox";
+import { useConfirm } from "@/components/admin/ConfirmDialog";
 import PackCheckPanel from "@/components/PackCheckPanel";
 import ItemAdder from "@/components/admin/ItemAdder";
 import Barcode from "@/components/Barcode";
@@ -396,29 +397,8 @@ export default function AdminOrderDetailPage() {
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [err, setErr] = useState("");
-  /** กล่องยืนยันของระบบเอง — แทน confirm() ของเบราว์เซอร์ (หน้าตาเข้ากับหลังบ้าน บอกผลของการกดชัดกว่า) */
-  const [confirmBox, setConfirmBox] = useState<{
-    icon: string;
-    title: string;
-    detail?: string;
-    confirmLabel: string;
-    danger: boolean;
-    resolve: (ok: boolean) => void;
-  } | null>(null);
-  const askConfirm = useCallback(
-    (o: { icon?: string; title: string; detail?: string; confirmLabel?: string; danger?: boolean }) =>
-      new Promise<boolean>((resolve) =>
-        setConfirmBox({
-          icon: o.icon ?? "❓",
-          title: o.title,
-          detail: o.detail,
-          confirmLabel: o.confirmLabel ?? "ยืนยัน",
-          danger: o.danger ?? false,
-          resolve,
-        })
-      ),
-    []
-  );
+  /** กล่องยืนยันของระบบเอง — แทน confirm() ของเบราว์เซอร์ (ใช้ตัวเดียวกับหน้าอื่นในหลังบ้าน) */
+  const { confirm: askConfirm, dialog: confirmDialog } = useConfirm();
   // แอดมินแก้ "รายละเอียดงาน" ของรายการที่ลูกค้าสั่งได้ (แก้ได้เฉพาะรายละเอียด — ชื่อ/จำนวน/ราคาไม่แตะ)
   const [editSel, setEditSel] = useState<number | null>(null);
   const [selDraft, setSelDraft] = useState("");
@@ -1204,23 +1184,7 @@ export default function AdminOrderDetailPage() {
           onTrackingSave={saveTracking}
           onZoom={showProof}
         />
-        {confirmBox && (
-          <ConfirmModal
-            icon={confirmBox.icon}
-            title={confirmBox.title}
-            detail={confirmBox.detail}
-            confirmLabel={confirmBox.confirmLabel}
-            danger={confirmBox.danger}
-            onCancel={() => {
-              confirmBox.resolve(false);
-              setConfirmBox(null);
-            }}
-            onConfirm={() => {
-              confirmBox.resolve(true);
-              setConfirmBox(null);
-            }}
-          />
-        )}
+        {confirmDialog}
         {lightbox && (
           <ImageLightbox
             src={lightbox.src}
@@ -3129,23 +3093,7 @@ export default function AdminOrderDetailPage() {
         </div>
       )}
 
-      {confirmBox && (
-        <ConfirmModal
-          icon={confirmBox.icon}
-          title={confirmBox.title}
-          detail={confirmBox.detail}
-          confirmLabel={confirmBox.confirmLabel}
-          danger={confirmBox.danger}
-          onCancel={() => {
-            confirmBox.resolve(false);
-            setConfirmBox(null);
-          }}
-          onConfirm={() => {
-            confirmBox.resolve(true);
-            setConfirmBox(null);
-          }}
-        />
-      )}
+      {confirmDialog}
       {lightbox && (
         <ImageLightbox
           src={lightbox.src}
@@ -3606,67 +3554,6 @@ async function downloadImage(url: string, filename: string) {
 }
 
 /** กล่องยืนยันทั่วไปของหลังบ้าน — แทน confirm() ของเบราว์เซอร์ */
-function ConfirmModal({
-  icon,
-  title,
-  detail,
-  confirmLabel,
-  danger,
-  onCancel,
-  onConfirm,
-}: {
-  icon: string;
-  title: string;
-  detail?: string;
-  confirmLabel: string;
-  danger: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
-      if (e.key === "Enter") onConfirm();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel, onConfirm]);
-  return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onCancel}>
-      <div
-        className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-        role="alertdialog"
-        aria-modal="true"
-      >
-        <div className={`px-5 pb-4 pt-5 text-center ring-1 ring-inset ${danger ? "bg-rose-50 ring-rose-100" : "bg-sky-50 ring-sky-100"}`}>
-          <span className="text-3xl">{icon}</span>
-          <p className="mt-1.5 text-base font-extrabold leading-snug text-slate-900">{title}</p>
-          {detail && <p className="mt-1 whitespace-pre-line text-left text-xs leading-relaxed text-slate-600">{detail}</p>}
-        </div>
-        <div className="flex gap-2 p-4">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50"
-          >
-            ยกเลิก
-          </button>
-          <button
-            type="button"
-            autoFocus
-            onClick={onConfirm}
-            className={`flex-1 rounded-xl py-2.5 text-sm font-extrabold text-white shadow-sm transition ${
-              danger ? "bg-rose-600 hover:bg-rose-700" : "bg-emerald-600 hover:bg-emerald-700"
-            }`}
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /** โมดัลยืนยัน "ข้ามด่านตรวจแพ็ค" — แทน confirm() เดิม เน้นให้เห็นชัดว่าขาดอะไรและมีผลอะไร */
 function SkipGateModal({ reasons, onCancel, onConfirm }: { reasons: string[]; onCancel: () => void; onConfirm: () => void }) {

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import RequirePerm from "@/components/RequirePerm";
+import { useConfirm } from "@/components/admin/ConfirmDialog";
 import {
   DEFAULT_BLEED_MM,
   DEFAULT_SAFE_MM,
@@ -14,6 +15,7 @@ import {
   NO_CATEGORY,
   normalizeTemplate,
   templateCategories,
+  templateFiles,
   TEMPLATE_MAX_MB,
   type DesignTemplate,
   type TemplateFile,
@@ -106,6 +108,8 @@ function TemplateIcon({ tone, size = 40 }: { tone: string; size?: number }) {
 }
 
 function AdminTemplatesInner() {
+  /** กล่องยืนยันของระบบเอง — แทน confirm() ของเบราว์เซอร์ */
+  const { confirm: askConfirm, dialog: confirmDialog } = useConfirm();
   const [list, setList] = useState<Draft[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
@@ -234,14 +238,16 @@ function AdminTemplatesInner() {
   }
   async function removeCat(name: string) {
     const affected = list.filter((t) => t.category?.trim() === name);
-    if (
-      !confirm(
-        affected.length
-          ? `ลบหมวด “${name}”?\n\n${affected.length} ชุดที่อยู่ในหมวดนี้จะย้ายไป “${NO_CATEGORY}” (ไฟล์ไม่หาย)`
-          : `ลบหมวด “${name}”?`
-      )
-    )
-      return;
+    const ok = await askConfirm({
+      icon: "🗂",
+      title: `ลบหมวด “${name}”?`,
+      detail: affected.length
+        ? `${affected.length} ชุดที่อยู่ในหมวดนี้จะย้ายไปหมวด “${NO_CATEGORY}”\nตัวชุดและไฟล์ข้างในไม่หาย`
+        : "หมวดนี้ยังไม่มีชุดเทมเพลตอยู่",
+      confirmLabel: "ลบหมวด",
+      danger: true,
+    });
+    if (!ok) return;
     await saveCats(catList.filter((c) => c !== name));
     if (affected.length) {
       setList((cur) => cur.map((t) => (t.category?.trim() === name ? { ...t, category: undefined } : t)));
@@ -285,10 +291,26 @@ function AdminTemplatesInner() {
 
   async function remove(t: Draft) {
     const used = usedBy[t.id] ?? [];
-    const warn = used.length
-      ? `\n\n⚠️ มี ${used.length} สินค้าผูกชุดนี้อยู่ (${used.slice(0, 3).map((u) => u.name).join(", ")}${used.length > 3 ? " …" : ""})`
-      : "";
-    if (!confirm(`ลบชุดเทมเพลต “${t.name}” และไฟล์ทั้งหมดในชุด?${warn}`)) return;
+    const files = templateFiles(t).length;
+    const ok = await askConfirm({
+      icon: "🗑",
+      title: `ลบชุด “${t.name || "(ยังไม่ตั้งชื่อ)"}”?`,
+      detail: [
+        files ? `ไฟล์ในชุด ${files} ไฟล์จะถูกลบออกจากคลังถาวร (รวมรูปตัวอย่างและสกิน)` : "ชุดนี้ยังไม่มีไฟล์",
+        used.length
+          ? `⚠️ มี ${used.length} สินค้าผูกชุดนี้อยู่ — ${used
+              .slice(0, 3)
+              .map((u) => u.name)
+              .join(" · ")}${used.length > 3 ? " …" : ""}\nหน้าสินค้าจะไม่มีเทมเพลตให้ลูกค้าโหลดอีก`
+          : "",
+        "กู้คืนไม่ได้",
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+      confirmLabel: "ลบชุดนี้",
+      danger: true,
+    });
+    if (!ok) return;
     const res = await deleteTemplate(t.id);
     if (!res.ok) return setError(res.error ?? "ลบไม่สำเร็จ");
     setList((cur) => cur.filter((x) => x.id !== t.id));
@@ -1581,6 +1603,8 @@ function AdminTemplatesInner() {
         ผูกชุดเทมเพลตกับสินค้าได้ที่ <Link href="/admin/products" className="underline">หน้าแก้ไขสินค้า</Link> →
         หัวข้อ <strong>📐 เทมเพลตไฟล์งาน</strong>
       </p>
+
+      {confirmDialog}
     </div>
   );
 }
