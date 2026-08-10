@@ -1808,63 +1808,125 @@ export default function AdminOrderDetailPage() {
                         <span className="ml-1 font-normal text-sky-600">— ทีมงานเห็นเท่านั้น ลูกค้าไม่เห็นในหน้าเช็คออเดอร์</span>
                       </p>
                       {/*
-                        ลูกค้าวางลายเองบนเว็บ → ออกไฟล์ .ai ขนาดเท่างานจริงได้เลย ทีละลาย
-                        (สั่งหลายลายในรายการเดียวได้ — บรรทัดของทีมผลิตคั่นแต่ละลายด้วย " | "
-                        เรียงลำดับเดียวกับรูปลายที่แนบมา)
+                        แยกให้ชัดว่าอะไรคืออะไร:
+                          · "ลายที่ลูกค้าออกแบบมา" = ภาพที่ประกอบบนเทมเพลตแล้ว (พร้อมออกไฟล์ .ai)
+                          · "ต้นฉบับ" = ไฟล์รูปที่ลูกค้าอัปมาก่อนจัดวาง (ความละเอียดเต็ม เอาไว้ทำใหม่)
+                        จับคู่ได้เมื่อจำนวนรูปเท่ากับจำนวนลาย — ถ้าไม่เท่า (ออเดอร์เก่าที่มีรูปซ้ำ)
+                        จะโชว์แบบเรียงรูปเฉย ๆ พร้อมบอกให้ทีมงานเก็บกวาด
                       */}
                       {(() => {
-                        const specs = (it.sel?.[PLACEMENT_SPEC_LABEL] ?? "").split(" | ");
-                        const jobs = (it.artworkUrls ?? [])
-                          .map((url, k) => ({ url, k, frame: parsePrintFrame(specs[k] ?? specs[0]) }))
-                          .filter((j) => j.frame);
-                        if (!jobs.length) return null;
+                        const arts = it.artworkUrls ?? [];
+                        const specs = (it.sel?.[PLACEMENT_SPEC_LABEL] ?? "").split(" | ").filter(Boolean);
+                        const designs = specs
+                          .map((sp, k) => ({
+                            k,
+                            spec: sp,
+                            url: arts[k],
+                            frame: parsePrintFrame(sp),
+                            dpi: sp.match(/(\d+)\s*DPI/)?.[1],
+                            source: sp.match(/ต้นฉบับ:\s*(\S+)/)?.[1],
+                          }))
+                          .filter((d) => d.frame && d.url);
+                        if (!designs.length || arts.length !== specs.length) return null;
                         return (
-                          <div className="mt-2 rounded-lg bg-white p-2 ring-1 ring-sky-200">
+                          <div className="mt-2 space-y-1.5">
                             <p className="text-[11px] font-bold text-sky-900">
                               ✅ ลูกค้าออกแบบมาเองแล้ว — ไม่ต้องทำแบบใหม่
-                              {jobs.length > 1 ? ` (${jobs.length} ลาย)` : ""}
                             </p>
-                            <div className="mt-1.5 flex flex-wrap gap-1.5">
-                              {jobs.map((j) => {
-                                const key = `${order.id}-${i}-${j.k}`;
-                                return (
+                            {designs.map((d) => {
+                              const key = `${order.id}-${i}-${d.k}`;
+                              return (
+                                <div key={key} className="flex items-center gap-2 rounded-lg bg-white p-1.5 ring-1 ring-sky-200">
                                   <button
-                                    key={key}
                                     type="button"
-                                    disabled={aiBusy === key}
-                                    onClick={async () => {
-                                      setAiBusy(key);
-                                      try {
-                                        const blob = await buildPrintAi({
-                                          imageUrl: j.url,
-                                          widthMm: j.frame!.widthMm,
-                                          heightMm: j.frame!.heightMm,
-                                          title: `${order.id} ${it.name} ลายที่ ${j.k + 1}`,
-                                        });
-                                        downloadBlob(blob, `${order.id}-item${i + 1}-ลาย${j.k + 1}-พร้อมพิมพ์.ai`);
-                                      } catch (e) {
-                                        alert(e instanceof Error ? e.message : "สร้างไฟล์ .ai ไม่สำเร็จ");
-                                      } finally {
-                                        setAiBusy(null);
-                                      }
-                                    }}
-                                    className="rounded-lg bg-sky-600 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-sky-700 disabled:opacity-50"
-                                    title={`กรอบงาน ${j.frame!.widthMm}×${j.frame!.heightMm} มม. (รวมตัดตก)`}
+                                    onClick={() => setLightbox({ src: d.url!, alt: `${it.name} ลายที่ ${d.k + 1}`, caption: it.name })}
+                                    className="block h-14 w-14 shrink-0 overflow-hidden rounded-lg ring-1 ring-sky-200 transition hover:ring-2 hover:ring-sky-400"
+                                    title="ดูรูปเต็ม"
                                   >
-                                    {aiBusy === key
-                                      ? "กำลังสร้าง…"
-                                      : jobs.length > 1
-                                        ? `⬇️ .ai ลายที่ ${j.k + 1}`
-                                        : "⬇️ ไฟล์ .ai พร้อมพิมพ์"}
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={d.url} alt={`ลายที่ ${d.k + 1}`} className="h-full w-full object-cover" />
                                   </button>
-                                );
-                              })}
-                            </div>
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block text-[11px] font-bold text-slate-700">
+                                      ลายที่ {d.k + 1}
+                                      {d.dpi && (
+                                        <span className={`ml-1 font-semibold ${Number(d.dpi) >= 150 ? "text-emerald-600" : "text-amber-600"}`}>
+                                          {d.dpi} DPI
+                                        </span>
+                                      )}
+                                    </span>
+                                    <span className={`block text-[10px] ${faint}`}>
+                                      กรอบ {d.frame!.widthMm}×{d.frame!.heightMm} มม. (รวมตัดตก)
+                                    </span>
+                                    <span className="mt-1 flex flex-wrap gap-1">
+                                      <button
+                                        type="button"
+                                        disabled={aiBusy === key}
+                                        onClick={async () => {
+                                          setAiBusy(key);
+                                          try {
+                                            const blob = await buildPrintAi({
+                                              imageUrl: d.url!,
+                                              widthMm: d.frame!.widthMm,
+                                              heightMm: d.frame!.heightMm,
+                                              title: `${order.id} ${it.name} ลายที่ ${d.k + 1}`,
+                                            });
+                                            downloadBlob(blob, `${order.id}-item${i + 1}-ลาย${d.k + 1}-พร้อมพิมพ์.ai`);
+                                          } catch (e) {
+                                            alert(e instanceof Error ? e.message : "สร้างไฟล์ .ai ไม่สำเร็จ");
+                                          } finally {
+                                            setAiBusy(null);
+                                          }
+                                        }}
+                                        className="rounded-lg bg-sky-600 px-2.5 py-1 text-[10px] font-bold text-white transition hover:bg-sky-700 disabled:opacity-50"
+                                        title="ไฟล์พร้อมพิมพ์ ขนาดเท่างานจริง เปิดใน Illustrator ได้เลย"
+                                      >
+                                        {aiBusy === key ? "กำลังสร้าง…" : "⬇️ ไฟล์ .ai พร้อมพิมพ์"}
+                                      </button>
+                                      {d.source && (
+                                        <a
+                                          href={d.source}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="rounded-lg bg-white px-2.5 py-1 text-[10px] font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-50"
+                                          title="ไฟล์รูปที่ลูกค้าอัปมาก่อนจัดวาง (ความละเอียดเต็ม)"
+                                        >
+                                          🖼 ไฟล์ต้นฉบับ
+                                        </a>
+                                      )}
+                                    </span>
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                         );
                       })()}
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {(it.artworkUrls ?? []).map((u, k) => (
+
+                      {(() => {
+                        const arts = it.artworkUrls ?? [];
+                        const specs = (it.sel?.[PLACEMENT_SPEC_LABEL] ?? "").split(" | ").filter(Boolean);
+                        const matched = specs.length > 0 && arts.length === specs.length;
+                        return (
+                          <>
+                            {matched ? null : (
+                              <p className="mt-2 text-[11px] font-bold text-slate-500">
+                                รูปที่แนบมาทั้งหมด ({arts.length})
+                                {specs.length > 0 && (
+                                  <span className="ml-1 font-normal text-amber-700">
+                                    — ออเดอร์นี้มี {specs.length} ลาย แต่รูป {arts.length} ใบ (ของเก่ามีรูปซ้ำ)
+                                    เอาใบที่ไม่ใช้ออกด้วยปุ่ม ✕ ได้
+                                  </span>
+                                )}
+                              </p>
+                            )}
+                            <div className={`mt-2 flex flex-wrap gap-1.5 ${matched ? "hidden" : ""}`}>
+                              {arts.map((u, k) => {
+                                // ออเดอร์ที่จับคู่รูปกับลายไม่ได้ ก็ยังต้องออกไฟล์ .ai ได้อยู่
+                                // (ทุกลายในรายการเดียวกันใช้กรอบงานขนาดเดียวกัน จะหยิบ spec ไหนก็ได้)
+                                const frame = parsePrintFrame(specs[k] ?? specs[0]);
+                                const aiKey = `${order.id}-${i}-flat-${k}`;
+                                return (
                           <span key={`${u}-${k}`} className="group relative block">
                             <button
                               type="button"
@@ -1900,28 +1962,60 @@ export default function AdminOrderDetailPage() {
                                 ✕
                               </button>
                             )}
+                            {frame && (
+                              <button
+                                type="button"
+                                disabled={aiBusy === aiKey}
+                                onClick={async () => {
+                                  setAiBusy(aiKey);
+                                  try {
+                                    const blob = await buildPrintAi({
+                                      imageUrl: u,
+                                      widthMm: frame.widthMm,
+                                      heightMm: frame.heightMm,
+                                      title: `${order.id} ${it.name} ลายที่ ${k + 1}`,
+                                    });
+                                    downloadBlob(blob, `${order.id}-item${i + 1}-ลาย${k + 1}-พร้อมพิมพ์.ai`);
+                                  } catch (e) {
+                                    alert(e instanceof Error ? e.message : "สร้างไฟล์ .ai ไม่สำเร็จ");
+                                  } finally {
+                                    setAiBusy(null);
+                                  }
+                                }}
+                                title={`ไฟล์ .ai พร้อมพิมพ์ · กรอบ ${frame.widthMm}×${frame.heightMm} มม.`}
+                                className="absolute inset-x-0 -bottom-1 mx-auto w-11 rounded bg-sky-600 py-0.5 text-[9px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100"
+                              >
+                                {aiBusy === aiKey ? "…" : ".ai"}
+                              </button>
+                            )}
                           </span>
-                        ))}
-                        {mayEdit && (
-                          <label
-                            className="grid h-16 w-16 cursor-pointer place-items-center rounded-lg border-2 border-dashed border-sky-300 bg-white text-center text-[10px] font-bold leading-tight text-sky-600 transition hover:bg-sky-50"
-                            title="แนบลายจากลูกค้าเพิ่ม (ลากวางก็ได้)"
-                          >
-                            {artUpIdx === i ? "อัป…" : <span>＋<br />แนบลาย</span>}
-                            <input
-                              type="file"
-                              accept="image/jpeg,image/png,image/webp"
-                              multiple
-                              className="hidden"
-                              disabled={artUpIdx === i}
-                              onChange={(e) => {
-                                void addArtwork(i, e.target.files);
-                                e.target.value = "";
-                              }}
-                            />
-                          </label>
-                        )}
-                      </div>
+                                );
+                              })}
+                            </div>
+                            {/* แนบลายเพิ่มได้เสมอ (ไม่ว่ารูปจะจับคู่กับลายครบหรือไม่) */}
+                            {mayEdit && (
+                              <label
+                                className="mt-2 inline-grid h-16 w-16 cursor-pointer place-items-center rounded-lg border-2 border-dashed border-sky-300 bg-white text-center text-[10px] font-bold leading-tight text-sky-600 transition hover:bg-sky-50"
+                                title="แนบลายจากลูกค้าเพิ่ม (ลากวางก็ได้)"
+                              >
+                                {artUpIdx === i ? "อัป…" : <span>＋<br />แนบลาย</span>}
+                                <input
+                                  type="file"
+                                  accept="image/jpeg,image/png,image/webp"
+                                  multiple
+                                  className="hidden"
+                                  disabled={artUpIdx === i}
+                                  onChange={(e) => {
+                                    void addArtwork(i, e.target.files);
+                                    e.target.value = "";
+                                  }}
+                                />
+                              </label>
+                            )}
+                          </>
+                        );
+                      })()}
+
                       {mayProof &&
                         (() => {
                           const have = new Set(proofs.map((pf) => pf.url));
