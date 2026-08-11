@@ -268,7 +268,8 @@ export function filesForSelections(
 export function sideName(f: TemplateFile, i: number, total: number): string {
   const s = f.side?.trim();
   if (s) return s;
-  return total > 1 ? `ด้านที่ ${i + 1}` : "";
+  // ไม่ตั้งชื่อ = เรียกกลาง ๆ ว่า "หน้า N" — ชุดหลายไฟล์ไม่ได้แปลว่าเป็นงานหน้า-หลังเสมอไป
+  return total > 1 ? `หน้า ${i + 1}` : "";
 }
 
 /** งานนี้เป็นงานหลายด้านไหม — มีไฟล์ตั้งแต่ 2 และอย่างน้อยหนึ่งไฟล์ระบุชื่อด้านไว้ */

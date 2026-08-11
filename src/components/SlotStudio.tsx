@@ -352,7 +352,7 @@ export default function SlotStudio({
   const filledAll = sides.reduce((n, sd) => n + (allShots[sd.key] ?? []).filter(Boolean).length, 0);
   /** ชื่อหน้าที่ลูกค้าเห็น เช่น "ด้านหน้า 30×60 ซม." */
   const pageLabel = (sd: StudioSide, i: number) =>
-    `${sd.name || `ด้านที่ ${i + 1}`} ${Math.round(sd.frame.trimWMm) / 10}×${Math.round(sd.frame.trimHMm) / 10} ซม.`;
+    `${sd.name || `หน้า ${i + 1}`} ${Math.round(sd.frame.trimWMm) / 10}×${Math.round(sd.frame.trimHMm) / 10} ซม.`;
 
   /** อยู่หน้าสุดท้ายแล้วหรือยัง — หน้าสุดท้ายเท่านั้นที่กด "ใช้ลายนี้" ได้ */
   const last = active >= sides.length - 1;
@@ -692,7 +692,7 @@ export default function SlotStudio({
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-base font-extrabold text-stone-800">
-              🧩 {sides.length > 1 ? (spreadView ? "ทุกหน้า" : side.name || `ด้านที่ ${active + 1}`) : "วางรูปบนเทมเพลต"}
+              🧩 {sides.length > 1 ? (spreadView ? "ทุกหน้า" : side.name || `หน้า ${active + 1}`) : "วางรูปบนเทมเพลต"}
               {sides.length > 1 && !spreadView && (
                 <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-700">
                   หน้า {active + 1}/{sides.length}
@@ -728,7 +728,7 @@ export default function SlotStudio({
         {selShot && sel && (
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2 rounded-xl bg-stone-50 px-3 py-2">
             <span className="max-w-[12rem] truncate text-[11px] font-bold text-stone-600">
-              {sides.length > 1 ? `${sides[sel.si].name || `ด้านที่ ${sel.si + 1}`} · ` : ""}
+              {sides.length > 1 ? `${sides[sel.si].name || `หน้า ${sel.si + 1}`} · ` : ""}
               {nameOf(sides[sel.si].slots[sel.i], sel.i)}
             </span>
             <button
@@ -852,7 +852,7 @@ export default function SlotStudio({
                       })}
                     </span>
                     <span className={`mt-1 block text-[10px] font-bold ${i === active ? "text-sky-700" : "text-stone-500"}`}>
-                      {sd.name || `ด้านที่ ${i + 1}`}
+                      {sd.name || `หน้า ${i + 1}`}
                       <span className={done === sd.slots.length ? "ml-1 text-emerald-600" : "ml-1 text-stone-400"}>
                         {done}/{sd.slots.length}
                       </span>

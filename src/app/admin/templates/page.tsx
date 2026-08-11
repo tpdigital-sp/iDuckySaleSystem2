@@ -1908,7 +1908,7 @@ function AdminTemplatesInner() {
                 /** ป้ายของแต่ละไฟล์ — ต้องบอกทั้งค่าตัวเลือกและชื่อด้าน ไม่งั้นแอดมินแยกไม่ออกว่ากำลังตั้งของอะไร */
                 const tabLabel = (f: TemplateFile, i: number) =>
                   [byChoice ? choiceOf(f) || "(ไม่ระบุค่า)" : "", f.side?.trim()].filter(Boolean).join(" · ") ||
-                  (byChoice ? `ไฟล์ที่ ${i + 1}` : `ด้านที่ ${i + 1}`);
+                  `หน้า ${i + 1}`;
                 const own = cur?.slots ?? [];
                 /** ผังที่ด้านนี้ใช้จริง (ไม่มีของตัวเอง = ตกไปใช้ของทั้งชุด) */
                 const shown = cur ? (own.length ? own : slotsOf(t)) : slotsOf(t);
@@ -1979,6 +1979,45 @@ function AdminTemplatesInner() {
                           }
                     ),
                   });
+                };
+
+                /**
+                 * เพิ่มหน้าใหม่ต่อท้าย — งานหลายหน้าไม่ได้มีแค่หน้า-หลัง (ปฏิทิน สมุด การ์ดหลายใบ ฯลฯ)
+                 * ยืมขนาด/ค่าตัวเลือก/ผังช่องจากหน้าที่อ้างอิงมาให้ เริ่มต้นจะได้ทับกันพอดีอยู่แล้ว
+                 */
+                const addPage = () => {
+                  const from = cur ?? files[files.length - 1];
+                  const page: TemplateFile = {
+                    id: rid("f"),
+                    choice: from?.choice,
+                    widthMm: from?.widthMm,
+                    heightMm: from?.heightMm,
+                    ...(from?.slots?.length
+                      ? { slots: from.slots.map((s) => ({ ...s, id: rid("sl") })) }
+                      : {}),
+                  };
+                  patch(t.id, { files: [...files, page] });
+                  setThemeFile(page.id);
+                };
+                /** เอาหน้านี้ออกจากชุด — เพิ่มหน้าเองได้ ก็ต้องลบเองได้ (เหลือหน้าสุดท้ายลบไม่ได้) */
+                const removePage = async () => {
+                  if (!cur || files.length < 2) return;
+                  const i = files.indexOf(cur);
+                  if (
+                    !(await askConfirm({
+                      icon: "🗑",
+                      title: `เอา “${tabLabel(cur, i)}” ออกจากชุด?`,
+                      detail: [
+                        cur.fileName ? `ไฟล์ ${cur.fileName} จะถูกเอาออกจากชุดด้วย` : "หน้านี้ยังไม่มีไฟล์งาน",
+                        `ผังช่องของหน้านี้จะหายไป · เหลือ ${files.length - 1} หน้า`,
+                      ].join("\n\n"),
+                      confirmLabel: "เอาหน้านี้ออก",
+                      danger: true,
+                    }))
+                  )
+                    return;
+                  patch(t.id, { files: files.filter((f) => f.id !== cur.id) });
+                  setThemeFile(null);
                 };
 
                 return (
@@ -2054,6 +2093,15 @@ function AdminTemplatesInner() {
                             </button>
                           );
                         })}
+                        {/* กี่หน้าก็ได้ ไม่จำกัดแค่หน้า-หลัง */}
+                        <button
+                          type="button"
+                          onClick={addPage}
+                          title="เพิ่มหน้าใหม่ต่อท้าย (ยืมขนาดและผังช่องของหน้าที่เปิดอยู่)"
+                          className="rounded-full border border-dashed border-violet-300 px-3 py-1 text-[11px] font-bold text-violet-600 transition hover:border-violet-500 hover:bg-violet-50"
+                        >
+                          ＋ เพิ่มหน้า
+                        </button>
                       </div>
                     )}
 
@@ -2067,13 +2115,19 @@ function AdminTemplatesInner() {
                         <input
                           value={cur.side ?? ""}
                           onChange={(e) => patchFile(t.id, cur.id, { side: e.target.value || undefined })}
-                          placeholder={`ด้านที่ ${files.indexOf(cur) + 1}`}
-                          aria-label="ชื่อหน้า/ด้านของไฟล์นี้"
+                          placeholder={`หน้า ${files.indexOf(cur) + 1}`}
+                          aria-label="ชื่อหน้าของไฟล์นี้"
                           className={`${inputSm} w-48`}
                         />
-                        <span className={`text-[11px] ${faint}`}>
-                          ลูกค้าเห็นชื่อนี้บนแถบหน้ากระดาษ · เว้นว่าง = “ด้านที่ {files.indexOf(cur) + 1}”
+                        <span className={`min-w-0 flex-1 text-[11px] ${faint}`}>
+                          ลูกค้าเห็นชื่อนี้บนแถบหน้ากระดาษ · จะตั้งว่าอะไรก็ได้ (ปกหน้า · เดือนมกราคม · การ์ดใบที่ 3) ·
+                          เว้นว่าง = “หน้า {files.indexOf(cur) + 1}”
                         </span>
+                        {files.length > 1 && (
+                          <button type="button" onClick={() => void removePage()} className={btnSmDanger}>
+                            🗑 เอาหน้านี้ออก
+                          </button>
+                        )}
                       </div>
                     )}
 
@@ -2119,15 +2173,23 @@ function AdminTemplatesInner() {
                     )}
 
                     {/*
-                      ชุดไฟล์เดียว = งานหน้าเดียว · ช่องหลายช่องบนหน้าเดียว ≠ งาน 2 ด้าน
-                      กดปุ่มนี้แล้วได้แถวไฟล์ที่สองพร้อมชื่อด้าน เหลือแค่อัปไฟล์ .ai ของด้านหลัง
+                      ชุดไฟล์เดียว = งานหน้าเดียว · ช่องหลายช่องบนหน้าเดียว ≠ งานหลายหน้า
+                      "เพิ่มหน้า" = ได้กี่หน้าก็ได้ ตั้งชื่อเอง · "ทำเป็นงาน 2 ด้าน" = ทางลัดของงานหน้า-หลังที่เจอบ่อยสุด
                     */}
                     {!multi && (
                       <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
                         <span className={`min-w-0 flex-1 text-[11px] ${faint}`}>
                           ชุดนี้มีไฟล์เดียว = <strong className="font-bold text-slate-700">งานหน้าเดียว</strong> — ช่องหลายช่องจะอยู่บนหน้าเดียวกันหมด ·
-                          งานสกรีน 2 ด้านต้องมีไฟล์ของแต่ละด้าน ลูกค้าถึงจะได้กระดานคนละหน้า
+                          อยากให้ลูกค้าได้กระดานคนละหน้า ต้องเพิ่มหน้าเข้ามา (กี่หน้าก็ได้ ตั้งชื่อเองได้)
                         </span>
+                        <button
+                          type="button"
+                          onClick={addPage}
+                          title="เพิ่มหน้าใหม่ ตั้งชื่อเองได้"
+                          className={btnSmDucky}
+                        >
+                          ＋ เพิ่มหน้า
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -2150,7 +2212,8 @@ function AdminTemplatesInner() {
                             });
                             setThemeFile(back.id);
                           }}
-                          className={btnSmDucky}
+                          className={btnSmNeutral}
+                          title="ทางลัดงานหน้า-หลัง: ตั้งชื่อ “ด้านหน้า/ด้านหลัง” ให้เลย"
                         >
                           ➕ ทำเป็นงาน 2 ด้าน
                         </button>
