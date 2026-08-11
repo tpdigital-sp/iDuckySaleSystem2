@@ -244,7 +244,8 @@ export default function SlotEditor({
               top: `${s.yPct}%`,
               width: `${s.wPct}%`,
               height: `${s.hPct}%`,
-              borderRadius: s.shape === "circle" ? "50%" : "6px",
+              // มุมแหลม — กรอบต้องตรงกับช่องจริงที่ลูกค้าเห็น (ฝั่งลูกค้าไม่มีมุมมน)
+              borderRadius: s.shape === "circle" ? "50%" : 0,
             }}
             className={`absolute cursor-move border-2 bg-violet-500/15 ${
               sel === s.id ? "border-violet-600" : "border-violet-400/70"
