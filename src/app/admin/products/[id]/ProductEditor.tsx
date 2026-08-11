@@ -208,6 +208,19 @@ const columnKey = (combo: string[]) => combo.join("│");
 
 const MAX_PHOTOS = 5;
 
+/**
+ * หัวข้อที่ "หุบไว้" ตั้งแต่เปิดหน้า — หน้ายาวมาก กางทุกอันพร้อมกันหาอะไรไม่เจอ
+ * เลือกหุบหัวข้อที่นาน ๆ แก้ที (SEO · เนื้อหา · ข้อควรทราบ · กฎ · เทมเพลตไฟล์งาน)
+ * ที่กดกางเองจะถูกจำไว้ในเบราว์เซอร์ (admin.product.closedSecs) และชนะค่าเริ่มต้นนี้
+ */
+const DEFAULT_CLOSED_SECS: Record<string, boolean> = {
+  seo: true,
+  body: true,
+  terms: true,
+  rules: true,
+  templates: true,
+};
+
 /** ย่อรูปด้วย canvas เป็น data URL ขนาดเล็ก (กว้าง/สูงไม่เกิน max) เพื่อเก็บใน localStorage ได้ */
 function fileToDataUrl(file: File, max = 700, quality = 0.72): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -737,11 +750,12 @@ export default function ProductEditor({ product }: { product: Product }) {
   const dragPhotoRef = useRef<number | null>(null); // รูปที่กำลังลาก (ref — อ่านได้ทันทีตอน drop)
   const [dragPhoto, setDragPhoto] = useState<number | null>(null); // ไว้ทำ visual feedback
   // ── ยุบ/ขยายแต่ละหัวข้อ (จำไว้ในเบราว์เซอร์) — หน้ายาวมาก เปิดทุกอันพร้อมกันหาอะไรไม่เจอ ──
-  const [closedSecs, setClosedSecs] = useState<Record<string, boolean>>({ seo: true, body: true, terms: true, rules: true });
+  const [closedSecs, setClosedSecs] = useState<Record<string, boolean>>(DEFAULT_CLOSED_SECS);
   useEffect(() => {
     try {
       const saved = localStorage.getItem("admin.product.closedSecs");
-      if (saved) setClosedSecs(JSON.parse(saved));
+      // ทับค่าเริ่มต้นด้วยของที่เคยกดไว้ (ไม่ใช่แทนทั้งก้อน) — หัวข้อที่เพิ่งตั้งให้หุบจะได้หุบจริงกับคนที่เคยใช้อยู่แล้ว
+      if (saved) setClosedSecs({ ...DEFAULT_CLOSED_SECS, ...JSON.parse(saved) });
     } catch {}
   }, []);
   function toggleSec(id: string) {
