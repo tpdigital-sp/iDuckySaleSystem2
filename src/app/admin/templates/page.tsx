@@ -1929,6 +1929,56 @@ function AdminTemplatesInner() {
                       </div>
                     )}
 
+                    {/*
+                      ผังกลางที่มีหลายช่อง + ชุดหลายด้าน = สับสนที่สุด
+                      (ทุกด้านไปหยิบผังเดียวกันมาใช้ ทั้งที่ควรเป็นด้านละหน้า)
+                      ปุ่มนี้แจกช่องที่ 1 ให้ด้านที่ 1 · ช่องที่ 2 ให้ด้านที่ 2 · ตำแหน่งเดิมทุกช่อง
+                    */}
+                    {!cur && multi && slotsOf(t).length > 1 && (
+                      <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-amber-200">
+                        <span className="min-w-0 flex-1 text-[11px] font-semibold text-amber-900">
+                          ผังกลางมี {slotsOf(t).length} ช่องอยู่บน<strong>หน้าเดียวกัน</strong> และทุกด้านหยิบผังนี้ไปใช้เหมือนกันหมด —
+                          งานหลายด้านควรเป็นด้านละหน้า
+                        </span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const central = slotsOf(t);
+                            if (
+                              !(await askConfirm({
+                                icon: "✂️",
+                                title: `แยกผังกลาง ${central.length} ช่อง ออกเป็น ${files.length} หน้า?`,
+                                detail: `ช่องที่ 1 → ${files[0]?.side?.trim() || "ด้านที่ 1"} · ช่องที่ 2 → ${
+                                  files[1]?.side?.trim() || "ด้านที่ 2"
+                                } (ตำแหน่ง/ขนาดเดิม) แล้วผังกลางจะว่าง`,
+                                confirmLabel: "แยกเป็นหน้า ๆ",
+                              }))
+                            )
+                              return;
+                            patch(t.id, {
+                              slots: undefined,
+                              files: files.map((f, i) => {
+                                // ช่องเกินจำนวนหน้า ยกไปไว้หน้าสุดท้าย
+                                const mine = central.filter((_, k) => (k === i || (i === files.length - 1 && k > i)) && true);
+                                const side = f.side?.trim();
+                                return {
+                                  ...f,
+                                  slots: mine.length
+                                    ? // ชื่อช่องที่ซ้ำกับชื่อด้านไม่มีประโยชน์แล้ว (หน้าบอกอยู่แล้วว่าด้านไหน)
+                                      mine.map((sl) => (sl.label?.trim() === side ? { ...sl, label: undefined } : sl))
+                                    : f.slots,
+                                };
+                              }),
+                            });
+                            setThemeFile(files[0]?.id ?? null);
+                          }}
+                          className={btnSmDucky}
+                        >
+                          ✂️ แยกผังกลางเป็นหน้า ๆ
+                        </button>
+                      </div>
+                    )}
+
                     {inherited && (
                       <p className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200">
                         ด้านนี้ยังไม่มีผังของตัวเอง — ที่เห็นคือผังกลาง แก้ตรงนี้แล้วจะกลายเป็นผังเฉพาะด้านนี้ทันที
