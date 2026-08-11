@@ -32,8 +32,12 @@ import {
   needsStockCheck,
   artworkIsRequired,
   isMultiOption,
-  splitMulti,
-  joinMulti,
+  hasChoiceQty,
+  choiceQtyMax,
+  selectedPicks,
+  formatMultiPick,
+  joinMultiPicks,
+  type MultiPick,
   type Product,
   type ProductOption,
 } from "@/lib/products";
@@ -607,7 +611,7 @@ export default function ProductDetail({
       if (!usable.length) continue;
 
       const multi = isMultiSide(usable.map((x) => x.f));
-      // ไม่ได้ตั้งชื่อด้านไว้ = งานด้านเดียว ใช้ไฟล์แรกพอ (พฤติกรรมเดิม)
+      // ไฟล์เดียว/คนละตัวเลือกกัน = งานหน้าเดียว ใช้ไฟล์แรกพอ (พฤติกรรมเดิม)
       const chosenFiles = multi ? usable : [usable[0]];
       const first = chosenFiles[0];
       return {
@@ -618,6 +622,11 @@ export default function ProductDetail({
         tplUrl: first.f.fileUrl,
         perSheet: t.perSheet,
         slots: slotsOf(t, first.f),
+        /**
+         * มีหน้าไหนกำหนดช่องไว้บ้างไหม — ใช้ตัดสินว่าจะเปิด "จอวางรูปทีละช่อง"
+         * ดูแค่หน้าแรกไม่ได้: งานที่หน้าแรกเป็นลายเต็มใบแต่หน้าหลัง ๆ เป็นช่อง จะตกไปโหมดลายเดียวทั้งชุด
+         */
+        anySlots: chosenFiles.some(({ f }) => slotsOf(t, f).length > 0),
         slotsRequired: t.slotsRequired,
         sides: chosenFiles.map(({ f, fr }, i) => ({
           key: f.id,
@@ -643,8 +652,8 @@ export default function ProductDetail({
   function openStudio(index: number | null = null) {
     if (!studioTarget) return;
     setEditIndex(index);
-    // เทมเพลตกำหนดช่องไว้ → ใช้จอวางรูปทีละช่อง (สติกเกอร์หลายดวง · photobooth strip)
-    if (studioTarget.slots?.length) {
+    // เทมเพลตกำหนดช่องไว้ (หน้าไหนก็ได้) → ใช้จอวางรูปทีละช่อง (สติกเกอร์หลายดวง · photobooth strip)
+    if (studioTarget.anySlots) {
       setSlotStudio(true);
       return;
     }
@@ -1497,7 +1506,18 @@ export default function ProductDetail({
               const multi = isMultiOption(opt);
               // กลุ่มติ๊กหลายอย่างไม่ล็อกอัตโนมัติ — เหลือตัวเลือกเดียวก็ยังต้องให้ติ๊ก/ไม่ติ๊กเองได้
               const locked = !multi && allowed.length === 1;
-              const picked = multi ? splitMulti(effective[opt.label]) : [];
+              const picks: MultiPick[] = multi ? selectedPicks(opt, effective) : [];
+              const picked = picks.map((p) => p.name);
+              // กลุ่มที่เปิด "ระบุจำนวนต่อตัวเลือก" (เช่น เพิ่มสาย 2 เส้น) — +฿ คูณตามจำนวน
+              const withQty = hasChoiceQty(opt);
+              const qtyMax = choiceQtyMax(opt);
+              /** เขียนตัวเลือกที่ติ๊กกลับลง selections — เรียงตามลำดับตัวเลือกในกลุ่มเสมอ */
+              const writePicks = (make: (cur: MultiPick[]) => MultiPick[]) =>
+                setSelections((s) => ({ ...s, [opt.label]: joinMultiPicks(make(selectedPicks(opt, s))) }));
+              const setChoiceQty = (name: string, n: number) =>
+                writePicks((cur) =>
+                  cur.map((p) => (p.name === name ? { ...p, qty: Math.min(qtyMax, Math.max(1, n)) } : p))
+                );
               return (
                 <div
                   key={opt.label}
@@ -1507,11 +1527,15 @@ export default function ProductDetail({
                   <span className="mb-1 block text-[13px] font-bold text-stone-700">
                     {opt.label}:{" "}
                     <span className={multi && !picked.length ? "font-semibold text-stone-400" : "font-semibold text-amber-600"}>
-                      {multi ? (picked.length ? picked.join(", ") : "ไม่เลือก") : effective[opt.label]}
+                      {multi
+                        ? picks.length
+                          ? picks.map((p) => formatMultiPick(p.name, p.qty)).join(", ")
+                          : "ไม่เลือก"
+                        : effective[opt.label]}
                     </span>
                     {multi && (
                       <span className="ml-1 rounded-full bg-teal-50 px-1.5 py-0.5 text-[10px] font-bold text-teal-700 ring-1 ring-teal-100">
-                        ☑ เลือกได้หลายอย่าง
+                        ☑ เลือกได้หลายอย่าง{withQty ? " · ระบุจำนวนได้" : ""}
                       </span>
                     )}
                   </span>
@@ -1521,41 +1545,82 @@ export default function ProductDetail({
                         .filter((c) => allowed.includes(c.name))
                         .map((c) => {
                           const on = picked.includes(c.name);
+                          const cQty = picks.find((p) => p.name === c.name)?.qty ?? 1;
+                          const unitAdd = choiceBadgeOf(opt, effective, c.name, feeQty);
                           return (
-                            <button
-                              key={c.name}
-                              type="button"
-                              role="checkbox"
-                              aria-checked={on}
-                              onClick={() =>
-                                setSelections((s) => {
-                                  const cur = splitMulti(s[opt.label]);
-                                  // เก็บตามลำดับตัวเลือกในกลุ่มเสมอ — ติ๊กสลับไปมาแล้วข้อความ (และ key ตะกร้า) ไม่เปลี่ยนตาม
-                                  const next = opt.choices
-                                    .map((x) => x.name)
-                                    .filter((n) => (n === c.name ? !on : cur.includes(n)));
-                                  return { ...s, [opt.label]: joinMulti(next) };
-                                })
-                              }
-                              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition ${
-                                on
-                                  ? "bg-amber-400 text-white shadow"
-                                  : "bg-white text-stone-600 ring-1 ring-amber-200 hover:bg-amber-50"
-                              }`}
-                            >
-                              <span
-                                className={`grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] leading-none ${
-                                  on ? "border-white bg-white/25 text-white" : "border-stone-300 text-transparent"
+                            <span key={c.name} className="inline-flex items-center gap-1">
+                              <button
+                                type="button"
+                                role="checkbox"
+                                aria-checked={on}
+                                onClick={() =>
+                                  writePicks((cur) =>
+                                    // เก็บตามลำดับตัวเลือกในกลุ่มเสมอ — ติ๊กสลับไปมาแล้วข้อความ (และ key ตะกร้า) ไม่เปลี่ยนตาม
+                                    opt.choices
+                                      .filter((x) => (x.name === c.name ? !on : cur.some((p) => p.name === x.name)))
+                                      .map((x) => ({
+                                        name: x.name,
+                                        qty: cur.find((p) => p.name === x.name)?.qty ?? 1,
+                                      }))
+                                  )
+                                }
+                                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition ${
+                                  on
+                                    ? "bg-amber-400 text-white shadow"
+                                    : "bg-white text-stone-600 ring-1 ring-amber-200 hover:bg-amber-50"
                                 }`}
-                                aria-hidden
                               >
-                                ✓
-                              </span>
-                              {c.name}
-                              {choiceBadgeOf(opt, effective, c.name, feeQty) > 0
-                                ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty))}`
-                                : ""}
-                            </button>
+                                <span
+                                  className={`grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] leading-none ${
+                                    on ? "border-white bg-white/25 text-white" : "border-stone-300 text-transparent"
+                                  }`}
+                                  aria-hidden
+                                >
+                                  ✓
+                                </span>
+                                {c.name}
+                                {unitAdd > 0 ? ` +${formatPrice(unitAdd)}` : ""}
+                              </button>
+                              {/* ช่องจำนวนของตัวเลือกนี้ (เช่น เพิ่มสาย 2 เส้น) — โผล่เมื่อติ๊กแล้วเท่านั้น */}
+                              {withQty && on && (
+                                <span className="inline-flex items-center gap-0.5 rounded-full bg-white px-1 py-0.5 ring-1 ring-amber-200">
+                                  <button
+                                    type="button"
+                                    onClick={() => setChoiceQty(c.name, cQty - 1)}
+                                    disabled={cQty <= 1}
+                                    aria-label={`ลดจำนวน ${c.name}`}
+                                    className="grid h-6 w-6 place-items-center rounded-full text-[13px] font-extrabold text-stone-500 hover:bg-amber-50 disabled:text-stone-300 disabled:hover:bg-transparent"
+                                  >
+                                    −
+                                  </button>
+                                  <input
+                                    value={cQty}
+                                    onChange={(e) => {
+                                      const n = Number(e.target.value.replace(/\D/g, ""));
+                                      if (n >= 1) setChoiceQty(c.name, n);
+                                    }}
+                                    inputMode="numeric"
+                                    aria-label={`จำนวน ${c.name}`}
+                                    className="w-8 bg-transparent text-center text-[13px] font-extrabold text-amber-700 outline-none"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setChoiceQty(c.name, cQty + 1)}
+                                    disabled={cQty >= qtyMax}
+                                    aria-label={`เพิ่มจำนวน ${c.name}`}
+                                    className="grid h-6 w-6 place-items-center rounded-full text-[13px] font-extrabold text-stone-500 hover:bg-amber-50 disabled:text-stone-300 disabled:hover:bg-transparent"
+                                  >
+                                    ＋
+                                  </button>
+                                </span>
+                              )}
+                              {/* จำนวนมากกว่า 1 บอกยอดรวมของตัวนี้ไปเลย จะได้ไม่ต้องคูณเอง */}
+                              {withQty && on && cQty > 1 && unitAdd > 0 && (
+                                <span className="text-[11px] font-bold text-amber-700">
+                                  = +{formatPrice(unitAdd * cQty)}
+                                </span>
+                              )}
+                            </span>
                           );
                         })}
                     </div>
@@ -1610,6 +1675,13 @@ export default function ProductDetail({
                           </button>
                         ))}
                     </div>
+                  )}
+                  {/* กลุ่มที่ระบุจำนวนได้ — สรุปยอดรวมของทั้งกลุ่มหลังคูณจำนวนแล้ว */}
+                  {withQty && picks.length > 0 && groupAddOf(opt, effective, feeQty) > 0 && (
+                    <p className="mt-1 text-[11px] font-semibold text-teal-700">
+                      💡 {opt.label}ที่เลือกไว้ รวม +{formatPrice(groupAddOf(opt, effective, feeQty))} ต่อ
+                      {matrix?.unit ?? "ชิ้น"} (คิดตามจำนวนที่ระบุ)
+                    </p>
                   )}
                   {/* ค่าธรรมเนียมช่วงสั่งน้อย — บอกทั้งตอนอยู่ในช่วง (คิดเหมา) และตอนพ้นช่วงแล้ว (คิดตามตัวเลือก) */}
                   {opt.smallQtyFee != null && opt.smallQtyFee.upToQty > 0 && (() => {
@@ -2492,7 +2564,7 @@ export default function ProductDetail({
       )}
 
       {/* 🧩 จอวางรูปแบบมีช่อง (Theme) — ใช้เมื่อเทมเพลตกำหนดช่องไว้ */}
-      {slotStudio && studioTarget?.slots?.length ? (
+      {slotStudio && studioTarget?.anySlots ? (
         <SlotStudio
           open
           onClose={() => {

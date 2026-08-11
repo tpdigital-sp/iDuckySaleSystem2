@@ -45,6 +45,10 @@ type DraftOption = {
   presetId?: string;
   /** pills/dropdown = เลือกได้ 1 อย่าง · multi = ติ๊กได้หลายอย่าง */
   display: "pills" | "dropdown" | "multi";
+  /** ให้ลูกค้าระบุจำนวนของแต่ละตัวที่ติ๊ก (เฉพาะกลุ่ม multi) — +฿ คูณตามจำนวน */
+  qtyPerChoice?: boolean;
+  /** จำนวนสูงสุดต่อตัวเลือก (ว่าง = 99) */
+  qtyMax?: string;
   /** +฿ ของกลุ่มนี้มีผลเมื่อสั่งตั้งแต่กี่ชิ้นขึ้นไป (ว่าง = ทุกจำนวน) */
   extraFromQty?: string;
   /** ค่าธรรมเนียมช่วงสั่งน้อย เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น (ยกเว้นบางตัวเลือก) */
@@ -281,6 +285,8 @@ function toDraft(p: Product): Draft {
       choices: o.choices.map((c) => ({ name: c.name, extra: c.extra ? String(c.extra) : "" })),
       ...(o.presetId ? { presetId: o.presetId } : {}),
       display: o.display ?? "pills",
+      ...(o.qtyPerChoice ? { qtyPerChoice: true } : {}),
+      ...(o.qtyMax ? { qtyMax: String(o.qtyMax) } : {}),
       ...(o.extraFromQty ? { extraFromQty: String(o.extraFromQty) } : {}),
       ...(o.smallQtyFee
         ? {
@@ -429,6 +435,10 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
         }),
       ...(o.presetId ? { presetId: o.presetId } : {}),
       ...(o.display === "dropdown" || o.display === "multi" ? { display: o.display } : {}),
+      // ช่องจำนวนต่อตัวเลือกใช้ได้เฉพาะกลุ่มติ๊กหลายอย่าง — เปลี่ยนกลับเป็นปุ่มแยกแล้วต้องไม่ค้างไว้
+      ...(o.display === "multi" && o.qtyPerChoice
+        ? { qtyPerChoice: true, ...(Number(o.qtyMax) > 0 ? { qtyMax: Math.floor(Number(o.qtyMax)) } : {}) }
+        : {}),
       ...(Number(o.extraFromQty) > 0 ? { extraFromQty: Math.floor(Number(o.extraFromQty)) } : {}),
       ...(Number.isFinite(Number(o.smallFee)) && Number(o.smallFee) !== 0 && String(o.smallFee ?? "").trim() !== "" && Number(o.smallUpTo) > 0
         ? {
@@ -930,7 +940,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                   className={`mt-2 w-full resize-y ${inputCls}`}
                   aria-label={`เนื้อหาท่อนที่ ${n + 1}`}
                 />
-                <div className="mt-2 flex flex-wrap items-center gap-2">
+                <div className="mt-2 flex items-center gap-2">
                   <span className="text-xs font-semibold text-slate-500">รูปประกอบ: <span className="font-normal text-slate-400">(ลากรูปมาวางที่ท่อนนี้ได้เลย)</span></span>
                   {b.src && (
                     /* eslint-disable-next-line @next/next/no-img-element */
@@ -1188,32 +1198,64 @@ export default function ProductEditor({ product }: { product: Product }) {
           : "ลูกค้าติ๊กได้หลายอย่างพร้อมกัน (หรือไม่ติ๊กเลย) · +฿ บวกรวมทุกตัวที่ติ๊ก",
       },
     ] as const;
+    const setOpt = (patchObj: Partial<DraftOption>) =>
+      patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, ...patchObj } : o)) });
     return (
-      <div className="inline-flex overflow-hidden rounded-lg bg-white ring-1 ring-slate-200">
-        {MODES.map((mode) => {
-          const disabled = mode.id === "multi" && isDriver;
-          return (
-            <button
-              key={mode.id}
-              type="button"
-              disabled={disabled}
-              title={mode.tip}
-              onClick={() =>
-                patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, display: mode.id } : o)) })
-              }
-              className={`px-2.5 py-1 text-[11px] font-semibold transition ${
-                opt.display === mode.id
-                  ? "bg-slate-900 text-white"
-                  : disabled
-                    ? "bg-white text-slate-300"
-                    : "bg-white text-slate-500 hover:bg-slate-50"
-              }`}
-            >
-              {mode.text}
-            </button>
-          );
-        })}
-      </div>
+      <>
+        <div className="inline-flex overflow-hidden rounded-lg bg-white ring-1 ring-slate-200">
+          {MODES.map((mode) => {
+            const disabled = mode.id === "multi" && isDriver;
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                disabled={disabled}
+                title={mode.tip}
+                onClick={() => setOpt({ display: mode.id })}
+                className={`px-2.5 py-1 text-[11px] font-semibold transition ${
+                  opt.display === mode.id
+                    ? "bg-slate-900 text-white"
+                    : disabled
+                      ? "bg-white text-slate-300"
+                      : "bg-white text-slate-500 hover:bg-slate-50"
+                }`}
+              >
+                {mode.text}
+              </button>
+            );
+          })}
+        </div>
+        {/* ช่องจำนวนต่อตัวเลือก — มีเฉพาะกลุ่มติ๊กหลายอย่าง (เช่น เพิ่มสาย 2 เส้น = +฿ ของสาย × 2) */}
+        {opt.display === "multi" && (
+          <label
+            className={`flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold ring-1 ${
+              opt.qtyPerChoice ? "bg-amber-50 text-amber-700 ring-amber-200" : "bg-white text-slate-500 ring-slate-200"
+            }`}
+            title="ลูกค้าติ๊กแล้วระบุจำนวนได้ เช่น เพิ่มสาย 2 เส้น → +฿ ของตัวนั้นคูณ 2 (ในตะกร้า/ใบงานจะขึ้นเป็น “เพิ่มสาย ×2”)"
+          >
+            <input
+              type="checkbox"
+              checked={!!opt.qtyPerChoice}
+              onChange={(e) => setOpt({ qtyPerChoice: e.target.checked, ...(e.target.checked ? {} : { qtyMax: "" }) })}
+              className="h-3.5 w-3.5 accent-amber-500"
+            />
+            🔢 ให้ลูกค้าระบุจำนวน
+            {opt.qtyPerChoice && (
+              <>
+                <span className="text-slate-400">· สูงสุด</span>
+                <input
+                  value={opt.qtyMax ?? ""}
+                  onChange={(e) => setOpt({ qtyMax: e.target.value })}
+                  inputMode="numeric"
+                  placeholder="99"
+                  className="w-12 rounded-lg bg-white px-1 py-0.5 text-center text-[11px] text-slate-600 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                  aria-label={`จำนวนสูงสุดต่อตัวเลือกของกลุ่ม ${opt.label || gi + 1}`}
+                />
+              </>
+            )}
+          </label>
+        )}
+      </>
     );
   }
 
@@ -2930,7 +2972,9 @@ export default function ProductEditor({ product }: { product: Product }) {
                       onClick={() =>
                         patch({
                           options: draft.options.map((o, i) =>
-                            i === gi ? { label: o.label, choices: o.choices, display: o.display } : o
+                            i === gi
+                              ? { label: o.label, choices: o.choices, display: o.display, qtyPerChoice: o.qtyPerChoice, qtyMax: o.qtyMax }
+                              : o
                           ),
                         })
                       }
@@ -2962,7 +3006,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                 )}
                 {!isOptFolded(gi) && (
                 <>
-                <div className="mt-2 flex items-center gap-2">
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                   <span className="text-[11px] font-semibold text-slate-400">แสดงหน้าร้าน:</span>
                   {displayModeRow(gi, opt)}
                   <label
@@ -3062,7 +3106,7 @@ export default function ProductEditor({ product }: { product: Product }) {
               )}
               {!isOptFolded(gi) && (
               <>
-              <div className="mt-2 flex items-center gap-2">
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-semibold text-slate-400">แสดงหน้าร้าน:</span>
                 {displayModeRow(gi, opt)}
                 <label

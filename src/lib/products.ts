@@ -47,6 +47,14 @@ export interface ProductOption {
    */
   display?: "pills" | "dropdown" | "multi";
   /**
+   * ให้ลูกค้าระบุ "จำนวน" ของแต่ละตัวเลือกที่ติ๊ก (ใช้ได้เฉพาะกลุ่ม multi)
+   * เช่น เพิ่มสาย 2 เส้น → +฿ ของตัวนั้นคูณ 2 · ค่าที่เก็บเขียนเป็น "เพิ่มสาย ×2"
+   * ไม่เปิด = ติ๊กแล้วนับเป็น 1 เสมอ (พฤติกรรมเดิม)
+   */
+  qtyPerChoice?: boolean;
+  /** จำนวนสูงสุดต่อตัวเลือกที่ลูกค้ากดได้ (ไม่ตั้ง = 99) */
+  qtyMax?: number;
+  /**
    * "แสดงเมื่อ" — โชว์กลุ่มนี้เฉพาะตอนกลุ่มอื่นเลือกค่าที่กำหนด · ไม่ตรง = ซ่อนทั้งกลุ่ม
    * (ไม่ถามลูกค้า ไม่คิดเงิน ไม่ติดไปกับตะกร้า/ออเดอร์)
    * เช่น กลุ่ม "สีตะขอ C" แสดงเมื่อ ตะขอ = C เท่านั้น — ต่างจากกฎเงื่อนไขที่กรองได้แค่ "ตัวเลือกในกลุ่ม"
@@ -94,9 +102,64 @@ export function isMultiOption(opt: ProductOption): boolean {
   return opt.display === "multi";
 }
 
-/** แยกค่าที่เก็บรวมไว้กลับเป็นรายชื่อตัวเลือก ("ซิปใน + สายสะพาย" → ["ซิปใน","สายสะพาย"]) */
-export function splitMulti(value: string | undefined): string[] {
-  return (value ?? "").split(MULTI_SEP).map((s) => s.trim()).filter(Boolean);
+/** กลุ่มนี้ให้ลูกค้าระบุจำนวนของแต่ละตัวที่ติ๊กไหม (เฉพาะกลุ่ม multi) */
+export function hasChoiceQty(opt: ProductOption): boolean {
+  return isMultiOption(opt) && opt.qtyPerChoice === true;
+}
+
+/** เพดานจำนวนต่อตัวเลือก */
+export const MAX_CHOICE_QTY = 99;
+export function choiceQtyMax(opt: ProductOption): number {
+  const m = Math.floor(Number(opt.qtyMax));
+  return Number.isFinite(m) && m > 0 ? Math.min(m, MAX_CHOICE_QTY) : MAX_CHOICE_QTY;
+}
+
+/** ตัวเลือกที่ติ๊กไว้ 1 ตัว พร้อมจำนวนที่ลูกค้าระบุ (ไม่ระบุ = 1) */
+export interface MultiPick {
+  name: string;
+  qty: number;
+}
+
+/**
+ * จำนวนของตัวเลือกเขียนต่อท้ายชื่อว่า " ×N" (เว้นวรรคหน้า × เสมอ) — "เพิ่มสาย ×2"
+ * ต้องมีเว้นวรรคหน้า × เพื่อไม่ให้ชื่อที่เป็นขนาด (เช่น "10×15 ซม.") ถูกอ่านเป็นจำนวน
+ * และตอนอ่านยังเทียบกับรายชื่อตัวเลือกจริงอีกชั้น (ดู parseMultiEntry)
+ */
+const MULTI_QTY_RE = /^(.+?)\s+×\s*(\d+)$/;
+
+/** เขียนตัวเลือก+จำนวนเป็นข้อความ (จำนวน 1 = ชื่อเปล่า ๆ เหมือนเดิม) */
+export function formatMultiPick(name: string, qty: number): string {
+  return qty > 1 ? `${name} ×${qty}` : name;
+}
+
+/**
+ * อ่านข้อความตัวเลือก 1 ตัวกลับเป็นชื่อ+จำนวน
+ * ส่ง choiceNames มาด้วยได้ (รายชื่อตัวเลือกจริงของกลุ่ม) — ชื่อที่ตรงเป๊ะจะไม่ถูกแยกจำนวน
+ */
+export function parseMultiEntry(entry: string, choiceNames?: string[]): MultiPick {
+  const raw = entry.trim();
+  if (choiceNames?.includes(raw)) return { name: raw, qty: 1 };
+  const m = MULTI_QTY_RE.exec(raw);
+  if (!m) return { name: raw, qty: 1 };
+  const name = m[1].trim();
+  // ชื่อที่แยกออกมาไม่ใช่ตัวเลือกจริง = ข้อความนั้นเป็นชื่อของมันเอง ไม่ใช่จำนวน
+  if (choiceNames && !choiceNames.includes(name)) return { name: raw, qty: 1 };
+  const qty = Math.floor(Number(m[2]));
+  return { name, qty: qty > 1 ? Math.min(qty, MAX_CHOICE_QTY) : 1 };
+}
+
+/** แยกค่าที่เก็บรวมไว้กลับเป็นรายชื่อ+จำนวน ("ซิปใน + สายสะพาย ×2" → [{ซิปใน,1},{สายสะพาย,2}]) */
+export function splitMultiPicks(value: string | undefined, choiceNames?: string[]): MultiPick[] {
+  return (value ?? "")
+    .split(MULTI_SEP)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => parseMultiEntry(s, choiceNames));
+}
+
+/** แยกค่าที่เก็บรวมไว้กลับเป็นรายชื่อตัวเลือก (ตัดจำนวนออก) */
+export function splitMulti(value: string | undefined, choiceNames?: string[]): string[] {
+  return splitMultiPicks(value, choiceNames).map((p) => p.name);
 }
 
 /** รวมรายชื่อตัวเลือกที่ติ๊กไว้เป็นข้อความเดียว (ว่าง = ไม่ได้เลือกอะไรเลย) */
@@ -104,11 +167,24 @@ export function joinMulti(names: string[]): string {
   return names.join(MULTI_SEP);
 }
 
-/** ตัวเลือกที่เลือกอยู่ของกลุ่มนี้ — กลุ่มปกติได้ 1 ตัว · กลุ่ม multi ได้ 0 ถึงหลายตัว */
-export function selectedNames(opt: ProductOption, selections: Record<string, string>): string[] {
+/** รวมตัวเลือก+จำนวนที่ติ๊กไว้เป็นข้อความเดียว */
+export function joinMultiPicks(picks: MultiPick[]): string {
+  return joinMulti(picks.map((p) => formatMultiPick(p.name, p.qty)));
+}
+
+/** ตัวเลือกที่เลือกอยู่ของกลุ่มนี้ พร้อมจำนวน — กลุ่มปกติได้ 1 ตัว · กลุ่ม multi ได้ 0 ถึงหลายตัว */
+export function selectedPicks(opt: ProductOption, selections: Record<string, string>): MultiPick[] {
   const cur = selections[opt.label];
   if (!cur) return [];
-  return isMultiOption(opt) ? splitMulti(cur) : [cur];
+  if (!isMultiOption(opt)) return [{ name: cur, qty: 1 }];
+  const picks = splitMultiPicks(cur, opt.choices.map((c) => c.name));
+  // กลุ่มที่ไม่ได้เปิดช่องจำนวน นับตัวละ 1 เสมอ (กันข้อมูลเก่าที่เคยเปิดไว้ทำราคาเพี้ยน)
+  return hasChoiceQty(opt) ? picks : picks.map((p) => ({ ...p, qty: 1 }));
+}
+
+/** ตัวเลือกที่เลือกอยู่ของกลุ่มนี้ — กลุ่มปกติได้ 1 ตัว · กลุ่ม multi ได้ 0 ถึงหลายตัว */
+export function selectedNames(opt: ProductOption, selections: Record<string, string>): string[] {
+  return selectedPicks(opt, selections).map((p) => p.name);
 }
 
 /**
@@ -119,7 +195,12 @@ export function selectedNames(opt: ProductOption, selections: Record<string, str
 function valueMatchesAny(current: string | undefined, wanted: string[]): boolean {
   if (!current) return false;
   if (wanted.includes(current)) return true;
-  return splitMulti(current).some((v) => wanted.includes(v));
+  // เทียบทั้งข้อความดิบ (เผื่อชื่อตัวเลือกมี " ×N" อยู่ในตัว) และชื่อที่ตัดจำนวนออกแล้ว
+  return current
+    .split(MULTI_SEP)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .some((raw) => wanted.includes(raw) || wanted.includes(parseMultiEntry(raw).name));
 }
 
 /**
@@ -155,9 +236,13 @@ export function choiceExtraOf(
 
 /**
  * +฿ รวมของกลุ่มนี้ตามที่ลูกค้าเลือกไว้ — กลุ่มปกติ = ตัวที่เลือก · กลุ่ม multi = บวกทุกตัวที่ติ๊ก
+ * กลุ่มที่เปิดช่องจำนวน คูณตามจำนวนที่ลูกค้าระบุ (เพิ่มสาย 2 เส้น = +฿ ของสาย × 2)
  */
 export function groupExtraOf(opt: ProductOption, selections: Record<string, string>): number {
-  return selectedNames(opt, selections).reduce((sum, name) => sum + choiceExtraOf(opt, selections, name), 0);
+  return selectedPicks(opt, selections).reduce(
+    (sum, p) => sum + choiceExtraOf(opt, selections, p.name) * p.qty,
+    0
+  );
 }
 
 /**
@@ -2354,7 +2439,11 @@ export function resolveSelections(
     const current = selections[opt.label];
     if (isMultiOption(opt)) {
       // ติ๊กได้หลายอย่าง: เก็บเฉพาะตัวที่ยังอนุญาต · ไม่เหลือเลยก็ได้ (กลุ่มนี้ไม่บังคับเลือก)
-      resolved[opt.label] = joinMulti(splitMulti(current).filter((n) => allowed.includes(n)));
+      // ติ๊กได้หลายอย่าง: เก็บจำนวนที่ลูกค้าระบุไว้ด้วย (เช่น "เพิ่มสาย ×2")
+      const names = opt.choices.map((c) => c.name);
+      resolved[opt.label] = joinMultiPicks(
+        splitMultiPicks(current, names).filter((p) => allowed.includes(p.name))
+      );
       continue;
     }
     resolved[opt.label] = current && allowed.includes(current) ? current : allowed[0];
