@@ -241,12 +241,17 @@ export function templateReady(t: DesignTemplate): boolean {
  * ไฟล์ที่ควรโชว์ให้ลูกค้า ตามตัวเลือกที่เลือกอยู่
  * — ชุดที่ผูกกับกลุ่มตัวเลือก: เอาไฟล์ที่ตรงค่าที่เลือก · ไม่ตรง = ไฟล์กลาง (ไม่ระบุค่า)
  * — ชุดที่ไม่ผูกตัวเลือก: โชว์ทุกไฟล์
+ *
+ * o.includeEmpty = เอาไฟล์ที่ยังไม่ได้อัป .ai มาด้วย
+ *   ใช้กับ "จอออกแบบบนเว็บ" เท่านั้น — ด้านหลังของงานสกรีน 2 ด้านมักไม่มีไฟล์ .ai ของตัวเอง
+ *   (แอดมินตั้งขนาด+ช่องไว้พอแล้ว) ถ้ากรองทิ้งเหมือนลิสต์ดาวน์โหลด หน้าที่แยกไว้จะหายเงียบ ๆ
  */
 export function filesForSelections(
   t: DesignTemplate,
-  selections: Record<string, string> = {}
+  selections: Record<string, string> = {},
+  o: { includeEmpty?: boolean } = {}
 ): TemplateFile[] {
-  const files = templateFiles(t).filter(fileReady);
+  const files = o.includeEmpty ? templateFiles(t) : templateFiles(t).filter(fileReady);
   const label = t.optionLabel?.trim();
   if (!label) return files;
   const chosen = (selections[label] ?? "").trim();

@@ -600,7 +600,7 @@ export default function ProductDetail({
        * ไฟล์ทั้งหมดของตัวเลือกที่เลือกอยู่
        * งานสกรีนหลายด้านคือ "หลายไฟล์ในตัวเลือกเดียวกัน" — ได้กระดานคนละใบ
        */
-      const picked = filesForSelections(t, effective);
+      const picked = filesForSelections(t, effective, { includeEmpty: true });
       const usable = picked
         .map((f) => ({ f, fr: templateFrame(t, f, f.choice || chosen) }))
         .filter((x): x is { f: (typeof picked)[number]; fr: NonNullable<typeof x.fr> } => !!x.fr);

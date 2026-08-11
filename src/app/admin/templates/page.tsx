@@ -289,7 +289,10 @@ function AdminTemplatesInner() {
   function patchFile(tid: string, fid: string, p: Partial<TemplateFile>) {
     setList((cur) =>
       cur.map((t) =>
-        t.id === tid ? { ...t, files: (t.files ?? []).map((f) => (f.id === fid ? { ...f, ...p } : f)), _dirty: true } : t
+        t.id === tid
+          ? // ชุดรุ่นเก่ายังไม่มี files[] จริง — ต้องกาง normalizeTemplate ก่อน ไม่งั้นแก้แล้วหายเงียบ ๆ
+            { ...t, files: templateFiles(t).map((f) => (f.id === fid ? { ...f, ...p } : f)), _dirty: true }
+          : t
       )
     );
   }
@@ -1822,6 +1825,18 @@ function AdminTemplatesInner() {
                  */
                 const multi = files.length > 1;
                 const cur = themeFile ? files.find((f) => f.id === themeFile) : null;
+                const choiceOf = (f: TemplateFile) => (f.choice ?? "").trim();
+                /**
+                 * ไฟล์ในชุดแยกกันด้วยอะไร — "ด้านของชิ้นเดียวกัน" กับ "คนละค่าตัวเลือก" คนละเรื่องกัน
+                 * ชุดที่ผูกกลุ่มตัวเลือก (เช่นแยกตาม “ขนาด”) ลูกค้าหยิบไปแค่ไฟล์ของค่าที่เลือก —
+                 * เอาช่องไปแจกข้ามค่าตัวเลือกไม่ได้ ไม่งั้นแต่ละขนาดจะเหลือช่องเดียว
+                 */
+                const byChoice = !!t.optionLabel?.trim() && files.some((f) => choiceOf(f));
+                const oneChoice = files.every((f) => choiceOf(f) === choiceOf(files[0]));
+                /** ป้ายของแต่ละไฟล์ — ต้องบอกทั้งค่าตัวเลือกและชื่อด้าน ไม่งั้นแอดมินแยกไม่ออกว่ากำลังตั้งของอะไร */
+                const tabLabel = (f: TemplateFile, i: number) =>
+                  [byChoice ? choiceOf(f) || "(ไม่ระบุค่า)" : "", f.side?.trim()].filter(Boolean).join(" · ") ||
+                  (byChoice ? `ไฟล์ที่ ${i + 1}` : `ด้านที่ ${i + 1}`);
                 const own = cur?.slots ?? [];
                 /** ผังที่ด้านนี้ใช้จริง (ไม่มีของตัวเอง = ตกไปใช้ของทั้งชุด) */
                 const shown = cur ? (own.length ? own : slotsOf(t)) : slotsOf(t);
@@ -1839,7 +1854,7 @@ function AdminTemplatesInner() {
                           🧩 ตั้งค่า Theme — ช่องใส่รูป
                           {cur && (
                             <span className="ml-2 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700">
-                              {cur.side?.trim() || cur.fileName || "ไฟล์นี้เท่านั้น"}
+                              {tabLabel(cur, files.findIndex((f) => f.id === cur.id))}
                             </span>
                           )}
                         </p>
@@ -1900,8 +1915,7 @@ function AdminTemplatesInner() {
                               }`}
                               title={f.fileName}
                             >
-                              {f.side?.trim() || `ด้านที่ ${fi + 1}`} ·{" "}
-                              {n ? `${n} ช่อง` : `ใช้ผังกลาง (${slotsOf(t).length})`}
+                              {tabLabel(f, fi)} · {n ? `${n} ช่อง` : `ใช้ผังกลาง (${slotsOf(t).length})`}
                             </button>
                           );
                         })}
@@ -1955,27 +1969,50 @@ function AdminTemplatesInner() {
                         <span className="min-w-0 flex-1 text-[11px] font-semibold text-amber-900">
                           ผังกลางมี {slotsOf(t).length} ช่องอยู่บน<strong>หน้าเดียวกัน</strong> และทุกด้านหยิบผังนี้ไปใช้เหมือนกันหมด —
                           งานหลายด้านควรเป็นด้านละหน้า
+                          {byChoice && !oneChoice && (
+                            <>
+                              <br />
+                              ⚠️ ชุดนี้แยกไฟล์ตาม “{t.optionLabel?.trim()}” — ไฟล์คนละค่าไม่ใช่คนละหน้าของชิ้นเดียวกัน
+                              แยกอัตโนมัติให้ไม่ได้ ให้กดเลือกไฟล์ด้านบนแล้วตั้งช่องของไฟล์นั้นเอง
+                            </>
+                          )}
                         </span>
+                        {(!byChoice || oneChoice) && (
                         <button
                           type="button"
                           onClick={async () => {
                             const central = slotsOf(t);
+                            // ช่องที่ i → หน้าที่ i · ช่องที่เกินจำนวนหน้า ยกไปไว้หน้าสุดท้าย
+                            const per = files.map((_, i) =>
+                              central.filter((_, k) => k === i || (i === files.length - 1 && k > i))
+                            );
+                            /** ช่องน้อยกว่าหน้า = มีหน้าที่ไม่ได้อะไรเลย — ห้ามล้างผังกลาง ไม่งั้นหน้านั้นกลายเป็นกระดานว่าง */
+                            const allCovered = per.every((m) => m.length > 0);
                             if (
                               !(await askConfirm({
                                 icon: "✂️",
                                 title: `แยกผังกลาง ${central.length} ช่อง ออกเป็น ${files.length} หน้า?`,
-                                detail: `ช่องที่ 1 → ${files[0]?.side?.trim() || "ด้านที่ 1"} · ช่องที่ 2 → ${
-                                  files[1]?.side?.trim() || "ด้านที่ 2"
-                                } (ตำแหน่ง/ขนาดเดิม) แล้วผังกลางจะว่าง`,
+                                detail: [
+                                  files
+                                    .map((f, i) =>
+                                      per[i].length
+                                        ? `${tabLabel(f, i)} ← ${per[i].length} ช่อง`
+                                        : `${tabLabel(f, i)} ← ไม่ได้ช่อง (ใช้ผังกลางต่อ)`
+                                    )
+                                    .join("\n"),
+                                  "ตำแหน่ง/ขนาดของทุกช่องเหมือนเดิม",
+                                  allCovered
+                                    ? "แล้วผังกลางจะว่าง"
+                                    : "ผังกลางยังเก็บไว้ให้หน้าที่ไม่ได้ช่องใช้ต่อ",
+                                ].join("\n\n"),
                                 confirmLabel: "แยกเป็นหน้า ๆ",
                               }))
                             )
                               return;
                             patch(t.id, {
-                              slots: undefined,
+                              ...(allCovered ? { slots: undefined } : {}),
                               files: files.map((f, i) => {
-                                // ช่องเกินจำนวนหน้า ยกไปไว้หน้าสุดท้าย
-                                const mine = central.filter((_, k) => (k === i || (i === files.length - 1 && k > i)) && true);
+                                const mine = per[i];
                                 const side = f.side?.trim();
                                 return {
                                   ...f,
@@ -1992,6 +2029,7 @@ function AdminTemplatesInner() {
                         >
                           ✂️ แยกผังกลางเป็นหน้า ๆ
                         </button>
+                        )}
                       </div>
                     )}
 
@@ -2011,7 +2049,7 @@ function AdminTemplatesInner() {
                         <div className="mt-3 flex flex-wrap justify-center gap-2">
                           {files.map((f, fi) => (
                             <button key={f.id} type="button" onClick={() => setThemeFile(f.id)} className={btnSmDucky}>
-                              ไปที่ {f.side?.trim() || `ด้านที่ ${fi + 1}`}
+                              ไปที่ {tabLabel(f, fi)}
                             </button>
                           ))}
                         </div>
