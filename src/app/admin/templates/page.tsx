@@ -1918,6 +1918,69 @@ function AdminTemplatesInner() {
                 const sizeOf = (f?: TemplateFile) =>
                   f?.widthMm && f?.heightMm ? f.widthMm / f.heightMm : undefined;
 
+                /**
+                 * ผังสองหน้าตรงกันไหม — เทียบตำแหน่ง/ขนาด/ทรงทีละช่อง (ปัด 2 ตำแหน่ง กันเลขจากการลากมือ)
+                 * งานพิมพ์ 2 หน้าต้องทับกันพอดี ตั้งช่องแยกทีละหน้าแล้วเพี้ยนกันง่ายมาก และดูทีละหน้าก็ไม่เห็น
+                 */
+                const key = (s: TemplateSlot, mirror = false) =>
+                  `${[mirror ? 100 - s.xPct - s.wPct : s.xPct, s.yPct, s.wPct, s.hPct]
+                    .map((v) => Math.round(v * 100) / 100)
+                    .join(",")}${s.shape === "circle" ? "c" : "r"}`;
+                /**
+                 * ผังสองหน้าเข้ากันไหม
+                 * same = ทับกันพอดี · mirror = พลิกซ้าย-ขวา (ตั้งใจให้ทับกันทะลุแผ่น ไม่ใช่ความผิดพลาด) · off = เหลื่อม
+                 */
+                const alignOf = (a: TemplateSlot[], b: TemplateSlot[]): "same" | "mirror" | "off" => {
+                  if (a.length !== b.length) return "off";
+                  if (a.every((s, i) => key(s) === key(b[i]))) return "same";
+                  if (a.length && a.every((s, i) => key(s, true) === key(b[i]))) return "mirror";
+                  return "off";
+                };
+                const sameLayout = (a: TemplateSlot[], b: TemplateSlot[]) => alignOf(a, b) !== "off";
+                /** หน้าอื่นที่ผังเหลื่อมกับหน้าที่เปิดอยู่ */
+                const misaligned = cur ? files.filter((f) => f.id !== cur.id && !sameLayout(shown, slotsOf(t, f))) : [];
+                /** มีหน้าที่วางแบบพลิกไว้ไหม — บอกให้รู้ว่าตั้งใจ ไม่ใช่ลืม */
+                const mirrored = cur
+                  ? files.some((f) => f.id !== cur.id && alignOf(shown, slotsOf(t, f)) === "mirror")
+                  : files.slice(1).some((f) => alignOf(slotsOf(t, files[0]), slotsOf(t, f)) === "mirror");
+                /** ยกผังของหน้าที่เปิดอยู่ไปให้ทุกหน้า · mirror = พลิกซ้าย-ขวา (ลายด้านหลังที่ต้องทับกันทะลุแผ่น) */
+                const applyLayoutToAll = async (mirror: boolean) => {
+                  if (!cur) return;
+                  const targets = files.filter((f) => f.id !== cur.id);
+                  if (
+                    !(await askConfirm({
+                      icon: mirror ? "🔄" : "📋",
+                      title: `ใช้ผัง ${shown.length} ช่องของหน้านี้กับอีก ${targets.length} หน้า?`,
+                      detail: [
+                        targets.map((f) => `${tabLabel(f, files.indexOf(f))} — ผังเดิมจะถูกทับ`).join("\n"),
+                        mirror
+                          ? "วางแบบพลิกซ้าย-ขวา (ช่องที่อยู่ชิดขวาจะไปอยู่ชิดซ้าย) — ใช้กับงานที่ลายสองหน้าต้องทับกันทะลุแผ่น"
+                          : "วางตำแหน่งเดิมเป๊ะ ๆ ทุกช่อง — พิมพ์ออกมาแล้วซ้อนกันพอดี",
+                      ].join("\n\n"),
+                      confirmLabel: mirror ? "วางแบบพลิก" : "ใช้ผังนี้ทุกหน้า",
+                    }))
+                  )
+                    return;
+                  const n = (v: number) => Math.round(v * 100) / 100;
+                  patch(t.id, {
+                    files: files.map((f) =>
+                      f.id === cur.id
+                        ? // หน้าที่เปิดอยู่: ตรึงผังที่เห็นให้เป็นของตัวเอง (เผื่อยังยืมผังกลางอยู่)
+                          { ...f, slots: shown.length ? shown : undefined }
+                        : {
+                            ...f,
+                            slots: shown.length
+                              ? shown.map((s) => ({
+                                  ...s,
+                                  id: rid("sl"),
+                                  xPct: mirror ? n(100 - s.xPct - s.wPct) : s.xPct,
+                                }))
+                              : undefined,
+                          }
+                    ),
+                  });
+                };
+
                 return (
                   <>
                     <div className="mb-3 flex items-start gap-3 border-b border-slate-100 pb-3">
@@ -1995,6 +2058,47 @@ function AdminTemplatesInner() {
                     )}
 
                     {/*
+                      ── ผังของแต่ละหน้าตรงกันไหม ──
+                      งานพิมพ์ 2 หน้าต้องทับกันพอดี แต่แอดมินตั้งช่องทีละหน้า เลยไม่มีทางรู้ว่าอีกหน้าวางไว้ตรงไหน
+                      แถบนี้เทียบให้ทันทีว่าตรงหรือเหลื่อม + ยกผังหน้านี้ไปทับทุกหน้าได้ในปุ่มเดียว
+                    */}
+                    {cur && multi && shown.length > 0 && (
+                      <div
+                        className={`mb-2 flex flex-wrap items-center gap-2 rounded-xl px-3 py-2 ring-1 ${
+                          misaligned.length ? "bg-rose-50 ring-rose-200" : "bg-emerald-50 ring-emerald-200"
+                        }`}
+                      >
+                        <span
+                          className={`min-w-0 flex-1 text-[11px] font-semibold ${
+                            misaligned.length ? "text-rose-800" : "text-emerald-800"
+                          }`}
+                        >
+                          {misaligned.length ? (
+                            <>
+                              ⚠️ ผังหน้านี้<strong>ไม่ตรง</strong>กับ{" "}
+                              {misaligned.map((f) => tabLabel(f, files.indexOf(f))).join(" · ")} — พิมพ์ออกมาแล้วช่องสองหน้าจะเหลื่อมกัน
+                            </>
+                          ) : mirrored ? (
+                            <>✓ ผังตรงกันทุกหน้าแบบ<strong>พลิกซ้าย-ขวา</strong> — ลายสองหน้าทับกันทะลุแผ่นพอดี</>
+                          ) : (
+                            <>✓ ผังตรงกันทุกหน้าแล้ว — พิมพ์ออกมาช่องซ้อนกันพอดี</>
+                          )}
+                        </span>
+                        <button type="button" onClick={() => void applyLayoutToAll(false)} className={btnSmDucky}>
+                          📋 ใช้ผังหน้านี้กับทุกหน้า
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void applyLayoutToAll(true)}
+                          title="วางตำแหน่งแบบพลิกซ้าย-ขวา — ใช้กับงานที่ลายสองหน้าต้องทับกันทะลุแผ่น"
+                          className={btnSmNeutral}
+                        >
+                          🔄 พลิกซ้าย-ขวา
+                        </button>
+                      </div>
+                    )}
+
+                    {/*
                       ชุดไฟล์เดียว = งานหน้าเดียว · ช่องหลายช่องบนหน้าเดียว ≠ งาน 2 ด้าน
                       กดปุ่มนี้แล้วได้แถวไฟล์ที่สองพร้อมชื่อด้าน เหลือแค่อัปไฟล์ .ai ของด้านหลัง
                     */}
@@ -2015,6 +2119,8 @@ function AdminTemplatesInner() {
                               // ยืมขนาดจากด้านแรกไว้ก่อน (งาน 2 ด้านส่วนใหญ่ขนาดเท่ากัน) แก้ทีหลังได้
                               widthMm: first?.widthMm,
                               heightMm: first?.heightMm,
+                              // ยืมผังช่องของด้านแรกมาด้วย — เริ่มต้นให้ทับกันพอดีไว้ก่อน ดีกว่าปล่อยว่างแล้วไปตั้งใหม่ให้เหลื่อม
+                              ...(first?.slots?.length ? { slots: first.slots.map((s) => ({ ...s, id: rid("sl") })) } : {}),
                             };
                             patch(t.id, {
                               files: [
@@ -2118,6 +2224,26 @@ function AdminTemplatesInner() {
                           ทุกด้านมีผังช่องของตัวเองครบแล้ว — ผังกลางมีไว้เผื่อด้านที่ยังไม่ได้ตั้งเท่านั้น
                           ข้างล่างคือผังจริงของแต่ละหน้า กดที่หน้าไหนเพื่อเข้าไปแก้หน้านั้น
                         </p>
+                        {/* หน้าแรกเป็นตัวตั้ง — บอกตรงนี้เลยว่าหน้าอื่นวางตรงกันไหม จะได้ไม่ต้องเพ่งเทียบเอง */}
+                        {(() => {
+                          const base = slotsOf(t, files[0]);
+                          const off = files.slice(1).filter((f) => !sameLayout(base, slotsOf(t, f)));
+                          return (
+                            <p
+                              className={`mt-2 text-center text-[11px] font-bold ${
+                                off.length ? "text-rose-600" : "text-emerald-600"
+                              }`}
+                            >
+                              {off.length
+                                ? `⚠️ ผังไม่ตรงกัน — ${off
+                                    .map((f) => tabLabel(f, files.indexOf(f)))
+                                    .join(" · ")} วางไม่ตรงกับ ${tabLabel(files[0], 0)} · พิมพ์ออกมาแล้วช่องจะเหลื่อมกัน`
+                                : mirrored
+                                  ? "✓ ทุกหน้าวางช่องตรงกันแบบพลิกซ้าย-ขวา — ลายสองหน้าทับกันทะลุแผ่นพอดี"
+                                  : "✓ ทุกหน้าวางช่องตรงกัน — พิมพ์ออกมาซ้อนกันพอดี"}
+                            </p>
+                          );
+                        })()}
                         {/* ผังของทุกหน้าเรียงให้ดูพร้อมกัน — ไม่ต้องกดสลับทีละหน้าเพื่อจำว่าอีกหน้าวางไว้ยังไง */}
                         <div className="mt-3 flex flex-wrap justify-center gap-3">
                           {files.map((f, fi) => (
