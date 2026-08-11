@@ -21,7 +21,10 @@
 }
 .dl *{box-sizing:border-box;margin:0;padding:0}
 .dl{font-family:var(--body);color:var(--navy);background:#fff;-webkit-font-smoothing:antialiased;line-height:1.7}
-.dl-page{overflow-x:hidden}
+/* กันหน้าเว็บเลื่อนซ้าย-ขวาบนมือถือ — ต้องใช้ clip ไม่ใช่ hidden
+   เพราะ overflow-x:hidden จะบังคับให้แกนตั้งกลายเป็นกล่องสกรอลล์ แล้วตัดพื้นหลังฟ้า
+   ที่ .top-stack ดึงขึ้นไปไว้หลังแถบเมนูทิ้ง (หัวเว็บจะกลายเป็นพื้นขาว) */
+.dl-page{overflow-x:clip;overflow-y:visible}
 /* ตัวครอบ Navbar/Footer: display:contents เพื่อไม่ให้กลายเป็นกล่องที่ทำให้ position:sticky ของแถบเมนูตายก่อนเวลา */
 .dl-contents{display:contents}
 .dl .bg-fx{position:fixed;inset:0;z-index:-10;overflow:hidden;pointer-events:none;background:#fff}
