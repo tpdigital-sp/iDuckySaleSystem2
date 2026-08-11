@@ -43,13 +43,16 @@ import {
   filesForSelections,
   formatFileSize,
   skinOf,
+  slotsOf,
   PLACEMENT_LABEL,
   PLACEMENT_SPEC_LABEL,
   templateFrame,
   type DesignTemplate,
   type TemplateFrame,
+  type TemplateSlot,
 } from "@/lib/design-templates";
 import TemplateStudio, { type Placement as StudioPlacement, type StudioResult } from "@/components/TemplateStudio";
+import SlotStudio, { type SlotResult, type SlotShot } from "@/components/SlotStudio";
 import { useCart } from "@/lib/cart-context";
 import { canAccessAdmin } from "@/lib/auth";
 import { fetchProduct } from "@/lib/product-repo";
@@ -178,6 +181,8 @@ export default function ProductDetail({
     skinUrl?: string;
     tplUrl?: string;
     perSheet?: number;
+    /** เทมเพลตแบบมีช่อง (Theme) — มีค่า = เปิดจอวางรูปทีละช่องแทน */
+    slots?: TemplateSlot[];
     initial?: { file?: File; url?: string; placement: StudioPlacement; swapped?: boolean };
   } | null>(null);
   const [placed, setPlaced] = useState<
@@ -193,12 +198,16 @@ export default function ProductDetail({
       dpi: number;
       /** ของที่ใช้เปิดกลับมาแก้ไขให้เหมือนเดิม (ไฟล์ต้นฉบับ + ตำแหน่ง + แนวงาน) */
       sourceFile?: File;
-      placement: StudioPlacement;
-      swapped: boolean;
+      placement?: StudioPlacement;
+      swapped?: boolean;
+      /** โหมดช่อง (Theme) — รูปที่ใส่ไว้ทีละช่อง ใช้กดกลับมาแก้ในหน้าเดิม */
+      slotShots?: (SlotShot | null)[];
     }[]
   >([]);
   /** กำลังแก้ไขลายที่เท่าไหร่ (null = สร้างลายใหม่) — กัน "แก้ไขแบบ" กลายเป็นเพิ่มลายซ้ำ */
   const [editIndex, setEditIndex] = useState<number | null>(null);
+  /** เปิดจอวางรูปแบบมีช่อง (Theme) อยู่ไหม — เทมเพลตที่กำหนดช่องไว้จะใช้จอนี้แทน */
+  const [slotStudio, setSlotStudio] = useState(false);
   // ส่วน "เพิ่มเติม" ยุบไว้ทีละอัน — ไม่ให้ฟอร์มที่ไม่บังคับดันปุ่มซื้อตกจอ
   const [extraOpen, setExtraOpen] = useState<"art" | "note" | null>(null);
   // สินค้าที่บังคับแนบลาย → เปิดกล่องค้างไว้จนกว่าลูกค้าจะแตะปิดเอง
@@ -589,6 +598,7 @@ export default function ProductDetail({
             skinUrl: skinOf(t, f),
             tplUrl: f.fileUrl,
             perSheet: t.perSheet,
+            slots: slotsOf(t, f),
           };
       }
     }
@@ -605,9 +615,14 @@ export default function ProductDetail({
   function openStudio(index: number | null = null) {
     if (!studioTarget) return;
     setEditIndex(index);
+    // เทมเพลตกำหนดช่องไว้ → ใช้จอวางรูปทีละช่อง (สติกเกอร์หลายดวง · photobooth strip)
+    if (studioTarget.slots?.length) {
+      setSlotStudio(true);
+      return;
+    }
     const d = index !== null ? placed[index] : null;
     setStudio(
-      d
+      d?.placement
         ? {
             ...studioTarget,
             initial: { file: d.sourceFile, url: d.sourceUrl, placement: d.placement, swapped: d.swapped },
@@ -661,6 +676,55 @@ export default function ProductDetail({
    * — ภาพที่ประกอบแล้ว = ลายที่แนบไปกับออเดอร์ (นับเป็น 1 ลาย เท่ากับแนบรูปปกติ)
    * — ไฟล์ต้นฉบับอัปตามไปด้วย แต่ไม่นับเป็นอีกลาย ทีมผลิตเอาไปทำไฟล์พิมพ์ความละเอียดเต็ม
    */
+  /**
+   * ผลจากจอวางรูปแบบมีช่อง (Theme) — เก็บเข้าลิสต์เดียวกับลายปกติ
+   * (ไม่มี "ต้นฉบับ" ไฟล์เดียวเพราะมาจากหลายรูป · เก็บรูปรายช่องไว้ให้กดแก้ต่อในหน้าเดิมได้)
+   */
+  async function applySlots(r: SlotResult) {
+    setArtErr("");
+    setArtBusy(true);
+    try {
+      const url = await uploadOne(r.composite);
+      const dim = await new Promise<{ w: number; h: number }>((resolve) => {
+        const im = new window.Image();
+        const obj = URL.createObjectURL(r.composite);
+        im.onload = () => {
+          URL.revokeObjectURL(obj);
+          resolve({ w: im.naturalWidth, h: im.naturalHeight });
+        };
+        im.onerror = () => {
+          URL.revokeObjectURL(obj);
+          resolve({ w: 0, h: 0 });
+        };
+        im.src = obj;
+      });
+      const file = { url, name: r.composite.name, ...dim };
+      const entry = {
+        summary: r.summary,
+        head: r.head,
+        dpi: r.dpi,
+        spec: r.spec,
+        sourceUrl: "",
+        artUrl: url,
+        slotShots: r.shots,
+      };
+      if (editIndex !== null) {
+        setArtFiles((cur) => cur.map((x, i) => (i === editIndex ? file : x)));
+        setPlaced((cur) => cur.map((x, i) => (i === editIndex ? { ...entry, qty: x.qty } : x)));
+      } else {
+        setArtFiles((cur) => [...cur, file]);
+        setPlaced((cur) => [...cur, { ...entry, qty: 1 }]);
+      }
+      setEditIndex(null);
+      setSlotStudio(false);
+    } catch (e) {
+      setArtErr(e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง");
+      throw e;
+    } finally {
+      setArtBusy(false);
+    }
+  }
+
   async function applyStudio(r: StudioResult) {
     setArtErr("");
     setArtBusy(true);
@@ -2350,6 +2414,25 @@ export default function ProductDetail({
           </button>
         </div>
       )}
+
+      {/* 🧩 จอวางรูปแบบมีช่อง (Theme) — ใช้เมื่อเทมเพลตกำหนดช่องไว้ */}
+      {slotStudio && studioTarget?.slots?.length ? (
+        <SlotStudio
+          open
+          onClose={() => {
+            setSlotStudio(false);
+            setEditIndex(null);
+          }}
+          title={studioTarget.title}
+          frame={studioTarget.frame}
+          slots={studioTarget.slots}
+          guideUrl={studioTarget.guideUrl}
+          tplUrl={studioTarget.tplUrl}
+          perSheet={studioTarget.perSheet}
+          initial={editIndex !== null ? placed[editIndex]?.slotShots : undefined}
+          onApply={applySlots}
+        />
+      ) : null}
 
       {/* 🖼 จอวางลายบนเทมเพลต — เปิดจากการ์ดเทมเพลตด้านบน */}
       {studio && (
