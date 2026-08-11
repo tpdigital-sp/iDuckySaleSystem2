@@ -342,6 +342,8 @@ export default function SlotStudio({
   const shortSides = sides.filter((sd) => (allShots[sd.key] ?? []).filter(Boolean).length < sd.slots.length);
   /** ใส่รูปแล้วกี่ช่องรวมทุกด้าน — ต้องมีอย่างน้อยหนึ่งถึงจะกดใช้ลายได้ */
   const filledAll = sides.reduce((n, sd) => n + (allShots[sd.key] ?? []).filter(Boolean).length, 0);
+  /** อยู่หน้าสุดท้ายแล้วหรือยัง — หน้าสุดท้ายเท่านั้นที่กด "ใช้ลายนี้" ได้ */
+  const last = active >= sides.length - 1;
   /** ด้านที่มีรูปแล้วอย่างน้อยหนึ่งช่อง = ด้านที่จะถูกประกอบเป็นไฟล์ */
   const results0 = sides.filter((sd) => (allShots[sd.key] ?? []).some(Boolean)).length;
 
@@ -501,7 +503,14 @@ export default function SlotStudio({
       <div className="mx-auto flex max-h-full w-full max-w-3xl flex-col overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:p-5">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <p className="text-base font-extrabold text-stone-800">🧩 วางรูปบนเทมเพลต</p>
+            <p className="text-base font-extrabold text-stone-800">
+              🧩 {sides.length > 1 ? side.name || `ด้านที่ ${active + 1}` : "วางรูปบนเทมเพลต"}
+              {sides.length > 1 && (
+                <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-700">
+                  หน้า {active + 1}/{sides.length}
+                </span>
+              )}
+            </p>
             <p className="mt-0.5 truncate text-xs text-stone-500">
               {title} · งานจริง {Math.round(frame.trimWMm) / 10}×{Math.round(frame.trimHMm) / 10} ซม. · {slots.length} ช่อง
             </p>
@@ -512,27 +521,36 @@ export default function SlotStudio({
         </div>
 
         {/*
-          ── แท็บด้าน — งานสกรีน 2 ด้าน แต่ละด้านเป็นกระดานของตัวเอง ──
-          รูปที่ใส่ไว้ของอีกด้านไม่หายตอนสลับ (เก็บแยกตาม key)
+          ── แถบขั้นตอน — งานหลายด้านแยกเป็นคนละหน้า เดินทีละด้าน ──
+          รูปที่ใส่ไว้ของแต่ละหน้าเก็บแยกตาม key ย้อนกลับมาแก้ได้ ไม่หาย
         */}
         {sides.length > 1 && (
-          <div className="mt-3 flex flex-wrap gap-1.5 rounded-2xl bg-stone-100 p-1">
+          <div className="mt-3 flex items-center gap-1.5">
             {sides.map((sd, i) => {
               const done = (allShots[sd.key] ?? []).filter(Boolean).length;
+              const full = done === sd.slots.length;
               return (
-                <button
-                  key={sd.key}
-                  type="button"
-                  onClick={() => setActive(i)}
-                  className={`flex-1 rounded-xl px-3 py-1.5 text-xs font-extrabold transition ${
-                    i === active ? "bg-white text-sky-700 shadow-sm" : "text-stone-500 hover:text-stone-700"
-                  }`}
-                >
-                  {sd.name || `ด้านที่ ${i + 1}`}
-                  <span className={`ml-1.5 font-bold ${done === sd.slots.length ? "text-emerald-600" : "text-stone-400"}`}>
-                    {done}/{sd.slots.length}
-                  </span>
-                </button>
+                <span key={sd.key} className="flex min-w-0 flex-1 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setActive(i)}
+                    className={`min-w-0 flex-1 truncate rounded-full px-3 py-1.5 text-[11px] font-extrabold transition ${
+                      i === active
+                        ? "bg-sky-500 text-white shadow-sm"
+                        : full
+                          ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                          : "bg-stone-100 text-stone-500 hover:bg-stone-200"
+                    }`}
+                    title={`ไปหน้า ${sd.name || `ด้านที่ ${i + 1}`}`}
+                  >
+                    {full && i !== active ? "✓ " : `${i + 1}. `}
+                    {sd.name || `ด้านที่ ${i + 1}`}
+                    <span className="ml-1 font-bold opacity-70">
+                      {done}/{sd.slots.length}
+                    </span>
+                  </button>
+                  {i < sides.length - 1 && <span className="shrink-0 text-[11px] text-stone-300">→</span>}
+                </span>
               );
             })}
           </div>
@@ -749,33 +767,58 @@ export default function SlotStudio({
         <p className="mt-2 text-center text-[11px] text-stone-400">
           กดที่ช่องเพื่อเพิ่มรูป · {touch ? "ลากด้วยนิ้วเพื่อเลื่อน · บีบสองนิ้วเพื่อซูม" : "ลากรูปในช่องเพื่อเลื่อน"} ·{" "}
           {requireAll ? "ต้องใส่รูปให้ครบทุกช่อง" : "ช่องที่เว้นไว้จะเป็นพื้นขาว"}
-          {sides.length > 1 && " · แต่ละด้านเป็นกระดานของตัวเอง สลับที่แท็บด้านบน (ยังนับเป็นสินค้าชิ้นเดียว)"}
+          {sides.length > 1 && " · แต่ละด้านทำทีละหน้า กด “ถัดไป” เมื่อเสร็จหน้านี้ (ทั้งหมดยังนับเป็นสินค้าชิ้นเดียว)"}
         </p>
         {err && <p className="mt-2 text-center text-xs font-semibold text-rose-600">{err}</p>}
 
-        <div className="mt-3 flex gap-2">
-          <button type="button" onClick={onClose} className="rounded-full px-4 py-2.5 text-sm font-bold text-stone-500 transition hover:bg-stone-100">
-            ยกเลิก
-          </button>
+        {/*
+          ── ปุ่มล่าง ──
+          งานด้านเดียว: ยกเลิก + ใช้ลายนี้ (เหมือนเดิม)
+          งานหลายด้าน: เดินทีละหน้า — ย้อนกลับ / ถัดไป · หน้าสุดท้ายถึงจะเป็น "ใช้ลายนี้"
+        */}
+        <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={apply}
-            disabled={!filledAll || busy || (!!requireAll && shortSides.length > 0)}
-            className="flex-1 rounded-full bg-sky-500 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-sky-600 disabled:opacity-40"
+            onClick={() => (active > 0 ? setActive(active - 1) : onClose())}
+            className="rounded-full px-4 py-2.5 text-sm font-bold text-stone-500 transition hover:bg-stone-100"
           >
-            {busy
-              ? "กำลังบันทึก…"
-              : requireAll && shortSides.length
-                ? // ยังขาดในด้านอื่นก็ต้องบอกให้รู้ ไม่งั้นลูกค้ากดไม่ได้แล้วงงว่าทำไม
-                  shortSides[0] === side
-                  ? missing.length <= 2
-                    ? `ยังไม่ได้ใส่ ${missing.join(" · ")}`
-                    : `ยังขาดอีก ${missing.length} ช่อง`
-                  : `ยังขาดที่ ${shortSides.map((sd) => sd.name || "อีกด้าน").join(" · ")}`
-                : sides.length > 1
-                  ? `✓ ใช้ลายนี้ (${results0} ด้าน)`
-                  : `✓ ใช้ลายนี้ (${filled}/${slots.length} ช่อง)`}
+            {active > 0 ? `← ${sides[active - 1].name || "ย้อนกลับ"}` : "ยกเลิก"}
           </button>
+
+          {last ? (
+            <button
+              type="button"
+              onClick={apply}
+              disabled={!filledAll || busy || (!!requireAll && shortSides.length > 0)}
+              className="flex-1 rounded-full bg-sky-500 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-sky-600 disabled:opacity-40"
+            >
+              {busy
+                ? "กำลังบันทึก…"
+                : requireAll && shortSides.length
+                  ? // ยังขาดอยู่หน้าไหนก็ต้องบอก ไม่งั้นกดไม่ได้แล้วงงว่าทำไม
+                    shortSides[0] === side
+                    ? missing.length <= 2
+                      ? `ยังไม่ได้ใส่ ${missing.join(" · ")}`
+                      : `ยังขาดอีก ${missing.length} ช่อง`
+                    : `ยังขาดที่ ${shortSides.map((sd) => sd.name || "อีกด้าน").join(" · ")}`
+                  : sides.length > 1
+                    ? `✓ ใช้ลายนี้ (${results0} ด้าน)`
+                    : `✓ ใช้ลายนี้ (${filled}/${slots.length} ช่อง)`}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setActive(active + 1)}
+              disabled={!!requireAll && filled < slots.length}
+              className="flex-1 rounded-full bg-sky-500 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-sky-600 disabled:opacity-40"
+            >
+              {requireAll && filled < slots.length
+                ? missing.length <= 2
+                  ? `ยังไม่ได้ใส่ ${missing.join(" · ")}`
+                  : `ยังขาดอีก ${missing.length} ช่อง`
+                : `ถัดไป: ${sides[active + 1].name || `ด้านที่ ${active + 2}`} →`}
+            </button>
+          )}
         </div>
       </div>
     </div>
