@@ -6,6 +6,26 @@
  *   ลูกค้าเลือกรุ่นไหนบนหน้าสินค้า ก็เห็นไฟล์ของรุ่นนั้น
  */
 
+/**
+ * 🧩 ช่องใส่รูปบนเทมเพลต (Theme) — ตำแหน่ง/ขนาดเก็บเป็น % ของกรอบงาน (รวมตัดตก)
+ *
+ * ใช้ % ไม่ใช่มิลลิเมตร เพราะไฟล์เดียวกันอาจมีหลายขนาด และวาดกรอบบนรูปพรีวิวได้ตรงกันเสมอ
+ * ลูกค้าจะเห็นเป็นกล่องให้กด "＋ เพิ่มรูป" ทีละช่อง (แบบเดียวกับ photobooth strip)
+ */
+export interface TemplateSlot {
+  id: string;
+  /** มุมซ้ายบนของช่อง (% ของความกว้าง/สูงกรอบงาน) */
+  xPct: number;
+  yPct: number;
+  /** ขนาดช่อง (% ของกรอบงาน) */
+  wPct: number;
+  hPct: number;
+  /** ทรงช่อง — วงกลมใช้กับสติกเกอร์กลม/เข็มกลัด (ไม่ระบุ = สี่เหลี่ยม) */
+  shape?: "rect" | "circle";
+  /** ป้ายกำกับให้ลูกค้าอ่าน เช่น "รูปที่ 1" (ไม่ใส่ = ระบบเรียงเลขให้) */
+  label?: string;
+}
+
 /** ไฟล์ 1 ไฟล์ในชุดเทมเพลต */
 export interface TemplateFile {
   id: string;
@@ -37,6 +57,8 @@ export interface TemplateFile {
    */
   widthMm?: number;
   heightMm?: number;
+  /** 🧩 ช่องใส่รูปของไฟล์นี้ — ไม่มี = ใช้ของทั้งชุด (DesignTemplate.slots) */
+  slots?: TemplateSlot[];
 }
 
 export interface DesignTemplate {
@@ -83,6 +105,8 @@ export interface DesignTemplate {
    * ไม่ตั้ง = งานชิ้นต่อแผ่น ไม่ต้องคิดเรื่องนี้
    */
   perSheet?: number;
+  /** 🧩 ช่องใส่รูปของทั้งชุด — ใช้เมื่อไฟล์ในชุดไม่ได้กำหนดช่องของตัวเอง */
+  slots?: TemplateSlot[];
   /** ลำดับในลิสต์ (ไม่ตั้ง = ไปต่อท้าย เรียงตามชื่อ) */
   sort?: number;
   /** ซ่อน — ไม่โชว์บนหน้าสินค้า */
@@ -137,6 +161,46 @@ export function templateFiles(t: DesignTemplate): TemplateFile[] {
  */
 export function skinOf(t: DesignTemplate, f?: TemplateFile): string | undefined {
   return f?.skinUrl || t.skinUrl || undefined;
+}
+
+/**
+ * 🧩 ช่องใส่รูปที่จะใช้จริง — ของไฟล์นั้นมาก่อน ไม่มีค่อยใช้ของทั้งชุด
+ * ไม่มีเลย = เทมเพลตธรรมดา (ลูกค้าวางลายเดียวเต็มกรอบเหมือนเดิม)
+ */
+export function slotsOf(t: DesignTemplate, f?: TemplateFile): TemplateSlot[] {
+  const list = f?.slots?.length ? f.slots : (t.slots ?? []);
+  return list.filter((s) => s.wPct > 0 && s.hPct > 0);
+}
+
+/**
+ * สร้างช่องเป็นตาราง cols × rows — ใช้กับงานรวมแผ่น (สติกเกอร์ 4 ดวง/แผ่น ฯลฯ)
+ * ทุกค่าเป็น % ของกรอบงาน · ขอบ = ระยะจากขอบกระดาษ · ช่องไฟ = ระยะระหว่างช่อง
+ */
+export function gridSlots(
+  cols: number,
+  rows: number,
+  o: { marginPct?: number; gapPct?: number; shape?: "rect" | "circle" } = {},
+): TemplateSlot[] {
+  const m = Math.max(0, o.marginPct ?? 5);
+  const g = Math.max(0, o.gapPct ?? 4);
+  const c = Math.max(1, Math.round(cols));
+  const r = Math.max(1, Math.round(rows));
+  const w = (100 - m * 2 - g * (c - 1)) / c;
+  const h = (100 - m * 2 - g * (r - 1)) / r;
+  if (w <= 0 || h <= 0) return [];
+  const out: TemplateSlot[] = [];
+  const n = (v: number) => Math.round(v * 100) / 100;
+  for (let y = 0; y < r; y++)
+    for (let x = 0; x < c; x++)
+      out.push({
+        id: `sl-${y}-${x}-${Math.random().toString(36).slice(2, 7)}`,
+        xPct: n(m + x * (w + g)),
+        yPct: n(m + y * (h + g)),
+        wPct: n(w),
+        hPct: n(h),
+        ...(o.shape === "circle" ? { shape: "circle" as const } : {}),
+      });
+  return out;
 }
 
 /**

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import RequirePerm from "@/components/RequirePerm";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
+import SlotEditor from "@/components/admin/SlotEditor";
 import {
   DEFAULT_BLEED_MM,
   DEFAULT_SAFE_MM,
@@ -14,6 +15,7 @@ import {
   guessChoice,
   NO_CATEGORY,
   normalizeTemplate,
+  slotsOf,
   templateCategories,
   templateFiles,
   TEMPLATE_MAX_MB,
@@ -1635,6 +1637,16 @@ function AdminTemplatesInner() {
                         ไฟล์ที่ยังไม่มีขนาด 📏 ลูกค้าจะวางลายบนเว็บไม่ได้ (ระบบเดาจากชื่อตัวเลือกให้แทน)
                       </span>
                     </div>
+
+                    {/*
+                      🧩 ช่องใส่รูป (Theme) — กำหนดที่ระดับชุด ใช้กับทุกไฟล์ในชุด
+                      งานที่ต้องวางหลายรูปบนแผ่นเดียว (สติกเกอร์ 4 ดวง · photobooth strip)
+                    */}
+                    <SlotEditor
+                      slots={slotsOf(t)}
+                      previewUrl={t.previewUrl || files.find((f) => f.previewUrl)?.previewUrl}
+                      onChange={(next) => patch(t.id, { slots: next.length ? next : undefined })}
+                    />
 
                     <div className="flex flex-wrap items-center gap-2">
                       <button
