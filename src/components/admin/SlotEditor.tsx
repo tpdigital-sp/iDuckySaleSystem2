@@ -74,6 +74,25 @@ export default function SlotEditor({
     drag.current = null;
   };
 
+  /**
+   * ทำซ้ำช่อง — ได้ขนาด/ทรงเดิมเป๊ะ แล้วเลื่อนลงมานิดให้เห็นว่าเป็นอันใหม่
+   * (ตั้งช่องแรกให้พอดีทีเดียว แล้วก๊อปวางที่เหลือ เร็วกว่ามาปรับขนาดใหม่ทุกช่อง)
+   */
+  const duplicate = (i: number) => {
+    const s = slots[i];
+    if (!s) return;
+    const copy: TemplateSlot = {
+      ...s,
+      id: `sl-${Date.now().toString(36)}-${i}`,
+      xPct: Math.round(clamp(s.xPct + 3, 0, Math.max(0, 100 - s.wPct)) * 100) / 100,
+      yPct: Math.round(clamp(s.yPct + 3, 0, Math.max(0, 100 - s.hPct)) * 100) / 100,
+    };
+    const next = [...slots];
+    next.splice(i + 1, 0, copy);
+    onChange(next);
+    setSel(copy.id);
+  };
+
   const addOne = () =>
     onChange([
       ...slots,
@@ -163,6 +182,21 @@ export default function SlotEditor({
             <span className="pointer-events-none absolute left-1 top-1 rounded bg-violet-600 px-1 text-[9px] font-bold text-white">
               {i + 1}
             </span>
+            {/* ทำซ้ำ — โผล่บนช่องที่เลือกอยู่ กดแล้วได้ช่องใหม่ขนาดเดิมวางเยื้องลงมา */}
+            {sel === s.id && (
+              <button
+                type="button"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  duplicate(i);
+                }}
+                title="ทำซ้ำช่องนี้"
+                className="absolute -top-2 -right-2 grid h-5 w-5 place-items-center rounded-full bg-violet-600 text-[10px] font-bold text-white shadow"
+              >
+                ⧉
+              </button>
+            )}
             {/* มุมขวาล่าง = ย่อ-ขยาย */}
             <span
               onPointerDown={(e) => onDown(e, s, "resize")}
@@ -205,8 +239,16 @@ export default function SlotEditor({
               </select>
               <button
                 type="button"
+                onClick={() => duplicate(i)}
+                className={`${btnSmNeutral} ml-auto`}
+                title="ทำซ้ำช่องนี้ — ได้ขนาด/ทรงเดิม แล้วลากไปวางตำแหน่งใหม่"
+              >
+                ⧉ ทำซ้ำ
+              </button>
+              <button
+                type="button"
                 onClick={() => onChange(slots.filter((x) => x.id !== s.id))}
-                className={`${btnSmDanger} ml-auto`}
+                className={btnSmDanger}
                 title="ลบช่องนี้"
               >
                 ✕
