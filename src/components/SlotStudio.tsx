@@ -772,7 +772,8 @@ export default function SlotStudio({
           </div>
         )}
 
-        {sides.some((sd) => sd.skinUrl) && (
+        {/* ปุ่มนี้ผูกกับหน้าที่เปิดอยู่ — เดิมเช็คทั้งชุด หน้าที่ไม่มีสกินเลยมีปุ่มให้กดแต่กดแล้วไม่มีอะไรเปลี่ยน */}
+        {(spreadView ? sides.some((sd) => sd.skinUrl) : !!sides[active]?.skinUrl) && (
           <div className="mt-2 flex justify-center">
             <button
               type="button"

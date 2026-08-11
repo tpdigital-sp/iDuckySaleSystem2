@@ -167,11 +167,22 @@ export function templateFiles(t: DesignTemplate): TemplateFile[] {
 }
 
 /**
- * 👕 สกินสินค้าที่จะวางทับลายในจอวางลาย — ของไฟล์นั้นมาก่อน ไม่มีค่อยใช้ของทั้งชุด
+ * 👕 สกินสินค้าที่จะวางทับลายในจอวางลาย
  * (เคสมือถือแต่ละรุ่นรูกล้องไม่เหมือนกัน เลยตั้งรายไฟล์ได้ · งานที่หน้าตาเหมือนกันหมดตั้งครั้งเดียวที่ชุด)
+ *
+ * ลำดับเดียวกับ previewOf(): ของหน้านั้น → หน้าอื่นในชุดที่ขนาดเท่ากัน → หน้าอื่นใด ๆ → ของทั้งชุด
+ * หน้าที่แอดมินเพิ่มเองยังไม่มีสกินของตัวเอง — ถ้าไม่ยืมของหน้าพี่น้อง กระดานจะหน้าตาคนละอย่างกับหน้าแรก
+ * (หน้าแรกเห็นรูปสินค้าจริง หน้าที่เพิ่มเห็นแค่กรอบเส้นตัด ทั้งที่เป็นงานชิ้นเดียวกัน)
  */
 export function skinOf(t: DesignTemplate, f?: TemplateFile): string | undefined {
-  return f?.skinUrl || t.skinUrl || undefined;
+  if (f?.skinUrl) return f.skinUrl;
+  const others = templateFiles(t).filter((x) => x.skinUrl);
+  // ยืมของหน้าที่ขนาดเท่ากันก่อน — ขนาดต่างกันแปลว่าเป็นคนละไดคัท เอาสกินมาวางทับจะหลอกตา
+  const sameSize =
+    f?.widthMm && f?.heightMm
+      ? others.find((x) => x.widthMm === f.widthMm && x.heightMm === f.heightMm)
+      : undefined;
+  return sameSize?.skinUrl || others[0]?.skinUrl || t.skinUrl || undefined;
 }
 
 /**
