@@ -243,16 +243,6 @@ export default function SlotEditor({
               />
               ต้องใส่ครบทุกช่อง
             </label>
-            {slots.length === 2 && (
-              <button
-                type="button"
-                onClick={() => onChange(slots.map((s, i) => ({ ...s, label: i === 0 ? "ด้านหน้า" : "ด้านหลัง" })))}
-                className={btnSmNeutral}
-                title="งานสกรีน 2 ด้าน — ตั้งชื่อช่องซ้าย/บนเป็นด้านหน้า อีกช่องเป็นด้านหลัง"
-              >
-                ตั้งชื่อ หน้า/หลัง
-              </button>
-            )}
             <button
               type="button"
               onClick={async () => {

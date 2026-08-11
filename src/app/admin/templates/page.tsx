@@ -1892,6 +1892,43 @@ function AdminTemplatesInner() {
                       </div>
                     )}
 
+                    {/*
+                      ชุดไฟล์เดียว = งานหน้าเดียว · ช่องหลายช่องบนหน้าเดียว ≠ งาน 2 ด้าน
+                      กดปุ่มนี้แล้วได้แถวไฟล์ที่สองพร้อมชื่อด้าน เหลือแค่อัปไฟล์ .ai ของด้านหลัง
+                    */}
+                    {!multi && (
+                      <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
+                        <span className={`min-w-0 flex-1 text-[11px] ${faint}`}>
+                          ชุดนี้มีไฟล์เดียว = <strong className="font-bold text-slate-700">งานหน้าเดียว</strong> — ช่องหลายช่องจะอยู่บนหน้าเดียวกันหมด ·
+                          งานสกรีน 2 ด้านต้องมีไฟล์ของแต่ละด้าน ลูกค้าถึงจะได้กระดานคนละหน้า
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const first = files[0];
+                            const back = {
+                              id: rid("f"),
+                              side: "ด้านหลัง",
+                              choice: first?.choice,
+                              // ยืมขนาดจากด้านแรกไว้ก่อน (งาน 2 ด้านส่วนใหญ่ขนาดเท่ากัน) แก้ทีหลังได้
+                              widthMm: first?.widthMm,
+                              heightMm: first?.heightMm,
+                            };
+                            patch(t.id, {
+                              files: [
+                                ...files.map((f, i) => (i === 0 && !f.side?.trim() ? { ...f, side: "ด้านหน้า" } : f)),
+                                back,
+                              ],
+                            });
+                            setThemeFile(back.id);
+                          }}
+                          className={btnSmDucky}
+                        >
+                          ➕ ทำเป็นงาน 2 ด้าน
+                        </button>
+                      </div>
+                    )}
+
                     {inherited && (
                       <p className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200">
                         ด้านนี้ยังไม่มีผังของตัวเอง — ที่เห็นคือผังกลาง แก้ตรงนี้แล้วจะกลายเป็นผังเฉพาะด้านนี้ทันที
@@ -1903,7 +1940,7 @@ function AdminTemplatesInner() {
                       slots={shown}
                       previewUrl={cur?.previewUrl || t.previewUrl || files.find((f) => f.previewUrl)?.previewUrl}
                       // ทรงของเวทีลากต้องเท่างานจริงของด้านนั้น ไม่งั้นตำแหน่งที่ลากไม่ตรงกับที่ลูกค้าเห็น
-                      ratio={sizeOf(cur ?? files.find((x) => x.widthMm && x.heightMm))}
+                      ratio={sizeOf(cur ?? undefined) ?? sizeOf(files.find((x) => x.widthMm && x.heightMm))}
                       required={t.slotsRequired}
                       onChange={(next) =>
                         cur
