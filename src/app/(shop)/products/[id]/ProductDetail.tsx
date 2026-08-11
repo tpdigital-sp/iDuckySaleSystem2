@@ -67,6 +67,9 @@ import { fetchProduct } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
 import ProductCard from "@/components/ProductCard";
 
+/** จำโหมดสั่งของของพนักงาน (ลูกค้า/แอดมิน) ไว้ในเครื่อง — ค่าเริ่มต้นคือโหมดลูกค้าเสมอ */
+const ADMIN_MODE_KEY = "iducky:product-order-mode";
+
 /**
  * แยก "ข้อควรทราบ" เป็นข้อ ๆ — บรรทัดที่ขึ้นต้นด้วย * / ** / *** = ข้อใหม่
  * บรรทัดถัดไปที่ไม่ได้ขึ้นต้นด้วย * ถือเป็นบรรทัดต่อของข้อเดิม (คงการขึ้นบรรทัดไว้)
@@ -162,6 +165,13 @@ export default function ProductDetail({
   /** ล็อกกันกดปุ่ม "เพิ่มลงตะกร้า" รัว ๆ (แตะสองทีบนมือถือ = ได้สองรายการ) */
   const addLock = useRef(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  /**
+   * 🧑‍💼 โหมดสั่งแทนลูกค้า — พนักงานหยิบของใส่ตะกร้าโดย "ไม่ต้องวางลายบนเว็บ"
+   * (ลายมาทางไลน์/อีเมลอยู่แล้ว กราฟฟิกจัดไฟล์เอง) · จำค่าไว้ข้ามหน้า จะได้ไม่ต้องกดใหม่ทุกสินค้า
+   */
+  const [adminMode, setAdminMode] = useState(false);
+  /** พนักงานเปิดโหมดแอดมินอยู่ไหม — เช็คสิทธิ์ควบเสมอ ลูกค้าทั่วไปจะไม่มีทางเข้าโหมดนี้ */
+  const staffOrdering = isAdmin && adminMode;
   const [selections, setSelections] = useState<Record<string, string>>(() =>
     initialSelections(initialProduct.options)
   );
@@ -455,9 +465,25 @@ export default function ProductDetail({
   // ถามตอนเบราว์เซอร์ว่างแล้ว — ปุ่มนี้ไม่เร่งด่วน ลูกค้าทั่วไปไม่ควรต้องรอคำขอนี้ตอนเปิดหน้า
   useEffect(() => {
     const idle = window.requestIdleCallback?.bind(window) ?? ((fn: () => void) => setTimeout(fn, 1200));
-    const id = idle(() => void canAccessAdmin().then(setIsAdmin));
+    const id = idle(() =>
+      void canAccessAdmin().then((ok) => {
+        setIsAdmin(ok);
+        // คืนค่าโหมดที่เลือกไว้ล่าสุด (เฉพาะพนักงาน — ลูกค้าทั่วไปไม่มีทางเปิดโหมดนี้ได้)
+        if (ok && typeof localStorage !== "undefined" && localStorage.getItem(ADMIN_MODE_KEY) === "1") setAdminMode(true);
+      }),
+    );
     return () => window.cancelIdleCallback?.(id as number);
   }, []);
+
+  /** เปลี่ยนโหมดสั่งของ (ลูกค้า ↔ แอดมิน) แล้วจำไว้ให้หน้าสินค้าถัดไป */
+  function switchAdminMode(on: boolean) {
+    setAdminMode(on);
+    try {
+      localStorage.setItem(ADMIN_MODE_KEY, on ? "1" : "0");
+    } catch {
+      /* โหมดส่วนตัว/บล็อกสตอเรจ = ไม่จำก็ได้ ไม่ใช่เรื่องคอขาดบาดตาย */
+    }
+  }
 
   // แถบซื้อลอยล่างจอ: โชว์เมื่อกล่องสั่งซื้อหลักหลุดจอไปแล้ว
   useEffect(() => {
@@ -643,8 +669,11 @@ export default function ProductDetail({
     }
     return null;
   })();
-  /** โหมดออกแบบบนเว็บ — ข้ามขั้นตอน "แนบลายของคุณ" ไปเลย */
-  const studioMode = !!studioTarget;
+  /**
+   * โหมดออกแบบบนเว็บ — ข้ามขั้นตอน "แนบลายของคุณ" ไปเลย
+   * โหมดแอดมิน (สั่งแทนลูกค้า) ปิดโหมดนี้: หยิบใส่ตะกร้าได้เลย ไม่ต้องวางลายบนเว็บก่อน
+   */
+  const studioMode = !!studioTarget && !staffOrdering;
   // (ดูคำอธิบาย noPageDropRef ด้านบน) — อัปเดตค่าให้ตัวรับ drop/paste ระดับหน้าเว็บใช้
   useEffect(() => {
     noPageDropRef.current = !!studio || studioMode;
@@ -705,9 +734,10 @@ export default function ProductDetail({
 
   // โหมดออกแบบบนเว็บ: จำนวนที่สั่ง = ผลรวมจำนวนของทุกลาย (ลูกค้าปรับที่ลายแต่ละอัน)
   useEffect(() => {
-    if (!studioMode || placed.length === 0) return;
+    // (โหมดแอดมินก็นับแบบเดียวกัน ถ้าพนักงานกด "วางลายเอง" ให้ลูกค้า)
+    if (placed.length === 0) return;
     setQty(designTotalQty);
-  }, [studioMode, placed.length, designTotalQty]);
+  }, [placed.length, designTotalQty]);
 
   /** อัปโหลดไฟล์เดียวแล้วคืน url (ใช้กับภาพที่ประกอบจากจอวางลาย) */
   async function uploadOne(f: File): Promise<string> {
@@ -852,7 +882,8 @@ export default function ProductDetail({
   const artRequired = artworkIsRequired(product);
   const artProvided = artFiles.length > 0 || artLink.trim().length > 0;
   // โหมดออกแบบบนเว็บ: "แบบที่ลูกค้าวางเอง" คือลายอยู่แล้ว ไม่ต้องมีช่องแนบไฟล์
-  const artBlocked = studioMode ? false : artRequired && !artProvided;
+  // โหมดแอดมิน: ลายมาทางไลน์/อีเมลอยู่แล้ว ไม่ต้องบังคับแนบตรงนี้ (แนบเพิ่มในออเดอร์ทีหลังได้)
+  const artBlocked = studioMode || staffOrdering ? false : artRequired && !artProvided;
 
   function handleAdd() {
     // 🔒 กันกดรัว/แตะซ้ำบนมือถือ — 1 คลิก = 1 รายการเสมอ
@@ -1883,16 +1914,53 @@ export default function ProductDetail({
 
           {/* ═══ กล่องสั่งซื้อ — จำนวน + ยอด + ปุ่ม (ติดกับตัวเลือก ไม่ให้ของไม่บังคับมาคั่น) ═══ */}
           <div ref={orderBoxRef} className="mt-5 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-amber-100">
+            {/* ═══ สลับโหมดสั่งของ (เห็นเฉพาะพนักงานที่ล็อกอินหลังบ้าน) ═══
+                 โหมดลูกค้า = เห็นหน้าเหมือนลูกค้าเป๊ะ ๆ · โหมดแอดมิน = สั่งแทนลูกค้า ข้ามขั้นวางลาย */}
+            {isAdmin && (
+              <div className="mb-3 rounded-2xl bg-sky-50 p-2 ring-1 ring-sky-200">
+                <div className="flex items-center gap-2">
+                  <span className="shrink-0 px-1 text-[11px] font-extrabold text-sky-900">โหมดสั่งของ</span>
+                  <div className="ml-auto flex rounded-full bg-white p-0.5 ring-1 ring-sky-200">
+                    <button
+                      type="button"
+                      onClick={() => switchAdminMode(false)}
+                      aria-pressed={!adminMode}
+                      className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
+                        adminMode ? "text-stone-500 hover:bg-sky-50" : "bg-sky-600 text-white"
+                      }`}
+                    >
+                      👤 ลูกค้า
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => switchAdminMode(true)}
+                      aria-pressed={adminMode}
+                      className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
+                        adminMode ? "bg-sky-600 text-white" : "text-stone-500 hover:bg-sky-50"
+                      }`}
+                    >
+                      🧑‍💼 แอดมิน
+                    </button>
+                  </div>
+                </div>
+                <p className="mt-1.5 px-1 text-[10.5px] leading-relaxed text-sky-800">
+                  {adminMode
+                    ? "🧑‍💼 สั่งแทนลูกค้า — หยิบใส่ตะกร้าได้เลย ไม่ต้องวางลาย/แนบไฟล์ (ติ๊ก “สั่งแทนลูกค้า” อีกทีตอนชำระเงิน)"
+                    : "👤 เห็นหน้าเหมือนลูกค้าทุกอย่าง — สลับเป็นแอดมินเมื่อจะสั่งแทนลูกค้า"}
+                </p>
+              </div>
+            )}
+
             {/* จำนวน + เพิ่มลงตะกร้า */}
             <div>
-              {matrix && !(studioMode && designDone) && (
+              {matrix && !designDone && (
                 <label className="mb-1 block text-[13px] font-bold text-stone-700">
                   จำนวน ({matrix.unit})
                 </label>
               )}
               <div className="flex flex-wrap items-center gap-3">
                 {/* มีลายแล้ว = คุมจำนวนที่ลายแต่ละอันแทน (กันตัวเลขสองที่ไม่ตรงกัน) */}
-                {!(studioMode && designDone) && (
+                {!designDone && (
                 <div className="flex items-center rounded-full bg-white ring-1 ring-amber-200">
                   <button
                     type="button"
@@ -1959,9 +2027,20 @@ export default function ProductDetail({
                         : `🛒 เพิ่มลงตะกร้า — ${formatPrice(unitPrice * qty + designFee)}`}
                   </button>
                 )}
+
+                {/* โหมดแอดมินยังเปิดจอวางลายเองได้ ถ้าลูกค้าอยากให้จัดลายให้ตรงนี้เลย */}
+                {staffOrdering && studioTarget && !designDone && (
+                  <button
+                    type="button"
+                    onClick={() => openStudio(null)}
+                    className="rounded-full px-3 py-2 text-[12px] font-bold text-sky-700 underline decoration-sky-300 underline-offset-4 transition hover:text-sky-900"
+                  >
+                    🎨 วางลายเอง
+                  </button>
+                )}
               </div>
               {/* แบบที่ลูกค้าวางเอง — สั่งหลายลายในรายการเดียวได้ กำหนดจำนวนแยกแต่ละลาย */}
-              {studioMode && designDone && (
+              {designDone && (
                 <div className="mt-3 rounded-2xl bg-sky-50 p-2.5 ring-1 ring-sky-200">
                   <p className="mb-2 flex items-center gap-2 px-1 text-[12px] font-extrabold text-sky-900">
                     ✓ แบบพร้อมผลิต {placed.length} ลาย
@@ -2265,7 +2344,8 @@ export default function ProductDetail({
                     <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
                       {artFiles.length > 0 ? `แนบแล้ว ${artFiles.length} รูป` : "ใส่ลิงก์แล้ว"}
                     </span>
-                  ) : artRequired ? (
+                  ) : artRequired && !staffOrdering ? (
+                    /* โหมดแอดมินไม่บังคับแนบ — ลายมาทางไลน์/อีเมลอยู่แล้ว */
                     <span className="ml-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">จำเป็น *</span>
                   ) : (
                     <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700">แนะนำ</span>

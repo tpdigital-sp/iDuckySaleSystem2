@@ -1506,9 +1506,34 @@ function AdminTemplatesInner() {
                     {/* ── ตารางไฟล์ (แถวกระชับ เลื่อนได้เมื่อไฟล์เยอะ) ── */}
                     {files.length > 0 && (
                       <div className="max-h-[26rem] space-y-1 overflow-y-auto rounded-xl bg-white p-1 ring-1 ring-slate-200">
-                        {files.map((f, fi) => (
-                          <div key={f.id} className="flex flex-wrap items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50">
-                            <span className={`w-6 shrink-0 text-right text-[11px] ${faint}`}>{fi + 1}</span>
+                        {files.map((f, fi) => {
+                          /**
+                           * แถวนี้ = "หน้า" หนึ่งหน้าของชุด — มาจากไฟล์ที่อัปเข้ามา หรือจากการกด "＋ เพิ่มหน้า" ในตั้งค่า Theme
+                           * แถวที่ไม่มีไฟล์งานเลยคือแบบหลัง · ต้องบอกให้ชัด ไม่งั้นดูเหมือนแถวเสียที่อัปไฟล์ไม่ขึ้น
+                           */
+                          const nSlots = slotsOf(t, f).length;
+                          const noArt = !f.fileUrl && !f.linkUrl;
+                          const pageName = f.side?.trim() || `หน้า ${fi + 1}`;
+                          return (
+                          <div
+                            key={f.id}
+                            className={`flex flex-wrap items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50 ${
+                              noArt ? "bg-violet-50/40" : ""
+                            }`}
+                          >
+                            {/* ชื่อหน้า — กดแล้วเข้าไปตั้งช่องของหน้านั้นได้เลย */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setThemeFile(f.id);
+                                setThemeOn(t.id);
+                              }}
+                              title={`เปิดตั้งค่า Theme ของ “${pageName}”`}
+                              className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700 transition hover:bg-violet-200"
+                            >
+                              {pageName}
+                              {nSlots ? ` · 🧩 ${nSlots}` : ""}
+                            </button>
                             {/* รูปตัวอย่างของไฟล์นี้ — ระบบทำให้เองตอนอัป · กดที่รูปเพื่อขยาย */}
                             {f.previewUrl ? (
                               <button
@@ -1529,8 +1554,13 @@ function AdminTemplatesInner() {
                                 ⏳
                               </span>
                             ) : (
-                              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-slate-100 text-xs text-slate-400">
-                                📄
+                              <span
+                                className={`grid h-9 w-9 shrink-0 place-items-center rounded-md text-xs ${
+                                  noArt ? "bg-violet-100 text-violet-500" : "bg-slate-100 text-slate-400"
+                                }`}
+                                title={noArt ? "หน้าที่เพิ่มเอง — ยังไม่มีไฟล์งาน จึงยังไม่มีรูปตัวอย่าง" : "ยังไม่มีรูปตัวอย่าง"}
+                              >
+                                {noArt ? "🧩" : "📄"}
                               </span>
                             )}
                             {label ? (
@@ -1556,10 +1586,10 @@ function AdminTemplatesInner() {
                             <input
                               value={f.side ?? ""}
                               onChange={(e) => patchFile(t.id, f.id, { side: e.target.value || undefined })}
-                              placeholder="ด้าน…"
-                              title="งานสกรีน 2 ด้าน: ทำสองไฟล์ที่ตัวเลือกเดียวกัน แล้วใส่ 'ด้านหน้า' กับ 'ด้านหลัง' ที่ช่องนี้ · เว้นว่าง = งานด้านเดียว"
-                              className={`${inputSm} w-24 shrink-0`}
-                              aria-label={`ด้านของไฟล์ที่ ${fi + 1}`}
+                              placeholder={`หน้า ${fi + 1}`}
+                              title="ชื่อหน้าที่ลูกค้าเห็นบนแถบหน้ากระดาษ (ด้านหน้า · ปกหน้า · เดือนมกราคม …) · เว้นว่าง = “หน้า N”"
+                              className={`${inputSm} w-28 shrink-0`}
+                              aria-label={`ชื่อหน้าของไฟล์ที่ ${fi + 1}`}
                             />
                             {f.fileUrl ? (
                               <a
@@ -1571,12 +1601,26 @@ function AdminTemplatesInner() {
                                 {f.fileName ?? "ไฟล์"}
                               </a>
                             ) : (
-                              <input
-                                value={f.linkUrl ?? ""}
-                                onChange={(e) => patchFile(t.id, f.id, { linkUrl: e.target.value.trim() || undefined })}
-                                placeholder="🔗 วางลิงก์ Google Drive (ไฟล์ใหญ่เกิน 50MB)"
-                                className={`${inputSm} min-w-0 flex-1`}
-                              />
+                              <span className="flex min-w-0 flex-1 items-center gap-2">
+                                {/*
+                                  หน้าที่เพิ่มจากตั้งค่า Theme ยังไม่มีไฟล์ .ai ของตัวเอง — ไม่ใช่ความผิดพลาด
+                                  ลูกค้าออกแบบบนเว็บได้อยู่แล้ว (ใช้ขนาด+ช่องที่ตั้งไว้) ไฟล์ .ai มีไว้ให้คนที่ทำเองในโปรแกรมโหลด
+                                */}
+                                {noArt && (
+                                  <span
+                                    className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700"
+                                    title="หน้านี้เกิดจากปุ่ม “＋ เพิ่มหน้า” ในตั้งค่า Theme — ลูกค้าออกแบบบนเว็บได้ตามปกติ ไฟล์งานจะอัปทีหลังหรือไม่อัปเลยก็ได้ (มีไว้ให้คนทำเองในโปรแกรมโหลด)"
+                                  >
+                                    🧩 หน้าที่เพิ่มเอง · ยังไม่มีไฟล์งาน
+                                  </span>
+                                )}
+                                <input
+                                  value={f.linkUrl ?? ""}
+                                  onChange={(e) => patchFile(t.id, f.id, { linkUrl: e.target.value.trim() || undefined })}
+                                  placeholder="🔗 วางลิงก์ Google Drive (ไฟล์ใหญ่เกิน 50MB)"
+                                  className={`${inputSm} min-w-0 flex-1`}
+                                />
+                              </span>
                             )}
                             <span className={`shrink-0 text-[11px] ${faint}`}>{formatFileSize(f.fileSize)}</span>
                             {/* 📏 ขนาดงานจริง — อ่านจากอาร์ตบอร์ดให้เอง แก้เองได้ถ้าไฟล์อ่านไม่ออก */}
@@ -1644,19 +1688,19 @@ function AdminTemplatesInner() {
                                 ↺
                               </button>
                             )}
-                            {/* ใช้ไฟล์นี้ทำรูปตัวอย่างของชุด (เรนเดอร์หน้าแรกในเบราว์เซอร์) */}
                             <button
                               type="button"
                               onClick={() =>
                                 patch(t.id, { files: files.filter((x) => x.id !== f.id) })
                               }
                               className={`${btnSmDanger} shrink-0`}
-                              title="เอาไฟล์นี้ออกจากชุด"
+                              title={`เอา “${pageName}” ออกจากชุด (ผังช่องของหน้านี้จะหายไปด้วย)`}
                             >
                               ✕
                             </button>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
 
