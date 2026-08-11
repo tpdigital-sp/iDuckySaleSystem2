@@ -1826,6 +1826,8 @@ function AdminTemplatesInner() {
                 /** ผังที่ด้านนี้ใช้จริง (ไม่มีของตัวเอง = ตกไปใช้ของทั้งชุด) */
                 const shown = cur ? (own.length ? own : slotsOf(t)) : slotsOf(t);
                 const inherited = !!cur && !own.length && slotsOf(t).length > 0;
+                /** ทุกด้านมีผังของตัวเองแล้ว → ผังกลางไม่ถูกใช้งาน ไม่ต้องให้แก้ */
+                const centralIdle = multi && !slotsOf(t).length && files.every((f) => (f.slots ?? []).length > 0);
                 const sizeOf = (f?: TemplateFile) =>
                   f?.widthMm && f?.heightMm ? f.widthMm / f.heightMm : undefined;
 
@@ -1860,6 +1862,20 @@ function AdminTemplatesInner() {
                       ชุดที่มีหลายไฟล์ = งานหลายด้าน แต่ละด้านเป็นคนละหน้าฝั่งลูกค้า
                       ตรงนี้คือที่เดียวที่บอกได้ว่ากำลังตั้งของด้านไหนอยู่
                     */}
+                    {/* ค่าระดับชุด — ต้องเห็นได้เสมอ ไม่ผูกกับว่าหน้าไหนมีช่องกี่ช่อง */}
+                    <label
+                      className="mb-2 flex w-fit cursor-pointer items-center gap-1.5 text-[11px] font-semibold text-slate-600"
+                      title="ติ๊กแล้วลูกค้าต้องใส่รูปให้ครบทุกช่อง (ทุกด้าน) ถึงจะกดใช้ลายได้"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!t.slotsRequired}
+                        onChange={(e) => patch(t.id, { slotsRequired: e.target.checked || undefined })}
+                        className="h-3.5 w-3.5 accent-violet-500"
+                      />
+                      ต้องใส่ครบทุกช่อง{multi ? " (ทุกด้าน)" : ""}
+                    </label>
+
                     {multi && (
                       <div className="mb-3 flex flex-wrap items-center gap-1.5">
                         <span className={`text-[11px] ${faint}`}>ตั้งช่องของ:</span>
@@ -1870,7 +1886,7 @@ function AdminTemplatesInner() {
                             !cur ? "bg-violet-500 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                           }`}
                         >
-                          ผังกลาง (ทั้งชุด) · {slotsOf(t).length} ช่อง
+                          ผังกลาง (ทั้งชุด) · {centralIdle ? "ไม่ได้ใช้" : `${slotsOf(t).length} ช่อง`}
                         </button>
                         {files.map((f, fi) => {
                           const n = (f.slots ?? []).length;
@@ -1985,6 +2001,22 @@ function AdminTemplatesInner() {
                       </p>
                     )}
 
+                    {!cur && centralIdle ? (
+                      <div className="rounded-xl bg-slate-50 px-4 py-6 text-center ring-1 ring-slate-200">
+                        <p className="text-sm font-bold text-slate-700">ผังกลางไม่ได้ใช้งานแล้ว</p>
+                        <p className={`mx-auto mt-1 max-w-xl text-[12px] ${faint}`}>
+                          ทุกด้านมีผังช่องของตัวเองครบแล้ว — ผังกลางมีไว้เผื่อด้านที่ยังไม่ได้ตั้งเท่านั้น
+                          เลือกด้านที่ปุ่มด้านบนเพื่อแก้ผังของด้านนั้น
+                        </p>
+                        <div className="mt-3 flex flex-wrap justify-center gap-2">
+                          {files.map((f, fi) => (
+                            <button key={f.id} type="button" onClick={() => setThemeFile(f.id)} className={btnSmDucky}>
+                              ไปที่ {f.side?.trim() || `ด้านที่ ${fi + 1}`}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
                     <SlotEditor
                       key={cur?.id ?? "set"}
                       slots={shown}
@@ -1999,6 +2031,7 @@ function AdminTemplatesInner() {
                       }
                       onRequiredChange={(v) => patch(t.id, { slotsRequired: v || undefined })}
                     />
+                    )}
                   </>
                 );
               })()}

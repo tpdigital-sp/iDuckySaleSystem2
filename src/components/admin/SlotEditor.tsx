@@ -230,19 +230,6 @@ export default function SlotEditor({
         </label>
         {slots.length > 0 && (
           <>
-            {/* บางงานตั้งใจเว้นช่อง บางงานลูกค้าลืม — ให้ร้านเลือกเองต่อชุด */}
-            <label
-              className="flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-600"
-              title="ติ๊กแล้วลูกค้าต้องใส่รูปให้ครบทุกช่องถึงจะกดใช้ลายได้"
-            >
-              <input
-                type="checkbox"
-                checked={!!required}
-                onChange={(e) => onRequiredChange(e.target.checked)}
-                className="h-3.5 w-3.5 accent-violet-500"
-              />
-              ต้องใส่ครบทุกช่อง
-            </label>
             <button
               type="button"
               onClick={async () => {
