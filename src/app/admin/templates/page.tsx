@@ -141,6 +141,11 @@ function AdminTemplatesInner() {
   const [thumbBusy, setThumbBusy] = useState<string | null>(null);
   /** ชุดที่กำลังเปิดหน้าต่างตั้งค่า Theme อยู่ (เก็บเป็น id — ข้อมูลอ่านสด ๆ จาก list) */
   const [themeOn, setThemeOn] = useState<string | null>(null);
+  /**
+   * ไฟล์ (= ด้าน) ที่กำลังตั้งช่องอยู่ในหน้าต่าง Theme
+   * null = ตั้งของ "ทั้งชุด" ซึ่งไฟล์ที่ไม่ได้ตั้งของตัวเองจะใช้ผังนี้
+   */
+  const [themeFile, setThemeFile] = useState<string | null>(null);
   /** ชุดที่ไล่เติมรูปย้อนหลังไปแล้ว — กันทำซ้ำทุกครั้งที่กางการ์ด */
   const backfilled = useRef<Set<string>>(new Set());
   /** ความคืบหน้าตอนโยนไฟล์ทีเดียวหลายไฟล์ */
@@ -1685,6 +1690,11 @@ function AdminTemplatesInner() {
                         <div className="flex flex-wrap items-center gap-2 rounded-xl bg-violet-50/60 px-3 py-2.5 ring-1 ring-violet-100">
                           <span className="text-[11px] font-bold text-violet-800">🧩 ช่องใส่รูป (Theme)</span>
                           <span className={`min-w-0 flex-1 truncate text-[11px] ${faint}`}>
+                            {files.length > 1 && (
+                              <span className="mr-1 font-semibold text-violet-700">
+                                {files.length} ด้าน ({files.map((f, i) => f.side?.trim() || `ด้านที่ ${i + 1}`).join(" · ")}) ·
+                              </span>
+                            )}
                             {list.length ? (
                               <>
                                 <span className="font-semibold text-violet-700">{list.length} ช่อง</span> · {names}
@@ -1694,7 +1704,14 @@ function AdminTemplatesInner() {
                               "ยังไม่ได้ตั้งช่อง — ลูกค้าจะวางลายเดียวเต็มกรอบตามปกติ"
                             )}
                           </span>
-                          <button type="button" onClick={() => setThemeOn(t.id)} className={btnSmDucky}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setThemeFile(null);
+                              setThemeOn(t.id);
+                            }}
+                            className={btnSmDucky}
+                          >
                             {list.length ? "🧩 แก้ไข Theme" : "🧩 ตั้งค่า Theme"}
                           </button>
                         </div>
@@ -1798,30 +1815,106 @@ function AdminTemplatesInner() {
             className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/70 p-3 backdrop-blur-sm sm:p-6"
           >
             <div className="w-full max-w-6xl rounded-2xl bg-white p-4 shadow-2xl sm:p-5">
-              <div className="mb-3 flex items-start gap-3 border-b border-slate-100 pb-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-extrabold text-slate-800">🧩 ตั้งค่า Theme — ช่องใส่รูป</p>
-                  <p className={`mt-0.5 truncate text-xs ${faint}`}>
-                    {t.name} · ใช้กับทุกไฟล์ในชุดนี้ ({files.length} ไฟล์)
-                  </p>
-                </div>
-                <button type="button" onClick={() => setThemeOn(null)} className={btnSmNeutral}>
-                  ✕ ปิด
-                </button>
-              </div>
+              {(() => {
+                /**
+                 * ไฟล์ในชุดที่ถือว่าเป็น "ด้าน" — งานสกรีน 2 ด้านจะมีมากกว่าหนึ่ง
+                 * ผังช่องตั้งได้ทั้งระดับชุด (ใช้ร่วมทุกไฟล์) และระดับไฟล์ (เฉพาะด้านนั้น)
+                 */
+                const multi = files.length > 1;
+                const cur = themeFile ? files.find((f) => f.id === themeFile) : null;
+                const own = cur?.slots ?? [];
+                /** ผังที่ด้านนี้ใช้จริง (ไม่มีของตัวเอง = ตกไปใช้ของทั้งชุด) */
+                const shown = cur ? (own.length ? own : slotsOf(t)) : slotsOf(t);
+                const inherited = !!cur && !own.length && slotsOf(t).length > 0;
+                const sizeOf = (f?: TemplateFile) =>
+                  f?.widthMm && f?.heightMm ? f.widthMm / f.heightMm : undefined;
 
-              <SlotEditor
-                slots={slotsOf(t)}
-                previewUrl={t.previewUrl || files.find((f) => f.previewUrl)?.previewUrl}
-                ratio={(() => {
-                  // ทรงของเวทีลากต้องเท่างานจริง ไม่งั้นตำแหน่งที่ลากไม่ตรงกับที่ลูกค้าเห็น
-                  const f = files.find((x) => x.widthMm && x.heightMm);
-                  return f ? f.widthMm! / f.heightMm! : undefined;
-                })()}
-                required={t.slotsRequired}
-                onChange={(next) => patch(t.id, { slots: next.length ? next : undefined })}
-                onRequiredChange={(v) => patch(t.id, { slotsRequired: v || undefined })}
-              />
+                return (
+                  <>
+                    <div className="mb-3 flex items-start gap-3 border-b border-slate-100 pb-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-extrabold text-slate-800">
+                          🧩 ตั้งค่า Theme — ช่องใส่รูป
+                          {cur && (
+                            <span className="ml-2 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700">
+                              {cur.side?.trim() || cur.fileName || "ไฟล์นี้เท่านั้น"}
+                            </span>
+                          )}
+                        </p>
+                        <p className={`mt-0.5 truncate text-xs ${faint}`}>
+                          {t.name} ·{" "}
+                          {cur
+                            ? `ผังนี้ใช้เฉพาะไฟล์นี้ (ลูกค้าเห็นเป็นหน้าของตัวเอง)`
+                            : multi
+                              ? `ผังกลาง — ไฟล์ที่ไม่ได้ตั้งของตัวเองจะใช้ผังนี้ (${files.length} ไฟล์ในชุด)`
+                              : `ใช้กับทุกไฟล์ในชุดนี้ (${files.length} ไฟล์)`}
+                        </p>
+                      </div>
+                      <button type="button" onClick={() => setThemeOn(null)} className={btnSmNeutral}>
+                        ✕ ปิด
+                      </button>
+                    </div>
+
+                    {/*
+                      ── เลือกด้านที่จะตั้งช่อง ──
+                      ชุดที่มีหลายไฟล์ = งานหลายด้าน แต่ละด้านเป็นคนละหน้าฝั่งลูกค้า
+                      ตรงนี้คือที่เดียวที่บอกได้ว่ากำลังตั้งของด้านไหนอยู่
+                    */}
+                    {multi && (
+                      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                        <span className={`text-[11px] ${faint}`}>ตั้งช่องของ:</span>
+                        <button
+                          type="button"
+                          onClick={() => setThemeFile(null)}
+                          className={`rounded-full px-3 py-1 text-[11px] font-bold transition ${
+                            !cur ? "bg-violet-500 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          }`}
+                        >
+                          ผังกลาง (ทั้งชุด) · {slotsOf(t).length} ช่อง
+                        </button>
+                        {files.map((f, fi) => {
+                          const n = (f.slots ?? []).length;
+                          return (
+                            <button
+                              key={f.id}
+                              type="button"
+                              onClick={() => setThemeFile(f.id)}
+                              className={`rounded-full px-3 py-1 text-[11px] font-bold transition ${
+                                cur?.id === f.id ? "bg-violet-500 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                              }`}
+                              title={f.fileName}
+                            >
+                              {f.side?.trim() || `ด้านที่ ${fi + 1}`} ·{" "}
+                              {n ? `${n} ช่อง` : `ใช้ผังกลาง (${slotsOf(t).length})`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {inherited && (
+                      <p className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200">
+                        ด้านนี้ยังไม่มีผังของตัวเอง — ที่เห็นคือผังกลาง แก้ตรงนี้แล้วจะกลายเป็นผังเฉพาะด้านนี้ทันที
+                      </p>
+                    )}
+
+                    <SlotEditor
+                      key={cur?.id ?? "set"}
+                      slots={shown}
+                      previewUrl={cur?.previewUrl || t.previewUrl || files.find((f) => f.previewUrl)?.previewUrl}
+                      // ทรงของเวทีลากต้องเท่างานจริงของด้านนั้น ไม่งั้นตำแหน่งที่ลากไม่ตรงกับที่ลูกค้าเห็น
+                      ratio={sizeOf(cur ?? files.find((x) => x.widthMm && x.heightMm))}
+                      required={t.slotsRequired}
+                      onChange={(next) =>
+                        cur
+                          ? patchFile(t.id, cur.id, { slots: next.length ? next : undefined })
+                          : patch(t.id, { slots: next.length ? next : undefined })
+                      }
+                      onRequiredChange={(v) => patch(t.id, { slotsRequired: v || undefined })}
+                    />
+                  </>
+                );
+              })()}
 
               <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                 <span className={`min-w-0 flex-1 text-[11px] ${faint}`}>
