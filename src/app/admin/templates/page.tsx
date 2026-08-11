@@ -21,6 +21,7 @@ import {
   TEMPLATE_MAX_MB,
   type DesignTemplate,
   type TemplateFile,
+  type TemplateSlot,
 } from "@/lib/design-templates";
 import {
   deleteTemplate,
@@ -106,6 +107,77 @@ function TemplateIcon({ tone, size = 40 }: { tone: string; size?: number }) {
         <path d="M30.5 31H33M31.8 29.8v2.4" />
       </g>
     </svg>
+  );
+}
+
+/**
+ * 🧩 ผังช่องของหน้าหนึ่ง แบบย่อ อ่านอย่างเดียว — ใช้ในหน้าสรุปตอนผังกลางไม่ได้ใช้งานแล้ว
+ * แอดมินต้องเห็นว่าแต่ละหน้าวางช่องไว้ยังไงโดยไม่ต้องกดสลับไปทีละหน้า · กดที่การ์ดแล้วเข้าไปแก้หน้านั้นได้เลย
+ */
+function SlotBoardPreview({
+  label,
+  slots,
+  ratio,
+  previewUrl,
+  onOpen,
+}: {
+  label: string;
+  slots: TemplateSlot[];
+  ratio?: number;
+  previewUrl?: string;
+  onOpen: () => void;
+}) {
+  const r = ratio && ratio > 0 ? ratio : 1;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={`แก้ผังของ ${label}`}
+      className="group w-full max-w-[18rem] rounded-xl bg-white p-2 text-left ring-1 ring-slate-200 transition hover:ring-violet-400 hover:shadow-md"
+    >
+      <div
+        className="relative w-full overflow-hidden rounded-lg bg-slate-50 ring-1 ring-slate-200"
+        style={{
+          aspectRatio: `${r}`,
+          ...(previewUrl
+            ? {
+                // ยืดเต็มกรอบเหมือนกระดานลากจริง — พิกัด % จะได้ตรงกัน
+                backgroundImage: `url(${previewUrl})`,
+                backgroundSize: "100% 100%",
+                backgroundRepeat: "no-repeat",
+              }
+            : {}),
+        }}
+      >
+        {slots.map((s, i) => (
+          <span
+            key={s.id}
+            style={{
+              left: `${s.xPct}%`,
+              top: `${s.yPct}%`,
+              width: `${s.wPct}%`,
+              height: `${s.hPct}%`,
+              borderRadius: s.shape === "circle" ? "50%" : 0,
+            }}
+            className="absolute grid place-items-center border-2 border-violet-400/70 bg-violet-500/15 text-[10px] font-extrabold text-violet-700"
+          >
+            {i + 1}
+          </span>
+        ))}
+        {!slots.length && (
+          <span className="absolute inset-0 grid place-items-center text-[11px] font-semibold text-slate-400">
+            ยังไม่มีช่อง
+          </span>
+        )}
+      </div>
+      <p className="mt-1.5 flex items-center gap-1 px-0.5 text-[11px] font-bold text-slate-700">
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">
+          {slots.length} ช่อง
+        </span>
+        <span className="shrink-0 text-slate-300 transition group-hover:text-violet-500">✎</span>
+      </p>
+    </button>
   );
 }
 
@@ -2040,17 +2112,23 @@ function AdminTemplatesInner() {
                     )}
 
                     {!cur && centralIdle ? (
-                      <div className="rounded-xl bg-slate-50 px-4 py-6 text-center ring-1 ring-slate-200">
-                        <p className="text-sm font-bold text-slate-700">ผังกลางไม่ได้ใช้งานแล้ว</p>
-                        <p className={`mx-auto mt-1 max-w-xl text-[12px] ${faint}`}>
+                      <div className="rounded-xl bg-slate-50 px-4 py-4 ring-1 ring-slate-200">
+                        <p className="text-center text-sm font-bold text-slate-700">ผังกลางไม่ได้ใช้งานแล้ว</p>
+                        <p className={`mx-auto mt-1 max-w-xl text-center text-[12px] ${faint}`}>
                           ทุกด้านมีผังช่องของตัวเองครบแล้ว — ผังกลางมีไว้เผื่อด้านที่ยังไม่ได้ตั้งเท่านั้น
-                          เลือกด้านที่ปุ่มด้านบนเพื่อแก้ผังของด้านนั้น
+                          ข้างล่างคือผังจริงของแต่ละหน้า กดที่หน้าไหนเพื่อเข้าไปแก้หน้านั้น
                         </p>
-                        <div className="mt-3 flex flex-wrap justify-center gap-2">
+                        {/* ผังของทุกหน้าเรียงให้ดูพร้อมกัน — ไม่ต้องกดสลับทีละหน้าเพื่อจำว่าอีกหน้าวางไว้ยังไง */}
+                        <div className="mt-3 flex flex-wrap justify-center gap-3">
                           {files.map((f, fi) => (
-                            <button key={f.id} type="button" onClick={() => setThemeFile(f.id)} className={btnSmDucky}>
-                              ไปที่ {tabLabel(f, fi)}
-                            </button>
+                            <SlotBoardPreview
+                              key={f.id}
+                              label={tabLabel(f, fi)}
+                              slots={slotsOf(t, f)}
+                              ratio={sizeOf(f) ?? sizeOf(files.find((x) => x.widthMm && x.heightMm))}
+                              previewUrl={f.previewUrl || t.previewUrl}
+                              onOpen={() => setThemeFile(f.id)}
+                            />
                           ))}
                         </div>
                       </div>
