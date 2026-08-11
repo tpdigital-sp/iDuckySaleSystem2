@@ -35,6 +35,16 @@
       "env": {
         "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
       }
+    },
+    {
+      "name": "iducky-dev-3014",
+      "runtimeExecutable": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin/npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "3014"],
+      "port": 3014,
+      "autoPort": false,
+      "env": {
+        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+      }
     }
   ]
 }

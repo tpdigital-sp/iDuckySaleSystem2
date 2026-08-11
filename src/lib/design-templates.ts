@@ -272,9 +272,20 @@ export function sideName(f: TemplateFile, i: number, total: number): string {
   return total > 1 ? `หน้า ${i + 1}` : "";
 }
 
-/** งานนี้เป็นงานหลายด้านไหม — มีไฟล์ตั้งแต่ 2 และอย่างน้อยหนึ่งไฟล์ระบุชื่อด้านไว้ */
+/**
+ * งานนี้เป็น "หลายหน้าของชิ้นเดียวกัน" ไหม
+ *
+ * ไฟล์ที่ส่งเข้ามาคือผลจาก filesForSelections แล้ว = ไฟล์ของค่าตัวเลือกที่ลูกค้าเลือกอยู่
+ * เหลือมากกว่าหนึ่งไฟล์ในค่าตัวเลือกเดียวกัน = คนละหน้าของชิ้นเดียวกัน (ไม่ใช่ตัวเลือกให้เลือกอย่างใดอย่างหนึ่ง)
+ *
+ * ⚠️ ห้ามใช้ "มีชื่อด้านไหม" เป็นเงื่อนไข — หน้าที่แอดมินเพิ่มเองไม่ต้องตั้งชื่อก็ได้ (เรียกว่า "หน้า N")
+ * เคยเช็คแบบนั้นแล้วหน้าที่เพิ่มมาหายไปจากจอออกแบบทั้งหมด
+ */
 export function isMultiSide(files: TemplateFile[]): boolean {
-  return files.length > 1 && files.some((f) => !!f.side?.trim());
+  if (files.length < 2) return false;
+  if (files.some((f) => !!f.side?.trim())) return true;
+  const choice = (f: TemplateFile) => (f.choice ?? "").trim();
+  return files.every((f) => choice(f) === choice(files[0]));
 }
 
 // ══════════ ขนาดงานจริง (มม.) — ใช้ตอนลูกค้าวางลายบนเว็บ ══════════

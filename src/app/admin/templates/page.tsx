@@ -1907,8 +1907,9 @@ function AdminTemplatesInner() {
                 const oneChoice = files.every((f) => choiceOf(f) === choiceOf(files[0]));
                 /** ป้ายของแต่ละไฟล์ — ต้องบอกทั้งค่าตัวเลือกและชื่อด้าน ไม่งั้นแอดมินแยกไม่ออกว่ากำลังตั้งของอะไร */
                 const tabLabel = (f: TemplateFile, i: number) =>
-                  [byChoice ? choiceOf(f) || "(ไม่ระบุค่า)" : "", f.side?.trim()].filter(Boolean).join(" · ") ||
-                  `หน้า ${i + 1}`;
+                  [byChoice ? choiceOf(f) || "(ไม่ระบุค่า)" : "", f.side?.trim() || `หน้า ${i + 1}`]
+                    .filter(Boolean)
+                    .join(" · ");
                 const own = cur?.slots ?? [];
                 /** ผังที่ด้านนี้ใช้จริง (ไม่มีของตัวเอง = ตกไปใช้ของทั้งชุด) */
                 const shown = cur ? (own.length ? own : slotsOf(t)) : slotsOf(t);
@@ -2093,7 +2094,7 @@ function AdminTemplatesInner() {
                             </button>
                           );
                         })}
-                        {/* กี่หน้าก็ได้ ไม่จำกัดแค่หน้า-หลัง */}
+                        {/* กี่หน้าก็ได้ ไม่จำกัดแค่หน้า-หลัง (ชื่อหน้าไม่บังคับ — ไม่ตั้ง = "หน้า N") */}
                         <button
                           type="button"
                           onClick={addPage}
@@ -2104,6 +2105,22 @@ function AdminTemplatesInner() {
                         </button>
                       </div>
                     )}
+
+                    {/*
+                      หน้าที่ไม่มีช่องเลยในชุดที่หน้าอื่นมีช่อง = หน้าตายฝั่งลูกค้า
+                      (จอวางรูปเปิดเป็นแบบช่อง แต่หน้านั้นไม่มีกล่องให้กด เลยใส่รูปไม่ได้)
+                    */}
+                    {multi &&
+                      (() => {
+                        const empty = files.filter((f) => !slotsOf(t, f).length);
+                        if (!empty.length || empty.length === files.length) return null;
+                        return (
+                          <p className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200">
+                            ⚠️ {empty.map((f) => `“${tabLabel(f, files.indexOf(f))}”`).join(" และ ")} ยังไม่มีช่องเลย —
+                            ลูกค้าจะเปิดถึงหน้านี้แต่ใส่รูปไม่ได้ ต้องตั้งช่องให้ครบทุกหน้า (หรือเอาหน้านั้นออก)
+                          </p>
+                        );
+                      })()}
 
                     {/*
                       ตั้งชื่อหน้าได้จากตรงนี้เลย — ชื่อเดียวกับที่ลูกค้าเห็นบนแถบหน้ากระดาษ
