@@ -139,6 +139,8 @@ function AdminTemplatesInner() {
   const [prodOpen, setProdOpen] = useState<string | null>(null);
   /** ไฟล์ที่ระบบกำลังทำรูปตัวอย่างให้อยู่ — โชว์เป็นช่องกะพริบแทนรูป ไม่มีปุ่มให้กด */
   const [thumbBusy, setThumbBusy] = useState<string | null>(null);
+  /** ชุดที่กำลังเปิดหน้าต่างตั้งค่า Theme อยู่ (เก็บเป็น id — ข้อมูลอ่านสด ๆ จาก list) */
+  const [themeOn, setThemeOn] = useState<string | null>(null);
   /** ชุดที่ไล่เติมรูปย้อนหลังไปแล้ว — กันทำซ้ำทุกครั้งที่กางการ์ด */
   const backfilled = useRef<Set<string>>(new Set());
   /** ความคืบหน้าตอนโยนไฟล์ทีเดียวหลายไฟล์ */
@@ -188,6 +190,15 @@ function AdminTemplatesInner() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [zoom]);
+
+  useEffect(() => {
+    if (!themeOn) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setThemeOn(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [themeOn]);
 
   /** โหลดตัวเลือกของสินค้าอ้างอิงตัวหนึ่ง (ครั้งเดียวต่อสินค้า) */
   async function ensureProductOptions(pid: string) {
@@ -1652,15 +1663,31 @@ function AdminTemplatesInner() {
 
                     {/*
                       🧩 ช่องใส่รูป (Theme) — กำหนดที่ระดับชุด ใช้กับทุกไฟล์ในชุด
-                      งานที่ต้องวางหลายรูปบนแผ่นเดียว (สติกเกอร์ 4 ดวง · photobooth strip)
+                      งานที่ต้องวางหลายรูปบนแผ่นเดียว (สติกเกอร์ 4 ดวง · photobooth strip · สกรีน 2 ด้าน)
+                      ตัวจัดช่องต้องใช้พื้นที่กว้าง เลยแยกไปเปิดเป็นหน้าต่างเต็ม ๆ แทนการฝังในการ์ด
                     */}
-                    <SlotEditor
-                      slots={slotsOf(t)}
-                      previewUrl={t.previewUrl || files.find((f) => f.previewUrl)?.previewUrl}
-                      required={t.slotsRequired}
-                      onChange={(next) => patch(t.id, { slots: next.length ? next : undefined })}
-                      onRequiredChange={(v) => patch(t.id, { slotsRequired: v || undefined })}
-                    />
+                    {(() => {
+                      const list = slotsOf(t);
+                      const names = list.map((sl, i) => sl.label?.trim() || `${i + 1}`).join(" · ");
+                      return (
+                        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-violet-50/60 px-3 py-2.5 ring-1 ring-violet-100">
+                          <span className="text-[11px] font-bold text-violet-800">🧩 ช่องใส่รูป (Theme)</span>
+                          <span className={`min-w-0 flex-1 truncate text-[11px] ${faint}`}>
+                            {list.length ? (
+                              <>
+                                <span className="font-semibold text-violet-700">{list.length} ช่อง</span> · {names}
+                                {t.slotsRequired ? " · ต้องใส่ครบทุกช่อง" : ""}
+                              </>
+                            ) : (
+                              "ยังไม่ได้ตั้งช่อง — ลูกค้าจะวางลายเดียวเต็มกรอบตามปกติ"
+                            )}
+                          </span>
+                          <button type="button" onClick={() => setThemeOn(t.id)} className={btnSmDucky}>
+                            {list.length ? "🧩 แก้ไข Theme" : "🧩 ตั้งค่า Theme"}
+                          </button>
+                        </div>
+                      );
+                    })()}
 
                       </div>
                     </div>
@@ -1746,6 +1773,64 @@ function AdminTemplatesInner() {
       )}
         </div>
       </div>
+
+      {/* ── หน้าต่างตั้งค่า Theme — กว้างเกือบเต็มจอ เพราะต้องลากช่องบนรูปจริง ── */}
+      {(() => {
+        const t = list.find((x) => x.id === themeOn);
+        if (!t) return null;
+        const files = templateFiles(t);
+        return (
+          <div
+            role="dialog"
+            aria-label={`ตั้งค่า Theme ${t.name}`}
+            className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/70 p-3 backdrop-blur-sm sm:p-6"
+          >
+            <div className="w-full max-w-6xl rounded-2xl bg-white p-4 shadow-2xl sm:p-5">
+              <div className="mb-3 flex items-start gap-3 border-b border-slate-100 pb-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-extrabold text-slate-800">🧩 ตั้งค่า Theme — ช่องใส่รูป</p>
+                  <p className={`mt-0.5 truncate text-xs ${faint}`}>
+                    {t.name} · ใช้กับทุกไฟล์ในชุดนี้ ({files.length} ไฟล์)
+                  </p>
+                </div>
+                <button type="button" onClick={() => setThemeOn(null)} className={btnSmNeutral}>
+                  ✕ ปิด
+                </button>
+              </div>
+
+              <SlotEditor
+                slots={slotsOf(t)}
+                previewUrl={t.previewUrl || files.find((f) => f.previewUrl)?.previewUrl}
+                ratio={(() => {
+                  // ทรงของเวทีลากต้องเท่างานจริง ไม่งั้นตำแหน่งที่ลากไม่ตรงกับที่ลูกค้าเห็น
+                  const f = files.find((x) => x.widthMm && x.heightMm);
+                  return f ? f.widthMm! / f.heightMm! : undefined;
+                })()}
+                required={t.slotsRequired}
+                onChange={(next) => patch(t.id, { slots: next.length ? next : undefined })}
+                onRequiredChange={(v) => patch(t.id, { slotsRequired: v || undefined })}
+              />
+
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+                <span className={`min-w-0 flex-1 text-[11px] ${faint}`}>
+                  {t._dirty ? "ยังไม่บันทึก — กดเสร็จแล้วจะบันทึกให้เลย" : "บันทึกแล้ว"}
+                </span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (t._dirty) await save(t);
+                    setThemeOn(null);
+                  }}
+                  disabled={saving === t.id}
+                  className={`${btnSmDucky} disabled:opacity-50`}
+                >
+                  {saving === t.id ? "กำลังบันทึก…" : "✓ เสร็จแล้ว"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── ดูรูปตัวอย่างขนาดใหญ่ (กดพื้นหลัง/ปุ่มปิด/Esc เพื่อออก) ── */}
       {zoom && (

@@ -22,6 +22,7 @@ const inputSm =
 export default function SlotEditor({
   slots,
   previewUrl,
+  ratio,
   required,
   onChange,
   onRequiredChange,
@@ -29,6 +30,12 @@ export default function SlotEditor({
   slots: TemplateSlot[];
   /** รูปพรีวิวของไฟล์เทมเพลต — ไม่มีก็วาดบนพื้นขาว */
   previewUrl?: string;
+  /**
+   * สัดส่วนกรอบงานจริง (กว้าง ÷ สูง) — ทำให้เวทีลากมีทรงเดียวกับงานจริง
+   * สำคัญเพราะพิกัดเก็บเป็น % ของกรอบงาน ถ้าเวทีเป็นจัตุรัสแต่งานเป็นแนวนอน
+   * ตำแหน่งที่ลากไว้จะไม่ตรงกับที่ลูกค้าเห็น · ไม่รู้ขนาด = จัตุรัสเหมือนเดิม
+   */
+  ratio?: number;
   /** บังคับให้ลูกค้าใส่ครบทุกช่องก่อนสั่งไหม */
   required?: boolean;
   onChange: (next: TemplateSlot[]) => void;
@@ -276,10 +283,19 @@ export default function SlotEditor({
         onPointerUp={onUp}
         onPointerCancel={onUp}
         onPointerDown={() => setSel(null)}
-        className="relative mx-auto aspect-square w-full max-w-[18rem] touch-none select-none overflow-hidden rounded-lg bg-white ring-1 ring-slate-300"
+        className="relative mx-auto w-full touch-none select-none overflow-hidden rounded-lg bg-white ring-1 ring-slate-300"
         style={
           previewUrl
-            ? { backgroundImage: `url(${previewUrl})`, backgroundSize: "contain", backgroundPosition: "center", backgroundRepeat: "no-repeat" }
+            ? {
+                aspectRatio: `${ratio && ratio > 0 ? ratio : 1}`,
+                // คุมความสูงด้วยการคุมความกว้าง (งานแนวตั้งจะได้ไม่สูงจนล้นจอ) — ไม่ใช้ vh เพราะบางบริบทคำนวณได้ 0
+                maxWidth: `min(100%, ${Math.round(30 * Math.max(ratio && ratio > 0 ? ratio : 1, 0.4))}rem)`,
+                // ยืดรูปเต็มกรอบ (ไม่ใช่ contain) — กรอบมีทรงเท่างานจริงแล้ว รูปจึงพอดีพอดี ไม่มีขอบว่างให้พิกัดเพี้ยน
+                backgroundImage: `url(${previewUrl})`,
+                backgroundSize: "100% 100%",
+                backgroundPosition: "center",
+                backgroundRepeat: "no-repeat",
+              }
             : undefined
         }
       >
