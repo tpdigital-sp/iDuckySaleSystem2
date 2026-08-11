@@ -121,18 +121,22 @@ export default function SlotStudio({
   const [allShots, setAllShots] = useState<Record<string, (SlotShot | null)[]>>(() =>
     Object.fromEntries(sides.map((sd) => [sd.key, sd.slots.map((_, i) => initial?.[sd.key]?.[i] ?? null)])),
   );
-  const [sel, setSel] = useState<number | null>(null);
-  const [over, setOver] = useState<number | null>(null);
+  /** ช่องที่เลือกอยู่ — ต้องรู้ด้วยว่าอยู่หน้าไหน เพราะโหมดกางคู่เห็นหลายหน้าพร้อมกัน */
+  const [sel, setSel] = useState<{ si: number; i: number } | null>(null);
+  const [over, setOver] = useState<{ si: number; i: number } | null>(null);
+  /** กางทุกหน้าให้เห็นพร้อมกัน (หน้า-หลังคู่กัน) */
+  const [spreadView, setSpreadView] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const drag = useRef<{ i: number; pointerId: number; x: number; y: number; s: SlotShot } | null>(null);
+  const drag = useRef<{ si: number; i: number; pointerId: number; x: number; y: number; s: SlotShot } | null>(null);
   /** นิ้วที่แตะกระดานอยู่ตอนนี้ (id → ตำแหน่ง) — ใช้จับท่าบีบสองนิ้ว */
   const pts = useRef<Map<number, { x: number; y: number }>>(new Map());
   /** ท่าบีบที่กำลังทำอยู่ — ผูกกับนิ้วสองนิ้วที่เริ่มท่า (a/b) ไม่ใช่ "สองนิ้วแรกใน map" */
-  const pinch = useRef<{ i: number; a: number; b: number; dist: number; zoom: number } | null>(null);
-  const stage = useRef<HTMLDivElement>(null);
-  /** ความกว้างจริงของกระดานบนจอ — ใช้ตัดสินว่าช่องเล็กเกินจะใส่ปุ่มเต็ม ๆ ไหม */
-  const [stageW, setStageW] = useState(0);
+  const pinch = useRef<{ si: number; i: number; a: number; b: number; dist: number; zoom: number } | null>(null);
+  /** กระดานของแต่ละหน้าบนจอ (โหมดกางคู่มีหลายอันพร้อมกัน) */
+  const stages = useRef<Map<number, HTMLDivElement>>(new Map());
+  /** ความกว้างจริงของกระดานแต่ละหน้า — ใช้ตัดสินว่าช่องเล็กเกินจะใส่ปุ่มเต็ม ๆ ไหม */
+  const [stageW, setStageW] = useState<Record<number, number>>({});
   /** โชว์สกินสินค้าทับช่องอยู่ไหม */
   const [showSkin, setShowSkin] = useState(true);
   /** จอสัมผัส — ลากไฟล์มาวางไม่ได้ ต้องบอกให้ "แตะ" แทน (เช็คหลัง mount กัน hydration ไม่ตรง) */
@@ -141,9 +145,9 @@ export default function SlotStudio({
     setTouch(window.matchMedia("(hover: none) and (pointer: coarse)").matches);
   }, []);
 
-  // สลับด้าน = คนละกระดาน ช่องที่เลือกไว้ของด้านเก่าใช้ต่อไม่ได้
+  // สลับหน้าแบบทีละหน้า = ช่องที่เลือกไว้ของหน้าเก่าใช้ต่อไม่ได้ (โหมดกางคู่เห็นทุกหน้าอยู่แล้ว)
   useEffect(() => {
-    setSel(null);
+    setSel((c) => (c && c.si !== active ? null : c));
   }, [active]);
 
   /** ด้านที่เปิดอยู่ (กันกรณี sides ว่างด้วยตัวสำรอง) */
@@ -152,28 +156,30 @@ export default function SlotStudio({
   const frame = side?.frame;
   const shots = (side && allShots[side.key]) || [];
 
-  /** แก้รูปของ "ด้านที่เปิดอยู่" — โค้ดส่วนอื่นเรียกเหมือนเดิมไม่ต้องรู้เรื่องด้าน */
-  const setShots = useCallback(
-    (up: (cur: (SlotShot | null)[]) => (SlotShot | null)[]) => {
-      if (!side) return;
-      setAllShots((all) => ({ ...all, [side.key]: up(all[side.key] ?? []) }));
+  /** แก้รูปของหน้าที่ระบุ */
+  const setShotsOf = useCallback(
+    (si: number, up: (cur: (SlotShot | null)[]) => (SlotShot | null)[]) => {
+      const k = sides[si]?.key;
+      if (!k) return;
+      setAllShots((all) => ({ ...all, [k]: up(all[k] ?? []) }));
     },
-    [side],
+    [sides],
   );
+  const shotsOf = (si: number) => allShots[sides[si]?.key ?? ""] ?? [];
 
   const W = frame?.canvasWMm ?? 0;
   const H = frame?.canvasHMm ?? 0;
 
   // วัดความกว้างกระดานไว้ย่อปุ่มในช่องเล็ก (มือถือ/ตารางหลายช่อง ปุ่มเต็มจะล้นกรอบ)
   useEffect(() => {
-    const el = stage.current;
-    if (!el) return;
-    const measure = () => setStageW(el.getBoundingClientRect().width);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
+    const ro = new ResizeObserver(() => {
+      const next: Record<number, number> = {};
+      stages.current.forEach((el, si) => (next[si] = el.getBoundingClientRect().width));
+      setStageW(next);
+    });
+    stages.current.forEach((el) => ro.observe(el));
     return () => ro.disconnect();
-  }, [open]);
+  }, [open, active, spreadView, sides.length]);
 
   // ปิดด้วย Esc + กันเบราว์เซอร์เปิดไฟล์ทับหน้าเว็บเวลาลากพลาดออกนอกช่อง
   useEffect(() => {
@@ -191,7 +197,7 @@ export default function SlotStudio({
   }, [open, onClose]);
 
   /** อ่านไฟล์ที่ลูกค้าเลือก → ใส่ลงช่อง i (ย่อ-ขยายให้เต็มช่องให้เลย) */
-  const put = useCallback(async (i: number, f?: File | null) => {
+  const put = useCallback(async (si: number, i: number, f?: File | null) => {
     setErr("");
     if (!f) return;
     if (!/^image\/(jpeg|png|webp)$/.test(f.type)) return setErr("รับเฉพาะไฟล์ JPG · PNG · WEBP");
@@ -207,35 +213,34 @@ export default function SlotStudio({
       URL.revokeObjectURL(url);
       return setErr("เปิดรูปนี้ไม่ได้ ลองไฟล์อื่น");
     }
-    setShots((cur) => {
+    setShotsOf(si, (cur) => {
       const next = [...cur];
       next[i] = { file: f, url, natW: im.naturalWidth, natH: im.naturalHeight, zoom: 1, offX: 0, offY: 0 };
       return next;
     });
-    setSel(i);
-    // ⚠️ ต้องพึ่ง setShots — มันผูกกับ "ด้านที่เปิดอยู่" ถ้า deps ว่างจะเขียนลงด้านแรกตลอด
-  }, [setShots]);
+    setSel({ si, i });
+  }, [setShotsOf]);
 
   /** ลากรูปในช่องเพื่อเลื่อน */
-  function onDown(e: React.PointerEvent, i: number) {
-    const s = shots[i];
+  function onDown(e: React.PointerEvent, si: number, i: number) {
+    const s = shotsOf(si)[i];
     if (!s) return;
     e.preventDefault();
-    setSel(i);
+    setSel({ si, i });
     pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     // จับนิ้วไว้กับช่องนี้ เผื่อนิ้วเลื่อนออกนอกช่องตอนลาก (บางเบราว์เซอร์โยน error — ไม่เป็นไร)
     try {
       (e.target as Element).setPointerCapture?.(e.pointerId);
     } catch {}
 
-    const other = drag.current?.i === i ? drag.current.pointerId : null;
+    const other = drag.current?.i === i && drag.current.si === si ? drag.current.pointerId : null;
     if (other !== null) {
       // นิ้วที่สองแตะช่องเดียวกัน → เลิกลาก เข้าโหมดบีบซูมแทน
       drag.current = null;
-      pinch.current = { i, a: other, b: e.pointerId, dist: spread(other, e.pointerId), zoom: s.zoom };
+      pinch.current = { si, i, a: other, b: e.pointerId, dist: spread(other, e.pointerId), zoom: s.zoom };
       return;
     }
-    drag.current = { i, pointerId: e.pointerId, x: e.clientX, y: e.clientY, s };
+    drag.current = { si, i, pointerId: e.pointerId, x: e.clientX, y: e.clientY, s };
   }
 
   /** ระยะห่างระหว่างนิ้วสองนิ้วที่ระบุ */
@@ -252,23 +257,24 @@ export default function SlotStudio({
     const p = pinch.current;
     if (p) {
       const now = spread(p.a, p.b);
-      if (p.dist > 0 && now > 0) setZoom(p.i, (p.zoom * now) / p.dist);
+      if (p.dist > 0 && now > 0) setZoom(p.si, p.i, (p.zoom * now) / p.dist);
       return;
     }
 
     const d = drag.current;
     if (!d) return;
-    const box = stage.current?.getBoundingClientRect();
-    const sl = slots[d.i];
-    if (!box || !sl) return;
+    const box = stages.current.get(d.si)?.getBoundingClientRect();
+    const sd = sides[d.si];
+    const sl = sd?.slots[d.i];
+    if (!box || !sl || !sd) return;
     const slotW = (box.width * sl.wPct) / 100;
     const slotH = (box.height * sl.hPct) / 100;
     if (slotW < 1 || slotH < 1) return;
-    setShots((cur) => {
+    setShotsOf(d.si, (cur) => {
       const next = [...cur];
       const s = next[d.i];
       if (!s) return cur;
-      const { mx, my } = panLimit(s, sl);
+      const { mx, my } = panLimit(s, sl, sd);
       next[d.i] = {
         ...s,
         offX: clamp(d.s.offX + (e.clientX - d.x) / slotW, -mx, mx),
@@ -288,9 +294,9 @@ export default function SlotStudio({
    * ขนาดรูปแบบ cover เทียบกับช่อง (% ของช่อง — อย่างน้อยด้านละ 100)
    * ใช้ร่วมกันทั้งตอนวาดบนจอ ตอนจำกัดระยะเลื่อน และตอนส่งออก จะได้ตรงกันเป๊ะ
    */
-  function coverPct(s: SlotShot, sl: TemplateSlot) {
+  function coverPct(s: SlotShot, sl: TemplateSlot, sd: StudioSide) {
     const ratio = s.natW / s.natH;
-    const slotRatio = (sl.wPct * W) / (sl.hPct * H);
+    const slotRatio = (sl.wPct * sd.frame.canvasWMm) / (sl.hPct * sd.frame.canvasHMm);
     return {
       wPct: ratio > slotRatio ? (ratio / slotRatio) * 100 : 100,
       hPct: ratio > slotRatio ? 100 : (slotRatio / ratio) * 100,
@@ -301,8 +307,8 @@ export default function SlotStudio({
    * เลื่อนได้ไกลสุดเท่าไรถึงจะยังไม่เห็นพื้นขาว — คิดจากส่วนที่รูป "ล้น" ออกนอกช่อง
    * รูปที่พอดีช่องเป๊ะ (เช่น ซูม 1 และสัดส่วนเท่าช่อง) เลื่อนไม่ได้เลย
    */
-  function panLimit(s: SlotShot, sl: TemplateSlot) {
-    const { wPct, hPct } = coverPct(s, sl);
+  function panLimit(s: SlotShot, sl: TemplateSlot, sd: StudioSide) {
+    const { wPct, hPct } = coverPct(s, sl, sd);
     return {
       mx: Math.max(0, ((wPct * s.zoom) / 100 - 1) / 2),
       my: Math.max(0, ((hPct * s.zoom) / 100 - 1) / 2),
@@ -310,13 +316,15 @@ export default function SlotStudio({
   }
 
   /** เปลี่ยนซูมแล้วดึงรูปกลับเข้าขอบเขต (ซูมออกทีหลังไม่งั้นจะเหลือขอบขาว) */
-  function setZoom(i: number, z: number) {
-    setShots((cur) =>
+  function setZoom(si: number, i: number, z: number) {
+    const sd = sides[si];
+    if (!sd) return;
+    setShotsOf(si, (cur) =>
       cur.map((s, k) => {
-        const sl = slots[k];
+        const sl = sd.slots[k];
         if (k !== i || !s || !sl) return s;
         const next = { ...s, zoom: clamp(z, 1, 3) };
-        const { mx, my } = panLimit(next, sl);
+        const { mx, my } = panLimit(next, sl, sd);
         return { ...next, offX: clamp(next.offX, -mx, mx), offY: clamp(next.offY, -my, my) };
       }),
     );
@@ -335,8 +343,8 @@ export default function SlotStudio({
     const pxPerMm = 1 / k;
     return Math.round(pxPerMm * 25.4);
   }
-  /** DPI ของช่อง i ในด้านที่เปิดอยู่ */
-  const dpiOf = (i: number) => (side ? dpiIn(side, shots, i) : null);
+  /** DPI ของช่อง i ในหน้า si */
+  const dpiOf = (si: number, i: number) => (sides[si] ? dpiIn(sides[si], shotsOf(si), i) : null);
 
   /** ด้านที่ยังใส่รูปไม่ครบ (ใช้ตอนบังคับใส่ครบทุกช่อง) */
   const shortSides = sides.filter((sd) => (allShots[sd.key] ?? []).filter(Boolean).length < sd.slots.length);
@@ -356,7 +364,7 @@ export default function SlotStudio({
   const missing = slots.map((sl, i) => (shots[i] ? null : nameOf(sl, i))).filter(Boolean) as string[];
   const minDpi = shots.reduce<number | null>((lo, s, i) => {
     if (!s) return lo;
-    const d = dpiOf(i);
+    const d = dpiOf(active, i);
     return d === null ? lo : lo === null ? d : Math.min(lo, d);
   }, null);
 
@@ -500,16 +508,192 @@ export default function SlotStudio({
 
   if (!open) return null;
 
-  const selShot = sel !== null ? shots[sel] : null;
+  const selShot = sel ? shotsOf(sel.si)[sel.i] : null;
+  /** หน้าที่กำลังโชว์อยู่ — กางคู่ = โชว์หมด · ไม่กาง = ทีละหน้า */
+  const visible = spreadView ? sides.map((_, i) => i) : [active];
+
+  /** กระดานหนึ่งหน้า (ใช้ทั้งโหมดทีละหน้าและโหมดกางคู่) */
+  function board(si: number) {
+    const sd = sides[si];
+    const sh = shotsOf(si);
+    const w = sd.frame.canvasWMm;
+    const h = sd.frame.canvasHMm;
+    // กางคู่ = แบ่งความสูงที่มีให้ทุกหน้า ไม่งั้นล้นจอ
+    const vh = spreadView ? 40 : 46;
+    return (
+      <div className="flex min-w-0 flex-1 basis-0 flex-col items-center" key={sd.key}>
+        {sides.length > 1 && (
+          <p className={`mb-1 text-[11px] font-extrabold ${si === active ? "text-sky-700" : "text-stone-400"}`}>
+            {pageLabel(sd, si)}
+          </p>
+        )}
+        <div
+          ref={(el) => {
+            if (el) stages.current.set(si, el);
+            else stages.current.delete(si);
+          }}
+          onPointerMove={onMove}
+          onPointerUp={onUp}
+          onPointerCancel={onUp}
+          onPointerDownCapture={() => setActive(si)}
+          className={`relative touch-none select-none bg-white shadow-[0_2px_14px_rgba(28,25,23,.12)] ring-1 ${
+            spreadView && si === active ? "ring-2 ring-sky-400" : "ring-stone-300"
+          }`}
+          style={{ aspectRatio: `${w} / ${h}`, width: "100%", maxWidth: `min(100%, ${(w / h) * vh}vh)` }}
+        >
+          {sd.guideUrl && (
+            <img src={sd.guideUrl} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full object-fill opacity-20" />
+          )}
+
+          {sd.slots.map((sl, i) => {
+            const s = sh[i];
+            const isOver = over?.si === si && over.i === i;
+            const isSel = sel?.si === si && sel.i === i;
+            return (
+              <div
+                key={sl.id}
+                onDragOver={(e) => {
+                  if (!e.dataTransfer.types.includes("Files")) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setOver({ si, i });
+                }}
+                onDragLeave={() => setOver((c) => (c?.si === si && c.i === i ? null : c))}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setOver(null);
+                  void put(si, i, e.dataTransfer.files?.[0]);
+                }}
+                onPointerDown={(e) => onDown(e, si, i)}
+                style={{
+                  left: `${sl.xPct}%`,
+                  top: `${sl.yPct}%`,
+                  width: `${sl.wPct}%`,
+                  height: `${sl.hPct}%`,
+                  borderRadius: sl.shape === "circle" ? "50%" : 0,
+                }}
+                className={`absolute overflow-hidden ${s ? "cursor-move" : ""} ${
+                  isOver ? "ring-4 ring-sky-400" : isSel ? "ring-2 ring-sky-500" : ""
+                }`}
+              >
+                {s ? (
+                  <img
+                    src={s.url}
+                    alt={`รูป${nameOf(sl, i)}`}
+                    draggable={false}
+                    className="pointer-events-none absolute"
+                    style={(() => {
+                      // cover + ซูม + เลื่อน (คำนวณเป็น % ของช่อง ให้ตรงกับตอนส่งออก)
+                      const { wPct, hPct } = coverPct(s, sl, sd);
+                      return {
+                        width: `${wPct * s.zoom}%`,
+                        height: `${hPct * s.zoom}%`,
+                        left: `${50 - (wPct * s.zoom) / 2 + s.offX * 100}%`,
+                        top: `${50 - (hPct * s.zoom) / 2 + s.offY * 100}%`,
+                        maxWidth: "none",
+                        maxHeight: "none",
+                      };
+                    })()}
+                  />
+                ) : (
+                  /* ช่องว่าง — กล่องเทาแบบเดียวกับตัวอย่าง มีปุ่มเพิ่มรูปตรงกลาง */
+                  <label
+                    className={`absolute inset-0 flex cursor-pointer flex-col items-center justify-center gap-1 overflow-hidden text-center ${
+                      isOver ? "bg-sky-200" : "bg-[#c4c4c4]"
+                    }`}
+                  >
+                    {/* ช่องเล็กเหลือแค่ไอคอน ＋ · ช่องกลางเอาปุ่มไม่มีข้อความช่วย · ช่องใหญ่เต็มรูปแบบ */}
+                    {(() => {
+                      const px = ((stageW[si] ?? 0) * sl.wPct) / 100;
+                      if (px < 64)
+                        return (
+                          <span className="grid h-7 w-7 place-items-center rounded-full bg-[#e2653c] text-sm font-bold text-white shadow-sm">
+                            ＋
+                          </span>
+                        );
+                      return (
+                        <>
+                          <span
+                            className={`max-w-[92%] truncate rounded-md bg-[#e2653c] font-bold text-white shadow-sm ${
+                              px < 120 ? "px-2 py-1 text-[10px]" : "px-3 py-2 text-[11px] sm:text-xs"
+                            }`}
+                          >
+                            🖼 เพิ่มรูป
+                          </span>
+                          {px >= 120 && (
+                            <span className="max-w-full truncate px-1 text-[10px] font-semibold text-white/95 sm:text-[11px]">
+                              {/* มีชื่อช่อง = บอกว่าช่องนี้คืออะไรสำคัญกว่าคำใบ้วิธีใส่รูป */}
+                              {sl.label?.trim() || (touch ? "แตะตรงไหนก็ได้ในช่อง" : "หรือลากรูปมาวางตรงนี้")}
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        void put(si, i, f);
+                      }}
+                    />
+                  </label>
+                )}
+
+                {/* ชื่อ/เลขช่อง + ปุ่มลบ (เห็นเมื่อมีรูป) */}
+                <span className="pointer-events-none absolute left-1 top-1 max-w-[calc(100%-1.75rem)] truncate rounded bg-stone-900/60 px-1.5 text-[9px] font-bold text-white">
+                  {sl.label?.trim() || i + 1}
+                </span>
+                {s && (
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShotsOf(si, (cur) => {
+                        const next = [...cur];
+                        next[i] = null;
+                        return next;
+                      });
+                      setSel(null);
+                    }}
+                    className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-stone-900/60 text-[10px] font-bold text-white hover:bg-rose-600"
+                    title="เอารูปออกจากช่องนี้"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            );
+          })}
+
+          {/*
+            👕 สกินสินค้า — ทับบนช่องทั้งหมด ให้เห็นเป็นของจริง
+            ⚠️ พรีวิวเท่านั้น ตอนประกอบไฟล์ (build) ไม่ได้วาดสกินลงไป
+          */}
+          {sd.skinUrl && showSkin && (
+            <img src={sd.skinUrl} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full object-fill" />
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col justify-center bg-stone-900/70 backdrop-blur-sm">
-      <div className="mx-auto flex max-h-full w-full max-w-3xl flex-col overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:p-5">
+      <div
+        className={`mx-auto flex max-h-full w-full flex-col overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:p-5 ${
+          spreadView ? "max-w-6xl" : "max-w-3xl"
+        }`}
+      >
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-base font-extrabold text-stone-800">
-              🧩 {sides.length > 1 ? side.name || `ด้านที่ ${active + 1}` : "วางรูปบนเทมเพลต"}
-              {sides.length > 1 && (
+              🧩 {sides.length > 1 ? (spreadView ? "ทุกหน้า" : side.name || `ด้านที่ ${active + 1}`) : "วางรูปบนเทมเพลต"}
+              {sides.length > 1 && !spreadView && (
                 <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-700">
                   หน้า {active + 1}/{sides.length}
                 </span>
@@ -519,166 +703,37 @@ export default function SlotStudio({
               {title} · งานจริง {Math.round(frame.trimWMm) / 10}×{Math.round(frame.trimHMm) / 10} ซม. · {slots.length} ช่อง
             </p>
           </div>
+          {/* กางคู่ = เห็นหน้า-หลังพร้อมกัน แก้ได้ทั้งสองหน้าโดยไม่ต้องสลับ */}
+          {sides.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setSpreadView((v) => !v)}
+              className="shrink-0 rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-bold text-stone-600 transition hover:bg-stone-200"
+              title="กางทุกหน้าให้เห็นพร้อมกัน"
+            >
+              {spreadView ? "▭ ทีละหน้า" : "▭▭ กางคู่"}
+            </button>
+          )}
           <button type="button" onClick={onClose} className="shrink-0 rounded-full px-3 py-1.5 text-sm font-bold text-stone-500 hover:bg-stone-100">
             ✕ ปิด
           </button>
         </div>
 
         {/* ── กระดานงาน ── */}
-        <div className="mt-3 flex justify-center">
-          <div
-            ref={stage}
-            onPointerMove={onMove}
-            onPointerUp={onUp}
-            onPointerCancel={onUp}
-            className="relative touch-none select-none bg-white shadow-[0_2px_14px_rgba(28,25,23,.12)] ring-1 ring-stone-300"
-            style={{ aspectRatio: `${W} / ${H}`, width: "100%", maxWidth: `min(100%, ${(W / H) * 46}vh)` }}
-          >
-            {side.guideUrl && (
-              <img src={side.guideUrl} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full object-fill opacity-20" />
-            )}
-
-            {slots.map((sl, i) => {
-              const s = shots[i];
-              const isOver = over === i;
-              return (
-                <div
-                  key={sl.id}
-                  onDragOver={(e) => {
-                    if (!e.dataTransfer.types.includes("Files")) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setOver(i);
-                  }}
-                  onDragLeave={() => setOver((c) => (c === i ? null : c))}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setOver(null);
-                    void put(i, e.dataTransfer.files?.[0]);
-                  }}
-                  onPointerDown={(e) => onDown(e, i)}
-                  style={{
-                    left: `${sl.xPct}%`,
-                    top: `${sl.yPct}%`,
-                    width: `${sl.wPct}%`,
-                    height: `${sl.hPct}%`,
-                    borderRadius: sl.shape === "circle" ? "50%" : 0,
-                  }}
-                  className={`absolute overflow-hidden ${s ? "cursor-move" : ""} ${
-                    isOver ? "ring-4 ring-sky-400" : sel === i ? "ring-2 ring-sky-500" : ""
-                  }`}
-                >
-                  {s ? (
-                    <img
-                      src={s.url}
-                      alt={`รูป${nameOf(sl, i)}`}
-                      draggable={false}
-                      className="pointer-events-none absolute"
-                      style={(() => {
-                        // cover + ซูม + เลื่อน (คำนวณเป็น % ของช่อง ให้ตรงกับตอนส่งออก)
-                        const { wPct, hPct } = coverPct(s, sl);
-                        return {
-                          width: `${wPct * s.zoom}%`,
-                          height: `${hPct * s.zoom}%`,
-                          left: `${50 - (wPct * s.zoom) / 2 + s.offX * 100}%`,
-                          top: `${50 - (hPct * s.zoom) / 2 + s.offY * 100}%`,
-                          maxWidth: "none",
-                          maxHeight: "none",
-                        };
-                      })()}
-                    />
-                  ) : (
-                    /* ช่องว่าง — กล่องเทาแบบเดียวกับตัวอย่าง มีปุ่มเพิ่มรูปตรงกลาง */
-                    <label
-                      className={`absolute inset-0 flex cursor-pointer flex-col items-center justify-center gap-1 overflow-hidden text-center ${
-                        isOver ? "bg-sky-200" : "bg-[#c4c4c4]"
-                      }`}
-                    >
-                      {/* ช่องเล็กเหลือแค่ไอคอน ＋ · ช่องกลางเอาปุ่มไม่มีข้อความช่วย · ช่องใหญ่เต็มรูปแบบ */}
-                      {(() => {
-                        const px = (stageW * sl.wPct) / 100;
-                        if (px < 64)
-                          return (
-                            <span className="grid h-7 w-7 place-items-center rounded-full bg-[#e2653c] text-sm font-bold text-white shadow-sm">
-                              ＋
-                            </span>
-                          );
-                        return (
-                          <>
-                            <span
-                              className={`max-w-[92%] truncate rounded-md bg-[#e2653c] font-bold text-white shadow-sm ${
-                                px < 120 ? "px-2 py-1 text-[10px]" : "px-3 py-2 text-[11px] sm:text-xs"
-                              }`}
-                            >
-                              🖼 เพิ่มรูป
-                            </span>
-                            {px >= 120 && (
-                              <span className="max-w-full truncate px-1 text-[10px] font-semibold text-white/95 sm:text-[11px]">
-                                {/* มีชื่อช่อง = บอกว่าช่องนี้คืออะไรสำคัญกว่าคำใบ้วิธีใส่รูป */}
-                                {sl.label?.trim() || (touch ? "แตะตรงไหนก็ได้ในช่อง" : "หรือลากรูปมาวางตรงนี้")}
-                              </span>
-                            )}
-                          </>
-                        );
-                      })()}
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        className="hidden"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          e.target.value = "";
-                          void put(i, f);
-                        }}
-                      />
-                    </label>
-                  )}
-
-                  {/* ชื่อ/เลขช่อง + ปุ่มลบ (เห็นเมื่อมีรูป) */}
-                  <span className="pointer-events-none absolute left-1 top-1 max-w-[calc(100%-1.75rem)] truncate rounded bg-stone-900/60 px-1.5 text-[9px] font-bold text-white">
-                    {sl.label?.trim() || i + 1}
-                  </span>
-                  {s && (
-                    <button
-                      type="button"
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShots((cur) => {
-                          const next = [...cur];
-                          next[i] = null;
-                          return next;
-                        });
-                        setSel(null);
-                      }}
-                      className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-stone-900/60 text-[10px] font-bold text-white hover:bg-rose-600"
-                      title="เอารูปออกจากช่องนี้"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-
-            {/*
-              👕 สกินสินค้า — ทับบนช่องทั้งหมด ให้เห็นเป็นของจริง
-              ⚠️ พรีวิวเท่านั้น ตอนประกอบไฟล์ (build) ไม่ได้วาดสกินลงไป
-            */}
-            {side.skinUrl && showSkin && (
-              <img src={side.skinUrl} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full object-fill" />
-            )}
-          </div>
+        <div className={`mt-3 flex justify-center gap-4 ${spreadView ? "flex-wrap items-start" : ""}`}>
+          {visible.map((si) => board(si))}
         </div>
 
         {/* ── แถบปรับรูปในช่องที่เลือก ── */}
-        {selShot && sel !== null && (
+        {selShot && sel && (
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2 rounded-xl bg-stone-50 px-3 py-2">
-            <span className="max-w-[9rem] truncate text-[11px] font-bold text-stone-600">{nameOf(slots[sel], sel)}</span>
+            <span className="max-w-[12rem] truncate text-[11px] font-bold text-stone-600">
+              {sides.length > 1 ? `${sides[sel.si].name || `ด้านที่ ${sel.si + 1}`} · ` : ""}
+              {nameOf(sides[sel.si].slots[sel.i], sel.i)}
+            </span>
             <button
               type="button"
-              onClick={() => selShot && sel !== null && setZoom(sel, selShot.zoom - 0.1)}
+              onClick={() => selShot && setZoom(sel.si, sel.i, selShot.zoom - 0.1)}
               className="grid h-7 w-7 place-items-center rounded-full bg-white text-sm font-bold text-stone-600 ring-1 ring-stone-200"
             >
               −
@@ -688,28 +743,26 @@ export default function SlotStudio({
               min={100}
               max={300}
               value={Math.round(selShot.zoom * 100)}
-              onChange={(e) => {
-                if (sel !== null) setZoom(sel, Number(e.target.value) / 100);
-              }}
+              onChange={(e) => setZoom(sel.si, sel.i, Number(e.target.value) / 100)}
               className="h-1.5 w-40 accent-sky-500"
               aria-label="ซูมรูปในช่อง"
             />
             <button
               type="button"
-              onClick={() => selShot && sel !== null && setZoom(sel, selShot.zoom + 0.1)}
+              onClick={() => selShot && setZoom(sel.si, sel.i, selShot.zoom + 0.1)}
               className="grid h-7 w-7 place-items-center rounded-full bg-white text-sm font-bold text-stone-600 ring-1 ring-stone-200"
             >
               ＋
             </button>
             <button
               type="button"
-              onClick={() => setShots((c) => c.map((s, i) => (i === sel && s ? { ...s, zoom: 1, offX: 0, offY: 0 } : s)))}
+              onClick={() => setShotsOf(sel.si, (c) => c.map((s, i) => (i === sel.i && s ? { ...s, zoom: 1, offX: 0, offY: 0 } : s)))}
               className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-stone-600 ring-1 ring-stone-200"
             >
               พอดีช่อง
             </button>
             {(() => {
-              const d = dpiOf(sel);
+              const d = dpiOf(sel.si, sel.i);
               return d !== null && d < DPI_WARN ? (
                 <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-700">⚠️ อาจเบลอ · {d} DPI</span>
               ) : d !== null ? (
@@ -719,7 +772,7 @@ export default function SlotStudio({
           </div>
         )}
 
-        {side.skinUrl && (
+        {sides.some((sd) => sd.skinUrl) && (
           <div className="mt-2 flex justify-center">
             <button
               type="button"
