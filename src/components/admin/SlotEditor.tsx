@@ -22,6 +22,7 @@ const inputSm =
 export default function SlotEditor({
   slots,
   previewUrl,
+  skinUrl,
   ratio,
   required,
   onChange,
@@ -30,6 +31,11 @@ export default function SlotEditor({
   slots: TemplateSlot[];
   /** รูปพรีวิวของไฟล์เทมเพลต — ไม่มีก็วาดบนพื้นขาว */
   previewUrl?: string;
+  /**
+   * 👕 สกินสินค้าของหน้านี้ — วางทับไกด์ให้เห็นทรงจริง (ขอบมน/รูกล้อง) ตอนเล็งตำแหน่งช่อง
+   * วาดไว้ "ใต้" กรอบช่อง กรอบและปุ่มลากจึงยังเห็นชัดและกดได้เหมือนเดิม
+   */
+  skinUrl?: string;
   /**
    * สัดส่วนกรอบงานจริง (กว้าง ÷ สูง) — ทำให้เวทีลากมีทรงเดียวกับงานจริง
    * สำคัญเพราะพิกัดเก็บเป็น % ของกรอบงาน ถ้าเวทีเป็นจัตุรัสแต่งานเป็นแนวนอน
@@ -47,6 +53,8 @@ export default function SlotEditor({
   const [cols, setCols] = useState(2);
   const [rows, setRows] = useState(2);
   const [circle, setCircle] = useState(false);
+  /** โชว์สกินทับไกด์ไหม — เปิดไว้ก่อน (เห็นตรงกับที่ลูกค้าเห็น) ปิดได้เวลาอยากดูเส้นตัดล้วน ๆ */
+  const [showSkin, setShowSkin] = useState(true);
   /** กำลังลากอะไรอยู่ — move = ย้ายทั้งช่อง · resize = ลากมุมขวาล่าง */
   const drag = useRef<{ id: string; mode: "move" | "resize"; x: number; y: number; s: TemplateSlot } | null>(null);
   /** เส้นไกด์ที่กำลังโชว์ตอนลาก (ตำแหน่งเป็น % ของกระดาน) */
@@ -228,6 +236,16 @@ export default function SlotEditor({
           <input type="checkbox" checked={circle} onChange={(e) => setCircle(e.target.checked)} className="h-3.5 w-3.5 accent-violet-500" />
           ทรงวงกลม
         </label>
+        {skinUrl && (
+          <button
+            type="button"
+            onClick={() => setShowSkin((v) => !v)}
+            className={btnSmNeutral}
+            title="สกินคือภาพสินค้าที่วางทับให้เห็นทรงจริง — ปิดไว้ถ้าอยากดูเส้นตัดในไฟล์งานล้วน ๆ"
+          >
+            {showSkin ? "👕 ซ่อนสกิน" : "👕 แสดงสกิน"}
+          </button>
+        )}
         {slots.length > 0 && (
           <>
             <button
@@ -276,6 +294,13 @@ export default function SlotEditor({
             : undefined
         }
       >
+        {/*
+          👕 สกินสินค้า — ยืดเต็มกรอบเท่ากับไกด์ (กรอบมีทรงเท่างานจริงแล้ว วางทับกันได้ตรง)
+          อยู่ก่อนกรอบช่องใน DOM = ถูกวาดใต้กรอบ ลาก/กดช่องได้เหมือนเดิม
+        */}
+        {skinUrl && showSkin && (
+          <img src={skinUrl} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full object-fill" />
+        )}
         {slots.map((s, i) => (
           <div
             key={s.id}

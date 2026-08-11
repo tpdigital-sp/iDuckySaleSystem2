@@ -16,6 +16,7 @@ import {
   NO_CATEGORY,
   normalizeTemplate,
   previewOf,
+  skinOf,
   slotsOf,
   templateCategories,
   templateFiles,
@@ -2408,6 +2409,8 @@ function AdminTemplatesInner() {
                       key={cur?.id ?? "set"}
                       slots={shown}
                       previewUrl={previewOf(t, cur ?? undefined)}
+                      // สกินของหน้านั้น — เล็งช่องบนทรงสินค้าจริงได้เลย ไม่ต้องเดาจากเส้นตัด
+                      skinUrl={skinOf(t, cur ?? undefined)}
                       // ทรงของเวทีลากต้องเท่างานจริงของด้านนั้น ไม่งั้นตำแหน่งที่ลากไม่ตรงกับที่ลูกค้าเห็น
                       ratio={sizeOf(cur ?? undefined) ?? sizeOf(files.find((x) => x.widthMm && x.heightMm))}
                       required={t.slotsRequired}
