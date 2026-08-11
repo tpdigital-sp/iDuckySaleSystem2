@@ -741,6 +741,11 @@ export default function ProductEditor({ product }: { product: Product }) {
   useEffect(() => {
     void fetchTemplates().then(setTemplates);
   }, []);
+  /**
+   * เทมเพลตที่ "ผูกไว้กับสินค้านี้" เท่านั้น — คลังมีเป็นร้อยชุด โชว์ทั้งคลังตรงนี้เลื่อนหาไม่ไหว
+   * จะผูกเพิ่มทำที่หน้าคลังเทมเพลต (ปุ่ม 🔗 ผูกสินค้า) · ตรงนี้เหลือไว้ดู/ปลดออก
+   */
+  const linkedTemplates = templates.filter((t) => draft.templateIds.includes(t.id));
   const [saveError, setSaveError] = useState("");
   /** กำลังยิงบันทึกอยู่ — กันกดซ้ำระหว่างรอ (เคยกดรัวเพราะไม่มีอะไรตอบสนอง) */
   const [saving, setSaving] = useState(false);
@@ -2690,20 +2695,23 @@ export default function ProductEditor({ product }: { product: Product }) {
           </a>
         </div>
         <p className="mb-3 text-[11px] text-slate-400">
-          ติ๊กเทมเพลตที่ใช้กับสินค้านี้ — หน้าสินค้าจะขึ้นปุ่มให้ลูกค้าโหลดไฟล์ .ai ไปวางลาย ·
-          ไฟล์อยู่ในคลังกลาง แก้ที่เดียวสินค้าทุกตัวอัปเดตตาม
+          แสดงเฉพาะเทมเพลตที่ผูกกับสินค้านี้ — หน้าสินค้าจะขึ้นปุ่มให้ลูกค้าโหลดไฟล์ .ai ไปวางลาย ·
+          จะผูกเพิ่มให้ไปที่{" "}
+          <a href="/admin/templates" target="_blank" rel="noopener noreferrer" className="font-bold text-blue-600 underline">
+            คลังเทมเพลตไฟล์งาน
+          </a>{" "}
+          แล้วกด 🔗 ผูกสินค้า (เอาติ๊กออกตรงนี้ = ปลดออกจากสินค้านี้)
         </p>
-        {templates.length === 0 ? (
+        {linkedTemplates.length === 0 ? (
           <p className="rounded-2xl bg-slate-50 p-4 text-center text-xs text-slate-400">
-            ยังไม่มีเทมเพลตในคลัง — ไปเพิ่มที่{" "}
+            {templates.length === 0 ? "ยังไม่มีเทมเพลตในคลัง — ไปเพิ่มที่ " : "ยังไม่ได้ผูกเทมเพลตกับสินค้านี้ — ไปผูกที่ "}
             <a href="/admin/templates" target="_blank" rel="noopener noreferrer" className="font-bold text-blue-600 underline">
               คลังเทมเพลตไฟล์งาน
-            </a>{" "}
-            ก่อน
+            </a>
           </p>
         ) : (
           <div className="max-h-96 space-y-2 overflow-y-auto">
-            {groupByCategory(templates).map((grp) => (
+            {groupByCategory(linkedTemplates).map((grp) => (
               <div key={grp.category} className="space-y-1.5">
                 {/* หัวหมวด — คลังโตขึ้นแล้วหาง่ายกว่าเลื่อนยาว ๆ */}
                 <p className="flex items-center gap-2 pt-1 text-[11px] font-bold text-slate-400">
