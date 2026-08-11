@@ -2058,6 +2058,26 @@ function AdminTemplatesInner() {
                     )}
 
                     {/*
+                      ตั้งชื่อหน้าได้จากตรงนี้เลย — ชื่อเดียวกับที่ลูกค้าเห็นบนแถบหน้ากระดาษ
+                      (แก้ได้ที่แถวไฟล์ด้วย แต่ตอนตั้งช่องอยู่มองไม่เห็นแถวไฟล์ เลยต้องมีให้ที่นี่)
+                    */}
+                    {cur && multi && (
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <span className={`text-[11px] ${faint}`}>ชื่อหน้านี้:</span>
+                        <input
+                          value={cur.side ?? ""}
+                          onChange={(e) => patchFile(t.id, cur.id, { side: e.target.value || undefined })}
+                          placeholder={`ด้านที่ ${files.indexOf(cur) + 1}`}
+                          aria-label="ชื่อหน้า/ด้านของไฟล์นี้"
+                          className={`${inputSm} w-48`}
+                        />
+                        <span className={`text-[11px] ${faint}`}>
+                          ลูกค้าเห็นชื่อนี้บนแถบหน้ากระดาษ · เว้นว่าง = “ด้านที่ {files.indexOf(cur) + 1}”
+                        </span>
+                      </div>
+                    )}
+
+                    {/*
                       ── ผังของแต่ละหน้าตรงกันไหม ──
                       งานพิมพ์ 2 หน้าต้องทับกันพอดี แต่แอดมินตั้งช่องทีละหน้า เลยไม่มีทางรู้ว่าอีกหน้าวางไว้ตรงไหน
                       แถบนี้เทียบให้ทันทีว่าตรงหรือเหลื่อม + ยกผังหน้านี้ไปทับทุกหน้าได้ในปุ่มเดียว
