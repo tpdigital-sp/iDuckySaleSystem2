@@ -4,7 +4,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatPriceRange, PRODUCTS, productPath, type Product } from "@/lib/products";
+import { formatPrice, formatPriceRange, PRODUCTS, productPath, type Product } from "@/lib/products";
+import { fetchShopPayment, freeShippingMinOf } from "@/lib/shop-settings";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { fetchProductsLite } from "@/lib/product-repo";
 import { fallbackToOriginal, imgProps } from "@/lib/img";
@@ -87,9 +88,14 @@ export default function HomePage() {
   const [all, setAll] = useState<Product[]>(PRODUCTS);
   const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
   const [tab, setTab] = useState<string>("all");
+  /** ยอดส่งฟรี — ดึงจากที่แอดมินตั้งไว้ ไม่พิมพ์เลขตายตัวไว้ในแถบวิ่ง */
+  const [freeMin, setFreeMin] = useState<number | null>(null);
 
   useEffect(() => {
     fetchCategories().then((list) => setCats(list.filter((c) => !c.hidden)));
+  }, []);
+  useEffect(() => {
+    void fetchShopPayment().then((p) => setFreeMin(freeShippingMinOf(p)));
   }, []);
   useEffect(() => {
     let active = true;
@@ -126,6 +132,14 @@ export default function HomePage() {
   }, [all]);
 
   const catName = (id: string) => cats.find((c) => c.id === id)?.name ?? id;
+
+  /** ข้อความในแถบวิ่ง (ชุดตามไฟล์ต้นแบบ) — ยอดส่งฟรีใช้ค่าจริง ตั้ง 0 = ปิดโปร ท่อนนั้นหายไปเลย */
+  const tickerItems = useMemo(() => {
+    const free = freeMin === null ? "ส่งฟรีเมื่อครบยอดที่กำหนด" : freeMin > 0 ? `ส่งฟรีเมื่อครบ ${formatPrice(freeMin)}` : null;
+    return [free, "ไม่มีขั้นต่ำ เริ่มที่ 1 ชิ้น", "ออกแบบฟรีทุกออเดอร์", "โปรเปิดร้าน ลดสูงสุด 25%", "แพ็คกันกระแทกอย่างดี"].filter(
+      (x): x is string => !!x,
+    );
+  }, [freeMin]);
 
   return (
     <div className="dl dl-page">
@@ -277,6 +291,13 @@ export default function HomePage() {
             alt=""
             aria-hidden="true"
           />
+          <img
+            className="shop-cloud"
+            style={{ width: 126, bottom: "16%", right: "12%", opacity: 0.5, animation: "bgFloat1 22s ease-in-out infinite reverse, bgPuff 11s ease-in-out infinite reverse" }}
+            src="/landing/cloud.webp"
+            alt=""
+            aria-hidden="true"
+          />
           <div className="wrap">
             <div className="head">
               <span className="kicker kicker-yolk">
@@ -351,13 +372,12 @@ export default function HomePage() {
         {/* ── แถบข้อความวิ่ง ── */}
         <div className="ticker" aria-hidden="true">
           <div className="ticker-track">
+            {/* วนสองชุดต่อกัน ให้วิ่งแล้วต่อเนื่องไม่มีรอยต่อ */}
             {[0, 1].map((k) => (
               <span key={k} style={{ display: "contents" }}>
-                <span>ไม่มีขั้นต่ำ เริ่มที่ 1 ชิ้น</span>
-                <span>ออกแบบฟรีทุกออเดอร์</span>
-                <span>ยืนยันแบบก่อนผลิตทุกงาน</span>
-                <span>แพ็คกันกระแทกอย่างดี</span>
-                <span>ส่งไวทั่วไทย</span>
+                {tickerItems.map((t, i) => (
+                  <span key={i}>{t}</span>
+                ))}
               </span>
             ))}
           </div>
