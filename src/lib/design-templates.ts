@@ -59,6 +59,12 @@ export interface TemplateFile {
   heightMm?: number;
   /** 🧩 ช่องใส่รูปของไฟล์นี้ — ไม่มี = ใช้ของทั้งชุด (DesignTemplate.slots) */
   slots?: TemplateSlot[];
+  /**
+   * 🔄 ชื่อ "ด้าน" ของไฟล์นี้ เช่น "ด้านหน้า" · "ด้านหลัง"
+   * ไฟล์ที่อยู่ตัวเลือกเดียวกัน (choice เท่ากัน) แต่คนละด้าน = งานชิ้นเดียวที่มีหลายด้าน
+   * ลูกค้าจะได้กระดานแยกกันคนละแท็บ แต่ยังนับเป็นสินค้าชิ้นเดียว ไม่ใช่คนละลาย
+   */
+  side?: string;
 }
 
 export interface DesignTemplate {
@@ -248,6 +254,21 @@ export function filesForSelections(
   if (exact.length) return exact;
   // ไม่มีไฟล์ของค่าที่เลือก → ไฟล์กลางที่ไม่ได้ระบุค่า (ถ้ามี)
   return files.filter((f) => !(f.choice ?? "").trim());
+}
+
+/**
+ * ชื่อด้านของไฟล์ (ไม่ตั้ง = ไม่ใช่งานหลายด้าน)
+ * ใช้ตัดสินว่าไฟล์ที่ได้จาก filesForSelections เป็น "หลายด้านของชิ้นเดียว" หรือแค่ไฟล์เดียว
+ */
+export function sideName(f: TemplateFile, i: number, total: number): string {
+  const s = f.side?.trim();
+  if (s) return s;
+  return total > 1 ? `ด้านที่ ${i + 1}` : "";
+}
+
+/** งานนี้เป็นงานหลายด้านไหม — มีไฟล์ตั้งแต่ 2 และอย่างน้อยหนึ่งไฟล์ระบุชื่อด้านไว้ */
+export function isMultiSide(files: TemplateFile[]): boolean {
+  return files.length > 1 && files.some((f) => !!f.side?.trim());
 }
 
 // ══════════ ขนาดงานจริง (มม.) — ใช้ตอนลูกค้าวางลายบนเว็บ ══════════

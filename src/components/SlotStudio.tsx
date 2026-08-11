@@ -35,14 +35,47 @@ export interface SlotShot {
   offY: number;
 }
 
-export interface SlotResult {
+/**
+ * กระดานหนึ่งใบ = หนึ่ง "ด้าน" ของงาน
+ * งานด้านเดียวก็คือ sides ที่มีสมาชิกตัวเดียว (name ว่าง — ไม่โชว์แท็บ)
+ */
+export interface StudioSide {
+  /** ไอดีคงที่ของด้านนี้ (ใช้ id ของไฟล์เทมเพลต) — ใช้เก็บรูปแยกด้าน */
+  key: string;
+  /** ชื่อด้านที่ลูกค้าเห็นบนแท็บ เช่น "ด้านหน้า" · ว่าง = งานด้านเดียว */
+  name: string;
+  frame: TemplateFrame;
+  slots: TemplateSlot[];
+  /** รูปเทมเพลตจาก .ai — วางเป็นไกด์จาง ๆ ใต้ช่อง */
+  guideUrl?: string;
+  /** 👕 สกินสินค้า (PNG โปร่งใส) — วางทับให้เห็นเป็นสินค้าจริง (ไม่ติดไปกับไฟล์พิมพ์) */
+  skinUrl?: string;
+  /** ไฟล์ .ai ต้นฉบับของด้านนี้ — จดติดไปกับออเดอร์ */
+  tplUrl?: string;
+}
+
+/** ผลของด้านหนึ่ง */
+export interface SideResult {
+  key: string;
+  name: string;
   composite: File;
-  /** รูปที่ลูกค้าใส่ในแต่ละช่อง (ไว้กลับมาแก้ในหน้าเดิม) */
+  shots: (SlotShot | null)[];
+  spec: string;
+  /** DPI ต่ำสุดในด้านนี้ */
+  dpi: number;
+}
+
+export interface SlotResult {
+  /** ทุกด้านที่ลูกค้าใส่รูปไว้ (งานด้านเดียว = สมาชิกตัวเดียว) */
+  sides: SideResult[];
+  /** ด้านแรก — ไว้ใช้เป็นภาพหลักของลายนี้ */
+  composite: File;
+  /** รูปที่ลูกค้าใส่ในแต่ละช่องของด้านแรก */
   shots: (SlotShot | null)[];
   summary: string;
   head: string;
   spec: string;
-  /** DPI ต่ำสุดในบรรดาช่องที่มีรูป */
+  /** DPI ต่ำสุดในบรรดาช่องที่มีรูป (ทุกด้าน) */
   dpi: number;
 }
 
@@ -50,19 +83,14 @@ interface Props {
   open: boolean;
   onClose: () => void;
   title: string;
-  frame: TemplateFrame;
-  slots: TemplateSlot[];
-  /** รูปเทมเพลตจาก .ai — วางเป็นไกด์จาง ๆ ใต้ช่อง */
-  guideUrl?: string;
-  /** 👕 สกินสินค้า (PNG โปร่งใส) — วางทับให้เห็นเป็นสินค้าจริง (ไม่ติดไปกับไฟล์พิมพ์) */
-  skinUrl?: string;
-  /** ต้องใส่รูปครบทุกช่องถึงจะกดใช้ลายได้ */
+  /** กระดานทั้งหมด — งานสกรีน 2 ด้านจะได้สองใบ สลับกันด้วยแท็บ */
+  sides: StudioSide[];
+  /** ต้องใส่รูปครบทุกช่อง (ทุกด้าน) ถึงจะกดใช้ลายได้ */
   requireAll?: boolean;
-  /** ที่อยู่ไฟล์ .ai ต้นฉบับ + จำนวนชิ้นต่อแผ่น — จดติดไปกับออเดอร์ */
-  tplUrl?: string;
+  /** จำนวนชิ้นต่อแผ่น — จดติดไปกับออเดอร์ */
   perSheet?: number;
-  /** กลับมาแก้ของเดิม (ในหน้าเดียวกัน) */
-  initial?: (SlotShot | null)[];
+  /** กลับมาแก้ของเดิม (ในหน้าเดียวกัน) — คีย์เดียวกับ StudioSide.key */
+  initial?: Record<string, (SlotShot | null)[]>;
   /**
    * อัปโหลดไฟล์ต้นฉบับของแต่ละช่องขึ้นเซิร์ฟเวอร์ (คืน URL)
    * ทำตอนกด "ใช้ลายนี้" ครั้งเดียว — จะได้ไม่เปลืองโควตากับรูปที่ลูกค้าลองแล้วเปลี่ยนใจ
@@ -80,18 +108,19 @@ export default function SlotStudio({
   open,
   onClose,
   title,
-  frame,
-  slots,
-  guideUrl,
-  skinUrl,
+  sides,
   requireAll,
-  tplUrl,
   perSheet,
   initial,
   uploadSource,
   onApply,
 }: Props) {
-  const [shots, setShots] = useState<(SlotShot | null)[]>(() => slots.map((_, i) => initial?.[i] ?? null));
+  /** ด้านที่กำลังเปิดอยู่ */
+  const [active, setActive] = useState(0);
+  /** รูปในช่อง แยกเก็บตามด้าน — สลับแท็บแล้วของเดิมไม่หาย */
+  const [allShots, setAllShots] = useState<Record<string, (SlotShot | null)[]>>(() =>
+    Object.fromEntries(sides.map((sd) => [sd.key, sd.slots.map((_, i) => initial?.[sd.key]?.[i] ?? null)])),
+  );
   const [sel, setSel] = useState<number | null>(null);
   const [over, setOver] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -112,8 +141,28 @@ export default function SlotStudio({
     setTouch(window.matchMedia("(hover: none) and (pointer: coarse)").matches);
   }, []);
 
-  const W = frame.canvasWMm;
-  const H = frame.canvasHMm;
+  // สลับด้าน = คนละกระดาน ช่องที่เลือกไว้ของด้านเก่าใช้ต่อไม่ได้
+  useEffect(() => {
+    setSel(null);
+  }, [active]);
+
+  /** ด้านที่เปิดอยู่ (กันกรณี sides ว่างด้วยตัวสำรอง) */
+  const side = sides[Math.min(active, Math.max(0, sides.length - 1))];
+  const slots = side?.slots ?? [];
+  const frame = side?.frame;
+  const shots = (side && allShots[side.key]) || [];
+
+  /** แก้รูปของ "ด้านที่เปิดอยู่" — โค้ดส่วนอื่นเรียกเหมือนเดิมไม่ต้องรู้เรื่องด้าน */
+  const setShots = useCallback(
+    (up: (cur: (SlotShot | null)[]) => (SlotShot | null)[]) => {
+      if (!side) return;
+      setAllShots((all) => ({ ...all, [side.key]: up(all[side.key] ?? []) }));
+    },
+    [side],
+  );
+
+  const W = frame?.canvasWMm ?? 0;
+  const H = frame?.canvasHMm ?? 0;
 
   // วัดความกว้างกระดานไว้ย่อปุ่มในช่องเล็ก (มือถือ/ตารางหลายช่อง ปุ่มเต็มจะล้นกรอบ)
   useEffect(() => {
@@ -164,7 +213,8 @@ export default function SlotStudio({
       return next;
     });
     setSel(i);
-  }, []);
+    // ⚠️ ต้องพึ่ง setShots — มันผูกกับ "ด้านที่เปิดอยู่" ถ้า deps ว่างจะเขียนลงด้านแรกตลอด
+  }, [setShots]);
 
   /** ลากรูปในช่องเพื่อเลื่อน */
   function onDown(e: React.PointerEvent, i: number) {
@@ -272,19 +322,28 @@ export default function SlotStudio({
     );
   }
 
-  /** DPI ของรูปในช่อง i ณ ขนาดที่วาง */
-  function dpiOf(i: number): number | null {
-    const s = shots[i];
-    const sl = slots[i];
+  /** DPI ของรูปในช่อง i ของด้านที่ระบุ */
+  function dpiIn(sd: StudioSide, sh: (SlotShot | null)[], i: number): number | null {
+    const s = sh[i];
+    const sl = sd.slots[i];
     if (!s || !sl) return null;
-    const slotWmm = (W * sl.wPct) / 100;
-    const slotHmm = (H * sl.hPct) / 100;
+    const slotWmm = (sd.frame.canvasWMm * sl.wPct) / 100;
+    const slotHmm = (sd.frame.canvasHMm * sl.hPct) / 100;
     // เต็มช่องแบบ cover → ด้านที่ "คับ" กำหนดสเกล
     // ซูมเข้า = รูปถูกขยาย ใช้พิกเซลต้นฉบับน้อยลงบนพื้นที่เท่าเดิม → มม.ต่อพิกเซลมากขึ้น
     const k = Math.max(slotWmm / s.natW, slotHmm / s.natH) * s.zoom;
     const pxPerMm = 1 / k;
     return Math.round(pxPerMm * 25.4);
   }
+  /** DPI ของช่อง i ในด้านที่เปิดอยู่ */
+  const dpiOf = (i: number) => (side ? dpiIn(side, shots, i) : null);
+
+  /** ด้านที่ยังใส่รูปไม่ครบ (ใช้ตอนบังคับใส่ครบทุกช่อง) */
+  const shortSides = sides.filter((sd) => (allShots[sd.key] ?? []).filter(Boolean).length < sd.slots.length);
+  /** ใส่รูปแล้วกี่ช่องรวมทุกด้าน — ต้องมีอย่างน้อยหนึ่งถึงจะกดใช้ลายได้ */
+  const filledAll = sides.reduce((n, sd) => n + (allShots[sd.key] ?? []).filter(Boolean).length, 0);
+  /** ด้านที่มีรูปแล้วอย่างน้อยหนึ่งช่อง = ด้านที่จะถูกประกอบเป็นไฟล์ */
+  const results0 = sides.filter((sd) => (allShots[sd.key] ?? []).some(Boolean)).length;
 
   const filled = shots.filter(Boolean).length;
   /** ชื่อช่องที่ยังไม่ได้ใส่รูป — เอาไปบอกบนปุ่มตอนบังคับใส่ครบ */
@@ -295,8 +354,12 @@ export default function SlotStudio({
     return d === null ? lo : lo === null ? d : Math.min(lo, d);
   }, null);
 
-  /** ประกอบทุกช่องเป็นภาพเดียวขนาดเท่ากรอบงาน */
-  async function build(): Promise<File | null> {
+  /** ประกอบทุกช่องของด้านหนึ่งเป็นภาพเดียวขนาดเท่ากรอบงาน */
+  async function build(sd: StudioSide, sh: (SlotShot | null)[]): Promise<File | null> {
+    const W = sd.frame.canvasWMm;
+    const H = sd.frame.canvasHMm;
+    const slots = sd.slots;
+    const shots = sh;
     const scale = Math.min(EXPORT_DPI / 25.4, EXPORT_MAX_EDGE / Math.max(W, H));
     const cw = Math.max(1, Math.round(W * scale));
     const ch = Math.max(1, Math.round(H * scale));
@@ -339,54 +402,88 @@ export default function SlotStudio({
 
     const blob = await new Promise<Blob | null>((res) => cv.toBlob(res, "image/jpeg", 0.92));
     if (!blob) return null;
-    return new File([blob], "ลายบนเทมเพลต.jpg", { type: "image/jpeg" });
+    return new File([blob], `ลายบนเทมเพลต${sd.name ? `-${sd.name}` : ""}.jpg`, { type: "image/jpeg" });
   }
 
   async function apply() {
-    if (busy || !filled) return;
+    if (busy || !filledAll) return;
     setBusy(true);
     setErr("");
     try {
-      const composite = await build();
-      if (!composite) throw new Error("ประกอบภาพไม่สำเร็จ");
+      const n = (v: number) => Math.round(v * 10) / 10;
+      const results: SideResult[] = [];
+      /** รูปต้นฉบับที่อัปแล้ว แยกตามด้าน — เขียนกลับเข้า state ทีเดียวตอนจบ */
+      const savedAll: Record<string, (SlotShot | null)[]> = {};
 
-      /**
-       * อัปไฟล์ต้นฉบับของแต่ละช่องขึ้นเซิร์ฟเวอร์
-       * — กราฟฟิกจะได้ไฟล์เต็มรายช่อง ไม่ใช่แค่ภาพรวมที่แบนแล้ว
-       * — และกดกลับมาแก้ได้แม้ลิงก์ชั่วคราวในเบราว์เซอร์หมดอายุไปแล้ว
-       * อัปไม่ขึ้นก็ยังสั่งได้ (ภาพที่ประกอบแล้วพอผลิตได้) แค่ไม่มีลิงก์ต้นฉบับ
-       */
-      const saved: (SlotShot | null)[] = [...shots];
-      if (uploadSource) {
-        for (let i = 0; i < saved.length; i++) {
-          const sh = saved[i];
-          if (!sh?.file || /^https?:/.test(sh.url)) continue;
-          try {
-            saved[i] = { ...sh, url: await uploadSource(sh.file) };
-          } catch {
-            /* ปล่อยให้ใช้ลิงก์ในเครื่องต่อไป */
+      for (const sd of sides) {
+        const sh = allShots[sd.key] ?? [];
+        if (!sh.filter(Boolean).length) continue; // ด้านที่ไม่ได้ใส่รูปเลย ไม่ต้องประกอบไฟล์
+
+        const composite = await build(sd, sh);
+        if (!composite) throw new Error(`ประกอบภาพ${sd.name ? sd.name : ""}ไม่สำเร็จ`);
+
+        /**
+         * อัปไฟล์ต้นฉบับของแต่ละช่องขึ้นเซิร์ฟเวอร์
+         * — กราฟฟิกจะได้ไฟล์เต็มรายช่อง ไม่ใช่แค่ภาพรวมที่แบนแล้ว
+         * — และกดกลับมาแก้ได้แม้ลิงก์ชั่วคราวในเบราว์เซอร์หมดอายุไปแล้ว
+         * อัปไม่ขึ้นก็ยังสั่งได้ (ภาพที่ประกอบแล้วพอผลิตได้) แค่ไม่มีลิงก์ต้นฉบับ
+         */
+        const saved: (SlotShot | null)[] = [...sh];
+        if (uploadSource) {
+          for (let i = 0; i < saved.length; i++) {
+            const one = saved[i];
+            if (!one?.file || /^https?:/.test(one.url)) continue;
+            try {
+              saved[i] = { ...one, url: await uploadSource(one.file) };
+            } catch {
+              /* ปล่อยให้ใช้ลิงก์ในเครื่องต่อไป */
+            }
           }
+          savedAll[sd.key] = saved;
         }
-        setShots(saved);
+
+        const w = sd.frame.canvasWMm;
+        const h = sd.frame.canvasHMm;
+        const parts = sd.slots.map((sl, i) => {
+          const one = saved[i];
+          const src = one && /^https?:/.test(one.url) ? ` · ต้นฉบับ: ${one.url}` : "";
+          return `${nameOf(sl, i)} ${n((w * sl.wPct) / 100)}×${n((h * sl.hPct) / 100)}mm ที่ ${n((w * sl.xPct) / 100)},${n(
+            (h * sl.yPct) / 100,
+          )}mm${sl.shape === "circle" ? " (วงกลม)" : ""} — ${one ? `${dpiIn(sd, saved, i)} DPI${src}` : "ว่าง"}`;
+        });
+        const dpis = saved.map((_, i) => dpiIn(sd, saved, i)).filter((d): d is number => d !== null);
+
+        results.push({
+          key: sd.key,
+          name: sd.name,
+          composite,
+          shots: saved,
+          spec: `${sd.name ? `[${sd.name}] ` : ""}กรอบ ${n(w)}×${n(h)}mm · ${parts.join(" · ")} ${printFrameToken(
+            w,
+            h,
+            sd.tplUrl,
+            perSheet,
+          )}`,
+          dpi: dpis.length ? Math.min(...dpis) : 0,
+        });
       }
 
-      const n = (v: number) => Math.round(v * 10) / 10;
-      const parts = slots.map((sl, i) => {
-        const s = saved[i];
-        const wmm = n((W * sl.wPct) / 100);
-        const hmm = n((H * sl.hPct) / 100);
-        const src = s && /^https?:/.test(s.url) ? ` · ต้นฉบับ: ${s.url}` : "";
-        return `${nameOf(sl, i)} ${wmm}×${hmm}mm ที่ ${n((W * sl.xPct) / 100)},${n((H * sl.yPct) / 100)}mm${
-          sl.shape === "circle" ? " (วงกลม)" : ""
-        } — ${s ? `${dpiOf(i)} DPI${src}` : "ว่าง"}`;
-      });
+      if (!results.length) throw new Error("ยังไม่ได้ใส่รูปสักช่อง");
+      if (Object.keys(savedAll).length) setAllShots((all) => ({ ...all, ...savedAll }));
+
+      const first = results[0];
+      const many = results.length > 1;
+      const totalSlots = sides.reduce((a, sd) => a + sd.slots.length, 0);
       await onApply({
-        composite,
-        shots: saved,
-        head: `${n(frame.trimWMm / 10)}×${n(frame.trimHMm / 10)} ซม. · ${slots.length} ช่อง`,
-        summary: `${title} · ใส่รูป ${filled}/${slots.length} ช่อง`,
-        spec: `กรอบ ${n(W)}×${n(H)}mm · ${parts.join(" · ")} ${printFrameToken(W, H, tplUrl, perSheet)}`,
-        dpi: minDpi ?? 0,
+        sides: results,
+        composite: first.composite,
+        shots: first.shots,
+        head: `${n(sides[0].frame.trimWMm / 10)}×${n(sides[0].frame.trimHMm / 10)} ซม. · ${
+          many ? `${results.length} ด้าน` : `${sides[0].slots.length} ช่อง`
+        }`,
+        summary: `${title} · ${many ? results.map((r) => r.name).join(" + ") + " · " : ""}ใส่รูป ${filledAll}/${totalSlots} ช่อง`,
+        spec: results.map((r) => r.spec).join(" ‖ "),
+        dpi: Math.min(...results.map((r) => r.dpi)),
       });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง");
@@ -414,6 +511,33 @@ export default function SlotStudio({
           </button>
         </div>
 
+        {/*
+          ── แท็บด้าน — งานสกรีน 2 ด้าน แต่ละด้านเป็นกระดานของตัวเอง ──
+          รูปที่ใส่ไว้ของอีกด้านไม่หายตอนสลับ (เก็บแยกตาม key)
+        */}
+        {sides.length > 1 && (
+          <div className="mt-3 flex flex-wrap gap-1.5 rounded-2xl bg-stone-100 p-1">
+            {sides.map((sd, i) => {
+              const done = (allShots[sd.key] ?? []).filter(Boolean).length;
+              return (
+                <button
+                  key={sd.key}
+                  type="button"
+                  onClick={() => setActive(i)}
+                  className={`flex-1 rounded-xl px-3 py-1.5 text-xs font-extrabold transition ${
+                    i === active ? "bg-white text-sky-700 shadow-sm" : "text-stone-500 hover:text-stone-700"
+                  }`}
+                >
+                  {sd.name || `ด้านที่ ${i + 1}`}
+                  <span className={`ml-1.5 font-bold ${done === sd.slots.length ? "text-emerald-600" : "text-stone-400"}`}>
+                    {done}/{sd.slots.length}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* ── กระดานงาน ── */}
         <div className="mt-3 flex justify-center">
           <div
@@ -424,8 +548,8 @@ export default function SlotStudio({
             className="relative touch-none select-none bg-white shadow-[0_2px_14px_rgba(28,25,23,.12)] ring-1 ring-stone-300"
             style={{ aspectRatio: `${W} / ${H}`, width: "100%", maxWidth: `min(100%, ${(W / H) * 46}vh)` }}
           >
-            {guideUrl && (
-              <img src={guideUrl} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full object-fill opacity-20" />
+            {side.guideUrl && (
+              <img src={side.guideUrl} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full object-fill opacity-20" />
             )}
 
             {slots.map((sl, i) => {
@@ -556,8 +680,8 @@ export default function SlotStudio({
               👕 สกินสินค้า — ทับบนช่องทั้งหมด ให้เห็นเป็นของจริง
               ⚠️ พรีวิวเท่านั้น ตอนประกอบไฟล์ (build) ไม่ได้วาดสกินลงไป
             */}
-            {skinUrl && showSkin && (
-              <img src={skinUrl} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full object-fill" />
+            {side.skinUrl && showSkin && (
+              <img src={side.skinUrl} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full object-fill" />
             )}
           </div>
         </div>
@@ -609,7 +733,7 @@ export default function SlotStudio({
           </div>
         )}
 
-        {skinUrl && (
+        {side.skinUrl && (
           <div className="mt-2 flex justify-center">
             <button
               type="button"
@@ -625,6 +749,7 @@ export default function SlotStudio({
         <p className="mt-2 text-center text-[11px] text-stone-400">
           กดที่ช่องเพื่อเพิ่มรูป · {touch ? "ลากด้วยนิ้วเพื่อเลื่อน · บีบสองนิ้วเพื่อซูม" : "ลากรูปในช่องเพื่อเลื่อน"} ·{" "}
           {requireAll ? "ต้องใส่รูปให้ครบทุกช่อง" : "ช่องที่เว้นไว้จะเป็นพื้นขาว"}
+          {sides.length > 1 && " · แต่ละด้านเป็นกระดานของตัวเอง สลับที่แท็บด้านบน (ยังนับเป็นสินค้าชิ้นเดียว)"}
         </p>
         {err && <p className="mt-2 text-center text-xs font-semibold text-rose-600">{err}</p>}
 
@@ -635,16 +760,21 @@ export default function SlotStudio({
           <button
             type="button"
             onClick={apply}
-            disabled={!filled || busy || (!!requireAll && filled < slots.length)}
+            disabled={!filledAll || busy || (!!requireAll && shortSides.length > 0)}
             className="flex-1 rounded-full bg-sky-500 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-sky-600 disabled:opacity-40"
           >
             {busy
               ? "กำลังบันทึก…"
-              : requireAll && filled < slots.length
-                ? missing.length <= 2
-                  ? `ยังไม่ได้ใส่ ${missing.join(" · ")}`
-                  : `ยังขาดอีก ${missing.length} ช่อง`
-                : `✓ ใช้ลายนี้ (${filled}/${slots.length} ช่อง)`}
+              : requireAll && shortSides.length
+                ? // ยังขาดในด้านอื่นก็ต้องบอกให้รู้ ไม่งั้นลูกค้ากดไม่ได้แล้วงงว่าทำไม
+                  shortSides[0] === side
+                  ? missing.length <= 2
+                    ? `ยังไม่ได้ใส่ ${missing.join(" · ")}`
+                    : `ยังขาดอีก ${missing.length} ช่อง`
+                  : `ยังขาดที่ ${shortSides.map((sd) => sd.name || "อีกด้าน").join(" · ")}`
+                : sides.length > 1
+                  ? `✓ ใช้ลายนี้ (${results0} ด้าน)`
+                  : `✓ ใช้ลายนี้ (${filled}/${slots.length} ช่อง)`}
           </button>
         </div>
       </div>

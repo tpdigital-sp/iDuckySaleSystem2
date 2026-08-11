@@ -1468,6 +1468,18 @@ function AdminTemplatesInner() {
                                 ))}
                               </select>
                             ) : null}
+                            {/*
+                              🔄 ด้าน — ไฟล์ที่ตัวเลือกเดียวกันแต่คนละด้าน = งานชิ้นเดียวหลายด้าน
+                              ลูกค้าจะได้กระดานแยกคนละแท็บ แต่ยังนับเป็นสินค้าชิ้นเดียว
+                            */}
+                            <input
+                              value={f.side ?? ""}
+                              onChange={(e) => patchFile(t.id, f.id, { side: e.target.value || undefined })}
+                              placeholder="ด้าน…"
+                              title="งานสกรีน 2 ด้าน: ทำสองไฟล์ที่ตัวเลือกเดียวกัน แล้วใส่ 'ด้านหน้า' กับ 'ด้านหลัง' ที่ช่องนี้ · เว้นว่าง = งานด้านเดียว"
+                              className={`${inputSm} w-24 shrink-0`}
+                              aria-label={`ด้านของไฟล์ที่ ${fi + 1}`}
+                            />
                             {f.fileUrl ? (
                               <a
                                 href={fileHref(f)}

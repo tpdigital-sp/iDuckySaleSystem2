@@ -42,6 +42,8 @@ import {
   fileHref,
   filesForSelections,
   formatFileSize,
+  isMultiSide,
+  sideName,
   skinOf,
   slotsOf,
   PLACEMENT_LABEL,
@@ -201,8 +203,13 @@ export default function ProductDetail({
       sourceFile?: File;
       placement?: StudioPlacement;
       swapped?: boolean;
-      /** โหมดช่อง (Theme) — รูปที่ใส่ไว้ทีละช่อง ใช้กดกลับมาแก้ในหน้าเดิม */
-      slotShots?: (SlotShot | null)[];
+      /** โหมดช่อง (Theme) — รูปที่ใส่ไว้ทีละช่อง แยกตามด้าน ใช้กดกลับมาแก้ในหน้าเดิม */
+      slotShots?: Record<string, (SlotShot | null)[]>;
+      /**
+       * งานหลายด้าน — ภาพที่ประกอบแล้วของแต่ละด้าน
+       * ยังเป็น "ลายเดียว = สินค้า 1 ชิ้น" · ไม่นับเป็นคนละลาย และไม่เข้าไปเพิ่มจำนวนใน artFiles
+       */
+      sides?: { name: string; artUrl: string; dpi: number }[];
     }[]
   >([]);
   /** กำลังแก้ไขลายที่เท่าไหร่ (null = สร้างลายใหม่) — กัน "แก้ไขแบบ" กลายเป็นเพิ่มลายซ้ำ */
@@ -589,20 +596,39 @@ export default function ProductDetail({
     for (const t of templates) {
       const label = t.optionLabel?.trim();
       const chosen = label ? (effective[label] ?? "").trim() : "";
-      for (const f of filesForSelections(t, effective)) {
-        const fr = templateFrame(t, f, f.choice || chosen);
-        if (fr)
-          return {
-            title: `${t.name}${f.choice ? ` · ${f.choice}` : ""}`,
-            frame: fr,
-            guideUrl: f.previewUrl || t.previewUrl,
-            skinUrl: skinOf(t, f),
-            tplUrl: f.fileUrl,
-            perSheet: t.perSheet,
-            slots: slotsOf(t, f),
-            slotsRequired: t.slotsRequired,
-          };
-      }
+      /**
+       * ไฟล์ทั้งหมดของตัวเลือกที่เลือกอยู่
+       * งานสกรีนหลายด้านคือ "หลายไฟล์ในตัวเลือกเดียวกัน" — ได้กระดานคนละใบ
+       */
+      const picked = filesForSelections(t, effective);
+      const usable = picked
+        .map((f) => ({ f, fr: templateFrame(t, f, f.choice || chosen) }))
+        .filter((x): x is { f: (typeof picked)[number]; fr: NonNullable<typeof x.fr> } => !!x.fr);
+      if (!usable.length) continue;
+
+      const multi = isMultiSide(usable.map((x) => x.f));
+      // ไม่ได้ตั้งชื่อด้านไว้ = งานด้านเดียว ใช้ไฟล์แรกพอ (พฤติกรรมเดิม)
+      const chosenFiles = multi ? usable : [usable[0]];
+      const first = chosenFiles[0];
+      return {
+        title: `${t.name}${first.f.choice ? ` · ${first.f.choice}` : ""}`,
+        frame: first.fr,
+        guideUrl: first.f.previewUrl || t.previewUrl,
+        skinUrl: skinOf(t, first.f),
+        tplUrl: first.f.fileUrl,
+        perSheet: t.perSheet,
+        slots: slotsOf(t, first.f),
+        slotsRequired: t.slotsRequired,
+        sides: chosenFiles.map(({ f, fr }, i) => ({
+          key: f.id,
+          name: multi ? sideName(f, i, chosenFiles.length) : "",
+          frame: fr,
+          slots: slotsOf(t, f),
+          guideUrl: f.previewUrl || t.previewUrl,
+          skinUrl: skinOf(t, f),
+          tplUrl: f.fileUrl,
+        })),
+      };
     }
     return null;
   })();
@@ -710,6 +736,22 @@ export default function ProductDetail({
         im.src = obj;
       });
       const file = { url, name: r.composite.name, ...dim };
+
+      /**
+       * งานหลายด้าน — อัปภาพของด้านที่เหลือด้วย
+       * ⚠️ ใส่ไว้ใน entry.sides เท่านั้น ไม่ยัดเข้า artFiles
+       *    เพราะ artFiles.length คือ "จำนวนลาย" ที่ใช้คิดราคาและจำนวนที่สั่ง
+       *    งาน 2 ด้านยังเป็นสินค้าชิ้นเดียว ไม่ใช่สองลาย
+       */
+      const rest: { name: string; artUrl: string; dpi: number }[] = [];
+      for (const sd of r.sides.slice(1)) {
+        try {
+          rest.push({ name: sd.name, artUrl: await uploadOne(sd.composite), dpi: sd.dpi });
+        } catch {
+          /* ด้านที่อัปไม่ขึ้นยังมีสเปคบอกตำแหน่งอยู่ ไม่บล็อกการสั่ง */
+        }
+      }
+
       const entry = {
         summary: r.summary,
         head: r.head,
@@ -717,7 +759,8 @@ export default function ProductDetail({
         spec: r.spec,
         sourceUrl: "",
         artUrl: url,
-        slotShots: r.shots,
+        slotShots: Object.fromEntries(r.sides.map((sd) => [sd.key, sd.shots])),
+        sides: r.sides.length > 1 ? [{ name: r.sides[0].name, artUrl: url, dpi: r.sides[0].dpi }, ...rest] : undefined,
       };
       if (editIndex !== null) {
         setArtFiles((cur) => cur.map((x, i) => (i === editIndex ? file : x)));
@@ -825,6 +868,11 @@ export default function ProductDetail({
     const extra: Record<string, string> = {};
     if (artLink.trim()) extra["ลิงก์ไฟล์ลาย/อีเมล"] = artLink.trim();
     if (artFiles.length) extra["ภาพลายที่แนบ"] = artFiles.map((f) => f.url).join(" | ");
+    // งานหลายด้าน — ภาพของแต่ละด้าน (ไม่นับเป็นลายเพิ่ม แค่แนบให้กราฟฟิกครบ)
+    const sideArts = placed.flatMap((d, i) =>
+      (d.sides ?? []).map((sd) => `${placed.length > 1 ? `ลายที่ ${i + 1} ` : ""}${sd.name}: ${sd.artUrl}`),
+    );
+    if (sideArts.length) extra["ภาพลายแต่ละด้าน"] = sideArts.join(" | ");
     // ลายที่วางบนเทมเพลตผ่านหน้าเว็บ — สรุปให้ลูกค้าอ่าน + ตัวเลขให้ทีมผลิตวางในไฟล์จริง
     if (placed.length) {
       const many = placed.length > 1;
@@ -1844,13 +1892,17 @@ export default function ProductDetail({
                   <div className="space-y-1.5">
                     {placed.map((d, i) => (
                       <div key={i} className="flex items-center gap-2 rounded-xl bg-white p-2 ring-1 ring-sky-100">
-                        {d.artUrl && (
-                          <img
-                            src={d.artUrl}
-                            alt={`แบบที่ ${i + 1}`}
-                            className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-sky-200"
-                          />
-                        )}
+                        {/* งานหลายด้าน = โชว์ทุกด้าน จะได้เห็นว่าใส่ครบแล้วจริง */}
+                        {(d.sides?.length ? d.sides : d.artUrl ? [{ name: "", artUrl: d.artUrl, dpi: d.dpi }] : []).map((sd, k) => (
+                          <span key={k} className="shrink-0 text-center">
+                            <img
+                              src={sd.artUrl}
+                              alt={sd.name || `แบบที่ ${i + 1}`}
+                              className="h-12 w-12 rounded-lg object-cover ring-1 ring-sky-200"
+                            />
+                            {sd.name && <span className="mt-0.5 block text-[9px] font-bold text-stone-400">{sd.name}</span>}
+                          </span>
+                        ))}
                         <span className="min-w-0 flex-1">
                           <span className="block text-[12px] font-bold text-stone-800">ลายที่ {i + 1}</span>
                           <span className="block truncate text-[10px] text-stone-400">{d.summary}</span>
@@ -2448,12 +2500,8 @@ export default function ProductDetail({
             setEditIndex(null);
           }}
           title={studioTarget.title}
-          frame={studioTarget.frame}
-          slots={studioTarget.slots}
-          guideUrl={studioTarget.guideUrl}
-          skinUrl={studioTarget.skinUrl}
+          sides={studioTarget.sides}
           requireAll={studioTarget.slotsRequired}
-          tplUrl={studioTarget.tplUrl}
           perSheet={studioTarget.perSheet}
           initial={editIndex !== null ? placed[editIndex]?.slotShots : undefined}
           uploadSource={uploadOne}
