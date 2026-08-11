@@ -9,14 +9,24 @@
 [build]
   command = "next build"
   publish = ".next"
-  # ── ข้าม build เมื่อคอมมิตไม่ได้แตะไฟล์ที่ขึ้นเว็บจริง ──
-  # แผนฟรีมีเวลา build เดือนละ 300 นาที (ครั้งละ ~2-4 นาที) — เคยใช้หมดกลางเดือนมาแล้ว
-  # กติกา: ออก 0 = ข้าม build · ออก 1 = build ต่อ
-  #   ดู diff เฉพาะพาธที่มีผลกับเว็บ (src, public, ไฟล์ตั้งค่า, dependency)
-  #   ถ้าไม่มีอะไรเปลี่ยนในนั้น = คอมมิตนี้แตะแค่ .md / scripts / supabase(.sql) / .claude → ข้ามได้
-  #   หา CACHED_COMMIT_REF ไม่เจอ (build แรก/แคชหาย) = build ไว้ก่อน ปลอดภัยกว่า
-  #   กด "Trigger deploy" เองบน Netlify (คอมมิตเดิม) = ต้อง build เสมอ ไม่งั้นสั่ง deploy ซ้ำไม่ได้
-  ignore = "if [ -z \"$CACHED_COMMIT_REF\" ] || [ -z \"$COMMIT_REF\" ] || [ \"$CACHED_COMMIT_REF\" = \"$COMMIT_REF\" ]; then exit 1; fi; git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- src public netlify package.json package-lock.json next.config.ts netlify.toml postcss.config.mjs tsconfig.json .nvmrc"
+  # ═══ push แล้ว "ไม่ต้อง" ขึ้นเว็บจริงอัตโนมัติ — สั่งเองเมื่อพร้อมเท่านั้น ═══
+  #
+  # ทำไม: เครดิต build มีจำกัด (ครั้งละ ~2-4 นาที) วันที่ 11 ส.ค. 2026 push 15 ครั้งในเช้าเดียว
+  # จนเครดิตหมด ("Skipped due to account credit usage exceeded") แล้วขึ้นเว็บไม่ได้เลยทั้งวัน
+  # ตกลงกันใหม่: คอมมิตงานได้ตามปกติ (โค้ดเก็บขึ้น GitHub ทุกครั้ง) แต่ "ขึ้นเว็บจริง" เจ้าของสั่งเอง
+  #
+  # 🚀 วิธีสั่งขึ้นเว็บจริง — เลือกทางไหนก็ได้:
+  #   1. ใส่ [deploy] ไว้ในข้อความคอมมิต (บรรทัดไหนก็ได้) ของคอมมิตล่าสุดที่ push ขึ้นไป
+  #      เช่น  git commit -m "แก้ราคาตัวเลือก [deploy]"
+  #      ⚠️ push ทีเดียวหลายคอมมิต Netlify ดูแค่คอมมิตบนสุด — ต้องใส่ที่คอมมิตสุดท้าย
+  #   2. กดปุ่ม "Trigger deploy" บนหน้า Netlify (คอมมิตเดิมก็สั่งซ้ำได้)
+  #   3. สั่งจากเครื่อง: netlify api createSiteBuild --data '{"site_id":"f6a9e5dd-bd3d-4a50-94a8-d9fe115e86ef"}'
+  #
+  # กติกาของสคริปต์ข้างล่าง: ออก 0 = ข้าม build · ออก 1 = build ต่อ
+  #   บรรทัด 1 = กด Trigger deploy เอง (ไม่มีแคช/คอมมิตเดิม) → build เสมอ
+  #   บรรทัด 2 = ข้อความคอมมิตมี [deploy] → build
+  #   บรรทัด 3 = นอกนั้นข้ามหมด (push ธรรมดาไม่กินเครดิต)
+  ignore = "if [ -z \"$CACHED_COMMIT_REF\" ] || [ -z \"$COMMIT_REF\" ] || [ \"$CACHED_COMMIT_REF\" = \"$COMMIT_REF\" ]; then exit 1; fi; if git log -1 --pretty=%B \"$COMMIT_REF\" | grep -qi '\\[deploy\\]'; then exit 1; fi; exit 0"
 
 [build.environment]
   NODE_VERSION = "22"
