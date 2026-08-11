@@ -342,6 +342,10 @@ export default function SlotStudio({
   const shortSides = sides.filter((sd) => (allShots[sd.key] ?? []).filter(Boolean).length < sd.slots.length);
   /** ใส่รูปแล้วกี่ช่องรวมทุกด้าน — ต้องมีอย่างน้อยหนึ่งถึงจะกดใช้ลายได้ */
   const filledAll = sides.reduce((n, sd) => n + (allShots[sd.key] ?? []).filter(Boolean).length, 0);
+  /** ชื่อหน้าที่ลูกค้าเห็น เช่น "ด้านหน้า 30×60 ซม." */
+  const pageLabel = (sd: StudioSide, i: number) =>
+    `${sd.name || `ด้านที่ ${i + 1}`} ${Math.round(sd.frame.trimWMm) / 10}×${Math.round(sd.frame.trimHMm) / 10} ซม.`;
+
   /** อยู่หน้าสุดท้ายแล้วหรือยัง — หน้าสุดท้ายเท่านั้นที่กด "ใช้ลายนี้" ได้ */
   const last = active >= sides.length - 1;
   /** ด้านที่มีรูปแล้วอย่างน้อยหนึ่งช่อง = ด้านที่จะถูกประกอบเป็นไฟล์ */
@@ -519,42 +523,6 @@ export default function SlotStudio({
             ✕ ปิด
           </button>
         </div>
-
-        {/*
-          ── แถบขั้นตอน — งานหลายด้านแยกเป็นคนละหน้า เดินทีละด้าน ──
-          รูปที่ใส่ไว้ของแต่ละหน้าเก็บแยกตาม key ย้อนกลับมาแก้ได้ ไม่หาย
-        */}
-        {sides.length > 1 && (
-          <div className="mt-3 flex items-center gap-1.5">
-            {sides.map((sd, i) => {
-              const done = (allShots[sd.key] ?? []).filter(Boolean).length;
-              const full = done === sd.slots.length;
-              return (
-                <span key={sd.key} className="flex min-w-0 flex-1 items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setActive(i)}
-                    className={`min-w-0 flex-1 truncate rounded-full px-3 py-1.5 text-[11px] font-extrabold transition ${
-                      i === active
-                        ? "bg-sky-500 text-white shadow-sm"
-                        : full
-                          ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                          : "bg-stone-100 text-stone-500 hover:bg-stone-200"
-                    }`}
-                    title={`ไปหน้า ${sd.name || `ด้านที่ ${i + 1}`}`}
-                  >
-                    {full && i !== active ? "✓ " : `${i + 1}. `}
-                    {sd.name || `ด้านที่ ${i + 1}`}
-                    <span className="ml-1 font-bold opacity-70">
-                      {done}/{sd.slots.length}
-                    </span>
-                  </button>
-                  {i < sides.length - 1 && <span className="shrink-0 text-[11px] text-stone-300">→</span>}
-                </span>
-              );
-            })}
-          </div>
-        )}
 
         {/* ── กระดานงาน ── */}
         <div className="mt-3 flex justify-center">
@@ -764,10 +732,89 @@ export default function SlotStudio({
           </div>
         )}
 
+        {/*
+          ── แถบหน้ากระดาษ ──
+          งานหลายด้าน = คนละหน้าจริง ๆ · เลื่อนหน้าด้วยปุ่ม ‹ › หรือกดที่รูปย่อด้านล่าง
+          รูปย่อวาดจากช่องจริงของหน้านั้น จะได้เห็นว่าหน้าไหนใส่ครบแล้ว
+        */}
+        {sides.length > 1 && (
+          <div className="mt-3 rounded-2xl bg-stone-50 p-2 ring-1 ring-stone-200">
+            <div className="flex items-center justify-center gap-1 text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={() => setActive(active - 1)}
+                disabled={active === 0}
+                className="rounded-full px-2.5 py-1 text-stone-500 transition hover:bg-stone-200 disabled:opacity-30"
+              >
+                ‹ หน้าก่อน
+              </button>
+              <span className="rounded-full bg-white px-3 py-1 text-stone-700 shadow-sm">{pageLabel(side, active)}</span>
+              <button
+                type="button"
+                onClick={() => setActive(active + 1)}
+                disabled={last}
+                className="rounded-full px-2.5 py-1 text-stone-500 transition hover:bg-stone-200 disabled:opacity-30"
+              >
+                หน้าถัดไป ›
+              </button>
+            </div>
+
+            <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
+              {sides.map((sd, i) => {
+                const sh = allShots[sd.key] ?? [];
+                const done = sh.filter(Boolean).length;
+                return (
+                  <button
+                    key={sd.key}
+                    type="button"
+                    onClick={() => setActive(i)}
+                    className="shrink-0 text-center"
+                    title={`ไปหน้า ${pageLabel(sd, i)}`}
+                  >
+                    <span
+                      className={`relative block h-16 overflow-hidden rounded-md bg-white ring-2 transition ${
+                        i === active ? "ring-sky-500" : "ring-stone-200 hover:ring-stone-300"
+                      }`}
+                      style={{ width: `${(sd.frame.canvasWMm / sd.frame.canvasHMm) * 4}rem` }}
+                    >
+                      {sd.guideUrl && (
+                        <img src={sd.guideUrl} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-fill opacity-20" />
+                      )}
+                      {sd.slots.map((sl, k) => {
+                        const one = sh[k];
+                        return (
+                          <span
+                            key={sl.id}
+                            className={one ? "absolute bg-cover bg-center" : "absolute bg-stone-300"}
+                            style={{
+                              left: `${sl.xPct}%`,
+                              top: `${sl.yPct}%`,
+                              width: `${sl.wPct}%`,
+                              height: `${sl.hPct}%`,
+                              borderRadius: sl.shape === "circle" ? "50%" : 0,
+                              ...(one ? { backgroundImage: `url(${one.url})` } : {}),
+                            }}
+                          />
+                        );
+                      })}
+                    </span>
+                    <span className={`mt-1 block text-[10px] font-bold ${i === active ? "text-sky-700" : "text-stone-500"}`}>
+                      {sd.name || `ด้านที่ ${i + 1}`}
+                      <span className={done === sd.slots.length ? "ml-1 text-emerald-600" : "ml-1 text-stone-400"}>
+                        {done}/{sd.slots.length}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <p className="mt-2 text-center text-[11px] text-stone-400">
           กดที่ช่องเพื่อเพิ่มรูป · {touch ? "ลากด้วยนิ้วเพื่อเลื่อน · บีบสองนิ้วเพื่อซูม" : "ลากรูปในช่องเพื่อเลื่อน"} ·{" "}
           {requireAll ? "ต้องใส่รูปให้ครบทุกช่อง" : "ช่องที่เว้นไว้จะเป็นพื้นขาว"}
-          {sides.length > 1 && " · แต่ละด้านทำทีละหน้า กด “ถัดไป” เมื่อเสร็จหน้านี้ (ทั้งหมดยังนับเป็นสินค้าชิ้นเดียว)"}
+          {sides.length > 1 && " · แต่ละด้านเป็นคนละหน้า สลับที่แถบหน้าด้านล่าง (ทั้งหมดยังนับเป็นสินค้าชิ้นเดียว)"}
         </p>
         {err && <p className="mt-2 text-center text-xs font-semibold text-rose-600">{err}</p>}
 
@@ -776,49 +823,29 @@ export default function SlotStudio({
           งานด้านเดียว: ยกเลิก + ใช้ลายนี้ (เหมือนเดิม)
           งานหลายด้าน: เดินทีละหน้า — ย้อนกลับ / ถัดไป · หน้าสุดท้ายถึงจะเป็น "ใช้ลายนี้"
         */}
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 flex gap-2">
+          <button type="button" onClick={onClose} className="rounded-full px-4 py-2.5 text-sm font-bold text-stone-500 transition hover:bg-stone-100">
+            ยกเลิก
+          </button>
           <button
             type="button"
-            onClick={() => (active > 0 ? setActive(active - 1) : onClose())}
-            className="rounded-full px-4 py-2.5 text-sm font-bold text-stone-500 transition hover:bg-stone-100"
+            onClick={apply}
+            disabled={!filledAll || busy || (!!requireAll && shortSides.length > 0)}
+            className="flex-1 rounded-full bg-sky-500 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-sky-600 disabled:opacity-40"
           >
-            {active > 0 ? `← ${sides[active - 1].name || "ย้อนกลับ"}` : "ยกเลิก"}
+            {busy
+              ? "กำลังบันทึก…"
+              : requireAll && shortSides.length
+                ? // ยังขาดอยู่หน้าไหนก็ต้องบอก ไม่งั้นกดไม่ได้แล้วงงว่าทำไม
+                  shortSides[0] === side
+                  ? missing.length <= 2
+                    ? `ยังไม่ได้ใส่ ${missing.join(" · ")}`
+                    : `ยังขาดอีก ${missing.length} ช่อง`
+                  : `ยังขาดที่ ${shortSides.map((sd) => sd.name || "อีกหน้า").join(" · ")}`
+                : sides.length > 1
+                  ? `✓ ใช้ลายนี้ (${results0} หน้า)`
+                  : `✓ ใช้ลายนี้ (${filled}/${slots.length} ช่อง)`}
           </button>
-
-          {last ? (
-            <button
-              type="button"
-              onClick={apply}
-              disabled={!filledAll || busy || (!!requireAll && shortSides.length > 0)}
-              className="flex-1 rounded-full bg-sky-500 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-sky-600 disabled:opacity-40"
-            >
-              {busy
-                ? "กำลังบันทึก…"
-                : requireAll && shortSides.length
-                  ? // ยังขาดอยู่หน้าไหนก็ต้องบอก ไม่งั้นกดไม่ได้แล้วงงว่าทำไม
-                    shortSides[0] === side
-                    ? missing.length <= 2
-                      ? `ยังไม่ได้ใส่ ${missing.join(" · ")}`
-                      : `ยังขาดอีก ${missing.length} ช่อง`
-                    : `ยังขาดที่ ${shortSides.map((sd) => sd.name || "อีกด้าน").join(" · ")}`
-                  : sides.length > 1
-                    ? `✓ ใช้ลายนี้ (${results0} ด้าน)`
-                    : `✓ ใช้ลายนี้ (${filled}/${slots.length} ช่อง)`}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setActive(active + 1)}
-              disabled={!!requireAll && filled < slots.length}
-              className="flex-1 rounded-full bg-sky-500 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-sky-600 disabled:opacity-40"
-            >
-              {requireAll && filled < slots.length
-                ? missing.length <= 2
-                  ? `ยังไม่ได้ใส่ ${missing.join(" · ")}`
-                  : `ยังขาดอีก ${missing.length} ช่อง`
-                : `ถัดไป: ${sides[active + 1].name || `ด้านที่ ${active + 2}`} →`}
-            </button>
-          )}
         </div>
       </div>
     </div>
