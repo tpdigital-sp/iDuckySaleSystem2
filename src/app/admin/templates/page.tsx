@@ -15,6 +15,7 @@ import {
   guessChoice,
   NO_CATEGORY,
   normalizeTemplate,
+  previewOf,
   slotsOf,
   templateCategories,
   templateFiles,
@@ -2352,7 +2353,7 @@ function AdminTemplatesInner() {
                               label={tabLabel(f, fi)}
                               slots={slotsOf(t, f)}
                               ratio={sizeOf(f) ?? sizeOf(files.find((x) => x.widthMm && x.heightMm))}
-                              previewUrl={f.previewUrl || t.previewUrl}
+                              previewUrl={previewOf(t, f)}
                               onOpen={() => setThemeFile(f.id)}
                             />
                           ))}
@@ -2362,7 +2363,7 @@ function AdminTemplatesInner() {
                     <SlotEditor
                       key={cur?.id ?? "set"}
                       slots={shown}
-                      previewUrl={cur?.previewUrl || t.previewUrl || files.find((f) => f.previewUrl)?.previewUrl}
+                      previewUrl={previewOf(t, cur ?? undefined)}
                       // ทรงของเวทีลากต้องเท่างานจริงของด้านนั้น ไม่งั้นตำแหน่งที่ลากไม่ตรงกับที่ลูกค้าเห็น
                       ratio={sizeOf(cur ?? undefined) ?? sizeOf(files.find((x) => x.widthMm && x.heightMm))}
                       required={t.slotsRequired}

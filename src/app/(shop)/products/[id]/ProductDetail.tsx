@@ -33,6 +33,7 @@ import {
   artworkIsRequired,
   isMultiOption,
   hasChoiceQty,
+  anyChoiceQty,
   choiceQtyMax,
   selectedPicks,
   formatMultiPick,
@@ -47,6 +48,7 @@ import {
   filesForSelections,
   formatFileSize,
   isMultiSide,
+  previewOf,
   sideName,
   skinOf,
   slotsOf,
@@ -617,7 +619,7 @@ export default function ProductDetail({
       return {
         title: `${t.name}${first.f.choice ? ` · ${first.f.choice}` : ""}`,
         frame: first.fr,
-        guideUrl: first.f.previewUrl || t.previewUrl,
+        guideUrl: previewOf(t, first.f),
         skinUrl: skinOf(t, first.f),
         tplUrl: first.f.fileUrl,
         perSheet: t.perSheet,
@@ -633,7 +635,7 @@ export default function ProductDetail({
           name: multi ? sideName(f, i, chosenFiles.length) : "",
           frame: fr,
           slots: slotsOf(t, f),
-          guideUrl: f.previewUrl || t.previewUrl,
+          guideUrl: previewOf(t, f),
           skinUrl: skinOf(t, f),
           tplUrl: f.fileUrl,
         })),
@@ -1508,15 +1510,16 @@ export default function ProductDetail({
               const locked = !multi && allowed.length === 1;
               const picks: MultiPick[] = multi ? selectedPicks(opt, effective) : [];
               const picked = picks.map((p) => p.name);
-              // กลุ่มที่เปิด "ระบุจำนวนต่อตัวเลือก" (เช่น เพิ่มสาย 2 เส้น) — +฿ คูณตามจำนวน
-              const withQty = hasChoiceQty(opt);
-              const qtyMax = choiceQtyMax(opt);
+              // กลุ่มนี้มีตัวเลือกที่ระบุจำนวนได้ไหม (เช่น เพิ่มสาย 2 เส้น) — +฿ ของตัวนั้นคูณตามจำนวน
+              const withQty = anyChoiceQty(opt);
               /** เขียนตัวเลือกที่ติ๊กกลับลง selections — เรียงตามลำดับตัวเลือกในกลุ่มเสมอ */
               const writePicks = (make: (cur: MultiPick[]) => MultiPick[]) =>
                 setSelections((s) => ({ ...s, [opt.label]: joinMultiPicks(make(selectedPicks(opt, s))) }));
               const setChoiceQty = (name: string, n: number) =>
                 writePicks((cur) =>
-                  cur.map((p) => (p.name === name ? { ...p, qty: Math.min(qtyMax, Math.max(1, n)) } : p))
+                  cur.map((p) =>
+                    p.name === name ? { ...p, qty: Math.min(choiceQtyMax(opt, name), Math.max(1, n)) } : p
+                  )
                 );
               return (
                 <div
@@ -1547,6 +1550,9 @@ export default function ProductDetail({
                           const on = picked.includes(c.name);
                           const cQty = picks.find((p) => p.name === c.name)?.qty ?? 1;
                           const unitAdd = choiceBadgeOf(opt, effective, c.name, feeQty);
+                          // ตัวเลือกนี้ระบุจำนวนได้ไหม — ตั้งแยกทีละตัวในหลังบ้าน
+                          const cWithQty = hasChoiceQty(opt, c.name);
+                          const cQtyMax = choiceQtyMax(opt, c.name);
                           return (
                             <span key={c.name} className="inline-flex items-center gap-1">
                               <button
@@ -1582,7 +1588,7 @@ export default function ProductDetail({
                                 {unitAdd > 0 ? ` +${formatPrice(unitAdd)}` : ""}
                               </button>
                               {/* ช่องจำนวนของตัวเลือกนี้ (เช่น เพิ่มสาย 2 เส้น) — โผล่เมื่อติ๊กแล้วเท่านั้น */}
-                              {withQty && on && (
+                              {cWithQty && on && (
                                 <span className="inline-flex items-center gap-0.5 rounded-full bg-white px-1 py-0.5 ring-1 ring-amber-200">
                                   <button
                                     type="button"
@@ -1606,7 +1612,7 @@ export default function ProductDetail({
                                   <button
                                     type="button"
                                     onClick={() => setChoiceQty(c.name, cQty + 1)}
-                                    disabled={cQty >= qtyMax}
+                                    disabled={cQty >= cQtyMax}
                                     aria-label={`เพิ่มจำนวน ${c.name}`}
                                     className="grid h-6 w-6 place-items-center rounded-full text-[13px] font-extrabold text-stone-500 hover:bg-amber-50 disabled:text-stone-300 disabled:hover:bg-transparent"
                                   >
@@ -1615,7 +1621,7 @@ export default function ProductDetail({
                                 </span>
                               )}
                               {/* จำนวนมากกว่า 1 บอกยอดรวมของตัวนี้ไปเลย จะได้ไม่ต้องคูณเอง */}
-                              {withQty && on && cQty > 1 && unitAdd > 0 && (
+                              {cWithQty && on && cQty > 1 && unitAdd > 0 && (
                                 <span className="text-[11px] font-bold text-amber-700">
                                   = +{formatPrice(unitAdd * cQty)}
                                 </span>

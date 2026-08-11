@@ -37,7 +37,8 @@ import { categoryTone } from "@/lib/admin-ui";
 import { fileReady, groupByCategory, NO_CATEGORY, templateFiles, type DesignTemplate } from "@/lib/design-templates";
 import { fetchTemplates } from "@/lib/template-repo";
 
-type DraftChoice = { name: string; extra: string };
+/** qty = ให้ลูกค้าระบุจำนวนของตัวเลือกนี้ (เฉพาะกลุ่มติ๊กหลายอย่าง) · qtyMax = เพดานจำนวน (ว่าง = 99) */
+type DraftChoice = { name: string; extra: string; qty?: boolean; qtyMax?: string };
 /** presetId มี = กลุ่มนี้ "ลิงก์" คลังตัวเลือกกลาง (label+choices มาจากคลัง แก้ในกลุ่มไม่ได้จนกว่าจะตัดลิงก์) */
 type DraftOption = {
   label: string;
@@ -45,10 +46,6 @@ type DraftOption = {
   presetId?: string;
   /** pills/dropdown = เลือกได้ 1 อย่าง · multi = ติ๊กได้หลายอย่าง */
   display: "pills" | "dropdown" | "multi";
-  /** ให้ลูกค้าระบุจำนวนของแต่ละตัวที่ติ๊ก (เฉพาะกลุ่ม multi) — +฿ คูณตามจำนวน */
-  qtyPerChoice?: boolean;
-  /** จำนวนสูงสุดต่อตัวเลือก (ว่าง = 99) */
-  qtyMax?: string;
   /** +฿ ของกลุ่มนี้มีผลเมื่อสั่งตั้งแต่กี่ชิ้นขึ้นไป (ว่าง = ทุกจำนวน) */
   extraFromQty?: string;
   /** ค่าธรรมเนียมช่วงสั่งน้อย เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น (ยกเว้นบางตัวเลือก) */
@@ -282,11 +279,15 @@ function toDraft(p: Product): Draft {
     photos: [...new Set([p.imageSrc, ...p.images.map((im) => im.src)].filter((s): s is string => !!s))].slice(0, MAX_PHOTOS),
     options: p.options.map((o) => ({
       label: o.label,
-      choices: o.choices.map((c) => ({ name: c.name, extra: c.extra ? String(c.extra) : "" })),
+      choices: o.choices.map((c) => ({
+        name: c.name,
+        extra: c.extra ? String(c.extra) : "",
+        // กลุ่มที่เคยเปิด "ระบุจำนวน" ไว้ทั้งกลุ่ม (ของเก่า) → ย้ายมาเป็นรายตัวให้เลย
+        ...(c.qty ?? o.qtyPerChoice ? { qty: true } : {}),
+        ...(c.qtyMax || o.qtyMax ? { qtyMax: String(c.qtyMax ?? o.qtyMax) } : {}),
+      })),
       ...(o.presetId ? { presetId: o.presetId } : {}),
       display: o.display ?? "pills",
-      ...(o.qtyPerChoice ? { qtyPerChoice: true } : {}),
-      ...(o.qtyMax ? { qtyMax: String(o.qtyMax) } : {}),
       ...(o.extraFromQty ? { extraFromQty: String(o.extraFromQty) } : {}),
       ...(o.smallQtyFee
         ? {
@@ -429,16 +430,16 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
         .filter((c) => c.name.trim())
         .map((c) => {
           const extra = Number(c.extra);
-          return Number.isFinite(extra) && extra > 0
-            ? { name: c.name.trim(), extra }
-            : { name: c.name.trim() };
+          // ช่องจำนวนใช้ได้เฉพาะกลุ่มติ๊กหลายอย่าง — เปลี่ยนกลับเป็นปุ่มแยกแล้วต้องไม่ค้างไว้
+          const qty = o.display === "multi" && c.qty === true;
+          return {
+            name: c.name.trim(),
+            ...(Number.isFinite(extra) && extra > 0 ? { extra } : {}),
+            ...(qty ? { qty: true, ...(Number(c.qtyMax) > 0 ? { qtyMax: Math.floor(Number(c.qtyMax)) } : {}) } : {}),
+          };
         }),
       ...(o.presetId ? { presetId: o.presetId } : {}),
       ...(o.display === "dropdown" || o.display === "multi" ? { display: o.display } : {}),
-      // ช่องจำนวนต่อตัวเลือกใช้ได้เฉพาะกลุ่มติ๊กหลายอย่าง — เปลี่ยนกลับเป็นปุ่มแยกแล้วต้องไม่ค้างไว้
-      ...(o.display === "multi" && o.qtyPerChoice
-        ? { qtyPerChoice: true, ...(Number(o.qtyMax) > 0 ? { qtyMax: Math.floor(Number(o.qtyMax)) } : {}) }
-        : {}),
       ...(Number(o.extraFromQty) > 0 ? { extraFromQty: Math.floor(Number(o.extraFromQty)) } : {}),
       ...(Number.isFinite(Number(o.smallFee)) && Number(o.smallFee) !== 0 && String(o.smallFee ?? "").trim() !== "" && Number(o.smallUpTo) > 0
         ? {
@@ -1225,35 +1226,11 @@ export default function ProductEditor({ product }: { product: Product }) {
             );
           })}
         </div>
-        {/* ช่องจำนวนต่อตัวเลือก — มีเฉพาะกลุ่มติ๊กหลายอย่าง (เช่น เพิ่มสาย 2 เส้น = +฿ ของสาย × 2) */}
+        {/* ช่อง "ระบุจำนวน" ตั้งรายตัวที่แถวตัวเลือกด้านล่าง — บรรทัดนี้แค่บอกทาง */}
         {opt.display === "multi" && (
-          <label
-            className={`flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold ring-1 ${
-              opt.qtyPerChoice ? "bg-amber-50 text-amber-700 ring-amber-200" : "bg-white text-slate-500 ring-slate-200"
-            }`}
-            title="ลูกค้าติ๊กแล้วระบุจำนวนได้ เช่น เพิ่มสาย 2 เส้น → +฿ ของตัวนั้นคูณ 2 (ในตะกร้า/ใบงานจะขึ้นเป็น “เพิ่มสาย ×2”)"
-          >
-            <input
-              type="checkbox"
-              checked={!!opt.qtyPerChoice}
-              onChange={(e) => setOpt({ qtyPerChoice: e.target.checked, ...(e.target.checked ? {} : { qtyMax: "" }) })}
-              className="h-3.5 w-3.5 accent-amber-500"
-            />
-            🔢 ให้ลูกค้าระบุจำนวน
-            {opt.qtyPerChoice && (
-              <>
-                <span className="text-slate-400">· สูงสุด</span>
-                <input
-                  value={opt.qtyMax ?? ""}
-                  onChange={(e) => setOpt({ qtyMax: e.target.value })}
-                  inputMode="numeric"
-                  placeholder="99"
-                  className="w-12 rounded-lg bg-white px-1 py-0.5 text-center text-[11px] text-slate-600 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                  aria-label={`จำนวนสูงสุดต่อตัวเลือกของกลุ่ม ${opt.label || gi + 1}`}
-                />
-              </>
-            )}
-          </label>
+          <span className="text-[11px] font-semibold text-slate-400">
+            🔢 ให้ลูกค้าระบุจำนวน — ติ๊กที่ตัวเลือกทีละตัวด้านล่าง
+          </span>
         )}
       </>
     );
@@ -2973,7 +2950,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                         patch({
                           options: draft.options.map((o, i) =>
                             i === gi
-                              ? { label: o.label, choices: o.choices, display: o.display, qtyPerChoice: o.qtyPerChoice, qtyMax: o.qtyMax }
+                              ? { label: o.label, choices: o.choices, display: o.display }
                               : o
                           ),
                         })
@@ -3170,6 +3147,64 @@ export default function ProductEditor({ product }: { product: Product }) {
                         aria-label={`ราคาบวกเพิ่มของตัวเลือกที่ ${ci + 1}`}
                       />
                     </label>
+                    {/* ให้ลูกค้าระบุจำนวนของตัวเลือกนี้ (เช่น เพิ่มสาย 2 เส้น = +฿ ของสาย × 2) — เฉพาะกลุ่มติ๊กหลายอย่าง */}
+                    {opt.display === "multi" && (
+                      <label
+                        className={`flex shrink-0 cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold ring-1 ${
+                          ch.qty ? "bg-amber-50 text-amber-700 ring-amber-200" : "bg-white text-slate-400 ring-slate-200"
+                        }`}
+                        title="ลูกค้าติ๊กตัวนี้แล้วระบุจำนวนได้ เช่น เพิ่มสาย 2 เส้น → +฿ ของตัวนี้คูณ 2 (ในตะกร้า/ใบงานขึ้นเป็น “ชื่อตัวเลือก ×2”)"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!ch.qty}
+                          onChange={(e) =>
+                            patch({
+                              options: draft.options.map((o, i) =>
+                                i === gi
+                                  ? {
+                                      ...o,
+                                      choices: o.choices.map((c, j) =>
+                                        j === ci
+                                          ? { ...c, qty: e.target.checked, ...(e.target.checked ? {} : { qtyMax: "" }) }
+                                          : c
+                                      ),
+                                    }
+                                  : o
+                              ),
+                            })
+                          }
+                          className="h-3.5 w-3.5 accent-amber-500"
+                        />
+                        🔢 ระบุจำนวน
+                        {ch.qty && (
+                          <>
+                            <span className="text-slate-400">· สูงสุด</span>
+                            <input
+                              value={ch.qtyMax ?? ""}
+                              onChange={(e) =>
+                                patch({
+                                  options: draft.options.map((o, i) =>
+                                    i === gi
+                                      ? {
+                                          ...o,
+                                          choices: o.choices.map((c, j) =>
+                                            j === ci ? { ...c, qtyMax: e.target.value } : c
+                                          ),
+                                        }
+                                      : o
+                                  ),
+                                })
+                              }
+                              inputMode="numeric"
+                              placeholder="99"
+                              className="w-11 rounded-lg bg-white px-1 py-0.5 text-center text-[11px] text-slate-600 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                              aria-label={`จำนวนสูงสุดของตัวเลือกที่ ${ci + 1}`}
+                            />
+                          </>
+                        )}
+                      </label>
+                    )}
                     <button
                       type="button"
                       onClick={() =>

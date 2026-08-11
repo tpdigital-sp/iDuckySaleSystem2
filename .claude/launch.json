@@ -45,6 +45,20 @@
       "env": {
         "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
       }
+    },
+    {
+      "name": "iducky-demo-3013",
+      "runtimeExecutable": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin/npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "3013"],
+      "port": 3013,
+      "autoPort": false,
+      "env": {
+        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "NEXT_PUBLIC_SUPABASE_URL": "",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY": "",
+        "FIREBASE_SERVICE_ACCOUNT_B64": "",
+        "NEXT_DIST_DIR": ".next-demo"
+      }
     }
   ]
 }

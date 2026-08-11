@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  /**
+   * โฟลเดอร์ผลคอมไพล์ — ปกติ .next
+   * ตั้ง NEXT_DIST_DIR ได้เมื่อต้องรัน dev หลายตัวพร้อมกัน (คนละพอร์ต) จะได้ไม่เขียนทับกันจนพัง
+   */
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   images: {
     /**
      * รูปสินค้ามาจาก 2 ที่: Supabase Storage (อัปเองหลังบ้าน) และ static.wixstatic.com (นำเข้าจากเว็บเดิม)

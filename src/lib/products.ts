@@ -27,6 +27,14 @@ export interface Category {
 export interface ProductOptionChoice {
   name: string;
   extra?: number;
+  /**
+   * ให้ลูกค้าระบุ "จำนวน" ของตัวเลือกนี้ (ใช้ได้เฉพาะกลุ่ม multi)
+   * เช่น เพิ่มสาย 2 เส้น → +฿ ของตัวนี้คูณ 2 · ค่าที่เก็บเขียนเป็น "เพิ่มสาย ×2"
+   * ไม่เปิด = ติ๊กแล้วนับเป็น 1 เสมอ · ตั้งแยกทีละตัวได้ (บางตัวระบุจำนวนได้ บางตัวติ๊กเฉย ๆ)
+   */
+  qty?: boolean;
+  /** จำนวนสูงสุดของตัวเลือกนี้ (ไม่ตั้ง = 99) */
+  qtyMax?: number;
 }
 
 export interface ProductOption {
@@ -47,12 +55,11 @@ export interface ProductOption {
    */
   display?: "pills" | "dropdown" | "multi";
   /**
-   * ให้ลูกค้าระบุ "จำนวน" ของแต่ละตัวเลือกที่ติ๊ก (ใช้ได้เฉพาะกลุ่ม multi)
-   * เช่น เพิ่มสาย 2 เส้น → +฿ ของตัวนั้นคูณ 2 · ค่าที่เก็บเขียนเป็น "เพิ่มสาย ×2"
-   * ไม่เปิด = ติ๊กแล้วนับเป็น 1 เสมอ (พฤติกรรมเดิม)
+   * (ของเก่า) เคยเปิด "ระบุจำนวน" ทั้งกลุ่ม — ตอนนี้ตั้งรายตัวที่ ProductOptionChoice.qty แทน
+   * ยังอ่านค่าเดิมอยู่เพื่อไม่ให้สินค้าที่ตั้งไว้ก่อนหน้าราคาเพี้ยน · หน้าแก้ไขสินค้าจะย้ายให้เองตอนเปิดครั้งถัดไป
    */
   qtyPerChoice?: boolean;
-  /** จำนวนสูงสุดต่อตัวเลือกที่ลูกค้ากดได้ (ไม่ตั้ง = 99) */
+  /** (ของเก่า) จำนวนสูงสุดระดับกลุ่ม — ใช้เป็นค่าตั้งต้นให้ตัวเลือกที่ไม่ได้ตั้งเอง */
   qtyMax?: number;
   /**
    * "แสดงเมื่อ" — โชว์กลุ่มนี้เฉพาะตอนกลุ่มอื่นเลือกค่าที่กำหนด · ไม่ตรง = ซ่อนทั้งกลุ่ม
@@ -102,15 +109,26 @@ export function isMultiOption(opt: ProductOption): boolean {
   return opt.display === "multi";
 }
 
-/** กลุ่มนี้ให้ลูกค้าระบุจำนวนของแต่ละตัวที่ติ๊กไหม (เฉพาะกลุ่ม multi) */
-export function hasChoiceQty(opt: ProductOption): boolean {
-  return isMultiOption(opt) && opt.qtyPerChoice === true;
+/**
+ * ตัวเลือกนี้ให้ลูกค้าระบุจำนวนได้ไหม (เฉพาะกลุ่ม multi)
+ * ตั้งรายตัวที่ choice.qty · กลุ่มที่ตั้งแบบเก่าไว้ทั้งกลุ่ม (qtyPerChoice) ยังใช้ได้เหมือนเดิม
+ */
+export function hasChoiceQty(opt: ProductOption, choiceName: string): boolean {
+  if (!isMultiOption(opt)) return false;
+  const c = opt.choices.find((x) => x.name === choiceName);
+  return c?.qty ?? opt.qtyPerChoice === true;
+}
+
+/** กลุ่มนี้มีตัวเลือกที่ระบุจำนวนได้อย่างน้อยหนึ่งตัวไหม (ใช้ตัดสินใจว่าจะขึ้นป้ายบอกลูกค้าไหม) */
+export function anyChoiceQty(opt: ProductOption): boolean {
+  return isMultiOption(opt) && opt.choices.some((c) => hasChoiceQty(opt, c.name));
 }
 
 /** เพดานจำนวนต่อตัวเลือก */
 export const MAX_CHOICE_QTY = 99;
-export function choiceQtyMax(opt: ProductOption): number {
-  const m = Math.floor(Number(opt.qtyMax));
+export function choiceQtyMax(opt: ProductOption, choiceName: string): number {
+  const c = opt.choices.find((x) => x.name === choiceName);
+  const m = Math.floor(Number(c?.qtyMax ?? opt.qtyMax));
   return Number.isFinite(m) && m > 0 ? Math.min(m, MAX_CHOICE_QTY) : MAX_CHOICE_QTY;
 }
 
@@ -178,8 +196,10 @@ export function selectedPicks(opt: ProductOption, selections: Record<string, str
   if (!cur) return [];
   if (!isMultiOption(opt)) return [{ name: cur, qty: 1 }];
   const picks = splitMultiPicks(cur, opt.choices.map((c) => c.name));
-  // กลุ่มที่ไม่ได้เปิดช่องจำนวน นับตัวละ 1 เสมอ (กันข้อมูลเก่าที่เคยเปิดไว้ทำราคาเพี้ยน)
-  return hasChoiceQty(opt) ? picks : picks.map((p) => ({ ...p, qty: 1 }));
+  // ตัวที่ไม่ได้เปิดช่องจำนวน นับเป็น 1 เสมอ (กันข้อมูลเก่าที่เคยเปิดไว้ทำราคาเพี้ยน)
+  return picks.map((p) =>
+    hasChoiceQty(opt, p.name) ? { ...p, qty: Math.min(p.qty, choiceQtyMax(opt, p.name)) } : { ...p, qty: 1 }
+  );
 }
 
 /** ตัวเลือกที่เลือกอยู่ของกลุ่มนี้ — กลุ่มปกติได้ 1 ตัว · กลุ่ม multi ได้ 0 ถึงหลายตัว */

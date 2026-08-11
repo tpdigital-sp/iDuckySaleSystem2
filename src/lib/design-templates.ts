@@ -175,6 +175,25 @@ export function skinOf(t: DesignTemplate, f?: TemplateFile): string | undefined 
 }
 
 /**
+ * 🖼 รูปตัวอย่างที่ใช้เป็น "ไกด์" ใต้กระดานวางลายของหน้านั้น (เส้นตัด/กรอบเขียวของไฟล์งาน)
+ *
+ * ของหน้านั้นมาก่อน → ไม่มีก็ยืมของหน้าอื่นในชุด (ไดคัทและขนาดเดียวกันอยู่แล้ว) → ท้ายสุดค่อยใช้ของทั้งชุด
+ *
+ * ⚠️ รูประดับชุดอยู่ท้ายสุดโดยตั้งใจ — เป็นของเก่าที่ค้างมาตั้งแต่ยุคชุดละไฟล์เดียว
+ * หายจาก storage ได้ง่าย พอเอามาก่อนแล้วหน้าที่เพิ่มใหม่จะได้กระดานเปล่าไม่มีเส้นไกด์
+ */
+export function previewOf(t: DesignTemplate, f?: TemplateFile): string | undefined {
+  if (f?.previewUrl) return f.previewUrl;
+  const others = templateFiles(t).filter((x) => x.previewUrl);
+  // ยืมของหน้าที่ขนาดเท่ากันก่อน — ขนาดต่างกันแปลว่าเส้นตัดคนละแบบ เอามาวางทับจะหลอกตา
+  const sameSize =
+    f?.widthMm && f?.heightMm
+      ? others.find((x) => x.widthMm === f.widthMm && x.heightMm === f.heightMm)
+      : undefined;
+  return sameSize?.previewUrl || others[0]?.previewUrl || t.previewUrl || undefined;
+}
+
+/**
  * 🧩 ช่องใส่รูปที่จะใช้จริง — ของไฟล์นั้นมาก่อน ไม่มีค่อยใช้ของทั้งชุด
  * ไม่มีเลย = เทมเพลตธรรมดา (ลูกค้าวางลายเดียวเต็มกรอบเหมือนเดิม)
  */
