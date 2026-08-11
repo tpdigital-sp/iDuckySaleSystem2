@@ -1,4 +1,5 @@
 import Link from "next/link";
+import FooterFreeShip from "./FooterFreeShip";
 /* eslint-disable @next/next/no-img-element */
 
 const SOCIALS = [
@@ -93,7 +94,7 @@ export default function Footer() {
         <div className="f-bottom">
           <span>© 2026 iDucky Prints Studio — ทำด้วยใจ พิมพ์ด้วยรัก 🦆💛</span>
           <span>
-            ส่งฟรีเมื่อครบ ฿999 ทั่วไทย ·{" "}
+            <FooterFreeShip />
             <Link href="/admin" className="underline-offset-2 hover:underline">
               หลังบ้าน
             </Link>

@@ -2471,7 +2471,8 @@ export function resolveSelections(
   return resolved;
 }
 
-export const FREE_SHIPPING_THRESHOLD = 999;
+/* ยอดส่งฟรีไม่เก็บไว้ตรงนี้แล้ว — แหล่งจริงคือค่าที่แอดมินตั้งที่ /admin/settings
+   อ่านผ่าน freeShippingMinOf() ใน lib/shop-settings.ts */
 export const SHIPPING_METHODS = [
   { id: "standard", name: "ส่งธรรมดา (3-5 วัน)", price: 50 },
   { id: "express", name: "ส่งด่วน (1-2 วัน)", price: 90 },
