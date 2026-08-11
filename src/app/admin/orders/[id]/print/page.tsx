@@ -20,7 +20,7 @@ import { fetchOrdersAdmin } from "@/lib/order-repo";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shopInfoOf, type ShopInfo } from "@/lib/shop-settings";
 import { useCan } from "@/lib/perm-context";
-import { PLACEMENT_LABEL, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
+import { parsePrintFrame, PLACEMENT_LABEL, PLACEMENT_SPEC_LABEL, sheetsFor } from "@/lib/design-templates";
 
 /**
  * ข้อความสั้นบนป้ายแปะกล่อง — เอาเฉพาะตัวเลือกสินค้า (ขนาด/สี/รุ่น)
@@ -526,6 +526,16 @@ export default function PrintOrderPage() {
                             {designLines(it).map((line, k) => (
                               <p key={k}>{line}</p>
                             ))}
+                            {/* งานรวมแผ่น (เช่น สติกเกอร์ 4 ดวง/แผ่น) — บอกทีมผลิตไปเลยว่าต้องพิมพ์กี่แผ่น */}
+                            {(() => {
+                              const per = parsePrintFrame(it.sel?.[PLACEMENT_SPEC_LABEL])?.perSheet;
+                              const sheets = sheetsFor(it.qty, per);
+                              return sheets ? (
+                                <p className="mt-1 inline-block rounded border border-slate-300 px-2 py-0.5 font-bold text-slate-900">
+                                  📄 รวม {it.qty} ชิ้น = {sheets} แผ่น ({per} ชิ้น/แผ่น)
+                                </p>
+                              ) : null;
+                            })()}
                           </div>
                         ) : (
                           cleanSelections(it.selections) && (

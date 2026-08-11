@@ -1617,6 +1617,20 @@ function AdminTemplatesInner() {
                         />
                         มม.
                       </label>
+                      {/* งานรวมแผ่น เช่น สติกเกอร์วงกลม 4 ดวง/แผ่น — ใบงานจะสรุปให้ทีมผลิตว่าเท่ากับกี่แผ่น */}
+                      <label
+                        className="flex items-center gap-1 text-[11px] text-slate-600"
+                        title="1 แผ่นพิมพ์ได้กี่ชิ้น — ลูกค้ายังสั่งเป็นชิ้นเหมือนเดิม แต่ใบงานจะบอกว่าเท่ากับกี่แผ่น · เว้นว่าง = งานชิ้นต่อแผ่น"
+                      >
+                        ชิ้นต่อแผ่น
+                        <input
+                          value={t.perSheet ?? ""}
+                          onChange={(e) => patch(t.id, { perSheet: Number(e.target.value) || undefined })}
+                          inputMode="numeric"
+                          placeholder="—"
+                          className={`${inputSm} w-14 text-center`}
+                        />
+                      </label>
                       <span className={`text-[11px] ${faint}`}>
                         ไฟล์ที่ยังไม่มีขนาด 📏 ลูกค้าจะวางลายบนเว็บไม่ได้ (ระบบเดาจากชื่อตัวเลือกให้แทน)
                       </span>

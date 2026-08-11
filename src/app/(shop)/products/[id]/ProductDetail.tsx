@@ -177,6 +177,7 @@ export default function ProductDetail({
     guideUrl?: string;
     skinUrl?: string;
     tplUrl?: string;
+    perSheet?: number;
     initial?: { file?: File; url?: string; placement: StudioPlacement; swapped?: boolean };
   } | null>(null);
   const [placed, setPlaced] = useState<
@@ -587,6 +588,7 @@ export default function ProductDetail({
             guideUrl: f.previewUrl || t.previewUrl,
             skinUrl: skinOf(t, f),
             tplUrl: f.fileUrl,
+            perSheet: t.perSheet,
           };
       }
     }
@@ -2359,6 +2361,7 @@ export default function ProductDetail({
           guideUrl={studio.guideUrl}
           skinUrl={studio.skinUrl}
           tplUrl={studio.tplUrl}
+          perSheet={studio.perSheet}
           initial={studio.initial}
           onApply={applyStudio}
         />

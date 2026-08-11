@@ -77,6 +77,12 @@ export interface DesignTemplate {
   bleedMm?: number;
   /** เขตปลอดภัย (มม.) — ข้อความ/ของสำคัญต้องอยู่ห่างขอบงานเข้ามาเท่านี้ */
   safeMm?: number;
+  /**
+   * งานพิมพ์รวมแผ่น — 1 แผ่นพิมพ์ได้กี่ชิ้น (เช่น สติกเกอร์วงกลม 4 ดวง/แผ่น)
+   * ลูกค้ายังสั่งเป็น "ชิ้น" เหมือนเดิม แต่ใบงานจะสรุปให้ทีมผลิตว่าเท่ากับกี่แผ่น
+   * ไม่ตั้ง = งานชิ้นต่อแผ่น ไม่ต้องคิดเรื่องนี้
+   */
+  perSheet?: number;
   /** ลำดับในลิสต์ (ไม่ตั้ง = ไปต่อท้าย เรียงตามชื่อ) */
   sort?: number;
   /** ซ่อน — ไม่โชว์บนหน้าสินค้า */
@@ -238,21 +244,44 @@ export const PLACEMENT_SPEC_LABEL = "ตำแหน่งลาย (ทีม�
  * โทเคนขนาดกรอบงานที่ต่อท้ายบรรทัดของทีมผลิต เช่น "[ai:230x190]"
  * หลังบ้านอ่านค่านี้ไปตั้งขนาดหน้าไฟล์ .ai ให้ตรงงานจริงตอนกดดาวน์โหลด
  */
-export function printFrameToken(widthMm: number, heightMm: number, tplUrl?: string): string {
+export function printFrameToken(
+  widthMm: number,
+  heightMm: number,
+  tplUrl?: string,
+  perSheet?: number,
+): string {
   const n = (v: number) => Math.round(v * 10) / 10;
-  // แนบที่อยู่ไฟล์เทมเพลตต้นฉบับไปด้วย — ตอนกราฟฟิกโหลดไฟล์พร้อมพิมพ์
-  // ระบบจะเอาลายไปวางใน .ai ตัวจริง เลเยอร์เส้นตัด/ไกด์ของโรงพิมพ์เลยยังอยู่ครบ
-  return `[ai:${n(widthMm)}x${n(heightMm)}${tplUrl ? `|tpl:${tplUrl}` : ""}]`;
+  // จดที่อยู่ไฟล์เทมเพลต + จำนวนชิ้นต่อแผ่นติดไปกับออเดอร์
+  // (ค่าพวกนี้อาจถูกแก้ในคลังทีหลัง — เก็บไว้ตอนสั่งจึงตรงกับที่ลูกค้าเห็นจริง)
+  return (
+    `[ai:${n(widthMm)}x${n(heightMm)}` +
+    `${tplUrl ? `|tpl:${tplUrl}` : ""}` +
+    `${perSheet && perSheet > 1 ? `|sheet:${Math.round(perSheet)}` : ""}]`
+  );
 }
 
 /** อ่านขนาดกรอบงานกลับจากบรรทัดของทีมผลิต — ไม่มีโทเคน = ออเดอร์เก่าที่ยังไม่ได้วางลายบนเว็บ */
-export function parsePrintFrame(text?: string): (SizeMm & { tplUrl?: string }) | null {
-  const m = (text ?? "").match(/\[ai:(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(?:\|tpl:([^\]\s]+))?\]/);
+export function parsePrintFrame(text?: string): (SizeMm & { tplUrl?: string; perSheet?: number }) | null {
+  const m = (text ?? "").match(
+    /\[ai:(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(?:\|tpl:([^\]\s|]+))?(?:\|sheet:(\d+))?\]/,
+  );
   if (!m) return null;
   const widthMm = parseFloat(m[1]);
   const heightMm = parseFloat(m[2]);
   if (!(widthMm > 0 && heightMm > 0)) return null;
-  return { widthMm, heightMm, ...(m[3] ? { tplUrl: m[3] } : {}) };
+  const perSheet = m[4] ? parseInt(m[4], 10) : undefined;
+  return {
+    widthMm,
+    heightMm,
+    ...(m[3] ? { tplUrl: m[3] } : {}),
+    ...(perSheet && perSheet > 1 ? { perSheet } : {}),
+  };
+}
+
+/** จำนวนแผ่นที่ต้องพิมพ์ เมื่อ 1 แผ่นได้ perSheet ชิ้น (เศษปัดขึ้น = ต้องใช้อีกแผ่น) */
+export function sheetsFor(pieces: number, perSheet?: number): number | null {
+  if (!perSheet || perSheet < 2 || pieces < 1) return null;
+  return Math.ceil(pieces / perSheet);
 }
 
 /** ตัดตกที่ยอมรับว่า "สมเหตุสมผล" ตอนถอดจากส่วนต่างอาร์ตบอร์ด−ขนาดงาน */
