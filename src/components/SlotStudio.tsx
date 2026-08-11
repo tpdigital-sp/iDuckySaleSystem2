@@ -94,12 +94,21 @@ export default function SlotStudio({
   const [over, setOver] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const drag = useRef<{ i: number; x: number; y: number; s: SlotShot } | null>(null);
+  const drag = useRef<{ i: number; pointerId: number; x: number; y: number; s: SlotShot } | null>(null);
+  /** นิ้วที่แตะกระดานอยู่ตอนนี้ (id → ตำแหน่ง) — ใช้จับท่าบีบสองนิ้ว */
+  const pts = useRef<Map<number, { x: number; y: number }>>(new Map());
+  /** ท่าบีบที่กำลังทำอยู่ — ผูกกับนิ้วสองนิ้วที่เริ่มท่า (a/b) ไม่ใช่ "สองนิ้วแรกใน map" */
+  const pinch = useRef<{ i: number; a: number; b: number; dist: number; zoom: number } | null>(null);
   const stage = useRef<HTMLDivElement>(null);
   /** ความกว้างจริงของกระดานบนจอ — ใช้ตัดสินว่าช่องเล็กเกินจะใส่ปุ่มเต็ม ๆ ไหม */
   const [stageW, setStageW] = useState(0);
   /** โชว์สกินสินค้าทับช่องอยู่ไหม */
   const [showSkin, setShowSkin] = useState(true);
+  /** จอสัมผัส — ลากไฟล์มาวางไม่ได้ ต้องบอกให้ "แตะ" แทน (เช็คหลัง mount กัน hydration ไม่ตรง) */
+  const [touch, setTouch] = useState(false);
+  useEffect(() => {
+    setTouch(window.matchMedia("(hover: none) and (pointer: coarse)").matches);
+  }, []);
 
   const W = frame.canvasWMm;
   const H = frame.canvasHMm;
@@ -160,11 +169,41 @@ export default function SlotStudio({
     const s = shots[i];
     if (!s) return;
     e.preventDefault();
-    (e.target as Element).setPointerCapture?.(e.pointerId);
     setSel(i);
-    drag.current = { i, x: e.clientX, y: e.clientY, s };
+    pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    // จับนิ้วไว้กับช่องนี้ เผื่อนิ้วเลื่อนออกนอกช่องตอนลาก (บางเบราว์เซอร์โยน error — ไม่เป็นไร)
+    try {
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    } catch {}
+
+    const other = drag.current?.i === i ? drag.current.pointerId : null;
+    if (other !== null) {
+      // นิ้วที่สองแตะช่องเดียวกัน → เลิกลาก เข้าโหมดบีบซูมแทน
+      drag.current = null;
+      pinch.current = { i, a: other, b: e.pointerId, dist: spread(other, e.pointerId), zoom: s.zoom };
+      return;
+    }
+    drag.current = { i, pointerId: e.pointerId, x: e.clientX, y: e.clientY, s };
   }
+
+  /** ระยะห่างระหว่างนิ้วสองนิ้วที่ระบุ */
+  function spread(a: number, b: number): number {
+    const p = pts.current.get(a);
+    const q = pts.current.get(b);
+    if (!p || !q) return 0;
+    return Math.hypot(p.x - q.x, p.y - q.y);
+  }
+
   function onMove(e: React.PointerEvent) {
+    if (pts.current.has(e.pointerId)) pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    const p = pinch.current;
+    if (p) {
+      const now = spread(p.a, p.b);
+      if (p.dist > 0 && now > 0) setZoom(p.i, (p.zoom * now) / p.dist);
+      return;
+    }
+
     const d = drag.current;
     if (!d) return;
     const box = stage.current?.getBoundingClientRect();
@@ -177,17 +216,59 @@ export default function SlotStudio({
       const next = [...cur];
       const s = next[d.i];
       if (!s) return cur;
+      const { mx, my } = panLimit(s, sl);
       next[d.i] = {
         ...s,
-        offX: clamp(d.s.offX + (e.clientX - d.x) / slotW, -0.5, 0.5),
-        offY: clamp(d.s.offY + (e.clientY - d.y) / slotH, -0.5, 0.5),
+        offX: clamp(d.s.offX + (e.clientX - d.x) / slotW, -mx, mx),
+        offY: clamp(d.s.offY + (e.clientY - d.y) / slotH, -my, my),
       };
       return next;
     });
   }
-  const onUp = () => {
-    drag.current = null;
+  const onUp = (e: React.PointerEvent) => {
+    pts.current.delete(e.pointerId);
+    const p = pinch.current;
+    if (p && (p.a === e.pointerId || p.b === e.pointerId)) pinch.current = null;
+    if (drag.current?.pointerId === e.pointerId) drag.current = null;
   };
+
+  /**
+   * ขนาดรูปแบบ cover เทียบกับช่อง (% ของช่อง — อย่างน้อยด้านละ 100)
+   * ใช้ร่วมกันทั้งตอนวาดบนจอ ตอนจำกัดระยะเลื่อน และตอนส่งออก จะได้ตรงกันเป๊ะ
+   */
+  function coverPct(s: SlotShot, sl: TemplateSlot) {
+    const ratio = s.natW / s.natH;
+    const slotRatio = (sl.wPct * W) / (sl.hPct * H);
+    return {
+      wPct: ratio > slotRatio ? (ratio / slotRatio) * 100 : 100,
+      hPct: ratio > slotRatio ? 100 : (slotRatio / ratio) * 100,
+    };
+  }
+
+  /**
+   * เลื่อนได้ไกลสุดเท่าไรถึงจะยังไม่เห็นพื้นขาว — คิดจากส่วนที่รูป "ล้น" ออกนอกช่อง
+   * รูปที่พอดีช่องเป๊ะ (เช่น ซูม 1 และสัดส่วนเท่าช่อง) เลื่อนไม่ได้เลย
+   */
+  function panLimit(s: SlotShot, sl: TemplateSlot) {
+    const { wPct, hPct } = coverPct(s, sl);
+    return {
+      mx: Math.max(0, ((wPct * s.zoom) / 100 - 1) / 2),
+      my: Math.max(0, ((hPct * s.zoom) / 100 - 1) / 2),
+    };
+  }
+
+  /** เปลี่ยนซูมแล้วดึงรูปกลับเข้าขอบเขต (ซูมออกทีหลังไม่งั้นจะเหลือขอบขาว) */
+  function setZoom(i: number, z: number) {
+    setShots((cur) =>
+      cur.map((s, k) => {
+        const sl = slots[k];
+        if (k !== i || !s || !sl) return s;
+        const next = { ...s, zoom: clamp(z, 1, 3) };
+        const { mx, my } = panLimit(next, sl);
+        return { ...next, offX: clamp(next.offX, -mx, mx), offY: clamp(next.offY, -my, my) };
+      }),
+    );
+  }
 
   /** DPI ของรูปในช่อง i ณ ขนาดที่วาง */
   function dpiOf(i: number): number | null {
@@ -197,9 +278,8 @@ export default function SlotStudio({
     const slotWmm = (W * sl.wPct) / 100;
     const slotHmm = (H * sl.hPct) / 100;
     // เต็มช่องแบบ cover → ด้านที่ "คับ" กำหนดสเกล
-    const k = Math.max(slotWmm / s.natW, slotHmm / s.natH) / s.zoom;
-    const usedW = slotWmm / (s.natW * k); // สัดส่วนพิกเซลที่ถูกใช้จริง
-    void usedW;
+    // ซูมเข้า = รูปถูกขยาย ใช้พิกเซลต้นฉบับน้อยลงบนพื้นที่เท่าเดิม → มม.ต่อพิกเซลมากขึ้น
+    const k = Math.max(slotWmm / s.natW, slotHmm / s.natH) * s.zoom;
     const pxPerMm = 1 / k;
     return Math.round(pxPerMm * 25.4);
   }
@@ -383,12 +463,7 @@ export default function SlotStudio({
                       className="pointer-events-none absolute"
                       style={(() => {
                         // cover + ซูม + เลื่อน (คำนวณเป็น % ของช่อง ให้ตรงกับตอนส่งออก)
-                        const kw = 100 / sl.wPct;
-                        void kw;
-                        const ratio = s.natW / s.natH;
-                        const slotRatio = (sl.wPct * W) / (sl.hPct * H);
-                        const wPct = ratio > slotRatio ? (ratio / slotRatio) * 100 : 100;
-                        const hPct = ratio > slotRatio ? 100 : (slotRatio / ratio) * 100;
+                        const { wPct, hPct } = coverPct(s, sl);
                         return {
                           width: `${wPct * s.zoom}%`,
                           height: `${hPct * s.zoom}%`,
@@ -425,7 +500,9 @@ export default function SlotStudio({
                               🖼 เพิ่มรูป
                             </span>
                             {px >= 120 && (
-                              <span className="px-1 text-[10px] font-semibold text-white/95 sm:text-[11px]">หรือลากรูปมาวางตรงนี้</span>
+                              <span className="px-1 text-[10px] font-semibold text-white/95 sm:text-[11px]">
+                                {touch ? "แตะตรงไหนก็ได้ในช่อง" : "หรือลากรูปมาวางตรงนี้"}
+                              </span>
                             )}
                           </>
                         );
@@ -486,7 +563,7 @@ export default function SlotStudio({
             <span className="text-[11px] font-bold text-stone-600">ช่อง {sel + 1}</span>
             <button
               type="button"
-              onClick={() => setShots((c) => c.map((s, i) => (i === sel && s ? { ...s, zoom: Math.max(1, s.zoom - 0.1) } : s)))}
+              onClick={() => selShot && sel !== null && setZoom(sel, selShot.zoom - 0.1)}
               className="grid h-7 w-7 place-items-center rounded-full bg-white text-sm font-bold text-stone-600 ring-1 ring-stone-200"
             >
               −
@@ -497,15 +574,14 @@ export default function SlotStudio({
               max={300}
               value={Math.round(selShot.zoom * 100)}
               onChange={(e) => {
-                const z = Number(e.target.value) / 100;
-                setShots((c) => c.map((s, i) => (i === sel && s ? { ...s, zoom: z } : s)));
+                if (sel !== null) setZoom(sel, Number(e.target.value) / 100);
               }}
               className="h-1.5 w-40 accent-sky-500"
               aria-label="ซูมรูปในช่อง"
             />
             <button
               type="button"
-              onClick={() => setShots((c) => c.map((s, i) => (i === sel && s ? { ...s, zoom: Math.min(3, s.zoom + 0.1) } : s)))}
+              onClick={() => selShot && sel !== null && setZoom(sel, selShot.zoom + 0.1)}
               className="grid h-7 w-7 place-items-center rounded-full bg-white text-sm font-bold text-stone-600 ring-1 ring-stone-200"
             >
               ＋
@@ -542,7 +618,7 @@ export default function SlotStudio({
         )}
 
         <p className="mt-2 text-center text-[11px] text-stone-400">
-          กดที่ช่องเพื่อเพิ่มรูป · ลากรูปในช่องเพื่อเลื่อน ·{" "}
+          กดที่ช่องเพื่อเพิ่มรูป · {touch ? "ลากด้วยนิ้วเพื่อเลื่อน · บีบสองนิ้วเพื่อซูม" : "ลากรูปในช่องเพื่อเลื่อน"} ·{" "}
           {requireAll ? "ต้องใส่รูปให้ครบทุกช่อง" : "ช่องที่เว้นไว้จะเป็นพื้นขาว"}
         </p>
         {err && <p className="mt-2 text-center text-xs font-semibold text-rose-600">{err}</p>}
