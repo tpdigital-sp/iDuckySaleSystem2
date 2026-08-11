@@ -21,12 +21,17 @@ const inputSm =
 export default function SlotEditor({
   slots,
   previewUrl,
+  required,
   onChange,
+  onRequiredChange,
 }: {
   slots: TemplateSlot[];
   /** รูปพรีวิวของไฟล์เทมเพลต — ไม่มีก็วาดบนพื้นขาว */
   previewUrl?: string;
+  /** บังคับให้ลูกค้าใส่ครบทุกช่องก่อนสั่งไหม */
+  required?: boolean;
   onChange: (next: TemplateSlot[]) => void;
+  onRequiredChange: (v: boolean) => void;
 }) {
   const stage = useRef<HTMLDivElement>(null);
   const [sel, setSel] = useState<string | null>(null);
@@ -215,9 +220,24 @@ export default function SlotEditor({
           ทรงวงกลม
         </label>
         {slots.length > 0 && (
-          <button type="button" onClick={() => onChange([])} className={`${btnSmDanger} ml-auto`}>
-            ล้างทุกช่อง ({slots.length})
-          </button>
+          <>
+            {/* บางงานตั้งใจเว้นช่อง บางงานลูกค้าลืม — ให้ร้านเลือกเองต่อชุด */}
+            <label
+              className="flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-600"
+              title="ติ๊กแล้วลูกค้าต้องใส่รูปให้ครบทุกช่องถึงจะกดใช้ลายได้"
+            >
+              <input
+                type="checkbox"
+                checked={!!required}
+                onChange={(e) => onRequiredChange(e.target.checked)}
+                className="h-3.5 w-3.5 accent-violet-500"
+              />
+              ต้องใส่ครบทุกช่อง
+            </label>
+            <button type="button" onClick={() => onChange([])} className={`${btnSmDanger} ml-auto`}>
+              ล้างทุกช่อง ({slots.length})
+            </button>
+          </>
         )}
       </div>
 

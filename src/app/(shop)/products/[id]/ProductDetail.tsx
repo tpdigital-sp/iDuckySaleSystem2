@@ -183,6 +183,7 @@ export default function ProductDetail({
     perSheet?: number;
     /** เทมเพลตแบบมีช่อง (Theme) — มีค่า = เปิดจอวางรูปทีละช่องแทน */
     slots?: TemplateSlot[];
+    slotsRequired?: boolean;
     initial?: { file?: File; url?: string; placement: StudioPlacement; swapped?: boolean };
   } | null>(null);
   const [placed, setPlaced] = useState<
@@ -599,6 +600,7 @@ export default function ProductDetail({
             tplUrl: f.fileUrl,
             perSheet: t.perSheet,
             slots: slotsOf(t, f),
+            slotsRequired: t.slotsRequired,
           };
       }
     }
@@ -2427,9 +2429,12 @@ export default function ProductDetail({
           frame={studioTarget.frame}
           slots={studioTarget.slots}
           guideUrl={studioTarget.guideUrl}
+          skinUrl={studioTarget.skinUrl}
+          requireAll={studioTarget.slotsRequired}
           tplUrl={studioTarget.tplUrl}
           perSheet={studioTarget.perSheet}
           initial={editIndex !== null ? placed[editIndex]?.slotShots : undefined}
+          uploadSource={uploadOne}
           onApply={applySlots}
         />
       ) : null}

@@ -54,11 +54,20 @@ interface Props {
   slots: TemplateSlot[];
   /** รูปเทมเพลตจาก .ai — วางเป็นไกด์จาง ๆ ใต้ช่อง */
   guideUrl?: string;
+  /** 👕 สกินสินค้า (PNG โปร่งใส) — วางทับให้เห็นเป็นสินค้าจริง (ไม่ติดไปกับไฟล์พิมพ์) */
+  skinUrl?: string;
+  /** ต้องใส่รูปครบทุกช่องถึงจะกดใช้ลายได้ */
+  requireAll?: boolean;
   /** ที่อยู่ไฟล์ .ai ต้นฉบับ + จำนวนชิ้นต่อแผ่น — จดติดไปกับออเดอร์ */
   tplUrl?: string;
   perSheet?: number;
   /** กลับมาแก้ของเดิม (ในหน้าเดียวกัน) */
   initial?: (SlotShot | null)[];
+  /**
+   * อัปโหลดไฟล์ต้นฉบับของแต่ละช่องขึ้นเซิร์ฟเวอร์ (คืน URL)
+   * ทำตอนกด "ใช้ลายนี้" ครั้งเดียว — จะได้ไม่เปลืองโควตากับรูปที่ลูกค้าลองแล้วเปลี่ยนใจ
+   */
+  uploadSource?: (f: File) => Promise<string>;
   onApply: (r: SlotResult) => void | Promise<void>;
 }
 
@@ -72,9 +81,12 @@ export default function SlotStudio({
   frame,
   slots,
   guideUrl,
+  skinUrl,
+  requireAll,
   tplUrl,
   perSheet,
   initial,
+  uploadSource,
   onApply,
 }: Props) {
   const [shots, setShots] = useState<(SlotShot | null)[]>(() => slots.map((_, i) => initial?.[i] ?? null));
@@ -84,9 +96,24 @@ export default function SlotStudio({
   const [err, setErr] = useState("");
   const drag = useRef<{ i: number; x: number; y: number; s: SlotShot } | null>(null);
   const stage = useRef<HTMLDivElement>(null);
+  /** ความกว้างจริงของกระดานบนจอ — ใช้ตัดสินว่าช่องเล็กเกินจะใส่ปุ่มเต็ม ๆ ไหม */
+  const [stageW, setStageW] = useState(0);
+  /** โชว์สกินสินค้าทับช่องอยู่ไหม */
+  const [showSkin, setShowSkin] = useState(true);
 
   const W = frame.canvasWMm;
   const H = frame.canvasHMm;
+
+  // วัดความกว้างกระดานไว้ย่อปุ่มในช่องเล็ก (มือถือ/ตารางหลายช่อง ปุ่มเต็มจะล้นกรอบ)
+  useEffect(() => {
+    const el = stage.current;
+    if (!el) return;
+    const measure = () => setStageW(el.getBoundingClientRect().width);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [open]);
 
   // ปิดด้วย Esc + กันเบราว์เซอร์เปิดไฟล์ทับหน้าเว็บเวลาลากพลาดออกนอกช่อง
   useEffect(() => {
@@ -238,18 +265,40 @@ export default function SlotStudio({
     try {
       const composite = await build();
       if (!composite) throw new Error("ประกอบภาพไม่สำเร็จ");
+
+      /**
+       * อัปไฟล์ต้นฉบับของแต่ละช่องขึ้นเซิร์ฟเวอร์
+       * — กราฟฟิกจะได้ไฟล์เต็มรายช่อง ไม่ใช่แค่ภาพรวมที่แบนแล้ว
+       * — และกดกลับมาแก้ได้แม้ลิงก์ชั่วคราวในเบราว์เซอร์หมดอายุไปแล้ว
+       * อัปไม่ขึ้นก็ยังสั่งได้ (ภาพที่ประกอบแล้วพอผลิตได้) แค่ไม่มีลิงก์ต้นฉบับ
+       */
+      const saved: (SlotShot | null)[] = [...shots];
+      if (uploadSource) {
+        for (let i = 0; i < saved.length; i++) {
+          const sh = saved[i];
+          if (!sh?.file || /^https?:/.test(sh.url)) continue;
+          try {
+            saved[i] = { ...sh, url: await uploadSource(sh.file) };
+          } catch {
+            /* ปล่อยให้ใช้ลิงก์ในเครื่องต่อไป */
+          }
+        }
+        setShots(saved);
+      }
+
       const n = (v: number) => Math.round(v * 10) / 10;
       const parts = slots.map((sl, i) => {
-        const s = shots[i];
+        const s = saved[i];
         const wmm = n((W * sl.wPct) / 100);
         const hmm = n((H * sl.hPct) / 100);
+        const src = s && /^https?:/.test(s.url) ? ` · ต้นฉบับ: ${s.url}` : "";
         return `ช่อง ${i + 1} ${wmm}×${hmm}mm ที่ ${n((W * sl.xPct) / 100)},${n((H * sl.yPct) / 100)}mm${
           sl.shape === "circle" ? " (วงกลม)" : ""
-        } — ${s ? `${dpiOf(i)} DPI` : "ว่าง"}`;
+        } — ${s ? `${dpiOf(i)} DPI${src}` : "ว่าง"}`;
       });
       await onApply({
         composite,
-        shots,
+        shots: saved,
         head: `${n(frame.trimWMm / 10)}×${n(frame.trimHMm / 10)} ซม. · ${slots.length} ช่อง`,
         summary: `${title} · ใส่รูป ${filled}/${slots.length} ช่อง`,
         spec: `กรอบ ${n(W)}×${n(H)}mm · ${parts.join(" · ")} ${printFrameToken(W, H, tplUrl, perSheet)}`,
@@ -353,14 +402,34 @@ export default function SlotStudio({
                   ) : (
                     /* ช่องว่าง — กล่องเทาแบบเดียวกับตัวอย่าง มีปุ่มเพิ่มรูปตรงกลาง */
                     <label
-                      className={`absolute inset-0 flex cursor-pointer flex-col items-center justify-center gap-1.5 text-center ${
+                      className={`absolute inset-0 flex cursor-pointer flex-col items-center justify-center gap-1 overflow-hidden text-center ${
                         isOver ? "bg-sky-200" : "bg-[#c4c4c4]"
                       }`}
                     >
-                      <span className="rounded-md bg-[#e2653c] px-3 py-2 text-[11px] font-bold text-white shadow-sm sm:text-xs">
-                        🖼 เพิ่มรูป
-                      </span>
-                      <span className="px-1 text-[10px] font-semibold text-white/95 sm:text-[11px]">หรือลากรูปมาวางตรงนี้</span>
+                      {/* ช่องเล็กเหลือแค่ไอคอน ＋ · ช่องกลางเอาปุ่มไม่มีข้อความช่วย · ช่องใหญ่เต็มรูปแบบ */}
+                      {(() => {
+                        const px = (stageW * sl.wPct) / 100;
+                        if (px < 64)
+                          return (
+                            <span className="grid h-7 w-7 place-items-center rounded-full bg-[#e2653c] text-sm font-bold text-white shadow-sm">
+                              ＋
+                            </span>
+                          );
+                        return (
+                          <>
+                            <span
+                              className={`max-w-[92%] truncate rounded-md bg-[#e2653c] font-bold text-white shadow-sm ${
+                                px < 120 ? "px-2 py-1 text-[10px]" : "px-3 py-2 text-[11px] sm:text-xs"
+                              }`}
+                            >
+                              🖼 เพิ่มรูป
+                            </span>
+                            {px >= 120 && (
+                              <span className="px-1 text-[10px] font-semibold text-white/95 sm:text-[11px]">หรือลากรูปมาวางตรงนี้</span>
+                            )}
+                          </>
+                        );
+                      })()}
                       <input
                         type="file"
                         accept="image/jpeg,image/png,image/webp"
@@ -400,6 +469,14 @@ export default function SlotStudio({
                 </div>
               );
             })}
+
+            {/*
+              👕 สกินสินค้า — ทับบนช่องทั้งหมด ให้เห็นเป็นของจริง
+              ⚠️ พรีวิวเท่านั้น ตอนประกอบไฟล์ (build) ไม่ได้วาดสกินลงไป
+            */}
+            {skinUrl && showSkin && (
+              <img src={skinUrl} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full object-fill" />
+            )}
           </div>
         </div>
 
@@ -451,8 +528,22 @@ export default function SlotStudio({
           </div>
         )}
 
+        {skinUrl && (
+          <div className="mt-2 flex justify-center">
+            <button
+              type="button"
+              onClick={() => setShowSkin((v) => !v)}
+              className="rounded-full bg-stone-100 px-3 py-1 text-[11px] font-bold text-stone-600 transition hover:bg-stone-200"
+              title="สกินคือภาพสินค้าที่วางทับให้ดูเหมือนของจริง — ไม่ติดไปกับไฟล์ที่ส่งพิมพ์"
+            >
+              {showSkin ? "👕 ซ่อนสกิน" : "👕 แสดงสกิน"}
+            </button>
+          </div>
+        )}
+
         <p className="mt-2 text-center text-[11px] text-stone-400">
-          กดที่ช่องเพื่อเพิ่มรูป · ลากรูปในช่องเพื่อเลื่อน · ช่องที่เว้นไว้จะเป็นพื้นขาว
+          กดที่ช่องเพื่อเพิ่มรูป · ลากรูปในช่องเพื่อเลื่อน ·{" "}
+          {requireAll ? "ต้องใส่รูปให้ครบทุกช่อง" : "ช่องที่เว้นไว้จะเป็นพื้นขาว"}
         </p>
         {err && <p className="mt-2 text-center text-xs font-semibold text-rose-600">{err}</p>}
 
@@ -463,10 +554,14 @@ export default function SlotStudio({
           <button
             type="button"
             onClick={apply}
-            disabled={!filled || busy}
+            disabled={!filled || busy || (!!requireAll && filled < slots.length)}
             className="flex-1 rounded-full bg-sky-500 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-sky-600 disabled:opacity-40"
           >
-            {busy ? "กำลังบันทึก…" : `✓ ใช้ลายนี้ (${filled}/${slots.length} ช่อง)`}
+            {busy
+              ? "กำลังบันทึก…"
+              : requireAll && filled < slots.length
+                ? `ยังขาดอีก ${slots.length - filled} ช่อง`
+                : `✓ ใช้ลายนี้ (${filled}/${slots.length} ช่อง)`}
           </button>
         </div>
       </div>

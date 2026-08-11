@@ -1657,7 +1657,9 @@ function AdminTemplatesInner() {
                     <SlotEditor
                       slots={slotsOf(t)}
                       previewUrl={t.previewUrl || files.find((f) => f.previewUrl)?.previewUrl}
+                      required={t.slotsRequired}
                       onChange={(next) => patch(t.id, { slots: next.length ? next : undefined })}
+                      onRequiredChange={(v) => patch(t.id, { slotsRequired: v || undefined })}
                     />
 
                       </div>
