@@ -35,10 +35,48 @@ export default function SlotEditor({
   const [circle, setCircle] = useState(false);
   /** กำลังลากอะไรอยู่ — move = ย้ายทั้งช่อง · resize = ลากมุมขวาล่าง */
   const drag = useRef<{ id: string; mode: "move" | "resize"; x: number; y: number; s: TemplateSlot } | null>(null);
+  /** เส้นไกด์ที่กำลังโชว์ตอนลาก (ตำแหน่งเป็น % ของกระดาน) */
+  const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] });
 
   const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
   const patch = (id: string, p: Partial<TemplateSlot>) =>
     onChange(slots.map((s) => (s.id === id ? { ...s, ...p } : s)));
+
+  /**
+   * ระยะที่ถือว่า "ใกล้พอจะดูดเข้าหา" (% ของกรอบงาน)
+   * 1% ของด้านกว้าง — พอให้กะเองได้ แต่ไม่ดูดจนขยับละเอียดไม่ได้
+   */
+  const SNAP = 1;
+
+  /**
+   * หาเส้นอ้างอิงทั้งหมดที่ช่องอื่น ๆ และตัวกระดานสร้างไว้
+   * แนวตั้ง = ขอบซ้าย/กึ่งกลาง/ขอบขวาของทุกช่อง + ขอบและกึ่งกลางกระดาน
+   */
+  function refLines(exceptId: string) {
+    const v = [0, 50, 100];
+    const h = [0, 50, 100];
+    for (const s of slots) {
+      if (s.id === exceptId) continue;
+      v.push(s.xPct, s.xPct + s.wPct / 2, s.xPct + s.wPct);
+      h.push(s.yPct, s.yPct + s.hPct / 2, s.yPct + s.hPct);
+    }
+    return { v, h };
+  }
+
+  /**
+   * ดูดค่าเข้าหาเส้นอ้างอิงที่ใกล้ที่สุด
+   * edges = ตำแหน่งที่ต้องเทียบ (ซ้าย/กลาง/ขวา ของช่องที่กำลังลาก)
+   * คืนค่าที่ต้องบวกเข้าไป + เส้นที่ดูดติด (ไว้วาดให้เห็น)
+   */
+  function snapDelta(edges: number[], lines: number[]) {
+    let best: { d: number; line: number } | null = null;
+    for (const e of edges)
+      for (const ln of lines) {
+        const d = ln - e;
+        if (Math.abs(d) <= SNAP && (!best || Math.abs(d) < Math.abs(best.d))) best = { d, line: ln };
+      }
+    return best;
+  }
 
   /** แปลงระยะที่ลากบนจอ → % ของกรอบงาน */
   function pct(dxPx: number, dyPx: number) {
@@ -58,20 +96,52 @@ export default function SlotEditor({
     const d = drag.current;
     if (!d) return;
     const { dx, dy } = pct(e.clientX - d.x, e.clientY - d.y);
+    const lines = refLines(d.id);
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    const shown: { v: number[]; h: number[] } = { v: [], h: [] };
+
     if (d.mode === "move") {
-      patch(d.id, {
-        xPct: Math.round(clamp(d.s.xPct + dx, 0, 100 - d.s.wPct) * 100) / 100,
-        yPct: Math.round(clamp(d.s.yPct + dy, 0, 100 - d.s.hPct) * 100) / 100,
-      });
+      let x = clamp(d.s.xPct + dx, 0, 100 - d.s.wPct);
+      let y = clamp(d.s.yPct + dy, 0, 100 - d.s.hPct);
+      // ดูดขอบซ้าย/กึ่งกลาง/ขอบขวา เข้าหาเส้นอ้างอิง
+      const sx = snapDelta([x, x + d.s.wPct / 2, x + d.s.wPct], lines.v);
+      if (sx) {
+        x = clamp(x + sx.d, 0, 100 - d.s.wPct);
+        shown.v.push(sx.line);
+      }
+      const sy = snapDelta([y, y + d.s.hPct / 2, y + d.s.hPct], lines.h);
+      if (sy) {
+        y = clamp(y + sy.d, 0, 100 - d.s.hPct);
+        shown.h.push(sy.line);
+      }
+      patch(d.id, { xPct: r2(x), yPct: r2(y) });
     } else {
-      patch(d.id, {
-        wPct: Math.round(clamp(d.s.wPct + dx, 2, 100 - d.s.xPct) * 100) / 100,
-        hPct: Math.round(clamp(d.s.hPct + dy, 2, 100 - d.s.yPct) * 100) / 100,
-      });
+      let w = clamp(d.s.wPct + dx, 2, 100 - d.s.xPct);
+      let h = clamp(d.s.hPct + dy, 2, 100 - d.s.yPct);
+      // ① ขอบขวา/ล่าง ดูดเข้าหาเส้นอ้างอิง
+      const sw = snapDelta([d.s.xPct + w], lines.v);
+      if (sw) {
+        w = clamp(w + sw.d, 2, 100 - d.s.xPct);
+        shown.v.push(sw.line);
+      }
+      const sh = snapDelta([d.s.yPct + h], lines.h);
+      if (sh) {
+        h = clamp(h + sh.d, 2, 100 - d.s.yPct);
+        shown.h.push(sh.line);
+      }
+      // ② ขนาดเท่าช่องอื่น — ทำให้ทุกช่องเท่ากันเป๊ะโดยไม่ต้องพิมพ์ตัวเลข
+      for (const o of slots) {
+        if (o.id === d.id) continue;
+        if (Math.abs(o.wPct - w) <= SNAP) w = o.wPct;
+        if (Math.abs(o.hPct - h) <= SNAP) h = o.hPct;
+      }
+      patch(d.id, { wPct: r2(w), hPct: r2(h) });
     }
+    setGuides(shown);
   }
   const onUp = () => {
     drag.current = null;
+    setGuides({ v: [], h: [] });
   };
 
   /**
@@ -104,7 +174,8 @@ export default function SlotEditor({
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[11px] font-bold text-violet-800">🧩 ช่องใส่รูป (Theme)</span>
         <span className={`text-[11px] ${faint}`}>
-          กำหนดช่องแล้ว ลูกค้าจะเห็นเป็นกล่อง &ldquo;＋ เพิ่มรูป&rdquo; ทีละช่อง แทนการวางลายเดียวเต็มกรอบ
+          กำหนดช่องแล้ว ลูกค้าจะเห็นเป็นกล่อง &ldquo;＋ เพิ่มรูป&rdquo; ทีละช่อง แทนการวางลายเดียวเต็มกรอบ ·
+          ลากแล้วมี<span className="font-semibold text-rose-600">เส้นแดง</span>ขึ้น = ตรงกับช่องอื่น/กึ่งกลางพอดี
         </span>
       </div>
 
@@ -204,6 +275,14 @@ export default function SlotEditor({
             />
           </div>
         ))}
+        {/* เส้นไกด์ตอนลาก — โผล่เมื่อขอบตรงกับช่องอื่นหรือกึ่งกลางกระดาน */}
+        {guides.v.map((x, i) => (
+          <span key={`v${i}`} style={{ left: `${x}%` }} className="pointer-events-none absolute inset-y-0 w-px bg-rose-500" />
+        ))}
+        {guides.h.map((y, i) => (
+          <span key={`h${i}`} style={{ top: `${y}%` }} className="pointer-events-none absolute inset-x-0 h-px bg-rose-500" />
+        ))}
+
         {!slots.length && (
           <span className={`absolute inset-0 grid place-items-center text-center text-[11px] ${faint}`}>
             ยังไม่มีช่อง — กด ＋ เพิ่มช่อง หรือสร้างเป็นตาราง

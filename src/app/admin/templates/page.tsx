@@ -734,7 +734,7 @@ function AdminTemplatesInner() {
       });
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6">
+    <div className="mx-auto w-full max-w-[112rem] px-4 py-6">
       {/* ── หัวหน้า (โทนแบรนด์ฟ้า-เหลืองเป็ด ให้เข้ากับหน้าร้าน) ── */}
       <div className={brandHero}>
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -1096,7 +1096,7 @@ function AdminTemplatesInner() {
             </p>
           )}
           {/* ยุบอยู่ = การ์ดเรียงเป็นกริด (เห็นได้เยอะต่อหน้าจอ) · กางแล้วขยายเต็มแถวให้พื้นที่แก้ไข */}
-          <div className="grid gap-2.5 xl:grid-cols-2">
+          <div className="grid gap-2.5 xl:grid-cols-2 2xl:grid-cols-3">
           {grp.items.map((t) => {
             const used = usedBy[t.id] ?? [];
             const files = t.files ?? [];
@@ -1152,7 +1152,7 @@ function AdminTemplatesInner() {
                     void dropOnTemplate(t.id);
                   }
                 }}
-                className={`${brandCard} transition ${expanded ? "xl:col-span-2" : ""} ${
+                className={`${brandCard} transition ${expanded ? "xl:col-span-2 2xl:col-span-3" : ""} ${
                   dragAt === t.id ? "opacity-40" : ""
                 } ${dropOn === t.id ? "ring-2 ring-amber-400 ring-offset-1" : ""} ${
                   t.hidden ? "bg-slate-50" : ""
@@ -1208,7 +1208,15 @@ function AdminTemplatesInner() {
                 </div>
 
                 {expanded && (
-                  <div className="space-y-3 border-t border-slate-100 p-3">
+                  /*
+                    การ์ดที่กางกินเต็มแถว → เนื้อในแบ่งเป็น 2 คอลัมน์บนจอกว้าง
+                    ซ้าย = ชื่อ/หมวด/ตัวเลือก/ไฟล์ (ของที่ต้องกรอกเป็นลำดับ)
+                    ขวา = ค่าที่ใช้ตอนลูกค้าวางลายบนเว็บ + ช่องใส่รูป (ของที่ต้องเห็นภาพ)
+                    ไม่งั้นการ์ดจะยาวเป็นหางว่าว ต้องเลื่อนหาทีละส่วน
+                  */
+                  <div className="border-t border-slate-100 p-3">
+                    <div className="grid gap-3 2xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] 2xl:items-start">
+                      <div className="space-y-3">
                     <div className="grid gap-2 sm:grid-cols-2">
                       <input
                         value={t.name}
@@ -1548,6 +1556,10 @@ function AdminTemplatesInner() {
                       </div>
                     )}
 
+                      </div>
+
+                      {/* ── คอลัมน์ขวา: ค่าที่ใช้ตอนลูกค้าวางลายบนเว็บ + ช่องใส่รูป ── */}
+                      <div className="space-y-3">
                     {/* ── ค่าที่ใช้ตอนลูกค้า "วางลายบนเว็บ" ── */}
                     <div className="flex flex-wrap items-center gap-2 rounded-xl bg-sky-50/70 px-3 py-2 ring-1 ring-sky-100">
                       <span className="text-[11px] font-bold text-sky-800">🖼 ตอนลูกค้าวางลายบนเว็บ</span>
@@ -1648,7 +1660,10 @@ function AdminTemplatesInner() {
                       onChange={(next) => patch(t.id, { slots: next.length ? next : undefined })}
                     />
 
-                    <div className="flex flex-wrap items-center gap-2">
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                       <button
                         type="button"
                         onClick={() => patch(t.id, { files: [...files, { id: rid("f") }] })}
