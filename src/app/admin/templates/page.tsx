@@ -113,6 +113,44 @@ function TemplateIcon({ tone, size = 40 }: { tone: string; size?: number }) {
 }
 
 /**
+ * รูปหัวแถวของชุดเทมเพลต — เรียงตามข้อมูลที่ "ต่างกันจริง" ก่อนเสมอ
+ *   1) รูปตัวอย่างจากไฟล์งาน (ของจริง บอกได้ทันทีว่าชุดไหน)
+ *   2) ไม่มีรูป → โชว์ขนาดอาร์ตบอร์ด เช่น 18×21 (แอดมินใช้ขนาดแยกชุดอยู่แล้ว)
+ *   3) ไม่รู้ขนาด → ค่อยตกมาที่ไอคอนกลาง
+ * เดิมใช้ไอคอนตัวเดียวกันทั้ง 94 แถว ต่างแค่สีหมวด — กินที่ 40px โดยไม่บอกอะไรเลย
+ */
+function TemplateThumb({ t, tone }: { t: Draft; tone: string }) {
+  const src = previewOf(t);
+  const f = templateFiles(t).find((x) => x.widthMm && x.heightMm);
+  const cm = (mm?: number) => (mm ? Math.round(mm / 10) : 0);
+  if (src)
+    return (
+      // พื้นอ่อนสีหมวด — รูปตัวอย่างเป็นเส้นไดคัทบางบนพื้นโปร่ง วางบนขาวล้วนแล้วจางจนดูเหมือนช่องว่าง
+      <span
+        aria-hidden
+        className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-[11px]"
+        style={{ backgroundColor: `${tone}1F` }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt="" loading="lazy" decoding="async" className="h-full w-full object-contain p-1" />
+      </span>
+    );
+  if (f)
+    return (
+      <span
+        aria-hidden
+        className="grid h-11 w-11 shrink-0 place-items-center rounded-[11px] text-[10px] font-bold leading-none tabular-nums"
+        style={{ backgroundColor: `${tone}22`, color: tone }}
+      >
+        <span>{cm(f.widthMm)}</span>
+        <span className="opacity-60">×</span>
+        <span>{cm(f.heightMm)}</span>
+      </span>
+    );
+  return <TemplateIcon tone={tone} />;
+}
+
+/**
  * 🧩 ผังช่องของหน้าหนึ่ง แบบย่อ อ่านอย่างเดียว — ใช้ในหน้าสรุปตอนผังกลางไม่ได้ใช้งานแล้ว
  * แอดมินต้องเห็นว่าแต่ละหน้าวางช่องไว้ยังไงโดยไม่ต้องกดสลับไปทีละหน้า · กดที่การ์ดแล้วเข้าไปแก้หน้านั้นได้เลย
  */
@@ -1109,42 +1147,48 @@ function AdminTemplatesInner() {
           setBulkDrag(false);
           void bulkAdd(e.dataTransfer.files);
         }}
-        className={`mb-3 rounded-2xl border-2 border-dashed p-4 text-center transition ${
-          bulkDrag ? "border-sky-400 bg-sky-50" : "border-amber-200 bg-amber-50/40"
+        /*
+          ปกติเป็นแถบบางบรรทัดเดียว — พอเริ่มลากไฟล์เข้ามาถึงค่อยพองเป็นเป้าใหญ่
+          เดิมเป็นกล่องประสูง 4 บรรทัดค้างอยู่ตลอด กินพื้นที่หัวลิสต์ทั้งที่ใช้นาน ๆ ครั้ง
+        */
+        className={`mb-3 rounded-xl border border-dashed text-center transition-all ${
+          bulkDrag ? "border-2 border-sky-400 bg-sky-50 p-6" : "border-amber-200 bg-amber-50/40 px-3 py-2"
         }`}
       >
         {bulk ? (
           <p className="text-sm font-bold text-slate-700">
             ⏳ กำลังเพิ่ม {bulk.done + 1}/{bulk.total} — {bulk.name}
           </p>
+        ) : bulkDrag ? (
+          <p className="text-sm font-bold text-sky-700">
+            📥 ปล่อยได้เลย — ได้ชุดใหม่ไฟล์ละชุด
+            {cat && cat !== NO_CATEGORY ? ` เข้าหมวด ${cat}` : ""}
+          </p>
         ) : (
-          <>
-            <label className="cursor-pointer text-sm font-bold text-slate-700">
-              📥 ลากไฟล์ .ai มาวางตรงนี้ทีเดียวหลายไฟล์ — ได้ชุดใหม่ <u>ไฟล์ละชุด</u>
-              <input
-                type="file"
-                accept=".ai,.pdf,.eps,.svg,.psd,.zip"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  void bulkAdd(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-            </label>
-            <p className={`mt-0.5 text-[11px] ${faint}`}>
-              ตั้งชื่อชุดจากชื่อไฟล์ · อ่านขนาดงานจากไฟล์ · ทำรูปตัวอย่างให้เอง
+          <label className="flex cursor-pointer flex-wrap items-center justify-center gap-x-1.5 text-xs text-slate-600">
+            <span className="font-bold text-slate-700">📥 ลากไฟล์ .ai มาวางที่นี่ = ชุดใหม่ไฟล์ละชุด</span>
+            <span className={faint}>
+              ตั้งชื่อ/อ่านขนาด/ทำรูปให้เอง ·{" "}
               {cat && cat !== NO_CATEGORY ? (
                 <>
-                  {" "}
-                  · เข้าหมวด <span className="font-bold text-amber-700">{cat}</span> อัตโนมัติ
+                  เข้าหมวด <span className="font-bold text-amber-700">{cat}</span>
                 </>
               ) : (
-                <> · เลือกหมวดทางซ้ายก่อน ชุดใหม่จะเข้าหมวดนั้นให้เลย</>
-              )}
-              {" "}· อยากได้หลายไฟล์ในชุดเดียว ให้ลากไปวางบนการ์ดของชุดนั้นแทน
-            </p>
-          </>
+                <>เลือกหมวดทางซ้ายก่อน ชุดใหม่จะเข้าหมวดนั้น</>
+              )}{" "}
+              · หลายไฟล์ในชุดเดียว = ลากไปวางบนแถวของชุดนั้น
+            </span>
+            <input
+              type="file"
+              accept=".ai,.pdf,.eps,.svg,.psd,.zip"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                void bulkAdd(e.target.files);
+                e.target.value = "";
+              }}
+            />
+          </label>
         )}
       </div>
 
@@ -1178,18 +1222,27 @@ function AdminTemplatesInner() {
           )}
           {catGroups.map((grp) => (
         <div key={grp.category}>
-          {/* หัวกลุ่มหมวด — โผล่เฉพาะตอนดูรวมทุกหมวดและมีมากกว่า 1 กลุ่ม */}
+          {/*
+            หัวกลุ่มหมวด — โผล่เฉพาะตอนดูรวมทุกหมวดและมีมากกว่า 1 กลุ่ม
+            ค้างไว้บนสุดตอนเลื่อน เพราะรวมทุกหมวดมี 26 กลุ่ม เลื่อนไปกลางกลุ่มแล้วลืมว่าอยู่หมวดอะไร
+            จุดสีชุดเดียวกับเมนูซ้าย = โยงหัวกลุ่มกับเมนูได้โดยไม่ต้องอ่านซ้ำ
+          */}
           {!cat && catGroups.length > 1 && (
-            <p className="mb-2 flex items-center gap-2 text-xs font-bold text-amber-800">
-              <span className={grp.category === NO_CATEGORY ? "text-slate-400" : ""}>
-                {grp.category === NO_CATEGORY ? "📂" : "🗂"} {grp.category}
-              </span>
-              <span className={`font-normal ${faint}`}>({grp.items.length})</span>
-              <span className="h-px flex-1 bg-amber-100" />
+            <p className="sticky top-16 z-10 mb-1.5 flex items-center gap-2 bg-slate-50/95 py-1.5 text-xs font-bold text-slate-700 backdrop-blur">
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white"
+                style={{ backgroundColor: categoryTone(grp.category === NO_CATEGORY ? "" : grp.category) }}
+              />
+              <span className={grp.category === NO_CATEGORY ? "text-slate-400" : ""}>{grp.category}</span>
+              <span className={`font-normal ${faint}`}>{grp.items.length}</span>
+              <span className="h-px flex-1 bg-slate-200" />
             </p>
           )}
-          {/* ยุบอยู่ = การ์ดเรียงเป็นกริด (เห็นได้เยอะต่อหน้าจอ) · กางแล้วขยายเต็มแถวให้พื้นที่แก้ไข */}
-          <div className="grid gap-2.5 xl:grid-cols-2 2xl:grid-cols-3">
+          {/*
+            ยุบอยู่ = แถวกะทัดรัดเรียงเป็นกริด · กางแล้วขยายเต็มแถวให้พื้นที่แก้ไข
+            แถวเตี้ยลงมากหลังตัดข้อความซ้ำออก เลยเพิ่มคอลัมน์ได้ — 94 ชุดสั้นลงเกินครึ่งหน้าจอ
+          */}
+          <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3 min-[1800px]:grid-cols-4">
           {grp.items.map((t) => {
             const used = usedBy[t.id] ?? [];
             const files = t.files ?? [];
@@ -1245,7 +1298,9 @@ function AdminTemplatesInner() {
                     void dropOnTemplate(t.id);
                   }
                 }}
-                className={`${brandCard} transition ${expanded ? "xl:col-span-2 2xl:col-span-3" : ""} ${
+                className={`${brandCard} transition ${
+                  expanded ? "sm:col-span-2 2xl:col-span-3 min-[1800px]:col-span-4" : ""
+                } ${
                   dragAt === t.id ? "opacity-40" : ""
                 } ${dropOn === t.id ? "ring-2 ring-amber-400 ring-offset-1" : ""} ${
                   t.hidden ? "bg-slate-50" : ""
@@ -1253,51 +1308,85 @@ function AdminTemplatesInner() {
                 /* แถบสีซ้าย = สีประจำหมวด (ดูรวมทุกหมวดแล้วยังแยกออกว่าใบไหนหมวดอะไร) */
                 style={{ borderLeftColor: categoryTone(t.category?.trim() ?? "") }}
               >
-                {/* ── หัวการ์ด: อ่านภาพรวมได้โดยไม่ต้องกาง ── */}
-                <div className="flex items-center gap-3 p-3">
+                {/*
+                  ── หัวแถว ──
+                  กติกา: พิมพ์เฉพาะสิ่งที่ "ต่างกันระหว่างชุด" เท่านั้น
+                  ของเดิมพิมพ์ "1 ไฟล์" ซ้ำ 93/94 แถว และ "ยังไม่มีสินค้าผูกไว้" ซ้ำ 92/94 แถว
+                  แล้วไปเบียดชื่อ (ข้อมูลเดียวที่ต่างจริง) จนโดนตัด — กลับด้านใหม่:
+                  ชื่อได้ที่เต็ม ขึ้นได้ 2 บรรทัด · สถานะโชว์เป็นป้ายเฉพาะเคสที่ผิดจากค่าปกติ
+                */}
+                <div
+                  className={`group/row relative flex items-start gap-2.5 p-2.5 ${
+                    expanded ? "" : "cursor-pointer hover:bg-amber-50/50"
+                  }`}
+                  onClick={
+                    expanded
+                      ? undefined
+                      : () => {
+                          void backfillPreviews(t); // กาง = เติมรูปให้ไฟล์ที่ยังไม่มีเอง
+                          void backfillSizes(t); // + อ่านขนาดงานจริงจากไฟล์
+                          setOpen((o) => ({ ...o, [t.id]: true }));
+                        }
+                  }
+                >
                   {!expanded && (
-                    <span className="cursor-grab select-none text-slate-300" title="ลากเพื่อจัดลำดับ">
+                    <span
+                      className="absolute left-0 top-0 hidden h-full w-3 cursor-grab select-none place-items-center text-[10px] leading-none text-slate-300 group-hover/row:grid"
+                      title="ลากเพื่อจัดลำดับ"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       ⋮⋮
                     </span>
                   )}
-                  <TemplateIcon tone={categoryTone(t.category?.trim() ?? "")} />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void backfillPreviews(t); // กางการ์ด = เติมรูปให้ไฟล์ที่ยังไม่มีเอง
-                      void backfillSizes(t); // + อ่านขนาดงานจริงจากไฟล์ (ใช้ตอนลูกค้าวางลายบนเว็บ)
-                      setOpen((o) => ({ ...o, [t.id]: !o[t.id] }));
-                    }}
-                    className="min-w-0 flex-1 text-left"
-                  >
-                    <span className="block truncate text-sm font-bold text-slate-800">
+                  <TemplateThumb t={t} tone={categoryTone(t.category?.trim() ?? "")} />
+                  <div className="min-w-0 flex-1">
+                    {/* overflow-wrap:anywhere — ชื่อไทยไม่มีช่องว่างระหว่างคำ ถ้าไม่ใส่จะดันล้นแทนที่จะขึ้นบรรทัดใหม่ */}
+                    <p className="text-sm font-bold leading-snug text-slate-800 [overflow-wrap:anywhere]">
                       {t.name.trim() || <span className="text-slate-400">(ยังไม่ตั้งชื่อ)</span>}
+                    </p>
+                    {/* ป้ายสถานะ — ขึ้นเฉพาะที่ผิดจากปกติ ไม่มีอะไรผิดปกติก็ไม่มีบรรทัดนี้เลย */}
+                    {(files.length !== 1 || label || used.length > 0 || t.hidden || missing > 0 || uploading || t._dirty) && (
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        {uploading && (
+                          <span className={`${badge} bg-sky-50 text-sky-700 ring-1 ring-sky-200`}>⬆️ {uploading}</span>
+                        )}
+                        {missing > 0 && (
+                          <span className={`${badge} bg-amber-50 text-amber-700 ring-1 ring-amber-200`}>
+                            ⚠️ {missing} ไฟล์ว่าง
+                          </span>
+                        )}
+                        {t._dirty && <span className={`${badge} bg-amber-100 text-amber-800`}>ยังไม่บันทึก</span>}
+                        {files.length !== 1 && (
+                          <span className={`${badge} bg-slate-100 text-slate-600`}>{files.length} ไฟล์</span>
+                        )}
+                        {label && (
+                          <span className={`${badge} max-w-[11rem] truncate bg-slate-100 text-slate-600`}>
+                            แยกตาม “{label}”
+                          </span>
+                        )}
+                        {used.length > 0 && (
+                          <span className={`${badge} bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200`}>
+                            🔗 {used.length} สินค้า
+                          </span>
+                        )}
+                        {t.hidden && <span className={`${badge} bg-slate-200 text-slate-600`}>🚫 ซ่อน</span>}
+                      </div>
+                    )}
+                  </div>
+                  {expanded ? (
+                    <button
+                      type="button"
+                      onClick={() => setOpen((o) => ({ ...o, [t.id]: false }))}
+                      className={`${btnSmNeutral} shrink-0`}
+                    >
+                      ▲ ยุบ
+                    </button>
+                  ) : (
+                    /* ทั้งแถวกดได้อยู่แล้ว — ลูกศรเป็นแค่ตัวบอกว่ากดได้ ไม่ใช่ปุ่มซ้ำอีกตัว */
+                    <span aria-hidden className="shrink-0 self-center pr-0.5 text-slate-300 group-hover/row:text-slate-500">
+                      ›
                     </span>
-                    <span className={`block truncate text-[11px] ${faint}`}>
-                      {files.length} ไฟล์
-                      {label ? ` · แยกตาม “${label}”` : ""}
-                      {used.length ? ` · ใช้ใน ${used.length} สินค้า` : " · ยังไม่มีสินค้าผูกไว้"}
-                      {t.hidden ? " · 🚫 ซ่อน" : ""}
-                    </span>
-                  </button>
-                  {uploading && (
-                    <span className={`${badge} bg-sky-50 text-sky-700 ring-1 ring-sky-200`}>⬆️ {uploading}</span>
                   )}
-                  {missing > 0 && (
-                    <span className={`${badge} bg-amber-50 text-amber-700 ring-1 ring-amber-200`}>⚠️ {missing} ไฟล์ว่าง</span>
-                  )}
-                  {t._dirty && <span className={`${badge} bg-amber-100 text-amber-800`}>ยังไม่บันทึก</span>}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void backfillPreviews(t); // กางการ์ด = เติมรูปให้ไฟล์ที่ยังไม่มีเอง
-                      void backfillSizes(t); // + อ่านขนาดงานจริงจากไฟล์ (ใช้ตอนลูกค้าวางลายบนเว็บ)
-                      setOpen((o) => ({ ...o, [t.id]: !o[t.id] }));
-                    }}
-                    className={`${btnSmNeutral} shrink-0`}
-                  >
-                    {expanded ? "▲ ยุบ" : "▼ แก้ไข"}
-                  </button>
                 </div>
 
                 {expanded && (
