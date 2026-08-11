@@ -364,27 +364,12 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* ── สินค้าขายดี ── */}
-      <section id="bestseller" className="wrap rv gap">
-        <div className="head">
-          <span className="kicker kicker-fire">
-            <i className="flame">🔥</i>ขายดีประจำร้าน
-          </span>
-          <h2>
-            ลูกค้า<em>สั่งซ้ำ</em>บ่อยที่สุด
-          </h2>
-          <p>ราคานี้รวมพิมพ์ลายของคุณแล้ว สั่งชิ้นเดียวก็ทำได้</p>
-        </div>
-        <div className="rail in">
-          {best.map((p, i) => (
-            <BestCard key={p.id} p={p} catLabel={catName(p.category)} rank={i} />
-          ))}
-        </div>
-      </section>
-
-      {/* ── ทำไมต้องเรา + ขั้นตอน ── */}
-      <div className="ws-band">
-        <div className="ws-bg" aria-hidden="true" />
+      {/* ── สินค้าขายดี + ทำไมต้องเรา: ฉากพื้นหลังต่อเนื่องผืนเดียว ── */}
+      <div className="combo-band">
+        <div className="cb-bg" aria-hidden="true" />
+        <img className="cb-cloud cc1" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+        <img className="cb-cloud cc2" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+        <img className="cb-cloud cc3" src="/landing/cloud.webp" alt="" aria-hidden="true" />
         <img
           className="ws-cloud"
           style={{ width: 190, top: "6%", left: -40, opacity: 0.85, animation: "bgFloat1 22s ease-in-out infinite, bgPuff 9s ease-in-out infinite" }}
@@ -401,7 +386,26 @@ export default function HomePage() {
         />
         <img className="ws-star" style={{ top: "12%", right: "8%", width: 30 }} src="/landing/star.webp" alt="" aria-hidden="true" />
         <img className="ws-star" style={{ top: "52%", left: "5%", width: 22, animationDelay: "-2.6s" }} src="/landing/star.webp" alt="" aria-hidden="true" />
+        <img className="ws-star" style={{ bottom: "9%", left: "26%", width: 18, animationDelay: "-4.3s" }} src="/landing/star.webp" alt="" aria-hidden="true" />
 
+        <section id="bestseller" className="wrap rv">
+          <div className="head">
+            <span className="kicker kicker-fire">
+              <i className="flame">🔥</i>ขายดีประจำร้าน
+            </span>
+            <h2>
+              ลูกค้า<em>สั่งซ้ำ</em>บ่อยที่สุด
+            </h2>
+            <p>ราคานี้รวมพิมพ์ลายของคุณแล้ว สั่งชิ้นเดียวก็ทำได้</p>
+          </div>
+          <div className="rail in">
+            {best.map((p, i) => (
+              <BestCard key={p.id} p={p} catLabel={catName(p.category)} rank={i} />
+            ))}
+          </div>
+        </section>
+
+        {/* ── ทำไมต้องเรา ── */}
         <section id="why" className="wrap rv">
           <div className="why">
             <img className="why-gift" src="/landing/cat-ico-5.webp" alt="" aria-hidden="true" />

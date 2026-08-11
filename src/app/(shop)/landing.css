@@ -239,7 +239,7 @@ to{opacity:1;transform:none}}
 
 .dl .hero{position:relative;padding:36px 0 76px;margin-bottom:0}
 .dl .top-stack{position:relative;width:100vw;margin-left:calc(50% - 50vw);margin-top:-200px;padding-top:200px;border-radius:0;padding-bottom:0;
-  background:linear-gradient(168deg,var(--sky-200) 0%,var(--sky-100) 20%,var(--sky-50) 42%,#EAF6FE 62%,#F5FBFF 82%,#FFFFFF 100%)}
+  background:linear-gradient(168deg,var(--sky-200) 0%,var(--sky-100) 35%,var(--sky-50) 58%,#EAF6FE 76%,#F5FBFF 90%,#FFFFFF 100%)}
 .dl .hero-bg{display:none}
 .dl .bg-cloud{position:absolute;z-index:0;pointer-events:none;user-select:none;height:auto;
   filter:drop-shadow(0 12px 20px rgba(44,129,196,.10))}
@@ -563,25 +563,35 @@ to{opacity:1;transform:none}}
 @keyframes heartUp{0%{opacity:0;transform:translateY(0) scale(.6)}
 25%{opacity:1;transform:translateY(-12px) scale(1.15)}
 100%{opacity:0;transform:translateY(-46px) scale(.9)}}
-/* การ์ดใหญ่มุมมนของโซน "ทำไมต้องเลือกเรา" — ไม่เต็มจอ ไม่ตัดเฉียงแล้ว (PROTOTYPE 04) */
-.dl .ws-band{position:relative;width:min(100% - 40px,calc(var(--wrap) + 96px));margin:52px auto 0;padding:60px 0 56px}
-.dl .ws-bg{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden;border-radius:56px;
-  background:
-    radial-gradient(72% 52% at 16% 8%,rgba(255,212,71,.15),rgba(255,212,71,0) 62%),
-    radial-gradient(66% 50% at 88% 88%,rgba(255,158,176,.14),rgba(255,158,176,0) 64%),
-    linear-gradient(158deg,#E9F6FE 0%,#F4FBFF 48%,#E7F4FE 100%);
-  box-shadow:0 20px 46px rgba(23,58,107,.07)}
-.dl .ws-band > section{position:relative;z-index:4}
+/* ก้อนเมฆลอยพื้นหลัง — ชุดเดียวกับ Hero */
+.dl .cb-cloud{position:absolute;z-index:0;pointer-events:none;user-select:none;height:auto;
+  filter:drop-shadow(0 12px 20px rgba(44,129,196,.10))}
+.dl .cc1{width:190px;top:72%;left:-52px;opacity:.85;animation:bgFloat1 20s ease-in-out infinite, bgPuff 8s ease-in-out infinite}
+.dl .cc2{width:150px;top:38%;right:-44px;opacity:.75;animation:bgFloat2 24s ease-in-out infinite reverse, bgPuff 10s ease-in-out infinite}
+.dl .cc3{width:120px;bottom:14%;left:6%;opacity:.7;animation:bgFloat3 22s ease-in-out infinite, bgPuff 9s ease-in-out infinite reverse}
+@media(max-width:900px){.dl .cb-cloud{display:none}}
+/* ===== รวมโซนสินค้าขายดี + ทำไมต้องเลือกเรา เป็นฉากพื้นหลังต่อเนื่องเดียว (PROTOTYPE 05) ===== */
+.dl .combo-band{position:relative;width:100vw;margin-left:calc(50% - 50vw);margin-top:0;padding:64px 0 60px}
+.dl .cb-bg{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden;
+  background:linear-gradient(168deg,var(--sky-200) 0%,var(--sky-100) 10%,var(--sky-50) 22%,#EAF6FE 38%,#F5FBFF 60%,#FFFFFF 100%)}
+/* เฟดขาวที่ก้นโซน ให้เชื่อมกับโซนแชทด้านล่างแบบไร้รอยต่อ */
+.dl .cb-bg::after{content:"";position:absolute;left:0;right:0;bottom:0;height:16%;
+  background:linear-gradient(180deg,rgba(255,255,255,0),#FFFFFF 90%)}
+.dl .combo-band > section,.dl .combo-band > .wrap{position:relative;z-index:2}
+.dl .combo-band .kicker-fire,.dl .combo-band .kicker-why{background:rgba(255,255,255,.85)}
+.dl #bestseller{margin-bottom:8px}
+.dl #why{margin-top:54px}
+@media(max-width:900px){.dl .combo-band{padding:44px 0 40px}}
 .dl .ws-cloud{position:absolute;z-index:1;pointer-events:none;height:auto;filter:drop-shadow(0 10px 16px rgba(44,129,196,.1))}
 .dl .ws-star{position:absolute;z-index:1;pointer-events:none;height:auto;animation:starfloat 6s ease-in-out infinite}
-.dl .ws-band .why{background:none;padding:0;border-radius:0;overflow:visible}
-@media(max-width:900px){.dl .ws-band{padding:60px 0 56px}
-.dl .ws-bg{border-radius:34px}}
+/* กล่องข้อความ "ทำไมต้องเลือกเรา" ยังอยู่ตำแหน่งเดิม เป็นกล่องขาวลอยเด่นบนพื้น gradient */
+.dl .combo-band .why{background:rgba(255,255,255,.92);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  box-shadow:0 18px 40px rgba(23,58,107,.1)}
 .dl .why{background:linear-gradient(150deg,var(--sky-100),var(--sky-50));border-radius:var(--r-xl);padding:52px 46px;
   display:grid;grid-template-columns:.72fr 2fr;gap:36px;align-items:center;position:relative;overflow:visible}
 .dl .why-float{position:absolute;height:auto;z-index:7;pointer-events:none;width:15%;max-width:62px}
-.dl .wf-heart{right:71%;top:-27%;width:13%;max-width:54px;animation:heartFloat 4.4s cubic-bezier(.22,1,.36,1) infinite}
-.dl .wf-star{right:100%;bottom:56%;width:13%;max-width:54px;animation:starTwinkle 5.2s cubic-bezier(.22,1,.36,1) -2.1s infinite}
+.dl .wf-heart{right:71%;top:-12%;width:13%;max-width:54px;animation:heartFloat 4.4s cubic-bezier(.22,1,.36,1) infinite}
+.dl .wf-star{right:100%;bottom:41%;width:13%;max-width:54px;animation:starTwinkle 5.2s cubic-bezier(.22,1,.36,1) -2.1s infinite}
 @keyframes heartFloat{0%{opacity:0;scale:.2;rotate:6deg;translate:0 6px}
 12%{opacity:1;scale:1.14;rotate:22deg;translate:0 -4px}
 22%{opacity:1;scale:.96;rotate:17deg;translate:0 0}
@@ -608,8 +618,8 @@ to{opacity:1;transform:none}}
 70%{rotate:2deg;translate:0 0;scale:.98}
 78%{rotate:-3deg;translate:0 -3px;scale:1.01}
 88%{rotate:2deg;translate:0 0;scale:1}}
-.dl .hug{width:100%;max-width:220px;height:auto;margin-inline:auto;display:block;position:relative;
-  transform-origin:50% 100%; 
+.dl .hug{width:100%;max-width:220px;height:auto;margin-inline:auto;display:block;position:relative;top:15%;
+  transform-origin:50% 100%;
   scale:1.42;z-index:6;animation:bobble 5s ease-in-out infinite}
 .dl .why-head{text-align:center;margin-bottom:34px}
 .dl .kicker-why{display:flex;width:max-content;margin:0 auto 12px;align-items:center;gap:7px;position:relative;overflow:hidden;
@@ -688,7 +698,7 @@ to{opacity:1;transform:none}}
 .dl .why-item:hover .orb{transform:rotate(-7deg) scale(1.07)}
 .dl .why-item:hover .orb::before{inset:-12px;opacity:.55}
 /* ===== โซนสั่งซื้อแบบหน้าจอแชท ===== */
-.dl .chat-band{position:relative;width:100vw;margin-left:calc(50% - 50vw);margin-top:44px;padding:62px 0 58px}
+.dl .chat-band{position:relative;width:100vw;margin-left:calc(50% - 50vw);margin-top:0;padding:62px 0 58px}
 .dl .chat-bg{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden;
   background-image:url(/landing/chat-scene.webp);background-size:cover;background-position:center;background-repeat:no-repeat}
 /* ไล่ขาวหัว-ท้าย ให้ภาพฉากกลืนกับโซนบน/ล่าง */
@@ -811,17 +821,19 @@ to{opacity:1;transform:none}}
   background:linear-gradient(180deg,#F6FBFF 0%,#EAF6FE 46%,#E1F1FD 100%)}
 .dl .reviews-sec > .head,.dl .reviews-sec > .rv-marquee{position:relative;z-index:2}
 .dl .reviews-sec .head,.dl .reviews-sec .rv-marquee{width:min(100% - 40px,var(--wrap));margin-inline:auto}
-.dl .rv-marquee{position:relative;overflow:hidden;padding:6px 0 10px;
+.dl .rv-marquee{position:relative;overflow:hidden;padding:22px 0 26px;
   -webkit-mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);
           mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent)}
 .dl .rv-track{display:flex;gap:20px;width:max-content;animation:rvRun 44s linear infinite}
 .dl .rv-marquee:hover .rv-track{animation-play-state:paused}
 @keyframes rvRun{to{transform:translateX(calc(-50% - 10px))}}
-.dl .rvc{margin:0;flex:0 0 300px;background:#fff;border:1px solid rgba(255,255,255,.9);border-radius:24px;overflow:hidden;
+.dl .rvc{margin:0;flex:0 0 300px;background:#fff;border:1px solid rgba(255,255,255,.9);border-radius:24px;
   box-shadow:0 14px 30px rgba(23,58,107,.08);
   transition:transform .3s cubic-bezier(.34,1.56,.64,1),box-shadow .3s ease}
 .dl .rvc:hover{transform:translateY(-6px);box-shadow:0 24px 40px rgba(23,58,107,.14)}
-.dl .rvc-shot{position:relative;aspect-ratio:4/3;display:grid;place-items:center;
+/* ตัดขอบเฉพาะรูปภาพ ไม่ตัดเงาของทั้งการ์ด */
+.dl .rvc-shot{position:relative;aspect-ratio:4/3;display:grid;place-items:center;overflow:hidden;
+  border-radius:24px 24px 0 0;
   background:linear-gradient(150deg,#EAF6FE,#F7FBFF);border-bottom:1px solid var(--sky-100)}
 .dl .rvc-shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .dl .rvc figcaption{padding:16px 18px 18px}
