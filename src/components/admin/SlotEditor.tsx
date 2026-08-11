@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useRef, useState } from "react";
+import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { gridSlots, type TemplateSlot } from "@/lib/design-templates";
 import { btnSmDanger, btnSmDucky, btnSmNeutral, faint } from "@/lib/admin-ui";
 
@@ -35,6 +36,7 @@ export default function SlotEditor({
 }) {
   const stage = useRef<HTMLDivElement>(null);
   const [sel, setSel] = useState<string | null>(null);
+  const { confirm, dialog } = useConfirm();
   const [cols, setCols] = useState(2);
   const [rows, setRows] = useState(2);
   const [circle, setCircle] = useState(false);
@@ -234,7 +236,33 @@ export default function SlotEditor({
               />
               ต้องใส่ครบทุกช่อง
             </label>
-            <button type="button" onClick={() => onChange([])} className={`${btnSmDanger} ml-auto`}>
+            {slots.length === 2 && (
+              <button
+                type="button"
+                onClick={() => onChange(slots.map((s, i) => ({ ...s, label: i === 0 ? "ด้านหน้า" : "ด้านหลัง" })))}
+                className={btnSmNeutral}
+                title="งานสกรีน 2 ด้าน — ตั้งชื่อช่องซ้าย/บนเป็นด้านหน้า อีกช่องเป็นด้านหลัง"
+              >
+                ตั้งชื่อ หน้า/หลัง
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={async () => {
+                // ปุ่มปุ่มเดียวลบงานที่ตั้งมาทั้งชุด — ถามก่อนกันมือลั่น
+                if (
+                  await confirm({
+                    icon: "🧩",
+                    title: `ล้างช่องทั้งหมด ${slots.length} ช่อง?`,
+                    detail: "ตำแหน่ง ขนาด และชื่อช่องที่ตั้งไว้จะหายทั้งหมด ต้องตั้งใหม่เอง",
+                    confirmLabel: "ล้างทุกช่อง",
+                    danger: true,
+                  })
+                )
+                  onChange([]);
+              }}
+              className={`${btnSmDanger} ml-auto`}
+            >
               ล้างทุกช่อง ({slots.length})
             </button>
           </>
@@ -271,8 +299,8 @@ export default function SlotEditor({
               sel === s.id ? "border-violet-600" : "border-violet-400/70"
             }`}
           >
-            <span className="pointer-events-none absolute left-1 top-1 rounded bg-violet-600 px-1 text-[9px] font-bold text-white">
-              {i + 1}
+            <span className="pointer-events-none absolute left-1 top-1 max-w-[calc(100%-0.5rem)] truncate rounded bg-violet-600 px-1 text-[9px] font-bold text-white">
+              {s.label ? `${i + 1}· ${s.label}` : i + 1}
             </span>
             {/* ทำซ้ำ — โผล่บนช่องที่เลือกอยู่ กดแล้วได้ช่องใหม่ขนาดเดิมวางเยื้องลงมา */}
             {sel === s.id && (
@@ -329,6 +357,13 @@ export default function SlotEditor({
                   %
                 </label>
               ))}
+              <input
+                value={s.label ?? ""}
+                onChange={(e) => patch(s.id, { label: e.target.value || undefined })}
+                placeholder={`ชื่อช่อง (เช่น ด้านหน้า)`}
+                className={`${inputSm} w-36`}
+                title="ชื่อที่ลูกค้าเห็นบนช่อง และที่ติดไปในใบงานของกราฟฟิก — เว้นว่าง = ใช้เลขช่อง"
+              />
               <select
                 value={s.shape ?? "rect"}
                 onChange={(e) => patch(s.id, { shape: e.target.value === "circle" ? "circle" : undefined })}
@@ -357,6 +392,7 @@ export default function SlotEditor({
           ))}
         </div>
       )}
+      {dialog}
     </div>
   );
 }

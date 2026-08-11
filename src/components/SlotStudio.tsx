@@ -72,6 +72,8 @@ interface Props {
 }
 
 const MAX_MB = 15;
+/** ชื่อช่องที่ลูกค้าเห็น — หลังบ้านตั้งเองได้ (เช่น "ด้านหน้า") ไม่ตั้ง = ใช้เลขช่อง */
+const nameOf = (sl: TemplateSlot, i: number) => sl.label?.trim() || `ช่อง ${i + 1}`;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 export default function SlotStudio({
@@ -285,6 +287,8 @@ export default function SlotStudio({
   }
 
   const filled = shots.filter(Boolean).length;
+  /** ชื่อช่องที่ยังไม่ได้ใส่รูป — เอาไปบอกบนปุ่มตอนบังคับใส่ครบ */
+  const missing = slots.map((sl, i) => (shots[i] ? null : nameOf(sl, i))).filter(Boolean) as string[];
   const minDpi = shots.reduce<number | null>((lo, s, i) => {
     if (!s) return lo;
     const d = dpiOf(i);
@@ -372,7 +376,7 @@ export default function SlotStudio({
         const wmm = n((W * sl.wPct) / 100);
         const hmm = n((H * sl.hPct) / 100);
         const src = s && /^https?:/.test(s.url) ? ` · ต้นฉบับ: ${s.url}` : "";
-        return `ช่อง ${i + 1} ${wmm}×${hmm}mm ที่ ${n((W * sl.xPct) / 100)},${n((H * sl.yPct) / 100)}mm${
+        return `${nameOf(sl, i)} ${wmm}×${hmm}mm ที่ ${n((W * sl.xPct) / 100)},${n((H * sl.yPct) / 100)}mm${
           sl.shape === "circle" ? " (วงกลม)" : ""
         } — ${s ? `${dpiOf(i)} DPI${src}` : "ว่าง"}`;
       });
@@ -458,7 +462,7 @@ export default function SlotStudio({
                   {s ? (
                     <img
                       src={s.url}
-                      alt={`รูปช่อง ${i + 1}`}
+                      alt={`รูป${nameOf(sl, i)}`}
                       draggable={false}
                       className="pointer-events-none absolute"
                       style={(() => {
@@ -500,8 +504,9 @@ export default function SlotStudio({
                               🖼 เพิ่มรูป
                             </span>
                             {px >= 120 && (
-                              <span className="px-1 text-[10px] font-semibold text-white/95 sm:text-[11px]">
-                                {touch ? "แตะตรงไหนก็ได้ในช่อง" : "หรือลากรูปมาวางตรงนี้"}
+                              <span className="max-w-full truncate px-1 text-[10px] font-semibold text-white/95 sm:text-[11px]">
+                                {/* มีชื่อช่อง = บอกว่าช่องนี้คืออะไรสำคัญกว่าคำใบ้วิธีใส่รูป */}
+                                {sl.label?.trim() || (touch ? "แตะตรงไหนก็ได้ในช่อง" : "หรือลากรูปมาวางตรงนี้")}
                               </span>
                             )}
                           </>
@@ -520,9 +525,9 @@ export default function SlotStudio({
                     </label>
                   )}
 
-                  {/* เลขช่อง + ปุ่มลบ (เห็นเมื่อมีรูป) */}
-                  <span className="pointer-events-none absolute left-1 top-1 rounded bg-stone-900/60 px-1.5 text-[9px] font-bold text-white">
-                    {i + 1}
+                  {/* ชื่อ/เลขช่อง + ปุ่มลบ (เห็นเมื่อมีรูป) */}
+                  <span className="pointer-events-none absolute left-1 top-1 max-w-[calc(100%-1.75rem)] truncate rounded bg-stone-900/60 px-1.5 text-[9px] font-bold text-white">
+                    {sl.label?.trim() || i + 1}
                   </span>
                   {s && (
                     <button
@@ -560,7 +565,7 @@ export default function SlotStudio({
         {/* ── แถบปรับรูปในช่องที่เลือก ── */}
         {selShot && sel !== null && (
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2 rounded-xl bg-stone-50 px-3 py-2">
-            <span className="text-[11px] font-bold text-stone-600">ช่อง {sel + 1}</span>
+            <span className="max-w-[9rem] truncate text-[11px] font-bold text-stone-600">{nameOf(slots[sel], sel)}</span>
             <button
               type="button"
               onClick={() => selShot && sel !== null && setZoom(sel, selShot.zoom - 0.1)}
@@ -636,7 +641,9 @@ export default function SlotStudio({
             {busy
               ? "กำลังบันทึก…"
               : requireAll && filled < slots.length
-                ? `ยังขาดอีก ${slots.length - filled} ช่อง`
+                ? missing.length <= 2
+                  ? `ยังไม่ได้ใส่ ${missing.join(" · ")}`
+                  : `ยังขาดอีก ${missing.length} ช่อง`
                 : `✓ ใช้ลายนี้ (${filled}/${slots.length} ช่อง)`}
           </button>
         </div>

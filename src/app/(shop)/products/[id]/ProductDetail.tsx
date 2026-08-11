@@ -657,6 +657,15 @@ export default function ProductDetail({
   /** จำนวนรวมของทุกลาย = จำนวนที่สั่งจริง */
   const designTotalQty = placed.reduce((n, p) => n + p.qty, 0);
 
+  /**
+   * ลูกค้าเลือกงานหลายด้าน/หลายเลเยอร์อยู่ไหม (เช่น "สกรีน 2 ด้าน")
+   * — ต้องเตือนให้ชัด เพราะถ้าเข้าใจว่า "เพิ่มลาย = ด้านหลัง" จำนวนที่สั่งจะกลายเป็นสองเท่า
+   */
+  const multiSide = useMemo(
+    () => Object.values(effective).some((v) => /([2-9]|\d\d+)\s?ด้าน|สองด้าน|หลายด้าน|เลเยอร์/.test(String(v ?? ""))),
+    [effective],
+  );
+
   // โหมดออกแบบบนเว็บ: จำนวนที่สั่ง = ผลรวมจำนวนของทุกลาย (ลูกค้าปรับที่ลายแต่ละอัน)
   useEffect(() => {
     if (!studioMode || placed.length === 0) return;
@@ -1896,8 +1905,21 @@ export default function ProductDetail({
                     onClick={() => openStudio(null)}
                     className="mt-2 w-full rounded-xl border-2 border-dashed border-sky-300 bg-white px-3 py-2 text-[12px] font-bold text-sky-700 transition hover:bg-sky-100"
                   >
-                    ＋ เพิ่มลายอีกแบบ (สั่งหลายลายในออเดอร์เดียวได้)
+                    ＋ เพิ่มลายอีกแบบ — เป็นสินค้าชิ้นใหม่ ไม่ใช่ด้านหลัง
                   </button>
+                  {/*
+                    กันเข้าใจผิดที่แพงที่สุดของหน้านี้ — จำนวนที่สั่ง = ผลรวมของทุกลาย
+                    ลูกค้าที่คิดว่า "ลายที่ 2 คือด้านหลัง" จะได้ของมาสองเท่าโดยไม่รู้ตัว
+                  */}
+                  <p className="mt-1.5 px-1 text-[11px] leading-relaxed text-stone-500">
+                    แต่ละลาย = สินค้าคนละชิ้น จำนวนที่สั่งคือผลรวมของทุกลาย
+                    {multiSide && (
+                      <span className="mt-1 block font-bold text-amber-700">
+                        ⚠️ งานหลายด้านที่เลือกไว้ ให้ใส่ทุกด้านอยู่ใน “ลายเดียวกัน” (ช่องด้านหน้า/ด้านหลังในจอวางลาย)
+                        ถ้าแยกเป็นคนละลาย จำนวนที่ผลิตจะกลายเป็นสองเท่า
+                      </span>
+                    )}
+                  </p>
                 </div>
               )}
               {artBlocked && (
