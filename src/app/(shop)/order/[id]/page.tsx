@@ -542,7 +542,7 @@ export default function CustomerOrderPage() {
         <AdminEditFab
           href={`/admin/orders/${encodeURIComponent(order.id)}`}
           title="เปิดออเดอร์นี้ในระบบหลังบ้าน"
-          label="🔧 เปิดในหลังบ้าน"
+          label="เปิดในหลังบ้าน"
         />
       )}
 
