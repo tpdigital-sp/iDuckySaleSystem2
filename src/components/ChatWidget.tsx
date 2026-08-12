@@ -123,7 +123,11 @@ export default function ChatWidget() {
         }}
         aria-label={open ? "ปิดหน้าต่างแชท" : "คุยกับผู้ช่วย AI ของร้าน"}
         aria-expanded={open}
-        className="fixed bottom-36 right-5 z-40 flex items-center gap-2 rounded-full bg-[#173A6B] px-4 py-3 text-sm font-bold text-white shadow-lg ring-4 ring-[#173A6B]/20 transition hover:scale-105 hover:bg-[#1E4A85]"
+        /*
+          วงแหวนขาว ไม่ใช่กรมท่าโปร่ง — เลื่อนถึง footer (พื้นกรมท่า) ปุ่มกรมท่าบนวงแหวนกรมท่าจะจมหายทั้งใบ
+          ขาวตัดได้ทั้งพื้นฟ้าอ่อนด้านบนและพื้นกรมท่าด้านล่าง
+        */
+        className="fixed bottom-36 right-5 z-40 flex items-center gap-2 rounded-full bg-[#173A6B] px-4 py-3 text-sm font-bold text-white shadow-lg ring-[3px] ring-white/85 transition hover:scale-105 hover:bg-[#1E4A85]"
       >
         {open ? (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="h-5 w-5" aria-hidden="true">

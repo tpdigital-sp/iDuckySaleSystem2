@@ -9,6 +9,7 @@ import { fetchShopPayment, freeShippingMinOf } from "@/lib/shop-settings";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { fetchProductsLite } from "@/lib/product-repo";
 import { fallbackToOriginal, imgProps } from "@/lib/img";
+import { canAccessAdmin } from "@/lib/auth";
 import HomeChat from "@/components/HomeChat";
 
 /**
@@ -90,12 +91,17 @@ export default function HomePage() {
   const [tab, setTab] = useState<string>("all");
   /** ยอดส่งฟรี — ดึงจากที่แอดมินตั้งไว้ ไม่พิมพ์เลขตายตัวไว้ในแถบวิ่ง */
   const [freeMin, setFreeMin] = useState<number | null>(null);
+  /** ล็อกอินหลังบ้านอยู่ไหม — ใช้โชว์ปุ่มลัดไปแก้หน้าแรก (ลูกค้าทั่วไปไม่เห็น) */
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     fetchCategories().then((list) => setCats(list.filter((c) => !c.hidden)));
   }, []);
   useEffect(() => {
     void fetchShopPayment().then((p) => setFreeMin(freeShippingMinOf(p)));
+  }, []);
+  useEffect(() => {
+    void canAccessAdmin().then(setIsAdmin);
   }, []);
   useEffect(() => {
     let active = true;
@@ -545,6 +551,18 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* ปุ่มลัดไปแก้หน้าแรกในหลังบ้าน (เฉพาะแอดมิน) — /admin/nav คุมเมนูหัวเว็บ + หน้าแรก
+          ตำแหน่ง bottom-5 ชุดเดียวกับปุ่มเดิมในหน้าสินค้า จะได้อยู่ที่เดิมทุกหน้า */}
+      {isAdmin && (
+        <Link
+          href="/admin/nav"
+          className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-stone-800 px-4 py-2.5 text-sm font-bold text-white shadow-lg ring-1 ring-black/10 transition hover:scale-105 hover:bg-stone-900"
+          title="เปิดหน้าแก้ไขเมนูและหน้าแรกในระบบหลังบ้าน"
+        >
+          🔧 แก้ไขในหลังบ้าน
+        </Link>
+      )}
 
       {/* ── ช่องทางโซเชียลลอยมุมจอ ── */}
       <nav className="social-dock" aria-label="ช่องทางโซเชียลของร้าน">

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildChatContext } from "@/lib/server/chat-context";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -74,11 +75,22 @@ export async function POST(req: Request) {
       { status: 429 },
     );
 
+  // แนบบริบทชุดเดียวกับที่หน้าแชท AdminBuddy (chat.html) ส่ง — แค็ตตาล็อก/ลิงก์ราคา/คลังความรู้
+  // ล้มก็ยังถามต่อได้ แค่ได้คำตอบกว้างกว่าเดิม จึงไม่ให้ throw ออกมา
+  const ctx = await buildChatContext(message).catch(() => null);
+
   try {
     const res = await fetch(WEBHOOK, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, sessionId, userId: `web-${sessionId}`, source: "website" }),
+      body: JSON.stringify({
+        message,
+        sessionId,
+        userId: `web-${sessionId}`,
+        source: "website",
+        systemMessage: ctx?.systemMessage,
+        knowledgeContext: ctx?.knowledgeContext,
+      }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
 
