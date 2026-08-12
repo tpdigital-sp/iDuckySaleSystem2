@@ -23,6 +23,7 @@ import {
   spreadDesigns,
   optionExtraApplies,
   optionVisible,
+  perUnitCapacity,
   priceMatrixKey,
   priceRange,
   PRODUCTS,
@@ -312,8 +313,14 @@ export default function ProductDetail({
   const included = rate?.minPerDesign ? includedDesigns(rate, qty) : 0;
   /** กติกาคละแบบคิดค่าคละต่อหน่วย (ถ้าสินค้าตั้งไว้) — มาก่อนกติกาเดิมทั้งหมด */
   const mixRule = product.mixRule;
+  /**
+   * ชิ้นที่ได้ต่อ 1 หน่วยตามตัวเลือกที่เลือกอยู่ (เช่น สติกเกอร์ 3cm ได้ 45 ชิ้น/แผ่น)
+   * คละ 1 ลายต้องใช้อย่างน้อย 1 ชิ้น → คละได้ไม่เกิน ชิ้นต่อหน่วย × จำนวนที่สั่ง
+   */
+  const unitCap = perUnitCapacity(product, effective);
+  const capByPieces = unitCap ? unitCap * Math.max(1, qty) : Infinity;
   // สินค้าที่คิดเรทตามชิ้นต่อลาย: คละได้ถึงจำนวนชิ้นเสมอ (เกินโควตาเรท = ราคาปรับเป็นเรทต่อลายเอง ไม่บล็อก)
-  const maxDesigns = mixRule
+  const maxDesignsRaw = mixRule
     ? // ช่วงที่ยังไม่ถึงเกณฑ์ "1 ลาย/หน่วย" คละได้ไม่จำกัด (หลายลายอยู่บนแผ่นเดียวกันได้)
       // แต่ช่อง +/− ต้องมีเพดานที่จับต้องได้ เลยตั้งเพดานใช้งานจริงไว้ 99 ลาย
       Math.max(1, Math.min(99, mixMaxDesigns(mixRule, qty)))
@@ -322,6 +329,8 @@ export default function ProductDetail({
       : rate?.minPerDesign
         ? maxDesignsFor(rate, qty)
         : 0;
+  // เพดานจากจำนวนชิ้นที่ใส่ได้จริง ทับกติกาอื่นเสมอ — ใส่ไม่ลงแผ่นก็ผลิตไม่ได้
+  const maxDesigns = maxDesignsRaw > 0 ? Math.max(1, Math.min(maxDesignsRaw, capByPieces)) : maxDesignsRaw;
   // "ระบุจำนวนลายแล้ว" = แตะ +/− หรือพิมพ์เลขเอง หรือแนบรูปให้ระบบนับ — สินค้าที่มีระบบลายต้องระบุก่อนสั่ง
   // ยกเว้นตอนคละได้แค่ลายเดียว (เช่น สั่ง 1 ชิ้น) — มีทางเลือกเดียวอยู่แล้ว ถือว่าระบุแล้ว ไม่ต้องให้กดยืนยัน
   const designsSet = designsTouched || artFiles.length > 0 || maxDesigns <= 1;
@@ -2284,6 +2293,15 @@ export default function ProductDetail({
                       const over = Math.max(0, designs - qty);
                       return (
                         <div className="mt-1 space-y-1 text-[11px] leading-relaxed text-teal-800">
+                          {/* เพดานจากจำนวนชิ้นที่ใส่ได้จริงต่อแผ่น — บอกเหตุผลไว้ ไม่งั้นลูกค้างงว่าทำไมกด + ไม่ขึ้น */}
+                          {unitCap ? (
+                            <p className="text-teal-700">
+                              📐 ขนาดที่เลือกได้ <strong className="font-bold">{unitCap.toLocaleString("th-TH")} ชิ้น</strong> ต่อ 1{" "}
+                              {unit} — สั่ง {qty.toLocaleString("th-TH")} {unit} จึงคละได้สูงสุด{" "}
+                              <strong className="font-bold">{capByPieces.toLocaleString("th-TH")} ลาย</strong>
+                              {designs >= capByPieces ? " (ตอนนี้เต็มแล้ว — อยากคละมากกว่านี้ ต้องเพิ่มจำนวนแผ่นหรือลดขนาด)" : ""}
+                            </p>
+                          ) : null}
                           {simple ? (
                             <p>
                               💡 {qty.toLocaleString("th-TH")} {unit} = คละได้ {qty.toLocaleString("th-TH")} ลายโดยไม่คิดเพิ่ม

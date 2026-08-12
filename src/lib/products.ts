@@ -35,6 +35,13 @@ export interface ProductOptionChoice {
   qty?: boolean;
   /** จำนวนสูงสุดของตัวเลือกนี้ (ไม่ตั้ง = 99) */
   qtyMax?: number;
+  /**
+   * เลือกตัวนี้แล้ว 1 หน่วยที่สั่งได้ของกี่ชิ้น
+   * เช่น สติกเกอร์ขนาด 3cm ได้ 45 ชิ้นต่อแผ่น A3 · ขนาด 20cm ได้ 1 ชิ้น
+   * ใช้เป็นเพดานจำนวนลายที่คละได้ — คละ 1 ลายต้องใช้อย่างน้อย 1 ชิ้น
+   * จึงคละได้ไม่เกิน (ชิ้นต่อหน่วย × จำนวนหน่วยที่สั่ง)
+   */
+  perUnit?: number;
 }
 
 export interface ProductOption {
@@ -591,6 +598,21 @@ export function mixFeePerUnit(rule: MixRule, designs: number, qty = 1): number {
 export function mixMaxDesigns(rule: MixRule | undefined, qty: number): number {
   if (!rule) return Infinity;
   return mixTierFor(rule, qty).onePerUnit ? qty : Infinity;
+}
+
+/**
+ * จำนวนชิ้นที่ได้ต่อ 1 หน่วยสั่ง ตามตัวเลือกที่ลูกค้าเลือกอยู่ (ไม่มีตัวไหนตั้งไว้ = undefined)
+ * มีหลายกลุ่มตั้งไว้ → ใช้ตัวที่น้อยที่สุด (เข้มที่สุดชนะ)
+ */
+export function perUnitCapacity(product: Product, selections: Record<string, string>): number | undefined {
+  let cap: number | undefined;
+  for (const o of product.options ?? []) {
+    const picked = selections[o.label];
+    if (!picked) continue;
+    const c = o.choices.find((x) => x.name === picked);
+    if (c?.perUnit && c.perUnit > 0) cap = cap === undefined ? c.perUnit : Math.min(cap, c.perUnit);
+  }
+  return cap;
 }
 
 /** ช่วงจำนวนนี้คละลายอิสระไหม (ช่วงราคาปลีก) */

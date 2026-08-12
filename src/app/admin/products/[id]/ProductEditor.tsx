@@ -38,7 +38,7 @@ import { fileReady, groupByCategory, NO_CATEGORY, templateFiles, type DesignTemp
 import { fetchTemplates } from "@/lib/template-repo";
 
 /** qty = ให้ลูกค้าระบุจำนวนของตัวเลือกนี้ (เฉพาะกลุ่มติ๊กหลายอย่าง) · qtyMax = เพดานจำนวน (ว่าง = 99) */
-type DraftChoice = { name: string; extra: string; qty?: boolean; qtyMax?: string };
+type DraftChoice = { name: string; extra: string; qty?: boolean; qtyMax?: string; perUnit?: string };
 /** presetId มี = กลุ่มนี้ "ลิงก์" คลังตัวเลือกกลาง (label+choices มาจากคลัง แก้ในกลุ่มไม่ได้จนกว่าจะตัดลิงก์) */
 type DraftOption = {
   label: string;
@@ -306,6 +306,7 @@ function toDraft(p: Product): Draft {
         // กลุ่มที่เคยเปิด "ระบุจำนวน" ไว้ทั้งกลุ่ม (ของเก่า) → ย้ายมาเป็นรายตัวให้เลย
         ...(c.qty ?? o.qtyPerChoice ? { qty: true } : {}),
         ...(c.qtyMax || o.qtyMax ? { qtyMax: String(c.qtyMax ?? o.qtyMax) } : {}),
+        ...(c.perUnit ? { perUnit: String(c.perUnit) } : {}),
       })),
       ...(o.presetId ? { presetId: o.presetId } : {}),
       display: o.display ?? "pills",
@@ -497,6 +498,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             name: c.name.trim(),
             ...(Number.isFinite(extra) && extra > 0 ? { extra } : {}),
             ...(qty ? { qty: true, ...(Number(c.qtyMax) > 0 ? { qtyMax: Math.floor(Number(c.qtyMax)) } : {}) } : {}),
+            ...(Number(c.perUnit) > 0 ? { perUnit: Math.floor(Number(c.perUnit)) } : {}),
           };
         }),
       ...(o.presetId ? { presetId: o.presetId } : {}),
@@ -3397,6 +3399,37 @@ export default function ProductEditor({ product }: { product: Product }) {
                         )}
                       </label>
                     )}
+                    {/* ชิ้นที่ได้ต่อ 1 หน่วยสั่ง — ใช้เป็นเพดานจำนวนลายที่ลูกค้าคละได้ (คละ 1 ลายต้องใช้ ≥1 ชิ้น) */}
+                    <label
+                      className={`flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold ring-1 ${
+                        ch.perUnit ? "bg-teal-50 text-teal-700 ring-teal-200" : "bg-white text-slate-400 ring-slate-200"
+                      }`}
+                      title="เลือกตัวนี้แล้ว 1 หน่วยที่สั่งได้ของกี่ชิ้น เช่น สติกเกอร์ 3cm ได้ 45 ชิ้น/แผ่น A3 — ใช้เป็นเพดานจำนวนลายที่คละได้ (ว่าง = ไม่จำกัด)"
+                    >
+                      📐
+                      <input
+                        value={ch.perUnit ?? ""}
+                        onChange={(e) =>
+                          patch({
+                            options: draft.options.map((o, i) =>
+                              i === gi
+                                ? {
+                                    ...o,
+                                    choices: o.choices.map((c, j) =>
+                                      j === ci ? { ...c, perUnit: e.target.value.replace(/[^\d]/g, "") } : c
+                                    ),
+                                  }
+                                : o
+                            ),
+                          })
+                        }
+                        inputMode="numeric"
+                        placeholder="—"
+                        className="w-11 rounded-lg bg-white px-1 py-0.5 text-center text-[11px] text-slate-600 ring-1 ring-teal-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
+                        aria-label={`จำนวนชิ้นต่อหน่วยของตัวเลือกที่ ${ci + 1}`}
+                      />
+                      ชิ้น/หน่วย
+                    </label>
                     <button
                       type="button"
                       onClick={() =>
