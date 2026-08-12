@@ -19,6 +19,8 @@ import {
   mixFeePerUnit,
   mixMaxDesigns,
   mixTierFor,
+  mixUnitFee,
+  spreadDesigns,
   optionExtraApplies,
   optionVisible,
   priceMatrixKey,
@@ -2267,30 +2269,40 @@ export default function ProductDetail({
                     /* กติกาคละแบบคิดต่อหน่วย — กางให้เห็นว่าคิดยังไง ลูกค้าจะได้ตัดสินใจเองได้ว่าคุ้มไหม */
                     (() => {
                       const unit = matrix?.unit ?? "ชิ้น";
-                      const perUnit = mixFeePerUnit(mixRule, designs, qty);
                       const mt = mixTierFor(mixRule, qty);
                       const capped = Number.isFinite(mixMaxDesigns(mixRule, qty));
-                      const over = Math.max(0, designs - Math.max(1, mt.includedDesigns));
+                      /* เฉลี่ยลายลงแต่ละหน่วย แล้วกางให้เห็นทีละกลุ่ม — ค่าคละคิดจาก "ลายต่อหน่วย" ไม่ใช่ลายรวม */
+                      const spread = spreadDesigns(designs, Math.max(1, qty));
+                      const groups = [...new Set(spread)]
+                        .sort((a, b) => b - a)
+                        .map((n) => ({ n, units: spread.filter((x) => x === n).length, fee: mixUnitFee(mixRule, n, qty) }));
+                      const total = designFee;
                       return (
                         <div className="mt-1 space-y-1 text-[11px] leading-relaxed text-teal-800">
                           {designs <= 1 ? (
                             <p>
-                              💡 ลายเดียวไม่มีค่าคละ · คละตั้งแต่ 2 ลายขึ้นไป คิดค่าคละ{" "}
-                              <strong className="font-bold">{formatPrice(mt.baseFee)}/{unit}</strong> (รวม{" "}
-                              {mt.includedDesigns.toLocaleString("th-TH")} ลาย) เกินจากนั้นลายละ{" "}
-                              {formatPrice(mt.extraFee)}/{unit}
+                              💡 ลายเดียวไม่มีค่าคละ · ค่าคละคิดจาก<strong className="font-bold">จำนวนลายต่อ 1 {unit}</strong> —
+                              {mt.baseFee > 0
+                                ? ` คละ 2–${mt.includedDesigns.toLocaleString("th-TH")} ลาย/${unit} = ${formatPrice(mt.baseFee)}/${unit}`
+                                : ` เกิน ${mt.includedDesigns.toLocaleString("th-TH")} ลาย/${unit}`}
+                              {mt.extraFee > 0 ? ` · เกินจากนั้นลายละ ${formatPrice(mt.extraFee)}` : ""}
                             </p>
                           ) : (
-                            <p>
-                              🎨 คละ {designs.toLocaleString("th-TH")} ลาย ={" "}
-                              <strong className="font-bold">
-                                {formatPrice(mt.baseFee)}
-                                {over > 0 ? ` + ${over.toLocaleString("th-TH")}×${formatPrice(mt.extraFee)}` : ""} ={" "}
-                                {formatPrice(perUnit)}/{unit}
-                              </strong>{" "}
-                              × {qty.toLocaleString("th-TH")} {unit} ={" "}
-                              <strong className="font-bold text-amber-700">{formatPrice(perUnit * qty)}</strong>
-                            </p>
+                            <>
+                              <p>
+                                🎨 {designs.toLocaleString("th-TH")} ลาย บน {qty.toLocaleString("th-TH")} {unit} → เฉลี่ยเป็น{" "}
+                                <strong className="font-bold">
+                                  {groups.map((g) => `${g.units} ${unit} × ${g.n} ลาย`).join(" + ")}
+                                </strong>
+                              </p>
+                              <p>
+                                {groups
+                                  .map((g) => `${g.units}×${formatPrice(g.fee)}`)
+                                  .join(" + ")}{" "}
+                                = <strong className="font-bold text-amber-700">{formatPrice(total)}</strong>
+                                {total === 0 ? " (ลายละ 1 " + unit + " พอดี ไม่ถือว่าคละ)" : ""}
+                              </p>
+                            </>
                           )}
                           {(() => {
                             // จำนวนแรกที่เริ่มบังคับ 1 ลาย/หน่วย — อ่านจากตารางถ้ามี ไม่มีก็ใช้ค่าเดี่ยวแบบเดิม

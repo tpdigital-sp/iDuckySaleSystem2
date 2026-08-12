@@ -516,12 +516,53 @@ export function mixTierFor(rule: MixRule, qty: number): MixTier {
   };
 }
 
-/** ค่าคละ "ต่อหน่วย" ตามจำนวนลายที่เลือก ณ จำนวนที่สั่ง */
-export function mixFeePerUnit(rule: MixRule, designs: number, qty = 1): number {
-  if (designs <= 1) return 0;
-  const t = mixTierFor(rule, qty);
-  const extra = Math.max(0, designs - Math.max(1, t.includedDesigns));
+/** ค่าคละของ "หนึ่งหน่วย" ที่มี n ลายอยู่บนหน่วยนั้น */
+function feeOfUnit(t: MixTier, n: number): number {
+  if (n <= 1) return 0; // หน่วยที่มีลายเดียว = ไม่ได้คละ ไม่คิด
+  const extra = Math.max(0, n - Math.max(1, t.includedDesigns));
   return Math.max(0, t.baseFee) + extra * Math.max(0, t.extraFee);
+}
+
+/**
+ * เฉลี่ยลายลงแต่ละหน่วยให้ใกล้เคียงที่สุด — คืน [จำนวนลายของแต่ละหน่วย]
+ * เช่น 9 ลาย 2 แผ่น → [5,4] · 12 ลาย 11 แผ่น → [2,1,1,…]
+ * (ตรงกับที่แอดมินคิดมือ: หารไม่ลงตัวก็แยกคิดเป็นคนละรายการ)
+ */
+export function spreadDesigns(designs: number, qty: number): number[] {
+  if (qty <= 0) return [];
+  // ลายน้อยกว่าหน่วยที่สั่ง = ลายซ้ำกันข้ามหน่วย ทุกหน่วยมีลายเดียว (ไม่มีหน่วยไหน "คละ")
+  // เช่น 10 แผ่น 4 ลาย → แผ่นละ 1 ลาย ไม่ใช่ 4 แผ่นมีลาย + 6 แผ่นว่าง
+  if (designs <= qty) return Array.from({ length: qty }, () => 1);
+  const base = Math.floor(designs / qty);
+  const remainder = designs % qty;
+  return Array.from({ length: qty }, (_, i) => (i < remainder ? base + 1 : base));
+}
+
+/**
+ * ค่าคละลายทั้งรายการ
+ *
+ * ⚠️ คิดจาก "ลายต่อหน่วย" ไม่ใช่ "ลายทั้งออเดอร์" — จุดนี้เคยทำผิดมาก่อน
+ *    สั่ง 2 แผ่น 2 ลาย = แผ่นละ 1 ลาย → ไม่ได้คละ ไม่คิดเงิน
+ *    สั่ง 2 แผ่น 9 ลาย = [5,4] → 25 + 20 = 45 (ไม่ใช่คิดจากเลข 9 ตรง ๆ)
+ */
+export function mixFeeTotal(rule: MixRule, designs: number, qty: number): number {
+  if (designs <= 1 || qty <= 0) return 0;
+  const t = mixTierFor(rule, qty);
+  return spreadDesigns(designs, qty).reduce((sum, n) => sum + feeOfUnit(t, n), 0);
+}
+
+/**
+ * ค่าคละของ "หนึ่งหน่วยที่มี n ลายอยู่บนนั้น" — ใช้กางรายละเอียดให้ลูกค้าเห็นทีละกลุ่ม
+ * ⚠️ อย่าสับกับ mixFeeTotal: ตัวนี้ n = ลายบนหน่วยนั้นแล้ว ไม่ต้องเฉลี่ยซ้ำ
+ */
+export function mixUnitFee(rule: MixRule, designsOnUnit: number, qty: number): number {
+  return feeOfUnit(mixTierFor(rule, qty), designsOnUnit);
+}
+
+/** ค่าคละของหน่วยที่มีลายมากที่สุด — ไว้โชว์ว่า "แผ่นที่แพงสุดแผ่นละเท่าไหร่" */
+export function mixFeePerUnit(rule: MixRule, designs: number, qty = 1): number {
+  if (designs <= 1 || qty <= 0) return 0;
+  return feeOfUnit(mixTierFor(rule, qty), Math.max(...spreadDesigns(designs, qty)));
 }
 
 /**
@@ -595,7 +636,7 @@ export function tierQtyFor(product: Product, selections: Record<string, string>,
  */
 export function designFeeFor(product: Product, selections: Record<string, string>, qty: number): number {
   // กติกาคละแบบคิดต่อหน่วยมาก่อน — ค่าคละ = (ค่าต่อหน่วยตามจำนวนลาย) × จำนวนที่สั่ง
-  if (product.mixRule) return mixFeePerUnit(product.mixRule, designCountOf(selections), qty) * Math.max(0, qty);
+  if (product.mixRule) return mixFeeTotal(product.mixRule, designCountOf(selections), Math.max(0, qty));
   const r = activeRate(product, selections);
   if (!r?.minPerDesign || !r.extraDesignFee) return 0;
   const n = parseInt(String(selections[DESIGN_LABEL] ?? ""), 10);
