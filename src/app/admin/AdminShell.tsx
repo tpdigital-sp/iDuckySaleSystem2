@@ -415,8 +415,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             {railed ? "»" : "«"}
           </button>
         </div>
-        {navFor(railed)}
-        <div className="mt-auto space-y-0.5 border-t border-slate-100 pt-2">
+        {/*
+          เมนูต้องเลื่อนเองได้ — แถบข้างสูงเท่าจอ (h-screen) พอเมนูยาวเกินจอแล้วไม่มีตัวเลื่อน
+          รายการท้าย ๆ (ร้าน & ระบบ · บทความ) จะโดนตัดหายไปเลย กดไม่ได้
+          min-h-0 จำเป็น: ลูกของ flex ตั้งต้นเป็น min-height:auto ทำให้ย่อต่ำกว่าเนื้อหาไม่ได้ overflow เลยไม่ทำงาน
+        */}
+        <div className="-mr-1 min-h-0 flex-1 overflow-y-auto pr-1">{navFor(railed)}</div>
+        <div className="mt-auto shrink-0 space-y-0.5 border-t border-slate-100 pt-2">
           {userCard &&
             (railed ? (
               <div className="mb-1.5 flex justify-center" title={`${userName}${roleName ? ` · ${roleName}` : ""}`}>
