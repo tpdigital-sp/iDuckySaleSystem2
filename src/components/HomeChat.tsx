@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useRef, useState } from "react";
+import { askShopBot, clock, GREETING, LINE_URL, QUICK, renderChatText, useChatSession } from "@/lib/shop-chat";
 
 /**
  * หน้าจอแชทหน้าแรก — คุยได้จริง
@@ -10,22 +11,12 @@ import { useEffect, useRef, useState } from "react";
  * เริ่มต้นโชว์บทสนทนาตัวอย่าง 3 ขั้น (เนื้อหาขายของเดิม) พอลูกค้าพิมพ์ข้อความแรก
  * จะล้างตัวอย่างแล้วเข้าโหมดคุยจริง ยิงไป /api/chat → n8n webhook ตัวเดียวกับที่
  * หน้าแชทของ AdminBuddy (chat.html) ใช้ ลูกค้าจึงได้คำตอบจากสมองชุดเดียวกับแอดมิน
+ *
+ * ตรรกะคุยจริง (session · ยิง API · แปลงข้อความ) อยู่ใน lib/shop-chat
+ * ใช้ร่วมกับปุ่มแชทลอยทุกหน้า (ChatWidget) — ห้องแชทเดียวกัน คุยต่อเนื่องข้ามหน้าได้
  */
 
 type Msg = { id: number; side: "in" | "out"; text: string; step?: string; time: string };
-
-const LINE_URL = "https://lin.ee/x8GkqGZ";
-
-/** ปุ่มตอบเร็ว — เขียนเป็น "คำถาม" ให้รู้ว่ากดแล้วถามจริง ไม่ใช่ป้ายโฆษณา */
-const QUICK: { icon: string; label: string; ask: string }[] = [
-  { icon: "🐣", label: "สั่งขั้นต่ำกี่ชิ้น?", ask: "สั่งขั้นต่ำกี่ชิ้นคะ" },
-  { icon: "✏️", label: "ไม่มีลาย ออกแบบให้ไหม?", ask: "ถ้ายังไม่มีไฟล์ลาย ช่วยออกแบบให้ได้ไหมคะ" },
-  { icon: "📦", label: "ค่าส่งเท่าไหร่?", ask: "ค่าส่งเท่าไหร่ กี่วันถึงคะ" },
-  { icon: "🛡️", label: "จ่ายเงินยังไง?", ask: "ชำระเงินยังไงบ้างคะ" },
-];
-
-const clock = () =>
-  new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", hour12: false });
 
 const demoMessages = (catCount: number): Msg[] => [
   { id: 1, side: "out", text: "มีลายอยากทำพวงกุญแจอะค่ะ ต้องทำยังไงบ้าง", time: "10:24" },
@@ -54,45 +45,6 @@ const demoMessages = (catCount: number): Msg[] => [
   },
 ];
 
-const GREETING =
-  "สวัสดีครับ 👋 ผมผู้ช่วยของ iDucky Prints ถามราคา วัสดุ ขนาด หรือขั้นตอนสั่งทำได้เลยครับ พิมพ์มาได้เลย เดี๋ยวตอบให้ทันที";
-
-/** ตัวหนา **x** + ลิงก์ในบรรทัดเดียว (ไม่ใช้ dangerouslySetInnerHTML) */
-function inline(line: string, key: string) {
-  const out: React.ReactNode[] = [];
-  line.split(/(\*\*[^*]+\*\*|https?:\/\/[^\s)]+)/g).forEach((part, i) => {
-    if (!part) return;
-    const k = `${key}-${i}`;
-    if (/^\*\*[^*]+\*\*$/.test(part)) out.push(<b key={k}>{part.slice(2, -2)}</b>);
-    else if (/^https?:\/\//.test(part))
-      out.push(
-        <a key={k} href={part} target="_blank" rel="noopener noreferrer" className="mlink">
-          {part.replace(/^https?:\/\//, "").slice(0, 40)}
-        </a>,
-      );
-    else out.push(<span key={k}>{part}</span>);
-  });
-  return out;
-}
-
-/** คำตอบจาก n8n มาเป็น markdown อ่อน ๆ — แปลงหัวข้อ/บุลเล็ต/ตัวหนา ให้อ่านง่ายในบับเบิล */
-function renderText(text: string) {
-  return text
-    .replace(/\r/g, "")
-    .split("\n")
-    .map((raw, li) => {
-      const line = raw.trimEnd();
-      const bullet = /^\s*[*\-•]\s+/.test(line);
-      const body = bullet ? line.replace(/^\s*[*\-•]\s+/, "") : line.replace(/^#{1,6}\s+/, "");
-      if (!body.trim()) return <span key={li} className="mgap" />;
-      return (
-        <span key={li} className={bullet ? "mli" : "mrow"}>
-          {inline(body, String(li))}
-        </span>
-      );
-    });
-}
-
 export default function HomeChat({ catCount }: { catCount: number }) {
   const [msgs, setMsgs] = useState<Msg[]>(() => demoMessages(catCount));
   const [live, setLive] = useState(false); // เข้าโหมดคุยจริงแล้วหรือยัง
@@ -100,23 +52,7 @@ export default function HomeChat({ catCount }: { catCount: number }) {
   const [draft, setDraft] = useState("");
   const bodyRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(100);
-  const sessionId = useRef("");
-
-  // id ห้องแชท — อยู่ทั้งแท็บ เพื่อให้ n8n จำบริบทการคุยต่อเนื่องได้
-  useEffect(() => {
-    const KEY = "iducky_chat_session";
-    let s = "";
-    try {
-      s = sessionStorage.getItem(KEY) ?? "";
-      if (!s) {
-        s = `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-        sessionStorage.setItem(KEY, s);
-      }
-    } catch {
-      s = `web-${Date.now().toString(36)}`;
-    }
-    sessionId.current = s;
-  }, []);
+  const sessionId = useChatSession();
 
   // เลื่อนลงล่างสุดเมื่อมีข้อความใหม่ (เฉพาะตอนคุยจริง จะได้ไม่กระตุกตอนเข้าหน้าแรก)
   useEffect(() => {
@@ -148,20 +84,9 @@ export default function HomeChat({ catCount }: { catCount: number }) {
       push({ side: "out", text: message });
     }
 
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, sessionId: sessionId.current }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { reply?: string; error?: string };
-      if (res.ok && data.reply) push({ side: "in", text: data.reply });
-      else push({ side: "in", text: data.error || "ตอนนี้ผู้ช่วยตอบไม่ได้ครับ ทักไลน์ร้านได้เลย เดี๋ยวแอดมินดูแลต่อให้" });
-    } catch {
-      push({ side: "in", text: "เชื่อมต่อไม่ได้ครับ ลองใหม่อีกครั้ง หรือทักไลน์ร้านได้เลย" });
-    } finally {
-      setBusy(false);
-    }
+    const reply = await askShopBot(message, sessionId.current);
+    push({ side: "in", text: reply });
+    setBusy(false);
   }
 
   const reset = () => {
@@ -196,7 +121,7 @@ export default function HomeChat({ catCount }: { catCount: number }) {
           <div key={m.id} className={`msg ${m.side}`}>
             <span className="mbub">
               {m.step && <b className="stepno">{m.step}</b>}
-              {renderText(m.text)}
+              {renderChatText(m.text)}
             </span>
             <time>{m.time}</time>
           </div>
