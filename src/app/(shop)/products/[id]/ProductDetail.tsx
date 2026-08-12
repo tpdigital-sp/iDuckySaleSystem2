@@ -2257,9 +2257,7 @@ export default function ProductDetail({
                         ✨ นับตามรูปที่แนบ
                       </span>
                     )}
-                    {designFee > 0 && (
-                      <span className="text-xs font-bold text-amber-700">+{formatPrice(designFee)}</span>
-                    )}
+                    {/* ไม่ต้องมีป้าย +฿ ตรงนี้ — บรรทัดสรุปด้านบนกับคำอธิบายใต้กล่องบอกยอดค่าคละอยู่แล้ว */}
                   </div>
                   {!designsSet && (
                     <p className={`mt-1 text-[10px] font-bold leading-snug ${designsWarn ? "text-rose-600" : "text-amber-700"}`}>
