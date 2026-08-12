@@ -10,6 +10,7 @@ import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/ca
 import { fetchProductsLite } from "@/lib/product-repo";
 import { fallbackToOriginal, imgProps } from "@/lib/img";
 import { canAccessAdmin } from "@/lib/auth";
+import AdminEditFab from "@/components/AdminEditFab";
 import HomeChat from "@/components/HomeChat";
 
 /**
@@ -552,17 +553,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ปุ่มลัดไปแก้หน้าแรกในหลังบ้าน (เฉพาะแอดมิน) — /admin/nav คุมเมนูหัวเว็บ + หน้าแรก
-          ตำแหน่ง bottom-5 ชุดเดียวกับปุ่มเดิมในหน้าสินค้า จะได้อยู่ที่เดิมทุกหน้า */}
-      {isAdmin && (
-        <Link
-          href="/admin/nav"
-          className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-stone-800 px-4 py-2.5 text-sm font-bold text-white shadow-lg ring-1 ring-black/10 transition hover:scale-105 hover:bg-stone-900"
-          title="เปิดหน้าแก้ไขเมนูและหน้าแรกในระบบหลังบ้าน"
-        >
-          🔧 แก้ไขในหลังบ้าน
-        </Link>
-      )}
+      {/* ปุ่มลัดไปแก้หน้าแรกในหลังบ้าน (เฉพาะแอดมิน) — /admin/nav คุมเมนูหัวเว็บ + หน้าแรก */}
+      {isAdmin && <AdminEditFab href="/admin/nav" title="เปิดหน้าแก้ไขเมนูและหน้าแรกในระบบหลังบ้าน" />}
 
       {/* ── ช่องทางโซเชียลลอยมุมจอ ── */}
       <nav className="social-dock" aria-label="ช่องทางโซเชียลของร้าน">

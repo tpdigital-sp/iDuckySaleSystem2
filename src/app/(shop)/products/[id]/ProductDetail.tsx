@@ -63,6 +63,7 @@ import TemplateStudio, { type Placement as StudioPlacement, type StudioResult } 
 import SlotStudio, { type SlotResult, type SlotShot } from "@/components/SlotStudio";
 import { useCart } from "@/lib/cart-context";
 import { canAccessAdmin } from "@/lib/auth";
+import AdminEditFab from "@/components/AdminEditFab";
 import { fetchProduct } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
 import ProductCard from "@/components/ProductCard";
@@ -1111,15 +1112,7 @@ export default function ProductDetail({
       ))}
 
       {/* ปุ่มลัดไปแก้ไขสินค้านี้ในหลังบ้าน (เฉพาะแอดมิน) */}
-      {isAdmin && (
-        <Link
-          href={`/admin/products/${product.id}`}
-          className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-stone-800 px-4 py-2.5 text-sm font-bold text-white shadow-lg ring-1 ring-black/10 transition hover:scale-105 hover:bg-stone-900"
-          title="เปิดหน้าแก้ไขสินค้านี้ในระบบหลังบ้าน"
-        >
-          🔧 แก้ไขในหลังบ้าน
-        </Link>
-      )}
+      {isAdmin && <AdminEditFab href={`/admin/products/${product.id}`} title="เปิดหน้าแก้ไขสินค้านี้ในระบบหลังบ้าน" />}
       {/* breadcrumb */}
       <nav className="flex items-center gap-1 overflow-hidden whitespace-nowrap text-[11px] text-stone-400">
         <Link href="/" className="shrink-0 hover:text-amber-600">หน้าแรก</Link>

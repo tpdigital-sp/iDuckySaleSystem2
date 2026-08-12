@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
+import AdminEditFab from "@/components/AdminEditFab";
 import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import { fetchProductsByIds } from "@/lib/product-repo";
@@ -538,13 +539,11 @@ export default function CustomerOrderPage() {
         (ลูกค้าทั่วไปไม่เห็นปุ่มนี้ เพราะไม่มี session หลังบ้าน)
       */}
       {isStaff && (
-        <Link
+        <AdminEditFab
           href={`/admin/orders/${encodeURIComponent(order.id)}`}
-          className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-stone-800 px-4 py-2.5 text-sm font-bold text-white shadow-lg ring-1 ring-black/10 transition hover:scale-105 hover:bg-stone-900"
           title="เปิดออเดอร์นี้ในระบบหลังบ้าน"
-        >
-          🔧 เปิดในหลังบ้าน
-        </Link>
+          label="🔧 เปิดในหลังบ้าน"
+        />
       )}
 
       {/* ── หัวออเดอร์ + แถบขั้นตอน ── */}
