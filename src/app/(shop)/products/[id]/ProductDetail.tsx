@@ -8,6 +8,7 @@ import {
   allowedChoices,
   customUnitPrice,
   DESIGN_LABEL,
+  designFeeFor,
   formatPrice,
   formatPriceRange,
   getCategory,
@@ -15,6 +16,8 @@ import {
   isFreeMix,
   matrixChoiceAvailable,
   maxDesignsFor,
+  mixFeePerUnit,
+  mixMaxDesigns,
   optionExtraApplies,
   optionVisible,
   priceMatrixKey,
@@ -256,18 +259,21 @@ export default function ProductDetail({
     };
   }, [initialProduct]);
 
-  // ปรับตามกฎเงื่อนไขเสมอ เช่น กระดาษที่เคลือบไม่ได้ → เคลือบถูกบังคับเป็น "ไม่เคลือบ"
-  const resolved = useMemo(
-    () => resolveSelections(product, selections),
-    [product, selections]
-  );
-
   // ── หลายเรทราคา (เช่น พิน: คละดีเทล / ไม่คละดีเทล) ──
   const rates = useMemo(() => product.priceRates ?? [], [product]);
   const [rateLabel, setRateLabel] = useState("");
   // ลูกค้ากดเลือกเรทเอง = หยุดสลับอัตโนมัติ (เช่น ตั้งใจอยู่เรท 1 เพื่อคละดีเทล)
   const [rateTouched, setRateTouched] = useState(false);
   const rate = rates.length ? (rates.find((r) => r.label === rateLabel) ?? rates[0]) : undefined;
+
+  // ปรับตามกฎเงื่อนไขเสมอ เช่น กระดาษที่เคลือบไม่ได้ → เคลือบถูกบังคับเป็น "ไม่เคลือบ"
+  // ส่งเรทที่เลือกอยู่เข้าไปด้วย — ตัวเลือกที่ไม่มีราคาในเรทนี้จะได้ไม่ถูกเลือกค้างไว้
+  // (ตัวที่ไม่มีราคาถูกซ่อนจากเมนูด้านล่างอยู่แล้ว หัวข้อกับเมนูต้องตรงกัน)
+  const resolved = useMemo(
+    () => resolveSelections(product, rate ? { ...selections, [RATE_LABEL]: rate.label } : selections),
+    [product, selections, rate]
+  );
+
   // เรทที่เลือกติดไปกับ selections → ตะกร้า/ออเดอร์เห็นเป็น "เรทราคา: …" และคิดราคาตามเรทนั้น
   // (จำนวนลายเติมทีหลังตรง effectiveWithDesigns — ต้องประกาศ designs ก่อน)
   const effective = useMemo(
@@ -300,13 +306,23 @@ export default function ProductDetail({
   const tierByDesign = !!product.tierByDesign;
   // ลายที่รวมในราคาตามจำนวนที่สั่ง · เรทที่เปิด extraDesignFee คละเกินได้ (จ่ายเพิ่มต่อลาย ไม่เกินจำนวนชิ้น)
   const included = rate?.minPerDesign ? includedDesigns(rate, qty) : 0;
+  /** กติกาคละแบบคิดค่าคละต่อหน่วย (ถ้าสินค้าตั้งไว้) — มาก่อนกติกาเดิมทั้งหมด */
+  const mixRule = product.mixRule;
   // สินค้าที่คิดเรทตามชิ้นต่อลาย: คละได้ถึงจำนวนชิ้นเสมอ (เกินโควตาเรท = ราคาปรับเป็นเรทต่อลายเอง ไม่บล็อก)
-  const maxDesigns = tierByDesign ? qty : rate?.minPerDesign ? maxDesignsFor(rate, qty) : 0;
+  const maxDesigns = mixRule
+    ? // ช่วงที่ยังไม่ถึงเกณฑ์ "1 ลาย/หน่วย" คละได้ไม่จำกัด (หลายลายอยู่บนแผ่นเดียวกันได้)
+      // แต่ช่อง +/− ต้องมีเพดานที่จับต้องได้ เลยตั้งเพดานใช้งานจริงไว้ 99 ลาย
+      Math.max(1, Math.min(99, mixMaxDesigns(mixRule, qty)))
+    : tierByDesign
+      ? qty
+      : rate?.minPerDesign
+        ? maxDesignsFor(rate, qty)
+        : 0;
   // "ระบุจำนวนลายแล้ว" = แตะ +/− หรือพิมพ์เลขเอง หรือแนบรูปให้ระบบนับ — สินค้าที่มีระบบลายต้องระบุก่อนสั่ง
   // ยกเว้นตอนคละได้แค่ลายเดียว (เช่น สั่ง 1 ชิ้น) — มีทางเลือกเดียวอยู่แล้ว ถือว่าระบุแล้ว ไม่ต้องให้กดยืนยัน
   const designsSet = designsTouched || artFiles.length > 0 || maxDesigns <= 1;
   /** สินค้านี้มีระบบจำนวนลาย → ลูกค้าต้องระบุจำนวนลายก่อนสั่ง */
-  const needDesignsChoice = ((rate?.minPerDesign ?? 0) > 0 || tierByDesign) && maxDesigns >= 1;
+  const needDesignsChoice = ((rate?.minPerDesign ?? 0) > 0 || tierByDesign || !!mixRule) && maxDesigns >= 1;
   const freeMix = !!rate && rate.minPerDesign != null && isFreeMix(rate, qty);
   useEffect(() => {
     if (maxDesigns > 0) setDesigns((d) => Math.min(Math.max(1, d), maxDesigns));
@@ -331,14 +347,19 @@ export default function ProductDetail({
     });
   }, [artFiles.length, maxDesigns, designsTouched]);
   const extraDesigns = rate?.extraDesignFee ? Math.max(0, designs - included) : 0;
-  const designFee = extraDesigns * (rate?.extraDesignFee ?? 0);
+  /**
+   * ค่าคละลาย — ใช้ designFeeFor ตัวเดียวกับที่ตะกร้า/ออเดอร์ใช้
+   * (เดิมหน้านี้คำนวณเองเป็น extraDesigns × extraDesignFee ซึ่งไม่รู้จักกติกา mixRule
+   *  ลูกค้าจะเห็นราคาหน้าสินค้าไม่ตรงกับตอนจ่ายเงิน)
+   */
+  const designFee = designFeeFor(product, { ...effective, [DESIGN_LABEL]: `${designs} ลาย` }, qty);
   // จำนวนลายติดไปกับ selections ตั้งแต่ตอนดูราคา → ราคาสด/ตะกร้า/ออเดอร์คิดเรทตามชิ้นต่อลายตรงกัน
   const effectiveWithDesigns = useMemo(
     () =>
-      (rate?.minPerDesign || tierByDesign) && designs >= 1
+      (rate?.minPerDesign || tierByDesign || mixRule) && designs >= 1
         ? { ...effective, [DESIGN_LABEL]: `${designs} ลาย` }
         : effective,
-    [effective, rate, tierByDesign, designs]
+    [effective, rate, tierByDesign, mixRule, designs]
   );
 
   // ✨ เลือกเรทให้อัตโนมัติจากจำนวน + จำนวนลาย
@@ -936,7 +957,7 @@ export default function ProductDetail({
     if (bulkAsk) extra["รอเช็คสต๊อก"] = "สั่งจำนวนมาก — รอทีมงานยืนยันจำนวน";
     if (note.trim()) extra["หมายเหตุ"] = note.trim();
     // จำนวนลายที่คละ (เรทที่มีระบบลาย / สินค้าคิดเรทตามชิ้นต่อลาย) — เก็บเป็นตัวเลือกให้เห็นในตะกร้า/ออเดอร์
-    if ((rate?.minPerDesign || tierByDesign) && designs >= 1) extra[DESIGN_LABEL] = `${designs} ลาย`;
+    if ((rate?.minPerDesign || tierByDesign || mixRule) && designs >= 1) extra[DESIGN_LABEL] = `${designs} ลาย`;
     if (useCustom) {
       if (!custom || !customValid) return; // ต้องกรอกขนาดให้ครบก่อน
       // เก็บขนาดที่ระบุลง selections (เป็น key ของตะกร้า + ใช้คิดราคาซ้ำ)
@@ -2241,7 +2262,50 @@ export default function ProductDetail({
                       👉 กด + / − หรือแตะที่ตัวเลขเพื่อระบุจำนวนลายที่จะคละ — แนบรูปลายแล้วระบบจะนับให้อัตโนมัติ
                     </p>
                   )}
-                  {tierByDesign && rate?.minPerDesign && !freeMix && designs > included ? (
+                  {mixRule ? (
+                    /* กติกาคละแบบคิดต่อหน่วย — กางให้เห็นว่าคิดยังไง ลูกค้าจะได้ตัดสินใจเองได้ว่าคุ้มไหม */
+                    (() => {
+                      const unit = matrix?.unit ?? "ชิ้น";
+                      const perUnit = mixFeePerUnit(mixRule, designs);
+                      const capped = Number.isFinite(mixMaxDesigns(mixRule, qty));
+                      const over = Math.max(0, designs - Math.max(1, mixRule.includedDesigns));
+                      return (
+                        <div className="mt-1 space-y-1 text-[11px] leading-relaxed text-teal-800">
+                          {designs <= 1 ? (
+                            <p>
+                              💡 ลายเดียวไม่มีค่าคละ · คละตั้งแต่ 2 ลายขึ้นไป คิดค่าคละ{" "}
+                              <strong className="font-bold">{formatPrice(mixRule.baseFee)}/{unit}</strong> (รวม{" "}
+                              {mixRule.includedDesigns.toLocaleString("th-TH")} ลาย) เกินจากนั้นลายละ{" "}
+                              {formatPrice(mixRule.extraFee)}/{unit}
+                            </p>
+                          ) : (
+                            <p>
+                              🎨 คละ {designs.toLocaleString("th-TH")} ลาย ={" "}
+                              <strong className="font-bold">
+                                {formatPrice(mixRule.baseFee)}
+                                {over > 0 ? ` + ${over.toLocaleString("th-TH")}×${formatPrice(mixRule.extraFee)}` : ""} ={" "}
+                                {formatPrice(perUnit)}/{unit}
+                              </strong>{" "}
+                              × {qty.toLocaleString("th-TH")} {unit} ={" "}
+                              <strong className="font-bold text-amber-700">{formatPrice(perUnit * qty)}</strong>
+                            </p>
+                          )}
+                          {capped ? (
+                            <p className="text-teal-700">
+                              📐 สั่งตั้งแต่ {mixRule.onePerUnitFromQty?.toLocaleString("th-TH")} {unit}ขึ้นไป ต้องมีอย่างน้อย 1 ลาย
+                              ต่อ 1 {unit} — สั่ง {qty.toLocaleString("th-TH")} {unit} จึงคละได้สูงสุด{" "}
+                              <strong className="font-bold">{qty.toLocaleString("th-TH")} ลาย</strong>
+                            </p>
+                          ) : mixRule.onePerUnitFromQty ? (
+                            <p className="text-teal-700">
+                              ✨ ช่วงนี้คละได้อิสระ หลายลายอยู่บน {unit}เดียวกันได้ · ตั้งแต่{" "}
+                              {mixRule.onePerUnitFromQty.toLocaleString("th-TH")} {unit}ขึ้นไป ต้องมีอย่างน้อย 1 ลายต่อ 1 {unit}
+                            </p>
+                          ) : null}
+                        </div>
+                      );
+                    })()
+                  ) : tierByDesign && rate?.minPerDesign && !freeMix && designs > included ? (
                     // คละเกินโควตาของเรท — ไม่บล็อก แต่ราคาตกไปคิดตามชิ้นต่อลาย (บอกลูกค้าตรง ๆ ว่าจ่ายเรทไหน)
                     (() => {
                       const unit = matrix?.unit ?? "ชิ้น";

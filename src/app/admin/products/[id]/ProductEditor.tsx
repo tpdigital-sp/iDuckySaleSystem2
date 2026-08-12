@@ -130,6 +130,8 @@ type Draft = {
   rateMeta: DraftRateMeta;
   /** เรทราคาเพิ่มเติม (เช่น เรทไม่คละดีเทล) — แต่ละเรทมีช่วงจำนวน+ราคาของตัวเอง */
   extraRates: DraftExtraRate[];
+  /** ค่าคละลายแบบคิดเป็นเงินต่อหน่วย (mixRule) — เก็บเป็น string เพราะกรอกในช่อง */
+  mix: { on: boolean; baseFee: string; includedDesigns: string; extraFee: string; onePerUnitFromQty: string };
   highlights: string[];
   images: DraftImage[];
   body: DraftBody[];
@@ -347,6 +349,13 @@ function toDraft(p: Product): Draft {
           tierByDesign: !!p.tierByDesign,
         }
       : { enabled: false, unit: "ชิ้น", driverLabels: [], tiers: [], cells: {}, tierByDesign: !!p.tierByDesign },
+    mix: {
+      on: !!p.mixRule,
+      baseFee: p.mixRule ? String(p.mixRule.baseFee) : "",
+      includedDesigns: p.mixRule ? String(p.mixRule.includedDesigns) : "",
+      extraFee: p.mixRule ? String(p.mixRule.extraFee) : "",
+      onePerUnitFromQty: p.mixRule?.onePerUnitFromQty != null ? String(p.mixRule.onePerUnitFromQty) : "",
+    },
     rateMeta: p.priceRates?.[0]
       ? {
           label: p.priceRates[0].label,
@@ -1211,6 +1220,37 @@ export default function ProductEditor({ product }: { product: Product }) {
   const draftSlug = slugifyProductName(draft.slug);
 
   /**
+   * ตัวเลือกนี้ยังไม่ได้ใส่ราคาในเรทไหนบ้าง — คืนชื่อเรทที่แถวราคายังว่างทั้งแถว
+   * แถวว่าง = ตอนบันทึกไม่เก็บคีย์นั้น แล้วหน้าร้าน "ซ่อน" ตัวเลือกนั้นทิ้ง
+   * (เพิ่มชื่อขนาดใหม่ไว้แต่ลืมกรอกราคา = ลูกค้าไม่เห็นขนาดนั้นเลย — บั๊กที่หาสาเหตุยากที่สุด)
+   * คืน [] = มีราคาแล้ว หรือกลุ่มนี้ไม่ใช่คอลัมน์ของตารางราคา
+   */
+  function ratesMissingPrice(optLabel: string, choiceName: string): string[] {
+    const name = choiceName.trim();
+    const di = draft.pricing.driverLabels.indexOf(optLabel);
+    if (!draft.pricing.enabled || di < 0 || !name) return [];
+    const cols = pricingColumns(draft.options, draft.pricing.driverLabels).filter((c) => c[di] === name);
+    if (!cols.length) return [];
+    const tables = [
+      { label: draft.rateMeta.label.trim() || "เรทที่ 1", tiers: draft.pricing.tiers, cells: draft.pricing.cells },
+      ...draft.extraRates.map((r, i) => ({
+        label: r.label.trim() || `เรทที่ ${i + 2}`,
+        tiers: r.tiers,
+        cells: r.cells,
+      })),
+    ];
+    return tables
+      .filter((t) => t.tiers.length > 0)
+      .filter((t) => !cols.some((c) => (t.cells[columnKey(c)] ?? []).some((v) => String(v ?? "").trim())))
+      .map((t) => t.label);
+  }
+
+  /** จำนวนตัวเลือกในกลุ่มที่ยังไม่มีราคาสักเรท — ใช้ขึ้นป้ายเตือนตอนกลุ่มถูกพับไว้ */
+  function pricelessCount(opt: DraftOption): number {
+    return opt.choices.filter((c) => ratesMissingPrice(opt.label, c.name).length > 0).length;
+  }
+
+  /**
    * ปุ่มเลือก "แสดงหน้าร้าน" ของกลุ่มตัวเลือก — ปุ่มแยก / dropdown (เลือกได้ 1 อย่าง) · ☑ ติ๊กหลายอย่าง
    * กลุ่มที่เป็นแกนตารางราคา (คอลัมน์) ติ๊กหลายอย่างไม่ได้ — ราคาต่อคอลัมน์จะหาไม่เจอ
    */
@@ -1982,6 +2022,22 @@ export default function ProductEditor({ product }: { product: Product }) {
       priceRates,
       // คิดเรทตามชิ้นต่อลาย — มีผลเฉพาะเมื่อเปิดตารางราคาขั้นบันไดอยู่
       tierByDesign: pricing && draft.pricing.tierByDesign ? true : undefined,
+      // ค่าคละลายแบบคิดต่อหน่วย — ต้องมีค่าคละเหมาถึงจะถือว่าตั้งจริง (ไม่งั้นเปิดสวิตช์เปล่า ๆ ก็ไม่มีผล)
+      mixRule: (() => {
+        if (!draft.mix.on) return undefined;
+        const num = (s: string) => (s.trim() === "" ? NaN : Number(s));
+        const baseFee = num(draft.mix.baseFee);
+        if (!Number.isFinite(baseFee) || baseFee < 0) return undefined;
+        const included = num(draft.mix.includedDesigns);
+        const extra = num(draft.mix.extraFee);
+        const onePer = num(draft.mix.onePerUnitFromQty);
+        return {
+          baseFee,
+          includedDesigns: Number.isFinite(included) && included > 0 ? included : 1,
+          extraFee: Number.isFinite(extra) && extra > 0 ? extra : 0,
+          ...(Number.isFinite(onePer) && onePer > 0 ? { onePerUnitFromQty: onePer } : {}),
+        };
+      })(),
       highlights: draft.highlights.map((h) => h.trim()).filter(Boolean),
       images,
       body,
@@ -3141,6 +3197,17 @@ export default function ProductEditor({ product }: { product: Product }) {
                   {opt.choices.length > 6 ? " …" : ""}
                 </p>
               )}
+              {/* พับกลุ่มไว้ก็ยังต้องเห็นว่ามีตัวเลือกที่หน้าร้านซ่อนอยู่ ไม่ต้องกางทีละกลุ่มหา */}
+              {pricelessCount(opt) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setPricingOpen(true)}
+                  className="mt-2 block w-full rounded-xl bg-rose-50 px-3 py-2 text-left text-[11px] font-bold leading-relaxed text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
+                >
+                  ⚠ {pricelessCount(opt)} ตัวเลือกในกลุ่มนี้ยังไม่ได้ใส่ราคาในตารางราคา →
+                  หน้าร้านจะไม่แสดงตัวเลือกนั้น (กดเพื่อเปิดตารางราคาแล้วกรอกให้ครบ)
+                </button>
+              )}
               {!isOptFolded(gi) && (
               <>
               <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -3184,6 +3251,32 @@ export default function ProductEditor({ product }: { product: Product }) {
                       className={`flex-1 ${smallInputCls}`}
                       aria-label={`ตัวเลือกที่ ${ci + 1} ของกลุ่ม ${opt.label || gi + 1}`}
                     />
+                    {/* ชื่อซ้ำกับตัวอื่นในกลุ่ม = ใช้ช่องราคาคอลัมน์เดียวกัน หน้าร้านก็ขึ้นซ้ำสองบรรทัด */}
+                    {ch.name.trim() &&
+                      opt.choices.some((o, j) => j !== ci && o.name.trim() === ch.name.trim()) && (
+                        <span
+                          className="shrink-0 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700 ring-1 ring-amber-200"
+                          title="ชื่อซ้ำกับตัวเลือกอื่นในกลุ่มนี้ — ราคาจะใช้คอลัมน์เดียวกัน และหน้าร้านขึ้นซ้ำสองบรรทัด ควรลบทิ้งอันหนึ่ง"
+                        >
+                          ⚠ ชื่อซ้ำ
+                        </span>
+                      )}
+                    {/* ยังไม่กรอกราคา = หน้าร้านซ่อนตัวเลือกนี้ (สาเหตุยอดฮิตของ "เพิ่มขนาดแล้วหน้าบ้านไม่ขึ้น") */}
+                    {(() => {
+                      const missing = ratesMissingPrice(opt.label, ch.name);
+                      if (!missing.length) return null;
+                      const allRates = 1 + draft.extraRates.length;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setPricingOpen(true)}
+                          title={`ตัวเลือกนี้ยังไม่มีราคาใน ${missing.join(" · ")} — หน้าร้านจะไม่แสดงจนกว่าจะกรอกราคา (กดเพื่อเปิดตารางราคา)`}
+                          className="shrink-0 rounded-full bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200 hover:bg-rose-100"
+                        >
+                          ⚠ ยังไม่ใส่ราคา{allRates > 1 ? ` (${missing.join(", ")})` : ""} · หน้าร้านซ่อน
+                        </button>
+                      );
+                    })()}
                     {/* บวกเพิ่มต่อหน่วยเมื่อเลือกตัวนี้ — ใช้กับกลุ่มที่ไม่ใช่แกนตารางราคา (เช่น อะไหล่พิเศษ) */}
                     <label
                       className="flex shrink-0 items-center gap-1 text-[11px] font-semibold text-slate-400"
@@ -3340,6 +3433,56 @@ export default function ProductEditor({ product }: { product: Product }) {
                 (หน้าสินค้าจะมีช่อง &ldquo;คละกี่ลาย&rdquo; ให้ลูกค้าเลือก และนับอัตโนมัติตามรูปลายที่แนบ)
               </span>
             </label>
+
+            {/* ── ค่าคละลายแบบคิดเป็นเงินต่อหน่วย ──
+                ต่างจากช่องบน: อันบนลด "เรทราคา" ตามจำนวนลาย · อันนี้ราคาเรทเท่าเดิม แต่บวกค่าคละตรง ๆ
+                ใช้กับงานที่คละแล้วต้นทุนเพิ่มเป็นค่าจัดอาร์ต ไม่ใช่ค่าผลิตต่อชิ้น (เช่น สติกเกอร์รวมลาย) */}
+            <label className="mb-2.5 flex cursor-pointer items-start gap-2 rounded-xl bg-amber-50 px-3 py-2.5 ring-1 ring-amber-100">
+              <input
+                type="checkbox"
+                checked={draft.mix.on}
+                onChange={(e) => setDraft((d) => ({ ...d, mix: { ...d.mix, on: e.target.checked } }))}
+                className="mt-0.5 h-4 w-4 accent-amber-600"
+              />
+              <span className="text-xs leading-relaxed text-amber-900">
+                <span className="font-bold">💰 คิดค่าคละลายเป็นเงินต่อหน่วย</span> — ราคาเรทไม่ถูกลดตามจำนวนลาย
+                แต่บวกค่าคละแทน (เปิดอันนี้แล้วช่องด้านบนจะไม่มีผล เพื่อไม่ให้ลูกค้าโดนสองเด้ง)
+              </span>
+            </label>
+            {draft.mix.on && (
+              <div className="mb-2.5 grid gap-2 rounded-xl bg-white p-3 ring-1 ring-amber-200 sm:grid-cols-2">
+                {(
+                  [
+                    ["baseFee", "ค่าคละเหมา (บาท/หน่วย)", "20", "คละตั้งแต่ 2 ลายขึ้นไป คิดเท่านี้ต่อหน่วย"],
+                    ["includedDesigns", "รวมกี่ลายในค่าเหมา", "4", "เกินจากนี้คิดเพิ่มลายละตามช่องถัดไป"],
+                    ["extraFee", "ลายที่เกิน (บาท/ลาย/หน่วย)", "5", "ลายที่ 5, 6, 7… คิดเพิ่มลายละเท่านี้ต่อหน่วย"],
+                    ["onePerUnitFromQty", "ตั้งแต่กี่หน่วย ต้อง 1 ลาย/หน่วย", "11", "ว่าง = ไม่จำกัดจำนวนลาย · ใส่ 11 = สั่ง 11 ขึ้นไป คละได้ไม่เกินจำนวนที่สั่ง"],
+                  ] as const
+                ).map(([key, label, ph, help]) => (
+                  <label key={key} className="block">
+                    <span className="text-[11px] font-bold text-slate-700">{label}</span>
+                    <input
+                      value={draft.mix[key]}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, mix: { ...d.mix, [key]: e.target.value.replace(/[^\d]/g, "") } }))
+                      }
+                      inputMode="numeric"
+                      placeholder={ph}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
+                    />
+                    <span className="mt-0.5 block text-[10px] leading-snug text-slate-400">{help}</span>
+                  </label>
+                ))}
+                <p className="text-[11px] leading-relaxed text-amber-800 sm:col-span-2">
+                  ตัวอย่างที่ตั้งอยู่: คละ 1 ลาย = ไม่คิด · 2–{draft.mix.includedDesigns || "4"} ลาย ={" "}
+                  {draft.mix.baseFee || "20"} บาท/หน่วย · เกินจากนั้นลายละ {draft.mix.extraFee || "5"} บาท/หน่วย
+                  {draft.mix.onePerUnitFromQty
+                    ? ` · สั่งตั้งแต่ ${draft.mix.onePerUnitFromQty} หน่วยขึ้นไป คละได้ไม่เกินจำนวนที่สั่ง`
+                    : ""}
+                </p>
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="text-xs text-slate-600">
                 <span className="font-bold text-slate-700">เปิดใช้</span> · หน่วย {draft.pricing.unit || "—"} ·{" "}
@@ -3964,9 +4107,12 @@ export default function ProductEditor({ product }: { product: Product }) {
                       <tbody>
                         {cols.map((combo, ci) => {
                           const key = columnKey(combo);
-                          const rowBg = ci % 2 ? "bg-slate-50" : "bg-white";
+                          // แถวที่ยังไม่กรอกราคาเลย = หน้าร้านซ่อนตัวเลือกนี้ — ย้อมแถวให้เห็นชัด ๆ
+                          const emptyRow = activeTiers.every((_, ti) => !String(activeCells[key]?.[ti] ?? "").trim());
+                          const rowBg = emptyRow ? "bg-rose-50/70" : ci % 2 ? "bg-slate-50" : "bg-white";
                           return (
-                            <tr key={key} className="border-t border-slate-100">
+                            // ชื่อตัวเลือกซ้ำกัน = คีย์คอลัมน์ซ้ำ — ต่อ index กัน React ทิ้งแถวซ้ำไปเงียบ ๆ
+                            <tr key={`${key}#${ci}`} className="border-t border-slate-100">
                               <td
                                 className={`sticky left-0 z-10 max-w-[220px] px-3 py-2 align-middle font-medium leading-tight text-slate-700 ${rowBg}`}
                                 title={combo.length ? combo.join(" · ") : "ทุกจำนวน"}
@@ -3981,6 +4127,14 @@ export default function ProductEditor({ product }: { product: Product }) {
                                   ))
                                 ) : (
                                   `ราคา / ${draft.pricing.unit || "หน่วย"}`
+                                )}
+                                {emptyRow && combo.length > 0 && (
+                                  <span
+                                    className="mt-0.5 inline-block rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-600"
+                                    title="ยังไม่กรอกราคาแถวนี้ — หน้าร้านจะไม่แสดงตัวเลือกนี้ กรอกราคาแล้วจะขึ้นเอง"
+                                  >
+                                    หน้าร้านซ่อน
+                                  </span>
                                 )}
                               </td>
                               {activeTiers.map((t, ti) => (

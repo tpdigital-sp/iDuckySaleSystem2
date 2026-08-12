@@ -455,6 +455,45 @@ export interface PriceRate {
   pricing: PriceMatrix;
 }
 
+/**
+ * กติกาคละลายแบบ "คิดค่าคละเป็นเงินต่อหน่วย"
+ *
+ * ต่างจาก minPerDesign/extraDesignFee ของ PriceRate ตรงที่:
+ *   - ของ PriceRate = โควตาลายต่อออเดอร์ คละเกินแล้วราคาตกไปเรทต่อลาย
+ *   - ของตัวนี้ = ราคาเรทไม่เปลี่ยน แต่บวกค่าคละเป็นเงินตรง ๆ ต่อหน่วย
+ * ใช้กับสินค้าอย่างสติกเกอร์ที่คละลายแล้วต้นทุนเพิ่มเป็นค่าจัดอาร์ต ไม่ใช่ค่าผลิตต่อชิ้น
+ *
+ * ตัวอย่าง Super Sticker: baseFee 20 · includedDesigns 4 · extraFee 5 · onePerUnitFromQty 11
+ *   คละ 1 ลาย = 0 · 2-4 ลาย = 20 บาท/แผ่น · 6 ลาย = 20 + 2×5 = 30 บาท/แผ่น
+ *   สั่ง 11 แผ่นขึ้นไป = คละได้ไม่เกินจำนวนแผ่น (ขั้นต่ำ 1 ลาย/แผ่น)
+ */
+export interface MixRule {
+  /** คละตั้งแต่ 2 ลายขึ้นไป คิดเหมาต่อหน่วยเท่านี้ */
+  baseFee: number;
+  /** จำนวนลายที่รวมอยู่ในค่าเหมาแล้ว (เกินกว่านี้คิด extraFee ต่อลาย) */
+  includedDesigns: number;
+  /** ลายที่เกินโควตา คิดเพิ่มต่อหน่วย ลายละเท่านี้ */
+  extraFee: number;
+  /** สั่งตั้งแต่จำนวนนี้ขึ้นไป ต้องมีอย่างน้อย 1 ลาย/หน่วย → คละได้ไม่เกินจำนวนที่สั่ง */
+  onePerUnitFromQty?: number;
+}
+
+/** ค่าคละ "ต่อหน่วย" ตามจำนวนลายที่เลือก */
+export function mixFeePerUnit(rule: MixRule, designs: number): number {
+  if (designs <= 1) return 0;
+  const extra = Math.max(0, designs - Math.max(1, rule.includedDesigns));
+  return Math.max(0, rule.baseFee) + extra * Math.max(0, rule.extraFee);
+}
+
+/**
+ * เพดานจำนวนลายที่กติกานี้ยอมให้ — ไม่มีเพดาน = Infinity
+ * (ช่วงที่ยังไม่ถึง onePerUnitFromQty คละได้ไม่จำกัด เพราะหลายลายอยู่บนแผ่นเดียวกันได้)
+ */
+export function mixMaxDesigns(rule: MixRule | undefined, qty: number): number {
+  if (!rule?.onePerUnitFromQty) return Infinity;
+  return qty >= rule.onePerUnitFromQty ? qty : Infinity;
+}
+
 /** ช่วงจำนวนนี้คละลายอิสระไหม (ช่วงราคาปลีก) */
 export function isFreeMix(rate: PriceRate, qty: number): boolean {
   return !!rate.freeMixBelowQty && qty < rate.freeMixBelowQty;
@@ -498,6 +537,9 @@ export function designCountOf(selections: Record<string, string>): number {
  *   (ลูกค้าอยากคละเยอะยอมจ่ายราคาปลีกได้เอง — ระบบปรับเรทให้เห็นตรง ๆ ไม่ใช่แค่ป้ายเตือน)
  */
 export function tierQtyFor(product: Product, selections: Record<string, string>, qty: number): number {
+  // สินค้าที่คิดค่าคละเป็นเงินต่อหน่วยแล้ว (mixRule) ห้ามลดเรทซ้ำอีก
+  // ไม่งั้นลูกค้าโดนสองเด้ง: จ่ายค่าคละ + ราคาตกไปเรทปลีก
+  if (product.mixRule) return qty;
   if (!product.tierByDesign) return qty;
   const r = activeRate(product, selections);
   const d = designCountOf(selections);
@@ -513,6 +555,8 @@ export function tierQtyFor(product: Product, selections: Record<string, string>,
  * และเรทนั้นเปิดให้คละเกินได้ (extraDesignFee) → ส่วนเกินคิดลายละ extraDesignFee
  */
 export function designFeeFor(product: Product, selections: Record<string, string>, qty: number): number {
+  // กติกาคละแบบคิดต่อหน่วยมาก่อน — ค่าคละ = (ค่าต่อหน่วยตามจำนวนลาย) × จำนวนที่สั่ง
+  if (product.mixRule) return mixFeePerUnit(product.mixRule, designCountOf(selections)) * Math.max(0, qty);
   const r = activeRate(product, selections);
   if (!r?.minPerDesign || !r.extraDesignFee) return 0;
   const n = parseInt(String(selections[DESIGN_LABEL] ?? ""), 10);
@@ -562,6 +606,11 @@ export interface Product {
    * เช่น เคส 11 ชิ้นคละ 11 ลาย = ลายละ 1 ชิ้น → คิดเรทราคาปลีก (ราคารวมยังคูณ 11 ชิ้นตามเดิม)
    */
   tierByDesign?: boolean;
+  /**
+   * กติกาคละลายแบบคิดค่าคละเป็นเงินต่อหน่วย (ดู MixRule)
+   * ตั้งอันนี้แล้วราคาเรทจะไม่ถูกลดตามจำนวนลายอีก — คิดค่าคละตรง ๆ แทน
+   */
+  mixRule?: MixRule;
   /** ข้อมูล SEO/AEO (ไม่มี = ใช้ค่าจากชื่อ/รายละเอียดอัตโนมัติ) */
   seo?: ProductSeo;
   /**
@@ -2473,7 +2522,13 @@ export function resolveSelections(
       );
       continue;
     }
-    resolved[opt.label] = current && allowed.includes(current) ? current : allowed[0];
+    // ตัวที่ไม่มีราคาในตารางเรทนี้ หน้าร้านซ่อนไว้ (แถวราคาว่าง = ไม่ขายคู่นี้)
+    // ค่าเริ่มต้นจึงต้องไม่ไปตกที่ตัวที่ถูกซ่อน ไม่งั้นหัวข้อจะโชว์ชื่อที่ลูกค้าเลือกซ้ำในเมนูไม่ได้
+    // แถมราคาหล่นไปใช้ราคาตั้งต้นแทนราคาในตาราง · ไม่เหลือตัวที่มีราคาเลยค่อยคงชุดเดิมไว้กันหน้าพัง
+    const m = activeMatrix(product, view);
+    const priced = m ? allowed.filter((n) => matrixChoiceAvailable(m, opt.label, n)) : allowed;
+    const pool = priced.length > 0 ? priced : allowed;
+    resolved[opt.label] = current && pool.includes(current) ? current : pool[0];
   }
   return resolved;
 }
