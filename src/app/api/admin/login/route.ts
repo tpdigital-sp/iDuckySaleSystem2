@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import {
   EMPLOYEE_COLLECTION,
   getFirestoreAdmin,
-  normalizeUsername,
+  loginKey,
   verifyPassword,
 } from "@/lib/server/firebase-admin";
 import { can, WORK_STATUS_ACTIVE } from "@/lib/permissions";
@@ -36,17 +36,19 @@ export async function POST(req: Request) {
     password?: string;
     role?: string;
     name?: string;
+    passwordSalt?: string;
+    passwordAlgo?: string;
     isSuspended?: boolean;
     /** ระงับสิทธิ์เฉพาะระบบ iDucky (ไม่เกี่ยวกับ isSuspended ของระบบ TP เดิม) */
     iduckySuspended?: boolean;
     workStatus?: string;
     department?: string;
   };
-  const wanted = normalizeUsername(username);
+  const wanted = loginKey(username);
   const rows = await db.collection(EMPLOYEE_COLLECTION).get();
   const emp = rows.docs
     .map((d) => d.data() as Emp)
-    .find((e) => normalizeUsername(e.username ?? "") === wanted);
+    .find((e) => loginKey(e.username ?? "") === wanted);
 
   if (!emp) {
     return NextResponse.json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" }, { status: 401 });
@@ -60,8 +62,8 @@ export async function POST(req: Request) {
   if (emp.iduckySuspended === true) {
     return NextResponse.json({ error: "บัญชีนี้ถูกปิดการเข้าใช้งานระบบนี้ — ติดต่อผู้ดูแลระบบ" }, { status: 403 });
   }
-  // เทียบรหัสผ่าน (รองรับ SHA-256 hash / plaintext ปนกัน)
-  if (!verifyPassword(password, emp.password ?? "")) {
+  // เทียบรหัสผ่าน (รองรับ PBKDF2 ของ TP ใหม่ / SHA-256 เดิม / plaintext ปนกัน)
+  if (!(await verifyPassword(password, emp))) {
     return NextResponse.json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" }, { status: 401 });
   }
 

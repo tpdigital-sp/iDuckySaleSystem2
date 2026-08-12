@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
-import { EMPLOYEE_COLLECTION, getFirestoreAdmin, normalizeUsername } from "@/lib/server/firebase-admin";
+import { EMPLOYEE_COLLECTION, getFirestoreAdmin, loginKey } from "@/lib/server/firebase-admin";
 import { can, DEFAULT_ROLE_PERMS, ROLE_ADMINISTRATOR, ROLE_STAFF } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 
@@ -52,7 +52,7 @@ export async function GET() {
     departments: Object.keys(rolePerms ?? DEFAULT_ROLE_PERMS),
     // พนง.แอดมินตั้ง/แก้ระดับ Administrator ไม่ได้ — ให้หน้าจอปิดตัวเลือกให้ตรงกับกติกาเซิร์ฟเวอร์
     canGrantAdmin: gate.actor.role === ROLE_ADMINISTRATOR,
-    me: normalizeUsername(gate.actor.username),
+    me: loginKey(gate.actor.username),
   });
 }
 
@@ -92,7 +92,7 @@ export async function PATCH(req: Request) {
   const target = snap.data() as EmpDoc;
 
   // ห้ามแก้บทบาทตัวเอง — กันเผลอลดสิทธิ์แล้วล็อกตัวเองออกจากระบบ
-  if (normalizeUsername(target.username ?? "") === normalizeUsername(gate.actor.username))
+  if (loginKey(target.username ?? "") === loginKey(gate.actor.username))
     return NextResponse.json({ error: "แก้บทบาทของตัวเองไม่ได้ (กันล็อกตัวเองออกจากระบบ) — ให้ผู้ดูแลระบบคนอื่นแก้ให้" }, { status: 403 });
 
   // พนง.แอดมิน (ไม่ใช่ Administrator): ห้ามแตะบัญชี Administrator และห้ามเลื่อนใครเป็น Administrator

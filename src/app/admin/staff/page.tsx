@@ -197,8 +197,10 @@ function StaffPageInner() {
     void load();
   }, []);
 
+  // ต้องตรงกับ loginKey() ฝั่งเซิร์ฟเวอร์ — ชื่อไทย/อีโมจิล้วนเหลือ "" จึงถอยไปใช้ชื่อดิบ
   const norm = (u: string) =>
-    u.trim().toLowerCase().replace(/\s+/g, ".").replace(/[^a-z0-9._-]/g, "").replace(/^[._-]+|[._-]+$/g, "");
+    u.trim().toLowerCase().replace(/\s+/g, ".").replace(/[^a-z0-9._-]/g, "").replace(/^[._-]+|[._-]+$/g, "") ||
+    u.trim().toLowerCase();
 
   // แสดงเฉพาะคนที่ยังทำงานอยู่ (พ้นสภาพแล้วไม่โชว์)
   const working = (staff ?? []).filter((s) => s.workStatus === "working");
