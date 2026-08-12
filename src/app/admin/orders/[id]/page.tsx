@@ -48,6 +48,7 @@ import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
 import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
+import { specEntries, specValueLines } from "@/components/SpecLines";
 
 /** ขั้นถัดไปที่ "ปกติจะกด" ของแต่ละสถานะ — ทำเป็นปุ่มเดียวจบ ไม่ต้องเปิดลิสต์ยาว */
 const NEXT_STATUS: Partial<Record<OrderStatus, { to: OrderStatus; label: string }>> = {
@@ -315,35 +316,24 @@ function SelText({ text, plain = false }: { text: string; plain?: boolean }) {
 const SEL_HIDE = ["ภาพลายที่แนบ", "รอเช็คสต๊อก"];
 const SEL_SPEC = "ตำแหน่งลาย (ทีมผลิต)";
 
-/** ตัดค่าที่มีหลายลายให้เป็นบรรทัดละลาย */
-function selLines(v: string): string[] {
-  return v
-    .split(" | ")
-    .flatMap((part) => part.split(/\s·\s(?=ลายที่\s)/))
-    .map((x) => x.trim())
-    .filter(Boolean);
-}
+/** ตัดค่าที่มีหลายลายให้เป็นบรรทัดละลาย (ใช้กติกาเดียวกับหน้าร้าน) */
+const selLines = specValueLines;
 
 /**
  * รายละเอียดของรายการ — บรรทัดละหัวข้อ · หลายลายแยกบรรทัดของใครของมัน
  * พิกัดของทีมผลิตยุบไว้ (กดกางเมื่อจะทำไฟล์เอง) เพราะยาวและไม่ได้ใช้ทุกครั้ง
  */
 function SelDetails({ sel, text }: { sel?: Record<string, string>; text?: string }) {
-  const entries = Object.entries(sel ?? {}).filter(([k, v]) => v && !SEL_HIDE.includes(k));
+  // ออเดอร์เก่าไม่มีตัวเลือกแบบหัวข้อ/ค่า — กางจากข้อความรวมให้เป็นบรรทัดละหัวข้อเหมือนกัน
+  const entries = specEntries(sel, text, SEL_HIDE);
   if (!entries.length) {
-    return text ? (
-      <p className="whitespace-pre-line">
-        <SelText text={text} />
-      </p>
-    ) : (
-      <span className="text-slate-300">— ยังไม่มีรายละเอียด —</span>
-    );
+    return <span className="text-slate-300">— ยังไม่มีรายละเอียด —</span>;
   }
   return (
-    <div className="space-y-0.5">
-      {entries.map(([k, v]) => {
+    <div className="space-y-0.5 break-words">
+      {entries.map(([k, v], i) => {
         const lines = selLines(v);
-        const label = <span className="font-semibold text-slate-600">{k}:</span>;
+        const label = k ? <span className="font-semibold text-slate-700">{k}:</span> : null;
         if (k === SEL_SPEC) {
           return (
             <details key={k} className="group">
@@ -361,7 +351,7 @@ function SelDetails({ sel, text }: { sel?: Record<string, string>; text?: string
           );
         }
         return (
-          <div key={k}>
+          <div key={`${k}-${i}`}>
             {lines.length > 1 ? (
               <>
                 <p>{label}</p>
@@ -375,7 +365,9 @@ function SelDetails({ sel, text }: { sel?: Record<string, string>; text?: string
               </>
             ) : (
               <p>
-                {label} <SelText text={lines[0] ?? v} />
+                {label}
+                {label && " "}
+                <SelText text={lines[0] ?? v} />
               </p>
             )}
           </div>
@@ -3370,8 +3362,16 @@ function PackView({
               >
                 <span className="text-lg">{it.noteAck ? "✅" : "📄"}</span>
                 <span className="min-w-0 flex-1 text-xs">
+                  {/* บรรทัดละหัวข้อเหมือนที่อื่น — คนแพ็คอ่านทีละบรรทัดไม่ตกหล่น (อยู่ในปุ่ม จึงใช้ span ล้วน) */}
                   <span className="block font-bold text-slate-700">
-                    {it.selections ? <SelText text={it.selections} plain /> : "ไม่มีรายละเอียดเพิ่มเติม"}
+                    {specEntries(it.sel, it.selections).length
+                      ? specEntries(it.sel, it.selections).map(([k, v], n) => (
+                          <span key={`${k}-${n}`} className="block">
+                            {k && <span className="text-slate-500">{k}: </span>}
+                            <SelText text={v} plain />
+                          </span>
+                        ))
+                      : "ไม่มีรายละเอียดเพิ่มเติม"}
                   </span>
                   <span className={it.noteAck ? "text-green-700" : "font-bold text-amber-700"}>
                     {it.noteAck ? "ยืนยันอ่านแล้ว" : "แตะเพื่อยืนยันว่าอ่านแล้ว"}

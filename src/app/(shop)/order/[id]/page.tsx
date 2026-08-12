@@ -13,6 +13,7 @@ import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
 import { setAppendTarget } from "@/lib/append-order";
 import ImageLightbox from "@/components/ImageLightbox";
+import { SpecLines } from "@/components/SpecLines";
 import { LINE_URL } from "@/components/LineButton";
 import { canAccessAdmin } from "@/lib/auth";
 
@@ -865,49 +866,12 @@ export default function CustomerOrderPage() {
                       ลายหลายแบบก็แยกบรรทัดของใครของมัน · ซ่อนพิกัด/ลิงก์ของทีมผลิตไว้
                       (ออเดอร์เก่าที่ไม่มี sel ใช้ข้อความรวมแบบเดิม แต่ตัดลิงก์ออกให้)
                     */}
-                    {(() => {
-                      const HIDE = ["ภาพลายที่แนบ", "รอเช็คสต๊อก", "ตำแหน่งลาย (ทีมผลิต)"];
-                      const tidy = (v: string) =>
-                        v.replace(/https?:\/\/\S+/g, "").replace(/\s·\s·\s/g, " · ").replace(/·\s*$/, "").trim();
-                      /** ตัดค่าที่มีหลายลายให้เป็นบรรทัดละลาย */
-                      const lines = (v: string) =>
-                        tidy(v)
-                          .split(" | ")
-                          .flatMap((part) => part.split(/\s·\s(?=ลายที่\s)/))
-                          .map((x) => x.trim())
-                          .filter(Boolean);
-                      const entries = Object.entries(it.sel ?? {}).filter(([k, v]) => !HIDE.includes(k) && v);
-                      if (entries.length) {
-                        return (
-                          <div className="mt-1 space-y-0.5 text-xs text-stone-400">
-                            {entries.map(([k, v]) => {
-                              const parts = lines(v);
-                              return (
-                                <p key={k} className="leading-snug">
-                                  <span className="font-semibold text-stone-500">{k}:</span>{" "}
-                                  {parts.length > 1 ? (
-                                    <span className="mt-0.5 block space-y-0.5">
-                                      {parts.map((x, n) => (
-                                        <span key={n} className="block pl-3">
-                                          {x}
-                                        </span>
-                                      ))}
-                                    </span>
-                                  ) : (
-                                    parts[0]
-                                  )}
-                                </p>
-                              );
-                            })}
-                          </div>
-                        );
-                      }
-                      return it.selections ? (
-                        <p className="mt-0.5 line-clamp-2 text-xs text-stone-400" title={it.selections}>
-                          {tidy(it.selections)}
-                        </p>
-                      ) : null;
-                    })()}
+                    <SpecLines
+                      sel={it.sel}
+                      text={it.selections}
+                      className="mt-1 text-xs text-stone-400"
+                      stripLinks
+                    />
                     {/* ⚠️ ข้อควรทราบของสินค้าตัวนี้ — ย้ำอีกครั้งหลังสั่ง กันเข้าใจผิด/เคลมทีหลัง */}
                     {termsById[it.productId] && (
                       <details className="group mt-1.5">

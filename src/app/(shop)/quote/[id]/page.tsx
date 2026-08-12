@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import { daysToExpire, quoteStatusOf, quoteTotal, type Quote } from "@/lib/quotes";
 import { LINE_URL } from "@/components/LineButton";
+import { SpecLines } from "@/components/SpecLines";
 
 /** หน้าใบเสนอราคาสำหรับลูกค้า — เปิดจากลิงก์ที่ร้านส่งให้ (ต้องมี key) */
 export default function CustomerQuotePage() {
@@ -92,7 +93,7 @@ export default function CustomerQuotePage() {
                 <span className="block font-bold text-stone-800">
                   {i + 1}. {it.name}
                 </span>
-                {it.selections && <span className="mt-0.5 block whitespace-pre-line text-xs text-stone-500">{it.selections}</span>}
+                <SpecLines text={it.selections} className="mt-0.5 text-xs text-stone-500" />
               </span>
               <span className="w-12 text-center text-stone-600">{it.qty}</span>
               <span className="w-24 text-right text-stone-600">{formatPrice(it.unitPrice)}</span>

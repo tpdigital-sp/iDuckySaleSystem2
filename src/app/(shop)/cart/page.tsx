@@ -15,6 +15,7 @@ import {
 import { useCart } from "@/lib/cart-context";
 import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import ProductVisual from "@/components/ProductVisual";
+import { SpecLines } from "@/components/SpecLines";
 import { getAppendTarget, clearAppendTarget, type AppendTarget } from "@/lib/append-order";
 import { getUnpicked, setUnpicked as saveUnpicked, clearUnpicked } from "@/lib/cart-select";
 import { getQuoteTarget, clearQuoteTarget, type QuoteTarget } from "@/lib/append-quote";
@@ -410,25 +411,18 @@ export default function CartPage() {
                   </div>
                   {(() => {
                     // ซ่อน url ลาย/ธงภายในระบบ — สรุปเป็นข้อความสั้นแทน
+                    // (บรรทัดตัวเลขของทีมผลิตซ่อนอยู่แล้วใน SPEC_HIDE — ลูกค้าไม่ต้องอ่าน แต่ยังติดไปกับออเดอร์)
                     const artCount = String(item.selections["ภาพลายที่แนบ"] ?? "").split("|").filter((u) => u.trim()).length;
-                    // ซ่อนบรรทัดตัวเลขของทีมผลิตด้วย — ลูกค้าไม่ต้องอ่าน แต่ยังติดไปกับออเดอร์
-                    const shown = Object.entries(item.selections).filter(
-                      ([k]) => k !== "ภาพลายที่แนบ" && k !== "รอเช็คสต๊อก" && k !== PLACEMENT_SPEC_LABEL
-                    );
-                    if (!shown.length && !artCount) return null;
                     return (
-                      <div className="mt-0.5 space-y-0.5 text-xs text-stone-400">
-                        {shown.map(([k, v]) => (
-                          <p key={k} className="break-words">
-                            <span className="font-semibold text-stone-700">{k}:</span> {v}
-                          </p>
-                        ))}
-                        {artCount > 0 && (
-                          <p className="font-semibold text-sky-600">
-                            🎨 แนบลายแล้ว {artCount} รูป
-                          </p>
-                        )}
-                      </div>
+                      <SpecLines
+                        sel={item.selections}
+                        className="mt-0.5 text-xs text-stone-400"
+                        after={
+                          artCount > 0 ? (
+                            <p className="font-semibold text-sky-600">🎨 แนบลายแล้ว {artCount} รูป</p>
+                          ) : null
+                        }
+                      />
                     );
                   })()}
                   {(() => {

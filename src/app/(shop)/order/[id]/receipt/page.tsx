@@ -7,6 +7,7 @@ import { formatPrice } from "@/lib/products";
 import { adminDiscountAmount, orderFullyPaid, orderItemDiscounts, orderTotal, type Order } from "@/lib/admin-data";
 import { fetchOrderForCustomer } from "@/lib/order-repo";
 import { fetchShopPayment, shopInfoOf, type ShopInfo } from "@/lib/shop-settings";
+import { SpecLines } from "@/components/SpecLines";
 
 /** ใบเสร็จ/ใบรับเงิน ที่ลูกค้าเปิด+พิมพ์เองได้ (ต้องมี key) */
 export default function CustomerReceiptPage() {
@@ -125,7 +126,7 @@ export default function CustomerReceiptPage() {
                 <tr key={i} className="border-b border-stone-100 align-top">
                   <td className="py-2">
                     <p className="font-semibold text-stone-800">{it.name}</p>
-                    {it.selections && <p className="text-[11px] text-stone-400">{it.selections}</p>}
+                    <SpecLines sel={it.sel} text={it.selections} className="text-[11px] text-stone-400" stripLinks />
                   </td>
                   <td className="py-2 text-center tabular-nums">{it.qty}</td>
                   <td className="py-2 text-right tabular-nums">{formatPrice(it.unitPrice)}</td>

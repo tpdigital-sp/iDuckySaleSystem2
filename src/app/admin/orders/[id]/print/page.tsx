@@ -21,6 +21,7 @@ import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shopInfoOf, type ShopInfo } from "@/lib/shop-settings";
 import { useCan } from "@/lib/perm-context";
 import { parsePrintFrame, PLACEMENT_LABEL, PLACEMENT_SPEC_LABEL, sheetsFor } from "@/lib/design-templates";
+import { SpecLines } from "@/components/SpecLines";
 
 /**
  * ข้อความสั้นบนป้ายแปะกล่อง — เอาเฉพาะตัวเลือกสินค้า (ขนาด/สี/รุ่น)
@@ -34,11 +35,13 @@ function boxSummary(it: Order["items"][number]): string {
   return t.length > 90 ? `${t.slice(0, 90)}…` : t;
 }
 
+/** หัวข้อที่ไม่ต้องขึ้นใบงาน — พิกัด/ลิงก์/สรุปการวางลาย (ทีมผลิตดูจากไฟล์ .ai) */
+const PRINT_SKIP = ["ภาพลายที่แนบ", "รอเช็คสต๊อก", "ลิงก์ไฟล์ลาย/อีเมล", PLACEMENT_SPEC_LABEL, PLACEMENT_LABEL];
+
 /** ตัวเลือกสินค้าล้วน ๆ (ขนาด/สี/รุ่น) — ตัดพิกัด/ลิงก์/สรุปการวางลายออก */
 function optionText(it: Order["items"][number]): string {
-  const skip = ["ภาพลายที่แนบ", "รอเช็คสต๊อก", "ลิงก์ไฟล์ลาย/อีเมล", PLACEMENT_SPEC_LABEL, PLACEMENT_LABEL];
   return Object.entries(it.sel ?? {})
-    .filter(([k, v]) => v && !skip.includes(k))
+    .filter(([k, v]) => v && !PRINT_SKIP.includes(k))
     .map(([k, v]) => `${k}: ${v}`)
     .join(" · ");
 }
@@ -538,9 +541,14 @@ export default function PrintOrderPage() {
                             })()}
                           </div>
                         ) : (
-                          cleanSelections(it.selections) && (
-                            <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{cleanSelections(it.selections)}</p>
-                          )
+                          <SpecLines
+                            sel={it.sel}
+                            text={cleanSelections(it.selections)}
+                            hide={PRINT_SKIP}
+                            stripLinks
+                            labelClassName="text-slate-900"
+                            className="mt-0.5 text-xs leading-relaxed text-slate-600"
+                          />
                         )}
                         {(it.artworkUrls?.length ?? 0) > 0 && (
                           <div className="mt-1.5">
@@ -755,7 +763,14 @@ export default function PrintOrderPage() {
                     <td className="py-2 pl-2 tabular-nums">{i + 1}</td>
                     <td className="py-2">
                       <p className="font-semibold">{it.name}</p>
-                      {it.selections && <p className="text-xs text-slate-500">{it.selections}</p>}
+                      <SpecLines
+                        sel={it.sel}
+                        text={it.selections}
+                        hide={PRINT_SKIP}
+                        stripLinks
+                        labelClassName="text-slate-700"
+                        className="text-xs text-slate-500"
+                      />
                     </td>
                     <td className="py-2 text-right tabular-nums">{formatPrice(it.unitPrice)}</td>
                     <td className="py-2 text-center tabular-nums">{it.qty}</td>
