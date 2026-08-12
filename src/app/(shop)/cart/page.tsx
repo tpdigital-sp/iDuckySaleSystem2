@@ -420,7 +420,7 @@ export default function CartPage() {
                       <div className="mt-0.5 space-y-0.5 text-xs text-stone-400">
                         {shown.map(([k, v]) => (
                           <p key={k} className="break-words">
-                            <span className="text-stone-500">{k}:</span> {v}
+                            <span className="font-semibold text-stone-700">{k}:</span> {v}
                           </p>
                         ))}
                         {artCount > 0 && (
