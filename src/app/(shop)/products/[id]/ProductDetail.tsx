@@ -239,8 +239,9 @@ export default function ProductDetail({
   const [editIndex, setEditIndex] = useState<number | null>(null);
   /** เปิดจอวางรูปแบบมีช่อง (Theme) อยู่ไหม — เทมเพลตที่กำหนดช่องไว้จะใช้จอนี้แทน */
   const [slotStudio, setSlotStudio] = useState(false);
-  // ส่วน "เพิ่มเติม" ยุบไว้ทีละอัน — ไม่ให้ฟอร์มที่ไม่บังคับดันปุ่มซื้อตกจอ
-  const [extraOpen, setExtraOpen] = useState<"art" | "note" | null>(null);
+  // กล่อง "แนบลายของคุณ" ยุบไว้ — ไม่ให้ฟอร์มที่ไม่บังคับดันปุ่มซื้อตกจอ
+  // (ช่องหมายเหตุถึงร้านไม่ยุบแล้ว — กางไว้ตลอด ลูกค้าใช้บ่อย)
+  const [extraOpen, setExtraOpen] = useState<"art" | null>(null);
   // สินค้าที่บังคับแนบลาย → เปิดกล่องค้างไว้จนกว่าลูกค้าจะแตะปิดเอง
   const [artTouched, setArtTouched] = useState(false);
   // แถบซื้อลอยล่างจอ (มือถือ) — โผล่เมื่อกล่องสั่งซื้อหลักเลื่อนพ้นจอ
@@ -2272,7 +2273,7 @@ export default function ProductDetail({
                       const mt = mixTierFor(mixRule, qty);
                       const capped = Number.isFinite(mixMaxDesigns(mixRule, qty));
                       /* เฉลี่ยลายลงแต่ละหน่วย แล้วกางให้เห็นทีละกลุ่ม — ค่าคละคิดจาก "ลายต่อหน่วย" ไม่ใช่ลายรวม */
-                      const spread = spreadDesigns(designs, Math.max(1, qty));
+                      const spread = spreadDesigns(designs, Math.max(1, qty), mt.includedDesigns);
                       const groups = [...new Set(spread)]
                         .sort((a, b) => b - a)
                         .map((n) => ({ n, units: spread.filter((x) => x === n).length, fee: mixUnitFee(mixRule, n, qty) }));
@@ -2560,44 +2561,40 @@ export default function ProductDetail({
               </div>
             </div>}
 
-            <div className="border-t border-stone-100">
-              <button
-                type="button"
-                onClick={() => setExtraOpen((o) => (o === "note" ? null : "note"))}
-                aria-expanded={extraOpen === "note"}
-                className="flex w-full items-center gap-2 px-4 py-3 text-left transition hover:bg-amber-50/60"
-              >
+            {/*
+              หมายเหตุถึงร้าน — กางไว้ตลอด ไม่ต้องกดเปิด
+              เดิมเป็นแถบพับที่หัวข้อเขียน "หมายเหตุถึงร้าน" ซ้ำกับป้ายในช่องอีกที
+              ลูกค้าพิมพ์ช่องนี้บ่อย (สี/ข้อความบนงาน) ซ่อนไว้แล้วหาไม่เจอ → เหลือหัวข้อเดียว ช่องพร้อมพิมพ์เลย
+            */}
+            <div className="border-t border-stone-100 px-4 py-3.5">
+              <label htmlFor="order-note" className="flex cursor-text items-center gap-2">
                 <span className="text-lg leading-none">📝</span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-bold text-stone-700">
-                    หมายเหตุถึงร้าน
-                    {note.trim() && (
-                      <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">มีข้อความ</span>
-                    )}
+                    หมายเหตุถึงร้าน <span className="font-semibold text-stone-400">(ไม่บังคับ)</span>
                   </span>
                   <span className="block text-[11px] text-stone-400">สีที่ต้องการ · ข้อความที่อยากให้ใส่ · รายละเอียดเพิ่มเติม</span>
                 </span>
-                <span className={`shrink-0 text-stone-400 transition ${extraOpen === "note" ? "rotate-180" : ""}`}>⌄</span>
-              </button>
-              {extraOpen === "note" && <div className="px-4 pb-4">
-                {/* หมายเหตุถึงร้าน (อยู่ใต้จำนวน+เพิ่มลงตะกร้า) */}
-                <div className="mt-5">
-                  <label htmlFor="order-note" className="mb-1.5 block text-sm font-bold text-stone-700">
-                    📝 หมายเหตุถึงร้าน <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
-                  </label>
-                  <textarea
-                    id="order-note"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value.slice(0, 500))}
-                    rows={2}
-                    placeholder="เช่น สีที่ต้องการ · ข้อความที่อยากให้ใส่ · รายละเอียดเพิ่มเติม"
-                    className="w-full resize-y rounded-2xl bg-white px-4 py-2.5 text-sm text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                  />
-                  {note.trim() && (
-                    <p className="mt-1 text-right text-[11px] text-stone-400">{note.length}/500</p>
-                  )}
-                </div>
-              </div>}
+              </label>
+              <textarea
+                id="order-note"
+                value={note}
+                onChange={(e) => setNote(e.target.value.slice(0, 500))}
+                rows={3}
+                placeholder="พิมพ์สิ่งที่อยากบอกร้านได้เลย — เช่น อยากได้สีเข้มกว่าในภาพ · ใส่ชื่อ “iDucky” ใต้โลโก้"
+                className="mt-2 w-full resize-y rounded-2xl bg-white px-4 py-2.5 text-sm leading-relaxed text-stone-700 ring-1 ring-amber-200 transition placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-300"
+              />
+              {/* ตัวนับโผล่เมื่อเริ่มพิมพ์ · ใกล้เต็มเปลี่ยนเป็นแดงเตือนก่อนโดนตัดที่ 500
+                  (ใช้ rose ไม่ใช่ amber — amber ถูกรีแมปเป็นฟ้าแบรนด์ใน globals.css แล้ว ไม่อ่านเป็นคำเตือน) */}
+              {note.length > 0 && (
+                <p
+                  className={`mt-1 text-right text-[11px] tabular-nums ${
+                    note.length >= 450 ? "font-bold text-rose-500" : "text-stone-400"
+                  }`}
+                >
+                  {note.length}/500
+                </p>
+              )}
             </div>
           </div>
 

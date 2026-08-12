@@ -528,11 +528,29 @@ function feeOfUnit(t: MixTier, n: number): number {
  * เช่น 9 ลาย 2 แผ่น → [5,4] · 12 ลาย 11 แผ่น → [2,1,1,…]
  * (ตรงกับที่แอดมินคิดมือ: หารไม่ลงตัวก็แยกคิดเป็นคนละรายการ)
  */
-export function spreadDesigns(designs: number, qty: number): number[] {
+export function spreadDesigns(designs: number, qty: number, cap = Infinity): number[] {
   if (qty <= 0) return [];
-  // ลายน้อยกว่าหน่วยที่สั่ง = ลายซ้ำกันข้ามหน่วย ทุกหน่วยมีลายเดียว (ไม่มีหน่วยไหน "คละ")
+  // ลายน้อยกว่าหรือเท่าหน่วยที่สั่ง = ลายซ้ำกันข้ามหน่วย ทุกหน่วยมีลายเดียว (ไม่มีหน่วยไหน "คละ")
   // เช่น 10 แผ่น 4 ลาย → แผ่นละ 1 ลาย ไม่ใช่ 4 แผ่นมีลาย + 6 แผ่นว่าง
   if (designs <= qty) return Array.from({ length: qty }, () => 1);
+
+  const c = Math.max(1, cap);
+  if (designs <= c * qty) {
+    /*
+      ยังใส่ได้ในโควตา → "เติมให้เต็มโควตาต่อหน่วยก่อน แล้วค่อยขึ้นหน่วยใหม่"
+      ไม่ใช่เฉลี่ยเท่า ๆ กัน เพราะเฉลี่ยแล้วจะไปโดนค่าคละหลายหน่วยโดยไม่จำเป็น
+      เช่น 2 แผ่น 5 ลาย: เฉลี่ย [3,2] = คละ 2 แผ่น (40 บาท) · เติมเต็ม [4,1] = คละแผ่นเดียว (20 บาท)
+      หน่วยที่เหลือได้ลายละ 1 (ลายซ้ำจากที่มีอยู่) จึงไม่ถือว่าคละ
+    */
+    const full = Math.floor(designs / c);
+    const rest = designs - full * c;
+    const out = Array.from({ length: full }, () => c);
+    if (rest > 0) out.push(rest);
+    while (out.length < qty) out.push(1);
+    return out;
+  }
+
+  // ลายเกินโควตารวมแล้ว → เฉลี่ยส่วนที่เกินให้ทุกหน่วยเท่า ๆ กัน (เช่น 2 แผ่น 9 ลาย → [5,4])
   const base = Math.floor(designs / qty);
   const remainder = designs % qty;
   return Array.from({ length: qty }, (_, i) => (i < remainder ? base + 1 : base));
@@ -548,7 +566,7 @@ export function spreadDesigns(designs: number, qty: number): number[] {
 export function mixFeeTotal(rule: MixRule, designs: number, qty: number): number {
   if (designs <= 1 || qty <= 0) return 0;
   const t = mixTierFor(rule, qty);
-  return spreadDesigns(designs, qty).reduce((sum, n) => sum + feeOfUnit(t, n), 0);
+  return spreadDesigns(designs, qty, t.includedDesigns).reduce((sum, n) => sum + feeOfUnit(t, n), 0);
 }
 
 /**
@@ -562,7 +580,8 @@ export function mixUnitFee(rule: MixRule, designsOnUnit: number, qty: number): n
 /** ค่าคละของหน่วยที่มีลายมากที่สุด — ไว้โชว์ว่า "แผ่นที่แพงสุดแผ่นละเท่าไหร่" */
 export function mixFeePerUnit(rule: MixRule, designs: number, qty = 1): number {
   if (designs <= 1 || qty <= 0) return 0;
-  return feeOfUnit(mixTierFor(rule, qty), Math.max(...spreadDesigns(designs, qty)));
+  const t = mixTierFor(rule, qty);
+  return feeOfUnit(t, Math.max(...spreadDesigns(designs, qty, t.includedDesigns)));
 }
 
 /**
