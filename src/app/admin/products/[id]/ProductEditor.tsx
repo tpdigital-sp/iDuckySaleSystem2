@@ -38,6 +38,7 @@ import { fileReady, groupByCategory, NO_CATEGORY, templateFiles, type DesignTemp
 import { fetchTemplates } from "@/lib/template-repo";
 
 /** qty = ให้ลูกค้าระบุจำนวนของตัวเลือกนี้ (เฉพาะกลุ่มติ๊กหลายอย่าง) · qtyMax = เพดานจำนวน (ว่าง = 99) */
+/** perUnit = ชิ้นที่ได้ต่อ 1 หน่วยสั่งของตัวเลือกนี้ (กางช่องกรอกเมื่อกลุ่มเปิด perUnitOn) */
 type DraftChoice = { name: string; extra: string; qty?: boolean; qtyMax?: string; perUnit?: string };
 /** presetId มี = กลุ่มนี้ "ลิงก์" คลังตัวเลือกกลาง (label+choices มาจากคลัง แก้ในกลุ่มไม่ได้จนกว่าจะตัดลิงก์) */
 type DraftOption = {
@@ -58,6 +59,8 @@ type DraftOption = {
   freeChoices?: string[];
   freeWhenLabel?: string;
   freeWhenChoices?: string[];
+  /** เปิดช่อง "ชิ้นต่อหน่วย" ให้ทุกตัวเลือกในกลุ่มนี้ (ใช้เป็นเพดานจำนวนลายที่คละได้) */
+  perUnitOn?: boolean;
   /** "แสดงเมื่อ" — โชว์ทั้งกลุ่มเฉพาะตอนกลุ่มอื่นเลือกค่าที่กำหนด (ว่าง = แสดงตลอด) */
   showWhenLabel?: string;
   showWhenChoices?: string[];
@@ -309,6 +312,8 @@ function toDraft(p: Product): Draft {
         ...(c.perUnit ? { perUnit: String(c.perUnit) } : {}),
       })),
       ...(o.presetId ? { presetId: o.presetId } : {}),
+      // มีตัวไหนตั้ง "ชิ้นต่อหน่วย" ไว้ = กลุ่มนี้เคยเปิดสวิตช์ → เปิดค้างไว้ให้เห็นค่าเดิม
+      ...(o.choices.some((c) => c.perUnit) ? { perUnitOn: true } : {}),
       display: o.display ?? "pills",
       ...(o.extraFromQty ? { extraFromQty: String(o.extraFromQty) } : {}),
       ...(o.smallQtyFee
@@ -498,7 +503,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             name: c.name.trim(),
             ...(Number.isFinite(extra) && extra > 0 ? { extra } : {}),
             ...(qty ? { qty: true, ...(Number(c.qtyMax) > 0 ? { qtyMax: Math.floor(Number(c.qtyMax)) } : {}) } : {}),
-            ...(Number(c.perUnit) > 0 ? { perUnit: Math.floor(Number(c.perUnit)) } : {}),
+            ...(o.perUnitOn && Number(c.perUnit) > 0 ? { perUnit: Math.floor(Number(c.perUnit)) } : {}),
           };
         }),
       ...(o.presetId ? { presetId: o.presetId } : {}),
@@ -1619,6 +1624,30 @@ export default function ProductEditor({ product }: { product: Product }) {
                 );
               })}
             </div>
+          )}
+        </div>
+        {/* ── ชิ้นต่อหน่วย: เปิดทั้งกลุ่มทีเดียว แล้วค่อยกรอกตัวเลขรายตัวเลือกด้านล่าง ── */}
+        <div className="mt-1.5 border-t border-dashed border-slate-200 pt-1.5">
+          <label className="flex cursor-pointer items-start gap-2 text-[11px] font-bold text-slate-600">
+            <input
+              type="checkbox"
+              checked={!!opt.perUnitOn}
+              onChange={(e) => setOpt({ perUnitOn: e.target.checked })}
+              className="mt-0.5 h-3.5 w-3.5 accent-teal-600"
+            />
+            <span>
+              📐 ตัวเลือกกลุ่มนี้กำหนด &ldquo;จำนวนชิ้นต่อ 1 หน่วยสั่ง&rdquo;
+              <span className="ml-1 font-normal text-slate-400">
+                (เช่น สติกเกอร์ 3cm ได้ 45 ชิ้น/แผ่น A3 — ใช้เป็นเพดานจำนวนลายที่ลูกค้าคละได้)
+              </span>
+            </span>
+          </label>
+          {opt.perUnitOn && (
+            <p className="mt-1 rounded-lg bg-white/70 px-2 py-1.5 text-[10px] leading-relaxed text-slate-500 ring-1 ring-slate-200">
+              📖 คละ 1 ลายต้องใช้อย่างน้อย 1 ชิ้น → ลูกค้าคละได้ไม่เกิน{" "}
+              <b className="font-bold text-teal-700">ชิ้นต่อหน่วย × จำนวนที่สั่ง</b> · กรอกตัวเลขได้ที่ช่อง{" "}
+              <b className="font-bold">📐 ชิ้น/หน่วย</b> ข้างแต่ละตัวเลือกด้านล่าง · เว้นว่างตัวไหน = ตัวนั้นไม่จำกัด
+            </p>
           )}
         </div>
         {/* ── แสดงเมื่อ: โชว์ทั้งกลุ่มเฉพาะตอนกลุ่มอื่นเลือกค่านี้ (เช่น สีตะขอ C โผล่เฉพาะตอนเลือกตะขอ C) ── */}
@@ -3399,37 +3428,41 @@ export default function ProductEditor({ product }: { product: Product }) {
                         )}
                       </label>
                     )}
-                    {/* ชิ้นที่ได้ต่อ 1 หน่วยสั่ง — ใช้เป็นเพดานจำนวนลายที่ลูกค้าคละได้ (คละ 1 ลายต้องใช้ ≥1 ชิ้น) */}
-                    <label
-                      className={`flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold ring-1 ${
-                        ch.perUnit ? "bg-teal-50 text-teal-700 ring-teal-200" : "bg-white text-slate-400 ring-slate-200"
-                      }`}
-                      title="เลือกตัวนี้แล้ว 1 หน่วยที่สั่งได้ของกี่ชิ้น เช่น สติกเกอร์ 3cm ได้ 45 ชิ้น/แผ่น A3 — ใช้เป็นเพดานจำนวนลายที่คละได้ (ว่าง = ไม่จำกัด)"
-                    >
-                      📐
-                      <input
-                        value={ch.perUnit ?? ""}
-                        onChange={(e) =>
-                          patch({
-                            options: draft.options.map((o, i) =>
-                              i === gi
-                                ? {
-                                    ...o,
-                                    choices: o.choices.map((c, j) =>
-                                      j === ci ? { ...c, perUnit: e.target.value.replace(/[^\d]/g, "") } : c
-                                    ),
-                                  }
-                                : o
-                            ),
-                          })
-                        }
-                        inputMode="numeric"
-                        placeholder="—"
-                        className="w-11 rounded-lg bg-white px-1 py-0.5 text-center text-[11px] text-slate-600 ring-1 ring-teal-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
-                        aria-label={`จำนวนชิ้นต่อหน่วยของตัวเลือกที่ ${ci + 1}`}
-                      />
-                      ชิ้น/หน่วย
-                    </label>
+                    {/*
+                      ชิ้นที่ได้ต่อ 1 หน่วยสั่ง — ใช้เป็นเพดานจำนวนลายที่ลูกค้าคละได้ (คละ 1 ลายต้องใช้ ≥1 ชิ้น)
+                      ต้องติ๊กก่อนถึงกางช่องกรอก เพราะสินค้าส่วนใหญ่ไม่ต้องใช้ ถ้าโผล่ทุกตัวเลือกจะรกจนหาของที่ต้องแก้ไม่เจอ
+                    */}
+                    {/* ช่องกรอกโผล่เฉพาะตอนกลุ่มเปิดสวิตช์ "กำหนดจำนวนชิ้นต่อหน่วย" ไว้ (ตั้งที่หัวกลุ่ม) */}
+                    {opt.perUnitOn && (
+                      <label
+                        className="flex shrink-0 items-center gap-1 rounded-lg bg-teal-50 px-2 py-1.5 text-[11px] font-semibold text-teal-700 ring-1 ring-teal-200"
+                        title="เลือกตัวนี้แล้ว 1 หน่วยที่สั่งได้ของกี่ชิ้น เช่น สติกเกอร์ 3cm ได้ 45 ชิ้น/แผ่น A3 (เว้นว่าง = ไม่จำกัด)"
+                      >
+                        📐
+                        <input
+                          value={ch.perUnit ?? ""}
+                          onChange={(e) =>
+                            patch({
+                              options: draft.options.map((o, i) =>
+                                i === gi
+                                  ? {
+                                      ...o,
+                                      choices: o.choices.map((c, j) =>
+                                        j === ci ? { ...c, perUnit: e.target.value.replace(/[^\d]/g, "") } : c
+                                      ),
+                                    }
+                                  : o
+                              ),
+                            })
+                          }
+                          inputMode="numeric"
+                          placeholder="—"
+                          className="w-11 rounded-lg bg-white px-1 py-0.5 text-center text-[11px] text-slate-600 ring-1 ring-teal-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
+                          aria-label={`จำนวนชิ้นต่อหน่วยของตัวเลือกที่ ${ci + 1}`}
+                        />
+                        ชิ้น/หน่วย
+                      </label>
+                    )}
                     <button
                       type="button"
                       onClick={() =>
