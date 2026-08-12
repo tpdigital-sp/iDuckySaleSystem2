@@ -456,6 +456,9 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       label: o.label.trim(),
       choices: o.choices
         .filter((c) => c.name.trim())
+        // ชื่อซ้ำในกลุ่มเดียวกันเหลือตัวแรกตัวเดียว — ตัวที่ซ้ำใช้ช่องราคาคอลัมน์เดียวกัน
+        // และหน้าร้าน/ตะกร้า/ใบงานแยกไม่ออกอยู่ดี (หน้าแก้ไขขึ้นป้าย "⚠ ชื่อซ้ำ" เตือนไว้ก่อนบันทึกแล้ว)
+        .filter((c, i, arr) => arr.findIndex((x) => x.name.trim() === c.name.trim()) === i)
         .map((c) => {
           const extra = Number(c.extra);
           // ช่องจำนวนใช้ได้เฉพาะกลุ่มติ๊กหลายอย่าง — เปลี่ยนกลับเป็นปุ่มแยกแล้วต้องไม่ค้างไว้
@@ -3256,7 +3259,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                       opt.choices.some((o, j) => j !== ci && o.name.trim() === ch.name.trim()) && (
                         <span
                           className="shrink-0 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700 ring-1 ring-amber-200"
-                          title="ชื่อซ้ำกับตัวเลือกอื่นในกลุ่มนี้ — ราคาจะใช้คอลัมน์เดียวกัน และหน้าร้านขึ้นซ้ำสองบรรทัด ควรลบทิ้งอันหนึ่ง"
+                          title="ชื่อซ้ำกับตัวเลือกอื่นในกลุ่มนี้ — ใช้ช่องราคาคอลัมน์เดียวกัน แยกกันไม่ออก · กดบันทึกแล้วระบบจะเก็บไว้ตัวเดียว (ถ้าตั้งใจให้เป็นคนละแบบ ต้องตั้งชื่อให้ต่างกัน)"
                         >
                           ⚠ ชื่อซ้ำ
                         </span>
