@@ -261,20 +261,32 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
     .sort((a, b) => b.length - a.length)[0];
 
-  /** การ์ดบอกว่าใครล็อกอินอยู่ + แผนกไหน (ทีมงานใช้เครื่องร่วมกัน ต้องเห็นชัดว่าเป็นใคร) */
-  const userCard = userName ? (
-    <div className="flex items-center gap-2.5 rounded-xl bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200/70">
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ducky text-sm font-bold text-slate-800">
-        {userName.trim().charAt(0) || "?"}
-      </span>
-      <span className="min-w-0 leading-tight">
-        <span className="block truncate text-sm font-bold text-slate-800" title={userName}>
-          {userName}
-        </span>
-        {roleName && <span className="block truncate text-[11px] text-slate-500">{roleName}</span>}
-      </span>
-    </div>
-  ) : null;
+  /** อวตารตัวอักษรแรกของชื่อ — ใช้ทั้งโหมดกางและโหมดพับ */
+  const avatar = (size = "h-8 w-8") => (
+    <span className={`grid ${size} shrink-0 place-items-center rounded-full bg-ducky text-sm font-bold text-slate-800`}>
+      {userName.trim().charAt(0) || "?"}
+    </span>
+  );
+
+  /** ปุ่มไอคอนท้ายแถบ (กลับหน้าร้าน / ออกจากระบบ) — ทรงเดียวกัน ต่างแค่สีตอนชี้เมาส์ */
+  const footBtn =
+    "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700";
+
+  const iconStore = (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+      <path d="M3 9.5 4.5 4h15L21 9.5" />
+      <path d="M4 9.5v10h16v-10" />
+      <path d="M3 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 3 0" />
+      <path d="M10 19.5v-5h4v5" />
+    </svg>
+  );
+  const iconLogout = (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="m16 17 5-5-5-5" />
+      <path d="M21 12H9" />
+    </svg>
+  );
 
   const navFor = (rail: boolean) => (
     <nav className="space-y-0.5">
@@ -421,37 +433,50 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           min-h-0 จำเป็น: ลูกของ flex ตั้งต้นเป็น min-height:auto ทำให้ย่อต่ำกว่าเนื้อหาไม่ได้ overflow เลยไม่ทำงาน
         */}
         <div className="-mr-1 min-h-0 flex-1 overflow-y-auto pr-1">{navFor(railed)}</div>
-        <div className="mt-auto shrink-0 space-y-0.5 border-t border-slate-100 pt-2">
-          {userCard &&
-            (railed ? (
-              <div className="mb-1.5 flex justify-center" title={`${userName}${roleName ? ` · ${roleName}` : ""}`}>
-                <span className="grid h-9 w-9 place-items-center rounded-full bg-ducky text-sm font-bold text-slate-800">
-                  {userName.trim().charAt(0) || "?"}
+        {/*
+          ท้ายแถบ — รวมเป็นแถวเดียว: ตัวตนทางซ้าย · ปุ่มลัดทางขวา
+          เดิมเป็น 3 ก้อนซ้อนกัน (การ์ดผู้ใช้ + กลับหน้าร้าน + ออกจากระบบ) กินสูงเกือบ 150px
+          ซึ่งไปเบียดเมนูในแถบที่สูงเท่าจออยู่แล้ว · แบบใหม่เหลือ ~48px
+          และ "ออกจากระบบ" ไม่ทำสีแดงค้างไว้ เพราะเป็นของที่ใช้นาน ๆ ครั้ง
+          ไม่ควรเด่นกว่าเมนูงานจริง — เปลี่ยนเป็นแดงตอนชี้เมาส์แทน
+        */}
+        <div className="mt-auto shrink-0 border-t border-slate-100 pt-2">
+          {railed ? (
+            <div className="flex flex-col items-center gap-1">
+              {userName && <span title={`${userName}${roleName ? ` · ${roleName}` : ""}`}>{avatar("h-9 w-9")}</span>}
+              <Link href="/" title="กลับหน้าร้าน" className={footBtn}>
+                {iconStore}
+              </Link>
+              {configured && (
+                <button type="button" onClick={handleSignOut} title="ออกจากระบบ" className={`${footBtn} hover:bg-rose-50 hover:text-rose-600`}>
+                  {iconLogout}
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded-xl px-1 py-1">
+              {userName && avatar()}
+              <span className="min-w-0 flex-1 leading-tight">
+                <span className="block truncate text-[13px] font-bold text-slate-800" title={userName}>
+                  {userName || "—"}
                 </span>
-              </div>
-            ) : (
-              <div className="mb-1.5">{userCard}</div>
-            ))}
-          <Link
-            href="/"
-            title={railed ? "กลับหน้าร้าน" : undefined}
-            className={`flex items-center rounded-xl py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 ${
-              railed ? "justify-center px-0" : "gap-3 px-3"
-            }`}
-          >
-            <span className="text-base opacity-80">🏪</span> {!railed && "กลับหน้าร้าน"}
-          </Link>
-          {configured && (
-            <button
-              type="button"
-              onClick={handleSignOut}
-              title={railed ? "ออกจากระบบ" : undefined}
-              className={`flex w-full items-center rounded-xl py-2.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50 ${
-                railed ? "justify-center px-0" : "gap-3 px-3"
-              }`}
-            >
-              <span className="text-base opacity-80">🚪</span> {!railed && "ออกจากระบบ"}
-            </button>
+                {roleName && <span className="block truncate text-[11px] text-slate-400">{roleName}</span>}
+              </span>
+              <Link href="/" title="กลับหน้าร้าน" aria-label="กลับหน้าร้าน" className={footBtn}>
+                {iconStore}
+              </Link>
+              {configured && (
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  title="ออกจากระบบ"
+                  aria-label="ออกจากระบบ"
+                  className={`${footBtn} hover:bg-rose-50 hover:text-rose-600`}
+                >
+                  {iconLogout}
+                </button>
+              )}
+            </div>
           )}
         </div>
       </aside>
@@ -476,22 +501,31 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         {open && (
           <div className="border-b border-slate-200 bg-white p-3 md:hidden">
             {nav}
-            <div className="mt-1 border-t border-slate-100 pt-1">
-              {userCard && <div className="mb-1.5">{userCard}</div>}
+            {/* ท้ายเมนูมือถือ — แถวเดียวแบบเดียวกับเดสก์ท็อป (นิ้วแตะง่าย ปุ่ม 36px) */}
+            <div className="mt-1 flex items-center gap-2 border-t border-slate-100 px-1 pt-2">
+              {userName && avatar()}
+              <span className="min-w-0 flex-1 leading-tight">
+                <span className="block truncate text-[13px] font-bold text-slate-800">{userName || "—"}</span>
+                {roleName && <span className="block truncate text-[11px] text-slate-400">{roleName}</span>}
+              </span>
               <Link
                 href="/"
                 onClick={() => setOpen(false)}
-                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600"
+                title="กลับหน้าร้าน"
+                aria-label="กลับหน้าร้าน"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
               >
-                <span className="text-base opacity-80">🏪</span> กลับหน้าร้าน
+                {iconStore}
               </Link>
               {configured && (
                 <button
                   type="button"
                   onClick={handleSignOut}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-rose-600"
+                  title="ออกจากระบบ"
+                  aria-label="ออกจากระบบ"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
                 >
-                  <span className="text-base opacity-80">🚪</span> ออกจากระบบ
+                  {iconLogout}
                 </button>
               )}
             </div>
