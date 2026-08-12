@@ -2278,9 +2278,30 @@ export default function ProductDetail({
                         .sort((a, b) => b - a)
                         .map((n) => ({ n, units: spread.filter((x) => x === n).length, fee: mixUnitFee(mixRule, n, qty) }));
                       const total = designFee;
+                      /*
+                        กติกาแบบง่าย = ไม่มีค่าเหมา + รวม 1 ลาย/หน่วย → ราคาขึ้นกับ "ลายที่เกินจำนวนที่สั่ง" ตรง ๆ
+                        แบ่งลงแผ่นยังไงราคาก็เท่ากัน จึงไม่ต้องกางรายแผ่นให้รก พูดตรง ๆ ไปเลย
+                      */
+                      const simple = mt.baseFee === 0 && mt.includedDesigns === 1;
+                      const over = Math.max(0, designs - qty);
                       return (
                         <div className="mt-1 space-y-1 text-[11px] leading-relaxed text-teal-800">
-                          {designs <= 1 ? (
+                          {simple ? (
+                            <p>
+                              💡 {qty.toLocaleString("th-TH")} {unit} = คละได้ {qty.toLocaleString("th-TH")} ลายโดยไม่คิดเพิ่ม
+                              (ลายละ 1 {unit}) · ลายที่เกินคิดลายละ {formatPrice(mt.extraFee)}
+                              {over > 0 ? (
+                                <>
+                                  {" "}
+                                  — ตอนนี้เกิน <strong className="font-bold">{over.toLocaleString("th-TH")} ลาย</strong> ={" "}
+                                  {over.toLocaleString("th-TH")}×{formatPrice(mt.extraFee)} ={" "}
+                                  <strong className="font-bold text-amber-700">{formatPrice(total)}</strong>
+                                </>
+                              ) : (
+                                <> — ตอนนี้ยังไม่เกิน จึงไม่มีค่าคละ</>
+                              )}
+                            </p>
+                          ) : designs <= 1 ? (
                             <p>
                               💡 ลายเดียวไม่มีค่าคละ · ค่าคละคิดจาก<strong className="font-bold">จำนวนลายต่อ 1 {unit}</strong> —
                               {mt.baseFee > 0
