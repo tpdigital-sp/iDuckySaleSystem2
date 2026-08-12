@@ -417,14 +417,18 @@ export default function CartPage() {
                     );
                     if (!shown.length && !artCount) return null;
                     return (
-                      <p className="mt-0.5 line-clamp-2 text-xs text-stone-400">
-                        {shown.map(([k, v]) => `${k}: ${v}`).join(" · ")}
+                      <div className="mt-0.5 space-y-0.5 text-xs text-stone-400">
+                        {shown.map(([k, v]) => (
+                          <p key={k} className="break-words">
+                            <span className="text-stone-500">{k}:</span> {v}
+                          </p>
+                        ))}
                         {artCount > 0 && (
-                          <span className="ml-1 font-semibold text-sky-600">
-                            {shown.length ? "· " : ""}🎨 แนบลายแล้ว {artCount} รูป
-                          </span>
+                          <p className="font-semibold text-sky-600">
+                            🎨 แนบลายแล้ว {artCount} รูป
+                          </p>
                         )}
-                      </p>
+                      </div>
                     );
                   })()}
                   {(() => {
