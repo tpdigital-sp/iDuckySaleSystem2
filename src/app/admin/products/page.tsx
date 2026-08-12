@@ -14,7 +14,6 @@ import {
   PRODUCTS,
   type CategoryId,
   type Product,
-  BULK_ASK_DEFAULT,
 } from "@/lib/products";
 import { loadOverrides, resetAll } from "@/lib/product-store";
 import { deleteProductDb, fetchProductRaw, fetchProductsAdminLite, fetchProductSort, persistProduct } from "@/lib/product-repo";
@@ -208,16 +207,8 @@ export default function AdminProductsPage() {
     }
   }
 
-  /** ตั้ง "สั่งกี่ชิ้นถึงต้องถามสต๊อก" ของสินค้าตัวนี้ — บันทึกทันที (ค่าว่าง/0 = ใช้ค่ากลาง) */
-  async function setBulkAsk(p: Product, value: string) {
-    const n = Math.floor(Number(value) || 0);
-    const bulkAskQty = n > 0 ? n : undefined;
-    if ((p.bulkAskQty ?? 0) === (bulkAskQty ?? 0)) return; // ไม่เปลี่ยน → ไม่ต้องเขียน
-    setProducts((ps) => ps.map((x) => (x.id === p.id ? { ...x, bulkAskQty } : x)));
-    const raw = (await fetchProductRaw(p.id)) ?? p;
-    const res = await persistProduct({ ...raw, bulkAskQty });
-    if (!res.ok) refresh();
-  }
+  // "สั่งกี่ชิ้นถึงต้องถามสต๊อก" ย้ายไปตั้งในหน้าแก้ไขสินค้าอย่างเดียวแล้ว (📦 เงื่อนไขการสั่ง)
+  // — เอาช่องออกจากแถวลิสต์เพราะกินความกว้างจนชื่อสินค้าโดนบีบ
 
   // จำมุมมองที่เลือกไว้ในเบราว์เซอร์
   useEffect(() => {
@@ -502,18 +493,6 @@ export default function AdminProductsPage() {
         )}
       </div>
 
-      {/* คำอธิบายช่องตั้งค่าในแถว — บอกครั้งเดียวใช้ได้ทั้งหน้า */}
-      {view === "table" && sorted.length > 0 && (
-        <p className="mt-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded-xl bg-slate-50 px-3 py-2 text-[11px] text-slate-500 ring-1 ring-slate-200">
-          <span className="rounded-md bg-white px-1.5 py-0.5 font-bold text-slate-600 ring-1 ring-slate-200">📦 สั่งเยอะ ≥</span>
-          <span>
-            = <strong className="text-slate-700">จำนวนที่ลูกค้าสั่งแล้วต้องเช็คสต๊อกก่อน</strong> — สั่งถึงจำนวนนี้ หน้าสินค้าจะขึ้นเตือนให้ทักแอดมินเช็คของ/คิวผลิต
-            และออเดอร์จะติดธง &ldquo;รอเช็คสต๊อก&rdquo; ให้ทีมยืนยันจำนวนก่อนเริ่มงาน (ลูกค้ายังกดสั่งได้ตามปกติ)
-          </span>
-          <span className="text-slate-400">· เว้นว่าง = ใช้ค่ากลาง {BULK_ASK_DEFAULT} ชิ้น · แก้ในช่องแล้วบันทึกทันที</span>
-        </p>
-      )}
-
       {/* ผลลัพธ์ */}
       {sorted.length === 0 ? (
         <div className={`mt-5 p-10 text-center text-sm ${muted} ${card}`}>
@@ -540,14 +519,14 @@ export default function AdminProductsPage() {
                   <span className="text-sm">{c.emoji}</span> {c.name}
                   <span className="font-normal normal-case text-slate-300">· {inCat.length} รายการ</span>
                 </h2>
-                <TableList items={inCat} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onToggleHidden={toggleHidden} onBulkAsk={setBulkAsk} onDuplicate={duplicate} duplicating={duplicating} />
+                <TableList items={inCat} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onToggleHidden={toggleHidden} onDuplicate={duplicate} duplicating={duplicating} />
               </section>
             );
           })}
         </div>
       ) : (
         <div className="mt-5">
-          <TableList items={visible} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onToggleHidden={toggleHidden} onBulkAsk={setBulkAsk} onDuplicate={duplicate} duplicating={duplicating} />
+          <TableList items={visible} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onToggleHidden={toggleHidden} onDuplicate={duplicate} duplicating={duplicating} />
         </div>
       )}
 
@@ -792,31 +771,6 @@ function NameTags({ p, edited }: { p: Product; edited: boolean }) {
   );
 }
 
-/** ช่องตั้ง "สั่งเยอะเท่าไหร่ถึงต้องถามสต๊อก" — แก้ตรงลิสต์ได้เลย บันทึกตอนออกจากช่อง */
-function BulkAskField({ p, onSave }: { p: Product; onSave: (p: Product, v: string) => void }) {
-  const [v, setV] = useState(p.bulkAskQty ? String(p.bulkAskQty) : "");
-  useEffect(() => setV(p.bulkAskQty ? String(p.bulkAskQty) : ""), [p.bulkAskQty]);
-  return (
-    <label
-      className="flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-50 px-2 py-1 ring-1 ring-slate-200"
-      title={`ลูกค้าสั่งถึงจำนวนนี้ = หน้าสินค้าเตือนให้ทักแอดมินเช็คสต๊อก/คิวผลิตก่อน และออเดอร์ติดธง "รอเช็คสต๊อก" ให้ทีมยืนยันจำนวน · เว้นว่าง = ใช้ค่ากลาง ${BULK_ASK_DEFAULT} ชิ้น`}
-    >
-      <span className="text-[11px] font-semibold text-slate-500">
-        📦 สั่งเยอะ ≥<span className="ml-0.5 text-slate-300" aria-hidden>ⓘ</span>
-      </span>
-      <input
-        value={v}
-        onChange={(e) => setV(e.target.value.replace(/\D/g, ""))}
-        onBlur={() => onSave(p, v)}
-        onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
-        placeholder={String(BULK_ASK_DEFAULT)}
-        inputMode="numeric"
-        className="w-14 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-center text-xs font-bold text-slate-700 focus:border-amber-400 focus:outline-none"
-      />
-    </label>
-  );
-}
-
 /* ── มุมมองตาราง ── */
 function TableList({
   items,
@@ -824,7 +778,6 @@ function TableList({
   onRemove,
   onToggleReview,
   onToggleHidden,
-  onBulkAsk,
   onDuplicate,
   duplicating,
 }: {
@@ -833,7 +786,6 @@ function TableList({
   onRemove: (id: string) => void;
   onToggleReview: (p: Product) => void;
   onToggleHidden: (p: Product) => void;
-  onBulkAsk: (p: Product, v: string) => void;
   onDuplicate: (p: Product) => void;
   duplicating: string | null;
 }) {
@@ -874,8 +826,11 @@ function TableList({
                   : ""}
               </p>
             </div>
-            <BulkAskField p={p} onSave={onBulkAsk} />
-            <PriceBlock p={p} />
+            {/*
+              เอาช่อง "📦 สั่งเยอะ ≥" กับช่วงราคาออกจากแถว (เจ้าของร้านสั่ง)
+              ทั้งคู่กินความกว้างกลางแถวจนชื่อสินค้าโดนบีบ · สั่งเยอะตั้งได้ในหน้าแก้ไข (📦 เงื่อนไขการสั่ง)
+              และราคายังเห็นได้ในมุมมองการ์ด · แถวลิสต์เหลือ รูป | ชื่อ+รายละเอียด | ปุ่มจัดการ
+            */}
             <RowActions
               p={p}
               onRemove={onRemove}
