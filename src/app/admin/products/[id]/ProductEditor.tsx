@@ -21,7 +21,7 @@ import {
   type ShipTier,
 } from "@/lib/products";
 import { autoSeoOf } from "@/lib/auto-seo";
-import { BULK_ASK_DEFAULT } from "@/lib/products";
+import { BULK_ASK_DEFAULT, RATE_LABEL } from "@/lib/products";
 import { hasOverride, resetOverride } from "@/lib/product-store";
 import { deleteProductDb, fetchProductNamesLite, fetchProductRaw, persistProduct } from "@/lib/product-repo";
 import { shortChoice, slugifyProductName } from "@/lib/products";
@@ -1267,6 +1267,18 @@ export default function ProductEditor({ product }: { product: Product }) {
     const setOpt = (patchObj: Partial<DraftOption>) =>
       patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, ...patchObj } : o)) });
     const whenGroup = draft.options.find((o) => o.label === opt.smallWhenLabel);
+    // "เรทราคา" ใช้เป็นเงื่อนไข "แสดงเมื่อ" ได้เหมือนกลุ่มตัวเลือกทั่วไป — ค่าที่เลือกคือชื่อเรท
+    // (ผ้าเชียร์: ค่ากว้างเกินขนาดคนละราคาระหว่างเรท 1 ด้าน กับ 2 ด้าน)
+    const rateLabels =
+      draft.extraRates.length > 0 || draft.rateMeta.label.trim()
+        ? [draft.rateMeta, ...draft.extraRates].map((m, i) => m.label.trim() || `เรทที่ ${i + 1}`)
+        : [];
+    const showWhenChoiceNames =
+      opt.showWhenLabel === RATE_LABEL
+        ? rateLabels
+        : (draft.options.find((o) => o.label === opt.showWhenLabel)?.choices ?? [])
+            .map((c) => c.name)
+            .filter((n) => n.trim());
     return (
       <div className="mt-2 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
         <label className="flex cursor-pointer items-center gap-2 text-[11px] font-bold text-slate-600">
@@ -1491,21 +1503,22 @@ export default function ProductEditor({ product }: { product: Product }) {
               aria-label="กลุ่มเงื่อนไขที่ทำให้กลุ่มนี้แสดง"
             >
               <option value="">— แสดงตลอด —</option>
+              {rateLabels.length > 0 && <option value={RATE_LABEL}>{RATE_LABEL}</option>}
               {draft.options.filter((o) => o.label && o.label !== opt.label).map((o) => (
                 <option key={o.label} value={o.label}>{o.label}</option>
               ))}
             </select>
-            {draft.options.find((o) => o.label === opt.showWhenLabel)?.choices.filter((c) => c.name.trim()).map((c) => {
-              const sel = (opt.showWhenChoices ?? []).includes(c.name);
+            {showWhenChoiceNames.map((name) => {
+              const sel = (opt.showWhenChoices ?? []).includes(name);
               return (
                 <button
-                  key={c.name}
+                  key={name}
                   type="button"
                   onClick={() =>
                     setOpt({
                       showWhenChoices: sel
-                        ? (opt.showWhenChoices ?? []).filter((n) => n !== c.name)
-                        : [...(opt.showWhenChoices ?? []), c.name],
+                        ? (opt.showWhenChoices ?? []).filter((n) => n !== name)
+                        : [...(opt.showWhenChoices ?? []), name],
                     })
                   }
                   className={`rounded-full px-2 py-0.5 text-[10px] font-semibold transition ${
@@ -1513,7 +1526,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                   }`}
                 >
                   {sel ? "✓ " : ""}
-                  {c.name.length > 22 ? c.name.slice(0, 22) + "…" : c.name}
+                  {name.length > 22 ? name.slice(0, 22) + "…" : name}
                 </button>
               );
             })}
