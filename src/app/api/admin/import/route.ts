@@ -110,6 +110,9 @@ export async function POST(req: Request) {
         options: Array.isArray(it.options) ? it.options : [],
         images: [{ emoji, gradient, label: name, ...(imageSrc ? { src: imageSrc } : {}) }],
         body: [],
+        // นำเข้ามาเป็น "ฉบับร่าง" เสมอ — ชื่อ/ราคาที่ scrape มายังต้องเกลาก่อน
+        // ตรวจเสร็จค่อยกดเผยแพร่ทีละตัวจากหน้ารายการสินค้า (ไม่ให้ของดิบหลุดขึ้นหน้าร้านเอง)
+        hidden: true,
         ...(it.pricing ? { pricing: it.pricing } : {}),
         ...(imageSrc ? { imageSrc } : {}),
       };

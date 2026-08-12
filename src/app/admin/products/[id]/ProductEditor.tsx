@@ -4538,6 +4538,32 @@ export default function ProductEditor({ product }: { product: Product }) {
         </div>
         {/* คอลัมน์ข้าง (ตั้งค่า · sticky) */}
         <aside className="space-y-4 lg:sticky lg:top-16">
+          {/*
+            สถานะเผยแพร่ — ตั้งได้ทั้งที่หน้ารายการสินค้าและตรงนี้
+            (เก็บใน data.hidden · ยังไม่เผยแพร่ = หน้าร้านซ่อนทุกทาง แม้เปิดลิงก์ตรง)
+            อยู่บนสุดของแถบข้าง เพราะเป็นสวิตช์ที่ตัดสินว่า "ลูกค้าเห็นหรือยัง"
+          */}
+          <div className={`rounded-2xl border p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${draft.hidden ? "border-rose-200 bg-rose-50/50" : "border-sky-200 bg-sky-50/50"}`}>
+            <p className="mb-1 text-xs font-semibold text-slate-500">{draft.hidden ? "📝 สถานะ: ยังไม่เผยแพร่" : "🌐 สถานะ: เผยแพร่แล้ว"}</p>
+            <p className={`mb-2.5 text-xs leading-relaxed ${draft.hidden ? "text-rose-700" : "text-sky-800"}`}>
+              {draft.hidden
+                ? "ลูกค้าไม่เห็นสินค้านี้ทั้งในหน้ารายการ หน้าแรก ค้นหา และเปิดลิงก์ตรงก็ไม่เจอ — ทีมงานที่ล็อกอินยังเปิดพรีวิวได้"
+                : "ลูกค้าเห็นสินค้านี้บนหน้าร้านแล้ว"}
+            </p>
+            <button
+              type="button"
+              onClick={() => setDraft((d) => ({ ...d, hidden: d.hidden ? undefined : true }))}
+              className={`w-full rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                draft.hidden
+                  ? "bg-sky-600 text-white hover:bg-sky-700"
+                  : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              {draft.hidden ? "🌐 เผยแพร่ขึ้นหน้าร้าน" : "เก็บกลับเป็นฉบับร่าง"}
+            </button>
+            <p className="mt-2 text-center text-[11px] text-slate-400">มีผลเมื่อกด 💾 บันทึก</p>
+          </div>
+
           {/* สถานะตรวจสอบ — ให้ทีมงานทำเครื่องหมายว่าเช็คสินค้านี้แล้ว (กันเช็คซ้ำ) */}
           <div className={`rounded-2xl border p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${draft.reviewed ? "border-emerald-200 bg-emerald-50/50" : "border-slate-200 bg-white"}`}>
             <p className="mb-1 text-xs font-semibold text-slate-500">✅ สถานะตรวจสอบ</p>

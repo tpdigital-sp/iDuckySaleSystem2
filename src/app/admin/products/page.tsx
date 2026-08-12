@@ -26,8 +26,8 @@ import { useCan } from "@/lib/perm-context";
 type ViewMode = "table" | "cards";
 type SortMode = "default" | "price-asc" | "price-desc" | "sold-desc";
 type ReviewFilter = "all" | "checked" | "unchecked";
-/** ตัวกรองการมองเห็นบนหน้าร้าน */
-type ShowFilter = "all" | "shown" | "hidden";
+/** ตัวกรองสถานะเผยแพร่ — published = ลูกค้าเห็นบนหน้าร้าน · draft = ยังไม่เผยแพร่ (data.hidden = true) */
+type ShowFilter = "all" | "published" | "draft";
 
 /** ป้ายวันที่ตรวจแบบสั้น เช่น "21 ก.ค." */
 function reviewedTitle(p: Product): string {
@@ -55,6 +55,10 @@ export default function AdminProductsPage() {
   const [sort, setSort] = useState<SortMode>("default");
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>("all");
   const [showFilter, setShowFilter] = useState<ShowFilter>("all");
+  // กางรายการหมวดทั้งหมดไหม (ยุบไว้ก่อน — 15 หมวดกินพื้นที่ 3 บรรทัด)
+  const [catOpen, setCatOpen] = useState(false);
+  // งานเผยแพร่/เก็บร่างทีละหลายตัว — null = ไม่มีงานค้าง
+  const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null);
   // ชื่อผู้ตรวจ (คนที่ล็อกอินอยู่) — โหมดเดโมที่ไม่มีชื่อใช้ "ทีมงาน"
   const [reviewer, setReviewer] = useState("ทีมงาน");
   const [creating, setCreating] = useState(false);
@@ -80,6 +84,9 @@ export default function AdminProductsPage() {
       highlights: [],
       options: [],
       images: [{ emoji: "🦆", gradient: "from-sky-200 to-cyan-300", label: "ด้านหน้า" }],
+      // สินค้าใหม่เริ่มเป็น "ฉบับร่าง" เสมอ — กันของที่ยังกรอกไม่เสร็จ (ชื่อ "สินค้าใหม่" ราคา 0)
+      // โผล่ขึ้นหน้าร้านทันที · กรอกครบแล้วค่อยกด "🌐 เผยแพร่ขึ้นหน้าร้าน"
+      hidden: true,
     };
     const res = await persistProduct(blank);
     if (res.ok) {
@@ -112,6 +119,8 @@ export default function AdminProductsPage() {
         featured: false,
         reviewed: undefined,
         savedAt: undefined,
+        // สำเนาเริ่มเป็นฉบับร่างเสมอ — กันสินค้าชื่อ "(สำเนา)" หลุดขึ้นหน้าร้านคู่กับตัวจริง
+        hidden: true,
       };
       const sort = await fetchProductSort(p.id);
       const res = await persistProduct(copy, undefined, sort ?? undefined);
@@ -149,8 +158,8 @@ export default function AdminProductsPage() {
   }
 
   /**
-   * เปิด-ปิดการมองเห็นบนหน้าร้าน — บันทึกทันที
-   * ปิด = ลูกค้าไม่เห็นในหน้ารายการ/หน้าแรก/ค้นหา/sitemap และเปิดลิงก์ตรงก็ไม่เจอ
+   * เผยแพร่ / เก็บกลับเป็นฉบับร่าง — บันทึกทันที (เก็บใน data.hidden)
+   * ยังไม่เผยแพร่ = ลูกค้าไม่เห็นในหน้ารายการ/หน้าแรก/ค้นหา/sitemap และเปิดลิงก์ตรงก็ไม่เจอ
    * (ทีมงานที่ล็อกอินยังเปิดพรีวิวได้ · ใช้แทนการลบสำหรับของที่ยังไม่พร้อมขาย)
    */
   async function toggleHidden(p: Product) {
@@ -159,6 +168,44 @@ export default function AdminProductsPage() {
     const raw = (await fetchProductRaw(p.id)) ?? p;
     const res = await persistProduct({ ...raw, hidden });
     if (!res.ok) refresh(); // ล้มเหลว → ดึงสถานะจริงกลับมา
+  }
+
+  /**
+   * เผยแพร่ / เก็บเป็นฉบับร่าง ทั้งชุดที่กรองอยู่ตอนนี้
+   * ถามยืนยันก่อนเสมอ (บอกจำนวนจริง) แล้วทยอยเขียนทีละ 4 ตัว — ยิงรวดเดียว 300 ตัวเซิร์ฟเวอร์รับไม่ไหว
+   * เขียนจากข้อมูลดิบของแต่ละตัว กันทับตัวเลือกที่ลิงก์คลัง (เหมือน toggle ทีละตัว)
+   */
+  async function bulkPublish(hide: boolean) {
+    const targets = sorted.filter((p) => !!p.hidden !== hide);
+    if (!targets.length) {
+      alert(hide ? "รายการที่กรองอยู่เป็นฉบับร่างอยู่แล้วทั้งหมด" : "รายการที่กรองอยู่เผยแพร่อยู่แล้วทั้งหมด");
+      return;
+    }
+    const what = hide ? "เก็บเป็นฉบับร่าง (ลูกค้าจะไม่เห็นบนหน้าร้าน)" : "เผยแพร่ขึ้นหน้าร้าน";
+    if (!confirm(`${what} ${targets.length} รายการที่กรองอยู่ตอนนี้?`)) return;
+
+    const hidden = hide ? true : undefined;
+    setBulk({ done: 0, total: targets.length });
+    const ids = new Set(targets.map((p) => p.id));
+    setProducts((ps) => ps.map((x) => (ids.has(x.id) ? { ...x, hidden } : x)));
+    let done = 0;
+    let failed = 0;
+    const queue = [...targets];
+    const worker = async () => {
+      for (let p = queue.shift(); p; p = queue.shift()) {
+        const raw = (await fetchProductRaw(p.id)) ?? p;
+        const res = await persistProduct({ ...raw, hidden });
+        if (!res.ok) failed++;
+        done++;
+        setBulk({ done, total: targets.length });
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    setBulk(null);
+    if (failed) {
+      alert(`บันทึกไม่สำเร็จ ${failed} รายการ — ดึงสถานะจริงกลับมาแสดงให้แล้ว`);
+      refresh();
+    }
   }
 
   /** ตั้ง "สั่งกี่ชิ้นถึงต้องถามสต๊อก" ของสินค้าตัวนี้ — บันทึกทันที (ค่าว่าง/0 = ใช้ค่ากลาง) */
@@ -210,8 +257,8 @@ export default function AdminProductsPage() {
       if (catFilter !== "all" && p.category !== catFilter) return false;
       if (reviewFilter === "checked" && !p.reviewed) return false;
       if (reviewFilter === "unchecked" && p.reviewed) return false;
-      if (showFilter === "shown" && p.hidden) return false;
-      if (showFilter === "hidden" && !p.hidden) return false;
+      if (showFilter === "published" && p.hidden) return false;
+      if (showFilter === "draft" && !p.hidden) return false;
       if (q && !p.name.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -310,125 +357,149 @@ export default function AdminProductsPage() {
           value={`${reviewedCount}/${products.length}`}
           accent={reviewedCount > 0}
         />
-        <StatTile label="ปิดการมองเห็น" value={hiddenCount.toString()} accent={hiddenCount > 0} />
+        <StatTile label="ยังไม่เผยแพร่" value={hiddenCount.toString()} accent={hiddenCount > 0} />
         <StatTile label="ยอดขายรวม" value={totalSold.toLocaleString("th-TH")} />
       </div>
 
-      {/* แถบเครื่องมือ: ค้นหา + เรียง + สลับมุมมอง */}
-      <div className="mt-5 flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[200px] flex-1">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-            🔍
-          </span>
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="ค้นหาชื่อสินค้า…"
-            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
-          />
-        </div>
-        <select
-          value={sort}
-          onChange={(e) => setSort(e.target.value as SortMode)}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-amber-400"
-          aria-label="เรียงลำดับ"
-        >
-          {SORTS.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-        <div className="inline-flex overflow-hidden rounded-lg border border-slate-200" role="group" aria-label="กรองสถานะตรวจสอบ">
-          {([
-            ["all", "ทั้งหมด"],
-            ["unchecked", "⬜ ยังไม่ตรวจ"],
-            ["checked", "✓ ตรวจแล้ว"],
-          ] as const).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setReviewFilter(id)}
-              aria-pressed={reviewFilter === id}
-              className={`px-3 py-2 text-xs font-semibold transition ${
-                reviewFilter === id
-                  ? id === "checked"
-                    ? "bg-emerald-600 text-white"
-                    : "bg-slate-900 text-white"
-                  : "bg-white text-slate-500 hover:bg-slate-50"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="inline-flex overflow-hidden rounded-lg border border-slate-200" role="group" aria-label="กรองการมองเห็นบนหน้าร้าน">
-          {([
-            ["all", "ทั้งหมด"],
-            ["shown", "👁 แสดงอยู่"],
-            ["hidden", "🚫 ปิดอยู่"],
-          ] as const).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setShowFilter(id)}
-              aria-pressed={showFilter === id}
-              className={`px-3 py-2 text-xs font-semibold transition ${
-                showFilter === id
-                  ? id === "hidden"
-                    ? "bg-rose-600 text-white"
-                    : "bg-slate-900 text-white"
-                  : "bg-white text-slate-500 hover:bg-slate-50"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
-          <button
-            type="button"
-            onClick={() => setView("table")}
-            aria-pressed={view === "table"}
-            title="มุมมองตาราง"
-            className={`px-3 py-2 text-sm transition ${
-              view === "table" ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
-            }`}
+      {/*
+        แถบเครื่องมือ — รวมเป็นการ์ดเดียว 3 ชั้น อ่านจากบนลงล่าง
+        เดิมยัดทุกอย่างไว้แถวเดียวแล้วปล่อยตัดบรรทัดเอง: กลุ่ม "ตรวจสอบ" กับ "เผยแพร่" หน้าตาเหมือนกันเป๊ะ
+        ขึ้นต้นด้วยปุ่ม "ทั้งหมด" ทั้งคู่ ไม่มีป้ายบอกว่าอันไหนคืออะไร — ต้องกดลองถึงจะรู้
+        ชั้น 1 ค้นหา+มุมมอง · ชั้น 2 ตัวกรองสถานะ (มีป้ายกำกับ+ตัวเลข) · ชั้น 3 หมวด (ยุบได้)
+      */}
+      <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        {/* ชั้น 1: ค้นหา · เรียง · มุมมอง */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[220px] flex-1">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="ค้นหาชื่อสินค้า…"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-100"
+            />
+          </div>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortMode)}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-amber-400"
+            aria-label="เรียงลำดับ"
           >
-            ☰
-          </button>
-          <button
-            type="button"
-            onClick={() => setView("cards")}
-            aria-pressed={view === "cards"}
-            title="มุมมองการ์ด"
-            className={`px-3 py-2 text-sm transition ${
-              view === "cards" ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
-            }`}
-          >
-            ▦
-          </button>
+            {SORTS.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+          <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
+            {([
+              ["table", "☰", "มุมมองตาราง"],
+              ["cards", "▦", "มุมมองการ์ด"],
+            ] as const).map(([id, glyph, tip]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setView(id)}
+                aria-pressed={view === id}
+                title={tip}
+                className={`px-3 py-2 text-sm transition ${
+                  view === id ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
+                }`}
+              >
+                {glyph}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
 
-      {/* chip กรองหมวด */}
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <FilterChip
-          active={catFilter === "all"}
-          onClick={() => setCatFilter("all")}
-          label="ทั้งหมด"
-          count={products.length}
-        />
-        {CATEGORIES.filter((c) => (catCounts.get(c.id) ?? 0) > 0).map((c) => (
-          <FilterChip
-            key={c.id}
-            active={catFilter === c.id}
-            onClick={() => setCatFilter(c.id)}
-            label={`${c.emoji} ${c.name}`}
-            count={catCounts.get(c.id) ?? 0}
+        {/* ชั้น 2: ตัวกรองสถานะ — ป้ายกำกับหน้ากลุ่ม กันสับสนว่าปุ่ม "ทั้งหมด" อันไหนของอะไร */}
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 pt-2.5">
+          <SegGroup
+            label="เผยแพร่"
+            aria="กรองสถานะเผยแพร่"
+            value={showFilter}
+            onChange={setShowFilter}
+            items={[
+              { id: "all", label: "ทั้งหมด", count: products.length },
+              { id: "published", label: "🌐 เผยแพร่แล้ว", count: products.length - hiddenCount, on: "bg-sky-600" },
+              { id: "draft", label: "📝 ยังไม่เผยแพร่", count: hiddenCount, on: "bg-rose-600" },
+            ]}
           />
-        ))}
+          <SegGroup
+            label="ตรวจสอบ"
+            aria="กรองสถานะตรวจสอบ"
+            value={reviewFilter}
+            onChange={setReviewFilter}
+            items={[
+              { id: "all", label: "ทั้งหมด", count: products.length },
+              { id: "unchecked", label: "⬜ ยังไม่ตรวจ", count: products.length - reviewedCount },
+              { id: "checked", label: "✓ ตรวจแล้ว", count: reviewedCount, on: "bg-emerald-600" },
+            ]}
+          />
+          <span className="ml-auto text-xs font-semibold text-slate-400">
+            พบ <strong className="text-slate-700 tabular-nums">{sorted.length.toLocaleString("th-TH")}</strong> รายการ
+          </span>
+        </div>
+
+        {/* ชั้น 3: หมวด — 15 หมวดกินพื้นที่ 3 บรรทัด ยุบเหลือแถวเดียวไว้ก่อน กดกางเมื่อต้องใช้ */}
+        <div className="mt-2.5 border-t border-slate-100 pt-2.5">
+          <div className={`flex flex-wrap gap-1.5 ${catOpen ? "" : "max-h-8 overflow-hidden"}`}>
+            <FilterChip
+              active={catFilter === "all"}
+              onClick={() => setCatFilter("all")}
+              label="ทุกหมวด"
+              count={products.length}
+            />
+            {CATEGORIES.filter((c) => (catCounts.get(c.id) ?? 0) > 0).map((c) => (
+              <FilterChip
+                key={c.id}
+                active={catFilter === c.id}
+                onClick={() => setCatFilter(c.id)}
+                label={`${c.emoji} ${c.name}`}
+                count={catCounts.get(c.id) ?? 0}
+              />
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setCatOpen((o) => !o)}
+            className="mt-1.5 text-[11px] font-bold text-slate-400 transition hover:text-slate-600"
+          >
+            {catOpen ? "▴ ย่อรายการหมวด" : `▾ ดูหมวดทั้งหมด (${CATEGORIES.filter((c) => (catCounts.get(c.id) ?? 0) > 0).length})`}
+          </button>
+        </div>
+
+        {/*
+          จัดการทีเดียวทั้งชุดที่กรองอยู่ — โผล่เมื่อกรองอยู่จริงเท่านั้น
+          (เปิดมาเห็นปุ่ม "เก็บทั้งหมดเป็นร่าง" ตอนกรอง "ทั้งหมด" อยู่ = พลาดทีเดียวเว็บหายทั้งร้าน)
+        */}
+        {mayManage && sorted.length > 0 && (
+          <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2.5">
+            <span className="text-xs font-bold text-slate-500">จัดการทั้งชุดที่กรองอยู่ ({sorted.length}):</span>
+            <button
+              type="button"
+              disabled={!!bulk}
+              onClick={() => bulkPublish(false)}
+              className="rounded-lg bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-100 disabled:opacity-40"
+            >
+              🌐 เผยแพร่ทั้งหมด
+            </button>
+            <button
+              type="button"
+              disabled={!!bulk}
+              onClick={() => bulkPublish(true)}
+              className="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-100 disabled:opacity-40"
+            >
+              📝 เก็บเป็นฉบับร่างทั้งหมด
+            </button>
+            {bulk && (
+              <span className="text-xs font-bold text-slate-500 tabular-nums">
+                กำลังบันทึก {bulk.done}/{bulk.total}…
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* คำอธิบายช่องตั้งค่าในแถว — บอกครั้งเดียวใช้ได้ทั้งหน้า */}
@@ -552,6 +623,45 @@ function PriceBlock({ p }: { p: Product }) {
   );
 }
 
+/**
+ * กลุ่มปุ่มกรองแบบมีป้ายกำกับ + ตัวเลขในตัว
+ * ป้ายซ้ายคือสิ่งที่แยกสองกลุ่มนี้ออกจากกัน — ไม่มีป้าย ปุ่ม "ทั้งหมด" สองอันจะดูเหมือนกันเป๊ะ
+ */
+function SegGroup<T extends string>({
+  label,
+  aria,
+  value,
+  onChange,
+  items,
+}: {
+  label: string;
+  aria: string;
+  value: T;
+  onChange: (v: T) => void;
+  items: { id: T; label: string; count: number; on?: string }[];
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{label}</span>
+      <div className="inline-flex overflow-hidden rounded-lg border border-slate-200" role="group" aria-label={aria}>
+        {items.map((it) => (
+          <button
+            key={it.id}
+            type="button"
+            onClick={() => onChange(it.id)}
+            aria-pressed={value === it.id}
+            className={`px-2.5 py-1.5 text-xs font-semibold transition ${
+              value === it.id ? `${it.on ?? "bg-slate-900"} text-white` : "bg-white text-slate-500 hover:bg-slate-50"
+            }`}
+          >
+            {it.label} <span className="tabular-nums opacity-60">{it.count}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** ปุ่มสลับ "ตรวจแล้ว" — เขียว=ตรวจแล้ว, เทา=ยังไม่ตรวจ (กดเพื่อสลับ บันทึกทันที) */
 function ReviewToggle({ p, onToggle, size = "sm" }: { p: Product; onToggle: (p: Product) => void; size?: "sm" | "xs" }) {
   const checked = !!p.reviewed;
@@ -573,7 +683,7 @@ function ReviewToggle({ p, onToggle, size = "sm" }: { p: Product; onToggle: (p: 
   );
 }
 
-/** ปุ่มเปิด-ปิดการมองเห็นบนหน้าร้าน — 👁 = ลูกค้าเห็น, 🚫 = ซ่อนอยู่ (กดสลับ บันทึกทันที) */
+/** ปุ่มเผยแพร่/เก็บกลับเป็นฉบับร่าง — 🌐 = ลูกค้าเห็นแล้ว, 📝 = ยังไม่เผยแพร่ (กดสลับ บันทึกทันที) */
 function ShowToggle({ p, onToggle, size = "sm" }: { p: Product; onToggle: (p: Product) => void; size?: "sm" | "xs" }) {
   const hidden = !!p.hidden;
   const pad = size === "xs" ? "px-2 py-1.5" : "px-2.5 py-1.5";
@@ -583,17 +693,17 @@ function ShowToggle({ p, onToggle, size = "sm" }: { p: Product; onToggle: (p: Pr
       onClick={() => onToggle(p)}
       title={
         hidden
-          ? "ซ่อนจากหน้าร้านอยู่ (ลูกค้าไม่เห็น · เปิดลิงก์ตรงก็ไม่เจอ) — กดเพื่อเปิดขาย"
-          : "ลูกค้าเห็นสินค้านี้อยู่ — กดเพื่อซ่อนจากหน้าร้าน"
+          ? "ยังไม่เผยแพร่ — ลูกค้าไม่เห็นในหน้ารายการ/หน้าแรก/ค้นหา และเปิดลิงก์ตรงก็ไม่เจอ (ทีมงานที่ล็อกอินยังพรีวิวได้) · กดเพื่อเผยแพร่"
+          : "เผยแพร่อยู่ — ลูกค้าเห็นสินค้านี้บนหน้าร้าน · กดเพื่อเก็บกลับเป็นฉบับร่าง"
       }
-      aria-pressed={hidden}
+      aria-pressed={!hidden}
       className={`rounded-lg ${pad} text-xs font-semibold transition ${
         hidden
           ? "bg-rose-50 text-rose-600 ring-1 ring-rose-200 hover:bg-rose-100"
           : "bg-sky-50 text-sky-700 ring-1 ring-sky-200 hover:bg-sky-100"
       }`}
     >
-      {hidden ? "🚫 ซ่อนอยู่" : "👁 แสดงอยู่"}
+      {hidden ? "📝 ยังไม่เผยแพร่" : "🌐 เผยแพร่แล้ว"}
     </button>
   );
 }
@@ -663,8 +773,8 @@ function NameTags({ p, edited }: { p: Product; edited: boolean }) {
   return (
     <>
       {p.hidden && (
-        <span className={`${badge} bg-rose-50 text-rose-600`} title="ปิดการมองเห็น — ลูกค้าไม่เห็นสินค้านี้บนหน้าร้าน">
-          🚫 ซ่อนอยู่
+        <span className={`${badge} bg-rose-50 text-rose-600`} title="ยังไม่เผยแพร่ — ลูกค้าไม่เห็นสินค้านี้บนหน้าร้าน">
+          📝 ยังไม่เผยแพร่
         </span>
       )}
       {p.reviewed && (
