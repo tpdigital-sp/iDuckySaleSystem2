@@ -1171,18 +1171,51 @@ export default function ProductDetail({
             const gallery = product.images.length
               ? product.images
               : [{ emoji: product.emoji, gradient: product.gradient, label: "" }];
-            const shown = gallery[Math.min(imageIndex, gallery.length - 1)];
+            const at = Math.min(imageIndex, gallery.length - 1);
+            const shown = gallery[at];
+            /**
+             * เลื่อนรูปแบบวน — อยู่รูปสุดท้ายกดขวาต่อได้เลย ไม่ต้องย้อนกลับทีละรูป
+             * คิดจากค่าก่อนหน้าใน setState (ไม่ใช่ at ที่ค้างอยู่ในรอบ render นี้)
+             * ไม่งั้นกดรัว ๆ หลายทีก่อน render รอบใหม่ จะขยับแค่ทีเดียว
+             */
+            const step = (d: number) =>
+              setImageIndex((i) => (gallery.length + Math.min(i, gallery.length - 1) + d) % gallery.length);
             return (
           <div className="lg:sticky lg:top-24">
-            <ProductVisual
-              emoji={shown.emoji}
-              gradient={shown.gradient}
-              src={shown.src ?? (imageIndex === 0 ? product.imageSrc : undefined)}
-              alt={`${product.name} — ${shown.label}`}
-              size="text-[8rem]"
-              eager
-              className="aspect-square w-full rounded-[2rem] shadow-inner"
-            />
+            {/* group + relative: ปุ่มลูกศรซ่อนไว้ โผล่ตอนเอาเมาส์ชี้รูป (จอเล็กไม่มี hover จึงโชว์ค้างไว้) */}
+            <div className="group relative">
+              <ProductVisual
+                emoji={shown.emoji}
+                gradient={shown.gradient}
+                src={shown.src ?? (at === 0 ? product.imageSrc : undefined)}
+                alt={`${product.name} — ${shown.label}`}
+                size="text-[8rem]"
+                eager
+                className="aspect-square w-full rounded-[2rem] shadow-inner"
+              />
+              {gallery.length > 1 && (
+                <>
+                  {([
+                    { d: -1, side: "left-2", glyph: "‹", label: "ดูรูปก่อนหน้า" },
+                    { d: 1, side: "right-2", glyph: "›", label: "ดูรูปถัดไป" },
+                  ] as const).map((a) => (
+                    <button
+                      key={a.label}
+                      type="button"
+                      onClick={() => step(a.d)}
+                      aria-label={a.label}
+                      className={`absolute ${a.side} top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-white/85 pb-0.5 text-2xl font-bold leading-none text-stone-600 shadow-md ring-1 ring-stone-200 backdrop-blur transition hover:bg-white hover:text-amber-600 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100`}
+                    >
+                      {a.glyph}
+                    </button>
+                  ))}
+                  {/* บอกว่าดูอยู่รูปที่เท่าไหร่จากทั้งหมด — โผล่พร้อมลูกศร */}
+                  <span className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-stone-900/55 px-2.5 py-0.5 text-[11px] font-bold tabular-nums text-white transition sm:opacity-0 sm:group-hover:opacity-100">
+                    {at + 1}/{gallery.length}
+                  </span>
+                </>
+              )}
+            </div>
             <div className="-mx-1 mt-3 flex gap-2 overflow-x-auto px-1 pb-1">
               {gallery.map((img, i) => (
                 <button
@@ -1190,7 +1223,7 @@ export default function ProductDetail({
                   type="button"
                   onClick={() => setImageIndex(i)}
                   className={`shrink-0 overflow-hidden rounded-2xl transition ${
-                    i === imageIndex
+                    i === at
                       ? "ring-3 ring-ducky"
                       : "opacity-60 ring-1 ring-amber-100 hover:opacity-100"
                   }`}
