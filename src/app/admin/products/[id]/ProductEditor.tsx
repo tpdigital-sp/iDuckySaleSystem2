@@ -61,6 +61,9 @@ type DraftOption = {
   /** "แสดงเมื่อ" — โชว์ทั้งกลุ่มเฉพาะตอนกลุ่มอื่นเลือกค่าที่กำหนด (ว่าง = แสดงตลอด) */
   showWhenLabel?: string;
   showWhenChoices?: string[];
+  /** เงื่อนไข "และ" ข้อที่สอง (ว่าง = ใช้เงื่อนไขเดียว) */
+  showWhenAlsoLabel?: string;
+  showWhenAlsoChoices?: string[];
 };
 type DraftImage = { emoji: string; gradient: string; label: string; src?: string };
 type DraftBody = {
@@ -321,6 +324,9 @@ function toDraft(p: Product): Draft {
       ...(o.showWhen
         ? { showWhenLabel: o.showWhen.label, showWhenChoices: [...o.showWhen.choices] }
         : {}),
+      ...(o.showWhenAlso
+        ? { showWhenAlsoLabel: o.showWhenAlso.label, showWhenAlsoChoices: [...o.showWhenAlso.choices] }
+        : {}),
     })),
     rules: (p.rules ?? []).map((r) => ({
       whenLabel: r.when.label,
@@ -471,6 +477,9 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
         : {}),
       ...(o.showWhenLabel && (o.showWhenChoices ?? []).length
         ? { showWhen: { label: o.showWhenLabel, choices: [...o.showWhenChoices!] } }
+        : {}),
+      ...(o.showWhenAlsoLabel && (o.showWhenAlsoChoices ?? []).length
+        ? { showWhenAlso: { label: o.showWhenAlsoLabel, choices: [...o.showWhenAlsoChoices!] } }
         : {}),
     }))
     .filter((o) => o.label && o.choices.length > 0);
@@ -1273,12 +1282,59 @@ export default function ProductEditor({ product }: { product: Product }) {
       draft.extraRates.length > 0 || draft.rateMeta.label.trim()
         ? [draft.rateMeta, ...draft.extraRates].map((m, i) => m.label.trim() || `เรทที่ ${i + 1}`)
         : [];
-    const showWhenChoiceNames =
-      opt.showWhenLabel === RATE_LABEL
+    const choiceNamesOf = (label?: string) =>
+      label === RATE_LABEL
         ? rateLabels
-        : (draft.options.find((o) => o.label === opt.showWhenLabel)?.choices ?? [])
-            .map((c) => c.name)
-            .filter((n) => n.trim());
+        : (draft.options.find((o) => o.label === label)?.choices ?? []).map((c) => c.name).filter((n) => n.trim());
+    /** 1 แถวเงื่อนไข "แสดงเมื่อ" — ใช้ทั้งข้อแรกและข้อ "และ" (ต้องตรงพร้อมกันถึงจะแสดง) */
+    const showWhenRow = (which: "" | "Also") => {
+      const labelKey = `showWhen${which}Label` as "showWhenLabel" | "showWhenAlsoLabel";
+      const choicesKey = `showWhen${which}Choices` as "showWhenChoices" | "showWhenAlsoChoices";
+      const curLabel = opt[labelKey];
+      const picked = opt[choicesKey] ?? [];
+      return (
+        <div className="flex flex-wrap items-center gap-1">
+          <span
+            className="text-[11px] font-bold text-slate-500"
+            title={which ? "เงื่อนไขข้อที่สอง — ต้องตรงพร้อมกันข้อแรกถึงจะแสดง" : "ซ่อนทั้งกลุ่มไว้ จนกว่ากลุ่มอื่นจะเลือกค่าที่กำหนด"}
+          >
+            {which ? "และ" : "👁 แสดงเมื่อ"}
+          </span>
+          <select
+            value={curLabel ?? ""}
+            onChange={(e) => setOpt({ [labelKey]: e.target.value, [choicesKey]: [] })}
+            className="rounded-lg bg-white px-2 py-1 text-[11px] ring-1 ring-slate-200 focus:outline-none"
+            aria-label={which ? "กลุ่มเงื่อนไขข้อที่สอง" : "กลุ่มเงื่อนไขที่ทำให้กลุ่มนี้แสดง"}
+          >
+            <option value="">{which ? "— ไม่ใช้เงื่อนไขที่สอง —" : "— แสดงตลอด —"}</option>
+            {rateLabels.length > 0 && <option value={RATE_LABEL}>{RATE_LABEL}</option>}
+            {draft.options
+              .filter((o) => o.label && o.label !== opt.label)
+              .map((o) => (
+                <option key={o.label} value={o.label}>{o.label}</option>
+              ))}
+          </select>
+          {choiceNamesOf(curLabel).map((name) => {
+            const sel = picked.includes(name);
+            return (
+              <button
+                key={name}
+                type="button"
+                onClick={() =>
+                  setOpt({ [choicesKey]: sel ? picked.filter((n) => n !== name) : [...picked, name] })
+                }
+                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold transition ${
+                  sel ? "bg-indigo-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                {sel ? "✓ " : ""}
+                {name.length > 22 ? name.slice(0, 22) + "…" : name}
+              </button>
+            );
+          })}
+        </div>
+      );
+    };
     return (
       <div className="mt-2 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
         <label className="flex cursor-pointer items-center gap-2 text-[11px] font-bold text-slate-600">
@@ -1492,52 +1548,21 @@ export default function ProductEditor({ product }: { product: Product }) {
         </div>
         {/* ── แสดงเมื่อ: โชว์ทั้งกลุ่มเฉพาะตอนกลุ่มอื่นเลือกค่านี้ (เช่น สีตะขอ C โผล่เฉพาะตอนเลือกตะขอ C) ── */}
         <div className="mt-1.5 border-t border-dashed border-slate-200 pt-1.5">
-          <div className="flex flex-wrap items-center gap-1">
-            <span className="text-[11px] font-bold text-slate-500" title="ซ่อนทั้งกลุ่มไว้ จนกว่ากลุ่มอื่นจะเลือกค่าที่กำหนด">
-              👁 แสดงเมื่อ
-            </span>
-            <select
-              value={opt.showWhenLabel ?? ""}
-              onChange={(e) => setOpt({ showWhenLabel: e.target.value, showWhenChoices: [] })}
-              className="rounded-lg bg-white px-2 py-1 text-[11px] ring-1 ring-slate-200 focus:outline-none"
-              aria-label="กลุ่มเงื่อนไขที่ทำให้กลุ่มนี้แสดง"
-            >
-              <option value="">— แสดงตลอด —</option>
-              {rateLabels.length > 0 && <option value={RATE_LABEL}>{RATE_LABEL}</option>}
-              {draft.options.filter((o) => o.label && o.label !== opt.label).map((o) => (
-                <option key={o.label} value={o.label}>{o.label}</option>
-              ))}
-            </select>
-            {showWhenChoiceNames.map((name) => {
-              const sel = (opt.showWhenChoices ?? []).includes(name);
-              return (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() =>
-                    setOpt({
-                      showWhenChoices: sel
-                        ? (opt.showWhenChoices ?? []).filter((n) => n !== name)
-                        : [...(opt.showWhenChoices ?? []), name],
-                    })
-                  }
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold transition ${
-                    sel ? "bg-indigo-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
-                  }`}
-                >
-                  {sel ? "✓ " : ""}
-                  {name.length > 22 ? name.slice(0, 22) + "…" : name}
-                </button>
-              );
-            })}
-          </div>
+          {showWhenRow("")}
+          {/* เงื่อนไขข้อสองโผล่เมื่อตั้งข้อแรกแล้ว (หรือเคยตั้งค้างไว้) — ไม่งั้นรกเปล่า ๆ */}
+          {(opt.showWhenLabel || opt.showWhenAlsoLabel) && <div className="mt-1">{showWhenRow("Also")}</div>}
           {opt.showWhenLabel && (
             <p className="mt-1 rounded-lg bg-white/70 px-2 py-1.5 text-[10px] leading-relaxed text-slate-500 ring-1 ring-slate-200">
               📖 อ่านว่า: “กลุ่ม <b className="font-bold text-indigo-700">{opt.label}</b> จะโผล่ให้ลูกค้าเลือก
-              <b className="font-bold"> เฉพาะเมื่อ {opt.showWhenLabel} = ค่าที่ติ๊กไว้</b> · กรณีอื่น
+              <b className="font-bold"> เฉพาะเมื่อ {opt.showWhenLabel} = ค่าที่ติ๊กไว้</b>
+              {opt.showWhenAlsoLabel && (opt.showWhenAlsoChoices ?? []).length > 0 && (
+                <b className="font-bold"> และ {opt.showWhenAlsoLabel} = ค่าที่ติ๊กไว้</b>
+              )}{" "}
+              · กรณีอื่น
               <b className="font-bold"> ซ่อนทั้งกลุ่ม</b> (ไม่ถาม ไม่คิดเงิน ไม่ติดไปกับออเดอร์)”
               <br />
-              ตัวอย่างที่ใช้จริง: กลุ่ม “สีตะขอ C” แสดงเมื่อ ตะขอ = C เท่านั้น
+              ตัวอย่างที่ใช้จริง: กลุ่ม “สีตะขอ C” แสดงเมื่อ ตะขอ = C เท่านั้น · กลุ่ม “FLEX ลงด้านไหน” แสดงเมื่อ
+              เรทราคา = สกรีน 2 ด้าน และ FLEX = เลือกไว้แล้ว
               {(opt.showWhenChoices ?? []).length === 0 && (
                 <>
                   <br />

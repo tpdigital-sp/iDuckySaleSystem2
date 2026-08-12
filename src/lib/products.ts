@@ -69,6 +69,12 @@ export interface ProductOption {
    */
   showWhen?: { label: string; choices: string[] };
   /**
+   * เงื่อนไข "และ" ข้อที่สอง — ต้องตรงพร้อมกันกับ showWhen ถึงจะแสดงกลุ่มนี้
+   * เช่น "FLEX ลงด้านไหน" แสดงเมื่อ เรทราคา = สกรีน 2 ด้าน และ FLEX = เลือกไว้แล้ว
+   * (งานสกรีนด้านเดียวไม่ต้องถาม เพราะมีด้านเดียวอยู่แล้ว)
+   */
+  showWhenAlso?: { label: string; choices: string[] };
+  /**
    * ราคาบวกเพิ่ม (+฿) ของกลุ่มนี้ มีผลเมื่อสั่งตั้งแต่กี่ชิ้นขึ้นไป
    * เช่น อะไหล่เข็มกลัด ตั้ง 11 = ช่วงปลีก 1-10 ชิ้น ราคารวมอะไหล่แล้ว (ไม่บวกเพิ่ม)
    * สั่ง 11 ชิ้นขึ้นไปค่อยคิดเพิ่มต่อชิ้นตามตัวเลือก · ไม่ตั้ง = บวกเพิ่มทุกจำนวน
@@ -228,9 +234,10 @@ function valueMatchesAny(current: string | undefined, wanted: string[]): boolean
  * ซ่อนอยู่ = ไม่แสดงในหน้าสินค้า ไม่คิดราคา และไม่ติดไปกับตะกร้า/ออเดอร์
  */
 export function optionVisible(opt: ProductOption, selections: Record<string, string>): boolean {
-  const s = opt.showWhen;
-  if (!s?.label || !s.choices?.length) return true;
-  return valueMatchesAny(selections[s.label], s.choices);
+  // ตั้งไม่ครบ (ไม่มีกลุ่ม หรือไม่ได้ติ๊กค่าไหนเลย) = ข้อนั้นไม่นับ · ตั้งครบทั้งสองข้อ = ต้องตรงทั้งคู่
+  const pass = (s?: { label: string; choices: string[] }) =>
+    !s?.label || !s.choices?.length || valueMatchesAny(selections[s.label], s.choices);
+  return pass(opt.showWhen) && pass(opt.showWhenAlso);
 }
 
 /** ราคาบวกเพิ่มของกลุ่มนี้ใช้กับจำนวนนี้ไหม (ต่ำกว่าเกณฑ์ = รวมในราคาแล้ว) */
