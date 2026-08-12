@@ -467,6 +467,19 @@ export interface PriceRate {
  *   คละ 1 ลาย = 0 · 2-4 ลาย = 20 บาท/แผ่น · 6 ลาย = 20 + 2×5 = 30 บาท/แผ่น
  *   สั่ง 11 แผ่นขึ้นไป = คละได้ไม่เกินจำนวนแผ่น (ขั้นต่ำ 1 ลาย/แผ่น)
  */
+export interface MixTier {
+  /** ใช้กติกาแถวนี้เมื่อสั่งตั้งแต่จำนวนนี้ขึ้นไป (แถวแรกควรเป็น 1) */
+  fromQty: number;
+  /** คละตั้งแต่ 2 ลายขึ้นไป คิดเหมาต่อหน่วยเท่านี้ (0 = ช่วงนี้คละฟรี) */
+  baseFee: number;
+  /** จำนวนลายที่รวมอยู่ในค่าเหมาแล้ว (เกินกว่านี้คิด extraFee ต่อลาย) */
+  includedDesigns: number;
+  /** ลายที่เกินโควตา คิดเพิ่มต่อหน่วย ลายละเท่านี้ */
+  extraFee: number;
+  /** ช่วงนี้ต้องมีอย่างน้อย 1 ลาย/หน่วย → คละได้ไม่เกินจำนวนที่สั่ง */
+  onePerUnit?: boolean;
+}
+
 export interface MixRule {
   /** คละตั้งแต่ 2 ลายขึ้นไป คิดเหมาต่อหน่วยเท่านี้ */
   baseFee: number;
@@ -476,22 +489,48 @@ export interface MixRule {
   extraFee: number;
   /** สั่งตั้งแต่จำนวนนี้ขึ้นไป ต้องมีอย่างน้อย 1 ลาย/หน่วย → คละได้ไม่เกินจำนวนที่สั่ง */
   onePerUnitFromQty?: number;
+  /**
+   * ตารางค่าคละแยกตามช่วงจำนวน — มีแถวเมื่อไหร่ ใช้แทน 4 ค่าด้านบนทั้งหมด
+   * ทำให้ตั้งกติกาต่างกันได้ในแต่ละช่วง เช่น 1-10 คิด 20 บาท · 11-50 คิด 15 บาท · 51+ ฟรี
+   * (4 ค่าด้านบนยังอยู่เพื่อให้สินค้าที่ตั้งไว้แบบเดิมทำงานต่อได้)
+   */
+  tiers?: MixTier[];
 }
 
-/** ค่าคละ "ต่อหน่วย" ตามจำนวนลายที่เลือก */
-export function mixFeePerUnit(rule: MixRule, designs: number): number {
+/** กติกาที่มีผล ณ จำนวนนี้ — เลือกแถวที่ fromQty สูงสุดที่ยังไม่เกินจำนวนที่สั่ง */
+export function mixTierFor(rule: MixRule, qty: number): MixTier {
+  const rows = (rule.tiers ?? []).filter((t) => Number.isFinite(t.fromQty)).sort((a, b) => a.fromQty - b.fromQty);
+  if (rows.length) {
+    // ต่ำกว่าแถวแรก = ใช้แถวแรก (กันกรณีแอดมินเริ่มตารางที่ 5 แล้วลูกค้าสั่ง 2)
+    let hit = rows[0];
+    for (const r of rows) if (qty >= r.fromQty) hit = r;
+    return hit;
+  }
+  // ไม่มีตาราง → ใช้ค่าเดี่ยวแบบเดิม
+  return {
+    fromQty: 1,
+    baseFee: rule.baseFee,
+    includedDesigns: rule.includedDesigns,
+    extraFee: rule.extraFee,
+    onePerUnit: !!rule.onePerUnitFromQty && qty >= rule.onePerUnitFromQty,
+  };
+}
+
+/** ค่าคละ "ต่อหน่วย" ตามจำนวนลายที่เลือก ณ จำนวนที่สั่ง */
+export function mixFeePerUnit(rule: MixRule, designs: number, qty = 1): number {
   if (designs <= 1) return 0;
-  const extra = Math.max(0, designs - Math.max(1, rule.includedDesigns));
-  return Math.max(0, rule.baseFee) + extra * Math.max(0, rule.extraFee);
+  const t = mixTierFor(rule, qty);
+  const extra = Math.max(0, designs - Math.max(1, t.includedDesigns));
+  return Math.max(0, t.baseFee) + extra * Math.max(0, t.extraFee);
 }
 
 /**
  * เพดานจำนวนลายที่กติกานี้ยอมให้ — ไม่มีเพดาน = Infinity
- * (ช่วงที่ยังไม่ถึง onePerUnitFromQty คละได้ไม่จำกัด เพราะหลายลายอยู่บนแผ่นเดียวกันได้)
+ * (ช่วงที่ไม่ได้บังคับ 1 ลาย/หน่วย คละได้ไม่จำกัด เพราะหลายลายอยู่บนหน่วยเดียวกันได้)
  */
 export function mixMaxDesigns(rule: MixRule | undefined, qty: number): number {
-  if (!rule?.onePerUnitFromQty) return Infinity;
-  return qty >= rule.onePerUnitFromQty ? qty : Infinity;
+  if (!rule) return Infinity;
+  return mixTierFor(rule, qty).onePerUnit ? qty : Infinity;
 }
 
 /** ช่วงจำนวนนี้คละลายอิสระไหม (ช่วงราคาปลีก) */
@@ -556,7 +595,7 @@ export function tierQtyFor(product: Product, selections: Record<string, string>,
  */
 export function designFeeFor(product: Product, selections: Record<string, string>, qty: number): number {
   // กติกาคละแบบคิดต่อหน่วยมาก่อน — ค่าคละ = (ค่าต่อหน่วยตามจำนวนลาย) × จำนวนที่สั่ง
-  if (product.mixRule) return mixFeePerUnit(product.mixRule, designCountOf(selections)) * Math.max(0, qty);
+  if (product.mixRule) return mixFeePerUnit(product.mixRule, designCountOf(selections), qty) * Math.max(0, qty);
   const r = activeRate(product, selections);
   if (!r?.minPerDesign || !r.extraDesignFee) return 0;
   const n = parseInt(String(selections[DESIGN_LABEL] ?? ""), 10);

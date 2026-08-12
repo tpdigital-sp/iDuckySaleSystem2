@@ -18,6 +18,7 @@ import {
   maxDesignsFor,
   mixFeePerUnit,
   mixMaxDesigns,
+  mixTierFor,
   optionExtraApplies,
   optionVisible,
   priceMatrixKey,
@@ -2266,42 +2267,53 @@ export default function ProductDetail({
                     /* กติกาคละแบบคิดต่อหน่วย — กางให้เห็นว่าคิดยังไง ลูกค้าจะได้ตัดสินใจเองได้ว่าคุ้มไหม */
                     (() => {
                       const unit = matrix?.unit ?? "ชิ้น";
-                      const perUnit = mixFeePerUnit(mixRule, designs);
+                      const perUnit = mixFeePerUnit(mixRule, designs, qty);
+                      const mt = mixTierFor(mixRule, qty);
                       const capped = Number.isFinite(mixMaxDesigns(mixRule, qty));
-                      const over = Math.max(0, designs - Math.max(1, mixRule.includedDesigns));
+                      const over = Math.max(0, designs - Math.max(1, mt.includedDesigns));
                       return (
                         <div className="mt-1 space-y-1 text-[11px] leading-relaxed text-teal-800">
                           {designs <= 1 ? (
                             <p>
                               💡 ลายเดียวไม่มีค่าคละ · คละตั้งแต่ 2 ลายขึ้นไป คิดค่าคละ{" "}
-                              <strong className="font-bold">{formatPrice(mixRule.baseFee)}/{unit}</strong> (รวม{" "}
-                              {mixRule.includedDesigns.toLocaleString("th-TH")} ลาย) เกินจากนั้นลายละ{" "}
-                              {formatPrice(mixRule.extraFee)}/{unit}
+                              <strong className="font-bold">{formatPrice(mt.baseFee)}/{unit}</strong> (รวม{" "}
+                              {mt.includedDesigns.toLocaleString("th-TH")} ลาย) เกินจากนั้นลายละ{" "}
+                              {formatPrice(mt.extraFee)}/{unit}
                             </p>
                           ) : (
                             <p>
                               🎨 คละ {designs.toLocaleString("th-TH")} ลาย ={" "}
                               <strong className="font-bold">
-                                {formatPrice(mixRule.baseFee)}
-                                {over > 0 ? ` + ${over.toLocaleString("th-TH")}×${formatPrice(mixRule.extraFee)}` : ""} ={" "}
+                                {formatPrice(mt.baseFee)}
+                                {over > 0 ? ` + ${over.toLocaleString("th-TH")}×${formatPrice(mt.extraFee)}` : ""} ={" "}
                                 {formatPrice(perUnit)}/{unit}
                               </strong>{" "}
                               × {qty.toLocaleString("th-TH")} {unit} ={" "}
                               <strong className="font-bold text-amber-700">{formatPrice(perUnit * qty)}</strong>
                             </p>
                           )}
-                          {capped ? (
-                            <p className="text-teal-700">
-                              📐 สั่งตั้งแต่ {mixRule.onePerUnitFromQty?.toLocaleString("th-TH")} {unit}ขึ้นไป ต้องมีอย่างน้อย 1 ลาย
-                              ต่อ 1 {unit} — สั่ง {qty.toLocaleString("th-TH")} {unit} จึงคละได้สูงสุด{" "}
-                              <strong className="font-bold">{qty.toLocaleString("th-TH")} ลาย</strong>
-                            </p>
-                          ) : mixRule.onePerUnitFromQty ? (
-                            <p className="text-teal-700">
-                              ✨ ช่วงนี้คละได้อิสระ หลายลายอยู่บน {unit}เดียวกันได้ · ตั้งแต่{" "}
-                              {mixRule.onePerUnitFromQty.toLocaleString("th-TH")} {unit}ขึ้นไป ต้องมีอย่างน้อย 1 ลายต่อ 1 {unit}
-                            </p>
-                          ) : null}
+                          {(() => {
+                            // จำนวนแรกที่เริ่มบังคับ 1 ลาย/หน่วย — อ่านจากตารางถ้ามี ไม่มีก็ใช้ค่าเดี่ยวแบบเดิม
+                            const onePerFrom =
+                              (mixRule.tiers ?? []).filter((t) => t.onePerUnit).sort((a, b) => a.fromQty - b.fromQty)[0]
+                                ?.fromQty ?? mixRule.onePerUnitFromQty;
+                            if (capped)
+                              return (
+                                <p className="text-teal-700">
+                                  📐 สั่งตั้งแต่ {onePerFrom?.toLocaleString("th-TH")} {unit}ขึ้นไป ต้องมีอย่างน้อย 1 ลายต่อ 1 {unit}
+                                  — สั่ง {qty.toLocaleString("th-TH")} {unit} จึงคละได้สูงสุด{" "}
+                                  <strong className="font-bold">{qty.toLocaleString("th-TH")} ลาย</strong>
+                                </p>
+                              );
+                            if (onePerFrom)
+                              return (
+                                <p className="text-teal-700">
+                                  ✨ ช่วงนี้คละได้อิสระ หลายลายอยู่บน{unit}เดียวกันได้ · ตั้งแต่{" "}
+                                  {onePerFrom.toLocaleString("th-TH")} {unit}ขึ้นไป ต้องมีอย่างน้อย 1 ลายต่อ 1 {unit}
+                                </p>
+                              );
+                            return null;
+                          })()}
                         </div>
                       );
                     })()

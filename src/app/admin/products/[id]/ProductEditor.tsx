@@ -91,6 +91,9 @@ type DraftPricing = {
   /** คิดเรทตามจำนวนชิ้น "ต่อลาย" — คละ 11 ลายใน 11 ชิ้น = เรทราคาปลีก (กันคละลายเยอะแต่ได้เรทส่ง) */
   tierByDesign: boolean;
 };
+/** หนึ่งช่วงของตารางค่าคละลาย (กรอกเป็น string) */
+type DraftMixTier = { fromQty: string; baseFee: string; includedDesigns: string; extraFee: string; onePerUnit: boolean };
+const EMPTY_MIX_TIER: DraftMixTier = { fromQty: "", baseFee: "", includedDesigns: "", extraFee: "", onePerUnit: false };
 /** ข้อมูลกำกับเรทราคา (ชื่อ + เงื่อนไขการสั่ง) */
 type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; freeMixBelowQty: string };
 /** เรทเพิ่มเติม — มีช่วงจำนวน+ตารางราคาของตัวเอง (คอลัมน์/หน่วยใช้ร่วมกับเรทหลัก) */
@@ -130,8 +133,8 @@ type Draft = {
   rateMeta: DraftRateMeta;
   /** เรทราคาเพิ่มเติม (เช่น เรทไม่คละดีเทล) — แต่ละเรทมีช่วงจำนวน+ราคาของตัวเอง */
   extraRates: DraftExtraRate[];
-  /** ค่าคละลายแบบคิดเป็นเงินต่อหน่วย (mixRule) — เก็บเป็น string เพราะกรอกในช่อง */
-  mix: { on: boolean; baseFee: string; includedDesigns: string; extraFee: string; onePerUnitFromQty: string };
+  /** ค่าคละลายแบบคิดเป็นเงินต่อหน่วย (mixRule) — ตารางแยกตามช่วงจำนวน (string เพราะกรอกในช่อง) */
+  mix: { on: boolean; tiers: DraftMixTier[] };
   highlights: string[];
   images: DraftImage[];
   body: DraftBody[];
@@ -351,10 +354,37 @@ function toDraft(p: Product): Draft {
       : { enabled: false, unit: "ชิ้น", driverLabels: [], tiers: [], cells: {}, tierByDesign: !!p.tierByDesign },
     mix: {
       on: !!p.mixRule,
-      baseFee: p.mixRule ? String(p.mixRule.baseFee) : "",
-      includedDesigns: p.mixRule ? String(p.mixRule.includedDesigns) : "",
-      extraFee: p.mixRule ? String(p.mixRule.extraFee) : "",
-      onePerUnitFromQty: p.mixRule?.onePerUnitFromQty != null ? String(p.mixRule.onePerUnitFromQty) : "",
+      // มีตารางแล้วใช้ตาราง · ของเก่าที่ตั้งเป็นค่าเดี่ยว แปลงเป็นตาราง 1-2 แถวให้อัตโนมัติ
+      tiers: p.mixRule
+        ? p.mixRule.tiers?.length
+          ? p.mixRule.tiers.map((t) => ({
+              fromQty: String(t.fromQty),
+              baseFee: String(t.baseFee),
+              includedDesigns: String(t.includedDesigns),
+              extraFee: String(t.extraFee),
+              onePerUnit: !!t.onePerUnit,
+            }))
+          : [
+              {
+                fromQty: "1",
+                baseFee: String(p.mixRule.baseFee),
+                includedDesigns: String(p.mixRule.includedDesigns),
+                extraFee: String(p.mixRule.extraFee),
+                onePerUnit: false,
+              },
+              ...(p.mixRule.onePerUnitFromQty
+                ? [
+                    {
+                      fromQty: String(p.mixRule.onePerUnitFromQty),
+                      baseFee: String(p.mixRule.baseFee),
+                      includedDesigns: String(p.mixRule.includedDesigns),
+                      extraFee: String(p.mixRule.extraFee),
+                      onePerUnit: true,
+                    },
+                  ]
+                : []),
+            ]
+        : [],
     },
     rateMeta: p.priceRates?.[0]
       ? {
@@ -2028,18 +2058,24 @@ export default function ProductEditor({ product }: { product: Product }) {
       // ค่าคละลายแบบคิดต่อหน่วย — ต้องมีค่าคละเหมาถึงจะถือว่าตั้งจริง (ไม่งั้นเปิดสวิตช์เปล่า ๆ ก็ไม่มีผล)
       mixRule: (() => {
         if (!draft.mix.on) return undefined;
-        const num = (s: string) => (s.trim() === "" ? NaN : Number(s));
-        const baseFee = num(draft.mix.baseFee);
-        if (!Number.isFinite(baseFee) || baseFee < 0) return undefined;
-        const included = num(draft.mix.includedDesigns);
-        const extra = num(draft.mix.extraFee);
-        const onePer = num(draft.mix.onePerUnitFromQty);
-        return {
-          baseFee,
-          includedDesigns: Number.isFinite(included) && included > 0 ? included : 1,
-          extraFee: Number.isFinite(extra) && extra > 0 ? extra : 0,
-          ...(Number.isFinite(onePer) && onePer > 0 ? { onePerUnitFromQty: onePer } : {}),
+        const n = (s: string, dflt = 0) => {
+          const v = Number(String(s).trim());
+          return Number.isFinite(v) && v >= 0 ? v : dflt;
         };
+        const tiers = draft.mix.tiers
+          .filter((t) => String(t.fromQty).trim() !== "") // แถวที่ยังไม่ใส่ "ตั้งแต่" = ยังกรอกไม่เสร็จ ข้ามไป
+          .map((t) => ({
+            fromQty: Math.max(1, n(t.fromQty, 1)),
+            baseFee: n(t.baseFee),
+            includedDesigns: Math.max(1, n(t.includedDesigns, 1)),
+            extraFee: n(t.extraFee),
+            ...(t.onePerUnit ? { onePerUnit: true } : {}),
+          }))
+          .sort((a, b) => a.fromQty - b.fromQty);
+        if (!tiers.length) return undefined;
+        // baseFee/includedDesigns/extraFee ระดับบนสุด = แถวแรก (ไว้ให้โค้ดเก่า/ที่อื่นอ่านได้โดยไม่ต้องรู้จักตาราง)
+        const first = tiers[0];
+        return { baseFee: first.baseFee, includedDesigns: first.includedDesigns, extraFee: first.extraFee, tiers };
       })(),
       highlights: draft.highlights.map((h) => h.trim()).filter(Boolean),
       images,
@@ -2229,7 +2265,7 @@ export default function ProductEditor({ product }: { product: Product }) {
     { id: "sec-highlights", label: "จุดเด่น" },
     { id: "sec-options", label: "ตัวเลือก" },
     { id: "sec-rules", label: "กติกา" },
-    { id: "sec-bulk", label: "สั่งเยอะ" },
+    { id: "sec-bulk", label: "สั่งเยอะ & ค่าส่ง" },
     { id: "sec-pricing", label: "ราคา" },
     { id: "sec-custom", label: "กำหนดเอง" },
     { id: "sec-body", label: "เนื้อหา" },
@@ -3453,36 +3489,75 @@ export default function ProductEditor({ product }: { product: Product }) {
               </span>
             </label>
             {draft.mix.on && (
-              <div className="mb-2.5 grid gap-2 rounded-xl bg-white p-3 ring-1 ring-amber-200 sm:grid-cols-2">
-                {(
-                  [
-                    ["baseFee", "ค่าคละเหมา (บาท/หน่วย)", "20", "คละตั้งแต่ 2 ลายขึ้นไป คิดเท่านี้ต่อหน่วย"],
-                    ["includedDesigns", "รวมกี่ลายในค่าเหมา", "4", "เกินจากนี้คิดเพิ่มลายละตามช่องถัดไป"],
-                    ["extraFee", "ลายที่เกิน (บาท/ลาย/หน่วย)", "5", "ลายที่ 5, 6, 7… คิดเพิ่มลายละเท่านี้ต่อหน่วย"],
-                    ["onePerUnitFromQty", "ตั้งแต่กี่หน่วย ต้อง 1 ลาย/หน่วย", "11", "ว่าง = ไม่จำกัดจำนวนลาย · ใส่ 11 = สั่ง 11 ขึ้นไป คละได้ไม่เกินจำนวนที่สั่ง"],
-                  ] as const
-                ).map(([key, label, ph, help]) => (
-                  <label key={key} className="block">
-                    <span className="text-[11px] font-bold text-slate-700">{label}</span>
-                    <input
-                      value={draft.mix[key]}
-                      onChange={(e) =>
-                        setDraft((d) => ({ ...d, mix: { ...d.mix, [key]: e.target.value.replace(/[^\d]/g, "") } }))
-                      }
-                      inputMode="numeric"
-                      placeholder={ph}
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
-                    />
-                    <span className="mt-0.5 block text-[10px] leading-snug text-slate-400">{help}</span>
-                  </label>
-                ))}
-                <p className="text-[11px] leading-relaxed text-amber-800 sm:col-span-2">
-                  ตัวอย่างที่ตั้งอยู่: คละ 1 ลาย = ไม่คิด · 2–{draft.mix.includedDesigns || "4"} ลาย ={" "}
-                  {draft.mix.baseFee || "20"} บาท/หน่วย · เกินจากนั้นลายละ {draft.mix.extraFee || "5"} บาท/หน่วย
-                  {draft.mix.onePerUnitFromQty
-                    ? ` · สั่งตั้งแต่ ${draft.mix.onePerUnitFromQty} หน่วยขึ้นไป คละได้ไม่เกินจำนวนที่สั่ง`
-                    : ""}
+              <div className="mb-2.5 rounded-xl bg-white p-3 ring-1 ring-amber-200">
+                <p className="text-[11px] leading-relaxed text-slate-500">
+                  ตั้งได้หลายช่วง — แต่ละช่วงคิดค่าคละคนละแบบ · ระบบเลือกช่วงที่ &ldquo;ตั้งแต่&rdquo; สูงสุดที่ยังไม่เกินจำนวนที่ลูกค้าสั่ง
                 </p>
+                <div className="mt-2 space-y-2">
+                  {draft.mix.tiers.map((t, i) => {
+                    const setTier = (p: Partial<DraftMixTier>) =>
+                      setDraft((d) => ({
+                        ...d,
+                        mix: { ...d.mix, tiers: d.mix.tiers.map((x, j) => (j === i ? { ...x, ...p } : x)) },
+                      }));
+                    const numIn = (k: keyof DraftMixTier, ph: string, w = "w-20") => (
+                      <input
+                        value={String(t[k])}
+                        onChange={(e) => setTier({ [k]: e.target.value.replace(/[^\d]/g, "") } as Partial<DraftMixTier>)}
+                        inputMode="numeric"
+                        placeholder={ph}
+                        className={`${w} rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none`}
+                      />
+                    );
+                    return (
+                      <div key={i} className="rounded-xl bg-slate-50 p-2.5 ring-1 ring-slate-200">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[11px] text-slate-600">
+                          <span className="font-bold text-slate-700">สั่งตั้งแต่</span>
+                          {numIn("fromQty", "1", "w-16")}
+                          <span className="font-bold text-slate-700">หน่วยขึ้นไป · คละแล้วคิด</span>
+                          {numIn("baseFee", "20", "w-16")}
+                          <span>บาท/หน่วย · รวม</span>
+                          {numIn("includedDesigns", "4", "w-14")}
+                          <span>ลาย · เกินลายละ</span>
+                          {numIn("extraFee", "5", "w-14")}
+                          <span>บาท/หน่วย</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDraft((d) => ({ ...d, mix: { ...d.mix, tiers: d.mix.tiers.filter((_, j) => j !== i) } }))
+                            }
+                            className="ml-auto rounded-full px-2 py-1 text-[11px] font-bold text-rose-600 hover:bg-rose-50"
+                          >
+                            ลบช่วง
+                          </button>
+                        </div>
+                        <label className="mt-1.5 flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={t.onePerUnit}
+                            onChange={(e) => setTier({ onePerUnit: e.target.checked })}
+                            className="h-3.5 w-3.5 accent-amber-600"
+                          />
+                          ช่วงนี้ต้องมีอย่างน้อย 1 ลาย ต่อ 1 หน่วย (คละได้ไม่เกินจำนวนที่สั่ง)
+                        </label>
+                        <p className="mt-1 text-[10.5px] text-slate-400">
+                          ช่วงนี้: คละ 1 ลาย = ไม่คิด · 2–{t.includedDesigns || "?"} ลาย = {t.baseFee || "0"} บาท/หน่วย
+                          {Number(t.extraFee) > 0 ? ` · เกินจากนั้นลายละ ${t.extraFee} บาท/หน่วย` : ""}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDraft((d) => ({ ...d, mix: { ...d.mix, tiers: [...d.mix.tiers, { ...EMPTY_MIX_TIER }] } }))}
+                  className="mt-2 rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-bold text-amber-700 hover:bg-amber-100"
+                >
+                  ＋ เพิ่มช่วงจำนวน
+                </button>
+                {draft.mix.tiers.length === 0 && (
+                  <p className="mt-2 text-[11px] text-rose-600">ยังไม่มีช่วง — กด &ldquo;เพิ่มช่วงจำนวน&rdquo; อย่างน้อย 1 ช่วง ไม่งั้นค่าคละจะไม่ถูกบันทึก</p>
+                )}
               </div>
             )}
 
@@ -4433,10 +4508,40 @@ export default function ProductEditor({ product }: { product: Product }) {
       {/* ── สั่งจำนวนมาก: ต้องเช็คสต๊อกก่อน ── */}
       <section id="sec-bulk" className={`relative border-l-4 border-l-lime-400 mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("bulk")}`}>
         <SecToggle id="bulk" />
-        <h2 className="text-sm font-bold text-lime-800">📦 สั่งจำนวนมาก — เช็คสต๊อกก่อน</h2>
-        <p className="mt-1 text-xs text-slate-500">
-          ลูกค้าสั่งถึงจำนวนนี้ หน้าสินค้าจะขึ้นเตือนให้ทักแอดมินเช็คสต๊อก/คิวผลิตก่อน (สั่งได้ตามปกติ แต่ออเดอร์จะติดธง &ldquo;รอเช็คสต๊อก&rdquo; ให้ทีมยืนยันจำนวน)
-        </p>
+        {/*
+          section นี้รวม 3 เรื่องที่คนละประเด็นกัน — เดิมพาดหัวว่า "สั่งจำนวนมาก" อย่างเดียว
+          แล้วเอา "บังคับแนบลาย" มาแทรกคั่นระหว่างหัวข้อกับช่องกรอกของตัวเอง
+          คนอ่านเลยไม่รู้ว่าเลข 20 เป็นของหัวข้อไหน → แยกเป็นกล่องย่อย หัวข้อกับช่องกรอกอยู่ติดกันเสมอ
+        */}
+        <h2 className="text-sm font-bold text-lime-800">📦 เงื่อนไขการสั่ง &amp; ค่าจัดส่ง</h2>
+        <p className="mt-1 text-xs text-slate-500">กติกาเฉพาะสินค้าตัวนี้ — 3 เรื่องแยกกัน ตั้งเฉพาะข้อที่ต้องใช้</p>
+
+        {/* ① เช็คสต๊อกเมื่อสั่งเยอะ */}
+        <div className="mt-3 rounded-xl bg-lime-50/60 p-3 ring-1 ring-lime-200">
+          <p className="text-xs font-bold text-lime-900">📦 สั่งจำนวนมาก — เตือนให้เช็คสต๊อกก่อน</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <label className="text-xs font-semibold text-slate-600">สั่งตั้งแต่</label>
+            <input
+              value={draft.bulkAskQty}
+              onChange={(e) => patch({ bulkAskQty: e.target.value.replace(/\D/g, "") })}
+              inputMode="numeric"
+              placeholder={String(BULK_ASK_DEFAULT)}
+              className="w-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+            />
+            <span className="text-xs font-semibold text-slate-600">ชิ้นขึ้นไป</span>
+            <span className="text-[11px] text-slate-400">
+              {Number(draft.bulkAskQty) > 0
+                ? `· ตอนนี้ใช้ ${Number(draft.bulkAskQty).toLocaleString("th-TH")} ชิ้น`
+                : `· เว้นว่าง = ใช้ค่ากลาง ${BULK_ASK_DEFAULT} ชิ้น`}
+            </span>
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+            ถึงจำนวนนี้ หน้าสินค้าจะเตือนให้ทักแอดมินเช็คสต๊อก/คิวผลิตก่อน — ลูกค้ายังสั่งได้ตามปกติ
+            แต่ออเดอร์จะติดธง &ldquo;รอเช็คสต๊อก&rdquo; ให้ทีมยืนยันจำนวน
+          </p>
+        </div>
+
+        {/* ② บังคับแนบลาย — คนละเรื่องกับข้อบน จึงแยกกล่อง */}
         <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
           <input
             type="checkbox"
@@ -4453,24 +4558,13 @@ export default function ProductEditor({ product }: { product: Product }) {
           </span>
         </label>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <label className="text-xs font-semibold text-slate-600">สั่งตั้งแต่</label>
-          <input
-            value={draft.bulkAskQty}
-            onChange={(e) => patch({ bulkAskQty: e.target.value.replace(/\D/g, "") })}
-            inputMode="numeric"
-            placeholder={String(BULK_ASK_DEFAULT)}
-            className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-          />
-          <span className="text-xs font-semibold text-slate-600">ชิ้นขึ้นไป</span>
-          <span className="text-[11px] text-slate-400">
-            {Number(draft.bulkAskQty) > 0 ? `· ตอนนี้ใช้ ${Number(draft.bulkAskQty).toLocaleString("th-TH")} ชิ้น` : `· เว้นว่าง = ใช้ค่ากลาง ${BULK_ASK_DEFAULT} ชิ้น`}
-          </span>
-        </div>
+        {/* ③ ค่าจัดส่งเฉพาะสินค้านี้ — 2 ช่องที่เกี่ยวกัน อยู่กล่องเดียวกัน */}
+        <div className="mt-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+          <p className="text-xs font-bold text-slate-700">🚚 ค่าจัดส่งเฉพาะสินค้านี้</p>
 
         {/* 🚚 ของชิ้นใหญ่ที่ยังไงก็ต้องกล่องใหญ่ — มีในตะกร้าเมื่อไหร่ ระบบยกระดับค่าส่งให้เอง */}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <label className="text-xs font-semibold text-slate-600">🚚 ค่าส่งขั้นต่ำของสินค้านี้</label>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <label className="text-xs font-semibold text-slate-600">ค่าส่งขั้นต่ำ</label>
           <select
             value={draft.shippingId}
             onChange={(e) => patch({ shippingId: e.target.value })}
@@ -4649,6 +4743,8 @@ export default function ProductEditor({ product }: { product: Product }) {
             </div>
           )}
         </div>
+        </div>
+        {/* ↑ ปิดกล่อง ③ ค่าจัดส่งเฉพาะสินค้านี้ */}
       </section>
 
       <section id="sec-rules" className={`relative border-l-4 border-l-cyan-400 mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("rules")}`}>
