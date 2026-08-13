@@ -25,6 +25,7 @@ import { appendToOrder, placeOrder, reportPayment } from "@/lib/order-repo";
 import { clearAppendTarget, getAppendTarget, type AppendTarget } from "@/lib/append-order";
 import { publicOrigin } from "@/lib/shop-info";
 import { cartQtyShipFee, shipProfileOf } from "@/lib/shipping-auto";
+import { LINE_URL } from "@/components/LineButton";
 
 interface Placed {
   id: string;
@@ -112,6 +113,8 @@ export default function CheckoutPage() {
   };
 
   const [linkCopied, setLinkCopied] = useState(false);
+  // 💬 กดทักไลน์คุยออเดอร์แล้วหรือยัง (ขั้นตอนแรกหลังสั่ง — คัดลอกรายละเอียดออเดอร์ให้พร้อมวางในแชท)
+  const [lineOpened, setLineOpened] = useState(false);
 
   // แจ้งโอน (อัปโหลดสลิป)
   const [slip, setSlip] = useState<File | null>(null);
@@ -415,6 +418,21 @@ export default function CheckoutPage() {
     clearUnpicked();
   }
 
+  /**
+   * ทักแชทร้าน (LINE OA) พร้อมคัดลอกรายละเอียดออเดอร์ไว้ให้วางในแชทได้เลย
+   * ต่างจาก shareToLine: อันนั้นเปิด "แชร์ข้อความ" ให้เลือกแชทเอง (ลูกค้าที่ยังไม่ได้แอดร้านจะหาไม่เจอ)
+   * อันนี้เข้าห้องแชทร้านตรง ๆ — ลูกค้าใหม่ก็กดแอดแล้วคุยต่อได้ทันที
+   */
+  function contactShop(text: string) {
+    try {
+      navigator.clipboard?.writeText(text).catch(() => {});
+    } catch {
+      /* ข้าม — เบราว์เซอร์บางตัวไม่ให้เขียนคลิปบอร์ด ยังเปิดแชทได้ตามปกติ */
+    }
+    setLineOpened(true);
+    window.open(LINE_URL, "_blank", "noopener,noreferrer");
+  }
+
   function shareToLine(text: string) {
     try {
       navigator.clipboard?.writeText(text).catch(() => {});
@@ -457,6 +475,17 @@ export default function CheckoutPage() {
           >
             ไปหน้าออเดอร์ เพื่อแจ้งโอน →
           </Link>
+          {/* สั่งเพิ่มก็ควรทักคุยเหมือนกัน — ของที่เพิ่มเข้าไปอาจกระทบคิว/รอบส่งของออเดอร์เดิม */}
+          {!staffName && (
+            <a
+              href={LINE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block rounded-full bg-[#06C755] px-6 py-3 text-sm font-bold text-white shadow-lg transition hover:brightness-95"
+            >
+              💬 ทักไลน์คุยออเดอร์
+            </a>
+          )}
           {staffName && (
             <Link
               href={`/admin/orders/${appendTo.id}`}
@@ -470,8 +499,15 @@ export default function CheckoutPage() {
     );
   }
 
-  /* ── หลังสั่งซื้อสำเร็จ: เลขออเดอร์ + แจ้งโอน + แชร์ LINE ── */
+  /* ── หลังสั่งซื้อสำเร็จ: ① ทักไลน์คุยออเดอร์ → ② โอน → ③ แจ้งสลิป ── */
   if (placed) {
+    /*
+     * เลขขั้นตอนคิดสด — ถ้าร้านยังไม่ได้ตั้งบัญชีรับเงิน กล่อง "โอนมาที่บัญชีร้าน" จะไม่ขึ้น
+     * เลขจึงต้องไล่ 1 → 2 ต่อกัน ไม่ใช่ 1 → 3 (เคยเจอตอนเทสต์)
+     * โหมดแอดมินสั่งแทน = ไม่มีขั้นตอนทักไลน์ ไม่ต้องใส่เลขเลย
+     */
+    const numbered = !staffMode;
+    const stepSlip = hasPayment(payment) ? 3 : 2;
     return (
       <div className="mx-auto max-w-2xl px-4 py-10">
         <div className="rounded-2xl bg-emerald-50/70 p-6 text-center ring-1 ring-emerald-200">
@@ -503,9 +539,54 @@ export default function CheckoutPage() {
           </p>
         </div>
 
+        {/*
+          ═══ ① ทักไลน์คุยออเดอร์ — ขั้นตอนแรกหลังสั่ง ═══
+          วางไว้ "ก่อน" บัญชีธนาคาร ตั้งใจให้คุยจบก่อนโอน — ออเดอร์ที่ต้องแก้ลาย/แก้จำนวน
+          จะได้แก้ตั้งแต่ยังไม่โอน (ไม่ต้องมาคืนเงิน/โอนเพิ่มทีหลัง)
+          โหมดแอดมินสั่งแทนไม่ต้องโชว์ — คุยกับลูกค้าอยู่แล้ว
+        */}
+        {numbered && (
+          <div className="mt-4 rounded-2xl bg-[#06C755]/10 p-5 ring-2 ring-[#06C755]/40">
+            <p className="text-base font-extrabold text-emerald-900">
+              <span className="mr-1.5 inline-grid h-6 w-6 place-items-center rounded-full bg-[#06C755] text-xs text-white">1</span>
+              ทักไลน์คุยออเดอร์กับร้านก่อนนะครับ
+            </p>
+            <ul className="mt-2 space-y-1 pl-1 text-xs leading-relaxed text-stone-600">
+              <li>• ยืนยันลาย/แบบงานกับแอดมินก่อนเข้าผลิต — มีอะไรต้องแก้จะได้แก้ทัน</li>
+              <li>• เช็คคิวผลิตกับวันที่ได้รับของจริง</li>
+              <li>• ติดปัญหาตรงไหน ทักในแชทนี้ได้ตลอด (อ้างอิงเลข {placed.id})</li>
+            </ul>
+
+            <button
+              type="button"
+              onClick={() => contactShop(placed.text)}
+              className="mt-3 w-full rounded-full bg-[#06C755] px-6 py-3.5 text-base font-bold text-white shadow-lg transition hover:scale-[1.01] hover:brightness-95"
+            >
+              💬 ทักไลน์ร้าน — คุยรายละเอียดออเดอร์
+            </button>
+
+            {lineOpened ? (
+              <p className="mt-2 rounded-xl bg-white px-3 py-2 text-center text-[11px] font-bold leading-relaxed text-emerald-700 ring-1 ring-emerald-200">
+                ✓ คัดลอกรายละเอียดออเดอร์ให้แล้ว — วาง (Ctrl/⌘+V) ส่งในแชทร้านได้เลย
+                <br />
+                <span className="font-semibold text-stone-500">ถ้าหน้าต่างไลน์ไม่เปิด กดปุ่มเขียวซ้ำอีกครั้งได้</span>
+              </p>
+            ) : (
+              <p className="mt-2 text-center text-[11px] text-stone-500">
+                กดแล้วระบบคัดลอกรายละเอียดออเดอร์ให้อัตโนมัติ — วางส่งในแชทได้เลย
+              </p>
+            )}
+          </div>
+        )}
+
         {hasPayment(payment) && (
           <div className="mt-4 space-y-2">
-            <p className="text-sm font-bold text-stone-700">💳 โอนมาที่บัญชีร้าน</p>
+            <p className="text-sm font-bold text-stone-700">
+              {numbered && (
+                <span className="mr-1.5 inline-grid h-5 w-5 place-items-center rounded-full bg-stone-300 text-[11px] text-white">2</span>
+              )}
+              💳 โอนมาที่บัญชีร้าน
+            </p>
             {payment.banks.filter((b) => b.accountNo?.trim()).map((b) => (
               <div key={b.id} className="flex items-center justify-between gap-3 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
                 <div>
@@ -536,7 +617,14 @@ export default function CheckoutPage() {
           </div>
         ) : (
           <div className="mt-5 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
-            <p className="text-sm font-bold text-stone-700">📤 โอนแล้ว? แจ้งสลิปที่นี่</p>
+            <p className="text-sm font-bold text-stone-700">
+              {numbered && (
+                <span className="mr-1.5 inline-grid h-5 w-5 place-items-center rounded-full bg-stone-300 text-[11px] text-white">
+                  {stepSlip}
+                </span>
+              )}
+              📤 โอนแล้ว? แจ้งสลิปที่นี่
+            </p>
             <p className="mt-0.5 text-xs text-stone-500">แนบรูปสลิปการโอน แล้วกดแจ้งโอน — ทางร้านจะตรวจสอบยอดให้อัตโนมัติ</p>
 
             <label

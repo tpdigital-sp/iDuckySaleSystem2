@@ -41,6 +41,8 @@ export default function CustomerOrderPage() {
   const [orderKey, setOrderKey] = useState("");
   // ป้าย "คัดลอกลิงก์ออเดอร์แล้ว" (กล่องรอตีราคา — ให้ลูกค้าส่งลิงก์ให้แอดมินใส่ราคา)
   const [linkCopied, setLinkCopied] = useState(false);
+  // 💬 กดทักไลน์คุยออเดอร์แล้วหรือยัง (คัดลอกเลขออเดอร์+ลิงก์ให้วางในแชท)
+  const [lineOpened, setLineOpened] = useState(false);
   const [order, setOrder] = useState<Order | null>(null);
   /** ทีมงานที่ล็อกอินหลังบ้านอยู่ (แอดมิน/กราฟฟิก/เจ้าของ) — ขึ้นปุ่มลัดเข้าออเดอร์นี้ในหลังบ้าน */
   const [isStaff, setIsStaff] = useState(false);
@@ -323,6 +325,40 @@ export default function CustomerOrderPage() {
   /* ชุดชำระเงิน/สลิป — มือถือโชว์บนสุด (CTA ต้องเจอทันที) · เดสก์ท็อปย้ายไปคอลัมน์ขวา */
   const payFlow = (
     <>
+      {/*
+        💬 ทักไลน์คุยออเดอร์ — ปุ่มเดียวกับหน้า "สั่งซื้อสำเร็จ" เผื่อลูกค้าปิดแท็บไปแล้วกลับมาทีหลัง
+        กดแล้วคัดลอก "เลขออเดอร์ + ลิงก์" ให้วางในแชทเลย แอดมินเปิดดูงานได้ทันทีไม่ต้องถามซ้ำ
+        ออเดอร์ที่ยกเลิกแล้วไม่ต้องชวนคุย
+      */}
+      {!cancelled && (
+        <div className="mt-4 rounded-2xl bg-[#06C755]/10 p-4 ring-1 ring-[#06C755]/40">
+          <p className="text-sm font-extrabold text-emerald-900">💬 คุยออเดอร์นี้กับร้านได้เลย</p>
+          <p className="mt-1 text-xs leading-relaxed text-stone-600">
+            ยืนยันลาย/แบบงาน · เช็คคิวผลิตกับวันได้รับ · ติดปัญหาตรงไหนทักได้ตลอด (อ้างอิงเลข {order.id})
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                navigator.clipboard?.writeText(`🦆 ออเดอร์ ${order.id}\n🔗 ${window.location.href}`).catch(() => {});
+              } catch {
+                /* ข้าม — คัดลอกไม่ได้ก็ยังเปิดแชทได้ */
+              }
+              setLineOpened(true);
+              window.open(LINE_URL, "_blank", "noopener,noreferrer");
+            }}
+            className="mt-2.5 w-full rounded-full bg-[#06C755] px-5 py-3 text-sm font-bold text-white shadow transition hover:brightness-95"
+          >
+            💬 ทักไลน์ร้าน — คุยรายละเอียดออเดอร์
+          </button>
+          {lineOpened && (
+            <p className="mt-2 text-center text-[11px] font-bold text-emerald-700">
+              ✓ คัดลอกเลขออเดอร์ + ลิงก์ให้แล้ว — วาง (Ctrl/⌘+V) ส่งในแชทได้เลย
+            </p>
+          )}
+        </div>
+      )}
+
       {order.useByDate && (
         <p className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-stone-700 ring-1 ring-stone-200">
           📅 วันที่คุณแจ้งว่าต้องใช้งาน: <strong className="text-amber-700">{order.useByDate}</strong>
