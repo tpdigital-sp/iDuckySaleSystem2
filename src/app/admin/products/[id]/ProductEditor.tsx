@@ -24,7 +24,7 @@ import { autoSeoOf } from "@/lib/auto-seo";
 import { BULK_ASK_DEFAULT, RATE_LABEL } from "@/lib/products";
 import { hasOverride, resetOverride } from "@/lib/product-store";
 import { deleteProductDb, fetchProductNamesLite, fetchProductRaw, persistProduct } from "@/lib/product-repo";
-import { shortChoice, slugifyProductName } from "@/lib/products";
+import { adminProductPath, shortChoice, slugifyProductName } from "@/lib/products";
 import { getAdminSession } from "@/lib/auth";
 import { loadUnits, upsertUnit, removeUnit, unitToMeter, type CustomUnit } from "@/lib/units";
 import { fetchPresets } from "@/lib/preset-repo";
@@ -2372,6 +2372,9 @@ export default function ProductEditor({ product }: { product: Product }) {
     }
     // บันทึกผ่าน → ข้อมูลในมือกลายเป็นเวอร์ชันล่าสุด (บันทึกซ้ำได้โดยไม่ติดกันทับ)
     if (res.savedAt) setBaseSavedAt(res.savedAt);
+    // ลิงก์บนแถบที่อยู่เปลี่ยนเป็นชื่อเดียวกับหน้าร้านทันที (ไม่โหลดหน้าใหม่ ของที่กรอกค้างไว้ไม่หาย)
+    const nextPath = adminProductPath(updated);
+    if (window.location.pathname !== nextPath) window.history.replaceState(null, "", nextPath);
     setSaveError("");
     setConflict(false);
     setOverridden(true);
@@ -2678,6 +2681,9 @@ export default function ProductEditor({ product }: { product: Product }) {
           )}
           <span className="w-full text-[11px] text-slate-400">
             มีผลหลังกดบันทึก · ลิงก์เดิม /products/{productId} ยังเปิดได้ตามปกติ (ไม่ตายจากที่แชร์ไปแล้ว)
+            <br />
+            หน้าแก้ไขในหลังบ้านใช้ชื่อเดียวกัน:{" "}
+            <b className="font-bold text-slate-500">/admin/products/{draftSlug || productId}</b> (ลิงก์รหัสเดิมก็ยังเปิดได้)
           </span>
         </div>
       </div>

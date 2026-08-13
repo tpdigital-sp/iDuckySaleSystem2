@@ -58,22 +58,24 @@ export async function fetchProductsByIds(ids: string[]): Promise<Product[]> {
  * "คลังไหนถูกสินค้าไหนใช้อยู่บ้าง" สำหรับหน้าคลังตัวเลือก — ดึงแค่ id/ชื่อ/กลุ่มตัวเลือก
  * (เดิมดึงสินค้าทั้งร้านเต็มก้อนเพื่อนับ ทั้งที่ใช้แค่ presetId)
  */
-export async function fetchPresetUsage(): Promise<{ id: string; name: string; presetIds: string[] }[]> {
+export async function fetchPresetUsage(): Promise<{ id: string; name: string; slug?: string; presetIds: string[] }[]> {
   const sb = getSupabase();
   const fromList = (list: Product[]) =>
     list.map((p) => ({
       id: p.id,
       name: p.name,
+      slug: p.slug,
       presetIds: (p.options ?? []).map((o) => o.presetId).filter((x): x is string => !!x),
     }));
   if (!sb) return fromList(mergedProducts());
-  const { data, error } = await sb.from("products").select("id,name,options:data->options");
+  const { data, error } = await sb.from("products").select("id,name,slug:data->>slug,options:data->options");
   if (error || !data) return fromList(mergedProducts());
-  return (data as unknown as Array<{ id: string; name: string; options: Product["options"] | null }>)
+  return (data as unknown as Array<{ id: string; name: string; slug: string | null; options: Product["options"] | null }>)
     .filter((r) => !String(r.id).startsWith("__"))
     .map((r) => ({
       id: r.id,
       name: r.name,
+      slug: r.slug ?? undefined,
       presetIds: (r.options ?? []).map((o) => o.presetId).filter((x): x is string => !!x),
     }));
 }

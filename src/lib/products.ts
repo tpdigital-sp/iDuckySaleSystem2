@@ -885,6 +885,16 @@ export function productPath(p: { id: string; slug?: string }): string {
   return `/products/${encodeURIComponent(s || p.id)}`;
 }
 
+/**
+ * ลิงก์หน้าแก้ไขสินค้าในหลังบ้าน — ใช้ชื่อเดียวกับลิงก์หน้าร้าน (slug) เพื่อให้สองที่อ่านตรงกัน
+ * เช่น หน้าร้าน /products/กระเป๋าผ้าแคนวาส → หลังบ้าน /admin/products/กระเป๋าผ้าแคนวาส
+ * ลิงก์ด้วย id เดิมยังเปิดได้ตามปกติ (หน้าแก้ไขค้นด้วย id ก่อน ไม่เจอค่อยค้นด้วย slug)
+ */
+export function adminProductPath(p: { id: string; slug?: string }): string {
+  const s = (p.slug ?? "").trim();
+  return `/admin/products/${encodeURIComponent(s || p.id)}`;
+}
+
 /** ตัวแปลงหน่วยเดิม (backward-compat กับสินค้าที่บันทึกก่อนมีคลังหน่วย) */
 const UNIT_TO_M: Record<string, number> = { cm: 0.01, inch: 0.0254, m: 1, "ซม.": 0.01, "นิ้ว": 0.0254, "เมตร": 1 };
 
@@ -2490,7 +2500,8 @@ export const PRODUCTS: Product[] = [
 ];
 
 export function getProduct(id: string): Product | undefined {
-  return PRODUCTS.find((p) => p.id === id);
+  // id ก่อน ไม่เจอค่อยลองลิงก์ตามชื่อ (slug) — ลิงก์แบบ /products/ชื่อไทย และ /admin/products/ชื่อไทย ใช้ตัวเดียวกัน
+  return PRODUCTS.find((p) => p.id === id) ?? PRODUCTS.find((p) => (p.slug ?? "") === id);
 }
 
 export function formatPrice(n: number): string {

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ProductVisual from "@/components/ProductVisual";
 import {
+  adminProductPath,
   CATEGORIES,
   formatPrice,
   formatPriceRange,
@@ -709,7 +710,7 @@ function RowActions({
       <ReviewToggle p={p} onToggle={onToggleReview} />
       {mayManage && (
         <Link
-          href={`/admin/products/${p.id}`}
+          href={adminProductPath(p)}
           className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-600"
         >
           แก้ไข
@@ -808,7 +809,7 @@ function TableList({
               <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-slate-800">
                 {/* กดชื่อ = เข้าหน้าแก้ไขเลย ไม่ต้องเล็งปุ่มเล็กด้านขวา */}
                 <Link
-                  href={`/admin/products/${p.id}`}
+                  href={adminProductPath(p)}
                   className="truncate transition hover:text-amber-600 hover:underline"
                   title="เปิดหน้าแก้ไขสินค้านี้"
                 >
@@ -895,7 +896,7 @@ function CardGrid({
               <ReviewToggle p={p} onToggle={onToggleReview} size="xs" />
               {mayManage && (
                 <Link
-                  href={`/admin/products/${p.id}`}
+                  href={adminProductPath(p)}
                   className="flex-1 rounded-lg bg-amber-500 px-2 py-1.5 text-center text-xs font-semibold text-white transition hover:bg-amber-600"
                 >
                   แก้ไข

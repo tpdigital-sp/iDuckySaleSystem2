@@ -9,6 +9,7 @@ import {
   slugifyPreset,
   type OptionPreset,
 } from "@/lib/option-presets";
+import { adminProductPath } from "@/lib/products";
 import { deletePreset, fetchPresets, persistPreset } from "@/lib/preset-repo";
 import { resetPresetsLocal } from "@/lib/preset-store";
 import { fetchPresetUsage } from "@/lib/product-repo";
@@ -21,7 +22,7 @@ function AdminOptionsPageInner() {
   const [presets, setPresets] = useState<Draft[]>([]);
   const [usage, setUsage] = useState<Record<string, number>>({});
   /** สินค้าที่ลิงก์คลังแต่ละอัน (ชื่อ+id) — ไว้ตอบว่า "คลังนี้ใครใช้อยู่บ้าง" */
-  const [usedBy, setUsedBy] = useState<Record<string, { id: string; name: string }[]>>({});
+  const [usedBy, setUsedBy] = useState<Record<string, { id: string; name: string; slug?: string }[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(0);
@@ -42,11 +43,11 @@ function AdminOptionsPageInner() {
     setSelected(0);
     // นับว่าคลังแต่ละอันถูกใช้ (ลิงก์) กี่สินค้า
     const count: Record<string, number> = {};
-    const by: Record<string, { id: string; name: string }[]> = {};
+    const by: Record<string, { id: string; name: string; slug?: string }[]> = {};
     for (const prod of products)
       for (const pid of prod.presetIds) {
         count[pid] = (count[pid] ?? 0) + 1;
-        (by[pid] ??= []).push({ id: prod.id, name: prod.name });
+        (by[pid] ??= []).push({ id: prod.id, name: prod.name, slug: prod.slug });
       }
     setUsage(count);
     setUsedBy(by);
@@ -414,7 +415,7 @@ function AdminOptionsPageInner() {
                     {usedBy[sel.id].map((u) => (
                       <Link
                         key={u.id}
-                        href={`/admin/products/${u.id}`}
+                        href={adminProductPath(u)}
                         target="_blank"
                         title={`เปิดหน้าแก้ไข “${u.name}”`}
                         className="max-w-full truncate rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200 transition hover:bg-emerald-100"

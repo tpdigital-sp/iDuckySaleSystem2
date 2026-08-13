@@ -7,6 +7,7 @@ import {
   activeMatrix,
   allowedChoices,
   customUnitPrice,
+  adminProductPath,
   DESIGN_LABEL,
   designFeeFor,
   formatPrice,
@@ -1154,7 +1155,7 @@ export default function ProductDetail({
       ))}
 
       {/* ปุ่มลัดไปแก้ไขสินค้านี้ในหลังบ้าน (เฉพาะแอดมิน) */}
-      {isAdmin && <AdminEditFab href={`/admin/products/${product.id}`} title="เปิดหน้าแก้ไขสินค้านี้ในระบบหลังบ้าน" />}
+      {isAdmin && <AdminEditFab href={adminProductPath(product)} title="เปิดหน้าแก้ไขสินค้านี้ในระบบหลังบ้าน" />}
       {/* breadcrumb */}
       <nav className="flex items-center gap-1 overflow-hidden whitespace-nowrap text-[11px] text-stone-400">
         <Link href="/" className="shrink-0 hover:text-amber-600">หน้าแรก</Link>
