@@ -444,7 +444,7 @@ export default function ProductDetail({
       if (rate && fitsDesigns(rate) && rates.every(fitsDesigns)) setAutoRateNote("");
     }, 450);
     return () => clearTimeout(t);
-  }, [qty, rates, rateTouched, designs, designsTouched, artFiles.length, rate, effective]);
+  }, [qty, rates, rateTouched, designs, designsTouched, artFiles.length, rate, effective, unitCap]);
 
   const custom = product.custom?.enabled ? product.custom : null;
   const cW = parseFloat(customW), cH = parseFloat(customH);
