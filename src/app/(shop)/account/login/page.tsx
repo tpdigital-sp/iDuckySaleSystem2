@@ -17,11 +17,12 @@ const LINE_ERR: Record<string, string> = {
   nodb: "ระบบยังไม่พร้อม",
 };
 
-/* โทนสีตามไฟล์ดีไซน์ Log in+Create account.svg: การ์ด #bbddef/50%, ตัวอักษร #243762, ปุ่ม LOGIN #7ccad4 */
-const NAVY = "#243762";
-const TEAL = "#7ccad4";
+/*
+ * โทน/ฟอนต์ตามหน้าแรก: ครอบด้วย .dl เพื่อใช้ token ของ landing.css ตรง ๆ
+ * (Mitr หัวเรื่อง+ปุ่ม · Plex Looped เนื้อความ · sky/navy/yolk · ปุ่ม .btn มี .dot ลูกศร)
+ */
 
-/** ช่องกรอกแบบมีไอคอนวงกลมฟ้าด้านซ้าย (ตามการ์ด User Login) */
+/** ช่องกรอกแบบมีไอคอนวงกลมฟ้าด้านซ้าย (หน้า login) */
 function IconField({
   icon,
   ...props
@@ -33,24 +34,24 @@ function IconField({
   return (
     <div className="relative">
       <span
-        className="pointer-events-none absolute left-2.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full bg-[#b9ddef]"
+        className="pointer-events-none absolute left-2.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-[#E2F3FE]"
         aria-hidden="true"
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#2C81C4" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4.5 w-4.5" width={17} height={17}>
           <path d={d} />
         </svg>
       </span>
       <input
         {...props}
-        className="h-12 w-full rounded-md bg-white pl-12 pr-4 text-sm text-[#243762] shadow-sm placeholder:italic placeholder:text-[#9aa7bd] focus:outline-none focus:ring-2 focus:ring-[#7ccad4]"
+        className="h-12 w-full rounded-full bg-white pl-[52px] pr-5 text-sm text-[#173A6B] ring-1 ring-[#C6E8FB] placeholder:text-[#8FA6C4] focus:outline-none focus:ring-2 focus:ring-[#57B6E8]"
       />
     </div>
   );
 }
 
-/** ช่องกรอกแบบข้อความกลางช่อง (ตามการ์ด Create Account) */
+/** ช่องกรอกข้อความกลางช่อง (หน้าสมัครสมาชิก) */
 const centerInputCls =
-  "h-12 w-full rounded-md bg-white px-4 text-center text-sm text-[#243762] shadow-sm placeholder:italic placeholder:text-[#9aa7bd] focus:outline-none focus:ring-2 focus:ring-[#7ccad4]";
+  "h-12 w-full rounded-full bg-white px-5 text-center text-sm text-[#173A6B] ring-1 ring-[#C6E8FB] placeholder:text-[#8FA6C4] focus:outline-none focus:ring-2 focus:ring-[#57B6E8]";
 
 function LoginInner() {
   const router = useRouter();
@@ -126,148 +127,158 @@ function LoginInner() {
   }
 
   return (
-    <div className="mx-auto max-w-[620px] px-4 py-10">
-      <div className="relative rounded-[28px] bg-[#DDEEF7] px-5 pb-10 pt-6 shadow-[0_14px_34px_rgba(44,129,196,.14)] sm:px-12">
-        {/* ปุ่มสลับโหมดมุมขวาบน (ตามดีไซน์: ป้ายกรมท่า Create Account) */}
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={switchMode}
-            className="rounded-md px-4 py-2.5 text-sm font-bold tracking-wide text-white transition hover:opacity-90"
-            style={{ background: NAVY }}
-          >
-            {mode === "login" ? "Create Account" : "User Login"}
-          </button>
-        </div>
-
-        {mode === "login" ? (
-          <>
-            {/* เป็ดนั่งหน้าคอมในซุ้มโค้ง */}
-            <img
-              src="/account/duck-login.svg"
-              alt=""
-              className="mx-auto -mt-2 w-[82%] max-w-[360px]"
-              width={408}
-              height={317}
-            />
-            <h1 className="mt-4 text-center text-3xl font-semibold sm:text-4xl" style={{ color: NAVY, fontFamily: "var(--display)" }}>
-              User Login
-            </h1>
-            <p className="mt-1 text-center text-sm font-semibold" style={{ color: NAVY }}>
-              Welcome back — ยินดีต้อนรับกลับ
-            </p>
-
-            <div className="mx-auto mt-6 max-w-[400px] space-y-4">
-              <IconField
-                icon="user"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                type="email"
-                inputMode="email"
-                placeholder="Your Email"
-                aria-label="อีเมล"
-              />
-              <IconField
-                icon="lock"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                type="password"
-                placeholder="Password"
-                aria-label="รหัสผ่าน"
-                onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
-              />
-              <div className="flex items-center justify-between px-0.5 text-sm font-bold" style={{ color: NAVY }}>
-                <label className="flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={remember}
-                    onChange={(e) => setRemember(e.target.checked)}
-                    className="h-4 w-4 rounded accent-[#7ccad4]"
-                  />
-                  จำอีเมลไว้
-                </label>
-                <Link href="/account/reset" className="hover:underline">
-                  Forgot password?
-                </Link>
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            {/* เป็ดในวงกลม + หัวข้อ Create Account */}
-            <img
-              src="/account/duck-avatar.svg"
-              alt=""
-              className="mx-auto mt-2 w-[44%] max-w-[190px]"
-              width={243}
-              height={299}
-            />
-            <h1 className="mt-3 text-center text-3xl font-semibold sm:text-4xl" style={{ color: NAVY, fontFamily: "var(--display)" }}>
-              Create Account
-            </h1>
-            <p className="mt-1 text-center text-sm font-semibold" style={{ color: NAVY }}>
-              สมัครสมาชิก iDucky Prints Studio
-            </p>
-
-            <div className="mx-auto mt-6 max-w-[400px] space-y-4">
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="* ชื่อ-นามสกุล *" className={centerInputCls} />
-              <input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value.replace(/[^\d\-+ ]/g, ""))}
-                inputMode="tel"
-                placeholder="เบอร์โทร (ไม่บังคับ)"
-                className={centerInputCls}
-              />
-              <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="ที่อยู่จัดส่ง (ไม่บังคับ)" className={centerInputCls} />
-              <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" inputMode="email" placeholder="* Your Email *" className={centerInputCls} />
-              <input
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                type="password"
-                placeholder="* Create Password (6 ตัวขึ้นไป) *"
-                onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
-                className={centerInputCls}
-              />
-              <p className="text-sm font-semibold" style={{ color: NAVY }}>
-                * จำเป็นต้องกรอก *
-              </p>
-            </div>
-          </>
-        )}
-
-        <div className="mx-auto max-w-[400px]">
-          {err && <p className="mt-4 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{err}</p>}
-          {confirmMsg && <p className="mt-4 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700">{confirmMsg}</p>}
-        </div>
-
-        <div className="mt-7 text-center">
-          <button
-            type="button"
-            onClick={submit}
-            disabled={busy}
-            className="rounded-md px-12 py-3.5 text-base font-bold uppercase tracking-[0.2em] text-white shadow-md transition hover:opacity-90 disabled:opacity-50"
-            style={{ background: mode === "login" ? TEAL : NAVY }}
-          >
-            {busy ? "กำลังดำเนินการ…" : mode === "login" ? "Login" : "Register"}
-          </button>
-        </div>
-
-        <div className="mx-auto mt-6 max-w-[400px]">
-          <div className="flex items-center gap-3 text-xs font-semibold" style={{ color: NAVY }}>
-            <span className="h-px flex-1 bg-[#b9ddef]" /> หรือ <span className="h-px flex-1 bg-[#b9ddef]" />
+    <div style={{ fontFamily: "var(--body)", color: "var(--navy)" }}>
+      <div className="mx-auto max-w-[620px] px-4 py-10">
+        <div
+          className="relative px-5 pb-10 pt-6 sm:px-12"
+          style={{ background: "var(--sky-100)", borderRadius: "var(--r-l)", boxShadow: "var(--shadow-m)" }}
+        >
+          {/* ปุ่มสลับโหมดมุมขวาบน — ปุ่ม pill แบบเดียวกับหน้าแรก */}
+          <div className="dl flex justify-end" style={{ background: "transparent" }}>
+            <button
+              type="button"
+              onClick={switchMode}
+              className="btn btn-primary"
+              style={{ padding: "9px 14px 9px 20px", fontSize: ".92rem" }}
+            >
+              {mode === "login" ? "สมัครสมาชิก" : "เข้าสู่ระบบ"} <span className="dot">→</span>
+            </button>
           </div>
-          <a
-            href="/api/auth/line/login"
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-[#06C755] px-6 py-3 text-base font-bold text-white shadow-sm transition hover:bg-[#05b34c]"
-          >
-            💬 เข้าสู่ระบบด้วย LINE
-          </a>
-        </div>
-      </div>
 
-      <Link href="/products" className="mt-5 block text-center text-sm font-semibold text-stone-400 hover:text-stone-600">
-        ← เลือกซื้อสินค้าต่อ
-      </Link>
+          {mode === "login" ? (
+            <>
+              {/* เป็ดนั่งหน้าคอมในซุ้มโค้ง */}
+              <img
+                src="/account/duck-login.svg"
+                alt=""
+                className="mx-auto -mt-3 w-[82%] max-w-[360px]"
+                width={408}
+                height={317}
+              />
+              <p className="mt-4 text-center text-[11px] font-bold tracking-[0.32em]" style={{ color: "var(--blue-deep)" }}>
+                USER LOGIN
+              </p>
+              <h1 className="mt-1 text-center text-3xl sm:text-[2.15rem]" style={{ color: "var(--navy)", fontFamily: "var(--display)", fontWeight: 500 }}>
+                เข้าสู่ระบบสมาชิก
+              </h1>
+              <p className="mt-1 text-center text-sm" style={{ color: "var(--navy-soft)" }}>
+                ยินดีต้อนรับกลับมา ที่ iDucky Prints Studio
+              </p>
+
+              <div className="mx-auto mt-6 max-w-[400px] space-y-4">
+                <IconField
+                  icon="user"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  type="email"
+                  inputMode="email"
+                  placeholder="อีเมล"
+                  aria-label="อีเมล"
+                />
+                <IconField
+                  icon="lock"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  type="password"
+                  placeholder="รหัสผ่าน"
+                  aria-label="รหัสผ่าน"
+                  onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
+                />
+                <div className="flex items-center justify-between px-1 text-sm" style={{ color: "var(--navy-soft)" }}>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={remember}
+                      onChange={(e) => setRemember(e.target.checked)}
+                      className="h-4 w-4 rounded accent-[#57B6E8]"
+                    />
+                    จำอีเมลไว้
+                  </label>
+                  <Link href="/account/reset" className="font-medium hover:underline" style={{ color: "var(--blue-deep)" }}>
+                    ลืมรหัสผ่าน?
+                  </Link>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* เป็ดในวงกลม + หัวข้อสมัครสมาชิก */}
+              <img
+                src="/account/duck-avatar.svg"
+                alt=""
+                className="mx-auto mt-2 w-[44%] max-w-[190px]"
+                width={243}
+                height={299}
+              />
+              <p className="mt-3 text-center text-[11px] font-bold tracking-[0.32em]" style={{ color: "var(--blue-deep)" }}>
+                CREATE ACCOUNT
+              </p>
+              <h1 className="mt-1 text-center text-3xl sm:text-[2.15rem]" style={{ color: "var(--navy)", fontFamily: "var(--display)", fontWeight: 500 }}>
+                สมัครสมาชิก
+              </h1>
+              <p className="mt-1 text-center text-sm" style={{ color: "var(--navy-soft)" }}>
+                สมัครฟรี สะสมประวัติสั่งซื้อ รับส่วนลดสมาชิก
+              </p>
+
+              <div className="mx-auto mt-6 max-w-[400px] space-y-4">
+                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="ชื่อ-นามสกุล *" className={centerInputCls} />
+                <input
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value.replace(/[^\d\-+ ]/g, ""))}
+                  inputMode="tel"
+                  placeholder="เบอร์โทร (ไม่บังคับ)"
+                  className={centerInputCls}
+                />
+                <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="ที่อยู่จัดส่ง (ไม่บังคับ)" className={centerInputCls} />
+                <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" inputMode="email" placeholder="อีเมล *" className={centerInputCls} />
+                <input
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  type="password"
+                  placeholder="รหัสผ่าน (6 ตัวขึ้นไป) *"
+                  onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
+                  className={centerInputCls}
+                />
+                <p className="px-1 text-xs" style={{ color: "var(--navy-soft)" }}>
+                  * จำเป็นต้องกรอก
+                </p>
+              </div>
+            </>
+          )}
+
+          <div className="mx-auto max-w-[400px]">
+            {err && <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{err}</p>}
+            {confirmMsg && <p className="mt-4 rounded-2xl bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700">{confirmMsg}</p>}
+          </div>
+
+          <div className="dl mt-7 text-center" style={{ background: "transparent" }}>
+            <button type="button" onClick={submit} disabled={busy} className="btn btn-yolk" style={busy ? { opacity: 0.6 } : undefined}>
+              {busy ? "กำลังดำเนินการ…" : mode === "login" ? "เข้าสู่ระบบ" : "สมัครสมาชิก"} <span className="dot">→</span>
+            </button>
+          </div>
+
+          <div className="mx-auto mt-6 max-w-[400px]">
+            <div className="flex items-center gap-3 text-xs" style={{ color: "var(--navy-soft)" }}>
+              <span className="h-px flex-1 bg-[#C6E8FB]" /> หรือ <span className="h-px flex-1 bg-[#C6E8FB]" />
+            </div>
+            <a
+              href="/api/auth/line/login"
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-[#06C755] px-6 py-3 text-base font-medium text-white shadow-sm transition hover:bg-[#05b34c]"
+              style={{ fontFamily: "var(--display)" }}
+            >
+              💬 เข้าสู่ระบบด้วย LINE
+            </a>
+          </div>
+        </div>
+
+        <Link
+          href="/products"
+          className="mt-5 block text-center text-sm hover:underline"
+          style={{ color: "var(--navy-soft)" }}
+        >
+          ← เลือกซื้อสินค้าต่อ
+        </Link>
+      </div>
     </div>
   );
 }
