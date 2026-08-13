@@ -46,21 +46,21 @@ export default function ResetPasswordPage() {
 
   async function sendLink() {
     setErr("");
-    if (!email.trim()) return setErr("กรอกอีเมล");
+    if (!email.trim()) return setErr("Enter your email");
     setBusy(true);
     const res = await requestPasswordReset(email.trim());
     setBusy(false);
-    if (!res.ok) return setErr(res.error ?? "ส่งลิงก์ไม่สำเร็จ");
+    if (!res.ok) return setErr(res.error ?? "Could not send the link");
     setSent(true);
   }
 
   async function setNewPassword() {
     setErr("");
-    if (password.length < 6) return setErr("รหัสผ่านอย่างน้อย 6 ตัวอักษร");
+    if (password.length < 6) return setErr("Password must be at least 6 characters");
     setBusy(true);
     const res = await updatePassword(password);
     setBusy(false);
-    if (!res.ok) return setErr(res.error ?? "ตั้งรหัสใหม่ไม่สำเร็จ");
+    if (!res.ok) return setErr(res.error ?? "Could not update your password");
     setDone(true);
     setTimeout(() => router.replace("/account"), 1500);
   }
@@ -78,13 +78,13 @@ export default function ResetPasswordPage() {
             {mode === "set" ? "New Password" : "Reset Password"}
           </h1>
           <p className="mt-1.5 text-center text-sm" style={{ color: "var(--navy-soft)" }}>
-            {mode === "set" ? "ตั้งรหัสผ่านใหม่สำหรับบัญชีของคุณ" : "รีเซ็ตรหัสผ่านสมาชิก"}
+            {mode === "set" ? "Set a new password for your account" : "Reset your member password"}
           </p>
 
           {mode === "set" ? (
             done ? (
               <p className="mx-auto mt-6 max-w-[400px] rounded-2xl bg-emerald-50 p-4 text-center text-sm font-medium text-emerald-700 ring-1 ring-emerald-200">
-                ✅ ตั้งรหัสใหม่แล้ว กำลังพาไปหน้าบัญชี…
+                ✅ Password updated — taking you to your account…
               </p>
             ) : (
               <div className="mx-auto mt-5 max-w-[400px] space-y-4">
@@ -92,42 +92,42 @@ export default function ResetPasswordPage() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="รหัสผ่านใหม่ (6 ตัวขึ้นไป) *"
+                  placeholder="New password (6+ characters) *"
                   onKeyDown={(e) => e.key === "Enter" && !busy && setNewPassword()}
                   className={inputCls}
                 />
                 {err && <p className="rounded-2xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-600">{err}</p>}
                 <div className="dl pt-2 text-center" style={{ background: "transparent" }}>
                   <button type="button" onClick={setNewPassword} disabled={busy} className="btn btn-yolk" style={busy ? { opacity: 0.6 } : undefined}>
-                    {busy ? "กำลังบันทึก…" : "บันทึกรหัสผ่านใหม่"} <span className="dot">→</span>
+                    {busy ? "Saving…" : "Save New Password"} <span className="dot">→</span>
                   </button>
                 </div>
               </div>
             )
           ) : sent ? (
             <p className="mx-auto mt-6 max-w-[400px] rounded-2xl bg-emerald-50 p-4 text-center text-sm text-emerald-700 ring-1 ring-emerald-200">
-              📧 ส่งลิงก์รีเซ็ตไปที่ <strong>{email}</strong> แล้ว — เปิดอีเมลแล้วกดลิงก์เพื่อตั้งรหัสใหม่
+              📧 Reset link sent to <strong>{email}</strong> — open the email and tap the link to set a new password
             </p>
           ) : (
             <div className="mx-auto mt-5 max-w-[400px] space-y-4">
               <p className="text-center text-sm" style={{ color: "var(--navy-soft)" }}>
-                กรอกอีเมลที่สมัครไว้ เราจะส่งลิงก์ตั้งรหัสใหม่ให้
+                Enter the email you signed up with and we&apos;ll send you a reset link
               </p>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="อีเมล *"
+                placeholder="Email *"
                 onKeyDown={(e) => e.key === "Enter" && !busy && sendLink()}
                 className={inputCls}
               />
               <p className="px-1 text-xs" style={{ color: "var(--navy-soft)" }}>
-                * จำเป็นต้องกรอก
+                * Required
               </p>
               {err && <p className="rounded-2xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-600">{err}</p>}
               <div className="dl pt-2 text-center" style={{ background: "transparent" }}>
                 <button type="button" onClick={sendLink} disabled={busy} className="btn btn-yolk" style={busy ? { opacity: 0.6 } : undefined}>
-                  {busy ? "กำลังส่ง…" : "ส่งลิงก์รีเซ็ต"} <span className="dot">→</span>
+                  {busy ? "Sending…" : "Send Reset Link"} <span className="dot">→</span>
                 </button>
               </div>
             </div>
@@ -136,7 +136,7 @@ export default function ResetPasswordPage() {
 
         <div className="mt-5 text-center">
           <Link href="/account/login" className="text-sm hover:underline" style={{ color: "var(--navy-soft)" }}>
-            ← กลับไปเข้าสู่ระบบ
+            ← Back to sign in
           </Link>
         </div>
       </div>

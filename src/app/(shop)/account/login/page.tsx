@@ -8,13 +8,13 @@ import { signIn, signUp } from "@/lib/customer-auth";
 import { useCustomer } from "@/lib/customer-context";
 
 const LINE_ERR: Record<string, string> = {
-  notset: "ร้านยังไม่ได้ตั้งค่า LINE Login",
-  state: "เซสชันหมดอายุ ลองใหม่อีกครั้ง",
-  token: "เชื่อมต่อ LINE ไม่สำเร็จ (เช็ก Channel ID/Secret)",
-  profile: "ดึงข้อมูลโปรไฟล์ LINE ไม่สำเร็จ",
-  session: "สร้างเซสชันไม่สำเร็จ",
-  createuser: "สร้างบัญชีไม่สำเร็จ",
-  nodb: "ระบบยังไม่พร้อม",
+  notset: "LINE Login is not set up yet",
+  state: "Session expired — please try again",
+  token: "Could not connect to LINE (check Channel ID/Secret)",
+  profile: "Could not load your LINE profile",
+  session: "Could not create a session",
+  createuser: "Could not create your account",
+  nodb: "Service is not ready yet",
 };
 
 /*
@@ -70,7 +70,7 @@ function LoginInner() {
   const params = useSearchParams();
   useEffect(() => {
     const l = params.get("line");
-    if (l) setErr(LINE_ERR[l] ?? "เข้าสู่ระบบด้วย LINE ไม่สำเร็จ");
+    if (l) setErr(LINE_ERR[l] ?? "Sign in with LINE failed");
   }, [params]);
 
   // "จำอีเมลไว้" — เก็บเฉพาะอีเมลใน localStorage ไว้เติมให้ครั้งหน้า (เซสชันล็อกอินคงอยู่ตามระบบอยู่แล้ว)
@@ -88,7 +88,7 @@ function LoginInner() {
     setErr("");
     setConfirmMsg("");
     if (!email.trim() || !password) {
-      setErr("กรอกอีเมลและรหัสผ่าน");
+      setErr("Enter your email and password");
       return;
     }
     try {
@@ -99,19 +99,19 @@ function LoginInner() {
     if (mode === "login") {
       const res = await signIn(email.trim(), password);
       setBusy(false);
-      if (!res.ok) return setErr(res.error ?? "เข้าสู่ระบบไม่สำเร็จ");
+      if (!res.ok) return setErr(res.error ?? "Sign in failed");
       refresh();
       router.push("/account");
     } else {
       if (!name.trim()) {
         setBusy(false);
-        return setErr("กรอกชื่อ");
+        return setErr("Enter your name");
       }
       const res = await signUp(email.trim(), password, { name: name.trim(), phone: phone.trim(), address: address.trim() });
       setBusy(false);
-      if (!res.ok) return setErr(res.error ?? "สมัครไม่สำเร็จ");
+      if (!res.ok) return setErr(res.error ?? "Sign up failed");
       if (res.needsConfirm) {
-        setConfirmMsg("สมัครแล้ว! กรุณายืนยันอีเมลที่ส่งไป แล้วเข้าสู่ระบบ");
+        setConfirmMsg("Account created! Please confirm your email, then sign in.");
         setMode("login");
         return;
       }
@@ -141,7 +141,7 @@ function LoginInner() {
               className="btn btn-primary"
               style={{ padding: "9px 14px 9px 20px", fontSize: ".92rem" }}
             >
-              {mode === "login" ? "สมัครสมาชิก" : "เข้าสู่ระบบ"} <span className="dot">→</span>
+              {mode === "login" ? "Create Account" : "Sign In"} <span className="dot">→</span>
             </button>
           </div>
 
@@ -159,7 +159,7 @@ function LoginInner() {
                 User Login
               </h1>
               <p className="mt-1.5 text-center text-sm" style={{ color: "var(--navy-soft)" }}>
-                เข้าสู่ระบบสมาชิก — ยินดีต้อนรับกลับมาที่ iDucky Prints Studio
+                Member sign in — welcome back to iDucky Prints Studio
               </p>
 
               <div className="mx-auto mt-6 max-w-[400px] space-y-4">
@@ -169,16 +169,16 @@ function LoginInner() {
                   onChange={(e) => setEmail(e.target.value)}
                   type="email"
                   inputMode="email"
-                  placeholder="อีเมล"
-                  aria-label="อีเมล"
+                  placeholder="Email"
+                  aria-label="Email"
                 />
                 <IconField
                   icon="lock"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   type="password"
-                  placeholder="รหัสผ่าน"
-                  aria-label="รหัสผ่าน"
+                  placeholder="Password"
+                  aria-label="Password"
                   onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
                 />
                 <div className="flex items-center justify-between px-1 text-sm" style={{ color: "var(--navy-soft)" }}>
@@ -189,10 +189,10 @@ function LoginInner() {
                       onChange={(e) => setRemember(e.target.checked)}
                       className="h-4 w-4 rounded accent-[#57B6E8]"
                     />
-                    จำอีเมลไว้
+                    Remember email
                   </label>
                   <Link href="/account/reset" className="font-medium hover:underline" style={{ color: "var(--blue-deep)" }}>
-                    ลืมรหัสผ่าน?
+                    Forgot password?
                   </Link>
                 </div>
               </div>
@@ -211,30 +211,30 @@ function LoginInner() {
                 Create Account
               </h1>
               <p className="mt-1.5 text-center text-sm" style={{ color: "var(--navy-soft)" }}>
-                สมัครสมาชิกฟรี สะสมประวัติสั่งซื้อ รับส่วนลดสมาชิก
+Free membership — keep your order history and get member discounts
               </p>
 
               <div className="mx-auto mt-6 max-w-[400px] space-y-4">
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="ชื่อ-นามสกุล *" className={centerInputCls} />
+                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name *" className={centerInputCls} />
                 <input
                   value={phone}
                   onChange={(e) => setPhone(e.target.value.replace(/[^\d\-+ ]/g, ""))}
                   inputMode="tel"
-                  placeholder="เบอร์โทร (ไม่บังคับ)"
+                  placeholder="Phone (optional)"
                   className={centerInputCls}
                 />
-                <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="ที่อยู่จัดส่ง (ไม่บังคับ)" className={centerInputCls} />
-                <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" inputMode="email" placeholder="อีเมล *" className={centerInputCls} />
+                <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Shipping address (optional)" className={centerInputCls} />
+                <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" inputMode="email" placeholder="Email *" className={centerInputCls} />
                 <input
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   type="password"
-                  placeholder="รหัสผ่าน (6 ตัวขึ้นไป) *"
+                  placeholder="Password (6+ characters) *"
                   onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
                   className={centerInputCls}
                 />
                 <p className="px-1 text-xs" style={{ color: "var(--navy-soft)" }}>
-                  * จำเป็นต้องกรอก
+                  * Required
                 </p>
               </div>
             </>
@@ -247,20 +247,20 @@ function LoginInner() {
 
           <div className="dl mt-7 text-center" style={{ background: "transparent" }}>
             <button type="button" onClick={submit} disabled={busy} className="btn btn-yolk" style={busy ? { opacity: 0.6 } : undefined}>
-              {busy ? "กำลังดำเนินการ…" : mode === "login" ? "เข้าสู่ระบบ" : "สมัครสมาชิก"} <span className="dot">→</span>
+              {busy ? "Please wait…" : mode === "login" ? "Sign In" : "Create Account"} <span className="dot">→</span>
             </button>
           </div>
 
           <div className="mx-auto mt-6 max-w-[400px]">
             <div className="flex items-center gap-3 text-xs" style={{ color: "var(--navy-soft)" }}>
-              <span className="h-px flex-1 bg-[#C6E8FB]" /> หรือ <span className="h-px flex-1 bg-[#C6E8FB]" />
+              <span className="h-px flex-1 bg-[#C6E8FB]" /> or <span className="h-px flex-1 bg-[#C6E8FB]" />
             </div>
             <a
               href="/api/auth/line/login"
               className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-[#06C755] px-6 py-3 text-base font-medium text-white shadow-sm transition hover:bg-[#05b34c]"
               style={{ fontFamily: "var(--display)" }}
             >
-              💬 เข้าสู่ระบบด้วย LINE
+              💬 Sign in with LINE
             </a>
           </div>
         </div>
@@ -270,7 +270,7 @@ function LoginInner() {
           className="mt-5 block text-center text-sm hover:underline"
           style={{ color: "var(--navy-soft)" }}
         >
-          ← เลือกซื้อสินค้าต่อ
+          ← Continue shopping
         </Link>
       </div>
     </div>
@@ -279,7 +279,7 @@ function LoginInner() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="py-16 text-center text-sm text-stone-400">กำลังโหลด…</div>}>
+    <Suspense fallback={<div className="py-16 text-center text-sm text-stone-400">Loading…</div>}>
       <LoginInner />
     </Suspense>
   );

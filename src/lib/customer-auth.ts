@@ -31,10 +31,10 @@ function toCustomer(user: User | null | undefined): Customer | null {
 }
 
 function mapErr(msg: string): string {
-  if (/already registered|already exists|user already/i.test(msg)) return "อีเมลนี้สมัครไว้แล้ว";
-  if (/invalid login|invalid credentials/i.test(msg)) return "อีเมลหรือรหัสผ่านไม่ถูกต้อง";
-  if (/at least 6|password should be/i.test(msg)) return "รหัสผ่านอย่างน้อย 6 ตัวอักษร";
-  if (/email.*invalid|invalid.*email/i.test(msg)) return "รูปแบบอีเมลไม่ถูกต้อง";
+  if (/already registered|already exists|user already/i.test(msg)) return "This email is already registered";
+  if (/invalid login|invalid credentials/i.test(msg)) return "Incorrect email or password";
+  if (/at least 6|password should be/i.test(msg)) return "Password must be at least 6 characters";
+  if (/email.*invalid|invalid.*email/i.test(msg)) return "That email address looks invalid";
   return msg;
 }
 
@@ -51,7 +51,7 @@ export async function signUp(
   profile: Profile
 ): Promise<{ ok: boolean; needsConfirm?: boolean; error?: string }> {
   const sb = getSupabase();
-  if (!sb) return { ok: false, error: "ระบบยังไม่พร้อม (ยังไม่ตั้งค่า Supabase)" };
+  if (!sb) return { ok: false, error: "Service is not ready yet (Supabase not configured)" };
   const { data, error } = await sb.auth.signUp({ email, password, options: { data: profile } });
   if (error) return { ok: false, error: mapErr(error.message) };
   return { ok: true, needsConfirm: !data.session }; // ไม่มี session = ต้องยืนยันอีเมลก่อน
@@ -59,7 +59,7 @@ export async function signUp(
 
 export async function signIn(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
   const sb = getSupabase();
-  if (!sb) return { ok: false, error: "ระบบยังไม่พร้อม" };
+  if (!sb) return { ok: false, error: "Service is not ready yet" };
   const { error } = await sb.auth.signInWithPassword({ email, password });
   return error ? { ok: false, error: mapErr(error.message) } : { ok: true };
 }
@@ -70,7 +70,7 @@ export async function signOut(): Promise<void> {
 
 export async function updateProfile(profile: Profile): Promise<{ ok: boolean; error?: string }> {
   const sb = getSupabase();
-  if (!sb) return { ok: false, error: "ระบบยังไม่พร้อม" };
+  if (!sb) return { ok: false, error: "Service is not ready yet" };
   const { error } = await sb.auth.updateUser({ data: profile });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
@@ -78,7 +78,7 @@ export async function updateProfile(profile: Profile): Promise<{ ok: boolean; er
 /** ส่งอีเมลลิงก์รีเซ็ตรหัสผ่าน — คลิกแล้วเด้งมาที่ /account/reset เพื่อตั้งรหัสใหม่ */
 export async function requestPasswordReset(email: string): Promise<{ ok: boolean; error?: string }> {
   const sb = getSupabase();
-  if (!sb) return { ok: false, error: "ระบบยังไม่พร้อม" };
+  if (!sb) return { ok: false, error: "Service is not ready yet" };
   const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/account/reset` : undefined;
   const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
   return error ? { ok: false, error: mapErr(error.message) } : { ok: true };
@@ -87,7 +87,7 @@ export async function requestPasswordReset(email: string): Promise<{ ok: boolean
 /** ตั้งรหัสผ่านใหม่ (ใช้ตอนอยู่ในเซสชัน recovery จากลิงก์อีเมล) */
 export async function updatePassword(password: string): Promise<{ ok: boolean; error?: string }> {
   const sb = getSupabase();
-  if (!sb) return { ok: false, error: "ระบบยังไม่พร้อม" };
+  if (!sb) return { ok: false, error: "Service is not ready yet" };
   const { error } = await sb.auth.updateUser({ password });
   return error ? { ok: false, error: mapErr(error.message) } : { ok: true };
 }
