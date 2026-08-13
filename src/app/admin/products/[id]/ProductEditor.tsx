@@ -37,7 +37,7 @@ import { categoryTone } from "@/lib/admin-ui";
 import { fileReady, groupByCategory, NO_CATEGORY, templateFiles, type DesignTemplate } from "@/lib/design-templates";
 import { fetchTemplates } from "@/lib/template-repo";
 
-/** qty = ให้ลูกค้าระบุจำนวนของตัวเลือกนี้ (เฉพาะกลุ่มติ๊กหลายอย่าง) · qtyMax = เพดานจำนวน (ว่าง = 99) */
+/** qty = ให้ลูกค้าระบุจำนวนของตัวเลือกนี้ (เฉพาะกลุ่มติ๊กหลายอย่าง ที่เปิด perUnitOn) · qtyMax = เพดานจำนวน (ว่าง = 99) */
 /** perUnit = ชิ้นที่ได้ต่อ 1 หน่วยสั่งของตัวเลือกนี้ (กางช่องกรอกเมื่อกลุ่มเปิด perUnitOn) */
 type DraftChoice = { name: string; extra: string; qty?: boolean; qtyMax?: string; perUnit?: string };
 /** presetId มี = กลุ่มนี้ "ลิงก์" คลังตัวเลือกกลาง (label+choices มาจากคลัง แก้ในกลุ่มไม่ได้จนกว่าจะตัดลิงก์) */
@@ -68,6 +68,14 @@ type DraftOption = {
   showWhenAlsoLabel?: string;
   showWhenAlsoChoices?: string[];
 };
+/**
+ * กางช่อง "🔢 ระบุจำนวน" ที่แถวตัวเลือกไหม — ติ๊ก 📐 ที่หัวกลุ่มก่อนถึงโผล่
+ * (สินค้าส่วนใหญ่ไม่ได้ใช้ ถ้าโผล่ทุกแถวจะรกจนหาช่องที่ต้องแก้ไม่เจอ)
+ * กลุ่มที่ตั้งไว้แล้วยังเห็นช่องเดิมเสมอ — ไม่งั้นค่าที่ตั้งไว้จะหายไปจากสายตาและแก้ไม่ได้
+ */
+function choiceQtyVisible(opt: DraftOption): boolean {
+  return opt.display === "multi" && (!!opt.perUnitOn || opt.choices.some((c) => c.qty));
+}
 type DraftImage = { emoji: string; gradient: string; label: string; src?: string };
 type DraftBody = {
   heading: string;
@@ -81,6 +89,17 @@ type DraftBody = {
   /** โซนที่ไปแสดงในหน้าสินค้า: "side" = ช่องข้างแผงสั่งซื้อ · ไม่ระบุ = ใต้แผงสั่งซื้อเต็มความกว้าง */
   slot?: "side";
 };
+/**
+ * หน่วยนับที่เลือกได้ในเมนู — คัดจากหน่วยที่ร้านใช้จริง เรียงตามความถี่
+ * หน่วยที่ไม่อยู่ในลิสต์ (สินค้าเก่า/นำเข้ามาเพี้ยน) ไม่หาย — เมนูจะเด้งไป "อื่น ๆ" แล้วกางช่องพิมพ์ให้แก้
+ */
+const UNIT_PRESETS = [
+  "ชิ้น", "อัน", "ใบ", "ตัว", "แผ่น", "แผ่น A3", "เล่ม", "เส้น",
+  "ผืน", "เซ็ต", "ชุด", "คู่", "กล่อง", "จุด", "หลา", "เมตร", "ตร.ม.",
+];
+/** ค่าพิเศษของ <option> "อื่น ๆ" — ไม่ใช่หน่วยจริง ห้ามบันทึกลง pricing.unit */
+const UNIT_OTHER = "__other__";
+
 /** กฎ: เมื่อเลือก [whenLabel = whenChoice] → จำกัดกลุ่ม [limitLabel] เหลือเฉพาะ allow[] */
 type DraftRule = { whenLabel: string; whenChoice: string; whenChoices: string[]; limitLabel: string; allow: string[] };
 type DraftTier = { upTo: string; label: string };
@@ -846,6 +865,14 @@ export default function ProductEditor({ product }: { product: Product }) {
   );
 
   const [pricingOpen, setPricingOpen] = useState(false);
+  /**
+   * กดเลือก "อื่น ๆ" ในหน่วยนับ = กางช่องพิมพ์เอง
+   * (หน่วยที่ไม่ได้อยู่ในลิสต์อยู่แล้วจะกางให้เองโดยไม่ต้องพึ่ง state ตัวนี้ — ดู showUnitText)
+   */
+  const [unitOther, setUnitOther] = useState(false);
+  /** กางช่องพิมพ์เอง = กดเลือก "อื่น ๆ" หรือหน่วยปัจจุบันไม่มีในลิสต์ (ค่าเดิมต้องแก้ได้เสมอ) */
+  const showUnitText =
+    unitOther || (!!draft.pricing.unit && !UNIT_PRESETS.includes(draft.pricing.unit));
   /** ท่อนเนื้อหาที่กำลังลากรูปค้างอยู่ (ไฮไลต์กรอบ) */
   const [bodyDragOver, setBodyDragOver] = useState<number | null>(null);
   /** ท่อนเนื้อหาที่พับอยู่ (เนื้อหายาว ๆ พับเก็บให้หน้าโล่ง) */
@@ -1397,7 +1424,9 @@ export default function ProductEditor({ product }: { product: Product }) {
         {/* ช่อง "ระบุจำนวน" ตั้งรายตัวที่แถวตัวเลือกด้านล่าง — บรรทัดนี้แค่บอกทาง */}
         {opt.display === "multi" && (
           <span className="text-[11px] font-semibold text-slate-400">
-            🔢 ให้ลูกค้าระบุจำนวน — ติ๊กที่ตัวเลือกทีละตัวด้านล่าง
+            {choiceQtyVisible(opt)
+              ? "🔢 ให้ลูกค้าระบุจำนวน — ติ๊กที่ตัวเลือกทีละตัวด้านล่าง"
+              : "🔢 อยากให้ลูกค้าระบุจำนวน — ติ๊ก 📐 ด้านล่างก่อน"}
           </span>
         )}
       </>
@@ -1699,6 +1728,7 @@ export default function ProductEditor({ product }: { product: Product }) {
               📐 ตัวเลือกกลุ่มนี้กำหนด &ldquo;จำนวนชิ้นต่อ 1 หน่วยสั่ง&rdquo;
               <span className="ml-1 font-normal text-slate-400">
                 (เช่น สติกเกอร์ 3cm ได้ 45 ชิ้น/แผ่น A3 — ใช้เป็นเพดานจำนวนลายที่ลูกค้าคละได้)
+                {opt.display === "multi" && " · ติ๊กแล้วช่อง 🔢 ระบุจำนวน ของแต่ละตัวเลือกจะโผล่ด้วย"}
               </span>
             </span>
           </label>
@@ -3557,8 +3587,11 @@ export default function ProductEditor({ product }: { product: Product }) {
                         aria-label={`ราคาบวกเพิ่มของตัวเลือกที่ ${ci + 1}`}
                       />
                     </label>
-                    {/* ให้ลูกค้าระบุจำนวนของตัวเลือกนี้ (เช่น เพิ่มสาย 2 เส้น = +฿ ของสาย × 2) — เฉพาะกลุ่มติ๊กหลายอย่าง */}
-                    {opt.display === "multi" && (
+                    {/*
+                      ให้ลูกค้าระบุจำนวนของตัวเลือกนี้ (เช่น เพิ่มสาย 2 เส้น = +฿ ของสาย × 2) — เฉพาะกลุ่มติ๊กหลายอย่าง
+                      ต้องติ๊ก 📐 ที่หัวกลุ่มก่อนถึงกางช่องนี้ (ดู choiceQtyVisible)
+                    */}
+                    {choiceQtyVisible(opt) && (
                       <label
                         className={`flex shrink-0 cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold ring-1 ${
                           ch.qty ? "bg-amber-50 text-amber-700 ring-amber-200" : "bg-white text-slate-400 ring-slate-200"
@@ -4272,7 +4305,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
-                    คละลายขั้นต่ำลายละ
+                    คละลายขั้นต่ำลายละ ({draft.pricing.unit || "ชิ้น"})
                     <input
                       value={activeMeta.minPerDesign}
                       onChange={(e) => patchActiveMeta({ minPerDesign: e.target.value })}
@@ -4293,9 +4326,9 @@ export default function ProductEditor({ product }: { product: Product }) {
                   </label>
                   <label
                     className="flex flex-col gap-1 text-xs font-semibold text-slate-500"
-                    title="ช่วงราคาปลีก คละลายได้ทุกชิ้นไม่ติดขั้นต่ำต่อลาย เช่น ใส่ 11 = สั่ง 1-10 ชิ้นคละอิสระ"
+                    title={`ช่วงราคาปลีก คละลายได้อิสระไม่ติดขั้นต่ำต่อลาย เช่น ใส่ 11 = สั่ง 1-10 ${draft.pricing.unit || "ชิ้น"}คละอิสระ`}
                   >
-                    คละอิสระเมื่อต่ำกว่า (ชิ้น)
+                    คละอิสระเมื่อต่ำกว่า ({draft.pricing.unit || "ชิ้น"})
                     <input
                       value={activeMeta.freeMixBelowQty}
                       onChange={(e) => patchActiveMeta({ freeMixBelowQty: e.target.value })}
@@ -4305,7 +4338,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                     />
                   </label>
                   <p className="w-full text-[11px] text-slate-400">
-                    💡 เช่น เรท 2 สั่งรวม 50 ขึ้นไป + ลายละ 25 → สั่ง 50 ชิ้นคละได้ 2 ลายในราคา ·
+                    💡 เช่น เรท 2 สั่งรวม 50 ขึ้นไป + ลายละ 25 → สั่ง 50 {draft.pricing.unit || "ชิ้น"}คละได้ 2 ลายในราคา ·
                     ใส่ &quot;คละเกินโควตา ลายละ +฿&quot; (เช่น 10) = ลูกค้าเพิ่มลายเกินโควตาได้ โดยจ่ายเพิ่มลายละ 10 บาท · เว้นว่าง = คละเกินไม่ได้ · ทุกเรทใช้คอลัมน์ตัวเลือกชุดเดียวกัน
                   </p>
                 </div>
@@ -4314,13 +4347,36 @@ export default function ProductEditor({ product }: { product: Product }) {
                 <div className="flex flex-wrap items-center gap-3">
                   <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
                     หน่วยนับ
-                    <input
-                      value={draft.pricing.unit}
-                      onChange={(e) => patchPricing({ unit: e.target.value })}
-                      placeholder="ชิ้น"
-                      className="w-24 rounded-xl bg-slate-50 px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    <select
+                      value={showUnitText ? UNIT_OTHER : draft.pricing.unit}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        // "อื่น ๆ" = กางช่องพิมพ์เอง โดยคงค่าเดิมไว้ให้แก้ต่อ (ไม่ล้างทิ้ง)
+                        if (v === UNIT_OTHER) return setUnitOther(true);
+                        setUnitOther(false);
+                        patchPricing({ unit: v });
+                      }}
+                      className="w-28 rounded-xl bg-slate-50 px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
                       aria-label="หน่วยนับ"
-                    />
+                    >
+                      <option value="">— เลือกหน่วย —</option>
+                      {UNIT_PRESETS.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                      <option value={UNIT_OTHER}>อื่น ๆ (พิมพ์เอง)…</option>
+                    </select>
+                    {/* หน่วยนอกลิสต์ (เช่นที่นำเข้ามาเพี้ยน) ต้องแก้ได้ ไม่งั้นบันทึกทีเดียวค่าเดิมหาย */}
+                    {showUnitText && (
+                      <input
+                        value={draft.pricing.unit}
+                        onChange={(e) => patchPricing({ unit: e.target.value })}
+                        placeholder="ชิ้น"
+                        className="w-24 rounded-xl bg-white px-3 py-1.5 text-sm ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                        aria-label="พิมพ์หน่วยนับเอง"
+                      />
+                    )}
                   </label>
                   <div>
                     <span className="text-xs font-semibold text-slate-500">คอลัมน์อิงตามกลุ่ม:</span>
@@ -4387,7 +4443,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                           onChange={(e) =>
                             patchActiveTiers(activeTiers.map((x, j) => (j === ti ? { ...x, label: e.target.value } : x)))
                           }
-                          placeholder="ชื่อช่วง เช่น 1-10 ชิ้น"
+                          placeholder={`ชื่อช่วง เช่น 1-10 ${draft.pricing.unit || "ชิ้น"}`}
                           className="min-w-40 flex-1 rounded-xl bg-slate-50 px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
                           aria-label={`ชื่อช่วงที่ ${ti + 1}`}
                         />
