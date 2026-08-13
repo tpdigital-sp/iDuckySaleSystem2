@@ -59,8 +59,8 @@ type DraftOption = {
   freeChoices?: string[];
   freeWhenLabel?: string;
   freeWhenChoices?: string[];
-  /** เปิดช่อง "ชิ้นต่อหน่วย" ให้ทุกตัวเลือกในกลุ่มนี้ (ใช้เป็นเพดานจำนวนลายที่คละได้) */
-  perUnitOn?: boolean;
+  /** เปิดช่อง "🔢 ระบุจำนวน" ให้ทุกตัวเลือกในกลุ่มนี้ (ค่าจริงติ๊กทีละตัวที่ DraftChoice.qty) */
+  qtyOn?: boolean;
   /** "แสดงเมื่อ" — โชว์ทั้งกลุ่มเฉพาะตอนกลุ่มอื่นเลือกค่าที่กำหนด (ว่าง = แสดงตลอด) */
   showWhenLabel?: string;
   showWhenChoices?: string[];
@@ -69,12 +69,11 @@ type DraftOption = {
   showWhenAlsoChoices?: string[];
 };
 /**
- * กางช่อง "🔢 ระบุจำนวน" ที่แถวตัวเลือกไหม — ติ๊ก 📐 ที่หัวกลุ่มก่อนถึงโผล่
+ * กางช่อง "🔢 ระบุจำนวน" ที่แถวตัวเลือกไหม — ติ๊กสวิตช์ที่หัวกลุ่มก่อนถึงโผล่
  * (สินค้าส่วนใหญ่ไม่ได้ใช้ ถ้าโผล่ทุกแถวจะรกจนหาช่องที่ต้องแก้ไม่เจอ)
- * กลุ่มที่ตั้งไว้แล้วยังเห็นช่องเดิมเสมอ — ไม่งั้นค่าที่ตั้งไว้จะหายไปจากสายตาและแก้ไม่ได้
  */
 function choiceQtyVisible(opt: DraftOption): boolean {
-  return opt.display === "multi" && (!!opt.perUnitOn || opt.choices.some((c) => c.qty));
+  return opt.display === "multi" && !!opt.qtyOn;
 }
 type DraftImage = { emoji: string; gradient: string; label: string; src?: string };
 type DraftBody = {
@@ -331,8 +330,8 @@ function toDraft(p: Product): Draft {
         ...(c.perUnit ? { perUnit: String(c.perUnit) } : {}),
       })),
       ...(o.presetId ? { presetId: o.presetId } : {}),
-      // มีตัวไหนตั้ง "ชิ้นต่อหน่วย" ไว้ = กลุ่มนี้เคยเปิดสวิตช์ → เปิดค้างไว้ให้เห็นค่าเดิม
-      ...(o.choices.some((c) => c.perUnit) ? { perUnitOn: true } : {}),
+      // มีตัวไหนเปิด "ระบุจำนวน" ไว้ = กลุ่มนี้เคยเปิดสวิตช์ → เปิดค้างไว้ให้เห็นค่าเดิม
+      ...(o.choices.some((c) => c.qty) || o.qtyPerChoice ? { qtyOn: true } : {}),
       display: o.display ?? "pills",
       ...(o.extraFromQty ? { extraFromQty: String(o.extraFromQty) } : {}),
       ...(o.smallQtyFee
@@ -517,12 +516,13 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
         .map((c) => {
           const extra = Number(c.extra);
           // ช่องจำนวนใช้ได้เฉพาะกลุ่มติ๊กหลายอย่าง — เปลี่ยนกลับเป็นปุ่มแยกแล้วต้องไม่ค้างไว้
-          const qty = o.display === "multi" && c.qty === true;
+          const qty = o.display === "multi" && o.qtyOn === true && c.qty === true;
           return {
             name: c.name.trim(),
             ...(Number.isFinite(extra) && extra > 0 ? { extra } : {}),
             ...(qty ? { qty: true, ...(Number(c.qtyMax) > 0 ? { qtyMax: Math.floor(Number(c.qtyMax)) } : {}) } : {}),
-            ...(o.perUnitOn && Number(c.perUnit) > 0 ? { perUnit: Math.floor(Number(c.perUnit)) } : {}),
+            // 📐 ชิ้น/หน่วย กรอกในตารางราคา (คอลัมน์แรก) แล้วเก็บกลับมาที่ตัวเลือกตามเดิม
+            ...(Number(c.perUnit) > 0 ? { perUnit: Math.floor(Number(c.perUnit)) } : {}),
           };
         }),
       ...(o.presetId ? { presetId: o.presetId } : {}),
@@ -823,6 +823,12 @@ export default function ProductEditor({ product }: { product: Product }) {
    * จะผูกเพิ่มทำที่หน้าคลังเทมเพลต (ปุ่ม 🔗 ผูกสินค้า) · ตรงนี้เหลือไว้ดู/ปลดออก
    */
   const linkedTemplates = templates.filter((t) => draft.templateIds.includes(t.id));
+  /**
+   * กลุ่มที่กำหนด "📐 ชิ้น/หน่วย" ตอนกลุ่มนั้นไม่ได้เป็นคอลัมน์ของตารางราคา
+   * (เช่น Super Sticker — ราคาคิดต่อแผ่น A3 เท่ากันทุกขนาด แต่ขนาดเป็นตัวบอกว่าได้กี่ดวงต่อแผ่น)
+   * null = ยังไม่ได้เลือกเอง → เดาจากข้อมูลที่มีอยู่
+   */
+  const [perUnitPick, setPerUnitPick] = useState<string | null>(null);
   const [saveError, setSaveError] = useState("");
   /** กำลังยิงบันทึกอยู่ — กันกดซ้ำระหว่างรอ (เคยกดรัวเพราะไม่มีอะไรตอบสนอง) */
   const [saving, setSaving] = useState(false);
@@ -1426,7 +1432,7 @@ export default function ProductEditor({ product }: { product: Product }) {
           <span className="text-[11px] font-semibold text-slate-400">
             {choiceQtyVisible(opt)
               ? "🔢 ให้ลูกค้าระบุจำนวน — ติ๊กที่ตัวเลือกทีละตัวด้านล่าง"
-              : "🔢 อยากให้ลูกค้าระบุจำนวน — ติ๊ก 📐 ด้านล่างก่อน"}
+              : "🔢 อยากให้ลูกค้าระบุจำนวน — ติ๊กสวิตช์ 🔢 ด้านล่างก่อน"}
           </span>
         )}
       </>
@@ -1715,31 +1721,33 @@ export default function ProductEditor({ product }: { product: Product }) {
             </div>
           )}
         </div>
-        {/* ── ชิ้นต่อหน่วย: เปิดทั้งกลุ่มทีเดียว แล้วค่อยกรอกตัวเลขรายตัวเลือกด้านล่าง ── */}
-        <div className="mt-1.5 border-t border-dashed border-slate-200 pt-1.5">
-          <label className="flex cursor-pointer items-start gap-2 text-[11px] font-bold text-slate-600">
-            <input
-              type="checkbox"
-              checked={!!opt.perUnitOn}
-              onChange={(e) => setOpt({ perUnitOn: e.target.checked })}
-              className="mt-0.5 h-3.5 w-3.5 accent-teal-600"
-            />
-            <span>
-              📐 ตัวเลือกกลุ่มนี้กำหนด &ldquo;จำนวนชิ้นต่อ 1 หน่วยสั่ง&rdquo;
-              <span className="ml-1 font-normal text-slate-400">
-                (เช่น สติกเกอร์ 3cm ได้ 45 ชิ้น/แผ่น A3 — ใช้เป็นเพดานจำนวนลายที่ลูกค้าคละได้)
-                {opt.display === "multi" && " · ติ๊กแล้วช่อง 🔢 ระบุจำนวน ของแต่ละตัวเลือกจะโผล่ด้วย"}
+        {/* ── ให้ลูกค้าระบุจำนวน: เปิดทั้งกลุ่มทีเดียว แล้วค่อยติ๊กทีละตัวเลือกด้านล่าง (กลุ่มติ๊กหลายอย่างเท่านั้น) ── */}
+        {opt.display === "multi" && (
+          <div className="mt-1.5 border-t border-dashed border-slate-200 pt-1.5">
+            <label className="flex cursor-pointer items-start gap-2 text-[11px] font-bold text-slate-600">
+              <input
+                type="checkbox"
+                checked={!!opt.qtyOn}
+                // ปิดสวิตช์ = ล้างที่ติ๊กไว้ทีละตัวด้วย ไม่งั้นจำนวนยังมีผลกับราคาทั้งที่ช่องหายไปจากจอ
+                onChange={(e) =>
+                  setOpt({
+                    qtyOn: e.target.checked,
+                    ...(e.target.checked
+                      ? {}
+                      : { choices: opt.choices.map((c) => ({ ...c, qty: false, qtyMax: "" })) }),
+                  })
+                }
+                className="mt-0.5 h-3.5 w-3.5 accent-amber-500"
+              />
+              <span>
+                🔢 ตัวเลือกกลุ่มนี้ให้ลูกค้า &ldquo;ระบุจำนวน&rdquo; ได้
+                <span className="ml-1 font-normal text-slate-400">
+                  (เช่น เพิ่มสาย 2 เส้น → +฿ ของตัวนั้นคูณ 2 — ติ๊กแล้วเลือกทีละตัวได้ด้านล่าง)
+                </span>
               </span>
-            </span>
-          </label>
-          {opt.perUnitOn && (
-            <p className="mt-1 rounded-lg bg-white/70 px-2 py-1.5 text-[10px] leading-relaxed text-slate-500 ring-1 ring-slate-200">
-              📖 คละ 1 ลายต้องใช้อย่างน้อย 1 ชิ้น → ลูกค้าคละได้ไม่เกิน{" "}
-              <b className="font-bold text-teal-700">ชิ้นต่อหน่วย × จำนวนที่สั่ง</b> · กรอกตัวเลขได้ที่ช่อง{" "}
-              <b className="font-bold">📐 ชิ้น/หน่วย</b> ข้างแต่ละตัวเลือกด้านล่าง · เว้นว่างตัวไหน = ตัวนั้นไม่จำกัด
-            </p>
-          )}
-        </div>
+            </label>
+          </div>
+        )}
         {/* ── แสดงเมื่อ: โชว์ทั้งกลุ่มเฉพาะตอนกลุ่มอื่นเลือกค่านี้ (เช่น สีตะขอ C โผล่เฉพาะตอนเลือกตะขอ C) ── */}
         <div className="mt-1.5 border-t border-dashed border-slate-200 pt-1.5">
           {showWhenRow("")}
@@ -1833,6 +1841,62 @@ export default function ProductEditor({ product }: { product: Product }) {
 
   function patchCustom(pt: Partial<DraftCustom>) {
     setDraft((d) => ({ ...d, custom: { ...d.custom, ...pt } }));
+  }
+
+  /**
+   * 📐 ชิ้น/หน่วย ของแถวตารางราคา — "1 หน่วยที่สั่ง ได้ของกี่ชิ้น" (เช่น เซ็ตละ 5 ชิ้น / สติกเกอร์ 45 ดวงต่อแผ่น)
+   * ใช้เป็นเพดานจำนวนลายที่ลูกค้าคละได้: คละ 1 ลายใช้อย่างน้อย 1 ชิ้น → คละได้ไม่เกิน ชิ้น/หน่วย × จำนวนที่สั่ง
+   * เก็บที่ตัวเลือกของ "กลุ่มแรก" ในแกนตาราง (เช่นกลุ่ม ขนาด) — ตารางที่มีหลายแกน แถวที่ขึ้นต้นด้วย
+   * ตัวเลือกเดียวกันจึงใช้ค่าร่วมกัน (แก้แถวเดียว = เปลี่ยนทุกแถวของขนาดนั้น ซึ่งตรงกับความจริงของสินค้า)
+   */
+  function perUnitOfCombo(combo: string[]): string {
+    const label = draft.pricing.driverLabels[0];
+    const name = (combo[0] ?? "").trim();
+    if (!label || !name) return "";
+    const group = draft.options.find((o) => o.label === label);
+    return group?.choices.find((c) => c.name.trim() === name)?.perUnit ?? "";
+  }
+
+  /**
+   * กลุ่มที่ใช้กรอก 📐 ชิ้น/หน่วย แบบ "ไม่ได้อยู่ในตาราง" — กลุ่มเลือกได้ทีละอย่างที่ไม่ใช่คอลัมน์ของตารางราคา
+   * (กลุ่มที่เป็นคอลัมน์กรอกในตารางได้เลย · กลุ่มติ๊กหลายอย่างใช้ไม่ได้ เพราะ 1 หน่วยต้องได้จำนวนชิ้นเดียว)
+   */
+  const perUnitInTable = draft.pricing.driverLabels.length === 1;
+  const perUnitCandidates = draft.options.filter(
+    (o) =>
+      o.display !== "multi" &&
+      o.choices.length > 0 &&
+      !(perUnitInTable && o.label === draft.pricing.driverLabels[0])
+  );
+  const perUnitGroup =
+    perUnitPick === ""
+      ? undefined
+      : perUnitCandidates.find((o) => o.label === perUnitPick) ??
+        (perUnitPick === null
+          ? perUnitCandidates.find((o) => o.choices.some((c) => Number(c.perUnit) > 0))
+          : undefined);
+
+  function setPerUnitOfChoice(label: string, ci: number, value: string) {
+    const perUnit = value.replace(/[^\d]/g, "");
+    patch({
+      options: draft.options.map((o) =>
+        o.label === label ? { ...o, choices: o.choices.map((c, j) => (j === ci ? { ...c, perUnit } : c)) } : o
+      ),
+    });
+  }
+
+  function setPerUnitOfCombo(combo: string[], value: string) {
+    const label = draft.pricing.driverLabels[0];
+    const name = (combo[0] ?? "").trim();
+    if (!label || !name) return;
+    const perUnit = value.replace(/[^\d]/g, "");
+    patch({
+      options: draft.options.map((o) =>
+        o.label === label
+          ? { ...o, choices: o.choices.map((c) => (c.name.trim() === name ? { ...c, perUnit } : c)) }
+          : o
+      ),
+    });
   }
 
   function toggleDriver(label: string) {
@@ -3654,41 +3718,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                         )}
                       </label>
                     )}
-                    {/*
-                      ชิ้นที่ได้ต่อ 1 หน่วยสั่ง — ใช้เป็นเพดานจำนวนลายที่ลูกค้าคละได้ (คละ 1 ลายต้องใช้ ≥1 ชิ้น)
-                      ต้องติ๊กก่อนถึงกางช่องกรอก เพราะสินค้าส่วนใหญ่ไม่ต้องใช้ ถ้าโผล่ทุกตัวเลือกจะรกจนหาของที่ต้องแก้ไม่เจอ
-                    */}
-                    {/* ช่องกรอกโผล่เฉพาะตอนกลุ่มเปิดสวิตช์ "กำหนดจำนวนชิ้นต่อหน่วย" ไว้ (ตั้งที่หัวกลุ่ม) */}
-                    {opt.perUnitOn && (
-                      <label
-                        className="flex shrink-0 items-center gap-1 rounded-lg bg-teal-50 px-2 py-1.5 text-[11px] font-semibold text-teal-700 ring-1 ring-teal-200"
-                        title="เลือกตัวนี้แล้ว 1 หน่วยที่สั่งได้ของกี่ชิ้น เช่น สติกเกอร์ 3cm ได้ 45 ชิ้น/แผ่น A3 (เว้นว่าง = ไม่จำกัด)"
-                      >
-                        📐
-                        <input
-                          value={ch.perUnit ?? ""}
-                          onChange={(e) =>
-                            patch({
-                              options: draft.options.map((o, i) =>
-                                i === gi
-                                  ? {
-                                      ...o,
-                                      choices: o.choices.map((c, j) =>
-                                        j === ci ? { ...c, perUnit: e.target.value.replace(/[^\d]/g, "") } : c
-                                      ),
-                                    }
-                                  : o
-                              ),
-                            })
-                          }
-                          inputMode="numeric"
-                          placeholder="—"
-                          className="w-11 rounded-lg bg-white px-1 py-0.5 text-center text-[11px] text-slate-600 ring-1 ring-teal-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
-                          aria-label={`จำนวนชิ้นต่อหน่วยของตัวเลือกที่ ${ci + 1}`}
-                        />
-                        ชิ้น/หน่วย
-                      </label>
-                    )}
+                    {/* ชิ้นที่ได้ต่อ 1 หน่วยสั่ง (📐 ชิ้น/หน่วย) ย้ายไปกรอกในตารางราคาแล้ว — คอลัมน์แรกข้างชื่อตัวเลือก */}
                     <button
                       type="button"
                       onClick={() =>
@@ -4489,6 +4519,15 @@ export default function ProductEditor({ product }: { product: Product }) {
                           <th className="sticky left-0 z-10 bg-slate-100 px-3 py-2 text-left font-bold">
                             ตัวเลือก <span className="font-normal text-slate-400">({cols.length})</span>
                           </th>
+                          {/* ชิ้นที่ได้ต่อ 1 หน่วยสั่ง — ของขายเป็นเซ็ต/เป็นแผ่น กรอกตรงนี้ที่เดียว ใช้ร่วมทุกเรท */}
+                          {perUnitInTable && (
+                            <th
+                              className="whitespace-nowrap px-2 py-2 text-center font-bold text-teal-700"
+                              title="1 หน่วยที่ลูกค้าสั่ง ได้ของกี่ชิ้น เช่น เซ็ตละ 5 ชิ้น / สติกเกอร์ 45 ดวงต่อแผ่น — ใช้เป็นเพดานจำนวนลายที่คละได้ (เว้นว่าง = 1 ชิ้นต่อหน่วย)"
+                            >
+                              📐 ชิ้น/หน่วย
+                            </th>
+                          )}
                           {activeTiers.map((t, ti) => (
                             <th key={ti} className="whitespace-nowrap px-2 py-2 text-center font-bold">
                               {t.label || `ช่วง ${ti + 1}`}
@@ -4530,6 +4569,19 @@ export default function ProductEditor({ product }: { product: Product }) {
                                   </span>
                                 )}
                               </td>
+                              {perUnitInTable && (
+                                <td className={`px-2 py-2 text-center ${rowBg}`}>
+                                  <input
+                                    value={perUnitOfCombo(combo)}
+                                    onChange={(e) => setPerUnitOfCombo(combo, e.target.value)}
+                                    inputMode="numeric"
+                                    placeholder="1"
+                                    title="1 หน่วยที่สั่ง ได้ของกี่ชิ้น (เว้นว่าง = 1)"
+                                    className="w-14 rounded-lg border border-teal-200 bg-teal-50/50 px-2 py-1 text-center text-sm text-teal-800 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                                    aria-label={`ชิ้นต่อหน่วยของ ${combo.join(" ")}`}
+                                  />
+                                </td>
+                              )}
                               {activeTiers.map((t, ti) => (
                                 <td key={ti} className={`px-2 py-2 text-center ${rowBg}`}>
                                   <input
@@ -4567,6 +4619,74 @@ export default function ProductEditor({ product }: { product: Product }) {
                 <p className="text-[11px] text-slate-400">
                   💡 แต่ละ<strong className="font-semibold text-slate-500">แถว</strong>คือคู่ตัวเลือก (เลื่อนลงดูได้) · แต่ละ<strong className="font-semibold text-slate-500">คอลัมน์</strong>คือช่วงจำนวน · ตัวเลข = ราคาต่อ 1 {draft.pricing.unit || "หน่วย"} · ยิ่งสั่งเยอะควรใส่ราคาน้อยลง
                 </p>
+                {/*
+                  กลุ่มที่บอก "ชิ้น/หน่วย" แต่ไม่ได้เป็นคอลัมน์ของตาราง (ราคาไม่ได้ต่างกันตามกลุ่มนี้)
+                  — กรอกที่นี่แทน ตารางข้างบนไม่มีแถวให้กรอก
+                */}
+                {perUnitCandidates.length > 0 && (
+                  <div className="rounded-2xl bg-teal-50/70 p-3 ring-1 ring-teal-100">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-bold text-teal-800">📐 ชิ้น/หน่วย</span>
+                      <span className="text-[11px] text-teal-700">
+                        สั่ง 1 {draft.pricing.unit || "หน่วย"} ได้ของกี่ชิ้น — คิดตามกลุ่ม
+                      </span>
+                      <select
+                        value={perUnitGroup?.label ?? ""}
+                        // เปลี่ยนไปกลุ่มอื่น/ปิดใช้ = ล้างตัวเลขของกลุ่มเดิม ไม่งั้นค่าค้างอยู่ในข้อมูลแบบมองไม่เห็น
+                        onChange={(e) => {
+                          const old = perUnitGroup?.label;
+                          if (old && old !== e.target.value)
+                            patch({
+                              options: draft.options.map((o) =>
+                                o.label === old ? { ...o, choices: o.choices.map((c) => ({ ...c, perUnit: "" })) } : o
+                              ),
+                            });
+                          setPerUnitPick(e.target.value);
+                        }}
+                        className="rounded-lg border border-teal-200 bg-white px-2 py-1 text-[11px] font-semibold text-teal-800 focus:outline-none"
+                      >
+                        <option value="">— ไม่ใช้ (1 หน่วย = 1 ชิ้น) —</option>
+                        {perUnitCandidates.map((o) => (
+                          <option key={o.label} value={o.label}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {(perUnitGroup?.choices ?? []).map((c, ci) => (
+                        <label
+                          key={`${c.name}#${ci}`}
+                          className="flex items-center gap-1 rounded-lg bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-teal-200"
+                        >
+                          {shortChoice(c.name) || `ตัวเลือกที่ ${ci + 1}`}
+                          <input
+                            value={c.perUnit ?? ""}
+                            onChange={(e) => setPerUnitOfChoice(perUnitGroup!.label, ci, e.target.value)}
+                            inputMode="numeric"
+                            placeholder="1"
+                            className="w-12 rounded-lg border border-teal-200 bg-teal-50/50 px-1 py-0.5 text-center text-[11px] text-teal-800 focus:border-teal-400 focus:outline-none"
+                            aria-label={`ชิ้นต่อหน่วยของ ${c.name}`}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {(perUnitInTable || perUnitCandidates.length > 0) && (
+                  <p className="rounded-xl bg-teal-50/70 px-2.5 py-2 text-[11px] leading-relaxed text-teal-800 ring-1 ring-teal-100">
+                    📐 <strong className="font-bold">ชิ้น/หน่วย</strong> = สั่ง 1 {draft.pricing.unit || "หน่วย"} ได้ของกี่ชิ้น — ของขายเป็นเซ็ต/เป็นแผ่นใส่ตรงนี้ (เซ็ตละ 5 ชิ้น = 5)
+                    <br />
+                    คละ 1 ลายใช้อย่างน้อย 1 ชิ้น → ลูกค้าคละลายได้ไม่เกิน{" "}
+                    <strong className="font-bold">ชิ้น/หน่วย × จำนวนที่สั่ง</strong> (สั่ง 1 เซ็ต 5 ชิ้น = คละได้ 5 ลาย) · เว้นว่าง = 1 ชิ้นต่อหน่วยตามปกติ
+                    {!perUnitInTable && (
+                      <>
+                        <br />
+                        ตารางนี้มีหลายกลุ่มเป็นแกน (หรือไม่มีแกนเลย) — กรอกที่แผง 📐 ด้านบนแทนช่องในตาราง
+                      </>
+                    )}
+                  </p>
+                )}
               </div>
             );
           })()}
