@@ -70,19 +70,37 @@ export function normalizeWixUrl(input: string): string {
   return "https://www.iduckyofficial-pricelists.com" + path;
 }
 
+/** รูปสินค้าสูงสุดที่ส่งกลับจาก "รูปทั้งหน้า" (หน้ายาว ๆ มีรูปเยอะ — เอาเท่าที่เลือกไหว) */
+const MAX_PAGE_IMAGES = 40;
+
+/** URL รูปขนาดใช้งานจริงจาก id ของ Wix media */
+const fillUrl = (id: string) => `https://static.wixstatic.com/media/${id}/v1/fill/w_900,h_675,al_c,q_85/file.jpg`;
+
 /** ดึง+แปลงสินค้าจากหน้า Wix (ตารางราคา + ชื่อ + รูป) */
-export async function scrapeWixPage(inputUrl: string): Promise<{ products: DetectedProduct[]; skipped: number }> {
+export async function scrapeWixPage(
+  inputUrl: string
+): Promise<{ products: DetectedProduct[]; skipped: number; pageImages: string[] }> {
   const url = normalizeWixUrl(inputUrl);
   if (!isAllowedScrapeUrl(url)) {
     throw new Error(`นำเข้าได้เฉพาะจากเว็บของร้านเท่านั้น (${ALLOWED_HOSTS[0]})`);
   }
   const html = await getHtml(url);
-  if (!html) return { products: [], skipped: 0 };
+  if (!html) return { products: [], skipped: 0, pageImages: [] };
 
   // รูป/ไอคอนขยะที่ไม่ใช่รูปสินค้า: ddb95188/d18e3f8f/e2a0c467 = ตัวคั่น/แบนเนอร์ · 551cc5af = โลโก้ "uc" (โผล่ก่อนตารางแรกทุกหน้า)
   const imgs = [...html.matchAll(/<img[^>]+src="(https:\/\/static\.wixstatic\.com\/media\/959b83_[0-9a-f]+~mv2\.(?:jpg|png)[^"]*)"/g)]
     .map((m) => ({ pos: m.index!, id: (m[1].match(/media\/(959b83_[0-9a-f]+~mv2\.(?:jpg|png))/) || [])[1], w: +((m[1].match(/w_(\d+)/) || [])[1] || 0) }))
     .filter((x) => x.id && !/ddb95188|d18e3f8f|e2a0c467|551cc5af/.test(x.id) && x.w >= 90 && x.w <= 900);
+
+  /**
+   * รูปทุกใบในหน้า (เรียงตามลำดับที่ปรากฏบนหน้า ไม่ซ้ำ) — ให้แอดมินเลือกเองตอน "เอาแค่รูป"
+   * ใช้ตอนที่รูปไม่ได้อยู่ในช่วงของตารางไหนเลย (หน้าที่วางแกลเลอรีรวมไว้ท้ายหน้า/สลับตำแหน่ง)
+   */
+  const pageSeen = new Set<string>();
+  const pageImages = imgs
+    .filter((im) => (pageSeen.has(im.id!) ? false : (pageSeen.add(im.id!), true)))
+    .slice(0, MAX_PAGE_IMAGES)
+    .map((im) => fillUrl(im.id!));
 
   // เก็บตำแหน่งตารางทั้งหมดไว้ก่อน เพื่อให้รู้ขอบเขต "ตารางถัดไป" (ใช้จับรูปที่อยู่หลังตารางของสินค้านี้)
   const tables = [...html.matchAll(/<table[\s\S]*?<\/table>/g)];
@@ -134,7 +152,7 @@ export async function scrapeWixPage(inputUrl: string): Promise<{ products: Detec
           .sort((a, b) => b.w - a.w)
           .filter((im) => (seen.has(im.id) ? false : (seen.add(im.id), true)))
           .slice(0, 8)
-          .map((im) => `https://static.wixstatic.com/media/${im.id}/v1/fill/w_900,h_675,al_c,q_85/file.jpg`);
+          .map((im) => fillUrl(im.id!));
         detected.imageUrls = urls;
         detected.imageUrl = urls[0];
       }
@@ -143,5 +161,5 @@ export async function scrapeWixPage(inputUrl: string): Promise<{ products: Detec
       skipped++;
     }
   }
-  return { products, skipped };
+  return { products, skipped, pageImages };
 }

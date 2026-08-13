@@ -54,8 +54,8 @@ export async function POST(req: Request) {
     const url = String(bodyIn.url || "").trim();
     if (!url) return NextResponse.json({ error: "ใส่ URL หน้าที่จะนำเข้า" }, { status: 400 });
     try {
-      const { products, skipped } = await scrapeWixPage(url);
-      return NextResponse.json({ ok: true, products, skipped });
+      const { products, skipped, pageImages } = await scrapeWixPage(url);
+      return NextResponse.json({ ok: true, products, skipped, pageImages });
     } catch (e) {
       return NextResponse.json({ error: (e as Error).message || "ดึงข้อมูลไม่สำเร็จ" }, { status: 500 });
     }

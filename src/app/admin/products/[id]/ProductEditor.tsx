@@ -1195,6 +1195,9 @@ export default function ProductEditor({ product }: { product: Product }) {
   const [impList, setImpList] = useState<ScrapedProduct[]>([]);
   /** รูปที่เลือกจะนำเข้า — คีย์ = ลำดับสินค้าในผลลัพธ์ (ค่าเริ่มต้น: เลือกทุกรูปเท่าที่ใส่ได้) */
   const [impPick, setImpPick] = useState<Record<number, string[]>>({});
+  /** รูปทั้งหมดที่เจอในหน้าที่ดึงมา (ไม่ผูกกับสินค้าตัวไหน) + รูปที่แอดมินติ๊กไว้จากกองนี้ */
+  const [impPageImgs, setImpPageImgs] = useState<string[]>([]);
+  const [impPagePick, setImpPagePick] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   // คลังหน่วยขนาด (ส่วนกลาง) + โมดัลจัดการหน่วย
   const [units, setUnits] = useState<CustomUnit[]>([]);
@@ -2484,7 +2487,7 @@ export default function ProductEditor({ product }: { product: Product }) {
 
   // ── ดึงข้อมูลจาก URL (เว็บ Wix) → เลือกสินค้ามาเติมช่องแก้ไข ──
   async function importScrape() {
-    setImpErr(""); setImpList([]); setImpLoading(true);
+    setImpErr(""); setImpList([]); setImpPick({}); setImpPageImgs([]); setImpPagePick([]); setImpLoading(true);
     try {
       const res = await fetch("/api/admin/import?action=scrape", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: impUrl }),
@@ -2492,7 +2495,11 @@ export default function ProductEditor({ product }: { product: Product }) {
       const d = await res.json();
       if (!res.ok) { setImpErr(d.error ?? "ดึงไม่สำเร็จ"); return; }
       setImpList(d.products ?? []);
-      if (!d.products?.length) setImpErr("ไม่พบตารางสินค้าในหน้านี้ (อาจเป็นหน้ารูปล้วน/URL ไม่ถูก)");
+      setImpPageImgs(d.pageImages ?? []);
+      // ไม่เจอตาราง แต่มีรูป = ยังใช้ประโยชน์ได้ (เลือกรูปจากกองด้านล่างได้เลย) — ไม่ต้องขึ้นเป็นข้อผิดพลาด
+      if (!d.products?.length && !d.pageImages?.length) {
+        setImpErr("ไม่พบตารางสินค้าและรูปในหน้านี้ (URL อาจไม่ถูก)");
+      }
     } catch {
       setImpErr("เชื่อมต่อไม่ได้");
     } finally {
@@ -2511,11 +2518,25 @@ export default function ProductEditor({ product }: { product: Product }) {
    * รูปที่มีอยู่เดิมยังอยู่ รูปใหม่ต่อท้าย (ตัดรูปซ้ำ) จนเต็มโควตา
    */
   function importPhotosOnly(p: ScrapedProduct, index?: number) {
-    const incoming = importedPhotos(p, index);
+    addImportedPhotos(importedPhotos(p, index));
+  }
+
+  /** ใส่รูปที่เลือกไว้จาก "รูปทั้งหน้า" (กองรวมทุกรูปในหน้าที่ดึงมา) */
+  function importPagePhotos() {
+    addImportedPhotos(impPagePick);
+  }
+
+  /** รูปใหม่ต่อท้ายของเดิม (ตัดซ้ำ) แล้วปิดพาเนลนำเข้า */
+  function addImportedPhotos(incoming: string[]) {
     if (!incoming.length) return;
-    const merged = [...new Set([...draft.photos, ...incoming])].slice(0, MAX_PHOTOS);
-    patch({ photos: merged });
+    patch({ photos: [...new Set([...draft.photos, ...incoming])].slice(0, MAX_PHOTOS) });
+    closeImport();
+  }
+
+  /** ปิดพาเนลนำเข้า + ล้างผลที่ดึงมาทั้งหมด */
+  function closeImport() {
     setImpOpen(false); setImpList([]); setImpUrl(""); setImpPick({});
+    setImpPageImgs([]); setImpPagePick([]);
   }
 
   // เติมข้อมูลจากสินค้าที่ scrape มาลง draft (ราคา/ตัวเลือก/ราคาขั้นบันได/รูป)
@@ -2539,7 +2560,7 @@ export default function ProductEditor({ product }: { product: Product }) {
       },
       ...(photos.length ? { photos } : {}),
     });
-    setImpOpen(false); setImpList([]); setImpUrl(""); setImpPick({});
+    closeImport();
   }
 
   // เคลียร์ป้าย "บันทึกแล้ว" ทันทีที่มีการแก้ไขใหม่ (ให้รู้ว่ายังไม่ได้เซฟ)
@@ -2902,6 +2923,75 @@ export default function ProductEditor({ product }: { product: Product }) {
               </ul>
             </div>
           )}
+
+          {/* ── รูปทั้งหน้า — ทุกรูปในหน้าที่ดึงมา ไม่ผูกกับสินค้าตัวไหน (เลือกเองได้) ── */}
+          {impPageImgs.length > 0 && (() => {
+            const room = Math.max(0, MAX_PHOTOS - draft.photos.length);
+            const toggle = (u: string) =>
+              setImpPagePick((cur) =>
+                cur.includes(u) ? cur.filter((x) => x !== u) : [...cur, u].slice(0, MAX_PHOTOS)
+              );
+            return (
+              <div className="mt-2 rounded-xl border border-slate-200 bg-white p-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[11px] text-slate-500">
+                    <span className="mr-1.5 rounded-full bg-sky-500 px-1.5 py-0.5 text-[10px] font-bold text-white">3</span>
+                    <span className="font-bold text-sky-700">🖼 รูปทั้งหน้านี้ {impPageImgs.length} รูป</span> — กดเลือกรูปที่ต้องการ
+                    แล้วกดใส่ (ข้อมูลอื่นไม่ถูกแตะ · รูปเดิมยังอยู่ ต่อท้ายให้)
+                  </p>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {impPagePick.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setImpPagePick([])}
+                        className="rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100"
+                      >
+                        ล้างที่เลือก
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={importPagePhotos}
+                      disabled={!impPagePick.length}
+                      title="ใส่เฉพาะรูปที่เลือก — ชื่อ/ราคา/ตัวเลือก/ตารางราคา คงเดิมทั้งหมด"
+                      className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-40"
+                    >
+                      🖼 ใส่รูปที่เลือก ({impPagePick.length})
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-2 flex max-h-56 flex-wrap items-center gap-1.5 overflow-y-auto">
+                  {impPageImgs.map((u) => {
+                    const on = impPagePick.includes(u);
+                    const order = impPagePick.indexOf(u) + 1;
+                    return (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => toggle(u)}
+                        title={on ? `เลือกไว้ (รูปที่ ${order})` : "กดเพื่อเลือกรูปนี้"}
+                        className={`relative h-16 w-16 overflow-hidden rounded-lg ring-2 transition ${on ? "ring-sky-500" : "opacity-60 ring-transparent hover:opacity-100"}`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={u} alt="" loading="lazy" className="h-16 w-16 object-cover" />
+                        {on && (
+                          <span className="absolute right-0.5 top-0.5 grid h-4 w-4 place-items-center rounded-full bg-sky-500 text-[9px] font-bold text-white">
+                            {order}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-1 text-[10px] text-slate-400">
+                  เลือกไว้ {impPagePick.length} รูป · ตอนนี้สินค้ามี {draft.photos.length}/{MAX_PHOTOS} รูป
+                  {room === 0
+                    ? " — เต็มแล้ว ต้องลบรูปเดิมออกก่อนถึงจะใส่เพิ่มได้"
+                    : ` — ใส่เพิ่มได้อีก ${room} รูป (เกินจากนี้จะถูกตัดทิ้ง)`}
+                </p>
+              </div>
+            );
+          })()}
         </div>
       )}
 
