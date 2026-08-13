@@ -620,12 +620,20 @@ export function isFreeMix(rate: PriceRate, qty: number): boolean {
   return !!rate.freeMixBelowQty && qty < rate.freeMixBelowQty;
 }
 
-/** จำนวนลายสูงสุดที่คละได้ ณ จำนวนนี้ (รวมส่วนที่จ่ายเพิ่มได้) */
-export function maxDesignsFor(rate: PriceRate, qty: number): number {
-  if (!rate.minPerDesign || rate.minPerDesign <= 0) return qty;
-  if (isFreeMix(rate, qty)) return qty;
+/**
+ * จำนวนลายสูงสุดที่คละได้ ณ จำนวนนี้ (รวมส่วนที่จ่ายเพิ่มได้)
+ *
+ * ⚠️ perUnit = ชิ้นที่ได้ต่อ 1 หน่วยสั่ง (สินค้าขายเป็นเซ็ต เช่น Jibbitz เซ็ตละ 5 ชิ้น)
+ * เพดานจริงคือ "จำนวนชิ้น" ไม่ใช่จำนวนหน่วย เพราะคละ 1 ลายใช้อย่างน้อย 1 ชิ้น
+ * — สั่ง 1 เซ็ต (5 ชิ้น) ต้องคละได้ 5 ลาย ไม่ใช่ 1 ลาย
+ * สินค้าขายเป็นชิ้น (perUnit 1) ผลลัพธ์เท่าเดิมทุกประการ
+ */
+export function maxDesignsFor(rate: PriceRate, qty: number, perUnit = 1): number {
+  const pieces = qty * Math.max(1, perUnit);
+  if (!rate.minPerDesign || rate.minPerDesign <= 0) return pieces;
+  if (isFreeMix(rate, qty)) return pieces;
   const included = Math.max(1, Math.floor(qty / rate.minPerDesign));
-  return rate.extraDesignFee ? qty : included;
+  return rate.extraDesignFee ? pieces : included;
 }
 
 /** ชื่อกลุ่มที่ใช้เก็บเรทที่ลูกค้าเลือกไว้ใน selections (แสดงในตะกร้า/ออเดอร์เหมือนตัวเลือกทั่วไป) */
@@ -633,10 +641,15 @@ export const RATE_LABEL = "เรทราคา";
 /** ชื่อกลุ่มที่เก็บจำนวนลายที่ลูกค้าจะคละ เช่น "3 ลาย" */
 export const DESIGN_LABEL = "จำนวนลาย";
 
-/** จำนวนลายที่ "รวมในราคา" ตามจำนวนที่สั่ง = ⌊จำนวน ÷ ขั้นต่ำต่อลาย⌋ (อย่างน้อย 1) */
-export function includedDesigns(rate: PriceRate, qty: number): number {
+/**
+ * จำนวนลายที่ "รวมในราคา" ตามจำนวนที่สั่ง = ⌊จำนวน ÷ ขั้นต่ำต่อลาย⌋ (อย่างน้อย 1)
+ * perUnit = ชิ้นต่อ 1 หน่วยสั่ง (ดู maxDesignsFor) — ช่วงคละอิสระต้องนับเป็นชิ้น
+ * ไม่งั้นสินค้าเซ็ตจะโดนเก็บค่าคละตั้งแต่ช่วงปลีกที่ควรคละฟรี
+ */
+export function includedDesigns(rate: PriceRate, qty: number, perUnit = 1): number {
   if (!rate.minPerDesign || rate.minPerDesign <= 0) return 0;
-  if (isFreeMix(rate, qty)) return qty; // ช่วงปลีกคละอิสระ — ทุกชิ้นเป็นคนละลายได้ ไม่คิดเพิ่ม
+  // ช่วงปลีกคละอิสระ — ทุกชิ้นเป็นคนละลายได้ ไม่คิดเพิ่ม
+  if (isFreeMix(rate, qty)) return qty * Math.max(1, perUnit);
   return Math.max(1, Math.floor(qty / rate.minPerDesign));
 }
 
@@ -665,7 +678,7 @@ export function tierQtyFor(product: Product, selections: Record<string, string>,
   const r = activeRate(product, selections);
   const d = designCountOf(selections);
   if (r?.minPerDesign) {
-    if (isFreeMix(r, qty) || d <= includedDesigns(r, qty)) return qty;
+    if (isFreeMix(r, qty) || d <= includedDesigns(r, qty, perUnitCapacity(product, selections) ?? 1)) return qty;
     return Math.max(1, Math.floor(qty / d));
   }
   return Math.max(1, Math.floor(qty / d));
@@ -682,7 +695,7 @@ export function designFeeFor(product: Product, selections: Record<string, string
   if (!r?.minPerDesign || !r.extraDesignFee) return 0;
   const n = parseInt(String(selections[DESIGN_LABEL] ?? ""), 10);
   if (!Number.isFinite(n) || n <= 0) return 0;
-  const extra = n - includedDesigns(r, qty);
+  const extra = n - includedDesigns(r, qty, perUnitCapacity(product, selections) ?? 1);
   return extra > 0 ? extra * r.extraDesignFee : 0;
 }
 

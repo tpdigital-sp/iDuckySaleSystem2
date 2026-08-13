@@ -1303,7 +1303,7 @@ export default function ProductEditor({ product }: { product: Product }) {
         id: "multi",
         text: "☑ ติ๊กหลายอย่าง",
         tip: isDriver
-          ? "กลุ่มนี้เป็นคอลัมน์ของตารางราคา — ต้องเลือกได้อย่างเดียว ถ้าจะให้ติ๊กหลายอย่างต้องเอาออกจากคอลัมน์ตารางก่อน"
+          ? "ลูกค้าติ๊กได้หลายอย่างพร้อมกัน · กลุ่มนี้เป็นคอลัมน์ตารางราคาอยู่ — กดแล้วระบบจะถามก่อนเอาออกจากตาราง (ราคาย้ายไปกรอกที่ +฿ ของแต่ละตัวเลือก)"
           : "ลูกค้าติ๊กได้หลายอย่างพร้อมกัน (หรือไม่ติ๊กเลย) · +฿ บวกรวมทุกตัวที่ติ๊ก",
       },
     ] as const;
@@ -1312,27 +1312,29 @@ export default function ProductEditor({ product }: { product: Product }) {
     return (
       <>
         <div className="inline-flex overflow-hidden rounded-lg bg-white ring-1 ring-slate-200">
-          {MODES.map((mode) => {
-            const disabled = mode.id === "multi" && isDriver;
-            return (
-              <button
-                key={mode.id}
-                type="button"
-                disabled={disabled}
-                title={mode.tip}
-                onClick={() => setOpt({ display: mode.id })}
-                className={`px-2.5 py-1 text-[11px] font-semibold transition ${
-                  opt.display === mode.id
-                    ? "bg-slate-900 text-white"
-                    : disabled
-                      ? "bg-white text-slate-300"
-                      : "bg-white text-slate-500 hover:bg-slate-50"
-                }`}
-              >
-                {mode.text}
-              </button>
-            );
-          })}
+          {MODES.map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              title={mode.tip}
+              onClick={() => {
+                // ติ๊กหลายอย่างกับคอลัมน์ตารางราคาอยู่ด้วยกันไม่ได้ (ราคาต่อคอลัมน์อิงตัวเลือกเดียว)
+                // — ไม่ปิดปุ่มทิ้งไว้ให้งง แต่ถามแล้วถอดแกนให้เลย
+                if (
+                  mode.id === "multi" &&
+                  isDriver &&
+                  !confirmDropDriver(opt.label, "ติ๊กหลายอย่างพร้อมกันแล้วตารางหาราคาต่อคอลัมน์ไม่เจอ")
+                )
+                  return;
+                setOpt({ display: mode.id });
+              }}
+              className={`px-2.5 py-1 text-[11px] font-semibold transition ${
+                opt.display === mode.id ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
+              }`}
+            >
+              {mode.text}
+            </button>
+          ))}
         </div>
         {/* ช่อง "ระบุจำนวน" ตั้งรายตัวที่แถวตัวเลือกด้านล่าง — บรรทัดนี้แค่บอกทาง */}
         {opt.display === "multi" && (
@@ -1748,11 +1750,52 @@ export default function ProductEditor({ product }: { product: Product }) {
   function toggleDriver(label: string) {
     setDraft((d) => {
       const has = d.pricing.driverLabels.includes(label);
-      const driverLabels = has
-        ? d.pricing.driverLabels.filter((l) => l !== label)
-        : [...d.pricing.driverLabels, label];
-      return { ...d, pricing: { ...d.pricing, driverLabels } };
+      if (has) return dropDriverIn(d, label);
+      return { ...d, pricing: { ...d.pricing, driverLabels: [...d.pricing.driverLabels, label] } };
     });
+  }
+
+  /**
+   * เอากลุ่มออกจาก "คอลัมน์ตารางราคา" — กลุ่มที่ราคาไปกรอกที่ +฿ ของแต่ละตัวเลือกเอง
+   * คีย์ช่องราคาอิงลำดับ driverLabels (คั่นด้วย │) — ถอดแกนเฉย ๆ คีย์เก่าจะยาวเกิน หาไม่เจอทั้งตาราง
+   * → ยุบคีย์ให้ด้วย (ตัดค่าของแกนที่ถอดออก · คีย์ที่ชนกันเก็บแถวแรกที่มีราคาเป็นตัวแทน)
+   */
+  function dropDriverIn(d: Draft, label: string): Draft {
+    const di = d.pricing.driverLabels.indexOf(label);
+    if (di < 0) return d;
+    const width = d.pricing.driverLabels.length;
+    const filled = (arr?: string[]) => (arr ?? []).some((v) => String(v ?? "").trim());
+    const collapse = (cells: Record<string, string[]>): Record<string, string[]> => {
+      const out: Record<string, string[]> = {};
+      for (const [key, v] of Object.entries(cells)) {
+        const parts = key.split("│");
+        if (parts.length !== width) continue; // คีย์ค้างจากแกนชุดเก่า — ยุบไม่ได้ ทิ้งไป
+        const nk = parts.filter((_, i) => i !== di).join("│");
+        if (!(nk in out) || (!filled(out[nk]) && filled(v))) out[nk] = v;
+      }
+      return out;
+    };
+    return {
+      ...d,
+      pricing: {
+        ...d.pricing,
+        driverLabels: d.pricing.driverLabels.filter((_, i) => i !== di),
+        cells: collapse(d.pricing.cells),
+      },
+      extraRates: d.extraRates.map((r) => ({ ...r, cells: collapse(r.cells) })),
+    };
+  }
+
+  /** ถามก่อนถอดแกน แล้วถอด — ใช้จากแถวกลุ่มตัวเลือก (ป้ายเตือน + ปุ่มติ๊กหลายอย่าง) */
+  function confirmDropDriver(label: string, why: string): boolean {
+    if (
+      !window.confirm(
+        `กลุ่ม “${label}” เป็นคอลัมน์ของตารางราคาอยู่\n${why}\n\nกดตกลง = เอาออกจากคอลัมน์ตารางราคา แล้วไปกรอกราคาที่ช่อง +฿ ของแต่ละตัวเลือกแทน`
+      )
+    )
+      return false;
+    setDraft((d) => dropDriverIn(d, label));
+    return true;
   }
 
   function setCell(key: string, ti: number, val: string) {
@@ -3269,14 +3312,29 @@ export default function ProductEditor({ product }: { product: Product }) {
               )}
               {/* พับกลุ่มไว้ก็ยังต้องเห็นว่ามีตัวเลือกที่หน้าร้านซ่อนอยู่ ไม่ต้องกางทีละกลุ่มหา */}
               {pricelessCount(opt) > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setPricingOpen(true)}
-                  className="mt-2 block w-full rounded-xl bg-rose-50 px-3 py-2 text-left text-[11px] font-bold leading-relaxed text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
-                >
+                <div className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-rose-700 ring-1 ring-rose-200">
                   ⚠ {pricelessCount(opt)} ตัวเลือกในกลุ่มนี้ยังไม่ได้ใส่ราคาในตารางราคา →
-                  หน้าร้านจะไม่แสดงตัวเลือกนั้น (กดเพื่อเปิดตารางราคาแล้วกรอกให้ครบ)
-                </button>
+                  หน้าร้านจะไม่แสดงตัวเลือกนั้น
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setPricingOpen(true)}
+                      className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
+                    >
+                      เปิดตารางราคาไปกรอก
+                    </button>
+                    {/* กลุ่มที่ราคาไม่ได้อยู่ในตาราง (คิดเป็น +฿ ต่อตัวเลือก) — ไม่ควรเป็นคอลัมน์ตารางตั้งแต่แรก */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        confirmDropDriver(opt.label, "ถ้าราคาของกลุ่มนี้ไม่ได้อยู่ในตาราง ก็ไม่ต้องเป็นคอลัมน์")
+                      }
+                      className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
+                    >
+                      ราคาอยู่ที่ตัวเลือกเอง — เอาออกจากตารางราคา
+                    </button>
+                  </div>
+                </div>
               )}
               {!isOptFolded(gi) && (
               <>

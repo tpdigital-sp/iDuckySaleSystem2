@@ -314,8 +314,6 @@ export default function ProductDetail({
   const [designsWarn, setDesignsWarn] = useState(false);
   // สินค้าที่ตั้ง "คิดเรทตามชิ้นต่อลาย" — คละกี่ลายก็ได้ แต่เรทราคาคิดจาก ⌊จำนวน ÷ ลาย⌋
   const tierByDesign = !!product.tierByDesign;
-  // ลายที่รวมในราคาตามจำนวนที่สั่ง · เรทที่เปิด extraDesignFee คละเกินได้ (จ่ายเพิ่มต่อลาย ไม่เกินจำนวนชิ้น)
-  const included = rate?.minPerDesign ? includedDesigns(rate, qty) : 0;
   /** กติกาคละแบบคิดค่าคละต่อหน่วย (ถ้าสินค้าตั้งไว้) — มาก่อนกติกาเดิมทั้งหมด */
   const mixRule = product.mixRule;
   /**
@@ -324,6 +322,9 @@ export default function ProductDetail({
    */
   const unitCap = perUnitCapacity(product, effective);
   const capByPieces = unitCap ? unitCap * Math.max(1, qty) : Infinity;
+  // ลายที่รวมในราคาตามจำนวนที่สั่ง · เรทที่เปิด extraDesignFee คละเกินได้ (จ่ายเพิ่มต่อลาย ไม่เกินจำนวนชิ้น)
+  // ส่ง unitCap ไปด้วยเสมอ — สินค้าขายเป็นเซ็ต โควตาช่วงคละอิสระต้องนับเป็นชิ้น ไม่ใช่จำนวนเซ็ต
+  const included = rate?.minPerDesign ? includedDesigns(rate, qty, unitCap ?? 1) : 0;
   // สินค้าที่คิดเรทตามชิ้นต่อลาย: คละได้ถึงจำนวนชิ้นเสมอ (เกินโควตาเรท = ราคาปรับเป็นเรทต่อลายเอง ไม่บล็อก)
   const maxDesignsRaw = mixRule
     ? // ช่วงที่ยังไม่ถึงเกณฑ์ "1 ลาย/หน่วย" คละได้ไม่จำกัด (หลายลายอยู่บนแผ่นเดียวกันได้)
@@ -334,7 +335,7 @@ export default function ProductDetail({
     : tierByDesign
       ? qty
       : rate?.minPerDesign
-        ? maxDesignsFor(rate, qty)
+        ? maxDesignsFor(rate, qty, unitCap ?? 1)
         : 0;
   // เพดานจากจำนวนชิ้นที่ใส่ได้จริง ทับกติกาอื่นเสมอ — ใส่ไม่ลงแผ่นก็ผลิตไม่ได้
   const maxDesigns = maxDesignsRaw > 0 ? Math.max(1, Math.min(maxDesignsRaw, capByPieces)) : maxDesignsRaw;
@@ -395,7 +396,7 @@ export default function ProductDetail({
       const needDesigns = designsTouched ? designs : Math.max(artFiles.length, 1);
       const fitsDesigns = (r: (typeof rates)[number]) => {
         if (!r.minPerDesign) return true;
-        return maxDesignsFor(r, qty) >= needDesigns;
+        return maxDesignsFor(r, qty, unitCap ?? 1) >= needDesigns;
       };
       /**
        * เรทนี้ยังขายตัวเลือกที่ลูกค้าเลือกอยู่ไหม (เช่น เรท 2 ไม่มีตาราง 1mm)
