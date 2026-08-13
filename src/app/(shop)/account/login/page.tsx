@@ -127,7 +127,7 @@ function LoginInner() {
   }
 
   return (
-    <div style={{ fontFamily: "var(--body)", color: "var(--navy)" }}>
+    <div style={{ fontFamily: "var(--font-sans)", color: "var(--navy)" }}>
       <div className="mx-auto max-w-[620px] px-4 py-10">
         <div
           className="relative px-5 pb-10 pt-6 sm:px-12"

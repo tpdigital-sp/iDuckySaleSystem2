@@ -66,7 +66,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div style={{ fontFamily: "var(--body)", color: "var(--navy)" }}>
+    <div style={{ fontFamily: "var(--font-sans)", color: "var(--navy)" }}>
       <div className="mx-auto max-w-[620px] px-4 py-10">
         <div
           className="px-5 pb-10 pt-8 sm:px-12"
