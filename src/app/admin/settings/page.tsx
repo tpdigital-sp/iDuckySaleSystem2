@@ -240,9 +240,8 @@ function AdminSettingsPageInner() {
   // ── หมวดหมู่สินค้า ──
   const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
   const [catCounts, setCatCounts] = useState<Record<string, number>>({});
-  const [catSaving, setCatSaving] = useState(false);
-  const [catSaved, setCatSaved] = useState(false);
-  const [catErr, setCatErr] = useState("");
+  /** มีแก้หมวดหมู่ค้างอยู่ — ปุ่ม "บันทึก" รวมข้างล่างจะบันทึกให้ (กันเซฟทับฐานด้วยค่าตั้งต้นตอนยังโหลดไม่เสร็จ) */
+  const [catsDirty, setCatsDirty] = useState(false);
   useEffect(() => {
     fetchCategories().then(setCats);
     // นับสินค้าต่อหมวด — กันลบหมวดที่ยังมีสินค้าอยู่
@@ -255,19 +254,22 @@ function AdminSettingsPageInner() {
       })
       .catch(() => {});
   }, []);
-  const patchCat = (i: number, patch: Partial<ShopCategory>) =>
+  const patchCat = (i: number, patch: Partial<ShopCategory>) => {
     setCats((cur) => cur.map((c, k) => (k === i ? { ...c, ...patch } : c)));
-  const moveCat = (i: number, dir: -1 | 1) =>
+    setCatsDirty(true);
+  };
+  const moveCat = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= cats.length) return;
     setCats((cur) => {
-      const j = i + dir;
-      if (j < 0 || j >= cur.length) return cur;
       const next = [...cur];
       [next[i], next[j]] = [next[j], next[i]];
       return next;
     });
-  async function saveCats() {
-    setCatSaving(true);
-    setCatErr("");
+    setCatsDirty(true);
+  };
+  /** บันทึกหมวดหมู่ (เรียกจากปุ่ม "บันทึก" รวม) — คืนข้อความ error หรือ null เมื่อสำเร็จ */
+  async function saveCats(): Promise<string | null> {
     try {
       const res = await fetch("/api/categories", {
         method: "POST",
@@ -275,15 +277,12 @@ function AdminSettingsPageInner() {
         body: JSON.stringify({ list: cats }),
       });
       const j = await res.json();
-      if (!res.ok) setCatErr(j.error ?? "บันทึกไม่สำเร็จ");
-      else {
-        setCatSaved(true);
-        setTimeout(() => setCatSaved(false), 2500);
-      }
+      if (!res.ok) return j.error ?? "บันทึกไม่สำเร็จ";
+      setCatsDirty(false);
+      return null;
     } catch {
-      setCatErr("เชื่อมต่อไม่ได้");
+      return "เชื่อมต่อไม่ได้";
     }
-    setCatSaving(false);
   }
 
   // ── ล้างรูปออเดอร์เก่า ──
@@ -312,8 +311,6 @@ function AdminSettingsPageInner() {
   const [rolesMap, setRolesMap] = useState<RolePermsMap | null>(null);
   const [rolesEditable, setRolesEditable] = useState(false);
   const [rolesDirty, setRolesDirty] = useState(false);
-  const [rolesSaving, setRolesSaving] = useState(false);
-  const [rolesSaved, setRolesSaved] = useState(false);
   const [rolesErr, setRolesErr] = useState("");
   const [newRole, setNewRole] = useState("");
 
@@ -334,7 +331,6 @@ function AdminSettingsPageInner() {
       return { ...m, [dept]: cur.includes(perm) ? cur.filter((p) => p !== perm) : [...cur, perm] };
     });
     setRolesDirty(true);
-    setRolesSaved(false);
   };
   const addRole = () => {
     const name = newRole.trim().slice(0, 30);
@@ -346,7 +342,6 @@ function AdminSettingsPageInner() {
     });
     setNewRole("");
     setRolesDirty(true);
-    setRolesSaved(false);
     setRolesErr("");
   };
   const removeRole = (dept: string) => {
@@ -358,24 +353,26 @@ function AdminSettingsPageInner() {
       return next;
     });
     setRolesDirty(true);
-    setRolesSaved(false);
   };
-  async function saveRoles() {
-    if (!rolesMap) return;
-    setRolesSaving(true);
+  /** บันทึกบทบาท (เรียกจากปุ่ม "บันทึก" รวม เมื่อมีแก้ค้าง) — คืนข้อความ error หรือ null เมื่อสำเร็จ */
+  async function saveRoles(): Promise<string | null> {
+    if (!rolesMap) return null;
     setRolesErr("");
-    const res = await fetch("/api/admin/role-perms", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ roles: rolesMap }),
-    });
-    const j = await res.json().catch(() => ({}));
-    setRolesSaving(false);
-    if (!res.ok) return setRolesErr(j.error ?? "บันทึกไม่สำเร็จ");
-    if (j.roles) setRolesMap(j.roles as RolePermsMap); // เซิร์ฟเวอร์อาจเติม admin.access ให้อัตโนมัติ
-    setRolesDirty(false);
-    setRolesSaved(true);
-    setTimeout(() => setRolesSaved(false), 2500);
+    try {
+      const res = await fetch("/api/admin/role-perms", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ roles: rolesMap }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) return (j as { error?: string }).error ?? "บันทึกไม่สำเร็จ";
+      const roles = (j as { roles?: RolePermsMap }).roles;
+      if (roles) setRolesMap(roles); // เซิร์ฟเวอร์อาจเติม admin.access ให้อัตโนมัติ
+      setRolesDirty(false);
+      return null;
+    } catch {
+      return "เชื่อมต่อไม่ได้";
+    }
   }
 
   useEffect(() => {
@@ -491,14 +488,31 @@ function AdminSettingsPageInner() {
         expiryDays: Number(welcome.expiryDays) || 0,
       },
     };
+    // ปุ่มเดียวบันทึกทุกส่วน — หมวดหมู่/บทบาทเก็บคนละที่ (API แยก) จึงยิงเมื่อมีแก้ค้างเท่านั้น
+    const errs: string[] = [];
     const res = await persistShopPayment(payload);
+    if (!res.ok) errs.push(`บันทึกไม่สำเร็จ: ${res.error ?? "เกิดข้อผิดพลาด"}`);
+    if (catsDirty) {
+      const e = await saveCats();
+      if (e) {
+        errs.push(`หมวดหมู่สินค้า: ${e}`);
+        setTab("cats");
+      }
+    }
+    if (rolesDirty && rolesEditable) {
+      const e = await saveRoles();
+      if (e) {
+        errs.push(`บทบาท: ${e}`);
+        setTab("roles");
+      }
+    }
     setSaving(false);
-    if (res.ok) {
+    if (errs.length) {
+      setError(errs.join(" · "));
+    } else {
       setShipping(cleanShipping);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-    } else {
-      setError(`บันทึกไม่สำเร็จ: ${res.error ?? "เกิดข้อผิดพลาด"}`);
     }
   }
 
@@ -1083,7 +1097,10 @@ function AdminSettingsPageInner() {
                     <button
                       type="button"
                       disabled={(catCounts[c.id] ?? 0) > 0}
-                      onClick={() => setCats((cur) => cur.filter((_, k) => k !== i))}
+                      onClick={() => {
+                        setCats((cur) => cur.filter((_, k) => k !== i));
+                        setCatsDirty(true);
+                      }}
                       title={(catCounts[c.id] ?? 0) > 0 ? "ลบไม่ได้ — ยังมีสินค้าอยู่ในหมวดนี้ (ใช้ ‘ซ่อน’ แทน)" : "ลบหมวดนี้"}
                       className="justify-self-end rounded-lg px-2 py-1 text-xs font-bold text-rose-500 transition hover:bg-rose-50 disabled:opacity-25"
                     >
@@ -1095,7 +1112,7 @@ function AdminSettingsPageInner() {
 
               <button
                 type="button"
-                onClick={() =>
+                onClick={() => {
                   setCats((cur) => [
                     ...cur,
                     {
@@ -1106,26 +1123,18 @@ function AdminSettingsPageInner() {
                       gradient: "from-amber-100 to-amber-200",
                       description: "",
                     },
-                  ])
-                }
+                  ]);
+                  setCatsDirty(true);
+                }}
                 className="rounded-full border border-dashed border-amber-300 px-4 py-2 text-xs font-bold text-amber-700 transition hover:bg-amber-50"
               >
                 ＋ เพิ่มหมวดใหม่
               </button>
 
-              <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
-                <button
-                  type="button"
-                  onClick={saveCats}
-                  disabled={catSaving}
-                  className={`${btnPrimary} disabled:opacity-40`}
-                >
-                  {catSaving ? "กำลังบันทึก…" : "💾 บันทึกหมวดหมู่"}
-                </button>
-                {catSaved && <span className="text-xs font-bold text-emerald-600">✓ บันทึกแล้ว</span>}
-                {catErr && <span className="text-xs font-bold text-rose-600">{catErr}</span>}
-                <span className="text-[11px] text-slate-400">หมวดที่มีสินค้าอยู่ลบไม่ได้ — ใช้ “ซ่อน” แทน</span>
-              </div>
+              {/* ไม่มีปุ่มบันทึกของแท็บนี้ — ใช้ปุ่ม "บันทึก" รวมข้างล่างที่เดียว */}
+              <p className="border-t border-slate-100 pt-3 text-[11px] text-slate-400">
+                หมวดที่มีสินค้าอยู่ลบไม่ได้ — ใช้ “ซ่อน” แทน
+              </p>
             </div>
           )}
 
@@ -1462,16 +1471,7 @@ function AdminSettingsPageInner() {
                           >
                             ＋ เพิ่มบทบาท
                           </button>
-                          <button
-                            type="button"
-                            onClick={saveRoles}
-                            disabled={!rolesDirty || rolesSaving}
-                            className={`ml-auto rounded-lg px-4 py-2 text-sm font-bold text-white transition disabled:opacity-40 ${
-                              rolesSaved ? "bg-emerald-600" : "bg-amber-500 hover:bg-amber-600"
-                            }`}
-                          >
-                            {rolesSaving ? "กำลังบันทึก…" : rolesSaved ? "✓ บันทึกแล้ว" : "💾 บันทึกบทบาท"}
-                          </button>
+                          {/* ไม่มีปุ่มบันทึกของแท็บนี้ — ใช้ปุ่ม "บันทึก" รวมข้างล่างที่เดียว */}
                           {rolesErr && <p className="w-full text-xs font-medium text-rose-600">{rolesErr}</p>}
                           <p className={`w-full text-[11px] ${faint}`}>
                             บทบาทใหม่จะไปโผล่ในตัวเลือกแผนกที่หน้า 👥 พนักงาน · ถ้าติ๊กสิทธิ์ใดไว้ ระบบจะเติม “เข้าหลังบ้านได้”
