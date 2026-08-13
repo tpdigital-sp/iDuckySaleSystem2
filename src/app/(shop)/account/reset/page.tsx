@@ -127,7 +127,7 @@ export default function ResetPasswordPage() {
               {err && <p className="rounded-2xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-600">{err}</p>}
               <div className="dl pt-2 text-center" style={{ background: "transparent" }}>
                 <button type="button" onClick={sendLink} disabled={busy} className="btn btn-yolk" style={busy ? { opacity: 0.6 } : undefined}>
-                  {busy ? "Sending…" : "Send Reset Link"} <span className="dot">→</span>
+                  {busy ? "Sending…" : "ส่งลิงก์รีเซ็ต"} <span className="dot">→</span>
                 </button>
               </div>
             </div>
