@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  CATEGORIES,
   customUnitPrice,
   formatPrice,
   type CategoryId,
@@ -21,6 +20,7 @@ import {
   type ShipTier,
 } from "@/lib/products";
 import { autoSeoOf } from "@/lib/auto-seo";
+import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { BULK_ASK_DEFAULT, CONSULT_NOTE_DEFAULT, RATE_LABEL } from "@/lib/products";
 import { hasOverride, resetOverride } from "@/lib/product-store";
 import { deleteProductDb, fetchProductNamesLite, fetchProductRaw, persistProduct } from "@/lib/product-repo";
@@ -1205,6 +1205,11 @@ export default function ProductEditor({ product }: { product: Product }) {
   const [newUnitLabel, setNewUnitLabel] = useState("");
   const [newUnitToM, setNewUnitToM] = useState("");
   useEffect(() => setUnits(loadUnits()), []);
+  /** หมวดหมู่ที่แอดมินแก้ไว้ในตั้งค่าระบบ (ยังไม่โหลดเสร็จ = ค่าเริ่มต้นจากโค้ด) */
+  const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
+  useEffect(() => {
+    fetchCategories().then(setCats);
+  }, []);
   function refreshUnits() { setUnits(loadUnits()); }
 
   // ชื่อผู้ตรวจ (คนที่ล็อกอิน) — โหมดเดโมที่ไม่มีชื่อใช้ "ทีมงาน"
@@ -2568,7 +2573,7 @@ export default function ProductEditor({ product }: { product: Product }) {
     setSavedAt(false);
   }, [draft]);
 
-  const cat = CATEGORIES.find((c) => c.id === draft.category);
+  const cat = cats.find((c) => c.id === draft.category);
 
   /** ✨ เขียน SEO/AEO อัตโนมัติจากข้อมูลสินค้า (ชื่อ/หมวด/ราคา/ตัวเลือก/จุดเด่น) — เขียนแล้วแก้ต่อได้ */
   function applyAutoSeo() {
@@ -3053,8 +3058,9 @@ export default function ProductEditor({ product }: { product: Product }) {
               className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
               aria-label="หมวดหมู่"
             >
-              {CATEGORIES.map((c) => (
-                <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>
+              {/* หมวดที่ซ่อนจากหน้าร้านยังเลือกได้ (สินค้าเดิมยังอยู่ในหมวดนั้น) — แค่บอกให้รู้ */}
+              {cats.map((c) => (
+                <option key={c.id} value={c.id}>{c.emoji} {c.name}{c.hidden ? " (ซ่อนอยู่)" : ""}</option>
               ))}
             </select>
           </label>

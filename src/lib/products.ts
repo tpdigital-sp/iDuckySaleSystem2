@@ -998,8 +998,21 @@ export function needsStockCheck(p: Product, qty: number): boolean {
   return qty >= limit;
 }
 
+/**
+ * ข้อมูลหมวดจากชุดในโค้ด — ใช้กับป้าย/สีพื้นเวลาไม่ได้โหลดหมวดจากฐาน
+ * แอดมินเพิ่มหมวดใหม่เองได้ (id นอกชุดนี้) → คืนค่ากลาง ๆ แทน undefined กันหน้าพัง
+ */
 export function getCategory(id: CategoryId): Category {
-  return CATEGORIES.find((c) => c.id === id)!;
+  return (
+    CATEGORIES.find((c) => c.id === id) ?? {
+      id,
+      name: String(id),
+      nameEn: String(id),
+      emoji: "🏷️",
+      gradient: "from-slate-100 to-slate-200",
+      description: "",
+    }
+  );
 }
 
 // ── ชุดตัวเลือกร่วมของสินค้ากลุ่มกระดาษ (ดึงจาก iduckyprintsstudio.com จริง) ──

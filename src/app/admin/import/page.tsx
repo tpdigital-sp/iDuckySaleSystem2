@@ -2,9 +2,10 @@
 
 import RequirePerm from "@/components/RequirePerm";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CATEGORIES, type CategoryId } from "@/lib/products";
+import { type CategoryId } from "@/lib/products";
+import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
 
 interface Row {
@@ -28,6 +29,11 @@ function AdminImportPageInner() {
   const [rows, setRows] = useState<Row[]>([]);
   const [skipped, setSkipped] = useState(0);
   const [importing, setImporting] = useState(false);
+  /** หมวดหมู่ตามที่แอดมินตั้งไว้ในตั้งค่าระบบ (ยังไม่โหลดเสร็จ = ค่าเริ่มต้นจากโค้ด) */
+  const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
+  useEffect(() => {
+    fetchCategories().then(setCats);
+  }, []);
   const [result, setResult] = useState<string>("");
   const [filter, setFilter] = useState("");
 
@@ -128,7 +134,7 @@ function AdminImportPageInner() {
                 className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-amber-400"
               >
                 <option value="" disabled>— เลือก —</option>
-                {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
+                {cats.map((c) => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
               </select>
             </label>
           </div>
@@ -179,7 +185,7 @@ function AdminImportPageInner() {
                     onChange={(e) => setRows((rs) => rs.map((x, j) => (j === i ? { ...x, _category: e.target.value as CategoryId } : x)))}
                     className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-amber-400"
                   >
-                    {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
+                    {cats.map((c) => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
                   </select>
                   <span className="shrink-0 text-right text-xs text-slate-500">
                     <span className="block font-bold text-slate-900">฿{r.price} / {r.unit}</span>

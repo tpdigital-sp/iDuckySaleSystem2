@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import ProductVisual from "@/components/ProductVisual";
 import {
   adminProductPath,
-  CATEGORIES,
   formatPrice,
   formatPriceRange,
   getCategory,
@@ -22,6 +21,7 @@ import { getAdminSession } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { badge, btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
 import { useCan } from "@/lib/perm-context";
+import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 
 type ViewMode = "table" | "cards";
 type SortMode = "default" | "price-asc" | "price-desc" | "sold-desc";
@@ -51,7 +51,8 @@ export default function AdminProductsPage() {
   // ── สถานะมุมมอง/ตัวกรอง ──
   const [view, setView] = useState<ViewMode>("table");
   const [query, setQuery] = useState("");
-  const [catFilter, setCatFilter] = useState<CategoryId | "all">("all");
+  // id หมวดเป็น string เพราะแอดมินเพิ่มหมวดใหม่เองได้จากตั้งค่าระบบ (ไม่จำกัดชุดใน CategoryId)
+  const [catFilter, setCatFilter] = useState<string>("all");
   const [sort, setSort] = useState<SortMode>("default");
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>("all");
   const [showFilter, setShowFilter] = useState<ShowFilter>("all");
@@ -64,6 +65,8 @@ export default function AdminProductsPage() {
   const [creating, setCreating] = useState(false);
   /** id ของสินค้าที่กำลังทำซ้ำอยู่ (กันกดรัว = ได้สำเนาหลายตัว) */
   const [duplicating, setDuplicating] = useState<string | null>(null);
+  /** หมวดหมู่ตามที่แอดมินตั้งไว้ในตั้งค่าระบบ (ยังไม่โหลดเสร็จ = ค่าเริ่มต้นจากโค้ด) */
+  const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
   const mayManage = useCan()("products.manage"); // ฝ่ายแอดมินดูได้อย่างเดียว
   const router = useRouter();
 
@@ -211,6 +214,9 @@ export default function AdminProductsPage() {
   // "สั่งกี่ชิ้นถึงต้องถามสต๊อก" ย้ายไปตั้งในหน้าแก้ไขสินค้าอย่างเดียวแล้ว (📦 เงื่อนไขการสั่ง)
   // — เอาช่องออกจากแถวลิสต์เพราะกินความกว้างจนชื่อสินค้าโดนบีบ
 
+  useEffect(() => {
+    fetchCategories().then(setCats);
+  }, []);
   // จำมุมมองที่เลือกไว้ในเบราว์เซอร์
   useEffect(() => {
     const saved = localStorage.getItem("admin.products.view");
@@ -232,7 +238,7 @@ export default function AdminProductsPage() {
 
   // จำนวนต่อหมวด (จากทั้งหมด ไม่ขึ้นกับตัวกรอง) สำหรับ chip
   const catCounts = useMemo(() => {
-    const m = new Map<CategoryId, number>();
+    const m = new Map<string, number>();
     for (const p of products) m.set(p.category, (m.get(p.category) ?? 0) + 1);
     return m;
   }, [products]);
@@ -443,7 +449,7 @@ export default function AdminProductsPage() {
               label="ทุกหมวด"
               count={products.length}
             />
-            {CATEGORIES.filter((c) => (catCounts.get(c.id) ?? 0) > 0).map((c) => (
+            {cats.filter((c) => (catCounts.get(c.id) ?? 0) > 0).map((c) => (
               <FilterChip
                 key={c.id}
                 active={catFilter === c.id}
@@ -458,7 +464,7 @@ export default function AdminProductsPage() {
             onClick={() => setCatOpen((o) => !o)}
             className="mt-1.5 text-[11px] font-bold text-slate-400 transition hover:text-slate-600"
           >
-            {catOpen ? "▴ ย่อรายการหมวด" : `▾ ดูหมวดทั้งหมด (${CATEGORIES.filter((c) => (catCounts.get(c.id) ?? 0) > 0).length})`}
+            {catOpen ? "▴ ย่อรายการหมวด" : `▾ ดูหมวดทั้งหมด (${cats.filter((c) => (catCounts.get(c.id) ?? 0) > 0).length})`}
           </button>
         </div>
 
@@ -511,7 +517,7 @@ export default function AdminProductsPage() {
         />
       ) : grouped ? (
         <div className="mt-5 space-y-6">
-          {CATEGORIES.map((c) => {
+          {cats.map((c) => {
             const inCat = visible.filter((p) => p.category === c.id);
             if (inCat.length === 0) return null;
             return (
