@@ -20,6 +20,8 @@ const ICON = {
   receipt: "M6 3h12v18l-2.5-1.6L13 21l-2.5-1.6L8 21l-2-1.6V3Zm3 5h6M9 12h6M9 16h4",
   user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0",
   logout: "M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4M6 12h11",
+  key: "M7.5 15.5m-4.7 0a4.7 4.7 0 1 0 9.4 0a4.7 4.7 0 1 0-9.4 0M11 12l10-10m-5.5 5.5 3 3L22 7l-3-3",
+  cart: "M3.5 5H6l2.2 10h9.6l2.2-8H7M10 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm8 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z",
 } as const;
 
 /** เมนูในดรอปดาวน์บัญชี */
@@ -30,10 +32,10 @@ const ACCOUNT_MENU = [
 ];
 
 /** ไอคอนเส้นขนาดเดียวกันทุกอัน */
-function LineIcon({ d, className = "" }: { d: string; className?: string }) {
+function LineIcon({ d, className = "", size = 18 }: { d: string; className?: string; size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"
-      strokeLinejoin="round" className={`h-[18px] w-[18px] ${className}`} aria-hidden="true">
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.7"
+      strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
       <path d={d} />
     </svg>
   );
@@ -139,7 +141,7 @@ export default function Navbar() {
                   aria-label={`บัญชีของ ${customer.name || "สมาชิก"}`}
                   title={customer.name || "บัญชีของฉัน"}
                 >
-                  👤
+                  <LineIcon d={ICON.user} size={20} />
                 </button>
                 {acctOpen && (
                   <div role="menu" className="acct-pop">
@@ -195,7 +197,7 @@ export default function Navbar() {
               </div>
             ) : (
               <Link href="/account/login" className="icon-btn" aria-label="เข้าสู่ระบบ" title="เข้าสู่ระบบ">
-                🔑
+                <LineIcon d={ICON.key} size={20} />
               </Link>
             )}
 
@@ -205,7 +207,7 @@ export default function Navbar() {
               aria-label={`ตะกร้าสินค้า มี ${itemCount} รายการ`}
               title="ตะกร้าสินค้า"
             >
-              🛒
+              <LineIcon d={ICON.cart} size={20} />
               {itemCount > 0 && (
                 <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">
                   {itemCount > 99 ? "99+" : itemCount}
