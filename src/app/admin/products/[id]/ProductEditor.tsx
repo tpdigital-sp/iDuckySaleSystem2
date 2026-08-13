@@ -1291,8 +1291,66 @@ export default function ProductEditor({ product }: { product: Product }) {
   }
 
   /**
+   * ปุ่มเลือก "ราคาของกลุ่มนี้มาจากไหน" — สลับได้ทุกกลุ่ม ไม่ต้องเข้าไปงมในโมดัลตารางราคา
+   *   📊 ในตารางราคา = กลุ่มเป็นคอลัมน์ ราคาต่างกันตามช่วงจำนวน (ต้องกรอกให้ครบทุกตัวเลือก)
+   *   +฿ ที่ตัวเลือกเอง = ราคาบวกเพิ่มต่อตัวเลือก ไม่ต้องมีในตาราง (กลุ่มส่วนใหญ่เป็นแบบนี้)
+   */
+  function priceSourceRow(gi: number, opt: DraftOption) {
+    const isDriver = draft.pricing.driverLabels.includes(opt.label);
+    const multi = opt.display === "multi";
+    // ติ๊กหลายอย่าง + เป็นคอลัมน์ตาราง อยู่ด้วยกันไม่ได้ — ราคาต่อคอลัมน์อิงตัวเลือกเดียวเท่านั้น
+    const tableBlocked = multi && !isDriver;
+    return (
+      <>
+        <div className="inline-flex overflow-hidden rounded-lg bg-white ring-1 ring-slate-200">
+          <button
+            type="button"
+            disabled={tableBlocked}
+            title={
+              tableBlocked
+                ? "กลุ่มนี้ตั้งเป็น ☑ ติ๊กหลายอย่าง — เป็นคอลัมน์ตารางราคาไม่ได้ (เปลี่ยนเป็นปุ่มแยก/dropdown ก่อน)"
+                : "ราคาของกลุ่มนี้อยู่ในตารางราคา — ทุกตัวเลือกต้องมีราคาในตาราง ไม่งั้นหน้าร้านซ่อนตัวนั้น"
+            }
+            onClick={() => !isDriver && toggleDriver(opt.label)}
+            className={`px-2.5 py-1 text-[11px] font-semibold transition ${
+              isDriver
+                ? "bg-amber-500 text-white"
+                : tableBlocked
+                  ? "bg-white text-slate-300"
+                  : "bg-white text-slate-500 hover:bg-slate-50"
+            }`}
+          >
+            📊 ในตารางราคา
+          </button>
+          <button
+            type="button"
+            title="ราคาบวกเพิ่มต่อตัวเลือก กรอกที่ช่อง +฿ ของแต่ละตัวเลือก — ไม่ต้องมีในตารางราคา"
+            onClick={() =>
+              isDriver && confirmDropDriver(opt.label, "ย้ายไปคิดราคาที่ช่อง +฿ ของแต่ละตัวเลือกแทน")
+            }
+            className={`px-2.5 py-1 text-[11px] font-semibold transition ${
+              !isDriver ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
+            }`}
+          >
+            +฿ ที่ตัวเลือกเอง
+          </button>
+        </div>
+        {driverUndo?.label === opt.label && (
+          <button
+            type="button"
+            onClick={undoDropDriver}
+            className="rounded-lg bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100"
+          >
+            ↩︎ เลิกทำ — คืนตารางราคาเดิม
+          </button>
+        )}
+      </>
+    );
+  }
+
+  /**
    * ปุ่มเลือก "แสดงหน้าร้าน" ของกลุ่มตัวเลือก — ปุ่มแยก / dropdown (เลือกได้ 1 อย่าง) · ☑ ติ๊กหลายอย่าง
-   * กลุ่มที่เป็นแกนตารางราคา (คอลัมน์) ติ๊กหลายอย่างไม่ได้ — ราคาต่อคอลัมน์จะหาไม่เจอ
+   * กลุ่มที่เป็นแกนตารางราคา (คอลัมน์) ติ๊กหลายอย่างไม่ได้ — กดแล้วถามก่อนถอดออกจากตารางให้
    */
   function displayModeRow(gi: number, opt: DraftOption) {
     const isDriver = draft.pricing.driverLabels.includes(opt.label);
@@ -1757,26 +1815,75 @@ export default function ProductEditor({ product }: { product: Product }) {
 
   /**
    * เอากลุ่มออกจาก "คอลัมน์ตารางราคา" — กลุ่มที่ราคาไปกรอกที่ +฿ ของแต่ละตัวเลือกเอง
-   * คีย์ช่องราคาอิงลำดับ driverLabels (คั่นด้วย │) — ถอดแกนเฉย ๆ คีย์เก่าจะยาวเกิน หาไม่เจอทั้งตาราง
-   * → ยุบคีย์ให้ด้วย (ตัดค่าของแกนที่ถอดออก · คีย์ที่ชนกันเก็บแถวแรกที่มีราคาเป็นตัวแทน)
+   *
+   * ⚠️ ตารางเก็บราคาแยกตามตัวเลือกของแกนนี้อยู่ — ถอดแกนแล้วช่องพวกนั้นไม่มีที่อยู่
+   * ห้ามทิ้งเงียบ ๆ (ราคาที่กรอกมาทั้งหน้าหายหมด) → ย้ายตัวเลขออกมาแทน:
+   *   • ตารางเหลือแถวของตัวเลือก "ถูกสุด" เป็นราคาฐาน
+   *   • ตัวเลือกที่เหลือ ส่วนต่างจากฐานไปลงช่อง +฿ ของตัวเอง (เฉพาะช่องที่ยังว่าง ไม่ทับของเดิม)
+   * ราคารวมของตัวเลือกที่ช่วงราคาแรกจึงเท่าเดิม · ช่วงอื่นเป็นค่าประมาณ (+฿ มีตัวเดียวต่อตัวเลือก)
+   * ถอดพลาดกดคืนได้จาก driverUndo
    */
   function dropDriverIn(d: Draft, label: string): Draft {
     const di = d.pricing.driverLabels.indexOf(label);
     if (di < 0) return d;
     const width = d.pricing.driverLabels.length;
+    const num = (v?: string) => {
+      const n = Number(String(v ?? "").trim());
+      return Number.isFinite(n) && String(v ?? "").trim() !== "" ? n : null;
+    };
+    // ราคาตัวแทนของตัวเลือกหนึ่ง = ราคาช่วงแรกของคอลัมน์แรกที่ตัวเลือกนั้นถืออยู่
+    const priceOf = (name: string): number | null => {
+      for (const [key, v] of Object.entries(d.pricing.cells)) {
+        const parts = key.split("│");
+        if (parts.length === width && parts[di] === name) {
+          const n = num(v[0]);
+          if (n !== null) return n;
+        }
+      }
+      return null;
+    };
+    const group = d.options.find((o) => o.label === label);
+    const priced = (group?.choices ?? [])
+      .map((c) => ({ name: c.name.trim(), price: priceOf(c.name.trim()) }))
+      .filter((c): c is { name: string; price: number } => !!c.name && c.price !== null);
+    // ตัวเลือกที่ถูกสุด = ราคาฐานที่ค้างไว้ในตาราง (ตัวอื่นบวกส่วนต่างเอา ไม่ต้องมี +฿ ติดลบ)
+    const baseName = priced.length ? priced.reduce((a, b) => (b.price < a.price ? b : a)).name : "";
+    const basePrice = priced.find((c) => c.name === baseName)?.price ?? 0;
+
     const filled = (arr?: string[]) => (arr ?? []).some((v) => String(v ?? "").trim());
     const collapse = (cells: Record<string, string[]>): Record<string, string[]> => {
       const out: Record<string, string[]> = {};
+      const keep: Record<string, boolean> = {}; // คีย์นี้ได้แถวของตัวเลือกฐานไปแล้วหรือยัง
       for (const [key, v] of Object.entries(cells)) {
         const parts = key.split("│");
         if (parts.length !== width) continue; // คีย์ค้างจากแกนชุดเก่า — ยุบไม่ได้ ทิ้งไป
         const nk = parts.filter((_, i) => i !== di).join("│");
-        if (!(nk in out) || (!filled(out[nk]) && filled(v))) out[nk] = v;
+        const isBase = parts[di] === baseName;
+        if (isBase && !keep[nk]) {
+          out[nk] = v;
+          keep[nk] = true;
+        } else if (!keep[nk] && (!(nk in out) || (!filled(out[nk]) && filled(v)))) {
+          out[nk] = v;
+        }
       }
       return out;
     };
     return {
       ...d,
+      // ย้ายส่วนต่างราคาลง +฿ ของแต่ละตัวเลือก — ตัวที่แอดมินกรอก +฿ ไว้เองแล้วไม่ยุ่ง
+      options: d.options.map((o) =>
+        o.label !== label
+          ? o
+          : {
+              ...o,
+              choices: o.choices.map((c) => {
+                if (String(c.extra ?? "").trim()) return c;
+                const p = priced.find((x) => x.name === c.name.trim());
+                if (!p || p.price === basePrice) return c;
+                return { ...c, extra: String(p.price - basePrice) };
+              }),
+            }
+      ),
       pricing: {
         ...d.pricing,
         driverLabels: d.pricing.driverLabels.filter((_, i) => i !== di),
@@ -1786,16 +1893,34 @@ export default function ProductEditor({ product }: { product: Product }) {
     };
   }
 
+  /** ตารางราคา + กลุ่มตัวเลือก ก่อนถอดแกนล่าสุด — กดคืนได้ถ้าถอดผิดตัว */
+  const [driverUndo, setDriverUndo] = useState<{ label: string; before: Draft } | null>(null);
+
   /** ถามก่อนถอดแกน แล้วถอด — ใช้จากแถวกลุ่มตัวเลือก (ป้ายเตือน + ปุ่มติ๊กหลายอย่าง) */
   function confirmDropDriver(label: string, why: string): boolean {
+    const inTable = draft.pricing.driverLabels.length === 1 ? "ตารางราคาจะเหลือราคาเดียวตามจำนวน" : "ตารางราคาจะลดไปหนึ่งคอลัมน์";
     if (
       !window.confirm(
-        `กลุ่ม “${label}” เป็นคอลัมน์ของตารางราคาอยู่\n${why}\n\nกดตกลง = เอาออกจากคอลัมน์ตารางราคา แล้วไปกรอกราคาที่ช่อง +฿ ของแต่ละตัวเลือกแทน`
+        `กลุ่ม “${label}” เป็นคอลัมน์ของตารางราคาอยู่\n${why}\n\n` +
+          `กดตกลง = เอาออกจากคอลัมน์ตารางราคา\n` +
+          `• ${inTable} (ใช้ราคาของตัวเลือกที่ถูกที่สุดเป็นราคาฐาน)\n` +
+          `• ส่วนต่างของตัวเลือกอื่นย้ายไปลงช่อง +฿ ของตัวเองให้อัตโนมัติ — ตรวจแล้วแก้ได้\n` +
+          `• กดผิดกด “↩︎ เลิกทำ” คืนตารางเดิมได้`
       )
     )
       return false;
-    setDraft((d) => dropDriverIn(d, label));
+    setDraft((d) => {
+      setDriverUndo({ label, before: d });
+      return dropDriverIn(d, label);
+    });
     return true;
+  }
+
+  /** คืนตารางราคา/ตัวเลือกกลับก่อนถอดแกน */
+  function undoDropDriver() {
+    if (!driverUndo) return;
+    setDraft(driverUndo.before);
+    setDriverUndo(null);
   }
 
   function setCell(key: string, ti: number, val: string) {
@@ -3338,6 +3463,10 @@ export default function ProductEditor({ product }: { product: Product }) {
               )}
               {!isOptFolded(gi) && (
               <>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-semibold text-slate-400">ราคา:</span>
+                {priceSourceRow(gi, opt)}
+              </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-semibold text-slate-400">แสดงหน้าร้าน:</span>
                 {displayModeRow(gi, opt)}
