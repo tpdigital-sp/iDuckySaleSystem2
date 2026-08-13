@@ -21,7 +21,7 @@ import {
   type ShipTier,
 } from "@/lib/products";
 import { autoSeoOf } from "@/lib/auto-seo";
-import { BULK_ASK_DEFAULT, RATE_LABEL } from "@/lib/products";
+import { BULK_ASK_DEFAULT, CONSULT_NOTE_DEFAULT, RATE_LABEL } from "@/lib/products";
 import { hasOverride, resetOverride } from "@/lib/product-store";
 import { deleteProductDb, fetchProductNamesLite, fetchProductRaw, persistProduct } from "@/lib/product-repo";
 import { adminProductPath, shortChoice, slugifyProductName } from "@/lib/products";
@@ -189,6 +189,12 @@ type Draft = {
   terms: string;
   /** บังคับแนบลายก่อนสั่ง (ค่าเริ่มต้น = บังคับ) */
   artworkRequired: boolean;
+  /** 💬 ต้องคุยลายกับแอดมินก่อนสั่ง (งานปัก/งานตีลาย) */
+  artworkConsult: boolean;
+  /** เหตุผล/รายละเอียดที่ลูกค้าเห็นในกล่องคุยลาย (ว่าง = ใช้ข้อความกลาง) */
+  artworkConsultNote: string;
+  /** true = สั่งไม่ได้จนกว่าลูกค้าจะติ๊กว่าคุยแล้ว · false = แค่แนะนำให้ทัก */
+  artworkConsultBlock: boolean;
   /** สถานะตรวจสอบหลังบ้าน (มีค่า = ตรวจแล้ว) */
   reviewed?: ProductReview;
   /** ปิดการมองเห็นบนหน้าร้าน (ตั้งจากหน้ารายการสินค้า) — พกผ่านดราฟต์ไว้ ไม่ให้หายตอนบันทึก */
@@ -482,6 +488,9 @@ function toDraft(p: Product): Draft {
     templateIds: [...(p.templateIds ?? [])],
     terms: p.terms ?? "",
     artworkRequired: p.artworkRequired !== false,
+    artworkConsult: !!p.artworkConsult?.enabled,
+    artworkConsultNote: p.artworkConsult?.note ?? "",
+    artworkConsultBlock: p.artworkConsult?.block !== false,
     reviewed: p.reviewed,
     hidden: p.hidden,
   };
@@ -2416,6 +2425,14 @@ export default function ProductEditor({ product }: { product: Product }) {
       templateIds: draft.templateIds.length ? [...draft.templateIds] : undefined,
       terms: draft.terms.trim() || undefined,
       artworkRequired: draft.artworkRequired ? undefined : false, // undefined = บังคับ (ค่าเริ่มต้น)
+      // 💬 คุยลายกับแอดมินก่อน — ปิดอยู่ = ไม่เก็บฟิลด์เลย (undefined = สั่งได้เลยตามปกติ)
+      artworkConsult: draft.artworkConsult
+        ? {
+            enabled: true,
+            note: draft.artworkConsultNote.trim() || undefined,
+            block: draft.artworkConsultBlock ? undefined : false, // undefined = บล็อก (ค่าเริ่มต้น)
+          }
+        : undefined,
       reviewed: draft.reviewed,
       hidden: draft.hidden,
     };
@@ -5018,6 +5035,59 @@ export default function ProductEditor({ product }: { product: Product }) {
             </span>
           </span>
         </label>
+
+        {/* ②.5 คุยลายกับแอดมินก่อน — งานปัก/งานตีลาย ที่ต้องตกลงแบบกันก่อนเริ่มผลิต */}
+        <div
+          className={`mt-3 rounded-xl p-3 ring-1 ${
+            draft.artworkConsult ? "bg-emerald-50/70 ring-emerald-300" : "bg-slate-50 ring-slate-200"
+          }`}
+        >
+          <label className="flex cursor-pointer items-start gap-2">
+            <input
+              type="checkbox"
+              checked={draft.artworkConsult}
+              onChange={(e) => patch({ artworkConsult: e.target.checked })}
+              className="mt-0.5 h-4 w-4 accent-emerald-500"
+            />
+            <span className="text-xs">
+              <span className="block font-bold text-slate-700">💬 ต้องคุยลายกับแอดมินก่อนสั่ง</span>
+              <span className="block text-slate-500">
+                สำหรับงานปัก/งานตีลาย ที่ต้องคุยไฟล์กันก่อน — หน้าสินค้าจะขึ้นกล่องเขียว &ldquo;ทักไลน์ส่งลายให้แอดมินดู&rdquo;
+                แล้วให้ลูกค้าติ๊กยืนยันว่าคุยแล้วถึงจะกดสั่งได้ · เปิดข้อนี้แล้ว &ldquo;บังคับแนบลาย&rdquo; ด้านบนจะไม่บังคับ
+                (ไฟล์จริงตกลงกันในแชทอยู่แล้ว ลูกค้าแนบภาพตัวอย่างเพิ่มได้ตามสมัครใจ)
+              </span>
+            </span>
+          </label>
+
+          {draft.artworkConsult && (
+            <div className="mt-2.5 space-y-2 pl-6">
+              <label className="block text-[11px] font-bold text-slate-600">
+                ข้อความที่ลูกค้าเห็น (เว้นว่าง = ใช้ข้อความกลางของระบบ)
+                <textarea
+                  value={draft.artworkConsultNote}
+                  onChange={(e) => patch({ artworkConsultNote: e.target.value.slice(0, 400) })}
+                  rows={2}
+                  placeholder={CONSULT_NOTE_DEFAULT}
+                  className="mt-1 w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-normal leading-relaxed text-slate-800 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                />
+              </label>
+              <label className="flex cursor-pointer items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={draft.artworkConsultBlock}
+                  onChange={(e) => patch({ artworkConsultBlock: e.target.checked })}
+                  className="mt-0.5 h-4 w-4 accent-rose-500"
+                />
+                <span className="text-[11px]">
+                  <span className="block font-bold text-slate-700">กดสั่งไม่ได้จนกว่าจะติ๊กว่าคุยแล้ว</span>
+                  <span className="block text-slate-500">
+                    เอาติ๊กออก = แค่แนะนำให้ทักก่อน ลูกค้ากดสั่งได้เลย (ออเดอร์จะติดหมายเหตุว่ายังไม่ได้คุย)
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
+        </div>
 
         {/* ③ ค่าจัดส่งเฉพาะสินค้านี้ — 2 ช่องที่เกี่ยวกัน อยู่กล่องเดียวกัน */}
         <div className="mt-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">

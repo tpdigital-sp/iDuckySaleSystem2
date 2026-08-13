@@ -39,6 +39,9 @@ import {
   unitPriceFor,
   needsStockCheck,
   artworkIsRequired,
+  artworkConsultOf,
+  CONSULT_LABEL,
+  CONSULT_NOTE_DEFAULT,
   isMultiOption,
   hasChoiceQty,
   anyChoiceQty,
@@ -251,6 +254,11 @@ export default function ProductDetail({
   const [extraOpen, setExtraOpen] = useState<"art" | null>(null);
   // สินค้าที่บังคับแนบลาย → เปิดกล่องค้างไว้จนกว่าลูกค้าจะแตะปิดเอง
   const [artTouched, setArtTouched] = useState(false);
+  // 💬 งานที่ต้องคุยลายกับแอดมินก่อน (งานปัก/งานตีลาย) — ติ๊กยืนยันว่าคุยแล้ว + ชื่อไลน์ที่ใช้คุย
+  const [consultOk, setConsultOk] = useState(false);
+  const [consultRef, setConsultRef] = useState("");
+  // กดสั่งทั้งที่ยังไม่ติ๊ก → ตีกรอบแดงเตือน
+  const [consultWarn, setConsultWarn] = useState(false);
   // แถบซื้อลอยล่างจอ (มือถือ) — โผล่เมื่อกล่องสั่งซื้อหลักเลื่อนพ้นจอ
   const orderBoxRef = useRef<HTMLDivElement>(null);
   const [showBuyBar, setShowBuyBar] = useState(false);
@@ -922,8 +930,15 @@ export default function ProductDetail({
   // สั่งถึงเกณฑ์จำนวนมากไหม (ตั้งต่อสินค้าได้ในหลังบ้าน)
   const bulkAsk = needsStockCheck(product, qty);
 
+  // 💬 งานที่ต้องคุยลายกับแอดมินก่อน (งานปัก ฯลฯ) — ตั้งต่อสินค้าในหลังบ้าน
+  const consult = artworkConsultOf(product);
+  // โหมดออกแบบบนเว็บ/โหมดแอดมินสั่งแทน = คุยกันอยู่แล้ว ไม่ต้องกั้นซ้ำ
+  const consultGate = !!consult && consult.block !== false && !studioMode && !staffOrdering;
+  const consultBlocked = consultGate && !consultOk;
+
   // 🎨 ต้องแนบลายก่อนสั่งไหม — ต้องมีรูปอัปโหลด หรือ ลิงก์/อีเมล อย่างน้อยหนึ่งอย่าง
-  const artRequired = artworkIsRequired(product);
+  // งานที่ต้องคุยลายก่อน: ไฟล์จริงจะตกลงกันในแชท ไม่บังคับแนบตรงนี้ (แนบเป็นตัวอย่างได้)
+  const artRequired = artworkIsRequired(product) && !consult;
   const artProvided = artFiles.length > 0 || artLink.trim().length > 0;
   // โหมดออกแบบบนเว็บ: "แบบที่ลูกค้าวางเอง" คือลายอยู่แล้ว ไม่ต้องมีช่องแนบไฟล์
   // โหมดแอดมิน: ลายมาทางไลน์/อีเมลอยู่แล้ว ไม่ต้องบังคับแนบตรงนี้ (แนบเพิ่มในออเดอร์ทีหลังได้)
@@ -937,6 +952,12 @@ export default function ProductDetail({
     // โหมดออกแบบบนเว็บ: ต้องวางลายให้เสร็จก่อนถึงจะใส่ตะกร้าได้
     if (studioMode && !designDone) {
       openStudio();
+      return;
+    }
+    // 💬 งานปัก/งานตีลาย — ต้องคุยลายกับแอดมินให้จบก่อนถึงจะสั่งได้
+    if (consultBlocked) {
+      setConsultWarn(true);
+      document.getElementById("consult-box")?.scrollIntoView({ block: "center", behavior: "smooth" });
       return;
     }
     if (artBlocked) {
@@ -977,6 +998,14 @@ export default function ProductDetail({
     }
     // สั่งจำนวนมาก → ติดธงให้ทีมเช็คสต๊อก/คิวผลิตแล้วยืนยันจำนวนกับลูกค้าก่อนเริ่มงาน
     if (bulkAsk) extra["รอเช็คสต๊อก"] = "สั่งจำนวนมาก — รอทีมงานยืนยันจำนวน";
+    // งานที่ต้องคุยลายก่อน — ติดไปกับใบงานว่าคุยจบแล้ว/คุยกับใคร (หรือยังไม่คุย ถ้าตั้งไว้แค่แนะนำ)
+    if (consult) {
+      extra[CONSULT_LABEL] = consultOk
+        ? consultRef.trim()
+          ? `คุยลายกับแอดมินแล้ว · ${consultRef.trim()}`
+          : "คุยลายกับแอดมินแล้ว"
+        : "ยังไม่ได้คุย — รอแอดมินทักกลับเรื่องลาย";
+    }
     if (note.trim()) extra["หมายเหตุ"] = note.trim();
     // จำนวนลายที่คละ (เรทที่มีระบบลาย / สินค้าคิดเรทตามชิ้นต่อลาย) — เก็บเป็นตัวเลือกให้เห็นในตะกร้า/ออเดอร์
     if ((rate?.minPerDesign || tierByDesign || mixRule) && designs >= 1) extra[DESIGN_LABEL] = `${designs} ลาย`;
@@ -2089,7 +2118,9 @@ export default function ProductDetail({
                   >
                     {added
                       ? "✓ เพิ่มลงตะกร้าแล้ว!"
-                      : artBlocked
+                      : consultBlocked
+                        ? "💬 คุยลายกับแอดมินก่อนถึงจะสั่งได้"
+                        : artBlocked
                         ? "🎨 แนบลายก่อนถึงจะสั่งได้"
                         : useCustom && customAsk
                         ? "🛒 สั่งเลย — แอดมินตีราคาแล้วแจ้งกลับ"
@@ -2199,6 +2230,18 @@ export default function ProductDetail({
                     )}
                   </p>
                 </div>
+              )}
+              {consultBlocked && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConsultWarn(true);
+                    document.getElementById("consult-box")?.scrollIntoView({ block: "center", behavior: "smooth" });
+                  }}
+                  className="mt-2 w-full rounded-xl bg-emerald-50 px-3 py-2 text-left text-xs font-bold text-emerald-800 ring-1 ring-emerald-200 transition hover:bg-emerald-100"
+                >
+                  💬 งานนี้ต้องคุยลายกับแอดมินก่อน — แตะเพื่อไปที่ขั้นตอนทักไลน์
+                </button>
               )}
               {artBlocked && (
                 <button
@@ -2487,6 +2530,83 @@ export default function ProductDetail({
             สินค้าที่ออกแบบบนเว็บได้ (มีเทมเพลต) ข้ามช่อง "แนบลายของคุณ" ไปเลย —
             ลายมาจากแบบที่ลูกค้าวางเองในจอสร้างงาน ไม่ต้องให้อัปไฟล์ซ้ำอีกทาง
           */}
+          {/*
+            ═══ 💬 คุยลายกับแอดมินก่อนสั่ง — งานปัก/งานตีลาย ═══
+            งานที่ต้องเห็นแบบตรงกันก่อนเริ่มผลิต (ปักต้องแปลงไฟล์/ตีลายให้ดูก่อน)
+            ทักไลน์ → คุยจบ → ติ๊กยืนยัน → ถึงจะกดสั่งได้ (แอดมินตั้งเป็น "แค่แนะนำ" ก็ได้)
+            อยู่เหนือกล่องแนบลาย เพราะเป็นขั้นตอนแรกของงานประเภทนี้
+          */}
+          {consult && !studioMode && (
+            <div
+              id="consult-box"
+              className={`mt-4 rounded-3xl p-4 ring-1 transition ${
+                consultOk
+                  ? "bg-emerald-50/70 ring-emerald-300"
+                  : consultWarn
+                    ? "bg-rose-50 ring-2 ring-rose-300"
+                    : "bg-emerald-50/60 ring-emerald-200"
+              }`}
+            >
+              <div className="flex items-start gap-2">
+                <span className="text-lg leading-none">💬</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-stone-700">
+                    คุยลายกับแอดมินก่อนสั่ง
+                    {consultOk ? (
+                      <span className="ml-2 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">คุยแล้ว ✓</span>
+                    ) : consultGate ? (
+                      <span className="ml-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">ต้องคุยก่อน *</span>
+                    ) : (
+                      <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">แนะนำ</span>
+                    )}
+                  </p>
+                  <p className="mt-1 text-[12px] leading-relaxed text-stone-600">{consult.note?.trim() || CONSULT_NOTE_DEFAULT}</p>
+                </div>
+              </div>
+
+              <a
+                href={LINE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
+              >
+                💬 ทักไลน์ส่งลายให้แอดมินดู
+              </a>
+
+              <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-2xl bg-white/80 p-3 ring-1 ring-emerald-200">
+                <input
+                  type="checkbox"
+                  checked={consultOk}
+                  onChange={(e) => {
+                    setConsultOk(e.target.checked);
+                    if (e.target.checked) setConsultWarn(false);
+                  }}
+                  className="mt-0.5 h-4 w-4 accent-emerald-500"
+                />
+                <span className="text-xs">
+                  <span className="block font-bold text-stone-700">คุยกับแอดมินเรียบร้อยแล้ว — ตกลงลายกันแล้ว</span>
+                  <span className="block text-stone-500">ติ๊กช่องนี้แล้วกดสั่งได้เลย ทางร้านจะเริ่มงานตามลายที่ตกลงกันไว้</span>
+                </span>
+              </label>
+
+              {consultOk && (
+                <input
+                  type="text"
+                  value={consultRef}
+                  onChange={(e) => setConsultRef(e.target.value.slice(0, 120))}
+                  placeholder="ชื่อไลน์ที่ใช้คุย / เลขอ้างอิงที่แอดมินให้ไว้ (ไม่บังคับ)"
+                  className="mt-2 w-full rounded-xl bg-white px-3.5 py-2 text-sm text-stone-700 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                />
+              )}
+
+              {consultWarn && !consultOk && (
+                <p className="mt-2 text-[11px] font-bold text-rose-600">
+                  ⚠️ งานนี้ต้องคุยลายกับแอดมินก่อนนะครับ — ทักไลน์คุยให้จบ แล้วกลับมาติ๊กช่องด้านบน
+                </p>
+              )}
+            </div>
+          )}
+
           <div className={`mt-4 overflow-hidden rounded-3xl bg-white ring-1 ring-stone-200 ${studioMode ? "hidden" : ""}`}>
             <button
               type="button"
@@ -2772,7 +2892,7 @@ export default function ProductDetail({
                 added ? "bg-emerald-500" : "bg-amber-400 hover:bg-amber-500 disabled:opacity-40"
               }`}
             >
-              {added ? "✓ เพิ่มแล้ว!" : artBlocked ? "🎨 แนบลายก่อน" : "🛒 เพิ่มลงตะกร้า"}
+              {added ? "✓ เพิ่มแล้ว!" : consultBlocked ? "💬 คุยลายก่อน" : artBlocked ? "🎨 แนบลายก่อน" : "🛒 เพิ่มลงตะกร้า"}
             </button>
           )}
         </div>
