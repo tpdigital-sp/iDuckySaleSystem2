@@ -71,7 +71,10 @@ export function normalizeWixUrl(input: string): string {
 }
 
 /** รูปสินค้าสูงสุดที่ส่งกลับจาก "รูปทั้งหน้า" (หน้ายาว ๆ มีรูปเยอะ — เอาเท่าที่เลือกไหว) */
-const MAX_PAGE_IMAGES = 40;
+const MAX_PAGE_IMAGES = 60;
+
+/** รูปประกอบที่ไม่ใช่รูปสินค้า: ddb95188/d18e3f8f/e2a0c467 = ตัวคั่น/แบนเนอร์ · 551cc5af = โลโก้ "uc" (โผล่ก่อนตารางแรกทุกหน้า) */
+const JUNK_IMAGE = /ddb95188|d18e3f8f|e2a0c467|551cc5af/;
 
 /** URL รูปขนาดใช้งานจริงจาก id ของ Wix media */
 const fillUrl = (id: string) => `https://static.wixstatic.com/media/${id}/v1/fill/w_900,h_675,al_c,q_85/file.jpg`;
@@ -87,20 +90,30 @@ export async function scrapeWixPage(
   const html = await getHtml(url);
   if (!html) return { products: [], skipped: 0, pageImages: [] };
 
-  // รูป/ไอคอนขยะที่ไม่ใช่รูปสินค้า: ddb95188/d18e3f8f/e2a0c467 = ตัวคั่น/แบนเนอร์ · 551cc5af = โลโก้ "uc" (โผล่ก่อนตารางแรกทุกหน้า)
-  const imgs = [...html.matchAll(/<img[^>]+src="(https:\/\/static\.wixstatic\.com\/media\/959b83_[0-9a-f]+~mv2\.(?:jpg|png)[^"]*)"/g)]
-    .map((m) => ({ pos: m.index!, id: (m[1].match(/media\/(959b83_[0-9a-f]+~mv2\.(?:jpg|png))/) || [])[1], w: +((m[1].match(/w_(\d+)/) || [])[1] || 0) }))
-    .filter((x) => x.id && !/ddb95188|d18e3f8f|e2a0c467|551cc5af/.test(x.id) && x.w >= 90 && x.w <= 900);
+  // รูปที่ฝังมาในหน้าเป็น <img src> (มีตำแหน่งจริง → ใช้จับคู่กับตารางของสินค้าได้)
+  // ไอคอนโซเชียลของ Wix เอง (บัญชี 11062b_) ไม่ใช่รูปสินค้า — ตัดทิ้งเสมอ
+  const imgs = [...html.matchAll(/<img[^>]+src="(https:\/\/static\.wixstatic\.com\/media\/([0-9a-f]{6}_[0-9a-f]{32}~mv2\.[a-z0-9]+)[^"]*)"/g)]
+    .map((m) => ({ pos: m.index!, id: m[2], w: +((m[1].match(/w_(\d+)/) || [])[1] || 0) }))
+    .filter((x) => !x.id.startsWith("11062b_") && !JUNK_IMAGE.test(x.id));
 
   /**
-   * รูปทุกใบในหน้า (เรียงตามลำดับที่ปรากฏบนหน้า ไม่ซ้ำ) — ให้แอดมินเลือกเองตอน "เอาแค่รูป"
-   * ใช้ตอนที่รูปไม่ได้อยู่ในช่วงของตารางไหนเลย (หน้าที่วางแกลเลอรีรวมไว้ท้ายหน้า/สลับตำแหน่ง)
+   * รูปแกลเลอรี (Wix Pro Gallery) — ไม่ได้อยู่ใน <img> ของ HTML เพราะ Wix เรนเดอร์ทีหลังด้วย JS
+   * ตัวรูปจริงอยู่ในก้อน JSON ของหน้าเป็น "mediaUrl":"959b83_…~mv2.jpg" (ชุดรูปถ่ายสินค้าส่วนใหญ่อยู่ตรงนี้)
+   */
+  const galleryIds = [...html.matchAll(/"mediaUrl":"([0-9a-f]{6}_[0-9a-f]{32}~mv2\.[a-z0-9]+)"/g)]
+    .map((m) => m[1])
+    .filter((id) => !id.startsWith("11062b_") && !JUNK_IMAGE.test(id));
+
+  /**
+   * รูปทุกใบในหน้า (ไม่ซ้ำ) — ให้แอดมินเลือกเองตอน "เอาแค่รูป"
+   * เรียง: รูปที่ฝังในหน้าตามลำดับที่ปรากฏ → ตามด้วยรูปแกลเลอรีที่เหลือ
+   * ไอคอนเล็ก ๆ (โลโก้/ปุ่มโซเชียล กว้างไม่ถึง 120px) ไม่นับเป็นรูปสินค้า
    */
   const pageSeen = new Set<string>();
-  const pageImages = imgs
-    .filter((im) => (pageSeen.has(im.id!) ? false : (pageSeen.add(im.id!), true)))
+  const pageImages = [...imgs.filter((im) => im.w >= 120).map((im) => im.id), ...galleryIds]
+    .filter((id) => (pageSeen.has(id) ? false : (pageSeen.add(id), true)))
     .slice(0, MAX_PAGE_IMAGES)
-    .map((im) => fillUrl(im.id!));
+    .map(fillUrl);
 
   // เก็บตำแหน่งตารางทั้งหมดไว้ก่อน เพื่อให้รู้ขอบเขต "ตารางถัดไป" (ใช้จับรูปที่อยู่หลังตารางของสินค้านี้)
   const tables = [...html.matchAll(/<table[\s\S]*?<\/table>/g)];
@@ -144,7 +157,8 @@ export async function scrapeWixPage(
     if (detected) {
       // โครง Wix: ชื่อ → ตารางราคา → แกลเลอรีรูป · รูปสินค้าจึงอยู่ "หลัง" ตารางของสินค้านี้ จนถึงตารางถัดไป
       // (เดิมจับจากช่วงก่อนตาราง ทำให้สินค้าตัวแรกได้โลโก้ และตัวถัดๆ ได้รูปของสินค้าก่อนหน้า — เพี้ยนทั้งหมด)
-      const cands = imgs.filter((im) => im.pos > end && im.pos < nextStart);
+      // เอาเฉพาะรูปขนาด "รูปสินค้า" (90-900px) — เล็กกว่านี้คือไอคอน ใหญ่กว่าคือแบนเนอร์เต็มความกว้าง
+      const cands = imgs.filter((im) => im.pos > end && im.pos < nextStart && im.w >= 90 && im.w <= 900);
       if (cands.length) {
         // เก็บทุกรูปในช่วงนี้ (ไม่ซ้ำ, เรียงใหญ่→เล็ก, สูงสุด 8) ให้แอดมินเลือกตอนนำเข้า
         const seen = new Set<string>();
