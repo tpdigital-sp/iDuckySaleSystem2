@@ -111,7 +111,7 @@ export default function ResetPasswordPage() {
           ) : (
             <div className="mx-auto mt-5 max-w-[400px] space-y-4">
               <p className="text-center text-sm" style={{ color: "var(--navy-soft)" }}>
-                Enter the email you signed up with and we&apos;ll send you a reset link
+                กรอกอีเมลที่สมัครไว้ เราจะส่งลิงก์ตั้งรหัสใหม่ให้
               </p>
               <input
                 type="email"
@@ -122,7 +122,7 @@ export default function ResetPasswordPage() {
                 className={inputCls}
               />
               <p className="px-1 text-xs" style={{ color: "var(--navy-soft)" }}>
-                * Required
+                * จำเป็นต้องกรอก
               </p>
               {err && <p className="rounded-2xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-600">{err}</p>}
               <div className="dl pt-2 text-center" style={{ background: "transparent" }}>

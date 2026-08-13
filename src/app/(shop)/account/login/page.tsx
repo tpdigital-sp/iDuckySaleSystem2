@@ -141,7 +141,7 @@ function LoginInner() {
               className="btn btn-primary"
               style={{ padding: "9px 14px 9px 20px", fontSize: ".92rem" }}
             >
-              {mode === "login" ? "Create Account" : "Sign In"} <span className="dot">→</span>
+              {mode === "login" ? "Create Account" : "เข้าสู่ระบบ"} <span className="dot">→</span>
             </button>
           </div>
 
@@ -159,7 +159,7 @@ function LoginInner() {
                 User Login
               </h1>
               <p className="mt-1.5 text-center text-sm" style={{ color: "var(--navy-soft)" }}>
-                Member sign in — welcome back to iDucky Prints Studio
+                เข้าสู่ระบบสมาชิก — ยินดีต้อนรับกลับมาที่ iDucky Prints Studio
               </p>
 
               <div className="mx-auto mt-6 max-w-[400px] space-y-4">
@@ -189,7 +189,7 @@ function LoginInner() {
                       onChange={(e) => setRemember(e.target.checked)}
                       className="h-4 w-4 rounded accent-[#57B6E8]"
                     />
-                    Remember email
+                    จำอีเมลไว้
                   </label>
                   <Link href="/account/reset" className="font-medium hover:underline" style={{ color: "var(--blue-deep)" }}>
                     Forgot password?
@@ -211,7 +211,7 @@ function LoginInner() {
                 Create Account
               </h1>
               <p className="mt-1.5 text-center text-sm" style={{ color: "var(--navy-soft)" }}>
-Free membership — keep your order history and get member discounts
+                สมัครสมาชิกฟรี เก็บประวัติสั่งซื้อ รับส่วนลดสมาชิก
               </p>
 
               <div className="mx-auto mt-6 max-w-[400px] space-y-4">
@@ -234,7 +234,7 @@ Free membership — keep your order history and get member discounts
                   className={centerInputCls}
                 />
                 <p className="px-1 text-xs" style={{ color: "var(--navy-soft)" }}>
-                  * Required
+                  * จำเป็นต้องกรอก
                 </p>
               </div>
             </>
@@ -247,7 +247,7 @@ Free membership — keep your order history and get member discounts
 
           <div className="dl mt-7 text-center" style={{ background: "transparent" }}>
             <button type="button" onClick={submit} disabled={busy} className="btn btn-yolk" style={busy ? { opacity: 0.6 } : undefined}>
-              {busy ? "Please wait…" : mode === "login" ? "Sign In" : "Create Account"} <span className="dot">→</span>
+              {busy ? "Please wait…" : mode === "login" ? "เข้าสู่ระบบ" : "Create Account"} <span className="dot">→</span>
             </button>
           </div>
 
@@ -270,7 +270,7 @@ Free membership — keep your order history and get member discounts
           className="mt-5 block text-center text-sm hover:underline"
           style={{ color: "var(--navy-soft)" }}
         >
-          ← Continue shopping
+          ← เลือกซื้อสินค้าต่อ
         </Link>
       </div>
     </div>
