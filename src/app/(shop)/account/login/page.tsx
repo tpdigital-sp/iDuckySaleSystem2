@@ -155,14 +155,11 @@ function LoginInner() {
                 width={408}
                 height={317}
               />
-              <p className="mt-4 text-center text-[11px] font-bold tracking-[0.32em]" style={{ color: "var(--blue-deep)" }}>
-                USER LOGIN
-              </p>
-              <h1 className="mt-1 text-center text-3xl sm:text-[2.15rem]" style={{ color: "var(--navy)", fontFamily: "var(--display)", fontWeight: 500 }}>
-                เข้าสู่ระบบสมาชิก
+              <h1 className="mt-4 text-center text-4xl sm:text-[2.6rem]" style={{ color: "var(--navy)", fontFamily: "var(--display)", fontWeight: 500 }}>
+                User Login
               </h1>
-              <p className="mt-1 text-center text-sm" style={{ color: "var(--navy-soft)" }}>
-                ยินดีต้อนรับกลับมา ที่ iDucky Prints Studio
+              <p className="mt-1.5 text-center text-sm" style={{ color: "var(--navy-soft)" }}>
+                เข้าสู่ระบบสมาชิก — ยินดีต้อนรับกลับมาที่ iDucky Prints Studio
               </p>
 
               <div className="mx-auto mt-6 max-w-[400px] space-y-4">
@@ -210,14 +207,11 @@ function LoginInner() {
                 width={243}
                 height={299}
               />
-              <p className="mt-3 text-center text-[11px] font-bold tracking-[0.32em]" style={{ color: "var(--blue-deep)" }}>
-                CREATE ACCOUNT
-              </p>
-              <h1 className="mt-1 text-center text-3xl sm:text-[2.15rem]" style={{ color: "var(--navy)", fontFamily: "var(--display)", fontWeight: 500 }}>
-                สมัครสมาชิก
+              <h1 className="mt-3 text-center text-4xl sm:text-[2.6rem]" style={{ color: "var(--navy)", fontFamily: "var(--display)", fontWeight: 500 }}>
+                Create Account
               </h1>
-              <p className="mt-1 text-center text-sm" style={{ color: "var(--navy-soft)" }}>
-                สมัครฟรี สะสมประวัติสั่งซื้อ รับส่วนลดสมาชิก
+              <p className="mt-1.5 text-center text-sm" style={{ color: "var(--navy-soft)" }}>
+                สมัครสมาชิกฟรี สะสมประวัติสั่งซื้อ รับส่วนลดสมาชิก
               </p>
 
               <div className="mx-auto mt-6 max-w-[400px] space-y-4">

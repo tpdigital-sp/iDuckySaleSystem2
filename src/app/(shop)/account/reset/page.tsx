@@ -74,12 +74,12 @@ export default function ResetPasswordPage() {
         >
           {/* เป็ดงง ๆ กับกุญแจล็อกรหัส */}
           <img src="/account/duck-reset.svg" alt="" className="mx-auto w-[62%] max-w-[280px]" width={343} height={303} />
-          <p className="mt-4 text-center text-[11px] font-bold tracking-[0.32em]" style={{ color: "var(--blue-deep)" }}>
-            RESET PASSWORD
-          </p>
-          <h1 className="mt-1 text-center text-3xl sm:text-[2.15rem]" style={{ color: "var(--navy)", fontFamily: "var(--display)", fontWeight: 500 }}>
-            {mode === "set" ? "ตั้งรหัสผ่านใหม่" : "รีเซ็ตรหัสผ่าน"}
+          <h1 className="mt-4 text-center text-4xl sm:text-[2.6rem]" style={{ color: "var(--navy)", fontFamily: "var(--display)", fontWeight: 500 }}>
+            {mode === "set" ? "New Password" : "Reset Password"}
           </h1>
+          <p className="mt-1.5 text-center text-sm" style={{ color: "var(--navy-soft)" }}>
+            {mode === "set" ? "ตั้งรหัสผ่านใหม่สำหรับบัญชีของคุณ" : "รีเซ็ตรหัสผ่านสมาชิก"}
+          </p>
 
           {mode === "set" ? (
             done ? (
@@ -88,9 +88,6 @@ export default function ResetPasswordPage() {
               </p>
             ) : (
               <div className="mx-auto mt-5 max-w-[400px] space-y-4">
-                <p className="text-center text-sm" style={{ color: "var(--navy-soft)" }}>
-                  ตั้งรหัสผ่านใหม่สำหรับบัญชีของคุณ
-                </p>
                 <input
                   type="password"
                   value={password}
