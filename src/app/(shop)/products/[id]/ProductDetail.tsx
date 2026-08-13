@@ -133,6 +133,11 @@ function initialSelections(options: ProductOption[]): Record<string, string> {
   );
 }
 
+/** ค่าที่เป็นตัวเลขจริงใช้ตามนั้น · Infinity (= ไม่จำกัด) ค่อยใช้ค่าสำรอง */
+function finiteOr(n: number, fallback: number): number {
+  return Number.isFinite(n) ? n : fallback;
+}
+
 export default function ProductDetail({
   product: initialProduct,
   /** 📐 เทมเพลตไฟล์งานที่ลูกค้าโหลดไปวางลายได้ (ดึงมาให้แล้วจากเซิร์ฟเวอร์) */
@@ -322,8 +327,10 @@ export default function ProductDetail({
   // สินค้าที่คิดเรทตามชิ้นต่อลาย: คละได้ถึงจำนวนชิ้นเสมอ (เกินโควตาเรท = ราคาปรับเป็นเรทต่อลายเอง ไม่บล็อก)
   const maxDesignsRaw = mixRule
     ? // ช่วงที่ยังไม่ถึงเกณฑ์ "1 ลาย/หน่วย" คละได้ไม่จำกัด (หลายลายอยู่บนแผ่นเดียวกันได้)
-      // แต่ช่อง +/− ต้องมีเพดานที่จับต้องได้ เลยตั้งเพดานใช้งานจริงไว้ 99 ลาย
-      Math.max(1, Math.min(99, mixMaxDesigns(mixRule, qty)))
+      // = Infinity → ช่อง +/− ต้องมีเพดานที่จับต้องได้ เลยตั้งเพดานใช้งานจริงไว้ 99 ลาย
+      // ส่วนช่วงที่บังคับ 1 ลาย/หน่วย เพดาน = จำนวนที่สั่ง ซึ่งเป็นเลขจริง ห้ามเอา 99 ไปกดทับ
+      // (เคยพลาด: สั่ง 100 เซ็ต ควรคละได้ 100 ลาย แต่โดนตัดเหลือ 99)
+      Math.max(1, finiteOr(mixMaxDesigns(mixRule, qty), 99))
     : tierByDesign
       ? qty
       : rate?.minPerDesign
