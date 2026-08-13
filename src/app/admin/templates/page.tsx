@@ -263,6 +263,8 @@ function AdminTemplatesInner() {
   /** ความคืบหน้าตอนโยนไฟล์ทีเดียวหลายไฟล์ */
   const [bulk, setBulk] = useState<{ done: number; total: number; name: string } | null>(null);
   const [bulkDrag, setBulkDrag] = useState(false);
+  /** ลากไฟล์อยู่เหนือกล่อง "ยังไม่มีชุดในหมวดนี้" — กล่องว่างก็รับไฟล์ได้ ไม่ต้องเลื่อนขึ้นไปแถบบน */
+  const [emptyDrag, setEmptyDrag] = useState(false);
   /** ชุดที่เติม "ขนาดงานจริง" ย้อนหลังไปแล้ว (ทำครั้งเดียวต่อรอบเปิดหน้า) */
   const sizeFilled = useRef<Set<string>>(new Set());
   /** รูปที่กำลังเปิดดูขนาดใหญ่ */
@@ -1195,28 +1197,112 @@ function AdminTemplatesInner() {
       {loading ? (
         <p className={`mt-6 text-sm ${faint}`}>กำลังโหลด…</p>
       ) : list.length === 0 ? (
-        <div className={`mt-6 ${card} p-8 text-center`}>
-          <p className="text-4xl">📐</p>
-          <p className="mt-2 text-sm font-semibold text-slate-700">ยังไม่มีเทมเพลตในคลัง</p>
-          <p className={`mt-1 text-xs ${muted}`}>กด &ldquo;＋ เพิ่มชุดเทมเพลต&rdquo; แล้วลากไฟล์ .ai มาวางได้เลย</p>
-        </div>
+        /* คลังว่างเปล่า — โยนไฟล์ลงกล่องนี้ได้เลยเหมือนกัน (ไม่ต้องกดสร้างชุดเปล่าก่อน) */
+        <label
+          onDragOver={(e) => {
+            if (!e.dataTransfer.types.includes("Files")) return;
+            e.preventDefault();
+            setEmptyDrag(true);
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setEmptyDrag(false);
+          }}
+          onDrop={(e) => {
+            if (!e.dataTransfer.files?.length) return;
+            e.preventDefault();
+            setEmptyDrag(false);
+            void bulkAdd(e.dataTransfer.files);
+          }}
+          className={`mt-6 block cursor-pointer ${card} p-8 text-center transition ${
+            emptyDrag ? "border-2 border-dashed border-sky-400 bg-sky-50" : ""
+          }`}
+        >
+          <p className="text-4xl">{emptyDrag ? "📥" : "📐"}</p>
+          <p className="mt-2 text-sm font-semibold text-slate-700">
+            {emptyDrag ? "ปล่อยได้เลย — ได้ชุดใหม่ไฟล์ละชุด" : "ยังไม่มีเทมเพลตในคลัง"}
+          </p>
+          <p className={`mt-1 text-xs ${muted}`}>ลากไฟล์ .ai มาวางตรงนี้ หรือแตะเพื่อเลือกไฟล์ (ไฟล์ละชุด)</p>
+          <input
+            type="file"
+            accept=".ai,.pdf,.eps,.svg,.psd,.zip"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              void bulkAdd(e.target.files);
+              e.target.value = "";
+            }}
+          />
+        </label>
       ) : (
         <div className="space-y-5">
           {shown.length === 0 && (
-            <div className={`${brandCard} p-6 text-center`}>
-              <p className={`text-sm ${faint}`}>
-                {q
-                  ? "ไม่มีชุดที่ตรงกับคำค้น"
-                  : cat === NO_CATEGORY
-                    ? "ทุกชุดจัดหมวดไว้ครบแล้ว"
-                    : cat
-                      ? `ยังไม่มีชุดในหมวด “${cat}”`
-                      : "ไม่มีชุดที่ตรงกับที่กรองไว้"}
-              </p>
-              {cat && !q && (
-                <button type="button" onClick={() => add(cat)} className={`${btnDucky} mt-3`}>
-                  {cat === NO_CATEGORY ? "＋ เพิ่มชุดใหม่" : "＋ เพิ่มชุดแรกในหมวดนี้"}
-                </button>
+            /*
+              หมวดที่ยังไม่มีชุด — เป็นเป้าโยนไฟล์ได้ในตัว (ไฟล์ละชุด เข้าหมวดที่กรองอยู่)
+              เดิมต้องเลื่อนขึ้นไปโยนที่แถบบนสุด ทั้งที่จุดที่ตาอยู่คือกล่องว่างตรงนี้
+            */
+            <div
+              onDragOver={(e) => {
+                if (!e.dataTransfer.types.includes("Files")) return;
+                e.preventDefault();
+                setEmptyDrag(true);
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setEmptyDrag(false);
+              }}
+              onDrop={(e) => {
+                if (!e.dataTransfer.files?.length) return;
+                e.preventDefault();
+                setEmptyDrag(false);
+                void bulkAdd(e.dataTransfer.files);
+              }}
+              className={`${brandCard} p-6 text-center transition ${
+                emptyDrag ? "border-2 border-dashed border-sky-400 bg-sky-50" : ""
+              }`}
+            >
+              {emptyDrag ? (
+                <p className="text-sm font-bold text-sky-700">
+                  📥 ปล่อยได้เลย — ได้ชุดใหม่ไฟล์ละชุด
+                  {cat && cat !== NO_CATEGORY ? ` เข้าหมวด ${cat}` : ""}
+                </p>
+              ) : (
+                <>
+                  <p className={`text-sm ${faint}`}>
+                    {q
+                      ? "ไม่มีชุดที่ตรงกับคำค้น"
+                      : cat === NO_CATEGORY
+                        ? "ทุกชุดจัดหมวดไว้ครบแล้ว"
+                        : cat
+                          ? `ยังไม่มีชุดในหมวด “${cat}”`
+                          : "ไม่มีชุดที่ตรงกับที่กรองไว้"}
+                  </p>
+                  {cat && !q && (
+                    <>
+                      <button type="button" onClick={() => add(cat)} className={`${btnDucky} mt-3`}>
+                        {cat === NO_CATEGORY ? "＋ เพิ่มชุดใหม่" : "＋ เพิ่มชุดแรกในหมวดนี้"}
+                      </button>
+                      {/* ทางลัด: มีไฟล์ .ai อยู่แล้ว ลากมาวางตรงนี้ได้เลย ไม่ต้องสร้างชุดเปล่าก่อน */}
+                      <label className="mt-3 flex cursor-pointer flex-col items-center gap-0.5 rounded-xl border border-dashed border-amber-300 bg-amber-50/50 px-4 py-3 transition hover:border-sky-400 hover:bg-sky-50">
+                        <span className="text-xs font-bold text-slate-700">
+                          📥 หรือลากไฟล์ .ai มาวางตรงนี้ = ชุดใหม่ไฟล์ละชุด
+                        </span>
+                        <span className={`text-[11px] ${faint}`}>
+                          แตะเพื่อเลือกไฟล์ก็ได้ · ตั้งชื่อ/อ่านขนาด/ทำรูปให้เอง
+                          {cat && cat !== NO_CATEGORY ? ` · เข้าหมวด ${cat}` : ""}
+                        </span>
+                        <input
+                          type="file"
+                          accept=".ai,.pdf,.eps,.svg,.psd,.zip"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            void bulkAdd(e.target.files);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    </>
+                  )}
+                </>
               )}
             </div>
           )}
