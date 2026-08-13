@@ -70,22 +70,40 @@ export type ChatTextClasses = { row: string; li: string; gap: string; link: stri
 
 const LANDING_CLASSES: ChatTextClasses = { row: "mrow", li: "mli", gap: "mgap", link: "mlink" };
 
-/** ตัวหนา **x** + ลิงก์ในบรรทัดเดียว (ไม่ใช้ dangerouslySetInnerHTML) */
+/** ตัวหนา **x** + ลิงก์ markdown [ชื่อ](url) + ลิงก์เปล่า ในบรรทัดเดียว (ไม่ใช้ dangerouslySetInnerHTML) */
 function inline(line: string, key: string, cls: ChatTextClasses) {
   const out: React.ReactNode[] = [];
-  line.split(/(\*\*[^*]+\*\*|https?:\/\/[^\s)]+)/g).forEach((part, i) => {
+  line.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\(https?:\/\/[^\s)]+\)|https?:\/\/[^\s)]+)/g).forEach((part, i) => {
     if (!part) return;
     const k = `${key}-${i}`;
+    const md = part.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
     if (/^\*\*[^*]+\*\*$/.test(part)) out.push(<b key={k}>{part.slice(2, -2)}</b>);
+    else if (md)
+      out.push(
+        <a key={k} href={md[2]} target="_blank" rel="noopener noreferrer" className={cls.link}>
+          {md[1]}
+        </a>,
+      );
     else if (/^https?:\/\//.test(part))
       out.push(
         <a key={k} href={part} target="_blank" rel="noopener noreferrer" className={cls.link}>
-          {part.replace(/^https?:\/\//, "").slice(0, 40)}
+          {decodeLinkLabel(part)}
         </a>,
       );
     else out.push(<span key={k}>{part}</span>);
   });
   return out;
+}
+
+/** ป้ายลิงก์อ่านง่าย — ถอด percent-encoding ภาษาไทยให้เห็นชื่อจริง (ลิงก์สินค้า slug ไทยจะไม่เป็น %E0%B8...) */
+function decodeLinkLabel(url: string): string {
+  let s = url.replace(/^https?:\/\//, "");
+  try {
+    s = decodeURIComponent(s);
+  } catch {
+    /* encode แปลก ๆ ก็โชว์ดิบไป */
+  }
+  return s.length > 42 ? `${s.slice(0, 42)}…` : s;
 }
 
 /** คำตอบจาก n8n มาเป็น markdown อ่อน ๆ — แปลงหัวข้อ/บุลเล็ต/ตัวหนา ให้อ่านง่ายในบับเบิล */

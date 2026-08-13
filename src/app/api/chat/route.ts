@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { buildChatContext } from "@/lib/server/chat-context";
+import { buildChatContext, getKbTitleCandidates } from "@/lib/server/chat-context";
+import { answerFromContext, askBackMessage, parseCustomerMessage } from "@/lib/server/chat-parse";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -55,7 +56,8 @@ function pickReply(data: unknown): string {
 }
 
 export async function POST(req: Request) {
-  let body: { message?: string; sessionId?: string };
+  const t0 = Date.now();
+  let body: { message?: string; sessionId?: string; debug?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -75,44 +77,81 @@ export async function POST(req: Request) {
       { status: 429 },
     );
 
-  // แนบบริบทชุดเดียวกับที่หน้าแชท AdminBuddy (chat.html) ส่ง — แค็ตตาล็อก/ลิงก์ราคา/คลังความรู้
-  // ล้มก็ยังถามต่อได้ แค่ได้คำตอบกว้างกว่าเดิม จึงไม่ให้ throw ออกมา
-  const ctx = await buildChatContext(message).catch(() => null);
+  // ขั้นวิเคราะห์คำถามด้วย Gemini ก่อน (Smart Preprocessing แบบ chat.html)
+  // — แยกสินค้า/วัสดุ/จำนวน/ประเภทคำถาม + เลือกหัวข้อ KB · ล้มเหลว = null แล้วใช้จับคู่คำแทน
+  const kbTitles = await getKbTitleCandidates(message).catch(() => []);
+  const parsed = await parseCustomerMessage(message, kbTitles);
 
+  // ถามราคาแต่ AI ไม่แน่ใจว่าสินค้าอะไร → ถามลูกค้ากลับเลย ไม่เดาราคามั่ว (เหมือน chat.html)
+  const askBack = askBackMessage(parsed);
+  if (askBack) return NextResponse.json({ reply: askBack }, { headers: { "Cache-Control": "no-store" } });
+
+  // แนบบริบทชุดเดียวกับที่หน้าแชท AdminBuddy (chat.html) ส่ง
+  // — ผลวิเคราะห์ + ลิงก์สินค้าบนเว็บ + แค็ตตาล็อก/ลิงก์ราคา/คลังความรู้
+  // ล้มก็ยังถามต่อได้ แค่ได้คำตอบกว้างกว่าเดิม จึงไม่ให้ throw ออกมา
+  const ctx = await buildChatContext(message, parsed).catch(() => null);
+
+  // 🔗 แนบลิงก์หน้าสินค้าบนเว็บต่อท้ายคำตอบ — agent ของ n8n ไม่ยอมใส่ลิงก์เองแม้ป้อนให้ใน context
+  // (system prompt ของ workflow คุมรูปแบบคำตอบไว้) เว็บเลยแนบเองจากผลค้นหาสินค้าในระบบ
+  // ใส่เฉพาะเมื่อค้นเจอสินค้าที่ตรงจริง และคำตอบยังไม่มีลิงก์เว็บร้านอยู่แล้ว
+  const withProductLinks = (reply: string): string => {
+    const linksToAttach = (ctx?.productLinks ?? []).slice(0, 2);
+    if (!linksToAttach.length || /https?:\/\//.test(reply)) return reply;
+    const lines = linksToAttach.map((l) => `• ${l.name}${l.price ? ` (${l.price})` : ""}\n${l.url}`);
+    return `${reply}\n\n🛒 กดดูรายละเอียด/สั่งซื้อบนเว็บได้เลย:\n${lines.join("\n")}`;
+  };
+
+  let reply = "";
   try {
     const res = await fetch(WEBHOOK, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        message,
+        // ฝัง "คำแนะนำระบบ" ต่อท้ายข้อความ (สั่งให้ค้นราคา/จับวัสดุ/แปลงเซ็ต) แบบเดียวกับ chat.html
+        message: message + (ctx?.messageHint ?? ""),
         sessionId,
         userId: `web-${sessionId}`,
         source: "website",
         systemMessage: ctx?.systemMessage,
         knowledgeContext: ctx?.knowledgeContext,
       }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      // งบเวลารวมของฟังก์ชันมี 30 วิ (Netlify) — หักที่ใช้ไปแล้ว และกันท้ายไว้ ~7 วิ ให้ fallback ตอบเอง
+      // (agent ฝั่ง n8n ใช้เวลา 6-20+ วิ แล้วแต่คำถาม — เกินโควตาเมื่อไหร่ตัดไปใช้ fallback ดีกว่าปล่อย error)
+      signal: AbortSignal.timeout(Math.max(8_000, Math.min(TIMEOUT_MS, 22_000 - (Date.now() - t0)))),
     });
 
-    if (!res.ok) {
-      return NextResponse.json({ error: "ผู้ช่วยตอบไม่ทันครับ ทักไลน์ร้านได้เลย เดี๋ยวแอดมินดูแลต่อให้" }, { status: 502 });
+    if (res.ok) {
+      const raw = await res.text();
+      let data: unknown = raw;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        /* บาง workflow ตอบเป็นข้อความเปล่า ๆ */
+      }
+      const picked = pickReply(data);
+      if (picked && !/error in workflow|internal error/i.test(picked)) reply = picked;
     }
-
-    const raw = await res.text();
-    let data: unknown = raw;
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      /* บาง workflow ตอบเป็นข้อความเปล่า ๆ */
-    }
-
-    const reply = pickReply(data);
-    if (!reply || /error in workflow|internal error/i.test(reply)) {
-      return NextResponse.json({ error: "ตอนนี้ผู้ช่วยตอบไม่ได้ครับ ทักไลน์ร้านได้เลย เดี๋ยวแอดมินช่วยดูให้" }, { status: 502 });
-    }
-
-    return NextResponse.json({ reply }, { headers: { "Cache-Control": "no-store" } });
   } catch {
-    return NextResponse.json({ error: "ผู้ช่วยตอบช้ากว่าปกติครับ ลองพิมพ์ใหม่ หรือทักไลน์ร้านได้เลย" }, { status: 504 });
+    /* n8n ช้าเกิน/ล่ม → ไปใช้ fallback ข้างล่าง */
   }
+
+  // 🛟 n8n ไม่ตอบ/ตอบไม่ได้ → ตอบเองด้วย Gemini จาก context ที่ประกอบไว้ (แบบเดียวกับ fallback ของ chat.html)
+  // ลูกค้าได้คำตอบจากข้อมูลร้านจริงเสมอ ดีกว่าข้อความ "ผู้ช่วยตอบช้า" เปล่า ๆ
+  if (!reply) {
+    const direct = await answerFromContext(message, ctx?.systemMessage, ctx?.knowledgeContext);
+    if (direct) reply = direct;
+  }
+
+  if (!reply) {
+    return NextResponse.json({ error: "ตอนนี้ผู้ช่วยตอบไม่ได้ครับ ทักไลน์ร้านได้เลย เดี๋ยวแอดมินช่วยดูให้" }, { status: 502 });
+  }
+
+  return NextResponse.json(
+    {
+      reply: withProductLinks(reply),
+      // โหมดดีบัก (ส่ง debug:true มากับคำถาม) — ดูผลวิเคราะห์/ลิงก์ที่ระบบจับได้ ไว้ไล่ปัญหาคำตอบเพี้ยน ไม่มีข้อมูลลับ
+      ...(body.debug ? { debug: { parsed, stats: ctx?.stats, links: ctx?.productLinks } } : {}),
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }
