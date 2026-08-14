@@ -306,7 +306,8 @@ export default function AdminProductsPage() {
   const grouped = catFilter === "all" && sort === "default";
 
   return (
-    <div className="mx-auto max-w-6xl">
+    // เต็มความกว้างจอ (แบบเดียวกับหน้าแก้ไขสินค้า) — ลิสต์ 341 ตัวได้พื้นที่หายใจ
+    <div className="w-full">
       {/* หัวหน้า — hero โทนแบรนด์ + ปุ่มหลัก (ชุดเดียวกับหน้า ตั้งค่าระบบ/สินค้าสั่งพิเศษ) */}
       <header className="rounded-[22px] border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-amber-50/40 px-5 py-4 shadow-[0_6px_18px_rgba(44,129,196,0.07)] sm:px-6 sm:py-5">
       <div className="flex flex-wrap items-center gap-3.5">
@@ -899,7 +900,7 @@ function CardGrid({
 }) {
   const mayManage = useCan()("products.manage");
   return (
-    <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+    <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
       {items.map((p) => (
         <div key={p.id} className={`group flex flex-col overflow-hidden ${card}`}>
           <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-50">
