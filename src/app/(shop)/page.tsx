@@ -169,16 +169,14 @@ export default function HomePage() {
               </span>
               <h1 className="title">
                 <span className="word" style={{ animationDelay: ".05s" }}>
-                  พิมพ์ลายของคุณ
+                  เปลี่ยนดีไซน์คุณ
                 </span>
                 <span className="l2">
                   <span className="word" style={{ animationDelay: ".2s" }}>
-                    ลงบน<span className="mark">ของที่คุณรัก</span>
-                  </span>
-                </span>
-                <span className="l3">
-                  <span className="word" style={{ animationDelay: ".35s" }}>
-                    ได้ทุกชิ้น 💛
+                    เป็น
+                    <span className="mark">
+                      <span className="mtext">ผลิตภัณฑ์จริง</span>
+                    </span>
                   </span>
                 </span>
               </h1>
@@ -430,6 +428,11 @@ export default function HomePage() {
               <BestCard key={p.id} p={p} catLabel={catName(p.category)} rank={i} />
             ))}
           </div>
+          <div className="rv-more">
+            <Link className="rv-viewall" href="/products">
+              ดูสินค้าทั้งหมด <span>→</span>
+            </Link>
+          </div>
         </section>
 
         {/* ── ทำไมต้องเรา ── */}
@@ -496,9 +499,11 @@ export default function HomePage() {
         <span className="cb-bub b3" aria-hidden="true" />
         <section className="wrap rv">
           <div className="head">
-            <span className="kicker">💬 ถามได้เลย ไม่ต้องรอแอดมิน</span>
+            <span className="kicker kicker-mint">
+              <i className="chat-ico">💬</i>สั่งง่ายเหมือนคุยกับเพื่อน
+            </span>
             <h2>
-              พิมพ์ถามตรงนี้ได้เลย <em>ตอบทันที</em>
+              แค่ <em>ทักมา</em> ที่เหลือเราจัดให้
             </h2>
             <p>ถามราคา ขนาด วัสดุ หรือขั้นตอนสั่งทำ ผู้ช่วยของร้านตอบให้ทันทีตลอด 24 ชม. — คุยได้จริง ไม่ใช่ภาพตัวอย่าง</p>
           </div>
@@ -525,7 +530,9 @@ export default function HomePage() {
       {/* ── รีวิวลูกค้า: การ์ดเลื่อนอัตโนมัติ (ชี้เมาส์ = หยุด) ── */}
       <section className="rv reviews-sec">
         <div className="head">
-          <span className="kicker">⭐ รีวิวจากลูกค้า</span>
+          <span className="kicker kicker-peach">
+            <i className="star-ico">⭐</i>รีวิวจากลูกค้า
+          </span>
           <h2>
             ลูกค้า<em>พูดถึงเรา</em>ว่ายังไง
           </h2>

@@ -11,9 +11,9 @@
   --yolk:#FFD447; --yolk-deep:#FFB627; --yolk-soft:#FFF0BC;
   --coral:#FF9EB0; --mint:#A9E5D2; --lilac:#C7C4F5;
   --cream:#FFFBF2; --white:#fff;
-  --shadow-s:0 6px 18px rgba(44,129,196,.10);
-  --shadow-m:0 14px 34px rgba(44,129,196,.14);
-  --shadow-l:0 26px 60px rgba(44,129,196,.20);
+  --shadow-s:0 1px 0 rgba(255,255,255,.7) inset,0 8px 18px rgba(44,129,196,.12),0 2px 5px rgba(23,58,107,.08);
+  --shadow-m:0 1px 0 rgba(255,255,255,.8) inset,0 18px 36px rgba(44,129,196,.16),0 6px 14px rgba(23,58,107,.10);
+  --shadow-l:0 1px 0 rgba(255,255,255,.85) inset,0 30px 64px rgba(44,129,196,.22),0 10px 22px rgba(23,58,107,.12);
   --r-s:14px; --r-m:22px; --r-l:34px; --r-xl:48px;
   --display:var(--font-mitr),'Mitr',system-ui,sans-serif;
   --body:var(--font-looped),var(--font-mitr),system-ui,sans-serif;
@@ -270,14 +270,18 @@ to{opacity:1;transform:none}}
 25%{transform:scale(1.28)}
 40%{transform:scale(1)}}
 .dl h1.title{font-size:clamp(2.4rem,5.4vw,4.05rem);font-weight:500;letter-spacing:-.02em;margin:20px 0 0;line-height:1.18}
-.dl h1.title .l2{color:var(--blue-deep);display:block}
+.dl h1.title .l2{display:block}
+/* ทั้งหัวข้อใช้ gradient สูตรเดียวกัน ให้เป็นสีชุดเดียวกันทุกบรรทัด (PROTOTYPE 06 — ตัดเส้นไฮไลต์เหลืองออก) */
+.dl h1.title .l2 .word{background:linear-gradient(100deg,var(--navy) 15%,var(--blue-deep) 55%,var(--blue) 90%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
 .dl h1.title .l3{display:block}
 .dl h1.title .word{display:inline-block;opacity:0;transform:translateY(26px) rotate(-3deg);animation:pop .7s cubic-bezier(.34,1.56,.64,1) forwards}
+.dl h1.title > .word{background:linear-gradient(100deg,var(--navy) 15%,var(--blue-deep) 55%,var(--blue) 90%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
 @keyframes pop{to{opacity:1;transform:none}}
-.dl .mark{position:relative;display:inline-block;z-index:1}
-.dl .mark::after{content:"";position:absolute;left:-4px;right:-4px;bottom:.14em;height:.3em;background:var(--yolk);
-  z-index:-1;border-radius:6px;transform:scaleX(0);transform-origin:left;animation:swipe .7s cubic-bezier(.65,0,.35,1) 1.1s forwards}
-@keyframes swipe{to{transform:scaleX(1)}}
+.dl .mark{position:relative;display:inline-block}
+.dl .mark .mtext{background:linear-gradient(100deg,var(--navy) 15%,var(--blue-deep) 55%,var(--blue) 90%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
 .dl .lead{font-family:var(--display);font-weight:300;margin-top:20px;font-size:1.02rem;line-height:1.85;
   letter-spacing:.005em;color:#4E6B90;max-width:46ch}
 .dl .lead b{font-weight:500;color:var(--navy)}
@@ -408,7 +412,8 @@ to{opacity:1;transform:none}}
   filter:drop-shadow(0 12px 20px rgba(44,129,196,.09))}
 .dl .shop-band > .wrap{position:relative;z-index:2}
 .dl .kicker-yolk{display:flex;width:max-content;margin:0 auto 14px;align-items:center;gap:7px;
-  background:linear-gradient(100deg,#FFF3CE,#FFE9AE 55%,#FFF2C6);color:#8A6413;position:relative;overflow:hidden}
+  background:linear-gradient(100deg,#FFF3CE,#FFE9AE 52%,#FFF2C6);color:#8A6413;position:relative;overflow:hidden;
+  border:1px solid rgba(255,255,255,.95)}
 .dl .kicker-yolk::after{content:"";position:absolute;inset:0;pointer-events:none;
   background:radial-gradient(60% 120% at 20% 120%,rgba(255,190,40,.42),rgba(255,190,40,0) 62%);
   animation:emberGlow 3.2s ease-in-out infinite}
@@ -420,7 +425,8 @@ to{opacity:1;transform:none}}
 78%{transform:rotate(4deg) scale(1.1) translateY(-2px)}
 86%{transform:rotate(-4deg) scale(1) translateY(0)}}
 .dl .kicker-fire{display:flex;width:max-content;margin:0 auto 14px;align-items:center;gap:7px;
-  background:linear-gradient(100deg,#FFE9C9,#FFD9C2 45%,#FFE4CF);color:#A24E12;position:relative;overflow:hidden}
+  background:linear-gradient(100deg,#FFE9C9,#FFD9C2 52%,#FFE4CF);color:#A24E12;position:relative;overflow:hidden;
+  border:1px solid rgba(255,255,255,.95)}
 .dl .kicker-fire::after{content:"";position:absolute;inset:0;pointer-events:none;
   background:radial-gradient(60% 120% at 18% 120%,rgba(255,138,42,.5),rgba(255,138,42,0) 62%);
   animation:emberGlow 2.4s ease-in-out infinite}
@@ -569,7 +575,7 @@ to{opacity:1;transform:none}}
 /* ก้อนเมฆลอยพื้นหลัง — ชุดเดียวกับ Hero */
 .dl .cb-cloud{position:absolute;z-index:0;pointer-events:none;user-select:none;height:auto;
   filter:drop-shadow(0 12px 20px rgba(44,129,196,.10))}
-.dl .cc1{width:190px;top:72%;left:-52px;opacity:.85;animation:bgFloat1 20s ease-in-out infinite, bgPuff 8s ease-in-out infinite}
+.dl .cc1{width:190px;top:40%;left:18px;opacity:.85;animation:bgFloat1 20s ease-in-out infinite, bgPuff 8s ease-in-out infinite}
 .dl .cc2{width:150px;top:38%;right:-44px;opacity:.75;animation:bgFloat2 24s ease-in-out infinite reverse, bgPuff 10s ease-in-out infinite}
 .dl .cc3{width:120px;bottom:14%;left:6%;opacity:.7;animation:bgFloat3 22s ease-in-out infinite, bgPuff 9s ease-in-out infinite reverse}
 @media(max-width:900px){.dl .cb-cloud{display:none}}
@@ -631,6 +637,31 @@ to{opacity:1;transform:none}}
 .dl .kicker-why::after{content:"";position:absolute;inset:0;pointer-events:none;
   background:radial-gradient(60% 120% at 22% 120%,rgba(87,182,232,.42),rgba(87,182,232,0) 62%);
   animation:emberGlow 2.8s ease-in-out infinite}
+/* ป้ายโซนแชท — โทนมิ้นต์เขียว (PROTOTYPE 06) */
+.dl .kicker-mint{display:flex;width:max-content;margin:0 auto 14px;align-items:center;gap:7px;position:relative;overflow:hidden;
+  background:linear-gradient(100deg,#DFF7EE,#C9F0DF 52%,#E6F9F1);color:#1F8F68;
+  border:1px solid rgba(255,255,255,.95)}
+.dl .kicker-mint::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(60% 120% at 20% 120%,rgba(63,174,139,.42),rgba(63,174,139,0) 62%);
+  animation:emberGlow 2.6s ease-in-out infinite}
+.dl .chat-ico{font-style:normal;display:inline-block;transform-origin:50% 60%;
+  animation:chatWiggle 2.2s ease-in-out infinite}
+@keyframes chatWiggle{0%,55%,100%{transform:rotate(0)}
+65%{transform:rotate(-10deg)}
+80%{transform:rotate(9deg)}
+90%{transform:rotate(-4deg)}}
+/* ป้ายโซนรีวิว — โทนพีชอมชมพู (PROTOTYPE 06) */
+.dl .kicker-peach{display:flex;width:max-content;margin:0 auto 14px;align-items:center;gap:7px;position:relative;overflow:hidden;
+  background:linear-gradient(100deg,#FFE6EA,#FFD3DC 52%,#FFEEF1);color:#C24D68;
+  border:1px solid rgba(255,255,255,.95)}
+.dl .kicker-peach::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(60% 120% at 20% 120%,rgba(227,125,147,.42),rgba(227,125,147,0) 62%);
+  animation:emberGlow 3s ease-in-out infinite}
+.dl .star-ico{font-style:normal;display:inline-block;transform-origin:50% 55%;
+  animation:starIcoTwinkle 2.4s ease-in-out infinite}
+@keyframes starIcoTwinkle{0%,55%,100%{transform:scale(1) rotate(0)}
+65%{transform:scale(1.28) rotate(-14deg)}
+80%{transform:scale(1.05) rotate(10deg)}}
 .dl .beat-heart{font-style:normal;display:inline-block;transform-origin:50% 60%;
   animation:heartBeat 1.9s ease-in-out infinite}
 @keyframes heartBeat{0%,58%,100%{transform:scale(1)}
@@ -728,7 +759,7 @@ to{opacity:1;transform:none}}
 .dl .chat-band .kicker{background:rgba(255,255,255,.9)}
 /* กรอบหน้าจอแชท */
 .dl .chat{width:min(100%,760px);margin:0 auto;background:#fff;border-radius:34px;overflow:hidden;
-  border:1px solid rgba(255,255,255,.9);box-shadow:0 26px 56px rgba(23,58,107,.14)}
+  border:1px solid rgba(255,255,255,.9);box-shadow:0 1px 0 rgba(255,255,255,.85) inset,0 26px 56px rgba(23,58,107,.16),0 8px 18px rgba(23,58,107,.08)}
 .dl .chat-top{display:flex;align-items:center;gap:12px;padding:16px 20px;background:var(--navy);color:#fff}
 .dl .chat-av{width:38px;height:auto;flex:none;border-radius:50%;background:#fff;padding:3px}
 .dl .chat-who b{font-family:var(--display);font-weight:400;font-size:.98rem;display:block}
@@ -745,9 +776,10 @@ to{opacity:1;transform:none}}
 .dl .msg time{font-size:.68rem;color:#9BB2CC;flex:none;padding-bottom:3px}
 .dl .mbub{font-size:.92rem;line-height:1.65;padding:12px 16px;border-radius:20px;display:block}
 .dl .msg.out{align-self:flex-end;flex-direction:row-reverse}
-.dl .msg.out .mbub{background:var(--sky-200);color:var(--navy);border-bottom-right-radius:7px}
+.dl .msg.out .mbub{background:var(--sky-200);color:var(--navy);border-bottom-right-radius:7px;
+  box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 6px 14px rgba(23,58,107,.10)}
 .dl .msg.in .mbub{background:#fff;color:var(--navy);border-bottom-left-radius:7px;
-  border:1px solid var(--sky-100);box-shadow:0 6px 16px rgba(23,58,107,.06)}
+  border:1px solid var(--sky-100);box-shadow:0 1px 0 rgba(255,255,255,.8) inset,0 8px 18px rgba(23,58,107,.08)}
 .dl .stepno{display:inline-block;font-family:var(--display);font-weight:400;font-size:.7rem;color:#fff;
   background:var(--yolk-deep);padding:3px 11px;border-radius:999px;margin-bottom:8px}
 /* จุดกำลังพิมพ์ */
@@ -805,7 +837,8 @@ to{opacity:1;transform:none}}
 .dl .chat-note a{color:var(--blue-deep);text-decoration:underline}
 /* แถบปิดท้ายใต้แชท */
 .dl .chat-cta{width:min(100%,760px);margin:26px auto 0;display:flex;flex-wrap:wrap;align-items:center;gap:20px;
-  justify-content:space-between;background:var(--navy);border-radius:30px;padding:30px 32px;color:#fff}
+  justify-content:space-between;background:var(--navy);border-radius:30px;padding:30px 32px;color:#fff;
+  box-shadow:0 1px 0 rgba(255,255,255,.12) inset,0 20px 42px rgba(23,58,107,.28),0 6px 14px rgba(23,58,107,.16)}
 .dl .chat-cta h3{font-size:1.24rem;margin:0 0 5px}
 .dl .chat-cta p{color:#B6CDE6;font-size:.9rem;max-width:38ch}
 .dl .cc-btns{display:flex;gap:10px;flex-wrap:wrap}
@@ -824,20 +857,20 @@ to{opacity:1;transform:none}}
   background:linear-gradient(180deg,#F6FBFF 0%,#EAF6FE 46%,#E1F1FD 100%)}
 .dl .reviews-sec > .head,.dl .reviews-sec > .rv-marquee{position:relative;z-index:2}
 .dl .reviews-sec .head,.dl .reviews-sec .rv-marquee{width:min(100% - 40px,var(--wrap));margin-inline:auto}
-.dl .rv-marquee{position:relative;overflow:hidden;padding:22px 0 26px;
+.dl .rv-marquee{position:relative;overflow:hidden;padding:26px 0 80px;
   -webkit-mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);
           mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent)}
 .dl .rv-track{display:flex;gap:20px;width:max-content;animation:rvRun 44s linear infinite}
 .dl .rv-marquee:hover .rv-track{animation-play-state:paused}
 @keyframes rvRun{to{transform:translateX(calc(-50% - 10px))}}
 .dl .rvc{margin:0;flex:0 0 300px;background:#fff;border:1px solid rgba(255,255,255,.9);border-radius:24px;
-  box-shadow:0 14px 30px rgba(23,58,107,.08);
+  box-shadow:0 16px 30px rgba(23,58,107,.16),0 4px 10px rgba(23,58,107,.08);
   transition:transform .3s cubic-bezier(.34,1.56,.64,1),box-shadow .3s ease}
-.dl .rvc:hover{transform:translateY(-6px);box-shadow:0 24px 40px rgba(23,58,107,.14)}
+.dl .rvc:hover{transform:translateY(-6px);box-shadow:0 20px 34px rgba(23,58,107,.20),0 6px 12px rgba(23,58,107,.09)}
 /* ตัดขอบเฉพาะรูปภาพ ไม่ตัดเงาของทั้งการ์ด */
 .dl .rvc-shot{position:relative;aspect-ratio:4/3;display:grid;place-items:center;overflow:hidden;
   border-radius:24px 24px 0 0;
-  background:linear-gradient(150deg,#EAF6FE,#F7FBFF);border-bottom:1px solid var(--sky-100)}
+  background:linear-gradient(150deg,#F7FAFC,#FBFDFF);border-bottom:1px solid var(--sky-100)}
 .dl .rvc-shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .dl .rvc figcaption{padding:16px 18px 18px}
 .dl .rvc-star{color:#FFC93C;font-size:.82rem;letter-spacing:.1em;margin-bottom:7px}
@@ -910,6 +943,18 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 @media(max-width:620px){.dl .head h2::before,.dl .head h2::after{display:none}}
 .dl .rv{opacity:0;transform:translateY(30px);transition:opacity .7s ease,transform .7s cubic-bezier(.22,1,.36,1)}
 .dl .rv.in{opacity:1;transform:none}
+/* ลิงก์ดูสินค้าทั้งหมด — ชิดขวาใต้แถวการ์ดสินค้า (PROTOTYPE 06) */
+.dl .rv-more{display:flex;justify-content:flex-end;margin-top:22px}
+.dl .rv-viewall{display:inline-flex;align-items:center;gap:6px;
+  font-family:var(--display);font-size:.88rem;color:var(--navy-soft);text-decoration:none;
+  padding:9px 20px;border-radius:999px;border:1px solid var(--sky-200);background:rgba(255,255,255,.7);
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);box-shadow:0 4px 12px rgba(44,129,196,.08);
+  transition:color .2s ease,background .2s ease,border-color .2s ease,box-shadow .25s ease,transform .25s cubic-bezier(.34,1.56,.64,1)}
+.dl .rv-viewall span{transition:transform .2s ease}
+.dl .rv-viewall:hover{color:var(--blue-deep);background:var(--sky-50);border-color:var(--blue);
+  box-shadow:0 8px 18px rgba(44,129,196,.16);transform:translateY(-2px)}
+.dl .rv-viewall:hover span{transform:translateX(3px)}
+@media(max-width:640px){.dl .rv-more{justify-content:center}}
 @media(max-width:1000px){.dl .hero-grid{grid-template-columns:1fr;gap:10px}
 .dl .chips{flex-wrap:wrap}
 .dl .chip{flex:0 1 auto}
@@ -933,8 +978,7 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .dl .gap{margin-top:64px}}
 @media(prefers-reduced-motion:reduce){.dl *{animation:none!important;transition-duration:.01ms!important}
 .dl .rv{opacity:1;transform:none}
-.dl h1.title .word{opacity:1;transform:none}
-.dl .mark::after{transform:scaleX(1)}}
+.dl h1.title .word{opacity:1;transform:none}}
 /* ── เพิ่มเติมสำหรับเว็บจริง (ไม่มีในไฟล์ต้นแบบ) ── */
 /* การ์ดขายดีเป็นลิงก์ทั้งใบ — ป้าย "เลือกลาย" จึงเป็นข้อความ ไม่ใช่ปุ่มซ้อนลิงก์ */
 .dl .card .add{display:block;text-align:center}

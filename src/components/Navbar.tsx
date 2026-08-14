@@ -114,7 +114,7 @@ export default function Navbar() {
                 className="h-11 w-auto max-w-[210px] object-contain"
               />
             ) : (
-              <img className="logo-img" src="/landing/logo-word.webp" alt="iDucky Prints Studio" width={722} height={243} />
+              <img className="logo-img" src="/landing/logo-ducky.png" alt="iDucky Prints Studio" width={722} height={243} />
             )}
           </Link>
 
