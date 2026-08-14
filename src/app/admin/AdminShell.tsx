@@ -306,7 +306,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               onClick={() => toggleGroup(key)}
               aria-expanded={!folded}
               title={folded ? "กางกลุ่มนี้" : "หุบกลุ่มนี้"}
-              className={`flex w-full items-center gap-1.5 rounded-lg px-3 pb-1 text-left font-display text-[13px] font-semibold uppercase tracking-wide transition ${
+              className={`flex w-full items-center gap-1.5 rounded-lg px-3 pb-1 text-left font-display text-[15px] font-semibold uppercase tracking-wide transition ${
                 groupIdx > 0 ? "mt-4" : "mt-1"
               } ${text}`}
             >
