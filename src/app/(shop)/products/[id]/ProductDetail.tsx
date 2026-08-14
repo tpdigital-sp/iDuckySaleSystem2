@@ -171,6 +171,17 @@ export default function ProductDetail({
     if (!srcs.length && product.imageSrc) srcs.push(product.imageSrc);
     return srcs.filter((s): s is string => !!s);
   }, [product]);
+  /**
+   * 🖼 ตัวเลือก/เรทที่มีภาพประจำตัว — กดเลือกแล้วสลับแกลเลอรีไปที่ภาพนั้น
+   * (เฉพาะภาพที่อยู่ในแกลเลอรีสินค้า — ไม่อยู่ก็แค่ไม่สลับ ภาพย่อบนปุ่มยังโชว์ตามปกติ)
+   */
+  const jumpToImage = (src?: string) => {
+    if (!src) return;
+    const i = product.images.findIndex(
+      (im, idx) => (im.src ?? (idx === 0 ? product.imageSrc : undefined)) === src
+    );
+    if (i >= 0) setImageIndex(i);
+  };
   /** เลื่อนรูปใน lightbox แบบวน — ใช้ทั้งปุ่มลูกศรและคีย์บอร์ด (รูปที่เปิดอยู่ไม่อยู่ในลิสต์ = ไม่เลื่อน) */
   const zoomStep = (d: number) =>
     setZoomSrc((s) => {
@@ -1615,6 +1626,7 @@ export default function ProductDetail({
                         setRateTouched(true);
                         setRateLabel(r.label);
                         setAutoRateNote("");
+                        jumpToImage(r.imageSrc);
                       }}
                       className={`rounded-xl px-3 py-2 text-left text-[13px] transition ${
                         on
@@ -1623,22 +1635,36 @@ export default function ProductDetail({
                       }`}
                     >
                       <span className="flex items-center gap-2">
-                        <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${on ? "border-amber-500" : "border-stone-300"}`}>
-                          {on && <span className="h-2 w-2 rounded-full bg-amber-500" />}
+                        {/* ภาพประจำเรท (ถ้ามี) — ให้ลูกค้าเห็นหน้าตาแบบนั้น ๆ ตั้งแต่ตอนเลือก */}
+                        {r.imageSrc && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={r.imageSrc}
+                            alt={r.label}
+                            className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-stone-200"
+                            loading="lazy"
+                          />
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2">
+                            <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${on ? "border-amber-500" : "border-stone-300"}`}>
+                              {on && <span className="h-2 w-2 rounded-full bg-amber-500" />}
+                            </span>
+                            {r.label}
+                          </span>
+                          {r.desc && <span className="mt-0.5 block pl-6 text-[11px] font-normal leading-snug text-stone-500">{r.desc}</span>}
+                          {(r.minQty || r.minPerDesign) && (
+                            <span className="mt-0.5 block pl-6 text-[10px] font-semibold leading-snug text-teal-700">
+                              {[
+                                r.minQty ? `สั่งรวม ${r.minQty.toLocaleString("th-TH")} ${r.pricing.unit}ขึ้นไป` : "",
+                                r.minPerDesign ? `คละลายขั้นต่ำลายละ ${r.minPerDesign.toLocaleString("th-TH")} ${r.pricing.unit}` : "",
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                          )}
                         </span>
-                        {r.label}
                       </span>
-                      {r.desc && <span className="mt-0.5 block pl-6 text-[11px] font-normal leading-snug text-stone-500">{r.desc}</span>}
-                      {(r.minQty || r.minPerDesign) && (
-                        <span className="mt-0.5 block pl-6 text-[10px] font-semibold leading-snug text-teal-700">
-                          {[
-                            r.minQty ? `สั่งรวม ${r.minQty.toLocaleString("th-TH")} ${r.pricing.unit}ขึ้นไป` : "",
-                            r.minPerDesign ? `คละลายขั้นต่ำลายละ ${r.minPerDesign.toLocaleString("th-TH")} ${r.pricing.unit}` : "",
-                          ]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </span>
-                      )}
                     </button>
                   );
                 })}
@@ -1725,7 +1751,7 @@ export default function ProductDetail({
                                 type="button"
                                 role="checkbox"
                                 aria-checked={on}
-                                onClick={() =>
+                                onClick={() => {
                                   writePicks((cur) =>
                                     // เก็บตามลำดับตัวเลือกในกลุ่มเสมอ — ติ๊กสลับไปมาแล้วข้อความ (และ key ตะกร้า) ไม่เปลี่ยนตาม
                                     opt.choices
@@ -1734,8 +1760,9 @@ export default function ProductDetail({
                                         name: x.name,
                                         qty: cur.find((p) => p.name === x.name)?.qty ?? 1,
                                       }))
-                                  )
-                                }
+                                  );
+                                  if (!on) jumpToImage(c.imageSrc); // ติ๊กเปิด = โชว์ภาพแบบนั้น (ติ๊กออกไม่ต้อง)
+                                }}
                                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition ${
                                   on
                                     ? "bg-amber-400 text-white shadow"
@@ -1750,6 +1777,16 @@ export default function ProductDetail({
                                 >
                                   ✓
                                 </span>
+                                {/* ภาพประจำตัวเลือก (ถ้ามี) */}
+                                {c.imageSrc && (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={c.imageSrc}
+                                    alt={c.name}
+                                    className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-black/10"
+                                    loading="lazy"
+                                  />
+                                )}
                                 {c.name}
                                 {unitAdd > 0 ? ` +${formatPrice(unitAdd)}` : ""}
                               </button>
@@ -1808,7 +1845,10 @@ export default function ProductDetail({
                   ) : opt.display === "dropdown" ? (
                     <select
                       value={effective[opt.label]}
-                      onChange={(e) => setSelections((s) => ({ ...s, [opt.label]: e.target.value }))}
+                      onChange={(e) => {
+                        setSelections((s) => ({ ...s, [opt.label]: e.target.value }));
+                        jumpToImage(opt.choices.find((c) => c.name === e.target.value)?.imageSrc);
+                      }}
                       className="w-full rounded-xl bg-white px-3 py-2 text-[13px] font-semibold text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
                       aria-label={opt.label}
                     >
@@ -1831,15 +1871,28 @@ export default function ProductDetail({
                           <button
                             key={c.name}
                             type="button"
-                            onClick={() =>
-                              setSelections((s) => ({ ...s, [opt.label]: c.name }))
-                            }
-                            className={`rounded-full px-3 py-1.5 text-[13px] font-semibold transition ${
+                            onClick={() => {
+                              setSelections((s) => ({ ...s, [opt.label]: c.name }));
+                              jumpToImage(c.imageSrc);
+                            }}
+                            className={`inline-flex items-center gap-1.5 rounded-full py-1.5 text-[13px] font-semibold transition ${
+                              c.imageSrc ? "pl-1.5 pr-3" : "px-3"
+                            } ${
                               effective[opt.label] === c.name
                                 ? "bg-amber-400 text-white shadow"
                                 : "bg-white text-stone-600 ring-1 ring-amber-200 hover:bg-amber-50"
                             }`}
                           >
+                            {/* ภาพประจำตัวเลือก (ถ้ามี) — เห็นหน้าตาแบบนั้น ๆ ก่อนเลือก */}
+                            {c.imageSrc && (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={c.imageSrc}
+                                alt={c.name}
+                                className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-black/10"
+                                loading="lazy"
+                              />
+                            )}
                             {c.name}
                             {choiceBadgeOf(opt, effective, c.name, feeQty) > 0
                               ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty))}`

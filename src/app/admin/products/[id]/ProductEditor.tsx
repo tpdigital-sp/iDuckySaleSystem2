@@ -39,7 +39,7 @@ import { fetchTemplates } from "@/lib/template-repo";
 
 /** qty = ให้ลูกค้าระบุจำนวนของตัวเลือกนี้ (เฉพาะกลุ่มติ๊กหลายอย่าง ที่เปิด perUnitOn) · qtyMax = เพดานจำนวน (ว่าง = 99) */
 /** perUnit = ชิ้นที่ได้ต่อ 1 หน่วยสั่งของตัวเลือกนี้ (กางช่องกรอกเมื่อกลุ่มเปิด perUnitOn) */
-type DraftChoice = { name: string; extra: string; qty?: boolean; qtyMax?: string; perUnit?: string };
+type DraftChoice = { name: string; extra: string; qty?: boolean; qtyMax?: string; perUnit?: string; imageSrc?: string };
 /** presetId มี = กลุ่มนี้ "ลิงก์" คลังตัวเลือกกลาง (label+choices มาจากคลัง แก้ในกลุ่มไม่ได้จนกว่าจะตัดลิงก์) */
 type DraftOption = {
   label: string;
@@ -115,8 +115,8 @@ type DraftPricing = {
 /** หนึ่งช่วงของตารางค่าคละลาย (กรอกเป็น string) */
 type DraftMixTier = { fromQty: string; baseFee: string; includedDesigns: string; extraFee: string; onePerUnit: boolean };
 const EMPTY_MIX_TIER: DraftMixTier = { fromQty: "", baseFee: "", includedDesigns: "", extraFee: "", onePerUnit: false };
-/** ข้อมูลกำกับเรทราคา (ชื่อ + เงื่อนไขการสั่ง) */
-type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; freeMixBelowQty: string };
+/** ข้อมูลกำกับเรทราคา (ชื่อ + เงื่อนไขการสั่ง + ภาพประจำเรท) */
+type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; freeMixBelowQty: string; imageSrc?: string };
 /** เรทเพิ่มเติม — มีช่วงจำนวน+ตารางราคาของตัวเอง (คอลัมน์/หน่วยใช้ร่วมกับเรทหลัก) */
 type DraftExtraRate = DraftRateMeta & { id: string; tiers: DraftTier[]; cells: Record<string, string[]> };
 const EMPTY_RATE_META: DraftRateMeta = { label: "", desc: "", minQty: "", minPerDesign: "", extraDesignFee: "", freeMixBelowQty: "" };
@@ -334,6 +334,7 @@ function toDraft(p: Product): Draft {
         ...(c.qty ?? o.qtyPerChoice ? { qty: true } : {}),
         ...(c.qtyMax || o.qtyMax ? { qtyMax: String(c.qtyMax ?? o.qtyMax) } : {}),
         ...(c.perUnit ? { perUnit: String(c.perUnit) } : {}),
+        ...(c.imageSrc ? { imageSrc: c.imageSrc } : {}),
       })),
       ...(o.presetId ? { presetId: o.presetId } : {}),
       // มีตัวไหนเปิด "ระบุจำนวน" ไว้ = กลุ่มนี้เคยเปิดสวิตช์ → เปิดค้างไว้ให้เห็นค่าเดิม
@@ -424,6 +425,7 @@ function toDraft(p: Product): Draft {
           minPerDesign: p.priceRates[0].minPerDesign != null ? String(p.priceRates[0].minPerDesign) : "",
           extraDesignFee: p.priceRates[0].extraDesignFee != null ? String(p.priceRates[0].extraDesignFee) : "",
           freeMixBelowQty: p.priceRates[0].freeMixBelowQty != null ? String(p.priceRates[0].freeMixBelowQty) : "",
+          ...(p.priceRates[0].imageSrc ? { imageSrc: p.priceRates[0].imageSrc } : {}),
         }
       : { ...EMPTY_RATE_META },
     extraRates: (p.priceRates ?? []).slice(1).map((r) => ({
@@ -434,6 +436,7 @@ function toDraft(p: Product): Draft {
       minPerDesign: r.minPerDesign != null ? String(r.minPerDesign) : "",
       extraDesignFee: r.extraDesignFee != null ? String(r.extraDesignFee) : "",
       freeMixBelowQty: r.freeMixBelowQty != null ? String(r.freeMixBelowQty) : "",
+      ...(r.imageSrc ? { imageSrc: r.imageSrc } : {}),
       tiers: r.pricing.tiers.map((t) => ({ upTo: t.upTo == null ? "" : String(t.upTo), label: t.label })),
       cells: Object.fromEntries(Object.entries(r.pricing.cells).map(([k, v]) => [k, v.map((n) => String(n))])),
     })),
@@ -532,6 +535,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             ...(qty ? { qty: true, ...(Number(c.qtyMax) > 0 ? { qtyMax: Math.floor(Number(c.qtyMax)) } : {}) } : {}),
             // 📐 ชิ้น/หน่วย กรอกในตารางราคา (คอลัมน์แรก) แล้วเก็บกลับมาที่ตัวเลือกตามเดิม
             ...(Number(c.perUnit) > 0 ? { perUnit: Math.floor(Number(c.perUnit)) } : {}),
+            ...(c.imageSrc ? { imageSrc: c.imageSrc } : {}),
           };
         }),
       ...(o.presetId ? { presetId: o.presetId } : {}),
@@ -911,6 +915,30 @@ export default function ProductEditor({ product }: { product: Product }) {
       else setSaveError("อัปโหลดรูปไม่สำเร็จ");
     } catch {
       setSaveError("อัปโหลดรูปไม่สำเร็จ");
+    }
+  }
+
+  /**
+   * 🖼 อัปโหลดภาพประจำตัวเลือก/เรทราคา → คืน URL (โหมดเดโมยังไม่ตั้ง Supabase → เก็บ base64)
+   * ใช้กับสินค้าที่มีหลายแบบ — ลูกค้าเห็นหน้าตาแต่ละแบบตั้งแต่ตอนเลือก
+   */
+  async function uploadChoiceImage(f: File): Promise<string | undefined> {
+    if (!f.type.startsWith("image/")) return undefined;
+    try {
+      const blob = await fileToBlob(f);
+      const fd = new FormData();
+      fd.append("file", blob, "choice.jpg");
+      fd.append("productId", productId);
+      const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+      const src =
+        res.status === 503
+          ? await fileToDataUrl(f)
+          : ((await res.json().catch(() => ({}))) as { url?: string }).url;
+      if (!src) setSaveError("อัปโหลดรูปไม่สำเร็จ");
+      return src;
+    } catch {
+      setSaveError("อัปโหลดรูปไม่สำเร็จ");
+      return undefined;
     }
   }
 
@@ -2309,6 +2337,7 @@ export default function ProductEditor({ product }: { product: Product }) {
         ...(Number(m.minPerDesign) > 0 ? { minPerDesign: Math.floor(Number(m.minPerDesign)) } : {}),
         ...(Number(m.extraDesignFee) > 0 ? { extraDesignFee: Number(m.extraDesignFee) } : {}),
         ...(Number(m.freeMixBelowQty) > 0 ? { freeMixBelowQty: Math.floor(Number(m.freeMixBelowQty)) } : {}),
+        ...(m.imageSrc ? { imageSrc: m.imageSrc } : {}),
       });
       const list: NonNullable<Product["priceRates"]> = [
         { id: "r1", ...metaOf(draft.rateMeta, "เรทที่ 1"), pricing },
@@ -3747,6 +3776,62 @@ export default function ProductEditor({ product }: { product: Product }) {
                         </button>
                       );
                     })()}
+                    {/* 🖼 ภาพประจำตัวเลือก — โชว์บนปุ่มหน้าร้าน + กดเลือกแล้วแกลเลอรีสลับไปภาพนี้ */}
+                    <label
+                      className="shrink-0 cursor-pointer"
+                      title="ภาพประจำตัวเลือกนี้ — โชว์เป็นภาพย่อบนปุ่มหน้าร้าน ให้ลูกค้าเห็นหน้าตาแบบนี้ก่อนเลือก"
+                    >
+                      {ch.imageSrc ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={ch.imageSrc}
+                          alt={`ภาพของ ${ch.name || `ตัวเลือกที่ ${ci + 1}`}`}
+                          className="h-8 w-8 rounded-lg object-cover ring-1 ring-slate-200 hover:ring-amber-300"
+                        />
+                      ) : (
+                        <span className="grid h-8 w-8 place-items-center rounded-lg bg-slate-50 text-[13px] text-slate-300 ring-1 ring-slate-200 hover:text-amber-500 hover:ring-amber-300">
+                          🖼
+                        </span>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        aria-label={`อัปโหลดภาพของตัวเลือกที่ ${ci + 1}`}
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          e.target.value = "";
+                          if (!f) return;
+                          const src = await uploadChoiceImage(f);
+                          if (src)
+                            patch({
+                              options: draft.options.map((o, i) =>
+                                i === gi
+                                  ? { ...o, choices: o.choices.map((c, j) => (j === ci ? { ...c, imageSrc: src } : c)) }
+                                  : o
+                              ),
+                            });
+                        }}
+                      />
+                    </label>
+                    {ch.imageSrc && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          patch({
+                            options: draft.options.map((o, i) =>
+                              i === gi
+                                ? { ...o, choices: o.choices.map((c, j) => (j === ci ? { ...c, imageSrc: undefined } : c)) }
+                                : o
+                            ),
+                          })
+                        }
+                        title="เอาภาพของตัวเลือกนี้ออก"
+                        className="shrink-0 rounded-full px-1 text-[11px] font-bold text-slate-300 hover:bg-rose-50 hover:text-rose-500"
+                      >
+                        ✕
+                      </button>
+                    )}
                     {/* บวกเพิ่มต่อหน่วยเมื่อเลือกตัวนี้ — ใช้กับกลุ่มที่ไม่ใช่แกนตารางราคา (เช่น อะไหล่พิเศษ) */}
                     <label
                       className="flex shrink-0 items-center gap-1 text-[11px] font-semibold text-slate-400"
@@ -4486,6 +4571,52 @@ export default function ProductEditor({ product }: { product: Product }) {
                       className="w-24 rounded-xl bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
                     />
                   </label>
+                  {/* 🖼 ภาพประจำเรท — สินค้าที่ใช้เรทเป็น "แบบสินค้า" (เช่น สายคล้องหลายแบบ) ลูกค้าเห็นหน้าตาบนการ์ดเลือกเรท */}
+                  <div className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                    ภาพประจำเรท
+                    <span className="flex items-center gap-1.5">
+                      <label
+                        className="cursor-pointer"
+                        title="ภาพประจำเรทนี้ — โชว์บนการ์ดเลือกเรทหน้าร้าน และกดเลือกแล้วแกลเลอรีสลับไปภาพนี้"
+                      >
+                        {activeMeta.imageSrc ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={activeMeta.imageSrc}
+                            alt={`ภาพของเรท ${activeMeta.label || rateIdx + 1}`}
+                            className="h-9 w-9 rounded-lg object-cover ring-1 ring-slate-200 hover:ring-teal-300"
+                          />
+                        ) : (
+                          <span className="grid h-9 w-9 place-items-center rounded-lg bg-white text-[13px] text-slate-300 ring-1 ring-slate-200 hover:text-teal-500 hover:ring-teal-300">
+                            🖼
+                          </span>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          aria-label="อัปโหลดภาพประจำเรทนี้"
+                          onChange={async (e) => {
+                            const f = e.target.files?.[0];
+                            e.target.value = "";
+                            if (!f) return;
+                            const src = await uploadChoiceImage(f);
+                            if (src) patchActiveMeta({ imageSrc: src });
+                          }}
+                        />
+                      </label>
+                      {activeMeta.imageSrc && (
+                        <button
+                          type="button"
+                          onClick={() => patchActiveMeta({ imageSrc: undefined })}
+                          title="เอาภาพประจำเรทนี้ออก"
+                          className="rounded-full px-1 text-[11px] font-bold text-slate-300 hover:bg-rose-50 hover:text-rose-500"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </span>
+                  </div>
                   <p className="w-full text-[11px] text-slate-400">
                     💡 เช่น เรท 2 สั่งรวม 50 ขึ้นไป + ลายละ 25 → สั่ง 50 {draft.pricing.unit || "ชิ้น"}คละได้ 2 ลายในราคา ·
                     ใส่ &quot;คละเกินโควตา ลายละ +฿&quot; (เช่น 10) = ลูกค้าเพิ่มลายเกินโควตาได้ โดยจ่ายเพิ่มลายละ 10 บาท · เว้นว่าง = คละเกินไม่ได้ · ทุกเรทใช้คอลัมน์ตัวเลือกชุดเดียวกัน
