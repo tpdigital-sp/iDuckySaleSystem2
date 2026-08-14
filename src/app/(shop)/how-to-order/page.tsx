@@ -57,28 +57,28 @@ const AFTER = [
     title: "แก้ที่อยู่จัดส่งเอง",
     desc: "เปิดลิงก์ออเดอร์ → กดแก้ที่ช่องที่อยู่ แก้ได้ทั้งชื่อผู้รับ เบอร์โทร และที่อยู่",
     when: "แก้ได้เรื่อย ๆ จนกว่าทางร้านจะปริ้นใบงาน (ปกติคือตอนใกล้จะแพ็ค) · หลังจากนั้นระบบจะล็อกไว้ ต้องทักแอดมินให้แก้ให้",
-    tone: "sky",
+    tone: "t-sky",
   },
   {
     emoji: "➕",
     title: "สั่งเพิ่มในออเดอร์เดิม",
     desc: "เลื่อนลงล่างสุดของหน้าออเดอร์ → กด “สั่งเพิ่มในออเดอร์นี้” → เลือกสินค้าใส่ตะกร้าตามปกติ แล้วเลือกว่ารายการไหนจะรวมเข้าออเดอร์เดิม",
     when: "ทำได้ตราบใดที่งานยังไม่เข้าสายผลิต · รวมส่งกล่องเดียวกัน ไม่คิดค่าส่งเพิ่ม โอนแค่ส่วนต่างที่เพิ่มขึ้น",
-    tone: "emerald",
+    tone: "t-mint",
   },
   {
     emoji: "🧾",
     title: "เปิดใบเสร็จเอง",
     desc: "กดปุ่มใบเสร็จในหน้าออเดอร์ ดูและสั่งพิมพ์ได้เอง",
     when: "เปิดได้เมื่อชำระครบแล้ว",
-    tone: "violet",
+    tone: "t-lilac",
   },
   {
     emoji: "🚚",
     title: "ติดตามพัสดุ",
     desc: "พอทางร้านยิงเลขพัสดุ หน้าออเดอร์จะขึ้นสถานะให้ดูเอง ไม่ต้องทักถาม",
     when: "ดูได้ทันทีหลังสถานะเปลี่ยนเป็น “จัดส่งแล้ว”",
-    tone: "amber",
+    tone: "t-yolk",
   },
 ];
 
@@ -127,112 +127,121 @@ export default async function HowToOrderPage() {
   if (override) return <PageOverride article={override} />;
 
   return (
-    <div className="mx-auto max-w-4xl px-4 pt-6">
-      <div className="text-center">
-        <span className="text-5xl">📖</span>
-        <h1 className="mt-2 text-2xl font-extrabold text-amber-950 md:text-3xl">วิธีสั่งซื้อ</h1>
-        <p className="mt-2 text-sm text-stone-500">
-          สั่งของพิมพ์ลายกับ iDucky ง่ายมาก แค่ 7 ขั้นตอน 💛 · <FreeShipNote />
-        </p>
+    <div className="dl dl-page">
+      {/* ── แถบฟ้าหัวหน้า (ผืนเดียวกับหน้าแรก): หัวข้อ + เงื่อนไขชำระเงิน + 7 ขั้นตอน ── */}
+      <div className="top-stack">
+        <section className="hto-top">
+          <div className="head">
+            <span className="kicker kicker-yolk">
+              <i className="folder">📖</i>คู่มือการสั่งซื้อ
+            </span>
+            <h1>
+              สั่งซื้อ<em>ง่าย ๆ</em> แค่ 7 ขั้นตอน
+            </h1>
+            <p>
+              สั่งของพิมพ์ลายกับ iDucky ไม่มีขั้นต่ำ เริ่มที่ 1 ชิ้น 💛 · <FreeShipNote />
+            </p>
+          </div>
+
+          {/* เงื่อนไขหลักของร้าน — วางไว้บนสุดก่อนขั้นตอน ลูกค้าจะได้เห็นก่อนสั่ง ไม่ใช่มารู้ทีหลัง */}
+          <div className="hto-pay">
+            <p className="hto-pay-title">💳 เรื่องการชำระเงิน — อ่านก่อนสั่ง</p>
+            <ul>
+              <li>
+                <b>โอนผ่านธนาคารเท่านั้น</b> — โอนเข้าบัญชีของร้าน แล้วแนบสลิปในหน้าออเดอร์
+              </li>
+              <li>
+                <b className="warn">ไม่รับบัตรเครดิต และไม่มีเก็บเงินปลายทาง (COD)</b>
+              </li>
+              <li>
+                ทางร้าน<b>เริ่มจัดทำงานหลังได้รับเงินแล้วเท่านั้น</b> — ยังไม่โอน งานจะยังไม่เข้าคิว
+              </li>
+            </ul>
+          </div>
+
+          <ol className="hto-steps">
+            {STEPS.map((s, i) => (
+              <li className="hto-step" key={s.title}>
+                <span className="hto-ico">{s.emoji}</span>
+                <div>
+                  <span className="stepno">ขั้นที่ {i + 1}</span>
+                  <h2>{s.title}</h2>
+                  <p>{s.desc}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
       </div>
 
-      {/* เงื่อนไขหลักของร้าน — วางไว้บนสุดก่อนขั้นตอน ลูกค้าจะได้เห็นก่อนสั่ง ไม่ใช่มารู้ทีหลัง */}
-      <div className="mt-6 rounded-3xl bg-amber-50 p-5 ring-1 ring-amber-200">
-        <p className="text-sm font-extrabold text-amber-900">💳 เรื่องการชำระเงิน — อ่านก่อนสั่ง</p>
-        <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-stone-700">
-          <li>
-            • <strong>โอนผ่านธนาคารเท่านั้น</strong> — โอนเข้าบัญชีของร้าน แล้วแนบสลิปในหน้าออเดอร์
-          </li>
-          <li>
-            • <strong className="text-rose-600">ไม่รับบัตรเครดิต และไม่มีเก็บเงินปลายทาง (COD)</strong>
-          </li>
-          <li>
-            • ทางร้าน<strong>เริ่มจัดทำงานหลังได้รับเงินแล้วเท่านั้น</strong> — ยังไม่โอน งานจะยังไม่เข้าคิว
-          </li>
-        </ul>
+      {/* ── สั่งแล้วทำอะไรเองได้บ้าง — แถบ gradient แบบโซนขายดีหน้าแรก ── */}
+      <div className="combo-band" style={{ padding: "56px 0 60px" }}>
+        <div className="cb-bg" aria-hidden="true" />
+        <section className="wrap">
+          <div className="head">
+            <span className="kicker kicker-mint">
+              <i className="chat-ico">✨</i>ไม่ต้องรอแอดมิน
+            </span>
+            <h2>
+              สั่งแล้ว<em>ทำเองได้</em>ทุกอย่าง
+            </h2>
+            <p>
+              ทุกอย่างทำได้จาก<b>ลิงก์ออเดอร์ของคุณ</b> — เก็บลิงก์ไว้ที่เดียวจบ
+            </p>
+          </div>
+          <div className="hto-after">
+            {AFTER.map((a) => (
+              <div className="hto-card" key={a.title}>
+                <div className="hto-card-head">
+                  <i className={a.tone}>{a.emoji}</i>
+                  <b>{a.title}</b>
+                </div>
+                <p>{a.desc}</p>
+                <p className="hto-when">⏱ {a.when}</p>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
 
-      <ol className="mt-8 space-y-4">
-        {STEPS.map((s, i) => (
-          <li
-            key={s.title}
-            className="flex gap-4 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-amber-100"
-          >
-            <div className="flex shrink-0 flex-col items-center">
-              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-ducky text-2xl shadow-sm">
-                {s.emoji}
-              </span>
-              <span className="mt-1.5 text-[11px] font-bold text-amber-500">ขั้นที่ {i + 1}</span>
-            </div>
-            <div>
-              <h2 className="font-extrabold text-stone-800">{s.title}</h2>
-              <p className="mt-1 text-sm leading-relaxed text-stone-500">{s.desc}</p>
-            </div>
-          </li>
-        ))}
-      </ol>
-
-      {/* ── หลังสั่งแล้วทำอะไรได้เอง — ตอบคำถามที่ลูกค้าทักมาถามบ่อยที่สุด ── */}
-      <section className="mt-12">
-        <h2 className="text-center text-xl font-extrabold text-amber-950">✨ สั่งแล้วทำอะไรเองได้บ้าง</h2>
-        <p className="mt-1 text-center text-sm text-stone-500">
-          ทุกอย่างทำได้จาก<strong className="text-stone-700">ลิงก์ออเดอร์ของคุณ</strong> ไม่ต้องรอแอดมิน
-        </p>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          {AFTER.map((a) => (
-            <div key={a.title} className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-amber-100">
-              <p className="flex items-center gap-2 font-extrabold text-stone-800">
-                <span className="text-xl">{a.emoji}</span>
-                {a.title}
-              </p>
-              <p className="mt-1.5 text-sm leading-relaxed text-stone-500">{a.desc}</p>
-              <p className="mt-2 rounded-xl bg-stone-50 px-3 py-2 text-xs leading-relaxed text-stone-600">
-                ⏱ {a.when}
-              </p>
-            </div>
-          ))}
+      {/* ── คำถามที่พบบ่อย ── */}
+      <section className="hto-sec">
+        <div className="head">
+          <span className="kicker kicker-why">
+            <i className="beat-heart">❓</i>คำถามที่พบบ่อย
+          </span>
+          <h2>
+            ถาม-ตอบ<em>ก่อนสั่ง</em>
+          </h2>
         </div>
-      </section>
-
-      <section className="mt-12">
-        <h2 className="text-center text-xl font-extrabold text-amber-950">❓ คำถามที่พบบ่อย</h2>
-        <div className="mt-5 space-y-3">
+        <div className="hto-faq">
           {FAQS.map((f) => (
-            <details
-              key={f.q}
-              className="group rounded-3xl bg-white p-5 shadow-sm ring-1 ring-amber-100"
-            >
-              <summary className="cursor-pointer list-none text-sm font-bold text-stone-800">
-                <span className="mr-2 inline-block transition-transform group-open:rotate-90">▸</span>
+            <details key={f.q}>
+              <summary>
+                <i>▶</i>
                 {f.q}
               </summary>
-              <p className="mt-2 pl-6 text-sm leading-relaxed text-stone-500">{f.a}</p>
+              <p>{f.a}</p>
             </details>
           ))}
         </div>
       </section>
 
-      <div className="mt-10 rounded-[2rem] bg-gradient-to-r from-emerald-100 to-teal-100 p-8 text-center">
-        <span className="text-4xl">💬</span>
-        <h2 className="mt-2 text-lg font-extrabold text-stone-800">ยังไม่แน่ใจ? ทักมาคุยกันก่อนได้</h2>
-        <p className="mt-1 text-sm text-stone-600">
-          แอดมินยินดีให้คำปรึกษาเรื่องลาย ขนาด และวัสดุ ฟรี ไม่มีค่าใช้จ่าย
-        </p>
-        <div className="mt-4 flex flex-wrap justify-center gap-3">
-          <a
-            href="https://line.me/R/ti/p/@iduckyprints"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-full bg-emerald-500 px-7 py-3 text-sm font-bold text-white shadow transition hover:scale-105"
-          >
-            💬 แชท LINE OA
-          </a>
-          <Link
-            href="/products"
-            className="rounded-full bg-white px-7 py-3 text-sm font-bold text-stone-700 shadow transition hover:scale-105"
-          >
-            🛍️ เริ่มเลือกสินค้า
-          </Link>
+      {/* ── ปิดท้าย — แถบเนวี่ตัวเดียวกับหน้าแรก ── */}
+      <div className="hto-cta-wrap">
+        <div className="chat-cta">
+          <div className="cc-text">
+            <h3>ยังไม่แน่ใจ? ทักมาคุยกันก่อนได้</h3>
+            <p>แอดมินยินดีให้คำปรึกษาเรื่องลาย ขนาด และวัสดุ ฟรี ไม่มีค่าใช้จ่าย</p>
+          </div>
+          <div className="cc-btns">
+            <Link className="btn btn-yolk" href="/products">
+              เริ่มเลือกสินค้า <span className="dot">→</span>
+            </Link>
+            <a className="btn btn-line" href="https://lin.ee/x8GkqGZ" target="_blank" rel="noreferrer">
+              ทักแอดมินทาง LINE <span className="dot">💬</span>
+            </a>
+          </div>
         </div>
       </div>
     </div>
