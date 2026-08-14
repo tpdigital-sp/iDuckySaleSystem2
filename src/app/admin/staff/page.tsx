@@ -236,7 +236,7 @@ function StaffPageInner() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="w-full">
       <h1 className={h1}>👥 พนักงาน</h1>
       <p className={`mt-1 ${muted}`}>
         กำหนดบทบาท/แผนก และเปิด–ปิดการเข้าใช้งานระบบนี้ — มีผลทันทีที่ล็อกอินครั้งถัดไป · ดูสิทธิ์แต่ละตำแหน่งได้ที่ ตั้งค่าระบบ → แท็บบทบาท

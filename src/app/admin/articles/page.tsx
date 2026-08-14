@@ -159,7 +159,7 @@ function ArticlesInner() {
   /* ── โหมดแก้ไข ── */
   if (editing) {
     return (
-      <div className="mx-auto max-w-6xl pb-24">
+      <div className="w-full pb-24">
         <div className="flex items-center justify-between">
           <h1 className={h1}>{isNew ? "✍️ เขียนบทความใหม่" : "✍️ แก้บทความ"}</h1>
           <button type="button" onClick={() => setEditing(null)} className={btnNeutral}>
@@ -294,7 +294,7 @@ function ArticlesInner() {
 
         {/* ── แถบบันทึกลอยล่าง ── */}
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-3">
+          <div className="flex w-full flex-wrap items-center justify-end gap-3">
             {msg && <span className="text-sm font-semibold text-rose-600">{msg}</span>}
             {editing.published && (
               <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200">
@@ -316,7 +316,7 @@ function ArticlesInner() {
   /* ── รายการ ── */
   const blogList = list.filter((a) => !isPageSlug(a.slug));
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="w-full">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className={h1}>✍️ บทความ</h1>
