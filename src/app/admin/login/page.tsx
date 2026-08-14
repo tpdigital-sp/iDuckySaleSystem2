@@ -112,7 +112,8 @@ export default function AdminLoginPage() {
           </p>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-3">
+        {/* method/action ใส่ไว้เป็น "ป้ายบอก" ตัวจำรหัสของ Safari ว่านี่คือฟอร์มล็อกอินจริง (JS ยิง API เองผ่าน onSubmit) */}
+        <form onSubmit={handleSubmit} method="post" action="/admin" className="space-y-3">
           <label className="block">
             <span className="mb-1 block text-xs font-bold text-stone-600">ชื่อผู้ใช้ (username)</span>
             <input
