@@ -1222,15 +1222,33 @@ export default function ProductDetail({
           <div className="lg:sticky lg:top-24">
             {/* group + relative: ปุ่มลูกศรซ่อนไว้ โผล่ตอนเอาเมาส์ชี้รูป (จอเล็กไม่มี hover จึงโชว์ค้างไว้) */}
             <div className="group relative">
-              <ProductVisual
-                emoji={shown.emoji}
-                gradient={shown.gradient}
-                src={shown.src ?? (at === 0 ? product.imageSrc : undefined)}
-                alt={`${product.name} — ${shown.label}`}
-                size="text-[8rem]"
-                eager
-                className="aspect-square w-full rounded-[2rem] shadow-inner"
-              />
+              {(() => {
+                const shownSrc = shown.src ?? (at === 0 ? product.imageSrc : undefined);
+                const visual = (
+                  <ProductVisual
+                    emoji={shown.emoji}
+                    gradient={shown.gradient}
+                    src={shownSrc}
+                    alt={`${product.name} — ${shown.label}`}
+                    size="text-[8rem]"
+                    eager
+                    className="aspect-square w-full rounded-[2rem] shadow-inner"
+                  />
+                );
+                // มีไฟล์รูปจริงเท่านั้นถึงกดขยายได้ (สินค้าอีโมจิล้วนไม่มีอะไรให้ซูม)
+                return shownSrc ? (
+                  <button
+                    type="button"
+                    onClick={() => setZoomSrc(shownSrc)}
+                    aria-label="ดูรูปขนาดใหญ่"
+                    className="block w-full cursor-zoom-in"
+                  >
+                    {visual}
+                  </button>
+                ) : (
+                  visual
+                );
+              })()}
               {gallery.length > 1 && (
                 <>
                   {([
