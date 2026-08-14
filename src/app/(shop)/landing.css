@@ -1052,3 +1052,94 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 /* ระยะหัว-ท้ายของแต่ละโซน */
 .dl .hto-sec{padding:56px 0 60px}
 .dl .hto-cta-wrap{width:min(100% - 40px,var(--wrap));margin:0 auto;padding:8px 0 72px}
+
+/* ═══════ หน้า "บัญชีของฉัน" (/account) — ภาษาเดียวกับหน้าแรก ═══════ */
+.dl .acc-top{padding:34px 0 46px}
+.dl .acc-wrap{width:min(100% - 40px,880px);margin:0 auto}
+.dl .acc-loading{padding:110px 20px;text-align:center;color:var(--navy-soft);font-size:.92rem}
+/* หัวโปรไฟล์ */
+.dl .acc-hero{display:flex;align-items:center;gap:16px;margin-bottom:22px}
+.dl .acc-ava{width:58px;height:58px;flex:none;border-radius:50%;display:grid;place-items:center;
+  background:linear-gradient(150deg,#3E9BD4,var(--navy));color:#fff;font-family:var(--display);font-size:1.35rem;font-weight:600;
+  border:3px solid #fff;box-shadow:0 8px 18px rgba(44,129,196,.28)}
+.dl .acc-hero h1{font-size:clamp(1.3rem,3vw,1.6rem);font-weight:500;line-height:1.3;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl .acc-hero .acc-mail{font-size:.8rem;color:var(--navy-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl .acc-hero>div{min-width:0}
+/* กริดสรุป: ระดับสมาชิก + ออเดอร์ล่าสุด */
+.dl .acc-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:stretch}
+@media(max-width:760px){.dl .acc-grid{grid-template-columns:1fr}}
+.dl .acc-card{display:block;background:#fff;border:2px solid #fff;border-radius:var(--r-m);padding:18px 20px;
+  box-shadow:var(--shadow-s);transition:transform .3s cubic-bezier(.34,1.56,.64,1),box-shadow .3s ease,border-color .3s ease}
+.dl a.acc-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-m);border-color:var(--sky-200)}
+.dl .acc-eyebrow{font-family:var(--display);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--navy-soft)}
+/* การ์ดระดับสมาชิก — พื้น gradient ตามระดับ (ส่งสีมาทาง style) */
+.dl .acc-tier{border-radius:var(--r-m);padding:18px 20px;color:#fff;border:2px solid rgba(255,255,255,.55);
+  box-shadow:0 1px 0 rgba(255,255,255,.4) inset,0 16px 32px rgba(23,58,107,.18)}
+.dl .acc-tier .acc-eyebrow{color:rgba(255,255,255,.82)}
+.dl .acc-tier-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.dl .acc-tier-name{font-family:var(--display);font-weight:500;font-size:1.18rem;margin-top:3px}
+.dl .acc-tier-pill{display:inline-block;margin-left:7px;padding:2px 11px;border-radius:999px;background:rgba(255,255,255,.95);
+  font-family:var(--display);font-size:.74rem;vertical-align:middle}
+.dl .acc-spend{text-align:right;font-size:.7rem;color:rgba(255,255,255,.82)}
+.dl .acc-spend b{display:block;font-family:var(--display);font-size:1.05rem;font-weight:500;color:#fff}
+.dl .acc-bar{height:8px;margin-top:14px;border-radius:999px;background:rgba(255,255,255,.28);overflow:hidden}
+.dl .acc-bar i{display:block;height:100%;border-radius:999px;background:#fff;transition:width .6s cubic-bezier(.22,1,.36,1)}
+.dl .acc-next{margin-top:7px;font-size:.72rem;color:rgba(255,255,255,.92)}
+/* การ์ดออเดอร์ล่าสุด */
+.dl .acc-order-id{font-family:var(--display);font-weight:500;font-size:.95rem;color:var(--navy)}
+.dl .acc-order-sub{font-size:.74rem;color:var(--navy-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl .acc-order-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px}
+.dl .acc-order-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;
+  padding-top:11px;border-top:1px dashed var(--sky-200)}
+.dl .acc-order-hint{font-size:.74rem;color:var(--navy-soft)}
+.dl .acc-price{font-family:var(--display);font-weight:500;color:var(--navy)}
+.dl .acc-due{font-family:var(--display);font-weight:500;color:#E25C5C}
+.dl .acc-badge{display:inline-flex;flex:none;align-items:center;padding:4px 12px;border-radius:999px;
+  font-size:.72rem;font-weight:600;line-height:1.4}
+/* สถานะว่าง/กำลังโหลด */
+.dl .acc-empty{text-align:center;padding:26px 20px}
+.dl .acc-empty p{font-size:.88rem;color:var(--navy-soft);margin:8px 0 14px}
+/* โซนเนื้อหาล่าง */
+.dl .acc-body{padding:34px 0 84px;display:grid;gap:30px}
+.dl .acc-sec-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.dl .acc-sec-title b{font-family:var(--display);font-weight:500;font-size:1.05rem;color:var(--navy)}
+/* เมนูบัญชี — การ์ดขาวใช้แถวสไตล์เดียวกับดรอปดาวน์บัญชีบนแถบเมนู (.acct-item) */
+.dl .acc-menu{background:#fff;border:2px solid #fff;border-radius:var(--r-m);box-shadow:var(--shadow-s);padding:8px}
+.dl .acc-menu .acct-ico{font-size:1.05rem}
+.dl .acc-out{width:max-content;margin:2px auto 0;display:inline-flex;align-items:center;gap:9px;cursor:pointer;
+  font-family:var(--display);font-size:.92rem;color:#E25C5C;background:transparent;border:2px solid transparent;
+  padding:11px 26px;border-radius:999px;transition:.24s ease}
+.dl .acc-out:hover{background:#FFF1F2;border-color:#FFD9DC}
+/* ── คูปอง (ดีไซน์ตั๋ว โทนเหลืองเป็ด) ── */
+.dl .cpn-count{display:inline-flex;padding:3px 12px;border-radius:999px;background:#DFF7EE;color:#1F8F68;
+  font-family:var(--display);font-size:.76rem}
+.dl .cpn-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:700px){.dl .cpn-grid{grid-template-columns:1fr}}
+.dl .cpn{display:flex;overflow:hidden;border-radius:20px;background:#fff;border:2px solid #fff;box-shadow:var(--shadow-s);
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1),box-shadow .3s ease}
+.dl .cpn:hover{transform:translateY(-3px);box-shadow:var(--shadow-m)}
+.dl .cpn-stub{width:92px;flex:none;display:grid;place-content:center;text-align:center;padding:14px 8px;
+  background:linear-gradient(150deg,#FFDE6B,var(--yolk) 55%,var(--yolk-deep));color:var(--navy)}
+.dl .cpn-stub b{font-family:var(--display);font-weight:600;font-size:1.35rem;line-height:1.1}
+.dl .cpn-stub small{font-family:var(--display);font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;opacity:.75;margin-top:3px}
+.dl .cpn-tear{width:0;border-left:2px dashed var(--sky-100)}
+.dl .cpn-body{min-width:0;flex:1;padding:13px 15px}
+.dl .cpn-code-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.dl .cpn-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9rem;font-weight:700;color:var(--navy);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl .cpn-badge{flex:none;display:inline-flex;padding:2px 9px;border-radius:999px;font-size:.66rem;font-weight:700}
+.dl .cpn-cond{margin-top:7px;display:grid;gap:2px;font-size:.72rem;color:var(--navy-soft)}
+.dl .cpn-cond li{list-style:none;position:relative;padding-left:13px}
+.dl .cpn-cond li::before{content:"";position:absolute;left:1px;top:.62em;width:5px;height:5px;border-radius:50%;background:var(--sky-300)}
+.dl .cpn-cond .soon{color:#E25C5C;font-weight:600}
+.dl .cpn-copy{margin-top:10px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;border:0;
+  font-family:var(--display);font-size:.74rem;color:var(--blue-deep);background:var(--sky-100);
+  padding:6px 14px;border-radius:999px;transition:.22s ease}
+.dl .cpn-copy:hover{background:var(--sky-200);transform:translateY(-1px)}
+.dl .cpn.dim{background:#F7F9FB;border-color:#F1F4F7}
+.dl .cpn.dim .cpn-stub{background:#E9EEF3;color:#9AA9BB}
+.dl .cpn.dim .cpn-code{color:#9AA9BB}
+.dl .cpn-empty{border:2px dashed var(--sky-200);border-radius:20px;background:rgba(242,250,255,.6);
+  text-align:center;padding:26px 20px}
+.dl .cpn-empty p{font-size:.8rem;color:var(--navy-soft);margin-top:6px}

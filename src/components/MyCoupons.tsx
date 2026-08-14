@@ -70,69 +70,49 @@ export default function MyCoupons() {
 
   return (
     <section>
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-extrabold uppercase tracking-widest text-amber-500">🎟️ คูปองของฉัน</h2>
-        {usableCount > 0 && (
-          <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
-            ใช้ได้ {usableCount} ใบ
-          </span>
-        )}
+      {/* สไตล์ .cpn-* / .acc-sec-title อยู่ใน (shop)/landing.css — ใช้ในหน้า /account (ครอบด้วย .dl) */}
+      <div className="acc-sec-title">
+        <b>🎟️ คูปองของฉัน</b>
+        {usableCount > 0 && <span className="cpn-count">ใช้ได้ {usableCount} ใบ</span>}
       </div>
 
       {coupons.length === 0 ? (
-        <div className="mt-3 rounded-2xl border border-dashed border-amber-200 bg-amber-50/40 p-5 text-center">
-          <span className="text-2xl">🎫</span>
-          <p className="mt-1 text-xs text-stone-500">ยังไม่มีคูปอง — สั่งซื้อและติดตามโปรโมชั่นเพื่อรับคูปองนะ</p>
+        <div className="cpn-empty">
+          <span style={{ fontSize: "1.6rem" }}>🎫</span>
+          <p>ยังไม่มีคูปอง — สั่งซื้อและติดตามโปรโมชั่นเพื่อรับคูปองนะ</p>
         </div>
       ) : (
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="cpn-grid">
           {coupons.map((c) => {
             const exp = expiryText(c.expiresAt);
             const badge = STATUS_BADGE[c.status];
             const dim = !c.usable;
             return (
-              <div
-                key={c.code}
-                className={`relative flex overflow-hidden rounded-2xl ring-1 ${
-                  dim ? "bg-stone-50 ring-stone-200" : "bg-white ring-amber-200"
-                }`}
-              >
+              <div key={c.code} className={`cpn${dim ? " dim" : ""}`}>
                 {/* แถบซ้าย = มูลค่าส่วนลด (ดีไซน์ตั๋ว) */}
-                <div
-                  className={`flex w-24 shrink-0 flex-col items-center justify-center px-2 py-3 text-center ${
-                    dim ? "bg-stone-100 text-stone-400" : "bg-gradient-to-br from-amber-400 to-amber-500 text-white"
-                  }`}
-                >
-                  <span className="text-2xl font-extrabold leading-none">
-                    {c.type === "percent" ? `${c.value}%` : `฿${c.value}`}
-                  </span>
-                  <span className="mt-1 text-[10px] font-bold uppercase tracking-wider opacity-90">ส่วนลด</span>
+                <div className="cpn-stub">
+                  <b>{c.type === "percent" ? `${c.value}%` : `฿${c.value}`}</b>
+                  <small>ส่วนลด</small>
                 </div>
 
                 {/* เส้นประรอยฉีกตั๋ว */}
-                <div className={`w-px border-l border-dashed ${dim ? "border-stone-300" : "border-amber-300"}`} />
+                <div className="cpn-tear" />
 
                 {/* รายละเอียด */}
-                <div className="min-w-0 flex-1 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <code className={`truncate font-mono text-sm font-bold ${dim ? "text-stone-400" : "text-amber-950"}`}>
-                      {c.code}
-                    </code>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${badge.cls}`}>{badge.text}</span>
+                <div className="cpn-body">
+                  <div className="cpn-code-row">
+                    <code className="cpn-code">{c.code}</code>
+                    <span className={`cpn-badge ${badge.cls}`}>{badge.text}</span>
                   </div>
 
-                  <ul className="mt-1.5 space-y-0.5 text-[11px] text-stone-500">
-                    {c.minSpend ? <li>• ยอดขั้นต่ำ {formatPrice(c.minSpend)}</li> : <li>• ไม่มียอดขั้นต่ำ</li>}
-                    {c.type === "percent" && c.maxDiscount ? <li>• ลดสูงสุด {formatPrice(c.maxDiscount)}</li> : null}
-                    {exp && <li className={exp.soon ? "font-semibold text-rose-500" : ""}>• {exp.text}</li>}
+                  <ul className="cpn-cond">
+                    {c.minSpend ? <li>ยอดขั้นต่ำ {formatPrice(c.minSpend)}</li> : <li>ไม่มียอดขั้นต่ำ</li>}
+                    {c.type === "percent" && c.maxDiscount ? <li>ลดสูงสุด {formatPrice(c.maxDiscount)}</li> : null}
+                    {exp && <li className={exp.soon ? "soon" : ""}>{exp.text}</li>}
                   </ul>
 
                   {c.usable && (
-                    <button
-                      type="button"
-                      onClick={() => copyCode(c.code)}
-                      className="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-[11px] font-bold text-amber-700 ring-1 ring-amber-200 transition hover:bg-amber-100"
-                    >
+                    <button type="button" onClick={() => copyCode(c.code)} className="cpn-copy">
                       {copied === c.code ? "✓ คัดลอกแล้ว" : "📋 คัดลอกโค้ด"}
                     </button>
                   )}
