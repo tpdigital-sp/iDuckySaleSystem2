@@ -39,7 +39,21 @@ import { fetchTemplates } from "@/lib/template-repo";
 
 /** qty = ให้ลูกค้าระบุจำนวนของตัวเลือกนี้ (เฉพาะกลุ่มติ๊กหลายอย่าง ที่เปิด perUnitOn) · qtyMax = เพดานจำนวน (ว่าง = 99) */
 /** perUnit = ชิ้นที่ได้ต่อ 1 หน่วยสั่งของตัวเลือกนี้ (กางช่องกรอกเมื่อกลุ่มเปิด perUnitOn) */
-type DraftChoice = { name: string; extra: string; qty?: boolean; qtyMax?: string; perUnit?: string; imageSrc?: string };
+/**
+ * stockItemId/stockQtyPer = ผูกกับ SKU ในคลังวัสดุ (ตั้งจากสคริปต์ link-preset-stock / หน้าคลัง)
+ * ⚠️ ต้องพกผ่านดราฟต์ให้ครบ เพราะ fromDraftOptions สร้าง choices ใหม่ทั้งก้อน
+ *    ถ้าไม่พกมา แอดมินกดบันทึกสินค้าทีเดียวลิงก์สต๊อกหายหมดแบบเงียบ ๆ
+ */
+type DraftChoice = {
+  name: string;
+  extra: string;
+  qty?: boolean;
+  qtyMax?: string;
+  perUnit?: string;
+  imageSrc?: string;
+  stockItemId?: string;
+  stockQtyPer?: number;
+};
 /** presetId มี = กลุ่มนี้ "ลิงก์" คลังตัวเลือกกลาง (label+choices มาจากคลัง แก้ในกลุ่มไม่ได้จนกว่าจะตัดลิงก์) */
 type DraftOption = {
   label: string;
@@ -335,6 +349,8 @@ function toDraft(p: Product): Draft {
         ...(c.qtyMax || o.qtyMax ? { qtyMax: String(c.qtyMax ?? o.qtyMax) } : {}),
         ...(c.perUnit ? { perUnit: String(c.perUnit) } : {}),
         ...(c.imageSrc ? { imageSrc: c.imageSrc } : {}),
+        ...(c.stockItemId ? { stockItemId: c.stockItemId } : {}),
+        ...(c.stockQtyPer ? { stockQtyPer: c.stockQtyPer } : {}),
       })),
       ...(o.presetId ? { presetId: o.presetId } : {}),
       // มีตัวไหนเปิด "ระบุจำนวน" ไว้ = กลุ่มนี้เคยเปิดสวิตช์ → เปิดค้างไว้ให้เห็นค่าเดิม
@@ -536,6 +552,9 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             // 📐 ชิ้น/หน่วย กรอกในตารางราคา (คอลัมน์แรก) แล้วเก็บกลับมาที่ตัวเลือกตามเดิม
             ...(Number(c.perUnit) > 0 ? { perUnit: Math.floor(Number(c.perUnit)) } : {}),
             ...(c.imageSrc ? { imageSrc: c.imageSrc } : {}),
+            // ลิงก์คลังวัสดุ — หน้าแก้ไขไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นบันทึกแล้วหาย
+            ...(c.stockItemId ? { stockItemId: c.stockItemId } : {}),
+            ...(c.stockQtyPer ? { stockQtyPer: c.stockQtyPer } : {}),
           };
         }),
       ...(o.presetId ? { presetId: o.presetId } : {}),

@@ -67,6 +67,9 @@ interface Stat {
   level: Tone;
 }
 
+/** ช่องเลือกในแถบเครื่องมือ — inputCls มี w-full ติดมา ต้องถอดก่อนไม่งั้นกินเต็มบรรทัด */
+const selectCls = `${inputCls.replace("w-full ", "")} w-auto max-w-[14rem]`;
+
 const fmtN = (n: number) => n.toLocaleString("th-TH");
 const fmtAt = (iso: string) =>
   new Date(iso).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -96,6 +99,8 @@ export default function StockPage() {
   const [ok, setOk] = useState("");
 
   const [q, setQ] = useState("");
+  const [cat, setCat] = useState("ทุกหมวด");
+  const [fam, setFam] = useState("ทุกตระกูล");
   const [filter, setFilter] = useState<Filter>("ทั้งหมด");
   const [sort, setSort] = useState<SortKey>("urgency");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -149,12 +154,32 @@ export default function StockPage() {
   const nearLow = useMemo(() => items.filter((i) => stats.get(i.id)?.level === "warn"), [items, stats]);
   const toReview = useMemo(() => items.filter((i) => i.needsReview), [items]);
 
+  /** รายการหมวด/ตระกูลที่มีจริงในคลัง — ตระกูลตามหมวดที่เลือกอยู่ ไม่ให้เลือกคู่ที่ไม่มีของ */
+  const cats = useMemo(
+    () => [...new Set(items.map((i) => i.category).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, "th")),
+    [items]
+  );
+  const fams = useMemo(
+    () =>
+      [
+        ...new Set(
+          items
+            .filter((i) => cat === "ทุกหมวด" || i.category === cat)
+            .map((i) => i.family)
+            .filter(Boolean) as string[]
+        ),
+      ].sort((a, b) => a.localeCompare(b, "th")),
+    [items, cat]
+  );
+
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     let list = items;
     if (filter === "ต้องสั่ง") list = needOrder;
     else if (filter === "ใกล้หมด") list = nearLow;
     else if (filter === "รอตรวจ") list = toReview;
+    if (cat !== "ทุกหมวด") list = list.filter((i) => i.category === cat);
+    if (fam !== "ทุกตระกูล") list = list.filter((i) => i.family === fam);
     if (needle) list = list.filter((i) => matchItem(i, needle));
     const rank: Record<string, number> = { danger: 0, warn: 1, neutral: 2, ok: 3, review: 4 };
     return [...list].sort((a, b) => {
@@ -167,7 +192,7 @@ export default function StockPage() {
         (rank[sa?.level ?? "neutral"] ?? 9) - (rank[sb?.level ?? "neutral"] ?? 9) || a.name.localeCompare(b.name, "th")
       );
     });
-  }, [items, q, filter, sort, needOrder, nearLow, toReview, stats]);
+  }, [items, q, cat, fam, filter, sort, needOrder, nearLow, toReview, stats]);
 
   async function doMove(itemId: string, qty: number, reason: string, note?: string, refOrderId?: string) {
     setErr("");
@@ -277,8 +302,27 @@ export default function StockPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="ค้นชื่อ รหัส ตระกูล หรือชื่อที่เคยเรียก…"
-              className={`${inputCls} w-full sm:w-72`}
+              className={`${inputCls} w-full sm:w-64`}
             />
+            <select
+              value={cat}
+              onChange={(e) => {
+                setCat(e.target.value);
+                setFam("ทุกตระกูล"); // เปลี่ยนหมวดแล้วตระกูลเดิมอาจไม่มีในหมวดใหม่
+              }}
+              className={selectCls}
+            >
+              <option>ทุกหมวด</option>
+              {cats.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+            <select value={fam} onChange={(e) => setFam(e.target.value)} className={selectCls}>
+              <option>ทุกตระกูล</option>
+              {fams.map((f) => (
+                <option key={f}>{f}</option>
+              ))}
+            </select>
             <div className="flex flex-wrap gap-1.5">
               <Chip active={filter === "ทั้งหมด"} onClick={() => setFilter("ทั้งหมด")} count={items.length}>
                 ทั้งหมด
