@@ -982,3 +982,73 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 /* ── เพิ่มเติมสำหรับเว็บจริง (ไม่มีในไฟล์ต้นแบบ) ── */
 /* การ์ดขายดีเป็นลิงก์ทั้งใบ — ป้าย "เลือกลาย" จึงเป็นข้อความ ไม่ใช่ปุ่มซ้อนลิงก์ */
 .dl .card .add{display:block;text-align:center}
+
+/* ═══════ หน้า "วิธีสั่งซื้อ" (/how-to-order) — ภาษาเดียวกับหน้าแรก ═══════ */
+/* หัวข้อหน้าใช้ h1 (หน้าแรกเป็น h2) — สไตล์ชุดเดียวกับ .head h2 */
+.dl .head h1{font-size:clamp(1.8rem,3.6vw,2.7rem);font-weight:500;letter-spacing:-.01em;display:inline-block;position:relative}
+.dl .head h1 em{font-style:normal;color:var(--yolk-deep)}
+.dl .head h1::before,.dl .head h1::after{content:"";position:absolute;top:50%;height:1px;width:clamp(24px,6vw,80px)}
+.dl .head h1::before{right:calc(100% + 20px);background:linear-gradient(90deg,rgba(156,216,246,0),var(--sky-300))}
+.dl .head h1::after{left:calc(100% + 20px);background:linear-gradient(90deg,var(--sky-300),rgba(156,216,246,0))}
+@media(max-width:620px){.dl .head h1::before,.dl .head h1::after{display:none}}
+.dl .hto-top{padding:36px 0 64px}
+.dl .hto-top .head{margin-bottom:30px}
+/* กล่องเงื่อนไขชำระเงิน — โทนเหลืองเด่นบนพื้นฟ้า อ่านก่อนสั่ง */
+.dl .hto-pay{width:min(100% - 40px,760px);margin:0 auto 34px;position:relative;
+  background:linear-gradient(150deg,#FFF6D9,#FFFBEF 70%);border:2px solid #fff;border-radius:var(--r-m);
+  padding:20px 24px;box-shadow:var(--shadow-s)}
+.dl .hto-pay-title{display:flex;align-items:center;gap:8px;font-family:var(--display);font-weight:500;color:var(--navy);margin-bottom:10px}
+.dl .hto-pay li{list-style:none;position:relative;padding-left:22px;font-size:.92rem;line-height:1.75;color:#5B5330}
+.dl .hto-pay li::before{content:"";position:absolute;left:4px;top:.72em;width:7px;height:7px;border-radius:50%;background:var(--yolk-deep)}
+.dl .hto-pay b{font-weight:700;color:var(--navy)}
+.dl .hto-pay .warn{color:#E25C5C}
+/* ขั้นตอน 7 ข้อ — การ์ดเรียงลงมา มีเส้นประเชื่อมเป็นไทม์ไลน์ */
+.dl .hto-steps{width:min(100% - 40px,760px);margin:0 auto;display:grid;gap:14px;position:relative}
+.dl .hto-steps::before{content:"";position:absolute;left:46px;top:30px;bottom:30px;border-left:2px dashed var(--sky-300);z-index:0}
+.dl .hto-step{display:flex;gap:18px;align-items:flex-start;position:relative;z-index:1;
+  background:#fff;border:2px solid #fff;border-radius:var(--r-m);padding:18px 22px;box-shadow:var(--shadow-s);
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1),box-shadow .3s ease,border-color .3s ease}
+.dl .hto-step:hover{transform:translateY(-4px);box-shadow:var(--shadow-m);border-color:var(--sky-200)}
+.dl .hto-ico{width:52px;height:52px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:1.45rem;position:relative;
+  background:linear-gradient(150deg,#E4F3FE,#fff 70%);box-shadow:inset 0 2px 4px rgba(255,255,255,.75),0 6px 14px rgba(44,129,196,.16)}
+.dl .hto-ico::before{content:"";position:absolute;inset:-5px;border-radius:50%;border:1.5px solid var(--blue);opacity:.22;
+  transition:.3s cubic-bezier(.34,1.56,.64,1)}
+.dl .hto-step:hover .hto-ico::before{inset:-8px;opacity:.45}
+.dl .hto-step h2{font-size:1.02rem;font-weight:500;margin-top:2px}
+.dl .hto-step .stepno{margin-bottom:6px}
+.dl .hto-step p{font-size:.9rem;line-height:1.75;color:var(--navy-soft);margin-top:4px}
+@media(max-width:560px){.dl .hto-steps::before{display:none}.dl .hto-step{flex-direction:column;gap:10px;padding:18px}}
+/* สั่งแล้วทำเองได้ — การ์ด 2 คอลัมน์บนแถบ gradient */
+.dl .hto-after{display:grid;grid-template-columns:1fr 1fr;gap:16px;width:min(100% - 0px,880px);margin:0 auto}
+@media(max-width:760px){.dl .hto-after{grid-template-columns:1fr}}
+.dl .hto-card{background:rgba(255,255,255,.92);border:2px solid #fff;border-radius:var(--r-m);padding:20px 22px;
+  box-shadow:var(--shadow-s);transition:transform .3s cubic-bezier(.34,1.56,.64,1),box-shadow .3s ease}
+.dl .hto-card:hover{transform:translateY(-5px);box-shadow:var(--shadow-m)}
+.dl .hto-card-head{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.dl .hto-card-head i{width:44px;height:44px;flex:none;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:1.25rem;
+  box-shadow:inset 0 2px 4px rgba(255,255,255,.75),0 5px 12px rgba(44,129,196,.14)}
+.dl .hto-card-head b{font-family:var(--display);font-weight:500;font-size:1rem;color:var(--navy)}
+.dl .hto-card p{font-size:.88rem;line-height:1.75;color:var(--navy-soft)}
+.dl .hto-when{margin-top:10px;padding:9px 13px;border-radius:14px;background:var(--sky-50);border:1px dashed var(--sky-200);
+  font-size:.78rem;line-height:1.7;color:#5F7CA3}
+/* วงไอคอน 4 โทน — ชุดสีเดียวกับ .orb หน้าแรก */
+.dl .t-sky{background:linear-gradient(150deg,#E4F3FE,#fff 70%);color:#2C81C4}
+.dl .t-mint{background:linear-gradient(150deg,#DFF7EE,#fff 70%);color:#3FAE8B}
+.dl .t-lilac{background:linear-gradient(150deg,#EDEBFC,#fff 70%);color:#7B76D6}
+.dl .t-yolk{background:linear-gradient(150deg,#FFF3CE,#fff 70%);color:#D79A15}
+/* คำถามพบบ่อย — การ์ดกดกาง */
+.dl .hto-faq{width:min(100% - 40px,760px);margin:0 auto;display:grid;gap:12px}
+.dl .hto-faq details{background:#fff;border:2px solid #fff;border-radius:var(--r-m);padding:16px 20px;box-shadow:var(--shadow-s);
+  transition:border-color .25s ease,box-shadow .25s ease}
+.dl .hto-faq details:hover{border-color:var(--sky-200)}
+.dl .hto-faq details[open]{border-color:var(--sky-200);box-shadow:var(--shadow-m)}
+.dl .hto-faq summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:11px;
+  font-family:var(--display);font-weight:400;font-size:.96rem;color:var(--navy)}
+.dl .hto-faq summary::-webkit-details-marker{display:none}
+.dl .hto-faq summary i{width:26px;height:26px;flex:none;border-radius:50%;display:grid;place-items:center;font-style:normal;
+  background:var(--sky-100);color:var(--blue-deep);font-size:.72rem;transition:transform .28s cubic-bezier(.34,1.56,.64,1),background .25s ease,color .25s ease}
+.dl .hto-faq details[open] summary i{transform:rotate(90deg);background:var(--yolk);color:var(--navy)}
+.dl .hto-faq details p{margin-top:10px;padding-left:37px;font-size:.88rem;line-height:1.8;color:var(--navy-soft)}
+/* ระยะหัว-ท้ายของแต่ละโซน */
+.dl .hto-sec{padding:56px 0 60px}
+.dl .hto-cta-wrap{width:min(100% - 40px,var(--wrap));margin:0 auto;padding:8px 0 72px}
