@@ -263,7 +263,7 @@ function LoginInner() {
               className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-[#06C755] px-5 py-2.5 text-[15px] font-medium text-white shadow-sm transition hover:bg-[#05b34c]"
               style={{ fontFamily: "var(--display)" }}
             >
-              💬 Sign in with LINE
+              💬 เข้าสู่ระบบด้วย LINE
             </a>
           </div>
         </div>

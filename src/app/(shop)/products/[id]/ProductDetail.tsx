@@ -162,9 +162,28 @@ export default function ProductDetail({
   const [qty, setQty] = useState(1);
   // 🔍 รูปที่กำลังเปิดดูขนาดใหญ่ (lightbox) — ว่าง = ปิดอยู่
   const [zoomSrc, setZoomSrc] = useState("");
+  /**
+   * รูปทั้งหมดที่เลื่อนดูใน lightbox ได้ (เรียงตามแกลเลอรี เฉพาะช่องที่มีไฟล์รูปจริง)
+   * รูปประกอบในเนื้อหา (section) ไม่อยู่ในลิสต์นี้ — เปิดดูเดี่ยว ๆ ไม่มีลูกศร
+   */
+  const zoomList = useMemo(() => {
+    const srcs = product.images.map((img, i) => img.src ?? (i === 0 ? product.imageSrc : undefined));
+    if (!srcs.length && product.imageSrc) srcs.push(product.imageSrc);
+    return srcs.filter((s): s is string => !!s);
+  }, [product]);
+  /** เลื่อนรูปใน lightbox แบบวน — ใช้ทั้งปุ่มลูกศรและคีย์บอร์ด (รูปที่เปิดอยู่ไม่อยู่ในลิสต์ = ไม่เลื่อน) */
+  const zoomStep = (d: number) =>
+    setZoomSrc((s) => {
+      const i = zoomList.indexOf(s);
+      return i === -1 || zoomList.length < 2 ? s : zoomList[(i + d + zoomList.length) % zoomList.length];
+    });
   useEffect(() => {
     if (!zoomSrc) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setZoomSrc("");
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setZoomSrc("");
+      else if (e.key === "ArrowRight") zoomStep(1);
+      else if (e.key === "ArrowLeft") zoomStep(-1);
+    };
     window.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
     return () => {
@@ -2918,8 +2937,11 @@ export default function ProductDetail({
       {/* กันแถบลอยบังเนื้อหาท้ายหน้า */}
       <div className="h-20 lg:hidden" aria-hidden />
 
-      {/* 🔍 ดูรูปขนาดใหญ่ (กดพื้นหลัง/ปุ่มปิด/Esc เพื่อออก) */}
-      {zoomSrc && (
+      {/* 🔍 ดูรูปขนาดใหญ่ (กดพื้นหลัง/ปุ่มปิด/Esc เพื่อออก · ลูกศรซ้ายขวาเลื่อนรูป) */}
+      {zoomSrc && (() => {
+        const zi = zoomList.indexOf(zoomSrc);
+        const canFlip = zi !== -1 && zoomList.length > 1;
+        return (
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
           onClick={() => setZoomSrc("")}
@@ -2934,6 +2956,30 @@ export default function ProductDetail({
             className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           />
+          {canFlip && (
+            <>
+              {([
+                { d: -1, side: "left-3", glyph: "‹", label: "ดูรูปก่อนหน้า" },
+                { d: 1, side: "right-3", glyph: "›", label: "ดูรูปถัดไป" },
+              ] as const).map((a) => (
+                <button
+                  key={a.label}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    zoomStep(a.d);
+                  }}
+                  aria-label={a.label}
+                  className={`absolute ${a.side} top-1/2 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/90 pb-1 text-3xl font-bold leading-none text-stone-600 shadow-lg transition hover:bg-white hover:text-amber-600`}
+                >
+                  {a.glyph}
+                </button>
+              ))}
+              <span className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-white/90 px-3 py-1 text-xs font-bold tabular-nums text-stone-700 shadow-lg">
+                {zi + 1}/{zoomList.length}
+              </span>
+            </>
+          )}
           <button
             type="button"
             onClick={() => setZoomSrc("")}
@@ -2942,7 +2988,8 @@ export default function ProductDetail({
             ✕ ปิด
           </button>
         </div>
-      )}
+        );
+      })()}
 
       {/* 🧩 จอวางรูปแบบมีช่อง (Theme) — ใช้เมื่อเทมเพลตกำหนดช่องไว้ */}
       {slotStudio && studioTarget?.anySlots ? (
