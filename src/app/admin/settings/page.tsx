@@ -35,7 +35,7 @@ import {
   type Perm,
   type RolePermsMap,
 } from "@/lib/permissions";
-import { btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
+import { btnPrimary, card, faint, muted } from "@/lib/admin-ui";
 
 /** ไอคอนหมวดหมู่ให้เลือก — จัดกลุ่มตามชนิดงานของร้าน (พิมพ์อีโมจิอื่นเองก็ได้) */
 const CAT_ICONS: { group: string; items: string[] }[] = [
@@ -187,29 +187,18 @@ type Tab = "shop" | "pay" | "ship" | "tier" | "welcome" | "roles" | "files" | "c
 
 const TAB_KEYS: Tab[] = ["shop", "pay", "ship", "tier", "welcome", "roles", "files", "cats", "google"];
 
-/** ป้ายบอกว่าหน้านี้/แท็บนี้เห็นได้เฉพาะผู้ดูแลระบบ */
-function AdminOnlyBadge({ className = "" }: { className?: string }) {
-  return (
-    <span
-      title="เฉพาะผู้ดูแลระบบ (Administrator) เท่านั้นที่เห็นและแก้ได้"
-      className={`inline-flex items-center gap-1 rounded-full bg-slate-900/85 px-2 py-0.5 text-[10px] font-bold text-white ${className}`}
-    >
-      🔒 ผู้ดูแลระบบ
-    </span>
-  );
-}
-
-/** ป้ายบอกว่าดูได้อย่างเดียว แก้ไม่ได้ */
-function ViewOnlyBadge({ className = "" }: { className?: string }) {
-  return (
-    <span
-      title="ตำแหน่งของคุณดูได้อย่างเดียว — แก้ไขได้เฉพาะผู้ดูแลระบบ"
-      className={`inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500 ${className}`}
-    >
-      👁 ดูอย่างเดียว
-    </span>
-  );
-}
+/** เมนูหัวข้อตั้งค่า — ไอคอน + ชื่อ + คำอธิบายย่อย (โชว์ในแถบข้างจอกว้าง) */
+const TAB_META: { key: Tab; emoji: string; label: string; hint: string }[] = [
+  { key: "shop", emoji: "🏪", label: "ข้อมูลร้าน", hint: "ชื่อ · ที่อยู่ · ใบเสร็จ" },
+  { key: "pay", emoji: "🏦", label: "ชำระเงิน", hint: "บัญชีธนาคาร · พร้อมเพย์" },
+  { key: "ship", emoji: "🚚", label: "การจัดส่ง", hint: "ค่าส่ง · โปรส่งฟรี" },
+  { key: "tier", emoji: "🏅", label: "ระดับสมาชิก", hint: "ส่วนลดตามยอดสะสม" },
+  { key: "welcome", emoji: "🎁", label: "คูปองต้อนรับ", hint: "แจกสมาชิกใหม่อัตโนมัติ" },
+  { key: "roles", emoji: "👥", label: "บทบาท", hint: "สิทธิ์แต่ละตำแหน่ง" },
+  { key: "cats", emoji: "🗂", label: "หมวดหมู่สินค้า", hint: "หมวดบนหน้าร้าน" },
+  { key: "files", emoji: "🧹", label: "ล้างรูปเก่า", hint: "คืนพื้นที่เก็บไฟล์" },
+  { key: "google", emoji: "🔍", label: "Google & SEO", hint: "Search Console · GA4" },
+];
 
 function AdminSettingsPageInner() {
   const [tab, setTab] = useState<Tab>("pay");
@@ -517,63 +506,73 @@ function AdminSettingsPageInner() {
   }
 
   const inputCls =
-    "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100";
+    "w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100";
   // ช่องกรอกขนาดใหญ่ (ใช้ในแท็บคูปองต้อนรับ ให้โปร่ง อ่านง่าย)
   const bigInput =
     "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100";
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <h1 className={h1}>⚙️ ตั้งค่าระบบ</h1>
-      <p className={`mt-1 ${muted}`}>ช่องทางรับเงิน และรูปแบบการจัดส่งที่ลูกค้าเลือกได้ตอนสั่งซื้อ</p>
+    <div className="mx-auto max-w-6xl">
+      {/* หัวหน้า — โทนแบรนด์ฟ้าอ่อน ฟอนต์หัวเรื่องเดียวกับหน้าร้าน */}
+      <header className="rounded-[22px] border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-amber-50/40 px-5 py-4 shadow-[0_6px_18px_rgba(44,129,196,0.07)] sm:px-6 sm:py-5">
+        <div className="flex items-center gap-3.5">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-2xl shadow-sm ring-1 ring-amber-100">⚙️</span>
+          <div className="min-w-0">
+            <h1 className="font-display text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">ตั้งค่าระบบ</h1>
+            <p className="mt-0.5 text-[13px] text-slate-500">ข้อมูลร้าน · ช่องทางรับเงิน · การจัดส่ง · สิทธิ์ทีมงาน — ตั้งครบจากที่เดียว</p>
+          </div>
+        </div>
+      </header>
 
-      {/* แท็บ */}
-      <div className="mt-5 flex flex-wrap gap-2">
-        {(
-          [
-            ["shop", "🏪 ข้อมูลร้าน"],
-            ["pay", "🏦 ชำระเงิน"],
-            ["ship", "🚚 การจัดส่ง"],
-            ["tier", "🏅 ระดับสมาชิก"],
-            ["welcome", "🎁 คูปองต้อนรับ"],
-            ["roles", "👥 บทบาท"],
-            ["cats", "🗂 หมวดหมู่สินค้า"],
-            ["files", "🧹 ล้างรูปเก่า"],
-            ...((isAdmin ? [["google", "🔍 Google & SEO"]] : []) as [Tab, string][]),
-          ] as [Tab, string][]
-        ).map(([k, label]) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => setTab(k)}
-            aria-pressed={tab === k}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-              tab === k
-                ? "bg-amber-500 text-white shadow-sm"
-                : "border border-slate-200 bg-white text-slate-600 hover:border-amber-200 hover:text-slate-900"
-            }`}
-          >
-            {label}
-            {/* ป้ายบอกว่าแท็บนี้เฉพาะผู้ดูแลระบบ / ตำแหน่งอื่นดูได้อย่างเดียว */}
-            {k === "google" && <AdminOnlyBadge className="ml-1.5 align-middle" />}
-            {(k === "pay" || k === "roles") &&
-              (isAdmin ? (
-                <AdminOnlyBadge className="ml-1.5 align-middle" />
-              ) : (
-                <ViewOnlyBadge className="ml-1.5 align-middle" />
-              ))}
-          </button>
-        ))}
-      </div>
+      <div className="mt-5 items-start gap-5 lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
+        {/* เมนูหัวข้อ — จอกว้างเป็นแถบข้าง sticky · จอเล็กเป็นชิปเลื่อนซ้ายขวา */}
+        <aside className="max-lg:-mx-4 max-lg:px-4 lg:sticky lg:top-6">
+          <nav className="flex gap-1.5 overflow-x-auto pb-1 lg:flex-col lg:gap-1 lg:overflow-visible lg:rounded-2xl lg:border lg:border-slate-200/70 lg:bg-white lg:p-2 lg:shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            {TAB_META.filter((t) => t.key !== "google" || isAdmin).map((t) => {
+              const active = tab === t.key;
+              // 🔒 = เฉพาะผู้ดูแลระบบ · 👁 = ตำแหน่งนี้ดูได้อย่างเดียว
+              const locked = t.key === "google" || ((t.key === "pay" || t.key === "roles") && isAdmin);
+              const viewOnly = (t.key === "pay" || t.key === "roles") && !isAdmin;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setTab(t.key)}
+                  aria-pressed={active}
+                  className={`flex shrink-0 items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-semibold transition lg:w-full ${
+                    active
+                      ? "bg-amber-500 text-white shadow-[0_4px_12px_rgba(44,129,196,0.25)]"
+                      : "text-slate-600 hover:bg-amber-50 hover:text-slate-900 max-lg:border max-lg:border-slate-200 max-lg:bg-white"
+                  }`}
+                >
+                  <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-base ${active ? "bg-white/20" : "bg-slate-100/80"}`}>
+                    {t.emoji}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block whitespace-nowrap leading-tight">
+                      {t.label}
+                      {locked && <span className="ml-1 align-middle text-[10px]" title="เฉพาะผู้ดูแลระบบ (Administrator)">🔒</span>}
+                      {viewOnly && <span className="ml-1 align-middle text-[10px]" title="ตำแหน่งของคุณดูได้อย่างเดียว — แก้ได้เฉพาะผู้ดูแลระบบ">👁</span>}
+                    </span>
+                    <span className={`hidden text-[11px] font-normal leading-tight lg:block ${active ? "text-white/75" : "text-slate-400"}`}>
+                      {t.hint}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
 
+        <div className="min-w-0 max-lg:mt-4">
       {loading ? (
-        <div className={`mt-5 p-8 text-center text-sm ${muted} ${card}`}>กำลังโหลด…</div>
+        <div className={`p-8 text-center text-sm ${muted} ${card}`}>กำลังโหลด…</div>
       ) : (
         <>
           {/* ══════ ข้อมูลร้าน ══════ */}
           {tab === "shop" && (
-            <section className={`mt-4 p-5 ${card}`}>
-              <h2 className="text-sm font-semibold text-slate-800">🏪 ข้อมูลร้าน</h2>
+            <section className={`p-5 ${card}`}>
+              <h2 className="font-display text-[15px] font-semibold text-slate-800">🏪 ข้อมูลร้าน</h2>
               <p className={`mt-0.5 text-xs ${faint}`}>แสดงบนใบงาน · ใบปะหน้าพัสดุ (ผู้ส่ง) · ใบเสร็จ</p>
 
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -603,16 +602,16 @@ function AdminSettingsPageInner() {
 
           {/* ══════ ชำระเงิน ══════ */}
           {tab === "pay" && (
-            <fieldset disabled={!isAdmin} className={!isAdmin ? "opacity-95" : undefined}>
+            <fieldset disabled={!isAdmin} className={`space-y-4 ${!isAdmin ? "opacity-95" : ""}`}>
               {!isAdmin && (
-                <p className="mt-4 rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                <p className="rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
                   👁 ตำแหน่งของคุณ<b className="mx-1">ดูได้อย่างเดียว</b>— บัญชีรับเงินของร้านแก้ได้เฉพาะผู้ดูแลระบบ
                   (กันเลขบัญชีถูกเปลี่ยนโดยไม่ตั้งใจ)
                 </p>
               )}
-              <section className={`mt-4 p-5 ${card}`}>
+              <section className={`p-5 ${card}`}>
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-slate-800">🏦 บัญชีธนาคาร ({banks.length})</h2>
+                  <h2 className="font-display text-[15px] font-semibold text-slate-800">🏦 บัญชีธนาคาร ({banks.length})</h2>
                   <button
                     type="button"
                     onClick={addBank}
@@ -663,9 +662,9 @@ function AdminSettingsPageInner() {
                 </div>
               </section>
 
-              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-4 lg:grid-cols-2">
                 <section className={`p-5 ${card}`}>
-                  <h2 className="text-sm font-semibold text-slate-800">📱 พร้อมเพย์ (PromptPay)</h2>
+                  <h2 className="font-display text-[15px] font-semibold text-slate-800">📱 พร้อมเพย์ (PromptPay)</h2>
                   <div className="mt-3 space-y-2">
                     <input
                       value={promptpay}
@@ -689,7 +688,7 @@ function AdminSettingsPageInner() {
                 </section>
 
                 <section className={`p-5 ${card}`}>
-                  <h2 className="text-sm font-semibold text-slate-800">📝 หมายเหตุถึงลูกค้า (ไม่บังคับ)</h2>
+                  <h2 className="font-display text-[15px] font-semibold text-slate-800">📝 หมายเหตุถึงลูกค้า (ไม่บังคับ)</h2>
                   <textarea
                     value={note}
                     onChange={(e) => {
@@ -707,10 +706,10 @@ function AdminSettingsPageInner() {
 
           {/* ══════ การจัดส่ง ══════ */}
           {tab === "ship" && (
-            <>
-              <section className={`mt-4 p-5 ${card}`}>
+            <div className="space-y-4">
+              <section className={`p-5 ${card}`}>
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-slate-800">🚚 รูปแบบการจัดส่ง ({shipping.length})</h2>
+                  <h2 className="font-display text-[15px] font-semibold text-slate-800">🚚 รูปแบบการจัดส่ง ({shipping.length})</h2>
                   <button
                     type="button"
                     onClick={addShip}
@@ -812,8 +811,8 @@ function AdminSettingsPageInner() {
                 )}
               </section>
 
-              <section className={`mt-4 p-5 ${card}`}>
-                <h2 className="text-sm font-semibold text-slate-800">🎁 ส่งฟรีเมื่อซื้อครบ</h2>
+              <section className={`p-5 ${card}`}>
+                <h2 className="font-display text-[15px] font-semibold text-slate-800">🎁 ส่งฟรีเมื่อซื้อครบ</h2>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <input
                     type="number"
@@ -833,14 +832,14 @@ function AdminSettingsPageInner() {
                     : "ใส่ 0 = ปิดโปรส่งฟรี ลูกค้าจ่ายค่าส่งทุกออเดอร์"}
                 </p>
               </section>
-            </>
+            </div>
           )}
 
           {/* ══════ ระดับสมาชิก ══════ */}
           {tab === "tier" && (
-            <section className={`mt-4 p-5 ${card}`}>
+            <section className={`p-5 ${card}`}>
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-slate-800">🏅 ระดับสมาชิก ({tiers.length})</h2>
+                <h2 className="font-display text-[15px] font-semibold text-slate-800">🏅 ระดับสมาชิก ({tiers.length})</h2>
                 <button
                   type="button"
                   onClick={() => {
@@ -922,11 +921,11 @@ function AdminSettingsPageInner() {
           )}
 
           {tab === "welcome" && (
-            <section className={`mt-5 ${card} p-6 sm:p-8`}>
+            <section className={`${card} p-6 sm:p-8`}>
               {/* หัว: ชื่อ + สวิตช์เปิด/ปิด (มีป้ายสถานะชัดเจน) */}
               <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-800">🎁 คูปองต้อนรับสมาชิกใหม่</h2>
+                  <h2 className="font-display text-lg font-semibold text-slate-900">🎁 คูปองต้อนรับสมาชิกใหม่</h2>
                   <p className={`mt-1 text-sm ${muted}`}>แจกอัตโนมัติเมื่อลูกค้าสมัคร/ล็อกอินครั้งแรก · ผูกบัญชี ใช้ครั้งเดียว</p>
                 </div>
                 <button
@@ -1021,7 +1020,7 @@ function AdminSettingsPageInner() {
           {tab === "cats" && (
             <div className="space-y-3">
               <div className="rounded-2xl bg-sky-50 p-4 text-xs leading-relaxed text-sky-900 ring-1 ring-sky-100">
-                <p className="font-bold">🗂 หมวดหมู่สินค้า</p>
+                <p className="font-display text-[13px] font-semibold">🗂 หมวดหมู่สินค้า</p>
                 <p className="mt-1">
                   ชื่อ/อีโมจิ/ลำดับที่ตั้งตรงนี้จะขึ้นบนหน้าแรก · หน้าสินค้าทั้งหมด · และช่องเลือกหมวดในหลังบ้าน
                   · ติ๊ก “ซ่อน” เพื่อพักหมวดจากหน้าร้านโดยไม่ลบสินค้า
@@ -1141,7 +1140,7 @@ function AdminSettingsPageInner() {
           {tab === "files" && (
             <div className="space-y-4">
               <div className="rounded-2xl bg-sky-50 p-4 text-xs leading-relaxed text-sky-900 ring-1 ring-sky-100">
-                <p className="font-bold">🧹 ล้างรูปของออเดอร์เก่าอัตโนมัติ</p>
+                <p className="font-display text-[13px] font-semibold">🧹 ล้างรูปของออเดอร์เก่าอัตโนมัติ</p>
                 <p className="mt-1">
                   ไฟล์แบบงาน/ลายลูกค้าเป็นก้อนที่ใหญ่ที่สุดของระบบ (หลาย MB ต่อรูป) ออเดอร์ที่ปิดงานไปนานแล้วแทบไม่มีใครเปิดดูรูปอีก
                   ระบบจะลบเฉพาะ “ไฟล์รูป” — ข้อมูลออเดอร์ (ชื่อ/ราคา/ที่อยู่/ประวัติ) ยังอยู่ครบ และหน้าออเดอร์จะขึ้นข้อความแทนรูปแตก
@@ -1263,8 +1262,8 @@ function AdminSettingsPageInner() {
 
           {/* ══════ Google & SEO ══════ */}
           {tab === "google" && (
-            <section className={`mt-4 p-5 ${card}`}>
-              <h2 className="text-sm font-semibold text-slate-800">🔍 เชื่อมกับ Google &amp; การค้นหา</h2>
+            <section className={`p-5 ${card}`}>
+              <h2 className="font-display text-[15px] font-semibold text-slate-800">🔍 เชื่อมกับ Google &amp; การค้นหา</h2>
               <p className={`mt-0.5 text-xs ${faint}`}>
                 เอารหัสจากบริการของ Google มาวางที่นี่ · ช่องไหนเว้นว่าง = ไม่ใช้ตัวนั้น (เว็บไม่โหลดสคริปต์เกินจำเป็น)
               </p>
@@ -1376,8 +1375,8 @@ function AdminSettingsPageInner() {
               const BUILTIN = [DEPT_ADMIN, DEPT_GRAPHIC, DEPT_PACKING, DEPT_CONTENT];
               const depts = rolesMap ? Object.keys(rolesMap) : [];
               return (
-                <section className={`mt-5 p-5 ${card} sm:p-6`}>
-                  <h2 className="text-sm font-semibold text-slate-800">👥 บทบาทการทำงาน — แต่ละตำแหน่งทำอะไรได้บ้าง</h2>
+                <section className={`p-5 ${card} sm:p-6`}>
+                  <h2 className="font-display text-[15px] font-semibold text-slate-800">👥 บทบาทการทำงาน — แต่ละตำแหน่งทำอะไรได้บ้าง</h2>
                   <p className={`mt-1 text-xs ${faint}`}>
                     {rolesEditable
                       ? "ติ๊กเลือกสิทธิ์ของแต่ละบทบาทได้เลย แล้วกด “บันทึกบทบาท” — มีผลกับทุกคนในแผนกนั้นทันทีที่โหลดหน้าใหม่/ล็อกอินครั้งถัดไป"
@@ -1489,16 +1488,19 @@ function AdminSettingsPageInner() {
               );
             })()}
 
-          {error && <div className="mt-4 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{error}</div>}
+          {error && (
+            <div className="mt-4 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700 ring-1 ring-rose-100">{error}</div>
+          )}
 
-          <div className="mt-5 flex items-center justify-between gap-3">
+          {/* แถบบันทึกลอยติดขอบล่าง — ไม่ต้องเลื่อนหาปุ่ม */}
+          <div className="sticky bottom-3 z-20 mt-5 flex items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-2.5 shadow-[0_10px_30px_rgba(15,23,42,0.14)] backdrop-blur">
             <p className={`text-xs ${faint}`}>บันทึกครั้งเดียวมีผลทุกแท็บ</p>
             <button type="button" onClick={save} disabled={saving} className={`${btnPrimary} ${saved ? "!bg-emerald-600" : ""}`}>
               {saving ? "กำลังบันทึก…" : saved ? "✓ บันทึกแล้ว" : "💾 บันทึก"}
             </button>
           </div>
 
-          <p className={`mt-6 text-center text-xs ${faint}`}>
+          <p className={`mt-4 text-center text-xs ${faint}`}>
             ดูผลฝั่งลูกค้าได้ที่หน้า{" "}
             <Link href="/cart" className="font-semibold text-amber-600 hover:underline">
               ตะกร้าสินค้า
@@ -1506,6 +1508,8 @@ function AdminSettingsPageInner() {
           </p>
         </>
       )}
+        </div>
+      </div>
     </div>
   );
 }

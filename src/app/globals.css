@@ -2,6 +2,8 @@
 
 @theme {
   --font-sans: var(--font-prompt), "Prompt", sans-serif;
+  /* ฟอนต์หัวเรื่อง (Mitr — ตัวเดียวกับดีไซน์หน้าร้าน) → คลาส font-display */
+  --font-display: var(--font-mitr), "Mitr", var(--font-prompt), sans-serif;
 
   /* พื้นเว็บหน้าร้าน — ขาวล้วน */
   --color-cream: #ffffff;
