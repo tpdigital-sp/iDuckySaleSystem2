@@ -19,7 +19,7 @@ import { loadOverrides, resetAll } from "@/lib/product-store";
 import { deleteProductDb, fetchProductRaw, fetchProductsAdminLite, fetchProductSort, persistProduct } from "@/lib/product-repo";
 import { getAdminSession } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { badge, btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
+import { badge, btnPrimary, card, faint, muted } from "@/lib/admin-ui";
 import { useCan } from "@/lib/perm-context";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 
@@ -307,13 +307,15 @@ export default function AdminProductsPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      {/* หัวเรื่อง + ปุ่มหลัก */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className={h1}>
-            สินค้า <span className="font-medium text-slate-400">({products.length})</span>
+      {/* หัวหน้า — hero โทนแบรนด์ + ปุ่มหลัก (ชุดเดียวกับหน้า ตั้งค่าระบบ/สินค้าสั่งพิเศษ) */}
+      <header className="rounded-[22px] border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-amber-50/40 px-5 py-4 shadow-[0_6px_18px_rgba(44,129,196,0.07)] sm:px-6 sm:py-5">
+      <div className="flex flex-wrap items-center gap-3.5">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-2xl shadow-sm ring-1 ring-amber-100">🏷️</span>
+        <div className="min-w-0 flex-1">
+          <h1 className="font-display text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
+            สินค้า <span className="text-base font-normal text-slate-400">({products.length})</span>
           </h1>
-          <p className={`mt-1 ${muted}`}>
+          <p className="mt-0.5 text-[13px] text-slate-500">
             ค้นหา กรอง และแก้ไขสินค้าได้ในหน้าเดียว — การแก้ไขบันทึกลงฐานข้อมูลและหน้าร้านแสดงตามที่แก้
           </p>
         </div>
@@ -346,17 +348,14 @@ export default function AdminProductsPage() {
           )}
         </div>
       </div>
+      </header>
 
       {/* แถบสรุปภาพรวม */}
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatTile label="สินค้าทั้งหมด" value={products.length.toString()} />
-        <StatTile
-          label="ตรวจแล้ว"
-          value={`${reviewedCount}/${products.length}`}
-          accent={reviewedCount > 0}
-        />
-        <StatTile label="ยังไม่เผยแพร่" value={hiddenCount.toString()} accent={hiddenCount > 0} />
-        <StatTile label="ยอดขายรวม" value={totalSold.toLocaleString("th-TH")} />
+        <StatTile icon="🏷️" tone="teal" label="สินค้าทั้งหมด" value={products.length.toString()} />
+        <StatTile icon="✅" tone={reviewedCount > 0 ? "emerald" : "slate"} label="ตรวจแล้ว" value={`${reviewedCount}/${products.length}`} />
+        <StatTile icon="📝" tone={hiddenCount > 0 ? "rose" : "slate"} label="ยังไม่เผยแพร่" value={hiddenCount.toString()} />
+        <StatTile icon="📈" tone="yellow" label="ยอดขายรวม" value={totalSold.toLocaleString("th-TH")} />
       </div>
 
       {/*
@@ -375,13 +374,13 @@ export default function AdminProductsPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="ค้นหาชื่อสินค้า…"
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-100"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-100"
             />
           </div>
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as SortMode)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-amber-400"
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-amber-400"
             aria-label="เรียงลำดับ"
           >
             {SORTS.map((s) => (
@@ -390,7 +389,7 @@ export default function AdminProductsPage() {
               </option>
             ))}
           </select>
-          <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
+          <div className="inline-flex overflow-hidden rounded-xl border border-slate-200">
             {([
               ["table", "☰", "มุมมองตาราง"],
               ["cards", "▦", "มุมมองการ์ด"],
@@ -402,7 +401,7 @@ export default function AdminProductsPage() {
                 aria-pressed={view === id}
                 title={tip}
                 className={`px-3 py-2 text-sm transition ${
-                  view === id ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
+                  view === id ? "bg-amber-500 text-white" : "bg-white text-slate-500 hover:bg-amber-50"
                 }`}
               >
                 {glyph}
@@ -522,9 +521,10 @@ export default function AdminProductsPage() {
             if (inCat.length === 0) return null;
             return (
               <section key={c.id}>
-                <h2 className="mb-2 flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                  <span className="text-sm">{c.emoji}</span> {c.name}
-                  <span className="font-normal normal-case text-slate-300">· {inCat.length} รายการ</span>
+                <h2 className="mb-2 flex items-center gap-2 rounded-xl bg-amber-50/70 px-3 py-2 ring-1 ring-amber-100">
+                  <span className="text-sm">{c.emoji}</span>
+                  <span className="font-display text-[13px] font-semibold text-slate-800">{c.name}</span>
+                  <span className="text-xs text-slate-400">· {inCat.length} รายการ</span>
                 </h2>
                 <TableList items={inCat} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onToggleHidden={toggleHidden} onDuplicate={duplicate} duplicating={duplicating} />
               </section>
@@ -543,7 +543,7 @@ export default function AdminProductsPage() {
           <button
             type="button"
             onClick={() => setShown((n) => n + PAGE)}
-            className="rounded-full bg-white px-6 py-2.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+            className="rounded-full bg-white px-6 py-2.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200 transition hover:border-amber-200 hover:bg-amber-50/60 hover:text-amber-800"
           >
             แสดงเพิ่ม (เหลืออีก {(sorted.length - shown).toLocaleString("th-TH")} รายการ)
           </button>
@@ -555,12 +555,38 @@ export default function AdminProductsPage() {
 
 /* ── ชิ้นส่วนย่อย ─────────────────────────────────────────── */
 
-function StatTile({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function StatTile({
+  label,
+  value,
+  icon,
+  tone = "slate",
+}: {
+  label: string;
+  value: string;
+  icon: string;
+  tone?: "slate" | "teal" | "emerald" | "rose" | "yellow";
+}) {
+  // สีไอคอน/ตัวเลขตามความหมาย — teal = แบรนด์ · emerald = ผ่าน · rose = ค้าง · yellow = ยอดขาย
+  const chip = {
+    slate: "bg-slate-100",
+    teal: "bg-amber-50 ring-1 ring-amber-100",
+    emerald: "bg-emerald-50 ring-1 ring-emerald-100",
+    rose: "bg-rose-50 ring-1 ring-rose-100",
+    yellow: "bg-[var(--color-ducky)]/25 ring-1 ring-[var(--color-ducky)]",
+  }[tone];
+  const num = {
+    slate: "text-slate-900",
+    teal: "text-amber-700",
+    emerald: "text-emerald-600",
+    rose: "text-rose-600",
+    yellow: "text-slate-900",
+  }[tone];
   return (
-    <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200/70">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className={`mt-0.5 text-2xl font-bold ${accent ? "text-sky-600" : "text-slate-900"}`}>
-        {value}
+    <div className="flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-lg ${chip}`}>{icon}</span>
+      <div className="min-w-0">
+        <div className="truncate text-xs text-slate-500">{label}</div>
+        <div className={`font-display text-xl font-semibold tabular-nums ${num}`}>{value}</div>
       </div>
     </div>
   );
@@ -583,8 +609,8 @@ function FilterChip({
       onClick={onClick}
       className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition ${
         active
-          ? "bg-slate-900 text-white"
-          : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+          ? "bg-amber-500 text-white shadow-[0_4px_12px_rgba(44,129,196,0.25)]"
+          : "border border-slate-200 bg-white text-slate-600 hover:border-amber-200 hover:bg-amber-50/50"
       }`}
     >
       {label} <span className={active ? "opacity-70" : "text-slate-400"}>{count}</span>
@@ -629,7 +655,7 @@ function SegGroup<T extends string>({
   return (
     <div className="flex items-center gap-1.5">
       <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{label}</span>
-      <div className="inline-flex overflow-hidden rounded-lg border border-slate-200" role="group" aria-label={aria}>
+      <div className="inline-flex overflow-hidden rounded-xl border border-slate-200" role="group" aria-label={aria}>
         {items.map((it) => (
           <button
             key={it.id}
@@ -637,7 +663,7 @@ function SegGroup<T extends string>({
             onClick={() => onChange(it.id)}
             aria-pressed={value === it.id}
             className={`px-2.5 py-1.5 text-xs font-semibold transition ${
-              value === it.id ? `${it.on ?? "bg-slate-900"} text-white` : "bg-white text-slate-500 hover:bg-slate-50"
+              value === it.id ? `${it.on ?? "bg-amber-500"} text-white` : "bg-white text-slate-500 hover:bg-amber-50/60"
             }`}
           >
             {it.label} <span className="tabular-nums opacity-60">{it.count}</span>
