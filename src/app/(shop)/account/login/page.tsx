@@ -34,16 +34,16 @@ function IconField({
   return (
     <div className="relative">
       <span
-        className="pointer-events-none absolute left-2.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-[#E2F3FE]"
+        className="pointer-events-none absolute left-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full bg-[#E2F3FE]"
         aria-hidden="true"
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="#2C81C4" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4.5 w-4.5" width={17} height={17}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#2C81C4" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" width={15} height={15}>
           <path d={d} />
         </svg>
       </span>
       <input
         {...props}
-        className="h-12 w-full rounded-full bg-white pl-[52px] pr-5 text-sm text-[#173A6B] ring-1 ring-[#C6E8FB] placeholder:text-[#8FA6C4] focus:outline-none focus:ring-2 focus:ring-[#57B6E8]"
+        className="h-11 w-full rounded-full bg-white pl-[44px] pr-4 text-[13.5px] text-[#173A6B] ring-1 ring-[#C6E8FB] placeholder:text-[#8FA6C4] focus:outline-none focus:ring-2 focus:ring-[#57B6E8]"
       />
     </div>
   );
@@ -51,7 +51,10 @@ function IconField({
 
 /** ช่องกรอกข้อความกลางช่อง (หน้าสมัครสมาชิก) */
 const centerInputCls =
-  "h-12 w-full rounded-full bg-white px-5 text-center text-sm text-[#173A6B] ring-1 ring-[#C6E8FB] placeholder:text-[#8FA6C4] focus:outline-none focus:ring-2 focus:ring-[#57B6E8]";
+  "h-11 w-full rounded-full bg-white px-4 text-center text-[13.5px] text-[#173A6B] ring-1 ring-[#C6E8FB] placeholder:text-[#8FA6C4] focus:outline-none focus:ring-2 focus:ring-[#57B6E8]";
+
+/** ปุ่ม .btn ของหน้าแรกใหญ่ไปสำหรับการ์ดล็อกอิน — ย่อระยะขอบ/ตัวอักษรลง (มือถืออ่านง่ายขึ้น ไม่ล้นจอ) */
+const btnCompact = { padding: "12px 16px 12px 24px", fontSize: ".95rem" } as const;
 
 function LoginInner() {
   const router = useRouter();
@@ -128,9 +131,9 @@ function LoginInner() {
 
   return (
     <div style={{ fontFamily: "var(--font-sans)", color: "var(--navy)" }}>
-      <div className="mx-auto max-w-[620px] px-4 py-10">
+      <div className="mx-auto max-w-[480px] px-4 py-6 sm:py-9">
         <div
-          className="relative px-5 pb-10 pt-6 sm:px-12"
+          className="relative px-4 pb-7 pt-4 sm:px-9 sm:pb-8 sm:pt-5"
           style={{ background: "var(--sky-100)", borderRadius: "var(--r-l)", boxShadow: "var(--shadow-m)" }}
         >
           {/* ปุ่มสลับโหมดมุมขวาบน — ปุ่ม pill แบบเดียวกับหน้าแรก */}
@@ -139,7 +142,7 @@ function LoginInner() {
               type="button"
               onClick={switchMode}
               className="btn btn-primary"
-              style={{ padding: "9px 14px 9px 20px", fontSize: ".92rem" }}
+              style={{ padding: "7px 11px 7px 16px", fontSize: ".82rem" }}
             >
               {mode === "login" ? "Create Account" : "เข้าสู่ระบบ"} <span className="dot">→</span>
             </button>
@@ -151,18 +154,18 @@ function LoginInner() {
               <img
                 src="/account/duck-login.svg"
                 alt=""
-                className="mx-auto -mt-3 w-[82%] max-w-[360px]"
+                className="mx-auto -mt-2 w-[68%] max-w-[248px]"
                 width={408}
                 height={317}
               />
-              <h1 className="mt-4 text-center text-4xl sm:text-[2.6rem]" style={{ color: "var(--navy)", fontFamily: "var(--display)", fontWeight: 500 }}>
+              <h1 className="mt-3 text-center text-[1.75rem] sm:text-[2.05rem]" style={{ color: "var(--navy)", fontFamily: "var(--display)", fontWeight: 500 }}>
                 User Login
               </h1>
-              <p className="mt-1.5 text-center text-sm" style={{ color: "var(--navy-soft)" }}>
+              <p className="mt-1 text-center text-[12.5px] sm:text-[13.5px]" style={{ color: "var(--navy-soft)" }}>
                 เข้าสู่ระบบสมาชิก — ยินดีต้อนรับกลับมาที่ iDucky Prints Studio
               </p>
 
-              <div className="mx-auto mt-6 max-w-[400px] space-y-4">
+              <div className="mx-auto mt-5 max-w-[360px] space-y-3">
                 <IconField
                   icon="user"
                   value={email}
@@ -181,7 +184,7 @@ function LoginInner() {
                   aria-label="Password"
                   onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
                 />
-                <div className="flex items-center justify-between px-1 text-sm" style={{ color: "var(--navy-soft)" }}>
+                <div className="flex items-center justify-between px-1 text-[13px]" style={{ color: "var(--navy-soft)" }}>
                   <label className="flex cursor-pointer items-center gap-2">
                     <input
                       type="checkbox"
@@ -203,18 +206,18 @@ function LoginInner() {
               <img
                 src="/account/duck-avatar.svg"
                 alt=""
-                className="mx-auto mt-2 w-[44%] max-w-[190px]"
+                className="mx-auto mt-1 w-[36%] max-w-[132px]"
                 width={243}
                 height={299}
               />
-              <h1 className="mt-3 text-center text-4xl sm:text-[2.6rem]" style={{ color: "var(--navy)", fontFamily: "var(--display)", fontWeight: 500 }}>
+              <h1 className="mt-2 text-center text-[1.75rem] sm:text-[2.05rem]" style={{ color: "var(--navy)", fontFamily: "var(--display)", fontWeight: 500 }}>
                 Create Account
               </h1>
-              <p className="mt-1.5 text-center text-sm" style={{ color: "var(--navy-soft)" }}>
+              <p className="mt-1 text-center text-[12.5px] sm:text-[13.5px]" style={{ color: "var(--navy-soft)" }}>
                 สมัครสมาชิกฟรี เก็บประวัติสั่งซื้อ รับส่วนลดสมาชิก
               </p>
 
-              <div className="mx-auto mt-6 max-w-[400px] space-y-4">
+              <div className="mx-auto mt-5 max-w-[360px] space-y-3">
                 <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name *" className={centerInputCls} />
                 <input
                   value={phone}
@@ -233,31 +236,31 @@ function LoginInner() {
                   onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
                   className={centerInputCls}
                 />
-                <p className="px-1 text-xs" style={{ color: "var(--navy-soft)" }}>
+                <p className="px-1 text-[11.5px]" style={{ color: "var(--navy-soft)" }}>
                   * จำเป็นต้องกรอก
                 </p>
               </div>
             </>
           )}
 
-          <div className="mx-auto max-w-[400px]">
-            {err && <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{err}</p>}
-            {confirmMsg && <p className="mt-4 rounded-2xl bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700">{confirmMsg}</p>}
+          <div className="mx-auto max-w-[360px]">
+            {err && <p className="mt-3 rounded-2xl bg-rose-50 px-4 py-2 text-[13px] font-medium text-rose-700">{err}</p>}
+            {confirmMsg && <p className="mt-3 rounded-2xl bg-emerald-50 px-4 py-2 text-[13px] font-medium text-emerald-700">{confirmMsg}</p>}
           </div>
 
-          <div className="dl mt-7 text-center" style={{ background: "transparent" }}>
-            <button type="button" onClick={submit} disabled={busy} className="btn btn-yolk" style={busy ? { opacity: 0.6 } : undefined}>
+          <div className="dl mt-5 text-center" style={{ background: "transparent" }}>
+            <button type="button" onClick={submit} disabled={busy} className="btn btn-yolk" style={busy ? { ...btnCompact, opacity: 0.6 } : btnCompact}>
               {busy ? "Please wait…" : mode === "login" ? "เข้าสู่ระบบ" : "Create Account"} <span className="dot">→</span>
             </button>
           </div>
 
-          <div className="mx-auto mt-6 max-w-[400px]">
-            <div className="flex items-center gap-3 text-xs" style={{ color: "var(--navy-soft)" }}>
+          <div className="mx-auto mt-5 max-w-[360px]">
+            <div className="flex items-center gap-3 text-[11.5px]" style={{ color: "var(--navy-soft)" }}>
               <span className="h-px flex-1 bg-[#C6E8FB]" /> or <span className="h-px flex-1 bg-[#C6E8FB]" />
             </div>
             <a
               href="/api/auth/line/login"
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-[#06C755] px-6 py-3 text-base font-medium text-white shadow-sm transition hover:bg-[#05b34c]"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-[#06C755] px-5 py-2.5 text-[15px] font-medium text-white shadow-sm transition hover:bg-[#05b34c]"
               style={{ fontFamily: "var(--display)" }}
             >
               💬 Sign in with LINE
@@ -267,7 +270,7 @@ function LoginInner() {
 
         <Link
           href="/products"
-          className="mt-5 block text-center text-sm hover:underline"
+          className="mt-4 block text-center text-[13px] hover:underline"
           style={{ color: "var(--navy-soft)" }}
         >
           ← เลือกซื้อสินค้าต่อ

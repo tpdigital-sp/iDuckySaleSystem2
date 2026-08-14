@@ -10,7 +10,10 @@ import { getSupabase } from "@/lib/supabase";
 /* โทน/ฟอนต์ตามหน้าแรก: ครอบด้วย .dl ใช้ token ของ landing.css (ชุดเดียวกับหน้า login) */
 
 const inputCls =
-  "h-12 w-full rounded-full bg-white px-5 text-center text-sm text-[#173A6B] ring-1 ring-[#C6E8FB] placeholder:text-[#8FA6C4] focus:outline-none focus:ring-2 focus:ring-[#57B6E8]";
+  "h-11 w-full rounded-full bg-white px-4 text-center text-[13.5px] text-[#173A6B] ring-1 ring-[#C6E8FB] placeholder:text-[#8FA6C4] focus:outline-none focus:ring-2 focus:ring-[#57B6E8]";
+
+/** ปุ่ม .btn ของหน้าแรกใหญ่ไปสำหรับการ์ดนี้ — ย่อระยะขอบ/ตัวอักษรลง (ชุดเดียวกับหน้า login) */
+const btnCompact = { padding: "12px 16px 12px 24px", fontSize: ".95rem" } as const;
 
 /**
  * รีเซ็ตรหัสผ่าน 2 โหมด:
@@ -67,27 +70,27 @@ export default function ResetPasswordPage() {
 
   return (
     <div style={{ fontFamily: "var(--font-sans)", color: "var(--navy)" }}>
-      <div className="mx-auto max-w-[620px] px-4 py-10">
+      <div className="mx-auto max-w-[480px] px-4 py-6 sm:py-9">
         <div
-          className="px-5 pb-10 pt-8 sm:px-12"
+          className="px-4 pb-7 pt-6 sm:px-9 sm:pb-8"
           style={{ background: "var(--sky-100)", borderRadius: "var(--r-l)", boxShadow: "var(--shadow-m)" }}
         >
           {/* เป็ดงง ๆ กับกุญแจล็อกรหัส */}
-          <img src="/account/duck-reset.svg" alt="" className="mx-auto w-[62%] max-w-[280px]" width={343} height={303} />
-          <h1 className="mt-4 text-center text-4xl sm:text-[2.6rem]" style={{ color: "var(--navy)", fontFamily: "var(--display)", fontWeight: 500 }}>
+          <img src="/account/duck-reset.svg" alt="" className="mx-auto w-[52%] max-w-[196px]" width={343} height={303} />
+          <h1 className="mt-3 text-center text-[1.75rem] sm:text-[2.05rem]" style={{ color: "var(--navy)", fontFamily: "var(--display)", fontWeight: 500 }}>
             {mode === "set" ? "New Password" : "Reset Password"}
           </h1>
-          <p className="mt-1.5 text-center text-sm" style={{ color: "var(--navy-soft)" }}>
+          <p className="mt-1 text-center text-[12.5px] sm:text-[13.5px]" style={{ color: "var(--navy-soft)" }}>
             {mode === "set" ? "Set a new password for your account" : "Reset your member password"}
           </p>
 
           {mode === "set" ? (
             done ? (
-              <p className="mx-auto mt-6 max-w-[400px] rounded-2xl bg-emerald-50 p-4 text-center text-sm font-medium text-emerald-700 ring-1 ring-emerald-200">
+              <p className="mx-auto mt-5 max-w-[360px] rounded-2xl bg-emerald-50 p-3.5 text-center text-[13px] font-medium text-emerald-700 ring-1 ring-emerald-200">
                 ✅ Password updated — taking you to your account…
               </p>
             ) : (
-              <div className="mx-auto mt-5 max-w-[400px] space-y-4">
+              <div className="mx-auto mt-4 max-w-[360px] space-y-3">
                 <input
                   type="password"
                   value={password}
@@ -96,21 +99,21 @@ export default function ResetPasswordPage() {
                   onKeyDown={(e) => e.key === "Enter" && !busy && setNewPassword()}
                   className={inputCls}
                 />
-                {err && <p className="rounded-2xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-600">{err}</p>}
-                <div className="dl pt-2 text-center" style={{ background: "transparent" }}>
-                  <button type="button" onClick={setNewPassword} disabled={busy} className="btn btn-yolk" style={busy ? { opacity: 0.6 } : undefined}>
+                {err && <p className="rounded-2xl bg-rose-50 px-4 py-2 text-[13px] font-medium text-rose-600">{err}</p>}
+                <div className="dl pt-1 text-center" style={{ background: "transparent" }}>
+                  <button type="button" onClick={setNewPassword} disabled={busy} className="btn btn-yolk" style={busy ? { ...btnCompact, opacity: 0.6 } : btnCompact}>
                     {busy ? "Saving…" : "Save New Password"} <span className="dot">→</span>
                   </button>
                 </div>
               </div>
             )
           ) : sent ? (
-            <p className="mx-auto mt-6 max-w-[400px] rounded-2xl bg-emerald-50 p-4 text-center text-sm text-emerald-700 ring-1 ring-emerald-200">
+            <p className="mx-auto mt-5 max-w-[360px] rounded-2xl bg-emerald-50 p-3.5 text-center text-[13px] text-emerald-700 ring-1 ring-emerald-200">
               📧 Reset link sent to <strong>{email}</strong> — open the email and tap the link to set a new password
             </p>
           ) : (
-            <div className="mx-auto mt-5 max-w-[400px] space-y-4">
-              <p className="text-center text-sm" style={{ color: "var(--navy-soft)" }}>
+            <div className="mx-auto mt-4 max-w-[360px] space-y-3">
+              <p className="text-center text-[13px]" style={{ color: "var(--navy-soft)" }}>
                 กรอกอีเมลที่สมัครไว้ เราจะส่งลิงก์ตั้งรหัสใหม่ให้
               </p>
               <input
@@ -121,12 +124,12 @@ export default function ResetPasswordPage() {
                 onKeyDown={(e) => e.key === "Enter" && !busy && sendLink()}
                 className={inputCls}
               />
-              <p className="px-1 text-xs" style={{ color: "var(--navy-soft)" }}>
+              <p className="px-1 text-[11.5px]" style={{ color: "var(--navy-soft)" }}>
                 * จำเป็นต้องกรอก
               </p>
-              {err && <p className="rounded-2xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-600">{err}</p>}
-              <div className="dl pt-2 text-center" style={{ background: "transparent" }}>
-                <button type="button" onClick={sendLink} disabled={busy} className="btn btn-yolk" style={busy ? { opacity: 0.6 } : undefined}>
+              {err && <p className="rounded-2xl bg-rose-50 px-4 py-2 text-[13px] font-medium text-rose-600">{err}</p>}
+              <div className="dl pt-1 text-center" style={{ background: "transparent" }}>
+                <button type="button" onClick={sendLink} disabled={busy} className="btn btn-yolk" style={busy ? { ...btnCompact, opacity: 0.6 } : btnCompact}>
                   {busy ? "Sending…" : "ส่งลิงก์รีเซ็ต"} <span className="dot">→</span>
                 </button>
               </div>
@@ -134,8 +137,8 @@ export default function ResetPasswordPage() {
           )}
         </div>
 
-        <div className="mt-5 text-center">
-          <Link href="/account/login" className="text-sm hover:underline" style={{ color: "var(--navy-soft)" }}>
+        <div className="mt-4 text-center">
+          <Link href="/account/login" className="text-[13px] hover:underline" style={{ color: "var(--navy-soft)" }}>
             ← Back to sign in
           </Link>
         </div>
