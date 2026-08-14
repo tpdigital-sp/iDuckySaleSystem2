@@ -1,17 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getAdminSession, signInAdmin } from "@/lib/auth";
+
+/** จำ "ชื่อผู้ใช้" ล่าสุดไว้ในเครื่อง (ไม่เก็บรหัสผ่านเอง — ให้ตัวจำรหัสของเบราว์เซอร์ทำ) */
+const REMEMBER_KEY = "admin.login.username";
 
 export default function AdminLoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+
+  // เติมชื่อผู้ใช้ที่จำไว้ แล้วพาไปช่องรหัสผ่านเลย — พิมพ์แค่รหัสก็เข้าได้
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(REMEMBER_KEY);
+      if (saved) {
+        setUsername(saved);
+        passwordRef.current?.focus();
+      }
+    } catch {}
+  }, []);
 
   // ปลายทางหลังล็อกอิน — คืนค่า ?next= (เฉพาะ path ภายใน /admin กัน open-redirect) ไม่งั้น /admin
   function nextDest() {
@@ -32,8 +48,14 @@ export default function AdminLoginPage() {
     setError("");
     const res = await signInAdmin(username, password);
     setLoading(false);
-    if (res.ok) router.push(nextDest());
-    else setError(res.error ?? "เข้าสู่ระบบไม่สำเร็จ");
+    if (res.ok) {
+      // จำ/ลืมชื่อผู้ใช้ตามที่ติ๊ก — บันทึกเฉพาะตอนล็อกอินสำเร็จ (กันจำชื่อที่พิมพ์ผิด)
+      try {
+        if (remember) localStorage.setItem(REMEMBER_KEY, username.trim());
+        else localStorage.removeItem(REMEMBER_KEY);
+      } catch {}
+      router.push(nextDest());
+    } else setError(res.error ?? "เข้าสู่ระบบไม่สำเร็จ");
   }
 
   return (
@@ -69,6 +91,7 @@ export default function AdminLoginPage() {
           <label className="block">
             <span className="mb-1 block text-xs font-bold text-stone-600">รหัสผ่าน</span>
             <input
+              ref={passwordRef}
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -76,6 +99,16 @@ export default function AdminLoginPage() {
               required
               className="w-full rounded-xl bg-stone-50 px-4 py-2.5 text-sm ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-ducky"
             />
+          </label>
+
+          <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-500">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              className="h-4 w-4 accent-amber-500"
+            />
+            จำชื่อผู้ใช้ในเครื่องนี้ — ครั้งหน้าพิมพ์แค่รหัสผ่าน
           </label>
 
           {error && (
