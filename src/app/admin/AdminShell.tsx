@@ -50,13 +50,13 @@ const MENU_GROUPS: {
   badge: string;
   line: string;
 }[] = [
-  // ชุดสีตามโลโก้ iDucky: ส้มปากเป็ด · เหลืองเป็ด · น้ำตาลอ่อน · น้ำตาลเข้มเส้นขอบโลโก้
-  // (คลาส amber ถูก remap เป็นฟ้าตามธีมรีแบรนด์ จึงใช้ orange/yellow แท้ + รหัสสีตรงสำหรับโทนน้ำตาล)
-  { key: "งานขาย", label: "📦 งานขาย", text: "text-orange-500 hover:text-orange-600", dot: "bg-orange-500", badge: "bg-orange-100 text-orange-600", line: "border-orange-200" },
-  { key: "กราฟฟิก", label: "🎨 กราฟฟิก", text: "text-rose-500 hover:text-rose-600", dot: "bg-rose-500", badge: "bg-rose-100 text-rose-600", line: "border-rose-200" },
-  { key: "สินค้า", label: "🏷️ สินค้า", text: "text-yellow-600 hover:text-yellow-700", dot: "bg-yellow-500", badge: "bg-yellow-100 text-yellow-700", line: "border-yellow-200" },
-  { key: "ลูกค้า", label: "💛 ลูกค้า & การตลาด", text: "text-[#a9741f] hover:text-[#8a5c14]", dot: "bg-[#c98f2e]", badge: "bg-[#f7ecd8] text-[#a9741f]", line: "border-[#ecdcc0]" },
-  { key: "ระบบ", label: "⚙️ ร้าน & ระบบ", text: "text-[#6d4c33] hover:text-[#54382a]", dot: "bg-[#6d4c33]", badge: "bg-[#efe6dd] text-[#6d4c33]", line: "border-[#e0d2c5]" },
+  // ชุดสีจากจานสีแบรนด์หน้าร้าน (landing: ฟ้า #57B6E8 · เหลืองเป็ด #FFD447 · คอรัล #FF9EB0 · ลิแลค #C7C4F5 · ฟ้าเข้ม #2C81C4)
+  // (คลาส amber ถูก remap เป็นฟ้าตามธีมรีแบรนด์ จึงใช้ sky/yellow/rose/violet แท้ + รหัสสีตรงบางจุด)
+  { key: "งานขาย", label: "📦 งานขาย", text: "text-sky-600 hover:text-sky-700", dot: "bg-sky-500", badge: "bg-sky-100 text-sky-700", line: "border-sky-200" },
+  { key: "กราฟฟิก", label: "🎨 กราฟฟิก", text: "text-rose-500 hover:text-rose-600", dot: "bg-[#FF9EB0]", badge: "bg-rose-100 text-rose-600", line: "border-rose-200" },
+  { key: "สินค้า", label: "🏷️ สินค้า", text: "text-yellow-600 hover:text-yellow-700", dot: "bg-[#FFD447]", badge: "bg-yellow-100 text-yellow-700", line: "border-yellow-200" },
+  { key: "ลูกค้า", label: "💛 ลูกค้า & การตลาด", text: "text-violet-500 hover:text-violet-600", dot: "bg-[#C7C4F5]", badge: "bg-violet-100 text-violet-600", line: "border-violet-200" },
+  { key: "ระบบ", label: "⚙️ ร้าน & ระบบ", text: "text-[#2C81C4] hover:text-[#173A6B]", dot: "bg-[#2C81C4]", badge: "bg-[#D6EDF2] text-[#2C81C4]", line: "border-[#B3DFE8]" },
 ];
 
 /** แคชป้ายจำนวนประเมินใหม่ (module scope — อยู่ข้ามการเปลี่ยนหน้า) กันดึงเรตติ้งทั้งชุดซ้ำทุกคลิก */
@@ -270,7 +270,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
   /** ปุ่มไอคอนท้ายแถบ (กลับหน้าร้าน / ออกจากระบบ) — ทรงเดียวกัน ต่างแค่สีตอนชี้เมาส์ */
   const footBtn =
-    "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700";
+    "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-amber-50 hover:text-amber-700";
 
   const iconStore = (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
@@ -306,7 +306,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               onClick={() => toggleGroup(key)}
               aria-expanded={!folded}
               title={folded ? "กางกลุ่มนี้" : "หุบกลุ่มนี้"}
-              className={`flex w-full items-center gap-1.5 rounded-lg px-3 pb-1 text-left text-[13px] font-bold uppercase tracking-wide transition ${
+              className={`flex w-full items-center gap-1.5 rounded-lg px-3 pb-1 text-left font-display text-[13px] font-semibold uppercase tracking-wide transition ${
                 groupIdx > 0 ? "mt-4" : "mt-1"
               } ${text}`}
             >
@@ -337,8 +337,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               rail ? "justify-center px-0" : "gap-3 px-3"
             } ${
               active
-                ? "bg-amber-500 text-white shadow-sm"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                ? "bg-amber-500 text-white shadow-[0_4px_12px_rgba(44,129,196,0.25)]"
+                : "text-slate-600 hover:bg-amber-50 hover:text-slate-900"
             }`}
           >
             <span className={`text-base ${active ? "" : "opacity-80"}`}>{m.emoji}</span>
@@ -365,7 +365,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     <div className="flex min-h-screen bg-slate-50 text-slate-800">
       {/* แถบข้าง (เดสก์ท็อป) */}
       <aside
-        className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-slate-200 bg-white p-3 transition-[width] duration-200 md:flex print:hidden ${
+        className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-slate-200 bg-gradient-to-b from-white via-white to-amber-50/50 p-3 transition-[width] duration-200 md:flex print:hidden ${
           railed ? "w-20 items-stretch" : "w-60"
         }`}
       >
@@ -412,7 +412,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             )}
             {!railed && (
               <Link href="/admin" className="leading-tight" title="iDucky Admin">
-                <span className="block text-sm font-bold text-slate-900">iDucky Admin</span>
+                <span className="block font-display text-sm font-semibold text-slate-900">iDucky Admin</span>
                 <span className="block text-[11px] text-slate-400">ระบบหลังบ้าน</span>
               </Link>
             )}
@@ -486,7 +486,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-slate-200 bg-white/90 px-4 backdrop-blur md:hidden print:hidden">
           <Link href="/admin" className="flex items-center gap-2">
             {logoIcon("h-8 w-8", "rounded-lg")}
-            <span className="text-sm font-bold text-slate-900">iDucky Admin</span>
+            <span className="font-display text-sm font-semibold text-slate-900">iDucky Admin</span>
           </Link>
           <button
             type="button"
