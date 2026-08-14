@@ -292,8 +292,8 @@ function ArticlesInner() {
           </div>
         </section>
 
-        {/* ── แถบบันทึกลอยล่าง ── */}
-        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
+        {/* ── แถบบันทึก (การ์ดลอยติดขอบล่างในคอลัมน์เนื้อหา — ไม่พาดทับแถบเมนูซ้าย) ── */}
+        <div className="sticky bottom-3 z-20 mt-5 rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-2.5 shadow-[0_10px_30px_rgba(15,23,42,0.14)] backdrop-blur">
           <div className="flex w-full flex-wrap items-center justify-end gap-3">
             {msg && <span className="text-sm font-semibold text-rose-600">{msg}</span>}
             {editing.published && (

@@ -648,7 +648,7 @@ function NavEditorInner() {
   if (loading) return <div className={`mx-auto max-w-7xl p-10 text-center text-sm ${muted} ${card}`}>กำลังโหลด…</div>;
 
   return (
-    <div className="mx-auto max-w-7xl pb-24">
+    <div className="w-full">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className={h1}>🧭 หน้าร้าน — เมนู &amp; หน้าแรก</h1>
@@ -2721,9 +2721,9 @@ function NavEditorInner() {
         </>
       )}
 
-      {/* ── แถบบันทึก (ลอยล่าง — เลื่อนแก้ไปเรื่อย ๆ ก็ยังกดบันทึกได้) ── */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-end gap-3">
+      {/* ── แถบบันทึก (การ์ดลอยติดขอบล่างในคอลัมน์เนื้อหา — ไม่พาดทับแถบเมนูซ้าย) ── */}
+      <div className="sticky bottom-3 z-20 mt-5 rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-2.5 shadow-[0_10px_30px_rgba(15,23,42,0.14)] backdrop-blur">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           {msg && (
             <span className={`text-sm font-semibold ${msg.includes("✓") ? "text-emerald-600" : "text-rose-600"}`}>
               {msg}
