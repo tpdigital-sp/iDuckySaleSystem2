@@ -77,7 +77,7 @@ export default function AdminLoginPage() {
         if (remember) localStorage.setItem(REMEMBER_KEY, username.trim());
         else localStorage.removeItem(REMEMBER_KEY);
       } catch {}
-      // ฝากรหัสไว้กับคลังรหัสของเบราว์เซอร์ (ถามผู้ใช้ก่อนบันทึกเสมอ) — ครั้งหน้าเติมให้ทั้งชื่อ+รหัส
+      // ฝากรหัสไว้กับคลังรหัสของเบราว์เซอร์ (Chrome บางรุ่นเลิกรองรับ store() แล้ว — throw ก็ข้ามไป ใช้ heuristic แทน)
       if (remember) {
         try {
           const PC = passwordCredCtor();
@@ -86,7 +86,11 @@ export default function AdminLoginPage() {
           }
         } catch {}
       }
-      router.push(nextDest());
+      /**
+       * เปลี่ยนหน้าแบบเต็ม (ไม่ใช่ SPA push) — ตัวจำรหัสของ Chrome/Safari จะถือว่า
+       * "ส่งฟอร์มแล้วเปลี่ยนหน้า = ล็อกอินสำเร็จ" ถึงจะเด้งถามบันทึกรหัสผ่าน
+       */
+      window.location.assign(nextDest());
     } else setError(res.error ?? "เข้าสู่ระบบไม่สำเร็จ");
   }
 
