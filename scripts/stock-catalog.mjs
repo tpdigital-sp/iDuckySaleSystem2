@@ -17,6 +17,7 @@ import { cert, initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
 const WRITE = process.argv.includes("--write");
+const AUTO = process.argv.includes("--auto");   // สร้าง SKU ใหม่เองจากชื่อที่ยังไม่รู้จัก
 const ENV_PATH = "/Users/iduckshop/Desktop/iDuckySaleSystem2/.env.local";
 
 // ───────────────────────── ตัดชื่อให้เหลือแกน ─────────────────────────
@@ -500,6 +501,76 @@ for (const fam of FAMILIES) {
   console.log();
 }
 
+// ───────────────────────── สร้าง SKU อัตโนมัติจากชื่อที่ยังไม่รู้จัก ─────────────────────────
+/**
+ * กติกา: สร้างใหม่ได้เอง แต่ "ยุบรวมกับของเดิม" ต้องให้คนกด
+ * เพราะสร้างเกิน = มี SKU ซ้ำ (ยุบทีหลังได้) แต่ยุบผิด = ของสองอย่างใช้ยอดเดียวกันแบบเงียบ ๆ
+ */
+const NOTE_WORDS =
+  /ลูกค้า|โอน|เร่ง|รอส่ง|งานใช้|งานเข้า|ไม่มี|ไม่พอ|ด่วน|ครับ|ค่ะ|จอง|สต๊อกเพิ่ม|พึ่งเปิด|เปิดม้วน|เหลืออยู่|สั่ง\d/;
+
+/** ความคล้ายแบบ Dice บน bigram — ใช้เตือน "อาจซ้ำ" ไม่ใช่ใช้ยุบ */
+const bigrams = (s) => {
+  const g = new Set();
+  for (let i = 0; i < s.length - 1; i++) g.add(s.slice(i, i + 2));
+  return g;
+};
+const dice = (a, b) => {
+  const A = bigrams(a), B = bigrams(b);
+  if (!A.size || !B.size) return 0;
+  let n = 0;
+  for (const x of A) if (B.has(x)) n++;
+  return (2 * n) / (A.size + B.size);
+};
+
+function buildAutoSkus(unmatchedMap) {
+  // ยุบชื่อดิบที่ต่างกันแค่เว้นวรรค/วรรณยุกต์เข้าด้วยกันก่อน
+  const groups = new Map(); // normKey -> { best, count, variants:Set }
+  for (const [name, count] of unmatchedMap) {
+    const k = norm(name);
+    if (!k) continue;
+    if (!groups.has(k)) groups.set(k, { best: name, count: 0, variants: new Set() });
+    const g = groups.get(k);
+    g.count += count;
+    g.variants.add(name);
+    if (name.length < g.best.length) g.best = name; // ชื่อสั้นสุด = สะอาดสุด
+  }
+
+  const existing = [...catalog.values()].map((i) => ({ code: i.code, name: i.name, key: norm(i.name) }));
+  const made = [];
+  let seq = 0;
+  for (const [key, g] of [...groups.entries()].sort((a, b) => b[1].count - a[1].count)) {
+    // ─ ด่านกรอง: อะไรที่ "ไม่ใช่ชื่อของ" ห้ามกลายเป็น SKU ─
+    if (g.count < 2) continue;                       // เจอครั้งเดียว = ยังไม่ใช่ของประจำ รอเจอซ้ำก่อน
+    if (g.best.length > 40) continue;                // ยาวขนาดนี้คือประโยค ไม่ใช่ชื่อ
+    if (NOTE_WORDS.test(g.best)) continue;           // มีคำโน้ตปน
+    if (!/[ก-๙a-z]/i.test(g.best)) continue;         // ต้องมีตัวอักษร ไม่ใช่ตัวเลขล้วน
+
+    // ─ เตือนว่าอาจซ้ำกับของเดิม แต่ "ไม่ยุบให้" ─
+    let near = null;
+    for (const e of existing) {
+      const sc = dice(key, e.key);
+      if (sc > 0.62 && (!near || sc > near.score)) near = { code: e.code, name: e.name, score: sc };
+    }
+
+    made.push({
+      code: `AUTO-${String(++seq).padStart(3, "0")}`,
+      name: g.best,
+      unit: "ชิ้น",
+      category: "รอจัดหมวด",
+      family: "สร้างอัตโนมัติ",
+      aliases: new Set([...g.variants].filter((v) => norm(v) !== norm(g.best))),
+      hits: g.count,
+      autoCreated: true,
+      maybeDuplicateOf: near,
+    });
+  }
+  return made;
+}
+
+const autoSkus = AUTO ? buildAutoSkus(unmatched) : [];
+for (const a of autoSkus) catalog.set(a.code, a);
+
 /**
  * alias ที่ควรให้คนตรวจก่อนเชื่อ — จับจาก "ตัวเลขไม่ตรงกับชื่อ SKU"
  * เพราะเคสพังที่เจอจริงล้วนเป็นแบบนี้: Moorim 400g เข้า SKU 300g, ถุงซิป 40x50 เข้าสติกเกอร์
@@ -507,6 +578,7 @@ for (const fam of FAMILIES) {
 const digitsOf = (s) => new Set((s.match(/\d+(?:\.\d+)?/g) || []));
 const suspicious = [];
 for (const it of catalog.values()) {
+  if (it.autoCreated) continue;   // ตัวที่สร้างเอง ชื่อ = ชื่อดิบอยู่แล้ว ไม่ต้องเทียบ
   const nameDigits = digitsOf(it.name);
   for (const a of it.aliases) {
     const extra = [...digitsOf(a)].filter((d) => !nameDigits.has(d) && Number(d) > 2);
@@ -520,6 +592,25 @@ if (suspicious.length) {
   }
   if (suspicious.length > 12) console.log(`  … อีก ${suspicious.length - 12} รายการ`);
   console.log();
+}
+
+if (AUTO) {
+  const autoLines = autoSkus.reduce((s, a) => s + a.hits, 0);
+  const dupes = autoSkus.filter((a) => a.maybeDuplicateOf);
+  console.log(`━━ 🤖 สร้างเอง ${autoSkus.length} SKU (ครอบคลุมอีก ${autoLines} บรรทัด) ━━`);
+  for (const a of autoSkus.slice(0, 15)) {
+    const al = [...a.aliases].slice(0, 2).join(" / ");
+    console.log(`  ${a.code}  ${a.name.padEnd(34)} ${String(a.hits).padStart(2)}× ${al ? `alias: ${al}` : ""}`);
+  }
+  if (autoSkus.length > 15) console.log(`  … อีก ${autoSkus.length - 15} ตัว`);
+  if (dupes.length) {
+    console.log(`\n  ⚠️ ${dupes.length} ตัวคล้ายของเดิม — ระบบ "ไม่ยุบให้" ต้องคนกดเอง:`);
+    for (const d of dupes.slice(0, 8)) {
+      console.log(`     ${d.name.slice(0, 30).padEnd(30)} ≈ ${d.maybeDuplicateOf.name} (${Math.round(d.maybeDuplicateOf.score * 100)}%)`);
+    }
+  }
+  console.log();
+  for (const a of autoSkus) for (const v of [a.name, ...a.aliases]) unmatched.delete(v);
 }
 
 const tail = [...unmatched.entries()].sort((a, b) => b[1] - a[1]);
@@ -560,6 +651,14 @@ for (const it of catalog.values()) {
     balance: 0,              // ตั้งใจให้เป็น 0 — ต้องเดินนับจริง
     productIds: [],
     active: true,
+    // ตัวที่ระบบสร้างเอง ต้องมีธงให้หน้าแอดมินกรองมาตรวจได้ — ห้ามปนกับตัวที่คนตั้งเอง
+    ...(it.autoCreated
+      ? {
+          autoCreated: true,
+          needsReview: true,
+          ...(it.maybeDuplicateOf ? { maybeDuplicateOf: it.maybeDuplicateOf.code } : {}),
+        }
+      : {}),
     createdAt: now,
     updatedAt: now,
   });
