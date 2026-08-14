@@ -50,13 +50,12 @@ const MENU_GROUPS: {
   badge: string;
   line: string;
 }[] = [
-  // ชุดสีจากจานสีแบรนด์หน้าร้าน (landing: ฟ้า #57B6E8 · เหลืองเป็ด #FFD447 · คอรัล #FF9EB0 · ลิแลค #C7C4F5 · ฟ้าเข้ม #2C81C4)
-  // (คลาส amber ถูก remap เป็นฟ้าตามธีมรีแบรนด์ จึงใช้ sky/yellow/rose/violet แท้ + รหัสสีตรงบางจุด)
-  { key: "งานขาย", label: "📦 งานขาย", text: "text-sky-600 hover:text-sky-700", dot: "bg-sky-500", badge: "bg-sky-100 text-sky-700", line: "border-sky-200" },
-  { key: "กราฟฟิก", label: "🎨 กราฟฟิก", text: "text-rose-500 hover:text-rose-600", dot: "bg-[#FF9EB0]", badge: "bg-rose-100 text-rose-600", line: "border-rose-200" },
-  { key: "สินค้า", label: "🏷️ สินค้า", text: "text-yellow-600 hover:text-yellow-700", dot: "bg-[#FFD447]", badge: "bg-yellow-100 text-yellow-700", line: "border-yellow-200" },
-  { key: "ลูกค้า", label: "💛 ลูกค้า & การตลาด", text: "text-violet-500 hover:text-violet-600", dot: "bg-[#C7C4F5]", badge: "bg-violet-100 text-violet-600", line: "border-violet-200" },
-  { key: "ระบบ", label: "⚙️ ร้าน & ระบบ", text: "text-[#2C81C4] hover:text-[#173A6B]", dot: "bg-[#2C81C4]", badge: "bg-[#D6EDF2] text-[#2C81C4]", line: "border-[#B3DFE8]" },
+  // ธีม navy เข้มพรีเมียม — หัวกลุ่มเป็นสีอ่อนของแต่ละหมวด (อ่านชัดบนพื้น #173A6B) · จุดสีใช้จานสี landing
+  { key: "งานขาย", label: "📦 งานขาย", text: "text-sky-300 hover:text-sky-200", dot: "bg-sky-400", badge: "bg-white/10 text-sky-200", line: "border-white/15" },
+  { key: "กราฟฟิก", label: "🎨 กราฟฟิก", text: "text-rose-300 hover:text-rose-200", dot: "bg-[#FF9EB0]", badge: "bg-white/10 text-rose-200", line: "border-white/15" },
+  { key: "สินค้า", label: "🏷️ สินค้า", text: "text-yellow-300 hover:text-yellow-200", dot: "bg-[#FFD447]", badge: "bg-white/10 text-yellow-200", line: "border-white/15" },
+  { key: "ลูกค้า", label: "💛 ลูกค้า & การตลาด", text: "text-violet-300 hover:text-violet-200", dot: "bg-[#C7C4F5]", badge: "bg-white/10 text-violet-200", line: "border-white/15" },
+  { key: "ระบบ", label: "⚙️ ร้าน & ระบบ", text: "text-sky-200/80 hover:text-sky-100", dot: "bg-[#57B6E8]", badge: "bg-white/10 text-sky-200", line: "border-white/15" },
 ];
 
 /** แคชป้ายจำนวนประเมินใหม่ (module scope — อยู่ข้ามการเปลี่ยนหน้า) กันดึงเรตติ้งทั้งชุดซ้ำทุกคลิก */
@@ -150,7 +149,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const logoIcon = (size: string, rounded: string) =>
     adminLogo ? (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={adminLogo} alt="โลโก้หลังบ้าน" className={`${size} shrink-0 ${rounded} bg-white object-cover shadow-sm ring-1 ring-slate-200`} />
+      <img src={adminLogo} alt="โลโก้หลังบ้าน" className={`${size} shrink-0 ${rounded} bg-white object-cover shadow-sm ring-1 ring-white/30`} />
     ) : (
       <span className={`flex ${size} shrink-0 items-center justify-center ${rounded} bg-ducky text-xl shadow-sm`}>🦆</span>
     );
@@ -270,7 +269,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
   /** ปุ่มไอคอนท้ายแถบ (กลับหน้าร้าน / ออกจากระบบ) — ทรงเดียวกัน ต่างแค่สีตอนชี้เมาส์ */
   const footBtn =
-    "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-amber-50 hover:text-amber-700";
+    "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white";
 
   const iconStore = (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
@@ -337,15 +336,15 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               rail ? "justify-center px-0" : "gap-3 px-3"
             } ${
               active
-                ? "bg-amber-500 text-white shadow-[0_4px_12px_rgba(44,129,196,0.25)]"
-                : "text-slate-600 hover:bg-amber-50 hover:text-slate-900"
+                ? "bg-[var(--color-ducky)] font-bold text-[#173A6B] shadow-[0_4px_14px_rgba(0,0,0,0.25)]"
+                : "text-white/75 hover:bg-white/10 hover:text-white"
             }`}
           >
             <span className={`text-base ${active ? "" : "opacity-80"}`}>{m.emoji}</span>
             {!rail && m.label}
             {badge &&
               (rail ? (
-                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white" />
+                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-400 ring-2 ring-[#173A6B]" />
               ) : (
                 <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[11px] font-bold text-white">
                   {newRatings > 99 ? "99+" : newRatings}
@@ -365,7 +364,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     <div className="flex min-h-screen bg-slate-50 text-slate-800">
       {/* แถบข้าง (เดสก์ท็อป) */}
       <aside
-        className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-slate-200 bg-gradient-to-b from-white via-white to-amber-50/50 p-3 transition-[width] duration-200 md:flex print:hidden ${
+        className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-[#122E56] bg-[#173A6B] p-3 transition-[width] duration-200 md:flex print:hidden ${
           railed ? "w-20 items-stretch" : "w-60"
         }`}
       >
@@ -412,8 +411,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             )}
             {!railed && (
               <Link href="/admin" className="leading-tight" title="iDucky Admin">
-                <span className="block font-display text-sm font-semibold text-slate-900">iDucky Admin</span>
-                <span className="block text-[11px] text-slate-400">ระบบหลังบ้าน</span>
+                <span className="block font-display text-sm font-semibold text-white">iDucky Admin</span>
+                <span className="block text-[11px] text-sky-200/70">ระบบหลังบ้าน</span>
               </Link>
             )}
           </div>
@@ -422,7 +421,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             onClick={toggleRail}
             title={railed ? "กางแถบเมนู" : "พับแถบเมนู"}
             aria-label={railed ? "กางแถบเมนู" : "พับแถบเมนู"}
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-slate-400 ring-1 ring-slate-200 transition hover:bg-slate-100 hover:text-slate-700"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-white/60 ring-1 ring-white/20 transition hover:bg-white/10 hover:text-white"
           >
             {railed ? "»" : "«"}
           </button>
@@ -440,7 +439,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           และ "ออกจากระบบ" ไม่ทำสีแดงค้างไว้ เพราะเป็นของที่ใช้นาน ๆ ครั้ง
           ไม่ควรเด่นกว่าเมนูงานจริง — เปลี่ยนเป็นแดงตอนชี้เมาส์แทน
         */}
-        <div className="mt-auto shrink-0 border-t border-slate-100 pt-2">
+        <div className="mt-auto shrink-0 border-t border-white/10 pt-2">
           {railed ? (
             <div className="flex flex-col items-center gap-1">
               {userName && <span title={`${userName}${roleName ? ` · ${roleName}` : ""}`}>{avatar("h-9 w-9")}</span>}
@@ -448,7 +447,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                 {iconStore}
               </Link>
               {configured && (
-                <button type="button" onClick={handleSignOut} title="ออกจากระบบ" className={`${footBtn} hover:bg-rose-50 hover:text-rose-600`}>
+                <button type="button" onClick={handleSignOut} title="ออกจากระบบ" className={`${footBtn} hover:bg-rose-500/20 hover:text-rose-300`}>
                   {iconLogout}
                 </button>
               )}
@@ -457,10 +456,10 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             <div className="flex items-center gap-2 rounded-xl px-1 py-1">
               {userName && avatar()}
               <span className="min-w-0 flex-1 leading-tight">
-                <span className="block truncate text-[13px] font-bold text-slate-800" title={userName}>
+                <span className="block truncate text-[13px] font-bold text-white" title={userName}>
                   {userName || "—"}
                 </span>
-                {roleName && <span className="block truncate text-[11px] text-slate-400">{roleName}</span>}
+                {roleName && <span className="block truncate text-[11px] text-white/50">{roleName}</span>}
               </span>
               <Link href="/" title="กลับหน้าร้าน" aria-label="กลับหน้าร้าน" className={footBtn}>
                 {iconStore}
@@ -471,7 +470,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                   onClick={handleSignOut}
                   title="ออกจากระบบ"
                   aria-label="ออกจากระบบ"
-                  className={`${footBtn} hover:bg-rose-50 hover:text-rose-600`}
+                  className={`${footBtn} hover:bg-rose-500/20 hover:text-rose-300`}
                 >
                   {iconLogout}
                 </button>
@@ -483,15 +482,15 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* แถบบน (มือถือ) */}
-        <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-slate-200 bg-white/90 px-4 backdrop-blur md:hidden print:hidden">
+        <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-[#122E56] bg-[#173A6B]/95 px-4 backdrop-blur md:hidden print:hidden">
           <Link href="/admin" className="flex items-center gap-2">
             {logoIcon("h-8 w-8", "rounded-lg")}
-            <span className="font-display text-sm font-semibold text-slate-900">iDucky Admin</span>
+            <span className="font-display text-sm font-semibold text-white">iDucky Admin</span>
           </Link>
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-lg text-slate-600"
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/20 text-lg text-white"
             aria-label="เปิดเมนูแอดมิน"
             aria-expanded={open}
           >
@@ -499,21 +498,21 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           </button>
         </header>
         {open && (
-          <div className="border-b border-slate-200 bg-white p-3 md:hidden">
+          <div className="border-b border-[#122E56] bg-[#173A6B] p-3 md:hidden">
             {nav}
             {/* ท้ายเมนูมือถือ — แถวเดียวแบบเดียวกับเดสก์ท็อป (นิ้วแตะง่าย ปุ่ม 36px) */}
-            <div className="mt-1 flex items-center gap-2 border-t border-slate-100 px-1 pt-2">
+            <div className="mt-1 flex items-center gap-2 border-t border-white/10 px-1 pt-2">
               {userName && avatar()}
               <span className="min-w-0 flex-1 leading-tight">
-                <span className="block truncate text-[13px] font-bold text-slate-800">{userName || "—"}</span>
-                {roleName && <span className="block truncate text-[11px] text-slate-400">{roleName}</span>}
+                <span className="block truncate text-[13px] font-bold text-white">{userName || "—"}</span>
+                {roleName && <span className="block truncate text-[11px] text-white/50">{roleName}</span>}
               </span>
               <Link
                 href="/"
                 onClick={() => setOpen(false)}
                 title="กลับหน้าร้าน"
                 aria-label="กลับหน้าร้าน"
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white"
               >
                 {iconStore}
               </Link>
@@ -523,7 +522,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                   onClick={handleSignOut}
                   title="ออกจากระบบ"
                   aria-label="ออกจากระบบ"
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-white/60 transition hover:bg-rose-500/20 hover:text-rose-300"
                 >
                   {iconLogout}
                 </button>
