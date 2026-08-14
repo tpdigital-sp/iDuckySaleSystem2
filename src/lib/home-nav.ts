@@ -177,9 +177,11 @@ export const DEFAULT_HERO: HeroBanner = {
 /** ลิงก์บนแถบเมนูด้านบน (ค่าเริ่มต้น = ของเดิมที่เคยเขียนตายตัวใน Navbar) */
 export const DEFAULT_MENU: NavLink[] = [
   { id: "home", label: "หน้าแรก", href: "/" },
-  { id: "products", label: "สินค้าทั้งหมด", href: "/products" },
-  { id: "howto", label: "วิธีสั่งซื้อ", href: "/how-to-order" },
-  { id: "articles", label: "บทความ", href: "/articles" },
+  { id: "categories", label: "สินค้าและบริการ", href: "/#categories" },
+  { id: "bestseller", label: "สินค้าขายดี", href: "/#bestseller" },
+  { id: "steps", label: "ขั้นตอนสั่งซื้อ", href: "/#steps" },
+  { id: "why", label: "ทำไมต้องเรา", href: "/#why" },
+  { id: "contact", label: "ติดต่อเรา", href: "/#contact" },
 ];
 
 /**

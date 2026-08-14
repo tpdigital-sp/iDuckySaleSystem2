@@ -22,7 +22,7 @@ import HomeChat from "@/components/HomeChat";
 /** จัดหมวดจริงของร้านเข้ากลุ่มแท็บ 4 กลุ่มตามดีไซน์ */
 const TAB_GROUPS: { id: string; label: string; cats: string[] }[] = [
   { id: "acrylic", label: "อะคริลิค & สแตนดี้", cats: ["acrylic", "acrylic-bending", "standee", "light", "mirror-magnet"] },
-  { id: "paper", label: "งานกระดาษ & สติกเกอร์", cats: ["sticker-paper", "card-photo", "banner", "calendar-frame"] },
+  { id: "paper", label: "งานกระดาษ & สติ๊กเกอร์", cats: ["sticker-paper", "card-photo", "banner", "calendar-frame"] },
   { id: "goods", label: "ของใช้ & แก็ดเจ็ต", cats: ["phone-gadget", "home", "bag"] },
   { id: "wear", label: "เสื้อผ้า & ของขวัญ", cats: ["apparel", "fabric", "gifts"] },
 ];
@@ -30,7 +30,7 @@ const TAB_GROUPS: { id: string; label: string; cats: string[] }[] = [
 /** รีวิวลูกค้าที่โชว์บนหน้าแรก (ภาพงานจริง + คำชม) — แก้ข้อความ/รูปได้ที่นี่ */
 const REVIEWS: { photo: string; text: string; name: string; item: string }[] = [
   { photo: "/landing/review-1.webp", text: "งานคมมาก สีตรงกับไฟล์ที่ส่งไปเป๊ะ แอดมินตอบไวสุด ๆ", name: "คุณนุ่น", item: "พวงกุญแจอะคริลิค · 30 ชิ้น" },
-  { photo: "/landing/review-2.webp", text: "ไม่มีลายเลย ทีมงานช่วยออกแบบให้ฟรีจนได้งานที่ชอบ สั่งซ้ำมา 4 รอบแล้ว", name: "คุณกันต์", item: "สแตนดี้ + สติกเกอร์" },
+  { photo: "/landing/review-2.webp", text: "ไม่มีลายเลย ทีมงานช่วยออกแบบให้ฟรีจนได้งานที่ชอบ สั่งซ้ำมา 4 รอบแล้ว", name: "คุณกันต์", item: "สแตนดี้ + สติ๊กเกอร์" },
   { photo: "/landing/review-3.webp", text: "สั่งชิ้นเดียวก็ทำให้ แพ็คมาดีไม่มีรอยเลย ส่งเร็วกว่านัด", name: "คุณแพร", item: "แก้วมัคพิมพ์ลาย" },
   { photo: "/landing/review-4.webp", text: "เนื้อผ้าดี งานพิมพ์ไม่แตก ซักแล้วสีไม่ตก ประทับใจมากครับ", name: "คุณต้า", item: "เสื้อยืดพิมพ์ลาย 12 ตัว" },
   { photo: "/landing/review-5.webp", text: "กระดาษหนาดี สีสวยมาก ลูกค้าร้านเราชมกันเยอะเลยค่ะ", name: "คุณมิ้นท์", item: "โปสการ์ด + การ์ดขอบคุณ" },
@@ -181,7 +181,7 @@ export default function HomePage() {
                 </span>
               </h1>
               <p className="lead">
-                พวงกุญแจ · สแตนดี้ · สติกเกอร์ · เสื้อยืด · แก้วมัค · เคสมือถือ
+                พวงกุญแจ · สแตนดี้ · สติ๊กเกอร์ · เสื้อยืด · แก้วมัค · เคสมือถือ
                 <br />
                 และอีกกว่า <b>{cats.length} หมวด</b> ครบจบในที่เดียว
               </p>
