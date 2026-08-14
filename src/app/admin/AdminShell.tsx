@@ -51,11 +51,11 @@ const MENU_GROUPS: {
   line: string;
 }[] = [
   // ธีมผสม: navy เข้มพรีเมียม + เหลืองเป็ด — หัวกลุ่มสีอ่อนตามหมวด อ่านชัดบนพื้น #173A6B · จุดสีใช้จานสี landing
-  { key: "งานขาย", label: "📦 งานขาย", text: "text-sky-300 hover:text-sky-200", dot: "bg-sky-400", badge: "bg-white/10 text-sky-200", line: "border-white/15" },
-  { key: "กราฟฟิก", label: "🎨 กราฟฟิก", text: "text-rose-300 hover:text-rose-200", dot: "bg-[#FF9EB0]", badge: "bg-white/10 text-rose-200", line: "border-white/15" },
-  { key: "สินค้า", label: "🏷️ สินค้า", text: "text-yellow-300 hover:text-yellow-200", dot: "bg-[#FFD447]", badge: "bg-white/10 text-yellow-200", line: "border-white/15" },
-  { key: "ลูกค้า", label: "💛 ลูกค้า & การตลาด", text: "text-violet-300 hover:text-violet-200", dot: "bg-[#C7C4F5]", badge: "bg-white/10 text-violet-200", line: "border-white/15" },
-  { key: "ระบบ", label: "⚙️ ร้าน & ระบบ", text: "text-sky-200/80 hover:text-sky-100", dot: "bg-[#57B6E8]", badge: "bg-white/10 text-sky-200", line: "border-white/15" },
+  { key: "งานขาย", label: "📦 งานขาย", text: "text-sky-200 hover:text-sky-100", dot: "bg-sky-400", badge: "bg-white/10 text-sky-100", line: "border-white/15" },
+  { key: "กราฟฟิก", label: "🎨 กราฟฟิก", text: "text-rose-200 hover:text-rose-100", dot: "bg-[#FF9EB0]", badge: "bg-white/10 text-rose-100", line: "border-white/15" },
+  { key: "สินค้า", label: "🏷️ สินค้า", text: "text-yellow-200 hover:text-yellow-100", dot: "bg-[#FFD447]", badge: "bg-white/10 text-yellow-100", line: "border-white/15" },
+  { key: "ลูกค้า", label: "💛 ลูกค้า & การตลาด", text: "text-violet-200 hover:text-violet-100", dot: "bg-[#C7C4F5]", badge: "bg-white/10 text-violet-100", line: "border-white/15" },
+  { key: "ระบบ", label: "⚙️ ร้าน & ระบบ", text: "text-sky-100/80 hover:text-sky-50", dot: "bg-[#57B6E8]", badge: "bg-white/10 text-sky-100", line: "border-white/15" },
 ];
 
 /** แคชป้ายจำนวนประเมินใหม่ (module scope — อยู่ข้ามการเปลี่ยนหน้า) กันดึงเรตติ้งทั้งชุดซ้ำทุกคลิก */
@@ -332,12 +332,12 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             onClick={() => setOpen(false)}
             aria-current={active ? "page" : undefined}
             title={rail ? m.label : undefined}
-            className={`relative flex items-center rounded-xl py-2.5 text-sm font-medium transition ${
+            className={`relative flex items-center rounded-xl py-2.5 font-display text-[15px] font-medium transition ${
               rail ? "justify-center px-0" : "gap-3 px-3"
             } ${
               active
-                ? "bg-white font-bold text-[#2C81C4] shadow-[0_4px_14px_rgba(0,0,0,0.3)]"
-                : "text-white/75 hover:bg-white/10 hover:text-white"
+                ? "bg-white font-semibold text-[#173A6B] shadow-[0_4px_14px_rgba(0,0,0,0.3)]"
+                : "text-sky-100/90 hover:bg-white/10 hover:text-white"
             }`}
           >
             <span className={`text-base ${active ? "" : "opacity-80"}`}>{m.emoji}</span>
@@ -412,7 +412,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             {!railed && (
               <Link href="/admin" className="leading-tight" title="iDucky Admin">
                 <span className="block font-display text-sm font-semibold text-white">iDucky Admin</span>
-                <span className="block text-[11px] text-sky-200/70">ระบบหลังบ้าน</span>
+                <span className="block text-[11px] text-sky-200/80">ระบบหลังบ้าน</span>
               </Link>
             )}
           </div>
@@ -459,7 +459,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                 <span className="block truncate text-[13px] font-bold text-white" title={userName}>
                   {userName || "—"}
                 </span>
-                {roleName && <span className="block truncate text-[11px] text-white/50">{roleName}</span>}
+                {roleName && <span className="block truncate text-[11px] text-sky-200/70">{roleName}</span>}
               </span>
               <Link href="/" title="กลับหน้าร้าน" aria-label="กลับหน้าร้าน" className={footBtn}>
                 {iconStore}
@@ -505,7 +505,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               {userName && avatar()}
               <span className="min-w-0 flex-1 leading-tight">
                 <span className="block truncate text-[13px] font-bold text-white">{userName || "—"}</span>
-                {roleName && <span className="block truncate text-[11px] text-white/50">{roleName}</span>}
+                {roleName && <span className="block truncate text-[11px] text-sky-200/70">{roleName}</span>}
               </span>
               <Link
                 href="/"
