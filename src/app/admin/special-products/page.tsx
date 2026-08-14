@@ -74,7 +74,7 @@ function SpecialProductsInner() {
     "w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100";
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="w-full">
       {/* หัวหน้า — โทนแบรนด์ฟ้าอ่อน ฟอนต์หัวเรื่องเดียวกับหน้าร้าน (ชุดเดียวกับหน้า ตั้งค่าระบบ) */}
       <header className="rounded-[22px] border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-amber-50/40 px-5 py-4 shadow-[0_6px_18px_rgba(44,129,196,0.07)] sm:px-6 sm:py-5">
         <div className="flex items-center gap-3.5">
@@ -145,13 +145,13 @@ function SpecialProductsInner() {
       {list === null ? (
         <p className={`py-16 text-center text-sm ${muted}`}>กำลังโหลดคลัง…</p>
       ) : (
-        <div className="mt-3 grid gap-2 lg:grid-cols-2">
+        <div className="mt-3 grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
           {shown.map((p) => (
             <div
               key={p.i}
               className={
                 openIdx === p.i
-                  ? "rounded-2xl bg-white ring-2 ring-amber-300 lg:col-span-2"
+                  ? "rounded-2xl bg-white ring-2 ring-amber-300 lg:col-span-full"
                   : "rounded-2xl bg-white ring-1 ring-slate-200 transition hover:ring-amber-300"
               }
             >
@@ -212,7 +212,7 @@ function SpecialProductsInner() {
             </div>
           ))}
           {shown.length === 0 && (
-            <p className={`rounded-2xl bg-slate-50 px-4 py-10 text-center text-sm ${muted} lg:col-span-2`}>
+            <p className={`rounded-2xl bg-slate-50 px-4 py-10 text-center text-sm ${muted} lg:col-span-full`}>
               {kw ? "ไม่พบรายการที่ค้นหา" : "คลังยังว่าง — กด ＋ เพิ่มรายการ"}
             </p>
           )}
