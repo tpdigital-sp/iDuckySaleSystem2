@@ -139,7 +139,7 @@ export default function ResetPasswordPage() {
 
         <div className="mt-4 text-center">
           <Link href="/account/login" className="text-[13px] hover:underline" style={{ color: "var(--navy-soft)" }}>
-            ← Back to sign in
+            ← กลับไปเข้าสู่ระบบ
           </Link>
         </div>
       </div>
