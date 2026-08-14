@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCan } from "@/lib/perm-context";
 import {
   badge,
@@ -17,8 +17,6 @@ import {
   input as inputCls,
   label as labelCls,
   metric,
-  pillActive,
-  pillIdle,
   subtle,
   TONE,
   type Tone,
@@ -26,11 +24,10 @@ import {
 
 /**
  * คลังสต๊อกวัสดุ — ยอดคงเหลือมาจาก ledger (stockMoves) เท่านั้น แก้ตัวเลขลอย ๆ ไม่ได้
- * รับเข้า / เบิกออก / นับจริง(บังคับเหตุผลเมื่อขาด) + สถิติความเร็วใช้ → วันหมด → จุดสั่งซื้อ
- * ฝั่งผลิตเบิกจากหน้า TP-Leader (เบิกวัสดุผลิต) — คลังเดียวกัน เห็นในประวัติที่นี่ด้วย
+ * ฝั่งผลิตเบิกจากหน้า TP-Leader (เบิกวัสดุผลิต) — คลังเดียวกัน เห็นในแท็บประวัติที่นี่ด้วย
  *
- * เลย์เอาต์เป็น "ลิสต์แน่นจัดกลุ่มตามตระกูล" ไม่ใช่การ์ด เพราะคลังโตจาก 1 → 49 → หลักร้อย SKU
- * รายละเอียด/ประวัติ/ปุ่มเดินสต๊อกย้ายไปลิ้นชักขวา แทนการกางในแถว (กางในลิสต์ทำเลย์เอาต์กระโดด)
+ * แบ่ง 4 แท็บให้ตรงกับงานจริง (โครงเดียวกับระบบรับของ/เบิกของฝั่ง TP):
+ *   รายการสินค้า = ตารางดูยอด · รับเข้า / เบิกของ = ฟอร์มทำงาน · ประวัติ = ledger เต็ม
  */
 
 interface Item {
@@ -71,6 +68,9 @@ interface Stat {
 }
 
 const fmtN = (n: number) => n.toLocaleString("th-TH");
+const fmtAt = (iso: string) =>
+  new Date(iso).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
 const REASON_TONE: Record<string, Tone> = {
   นำเข้า: "ok",
   ขาย: "neutral",
@@ -80,25 +80,30 @@ const REASON_TONE: Record<string, Tone> = {
   ปรับยอดนับจริง: "warn",
 };
 const MOVE_FILTERS = ["ทั้งหมด", "นำเข้า", "ขาย", "เบิกผลิต", "เบิกทำเสีย", "ปรับยอดนับจริง"] as const;
-const VIEWS = ["ต้องสั่ง", "ใกล้หมด", "รอตรวจ"] as const;
-type View = (typeof VIEWS)[number] | "ทั้งหมด";
+const TABS = ["รายการสินค้า", "รับเข้า", "เบิกของ", "ประวัติ"] as const;
+type Tab = (typeof TABS)[number];
+type Filter = "ทั้งหมด" | "ต้องสั่ง" | "ใกล้หมด" | "รอตรวจ";
+type SortKey = "urgency" | "name" | "balance" | "daysLeft";
 
 export default function StockPage() {
   const can = useCan();
   const mayEdit = can("orders.edit");
+  const [tab, setTab] = useState<Tab>("รายการสินค้า");
   const [items, setItems] = useState<Item[]>([]);
   const [moves, setMoves] = useState<Move[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+
   const [q, setQ] = useState("");
-  const [view, setView] = useState<View>("ทั้งหมด");
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<Filter>("ทั้งหมด");
+  const [sort, setSort] = useState<SortKey>("urgency");
   const [openId, setOpenId] = useState<string | null>(null);
   const [editFor, setEditFor] = useState<Item | null>(null);
-  const [moveFor, setMoveFor] = useState<{ item: Item; mode: "in" | "out" | "count" } | null>(null);
+  const [countFor, setCountFor] = useState<Item | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [moveFilter, setMoveFilter] = useState<(typeof MOVE_FILTERS)[number]>("ทั้งหมด");
-  const [logOpen, setLogOpen] = useState(false);
+  const [logQ, setLogQ] = useState("");
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/stock");
@@ -144,41 +149,29 @@ export default function StockPage() {
   const nearLow = useMemo(() => items.filter((i) => stats.get(i.id)?.level === "warn"), [items, stats]);
   const toReview = useMemo(() => items.filter((i) => i.needsReview), [items]);
 
-  /** ค้นด้วยชื่อ/รหัส/ตระกูล/หมวด — และ alias ด้วย เพราะคนเรียกของคนละชื่อกัน */
-  const shown = useMemo(() => {
+  const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     let list = items;
-    if (view === "ต้องสั่ง") list = needOrder;
-    else if (view === "ใกล้หมด") list = nearLow;
-    else if (view === "รอตรวจ") list = toReview;
-    if (needle) {
-      list = list.filter((i) =>
-        [i.name, i.code, i.family, i.category, ...(i.aliases ?? [])]
-          .filter(Boolean)
-          .some((s) => String(s).toLowerCase().includes(needle))
-      );
-    }
+    if (filter === "ต้องสั่ง") list = needOrder;
+    else if (filter === "ใกล้หมด") list = nearLow;
+    else if (filter === "รอตรวจ") list = toReview;
+    if (needle) list = list.filter((i) => matchItem(i, needle));
     const rank: Record<string, number> = { danger: 0, warn: 1, neutral: 2, ok: 3, review: 4 };
-    return [...list].sort(
-      (a, b) =>
-        (rank[stats.get(a.id)?.level ?? "neutral"] ?? 9) - (rank[stats.get(b.id)?.level ?? "neutral"] ?? 9) ||
-        a.name.localeCompare(b.name, "th")
-    );
-  }, [items, q, view, needOrder, nearLow, toReview, stats]);
-
-  /** จัดกลุ่มตามตระกูล — คลังหลักร้อย SKU ถ้าเรียงยาวพรืดจะหาไม่เจอ */
-  const groups = useMemo(() => {
-    const g = new Map<string, Item[]>();
-    for (const it of shown) {
-      const k = it.family ?? it.category ?? "ยังไม่จัดตระกูล";
-      if (!g.has(k)) g.set(k, []);
-      g.get(k)!.push(it);
-    }
-    return [...g.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], "th"));
-  }, [shown]);
+    return [...list].sort((a, b) => {
+      const sa = stats.get(a.id);
+      const sb = stats.get(b.id);
+      if (sort === "name") return a.name.localeCompare(b.name, "th");
+      if (sort === "balance") return a.balance - b.balance;
+      if (sort === "daysLeft") return (sa?.daysLeft ?? 1e9) - (sb?.daysLeft ?? 1e9);
+      return (
+        (rank[sa?.level ?? "neutral"] ?? 9) - (rank[sb?.level ?? "neutral"] ?? 9) || a.name.localeCompare(b.name, "th")
+      );
+    });
+  }, [items, q, filter, sort, needOrder, nearLow, toReview, stats]);
 
   async function doMove(itemId: string, qty: number, reason: string, note?: string, refOrderId?: string) {
     setErr("");
+    setOk("");
     const res = await fetch("/api/admin/stock/move", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -213,12 +206,18 @@ export default function StockPage() {
   const monthDefect = moves
     .filter((m) => m.reason === "เบิกทำเสีย" && Date.now() - new Date(m.at).getTime() < 30 * 86400_000)
     .reduce((s, m) => s + Math.abs(m.qty), 0);
-  const shownMoves = moves.filter((m) => moveFilter === "ทั้งหมด" || m.reason === moveFilter).slice(0, 60);
   const openItem = openId ? items.find((i) => i.id === openId) ?? null : null;
+
+  const logRows = useMemo(() => {
+    const needle = logQ.trim().toLowerCase();
+    return moves
+      .filter((m) => moveFilter === "ทั้งหมด" || m.reason === moveFilter)
+      .filter((m) => !needle || `${m.itemName} ${m.note ?? ""} ${m.by} ${m.refOrderId ?? ""}`.toLowerCase().includes(needle))
+      .slice(0, 200);
+  }, [moves, moveFilter, logQ]);
 
   return (
     <div className="w-full pb-16">
-      {/* ── หัวหน้า ── */}
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className={h1}>คลังสต๊อกวัสดุ</h1>
@@ -233,13 +232,6 @@ export default function StockPage() {
         )}
       </div>
 
-      {err && (
-        <p className="mb-4 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-600 ring-1 ring-rose-200">
-          {err}
-        </p>
-      )}
-
-      {/* ── สรุป ── */}
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="วัสดุในคลัง" value={fmtN(items.length)} suffix="รายการ" />
         <StatTile label="ถึงจุดต้องสั่ง" value={fmtN(needOrder.length)} suffix="รายการ" tone={needOrder.length ? "danger" : "ok"} />
@@ -247,134 +239,210 @@ export default function StockPage() {
         <StatTile label="เบิกทำเสีย 30 วัน" value={fmtN(monthDefect)} suffix="ชิ้น" tone={monthDefect ? "warn" : undefined} />
       </div>
 
-      {/* ── แถบเครื่องมือ: ค้นหา + กรอง ── */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="ค้นชื่อ รหัส ตระกูล หรือชื่อที่เคยเรียก…"
-          className={`${inputCls} w-full sm:w-72`}
-        />
-        <div className="flex flex-wrap gap-1.5">
-          <FilterPill active={view === "ทั้งหมด"} onClick={() => setView("ทั้งหมด")} count={items.length}>
-            ทั้งหมด
-          </FilterPill>
-          <FilterPill active={view === "ต้องสั่ง"} onClick={() => setView("ต้องสั่ง")} count={needOrder.length} tone="danger">
-            ต้องสั่ง
-          </FilterPill>
-          <FilterPill active={view === "ใกล้หมด"} onClick={() => setView("ใกล้หมด")} count={nearLow.length} tone="warn">
-            ใกล้หมด
-          </FilterPill>
-          {toReview.length > 0 && (
-            <FilterPill active={view === "รอตรวจ"} onClick={() => setView("รอตรวจ")} count={toReview.length} tone="review">
-              รอตรวจ
-            </FilterPill>
-          )}
-        </div>
+      {/* ── แท็บ ── */}
+      <div className="mb-4 inline-flex rounded-xl border border-slate-200 bg-white p-1" role="tablist">
+        {TABS.map((t) => (
+          <button
+            key={t}
+            type="button"
+            role="tab"
+            aria-selected={tab === t}
+            onClick={() => {
+              setTab(t);
+              setOk("");
+              setErr("");
+            }}
+            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
+              tab === t ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            {t}
+            {t === "รายการสินค้า" && needOrder.length > 0 && (
+              <span className={`ml-1.5 rounded-full px-1.5 text-[11px] ${tab === t ? "bg-white/20" : `${TONE.danger.bg} ${TONE.danger.text}`}`}>
+                {needOrder.length}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
-      {/* ── ลิสต์วัสดุ จัดกลุ่มตามตระกูล ── */}
-      {loading ? (
-        <div className={`${card} py-16 text-center text-sm text-slate-400`}>กำลังโหลด…</div>
-      ) : shown.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-center">
-          <p className="text-sm font-semibold text-slate-600">
-            {items.length === 0 ? "ยังไม่มีวัสดุในคลัง" : "ไม่พบวัสดุที่ค้นหา"}
-          </p>
-          {items.length === 0 && mayEdit && (
-            <button type="button" onClick={() => setAddOpen(true)} className={`${btnPrimary} mt-3`}>
-              เพิ่มวัสดุตัวแรก
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {groups.map(([family, list]) => {
-            const isOpen = !collapsed.has(family);
-            const alert = list.filter((i) => stats.get(i.id)?.level === "danger").length;
-            return (
-              <section key={family} className={`${card} overflow-hidden`}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setCollapsed((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(family)) next.delete(family);
-                      else next.add(family);
-                      return next;
-                    })
-                  }
-                  className="flex w-full items-center gap-2 px-4 py-3 text-left transition hover:bg-slate-50"
-                >
-                  <span className={`text-slate-400 transition ${isOpen ? "rotate-90" : ""}`} aria-hidden>
-                    ›
-                  </span>
-                  <span className="text-sm font-semibold text-slate-800">{family}</span>
-                  <span className={`${badge} bg-slate-100 text-slate-500`}>{list.length}</span>
-                  {alert > 0 && <span className={`${badge} ${TONE.danger.bg} ${TONE.danger.text}`}>ต้องสั่ง {alert}</span>}
-                </button>
-                {isOpen && (
-                  <ul className="border-t border-slate-100">
-                    {list.map((it) => (
-                      <StockRow
-                        key={it.id}
-                        item={it}
-                        stat={stats.get(it.id)}
-                        onOpen={() => setOpenId(it.id)}
-                      />
-                    ))}
-                  </ul>
-                )}
-              </section>
-            );
-          })}
-        </div>
-      )}
+      {err && <Banner tone="danger">{err}</Banner>}
+      {ok && <Banner tone="ok">{ok}</Banner>}
 
-      {/* ── ประวัติรวม (พับเก็บได้ — ไม่ใช่สิ่งที่ดูทุกครั้งที่เข้าหน้า) ── */}
-      <section className={`${card} mt-6 overflow-hidden`}>
-        <button
-          type="button"
-          onClick={() => setLogOpen((v) => !v)}
-          className="flex w-full items-center gap-2 px-4 py-3 text-left transition hover:bg-slate-50"
-        >
-          <span className={`text-slate-400 transition ${logOpen ? "rotate-90" : ""}`} aria-hidden>
-            ›
-          </span>
-          <span className="text-sm font-semibold text-slate-800">การเคลื่อนไหวล่าสุด</span>
-          <span className={`${badge} bg-slate-100 text-slate-500`}>{moves.length}</span>
-        </button>
-        {logOpen && (
-          <div className="border-t border-slate-100">
-            <div className="flex flex-wrap gap-1.5 border-b border-slate-100 px-4 py-2.5">
-              {MOVE_FILTERS.map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setMoveFilter(f)}
-                  className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${
-                    moveFilter === f ? "bg-slate-900 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50"
-                  }`}
-                >
-                  {f}
-                </button>
-              ))}
-            </div>
-            <div className="px-4 py-1">
-              {shownMoves.map((m) => (
-                <MoveRow key={m.id} m={m} showItem />
-              ))}
-              {shownMoves.length === 0 && (
-                <p className="py-6 text-center text-sm text-slate-400">
-                  ไม่มีการเคลื่อนไหว{moveFilter !== "ทั้งหมด" ? `ประเภท “${moveFilter}”` : ""}
-                </p>
+      {/* ── รายการสินค้า ── */}
+      {tab === "รายการสินค้า" && (
+        <>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="ค้นชื่อ รหัส ตระกูล หรือชื่อที่เคยเรียก…"
+              className={`${inputCls} w-full sm:w-72`}
+            />
+            <div className="flex flex-wrap gap-1.5">
+              <Chip active={filter === "ทั้งหมด"} onClick={() => setFilter("ทั้งหมด")} count={items.length}>
+                ทั้งหมด
+              </Chip>
+              <Chip active={filter === "ต้องสั่ง"} onClick={() => setFilter("ต้องสั่ง")} count={needOrder.length} tone="danger">
+                ต้องสั่ง
+              </Chip>
+              <Chip active={filter === "ใกล้หมด"} onClick={() => setFilter("ใกล้หมด")} count={nearLow.length} tone="warn">
+                ใกล้หมด
+              </Chip>
+              {toReview.length > 0 && (
+                <Chip active={filter === "รอตรวจ"} onClick={() => setFilter("รอตรวจ")} count={toReview.length} tone="review">
+                  รอตรวจ
+                </Chip>
               )}
             </div>
           </div>
-        )}
-      </section>
 
-      {/* ── ลิ้นชักรายละเอียด ── */}
+          {loading ? (
+            <div className={`${card} py-16 text-center text-sm text-slate-400`}>กำลังโหลด…</div>
+          ) : rows.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-center">
+              <p className="text-sm font-semibold text-slate-600">
+                {items.length === 0 ? "ยังไม่มีวัสดุในคลัง" : "ไม่พบวัสดุที่ค้นหา"}
+              </p>
+              {items.length === 0 && mayEdit && (
+                <button type="button" onClick={() => setAddOpen(true)} className={`${btnPrimary} mt-3`}>
+                  เพิ่มวัสดุตัวแรก
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className={`${card} overflow-hidden`}>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[54rem] border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50/70">
+                      <Th className="w-8" />
+                      <Th className="w-28">รหัส</Th>
+                      <Th sortKey="name" sort={sort} onSort={setSort}>ชื่อวัสดุ</Th>
+                      <Th className="w-36">ตระกูล</Th>
+                      <Th className="w-28 text-right" sortKey="balance" sort={sort} onSort={setSort}>คงเหลือ</Th>
+                      <Th className="w-24 text-right">จุดสั่ง</Th>
+                      <Th className="w-20 text-right">ใช้/วัน</Th>
+                      <Th className="w-24 text-right" sortKey="daysLeft" sort={sort} onSort={setSort}>จะหมดใน</Th>
+                      {mayEdit && <Th className="w-16" />}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((it) => {
+                      const st = stats.get(it.id);
+                      const level = st?.level ?? "neutral";
+                      return (
+                        <tr
+                          key={it.id}
+                          onClick={() => setOpenId(it.id)}
+                          className="cursor-pointer border-b border-slate-100 transition last:border-0 hover:bg-slate-50"
+                        >
+                          <Td>
+                            <span className={`block h-2 w-2 rounded-full ${TONE[level].bar}`} aria-hidden />
+                          </Td>
+                          <Td>
+                            <span className={codeCls}>{it.code ?? "—"}</span>
+                          </Td>
+                          <Td>
+                            <span className="flex items-center gap-2">
+                              <span className="font-medium text-slate-900">{it.name}</span>
+                              {it.needsReview && <span className={`${badge} ${TONE.review.bg} ${TONE.review.text}`}>รอตรวจ</span>}
+                            </span>
+                            {/* ไม่เตือน "ยังไม่ผูกสินค้า" ตรงนี้ — SKU ที่ผูกผ่านตัวเลือก (สีไหม/สีตะขอ) ตัดสต๊อกได้
+                                โดยไม่มี productIds ข้อความเลยผิดกับของครึ่งคลัง · ดูจำนวนที่ผูกได้ในลิ้นชัก */}
+                          </Td>
+                          <Td className="text-slate-500">{it.family ?? it.category ?? "—"}</Td>
+                          <Td className="text-right">
+                            <span className={`font-semibold tabular-nums ${it.balance < 0 ? TONE.danger.text : "text-slate-900"}`}>
+                              {fmtN(it.balance)}
+                            </span>
+                            <span className="ml-1 text-[11px] text-slate-400">{it.unit}</span>
+                          </Td>
+                          <Td className="text-right tabular-nums text-slate-500">
+                            {st?.point != null ? fmtN(st.point) : "—"}
+                            {st?.point != null && it.reorderPoint == null && <span className="text-slate-300"> *</span>}
+                          </Td>
+                          <Td className="text-right tabular-nums text-slate-500">
+                            {st && st.perDay > 0 ? st.perDay.toFixed(1) : "—"}
+                          </Td>
+                          <Td className={`text-right tabular-nums ${level === "danger" ? TONE.danger.text : "text-slate-500"}`}>
+                            {st?.daysLeft != null ? `~${fmtN(st.daysLeft)} วัน` : "—"}
+                          </Td>
+                          {mayEdit && (
+                            <Td>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCountFor(it);
+                                }}
+                                className={btnSmNeutral}
+                              >
+                                นับ
+                              </button>
+                            </Td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="border-t border-slate-100 px-4 py-2 text-[11px] text-slate-400">
+                แสดง {fmtN(rows.length)} จาก {fmtN(items.length)} รายการ · <span className="text-slate-300">*</span> จุดสั่งที่ระบบแนะนำจากสถิติ ยังไม่ได้ตั้งเอง
+              </p>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── รับเข้า / เบิกของ ── */}
+      {(tab === "รับเข้า" || tab === "เบิกของ") && (
+        <MovePanel
+          key={tab}
+          mode={tab === "รับเข้า" ? "in" : "out"}
+          items={items}
+          moves={moves}
+          mayEdit={mayEdit}
+          onSubmit={async (itemId, qty, reason, note, refId) => {
+            const done = await doMove(itemId, qty, reason, note, refId);
+            if (done) {
+              const it = items.find((i) => i.id === itemId);
+              setOk(`บันทึกแล้ว — ${it?.name ?? ""} ${qty > 0 ? "+" : ""}${fmtN(qty)} ${it?.unit ?? ""}`);
+            }
+            return done;
+          }}
+        />
+      )}
+
+      {/* ── ประวัติ ── */}
+      {tab === "ประวัติ" && (
+        <>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <input
+              value={logQ}
+              onChange={(e) => setLogQ(e.target.value)}
+              placeholder="ค้นชื่อวัสดุ หมายเหตุ ผู้ทำ หรือเลขออเดอร์…"
+              className={`${inputCls} w-full sm:w-72`}
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {MOVE_FILTERS.map((f) => (
+                <Chip
+                  key={f}
+                  active={moveFilter === f}
+                  onClick={() => setMoveFilter(f)}
+                  count={f === "ทั้งหมด" ? moves.length : moves.filter((m) => m.reason === f).length}
+                  tone={f === "ทั้งหมด" ? undefined : REASON_TONE[f]}
+                >
+                  {f}
+                </Chip>
+              ))}
+            </div>
+          </div>
+          <MoveTable rows={logRows} showItem />
+        </>
+      )}
+
       {openItem && (
         <ItemDrawer
           item={openItem}
@@ -383,7 +451,7 @@ export default function StockPage() {
           mayEdit={mayEdit}
           onClose={() => setOpenId(null)}
           onEdit={() => setEditFor(openItem)}
-          onMove={(mode) => setMoveFor({ item: openItem, mode })}
+          onCount={() => setCountFor(openItem)}
         />
       )}
 
@@ -403,12 +471,15 @@ export default function StockPage() {
         />
       )}
 
-      {moveFor && (
-        <MoveModal
-          target={moveFor}
-          onClose={() => setMoveFor(null)}
-          onSave={async (qty, reason, note, ref) => {
-            if (await doMove(moveFor.item.id, qty, reason, note, ref)) setMoveFor(null);
+      {countFor && (
+        <CountModal
+          item={countFor}
+          onClose={() => setCountFor(null)}
+          onSave={async (diff, note) => {
+            if (await doMove(countFor.id, diff, "ปรับยอดนับจริง", note)) {
+              setOk(`ปรับยอด ${countFor.name} แล้ว (${diff > 0 ? "+" : ""}${fmtN(diff)})`);
+              setCountFor(null);
+            }
           }}
         />
       )}
@@ -416,7 +487,24 @@ export default function StockPage() {
   );
 }
 
-// ─────────────────────────── ชิ้นส่วน ───────────────────────────
+// ─────────────────────────── ค้นหา ───────────────────────────
+
+/** ค้นด้วยชื่อ/รหัส/ตระกูล/หมวด และ alias — คนเรียกของคนละชื่อกัน alias คือตัวที่ทำให้เจอ */
+function matchItem(i: Item, needle: string) {
+  return [i.name, i.code, i.family, i.category, ...(i.aliases ?? [])]
+    .filter(Boolean)
+    .some((s) => String(s).toLowerCase().includes(needle));
+}
+
+// ─────────────────────────── ชิ้นส่วนร่วม ───────────────────────────
+
+function Banner({ tone, children }: { tone: Tone; children: React.ReactNode }) {
+  return (
+    <p className={`mb-4 rounded-xl px-4 py-2.5 text-sm font-medium ring-1 ${TONE[tone].bg} ${TONE[tone].text} ${TONE[tone].ring}`}>
+      {children}
+    </p>
+  );
+}
 
 function StatTile({ label: text, value, suffix, tone }: { label: string; value: string; suffix: string; tone?: Tone }) {
   return (
@@ -429,7 +517,7 @@ function StatTile({ label: text, value, suffix, tone }: { label: string; value: 
   );
 }
 
-function FilterPill({
+function Chip({
   children,
   active,
   count,
@@ -443,92 +531,331 @@ function FilterPill({
   onClick: () => void;
 }) {
   return (
-    <button type="button" onClick={onClick} className={active ? pillActive : pillIdle}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium transition ${
+        active ? "bg-slate-900 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+      }`}
+    >
       <span className={!active && tone && count > 0 ? TONE[tone].text : undefined}>{children}</span>
       <span className={`ml-1.5 tabular-nums ${active ? "text-white/60" : "text-slate-400"}`}>{count}</span>
     </button>
   );
 }
 
-/** แถวเดียวต่อ SKU — แน่นพอให้เห็นหลายสิบตัวในจอเดียว แต่ยังอ่านยอด/ความเร่งด่วนได้ */
-function StockRow({ item, stat, onOpen }: { item: Item; stat?: Stat; onOpen: () => void }) {
-  const level = stat?.level ?? "neutral";
-  const point = stat?.point ?? null;
-  // เต็มหลอด = จุดสั่ง×3 ให้เห็นระยะห่างจากจุดสั่งชัด
-  const cap = point != null ? Math.max(point * 3, 1) : Math.max(item.balance, 1);
-  const pct = Math.max(0, Math.min(100, (item.balance / cap) * 100));
+function Th({
+  children,
+  className = "",
+  sortKey,
+  sort,
+  onSort,
+}: {
+  children?: React.ReactNode;
+  className?: string;
+  sortKey?: SortKey;
+  sort?: SortKey;
+  onSort?: (k: SortKey) => void;
+}) {
+  const active = sortKey && sort === sortKey;
   return (
-    <li>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex w-full items-center gap-3 border-b border-slate-100 px-4 py-2.5 text-left transition last:border-0 hover:bg-slate-50"
-      >
-        {/* จุดสถานะ — สีเดียวต่อแถว */}
-        <span className={`h-2 w-2 shrink-0 rounded-full ${TONE[level].bar}`} aria-hidden />
-
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium text-slate-900">{item.name}</span>
-            {item.needsReview && <span className={`${badge} ${TONE.review.bg} ${TONE.review.text}`}>รอตรวจ</span>}
-          </span>
-          <span className="mt-0.5 flex items-center gap-2">
-            {item.code && <span className={codeCls}>{item.code}</span>}
-            <span className="truncate text-[11px] text-slate-400">
-              {(item.productIds?.length ?? 0) > 0 ? `ผูกสินค้า ${item.productIds!.length}` : "ยังไม่ผูกสินค้า"}
-              {point != null ? ` · จุดสั่ง ≤ ${fmtN(point)}` : ""}
-            </span>
-          </span>
-        </span>
-
-        {/* หลอดระดับ — ซ่อนบนจอแคบ */}
-        <span className="relative hidden h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-slate-100 lg:block">
-          <span className={`absolute inset-y-0 left-0 rounded-full ${TONE[level].bar}`} style={{ width: `${pct}%` }} />
-          {point != null && (
-            <span className="absolute inset-y-0 w-px bg-slate-400/70" style={{ left: `${Math.min(99, (point / cap) * 100)}%` }} />
-          )}
-        </span>
-
-        <span className="w-24 shrink-0 text-right">
-          <span className={`text-base font-semibold tabular-nums ${item.balance < 0 ? TONE.danger.text : "text-slate-900"}`}>
-            {fmtN(item.balance)}
-          </span>
-          <span className="ml-1 text-[11px] text-slate-400">{item.unit}</span>
-        </span>
-
-        <span className="hidden w-20 shrink-0 text-right text-[11px] tabular-nums text-slate-400 sm:block">
-          {stat?.daysLeft != null ? `~${fmtN(stat.daysLeft)} วัน` : "—"}
-        </span>
-      </button>
-    </li>
+    <th className={`px-3 py-2.5 text-left ${labelCls} ${className}`}>
+      {sortKey && onSort ? (
+        <button type="button" onClick={() => onSort(sortKey)} className={`transition hover:text-slate-600 ${active ? "text-slate-700" : ""}`}>
+          {children}
+          <span className="ml-1">{active ? "↓" : ""}</span>
+        </button>
+      ) : (
+        children
+      )}
+    </th>
   );
 }
 
-function MoveRow({ m, showItem }: { m: Move; showItem?: boolean }) {
-  const tone = REASON_TONE[m.reason] ?? "neutral";
+function Td({ children, className = "" }: { children?: React.ReactNode; className?: string }) {
+  return <td className={`px-3 py-2.5 align-top ${className}`}>{children}</td>;
+}
+
+function MoveTable({ rows, showItem }: { rows: Move[]; showItem?: boolean }) {
+  if (rows.length === 0) {
+    return <div className={`${card} py-12 text-center text-sm text-slate-400`}>ไม่มีการเคลื่อนไหว</div>;
+  }
   return (
-    <div className="flex items-center gap-2 border-b border-slate-100 py-2 text-xs last:border-0">
-      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${TONE[tone].bg} ${TONE[tone].text}`}>
-        {m.reason}
-      </span>
-      <span className={`w-14 shrink-0 text-right font-semibold tabular-nums ${m.qty > 0 ? TONE.ok.text : TONE.danger.text}`}>
-        {m.qty > 0 ? `+${fmtN(m.qty)}` : fmtN(m.qty)}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-slate-600">
-        {showItem ? <span className="font-medium text-slate-800">{m.itemName}</span> : null}
-        {showItem && (m.note || m.refOrderId) ? " · " : ""}
-        {m.note}
-        {m.refOrderId ? ` (${m.refOrderId})` : ""}
-      </span>
-      <span className="hidden shrink-0 tabular-nums text-slate-400 sm:inline">เหลือ {fmtN(m.balanceAfter)}</span>
-      <span className="hidden shrink-0 text-slate-400 md:inline">
-        {m.by} · {new Date(m.at).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-      </span>
+    <div className={`${card} overflow-hidden`}>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[48rem] border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-50/70">
+              <Th className="w-32">เวลา</Th>
+              <Th className="w-32">ประเภท</Th>
+              {showItem && <Th className="w-56">วัสดุ</Th>}
+              <Th className="w-24 text-right">จำนวน</Th>
+              <Th className="w-24 text-right">คงเหลือ</Th>
+              <Th>หมายเหตุ</Th>
+              <Th className="w-40">โดย</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((m) => {
+              const tone = REASON_TONE[m.reason] ?? "neutral";
+              return (
+                <tr key={m.id} className="border-b border-slate-100 last:border-0">
+                  <Td className="whitespace-nowrap text-slate-500">{fmtAt(m.at)}</Td>
+                  <Td>
+                    <span className={`${badge} ${TONE[tone].bg} ${TONE[tone].text}`}>{m.reason}</span>
+                  </Td>
+                  {showItem && <Td className="font-medium text-slate-800">{m.itemName}</Td>}
+                  <Td className={`text-right font-semibold tabular-nums ${m.qty > 0 ? TONE.ok.text : TONE.danger.text}`}>
+                    {m.qty > 0 ? `+${fmtN(m.qty)}` : fmtN(m.qty)}
+                  </Td>
+                  <Td className="text-right tabular-nums text-slate-500">{fmtN(m.balanceAfter)}</Td>
+                  <Td className="text-slate-600">
+                    {m.note}
+                    {m.refOrderId ? <span className={`ml-1 ${codeCls}`}>{m.refOrderId}</span> : null}
+                  </Td>
+                  <Td className="text-slate-400">{m.by}</Td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
 
-/** ลิ้นชักขวา — รายละเอียด + ปุ่มเดินสต๊อก + ประวัติของ SKU ตัวนั้น */
+// ─────────────────────────── แท็บ รับเข้า / เบิกของ ───────────────────────────
+
+function MovePanel({
+  mode,
+  items,
+  moves,
+  mayEdit,
+  onSubmit,
+}: {
+  mode: "in" | "out";
+  items: Item[];
+  moves: Move[];
+  mayEdit: boolean;
+  onSubmit: (itemId: string, qty: number, reason: string, note?: string, refId?: string) => Promise<boolean>;
+}) {
+  const [sel, setSel] = useState<Item | null>(null);
+  const [qty, setQty] = useState("");
+  const [reason, setReason] = useState(mode === "in" ? "นำเข้า" : "เบิกผลิต");
+  const [note, setNote] = useState("");
+  const [refId, setRefId] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const n = Number(qty);
+  const needNote = mode === "out" && reason === "อื่นๆ";
+  const after = sel ? sel.balance + (mode === "in" ? n : -n) : 0;
+  const willNegative = mode === "out" && sel != null && qty !== "" && after < 0;
+  const invalid = !sel || qty === "" || n <= 0 || (needNote && !note.trim());
+
+  // รายการล่าสุดของฝั่งนี้ ให้เห็นว่าที่เพิ่งกดไปเข้าจริง
+  const recent = useMemo(
+    () => moves.filter((m) => (mode === "in" ? m.qty > 0 : m.qty < 0)).slice(0, 25),
+    [moves, mode]
+  );
+
+  async function submit() {
+    if (invalid || !sel) return;
+    setBusy(true);
+    const done = await onSubmit(sel.id, mode === "in" ? n : -n, reason, note || undefined, refId || undefined);
+    setBusy(false);
+    if (done) {
+      setSel(null);
+      setQty("");
+      setNote("");
+      setRefId("");
+    }
+  }
+
+  if (!mayEdit) {
+    return <div className={`${card} py-12 text-center text-sm text-slate-400`}>บัญชีนี้ไม่มีสิทธิ์เดินสต๊อก</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className={`${card} p-5`}>
+        <p className="text-sm font-semibold text-slate-800">{mode === "in" ? "รับของเข้าคลัง" : "เบิกของออกจากคลัง"}</p>
+        <p className={`mt-0.5 ${subtle}`}>
+          {mode === "in"
+            ? "ของที่สั่งมาถึงแล้ว บันทึกเข้าคลังที่นี่ · ใบรับของฝั่ง TP ที่ผูก SKU ไว้จะบวกยอดให้เองตอนหัวหน้าอนุมัติ"
+            : "เบิกไปใช้ผลิตหรือตัดของเสีย · ตัดยอดทันทีที่กดบันทึก"}
+        </p>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_9rem_11rem]">
+          <div>
+            <span className={fieldLabel}>วัสดุ *</span>
+            <SkuPicker items={items} value={sel} onChange={setSel} />
+          </div>
+          <label className="block">
+            <span className={fieldLabel}>จำนวน *</span>
+            <input
+              value={qty}
+              onChange={(e) => setQty(e.target.value.replace(/[^\d]/g, ""))}
+              inputMode="numeric"
+              placeholder="0"
+              className={`${inputCls} text-right tabular-nums`}
+            />
+          </label>
+          {mode === "out" ? (
+            <label className="block">
+              <span className={fieldLabel}>เหตุผล</span>
+              <select value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls}>
+                <option value="เบิกผลิต">เบิกผลิตงาน</option>
+                <option value="เบิกทำเสีย">เบิกทำเสีย (ของเสีย/พิมพ์พลาด)</option>
+                <option value="อื่นๆ">อื่นๆ (ระบุหมายเหตุ)</option>
+              </select>
+            </label>
+          ) : (
+            <div className="flex items-end">
+              <p className="w-full rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                {sel ? (
+                  <>
+                    คงเหลือหลังรับ <span className="font-semibold tabular-nums text-slate-800">{fmtN(after)}</span> {sel.unit}
+                  </>
+                ) : (
+                  "เลือกวัสดุก่อน"
+                )}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className={fieldLabel}>
+              {mode === "in" ? "หมายเหตุ (ล็อต / ร้านที่สั่ง)" : `หมายเหตุ${needNote ? " * (บังคับ)" : ""}`}
+            </span>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder={mode === "in" ? "เช่น ล็อต ก.ค. จากร้าน A" : "รายละเอียดเพิ่มเติม"}
+              className={inputCls}
+            />
+          </label>
+          {mode === "out" && reason === "เบิกผลิต" && (
+            <label className="block">
+              <span className={fieldLabel}>เลขออเดอร์ (ถ้ามี)</span>
+              <input value={refId} onChange={(e) => setRefId(e.target.value)} placeholder="OD-…" className={inputCls} />
+            </label>
+          )}
+        </div>
+
+        {sel && qty !== "" && mode === "out" && (
+          <p className={`mt-3 rounded-xl px-3 py-2 text-xs ${willNegative ? `${TONE.danger.bg} ${TONE.danger.text}` : "bg-slate-50 text-slate-600"}`}>
+            {willNegative
+              ? `เบิกเกินยอดในระบบ — คงเหลือจะติดลบเป็น ${fmtN(after)} ${sel.unit} (ยังบันทึกได้ แต่ควรนับจริงก่อน)`
+              : `คงเหลือหลังเบิก ${fmtN(after)} ${sel.unit}`}
+          </p>
+        )}
+
+        <div className="mt-4 flex justify-end">
+          <button type="button" disabled={invalid || busy} onClick={submit} className={btnPrimary}>
+            {busy ? "กำลังบันทึก…" : mode === "in" ? "บันทึกรับเข้า" : "บันทึกเบิกออก"}
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <p className={`mb-2 ${labelCls}`}>{mode === "in" ? "รับเข้าล่าสุด" : "เบิกออกล่าสุด"}</p>
+        <MoveTable rows={recent} showItem />
+      </div>
+    </div>
+  );
+}
+
+/** เลือก SKU ด้วยการค้นหา — 300 SKU ใช้ <select> ไม่ไหว และต้องค้น alias ได้ด้วย */
+function SkuPicker({ items, value, onChange }: { items: Item[]; value: Item | null; onChange: (i: Item | null) => void }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const hits = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return items.slice(0, 30);
+    return items.filter((i) => matchItem(i, needle)).slice(0, 30);
+  }, [items, q]);
+
+  if (value) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-slate-900">{value.name}</span>
+          <span className="mt-0.5 flex items-center gap-2">
+            {value.code && <span className={codeCls}>{value.code}</span>}
+            <span className="text-[11px] text-slate-400">
+              คงเหลือ {fmtN(value.balance)} {value.unit}
+            </span>
+          </span>
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            onChange(null);
+            setQ("");
+          }}
+          className={btnSmGhost}
+        >
+          เปลี่ยน
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={boxRef} className="relative">
+      <input
+        value={q}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        placeholder="พิมพ์ชื่อ รหัส หรือชื่อที่เคยเรียก…"
+        className={inputCls}
+      />
+      {open && (
+        <ul className="absolute z-30 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+          {hits.map((i) => (
+            <li key={i.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(i);
+                  setOpen(false);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left transition hover:bg-slate-50"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm text-slate-900">{i.name}</span>
+                  {i.code && <span className={codeCls}>{i.code}</span>}
+                </span>
+                <span className="shrink-0 text-[11px] tabular-nums text-slate-400">
+                  {fmtN(i.balance)} {i.unit}
+                </span>
+              </button>
+            </li>
+          ))}
+          {hits.length === 0 && <li className="px-3 py-3 text-center text-xs text-slate-400">ไม่พบวัสดุที่ค้น</li>}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────── ลิ้นชัก ───────────────────────────
+
 function ItemDrawer({
   item,
   stat,
@@ -536,7 +863,7 @@ function ItemDrawer({
   mayEdit,
   onClose,
   onEdit,
-  onMove,
+  onCount,
 }: {
   item: Item;
   stat?: Stat;
@@ -544,7 +871,7 @@ function ItemDrawer({
   mayEdit: boolean;
   onClose: () => void;
   onEdit: () => void;
-  onMove: (mode: "in" | "out" | "count") => void;
+  onCount: () => void;
 }) {
   // ปิดด้วย Esc + ล็อกสกรอลล์พื้นหลัง ไม่งั้นเลื่อนลิ้นชักแล้วหน้าหลังเลื่อนตาม
   useEffect(() => {
@@ -619,23 +946,29 @@ function ItemDrawer({
           <div className="mt-5">
             <p className={labelCls}>ประวัติ</p>
             <div className="mt-1.5">
-              {moves.slice(0, 40).map((m) => (
-                <MoveRow key={m.id} m={m} />
-              ))}
+              {moves.slice(0, 40).map((m) => {
+                const tone = REASON_TONE[m.reason] ?? "neutral";
+                return (
+                  <div key={m.id} className="flex items-center gap-2 border-b border-slate-100 py-2 text-xs last:border-0">
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${TONE[tone].bg} ${TONE[tone].text}`}>
+                      {m.reason}
+                    </span>
+                    <span className={`w-14 shrink-0 text-right font-semibold tabular-nums ${m.qty > 0 ? TONE.ok.text : TONE.danger.text}`}>
+                      {m.qty > 0 ? `+${fmtN(m.qty)}` : fmtN(m.qty)}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-slate-500">{m.note}</span>
+                    <span className="shrink-0 text-slate-400">{fmtAt(m.at)}</span>
+                  </div>
+                );
+              })}
               {moves.length === 0 && <p className="py-4 text-center text-xs text-slate-400">ยังไม่มีการเคลื่อนไหว</p>}
             </div>
           </div>
         </div>
 
         {mayEdit && (
-          <footer className="grid grid-cols-4 gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3">
-            <button type="button" onClick={() => onMove("in")} className={btnSmNeutral}>
-              รับเข้า
-            </button>
-            <button type="button" onClick={() => onMove("out")} className={btnSmNeutral}>
-              เบิกออก
-            </button>
-            <button type="button" onClick={() => onMove("count")} className={btnSmNeutral}>
+          <footer className="grid grid-cols-2 gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3">
+            <button type="button" onClick={onCount} className={btnSmNeutral}>
               นับจริง
             </button>
             <button type="button" onClick={onEdit} className={btnSmNeutral}>
@@ -656,6 +989,8 @@ function Fact({ k, v }: { k: string; v: string }) {
     </div>
   );
 }
+
+// ─────────────────────────── โมดัล ───────────────────────────
 
 function ItemModal({
   item,
@@ -695,7 +1030,7 @@ function ItemModal({
         </div>
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
-            <span className={fieldLabel}>ตระกูล (ใช้จัดกลุ่ม)</span>
+            <span className={fieldLabel}>ตระกูล</span>
             <input value={family} onChange={(e) => setFamily(e.target.value)} placeholder="สีไหมเย็บ" className={inputCls} />
           </label>
           <label className="block">
@@ -745,44 +1080,29 @@ function ItemModal({
   );
 }
 
-function MoveModal({
-  target,
-  onClose,
-  onSave,
-}: {
-  target: { item: Item; mode: "in" | "out" | "count" };
-  onClose: () => void;
-  onSave: (qty: number, reason: string, note?: string, refOrderId?: string) => void;
-}) {
-  const { item, mode } = target;
+/** นับจริง — กรอกยอดที่นับได้ ระบบคิดส่วนต่างให้ + บังคับเหตุผลเมื่อของขาด */
+function CountModal({ item, onClose, onSave }: { item: Item; onClose: () => void; onSave: (diff: number, note?: string) => void }) {
   const [qty, setQty] = useState("");
-  const [reason, setReason] = useState(mode === "in" ? "นำเข้า" : "เบิกทำเสีย");
   const [note, setNote] = useState("");
-  const [refId, setRefId] = useState("");
   const n = Number(qty);
-
-  // นับจริง: กรอกยอดที่นับได้ → ระบบคิดส่วนต่างให้ + บังคับเหตุผลเมื่อขาด
-  const diff = mode === "count" && qty !== "" ? n - item.balance : null;
-  const needNote = (mode === "count" && (diff ?? 0) < 0) || (mode === "out" && reason === "อื่นๆ");
-  const title = mode === "in" ? "รับของเข้า" : mode === "out" ? "เบิกออก / ตัดเสีย" : "นับสต๊อกจริง";
+  const diff = qty !== "" ? n - item.balance : null;
+  const needNote = (diff ?? 0) < 0;
 
   return (
-    <Modal
-      title={title}
-      subtitle={`${item.name} · คงเหลือในระบบ ${fmtN(item.balance)} ${item.unit}`}
-      onClose={onClose}
-    >
+    <Modal title="นับสต๊อกจริง" subtitle={`${item.name} · คงเหลือในระบบ ${fmtN(item.balance)} ${item.unit}`} onClose={onClose}>
       <div className="space-y-3">
         <label className="block">
-          <span className={fieldLabel}>{mode === "count" ? "จำนวนที่นับได้จริง *" : "จำนวน *"}</span>
-          <input value={qty} onChange={(e) => setQty(e.target.value.replace(/[^\d]/g, ""))} inputMode="numeric" autoFocus className={inputCls} />
+          <span className={fieldLabel}>จำนวนที่นับได้จริง *</span>
+          <input
+            value={qty}
+            onChange={(e) => setQty(e.target.value.replace(/[^\d]/g, ""))}
+            inputMode="numeric"
+            autoFocus
+            className={`${inputCls} text-right tabular-nums`}
+          />
         </label>
-        {mode === "count" && diff != null && (
-          <p
-            className={`rounded-xl px-3 py-2 text-xs font-medium ${
-              diff === 0 ? `${TONE.ok.bg} ${TONE.ok.text}` : `${TONE.danger.bg} ${TONE.danger.text}`
-            }`}
-          >
+        {diff != null && (
+          <p className={`rounded-xl px-3 py-2 text-xs font-medium ${diff === 0 ? `${TONE.ok.bg} ${TONE.ok.text}` : `${TONE.danger.bg} ${TONE.danger.text}`}`}>
             {diff === 0
               ? "ยอดตรงกับระบบ — ไม่ต้องปรับ"
               : diff < 0
@@ -790,48 +1110,22 @@ function MoveModal({
                 : `พบเกิน ${fmtN(diff)} ${item.unit} — ระบบจะปรับเพิ่มให้`}
           </p>
         )}
-        {mode === "out" && (
-          <label className="block">
-            <span className={fieldLabel}>เหตุผล</span>
-            <select value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls}>
-              <option value="เบิกทำเสีย">เบิกทำเสีย (ของเสีย/พิมพ์พลาด)</option>
-              <option value="เบิกผลิต">เบิกผลิตงาน</option>
-              <option value="อื่นๆ">อื่นๆ (ระบุหมายเหตุ)</option>
-            </select>
-          </label>
-        )}
-        {(mode === "out" || (mode === "count" && (diff ?? 0) !== 0)) && (
+        {diff != null && diff !== 0 && (
           <label className="block">
             <span className={fieldLabel}>หมายเหตุ{needNote ? " * (บังคับ)" : ""}</span>
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder={mode === "count" ? "เช่น เบิกทำเสียไม่ได้ลงระบบ 5 ชิ้น" : "รายละเอียดเพิ่มเติม"}
+              placeholder="เช่น เบิกทำเสียไม่ได้ลงระบบ 5 ชิ้น"
               className={inputCls}
             />
-          </label>
-        )}
-        {mode === "out" && reason === "เบิกผลิต" && (
-          <label className="block">
-            <span className={fieldLabel}>เลขออเดอร์ (ถ้ามี)</span>
-            <input value={refId} onChange={(e) => setRefId(e.target.value)} placeholder="OD-…" className={inputCls} />
-          </label>
-        )}
-        {mode === "in" && (
-          <label className="block">
-            <span className={fieldLabel}>หมายเหตุ (ล็อต/ร้านที่สั่ง)</span>
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="เช่น ล็อต ก.ค. จากร้าน A" className={inputCls} />
           </label>
         )}
       </div>
       <ModalFooter
         onClose={onClose}
-        disabled={qty === "" || (mode !== "count" && n <= 0) || (mode === "count" && diff === 0) || (needNote && !note.trim())}
-        onConfirm={() => {
-          if (mode === "in") onSave(n, "นำเข้า", note || undefined);
-          else if (mode === "out") onSave(-n, reason, note || undefined, refId || undefined);
-          else if (diff != null && diff !== 0) onSave(diff, "ปรับยอดนับจริง", note || `นับจริงได้ ${n}`);
-        }}
+        disabled={qty === "" || diff === 0 || (needNote && !note.trim())}
+        onConfirm={() => diff != null && diff !== 0 && onSave(diff, note || `นับจริงได้ ${n}`)}
       />
     </Modal>
   );
