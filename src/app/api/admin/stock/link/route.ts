@@ -17,7 +17,8 @@ export const runtime = "nodejs";
 /** มิติที่กินสต๊อก vs มิติกระบวนการ — ชุดเดียวกับสคริปต์ฝั่ง node (product-variants.mjs) */
 const PROC_DIM = /สกรีน|พิมพ์|ตำแหน่งงาน|เทคนิค|ไดคัท|เจาะรู|ระบบพิมพ์|จำนวน|ด้าน$/;
 const MAT_DIM = /เนื้อผ้า|^ผ้า|สีไหม|ไหม|ซิป|ตะขอ|โซ่|อะคริลิค|ขนาด|ประเภท|วัสดุ|กลิตเตอร์|^สี|ฐาน|หูกระเป๋า|ชนิด|ความหนา/;
-export function isMaterialDim(label: string): boolean {
+// ห้าม export — ไฟล์ route ของ Next ให้ export ได้เฉพาะ GET/POST ฯลฯ (เคยทำ build ล้มทั้งเว็บ)
+function isMaterialDim(label: string): boolean {
   const L = (label ?? "").trim();
   if (!L || PROC_DIM.test(L)) return false;
   return MAT_DIM.test(L);
