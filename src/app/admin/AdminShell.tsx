@@ -51,12 +51,12 @@ const MENU_GROUPS: {
   line: string;
 }[] = [
   // ธีมผสม: navy เข้มพรีเมียม + เหลืองเป็ด — หัวกลุ่มสีอ่อนตามหมวด อ่านชัดบนพื้น #173A6B · จุดสีใช้จานสี landing
-  // หัวกลุ่มใช้สีสดของหมวด (300) ให้เด่นบนพื้น navy · hover สว่างขึ้น
-  { key: "งานขาย", label: "📦 งานขาย", text: "text-sky-300 hover:text-sky-100", dot: "bg-sky-400", badge: "bg-white/10 text-sky-100", line: "border-white/15" },
-  { key: "กราฟฟิก", label: "🎨 กราฟฟิก", text: "text-rose-300 hover:text-rose-100", dot: "bg-[#FF9EB0]", badge: "bg-white/10 text-rose-100", line: "border-white/15" },
-  { key: "สินค้า", label: "🏷️ สินค้า", text: "text-yellow-300 hover:text-yellow-100", dot: "bg-[#FFD447]", badge: "bg-white/10 text-yellow-100", line: "border-white/15" },
-  { key: "ลูกค้า", label: "💛 ลูกค้า & การตลาด", text: "text-violet-300 hover:text-violet-100", dot: "bg-[#C7C4F5]", badge: "bg-white/10 text-violet-100", line: "border-white/15" },
-  { key: "ระบบ", label: "⚙️ ร้าน & ระบบ", text: "text-[#7CC4F0] hover:text-sky-100", dot: "bg-[#57B6E8]", badge: "bg-white/10 text-sky-100", line: "border-white/15" },
+  // ลดความลายตา: หัวกลุ่มใช้สีเดียวกันหมด (ฟ้าอ่อนนวล) · เหลือ "จุดสีประจำหมวด" ไว้บอกตำแหน่งตอนหุบกลุ่มพอ
+  { key: "งานขาย", label: "📦 งานขาย", text: "text-sky-200/90 hover:text-white", dot: "bg-sky-400", badge: "bg-white/10 text-sky-100", line: "border-white/15" },
+  { key: "กราฟฟิก", label: "🎨 กราฟฟิก", text: "text-sky-200/90 hover:text-white", dot: "bg-[#FF9EB0]", badge: "bg-white/10 text-sky-100", line: "border-white/15" },
+  { key: "สินค้า", label: "🏷️ สินค้า", text: "text-sky-200/90 hover:text-white", dot: "bg-[#FFD447]", badge: "bg-white/10 text-sky-100", line: "border-white/15" },
+  { key: "ลูกค้า", label: "💛 ลูกค้า & การตลาด", text: "text-sky-200/90 hover:text-white", dot: "bg-[#C7C4F5]", badge: "bg-white/10 text-sky-100", line: "border-white/15" },
+  { key: "ระบบ", label: "⚙️ ร้าน & ระบบ", text: "text-sky-200/90 hover:text-white", dot: "bg-[#57B6E8]", badge: "bg-white/10 text-sky-100", line: "border-white/15" },
 ];
 
 /** แคชป้ายจำนวนประเมินใหม่ (module scope — อยู่ข้ามการเปลี่ยนหน้า) กันดึงเรตติ้งทั้งชุดซ้ำทุกคลิก */
@@ -306,12 +306,12 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               onClick={() => toggleGroup(key)}
               aria-expanded={!folded}
               title={folded ? "กางกลุ่มนี้" : "หุบกลุ่มนี้"}
-              className={`flex w-full items-center gap-1.5 rounded-lg px-3 pb-1 text-left font-display text-[14px] font-semibold uppercase tracking-wide transition ${
+              className={`flex w-full min-w-0 items-center gap-1.5 rounded-lg px-3 pb-1 text-left font-display text-[14px] font-semibold uppercase tracking-wide transition ${
                 groupIdx > 0 ? "mt-4" : "mt-1"
               } ${text}`}
             >
-              <span className={`text-[9px] transition-transform ${folded ? "-rotate-90" : ""}`}>▼</span>
-              {label}
+              <span className={`text-[9px] opacity-60 transition-transform ${folded ? "-rotate-90" : ""}`}>▼</span>
+              <span className="truncate whitespace-nowrap">{label}</span>
               {/* หุบอยู่แต่มีหน้าที่เปิดค้างในกลุ่มนี้ → จุดบอกให้รู้ว่าอยู่ตรงไหน */}
               {folded && activeGroup === key && (
                 <span className={`h-1.5 w-1.5 rounded-full ${dot}`} aria-label="อยู่ในกลุ่มนี้" />
@@ -333,7 +333,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             onClick={() => setOpen(false)}
             aria-current={active ? "page" : undefined}
             title={rail ? m.label : undefined}
-            className={`relative flex items-center rounded-xl py-2.5 font-display text-[12.5px] font-medium transition ${
+            className={`group relative flex items-center rounded-xl py-2.5 font-display text-[12.5px] font-medium transition ${
               rail ? "justify-center px-0" : "gap-3 px-3"
             } ${
               active
@@ -341,7 +341,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                 : "text-sky-100/90 hover:bg-white/10 hover:text-white"
             }`}
           >
-            <span className={`text-base ${active ? "" : "opacity-80"}`}>{m.emoji}</span>
+            {/* อีโมจิเมนูปกติเป็นขาวดำจาง ๆ กันสีตีกันทั้งแถบ — กลับมามีสีตอนชี้/หน้าเปิดอยู่ */}
+            <span className={`text-base transition ${active ? "" : "opacity-70 grayscale group-hover:opacity-100 group-hover:grayscale-0"}`}>{m.emoji}</span>
             {!rail && m.label}
             {badge &&
               (rail ? (
