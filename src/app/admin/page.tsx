@@ -26,7 +26,7 @@ export default function AdminDashboard() {
   const bestSellers = [...PRODUCTS].sort((a, b) => b.sold - a.sold).slice(0, 5);
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-7xl">
       <h1 className={h1}>ภาพรวมร้าน</h1>
       <p className={`mt-1 ${muted}`}>สรุปความเคลื่อนไหวของร้านวันนี้</p>
 

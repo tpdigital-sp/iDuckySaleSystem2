@@ -47,11 +47,16 @@ export function categoriesOf(rows: ShopCategory[] | null | undefined): ShopCateg
     }));
 }
 
-/** อ่านหมวดหมู่ (ฝั่งเบราว์เซอร์) — ใช้ในหน้าร้านและหลังบ้าน */
-export async function fetchCategories(): Promise<ShopCategory[]> {
+/** อ่านหมวดหมู่ (ฝั่งเบราว์เซอร์) — ใช้ในหน้าร้านและหลังบ้าน
+ *  fresh: true = ข้ามแคช 60 วิ ใช้ในหลังบ้านทุกหน้า
+ *  [FIX 2026-08-14] เดิมหลังบ้านโหลดผ่านแคชเดียวกับหน้าร้าน → บันทึกหมวดแล้วรีเฟรช
+ *  เจอชุดเก่าจากแคช ดูเหมือน "หมวดหาย" และถ้าเซฟซ้ำจะเอาชุดเก่าเขียนทับ DB จริง */
+export async function fetchCategories(opts?: { fresh?: boolean }): Promise<ShopCategory[]> {
   try {
-    // ใช้แคช 60 วิที่ API ตั้งไว้ — หมวดหมู่ถูกยิงทุกหน้า ไม่ต้องโหลดใหม่ทุกครั้ง
-    const res = await fetch("/api/categories");
+    // หน้าร้านใช้แคช 60 วิที่ API ตั้งไว้ — หมวดหมู่ถูกยิงทุกหน้า ไม่ต้องโหลดใหม่ทุกครั้ง
+    const res = opts?.fresh
+      ? await fetch("/api/categories?fresh=1", { cache: "no-store" })
+      : await fetch("/api/categories");
     if (!res.ok) return DEFAULT_CATEGORIES;
     const j = (await res.json()) as { list?: ShopCategory[] };
     return categoriesOf(j.list);

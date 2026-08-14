@@ -13,15 +13,19 @@ const ROW_ID = "__categories__";
  */
 const CAT_CACHE = { "Cache-Control": "public, max-age=60, stale-while-revalidate=600" };
 
-export async function GET() {
+export async function GET(req: Request) {
+  // ?fresh=1 (หลังบ้าน) = ห้ามแคช — ต้องเห็นหมวดที่เพิ่งบันทึกทันที กันเซฟทับด้วยชุดเก่าจากแคช
+  const fresh = new URL(req.url).searchParams.has("fresh");
+  const headers = fresh ? { "Cache-Control": "no-store" } : CAT_CACHE;
+
   const sb = getSupabaseAdmin();
-  if (!sb) return NextResponse.json({ list: DEFAULT_CATEGORIES }, { headers: CAT_CACHE });
+  if (!sb) return NextResponse.json({ list: DEFAULT_CATEGORIES }, { headers });
 
   const { data, error } = await sb.from("products").select("data").eq("id", ROW_ID).maybeSingle();
-  if (error || !data) return NextResponse.json({ list: DEFAULT_CATEGORIES }, { headers: CAT_CACHE });
+  if (error || !data) return NextResponse.json({ list: DEFAULT_CATEGORIES }, { headers });
 
   const list = (data.data as { categories?: ShopCategory[] })?.categories;
-  return NextResponse.json({ list: categoriesOf(list) }, { headers: CAT_CACHE });
+  return NextResponse.json({ list: categoriesOf(list) }, { headers });
 }
 
 /** แอดมินบันทึกหมวดหมู่ (ต้องมีสิทธิ์ตั้งค่าระบบ) */

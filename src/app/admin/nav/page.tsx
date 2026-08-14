@@ -535,7 +535,7 @@ function NavEditorInner() {
         fetch("/api/nav", { cache: "no-store" })
           .then((x) => (x.ok ? x.json() : null))
           .catch(() => null),
-        fetchCategories(),
+        fetchCategories({ fresh: true }),
       ]);
       setNav(siteNavOf((r as { nav?: Partial<SiteNav> } | null)?.nav));
       setCats(cs.filter((c) => !c.hidden));

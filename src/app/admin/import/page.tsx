@@ -32,7 +32,7 @@ function AdminImportPageInner() {
   /** หมวดหมู่ตามที่แอดมินตั้งไว้ในตั้งค่าระบบ (ยังไม่โหลดเสร็จ = ค่าเริ่มต้นจากโค้ด) */
   const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
   useEffect(() => {
-    fetchCategories().then(setCats);
+    fetchCategories({ fresh: true }).then(setCats);
   }, []);
   const [result, setResult] = useState<string>("");
   const [filter, setFilter] = useState("");

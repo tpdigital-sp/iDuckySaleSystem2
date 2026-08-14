@@ -37,6 +37,57 @@ import {
 } from "@/lib/permissions";
 import { btnPrimary, card, faint, muted } from "@/lib/admin-ui";
 
+/** โลโก้/สีประจำธนาคาร — จับจากชื่อที่พิมพ์อิสระ (พิมพ์ "กสิกร" ก็ขึ้นโลโก้เขียว K ให้เอง)
+ *  ใช้ตัวย่อ+สีแบรนด์แทนไฟล์ภาพ: ไม่ต้องเก็บ asset, จับได้ทั้งชื่อไทย/อังกฤษ/พิมพ์ย่อ */
+const BANK_BRANDS: { match: RegExp; abbr: string; color: string; fg?: string; full: string; logo?: string }[] = [
+  { match: /กสิกร|kbank|kasikorn/i, abbr: "K", color: "#00A950", full: "กสิกรไทย", logo: "/banks/kbank.png" },
+  { match: /ไทยพาณิชย์|scb/i, abbr: "SCB", color: "#4E2A84", full: "ไทยพาณิชย์" },
+  { match: /กรุงเทพ|bangkok|bbl/i, abbr: "BBL", color: "#1E4598", full: "กรุงเทพ" },
+  { match: /กรุงไทย|krungthai|ktb/i, abbr: "KTB", color: "#00A4E4", full: "กรุงไทย" },
+  { match: /กรุงศรี|krungsri|bay|อยุธยา/i, abbr: "BAY", color: "#FFC800", fg: "#5A4500", full: "กรุงศรีอยุธยา" },
+  { match: /ทหารไทย|ธนชาต|ttb|tmb/i, abbr: "ttb", color: "#0050F0", full: "ทีทีบีธนชาต" },
+  { match: /ออมสิน|gsb/i, abbr: "GSB", color: "#EB198D", full: "ออมสิน" },
+  { match: /เกษตร|ธกส|ธ\.ก\.ส|baac/i, abbr: "ธกส", color: "#009645", full: "ธ.ก.ส." },
+  { match: /อาคารสงเคราะห์|ธอส|ghb/i, abbr: "ธอส", color: "#F57C00", full: "อาคารสงเคราะห์" },
+  { match: /ยูโอบี|uob/i, abbr: "UOB", color: "#0B3979", full: "ยูโอบี" },
+  { match: /ซีไอเอ็มบี|cimb/i, abbr: "CIMB", color: "#C8102E", full: "ซีไอเอ็มบี ไทย" },
+  { match: /เกียรตินาคิน|kkp/i, abbr: "KKP", color: "#1B3F94", full: "เกียรตินาคินภัทร" },
+  { match: /แลนด์|lh bank|lhb/i, abbr: "LH", color: "#6CB33F", full: "แลนด์ แอนด์ เฮ้าส์" },
+];
+function bankBrand(name: string): { abbr: string; color: string; fg?: string; full: string; logo?: string } {
+  const hit = BANK_BRANDS.find((b) => b.match.test(name || ""));
+  return hit ?? { abbr: "🏦", color: "#94A3B8", fg: "#fff", full: "" };
+}
+/** ป้ายโลโก้ธนาคาร (สี่เหลี่ยมมน สีแบรนด์ + ตัวย่อ) — ใช้ซ้ำทั้งการ์ดบัญชีและที่อื่น */
+function BankLogo({ name, size = 44 }: { name: string; size?: number }) {
+  const b = bankBrand(name);
+  // มีไฟล์โลโก้จริง (เช่น กสิกร) → ใช้ภาพบนพื้นขาว · ธนาคารอื่นใช้ป้ายสีแบรนด์+ตัวย่อ
+  if (b.logo) {
+    return (
+      <div
+        className="flex shrink-0 items-center justify-center rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-200"
+        style={{ width: size, height: size }}
+        title={b.full || undefined}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element -- โลโก้ svg ขนาดจิ๋ว ไม่ต้องผ่าน next/image */}
+        <img src={b.logo} alt={`โลโก้ธนาคาร${b.full}`} className="h-full w-full object-contain" />
+      </div>
+    );
+  }
+  return (
+    <div
+      className="flex shrink-0 items-center justify-center rounded-xl font-bold text-white shadow-sm ring-1 ring-black/5"
+      style={{
+        width: size, height: size, background: b.color, color: b.fg ?? "#fff",
+        fontSize: b.abbr.length <= 1 ? size * 0.5 : b.abbr.length <= 3 ? size * 0.32 : size * 0.26,
+      }}
+      title={b.full || undefined}
+    >
+      {b.abbr}
+    </div>
+  );
+}
+
 /** ไอคอนหมวดหมู่ให้เลือก — จัดกลุ่มตามชนิดงานของร้าน (พิมพ์อีโมจิอื่นเองก็ได้) */
 const CAT_ICONS: { group: string; items: string[] }[] = [
   { group: "อะคริลิค · สแตนดี้", items: ["🔑", "🪟", "🧍", "💡", "🪞", "🧲", "🏷️", "📛", "🪪"] },
@@ -200,14 +251,21 @@ const TAB_META: { key: Tab; emoji: string; label: string; hint: string }[] = [
   { key: "google", emoji: "🔍", label: "Google & SEO", hint: "Search Console · GA4" },
 ];
 
+/** แท็บอ่อนไหว — พนักงานมองไม่เห็นทั้งปุ่มและเนื้อหา เห็นเฉพาะ Administrator (2026-08-14)
+ *  ฝั่งเซิร์ฟเวอร์กันซ้ำอยู่แล้ว: shop-settings คงค่าบัญชี/SEO เดิมเมื่อคนบันทึกไม่ใช่แอดมิน
+ *  และ role-perms PUT รับเฉพาะแอดมิน */
+const ADMIN_ONLY_TABS: Tab[] = ["pay", "roles", "google"];
+
 function AdminSettingsPageInner() {
-  const [tab, setTab] = useState<Tab>("pay");
   /** ผู้ดูแลระบบเท่านั้นที่แก้บัญชีร้าน/บทบาท และเห็นแท็บเชื่อม Google */
   const isAdmin = useIsAdministrator();
+  // แอดมินเปิดมาเจอแท็บชำระเงิน (ของเดิม) · พนักงานเริ่มที่ข้อมูลร้านแทน (แท็บ pay ถูกซ่อน)
+  const [tab, setTab] = useState<Tab>(isAdmin ? "pay" : "shop");
   // เปิดแท็บตามลิงก์ได้ เช่น /admin/settings?tab=cats (ใช้จากผังหน้าแรกในเมนูหน้าร้าน)
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab") as Tab | null;
-    if (t && TAB_KEYS.includes(t)) setTab(t);
+    if (t && TAB_KEYS.includes(t) && (isAdmin || !ADMIN_ONLY_TABS.includes(t))) setTab(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- อ่านครั้งเดียวตอน mount
   }, []);
 
   // ── ชำระเงิน ──
@@ -232,7 +290,7 @@ function AdminSettingsPageInner() {
   /** มีแก้หมวดหมู่ค้างอยู่ — ปุ่ม "บันทึก" รวมข้างล่างจะบันทึกให้ (กันเซฟทับฐานด้วยค่าตั้งต้นตอนยังโหลดไม่เสร็จ) */
   const [catsDirty, setCatsDirty] = useState(false);
   useEffect(() => {
-    fetchCategories().then(setCats);
+    fetchCategories({ fresh: true }).then(setCats);
     // นับสินค้าต่อหมวด — กันลบหมวดที่ยังมีสินค้าอยู่
     fetch("/api/admin/products-lite", { cache: "no-store" })
       .then((r) => r.json())
@@ -265,8 +323,10 @@ function AdminSettingsPageInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ list: cats }),
       });
-      const j = await res.json();
+      const j = (await res.json()) as { error?: string; list?: ShopCategory[] };
       if (!res.ok) return j.error ?? "บันทึกไม่สำเร็จ";
+      // sync state จากชุดที่เซิร์ฟเวอร์บันทึกจริง — กัน state/DB เหลื่อมกันหลังเซฟ
+      if (Array.isArray(j.list)) setCats(j.list);
       setCatsDirty(false);
       return null;
     } catch {
@@ -528,7 +588,7 @@ function AdminSettingsPageInner() {
         {/* เมนูหัวข้อ — จอกว้างเป็นแถบข้าง sticky · จอเล็กเป็นชิปเลื่อนซ้ายขวา */}
         <aside className="max-lg:-mx-4 max-lg:px-4 lg:sticky lg:top-6">
           <nav className="flex gap-1.5 overflow-x-auto pb-1 lg:flex-col lg:gap-1 lg:overflow-visible lg:rounded-2xl lg:border lg:border-slate-200/70 lg:bg-white lg:p-2 lg:shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-            {TAB_META.filter((t) => t.key !== "google" || isAdmin).map((t) => {
+            {TAB_META.filter((t) => isAdmin || !ADMIN_ONLY_TABS.includes(t.key)).map((t) => {
               const active = tab === t.key;
               // 🔒 = เฉพาะผู้ดูแลระบบ · 👁 = ตำแหน่งนี้ดูได้อย่างเดียว
               const locked = t.key === "google" || ((t.key === "pay" || t.key === "roles") && isAdmin);
@@ -621,6 +681,13 @@ function AdminSettingsPageInner() {
                   </button>
                 </div>
 
+                {/* รายชื่อธนาคารยอดนิยม — พิมพ์ไม่กี่ตัวอักษรแล้วเลือกได้เลย (โลโก้/สีจับอัตโนมัติ) */}
+                <datalist id="thai-bank-list">
+                  {BANK_BRANDS.map((b) => (
+                    <option key={b.abbr} value={b.full} />
+                  ))}
+                </datalist>
+
                 {banks.length === 0 && (
                   <p className="mt-3 rounded-xl bg-slate-50 p-4 text-center text-xs text-slate-400">
                     ยังไม่มีบัญชี — กด “เพิ่มบัญชี” เพื่อกรอกเลขบัญชีร้าน
@@ -628,67 +695,105 @@ function AdminSettingsPageInner() {
                 )}
 
                 <div className="mt-3 space-y-3">
-                  {banks.map((b) => (
-                    <div key={b.id} className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
-                      <div className="flex flex-wrap gap-2">
-                        <input
-                          value={b.bank}
-                          onChange={(e) => patchBank(b.id, { bank: e.target.value })}
-                          placeholder="ธนาคาร (เช่น กสิกรไทย)"
-                          className={`${inputCls} min-w-40 flex-1`}
-                        />
-                        <input
-                          value={b.accountName}
-                          onChange={(e) => patchBank(b.id, { accountName: e.target.value })}
-                          placeholder="ชื่อบัญชี"
-                          className={`${inputCls} min-w-40 flex-1`}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeBank(b.id)}
-                          className="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50"
-                        >
-                          🗑 ลบ
-                        </button>
+                  {banks.map((b) => {
+                    const brand = bankBrand(b.bank);
+                    return (
+                      <div key={b.id} className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+                        {/* แถบสีแบรนด์ธนาคาร — เปลี่ยนตามชื่อที่พิมพ์ทันที */}
+                        <div className="h-1.5 w-full" style={{ background: brand.color }} />
+                        <div className="p-4">
+                          <div className="flex items-start gap-3">
+                            <BankLogo name={b.bank} />
+                            <div className="grid min-w-0 flex-1 gap-2.5 sm:grid-cols-2">
+                              <label className="block">
+                                <span className="mb-1 block text-[11px] font-semibold text-slate-500">ธนาคาร</span>
+                                <input
+                                  value={b.bank}
+                                  onChange={(e) => patchBank(b.id, { bank: e.target.value })}
+                                  placeholder="เช่น กสิกรไทย"
+                                  list="thai-bank-list"
+                                  className={inputCls}
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="mb-1 block text-[11px] font-semibold text-slate-500">ชื่อบัญชี</span>
+                                <input
+                                  value={b.accountName}
+                                  onChange={(e) => patchBank(b.id, { accountName: e.target.value })}
+                                  placeholder="เช่น บจก.ทีพีดิจิตอล"
+                                  className={inputCls}
+                                />
+                              </label>
+                              <label className="block sm:col-span-2">
+                                <span className="mb-1 block text-[11px] font-semibold text-slate-500">เลขบัญชี</span>
+                                <input
+                                  value={b.accountNo}
+                                  onChange={(e) => patchBank(b.id, { accountNo: e.target.value })}
+                                  placeholder="เช่น 123-4-56789-0"
+                                  inputMode="numeric"
+                                  className={`${inputCls} font-mono text-base tracking-[0.15em]`}
+                                />
+                              </label>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeBank(b.id)}
+                              className="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50"
+                            >
+                              🗑 ลบ
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <input
-                        value={b.accountNo}
-                        onChange={(e) => patchBank(b.id, { accountNo: e.target.value })}
-                        placeholder="เลขบัญชี (เช่น 123-4-56789-0)"
-                        className={`${inputCls} mt-2 font-mono tracking-wide`}
-                      />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <section className={`p-5 ${card}`}>
-                  <h2 className="font-display text-[15px] font-semibold text-slate-800">📱 พร้อมเพย์ (PromptPay)</h2>
-                  <div className="mt-3 space-y-2">
-                    <input
-                      value={promptpay}
-                      onChange={(e) => {
-                        setPromptpay(e.target.value);
-                        touch();
-                      }}
-                      placeholder="เบอร์ / เลขบัตร ปชช. / เลขนิติบุคคล"
-                      className={`${inputCls} font-mono tracking-wide`}
-                    />
-                    <input
-                      value={promptpayName}
-                      onChange={(e) => {
-                        setPromptpayName(e.target.value);
-                        touch();
-                      }}
-                      placeholder="ชื่อบัญชีพร้อมเพย์"
-                      className={inputCls}
-                    />
+                  <div className="flex items-center gap-3">
+                    {/* ป้ายพร้อมเพย์ — โทนน้ำเงินกรมท่าแบบ Thai QR */}
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#113F67] text-lg font-bold text-white shadow-sm ring-1 ring-black/5">
+                      P
+                    </div>
+                    <div>
+                      <h2 className="font-display text-[15px] font-semibold text-slate-800">พร้อมเพย์ (PromptPay)</h2>
+                      <p className="text-[11px] text-slate-400">ลูกค้าสแกน/โอนด้วยเบอร์หรือเลขนิติบุคคลได้</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-2.5">
+                    <label className="block">
+                      <span className="mb-1 block text-[11px] font-semibold text-slate-500">หมายเลขพร้อมเพย์</span>
+                      <input
+                        value={promptpay}
+                        onChange={(e) => {
+                          setPromptpay(e.target.value);
+                          touch();
+                        }}
+                        placeholder="เบอร์ / เลขบัตร ปชช. / เลขนิติบุคคล"
+                        inputMode="numeric"
+                        className={`${inputCls} font-mono text-base tracking-[0.15em]`}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-[11px] font-semibold text-slate-500">ชื่อบัญชี</span>
+                      <input
+                        value={promptpayName}
+                        onChange={(e) => {
+                          setPromptpayName(e.target.value);
+                          touch();
+                        }}
+                        placeholder="ชื่อบัญชีพร้อมเพย์"
+                        className={inputCls}
+                      />
+                    </label>
                   </div>
                 </section>
 
                 <section className={`p-5 ${card}`}>
                   <h2 className="font-display text-[15px] font-semibold text-slate-800">📝 หมายเหตุถึงลูกค้า (ไม่บังคับ)</h2>
+                  <p className="mt-0.5 text-[11px] text-slate-400">โชว์ใต้ข้อมูลบัญชีตอนลูกค้าจ่ายเงิน</p>
                   <textarea
                     value={note}
                     onChange={(e) => {
@@ -697,7 +802,7 @@ function AdminSettingsPageInner() {
                     }}
                     rows={3}
                     placeholder="เช่น โอนแล้วแนบสลิปในหน้าออเดอร์ · โอนภายใน 24 ชม."
-                    className={`${inputCls} mt-3 h-[calc(100%-2.5rem)] resize-y`}
+                    className={`${inputCls} mt-3 h-[calc(100%-4rem)] resize-y`}
                   />
                 </section>
               </div>

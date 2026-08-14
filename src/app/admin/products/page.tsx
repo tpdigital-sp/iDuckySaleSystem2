@@ -215,7 +215,7 @@ export default function AdminProductsPage() {
   // — เอาช่องออกจากแถวลิสต์เพราะกินความกว้างจนชื่อสินค้าโดนบีบ
 
   useEffect(() => {
-    fetchCategories().then(setCats);
+    fetchCategories({ fresh: true }).then(setCats);
   }, []);
   // จำมุมมองที่เลือกไว้ในเบราว์เซอร์
   useEffect(() => {

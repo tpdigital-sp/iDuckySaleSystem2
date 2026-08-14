@@ -1208,7 +1208,7 @@ export default function ProductEditor({ product }: { product: Product }) {
   /** หมวดหมู่ที่แอดมินแก้ไว้ในตั้งค่าระบบ (ยังไม่โหลดเสร็จ = ค่าเริ่มต้นจากโค้ด) */
   const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
   useEffect(() => {
-    fetchCategories().then(setCats);
+    fetchCategories({ fresh: true }).then(setCats);
   }, []);
   function refreshUnits() { setUnits(loadUnits()); }
 

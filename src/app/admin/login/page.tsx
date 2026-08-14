@@ -5,17 +5,16 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getAdminSession, signInAdmin } from "@/lib/auth";
 
-/** จำ "ชื่อผู้ใช้" ล่าสุดไว้ในเครื่อง (ไม่เก็บรหัสผ่านเอง — ให้ตัวจำรหัสของเบราว์เซอร์ทำ) */
+/** จำ "ชื่อผู้ใช้" ล่าสุดไว้ในเครื่อง */
 const REMEMBER_KEY = "admin.login.username";
-
 /**
- * จำรหัสผ่านผ่านคลังรหัสของเบราว์เซอร์ (Credential Management API — Chrome/Edge)
- * ปลอดภัยกว่าเก็บเอง: รหัสถูกเข้ารหัสในเครื่องและซิงก์ตามบัญชีเบราว์เซอร์
- * Safari ไม่มี API นี้ → ใช้ตัวถามจำรหัสของ Safari เอง (ช่องกรอกใส่ autocomplete ครบแล้ว)
+ * จำ "รหัสผ่าน" ไว้ในเครื่องด้วย (ผู้ใช้สั่ง 14 ส.ค. 69 — ตัวจำรหัสของเบราว์เซอร์ไม่เด้งถามในหลายเครื่อง)
+ * ⚠️ เก็บแบบเข้ารหัสพื้นฐาน (base64) ในเบราว์เซอร์เครื่องนั้น — กันตาเปล่า ไม่ใช่กันแฮ็กเกอร์
+ * ใครใช้เครื่องนั้นได้ก็เข้าหลังบ้านได้ · จึงผูกกับติ๊ก "จำการเข้าสู่ระบบ" ให้ปิดได้บนเครื่องส่วนกลาง
  */
-type PasswordCredCtor = new (init: { id: string; password: string; name?: string }) => Credential;
-const passwordCredCtor = (): PasswordCredCtor | undefined =>
-  (window as unknown as { PasswordCredential?: PasswordCredCtor }).PasswordCredential;
+const SECRET_KEY = "admin.login.secret";
+const enc = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+const dec = (s: string) => new TextDecoder().decode(Uint8Array.from(atob(s), (c) => c.charCodeAt(0)));
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -27,7 +26,7 @@ export default function AdminLoginPage() {
   const [configured, setConfigured] = useState<boolean | null>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
-  // เติมชื่อผู้ใช้ที่จำไว้ แล้วพาไปช่องรหัสผ่านเลย — พิมพ์แค่รหัสก็เข้าได้
+  // เติมชื่อผู้ใช้ + รหัสผ่านที่จำไว้ในเครื่อง — เหลือกดปุ่ม "เข้าสู่ระบบ" ปุ่มเดียว
   useEffect(() => {
     try {
       const saved = localStorage.getItem(REMEMBER_KEY);
@@ -35,21 +34,9 @@ export default function AdminLoginPage() {
         setUsername(saved);
         passwordRef.current?.focus();
       }
+      const secret = localStorage.getItem(SECRET_KEY);
+      if (secret) setPassword(dec(secret));
     } catch {}
-    // ถ้าเคยให้เบราว์เซอร์จำรหัสไว้ → ดึงมาเติมทั้งชื่อ+รหัสให้เลย เหลือกดปุ่มเดียว
-    (async () => {
-      try {
-        if (!passwordCredCtor() || !navigator.credentials?.get) return;
-        const c = (await navigator.credentials.get({
-          password: true,
-          mediation: "optional",
-        } as unknown as CredentialRequestOptions)) as { id?: string; password?: string } | null;
-        if (c?.id && c.password) {
-          setUsername(c.id);
-          setPassword(c.password);
-        }
-      } catch {}
-    })();
   }, []);
 
   // ปลายทางหลังล็อกอิน — คืนค่า ?next= (เฉพาะ path ภายใน /admin กัน open-redirect) ไม่งั้น /admin
@@ -72,20 +59,16 @@ export default function AdminLoginPage() {
     const res = await signInAdmin(username, password);
     setLoading(false);
     if (res.ok) {
-      // จำ/ลืมชื่อผู้ใช้ตามที่ติ๊ก — บันทึกเฉพาะตอนล็อกอินสำเร็จ (กันจำชื่อที่พิมพ์ผิด)
+      // จำ/ลืมชื่อผู้ใช้+รหัสผ่านตามที่ติ๊ก — บันทึกเฉพาะตอนล็อกอินสำเร็จ (กันจำค่าที่พิมพ์ผิด)
       try {
-        if (remember) localStorage.setItem(REMEMBER_KEY, username.trim());
-        else localStorage.removeItem(REMEMBER_KEY);
+        if (remember) {
+          localStorage.setItem(REMEMBER_KEY, username.trim());
+          localStorage.setItem(SECRET_KEY, enc(password));
+        } else {
+          localStorage.removeItem(REMEMBER_KEY);
+          localStorage.removeItem(SECRET_KEY);
+        }
       } catch {}
-      // ฝากรหัสไว้กับคลังรหัสของเบราว์เซอร์ (Chrome บางรุ่นเลิกรองรับ store() แล้ว — throw ก็ข้ามไป ใช้ heuristic แทน)
-      if (remember) {
-        try {
-          const PC = passwordCredCtor();
-          if (PC && navigator.credentials?.store) {
-            await navigator.credentials.store(new PC({ id: username.trim(), password, name: "iDucky Admin" }));
-          }
-        } catch {}
-      }
       /**
        * เปลี่ยนหน้าแบบเต็ม (ไม่ใช่ SPA push) — ตัวจำรหัสของ Chrome/Safari จะถือว่า
        * "ส่งฟอร์มแล้วเปลี่ยนหน้า = ล็อกอินสำเร็จ" ถึงจะเด้งถามบันทึกรหัสผ่าน
