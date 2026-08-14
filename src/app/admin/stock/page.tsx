@@ -251,9 +251,14 @@ export default function StockPage() {
           </p>
         </div>
         {mayEdit && (
-          <button type="button" onClick={() => setAddOpen(true)} className={btnPrimary}>
-            เพิ่มวัสดุ
-          </button>
+          <div className="flex items-center gap-2">
+            <a href="/admin/stock/link" className={btnNeutral}>
+              ผูกตัวเลือกสินค้า
+            </a>
+            <button type="button" onClick={() => setAddOpen(true)} className={btnPrimary}>
+              เพิ่มวัสดุ
+            </button>
+          </div>
         )}
       </div>
 
