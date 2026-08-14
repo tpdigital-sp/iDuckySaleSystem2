@@ -306,7 +306,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               onClick={() => toggleGroup(key)}
               aria-expanded={!folded}
               title={folded ? "กางกลุ่มนี้" : "หุบกลุ่มนี้"}
-              className={`flex w-full items-center gap-1.5 rounded-lg px-3 pb-1 text-left font-display text-[14px] font-semibold uppercase tracking-wide transition ${
+              className={`flex w-full items-center gap-1.5 rounded-lg px-3 pb-1 text-left font-display text-[13px] font-semibold uppercase tracking-wide transition ${
                 groupIdx > 0 ? "mt-4" : "mt-1"
               } ${text}`}
             >
@@ -333,7 +333,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             onClick={() => setOpen(false)}
             aria-current={active ? "page" : undefined}
             title={rail ? m.label : undefined}
-            className={`relative flex items-center rounded-xl py-2.5 font-display text-[13.5px] font-medium transition ${
+            className={`relative flex items-center rounded-xl py-2.5 font-display text-[12.5px] font-medium transition ${
               rail ? "justify-center px-0" : "gap-3 px-3"
             } ${
               active
