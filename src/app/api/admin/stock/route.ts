@@ -24,6 +24,9 @@ export async function POST(req: Request) {
   let body: {
     id?: string;
     name?: string;
+    code?: string;
+    aliases?: string[];
+    family?: string;
     unit?: string;
     category?: string;
     reorderPoint?: number;
@@ -41,6 +44,9 @@ export async function POST(req: Request) {
     const item = await saveStockItem({
       id: body.id,
       name: body.name,
+      code: body.code?.trim() || undefined,
+      family: body.family?.trim() || undefined,
+      aliases: Array.isArray(body.aliases) ? body.aliases.map((a) => String(a).trim()).filter(Boolean) : undefined,
       unit: body.unit,
       category: body.category,
       reorderPoint: Number.isFinite(body.reorderPoint) ? Math.max(0, Number(body.reorderPoint)) : undefined,
