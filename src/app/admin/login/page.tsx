@@ -113,6 +113,8 @@ export default function AdminLoginPage() {
             <span className="mb-1 block text-xs font-bold text-stone-600">ชื่อผู้ใช้ (username)</span>
             <input
               type="text"
+              name="username"
+              id="admin-username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoComplete="username"
@@ -125,6 +127,8 @@ export default function AdminLoginPage() {
             <input
               ref={passwordRef}
               type="password"
+              name="password"
+              id="admin-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
