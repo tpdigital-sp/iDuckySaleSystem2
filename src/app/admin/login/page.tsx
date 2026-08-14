@@ -8,6 +8,15 @@ import { getAdminSession, signInAdmin } from "@/lib/auth";
 /** จำ "ชื่อผู้ใช้" ล่าสุดไว้ในเครื่อง (ไม่เก็บรหัสผ่านเอง — ให้ตัวจำรหัสของเบราว์เซอร์ทำ) */
 const REMEMBER_KEY = "admin.login.username";
 
+/**
+ * จำรหัสผ่านผ่านคลังรหัสของเบราว์เซอร์ (Credential Management API — Chrome/Edge)
+ * ปลอดภัยกว่าเก็บเอง: รหัสถูกเข้ารหัสในเครื่องและซิงก์ตามบัญชีเบราว์เซอร์
+ * Safari ไม่มี API นี้ → ใช้ตัวถามจำรหัสของ Safari เอง (ช่องกรอกใส่ autocomplete ครบแล้ว)
+ */
+type PasswordCredCtor = new (init: { id: string; password: string; name?: string }) => Credential;
+const passwordCredCtor = (): PasswordCredCtor | undefined =>
+  (window as unknown as { PasswordCredential?: PasswordCredCtor }).PasswordCredential;
+
 export default function AdminLoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
@@ -27,6 +36,20 @@ export default function AdminLoginPage() {
         passwordRef.current?.focus();
       }
     } catch {}
+    // ถ้าเคยให้เบราว์เซอร์จำรหัสไว้ → ดึงมาเติมทั้งชื่อ+รหัสให้เลย เหลือกดปุ่มเดียว
+    (async () => {
+      try {
+        if (!passwordCredCtor() || !navigator.credentials?.get) return;
+        const c = (await navigator.credentials.get({
+          password: true,
+          mediation: "optional",
+        } as unknown as CredentialRequestOptions)) as { id?: string; password?: string } | null;
+        if (c?.id && c.password) {
+          setUsername(c.id);
+          setPassword(c.password);
+        }
+      } catch {}
+    })();
   }, []);
 
   // ปลายทางหลังล็อกอิน — คืนค่า ?next= (เฉพาะ path ภายใน /admin กัน open-redirect) ไม่งั้น /admin
@@ -54,6 +77,15 @@ export default function AdminLoginPage() {
         if (remember) localStorage.setItem(REMEMBER_KEY, username.trim());
         else localStorage.removeItem(REMEMBER_KEY);
       } catch {}
+      // ฝากรหัสไว้กับคลังรหัสของเบราว์เซอร์ (ถามผู้ใช้ก่อนบันทึกเสมอ) — ครั้งหน้าเติมให้ทั้งชื่อ+รหัส
+      if (remember) {
+        try {
+          const PC = passwordCredCtor();
+          if (PC && navigator.credentials?.store) {
+            await navigator.credentials.store(new PC({ id: username.trim(), password, name: "iDucky Admin" }));
+          }
+        } catch {}
+      }
       router.push(nextDest());
     } else setError(res.error ?? "เข้าสู่ระบบไม่สำเร็จ");
   }
@@ -108,7 +140,7 @@ export default function AdminLoginPage() {
               onChange={(e) => setRemember(e.target.checked)}
               className="h-4 w-4 accent-amber-500"
             />
-            จำชื่อผู้ใช้ในเครื่องนี้ — ครั้งหน้าพิมพ์แค่รหัสผ่าน
+            จำการเข้าสู่ระบบในเครื่องนี้ — ครั้งหน้าไม่ต้องพิมพ์ใหม่
           </label>
 
           {error && (
