@@ -66,7 +66,7 @@ function PrintQueueInner() {
   );
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="w-full">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className={h1}>🖨 คิวปริ้น</h1>
