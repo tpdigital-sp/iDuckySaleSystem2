@@ -93,8 +93,26 @@ const ADMIN_MODE_KEY = "iducky:product-order-mode";
  */
 function ProductTabText({ tab }: { tab: ProductTab }) {
   const { text, images = [] } = tab;
+  // ขนาดรูปที่แอดมินเลือกไว้ → จำนวนคอลัมน์ของกริด
+  const cols =
+    tab.imageSize === "lg" ? "max-w-2xl" : tab.imageSize === "md" ? "sm:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-3";
+  const gallery = images.length > 0 && (
+    <div className={`grid gap-3 ${cols} ${tab.imagePos === "top" ? "pb-3" : "pt-3"}`}>
+      {images.map((src, i) => (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img
+          key={`${src}-${i}`}
+          src={src}
+          alt={`${tab.title} รูปที่ ${i + 1}`}
+          loading="lazy"
+          className="w-full rounded-xl bg-stone-50 object-contain ring-1 ring-stone-200"
+        />
+      ))}
+    </div>
+  );
   return (
     <div className="space-y-2 text-sm leading-relaxed text-stone-600">
+      {tab.imagePos === "top" && gallery}
       {text.split("\n").map((line, i) => {
         const t = line.trim();
         if (!t) return <div key={i} className="h-2" />;
@@ -113,20 +131,7 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
           );
         return <p key={i}>{t}</p>;
       })}
-      {images.length > 0 && (
-        <div className="grid gap-3 pt-3 sm:grid-cols-2 lg:grid-cols-3">
-          {images.map((src, i) => (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
-              key={`${src}-${i}`}
-              src={src}
-              alt={`${tab.title} รูปที่ ${i + 1}`}
-              loading="lazy"
-              className="w-full rounded-xl bg-stone-50 object-contain ring-1 ring-stone-200"
-            />
-          ))}
-        </div>
-      )}
+      {tab.imagePos !== "top" && gallery}
     </div>
   );
 }

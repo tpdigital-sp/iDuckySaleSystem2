@@ -384,8 +384,12 @@ export interface BodySection {
 export interface ProductTab {
   title: string;
   text: string;
-  /** รูปประกอบในแท็บ (URL จาก Supabase Storage หรือ base64 ในโหมดเดโม) — แสดงใต้ข้อความ */
+  /** รูปประกอบในแท็บ (URL จาก Supabase Storage หรือ base64 ในโหมดเดโม) — เรียงตามลำดับในอาร์เรย์ */
   images?: string[];
+  /** วางรูปไว้บนหรือใต้ข้อความ (ไม่ตั้ง = ใต้ข้อความ) */
+  imagePos?: "top" | "bottom";
+  /** ขนาดรูปในหน้าสินค้า: sm = 3 คอลัมน์ (ค่าเริ่มต้น) · md = 2 คอลัมน์ · lg = เต็มความกว้าง */
+  imageSize?: "sm" | "md" | "lg";
 }
 
 /**

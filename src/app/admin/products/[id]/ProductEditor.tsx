@@ -174,7 +174,13 @@ type Draft = {
   images: DraftImage[];
   body: DraftBody[];
   /** แท็บข้อมูลสินค้า (รายละเอียดเพิ่มเติม / วิธีสั่งงาน / การรับประกัน ฯลฯ) */
-  tabs: { title: string; text: string; images: string[] }[];
+  tabs: {
+    title: string;
+    text: string;
+    images: string[];
+    imagePos: "top" | "bottom";
+    imageSize: "sm" | "md" | "lg";
+  }[];
   seo: DraftSeo;
   custom: DraftCustom;
   /** ⭐ ขึ้นบล็อก "สินค้าแนะนำ" บนหน้าแรก */
@@ -460,7 +466,13 @@ function toDraft(p: Product): Draft {
     })),
     highlights: [...p.highlights],
     images: p.images.map((im) => ({ ...im })),
-    tabs: (p.tabs ?? []).map((t) => ({ title: t.title, text: t.text, images: [...(t.images ?? [])] })),
+    tabs: (p.tabs ?? []).map((t) => ({
+      title: t.title,
+      text: t.text,
+      images: [...(t.images ?? [])],
+      imagePos: t.imagePos ?? "bottom",
+      imageSize: t.imageSize ?? "sm",
+    })),
     body: (p.body ?? []).map((b) => ({
       heading: b.heading,
       text: b.text,
@@ -627,6 +639,37 @@ function FoldBtn({ folded, onClick, what }: { folded: boolean; onClick: () => vo
     >
       {folded ? "▸ กาง" : "▾ ยุบ"}
     </button>
+  );
+}
+
+/** แถวปุ่มเลือกค่าเดียวจากไม่กี่ตัว (ชิปกดเลือก) — เช่น ตำแหน่ง/ขนาดรูปในแท็บ */
+function PickRow<T extends string>({
+  value,
+  options,
+  onPick,
+}: {
+  value: T;
+  options: { v: T; label: string }[];
+  onPick: (v: T) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {options.map((o) => (
+        <button
+          key={o.v}
+          type="button"
+          aria-pressed={value === o.v}
+          onClick={() => onPick(o.v)}
+          className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
+            value === o.v
+              ? "bg-sky-500 text-white shadow-sm"
+              : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -989,19 +1032,26 @@ export default function ProductEditor({ product }: { product: Product }) {
     }
   }
 
-  /** ย้าย/ลบรูปในแท็บ (to อยู่นอกช่วง = ลบทิ้ง) */
+  /** ย้ายรูปในแท็บไปตำแหน่งใหม่ (ปุ่ม ‹ › และลากวาง) */
   function moveTabImage(i: number, from: number, to: number) {
     setDraft((d) => ({
       ...d,
       tabs: d.tabs.map((x, j) => {
-        if (j !== i) return x;
-        if (to < 0 || to >= x.images.length) return x;
+        if (j !== i || from === to || to < 0 || to >= x.images.length) return x;
         const images = [...x.images];
-        [images[from], images[to]] = [images[to], images[from]];
+        const [moved] = images.splice(from, 1);
+        images.splice(to, 0, moved);
         return { ...x, images };
       }),
     }));
   }
+
+  /**
+   * รูปในแท็บที่กำลังลากสลับตำแหน่งอยู่ — ref อ่านได้ทันทีตอน drop · state ไว้ทำไฮไลต์
+   * (ต้องแยกจากการลากไฟล์เข้ามาใหม่ ไม่งั้นการ์ดแท็บจะไฮไลต์ว่ากำลังจะอัปโหลด)
+   */
+  const dragTabImgRef = useRef<{ tab: number; idx: number } | null>(null);
+  const [dragTabImg, setDragTabImg] = useState<{ tab: number; idx: number } | null>(null);
 
   /**
    * 🖼 อัปโหลดภาพประจำตัวเลือก/เรทราคา → คืน URL (โหมดเดโมยังไม่ตั้ง Supabase → เก็บ base64)
@@ -2508,7 +2558,18 @@ export default function ProductEditor({ product }: { product: Product }) {
         const list = draft.tabs
           .map((t) => {
             const images = t.images.map((s) => s.trim()).filter(Boolean);
-            return { title: t.title.trim(), text: t.text.trim(), ...(images.length ? { images } : {}) };
+            return {
+              title: t.title.trim(),
+              text: t.text.trim(),
+              // ตำแหน่ง/ขนาดรูปเก็บเฉพาะตอนไม่ใช่ค่าเริ่มต้น (ใต้ข้อความ · 3 คอลัมน์)
+              ...(images.length
+                ? {
+                    images,
+                    ...(t.imagePos === "top" ? { imagePos: "top" as const } : {}),
+                    ...(t.imageSize !== "sm" ? { imageSize: t.imageSize } : {}),
+                  }
+                : {}),
+            };
           })
           // แท็บที่มีแต่รูป (ไม่มีข้อความ) ก็เก็บ — บางแท็บเป็นตารางรูปล้วน
           .filter((t) => t.title && (t.text || t.images?.length));
@@ -5037,7 +5098,9 @@ export default function ProductEditor({ product }: { product: Product }) {
           <h2 className="text-sm font-bold text-sky-800">📑 แท็บข้อมูลสินค้า ({draft.tabs.length} แท็บ)</h2>
           <button
             type="button"
-            onClick={() => patch({ tabs: [...draft.tabs, { title: "", text: "", images: [] }] })}
+            onClick={() =>
+              patch({ tabs: [...draft.tabs, { title: "", text: "", images: [], imagePos: "bottom", imageSize: "sm" }] })
+            }
             className="rounded-full bg-amber-500 px-4 py-1.5 text-xs font-bold text-white hover:bg-amber-600"
           >
             ＋ เพิ่มแท็บ
@@ -5059,7 +5122,8 @@ export default function ProductEditor({ product }: { product: Product }) {
               key={i}
               onDragOver={(e) => {
                 e.preventDefault();
-                setTabDragOver(i);
+                // ลากรูปเดิมสลับตำแหน่งอยู่ = ไม่ใช่การอัปโหลดไฟล์ใหม่ ไม่ต้องไฮไลต์การ์ด
+                if (!dragTabImgRef.current) setTabDragOver(i);
               }}
               onDragLeave={(e) => {
                 if (!e.currentTarget.contains(e.relatedTarget as Node)) setTabDragOver(null);
@@ -5067,6 +5131,7 @@ export default function ProductEditor({ product }: { product: Product }) {
               onDrop={(e) => {
                 e.preventDefault();
                 setTabDragOver(null);
+                if (dragTabImgRef.current) return;
                 void uploadTabImages(i, e.dataTransfer.files);
               }}
               className={`rounded-2xl p-3 transition ${
@@ -5141,12 +5206,51 @@ export default function ProductEditor({ product }: { product: Product }) {
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className="text-xs font-semibold text-slate-500">
                       รูปประกอบ ({t.images.length}/{MAX_TAB_IMAGES}):{" "}
-                      <span className="font-normal text-slate-400">ลากรูปมาวางที่แท็บนี้ได้เลย</span>
+                      <span className="font-normal text-slate-400">
+                        ลากรูปมาวางที่แท็บนี้ได้เลย{t.images.length > 1 ? " · ลากรูปย่อสลับตำแหน่งได้" : ""}
+                      </span>
                     </span>
                     {t.images.map((src, k) => (
-                      <div key={`${src}-${k}`} className="group relative">
+                      <div
+                        key={`${src}-${k}`}
+                        draggable
+                        onDragStart={(e) => {
+                          dragTabImgRef.current = { tab: i, idx: k };
+                          setDragTabImg({ tab: i, idx: k });
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragEnd={() => {
+                          dragTabImgRef.current = null;
+                          setDragTabImg(null);
+                        }}
+                        onDragOver={(e) => {
+                          // รับเฉพาะรูปจากแท็บเดียวกัน (ไฟล์ใหม่ให้การ์ดแท็บจัดการ)
+                          if (dragTabImgRef.current?.tab === i) e.preventDefault();
+                        }}
+                        onDrop={(e) => {
+                          const from = dragTabImgRef.current;
+                          if (from?.tab !== i) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          moveTabImage(i, from.idx, k);
+                          dragTabImgRef.current = null;
+                          setDragTabImg(null);
+                        }}
+                        className={`group relative cursor-grab transition active:cursor-grabbing ${
+                          dragTabImg?.tab === i && dragTabImg.idx === k ? "opacity-40" : ""
+                        }`}
+                        title="ลากเพื่อสลับตำแหน่ง"
+                      >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={src} alt="" className="h-16 w-20 rounded-lg bg-white object-cover ring-1 ring-slate-200" />
+                        <img
+                          src={src}
+                          alt=""
+                          draggable={false}
+                          className="h-16 w-20 rounded-lg bg-white object-cover ring-1 ring-slate-200"
+                        />
+                        <span className="pointer-events-none absolute left-0.5 top-0.5 rounded-full bg-slate-900/70 px-1.5 text-[10px] font-bold text-white">
+                          {k + 1}
+                        </span>
                         <div className="absolute inset-x-0 bottom-0 flex items-center justify-between px-0.5 pb-0.5 opacity-0 transition group-hover:opacity-100">
                           <button
                             type="button"
@@ -5209,6 +5313,30 @@ export default function ProductEditor({ product }: { product: Product }) {
                       </label>
                     )}
                   </div>
+                  {/* วางรูปตรงไหน/ใหญ่แค่ไหนในหน้าสินค้า — มีรูปแล้วค่อยโชว์ */}
+                  {t.images.length > 0 && (
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+                      <span className="font-semibold text-slate-500">ตำแหน่งในหน้าสินค้า:</span>
+                      <PickRow
+                        value={t.imagePos}
+                        options={[
+                          { v: "bottom", label: "รูปอยู่ใต้ข้อความ" },
+                          { v: "top", label: "รูปอยู่บนข้อความ" },
+                        ]}
+                        onPick={(v) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, imagePos: v } : x)) })}
+                      />
+                      <span className="font-semibold text-slate-500">ขนาด:</span>
+                      <PickRow
+                        value={t.imageSize}
+                        options={[
+                          { v: "sm", label: "เล็ก (3 รูป/แถว)" },
+                          { v: "md", label: "กลาง (2 รูป/แถว)" },
+                          { v: "lg", label: "ใหญ่ (เต็มความกว้าง)" },
+                        ]}
+                        onPick={(v) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, imageSize: v } : x)) })}
+                      />
+                    </div>
+                  )}
                 </>
               )}
             </div>
