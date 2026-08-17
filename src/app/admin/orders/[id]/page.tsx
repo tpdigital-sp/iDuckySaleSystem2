@@ -4049,6 +4049,36 @@ function LineChatBox({
     }
   }
 
+  /**
+   * ปุ่ม "เปิดแชท" ตอนยังไม่ผูก: ก๊อปข้อความทักสั้น ๆ ใส่คลิปบอร์ดให้ก่อน
+   * พนักงานวางส่งในห้องแชท 1 ครั้ง → ห้องนั้นเด้งขึ้นบนสุด → กลับมาแตะเลือกจากรายชื่อได้ทันที
+   * (ระบบส่งเองไม่ได้ เพราะยังไม่รู้ userId — นี่คือเหตุผลที่ต้องจับคู่)
+   */
+  async function copyPingText() {
+    const text = `สวัสดีค่ะ ทางร้าน iDucky ขอยืนยันออเดอร์ ${order.id} นะคะ 🦆`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setMsg("📋 ก๊อปข้อความทักไว้แล้ว — วาง (⌘V) ส่งในห้องแชท แล้วกลับมากด 🔄 รีเฟรชรายชื่อ");
+    } catch {
+      setMsg(`ก๊อปไม่ได้ พิมพ์เองได้: "${text}"`);
+    }
+  }
+
+  /** ดึงรายชื่อคุยล่าสุดใหม่ (หลังทักลูกค้าแล้ว ห้องนั้นจะขึ้นบนสุด) */
+  async function refreshRecent() {
+    setSearching(true);
+    setPicking(true);
+    try {
+      const res = await fetch(`/api/admin/line-customers?q=`);
+      const j = (await res.json().catch(() => ({}))) as { customers?: typeof hits };
+      setHits(j.customers ?? []);
+    } catch {
+      setHits([]);
+    } finally {
+      setSearching(false);
+    }
+  }
+
   /** ยกเลิกการผูก — forget=true จะลบ "ลิงก์ห้องแชทนี้ = คนนี้" ที่จำไว้ด้วย (กันเดาผิดซ้ำ) */
   async function unbind(forget = false) {
     setBusy(true);
@@ -4230,8 +4260,9 @@ function LineChatBox({
               href={chat.url}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() => void copyPingText()}
               className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#06C755] px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-[#05b34c]"
-              title={chat.source === "prev" ? `ลิงก์จากออเดอร์ ${chat.from} ของลูกค้าคนเดียวกัน` : "ลิงก์ห้องแชทที่บันทึกไว้"}
+              title="เปิดห้องแชท + ก๊อปข้อความทักให้ — วางส่ง 1 ครั้ง ห้องจะเด้งขึ้นบนสุด แล้วกลับมาเลือกจากรายชื่อได้"
             >
               💬 เปิดแชท
             </a>
@@ -4284,6 +4315,17 @@ function LineChatBox({
         >
           {busy ? "กำลังเช็ค…" : "บันทึก"}
         </button>
+        {chat && !draft.trim() && (
+          <button
+            type="button"
+            onClick={() => void refreshRecent()}
+            disabled={searching}
+            className="shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-50 disabled:opacity-50"
+            title="ทักลูกค้าในแชทแล้ว → กดดูรายชื่อล่าสุด ห้องนั้นจะขึ้นบนสุด"
+          >
+            🔄
+          </button>
+        )}
       </div>
       {/* วางลิงก์ OA Manager แล้ว → เดาว่าเป็นใครจากคนที่คุยล่าสุด ให้ยืนยันคลิกเดียว */}
       {pendingManagerId && suggestions.length > 0 && !picked && (
@@ -4371,9 +4413,23 @@ function LineChatBox({
         <div className="mt-1.5 overflow-hidden rounded-lg border border-slate-200 bg-white">
           {searching && hits.length === 0 && <p className="px-2.5 py-2 text-[11px] text-slate-400">กำลังค้นจากคลังแชท…</p>}
           {hits.length > 0 && (
-            <p className="border-b border-slate-100 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-500">
-              {draft.trim().length >= 2 ? "ผลค้นหาจากคลังแชท" : "ลูกค้าที่คุยกับร้านล่าสุด — แตะเพื่อผูก"}
-            </p>
+            <div className="flex items-center border-b border-slate-100 bg-slate-50 px-2.5 py-1">
+              <p className="min-w-0 flex-1 text-[10px] font-semibold text-slate-500">
+                {draft.trim().length >= 2 ? "ผลค้นหาจากคลังแชท" : "ลูกค้าที่คุยกับร้านล่าสุด — แตะเพื่อผูก"}
+              </p>
+              {draft.trim().length < 2 && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => void refreshRecent()}
+                  disabled={searching}
+                  className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 hover:bg-white disabled:opacity-50"
+                  title="ทักลูกค้าในแชทแล้ว → กดรีเฟรช ห้องนั้นจะขึ้นบนสุด"
+                >
+                  🔄 รีเฟรช
+                </button>
+              )}
+            </div>
           )}
           {hits.map((h) => (
             <button
