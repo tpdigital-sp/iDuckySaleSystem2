@@ -3936,7 +3936,7 @@ function LineChatBox({
   const [picked, setPicked] = useState<{ userId: string; name: string; picture?: string } | null>(null);
   // วางลิงก์ OA Manager แล้ว: รหัสท้ายลิงก์ที่รอจับคู่ + คนที่ระบบเดาว่าน่าจะใช่ (คุยล่าสุด)
   const [pendingManagerId, setPendingManagerId] = useState<string | null>(null);
-  const [suggestions, setSuggestions] = useState<{ userId: string; name: string; picture?: string; lastSeen?: string }[]>([]);
+  const [suggestions, setSuggestions] = useState<{ userId: string; name: string; picture?: string; lastSeen?: string; remembered?: boolean }[]>([]);
 
   // พิมพ์ชื่อ → ค้นจากคลังแชท LINE ของร้านให้เลย (หน่วงไว้กันยิงถี่)
   // ยังไม่พิมพ์แต่คลิกช่องแล้ว → โชว์ "คนที่คุยล่าสุด" ให้เลือกได้เลย
@@ -4049,18 +4049,24 @@ function LineChatBox({
     }
   }
 
-  async function unbind() {
+  /** ยกเลิกการผูก — forget=true จะลบ "ลิงก์ห้องแชทนี้ = คนนี้" ที่จำไว้ด้วย (กันเดาผิดซ้ำ) */
+  async function unbind(forget = false) {
     setBusy(true);
     try {
       const res = await fetch("/api/admin/orders/line-bind", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ orderId: order.id, input: "" }),
+        body: JSON.stringify({ orderId: order.id, input: "", forget }),
       });
-      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; order?: Order };
-      if (j.ok && j.order) onBound(j.order);
-      onSave("");
-      setMsg("ยกเลิกการผูกแล้ว");
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; order?: Order; error?: string };
+      if (!j.ok) {
+        setMsg(`❌ ${j.error ?? "ยกเลิกไม่สำเร็จ"}`);
+        return;
+      }
+      if (j.order) onBound(j.order);
+      setMsg(forget ? "ยกเลิกการผูก + ลืมคู่ลิงก์แล้ว (ลิงก์ห้องแชทยังอยู่)" : "ยกเลิกการผูกแล้ว (ลิงก์ห้องแชทยังอยู่)");
+    } catch {
+      setMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
     } finally {
       setBusy(false);
     }
@@ -4174,14 +4180,27 @@ function LineChatBox({
                 เปลี่ยนคน
               </button>
               {line.source === "self" && (
-                <button
-                  type="button"
-                  onClick={() => void unbind()}
-                  disabled={busy}
-                  className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
-                >
-                  ยกเลิก
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void unbind(false)}
+                    disabled={busy}
+                    className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
+                  >
+                    ยกเลิก
+                  </button>
+                  {chat && (
+                    <button
+                      type="button"
+                      onClick={() => void unbind(true)}
+                      disabled={busy}
+                      title="ผูกผิดคน — ยกเลิก และลบที่ระบบจำว่าลิงก์ห้องแชทนี้เป็นคนนี้ (ครั้งหน้าจะไม่เดาคนนี้อีก)"
+                      className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-rose-500 transition hover:bg-rose-50 disabled:opacity-50"
+                    >
+                      ผูกผิดคน — ยกเลิก+ลืม
+                    </button>
+                  )}
+                </>
               )}
             </>
           )}
@@ -4285,10 +4304,14 @@ function LineChatBox({
                   <span className="h-6 w-6 shrink-0 rounded-full bg-slate-100" />
                 )}
                 <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-700">{h.name}</span>
-                {h.lastSeen && (
-                  <span className="shrink-0 text-[10px] text-slate-400">
-                    คุยล่าสุด {new Date(h.lastSeen).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}
-                  </span>
+                {h.remembered ? (
+                  <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">เคยจับคู่ไว้</span>
+                ) : (
+                  h.lastSeen && (
+                    <span className="shrink-0 text-[10px] text-slate-400">
+                      คุยล่าสุด {new Date(h.lastSeen).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  )
                 )}
               </button>
             ))}

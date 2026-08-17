@@ -3,6 +3,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { fetchLineProfile, lineUserIdFrom } from "@/lib/server/notify";
 import { CHAT_COLLECTION, CHAT_OVERRIDE_COLLECTION, getChatFirestore } from "@/lib/server/firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { withLog, type Order } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
   const gate = await requirePerm("orders.edit");
   if (gate.res) return gate.res;
 
-  let body: { orderId?: string; input?: string; managerId?: string };
+  let body: { orderId?: string; input?: string; managerId?: string; forget?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -37,9 +38,27 @@ export async function POST(req: Request) {
   const order = row.data as Order;
   const who = gate.actor.name?.trim() || gate.actor.username;
 
-  // ส่งค่าว่างมา = ยกเลิกการผูก
+  // ส่งค่าว่างมา = ยกเลิกการผูก · forget=true = ลบ "คู่ลิงก์↔คน" ที่จำไว้ด้วย (ผูกผิดแล้วไม่อยากให้เดาซ้ำ)
   if (!input) {
-    const cleared = withLog({ ...order, lineUserId: undefined, lineProfile: undefined }, who, "ยกเลิกการผูก LINE ของลูกค้า");
+    if (body.forget && order.lineUserId) {
+      const db0 = getChatFirestore();
+      if (db0) {
+        try {
+          const ref = db0.collection(CHAT_OVERRIDE_COLLECTION).doc(order.lineUserId);
+          const d = await ref.get();
+          // ลบเฉพาะคู่ที่ระบบเราสร้าง — ไม่ไปลบของ AdminBuddy
+          if (d.exists && d.get("source") === "iducky-order")
+            await ref.update({ managerUserId: FieldValue.delete(), managerUserIdBy: FieldValue.delete(), managerUserIdAt: FieldValue.delete(), source: FieldValue.delete() });
+        } catch {
+          /* ลบไม่ได้ก็แค่ยังจำอยู่ */
+        }
+      }
+    }
+    const cleared = withLog(
+      { ...order, lineUserId: undefined, lineProfile: undefined },
+      who,
+      body.forget ? "ยกเลิกการผูก LINE + ลืมคู่ลิงก์" : "ยกเลิกการผูก LINE ของลูกค้า"
+    );
     const { error } = await sb.from("orders").update({ data: cleared }).eq("id", orderId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, cleared: true, order: cleared });
@@ -50,24 +69,15 @@ export async function POST(req: Request) {
 
   // ── ลิงก์ OA Manager: รหัสท้ายลิงก์ไม่ใช่ userId — ต้อง "แปล" ก่อน ──
   if (managerId) {
-    // 1) เคยจับคู่ไว้แล้ว (จากที่พนักงานยืนยัน หรือ AdminBuddy กรอกไว้) → ผูกทันที
+    // 1) เคยจับคู่ไว้แล้ว → "เสนอ" คนนั้นเป็นตัวเลือกแรก แต่ยังต้องกดยืนยัน (จำผิดครั้งเดียวจะได้ไม่ผิดตลอด)
+    let remembered: { userId: string; name: string; picture?: string } | null = null;
     if (db) {
       try {
         const q = await db.collection(CHAT_OVERRIDE_COLLECTION).where("managerUserId", "==", managerId).limit(1).get();
         if (!q.empty) {
           const real = q.docs[0].id;
           const p = await fetchLineProfile(real);
-          if (p) {
-            const next = withLog(
-              { ...order, lineChatUrl: input, lineUserId: real, lineProfile: { name: p.name, picture: p.picture, at: new Date().toISOString() } },
-              who,
-              "ผูก LINE ของลูกค้า",
-              `${p.name} · จากลิงก์ห้องแชทที่เคยจับคู่ไว้`
-            );
-            const { error } = await sb.from("orders").update({ data: next }).eq("id", orderId);
-            if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-            return NextResponse.json({ ok: true, profile: p, order: next, resolved: "override" });
-          }
+          if (p) remembered = { userId: real, name: p.name, picture: p.picture };
         }
       } catch {
         /* ตารางจับคู่อ่านไม่ได้ก็ไปขั้นถัดไป */
@@ -91,7 +101,11 @@ export async function POST(req: Request) {
         /* ไม่มีคลังแชทก็ไม่มีข้อเสนอ */
       }
     }
-    return NextResponse.json({ ok: true, savedLink: true, managerId, suggestions, order: saved });
+    // คนที่จำไว้ขึ้นเป็นตัวเลือกแรก (ติดป้าย remembered) — ตัดซ้ำออกจากรายการคุยล่าสุด
+    const list = remembered
+      ? [{ ...remembered, remembered: true }, ...suggestions.filter((x) => x.userId !== remembered!.userId)]
+      : suggestions;
+    return NextResponse.json({ ok: true, savedLink: true, managerId, suggestions: list, order: saved });
   }
 
   let userId = lineUserIdFrom(input);
