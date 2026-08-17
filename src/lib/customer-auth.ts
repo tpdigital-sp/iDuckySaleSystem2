@@ -10,6 +10,12 @@ export interface Customer {
   name: string;
   phone: string;
   address: string;
+  /** รูปโปรไฟล์ (LINE ให้มา หรืออัปโหลดเองที่หน้าบัญชี) */
+  picture: string;
+  /** วันที่สมัคร (ISO) — โชว์ "สมาชิกตั้งแต่ …" */
+  createdAt: string;
+  /** LINE userId ถ้าล็อกอินด้วย LINE */
+  lineUserId: string;
 }
 
 export interface Profile {
@@ -20,13 +26,16 @@ export interface Profile {
 
 function toCustomer(user: User | null | undefined): Customer | null {
   if (!user) return null;
-  const m = (user.user_metadata ?? {}) as Partial<Profile>;
+  const m = (user.user_metadata ?? {}) as Partial<Profile> & { picture?: string; line_user_id?: string };
   return {
     id: user.id,
     email: user.email ?? "",
     name: m.name ?? "",
     phone: m.phone ?? "",
     address: m.address ?? "",
+    picture: m.picture ?? "",
+    createdAt: user.created_at ?? "",
+    lineUserId: m.line_user_id ?? "",
   };
 }
 

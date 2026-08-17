@@ -3936,6 +3936,7 @@ function LineChatBox({
   const [testing, setTesting] = useState(false);
   const [hits, setHits] = useState<{ userId: string; name: string; picture?: string; lastSeen?: string }[]>([]);
   const [searching, setSearching] = useState(false);
+  const [hitTotal, setHitTotal] = useState(0); // เจอทั้งหมดกี่คน (โชว์แค่บางส่วน)
   const [changing, setChanging] = useState(false); // กด "เปลี่ยนคน" → กลับไปโหมดค้นหา
   const [picking, setPicking] = useState(false); // คลิกช่องค้นหาแล้ว → เริ่มโชว์รายชื่อให้เลือก
   // คนที่เลือกไว้ รอกดยืนยัน — กันแตะพลาดแล้วผูกผิดคน (ผูกผิด = ข้อมูลออเดอร์ไปโผล่แชทคนอื่น)
@@ -3972,8 +3973,9 @@ function LineChatBox({
     const t = setTimeout(async () => {
       try {
         const res = await fetch(`/api/admin/line-customers?q=${encodeURIComponent(q)}`);
-        const j = (await res.json().catch(() => ({}))) as { customers?: typeof hits };
+        const j = (await res.json().catch(() => ({}))) as { customers?: typeof hits; total?: number };
         setHits(j.customers ?? []);
+        setHitTotal(j.total ?? (j.customers?.length ?? 0));
       } catch {
         setHits([]);
       } finally {
@@ -4116,9 +4118,11 @@ function LineChatBox({
     setSearching(true);
     setPicking(true);
     try {
-      const res = await fetch(`/api/admin/line-customers?q=`);
-      const j = (await res.json().catch(() => ({}))) as { customers?: typeof hits };
+      // fresh=1 = ไม่เอาแคช (เพิ่งไปทักลูกค้าในแชทมา ต้องเห็นคิวใหม่ทันที)
+      const res = await fetch(`/api/admin/line-customers?q=&fresh=1`);
+      const j = (await res.json().catch(() => ({}))) as { customers?: typeof hits; total?: number };
       setHits(j.customers ?? []);
+      setHitTotal(j.total ?? (j.customers?.length ?? 0));
     } catch {
       setHits([]);
     } finally {
@@ -4495,8 +4499,8 @@ function LineChatBox({
               <p className="min-w-0 flex-1 text-[10px] font-semibold text-slate-500">
                 {draft.trim().length >= 2
                   ? pendingManagerId
-                    ? "ผลค้นหาจากคลังแชท — เลือกแล้วจะจำว่าลิงก์ห้องแชทนี้ = คนนี้"
-                    : "ผลค้นหาจากคลังแชท"
+                    ? "ผลค้นหา — เลือกแล้วจะจำว่าลิงก์ห้องแชทนี้ = คนนี้"
+                    : `ผลค้นหาจากคลังแชท${hitTotal > hits.length ? ` — เจอ ${hitTotal} คน แสดง ${hits.length} (พิมพ์เพิ่มให้แคบลง)` : ""}`
                   : "ลูกค้าที่คุยกับร้านล่าสุด — แตะเพื่อผูก"}
               </p>
               {draft.trim().length < 2 && (
