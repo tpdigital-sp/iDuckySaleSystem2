@@ -519,9 +519,31 @@ export default function AdminOrderDetailPage() {
     void fetchShopPayment().then((p) => setShipMethods(shippingOf(p)));
   }, []);
 
-  function changeStatus(status: OrderStatus) {
+  async function changeStatus(status: OrderStatus) {
     if (!order || order.status === status) return;
-    const next = withLog({ ...order, status }, actor, "เปลี่ยนสถานะ", `${order.status} → ${status}`);
+    // "ชำระแล้ว" ต้องมีสลิปเป็นหลักฐานเสมอ — ไม่มีสลิปต้องยืนยันเป็นรายกรณี แล้วลง log ว่าใครยืนยัน
+    const noSlip = status === "ชำระแล้ว" && !order.slipPath && !order.slipUrl;
+    if (noSlip) {
+      const ok = await askConfirm({
+        icon: "🧾",
+        title: "ออเดอร์นี้ยังไม่มีสลิปแนบ",
+        detail:
+          'ปกติต้องมีสลิปเป็นหลักฐานก่อนเปลี่ยนเป็น "ชำระแล้ว" — ถ้ารับเงินทางอื่น (เงินสด/โอนช่องทางอื่น) กดยืนยันได้ ระบบจะบันทึกในประวัติว่าใครยืนยันทั้งที่ไม่มีสลิป',
+        confirmLabel: "ยืนยันว่าได้รับเงินจริง",
+        danger: true,
+      });
+      // ยกเลิก → สร้าง object ใหม่ให้ React รีเรนเดอร์ ไม่งั้น <select> ค้างค่าที่เพิ่งเลือกไป
+      if (!ok) {
+        setOrder((cur) => (cur ? { ...cur } : cur));
+        return;
+      }
+    }
+    const next = withLog(
+      { ...order, status },
+      actor,
+      noSlip ? "เปลี่ยนสถานะ (ไม่มีสลิป)" : "เปลี่ยนสถานะ",
+      `${order.status} → ${status}${noSlip ? " · ยืนยันรับเงินเองโดยไม่มีสลิปแนบ" : ""}`
+    );
     setOrder(next);
     if (!demo) void saveOrderAdmin(next);
   }
@@ -712,7 +734,20 @@ export default function AdminOrderDetailPage() {
   /** แอดมินตรวจสลิปมัดจำเองแล้วกดยืนยัน (กรณี SlipOK ไม่ผ่าน/โอนช่องทางอื่น) */
   async function confirmDepositFirst() {
     if (!order?.deposit || order.deposit.firstPaidAt) return;
-    if (!(await askConfirm({ icon: "💰", title: `ยืนยันว่าได้รับมัดจำ ${formatPrice(order.deposit.amount)} แล้ว?`, detail: "ระบบจะบันทึกว่าเก็บงวดแรกแล้ว เริ่มงานได้เลย", confirmLabel: "ยืนยันรับมัดจำ" }))) return;
+    // ทางนี้ก็ดันสถานะเป็น "ชำระแล้ว" เหมือนกัน — ไม่มีสลิปต้องเตือนให้เห็นก่อน
+    const noSlip = !order.slipPath && !order.slipUrl;
+    if (
+      !(await askConfirm({
+        icon: "💰",
+        title: `ยืนยันว่าได้รับมัดจำ ${formatPrice(order.deposit.amount)} แล้ว?`,
+        detail: noSlip
+          ? "⚠️ ออเดอร์นี้ยังไม่มีสลิปแนบ — ยืนยันแล้วระบบจะบันทึกในประวัติว่าใครยืนยันทั้งที่ไม่มีสลิป"
+          : "ระบบจะบันทึกว่าเก็บงวดแรกแล้ว เริ่มงานได้เลย",
+        confirmLabel: "ยืนยันรับมัดจำ",
+        danger: noSlip,
+      }))
+    )
+      return;
     const now = new Date().toISOString();
     applyOrder(
       withLog(
@@ -724,7 +759,7 @@ export default function AdminOrderDetailPage() {
         },
         actor,
         "ยืนยันรับมัดจำ 50%",
-        `ยอด ${order.deposit.amount} บาท`
+        `ยอด ${order.deposit.amount} บาท${noSlip ? " · ไม่มีสลิปแนบ" : ""}`
       )
     );
   }
@@ -1266,7 +1301,7 @@ export default function AdminOrderDetailPage() {
                 <div className="relative">
                   <select
                     value={order.status}
-                    onChange={(e) => changeStatus(e.target.value as OrderStatus)}
+                    onChange={(e) => void changeStatus(e.target.value as OrderStatus)}
                     aria-label="เปลี่ยนสถานะออเดอร์"
                     title="เปลี่ยนสถานะออเดอร์"
                     className={`cursor-pointer appearance-none rounded-xl py-1.5 pl-3 pr-8 text-sm font-bold ring-1 focus:outline-none focus:ring-2 focus:ring-[#2472ae]/40 ${STATUS_STYLES[order.status]}`}
