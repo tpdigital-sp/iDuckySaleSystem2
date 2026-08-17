@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { fetchLineProfile, lineUserIdFrom } from "@/lib/server/notify";
+import { CHAT_OVERRIDE_COLLECTION, getChatFirestore } from "@/lib/server/firebase-admin";
 import { withLog, type Order } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, cleared: true, order: cleared });
   }
 
-  const userId = lineUserIdFrom(input);
+  let userId = lineUserIdFrom(input);
   if (!userId)
     return NextResponse.json(
       {
@@ -58,7 +59,32 @@ export async function POST(req: Request) {
   if (!process.env.LINE_MESSAGING_ACCESS_TOKEN)
     return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า LINE (LINE_MESSAGING_ACCESS_TOKEN) — ยืนยันไม่ได้" }, { status: 503 });
 
-  const profile = await fetchLineProfile(userId);
+  let profile = await fetchLineProfile(userId);
+
+  /**
+   * รหัสในลิงก์ OA Manager ไม่ใช่ userId ที่ใช้ส่งข้อความ (คนละชุดกัน)
+   * แต่ระบบแชทฝั่ง AdminBuddy มีตารางจับคู่ไว้ (customer-overrides: doc = userId จริง,
+   * ฟิลด์ managerUserId = รหัสในลิงก์) → ถ้าเคยจับคู่ไว้ ก็แปลงกลับให้อัตโนมัติ
+   */
+  if (!profile) {
+    const db = getChatFirestore();
+    if (db) {
+      try {
+        const q = await db.collection(CHAT_OVERRIDE_COLLECTION).where("managerUserId", "==", userId).limit(1).get();
+        if (!q.empty) {
+          const real = q.docs[0].id;
+          const p2 = await fetchLineProfile(real);
+          if (p2) {
+            profile = p2;
+            userId = real;
+          }
+        }
+      } catch {
+        /* ไม่มีตารางจับคู่ก็ข้ามไป */
+      }
+    }
+  }
+
   if (!profile)
     return NextResponse.json(
       {

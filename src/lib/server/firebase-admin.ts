@@ -37,6 +37,8 @@ export function getFirestoreAdmin(): Firestore | null {
 let cachedChat: Firestore | null = null;
 export const CHAT_DATABASE_ID = process.env.FIREBASE_CHAT_DATABASE_ID || "ordersure";
 export const CHAT_COLLECTION = process.env.LINE_CHAT_COLLECTION || "line-conversations";
+/** ตารางจับคู่ "รหัสในลิงก์ OA Manager" ↔ userId จริง (ระบบแชทฝั่ง AdminBuddy เป็นคนกรอกไว้) */
+export const CHAT_OVERRIDE_COLLECTION = process.env.LINE_OVERRIDE_COLLECTION || "customer-overrides";
 
 export function getChatFirestore(): Firestore | null {
   const b64 = process.env.FIREBASE_SERVICE_ACCOUNT_B64;
