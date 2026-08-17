@@ -3930,6 +3930,7 @@ function LineChatBox({
   const [testing, setTesting] = useState(false);
   const [hits, setHits] = useState<{ userId: string; name: string; picture?: string; lastSeen?: string }[]>([]);
   const [searching, setSearching] = useState(false);
+  const [changing, setChanging] = useState(false); // กด "เปลี่ยนคน" → กลับไปโหมดค้นหา
 
   // พิมพ์ชื่อ → ค้นจากคลังแชท LINE ของร้านให้เลย (หน่วงไว้กันยิงถี่)
   useEffect(() => {
@@ -4014,6 +4015,7 @@ function LineChatBox({
         setMsg(`✅ ผูกกับ "${j.profile?.name}" แล้ว — ระบบส่งข้อความถึงได้`);
         setDraft("");
         setHits([]);
+        setChanging(false);
       } else setMsg(`❌ ${j.error ?? "ผูกไม่สำเร็จ"}`);
     } catch {
       setMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
@@ -4072,7 +4074,7 @@ function LineChatBox({
   );
 
   // ── ผูกแล้ว (ของใบนี้ หรือจำมาจากใบเก่า) ──
-  if (line)
+  if (line && !changing)
     return (
       <div className="mt-2 rounded-xl bg-white p-2.5 ring-1 ring-slate-200">
         <div className="flex flex-wrap items-center gap-2">
@@ -4108,6 +4110,17 @@ function LineChatBox({
           )}
           {mayEdit && (
             <>
+              {/* จำมาจากใบเก่า → ให้พนักงานกดยืนยันผูกกับใบนี้ไปเลย (ใบนี้จะมี LINE เป็นของตัวเอง) */}
+              {line.source === "prev" && (
+                <button
+                  type="button"
+                  onClick={() => void bindUserId(line.id)}
+                  disabled={busy}
+                  className="rounded-full bg-[#06C755] px-2.5 py-0.5 text-[11px] font-bold text-white transition hover:bg-[#05b34c] disabled:opacity-50"
+                >
+                  {busy ? "กำลังผูก…" : "🔗 ผูกกับใบนี้"}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={sendTest}
@@ -4115,6 +4128,16 @@ function LineChatBox({
                 className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 disabled:opacity-50"
               >
                 {testing ? "กำลังส่ง…" : "🔔 ทดสอบส่ง"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setChanging(true);
+                  setMsg("");
+                }}
+                className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              >
+                เปลี่ยนคน
               </button>
               {line.source === "self" && (
                 <button
@@ -4137,7 +4160,24 @@ function LineChatBox({
   if (!mayEdit) return null;
   return (
     <div className="mt-2 rounded-xl bg-orange-50 p-2.5 ring-1 ring-orange-200">
-      <p className="text-[11px] font-bold text-orange-800">⚠️ ยังไม่ได้ผูก LINE ของลูกค้า — ระบบแจ้งเตือนอัตโนมัติจะส่งไม่ถึง</p>
+      <div className="flex items-center gap-2">
+        <p className="min-w-0 flex-1 text-[11px] font-bold text-orange-800">
+          {changing ? "🔄 เปลี่ยน LINE ของลูกค้า — ค้นแล้วเลือกคนใหม่" : "⚠️ ยังไม่ได้ผูก LINE ของลูกค้า — ระบบแจ้งเตือนอัตโนมัติจะส่งไม่ถึง"}
+        </p>
+        {changing && (
+          <button
+            type="button"
+            onClick={() => {
+              setChanging(false);
+              setDraft("");
+              setHits([]);
+            }}
+            className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold text-slate-500 transition hover:bg-white"
+          >
+            ย้อนกลับ
+          </button>
+        )}
+      </div>
       <div className="mt-1.5 flex gap-1.5">
         <input
           value={draft}
