@@ -15,6 +15,7 @@ import {
   itemDiscountAmount,
   lineChatOf,
   orderItemDiscounts,
+  orderFullyPaid,
   orderTotal,
   packGate,
   PROOF_STYLES,
@@ -1475,7 +1476,14 @@ export default function AdminOrderDetailPage() {
             <div className={`flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b px-6 py-3 text-sm ${tone}`}>
               <span className="font-bold">➗ ออเดอร์มัดจำ 50%</span>
               {settled ? (
-                <span>เก็บครบ 100% แล้ว — พิมพ์เอกสาร/ยิงเลขพัสดุได้ตามปกติ</span>
+                // เงินครบแล้วก็จริง แต่ถ้าสถานะยังค้างขั้นตรวจเงิน เอกสารก็ยังล็อกอยู่ — อย่าบอกว่าปลดล็อกแล้ว
+                orderFullyPaid(order) ? (
+                  <span>เก็บครบ 100% แล้ว — พิมพ์เอกสาร/ยิงเลขพัสดุได้ตามปกติ</span>
+                ) : (
+                  <span>
+                    เก็บครบ 100% แล้ว — แต่สถานะยังเป็น “{order.status}” · เปลี่ยนเป็น “ชำระแล้ว” ก่อน ถึงจะพิมพ์ใบปะหน้า/ใบเสร็จได้
+                  </span>
+                )
               ) : waitFirst ? (
                 <span>
                   รอลูกค้าโอน<b>งวดแรก</b>
