@@ -100,8 +100,8 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
   const zoomStep = (d: number) => setZoom((z) => (z < 0 ? z : (z + d + images.length) % images.length));
   // ขนาดรูป: ถ้าแอดมินไม่ได้ตั้ง → เลือกให้เองตามจำนวนรูป (1 รูป = เต็มความกว้างแบบหน้า pricelist เดิม ·
   // 2 รูป = 2 คอลัมน์ · 3+ = 3 คอลัมน์) — รูปประกอบเดี่ยวมักเป็นอินโฟกราฟิก/ตัวอย่างวางแบบ ย่อเหลือ 1/3 แล้วอ่านไม่ออก
-  // รูปเดียว = เต็มความกว้างเสมอ (เล็ก/กลาง มีความหมายเฉพาะตอนมีหลายรูปให้เรียงเป็นคอลัมน์)
-  const size = images.length === 1 ? "lg" : (tab.imageSize ?? (images.length === 2 ? "md" : "sm"));
+  // แอดมินเลือกขนาดเอง = ทำตามนั้น · ไม่ได้เลือก (อัตโนมัติ) = ตามจำนวนรูป
+  const size = tab.imageSize ?? (images.length === 1 ? "lg" : images.length === 2 ? "md" : "sm");
   const imgW =
     size === "lg"
       ? "w-full"

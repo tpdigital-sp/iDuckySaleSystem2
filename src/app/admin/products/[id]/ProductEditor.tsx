@@ -5342,23 +5342,16 @@ export default function ProductEditor({ product }: { product: Product }) {
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-slate-500">ขนาด:</span>
-                        {/* รูปเดียวหน้าสินค้าจะเต็มความกว้างเสมอ → ไฮไลต์ "ใหญ่" ให้ตรงของจริง และปิด เล็ก/กลาง ที่ไม่มีผล */}
-                        {(() => {
-                          const single = t.images.length === 1;
-                          const singleHint = "มีรูปเดียว หน้าสินค้าแสดงเต็มความกว้างเสมอ — ขนาดนี้ใช้ตอนมีหลายรูปเรียงเป็นคอลัมน์";
-                          return (
-                            <PickRow
-                              value={single ? "lg" : t.imageSize}
-                              options={[
-                                { v: "auto", label: "อัตโนมัติ (1 รูป = เต็มกว้าง)", disabled: single, title: single ? singleHint : undefined },
-                                { v: "sm", label: "เล็ก (3 รูป/แถว)", disabled: single, title: single ? singleHint : undefined },
-                                { v: "md", label: "กลาง (2 รูป/แถว)", disabled: single, title: single ? singleHint : undefined },
-                                { v: "lg", label: "ใหญ่ (เต็มความกว้าง)" },
-                              ]}
-                              onPick={(v) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, imageSize: v } : x)) })}
-                            />
-                          );
-                        })()}
+                        <PickRow
+                          value={t.imageSize}
+                          options={[
+                            { v: "auto", label: "อัตโนมัติ (1 รูป = เต็มกว้าง)" },
+                            { v: "sm", label: "เล็ก (3 รูป/แถว)" },
+                            { v: "md", label: "กลาง (2 รูป/แถว)" },
+                            { v: "lg", label: "ใหญ่ (เต็มความกว้าง)" },
+                          ]}
+                          onPick={(v) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, imageSize: v } : x)) })}
+                        />
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-slate-500">จัดวาง:</span>
