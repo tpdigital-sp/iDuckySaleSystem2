@@ -2841,7 +2841,11 @@ export default function AdminOrderDetailPage() {
                   setOrder(next);
                   if (!demo) void saveOrderAdmin(next);
                 }}
-                onBound={(next) => setOrder(next)}
+                onBound={(next) => {
+                  setOrder(next);
+                  // อัปเดตสำเนาในลิสต์รวมด้วย — ไม่งั้น "จำจากใบเก่า" จะไปเจอตัวเก่าของใบนี้เองที่ยังผูกอยู่
+                  setAllOrders((cur) => cur.map((o) => (o.id === next.id ? next : o)));
+                }}
               />
             </div>
           </div>
@@ -4380,7 +4384,7 @@ function LineChatBox({
       )}
 
       {/* วางลิงก์ OA Manager แล้ว → เดาว่าเป็นใครจากคนที่คุยล่าสุด ให้ยืนยันคลิกเดียว */}
-      {pendingManagerId && suggestions.length > 0 && !picked && (
+      {pendingManagerId && suggestions.length > 0 && !picked && !draft.trim() && (
         <div className="mt-1.5 rounded-lg bg-sky-50 p-2 ring-1 ring-sky-200">
           <p className="text-[11px] font-bold text-sky-800">🔗 เก็บลิงก์ห้องแชทแล้ว — ลิงก์นี้น่าจะเป็นใคร? (คนที่คุยกับร้านล่าสุด)</p>
           <div className="mt-1.5 space-y-1">
@@ -4477,7 +4481,11 @@ function LineChatBox({
           {hits.length > 0 && (
             <div className="flex items-center border-b border-slate-100 bg-slate-50 px-2.5 py-1">
               <p className="min-w-0 flex-1 text-[10px] font-semibold text-slate-500">
-                {draft.trim().length >= 2 ? "ผลค้นหาจากคลังแชท" : "ลูกค้าที่คุยกับร้านล่าสุด — แตะเพื่อผูก"}
+                {draft.trim().length >= 2
+                  ? pendingManagerId
+                    ? "ผลค้นหาจากคลังแชท — เลือกแล้วจะจำว่าลิงก์ห้องแชทนี้ = คนนี้"
+                    : "ผลค้นหาจากคลังแชท"
+                  : "ลูกค้าที่คุยกับร้านล่าสุด — แตะเพื่อผูก"}
               </p>
               {draft.trim().length < 2 && (
                 <button
