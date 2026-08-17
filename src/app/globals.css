@@ -56,3 +56,11 @@ body {
   100% { transform: translateX(400%); }
 }
 .nav-progress-bar { animation: nav-progress 1.1s ease-in-out infinite; }
+
+/* ── RichEditor (TipTap) — placeholder + ช่องตารางที่เลือก + ตัดรูปเลือกอยู่ ── */
+.tiptap p.is-editor-empty:first-child::before{content:attr(data-placeholder);color:#a8a29e;float:left;height:0;pointer-events:none}
+.tiptap .selectedCell::after{content:"";position:absolute;inset:0;background:rgba(56,189,248,.15);pointer-events:none}
+.tiptap td,.tiptap th{position:relative;min-width:60px}
+.tiptap img.ProseMirror-selectednode{outline:3px solid #7dd3fc;outline-offset:2px}
+.tiptap [data-youtube-video]{margin:12px 0}
+.tiptap [data-youtube-video] iframe{width:100%;aspect-ratio:16/9;height:auto;border:0;border-radius:16px}

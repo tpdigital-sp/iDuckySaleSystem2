@@ -1,13 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import { TextStyleKit } from "@tiptap/extension-text-style";
+import TextAlign from "@tiptap/extension-text-align";
+import Highlight from "@tiptap/extension-highlight";
+import Image from "@tiptap/extension-image";
+import Youtube from "@tiptap/extension-youtube";
+import { TableKit } from "@tiptap/extension-table";
+import { Placeholder } from "@tiptap/extensions";
 import { ARTICLE_PROSE } from "@/components/ArticleHtml";
 
 /**
- * ✍️ ตัวเขียนแบบ rich text หน้าตา/ลำดับปุ่มตามบล็อก lnwshop (TinyMCE)
+ * ✍️ ตัวเขียนบทความแบบ Rich Text (TipTap / ProseMirror) — หน้าตา/ลำดับปุ่มตามบล็อก lnwshop (TinyMCE)
  * แถว 1: B I U S · สี/ไฮไลต์ · จัดวาง 4 แบบ · “ quote · รายการจุด/ตัวเลข · ย่อหน้าออก-เข้า
  * แถว 2: ย่อหน้า · ฟอนต์ · ระยะบรรทัด · ขนาด · ลิงก์/เอาออก · รูปอัป/รูป URL/YouTube/อีโมจิ · เต็มจอ/ตาราง · Tx · <>
- * เก็บเป็น HTML (ฝั่งเซิร์ฟเวอร์กรองแท็กอันตราย — iframe อนุญาตเฉพาะ YouTube)
+ * ปุ่มโชว์สถานะ active ตามตำแหน่งเคอร์เซอร์ · ดรอปดาวน์โชว์ค่าปัจจุบัน · undo/redo (Cmd+Z)
+ * เก็บเป็น HTML เหมือนเดิม (ฝั่งเซิร์ฟเวอร์กรองแท็กอันตราย — iframe อนุญาตเฉพาะ YouTube)
  */
 
 async function uploadImage(file: File): Promise<string | null> {
@@ -23,14 +33,15 @@ async function uploadImage(file: File): Promise<string | null> {
   }
 }
 
-/* ── ปุ่มกล่องเดี่ยวแบบต้นแบบ: ขาว ขอบเทา เงาบาง ── */
+/* ── ปุ่มกล่องเดี่ยวแบบต้นแบบ: ขาว ขอบเทา เงาบาง · on = กำลังใช้อยู่ ── */
 const BOX =
-  "grid h-10 min-w-10 place-items-center rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700 shadow-[0_1px_1px_rgba(15,23,42,.05)] transition hover:bg-slate-100 active:bg-slate-200";
+  "grid h-10 min-w-10 place-items-center rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700 shadow-[0_1px_1px_rgba(15,23,42,.05)] transition hover:bg-slate-100 active:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40";
+const ON = "!border-sky-400 !bg-sky-50 !text-sky-700 ring-1 ring-sky-200";
 const SELBOX =
   "h-10 cursor-pointer rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700 shadow-[0_1px_1px_rgba(15,23,42,.05)] outline-none transition hover:bg-slate-50";
 
 /** ไอคอนเส้น SVG — คมและหน้าตาเหมือนกันทุกเครื่อง */
-function Ic({ d, children }: { d?: string; children?: React.ReactNode }) {
+function Ic({ d, children }: { d?: string; children?: ReactNode }) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {d && <path d={d} />}
@@ -50,8 +61,9 @@ const IC = {
   unlink: "M5.2 7.2l-1.9 1.9a2.6 2.6 0 003.6 3.6l1.9-1.9 M10.8 8.8l1.9-1.9a2.6 2.6 0 00-3.6-3.6L7.2 5.2 M3 13.5L13 2.5",
   lineH: "M8.5 3.5h6 M8.5 8h6 M8.5 12.5h6 M3.5 3.2v9.6 M2 4.6l1.5-1.5L5 4.6 M2 11.4l1.5 1.5L5 11.4",
   full: "M2.5 5.5v-3h3 M10.5 2.5h3v3 M13.5 10.5v3h-3 M5.5 13.5h-3v-3",
+  undo: "M5 6H2.5V3.5 M2.8 6.2A5.2 5.2 0 1 1 3.5 10.5",
+  redo: "M11 6h2.5V3.5 M13.2 6.2A5.2 5.2 0 1 0 12.5 10.5",
 };
-/** ไอคอนรูปภาพ (ภูเขา+จุด) — link=true มีลูกศรมุมขวาบน (รูปจาก URL) */
 const PicIcon = ({ link = false }: { link?: boolean }) => (
   <Ic>
     <rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.6" />
@@ -82,11 +94,11 @@ const TableIcon = () => (
 );
 
 /** ดรอปดาวน์ใต้ปุ่ม (จานสี / ระยะบรรทัด / อีโมจิ / ตาราง) */
-function Drop({ label, title, children }: { label: React.ReactNode; title: string; children: (close: () => void) => React.ReactNode }) {
+function Drop({ label, title, on, children }: { label: ReactNode; title: string; on?: boolean; children: (close: () => void) => ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <span className="relative inline-flex">
-      <button type="button" onClick={() => setOpen((v) => !v)} className={`${BOX} grid-flow-col gap-0.5`} title={title}>
+      <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen((v) => !v)} className={`${BOX} grid-flow-col gap-0.5 ${on ? ON : ""}`} title={title}>
         {label}
         <span className="text-[8px] text-slate-400">▾</span>
       </button>
@@ -105,6 +117,18 @@ function Drop({ label, title, children }: { label: React.ReactNode; title: strin
 const COLORS = ["#1a3843", "#3fa1b6", "#e11d48", "#ea580c", "#ca8a04", "#16a34a", "#7c3aed", "#78716c", "#a8a29e", "#000000"];
 const HILITES = ["#fff3c4", "#d6edf2", "#fee2e2", "#dcfce7", "#f3e8ff", "#fce7f3", "#ffffff"];
 const EMOJI = ["😀","😍","🥰","😆","🥹","😅","🙏","👍","👏","💪","✨","🎉","🎁","💛","❤️","🔥","⭐","✅","❌","⚠️","📌","📞","🚚","🐥"];
+const FONTS = [["Prompt", "Prompt (ของเว็บ)"], ["Sarabun", "Sarabun"], ["Arial", "Arial"], ["Georgia", "Georgia"], ["monospace", "Monospace"]];
+const SIZES = ["10px", "13px", "16px", "18px", "24px", "32px"];
+const LINE_H = [["1.4", "ชิด"], ["1.7", "ปกติ"], ["2", "ห่าง"], ["2.4", "ห่างมาก"]];
+
+/** ปุ่ม toolbar — onMouseDown preventDefault กัน editor เสีย selection ตอนกด */
+function TB({ on, title, onClick, className = "", disabled, children }: { on?: boolean; title: string; onClick: () => void; className?: string; disabled?: boolean; children: ReactNode }) {
+  return (
+    <button type="button" title={title} disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={onClick} aria-pressed={on} className={`${BOX} ${className} ${on ? ON : ""}`}>
+      {children}
+    </button>
+  );
+}
 
 export default function RichEditor({
   initialHtml,
@@ -114,16 +138,87 @@ export default function RichEditor({
   initialHtml: string;
   onChange: (html: string) => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [srcMode, setSrcMode] = useState(false);
   const [srcText, setSrcText] = useState("");
   const [full, setFull] = useState(false);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
-  useEffect(() => {
-    if (ref.current && ref.current.innerHTML !== initialHtml) ref.current.innerHTML = initialHtml;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const editor = useEditor({
+    immediatelyRender: false, // Next.js: ไม่ render ฝั่งเซิร์ฟเวอร์ กัน hydration mismatch
+    extensions: [
+      StarterKit.configure({
+        heading: { levels: [1, 2, 3] },
+        link: { openOnClick: false, autolink: true, defaultProtocol: "https", HTMLAttributes: { rel: "noopener noreferrer" } },
+      }),
+      TextStyleKit, // สี · ฟอนต์ · ขนาด · ระยะบรรทัด · พื้นหลัง (เก็บเป็น <span style="…">)
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
+      Highlight.configure({ multicolor: true }),
+      Image.configure({ inline: false, allowBase64: false }),
+      Youtube.configure({ nocookie: true, width: 640, height: 360, HTMLAttributes: { style: "width:100%;aspect-ratio:16/9;height:auto;border:0;border-radius:16px" } }),
+      TableKit.configure({ table: { resizable: false } }),
+      Placeholder.configure({ placeholder: "พิมพ์เนื้อหาบทความที่นี่… เลือกข้อความแล้วกดปุ่มด้านบนเพื่อจัดรูปแบบ" }),
+    ],
+    content: initialHtml || "",
+    editorProps: {
+      attributes: {
+        class: `tiptap min-h-72 px-4 py-3 outline-none ${ARTICLE_PROSE}`,
+      },
+      // ลากรูป/วางรูปจากคลิปบอร์ด → อัปโหลดแล้วแทรกเป็นรูป (ไม่เอา base64 ยัดในบทความ)
+      handleDrop: (_view, e) => {
+        const f = e.dataTransfer?.files?.[0];
+        if (f && f.type.startsWith("image/")) {
+          e.preventDefault();
+          void insertImage(f);
+          return true;
+        }
+        return false;
+      },
+      handlePaste: (_view, e) => {
+        const f = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"))?.getAsFile();
+        if (f) {
+          e.preventDefault();
+          void insertImage(f);
+          return true;
+        }
+        return false;
+      },
+    },
+    onUpdate: ({ editor }) => onChangeRef.current(editor.isEmpty ? "" : editor.getHTML()),
+  });
+
+  // สถานะปุ่ม/ค่าดรอปดาวน์ตามตำแหน่งเคอร์เซอร์ — re-render เฉพาะตอนค่าที่สนใจเปลี่ยน
+  const st = useEditorState({
+    editor,
+    selector: ({ editor: e }) => {
+      if (!e) return null;
+      const attrs = e.getAttributes("textStyle") as { fontFamily?: string; fontSize?: string; lineHeight?: string; color?: string };
+      return {
+        bold: e.isActive("bold"),
+        italic: e.isActive("italic"),
+        underline: e.isActive("underline"),
+        strike: e.isActive("strike"),
+        left: e.isActive({ textAlign: "left" }),
+        center: e.isActive({ textAlign: "center" }),
+        right: e.isActive({ textAlign: "right" }),
+        justify: e.isActive({ textAlign: "justify" }),
+        quote: e.isActive("blockquote"),
+        ul: e.isActive("bulletList"),
+        ol: e.isActive("orderedList"),
+        link: e.isActive("link"),
+        highlight: e.isActive("highlight"),
+        color: !!attrs.color,
+        inTable: e.isActive("table"),
+        canUndo: e.can().undo(),
+        canRedo: e.can().redo(),
+        block: e.isActive("heading", { level: 1 }) ? "h1" : e.isActive("heading", { level: 2 }) ? "h2" : e.isActive("heading", { level: 3 }) ? "h3" : e.isActive("blockquote") ? "quote" : "p",
+        font: attrs.fontFamily ?? "",
+        size: attrs.fontSize ?? "",
+        lineH: attrs.lineHeight ?? "",
+      };
+    },
+  });
 
   // โหมดเต็มจอ: ล็อกสกรอลหน้าเบื้องหลังไว้
   useEffect(() => {
@@ -133,68 +228,50 @@ export default function RichEditor({
     };
   }, [full]);
 
-  const emit = () => ref.current && onChange(ref.current.innerHTML);
-
-  function cmd(name: string, value?: string) {
-    ref.current?.focus();
-    document.execCommand(name, false, value);
-    emit();
-  }
-
   async function insertImage(f: File) {
-    if (!f.type.startsWith("image/")) return;
+    if (!f.type.startsWith("image/") || !editor) return;
     setBusy(true);
     const url = await uploadImage(f);
     setBusy(false);
-    if (url) cmd("insertImage", url);
+    if (url) editor.chain().focus().setImage({ src: url }).run();
+    else alert("อัปโหลดรูปไม่สำเร็จ ลองใหม่อีกครั้ง");
   }
 
   function insertYoutube() {
     const url = prompt("วางลิงก์วิดีโอ YouTube");
-    if (!url) return;
-    const m = url.match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{6,})/);
-    if (!m) {
+    if (!url || !editor) return;
+    if (!/(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{6,})/.test(url)) {
       alert("ลิงก์ YouTube ไม่ถูกต้อง — วางลิงก์เต็มจากช่องแชร์ของ YouTube");
       return;
     }
-    cmd(
-      "insertHTML",
-      `<iframe src="https://www.youtube-nocookie.com/embed/${m[1]}" style="width:100%;aspect-ratio:16/9;border:0;border-radius:16px;margin:12px 0" allowfullscreen></iframe><p><br></p>`
-    );
+    editor.chain().focus().setYoutubeVideo({ src: url }).run();
   }
 
-  /** ระยะบรรทัดของย่อหน้าที่เคอร์เซอร์อยู่ */
-  function setLineHeight(v: string) {
-    const sel = window.getSelection();
-    if (!sel?.anchorNode || !ref.current) return;
-    let el: HTMLElement | null =
-      sel.anchorNode instanceof HTMLElement ? sel.anchorNode : sel.anchorNode.parentElement;
-    while (el && el !== ref.current && !/^(P|H1|H2|H3|LI|BLOCKQUOTE|DIV|TD)$/.test(el.tagName)) el = el.parentElement;
-    if (el && el !== ref.current) {
-      el.style.lineHeight = v;
-      emit();
+  function setLink() {
+    if (!editor) return;
+    const prev = (editor.getAttributes("link") as { href?: string }).href ?? "";
+    const url = prompt("ลิงก์ไปที่ (เช่น /products หรือ https://…)", prev);
+    if (url === null) return;
+    if (!url.trim()) {
+      editor.chain().focus().extendMarkRange("link").unsetLink().run();
+      return;
     }
-  }
-
-  function insertTable(rows: number, cols: number) {
-    const cell = '<td style="border:1px solid #d6d3d1;padding:8px;min-width:60px"><br></td>';
-    const html = `<table style="border-collapse:collapse;width:100%;margin:12px 0">${Array.from({ length: rows })
-      .map(() => `<tr>${cell.repeat(cols)}</tr>`)
-      .join("")}</table><p><br></p>`;
-    cmd("insertHTML", html);
+    editor.chain().focus().extendMarkRange("link").setLink({ href: url.trim() }).run();
   }
 
   function toggleSource() {
-    if (!ref.current) return;
+    if (!editor) return;
     if (srcMode) {
-      ref.current.innerHTML = srcText;
-      emit();
+      editor.commands.setContent(srcText, { emitUpdate: true });
       setSrcMode(false);
     } else {
-      setSrcText(ref.current.innerHTML);
+      setSrcText(editor.getHTML());
       setSrcMode(true);
     }
   }
+
+  const E = (): Editor | null => editor;
+  const c = () => E()?.chain().focus();
 
   return (
     <div
@@ -207,100 +284,113 @@ export default function RichEditor({
       {/* ── แถบเครื่องมือ: ปุ่มกล่องเดี่ยว 2 แถว เรียงตามต้นแบบ ── */}
       <div className="flex flex-wrap items-center gap-1.5 rounded-t-2xl border-b border-slate-200 bg-slate-50/80 px-2.5 py-2">
         {/* แถว 1 */}
-        <button type="button" onClick={() => cmd("bold")} className={`${BOX} font-extrabold`} title="ตัวหนา">B</button>
-        <button type="button" onClick={() => cmd("italic")} className={`${BOX} italic`} title="ตัวเอียง">I</button>
-        <button type="button" onClick={() => cmd("underline")} className={`${BOX} underline`} title="ขีดเส้นใต้">U</button>
-        <button type="button" onClick={() => cmd("strikeThrough")} className={`${BOX} line-through`} title="ขีดฆ่า">S</button>
+        <TB on={st?.bold} title="ตัวหนา (⌘B)" onClick={() => c()?.toggleBold().run()} className="font-extrabold">B</TB>
+        <TB on={st?.italic} title="ตัวเอียง (⌘I)" onClick={() => c()?.toggleItalic().run()} className="italic">I</TB>
+        <TB on={st?.underline} title="ขีดเส้นใต้ (⌘U)" onClick={() => c()?.toggleUnderline().run()} className="underline">U</TB>
+        <TB on={st?.strike} title="ขีดฆ่า" onClick={() => c()?.toggleStrike().run()} className="line-through">S</TB>
 
-        <Drop label={<span className="border-b-[3px] border-rose-500 font-bold leading-none">A</span>} title="สีตัวอักษร">
+        <Drop label={<span className="border-b-[3px] border-rose-500 font-bold leading-none">A</span>} title="สีตัวอักษร" on={st?.color}>
           {(close) => (
             <span className="flex w-40 flex-wrap gap-1">
-              {COLORS.map((c) => (
-                <button key={c} type="button" onClick={() => { cmd("foreColor", c); close(); }}
-                  className="h-6 w-6 rounded-md ring-1 ring-slate-200 transition hover:scale-110" style={{ backgroundColor: c }} aria-label={c} />
+              {COLORS.map((col) => (
+                <button key={col} type="button" onClick={() => { c()?.setColor(col).run(); close(); }}
+                  className="h-6 w-6 rounded-md ring-1 ring-slate-200 transition hover:scale-110" style={{ backgroundColor: col }} aria-label={col} />
               ))}
+              <button type="button" onClick={() => { c()?.unsetColor().run(); close(); }} className="mt-1 w-full rounded-lg px-2 py-1 text-left text-[11px] font-semibold text-slate-500 hover:bg-slate-100">ล้างสี</button>
             </span>
           )}
         </Drop>
-        <Drop label={<span className="bg-slate-300/80 px-1 font-bold leading-none underline">A</span>} title="ไฮไลต์ข้อความ">
+        <Drop label={<span className="bg-slate-300/80 px-1 font-bold leading-none underline">A</span>} title="ไฮไลต์ข้อความ" on={st?.highlight}>
           {(close) => (
             <span className="flex w-32 flex-wrap gap-1">
-              {HILITES.map((c) => (
-                <button key={c} type="button" onClick={() => { cmd("hiliteColor", c); close(); }}
-                  className="h-6 w-6 rounded-md ring-1 ring-slate-200 transition hover:scale-110" style={{ backgroundColor: c }} aria-label={c} />
+              {HILITES.map((col) => (
+                <button key={col} type="button" onClick={() => { c()?.setHighlight({ color: col }).run(); close(); }}
+                  className="h-6 w-6 rounded-md ring-1 ring-slate-200 transition hover:scale-110" style={{ backgroundColor: col }} aria-label={col} />
               ))}
+              <button type="button" onClick={() => { c()?.unsetHighlight().run(); close(); }} className="mt-1 w-full rounded-lg px-2 py-1 text-left text-[11px] font-semibold text-slate-500 hover:bg-slate-100">เอาไฮไลต์ออก</button>
             </span>
           )}
         </Drop>
 
-        <button type="button" onClick={() => cmd("justifyLeft")} className={BOX} title="ชิดซ้าย"><Ic d={IC.alignL} /></button>
-        <button type="button" onClick={() => cmd("justifyCenter")} className={BOX} title="กึ่งกลาง"><Ic d={IC.alignC} /></button>
-        <button type="button" onClick={() => cmd("justifyRight")} className={BOX} title="ชิดขวา"><Ic d={IC.alignR} /></button>
-        <button type="button" onClick={() => cmd("justifyFull")} className={BOX} title="เต็มแนว"><Ic d={IC.alignJ} /></button>
+        <TB on={st?.left} title="ชิดซ้าย" onClick={() => c()?.setTextAlign("left").run()}><Ic d={IC.alignL} /></TB>
+        <TB on={st?.center} title="กึ่งกลาง" onClick={() => c()?.setTextAlign("center").run()}><Ic d={IC.alignC} /></TB>
+        <TB on={st?.right} title="ชิดขวา" onClick={() => c()?.setTextAlign("right").run()}><Ic d={IC.alignR} /></TB>
+        <TB on={st?.justify} title="เต็มแนว" onClick={() => c()?.setTextAlign("justify").run()}><Ic d={IC.alignJ} /></TB>
 
-        <button type="button" onClick={() => cmd("formatBlock", "<blockquote>")} className={`${BOX} font-serif text-xl font-bold leading-none`} title="คำพูด / ไฮไลต์ท่อน">
-          &ldquo;
-        </button>
-        <button type="button" onClick={() => cmd("insertUnorderedList")} className={BOX} title="รายการจุด"><Ic d={IC.ul} /></button>
-        <button type="button" onClick={() => cmd("insertOrderedList")} className={BOX} title="รายการตัวเลข">
+        <TB on={st?.quote} title="คำพูด / ไฮไลต์ท่อน" onClick={() => c()?.toggleBlockquote().run()} className="font-serif text-xl font-bold leading-none">&ldquo;</TB>
+        <TB on={st?.ul} title="รายการจุด" onClick={() => c()?.toggleBulletList().run()}><Ic d={IC.ul} /></TB>
+        <TB on={st?.ol} title="รายการตัวเลข" onClick={() => c()?.toggleOrderedList().run()}>
           <Ic d="M5.5 3.5h8.5 M5.5 8h8.5 M5.5 12.5h8.5">
             <text x="1" y="5" fontSize="4.5" stroke="none" fill="currentColor">1</text>
             <text x="1" y="9.5" fontSize="4.5" stroke="none" fill="currentColor">2</text>
             <text x="1" y="14" fontSize="4.5" stroke="none" fill="currentColor">3</text>
           </Ic>
-        </button>
-        <button type="button" onClick={() => cmd("outdent")} className={BOX} title="ลดย่อหน้า"><Ic d={IC.outdent} /></button>
-        <button type="button" onClick={() => cmd("indent")} className={BOX} title="เพิ่มย่อหน้า"><Ic d={IC.indent} /></button>
+        </TB>
+        <TB title="ลดย่อหน้า (ออกจากรายการย่อย)" onClick={() => c()?.liftListItem("listItem").run()}><Ic d={IC.outdent} /></TB>
+        <TB title="เพิ่มย่อหน้า (ทำเป็นรายการย่อย)" onClick={() => c()?.sinkListItem("listItem").run()}><Ic d={IC.indent} /></TB>
+        <TB title="ย้อนกลับ (⌘Z)" onClick={() => c()?.undo().run()} disabled={!st?.canUndo}><Ic d={IC.undo} /></TB>
+        <TB title="ทำซ้ำ (⇧⌘Z)" onClick={() => c()?.redo().run()} disabled={!st?.canRedo}><Ic d={IC.redo} /></TB>
 
         {/* ── ขึ้นแถวที่ 2 ตายตัว ── */}
         <span className="basis-full" aria-hidden="true" />
 
-        <select defaultValue="" onChange={(e) => { if (e.target.value) cmd("formatBlock", e.target.value); e.target.value = ""; }} className={`${SELBOX} w-24`} title="รูปแบบย่อหน้า">
-          <option value="" disabled>ย่อหน้า</option>
-          <option value="<p>">ข้อความปกติ</option>
-          <option value="<h1>">หัวข้อหลัก (H1)</option>
-          <option value="<h2>">หัวข้อใหญ่ (H2)</option>
-          <option value="<h3>">หัวข้อรอง (H3)</option>
-          <option value="<blockquote>">“ คำพูด</option>
+        <select
+          value={st?.block ?? "p"}
+          onChange={(e) => {
+            const v = e.target.value;
+            const ch = c();
+            if (!ch) return;
+            if (v === "p") ch.setParagraph().run();
+            else if (v === "quote") ch.toggleBlockquote().run();
+            else ch.toggleHeading({ level: Number(v.slice(1)) as 1 | 2 | 3 }).run();
+          }}
+          className={`${SELBOX} w-28`}
+          title="รูปแบบย่อหน้า"
+        >
+          <option value="p">ข้อความปกติ</option>
+          <option value="h1">หัวข้อหลัก (H1)</option>
+          <option value="h2">หัวข้อใหญ่ (H2)</option>
+          <option value="h3">หัวข้อรอง (H3)</option>
+          <option value="quote">“ คำพูด</option>
         </select>
-        <select defaultValue="" onChange={(e) => { if (e.target.value) cmd("fontName", e.target.value); e.target.value = ""; }} className={`${SELBOX} w-24`} title="ฟอนต์">
-          <option value="" disabled>Prompt</option>
-          <option value="Prompt">Prompt (ของเว็บ)</option>
-          <option value="Sarabun">Sarabun</option>
-          <option value="Arial">Arial</option>
-          <option value="Georgia">Georgia</option>
-          <option value="monospace">Monospace</option>
+        <select
+          value={st?.font ?? ""}
+          onChange={(e) => (e.target.value ? c()?.setFontFamily(e.target.value).run() : c()?.unsetFontFamily().run())}
+          className={`${SELBOX} w-28`}
+          title="ฟอนต์"
+        >
+          <option value="">Prompt (ของเว็บ)</option>
+          {FONTS.filter(([v]) => v !== "Prompt").map(([v, l]) => (
+            <option key={v} value={v}>{l}</option>
+          ))}
         </select>
-        <Drop label={<Ic d={IC.lineH} />} title="ระยะห่างบรรทัด">
+        <Drop label={<Ic d={IC.lineH} />} title="ระยะห่างบรรทัด" on={!!st?.lineH}>
           {(close) => (
             <span className="flex w-32 flex-col gap-0.5 text-xs">
-              {[["1.4", "ชิด"], ["1.7", "ปกติ"], ["2", "ห่าง"], ["2.4", "ห่างมาก"]].map(([v, l]) => (
-                <button key={v} type="button" onClick={() => { setLineHeight(v); close(); }}
-                  className="rounded-lg px-3 py-1.5 text-left font-semibold text-slate-600 transition hover:bg-slate-100">
+              {LINE_H.map(([v, l]) => (
+                <button key={v} type="button" onClick={() => { c()?.setLineHeight(v).run(); close(); }}
+                  className={`rounded-lg px-3 py-1.5 text-left font-semibold transition hover:bg-slate-100 ${st?.lineH === v ? "bg-sky-50 text-sky-700" : "text-slate-600"}`}>
                   {l} ({v})
                 </button>
               ))}
+              <button type="button" onClick={() => { c()?.unsetLineHeight().run(); close(); }} className="rounded-lg px-3 py-1.5 text-left text-[11px] font-semibold text-slate-500 hover:bg-slate-100">ค่าเริ่มต้น</button>
             </span>
           )}
         </Drop>
-        <select defaultValue="" onChange={(e) => { if (e.target.value) cmd("fontSize", e.target.value); e.target.value = ""; }} className={`${SELBOX} w-20`} title="ขนาดตัวอักษร">
-          <option value="" disabled>16px</option>
-          <option value="1">10px</option>
-          <option value="2">13px</option>
-          <option value="3">16px</option>
-          <option value="4">18px</option>
-          <option value="5">24px</option>
-          <option value="6">32px</option>
+        <select
+          value={st?.size ?? ""}
+          onChange={(e) => (e.target.value ? c()?.setFontSize(e.target.value).run() : c()?.unsetFontSize().run())}
+          className={`${SELBOX} w-20`}
+          title="ขนาดตัวอักษร"
+        >
+          <option value="">16px</option>
+          {SIZES.filter((s) => s !== "16px").map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
         </select>
 
-        <button
-          type="button"
-          onClick={() => { const url = prompt("ลิงก์ไปที่ (เช่น /products หรือ https://…)"); if (url) cmd("createLink", url); }}
-          className={BOX} title="แทรกลิงก์"
-        >
-          <Ic d={IC.link} />
-        </button>
-        <button type="button" onClick={() => cmd("unlink")} className={BOX} title="เอาลิงก์ออก"><Ic d={IC.unlink} /></button>
+        <TB on={st?.link} title="แทรก/แก้ลิงก์" onClick={setLink}><Ic d={IC.link} /></TB>
+        <TB title="เอาลิงก์ออก" onClick={() => c()?.extendMarkRange("link").unsetLink().run()} disabled={!st?.link}><Ic d={IC.unlink} /></TB>
 
         <label className={`${BOX} cursor-pointer`} title="อัปโหลดรูปจากเครื่อง (ลากมาวาง หรือ paste รูปในพื้นที่เขียนก็ได้)">
           {busy ? "⏳" : <PicIcon />}
@@ -309,85 +399,74 @@ export default function RichEditor({
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void insertImage(f); }}
           />
         </label>
-        <button type="button" onClick={() => { const url = prompt("วางลิงก์รูป (URL)"); if (url) cmd("insertImage", url); }} className={BOX} title="แทรกรูปจากลิงก์ URL">
+        <TB title="แทรกรูปจากลิงก์ URL" onClick={() => { const url = prompt("วางลิงก์รูป (URL)"); if (url) c()?.setImage({ src: url.trim() }).run(); }}>
           <PicIcon link />
-        </button>
-        <button type="button" onClick={insertYoutube} className={BOX} title="ฝังวิดีโอ YouTube"><VideoIcon /></button>
+        </TB>
+        <TB title="ฝังวิดีโอ YouTube" onClick={insertYoutube}><VideoIcon /></TB>
         <Drop label={<SmileIcon />} title="แทรกอีโมจิ">
           {(close) => (
             <span className="grid w-48 grid-cols-8 gap-0.5">
               {EMOJI.map((em) => (
-                <button key={em} type="button" onClick={() => { cmd("insertText", em); close(); }}
+                <button key={em} type="button" onClick={() => { c()?.insertContent(em).run(); close(); }}
                   className="rounded p-1 text-base transition hover:bg-slate-100">{em}</button>
               ))}
             </span>
           )}
         </Drop>
 
-        <button
-          type="button"
-          onClick={() => setFull((v) => !v)}
-          className={`${BOX} ${full ? "bg-slate-800 text-white hover:bg-slate-700" : ""}`}
-          title={full ? "ออกจากโหมดเต็มจอ" : "ขยายเต็มจอ"}
-        >
+        <TB title={full ? "ออกจากโหมดเต็มจอ" : "ขยายเต็มจอ"} onClick={() => setFull((v) => !v)} className={full ? "!bg-slate-800 !text-white hover:!bg-slate-700" : ""}>
           <Ic d={IC.full} />
-        </button>
-        <Drop label={<TableIcon />} title="แทรกตาราง">
+        </TB>
+        <Drop label={<TableIcon />} title="ตาราง" on={st?.inTable}>
           {(close) => (
-            <span className="flex flex-col gap-1 text-xs">
-              {[[2, 2], [3, 2], [3, 3], [4, 3]].map(([r, c]) => (
-                <button key={`${r}x${c}`} type="button" onClick={() => { insertTable(r, c); close(); }}
-                  className="rounded-lg px-3 py-1.5 text-left font-semibold text-slate-600 transition hover:bg-slate-100">
-                  ▦ {r} แถว × {c} ช่อง
-                </button>
-              ))}
+            <span className="flex w-44 flex-col gap-0.5 text-xs">
+              {st?.inTable ? (
+                <>
+                  {[
+                    ["+ แถวด้านล่าง", () => c()?.addRowAfter().run()],
+                    ["+ คอลัมน์ด้านขวา", () => c()?.addColumnAfter().run()],
+                    ["− ลบแถวนี้", () => c()?.deleteRow().run()],
+                    ["− ลบคอลัมน์นี้", () => c()?.deleteColumn().run()],
+                    ["สลับหัวตาราง", () => c()?.toggleHeaderRow().run()],
+                    ["✕ ลบตารางทั้งหมด", () => c()?.deleteTable().run()],
+                  ].map(([l, fn]) => (
+                    <button key={l as string} type="button" onClick={() => { (fn as () => void)(); close(); }}
+                      className="rounded-lg px-3 py-1.5 text-left font-semibold text-slate-600 transition hover:bg-slate-100">{l as string}</button>
+                  ))}
+                </>
+              ) : (
+                [[2, 2], [3, 2], [3, 3], [4, 3]].map(([r, cl]) => (
+                  <button key={`${r}x${cl}`} type="button" onClick={() => { c()?.insertTable({ rows: r, cols: cl, withHeaderRow: true }).run(); close(); }}
+                    className="rounded-lg px-3 py-1.5 text-left font-semibold text-slate-600 transition hover:bg-slate-100">
+                    ▦ {r} แถว × {cl} ช่อง
+                  </button>
+                ))
+              )}
             </span>
           )}
         </Drop>
 
-        <button type="button" onClick={() => cmd("removeFormat")} className={`${BOX} text-xs font-bold`} title="ล้างรูปแบบข้อความที่เลือก">
+        <TB title="ล้างรูปแบบข้อความที่เลือก" onClick={() => c()?.unsetAllMarks().clearNodes().run()} className="text-xs font-bold">
           <span className="italic">T</span>ₓ
-        </button>
-        <button
-          type="button"
-          onClick={toggleSource}
-          className={`${BOX} text-xs font-bold ${srcMode ? "bg-slate-800 text-white hover:bg-slate-700" : ""}`}
-          title="ดู/แก้โค้ด HTML"
-        >
-          &lt;&gt;
-        </button>
+        </TB>
+        <TB title="ดู/แก้โค้ด HTML" onClick={toggleSource} on={srcMode} className="text-xs font-bold">&lt;&gt;</TB>
       </div>
 
       {/* ── โหมดโค้ด HTML ── */}
-      {srcMode && (
+      {srcMode ? (
         <textarea
           value={srcText}
           onChange={(e) => { setSrcText(e.target.value); onChange(e.target.value); }}
           rows={18}
-          className={`w-full resize-y bg-slate-900 px-4 py-3 font-mono text-xs leading-relaxed text-emerald-200 outline-none ${full ? "flex-1 resize-none" : ""}`}
+          className={`w-full resize-y rounded-b-2xl bg-slate-900 px-4 py-3 font-mono text-xs leading-relaxed text-emerald-200 outline-none ${full ? "flex-1 resize-none" : ""}`}
           spellCheck={false}
         />
+      ) : (
+        /* ── พื้นที่เขียน (สไตล์เดียวกับหน้าเว็บจริง) — ลากมุมล่างขยายได้ ── */
+        <div className={`resize-y overflow-auto rounded-b-2xl ${full ? "flex-1 resize-none" : "max-h-[75vh]"}`}>
+          <EditorContent editor={editor} className="min-h-72" />
+        </div>
       )}
-
-      {/* ── พื้นที่เขียน (สไตล์เดียวกับหน้าเว็บจริง) — ลากมุมล่างขยายได้ ── */}
-      <div
-        ref={ref}
-        contentEditable={!srcMode}
-        suppressContentEditableWarning
-        onInput={emit}
-        onBlur={emit}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          const f = e.dataTransfer.files?.[0];
-          if (f && f.type.startsWith("image/")) { e.preventDefault(); void insertImage(f); }
-        }}
-        onPaste={(e) => {
-          const f = [...e.clipboardData.items].find((i) => i.type.startsWith("image/"))?.getAsFile();
-          if (f) { e.preventDefault(); void insertImage(f); }
-        }}
-        className={`min-h-72 resize-y overflow-auto rounded-b-2xl px-4 py-3 outline-none ${ARTICLE_PROSE} ${srcMode ? "hidden" : full ? "flex-1 resize-none" : ""}`}
-        data-placeholder="พิมพ์เนื้อหาบทความที่นี่… เลือกข้อความแล้วกดปุ่มด้านบนเพื่อจัดรูปแบบ"
-      />
     </div>
   );
 }

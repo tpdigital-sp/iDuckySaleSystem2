@@ -12,7 +12,11 @@ export const ARTICLE_PROSE =
   "[&_a]:font-semibold [&_a]:text-sky-600 [&_a]:underline " +
   "[&_strong]:font-bold [&_strong]:text-stone-700 [&_blockquote]:mt-3 [&_blockquote]:border-l-4 " +
   "[&_blockquote]:border-amber-200 [&_blockquote]:pl-3 [&_blockquote]:text-stone-500 " +
-  "[&_iframe]:my-4 [&_iframe]:w-full [&_table]:mt-3 [&_table]:w-full";
+  "[&_iframe]:my-4 [&_iframe]:w-full [&_iframe]:aspect-video [&_iframe]:rounded-2xl " +
+  // ตาราง/ไฮไลต์/ขีดเส้น จาก RichEditor (TipTap) — ไม่มี inline style ต้องให้สไตล์จากตรงนี้
+  "[&_table]:mt-3 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-stone-300 [&_td]:p-2 [&_td]:align-top " +
+  "[&_th]:border [&_th]:border-stone-300 [&_th]:bg-stone-50 [&_th]:p-2 [&_th]:text-left [&_th]:font-bold " +
+  "[&_mark]:rounded [&_mark]:px-0.5 [&_u]:underline [&_s]:line-through [&_hr]:my-6 [&_hr]:border-stone-200";
 
 export default function ArticleHtml({ html }: { html: string }) {
   // HTML ผ่าน sanitize ฝั่งเซิร์ฟเวอร์ตั้งแต่ตอนบันทึก (ตัด script/on*/javascript:)
