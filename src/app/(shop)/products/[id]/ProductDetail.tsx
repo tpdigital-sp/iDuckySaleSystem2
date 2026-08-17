@@ -99,7 +99,8 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
   const zoomStep = (d: number) => setZoom((z) => (z < 0 ? z : (z + d + images.length) % images.length));
   // ขนาดรูป: ถ้าแอดมินไม่ได้ตั้ง → เลือกให้เองตามจำนวนรูป (1 รูป = เต็มความกว้างแบบหน้า pricelist เดิม ·
   // 2 รูป = 2 คอลัมน์ · 3+ = 3 คอลัมน์) — รูปประกอบเดี่ยวมักเป็นอินโฟกราฟิก/ตัวอย่างวางแบบ ย่อเหลือ 1/3 แล้วอ่านไม่ออก
-  const size = tab.imageSize ?? (images.length === 1 ? "lg" : images.length === 2 ? "md" : "sm");
+  // รูปเดียว = เต็มความกว้างเสมอ (เล็ก/กลาง มีความหมายเฉพาะตอนมีหลายรูปให้เรียงเป็นคอลัมน์)
+  const size = images.length === 1 ? "lg" : (tab.imageSize ?? (images.length === 2 ? "md" : "sm"));
   const imgW =
     size === "lg"
       ? "w-full"
@@ -120,12 +121,12 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
           key={`${src}-${i}`}
           type="button"
           onClick={() => setZoom(i)}
-          className={`${imgW} group relative block cursor-zoom-in overflow-hidden rounded-xl bg-stone-50 ring-1 ring-stone-200 transition hover:ring-sky-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400`}
+          className={`${imgW} group relative block cursor-zoom-in overflow-hidden rounded-[18px] border-2 border-white bg-[var(--sky-50)] shadow-[0_6px_16px_rgba(44,129,196,.14)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_12px_24px_rgba(44,129,196,.18)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--blue)]`}
           aria-label={`ขยายดู ${tab.title} รูปที่ ${i + 1}`}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={src} alt={`${tab.title} รูปที่ ${i + 1}`} loading="lazy" className="block w-full object-contain" />
-          <span className="pointer-events-none absolute bottom-2 right-2 grid h-8 w-8 place-items-center rounded-full bg-white/90 text-sm text-sky-800 opacity-0 shadow transition group-hover:opacity-100">
+          <span className="pointer-events-none absolute bottom-2 right-2 grid h-8 w-8 place-items-center rounded-full bg-white/90 text-sm text-[var(--navy)] opacity-0 shadow transition group-hover:opacity-100">
             ⤢
           </span>
         </button>
@@ -143,7 +144,7 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
     />
   );
   return (
-    <div className="space-y-2 text-sm leading-relaxed text-stone-600">
+    <div className="space-y-2 font-[family-name:var(--font-looped)] text-[.92rem] leading-[1.8] text-[var(--navy-soft)]">
       {tab.imagePos === "top" && gallery}
       {text.split("\n").map((line, i) => {
         const t = line.trim();
@@ -151,13 +152,16 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
         if (t.startsWith("•"))
           return (
             <p key={i} className="flex gap-2.5 pl-1">
-              <span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" />
+              <span className="mt-[10px] h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--blue)]" />
               <span className="min-w-0 flex-1">{t.replace(/^•\s*/, "")}</span>
             </p>
           );
         if (/^::.*::$|::$/.test(t))
           return (
-            <p key={i} className="pt-2 text-[15px] font-extrabold text-sky-800">
+            <p
+              key={i}
+              className="relative mt-3 w-max max-w-full pb-1.5 font-display text-[1.02rem] font-medium text-[var(--navy)] after:absolute after:bottom-0 after:left-0 after:h-[3px] after:w-[26px] after:rounded after:bg-[var(--yolk-deep)] after:content-['']"
+            >
               {t.replace(/^::|::$/g, "").trim()}
             </p>
           );
@@ -2951,24 +2955,34 @@ export default function ProductDetail({
       {/* ═══ แท็บข้อมูลสินค้า — รายละเอียดเพิ่มเติม / วิธีสั่งงาน / การรับประกัน (แบบหน้า pricelist เว็บเดิม) ═══ */}
       {(product.tabs?.length ?? 0) > 0 && (
         <section className="mt-14">
-          <div className="flex overflow-x-auto rounded-t-2xl bg-[#8fb6d6] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {product.tabs!.map((t, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setTabIndex(i)}
-                aria-selected={i === Math.min(tabIndex, product.tabs!.length - 1)}
-                className={`flex-1 whitespace-nowrap px-5 py-3 text-center text-sm font-bold transition md:text-[15px] ${
-                  i === Math.min(tabIndex, product.tabs!.length - 1)
-                    ? "bg-[#b9d6ec] text-stone-800"
-                    : "text-white hover:bg-white/15"
-                }`}
-              >
-                {t.title}
-              </button>
-            ))}
+          {/* ป้ายหัวโซน + แท็บเม็ดยา — โทน/ฟอนต์ชุดเดียวกับหน้าแรกและหน้าบัญชี (.acd-ttab) */}
+          <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-3">
+            <span className="inline-flex items-center gap-2 rounded-full bg-[var(--navy)] px-4 py-1.5 font-display text-[.8rem] text-white shadow-[0_6px_14px_rgba(23,58,107,.18)]">
+              📋 ข้อมูลสินค้าเพิ่มเติม
+            </span>
+            <div className="flex gap-1.5 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist">
+              {product.tabs!.map((t, i) => {
+                const on = i === Math.min(tabIndex, product.tabs!.length - 1);
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    role="tab"
+                    onClick={() => setTabIndex(i)}
+                    aria-selected={on}
+                    className={`whitespace-nowrap rounded-full px-[18px] py-2 font-display text-[.88rem] transition duration-200 ${
+                      on
+                        ? "bg-[var(--blue-deep)] text-white shadow-[0_6px_14px_rgba(44,129,196,.28)]"
+                        : "bg-[var(--sky-50)] text-[var(--navy-soft)] ring-1 ring-[var(--sky-100)] hover:bg-[var(--sky-100)] hover:text-[var(--navy)]"
+                    }`}
+                  >
+                    {t.title}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div className="rounded-b-2xl bg-white px-5 py-6 ring-1 ring-stone-200 md:px-8">
+          <div className="rounded-[34px] border-2 border-white bg-[linear-gradient(180deg,#fff_0%,var(--sky-50)_100%)] px-6 py-6 shadow-[var(--shadow-s)] md:px-8 md:py-7">
             <ProductTabText tab={product.tabs![Math.min(tabIndex, product.tabs!.length - 1)]} />
           </div>
         </section>
