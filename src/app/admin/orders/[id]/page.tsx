@@ -1352,6 +1352,40 @@ export default function AdminOrderDetailPage() {
         </div>
       </div>
 
+      {/* ── แถบมัดจำ 50% — ให้ทุกแผนกที่เปิดออเดอร์นี้รู้ทันทีว่าเก็บเงินสองงวด และตอนนี้ค้างอะไร ── */}
+      {order.deposit &&
+        order.status !== "ยกเลิก" &&
+        (() => {
+          const waitFirst = !order.deposit!.firstPaidAt;
+          const settled = !!order.deposit!.settledAt;
+          const paid = order.paidTotal ?? order.deposit!.amount;
+          const bal = Math.max(0, orderTotal(order) - (order.paidTotal ?? 0));
+          const tone = settled
+            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+            : waitFirst
+              ? "border-violet-200 bg-violet-50 text-violet-800"
+              : "border-rose-200 bg-rose-50 text-rose-800";
+          return (
+            <div className={`flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b px-6 py-3 text-sm ${tone}`}>
+              <span className="font-bold">➗ ออเดอร์มัดจำ 50%</span>
+              {settled ? (
+                <span>เก็บครบ 100% แล้ว — พิมพ์เอกสาร/ยิงเลขพัสดุได้ตามปกติ</span>
+              ) : waitFirst ? (
+                <span>
+                  รอลูกค้าโอน<b>งวดแรก</b>
+                  {seesMoney && ` ${formatPrice(order.deposit!.amount)} (จากยอดเต็ม ${formatPrice(orderTotal(order))})`} —
+                  เริ่มงานได้หลังมัดจำเข้า
+                </span>
+              ) : (
+                <span>
+                  รับมัดจำแล้ว{seesMoney && ` ${formatPrice(paid)}`} · <b>ค้างยอดคงเหลือ{seesMoney && ` ${formatPrice(bal)}`}</b> — ⛔
+                  ห้ามส่งของ ยิงเลขพัสดุ/พิมพ์ใบปะหน้า-ใบเสร็จไม่ได้จนกว่าจะเก็บครบ
+                </span>
+              )}
+            </div>
+          );
+        })()}
+
       {related.length > 0 && (
         <div className="border-b border-orange-200 bg-orange-50 px-6 py-3">
           <p className="text-sm font-bold text-orange-800">

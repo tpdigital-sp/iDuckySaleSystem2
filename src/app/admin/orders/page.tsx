@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import {
+  amountDueNow,
   daysToUseBy,
   MOCK_ORDERS,
   ORDER_STATUSES,
@@ -264,6 +265,23 @@ export default function AdminOrdersPage() {
                               🔁 สั่งซ้ำ
                             </span>
                           )}
+                          {/* ออเดอร์มัดจำที่ยังเก็บไม่ครบ — ทุกแผนกต้องเห็น (ฝ่ายแพ็คห้ามส่งของ) */}
+                          {o.deposit && !o.deposit.settledAt && o.status !== "ยกเลิก" && (
+                            <span
+                              className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ring-1 ${
+                                o.deposit.firstPaidAt
+                                  ? "bg-rose-100 text-rose-700 ring-rose-200"
+                                  : "bg-violet-100 text-violet-700 ring-violet-200"
+                              }`}
+                              title={
+                                o.deposit.firstPaidAt
+                                  ? "รับมัดจำงวดแรกแล้ว ยังค้างยอดคงเหลือ — ห้ามส่งของจนเก็บครบ 100%"
+                                  : "ออเดอร์มัดจำ 50% — รอลูกค้าโอนงวดแรก"
+                              }
+                            >
+                              ➗ {o.deposit.firstPaidAt ? "ค้างครึ่งหลัง" : "รอครึ่งแรก"}
+                            </span>
+                          )}
                         </p>
                         <p className="text-xs text-slate-400">
                           {o.date}
@@ -330,6 +348,12 @@ export default function AdminOrdersPage() {
                       </td>
                       <td className="px-4 py-3.5 text-right align-middle font-bold tabular-nums text-slate-900">
                         {seesMoney ? formatPrice(orderTotal(o)) : `${qtyOf(o)} ชิ้น`}
+                        {/* ออเดอร์มัดจำ: บอกยอดที่ยังต้องเก็บ "งวดนี้" ใต้ยอดเต็ม */}
+                        {seesMoney && o.deposit && !o.deposit.settledAt && o.status !== "ยกเลิก" && (
+                          <p className={`text-[10px] font-bold ${o.deposit.firstPaidAt ? "text-rose-600" : "text-violet-600"}`}>
+                            {o.deposit.firstPaidAt ? "ค้าง" : "มัดจำ"} {formatPrice(amountDueNow(o))}
+                          </p>
+                        )}
                       </td>
                       <td className="pr-4 align-middle text-slate-300">›</td>
                     </tr>
