@@ -20,6 +20,7 @@ import {
   type ShipTier,
 } from "@/lib/products";
 import RichEditor from "@/components/RichEditor";
+import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { autoSeoOf } from "@/lib/auto-seo";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { BULK_ASK_DEFAULT, CONSULT_NOTE_DEFAULT, RATE_LABEL } from "@/lib/products";
@@ -927,6 +928,8 @@ export default function ProductEditor({ product }: { product: Product }) {
   const productId = product.id;
   const original = product;
   const [draft, setDraft] = useState<Draft>(() => toDraft(original));
+  /** กล่องยืนยันของระบบ (แทน confirm() ของเบราว์เซอร์) — วาง {confirmBox} ไว้ท้ายหน้า */
+  const { confirm: ask, dialog: confirmBox } = useConfirm();
   const [deleting, setDeleting] = useState(false);
   const [overridden, setOverridden] = useState(false);
   const [savedAt, setSavedAt] = useState(false);
@@ -1585,9 +1588,9 @@ export default function ProductEditor({ product }: { product: Product }) {
           <button
             type="button"
             title="ราคาบวกเพิ่มต่อตัวเลือก กรอกที่ช่อง +฿ ของแต่ละตัวเลือก — ไม่ต้องมีในตารางราคา"
-            onClick={() =>
-              isDriver && confirmDropDriver(opt.label, "ย้ายไปคิดราคาที่ช่อง +฿ ของแต่ละตัวเลือกแทน")
-            }
+            onClick={() => {
+              if (isDriver) void confirmDropDriver(opt.label, "ย้ายไปคิดราคาที่ช่อง +฿ ของแต่ละตัวเลือกแทน");
+            }}
             className={`px-2.5 py-1 text-[11px] font-semibold transition ${
               !isDriver ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
             }`}
@@ -1635,13 +1638,13 @@ export default function ProductEditor({ product }: { product: Product }) {
               key={mode.id}
               type="button"
               title={mode.tip}
-              onClick={() => {
+              onClick={async () => {
                 // ติ๊กหลายอย่างกับคอลัมน์ตารางราคาอยู่ด้วยกันไม่ได้ (ราคาต่อคอลัมน์อิงตัวเลือกเดียว)
                 // — ไม่ปิดปุ่มทิ้งไว้ให้งง แต่ถามแล้วถอดแกนให้เลย
                 if (
                   mode.id === "multi" &&
                   isDriver &&
-                  !confirmDropDriver(opt.label, "ติ๊กหลายอย่างพร้อมกันแล้วตารางหาราคาต่อคอลัมน์ไม่เจอ")
+                  !(await confirmDropDriver(opt.label, "ติ๊กหลายอย่างพร้อมกันแล้วตารางหาราคาต่อคอลัมน์ไม่เจอ"))
                 )
                   return;
                 setOpt({ display: mode.id });
@@ -2011,16 +2014,22 @@ export default function ProductEditor({ product }: { product: Product }) {
    * ชื่อกลุ่มเปลี่ยนตามคลังใหม่ → ต้องลากชื่อในแกนตารางราคาและในกฎไปด้วย (ใช้ renameOptionGroup)
    * ⚠️ ตัวเลือกในกลุ่มเปลี่ยนชุด — ถ้ากลุ่มนี้เป็นแกนตารางราคา ราคาที่กรอกไว้ของคู่เดิมจะไม่ตรงกับตัวเลือกใหม่
    */
-  function relinkPreset(gi: number, presetId: string) {
+  async function relinkPreset(gi: number, presetId: string) {
     const preset = presets.find((p) => p.id === presetId);
     const cur = draft.options[gi];
     if (!preset || !cur || preset.id === cur.presetId) return;
     const isDriver = draft.pricing.driverLabels.includes(cur.label);
     if (
       isDriver &&
-      !window.confirm(
-        `กลุ่ม “${cur.label}” เป็นแกนของตารางราคา — เปลี่ยนไปคลัง “${preset.label}” แล้วราคาที่กรอกไว้จะไม่ตรงกับตัวเลือกชุดใหม่ ต้องกรอกราคาใหม่\n\nยืนยันเปลี่ยน?`
-      )
+      !(await ask({
+        icon: "📊",
+        title: `เปลี่ยนคลังของกลุ่ม “${cur.label}”?`,
+        detail:
+          `กลุ่มนี้เป็นแกนของตารางราคา — เปลี่ยนไปใช้คลัง “${preset.label}” แล้ว\n` +
+          "ราคาที่กรอกไว้จะไม่ตรงกับตัวเลือกชุดใหม่ ต้องกรอกราคาใหม่",
+        confirmLabel: "เปลี่ยนคลัง",
+        danger: true,
+      }))
     )
       return;
     // ทำทีเดียวจบ: สลับคลัง + ลากชื่อกลุ่มเดิมที่ค้างอยู่ในแกนตารางราคา/กฎ ไปเป็นชื่อใหม่
@@ -2218,16 +2227,19 @@ export default function ProductEditor({ product }: { product: Product }) {
   const [driverUndo, setDriverUndo] = useState<{ label: string; before: Draft } | null>(null);
 
   /** ถามก่อนถอดแกน แล้วถอด — ใช้จากแถวกลุ่มตัวเลือก (ป้ายเตือน + ปุ่มติ๊กหลายอย่าง) */
-  function confirmDropDriver(label: string, why: string): boolean {
+  async function confirmDropDriver(label: string, why: string): Promise<boolean> {
     const inTable = draft.pricing.driverLabels.length === 1 ? "ตารางราคาจะเหลือราคาเดียวตามจำนวน" : "ตารางราคาจะลดไปหนึ่งคอลัมน์";
     if (
-      !window.confirm(
-        `กลุ่ม “${label}” เป็นคอลัมน์ของตารางราคาอยู่\n${why}\n\n` +
-          `กดตกลง = เอาออกจากคอลัมน์ตารางราคา\n` +
+      !(await ask({
+        icon: "📊",
+        title: `เอากลุ่ม “${label}” ออกจากคอลัมน์ตารางราคา?`,
+        detail:
+          `${why}\n` +
           `• ${inTable} (ใช้ราคาของตัวเลือกที่ถูกที่สุดเป็นราคาฐาน)\n` +
-          `• ส่วนต่างของตัวเลือกอื่นย้ายไปลงช่อง +฿ ของตัวเองให้อัตโนมัติ — ตรวจแล้วแก้ได้\n` +
-          `• กดผิดกด “↩︎ เลิกทำ” คืนตารางเดิมได้`
-      )
+          "• ส่วนต่างของตัวเลือกอื่นย้ายไปลงช่อง +฿ ของตัวเองให้อัตโนมัติ — ตรวจแล้วแก้ได้\n" +
+          "• กดผิดกด “↩︎ เลิกทำ” คืนตารางเดิมได้",
+        confirmLabel: "เอาออกจากตาราง",
+      }))
     )
       return false;
     setDraft((d) => {
@@ -2361,8 +2373,17 @@ export default function ProductEditor({ product }: { product: Product }) {
     }));
     setRateIdx(draft.extraRates.length + 1);
   }
-  function removeRate(extraIdx: number) {
-    if (!window.confirm("ลบเรทนี้ทั้งตาราง?")) return;
+  async function removeRate(extraIdx: number) {
+    if (
+      !(await ask({
+        icon: "🗑",
+        title: "ลบเรทนี้ทั้งตาราง?",
+        detail: "ราคาทุกช่องในเรทนี้จะหายไปด้วย — เรทอื่นไม่กระทบ",
+        confirmLabel: "ลบเรทนี้",
+        danger: true,
+      }))
+    )
+      return;
     setDraft((d) => ({ ...d, extraRates: d.extraRates.filter((_, i) => i !== extraIdx) }));
     setRateIdx(0);
   }
@@ -2709,7 +2730,16 @@ export default function ProductEditor({ product }: { product: Product }) {
 
   /** ลบสินค้านี้ถาวร (ยืนยันก่อน) แล้วกลับหน้ารายการ */
   async function removeProduct() {
-    if (!window.confirm(`ลบสินค้า “${draft.name || productId}” ถาวร?\nการลบนี้ย้อนกลับไม่ได้`)) return;
+    if (
+      !(await ask({
+        icon: "🗑",
+        title: `ลบสินค้า “${draft.name || productId}” ถาวร?`,
+        detail: "ลบออกจากระบบทันทีและย้อนกลับไม่ได้ — ถ้าแค่ไม่อยากให้ลูกค้าเห็น ให้กด “เก็บเป็นฉบับร่าง” แทน",
+        confirmLabel: "ลบถาวร",
+        danger: true,
+      }))
+    )
+      return;
     setDeleting(true);
     const ok = await deleteProductDb(productId);
     if (ok) {
@@ -2817,9 +2847,19 @@ export default function ProductEditor({ product }: { product: Product }) {
     patch({ seo: { title: auto.title, description: auto.description, keywords: auto.keywords.join(", "), faqs: auto.faqs } });
   }
 
-  function autoFillSeo() {
+  async function autoFillSeo() {
     const hasOld = draft.seo.title || draft.seo.description || draft.seo.keywords || draft.seo.faqs.length > 0;
-    if (hasOld && !window.confirm("เขียนทับ SEO/AEO ที่มีอยู่ด้วยข้อความอัตโนมัติ?")) return;
+    if (
+      hasOld &&
+      !(await ask({
+        icon: "✨",
+        title: "เขียนทับ SEO/AEO ที่มีอยู่?",
+        detail: "หัวข้อ · คำอธิบาย · คีย์เวิร์ด · คำถามที่พบบ่อย ที่พิมพ์ไว้จะถูกแทนด้วยข้อความอัตโนมัติ",
+        confirmLabel: "เขียนทับ",
+        danger: true,
+      }))
+    )
+      return;
     applyAutoSeo();
   }
 
@@ -2924,8 +2964,15 @@ export default function ProductEditor({ product }: { product: Product }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (window.confirm("บันทึกทับด้วยข้อมูลในหน้านี้?\nสิ่งที่คนอื่นแก้ไว้หลังจากคุณเปิดหน้านี้จะหายไป")) void save(true);
+                  onClick={async () => {
+                    const ok = await ask({
+                      icon: "⚠️",
+                      title: "บันทึกทับด้วยข้อมูลในหน้านี้?",
+                      detail: "สิ่งที่คนอื่นแก้ไว้หลังจากคุณเปิดหน้านี้จะหายไป — ถ้าไม่แน่ใจ กด “โหลดข้อมูลล่าสุด” ก่อน",
+                      confirmLabel: "บันทึกทับ",
+                      danger: true,
+                    });
+                    if (ok) void save(true);
                   }}
                   className="rounded-full bg-rose-600 px-3 py-1 font-bold text-white hover:bg-rose-700"
                   title="ยืนยันว่าจะใช้ข้อมูลในหน้านี้ทับของในฐานข้อมูล"
@@ -3698,7 +3745,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                       onChange={(e) => {
                         const id = e.target.value;
                         e.target.value = "";
-                        if (id) relinkPreset(gi, id);
+                        if (id) void relinkPreset(gi, id);
                       }}
                       title="เปลี่ยนไปลิงก์กับคลังตัวเลือกอันอื่น"
                       aria-label={`เปลี่ยนคลังของกลุ่ม ${opt.label}`}
@@ -3894,9 +3941,9 @@ export default function ProductEditor({ product }: { product: Product }) {
                     {/* กลุ่มที่ราคาไม่ได้อยู่ในตาราง (คิดเป็น +฿ ต่อตัวเลือก) — ไม่ควรเป็นคอลัมน์ตารางตั้งแต่แรก */}
                     <button
                       type="button"
-                      onClick={() =>
-                        confirmDropDriver(opt.label, "ถ้าราคาของกลุ่มนี้ไม่ได้อยู่ในตาราง ก็ไม่ต้องเป็นคอลัมน์")
-                      }
+                      onClick={() => {
+                        void confirmDropDriver(opt.label, "ถ้าราคาของกลุ่มนี้ไม่ได้อยู่ในตาราง ก็ไม่ต้องเป็นคอลัมน์");
+                      }}
                       className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
                     >
                       ราคาอยู่ที่ตัวเลือกเอง — เอาออกจากตารางราคา
@@ -5262,8 +5309,19 @@ export default function ProductEditor({ product }: { product: Product }) {
                       />
                       <button
                         type="button"
-                        onClick={() => {
-                          if (!window.confirm("กลับไปใช้ช่องข้อความธรรมดา?\nการจัดรูปแบบ (ตัวหนา/สี/ตาราง) ในแท็บนี้จะหายไป — ข้อความเดิมก่อนกดจัดรูปแบบยังอยู่")) return;
+                        onClick={async () => {
+                          const ok = await ask({
+                            icon: "↩︎",
+                            title: "กลับไปช่องข้อความธรรมดา?",
+                            detail:
+                              `แท็บ “${t.title || `แท็บ ${i + 1}`}”\n` +
+                              "• การจัดรูปแบบในแท็บนี้ (ตัวหนา · สี · ขนาด · ตาราง · รูปในเนื้อหา) จะหายไป\n" +
+                              "• ข้อความเดิมก่อนกด “จัดรูปแบบ” ยังอยู่ครบ กดจัดรูปแบบใหม่ได้ตลอด\n" +
+                              "• ยังไม่บันทึกจนกว่าจะกด “บันทึกการแก้ไข”",
+                            confirmLabel: "กลับไปข้อความธรรมดา",
+                            danger: true,
+                          });
+                          if (!ok) return;
                           patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, html: "" } : x)) });
                         }}
                         className="mt-2 rounded-full px-3 py-1.5 text-[11px] font-semibold text-slate-400 ring-1 ring-slate-200 transition hover:bg-white hover:text-slate-600"
@@ -6182,6 +6240,9 @@ export default function ProductEditor({ product }: { product: Product }) {
           </div>
         </aside>
       </div>
+
+      {/* กล่องยืนยันของระบบ — แทน confirm() ของเบราว์เซอร์ทุกจุดในหน้านี้ */}
+      {confirmBox}
     </div>
   );
 }
