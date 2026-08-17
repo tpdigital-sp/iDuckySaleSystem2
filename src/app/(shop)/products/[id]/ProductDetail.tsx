@@ -94,6 +94,7 @@ const ADMIN_MODE_KEY = "iducky:product-order-mode";
  */
 function ProductTabText({ tab }: { tab: ProductTab }) {
   const { text, images = [] } = tab;
+  const hasText = text.trim().length > 0;
   // 🔍 รูปในแท็บที่กำลังขยายดู (index ในแท็บนี้) — -1 = ปิด · เลื่อนซ้าย/ขวาได้เฉพาะรูปในแท็บเดียวกัน
   const [zoom, setZoom] = useState(-1);
   const zoomStep = (d: number) => setZoom((z) => (z < 0 ? z : (z + d + images.length) % images.length));
@@ -115,7 +116,8 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
         ? "justify-end"
         : "justify-start";
   const gallery = images.length > 0 && (
-    <div className={`flex flex-wrap gap-3 ${align} ${tab.imagePos === "top" ? "pb-3" : "pt-3"}`}>
+    // เว้นช่องจากข้อความเฉพาะตอนมีข้อความ — แท็บที่มีแต่รูปจะได้ห่างขอบการ์ดเท่ากันทุกด้าน
+    <div className={`flex flex-wrap gap-3 ${align} ${!hasText ? "" : tab.imagePos === "top" ? "pb-3" : "pt-3"}`}>
       {images.map((src, i) => (
         <button
           key={`${src}-${i}`}
@@ -146,7 +148,7 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
   return (
     <div className="space-y-2 font-[family-name:var(--font-looped)] text-[.92rem] leading-[1.8] text-[var(--navy-soft)]">
       {tab.imagePos === "top" && gallery}
-      {text.split("\n").map((line, i) => {
+      {hasText && text.split("\n").map((line, i) => {
         const t = line.trim();
         if (!t) return <div key={i} className="h-2" />;
         if (t.startsWith("•"))
@@ -2982,7 +2984,7 @@ export default function ProductDetail({
               })}
             </div>
           </div>
-          <div className="rounded-[34px] border-2 border-white bg-[linear-gradient(180deg,#fff_0%,var(--sky-50)_100%)] px-6 py-6 shadow-[var(--shadow-s)] md:px-8 md:py-7">
+          <div className="rounded-[34px] border-2 border-white bg-[linear-gradient(180deg,#fff_0%,var(--sky-50)_100%)] p-6 shadow-[var(--shadow-s)] md:p-8">
             <ProductTabText tab={product.tabs![Math.min(tabIndex, product.tabs!.length - 1)]} />
           </div>
         </section>
