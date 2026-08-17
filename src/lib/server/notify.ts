@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { orderTotal, withLog, type Order } from "@/lib/admin-data";
+import { orderTotal, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 
 /**
  * แจ้งเตือนลูกค้าผ่าน LINE (push message)
@@ -94,7 +94,10 @@ async function lineTargetOf(sb: SupabaseClient, order: Order): Promise<{ id: str
   return inherited ? { id: inherited, via: "inherited" } : null;
 }
 
-export async function notifyCustomer(sb: SupabaseClient, order: Order, text: string): Promise<NotifyResult> {
+/** ข้อความที่ส่งเข้า LINE ได้ — ข้อความล้วน หรือการ์ด Flex */
+export type LineMessage = { type: "text"; text: string } | { type: "flex"; altText: string; contents: unknown };
+
+export async function notifyCustomer(sb: SupabaseClient, order: Order, msg: string | LineMessage[]): Promise<NotifyResult> {
   const token = process.env.LINE_MESSAGING_ACCESS_TOKEN;
   if (!token) return { ok: false, reason: "ยังไม่ได้ตั้งค่า LINE (LINE_MESSAGING_ACCESS_TOKEN)" };
 
@@ -106,7 +109,7 @@ export async function notifyCustomer(sb: SupabaseClient, order: Order, text: str
     const res = await fetch("https://api.line.me/v2/bot/message/push", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ to: target.id, messages: [{ type: "text", text }] }),
+      body: JSON.stringify({ to: target.id, messages: typeof msg === "string" ? [{ type: "text", text: msg }] : msg }),
       signal: AbortSignal.timeout(10_000),
     });
     if (res.ok) return { ok: true, via: target.via };
@@ -130,8 +133,13 @@ export async function notifyCustomer(sb: SupabaseClient, order: Order, text: str
  * ส่ง + บันทึกผลลงประวัติออเดอร์ — ใช้แทน notifyCustomer ในงานที่ "ต้องรู้ว่าถึงลูกค้าไหม"
  * อ่านออเดอร์สดจากฐานก่อนเขียน กันทับงานที่ผู้เรียกเพิ่งบันทึกไป
  */
-export async function notifyCustomerLogged(sb: SupabaseClient, order: Order, text: string, what: string): Promise<NotifyResult> {
-  const r = await notifyCustomer(sb, order, text);
+export async function notifyCustomerLogged(
+  sb: SupabaseClient,
+  order: Order,
+  msg: string | LineMessage[],
+  what: string
+): Promise<NotifyResult> {
+  const r = await notifyCustomer(sb, order, msg);
   // ยังไม่ได้ตั้งค่า LINE = ปัญหาระดับระบบ ไม่ใช่ของออเดอร์ใบนี้ — ไม่ต้องรกประวัติทุกใบ
   if (!r.ok && r.reason?.startsWith("ยังไม่ได้ตั้งค่า LINE")) return r;
   try {
@@ -196,4 +204,126 @@ export function statusMessage(order: Order, link: string): string | null {
     default:
       return null;
   }
+}
+
+
+/** สีประจำสถานะสำหรับการ์ด LINE (hex — Flex ใช้ CSS class ไม่ได้) */
+const STATUS_HEX: Record<OrderStatus, string> = {
+  รอชำระเงิน: "#F0B429",
+  รอตรวจสอบ: "#EA7317",
+  ชำระแล้ว: "#16A34A",
+  รอตรวจแบบ: "#7C3AED",
+  แก้ไขแบบ: "#E11D48",
+  อนุมัติแบบ: "#0D9488",
+  กำลังผลิต: "#4F46E5",
+  จัดส่งแล้ว: "#0284C7",
+  เสร็จสิ้น: "#475569",
+  ยกเลิก: "#94A3B8",
+};
+
+/** พาดหัวสั้น ๆ บนการ์ด (ข้อความยาวอยู่ใน statusMessage สำหรับ altText) */
+const STATUS_HEADLINE: Record<OrderStatus, string> = {
+  รอชำระเงิน: "รอชำระเงิน — โอนแล้วแนบสลิปได้เลย",
+  รอตรวจสอบ: "ได้รับสลิปแล้ว กำลังตรวจสอบยอด",
+  ชำระแล้ว: "ยืนยันการชำระเงินแล้ว เริ่มงานให้เลย",
+  รอตรวจแบบ: "แบบงานพร้อมให้ตรวจแล้ว",
+  แก้ไขแบบ: "รับเรื่องขอแก้ไขแล้ว กำลังแก้ให้",
+  อนุมัติแบบ: "อนุมัติแบบแล้ว เตรียมเข้าผลิต",
+  กำลังผลิต: "เข้าไลน์ผลิตแล้ว",
+  จัดส่งแล้ว: "จัดส่งแล้ว",
+  เสร็จสิ้น: "ปิดงานเรียบร้อย ขอบคุณครับ 🦆",
+  ยกเลิก: "ออเดอร์ถูกยกเลิกแล้ว",
+};
+
+/** แถว "หัวข้อ + ค่า" ในการ์ด */
+function flexRow(label: string, value: string, color = "#334155", bold = false) {
+  return {
+    type: "box",
+    layout: "horizontal",
+    spacing: "sm",
+    contents: [
+      { type: "text", text: label, size: "sm", color: "#94A3B8", flex: 2 },
+      { type: "text", text: value, size: "sm", color, weight: bold ? "bold" : "regular", flex: 3, align: "end", wrap: true },
+    ],
+  };
+}
+
+/**
+ * การ์ดแจ้งสถานะแบบ Flex — อ่านง่ายกว่าข้อความล้วนเยอะ
+ * altText ใช้ข้อความเดิม (โชว์ในแถบแจ้งเตือน/เครื่องที่แสดง Flex ไม่ได้)
+ */
+export function statusFlex(order: Order, link: string): LineMessage[] {
+  const alt = statusMessage(order, link) ?? `ออเดอร์ ${order.id}`;
+  const tone = STATUS_HEX[order.status] ?? "#475569";
+  const total = orderTotal(order);
+  const bal = Math.max(0, total - (order.paidTotal ?? 0));
+  const owe = !!order.deposit && !order.deposit.settledAt && bal > 0;
+  const first = order.items[0];
+  const more = order.items.length - 1;
+  const items = first ? `${first.name}${first.qty > 1 ? ` ×${first.qty.toLocaleString()}` : ""}${more > 0 ? ` และอีก ${more} รายการ` : ""}` : "-";
+
+  const rows: unknown[] = [flexRow("รายการ", items)];
+  rows.push(flexRow("ยอดรวม", `฿${total.toLocaleString()}`, "#0F172A", true));
+  if (owe) rows.push(flexRow("ยอดค้าง", `฿${bal.toLocaleString()}`, "#E11D48", true));
+  if (order.status === "จัดส่งแล้ว" && order.tracking) rows.push(flexRow("เลขพัสดุ", order.tracking, "#0F172A", true));
+
+  return [
+    {
+      type: "flex",
+      altText: alt,
+      contents: {
+        type: "bubble",
+        header: {
+          type: "box",
+          layout: "vertical",
+          backgroundColor: tone,
+          paddingAll: "14px",
+          contents: [
+            { type: "text", text: "iDucky Prints Studio", size: "xs", color: "#FFFFFFCC" },
+            { type: "text", text: order.status, size: "xl", weight: "bold", color: "#FFFFFF" },
+          ],
+        },
+        body: {
+          type: "box",
+          layout: "vertical",
+          spacing: "md",
+          paddingAll: "16px",
+          contents: [
+            { type: "text", text: STATUS_HEADLINE[order.status] ?? "", size: "sm", color: "#334155", wrap: true },
+            { type: "text", text: order.id, size: "lg", weight: "bold", color: "#0F172A" },
+            { type: "separator", color: "#E2E8F0" },
+            { type: "box", layout: "vertical", spacing: "sm", contents: rows },
+            ...(owe
+              ? [
+                  {
+                    type: "box",
+                    layout: "vertical",
+                    backgroundColor: "#FFF1F2",
+                    cornerRadius: "8px",
+                    paddingAll: "10px",
+                    contents: [
+                      { type: "text", text: "💳 โอนยอดคงเหลือแล้วแนบสลิปในหน้าออเดอร์ได้เลย (จัดส่งได้หลังชำระครบ)", size: "xs", color: "#BE123C", wrap: true },
+                    ],
+                  },
+                ]
+              : []),
+          ],
+        },
+        footer: {
+          type: "box",
+          layout: "vertical",
+          paddingAll: "12px",
+          contents: [
+            {
+              type: "button",
+              style: "primary",
+              height: "sm",
+              color: "#2472AE",
+              action: { type: "uri", label: "เปิดหน้าออเดอร์", uri: link },
+            },
+          ],
+        },
+      },
+    },
+  ];
 }

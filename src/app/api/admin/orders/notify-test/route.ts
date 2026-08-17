@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { notifyCustomer, orderLink, statusMessage } from "@/lib/server/notify";
+import { notifyCustomer, orderLink, statusFlex } from "@/lib/server/notify";
 import { SITE_URL } from "@/lib/shop-info";
 import type { Order } from "@/lib/admin-data";
 
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
   const who = gate.actor.name?.trim() || gate.actor.username;
   // ส่งข้อความ "สถานะจริงตอนนี้" ไปเลย — แอดมินจะได้เห็นว่าลูกค้าได้รับอะไรจริง ๆ
   const link = orderLink(SITE_URL, order);
-  const r = await notifyCustomer(sb, order, statusMessage(order, link) ?? `🔔 ทดสอบระบบแจ้งเตือน ออเดอร์ ${order.id}\n${link}`);
+  const r = await notifyCustomer(sb, order, statusFlex(order, link));
   return NextResponse.json({
     ok: r.ok,
     via: r.via, // "chatlink" = ส่งผ่านลิงก์แชทที่แอดมินวางไว้ · "login" = ลูกค้าล็อกอิน LINE เอง

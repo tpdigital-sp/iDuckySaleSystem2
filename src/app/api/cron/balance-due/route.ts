@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { amountDueNow, withLog, type Order } from "@/lib/admin-data";
-import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
+import { notifyCustomerLogged, orderLink, statusFlex } from "@/lib/server/notify";
 import { SITE_URL } from "@/lib/shop-info";
 
 export const runtime = "nodejs";
@@ -57,12 +57,7 @@ export async function GET(req: Request) {
     for (const d of remind) {
       const link = orderLink(SITE_URL, d.order);
       // ตัวนี้ลง log ผลการส่งให้แล้ว (สำเร็จ/ถูกบล็อก/ไม่รู้ LINE ของลูกค้า)
-      const sent = await notifyCustomerLogged(
-        sb,
-        d.order,
-        `💳 แจ้งเตือนยอดค้างออเดอร์ ${d.id}\nคงเหลือ ${d.balance.toLocaleString()} บาท — โอนแล้วแนบสลิปที่ลิงก์นี้ได้เลยครับ\n(ทางร้านจัดส่งได้หลังชำระครบ)\n${link}`,
-        `ทวงยอดคงเหลือ ${d.balance.toLocaleString()} บาท`
-      );
+      const sent = await notifyCustomerLogged(sb, d.order, statusFlex(d.order, link), `ทวงยอดคงเหลือ ${d.balance.toLocaleString()} บาท`);
       if (!sent.ok) failed.push({ id: d.id, reason: sent.reason ?? "ส่งไม่สำเร็จ" });
       // ส่งไม่ถึงก็ไม่ต้องนับว่าทวงแล้ว — รอบหน้าจะได้ลองใหม่ ไม่ใช่เงียบไป 3 วัน
       if (!sent.ok) continue;
