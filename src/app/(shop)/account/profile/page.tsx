@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useCustomer } from "@/lib/customer-context";
 import { updateProfile } from "@/lib/customer-auth";
-import { removeAvatar, uploadAvatar } from "@/lib/avatar-upload";
+import { checkAvatarFile, removeAvatar, uploadAvatarBlob } from "@/lib/avatar-upload";
+import AvatarCropper from "@/components/AvatarCropper";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -18,6 +19,10 @@ export default function ProfilePage() {
   const [saved, setSaved] = useState(false);
   const [avaBusy, setAvaBusy] = useState(false);
   const [avaMsg, setAvaMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  /** ไฟล์ที่เพิ่งเลือก — เปิดหน้าต่างซูม/เลื่อนให้ตัดเองก่อนอัปโหลด */
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  /** เปิดดูรูปโปรไฟล์ขนาดใหญ่ */
+  const [zoomOpen, setZoomOpen] = useState(false);
 
   useEffect(() => {
     if (customer) {
@@ -47,14 +52,23 @@ export default function ProfilePage() {
     }
   }
 
-  async function onPickAvatar(e: React.ChangeEvent<HTMLInputElement>) {
+  /** เลือกไฟล์แล้วยังไม่อัปโหลดทันที — เปิดหน้าต่างซูม/เลื่อนให้จัดรูปก่อน */
+  function onPickAvatar(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    setAvaBusy(true);
+    const bad = checkAvatarFile(file);
+    if (bad) return setAvaMsg({ ok: false, text: bad });
     setAvaMsg(null);
-    const r = await uploadAvatar(file);
+    setCropFile(file);
+  }
+
+  /** ได้รูปที่ตัดแล้วจากหน้าต่างซูม → อัปโหลด */
+  async function onCropped(blob: Blob) {
+    setAvaBusy(true);
+    const r = await uploadAvatarBlob(blob);
     setAvaBusy(false);
+    setCropFile(null);
     if (r.ok) {
       refresh();
       setAvaMsg({ ok: true, text: "เปลี่ยนรูปโปรไฟล์แล้ว ✓" });
@@ -82,24 +96,48 @@ export default function ProfilePage() {
       <div className="mt-6 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-amber-100 sm:p-8">
         {/* รูปโปรไฟล์ — ช่องเดียวกับหน้าบัญชี (user_metadata.picture) · LINE login เติมรูปมาให้ก่อน */}
         <div className="mb-6 flex items-center gap-4 rounded-2xl bg-amber-50/60 px-4 py-4 ring-1 ring-amber-100">
-          <label
-            className={`group relative grid h-20 w-20 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-full bg-gradient-to-br from-sky-100 to-sky-200 ring-4 ring-white shadow ${avaBusy ? "opacity-70" : ""}`}
-            title="เปลี่ยนรูปโปรไฟล์"
-          >
+          {/* มีรูปแล้ว = กดเพื่อดูรูปใหญ่ · ยังไม่มีรูป = กดเพื่อเลือกไฟล์ (ปุ่มกล้องมุมล่างขวาไว้เปลี่ยนรูป) */}
+          <div className="relative shrink-0">
             {customer.picture ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={customer.picture} alt="" className="h-full w-full object-cover" />
+              <button
+                type="button"
+                onClick={() => setZoomOpen(true)}
+                title="ดูรูปใหญ่"
+                aria-label="ดูรูปโปรไฟล์ขนาดใหญ่"
+                className={`group relative grid h-28 w-28 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-sky-100 to-sky-200 shadow ring-4 ring-white sm:h-32 sm:w-32 ${avaBusy ? "opacity-70" : ""}`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={customer.picture} alt="รูปโปรไฟล์" className="h-full w-full object-cover" />
+                <span className="absolute inset-0 grid place-items-center bg-amber-950/45 text-xl text-white opacity-0 transition group-hover:opacity-100">
+                  {avaBusy ? "⏳" : "🔍"}
+                </span>
+              </button>
             ) : (
-              <span className="text-3xl font-extrabold text-sky-700">{(customer.name || customer.email || "ส").trim().charAt(0).toUpperCase()}</span>
+              <label
+                title="อัปโหลดรูปโปรไฟล์"
+                className={`group relative grid h-28 w-28 cursor-pointer place-items-center overflow-hidden rounded-full bg-gradient-to-br from-sky-100 to-sky-200 shadow ring-4 ring-white sm:h-32 sm:w-32 ${avaBusy ? "opacity-70" : ""}`}
+              >
+                <span className="text-4xl font-extrabold text-sky-700">{(customer.name || customer.email || "ส").trim().charAt(0).toUpperCase()}</span>
+                <span className="absolute inset-0 grid place-items-center bg-amber-950/45 text-xl text-white opacity-0 transition group-hover:opacity-100">
+                  {avaBusy ? "⏳" : "📷"}
+                </span>
+                <input type="file" accept="image/*" onChange={onPickAvatar} disabled={avaBusy} className="absolute inset-0 cursor-pointer opacity-0" aria-label="อัปโหลดรูปโปรไฟล์" />
+              </label>
             )}
-            <span className="absolute inset-0 grid place-items-center bg-amber-950/45 text-lg text-white opacity-0 transition group-hover:opacity-100">
-              {avaBusy ? "⏳" : "📷"}
-            </span>
-            <input type="file" accept="image/*" onChange={onPickAvatar} disabled={avaBusy} className="absolute inset-0 cursor-pointer opacity-0" aria-label="อัปโหลดรูปโปรไฟล์" />
-          </label>
+            <label
+              title="เปลี่ยนรูปโปรไฟล์"
+              className={`absolute bottom-0 right-0 grid h-9 w-9 cursor-pointer place-items-center rounded-full bg-amber-400 text-sm text-white shadow ring-2 ring-white transition hover:bg-amber-500 ${avaBusy ? "pointer-events-none opacity-50" : ""}`}
+            >
+              📷
+              <input type="file" accept="image/*" onChange={onPickAvatar} disabled={avaBusy} className="hidden" aria-label="เปลี่ยนรูปโปรไฟล์" />
+            </label>
+          </div>
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">รูปโปรไฟล์</p>
-            <p className="text-xs text-stone-500">JPG / PNG ไม่เกิน 8MB — ระบบตัดเป็นวงกลมและย่อให้เอง</p>
+            <p className="text-xs text-stone-500">
+              JPG / PNG ไม่เกิน 8MB — เลือกไฟล์แล้วซูม/เลื่อนให้พอดีวงกลมได้เอง
+              {customer.picture ? " · กดที่รูปเพื่อดูขนาดใหญ่" : ""}
+            </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <label className={`cursor-pointer rounded-full bg-amber-400 px-4 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-amber-500 ${avaBusy ? "pointer-events-none opacity-50" : ""}`}>
                 {avaBusy ? "กำลังอัปโหลด…" : customer.picture ? "เปลี่ยนรูป" : "อัปโหลดรูป"}
@@ -173,6 +211,53 @@ export default function ProfilePage() {
           </button>
         </div>
       </div>
+
+      {/* ซูม/เลื่อนรูปที่เพิ่งเลือกก่อนอัปโหลด */}
+      {cropFile && (
+        <AvatarCropper file={cropFile} busy={avaBusy} onCancel={() => setCropFile(null)} onDone={onCropped} />
+      )}
+
+      {/* ดูรูปโปรไฟล์ขนาดใหญ่ — คลิกพื้นหลังหรือกด Esc เพื่อปิด */}
+      {zoomOpen && customer.picture && (
+        <AvatarLightbox src={customer.picture} onClose={() => setZoomOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+/** ดูรูปโปรไฟล์เต็ม ๆ — ปิดด้วยคลิกพื้นหลัง ปุ่ม ✕ หรือปุ่ม Esc */
+function AvatarLightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] grid place-items-center bg-stone-900/80 p-6 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="รูปโปรไฟล์ขนาดใหญ่"
+      onClick={onClose}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt="รูปโปรไฟล์"
+        onClick={(e) => e.stopPropagation()}
+        className="max-h-[80vh] max-w-full rounded-3xl bg-white object-contain shadow-2xl ring-4 ring-white/70"
+      />
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="ปิด"
+        className="absolute right-5 top-5 grid h-10 w-10 place-items-center rounded-full bg-white/90 text-lg font-bold text-stone-600 shadow transition hover:bg-white"
+      >
+        ✕
+      </button>
     </div>
   );
 }

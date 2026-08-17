@@ -93,16 +93,22 @@ const ADMIN_MODE_KEY = "iducky:product-order-mode";
  */
 function ProductTabText({ tab }: { tab: ProductTab }) {
   const { text, images = [] } = tab;
-  // ขนาดรูปที่แอดมินเลือกไว้ → ความกว้างสูงสุดของแต่ละรูป (เว้นช่องไฟ gap-3 = 0.75rem ต่อช่อง)
+  // ขนาดรูป: ถ้าแอดมินไม่ได้ตั้ง → เลือกให้เองตามจำนวนรูป (1 รูป = เต็มความกว้างแบบหน้า pricelist เดิม ·
+  // 2 รูป = 2 คอลัมน์ · 3+ = 3 คอลัมน์) — รูปประกอบเดี่ยวมักเป็นอินโฟกราฟิก/ตัวอย่างวางแบบ ย่อเหลือ 1/3 แล้วอ่านไม่ออก
+  const size = tab.imageSize ?? (images.length === 1 ? "lg" : images.length === 2 ? "md" : "sm");
   const imgW =
-    tab.imageSize === "lg"
-      ? "w-full max-w-2xl"
-      : tab.imageSize === "md"
+    size === "lg"
+      ? "w-full"
+      : size === "md"
         ? "w-full sm:max-w-[calc((100%-0.75rem)/2)]"
         : "w-full sm:max-w-[calc((100%-0.75rem)/2)] lg:max-w-[calc((100%-1.5rem)/3)]";
   // จัดวางรูปในแถว — ชิดซ้าย / กึ่งกลาง / ชิดขวา
   const align =
-    tab.imageAlign === "center" ? "justify-center" : tab.imageAlign === "right" ? "justify-end" : "justify-start";
+    (tab.imageAlign ?? (size === "lg" ? "center" : "left")) === "center"
+      ? "justify-center"
+      : tab.imageAlign === "right"
+        ? "justify-end"
+        : "justify-start";
   const gallery = images.length > 0 && (
     <div className={`flex flex-wrap gap-3 ${align} ${tab.imagePos === "top" ? "pb-3" : "pt-3"}`}>
       {images.map((src, i) => (

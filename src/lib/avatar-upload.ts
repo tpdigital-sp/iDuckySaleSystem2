@@ -32,12 +32,18 @@ export function shrinkImage(file: File, size = 512): Promise<Blob> {
   });
 }
 
-/** อัปโหลดรูปโปรไฟล์ — คืน url ใหม่ หรือข้อความผิดพลาดภาษาไทย */
-export async function uploadAvatar(file: File): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
-  if (!file.type.startsWith("image/")) return { ok: false, error: "อัปโหลดได้เฉพาะไฟล์รูปภาพเท่านั้น" };
-  if (file.size > AVATAR_MAX_INPUT) return { ok: false, error: "ไฟล์ใหญ่เกินไป — เลือกรูปที่ไม่เกิน 8MB" };
+export type AvatarUploadResult = { ok: true; url: string } | { ok: false; error: string };
+
+/** ตรวจไฟล์ก่อนเอาไปตัด/อัปโหลด — คืนข้อความผิดพลาดภาษาไทย หรือ null ถ้าผ่าน */
+export function checkAvatarFile(file: File): string | null {
+  if (!file.type.startsWith("image/")) return "อัปโหลดได้เฉพาะไฟล์รูปภาพเท่านั้น";
+  if (file.size > AVATAR_MAX_INPUT) return "ไฟล์ใหญ่เกินไป — เลือกรูปที่ไม่เกิน 8MB";
+  return null;
+}
+
+/** ส่งรูปที่เตรียมไว้แล้ว (ย่อ/ตัดเอง) ขึ้นเซิร์ฟเวอร์ */
+export async function uploadAvatarBlob(blob: Blob): Promise<AvatarUploadResult> {
   try {
-    const blob = await shrinkImage(file, 512);
     const token = await getAccessToken();
     const fd = new FormData();
     fd.append("file", blob, "avatar.jpg");
@@ -45,6 +51,18 @@ export async function uploadAvatar(file: File): Promise<{ ok: true; url: string 
     const j = await res.json().catch(() => ({}));
     if (!res.ok) return { ok: false, error: j.error || "อัปโหลดไม่สำเร็จ" };
     return { ok: true, url: j.url };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "อัปโหลดไม่สำเร็จ" };
+  }
+}
+
+/** อัปโหลดรูปโปรไฟล์แบบตัดกลางภาพอัตโนมัติ — คืน url ใหม่ หรือข้อความผิดพลาดภาษาไทย */
+export async function uploadAvatar(file: File): Promise<AvatarUploadResult> {
+  const bad = checkAvatarFile(file);
+  if (bad) return { ok: false, error: bad };
+  try {
+    const blob = await shrinkImage(file, 512);
+    return await uploadAvatarBlob(blob);
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "อัปโหลดไม่สำเร็จ" };
   }
