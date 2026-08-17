@@ -8,6 +8,7 @@ import {
   amountDueNow,
   daysToUseBy,
   lineUserOf,
+  lineChatOf,
   MOCK_ORDERS,
   ORDER_STATUSES,
   orderTotal,
@@ -334,22 +335,31 @@ export default function AdminOrdersPage() {
                       </td>
                       <td className="px-4 py-3.5 align-middle">
                         <p className="flex items-center gap-1.5 text-slate-700">
-                          {/* จุดบอกสถานะ LINE: เขียว = ผูกแล้ว (ระบบแจ้งเองได้) · เทา = ยังไม่ผูก */}
-                          {o.status !== "ยกเลิก" && o.status !== "เสร็จสิ้น" && (
-                            (() => {
-                              const l = lineUserOf(o, orders);
-                              return (
-                                <span
-                                  className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ring-1 ${
-                                    l ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : "bg-slate-100 text-slate-400 ring-slate-200"
-                                  }`}
-                                  title={l ? `ผูก LINE แล้ว${l.name ? ` — ${l.name}` : ""}${l.source === "prev" ? " (จำจากออเดอร์เก่า)" : ""}` : "ยังไม่ผูก LINE — ระบบแจ้งเตือนอัตโนมัติจะไม่ส่ง"}
-                                >
-                                  {l ? "🟢 LINE" : "⚪ LINE"}
-                                </span>
-                              );
-                            })()
-                          )}
+                          {/* ป้ายสถานะ LINE ของลูกค้า: เขียว = ผูก userId แล้ว (ระบบแจ้งเองได้) · เหลือง = มีแค่ลิงก์ห้องแชท · แดง = ยังไม่ผูก */}
+                          {(() => {
+                            const l = lineUserOf(o, orders);
+                            const chat = lineChatOf(o, orders);
+                            const done = o.status === "ยกเลิก" || o.status === "เสร็จสิ้น";
+                            const cls = l
+                              ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                              : chat
+                                ? "bg-amber-50 text-amber-700 ring-amber-200"
+                                : "bg-rose-50 text-rose-600 ring-rose-200";
+                            const label = l ? "✓ ผูก LINE แล้ว" : chat ? "LINE แค่ลิงก์แชท" : "✕ ยังไม่ผูก LINE";
+                            const title = l
+                              ? `ผูก LINE แล้ว${l.name ? ` — ${l.name}` : ""}${l.source === "prev" ? " (จำจากออเดอร์เก่า)" : ""}${chat ? "" : " · ยังไม่มีลิงก์ห้องแชท"}`
+                              : chat
+                                ? "มีลิงก์ห้องแชทแล้ว แต่ยังไม่ผูก userId — ระบบส่งข้อความอัตโนมัติไม่ได้"
+                                : "ยังไม่ผูก LINE — ระบบแจ้งเตือนอัตโนมัติจะไม่ส่ง";
+                            return (
+                              <span
+                                className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${cls} ${done ? "opacity-50" : ""}`}
+                                title={title}
+                              >
+                                {label}
+                              </span>
+                            );
+                          })()}
                           {o.customer}
                         </p>
                         <p className="text-xs text-slate-400">
