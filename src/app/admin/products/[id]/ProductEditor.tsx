@@ -180,6 +180,7 @@ type Draft = {
     images: string[];
     imagePos: "top" | "bottom";
     imageSize: "sm" | "md" | "lg";
+    imageAlign: "left" | "center" | "right";
   }[];
   seo: DraftSeo;
   custom: DraftCustom;
@@ -472,6 +473,7 @@ function toDraft(p: Product): Draft {
       images: [...(t.images ?? [])],
       imagePos: t.imagePos ?? "bottom",
       imageSize: t.imageSize ?? "sm",
+      imageAlign: t.imageAlign ?? "left",
     })),
     body: (p.body ?? []).map((b) => ({
       heading: b.heading,
@@ -2567,6 +2569,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                     images,
                     ...(t.imagePos === "top" ? { imagePos: "top" as const } : {}),
                     ...(t.imageSize !== "sm" ? { imageSize: t.imageSize } : {}),
+                    ...(t.imageAlign !== "left" ? { imageAlign: t.imageAlign } : {}),
                   }
                 : {}),
             };
@@ -5099,7 +5102,12 @@ export default function ProductEditor({ product }: { product: Product }) {
           <button
             type="button"
             onClick={() =>
-              patch({ tabs: [...draft.tabs, { title: "", text: "", images: [], imagePos: "bottom", imageSize: "sm" }] })
+              patch({
+                tabs: [
+                  ...draft.tabs,
+                  { title: "", text: "", images: [], imagePos: "bottom", imageSize: "sm", imageAlign: "left" },
+                ],
+              })
             }
             className="rounded-full bg-amber-500 px-4 py-1.5 text-xs font-bold text-white hover:bg-amber-600"
           >
@@ -5334,6 +5342,16 @@ export default function ProductEditor({ product }: { product: Product }) {
                           { v: "lg", label: "ใหญ่ (เต็มความกว้าง)" },
                         ]}
                         onPick={(v) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, imageSize: v } : x)) })}
+                      />
+                      <span className="font-semibold text-slate-500">จัดวาง:</span>
+                      <PickRow
+                        value={t.imageAlign}
+                        options={[
+                          { v: "left", label: "⬅ ชิดซ้าย" },
+                          { v: "center", label: "⬌ กึ่งกลาง" },
+                          { v: "right", label: "➡ ชิดขวา" },
+                        ]}
+                        onPick={(v) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, imageAlign: v } : x)) })}
                       />
                     </div>
                   )}

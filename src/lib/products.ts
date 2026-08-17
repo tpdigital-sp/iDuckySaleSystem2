@@ -390,6 +390,8 @@ export interface ProductTab {
   imagePos?: "top" | "bottom";
   /** ขนาดรูปในหน้าสินค้า: sm = 3 คอลัมน์ (ค่าเริ่มต้น) · md = 2 คอลัมน์ · lg = เต็มความกว้าง */
   imageSize?: "sm" | "md" | "lg";
+  /** จัดวางรูปในแถว: ชิดซ้าย (ค่าเริ่มต้น) · กึ่งกลาง · ชิดขวา */
+  imageAlign?: "left" | "center" | "right";
 }
 
 /**
