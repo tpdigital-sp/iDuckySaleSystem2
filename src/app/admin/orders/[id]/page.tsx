@@ -637,6 +637,35 @@ export default function AdminOrderDetailPage() {
     if (j.order) setOrder(j.order);
   }
 
+  /** ลบสลิป "งวดหลัง" ของออเดอร์มัดจำ (แนบผิดใบ) — ไม่ยุ่งกับสถานะ/ยอดที่รับแล้ว */
+  async function deleteBalanceSlip() {
+    if (!order?.deposit?.balanceSlipPath) return;
+    const settled = !!order.deposit.settledAt;
+    if (
+      !(await askConfirm({
+        icon: "🧾",
+        title: "ลบสลิปงวดหลังใบนี้?",
+        detail: settled
+          ? "⚠️ ออเดอร์นี้ยืนยันรับครบแล้ว — ลบไปจะไม่เหลือหลักฐานงวดหลัง (ยอดที่รับแล้วไม่ถูกแตะ) · บันทึกในประวัติว่าใครลบ"
+          : "ลบแล้วให้ลูกค้าหรือแอดมินแนบใหม่ได้ · ยอดที่รับแล้วไม่ถูกแตะ",
+        confirmLabel: "ลบสลิปงวดหลัง",
+        danger: true,
+      }))
+    )
+      return;
+    const res = await fetch("/api/admin/orders/slip", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ orderId: order.id, phase: "balance" }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setErr(j.error ?? "ลบสลิปไม่สำเร็จ");
+      return;
+    }
+    if (j.order) setOrder(j.order);
+  }
+
   /** บันทึกออเดอร์ปัจจุบันลงฐานข้อมูล (เรียกตอน blur ช่องกรอก) */
   function persist() {
     if (!order || demo) return;
@@ -2700,7 +2729,17 @@ export default function AdminOrderDetailPage() {
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={order.deposit.balanceSlipUrl} alt="สลิปยอดคงเหลือ" className="h-full w-full object-cover" />
                           </button>
-                          <span className="text-[10px] font-semibold text-violet-600">🧾 มีสลิปงวดหลังแล้ว</span>
+                          <span className="min-w-0 flex-1 text-[10px] font-semibold text-violet-600">🧾 มีสลิปงวดหลังแล้ว</span>
+                          {isSuperAdmin && (
+                            <button
+                              type="button"
+                              onClick={deleteBalanceSlip}
+                              title="แนบผิดใบ — ลบแล้วแนบใหม่ได้"
+                              className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
+                            >
+                              🗑 ลบ
+                            </button>
+                          )}
                         </>
                       ) : (
                         mayEdit &&
@@ -2728,7 +2767,7 @@ export default function AdminOrderDetailPage() {
                   )}
                   {!order.deposit.settledAt && (
                     <p className="text-[10px] leading-snug text-violet-500">
-                      ยังพิมพ์ใบงาน/ใบเสร็จและยิงเลขพัสดุไม่ได้ จนกว่าจะเก็บครบ 100%
+                      ใบงานพิมพ์ได้ แต่ใบปะหน้าพัสดุ/ใบเสร็จและการยิงเลขยังล็อก จนกว่าจะเก็บครบ 100%
                     </p>
                   )}
                 </div>

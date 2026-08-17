@@ -105,7 +105,7 @@ export async function DELETE(req: Request) {
   if (actor.role !== ROLE_ADMINISTRATOR)
     return NextResponse.json({ error: "ลบสลิปได้เฉพาะผู้ดูแลระบบ" }, { status: 403 });
 
-  let body: { orderId?: string };
+  let body: { orderId?: string; phase?: string };
   try {
     body = await req.json();
   } catch {
@@ -113,10 +113,28 @@ export async function DELETE(req: Request) {
   }
   const orderId = (body.orderId ?? "").trim();
   if (!orderId) return NextResponse.json({ error: "ไม่มีเลขออเดอร์" }, { status: 400 });
+  const balancePhase = body.phase === "balance";
 
   const { data: row } = await sb.from("orders").select("data").eq("id", orderId).maybeSingle();
   if (!row) return NextResponse.json({ error: "ไม่พบออเดอร์นี้" }, { status: 404 });
   const order = row.data as Order;
+
+  // ── สลิป "งวดหลัง" ของออเดอร์มัดจำ — ลบเฉพาะไฟล์ใบนั้น ไม่ยุ่งกับสถานะ/ยอดที่รับแล้ว ──
+  if (balancePhase) {
+    if (!order.deposit?.balanceSlipPath) return NextResponse.json({ error: "ออเดอร์นี้ไม่มีสลิปงวดหลัง" }, { status: 404 });
+    await sb.storage.from(BUCKET).remove([order.deposit.balanceSlipPath]);
+    const settled = !!order.deposit.settledAt;
+    const cleaned = withLog(
+      { ...order, deposit: { ...order.deposit, balanceSlipPath: undefined, balanceSlipUrl: undefined, balanceReportedAt: undefined } },
+      actor.name?.trim() || actor.username,
+      "ลบสลิปงวดหลัง",
+      settled ? "⚠️ ออเดอร์นี้ยืนยันรับครบแล้ว — ลบหลักฐานงวดหลังออก" : "ให้ลูกค้า/แอดมินแนบใหม่ได้"
+    );
+    const { error: e2 } = await sb.from("orders").update({ data: cleaned }).eq("id", orderId);
+    if (e2) return NextResponse.json({ error: e2.message }, { status: 500 });
+    return NextResponse.json({ ok: true, order: cleaned });
+  }
+
   if (!order.slipPath && !order.slipUrl) return NextResponse.json({ error: "ออเดอร์นี้ไม่มีสลิป" }, { status: 404 });
   // กันลบสลิปงานที่เดินหน้าไปแล้ว — ลบได้เฉพาะช่วงตรวจเงิน
   if (order.status !== "รอตรวจสอบ" && order.status !== "ชำระแล้ว" && order.status !== "รอชำระเงิน")

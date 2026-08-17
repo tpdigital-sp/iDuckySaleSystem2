@@ -238,10 +238,13 @@ export function ShotDepositBox() {
         <span className="text-violet-700">ยอดคงเหลือ · เก็บก่อนส่ง</span>
         <span className="text-rose-600">฿2,500</span>
       </div>
+      <div className="w-full rounded-lg border border-violet-200 bg-white py-1.5 text-center text-[11px] font-bold text-violet-600">
+        📎 แนบสลิปงวดหลัง (แทนลูกค้า)
+      </div>
       <div className="w-full rounded-lg bg-emerald-600 py-1.5 text-center text-[11px] font-bold text-white">
         ✔️ ยืนยันรับยอดคงเหลือครบ (ตรวจเอง)
       </div>
-      <p className="text-[10px] leading-snug text-violet-500">ยังพิมพ์ใบงาน/ใบเสร็จและยิงเลขพัสดุไม่ได้ จนกว่าจะเก็บครบ 100%</p>
+      <p className="text-[10px] leading-snug text-violet-500">ยังพิมพ์ใบปะหน้า/ใบเสร็จและยิงเลขพัสดุไม่ได้ จนกว่าจะเก็บครบ 100%</p>
     </div>
   );
 }
