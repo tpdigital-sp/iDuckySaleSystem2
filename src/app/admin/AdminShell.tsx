@@ -52,11 +52,11 @@ const MENU_GROUPS: {
 }[] = [
   // ธีมผสม: navy เข้มพรีเมียม + เหลืองเป็ด — หัวกลุ่มสีอ่อนตามหมวด อ่านชัดบนพื้น #173A6B · จุดสีใช้จานสี landing
   // ลดความลายตา: หัวกลุ่มใช้สีเดียวกันหมด (ฟ้าอ่อนนวล) · เหลือ "จุดสีประจำหมวด" ไว้บอกตำแหน่งตอนหุบกลุ่มพอ
-  { key: "งานขาย", label: "📦 งานขาย", text: "text-sky-200/90 hover:text-white", dot: "bg-sky-400", badge: "bg-white/10 text-sky-100", line: "border-white/15" },
-  { key: "กราฟฟิก", label: "🎨 กราฟฟิก", text: "text-sky-200/90 hover:text-white", dot: "bg-[#FF9EB0]", badge: "bg-white/10 text-sky-100", line: "border-white/15" },
-  { key: "สินค้า", label: "🏷️ สินค้า", text: "text-sky-200/90 hover:text-white", dot: "bg-[#FFD447]", badge: "bg-white/10 text-sky-100", line: "border-white/15" },
-  { key: "ลูกค้า", label: "💛 ลูกค้า & การตลาด", text: "text-sky-200/90 hover:text-white", dot: "bg-[#C7C4F5]", badge: "bg-white/10 text-sky-100", line: "border-white/15" },
-  { key: "ระบบ", label: "⚙️ ร้าน & ระบบ", text: "text-sky-200/90 hover:text-white", dot: "bg-[#57B6E8]", badge: "bg-white/10 text-sky-100", line: "border-white/15" },
+  { key: "งานขาย", label: "📦 งานขาย", text: "text-sky-200/55 hover:text-sky-100", dot: "bg-sky-400", badge: "bg-white/[0.08] text-sky-200/60", line: "border-white/15" },
+  { key: "กราฟฟิก", label: "🎨 กราฟฟิก", text: "text-sky-200/55 hover:text-sky-100", dot: "bg-[#FF9EB0]", badge: "bg-white/[0.08] text-sky-200/60", line: "border-white/15" },
+  { key: "สินค้า", label: "🏷️ สินค้า", text: "text-sky-200/55 hover:text-sky-100", dot: "bg-[#FFD447]", badge: "bg-white/[0.08] text-sky-200/60", line: "border-white/15" },
+  { key: "ลูกค้า", label: "💛 ลูกค้า & การตลาด", text: "text-sky-200/55 hover:text-sky-100", dot: "bg-[#C7C4F5]", badge: "bg-white/[0.08] text-sky-200/60", line: "border-white/15" },
+  { key: "ระบบ", label: "⚙️ ร้าน & ระบบ", text: "text-sky-200/55 hover:text-sky-100", dot: "bg-[#57B6E8]", badge: "bg-white/[0.08] text-sky-200/60", line: "border-white/15" },
 ];
 
 /** แคชป้ายจำนวนประเมินใหม่ (module scope — อยู่ข้ามการเปลี่ยนหน้า) กันดึงเรตติ้งทั้งชุดซ้ำทุกคลิก */
@@ -66,6 +66,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  /** ค้นหาเมนู — เมนูยาว 20+ รายการ พิมพ์ 2-3 ตัวอักษรถึงเร็วกว่าไล่กางกลุ่ม */
+  const [query, setQuery] = useState("");
   // พับแถบข้างเป็นแถวไอคอน (เดสก์ท็อป) — จำไว้ต่อเครื่อง
   const [railed, setRailed] = useState(false);
   useEffect(() => {
@@ -288,7 +290,67 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     </svg>
   );
 
-  const navFor = (rail: boolean) => (
+  /**
+   * แถวเมนูหนึ่งรายการ — ใช้ทั้งโหมดกาง/พับ/ผลค้นหา
+   * ไอคอนอยู่ในกล่อง 24px เท่ากันหมด ตัวอักษรทุกบรรทัดจึงเริ่มตรงกัน (เดิมอีโมจิกว้างไม่เท่ากัน ขอบซ้ายเลยเป็นฟันปลา)
+   */
+  const itemLink = (m: (typeof MENU)[number], rail: boolean) => {
+    const active = m.href === activeHref;
+    const hasBadge = m.href === "/admin/ratings" && newRatings > 0;
+    return (
+      <Link
+        key={m.href}
+        href={m.href}
+        onClick={() => {
+          setOpen(false);
+          setQuery("");
+        }}
+        aria-current={active ? "page" : undefined}
+        title={rail ? m.label : undefined}
+        className={`group relative flex items-center rounded-xl py-[9px] text-[13px] transition ${
+          rail ? "justify-center px-0" : "gap-2.5 px-2.5"
+        } ${
+          active
+            ? "bg-white font-semibold text-[#173A6B] shadow-[0_6px_16px_rgba(0,0,0,0.28)]"
+            : "font-normal text-sky-50/85 hover:bg-white/10 hover:text-white"
+        }`}
+      >
+        <span
+          className={`grid h-6 w-6 shrink-0 place-items-center rounded-lg text-[13px] transition ${
+            active ? "bg-[#FFF0BC]" : "bg-white/[0.08] opacity-80 grayscale group-hover:opacity-100 group-hover:grayscale-0"
+          }`}
+        >
+          {m.emoji}
+        </span>
+        {!rail && <span className="truncate">{m.label}</span>}
+        {hasBadge &&
+          (rail ? (
+            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-400 ring-2 ring-[#173A6B]" />
+          ) : (
+            <span className="ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10.5px] font-bold text-white">
+              {newRatings > 99 ? "99+" : newRatings}
+            </span>
+          ))}
+      </Link>
+    );
+  };
+
+  const q = query.trim().toLowerCase();
+
+  const navFor = (rail: boolean) => {
+    // กำลังค้นหา = ทิ้งการจัดกลุ่มไปก่อน โชว์ผลลัพธ์เรียงเดียวให้กดได้เลย
+    if (q && !rail) {
+      const hits = menu.filter((m) => m.label.toLowerCase().includes(q) || m.group.toLowerCase().includes(q));
+      return (
+        <nav className="space-y-0.5">
+          <p className="px-2.5 pb-1 text-[10.5px] text-sky-200/50">
+            {hits.length ? `ผลค้นหา ${hits.length} เมนู` : "ไม่พบเมนูที่ค้นหา"}
+          </p>
+          {hits.map((m) => itemLink(m, false))}
+        </nav>
+      );
+    }
+    return (
     <nav className="space-y-0.5">
       {MENU_GROUPS.flatMap(({ key, label, text, dot, badge, line }, groupIdx) => {
         const items = menu.filter((m) => m.group === key);
@@ -300,65 +362,43 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               <div key={`h-${key}`} className={`mx-2 my-2 border-t ${line}`} aria-hidden="true" />
             ) : null
           ) : (
+            /*
+              หัวกลุ่ม: ป้ายหมวดตัวเล็ก + เส้นบาง + ตัวนับ — เบากว่าเมนูชัดเจน
+              (เดิม 14px ตัวหนา น้ำหนักพอ ๆ กับเมนู เลยแยกไม่ออกว่าอันไหนหัวข้ออันไหนของกด)
+            */
             <button
               key={`h-${key}`}
               type="button"
               onClick={() => toggleGroup(key)}
               aria-expanded={!folded}
               title={folded ? "กางกลุ่มนี้" : "หุบกลุ่มนี้"}
-              className={`flex w-full min-w-0 items-center gap-1.5 rounded-lg px-3 pb-1 text-left font-display text-[14px] font-semibold uppercase tracking-wide transition ${
-                groupIdx > 0 ? "mt-4" : "mt-1"
-              } ${text}`}
+              className={`flex w-full min-w-0 items-center gap-1.5 rounded-lg px-2.5 pb-1.5 text-left font-display text-[10.5px] font-medium uppercase tracking-[0.14em] transition ${
+                groupIdx > 0 ? "mt-3.5" : "mt-1"
+              } ${
+                // หมวดที่กำลังเปิดอยู่ = เหลืองเป็ด (สีเดียวในแถบที่ใช้บอก "คุณอยู่ตรงนี้")
+                // หมวดอื่นฟ้าจาง ๆ ให้เบากว่าชื่อเมนูชัดเจน จะได้ไม่แย่งสายตากับของที่กดจริง
+                activeGroup === key ? "text-[#FFD447]/85 hover:text-[#FFD447]" : text
+              }`}
             >
-              <span className={`text-[9px] opacity-60 transition-transform ${folded ? "-rotate-90" : ""}`}>▼</span>
-              <span className="truncate whitespace-nowrap">{label}</span>
+              <span className={`text-[8px] opacity-50 transition-transform ${folded ? "-rotate-90" : ""}`}>▼</span>
+              {/* ตัดอีโมจิหน้าชื่อกลุ่มออก — ปล่อยให้ไอคอนของ "เมนู" เป็นตัวนำสายตาแทน หัวกลุ่มเป็นแค่ป้ายบอกหมวด */}
+              <span className="truncate whitespace-nowrap">{label.replace(/^[^\p{L}]+/u, "")}</span>
               {/* หุบอยู่แต่มีหน้าที่เปิดค้างในกลุ่มนี้ → จุดบอกให้รู้ว่าอยู่ตรงไหน */}
               {folded && activeGroup === key && (
-                <span className={`h-1.5 w-1.5 rounded-full ${dot}`} aria-label="อยู่ในกลุ่มนี้" />
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} aria-label="อยู่ในกลุ่มนี้" />
               )}
-              {folded && (
-                <span className={`ml-auto rounded-full px-2 text-[11px] font-bold ${badge}`}>
-                  {items.length}
-                </span>
-              )}
+              <span className="ml-1 h-px flex-1 bg-white/10" aria-hidden="true" />
+              <span className={`shrink-0 rounded-full px-1.5 text-[10px] font-semibold ${folded ? badge : "text-sky-200/45"}`}>
+                {items.length}
+              </span>
             </button>
           ),
-          ...(folded && !rail ? [] : items).map((m) => {
-        const active = m.href === activeHref;
-        const badge = m.href === "/admin/ratings" && newRatings > 0;
-        return (
-          <Link
-            key={m.href}
-            href={m.href}
-            onClick={() => setOpen(false)}
-            aria-current={active ? "page" : undefined}
-            title={rail ? m.label : undefined}
-            className={`group relative flex items-center rounded-xl py-2.5 font-display text-[12.5px] font-medium transition ${
-              rail ? "justify-center px-0" : "gap-3 px-3"
-            } ${
-              active
-                ? "bg-white font-semibold text-[#173A6B] shadow-[0_4px_14px_rgba(0,0,0,0.3)]"
-                : "text-sky-100/90 hover:bg-white/10 hover:text-white"
-            }`}
-          >
-            {/* อีโมจิเมนูปกติเป็นขาวดำจาง ๆ กันสีตีกันทั้งแถบ — กลับมามีสีตอนชี้/หน้าเปิดอยู่ */}
-            <span className={`text-base transition ${active ? "" : "opacity-70 grayscale group-hover:opacity-100 group-hover:grayscale-0"}`}>{m.emoji}</span>
-            {!rail && m.label}
-            {badge &&
-              (rail ? (
-                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-400 ring-2 ring-[#173A6B]" />
-              ) : (
-                <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[11px] font-bold text-white">
-                  {newRatings > 99 ? "99+" : newRatings}
-                </span>
-              ))}
-          </Link>
-        );
-          }),
+          ...(folded && !rail ? [] : items).map((m) => itemLink(m, rail)),
         ];
       })}
     </nav>
-  );
+    );
+  };
   const nav = navFor(false);
 
   return (
@@ -413,8 +453,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             )}
             {!railed && (
               <Link href="/admin" className="leading-tight" title="iDucky Admin">
-                <span className="block font-display text-sm font-semibold text-white">iDucky Admin</span>
-                <span className="block text-[11px] text-sky-200/80">ระบบหลังบ้าน</span>
+                <span className="block font-display text-[14px] font-medium text-white">iDucky Admin</span>
+                <span className="block text-[10.5px] tracking-wide text-sky-200/70">ระบบหลังบ้าน</span>
               </Link>
             )}
           </div>
@@ -433,6 +473,40 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           รายการท้าย ๆ (ร้าน & ระบบ · บทความ) จะโดนตัดหายไปเลย กดไม่ได้
           min-h-0 จำเป็น: ลูกของ flex ตั้งต้นเป็น min-height:auto ทำให้ย่อต่ำกว่าเนื้อหาไม่ได้ overflow เลยไม่ทำงาน
         */}
+        {/* ค้นหาเมนู — โหมดพับไม่มีที่ให้พิมพ์ กดปุ่มแว่นแล้วกางแถบให้เลย */}
+        {railed ? (
+          <button
+            type="button"
+            onClick={toggleRail}
+            title="ค้นหาเมนู (กางแถบ)"
+            aria-label="ค้นหาเมนู"
+            className="mb-2 grid h-9 shrink-0 place-items-center rounded-xl bg-white/[0.08] text-[13px] text-sky-200/70 ring-1 ring-white/10 transition hover:bg-white/15 hover:text-white"
+          >
+            🔍
+          </button>
+        ) : (
+          <div className="mb-2 flex shrink-0 items-center gap-2 rounded-xl bg-white/[0.08] px-2.5 ring-1 ring-white/10 focus-within:ring-white/30">
+            <span className="text-[11px] text-sky-200/60" aria-hidden="true">🔍</span>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Escape" && setQuery("")}
+              placeholder="ค้นหาเมนู…"
+              aria-label="ค้นหาเมนู"
+              className="min-w-0 flex-1 bg-transparent py-2 text-[11.5px] text-white placeholder:text-sky-200/50 focus:outline-none"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                aria-label="ล้างคำค้น"
+                className="text-[11px] text-sky-200/60 transition hover:text-white"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        )}
         <div className="-mr-1 min-h-0 flex-1 overflow-y-auto pr-1">{navFor(railed)}</div>
         {/*
           ท้ายแถบ — รวมเป็นแถวเดียว: ตัวตนทางซ้าย · ปุ่มลัดทางขวา
@@ -455,13 +529,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               )}
             </div>
           ) : (
-            <div className="flex items-center gap-2 rounded-xl px-1 py-1">
-              {userName && avatar()}
+            <div className="flex items-center gap-2 rounded-xl bg-white/[0.08] px-2 py-1.5 ring-1 ring-white/10">
+              {userName && avatar("h-7 w-7")}
               <span className="min-w-0 flex-1 leading-tight">
-                <span className="block truncate text-[13px] font-bold text-white" title={userName}>
+                <span className="block truncate text-[11.5px] font-semibold text-white" title={userName}>
                   {userName || "—"}
                 </span>
-                {roleName && <span className="block truncate text-[11px] text-sky-200/70">{roleName}</span>}
+                {roleName && <span className="block truncate text-[10px] text-sky-200/60">{roleName}</span>}
               </span>
               <Link href="/" title="กลับหน้าร้าน" aria-label="กลับหน้าร้าน" className={footBtn}>
                 {iconStore}
