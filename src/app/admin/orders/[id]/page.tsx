@@ -70,6 +70,9 @@ const STATUS_GROUPS: { title: string; items: OrderStatus[] }[] = [
 ];
 
 const LBL = "text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400";
+/** ปุ่มงานรองบนแถบหัว — เงียบกว่าปุ่มขั้นถัดไป ตาจะได้ไม่ต้องเลือกระหว่างปุ่มน้ำหนักเท่ากันหลายอัน */
+const HBTN =
+  "inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900";
 const SOFT = "rounded-xl border border-slate-200/70 bg-white p-4";
 
 /** สีประจำกลุ่มข้อมูลในหน้าออเดอร์ — กวาดตาหาหัวข้อที่ต้องการได้เร็วขึ้น */
@@ -437,6 +440,7 @@ export default function AdminOrderDetailPage() {
     setRedoBusy(false);
   }
   const [statusMenu, setStatusMenu] = useState(false);
+  const [printMenu, setPrintMenu] = useState(false);
   const [artDropIdx, setArtDropIdx] = useState<number | null>(null);
   const [proofDropIdx, setProofDropIdx] = useState<number | null>(null);
   const [replaceDrop, setReplaceDrop] = useState<string | null>(null); // "itemIndex:proofIndex" ที่กำลังลากไฟล์ทับเพื่อเปลี่ยนรูป
@@ -1223,45 +1227,83 @@ export default function AdminOrderDetailPage() {
   return (
     <div className={`mx-auto w-full max-w-[112rem] overflow-hidden ${card}`}>
       {/* ── แถบหัว ── */}
-      <div className="flex flex-wrap items-center gap-4 border-b border-slate-200/70 bg-slate-50/70 px-6 py-5">
-        <div>
-          <Link href="/admin/orders" className="text-xs text-slate-400 hover:text-slate-600">
-            ← คำสั่งซื้อทั้งหมด
-          </Link>
-          <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold tracking-tight text-slate-900">
-            {order.id}
-            {order.rush && (
-              <span className="rounded-full bg-rose-500 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">🔥 งานเร่ง</span>
+      <div className="border-b border-slate-200/70 bg-slate-50/70 px-6 py-5">
+        {/* บรรทัดบน = ข้อมูลล้วน (เลขออเดอร์ · สถานะตอนนี้ · ยอดรวม) ไม่มีปุ่มปน */}
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
+          <div className="min-w-0">
+            <Link href="/admin/orders" className="text-xs text-slate-400 hover:text-slate-600">
+              ← คำสั่งซื้อทั้งหมด
+            </Link>
+            <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold tracking-tight text-slate-900">
+              {order.id}
+              {order.rush && (
+                <span className="rounded-full bg-rose-500 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">🔥 งานเร่ง</span>
+              )}
+              {(() => {
+                const d = order.useByDate ? daysToUseBy(order) : null;
+                if (d == null || order.status === "เสร็จสิ้น" || order.status === "ยกเลิก") return null;
+                if (d < 0) return <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200">เลยวันใช้งาน {Math.abs(d)} วัน</span>;
+                if (d <= 3) return <span className="rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-bold text-orange-700 ring-1 ring-orange-200">{d === 0 ? "ต้องใช้งานวันนี้" : `อีก ${d} วันถึงวันใช้งาน`}</span>;
+                return null;
+              })()}
+            </h1>
+            <p className={`text-xs ${faint}`}>
+              {order.date}
+              {demo && <span className="ml-1">· ตัวอย่าง</span>}
+            </p>
+          </div>
+          <div className="ml-auto flex items-start gap-5">
+            <div>
+              <div className={LBL}>สถานะตอนนี้</div>
+              <span className={`mt-1 inline-flex rounded-xl px-3 py-1.5 text-sm font-bold ring-1 ${STATUS_STYLES[order.status]}`}>
+                {order.status}
+              </span>
+            </div>
+            {seesMoney && (
+              <div className="text-right">
+                <div className={LBL}>ยอดรวม</div>
+                <div className="mt-1.5 text-2xl font-bold leading-none tracking-tight text-slate-900">{formatPrice(orderTotal(order))}</div>
+              </div>
             )}
-            {(() => {
-              const d = order.useByDate ? daysToUseBy(order) : null;
-              if (d == null || order.status === "เสร็จสิ้น" || order.status === "ยกเลิก") return null;
-              if (d < 0) return <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200">เลยวันใช้งาน {Math.abs(d)} วัน</span>;
-              if (d <= 3) return <span className="rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-bold text-orange-700 ring-1 ring-orange-200">{d === 0 ? "ต้องใช้งานวันนี้" : `อีก ${d} วันถึงวันใช้งาน`}</span>;
-              return null;
-            })()}
-          </h1>
-          <p className={`text-xs ${faint}`}>
-            {order.date}
-            {demo && <span className="ml-1">· ตัวอย่าง</span>}
-          </p>
+          </div>
         </div>
-        <div className="ml-auto flex flex-wrap items-center gap-5">
-          <div className="flex items-center gap-1.5">
-            {(
-              [
-                ["work", "🧾 ใบงาน + ใบปะหน้า"],
-                ["receipt", "💳 ใบเสร็จ"],
-              ] as const
-            ).map(([doc, label]) => (
-              <Link
-                key={doc}
-                href={`/admin/orders/${encodeURIComponent(order.id)}/print?doc=${doc}`}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
-              >
-                {label}
-              </Link>
-            ))}
+
+        {/* บรรทัดล่าง = ปุ่ม — งานรองอยู่ซ้าย (เงียบ) · "ขั้นถัดไป" อยู่ขวา เด่นอันเดียว */}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {/* พิมพ์เอกสาร: รวมเป็นปุ่มเดียว เมนูค่อยเลือกว่าใบไหน */}
+          <div className="relative">
+            <button type="button" onClick={() => setPrintMenu((v) => !v)} className={HBTN} aria-expanded={printMenu}>
+              🖨️ พิมพ์เอกสาร ▾
+            </button>
+            {printMenu && (
+              <>
+                <button type="button" className="fixed inset-0 z-30 cursor-default" aria-label="ปิดเมนู" onClick={() => setPrintMenu(false)} />
+                <div className="absolute left-0 top-full z-40 mt-1 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                  {(
+                    [
+                      ["work", "🧾 ใบงาน + ใบปะหน้า"],
+                      ["receipt", "💳 ใบเสร็จ"],
+                    ] as const
+                  ).map(([doc, label]) => (
+                    <Link
+                      key={doc}
+                      href={`/admin/orders/${encodeURIComponent(order.id)}/print?doc=${doc}`}
+                      onClick={() => setPrintMenu(false)}
+                      className="block px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+                    >
+                      {label}
+                    </Link>
+                  ))}
+                  <Link
+                    href={`/admin/orders/${encodeURIComponent(order.id)}/print`}
+                    onClick={() => setPrintMenu(false)}
+                    className="block border-t border-slate-100 px-3 py-2 text-sm text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                  >
+                    ⚙️ เลือกเอกสารเอง…
+                  </Link>
+                </div>
+              </>
+            )}
           </div>
           {mayEdit && (
             <button
@@ -1272,86 +1314,82 @@ export default function AdminOrderDetailPage() {
                 setRedoPicks({});
               }}
               title="ทำงานชิ้นนี้ใหม่ — เคลม (ไม่คิดเงิน) หรือสั่งซ้ำ (คิดเงินปกติ)"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+              className={HBTN}
             >
               ♻️ ทำใหม่ / เคลม
             </button>
           )}
-          {mayEdit ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`rounded-xl px-3 py-2 text-sm font-bold ring-1 ${STATUS_STYLES[order.status]}`}>{order.status}</span>
-              {/* ปุ่มเดียวสำหรับ "ขั้นถัดไป" ที่ปกติจะกด — ไม่ต้องไล่หาในลิสต์ */}
-              {NEXT_STATUS[order.status] && (
-                <button
-                  type="button"
-                  onClick={() => changeStatus(NEXT_STATUS[order.status]!.to)}
-                  className="rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-slate-700"
-                  title={`เปลี่ยนสถานะเป็น “${NEXT_STATUS[order.status]!.to}”`}
-                >
-                  {NEXT_STATUS[order.status]!.label} →
-                </button>
-              )}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setStatusMenu((v) => !v)}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-500 transition hover:bg-slate-50"
-                  aria-expanded={statusMenu}
-                >
+
+          {mayEdit && (
+            <div className="relative ml-auto">
+              {/* ปุ่มแยกสองส่วน: ตัวใหญ่ = ขั้นถัดไปที่ปกติจะกด · ▾ = ไปสถานะอื่นเมื่อจำเป็น */}
+              {NEXT_STATUS[order.status] ? (
+                <div className="flex items-stretch overflow-hidden rounded-xl bg-slate-900 shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => changeStatus(NEXT_STATUS[order.status]!.to)}
+                    className="px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
+                    title={`เปลี่ยนสถานะเป็น “${NEXT_STATUS[order.status]!.to}”`}
+                  >
+                    {NEXT_STATUS[order.status]!.label} →
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStatusMenu((v) => !v)}
+                    className="border-l border-white/20 px-3 text-sm font-bold text-white/70 transition hover:bg-slate-700 hover:text-white"
+                    aria-expanded={statusMenu}
+                    aria-label="เลือกสถานะอื่น"
+                    title="เลือกสถานะอื่น"
+                  >
+                    ▾
+                  </button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setStatusMenu((v) => !v)} className={HBTN} aria-expanded={statusMenu}>
                   เปลี่ยนสถานะ ▾
                 </button>
-                {statusMenu && (
-                  <>
-                    <button type="button" className="fixed inset-0 z-30 cursor-default" aria-label="ปิดเมนู" onClick={() => setStatusMenu(false)} />
-                    <div className="absolute right-0 top-full z-40 mt-1 w-60 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
-                      {STATUS_GROUPS.map((g) => (
-                        <div key={g.title} className="border-b border-slate-100 py-1 last:border-0">
-                          <p className="px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{g.title}</p>
-                          {g.items.map((st) => (
-                            <button
-                              key={st}
-                              type="button"
-                              onClick={() => {
-                                setStatusMenu(false);
-                                if (st !== order.status) changeStatus(st);
-                              }}
-                              className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-sm transition hover:bg-slate-50 ${
-                                st === order.status ? "font-bold text-slate-900" : "text-slate-600"
-                              }`}
-                            >
-                              {st}
-                              {st === order.status && <span className="text-xs text-emerald-600">● ตอนนี้</span>}
-                            </button>
-                          ))}
-                        </div>
-                      ))}
-                      {(mayCancel || order.status === "ยกเลิก") && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setStatusMenu(false);
-                            if (order.status !== "ยกเลิก") changeStatus("ยกเลิก");
-                          }}
-                          className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-bold text-rose-600 transition hover:bg-rose-50"
-                        >
-                          ❌ ยกเลิกออเดอร์
-                          {order.status === "ยกเลิก" && <span className="text-xs">● ตอนนี้</span>}
-                        </button>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          ) : (
-            <span className={`rounded-xl px-3.5 py-2.5 text-sm font-bold ring-1 ${STATUS_STYLES[order.status]}`}>
-              {order.status}
-            </span>
-          )}
-          {seesMoney && (
-            <div className="text-right">
-              <div className={LBL}>ยอดรวม</div>
-              <div className="text-2xl font-bold tracking-tight text-slate-900">{formatPrice(orderTotal(order))}</div>
+              )}
+              {statusMenu && (
+                <>
+                  <button type="button" className="fixed inset-0 z-30 cursor-default" aria-label="ปิดเมนู" onClick={() => setStatusMenu(false)} />
+                  <div className="absolute right-0 top-full z-40 mt-1 w-60 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                    {STATUS_GROUPS.map((g) => (
+                      <div key={g.title} className="border-b border-slate-100 py-1 last:border-0">
+                        <p className="px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{g.title}</p>
+                        {g.items.map((st) => (
+                          <button
+                            key={st}
+                            type="button"
+                            onClick={() => {
+                              setStatusMenu(false);
+                              if (st !== order.status) changeStatus(st);
+                            }}
+                            className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-sm transition hover:bg-slate-50 ${
+                              st === order.status ? "font-bold text-slate-900" : "text-slate-600"
+                            }`}
+                          >
+                            {st}
+                            {st === order.status && <span className="text-xs text-emerald-600">● ตอนนี้</span>}
+                          </button>
+                        ))}
+                      </div>
+                    ))}
+                    {(mayCancel || order.status === "ยกเลิก") && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStatusMenu(false);
+                          if (order.status !== "ยกเลิก") changeStatus("ยกเลิก");
+                        }}
+                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-bold text-rose-600 transition hover:bg-rose-50"
+                      >
+                        ❌ ยกเลิกออเดอร์
+                        {order.status === "ยกเลิก" && <span className="text-xs">● ตอนนี้</span>}
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
