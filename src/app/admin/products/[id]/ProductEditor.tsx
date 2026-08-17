@@ -179,7 +179,8 @@ type Draft = {
     text: string;
     images: string[];
     imagePos: "top" | "bottom";
-    imageSize: "sm" | "md" | "lg";
+    /** auto = ให้หน้าสินค้าเลือกเองตามจำนวนรูป (1 รูป = เต็มกว้าง · 2 = 2 คอลัมน์ · 3+ = 3 คอลัมน์) */
+    imageSize: "auto" | "sm" | "md" | "lg";
     imageAlign: "left" | "center" | "right";
   }[];
   seo: DraftSeo;
@@ -472,7 +473,7 @@ function toDraft(p: Product): Draft {
       text: t.text,
       images: [...(t.images ?? [])],
       imagePos: t.imagePos ?? "bottom",
-      imageSize: t.imageSize ?? "sm",
+      imageSize: t.imageSize ?? "auto",
       imageAlign: t.imageAlign ?? "left",
     })),
     body: (p.body ?? []).map((b) => ({
@@ -2563,12 +2564,12 @@ export default function ProductEditor({ product }: { product: Product }) {
             return {
               title: t.title.trim(),
               text: t.text.trim(),
-              // ตำแหน่ง/ขนาดรูปเก็บเฉพาะตอนไม่ใช่ค่าเริ่มต้น (ใต้ข้อความ · 3 คอลัมน์)
+              // ตำแหน่ง/ขนาดรูปเก็บเฉพาะตอนไม่ใช่ค่าเริ่มต้น (ใต้ข้อความ · ขนาดอัตโนมัติ · ชิดซ้าย)
               ...(images.length
                 ? {
                     images,
                     ...(t.imagePos === "top" ? { imagePos: "top" as const } : {}),
-                    ...(t.imageSize !== "sm" ? { imageSize: t.imageSize } : {}),
+                    ...(t.imageSize !== "auto" ? { imageSize: t.imageSize } : {}),
                     ...(t.imageAlign !== "left" ? { imageAlign: t.imageAlign } : {}),
                   }
                 : {}),
@@ -5105,7 +5106,7 @@ export default function ProductEditor({ product }: { product: Product }) {
               patch({
                 tabs: [
                   ...draft.tabs,
-                  { title: "", text: "", images: [], imagePos: "bottom", imageSize: "sm", imageAlign: "left" },
+                  { title: "", text: "", images: [], imagePos: "bottom", imageSize: "auto", imageAlign: "left" },
                 ],
               })
             }
@@ -5337,6 +5338,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                       <PickRow
                         value={t.imageSize}
                         options={[
+                          { v: "auto", label: "อัตโนมัติ (1 รูป = เต็มกว้าง)" },
                           { v: "sm", label: "เล็ก (3 รูป/แถว)" },
                           { v: "md", label: "กลาง (2 รูป/แถว)" },
                           { v: "lg", label: "ใหญ่ (เต็มความกว้าง)" },
