@@ -1324,11 +1324,11 @@ export default function AdminOrderDetailPage() {
             <div className="relative ml-auto">
               {/* ปุ่มแยกสองส่วน: ตัวใหญ่ = ขั้นถัดไปที่ปกติจะกด · ▾ = ไปสถานะอื่นเมื่อจำเป็น */}
               {NEXT_STATUS[order.status] ? (
-                <div className="flex items-stretch overflow-hidden rounded-xl bg-slate-900 shadow-sm">
+                <div className="flex items-stretch overflow-hidden rounded-xl bg-[#2472ae] shadow-[0_4px_14px_rgba(44,129,196,0.28)]">
                   <button
                     type="button"
                     onClick={() => changeStatus(NEXT_STATUS[order.status]!.to)}
-                    className="px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
+                    className="px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#1d5c8e]"
                     title={`เปลี่ยนสถานะเป็น “${NEXT_STATUS[order.status]!.to}”`}
                   >
                     {NEXT_STATUS[order.status]!.label} →
@@ -1336,7 +1336,7 @@ export default function AdminOrderDetailPage() {
                   <button
                     type="button"
                     onClick={() => setStatusMenu((v) => !v)}
-                    className="border-l border-white/20 px-3 text-sm font-bold text-white/70 transition hover:bg-slate-700 hover:text-white"
+                    className="border-l border-white/25 px-3 text-sm font-bold text-white/80 transition hover:bg-[#1d5c8e] hover:text-white"
                     aria-expanded={statusMenu}
                     aria-label="เลือกสถานะอื่น"
                     title="เลือกสถานะอื่น"

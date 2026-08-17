@@ -81,6 +81,17 @@ export const navItem =
   "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium transition";
 export const navItemIdle = `${navItem} text-slate-600 hover:bg-amber-50`;
 export const navItemActive = `${navItem} bg-amber-500 text-white shadow-[0_4px_12px_rgba(44,129,196,0.25)]`;
+/**
+ * ปุ่ม action หลักโทนแบรนด์ (ฟ้าเข้ม #2C81C4 จากหน้าแรกร้าน)
+ * ใช้กับ "ขั้นถัดไป" ที่ควรเด่นที่สุดในหน้า — หนึ่งหน้ามีได้ปุ่มเดียว
+ * ⚠️ อย่าใช้เหลืองเป็ดกับปุ่มนี้ ป้ายสถานะหลายอันเป็นเหลือง/ส้มอยู่แล้ว จะกลืนกัน
+ */
+// #2472ae = ฟ้าแบรนด์ #2C81C4 เข้มลงนิดเดียว — ตัวหนังสือขาว 14px ได้ contrast 5.1 (ผ่าน WCAG AA)
+// ถ้าใช้ #2C81C4 ตรง ๆ จะได้ 4.2 ตกเกณฑ์ 4.5 · เงายังใช้สีแบรนด์เต็ม ๆ เลยยังดูเป็นสีเดียวกัน
+export const BRAND_BLUE = "#2472ae";
+export const BRAND_BLUE_DARK = "#1d5c8e";
+export const btnBrandSolid =
+  "inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#2472ae] px-4 py-2.5 text-sm font-bold text-white shadow-[0_4px_14px_rgba(44,129,196,0.28)] transition hover:bg-[#1d5c8e]";
 /** ปุ่มเน้น (เหลืองเป็ด) — ใช้กับ action หลักที่อยากให้สะดุดตาบนพื้นฟ้า */
 export const btnDucky =
   "inline-flex items-center justify-center gap-1.5 rounded-lg bg-[var(--color-ducky)] px-4 py-2 text-sm font-bold text-amber-950 shadow-sm transition hover:bg-[var(--color-ducky-dark)] disabled:cursor-not-allowed disabled:opacity-50";
