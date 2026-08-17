@@ -36,7 +36,7 @@ import {
 } from "@/lib/admin-data";
 import { fetchOrderAdmin, fetchOrdersAdmin, saveOrderAdmin, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
-import { card, faint, muted, shortTime } from "@/lib/admin-ui";
+import { btnBrandSolid, card, faint, muted, shortTime } from "@/lib/admin-ui";
 import ImageLightbox from "@/components/ImageLightbox";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import PackCheckPanel from "@/components/PackCheckPanel";
@@ -68,9 +68,6 @@ const STATUS_GROUPS: { title: string; items: OrderStatus[] }[] = [
   { title: "🎨 แบบงาน", items: ["รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"] },
   { title: "📦 ผลิต · จัดส่ง", items: ["กำลังผลิต", "จัดส่งแล้ว", "เสร็จสิ้น"] },
 ];
-
-/** ลำดับสถานะตามเส้นทางงานจริง — ใช้บอกในเมนูว่าอันไหน "ผ่านมาแล้ว" อันไหนยังไม่ถึง */
-const STATUS_FLOW: OrderStatus[] = STATUS_GROUPS.flatMap((g) => g.items);
 
 const LBL = "text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400";
 /** ปุ่มงานรองบนแถบหัว — เงียบกว่าปุ่มขั้นถัดไป ตาจะได้ไม่ต้องเลือกระหว่างปุ่มน้ำหนักเท่ากันหลายอัน */
@@ -442,7 +439,6 @@ export default function AdminOrderDetailPage() {
     }
     setRedoBusy(false);
   }
-  const [statusMenu, setStatusMenu] = useState(false);
   const [printMenu, setPrintMenu] = useState(false);
   const [artDropIdx, setArtDropIdx] = useState<number | null>(null);
   const [proofDropIdx, setProofDropIdx] = useState<number | null>(null);
@@ -1258,9 +1254,39 @@ export default function AdminOrderDetailPage() {
           <div className="ml-auto flex items-start gap-5">
             <div>
               <div className={LBL}>สถานะตอนนี้</div>
-              <span className={`mt-1 inline-flex rounded-xl px-3 py-1.5 text-sm font-bold ring-1 ${STATUS_STYLES[order.status]}`}>
-                {order.status}
-              </span>
+              {/* ป้ายสถานะ = ตัวเลือกในตัว — กดที่ป้ายแล้วเลือกสถานะใหม่ได้เลย ไม่ต้องมีปุ่มแยก */}
+              {mayEdit ? (
+                <div className="relative mt-1 inline-block">
+                  <select
+                    value={order.status}
+                    onChange={(e) => changeStatus(e.target.value as OrderStatus)}
+                    aria-label="เปลี่ยนสถานะออเดอร์"
+                    title="เปลี่ยนสถานะออเดอร์"
+                    className={`cursor-pointer appearance-none rounded-xl py-1.5 pl-3 pr-8 text-sm font-bold ring-1 focus:outline-none focus:ring-2 focus:ring-[#2472ae]/40 ${STATUS_STYLES[order.status]}`}
+                  >
+                    {STATUS_GROUPS.map((g) => (
+                      <optgroup key={g.title} label={g.title}>
+                        {g.items.map((st) => (
+                          <option key={st} value={st}>
+                            {st}
+                            {NEXT_STATUS[order.status]?.to === st ? "  ← ขั้นถัดไป" : ""}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                    {(mayCancel || order.status === "ยกเลิก") && (
+                      <optgroup label="⚠️ ยกเลิก">
+                        <option value="ยกเลิก">ยกเลิกออเดอร์</option>
+                      </optgroup>
+                    )}
+                  </select>
+                  <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] opacity-70">▼</span>
+                </div>
+              ) : (
+                <span className={`mt-1 inline-flex rounded-xl px-3 py-1.5 text-sm font-bold ring-1 ${STATUS_STYLES[order.status]}`}>
+                  {order.status}
+                </span>
+              )}
             </div>
             {seesMoney && (
               <div className="text-right">
@@ -1323,107 +1349,15 @@ export default function AdminOrderDetailPage() {
             </button>
           )}
 
-          {mayEdit && (
-            <div className="relative ml-auto">
-              {/* ปุ่มแยกสองส่วน: ตัวใหญ่ = ขั้นถัดไปที่ปกติจะกด · ▾ = ไปสถานะอื่นเมื่อจำเป็น */}
-              {NEXT_STATUS[order.status] ? (
-                <div className="flex items-stretch overflow-hidden rounded-xl bg-[#2472ae] shadow-[0_4px_14px_rgba(44,129,196,0.28)]">
-                  <button
-                    type="button"
-                    onClick={() => changeStatus(NEXT_STATUS[order.status]!.to)}
-                    className="px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#1d5c8e]"
-                    title={`เปลี่ยนสถานะเป็น “${NEXT_STATUS[order.status]!.to}”`}
-                  >
-                    {NEXT_STATUS[order.status]!.label} →
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStatusMenu((v) => !v)}
-                    className="border-l border-white/25 px-3 text-sm font-bold text-white/80 transition hover:bg-[#1d5c8e] hover:text-white"
-                    aria-expanded={statusMenu}
-                    aria-label="เลือกสถานะอื่น"
-                    title="เลือกสถานะอื่น"
-                  >
-                    ▾
-                  </button>
-                </div>
-              ) : (
-                <button type="button" onClick={() => setStatusMenu((v) => !v)} className={HBTN} aria-expanded={statusMenu}>
-                  เปลี่ยนสถานะ ▾
-                </button>
-              )}
-              {statusMenu && (
-                <>
-                  <button type="button" className="fixed inset-0 z-30 cursor-default" aria-label="ปิดเมนู" onClick={() => setStatusMenu(false)} />
-                  {/* เมนูอ่านเป็น "เส้นทางงาน": จุดซ้ายบอกผ่านมาแล้ว/อยู่ตรงนี้/ยังไม่ถึง */}
-                  <div className="absolute right-0 top-full z-40 mt-1.5 max-h-[70vh] w-[16.5rem] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_12px_32px_rgba(15,23,42,0.14)]">
-                    {STATUS_GROUPS.map((g) => (
-                      <div key={g.title} className="border-b border-slate-100 pb-1 last:border-0 last:pb-0">
-                        <p className="px-2 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">{g.title}</p>
-                        {g.items.map((st) => {
-                          const now = st === order.status;
-                          const cur = STATUS_FLOW.indexOf(order.status);
-                          const done = cur >= 0 && STATUS_FLOW.indexOf(st) < cur;
-                          const isNext = NEXT_STATUS[order.status]?.to === st;
-                          return (
-                            <button
-                              key={st}
-                              type="button"
-                              disabled={now}
-                              onClick={() => {
-                                setStatusMenu(false);
-                                changeStatus(st);
-                              }}
-                              className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
-                                now
-                                  ? "cursor-default bg-slate-100 font-semibold text-slate-900"
-                                  : done
-                                    ? "text-slate-400 hover:bg-slate-50 hover:text-slate-700"
-                                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                              }`}
-                            >
-                              <span
-                                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                                  now ? "bg-[#2472ae] ring-4 ring-[#2472ae]/15" : done ? "bg-slate-300" : "bg-slate-200"
-                                }`}
-                              />
-                              <span className="min-w-0 flex-1 truncate">{st}</span>
-                              {now && <span className="shrink-0 text-[10px] font-semibold text-slate-500">ตอนนี้</span>}
-                              {isNext && (
-                                <span className="shrink-0 rounded-full bg-[#2472ae]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[#2472ae]">
-                                  ขั้นถัดไป
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ))}
-                    {(mayCancel || order.status === "ยกเลิก") && (
-                      <div className="mt-1 border-t border-slate-100 pt-1">
-                        <button
-                          type="button"
-                          disabled={order.status === "ยกเลิก"}
-                          onClick={() => {
-                            setStatusMenu(false);
-                            changeStatus("ยกเลิก");
-                          }}
-                          className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
-                            order.status === "ยกเลิก"
-                              ? "cursor-default bg-slate-100 font-semibold text-slate-900"
-                              : "text-slate-500 hover:bg-rose-50 hover:text-rose-600"
-                          }`}
-                        >
-                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-200" />
-                          <span className="min-w-0 flex-1 truncate">ยกเลิกออเดอร์</span>
-                          {order.status === "ยกเลิก" && <span className="shrink-0 text-[10px] font-semibold text-slate-500">ตอนนี้</span>}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
+          {mayEdit && NEXT_STATUS[order.status] && (
+            <button
+              type="button"
+              onClick={() => changeStatus(NEXT_STATUS[order.status]!.to)}
+              className={`ml-auto ${btnBrandSolid}`}
+              title={`เปลี่ยนสถานะเป็น “${NEXT_STATUS[order.status]!.to}”`}
+            >
+              {NEXT_STATUS[order.status]!.label} →
+            </button>
           )}
         </div>
       </div>
