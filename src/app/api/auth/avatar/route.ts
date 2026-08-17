@@ -52,3 +52,18 @@ export async function POST(req: Request) {
   if (metaErr) return NextResponse.json({ error: metaErr.message }, { status: 500 });
   return NextResponse.json({ ok: true, url });
 }
+
+/** ลบรูปโปรไฟล์ — ล้าง user_metadata.picture (ไฟล์ใน storage ปล่อยไว้ อัปใหม่จะทับเอง) */
+export async function DELETE(req: Request) {
+  const sb = getSupabaseAdmin();
+  if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
+  const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  if (!token) return NextResponse.json({ error: "ต้องเข้าสู่ระบบ" }, { status: 401 });
+  const { data: u, error: authErr } = await sb.auth.getUser(token);
+  if (authErr || !u.user) return NextResponse.json({ error: "เซสชันหมดอายุ" }, { status: 401 });
+  const { error } = await sb.auth.admin.updateUserById(u.user.id, {
+    user_metadata: { ...(u.user.user_metadata ?? {}), picture: "" },
+  });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}

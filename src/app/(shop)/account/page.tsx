@@ -9,6 +9,7 @@ import { fetchShopPayment, tiersConfigOf } from "@/lib/shop-settings";
 import { nextTier, paidSpend, tierForSpend, tiersOf, type Tier } from "@/lib/tiers";
 import { useCustomer } from "@/lib/customer-context";
 import { getAccessToken, signOut, updateProfile } from "@/lib/customer-auth";
+import { uploadAvatar } from "@/lib/avatar-upload";
 import { LINE_URL } from "@/components/LineButton";
 import MyCoupons from "@/components/MyCoupons";
 
@@ -185,24 +186,13 @@ export default function AccountPage() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (!file.type.startsWith("image/")) return showToast("อัปโหลดได้เฉพาะไฟล์รูปภาพเท่านั้น");
-    if (file.size > 8 * 1024 * 1024) return showToast("ไฟล์ใหญ่เกินไป — เลือกรูปที่ไม่เกิน 8MB");
     setUploading(true);
-    try {
-      const blob = await shrinkImage(file, 512);
-      const token = await getAccessToken();
-      const fd = new FormData();
-      fd.append("file", blob, "avatar.jpg");
-      const res = await fetch("/api/auth/avatar", { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.error || "อัปโหลดไม่สำเร็จ");
+    const r = await uploadAvatar(file);
+    setUploading(false);
+    if (r.ok) {
       refresh();
       showToast("เปลี่ยนรูปโปรไฟล์แล้ว ✓");
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "อัปโหลดไม่สำเร็จ");
-    } finally {
-      setUploading(false);
-    }
+    } else showToast(r.error);
   }
 
   // ── สวิตช์แจ้งเตือน LINE (ตั้งบนออเดอร์ล่าสุด — ระบบยกไปใช้กับออเดอร์ถัดไปเอง) ──
@@ -666,29 +656,4 @@ function MenuItem({
       {inner}
     </button>
   );
-}
-
-/** ย่อรูปโปรไฟล์ฝั่งเว็บก่อนอัป (จัตุรัสกลางภาพ · JPEG) — รูปโปรไฟล์ไม่ต้องใช้ต้นฉบับ */
-function shrinkImage(file: File, size: number): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const s = Math.min(img.width, img.height);
-      const sx = (img.width - s) / 2;
-      const sy = (img.height - s) / 2;
-      const c = document.createElement("canvas");
-      c.width = c.height = Math.min(size, s);
-      const ctx = c.getContext("2d");
-      if (!ctx) return reject(new Error("เบราว์เซอร์ไม่รองรับ"));
-      ctx.drawImage(img, sx, sy, s, s, 0, 0, c.width, c.height);
-      c.toBlob((b) => (b ? resolve(b) : reject(new Error("แปลงรูปไม่สำเร็จ"))), "image/jpeg", 0.88);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("อ่านไฟล์รูปไม่สำเร็จ"));
-    };
-    img.src = url;
-  });
 }
