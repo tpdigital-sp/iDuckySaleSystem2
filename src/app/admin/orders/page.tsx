@@ -7,6 +7,7 @@ import { formatPrice } from "@/lib/products";
 import {
   amountDueNow,
   daysToUseBy,
+  lineUserOf,
   MOCK_ORDERS,
   ORDER_STATUSES,
   orderTotal,
@@ -103,6 +104,7 @@ export default function AdminOrdersPage() {
       making: orders.filter((o) => o.status === "กำลังผลิต").length,
       todaySales: active.filter((o) => dayOf(o.date) === today).reduce((s, o) => s + orderTotal(o), 0),
       // ออเดอร์มัดจำที่ยังเก็บเงินไม่ครบ + ยอดที่ยังต้องตามเก็บรวมทั้งหมด
+      noLine: active.filter((o) => o.status !== "เสร็จสิ้น" && !lineUserOf(o, orders)).length,
       dueCount: active.filter(isDue).length,
       dueAmount: active.filter(isDue).reduce((s, o) => s + amountDueNow(o), 0),
     };
@@ -199,6 +201,14 @@ export default function AdminOrdersPage() {
         )}
         {seesMoney && <Tile label="ยอดขายวันนี้" value={formatPrice(stats.todaySales)} tone="brand" />}
       </div>
+
+      {/* เตือนรวม: มีออเดอร์ที่ยังไม่ผูก LINE ลูกค้า → แจ้งเตือนอัตโนมัติจะส่งไม่ถึง */}
+      {stats.noLine > 0 && can("orders.edit") && (
+        <p className="mt-3 rounded-xl bg-orange-50 px-4 py-2.5 text-xs font-semibold text-orange-800 ring-1 ring-orange-200">
+          ⚠️ มี {stats.noLine} ออเดอร์ที่ยังไม่ได้ผูก LINE ของลูกค้า — เปิดออเดอร์แล้ววาง userId (หรือลิงก์ห้องแชท) ในการ์ด
+          “ลูกค้า / จัดส่ง” · ไม่ผูก = ระบบทวงยอด/แจ้งจัดส่งส่งไม่ถึง (ลูกค้าเก่าที่เคยผูกไว้แล้ว ระบบจำให้เอง)
+        </p>
+      )}
 
       {/* ── แท็บแผนก ── */}
       <div className="mt-5 flex flex-wrap gap-2">
@@ -297,6 +307,15 @@ export default function AdminOrdersPage() {
                           {o.reorderOf && (
                             <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200" title={`สั่งซ้ำจาก ${o.reorderOf}`}>
                               🔁 สั่งซ้ำ
+                            </span>
+                          )}
+                          {/* ยังไม่ได้ผูก LINE ลูกค้า — แจ้งเตือนอัตโนมัติจะส่งไม่ถึง (งานที่ปิดแล้วไม่ต้องเตือน) */}
+                          {!lineUserOf(o, orders) && o.status !== "ยกเลิก" && o.status !== "เสร็จสิ้น" && (
+                            <span
+                              className="rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-bold text-orange-700 ring-1 ring-orange-200"
+                              title="ยังไม่ได้ผูก LINE ของลูกค้า — ระบบแจ้งเตือน/ทวงยอดจะส่งไม่ถึง"
+                            >
+                              ⚠️ ไม่มี LINE
                             </span>
                           )}
                           {/* ออเดอร์มัดจำที่ยังเก็บไม่ครบ — ทุกแผนกต้องเห็น (ฝ่ายแพ็คห้ามส่งของ) */}

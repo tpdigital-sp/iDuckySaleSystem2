@@ -14,6 +14,7 @@ import {
   daysToUseBy,
   itemDiscountAmount,
   lineChatOf,
+  lineUserOf,
   orderItemDiscounts,
   orderFullyPaid,
   orderTotal,
@@ -3921,97 +3922,126 @@ function LineChatBox({
   onSave: (url: string) => void;
   onBound: (order: Order) => void;
 }) {
-  const found = lineChatOf(order, allOrders);
-  const [editing, setEditing] = useState(false);
+  const chat = lineChatOf(order, allOrders);
+  const line = lineUserOf(order, allOrders); // จำจากออเดอร์เก่าของลูกค้าคนเดิมได้
   const [draft, setDraft] = useState("");
-  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
   const [testing, setTesting] = useState(false);
-  const [testMsg, setTestMsg] = useState("");
-  const [uidDraft, setUidDraft] = useState("");
-  const [binding, setBinding] = useState(false);
-  const [bindMsg, setBindMsg] = useState("");
 
-  /** ยิงข้อความทดสอบจริง — รู้ทันทีว่าลิงก์ที่วางไว้ส่งถึงลูกค้าได้ไหม */
-  async function sendTest() {
+  /**
+   * ช่องเดียวรับได้ทั้ง 2 อย่าง:
+   *   userId (U…32 ตัว) → ผูกให้ระบบส่งข้อความ (ยืนยันกับ LINE ก่อน)
+   *   ลิงก์ chat.line.biz → เก็บไว้เป็นปุ่มเปิดแชท (ส่งข้อความด้วยไม่ได้ บอกให้รู้)
+   */
+  async function submit() {
+    const input = draft.trim();
+    if (!input) return;
     if (demo) {
-      setTestMsg("⚠️ โหมดตัวอย่างส่งจริงไม่ได้");
+      setMsg("⚠️ โหมดตัวอย่างบันทึกไม่ได้");
       return;
     }
+    setBusy(true);
+    setMsg("");
+    try {
+      const isChatLink = /chat\.line\.biz/i.test(input);
+      const uid = input.match(/(U[0-9a-f]{32})/i)?.[1];
+      // ลิงก์ห้องแชท: เก็บลิงก์ไว้ก่อนเสมอ (ปุ่มเปิดแชทจะได้ใช้ได้)
+      if (isChatLink) onSave(input);
+      // ถ้าเป็น userId ดิบ → ลองผูกเลย · ถ้าเป็นลิงก์ ก็ลองด้วย (เผื่อเป็นลิงก์จากคลังแชทที่ลงท้ายด้วย userId จริง)
+      if (uid) {
+        const res = await fetch("/api/admin/orders/line-bind", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ orderId: order.id, input: uid }),
+        });
+        const j = (await res.json().catch(() => ({}))) as { ok?: boolean; profile?: { name: string }; order?: Order; error?: string };
+        if (j.ok) {
+          if (j.order) onBound(j.order);
+          setMsg(`✅ ผูกกับ "${j.profile?.name}" แล้ว — ระบบส่งข้อความถึงได้`);
+          setDraft("");
+          return;
+        }
+        setMsg(isChatLink ? `⚠️ เก็บลิงก์ไว้แล้ว แต่ยังส่งข้อความไม่ได้ — ${j.error ?? ""}` : `❌ ${j.error ?? "ผูกไม่สำเร็จ"}`);
+        if (isChatLink) setDraft("");
+        return;
+      }
+      setMsg("❌ ต้องเป็น LINE userId (ขึ้นต้นด้วย U) หรือลิงก์ห้องแชท");
+    } catch {
+      setMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unbind() {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/orders/line-bind", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, input: "" }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; order?: Order };
+      if (j.ok && j.order) onBound(j.order);
+      onSave("");
+      setMsg("ยกเลิกการผูกแล้ว");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** ยิงข้อความทดสอบจริง — รู้ทันทีว่าส่งถึงลูกค้าได้ไหม */
+  async function sendTest() {
+    if (demo) return;
     setTesting(true);
-    setTestMsg("");
+    setMsg("");
     try {
       const res = await fetch("/api/admin/orders/notify-test", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ orderId: order.id }),
       });
-      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; via?: string; reason?: string; error?: string };
-      if (j.ok) setTestMsg(`✅ ส่งถึงลูกค้าแล้ว (${j.via === "bound" ? "ผ่าน LINE ที่ผูกไว้" : "ผ่านบัญชี LINE ที่ลูกค้าล็อกอิน"})`);
-      else setTestMsg(`❌ ส่งไม่ได้ — ${j.reason ?? j.error ?? "ไม่ทราบสาเหตุ"}`);
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; reason?: string; error?: string };
+      setMsg(j.ok ? "✅ ส่งข้อความทดสอบถึงลูกค้าแล้ว" : `❌ ส่งไม่ได้ — ${j.reason ?? j.error ?? "ไม่ทราบสาเหตุ"}`);
     } catch {
-      setTestMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
+      setMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
     } finally {
       setTesting(false);
     }
   }
 
-  function open() {
-    setDraft(found?.url ?? "");
-    setErr("");
-    setEditing(true);
-  }
-  /** บันทึก "ลิงก์ห้องแชท" (ไว้ให้แอดมินกดเปิดแชทเอง — ไม่ได้ใช้ส่งข้อความ) */
-  function save() {
-    const url = draft.trim();
-    if (url && !/^https?:\/\//i.test(url)) {
-      setErr("ต้องเป็นลิงก์เต็ม ขึ้นต้นด้วย https://");
-      return;
-    }
-    onSave(url);
-    setEditing(false);
-  }
+  const note = msg && (
+    <p className={`mt-1 text-[11px] font-semibold ${msg.startsWith("✅") ? "text-emerald-600" : msg.startsWith("⚠️") ? "text-orange-600" : msg.startsWith("❌") ? "text-rose-600" : "text-slate-500"}`}>
+      {msg}
+    </p>
+  );
 
-  /** ผูก LINE userId — ให้เซิร์ฟเวอร์ถาม LINE ว่าส่งถึงคนนี้ได้จริงไหมก่อนบันทึก */
-  async function bindLine(input: string) {
-    if (demo) {
-      setBindMsg("⚠️ โหมดตัวอย่างผูกไม่ได้");
-      return;
-    }
-    setBinding(true);
-    setBindMsg("");
-    try {
-      const res = await fetch("/api/admin/orders/line-bind", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ orderId: order.id, input }),
-      });
-      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; cleared?: boolean; profile?: { name: string }; order?: Order; error?: string };
-      if (!j.ok) {
-        setBindMsg(`❌ ${j.error ?? "ผูกไม่สำเร็จ"}`);
-        return;
-      }
-      if (j.order) onBound(j.order);
-      setBindMsg(j.cleared ? "ยกเลิกการผูกแล้ว" : `✅ ผูกกับ "${j.profile?.name}" แล้ว — ส่งข้อความถึงได้`);
-      setUidDraft("");
-    } catch {
-      setBindMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
-    } finally {
-      setBinding(false);
-    }
-  }
-
-  /** แถบผูก LINE ของลูกค้า — ตัวที่ใช้ "ส่งข้อความ" จริง (คนละอย่างกับลิงก์เปิดแชท) */
-  const bindRow = (
-    <div className="mt-2 rounded-xl bg-white p-2.5 ring-1 ring-slate-200">
-      {order.lineUserId ? (
+  // ── ผูกแล้ว (ของใบนี้ หรือจำมาจากใบเก่า) ──
+  if (line)
+    return (
+      <div className="mt-2 rounded-xl bg-white p-2.5 ring-1 ring-slate-200">
         <div className="flex flex-wrap items-center gap-2">
-          {order.lineProfile?.picture && (
+          {line.picture && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={order.lineProfile.picture} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />
+            <img src={line.picture} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />
           )}
-          <span className="text-[11px] font-bold text-[#06C755]">
-            🟢 ผูก LINE แล้ว{order.lineProfile?.name ? ` — ${order.lineProfile.name}` : ""}
-          </span>
+          <span className="text-[11px] font-bold text-[#06C755]">🟢 LINE: {line.name ?? line.id.slice(0, 10) + "…"}</span>
+          {line.source === "prev" && (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500" title={`ลูกค้าคนเดียวกับออเดอร์ ${line.from}`}>
+              จำจาก {line.from}
+            </span>
+          )}
+          {chat && (
+            <a
+              href={chat.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-full bg-[#06C755] px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-[#05b34c]"
+            >
+              💬 เปิดแชท
+            </a>
+          )}
           {mayEdit && (
             <>
               <button
@@ -4022,157 +4052,51 @@ function LineChatBox({
               >
                 {testing ? "กำลังส่ง…" : "🔔 ทดสอบส่ง"}
               </button>
-              <button
-                type="button"
-                onClick={() => void bindLine("")}
-                disabled={binding}
-                className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
-              >
-                ยกเลิกการผูก
-              </button>
+              {line.source === "self" && (
+                <button
+                  type="button"
+                  onClick={() => void unbind()}
+                  disabled={busy}
+                  className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
+                >
+                  ยกเลิก
+                </button>
+              )}
             </>
           )}
         </div>
-      ) : (
-        mayEdit && (
-          <>
-            <p className="text-[11px] font-semibold text-slate-600">🟢 ผูก LINE ของลูกค้า (ไว้ให้ระบบส่งข้อความ)</p>
-            <div className="mt-1 flex gap-1.5">
-              <input
-                value={uidDraft}
-                onChange={(e) => setUidDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void bindLine(uidDraft);
-                }}
-                placeholder="วาง LINE userId (ขึ้นต้นด้วย U…)"
-                className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-1 text-[12px] text-slate-700 focus:border-amber-300 focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => void bindLine(uidDraft)}
-                disabled={binding || !uidDraft.trim()}
-                className="shrink-0 rounded-lg bg-[#06C755] px-3 py-1 text-[11px] font-bold text-white transition hover:bg-[#05b34c] disabled:opacity-50"
-              >
-                {binding ? "กำลังเช็ค…" : "ผูก"}
-              </button>
-            </div>
-            <p className="mt-1 text-[10px] leading-snug text-slate-400">
-              คัดลอก userId จากหน้าคลังแชท (AdminBuddy) มาวาง — ระบบจะถาม LINE ว่าส่งถึงคนนี้ได้จริงไหมก่อนบันทึก ·
-              ⚠️ ลิงก์จาก OA Manager ใช้ไม่ได้ (ท่อนท้ายเป็น chat id คนละตัวกับ userId)
-            </p>
-          </>
-        )
-      )}
-      {bindMsg && (
-        <p className={`mt-1 text-[11px] font-semibold ${bindMsg.startsWith("✅") ? "text-emerald-600" : bindMsg.startsWith("❌") ? "text-rose-600" : "text-slate-500"}`}>
-          {bindMsg}
-        </p>
-      )}
-      {testMsg && (
-        <p className={`mt-1 text-[11px] font-semibold ${testMsg.startsWith("✅") ? "text-emerald-600" : "text-rose-600"}`}>{testMsg}</p>
-      )}
-    </div>
-  );
+        {note}
+      </div>
+    );
 
-  if (editing)
-    return (
-      <>
-        {bindRow}
-      <div className="mt-2 space-y-1.5 rounded-xl bg-white p-2.5 ring-1 ring-slate-200">
-        <p className="text-[11px] font-semibold text-slate-600">🔗 ลิงก์ห้องแชท (ไว้กดเปิดแชทเอง)</p>
+  // ── ยังไม่ผูก — เตือนให้ใส่ ──
+  if (!mayEdit) return null;
+  return (
+    <div className="mt-2 rounded-xl bg-orange-50 p-2.5 ring-1 ring-orange-200">
+      <p className="text-[11px] font-bold text-orange-800">⚠️ ยังไม่ได้ผูก LINE ของลูกค้า — ระบบแจ้งเตือนอัตโนมัติจะส่งไม่ถึง</p>
+      <div className="mt-1.5 flex gap-1.5">
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") save();
-            if (e.key === "Escape") setEditing(false);
+            if (e.key === "Enter") void submit();
           }}
-          autoFocus
-          placeholder="https://chat.line.biz/…/chat/…"
-          className="w-full rounded-lg border border-slate-200 px-2.5 py-1 text-[12px] text-slate-700 focus:border-amber-300 focus:outline-none"
+          placeholder="วาง LINE userId หรือ ลิงก์ห้องแชท"
+          className="min-w-0 flex-1 rounded-lg border border-orange-200 bg-white px-2.5 py-1 text-[12px] text-slate-700 focus:border-amber-400 focus:outline-none"
         />
-        {err && <p className="text-[11px] font-semibold text-rose-600">{err}</p>}
-        <p className="text-[10px] leading-snug text-slate-400">
-          เปิดห้องแชทลูกค้าใน LINE OA แล้วก๊อป URL จากแถบที่อยู่มาวาง — ออเดอร์ถัดไปของลูกค้าคนนี้ไม่ต้องกรอกอีก
-        </p>
-        <div className="flex gap-1.5">
-          <button
-            type="button"
-            onClick={save}
-            className="rounded-lg bg-slate-900 px-3 py-1 text-[11px] font-bold text-white transition hover:bg-slate-700"
-          >
-            บันทึก
-          </button>
-          <button
-            type="button"
-            onClick={() => setEditing(false)}
-            className="rounded-lg px-3 py-1 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-100"
-          >
-            ยกเลิก
-          </button>
-          {found?.source === "self" && (
-            <button
-              type="button"
-              onClick={() => {
-                onSave("");
-                setEditing(false);
-              }}
-              className="ml-auto rounded-lg px-3 py-1 text-[11px] font-semibold text-rose-600 transition hover:bg-rose-50"
-            >
-              ลบลิงก์
-            </button>
-          )}
-        </div>
-      </div>
-      </>
-    );
-
-  if (!found)
-    return (
-      <>
-        {bindRow}
-        {mayEdit && (
-          <button
-            type="button"
-            onClick={open}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-500 transition hover:border-[#06C755] hover:text-[#06C755]"
-          >
-            ＋ ใส่ลิงก์ห้องแชท (ไว้กดเปิดแชท)
-          </button>
-        )}
-      </>
-    );
-
-  return (
-    <>
-    {bindRow}
-    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-      <a
-        href={found.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-3 py-1.5 text-[11px] font-bold text-white shadow-sm transition hover:bg-[#05b34c]"
-      >
-        💬 เปิดแชทลูกค้า (LINE)
-      </a>
-      {found.source === "prev" && (
-        <span
-          className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500"
-          title={`ดึงมาจากออเดอร์ ${found.from} ของลูกค้าคนเดียวกัน`}
-        >
-          จำจาก {found.from}
-        </span>
-      )}
-      {mayEdit && (
         <button
           type="button"
-          onClick={open}
-          className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+          onClick={() => void submit()}
+          disabled={busy || !draft.trim()}
+          className="shrink-0 rounded-lg bg-[#06C755] px-3 py-1 text-[11px] font-bold text-white transition hover:bg-[#05b34c] disabled:opacity-50"
         >
-          แก้ไข
+          {busy ? "กำลังเช็ค…" : "บันทึก"}
         </button>
-      )}
+      </div>
+      <p className="mt-1 text-[10px] leading-snug text-orange-700/80">
+        วาง <b>userId</b> จากหน้าคลังแชท = ระบบส่งข้อความหาลูกค้าได้ · วาง <b>ลิงก์ห้องแชท</b> = ได้แค่ปุ่มเปิดแชทให้กดเอง
+      </p>
+      {note}
     </div>
-    </>
   );
 }

@@ -18,8 +18,8 @@ import { withLog, type Order } from "@/lib/admin-data";
  */
 export interface NotifyResult {
   ok: boolean;
-  /** ได้ปลายทางมาจากไหน — ล็อกอิน LINE บนเว็บ หรือ userId ที่พนักงานผูกไว้ */
-  via?: "login" | "bound";
+  /** ได้ปลายทางมาจากไหน — ล็อกอินเว็บ · พนักงานผูกไว้ · จำจากออเดอร์เก่าของลูกค้าคนเดิม */
+  via?: "login" | "bound" | "inherited";
   /** เหตุผลตอนส่งไม่สำเร็จ (โชว์ให้แอดมิน) */
   reason?: string;
 }
@@ -56,7 +56,28 @@ export async function fetchLineProfile(userId: string): Promise<{ name: string; 
 }
 
 /** หา LINE userId ของลูกค้าออเดอร์นี้ (ล็อกอินก่อน → ไม่มีค่อยใช้ลิงก์แชท) */
-async function lineTargetOf(sb: SupabaseClient, order: Order): Promise<{ id: string; via: "login" | "bound" } | null> {
+/** userId ที่เคยผูกไว้ในออเดอร์ใบก่อนของลูกค้าคนเดียวกัน (จับคู่จาก customerId → เบอร์ → อีเมล) */
+async function inheritedLineUserId(sb: SupabaseClient, order: Order): Promise<string | null> {
+  try {
+    const { data } = await sb.from("orders").select("data").order("created_at", { ascending: false }).limit(400);
+    const phone = (order.phone ?? "").replace(/\D/g, "");
+    const email = (order.email ?? "").trim().toLowerCase();
+    for (const r of data ?? []) {
+      const o = r.data as Order;
+      if (o.id === order.id || !o.lineUserId) continue;
+      const same =
+        (!!order.customerId && o.customerId === order.customerId) ||
+        (phone.length >= 8 && (o.phone ?? "").replace(/\D/g, "") === phone) ||
+        (!!email && (o.email ?? "").trim().toLowerCase() === email);
+      if (same) return o.lineUserId;
+    }
+  } catch {
+    /* หาไม่เจอก็ถือว่าไม่มี */
+  }
+  return null;
+}
+
+async function lineTargetOf(sb: SupabaseClient, order: Order): Promise<{ id: string; via: "login" | "bound" | "inherited" } | null> {
   if (order.customerId) {
     try {
       const { data } = await sb.auth.admin.getUserById(order.customerId);
@@ -68,7 +89,9 @@ async function lineTargetOf(sb: SupabaseClient, order: Order): Promise<{ id: str
   }
   // พนักงานผูก userId ไว้เอง (ยืนยันกับ LINE ตอนบันทึกแล้ว) — ทางหลักของลูกค้า guest
   if (order.lineUserId) return { id: order.lineUserId, via: "bound" };
-  return null;
+  // ลูกค้าเก่า: ใบนี้ยังไม่ได้ผูก แต่เคยผูกไว้ในออเดอร์ใบก่อน → ใช้ของเดิมได้เลย ไม่ต้องผูกซ้ำ
+  const inherited = await inheritedLineUserId(sb, order);
+  return inherited ? { id: inherited, via: "inherited" } : null;
 }
 
 export async function notifyCustomer(sb: SupabaseClient, order: Order, text: string): Promise<NotifyResult> {
@@ -115,7 +138,14 @@ export async function notifyCustomerLogged(sb: SupabaseClient, order: Order, tex
     const { data: row } = await sb.from("orders").select("data").eq("id", order.id).maybeSingle();
     if (!row) return r;
     const fresh = row.data as Order;
-    const via = r.via === "bound" ? "ผ่าน LINE ที่พนักงานผูกไว้" : r.via === "login" ? "ผ่านบัญชี LINE ที่ล็อกอิน" : "";
+    const via =
+      r.via === "bound"
+        ? "ผ่าน LINE ที่พนักงานผูกไว้"
+        : r.via === "inherited"
+          ? "ผ่าน LINE ที่จำจากออเดอร์เก่า"
+          : r.via === "login"
+            ? "ผ่านบัญชี LINE ที่ล็อกอิน"
+            : "";
     const next = withLog(
       fresh,
       "LINE",

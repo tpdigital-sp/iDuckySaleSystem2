@@ -355,6 +355,35 @@ export function lineChatOf(order: Order, all: Order[]): { url: string; source: "
   return null;
 }
 
+/** ลูกค้าคนเดียวกันไหม — customerId แม่นสุด ไม่มีค่อยใช้เบอร์/อีเมล */
+function sameCustomer(a: Order, b: Order): boolean {
+  const phone = (a.phone ?? "").replace(/\D/g, "");
+  const email = (a.email ?? "").trim().toLowerCase();
+  return (
+    (!!a.customerId && b.customerId === a.customerId) ||
+    (phone.length >= 8 && (b.phone ?? "").replace(/\D/g, "") === phone) ||
+    (!!email && (b.email ?? "").trim().toLowerCase() === email)
+  );
+}
+
+/**
+ * LINE ของลูกค้าคนนี้ — ของใบนี้เอง หรือ "จำ" มาจากออเดอร์เก่าของลูกค้าคนเดียวกัน
+ * ลูกค้าเก่าจึงไม่ต้องให้พนักงานผูกซ้ำทุกใบ (ระบบส่งข้อความได้เลย)
+ */
+export function lineUserOf(
+  order: Order,
+  all: Order[]
+): { id: string; name?: string; picture?: string; source: "self" | "prev"; from?: string } | null {
+  if (order.lineUserId)
+    return { id: order.lineUserId, name: order.lineProfile?.name, picture: order.lineProfile?.picture, source: "self" };
+  for (let i = all.length - 1; i >= 0; i--) {
+    const o = all[i];
+    if (o.id === order.id || !o.lineUserId || !sameCustomer(order, o)) continue;
+    return { id: o.lineUserId, name: o.lineProfile?.name, picture: o.lineProfile?.picture, source: "prev", from: o.id };
+  }
+  return null;
+}
+
 /** รูปแบบงานของรายการ — รองรับออเดอร์เก่าที่เก็บเป็น proofUrl รูปเดียว */
 export function proofsOf(item: OrderItem): Proof[] {
   if (item.proofs?.length) return item.proofs;
