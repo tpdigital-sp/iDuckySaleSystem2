@@ -4067,16 +4067,41 @@ function LineChatBox({
    * พนักงานวางส่งในห้องแชท 1 ครั้ง → ห้องนั้นเด้งขึ้นบนสุด → กลับมาแตะเลือกจากรายชื่อได้ทันที
    * (ระบบส่งเองไม่ได้ เพราะยังไม่รู้ userId — นี่คือเหตุผลที่ต้องจับคู่)
    */
-  async function copyPingText() {
-    const text = `สวัสดีค่ะ ทางร้าน iDucky ขอยืนยันออเดอร์ ${order.id} นะคะ 🦆`;
+  const pingText = `สวัสดีค่ะ ทางร้าน iDucky ขอยืนยันออเดอร์ ${order.id} นะคะ 🦆`;
+  const [pingCopied, setPingCopied] = useState<boolean | null>(null); // null = ยังไม่ได้ลอง · true/false = ผลก๊อป
+
+  /**
+   * เปิดห้องแชท + ก๊อปข้อความทัก — ต้อง "ก๊อปให้เสร็จก่อน" แล้วค่อยเปิดแท็บ
+   * (เปิดแท็บก่อน โฟกัสจะกระโดดไปแท็บใหม่ทันที เบราว์เซอร์ตัดสิทธิ์ก๊อป → คลิปบอร์ดว่าง)
+   */
+  async function openChatWithPing(url: string) {
+    let ok = false;
     try {
-      await navigator.clipboard.writeText(text);
-      setMsg("📋 ก๊อปข้อความทักไว้แล้ว — วาง (⌘V) ส่งในห้องแชท แล้วสลับกลับมาแท็บนี้ รายชื่อจะรีเฟรชให้เอง");
+      await navigator.clipboard.writeText(pingText);
+      ok = true;
     } catch {
-      setMsg(`ก๊อปไม่ได้ พิมพ์เองได้: "${text}"`);
+      ok = false;
     }
-    // จำไว้ว่าเพิ่งไปทักลูกค้า — พอสลับกลับมาแท็บนี้ให้ดึงรายชื่อล่าสุดใหม่อัตโนมัติ
+    setPingCopied(ok);
+    setMsg(
+      ok
+        ? "📋 ก๊อปข้อความทักไว้แล้ว — วาง (⌘V) ส่งในห้องแชท แล้วสลับกลับมาแท็บนี้ รายชื่อจะรีเฟรชให้เอง"
+        : "ก๊อปอัตโนมัติไม่ได้ — กดปุ่ม 📋 ด้านล่างเพื่อก๊อปข้อความทัก แล้วไปวางในห้องแชท"
+    );
     awaitingReturn.current = true;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  /** ปุ่มก๊อปสำรอง (กดในหน้านี้โดยตรง = สิทธิ์ก๊อปครบ) */
+  async function copyPingOnly() {
+    try {
+      await navigator.clipboard.writeText(pingText);
+      setPingCopied(true);
+      setMsg("📋 ก๊อปแล้ว — ไปวาง (⌘V) ส่งในห้องแชทได้เลย");
+    } catch {
+      setPingCopied(false);
+      setMsg("ก๊อปไม่ได้ — เลือกข้อความด้านล่างแล้วก๊อปเอง");
+    }
   }
 
   /** ดึงรายชื่อคุยล่าสุดใหม่ (หลังทักลูกค้าแล้ว ห้องนั้นจะขึ้นบนสุด) */
@@ -4271,16 +4296,14 @@ function LineChatBox({
         {/* มีลิงก์ห้องแชทเก็บไว้แล้ว (แต่ยังไม่ผูก userId) — โชว์ให้เห็นว่าไม่ได้หายไปไหน */}
         {chat && !changing && (
           <>
-            <a
-              href={chat.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => void copyPingText()}
+            <button
+              type="button"
+              onClick={() => void openChatWithPing(chat.url)}
               className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#06C755] px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-[#05b34c]"
               title="เปิดห้องแชท + ก๊อปข้อความทักให้ — วางส่ง 1 ครั้ง ห้องจะเด้งขึ้นบนสุด แล้วกลับมาเลือกจากรายชื่อได้"
             >
               💬 เปิดแชท
-            </a>
+            </button>
             {chat.source === "self" && mayEdit && (
               <button
                 type="button"
@@ -4342,6 +4365,20 @@ function LineChatBox({
           </button>
         )}
       </div>
+      {/* ข้อความทักที่จะไปวางในห้องแชท — เผื่อก๊อปอัตโนมัติไม่ติด กดปุ่มนี้ก๊อปเอง หรือเลือกข้อความแล้วก๊อป */}
+      {pingCopied !== null && (
+        <div className={`mt-1.5 flex items-center gap-2 rounded-lg p-2 ring-1 ${pingCopied ? "bg-emerald-50 ring-emerald-200" : "bg-amber-50 ring-amber-200"}`}>
+          <p className="min-w-0 flex-1 select-all text-[11px] leading-snug text-slate-700">{pingText}</p>
+          <button
+            type="button"
+            onClick={() => void copyPingOnly()}
+            className="shrink-0 rounded-lg bg-slate-900 px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-slate-700"
+          >
+            📋 ก๊อป
+          </button>
+        </div>
+      )}
+
       {/* วางลิงก์ OA Manager แล้ว → เดาว่าเป็นใครจากคนที่คุยล่าสุด ให้ยืนยันคลิกเดียว */}
       {pendingManagerId && suggestions.length > 0 && !picked && (
         <div className="mt-1.5 rounded-lg bg-sky-50 p-2 ring-1 ring-sky-200">
@@ -4422,9 +4459,10 @@ function LineChatBox({
           🔗{" "}
           <a
             href={chat.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => void copyPingText()}
+            onClick={(e) => {
+              e.preventDefault();
+              void openChatWithPing(chat.url);
+            }}
             className="underline decoration-slate-300 underline-offset-2 hover:text-slate-600"
           >
             {chat.url}
