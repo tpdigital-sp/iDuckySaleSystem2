@@ -65,14 +65,7 @@ const thMonth = (iso: string) => {
 
 export default function AccountPage() {
   const router = useRouter();
-  const ctx = useCustomer();
-  // TEMP-DEMO-START
-  const demo = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1";
-  const demoCustomer = useMemo(() => ({ id: "demo", email: "line_u039af65557560216cc387aa8f15df0f5@line.iducky.local", name: "iDuckyShop", phone: "0965699414", address: "บริษัท ทีพีดิจิตอล — 663/8 ซอยฉลองกรุง 1 แขวง/เขตลาดกระบัง กทม. 10520", picture: "", createdAt: "2025-01-10T00:00:00Z", lineUserId: "U039af65557560216cc387aa8f15df0f5" }), []);
-  const customer = demo ? demoCustomer : ctx.customer;
-  const loading = demo ? false : ctx.loading;
-  const refresh = ctx.refresh;
-  // TEMP-DEMO-END
+  const { customer, loading, refresh } = useCustomer();
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [tierList, setTierList] = useState<Tier[] | null>(null);
   const [toast, setToast] = useState("");
@@ -96,15 +89,7 @@ export default function AccountPage() {
 
   useEffect(() => {
     if (!customer) return;
-    // TEMP-DEMO-START
-    if (demo) {
-      const mk = (id: string, status: Order["status"], date: string, extra: Partial<Order> = {}): Order => ({ id, customer: "iDuckyShop", phone: "", address: "", date, payment: "PromptPay", shipping: "ส่งธรรมดา", shippingCost: 50, status, items: [{ productId: "p1", name: "พวงกุญแจอะคริลิค", qty: 1, unitPrice: 1450, selections: "", sel: {}, proofs: status === "รอตรวจแบบ" ? [{ url: "x", at: "" }] : undefined, proofStatus: status === "รอตรวจแบบ" ? "รอตรวจ" : undefined } as unknown as Order["items"][number]], key: "k", ...extra });
-      setOrders([mk("OD-260810-4282", "รอชำระเงิน", "10 ส.ค. 2569 20:19"), mk("OD-260805-3311", "รอตรวจแบบ", "5 ส.ค. 2569 14:02"), mk("OD-260720-1102", "กำลังผลิต", "20 ก.ค. 2569 11:00"), mk("OD-260601-0001", "เสร็จสิ้น", "1 มิ.ย. 2569 09:00", { tracking: "EB123456789TH" })]);
-      setTierList(null);
-      return;
-    }
-    // TEMP-DEMO-END
-    (async () => {
+      (async () => {
       const token = await getAccessToken();
       const [res, sett] = await Promise.all([
         fetch("/api/orders/mine", { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" }).then((r) => r.json()).catch(() => ({})),

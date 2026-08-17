@@ -1200,6 +1200,7 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 
 /* --- เนื้อหา --- */
 .dl .acd-content{display:flex;flex-direction:column;gap:20px;min-width:0}
+.dl .acd-content>*{min-width:0;max-width:100%}
 .dl .acd-topbar{display:flex;align-items:flex-start;gap:18px;background:rgba(255,255,255,.7);-webkit-backdrop-filter:blur(8px);
   backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.85);border-radius:var(--r-l);padding:22px 26px;box-shadow:var(--shadow-s)}
 .dl .acd-ring{width:112px;height:112px;border-radius:50%;flex:none;padding:5px;position:relative;
@@ -1333,7 +1334,7 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .dl .acd-collapse{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .48s cubic-bezier(.4,0,.2,1),opacity .38s ease,margin-top .48s cubic-bezier(.4,0,.2,1)}
 .dl .acd-collapse:not(.open){margin-top:-20px} /* กลืน gap ของ .acd-content ตอนพับ */
 .dl .acd-collapse.open{grid-template-rows:1fr;opacity:1}
-.dl .acd-collapse-inner{overflow:hidden;min-height:0}
+.dl .acd-collapse-inner{overflow:hidden;min-height:0;min-width:0}
 .dl .acd-collapse.open .acd-collapse-inner{overflow:visible}
 .dl .acd-collapse .acd-track{margin:0 2px 18px}
 .dl .acd-track{background:linear-gradient(180deg,rgba(255,255,255,.72) 0%,rgba(255,255,255,.5) 100%);
