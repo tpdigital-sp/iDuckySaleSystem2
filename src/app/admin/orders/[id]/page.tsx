@@ -3928,6 +3928,30 @@ function LineChatBox({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [testing, setTesting] = useState(false);
+  const [hits, setHits] = useState<{ userId: string; name: string; picture?: string; lastSeen?: string }[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  // พิมพ์ชื่อ → ค้นจากคลังแชท LINE ของร้านให้เลย (หน่วงไว้กันยิงถี่)
+  useEffect(() => {
+    const q = draft.trim();
+    if (demo || q.length < 2 || /^https?:\/\//i.test(q)) {
+      setHits([]);
+      return;
+    }
+    setSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin/line-customers?q=${encodeURIComponent(q)}`);
+        const j = (await res.json().catch(() => ({}))) as { customers?: typeof hits };
+        setHits(j.customers ?? []);
+      } catch {
+        setHits([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [draft, demo]);
 
   /**
    * ช่องเดียวรับได้ทั้ง 2 อย่าง:
@@ -3967,6 +3991,30 @@ function LineChatBox({
         return;
       }
       setMsg("❌ ต้องเป็น LINE userId (ขึ้นต้นด้วย U) หรือลิงก์ห้องแชท");
+    } catch {
+      setMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** เลือกคนจากผลค้นหา → ผูกเลย */
+  async function bindUserId(uid: string) {
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await fetch("/api/admin/orders/line-bind", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, input: uid }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; profile?: { name: string }; order?: Order; error?: string };
+      if (j.ok) {
+        if (j.order) onBound(j.order);
+        setMsg(`✅ ผูกกับ "${j.profile?.name}" แล้ว — ระบบส่งข้อความถึงได้`);
+        setDraft("");
+        setHits([]);
+      } else setMsg(`❌ ${j.error ?? "ผูกไม่สำเร็จ"}`);
     } catch {
       setMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
     } finally {
@@ -4097,7 +4145,7 @@ function LineChatBox({
           onKeyDown={(e) => {
             if (e.key === "Enter") void submit();
           }}
-          placeholder="วาง LINE userId หรือ ลิงก์ห้องแชท"
+          placeholder="พิมพ์ชื่อ LINE เพื่อค้นหา · หรือวาง userId / ลิงก์ห้องแชท"
           className="min-w-0 flex-1 rounded-lg border border-orange-200 bg-white px-2.5 py-1 text-[12px] text-slate-700 focus:border-amber-400 focus:outline-none"
         />
         <button
@@ -4109,8 +4157,37 @@ function LineChatBox({
           {busy ? "กำลังเช็ค…" : "บันทึก"}
         </button>
       </div>
+      {/* ผลค้นหาจากคลังแชท LINE ของร้าน — กดเลือกแล้วผูกเลย ไม่ต้องไปหา userId เอง */}
+      {(searching || hits.length > 0) && (
+        <div className="mt-1.5 overflow-hidden rounded-lg border border-orange-200 bg-white">
+          {searching && hits.length === 0 && <p className="px-2.5 py-2 text-[11px] text-slate-400">กำลังค้นจากคลังแชท…</p>}
+          {hits.map((h) => (
+            <button
+              key={h.userId}
+              type="button"
+              onClick={() => void bindUserId(h.userId)}
+              disabled={busy}
+              className="flex w-full items-center gap-2 border-b border-slate-100 px-2.5 py-1.5 text-left transition last:border-0 hover:bg-orange-50 disabled:opacity-50"
+            >
+              {h.picture ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={h.picture} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" />
+              ) : (
+                <span className="h-6 w-6 shrink-0 rounded-full bg-slate-100" />
+              )}
+              <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-700">{h.name}</span>
+              {h.lastSeen && (
+                <span className="shrink-0 text-[10px] text-slate-400">
+                  คุยล่าสุด {new Date(h.lastSeen).toLocaleDateString("th-TH", { day: "numeric", month: "short" })}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
       <p className="mt-1 text-[10px] leading-snug text-orange-700/80">
-        วาง <b>userId</b> จากหน้าคลังแชท = ระบบส่งข้อความหาลูกค้าได้ · วาง <b>ลิงก์ห้องแชท</b> = ได้แค่ปุ่มเปิดแชทให้กดเอง
+        พิมพ์ <b>ชื่อ LINE</b> ของลูกค้าแล้วเลือกจากรายการ = ผูกให้ทันที · หรือวาง <b>userId</b> เองก็ได้ ·
+        วาง <b>ลิงก์ห้องแชท</b> = ได้แค่ปุ่มเปิดแชทให้กดเอง
       </p>
       {note}
     </div>

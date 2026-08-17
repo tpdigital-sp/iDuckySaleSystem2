@@ -30,6 +30,28 @@ export function getFirestoreAdmin(): Firestore | null {
   }
 }
 
+/**
+ * Firestore อีกฐานหนึ่งในโปรเจกต์เดียวกัน — "ordersure" เก็บคลังแชท LINE ของร้าน
+ * (collection line-conversations · หน้า AdminBuddy ใช้ฐานนี้) ใช้ค้นหาลูกค้าตอนผูก LINE กับออเดอร์
+ */
+let cachedChat: Firestore | null = null;
+export const CHAT_DATABASE_ID = process.env.FIREBASE_CHAT_DATABASE_ID || "ordersure";
+export const CHAT_COLLECTION = process.env.LINE_CHAT_COLLECTION || "line-conversations";
+
+export function getChatFirestore(): Firestore | null {
+  const b64 = process.env.FIREBASE_SERVICE_ACCOUNT_B64;
+  if (!b64) return null;
+  if (cachedChat) return cachedChat;
+  try {
+    const json = JSON.parse(Buffer.from(b64, "base64").toString("utf8"));
+    const app: App = getApps()[0] ?? initializeApp({ credential: cert(json) });
+    cachedChat = getFirestore(app, CHAT_DATABASE_ID);
+    return cachedChat;
+  } catch {
+    return null;
+  }
+}
+
 export const EMPLOYEE_COLLECTION = process.env.ADMIN_EMPLOYEE_COLLECTION || "employees2";
 export const ADMIN_ROLE_VALUE = process.env.ADMIN_ROLE_VALUE || "Administrator";
 export const isFirebaseAdminConfigured = Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_B64);
