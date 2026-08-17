@@ -52,6 +52,7 @@ import {
   type MultiPick,
   type Product,
   type ProductOption,
+  type ProductTab,
 } from "@/lib/products";
 import { LINE_URL } from "@/components/LineButton";
 import {
@@ -90,7 +91,8 @@ const ADMIN_MODE_KEY = "iducky:product-order-mode";
  * เนื้อหาในแท็บข้อมูลสินค้า — บรรทัดขึ้นต้น "•" = รายการมีจุดนำ ·
  * บรรทัดที่ครอบ/ลงท้ายด้วย "::" = หัวข้อย่อยตัวหนา · บรรทัดว่าง = เว้นช่วง
  */
-function ProductTabText({ text }: { text: string }) {
+function ProductTabText({ tab }: { tab: ProductTab }) {
+  const { text, images = [] } = tab;
   return (
     <div className="space-y-2 text-sm leading-relaxed text-stone-600">
       {text.split("\n").map((line, i) => {
@@ -111,6 +113,20 @@ function ProductTabText({ text }: { text: string }) {
           );
         return <p key={i}>{t}</p>;
       })}
+      {images.length > 0 && (
+        <div className="grid gap-3 pt-3 sm:grid-cols-2 lg:grid-cols-3">
+          {images.map((src, i) => (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              key={`${src}-${i}`}
+              src={src}
+              alt={`${tab.title} รูปที่ ${i + 1}`}
+              loading="lazy"
+              className="w-full rounded-xl bg-stone-50 object-contain ring-1 ring-stone-200"
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -2915,7 +2931,7 @@ export default function ProductDetail({
             ))}
           </div>
           <div className="rounded-b-2xl bg-white px-5 py-6 ring-1 ring-stone-200 md:px-8">
-            <ProductTabText text={product.tabs![Math.min(tabIndex, product.tabs!.length - 1)].text} />
+            <ProductTabText tab={product.tabs![Math.min(tabIndex, product.tabs!.length - 1)]} />
           </div>
         </section>
       )}

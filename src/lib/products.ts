@@ -384,6 +384,8 @@ export interface BodySection {
 export interface ProductTab {
   title: string;
   text: string;
+  /** รูปประกอบในแท็บ (URL จาก Supabase Storage หรือ base64 ในโหมดเดโม) — แสดงใต้ข้อความ */
+  images?: string[];
 }
 
 /**

@@ -174,7 +174,7 @@ type Draft = {
   images: DraftImage[];
   body: DraftBody[];
   /** แท็บข้อมูลสินค้า (รายละเอียดเพิ่มเติม / วิธีสั่งงาน / การรับประกัน ฯลฯ) */
-  tabs: { title: string; text: string }[];
+  tabs: { title: string; text: string; images: string[] }[];
   seo: DraftSeo;
   custom: DraftCustom;
   /** ⭐ ขึ้นบล็อก "สินค้าแนะนำ" บนหน้าแรก */
@@ -256,6 +256,8 @@ function pricingColumns(options: DraftOption[], driverLabels: string[]): string[
 const columnKey = (combo: string[]) => combo.join("│");
 
 const MAX_PHOTOS = 5;
+/** รูปประกอบต่อ 1 แท็บข้อมูลสินค้า */
+const MAX_TAB_IMAGES = 6;
 
 /**
  * หัวข้อที่ "หุบไว้" ตั้งแต่เปิดหน้า — หน้ายาวมาก กางทุกอันพร้อมกันหาอะไรไม่เจอ
@@ -458,7 +460,7 @@ function toDraft(p: Product): Draft {
     })),
     highlights: [...p.highlights],
     images: p.images.map((im) => ({ ...im })),
-    tabs: (p.tabs ?? []).map((t) => ({ title: t.title, text: t.text })),
+    tabs: (p.tabs ?? []).map((t) => ({ title: t.title, text: t.text, images: [...(t.images ?? [])] })),
     body: (p.body ?? []).map((b) => ({
       heading: b.heading,
       text: b.text,
@@ -935,6 +937,70 @@ export default function ProductEditor({ product }: { product: Product }) {
     } catch {
       setSaveError("อัปโหลดรูปไม่สำเร็จ");
     }
+  }
+
+  /** แท็บที่กำลังลากรูปค้างอยู่ (ไฮไลต์กรอบ) */
+  const [tabDragOver, setTabDragOver] = useState<number | null>(null);
+  /** แท็บที่กำลังอัปโหลดรูปอยู่ (กันกดซ้ำ + โชว์สถานะ) */
+  const [tabUploading, setTabUploading] = useState<number | null>(null);
+
+  /** อัปโหลดรูปเข้าแท็บข้อมูลสินค้า — ใช้ทั้งปุ่มเลือกไฟล์และลากมาวาง (ทีละหลายรูปได้) */
+  async function uploadTabImages(i: number, files?: FileList | File[] | null) {
+    if (!files) return;
+    const room = MAX_TAB_IMAGES - (draft.tabs[i]?.images.length ?? 0);
+    if (room <= 0) {
+      setSaveError(`แท็บหนึ่งใส่รูปได้สูงสุด ${MAX_TAB_IMAGES} รูป`);
+      return;
+    }
+    const picked = [...files].filter((f) => f.type.startsWith("image/")).slice(0, room);
+    if (!picked.length) return;
+    setSaveError("");
+    setTabUploading(i);
+    const urls: string[] = [];
+    for (const f of picked) {
+      try {
+        const blob = await fileToBlob(f);
+        const fd = new FormData();
+        fd.append("file", blob, "tab.jpg");
+        fd.append("productId", productId);
+        const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+        // โหมดเดโมยังไม่ตั้ง Supabase → เก็บ base64 แทน (เหมือนรูปสินค้า)
+        if (res.status === 503) {
+          urls.push(await fileToDataUrl(f));
+        } else {
+          const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+          if (res.ok && data.url) urls.push(data.url);
+          else setSaveError(data.error ?? "อัปโหลดรูปไม่สำเร็จ");
+        }
+      } catch {
+        setSaveError("อัปโหลดรูปไม่สำเร็จ");
+      }
+    }
+    setTabUploading(null);
+    if (urls.length) {
+      setDraft((d) => ({
+        ...d,
+        tabs: d.tabs.map((x, j) =>
+          j === i ? { ...x, images: [...x.images, ...urls].slice(0, MAX_TAB_IMAGES) } : x,
+        ),
+      }));
+      // ลากวางตอนแท็บพับอยู่ → กางให้เห็นรูปที่เพิ่งเพิ่ม
+      setTabFolded((f) => ({ ...f, [i]: false }));
+    }
+  }
+
+  /** ย้าย/ลบรูปในแท็บ (to อยู่นอกช่วง = ลบทิ้ง) */
+  function moveTabImage(i: number, from: number, to: number) {
+    setDraft((d) => ({
+      ...d,
+      tabs: d.tabs.map((x, j) => {
+        if (j !== i) return x;
+        if (to < 0 || to >= x.images.length) return x;
+        const images = [...x.images];
+        [images[from], images[to]] = [images[to], images[from]];
+        return { ...x, images };
+      }),
+    }));
   }
 
   /**
@@ -2440,8 +2506,12 @@ export default function ProductEditor({ product }: { product: Product }) {
       body,
       tabs: (() => {
         const list = draft.tabs
-          .map((t) => ({ title: t.title.trim(), text: t.text.trim() }))
-          .filter((t) => t.title && t.text);
+          .map((t) => {
+            const images = t.images.map((s) => s.trim()).filter(Boolean);
+            return { title: t.title.trim(), text: t.text.trim(), ...(images.length ? { images } : {}) };
+          })
+          // แท็บที่มีแต่รูป (ไม่มีข้อความ) ก็เก็บ — บางแท็บเป็นตารางรูปล้วน
+          .filter((t) => t.title && (t.text || t.images?.length));
         return list.length ? list : undefined;
       })(),
       seo: buildSeo(draft.seo),
@@ -4967,7 +5037,7 @@ export default function ProductEditor({ product }: { product: Product }) {
           <h2 className="text-sm font-bold text-sky-800">📑 แท็บข้อมูลสินค้า ({draft.tabs.length} แท็บ)</h2>
           <button
             type="button"
-            onClick={() => patch({ tabs: [...draft.tabs, { title: "", text: "" }] })}
+            onClick={() => patch({ tabs: [...draft.tabs, { title: "", text: "", images: [] }] })}
             className="rounded-full bg-amber-500 px-4 py-1.5 text-xs font-bold text-white hover:bg-amber-600"
           >
             ＋ เพิ่มแท็บ
@@ -4975,7 +5045,8 @@ export default function ProductEditor({ product }: { product: Product }) {
         </div>
         <p className="mb-3 text-[11px] leading-relaxed text-slate-400">
           แสดงเป็นแถบแท็บท้ายหน้าสินค้า เช่น รายละเอียดเพิ่มเติม · วิธีสั่งงาน · การรับประกันสินค้า —
-          ขึ้นต้นบรรทัดด้วย &ldquo;•&rdquo; = รายการมีจุดนำ · ลงท้ายบรรทัดด้วย &ldquo;::&rdquo; = หัวข้อย่อยตัวหนา
+          ขึ้นต้นบรรทัดด้วย &ldquo;•&rdquo; = รายการมีจุดนำ · ลงท้ายบรรทัดด้วย &ldquo;::&rdquo; = หัวข้อย่อยตัวหนา ·{" "}
+          <strong>ลากรูปมาวางบนแท็บได้เลย</strong> (สูงสุด {MAX_TAB_IMAGES} รูป/แท็บ)
         </p>
         {draft.tabs.length === 0 && (
           <p className="rounded-2xl bg-slate-50 p-4 text-center text-xs text-slate-400">
@@ -4984,7 +5055,24 @@ export default function ProductEditor({ product }: { product: Product }) {
         )}
         <div className="space-y-3">
           {draft.tabs.map((t, i) => (
-            <div key={i} className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+            <div
+              key={i}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setTabDragOver(i);
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) setTabDragOver(null);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setTabDragOver(null);
+                void uploadTabImages(i, e.dataTransfer.files);
+              }}
+              className={`rounded-2xl p-3 transition ${
+                tabDragOver === i ? "bg-amber-50 ring-2 ring-amber-400" : "bg-slate-50 ring-1 ring-slate-200"
+              }`}
+            >
               <div className="flex items-center gap-2">
                 <span className="shrink-0 text-xs font-bold text-slate-400">แท็บ {i + 1}</span>
                 <input
@@ -5035,18 +5123,93 @@ export default function ProductEditor({ product }: { product: Product }) {
               </div>
               {isTabFolded(i) ? (
                 <p className="mt-2 truncate text-xs text-slate-400">
+                  {t.images.length > 0 && <span className="mr-1 font-semibold text-slate-500">🖼 {t.images.length} รูป ·</span>}
                   {t.text.trim()
                     ? `${t.text.trim().split("\n").filter(Boolean).length} บรรทัด · ${t.text.trim().split("\n")[0]}`
                     : "ยังไม่มีเนื้อหา — กด “กาง” เพื่อพิมพ์"}
                 </p>
               ) : (
-                <textarea
-                  value={t.text}
-                  onChange={(e) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })}
-                  rows={7}
-                  placeholder={"• ข้อแรก\n• ข้อสอง\n\nหัวข้อย่อย::\nข้อความอธิบาย"}
-                  className="mt-2 w-full resize-y rounded-xl bg-white px-3 py-2 text-sm leading-relaxed ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                />
+                <>
+                  <textarea
+                    value={t.text}
+                    onChange={(e) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })}
+                    rows={7}
+                    placeholder={"• ข้อแรก\n• ข้อสอง\n\nหัวข้อย่อย::\nข้อความอธิบาย"}
+                    className="mt-2 w-full resize-y rounded-xl bg-white px-3 py-2 text-sm leading-relaxed ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                  />
+                  {/* รูปประกอบของแท็บ — ลากไฟล์มาวางที่การ์ดแท็บ หรือกดช่อง ＋ (แสดงใต้ข้อความในหน้าสินค้า) */}
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-500">
+                      รูปประกอบ ({t.images.length}/{MAX_TAB_IMAGES}):{" "}
+                      <span className="font-normal text-slate-400">ลากรูปมาวางที่แท็บนี้ได้เลย</span>
+                    </span>
+                    {t.images.map((src, k) => (
+                      <div key={`${src}-${k}`} className="group relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={src} alt="" className="h-16 w-20 rounded-lg bg-white object-cover ring-1 ring-slate-200" />
+                        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between px-0.5 pb-0.5 opacity-0 transition group-hover:opacity-100">
+                          <button
+                            type="button"
+                            disabled={k === 0}
+                            onClick={() => moveTabImage(i, k, k - 1)}
+                            className="grid h-5 w-5 place-items-center rounded-full bg-white/90 text-[11px] font-bold text-slate-600 shadow disabled:opacity-30"
+                            aria-label="เลื่อนรูปไปก่อนหน้า"
+                          >
+                            ‹
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              patch({
+                                tabs: draft.tabs.map((x, j) =>
+                                  j === i ? { ...x, images: x.images.filter((_, m) => m !== k) } : x,
+                                ),
+                              })
+                            }
+                            className="grid h-5 w-5 place-items-center rounded-full bg-white/90 text-[11px] font-bold text-rose-500 shadow"
+                            aria-label="ลบรูปนี้"
+                          >
+                            ✕
+                          </button>
+                          <button
+                            type="button"
+                            disabled={k === t.images.length - 1}
+                            onClick={() => moveTabImage(i, k, k + 1)}
+                            className="grid h-5 w-5 place-items-center rounded-full bg-white/90 text-[11px] font-bold text-slate-600 shadow disabled:opacity-30"
+                            aria-label="เลื่อนรูปไปถัดไป"
+                          >
+                            ›
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {t.images.length < MAX_TAB_IMAGES && (
+                      <label
+                        className={`grid h-16 w-20 cursor-pointer place-items-center rounded-lg border-2 border-dashed text-center transition ${
+                          tabUploading === i
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-600"
+                            : "border-amber-300 text-amber-500 hover:bg-amber-50"
+                        }`}
+                      >
+                        <span className="px-1 text-[10px] font-bold leading-tight">
+                          {tabUploading === i ? "⏳ กำลังอัปโหลด…" : "＋ ลากวาง / เลือกรูป"}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/gif"
+                          multiple
+                          disabled={tabUploading === i}
+                          className="hidden"
+                          onChange={(e) => {
+                            const files = e.target.files;
+                            void uploadTabImages(i, files);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           ))}
