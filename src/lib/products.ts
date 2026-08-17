@@ -384,6 +384,11 @@ export interface BodySection {
 export interface ProductTab {
   title: string;
   text: string;
+  /**
+   * เนื้อหาแบบจัดรูปแบบ (HTML จากตัวเขียนหลังบ้าน — กรองแล้วฝั่งเซิร์ฟเวอร์)
+   * มีค่า = ใช้แทน text · ไม่มี = ใช้ text แบบเดิม (• = รายการ · ::หัวข้อ:: = ตัวหนา)
+   */
+  html?: string;
   /** รูปประกอบในแท็บ (URL จาก Supabase Storage หรือ base64 ในโหมดเดโม) — เรียงตามลำดับในอาร์เรย์ */
   images?: string[];
   /** วางรูปไว้บนหรือใต้ข้อความ (ไม่ตั้ง = ใต้ข้อความ) */

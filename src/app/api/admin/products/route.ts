@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { priceRange, type Product } from "@/lib/products";
+import { sanitizeHtml } from "@/lib/server/sanitize-html";
 
 export const runtime = "nodejs";
 
@@ -48,6 +49,10 @@ export async function POST(req: Request) {
   const range = priceRange(product as Product);
   const saved: Product = {
     ...product,
+    // เนื้อหาแท็บแบบจัดรูปแบบขึ้นหน้าเว็บสาธารณะ → กรองแท็กอันตรายก่อนเก็บเสมอ (ชุดเดียวกับบทความ)
+    ...(product.tabs
+      ? { tabs: product.tabs.map((t) => (t.html ? { ...t, html: sanitizeHtml(t.html) } : t)) }
+      : {}),
     priceMin: range.min,
     priceMax: range.max,
     savedAt: new Date().toISOString(),

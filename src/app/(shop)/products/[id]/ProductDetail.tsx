@@ -92,9 +92,24 @@ const ADMIN_MODE_KEY = "iducky:product-order-mode";
  * เนื้อหาในแท็บข้อมูลสินค้า — บรรทัดขึ้นต้น "•" = รายการมีจุดนำ ·
  * บรรทัดที่ครอบ/ลงท้ายด้วย "::" = หัวข้อย่อยตัวหนา · บรรทัดว่าง = เว้นช่วง
  */
+/** สไตล์เนื้อหาแท็บที่จัดรูปแบบมาจากหลังบ้าน (HTML) — โทนเดียวกับข้อความแท็บแบบธรรมดา */
+const TAB_PROSE =
+  "[&_p]:mt-2 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mt-1 " +
+  "[&_strong]:font-medium [&_strong]:text-[var(--navy)] " +
+  "[&_h1]:mt-3 [&_h1]:font-display [&_h1]:text-xl [&_h1]:text-[var(--navy)] " +
+  "[&_h2]:mt-3 [&_h2]:font-display [&_h2]:text-lg [&_h2]:text-[var(--navy)] " +
+  "[&_h3]:mt-3 [&_h3]:font-display [&_h3]:text-base [&_h3]:text-[var(--navy)] " +
+  "[&_a]:font-semibold [&_a]:text-[var(--blue)] [&_a]:underline " +
+  "[&_img]:my-3 [&_img]:max-w-full [&_img]:rounded-2xl " +
+  "[&_blockquote]:mt-2 [&_blockquote]:border-l-4 [&_blockquote]:border-[var(--blue)] [&_blockquote]:pl-3 " +
+  "[&_table]:mt-3 [&_table]:w-full [&_th]:px-2 [&_th]:py-1 [&_td]:px-2 [&_td]:py-1 " +
+  "[&_iframe]:my-3 [&_iframe]:aspect-video [&_iframe]:w-full";
+
 function ProductTabText({ tab }: { tab: ProductTab }) {
   const { text, images = [] } = tab;
-  const hasText = text.trim().length > 0;
+  /** เนื้อหาแบบจัดรูปแบบ (ตัวเขียนหลังบ้าน) — มีแล้วใช้แทนข้อความธรรมดา */
+  const rich = (tab.html ?? "").trim();
+  const hasText = rich.length > 0 || text.trim().length > 0;
   // 🔍 รูปในแท็บที่กำลังขยายดู (index ในแท็บนี้) — -1 = ปิด · เลื่อนซ้าย/ขวาได้เฉพาะรูปในแท็บเดียวกัน
   const [zoom, setZoom] = useState(-1);
   const zoomStep = (d: number) => setZoom((z) => (z < 0 ? z : (z + d + images.length) % images.length));
@@ -148,7 +163,9 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
   return (
     <div className="space-y-2 font-[family-name:var(--font-looped)] text-[.92rem] leading-[1.8] text-[var(--navy-soft)]">
       {tab.imagePos === "top" && gallery}
-      {hasText && text.split("\n").map((line, i) => {
+      {/* HTML ผ่าน sanitize ฝั่งเซิร์ฟเวอร์ตั้งแต่ตอนบันทึกสินค้า (ตัดแท็ก script, on-handler, javascript:) */}
+      {rich && <div className={`overflow-x-auto ${TAB_PROSE}`} dangerouslySetInnerHTML={{ __html: rich }} />}
+      {!rich && hasText && text.split("\n").map((line, i) => {
         const t = line.trim();
         if (!t) return <div key={i} className="h-2" />;
         if (t.startsWith("•"))

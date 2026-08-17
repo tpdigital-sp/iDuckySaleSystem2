@@ -19,6 +19,7 @@ import {
   type ShipOptionRule,
   type ShipTier,
 } from "@/lib/products";
+import RichEditor from "@/components/RichEditor";
 import { autoSeoOf } from "@/lib/auto-seo";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { BULK_ASK_DEFAULT, CONSULT_NOTE_DEFAULT, RATE_LABEL } from "@/lib/products";
@@ -177,6 +178,8 @@ type Draft = {
   tabs: {
     title: string;
     text: string;
+    /** เนื้อหาแบบจัดรูปแบบ (HTML) — ไม่ว่าง = ใช้ตัวเขียน rich text แทนช่องข้อความธรรมดา */
+    html: string;
     images: string[];
     imagePos: "top" | "bottom";
     /** auto = ให้หน้าสินค้าเลือกเองตามจำนวนรูป (1 รูป = เต็มกว้าง · 2 = 2 คอลัมน์ · 3+ = 3 คอลัมน์) */
@@ -471,6 +474,7 @@ function toDraft(p: Product): Draft {
     tabs: (p.tabs ?? []).map((t) => ({
       title: t.title,
       text: t.text,
+      html: t.html ?? "",
       images: [...(t.images ?? [])],
       imagePos: t.imagePos ?? "bottom",
       imageSize: t.imageSize ?? "auto",
@@ -643,6 +647,43 @@ function FoldBtn({ folded, onClick, what }: { folded: boolean; onClick: () => vo
       {folded ? "▸ กาง" : "▾ ยุบ"}
     </button>
   );
+}
+
+const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** HTML ที่ลบเนื้อหาจนหมดแล้ว (เหลือแต่ <p><br></p>) = ถือว่าว่าง ไม่ต้องเก็บ */
+function isEmptyHtml(h: string): boolean {
+  if (/<(img|iframe|table|hr)\b/i.test(h)) return false;
+  return !h.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+}
+
+/**
+ * แปลงเนื้อหาแท็บแบบข้อความธรรมดา (• = รายการ · ::หัวข้อ:: = ตัวหนา) เป็น HTML ตั้งต้น
+ * ใช้ตอนกด "จัดรูปแบบ" — ของเดิมที่พิมพ์ไว้จะไม่หาย แค่ย้ายเข้าไปอยู่ในตัวเขียน
+ */
+function tabTextToHtml(text: string): string {
+  const out: string[] = [];
+  let ul: string[] = [];
+  const flush = () => {
+    if (ul.length) out.push(`<ul>${ul.join("")}</ul>`);
+    ul = [];
+  };
+  for (const raw of text.split("\n")) {
+    const t = raw.trim();
+    if (!t) {
+      flush();
+      continue;
+    }
+    if (t.startsWith("•")) {
+      ul.push(`<li>${escHtml(t.replace(/^•\s*/, ""))}</li>`);
+      continue;
+    }
+    flush();
+    if (/^::.*::$|::$/.test(t)) out.push(`<p><strong>${escHtml(t.replace(/^::|::$/g, "").trim())}</strong></p>`);
+    else out.push(`<p>${escHtml(t)}</p>`);
+  }
+  flush();
+  return out.join("") || "<p><br></p>";
 }
 
 /** แถวปุ่มเลือกค่าเดียวจากไม่กี่ตัว (ชิปกดเลือก) — เช่น ตำแหน่ง/ขนาดรูปในแท็บ */
@@ -2564,9 +2605,12 @@ export default function ProductEditor({ product }: { product: Product }) {
         const list = draft.tabs
           .map((t) => {
             const images = t.images.map((s) => s.trim()).filter(Boolean);
+            const html = t.html.trim();
             return {
               title: t.title.trim(),
               text: t.text.trim(),
+              // เนื้อหาแบบจัดรูปแบบ (ถ้าใช้ตัวเขียน) — เซิร์ฟเวอร์กรองแท็กอันตรายให้อีกชั้นตอนบันทึก
+              ...(html && !isEmptyHtml(html) ? { html } : {}),
               // ตำแหน่ง/ขนาดรูปเก็บเฉพาะตอนไม่ใช่ค่าเริ่มต้น (ใต้ข้อความ · ขนาดอัตโนมัติ · ชิดซ้าย)
               ...(images.length
                 ? {
@@ -2579,7 +2623,7 @@ export default function ProductEditor({ product }: { product: Product }) {
             };
           })
           // แท็บที่มีแต่รูป (ไม่มีข้อความ) ก็เก็บ — บางแท็บเป็นตารางรูปล้วน
-          .filter((t) => t.title && (t.text || t.images?.length));
+          .filter((t) => t.title && (t.text || t.html || t.images?.length));
         return list.length ? list : undefined;
       })(),
       seo: buildSeo(draft.seo),
@@ -5109,7 +5153,7 @@ export default function ProductEditor({ product }: { product: Product }) {
               patch({
                 tabs: [
                   ...draft.tabs,
-                  { title: "", text: "", images: [], imagePos: "bottom", imageSize: "auto", imageAlign: "left" },
+                  { title: "", text: "", html: "", images: [], imagePos: "bottom", imageSize: "auto", imageAlign: "left" },
                 ],
               })
             }
@@ -5201,19 +5245,54 @@ export default function ProductEditor({ product }: { product: Product }) {
               {isTabFolded(i) ? (
                 <p className="mt-2 truncate text-xs text-slate-400">
                   {t.images.length > 0 && <span className="mr-1 font-semibold text-slate-500">🖼 {t.images.length} รูป ·</span>}
-                  {t.text.trim()
+                  {t.html ? (
+                    <span className="font-semibold text-sky-600">✍️ จัดรูปแบบไว้ — กด “กาง” เพื่อแก้</span>
+                  ) : t.text.trim()
                     ? `${t.text.trim().split("\n").filter(Boolean).length} บรรทัด · ${t.text.trim().split("\n")[0]}`
                     : "ยังไม่มีเนื้อหา — กด “กาง” เพื่อพิมพ์"}
                 </p>
               ) : (
                 <>
-                  <textarea
-                    value={t.text}
-                    onChange={(e) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })}
-                    rows={7}
-                    placeholder={"• ข้อแรก\n• ข้อสอง\n\nหัวข้อย่อย::\nข้อความอธิบาย"}
-                    className="mt-2 w-full resize-y rounded-xl bg-white px-3 py-2 text-sm leading-relaxed ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                  />
+                  {t.html ? (
+                    /* โหมดจัดรูปแบบ — ชุดปุ่มเดียวกับตัวเขียนบทความ (ตัวหนา/สี/ขนาด/จัดวาง/ตาราง/รูป/ลิงก์) */
+                    <div className="mt-2">
+                      <RichEditor
+                        initialHtml={t.html}
+                        onChange={(html) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, html } : x)) })}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!window.confirm("กลับไปใช้ช่องข้อความธรรมดา?\nการจัดรูปแบบ (ตัวหนา/สี/ตาราง) ในแท็บนี้จะหายไป — ข้อความเดิมก่อนกดจัดรูปแบบยังอยู่")) return;
+                          patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, html: "" } : x)) });
+                        }}
+                        className="mt-2 rounded-full px-3 py-1.5 text-[11px] font-semibold text-slate-400 ring-1 ring-slate-200 transition hover:bg-white hover:text-slate-600"
+                      >
+                        ↩︎ กลับไปช่องข้อความธรรมดา
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <textarea
+                        value={t.text}
+                        onChange={(e) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })}
+                        rows={7}
+                        placeholder={"• ข้อแรก\n• ข้อสอง\n\nหัวข้อย่อย::\nข้อความอธิบาย"}
+                        className="mt-2 w-full resize-y rounded-xl bg-white px-3 py-2 text-sm leading-relaxed ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          patch({
+                            tabs: draft.tabs.map((x, j) => (j === i ? { ...x, html: tabTextToHtml(x.text) } : x)),
+                          })
+                        }
+                        className="mt-2 rounded-full bg-sky-500 px-3.5 py-1.5 text-[11px] font-bold text-white shadow-sm transition hover:bg-sky-600"
+                      >
+                        ✍️ จัดรูปแบบ (ตัวหนา · สี · ขนาด · จัดวาง · ตาราง · ลิงก์)
+                      </button>
+                    </>
+                  )}
                   {/* รูปประกอบของแท็บ — ลากไฟล์มาวางที่การ์ดแท็บ หรือกดช่อง ＋ (แสดงใต้ข้อความในหน้าสินค้า) */}
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className="text-xs font-semibold text-slate-500">
