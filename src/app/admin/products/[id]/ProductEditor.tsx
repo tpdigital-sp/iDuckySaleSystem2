@@ -5211,7 +5211,7 @@ export default function ProductEditor({ product }: { product: Product }) {
         </div>
         <p className="mb-3 text-[11px] leading-relaxed text-slate-400">
           แสดงเป็นแถบแท็บท้ายหน้าสินค้า เช่น รายละเอียดเพิ่มเติม · วิธีสั่งงาน · การรับประกันสินค้า —
-          ขึ้นต้นบรรทัดด้วย &ldquo;•&rdquo; = รายการมีจุดนำ · ลงท้ายบรรทัดด้วย &ldquo;::&rdquo; = หัวข้อย่อยตัวหนา ·{" "}
+          พิมพ์และจัดรูปแบบได้ในตัวเขียนเลย (ตัวหนา · สี · ขนาด · จัดวาง · ตาราง · ลิงก์) ·{" "}
           <strong>ลากรูปมาวางบนแท็บได้เลย</strong> (สูงสุด {MAX_TAB_IMAGES} รูป/แท็บ)
         </p>
         {draft.tabs.length === 0 && (
@@ -5300,57 +5300,13 @@ export default function ProductEditor({ product }: { product: Product }) {
                 </p>
               ) : (
                 <>
-                  {t.html ? (
-                    /* โหมดจัดรูปแบบ — ชุดปุ่มเดียวกับตัวเขียนบทความ (ตัวหนา/สี/ขนาด/จัดวาง/ตาราง/รูป/ลิงก์) */
-                    <div className="mt-2">
-                      <RichEditor
-                        initialHtml={t.html}
-                        onChange={(html) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, html } : x)) })}
-                      />
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const ok = await ask({
-                            icon: "↩︎",
-                            title: "กลับไปช่องข้อความธรรมดา?",
-                            detail:
-                              `แท็บ “${t.title || `แท็บ ${i + 1}`}”\n` +
-                              "• การจัดรูปแบบในแท็บนี้ (ตัวหนา · สี · ขนาด · ตาราง · รูปในเนื้อหา) จะหายไป\n" +
-                              "• ข้อความเดิมก่อนกด “จัดรูปแบบ” ยังอยู่ครบ กดจัดรูปแบบใหม่ได้ตลอด\n" +
-                              "• ยังไม่บันทึกจนกว่าจะกด “บันทึกการแก้ไข”",
-                            confirmLabel: "กลับไปข้อความธรรมดา",
-                            danger: true,
-                          });
-                          if (!ok) return;
-                          patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, html: "" } : x)) });
-                        }}
-                        className="mt-2 rounded-full px-3 py-1.5 text-[11px] font-semibold text-slate-400 ring-1 ring-slate-200 transition hover:bg-white hover:text-slate-600"
-                      >
-                        ↩︎ กลับไปช่องข้อความธรรมดา
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <textarea
-                        value={t.text}
-                        onChange={(e) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })}
-                        rows={7}
-                        placeholder={"• ข้อแรก\n• ข้อสอง\n\nหัวข้อย่อย::\nข้อความอธิบาย"}
-                        className="mt-2 w-full resize-y rounded-xl bg-white px-3 py-2 text-sm leading-relaxed ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          patch({
-                            tabs: draft.tabs.map((x, j) => (j === i ? { ...x, html: tabTextToHtml(x.text) } : x)),
-                          })
-                        }
-                        className="mt-2 rounded-full bg-sky-500 px-3.5 py-1.5 text-[11px] font-bold text-white shadow-sm transition hover:bg-sky-600"
-                      >
-                        ✍️ จัดรูปแบบ (ตัวหนา · สี · ขนาด · จัดวาง · ตาราง · ลิงก์)
-                      </button>
-                    </>
-                  )}
+                  {/* ตัวเขียนจัดรูปแบบ — ขึ้นให้เลยทุกแท็บ (ข้อความเดิมแบบ • / ::หัวข้อ:: แปลงให้อัตโนมัติ) */}
+                  <div className="mt-2">
+                    <RichEditor
+                      initialHtml={t.html || tabTextToHtml(t.text)}
+                      onChange={(html) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, html } : x)) })}
+                    />
+                  </div>
                   {/* รูปประกอบของแท็บ — ลากไฟล์มาวางที่การ์ดแท็บ หรือกดช่อง ＋ (แสดงใต้ข้อความในหน้าสินค้า) */}
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className="text-xs font-semibold text-slate-500">
