@@ -652,7 +652,8 @@ function PickRow<T extends string>({
   onPick,
 }: {
   value: T;
-  options: { v: T; label: string }[];
+  /** disabled = กดไม่ได้ (โชว์จาง ๆ พร้อม title บอกเหตุผล) */
+  options: { v: T; label: string; disabled?: boolean; title?: string }[];
   onPick: (v: T) => void;
 }) {
   return (
@@ -662,8 +663,10 @@ function PickRow<T extends string>({
           key={o.v}
           type="button"
           aria-pressed={value === o.v}
+          disabled={o.disabled}
+          title={o.title}
           onClick={() => onPick(o.v)}
-          className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
+          className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${
             value === o.v
               ? "bg-sky-500 text-white shadow-sm"
               : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
@@ -5324,37 +5327,51 @@ export default function ProductEditor({ product }: { product: Product }) {
                   </div>
                   {/* วางรูปตรงไหน/ใหญ่แค่ไหนในหน้าสินค้า — มีรูปแล้วค่อยโชว์ */}
                   {t.images.length > 0 && (
-                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-                      <span className="font-semibold text-slate-500">ตำแหน่งในหน้าสินค้า:</span>
-                      <PickRow
-                        value={t.imagePos}
-                        options={[
-                          { v: "bottom", label: "รูปอยู่ใต้ข้อความ" },
-                          { v: "top", label: "รูปอยู่บนข้อความ" },
-                        ]}
-                        onPick={(v) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, imagePos: v } : x)) })}
-                      />
-                      <span className="font-semibold text-slate-500">ขนาด:</span>
-                      <PickRow
-                        value={t.imageSize}
-                        options={[
-                          { v: "auto", label: "อัตโนมัติ (1 รูป = เต็มกว้าง)" },
-                          { v: "sm", label: "เล็ก (3 รูป/แถว)" },
-                          { v: "md", label: "กลาง (2 รูป/แถว)" },
-                          { v: "lg", label: "ใหญ่ (เต็มความกว้าง)" },
-                        ]}
-                        onPick={(v) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, imageSize: v } : x)) })}
-                      />
-                      <span className="font-semibold text-slate-500">จัดวาง:</span>
-                      <PickRow
-                        value={t.imageAlign}
-                        options={[
-                          { v: "left", label: "⬅ ชิดซ้าย" },
-                          { v: "center", label: "⬌ กึ่งกลาง" },
-                          { v: "right", label: "➡ ชิดขวา" },
-                        ]}
-                        onPick={(v) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, imageAlign: v } : x)) })}
-                      />
+                    <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+                      {/* ป้าย+ตัวเลือกจับกลุ่มเป็นก้อนเดียว — ตัดบรรทัดทีเดียวทั้งกลุ่ม ไม่ให้ป้ายค้างอยู่ท้ายบรรทัดก่อน */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-slate-500">ตำแหน่งในหน้าสินค้า:</span>
+                        <PickRow
+                          value={t.imagePos}
+                          options={[
+                            { v: "bottom", label: "รูปอยู่ใต้ข้อความ" },
+                            { v: "top", label: "รูปอยู่บนข้อความ" },
+                          ]}
+                          onPick={(v) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, imagePos: v } : x)) })}
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-slate-500">ขนาด:</span>
+                        {/* รูปเดียวหน้าสินค้าจะเต็มความกว้างเสมอ → ไฮไลต์ "ใหญ่" ให้ตรงของจริง และปิด เล็ก/กลาง ที่ไม่มีผล */}
+                        {(() => {
+                          const single = t.images.length === 1;
+                          const singleHint = "มีรูปเดียว หน้าสินค้าแสดงเต็มความกว้างเสมอ — ขนาดนี้ใช้ตอนมีหลายรูปเรียงเป็นคอลัมน์";
+                          return (
+                            <PickRow
+                              value={single ? "lg" : t.imageSize}
+                              options={[
+                                { v: "auto", label: "อัตโนมัติ (1 รูป = เต็มกว้าง)", disabled: single, title: single ? singleHint : undefined },
+                                { v: "sm", label: "เล็ก (3 รูป/แถว)", disabled: single, title: single ? singleHint : undefined },
+                                { v: "md", label: "กลาง (2 รูป/แถว)", disabled: single, title: single ? singleHint : undefined },
+                                { v: "lg", label: "ใหญ่ (เต็มความกว้าง)" },
+                              ]}
+                              onPick={(v) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, imageSize: v } : x)) })}
+                            />
+                          );
+                        })()}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-slate-500">จัดวาง:</span>
+                        <PickRow
+                          value={t.imageAlign}
+                          options={[
+                            { v: "left", label: "⬅ ชิดซ้าย" },
+                            { v: "center", label: "⬌ กึ่งกลาง" },
+                            { v: "right", label: "➡ ชิดขวา" },
+                          ]}
+                          onPick={(v) => patch({ tabs: draft.tabs.map((x, j) => (j === i ? { ...x, imageAlign: v } : x)) })}
+                        />
+                      </div>
                     </div>
                   )}
                 </>
