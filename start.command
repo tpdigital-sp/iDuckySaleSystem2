@@ -1,7 +1,7 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────
 # iDucky Prints Studio — ดับเบิลคลิกเพื่อเปิดเว็บอัตโนมัติ
-# สตาร์ท dev server (พอร์ต 3001) แล้วเปิดเบราว์เซอร์ให้เอง
+# สตาร์ท dev server (พอร์ต 3005 · เปลี่ยนได้ด้วย PORT=xxxx ./start.command) แล้วเปิดเบราว์เซอร์ให้เอง
 # ปิดเซิร์ฟเวอร์: กด Ctrl+C หรือปิดหน้าต่าง Terminal นี้
 # ─────────────────────────────────────────────────────────────
 
@@ -12,7 +12,7 @@ cd "$(dirname "$0")" || exit 1
 NODE_BIN=$(ls -d "$HOME"/.local/node-*/bin 2>/dev/null | head -1)
 [ -n "$NODE_BIN" ] && export PATH="$NODE_BIN:$PATH"
 
-PORT=3001
+PORT="${PORT:-3005}"
 URL="http://localhost:$PORT"
 
 echo "🦆 iDucky Prints Studio"
@@ -40,5 +40,5 @@ echo "⏳ กำลังสตาร์ทเซิร์ฟเวอร์ท�
 echo "   (เบราว์เซอร์จะเปิดเองเมื่อพร้อม · ปิดหน้าต่างนี้เพื่อหยุด)"
 echo "────────────────────────────────"
 
-# สตาร์ท Next.js dev server ที่พอร์ต 3001 (ค้างไว้ให้เห็น log)
+# สตาร์ท Next.js dev server ที่พอร์ตที่กำหนด (ค้างไว้ให้เห็น log)
 npm run dev -- --port "$PORT"
