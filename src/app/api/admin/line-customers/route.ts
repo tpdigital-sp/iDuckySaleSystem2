@@ -47,23 +47,36 @@ export async function GET(req: Request) {
         out.push({ userId: d.id, name: (d.get("displayName") as string) || "(ไม่มีชื่อ)", picture: d.get("pictureUrl") as string });
     } else {
       const lower = q.toLowerCase();
-      const snap = await db
-        .collection(CHAT_COLLECTION)
-        .orderBy("nameLower")
-        .startAt(lower)
-        .endAt(lower + "\uf8ff") // \uf8ff = อักขระสูงสุด → ได้ทุกชื่อที่ "ขึ้นต้นด้วย" คำค้น
-        .limit(LIMIT)
-        .get();
-      snap.forEach((d) => {
+      // 1) ขึ้นต้นด้วยคำค้น — ใช้ดัชนีของ Firestore เร็ว
+      const pre = await db.collection(CHAT_COLLECTION).orderBy("nameLower").startAt(lower).endAt(lower + "\uf8ff").limit(LIMIT).get();
+      const seen = new Set<string>();
+      const push = (d: FirebaseFirestore.QueryDocumentSnapshot) => {
+        const id = (d.get("userId") as string) || d.id;
+        if (seen.has(id)) return;
+        seen.add(id);
         const ls = d.get("lastSeen") as { _seconds?: number; toDate?: () => Date } | undefined;
         const at = ls?.toDate ? ls.toDate().toISOString() : ls?._seconds ? new Date(ls._seconds * 1000).toISOString() : undefined;
-        out.push({
-          userId: (d.get("userId") as string) || d.id,
-          name: (d.get("displayName") as string) || "(ไม่มีชื่อ)",
-          picture: d.get("pictureUrl") as string,
-          lastSeen: at,
-        });
-      });
+        out.push({ userId: id, name: (d.get("displayName") as string) || "(ไม่มีชื่อ)", picture: d.get("pictureUrl") as string, lastSeen: at });
+      };
+      pre.forEach(push);
+      // 2) ยังไม่ครบ → หา "มีคำค้นอยู่ตรงไหนก็ได้ในชื่อ" (อีโมจิ/ชื่อเล่นมักอยู่ท้ายชื่อ)
+      //    Firestore ทำ contains ไม่ได้ → สแกนแค่ 2 ฟิลด์เบา ๆ ในหน่วยความจำ แล้วเรียงตามคุยล่าสุด
+      if (out.length < LIMIT) {
+        const all = await db.collection(CHAT_COLLECTION).select("userId", "displayName", "pictureUrl", "nameLower", "lastSeen").get();
+        const rest = all.docs
+          .filter((d) => {
+            const n = ((d.get("nameLower") as string) || (d.get("displayName") as string) || "").toLowerCase();
+            const id = (d.get("userId") as string) || d.id;
+            return !seen.has(id) && n.includes(lower);
+          })
+          .sort((a, b) => {
+            const ta = (a.get("lastSeen") as { _seconds?: number } | undefined)?._seconds ?? 0;
+            const tb = (b.get("lastSeen") as { _seconds?: number } | undefined)?._seconds ?? 0;
+            return tb - ta;
+          })
+          .slice(0, LIMIT - out.length);
+        rest.forEach(push);
+      }
     }
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

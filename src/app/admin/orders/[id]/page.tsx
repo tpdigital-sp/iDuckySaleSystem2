@@ -2839,6 +2839,8 @@ export default function AdminOrderDetailPage() {
                 onSave={(url) => {
                   const next = { ...order, lineChatUrl: url || undefined };
                   setOrder(next);
+                  // อัปเดตสำเนาในลิสต์รวมด้วย — ไม่งั้น lineChatOf ไป "จำ" ลิงก์จากตัวเก่าของใบนี้เอง ลบแล้วก็เด้งกลับ
+                  setAllOrders((cur) => cur.map((o) => (o.id === next.id ? next : o)));
                   if (!demo) void saveOrderAdmin(next);
                 }}
                 onBound={(next) => {
@@ -3991,6 +3993,7 @@ function LineChatBox({
     if (!input) return;
     setHits([]);
     setPicking(false);
+    setPingCopied(null);
     if (demo) {
       setMsg("⚠️ โหมดตัวอย่างบันทึกไม่ได้");
       return;
@@ -4293,8 +4296,8 @@ function LineChatBox({
   if (!mayEdit) return null;
   return (
     <div className="mt-2 rounded-xl bg-slate-50 p-2.5 ring-1 ring-dashed ring-slate-300">
-      <div className="flex items-center gap-2">
-        <p className="min-w-0 flex-1 text-[11px] font-semibold text-slate-500">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="min-w-[10rem] flex-1 text-[11px] font-semibold text-slate-500">
           {changing ? "🔄 เปลี่ยน LINE ของลูกค้า — ค้นแล้วเลือกคนใหม่" : "⚪ ยังไม่ผูก LINE ของลูกค้า (ไม่บังคับ — ผูกแล้วระบบแจ้งสถานะให้เอง)"}
         </p>
         {/* มีลิงก์ห้องแชทเก็บไว้แล้ว (แต่ยังไม่ผูก userId) — โชว์ให้เห็นว่าไม่ได้หายไปไหน */}
@@ -4303,24 +4306,33 @@ function LineChatBox({
             <button
               type="button"
               onClick={() => void openChatWithPing(chat.url)}
-              className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#06C755] px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-[#05b34c]"
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 transition hover:bg-slate-100"
               title="เปิดห้องแชท + ก๊อปข้อความทักให้ — วางส่ง 1 ครั้ง ห้องจะเด้งขึ้นบนสุด แล้วกลับมาเลือกจากรายชื่อได้"
             >
               💬 เปิดแชท
             </button>
-            {chat.source === "self" && mayEdit && (
-              <button
-                type="button"
-                onClick={() => {
-                  onSave("");
-                  setMsg("ลบลิงก์ห้องแชทแล้ว");
-                }}
-                className="shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-rose-600"
-                title="ลบลิงก์ห้องแชท"
-              >
-                ✕
-              </button>
-            )}
+            {mayEdit &&
+              (chat.source === "self" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSave("");
+                    setPingCopied(null);
+                    setMsg("ลบลิงก์ห้องแชทแล้ว");
+                  }}
+                  className="shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-rose-600"
+                  title="ลบลิงก์ห้องแชท"
+                >
+                  ✕
+                </button>
+              ) : (
+                <span
+                  className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"
+                  title={`ลิงก์นี้จำมาจากออเดอร์ ${chat.from} ของลูกค้าคนเดียวกัน — ไปลบที่ใบนั้น`}
+                >
+                  จำจาก {chat.from}
+                </span>
+              ))}
           </>
         )}
         {changing && (
