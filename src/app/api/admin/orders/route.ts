@@ -98,6 +98,17 @@ export async function GET(req: Request) {
         if (url) o.slipUrl = url; // ชั่วคราว ใช้แสดงผลเท่านั้น ไม่ persist
       });
     }
+    // สลิป "งวดหลัง" ของออเดอร์มัดจำ — เก็บคนละช่อง ต้องเซ็นแยก
+    const withBalance = orders.filter((o) => o.deposit?.balanceSlipPath);
+    if (withBalance.length) {
+      const signed = await Promise.all(
+        withBalance.map((o) => sb.storage.from("payment-slips-private").createSignedUrl(o.deposit!.balanceSlipPath!, 3600))
+      );
+      withBalance.forEach((o, i) => {
+        const url = signed[i].data?.signedUrl;
+        if (url) o.deposit = { ...o.deposit!, balanceSlipUrl: url };
+      });
+    }
   }
   return NextResponse.json({ orders });
 }
@@ -198,6 +209,7 @@ export async function PATCH(req: Request) {
 
   // อย่าเก็บ signed URL ชั่วคราวลงฐาน — สลิปที่มี slipPath ต้องเซ็นใหม่ทุกครั้งที่ดึง
   if (toSave.slipPath) toSave = { ...toSave, slipUrl: undefined };
+  if (toSave.deposit?.balanceSlipUrl) toSave = { ...toSave, deposit: { ...toSave.deposit, balanceSlipUrl: undefined } };
 
   const { error } = await sb.from("orders").update({ data: toSave }).eq("id", toSave.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

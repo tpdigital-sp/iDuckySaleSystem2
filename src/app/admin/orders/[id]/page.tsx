@@ -440,6 +440,12 @@ export default function AdminOrderDetailPage() {
     setRedoBusy(false);
   }
   const [printMenu, setPrintMenu] = useState(false);
+  const [slipUploading, setSlipUploading] = useState(false);
+  const adminSlipInput = useRef<HTMLInputElement | null>(null);
+  /** สถานะที่รอเปลี่ยน "หลังแนบสลิปเสร็จ" — ตั้งตอนกด "แนบสลิปตอนนี้" ในกล่องเตือน */
+  const pendingStatus = useRef<OrderStatus | null>(null);
+  /** สลิปที่กำลังจะแนบเป็นงวดไหน (ออเดอร์มัดจำมีสองงวด เก็บคนละช่อง) */
+  const slipPhase = useRef<"first" | "balance">("first");
   const [artDropIdx, setArtDropIdx] = useState<number | null>(null);
   const [proofDropIdx, setProofDropIdx] = useState<number | null>(null);
   const [replaceDrop, setReplaceDrop] = useState<string | null>(null); // "itemIndex:proofIndex" ที่กำลังลากไฟล์ทับเพื่อเปลี่ยนรูป
@@ -519,19 +525,68 @@ export default function AdminOrderDetailPage() {
     void fetchShopPayment().then((p) => setShipMethods(shippingOf(p)));
   }, []);
 
+  /** เปิดหน้าต่างเลือกไฟล์สลิป (แอดมินแนบแทนลูกค้า) — งวดแรก หรืองวดหลังของออเดอร์มัดจำ */
+  function pickAdminSlip(phase: "first" | "balance" = "first") {
+    slipPhase.current = phase;
+    adminSlipInput.current?.click();
+  }
+
+  /** อัปโหลดสลิปที่แอดมินเลือก → ผูกกับออเดอร์ แล้วเปลี่ยนสถานะที่ค้างไว้ (ถ้ามี) ต่อให้เลย */
+  async function uploadAdminSlip(file: File) {
+    if (!order) return;
+    if (demo) {
+      setErr("โหมดตัวอย่างแนบสลิปไม่ได้");
+      pendingStatus.current = null;
+      return;
+    }
+    setErr("");
+    setSlipUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("orderId", order.id);
+      fd.append("file", file);
+      fd.append("phase", slipPhase.current);
+      const res = await fetch("/api/admin/orders/slip", { method: "POST", body: fd });
+      const j = (await res.json().catch(() => ({}))) as { order?: Order; error?: string };
+      if (!res.ok || !j.order) {
+        setErr(j.error ?? "อัปโหลดสลิปไม่สำเร็จ");
+        return;
+      }
+      let next = j.order;
+      const want = pendingStatus.current;
+      if (want && next.status !== want) {
+        next = withLog({ ...next, status: want }, actor, "เปลี่ยนสถานะ", `${next.status} → ${want} · หลังแนบสลิป`);
+        void saveOrderAdmin(next);
+      }
+      setOrder(next);
+    } finally {
+      pendingStatus.current = null;
+      slipPhase.current = "first";
+      setSlipUploading(false);
+    }
+  }
+
   async function changeStatus(status: OrderStatus) {
     if (!order || order.status === status) return;
-    // "ชำระแล้ว" ต้องมีสลิปเป็นหลักฐานเสมอ — ไม่มีสลิปต้องยืนยันเป็นรายกรณี แล้วลง log ว่าใครยืนยัน
+    // "ชำระแล้ว" ต้องมีสลิปเป็นหลักฐานเสมอ — ไม่มีสลิปให้แนบตรงนั้นเลย หรือยืนยันเองแล้วลง log
     const noSlip = status === "ชำระแล้ว" && !order.slipPath && !order.slipUrl;
     if (noSlip) {
       const ok = await askConfirm({
         icon: "🧾",
         title: "ออเดอร์นี้ยังไม่มีสลิปแนบ",
         detail:
-          'ปกติต้องมีสลิปเป็นหลักฐานก่อนเปลี่ยนเป็น "ชำระแล้ว" — ถ้ารับเงินทางอื่น (เงินสด/โอนช่องทางอื่น) กดยืนยันได้ ระบบจะบันทึกในประวัติว่าใครยืนยันทั้งที่ไม่มีสลิป',
-        confirmLabel: "ยืนยันว่าได้รับเงินจริง",
+          'ต้องมีสลิปเป็นหลักฐานก่อนเปลี่ยนเป็น "ชำระแล้ว" — ถ้าลูกค้าส่งสลิปมาทางแชท/ไลน์ ให้แนบตรงนี้ได้เลย\nถ้ารับเงินทางอื่นที่ไม่มีสลิปจริง ๆ (เงินสด) กดยืนยันได้ ระบบจะบันทึกในประวัติว่าใครยืนยันทั้งที่ไม่มีสลิป',
+        confirmLabel: "ไม่มีสลิป — ยืนยันเอง",
+        altLabel: "📎 แนบสลิปตอนนี้",
         danger: true,
       });
+      // เลือก "แนบสลิป" → จำสถานะที่จะเปลี่ยนไว้ แล้วไปต่อหลังอัปโหลดเสร็จ
+      if (ok === "alt") {
+        pendingStatus.current = status;
+        setOrder((cur) => (cur ? { ...cur } : cur));
+        pickAdminSlip();
+        return;
+      }
       // ยกเลิก → สร้าง object ใหม่ให้ React รีเรนเดอร์ ไม่งั้น <select> ค้างค่าที่เพิ่งเลือกไป
       if (!ok) {
         setOrder((cur) => (cur ? { ...cur } : cur));
@@ -741,7 +796,7 @@ export default function AdminOrderDetailPage() {
         icon: "💰",
         title: `ยืนยันว่าได้รับมัดจำ ${formatPrice(order.deposit.amount)} แล้ว?`,
         detail: noSlip
-          ? "⚠️ ออเดอร์นี้ยังไม่มีสลิปแนบ — ยืนยันแล้วระบบจะบันทึกในประวัติว่าใครยืนยันทั้งที่ไม่มีสลิป"
+          ? '⚠️ ออเดอร์นี้ยังไม่มีสลิปแนบ — ถ้ามีสลิป ให้กดยกเลิกแล้วแนบที่ช่อง "🧾 หลักฐานการโอน" ก่อน\nยืนยันเลยก็ได้ ระบบจะบันทึกในประวัติว่าใครยืนยันทั้งที่ไม่มีสลิป'
           : "ระบบจะบันทึกว่าเก็บงวดแรกแล้ว เริ่มงานได้เลย",
         confirmLabel: "ยืนยันรับมัดจำ",
         danger: noSlip,
@@ -768,14 +823,30 @@ export default function AdminOrderDetailPage() {
   async function confirmDepositSettled() {
     if (!order?.deposit || !order.deposit.firstPaidAt || order.deposit.settledAt) return;
     const bal = Math.max(0, orderTotal(order) - (order.paidTotal ?? order.deposit.amount));
-    if (!(await askConfirm({ icon: "💰", title: `ยืนยันว่าได้รับยอดคงเหลือ ${formatPrice(bal)} แล้ว?`, detail: "ครบ 100% แล้วจะปลดล็อกการพิมพ์ใบงาน/ใบเสร็จ และยิงเลขพัสดุได้", confirmLabel: "ยืนยันรับครบแล้ว" }))) return;
+    // งวดหลังก็ต้องมีสลิปเป็นหลักฐานเหมือนงวดแรก — ไม่มีก็แนบตรงนี้ได้เลย
+    const noSlip = !order.deposit.balanceSlipPath && !order.deposit.balanceSlipUrl;
+    const ok = await askConfirm({
+      icon: "💰",
+      title: `ยืนยันว่าได้รับยอดคงเหลือ ${formatPrice(bal)} แล้ว?`,
+      detail: noSlip
+        ? "⚠️ ยังไม่มีสลิปงวดหลังในออเดอร์นี้ — ถ้าลูกค้าส่งสลิปมาทางแชท/ไลน์ ให้แนบตรงนี้ได้เลย\nครบ 100% แล้วจะปลดล็อกการพิมพ์ใบงาน/ใบเสร็จ และยิงเลขพัสดุได้"
+        : "ครบ 100% แล้วจะปลดล็อกการพิมพ์ใบงาน/ใบเสร็จ และยิงเลขพัสดุได้",
+      confirmLabel: noSlip ? "ไม่มีสลิป — ยืนยันเอง" : "ยืนยันรับครบแล้ว",
+      altLabel: noSlip ? "📎 แนบสลิปงวดหลัง" : undefined,
+      danger: noSlip,
+    });
+    if (ok === "alt") {
+      pickAdminSlip("balance");
+      return;
+    }
+    if (!ok) return;
     const now = new Date().toISOString();
     applyOrder(
       withLog(
         { ...order, deposit: { ...order.deposit, settledAt: now }, paidTotal: orderTotal(order) },
         actor,
         "รับยอดคงเหลือครบแล้ว",
-        `ยอด ${bal} บาท — จ่ายครบ 100%`
+        `ยอด ${bal} บาท — จ่ายครบ 100%${noSlip ? " · ไม่มีสลิปงวดหลังแนบ" : ""}`
       )
     );
   }
@@ -2601,6 +2672,43 @@ export default function AdminOrderDetailPage() {
                       </button>
                     </div>
                   )}
+                  {/* สลิปงวดหลัง — เก็บคนละใบกับสลิปมัดจำ (ลูกค้าแนบเอง หรือแอดมินแนบแทน) */}
+                  {seesMoney && order.deposit.firstPaidAt && (
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      {order.deposit.balanceSlipUrl ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setLightbox({
+                                src: order.deposit!.balanceSlipUrl!,
+                                alt: "สลิปยอดคงเหลือ",
+                                caption: `${order.id} · งวดหลัง`,
+                              })
+                            }
+                            aria-label="ขยายดูสลิปงวดหลัง"
+                            className="h-9 w-9 shrink-0 cursor-zoom-in overflow-hidden rounded-md border border-violet-200"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={order.deposit.balanceSlipUrl} alt="สลิปยอดคงเหลือ" className="h-full w-full object-cover" />
+                          </button>
+                          <span className="text-[10px] font-semibold text-violet-600">🧾 มีสลิปงวดหลังแล้ว</span>
+                        </>
+                      ) : (
+                        mayEdit &&
+                        !order.deposit.settledAt && (
+                          <button
+                            type="button"
+                            onClick={() => pickAdminSlip("balance")}
+                            disabled={slipUploading}
+                            className="w-full rounded-lg border border-violet-200 bg-white py-1.5 text-[11px] font-bold text-violet-600 transition hover:bg-violet-50 disabled:opacity-50"
+                          >
+                            {slipUploading ? "กำลังอัปโหลด…" : "📎 แนบสลิปงวดหลัง (แทนลูกค้า)"}
+                          </button>
+                        )
+                      )}
+                    </div>
+                  )}
                   {mayEdit && order.deposit.firstPaidAt && !order.deposit.settledAt && (
                     <button
                       type="button"
@@ -2869,6 +2977,19 @@ export default function AdminOrderDetailPage() {
             </div>
           </div>
 
+
+          {/* ยังไม่มีสลิป — แอดมินแนบแทนลูกค้าได้ (ลูกค้าส่งมาทางแชท/ไลน์) */}
+          {!order.slipUrl && !order.slipPath && seesMoney && mayEdit && order.status !== "ยกเลิก" && (
+            <div>
+              <GH t="green">🧾 หลักฐานการโอน</GH>
+              <div className={`mt-2 flex flex-wrap items-center gap-2 ${soft("green")}`}>
+                <p className="min-w-0 flex-1 text-sm text-slate-500">ยังไม่มีสลิปในออเดอร์นี้</p>
+                <button type="button" onClick={() => pickAdminSlip("first")} disabled={slipUploading} className={HBTN}>
+                  {slipUploading ? "กำลังอัปโหลด…" : "📎 แนบสลิปแทนลูกค้า"}
+                </button>
+              </div>
+            </div>
+          )}
 
           {order.slipUrl && seesMoney && (
             <div>
@@ -3159,6 +3280,19 @@ export default function AdminOrderDetailPage() {
         </div>
       )}
 
+      {/* ช่องเลือกไฟล์สลิปของแอดมิน — ซ่อนไว้ เรียกจากปุ่ม/กล่องเตือน */}
+      <input
+        ref={adminSlipInput}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) void uploadAdminSlip(f);
+          else pendingStatus.current = null;
+        }}
+      />
       {confirmDialog}
       {lightbox && (
         <ImageLightbox

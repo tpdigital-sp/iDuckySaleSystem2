@@ -84,9 +84,10 @@ export async function POST(req: Request) {
 
   let updated: Order = {
     ...order,
-    slipPath: path, // เก็บ path — ไม่เก็บ URL สาธารณะ
-    slipUrl: undefined, // ล้างของเก่า (ถ้ามี) กันชี้ไปไฟล์ public เดิม
-    paidReportedAt: now,
+    // งวดหลังของออเดอร์มัดจำเก็บแยกช่อง — ไม่งั้นสลิปมัดจำงวดแรกถูกทับหาย
+    ...(balancePhase
+      ? { deposit: { ...order.deposit!, balanceSlipPath: path, balanceReportedAt: now } }
+      : { slipPath: path, slipUrl: undefined, paidReportedAt: now }),
     ...(verify.status === "pass" || verify.status === "fail"
       ? { slipVerify: { status: verify.status, detail: verify.detail, amount: verify.amount, transRef: verify.transRef, at: now } }
       : { slipVerify: undefined }),
@@ -94,7 +95,8 @@ export async function POST(req: Request) {
   if (balancePhase) {
     // งวดหลังของออเดอร์มัดจำ — สถานะงานเดินต่อตามเดิม ไม่ถอยกลับไปรอตรวจสอบ
     if (verify.status === "pass") {
-      updated = { ...updated, paidTotal: orderTotal(order), deposit: { ...order.deposit!, settledAt: now } };
+      // ต่อจาก updated (ไม่ใช่ order) เพราะเพิ่งใส่ balanceSlipPath ไปในนั้น
+      updated = { ...updated, paidTotal: orderTotal(order), deposit: { ...updated.deposit!, settledAt: now } };
       updated = withLog(updated, "SlipOK", "รับยอดคงเหลือครบแล้ว (อัตโนมัติ)", `ยอด ${verify.amount ?? expected} บาท${verify.transRef ? ` · อ้างอิง ${verify.transRef}` : ""}`);
     } else {
       updated = withLog(updated, "SlipOK", "สลิปยอดคงเหลือรอแอดมินตรวจ", verify.detail ?? "ตรวจอัตโนมัติไม่ได้");

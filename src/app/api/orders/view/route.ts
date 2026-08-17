@@ -39,6 +39,11 @@ export async function GET(req: Request) {
     const { data: signed } = await sb.storage.from("payment-slips-private").createSignedUrl(safe.slipPath, 3600);
     if (signed?.signedUrl) safe.slipUrl = signed.signedUrl;
   }
+  // ออเดอร์มัดจำมีสลิปงวดหลังอีกใบ — เซ็นให้ลูกค้าเห็นของตัวเองเหมือนกัน
+  if (safe.deposit?.balanceSlipPath) {
+    const { data: signed } = await sb.storage.from("payment-slips-private").createSignedUrl(safe.deposit.balanceSlipPath, 3600);
+    if (signed?.signedUrl) safe.deposit = { ...safe.deposit, balanceSlipUrl: signed.signedUrl };
+  }
 
   return NextResponse.json({ ok: true, order: safe });
 }
