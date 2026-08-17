@@ -1090,13 +1090,24 @@ function ItemModal({
           </label>
         </div>
         <div className="grid grid-cols-2 gap-3">
+          {/* เลือกจากที่มีอยู่ได้ แต่พิมพ์ใหม่ก็ยังได้ — กันหมวดแตกเพราะสะกดต่างกันนิดเดียว */}
           <label className="block">
             <span className={fieldLabel}>ตระกูล</span>
-            <input value={family} onChange={(e) => setFamily(e.target.value)} placeholder="สีไหมเย็บ" className={inputCls} />
+            <input value={family} onChange={(e) => setFamily(e.target.value)} list="stock-families" placeholder="สีไหมเย็บ" className={inputCls} />
+            <datalist id="stock-families">
+              {allFams.map((f) => (
+                <option key={f} value={f} />
+              ))}
+            </datalist>
           </label>
           <label className="block">
             <span className={fieldLabel}>หมวด</span>
-            <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="ด้าย/ไหม" className={inputCls} />
+            <input value={category} onChange={(e) => setCategory(e.target.value)} list="stock-categories" placeholder="ด้าย/ไหม" className={inputCls} />
+            <datalist id="stock-categories">
+              {allCats.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
           </label>
         </div>
         <div className="grid grid-cols-2 gap-3">
