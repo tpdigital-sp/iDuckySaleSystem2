@@ -1251,12 +1251,19 @@ export default function AdminOrderDetailPage() {
               {demo && <span className="ml-1">· ตัวอย่าง</span>}
             </p>
           </div>
-          <div className="ml-auto flex items-start gap-5">
-            <div>
-              <div className={LBL}>สถานะตอนนี้</div>
+          {/* ขวาบน = ยอดรวมก่อน แล้วสถานะอยู่ใต้ยอด (เรียงลงเป็นแถวเดียวชิดขวา) */}
+          <div className="ml-auto flex flex-col items-end gap-2">
+            {seesMoney && (
+              <div className="text-right">
+                <div className={LBL}>ยอดรวม</div>
+                <div className="mt-1 text-2xl font-bold leading-none tracking-tight text-slate-900">{formatPrice(orderTotal(order))}</div>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <span className={LBL}>สถานะตอนนี้</span>
               {/* ป้ายสถานะ = ตัวเลือกในตัว — กดที่ป้ายแล้วเลือกสถานะใหม่ได้เลย ไม่ต้องมีปุ่มแยก */}
               {mayEdit ? (
-                <div className="relative mt-1 inline-block">
+                <div className="relative">
                   <select
                     value={order.status}
                     onChange={(e) => changeStatus(e.target.value as OrderStatus)}
@@ -1283,17 +1290,11 @@ export default function AdminOrderDetailPage() {
                   <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] opacity-70">▼</span>
                 </div>
               ) : (
-                <span className={`mt-1 inline-flex rounded-xl px-3 py-1.5 text-sm font-bold ring-1 ${STATUS_STYLES[order.status]}`}>
+                <span className={`inline-flex rounded-xl px-3 py-1.5 text-sm font-bold ring-1 ${STATUS_STYLES[order.status]}`}>
                   {order.status}
                 </span>
               )}
             </div>
-            {seesMoney && (
-              <div className="text-right">
-                <div className={LBL}>ยอดรวม</div>
-                <div className="mt-1.5 text-2xl font-bold leading-none tracking-tight text-slate-900">{formatPrice(orderTotal(order))}</div>
-              </div>
-            )}
           </div>
         </div>
 
