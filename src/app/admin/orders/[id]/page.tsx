@@ -4002,8 +4002,14 @@ function LineChatBox({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ orderId: order.id }),
       });
-      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; reason?: string; error?: string };
-      setMsg(j.ok ? "✅ ส่งข้อความทดสอบถึงลูกค้าแล้ว" : `❌ ส่งไม่ได้ — ${j.reason ?? j.error ?? "ไม่ทราบสาเหตุ"}`);
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; reason?: string; error?: string; level?: string };
+      const warn =
+        j.level === "off"
+          ? " (แต่ลูกค้าปิดรับแจ้งเตือน — ระบบจะไม่ส่งอัตโนมัติให้)"
+          : j.level === "key"
+            ? " (ลูกค้าเลือกรับเฉพาะเรื่องสำคัญ — ข่าวคืบหน้าจะไม่ถูกส่ง)"
+            : "";
+      setMsg(j.ok ? `✅ ส่งข้อความทดสอบถึงลูกค้าแล้ว${warn}` : `❌ ส่งไม่ได้ — ${j.reason ?? j.error ?? "ไม่ทราบสาเหตุ"}`);
     } catch {
       setMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
     } finally {
@@ -4027,6 +4033,16 @@ function LineChatBox({
             <img src={line.picture} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />
           )}
           <span className="text-[11px] font-bold text-[#06C755]">🟢 LINE: {line.name ?? line.id.slice(0, 10) + "…"}</span>
+          {order.notifyLevel && order.notifyLevel !== "all" && (
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${
+                order.notifyLevel === "off" ? "bg-rose-50 text-rose-600 ring-rose-200" : "bg-slate-100 text-slate-600 ring-slate-200"
+              }`}
+              title="ลูกค้าตั้งค่าเองในหน้าออเดอร์ของเขา"
+            >
+              {order.notifyLevel === "off" ? "🔕 ลูกค้าปิดรับแจ้งเตือน" : "🔔 รับเฉพาะเรื่องสำคัญ"}
+            </span>
+          )}
           {line.source === "prev" && (
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500" title={`ลูกค้าคนเดียวกับออเดอร์ ${line.from}`}>
               จำจาก {line.from}

@@ -155,6 +155,8 @@ export default function CustomerOrderPage() {
   const [rateErr, setRateErr] = useState("");
 
   const [slipBusy, setSlipBusy] = useState(false);
+  const [prefBusy, setPrefBusy] = useState(false);
+  const [prefMsg, setPrefMsg] = useState("");
   const [slipErr, setSlipErr] = useState("");
   const [slipDrag, setSlipDrag] = useState(false);
   // กันวางไฟล์พลาดนอกกล่องแล้วเบราว์เซอร์เปิดรูปแทนหน้าเว็บ (สาเหตุ "โยนแล้วไม่ได้")
@@ -610,6 +612,62 @@ export default function CustomerOrderPage() {
             </Link>
           </div>
         </div>
+
+        {/* ── ลูกค้าเลือกเองว่าอยากให้เราอัปเดตแค่ไหน (ส่งทาง LINE) ── */}
+        {!cancelled && (
+          <div className="mt-4 rounded-2xl bg-white/70 p-3 ring-1 ring-stone-200">
+            <p className="text-xs font-bold text-stone-600">🔔 แจ้งความคืบหน้าทาง LINE</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {(
+                [
+                  ["all", "ทุกขั้นตอน"],
+                  ["key", "เฉพาะเรื่องสำคัญ"],
+                  ["off", "ไม่รับแจ้งเตือน"],
+                ] as const
+              ).map(([lv, label]) => {
+                const on = (order.notifyLevel ?? "all") === lv;
+                return (
+                  <button
+                    key={lv}
+                    type="button"
+                    disabled={prefBusy}
+                    onClick={async () => {
+                      setPrefBusy(true);
+                      setPrefMsg("");
+                      try {
+                        const res = await fetch("/api/orders/notify-pref", {
+                          method: "POST",
+                          headers: { "content-type": "application/json" },
+                          body: JSON.stringify({ orderId, key: orderKey, level: lv }),
+                        });
+                        const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+                        if (j.ok) {
+                          setPrefMsg("บันทึกแล้ว ✓");
+                          void load(orderKey);
+                        } else setPrefMsg(j.error ?? "บันทึกไม่สำเร็จ");
+                      } catch {
+                        setPrefMsg("บันทึกไม่สำเร็จ");
+                      } finally {
+                        setPrefBusy(false);
+                      }
+                    }}
+                    className={`rounded-full px-3 py-1.5 text-xs font-bold transition disabled:opacity-50 ${
+                      on ? "bg-[#06C755] text-white shadow-sm" : "border border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
+                    }`}
+                  >
+                    {on ? "✓ " : ""}
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-[11px] leading-snug text-stone-400">
+              “เฉพาะเรื่องสำคัญ” = แจ้งตอนยืนยันการชำระเงิน จัดส่ง และยกเลิกเท่านั้น ·
+              เรื่องยอดค้างชำระจะแจ้งเสมอ เว้นแต่เลือก “ไม่รับแจ้งเตือน”
+              {prefMsg && <span className="ml-1 font-bold text-stone-600">{prefMsg}</span>}
+            </p>
+          </div>
+        )}
 
         {/* แถบขั้นตอน */}
         {cancelled ? (

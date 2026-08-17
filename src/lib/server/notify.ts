@@ -56,25 +56,48 @@ export async function fetchLineProfile(userId: string): Promise<{ name: string; 
 }
 
 /** หา LINE userId ของลูกค้าออเดอร์นี้ (ล็อกอินก่อน → ไม่มีค่อยใช้ลิงก์แชท) */
-/** userId ที่เคยผูกไว้ในออเดอร์ใบก่อนของลูกค้าคนเดียวกัน (จับคู่จาก customerId → เบอร์ → อีเมล) */
-async function inheritedLineUserId(sb: SupabaseClient, order: Order): Promise<string | null> {
+/**
+ * ค่าที่ "จำ" จากออเดอร์ใบก่อนของลูกค้าคนเดียวกัน — userId ที่ผูกไว้ + ระดับแจ้งเตือนที่ลูกค้าเลือก
+ * (จับคู่จาก customerId → เบอร์ → อีเมล) ลูกค้าเก่าจึงไม่ต้องตั้งค่าใหม่ทุกใบ
+ */
+async function inheritedFromPastOrders(
+  sb: SupabaseClient,
+  order: Order
+): Promise<{ lineUserId?: string; notifyLevel?: NotifyLevel }> {
+  const out: { lineUserId?: string; notifyLevel?: NotifyLevel } = {};
   try {
     const { data } = await sb.from("orders").select("data").order("created_at", { ascending: false }).limit(400);
     const phone = (order.phone ?? "").replace(/\D/g, "");
     const email = (order.email ?? "").trim().toLowerCase();
     for (const r of data ?? []) {
       const o = r.data as Order;
-      if (o.id === order.id || !o.lineUserId) continue;
+      if (o.id === order.id) continue;
       const same =
         (!!order.customerId && o.customerId === order.customerId) ||
         (phone.length >= 8 && (o.phone ?? "").replace(/\D/g, "") === phone) ||
         (!!email && (o.email ?? "").trim().toLowerCase() === email);
-      if (same) return o.lineUserId;
+      if (!same) continue;
+      if (!out.lineUserId && o.lineUserId) out.lineUserId = o.lineUserId;
+      if (!out.notifyLevel && o.notifyLevel) out.notifyLevel = o.notifyLevel;
+      if (out.lineUserId && out.notifyLevel) break;
     }
   } catch {
     /* หาไม่เจอก็ถือว่าไม่มี */
   }
-  return null;
+  return out;
+}
+
+/** ลูกค้าอยากรับแจ้งเตือนแค่ไหน */
+export type NotifyLevel = "all" | "key" | "off";
+
+/** ข้อความไหน "สำคัญ" (ส่งแม้ลูกค้าเลือกรับเฉพาะเรื่องสำคัญ) */
+export const KEY_STATUSES: OrderStatus[] = ["ชำระแล้ว", "จัดส่งแล้ว", "ยกเลิก"];
+
+/** ระดับแจ้งเตือนที่ใช้จริงกับออเดอร์นี้ (ของใบนี้ → จำจากใบเก่า → ค่าเริ่มต้น all) */
+export async function notifyLevelOf(sb: SupabaseClient, order: Order): Promise<NotifyLevel> {
+  if (order.notifyLevel) return order.notifyLevel;
+  const inh = await inheritedFromPastOrders(sb, order);
+  return inh.notifyLevel ?? "all";
 }
 
 async function lineTargetOf(sb: SupabaseClient, order: Order): Promise<{ id: string; via: "login" | "bound" | "inherited" } | null> {
@@ -90,7 +113,7 @@ async function lineTargetOf(sb: SupabaseClient, order: Order): Promise<{ id: str
   // พนักงานผูก userId ไว้เอง (ยืนยันกับ LINE ตอนบันทึกแล้ว) — ทางหลักของลูกค้า guest
   if (order.lineUserId) return { id: order.lineUserId, via: "bound" };
   // ลูกค้าเก่า: ใบนี้ยังไม่ได้ผูก แต่เคยผูกไว้ในออเดอร์ใบก่อน → ใช้ของเดิมได้เลย ไม่ต้องผูกซ้ำ
-  const inherited = await inheritedLineUserId(sb, order);
+  const inherited = (await inheritedFromPastOrders(sb, order)).lineUserId;
   return inherited ? { id: inherited, via: "inherited" } : null;
 }
 
@@ -137,8 +160,14 @@ export async function notifyCustomerLogged(
   sb: SupabaseClient,
   order: Order,
   msg: string | LineMessage[],
-  what: string
+  what: string,
+  /** "key" = เรื่องสำคัญ ส่งเสมอ (ยกเว้นลูกค้าปิดรับ) · "extra" = ความคืบหน้าทั่วไป */
+  importance: "key" | "extra" = "key"
 ): Promise<NotifyResult> {
+  // เคารพสิ่งที่ลูกค้าเลือกไว้ — ปิดรับ = ไม่ส่งอะไรเลย · รับเฉพาะสำคัญ = ตัดข่าวคืบหน้าออก
+  const level = await notifyLevelOf(sb, order);
+  if (level === "off" || (level === "key" && importance === "extra"))
+    return { ok: false, reason: level === "off" ? "ลูกค้าปิดรับแจ้งเตือน" : "ลูกค้าเลือกรับเฉพาะเรื่องสำคัญ" };
   const r = await notifyCustomer(sb, order, msg);
   // ยังไม่ได้ตั้งค่า LINE = ปัญหาระดับระบบ ไม่ใช่ของออเดอร์ใบนี้ — ไม่ต้องรกประวัติทุกใบ
   if (!r.ok && r.reason?.startsWith("ยังไม่ได้ตั้งค่า LINE")) return r;

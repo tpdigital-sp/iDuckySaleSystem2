@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { currentActor, requirePerm } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
+import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
 import { reportPaidToTP } from "@/lib/server/tp-report";
 import { bumpSoldForOrder, unbumpSoldForOrder } from "@/lib/server/sold";
 import { cutStockForOrder, restoreStockForOrder } from "@/lib/server/stock";
@@ -224,7 +224,14 @@ export async function PATCH(req: Request) {
     const link = orderLink(origin, toSave);
     // แจ้งลูกค้า "ทุกครั้งที่สถานะเปลี่ยน" — ข้อความต่อสถานะอยู่ใน statusMessage()
     if (statusMessage(toSave, link))
-      void notifyCustomerLogged(sb, toSave, statusFlex(toSave, link), `แจ้งสถานะ "${toSave.status}"`);
+      void notifyCustomerLogged(
+        sb,
+        toSave,
+        statusFlex(toSave, link),
+        `แจ้งสถานะ "${toSave.status}"`,
+        // เงิน/จัดส่ง/ยกเลิก = เรื่องสำคัญ ส่งแม้ลูกค้าเลือกรับเฉพาะสำคัญ · นอกนั้นเป็นข่าวคืบหน้า
+        KEY_STATUSES.includes(toSave.status) ? "key" : "extra"
+      );
     // ส่งเข้า msVerify ระบบ Admin — แยกว่าตรวจโดยแอดมิน (SlipOK ผ่านจะถูกส่งจาก slip route ไปแล้ว = idempotent)
     if (toSave.status === "ชำระแล้ว")
       void reportPaidToTP(
