@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useCart } from "@/lib/cart-context";
 import { useCustomer } from "@/lib/customer-context";
+import NotifBell from "@/components/NotifBell";
 import { signOut } from "@/lib/customer-auth";
 import { fetchSiteNav, visibleMenu, visibleMega, DEFAULT_SITE_NAV, type MegaGroup, type NavLink } from "@/lib/home-nav";
 /* eslint-disable @next/next/no-img-element */
@@ -201,6 +202,9 @@ export default function Navbar() {
                 <LineIcon d={ICON.key} size={20} />
               </Link>
             )}
+
+            {/* กระดิ่งแจ้งเตือน (เฉพาะสมาชิก) — ค้างชำระ / แบบรอตรวจ / จัดส่งแล้ว */}
+            <NotifBell />
 
             <Link
               href="/cart"

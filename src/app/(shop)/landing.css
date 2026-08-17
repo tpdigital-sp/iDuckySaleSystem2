@@ -1475,3 +1475,31 @@ main:has(.dl-page) + .dl footer{margin-top:0}
   .dl .acd-menu-meta{display:none}
   .dl .acd-tier,.dl .acd-order,.dl .acd-track{padding:20px 18px}
 }
+
+/* ═══════ กระดิ่งแจ้งเตือนบนแถบเมนู (NotifBell) — ตามต้นแบบ USER PROFILE UPDATE_01 ═══════ */
+.dl .nbell-wrap{position:relative}
+.dl .nbell-btn{overflow:visible}
+.dl .nbell-ico{font-size:1.1rem;line-height:1;display:block;transition:transform .25s cubic-bezier(.34,1.56,.64,1)}
+.dl .nbell-btn.has .nbell-ico{animation:nbellRing 5s ease-in-out 1.5s infinite;transform-origin:50% 8%}
+.dl .nbell-btn:hover .nbell-ico{animation:none;transform:rotate(-12deg) scale(1.08)}
+@keyframes nbellRing{0%,84%,100%{transform:rotate(0)}86%{transform:rotate(-14deg)}89%{transform:rotate(11deg)}92%{transform:rotate(-7deg)}95%{transform:rotate(4deg)}98%{transform:rotate(0)}}
+.dl .nbell-count{position:absolute;top:-3px;right:-3px;background:#F2456B;color:#fff;
+  font-size:.62rem;font-family:var(--display);font-weight:600;min-width:17px;height:17px;border-radius:999px;
+  display:grid;place-items:center;border:2px solid #fff;padding:0 3px;z-index:1;line-height:1}
+.dl .nbell-panel{position:absolute;top:52px;right:0;width:296px;background:linear-gradient(180deg,#fff 0%,#fbfdff 100%);border-radius:var(--r-m);
+  box-shadow:var(--shadow-m),inset 0 -1px 0 rgba(23,58,107,.05);border:1px solid rgba(255,255,255,.9);padding:8px;opacity:0;pointer-events:none;
+  transform:translateY(-8px) scale(.98);transform-origin:top right;
+  transition:opacity .2s ease,transform .22s cubic-bezier(.34,1.56,.64,1);z-index:80}
+.dl .nbell-panel.show{opacity:1;pointer-events:auto;transform:translateY(0) scale(1)}
+.dl .nbell-head{font-family:var(--display);font-size:.86rem;font-weight:500;padding:10px 12px 8px;color:var(--navy)}
+.dl .nbell-row{display:flex;gap:10px;padding:10px 12px;border-radius:12px;transition:.2s;cursor:pointer;align-items:flex-start}
+.dl .nbell-row:hover{background:var(--sky-50)}
+.dl .nbell-rico{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:.9rem;flex:none;background:var(--sky-100)}
+.dl .nbell-text{flex:1;min-width:0;display:flex;flex-direction:column}
+.dl .nbell-text .t1{font-size:.82rem;color:var(--navy);font-weight:500;line-height:1.4}
+.dl .nbell-text .t2{font-size:.72rem;color:var(--navy-soft);margin-top:2px}
+.dl .nbell-empty{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.78rem;color:var(--navy-soft);text-align:center;padding:14px 8px 10px}
+.dl .nbell-empty span{font-size:1.5rem}
+.dl .nbell-foot{display:block;font-size:.72rem;color:var(--blue-deep);text-align:center;padding:8px 4px 4px;font-family:var(--display)}
+.dl .nbell-foot:hover{text-decoration:underline}
+@media (max-width:420px){.dl .nbell-panel{width:min(296px,calc(100vw - 40px));right:-52px}}
