@@ -36,7 +36,7 @@ import {
 } from "@/lib/admin-data";
 import { fetchOrderAdmin, fetchOrdersAdmin, saveOrderAdmin, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
-import { btnBrandSolid, card, faint, muted, shortTime } from "@/lib/admin-ui";
+import { card, faint, muted, shortTime } from "@/lib/admin-ui";
 import ImageLightbox from "@/components/ImageLightbox";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import PackCheckPanel from "@/components/PackCheckPanel";
@@ -1346,17 +1346,6 @@ export default function AdminOrderDetailPage() {
               className={HBTN}
             >
               ♻️ ทำใหม่ / เคลม
-            </button>
-          )}
-
-          {mayEdit && NEXT_STATUS[order.status] && (
-            <button
-              type="button"
-              onClick={() => changeStatus(NEXT_STATUS[order.status]!.to)}
-              className={`ml-auto ${btnBrandSolid}`}
-              title={`เปลี่ยนสถานะเป็น “${NEXT_STATUS[order.status]!.to}”`}
-            >
-              {NEXT_STATUS[order.status]!.label} →
             </button>
           )}
         </div>
