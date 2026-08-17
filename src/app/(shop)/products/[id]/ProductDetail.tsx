@@ -79,6 +79,7 @@ import AdminEditFab from "@/components/AdminEditFab";
 import { fetchProduct } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
 import ProductCard from "@/components/ProductCard";
+import ImageLightbox from "@/components/ImageLightbox";
 
 /** จำโหมดสั่งของของพนักงาน (ลูกค้า/แอดมิน) ไว้ในเครื่อง — ค่าเริ่มต้นคือโหมดลูกค้าเสมอ */
 const ADMIN_MODE_KEY = "iducky:product-order-mode";
@@ -93,6 +94,9 @@ const ADMIN_MODE_KEY = "iducky:product-order-mode";
  */
 function ProductTabText({ tab }: { tab: ProductTab }) {
   const { text, images = [] } = tab;
+  // 🔍 รูปในแท็บที่กำลังขยายดู (index ในแท็บนี้) — -1 = ปิด · เลื่อนซ้าย/ขวาได้เฉพาะรูปในแท็บเดียวกัน
+  const [zoom, setZoom] = useState(-1);
+  const zoomStep = (d: number) => setZoom((z) => (z < 0 ? z : (z + d + images.length) % images.length));
   // ขนาดรูป: ถ้าแอดมินไม่ได้ตั้ง → เลือกให้เองตามจำนวนรูป (1 รูป = เต็มความกว้างแบบหน้า pricelist เดิม ·
   // 2 รูป = 2 คอลัมน์ · 3+ = 3 คอลัมน์) — รูปประกอบเดี่ยวมักเป็นอินโฟกราฟิก/ตัวอย่างวางแบบ ย่อเหลือ 1/3 แล้วอ่านไม่ออก
   const size = tab.imageSize ?? (images.length === 1 ? "lg" : images.length === 2 ? "md" : "sm");
@@ -112,16 +116,31 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
   const gallery = images.length > 0 && (
     <div className={`flex flex-wrap gap-3 ${align} ${tab.imagePos === "top" ? "pb-3" : "pt-3"}`}>
       {images.map((src, i) => (
-        /* eslint-disable-next-line @next/next/no-img-element */
-        <img
+        <button
           key={`${src}-${i}`}
-          src={src}
-          alt={`${tab.title} รูปที่ ${i + 1}`}
-          loading="lazy"
-          className={`${imgW} rounded-xl bg-stone-50 object-contain ring-1 ring-stone-200`}
-        />
+          type="button"
+          onClick={() => setZoom(i)}
+          className={`${imgW} group relative block cursor-zoom-in overflow-hidden rounded-xl bg-stone-50 ring-1 ring-stone-200 transition hover:ring-sky-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400`}
+          aria-label={`ขยายดู ${tab.title} รูปที่ ${i + 1}`}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src} alt={`${tab.title} รูปที่ ${i + 1}`} loading="lazy" className="block w-full object-contain" />
+          <span className="pointer-events-none absolute bottom-2 right-2 grid h-8 w-8 place-items-center rounded-full bg-white/90 text-sm text-sky-800 opacity-0 shadow transition group-hover:opacity-100">
+            ⤢
+          </span>
+        </button>
       ))}
     </div>
+  );
+  const lightbox = zoom >= 0 && images[zoom] && (
+    <ImageLightbox
+      src={images[zoom]}
+      alt={`${tab.title} รูปที่ ${zoom + 1}`}
+      counter={images.length > 1 ? `${zoom + 1} / ${images.length}` : undefined}
+      onPrev={images.length > 1 ? () => zoomStep(-1) : undefined}
+      onNext={images.length > 1 ? () => zoomStep(1) : undefined}
+      onClose={() => setZoom(-1)}
+    />
   );
   return (
     <div className="space-y-2 text-sm leading-relaxed text-stone-600">
@@ -145,6 +164,7 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
         return <p key={i}>{t}</p>;
       })}
       {tab.imagePos !== "top" && gallery}
+      {lightbox}
     </div>
   );
 }
