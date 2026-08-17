@@ -4177,7 +4177,7 @@ function LineChatBox({
   // ── ผูกแล้ว (ของใบนี้ หรือจำมาจากใบเก่า) ──
   if (line && !changing)
     return (
-      <div className="mt-2 rounded-xl bg-white p-2.5 ring-1 ring-slate-200">
+      <div className="mt-2 rounded-xl bg-emerald-50/70 p-2.5 ring-1 ring-emerald-200">
         <div className="flex flex-wrap items-center gap-2">
           {line.picture && (
             // eslint-disable-next-line @next/next/no-img-element
@@ -4288,10 +4288,10 @@ function LineChatBox({
   // ── ยังไม่ผูก — เตือนให้ใส่ ──
   if (!mayEdit) return null;
   return (
-    <div className="mt-2 rounded-xl bg-white p-2.5 ring-1 ring-slate-200">
+    <div className="mt-2 rounded-xl bg-slate-50 p-2.5 ring-1 ring-dashed ring-slate-300">
       <div className="flex items-center gap-2">
         <p className="min-w-0 flex-1 text-[11px] font-semibold text-slate-500">
-          {changing ? "🔄 เปลี่ยน LINE ของลูกค้า — ค้นแล้วเลือกคนใหม่" : "🟢 LINE ของลูกค้า (ไม่บังคับ — ผูกแล้วระบบแจ้งสถานะให้เอง)"}
+          {changing ? "🔄 เปลี่ยน LINE ของลูกค้า — ค้นแล้วเลือกคนใหม่" : "⚪ ยังไม่ผูก LINE ของลูกค้า (ไม่บังคับ — ผูกแล้วระบบแจ้งสถานะให้เอง)"}
         </p>
         {/* มีลิงก์ห้องแชทเก็บไว้แล้ว (แต่ยังไม่ผูก userId) — โชว์ให้เห็นว่าไม่ได้หายไปไหน */}
         {chat && !changing && (

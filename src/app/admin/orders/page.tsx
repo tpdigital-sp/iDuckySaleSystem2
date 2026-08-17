@@ -7,6 +7,7 @@ import { formatPrice } from "@/lib/products";
 import {
   amountDueNow,
   daysToUseBy,
+  lineUserOf,
   MOCK_ORDERS,
   ORDER_STATUSES,
   orderTotal,
@@ -332,7 +333,25 @@ export default function AdminOrdersPage() {
                         </p>
                       </td>
                       <td className="px-4 py-3.5 align-middle">
-                        <p className="text-slate-700">{o.customer}</p>
+                        <p className="flex items-center gap-1.5 text-slate-700">
+                          {/* จุดบอกสถานะ LINE: เขียว = ผูกแล้ว (ระบบแจ้งเองได้) · เทา = ยังไม่ผูก */}
+                          {o.status !== "ยกเลิก" && o.status !== "เสร็จสิ้น" && (
+                            (() => {
+                              const l = lineUserOf(o, orders);
+                              return (
+                                <span
+                                  className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ring-1 ${
+                                    l ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : "bg-slate-100 text-slate-400 ring-slate-200"
+                                  }`}
+                                  title={l ? `ผูก LINE แล้ว${l.name ? ` — ${l.name}` : ""}${l.source === "prev" ? " (จำจากออเดอร์เก่า)" : ""}` : "ยังไม่ผูก LINE — ระบบแจ้งเตือนอัตโนมัติจะไม่ส่ง"}
+                                >
+                                  {l ? "🟢 LINE" : "⚪ LINE"}
+                                </span>
+                              );
+                            })()
+                          )}
+                          {o.customer}
+                        </p>
                         <p className="text-xs text-slate-400">
                           {qtyOf(o)} ชิ้น
                           {o.slipUrl && <span className="ml-1 font-semibold text-orange-600">· 📎</span>}
