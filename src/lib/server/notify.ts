@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { withLog, type Order } from "@/lib/admin-data";
+import { orderTotal, withLog, type Order } from "@/lib/admin-data";
 
 /**
  * แจ้งเตือนลูกค้าผ่าน LINE (push message)
@@ -162,4 +162,38 @@ export async function notifyCustomerLogged(sb: SupabaseClient, order: Order, tex
 /** ลิงก์หน้าเช็คออเดอร์สำหรับแนบในข้อความ (ต้องมี key) */
 export function orderLink(origin: string, order: Order): string {
   return `${origin}/order/${encodeURIComponent(order.id)}${order.key ? `?key=${encodeURIComponent(order.key)}` : ""}`;
+}
+
+/**
+ * ข้อความแจ้งลูกค้าเมื่อ "สถานะออเดอร์เปลี่ยน" — ครบทุกสถานะ ลูกค้าจะได้รู้ความคืบหน้าตลอดทาง
+ * เขียนแบบลูกค้าอ่านรู้เรื่อง ไม่ใช่ศัพท์หลังบ้าน · คืน null = สถานะนั้นไม่ต้องแจ้ง
+ */
+export function statusMessage(order: Order, link: string): string | null {
+  const id = order.id;
+  const bal = Math.max(0, orderTotal(order) - (order.paidTotal ?? 0));
+  const owe = order.deposit && !order.deposit.settledAt && bal > 0 ? `\n💳 ยอดค้าง ${bal.toLocaleString()} บาท (ชำระก่อนจัดส่ง)` : "";
+  switch (order.status) {
+    case "รอชำระเงิน":
+      return `🧾 ออเดอร์ ${id} รอชำระเงินครับ\nโอนแล้วแนบสลิปที่ลิงก์นี้ได้เลย\n${link}`;
+    case "รอตรวจสอบ":
+      return `🔎 ได้รับสลิปออเดอร์ ${id} แล้ว กำลังตรวจสอบยอดครับ\n${link}`;
+    case "ชำระแล้ว":
+      return `✅ ยืนยันการชำระเงินออเดอร์ ${id} แล้ว กำลังเริ่มงานให้ครับ${owe}\n${link}`;
+    case "รอตรวจแบบ":
+      return `🎨 แบบงานออเดอร์ ${id} พร้อมให้ตรวจแล้วครับ\nกดดูแล้วกดอนุมัติ หรือแจ้งจุดที่อยากแก้ได้เลย\n${link}`;
+    case "แก้ไขแบบ":
+      return `✏️ รับเรื่องขอแก้ไขแบบออเดอร์ ${id} แล้วครับ กำลังแก้ให้ เดี๋ยวส่งให้ตรวจอีกรอบ\n${link}`;
+    case "อนุมัติแบบ":
+      return `👍 แบบงานออเดอร์ ${id} อนุมัติแล้ว เตรียมเข้าผลิตครับ${owe}\n${link}`;
+    case "กำลังผลิต":
+      return `🛠️ ออเดอร์ ${id} เข้าไลน์ผลิตแล้วครับ${owe}\n${link}`;
+    case "จัดส่งแล้ว":
+      return `🚚 ออเดอร์ ${id} จัดส่งแล้วครับ${order.tracking ? `\nเลขพัสดุ: ${order.tracking}` : ""}\n${link}`;
+    case "เสร็จสิ้น":
+      return `🎉 ปิดงานออเดอร์ ${id} เรียบร้อย ขอบคุณที่ใช้บริการครับ 🦆\n${link}`;
+    case "ยกเลิก":
+      return `❌ ออเดอร์ ${id} ถูกยกเลิกแล้วครับ หากมีข้อสงสัยทักมาได้เลย`;
+    default:
+      return null;
+  }
 }

@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { currentActor, requirePerm } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { notifyCustomer, notifyCustomerLogged, orderLink } from "@/lib/server/notify";
+import { notifyCustomer, notifyCustomerLogged, orderLink, statusMessage } from "@/lib/server/notify";
 import { reportPaidToTP } from "@/lib/server/tp-report";
 import { bumpSoldForOrder, unbumpSoldForOrder } from "@/lib/server/sold";
 import { cutStockForOrder, restoreStockForOrder } from "@/lib/server/stock";
@@ -222,15 +222,12 @@ export async function PATCH(req: Request) {
   if (toSave.status !== oldStatus) {
     const origin = new URL(req.url).origin;
     const link = orderLink(origin, toSave);
-    if (toSave.status === "ชำระแล้ว")
-      void notifyCustomerLogged(
-        sb,
-        toSave,
-        depositFirstNow
-          ? `✅ รับมัดจำออเดอร์ ${toSave.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${Math.max(0, orderTotal(toSave) - (toSave.paidTotal ?? 0)).toLocaleString()} บาท ชำระก่อนจัดส่ง\n${link}`
-          : `✅ ยืนยันการชำระเงินออเดอร์ ${toSave.id} แล้ว กำลังเริ่มงานให้ครับ\n${link}`,
-        depositFirstNow ? "ยืนยันรับมัดจำ" : "ยืนยันการชำระเงิน"
-      );
+    // แจ้งลูกค้า "ทุกครั้งที่สถานะเปลี่ยน" — ข้อความต่อสถานะอยู่ใน statusMessage()
+    const msg = depositFirstNow
+      ? `✅ รับมัดจำออเดอร์ ${toSave.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${Math.max(0, orderTotal(toSave) - (toSave.paidTotal ?? 0)).toLocaleString()} บาท ชำระก่อนจัดส่ง\n${link}`
+      : statusMessage(toSave, link);
+    if (msg)
+      void notifyCustomerLogged(sb, toSave, msg, depositFirstNow ? "ยืนยันรับมัดจำ" : `แจ้งสถานะ "${toSave.status}"`);
     // ส่งเข้า msVerify ระบบ Admin — แยกว่าตรวจโดยแอดมิน (SlipOK ผ่านจะถูกส่งจาก slip route ไปแล้ว = idempotent)
     if (toSave.status === "ชำระแล้ว")
       void reportPaidToTP(
@@ -244,8 +241,6 @@ export async function PATCH(req: Request) {
     if (toSave.status === "ชำระแล้ว") void bumpSoldForOrder(toSave.id);
     if (toSave.status === "ยกเลิก") void unbumpSoldForOrder(toSave.id);
     if (toSave.status === "ยกเลิก") void restoreStockForOrder(toSave);
-    else if (toSave.status === "จัดส่งแล้ว")
-      void notifyCustomerLogged(sb, toSave, `🚚 ออเดอร์ ${toSave.id} จัดส่งแล้ว${toSave.tracking ? `\nเลขพัสดุ: ${toSave.tracking}` : ""}\n${link}`, "แจ้งจัดส่ง");
 
     // ออเดอร์มัดจำเข้าไลน์ผลิตแล้วแต่ยังค้างงวดหลัง → ทวงตั้งแต่ตอนนี้ ไม่ต้องรอของเสร็จค่อยรู้
     if (toSave.status === "กำลังผลิต" && toSave.deposit?.firstPaidAt && !toSave.deposit.settledAt) {
