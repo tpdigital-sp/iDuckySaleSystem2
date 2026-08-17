@@ -3940,8 +3940,10 @@ function LineChatBox({
   useEffect(() => {
     const q = draft.trim();
     setPicked(null);
-    if (demo || !picking || /^https?:\/\//i.test(q)) {
+    // วางลิงก์/URL/userId มา = ตั้งใจใช้ปุ่มบันทึก ไม่ต้องเด้งรายชื่อให้เลือก
+    if (demo || !picking || /^https?:\/\//i.test(q) || /^U[0-9a-f]{32}$/i.test(q)) {
       setHits([]);
+      setSearching(false);
       return;
     }
     setSearching(true);
@@ -3967,6 +3969,8 @@ function LineChatBox({
   async function submit() {
     const input = draft.trim();
     if (!input) return;
+    setHits([]);
+    setPicking(false);
     if (demo) {
       setMsg("⚠️ โหมดตัวอย่างบันทึกไม่ได้");
       return;
@@ -4189,6 +4193,7 @@ function LineChatBox({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onFocus={() => setPicking(true)}
+          onBlur={() => setTimeout(() => setPicking(false), 200)}
           onKeyDown={(e) => {
             if (e.key === "Enter") void submit();
           }}
@@ -4231,7 +4236,7 @@ function LineChatBox({
       )}
 
       {/* ผลค้นหาจากคลังแชท LINE ของร้าน — แตะเลือกคน แล้วกดยืนยันอีกครั้ง */}
-      {(searching || hits.length > 0) && (
+      {picking && !picked && (searching || hits.length > 0) && (
         <div className="mt-1.5 overflow-hidden rounded-lg border border-slate-200 bg-white">
           {searching && hits.length === 0 && <p className="px-2.5 py-2 text-[11px] text-slate-400">กำลังค้นจากคลังแชท…</p>}
           {hits.length > 0 && (
@@ -4243,11 +4248,10 @@ function LineChatBox({
             <button
               key={h.userId}
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => setPicked({ userId: h.userId, name: h.name, picture: h.picture })}
               disabled={busy}
-              className={`flex w-full items-center gap-2 border-b border-slate-100 px-2.5 py-1.5 text-left transition last:border-0 hover:bg-orange-50 disabled:opacity-50 ${
-                picked?.userId === h.userId ? "bg-emerald-50" : ""
-              }`}
+              className="flex w-full items-center gap-2 border-b border-slate-100 px-2.5 py-1.5 text-left transition last:border-0 hover:bg-slate-50 disabled:opacity-50"
             >
               {h.picture ? (
                 // eslint-disable-next-line @next/next/no-img-element
