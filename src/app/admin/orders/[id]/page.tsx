@@ -4108,6 +4108,15 @@ function LineChatBox({
             <img src={line.picture} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />
           )}
           <span className="text-[11px] font-bold text-[#06C755]">🟢 LINE: {line.name ?? line.id.slice(0, 10) + "…"}</span>
+          {/* บัญชีที่ล็อกอินตอนสั่งเป็นคนละ LINE กับที่ผูก — บอกให้รู้ว่าระบบส่งหาคนที่ผูกไว้ ไม่ใช่บัญชีที่ล็อกอิน */}
+          {order.loginLine && order.loginLine.userId !== line.id && (
+            <span
+              className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 ring-1 ring-amber-200"
+              title={`ตอนสั่งล็อกอินด้วย LINE "${order.loginLine.name ?? order.loginLine.userId.slice(0, 10) + "…"}" — ระบบจะส่งข้อความหา "${line.name ?? "คนที่ผูกไว้"}" ตามที่ผูก`}
+            >
+              ล็อกอินด้วยอีกบัญชี ({order.loginLine.name ?? "LINE อื่น"}) · ส่งหาคนที่ผูกไว้
+            </span>
+          )}
           {order.notifyLevel && order.notifyLevel !== "all" && (
             <span
               className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${

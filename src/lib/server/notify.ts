@@ -7,10 +7,10 @@ import { orderTotal, withLog, type Order, type OrderStatus } from "@/lib/admin-d
  *
  * ต้องตั้ง env LINE_MESSAGING_ACCESS_TOKEN (จาก LINE Messaging API channel — คนละอันกับ LINE Login)
  *
- * หา "ปลายทาง" ได้ 2 ทาง (ลองตามลำดับ):
- *   1. ลูกค้าเคยล็อกอินด้วย LINE → มี line_user_id ใน user_metadata
- *   2. พนักงานผูก LINE userId ไว้ในออเดอร์ (order.lineUserId) — ยืนยันกับ LINE ตอนบันทึกแล้ว
- *      ทางที่ 2 สำคัญมาก เพราะลูกค้าส่วนใหญ่สั่งแบบ guest ไม่เคยล็อกอิน LINE บนเว็บ
+ * หา "ปลายทาง" ตามลำดับ (คนตั้งใจระบุ ชนะที่ระบบเดา):
+ *   1. พนักงานผูก LINE userId ไว้ในออเดอร์ (order.lineUserId) — ยืนยันกับ LINE ตอนบันทึกแล้ว
+ *   2. จำจากออเดอร์เก่าของลูกค้าคนเดียวกัน
+ *   3. บัญชี LINE ที่ลูกค้าใช้ล็อกอินเว็บ — ท้ายสุด เพราะอาจเป็นคนสั่งแทน/บัญชีร้านเอง
  *
  * ⚠️ userId ผูกกับ OA แต่ละตัว — ต้องมาจาก OA เดียวกับ token ที่ใช้ส่ง
  *
@@ -101,20 +101,23 @@ export async function notifyLevelOf(sb: SupabaseClient, order: Order): Promise<N
 }
 
 async function lineTargetOf(sb: SupabaseClient, order: Order): Promise<{ id: string; via: "login" | "bound" | "inherited" } | null> {
+  // ลำดับ: สิ่งที่คนตั้งใจระบุ ชนะสิ่งที่ระบบเดาเอง
+  // 1) พนักงานผูกไว้ในออเดอร์นี้ (ยืนยันกับ LINE แล้ว) — แม่นสุด
+  if (order.lineUserId) return { id: order.lineUserId, via: "bound" };
+  // 2) จำจากออเดอร์เก่าของลูกค้าคนเดียวกัน (พนักงานเคยผูกไว้)
+  const inherited = (await inheritedFromPastOrders(sb, order)).lineUserId;
+  if (inherited) return { id: inherited, via: "inherited" };
+  // 3) บัญชี LINE ที่ใช้ล็อกอินเว็บตอนสั่ง — ท้ายสุด เพราะอาจเป็นคนสั่งแทน/บัญชีร้าน ไม่ใช่ผู้รับจริง
   if (order.customerId) {
     try {
       const { data } = await sb.auth.admin.getUserById(order.customerId);
       const lineId = (data?.user?.user_metadata as { line_user_id?: string } | undefined)?.line_user_id;
       if (lineId) return { id: lineId, via: "login" };
     } catch {
-      /* หาไม่เจอก็ลองทางลิงก์แชทต่อ */
+      /* ไม่มีก็ไม่มี */
     }
   }
-  // พนักงานผูก userId ไว้เอง (ยืนยันกับ LINE ตอนบันทึกแล้ว) — ทางหลักของลูกค้า guest
-  if (order.lineUserId) return { id: order.lineUserId, via: "bound" };
-  // ลูกค้าเก่า: ใบนี้ยังไม่ได้ผูก แต่เคยผูกไว้ในออเดอร์ใบก่อน → ใช้ของเดิมได้เลย ไม่ต้องผูกซ้ำ
-  const inherited = (await inheritedFromPastOrders(sb, order)).lineUserId;
-  return inherited ? { id: inherited, via: "inherited" } : null;
+  return null;
 }
 
 /** ข้อความที่ส่งเข้า LINE ได้ — ข้อความล้วน หรือการ์ด Flex */

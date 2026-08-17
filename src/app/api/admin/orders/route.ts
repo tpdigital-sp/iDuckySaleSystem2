@@ -88,6 +88,17 @@ export async function GET(req: Request) {
   const orders = (data ?? []).map((r) => r.data as Order);
   // เซ็น signed URL ชั่วคราวสำหรับสลิปใน bucket ส่วนตัว — เฉพาะตอนขอออเดอร์เดียว (หน้ารายละเอียด)
   if (wantId) {
+    // LINE ของบัญชีที่ล็อกอินตอนสั่ง — ให้หน้าออเดอร์เทียบกับที่พนักงานผูก (ชั่วคราว ไม่ persist)
+    for (const o of orders) {
+      if (!o.customerId) continue;
+      try {
+        const { data: u } = await sb.auth.admin.getUserById(o.customerId);
+        const meta = u?.user?.user_metadata as { line_user_id?: string; full_name?: string; name?: string } | undefined;
+        if (meta?.line_user_id) o.loginLine = { userId: meta.line_user_id, name: meta.full_name || meta.name };
+      } catch {
+        /* ไม่มีก็ข้าม */
+      }
+    }
     const withSlip = orders.filter((o) => o.slipPath);
     if (withSlip.length) {
       const signed = await Promise.all(
@@ -210,6 +221,7 @@ export async function PATCH(req: Request) {
   // อย่าเก็บ signed URL ชั่วคราวลงฐาน — สลิปที่มี slipPath ต้องเซ็นใหม่ทุกครั้งที่ดึง
   if (toSave.slipPath) toSave = { ...toSave, slipUrl: undefined };
   if (toSave.deposit?.balanceSlipUrl) toSave = { ...toSave, deposit: { ...toSave.deposit, balanceSlipUrl: undefined } };
+  if (toSave.loginLine) toSave = { ...toSave, loginLine: undefined };
 
   const { error } = await sb.from("orders").update({ data: toSave }).eq("id", toSave.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
