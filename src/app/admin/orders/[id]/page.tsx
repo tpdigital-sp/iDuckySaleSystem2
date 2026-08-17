@@ -2840,6 +2840,7 @@ export default function AdminOrderDetailPage() {
                   setOrder(next);
                   if (!demo) void saveOrderAdmin(next);
                 }}
+                onBound={(next) => setOrder(next)}
               />
             </div>
           </div>
@@ -3911,12 +3912,14 @@ function LineChatBox({
   allOrders,
   mayEdit,
   onSave,
+  onBound,
 }: {
   demo: boolean;
   order: Order;
   allOrders: Order[];
   mayEdit: boolean;
   onSave: (url: string) => void;
+  onBound: (order: Order) => void;
 }) {
   const found = lineChatOf(order, allOrders);
   const [editing, setEditing] = useState(false);
@@ -3924,6 +3927,9 @@ function LineChatBox({
   const [err, setErr] = useState("");
   const [testing, setTesting] = useState(false);
   const [testMsg, setTestMsg] = useState("");
+  const [uidDraft, setUidDraft] = useState("");
+  const [binding, setBinding] = useState(false);
+  const [bindMsg, setBindMsg] = useState("");
 
   /** ยิงข้อความทดสอบจริง — รู้ทันทีว่าลิงก์ที่วางไว้ส่งถึงลูกค้าได้ไหม */
   async function sendTest() {
@@ -3940,7 +3946,7 @@ function LineChatBox({
         body: JSON.stringify({ orderId: order.id }),
       });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; via?: string; reason?: string; error?: string };
-      if (j.ok) setTestMsg(`✅ ส่งถึงลูกค้าแล้ว (${j.via === "chatlink" ? "ผ่านลิงก์แชท" : "ผ่านบัญชี LINE ที่ลูกค้าล็อกอิน"})`);
+      if (j.ok) setTestMsg(`✅ ส่งถึงลูกค้าแล้ว (${j.via === "bound" ? "ผ่าน LINE ที่ผูกไว้" : "ผ่านบัญชี LINE ที่ลูกค้าล็อกอิน"})`);
       else setTestMsg(`❌ ส่งไม่ได้ — ${j.reason ?? j.error ?? "ไม่ทราบสาเหตุ"}`);
     } catch {
       setTestMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
@@ -3954,6 +3960,7 @@ function LineChatBox({
     setErr("");
     setEditing(true);
   }
+  /** บันทึก "ลิงก์ห้องแชท" (ไว้ให้แอดมินกดเปิดแชทเอง — ไม่ได้ใช้ส่งข้อความ) */
   function save() {
     const url = draft.trim();
     if (url && !/^https?:\/\//i.test(url)) {
@@ -3964,10 +3971,115 @@ function LineChatBox({
     setEditing(false);
   }
 
+  /** ผูก LINE userId — ให้เซิร์ฟเวอร์ถาม LINE ว่าส่งถึงคนนี้ได้จริงไหมก่อนบันทึก */
+  async function bindLine(input: string) {
+    if (demo) {
+      setBindMsg("⚠️ โหมดตัวอย่างผูกไม่ได้");
+      return;
+    }
+    setBinding(true);
+    setBindMsg("");
+    try {
+      const res = await fetch("/api/admin/orders/line-bind", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, input }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; cleared?: boolean; profile?: { name: string }; order?: Order; error?: string };
+      if (!j.ok) {
+        setBindMsg(`❌ ${j.error ?? "ผูกไม่สำเร็จ"}`);
+        return;
+      }
+      if (j.order) onBound(j.order);
+      setBindMsg(j.cleared ? "ยกเลิกการผูกแล้ว" : `✅ ผูกกับ "${j.profile?.name}" แล้ว — ส่งข้อความถึงได้`);
+      setUidDraft("");
+    } catch {
+      setBindMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
+    } finally {
+      setBinding(false);
+    }
+  }
+
+  /** แถบผูก LINE ของลูกค้า — ตัวที่ใช้ "ส่งข้อความ" จริง (คนละอย่างกับลิงก์เปิดแชท) */
+  const bindRow = (
+    <div className="mt-2 rounded-xl bg-white p-2.5 ring-1 ring-slate-200">
+      {order.lineUserId ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {order.lineProfile?.picture && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={order.lineProfile.picture} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />
+          )}
+          <span className="text-[11px] font-bold text-[#06C755]">
+            🟢 ผูก LINE แล้ว{order.lineProfile?.name ? ` — ${order.lineProfile.name}` : ""}
+          </span>
+          {mayEdit && (
+            <>
+              <button
+                type="button"
+                onClick={sendTest}
+                disabled={testing}
+                className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 disabled:opacity-50"
+              >
+                {testing ? "กำลังส่ง…" : "🔔 ทดสอบส่ง"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void bindLine("")}
+                disabled={binding}
+                className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
+              >
+                ยกเลิกการผูก
+              </button>
+            </>
+          )}
+        </div>
+      ) : (
+        mayEdit && (
+          <>
+            <p className="text-[11px] font-semibold text-slate-600">🟢 ผูก LINE ของลูกค้า (ไว้ให้ระบบส่งข้อความ)</p>
+            <div className="mt-1 flex gap-1.5">
+              <input
+                value={uidDraft}
+                onChange={(e) => setUidDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void bindLine(uidDraft);
+                }}
+                placeholder="วาง LINE userId (ขึ้นต้นด้วย U…)"
+                className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-1 text-[12px] text-slate-700 focus:border-amber-300 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => void bindLine(uidDraft)}
+                disabled={binding || !uidDraft.trim()}
+                className="shrink-0 rounded-lg bg-[#06C755] px-3 py-1 text-[11px] font-bold text-white transition hover:bg-[#05b34c] disabled:opacity-50"
+              >
+                {binding ? "กำลังเช็ค…" : "ผูก"}
+              </button>
+            </div>
+            <p className="mt-1 text-[10px] leading-snug text-slate-400">
+              คัดลอก userId จากหน้าคลังแชท (AdminBuddy) มาวาง — ระบบจะถาม LINE ว่าส่งถึงคนนี้ได้จริงไหมก่อนบันทึก ·
+              ⚠️ ลิงก์จาก OA Manager ใช้ไม่ได้ (ท่อนท้ายเป็น chat id คนละตัวกับ userId)
+            </p>
+          </>
+        )
+      )}
+      {bindMsg && (
+        <p className={`mt-1 text-[11px] font-semibold ${bindMsg.startsWith("✅") ? "text-emerald-600" : bindMsg.startsWith("❌") ? "text-rose-600" : "text-slate-500"}`}>
+          {bindMsg}
+        </p>
+      )}
+      {testMsg && (
+        <p className={`mt-1 text-[11px] font-semibold ${testMsg.startsWith("✅") ? "text-emerald-600" : "text-rose-600"}`}>{testMsg}</p>
+      )}
+    </div>
+  );
+
   if (editing)
     return (
+      <>
+        {bindRow}
       <div className="mt-2 space-y-1.5 rounded-xl bg-white p-2.5 ring-1 ring-slate-200">
-        <p className="text-[11px] font-semibold text-slate-600">🟢 ลิงก์ห้องแชท LINE ของลูกค้า</p>
+        <p className="text-[11px] font-semibold text-slate-600">🔗 ลิงก์ห้องแชท (ไว้กดเปิดแชทเอง)</p>
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -4012,20 +4124,28 @@ function LineChatBox({
           )}
         </div>
       </div>
+      </>
     );
 
   if (!found)
-    return mayEdit ? (
-      <button
-        type="button"
-        onClick={open}
-        className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-500 transition hover:border-[#06C755] hover:text-[#06C755]"
-      >
-        ＋ ใส่ลิงก์แชท LINE ของลูกค้า
-      </button>
-    ) : null;
+    return (
+      <>
+        {bindRow}
+        {mayEdit && (
+          <button
+            type="button"
+            onClick={open}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-500 transition hover:border-[#06C755] hover:text-[#06C755]"
+          >
+            ＋ ใส่ลิงก์ห้องแชท (ไว้กดเปิดแชท)
+          </button>
+        )}
+      </>
+    );
 
   return (
+    <>
+    {bindRow}
     <div className="mt-2 flex flex-wrap items-center gap-1.5">
       <a
         href={found.url}
@@ -4052,22 +4172,7 @@ function LineChatBox({
           แก้ไข
         </button>
       )}
-      {mayEdit && (
-        <button
-          type="button"
-          onClick={sendTest}
-          disabled={testing}
-          title="ส่งข้อความทดสอบไปหาลูกค้าจริง เพื่อดูว่าลิงก์แชทนี้ใช้ส่งได้ไหม"
-          className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 disabled:opacity-50"
-        >
-          {testing ? "กำลังส่ง…" : "🔔 ทดสอบส่ง"}
-        </button>
-      )}
-      {testMsg && (
-        <span className={`w-full text-[11px] font-semibold ${testMsg.startsWith("✅") ? "text-emerald-600" : "text-rose-600"}`}>
-          {testMsg}
-        </span>
-      )}
     </div>
+    </>
   );
 }

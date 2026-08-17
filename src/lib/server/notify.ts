@@ -9,30 +9,54 @@ import { withLog, type Order } from "@/lib/admin-data";
  *
  * หา "ปลายทาง" ได้ 2 ทาง (ลองตามลำดับ):
  *   1. ลูกค้าเคยล็อกอินด้วย LINE → มี line_user_id ใน user_metadata
- *   2. แอดมินวางลิงก์แชทไว้ในออเดอร์ (order.lineChatUrl) → แกะ userId จากลิงก์
+ *   2. พนักงานผูก LINE userId ไว้ในออเดอร์ (order.lineUserId) — ยืนยันกับ LINE ตอนบันทึกแล้ว
  *      ทางที่ 2 สำคัญมาก เพราะลูกค้าส่วนใหญ่สั่งแบบ guest ไม่เคยล็อกอิน LINE บนเว็บ
- *      แต่เกือบทุกคนเคยแชทกับ OA ร้าน (แอดมินจึงมีลิงก์แชทให้วาง)
  *
- * ⚠️ userId ของ LINE ผูกกับ OA แต่ละตัว — ลิงก์แชทต้องมาจาก OA เดียวกับ token ที่ใช้ส่ง
+ * ⚠️ userId ผูกกับ OA แต่ละตัว — ต้องมาจาก OA เดียวกับ token ที่ใช้ส่ง
  *
  * ออกแบบให้ "ไม่พังงานหลัก": ยิงไม่สำเร็จก็แค่คืนเหตุผล ไม่ throw
  */
 export interface NotifyResult {
   ok: boolean;
-  /** ได้ปลายทางมาจากไหน — ล็อกอิน LINE บนเว็บ หรือลิงก์แชทที่แอดมินวางไว้ */
-  via?: "login" | "chatlink";
+  /** ได้ปลายทางมาจากไหน — ล็อกอิน LINE บนเว็บ หรือ userId ที่พนักงานผูกไว้ */
+  via?: "login" | "bound";
   /** เหตุผลตอนส่งไม่สำเร็จ (โชว์ให้แอดมิน) */
   reason?: string;
 }
 
-/** แกะ LINE userId จากลิงก์แชทของ OA Manager — https://chat.line.biz/{oaId}/chat/{userId} */
-export function lineUserIdFromChatUrl(url?: string): string | null {
-  const m = (url ?? "").match(/chat\.line\.biz\/[^/]+\/chat\/(U[0-9a-f]{32})/i);
+/**
+ * ดึง LINE userId จากสิ่งที่พนักงานวางมา — รับได้ทั้ง userId ดิบ และลิงก์ที่ "ลงท้ายด้วย userId"
+ *
+ * ⚠️ ลิงก์จาก OA Manager (chat.line.biz/{account}/chat/{chatId}) ใช้ไม่ได้!
+ *    ท่อนท้ายเป็น "chat id" คนละชุดกับ userId ที่ใช้ส่งข้อความ (ยืนยันแล้วด้วยการทดสอบจริง)
+ *    ตัวที่ใช้ได้คือ userId จากหน้าคลังแชท (AdminBuddy) — ต้องให้ LINE ยืนยันอีกชั้นเสมอ
+ */
+export function lineUserIdFrom(input?: string): string | null {
+  const t = (input ?? "").trim();
+  if (/^U[0-9a-f]{32}$/i.test(t)) return t;
+  const m = t.match(/(U[0-9a-f]{32})(?:[?#].*)?$/i);
   return m ? m[1] : null;
 }
 
+/** ชื่อ/รูปโปรไฟล์ LINE ของ userId นี้ — null = ส่งข้อความหาคนนี้ไม่ได้ (ไม่ใช่เพื่อน/คนละ OA/ id ผิด) */
+export async function fetchLineProfile(userId: string): Promise<{ name: string; picture?: string } | null> {
+  const token = process.env.LINE_MESSAGING_ACCESS_TOKEN;
+  if (!token) return null;
+  try {
+    const res = await fetch(`https://api.line.me/v2/bot/profile/${encodeURIComponent(userId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    const p = (await res.json()) as { displayName?: string; pictureUrl?: string };
+    return p.displayName ? { name: p.displayName, picture: p.pictureUrl } : null;
+  } catch {
+    return null;
+  }
+}
+
 /** หา LINE userId ของลูกค้าออเดอร์นี้ (ล็อกอินก่อน → ไม่มีค่อยใช้ลิงก์แชท) */
-async function lineTargetOf(sb: SupabaseClient, order: Order): Promise<{ id: string; via: "login" | "chatlink" } | null> {
+async function lineTargetOf(sb: SupabaseClient, order: Order): Promise<{ id: string; via: "login" | "bound" } | null> {
   if (order.customerId) {
     try {
       const { data } = await sb.auth.admin.getUserById(order.customerId);
@@ -42,8 +66,9 @@ async function lineTargetOf(sb: SupabaseClient, order: Order): Promise<{ id: str
       /* หาไม่เจอก็ลองทางลิงก์แชทต่อ */
     }
   }
-  const fromLink = lineUserIdFromChatUrl(order.lineChatUrl);
-  return fromLink ? { id: fromLink, via: "chatlink" } : null;
+  // พนักงานผูก userId ไว้เอง (ยืนยันกับ LINE ตอนบันทึกแล้ว) — ทางหลักของลูกค้า guest
+  if (order.lineUserId) return { id: order.lineUserId, via: "bound" };
+  return null;
 }
 
 export async function notifyCustomer(sb: SupabaseClient, order: Order, text: string): Promise<NotifyResult> {
@@ -52,7 +77,7 @@ export async function notifyCustomer(sb: SupabaseClient, order: Order, text: str
 
   const target = await lineTargetOf(sb, order);
   if (!target)
-    return { ok: false, reason: "ไม่รู้ LINE ของลูกค้า — ยังไม่เคยล็อกอินด้วย LINE และไม่มีลิงก์แชทในออเดอร์" };
+    return { ok: false, reason: "ยังไม่ได้ผูก LINE ของลูกค้ากับออเดอร์นี้" };
 
   try {
     const res = await fetch("https://api.line.me/v2/bot/message/push", {
@@ -90,7 +115,7 @@ export async function notifyCustomerLogged(sb: SupabaseClient, order: Order, tex
     const { data: row } = await sb.from("orders").select("data").eq("id", order.id).maybeSingle();
     if (!row) return r;
     const fresh = row.data as Order;
-    const via = r.via === "chatlink" ? "ผ่านลิงก์แชท" : r.via === "login" ? "ผ่านบัญชี LINE ที่ล็อกอิน" : "";
+    const via = r.via === "bound" ? "ผ่าน LINE ที่พนักงานผูกไว้" : r.via === "login" ? "ผ่านบัญชี LINE ที่ล็อกอิน" : "";
     const next = withLog(
       fresh,
       "LINE",
