@@ -3934,9 +3934,22 @@ function LineChatBox({
   const [picking, setPicking] = useState(false); // คลิกช่องค้นหาแล้ว → เริ่มโชว์รายชื่อให้เลือก
   // คนที่เลือกไว้ รอกดยืนยัน — กันแตะพลาดแล้วผูกผิดคน (ผูกผิด = ข้อมูลออเดอร์ไปโผล่แชทคนอื่น)
   const [picked, setPicked] = useState<{ userId: string; name: string; picture?: string } | null>(null);
+  const awaitingReturn = useRef(false); // เพิ่งกดเปิดแชทไป → กลับมาแล้วรีเฟรชรายชื่อให้เอง
   // วางลิงก์ OA Manager แล้ว: รหัสท้ายลิงก์ที่รอจับคู่ + คนที่ระบบเดาว่าน่าจะใช่ (คุยล่าสุด)
   const [pendingManagerId, setPendingManagerId] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<{ userId: string; name: string; picture?: string; lastSeen?: string; remembered?: boolean }[]>([]);
+
+  // กลับมาจากห้องแชท (สลับแท็บกลับ) → ดึงรายชื่อคุยล่าสุดใหม่ ลูกค้าที่เพิ่งทักจะอยู่บนสุด
+  useEffect(() => {
+    const onFocus = () => {
+      if (!awaitingReturn.current || demo) return;
+      awaitingReturn.current = false;
+      void refreshRecent();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demo]);
 
   // พิมพ์ชื่อ → ค้นจากคลังแชท LINE ของร้านให้เลย (หน่วงไว้กันยิงถี่)
   // ยังไม่พิมพ์แต่คลิกช่องแล้ว → โชว์ "คนที่คุยล่าสุด" ให้เลือกได้เลย
@@ -4058,10 +4071,12 @@ function LineChatBox({
     const text = `สวัสดีค่ะ ทางร้าน iDucky ขอยืนยันออเดอร์ ${order.id} นะคะ 🦆`;
     try {
       await navigator.clipboard.writeText(text);
-      setMsg("📋 ก๊อปข้อความทักไว้แล้ว — วาง (⌘V) ส่งในห้องแชท แล้วกลับมากด 🔄 รีเฟรชรายชื่อ");
+      setMsg("📋 ก๊อปข้อความทักไว้แล้ว — วาง (⌘V) ส่งในห้องแชท แล้วสลับกลับมาแท็บนี้ รายชื่อจะรีเฟรชให้เอง");
     } catch {
       setMsg(`ก๊อปไม่ได้ พิมพ์เองได้: "${text}"`);
     }
+    // จำไว้ว่าเพิ่งไปทักลูกค้า — พอสลับกลับมาแท็บนี้ให้ดึงรายชื่อล่าสุดใหม่อัตโนมัติ
+    awaitingReturn.current = true;
   }
 
   /** ดึงรายชื่อคุยล่าสุดใหม่ (หลังทักลูกค้าแล้ว ห้องนั้นจะขึ้นบนสุด) */
@@ -4404,7 +4419,16 @@ function LineChatBox({
 
       {chat && !changing && (
         <p className="mt-1.5 truncate text-[10px] text-slate-400" title={chat.url}>
-          🔗 <a href={chat.url} target="_blank" rel="noopener noreferrer" className="underline decoration-slate-300 underline-offset-2 hover:text-slate-600">{chat.url}</a>
+          🔗{" "}
+          <a
+            href={chat.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => void copyPingText()}
+            className="underline decoration-slate-300 underline-offset-2 hover:text-slate-600"
+          >
+            {chat.url}
+          </a>
           {chat.source === "prev" && <span className="ml-1">(จาก {chat.from})</span>}
         </p>
       )}
