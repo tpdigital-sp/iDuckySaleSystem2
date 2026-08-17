@@ -3931,11 +3931,13 @@ function LineChatBox({
   const [hits, setHits] = useState<{ userId: string; name: string; picture?: string; lastSeen?: string }[]>([]);
   const [searching, setSearching] = useState(false);
   const [changing, setChanging] = useState(false); // กด "เปลี่ยนคน" → กลับไปโหมดค้นหา
+  const [picking, setPicking] = useState(false); // คลิกช่องค้นหาแล้ว → เริ่มโชว์รายชื่อให้เลือก
 
   // พิมพ์ชื่อ → ค้นจากคลังแชท LINE ของร้านให้เลย (หน่วงไว้กันยิงถี่)
+  // ยังไม่พิมพ์แต่คลิกช่องแล้ว → โชว์ "คนที่คุยล่าสุด" ให้เลือกได้เลย
   useEffect(() => {
     const q = draft.trim();
-    if (demo || q.length < 2 || /^https?:\/\//i.test(q)) {
+    if (demo || !picking || /^https?:\/\//i.test(q)) {
       setHits([]);
       return;
     }
@@ -3952,7 +3954,7 @@ function LineChatBox({
       }
     }, 350);
     return () => clearTimeout(t);
-  }, [draft, demo]);
+  }, [draft, demo, picking]);
 
   /**
    * ช่องเดียวรับได้ทั้ง 2 อย่าง:
@@ -4182,10 +4184,11 @@ function LineChatBox({
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
+          onFocus={() => setPicking(true)}
           onKeyDown={(e) => {
             if (e.key === "Enter") void submit();
           }}
-          placeholder="พิมพ์ชื่อ LINE เพื่อค้นหา · หรือวาง userId / ลิงก์ห้องแชท"
+          placeholder="แตะเพื่อเลือกจากรายชื่อ · หรือพิมพ์ชื่อ LINE ค้นหา"
           className="min-w-0 flex-1 rounded-lg border border-orange-200 bg-white px-2.5 py-1 text-[12px] text-slate-700 focus:border-amber-400 focus:outline-none"
         />
         <button
@@ -4201,6 +4204,11 @@ function LineChatBox({
       {(searching || hits.length > 0) && (
         <div className="mt-1.5 overflow-hidden rounded-lg border border-orange-200 bg-white">
           {searching && hits.length === 0 && <p className="px-2.5 py-2 text-[11px] text-slate-400">กำลังค้นจากคลังแชท…</p>}
+          {hits.length > 0 && (
+            <p className="border-b border-slate-100 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-500">
+              {draft.trim().length >= 2 ? "ผลค้นหาจากคลังแชท" : "ลูกค้าที่คุยกับร้านล่าสุด — แตะเพื่อผูก"}
+            </p>
+          )}
           {hits.map((h) => (
             <button
               key={h.userId}

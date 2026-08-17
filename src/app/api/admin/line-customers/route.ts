@@ -21,11 +21,25 @@ export async function GET(req: Request) {
   if (!db) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Firebase" }, { status: 503 });
 
   const q = (new URL(req.url).searchParams.get("q") ?? "").trim();
-  if (q.length < 2) return NextResponse.json({ customers: [] });
 
   type Row = { userId: string; name: string; picture?: string; lastSeen?: string };
   const out: Row[] = [];
   try {
+    // ยังไม่พิมพ์อะไร → โชว์ "คนที่คุยล่าสุด" ให้เลือกเลย (ส่วนใหญ่คนที่เพิ่งคุยคือคนที่กำลังจะผูก)
+    if (q.length < 2) {
+      const snap = await db.collection(CHAT_COLLECTION).orderBy("lastSeen", "desc").limit(LIMIT).get();
+      snap.forEach((d) => {
+        const ls = d.get("lastSeen") as { _seconds?: number; toDate?: () => Date } | undefined;
+        const at = ls?.toDate ? ls.toDate().toISOString() : ls?._seconds ? new Date(ls._seconds * 1000).toISOString() : undefined;
+        out.push({
+          userId: (d.get("userId") as string) || d.id,
+          name: (d.get("displayName") as string) || "(ไม่มีชื่อ)",
+          picture: d.get("pictureUrl") as string,
+          lastSeen: at,
+        });
+      });
+      return NextResponse.json({ customers: out, recent: true });
+    }
     // พิมพ์ userId มาตรง ๆ → ดึงใบเดียว
     if (/^U[0-9a-f]{32}$/i.test(q)) {
       const d = await db.collection(CHAT_COLLECTION).doc(q).get();
