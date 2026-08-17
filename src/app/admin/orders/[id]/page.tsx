@@ -4165,10 +4165,10 @@ function LineChatBox({
   // ── ยังไม่ผูก — เตือนให้ใส่ ──
   if (!mayEdit) return null;
   return (
-    <div className="mt-2 rounded-xl bg-orange-50 p-2.5 ring-1 ring-orange-200">
+    <div className="mt-2 rounded-xl bg-white p-2.5 ring-1 ring-slate-200">
       <div className="flex items-center gap-2">
-        <p className="min-w-0 flex-1 text-[11px] font-bold text-orange-800">
-          {changing ? "🔄 เปลี่ยน LINE ของลูกค้า — ค้นแล้วเลือกคนใหม่" : "⚠️ ยังไม่ได้ผูก LINE ของลูกค้า — ระบบแจ้งเตือนอัตโนมัติจะส่งไม่ถึง"}
+        <p className="min-w-0 flex-1 text-[11px] font-semibold text-slate-500">
+          {changing ? "🔄 เปลี่ยน LINE ของลูกค้า — ค้นแล้วเลือกคนใหม่" : "🟢 LINE ของลูกค้า (ไม่บังคับ — ผูกแล้วระบบแจ้งสถานะให้เอง)"}
         </p>
         {changing && (
           <button
@@ -4193,7 +4193,7 @@ function LineChatBox({
             if (e.key === "Enter") void submit();
           }}
           placeholder="แตะเพื่อเลือกจากรายชื่อ · หรือพิมพ์ชื่อ LINE ค้นหา"
-          className="min-w-0 flex-1 rounded-lg border border-orange-200 bg-white px-2.5 py-1 text-[12px] text-slate-700 focus:border-amber-400 focus:outline-none"
+          className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[12px] text-slate-700 focus:border-amber-300 focus:outline-none"
         />
         <button
           type="button"
@@ -4232,7 +4232,7 @@ function LineChatBox({
 
       {/* ผลค้นหาจากคลังแชท LINE ของร้าน — แตะเลือกคน แล้วกดยืนยันอีกครั้ง */}
       {(searching || hits.length > 0) && (
-        <div className="mt-1.5 overflow-hidden rounded-lg border border-orange-200 bg-white">
+        <div className="mt-1.5 overflow-hidden rounded-lg border border-slate-200 bg-white">
           {searching && hits.length === 0 && <p className="px-2.5 py-2 text-[11px] text-slate-400">กำลังค้นจากคลังแชท…</p>}
           {hits.length > 0 && (
             <p className="border-b border-slate-100 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-500">
@@ -4265,9 +4265,8 @@ function LineChatBox({
           ))}
         </div>
       )}
-      <p className="mt-1 text-[10px] leading-snug text-orange-700/80">
-        พิมพ์ <b>ชื่อ LINE</b> ของลูกค้าแล้วเลือกจากรายการ = ผูกให้ทันที · หรือวาง <b>userId</b> เองก็ได้ ·
-        วาง <b>ลิงก์ห้องแชท</b> = ได้แค่ปุ่มเปิดแชทให้กดเอง
+      <p className="mt-1 text-[10px] leading-snug text-slate-400">
+        แตะเลือกจากรายชื่อ หรือพิมพ์ <b>ชื่อ LINE</b> ค้นหา · วาง <b>ลิงก์ห้องแชท</b> = ได้แค่ปุ่มเปิดแชท
       </p>
       {note}
     </div>
