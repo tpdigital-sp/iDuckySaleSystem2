@@ -245,6 +245,18 @@ export async function PATCH(req: Request) {
     if (toSave.status === "ยกเลิก") void restoreStockForOrder(toSave);
     else if (toSave.status === "จัดส่งแล้ว")
       void notifyCustomer(sb, toSave, `🚚 ออเดอร์ ${toSave.id} จัดส่งแล้ว${toSave.tracking ? `\nเลขพัสดุ: ${toSave.tracking}` : ""}\n${link}`);
+
+    // ออเดอร์มัดจำเข้าไลน์ผลิตแล้วแต่ยังค้างงวดหลัง → ทวงตั้งแต่ตอนนี้ ไม่ต้องรอของเสร็จค่อยรู้
+    if (toSave.status === "กำลังผลิต" && toSave.deposit?.firstPaidAt && !toSave.deposit.settledAt) {
+      const bal = Math.max(0, orderTotal(toSave) - (toSave.paidTotal ?? 0));
+      void notifyCustomer(
+        sb,
+        toSave,
+        `🛠️ ออเดอร์ ${toSave.id} เข้าไลน์ผลิตแล้วครับ\n💳 เหลือยอดค้าง ${bal.toLocaleString()} บาท — โอนแล้วแนบสลิปได้ที่ลิงก์นี้เลย (ทางร้านจัดส่งได้หลังชำระครบ)\n${link}`
+      );
+      toSave = { ...toSave, deposit: { ...toSave.deposit, balanceRemindedAt: new Date().toISOString() } };
+      void sb.from("orders").update({ data: toSave }).eq("id", toSave.id);
+    }
   }
 
   // 📦 แอดมินเพิ่งยืนยันสต๊อก/คิวผลิตของรายการที่สั่งจำนวนมาก → แจ้งลูกค้าทางไลน์ทันที

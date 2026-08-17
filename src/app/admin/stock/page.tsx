@@ -172,6 +172,12 @@ export default function StockPage() {
     [items, cat]
   );
 
+  /** ตระกูลทั้งหมด (ไม่กรองตามหมวด) — ใช้เป็นตัวเลือกในฟอร์มแก้ไข */
+  const allFams = useMemo(
+    () => [...new Set(items.map((i) => i.family).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, "th")),
+    [items]
+  );
+
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     let list = items;
@@ -507,6 +513,8 @@ export default function StockPage() {
       {(addOpen || editFor) && (
         <ItemModal
           item={editFor}
+          allCats={cats}
+          allFams={allFams}
           onClose={() => {
             setAddOpen(false);
             setEditFor(null);
@@ -1043,10 +1051,14 @@ function Fact({ k, v }: { k: string; v: string }) {
 
 function ItemModal({
   item,
+  allCats,
+  allFams,
   onClose,
   onSave,
 }: {
   item: Item | null;
+  allCats: string[];
+  allFams: string[];
   onClose: () => void;
   onSave: (b: Partial<Item> & { name: string }) => void;
 }) {

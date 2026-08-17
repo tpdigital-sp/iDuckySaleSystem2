@@ -316,7 +316,8 @@ export function orderDiscountTotal(o: Order): number {
 }
 
 export function orderTotal(o: Order): number {
-  return Math.max(0, orderSubtotal(o) + o.shippingCost - orderDiscountTotal(o));
+  // ?? 0 กันออเดอร์เก่า/แถวที่ไม่มี shippingCost ทำให้ยอดกลายเป็น NaN แล้วลามไปทั้งระบบ
+  return Math.max(0, orderSubtotal(o) + (o.shippingCost ?? 0) - orderDiscountTotal(o));
 }
 
 /** ยอดที่ลูกค้ายังค้างชำระ (มากกว่า 0 = ต้องโอนเพิ่ม เช่น หลังสั่งเพิ่มในออเดอร์เดิม) */
@@ -427,6 +428,8 @@ export interface OrderDeposit {
   balanceSlipUrl?: string;
   /** เวลาที่แจ้งโอนงวดหลัง (ISO) */
   balanceReportedAt?: string;
+  /** ทวงยอดคงเหลือครั้งล่าสุดเมื่อไหร่ (ISO) — กันทวงซ้ำถี่เกินไป */
+  balanceRemindedAt?: string;
 }
 
 /** ได้รับเงินครบยอดออเดอร์หรือยัง — ใช้ล็อกการพิมพ์ใบงาน/ใบเสร็จ และยิงเลขพัสดุ */

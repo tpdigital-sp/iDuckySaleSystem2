@@ -38,6 +38,9 @@ const qtyOf = (o: Order) => o.items.reduce((s, i) => s + i.qty, 0);
 const dayOf = (d: string) => d.split(" ").slice(0, 3).join(" ");
 /** งานแบบที่ยังไม่จบ (ยังไม่มีแบบ หรือ ลูกค้าขอแก้) */
 const openProofs = (o: Order) => o.items.filter((i) => !proofsOf(i).length || i.proofStatus === "ขอแก้ไข").length;
+/** ออเดอร์มัดจำที่ยังเก็บเงินไม่ครบ — ต้องตามเก็บก่อนส่งของ */
+const isDue = (o: Order) => !!o.deposit && !o.deposit.settledAt && o.status !== "ยกเลิก";
+
 /** งานที่ต้องให้ทีมงานลงมือตอนนี้ (ไม่ใช่รอลูกค้า) */
 const NEEDS_US: OrderStatus[] = ["รอตรวจสอบ", "ชำระแล้ว", "แก้ไขแบบ", "อนุมัติแบบ"];
 
@@ -47,6 +50,7 @@ export default function AdminOrdersPage() {
   const [dept, setDept] = useState("all");
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [q, setQ] = useState("");
+  const [onlyDue, setOnlyDue] = useState(false); // เห็นเฉพาะออเดอร์มัดจำที่ยังเก็บเงินไม่ครบ
   const [demo, setDemo] = useState(false);
 
   const can = useCan();
@@ -98,6 +102,9 @@ export default function AdminOrdersPage() {
       waitCustomer: orders.filter((o) => o.status === "รอชำระเงิน" || o.status === "รอตรวจแบบ").length,
       making: orders.filter((o) => o.status === "กำลังผลิต").length,
       todaySales: active.filter((o) => dayOf(o.date) === today).reduce((s, o) => s + orderTotal(o), 0),
+      // ออเดอร์มัดจำที่ยังเก็บเงินไม่ครบ + ยอดที่ยังต้องตามเก็บรวมทั้งหมด
+      dueCount: active.filter(isDue).length,
+      dueAmount: active.filter(isDue).reduce((s, o) => s + amountDueNow(o), 0),
     };
   }, [orders]);
 
@@ -119,7 +126,8 @@ export default function AdminOrdersPage() {
 
   const kw = q.trim().toLowerCase();
   const shown = orders
-    .filter((o) => activeDept.statuses.includes(o.status))
+    .filter((o) => (onlyDue ? isDue(o) : true))
+    .filter((o) => (onlyDue ? o.status !== "ยกเลิก" : activeDept.statuses.includes(o.status)))
     .filter((o) => (filter === "all" ? true : o.status === filter))
     .filter((o) => (kw ? o.id.toLowerCase().includes(kw) || o.customer.toLowerCase().includes(kw) : true));
 
@@ -178,7 +186,17 @@ export default function AdminOrdersPage() {
         <Tile label="ทั้งหมด" value={stats.total.toString()} />
         <Tile label="ต้องทำตอนนี้" value={stats.needUs.toString()} tone="warn" />
         <Tile label="รอลูกค้า" value={stats.waitCustomer.toString()} />
-        <Tile label="กำลังผลิต" value={stats.making.toString()} />
+        {seesMoney && stats.dueCount > 0 ? (
+          <Tile
+            label={`ค้างเก็บเงิน ${stats.dueCount} ออเดอร์`}
+            value={formatPrice(stats.dueAmount)}
+            tone="due"
+            onClick={() => setOnlyDue((v) => !v)}
+            active={onlyDue}
+          />
+        ) : (
+          <Tile label="กำลังผลิต" value={stats.making.toString()} />
+        )}
         {seesMoney && <Tile label="ยอดขายวันนี้" value={formatPrice(stats.todaySales)} tone="brand" />}
       </div>
 
@@ -207,10 +225,26 @@ export default function AdminOrdersPage() {
 
       {/* ── ชิปสถานะย่อยของแผนกนั้น ── */}
       <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <Chip active={filter === "all"} onClick={() => setFilter("all")} label="ทุกสถานะ" count={deptCounts[activeDept.key] ?? 0} />
-        {activeDept.statuses.map((s) => (
-          <Chip key={s} active={filter === s} onClick={() => setFilter(s)} label={s} count={counts[s]} status={s} />
-        ))}
+        {seesMoney && stats.dueCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setOnlyDue((v) => !v)}
+            aria-pressed={onlyDue}
+            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition ${
+              onlyDue ? "bg-rose-600 text-white" : "border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100"
+            }`}
+          >
+            💳 ค้างเก็บเงิน <span className={onlyDue ? "opacity-80" : "text-rose-400"}>{stats.dueCount}</span>
+          </button>
+        )}
+        {!onlyDue && (
+          <>
+            <Chip active={filter === "all"} onClick={() => setFilter("all")} label="ทุกสถานะ" count={deptCounts[activeDept.key] ?? 0} />
+            {activeDept.statuses.map((s) => (
+              <Chip key={s} active={filter === s} onClick={() => setFilter(s)} label={s} count={counts[s]} status={s} />
+            ))}
+          </>
+        )}
       </div>
 
       {/* ── ตาราง ── */}
@@ -374,19 +408,46 @@ function Th({ children, className = "" }: { children?: React.ReactNode; classNam
   );
 }
 
-function Tile({ label, value, tone }: { label: string; value: string; tone?: "warn" | "brand" }) {
+function Tile({
+  label,
+  value,
+  tone,
+  onClick,
+  active,
+}: {
+  label: string;
+  value: string;
+  tone?: "warn" | "brand" | "due";
+  /** กดแล้วกรองรายการ (เช่นการ์ด "ค้างเก็บเงิน") */
+  onClick?: () => void;
+  active?: boolean;
+}) {
   const box =
     tone === "warn"
       ? "border-ducky bg-ducky/15"
       : tone === "brand"
         ? "border-amber-200 bg-amber-50"
-        : "border-slate-200 bg-white";
-  const val = tone === "warn" ? "text-yellow-700" : tone === "brand" ? "text-amber-600" : "text-slate-900";
-  return (
-    <div className={`rounded-2xl border p-4 ${box}`}>
-      <div className="text-xs text-slate-500">{label}</div>
+        : tone === "due"
+          ? active
+            ? "border-rose-400 bg-rose-100/70"
+            : "border-rose-200 bg-rose-50"
+          : "border-slate-200 bg-white";
+  const val =
+    tone === "warn" ? "text-yellow-700" : tone === "brand" ? "text-amber-600" : tone === "due" ? "text-rose-600" : "text-slate-900";
+  const inner = (
+    <>
+      <div className="text-xs text-slate-500">
+        {label}
+        {onClick && <span className="ml-1 text-slate-400">{active ? "· กำลังกรอง ✕" : "· กดเพื่อกรอง"}</span>}
+      </div>
       <div className={`mt-0.5 text-2xl font-bold tracking-tight ${val}`}>{value}</div>
-    </div>
+    </>
+  );
+  if (!onClick) return <div className={`rounded-2xl border p-4 ${box}`}>{inner}</div>;
+  return (
+    <button type="button" onClick={onClick} aria-pressed={active} className={`rounded-2xl border p-4 text-left transition hover:brightness-95 ${box}`}>
+      {inner}
+    </button>
   );
 }
 
