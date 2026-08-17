@@ -343,7 +343,7 @@ export default function AdminOrdersPage() {
                             const cls = l
                               ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
                               : chat
-                                ? "bg-amber-50 text-amber-700 ring-amber-200"
+                                ? "bg-yellow-50 text-yellow-700 ring-yellow-300"
                                 : "bg-rose-50 text-rose-600 ring-rose-200";
                             const label = l ? "✓ ผูก LINE แล้ว" : chat ? "LINE แค่ลิงก์แชท" : "✕ ยังไม่ผูก LINE";
                             const title = l
