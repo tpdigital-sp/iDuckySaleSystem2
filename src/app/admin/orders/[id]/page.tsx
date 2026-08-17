@@ -3932,11 +3932,14 @@ function LineChatBox({
   const [searching, setSearching] = useState(false);
   const [changing, setChanging] = useState(false); // กด "เปลี่ยนคน" → กลับไปโหมดค้นหา
   const [picking, setPicking] = useState(false); // คลิกช่องค้นหาแล้ว → เริ่มโชว์รายชื่อให้เลือก
+  // คนที่เลือกไว้ รอกดยืนยัน — กันแตะพลาดแล้วผูกผิดคน (ผูกผิด = ข้อมูลออเดอร์ไปโผล่แชทคนอื่น)
+  const [picked, setPicked] = useState<{ userId: string; name: string; picture?: string } | null>(null);
 
   // พิมพ์ชื่อ → ค้นจากคลังแชท LINE ของร้านให้เลย (หน่วงไว้กันยิงถี่)
   // ยังไม่พิมพ์แต่คลิกช่องแล้ว → โชว์ "คนที่คุยล่าสุด" ให้เลือกได้เลย
   useEffect(() => {
     const q = draft.trim();
+    setPicked(null);
     if (demo || !picking || /^https?:\/\//i.test(q)) {
       setHits([]);
       return;
@@ -4018,6 +4021,7 @@ function LineChatBox({
         setDraft("");
         setHits([]);
         setChanging(false);
+        setPicked(null);
       } else setMsg(`❌ ${j.error ?? "ผูกไม่สำเร็จ"}`);
     } catch {
       setMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
@@ -4200,7 +4204,33 @@ function LineChatBox({
           {busy ? "กำลังเช็ค…" : "บันทึก"}
         </button>
       </div>
-      {/* ผลค้นหาจากคลังแชท LINE ของร้าน — กดเลือกแล้วผูกเลย ไม่ต้องไปหา userId เอง */}
+      {/* เลือกไว้แล้ว รอยืนยัน — ต้องกดอีกครั้งถึงผูกจริง */}
+      {picked && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg bg-emerald-50 p-2 ring-1 ring-emerald-200">
+          {picked.picture && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={picked.picture} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />
+          )}
+          <span className="min-w-0 flex-1 truncate text-[11px] font-bold text-emerald-800">ผูกกับ “{picked.name}” ใช่ไหม?</span>
+          <button
+            type="button"
+            onClick={() => void bindUserId(picked.userId)}
+            disabled={busy}
+            className="shrink-0 rounded-lg bg-[#06C755] px-3 py-1 text-[11px] font-bold text-white transition hover:bg-[#05b34c] disabled:opacity-50"
+          >
+            {busy ? "กำลังผูก…" : "ยืนยันผูก"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPicked(null)}
+            className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-500 transition hover:bg-white"
+          >
+            ยกเลิก
+          </button>
+        </div>
+      )}
+
+      {/* ผลค้นหาจากคลังแชท LINE ของร้าน — แตะเลือกคน แล้วกดยืนยันอีกครั้ง */}
       {(searching || hits.length > 0) && (
         <div className="mt-1.5 overflow-hidden rounded-lg border border-orange-200 bg-white">
           {searching && hits.length === 0 && <p className="px-2.5 py-2 text-[11px] text-slate-400">กำลังค้นจากคลังแชท…</p>}
@@ -4213,9 +4243,11 @@ function LineChatBox({
             <button
               key={h.userId}
               type="button"
-              onClick={() => void bindUserId(h.userId)}
+              onClick={() => setPicked({ userId: h.userId, name: h.name, picture: h.picture })}
               disabled={busy}
-              className="flex w-full items-center gap-2 border-b border-slate-100 px-2.5 py-1.5 text-left transition last:border-0 hover:bg-orange-50 disabled:opacity-50"
+              className={`flex w-full items-center gap-2 border-b border-slate-100 px-2.5 py-1.5 text-left transition last:border-0 hover:bg-orange-50 disabled:opacity-50 ${
+                picked?.userId === h.userId ? "bg-emerald-50" : ""
+              }`}
             >
               {h.picture ? (
                 // eslint-disable-next-line @next/next/no-img-element
