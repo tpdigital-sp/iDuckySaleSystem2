@@ -4174,6 +4174,33 @@ function LineChatBox({
         <p className="min-w-0 flex-1 text-[11px] font-semibold text-slate-500">
           {changing ? "🔄 เปลี่ยน LINE ของลูกค้า — ค้นแล้วเลือกคนใหม่" : "🟢 LINE ของลูกค้า (ไม่บังคับ — ผูกแล้วระบบแจ้งสถานะให้เอง)"}
         </p>
+        {/* มีลิงก์ห้องแชทเก็บไว้แล้ว (แต่ยังไม่ผูก userId) — โชว์ให้เห็นว่าไม่ได้หายไปไหน */}
+        {chat && !changing && (
+          <>
+            <a
+              href={chat.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#06C755] px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-[#05b34c]"
+              title={chat.source === "prev" ? `ลิงก์จากออเดอร์ ${chat.from} ของลูกค้าคนเดียวกัน` : "ลิงก์ห้องแชทที่บันทึกไว้"}
+            >
+              💬 เปิดแชท
+            </a>
+            {chat.source === "self" && mayEdit && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSave("");
+                  setMsg("ลบลิงก์ห้องแชทแล้ว");
+                }}
+                className="shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-rose-600"
+                title="ลบลิงก์ห้องแชท"
+              >
+                ✕
+              </button>
+            )}
+          </>
+        )}
         {changing && (
           <button
             type="button"
