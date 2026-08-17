@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { currentActor, requirePerm } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { notifyCustomer, orderLink } from "@/lib/server/notify";
+import { notifyCustomer, notifyCustomerLogged, orderLink } from "@/lib/server/notify";
 import { reportPaidToTP } from "@/lib/server/tp-report";
 import { bumpSoldForOrder, unbumpSoldForOrder } from "@/lib/server/sold";
 import { cutStockForOrder, restoreStockForOrder } from "@/lib/server/stock";
@@ -223,12 +223,13 @@ export async function PATCH(req: Request) {
     const origin = new URL(req.url).origin;
     const link = orderLink(origin, toSave);
     if (toSave.status === "ชำระแล้ว")
-      void notifyCustomer(
+      void notifyCustomerLogged(
         sb,
         toSave,
         depositFirstNow
           ? `✅ รับมัดจำออเดอร์ ${toSave.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${Math.max(0, orderTotal(toSave) - (toSave.paidTotal ?? 0)).toLocaleString()} บาท ชำระก่อนจัดส่ง\n${link}`
-          : `✅ ยืนยันการชำระเงินออเดอร์ ${toSave.id} แล้ว กำลังเริ่มงานให้ครับ\n${link}`
+          : `✅ ยืนยันการชำระเงินออเดอร์ ${toSave.id} แล้ว กำลังเริ่มงานให้ครับ\n${link}`,
+        depositFirstNow ? "ยืนยันรับมัดจำ" : "ยืนยันการชำระเงิน"
       );
     // ส่งเข้า msVerify ระบบ Admin — แยกว่าตรวจโดยแอดมิน (SlipOK ผ่านจะถูกส่งจาก slip route ไปแล้ว = idempotent)
     if (toSave.status === "ชำระแล้ว")
@@ -244,15 +245,16 @@ export async function PATCH(req: Request) {
     if (toSave.status === "ยกเลิก") void unbumpSoldForOrder(toSave.id);
     if (toSave.status === "ยกเลิก") void restoreStockForOrder(toSave);
     else if (toSave.status === "จัดส่งแล้ว")
-      void notifyCustomer(sb, toSave, `🚚 ออเดอร์ ${toSave.id} จัดส่งแล้ว${toSave.tracking ? `\nเลขพัสดุ: ${toSave.tracking}` : ""}\n${link}`);
+      void notifyCustomerLogged(sb, toSave, `🚚 ออเดอร์ ${toSave.id} จัดส่งแล้ว${toSave.tracking ? `\nเลขพัสดุ: ${toSave.tracking}` : ""}\n${link}`, "แจ้งจัดส่ง");
 
     // ออเดอร์มัดจำเข้าไลน์ผลิตแล้วแต่ยังค้างงวดหลัง → ทวงตั้งแต่ตอนนี้ ไม่ต้องรอของเสร็จค่อยรู้
     if (toSave.status === "กำลังผลิต" && toSave.deposit?.firstPaidAt && !toSave.deposit.settledAt) {
       const bal = Math.max(0, orderTotal(toSave) - (toSave.paidTotal ?? 0));
-      void notifyCustomer(
+      void notifyCustomerLogged(
         sb,
         toSave,
-        `🛠️ ออเดอร์ ${toSave.id} เข้าไลน์ผลิตแล้วครับ\n💳 เหลือยอดค้าง ${bal.toLocaleString()} บาท — โอนแล้วแนบสลิปได้ที่ลิงก์นี้เลย (ทางร้านจัดส่งได้หลังชำระครบ)\n${link}`
+        `🛠️ ออเดอร์ ${toSave.id} เข้าไลน์ผลิตแล้วครับ\n💳 เหลือยอดค้าง ${bal.toLocaleString()} บาท — โอนแล้วแนบสลิปได้ที่ลิงก์นี้เลย (ทางร้านจัดส่งได้หลังชำระครบ)\n${link}`,
+        "ทวงยอดคงเหลือ (เข้าไลน์ผลิต)"
       );
       toSave = { ...toSave, deposit: { ...toSave.deposit, balanceRemindedAt: new Date().toISOString() } };
       void sb.from("orders").update({ data: toSave }).eq("id", toSave.id);
@@ -280,7 +282,7 @@ export async function PATCH(req: Request) {
   if (toSave.deposit?.settledAt && !existing.deposit?.settledAt) {
     const origin = new URL(req.url).origin;
     const bal = Math.max(0, orderTotal(toSave) - (existing.paidTotal ?? toSave.deposit.amount));
-    void notifyCustomer(sb, toSave, `✅ รับยอดคงเหลือออเดอร์ ${toSave.id} ครบแล้ว ขอบคุณครับ\n${orderLink(origin, toSave)}`);
+    void notifyCustomerLogged(sb, toSave, `✅ รับยอดคงเหลือออเดอร์ ${toSave.id} ครบแล้ว ขอบคุณครับ\n${orderLink(origin, toSave)}`, "ยืนยันรับยอดคงเหลือครบ");
     void reportPaidToTP(toSave, adminName, { docSuffix: "-final", amount: bal, noteSuffix: "ยอดคงเหลือ 50% หลัง (ครบแล้ว)" });
   }
 

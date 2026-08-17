@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { amountDueNow, withLog, type Order } from "@/lib/admin-data";
-import { notifyCustomer, orderLink } from "@/lib/server/notify";
+import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
 import { SITE_URL } from "@/lib/shop-info";
 
 export const runtime = "nodejs";
@@ -52,16 +52,25 @@ export async function GET(req: Request) {
   // ── ทวงลูกค้า (เฉพาะรายที่ยังไม่ส่งสลิปมา และเว้นระยะจากครั้งก่อนแล้ว) ──
   const remind = due.filter((d) => !d.hasSlip && (!d.remindedAt || new Date(d.remindedAt).getTime() < gapCutoff));
   let reminded = 0;
+  const failed: { id: string; reason: string }[] = [];
   if (!dry) {
     for (const d of remind) {
       const link = orderLink(SITE_URL, d.order);
-      await notifyCustomer(
+      // ตัวนี้ลง log ผลการส่งให้แล้ว (สำเร็จ/ถูกบล็อก/ไม่รู้ LINE ของลูกค้า)
+      const sent = await notifyCustomerLogged(
         sb,
         d.order,
-        `💳 แจ้งเตือนยอดค้างออเดอร์ ${d.id}\nคงเหลือ ${d.balance.toLocaleString()} บาท — โอนแล้วแนบสลิปที่ลิงก์นี้ได้เลยครับ\n(ทางร้านจัดส่งได้หลังชำระครบ)\n${link}`
+        `💳 แจ้งเตือนยอดค้างออเดอร์ ${d.id}\nคงเหลือ ${d.balance.toLocaleString()} บาท — โอนแล้วแนบสลิปที่ลิงก์นี้ได้เลยครับ\n(ทางร้านจัดส่งได้หลังชำระครบ)\n${link}`,
+        `ทวงยอดคงเหลือ ${d.balance.toLocaleString()} บาท`
       );
+      if (!sent.ok) failed.push({ id: d.id, reason: sent.reason ?? "ส่งไม่สำเร็จ" });
+      // ส่งไม่ถึงก็ไม่ต้องนับว่าทวงแล้ว — รอบหน้าจะได้ลองใหม่ ไม่ใช่เงียบไป 3 วัน
+      if (!sent.ok) continue;
+      // อ่านสด ๆ ก่อนเขียน — notifyCustomerLogged เพิ่ง append log ลงไป อย่าทับของเขา
+      const { data: fresh } = await sb.from("orders").select("data").eq("id", d.id).maybeSingle();
+      const base = (fresh?.data as Order | undefined) ?? d.order;
       const next = withLog(
-        { ...d.order, deposit: { ...d.order.deposit!, balanceRemindedAt: new Date().toISOString() } },
+        { ...base, deposit: { ...base.deposit!, balanceRemindedAt: new Date().toISOString() } },
         "ระบบ",
         "ทวงยอดคงเหลืออัตโนมัติ",
         `คงเหลือ ${d.balance} บาท`
@@ -111,6 +120,7 @@ export async function GET(req: Request) {
     totalBalance: total,
     willRemind: remind.map((d) => d.id),
     reminded,
+    failed, // ส่งไม่ถึงใครบ้าง + เพราะอะไร (ลูกค้าบล็อก / ไม่รู้ LINE / โควตาหมด)
     notifiedShop,
   });
 }

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { amountDueNow, orderTotal, withLog, type Order, paidStatusFor } from "@/lib/admin-data";
 import { verifySlipWithSlipOK } from "@/lib/server/slipok";
-import { notifyCustomer, orderLink } from "@/lib/server/notify";
+import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
 import { reportPaidToTP } from "@/lib/server/tp-report";
 import { cutStockForOrder } from "@/lib/server/stock";
 import { bumpSoldForOrder } from "@/lib/server/sold";
@@ -131,14 +131,14 @@ export async function POST(req: Request) {
     const origin = new URL(req.url).origin;
     const link = orderLink(origin, updated);
     if (balancePhase) {
-      void notifyCustomer(sb, updated, `✅ รับยอดคงเหลือออเดอร์ ${updated.id} ครบแล้ว ขอบคุณครับ\n${link}`);
+      void notifyCustomerLogged(sb, updated, `✅ รับยอดคงเหลือออเดอร์ ${updated.id} ครบแล้ว ขอบคุณครับ\n${link}`, "ยืนยันรับยอดคงเหลือครบ");
       void reportPaidToTP(updated, "SlipOK อัตโนมัติ", { docSuffix: "-final", amount: expected, noteSuffix: "ยอดคงเหลือ 50% หลัง (ครบแล้ว)" });
     } else if (depositPhase) {
       const remain = orderTotal(updated) - (updated.paidTotal ?? 0);
-      void notifyCustomer(sb, updated, `✅ รับมัดจำออเดอร์ ${updated.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${remain.toLocaleString()} บาท ชำระก่อนจัดส่ง\n${link}`);
+      void notifyCustomerLogged(sb, updated, `✅ รับมัดจำออเดอร์ ${updated.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${remain.toLocaleString()} บาท ชำระก่อนจัดส่ง\n${link}`, "ยืนยันรับมัดจำ");
       void reportPaidToTP(updated, "SlipOK อัตโนมัติ", { amount: expected, noteSuffix: "มัดจำ 50% งวดแรก" });
     } else {
-      void notifyCustomer(sb, updated, `✅ ยืนยันการชำระเงินออเดอร์ ${updated.id} แล้ว กำลังเริ่มงานให้ครับ\n${link}`);
+      void notifyCustomerLogged(sb, updated, `✅ ยืนยันการชำระเงินออเดอร์ ${updated.id} แล้ว กำลังเริ่มงานให้ครับ\n${link}`, "ยืนยันการชำระเงิน");
       void reportPaidToTP(updated, "SlipOK อัตโนมัติ"); // ส่งเข้า msVerify ระบบ Admin (fire-and-forget)
     }
     if (!balancePhase) void cutStockForOrder(updated); // ตัดสต๊อกวัสดุที่ผูกไว้ (มัดจำ = เริ่มงานแล้วก็ตัดเลย)

@@ -2834,6 +2834,7 @@ export default function AdminOrderDetailPage() {
                 order={order}
                 allOrders={allOrders}
                 mayEdit={mayEdit}
+                demo={demo}
                 onSave={(url) => {
                   const next = { ...order, lineChatUrl: url || undefined };
                   setOrder(next);
@@ -3905,11 +3906,13 @@ function downloadOrderShortcut(orderId: string, url: string, kind?: "webloc" | "
  * เก็บไว้กับออเดอร์ แล้วออเดอร์ถัดไปของลูกค้าคนเดิมระบบดึงมาให้เอง (จับคู่จาก customerId/เบอร์/อีเมล)
  */
 function LineChatBox({
+  demo,
   order,
   allOrders,
   mayEdit,
   onSave,
 }: {
+  demo: boolean;
   order: Order;
   allOrders: Order[];
   mayEdit: boolean;
@@ -3919,6 +3922,32 @@ function LineChatBox({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [err, setErr] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [testMsg, setTestMsg] = useState("");
+
+  /** ยิงข้อความทดสอบจริง — รู้ทันทีว่าลิงก์ที่วางไว้ส่งถึงลูกค้าได้ไหม */
+  async function sendTest() {
+    if (demo) {
+      setTestMsg("⚠️ โหมดตัวอย่างส่งจริงไม่ได้");
+      return;
+    }
+    setTesting(true);
+    setTestMsg("");
+    try {
+      const res = await fetch("/api/admin/orders/notify-test", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; via?: string; reason?: string; error?: string };
+      if (j.ok) setTestMsg(`✅ ส่งถึงลูกค้าแล้ว (${j.via === "chatlink" ? "ผ่านลิงก์แชท" : "ผ่านบัญชี LINE ที่ลูกค้าล็อกอิน"})`);
+      else setTestMsg(`❌ ส่งไม่ได้ — ${j.reason ?? j.error ?? "ไม่ทราบสาเหตุ"}`);
+    } catch {
+      setTestMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
+    } finally {
+      setTesting(false);
+    }
+  }
 
   function open() {
     setDraft(found?.url ?? "");
@@ -4022,6 +4051,22 @@ function LineChatBox({
         >
           แก้ไข
         </button>
+      )}
+      {mayEdit && (
+        <button
+          type="button"
+          onClick={sendTest}
+          disabled={testing}
+          title="ส่งข้อความทดสอบไปหาลูกค้าจริง เพื่อดูว่าลิงก์แชทนี้ใช้ส่งได้ไหม"
+          className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 disabled:opacity-50"
+        >
+          {testing ? "กำลังส่ง…" : "🔔 ทดสอบส่ง"}
+        </button>
+      )}
+      {testMsg && (
+        <span className={`w-full text-[11px] font-semibold ${testMsg.startsWith("✅") ? "text-emerald-600" : "text-rose-600"}`}>
+          {testMsg}
+        </span>
       )}
     </div>
   );
