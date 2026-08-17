@@ -1549,6 +1549,24 @@ export default function AdminOrderDetailPage() {
         </div>
       )}
 
+      {/* ── ⛔ บังคับผูก LINE — ต้องครบทั้ง "ลิงก์ห้องแชท" และ "userId" ──
+           ลิงก์ห้องแชท = พนักงานกระโดดกลับไปคุยกับลูกค้าได้ · userId = ระบบส่งแจ้งสถานะเองได้
+           ขาดอย่างใดอย่างหนึ่งก็ยังทำงานต่อได้ แต่ต้องเห็นชัดว่ายังไม่ครบ */}
+      {(() => {
+        const needChat = !lineChatOf(order, allOrders);
+        const needUser = !lineUserOf(order, allOrders);
+        if (!needChat && !needUser) return null;
+        const missing = [needChat && "ลิงก์ห้องแชท", needUser && "LINE userId"].filter(Boolean).join(" + ");
+        return (
+          <a href="#line-bind" className="block border-b border-rose-200 bg-rose-50 px-6 py-3 transition hover:bg-rose-100">
+            <p className="text-sm font-bold text-rose-800">⛔ บังคับ: ยังไม่ได้ผูก {missing} ของลูกค้า</p>
+            <p className="mt-0.5 text-[11px] font-semibold text-rose-600">
+              ทุกออเดอร์ต้องมีครบทั้ง <b>ลิงก์ห้องแชท</b> และ <b>LINE userId</b> — แตะเพื่อไปที่ช่องผูก ↓
+            </p>
+          </a>
+        );
+      })()}
+
       {/* ── งานเคลม / สั่งซ้ำ — โยงกันสองทางให้กดข้ามไปมาได้ ── */}
       {(order.claimOf || order.reorderOf || (order.redoOrders?.length ?? 0) > 0) && (
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/70 px-6 py-3">
@@ -3931,6 +3949,7 @@ function LineChatBox({
   const chat = lineChatOf(order, allOrders);
   const line = lineUserOf(order, allOrders); // จำจากออเดอร์เก่าของลูกค้าคนเดิมได้
   const [draft, setDraft] = useState("");
+  const [linkDraft, setLinkDraft] = useState(""); // ช่องวางลิงก์ห้องแชทตอนผูก userId แล้วแต่ลิงก์ยังขาด
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [testing, setTesting] = useState(false);
@@ -4153,6 +4172,25 @@ function LineChatBox({
     }
   }
 
+  /**
+   * เก็บลิงก์ห้องแชทอย่างเดียว — ใช้ตอนผูก userId ได้แล้วแต่ยังไม่มีลิงก์
+   * (บังคับต้องมีทั้งคู่ · ลิงก์ไม่ต้องยืนยันกับ LINE เก็บตรง ๆ ได้เลย)
+   */
+  function saveChatLink() {
+    const url = linkDraft.trim();
+    if (!/^https?:\/\/chat\.line\.biz\/[^/]+\/chat\//i.test(url)) {
+      setMsg("❌ ต้องเป็นลิงก์ห้องแชทจาก OA Manager (chat.line.biz/…/chat/…)");
+      return;
+    }
+    if (demo) {
+      setMsg("⚠️ โหมดตัวอย่างบันทึกไม่ได้");
+      return;
+    }
+    onSave(url);
+    setLinkDraft("");
+    setMsg("✅ เก็บลิงก์ห้องแชทแล้ว — ครบทั้งลิงก์และ userId");
+  }
+
   /** ยิงข้อความทดสอบจริง — รู้ทันทีว่าส่งถึงลูกค้าได้ไหม */
   async function sendTest() {
     if (demo) return;
@@ -4188,7 +4226,10 @@ function LineChatBox({
   // ── ผูกแล้ว (ของใบนี้ หรือจำมาจากใบเก่า) ──
   if (line && !changing)
     return (
-      <div className="mt-2 rounded-xl bg-emerald-50/70 p-2.5 ring-1 ring-emerald-200">
+      <div
+        id="line-bind"
+        className={`mt-2 scroll-mt-24 rounded-xl p-2.5 ring-1 ${chat ? "bg-emerald-50/70 ring-emerald-200" : "bg-emerald-50/70 ring-rose-300"}`}
+      >
         <div className="flex flex-wrap items-center gap-2">
           {line.picture && (
             // eslint-disable-next-line @next/next/no-img-element
@@ -4286,6 +4327,35 @@ function LineChatBox({
             </>
           )}
         </div>
+        {/* ผูกคนได้แล้วแต่ยังไม่มีลิงก์ห้องแชท — บังคับต้องมีทั้งคู่ ให้วางลิงก์ตรงนี้ได้เลย */}
+        {!chat && (
+          <div className="mt-1.5 rounded-lg bg-rose-50 p-2 ring-1 ring-rose-200">
+            <p className="text-[11px] font-bold text-rose-700">⛔ ยังขาด “ลิงก์ห้องแชท” (บังคับ) — ก๊อป URL จากหน้าห้องแชทใน OA Manager มาวาง</p>
+            {mayEdit ? (
+              <div className="mt-1 flex gap-1.5">
+                <input
+                  value={linkDraft}
+                  onChange={(e) => setLinkDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveChatLink();
+                  }}
+                  placeholder="https://chat.line.biz/…/chat/…"
+                  className="min-w-0 flex-1 rounded-lg border border-rose-200 bg-white px-2.5 py-1 text-[12px] text-slate-700 focus:border-rose-400 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={saveChatLink}
+                  disabled={!linkDraft.trim()}
+                  className="shrink-0 rounded-lg bg-rose-600 px-3 py-1 text-[11px] font-bold text-white transition hover:bg-rose-700 disabled:opacity-50"
+                >
+                  บันทึกลิงก์
+                </button>
+              </div>
+            ) : (
+              <p className="mt-0.5 text-[10px] text-rose-600">ให้พนักงานที่แก้ออเดอร์ได้เป็นคนวางลิงก์</p>
+            )}
+          </div>
+        )}
         {chat && (
           <p className="mt-1.5 truncate text-[10px] text-slate-400" title={chat.url}>
             🔗 <a href={chat.url} target="_blank" rel="noopener noreferrer" className="underline decoration-slate-300 underline-offset-2 hover:text-slate-600">{chat.url}</a>
@@ -4296,13 +4366,16 @@ function LineChatBox({
       </div>
     );
 
-  // ── ยังไม่ผูก — เตือนให้ใส่ ──
+  // ── ยังไม่ผูก — บังคับ ต้องใส่ให้ครบทั้งลิงก์ห้องแชทและ userId ──
   if (!mayEdit) return null;
   return (
-    <div className="mt-2 rounded-xl bg-slate-50 p-2.5 ring-1 ring-dashed ring-slate-300">
+    <div
+      id="line-bind"
+      className={`mt-2 scroll-mt-24 rounded-xl p-2.5 ring-1 ${changing ? "bg-slate-50 ring-dashed ring-slate-300" : "bg-rose-50 ring-rose-300"}`}
+    >
       <div className="flex flex-wrap items-center gap-2">
-        <p className="min-w-[10rem] flex-1 text-[11px] font-semibold text-slate-500">
-          {changing ? "🔄 เปลี่ยน LINE ของลูกค้า — ค้นแล้วเลือกคนใหม่" : "⚪ ยังไม่ผูก LINE ของลูกค้า (ไม่บังคับ — ผูกแล้วระบบแจ้งสถานะให้เอง)"}
+        <p className={`min-w-[10rem] flex-1 text-[11px] font-bold ${changing ? "text-slate-500" : "text-rose-700"}`}>
+          {changing ? "🔄 เปลี่ยน LINE ของลูกค้า — ค้นแล้วเลือกคนใหม่" : "⛔ บังคับ: ต้องผูก LINE ของลูกค้าให้ครบ (ลิงก์ห้องแชท + userId)"}
         </p>
         {/* มีลิงก์ห้องแชทเก็บไว้แล้ว (แต่ยังไม่ผูก userId) — โชว์ให้เห็นว่าไม่ได้หายไปไหน */}
         {chat && !changing && (
@@ -4353,6 +4426,14 @@ function LineChatBox({
           </button>
         )}
       </div>
+      {/* เช็กลิสต์ 2 ช่อง — เห็นทันทีว่าขาดอะไร (ในโหมดนี้ userId ยังไม่ผูกแน่นอน) */}
+      {!changing && (
+        <p className="mt-1 text-[10px] font-bold">
+          <span className={chat ? "text-emerald-600" : "text-rose-600"}>{chat ? "✔" : "✖"} ลิงก์ห้องแชท</span>
+          <span className="mx-1.5 text-slate-300">·</span>
+          <span className="text-rose-600">✖ LINE userId</span>
+        </p>
+      )}
       <div className="mt-1.5 flex gap-1.5">
         <input
           value={draft}
@@ -4542,8 +4623,8 @@ function LineChatBox({
           ))}
         </div>
       )}
-      <p className="mt-1 text-[10px] leading-snug text-slate-400">
-        แตะเลือกจากรายชื่อ หรือพิมพ์ <b>ชื่อ LINE</b> ค้นหา · วาง <b>ลิงก์ห้องแชท</b> = ได้แค่ปุ่มเปิดแชท
+      <p className="mt-1 text-[10px] leading-snug text-slate-500">
+        ต้องได้ครบ 2 อย่าง: วาง <b>ลิงก์ห้องแชท</b> (chat.line.biz) แล้วแตะเลือกจากรายชื่อ หรือพิมพ์ <b>ชื่อ LINE</b> ค้นหาเพื่อผูก <b>userId</b>
       </p>
       {note}
     </div>

@@ -36,7 +36,35 @@ const STATUS_BADGE: Record<MyCoupon["status"], { text: string; cls: string }> = 
   void: { text: "ยกเลิก", cls: "bg-stone-200 text-stone-500" },
 };
 
-export default function MyCoupons() {
+/** สั้น ๆ: ภาพของขวัญ + เป็ด (SVG ตามไฟล์ต้นแบบหน้าบัญชี) */
+const GiftSvg = () => (
+  <svg className="acd-gift" viewBox="0 0 60 60" aria-hidden="true">
+    <rect x="12" y="24" width="36" height="28" rx="4" fill="#fff" />
+    <rect x="12" y="24" width="36" height="10" fill="#FFD447" />
+    <rect x="27" y="24" width="6" height="28" fill="#57B6E8" />
+    <path d="M30 24 Q20 8 12 18 Q14 26 30 24Z" fill="#57B6E8" />
+    <path d="M30 24 Q40 8 48 18 Q46 26 30 24Z" fill="#57B6E8" />
+  </svg>
+);
+const DuckSvg = () => (
+  <svg className="acd-duck-side" viewBox="0 0 100 100" aria-hidden="true">
+    <circle cx="50" cy="55" r="34" fill="#FFD447" />
+    <circle cx="66" cy="40" r="9" fill="#FFD447" />
+    <path d="M70 38 Q80 35 78 44 Q73 44 70 42Z" fill="#FF9E4A" />
+    <circle cx="69" cy="38" r="2.6" fill="#173A6B" />
+    <circle cx="36" cy="68" r="5" fill="#FFC7D6" />
+    <rect x="60" y="60" width="16" height="12" rx="3" fill="#2C81C4" />
+    <text x="68" y="69" fontFamily="Mitr" fontSize="9" fill="#fff" textAnchor="middle">
+      %
+    </text>
+  </svg>
+);
+
+/**
+ * คูปองของฉัน
+ * variant "dash" = หน้าบัญชีแบบแดชบอร์ด (แบนเนอร์เหลืองตามไฟล์ต้นแบบ · สไตล์ .acd-coupon ใน landing.css)
+ */
+export default function MyCoupons({ variant }: { variant?: "dash" } = {}) {
   const [coupons, setCoupons] = useState<MyCoupon[] | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -68,8 +96,27 @@ export default function MyCoupons() {
 
   const usableCount = coupons.filter((c) => c.usable).length;
 
+  if (variant === "dash" && coupons.length === 0) {
+    return (
+      <div className="acd-coupon">
+        <span className="acd-star" style={{ left: "6%", top: "20%", fontSize: "1.1rem" }}>
+          ✦
+        </span>
+        <span className="acd-star" style={{ left: "15%", top: "64%", fontSize: ".8rem", animationDelay: "-1.2s" }}>
+          ✦
+        </span>
+        <GiftSvg />
+        <div className="acd-coupon-txt">
+          <h3>ยังไม่มีคูปอง</h3>
+          <p>สั่งซื้อและติดตามโปรโมชั่นเพื่อรับคูปองนะ</p>
+        </div>
+        <DuckSvg />
+      </div>
+    );
+  }
+
   return (
-    <section>
+    <section className={variant === "dash" ? "acd-coupon-sec" : undefined}>
       {/* สไตล์ .cpn-* / .acc-sec-title อยู่ใน (shop)/landing.css — ใช้ในหน้า /account (ครอบด้วย .dl) */}
       <div className="acc-sec-title">
         <b>🎟️ คูปองของฉัน</b>
