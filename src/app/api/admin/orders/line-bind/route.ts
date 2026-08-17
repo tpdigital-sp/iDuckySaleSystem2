@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { fetchLineProfile, lineUserIdFrom } from "@/lib/server/notify";
-import { CHAT_OVERRIDE_COLLECTION, getChatFirestore } from "@/lib/server/firebase-admin";
+import { CHAT_COLLECTION, CHAT_OVERRIDE_COLLECTION, getChatFirestore } from "@/lib/server/firebase-admin";
 import { withLog, type Order } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   const gate = await requirePerm("orders.edit");
   if (gate.res) return gate.res;
 
-  let body: { orderId?: string; input?: string };
+  let body: { orderId?: string; input?: string; managerId?: string };
   try {
     body = await req.json();
   } catch {
@@ -43,6 +43,55 @@ export async function POST(req: Request) {
     const { error } = await sb.from("orders").update({ data: cleared }).eq("id", orderId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, cleared: true, order: cleared });
+  }
+
+  const managerId = input.match(/chat\.line\.biz\/[^/]+\/chat\/(U[0-9a-f]{32})/i)?.[1] ?? null;
+  const db = getChatFirestore();
+
+  // ── ลิงก์ OA Manager: รหัสท้ายลิงก์ไม่ใช่ userId — ต้อง "แปล" ก่อน ──
+  if (managerId) {
+    // 1) เคยจับคู่ไว้แล้ว (จากที่พนักงานยืนยัน หรือ AdminBuddy กรอกไว้) → ผูกทันที
+    if (db) {
+      try {
+        const q = await db.collection(CHAT_OVERRIDE_COLLECTION).where("managerUserId", "==", managerId).limit(1).get();
+        if (!q.empty) {
+          const real = q.docs[0].id;
+          const p = await fetchLineProfile(real);
+          if (p) {
+            const next = withLog(
+              { ...order, lineChatUrl: input, lineUserId: real, lineProfile: { name: p.name, picture: p.picture, at: new Date().toISOString() } },
+              who,
+              "ผูก LINE ของลูกค้า",
+              `${p.name} · จากลิงก์ห้องแชทที่เคยจับคู่ไว้`
+            );
+            const { error } = await sb.from("orders").update({ data: next }).eq("id", orderId);
+            if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+            return NextResponse.json({ ok: true, profile: p, order: next, resolved: "override" });
+          }
+        }
+      } catch {
+        /* ตารางจับคู่อ่านไม่ได้ก็ไปขั้นถัดไป */
+      }
+    }
+    // 2) ยังไม่เคยจับคู่ → เก็บลิงก์ไว้ก่อน + เสนอ "คนที่คุยล่าสุด" ให้พนักงานยืนยัน 1 คลิก
+    //    (พนักงานเพิ่งเปิดห้องแชทคนนั้นมาก๊อปลิงก์ = เขาอยู่บนสุดของรายการเกือบทุกครั้ง)
+    const saved = withLog({ ...order, lineChatUrl: input }, who, "บันทึกลิงก์ห้องแชท LINE");
+    await sb.from("orders").update({ data: saved }).eq("id", orderId);
+    type Sug = { userId: string; name: string; picture?: string; lastSeen?: string };
+    const suggestions: Sug[] = [];
+    if (db) {
+      try {
+        const snap = await db.collection(CHAT_COLLECTION).orderBy("lastSeen", "desc").limit(3).get();
+        snap.forEach((d) => {
+          const ls = d.get("lastSeen") as { _seconds?: number; toDate?: () => Date } | undefined;
+          const at = ls?.toDate ? ls.toDate().toISOString() : ls?._seconds ? new Date(ls._seconds * 1000).toISOString() : undefined;
+          suggestions.push({ userId: (d.get("userId") as string) || d.id, name: (d.get("displayName") as string) || "(ไม่มีชื่อ)", picture: d.get("pictureUrl") as string, lastSeen: at });
+        });
+      } catch {
+        /* ไม่มีคลังแชทก็ไม่มีข้อเสนอ */
+      }
+    }
+    return NextResponse.json({ ok: true, savedLink: true, managerId, suggestions, order: saved });
   }
 
   let userId = lineUserIdFrom(input);
@@ -104,5 +153,18 @@ export async function POST(req: Request) {
   );
   const { error } = await sb.from("orders").update({ data: next }).eq("id", orderId);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // พนักงานยืนยันว่า "ลิงก์ห้องแชทนี้ = คนนี้" → จำไว้ ครั้งหน้าวางลิงก์เดิมผูกอัตโนมัติ (AdminBuddy ใช้ตารางเดียวกัน)
+  const mid = (body.managerId ?? "").trim();
+  if (db && /^U[0-9a-f]{32}$/i.test(mid)) {
+    try {
+      await db.collection(CHAT_OVERRIDE_COLLECTION).doc(userId).set(
+        { managerUserId: mid, managerUserIdBy: who, managerUserIdAt: new Date().toISOString(), source: "iducky-order" },
+        { merge: true }
+      );
+    } catch {
+      /* จำไม่ได้ก็ไม่เป็นไร ครั้งหน้าถามใหม่ */
+    }
+  }
   return NextResponse.json({ ok: true, profile, order: next });
 }

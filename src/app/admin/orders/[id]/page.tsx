@@ -3934,6 +3934,9 @@ function LineChatBox({
   const [picking, setPicking] = useState(false); // คลิกช่องค้นหาแล้ว → เริ่มโชว์รายชื่อให้เลือก
   // คนที่เลือกไว้ รอกดยืนยัน — กันแตะพลาดแล้วผูกผิดคน (ผูกผิด = ข้อมูลออเดอร์ไปโผล่แชทคนอื่น)
   const [picked, setPicked] = useState<{ userId: string; name: string; picture?: string } | null>(null);
+  // วางลิงก์ OA Manager แล้ว: รหัสท้ายลิงก์ที่รอจับคู่ + คนที่ระบบเดาว่าน่าจะใช่ (คุยล่าสุด)
+  const [pendingManagerId, setPendingManagerId] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<{ userId: string; name: string; picture?: string; lastSeen?: string }[]>([]);
 
   // พิมพ์ชื่อ → ค้นจากคลังแชท LINE ของร้านให้เลย (หน่วงไว้กันยิงถี่)
   // ยังไม่พิมพ์แต่คลิกช่องแล้ว → โชว์ "คนที่คุยล่าสุด" ให้เลือกได้เลย
@@ -3978,29 +3981,38 @@ function LineChatBox({
     setBusy(true);
     setMsg("");
     try {
-      const isChatLink = /chat\.line\.biz/i.test(input);
-      const uid = input.match(/(U[0-9a-f]{32})/i)?.[1];
-      // ลิงก์ห้องแชท: เก็บลิงก์ไว้ก่อนเสมอ (ปุ่มเปิดแชทจะได้ใช้ได้)
-      if (isChatLink) onSave(input);
-      // ถ้าเป็น userId ดิบ → ลองผูกเลย · ถ้าเป็นลิงก์ ก็ลองด้วย (เผื่อเป็นลิงก์จากคลังแชทที่ลงท้ายด้วย userId จริง)
-      if (uid) {
-        const res = await fetch("/api/admin/orders/line-bind", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ orderId: order.id, input: uid }),
-        });
-        const j = (await res.json().catch(() => ({}))) as { ok?: boolean; profile?: { name: string }; order?: Order; error?: string };
-        if (j.ok) {
-          if (j.order) onBound(j.order);
-          setMsg(`✅ ผูกกับ "${j.profile?.name}" แล้ว — ระบบส่งข้อความถึงได้`);
-          setDraft("");
-          return;
-        }
-        setMsg(isChatLink ? `⚠️ เก็บลิงก์ไว้แล้ว แต่ยังส่งข้อความไม่ได้ — ${j.error ?? ""}` : `❌ ${j.error ?? "ผูกไม่สำเร็จ"}`);
-        if (isChatLink) setDraft("");
+      const res = await fetch("/api/admin/orders/line-bind", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, input }),
+      });
+      const j = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        profile?: { name: string };
+        order?: Order;
+        error?: string;
+        savedLink?: boolean;
+        managerId?: string;
+        suggestions?: typeof suggestions;
+        resolved?: string;
+      };
+      if (j.ok && j.order) onBound(j.order);
+      if (j.ok && j.profile) {
+        // ผูกได้เลย (userId ตรง หรือลิงก์ที่เคยจับคู่ไว้)
+        setMsg(`✅ ผูกกับ "${j.profile.name}" แล้ว${j.resolved === "override" ? " (จำจากลิงก์ห้องแชทที่เคยจับคู่ไว้)" : ""} — ระบบส่งข้อความถึงได้`);
+        setDraft("");
+        setChanging(false);
         return;
       }
-      setMsg("❌ ต้องเป็น LINE userId (ขึ้นต้นด้วย U) หรือลิงก์ห้องแชท");
+      if (j.ok && j.savedLink) {
+        // ลิงก์ OA Manager ที่ยังไม่เคยจับคู่ → เก็บลิงก์แล้ว เสนอคนที่น่าจะใช่ให้ยืนยัน
+        setPendingManagerId(j.managerId ?? null);
+        setSuggestions(j.suggestions ?? []);
+        setMsg(j.suggestions?.length ? "" : "เก็บลิงก์ห้องแชทแล้ว · พิมพ์ชื่อลูกค้าเพื่อผูกให้ระบบส่งข้อความได้");
+        setDraft("");
+        return;
+      }
+      setMsg(`❌ ${j.error ?? "บันทึกไม่สำเร็จ"}`);
     } catch {
       setMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
     } finally {
@@ -4016,7 +4028,8 @@ function LineChatBox({
       const res = await fetch("/api/admin/orders/line-bind", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ orderId: order.id, input: uid }),
+        // แนบรหัสท้ายลิงก์ที่รอจับคู่ไปด้วย → ระบบจำว่าลิงก์นี้ = คนนี้ ครั้งหน้าผูกอัตโนมัติ
+        body: JSON.stringify({ orderId: order.id, input: uid, managerId: pendingManagerId ?? undefined }),
       });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; profile?: { name: string }; order?: Order; error?: string };
       if (j.ok) {
@@ -4026,6 +4039,8 @@ function LineChatBox({
         setHits([]);
         setChanging(false);
         setPicked(null);
+        setPendingManagerId(null);
+        setSuggestions([]);
       } else setMsg(`❌ ${j.error ?? "ผูกไม่สำเร็จ"}`);
     } catch {
       setMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
@@ -4162,6 +4177,12 @@ function LineChatBox({
             </>
           )}
         </div>
+        {chat && (
+          <p className="mt-1.5 truncate text-[10px] text-slate-400" title={chat.url}>
+            🔗 <a href={chat.url} target="_blank" rel="noopener noreferrer" className="underline decoration-slate-300 underline-offset-2 hover:text-slate-600">{chat.url}</a>
+            {chat.source === "prev" && <span className="ml-1">(จาก {chat.from})</span>}
+          </p>
+        )}
         {note}
       </div>
     );
@@ -4236,6 +4257,49 @@ function LineChatBox({
           {busy ? "กำลังเช็ค…" : "บันทึก"}
         </button>
       </div>
+      {/* วางลิงก์ OA Manager แล้ว → เดาว่าเป็นใครจากคนที่คุยล่าสุด ให้ยืนยันคลิกเดียว */}
+      {pendingManagerId && suggestions.length > 0 && !picked && (
+        <div className="mt-1.5 rounded-lg bg-sky-50 p-2 ring-1 ring-sky-200">
+          <p className="text-[11px] font-bold text-sky-800">🔗 เก็บลิงก์ห้องแชทแล้ว — ลิงก์นี้น่าจะเป็นใคร? (คนที่คุยกับร้านล่าสุด)</p>
+          <div className="mt-1.5 space-y-1">
+            {suggestions.map((h) => (
+              <button
+                key={h.userId}
+                type="button"
+                onClick={() => setPicked({ userId: h.userId, name: h.name, picture: h.picture })}
+                className="flex w-full items-center gap-2 rounded-lg bg-white px-2 py-1.5 text-left ring-1 ring-sky-100 transition hover:bg-sky-100"
+              >
+                {h.picture ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={h.picture} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" />
+                ) : (
+                  <span className="h-6 w-6 shrink-0 rounded-full bg-slate-100" />
+                )}
+                <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-700">{h.name}</span>
+                {h.lastSeen && (
+                  <span className="shrink-0 text-[10px] text-slate-400">
+                    คุยล่าสุด {new Date(h.lastSeen).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          <div className="mt-1.5 flex items-center justify-between">
+            <span className="text-[10px] text-sky-700/80">ไม่ใช่สักคน? พิมพ์ชื่อในช่องด้านบนเพื่อค้นหา</span>
+            <button
+              type="button"
+              onClick={() => {
+                setPendingManagerId(null);
+                setSuggestions([]);
+              }}
+              className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-500 hover:bg-white"
+            >
+              ข้ามไปก่อน
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* เลือกไว้แล้ว รอยืนยัน — ต้องกดอีกครั้งถึงผูกจริง */}
       {picked && (
         <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg bg-emerald-50 p-2 ring-1 ring-emerald-200">
@@ -4243,7 +4307,9 @@ function LineChatBox({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={picked.picture} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />
           )}
-          <span className="min-w-0 flex-1 truncate text-[11px] font-bold text-emerald-800">ผูกกับ “{picked.name}” ใช่ไหม?</span>
+          <span className="min-w-0 flex-1 truncate text-[11px] font-bold text-emerald-800">
+            ผูกกับ “{picked.name}” ใช่ไหม?{pendingManagerId ? " (จะจำว่าลิงก์ห้องแชทนี้ = คนนี้)" : ""}
+          </span>
           <button
             type="button"
             onClick={() => void bindUserId(picked.userId)}
@@ -4262,6 +4328,12 @@ function LineChatBox({
         </div>
       )}
 
+      {chat && !changing && (
+        <p className="mt-1.5 truncate text-[10px] text-slate-400" title={chat.url}>
+          🔗 <a href={chat.url} target="_blank" rel="noopener noreferrer" className="underline decoration-slate-300 underline-offset-2 hover:text-slate-600">{chat.url}</a>
+          {chat.source === "prev" && <span className="ml-1">(จาก {chat.from})</span>}
+        </p>
+      )}
       {/* ผลค้นหาจากคลังแชท LINE ของร้าน — แตะเลือกคน แล้วกดยืนยันอีกครั้ง */}
       {picking && !picked && (searching || hits.length > 0) && (
         <div className="mt-1.5 overflow-hidden rounded-lg border border-slate-200 bg-white">
