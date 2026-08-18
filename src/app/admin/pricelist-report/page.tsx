@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import RequirePerm from "@/components/RequirePerm";
-import { badge, btnNeutral, btnSmNeutral, card, faint, h1, label, metric, muted, pillActive, pillIdle } from "@/lib/admin-ui";
+import { badge, btnNeutral, btnSmNeutral, card, code, faint, h1, label, metric, muted, pillActive, pillIdle } from "@/lib/admin-ui";
 
 /**
  * 🔍 รายงานเทียบเว็บตารางราคา ↔ สินค้าในระบบ
@@ -47,6 +47,7 @@ interface Row {
 /** สินค้าในระบบสำหรับช่องค้นหาตอนย้าย */
 interface PickItem {
   id: string;
+  slug: string;
   name: string;
   category: string;
   published: boolean;
@@ -118,6 +119,21 @@ const whenOf = (iso: string) => {
   return isNaN(d.getTime()) ? "" : d.toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 };
 
+/**
+ * คำค้นในช่อง "ย้ายสินค้ามาที่นี่" — วางลิงก์สินค้ามาทั้งเส้นก็ได้
+ * (https://iduckystore.com/products/standymusic-3 → standymusic-3)
+ */
+const pickKey = (q: string) => {
+  const t = q.trim().toLowerCase();
+  if (!t.includes("/")) return t;
+  const path = t.split(/[?#]/)[0].replace(/\/+$/, "");
+  try {
+    return decodeURIComponent(path.split("/").pop() ?? "");
+  } catch {
+    return path.split("/").pop() ?? "";
+  }
+};
+
 /** ลิงก์หน้าแก้ไขสินค้า — ใช้ slug ถ้ามี (URL อ่านรู้เรื่องกว่า) */
 const editPath = (p: { id: string; slug: string }) => `/admin/products/${encodeURIComponent(p.slug || p.id)}`;
 
@@ -179,10 +195,16 @@ function ProductCell({
   const rest = row.products.length - list.length;
 
   const found = useMemo(() => {
-    const t = q.trim().toLowerCase();
+    const t = pickKey(q);
     if (t.length < 2) return [];
     const mine = new Set(row.products.map((p) => p.id));
-    return all.filter((p) => !mine.has(p.id) && p.name.toLowerCase().includes(t)).slice(0, 8);
+    const pool = all.filter((p) => !mine.has(p.id));
+    // วางลิงก์สินค้ามา = เจาะจงตัวนั้นตัวเดียว (id/slug ตรงเป๊ะขึ้นก่อนเสมอ)
+    const exact = pool.filter((p) => p.id.toLowerCase() === t || p.slug.toLowerCase() === t);
+    const rest = pool.filter(
+      (p) => !exact.includes(p) && (p.name.toLowerCase().includes(t) || p.id.toLowerCase().includes(t) || p.slug.toLowerCase().includes(t))
+    );
+    return [...exact, ...rest].slice(0, 8);
   }, [q, all, row.products]);
 
   return (
@@ -239,12 +261,12 @@ function ProductCell({
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="พิมพ์ชื่อสินค้าในระบบที่ต้องการย้ายมาบรรทัดนี้…"
+            placeholder="พิมพ์ชื่อสินค้า / รหัสสินค้า / วางลิงก์หน้าสินค้า…"
             className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 placeholder:text-slate-400"
           />
           <div className="mt-1.5 space-y-1">
             {q.trim().length < 2 ? (
-              <p className={`text-xs ${faint}`}>พิมพ์อย่างน้อย 2 ตัวอักษร</p>
+              <p className={`text-xs ${faint}`}>พิมพ์อย่างน้อย 2 ตัวอักษร — วางลิงก์หน้าสินค้ามาทั้งเส้นก็ได้</p>
             ) : !found.length ? (
               <p className={`text-xs ${faint}`}>ไม่เจอสินค้าชื่อนี้ในระบบ</p>
             ) : (
@@ -264,6 +286,7 @@ function ProductCell({
                     {p.published ? "เผยแพร่" : "ร่าง"}
                   </span>
                   <span className="text-slate-700">{p.name}</span>
+                  <span className={code}>{p.slug || p.id}</span>
                   {p.at ? <span className={`text-xs ${faint}`}>· ตอนนี้อยู่ที่ “{p.at}”</span> : null}
                 </button>
               ))
@@ -347,11 +370,11 @@ export default function PricelistReportPage() {
     const m = new Map<string, PickItem>();
     for (const r of data?.rows ?? []) {
       for (const p of r.products) {
-        m.set(p.id, { id: p.id, name: p.name, category: p.category, published: p.published, at: r.name });
+        m.set(p.id, { id: p.id, slug: p.slug, name: p.name, category: p.category, published: p.published, at: r.name });
       }
     }
     for (const p of data?.extras ?? []) {
-      if (!m.has(p.id)) m.set(p.id, { id: p.id, name: p.name, category: p.category, published: p.published, at: "" });
+      if (!m.has(p.id)) m.set(p.id, { id: p.id, slug: p.slug, name: p.name, category: p.category, published: p.published, at: "" });
     }
     return [...m.values()];
   }, [data]);
