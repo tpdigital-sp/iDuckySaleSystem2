@@ -190,7 +190,8 @@ export async function fetchProductsLite(): Promise<Product[]> {
     .select(
       "id,name,category,price,sold,featured,badge,sort,slug:data->>slug,hidden:data->hidden," +
         "emoji:data->>emoji,gradient:data->>gradient,imageSrc:data->>imageSrc," +
-        "rating:data->rating,oldPrice:data->oldPrice,priceMin:data->priceMin,priceMax:data->priceMax"
+        "rating:data->rating,oldPrice:data->oldPrice,priceMin:data->priceMin,priceMax:data->priceMax," +
+        "quoteOption:data->quoteOption"
     )
     .order("sort", { ascending: true });
   if (error || !data) return mergedProducts();
@@ -216,6 +217,7 @@ export async function fetchProductsLite(): Promise<Product[]> {
         oldPrice: (r.oldPrice as number | null) ?? undefined,
         priceMin: (r.priceMin as number | null) ?? undefined,
         priceMax: (r.priceMax as number | null) ?? undefined,
+        quoteOption: (r.quoteOption as boolean | null) ?? undefined,
         // ฟิลด์หนักที่การ์ดไม่ใช้ — เว้นว่างไว้ (priceRange ใช้ pricing/price ได้อยู่แล้ว)
         options: [],
         rules: [],

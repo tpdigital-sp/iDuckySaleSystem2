@@ -1,8 +1,9 @@
 import Link from "next/link";
 import {
   formatPrice,
-  formatPriceRange,
+  formatPriceLabel,
   getCategory,
+  isQuoteProduct,
   priceRange,
   productPath,
   type Product,
@@ -18,7 +19,8 @@ const BADGE_STYLES: Record<string, string> = {
 export default function ProductCard({ product }: { product: Product }) {
   const category = getCategory(product.category);
   const range = priceRange(product);
-  const isRange = range.max > range.min;
+  // ป้ายราคายาว (ช่วงราคา หรือ "เริ่มต้น ฿X") ใช้ตัวเล็กลง ไม่ให้ล้นการ์ด
+  const isRange = range.max > range.min || isQuoteProduct(product);
   return (
     <Link
       href={productPath(product)}
@@ -48,7 +50,7 @@ export default function ProductCard({ product }: { product: Product }) {
         <div className="mt-auto flex flex-col gap-1 pt-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <span className={`font-extrabold text-amber-600 ${isRange ? "text-base" : "text-lg"}`}>
-              {formatPriceRange(product)}
+              {formatPriceLabel(product)}
             </span>
             {product.oldPrice && !isRange && (
               <span className="ml-1.5 text-xs text-stone-400 line-through">

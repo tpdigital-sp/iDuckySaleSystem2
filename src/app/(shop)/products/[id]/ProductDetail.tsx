@@ -6,6 +6,12 @@ import Link from "next/link";
 import {
   activeMatrix,
   allowedChoices,
+  formatInputValue,
+  inputError,
+  INPUT_MAX_LEN,
+  isInputOption,
+  needsQuote,
+  parseInputValue,
   customUnitPrice,
   adminProductPath,
   DESIGN_LABEL,
@@ -581,6 +587,25 @@ export default function ProductDetail({
   // โหมด "size" ลูกค้าแค่ระบุขนาด — ราคายังคิดจากตารางปกติ · โหมดอื่นใช้ราคาของงานกำหนดเอง
   const unitPrice = useCustom && custom?.mode !== "size" ? customPrice : baseUnitPrice;
 
+  /**
+   * 💬 ตัวเลือกที่เลือกอยู่เป็น "งานสั่งทำ" ที่ต้องให้แอดมินตีราคาไหม
+   * (กลุ่ม/ตัวเลือกที่แอดมินติ๊ก 💬 ไว้ เช่น แบบที่ระบุขนาดเอง)
+   * เข้าเงื่อนไข = ยังไม่มีราคา แต่กดสั่งไว้ก่อนได้ แล้วคุยกันทางแชท
+   */
+  const askQuote = useMemo(() => needsQuote(product, effective), [product, effective]);
+  /**
+   * ช่องกรอกที่ยังกรอกไม่ถูก (เฉพาะกลุ่มที่แสดงอยู่) — มีค้างอยู่ = กดสั่งไม่ได้
+   * ตรวจด้วยเกณฑ์เดียวกับที่แสดงใต้ช่อง (inputError) จะได้ไม่มีกรณี "ปุ่มตายแต่ไม่บอกว่าเพราะอะไร"
+   */
+  const inputErrors = useMemo(
+    () =>
+      product.options
+        .filter((o) => isInputOption(o) && optionVisible(o, effective))
+        .map((o) => inputError(o, effective[o.label]))
+        .filter((e): e is string => !!e),
+    [product, effective]
+  );
+
   // ตารางราคาที่ใช้อยู่ (ตามเรทที่เลือก — สินค้าเรทเดียวคือ pricing เดิม)
   const matrix = useMemo(() => activeMatrix(product, effective), [product, effective]);
 
@@ -1131,6 +1156,11 @@ export default function ProductDetail({
       setExtraOpen("art");
       return;
     }
+    // ✍️ งานสั่งทำ — ช่องที่ให้ลูกค้ากรอกต้องครบและอยู่ในเกณฑ์ก่อน ไม่งั้นแอดมินตีราคาไม่ได้
+    if (inputErrors.length) {
+      document.getElementById("opt-groups")?.scrollIntoView({ block: "center", behavior: "smooth" });
+      return;
+    }
     // สินค้าที่มีระบบลาย: ต้องระบุจำนวนลายก่อน (แตะ +/− พิมพ์เลข หรือแนบรูปให้นับอัตโนมัติ)
     if (needDesignsChoice && !designsSet) {
       setDesignsWarn(true);
@@ -1633,6 +1663,14 @@ export default function ProductDetail({
               </p>
             </div>
           )}
+          {/* งานสั่งทำ (แบบที่แอดมินตั้งให้ตีราคา) — ตารางนี้ไม่ใช่ราคาของงานนี้ คลุมไว้กันเข้าใจผิด */}
+          {askQuote && !useCustom && (
+            <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/70">
+              <p className="rounded-full bg-sky-600 px-4 py-2 text-center text-xs font-bold text-white shadow-lg">
+                💬 งานสั่งทำ — ราคาไม่อิงตารางนี้ แอดมินตีราคาให้
+              </p>
+            </div>
+          )}
           <p className="text-sm font-bold text-stone-700">
             💰 ราคาต่อหน่วยตามจำนวน
             {rate && <span className="ml-1 font-semibold text-teal-700">· {rate.label}</span>}
@@ -1743,6 +1781,9 @@ export default function ProductDetail({
                 <span className="text-xl font-extrabold text-sky-700">
                   {customChat ? "💬 คุยรายละเอียดกับแอดมิน" : "💬 รอแอดมินตีราคา"}
                 </span>
+              ) : askQuote ? (
+                // งานสั่งทำตามตัวเลือกที่เลือก — ราคายังไม่มี ไม่โชว์ ฿0 ให้งง
+                <span className="text-xl font-extrabold text-sky-700">💬 รอแอดมินตีราคา</span>
               ) : (
                 <>
                   <span className="text-2xl font-extrabold text-amber-600">{formatPrice(unitPrice)}</span>
@@ -1758,7 +1799,22 @@ export default function ProductDetail({
                 </>
               )}
             </div>
-            {useCustom ? (
+            {askQuote && !useCustom ? (
+              <div className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
+                <p>
+                  💬 <strong className="font-bold">งานสั่งทำ — สั่งเข้ามาได้เลย ยังไม่ต้องโอน</strong> กรอกรายละเอียดให้ครบ
+                  แล้วกดสั่ง จากนั้นส่งลิงก์ออเดอร์ให้แอดมินทางไลน์เพื่อตีราคา แล้วหน้าแจ้งโอนถึงจะเปิดให้โอน
+                </p>
+                <a
+                  href={LINE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
+                >
+                  💬 ทักไลน์สอบถามราคาก่อน
+                </a>
+              </div>
+            ) : useCustom ? (
               customAsk ? (
                 // สั้น ๆ: สั่งเลย → copy ลิงก์ออเดอร์ส่งแอดมินให้ใส่ราคา → ค่อยโอน
                 <p className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
@@ -1866,7 +1922,7 @@ export default function ProductDetail({
               (เอาติ๊กออกเพื่อกลับมาเลือกทั้งหมด)
             </p>
           )}
-          <div className="mt-4 space-y-3">
+          <div id="opt-groups" className="mt-4 space-y-3">
             {/* กลุ่มที่ตั้ง "แสดงเมื่อ" ไว้ และเงื่อนไขยังไม่ตรง → ไม่ต้องโชว์ (เช่น สีตะขอของแบบที่ไม่ได้เลือก) */}
             {product.options.filter((opt) => optionVisible(opt, effective)).map((opt) => {
               // ล็อกกลุ่มนี้เพราะใช้ขนาดกำหนดเองอยู่ และแอดมินไม่ได้เปิดให้เลือกต่อ
@@ -1876,8 +1932,10 @@ export default function ProductDetail({
               const byRate = matrix ? allowedByRules.filter((n) => matrixChoiceAvailable(matrix, opt.label, n)) : allowedByRules;
               const allowed = byRate.length > 0 ? byRate : allowedByRules;
               const multi = isMultiOption(opt);
+              // ✍️ ช่องกรอก — ลูกค้าพิมพ์ค่าเอง (ไม่มีรายการให้เลือก จึงไม่มีการล็อก/ไม่มีป้าย +฿)
+              const isInput = isInputOption(opt);
               // กลุ่มติ๊กหลายอย่างไม่ล็อกอัตโนมัติ — เหลือตัวเลือกเดียวก็ยังต้องให้ติ๊ก/ไม่ติ๊กเองได้
-              const locked = !multi && allowed.length === 1;
+              const locked = !multi && !isInput && allowed.length === 1;
               const picks: MultiPick[] = multi ? selectedPicks(opt, effective) : [];
               const picked = picks.map((p) => p.name);
               // กลุ่มนี้มีตัวเลือกที่ระบุจำนวนได้ไหม (เช่น เพิ่มสาย 2 เส้น) — +฿ ของตัวนั้นคูณตามจำนวน
@@ -1899,20 +1957,91 @@ export default function ProductDetail({
                 >
                   <span className="mb-1 block text-[13px] font-bold text-stone-700">
                     {opt.label}:{" "}
-                    <span className={multi && !picked.length ? "font-semibold text-stone-400" : "font-semibold text-amber-600"}>
+                    <span
+                      className={
+                        (multi && !picked.length) || (isInput && !effective[opt.label])
+                          ? "font-semibold text-stone-400"
+                          : "font-semibold text-amber-600"
+                      }
+                    >
                       {multi
                         ? picks.length
                           ? picks.map((p) => formatMultiPick(p.name, p.qty)).join(", ")
                           : "ไม่เลือก"
-                        : effective[opt.label]}
+                        : isInput
+                          ? effective[opt.label] || "ยังไม่ได้กรอก"
+                          : effective[opt.label]}
                     </span>
                     {multi && (
                       <span className="ml-1 rounded-full bg-teal-50 px-1.5 py-0.5 text-[10px] font-bold text-teal-700 ring-1 ring-teal-100">
                         ☑ เลือกได้หลายอย่าง{withQty ? " · ระบุจำนวนได้" : ""}
                       </span>
                     )}
+                    {isInput && opt.input?.required === false && (
+                      <span className="ml-1 rounded-full bg-stone-100 px-1.5 py-0.5 text-[10px] font-bold text-stone-500">
+                        ไม่บังคับ
+                      </span>
+                    )}
                   </span>
-                  {multi ? (
+                  {isInput ? (
+                    (() => {
+                      const cfg = opt.input;
+                      const raw = parseInputValue(opt, effective[opt.label]);
+                      const err = inputError(opt, effective[opt.label]);
+                      // เขียนกลับลง selections พร้อมหน่วย ("2.5" + "ซม." → "2.5 ซม.")
+                      const write = (v: string) =>
+                        setSelections((sel) => ({ ...sel, [opt.label]: formatInputValue(opt, v) }));
+                      const clean = (v: string) =>
+                        cfg?.kind === "number" ? v.replace(/[^\d.]/g, "") : v.slice(0, cfg?.maxLength ?? INPUT_MAX_LEN);
+                      return (
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {cfg?.kind === "textarea" ? (
+                              <textarea
+                                value={raw}
+                                onChange={(e) => write(clean(e.target.value))}
+                                placeholder={cfg.placeholder}
+                                rows={3}
+                                aria-label={opt.label}
+                                className="w-full rounded-xl bg-white px-3 py-2 text-[13px] text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                              />
+                            ) : (
+                              <input
+                                type="text"
+                                inputMode={cfg?.kind === "number" ? "decimal" : "text"}
+                                value={raw}
+                                onChange={(e) => write(clean(e.target.value))}
+                                placeholder={cfg?.placeholder}
+                                aria-label={opt.label}
+                                className={`rounded-xl bg-white px-3 py-2 text-[13px] font-semibold text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300 ${
+                                  cfg?.kind === "number" ? "w-28" : "w-full"
+                                }`}
+                              />
+                            )}
+                            {cfg?.unit && <span className="text-xs font-semibold text-stone-500">{cfg.unit}</span>}
+                          </div>
+                          {cfg?.hint && <p className="mt-1 text-[11px] text-stone-500">{cfg.hint}</p>}
+                          {/* เกณฑ์ที่รับได้ — บอกไว้ก่อนพิมพ์ ดีกว่าให้พิมพ์เสร็จแล้วค่อยขึ้นแดง */}
+                          {cfg?.kind === "number" && (cfg.min != null || cfg.max != null) && (
+                            <p className="mt-0.5 text-[11px] text-stone-400">
+                              รับ {cfg.min != null ? cfg.min : "0"}
+                              {cfg.max != null ? `–${cfg.max}` : " ขึ้นไป"} {cfg.unit ?? ""}
+                            </p>
+                          )}
+                          {/* เตือนเฉพาะตอนพิมพ์ผิด — ยังไม่ได้กรอกไม่ต้องขึ้นแดงใส่หน้าลูกค้าตั้งแต่เปิดหน้า */}
+                          {err && (
+                            <p
+                              className={`mt-1 text-[11px] font-bold ${
+                                raw === "" ? "text-amber-600" : "text-rose-600"
+                              }`}
+                            >
+                              {raw === "" ? "✍️" : "⚠"} {err}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()
+                  ) : multi ? (
                     <div className="flex flex-wrap gap-1.5">
                       {opt.choices
                         .filter((c) => allowed.includes(c.name))
@@ -2389,7 +2518,7 @@ export default function ProductDetail({
                     type="button"
                     onClick={handleAdd}
                     // ขนาดกำหนดเอง = ราคาไม่อิงเรทปกติ → ไม่ติดขั้นต่ำของเรทด้วย (สั่งกี่ชิ้นก็ได้ แอดมินตีราคาตามจริง)
-                    disabled={(useCustom && !customValid) || artBlocked}
+                    disabled={(useCustom && !customValid) || artBlocked || inputErrors.length > 0}
                     className={`flex-1 rounded-full px-5 py-3 text-[13px] font-bold shadow-lg transition sm:flex-none sm:px-8 ${
                       added
                         ? "bg-emerald-500 text-white"
@@ -2402,7 +2531,9 @@ export default function ProductDetail({
                         ? "💬 คุยลายกับแอดมินก่อนถึงจะสั่งได้"
                         : artBlocked
                         ? "🎨 แนบลายก่อนถึงจะสั่งได้"
-                        : useCustom && customAsk
+                        : inputErrors.length > 0
+                        ? "✍️ กรอกข้อมูลด้านบนให้ครบก่อน"
+                        : (useCustom && customAsk) || askQuote
                         ? "🛒 สั่งเลย — แอดมินตีราคาแล้วแจ้งกลับ"
                         : `🛒 เพิ่มลงตะกร้า — ${formatPrice(unitPrice * qty + designFee)}`}
                   </button>
@@ -2540,6 +2671,19 @@ export default function ProductDetail({
                 <p className="mt-2 text-sm font-semibold text-sky-700">
                   💬 สั่งได้เลย — แอดมินจะตีราคา
                   {customChat ? "ให้หลังคุยรายละเอียด" : `ขนาด ${customValid ? `${cW}×${cH} ${custom!.unit}` : "ที่ระบุ"} ให้หลังสั่ง`}
+                  {" · "}
+                  <a
+                    href={LINE_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-bold text-[#06C755] underline decoration-dotted underline-offset-2 hover:brightness-90"
+                  >
+                    หรือทักไลน์ถามราคาก่อน
+                  </a>
+                </p>
+              ) : askQuote ? (
+                <p className="mt-2 text-sm font-semibold text-sky-700">
+                  💬 สั่งได้เลย — แอดมินจะตีราคาให้หลังเห็นรายละเอียดที่กรอก
                   {" · "}
                   <a
                     href={LINE_URL}
@@ -3164,7 +3308,11 @@ export default function ProductDetail({
               {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
               {artFiles.length > 0 ? ` · แนบลาย ${artFiles.length} รูป` : ""}
             </p>
-            <p className="text-lg font-extrabold leading-tight text-amber-600">{formatPrice(unitPrice * qty + designFee)}</p>
+            {askQuote || (useCustom && customAsk) ? (
+              <p className="text-sm font-extrabold leading-tight text-sky-700">💬 รอแอดมินตีราคา</p>
+            ) : (
+              <p className="text-lg font-extrabold leading-tight text-amber-600">{formatPrice(unitPrice * qty + designFee)}</p>
+            )}
           </div>
           {studioMode && !designDone ? (
             <button
@@ -3178,12 +3326,20 @@ export default function ProductDetail({
             <button
               type="button"
               onClick={handleAdd}
-              disabled={(useCustom && !customValid) || artBlocked}
+              disabled={(useCustom && !customValid) || artBlocked || inputErrors.length > 0}
               className={`ml-auto shrink-0 rounded-full px-6 py-3 text-sm font-bold text-white shadow-lg transition ${
                 added ? "bg-emerald-500" : "bg-amber-400 hover:bg-amber-500 disabled:opacity-40"
               }`}
             >
-              {added ? "✓ เพิ่มแล้ว!" : consultBlocked ? "💬 คุยลายก่อน" : artBlocked ? "🎨 แนบลายก่อน" : "🛒 เพิ่มลงตะกร้า"}
+              {added
+                ? "✓ เพิ่มแล้ว!"
+                : consultBlocked
+                  ? "💬 คุยลายก่อน"
+                  : artBlocked
+                    ? "🎨 แนบลายก่อน"
+                    : inputErrors.length > 0
+                      ? "✍️ กรอกให้ครบก่อน"
+                      : "🛒 เพิ่มลงตะกร้า"}
             </button>
           )}
         </div>

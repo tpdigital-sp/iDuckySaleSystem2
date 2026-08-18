@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { priceRange, type Product } from "@/lib/products";
+import { hasQuoteOption, priceRange, type Product } from "@/lib/products";
 import { sanitizeHtml } from "@/lib/server/sanitize-html";
 
 export const runtime = "nodejs";
@@ -57,6 +57,8 @@ export async function POST(req: Request) {
     ...(product.body
       ? { body: product.body.map((b) => (b.html ? { ...b, html: sanitizeHtml(b.html) } : b)) }
       : {}),
+    // มีแบบ "งานสั่งทำ ให้แอดมินตีราคา" ไหม — การ์ดหน้ารายการใช้ธงนี้โชว์ "เริ่มต้น ฿X" (ไม่ต้องโหลด options)
+    ...(hasQuoteOption(product as Product) ? { quoteOption: true } : { quoteOption: undefined }),
     priceMin: range.min,
     priceMax: range.max,
     savedAt: new Date().toISOString(),

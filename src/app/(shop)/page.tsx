@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatPrice, formatPriceRange, PRODUCTS, productPath, type Product } from "@/lib/products";
+import { formatPrice, formatPriceLabel, PRODUCTS, productPath, type Product } from "@/lib/products";
 import { fetchShopPayment, freeShippingMinOf } from "@/lib/shop-settings";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { fetchProductsLite } from "@/lib/product-repo";
@@ -629,7 +629,7 @@ function BestCard({ p, catLabel, rank }: { p: Product; catLabel: string; rank: n
         <span className="cat-l">{catLabel}</span>
         <h3>{p.name}</h3>
         <div className="meta">
-          <span className="price">{formatPriceRange(p)}</span>
+          <span className="price">{formatPriceLabel(p)}</span>
           <span className="stars">
             ⭐ {p.rating} · ขายแล้ว {p.sold.toLocaleString("th-TH")}
           </span>

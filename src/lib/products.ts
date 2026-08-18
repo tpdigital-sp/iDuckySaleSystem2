@@ -55,6 +55,12 @@ export interface ProductOptionChoice {
   stockItemId?: string;
   /** ใช้กี่หน่วยต่อสินค้า 1 ชิ้น (ไม่ตั้ง = 1) */
   stockQtyPer?: number;
+  /**
+   * 💬 เลือกตัวนี้แล้ว = งานสั่งทำ ราคาต้องให้แอดมินตีให้ (ไม่ใช้ตารางราคาปกติ)
+   * เช่น "แบบที่ 3 (กำหนดขนาดเอง)" ในกลุ่มแบบ — ลูกค้ากรอกขนาดเองแล้วรอแอดมินตีราคา
+   * ลูกค้ายัง "กดสั่งไว้ก่อน" ได้ตามปกติ ราคาขึ้นเป็น 0 จนกว่าแอดมินจะใส่ให้
+   */
+  askPrice?: boolean;
 }
 
 export interface ProductOption {
@@ -77,8 +83,11 @@ export interface ProductOption {
    * - 'dropdown' = เมนูเลือก (เหมาะกับตัวเลือกเยอะ) — เลือกได้ 1 อย่าง
    * - 'multi' = ติ๊กเลือกได้หลายอย่าง (เช่น อุปกรณ์เสริม/ลูกเล่นที่สั่งพร้อมกันได้) — เลือก 0 ถึงหลายอย่าง
    *   ค่าที่เลือกเก็บรวมเป็นข้อความเดียวคั่นด้วย MULTI_SEP · +฿ คิดรวมทุกตัวที่ติ๊ก
+   * - 'input' = ช่องให้ลูกค้า "กรอกค่าเอง" (ไม่มีรายการให้เลือก) เช่น ขนาดงานสั่งทำ
+   *   ตั้งรายละเอียดช่องที่ ProductOption.input · ค่าที่กรอกเก็บลง selections[label] เหมือนกลุ่มอื่น
+   *   ไม่มีราคาในตัว (ไม่คิด +฿ ไม่เป็นแกนตารางราคา) — ใช้คู่กับ askPrice ให้แอดมินตีราคา
    */
-  display?: "pills" | "dropdown" | "multi";
+  display?: "pills" | "dropdown" | "multi" | "input";
   /**
    * (ของเก่า) เคยเปิด "ระบุจำนวน" ทั้งกลุ่ม — ตอนนี้ตั้งรายตัวที่ ProductOptionChoice.qty แทน
    * ยังอ่านค่าเดิมอยู่เพื่อไม่ให้สินค้าที่ตั้งไว้ก่อนหน้าราคาเพี้ยน · หน้าแก้ไขสินค้าจะย้ายให้เองตอนเปิดครั้งถัดไป
@@ -130,6 +139,92 @@ export interface ProductOption {
     /** จำกัดเฉพาะเมื่อกลุ่มอื่นเลือกค่าเหล่านี้ (เช่น ความหนาอะคริลิค = 3mm) — ไม่ตั้ง = ทุกกรณี */
     when?: { label: string; choices: string[] };
   };
+  /**
+   * รายละเอียดช่องกรอก — มีผลเฉพาะกลุ่มที่ตั้ง display: 'input'
+   * (กลุ่มชนิดนี้ไม่มี choices ให้เลือก ลูกค้าพิมพ์ค่าเอง)
+   */
+  input?: OptionInput;
+  /**
+   * 💬 ใช้กลุ่มนี้แล้ว = งานสั่งทำ ราคาต้องให้แอดมินตีให้
+   * (กลุ่มช่องกรอกมักตั้งคู่กันเสมอ เพราะขนาดที่ลูกค้ากรอกเองไม่มีในตารางราคา)
+   * ตั้งรายตัวเลือกก็ได้ที่ ProductOptionChoice.askPrice — เข้าข้อไหนข้อหนึ่งก็ถือว่าต้องตีราคา
+   */
+  askPrice?: boolean;
+}
+
+/**
+ * ช่องให้ลูกค้ากรอกค่าเอง (กลุ่มตัวเลือกชนิด 'input')
+ * ใช้กับงานสั่งทำที่ขนาด/รายละเอียดมาจากลูกค้า เช่น สแตนดี้ที่ระบุความสูงตัวหน้า/ตัวหลัง/ฐานเอง
+ * ค่าที่กรอกเก็บลง selections เป็นข้อความพร้อมหน่วย ("2.5 ซม.") — ตะกร้า/ใบงาน/ใบเสร็จอ่านได้ทันที
+ */
+export interface OptionInput {
+  /** ชนิดค่าที่ให้กรอก — number = ตัวเลข (ตรวจช่วงได้) · text = ข้อความสั้น · textarea = ข้อความหลายบรรทัด */
+  kind: "number" | "text" | "textarea";
+  /** หน่วยต่อท้ายค่า เช่น "ซม." (มาจากคลังหน่วย) — เฉพาะ kind number */
+  unit?: string;
+  /** ค่าต่ำสุด/สูงสุดที่ยอมรับ (number) — กันลูกค้าพิมพ์ขนาดที่ทำไม่ได้ */
+  min?: number;
+  max?: number;
+  /** ความยาวสูงสุด (text/textarea) — ไม่ตั้ง = 200 */
+  maxLength?: number;
+  /** ข้อความจาง ๆ ในช่อง เช่น "2.5" */
+  placeholder?: string;
+  /** คำอธิบายใต้ช่อง เช่น "วัดจากขอบล่างถึงปลายบนสุด" */
+  hint?: string;
+  /** ไม่กรอก = กดสั่งไม่ได้ (ไม่ตั้ง = ต้องกรอก) */
+  required?: boolean;
+}
+
+/** กลุ่มนี้เป็น "ช่องกรอก" ไหม (ลูกค้าพิมพ์ค่าเอง ไม่ได้เลือกจากรายการ) */
+export function isInputOption(opt: ProductOption): boolean {
+  return opt.display === "input";
+}
+
+/** ความยาวข้อความสูงสุดของช่องกรอกแบบตัวอักษร */
+export const INPUT_MAX_LEN = 200;
+
+/**
+ * เขียนค่าที่ลูกค้ากรอกให้เป็นข้อความที่เก็บลง selections — ต่อหน่วยให้ถ้ามี
+ * ("2.5" + "ซม." → "2.5 ซม.") · ค่าว่าง = ยังไม่ได้กรอก คืนค่าว่าง
+ */
+export function formatInputValue(opt: ProductOption, raw: string): string {
+  const v = raw.trim();
+  if (!v) return "";
+  const unit = opt.input?.unit?.trim();
+  return unit ? `${v} ${unit}` : v;
+}
+
+/** อ่านค่าที่ลูกค้ากรอกกลับจาก selections (ตัดหน่วยที่ต่อท้ายออก) */
+export function parseInputValue(opt: ProductOption, stored: string | undefined): string {
+  const v = (stored ?? "").trim();
+  if (!v) return "";
+  const unit = opt.input?.unit?.trim();
+  return unit && v.endsWith(unit) ? v.slice(0, -unit.length).trim() : v;
+}
+
+/**
+ * ตรวจค่าที่กรอกในกลุ่มนี้ — คืนข้อความบอกปัญหา หรือ null ถ้าผ่าน
+ * ใช้ทั้งตอนกดสั่ง (บล็อก) และตอนแสดงคำเตือนใต้ช่อง จะได้เกณฑ์เดียวกันเสมอ
+ */
+export function inputError(opt: ProductOption, stored: string | undefined): string | null {
+  const cfg = opt.input;
+  if (!cfg) return null;
+  const raw = parseInputValue(opt, stored);
+  const required = cfg.required !== false;
+  // ชื่อกลุ่มมักมีวงเล็บ ("(ตัวหน้า) ขนาด") — ครอบอัญประกาศไว้ ประโยคจะได้ไม่อ่านติดกันจนงง
+  const name = `“${opt.label}”`;
+  if (!raw) return required ? `กรอก${name}ด้วยนะครับ` : null;
+  if (cfg.kind === "number") {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return `${name} ต้องเป็นตัวเลข`;
+    const u = cfg.unit ? ` ${cfg.unit}` : "";
+    if (cfg.min != null && n < cfg.min) return `${name} ต้องไม่ต่ำกว่า ${cfg.min}${u}`;
+    if (cfg.max != null && n > cfg.max) return `${name} ต้องไม่เกิน ${cfg.max}${u}`;
+    return null;
+  }
+  const max = cfg.maxLength ?? INPUT_MAX_LEN;
+  if (raw.length > max) return `${name} ยาวเกิน ${max} ตัวอักษร`;
+  return null;
 }
 
 /** ตัวคั่นค่าของกลุ่ม "เลือกได้หลายอย่าง" (display: 'multi') เมื่อเก็บลง selections */
@@ -846,6 +941,11 @@ export interface Product {
    */
   priceMin?: number;
   priceMax?: number;
+  /**
+   * สินค้านี้มีทางเลือกที่ต้องให้แอดมินตีราคาไหม (เซิร์ฟเวอร์เขียนให้เองตอนบันทึก)
+   * มีไว้ให้การ์ดหน้ารายการ/หน้าแรกรู้ได้โดยไม่ต้องโหลด options ทั้งก้อน — โชว์ "เริ่มต้น ฿X" แทนช่วงราคา
+   */
+  quoteOption?: boolean;
   /**
    * ซ่อนจากหน้าร้าน — true = ลูกค้าไม่เห็นทั้งในหน้ารายการ/หน้าแรก/ค้นหา/sitemap
    * และเปิดลิงก์ตรงก็ไม่เจอ (ยกเว้นทีมงานที่ล็อกอินหลังบ้าน — เอาไว้พรีวิวก่อนเปิดขาย)
@@ -2661,12 +2761,40 @@ export function priceMatrixKey(m: PriceMatrix, selections: Record<string, string
   return m.driverLabels.map((l) => selections[l] ?? "").join("│");
 }
 
+/**
+ * 💬 ตัวเลือกชุดนี้เป็น "งานสั่งทำที่ต้องให้แอดมินตีราคา" ไหม
+ *
+ * เข้าเงื่อนไขเมื่อกลุ่มที่แสดงอยู่ (ไม่ถูกซ่อนด้วย showWhen) เข้าข้อใดข้อหนึ่ง:
+ *  - กลุ่มตั้ง askPrice ไว้ และลูกค้ากรอก/เลือกค่าแล้ว
+ *  - ตัวเลือกที่เลือกอยู่ในกลุ่มนั้นตั้ง askPrice ไว้ (เช่น "แบบที่ 3")
+ *
+ * ผลคือราคา/หน่วย = 0 (หน้าร้านขึ้น "รอแอดมินตีราคา") แต่ลูกค้ายังกดสั่งได้ตามปกติ
+ */
+export function needsQuote(p: Product, selections: Record<string, string>): boolean {
+  for (const opt of p.options) {
+    if (!optionVisible(opt, selections)) continue;
+    const picked = selectedNames(opt, selections);
+    // ช่องกรอกที่ตั้ง 💬 ไว้: แค่ "โผล่ให้กรอก" ก็ถือว่าเป็นงานสั่งทำแล้ว
+    // (ไม่ต้องรอให้พิมพ์ก่อน ไม่งั้นราคาจะกระพริบจากราคาปกติ → รอตีราคา ตอนลูกค้าเริ่มพิมพ์)
+    if (opt.askPrice && (isInputOption(opt) || picked.length)) return true;
+    if (opt.choices.some((c) => c.askPrice && picked.includes(c.name))) return true;
+  }
+  return false;
+}
+
+/** สินค้านี้มีทางเลือกที่ต้องให้แอดมินตีราคาไหม (ใช้ตัดสินใจว่าจะโชว์ราคาเป็น "เริ่มต้น ฿X") */
+export function hasQuoteOption(p: Product): boolean {
+  return (p.options ?? []).some((o) => o.askPrice || o.choices.some((c) => c.askPrice));
+}
+
 /** ราคา/หน่วย ตามตัวเลือก + จำนวน — ใช้ตารางราคาถ้ามี, ไม่งั้น price + option.extra */
 export function unitPriceFor(
   product: Product,
   selections: Record<string, string>,
   qty: number
 ): number {
+  // 💬 งานสั่งทำที่ต้องให้แอดมินตีราคา — ยังไม่มีราคาจนกว่าแอดมินจะใส่ให้
+  if (needsQuote(product, selections)) return 0;
   // งานกำหนดขนาดเอง (custom) มาก่อน — ราคาพิเศษแทนตารางปกติ
   const c = product.custom;
   if (c?.enabled) {
@@ -2712,6 +2840,24 @@ export function formatPriceRange(p: Product): string {
 }
 
 /**
+ * สินค้านี้มีแบบ "งานสั่งทำ ให้แอดมินตีราคา" อยู่ด้วยไหม
+ * อ่านจากธงที่เซิร์ฟเวอร์เขียนไว้ก่อน (ข้อมูลแบบเบาของการ์ดไม่มี options) ไม่มีธงค่อยดูจาก options จริง
+ */
+export function isQuoteProduct(p: Product): boolean {
+  return p.quoteOption === true || hasQuoteOption(p);
+}
+
+/**
+ * ราคาที่โชว์บน "การ์ด/รายการสินค้า"
+ * สินค้าที่มีแบบสั่งทำ ราคาสูงสุดไม่มีความหมาย (แล้วแต่งานที่ลูกค้าสั่ง) → บอกเป็น "เริ่มต้น ฿X"
+ * หน้าสินค้ายังใช้ formatPriceRange ตามเดิม เพราะตรงนั้นรู้ว่าลูกค้าเลือกแบบไหนอยู่
+ */
+export function formatPriceLabel(p: Product): string {
+  const { min } = priceRange(p);
+  return isQuoteProduct(p) ? `เริ่มต้น ${formatPrice(min)}` : formatPriceRange(p);
+}
+
+/**
  * ตัวเลือกที่อนุญาตของกลุ่ม `label` ภายใต้สิ่งที่เลือกอยู่ตอนนี้
  * (ตัดตามกฎทุกข้อที่เงื่อนไข `when` ตรง — ถ้ากฎตัดจนหมดจะคืนทั้งกลุ่มไว้กันหน้าพัง)
  */
@@ -2745,6 +2891,11 @@ export function resolveSelections(
     const view = { ...selections, ...resolved };
     const allowed = allowedChoices(product, view, opt.label);
     const current = selections[opt.label];
+    // ช่องกรอก: ค่ามาจากลูกค้า ไม่มีรายการให้เทียบ/ไม่มีค่าเริ่มต้น — คงไว้ตามที่พิมพ์
+    if (isInputOption(opt)) {
+      resolved[opt.label] = current ?? "";
+      continue;
+    }
     if (isMultiOption(opt)) {
       // ติ๊กได้หลายอย่าง: เก็บเฉพาะตัวที่ยังอนุญาต · ไม่เหลือเลยก็ได้ (กลุ่มนี้ไม่บังคับเลือก)
       // ติ๊กได้หลายอย่าง: เก็บจำนวนที่ลูกค้าระบุไว้ด้วย (เช่น "เพิ่มสาย ×2")

@@ -7,7 +7,7 @@ import ProductVisual from "@/components/ProductVisual";
 import {
   adminProductPath,
   formatPrice,
-  formatPriceRange,
+  formatPriceLabel,
   getCategory,
   priceRange,
   productPath,
@@ -623,7 +623,7 @@ function PriceBlock({ p }: { p: Product }) {
   const range = priceRange(p);
   return (
     <div className="text-right">
-      <span className="text-sm font-bold text-slate-900">{formatPriceRange(p)}</span>
+      <span className="text-sm font-bold text-slate-900">{formatPriceLabel(p)}</span>
       {range.max > range.min ? (
         <span className={`block text-[10px] ${faint}`}>
           ตั้งต้น {formatPrice(p.price)}
@@ -856,7 +856,7 @@ function TableList({
               <p className={`mt-1 truncate text-[11px] ${faint}`}>
                 {p.images.length} รูป · {p.highlights.length} จุดเด่น · {(p.body ?? []).length} เนื้อหา
                 {p.options.length > 0
-                  ? ` · ${p.options.map((o) => `${o.label} (${o.choices.length})`).join(" · ")}`
+                  ? ` · ${p.options.map((o) => `${o.label} (${o.display === "input" ? "กรอกเอง" : o.choices.length})`).join(" · ")}`
                   : ""}
               </p>
             </div>

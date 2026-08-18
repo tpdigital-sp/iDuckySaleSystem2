@@ -9,6 +9,7 @@ import {
   type CategoryId,
   type BodySection,
   type CustomOption,
+  type OptionInput,
   type OptionRule,
   type PriceMatrix,
   type Product,
@@ -55,14 +56,27 @@ type DraftChoice = {
   imageSrc?: string;
   stockItemId?: string;
   stockQtyPer?: number;
+  /** 💬 เลือกตัวนี้แล้ว = งานสั่งทำ ให้แอดมินตีราคา (เช่น "แบบที่ 3 กำหนดขนาดเอง") */
+  askPrice?: boolean;
 };
 /** presetId มี = กลุ่มนี้ "ลิงก์" คลังตัวเลือกกลาง (label+choices มาจากคลัง แก้ในกลุ่มไม่ได้จนกว่าจะตัดลิงก์) */
 type DraftOption = {
   label: string;
   choices: DraftChoice[];
   presetId?: string;
-  /** pills/dropdown = เลือกได้ 1 อย่าง · multi = ติ๊กได้หลายอย่าง */
-  display: "pills" | "dropdown" | "multi";
+  /** pills/dropdown = เลือกได้ 1 อย่าง · multi = ติ๊กได้หลายอย่าง · input = ให้ลูกค้ากรอกเอง */
+  display: "pills" | "dropdown" | "multi" | "input";
+  /** ── กลุ่มชนิด "ช่องกรอก" (display: input) — เก็บเป็น string เพราะกรอกในช่อง ── */
+  inKind?: "number" | "text" | "textarea";
+  inUnit?: string;
+  inMin?: string;
+  inMax?: string;
+  inPlaceholder?: string;
+  inHint?: string;
+  /** ไม่ติ๊ก = ไม่บังคับกรอก (ค่าเริ่มต้นคือบังคับ) */
+  inOptional?: boolean;
+  /** 💬 ใช้กลุ่มนี้แล้ว = งานสั่งทำ ให้แอดมินตีราคา */
+  askPrice?: boolean;
   /** +฿ ของกลุ่มนี้มีผลเมื่อสั่งตั้งแต่กี่ชิ้นขึ้นไป (ว่าง = ทุกจำนวน) */
   extraFromQty?: string;
   /** ค่าธรรมเนียมช่วงสั่งน้อย เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น (ยกเว้นบางตัวเลือก) */
@@ -367,6 +381,7 @@ function toDraft(p: Product): Draft {
         ...(c.imageSrc ? { imageSrc: c.imageSrc } : {}),
         ...(c.stockItemId ? { stockItemId: c.stockItemId } : {}),
         ...(c.stockQtyPer ? { stockQtyPer: c.stockQtyPer } : {}),
+        ...(c.askPrice ? { askPrice: true } : {}),
       })),
       ...(o.presetId ? { presetId: o.presetId } : {}),
       // มีตัวไหนเปิด "ระบุจำนวน" ไว้ = กลุ่มนี้เคยเปิดสวิตช์ → เปิดค้างไว้ให้เห็นค่าเดิม
@@ -395,6 +410,18 @@ function toDraft(p: Product): Draft {
       ...(o.showWhenAlso
         ? { showWhenAlsoLabel: o.showWhenAlso.label, showWhenAlsoChoices: [...o.showWhenAlso.choices] }
         : {}),
+      ...(o.input
+        ? {
+            inKind: o.input.kind,
+            inUnit: o.input.unit ?? "",
+            inMin: o.input.min != null ? String(o.input.min) : "",
+            inMax: o.input.max != null ? String(o.input.max) : "",
+            inPlaceholder: o.input.placeholder ?? "",
+            inHint: o.input.hint ?? "",
+            ...(o.input.required === false ? { inOptional: true } : {}),
+          }
+        : {}),
+      ...(o.askPrice ? { askPrice: true } : {}),
     })),
     rules: (p.rules ?? []).map((r) => ({
       whenLabel: r.when.label,
@@ -580,10 +607,13 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             // ลิงก์คลังวัสดุ — หน้าแก้ไขไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นบันทึกแล้วหาย
             ...(c.stockItemId ? { stockItemId: c.stockItemId } : {}),
             ...(c.stockQtyPer ? { stockQtyPer: c.stockQtyPer } : {}),
+            ...(c.askPrice ? { askPrice: true as const } : {}),
           };
         }),
       ...(o.presetId ? { presetId: o.presetId } : {}),
-      ...(o.display === "dropdown" || o.display === "multi" ? { display: o.display } : {}),
+      ...(o.display === "dropdown" || o.display === "multi" || o.display === "input"
+        ? { display: o.display }
+        : {}),
       ...(Number(o.extraFromQty) > 0 ? { extraFromQty: Math.floor(Number(o.extraFromQty)) } : {}),
       ...(Number.isFinite(Number(o.smallFee)) && Number(o.smallFee) !== 0 && String(o.smallFee ?? "").trim() !== "" && Number(o.smallUpTo) > 0
         ? {
@@ -606,8 +636,24 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       ...(o.showWhenAlsoLabel && (o.showWhenAlsoChoices ?? []).length
         ? { showWhenAlso: { label: o.showWhenAlsoLabel, choices: [...o.showWhenAlsoChoices!] } }
         : {}),
+      // กลุ่ม "ช่องกรอก" — ไม่มีรายการให้เลือก จึงเก็บสเปกของช่องแทน choices
+      ...(o.display === "input"
+        ? {
+            input: {
+              kind: o.inKind ?? "number",
+              ...(o.inUnit?.trim() ? { unit: o.inUnit.trim() } : {}),
+              ...(Number(o.inMin) > 0 ? { min: Number(o.inMin) } : {}),
+              ...(Number(o.inMax) > 0 ? { max: Number(o.inMax) } : {}),
+              ...(o.inPlaceholder?.trim() ? { placeholder: o.inPlaceholder.trim() } : {}),
+              ...(o.inHint?.trim() ? { hint: o.inHint.trim() } : {}),
+              ...(o.inOptional ? { required: false } : {}),
+            } satisfies OptionInput,
+          }
+        : {}),
+      ...(o.askPrice ? { askPrice: true as const } : {}),
     }))
-    .filter((o) => o.label && o.choices.length > 0);
+    // กลุ่มช่องกรอกไม่มีตัวเลือกให้เลือกโดยธรรมชาติ — ขอแค่มีชื่อกลุ่มก็พอ
+    .filter((o) => o.label && (o.choices.length > 0 || o.display === "input"));
 }
 
 /** ซิงก์กลุ่มที่ลิงก์คลังในดราฟต์ให้ตรงกับคลังปัจจุบัน (label+choices เป็นค่าล่าสุด) */
@@ -1586,11 +1632,18 @@ export default function ProductEditor({ product }: { product: Product }) {
   function priceSourceRow(gi: number, opt: DraftOption) {
     const isDriver = draft.pricing.driverLabels.includes(opt.label);
     const multi = opt.display === "multi";
+    // ช่องกรอก = ลูกค้าพิมพ์ค่าเอง ไม่มีรายการให้ตั้งราคา เหลือทางเดียวคือให้แอดมินตีราคา
+    const isInput = opt.display === "input";
     // ติ๊กหลายอย่าง + เป็นคอลัมน์ตาราง อยู่ด้วยกันไม่ได้ — ราคาต่อคอลัมน์อิงตัวเลือกเดียวเท่านั้น
-    const tableBlocked = multi && !isDriver;
+    const tableBlocked = (multi || isInput) && !isDriver;
+    const askOn = !!opt.askPrice;
+    const setOpt = (patchObj: Partial<DraftOption>) =>
+      patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, ...patchObj } : o)) });
     return (
       <>
         <div className="inline-flex overflow-hidden rounded-lg bg-white ring-1 ring-slate-200">
+          {!isInput && (
+          <>
           <button
             type="button"
             disabled={tableBlocked}
@@ -1599,9 +1652,13 @@ export default function ProductEditor({ product }: { product: Product }) {
                 ? "กลุ่มนี้ตั้งเป็น ☑ ติ๊กหลายอย่าง — เป็นคอลัมน์ตารางราคาไม่ได้ (เปลี่ยนเป็นปุ่มแยก/dropdown ก่อน)"
                 : "ราคาของกลุ่มนี้อยู่ในตารางราคา — ทุกตัวเลือกต้องมีราคาในตาราง ไม่งั้นหน้าร้านซ่อนตัวนั้น"
             }
-            onClick={() => !isDriver && toggleDriver(opt.label)}
+            onClick={() => {
+              if (isDriver) return;
+              setOpt({ askPrice: false });
+              toggleDriver(opt.label);
+            }}
             className={`px-2.5 py-1 text-[11px] font-semibold transition ${
-              isDriver
+              isDriver && !askOn
                 ? "bg-amber-500 text-white"
                 : tableBlocked
                   ? "bg-white text-slate-300"
@@ -1614,15 +1671,42 @@ export default function ProductEditor({ product }: { product: Product }) {
             type="button"
             title="ราคาบวกเพิ่มต่อตัวเลือก กรอกที่ช่อง +฿ ของแต่ละตัวเลือก — ไม่ต้องมีในตารางราคา"
             onClick={() => {
+              setOpt({ askPrice: false });
               if (isDriver) void confirmDropDriver(opt.label, "ย้ายไปคิดราคาที่ช่อง +฿ ของแต่ละตัวเลือกแทน");
             }}
             className={`px-2.5 py-1 text-[11px] font-semibold transition ${
-              !isDriver ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
+              !isDriver && !askOn ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
             }`}
           >
             +฿ ที่ตัวเลือกเอง
           </button>
+          </>
+          )}
+          {/*
+            💬 งานสั่งทำ — ราคาไม่มีในตารางและตั้งล่วงหน้าไม่ได้ ต้องให้แอดมินตีให้หลังเห็นสเปก
+            เลือกอันนี้แล้วหน้าร้านขึ้น "รอแอดมินตีราคา" แต่ลูกค้ายังกดสั่งไว้ก่อนได้ตามปกติ
+          */}
+          <button
+            type="button"
+            title="ใช้กลุ่มนี้แล้ว = งานสั่งทำ ราคาต้องให้แอดมินตีให้ — หน้าร้านขึ้น “รอแอดมินตีราคา” ลูกค้ากดสั่งไว้ก่อนแล้วคุยกันทางแชท"
+            onClick={async () => {
+              if (askOn) return setOpt({ askPrice: false });
+              // เป็นคอลัมน์ตารางราคาอยู่ = ต้องถอดออกก่อน ไม่งั้นตารางเหลือคอลัมน์ที่ไม่มีวันถูกใช้
+              if (isDriver && !(await confirmDropDriver(opt.label, "ราคากลุ่มนี้ให้แอดมินตีทีหลัง ไม่ได้อยู่ในตาราง"))) return;
+              setOpt({ askPrice: true });
+            }}
+            className={`px-2.5 py-1 text-[11px] font-semibold transition ${
+              askOn ? "bg-emerald-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
+            }`}
+          >
+            💬 ให้แอดมินตีราคา
+          </button>
         </div>
+        {askOn && (
+          <span className="text-[11px] font-semibold text-emerald-700">
+            หน้าร้านขึ้น &ldquo;รอแอดมินตีราคา&rdquo; · ลูกค้ากดสั่งไว้ก่อนได้ แล้วคุยกันทางแชท
+          </span>
+        )}
         {driverUndo?.label === opt.label && (
           <button
             type="button"
@@ -1652,6 +1736,11 @@ export default function ProductEditor({ product }: { product: Product }) {
           ? "ลูกค้าติ๊กได้หลายอย่างพร้อมกัน · กลุ่มนี้เป็นคอลัมน์ตารางราคาอยู่ — กดแล้วระบบจะถามก่อนเอาออกจากตาราง (ราคาย้ายไปกรอกที่ +฿ ของแต่ละตัวเลือก)"
           : "ลูกค้าติ๊กได้หลายอย่างพร้อมกัน (หรือไม่ติ๊กเลย) · +฿ บวกรวมทุกตัวที่ติ๊ก",
       },
+      {
+        id: "input",
+        text: "✍️ ช่องกรอก",
+        tip: "ไม่มีรายการให้เลือก — ลูกค้าพิมพ์ค่าเอง (เช่น ขนาดงานสั่งทำ) · ไม่มีราคาในตัว ใช้คู่กับ 💬 ให้แอดมินตีราคา",
+      },
     ] as const;
     const setOpt = (patchObj: Partial<DraftOption>) =>
       patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, ...patchObj } : o)) });
@@ -1672,7 +1761,15 @@ export default function ProductEditor({ product }: { product: Product }) {
                   !(await confirmDropDriver(opt.label, "ติ๊กหลายอย่างพร้อมกันแล้วตารางหาราคาต่อคอลัมน์ไม่เจอ"))
                 )
                   return;
-                setOpt({ display: mode.id });
+                // ช่องกรอกก็เป็นคอลัมน์ตารางราคาไม่ได้ — ค่าที่ลูกค้าพิมพ์ไม่มีวันตรงกับคีย์ในตาราง
+                if (
+                  mode.id === "input" &&
+                  isDriver &&
+                  !(await confirmDropDriver(opt.label, "ค่าที่ลูกค้าพิมพ์เองไม่มีในตารางราคา"))
+                )
+                  return;
+                // เปลี่ยนมาเป็นช่องกรอก = งานสั่งทำ ตั้ง 💬 ให้แอดมินตีราคาให้เลย (ปลดเองได้)
+                setOpt({ display: mode.id, ...(mode.id === "input" ? { askPrice: true } : {}) });
               }}
               className={`px-2.5 py-1 text-[11px] font-semibold transition ${
                 opt.display === mode.id ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
@@ -1690,7 +1787,131 @@ export default function ProductEditor({ product }: { product: Product }) {
               : "🔢 อยากให้ลูกค้าระบุจำนวน — ติ๊กสวิตช์ 🔢 ด้านล่างก่อน"}
           </span>
         )}
+        {opt.display === "input" && (
+          <span className="text-[11px] font-semibold text-slate-400">
+            ✍️ ลูกค้าพิมพ์ค่าเอง — ตั้งรายละเอียดช่องด้านล่าง
+          </span>
+        )}
       </>
+    );
+  }
+
+  /**
+   * แถวตั้งค่าช่องกรอก (กลุ่ม display: 'input') — ชนิดค่า/หน่วย/ช่วงที่ยอมรับ/ข้อความช่วย
+   * เขียนเป็นฟังก์ชันคืน JSX (ไม่ใช่คอมโพเนนต์ย่อย) เพื่อไม่ให้ช่องกรอกถูก remount ทุกครั้งที่พิมพ์
+   */
+  function inputSpecRow(gi: number, opt: DraftOption) {
+    const setOpt = (patchObj: Partial<DraftOption>) =>
+      patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, ...patchObj } : o)) });
+    const kind = opt.inKind ?? "number";
+    const KINDS = [
+      { id: "number", text: "123 ตัวเลข", tip: "รับเฉพาะตัวเลข ตรวจช่วงต่ำสุด/สูงสุดได้ (เช่น ขนาดเป็นเซนติเมตร)" },
+      { id: "text", text: "Aa ข้อความสั้น", tip: "ข้อความบรรทัดเดียว เช่น ข้อความที่ต้องการสลัก" },
+      { id: "textarea", text: "¶ ข้อความยาว", tip: "หลายบรรทัด เช่น รายละเอียดงานที่อยากให้ทำ" },
+    ] as const;
+    return (
+      <div className="mt-2 rounded-xl bg-violet-50/70 p-3 ring-1 ring-violet-200">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-bold text-violet-700">✍️ ช่องกรอก</span>
+          <div className="inline-flex overflow-hidden rounded-lg bg-white ring-1 ring-violet-200">
+            {KINDS.map((k) => (
+              <button
+                key={k.id}
+                type="button"
+                title={k.tip}
+                onClick={() => setOpt({ inKind: k.id })}
+                className={`px-2.5 py-1 text-[11px] font-semibold transition ${
+                  kind === k.id ? "bg-violet-600 text-white" : "bg-white text-slate-500 hover:bg-violet-50"
+                }`}
+              >
+                {k.text}
+              </button>
+            ))}
+          </div>
+          <label
+            className="flex items-center gap-1 text-[11px] font-semibold text-slate-500"
+            title="ไม่ติ๊ก = ลูกค้าไม่กรอกก็กดสั่งได้"
+          >
+            <input
+              type="checkbox"
+              checked={!opt.inOptional}
+              onChange={(e) => setOpt({ inOptional: !e.target.checked })}
+              className="h-3.5 w-3.5 accent-violet-500"
+            />
+            บังคับกรอก
+          </label>
+        </div>
+        <div className="mt-2 flex flex-wrap items-end gap-2">
+          {kind === "number" && (
+            <>
+              <label className="text-[11px] font-semibold text-slate-500">
+                หน่วย
+                <select
+                  value={opt.inUnit ?? ""}
+                  onChange={(e) => setOpt({ inUnit: e.target.value })}
+                  className="mt-1 block w-28 rounded-lg bg-white px-2 py-1.5 text-xs ring-1 ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                  aria-label={`หน่วยของช่องกรอก ${opt.label || gi + 1}`}
+                >
+                  <option value="">— ไม่มี —</option>
+                  {units.map((u) => (
+                    <option key={u.label} value={u.label}>{u.label}</option>
+                  ))}
+                  {/* หน่วยที่ตั้งไว้แต่ไม่มีในคลังแล้ว ต้องไม่หายจากเมนู */}
+                  {(opt.inUnit ?? "") !== "" && !units.some((u) => u.label === opt.inUnit) && (
+                    <option value={opt.inUnit}>{opt.inUnit}</option>
+                  )}
+                </select>
+              </label>
+              <label className="text-[11px] font-semibold text-slate-500">
+                ต่ำสุด
+                <input
+                  value={opt.inMin ?? ""}
+                  onChange={(e) => setOpt({ inMin: e.target.value.replace(/[^\d.]/g, "") })}
+                  inputMode="decimal"
+                  placeholder="—"
+                  className="mt-1 block w-20 rounded-lg bg-white px-2 py-1.5 text-center text-xs ring-1 ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                  aria-label={`ค่าต่ำสุดของช่องกรอก ${opt.label || gi + 1}`}
+                />
+              </label>
+              <label className="text-[11px] font-semibold text-slate-500">
+                สูงสุด
+                <input
+                  value={opt.inMax ?? ""}
+                  onChange={(e) => setOpt({ inMax: e.target.value.replace(/[^\d.]/g, "") })}
+                  inputMode="decimal"
+                  placeholder="—"
+                  className="mt-1 block w-20 rounded-lg bg-white px-2 py-1.5 text-center text-xs ring-1 ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                  aria-label={`ค่าสูงสุดของช่องกรอก ${opt.label || gi + 1}`}
+                />
+              </label>
+            </>
+          )}
+          <label className="text-[11px] font-semibold text-slate-500">
+            ตัวอย่างในช่อง
+            <input
+              value={opt.inPlaceholder ?? ""}
+              onChange={(e) => setOpt({ inPlaceholder: e.target.value })}
+              placeholder={kind === "number" ? "2.5" : "เช่น ข้อความที่ต้องการ"}
+              className="mt-1 block w-32 rounded-lg bg-white px-2 py-1.5 text-xs ring-1 ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300"
+              aria-label={`ข้อความตัวอย่างของช่องกรอก ${opt.label || gi + 1}`}
+            />
+          </label>
+          <label className="min-w-[12rem] flex-1 text-[11px] font-semibold text-slate-500">
+            คำอธิบายใต้ช่อง (ลูกค้าเห็น)
+            <input
+              value={opt.inHint ?? ""}
+              onChange={(e) => setOpt({ inHint: e.target.value })}
+              placeholder="เช่น วัดจากขอบล่างถึงปลายบนสุด"
+              className="mt-1 block w-full rounded-lg bg-white px-2 py-1.5 text-xs ring-1 ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300"
+              aria-label={`คำอธิบายของช่องกรอก ${opt.label || gi + 1}`}
+            />
+          </label>
+        </div>
+        <p className="mt-2 text-[11px] leading-relaxed text-violet-700">
+          ลูกค้าเห็นเป็นช่องให้พิมพ์ค่าเอง · ค่าที่กรอกติดไปกับตะกร้า → ออเดอร์ → ใบงาน เหมือนตัวเลือกกลุ่มอื่น
+          {kind === "number" && (opt.inUnit ?? "") && <> (เก็บเป็น &ldquo;{opt.inPlaceholder || "2.5"} {opt.inUnit}&rdquo;)</>}
+        </p>
+      </div>
     );
   }
 
@@ -1739,7 +1960,8 @@ export default function ProductEditor({ product }: { product: Product }) {
             <option value="">{which ? "— ไม่ใช้เงื่อนไขที่สอง —" : "— แสดงตลอด —"}</option>
             {rateLabels.length > 0 && <option value={RATE_LABEL}>{RATE_LABEL}</option>}
             {draft.options
-              .filter((o) => o.label && o.label !== opt.label)
+              // กลุ่มช่องกรอกใช้เป็นเงื่อนไขไม่ได้ — ค่าที่ลูกค้าพิมพ์เองไม่มีรายการให้ติ๊กเทียบ
+              .filter((o) => o.label && o.label !== opt.label && o.display !== "input")
               .map((o) => (
                 <option key={o.label} value={o.label}>{o.label}</option>
               ))}
@@ -1868,9 +2090,11 @@ export default function ProductEditor({ product }: { product: Product }) {
                 aria-label="จำกัดค่าธรรมเนียมเฉพาะเมื่อกลุ่มนี้ถูกเลือก"
               >
                 <option value="">— ทุกกรณี —</option>
-                {draft.options.filter((o) => o.label && o.label !== opt.label).map((o) => (
-                  <option key={o.label} value={o.label}>{o.label}</option>
-                ))}
+                {draft.options
+                  .filter((o) => o.label && o.label !== opt.label && o.display !== "input")
+                  .map((o) => (
+                    <option key={o.label} value={o.label}>{o.label}</option>
+                  ))}
               </select>
               {whenGroup?.choices.filter((c) => c.name.trim()).map((c) => {
                 const sel = (opt.smallWhenChoices ?? []).includes(c.name);
@@ -1910,9 +2134,11 @@ export default function ProductEditor({ product }: { product: Product }) {
               aria-label="กลุ่มเงื่อนไขของตัวเลือกที่ได้ฟรี"
             >
               <option value="">— ไม่ใช้ —</option>
-              {draft.options.filter((o) => o.label && o.label !== opt.label).map((o) => (
-                <option key={o.label} value={o.label}>{o.label}</option>
-              ))}
+              {draft.options
+                .filter((o) => o.label && o.label !== opt.label && o.display !== "input")
+                .map((o) => (
+                  <option key={o.label} value={o.label}>{o.label}</option>
+                ))}
             </select>
             {draft.options.find((o) => o.label === opt.freeWhenLabel)?.choices.filter((c) => c.name.trim()).map((c) => {
               const sel = (opt.freeWhenChoices ?? []).includes(c.name);
@@ -3704,6 +3930,22 @@ export default function ProductEditor({ product }: { product: Product }) {
             >
               ＋ เพิ่มกลุ่มตัวเลือก
             </button>
+            {/* ✍️ ช่องกรอก — งานสั่งทำที่ขนาด/รายละเอียดมาจากลูกค้า (ตั้ง 💬 ให้แอดมินตีราคาไว้ให้เลย) */}
+            <button
+              type="button"
+              onClick={() =>
+                patch({
+                  options: [
+                    ...draft.options,
+                    { label: "", choices: [], display: "input", inKind: "number", askPrice: true },
+                  ],
+                })
+              }
+              title="ช่องให้ลูกค้าพิมพ์ค่าเอง เช่น ขนาดงานสั่งทำ — ค่าที่กรอกติดไปกับตะกร้า/ออเดอร์/ใบงาน"
+              className="rounded-full bg-violet-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-violet-700"
+            >
+              ＋ เพิ่มช่องกรอก
+            </button>
           </div>
         </div>
         <div className="space-y-3">
@@ -3948,8 +4190,19 @@ export default function ProductEditor({ product }: { product: Product }) {
               </div>
               {isOptFolded(gi) && (
                 <p className="mt-2 truncate text-xs text-slate-400">
-                  {opt.choices.length} ตัวเลือก · {opt.choices.slice(0, 6).map((c) => c.name).filter(Boolean).join(" · ")}
-                  {opt.choices.length > 6 ? " …" : ""}
+                  {opt.display === "input" ? (
+                    <>
+                      ✍️ ช่องกรอก
+                      {opt.inKind === "text" ? " · ข้อความสั้น" : opt.inKind === "textarea" ? " · ข้อความยาว" : " · ตัวเลข"}
+                      {opt.inUnit ? ` (${opt.inUnit})` : ""}
+                      {opt.askPrice ? " · 💬 ให้แอดมินตีราคา" : ""}
+                    </>
+                  ) : (
+                    <>
+                      {opt.choices.length} ตัวเลือก · {opt.choices.slice(0, 6).map((c) => c.name).filter(Boolean).join(" · ")}
+                      {opt.choices.length > 6 ? " …" : ""}
+                    </>
+                  )}
                 </p>
               )}
               {/* พับกลุ่มไว้ก็ยังต้องเห็นว่ามีตัวเลือกที่หน้าร้านซ่อนอยู่ ไม่ต้องกางทีละกลุ่มหา */}
@@ -4006,6 +4259,10 @@ export default function ProductEditor({ product }: { product: Product }) {
                 </label>
               </div>
               {smallFeeRow(gi, opt)}
+              {opt.display === "input" ? (
+                inputSpecRow(gi, opt)
+              ) : (
+              <>
               <div className="mt-2 space-y-1.5">
                 {opt.choices.map((ch, ci) => (
                   <div key={ci} className="flex items-center gap-2">
@@ -4131,6 +4388,36 @@ export default function ProductEditor({ product }: { product: Product }) {
                       />
                     </label>
                     {/*
+                      💬 ตัวเลือกนี้ = งานสั่งทำ ให้แอดมินตีราคา (เช่น "แบบที่ 3" ที่ลูกค้าระบุขนาดเอง)
+                      ต่างจาก 💬 ระดับกลุ่มตรงที่กลุ่มยังเป็นคอลัมน์ตารางราคาได้ — แบบอื่นในกลุ่มคิดราคาปกติ
+                    */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        patch({
+                          options: draft.options.map((o, i) =>
+                            i === gi
+                              ? {
+                                  ...o,
+                                  choices: o.choices.map((c, j) =>
+                                    j === ci ? { ...c, askPrice: !c.askPrice } : c
+                                  ),
+                                }
+                              : o
+                          ),
+                        })
+                      }
+                      title="เลือกตัวนี้แล้ว = งานสั่งทำ ราคาให้แอดมินตีให้ (หน้าร้านขึ้น “รอแอดมินตีราคา” · ลูกค้ากดสั่งไว้ก่อนได้)"
+                      aria-pressed={!!ch.askPrice}
+                      className={`shrink-0 rounded-lg px-2 py-1.5 text-[11px] font-semibold ring-1 transition ${
+                        ch.askPrice
+                          ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                          : "bg-white text-slate-300 ring-slate-200 hover:text-emerald-600 hover:ring-emerald-200"
+                      }`}
+                    >
+                      💬 ตีราคา
+                    </button>
+                    {/*
                       ให้ลูกค้าระบุจำนวนของตัวเลือกนี้ (เช่น เพิ่มสาย 2 เส้น = +฿ ของสาย × 2) — เฉพาะกลุ่มติ๊กหลายอย่าง
                       ต้องติ๊ก 📐 ที่หัวกลุ่มก่อนถึงกางช่องนี้ (ดู choiceQtyVisible)
                     */}
@@ -4222,6 +4509,8 @@ export default function ProductEditor({ product }: { product: Product }) {
               >
                 ＋ เพิ่มตัวเลือก
               </button>
+              </>
+              )}
               </>
               )}
             </div>
@@ -4939,7 +5228,8 @@ export default function ProductEditor({ product }: { product: Product }) {
                       {draft.options.length === 0 && (
                         <span className="text-[11px] text-slate-400">ต้องมีกลุ่มตัวเลือกก่อน</span>
                       )}
-                      {draft.options.map((o) => {
+                      {/* ช่องกรอกไม่โผล่ในลิสต์คอลัมน์ — ค่าที่ลูกค้าพิมพ์เองไม่มีวันตรงกับคีย์ในตาราง */}
+                      {draft.options.filter((o) => o.display !== "input").map((o) => {
                         const on = draft.pricing.driverLabels.includes(o.label);
                         // กลุ่มติ๊กหลายอย่างเป็นคอลัมน์ไม่ได้ — ราคาต่อคอลัมน์อิงตัวเลือกเดียวเท่านั้น
                         const multi = o.display === "multi";
@@ -5864,11 +6154,13 @@ export default function ProductEditor({ product }: { product: Product }) {
                         aria-label={`กลุ่มตัวเลือกของเงื่อนไขค่าส่งข้อที่ ${ri + 1}`}
                       >
                         <option value="">— เลือกกลุ่ม —</option>
-                        {draft.options.map((o) => (
-                          <option key={o.label} value={o.label}>
-                            {o.label}
-                          </option>
-                        ))}
+                        {draft.options
+                          .filter((o) => o.display !== "input")
+                          .map((o) => (
+                            <option key={o.label} value={o.label}>
+                              {o.label}
+                            </option>
+                          ))}
                       </select>
                       {group && (
                         <>
@@ -6033,9 +6325,12 @@ export default function ProductEditor({ product }: { product: Product }) {
                     aria-label={`กลุ่มเงื่อนไขของกฎที่ ${ri + 1}`}
                   >
                     <option value="">— เลือกกลุ่ม —</option>
-                    {draft.options.map((o) => (
-                      <option key={o.label} value={o.label}>{o.label}</option>
-                    ))}
+                    {/* กฎเงื่อนไขทำงานกับ "รายการตัวเลือก" — กลุ่มช่องกรอกไม่มีให้เทียบ */}
+                    {draft.options
+                      .filter((o) => o.display !== "input")
+                      .map((o) => (
+                        <option key={o.label} value={o.label}>{o.label}</option>
+                      ))}
                   </select>
                   <span className="font-semibold">= ตัวไหนก็ได้ใน:</span>
                   {whenGroup && (
@@ -6111,7 +6406,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                   >
                     <option value="">— เลือกกลุ่ม —</option>
                     {draft.options
-                      .filter((o) => o.label !== rule.whenLabel)
+                      .filter((o) => o.label !== rule.whenLabel && o.display !== "input")
                       .map((o) => (
                         <option key={o.label} value={o.label}>{o.label}</option>
                       ))}
