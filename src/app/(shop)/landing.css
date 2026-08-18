@@ -1241,6 +1241,11 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .dl .acd-line-badge{width:18px;height:18px;border-radius:6px;background:#06C755;color:#fff;display:grid;place-items:center;font-size:.64rem;font-family:var(--display);flex:none}
 .dl .acd-line-text{white-space:nowrap;font-weight:500;color:var(--navy)}
 .dl .acd-ellip{overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.dl .acd-copy{all:unset;cursor:pointer;font-size:.66rem;padding:4px 10px;border-radius:999px;background:var(--sky-100);
+  color:var(--blue-deep);flex:none;transition:.2s ease}
+.dl .acd-copy:hover{background:var(--sky-200)}
+.dl .acd-copy:active{transform:scale(.94)}
+.dl .acd-copy.copied{background:#DFF5E6;color:#1D9A55}
 .dl .acd-edit-btn{cursor:pointer;font-family:var(--display);font-size:.82rem;color:var(--navy);
   background:#fff;border:2px solid var(--sky-200);padding:9px 17px;border-radius:999px;white-space:nowrap;
   flex:none;margin-left:auto;transition:.22s cubic-bezier(.34,1.56,.64,1)}

@@ -107,6 +107,7 @@ export default function AccountPage() {
   const [uploading, setUploading] = useState(false);
   const [notifBusy, setNotifBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
   const [greet, setGreet] = useState(false);
   const [switchOpen, setSwitchOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
@@ -272,15 +273,24 @@ export default function AccountPage() {
     } else showToast("บันทึกการตั้งค่าไม่สำเร็จ");
   }
 
-  async function copyId() {
-    const text = customerCode(customer!.id);
+  async function writeClip(text: string) {
     try {
       await navigator.clipboard.writeText(text);
     } catch {
       /* คลิปบอร์ดไม่พร้อม */
     }
+  }
+  /** ชิปรหัสลูกค้า */
+  async function copyId() {
+    await writeClip(customerCode(customer!.id));
     setCopied(true);
     setTimeout(() => setCopied(false), 1600);
+  }
+  /** ปุ่มเล็ก "คัดลอกไอดี" ในแถวข้อมูล — ไอดี LINE (หรืออีเมลถ้าสมัครด้วยอีเมล) */
+  async function copyLoginId() {
+    await writeClip(customer!.lineUserId || customer!.email);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 1600);
   }
 
   function pickTheme(id: string, unlocked: boolean, name: string) {
@@ -423,6 +433,15 @@ export default function AccountPage() {
                           <span className="acd-line-text acd-ellip">{customer.email}</span>
                         </>
                       )}
+                      <button
+                        type="button"
+                        className={`acd-copy${copiedId ? " copied" : ""}`}
+                        onClick={copyLoginId}
+                        aria-label={viaLine ? "คัดลอกไอดี LINE" : "คัดลอกอีเมล"}
+                        title={viaLine ? "คัดลอกไอดี LINE" : "คัดลอกอีเมล"}
+                      >
+                        {copiedId ? "คัดลอกแล้ว ✓" : "คัดลอกไอดี"}
+                      </button>
                     </span>
                   </div>
                   {editing ? (
