@@ -57,6 +57,16 @@ interface PickItem {
   at: string;
 }
 
+/** บรรทัดที่ลบออกจากรายงานไว้ (กู้คืนได้) */
+interface HiddenRow {
+  key: string;
+  name: string;
+  category: string;
+  url: string;
+  at: string;
+  by: string;
+}
+
 interface Extra {
   id: string;
   slug: string;
@@ -81,8 +91,10 @@ interface Report {
     extras: number;
     done: number;
     priceTasks: number;
+    hidden: number;
   };
   rows: Row[];
+  hiddenRows: HiddenRow[];
   extras: Extra[];
 }
 
@@ -319,6 +331,8 @@ export default function PricelistReportPage() {
   /** โชว์เฉพาะบรรทัดที่สั่งให้พี่ปุ๋ยทำราคา */
   const [onlyPrice, setOnlyPrice] = useState(false);
   const [showExtras, setShowExtras] = useState(false);
+  /** กางถังลบไหม */
+  const [showTrash, setShowTrash] = useState(false);
   /** บรรทัดที่กำลังบันทึกติ๊กอยู่ (กันกดรัวซ้ำ) */
   const [saving, setSaving] = useState<Set<string>>(new Set());
 
@@ -379,6 +393,32 @@ export default function PricelistReportPage() {
       });
     }
   }, []);
+
+  /** ลบบรรทัดออกจากรายงาน / กู้คืน — โหลดใหม่หลังบันทึก เพราะการจับคู่เปลี่ยนตาม */
+  const setHidden = useCallback(
+    async (key: string, hidden: boolean) => {
+      setSaving((s) => new Set(s).add(key));
+      try {
+        const r = await fetch("/api/admin/pricelist-report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key, hidden }),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+        await load();
+      } catch (e) {
+        setError(`${hidden ? "ลบ" : "กู้คืน"}รายการไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        setSaving((s) => {
+          const n = new Set(s);
+          n.delete(key);
+          return n;
+        });
+      }
+    },
+    [load]
+  );
 
   /** สินค้าในระบบทุกตัว (ที่จับคู่ไว้แล้ว + ที่ยังไม่เจอบนเว็บ) ไว้ให้ช่องค้นหาตอนย้าย */
   const allProducts = useMemo<PickItem[]>(() => {
@@ -595,13 +635,14 @@ export default function PricelistReportPage() {
                   <th className={`px-4 py-2 ${label}`}>สถานะ</th>
                   <th className={`px-4 py-2 ${label}`}>สินค้าในระบบ</th>
                   <th className={`px-4 py-2 ${label}`}>จับคู่ด้วย</th>
+                  <th className="w-10 px-2 py-2" />
                 </tr>
               </thead>
               <tbody>
                 {groups.map(([name, list]) => (
                   <Fragment key={name}>
                     <tr className="bg-amber-50/60">
-                      <td colSpan={7} className="px-4 py-1.5 text-xs font-semibold text-slate-600">
+                      <td colSpan={8} className="px-4 py-1.5 text-xs font-semibold text-slate-600">
                         {name}
                         <span className={`ml-2 font-normal ${faint}`}>
                           {list.length} รายการ · ทำแล้ว {list.filter((r) => r.done).length}
@@ -680,13 +721,24 @@ export default function PricelistReportPage() {
                           />
                         </td>
                         <td className={`px-4 py-2 align-top text-xs ${faint}`}>{r.match ?? "—"}</td>
+                        <td className="px-2 py-2 align-top">
+                          <button
+                            type="button"
+                            disabled={saving.size > 0}
+                            onClick={() => void setHidden(r.key, true)}
+                            title="ลบบรรทัดนี้ออกจากรายงาน (ไม่ใช่สินค้าจริง) — กู้คืนได้จากถังลบท้ายหน้า"
+                            className="rounded px-1.5 py-0.5 text-sm text-slate-300 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-wait"
+                          >
+                            🗑
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </Fragment>
                 ))}
                 {!rows.length && !loading ? (
                   <tr>
-                    <td colSpan={7} className={`px-4 py-10 text-center text-sm ${muted}`}>
+                    <td colSpan={8} className={`px-4 py-10 text-center text-sm ${muted}`}>
                       ไม่มีรายการที่ตรงกับตัวกรอง
                     </td>
                   </tr>
@@ -694,6 +746,45 @@ export default function PricelistReportPage() {
               </tbody>
             </table>
             </div>
+          </div>
+        ) : null}
+
+        {/* ── ถังลบ: บรรทัดที่ลบออกจากรายงาน (กู้คืนได้) ── */}
+        {data && data.hiddenRows.length ? (
+          <div className={`${card} p-4`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">
+                  🗑 ลบออกจากรายงานไว้ — {data.hiddenRows.length} รายการ
+                </p>
+                <p className={`mt-0.5 text-xs ${faint}`}>
+                  ไม่ถูกนับในสถิติด้านบน · ไม่ได้ลบอะไรบนเว็บหรือในระบบจริง กดกู้คืนกลับมาได้ทุกเมื่อ
+                </p>
+              </div>
+              <button type="button" className={btnSmNeutral} onClick={() => setShowTrash((v) => !v)}>
+                {showTrash ? "ซ่อน" : "ดูรายชื่อ"}
+              </button>
+            </div>
+            {showTrash ? (
+              <ul className="mt-3 space-y-1">
+                {data.hiddenRows.map((h) => (
+                  <li key={h.key} className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-sm">
+                    <span className="text-slate-700">{h.name}</span>
+                    <span className={`text-xs ${faint}`}>
+                      {h.category ? `หมวด ${h.category} · ` : ""}ลบโดย {h.by} · {whenOf(h.at)}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={saving.size > 0}
+                      onClick={() => void setHidden(h.key, false)}
+                      className="ml-auto text-xs font-semibold text-amber-600 hover:underline disabled:cursor-wait"
+                    >
+                      กู้คืน
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         ) : null}
 

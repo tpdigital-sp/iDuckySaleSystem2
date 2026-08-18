@@ -56,7 +56,19 @@ interface ReportState {
   done: DoneMap;
   /** สั่งให้พี่ปุ๋ยทำราคาของชื่อนี้ (คนละช่องกับ "ทำแล้ว") */
   price: DoneMap;
+  /** ลบออกจากรายงาน — ชื่อที่ไม่ใช่สินค้าจริง (หัวข้อย่อย/คำอธิบายบนเว็บ) เก็บไว้กู้คืนได้ */
+  hidden: DoneMap;
   assign: AssignMap;
+}
+
+/** บรรทัดที่ถูกลบออกจากรายงาน (ไว้โชว์ในถังลบ ให้กู้คืนได้) */
+export interface HiddenRow {
+  key: string;
+  name: string;
+  category: string;
+  url: string;
+  at: string;
+  by: string;
 }
 
 export interface PricelistRow {
@@ -116,7 +128,7 @@ type Db = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 async function loadState(sb: Db): Promise<ReportState> {
   const { data } = await sb.from("products").select("data").eq("id", STATE_ID).maybeSingle();
   const d = (data?.data ?? {}) as Partial<ReportState>;
-  return { done: d.done ?? {}, price: d.price ?? {}, assign: d.assign ?? {} };
+  return { done: d.done ?? {}, price: d.price ?? {}, hidden: d.hidden ?? {}, assign: d.assign ?? {} };
 }
 
 /** บันทึกสถานะรายงานกลับลงแถวเดิม */
@@ -191,12 +203,29 @@ export async function GET(req: Request) {
   const pinned = new Set(Object.keys(state.assign));
   const guessable = products.filter((p) => !pinned.has(p.id));
 
-  const rows: PricelistRow[] = cards.map((card) => {
-    const key = norm(card.name);
+  /** ให้รหัสบรรทัดก่อน แล้วค่อยคัดบรรทัดที่ถูกลบออก (รหัสจะได้ไม่เลื่อนตามการลบ) */
+  const keyed = cards.map((card) => {
     const dup = `${card.category}|${card.name}`;
     const no = (seen.get(dup) ?? 0) + 1;
     seen.set(dup, no);
-    const rowKey = `${dup}|${no}`;
+    return { card, rowKey: `${dup}|${no}` };
+  });
+
+  const hiddenRows: HiddenRow[] = keyed
+    .filter((x) => state.hidden[x.rowKey])
+    .map((x) => ({
+      key: x.rowKey,
+      name: x.card.name,
+      category: x.card.category,
+      url: x.card.url,
+      at: state.hidden[x.rowKey].at,
+      by: state.hidden[x.rowKey].by,
+    }));
+
+  const rows: PricelistRow[] = keyed
+    .filter((x) => !state.hidden[x.rowKey])
+    .map(({ card, rowKey }) => {
+    const key = norm(card.name);
     let how: string | null = null;
     let hits = guessable.filter((p) => p.key === key);
     if (hits.length) how = "ชื่อตรงกัน";
@@ -239,7 +268,7 @@ export async function GET(req: Request) {
         hasPricing: p.hasPricing,
       })),
     };
-  });
+    });
 
   // ── 4. ใส่สินค้าที่ทีมงานจับคู่เองลงบรรทัดที่สั่งไว้ (ค่าว่าง = สั่งว่าไม่ใช่ของบรรทัดไหน) ──
   const byKey = new Map(rows.map((r) => [r.key, r]));
@@ -290,8 +319,10 @@ export async function GET(req: Request) {
       extras: extras.length,
       done: rows.filter((r) => r.done).length,
       priceTasks: rows.filter((r) => r.priceTask).length,
+      hidden: hiddenRows.length,
     },
     rows,
+    hiddenRows,
     extras,
   });
 }
@@ -302,6 +333,7 @@ export async function GET(req: Request) {
  *
  *   { key, done }          ติ๊ก/ยกเลิกติ๊ก "ทำแล้ว" ของชื่อบนเว็บ 1 บรรทัด
  *   { key, price }         ติ๊ก/ยกเลิกติ๊ก "ให้พี่ปุ๋ยทำราคา" ของชื่อบนเว็บ 1 บรรทัด
+ *   { key, hidden }        ลบบรรทัดออกจากรายงาน / กู้คืน (ไม่ได้ลบข้อมูลอะไรจริง)
  *   { productId, key }     ย้ายสินค้าในระบบไปอยู่บรรทัดชื่อที่ต้องการ
  *                          key = ""   → เอาออก (สั่งว่าไม่ใช่ของบรรทัดไหนเลย)
  *                          key = null → ล้างคำสั่ง กลับไปใช้การจับคู่อัตโนมัติ
@@ -313,9 +345,15 @@ export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 
-  let body: { key?: string | null; done?: boolean; price?: boolean; productId?: string };
+  let body: { key?: string | null; done?: boolean; price?: boolean; hidden?: boolean; productId?: string };
   try {
-    body = (await req.json()) as { key?: string | null; done?: boolean; price?: boolean; productId?: string };
+    body = (await req.json()) as {
+      key?: string | null;
+      done?: boolean;
+      price?: boolean;
+      hidden?: boolean;
+      productId?: string;
+    };
   } catch {
     return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
   }
@@ -338,9 +376,9 @@ export async function POST(req: Request) {
   const key = String(body.key ?? "").trim();
   if (!key) return NextResponse.json({ error: "ไม่ได้ระบุว่าติ๊กบรรทัดไหน" }, { status: 400 });
 
-  const isPrice = body.price !== undefined;
-  const map = isPrice ? state.price : state.done;
-  const mark: DoneMark | null = (isPrice ? body.price : body.done)
+  const field = body.hidden !== undefined ? "hidden" : body.price !== undefined ? "price" : "done";
+  const map = state[field];
+  const mark: DoneMark | null = body[field]
     ? { at: new Date().toISOString(), by: gate.actor.name || gate.actor.username }
     : null;
   if (mark) map[key] = mark;
