@@ -14,7 +14,7 @@ import { LINE_URL } from "@/components/LineButton";
 import MyCoupons from "@/components/MyCoupons";
 
 /*
- * หน้า "บัญชีของฉัน" — พอร์ตจากไฟล์ต้นแบบ USER PROFILE UPDATE_01.html
+ * หน้า "บัญชีของฉัน" — พอร์ตจากไฟล์ต้นแบบ USER PROFILE UPDATE_02.html
  * โครง: เมนูข้าง (ซ้าย) + เนื้อหา (โปรไฟล์ → การ์ดระดับ/ออเดอร์ล่าสุด → ติดตามสถานะ (พับได้) → คูปอง → เมนูลิสต์)
  * สไตล์ทั้งหมดอยู่ใน landing.css ใต้หัวข้อ "หน้าบัญชี (แดชบอร์ด)" prefix .acd-
  */
@@ -24,11 +24,11 @@ const orderHref = (o: Order, sub = "") => `/order/${encodeURIComponent(o.id)}${s
 
 /** สีกรอบรูป/ป้าย/การ์ด ตามระดับ — คีย์ด้วย id ระดับ (ไม่ตรงมาตรฐาน → วนตามลำดับ) */
 const RING: Record<string, [string, string]> = {
-  bronze: ["#F0C99A", "#9A5A28"],
-  silver: ["#CBD6E0", "#8C9CAC"],
-  gold: ["#FFD447", "#FFB627"],
+  bronze: ["#F2A97C", "#C4703F"],
+  silver: ["#D3E6FB", "#8FA6CC"],
+  gold: ["#FFD879", "#E8A22E"],
   platinum: ["#8FE3EC", "#149BAD"],
-  diamond: ["#C7C4F5", "#8C7CE8"],
+  diamond: ["#8ED6FF", "#B49AF0"],
 };
 const RING_ORDER = Object.keys(RING);
 function ringOf(tier: Tier | null, index: number): [string, string] {
@@ -36,7 +36,32 @@ function ringOf(tier: Tier | null, index: number): [string, string] {
   return RING[tier.id] ?? RING[RING_ORDER[index % RING_ORDER.length]];
 }
 /** ระดับที่ตัวหนังสือบนพื้นสีอ่านยากถ้าเป็นขาว → ใช้กรมท่า */
-const DARK_TEXT_TIERS = new Set(["gold", "platinum"]);
+const DARK_TEXT_TIERS = new Set(["silver", "gold", "platinum"]);
+
+/** ตราระดับ (ภาพจริงจากไฟล์ต้นแบบ) — มีศิลป์ 4 แบบ แพลตินัมใช้ร่วมกับไดมอนด์ */
+const MEDAL_ART = ["bronze", "silver", "gold", "diamond"] as const;
+const MEDAL_ID: Record<string, (typeof MEDAL_ART)[number]> = {
+  bronze: "bronze",
+  silver: "silver",
+  gold: "gold",
+  platinum: "diamond",
+  diamond: "diamond",
+};
+/** ชื่อไฟล์ตราของระดับ — ไม่รู้จัก id ก็เดาจากลำดับ */
+function medalArt(tier: Tier | null, index: number): (typeof MEDAL_ART)[number] | null {
+  if (!tier) return null;
+  return MEDAL_ID[tier.id] ?? MEDAL_ART[Math.min(index, MEDAL_ART.length - 1)];
+}
+
+/** ธีมสีโปรไฟล์ที่ปลดล็อคตามระดับ — สีเดียวกับตรา/การ์ดระดับนั้น */
+const THEME_TEXT: Record<string, string> = { bronze: "#fff", silver: "#243B57", gold: "#5A3B08", platinum: "#fff", diamond: "#fff" };
+const THEME_KEY = "ducky_acc_theme";
+
+/** รหัสลูกค้าแบบอ่านง่าย — ตัดจาก id จริงของบัญชี (แอดมินค้นย้อนได้) */
+function customerCode(id: string): string {
+  const hex = id.replace(/[^0-9a-f]/gi, "").toUpperCase();
+  return `IDK-${hex.slice(0, 4)}-${hex.slice(4, 8)}`;
+}
 
 /** ขั้นตอนบนแถบติดตาม 5 ขั้น (ตรงกับ ORDER_STEPS) */
 const STEP_ICONS = ["✓", "💳", "🖼️", "🏭", "🚚"];
@@ -75,14 +100,20 @@ export default function AccountPage() {
   const [trackOpen, setTrackOpen] = useState(false);
   const [trackId, setTrackId] = useState<string | null>(null);
   const [logoutAsk, setLogoutAsk] = useState(false);
-  const [editingName, setEditingName] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
-  const [savingName, setSavingName] = useState(false);
+  const [addrDraft, setAddrDraft] = useState("");
+  const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [notifBusy, setNotifBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [greet, setGreet] = useState(false);
+  const [switchOpen, setSwitchOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
+  const [theme, setTheme] = useState<string | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  const themeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!loading && !customer) router.replace("/account/login");
@@ -100,6 +131,32 @@ export default function AccountPage() {
       setTierList(tiersConfigOf(sett));
     })();
   }, [customer]);
+
+  // บอลลูน "สวัสดีค่ะ" โผล่ตอนเข้าหน้าแล้วหุบเอง
+  useEffect(() => {
+    if (loading || !customer) return;
+    const a = setTimeout(() => setGreet(true), 350);
+    const b = setTimeout(() => setGreet(false), 3000);
+    return () => {
+      clearTimeout(a);
+      clearTimeout(b);
+    };
+  }, [loading, customer]);
+
+  // ธีมสีโปรไฟล์ที่เคยเลือกไว้ (จำในเครื่อง)
+  useEffect(() => {
+    setTheme(localStorage.getItem(THEME_KEY));
+  }, []);
+
+  // คลิกนอกแผงเลือกธีม = ปิด
+  useEffect(() => {
+    if (!themeOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!themeRef.current?.contains(e.target as Node)) setThemeOpen(false);
+    };
+    document.addEventListener("click", onDoc);
+    return () => document.removeEventListener("click", onDoc);
+  }, [themeOpen]);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -162,22 +219,25 @@ export default function AccountPage() {
     router.push("/products");
   }
 
-  // ── แก้ชื่อแบบอินไลน์ ──
-  function startEditName() {
+  // ── โหมดแก้ไขโปรไฟล์ (ชื่อ + ที่อยู่จัดส่ง) — กดปุ่ม "แก้ไขโปรไฟล์" เข้า/บันทึก ──
+  function enterEdit() {
     setNameDraft(customer!.name);
-    setEditingName(true);
+    setAddrDraft(customer!.address);
+    setEditing(true);
     setTimeout(() => nameRef.current?.select(), 30);
   }
-  async function saveName() {
-    const v = nameDraft.trim();
-    setEditingName(false);
-    if (!customer || v === customer.name) return;
-    setSavingName(true);
-    const r = await updateProfile({ name: v, phone: customer.phone, address: customer.address });
-    setSavingName(false);
+  async function saveEdit() {
+    const name = nameDraft.trim();
+    const address = addrDraft.trim();
+    setEditing(false);
+    if (!customer) return;
+    if (name === customer.name && address === customer.address) return;
+    setSaving(true);
+    const r = await updateProfile({ name, phone: customer.phone, address });
+    setSaving(false);
     if (r.ok) {
       refresh();
-      showToast("บันทึกชื่อแล้ว ✓");
+      showToast("บันทึกการเปลี่ยนแปลงแล้ว ✓");
     } else showToast(r.error || "บันทึกไม่สำเร็จ");
   }
 
@@ -213,7 +273,7 @@ export default function AccountPage() {
   }
 
   async function copyId() {
-    const text = customer!.lineUserId || customer!.email;
+    const text = customerCode(customer!.id);
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -223,12 +283,36 @@ export default function AccountPage() {
     setTimeout(() => setCopied(false), 1600);
   }
 
+  function pickTheme(id: string, unlocked: boolean, name: string) {
+    if (!unlocked) return showToast(`ปลดล็อคธีมนี้ได้ตอนถึงระดับ ${name} 🔒`);
+    setTheme(id);
+    localStorage.setItem(THEME_KEY, id);
+    showToast(`ใช้ธีมสี ${name} แล้ว 🎨`);
+  }
+  function resetTheme() {
+    setTheme(null);
+    localStorage.removeItem(THEME_KEY);
+    showToast("กลับไปใช้สีปกติแล้ว");
+  }
+
   const proofHref = proofOrders[0] ? orderHref(proofOrders[0]) : "/account/orders";
   const tierStyle = { "--ring-a": shownRing[0], "--ring-b": shownRing[1] } as React.CSSProperties;
   const realStyle = { "--ring-a": realRing[0], "--ring-b": realRing[1] } as React.CSSProperties;
+  const shownArt = medalArt(shownTier, shownIdx);
+  const cid = customerCode(customer.id);
+
+  // ธีมสีโปรไฟล์ที่เลือกไว้ → ตัวแปร CSS ให้ชิป/เมนูข้างเปลี่ยนสีตาม
+  const themeIdx = theme ? tiers.findIndex((t) => t.id === theme) : -1;
+  const themeTier = themeIdx >= 0 ? tiers[themeIdx] : null;
+  const pageStyle = themeTier
+    ? ({
+        "--acd-theme-bg": `linear-gradient(135deg,${ringOf(themeTier, themeIdx)[0]},${ringOf(themeTier, themeIdx)[1]})`,
+        "--acd-theme-fg": THEME_TEXT[themeTier.id] ?? "#fff",
+      } as React.CSSProperties)
+    : undefined;
 
   return (
-    <div className="dl dl-page acd-page">
+    <div className="dl dl-page acd-page" style={pageStyle}>
       <div className="top-stack acd-stack">
         <img className="bg-cloud acd-c1" src="/landing/cloud.webp" alt="" aria-hidden="true" />
         <img className="bg-cloud acd-c2" src="/landing/cloud.webp" alt="" aria-hidden="true" />
@@ -270,7 +354,10 @@ export default function AccountPage() {
             <div className="acd-content">
               {/* โปรไฟล์ */}
               <div className="acd-topbar">
-                <div className="acd-ring" style={realStyle}>
+                <div className="acd-ring" style={realStyle} data-ring={realTier?.id}>
+                  <div className={`acd-greet${greet ? " show" : ""}`} aria-hidden="true">
+                    <span className="acd-wave">👋</span> สวัสดีค่ะ
+                  </div>
                   <label className={`acd-avatar${customer.picture ? " has-photo" : ""}${uploading ? " busy" : ""}`} title="เปลี่ยนรูปโปรไฟล์">
                     {customer.picture ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -284,20 +371,16 @@ export default function AccountPage() {
                   {viaLine && <span className="acd-avatar-badge" title="ยืนยันตัวตนผ่าน LINE">✓</span>}
                 </div>
                 <div className="acd-who">
-                  <div className="acd-hello">
-                    <span className="acd-wave">👋</span> สวัสดีค่ะ
-                  </div>
                   <div className="acd-name-row">
-                    {editingName ? (
+                    {editing ? (
                       <input
                         ref={nameRef}
                         className="acd-name-input"
                         value={nameDraft}
                         onChange={(e) => setNameDraft(e.target.value)}
-                        onBlur={saveName}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter") saveName();
-                          if (e.key === "Escape") setEditingName(false);
+                          if (e.key === "Enter") saveEdit();
+                          if (e.key === "Escape") setEditing(false);
                         }}
                         maxLength={60}
                         aria-label="ชื่อที่แสดง"
@@ -305,21 +388,20 @@ export default function AccountPage() {
                     ) : (
                       <h1 className="acd-shopname">{displayName}</h1>
                     )}
-                    <button
-                      type="button"
-                      className={`acd-name-edit${savingName ? " saving" : ""}`}
-                      aria-label="แก้ไขชื่อ"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => (editingName ? saveName() : startEditName())}
-                    >
-                      {editingName ? "💾" : savingName ? "✓" : "✏️"}
-                    </button>
                     {realTier && (
                       <span className={`acd-tier-tag${DARK_TEXT_TIERS.has(realTier.id) ? " dark" : ""}`} style={realStyle}>
                         {realTier.icon} {realTier.name}
                       </span>
                     )}
                   </div>
+                  {/* รหัสลูกค้า — แตะทั้งชิปเพื่อคัดลอก (แจ้งแอดมินเวลาสอบถาม) */}
+                  <button type="button" className="acd-cid" onClick={copyId} title={copied ? "คัดลอกแล้ว ✓" : "แตะเพื่อคัดลอกรหัสลูกค้า"}>
+                    <span className="acd-cid-label">รหัสลูกค้า</span>
+                    <span className="acd-cid-code">{cid}</span>
+                    <span className={`acd-cid-copy${copied ? " copied" : ""}`} aria-hidden="true">
+                      {copied ? "✓" : "⧉"}
+                    </span>
+                  </button>
                   <div className="acd-meta">
                     {memberSince && (
                       <>
@@ -341,68 +423,139 @@ export default function AccountPage() {
                           <span className="acd-line-text acd-ellip">{customer.email}</span>
                         </>
                       )}
-                      <button type="button" className={`acd-copy${copied ? " copied" : ""}`} onClick={copyId} aria-label="คัดลอกไอดี">
-                        {copied ? "คัดลอกแล้ว ✓" : "คัดลอกไอดี"}
-                      </button>
                     </span>
                   </div>
-                  <div className="acd-meta">
-                    <span className="acd-meta-item">
-                      <span className="acd-meta-ico">📍</span>
-                      {customer.address ? (
-                        <span>{customer.address}</span>
-                      ) : (
-                        <Link href="/account/profile" className="acd-meta-link">
-                          ยังไม่ได้ใส่ที่อยู่จัดส่ง — เพิ่มเลย
-                        </Link>
-                      )}
-                    </span>
-                  </div>
+                  {editing ? (
+                    <div className="acd-addr-panel">
+                      <div className="acd-addr-label">📍 ที่อยู่จัดส่ง</div>
+                      <textarea
+                        className="acd-addr-input"
+                        rows={3}
+                        value={addrDraft}
+                        onChange={(e) => setAddrDraft(e.target.value)}
+                        placeholder="บ้านเลขที่ / ถนน / แขวง / เขต / จังหวัด / รหัสไปรษณีย์"
+                        aria-label="ที่อยู่จัดส่ง"
+                      />
+                      <div className="acd-addr-hint">
+                        แก้เบอร์โทรและข้อมูลอื่นได้ที่ <Link href="/account/profile">ข้อมูลส่วนตัว</Link>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="acd-meta">
+                      <span className="acd-meta-item">
+                        <span className="acd-meta-ico">📍</span>
+                        {customer.address ? <span>{customer.address}</span> : <span className="acd-meta-link">ยังไม่ได้ใส่ที่อยู่จัดส่ง — กด &quot;แก้ไขโปรไฟล์&quot;</span>}
+                      </span>
+                    </div>
+                  )}
                 </div>
-                <Link href="/account/profile" className="acd-edit-btn">
-                  แก้ไขโปรไฟล์
-                </Link>
+                <div className="acd-topbar-actions" ref={themeRef}>
+                  <button
+                    type="button"
+                    className={`acd-theme-btn${theme ? " active" : ""}`}
+                    aria-label="เลือกธีมสีโปรไฟล์"
+                    title="เลือกธีมสีโปรไฟล์"
+                    aria-expanded={themeOpen}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setThemeOpen((v) => !v);
+                    }}
+                  >
+                    🎨
+                  </button>
+                  {themeOpen && (
+                    <div className="acd-theme-pop">
+                      <div className="acd-theme-pop-title">เลือกธีมสีโปรไฟล์</div>
+                      <div className="acd-swatch-row">
+                        {tiers.map((t, i) => {
+                          const unlocked = i <= realIdx;
+                          const [a, b] = ringOf(t, i);
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              className={`acd-swatch${unlocked ? "" : " locked"}${theme === t.id ? " selected" : ""}`}
+                              style={{ background: `linear-gradient(135deg,${a},${b})` }}
+                              title={unlocked ? `ธีมสี ${t.name}` : `ปลดล็อคที่ระดับ ${t.name}`}
+                              aria-label={unlocked ? `ธีมสี ${t.name}` : `ปลดล็อคที่ระดับ ${t.name}`}
+                              onClick={() => pickTheme(t.id, unlocked, t.name)}
+                            >
+                              <i>{unlocked ? (theme === t.id ? "✓" : "") : "🔒"}</i>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <button type="button" className="acd-theme-reset" onClick={resetTheme}>
+                        ใช้สีปกติ
+                      </button>
+                    </div>
+                  )}
+                  <button type="button" className="acd-edit-btn" onClick={() => (editing ? saveEdit() : enterEdit())} disabled={saving}>
+                    {saving ? "กำลังบันทึก…" : editing ? "บันทึกการเปลี่ยนแปลง" : "แก้ไขโปรไฟล์"}
+                  </button>
+                </div>
               </div>
 
               {/* การ์ดระดับ + ออเดอร์ล่าสุด */}
               <div className="acd-cards">
-                <div className={`acd-tier${isPreview ? " previewing" : ""}`} style={tierStyle}>
+                <div className={`acd-tier${isPreview ? " previewing" : ""}${shownTier && DARK_TEXT_TIERS.has(shownTier.id) ? " dark" : ""}`} style={tierStyle} data-ring={shownTier?.id}>
                   <div className="acd-tier-chiprow">
                     <span className="acd-chip">ระดับสมาชิก</span>
                     {tiers.length > 1 && (
                       <div className="acd-tier-switch-wrap">
-                        <span className="acd-switch-hint">ดูสิทธิ์ระดับอื่น</span>
-                        <div className="acd-tier-switch" role="tablist" aria-label="ดูสิทธิประโยชน์แต่ละระดับ">
-                          {tiers.map((t) => (
-                            <button
-                              key={t.id}
-                              type="button"
-                              className={shownTier?.id === t.id ? "on" : ""}
-                              title={`ดูสิทธิประโยชน์ระดับ ${t.name}`}
-                              aria-label={`ดูสิทธิประโยชน์ระดับ ${t.name}`}
-                              onClick={() => setPreviewTier(t.id === realTier?.id ? null : t.id)}
-                            >
-                              {t.icon}
-                            </button>
-                          ))}
-                        </div>
+                        {switchOpen ? (
+                          <div className="acd-tier-switch pop-in" role="tablist" aria-label="ดูสิทธิประโยชน์แต่ละระดับ">
+                            {tiers.map((t, i) => {
+                              const art = medalArt(t, i);
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  className={shownTier?.id === t.id ? "on" : ""}
+                                  title={`ดูสิทธิประโยชน์ระดับ ${t.name}`}
+                                  aria-label={`ดูสิทธิประโยชน์ระดับ ${t.name}`}
+                                  onClick={() => {
+                                    setPreviewTier(t.id === realTier?.id ? null : t.id);
+                                    setSwitchOpen(false);
+                                  }}
+                                >
+                                  {art ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={`/account/rank/${art}-ico.webp`} alt="" />
+                                  ) : (
+                                    t.icon
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <button type="button" className="acd-tier-switch-toggle pop-in" onClick={() => setSwitchOpen(true)}>
+                            ดูสิทธิ์ระดับอื่น
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
-                  <div className="acd-tier-top">
-                    <div className="acd-tier-name">
-                      <span className="acd-medal" aria-hidden="true">
-                        {shownTier?.icon ?? "🥉"}
-                      </span>
-                      <span>
-                        {shownTier?.name ?? "—"}
-                        {isPreview && <small> (ตัวอย่าง)</small>}
-                      </span>
+                  <div className="acd-tier-hero">
+                    <div className="acd-medal-wrap">
+                      {shownArt ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img className="acd-medal" src={`/account/rank/${shownArt}.webp`} alt={`ตราระดับ ${shownTier?.name ?? ""}`} />
+                      ) : (
+                        <span className="acd-medal acd-medal-emoji" aria-hidden="true">
+                          {shownTier?.icon ?? "🥉"}
+                        </span>
+                      )}
                     </div>
-                    <div className="acd-tier-points">
-                      <small>{isPreview ? "ยอดขั้นต่ำที่ต้องใช้" : "ยอดสะสม"}</small>
-                      <b>{orders === null ? "…" : formatPrice(isPreview ? shownTier!.minSpend : spend)}</b>
+                    <div className="acd-tier-hero-info">
+                      <div className="acd-tier-hero-label">{shownTier?.name ?? "—"}</div>
+                      <div className="acd-tier-hero-tag">{isPreview ? "ตัวอย่างสิทธิ์ระดับนี้" : "ระดับสมาชิกของคุณ"}</div>
                     </div>
+                  </div>
+                  <div className="acd-tier-stats">
+                    <small>{isPreview ? "ยอดขั้นต่ำที่ต้องใช้" : "ยอดสะสม"}</small>
+                    <b>{orders === null ? "…" : formatPrice(isPreview ? shownTier!.minSpend : spend)}</b>
                   </div>
                   <div className="acd-progress">
                     <i style={{ width: `${isPreview ? 100 : progressPct}%` }} />
