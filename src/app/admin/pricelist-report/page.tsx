@@ -15,7 +15,15 @@ import { badge, btnNeutral, btnSmNeutral, card, faint, h1, label, metric, muted,
 
 type Status = "published" | "draft" | "missing";
 
+/** ติ๊กว่าทำแล้ว — เก็บฝั่งเซิร์ฟเวอร์ ทีมงานเห็นตรงกัน */
+interface DoneMark {
+  at: string;
+  by: string;
+}
+
 interface Row {
+  key: string;
+  done: DoneMark | null;
   name: string;
   category: string;
   url: string;
@@ -56,6 +64,7 @@ interface Report {
     adminDraft: number;
     matched: number;
     extras: number;
+    done: number;
   };
   rows: Row[];
   extras: Extra[];
@@ -82,6 +91,21 @@ const FILTERS: { id: Status | "all"; label: string }[] = [
   { id: "missing", label: "ยังไม่มีในระบบ" },
 ];
 
+/** ชื่อลิงก์แบบสั้น — เอาชื่อหน้า (slug) ของเว็บตารางราคามาโชว์ เช่น /keyring */
+const linkName = (url: string) => {
+  try {
+    return decodeURIComponent(new URL(url).pathname) || "/";
+  } catch {
+    return url;
+  }
+};
+
+/** วันที่แบบสั้น เช่น 18 ส.ค. 14:20 */
+const whenOf = (iso: string) => {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? "" : d.toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+};
+
 /** ลิงก์หน้าแก้ไขสินค้า — ใช้ slug ถ้ามี (URL อ่านรู้เรื่องกว่า) */
 const editPath = (p: { id: string; slug: string }) => `/admin/products/${encodeURIComponent(p.slug || p.id)}`;
 
@@ -96,6 +120,7 @@ function downloadCsv(rows: Row[]) {
       String(r.products.length),
       r.products.map((p) => `${p.published ? "เผยแพร่" : "ร่าง"}: ${p.name}`).join(" · "),
       r.match ?? "",
+      r.done ? `ทำแล้ว · ${r.done.by} · ${new Date(r.done.at).toLocaleDateString("th-TH")}` : "ยังไม่ทำ",
       r.url,
     ]
       .map(esc)
@@ -103,7 +128,7 @@ function downloadCsv(rows: Row[]) {
   );
   const csv =
     "﻿" +
-    ["หมวดบนเว็บ,ชื่อบนเว็บ,สถานะ,จำนวนที่ตรงกัน,ชื่อในระบบ,วิธีจับคู่,ลิงก์หน้าตารางราคา", ...body].join("\n");
+    ["หมวดบนเว็บ,ชื่อบนเว็บ,สถานะ,จำนวนที่ตรงกัน,ชื่อในระบบ,วิธีจับคู่,เช็กลิสต์,ลิงก์หน้าตารางราคา", ...body].join("\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   a.download = `pricelist-report-${new Date().toISOString().slice(0, 10)}.csv`;
@@ -163,7 +188,10 @@ export default function PricelistReportPage() {
   const [filter, setFilter] = useState<Status | "all">("all");
   const [cat, setCat] = useState("all");
   const [query, setQuery] = useState("");
+  const [doneFilter, setDoneFilter] = useState<"all" | "todo" | "done">("all");
   const [showExtras, setShowExtras] = useState(false);
+  /** บรรทัดที่กำลังบันทึกติ๊กอยู่ (กันกดรัวซ้ำ) */
+  const [saving, setSaving] = useState<Set<string>>(new Set());
 
   const load = useCallback(async (refresh = false) => {
     setLoading(true);
@@ -174,7 +202,7 @@ export default function PricelistReportPage() {
       if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
       setData(j as Report);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(`ดึงรายงานไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setLoading(false);
     }
@@ -184,6 +212,42 @@ export default function PricelistReportPage() {
     void load();
   }, [load]);
 
+  /** ติ๊ก/ยกเลิกติ๊ก "ทำแล้ว" — เปลี่ยนบนจอทันที ถ้าบันทึกไม่ผ่านค่อยคืนค่าเดิม */
+  const toggleDone = useCallback(async (row: Row) => {
+    const want = !row.done;
+    setSaving((s) => new Set(s).add(row.key));
+    const apply = (mark: DoneMark | null) =>
+      setData((d) =>
+        d
+          ? {
+              ...d,
+              rows: d.rows.map((r) => (r.key === row.key ? { ...r, done: mark } : r)),
+              sum: { ...d.sum, done: d.rows.filter((r) => (r.key === row.key ? mark : r.done)).length },
+            }
+          : d
+      );
+    apply(want ? { at: new Date().toISOString(), by: "กำลังบันทึก…" } : null);
+    try {
+      const r = await fetch("/api/admin/pricelist-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: row.key, done: want }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+      apply((j.mark as DoneMark | null) ?? null);
+    } catch (e) {
+      apply(row.done); // บันทึกไม่ผ่าน — คืนค่าเดิม จะได้ไม่เข้าใจผิดว่าทำแล้ว
+      setError(`บันทึกเช็กลิสต์ไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving((s) => {
+        const n = new Set(s);
+        n.delete(row.key);
+        return n;
+      });
+    }
+  }, []);
+
   const cats = useMemo(() => [...new Set((data?.rows ?? []).map((r) => r.category))].filter(Boolean), [data]);
 
   const rows = useMemo(() => {
@@ -192,9 +256,10 @@ export default function PricelistReportPage() {
       (r) =>
         (filter === "all" || r.status === filter) &&
         (cat === "all" || r.category === cat) &&
+        (doneFilter === "all" || (doneFilter === "done" ? !!r.done : !r.done)) &&
         (!q || r.name.toLowerCase().includes(q) || r.products.some((p) => p.name.toLowerCase().includes(q)))
     );
-  }, [data, filter, cat, query]);
+  }, [data, filter, cat, doneFilter, query]);
 
   /** จัดกลุ่มตามหมวดบนเว็บ เรียงตามลำดับที่ปรากฏบนหน้าเว็บจริง */
   const groups = useMemo(() => {
@@ -245,19 +310,23 @@ export default function PricelistReportPage() {
         </div>
 
         {error ? (
-          <div className={`${card} border-rose-200 bg-rose-50 p-4 text-sm text-rose-700`}>
-            ดึงรายงานไม่สำเร็จ — {error}
-          </div>
+          <div className={`${card} border-rose-200 bg-rose-50 p-4 text-sm text-rose-700`}>⚠ {error}</div>
         ) : null}
 
         {/* ── สรุป ── */}
         {sum ? (
           <>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
               <Tile n={sum.cards} text="ชื่อบนเว็บตารางราคา" hint={`จาก ${sum.categories} หมวดบนหน้าแรก`} />
               <Tile n={sum.published} text="เผยแพร่แล้ว" tone="text-emerald-600" hint="ลูกค้าเห็นบนหน้าร้าน" />
               <Tile n={sum.draft} text="ฉบับร่าง" tone="text-orange-600" hint="มีในระบบ แต่ยังไม่เผยแพร่" />
               <Tile n={sum.missing} text="ยังไม่มีในระบบ" tone="text-rose-600" hint="ต้องนำเข้า/สร้างเพิ่ม" />
+              <Tile
+                n={sum.done}
+                text="ติ๊กว่าทำแล้ว"
+                tone="text-sky-600"
+                hint={`เหลืออีก ${sum.cards - sum.done} รายการ`}
+              />
               <Tile
                 n={sum.adminTotal}
                 text="สินค้าในระบบทั้งหมด"
@@ -278,6 +347,24 @@ export default function PricelistReportPage() {
                   <span className="ml-1.5 opacity-60">
                     {f.id === "all" ? sum.cards : f.id === "published" ? sum.published : f.id === "draft" ? sum.draft : sum.missing}
                   </span>
+                </button>
+              ))}
+              <span className="mx-1 h-5 w-px bg-slate-200" />
+              {([
+                { id: "all", label: "เช็กลิสต์ทั้งหมด" },
+                { id: "todo", label: "ยังไม่ทำ" },
+                { id: "done", label: "ทำแล้ว" },
+              ] as const).map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className={doneFilter === f.id ? pillActive : pillIdle}
+                  onClick={() => setDoneFilter(f.id)}
+                >
+                  {f.label}
+                  {f.id !== "all" ? (
+                    <span className="ml-1.5 opacity-60">{f.id === "done" ? sum.done : sum.cards - sum.done}</span>
+                  ) : null}
                 </button>
               ))}
               <select
@@ -307,10 +394,16 @@ export default function PricelistReportPage() {
         {/* ── ตารางรายชื่อ ── */}
         {data ? (
           <div className={`${card} overflow-hidden`}>
-            <table className="w-full text-sm">
+            {/* จอแคบให้เลื่อนตารางแนวนอนแทนการบีบคอลัมน์จนอ่านไม่ออก */}
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[960px] text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/60 text-left">
+                  <th className={`w-10 px-3 py-2 ${label}`} title="ติ๊กเมื่อจัดการชื่อนี้เรียบร้อยแล้ว">
+                    ทำแล้ว
+                  </th>
                   <th className={`px-4 py-2 ${label}`}>ชื่อบนเว็บตารางราคา</th>
+                  <th className={`px-4 py-2 ${label}`}>หน้าตารางราคา</th>
                   <th className={`px-4 py-2 ${label}`}>สถานะ</th>
                   <th className={`px-4 py-2 ${label}`}>สินค้าในระบบ</th>
                   <th className={`px-4 py-2 ${label}`}>จับคู่ด้วย</th>
@@ -320,20 +413,49 @@ export default function PricelistReportPage() {
                 {groups.map(([name, list]) => (
                   <Fragment key={name}>
                     <tr className="bg-amber-50/60">
-                      <td colSpan={4} className="px-4 py-1.5 text-xs font-semibold text-slate-600">
+                      <td colSpan={6} className="px-4 py-1.5 text-xs font-semibold text-slate-600">
                         {name}
-                        <span className={`ml-2 font-normal ${faint}`}>{list.length} รายการ</span>
+                        <span className={`ml-2 font-normal ${faint}`}>
+                          {list.length} รายการ · ทำแล้ว {list.filter((r) => r.done).length}
+                        </span>
                       </td>
                     </tr>
-                    {list.map((r, i) => (
-                      <tr key={`${name}-${i}-${r.name}`} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
-                        <td className="px-4 py-2 text-slate-800">
+                    {list.map((r) => (
+                      <tr
+                        key={r.key}
+                        className={`border-b border-slate-50 last:border-0 hover:bg-slate-50/60 ${r.done ? "bg-slate-50/40 text-slate-400" : ""}`}
+                      >
+                        <td className="px-3 py-2 align-top">
+                          <input
+                            type="checkbox"
+                            checked={!!r.done}
+                            disabled={saving.has(r.key)}
+                            onChange={() => void toggleDone(r)}
+                            title={r.done ? `ทำแล้วโดย ${r.done.by} · ${whenOf(r.done.at)}` : "ติ๊กเมื่อจัดการชื่อนี้เรียบร้อยแล้ว"}
+                            className="h-4 w-4 cursor-pointer accent-emerald-600 disabled:cursor-wait"
+                          />
+                        </td>
+                        <td className={`px-4 py-2 ${r.done ? "text-slate-400 line-through decoration-slate-300" : "text-slate-800"}`}>
+                          {r.name}
+                          {r.done ? (
+                            <span className={`ml-2 text-[11px] ${faint} no-underline`}>
+                              ✓ {r.done.by} · {whenOf(r.done.at)}
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-2">
                           {r.url ? (
-                            <a href={r.url} target="_blank" rel="noreferrer" className="hover:text-amber-600 hover:underline">
-                              {r.name}
+                            <a
+                              href={r.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              title={decodeURIComponent(r.url)}
+                              className="font-mono text-xs text-slate-500 hover:text-amber-600 hover:underline"
+                            >
+                              {linkName(r.url)} ↗
                             </a>
                           ) : (
-                            r.name
+                            <span className={`text-xs ${faint}`}>ไม่มีลิงก์</span>
                           )}
                         </td>
                         <td className="px-4 py-2">
@@ -355,13 +477,14 @@ export default function PricelistReportPage() {
                 ))}
                 {!rows.length && !loading ? (
                   <tr>
-                    <td colSpan={4} className={`px-4 py-10 text-center text-sm ${muted}`}>
+                    <td colSpan={6} className={`px-4 py-10 text-center text-sm ${muted}`}>
                       ไม่มีรายการที่ตรงกับตัวกรอง
                     </td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
+            </div>
           </div>
         ) : null}
 

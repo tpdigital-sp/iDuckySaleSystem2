@@ -32,7 +32,25 @@ export interface MatchedProduct {
   hasPricing: boolean;
 }
 
+/** ติ๊กว่า "จัดการชื่อนี้แล้ว" — ทีมงานเห็นตรงกันทุกคน (เก็บในฐานข้อมูล ไม่ใช่ในเครื่อง) */
+export interface DoneMark {
+  at: string;
+  by: string;
+}
+
+export type DoneMap = Record<string, DoneMark>;
+
+/** แถวเก็บรายการที่ติ๊กแล้ว (แถวพิเศษในตาราง products แบบเดียวกับตั้งค่าร้าน) */
+const DONE_ID = "__pricelist_done__";
+
 export interface PricelistRow {
+  /**
+   * รหัสประจำบรรทัด สำหรับจำว่าติ๊ก "ทำแล้ว" ไว้หรือยัง
+   * = หมวด | ชื่อ | ลำดับที่ซ้ำ (บางหมวดมีชื่อซ้ำกันหลายใบ เช่น Cup Sleeve 2 ใบ)
+   */
+  key: string;
+  /** ติ๊กแล้วโดยใคร เมื่อไหร่ (null = ยังไม่ติ๊ก) */
+  done: DoneMark | null;
   name: string;
   category: string;
   url: string;
@@ -74,6 +92,14 @@ const dice = (a: string, b: string) => {
 /** คล้ายกันเกินเท่านี้ถือว่าเป็นตัวเดียวกัน (ค่าเดิมจาก scripts/pricelist-audit.mjs) */
 const SIMILAR_ENOUGH = 0.72;
 
+type Db = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
+
+/** อ่านรายการที่ทีมงานติ๊กว่าทำแล้ว */
+async function loadDone(sb: Db): Promise<DoneMap> {
+  const { data } = await sb.from("products").select("data").eq("id", DONE_ID).maybeSingle();
+  return ((data?.data as { done?: DoneMap } | null)?.done ?? {}) as DoneMap;
+}
+
 export async function GET(req: Request) {
   const gate = await requirePerm("products.view");
   if (gate.res) return gate.res;
@@ -92,8 +118,11 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: `ดึงหน้าเว็บตารางราคาไม่สำเร็จ — ${msg}` }, { status: 502 });
   }
 
-  // ── 2. สินค้าในระบบ (เอาทั้งที่เผยแพร่แล้วและฉบับร่าง) ──
-  const { data, error } = await sb.from("products").select("id,name,category,data");
+  // ── 2. สินค้าในระบบ (เอาทั้งที่เผยแพร่แล้วและฉบับร่าง) + รายการที่ติ๊กว่าทำแล้ว ──
+  const [{ data, error }, done] = await Promise.all([
+    sb.from("products").select("id,name,category,data"),
+    loadDone(sb),
+  ]);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const products = (data ?? [])
@@ -122,8 +151,15 @@ export async function GET(req: Request) {
    * ไล่จากแม่นสุดไปหลวมสุด แล้วหยุดที่รอบแรกที่เจอ:
    *   1. ชื่อตรงกัน  2. ชื่อหนึ่งอยู่ในอีกชื่อ  3. ชื่อคล้ายกัน ≥ 72%
    */
+  /** นับชื่อซ้ำในหมวดเดียวกัน เพื่อให้รหัสบรรทัด (key) ไม่ชนกัน */
+  const seen = new Map<string, number>();
+
   const rows: PricelistRow[] = cards.map((card) => {
     const key = norm(card.name);
+    const dup = `${card.category}|${card.name}`;
+    const no = (seen.get(dup) ?? 0) + 1;
+    seen.set(dup, no);
+    const rowKey = `${dup}|${no}`;
     let how: string | null = null;
     let hits = products.filter((p) => p.key === key);
     if (hits.length) how = "ชื่อตรงกัน";
@@ -149,6 +185,8 @@ export async function GET(req: Request) {
     // เผยแพร่แล้วขึ้นก่อน — เวลาโชว์แค่ 3 ตัวแรกจะได้เห็นตัวที่ขึ้นหน้าร้านจริง
     hits.sort((a, b) => Number(b.published) - Number(a.published) || a.name.localeCompare(b.name, "th"));
     return {
+      key: rowKey,
+      done: done[rowKey] ?? null,
       name: card.name,
       category: card.category,
       url: card.url,
@@ -186,8 +224,51 @@ export async function GET(req: Request) {
       adminDraft: products.filter((p) => !p.published).length,
       matched: products.filter((p) => p.used).length,
       extras: extras.length,
+      done: rows.filter((r) => r.done).length,
     },
     rows,
     extras,
   });
+}
+
+/**
+ * ติ๊ก/ยกเลิกติ๊ก "ทำแล้ว" ของชื่อบนเว็บ 1 บรรทัด
+ * เป็นเช็กลิสต์การทำงานของทีม (ไม่ได้แก้ข้อมูลสินค้า) — ใครเปิดรายงานได้ก็ติ๊กได้
+ */
+export async function POST(req: Request) {
+  const gate = await requirePerm("products.view");
+  if (gate.res) return gate.res;
+
+  const sb = getSupabaseAdmin();
+  if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
+
+  let body: { key?: string; done?: boolean };
+  try {
+    body = (await req.json()) as { key?: string; done?: boolean };
+  } catch {
+    return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
+  }
+  const key = String(body.key ?? "").trim();
+  if (!key) return NextResponse.json({ error: "ไม่ได้ระบุว่าติ๊กบรรทัดไหน" }, { status: 400 });
+
+  const map = await loadDone(sb);
+  const mark: DoneMark | null = body.done
+    ? { at: new Date().toISOString(), by: gate.actor.name || gate.actor.username }
+    : null;
+  if (mark) map[key] = mark;
+  else delete map[key];
+
+  const { error } = await sb.from("products").upsert(
+    {
+      id: DONE_ID,
+      name: "(รายงานเทียบเว็บตารางราคา — รายการที่ทำแล้ว)",
+      category: "__settings__",
+      price: 0,
+      data: { done: map },
+    },
+    { onConflict: "id" }
+  );
+  return error
+    ? NextResponse.json({ error: error.message }, { status: 500 })
+    : NextResponse.json({ ok: true, mark });
 }
