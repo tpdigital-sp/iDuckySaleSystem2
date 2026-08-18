@@ -215,8 +215,14 @@ function ProductCell({
           <span className={`${badge} ${p.published ? "bg-emerald-50 text-emerald-700" : "bg-orange-50 text-orange-700"}`}>
             {p.published ? "เผยแพร่" : "ร่าง"}
           </span>
-          <Link href={editPath(p)} className="text-slate-700 hover:text-amber-600 hover:underline">
-            {p.name}
+          <Link
+            href={editPath(p)}
+            target="_blank"
+            rel="noreferrer"
+            title="เปิดหน้าแก้ไขสินค้าในแท็บใหม่"
+            className="text-slate-700 hover:text-amber-600 hover:underline"
+          >
+            {p.name} ↗
           </Link>
           {p.manual ? <span className={`${badge} bg-sky-50 text-sky-700`}>จับคู่เอง</span> : null}
           {p.reviewed ? <span className={`${badge} bg-violet-50 text-violet-600`}>ตรวจแล้ว</span> : null}
@@ -669,8 +675,14 @@ export default function PricelistReportPage() {
                     <span className={`${badge} ${p.published ? "bg-emerald-50 text-emerald-700" : "bg-orange-50 text-orange-700"}`}>
                       {p.published ? "เผยแพร่" : "ร่าง"}
                     </span>
-                    <Link href={editPath(p)} className="truncate text-slate-700 hover:text-amber-600 hover:underline">
-                      {p.name}
+                    <Link
+                      href={editPath(p)}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="เปิดหน้าแก้ไขสินค้าในแท็บใหม่"
+                      className="truncate text-slate-700 hover:text-amber-600 hover:underline"
+                    >
+                      {p.name} ↗
                     </Link>
                   </li>
                 ))}
