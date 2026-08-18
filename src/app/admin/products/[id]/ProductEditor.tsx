@@ -95,6 +95,8 @@ type DraftImage = { emoji: string; gradient: string; label: string; src?: string
 type DraftBody = {
   heading: string;
   text: string;
+  /** เนื้อหาแบบจัดรูปแบบ (HTML) — ไม่ว่าง = ใช้แทน text (ตัวเขียนชุดเดียวกับแท็บ/บทความ) */
+  html: string;
   emoji: string; // ว่าง (และไม่มีรูปจริง) = ไม่มีรูป
   gradient: string;
   imgLabel: string;
@@ -484,6 +486,7 @@ function toDraft(p: Product): Draft {
     body: (p.body ?? []).map((b) => ({
       heading: b.heading,
       text: b.text,
+      html: b.html ?? "",
       emoji: b.image?.emoji ?? "",
       gradient: b.image?.gradient ?? "from-sky-100 to-blue-200",
       imgLabel: b.image?.label ?? "",
@@ -656,6 +659,20 @@ const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").re
 function isEmptyHtml(h: string): boolean {
   if (/<(img|iframe|table|hr)\b/i.test(h)) return false;
   return !h.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+}
+
+/** ข้อความสั้น ๆ จาก HTML ไว้โชว์ตอนพับท่อนเนื้อหา (ตัดแท็กออก เหลือแต่ตัวอักษร) */
+function htmlSummary(h: string): string {
+  if (!h.trim() || isEmptyHtml(h)) return "";
+  const txt = h
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+  return txt.slice(0, 60) || (/<(img|iframe|table)\b/i.test(h) ? "🖼 เนื้อหาจัดรูปแบบไว้" : "");
 }
 
 /**
@@ -1010,6 +1027,8 @@ export default function ProductEditor({ product }: { product: Product }) {
   const [bodyDragOver, setBodyDragOver] = useState<number | null>(null);
   /** ท่อนเนื้อหาที่พับอยู่ (เนื้อหายาว ๆ พับเก็บให้หน้าโล่ง) */
   const [bodyFolded, setBodyFolded] = useState<Record<number, boolean>>({});
+  /** รอบการ remount ตัวเขียนของท่อนเนื้อหา — บวกทุกครั้งที่ลบ/ย้ายท่อน (ตัวเขียนอ่าน initialHtml ครั้งเดียวตอน mount) */
+  const [bodyRev, setBodyRev] = useState(0);
 
   /** อัปโหลดรูปเข้าท่อนเนื้อหา — ใช้ทั้งปุ่มเลือกไฟล์และลากมาวาง */
   async function uploadBodyImage(i: number, f: File) {
@@ -1159,6 +1178,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                     {
                       heading: "",
                       text: "",
+                      html: "",
                       emoji: "",
                       gradient: "from-sky-100 to-blue-200",
                       imgLabel: "",
@@ -1215,7 +1235,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                     {bodyFolded[i] && (
                       <span className="min-w-0 truncate text-xs font-semibold text-slate-600">
                         {b.src && "🖼 "}
-                        {b.heading.trim() || b.text.trim().slice(0, 60) || "(ยังไม่มีเนื้อหา)"}
+                        {b.heading.trim() || htmlSummary(b.html) || b.text.trim().slice(0, 60) || "(ยังไม่มีเนื้อหา)"}
                       </span>
                     )}
                   </button>
@@ -1235,13 +1255,14 @@ export default function ProductEditor({ product }: { product: Product }) {
                     )}
                     <button
                       type="button"
-                      onClick={() =>
+                      onClick={() => {
+                        setBodyRev((r) => r + 1);
                         patch({
                           body: draft.body.map((x, j) =>
                             j === i ? { ...x, slot: side ? undefined : ("side" as const) } : x
                           ),
-                        })
-                      }
+                        });
+                      }}
                       title={side ? "ย้ายท่อนนี้ไปโซนด้านล่าง (เต็มความกว้าง)" : "ย้ายท่อนนี้ไปโซนข้างแผงสั่งซื้อ"}
                       className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-200"
                     >
@@ -1249,7 +1270,10 @@ export default function ProductEditor({ product }: { product: Product }) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => patch({ body: draft.body.filter((_, j) => j !== i) })}
+                      onClick={() => {
+                        setBodyRev((r) => r + 1);
+                        patch({ body: draft.body.filter((_, j) => j !== i) });
+                      }}
                       className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-500 hover:bg-rose-100"
                     >
                       🗑 ลบท่อน
@@ -1265,14 +1289,15 @@ export default function ProductEditor({ product }: { product: Product }) {
                   className={`mt-2 w-full font-bold ${inputCls}`}
                   aria-label={`หัวข้อท่อนที่ ${n + 1}`}
                 />
-                <textarea
-                  value={b.text}
-                  onChange={(e) => patch({ body: draft.body.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })}
-                  placeholder={"เนื้อหา… ขึ้นบรรทัดใหม่ได้\nบรรทัดที่ขึ้นต้นด้วย • จะเป็นรายการ"}
-                  rows={4}
-                  className={`mt-2 w-full resize-y ${inputCls}`}
-                  aria-label={`เนื้อหาท่อนที่ ${n + 1}`}
-                />
+                {/* ตัวเขียนจัดรูปแบบ — ชุดเดียวกับแท็บ/บทความ (ข้อความเดิมแบบ • / ::หัวข้อ:: แปลงให้อัตโนมัติ)
+                    key มี bodyRev เพื่อให้ตัวเขียนโหลดค่าใหม่หลังลบ/ย้ายท่อน (ไม่งั้นค้างเนื้อหาของท่อนเดิม) */}
+                <div className="mt-2">
+                  <RichEditor
+                    key={`body-${i}-${bodyRev}`}
+                    initialHtml={b.html || tabTextToHtml(b.text)}
+                    onChange={(html) => patch({ body: draft.body.map((x, j) => (j === i ? { ...x, html } : x)) })}
+                  />
+                </div>
                 <div className="mt-2 flex items-center gap-2">
                   <span className="text-xs font-semibold text-slate-500">รูปประกอบ: <span className="font-normal text-slate-400">(ลากรูปมาวางที่ท่อนนี้ได้เลย)</span></span>
                   {b.src && (
@@ -2427,10 +2452,12 @@ export default function ProductEditor({ product }: { product: Product }) {
     }
 
     const body: BodySection[] = draft.body
-      .filter((b) => b.heading.trim() || b.text.trim())
+      .filter((b) => b.heading.trim() || b.text.trim() || (b.html.trim() && !isEmptyHtml(b.html)))
       .map((b) => ({
         heading: b.heading.trim(),
         text: b.text.trim(),
+        // เนื้อหาแบบจัดรูปแบบ — เซิร์ฟเวอร์กรองแท็กอันตรายให้อีกชั้นตอนบันทึก
+        ...(b.html.trim() && !isEmptyHtml(b.html) ? { html: b.html.trim() } : {}),
         align: b.align,
         ...(b.slot === "side" ? { slot: "side" as const } : {}),
         ...(b.emoji.trim() || b.src

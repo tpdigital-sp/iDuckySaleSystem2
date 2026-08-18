@@ -1251,17 +1251,25 @@ export default function ProductDetail({
                 {sec.heading && (
                   <h3 className="text-xl font-extrabold text-amber-600">{sec.heading}</h3>
                 )}
-                <div className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-stone-600">
-                  {sec.text.split("\n").map((line, j) =>
-                    line.trim().startsWith("•") ? (
-                      <p key={j} className="text-left md:pl-10">
-                        {line}
-                      </p>
-                    ) : (
-                      <p key={j}>{line}</p>
-                    )
-                  )}
-                </div>
+                {/* เนื้อหาแบบจัดรูปแบบจากหลังบ้าน (ผ่าน sanitize ฝั่งเซิร์ฟเวอร์ตอนบันทึก) — ไม่มีค่อยใช้ข้อความธรรมดาแบบเดิม */}
+                {sec.html?.trim() ? (
+                  <div
+                    className={`mx-auto mt-3 max-w-lg overflow-x-auto text-left text-sm leading-relaxed text-stone-600 ${TAB_PROSE}`}
+                    dangerouslySetInnerHTML={{ __html: sec.html }}
+                  />
+                ) : (
+                  <div className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-stone-600">
+                    {sec.text.split("\n").map((line, j) =>
+                      line.trim().startsWith("•") ? (
+                        <p key={j} className="text-left md:pl-10">
+                          {line}
+                        </p>
+                      ) : (
+                        <p key={j}>{line}</p>
+                      )
+                    )}
+                  </div>
+                )}
                 {sec.image?.label && (
                   <p className="mt-2 text-xs text-stone-400">({sec.image.label})</p>
                 )}

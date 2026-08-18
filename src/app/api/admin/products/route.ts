@@ -53,6 +53,10 @@ export async function POST(req: Request) {
     ...(product.tabs
       ? { tabs: product.tabs.map((t) => (t.html ? { ...t, html: sanitizeHtml(t.html) } : t)) }
       : {}),
+    // ท่อนเนื้อหา (รวมโซนข้างแผงสั่งซื้อ) ที่จัดรูปแบบมาจากตัวเขียน → กรองเหมือนกัน
+    ...(product.body
+      ? { body: product.body.map((b) => (b.html ? { ...b, html: sanitizeHtml(b.html) } : b)) }
+      : {}),
     priceMin: range.min,
     priceMax: range.max,
     savedAt: new Date().toISOString(),

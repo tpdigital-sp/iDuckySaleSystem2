@@ -365,6 +365,11 @@ export interface ProductImage {
 export interface BodySection {
   heading: string;
   text: string;
+  /**
+   * เนื้อหาแบบจัดรูปแบบ (HTML จากตัวเขียนหลังบ้าน — กรองแท็กอันตรายฝั่งเซิร์ฟเวอร์แล้ว)
+   * มีค่า = ใช้แทน text · ไม่มี = ใช้ text แบบเดิม (ขึ้นบรรทัดใหม่ · "• " = รายการ)
+   */
+  html?: string;
   /** ไม่ใส่ = ท่อนข้อความอย่างเดียว */
   image?: ProductImage;
   /** ตำแหน่งรูป (ค่าเริ่มต้น: left) */
