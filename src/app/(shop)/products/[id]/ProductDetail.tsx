@@ -361,6 +361,8 @@ export default function ProductDetail({
   const [extraOpen, setExtraOpen] = useState<"art" | null>(null);
   // สินค้าที่บังคับแนบลาย → เปิดกล่องค้างไว้จนกว่าลูกค้าจะแตะปิดเอง
   const [artTouched, setArtTouched] = useState(false);
+  // 📐 กล่องไฟล์เทมเพลต — สินค้าที่มีเทมเพลตหลายรุ่น (เคสมือถือ 14 รุ่น) ยุบไว้ก่อน ไม่ให้ดันเนื้อหาอื่นตกจอ
+  const [tplOpen, setTplOpen] = useState(false);
   // 💬 งานที่ต้องคุยลายกับแอดมินก่อน (งานปัก/งานตีลาย) — ติ๊กยืนยันว่าคุยแล้ว + ชื่อไลน์ที่ใช้คุย
   const [consultOk, setConsultOk] = useState(false);
   const [consultRef, setConsultRef] = useState("");
@@ -838,6 +840,63 @@ export default function ProductDetail({
     noPageDropRef.current = !!studio || studioMode;
   }, [studio, studioMode]);
   const designDone = placed.length > 0;
+
+  /**
+   * 📐 ไฟล์เทมเพลตทั้งหมดที่โหลดได้ตอนนี้ — คลี่ "ชุดเทมเพลต → ไฟล์" ให้เป็นรายการเดียว
+   *
+   * สินค้าอย่างเคสมือถือมีเทมเพลตแยกเป็นชุดละรุ่น (14 ชุด) — เรียงเป็นแถวยาว ๆ แล้วดันเนื้อหาอื่นตกจอ
+   * จึงคลี่ก่อนแล้วค่อยให้ JSX จัดเป็นตารางการ์ดเล็ก + ยุบไว้เมื่อมีหลายรายการ
+   *
+   * `picked` = ไฟล์ที่ตรงกับตัวเลือกที่ลูกค้าเลือกอยู่ (ชุดที่ผูก optionLabel ไว้)
+   * `matched` = ชุดที่ "ชื่อ" ตรงกับค่าที่ลูกค้าเลือกในกลุ่มไหนก็ได้ (เช่น เลือกรุ่น iPhone 13 Pro
+   *   แล้วมีเทมเพลตชื่อ iPhone 13 Pro) — ดันขึ้นก่อนและโชว์ให้เห็นแม้ตอนที่กล่องยังยุบอยู่
+   */
+  const norm = (s: string) => s.toLowerCase().replace(/[\s._/-]+/g, "");
+  const pickedValues = Object.values(effective)
+    .map((v) => norm(String(v ?? "")))
+    .filter(Boolean);
+  /**
+   * ชื่อเทมเพลตที่ครอบหลายรุ่นในอันเดียว เช่น "iPhone 13/14/15" — กางเป็นชื่อรายรุ่นด้วย
+   * จะได้จับคู่กับค่าที่ลูกค้าเลือก ("iPhone 14") ได้ ไม่ใช่ตรงเฉพาะรุ่นแรก
+   */
+  const tplAliases = (name: string) => {
+    if (!name.includes("/")) return [name];
+    const parts = name.split("/").map((s) => s.trim());
+    const stem = parts[0].replace(/\S+$/, "").trim(); // "iPhone 13" → "iPhone"
+    return [name, parts[0], ...parts.slice(1).map((p) => (stem ? `${stem} ${p}` : p))];
+  };
+  const tplItems = templates
+    .flatMap((t) => {
+      const optLabel = t.optionLabel?.trim();
+      const chosen = optLabel ? (effective[optLabel] ?? "").trim() : "";
+      return filesForSelections(t, effective).flatMap((f) => {
+        const href = fileHref(f);
+        if (!href) return [];
+        return [
+          {
+            key: f.id,
+            href,
+            outside: !f.fileUrl,
+            name: t.name,
+            choice: f.choice ?? "",
+            note: t.note ?? "",
+            preview: f.previewUrl || t.previewUrl || "",
+            fileName: f.fileName ?? "",
+            fileSize: f.fileSize ?? 0,
+            /** ไม่มีไฟล์ตรงค่าที่เลือก → ที่ให้โหลดเป็นไฟล์กลาง บอกลูกค้าตรง ๆ */
+            anyNote: optLabel && chosen && !f.choice ? `ใช้ได้ทุก${optLabel}` : "",
+            matched: tplAliases(`${t.name} ${f.choice ?? ""}`.trim()).some((a) =>
+              pickedValues.includes(norm(a))
+            ),
+          },
+        ];
+      });
+    })
+    // ชุดที่ตรงกับที่ลูกค้าเลือกอยู่ ขึ้นก่อนเสมอ
+    .sort((a, b) => Number(b.matched) - Number(a.matched));
+  /** มีไม่กี่ไฟล์ = กางไว้เลย (พฤติกรรมเดิม) · เยอะกว่านั้นค่อยยุบให้กด */
+  const tplCollapsible = tplItems.length > 4;
+  const tplShown = !tplCollapsible || tplOpen ? tplItems : tplItems.filter((f) => f.matched);
 
   function openStudio(index: number | null = null) {
     if (!studioTarget) return;
@@ -1450,68 +1509,102 @@ export default function ProductDetail({
           )}
 
           {/* ═══ 📐 เทมเพลตไฟล์งาน — โหลดไปวางลายก่อนส่งกลับมาให้ร้าน (ไม่ต้องล็อกอิน) ═══ */}
-          {templates.length > 0 && (
+          {tplItems.length > 0 && (
             <div className="mt-4 overflow-hidden rounded-2xl border-2 border-sky-200 bg-sky-50/60 shadow-sm">
-              <div className="flex items-center gap-2 bg-sky-600 px-4 py-2">
-                <span className="text-base leading-none">📐</span>
-                <p className="text-xs font-extrabold tracking-tight text-white">
-                  {studioMode ? "ไฟล์เทมเพลต — สำหรับคนที่ทำแบบเองในโปรแกรม" : "เทมเพลตไฟล์งาน — โหลดไปวางลายได้เลย"}
+              {/* หัวกล่อง = ปุ่มพับ/กางเมื่อมีเทมเพลตหลายรุ่น (ไม่กี่ไฟล์ = กางไว้เฉย ๆ ไม่ต้องกด) */}
+              {(() => {
+                const head = (
+                  <>
+                    <span className="text-base leading-none">📐</span>
+                    <p className="min-w-0 flex-1 text-left text-xs font-extrabold tracking-tight text-white">
+                      {studioMode ? "ไฟล์เทมเพลต — สำหรับคนที่ทำแบบเองในโปรแกรม" : "เทมเพลตไฟล์งาน — โหลดไปวางลายได้เลย"}
+                    </p>
+                    {tplCollapsible && (
+                      <span className="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold text-white">
+                        {tplItems.length} แบบ
+                      </span>
+                    )}
+                  </>
+                );
+                return tplCollapsible ? (
+                  <button
+                    type="button"
+                    onClick={() => setTplOpen((v) => !v)}
+                    aria-expanded={tplOpen}
+                    className="flex w-full items-center gap-2 bg-sky-600 px-4 py-2 text-left transition hover:bg-sky-700"
+                  >
+                    {head}
+                    <span className={`shrink-0 text-[10px] text-white transition ${tplOpen ? "rotate-180" : ""}`}>▼</span>
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 bg-sky-600 px-4 py-2">{head}</div>
+                );
+              })()}
+
+              {/* ยุบอยู่แล้วยังไม่มีรายการที่ตรงกับตัวเลือก → บอกสั้น ๆ ว่ากดดูได้ (ไม่กินที่) */}
+              {tplCollapsible && !tplOpen && tplShown.length === 0 ? (
+                <p className="px-4 py-2.5 text-[11px] font-semibold text-sky-800">
+                  มีไฟล์เทมเพลต {tplItems.length} แบบให้โหลด — กดที่แถบด้านบนเพื่อดูทั้งหมด
                 </p>
-              </div>
-              <ul className="space-y-2 px-3 py-3">
-                {templates.map((t) => {
-                  // ชุดที่ผูกกับตัวเลือก (เช่น "รุ่น") → เอาเฉพาะไฟล์ของค่าที่ลูกค้าเลือกอยู่
-                  const picked = filesForSelections(t, effective);
-                  if (!picked.length) return null;
-                  const optLabel = t.optionLabel?.trim();
-                  const chosen = optLabel ? (effective[optLabel] ?? "").trim() : "";
-                  return picked.map((f) => {
-                    const href = fileHref(f);
-                    if (!href) return null;
-                    const outside = !f.fileUrl;
-                    return (
-                      <li key={f.id} className="flex items-center gap-3 rounded-xl bg-white p-2.5 ring-1 ring-sky-100">
-                        {/* รูปของไฟล์นั้นมาก่อน (แต่ละรุ่นหน้าตาไม่เหมือนกัน) ไม่มีค่อยใช้รูปปกของชุด */}
-                        {f.previewUrl || t.previewUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={f.previewUrl || t.previewUrl}
-                            alt={`ตัวอย่างเทมเพลต ${t.name}${f.choice ? ` ${f.choice}` : ""}`}
-                            className="h-12 w-12 shrink-0 rounded-lg bg-white object-contain ring-1 ring-sky-100"
-                          />
-                        ) : (
-                          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-sky-50 text-xl">📐</span>
-                        )}
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13px] font-bold text-stone-800">
-                            {t.name}
-                            {f.choice && (
-                              <span className="ml-1 font-semibold text-sky-700">· {f.choice}</span>
-                            )}
-                          </span>
-                          {t.note && <span className="block text-[11px] leading-snug text-stone-500">{t.note}</span>}
-                          <span className="block text-[10px] text-stone-400">
-                            {outside ? "เปิดลิงก์ไฟล์" : f.fileName ?? "ไฟล์เทมเพลต"}
-                            {f.fileSize ? ` · ${formatFileSize(f.fileSize)}` : ""}
-                            {/* ไม่มีไฟล์ตรงรุ่นที่เลือก → บอกตรง ๆ ว่าที่ให้โหลดเป็นไฟล์กลาง */}
-                            {optLabel && chosen && !f.choice ? ` · ใช้ได้ทุก${optLabel}` : ""}
-                          </span>
-                        </span>
-                        {/* ที่นี่มีแค่ปุ่มโหลดไฟล์ — การวางลายบนเว็บใช้ปุ่ม "เริ่มสร้าง" ในกล่องสั่งซื้อ */}
-                        <a
-                          href={href}
-                          {...(outside
-                            ? { target: "_blank", rel: "noopener noreferrer" }
-                            : { download: f.fileName ?? "" })}
-                          className="shrink-0 rounded-full bg-sky-600 px-4 py-2 text-xs font-bold text-white shadow transition hover:bg-sky-700"
-                        >
-                          {outside ? "🔗 เปิดลิงก์" : "⬇️ ดาวน์โหลด"}
-                        </a>
-                      </li>
-                    );
-                  });
-                })}
-              </ul>
+              ) : (
+                <ul className="grid grid-cols-2 gap-2 px-3 py-3 sm:grid-cols-3">
+                  {tplShown.map((f) => (
+                    <li
+                      key={f.key}
+                      className={`flex flex-col rounded-xl bg-white p-2 ring-1 ${
+                        f.matched ? "ring-2 ring-sky-400" : "ring-sky-100"
+                      }`}
+                    >
+                      {/* รูปของไฟล์นั้นมาก่อน (แต่ละรุ่นหน้าตาไม่เหมือนกัน) ไม่มีค่อยใช้รูปปกของชุด */}
+                      {f.preview ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={f.preview}
+                          alt={`ตัวอย่างเทมเพลต ${f.name}${f.choice ? ` ${f.choice}` : ""}`}
+                          className="mx-auto h-14 w-full rounded-lg bg-white object-contain"
+                        />
+                      ) : (
+                        <span className="grid h-14 w-full place-items-center rounded-lg bg-sky-50 text-xl">📐</span>
+                      )}
+                      <span className="mt-1 block truncate text-[12px] font-bold text-stone-800" title={f.name}>
+                        {f.name}
+                        {f.choice && <span className="ml-1 font-semibold text-sky-700">· {f.choice}</span>}
+                      </span>
+                      {f.note && <span className="block truncate text-[10px] text-stone-500">{f.note}</span>}
+                      <span className="block truncate text-[10px] text-stone-400">
+                        {f.outside ? "เปิดลิงก์ไฟล์" : f.fileName || "ไฟล์เทมเพลต"}
+                        {f.fileSize ? ` · ${formatFileSize(f.fileSize)}` : ""}
+                      </span>
+                      {f.matched && (
+                        <span className="mt-0.5 block text-[10px] font-bold text-sky-700">✓ ตรงกับที่คุณเลือก</span>
+                      )}
+                      {f.anyNote && <span className="mt-0.5 block text-[10px] text-stone-400">{f.anyNote}</span>}
+                      {/* ที่นี่มีแค่ปุ่มโหลดไฟล์ — การวางลายบนเว็บใช้ปุ่ม "เริ่มสร้าง" ในกล่องสั่งซื้อ */}
+                      <a
+                        href={f.href}
+                        {...(f.outside
+                          ? { target: "_blank", rel: "noopener noreferrer" }
+                          : { download: f.fileName || "" })}
+                        className="mt-1.5 rounded-full bg-sky-600 px-2 py-1.5 text-center text-[11px] font-bold text-white shadow transition hover:bg-sky-700"
+                      >
+                        {f.outside ? "🔗 เปิดลิงก์" : "⬇️ ดาวน์โหลด"}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* ยุบได้และกางอยู่ → ปุ่มพับกลับที่ท้ายรายการ (ไม่ต้องเลื่อนขึ้นไปหาหัวกล่อง) */}
+              {tplCollapsible && tplOpen && (
+                <button
+                  type="button"
+                  onClick={() => setTplOpen(false)}
+                  className="mx-3 mb-2 block rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
+                >
+                  ▲ ย่อรายการเทมเพลต
+                </button>
+              )}
+
               <p className="px-4 pb-3 text-[10px] leading-relaxed text-sky-800">
                 วิธีที่ง่ายที่สุดคือกดปุ่ม <strong>&ldquo;🎨 เริ่มสร้าง&rdquo;</strong> แล้ววางรูปของคุณบนแบบได้เลย
                 ระบบจัดขนาด/ตำแหน่งให้ตรงกับที่ผลิตจริง · ส่วนไฟล์ .ai ตรงนี้มีไว้ให้คนที่อยากทำแบบเองในโปรแกรมกราฟฟิก
@@ -1928,6 +2021,17 @@ export default function ProductDetail({
                       </p>
                     </div>
                   ) : opt.display === "dropdown" ? (
+                    <div className="flex items-center gap-2">
+                      {/* ภาพประจำตัวเลือกที่เลือกอยู่ — เมนูเลื่อนใส่รูปในตัวเลือกไม่ได้ จึงโชว์ไว้ข้าง ๆ
+                          (สินค้าอย่างเคสมือถือ 20+ รุ่น ใช้เมนูเลื่อนดีกว่าปุ่ม แต่ยังต้องเห็นหน้าตาแบบที่เลือก) */}
+                      {opt.choices.find((c) => c.name === effective[opt.label])?.imageSrc && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={opt.choices.find((c) => c.name === effective[opt.label])!.imageSrc}
+                          alt={effective[opt.label]}
+                          className="h-11 w-11 shrink-0 rounded-xl bg-white object-cover ring-1 ring-amber-200"
+                        />
+                      )}
                     <select
                       value={effective[opt.label]}
                       onChange={(e) => {
@@ -1948,6 +2052,7 @@ export default function ProductDetail({
                           </option>
                         ))}
                     </select>
+                    </div>
                   ) : (
                     <div className="flex flex-wrap gap-1.5">
                       {opt.choices
