@@ -39,7 +39,19 @@ interface Row {
     reviewed: boolean;
     hasImage: boolean;
     hasPricing: boolean;
+    /** true = ทีมงานจับคู่เอง ไม่ใช่ระบบเดา */
+    manual?: boolean;
   }[];
+}
+
+/** สินค้าในระบบสำหรับช่องค้นหาตอนย้าย */
+interface PickItem {
+  id: string;
+  name: string;
+  category: string;
+  published: boolean;
+  /** ตอนนี้อยู่บรรทัดชื่อไหน (ว่าง = ยังไม่อยู่บรรทัดไหน) */
+  at: string;
 }
 
 interface Extra {
@@ -146,36 +158,118 @@ function Tile({ n, text, hint, tone }: { n: number; text: string; hint?: string;
   );
 }
 
-/** ช่อง "สินค้าในระบบ" — การ์ด 1 ใบบนเว็บอาจตรงกับหลายตัว โชว์ 3 ตัวแรกก่อน */
-function ProductCell({ row }: { row: Row }) {
+/** ช่อง "สินค้าในระบบ" — จับคู่เองได้: ✕ เอาออก · ＋ ย้ายสินค้าจากบรรทัดอื่นมาที่นี่ */
+function ProductCell({
+  row,
+  all,
+  busy,
+  onAssign,
+}: {
+  row: Row;
+  all: PickItem[];
+  busy: boolean;
+  /** key = รหัสบรรทัดปลายทาง · "" = เอาออก · null = คืนค่าจับคู่อัตโนมัติ */
+  onAssign: (productId: string, key: string | null) => void;
+}) {
   const [open, setOpen] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [q, setQ] = useState("");
+
   const list = open ? row.products : row.products.slice(0, 3);
   const rest = row.products.length - list.length;
+
+  const found = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (t.length < 2) return [];
+    const mine = new Set(row.products.map((p) => p.id));
+    return all.filter((p) => !mine.has(p.id) && p.name.toLowerCase().includes(t)).slice(0, 8);
+  }, [q, all, row.products]);
+
   return (
     <div className="space-y-1">
-      {row.products.length > 1 ? (
-        <p className={`text-xs ${faint}`}>
-          ตรงกัน {row.products.length} รายการ · เผยแพร่ {row.products.filter((p) => p.published).length} · ร่าง{" "}
-          {row.products.filter((p) => !p.published).length}
-        </p>
-      ) : null}
+      {!row.products.length ? <p className={faint}>ยังไม่มีสินค้าชื่อนี้ในระบบ</p> : null}
       {list.map((p) => (
-        <div key={p.id} className="flex flex-wrap items-center gap-1.5">
+        <div key={p.id} className="group flex flex-wrap items-center gap-1.5">
           <span className={`${badge} ${p.published ? "bg-emerald-50 text-emerald-700" : "bg-orange-50 text-orange-700"}`}>
             {p.published ? "เผยแพร่" : "ร่าง"}
           </span>
           <Link href={editPath(p)} className="text-slate-700 hover:text-amber-600 hover:underline">
             {p.name}
           </Link>
+          {p.manual ? <span className={`${badge} bg-sky-50 text-sky-700`}>จับคู่เอง</span> : null}
           {p.reviewed ? <span className={`${badge} bg-violet-50 text-violet-600`}>ตรวจแล้ว</span> : null}
           {!p.hasPricing ? <span className={`${badge} bg-slate-100 text-slate-500`}>ยังไม่มีตารางราคา</span> : null}
           {!p.hasImage ? <span className={`${badge} bg-slate-100 text-slate-500`}>ยังไม่มีรูป</span> : null}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onAssign(p.id, p.manual ? null : "")}
+            title={p.manual ? "ยกเลิกที่จับคู่เองไว้ (กลับไปใช้ที่ระบบเดา)" : "ไม่ใช่สินค้าของชื่อนี้ — เอาออกจากบรรทัดนี้"}
+            className="rounded px-1 text-xs text-slate-300 opacity-0 transition hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100 disabled:cursor-wait"
+          >
+            ✕
+          </button>
         </div>
       ))}
-      {rest > 0 || open ? (
-        <button type="button" className="text-xs font-semibold text-amber-600 hover:underline" onClick={() => setOpen((v) => !v)}>
-          {open ? "ย่อรายการ" : `ดูอีก ${rest} รายการ`}
+
+      <div className={`flex flex-wrap items-center gap-2 text-xs ${faint}`}>
+        {row.products.length > 1 ? (
+          <span>
+            ตรงกัน {row.products.length} รายการ · เผยแพร่ {row.products.filter((p) => p.published).length} · ร่าง{" "}
+            {row.products.filter((p) => !p.published).length}
+          </span>
+        ) : null}
+        {rest > 0 || open ? (
+          <button type="button" className="font-semibold text-amber-600 hover:underline" onClick={() => setOpen((v) => !v)}>
+            {open ? "ย่อรายการ" : `ดูอีก ${rest} รายการ`}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="font-semibold text-slate-500 hover:text-amber-600 hover:underline"
+          onClick={() => setPicking((v) => !v)}
+        >
+          {picking ? "ปิด" : "＋ ย้ายสินค้ามาที่นี่"}
         </button>
+      </div>
+
+      {picking ? (
+        <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/70 p-2">
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="พิมพ์ชื่อสินค้าในระบบที่ต้องการย้ายมาบรรทัดนี้…"
+            className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 placeholder:text-slate-400"
+          />
+          <div className="mt-1.5 space-y-1">
+            {q.trim().length < 2 ? (
+              <p className={`text-xs ${faint}`}>พิมพ์อย่างน้อย 2 ตัวอักษร</p>
+            ) : !found.length ? (
+              <p className={`text-xs ${faint}`}>ไม่เจอสินค้าชื่อนี้ในระบบ</p>
+            ) : (
+              found.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    onAssign(p.id, row.key);
+                    setPicking(false);
+                    setQ("");
+                  }}
+                  className="flex w-full flex-wrap items-center gap-1.5 rounded-lg px-2 py-1 text-left text-sm hover:bg-white disabled:cursor-wait"
+                >
+                  <span className={`${badge} ${p.published ? "bg-emerald-50 text-emerald-700" : "bg-orange-50 text-orange-700"}`}>
+                    {p.published ? "เผยแพร่" : "ร่าง"}
+                  </span>
+                  <span className="text-slate-700">{p.name}</span>
+                  {p.at ? <span className={`text-xs ${faint}`}>· ตอนนี้อยู่ที่ “{p.at}”</span> : null}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
       ) : null}
     </div>
   );
@@ -247,6 +341,46 @@ export default function PricelistReportPage() {
       });
     }
   }, []);
+
+  /** สินค้าในระบบทุกตัว (ที่จับคู่ไว้แล้ว + ที่ยังไม่เจอบนเว็บ) ไว้ให้ช่องค้นหาตอนย้าย */
+  const allProducts = useMemo<PickItem[]>(() => {
+    const m = new Map<string, PickItem>();
+    for (const r of data?.rows ?? []) {
+      for (const p of r.products) {
+        m.set(p.id, { id: p.id, name: p.name, category: p.category, published: p.published, at: r.name });
+      }
+    }
+    for (const p of data?.extras ?? []) {
+      if (!m.has(p.id)) m.set(p.id, { id: p.id, name: p.name, category: p.category, published: p.published, at: "" });
+    }
+    return [...m.values()];
+  }, [data]);
+
+  /** ย้ายสินค้าไปบรรทัดอื่น / เอาออก / คืนค่าอัตโนมัติ แล้วโหลดรายงานใหม่ให้ตรงกัน */
+  const assignProduct = useCallback(
+    async (productId: string, key: string | null) => {
+      setSaving((s) => new Set(s).add(productId));
+      try {
+        const r = await fetch("/api/admin/pricelist-report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ productId, key }),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+        await load();
+      } catch (e) {
+        setError(`ย้ายสินค้าไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        setSaving((s) => {
+          const n = new Set(s);
+          n.delete(productId);
+          return n;
+        });
+      }
+    },
+    [load]
+  );
 
   const cats = useMemo(() => [...new Set((data?.rows ?? []).map((r) => r.category))].filter(Boolean), [data]);
 
@@ -429,13 +563,13 @@ export default function PricelistReportPage() {
                           <input
                             type="checkbox"
                             checked={!!r.done}
-                            disabled={saving.has(r.key)}
+                            disabled={saving.size > 0}
                             onChange={() => void toggleDone(r)}
                             title={r.done ? `ทำแล้วโดย ${r.done.by} · ${whenOf(r.done.at)}` : "ติ๊กเมื่อจัดการชื่อนี้เรียบร้อยแล้ว"}
                             className="h-4 w-4 cursor-pointer accent-emerald-600 disabled:cursor-wait"
                           />
                         </td>
-                        <td className={`px-4 py-2 ${r.done ? "text-slate-400 line-through decoration-slate-300" : "text-slate-800"}`}>
+                        <td className={`px-4 py-2 align-top ${r.done ? "text-slate-400 line-through decoration-slate-300" : "text-slate-800"}`}>
                           {r.name}
                           {r.done ? (
                             <span className={`ml-2 text-[11px] ${faint} no-underline`}>
@@ -443,7 +577,7 @@ export default function PricelistReportPage() {
                             </span>
                           ) : null}
                         </td>
-                        <td className="px-4 py-2">
+                        <td className="px-4 py-2 align-top">
                           {r.url ? (
                             <a
                               href={r.url}
@@ -458,19 +592,20 @@ export default function PricelistReportPage() {
                             <span className={`text-xs ${faint}`}>ไม่มีลิงก์</span>
                           )}
                         </td>
-                        <td className="px-4 py-2">
+                        <td className="px-4 py-2 align-top">
                           <span className={`${badge} ${STATUS_STYLE[r.status]}`}>
                             {STATUS_EMOJI[r.status]} {STATUS_LABEL[r.status]}
                           </span>
                         </td>
-                        <td className="px-4 py-2">
-                          {r.products.length ? (
-                            <ProductCell row={r} />
-                          ) : (
-                            <span className={faint}>ยังไม่มีสินค้าชื่อนี้ในระบบ</span>
-                          )}
+                        <td className="px-4 py-2 align-top">
+                          <ProductCell
+                            row={r}
+                            all={allProducts}
+                            busy={saving.size > 0}
+                            onAssign={(id, key) => void assignProduct(id, key)}
+                          />
                         </td>
-                        <td className={`px-4 py-2 text-xs ${faint}`}>{r.match ?? "—"}</td>
+                        <td className={`px-4 py-2 align-top text-xs ${faint}`}>{r.match ?? "—"}</td>
                       </tr>
                     ))}
                   </Fragment>
