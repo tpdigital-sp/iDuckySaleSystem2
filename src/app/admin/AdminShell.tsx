@@ -23,6 +23,7 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   // 🏷️ ของที่ขาย
   { href: "/admin/products", label: "สินค้า", emoji: "🏷️", perm: "products.view", group: "สินค้า" },
   { href: "/admin/import", label: "นำเข้าสินค้า", emoji: "📥", perm: "products.import", group: "สินค้า" },
+  { href: "/admin/pricelist-report", label: "เทียบเว็บตารางราคา", emoji: "🔍", perm: "products.view", group: "สินค้า" },
   { href: "/admin/options", label: "คลังตัวเลือก", emoji: "🎛️", perm: "presets.manage", group: "สินค้า" },
   { href: "/admin/templates", label: "คลังเทมเพลตไฟล์งาน", emoji: "📐", perm: "products.manage", group: "สินค้า" },
   { href: "/admin/special-products", label: "รูปแบบการสินค้าสั่งพิเศษ", emoji: "🛠️", perm: "orders.edit", group: "สินค้า" },

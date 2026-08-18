@@ -1,0 +1,403 @@
+"use client";
+
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import RequirePerm from "@/components/RequirePerm";
+import { badge, btnNeutral, btnSmNeutral, card, faint, h1, label, metric, muted, pillActive, pillIdle } from "@/lib/admin-ui";
+
+/**
+ * 🔍 รายงานเทียบเว็บตารางราคา ↔ สินค้าในระบบ
+ *
+ * อ่านชื่อสินค้าทุกใบจาก "หน้าแรก" ของ iduckyofficial-pricelists.com (หน้าเดียว)
+ * แล้วเทียบกับสินค้าหลังบ้าน — บอกทีละบรรทัดว่าใบนั้นเผยแพร่แล้ว ยังเป็นร่าง หรือยังไม่มีในระบบ
+ * เป็นหน้ารายงานล้วน ๆ ไม่แก้ข้อมูลอะไรทั้งสิ้น
+ */
+
+type Status = "published" | "draft" | "missing";
+
+interface Row {
+  name: string;
+  category: string;
+  url: string;
+  status: Status;
+  match: string | null;
+  /** สินค้าในระบบที่ตรงกับชื่อนี้ — การ์ด 1 ใบบนเว็บอาจตรงกับหลายตัวในระบบ */
+  products: {
+    id: string;
+    slug: string;
+    name: string;
+    category: string;
+    published: boolean;
+    reviewed: boolean;
+    hasImage: boolean;
+    hasPricing: boolean;
+  }[];
+}
+
+interface Extra {
+  id: string;
+  slug: string;
+  name: string;
+  category: string;
+  published: boolean;
+}
+
+interface Report {
+  source: string;
+  fetchedAt: string;
+  sum: {
+    cards: number;
+    categories: number;
+    published: number;
+    draft: number;
+    missing: number;
+    adminTotal: number;
+    adminPublished: number;
+    adminDraft: number;
+    matched: number;
+    extras: number;
+  };
+  rows: Row[];
+  extras: Extra[];
+}
+
+const STATUS_LABEL: Record<Status, string> = {
+  published: "เผยแพร่แล้ว",
+  draft: "ฉบับร่าง",
+  missing: "ยังไม่มีในระบบ",
+};
+
+const STATUS_STYLE: Record<Status, string> = {
+  published: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/70",
+  draft: "bg-orange-50 text-orange-700 ring-1 ring-orange-200/70",
+  missing: "bg-rose-50 text-rose-700 ring-1 ring-rose-200/70",
+};
+
+const STATUS_EMOJI: Record<Status, string> = { published: "✓", draft: "✎", missing: "✕" };
+
+const FILTERS: { id: Status | "all"; label: string }[] = [
+  { id: "all", label: "ทั้งหมด" },
+  { id: "published", label: "เผยแพร่แล้ว" },
+  { id: "draft", label: "ฉบับร่าง" },
+  { id: "missing", label: "ยังไม่มีในระบบ" },
+];
+
+/** ลิงก์หน้าแก้ไขสินค้า — ใช้ slug ถ้ามี (URL อ่านรู้เรื่องกว่า) */
+const editPath = (p: { id: string; slug: string }) => `/admin/products/${encodeURIComponent(p.slug || p.id)}`;
+
+/** โหลดไฟล์ CSV ให้เปิดใน Excel ได้เลย (ใส่ BOM ไม่งั้นภาษาไทยเพี้ยน) */
+function downloadCsv(rows: Row[]) {
+  const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`;
+  const body = rows.map((r) =>
+    [
+      r.category,
+      r.name,
+      STATUS_LABEL[r.status],
+      String(r.products.length),
+      r.products.map((p) => `${p.published ? "เผยแพร่" : "ร่าง"}: ${p.name}`).join(" · "),
+      r.match ?? "",
+      r.url,
+    ]
+      .map(esc)
+      .join(",")
+  );
+  const csv =
+    "﻿" +
+    ["หมวดบนเว็บ,ชื่อบนเว็บ,สถานะ,จำนวนที่ตรงกัน,ชื่อในระบบ,วิธีจับคู่,ลิงก์หน้าตารางราคา", ...body].join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  a.download = `pricelist-report-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function Tile({ n, text, hint, tone }: { n: number; text: string; hint?: string; tone?: string }) {
+  return (
+    <div className={`${card} p-4`}>
+      <p className={label}>{text}</p>
+      <p className={`${metric} mt-2 ${tone ?? ""}`}>{n.toLocaleString("th-TH")}</p>
+      {hint ? <p className={`mt-1 text-xs ${faint}`}>{hint}</p> : null}
+    </div>
+  );
+}
+
+/** ช่อง "สินค้าในระบบ" — การ์ด 1 ใบบนเว็บอาจตรงกับหลายตัว โชว์ 3 ตัวแรกก่อน */
+function ProductCell({ row }: { row: Row }) {
+  const [open, setOpen] = useState(false);
+  const list = open ? row.products : row.products.slice(0, 3);
+  const rest = row.products.length - list.length;
+  return (
+    <div className="space-y-1">
+      {row.products.length > 1 ? (
+        <p className={`text-xs ${faint}`}>
+          ตรงกัน {row.products.length} รายการ · เผยแพร่ {row.products.filter((p) => p.published).length} · ร่าง{" "}
+          {row.products.filter((p) => !p.published).length}
+        </p>
+      ) : null}
+      {list.map((p) => (
+        <div key={p.id} className="flex flex-wrap items-center gap-1.5">
+          <span className={`${badge} ${p.published ? "bg-emerald-50 text-emerald-700" : "bg-orange-50 text-orange-700"}`}>
+            {p.published ? "เผยแพร่" : "ร่าง"}
+          </span>
+          <Link href={editPath(p)} className="text-slate-700 hover:text-amber-600 hover:underline">
+            {p.name}
+          </Link>
+          {p.reviewed ? <span className={`${badge} bg-violet-50 text-violet-600`}>ตรวจแล้ว</span> : null}
+          {!p.hasPricing ? <span className={`${badge} bg-slate-100 text-slate-500`}>ยังไม่มีตารางราคา</span> : null}
+          {!p.hasImage ? <span className={`${badge} bg-slate-100 text-slate-500`}>ยังไม่มีรูป</span> : null}
+        </div>
+      ))}
+      {rest > 0 || open ? (
+        <button type="button" className="text-xs font-semibold text-amber-600 hover:underline" onClick={() => setOpen((v) => !v)}>
+          {open ? "ย่อรายการ" : `ดูอีก ${rest} รายการ`}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+export default function PricelistReportPage() {
+  const [data, setData] = useState<Report | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [filter, setFilter] = useState<Status | "all">("all");
+  const [cat, setCat] = useState("all");
+  const [query, setQuery] = useState("");
+  const [showExtras, setShowExtras] = useState(false);
+
+  const load = useCallback(async (refresh = false) => {
+    setLoading(true);
+    setError("");
+    try {
+      const r = await fetch(`/api/admin/pricelist-report${refresh ? "?refresh=1" : ""}`, { cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+      setData(j as Report);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const cats = useMemo(() => [...new Set((data?.rows ?? []).map((r) => r.category))].filter(Boolean), [data]);
+
+  const rows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (data?.rows ?? []).filter(
+      (r) =>
+        (filter === "all" || r.status === filter) &&
+        (cat === "all" || r.category === cat) &&
+        (!q || r.name.toLowerCase().includes(q) || r.products.some((p) => p.name.toLowerCase().includes(q)))
+    );
+  }, [data, filter, cat, query]);
+
+  /** จัดกลุ่มตามหมวดบนเว็บ เรียงตามลำดับที่ปรากฏบนหน้าเว็บจริง */
+  const groups = useMemo(() => {
+    const map = new Map<string, Row[]>();
+    for (const r of rows) {
+      const k = r.category || "ไม่มีหัวข้อหมวด";
+      map.set(k, [...(map.get(k) ?? []), r]);
+    }
+    return [...map.entries()];
+  }, [rows]);
+
+  const sum = data?.sum;
+
+  return (
+    <RequirePerm perm="products.view">
+      <div className="space-y-5">
+        {/* ── หัวหน้า ── */}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className={h1}>🔍 เทียบเว็บตารางราคากับระบบ</h1>
+            <p className={`mt-1 text-sm ${muted}`}>
+              ชื่อสินค้าทุกใบบนหน้าแรก{" "}
+              <a
+                href="https://www.iduckyofficial-pricelists.com/"
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold text-amber-600 hover:underline"
+              >
+                iduckyofficial-pricelists.com
+              </a>{" "}
+              เทียบกับสินค้าในระบบ — ตัวไหนเผยแพร่แล้ว ตัวไหนยังเป็นร่าง ตัวไหนยังไม่มี
+            </p>
+            {data ? (
+              <p className={`mt-1 text-xs ${faint}`}>
+                ดึงข้อมูลเมื่อ {new Date(data.fetchedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}
+                {" · "}หน้าเว็บถูกแคชไว้ 30 นาที กด “ดึงใหม่” ถ้าเพิ่งแก้หน้าเว็บ
+              </p>
+            ) : null}
+          </div>
+          <div className="flex gap-2">
+            <button type="button" className={btnNeutral} onClick={() => downloadCsv(rows)} disabled={!rows.length}>
+              ⬇ ดาวน์โหลด CSV
+            </button>
+            <button type="button" className={btnNeutral} onClick={() => void load(true)} disabled={loading}>
+              {loading ? "กำลังดึง…" : "🔄 ดึงใหม่"}
+            </button>
+          </div>
+        </div>
+
+        {error ? (
+          <div className={`${card} border-rose-200 bg-rose-50 p-4 text-sm text-rose-700`}>
+            ดึงรายงานไม่สำเร็จ — {error}
+          </div>
+        ) : null}
+
+        {/* ── สรุป ── */}
+        {sum ? (
+          <>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+              <Tile n={sum.cards} text="ชื่อบนเว็บตารางราคา" hint={`จาก ${sum.categories} หมวดบนหน้าแรก`} />
+              <Tile n={sum.published} text="เผยแพร่แล้ว" tone="text-emerald-600" hint="ลูกค้าเห็นบนหน้าร้าน" />
+              <Tile n={sum.draft} text="ฉบับร่าง" tone="text-orange-600" hint="มีในระบบ แต่ยังไม่เผยแพร่" />
+              <Tile n={sum.missing} text="ยังไม่มีในระบบ" tone="text-rose-600" hint="ต้องนำเข้า/สร้างเพิ่ม" />
+              <Tile
+                n={sum.adminTotal}
+                text="สินค้าในระบบทั้งหมด"
+                hint={`เผยแพร่ ${sum.adminPublished} · ร่าง ${sum.adminDraft} · จับคู่กับเว็บได้ ${sum.matched}`}
+              />
+            </div>
+
+            {/* ── ตัวกรอง ── */}
+            <div className={`${card} flex flex-wrap items-center gap-2 p-3`}>
+              {FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className={filter === f.id ? pillActive : pillIdle}
+                  onClick={() => setFilter(f.id)}
+                >
+                  {f.label}
+                  <span className="ml-1.5 opacity-60">
+                    {f.id === "all" ? sum.cards : f.id === "published" ? sum.published : f.id === "draft" ? sum.draft : sum.missing}
+                  </span>
+                </button>
+              ))}
+              <select
+                value={cat}
+                onChange={(e) => setCat(e.target.value)}
+                className="ml-auto rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700"
+              >
+                <option value="all">ทุกหมวดบนเว็บ</option>
+                {cats.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="ค้นหาชื่อสินค้า…"
+                className="w-56 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400"
+              />
+            </div>
+          </>
+        ) : null}
+
+        {loading && !data ? <p className={`${card} p-8 text-center text-sm ${muted}`}>กำลังอ่านหน้าเว็บตารางราคา…</p> : null}
+
+        {/* ── ตารางรายชื่อ ── */}
+        {data ? (
+          <div className={`${card} overflow-hidden`}>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/60 text-left">
+                  <th className={`px-4 py-2 ${label}`}>ชื่อบนเว็บตารางราคา</th>
+                  <th className={`px-4 py-2 ${label}`}>สถานะ</th>
+                  <th className={`px-4 py-2 ${label}`}>สินค้าในระบบ</th>
+                  <th className={`px-4 py-2 ${label}`}>จับคู่ด้วย</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map(([name, list]) => (
+                  <Fragment key={name}>
+                    <tr className="bg-amber-50/60">
+                      <td colSpan={4} className="px-4 py-1.5 text-xs font-semibold text-slate-600">
+                        {name}
+                        <span className={`ml-2 font-normal ${faint}`}>{list.length} รายการ</span>
+                      </td>
+                    </tr>
+                    {list.map((r, i) => (
+                      <tr key={`${name}-${i}-${r.name}`} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
+                        <td className="px-4 py-2 text-slate-800">
+                          {r.url ? (
+                            <a href={r.url} target="_blank" rel="noreferrer" className="hover:text-amber-600 hover:underline">
+                              {r.name}
+                            </a>
+                          ) : (
+                            r.name
+                          )}
+                        </td>
+                        <td className="px-4 py-2">
+                          <span className={`${badge} ${STATUS_STYLE[r.status]}`}>
+                            {STATUS_EMOJI[r.status]} {STATUS_LABEL[r.status]}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2">
+                          {r.products.length ? (
+                            <ProductCell row={r} />
+                          ) : (
+                            <span className={faint}>ยังไม่มีสินค้าชื่อนี้ในระบบ</span>
+                          )}
+                        </td>
+                        <td className={`px-4 py-2 text-xs ${faint}`}>{r.match ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                ))}
+                {!rows.length && !loading ? (
+                  <tr>
+                    <td colSpan={4} className={`px-4 py-10 text-center text-sm ${muted}`}>
+                      ไม่มีรายการที่ตรงกับตัวกรอง
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+
+        {/* ── สินค้าในระบบที่ไม่ได้อยู่บนหน้าแรกเว็บตารางราคา ── */}
+        {data && data.extras.length ? (
+          <div className={`${card} p-4`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">
+                  มีในระบบ แต่ไม่เจอบนหน้าแรกเว็บตารางราคา — {data.extras.length} รายการ
+                </p>
+                <p className={`mt-0.5 text-xs ${faint}`}>
+                  ส่วนใหญ่คือสินค้าที่ตั้งชื่อไม่เหมือนกัน หรือเป็นตัวที่มีเฉพาะในเว็บขาย
+                </p>
+              </div>
+              <button type="button" className={btnSmNeutral} onClick={() => setShowExtras((v) => !v)}>
+                {showExtras ? "ซ่อน" : "ดูรายชื่อ"}
+              </button>
+            </div>
+            {showExtras ? (
+              <ul className="mt-3 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                {data.extras.map((p) => (
+                  <li key={p.id} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-sm">
+                    <span className={`${badge} ${p.published ? "bg-emerald-50 text-emerald-700" : "bg-orange-50 text-orange-700"}`}>
+                      {p.published ? "เผยแพร่" : "ร่าง"}
+                    </span>
+                    <Link href={editPath(p)} className="truncate text-slate-700 hover:text-amber-600 hover:underline">
+                      {p.name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </RequirePerm>
+  );
+}
