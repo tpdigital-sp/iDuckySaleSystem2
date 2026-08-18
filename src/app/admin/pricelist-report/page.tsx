@@ -24,6 +24,8 @@ interface DoneMark {
 interface Row {
   key: string;
   done: DoneMark | null;
+  /** ติ๊กว่า "ให้พี่ปุ๋ยทำราคา" (คนละช่องกับ "ทำแล้ว") */
+  priceTask: DoneMark | null;
   name: string;
   category: string;
   url: string;
@@ -78,6 +80,7 @@ interface Report {
     matched: number;
     extras: number;
     done: number;
+    priceTasks: number;
   };
   rows: Row[];
   extras: Extra[];
@@ -149,6 +152,7 @@ function downloadCsv(rows: Row[]) {
       r.products.map((p) => `${p.published ? "เผยแพร่" : "ร่าง"}: ${p.name}`).join(" · "),
       r.match ?? "",
       r.done ? `ทำแล้ว · ${r.done.by} · ${new Date(r.done.at).toLocaleDateString("th-TH")}` : "ยังไม่ทำ",
+      r.priceTask ? `ให้พี่ปุ๋ยทำราคา · สั่งโดย ${r.priceTask.by}` : "",
       r.url,
     ]
       .map(esc)
@@ -156,7 +160,7 @@ function downloadCsv(rows: Row[]) {
   );
   const csv =
     "﻿" +
-    ["หมวดบนเว็บ,ชื่อบนเว็บ,สถานะ,จำนวนที่ตรงกัน,ชื่อในระบบ,วิธีจับคู่,เช็กลิสต์,ลิงก์หน้าตารางราคา", ...body].join("\n");
+    ["หมวดบนเว็บ,ชื่อบนเว็บ,สถานะ,จำนวนที่ตรงกัน,ชื่อในระบบ,วิธีจับคู่,เช็กลิสต์,งานพี่ปุ๋ย,ลิงก์หน้าตารางราคา", ...body].join("\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   a.download = `pricelist-report-${new Date().toISOString().slice(0, 10)}.csv`;
@@ -312,6 +316,8 @@ export default function PricelistReportPage() {
   const [cat, setCat] = useState("all");
   const [query, setQuery] = useState("");
   const [doneFilter, setDoneFilter] = useState<"all" | "todo" | "done">("all");
+  /** โชว์เฉพาะบรรทัดที่สั่งให้พี่ปุ๋ยทำราคา */
+  const [onlyPrice, setOnlyPrice] = useState(false);
   const [showExtras, setShowExtras] = useState(false);
   /** บรรทัดที่กำลังบันทึกติ๊กอยู่ (กันกดรัวซ้ำ) */
   const [saving, setSaving] = useState<Set<string>>(new Set());
@@ -335,32 +341,35 @@ export default function PricelistReportPage() {
     void load();
   }, [load]);
 
-  /** ติ๊ก/ยกเลิกติ๊ก "ทำแล้ว" — เปลี่ยนบนจอทันที ถ้าบันทึกไม่ผ่านค่อยคืนค่าเดิม */
-  const toggleDone = useCallback(async (row: Row) => {
-    const want = !row.done;
+  /**
+   * ติ๊ก/ยกเลิกติ๊กช่องของบรรทัดหนึ่ง — เปลี่ยนบนจอทันที ถ้าบันทึกไม่ผ่านค่อยคืนค่าเดิม
+   * field "done" = ทำแล้ว · "priceTask" = ให้พี่ปุ๋ยทำราคา
+   */
+  const toggleMark = useCallback(async (row: Row, field: "done" | "priceTask") => {
+    const want = !row[field];
     setSaving((s) => new Set(s).add(row.key));
     const apply = (mark: DoneMark | null) =>
-      setData((d) =>
-        d
-          ? {
-              ...d,
-              rows: d.rows.map((r) => (r.key === row.key ? { ...r, done: mark } : r)),
-              sum: { ...d.sum, done: d.rows.filter((r) => (r.key === row.key ? mark : r.done)).length },
-            }
-          : d
-      );
+      setData((d) => {
+        if (!d) return d;
+        const rows = d.rows.map((r) => (r.key === row.key ? { ...r, [field]: mark } : r));
+        return {
+          ...d,
+          rows,
+          sum: { ...d.sum, done: rows.filter((r) => r.done).length, priceTasks: rows.filter((r) => r.priceTask).length },
+        };
+      });
     apply(want ? { at: new Date().toISOString(), by: "กำลังบันทึก…" } : null);
     try {
       const r = await fetch("/api/admin/pricelist-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: row.key, done: want }),
+        body: JSON.stringify(field === "done" ? { key: row.key, done: want } : { key: row.key, price: want }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
       apply((j.mark as DoneMark | null) ?? null);
     } catch (e) {
-      apply(row.done); // บันทึกไม่ผ่าน — คืนค่าเดิม จะได้ไม่เข้าใจผิดว่าทำแล้ว
+      apply(row[field]); // บันทึกไม่ผ่าน — คืนค่าเดิม จะได้ไม่เข้าใจผิดว่าทำแล้ว
       setError(`บันทึกเช็กลิสต์ไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving((s) => {
@@ -420,9 +429,10 @@ export default function PricelistReportPage() {
         (filter === "all" || r.status === filter) &&
         (cat === "all" || r.category === cat) &&
         (doneFilter === "all" || (doneFilter === "done" ? !!r.done : !r.done)) &&
+        (!onlyPrice || !!r.priceTask) &&
         (!q || r.name.toLowerCase().includes(q) || r.products.some((p) => p.name.toLowerCase().includes(q)))
     );
-  }, [data, filter, cat, doneFilter, query]);
+  }, [data, filter, cat, doneFilter, onlyPrice, query]);
 
   /** จัดกลุ่มตามหมวดบนเว็บ เรียงตามลำดับที่ปรากฏบนหน้าเว็บจริง */
   const groups = useMemo(() => {
@@ -479,11 +489,12 @@ export default function PricelistReportPage() {
         {/* ── สรุป ── */}
         {sum ? (
           <>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
               <Tile n={sum.cards} text="ชื่อบนเว็บตารางราคา" hint={`จาก ${sum.categories} หมวดบนหน้าแรก`} />
               <Tile n={sum.published} text="เผยแพร่แล้ว" tone="text-emerald-600" hint="ลูกค้าเห็นบนหน้าร้าน" />
               <Tile n={sum.draft} text="ฉบับร่าง" tone="text-orange-600" hint="มีในระบบ แต่ยังไม่เผยแพร่" />
               <Tile n={sum.missing} text="ยังไม่มีในระบบ" tone="text-rose-600" hint="ต้องนำเข้า/สร้างเพิ่ม" />
+              <Tile n={sum.priceTasks} text="ให้พี่ปุ๋ยทำราคา" tone="text-sky-600" hint="สั่งงานไว้แล้ว" />
               <Tile
                 n={sum.done}
                 text="ติ๊กว่าทำแล้ว"
@@ -512,6 +523,15 @@ export default function PricelistReportPage() {
                   </span>
                 </button>
               ))}
+              <span className="mx-1 h-5 w-px bg-slate-200" />
+              <button
+                type="button"
+                className={onlyPrice ? pillActive : pillIdle}
+                onClick={() => setOnlyPrice((v) => !v)}
+                title="โชว์เฉพาะบรรทัดที่สั่งให้พี่ปุ๋ยทำราคา"
+              >
+                พี่ปุ๋ยทำราคา<span className="ml-1.5 opacity-60">{sum.priceTasks}</span>
+              </button>
               <span className="mx-1 h-5 w-px bg-slate-200" />
               {([
                 { id: "all", label: "เช็กลิสต์ทั้งหมด" },
@@ -565,6 +585,11 @@ export default function PricelistReportPage() {
                   <th className={`w-10 px-3 py-2 ${label}`} title="ติ๊กเมื่อจัดการชื่อนี้เรียบร้อยแล้ว">
                     ทำแล้ว
                   </th>
+                  <th className={`w-14 px-3 py-2 ${label}`} title="ติ๊กเพื่อสั่งงานให้พี่ปุ๋ยทำราคาของชื่อนี้">
+                    พี่ปุ๋ย
+                    <br />
+                    ทำราคา
+                  </th>
                   <th className={`px-4 py-2 ${label}`}>ชื่อบนเว็บตารางราคา</th>
                   <th className={`px-4 py-2 ${label}`}>หน้าตารางราคา</th>
                   <th className={`px-4 py-2 ${label}`}>สถานะ</th>
@@ -576,10 +601,11 @@ export default function PricelistReportPage() {
                 {groups.map(([name, list]) => (
                   <Fragment key={name}>
                     <tr className="bg-amber-50/60">
-                      <td colSpan={6} className="px-4 py-1.5 text-xs font-semibold text-slate-600">
+                      <td colSpan={7} className="px-4 py-1.5 text-xs font-semibold text-slate-600">
                         {name}
                         <span className={`ml-2 font-normal ${faint}`}>
                           {list.length} รายการ · ทำแล้ว {list.filter((r) => r.done).length}
+                          {list.some((r) => r.priceTask) ? ` · พี่ปุ๋ยทำราคา ${list.filter((r) => r.priceTask).length}` : ""}
                         </span>
                       </td>
                     </tr>
@@ -593,9 +619,23 @@ export default function PricelistReportPage() {
                             type="checkbox"
                             checked={!!r.done}
                             disabled={saving.size > 0}
-                            onChange={() => void toggleDone(r)}
+                            onChange={() => void toggleMark(r, "done")}
                             title={r.done ? `ทำแล้วโดย ${r.done.by} · ${whenOf(r.done.at)}` : "ติ๊กเมื่อจัดการชื่อนี้เรียบร้อยแล้ว"}
                             className="h-4 w-4 cursor-pointer accent-emerald-600 disabled:cursor-wait"
+                          />
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          <input
+                            type="checkbox"
+                            checked={!!r.priceTask}
+                            disabled={saving.size > 0}
+                            onChange={() => void toggleMark(r, "priceTask")}
+                            title={
+                              r.priceTask
+                                ? `สั่งให้พี่ปุ๋ยทำราคาโดย ${r.priceTask.by} · ${whenOf(r.priceTask.at)}`
+                                : "ติ๊กเพื่อสั่งงานให้พี่ปุ๋ยทำราคาของชื่อนี้"
+                            }
+                            className="h-4 w-4 cursor-pointer accent-sky-600 disabled:cursor-wait"
                           />
                         </td>
                         <td className={`px-4 py-2 align-top ${r.done ? "text-slate-400 line-through decoration-slate-300" : "text-slate-800"}`}>
@@ -603,6 +643,11 @@ export default function PricelistReportPage() {
                           {r.done ? (
                             <span className={`ml-2 text-[11px] ${faint} no-underline`}>
                               ✓ {r.done.by} · {whenOf(r.done.at)}
+                            </span>
+                          ) : null}
+                          {r.priceTask ? (
+                            <span className={`${badge} ml-2 bg-sky-50 text-sky-700 no-underline`} title={`สั่งโดย ${r.priceTask.by} · ${whenOf(r.priceTask.at)}`}>
+                              พี่ปุ๋ยทำราคา
                             </span>
                           ) : null}
                         </td>
@@ -641,7 +686,7 @@ export default function PricelistReportPage() {
                 ))}
                 {!rows.length && !loading ? (
                   <tr>
-                    <td colSpan={6} className={`px-4 py-10 text-center text-sm ${muted}`}>
+                    <td colSpan={7} className={`px-4 py-10 text-center text-sm ${muted}`}>
                       ไม่มีรายการที่ตรงกับตัวกรอง
                     </td>
                   </tr>

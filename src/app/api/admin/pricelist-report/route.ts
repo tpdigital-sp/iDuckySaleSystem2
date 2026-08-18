@@ -54,6 +54,8 @@ const STATE_ID = "__pricelist_done__";
 
 interface ReportState {
   done: DoneMap;
+  /** สั่งให้พี่ปุ๋ยทำราคาของชื่อนี้ (คนละช่องกับ "ทำแล้ว") */
+  price: DoneMap;
   assign: AssignMap;
 }
 
@@ -65,6 +67,8 @@ export interface PricelistRow {
   key: string;
   /** ติ๊กแล้วโดยใคร เมื่อไหร่ (null = ยังไม่ติ๊ก) */
   done: DoneMark | null;
+  /** ติ๊กว่า "ให้พี่ปุ๋ยทำราคา" โดยใคร เมื่อไหร่ (null = ยังไม่ติ๊ก) */
+  priceTask: DoneMark | null;
   name: string;
   category: string;
   url: string;
@@ -112,7 +116,7 @@ type Db = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 async function loadState(sb: Db): Promise<ReportState> {
   const { data } = await sb.from("products").select("data").eq("id", STATE_ID).maybeSingle();
   const d = (data?.data ?? {}) as Partial<ReportState>;
-  return { done: d.done ?? {}, assign: d.assign ?? {} };
+  return { done: d.done ?? {}, price: d.price ?? {}, assign: d.assign ?? {} };
 }
 
 /** บันทึกสถานะรายงานกลับลงแถวเดิม */
@@ -120,7 +124,7 @@ async function saveState(sb: Db, state: ReportState) {
   return sb.from("products").upsert(
     {
       id: STATE_ID,
-      name: "(รายงานเทียบเว็บตารางราคา — เช็กลิสต์ + การจับคู่เอง)",
+      name: "(รายงานเทียบเว็บตารางราคา — เช็กลิสต์ + งานพี่ปุ๋ย + การจับคู่เอง)",
       category: "__settings__",
       price: 0,
       data: state,
@@ -218,6 +222,7 @@ export async function GET(req: Request) {
     return {
       key: rowKey,
       done: state.done[rowKey] ?? null,
+      priceTask: state.price[rowKey] ?? null,
       name: card.name,
       category: card.category,
       url: card.url,
@@ -284,6 +289,7 @@ export async function GET(req: Request) {
       matched: products.filter((p) => p.used).length,
       extras: extras.length,
       done: rows.filter((r) => r.done).length,
+      priceTasks: rows.filter((r) => r.priceTask).length,
     },
     rows,
     extras,
@@ -295,6 +301,7 @@ export async function GET(req: Request) {
  * — ใครเปิดรายงานได้ก็บันทึกได้):
  *
  *   { key, done }          ติ๊ก/ยกเลิกติ๊ก "ทำแล้ว" ของชื่อบนเว็บ 1 บรรทัด
+ *   { key, price }         ติ๊ก/ยกเลิกติ๊ก "ให้พี่ปุ๋ยทำราคา" ของชื่อบนเว็บ 1 บรรทัด
  *   { productId, key }     ย้ายสินค้าในระบบไปอยู่บรรทัดชื่อที่ต้องการ
  *                          key = ""   → เอาออก (สั่งว่าไม่ใช่ของบรรทัดไหนเลย)
  *                          key = null → ล้างคำสั่ง กลับไปใช้การจับคู่อัตโนมัติ
@@ -306,9 +313,9 @@ export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 
-  let body: { key?: string | null; done?: boolean; productId?: string };
+  let body: { key?: string | null; done?: boolean; price?: boolean; productId?: string };
   try {
-    body = (await req.json()) as { key?: string | null; done?: boolean; productId?: string };
+    body = (await req.json()) as { key?: string | null; done?: boolean; price?: boolean; productId?: string };
   } catch {
     return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
   }
@@ -327,15 +334,17 @@ export async function POST(req: Request) {
       : NextResponse.json({ ok: true, assign: state.assign[productId] ?? null });
   }
 
-  // ── ติ๊ก "ทำแล้ว" ของ 1 บรรทัด ──
+  // ── ติ๊กช่องของ 1 บรรทัด ("ทำแล้ว" หรือ "ให้พี่ปุ๋ยทำราคา") ──
   const key = String(body.key ?? "").trim();
   if (!key) return NextResponse.json({ error: "ไม่ได้ระบุว่าติ๊กบรรทัดไหน" }, { status: 400 });
 
-  const mark: DoneMark | null = body.done
+  const isPrice = body.price !== undefined;
+  const map = isPrice ? state.price : state.done;
+  const mark: DoneMark | null = (isPrice ? body.price : body.done)
     ? { at: new Date().toISOString(), by: gate.actor.name || gate.actor.username }
     : null;
-  if (mark) state.done[key] = mark;
-  else delete state.done[key];
+  if (mark) map[key] = mark;
+  else delete map[key];
 
   const { error } = await saveState(sb, state);
   return error
