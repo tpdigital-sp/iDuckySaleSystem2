@@ -1802,10 +1802,10 @@ export default function ProductEditor({ product }: { product: Product }) {
       { id: "textarea", text: "¶ ข้อความยาว", tip: "หลายบรรทัด เช่น รายละเอียดงานที่อยากให้ทำ" },
     ] as const;
     return (
-      <div className="mt-2 rounded-xl bg-fuchsia-50/70 p-3 ring-1 ring-fuchsia-200">
+      <div className="mt-2 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-bold text-fuchsia-700">✍️ ช่องกรอก</span>
-          <div className="inline-flex overflow-hidden rounded-lg bg-white ring-1 ring-fuchsia-200">
+          <span className="text-[11px] font-bold text-slate-600">✍️ ช่องกรอก</span>
+          <div className="inline-flex overflow-hidden rounded-lg bg-white ring-1 ring-slate-200">
             {KINDS.map((k) => (
               <button
                 key={k.id}
@@ -1813,7 +1813,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                 title={k.tip}
                 onClick={() => setOpt({ inKind: k.id })}
                 className={`px-2.5 py-1 text-[11px] font-semibold transition ${
-                  kind === k.id ? "bg-fuchsia-600 text-white" : "bg-white text-slate-500 hover:bg-fuchsia-50"
+                  kind === k.id ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
                 }`}
               >
                 {k.text}
@@ -1828,7 +1828,7 @@ export default function ProductEditor({ product }: { product: Product }) {
               type="checkbox"
               checked={!opt.inOptional}
               onChange={(e) => setOpt({ inOptional: !e.target.checked })}
-              className="h-3.5 w-3.5 accent-fuchsia-500"
+              className="h-3.5 w-3.5 accent-slate-700"
             />
             บังคับกรอก
           </label>
@@ -1841,7 +1841,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                 <select
                   value={opt.inUnit ?? ""}
                   onChange={(e) => setOpt({ inUnit: e.target.value })}
-                  className="mt-1 block w-28 rounded-lg bg-white px-2 py-1.5 text-xs ring-1 ring-fuchsia-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-300"
+                  className="mt-1 block w-28 rounded-lg bg-white px-2 py-1.5 text-xs ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400"
                   aria-label={`หน่วยของช่องกรอก ${opt.label || gi + 1}`}
                 >
                   <option value="">— ไม่มี —</option>
@@ -1861,7 +1861,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                   onChange={(e) => setOpt({ inMin: e.target.value.replace(/[^\d.]/g, "") })}
                   inputMode="decimal"
                   placeholder="—"
-                  className="mt-1 block w-20 rounded-lg bg-white px-2 py-1.5 text-center text-xs ring-1 ring-fuchsia-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-300"
+                  className="mt-1 block w-20 rounded-lg bg-white px-2 py-1.5 text-center text-xs ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400"
                   aria-label={`ค่าต่ำสุดของช่องกรอก ${opt.label || gi + 1}`}
                 />
               </label>
@@ -1872,7 +1872,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                   onChange={(e) => setOpt({ inMax: e.target.value.replace(/[^\d.]/g, "") })}
                   inputMode="decimal"
                   placeholder="—"
-                  className="mt-1 block w-20 rounded-lg bg-white px-2 py-1.5 text-center text-xs ring-1 ring-fuchsia-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-300"
+                  className="mt-1 block w-20 rounded-lg bg-white px-2 py-1.5 text-center text-xs ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400"
                   aria-label={`ค่าสูงสุดของช่องกรอก ${opt.label || gi + 1}`}
                 />
               </label>
@@ -1884,7 +1884,7 @@ export default function ProductEditor({ product }: { product: Product }) {
               value={opt.inPlaceholder ?? ""}
               onChange={(e) => setOpt({ inPlaceholder: e.target.value })}
               placeholder={kind === "number" ? "2.5" : "เช่น ข้อความที่ต้องการ"}
-              className="mt-1 block w-32 rounded-lg bg-white px-2 py-1.5 text-xs ring-1 ring-fuchsia-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-300"
+              className="mt-1 block w-32 rounded-lg bg-white px-2 py-1.5 text-xs ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400"
               aria-label={`ข้อความตัวอย่างของช่องกรอก ${opt.label || gi + 1}`}
             />
           </label>
@@ -1894,12 +1894,12 @@ export default function ProductEditor({ product }: { product: Product }) {
               value={opt.inHint ?? ""}
               onChange={(e) => setOpt({ inHint: e.target.value })}
               placeholder="เช่น วัดจากขอบล่างถึงปลายบนสุด"
-              className="mt-1 block w-full rounded-lg bg-white px-2 py-1.5 text-xs ring-1 ring-fuchsia-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-300"
+              className="mt-1 block w-full rounded-lg bg-white px-2 py-1.5 text-xs ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400"
               aria-label={`คำอธิบายของช่องกรอก ${opt.label || gi + 1}`}
             />
           </label>
         </div>
-        <p className="mt-2 text-[11px] leading-relaxed text-fuchsia-700">
+        <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
           ลูกค้าเห็นเป็นช่องให้พิมพ์ค่าเอง · ค่าที่กรอกติดไปกับตะกร้า → ออเดอร์ → ใบงาน เหมือนตัวเลือกกลุ่มอื่น
           {kind === "number" && (opt.inUnit ?? "") && <> (เก็บเป็น &ldquo;{opt.inPlaceholder || "2.5"} {opt.inUnit}&rdquo;)</>}
         </p>
@@ -2558,6 +2558,20 @@ export default function ProductEditor({ product }: { product: Product }) {
    * (เช่น "สีอะคริลิค" ที่ลิงก์คลัง — เป็นตัวเลือกของงานสั่งทำ ไม่ใช่ตัวเลือกมาตรฐาน)
    * ทั้งคู่เก็บใน draft.options เหมือนกลุ่มอื่น ค่าที่ลูกค้าเลือก/กรอกจึงติดไปกับตะกร้า→ออเดอร์→ใบงานเอง
    */
+  /**
+   * สีประจำหัวข้อในแผงงานสั่งทำ — หัวข้อที่ 1/2/3 ได้คนละสี (แบบที่ 3 ฟ้า · แบบที่ 4 เขียว ฯลฯ)
+   * ทั้งแผงเป็นสีเดียวกันหมดแล้วกวาดตาไม่ออกว่าการ์ดไหนของแบบไหน — สีคือสิ่งที่บอกกลุ่ม
+   * ⚠️ ห้ามใส่ amber ในชุดนี้ — ramp amber ถูกรีแมปเป็นฟ้าแบรนด์ใน globals.css จะกลายเป็นสีเดียวกับ sky
+   */
+  const MTO_COLORS = [
+    { chip: "bg-sky-600", bar: "border-l-sky-400", count: "text-sky-700" },
+    { chip: "bg-rose-500", bar: "border-l-rose-400", count: "text-rose-700" },
+    { chip: "bg-emerald-600", bar: "border-l-emerald-400", count: "text-emerald-700" },
+    { chip: "bg-orange-500", bar: "border-l-orange-400", count: "text-orange-700" },
+    { chip: "bg-indigo-600", bar: "border-l-indigo-400", count: "text-indigo-700" },
+    { chip: "bg-teal-600", bar: "border-l-teal-400", count: "text-teal-700" },
+  ] as const;
+
   function madeToOrderPanel() {
     // เก็บ index จริงใน draft.options ไว้ด้วย — ปุ่มแก้/ลบ/สลับลำดับต้องอ้างตำแหน่งจริง
     const items = draft.options.map((o, gi) => ({ o, gi })).filter(({ o }) => isMadeToOrder(o));
@@ -2599,10 +2613,10 @@ export default function ProductEditor({ product }: { product: Product }) {
     groups.sort((a, b) => Number(a.key.startsWith("|")) - Number(b.key.startsWith("|")));
     const movable = draft.options.filter((o) => !isMadeToOrder(o) && o.label.trim());
     return (
-      <div className="mt-3 rounded-2xl bg-fuchsia-50/60 p-3 ring-1 ring-fuchsia-200">
+      <div className="mt-3 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-[14rem] flex-1">
-            <h3 className="text-xs font-bold text-fuchsia-800">✍️ ตัวเลือก/ช่องกรอกของงานสั่งทำ</h3>
+            <h3 className="text-xs font-bold text-slate-700">✍️ ตัวเลือก/ช่องกรอกของงานสั่งทำ</h3>
             <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">
               ช่องกรอกเพิ่มได้ไม่จำกัด ตั้งชื่อเองได้ทุกช่อง (เช่น “(ตัวหน้า) ขนาด”, “ฐาน”) ·
               ย้ายกลุ่มตัวเลือกปกติเข้ามาได้ด้วย (เช่น สีอะคริลิคที่ลิงก์คลัง) ·
@@ -2622,7 +2636,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                 }}
                 title="ย้ายกลุ่มตัวเลือกที่มีอยู่แล้วเข้ามาอยู่ในงานสั่งทำ (ตัวเลือก/ราคา/เงื่อนไขเดิมไม่หาย)"
                 aria-label="ย้ายกลุ่มตัวเลือกเข้ามาที่งานสั่งทำ"
-                className="rounded-full border border-fuchsia-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 focus:outline-none focus:ring-2 focus:ring-fuchsia-300"
+                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 focus:outline-none focus:ring-2 focus:ring-fuchsia-300"
               >
                 <option value="">📥 ย้ายกลุ่มจาก 🎛️ เข้ามา…</option>
                 {movable.map((o) => (
@@ -2650,26 +2664,29 @@ export default function ProductEditor({ product }: { product: Product }) {
         </div>
 
         {items.length === 0 ? (
-          <p className="mt-2.5 rounded-xl bg-white/70 px-3 py-2.5 text-[11px] leading-relaxed text-slate-500 ring-1 ring-fuchsia-100">
+          <p className="mt-2.5 rounded-xl bg-white/70 px-3 py-2.5 text-[11px] leading-relaxed text-slate-500 ring-1 ring-slate-200">
             ยังไม่มีอะไรในงานสั่งทำ — กด <b className="font-bold text-fuchsia-700">＋ เพิ่มช่องกรอก</b> เพื่อให้ลูกค้าระบุขนาด/รายละเอียดเอง
             แล้วให้แอดมินตีราคาให้ทีหลัง
           </p>
         ) : (
           <div className="mt-2.5 space-y-4">
-            {groups.map((g) => (
+            {groups.map((g, gk) => {
+              const c = MTO_COLORS[gk % MTO_COLORS.length];
+              return (
               <div key={g.key}>
-                {/* หัวข้อบอกว่ากลุ่มด้านล่างนี้เป็นของแบบไหน — กันสับสนตอนมีหลายแบบในสินค้าเดียว */}
+                {/* หัวข้อบอกว่ากลุ่มด้านล่างนี้เป็นของแบบไหน — คนละสีกัน กวาดตาแล้วแยกออกทันที */}
                 <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-fuchsia-600 px-3 py-1 text-[11px] font-bold text-white">
+                  <span className={`rounded-full px-3 py-1 text-[11px] font-bold text-white ${c.chip}`}>
                     🎯 {g.title}
                   </span>
-                  <span className="text-[11px] font-semibold text-slate-400">{g.entries.length} รายการ</span>
+                  <span className={`text-[11px] font-semibold ${c.count}`}>{g.entries.length} รายการ</span>
                 </div>
                 <div className="space-y-2.5">
             {g.entries.map(({ o, gi }, k) => (
-              <div key={gi} className="rounded-2xl bg-white p-3 ring-1 ring-fuchsia-200">
+              // แถบสีซ้ายการ์ด = สีของหัวข้อ เลื่อนดูยาว ๆ ก็ยังรู้ว่ากำลังอยู่ในแบบไหน
+              <div key={gi} className={`rounded-2xl border-l-4 bg-white p-3 ring-1 ring-slate-200 ${c.bar}`}>
                 <div className="mb-2 flex items-center gap-2">
-                  <span className="w-4 text-center text-xs font-bold text-fuchsia-300">{k + 1}</span>
+                  <span className="w-4 text-center text-xs font-bold text-slate-300">{k + 1}</span>
                   <MoveBtns
                     size="xs"
                     what="รายการ"
@@ -2736,7 +2753,8 @@ export default function ProductEditor({ product }: { product: Product }) {
             ))}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
