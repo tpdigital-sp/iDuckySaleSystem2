@@ -279,6 +279,26 @@ const product: Product = {
   pricing: DTF,
   options: [
     {
+      label: "ไซส์",
+      stockBearing: true,
+      choices: [
+        { name: "S" },
+        { name: "M" },
+        { name: "L" },
+        { name: "XL", extra: 10 },
+        { name: "XXL", extra: 10 },
+        { name: "XXXL", extra: 10 },
+      ],
+    },
+    {
+      label: "สีเสื้อ",
+      stockBearing: true,
+      choices: [
+        { name: "สีขาว", imageSrc: IMG("color-white") },
+        { name: "สีดำ", extra: 10, imageSrc: IMG("color-black") },
+      ],
+    },
+    {
       label: SIZE_LABEL,
       showWhen: { label: RATE_LABEL, choices: [RATE_DTF, RATE_FLEX] },
       choices: [
@@ -299,26 +319,6 @@ const product: Product = {
         { name: E10, imageSrc: IMG("emb-10cm") },
         { name: E15, imageSrc: IMG("emb-15cm") },
         { name: E20, imageSrc: IMG("emb-20cm") },
-      ],
-    },
-    {
-      label: "สีเสื้อ",
-      stockBearing: true,
-      choices: [
-        { name: "สีขาว", imageSrc: IMG("color-white") },
-        { name: "สีดำ", extra: 10, imageSrc: IMG("color-black") },
-      ],
-    },
-    {
-      label: "ไซส์",
-      stockBearing: true,
-      choices: [
-        { name: "S" },
-        { name: "M" },
-        { name: "L" },
-        { name: "XL", extra: 10 },
-        { name: "XXL", extra: 10 },
-        { name: "XXXL", extra: 10 },
       ],
     },
   ],
