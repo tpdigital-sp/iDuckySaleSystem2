@@ -4653,24 +4653,9 @@ export default function ProductEditor({ product }: { product: Product }) {
         <div className="space-y-3">
           {draft.options.map((opt, gi) =>
             // กลุ่มของงานสั่งทำ (ช่องกรอก / กลุ่มที่ย้ายไป 📐) ไม่โผล่ที่นี่ — แก้ที่แผง 📐 ที่เดียว
-            isMadeToOrder(opt) ? null : (
-              <div key={gi}>
-                {optionGroupCard(opt, gi)}
-                {/* ย้ายไปงานสั่งทำได้เลย ไม่ต้องลบแล้วสร้างใหม่ — ตัวเลือก/ราคา/เงื่อนไขเดิมติดไปด้วยทั้งหมด */}
-                <div className="mt-1 text-right">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, madeToOrder: true } : o)) })
-                    }
-                    title="ย้ายกลุ่มนี้ไปอยู่ในแผง 📐 ตัวเลือกกำหนดเอง (งานสั่งทำ) — ข้อมูลไม่หาย ย้ายกลับได้"
-                    className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-violet-500 transition hover:bg-violet-50 hover:text-violet-700"
-                  >
-                    📐 ย้ายไปงานสั่งทำ
-                  </button>
-                </div>
-              </div>
-            )
+            // ย้ายกลุ่มเข้างานสั่งทำทำที่เมนู "📥 ย้ายกลุ่มจาก 🎛️ เข้ามา…" ในแผง 📐 ที่เดียว
+            // (เคยมีปุ่มใต้ทุกกลุ่มตรงนี้ — รกและซ้ำซ้อน เลยเอาออก)
+            isMadeToOrder(opt) ? null : <div key={gi}>{optionGroupCard(opt, gi)}</div>
           )}
         </div>
         <p className="mt-2 text-[11px] text-slate-400">
