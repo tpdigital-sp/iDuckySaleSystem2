@@ -43,6 +43,7 @@ import ImageLightbox from "@/components/ImageLightbox";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import PackCheckPanel from "@/components/PackCheckPanel";
 import ItemAdder from "@/components/admin/ItemAdder";
+import QuotePanel from "@/components/admin/QuotePanel";
 import Barcode from "@/components/Barcode";
 import { QRCodeSVG } from "qrcode.react";
 import { useActor, useCan, useIsAdministrator, useRoleLabel } from "@/lib/perm-context";
@@ -2032,6 +2033,9 @@ export default function AdminOrderDetailPage() {
                       ) : null}
                     </span>
                   </div>
+
+                  {/* 💬 แผงช่วยตีราคา — กางเต็มความกว้างใต้แถว (ช่องราคาแคบเกินจะยัดตาราง) */}
+                  {editPrice === i && <QuotePanel item={it} onPick={(p) => setPriceDraft(String(p))} />}
 
                   {open && (
                     <>
