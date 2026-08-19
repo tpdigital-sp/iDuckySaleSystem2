@@ -369,6 +369,12 @@ export default function ProductDetail({
   const [artTouched, setArtTouched] = useState(false);
   // 📐 กล่องไฟล์เทมเพลต — สินค้าที่มีเทมเพลตหลายรุ่น (เคสมือถือ 14 รุ่น) ยุบไว้ก่อน ไม่ให้ดันเนื้อหาอื่นตกจอ
   const [tplOpen, setTplOpen] = useState(false);
+  /**
+   * 💰 ตารางราคาที่มีหลายคอลัมน์ (เช่น ดุ๊กดิ๊ก: พวงกุญแจ / Griptok / แม่เหล็ก)
+   * ปกติโชว์เฉพาะคอลัมน์ของตัวเลือกที่เลือกอยู่ — อ่านง่าย ไม่ต้องไล่หาว่าราคาไหนของแบบไหน
+   * กดปุ่มเทียบเมื่อไหร่ค่อยกางทุกคอลัมน์
+   */
+  const [priceAllCols, setPriceAllCols] = useState(false);
   // 💬 งานที่ต้องคุยลายกับแอดมินก่อน (งานปัก/งานตีลาย) — ติ๊กยืนยันว่าคุยแล้ว + ชื่อไลน์ที่ใช้คุย
   const [consultOk, setConsultOk] = useState(false);
   const [consultRef, setConsultRef] = useState("");
@@ -1370,561 +1376,11 @@ export default function ProductDetail({
     );
   };
 
-  return (
-    <div className="mx-auto max-w-6xl px-4 pt-6">
-      {/* สินค้าที่ปิดการมองเห็นไว้ — ลูกค้าเปิดไม่ได้ (404) หน้านี้เห็นเฉพาะทีมงานที่ล็อกอิน */}
-      {preview && (
-        <div className="mb-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 ring-1 ring-rose-200">
-          🚫 สินค้านี้ <span className="underline">ปิดการมองเห็น</span> อยู่ — ลูกค้าไม่เห็นในหน้ารายการ/ค้นหา และเปิดลิงก์ตรงก็ไม่เจอ
-          <span className="font-semibold"> (คุณเห็นหน้านี้เพราะล็อกอินหลังบ้านอยู่)</span>
-        </div>
-      )}
-      {jsonLd.map((obj, i) => (
-        <script
-          key={i}
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(obj) }}
-        />
-      ))}
-
-      {/* ปุ่มลัดไปแก้ไขสินค้านี้ในหลังบ้าน (เฉพาะแอดมิน) */}
-      {isAdmin && <AdminEditFab href={adminProductPath(product)} title="เปิดหน้าแก้ไขสินค้านี้ในระบบหลังบ้าน" />}
-      {/* breadcrumb */}
-      <nav className="flex items-center gap-1 overflow-hidden whitespace-nowrap text-[11px] text-stone-400">
-        <Link href="/" className="shrink-0 hover:text-amber-600">หน้าแรก</Link>
-        <span className="shrink-0">›</span>
-        <Link href={`/products?category=${category.id}`} className="shrink-0 hover:text-amber-600">
-          {category.name}
-        </Link>
-        <span className="shrink-0">›</span>
-        <span className="truncate text-stone-600">{product.name}</span>
-      </nav>
-
-      {/* ═══ โครง 3 คอลัมน์: รูป | รายละเอียด | แผงสั่งซื้อ (ติดหนึบ)
-           ฝั่งซ้าย (รูป+รายละเอียด) เป็นบล็อกเดียวกัน — ข้อมูลประกอบจึงไหลต่อขึ้นมาเติมได้
-           แทนที่จะทิ้งช่องขาวยาว ๆ ไว้ข้างแผงสั่งซื้อ ═══ */}
-      <div className="mt-4 grid gap-6 lg:grid-cols-12 lg:items-start lg:gap-8">
-        <div className="grid min-w-0 gap-6 sm:grid-cols-2 sm:items-start lg:col-span-8 lg:gap-8">
-        {/* ── ซ้าย: รูปสินค้า ── */}
-        <div className="min-w-0">
-          {/* รูปสินค้า — ติดหนึบตอนเลื่อนอ่านตัวเลือกยาว ๆ (จอใหญ่)
-              สินค้าที่ยังไม่ใส่รูปเลย = ใช้อีโมจิ+พื้นสีของสินค้าแทน (กันหน้าพังตอนแอดมินเพิ่งสร้างสินค้า) */}
-          {(() => {
-            const gallery = product.images.length
-              ? product.images
-              : [{ emoji: product.emoji, gradient: product.gradient, label: "" }];
-            const at = Math.min(imageIndex, gallery.length - 1);
-            const shown = gallery[at];
-            /**
-             * เลื่อนรูปแบบวน — อยู่รูปสุดท้ายกดขวาต่อได้เลย ไม่ต้องย้อนกลับทีละรูป
-             * คิดจากค่าก่อนหน้าใน setState (ไม่ใช่ at ที่ค้างอยู่ในรอบ render นี้)
-             * ไม่งั้นกดรัว ๆ หลายทีก่อน render รอบใหม่ จะขยับแค่ทีเดียว
-             */
-            const step = (d: number) =>
-              setImageIndex((i) => (gallery.length + Math.min(i, gallery.length - 1) + d) % gallery.length);
-            return (
-          <div className="lg:sticky lg:top-24">
-            {/* group + relative: ปุ่มลูกศรซ่อนไว้ โผล่ตอนเอาเมาส์ชี้รูป (จอเล็กไม่มี hover จึงโชว์ค้างไว้) */}
-            <div className="group relative">
-              {(() => {
-                const shownSrc = shown.src ?? (at === 0 ? product.imageSrc : undefined);
-                const visual = (
-                  <ProductVisual
-                    emoji={shown.emoji}
-                    gradient={shown.gradient}
-                    src={shownSrc}
-                    alt={`${product.name} — ${shown.label}`}
-                    size="text-[8rem]"
-                    eager
-                    className="aspect-square w-full rounded-[2rem] shadow-inner"
-                  />
-                );
-                // มีไฟล์รูปจริงเท่านั้นถึงกดขยายได้ (สินค้าอีโมจิล้วนไม่มีอะไรให้ซูม)
-                return shownSrc ? (
-                  <button
-                    type="button"
-                    onClick={() => setZoomSrc(shownSrc)}
-                    aria-label="ดูรูปขนาดใหญ่"
-                    className="block w-full cursor-zoom-in"
-                  >
-                    {visual}
-                  </button>
-                ) : (
-                  visual
-                );
-              })()}
-              {gallery.length > 1 && (
-                <>
-                  {([
-                    { d: -1, side: "left-2", glyph: "‹", label: "ดูรูปก่อนหน้า" },
-                    { d: 1, side: "right-2", glyph: "›", label: "ดูรูปถัดไป" },
-                  ] as const).map((a) => (
-                    <button
-                      key={a.label}
-                      type="button"
-                      onClick={() => step(a.d)}
-                      aria-label={a.label}
-                      className={`absolute ${a.side} top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-white/85 pb-0.5 text-2xl font-bold leading-none text-stone-600 shadow-md ring-1 ring-stone-200 backdrop-blur transition hover:bg-white hover:text-amber-600 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100`}
-                    >
-                      {a.glyph}
-                    </button>
-                  ))}
-                  {/* บอกว่าดูอยู่รูปที่เท่าไหร่จากทั้งหมด — โผล่พร้อมลูกศร */}
-                  <span className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-stone-900/55 px-2.5 py-0.5 text-[11px] font-bold tabular-nums text-white transition sm:opacity-0 sm:group-hover:opacity-100">
-                    {at + 1}/{gallery.length}
-                  </span>
-                </>
-              )}
-            </div>
-            <div className="-mx-1 mt-3 flex gap-2 overflow-x-auto px-1 pb-1">
-              {gallery.map((img, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setImageIndex(i)}
-                  className={`shrink-0 overflow-hidden rounded-2xl transition ${
-                    i === at
-                      ? "ring-3 ring-ducky"
-                      : "opacity-60 ring-1 ring-amber-100 hover:opacity-100"
-                  }`}
-                  aria-label={`ดูรูป${img.label}`}
-                >
-                  <ProductVisual emoji={img.emoji} gradient={img.gradient} src={img.src ?? (i === 0 ? product.imageSrc : undefined)} alt={img.label} size="text-3xl" className="h-16 w-16" />
-                </button>
-              ))}
-            </div>
-            {shown.label && (
-              <p className="mt-2 text-center text-xs text-stone-400">
-                มุมมอง: {shown.label}
-              </p>
-            )}
-          </div>
-            );
-          })()}
-        </div>
-
-        {/* ── กลาง: ชื่อ · รายละเอียด · ข้อควรทราบ ── */}
-        {/* min-w-0: เป็น grid item ที่ min-width:auto ถ้าไม่ปลด เนื้อหายาว ๆ จะดันคอลัมน์กว้างเกินจอมือถือ */}
-        <div className="min-w-0">
-          <span className="text-xs font-semibold text-amber-500">
-            {category.emoji} {category.name}
-          </span>
-          <h1 className="mt-1 text-base font-extrabold leading-snug text-stone-900 md:text-xl">
-            {product.name}
-          </h1>
-          <div className="mt-2 flex items-center gap-3 text-sm text-stone-500">
-            <span>⭐ {product.rating}</span>
-            <span>·</span>
-            <span>ขายแล้ว {product.sold.toLocaleString("th-TH")} ชิ้น</span>
-          </div>
-
-          <p className="mt-3 text-[13px] leading-relaxed text-stone-600">{product.description}</p>
-
-          {/* ═══ ข้อควรทราบ / เงื่อนไขงาน — อ่านก่อนสั่ง (แอดมินตั้งต่อสินค้าในหลังบ้าน) ═══ */}
-          {product.terms?.trim() && (
-            <div className="mt-4 overflow-hidden rounded-2xl border-2 border-rose-200 bg-rose-50/60 shadow-sm">
-              <div className="flex items-center gap-2 bg-rose-500 px-4 py-2">
-                <span className="text-base leading-none">⚠️</span>
-                <p className="text-xs font-extrabold tracking-tight text-white">ข้อควรทราบก่อนสั่ง — รบกวนอ่านก่อนนะครับ</p>
-              </div>
-              <ul className="space-y-2 px-4 py-3">
-                {termLines(product.terms).map((t, i) => (
-                  <li key={i} className="flex gap-2">
-                    <span className="mt-[3px] shrink-0 text-[9px] leading-none text-rose-500">🔴</span>
-                    <span className="whitespace-pre-line text-[11px] font-medium leading-relaxed text-rose-950">{t}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* ═══ 📐 เทมเพลตไฟล์งาน — โหลดไปวางลายก่อนส่งกลับมาให้ร้าน (ไม่ต้องล็อกอิน) ═══ */}
-          {tplItems.length > 0 && (
-            <div className="mt-4 overflow-hidden rounded-2xl border-2 border-sky-200 bg-sky-50/60 shadow-sm">
-              {/* หัวกล่อง = ปุ่มพับ/กางเมื่อมีเทมเพลตหลายรุ่น (ไม่กี่ไฟล์ = กางไว้เฉย ๆ ไม่ต้องกด) */}
-              {(() => {
-                const head = (
-                  <>
-                    <span className="text-base leading-none">📐</span>
-                    <p className="min-w-0 flex-1 text-left text-xs font-extrabold tracking-tight text-white">
-                      {studioMode ? "ไฟล์เทมเพลต — สำหรับคนที่ทำแบบเองในโปรแกรม" : "เทมเพลตไฟล์งาน — โหลดไปวางลายได้เลย"}
-                    </p>
-                    {tplCollapsible && (
-                      <span className="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold text-white">
-                        {tplItems.length} แบบ
-                      </span>
-                    )}
-                  </>
-                );
-                return tplCollapsible ? (
-                  <button
-                    type="button"
-                    onClick={() => setTplOpen((v) => !v)}
-                    aria-expanded={tplOpen}
-                    className="flex w-full items-center gap-2 bg-sky-600 px-4 py-2 text-left transition hover:bg-sky-700"
-                  >
-                    {head}
-                    <span className={`shrink-0 text-[10px] text-white transition ${tplOpen ? "rotate-180" : ""}`}>▼</span>
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-2 bg-sky-600 px-4 py-2">{head}</div>
-                );
-              })()}
-
-              {/* ยุบอยู่แล้วยังไม่มีรายการที่ตรงกับตัวเลือก → บอกสั้น ๆ ว่ากดดูได้ (ไม่กินที่) */}
-              {tplCollapsible && !tplOpen && tplShown.length === 0 ? (
-                <p className="px-4 py-2.5 text-[11px] font-semibold text-sky-800">
-                  มีไฟล์เทมเพลต {tplItems.length} แบบให้โหลด — กดที่แถบด้านบนเพื่อดูทั้งหมด
-                </p>
-              ) : (
-                <ul className="grid grid-cols-2 gap-2 px-3 py-3 sm:grid-cols-3">
-                  {tplShown.map((f) => (
-                    <li
-                      key={f.key}
-                      className={`flex flex-col rounded-xl bg-white p-2 ring-1 ${
-                        f.matched ? "ring-2 ring-sky-400" : "ring-sky-100"
-                      }`}
-                    >
-                      {/* รูปของไฟล์นั้นมาก่อน (แต่ละรุ่นหน้าตาไม่เหมือนกัน) ไม่มีค่อยใช้รูปปกของชุด */}
-                      {f.preview ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={f.preview}
-                          alt={`ตัวอย่างเทมเพลต ${f.name}${f.choice ? ` ${f.choice}` : ""}`}
-                          className="mx-auto h-14 w-full rounded-lg bg-white object-contain"
-                        />
-                      ) : (
-                        <span className="grid h-14 w-full place-items-center rounded-lg bg-sky-50 text-xl">📐</span>
-                      )}
-                      <span className="mt-1 block truncate text-[12px] font-bold text-stone-800" title={f.name}>
-                        {f.name}
-                        {f.choice && <span className="ml-1 font-semibold text-sky-700">· {f.choice}</span>}
-                      </span>
-                      {f.note && <span className="block truncate text-[10px] text-stone-500">{f.note}</span>}
-                      <span className="block truncate text-[10px] text-stone-400">
-                        {f.outside ? "เปิดลิงก์ไฟล์" : f.fileName || "ไฟล์เทมเพลต"}
-                        {f.fileSize ? ` · ${formatFileSize(f.fileSize)}` : ""}
-                      </span>
-                      {f.matched && (
-                        <span className="mt-0.5 block text-[10px] font-bold text-sky-700">✓ ตรงกับที่คุณเลือก</span>
-                      )}
-                      {f.anyNote && <span className="mt-0.5 block text-[10px] text-stone-400">{f.anyNote}</span>}
-                      {/* ที่นี่มีแค่ปุ่มโหลดไฟล์ — การวางลายบนเว็บใช้ปุ่ม "เริ่มสร้าง" ในกล่องสั่งซื้อ */}
-                      <a
-                        href={f.href}
-                        {...(f.outside
-                          ? { target: "_blank", rel: "noopener noreferrer" }
-                          : { download: f.fileName || "" })}
-                        className="mt-1.5 rounded-full bg-sky-600 px-2 py-1.5 text-center text-[11px] font-bold text-white shadow transition hover:bg-sky-700"
-                      >
-                        {f.outside ? "🔗 เปิดลิงก์" : "⬇️ ดาวน์โหลด"}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {/* ยุบได้และกางอยู่ → ปุ่มพับกลับที่ท้ายรายการ (ไม่ต้องเลื่อนขึ้นไปหาหัวกล่อง) */}
-              {tplCollapsible && tplOpen && (
-                <button
-                  type="button"
-                  onClick={() => setTplOpen(false)}
-                  className="mx-3 mb-2 block rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
-                >
-                  ▲ ย่อรายการเทมเพลต
-                </button>
-              )}
-
-              <p className="px-4 pb-3 text-[10px] leading-relaxed text-sky-800">
-                วิธีที่ง่ายที่สุดคือกดปุ่ม <strong>&ldquo;🎨 เริ่มสร้าง&rdquo;</strong> แล้ววางรูปของคุณบนแบบได้เลย
-                ระบบจัดขนาด/ตำแหน่งให้ตรงกับที่ผลิตจริง · ส่วนไฟล์ .ai ตรงนี้มีไว้ให้คนที่อยากทำแบบเองในโปรแกรมกราฟฟิก
-              </p>
-            </div>
-          )}
-
-          {/* ═══ ความมั่นใจก่อนกดสั่ง ═══ */}
-          <ul className="mt-4 grid grid-cols-2 gap-2 text-[11px] font-semibold text-stone-500">
-            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">🖼️ ส่งแบบให้ตรวจ<br />ก่อนผลิตทุกงาน</li>
-            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">✅ แก้แบบได้<br />จนกว่าจะพอใจ</li>
-            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">🚚 ส่งไว<br />ทั่วไทย</li>
-            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">💬 ทักไลน์<br />ปรึกษาฟรี</li>
-          </ul>
-        </div>
-
-      {/* ═══ ข้อมูลประกอบ — ไหลต่อจากรูป/รายละเอียด (เดิมอยู่ท้ายหน้า ทำให้ตรงนี้เป็นช่องขาว) ═══ */}
-      <div className="grid gap-6 sm:col-span-2 lg:grid-cols-2">
-        <div className="relative">
-          {/* ใช้ขนาดกำหนดเองอยู่ — คลุมตารางไว้ กันเข้าใจผิดว่าราคาอิงเรทขนาดปกติ
-              (โหมด "ระบุขนาด" ไม่ต้องคลุม เพราะราคายังคิดจากตารางนี้จริง ๆ) */}
-          {useCustom && custom?.mode !== "size" && (
-            <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/70">
-              <p className="rounded-full bg-sky-600 px-4 py-2 text-center text-xs font-bold text-white shadow-lg">
-                📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตารางนี้
-              </p>
-            </div>
-          )}
-          {/* งานสั่งทำ (แบบที่แอดมินตั้งให้ตีราคา) — ตารางนี้ไม่ใช่ราคาของงานนี้ คลุมไว้กันเข้าใจผิด */}
-          {askQuote && !useCustom && (
-            <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/70">
-              <p className="rounded-full bg-sky-600 px-4 py-2 text-center text-xs font-bold text-white shadow-lg">
-                💬 งานสั่งทำ — ราคาไม่อิงตารางนี้ แอดมินตีราคาให้
-              </p>
-            </div>
-          )}
-          <p className="text-sm font-bold text-stone-700">
-            💰 ราคาต่อหน่วยตามจำนวน
-            {rate && <span className="ml-1 font-semibold text-teal-700">· {rate.label}</span>}
-          </p>
-          {/* ตารางราคาขั้นบันได (rate card) — คอลัมน์เยอะโชว์เฉพาะที่เลือกอยู่ */}
-          {matrix &&
-            (() => {
-              const allKeys = Object.keys(matrix.cells);
-              const selectedKey = priceMatrixKey(matrix, effective);
-              const cols = allKeys.length <= 6 ? allKeys : allKeys.filter((k) => k === selectedKey);
-              return (
-                <div className="mt-2 overflow-x-auto rounded-2xl ring-1 ring-stone-200">
-                  {allKeys.length > 6 && (
-                    <p className="bg-stone-50 px-3 py-1.5 text-[11px] text-stone-500">
-                      💡 เรทราคาของตัวเลือกที่คุณเลือก — เปลี่ยนตัวเลือกด้านบนเพื่อดูราคาชนิดอื่น
-                    </p>
-                  )}
-                  <table className="w-full border-collapse text-xs">
-                    <thead>
-                      <tr className="bg-sky-100 text-sky-900">
-                        <th className="whitespace-nowrap px-3 py-2 text-left font-bold">จำนวน ({matrix.unit})</th>
-                        {/* ชื่อคู่ตัวเลือกยาวมาก (4 กลุ่ม) — แยกบรรทัดละส่วนและย่อคำในวงเล็บ ให้หัวตารางไม่ยืดจนล้น */}
-                        {cols.map((col) => (
-                          <th
-                            key={col}
-                            title={col.split("│").join(" · ")}
-                            // ชิดซ้าย เพื่อให้ขีดนำหน้าแต่ละบรรทัดเรียงตรงกัน (ตรงกลางจะดูรุ่งริ่ง)
-                            className="px-3 py-2 text-left font-bold leading-tight"
-                          >
-                            {shortComboParts(col).map((part, i) => (
-                              <span key={i} className="block whitespace-nowrap">
-                                <span className="mr-1 text-sky-400">•</span>
-                                {part}
-                              </span>
-                            ))}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {matrix.tiers.map((tier, ti) => {
-                        const active = ti === currentTier;
-                        return (
-                          <tr
-                            key={tier.label}
-                            className={active ? "bg-stone-100 font-bold text-stone-900" : "odd:bg-white even:bg-stone-50"}
-                          >
-                            <td className="whitespace-nowrap px-3 py-2">
-                              {active && "▶ "}
-                              {tier.label}
-                            </td>
-                            {cols.map((col) => {
-                              const isChosen = active && selectedKey === col;
-                              return (
-                                <td key={col} className={`px-3 py-2 text-center ${isChosen ? "text-amber-700" : ""}`}>
-                                  {formatPrice(matrix.cells[col][ti])}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              );
-            })()}
-          {rate?.minPerDesign != null && rate.minPerDesign > 0 && (
-            <p className="mt-2 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
-              🎨 เรทนี้คละลายขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
-              {/* ร้านรับสั่งขั้นต่ำ 1 ชิ้นเสมอ — ตัวเลขนี้คือ "เรทนี้เริ่มใช้ที่เท่าไหร่" ไม่ใช่ห้ามสั่งน้อยกว่า
-                  (สั่งน้อยกว่านี้ระบบสลับไปเรทที่ถูกต้องให้เอง) */}
-              {rate.minQty && rate.minQty > 1
-                ? ` · เรทนี้เริ่มใช้ที่ ${rate.minQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป (สั่งน้อยกว่านี้ได้ ระบบคิดราคาตามช่วงจำนวนให้)`
-                : ""}
-            </p>
-          )}
-        </div>
-        <div>
-          <p className="text-sm font-bold text-stone-700">✨ จุดเด่นของงานนี้</p>
-          {/* จุดเด่น */}
-          <ul className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {product.highlights.map((h) => (
-              <li
-                key={h}
-                className="flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-sm text-stone-600 ring-1 ring-amber-100"
-              >
-                <span className="text-amber-500">✔</span> {h}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      {/* รายละเอียดสินค้า โซน "ข้างแผงสั่งซื้อ" — ท่อนที่แอดมินตั้ง slot: side ไว้ */}
-      {bodyOf("side").length > 0 && (
-        <div className="sm:col-span-2">{detailsSection("side", "mt-2")}</div>
-      )}
-        </div>
-
-        {/* ── ขวา: แผงสั่งซื้อ ติดหนึบตอนเลื่อน ── */}
-        <div className="lg:col-span-4 lg:sticky lg:top-24">
-          <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">ราคา</p>
-            <div className="mt-4 flex items-baseline gap-2">
-              {useCustom && customAsk ? (
-                // ขนาดกำหนดเอง (โหมดตีราคา/คุยกับแอดมิน) — ไม่โชว์ ฿0 ให้งง
-                <span className="text-xl font-extrabold text-sky-700">
-                  {customChat ? "💬 คุยรายละเอียดกับแอดมิน" : "💬 รอแอดมินตีราคา"}
-                </span>
-              ) : askQuote ? (
-                // งานสั่งทำตามตัวเลือกที่เลือก — ราคายังไม่มี ไม่โชว์ ฿0 ให้งง
-                <span className="text-xl font-extrabold text-sky-700">💬 รอแอดมินตีราคา</span>
-              ) : (
-                <>
-                  <span className="text-2xl font-extrabold text-amber-600">{formatPrice(unitPrice)}</span>
-                  {matrix ? (
-                    <span className="text-sm font-semibold text-stone-500">/ {matrix.unit}</span>
-                  ) : (
-                    product.oldPrice && (
-                      <span className="text-base text-stone-400 line-through">
-                        {formatPrice(product.oldPrice)}
-                      </span>
-                    )
-                  )}
-                </>
-              )}
-            </div>
-            {askQuote && !useCustom ? (
-              <div className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
-                <p>
-                  💬 <strong className="font-bold">งานสั่งทำ — สั่งเข้ามาได้เลย ยังไม่ต้องโอน</strong> กรอกรายละเอียดให้ครบ
-                  แล้วกดสั่ง จากนั้นส่งลิงก์ออเดอร์ให้แอดมินทางไลน์เพื่อตีราคา แล้วหน้าแจ้งโอนถึงจะเปิดให้โอน
-                </p>
-                <a
-                  href={LINE_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
-                >
-                  💬 ทักไลน์สอบถามราคาก่อน
-                </a>
-              </div>
-            ) : useCustom ? (
-              customAsk ? (
-                // สั้น ๆ: สั่งเลย → copy ลิงก์ออเดอร์ส่งแอดมินให้ใส่ราคา → ค่อยโอน
-                <p className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
-                  {customChat ? "💬 " : "📐 "}
-                  <strong className="font-bold">สั่งเข้ามาได้เลย ยังไม่ต้องโอน</strong> — หลังสั่งเสร็จ
-                  กด <strong className="font-bold">คัดลอก (copy) ลิงก์ออเดอร์ส่งให้แอดมินทางไลน์</strong>{" "}
-                  เพื่อให้ใส่ราคาก่อน แล้วหน้าแจ้งโอนถึงจะเปิดให้โอนได้
-                </p>
-              ) : (
-                <p className="mt-1 text-xs text-sky-700">
-                  {custom?.mode === "size"
-                    ? "📐 ระบุขนาดเองอยู่ — ราคายังคิดตามตารางเรทปกติ"
-                    : "📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตัวเลือก/ตารางเรทปกติ"}
-                </p>
-              )
-            ) : matrix ? (
-              <p className="mt-1 text-xs text-stone-400">
-                💡 เรทราคา {formatPriceRange(product)} ต่อ{matrix.unit} — ยิ่งสั่งเยอะ ยิ่งถูก (ราคาปรับตามจำนวน)
-              </p>
-            ) : (
-              priceRange(product).max > priceRange(product).min && (
-                <p className="mt-1 text-xs text-stone-400">
-                  💡 เรทราคา {formatPriceRange(product)} ขึ้นกับตัวเลือกที่เลือก
-                </p>
-              )
-            )}
-          </div>
-
-          {/* เลือกเรทราคา (สินค้าที่มีหลายเรท เช่น คละดีเทล / ไม่คละดีเทล) — ใช้ขนาดกำหนดเองอยู่ = ปิดชั่วคราว */}
-          {rates.length > 1 && rate && (
-            <div className={`mt-5 ${useCustom ? "pointer-events-none select-none opacity-40" : ""}`} aria-disabled={useCustom}>
-              <span className="mb-1.5 block text-[13px] font-bold text-stone-700">
-                {RATE_LABEL}: <span className="font-semibold text-amber-600">{rate.label}</span>
-              </span>
-              <div className="grid gap-1.5">
-                {rates.map((r) => {
-                  const on = r.label === rate.label;
-                  return (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => {
-                        setRateTouched(true);
-                        setRateLabel(r.label);
-                        setAutoRateNote("");
-                        jumpToImage(r.imageSrc);
-                      }}
-                      className={`rounded-xl px-3 py-2 text-left text-[13px] transition ${
-                        on
-                          ? "bg-amber-50 font-bold text-amber-900 ring-2 ring-amber-400"
-                          : "bg-white text-stone-600 ring-1 ring-stone-200 hover:ring-amber-300"
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        {/* ภาพประจำเรท (ถ้ามี) — ให้ลูกค้าเห็นหน้าตาแบบนั้น ๆ ตั้งแต่ตอนเลือก */}
-                        {r.imageSrc && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={r.imageSrc}
-                            alt={r.label}
-                            className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-stone-200"
-                            loading="lazy"
-                          />
-                        )}
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-2">
-                            <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${on ? "border-amber-500" : "border-stone-300"}`}>
-                              {on && <span className="h-2 w-2 rounded-full bg-amber-500" />}
-                            </span>
-                            {r.label}
-                          </span>
-                          {r.desc && <span className="mt-0.5 block pl-6 text-[11px] font-normal leading-snug text-stone-500">{r.desc}</span>}
-                          {(r.minQty || r.minPerDesign) && (
-                            <span className="mt-0.5 block pl-6 text-[10px] font-semibold leading-snug text-teal-700">
-                              {[
-                                r.minQty ? `สั่งรวม ${r.minQty.toLocaleString("th-TH")} ${r.pricing.unit}ขึ้นไป` : "",
-                                r.minPerDesign ? `คละลายขั้นต่ำลายละ ${r.minPerDesign.toLocaleString("th-TH")} ${r.pricing.unit}` : "",
-                              ]
-                                .filter(Boolean)
-                                .join(" · ")}
-                            </span>
-                          )}
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              {autoRateNote && (
-                <p className="mt-2 rounded-xl bg-teal-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-teal-800 ring-1 ring-teal-100">
-                  ✨ {autoRateNote}
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* ตัวเลือกสินค้า (กรอง/ล็อกตามกฎเงื่อนไข)
-              ใช้ขนาดกำหนดเองอยู่ = ปิดเฉพาะกลุ่มที่แอดมินไม่ได้ตั้งให้ "ยังเลือกได้" (custom.keepOptions) */}
-          {useCustom && (
-            <p className="mt-5 rounded-xl bg-sky-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-sky-800 ring-1 ring-sky-200">
-              📐 กำลังใช้ &ldquo;{custom?.label ?? "กำหนดขนาดเอง"}&rdquo;{custom?.mode === "size" ? "" : " — ราคาไม่อิงตารางเรทปกติ"}
-              {(custom?.keepOptions?.length ?? 0) > 0
-                ? ` · ยังเลือก ${custom!.keepOptions!.join(" / ")} ได้ตามปกติ ส่วนกลุ่มอื่นถูกปิดไว้`
-                : " ตัวเลือกด้านล่างถูกปิดไว้"}{" "}
-              (เอาติ๊กออกเพื่อกลับมาเลือกทั้งหมด)
-            </p>
-          )}
-          <div id="opt-groups" className="mt-4 space-y-3">
-            {/* กลุ่มที่ตั้ง "แสดงเมื่อ" ไว้ และเงื่อนไขยังไม่ตรง → ไม่ต้องโชว์ (เช่น สีตะขอของแบบที่ไม่ได้เลือก) */}
-            {product.options.filter((opt) => optionVisible(opt, effective)).map((opt) => {
+  /**
+   * กลุ่มตัวเลือก 1 กลุ่มบนหน้าสินค้า — ใช้ทั้งในรายการตัวเลือกปกติ และในกล่อง 📐 งานสั่งทำ
+   * (กลุ่มเดียวกันโผล่แค่ที่เดียว ตัดสินด้วย isMadeToOrderOpt)
+   */
+  function optionGroupUI(opt: ProductOption) {
               // ล็อกกลุ่มนี้เพราะใช้ขนาดกำหนดเองอยู่ และแอดมินไม่ได้เปิดให้เลือกต่อ
               const customLocked = useCustom && !(custom?.keepOptions ?? []).includes(opt.label);
               const allowedByRules = allowedChoices(product, effective, opt.label);
@@ -2294,10 +1750,618 @@ export default function ProductDetail({
                     })()}
                 </div>
               );
-            })}
+  }
+
+  /** กลุ่มนี้เป็นของ "งานสั่งทำ" ไหม — ช่องกรอกเป็นเสมอ · กลุ่มตัวเลือกปกติต้องถูกย้ายเข้ามา */
+  const isMadeToOrderOpt = (o: ProductOption) => isInputOption(o) || o.madeToOrder === true;
+  /** กลุ่มงานสั่งทำที่ต้องโชว์ตอนนี้ (ตาม "แสดงเมื่อ") — ว่าง = ไม่ต้องกางกล่อง 📐 ให้รก */
+  const mtoVisible = product.options.filter((o) => isMadeToOrderOpt(o) && optionVisible(o, effective));
+
+  return (
+    <div className="mx-auto max-w-6xl px-4 pt-6">
+      {/* สินค้าที่ปิดการมองเห็นไว้ — ลูกค้าเปิดไม่ได้ (404) หน้านี้เห็นเฉพาะทีมงานที่ล็อกอิน */}
+      {preview && (
+        <div className="mb-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 ring-1 ring-rose-200">
+          🚫 สินค้านี้ <span className="underline">ปิดการมองเห็น</span> อยู่ — ลูกค้าไม่เห็นในหน้ารายการ/ค้นหา และเปิดลิงก์ตรงก็ไม่เจอ
+          <span className="font-semibold"> (คุณเห็นหน้านี้เพราะล็อกอินหลังบ้านอยู่)</span>
+        </div>
+      )}
+      {jsonLd.map((obj, i) => (
+        <script
+          key={i}
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(obj) }}
+        />
+      ))}
+
+      {/* ปุ่มลัดไปแก้ไขสินค้านี้ในหลังบ้าน (เฉพาะแอดมิน) */}
+      {isAdmin && <AdminEditFab href={adminProductPath(product)} title="เปิดหน้าแก้ไขสินค้านี้ในระบบหลังบ้าน" />}
+      {/* breadcrumb */}
+      <nav className="flex items-center gap-1 overflow-hidden whitespace-nowrap text-[11px] text-stone-400">
+        <Link href="/" className="shrink-0 hover:text-amber-600">หน้าแรก</Link>
+        <span className="shrink-0">›</span>
+        <Link href={`/products?category=${category.id}`} className="shrink-0 hover:text-amber-600">
+          {category.name}
+        </Link>
+        <span className="shrink-0">›</span>
+        <span className="truncate text-stone-600">{product.name}</span>
+      </nav>
+
+      {/* ═══ โครง 3 คอลัมน์: รูป | รายละเอียด | แผงสั่งซื้อ (ติดหนึบ)
+           ฝั่งซ้าย (รูป+รายละเอียด) เป็นบล็อกเดียวกัน — ข้อมูลประกอบจึงไหลต่อขึ้นมาเติมได้
+           แทนที่จะทิ้งช่องขาวยาว ๆ ไว้ข้างแผงสั่งซื้อ ═══ */}
+      <div className="mt-4 grid gap-6 lg:grid-cols-12 lg:items-start lg:gap-8">
+        <div className="grid min-w-0 gap-6 sm:grid-cols-2 sm:items-start lg:col-span-8 lg:gap-8">
+        {/* ── ซ้าย: รูปสินค้า ── */}
+        <div className="min-w-0">
+          {/* รูปสินค้า — ติดหนึบตอนเลื่อนอ่านตัวเลือกยาว ๆ (จอใหญ่)
+              สินค้าที่ยังไม่ใส่รูปเลย = ใช้อีโมจิ+พื้นสีของสินค้าแทน (กันหน้าพังตอนแอดมินเพิ่งสร้างสินค้า) */}
+          {(() => {
+            const gallery = product.images.length
+              ? product.images
+              : [{ emoji: product.emoji, gradient: product.gradient, label: "" }];
+            const at = Math.min(imageIndex, gallery.length - 1);
+            const shown = gallery[at];
+            /**
+             * เลื่อนรูปแบบวน — อยู่รูปสุดท้ายกดขวาต่อได้เลย ไม่ต้องย้อนกลับทีละรูป
+             * คิดจากค่าก่อนหน้าใน setState (ไม่ใช่ at ที่ค้างอยู่ในรอบ render นี้)
+             * ไม่งั้นกดรัว ๆ หลายทีก่อน render รอบใหม่ จะขยับแค่ทีเดียว
+             */
+            const step = (d: number) =>
+              setImageIndex((i) => (gallery.length + Math.min(i, gallery.length - 1) + d) % gallery.length);
+            return (
+          <div className="lg:sticky lg:top-24">
+            {/* group + relative: ปุ่มลูกศรซ่อนไว้ โผล่ตอนเอาเมาส์ชี้รูป (จอเล็กไม่มี hover จึงโชว์ค้างไว้) */}
+            <div className="group relative">
+              {(() => {
+                const shownSrc = shown.src ?? (at === 0 ? product.imageSrc : undefined);
+                const visual = (
+                  <ProductVisual
+                    emoji={shown.emoji}
+                    gradient={shown.gradient}
+                    src={shownSrc}
+                    alt={`${product.name} — ${shown.label}`}
+                    size="text-[8rem]"
+                    eager
+                    className="aspect-square w-full rounded-[2rem] shadow-inner"
+                  />
+                );
+                // มีไฟล์รูปจริงเท่านั้นถึงกดขยายได้ (สินค้าอีโมจิล้วนไม่มีอะไรให้ซูม)
+                return shownSrc ? (
+                  <button
+                    type="button"
+                    onClick={() => setZoomSrc(shownSrc)}
+                    aria-label="ดูรูปขนาดใหญ่"
+                    className="block w-full cursor-zoom-in"
+                  >
+                    {visual}
+                  </button>
+                ) : (
+                  visual
+                );
+              })()}
+              {gallery.length > 1 && (
+                <>
+                  {([
+                    { d: -1, side: "left-2", glyph: "‹", label: "ดูรูปก่อนหน้า" },
+                    { d: 1, side: "right-2", glyph: "›", label: "ดูรูปถัดไป" },
+                  ] as const).map((a) => (
+                    <button
+                      key={a.label}
+                      type="button"
+                      onClick={() => step(a.d)}
+                      aria-label={a.label}
+                      className={`absolute ${a.side} top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-white/85 pb-0.5 text-2xl font-bold leading-none text-stone-600 shadow-md ring-1 ring-stone-200 backdrop-blur transition hover:bg-white hover:text-amber-600 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100`}
+                    >
+                      {a.glyph}
+                    </button>
+                  ))}
+                  {/* บอกว่าดูอยู่รูปที่เท่าไหร่จากทั้งหมด — โผล่พร้อมลูกศร */}
+                  <span className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-stone-900/55 px-2.5 py-0.5 text-[11px] font-bold tabular-nums text-white transition sm:opacity-0 sm:group-hover:opacity-100">
+                    {at + 1}/{gallery.length}
+                  </span>
+                </>
+              )}
+            </div>
+            <div className="-mx-1 mt-3 flex gap-2 overflow-x-auto px-1 pb-1">
+              {gallery.map((img, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setImageIndex(i)}
+                  className={`shrink-0 overflow-hidden rounded-2xl transition ${
+                    i === at
+                      ? "ring-3 ring-ducky"
+                      : "opacity-60 ring-1 ring-amber-100 hover:opacity-100"
+                  }`}
+                  aria-label={`ดูรูป${img.label}`}
+                >
+                  <ProductVisual emoji={img.emoji} gradient={img.gradient} src={img.src ?? (i === 0 ? product.imageSrc : undefined)} alt={img.label} size="text-3xl" className="h-16 w-16" />
+                </button>
+              ))}
+            </div>
+            {shown.label && (
+              <p className="mt-2 text-center text-xs text-stone-400">
+                มุมมอง: {shown.label}
+              </p>
+            )}
+          </div>
+            );
+          })()}
+        </div>
+
+        {/* ── กลาง: ชื่อ · รายละเอียด · ข้อควรทราบ ── */}
+        {/* min-w-0: เป็น grid item ที่ min-width:auto ถ้าไม่ปลด เนื้อหายาว ๆ จะดันคอลัมน์กว้างเกินจอมือถือ */}
+        <div className="min-w-0">
+          <span className="text-xs font-semibold text-amber-500">
+            {category.emoji} {category.name}
+          </span>
+          <h1 className="mt-1 text-base font-extrabold leading-snug text-stone-900 md:text-xl">
+            {product.name}
+          </h1>
+          <div className="mt-2 flex items-center gap-3 text-sm text-stone-500">
+            <span>⭐ {product.rating}</span>
+            <span>·</span>
+            <span>ขายแล้ว {product.sold.toLocaleString("th-TH")} ชิ้น</span>
           </div>
 
-          {/* งานกำหนดขนาดเอง (custom) */}
+          <p className="mt-3 text-[13px] leading-relaxed text-stone-600">{product.description}</p>
+
+          {/* ═══ ข้อควรทราบ / เงื่อนไขงาน — อ่านก่อนสั่ง (แอดมินตั้งต่อสินค้าในหลังบ้าน) ═══ */}
+          {product.terms?.trim() && (
+            <div className="mt-4 overflow-hidden rounded-2xl border-2 border-rose-200 bg-rose-50/60 shadow-sm">
+              <div className="flex items-center gap-2 bg-rose-500 px-4 py-2">
+                <span className="text-base leading-none">⚠️</span>
+                <p className="text-xs font-extrabold tracking-tight text-white">ข้อควรทราบก่อนสั่ง — รบกวนอ่านก่อนนะครับ</p>
+              </div>
+              <ul className="space-y-2 px-4 py-3">
+                {termLines(product.terms).map((t, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="mt-[3px] shrink-0 text-[9px] leading-none text-rose-500">🔴</span>
+                    <span className="whitespace-pre-line text-[11px] font-medium leading-relaxed text-rose-950">{t}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* ═══ 📐 เทมเพลตไฟล์งาน — โหลดไปวางลายก่อนส่งกลับมาให้ร้าน (ไม่ต้องล็อกอิน) ═══ */}
+          {tplItems.length > 0 && (
+            <div className="mt-4 overflow-hidden rounded-2xl border-2 border-sky-200 bg-sky-50/60 shadow-sm">
+              {/* หัวกล่อง = ปุ่มพับ/กางเมื่อมีเทมเพลตหลายรุ่น (ไม่กี่ไฟล์ = กางไว้เฉย ๆ ไม่ต้องกด) */}
+              {(() => {
+                const head = (
+                  <>
+                    <span className="text-base leading-none">📐</span>
+                    <p className="min-w-0 flex-1 text-left text-xs font-extrabold tracking-tight text-white">
+                      {studioMode ? "ไฟล์เทมเพลต — สำหรับคนที่ทำแบบเองในโปรแกรม" : "เทมเพลตไฟล์งาน — โหลดไปวางลายได้เลย"}
+                    </p>
+                    {tplCollapsible && (
+                      <span className="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold text-white">
+                        {tplItems.length} แบบ
+                      </span>
+                    )}
+                  </>
+                );
+                return tplCollapsible ? (
+                  <button
+                    type="button"
+                    onClick={() => setTplOpen((v) => !v)}
+                    aria-expanded={tplOpen}
+                    className="flex w-full items-center gap-2 bg-sky-600 px-4 py-2 text-left transition hover:bg-sky-700"
+                  >
+                    {head}
+                    <span className={`shrink-0 text-[10px] text-white transition ${tplOpen ? "rotate-180" : ""}`}>▼</span>
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 bg-sky-600 px-4 py-2">{head}</div>
+                );
+              })()}
+
+              {/* ยุบอยู่แล้วยังไม่มีรายการที่ตรงกับตัวเลือก → บอกสั้น ๆ ว่ากดดูได้ (ไม่กินที่) */}
+              {tplCollapsible && !tplOpen && tplShown.length === 0 ? (
+                <p className="px-4 py-2.5 text-[11px] font-semibold text-sky-800">
+                  มีไฟล์เทมเพลต {tplItems.length} แบบให้โหลด — กดที่แถบด้านบนเพื่อดูทั้งหมด
+                </p>
+              ) : (
+                <ul className="grid grid-cols-2 gap-2 px-3 py-3 sm:grid-cols-3">
+                  {tplShown.map((f) => (
+                    <li
+                      key={f.key}
+                      className={`flex flex-col rounded-xl bg-white p-2 ring-1 ${
+                        f.matched ? "ring-2 ring-sky-400" : "ring-sky-100"
+                      }`}
+                    >
+                      {/* รูปของไฟล์นั้นมาก่อน (แต่ละรุ่นหน้าตาไม่เหมือนกัน) ไม่มีค่อยใช้รูปปกของชุด */}
+                      {f.preview ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={f.preview}
+                          alt={`ตัวอย่างเทมเพลต ${f.name}${f.choice ? ` ${f.choice}` : ""}`}
+                          className="mx-auto h-14 w-full rounded-lg bg-white object-contain"
+                        />
+                      ) : (
+                        <span className="grid h-14 w-full place-items-center rounded-lg bg-sky-50 text-xl">📐</span>
+                      )}
+                      <span className="mt-1 block truncate text-[12px] font-bold text-stone-800" title={f.name}>
+                        {f.name}
+                        {f.choice && <span className="ml-1 font-semibold text-sky-700">· {f.choice}</span>}
+                      </span>
+                      {f.note && <span className="block truncate text-[10px] text-stone-500">{f.note}</span>}
+                      <span className="block truncate text-[10px] text-stone-400">
+                        {f.outside ? "เปิดลิงก์ไฟล์" : f.fileName || "ไฟล์เทมเพลต"}
+                        {f.fileSize ? ` · ${formatFileSize(f.fileSize)}` : ""}
+                      </span>
+                      {f.matched && (
+                        <span className="mt-0.5 block text-[10px] font-bold text-sky-700">✓ ตรงกับที่คุณเลือก</span>
+                      )}
+                      {f.anyNote && <span className="mt-0.5 block text-[10px] text-stone-400">{f.anyNote}</span>}
+                      {/* ที่นี่มีแค่ปุ่มโหลดไฟล์ — การวางลายบนเว็บใช้ปุ่ม "เริ่มสร้าง" ในกล่องสั่งซื้อ */}
+                      <a
+                        href={f.href}
+                        {...(f.outside
+                          ? { target: "_blank", rel: "noopener noreferrer" }
+                          : { download: f.fileName || "" })}
+                        className="mt-1.5 rounded-full bg-sky-600 px-2 py-1.5 text-center text-[11px] font-bold text-white shadow transition hover:bg-sky-700"
+                      >
+                        {f.outside ? "🔗 เปิดลิงก์" : "⬇️ ดาวน์โหลด"}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* ยุบได้และกางอยู่ → ปุ่มพับกลับที่ท้ายรายการ (ไม่ต้องเลื่อนขึ้นไปหาหัวกล่อง) */}
+              {tplCollapsible && tplOpen && (
+                <button
+                  type="button"
+                  onClick={() => setTplOpen(false)}
+                  className="mx-3 mb-2 block rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
+                >
+                  ▲ ย่อรายการเทมเพลต
+                </button>
+              )}
+
+              <p className="px-4 pb-3 text-[10px] leading-relaxed text-sky-800">
+                วิธีที่ง่ายที่สุดคือกดปุ่ม <strong>&ldquo;🎨 เริ่มสร้าง&rdquo;</strong> แล้ววางรูปของคุณบนแบบได้เลย
+                ระบบจัดขนาด/ตำแหน่งให้ตรงกับที่ผลิตจริง · ส่วนไฟล์ .ai ตรงนี้มีไว้ให้คนที่อยากทำแบบเองในโปรแกรมกราฟฟิก
+              </p>
+            </div>
+          )}
+
+          {/* ═══ ความมั่นใจก่อนกดสั่ง ═══ */}
+          <ul className="mt-4 grid grid-cols-2 gap-2 text-[11px] font-semibold text-stone-500">
+            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">🖼️ ส่งแบบให้ตรวจ<br />ก่อนผลิตทุกงาน</li>
+            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">✅ แก้แบบได้<br />จนกว่าจะพอใจ</li>
+            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">🚚 ส่งไว<br />ทั่วไทย</li>
+            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">💬 ทักไลน์<br />ปรึกษาฟรี</li>
+          </ul>
+        </div>
+
+      {/* ═══ ข้อมูลประกอบ — ไหลต่อจากรูป/รายละเอียด (เดิมอยู่ท้ายหน้า ทำให้ตรงนี้เป็นช่องขาว) ═══ */}
+      <div className="grid gap-6 sm:col-span-2 lg:grid-cols-2">
+        <div className="relative">
+          {/* ใช้ขนาดกำหนดเองอยู่ — คลุมตารางไว้ กันเข้าใจผิดว่าราคาอิงเรทขนาดปกติ
+              (โหมด "ระบุขนาด" ไม่ต้องคลุม เพราะราคายังคิดจากตารางนี้จริง ๆ) */}
+          {useCustom && custom?.mode !== "size" && (
+            <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/70">
+              <p className="rounded-full bg-sky-600 px-4 py-2 text-center text-xs font-bold text-white shadow-lg">
+                📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตารางนี้
+              </p>
+            </div>
+          )}
+          {/* งานสั่งทำ (แบบที่แอดมินตั้งให้ตีราคา) — ตารางนี้ไม่ใช่ราคาของงานนี้ คลุมไว้กันเข้าใจผิด */}
+          {askQuote && !useCustom && (
+            <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/70">
+              <p className="rounded-full bg-sky-600 px-4 py-2 text-center text-xs font-bold text-white shadow-lg">
+                💬 งานสั่งทำ — ราคาไม่อิงตารางนี้ แอดมินตีราคาให้
+              </p>
+            </div>
+          )}
+          <p className="text-sm font-bold text-stone-700">
+            💰 ราคาต่อหน่วยตามจำนวน
+            {rate && <span className="ml-1 font-semibold text-teal-700">· {rate.label}</span>}
+          </p>
+          {/* ตารางราคาขั้นบันได (rate card) — หลายคอลัมน์ = โชว์ทีละแบบตามที่เลือกอยู่ (กดเทียบทุกแบบได้) */}
+          {matrix &&
+            (() => {
+              const allKeys = Object.keys(matrix.cells);
+              const selectedKey = priceMatrixKey(matrix, effective);
+              const manyCols = allKeys.length > 1;
+              const only = allKeys.filter((k) => k === selectedKey);
+              // ตัวเลือกที่เลือกอยู่ไม่มีราคาในตาราง (แอดมินเว้นช่องไว้) → กางทั้งหมดแทนตารางเปล่า
+              const cols = !manyCols || priceAllCols || !only.length ? allKeys : only;
+              return (
+                <div className="mt-2 overflow-hidden rounded-2xl ring-1 ring-stone-200">
+                  {manyCols && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 bg-stone-50 px-3 py-1.5">
+                      <p className="text-[11px] text-stone-500">
+                        {cols.length > 1
+                          ? `💡 เทียบราคาทั้ง ${allKeys.length} แบบ`
+                          : `💡 ราคาของ “${shortComboParts(selectedKey).join(" · ")}” — เปลี่ยนตัวเลือกด้านบนเพื่อดูแบบอื่น`}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setPriceAllCols((v) => !v)}
+                        className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
+                      >
+                        {cols.length > 1 ? "แสดงเฉพาะแบบที่เลือก" : `⇄ เทียบทุกแบบ (${allKeys.length})`}
+                      </button>
+                    </div>
+                  )}
+                  <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-sky-100 text-sky-900">
+                        <th className="whitespace-nowrap px-3 py-2 text-left font-bold">จำนวน ({matrix.unit})</th>
+                        {/* ชื่อคู่ตัวเลือกยาวมาก (4 กลุ่ม) — แยกบรรทัดละส่วนและย่อคำในวงเล็บ ให้หัวตารางไม่ยืดจนล้น */}
+                        {cols.map((col) => (
+                          <th
+                            key={col}
+                            title={col.split("│").join(" · ")}
+                            // ชิดซ้าย เพื่อให้ขีดนำหน้าแต่ละบรรทัดเรียงตรงกัน (ตรงกลางจะดูรุ่งริ่ง)
+                            className="px-3 py-2 text-left font-bold leading-tight"
+                          >
+                            {shortComboParts(col).map((part, i) => (
+                              <span key={i} className="block whitespace-nowrap">
+                                <span className="mr-1 text-sky-400">•</span>
+                                {part}
+                              </span>
+                            ))}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {matrix.tiers.map((tier, ti) => {
+                        const active = ti === currentTier;
+                        return (
+                          <tr
+                            key={tier.label}
+                            className={active ? "bg-stone-100 font-bold text-stone-900" : "odd:bg-white even:bg-stone-50"}
+                          >
+                            <td className="whitespace-nowrap px-3 py-2">
+                              {active && "▶ "}
+                              {tier.label}
+                            </td>
+                            {cols.map((col) => {
+                              const isChosen = active && selectedKey === col;
+                              return (
+                                <td key={col} className={`px-3 py-2 text-center ${isChosen ? "text-amber-700" : ""}`}>
+                                  {formatPrice(matrix.cells[col][ti])}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  </div>
+                </div>
+              );
+            })()}
+          {rate?.minPerDesign != null && rate.minPerDesign > 0 && (
+            <p className="mt-2 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
+              🎨 เรทนี้คละลายขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
+              {/* ร้านรับสั่งขั้นต่ำ 1 ชิ้นเสมอ — ตัวเลขนี้คือ "เรทนี้เริ่มใช้ที่เท่าไหร่" ไม่ใช่ห้ามสั่งน้อยกว่า
+                  (สั่งน้อยกว่านี้ระบบสลับไปเรทที่ถูกต้องให้เอง) */}
+              {rate.minQty && rate.minQty > 1
+                ? ` · เรทนี้เริ่มใช้ที่ ${rate.minQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป (สั่งน้อยกว่านี้ได้ ระบบคิดราคาตามช่วงจำนวนให้)`
+                : ""}
+            </p>
+          )}
+        </div>
+        <div>
+          <p className="text-sm font-bold text-stone-700">✨ จุดเด่นของงานนี้</p>
+          {/* จุดเด่น */}
+          <ul className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {product.highlights.map((h) => (
+              <li
+                key={h}
+                className="flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-sm text-stone-600 ring-1 ring-amber-100"
+              >
+                <span className="text-amber-500">✔</span> {h}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      {/* รายละเอียดสินค้า โซน "ข้างแผงสั่งซื้อ" — ท่อนที่แอดมินตั้ง slot: side ไว้ */}
+      {bodyOf("side").length > 0 && (
+        <div className="sm:col-span-2">{detailsSection("side", "mt-2")}</div>
+      )}
+        </div>
+
+        {/* ── ขวา: แผงสั่งซื้อ ติดหนึบตอนเลื่อน ── */}
+        <div className="lg:col-span-4 lg:sticky lg:top-24">
+          <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">ราคา</p>
+            <div className="mt-4 flex items-baseline gap-2">
+              {useCustom && customAsk ? (
+                // ขนาดกำหนดเอง (โหมดตีราคา/คุยกับแอดมิน) — ไม่โชว์ ฿0 ให้งง
+                <span className="text-xl font-extrabold text-sky-700">
+                  {customChat ? "💬 คุยรายละเอียดกับแอดมิน" : "💬 รอแอดมินตีราคา"}
+                </span>
+              ) : askQuote ? (
+                // งานสั่งทำตามตัวเลือกที่เลือก — ราคายังไม่มี ไม่โชว์ ฿0 ให้งง
+                <span className="text-xl font-extrabold text-sky-700">💬 รอแอดมินตีราคา</span>
+              ) : (
+                <>
+                  <span className="text-2xl font-extrabold text-amber-600">{formatPrice(unitPrice)}</span>
+                  {matrix ? (
+                    <span className="text-sm font-semibold text-stone-500">/ {matrix.unit}</span>
+                  ) : (
+                    product.oldPrice && (
+                      <span className="text-base text-stone-400 line-through">
+                        {formatPrice(product.oldPrice)}
+                      </span>
+                    )
+                  )}
+                </>
+              )}
+            </div>
+            {askQuote && !useCustom ? (
+              <div className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
+                <p>
+                  💬 <strong className="font-bold">งานสั่งทำ — สั่งเข้ามาได้เลย ยังไม่ต้องโอน</strong> กรอกรายละเอียดให้ครบ
+                  แล้วกดสั่ง จากนั้นส่งลิงก์ออเดอร์ให้แอดมินทางไลน์เพื่อตีราคา แล้วหน้าแจ้งโอนถึงจะเปิดให้โอน
+                </p>
+                <a
+                  href={LINE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
+                >
+                  💬 ทักไลน์สอบถามราคาก่อน
+                </a>
+              </div>
+            ) : useCustom ? (
+              customAsk ? (
+                // สั้น ๆ: สั่งเลย → copy ลิงก์ออเดอร์ส่งแอดมินให้ใส่ราคา → ค่อยโอน
+                <p className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
+                  {customChat ? "💬 " : "📐 "}
+                  <strong className="font-bold">สั่งเข้ามาได้เลย ยังไม่ต้องโอน</strong> — หลังสั่งเสร็จ
+                  กด <strong className="font-bold">คัดลอก (copy) ลิงก์ออเดอร์ส่งให้แอดมินทางไลน์</strong>{" "}
+                  เพื่อให้ใส่ราคาก่อน แล้วหน้าแจ้งโอนถึงจะเปิดให้โอนได้
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-sky-700">
+                  {custom?.mode === "size"
+                    ? "📐 ระบุขนาดเองอยู่ — ราคายังคิดตามตารางเรทปกติ"
+                    : "📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตัวเลือก/ตารางเรทปกติ"}
+                </p>
+              )
+            ) : matrix ? (
+              <p className="mt-1 text-xs text-stone-400">
+                💡 เรทราคา {formatPriceRange(product)} ต่อ{matrix.unit} — ยิ่งสั่งเยอะ ยิ่งถูก (ราคาปรับตามจำนวน)
+              </p>
+            ) : (
+              priceRange(product).max > priceRange(product).min && (
+                <p className="mt-1 text-xs text-stone-400">
+                  💡 เรทราคา {formatPriceRange(product)} ขึ้นกับตัวเลือกที่เลือก
+                </p>
+              )
+            )}
+          </div>
+
+          {/* เลือกเรทราคา (สินค้าที่มีหลายเรท เช่น คละดีเทล / ไม่คละดีเทล) — ใช้ขนาดกำหนดเองอยู่ = ปิดชั่วคราว */}
+          {rates.length > 1 && rate && (
+            <div className={`mt-5 ${useCustom ? "pointer-events-none select-none opacity-40" : ""}`} aria-disabled={useCustom}>
+              <span className="mb-1.5 block text-[13px] font-bold text-stone-700">
+                {RATE_LABEL}: <span className="font-semibold text-amber-600">{rate.label}</span>
+              </span>
+              <div className="grid gap-1.5">
+                {rates.map((r) => {
+                  const on = r.label === rate.label;
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => {
+                        setRateTouched(true);
+                        setRateLabel(r.label);
+                        setAutoRateNote("");
+                        jumpToImage(r.imageSrc);
+                      }}
+                      className={`rounded-xl px-3 py-2 text-left text-[13px] transition ${
+                        on
+                          ? "bg-amber-50 font-bold text-amber-900 ring-2 ring-amber-400"
+                          : "bg-white text-stone-600 ring-1 ring-stone-200 hover:ring-amber-300"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        {/* ภาพประจำเรท (ถ้ามี) — ให้ลูกค้าเห็นหน้าตาแบบนั้น ๆ ตั้งแต่ตอนเลือก */}
+                        {r.imageSrc && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={r.imageSrc}
+                            alt={r.label}
+                            className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-stone-200"
+                            loading="lazy"
+                          />
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2">
+                            <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${on ? "border-amber-500" : "border-stone-300"}`}>
+                              {on && <span className="h-2 w-2 rounded-full bg-amber-500" />}
+                            </span>
+                            {r.label}
+                          </span>
+                          {r.desc && <span className="mt-0.5 block pl-6 text-[11px] font-normal leading-snug text-stone-500">{r.desc}</span>}
+                          {(r.minQty || r.minPerDesign) && (
+                            <span className="mt-0.5 block pl-6 text-[10px] font-semibold leading-snug text-teal-700">
+                              {[
+                                r.minQty ? `สั่งรวม ${r.minQty.toLocaleString("th-TH")} ${r.pricing.unit}ขึ้นไป` : "",
+                                r.minPerDesign ? `คละลายขั้นต่ำลายละ ${r.minPerDesign.toLocaleString("th-TH")} ${r.pricing.unit}` : "",
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                          )}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {autoRateNote && (
+                <p className="mt-2 rounded-xl bg-teal-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-teal-800 ring-1 ring-teal-100">
+                  ✨ {autoRateNote}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ตัวเลือกสินค้า (กรอง/ล็อกตามกฎเงื่อนไข)
+              ใช้ขนาดกำหนดเองอยู่ = ปิดเฉพาะกลุ่มที่แอดมินไม่ได้ตั้งให้ "ยังเลือกได้" (custom.keepOptions) */}
+          {useCustom && (
+            <p className="mt-5 rounded-xl bg-sky-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-sky-800 ring-1 ring-sky-200">
+              📐 กำลังใช้ &ldquo;{custom?.label ?? "กำหนดขนาดเอง"}&rdquo;{custom?.mode === "size" ? "" : " — ราคาไม่อิงตารางเรทปกติ"}
+              {(custom?.keepOptions?.length ?? 0) > 0
+                ? ` · ยังเลือก ${custom!.keepOptions!.join(" / ")} ได้ตามปกติ ส่วนกลุ่มอื่นถูกปิดไว้`
+                : " ตัวเลือกด้านล่างถูกปิดไว้"}{" "}
+              (เอาติ๊กออกเพื่อกลับมาเลือกทั้งหมด)
+            </p>
+          )}
+          <div id="opt-groups" className="mt-4 space-y-3">
+            {/* กลุ่มที่ตั้ง "แสดงเมื่อ" ไว้ และเงื่อนไขยังไม่ตรง → ไม่ต้องโชว์ (เช่น สีตะขอของแบบที่ไม่ได้เลือก) */}
+            {product.options
+              .filter((opt) => !isMadeToOrderOpt(opt) && optionVisible(opt, effective))
+              .map((opt) => optionGroupUI(opt))}
+          </div>
+
+          {/*
+            📐 กล่องงานสั่งทำ — รวมทุกอย่างที่ลูกค้าต้อง "ระบุเอง" ไว้ที่เดียว
+            โผล่เมื่อมีอะไรให้กรอกจริง ๆ (เช่น เลือกแบบที่ 3 แล้วช่องขนาดถึงจะขึ้น)
+          */}
+          {mtoVisible.length > 0 && (
+            <div className="mt-5 rounded-2xl bg-sky-50/60 p-4 ring-1 ring-sky-200">
+              <p className="text-sm font-bold text-stone-700">📐 รายละเอียดงานสั่งทำ</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-stone-500">
+                กรอก/เลือกให้ครบแล้วกดสั่งได้เลย — {askQuote ? "แอดมินจะตีราคาให้หลังเห็นรายละเอียด" : "รายละเอียดนี้จะติดไปกับออเดอร์ให้ทีมผลิต"}
+              </p>
+              <div className="mt-3 space-y-3">{mtoVisible.map((opt) => optionGroupUI(opt))}</div>
+              {askQuote && (
+                <div className="mt-3 border-t border-dashed border-sky-200 pt-3">
+                  <p className="text-xs font-bold text-sky-800">
+                    💬 อยากรู้ราคาก่อนสั่ง ทักมาถามได้เลย
+                  </p>
+                  <a
+                    href={LINE_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
+                  >
+                    💬 ทักไลน์สอบถามราคาก่อน
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* งานกำหนดขนาดเอง แบบเดิม (custom) — ช่องกว้าง × ยาว ชุดเดียว */}
           {custom && (
             <div className="mt-5 rounded-2xl bg-amber-50/60 p-4 ring-1 ring-amber-200">
               <label className="flex cursor-pointer items-center gap-2.5">
