@@ -63,6 +63,35 @@ const rgba = (hex: string, a: number) => {
   return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
 };
 
+/**
+ * จำ "ระดับล่าสุด" ของบัญชีไว้ในเครื่อง (ไม่ใช่ข้อมูลส่วนตัว — แค่ bronze/silver/…)
+ * เพื่อให้จอแรกวาดสี/ตรา/ธีมได้ถูกทันที ไม่ต้องโชว์การ์ดฟ้าเปล่าๆ แล้วค่อยกระตุกเป็นสีระดับจริง
+ * ตอนข้อมูลจริงมาถึง (ยอดสะสม/ออเดอร์) ค่อยเขียนทับ
+ */
+const TIER_HINT_KEY = "ducky_acc_tier";
+interface TierHint {
+  cid: string;
+  id: string;
+  name: string;
+  icon: string;
+}
+function readTierHint(cid: string): Tier | null {
+  try {
+    const h = JSON.parse(localStorage.getItem(TIER_HINT_KEY) || "null") as TierHint | null;
+    if (!h || h.cid !== cid) return null;
+    return { id: h.id, name: h.name, icon: h.icon, minSpend: 0, discountPct: 0 };
+  } catch {
+    return null;
+  }
+}
+function writeTierHint(cid: string, t: Tier) {
+  try {
+    localStorage.setItem(TIER_HINT_KEY, JSON.stringify({ cid, id: t.id, name: t.name, icon: t.icon } satisfies TierHint));
+  } catch {
+    /* พื้นที่เต็ม — ไม่เป็นไร แค่จอแรกจะกระตุกเหมือนเดิม */
+  }
+}
+
 /** รหัสลูกค้าแบบอ่านง่าย — ตัดจาก id จริงของบัญชี (แอดมินค้นย้อนได้) */
 function customerCode(id: string): string {
   const hex = id.replace(/[^0-9a-f]/gi, "").toUpperCase();
@@ -116,6 +145,7 @@ export default function AccountPage() {
   const [copiedId, setCopiedId] = useState(false);
   const [greet, setGreet] = useState(false);
   const [switchOpen, setSwitchOpen] = useState(false);
+  const [tierHint, setTierHint] = useState<Tier | null>(null);
   const [themeOn, setThemeOn] = useState(true);
   const trackRef = useRef<HTMLDivElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -126,6 +156,7 @@ export default function AccountPage() {
 
   useEffect(() => {
     if (!customer) return;
+    setTierHint(readTierHint(customer.id));
     (async () => {
       const [res, sett] = await Promise.all([fetchMyOrders(), fetchShopPayment()]);
       setOrders(res.orders);
@@ -159,14 +190,23 @@ export default function AccountPage() {
   const tiers = useMemo(() => tiersOf(tierList), [tierList]);
   const spend = orders ? paidSpend(orders) : 0;
   const realTier = orders ? tierForSpend(spend, tierList) : null;
-  const realIdx = realTier ? tiers.findIndex((t) => t.id === realTier.id) : 0;
+  /** ระดับที่เอาไว้ลงสี/ตรา/ธีม — ยังโหลดไม่เสร็จก็ใช้ของที่จำไว้ไปก่อน หน้าจะได้ไม่เปลี่ยนสีทีหลัง */
+  const paintTier = realTier ?? tierHint;
+  const realIdx = paintTier ? Math.max(0, tiers.findIndex((t) => t.id === paintTier.id)) : 0;
   const next = orders ? nextTier(spend, tierList) : null;
-  const shownTier = (previewTier && tiers.find((t) => t.id === previewTier)) || realTier;
+  const shownTier = (previewTier && tiers.find((t) => t.id === previewTier)) || paintTier;
+  /** ข้อมูลจริง (ยอดสะสม/ออเดอร์) ยังมาไม่ถึง — ตัวเลขต้องเป็นโครงกระดูก ไม่ใช่เลขมั่ว */
+  const dataLoading = orders === null;
   const shownIdx = shownTier ? tiers.findIndex((t) => t.id === shownTier.id) : 0;
   const isPreview = !!shownTier && !!realTier && shownTier.id !== realTier.id;
-  const realRing = ringOf(realTier, realIdx);
+  const realRing = ringOf(paintTier, realIdx);
   const shownRing = ringOf(shownTier, shownIdx);
   const progressPct = next && next.minSpend > 0 ? Math.min(100, Math.round((spend / next.minSpend) * 100)) : 100;
+
+  // จำระดับจริงไว้ใช้กับจอแรกของครั้งหน้า
+  useEffect(() => {
+    if (customer && realTier) writeTierHint(customer.id, realTier);
+  }, [customer, realTier]);
 
   // ── ออเดอร์ ──
   const latest = orders?.[0] ?? null;
@@ -288,7 +328,7 @@ export default function AccountPage() {
     const on = !themeOn;
     setThemeOn(on);
     localStorage.setItem(THEME_KEY, on ? "on" : "off");
-    showToast(on ? `เปิดใช้ธีมสี ${realTier?.name ?? "ระดับของคุณ"} แล้ว 🎨` : "กลับไปใช้สีปกติแล้ว");
+    showToast(on ? `เปิดใช้ธีมสี ${paintTier?.name ?? "ระดับของคุณ"} แล้ว 🎨` : "กลับไปใช้สีปกติแล้ว");
   }
 
   const proofHref = proofOrders[0] ? orderHref(proofOrders[0]) : "/account/orders";
@@ -299,10 +339,10 @@ export default function AccountPage() {
 
   // ธีมสีตามระดับจริง → ตัวแปร CSS ให้ชิป/เมนูข้าง/เงาการ์ดเปลี่ยนสีตาม
   const pageStyle =
-    themeOn && realTier
+    themeOn && paintTier
       ? ({
           "--acd-theme-bg": `linear-gradient(135deg,${realRing[0]},${realRing[1]})`,
-          "--acd-theme-fg": THEME_TEXT[realTier.id] ?? "#fff",
+          "--acd-theme-fg": THEME_TEXT[paintTier.id] ?? "#fff",
           "--acd-theme-line": realRing[1],
           "--acd-theme-row-tint": `linear-gradient(90deg,${rgba(realRing[0], 0.06)} 0%,${rgba(realRing[1], 0.32)} 100%)`,
           "--acd-theme-shadow": `0 16px 32px -14px ${rgba(realRing[1], 0.4)},0 4px 10px -4px ${rgba(realRing[0], 0.22)}`,
@@ -352,7 +392,7 @@ export default function AccountPage() {
             <div className="acd-content">
               {/* โปรไฟล์ */}
               <div className="acd-topbar">
-                <div className="acd-ring" style={realStyle} data-ring={realTier?.id}>
+                <div className="acd-ring" style={realStyle} data-ring={paintTier?.id}>
                   <div className={`acd-greet${greet ? " show" : ""}`} aria-hidden="true">
                     <span className="acd-wave">👋</span> สวัสดีค่ะ
                   </div>
@@ -386,9 +426,9 @@ export default function AccountPage() {
                     ) : (
                       <h1 className="acd-shopname">{displayName}</h1>
                     )}
-                    {realTier && (
-                      <span className={`acd-tier-tag${DARK_TEXT_TIERS.has(realTier.id) ? " dark" : ""}`} style={realStyle}>
-                        {realTier.icon} {realTier.name}
+                    {paintTier && (
+                      <span className={`acd-tier-tag${DARK_TEXT_TIERS.has(paintTier.id) ? " dark" : ""}`} style={realStyle}>
+                        {paintTier.icon} {paintTier.name}
                       </span>
                     )}
                   </div>
@@ -462,7 +502,7 @@ export default function AccountPage() {
                     className="acd-theme-toggle"
                     role="switch"
                     aria-checked={themeOn}
-                    title={`ใช้ธีมสีตามระดับ${realTier ? ` ${realTier.name}` : ""}`}
+                    title={`ใช้ธีมสีตามระดับ${paintTier ? ` ${paintTier.name}` : ""}`}
                     onClick={toggleTheme}
                   >
                     <span className="acd-theme-toggle-label">ธีมสีตามระดับ</span>
@@ -533,10 +573,10 @@ export default function AccountPage() {
                   </div>
                   <div className="acd-tier-stats">
                     <small>{isPreview ? "ยอดขั้นต่ำที่ต้องใช้" : "ยอดสะสม"}</small>
-                    <b>{orders === null ? "…" : formatPrice(isPreview ? shownTier!.minSpend : spend)}</b>
+                    {dataLoading ? <span className="acd-skel acd-skel-amount" aria-label="กำลังโหลดยอดสะสม" /> : <b>{formatPrice(isPreview ? shownTier!.minSpend : spend)}</b>}
                   </div>
                   <div className="acd-progress">
-                    <i style={{ width: `${isPreview ? 100 : progressPct}%` }} />
+                    <i style={{ width: dataLoading ? "0%" : `${isPreview ? 100 : progressPct}%` }} />
                   </div>
                   <div className="acd-tier-foot">
                     {isPreview && shownTier ? (
@@ -553,7 +593,7 @@ export default function AccountPage() {
                         🎉 คุณอยู่ระดับสูงสุดแล้ว{realTier.discountPct > 0 ? ` — ลด ${realTier.discountPct}% ทุกออเดอร์` : ""}
                       </>
                     ) : (
-                      "กำลังโหลด…"
+                      <span className="acd-skel acd-skel-line" aria-label="กำลังโหลดสิทธิประโยชน์" />
                     )}
                   </div>
                   {isPreview && realTier && (
@@ -568,8 +608,12 @@ export default function AccountPage() {
 
                 <div className="acd-order">
                   <span className="acd-chip">ออเดอร์ล่าสุด</span>
-                  {orders === null ? (
-                    <p className="acd-order-empty">กำลังโหลด…</p>
+                  {dataLoading ? (
+                    <div className="acd-order-skel" aria-label="กำลังโหลดออเดอร์ล่าสุด">
+                      <span className="acd-skel acd-skel-line w60" />
+                      <span className="acd-skel acd-skel-line w40" />
+                      <span className="acd-skel acd-skel-btn" />
+                    </div>
                   ) : latest ? (
                     <>
                       <div className="acd-order-top">

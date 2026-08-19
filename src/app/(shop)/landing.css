@@ -1497,6 +1497,24 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .dl .acd-switch.on{background:var(--blue-deep)}
 .dl .acd-switch.on::after{left:21px}
 
+/* --- โครงกระดูกตอนรอข้อมูล (กันหน้า "กระตุก" จากการ์ดเปล่า → ข้อมูลจริง) --- */
+.dl .acd-skel{display:block;border-radius:999px;position:relative;overflow:hidden;
+  background:rgba(255,255,255,.28)}
+.dl .acd-skel::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(100deg,transparent 20%,rgba(255,255,255,.55) 50%,transparent 80%);
+  transform:translateX(-100%);animation:acdSkel 1.25s ease-in-out infinite}
+@keyframes acdSkel{100%{transform:translateX(100%)}}
+.dl .acd-skel-amount{width:118px;height:26px;border-radius:10px;margin-left:auto}
+.dl .acd-skel-line{width:min(100%,270px);height:13px}
+.dl .acd-skel-line.w60{width:min(100%,190px);height:19px}
+.dl .acd-skel-line.w40{width:min(100%,124px)}
+.dl .acd-skel-btn{width:100%;height:38px;border-radius:999px;margin-top:auto}
+/* ในการ์ดพื้นขาว (ออเดอร์ล่าสุด) พื้นโครงกระดูกต้องเข้มกว่าถึงจะเห็น */
+.dl .acd-order-skel{display:flex;flex-direction:column;gap:11px;flex:1;padding-top:2px}
+.dl .acd-order-skel .acd-skel{background:var(--sky-100)}
+.dl .acd-order-skel .acd-skel::after{background:linear-gradient(100deg,transparent 20%,rgba(255,255,255,.85) 50%,transparent 80%)}
+@media(prefers-reduced-motion:reduce){.dl .acd-skel::after{animation:none}}
+
 /* --- Toast + Modal --- */
 .dl .acd-toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,20px);background:linear-gradient(180deg,#1E4A85,var(--navy));color:#fff;
   font-family:var(--display);font-size:.86rem;padding:12px 22px;border-radius:999px;max-width:calc(100vw - 32px);text-align:center;
