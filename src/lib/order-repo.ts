@@ -36,6 +36,42 @@ export async function placeOrder(
   }
 }
 
+/**
+ * ย่อสลิปที่ถ่ายจากกล้องมือถือก่อนส่ง (ด้านยาวสุด 2000px · JPEG)
+ *
+ * ⚠️ เหตุผล: เส้น /api/orders/slip วิ่งผ่าน Netlify Function ซึ่งรับ body ได้ ~6MB แบบ base64
+ *    (= ไฟล์จริงราว 4.5MB) รูปถ่ายสลิปจากมือถือทะลุเพดานนี้ได้ง่าย แล้ว Netlify จะตอบเป็นหน้า error
+ *    ที่ไม่ใช่ JSON → หน้าเว็บขึ้นแค่ "ไม่สำเร็จ" โดยไม่บอกสาเหตุ
+ *    ย่อที่ 2000px ยังอ่าน QR/ตัวเลขในสลิปได้ครบ (SlipOK ตรวจผ่าน) · สลิปไฟล์เล็กอยู่แล้วส่งต้นฉบับเหมือนเดิม
+ */
+const SLIP_SHRINK_OVER = 2.5 * 1024 * 1024;
+
+async function slipForUpload(slip: File): Promise<File> {
+  if (slip.size <= SLIP_SHRINK_OVER || !slip.type.startsWith("image/")) return slip;
+  try {
+    const url = URL.createObjectURL(slip);
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = () => reject(new Error("อ่านรูปไม่ได้"));
+      im.src = url;
+    });
+    URL.revokeObjectURL(url);
+    const scale = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.naturalWidth * scale);
+    c.height = Math.round(img.naturalHeight * scale);
+    const ctx = c.getContext("2d");
+    if (!ctx) return slip;
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    const blob = await new Promise<Blob | null>((r) => c.toBlob(r, "image/jpeg", 0.9));
+    if (!blob || blob.size >= slip.size) return slip;
+    return new File([blob], slip.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch {
+    return slip; // ย่อไม่ได้ก็ส่งต้นฉบับไปตามเดิม
+  }
+}
+
 /** ลูกค้าแจ้งโอน → อัปโหลดสลิป + เปลี่ยนสถานะออเดอร์เป็น "รอตรวจสอบ" (ยืนยันด้วย key ลับ) */
 export async function reportPayment(
   orderId: string,
@@ -46,10 +82,12 @@ export async function reportPayment(
     const fd = new FormData();
     fd.append("orderId", orderId);
     if (key) fd.append("key", key);
-    fd.append("file", slip);
+    fd.append("file", await slipForUpload(slip));
     const res = await fetch("/api/orders/slip", { method: "POST", body: fd });
-    const data = await res.json().catch(() => ({}));
-    return res.ok ? { ok: true } : { ok: false, error: data.error ?? "แจ้งโอนไม่สำเร็จ" };
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    if (res.ok) return { ok: true };
+    // Netlify ตัดตั้งแต่ยังไม่ถึงโค้ดเรา → ไม่มี JSON ให้อ่าน บอกรหัสสถานะไว้จะได้ไล่เหตุถูก
+    return { ok: false, error: data?.error ?? `แจ้งโอนไม่สำเร็จ (รหัส ${res.status}) — ลองใหม่ หรือส่งสลิปทางไลน์ร้าน` };
   } catch {
     return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
   }

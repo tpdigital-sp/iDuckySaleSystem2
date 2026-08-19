@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatPrice } from "@/lib/products";
 import type { OrderItem } from "@/lib/admin-data";
+import { uploadArtworkFile } from "@/lib/artwork-upload";
 
 export interface ItemAdderProps {
   /** เพิ่มรายการเข้าออเดอร์/ใบเสนอราคา */
@@ -152,15 +153,14 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
     setErr("");
     setArtBusy(true);
     for (const f of Array.from(files).slice(0, 5 - art.length)) {
-      const fd = new FormData();
-      fd.append("file", f);
-      const res = await fetch("/api/orders/artwork", { method: "POST", body: fd });
-      const j = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
-      if (!res.ok || !j?.url) {
-        setErr(j?.error ?? "อัปโหลดภาพไม่สำเร็จ");
+      try {
+        // ยิงตรงเข้า Supabase — รูปจากมือถือใหญ่เกินเพดาน body ของ Netlify ประจำ
+        const url = await uploadArtworkFile(f);
+        setArt((cur) => [...cur, url]);
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "อัปโหลดภาพไม่สำเร็จ");
         break;
       }
-      setArt((cur) => [...cur, j.url!]);
     }
     setArtBusy(false);
   }

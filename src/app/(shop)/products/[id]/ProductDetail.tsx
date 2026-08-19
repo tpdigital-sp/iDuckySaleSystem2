@@ -94,6 +94,7 @@ import { fetchProduct } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
 import ProductCard from "@/components/ProductCard";
 import ImageLightbox from "@/components/ImageLightbox";
+import { uploadArtworkFile, checkArtworkFile } from "@/lib/artwork-upload";
 
 /** จำโหมดสั่งของของพนักงาน (ลูกค้า/แอดมิน) ไว้ในเครื่อง — ค่าเริ่มต้นคือโหมดลูกค้าเสมอ */
 const ADMIN_MODE_KEY = "iducky:product-order-mode";
@@ -795,14 +796,10 @@ export default function ProductDetail({
     // เนื้อไฟล์ที่มีอยู่แล้ว (รูปเก่าก่อนมีระบบ hash จะไม่มีค่า — ข้ามการเทียบ)
     const seen = new Set(artFiles.map((x) => x.hash).filter(Boolean) as string[]);
     for (const f of Array.from(files).slice(0, 5 - artFiles.length)) {
-      // ① ชนิดไฟล์
-      if (!/^image\/(jpeg|png|webp)$/i.test(f.type)) {
-        skipped.push(`“${f.name}” ไม่ใช่ไฟล์รูป JPG/PNG`);
-        continue;
-      }
-      // ② ขนาดไฟล์
-      if (f.size > 15 * 1024 * 1024) {
-        skipped.push(`“${f.name}” ใหญ่เกิน 15MB`);
+      // ① ชนิดไฟล์ + ② ขนาด (ไฟล์ HEIC จาก iPhone จะบอกวิธีแก้ให้ด้วย)
+      const bad = checkArtworkFile(f);
+      if (bad) {
+        skipped.push(bad);
         continue;
       }
       // ③ เปิดอ่านได้จริง
@@ -836,23 +833,17 @@ export default function ProductDetail({
         continue;
       }
       try {
-        const fd = new FormData();
-        fd.append("file", f);
-        const res = await fetch("/api/orders/artwork", { method: "POST", body: fd });
-        const j = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
-        if (!res.ok || !j?.url) {
-          setArtErr(j?.error ?? "อัปโหลดไม่สำเร็จ");
-          break;
-        }
+        const url = await uploadArtworkFile(f);
         if (hash) seen.add(hash);
         // กันซ้ำอีกชั้นตอนบันทึกจริง — เผื่อวางรูปเดิมรัว ๆ ระหว่างไฟล์แรกยังอัปโหลดไม่เสร็จ
         setArtFiles((cur) =>
           hash && cur.some((x) => x.hash === hash)
             ? cur
-            : [...cur, { url: j.url!, name: f.name, ...dim, ...(hash ? { hash } : {}) }]
+            : [...cur, { url, name: f.name, ...dim, ...(hash ? { hash } : {}) }]
         );
-      } catch {
-        setArtErr("อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง");
+      } catch (e) {
+        // ข้อความจริงจากตัวอัปโหลด (ไฟล์ใหญ่เกิน / เน็ตหลุด / รหัสสถานะ) — ไม่ใช่ "ไม่สำเร็จ" ลอย ๆ
+        setArtErr(e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง");
         break;
       }
     }
@@ -1038,12 +1029,7 @@ export default function ProductDetail({
 
   /** อัปโหลดไฟล์เดียวแล้วคืน url (ใช้กับภาพที่ประกอบจากจอวางลาย) */
   async function uploadOne(f: File): Promise<string> {
-    const fd = new FormData();
-    fd.append("file", f);
-    const res = await fetch("/api/orders/artwork", { method: "POST", body: fd });
-    const j = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
-    if (!res.ok || !j?.url) throw new Error(j?.error ?? "อัปโหลดไม่สำเร็จ");
-    return j.url;
+    return uploadArtworkFile(f);
   }
 
   /**

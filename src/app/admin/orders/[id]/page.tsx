@@ -52,6 +52,7 @@ import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-se
 import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { specEntries, specValueLines } from "@/components/SpecLines";
+import { uploadArtworkFile } from "@/lib/artwork-upload";
 
 /** ขั้นถัดไปที่ "ปกติจะกด" ของแต่ละสถานะ — ทำเป็นปุ่มเดียวจบ ไม่ต้องเปิดลิสต์ยาว */
 const NEXT_STATUS: Partial<Record<OrderStatus, { to: OrderStatus; label: string }>> = {
@@ -1215,15 +1216,13 @@ export default function AdminOrderDetailPage() {
     setArtUpIdx(itemIndex);
     const urls: string[] = [];
     for (const f of files.slice(0, 8)) {
-      const fd = new FormData();
-      fd.append("file", f);
-      const res = await fetch("/api/orders/artwork", { method: "POST", body: fd });
-      const j = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
-      if (!res.ok || !j?.url) {
-        setErr(j?.error ?? "อัปโหลดภาพลายไม่สำเร็จ");
+      try {
+        // ยิงตรงเข้า Supabase — รูปจากมือถือใหญ่เกินเพดาน body ของ Netlify ประจำ
+        urls.push(await uploadArtworkFile(f));
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "อัปโหลดภาพลายไม่สำเร็จ");
         break;
       }
-      urls.push(j.url);
     }
     setArtUpIdx(null);
     if (!urls.length) return;
