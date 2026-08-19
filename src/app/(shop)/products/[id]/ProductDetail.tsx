@@ -62,6 +62,7 @@ import {
   joinMultiPicks,
   type MultiPick,
   type Product,
+  type ProductImage,
   type ProductOption,
   type ProductTab,
 } from "@/lib/products";
@@ -254,18 +255,34 @@ export default function ProductDetail({
    * รูปทั้งหมดที่เลื่อนดูใน lightbox ได้ (เรียงตามแกลเลอรี เฉพาะช่องที่มีไฟล์รูปจริง)
    * รูปประกอบในเนื้อหา (section) ไม่อยู่ในลิสต์นี้ — เปิดดูเดี่ยว ๆ ไม่มีลูกศร
    */
+  /**
+   * รูปในแกลเลอรี = รูปของสินค้า + รูปประจำเรทที่แอดมินตั้งไว้แต่ลืมใส่ในแกลเลอรี
+   *
+   * ถ้าไม่เติมให้ กดเลือกเรทนั้นแล้ว "ภาพไม่เปลี่ยน" เพราะระบบหาภาพในแกลเลอรีไม่เจอ
+   * (เจอกับสแตนดี้แบบที่ 4 มาแล้ว — รูปเรทมี แต่ไม่ได้อยู่ในแกลเลอรี เลยเงียบไปเฉย ๆ)
+   */
+  const galleryImages = useMemo(() => {
+    const list = [...product.images];
+    const srcAt = (im: ProductImage, i: number) => im.src ?? (i === 0 ? product.imageSrc : undefined);
+    for (const r of product.priceRates ?? []) {
+      const src = r.imageSrc?.trim();
+      if (src && !list.some((im, i) => srcAt(im, i) === src))
+        list.push({ emoji: product.emoji, gradient: product.gradient, label: r.label, src });
+    }
+    return list;
+  }, [product]);
   const zoomList = useMemo(() => {
-    const srcs = product.images.map((img, i) => img.src ?? (i === 0 ? product.imageSrc : undefined));
+    const srcs = galleryImages.map((img, i) => img.src ?? (i === 0 ? product.imageSrc : undefined));
     if (!srcs.length && product.imageSrc) srcs.push(product.imageSrc);
     return srcs.filter((s): s is string => !!s);
-  }, [product]);
+  }, [galleryImages, product.imageSrc]);
   /**
    * 🖼 ตัวเลือก/เรทที่มีภาพประจำตัว — กดเลือกแล้วสลับแกลเลอรีไปที่ภาพนั้น
-   * (เฉพาะภาพที่อยู่ในแกลเลอรีสินค้า — ไม่อยู่ก็แค่ไม่สลับ ภาพย่อบนปุ่มยังโชว์ตามปกติ)
+   * (ภาพที่ไม่มีในแกลเลอรีเลยก็แค่ไม่สลับ ภาพย่อบนปุ่มยังโชว์ตามปกติ)
    */
   const jumpToImage = (src?: string) => {
     if (!src) return;
-    const i = product.images.findIndex(
+    const i = galleryImages.findIndex(
       (im, idx) => (im.src ?? (idx === 0 ? product.imageSrc : undefined)) === src
     );
     if (i >= 0) setImageIndex(i);
@@ -1808,8 +1825,8 @@ export default function ProductDetail({
           {/* รูปสินค้า — ติดหนึบตอนเลื่อนอ่านตัวเลือกยาว ๆ (จอใหญ่)
               สินค้าที่ยังไม่ใส่รูปเลย = ใช้อีโมจิ+พื้นสีของสินค้าแทน (กันหน้าพังตอนแอดมินเพิ่งสร้างสินค้า) */}
           {(() => {
-            const gallery = product.images.length
-              ? product.images
+            const gallery = galleryImages.length
+              ? galleryImages
               : [{ emoji: product.emoji, gradient: product.gradient, label: "" }];
             const at = Math.min(imageIndex, gallery.length - 1);
             const shown = gallery[at];
