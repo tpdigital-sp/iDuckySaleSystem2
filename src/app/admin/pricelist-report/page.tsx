@@ -205,6 +205,15 @@ const pickKey = (q: string) => {
   }
 };
 
+/** ลิงก์นี้ชี้ "สินค้าในระบบ" ไหม (หน้าร้าน /products/… หรือหลังบ้าน /admin/products/…) */
+const isProductLink = (url: string): boolean => {
+  try {
+    return /\/(admin\/)?products\//i.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+};
+
 /** ลิงก์หน้าแก้ไขสินค้า — ใช้ slug ถ้ามี (URL อ่านรู้เรื่องกว่า) */
 const editPath = (p: { id: string; slug: string }) => `/admin/products/${encodeURIComponent(p.slug || p.id)}`;
 
@@ -415,6 +424,11 @@ export default function PricelistReportPage() {
   const [newRow, setNewRow] = useState({ name: "", category: "", url: "" });
   /** ติ๊กไว้ = กดบันทึกแล้วสร้างสินค้าในระบบ (ฉบับร่าง) ผูกกับบรรทัดใหม่ให้เลย */
   const [addWithProduct, setAddWithProduct] = useState(true);
+  /**
+   * ลิงก์/รหัสสินค้าที่ "มีอยู่แล้ว" ในระบบ — ใส่ไว้ = ผูกตัวนั้นกับบรรทัดใหม่ แทนการสร้างตัวใหม่
+   * รับทั้งลิงก์หน้าร้าน (/products/1-4) ลิงก์หลังบ้าน (/admin/products/1-4) รหัส และ slug
+   */
+  const [linkProduct, setLinkProduct] = useState("");
   /** บรรทัดที่กำลังแก้ชื่ออยู่ (null = ไม่ได้แก้อะไร) + ค่าที่พิมพ์ไว้ */
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editRow, setEditRow] = useState({ name: "", category: "", url: "" });
@@ -583,7 +597,12 @@ export default function PricelistReportPage() {
    * และตั้งชื่อตั้งต้นจากท้ายลิงก์ให้ ถ้ายังไม่ได้พิมพ์ชื่อไว้
    */
   const fillFromLink = useCallback(
-    (link: string) =>
+    (link: string) => {
+      // วางลิงก์สินค้าในระบบมา = คนละความหมายกับลิงก์หน้าตารางราคา → ลงช่อง "สินค้าที่มีอยู่แล้ว"
+      if (isProductLink(link)) {
+        setLinkProduct(link);
+        return;
+      }
       setNewRow((r) => {
         const hit = (data?.rows ?? []).find((x) => x.url && samePage(x.url, link));
         return {
@@ -591,52 +610,9 @@ export default function PricelistReportPage() {
           category: r.category.trim() || hit?.category || "",
           url: link,
         };
-      }),
-    [data]
-  );
-
-  /** เพิ่มบรรทัดชื่อเอง — ชื่อที่ยังไม่มีบนหน้าเว็บตารางราคา */
-  const addRow = useCallback(async () => {
-    const name = newRow.name.trim();
-    if (!name) return;
-    setCreated("");
-    // เก็บลิงก์ให้เป็นรูปแบบเดียวกับบรรทัดที่มาจากเว็บเสมอ (วาง "/griptok" มาก็เติมโฮสต์ให้)
-    // แล้วเดาหมวดจากบรรทัดอื่นที่ใช้ลิงก์หน้าเดียวกัน ถ้ายังไม่ได้ใส่หมวด
-    const link = asLink(newRow.url) || newRow.url.trim();
-    const category =
-      newRow.category.trim() ||
-      (link ? ((data?.rows ?? []).find((x) => x.url && samePage(x.url, link))?.category ?? "") : "");
-    const added = await send({ add: { name, category, url: link } }, "__add__", "เพิ่มชื่อ");
-    if (!added) return;
-    setNewRow({ name: "", category: "", url: "" });
-    setAdding(false);
-    // ติ๊ก "สร้างสินค้าในระบบให้ด้วย" ไว้ = ได้ทั้งบรรทัดในรายงานและสินค้าฉบับร่างที่ผูกกันแล้วในกดเดียว
-    if (!(mayManage && addWithProduct && added.key)) return;
-    setSaving((s) => new Set(s).add("__add__"));
-    try {
-      await createProductFor(added.key, name);
-      await load();
-      setCreated(`เพิ่ม “${name}” เข้ารายงาน และสร้างสินค้าฉบับร่างชื่อเดียวกันให้แล้ว — กดชื่อในช่อง “สินค้าในระบบ” เพื่อไปกรอกราคา/ตัวเลือก/รูป`);
-    } catch (e) {
-      setError(`เพิ่มชื่อแล้ว แต่สร้างสินค้าไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setSaving((s) => {
-        const n = new Set(s);
-        n.delete("__add__");
-        return n;
       });
-    }
-  }, [newRow, send, mayManage, addWithProduct, createProductFor, load, data]);
-
-  /** บันทึกชื่อที่แก้ — บรรทัดจากเว็บแก้ได้เฉพาะชื่อ · บรรทัดที่เพิ่มเองแก้หมวด/ลิงก์ได้ด้วย */
-  const saveEdit = useCallback(
-    async (row: Row) => {
-      const name = editRow.name.trim();
-      if (row.custom && !name) return;
-      const edit = row.custom ? { name, category: editRow.category, url: editRow.url } : { name };
-      if (await send({ key: row.key, edit }, row.key, "แก้ชื่อ")) setEditKey(null);
     },
-    [editRow, send]
+    [data]
   );
 
   /** สินค้าในระบบทุกตัว (ที่จับคู่ไว้แล้ว + ที่ยังไม่เจอบนเว็บ) ไว้ให้ช่องค้นหาตอนย้าย */
@@ -652,6 +628,79 @@ export default function PricelistReportPage() {
     }
     return [...m.values()];
   }, [data]);
+
+  /** เพิ่มบรรทัดชื่อเอง — ชื่อที่ยังไม่มีบนหน้าเว็บตารางราคา */
+  /**
+   * สินค้าในระบบที่ตรงกับลิงก์/รหัสในช่อง "สินค้าที่มีอยู่แล้ว" (undefined = ยังไม่ได้กรอก/หาไม่เจอ)
+   * รับได้ทั้งลิงก์เต็ม ลิงก์สั้น รหัสสินค้า และ slug — ตัดเอาท่อนท้ายมาเทียบเหมือนช่องย้ายสินค้า
+   */
+  const linkedProduct = useMemo(() => {
+    const t = pickKey(linkProduct);
+    if (!t) return undefined;
+    return allProducts.find((p) => p.id.toLowerCase() === t || p.slug.toLowerCase() === t);
+  }, [linkProduct, allProducts]);
+
+  const addRow = useCallback(async () => {
+    const name = newRow.name.trim();
+    if (!name) return;
+    setCreated("");
+    // เก็บลิงก์ให้เป็นรูปแบบเดียวกับบรรทัดที่มาจากเว็บเสมอ (วาง "/griptok" มาก็เติมโฮสต์ให้)
+    // แล้วเดาหมวดจากบรรทัดอื่นที่ใช้ลิงก์หน้าเดียวกัน ถ้ายังไม่ได้ใส่หมวด
+    const link = asLink(newRow.url) || newRow.url.trim();
+    const category =
+      newRow.category.trim() ||
+      (link ? ((data?.rows ?? []).find((x) => x.url && samePage(x.url, link))?.category ?? "") : "");
+    // กรอกช่อง "สินค้าที่มีอยู่แล้ว" มาแต่หาไม่เจอ = หยุดก่อน ไม่งั้นได้บรรทัดที่ไม่ได้ผูกอะไรเลย
+    if (linkProduct.trim() && !linkedProduct) {
+      setError(`ไม่พบสินค้าในระบบจาก “${linkProduct.trim()}” — ใส่ลิงก์หน้าสินค้า ลิงก์หน้าแก้ไข รหัสสินค้า หรือ slug`);
+      return;
+    }
+    const added = await send({ add: { name, category, url: link } }, "__add__", "เพิ่มชื่อ");
+    if (!added?.key) return;
+    const picked = linkedProduct;
+    setNewRow({ name: "", category: "", url: "" });
+    setLinkProduct("");
+    setAdding(false);
+    setSaving((s) => new Set(s).add("__add__"));
+    try {
+      if (picked) {
+        // ผูกสินค้าที่มีอยู่แล้วเข้ากับบรรทัดใหม่ (ไม่สร้างตัวใหม่ ถึงจะติ๊ก 🆕 ไว้ก็ตาม)
+        const r = await fetch("/api/admin/pricelist-report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ productId: picked.id, key: added.key }),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+        await load();
+        setCreated(`เพิ่ม “${name}” เข้ารายงาน และผูกกับสินค้าที่มีอยู่แล้ว “${picked.name}” ให้เรียบร้อย`);
+      } else if (mayManage && addWithProduct) {
+        // ติ๊ก "สร้างสินค้าในระบบให้ด้วย" ไว้ = ได้ทั้งบรรทัดในรายงานและสินค้าฉบับร่างที่ผูกกันแล้วในกดเดียว
+        await createProductFor(added.key, name);
+        await load();
+        setCreated(`เพิ่ม “${name}” เข้ารายงาน และสร้างสินค้าฉบับร่างชื่อเดียวกันให้แล้ว — กดชื่อในช่อง “สินค้าในระบบ” เพื่อไปกรอกราคา/ตัวเลือก/รูป`);
+      }
+    } catch (e) {
+      setError(`เพิ่มชื่อแล้ว แต่ผูก/สร้างสินค้าไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving((s) => {
+        const n = new Set(s);
+        n.delete("__add__");
+        return n;
+      });
+    }
+  }, [newRow, send, mayManage, addWithProduct, createProductFor, load, data, linkProduct, linkedProduct]);
+
+  /** บันทึกชื่อที่แก้ — บรรทัดจากเว็บแก้ได้เฉพาะชื่อ · บรรทัดที่เพิ่มเองแก้หมวด/ลิงก์ได้ด้วย */
+  const saveEdit = useCallback(
+    async (row: Row) => {
+      const name = editRow.name.trim();
+      if (row.custom && !name) return;
+      const edit = row.custom ? { name, category: editRow.category, url: editRow.url } : { name };
+      if (await send({ key: row.key, edit }, row.key, "แก้ชื่อ")) setEditKey(null);
+    },
+    [editRow, send]
+  );
 
   /** ย้ายสินค้าไปบรรทัดอื่น / เอาออก / คืนค่าอัตโนมัติ แล้วโหลดรายงานใหม่ให้ตรงกัน */
   const assignProduct = useCallback(
@@ -910,7 +959,7 @@ export default function PricelistReportPage() {
               <p className={`mt-0.5 text-xs ${faint}`}>
                 สำหรับชื่อที่ยังไม่มีบนหน้าเว็บตารางราคา — เพิ่มแล้วติ๊กทำแล้ว สั่งพี่ปุ๋ยทำราคา และจับคู่สินค้าในระบบได้เหมือนบรรทัดอื่น
                 {mayManage ? " · ติ๊ก 🆕 ไว้ = สร้างสินค้าในระบบให้พร้อมกันเลย" : ""}
-                {" · วางลิงก์ช่องไหนก็ได้ ระบบย้ายไปช่องลิงก์ + เดาหมวดให้เอง"}
+                {" · วางลิงก์ช่องไหนก็ได้ ระบบแยกให้เองว่าเป็นลิงก์หน้าตารางราคาหรือลิงก์สินค้าในระบบ"}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -955,7 +1004,22 @@ export default function PricelistReportPage() {
                 placeholder="ลิงก์หน้าตารางราคา (ถ้ามี) เช่น /griptok"
                 className="w-72 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400"
               />
-              {mayManage ? (
+              <input
+                value={linkProduct}
+                onChange={(e) => setLinkProduct(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && void addRow()}
+                placeholder="สินค้าที่มีในระบบแล้ว — วางลิงก์ / รหัส / slug"
+                title="ผูกบรรทัดใหม่กับสินค้าที่มีอยู่แล้ว แทนการสร้างตัวใหม่ — รับทั้งลิงก์หน้าร้าน (/products/1-4) ลิงก์หลังบ้าน (/admin/products/1-4) รหัสสินค้า และ slug"
+                className={`w-72 rounded-lg border bg-white px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400 ${
+                  !linkProduct.trim() ? "border-slate-200" : linkedProduct ? "border-emerald-300" : "border-rose-300"
+                }`}
+              />
+              {linkProduct.trim() ? (
+                <span className={`text-xs font-semibold ${linkedProduct ? "text-emerald-600" : "text-rose-500"}`}>
+                  {linkedProduct ? `✓ ${linkedProduct.name}` : "ไม่พบสินค้านี้ในระบบ"}
+                </span>
+              ) : null}
+              {mayManage && !linkedProduct ? (
                 <label
                   className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:border-emerald-300 hover:text-emerald-700"
                   title="สร้างสินค้าในระบบชื่อเดียวกัน (ฉบับร่าง หมวดอะคริลิค) แล้วผูกกับบรรทัดใหม่ให้เลย"
@@ -977,7 +1041,14 @@ export default function PricelistReportPage() {
               >
                 บันทึก
               </button>
-              <button type="button" className={`text-xs ${muted} hover:underline`} onClick={() => setAdding(false)}>
+              <button
+                type="button"
+                className={`text-xs ${muted} hover:underline`}
+                onClick={() => {
+                  setAdding(false);
+                  setLinkProduct("");
+                }}
+              >
                 ยกเลิก
               </button>
             </div>
