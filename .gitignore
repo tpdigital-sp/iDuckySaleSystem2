@@ -14,3 +14,6 @@ next-env.d.ts
 .netlify
 Asset*.png
 .cache/
+
+# ไฟล์ทำงานชั่วคราว (สคริปต์ดึงข้อมูล/รูปจากเว็บตารางราคา)
+.tmpwork/
