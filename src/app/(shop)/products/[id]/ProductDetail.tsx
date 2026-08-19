@@ -62,6 +62,7 @@ import {
   formatMultiPick,
   joinMultiPicks,
   type MultiPick,
+  type PriceRate,
   type Product,
   type ProductImage,
   type ProductOption,
@@ -431,6 +432,21 @@ export default function ProductDetail({
   const [rateLabel, setRateLabel] = useState("");
   // ลูกค้ากดเลือกเรทเอง = หยุดสลับอัตโนมัติ (เช่น ตั้งใจอยู่เรท 1 เพื่อคละดีเทล)
   const [rateTouched, setRateTouched] = useState(false);
+  /**
+   * เรทที่ลูกค้ากดแล้ว "ยังใช้ไม่ได้" เพราะจำนวนไม่ถึงขั้นต่ำ (null = ไม่มี)
+   * เดิมกดแล้วระบบเด้งกลับเรทเดิมเงียบ ๆ ลูกค้าเห็นเป็นปุ่มเสีย — ตอนนี้เปิดป๊อปอัปบอกเหตุผล
+   * พร้อมปุ่มปรับจำนวนให้ถึงขั้นต่ำในคลิกเดียว
+   */
+  const [rateLock, setRateLock] = useState<PriceRate | null>(null);
+  // กด Esc ปิดป๊อปอัป "เรทนี้ยังใช้ไม่ได้"
+  useEffect(() => {
+    if (!rateLock) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setRateLock(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [rateLock]);
   const rate = rates.length ? (rates.find((r) => r.label === rateLabel) ?? rates[0]) : undefined;
 
   // ปรับตามกฎเงื่อนไขเสมอ เช่น กระดาษที่เคลือบไม่ได้ → เคลือบถูกบังคับเป็น "ไม่เคลือบ"
@@ -1799,11 +1815,19 @@ export default function ProductDetail({
         <div className="grid gap-1.5">
           {rates.map((r) => {
             const on = r.label === rate.label;
+            // จำนวนที่สั่งอยู่ยังไม่ถึงขั้นต่ำของเรทนี้ = กดเลือกไม่ได้ (กดแล้วขึ้นป๊อปอัปบอกเหตุผลแทน)
+            const need = r.minQty ?? 1;
+            const locked = need > qty;
             return (
               <button
                 key={r.id}
                 type="button"
+                aria-disabled={locked}
                 onClick={() => {
+                  if (locked) {
+                    setRateLock(r);
+                    return;
+                  }
                   setRateTouched(true);
                   setRateLabel(r.label);
                   setAutoRateNote("");
@@ -1812,7 +1836,9 @@ export default function ProductDetail({
                 className={`rounded-xl px-3 py-2 text-left text-[13px] transition ${
                   on
                     ? "bg-amber-50 font-bold text-amber-900 ring-2 ring-amber-400"
-                    : "bg-white text-stone-600 ring-1 ring-stone-200 hover:ring-amber-300"
+                    : locked
+                      ? "bg-stone-50 text-stone-400 ring-1 ring-dashed ring-stone-300 hover:ring-stone-400"
+                      : "bg-white text-stone-600 ring-1 ring-stone-200 hover:ring-amber-300"
                 }`}
               >
                 <span className="flex items-center gap-2">
@@ -1822,7 +1848,7 @@ export default function ProductDetail({
                     <img
                       src={r.imageSrc}
                       alt={r.label}
-                      className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-stone-200"
+                      className={`h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-stone-200 ${locked ? "opacity-50 grayscale" : ""}`}
                       loading="lazy"
                     />
                   )}
@@ -1832,13 +1858,19 @@ export default function ProductDetail({
                         {on && <span className="h-2 w-2 rounded-full bg-amber-500" />}
                       </span>
                       {r.label}
+                      {locked && (
+                        <span className="rounded-full bg-stone-200/70 px-1.5 py-px text-[10px] font-bold text-stone-500">
+                          🔒 ต้องสั่ง {need.toLocaleString("th-TH")}+
+                        </span>
+                      )}
                     </span>
                     {r.desc && <span className="mt-0.5 block pl-6 text-[11px] font-normal leading-snug text-stone-500">{r.desc}</span>}
                     {(r.minQty || r.minPerDesign) && (
-                      <span className="mt-0.5 block pl-6 text-[10px] font-semibold leading-snug text-teal-700">
+                      <span className={`mt-0.5 block pl-6 text-[10px] font-semibold leading-snug ${locked ? "text-stone-400" : "text-teal-700"}`}>
                         {[
                           r.minQty ? `สั่งรวม ${r.minQty.toLocaleString("th-TH")} ${r.pricing.unit}ขึ้นไป` : "",
                           r.minPerDesign ? `คละลายขั้นต่ำลายละ ${r.minPerDesign.toLocaleString("th-TH")} ${r.pricing.unit}` : "",
+                          locked ? `ตอนนี้ยังขาดอีก ${(need - qty).toLocaleString("th-TH")} ${r.pricing.unit}` : "",
                         ]
                           .filter(Boolean)
                           .join(" · ")}
@@ -3487,6 +3519,95 @@ export default function ProductDetail({
       </div>
       {/* กันแถบลอยบังเนื้อหาท้ายหน้า */}
       <div className="h-20 lg:hidden" aria-hidden />
+
+      {/* 🔒 เรทนี้ยังใช้ไม่ได้ — บอกเหตุผล + ปรับจำนวนให้ถึงขั้นต่ำในคลิกเดียว */}
+      {rateLock && (() => {
+        const need = rateLock.minQty ?? 1;
+        const unit = rateLock.pricing.unit;
+        const short = Math.max(0, need - qty);
+        // ราคาต่อหน่วย "ถ้าสั่งครบขั้นต่ำ" ของเรทที่กด เทียบกับเรทที่ใช้อยู่ตอนนี้ (ที่จำนวนเดียวกัน)
+        const atNeed = unitPriceFor(product, { ...effective, [RATE_LABEL]: rateLock.label }, need);
+        const curAtNeed = rate ? unitPriceFor(product, { ...effective, [RATE_LABEL]: rate.label }, need) : 0;
+        const save = atNeed > 0 && curAtNeed > atNeed ? curAtNeed - atNeed : 0;
+        return (
+          <div
+            className="fixed inset-0 z-[90] flex items-end justify-center bg-stone-900/50 p-4 backdrop-blur-sm sm:items-center"
+            onClick={() => setRateLock(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${rateLock.label} ยังใช้ไม่ได้`}
+          >
+            <div
+              className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl ring-1 ring-stone-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-50 text-xl ring-1 ring-amber-200">
+                  🔒
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-[15px] font-extrabold leading-snug text-stone-800">
+                    “{rateLock.label}” ยังใช้ไม่ได้ตอนนี้
+                  </h3>
+                  <p className="mt-1 text-[13px] leading-relaxed text-stone-600">
+                    เรทนี้ต้องสั่งรวมอย่างน้อย{" "}
+                    <strong className="text-stone-800">
+                      {need.toLocaleString("th-TH")} {unit}
+                    </strong>{" "}
+                    — ตอนนี้คุณสั่ง {qty.toLocaleString("th-TH")} {unit}
+                    {short > 0 && (
+                      <>
+                        {" "}ยังขาดอีก{" "}
+                        <strong className="text-amber-700">
+                          {short.toLocaleString("th-TH")} {unit}
+                        </strong>
+                      </>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {rateLock.desc && (
+                <p className="mt-3 rounded-2xl bg-stone-50 px-3 py-2 text-[12px] leading-relaxed text-stone-600 ring-1 ring-stone-100">
+                  {rateLock.desc}
+                </p>
+              )}
+
+              {save > 0 && (
+                <p className="mt-2 rounded-2xl bg-teal-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-teal-800 ring-1 ring-teal-100">
+                  ✨ สั่งครบ {need.toLocaleString("th-TH")} {unit} จะได้ {formatPrice(atNeed)}/{unit} — ถูกกว่าเรทที่ใช้อยู่{" "}
+                  {formatPrice(save)}/{unit}
+                </p>
+              )}
+
+              <div className="mt-4 grid gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQty(need);
+                    setQtyText(String(need));
+                    setRateTouched(true);
+                    setRateLabel(rateLock.label);
+                    setAutoRateNote("");
+                    jumpToImage(rateLock.imageSrc);
+                    setRateLock(null);
+                  }}
+                  className="rounded-2xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600"
+                >
+                  ปรับเป็น {need.toLocaleString("th-TH")} {unit} แล้วใช้เรทนี้
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRateLock(null)}
+                  className="rounded-2xl px-4 py-2 text-sm font-bold text-stone-500 transition hover:bg-stone-100 hover:text-stone-700"
+                >
+                  ไว้ก่อน ใช้เรทเดิม
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 🔍 ดูรูปขนาดใหญ่ (กดพื้นหลัง/ปุ่มปิด/Esc เพื่อออก · ลูกศรซ้ายขวาเลื่อนรูป) */}
       {zoomSrc && (() => {
