@@ -60,7 +60,8 @@ export interface CustomRow {
 
 /** ขึ้นต้นแบบนี้ = บรรทัดที่เพิ่มเอง (รหัสของชื่อบนเว็บเป็น "หมวด|ชื่อ|ลำดับ" จึงไม่ชนกัน) */
 const CUSTOM_PREFIX = "__custom__|";
-export const isCustomKey = (key: string) => key.startsWith(CUSTOM_PREFIX);
+// ไม่ export — ไฟล์ route.ts ของ Next ให้ export ได้เฉพาะชื่อที่กำหนด (GET/POST/runtime/...) ไม่งั้น build ล้ม
+const isCustomKey = (key: string) => key.startsWith(CUSTOM_PREFIX);
 
 /** แถวเก็บสถานะของรายงาน (เช็กลิสต์ + การจับคู่เอง) — แถวพิเศษในตาราง products แบบเดียวกับตั้งค่าร้าน */
 const STATE_ID = "__pricelist_done__";
