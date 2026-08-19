@@ -282,7 +282,6 @@ const FAMILIES = [
     ["PPR-HOLO", "กระดาษ Holo Rainbow", "holo"],
     ["PPR-STARDREAM", "กระดาษ Stardream มุกขาว", "star ?dream"],
     ["PPR-EXTRAWHITE", "กระดาษ Extra White", "extra ?whi?[lt]e"],
-    ["PPR-EGGSHELL", "กระดาษ Eggshell", "eggshell"],
     ["PPR-MOORIM300", "กระดาษ Moorim 300g", "moorim ?300"],
     ["PPR-MOORIM400", "กระดาษ Moorim 400g", "moorim ?400"],
     ["PPR-CANVAS", "กระดาษ Canvas", "^กระดาษcanvas|^canvas"],

@@ -1183,7 +1183,6 @@ export function getCategory(id: CategoryId): Category {
 const PAPER_TYPES_POSTCARD: ProductOptionChoice[] = [
   { name: "กระดาษอาร์ตเกาหลี 300 แกรม" },
   { name: "Canvas Paper 260 แกรม" },
-  { name: "Eggshell Paper 280 แกรม" },
   { name: "100 Pound Paper 300 แกรม" },
   { name: "E-Photo Paper 290 แกรม" },
   { name: "Stardream Crystal Paper 285 แกรม" },
@@ -1196,7 +1195,6 @@ const PAPER_TYPES_POSTER: ProductOptionChoice[] = [
   { name: "กระดาษอาร์ตเกาหลี 300 แกรม" },
   { name: "กระดาษอาร์ตเกาหลี 400 แกรม" },
   { name: "Canvas Paper 260 แกรม" },
-  { name: "Eggshell Paper 280 แกรม" },
   { name: "100 Pound Paper 300 แกรม" },
   { name: "E-Photo Paper 290 แกรม" },
   { name: "Stardream Crystal Paper 285 แกรม" },
@@ -1215,7 +1213,6 @@ const COATINGS: ProductOptionChoice[] = [
 // (ยืนยันจริงกับ Canvas จากเว็บ; ที่เหลือเป็นการอนุมานตามชนิดกระดาษ — ปรับได้จากหลังบ้าน)
 const NON_COATABLE_PAPERS = [
   "Canvas Paper 260 แกรม",
-  "Eggshell Paper 280 แกรม",
   "Stardream Crystal Paper 285 แกรม",
   "Stardream Paper 285 แกรม",
   "Extra Paper 260 แกรม",
