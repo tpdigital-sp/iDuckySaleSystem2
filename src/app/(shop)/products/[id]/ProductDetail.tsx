@@ -1780,6 +1780,79 @@ export default function ProductDetail({
               );
   }
 
+  /**
+   * แผงเลือกเรทราคา — แยกออกมาเป็นตัวแปรเพราะวางได้ 2 ที่:
+   * เหนือกลุ่มตัวเลือก (ค่าเริ่มต้น) หรือใต้กลุ่มตัวเลือกเมื่อสินค้าตั้ง rateAfterOptions
+   * (สินค้าที่ต้องรู้ "ของอะไร" ก่อนถึงจะเลือก "ขายแบบไหน" ได้ เช่น สติ๊กเกอร์ UV)
+   */
+  const ratePickerUI =
+    rates.length > 1 && rate ? (
+      <div className={`mt-5 ${useCustom ? "pointer-events-none select-none opacity-40" : ""}`} aria-disabled={useCustom}>
+        <span className="mb-1.5 block text-[13px] font-bold text-stone-700">
+          {RATE_LABEL}: <span className="font-semibold text-amber-600">{rate.label}</span>
+        </span>
+        <div className="grid gap-1.5">
+          {rates.map((r) => {
+            const on = r.label === rate.label;
+            return (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => {
+                  setRateTouched(true);
+                  setRateLabel(r.label);
+                  setAutoRateNote("");
+                  jumpToImage(r.imageSrc);
+                }}
+                className={`rounded-xl px-3 py-2 text-left text-[13px] transition ${
+                  on
+                    ? "bg-amber-50 font-bold text-amber-900 ring-2 ring-amber-400"
+                    : "bg-white text-stone-600 ring-1 ring-stone-200 hover:ring-amber-300"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  {/* ภาพประจำเรท (ถ้ามี) — ให้ลูกค้าเห็นหน้าตาแบบนั้น ๆ ตั้งแต่ตอนเลือก */}
+                  {r.imageSrc && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={r.imageSrc}
+                      alt={r.label}
+                      className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-stone-200"
+                      loading="lazy"
+                    />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${on ? "border-amber-500" : "border-stone-300"}`}>
+                        {on && <span className="h-2 w-2 rounded-full bg-amber-500" />}
+                      </span>
+                      {r.label}
+                    </span>
+                    {r.desc && <span className="mt-0.5 block pl-6 text-[11px] font-normal leading-snug text-stone-500">{r.desc}</span>}
+                    {(r.minQty || r.minPerDesign) && (
+                      <span className="mt-0.5 block pl-6 text-[10px] font-semibold leading-snug text-teal-700">
+                        {[
+                          r.minQty ? `สั่งรวม ${r.minQty.toLocaleString("th-TH")} ${r.pricing.unit}ขึ้นไป` : "",
+                          r.minPerDesign ? `คละลายขั้นต่ำลายละ ${r.minPerDesign.toLocaleString("th-TH")} ${r.pricing.unit}` : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    )}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {autoRateNote && (
+          <p className="mt-2 rounded-xl bg-teal-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-teal-800 ring-1 ring-teal-100">
+            ✨ {autoRateNote}
+          </p>
+        )}
+      </div>
+    ) : null;
+
   /** กลุ่มงานสั่งทำที่เข้าเงื่อนไข "แสดงเมื่อ" ตอนนี้ — ว่าง = ไม่ต้องกางกล่อง 📐 ให้รก */
   const mtoVisible = product.options.filter((o) => isMadeToOrderOption(o) && optionVisible(o, effective));
   /** ลูกค้าติ๊ก "สั่งทำ" ไว้ไหม — ยังไม่ติ๊ก = ราคายังคิดตามตารางปกติ ไม่ต้องกรอกอะไร */
@@ -2277,73 +2350,8 @@ export default function ProductDetail({
             )}
           </div>
 
-          {/* เลือกเรทราคา (สินค้าที่มีหลายเรท เช่น คละดีเทล / ไม่คละดีเทล) — ใช้ขนาดกำหนดเองอยู่ = ปิดชั่วคราว */}
-          {rates.length > 1 && rate && (
-            <div className={`mt-5 ${useCustom ? "pointer-events-none select-none opacity-40" : ""}`} aria-disabled={useCustom}>
-              <span className="mb-1.5 block text-[13px] font-bold text-stone-700">
-                {RATE_LABEL}: <span className="font-semibold text-amber-600">{rate.label}</span>
-              </span>
-              <div className="grid gap-1.5">
-                {rates.map((r) => {
-                  const on = r.label === rate.label;
-                  return (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => {
-                        setRateTouched(true);
-                        setRateLabel(r.label);
-                        setAutoRateNote("");
-                        jumpToImage(r.imageSrc);
-                      }}
-                      className={`rounded-xl px-3 py-2 text-left text-[13px] transition ${
-                        on
-                          ? "bg-amber-50 font-bold text-amber-900 ring-2 ring-amber-400"
-                          : "bg-white text-stone-600 ring-1 ring-stone-200 hover:ring-amber-300"
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        {/* ภาพประจำเรท (ถ้ามี) — ให้ลูกค้าเห็นหน้าตาแบบนั้น ๆ ตั้งแต่ตอนเลือก */}
-                        {r.imageSrc && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={r.imageSrc}
-                            alt={r.label}
-                            className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-stone-200"
-                            loading="lazy"
-                          />
-                        )}
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-2">
-                            <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${on ? "border-amber-500" : "border-stone-300"}`}>
-                              {on && <span className="h-2 w-2 rounded-full bg-amber-500" />}
-                            </span>
-                            {r.label}
-                          </span>
-                          {r.desc && <span className="mt-0.5 block pl-6 text-[11px] font-normal leading-snug text-stone-500">{r.desc}</span>}
-                          {(r.minQty || r.minPerDesign) && (
-                            <span className="mt-0.5 block pl-6 text-[10px] font-semibold leading-snug text-teal-700">
-                              {[
-                                r.minQty ? `สั่งรวม ${r.minQty.toLocaleString("th-TH")} ${r.pricing.unit}ขึ้นไป` : "",
-                                r.minPerDesign ? `คละลายขั้นต่ำลายละ ${r.minPerDesign.toLocaleString("th-TH")} ${r.pricing.unit}` : "",
-                              ]
-                                .filter(Boolean)
-                                .join(" · ")}
-                            </span>
-                          )}
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              {autoRateNote && (
-                <p className="mt-2 rounded-xl bg-teal-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-teal-800 ring-1 ring-teal-100">
-                  ✨ {autoRateNote}
-                </p>
-              )}
-            </div>
-          )}
+          {/* เลือกเรทราคา — ค่าเริ่มต้นอยู่เหนือกลุ่มตัวเลือก (สินค้าที่ตั้ง rateAfterOptions จะไปโผล่ใต้แทน) */}
+          {!product.rateAfterOptions && ratePickerUI}
 
           {/* ตัวเลือกสินค้า (กรอง/ล็อกตามกฎเงื่อนไข)
               ใช้ขนาดกำหนดเองอยู่ = ปิดเฉพาะกลุ่มที่แอดมินไม่ได้ตั้งให้ "ยังเลือกได้" (custom.keepOptions) */}
@@ -2362,6 +2370,9 @@ export default function ProductDetail({
               .filter((opt) => !isMadeToOrderOption(opt) && optionVisible(opt, effective))
               .map((opt) => optionGroupUI(opt))}
           </div>
+
+          {/* สินค้าที่ให้เลือกของก่อน แล้วค่อยเลือกวิธีขาย — แผงเรทมาต่อท้ายกลุ่มตัวเลือก */}
+          {product.rateAfterOptions && ratePickerUI}
 
           {/*
             📐 กล่องงานสั่งทำ — รวมทุกอย่างที่ลูกค้าต้อง "ระบุเอง" ไว้ที่เดียว
