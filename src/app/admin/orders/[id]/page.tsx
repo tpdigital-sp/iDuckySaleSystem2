@@ -396,9 +396,12 @@ export default function AdminOrderDetailPage() {
   const [err, setErr] = useState("");
   /** กล่องยืนยันของระบบเอง — แทน confirm() ของเบราว์เซอร์ (ใช้ตัวเดียวกับหน้าอื่นในหลังบ้าน) */
   const { confirm: askConfirm, dialog: confirmDialog } = useConfirm();
-  // แอดมินแก้ "รายละเอียดงาน" ของรายการที่ลูกค้าสั่งได้ (แก้ได้เฉพาะรายละเอียด — ชื่อ/จำนวน/ราคาไม่แตะ)
+  // แอดมินแก้ "รายละเอียดงาน" ของรายการที่ลูกค้าสั่งได้ (แก้ได้เฉพาะรายละเอียด — ชื่อ/จำนวนไม่แตะ)
   const [editSel, setEditSel] = useState<number | null>(null);
   const [selDraft, setSelDraft] = useState("");
+  // 💬 ตีราคา — งานสั่งทำ (กำหนดขนาดเอง/ช่องกรอก) เข้ามาที่ราคา ฿0 แอดมินใส่ราคาต่อหน่วยที่นี่
+  const [editPrice, setEditPrice] = useState<number | null>(null);
+  const [priceDraft, setPriceDraft] = useState("");
   function saveSelections(itemIndex: number, text: string) {
     if (!order) return;
     const before = order.items[itemIndex]?.selections ?? "";
@@ -409,6 +412,40 @@ export default function AdminOrderDetailPage() {
     const next = withLog({ ...order, items }, actor, "แก้รายละเอียดรายการ", `${order.items[itemIndex]?.name}`);
     setOrder(next);
     if (!demo) void saveOrderAdmin(next);
+  }
+
+  /**
+   * รายการนี้แก้ราคาต่อหน่วยได้ไหม
+   *   • ยังไม่ตีราคา (฿0) → แก้ได้เสมอ — ใส่ราคาทีหลังไม่ทำให้ยอดขัดกับสลิปที่โอนมาแล้ว (ไปโผล่เป็น "ยอดค้างชำระ")
+   *   • ตีไปแล้วและลูกค้าโอนมาแล้ว → ล็อก กันยอดในบิลไม่ตรงกับสลิป/เรคอร์ดที่ส่ง msVerify ไปแล้ว
+   * งานเคลมตั้งใจให้ ฿0 — ไม่ต้องตีราคา
+   */
+  function mayQuote(it: OrderItem): boolean {
+    if (!mayEdit || !seesMoney || !order) return false;
+    if (order.claimOf) return false;
+    if (it.unitPrice <= 0) return true;
+    const moneyIn = (order.paidTotal ?? 0) > 0 || !!order.slipUrl || !!order.slipPath || !!order.deposit?.firstPaidAt;
+    return !moneyIn;
+  }
+
+  /** บันทึกราคาต่อหน่วยที่แอดมินตีให้ (ลง log ว่าใครตีจากเท่าไรเป็นเท่าไร) */
+  function savePrice(itemIndex: number, text: string) {
+    if (!order) return;
+    const it = order.items[itemIndex];
+    setEditPrice(null);
+    if (!it) return;
+    const raw = text.trim();
+    if (raw === "") return; // ปล่อยว่าง = ไม่แก้ (ไม่ใช่ตั้งเป็น 0)
+    const value = Math.max(0, Math.round(Number(raw) || 0));
+    if (value === it.unitPrice) return;
+    const items = order.items.map((x, i) => (i === itemIndex ? { ...x, unitPrice: value } : x));
+    const next = withLog(
+      { ...order, items },
+      actor,
+      it.unitPrice > 0 ? "แก้ราคา/หน่วย" : "ตีราคา",
+      `${it.name}: ${it.unitPrice > 0 ? `${formatPrice(it.unitPrice)} → ` : ""}${formatPrice(value)}/หน่วย ×${it.qty.toLocaleString("th-TH")} = ${formatPrice(value * it.qty)}`
+    );
+    applyOrder(next);
   }
   // ♻️ ทำงานใหม่จากออเดอร์นี้ — เคลม (ฟรี) หรือสั่งซ้ำ (คิดเงิน)
   const [redoOpen, setRedoOpen] = useState(false);
@@ -1567,6 +1604,28 @@ export default function AdminOrderDetailPage() {
         );
       })()}
 
+      {/* ── 💬 ยังมีรายการรอตีราคา — ลูกค้าเปิดหน้าแจ้งโอนไม่ได้จนกว่าจะใส่ราคาครบ (ต้องเห็นทันทีที่เปิดออเดอร์) ── */}
+      {(() => {
+        if (!seesMoney || order.claimOf) return null;
+        const waiting = order.items.filter((it) => it.unitPrice <= 0);
+        if (!waiting.length) return null;
+        return (
+          <div className="border-b border-amber-200 bg-amber-50 px-6 py-3">
+            <p className="text-sm font-bold text-amber-800">
+              💬 รอตีราคา {waiting.length} รายการ — ลูกค้ายังโอนเงินไม่ได้
+            </p>
+            <p className="mt-0.5 text-[11px] font-semibold leading-relaxed text-amber-700">
+              หน้าเช็คออเดอร์ของลูกค้าจะยัง<b>ไม่เปิดปุ่มแจ้งโอน</b> จนกว่าทุกรายการมีราคา — กดที่ป้าย{" "}
+              <b>“💬 รอตีราคา · กดใส่ราคา”</b> ในช่องราคา/หน่วยของรายการนั้น ใส่ราคา<b>ต่อ 1 หน่วย</b> แล้วกด Enter
+              {mayEdit ? " · ใส่ครบแล้วระบบแจ้งลูกค้าทางไลน์ให้เอง" : " · บัญชีนี้ไม่มีสิทธิ์แก้ ต้องให้แอดมินใส่"}
+            </p>
+            <p className="mt-1 text-[11px] text-amber-600">
+              {waiting.map((it) => `• ${it.name} ×${it.qty.toLocaleString("th-TH")}`).join("  ")}
+            </p>
+          </div>
+        );
+      })()}
+
       {/* ── งานเคลม / สั่งซ้ำ — โยงกันสองทางให้กดข้ามไปมาได้ ── */}
       {(order.claimOf || order.reorderOf || (order.redoOrders?.length ?? 0) > 0) && (
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/70 px-6 py-3">
@@ -1814,11 +1873,66 @@ export default function AdminOrderDetailPage() {
                     </div>
                     <span className="w-12 shrink-0 text-center text-sm font-semibold text-slate-700">{it.qty}</span>
                     <span className={`w-28 shrink-0 text-right text-sm font-bold text-slate-900 ${seesMoney ? "" : "hidden"}`}>
-                      {it.unitPrice > 0 ? (
-                        formatPrice(it.unitPrice)
+                      {/* ราคา/หน่วย — กดที่ตัวเลข (หรือป้าย "รอตีราคา") เพื่อตีราคา · Enter บันทึก · Esc ยกเลิก */}
+                      {editPrice === i ? (
+                        <span className="flex items-center justify-end gap-1">
+                          <span className="text-[11px] font-semibold text-slate-400">฿</span>
+                          <input
+                            autoFocus
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={priceDraft}
+                            onChange={(e) => setPriceDraft(e.target.value)}
+                            onBlur={() => savePrice(i, priceDraft)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") setEditPrice(null);
+                              if (e.key === "Enter") savePrice(i, priceDraft);
+                            }}
+                            placeholder="0"
+                            title="ราคาต่อ 1 หน่วย (ไม่ใช่ยอดรวม) — ระบบคูณจำนวนให้เอง"
+                            className="w-20 rounded-md border border-amber-300 bg-white px-1.5 py-0.5 text-right text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                          />
+                        </span>
+                      ) : it.unitPrice > 0 ? (
+                        mayQuote(it) ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPriceDraft(String(it.unitPrice));
+                              setEditPrice(i);
+                            }}
+                            title="กดเพื่อแก้ราคา/หน่วย (ลงประวัติว่าใครแก้จากเท่าไร)"
+                            className="rounded px-1 text-sm font-bold text-slate-900 transition hover:bg-amber-50 hover:text-amber-700"
+                          >
+                            {formatPrice(it.unitPrice)}
+                          </button>
+                        ) : (
+                          <span
+                            title={
+                              order.claimOf
+                                ? "งานเคลม — ไม่คิดเงิน"
+                                : "ลูกค้าโอนเงินเข้ามาแล้ว — แก้ราคาไม่ได้ กันยอดในบิลไม่ตรงกับสลิป (ถ้าต้องแก้จริง ลบรายการแล้วเพิ่มใหม่)"
+                            }
+                          >
+                            {formatPrice(it.unitPrice)}
+                          </span>
+                        )
                       ) : order.claimOf ? (
                         // งานเคลมตั้งใจให้ ฿0 อยู่แล้ว — อย่าให้ขึ้น "รอตีราคา" จนทีมงานนึกว่าต้องไปตั้งราคา
                         <span className="text-[11px] font-bold text-emerald-600">เคลม · ฟรี</span>
+                      ) : mayQuote(it) ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPriceDraft("");
+                            setEditPrice(i);
+                          }}
+                          title="กดเพื่อตีราคา — ใส่ราคาต่อ 1 หน่วย แล้วกด Enter (ลูกค้าจะเปิดหน้าแจ้งโอนได้เมื่อตีราคาครบทุกรายการ)"
+                          className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 ring-1 ring-amber-300 transition hover:bg-amber-100"
+                        >
+                          💬 รอตีราคา · กดใส่ราคา
+                        </button>
                       ) : (
                         <span className="text-[11px] font-bold text-amber-600">รอตีราคา</span>
                       )}

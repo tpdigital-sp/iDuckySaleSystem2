@@ -289,6 +289,31 @@ export async function PATCH(req: Request) {
     );
   }
 
+  // 💬 ตีราคาครบในคำขอนี้ → แจ้งลูกค้าทางไลน์ว่าเปิดหน้าแจ้งโอนได้แล้ว
+  //    (งานสั่งทำเข้ามาที่ ฿0 · หน้าเช็คออเดอร์ล็อกปุ่มแจ้งโอนไว้จนกว่าทุกรายการมีราคา)
+  //    งานเคลมตั้งใจให้ ฿0 อยู่แล้ว — ไม่ต้องแจ้ง
+  const quoteWasPending = !toSave.claimOf && existing.items.some((i) => i.unitPrice <= 0);
+  const quoteNowDone = toSave.items.length > 0 && toSave.items.every((i) => i.unitPrice > 0);
+  if (quoteWasPending && quoteNowDone) {
+    const origin = new URL(req.url).origin;
+    const total = orderTotal(toSave);
+    const bal = Math.max(0, total - (toSave.paidTotal ?? 0));
+    const quoted = existing.items
+      .map((old, i) => ({ old, now: toSave.items[i] }))
+      .filter((p) => p.old.unitPrice <= 0 && p.now && p.now.name === p.old.name)
+      .map((p) => `• ${p.now!.name} ×${p.now!.qty.toLocaleString("th-TH")} = ${(p.now!.qty * p.now!.unitPrice).toLocaleString("th-TH")} บาท`)
+      .join("\n");
+    void notifyCustomerLogged(
+      sb,
+      toSave,
+      `💬 ตีราคางานสั่งทำให้แล้วครับ — ออเดอร์ ${toSave.id}\n${quoted}\n\n💰 ยอดรวมทั้งบิล ${total.toLocaleString("th-TH")} บาท${
+        bal !== total ? `\n💳 ยอดที่ต้องโอน ${bal.toLocaleString("th-TH")} บาท` : ""
+      }\nโอนแล้วแนบสลิปที่ลิงก์นี้ได้เลยครับ\n${orderLink(origin, toSave)}`,
+      `แจ้งราคาที่ตีให้ (ยอดรวม ${total.toLocaleString("th-TH")} บาท)`,
+      "key" // เรื่องเงิน — ส่งแม้ลูกค้าเลือกรับเฉพาะเรื่องสำคัญ
+    );
+  }
+
   // มัดจำ: แอดมินยืนยันรับยอดคงเหลือครบในคำขอนี้ → แจ้งลูกค้า + ส่งเรคอร์ดงวดหลังเข้า msVerify
   if (toSave.deposit?.settledAt && !existing.deposit?.settledAt) {
     const origin = new URL(req.url).origin;
