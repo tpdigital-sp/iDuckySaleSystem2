@@ -28,8 +28,9 @@
  *   gallery-8 959b83_02d85d4c964445f1b61c785f09c4b96b~mv2.png  ระยะใกล้ เห็นเนื้อผ้า/งานพิมพ์
  *   size-chart 959b83_54faf294bccd49a9b2236d8fc6d215f7~mv2.jpg ตารางไซซ์ของเว็บ (แท็บ "Size เสื้อ")
  *             ครอปเฉพาะบล็อก UNISEX ของเสื้อไม่มียี่ห้อ (กลุ่มที่ระบุว่าพิมพ์ Sublimation ได้)
- *   size-s … size-3xl  การ์ดไซซ์รายตัว วาดขึ้นจากตัวเลขในตารางเดียวกัน (รอบอก/ความยาว/ความยาวแขน)
+ *   size-card-s … size-card-3xl  การ์ดไซซ์รายตัว วาดขึ้นจากตัวเลขในตารางเดียวกัน (รอบอก/ความยาว/ความยาวแขน)
  *             3XL ในตารางเว็บยังไม่มีตัวเลข → การ์ดเขียนว่าให้สอบถามแอดมิน
+ *             ⚠️ อัปภาพใหม่ทับ "ชื่อไฟล์เดิม" ไม่ได้ — Next/CDN แคชของเก่าไว้ ต้องตั้งชื่อไฟล์ใหม่เสมอ
  */
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -63,12 +64,12 @@ const FILES = [
   "gallery-7.jpg",
   "gallery-8.jpg",
   "size-chart.jpg",
-  "size-s.jpg",
-  "size-m.jpg",
-  "size-l.jpg",
-  "size-xl.jpg",
-  "size-2xl.jpg",
-  "size-3xl.jpg",
+  "size-card-s.jpg",
+  "size-card-m.jpg",
+  "size-card-l.jpg",
+  "size-card-xl.jpg",
+  "size-card-2xl.jpg",
+  "size-card-3xl.jpg",
 ];
 const IMG = (name: string) =>
   `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/${name}.jpg`;
@@ -167,12 +168,12 @@ const product: Partial<Product> = {
     {
       label: "ขนาด",
       choices: [
-        { name: "S", imageSrc: IMG("size-s") },
-        { name: "M", imageSrc: IMG("size-m") },
-        { name: "L", imageSrc: IMG("size-l") },
-        { name: "XL", imageSrc: IMG("size-xl") },
-        { name: "2XL", imageSrc: IMG("size-2xl") },
-        { name: "3XL", imageSrc: IMG("size-3xl") },
+        { name: "S", imageSrc: IMG("size-card-s") },
+        { name: "M", imageSrc: IMG("size-card-m") },
+        { name: "L", imageSrc: IMG("size-card-l") },
+        { name: "XL", imageSrc: IMG("size-card-xl") },
+        { name: "2XL", imageSrc: IMG("size-card-2xl") },
+        { name: "3XL", imageSrc: IMG("size-card-3xl") },
       ],
     },
   ],
