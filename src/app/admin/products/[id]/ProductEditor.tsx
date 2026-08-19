@@ -4659,7 +4659,10 @@ export default function ProductEditor({ product }: { product: Product }) {
       <section id="sec-options" className={`relative border-l-4 border-l-orange-400 mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("options")}`}>
         <SecToggle id="options" />
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-bold text-orange-800">🎛️ ตัวเลือกสินค้า ({draft.options.length} กลุ่ม)</h2>
+          {/* นับเฉพาะกลุ่มที่แสดงอยู่ในแผงนี้จริง — ของงานสั่งทำไปอยู่แผง 📐 แล้ว นับรวมมาจะงงว่าทำไมโชว์ไม่ครบ */}
+          <h2 className="text-sm font-bold text-orange-800">
+            🎛️ ตัวเลือกสินค้า ({draft.options.filter((o) => !isMadeToOrder(o)).length} กลุ่ม)
+          </h2>
           <div className="flex items-center gap-2">
             {presets.length > 0 && (
               <select
