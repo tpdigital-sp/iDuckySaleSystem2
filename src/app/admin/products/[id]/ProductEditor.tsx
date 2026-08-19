@@ -77,6 +77,8 @@ type DraftOption = {
   inOptional?: boolean;
   /** 💬 ใช้กลุ่มนี้แล้ว = งานสั่งทำ ให้แอดมินตีราคา */
   askPrice?: boolean;
+  /** กลุ่มนี้ย้ายไปแก้ที่แผง 📐 งานสั่งทำ (แทนแผง 🎛️ ตัวเลือกสินค้า) */
+  madeToOrder?: boolean;
   /** +฿ ของกลุ่มนี้มีผลเมื่อสั่งตั้งแต่กี่ชิ้นขึ้นไป (ว่าง = ทุกจำนวน) */
   extraFromQty?: string;
   /** ค่าธรรมเนียมช่วงสั่งน้อย เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น (ยกเว้นบางตัวเลือก) */
@@ -422,6 +424,7 @@ function toDraft(p: Product): Draft {
           }
         : {}),
       ...(o.askPrice ? { askPrice: true } : {}),
+      ...(o.madeToOrder ? { madeToOrder: true } : {}),
     })),
     rules: (p.rules ?? []).map((r) => ({
       whenLabel: r.when.label,
@@ -651,6 +654,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
           }
         : {}),
       ...(o.askPrice ? { askPrice: true as const } : {}),
+      ...(o.madeToOrder ? { madeToOrder: true as const } : {}),
     }))
     // กลุ่มช่องกรอกไม่มีตัวเลือกให้เลือกโดยธรรมชาติ — ขอแค่มีชื่อกลุ่มก็พอ
     .filter((o) => o.label && (o.choices.length > 0 || o.display === "input"));
@@ -1993,104 +1997,716 @@ export default function ProductEditor({ product }: { product: Product }) {
   }
 
   /**
-   * ✍️ แผงช่องกรอก (งานสั่งทำ) — อยู่ในส่วน 📐 ตัวเลือกกำหนดเอง
-   *
-   * ช่องกรอกเก็บอยู่ใน draft.options เหมือนกลุ่มตัวเลือกอื่น (ค่าที่ลูกค้ากรอกจะได้ติดไปกับ
-   * ตะกร้า/ออเดอร์/ใบงานเองโดยไม่ต้องต่อท่อใหม่) แต่ "ที่ตั้งค่า" อยู่ตรงนี้ เพราะมันคือเรื่องงานสั่งทำ
-   * — แผง 🎛️ ตัวเลือกสินค้าจึงข้ามกลุ่มชนิดนี้ไป ไม่ให้แก้ได้สองที่แล้วงงว่าอันไหนจริง
+   * การ์ดแก้ไข "กลุ่มตัวเลือก" 1 กลุ่ม — ใช้ทั้งแผง 🎛️ ตัวเลือกสินค้า และแผง 📐 งานสั่งทำ
+   * (กลุ่มเดียวกันโผล่แค่แผงเดียวเสมอ ตัดสินด้วย DraftOption.madeToOrder — ดู isMadeToOrder)
    */
-  function inputFieldsPanel() {
+  function optionGroupCard(opt: DraftOption, gi: number) {
+    return opt.presetId ? (
+              <div
+                key={gi}
+                onDragOver={(e) => {
+                  if (dragOptRef.current !== null) e.preventDefault();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragOptRef.current !== null) moveOptionGroup(dragOptRef.current, gi);
+                  dragOptRef.current = null;
+                  setDragOpt(null);
+                }}
+                className={`rounded-2xl bg-sky-50/60 p-3 ring-1 ring-sky-200 ${dragOpt === gi ? "opacity-50" : ""}`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      draggable
+                      onDragStart={() => {
+                        dragOptRef.current = gi;
+                        setDragOpt(gi);
+                      }}
+                      onDragEnd={() => {
+                        dragOptRef.current = null;
+                        setDragOpt(null);
+                      }}
+                      className="cursor-grab select-none px-1 text-sm text-slate-300 active:cursor-grabbing"
+                      title="ลากเพื่อสลับลำดับกลุ่ม"
+                      aria-hidden
+                    >
+                      ⠿
+                    </span>
+                    <MoveBtns
+                      what="กลุ่ม"
+                      onUp={() => moveOptionGroup(gi, gi - 1)}
+                      onDown={() => moveOptionGroup(gi, gi + 1)}
+                      upDisabled={gi === 0}
+                      downDisabled={gi === draft.options.length - 1}
+                    />
+                    {/* กดที่ป้าย = เปิดคลังตัวเลือกอันที่ลิงก์อยู่ (จะได้รู้ว่าลิงก์กับอะไร แก้ที่ไหน) */}
+                    <Link
+                      href={`/admin/options?id=${encodeURIComponent(opt.presetId ?? "")}`}
+                      target="_blank"
+                      title={`ลิงก์กับคลัง “${presets.find((p) => p.id === opt.presetId)?.label ?? opt.label}” (รหัส ${opt.presetId}) — กดเพื่อเปิดดู/แก้`}
+                      className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-700 transition hover:bg-sky-200"
+                    >
+                      🔗 ลิงก์คลัง ↗
+                    </Link>
+                    <span className="text-sm font-bold text-slate-800">{opt.label}</span>
+                    {/* คลังถูกปิดใช้งาน = กลุ่มนี้ไม่โผล่บนหน้าร้านแล้ว (ลิงก์ยังอยู่ เปิดกลับได้ที่หน้าคลัง) */}
+                    {presets.find((p) => p.id === opt.presetId)?.hidden && (
+                      <span
+                        className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200"
+                        title="คลังนี้ถูกปิดใช้งานที่หน้าคลังตัวเลือก — กลุ่มนี้จึงไม่แสดงบนหน้าร้าน (เปิดกลับได้ที่ /admin/options)"
+                      >
+                        ⛔ คลังปิดอยู่ · ไม่โชว์หน้าร้าน
+                      </span>
+                    )}
+                    {/* เปลี่ยนไปลิงก์คลังอื่นได้เลย ไม่ต้องลบกลุ่มแล้วแทรกใหม่ */}
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        e.target.value = "";
+                        if (id) void relinkPreset(gi, id);
+                      }}
+                      title="เปลี่ยนไปลิงก์กับคลังตัวเลือกอันอื่น"
+                      aria-label={`เปลี่ยนคลังของกลุ่ม ${opt.label}`}
+                      className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    >
+                      <option value="">🔄 เปลี่ยนคลัง…</option>
+                      {presets
+                        .filter((p) => !p.hidden || p.id === opt.presetId)
+                        .map((p) => {
+                          const usedElsewhere = draft.options.some((o, i) => i !== gi && o.presetId === p.id);
+                          return (
+                            <option key={p.id} value={p.id} disabled={usedElsewhere || p.id === opt.presetId}>
+                              {p.label} ({p.choices.length})
+                              {p.id === opt.presetId ? " · ใช้อยู่" : usedElsewhere ? " · ลิงก์แล้วในกลุ่มอื่น" : ""}
+                            </option>
+                          );
+                        })}
+                    </select>
+                    <span className="text-xs text-slate-400">
+                      {opt.choices.length} ตัวเลือก
+                      {/* บอกว่าตัวเลือกในกลุ่มนี้มีอะไรบ้าง (ตัวอย่าง 4 ตัวแรก) โดยไม่ต้องกางกลุ่ม */}
+                      {opt.choices.length > 0 && (
+                        <span className="ml-1 text-slate-300">
+                          · {opt.choices.slice(0, 4).map((c) => c.name).filter(Boolean).join(" · ")}
+                          {opt.choices.length > 4 ? " …" : ""}
+                        </span>
+                      )}
+                    </span>
+                    {!presets.some((p) => p.id === opt.presetId) && (
+                      <span className="text-xs font-semibold text-rose-500">คลังถูกลบ — ใช้สำเนาสำรอง</span>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => toggleOptFold(gi)}
+                      className="rounded-full bg-white px-2.5 py-1.5 text-xs font-bold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50"
+                      aria-expanded={!isOptFolded(gi)}
+                      title={isOptFolded(gi) ? "กางกลุ่มนี้" : "ยุบกลุ่มนี้"}
+                    >
+                      {isOptFolded(gi) ? "▸ กาง" : "▾ ยุบ"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        patch({
+                          options: draft.options.map((o, i) =>
+                            i === gi
+                              ? { label: o.label, choices: o.choices, display: o.display }
+                              : o
+                          ),
+                        })
+                      }
+                      className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+                      title="ตัดลิงก์คลัง แล้วแก้ตัวเลือกเฉพาะสินค้านี้ได้อิสระ"
+                    >
+                      ✎ ปรับเฉพาะตัว
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => patch({ options: draft.options.filter((_, i) => i !== gi) })}
+                      className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-500 hover:bg-rose-100"
+                    >
+                      🗑 ลบกลุ่ม
+                    </button>
+                  </div>
+                </div>
+                {!isOptFolded(gi) && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {opt.choices.map((c, ci) => (
+                    <span
+                      key={ci}
+                      className="rounded-full bg-white px-2.5 py-1 text-xs text-slate-600 ring-1 ring-slate-200"
+                    >
+                      {c.name}
+                    </span>
+                  ))}
+                </div>
+                )}
+                {!isOptFolded(gi) && (
+                <>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-semibold text-slate-400">แสดงหน้าร้าน:</span>
+                  {displayModeRow(gi, opt)}
+                  <label
+                    className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-slate-400"
+                    title="ต่ำกว่าเกณฑ์นี้ ราคาถือว่ารวมตัวเลือกกลุ่มนี้แล้ว (ไม่บวก +฿) เช่น อะไหล่ตะขอ ใส่ 11 = ปลีก 1-10 ชิ้นรวมอะไหล่แล้ว"
+                  >
+                    +฿ มีผลเมื่อสั่งครบ
+                    <input
+                      value={opt.extraFromQty ?? ""}
+                      onChange={(e) =>
+                        patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, extraFromQty: e.target.value } : o)) })
+                      }
+                      inputMode="numeric"
+                      placeholder="ทุกจำนวน"
+                      className="w-16 rounded-lg bg-slate-50 px-1.5 py-1 text-center text-[11px] ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                      aria-label={`เกณฑ์จำนวนที่ +฿ มีผล ของกลุ่ม ${opt.label || gi + 1}`}
+                    />
+                    ชิ้นขึ้นไป
+                  </label>
+                </div>
+                {smallFeeRow(gi, opt)}
+                <p className="mt-2 text-[11px] text-sky-600">
+                  แก้ตัวเลือกกลุ่มนี้ได้ที่{" "}
+                  <Link href="/admin/options" className="font-semibold underline">คลังตัวเลือก</Link>{" "}
+                  — เปลี่ยนที่เดียว สินค้าที่ลิงก์อัปเดตหมด
+                </p>
+                </>
+                )}
+              </div>
+            ) : (
+            <div
+              key={gi}
+              onDragOver={(e) => {
+                if (dragOptRef.current !== null) e.preventDefault();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dragOptRef.current !== null) moveOptionGroup(dragOptRef.current, gi);
+                dragOptRef.current = null;
+                setDragOpt(null);
+              }}
+              className={`rounded-2xl bg-white p-3 ring-1 ring-slate-200 ${dragOpt === gi ? "opacity-50" : ""}`}
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  draggable
+                  onDragStart={() => {
+                    dragOptRef.current = gi;
+                    setDragOpt(gi);
+                  }}
+                  onDragEnd={() => {
+                    dragOptRef.current = null;
+                    setDragOpt(null);
+                  }}
+                  className="cursor-grab select-none px-1 text-sm text-slate-300 active:cursor-grabbing"
+                  title="ลากเพื่อสลับลำดับกลุ่ม"
+                  aria-hidden
+                >
+                  ⠿
+                </span>
+                <MoveBtns
+                  what="กลุ่ม"
+                  onUp={() => moveOptionGroup(gi, gi - 1)}
+                  onDown={() => moveOptionGroup(gi, gi + 1)}
+                  upDisabled={gi === 0}
+                  downDisabled={gi === draft.options.length - 1}
+                />
+                <input
+                  value={opt.label}
+                  onChange={(e) => renameOptionGroup(gi, e.target.value)}
+                  placeholder="ชื่อกลุ่ม เช่น ขนาด, สี, วัสดุ"
+                  className={`flex-1 font-bold ${inputCls}`}
+                  aria-label={`ชื่อกลุ่มตัวเลือกที่ ${gi + 1}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => toggleOptFold(gi)}
+                  className="shrink-0 rounded-full bg-slate-50 px-2.5 py-2 text-xs font-bold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
+                  aria-expanded={!isOptFolded(gi)}
+                  title={isOptFolded(gi) ? "กางกลุ่มนี้" : "ยุบกลุ่มนี้"}
+                >
+                  {isOptFolded(gi) ? "▸ กาง" : "▾ ยุบ"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => patch({ options: draft.options.filter((_, i) => i !== gi) })}
+                  className="shrink-0 rounded-full bg-rose-50 px-3 py-2 text-xs font-bold text-rose-500 hover:bg-rose-100"
+                >
+                  🗑 ลบกลุ่ม
+                </button>
+              </div>
+              {isOptFolded(gi) && (
+                <p className="mt-2 truncate text-xs text-slate-400">
+                  {opt.choices.length} ตัวเลือก · {opt.choices.slice(0, 6).map((c) => c.name).filter(Boolean).join(" · ")}
+                  {opt.choices.length > 6 ? " …" : ""}
+                </p>
+              )}
+              {/* พับกลุ่มไว้ก็ยังต้องเห็นว่ามีตัวเลือกที่หน้าร้านซ่อนอยู่ ไม่ต้องกางทีละกลุ่มหา */}
+              {pricelessCount(opt) > 0 && (
+                <div className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-rose-700 ring-1 ring-rose-200">
+                  ⚠ {pricelessCount(opt)} ตัวเลือกในกลุ่มนี้ยังไม่ได้ใส่ราคาในตารางราคา →
+                  หน้าร้านจะไม่แสดงตัวเลือกนั้น
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setPricingOpen(true)}
+                      className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
+                    >
+                      เปิดตารางราคาไปกรอก
+                    </button>
+                    {/* กลุ่มที่ราคาไม่ได้อยู่ในตาราง (คิดเป็น +฿ ต่อตัวเลือก) — ไม่ควรเป็นคอลัมน์ตารางตั้งแต่แรก */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void confirmDropDriver(opt.label, "ถ้าราคาของกลุ่มนี้ไม่ได้อยู่ในตาราง ก็ไม่ต้องเป็นคอลัมน์");
+                      }}
+                      className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
+                    >
+                      ราคาอยู่ที่ตัวเลือกเอง — เอาออกจากตารางราคา
+                    </button>
+                  </div>
+                </div>
+              )}
+              {!isOptFolded(gi) && (
+              <>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-semibold text-slate-400">ราคา:</span>
+                {priceSourceRow(gi, opt)}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-semibold text-slate-400">แสดงหน้าร้าน:</span>
+                {displayModeRow(gi, opt)}
+                <label
+                  className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-slate-400"
+                  title="ต่ำกว่าเกณฑ์นี้ ราคาถือว่ารวมตัวเลือกกลุ่มนี้แล้ว (ไม่บวก +฿) เช่น อะไหล่ตะขอ ใส่ 11 = ปลีก 1-10 ชิ้นรวมอะไหล่แล้ว"
+                >
+                  +฿ มีผลเมื่อสั่งครบ
+                  <input
+                    value={opt.extraFromQty ?? ""}
+                    onChange={(e) =>
+                      patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, extraFromQty: e.target.value } : o)) })
+                    }
+                    inputMode="numeric"
+                    placeholder="ทุกจำนวน"
+                    className="w-16 rounded-lg bg-slate-50 px-1.5 py-1 text-center text-[11px] ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    aria-label={`เกณฑ์จำนวนที่ +฿ มีผล ของกลุ่ม ${opt.label || gi + 1}`}
+                  />
+                  ชิ้นขึ้นไป
+                </label>
+              </div>
+              {smallFeeRow(gi, opt)}
+              <div className="mt-2 space-y-1.5">
+                {opt.choices.map((ch, ci) => (
+                  <div key={ci} className="flex items-center gap-2">
+                    <span className="w-4 text-center text-xs text-slate-300">{ci + 1}</span>
+                    <MoveBtns
+                      size="xs"
+                      what="ตัวเลือก"
+                      onUp={() => moveOptionChoice(gi, ci, ci - 1)}
+                      onDown={() => moveOptionChoice(gi, ci, ci + 1)}
+                      upDisabled={ci === 0}
+                      downDisabled={ci === opt.choices.length - 1}
+                    />
+                    <input
+                      value={ch.name}
+                      onChange={(e) => renameOptionChoice(gi, ci, e.target.value)}
+                      placeholder="ชื่อตัวเลือก"
+                      className={`flex-1 ${smallInputCls}`}
+                      aria-label={`ตัวเลือกที่ ${ci + 1} ของกลุ่ม ${opt.label || gi + 1}`}
+                    />
+                    {/* ชื่อซ้ำกับตัวอื่นในกลุ่ม = ใช้ช่องราคาคอลัมน์เดียวกัน หน้าร้านก็ขึ้นซ้ำสองบรรทัด */}
+                    {ch.name.trim() &&
+                      opt.choices.some((o, j) => j !== ci && o.name.trim() === ch.name.trim()) && (
+                        <span
+                          className="shrink-0 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700 ring-1 ring-amber-200"
+                          title="ชื่อซ้ำกับตัวเลือกอื่นในกลุ่มนี้ — ใช้ช่องราคาคอลัมน์เดียวกัน แยกกันไม่ออก · กดบันทึกแล้วระบบจะเก็บไว้ตัวเดียว (ถ้าตั้งใจให้เป็นคนละแบบ ต้องตั้งชื่อให้ต่างกัน)"
+                        >
+                          ⚠ ชื่อซ้ำ
+                        </span>
+                      )}
+                    {/* ยังไม่กรอกราคา = หน้าร้านซ่อนตัวเลือกนี้ (สาเหตุยอดฮิตของ "เพิ่มขนาดแล้วหน้าบ้านไม่ขึ้น") */}
+                    {(() => {
+                      const missing = ratesMissingPrice(opt.label, ch.name);
+                      if (!missing.length) return null;
+                      const allRates = 1 + draft.extraRates.length;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setPricingOpen(true)}
+                          title={`ตัวเลือกนี้ยังไม่มีราคาใน ${missing.join(" · ")} — หน้าร้านจะไม่แสดงจนกว่าจะกรอกราคา (กดเพื่อเปิดตารางราคา)`}
+                          className="shrink-0 rounded-full bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200 hover:bg-rose-100"
+                        >
+                          ⚠ ยังไม่ใส่ราคา{allRates > 1 ? ` (${missing.join(", ")})` : ""} · หน้าร้านซ่อน
+                        </button>
+                      );
+                    })()}
+                    {/* 🖼 ภาพประจำตัวเลือก — โชว์บนปุ่มหน้าร้าน + กดเลือกแล้วแกลเลอรีสลับไปภาพนี้ */}
+                    <label
+                      className="shrink-0 cursor-pointer"
+                      title="ภาพประจำตัวเลือกนี้ — โชว์เป็นภาพย่อบนปุ่มหน้าร้าน ให้ลูกค้าเห็นหน้าตาแบบนี้ก่อนเลือก"
+                    >
+                      {ch.imageSrc ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={ch.imageSrc}
+                          alt={`ภาพของ ${ch.name || `ตัวเลือกที่ ${ci + 1}`}`}
+                          className="h-8 w-8 rounded-lg object-cover ring-1 ring-slate-200 hover:ring-amber-300"
+                        />
+                      ) : (
+                        <span className="grid h-8 w-8 place-items-center rounded-lg bg-slate-50 text-[13px] text-slate-300 ring-1 ring-slate-200 hover:text-amber-500 hover:ring-amber-300">
+                          🖼
+                        </span>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        aria-label={`อัปโหลดภาพของตัวเลือกที่ ${ci + 1}`}
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          e.target.value = "";
+                          if (!f) return;
+                          const src = await uploadChoiceImage(f);
+                          if (src)
+                            patch({
+                              options: draft.options.map((o, i) =>
+                                i === gi
+                                  ? { ...o, choices: o.choices.map((c, j) => (j === ci ? { ...c, imageSrc: src } : c)) }
+                                  : o
+                              ),
+                            });
+                        }}
+                      />
+                    </label>
+                    {ch.imageSrc && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          patch({
+                            options: draft.options.map((o, i) =>
+                              i === gi
+                                ? { ...o, choices: o.choices.map((c, j) => (j === ci ? { ...c, imageSrc: undefined } : c)) }
+                                : o
+                            ),
+                          })
+                        }
+                        title="เอาภาพของตัวเลือกนี้ออก"
+                        className="shrink-0 rounded-full px-1 text-[11px] font-bold text-slate-300 hover:bg-rose-50 hover:text-rose-500"
+                      >
+                        ✕
+                      </button>
+                    )}
+                    {/* บวกเพิ่มต่อหน่วยเมื่อเลือกตัวนี้ — ใช้กับกลุ่มที่ไม่ใช่แกนตารางราคา (เช่น อะไหล่พิเศษ) */}
+                    <label
+                      className="flex shrink-0 items-center gap-1 text-[11px] font-semibold text-slate-400"
+                      title="บวกเพิ่มต่อหน่วยเมื่อลูกค้าเลือกตัวเลือกนี้ (ใช้กับกลุ่มที่ไม่ได้เป็นคอลัมน์ของตารางราคา)"
+                    >
+                      +฿
+                      <input
+                        value={ch.extra}
+                        onChange={(e) =>
+                          patch({
+                            options: draft.options.map((o, i) =>
+                              i === gi
+                                ? { ...o, choices: o.choices.map((c, j) => (j === ci ? { ...c, extra: e.target.value } : c)) }
+                                : o
+                            ),
+                          })
+                        }
+                        inputMode="numeric"
+                        placeholder="0"
+                        className="w-14 rounded-lg bg-slate-50 px-2 py-1.5 text-center text-xs ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                        aria-label={`ราคาบวกเพิ่มของตัวเลือกที่ ${ci + 1}`}
+                      />
+                    </label>
+                    {/*
+                      💬 ตัวเลือกนี้ = งานสั่งทำ ให้แอดมินตีราคา (เช่น "แบบที่ 3" ที่ลูกค้าระบุขนาดเอง)
+                      ต่างจาก 💬 ระดับกลุ่มตรงที่กลุ่มยังเป็นคอลัมน์ตารางราคาได้ — แบบอื่นในกลุ่มคิดราคาปกติ
+                    */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        patch({
+                          options: draft.options.map((o, i) =>
+                            i === gi
+                              ? {
+                                  ...o,
+                                  choices: o.choices.map((c, j) =>
+                                    j === ci ? { ...c, askPrice: !c.askPrice } : c
+                                  ),
+                                }
+                              : o
+                          ),
+                        })
+                      }
+                      title="เลือกตัวนี้แล้ว = งานสั่งทำ ราคาให้แอดมินตีให้ (หน้าร้านขึ้น “รอแอดมินตีราคา” · ลูกค้ากดสั่งไว้ก่อนได้)"
+                      aria-pressed={!!ch.askPrice}
+                      className={`shrink-0 rounded-lg px-2 py-1.5 text-[11px] font-semibold ring-1 transition ${
+                        ch.askPrice
+                          ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                          : "bg-white text-slate-300 ring-slate-200 hover:text-emerald-600 hover:ring-emerald-200"
+                      }`}
+                    >
+                      💬 ตีราคา
+                    </button>
+                    {/*
+                      ให้ลูกค้าระบุจำนวนของตัวเลือกนี้ (เช่น เพิ่มสาย 2 เส้น = +฿ ของสาย × 2) — เฉพาะกลุ่มติ๊กหลายอย่าง
+                      ต้องติ๊ก 📐 ที่หัวกลุ่มก่อนถึงกางช่องนี้ (ดู choiceQtyVisible)
+                    */}
+                    {choiceQtyVisible(opt) && (
+                      <label
+                        className={`flex shrink-0 cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold ring-1 ${
+                          ch.qty ? "bg-amber-50 text-amber-700 ring-amber-200" : "bg-white text-slate-400 ring-slate-200"
+                        }`}
+                        title="ลูกค้าติ๊กตัวนี้แล้วระบุจำนวนได้ เช่น เพิ่มสาย 2 เส้น → +฿ ของตัวนี้คูณ 2 (ในตะกร้า/ใบงานขึ้นเป็น “ชื่อตัวเลือก ×2”)"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!ch.qty}
+                          onChange={(e) =>
+                            patch({
+                              options: draft.options.map((o, i) =>
+                                i === gi
+                                  ? {
+                                      ...o,
+                                      choices: o.choices.map((c, j) =>
+                                        j === ci
+                                          ? { ...c, qty: e.target.checked, ...(e.target.checked ? {} : { qtyMax: "" }) }
+                                          : c
+                                      ),
+                                    }
+                                  : o
+                              ),
+                            })
+                          }
+                          className="h-3.5 w-3.5 accent-amber-500"
+                        />
+                        🔢 ระบุจำนวน
+                        {ch.qty && (
+                          <>
+                            <span className="text-slate-400">· สูงสุด</span>
+                            <input
+                              value={ch.qtyMax ?? ""}
+                              onChange={(e) =>
+                                patch({
+                                  options: draft.options.map((o, i) =>
+                                    i === gi
+                                      ? {
+                                          ...o,
+                                          choices: o.choices.map((c, j) =>
+                                            j === ci ? { ...c, qtyMax: e.target.value } : c
+                                          ),
+                                        }
+                                      : o
+                                  ),
+                                })
+                              }
+                              inputMode="numeric"
+                              placeholder="99"
+                              className="w-11 rounded-lg bg-white px-1 py-0.5 text-center text-[11px] text-slate-600 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                              aria-label={`จำนวนสูงสุดของตัวเลือกที่ ${ci + 1}`}
+                            />
+                          </>
+                        )}
+                      </label>
+                    )}
+                    {/* ชิ้นที่ได้ต่อ 1 หน่วยสั่ง (📐 ชิ้น/หน่วย) ย้ายไปกรอกในตารางราคาแล้ว — คอลัมน์แรกข้างชื่อตัวเลือก */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        patch({
+                          options: draft.options.map((o, i) =>
+                            i === gi ? { ...o, choices: o.choices.filter((_, j) => j !== ci) } : o
+                          ),
+                        })
+                      }
+                      className="shrink-0 rounded-full px-2 py-1 text-xs font-bold text-rose-400 hover:bg-rose-50"
+                      aria-label={`ลบตัวเลือกที่ ${ci + 1}`}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  patch({
+                    options: draft.options.map((o, i) =>
+                      i === gi ? { ...o, choices: [...o.choices, { name: "", extra: "" }] } : o
+                    ),
+                  })
+                }
+                className="mt-2 rounded-full bg-slate-100 px-3.5 py-1.5 text-xs font-bold text-slate-500 hover:bg-slate-100"
+              >
+                ＋ เพิ่มตัวเลือก
+              </button>
+              </>
+              )}
+            </div>
+    );
+  }
+
+  /**
+   * 📐 แผงงานสั่งทำ — รวมทุกอย่างที่เกี่ยวกับ "งานที่ลูกค้ากำหนดเอง" ไว้ที่เดียว
+   *
+   * มีได้ 2 ชนิด: ✍️ ช่องกรอก (ลูกค้าพิมพ์ค่าเอง) และกลุ่มตัวเลือกปกติที่ย้ายเข้ามา
+   * (เช่น "สีอะคริลิค" ที่ลิงก์คลัง — เป็นตัวเลือกของงานสั่งทำ ไม่ใช่ตัวเลือกมาตรฐาน)
+   * ทั้งคู่เก็บใน draft.options เหมือนกลุ่มอื่น ค่าที่ลูกค้าเลือก/กรอกจึงติดไปกับตะกร้า→ออเดอร์→ใบงานเอง
+   */
+  function madeToOrderPanel() {
     // เก็บ index จริงใน draft.options ไว้ด้วย — ปุ่มแก้/ลบ/สลับลำดับต้องอ้างตำแหน่งจริง
-    const fields = draft.options
-      .map((o, gi) => ({ o, gi }))
-      .filter(({ o }) => o.display === "input");
-    /** สลับลำดับ "เฉพาะในกลุ่มช่องกรอกด้วยกัน" — ลูกค้าเห็นเรียงตามนี้ (ตัวหน้า → ตัวหลัง → ฐาน) */
+    const items = draft.options.map((o, gi) => ({ o, gi })).filter(({ o }) => isMadeToOrder(o));
+    const setOpt = (gi: number, patchObj: Partial<DraftOption>) =>
+      patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, ...patchObj } : o)) });
+    /** สลับลำดับ "เฉพาะในแผงนี้ด้วยกัน" — ลูกค้าเห็นเรียงตามนี้ (ตัวหน้า → ตัวหลัง → ฐาน) */
     const swap = (k: number, dir: -1 | 1) => {
-      const a = fields[k], b = fields[k + dir];
+      const a = items[k], b = items[k + dir];
       if (!a || !b) return;
       const next = [...draft.options];
       [next[a.gi], next[b.gi]] = [next[b.gi], next[a.gi]];
       patch({ options: next });
     };
+    const movable = draft.options.filter((o) => !isMadeToOrder(o) && o.label.trim());
     return (
       <div className="mt-3 rounded-2xl bg-violet-50/60 p-3 ring-1 ring-violet-200">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="text-xs font-bold text-violet-800">✍️ ช่องให้ลูกค้ากรอกเอง</h3>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-[14rem] flex-1">
+            <h3 className="text-xs font-bold text-violet-800">✍️ ตัวเลือก/ช่องกรอกของงานสั่งทำ</h3>
             <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">
-              เพิ่มได้ไม่จำกัดช่อง ตั้งชื่อเองได้ทุกช่อง (เช่น “(ตัวหน้า) ขนาด”, “ฐาน”) ·
-              ตั้ง 👁 แสดงเมื่อ ให้โผล่เฉพาะแบบ/เรทที่ต้องการ · ค่าที่กรอกติดไปกับตะกร้า → ออเดอร์ → ใบงาน
+              ช่องกรอกเพิ่มได้ไม่จำกัด ตั้งชื่อเองได้ทุกช่อง (เช่น “(ตัวหน้า) ขนาด”, “ฐาน”) ·
+              ย้ายกลุ่มตัวเลือกปกติเข้ามาได้ด้วย (เช่น สีอะคริลิคที่ลิงก์คลัง) ·
+              ตั้ง 👁 แสดงเมื่อ ให้โผล่เฉพาะแบบ/เรทที่ต้องการ
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() =>
-              patch({
-                options: [
-                  ...draft.options,
-                  { label: "", choices: [], display: "input", inKind: "number", askPrice: true },
-                ],
-              })
-            }
-            className="shrink-0 rounded-full bg-violet-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-violet-700"
-          >
-            ＋ เพิ่มช่องกรอก
-          </button>
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+            {/* ย้ายกลุ่มที่ตั้งไว้แล้วในแผง 🎛️ เข้ามา — ไม่ต้องลบแล้วสร้างใหม่ให้เสียของ */}
+            {movable.length > 0 && (
+              <select
+                value=""
+                onChange={(e) => {
+                  const label = e.target.value;
+                  e.target.value = "";
+                  const gi = draft.options.findIndex((o) => o.label === label);
+                  if (gi >= 0) setOpt(gi, { madeToOrder: true });
+                }}
+                title="ย้ายกลุ่มตัวเลือกที่มีอยู่แล้วเข้ามาอยู่ในงานสั่งทำ (ตัวเลือก/ราคา/เงื่อนไขเดิมไม่หาย)"
+                aria-label="ย้ายกลุ่มตัวเลือกเข้ามาที่งานสั่งทำ"
+                className="rounded-full border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-300"
+              >
+                <option value="">📥 ย้ายกลุ่มจาก 🎛️ เข้ามา…</option>
+                {movable.map((o) => (
+                  <option key={o.label} value={o.label}>
+                    {o.label} ({o.choices.length})
+                  </option>
+                ))}
+              </select>
+            )}
+            <button
+              type="button"
+              onClick={() =>
+                patch({
+                  options: [
+                    ...draft.options,
+                    { label: "", choices: [], display: "input", inKind: "number", askPrice: true },
+                  ],
+                })
+              }
+              className="rounded-full bg-violet-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-violet-700"
+            >
+              ＋ เพิ่มช่องกรอก
+            </button>
+          </div>
         </div>
 
-        {fields.length === 0 ? (
+        {items.length === 0 ? (
           <p className="mt-2.5 rounded-xl bg-white/70 px-3 py-2.5 text-[11px] leading-relaxed text-slate-500 ring-1 ring-violet-100">
-            ยังไม่มีช่องกรอก — กด <b className="font-bold text-violet-700">＋ เพิ่มช่องกรอก</b> เพื่อให้ลูกค้าระบุขนาด/รายละเอียดเอง
+            ยังไม่มีอะไรในงานสั่งทำ — กด <b className="font-bold text-violet-700">＋ เพิ่มช่องกรอก</b> เพื่อให้ลูกค้าระบุขนาด/รายละเอียดเอง
             แล้วให้แอดมินตีราคาให้ทีหลัง
           </p>
         ) : (
           <div className="mt-2.5 space-y-2.5">
-            {fields.map(({ o, gi }, k) => (
+            {items.map(({ o, gi }, k) => (
               <div key={gi} className="rounded-2xl bg-white p-3 ring-1 ring-violet-200">
-                <div className="flex items-center gap-2">
+                <div className="mb-2 flex items-center gap-2">
                   <span className="w-4 text-center text-xs font-bold text-violet-300">{k + 1}</span>
                   <MoveBtns
                     size="xs"
-                    what="ช่องกรอก"
+                    what="รายการ"
                     onUp={() => swap(k, -1)}
                     onDown={() => swap(k, 1)}
                     upDisabled={k === 0}
-                    downDisabled={k === fields.length - 1}
+                    downDisabled={k === items.length - 1}
                   />
-                  <input
-                    value={o.label}
-                    onChange={(e) => renameOptionGroup(gi, e.target.value)}
-                    placeholder="ชื่อช่อง เช่น (ตัวหน้า) ขนาด, ฐาน, ข้อความที่ต้องการสลัก"
-                    className={`flex-1 font-bold ${inputCls}`}
-                    aria-label={`ชื่อช่องกรอกที่ ${k + 1}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => patch({ options: draft.options.filter((_, i) => i !== gi) })}
-                    className="shrink-0 rounded-full bg-rose-50 px-3 py-2 text-xs font-bold text-rose-500 hover:bg-rose-100"
-                  >
-                    🗑 ลบ
-                  </button>
+                  {o.display === "input" ? (
+                    <>
+                      <input
+                        value={o.label}
+                        onChange={(e) => renameOptionGroup(gi, e.target.value)}
+                        placeholder="ชื่อช่อง เช่น (ตัวหน้า) ขนาด, ฐาน, ข้อความที่ต้องการสลัก"
+                        className={`flex-1 font-bold ${inputCls}`}
+                        aria-label={`ชื่อช่องกรอกที่ ${k + 1}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => patch({ options: draft.options.filter((_, i) => i !== gi) })}
+                        className="shrink-0 rounded-full bg-rose-50 px-3 py-2 text-xs font-bold text-rose-500 hover:bg-rose-100"
+                      >
+                        🗑 ลบ
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex-1 truncate text-xs font-bold text-slate-500">
+                        🎛️ กลุ่มตัวเลือกที่ย้ายมา
+                      </span>
+                      {/* ย้ายกลับได้ ไม่ใช่ทางเดียว — กดผิดแล้วไม่ต้องมานั่งตั้งใหม่ */}
+                      <button
+                        type="button"
+                        onClick={() => setOpt(gi, { madeToOrder: false })}
+                        title="ย้ายกลุ่มนี้กลับไปอยู่ในแผง 🎛️ ตัวเลือกสินค้า (ข้อมูลไม่หาย)"
+                        className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50"
+                      >
+                        ↩︎ ย้ายกลับ 🎛️
+                      </button>
+                    </>
+                  )}
                 </div>
-                {!o.label.trim() && (
-                  <p className="mt-1.5 text-[11px] font-bold text-amber-600">
-                    ⚠ ยังไม่ได้ตั้งชื่อช่อง — ช่องที่ไม่มีชื่อจะไม่ถูกบันทึก
-                  </p>
+                {o.display === "input" ? (
+                  <>
+                    {!o.label.trim() && (
+                      <p className="mb-1.5 text-[11px] font-bold text-amber-600">
+                        ⚠ ยังไม่ได้ตั้งชื่อช่อง — ช่องที่ไม่มีชื่อจะไม่ถูกบันทึก
+                      </p>
+                    )}
+                    {inputSpecRow(gi, o)}
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] font-semibold text-slate-400">ราคา:</span>
+                      {priceSourceRow(gi, o)}
+                    </div>
+                    <div className="mt-2 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+                      {showWhenBlock(gi, o)}
+                    </div>
+                  </>
+                ) : (
+                  // กลุ่มตัวเลือกปกติ — ใช้การ์ดตัวเดียวกับแผง 🎛️ จะได้แก้ได้ครบเหมือนกันทุกอย่าง
+                  optionGroupCard(o, gi)
                 )}
-                {inputSpecRow(gi, o)}
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] font-semibold text-slate-400">ราคา:</span>
-                  {priceSourceRow(gi, o)}
-                </div>
-                <div className="mt-2 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
-                  {showWhenBlock(gi, o)}
-                </div>
               </div>
             ))}
           </div>
         )}
       </div>
     );
+  }
+
+  /** กลุ่มนี้เป็นของ "งานสั่งทำ" ไหม — ช่องกรอกเป็นเสมอ · กลุ่มตัวเลือกปกติต้องกดย้ายเข้ามาเอง */
+  function isMadeToOrder(o: DraftOption): boolean {
+    return o.display === "input" || o.madeToOrder === true;
   }
 
   function smallFeeRow(gi: number, opt: DraftOption) {
@@ -4036,565 +4652,35 @@ export default function ProductEditor({ product }: { product: Product }) {
         </div>
         <div className="space-y-3">
           {draft.options.map((opt, gi) =>
-            // ✍️ ช่องกรอกตั้งค่าที่ 📐 ตัวเลือกกำหนดเอง (งานสั่งทำ) ที่เดียว — ไม่ให้แก้ได้สองที่แล้วงงว่าอันไหนจริง
-            opt.display === "input" ? null : opt.presetId ? (
-              <div
-                key={gi}
-                onDragOver={(e) => {
-                  if (dragOptRef.current !== null) e.preventDefault();
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (dragOptRef.current !== null) moveOptionGroup(dragOptRef.current, gi);
-                  dragOptRef.current = null;
-                  setDragOpt(null);
-                }}
-                className={`rounded-2xl bg-sky-50/60 p-3 ring-1 ring-sky-200 ${dragOpt === gi ? "opacity-50" : ""}`}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span
-                      draggable
-                      onDragStart={() => {
-                        dragOptRef.current = gi;
-                        setDragOpt(gi);
-                      }}
-                      onDragEnd={() => {
-                        dragOptRef.current = null;
-                        setDragOpt(null);
-                      }}
-                      className="cursor-grab select-none px-1 text-sm text-slate-300 active:cursor-grabbing"
-                      title="ลากเพื่อสลับลำดับกลุ่ม"
-                      aria-hidden
-                    >
-                      ⠿
-                    </span>
-                    <MoveBtns
-                      what="กลุ่ม"
-                      onUp={() => moveOptionGroup(gi, gi - 1)}
-                      onDown={() => moveOptionGroup(gi, gi + 1)}
-                      upDisabled={gi === 0}
-                      downDisabled={gi === draft.options.length - 1}
-                    />
-                    {/* กดที่ป้าย = เปิดคลังตัวเลือกอันที่ลิงก์อยู่ (จะได้รู้ว่าลิงก์กับอะไร แก้ที่ไหน) */}
-                    <Link
-                      href={`/admin/options?id=${encodeURIComponent(opt.presetId ?? "")}`}
-                      target="_blank"
-                      title={`ลิงก์กับคลัง “${presets.find((p) => p.id === opt.presetId)?.label ?? opt.label}” (รหัส ${opt.presetId}) — กดเพื่อเปิดดู/แก้`}
-                      className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-700 transition hover:bg-sky-200"
-                    >
-                      🔗 ลิงก์คลัง ↗
-                    </Link>
-                    <span className="text-sm font-bold text-slate-800">{opt.label}</span>
-                    {/* คลังถูกปิดใช้งาน = กลุ่มนี้ไม่โผล่บนหน้าร้านแล้ว (ลิงก์ยังอยู่ เปิดกลับได้ที่หน้าคลัง) */}
-                    {presets.find((p) => p.id === opt.presetId)?.hidden && (
-                      <span
-                        className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200"
-                        title="คลังนี้ถูกปิดใช้งานที่หน้าคลังตัวเลือก — กลุ่มนี้จึงไม่แสดงบนหน้าร้าน (เปิดกลับได้ที่ /admin/options)"
-                      >
-                        ⛔ คลังปิดอยู่ · ไม่โชว์หน้าร้าน
-                      </span>
-                    )}
-                    {/* เปลี่ยนไปลิงก์คลังอื่นได้เลย ไม่ต้องลบกลุ่มแล้วแทรกใหม่ */}
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        e.target.value = "";
-                        if (id) void relinkPreset(gi, id);
-                      }}
-                      title="เปลี่ยนไปลิงก์กับคลังตัวเลือกอันอื่น"
-                      aria-label={`เปลี่ยนคลังของกลุ่ม ${opt.label}`}
-                      className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                    >
-                      <option value="">🔄 เปลี่ยนคลัง…</option>
-                      {presets
-                        .filter((p) => !p.hidden || p.id === opt.presetId)
-                        .map((p) => {
-                          const usedElsewhere = draft.options.some((o, i) => i !== gi && o.presetId === p.id);
-                          return (
-                            <option key={p.id} value={p.id} disabled={usedElsewhere || p.id === opt.presetId}>
-                              {p.label} ({p.choices.length})
-                              {p.id === opt.presetId ? " · ใช้อยู่" : usedElsewhere ? " · ลิงก์แล้วในกลุ่มอื่น" : ""}
-                            </option>
-                          );
-                        })}
-                    </select>
-                    <span className="text-xs text-slate-400">
-                      {opt.choices.length} ตัวเลือก
-                      {/* บอกว่าตัวเลือกในกลุ่มนี้มีอะไรบ้าง (ตัวอย่าง 4 ตัวแรก) โดยไม่ต้องกางกลุ่ม */}
-                      {opt.choices.length > 0 && (
-                        <span className="ml-1 text-slate-300">
-                          · {opt.choices.slice(0, 4).map((c) => c.name).filter(Boolean).join(" · ")}
-                          {opt.choices.length > 4 ? " …" : ""}
-                        </span>
-                      )}
-                    </span>
-                    {!presets.some((p) => p.id === opt.presetId) && (
-                      <span className="text-xs font-semibold text-rose-500">คลังถูกลบ — ใช้สำเนาสำรอง</span>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => toggleOptFold(gi)}
-                      className="rounded-full bg-white px-2.5 py-1.5 text-xs font-bold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50"
-                      aria-expanded={!isOptFolded(gi)}
-                      title={isOptFolded(gi) ? "กางกลุ่มนี้" : "ยุบกลุ่มนี้"}
-                    >
-                      {isOptFolded(gi) ? "▸ กาง" : "▾ ยุบ"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        patch({
-                          options: draft.options.map((o, i) =>
-                            i === gi
-                              ? { label: o.label, choices: o.choices, display: o.display }
-                              : o
-                          ),
-                        })
-                      }
-                      className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
-                      title="ตัดลิงก์คลัง แล้วแก้ตัวเลือกเฉพาะสินค้านี้ได้อิสระ"
-                    >
-                      ✎ ปรับเฉพาะตัว
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => patch({ options: draft.options.filter((_, i) => i !== gi) })}
-                      className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-500 hover:bg-rose-100"
-                    >
-                      🗑 ลบกลุ่ม
-                    </button>
-                  </div>
-                </div>
-                {!isOptFolded(gi) && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {opt.choices.map((c, ci) => (
-                    <span
-                      key={ci}
-                      className="rounded-full bg-white px-2.5 py-1 text-xs text-slate-600 ring-1 ring-slate-200"
-                    >
-                      {c.name}
-                    </span>
-                  ))}
-                </div>
-                )}
-                {!isOptFolded(gi) && (
-                <>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] font-semibold text-slate-400">แสดงหน้าร้าน:</span>
-                  {displayModeRow(gi, opt)}
-                  <label
-                    className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-slate-400"
-                    title="ต่ำกว่าเกณฑ์นี้ ราคาถือว่ารวมตัวเลือกกลุ่มนี้แล้ว (ไม่บวก +฿) เช่น อะไหล่ตะขอ ใส่ 11 = ปลีก 1-10 ชิ้นรวมอะไหล่แล้ว"
-                  >
-                    +฿ มีผลเมื่อสั่งครบ
-                    <input
-                      value={opt.extraFromQty ?? ""}
-                      onChange={(e) =>
-                        patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, extraFromQty: e.target.value } : o)) })
-                      }
-                      inputMode="numeric"
-                      placeholder="ทุกจำนวน"
-                      className="w-16 rounded-lg bg-slate-50 px-1.5 py-1 text-center text-[11px] ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                      aria-label={`เกณฑ์จำนวนที่ +฿ มีผล ของกลุ่ม ${opt.label || gi + 1}`}
-                    />
-                    ชิ้นขึ้นไป
-                  </label>
-                </div>
-                {smallFeeRow(gi, opt)}
-                <p className="mt-2 text-[11px] text-sky-600">
-                  แก้ตัวเลือกกลุ่มนี้ได้ที่{" "}
-                  <Link href="/admin/options" className="font-semibold underline">คลังตัวเลือก</Link>{" "}
-                  — เปลี่ยนที่เดียว สินค้าที่ลิงก์อัปเดตหมด
-                </p>
-                </>
-                )}
-              </div>
-            ) : (
-            <div
-              key={gi}
-              onDragOver={(e) => {
-                if (dragOptRef.current !== null) e.preventDefault();
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (dragOptRef.current !== null) moveOptionGroup(dragOptRef.current, gi);
-                dragOptRef.current = null;
-                setDragOpt(null);
-              }}
-              className={`rounded-2xl bg-white p-3 ring-1 ring-slate-200 ${dragOpt === gi ? "opacity-50" : ""}`}
-            >
-              <div className="flex items-center gap-2">
-                <span
-                  draggable
-                  onDragStart={() => {
-                    dragOptRef.current = gi;
-                    setDragOpt(gi);
-                  }}
-                  onDragEnd={() => {
-                    dragOptRef.current = null;
-                    setDragOpt(null);
-                  }}
-                  className="cursor-grab select-none px-1 text-sm text-slate-300 active:cursor-grabbing"
-                  title="ลากเพื่อสลับลำดับกลุ่ม"
-                  aria-hidden
-                >
-                  ⠿
-                </span>
-                <MoveBtns
-                  what="กลุ่ม"
-                  onUp={() => moveOptionGroup(gi, gi - 1)}
-                  onDown={() => moveOptionGroup(gi, gi + 1)}
-                  upDisabled={gi === 0}
-                  downDisabled={gi === draft.options.length - 1}
-                />
-                <input
-                  value={opt.label}
-                  onChange={(e) => renameOptionGroup(gi, e.target.value)}
-                  placeholder="ชื่อกลุ่ม เช่น ขนาด, สี, วัสดุ"
-                  className={`flex-1 font-bold ${inputCls}`}
-                  aria-label={`ชื่อกลุ่มตัวเลือกที่ ${gi + 1}`}
-                />
-                <button
-                  type="button"
-                  onClick={() => toggleOptFold(gi)}
-                  className="shrink-0 rounded-full bg-slate-50 px-2.5 py-2 text-xs font-bold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
-                  aria-expanded={!isOptFolded(gi)}
-                  title={isOptFolded(gi) ? "กางกลุ่มนี้" : "ยุบกลุ่มนี้"}
-                >
-                  {isOptFolded(gi) ? "▸ กาง" : "▾ ยุบ"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => patch({ options: draft.options.filter((_, i) => i !== gi) })}
-                  className="shrink-0 rounded-full bg-rose-50 px-3 py-2 text-xs font-bold text-rose-500 hover:bg-rose-100"
-                >
-                  🗑 ลบกลุ่ม
-                </button>
-              </div>
-              {isOptFolded(gi) && (
-                <p className="mt-2 truncate text-xs text-slate-400">
-                  {opt.choices.length} ตัวเลือก · {opt.choices.slice(0, 6).map((c) => c.name).filter(Boolean).join(" · ")}
-                  {opt.choices.length > 6 ? " …" : ""}
-                </p>
-              )}
-              {/* พับกลุ่มไว้ก็ยังต้องเห็นว่ามีตัวเลือกที่หน้าร้านซ่อนอยู่ ไม่ต้องกางทีละกลุ่มหา */}
-              {pricelessCount(opt) > 0 && (
-                <div className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-rose-700 ring-1 ring-rose-200">
-                  ⚠ {pricelessCount(opt)} ตัวเลือกในกลุ่มนี้ยังไม่ได้ใส่ราคาในตารางราคา →
-                  หน้าร้านจะไม่แสดงตัวเลือกนั้น
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setPricingOpen(true)}
-                      className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
-                    >
-                      เปิดตารางราคาไปกรอก
-                    </button>
-                    {/* กลุ่มที่ราคาไม่ได้อยู่ในตาราง (คิดเป็น +฿ ต่อตัวเลือก) — ไม่ควรเป็นคอลัมน์ตารางตั้งแต่แรก */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void confirmDropDriver(opt.label, "ถ้าราคาของกลุ่มนี้ไม่ได้อยู่ในตาราง ก็ไม่ต้องเป็นคอลัมน์");
-                      }}
-                      className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
-                    >
-                      ราคาอยู่ที่ตัวเลือกเอง — เอาออกจากตารางราคา
-                    </button>
-                  </div>
-                </div>
-              )}
-              {!isOptFolded(gi) && (
-              <>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="text-[11px] font-semibold text-slate-400">ราคา:</span>
-                {priceSourceRow(gi, opt)}
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="text-[11px] font-semibold text-slate-400">แสดงหน้าร้าน:</span>
-                {displayModeRow(gi, opt)}
-                <label
-                  className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-slate-400"
-                  title="ต่ำกว่าเกณฑ์นี้ ราคาถือว่ารวมตัวเลือกกลุ่มนี้แล้ว (ไม่บวก +฿) เช่น อะไหล่ตะขอ ใส่ 11 = ปลีก 1-10 ชิ้นรวมอะไหล่แล้ว"
-                >
-                  +฿ มีผลเมื่อสั่งครบ
-                  <input
-                    value={opt.extraFromQty ?? ""}
-                    onChange={(e) =>
-                      patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, extraFromQty: e.target.value } : o)) })
+            // กลุ่มของงานสั่งทำ (ช่องกรอก / กลุ่มที่ย้ายไป 📐) ไม่โผล่ที่นี่ — แก้ที่แผง 📐 ที่เดียว
+            isMadeToOrder(opt) ? null : (
+              <div key={gi}>
+                {optionGroupCard(opt, gi)}
+                {/* ย้ายไปงานสั่งทำได้เลย ไม่ต้องลบแล้วสร้างใหม่ — ตัวเลือก/ราคา/เงื่อนไขเดิมติดไปด้วยทั้งหมด */}
+                <div className="mt-1 text-right">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, madeToOrder: true } : o)) })
                     }
-                    inputMode="numeric"
-                    placeholder="ทุกจำนวน"
-                    className="w-16 rounded-lg bg-slate-50 px-1.5 py-1 text-center text-[11px] ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                    aria-label={`เกณฑ์จำนวนที่ +฿ มีผล ของกลุ่ม ${opt.label || gi + 1}`}
-                  />
-                  ชิ้นขึ้นไป
-                </label>
+                    title="ย้ายกลุ่มนี้ไปอยู่ในแผง 📐 ตัวเลือกกำหนดเอง (งานสั่งทำ) — ข้อมูลไม่หาย ย้ายกลับได้"
+                    className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-violet-500 transition hover:bg-violet-50 hover:text-violet-700"
+                  >
+                    📐 ย้ายไปงานสั่งทำ
+                  </button>
+                </div>
               </div>
-              {smallFeeRow(gi, opt)}
-              <div className="mt-2 space-y-1.5">
-                {opt.choices.map((ch, ci) => (
-                  <div key={ci} className="flex items-center gap-2">
-                    <span className="w-4 text-center text-xs text-slate-300">{ci + 1}</span>
-                    <MoveBtns
-                      size="xs"
-                      what="ตัวเลือก"
-                      onUp={() => moveOptionChoice(gi, ci, ci - 1)}
-                      onDown={() => moveOptionChoice(gi, ci, ci + 1)}
-                      upDisabled={ci === 0}
-                      downDisabled={ci === opt.choices.length - 1}
-                    />
-                    <input
-                      value={ch.name}
-                      onChange={(e) => renameOptionChoice(gi, ci, e.target.value)}
-                      placeholder="ชื่อตัวเลือก"
-                      className={`flex-1 ${smallInputCls}`}
-                      aria-label={`ตัวเลือกที่ ${ci + 1} ของกลุ่ม ${opt.label || gi + 1}`}
-                    />
-                    {/* ชื่อซ้ำกับตัวอื่นในกลุ่ม = ใช้ช่องราคาคอลัมน์เดียวกัน หน้าร้านก็ขึ้นซ้ำสองบรรทัด */}
-                    {ch.name.trim() &&
-                      opt.choices.some((o, j) => j !== ci && o.name.trim() === ch.name.trim()) && (
-                        <span
-                          className="shrink-0 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700 ring-1 ring-amber-200"
-                          title="ชื่อซ้ำกับตัวเลือกอื่นในกลุ่มนี้ — ใช้ช่องราคาคอลัมน์เดียวกัน แยกกันไม่ออก · กดบันทึกแล้วระบบจะเก็บไว้ตัวเดียว (ถ้าตั้งใจให้เป็นคนละแบบ ต้องตั้งชื่อให้ต่างกัน)"
-                        >
-                          ⚠ ชื่อซ้ำ
-                        </span>
-                      )}
-                    {/* ยังไม่กรอกราคา = หน้าร้านซ่อนตัวเลือกนี้ (สาเหตุยอดฮิตของ "เพิ่มขนาดแล้วหน้าบ้านไม่ขึ้น") */}
-                    {(() => {
-                      const missing = ratesMissingPrice(opt.label, ch.name);
-                      if (!missing.length) return null;
-                      const allRates = 1 + draft.extraRates.length;
-                      return (
-                        <button
-                          type="button"
-                          onClick={() => setPricingOpen(true)}
-                          title={`ตัวเลือกนี้ยังไม่มีราคาใน ${missing.join(" · ")} — หน้าร้านจะไม่แสดงจนกว่าจะกรอกราคา (กดเพื่อเปิดตารางราคา)`}
-                          className="shrink-0 rounded-full bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200 hover:bg-rose-100"
-                        >
-                          ⚠ ยังไม่ใส่ราคา{allRates > 1 ? ` (${missing.join(", ")})` : ""} · หน้าร้านซ่อน
-                        </button>
-                      );
-                    })()}
-                    {/* 🖼 ภาพประจำตัวเลือก — โชว์บนปุ่มหน้าร้าน + กดเลือกแล้วแกลเลอรีสลับไปภาพนี้ */}
-                    <label
-                      className="shrink-0 cursor-pointer"
-                      title="ภาพประจำตัวเลือกนี้ — โชว์เป็นภาพย่อบนปุ่มหน้าร้าน ให้ลูกค้าเห็นหน้าตาแบบนี้ก่อนเลือก"
-                    >
-                      {ch.imageSrc ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={ch.imageSrc}
-                          alt={`ภาพของ ${ch.name || `ตัวเลือกที่ ${ci + 1}`}`}
-                          className="h-8 w-8 rounded-lg object-cover ring-1 ring-slate-200 hover:ring-amber-300"
-                        />
-                      ) : (
-                        <span className="grid h-8 w-8 place-items-center rounded-lg bg-slate-50 text-[13px] text-slate-300 ring-1 ring-slate-200 hover:text-amber-500 hover:ring-amber-300">
-                          🖼
-                        </span>
-                      )}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        aria-label={`อัปโหลดภาพของตัวเลือกที่ ${ci + 1}`}
-                        onChange={async (e) => {
-                          const f = e.target.files?.[0];
-                          e.target.value = "";
-                          if (!f) return;
-                          const src = await uploadChoiceImage(f);
-                          if (src)
-                            patch({
-                              options: draft.options.map((o, i) =>
-                                i === gi
-                                  ? { ...o, choices: o.choices.map((c, j) => (j === ci ? { ...c, imageSrc: src } : c)) }
-                                  : o
-                              ),
-                            });
-                        }}
-                      />
-                    </label>
-                    {ch.imageSrc && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          patch({
-                            options: draft.options.map((o, i) =>
-                              i === gi
-                                ? { ...o, choices: o.choices.map((c, j) => (j === ci ? { ...c, imageSrc: undefined } : c)) }
-                                : o
-                            ),
-                          })
-                        }
-                        title="เอาภาพของตัวเลือกนี้ออก"
-                        className="shrink-0 rounded-full px-1 text-[11px] font-bold text-slate-300 hover:bg-rose-50 hover:text-rose-500"
-                      >
-                        ✕
-                      </button>
-                    )}
-                    {/* บวกเพิ่มต่อหน่วยเมื่อเลือกตัวนี้ — ใช้กับกลุ่มที่ไม่ใช่แกนตารางราคา (เช่น อะไหล่พิเศษ) */}
-                    <label
-                      className="flex shrink-0 items-center gap-1 text-[11px] font-semibold text-slate-400"
-                      title="บวกเพิ่มต่อหน่วยเมื่อลูกค้าเลือกตัวเลือกนี้ (ใช้กับกลุ่มที่ไม่ได้เป็นคอลัมน์ของตารางราคา)"
-                    >
-                      +฿
-                      <input
-                        value={ch.extra}
-                        onChange={(e) =>
-                          patch({
-                            options: draft.options.map((o, i) =>
-                              i === gi
-                                ? { ...o, choices: o.choices.map((c, j) => (j === ci ? { ...c, extra: e.target.value } : c)) }
-                                : o
-                            ),
-                          })
-                        }
-                        inputMode="numeric"
-                        placeholder="0"
-                        className="w-14 rounded-lg bg-slate-50 px-2 py-1.5 text-center text-xs ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                        aria-label={`ราคาบวกเพิ่มของตัวเลือกที่ ${ci + 1}`}
-                      />
-                    </label>
-                    {/*
-                      💬 ตัวเลือกนี้ = งานสั่งทำ ให้แอดมินตีราคา (เช่น "แบบที่ 3" ที่ลูกค้าระบุขนาดเอง)
-                      ต่างจาก 💬 ระดับกลุ่มตรงที่กลุ่มยังเป็นคอลัมน์ตารางราคาได้ — แบบอื่นในกลุ่มคิดราคาปกติ
-                    */}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        patch({
-                          options: draft.options.map((o, i) =>
-                            i === gi
-                              ? {
-                                  ...o,
-                                  choices: o.choices.map((c, j) =>
-                                    j === ci ? { ...c, askPrice: !c.askPrice } : c
-                                  ),
-                                }
-                              : o
-                          ),
-                        })
-                      }
-                      title="เลือกตัวนี้แล้ว = งานสั่งทำ ราคาให้แอดมินตีให้ (หน้าร้านขึ้น “รอแอดมินตีราคา” · ลูกค้ากดสั่งไว้ก่อนได้)"
-                      aria-pressed={!!ch.askPrice}
-                      className={`shrink-0 rounded-lg px-2 py-1.5 text-[11px] font-semibold ring-1 transition ${
-                        ch.askPrice
-                          ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-                          : "bg-white text-slate-300 ring-slate-200 hover:text-emerald-600 hover:ring-emerald-200"
-                      }`}
-                    >
-                      💬 ตีราคา
-                    </button>
-                    {/*
-                      ให้ลูกค้าระบุจำนวนของตัวเลือกนี้ (เช่น เพิ่มสาย 2 เส้น = +฿ ของสาย × 2) — เฉพาะกลุ่มติ๊กหลายอย่าง
-                      ต้องติ๊ก 📐 ที่หัวกลุ่มก่อนถึงกางช่องนี้ (ดู choiceQtyVisible)
-                    */}
-                    {choiceQtyVisible(opt) && (
-                      <label
-                        className={`flex shrink-0 cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold ring-1 ${
-                          ch.qty ? "bg-amber-50 text-amber-700 ring-amber-200" : "bg-white text-slate-400 ring-slate-200"
-                        }`}
-                        title="ลูกค้าติ๊กตัวนี้แล้วระบุจำนวนได้ เช่น เพิ่มสาย 2 เส้น → +฿ ของตัวนี้คูณ 2 (ในตะกร้า/ใบงานขึ้นเป็น “ชื่อตัวเลือก ×2”)"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!!ch.qty}
-                          onChange={(e) =>
-                            patch({
-                              options: draft.options.map((o, i) =>
-                                i === gi
-                                  ? {
-                                      ...o,
-                                      choices: o.choices.map((c, j) =>
-                                        j === ci
-                                          ? { ...c, qty: e.target.checked, ...(e.target.checked ? {} : { qtyMax: "" }) }
-                                          : c
-                                      ),
-                                    }
-                                  : o
-                              ),
-                            })
-                          }
-                          className="h-3.5 w-3.5 accent-amber-500"
-                        />
-                        🔢 ระบุจำนวน
-                        {ch.qty && (
-                          <>
-                            <span className="text-slate-400">· สูงสุด</span>
-                            <input
-                              value={ch.qtyMax ?? ""}
-                              onChange={(e) =>
-                                patch({
-                                  options: draft.options.map((o, i) =>
-                                    i === gi
-                                      ? {
-                                          ...o,
-                                          choices: o.choices.map((c, j) =>
-                                            j === ci ? { ...c, qtyMax: e.target.value } : c
-                                          ),
-                                        }
-                                      : o
-                                  ),
-                                })
-                              }
-                              inputMode="numeric"
-                              placeholder="99"
-                              className="w-11 rounded-lg bg-white px-1 py-0.5 text-center text-[11px] text-slate-600 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                              aria-label={`จำนวนสูงสุดของตัวเลือกที่ ${ci + 1}`}
-                            />
-                          </>
-                        )}
-                      </label>
-                    )}
-                    {/* ชิ้นที่ได้ต่อ 1 หน่วยสั่ง (📐 ชิ้น/หน่วย) ย้ายไปกรอกในตารางราคาแล้ว — คอลัมน์แรกข้างชื่อตัวเลือก */}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        patch({
-                          options: draft.options.map((o, i) =>
-                            i === gi ? { ...o, choices: o.choices.filter((_, j) => j !== ci) } : o
-                          ),
-                        })
-                      }
-                      className="shrink-0 rounded-full px-2 py-1 text-xs font-bold text-rose-400 hover:bg-rose-50"
-                      aria-label={`ลบตัวเลือกที่ ${ci + 1}`}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  patch({
-                    options: draft.options.map((o, i) =>
-                      i === gi ? { ...o, choices: [...o.choices, { name: "", extra: "" }] } : o
-                    ),
-                  })
-                }
-                className="mt-2 rounded-full bg-slate-100 px-3.5 py-1.5 text-xs font-bold text-slate-500 hover:bg-slate-100"
-              >
-                ＋ เพิ่มตัวเลือก
-              </button>
-              </>
-              )}
-            </div>
             )
           )}
         </div>
         <p className="mt-2 text-[11px] text-slate-400">
           💡 ตัวเลือกแรกของแต่ละกลุ่มคือค่าเริ่มต้น · ราคาคุมด้วยราคาขั้นบันได · กลุ่ม 🔗 ลิงก์คลัง แก้รวมได้ที่หน้าคลังตัวเลือก
         </p>
-        {/* บอกว่าช่องกรอกไปอยู่ไหน — ไม่งั้นเปิดมาแล้วหาไม่เจอว่าที่ตั้งไว้หายไปไหน */}
-        {draft.options.some((o) => o.display === "input") && (
+        {/* บอกว่าของงานสั่งทำไปอยู่ไหน — ไม่งั้นเปิดมาแล้วหาไม่เจอว่าที่ตั้งไว้หายไปไหน */}
+        {draft.options.some(isMadeToOrder) && (
           <p className="mt-1 text-[11px] font-semibold text-violet-700">
-            ✍️ ช่องกรอก {draft.options.filter((o) => o.display === "input").length} ช่อง (
-            {draft.options.filter((o) => o.display === "input").map((o) => o.label.trim() || "ยังไม่ตั้งชื่อ").join(" · ")}
+            📐 งานสั่งทำ {draft.options.filter(isMadeToOrder).length} รายการ (
+            {draft.options.filter(isMadeToOrder).map((o) => o.label.trim() || "ยังไม่ตั้งชื่อ").join(" · ")}
             ) — ตั้งค่าที่{" "}
             <button
               type="button"
@@ -4825,7 +4911,7 @@ export default function ProductEditor({ product }: { product: Product }) {
         </p>
 
         {/* ✍️ ช่องกรอกแบบยืดหยุ่น — กี่ช่องก็ได้ ตั้งชื่อเองได้ทุกช่อง (แทนช่องกว้าง×ยาวชุดเดียวแบบเดิม) */}
-        {inputFieldsPanel()}
+        {madeToOrderPanel()}
 
         {/* ── แบบเดิม: ช่องกว้าง × ยาว ชุดเดียวต่อสินค้า (คงไว้ให้สินค้าที่ตั้งไว้แล้วใช้ต่อได้) ── */}
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-slate-200 pt-3">
