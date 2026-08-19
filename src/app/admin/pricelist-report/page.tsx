@@ -3,7 +3,23 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import RequirePerm from "@/components/RequirePerm";
-import { badge, btnNeutral, btnSmNeutral, card, code, faint, h1, label, metric, muted, pillActive, pillIdle } from "@/lib/admin-ui";
+import {
+  badge,
+  btnNeutral,
+  btnSmNeutral,
+  card,
+  code,
+  faint,
+  filterGroupLabel,
+  h1,
+  label,
+  metric,
+  muted,
+  segCount,
+  segItemActive,
+  segItemIdle,
+  segWrap,
+} from "@/lib/admin-ui";
 import { persistProduct } from "@/lib/product-repo";
 import { useCan } from "@/lib/perm-context";
 import type { Product } from "@/lib/products";
@@ -124,13 +140,6 @@ const STATUS_STYLE: Record<Status, string> = {
 };
 
 const STATUS_EMOJI: Record<Status, string> = { published: "✓", draft: "✎", missing: "✕" };
-
-const FILTERS: { id: Status | "all"; label: string }[] = [
-  { id: "all", label: "ทั้งหมด" },
-  { id: "published", label: "เผยแพร่แล้ว" },
-  { id: "draft", label: "ฉบับร่าง" },
-  { id: "missing", label: "ยังไม่มีในระบบ" },
-];
 
 /** ชื่อลิงก์แบบสั้น — เอาชื่อหน้า (slug) ของเว็บตารางราคามาโชว์ เช่น /keyring */
 const linkName = (url: string) => {
@@ -402,6 +411,49 @@ function ProductCell({
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * กลุ่มตัวกรองแบบ segmented — ชื่อกลุ่มอยู่ซ้าย ปุ่มอยู่ในราง
+ * รางเทาบอกว่า "ปุ่มพวกนี้เป็นกลุ่มเดียวกัน เลือกได้ทีละอัน" แทนพิลล์เรียงยาวที่แยกกลุ่มไม่ออก
+ */
+function FilterGroup<T extends string>({
+  title,
+  dot,
+  value,
+  onChange,
+  options,
+}: {
+  title: string;
+  /** จุดสีหน้าชื่อกลุ่ม — ให้ตากวาดหากลุ่มที่ต้องการเจอเร็วขึ้น */
+  dot?: string;
+  value: T;
+  onChange: (v: T) => void;
+  options: readonly { id: T; label: string; n?: number; title?: string }[];
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`flex items-center gap-1.5 ${filterGroupLabel}`}>
+        {dot ? <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot }} /> : null}
+        {title}
+      </span>
+      <div className={segWrap} role="group" aria-label={title}>
+        {options.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            aria-pressed={value === o.id}
+            title={o.title}
+            className={value === o.id ? segItemActive : segItemIdle}
+            onClick={() => onChange(o.id)}
+          >
+            {o.label}
+            {typeof o.n === "number" ? <span className={segCount}>{o.n}</span> : null}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -775,6 +827,16 @@ export default function PricelistReportPage() {
     );
   }, [data, filter, cat, doneFilter, priceFilter, query]);
 
+  /** มีตัวกรองอะไรเปิดอยู่ไหม — ใช้โชว์ปุ่ม "ล้างตัวกรอง" */
+  const filtering = filter !== "all" || cat !== "all" || doneFilter !== "all" || priceFilter !== "off" || !!query.trim();
+  const clearFilters = useCallback(() => {
+    setFilter("all");
+    setCat("all");
+    setDoneFilter("all");
+    setPriceFilter("off");
+    setQuery("");
+  }, []);
+
   /** จัดกลุ่มตามหมวดบนเว็บ เรียงตามลำดับที่ปรากฏบนหน้าเว็บจริง */
   const groups = useMemo(() => {
     const map = new Map<string, Row[]>();
@@ -880,73 +942,79 @@ export default function PricelistReportPage() {
             </div>
 
             {/* ── ตัวกรอง ── */}
-            <div className={`${card} flex flex-wrap items-center gap-2 p-3`}>
-              {FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  className={filter === f.id ? pillActive : pillIdle}
-                  onClick={() => setFilter(f.id)}
+            <div className={`${card} space-y-3 p-3`}>
+              {/* แถวบน: 3 กลุ่ม แต่ละกลุ่มเลือกได้ทีละอัน — รางเทาบอกขอบเขตกลุ่มแทนพิลล์เรียงยาว */}
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                <FilterGroup
+                  title="สถานะในระบบ"
+                  value={filter}
+                  onChange={setFilter}
+                  options={[
+                    { id: "all", label: "ทั้งหมด", n: sum.cards },
+                    { id: "published", label: "เผยแพร่แล้ว", n: sum.published },
+                    { id: "draft", label: "ฉบับร่าง", n: sum.draft },
+                    { id: "missing", label: "ยังไม่มีในระบบ", n: sum.missing },
+                  ]}
+                />
+                <FilterGroup
+                  title="งานพี่ปุ๋ยทำราคา"
+                  dot="#57B6E8"
+                  value={priceFilter}
+                  onChange={setPriceFilter}
+                  options={[
+                    { id: "off", label: "ไม่กรอง", title: "ไม่สนใจงานทำราคา — โชว์ทุกบรรทัด" },
+                    { id: "all", label: "สั่งแล้ว", n: sum.priceTasks, title: "ทุกบรรทัดที่ติ๊กให้พี่ปุ๋ยทำราคา" },
+                    {
+                      id: "todo",
+                      label: "ยังไม่เสร็จ",
+                      n: sum.priceTasks - sum.priceDone,
+                      title: "สั่งไว้แล้ว แต่ยังไม่ได้กดปุ่ม “เสร็จแล้ว”",
+                    },
+                    { id: "done", label: "เสร็จแล้ว", n: sum.priceDone, title: "พี่ปุ๋ยกดปุ่ม “เสร็จแล้ว” ไว้" },
+                  ]}
+                />
+                <FilterGroup
+                  title="เช็กลิสต์ทำแล้ว"
+                  dot="#FFD447"
+                  value={doneFilter}
+                  onChange={setDoneFilter}
+                  options={[
+                    { id: "all", label: "ทั้งหมด" },
+                    { id: "todo", label: "ยังไม่ทำ", n: sum.cards - sum.done },
+                    { id: "done", label: "ทำแล้ว", n: sum.done },
+                  ]}
+                />
+              </div>
+
+              {/* แถวล่าง: หมวด + ค้นหา + ล้างตัวกรอง · ขวาสุดบอกว่าตอนนี้เหลือกี่บรรทัด */}
+              <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+                <select
+                  value={cat}
+                  onChange={(e) => setCat(e.target.value)}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700"
                 >
-                  {f.label}
-                  <span className="ml-1.5 opacity-60">
-                    {f.id === "all" ? sum.cards : f.id === "published" ? sum.published : f.id === "draft" ? sum.draft : sum.missing}
-                  </span>
-                </button>
-              ))}
-              <span className="mx-1 h-5 w-px bg-slate-200" />
-              {([
-                { id: "all", label: "พี่ปุ๋ยทำราคา", n: sum.priceTasks, title: "โชว์เฉพาะบรรทัดที่สั่งให้พี่ปุ๋ยทำราคา" },
-                { id: "todo", label: "รอทำราคา", n: sum.priceTasks - sum.priceDone, title: "สั่งไว้แล้วแต่ยังไม่กดเสร็จแล้ว" },
-                { id: "done", label: "ทำราคาเสร็จแล้ว", n: sum.priceDone, title: "กดปุ่มเสร็จแล้วไว้" },
-              ] as const).map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  className={priceFilter === f.id ? pillActive : pillIdle}
-                  onClick={() => setPriceFilter((v) => (v === f.id ? "off" : f.id))}
-                  title={f.title}
-                >
-                  {f.label}
-                  <span className="ml-1.5 opacity-60">{f.n}</span>
-                </button>
-              ))}
-              <span className="mx-1 h-5 w-px bg-slate-200" />
-              {([
-                { id: "all", label: "เช็กลิสต์ทั้งหมด" },
-                { id: "todo", label: "ยังไม่ทำ" },
-                { id: "done", label: "ทำแล้ว" },
-              ] as const).map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  className={doneFilter === f.id ? pillActive : pillIdle}
-                  onClick={() => setDoneFilter(f.id)}
-                >
-                  {f.label}
-                  {f.id !== "all" ? (
-                    <span className="ml-1.5 opacity-60">{f.id === "done" ? sum.done : sum.cards - sum.done}</span>
-                  ) : null}
-                </button>
-              ))}
-              <select
-                value={cat}
-                onChange={(e) => setCat(e.target.value)}
-                className="ml-auto rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700"
-              >
-                <option value="all">ทุกหมวดบนเว็บ</option>
-                {cats.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="ค้นหาชื่อสินค้า…"
-                className="w-56 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400"
-              />
+                  <option value="all">ทุกหมวดบนเว็บ</option>
+                  {cats.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="ค้นหาชื่อสินค้า…"
+                  className="w-56 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400"
+                />
+                {filtering ? (
+                  <button type="button" className={btnSmNeutral} onClick={clearFilters} title="กลับไปโชว์ทุกบรรทัด">
+                    ✕ ล้างตัวกรอง
+                  </button>
+                ) : null}
+                <span className={`ml-auto text-xs ${faint}`}>
+                  แสดง <b className="tabular-nums text-slate-600">{rows.length}</b> จาก {sum.cards} บรรทัด
+                </span>
+              </div>
             </div>
           </>
         ) : null}

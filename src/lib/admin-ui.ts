@@ -56,6 +56,18 @@ export const pill = "shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium tra
 export const pillActive = `${pill} bg-slate-900 text-white`;
 export const pillIdle = `${pill} border border-slate-200 bg-white text-slate-600 hover:bg-slate-50`;
 
+// ── segmented control (ตัวกรองที่เลือกได้ทีละอันในกลุ่มเดียว) ──
+// ใช้แทน pill เรียงยาว ๆ เวลามีตัวกรองหลายกลุ่มบนแถบเดียว — รางเทาบอกขอบเขตกลุ่ม
+// ผู้ใช้เห็นทันทีว่าอันไหนอยู่กลุ่มเดียวกัน และแต่ละกลุ่มเลือกอยู่อันไหน
+export const segWrap = "inline-flex items-center gap-0.5 rounded-full bg-slate-100 p-0.5";
+const segItem = "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium transition";
+export const segItemActive = `${segItem} bg-white text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.10)]`;
+export const segItemIdle = `${segItem} text-slate-500 hover:text-slate-800`;
+/** ตัวเลขกำกับในปุ่ม segmented — เทาจาง ไม่แย่งสายตาจากชื่อ */
+export const segCount = "rounded-full bg-slate-900/[0.06] px-1.5 py-0.5 text-[11px] font-semibold tabular-nums";
+/** ชื่อกำกับกลุ่มตัวกรอง (ซ้ายมือของราง) */
+export const filterGroupLabel = "text-[11px] font-semibold text-slate-400";
+
 // ── badge สถานะ/ป้าย (โทนนุ่ม) ──
 export const badge = "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold";
 
