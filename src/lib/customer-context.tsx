@@ -33,6 +33,8 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
   const [customer, setCustomerState] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
   const lastRef = useRef<string>("null");
+  /** id ของบัญชีที่รู้จักล่าสุด — undefined = ยังไม่รู้ว่าใคร (เพิ่งเปิดหน้า) */
+  const lastIdRef = useRef<string | null | undefined>(undefined);
 
   /**
    * ตั้งค่าลูกค้าแบบ "เหมือนเดิมไม่ต้องเปลี่ยน" — กัน re-render/ยิง API ซ้ำ
@@ -51,19 +53,25 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
     // 1) เซสชันในเครื่องก่อน — ได้ทันที หน้าจึงเริ่มวาด/เริ่มโหลดข้อมูลได้เลย ไม่ต้องรอ Supabase ตอบ
     getCachedCustomer().then((c) => {
       if (!alive || !c) return;
+      if (lastIdRef.current === undefined) lastIdRef.current = c.id;
       setCustomer(c);
       setLoading(false);
     });
     // 2) แล้วค่อยยืนยันกับเซิร์ฟเวอร์ (token หมดอายุ/ถูกถอน = เคลียร์ทิ้ง)
     getCustomer().then((c) => {
       if (!alive) return;
+      if (lastIdRef.current === undefined) lastIdRef.current = c?.id ?? null;
       setCustomer(c);
       setLoading(false);
       if (c) claimWelcomeCoupon();
     });
     const off = onAuthChange((c) => {
-      // เปลี่ยนคน (เข้า/ออกจากระบบ) = ข้อมูลออเดอร์ที่แคชไว้ของคนเก่าใช้ไม่ได้แล้ว
-      if (JSON.stringify(c) !== lastRef.current) clearMyOrders();
+      // เปลี่ยน "คน" จริงๆ (สลับบัญชี/ออกจากระบบ) เท่านั้น ถึงทิ้งข้อมูลที่เก็บไว้ในเครื่อง
+      // ⚠️ ห้ามทิ้งตอนเพิ่งเปิดหน้า (lastIdRef ยังเป็น undefined) ไม่งั้นสำเนาที่เก็บไว้จะถูกลบ
+      //    ก่อนที่หน้าจะได้อ่านไปใช้ — หน้าจะกลับไปโล่งรอ API ทุกครั้งเหมือนเดิม
+      const nextId = c?.id ?? null;
+      if (lastIdRef.current !== undefined && lastIdRef.current !== nextId) clearMyOrders();
+      lastIdRef.current = nextId;
       setCustomer(c);
       if (c) claimWelcomeCoupon();
     });

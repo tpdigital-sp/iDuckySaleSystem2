@@ -8,7 +8,7 @@ import { orderBalance, orderTotal, STATUS_STYLES, type Order, type OrderStatus }
 import StepDots from "@/components/StepDots";
 import { useCustomer } from "@/lib/customer-context";
 import { useCart } from "@/lib/cart-context";
-import { fetchMyOrders } from "@/lib/my-orders";
+import { fetchMyOrders, readStoredOrders, setOrdersOwner } from "@/lib/my-orders";
 
 /** กลุ่มกรอง — รวมสถานะที่ลูกค้าเข้าใจง่าย */
 const FILTERS: { key: string; label: string; match: (s: OrderStatus) => boolean }[] = [
@@ -33,6 +33,13 @@ export default function MyOrdersPage() {
 
   useEffect(() => {
     if (!customer) return;
+    setOrdersOwner(customer.id);
+    // ชุดล่าสุดที่เก็บไว้ในเครื่องขึ้นก่อน (API ตอบราว 1 วิ) แล้วค่อยทับด้วยของจริง
+    const snap = readStoredOrders(customer.id);
+    if (snap) {
+      setOrders(snap);
+      setState("ready");
+    }
     (async () => {
       const data = await fetchMyOrders();
       setOrders(data.orders);

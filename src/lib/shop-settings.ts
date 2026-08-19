@@ -160,6 +160,17 @@ const SETTINGS_TTL = 60_000;
 let settingsCache: { at: number; value: ShopPayment } | null = null;
 let settingsInflight: Promise<ShopPayment> | null = null;
 
+/** สำเนาในเครื่องของครั้งล่าสุด — ให้หน้าวาดได้ทันทีตั้งแต่ยังไม่ได้คุยกับเซิร์ฟเวอร์ (ข้อมูลร้าน ไม่ใช่ของส่วนตัว) */
+const SETTINGS_SNAP_KEY = "ducky_shop_settings_snap";
+export function readStoredShopPayment(): ShopPayment | null {
+  try {
+    const raw = localStorage.getItem(SETTINGS_SNAP_KEY);
+    return raw ? (JSON.parse(raw) as ShopPayment) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** ล้างแคชตั้งค่าร้าน (หลังแอดมินบันทึก) */
 export function clearShopPaymentCache() {
   settingsCache = null;
@@ -172,6 +183,11 @@ export function fetchShopPayment(): Promise<ShopPayment> {
   const p = loadShopPayment()
     .then((v) => {
       settingsCache = { at: Date.now(), value: v };
+      try {
+        localStorage.setItem(SETTINGS_SNAP_KEY, JSON.stringify(v));
+      } catch {
+        /* พื้นที่เต็ม — ข้าม */
+      }
       return v;
     })
     .finally(() => {

@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { graphicWaitingItems, orderBalance, type Order } from "@/lib/admin-data";
 import { formatPrice } from "@/lib/products";
 import { useCustomer } from "@/lib/customer-context";
-import { fetchMyOrders } from "@/lib/my-orders";
+import { fetchMyOrders, setOrdersOwner } from "@/lib/my-orders";
 
 /**
  * กระดิ่งแจ้งเตือนบนแถบเมนู (ตามต้นแบบ USER PROFILE UPDATE_01.html) — โชว์เฉพาะสมาชิกที่ล็อกอิน
@@ -54,6 +54,7 @@ export default function NotifBell() {
       return;
     }
     let alive = true;
+    setOrdersOwner(customer.id); // ให้สำเนาในเครื่องถูกเขียนไว้แม้จะเปิดอยู่หน้าอื่น
     // ใช้ผลร่วมกับหน้าที่กำลังเปิด (my-orders) — ไม่ยิง /api/orders/mine ซ้ำอีกรอบต่อการโหลดหนึ่งครั้ง
     const load = async (force?: boolean) => {
       const j = await fetchMyOrders({ force });

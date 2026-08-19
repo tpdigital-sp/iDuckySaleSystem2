@@ -5,11 +5,11 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatPrice } from "@/lib/products";
 import { graphicWaitingItems, orderBalance, orderTotal, ORDER_STEPS, STEP_OF, type Order } from "@/lib/admin-data";
-import { fetchShopPayment, tiersConfigOf } from "@/lib/shop-settings";
+import { fetchShopPayment, readStoredShopPayment, tiersConfigOf } from "@/lib/shop-settings";
 import { nextTier, paidSpend, tierForSpend, tiersOf, type Tier } from "@/lib/tiers";
 import { useCustomer } from "@/lib/customer-context";
 import { signOut, updateProfile } from "@/lib/customer-auth";
-import { clearMyOrders, fetchMyOrders } from "@/lib/my-orders";
+import { clearMyOrders, fetchMyOrders, readStoredOrders, setOrdersOwner } from "@/lib/my-orders";
 import { uploadAvatar } from "@/lib/avatar-upload";
 import { LINE_URL } from "@/components/LineButton";
 import MyCoupons from "@/components/MyCoupons";
@@ -156,7 +156,14 @@ export default function AccountPage() {
 
   useEffect(() => {
     if (!customer) return;
+    setOrdersOwner(customer.id);
     setTierHint(readTierHint(customer.id));
+    // 1) วาดของชุดล่าสุดที่เก็บไว้ในเครื่องก่อน — API ของเว็บตอบราว 1 วินาที ระหว่างนั้นจะได้ไม่เห็นหน้าโล่ง
+    const snapOrders = readStoredOrders(customer.id);
+    const snapSett = readStoredShopPayment();
+    if (snapSett) setTierList(tiersConfigOf(snapSett));
+    if (snapOrders) setOrders(snapOrders);
+    // 2) แล้วค่อยดึงของจริงมาทับเบื้องหลัง
     (async () => {
       const [res, sett] = await Promise.all([fetchMyOrders(), fetchShopPayment()]);
       setOrders(res.orders);
