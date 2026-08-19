@@ -4,6 +4,9 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import RequirePerm from "@/components/RequirePerm";
 import { badge, btnNeutral, btnSmNeutral, card, code, faint, h1, label, metric, muted, pillActive, pillIdle } from "@/lib/admin-ui";
+import { persistProduct } from "@/lib/product-repo";
+import { useCan } from "@/lib/perm-context";
+import type { Product } from "@/lib/products";
 
 /**
  * 🔍 รายงานเทียบเว็บตารางราคา ↔ สินค้าในระบบ
@@ -210,12 +213,15 @@ function ProductCell({
   all,
   busy,
   onAssign,
+  onCreate,
 }: {
   row: Row;
   all: PickItem[];
   busy: boolean;
   /** key = รหัสบรรทัดปลายทาง · "" = เอาออก · null = คืนค่าจับคู่อัตโนมัติ */
   onAssign: (productId: string, key: string | null) => void;
+  /** สร้างสินค้าใหม่ในระบบจากชื่อบรรทัดนี้ (undefined = ไม่มีสิทธิ์แก้สินค้า → ไม่ต้องโชว์ปุ่ม) */
+  onCreate?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -289,6 +295,20 @@ function ProductCell({
         >
           {picking ? "ปิด" : "＋ ย้ายสินค้ามาที่นี่"}
         </button>
+        {onCreate ? (
+          // บรรทัดที่ยังไม่มีสินค้าเลย = งานที่ต้องทำจริง เน้นสีเขียว · บรรทัดที่มีแล้วเก็บไว้จาง ๆ กันรก
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onCreate}
+            title={`สร้างสินค้าใหม่ในระบบชื่อ "${row.name}" (ฉบับร่าง หมวดอะคริลิค) แล้วผูกกับบรรทัดนี้ให้เลย — เข้าไปกรอกราคา/ตัวเลือกทีหลัง`}
+            className={`font-semibold hover:underline disabled:cursor-wait disabled:opacity-50 ${
+              row.products.length ? "text-slate-400 hover:text-emerald-600" : "text-emerald-600"
+            }`}
+          >
+            🆕 {row.products.length ? "สร้างเพิ่ม" : "สร้างสินค้าในระบบ"}
+          </button>
+        ) : null}
       </div>
 
       {picking ? (
@@ -355,6 +375,10 @@ export default function PricelistReportPage() {
   const [editRow, setEditRow] = useState({ name: "", category: "", url: "" });
   /** บรรทัดที่กำลังบันทึกติ๊กอยู่ (กันกดรัวซ้ำ) */
   const [saving, setSaving] = useState<Set<string>>(new Set());
+  /** ข้อความบอกผลหลังสร้างสินค้าใหม่ (ว่าง = ไม่มี) */
+  const [created, setCreated] = useState("");
+  // ฝ่ายที่ดูรายงานได้แต่แก้สินค้าไม่ได้ (products.view อย่างเดียว) ไม่ต้องเห็นปุ่มสร้าง
+  const mayManage = useCan()("products.manage");
 
   const load = useCallback(async (refresh = false) => {
     setLoading(true);
@@ -525,6 +549,62 @@ export default function PricelistReportPage() {
     [load]
   );
 
+  /**
+   * สร้างสินค้าใหม่ในระบบจากชื่อบรรทัดนี้ แล้วผูกเข้ากับบรรทัดทันที
+   *
+   * ใช้กับบรรทัดที่ขึ้น "ยังไม่มีในระบบ" — เดิมต้องไปหน้าสินค้า กด ＋ เพิ่มสินค้า
+   * พิมพ์ชื่อใหม่ แล้ววนกลับมาจับคู่เอง · สินค้าที่ได้เป็น "ฉบับร่าง" เสมอ
+   * (หมวดตั้งเป็นอะคริลิคไว้ก่อนเหมือนปุ่มเพิ่มสินค้าปกติ — เข้าไปแก้ในหน้าแก้ไขได้)
+   */
+  const createProduct = useCallback(
+    async (row: Row) => {
+      const name = row.name.trim();
+      if (!name || saving.has(row.key)) return;
+      setSaving((s) => new Set(s).add(row.key));
+      setError("");
+      setCreated("");
+      try {
+        const id = `new-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4)}`;
+        const blank: Product = {
+          id,
+          name,
+          category: "acrylic",
+          price: 0,
+          emoji: "🦆",
+          gradient: "from-sky-200 to-cyan-300",
+          rating: 5,
+          sold: 0,
+          description: "",
+          highlights: [],
+          options: [],
+          images: [{ emoji: "🦆", gradient: "from-sky-200 to-cyan-300", label: "ด้านหน้า" }],
+          hidden: true, // ยังไม่มีราคา/รูป — ห้ามโผล่หน้าร้าน
+        };
+        const res = await persistProduct(blank);
+        if (!res.ok) throw new Error(res.error ?? "บันทึกสินค้าไม่สำเร็จ");
+        // ผูกกับบรรทัดนี้เอง ไม่ต้องรอให้ระบบเดาชื่อตรง (ชื่อบนเว็บกับในระบบมักไม่เหมือนกันเป๊ะ)
+        const r = await fetch("/api/admin/pricelist-report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ productId: id, key: row.key }),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+        await load();
+        setCreated(`สร้าง “${name}” เป็นฉบับร่างแล้ว — กดชื่อในช่อง “สินค้าในระบบ” เพื่อไปกรอกราคา/ตัวเลือก/รูป`);
+      } catch (e) {
+        setError(`สร้างสินค้าไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        setSaving((s) => {
+          const n = new Set(s);
+          n.delete(row.key);
+          return n;
+        });
+      }
+    },
+    [load, saving]
+  );
+
   const cats = useMemo(() => [...new Set((data?.rows ?? []).map((r) => r.category))].filter(Boolean), [data]);
 
   const rows = useMemo(() => {
@@ -606,6 +686,19 @@ export default function PricelistReportPage() {
 
         {error ? (
           <div className={`${card} border-rose-200 bg-rose-50 p-4 text-sm text-rose-700`}>⚠ {error}</div>
+        ) : null}
+
+        {created ? (
+          <div className={`${card} flex items-start gap-3 border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800`}>
+            <span className="flex-1">✓ {created}</span>
+            <button
+              type="button"
+              onClick={() => setCreated("")}
+              className="shrink-0 rounded px-1.5 text-emerald-500 transition hover:bg-emerald-100 hover:text-emerald-700"
+            >
+              ✕
+            </button>
+          </div>
         ) : null}
 
         {/* ── สรุป ── */}
@@ -975,6 +1068,7 @@ export default function PricelistReportPage() {
                             all={allProducts}
                             busy={saving.size > 0}
                             onAssign={(id, key) => void assignProduct(id, key)}
+                            onCreate={mayManage ? () => void createProduct(r) : undefined}
                           />
                         </td>
                         <td className={`px-4 py-2 align-top text-xs ${faint}`}>{r.match ?? "—"}</td>
