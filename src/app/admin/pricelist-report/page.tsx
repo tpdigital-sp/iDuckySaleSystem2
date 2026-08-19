@@ -370,6 +370,8 @@ export default function PricelistReportPage() {
   /** เปิดฟอร์ม "เพิ่มชื่อเอง" ไหม + ค่าที่พิมพ์ไว้ */
   const [adding, setAdding] = useState(false);
   const [newRow, setNewRow] = useState({ name: "", category: "", url: "" });
+  /** ติ๊กไว้ = กดบันทึกแล้วสร้างสินค้าในระบบ (ฉบับร่าง) ผูกกับบรรทัดใหม่ให้เลย */
+  const [addWithProduct, setAddWithProduct] = useState(true);
   /** บรรทัดที่กำลังแก้ชื่ออยู่ (null = ไม่ได้แก้อะไร) + ค่าที่พิมพ์ไว้ */
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editRow, setEditRow] = useState({ name: "", category: "", url: "" });
@@ -467,10 +469,11 @@ export default function PricelistReportPage() {
         const j = await r.json();
         if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
         await load();
-        return true;
+        // คืนคำตอบจากเซิร์ฟเวอร์ (ไม่ใช่แค่ true/false) เพราะตอนเพิ่มบรรทัดต้องใช้ key ที่เพิ่งได้มาต่อ
+        return j as { key?: string };
       } catch (e) {
         setError(`${what}ไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);
-        return false;
+        return null;
       } finally {
         setSaving((s) => {
           const n = new Set(s);
@@ -488,15 +491,75 @@ export default function PricelistReportPage() {
     [send]
   );
 
+  /**
+   * สร้างสินค้าใหม่ในระบบจากชื่อบรรทัดนี้ แล้วผูกเข้ากับบรรทัดทันที
+   *
+   * ใช้กับบรรทัดที่ขึ้น "ยังไม่มีในระบบ" — เดิมต้องไปหน้าสินค้า กด ＋ เพิ่มสินค้า
+   * พิมพ์ชื่อใหม่ แล้ววนกลับมาจับคู่เอง · สินค้าที่ได้เป็น "ฉบับร่าง" เสมอ
+   * (หมวดตั้งเป็นอะคริลิคไว้ก่อนเหมือนปุ่มเพิ่มสินค้าปกติ — เข้าไปแก้ในหน้าแก้ไขได้)
+   */
+  const createProductFor = useCallback(
+    async (key: string, rawName: string) => {
+      const name = rawName.trim();
+      if (!name) return;
+      {
+        const id = `new-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4)}`;
+        const blank: Product = {
+          id,
+          name,
+          category: "acrylic",
+          price: 0,
+          emoji: "🦆",
+          gradient: "from-sky-200 to-cyan-300",
+          rating: 5,
+          sold: 0,
+          description: "",
+          highlights: [],
+          options: [],
+          images: [{ emoji: "🦆", gradient: "from-sky-200 to-cyan-300", label: "ด้านหน้า" }],
+          hidden: true, // ยังไม่มีราคา/รูป — ห้ามโผล่หน้าร้าน
+        };
+        const res = await persistProduct(blank);
+        if (!res.ok) throw new Error(res.error ?? "บันทึกสินค้าไม่สำเร็จ");
+        // ผูกกับบรรทัดนี้เอง ไม่ต้องรอให้ระบบเดาชื่อตรง (ชื่อบนเว็บกับในระบบมักไม่เหมือนกันเป๊ะ)
+        const r = await fetch("/api/admin/pricelist-report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ productId: id, key }),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+      }
+    },
+    []
+  );
+
   /** เพิ่มบรรทัดชื่อเอง — ชื่อที่ยังไม่มีบนหน้าเว็บตารางราคา */
   const addRow = useCallback(async () => {
     const name = newRow.name.trim();
     if (!name) return;
-    if (await send({ add: { ...newRow, name } }, "__add__", "เพิ่มชื่อ")) {
-      setNewRow({ name: "", category: "", url: "" });
-      setAdding(false);
+    setCreated("");
+    const added = await send({ add: { ...newRow, name } }, "__add__", "เพิ่มชื่อ");
+    if (!added) return;
+    setNewRow({ name: "", category: "", url: "" });
+    setAdding(false);
+    // ติ๊ก "สร้างสินค้าในระบบให้ด้วย" ไว้ = ได้ทั้งบรรทัดในรายงานและสินค้าฉบับร่างที่ผูกกันแล้วในกดเดียว
+    if (!(mayManage && addWithProduct && added.key)) return;
+    setSaving((s) => new Set(s).add("__add__"));
+    try {
+      await createProductFor(added.key, name);
+      await load();
+      setCreated(`เพิ่ม “${name}” เข้ารายงาน และสร้างสินค้าฉบับร่างชื่อเดียวกันให้แล้ว — กดชื่อในช่อง “สินค้าในระบบ” เพื่อไปกรอกราคา/ตัวเลือก/รูป`);
+    } catch (e) {
+      setError(`เพิ่มชื่อแล้ว แต่สร้างสินค้าไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving((s) => {
+        const n = new Set(s);
+        n.delete("__add__");
+        return n;
+      });
     }
-  }, [newRow, send]);
+  }, [newRow, send, mayManage, addWithProduct, createProductFor, load]);
 
   /** บันทึกชื่อที่แก้ — บรรทัดจากเว็บแก้ได้เฉพาะชื่อ · บรรทัดที่เพิ่มเองแก้หมวด/ลิงก์ได้ด้วย */
   const saveEdit = useCallback(
@@ -549,49 +612,17 @@ export default function PricelistReportPage() {
     [load]
   );
 
-  /**
-   * สร้างสินค้าใหม่ในระบบจากชื่อบรรทัดนี้ แล้วผูกเข้ากับบรรทัดทันที
-   *
-   * ใช้กับบรรทัดที่ขึ้น "ยังไม่มีในระบบ" — เดิมต้องไปหน้าสินค้า กด ＋ เพิ่มสินค้า
-   * พิมพ์ชื่อใหม่ แล้ววนกลับมาจับคู่เอง · สินค้าที่ได้เป็น "ฉบับร่าง" เสมอ
-   * (หมวดตั้งเป็นอะคริลิคไว้ก่อนเหมือนปุ่มเพิ่มสินค้าปกติ — เข้าไปแก้ในหน้าแก้ไขได้)
-   */
+  /** ปุ่ม "🆕 สร้างสินค้าในระบบ" ของบรรทัดหนึ่ง — สร้าง + ผูก + โหลดรายงานใหม่ */
   const createProduct = useCallback(
     async (row: Row) => {
-      const name = row.name.trim();
-      if (!name || saving.has(row.key)) return;
+      if (saving.has(row.key)) return;
       setSaving((s) => new Set(s).add(row.key));
       setError("");
       setCreated("");
       try {
-        const id = `new-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4)}`;
-        const blank: Product = {
-          id,
-          name,
-          category: "acrylic",
-          price: 0,
-          emoji: "🦆",
-          gradient: "from-sky-200 to-cyan-300",
-          rating: 5,
-          sold: 0,
-          description: "",
-          highlights: [],
-          options: [],
-          images: [{ emoji: "🦆", gradient: "from-sky-200 to-cyan-300", label: "ด้านหน้า" }],
-          hidden: true, // ยังไม่มีราคา/รูป — ห้ามโผล่หน้าร้าน
-        };
-        const res = await persistProduct(blank);
-        if (!res.ok) throw new Error(res.error ?? "บันทึกสินค้าไม่สำเร็จ");
-        // ผูกกับบรรทัดนี้เอง ไม่ต้องรอให้ระบบเดาชื่อตรง (ชื่อบนเว็บกับในระบบมักไม่เหมือนกันเป๊ะ)
-        const r = await fetch("/api/admin/pricelist-report", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ productId: id, key: row.key }),
-        });
-        const j = await r.json();
-        if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+        await createProductFor(row.key, row.name);
         await load();
-        setCreated(`สร้าง “${name}” เป็นฉบับร่างแล้ว — กดชื่อในช่อง “สินค้าในระบบ” เพื่อไปกรอกราคา/ตัวเลือก/รูป`);
+        setCreated(`สร้าง “${row.name.trim()}” เป็นฉบับร่างแล้ว — กดชื่อในช่อง “สินค้าในระบบ” เพื่อไปกรอกราคา/ตัวเลือก/รูป`);
       } catch (e) {
         setError(`สร้างสินค้าไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);
       } finally {
@@ -602,7 +633,7 @@ export default function PricelistReportPage() {
         });
       }
     },
-    [load, saving]
+    [createProductFor, load, saving]
   );
 
   const cats = useMemo(() => [...new Set((data?.rows ?? []).map((r) => r.category))].filter(Boolean), [data]);
@@ -811,6 +842,7 @@ export default function PricelistReportPage() {
               <p className="text-sm font-semibold text-slate-800">➕ เพิ่มชื่อเข้ารายงานเอง</p>
               <p className={`mt-0.5 text-xs ${faint}`}>
                 สำหรับชื่อที่ยังไม่มีบนหน้าเว็บตารางราคา — เพิ่มแล้วติ๊กทำแล้ว สั่งพี่ปุ๋ยทำราคา และจับคู่สินค้าในระบบได้เหมือนบรรทัดอื่น
+                {mayManage ? " · ติ๊ก 🆕 ไว้ = สร้างสินค้าในระบบให้พร้อมกันเลย" : ""}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -842,6 +874,20 @@ export default function PricelistReportPage() {
                 placeholder="ลิงก์หน้าตารางราคา (ถ้ามี)"
                 className="w-72 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400"
               />
+              {mayManage ? (
+                <label
+                  className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:border-emerald-300 hover:text-emerald-700"
+                  title="สร้างสินค้าในระบบชื่อเดียวกัน (ฉบับร่าง หมวดอะคริลิค) แล้วผูกกับบรรทัดใหม่ให้เลย"
+                >
+                  <input
+                    type="checkbox"
+                    checked={addWithProduct}
+                    onChange={(e) => setAddWithProduct(e.target.checked)}
+                    className="h-3.5 w-3.5 accent-emerald-600"
+                  />
+                  🆕 สร้างสินค้าในระบบให้ด้วย
+                </label>
+              ) : null}
               <button
                 type="button"
                 className={btnSmNeutral}
