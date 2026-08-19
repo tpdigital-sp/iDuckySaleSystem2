@@ -14,7 +14,7 @@ import { LINE_URL } from "@/components/LineButton";
 import MyCoupons from "@/components/MyCoupons";
 
 /*
- * หน้า "บัญชีของฉัน" — พอร์ตจากไฟล์ต้นแบบ USER PROFILE UPDATE_02.html
+ * หน้า "บัญชีของฉัน" — พอร์ตจากไฟล์ต้นแบบ USER PROFILE UPDATE_03.html
  * โครง: เมนูข้าง (ซ้าย) + เนื้อหา (โปรไฟล์ → การ์ดระดับ/ออเดอร์ล่าสุด → ติดตามสถานะ (พับได้) → คูปอง → เมนูลิสต์)
  * สไตล์ทั้งหมดอยู่ใน landing.css ใต้หัวข้อ "หน้าบัญชี (แดชบอร์ด)" prefix .acd-
  */
@@ -27,7 +27,7 @@ const RING: Record<string, [string, string]> = {
   bronze: ["#F2A97C", "#C4703F"],
   silver: ["#D3E6FB", "#8FA6CC"],
   gold: ["#FFD879", "#E8A22E"],
-  platinum: ["#8FE3EC", "#149BAD"],
+  platinum: ["#7EE8C0", "#1C9B74"],
   diamond: ["#8ED6FF", "#B49AF0"],
 };
 const RING_ORDER = Object.keys(RING);
@@ -36,15 +36,15 @@ function ringOf(tier: Tier | null, index: number): [string, string] {
   return RING[tier.id] ?? RING[RING_ORDER[index % RING_ORDER.length]];
 }
 /** ระดับที่ตัวหนังสือบนพื้นสีอ่านยากถ้าเป็นขาว → ใช้กรมท่า */
-const DARK_TEXT_TIERS = new Set(["silver", "gold", "platinum"]);
+const DARK_TEXT_TIERS = new Set(["silver", "gold"]);
 
-/** ตราระดับ (ภาพจริงจากไฟล์ต้นแบบ) — มีศิลป์ 4 แบบ แพลตินัมใช้ร่วมกับไดมอนด์ */
-const MEDAL_ART = ["bronze", "silver", "gold", "diamond"] as const;
+/** ตราระดับ (ภาพจริงจากไฟล์ต้นแบบ) — ครบทั้ง 5 ระดับ */
+const MEDAL_ART = ["bronze", "silver", "gold", "platinum", "diamond"] as const;
 const MEDAL_ID: Record<string, (typeof MEDAL_ART)[number]> = {
   bronze: "bronze",
   silver: "silver",
   gold: "gold",
-  platinum: "diamond",
+  platinum: "platinum",
   diamond: "diamond",
 };
 /** ชื่อไฟล์ตราของระดับ — ไม่รู้จัก id ก็เดาจากลำดับ */
@@ -53,9 +53,14 @@ function medalArt(tier: Tier | null, index: number): (typeof MEDAL_ART)[number] 
   return MEDAL_ID[tier.id] ?? MEDAL_ART[Math.min(index, MEDAL_ART.length - 1)];
 }
 
-/** ธีมสีโปรไฟล์ที่ปลดล็อคตามระดับ — สีเดียวกับตรา/การ์ดระดับนั้น */
+/** ธีมสีโปรไฟล์ = สีของระดับที่เป็นอยู่จริง (สวิตช์เปิด/ปิด — เปิดไว้เป็นค่าเริ่มต้น) */
 const THEME_TEXT: Record<string, string> = { bronze: "#fff", silver: "#243B57", gold: "#5A3B08", platinum: "#fff", diamond: "#fff" };
 const THEME_KEY = "ducky_acc_theme";
+/** สีพื้นไอคอนของแต่ละแถวเมนู (ไอคอนภาพจริงจากไฟล์ต้นแบบ อยู่ที่ /account/menu) */
+const rgba = (hex: string, a: number) => {
+  const h = hex.replace("#", "");
+  return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
+};
 
 /** รหัสลูกค้าแบบอ่านง่าย — ตัดจาก id จริงของบัญชี (แอดมินค้นย้อนได้) */
 function customerCode(id: string): string {
@@ -97,7 +102,7 @@ export default function AccountPage() {
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [previewTier, setPreviewTier] = useState<string | null>(null);
-  const [trackOpen, setTrackOpen] = useState(false);
+  const [trackOpen, setTrackOpen] = useState(true);
   const [trackId, setTrackId] = useState<string | null>(null);
   const [logoutAsk, setLogoutAsk] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -110,11 +115,9 @@ export default function AccountPage() {
   const [copiedId, setCopiedId] = useState(false);
   const [greet, setGreet] = useState(false);
   const [switchOpen, setSwitchOpen] = useState(false);
-  const [themeOpen, setThemeOpen] = useState(false);
-  const [theme, setTheme] = useState<string | null>(null);
+  const [themeOn, setThemeOn] = useState(true);
   const trackRef = useRef<HTMLDivElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
-  const themeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!loading && !customer) router.replace("/account/login");
@@ -144,20 +147,10 @@ export default function AccountPage() {
     };
   }, [loading, customer]);
 
-  // ธีมสีโปรไฟล์ที่เคยเลือกไว้ (จำในเครื่อง)
+  // สวิตช์ธีมสีตามระดับ — เปิดไว้เป็นค่าเริ่มต้น ปิดแล้วจำในเครื่อง
   useEffect(() => {
-    setTheme(localStorage.getItem(THEME_KEY));
+    setThemeOn(localStorage.getItem(THEME_KEY) !== "off");
   }, []);
-
-  // คลิกนอกแผงเลือกธีม = ปิด
-  useEffect(() => {
-    if (!themeOpen) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!themeRef.current?.contains(e.target as Node)) setThemeOpen(false);
-    };
-    document.addEventListener("click", onDoc);
-    return () => document.removeEventListener("click", onDoc);
-  }, [themeOpen]);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -293,16 +286,11 @@ export default function AccountPage() {
     setTimeout(() => setCopiedId(false), 1600);
   }
 
-  function pickTheme(id: string, unlocked: boolean, name: string) {
-    if (!unlocked) return showToast(`ปลดล็อคธีมนี้ได้ตอนถึงระดับ ${name} 🔒`);
-    setTheme(id);
-    localStorage.setItem(THEME_KEY, id);
-    showToast(`ใช้ธีมสี ${name} แล้ว 🎨`);
-  }
-  function resetTheme() {
-    setTheme(null);
-    localStorage.removeItem(THEME_KEY);
-    showToast("กลับไปใช้สีปกติแล้ว");
+  function toggleTheme() {
+    const on = !themeOn;
+    setThemeOn(on);
+    localStorage.setItem(THEME_KEY, on ? "on" : "off");
+    showToast(on ? `เปิดใช้ธีมสี ${realTier?.name ?? "ระดับของคุณ"} แล้ว 🎨` : "กลับไปใช้สีปกติแล้ว");
   }
 
   const proofHref = proofOrders[0] ? orderHref(proofOrders[0]) : "/account/orders";
@@ -311,15 +299,17 @@ export default function AccountPage() {
   const shownArt = medalArt(shownTier, shownIdx);
   const cid = customerCode(customer.id);
 
-  // ธีมสีโปรไฟล์ที่เลือกไว้ → ตัวแปร CSS ให้ชิป/เมนูข้างเปลี่ยนสีตาม
-  const themeIdx = theme ? tiers.findIndex((t) => t.id === theme) : -1;
-  const themeTier = themeIdx >= 0 ? tiers[themeIdx] : null;
-  const pageStyle = themeTier
-    ? ({
-        "--acd-theme-bg": `linear-gradient(135deg,${ringOf(themeTier, themeIdx)[0]},${ringOf(themeTier, themeIdx)[1]})`,
-        "--acd-theme-fg": THEME_TEXT[themeTier.id] ?? "#fff",
-      } as React.CSSProperties)
-    : undefined;
+  // ธีมสีตามระดับจริง → ตัวแปร CSS ให้ชิป/เมนูข้าง/เงาการ์ดเปลี่ยนสีตาม
+  const pageStyle =
+    themeOn && realTier
+      ? ({
+          "--acd-theme-bg": `linear-gradient(135deg,${realRing[0]},${realRing[1]})`,
+          "--acd-theme-fg": THEME_TEXT[realTier.id] ?? "#fff",
+          "--acd-theme-line": realRing[1],
+          "--acd-theme-row-tint": `linear-gradient(90deg,${rgba(realRing[0], 0.06)} 0%,${rgba(realRing[1], 0.32)} 100%)`,
+          "--acd-theme-shadow": `0 16px 32px -14px ${rgba(realRing[1], 0.4)},0 4px 10px -4px ${rgba(realRing[0], 0.22)}`,
+        } as React.CSSProperties)
+      : undefined;
 
   return (
     <div className="dl dl-page acd-page" style={pageStyle}>
@@ -333,29 +323,29 @@ export default function AccountPage() {
             <aside className="acd-side">
               <nav className="acd-sidenav" aria-label="เมนูบัญชี">
                 <span className="on">
-                  <span className="ico">🏠</span> บัญชีของฉัน
+                  <NavIco name="home" /> บัญชีของฉัน
                 </span>
                 <Link href="/account/orders">
-                  <span className="ico">📄</span> ประวัติการสั่งซื้อ
+                  <NavIco name="orders" /> ประวัติการสั่งซื้อ
                 </Link>
                 <Link href={proofHref}>
-                  <span className="ico">🖼️</span> อนุมัติแบบ {proofCount > 0 && <span className="acd-sidedot" />}
+                  <NavIco name="proof" /> อนุมัติแบบ {proofCount > 0 && <span className="acd-sidedot" />}
                 </Link>
                 <button type="button" onClick={() => showToast("คลังไฟล์งานของฉัน — เร็วๆ นี้! ตอนนี้สั่งซ้ำได้จากประวัติการสั่งซื้อ")}>
-                  <span className="ico">🗂️</span> ไฟล์งานของฉัน
+                  <NavIco name="files" /> ไฟล์งานของฉัน
                 </button>
                 <Link href="/account/profile">
-                  <span className="ico">👤</span> ข้อมูลส่วนตัว
+                  <NavIco name="profile" /> ข้อมูลส่วนตัว
                 </Link>
                 <Link href="/account/profile">
-                  <span className="ico">📍</span> ที่อยู่จัดส่ง
+                  <NavIco name="address" /> ที่อยู่จัดส่ง
                 </Link>
                 <Link href="/how-to-order">
-                  <span className="ico">❓</span> วิธีสั่งซื้อ
+                  <NavIco name="howto" /> วิธีสั่งซื้อ
                 </Link>
                 <hr />
                 <button type="button" className="logout" onClick={() => setLogoutAsk(true)}>
-                  <span className="ico">🚪</span> ออกจากระบบ
+                  ออกจากระบบ
                 </button>
               </nav>
             </aside>
@@ -468,47 +458,18 @@ export default function AccountPage() {
                     </div>
                   )}
                 </div>
-                <div className="acd-topbar-actions" ref={themeRef}>
+                <div className="acd-topbar-actions">
                   <button
                     type="button"
-                    className={`acd-theme-btn${theme ? " active" : ""}`}
-                    aria-label="เลือกธีมสีโปรไฟล์"
-                    title="เลือกธีมสีโปรไฟล์"
-                    aria-expanded={themeOpen}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setThemeOpen((v) => !v);
-                    }}
+                    className="acd-theme-toggle"
+                    role="switch"
+                    aria-checked={themeOn}
+                    title={`ใช้ธีมสีตามระดับ${realTier ? ` ${realTier.name}` : ""}`}
+                    onClick={toggleTheme}
                   >
-                    🎨
+                    <span className="acd-theme-toggle-label">ธีมสีตามระดับ</span>
+                    <span className="acd-theme-toggle-track" />
                   </button>
-                  {themeOpen && (
-                    <div className="acd-theme-pop">
-                      <div className="acd-theme-pop-title">เลือกธีมสีโปรไฟล์</div>
-                      <div className="acd-swatch-row">
-                        {tiers.map((t, i) => {
-                          const unlocked = i <= realIdx;
-                          const [a, b] = ringOf(t, i);
-                          return (
-                            <button
-                              key={t.id}
-                              type="button"
-                              className={`acd-swatch${unlocked ? "" : " locked"}${theme === t.id ? " selected" : ""}`}
-                              style={{ background: `linear-gradient(135deg,${a},${b})` }}
-                              title={unlocked ? `ธีมสี ${t.name}` : `ปลดล็อคที่ระดับ ${t.name}`}
-                              aria-label={unlocked ? `ธีมสี ${t.name}` : `ปลดล็อคที่ระดับ ${t.name}`}
-                              onClick={() => pickTheme(t.id, unlocked, t.name)}
-                            >
-                              <i>{unlocked ? (theme === t.id ? "✓" : "") : "🔒"}</i>
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <button type="button" className="acd-theme-reset" onClick={resetTheme}>
-                        ใช้สีปกติ
-                      </button>
-                    </div>
-                  )}
                   <button type="button" className="acd-edit-btn" onClick={() => (editing ? saveEdit() : enterEdit())} disabled={saving}>
                     {saving ? "กำลังบันทึก…" : editing ? "บันทึกการเปลี่ยนแปลง" : "แก้ไขโปรไฟล์"}
                   </button>
@@ -710,17 +671,17 @@ export default function AccountPage() {
               {/* เมนูลิสต์ */}
               <div className="acd-menu">
                 <div className="acd-menu-head">คำสั่งซื้อ</div>
-                <MenuItem href="/account/orders" ico="📄" tone="blue" label="ประวัติการสั่งซื้อ" meta={orders ? `${orders.length} ออเดอร์${active.length ? ` · ${active.length} กำลังดำเนินการ` : ""}` : ""} />
-                <MenuItem href={proofHref} ico="🖼️" tone="yolk" label="อนุมัติแบบ / ขอแก้ไข" badge={proofCount > 0 ? `${proofCount} รอตรวจ` : undefined} meta={proofCount ? undefined : "ไม่มีแบบรอตรวจ"} />
-                <MenuItem onClick={() => (tracked ? openTrack(tracked.id) : showToast("ยังไม่มีออเดอร์ให้ติดตาม"))} ico="🏭" tone="blue" label="ติดตามสถานะการผลิต" meta={producing ? `กำลังผลิต ${producing} ออเดอร์` : "ไม่มีงานกำลังผลิต"} />
-                <MenuItem href="/account/orders" ico="🗂️" tone="lilac" label="ไฟล์งานของฉัน / สั่งซ้ำ" meta="สั่งซ้ำจากออเดอร์เดิม" />
-                <MenuItem href={latest ? orderHref(latest, "/receipt") : "/account/orders"} ico="🧾" tone="navy" label="ใบเสร็จ / ใบกำกับภาษี" meta={latest ? "ออเดอร์ล่าสุด" : undefined} />
-                <MenuItem href={LINE_URL} external ico="🛠️" tone="coral" label="แจ้งปัญหา / เคลมสินค้า" meta="ทักแอดมินทาง LINE" />
-                <MenuItem onClick={() => showToast("ให้คะแนนสินค้า — เร็วๆ นี้!")} ico="⭐" tone="mint" label="รีวิว / ให้คะแนนสินค้า" meta={reviewable ? `${reviewable} รอรีวิว` : undefined} />
+                <MenuItem href="/account/orders" ico="orders" tone="blue" label="ประวัติการสั่งซื้อ" meta={orders ? `${orders.length} ออเดอร์${active.length ? ` · ${active.length} กำลังดำเนินการ` : ""}` : ""} />
+                <MenuItem href={proofHref} ico="proof" tone="yolk" label="อนุมัติแบบ / ขอแก้ไข" badge={proofCount > 0 ? `${proofCount} รอตรวจ` : undefined} meta={proofCount ? undefined : "ไม่มีแบบรอตรวจ"} />
+                <MenuItem onClick={() => (tracked ? openTrack(tracked.id) : showToast("ยังไม่มีออเดอร์ให้ติดตาม"))} ico="production" tone="blue" label="ติดตามสถานะการผลิต" meta={producing ? `กำลังผลิต ${producing} ออเดอร์` : "ไม่มีงานกำลังผลิต"} />
+                <MenuItem href="/account/orders" ico="files" tone="lilac" label="ไฟล์งานของฉัน / สั่งซ้ำ" meta="สั่งซ้ำจากออเดอร์เดิม" />
+                <MenuItem href={latest ? orderHref(latest, "/receipt") : "/account/orders"} ico="receipt" tone="navy" label="ใบเสร็จ / ใบกำกับภาษี" meta={latest ? "ออเดอร์ล่าสุด" : undefined} />
+                <MenuItem href={LINE_URL} external ico="claim" tone="coral" label="แจ้งปัญหา / เคลมสินค้า" meta="ทักแอดมินทาง LINE" />
+                <MenuItem onClick={() => showToast("ให้คะแนนสินค้า — เร็วๆ นี้!")} ico="review" tone="mint" label="รีวิว / ให้คะแนนสินค้า" meta={reviewable ? `${reviewable} รอรีวิว` : undefined} />
 
                 <div className="acd-menu-head">บัญชี</div>
-                <MenuItem href="/account/profile" ico="👤" tone="navy" label="ข้อมูลส่วนตัว" meta="ชื่อ · เบอร์ · ที่อยู่" />
-                <MenuItem href="/account/profile" ico="📍" tone="blue" label="ที่อยู่จัดส่ง" meta={customer.address ? "1 ที่อยู่" : "ยังไม่ได้ตั้ง"} />
+                <MenuItem href="/account/profile" ico="profile" tone="navy" label="ข้อมูลส่วนตัว" meta="ชื่อ · เบอร์ · ที่อยู่" />
+                <MenuItem href="/account/profile" ico="address" tone="blue" label="ที่อยู่จัดส่ง" meta={customer.address ? "1 ที่อยู่" : "ยังไม่ได้ตั้ง"} />
                 <div
                   className={`acd-menu-item${latest ? "" : " disabled"}`}
                   role="switch"
@@ -734,7 +695,9 @@ export default function AccountPage() {
                     }
                   }}
                 >
-                  <div className="acd-menu-ico ico-lilac">🔔</div>
+                  <div className="acd-menu-ico ico-lilac">
+                    <MenuIco name="bell" />
+                  </div>
                   <div className="acd-menu-col">
                     <div className="acd-menu-label">แจ้งเตือนผ่าน LINE</div>
                     <div className="acd-menu-sub">
@@ -745,7 +708,7 @@ export default function AccountPage() {
                 </div>
 
                 <div className="acd-menu-head">ช่วยเหลือ</div>
-                <MenuItem href="/how-to-order" ico="❓" tone="coral" label="วิธีสั่งซื้อ" />
+                <MenuItem href="/how-to-order" ico="howto" tone="coral" label="วิธีสั่งซื้อ" />
               </div>
             </div>
           </div>
@@ -782,6 +745,35 @@ export default function AccountPage() {
   );
 }
 
+/** ไอคอนภาพจริงของเมนู (ไฟล์อยู่ที่ public/account/menu) */
+type IcoName = "home" | "orders" | "proof" | "files" | "profile" | "address" | "howto" | "production" | "receipt" | "claim" | "review" | "bell";
+const ICO_ALT: Record<IcoName, string> = {
+  home: "บัญชีของฉัน",
+  orders: "ประวัติการสั่งซื้อ",
+  proof: "อนุมัติแบบ",
+  files: "ไฟล์งานของฉัน",
+  profile: "ข้อมูลส่วนตัว",
+  address: "ที่อยู่จัดส่ง",
+  howto: "วิธีสั่งซื้อ",
+  production: "ติดตามสถานะการผลิต",
+  receipt: "ใบเสร็จ",
+  claim: "แจ้งปัญหา",
+  review: "รีวิว",
+  bell: "แจ้งเตือน",
+};
+function MenuIco({ name }: { name: IcoName }) {
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={`/account/menu/${name}.webp`} alt="" title={ICO_ALT[name]} loading="lazy" />;
+}
+/** ไอคอนในเมนูข้าง — วงกลมพื้นฟ้าครอบภาพ */
+function NavIco({ name }: { name: IcoName }) {
+  return (
+    <span className="ico">
+      <MenuIco name={name} />
+    </span>
+  );
+}
+
 /** แถวเมนูลิสต์ — ลิงก์ภายใน / ลิงก์นอก / ปุ่ม */
 function MenuItem({
   href,
@@ -796,7 +788,7 @@ function MenuItem({
   href?: string;
   onClick?: () => void;
   external?: boolean;
-  ico: string;
+  ico: IcoName;
   tone: "blue" | "navy" | "coral" | "mint" | "lilac" | "yolk";
   label: string;
   meta?: string;
@@ -804,7 +796,9 @@ function MenuItem({
 }) {
   const inner: ReactNode = (
     <>
-      <div className={`acd-menu-ico ico-${tone}`}>{ico}</div>
+      <div className={`acd-menu-ico ico-${tone}`}>
+        <MenuIco name={ico} />
+      </div>
       <div className="acd-menu-label">{label}</div>
       {badge && <span className="acd-menu-badge">{badge}</span>}
       {meta && <div className="acd-menu-meta">{meta}</div>}
