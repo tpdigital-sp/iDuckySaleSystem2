@@ -1093,6 +1093,17 @@ export function customUnitPrice(c: CustomOption, width: number, height: number):
   return Math.max(c.minPrice ?? 0, Math.round(raw));
 }
 
+/**
+ * กลุ่มนี้ยังให้ลูกค้าเลือกได้ไหมขณะใช้ขนาดกำหนดเอง
+ * เทียบชื่อแบบตัดช่องว่างหัว-ท้าย — ชื่อกลุ่มเก่าบางตัวเคยมีเว้นวรรคท้ายติดมา
+ * พอชื่อกลุ่มถูก trim ทีหลัง keepOptions ที่เก็บชื่อเดิมไว้เลยไม่แมตช์ กลุ่มโดนล็อกทั้งที่แอดมินติ๊กเปิดไว้
+ */
+export function customKeepsOption(c: CustomOption | null | undefined, label: string): boolean {
+  if (!c) return false;
+  const want = label.trim();
+  return (c.keepOptions ?? []).some((l) => l.trim() === want);
+}
+
 /** อ่านค่า กว้าง×ยาว จากข้อความที่เก็บใน selections (เช่น "200×150") */
 export function parseCustomDims(raw?: string): { w: number; h: number } | null {
   const m = (raw ?? "").match(/(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)/);

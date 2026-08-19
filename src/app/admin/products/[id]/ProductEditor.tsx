@@ -3600,7 +3600,10 @@ export default function ProductEditor({ product }: { product: Product }) {
         ...(draft.custom.note.trim() ? { note: draft.custom.note.trim() } : {}),
         // เก็บเฉพาะกลุ่มที่ยังมีอยู่จริง (กันชื่อกลุ่มถูกลบ/เปลี่ยนแล้วค้าง)
         ...(() => {
-          const keep = draft.custom.keepOptions.filter((l) => draft.options.some((o) => o.label === l));
+          // เทียบแบบตัดช่องว่างหัว-ท้าย แล้วเก็บชื่อกลุ่มปัจจุบันแทน — ชื่อเก่าที่มีเว้นวรรคติดมาจะได้ไม่หลุดทิ้ง
+          const keep = draft.options
+            .filter((o) => draft.custom.keepOptions.some((l) => l.trim() === o.label.trim()))
+            .map((o) => o.label);
           return keep.length ? { keepOptions: keep } : {};
         })(),
       };
@@ -5126,7 +5129,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                 </p>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {draft.options.map((o) => {
-                    const on = draft.custom.keepOptions.includes(o.label);
+                    const on = draft.custom.keepOptions.some((l) => l.trim() === o.label.trim());
                     return (
                       <button
                         key={o.label}
@@ -5134,7 +5137,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                         onClick={() =>
                           patchCustom({
                             keepOptions: on
-                              ? draft.custom.keepOptions.filter((x) => x !== o.label)
+                              ? draft.custom.keepOptions.filter((x) => x.trim() !== o.label.trim())
                               : [...draft.custom.keepOptions, o.label],
                           })
                         }

@@ -18,6 +18,7 @@ import {
   needsQuote,
   parseInputValue,
   customUnitPrice,
+  customKeepsOption,
   adminProductPath,
   DESIGN_LABEL,
   designFeeFor,
@@ -1247,7 +1248,7 @@ export default function ProductDetail({
       // เก็บขนาดที่ระบุลง selections (เป็น key ของตะกร้า + ใช้คิดราคาซ้ำ)
       // + กลุ่มตัวเลือกที่แอดมินเปิดให้เลือกต่อได้ (keepOptions) ติดไปกับออเดอร์ด้วย
       const kept = Object.fromEntries(
-        Object.entries(effective).filter(([k]) => (custom.keepOptions ?? []).includes(k))
+        Object.entries(effective).filter(([k]) => customKeepsOption(custom, k))
       );
       const customValue = customChat ? "คุยรายละเอียดกับแอดมิน" : `${cW}×${cH} ${custom.unit}`;
       addItem(product.id, { ...kept, [custom.label]: customValue, ...extra }, qty, product);
@@ -1414,7 +1415,7 @@ export default function ProductDetail({
    */
   function optionGroupUI(opt: ProductOption) {
               // ล็อกกลุ่มนี้เพราะใช้ขนาดกำหนดเองอยู่ และแอดมินไม่ได้เปิดให้เลือกต่อ
-              const customLocked = useCustom && !(custom?.keepOptions ?? []).includes(opt.label);
+              const customLocked = useCustom && !customKeepsOption(custom, opt.label);
               const allowedByRules = allowedChoices(product, effective, opt.label);
               // ตัดตัวที่ไม่มีราคาขายในเรทที่เลือกอยู่ (แอดมินล้างแถวทิ้ง) — ตัดหมดแล้วคงชุดเดิมไว้กันหน้าพัง
               const byRate = matrix ? allowedByRules.filter((n) => matrixChoiceAvailable(matrix, opt.label, n)) : allowedByRules;
@@ -2362,9 +2363,13 @@ export default function ProductDetail({
           {useCustom && (
             <p className="mt-5 rounded-xl bg-sky-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-sky-800 ring-1 ring-sky-200">
               📐 กำลังใช้ &ldquo;{custom?.label ?? "กำหนดขนาดเอง"}&rdquo;{custom?.mode === "size" ? "" : " — ราคาไม่อิงตารางเรทปกติ"}
-              {(custom?.keepOptions?.length ?? 0) > 0
-                ? ` · ยังเลือก ${custom!.keepOptions!.join(" / ")} ได้ตามปกติ ส่วนกลุ่มอื่นถูกปิดไว้`
-                : " ตัวเลือกด้านล่างถูกปิดไว้"}{" "}
+              {/* ไล่ชื่อจากกลุ่มจริงของสินค้า ไม่ใช่จาก keepOptions ตรง ๆ — ชื่อที่ค้างอยู่แต่ไม่มีกลุ่มแล้วจะได้ไม่โผล่ */}
+              {(() => {
+                const kept = product.options.filter((o) => customKeepsOption(custom, o.label)).map((o) => o.label);
+                return kept.length
+                  ? ` · ยังเลือก ${kept.join(" / ")} ได้ตามปกติ ส่วนกลุ่มอื่นถูกปิดไว้`
+                  : " ตัวเลือกด้านล่างถูกปิดไว้";
+              })()}{" "}
               (เอาติ๊กออกเพื่อกลับมาเลือกทั้งหมด)
             </p>
           )}
