@@ -26,6 +26,8 @@ interface Row {
   done: DoneMark | null;
   /** ติ๊กว่า "ให้พี่ปุ๋ยทำราคา" (คนละช่องกับ "ทำแล้ว") */
   priceTask: DoneMark | null;
+  /** พี่ปุ๋ยกดปุ่ม "เสร็จแล้ว" ของงานทำราคาบรรทัดนี้ (null = ยังไม่เสร็จ) */
+  priceDone: DoneMark | null;
   name: string;
   category: string;
   url: string;
@@ -91,6 +93,7 @@ interface Report {
     extras: number;
     done: number;
     priceTasks: number;
+    priceDone: number;
     hidden: number;
   };
   rows: Row[];
@@ -164,7 +167,11 @@ function downloadCsv(rows: Row[]) {
       r.products.map((p) => `${p.published ? "เผยแพร่" : "ร่าง"}: ${p.name}`).join(" · "),
       r.match ?? "",
       r.done ? `ทำแล้ว · ${r.done.by} · ${new Date(r.done.at).toLocaleDateString("th-TH")}` : "ยังไม่ทำ",
-      r.priceTask ? `ให้พี่ปุ๋ยทำราคา · สั่งโดย ${r.priceTask.by}` : "",
+      r.priceTask
+        ? r.priceDone
+          ? `ทำราคาเสร็จแล้ว · ${r.priceDone.by} · ${new Date(r.priceDone.at).toLocaleDateString("th-TH")}`
+          : `ให้พี่ปุ๋ยทำราคา · สั่งโดย ${r.priceTask.by}`
+        : "",
       r.url,
     ]
       .map(esc)
@@ -328,8 +335,8 @@ export default function PricelistReportPage() {
   const [cat, setCat] = useState("all");
   const [query, setQuery] = useState("");
   const [doneFilter, setDoneFilter] = useState<"all" | "todo" | "done">("all");
-  /** โชว์เฉพาะบรรทัดที่สั่งให้พี่ปุ๋ยทำราคา */
-  const [onlyPrice, setOnlyPrice] = useState(false);
+  /** กรองงานพี่ปุ๋ยทำราคา — off = ไม่กรอง · all = ทุกงานที่สั่งไว้ · todo = ยังไม่เสร็จ · done = เสร็จแล้ว */
+  const [priceFilter, setPriceFilter] = useState<"off" | "all" | "todo" | "done">("off");
   const [showExtras, setShowExtras] = useState(false);
   /** กางถังลบไหม */
   const [showTrash, setShowTrash] = useState(false);
@@ -357,19 +364,29 @@ export default function PricelistReportPage() {
 
   /**
    * ติ๊ก/ยกเลิกติ๊กช่องของบรรทัดหนึ่ง — เปลี่ยนบนจอทันที ถ้าบันทึกไม่ผ่านค่อยคืนค่าเดิม
-   * field "done" = ทำแล้ว · "priceTask" = ให้พี่ปุ๋ยทำราคา
+   * field "done" = ทำแล้ว · "priceTask" = ให้พี่ปุ๋ยทำราคา · "priceDone" = พี่ปุ๋ยทำราคาเสร็จแล้ว
    */
-  const toggleMark = useCallback(async (row: Row, field: "done" | "priceTask") => {
+  const toggleMark = useCallback(async (row: Row, field: "done" | "priceTask" | "priceDone") => {
     const want = !row[field];
     setSaving((s) => new Set(s).add(row.key));
     const apply = (mark: DoneMark | null) =>
       setData((d) => {
         if (!d) return d;
-        const rows = d.rows.map((r) => (r.key === row.key ? { ...r, [field]: mark } : r));
+        const rows = d.rows.map((r) =>
+          r.key === row.key
+            ? // ยกเลิกคำสั่งงานทำราคา = "เสร็จแล้ว" ของบรรทัดนั้นหายไปด้วย (ตรงกับฝั่งเซิร์ฟเวอร์)
+              { ...r, [field]: mark, ...(field === "priceTask" && !mark ? { priceDone: null } : null) }
+            : r
+        );
         return {
           ...d,
           rows,
-          sum: { ...d.sum, done: rows.filter((r) => r.done).length, priceTasks: rows.filter((r) => r.priceTask).length },
+          sum: {
+            ...d.sum,
+            done: rows.filter((r) => r.done).length,
+            priceTasks: rows.filter((r) => r.priceTask).length,
+            priceDone: rows.filter((r) => r.priceDone).length,
+          },
         };
       });
     apply(want ? { at: new Date().toISOString(), by: "กำลังบันทึก…" } : null);
@@ -377,7 +394,13 @@ export default function PricelistReportPage() {
       const r = await fetch("/api/admin/pricelist-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(field === "done" ? { key: row.key, done: want } : { key: row.key, price: want }),
+        body: JSON.stringify(
+          field === "done"
+            ? { key: row.key, done: want }
+            : field === "priceDone"
+              ? { key: row.key, priceDone: want }
+              : { key: row.key, price: want }
+        ),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
@@ -469,10 +492,15 @@ export default function PricelistReportPage() {
         (filter === "all" || r.status === filter) &&
         (cat === "all" || r.category === cat) &&
         (doneFilter === "all" || (doneFilter === "done" ? !!r.done : !r.done)) &&
-        (!onlyPrice || !!r.priceTask) &&
+        (priceFilter === "off" ||
+          (priceFilter === "all"
+            ? !!r.priceTask
+            : priceFilter === "todo"
+              ? !!r.priceTask && !r.priceDone
+              : !!r.priceDone)) &&
         (!q || r.name.toLowerCase().includes(q) || r.products.some((p) => p.name.toLowerCase().includes(q)))
     );
-  }, [data, filter, cat, doneFilter, onlyPrice, query]);
+  }, [data, filter, cat, doneFilter, priceFilter, query]);
 
   /** จัดกลุ่มตามหมวดบนเว็บ เรียงตามลำดับที่ปรากฏบนหน้าเว็บจริง */
   const groups = useMemo(() => {
@@ -534,7 +562,12 @@ export default function PricelistReportPage() {
               <Tile n={sum.published} text="เผยแพร่แล้ว" tone="text-emerald-600" hint="ลูกค้าเห็นบนหน้าร้าน" />
               <Tile n={sum.draft} text="ฉบับร่าง" tone="text-orange-600" hint="มีในระบบ แต่ยังไม่เผยแพร่" />
               <Tile n={sum.missing} text="ยังไม่มีในระบบ" tone="text-rose-600" hint="ต้องนำเข้า/สร้างเพิ่ม" />
-              <Tile n={sum.priceTasks} text="ให้พี่ปุ๋ยทำราคา" tone="text-sky-600" hint="สั่งงานไว้แล้ว" />
+              <Tile
+                n={sum.priceTasks}
+                text="ให้พี่ปุ๋ยทำราคา"
+                tone="text-sky-600"
+                hint={`เสร็จแล้ว ${sum.priceDone} · ยังไม่เสร็จ ${sum.priceTasks - sum.priceDone}`}
+              />
               <Tile
                 n={sum.done}
                 text="ติ๊กว่าทำแล้ว"
@@ -564,14 +597,22 @@ export default function PricelistReportPage() {
                 </button>
               ))}
               <span className="mx-1 h-5 w-px bg-slate-200" />
-              <button
-                type="button"
-                className={onlyPrice ? pillActive : pillIdle}
-                onClick={() => setOnlyPrice((v) => !v)}
-                title="โชว์เฉพาะบรรทัดที่สั่งให้พี่ปุ๋ยทำราคา"
-              >
-                พี่ปุ๋ยทำราคา<span className="ml-1.5 opacity-60">{sum.priceTasks}</span>
-              </button>
+              {([
+                { id: "all", label: "พี่ปุ๋ยทำราคา", n: sum.priceTasks, title: "โชว์เฉพาะบรรทัดที่สั่งให้พี่ปุ๋ยทำราคา" },
+                { id: "todo", label: "รอทำราคา", n: sum.priceTasks - sum.priceDone, title: "สั่งไว้แล้วแต่ยังไม่กดเสร็จแล้ว" },
+                { id: "done", label: "ทำราคาเสร็จแล้ว", n: sum.priceDone, title: "กดปุ่มเสร็จแล้วไว้" },
+              ] as const).map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className={priceFilter === f.id ? pillActive : pillIdle}
+                  onClick={() => setPriceFilter((v) => (v === f.id ? "off" : f.id))}
+                  title={f.title}
+                >
+                  {f.label}
+                  <span className="ml-1.5 opacity-60">{f.n}</span>
+                </button>
+              ))}
               <span className="mx-1 h-5 w-px bg-slate-200" />
               {([
                 { id: "all", label: "เช็กลิสต์ทั้งหมด" },
@@ -646,7 +687,9 @@ export default function PricelistReportPage() {
                         {name}
                         <span className={`ml-2 font-normal ${faint}`}>
                           {list.length} รายการ · ทำแล้ว {list.filter((r) => r.done).length}
-                          {list.some((r) => r.priceTask) ? ` · พี่ปุ๋ยทำราคา ${list.filter((r) => r.priceTask).length}` : ""}
+                          {list.some((r) => r.priceTask)
+                            ? ` · พี่ปุ๋ยทำราคา ${list.filter((r) => r.priceTask).length} (เสร็จแล้ว ${list.filter((r) => r.priceDone).length})`
+                            : ""}
                         </span>
                       </td>
                     </tr>
@@ -687,8 +730,38 @@ export default function PricelistReportPage() {
                             </span>
                           ) : null}
                           {r.priceTask ? (
-                            <span className={`${badge} ml-2 bg-sky-50 text-sky-700 no-underline`} title={`สั่งโดย ${r.priceTask.by} · ${whenOf(r.priceTask.at)}`}>
-                              พี่ปุ๋ยทำราคา
+                            <span className="ml-2 inline-flex items-center gap-1.5 align-middle">
+                              <span
+                                className={`${badge} no-underline ${
+                                  r.priceDone ? "bg-emerald-50 text-emerald-700" : "bg-sky-50 text-sky-700"
+                                }`}
+                                title={`สั่งโดย ${r.priceTask.by} · ${whenOf(r.priceTask.at)}`}
+                              >
+                                {r.priceDone ? "✓ ทำราคาเสร็จแล้ว" : "พี่ปุ๋ยทำราคา"}
+                              </span>
+                              {/* ปุ่มให้พี่ปุ๋ยกดเองเมื่อทำราคาชื่อนี้เสร็จ — กดซ้ำเพื่อยกเลิก */}
+                              <button
+                                type="button"
+                                disabled={saving.size > 0}
+                                onClick={() => void toggleMark(r, "priceDone")}
+                                title={
+                                  r.priceDone
+                                    ? `เสร็จแล้วโดย ${r.priceDone.by} · ${whenOf(r.priceDone.at)} — กดเพื่อยกเลิก`
+                                    : "กดเมื่อทำราคาของชื่อนี้เสร็จแล้ว"
+                                }
+                                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold no-underline transition disabled:cursor-wait ${
+                                  r.priceDone
+                                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                                    : "bg-white text-emerald-700 ring-1 ring-emerald-300 hover:bg-emerald-50"
+                                }`}
+                              >
+                                {r.priceDone ? "✓ เสร็จแล้ว" : "เสร็จแล้ว"}
+                              </button>
+                              {r.priceDone ? (
+                                <span className={`text-[11px] ${faint} no-underline`}>
+                                  {r.priceDone.by} · {whenOf(r.priceDone.at)}
+                                </span>
+                              ) : null}
                             </span>
                           ) : null}
                         </td>

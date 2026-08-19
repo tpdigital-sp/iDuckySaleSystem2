@@ -56,6 +56,8 @@ interface ReportState {
   done: DoneMap;
   /** สั่งให้พี่ปุ๋ยทำราคาของชื่อนี้ (คนละช่องกับ "ทำแล้ว") */
   price: DoneMap;
+  /** พี่ปุ๋ยทำราคาของชื่อนี้เสร็จแล้ว (ต้องมีคำสั่งงานใน price ก่อน) */
+  priceDone: DoneMap;
   /** ลบออกจากรายงาน — ชื่อที่ไม่ใช่สินค้าจริง (หัวข้อย่อย/คำอธิบายบนเว็บ) เก็บไว้กู้คืนได้ */
   hidden: DoneMap;
   assign: AssignMap;
@@ -81,6 +83,8 @@ export interface PricelistRow {
   done: DoneMark | null;
   /** ติ๊กว่า "ให้พี่ปุ๋ยทำราคา" โดยใคร เมื่อไหร่ (null = ยังไม่ติ๊ก) */
   priceTask: DoneMark | null;
+  /** พี่ปุ๋ยกดว่าทำราคาเสร็จแล้ว โดยใคร เมื่อไหร่ (null = ยังไม่เสร็จ) */
+  priceDone: DoneMark | null;
   name: string;
   category: string;
   url: string;
@@ -128,7 +132,7 @@ type Db = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 async function loadState(sb: Db): Promise<ReportState> {
   const { data } = await sb.from("products").select("data").eq("id", STATE_ID).maybeSingle();
   const d = (data?.data ?? {}) as Partial<ReportState>;
-  return { done: d.done ?? {}, price: d.price ?? {}, hidden: d.hidden ?? {}, assign: d.assign ?? {} };
+  return { done: d.done ?? {}, price: d.price ?? {}, priceDone: d.priceDone ?? {}, hidden: d.hidden ?? {}, assign: d.assign ?? {} };
 }
 
 /** บันทึกสถานะรายงานกลับลงแถวเดิม */
@@ -252,6 +256,7 @@ export async function GET(req: Request) {
       key: rowKey,
       done: state.done[rowKey] ?? null,
       priceTask: state.price[rowKey] ?? null,
+      priceDone: state.priceDone[rowKey] ?? null,
       name: card.name,
       category: card.category,
       url: card.url,
@@ -319,6 +324,7 @@ export async function GET(req: Request) {
       extras: extras.length,
       done: rows.filter((r) => r.done).length,
       priceTasks: rows.filter((r) => r.priceTask).length,
+      priceDone: rows.filter((r) => r.priceDone).length,
       hidden: hiddenRows.length,
     },
     rows,
@@ -333,6 +339,7 @@ export async function GET(req: Request) {
  *
  *   { key, done }          ติ๊ก/ยกเลิกติ๊ก "ทำแล้ว" ของชื่อบนเว็บ 1 บรรทัด
  *   { key, price }         ติ๊ก/ยกเลิกติ๊ก "ให้พี่ปุ๋ยทำราคา" ของชื่อบนเว็บ 1 บรรทัด
+ *   { key, priceDone }     กด/ยกเลิก "เสร็จแล้ว" ของงานทำราคา 1 บรรทัด
  *   { key, hidden }        ลบบรรทัดออกจากรายงาน / กู้คืน (ไม่ได้ลบข้อมูลอะไรจริง)
  *   { productId, key }     ย้ายสินค้าในระบบไปอยู่บรรทัดชื่อที่ต้องการ
  *                          key = ""   → เอาออก (สั่งว่าไม่ใช่ของบรรทัดไหนเลย)
@@ -345,12 +352,13 @@ export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 
-  let body: { key?: string | null; done?: boolean; price?: boolean; hidden?: boolean; productId?: string };
+  let body: { key?: string | null; done?: boolean; price?: boolean; priceDone?: boolean; hidden?: boolean; productId?: string };
   try {
     body = (await req.json()) as {
       key?: string | null;
       done?: boolean;
       price?: boolean;
+      priceDone?: boolean;
       hidden?: boolean;
       productId?: string;
     };
@@ -376,13 +384,22 @@ export async function POST(req: Request) {
   const key = String(body.key ?? "").trim();
   if (!key) return NextResponse.json({ error: "ไม่ได้ระบุว่าติ๊กบรรทัดไหน" }, { status: 400 });
 
-  const field = body.hidden !== undefined ? "hidden" : body.price !== undefined ? "price" : "done";
+  const field =
+    body.hidden !== undefined
+      ? "hidden"
+      : body.priceDone !== undefined
+        ? "priceDone"
+        : body.price !== undefined
+          ? "price"
+          : "done";
   const map = state[field];
   const mark: DoneMark | null = body[field]
     ? { at: new Date().toISOString(), by: gate.actor.name || gate.actor.username }
     : null;
   if (mark) map[key] = mark;
   else delete map[key];
+  // ยกเลิกคำสั่งงานทำราคา = ล้าง "เสร็จแล้ว" ของบรรทัดนั้นด้วย จะได้ไม่ค้างเป็นงานที่ไม่มีอยู่จริง
+  if (field === "price" && !mark) delete state.priceDone[key];
 
   const { error } = await saveState(sb, state);
   return error
