@@ -26,10 +26,11 @@
  *   gallery-6 959b83_19efffb25f6840b39821ca693c8bc041~mv2.png  นางแบบ
  *   gallery-7 959b83_7f8ad05b8f76401ca987613b630862cd~mv2.png  นางแบบ (2)
  *   gallery-8 959b83_02d85d4c964445f1b61c785f09c4b96b~mv2.png  ระยะใกล้ เห็นเนื้อผ้า/งานพิมพ์
- *   size-chart 959b83_54faf294bccd49a9b2236d8fc6d215f7~mv2.jpg ตารางไซซ์ของเว็บ (แท็บ "Size เสื้อ")
- *             ครอปเฉพาะบล็อก UNISEX ของเสื้อไม่มียี่ห้อ (กลุ่มที่ระบุว่าพิมพ์ Sublimation ได้)
- *   size-card-s … size-card-3xl  การ์ดไซซ์รายตัว วาดขึ้นจากตัวเลขในตารางเดียวกัน (รอบอก/ความยาว/ความยาวแขน)
- *             3XL ในตารางเว็บยังไม่มีตัวเลข → การ์ดเขียนว่าให้สอบถามแอดมิน
+ *   size-chart2 · size2-s … size2-3xl  ตารางไซซ์ + การ์ดไซซ์รายตัว วาดเองจากตารางไซซ์จริงของทางร้าน
+ *             (ทางร้านให้มา 19 ส.ค. 69 — ไม่ใช่ตารางในแท็บ "Size เสื้อ" ของเว็บ ซึ่งเป็นของเสื้อยี่ห้ออื่น)
+ *               Size        S     M     L     XL    2XL   3XL
+ *               รอบอก      35    38    41    44    47    51
+ *               ความยาว    23    24.5  26    27.5  29    30.5   (หน่วยนิ้ว)
  *             ⚠️ อัปภาพใหม่ทับ "ชื่อไฟล์เดิม" ไม่ได้ — Next/CDN แคชของเก่าไว้ ต้องตั้งชื่อไฟล์ใหม่เสมอ
  */
 import { readFileSync } from "node:fs";
@@ -63,13 +64,13 @@ const FILES = [
   "gallery-6.jpg",
   "gallery-7.jpg",
   "gallery-8.jpg",
-  "size-chart.jpg",
-  "size-card-s.jpg",
-  "size-card-m.jpg",
-  "size-card-l.jpg",
-  "size-card-xl.jpg",
-  "size-card-2xl.jpg",
-  "size-card-3xl.jpg",
+  "size-chart2.jpg",
+  "size2-s.jpg",
+  "size2-m.jpg",
+  "size2-l.jpg",
+  "size2-xl.jpg",
+  "size2-2xl.jpg",
+  "size2-3xl.jpg",
 ];
 const IMG = (name: string) =>
   `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/${name}.jpg`;
@@ -118,17 +119,18 @@ const DETAIL_TAB = {
 const SIZE_TAB = {
   title: "ตารางไซซ์",
   text:
-    "ตารางไซซ์ UNISEX (หน่วยเป็นนิ้ว)::\n" +
-    "• S — รอบอก 30 · ความยาว 24 · ความยาวแขน 7\n" +
-    "• M — รอบอก 32 · ความยาว 26 · ความยาวแขน 8\n" +
-    "• L — รอบอก 34 · ความยาว 28 · ความยาวแขน 9\n" +
-    "• XL — รอบอก 39 · ความยาว 29.5 · ความยาวแขน 10.5\n" +
-    "• 2XL — รอบอก 41 · ความยาว 31 · ความยาวแขน 10.5\n" +
-    "• 3XL — สอบถามแอดมิน (ตารางไซซ์บนเว็บตารางราคายังไม่ได้ระบุ)\n\n" +
-    "หมายเหตุ::\n" +
-    "• แต่ละไซซ์อาจมีความคลาดเคลื่อน + - ไม่เกินครึ่งนิ้ว\n" +
-    "• วัดรอบอก = วัดจากใต้วงแขนด้านหนึ่งไปอีกด้าน (ตามภาพ) · ความยาว = วัดจากไหล่ถึงชายเสื้อ",
-  images: [IMG("size-chart")],
+    "ตารางไซซ์ UNISEX พิมพ์ลายเต็มตัว (หน่วยเป็นนิ้ว)::\n" +
+    "• S — รอบอก 35 · ความยาว 23\n" +
+    "• M — รอบอก 38 · ความยาว 24.5\n" +
+    "• L — รอบอก 41 · ความยาว 26\n" +
+    "• XL — รอบอก 44 · ความยาว 27.5\n" +
+    "• 2XL — รอบอก 47 · ความยาว 29\n" +
+    "• 3XL — รอบอก 51 · ความยาว 30.5\n\n" +
+    "ราคาเริ่มต้น::\n" +
+    "• ไซซ์ S / M / L — เริ่มต้น 350 บาท/ตัว\n" +
+    "• ไซซ์ XL / 2XL / 3XL — เริ่มต้น 380 บาท/ตัว\n" +
+    "• สั่งจำนวนมากราคาลดตามช่วง ต่ำสุด 180 บาท/ตัว (ดูตารางราคาในหน้าสั่งซื้อ)",
+  images: [IMG("size-chart2")],
   imageSize: "lg" as const,
 };
 
@@ -162,18 +164,18 @@ const product: Partial<Product> = {
     { emoji: "✨", gradient: "from-indigo-100 to-blue-200", label: "ทรงใส่สบาย คอกลม แขนสั้น", src: IMG("gallery-6") },
     { emoji: "🎽", gradient: "from-blue-100 to-sky-200", label: "งานจริงบนตัวจริง", src: IMG("gallery-7") },
     { emoji: "🔍", gradient: "from-slate-100 to-sky-100", label: "ระยะใกล้ — เนื้อผ้าไมโครเรียบ + งานพิมพ์", src: IMG("gallery-8") },
-    { emoji: "📏", gradient: "from-slate-100 to-blue-100", label: "ตารางไซซ์ UNISEX", src: IMG("size-chart") },
+    { emoji: "📏", gradient: "from-slate-100 to-blue-100", label: "ตารางไซซ์ UNISEX (S – 3XL)", src: IMG("size-chart2") },
   ],
   options: [
     {
       label: "ขนาด",
       choices: [
-        { name: "S", imageSrc: IMG("size-card-s") },
-        { name: "M", imageSrc: IMG("size-card-m") },
-        { name: "L", imageSrc: IMG("size-card-l") },
-        { name: "XL", imageSrc: IMG("size-card-xl") },
-        { name: "2XL", imageSrc: IMG("size-card-2xl") },
-        { name: "3XL", imageSrc: IMG("size-card-3xl") },
+        { name: "S", imageSrc: IMG("size2-s") },
+        { name: "M", imageSrc: IMG("size2-m") },
+        { name: "L", imageSrc: IMG("size2-l") },
+        { name: "XL", imageSrc: IMG("size2-xl") },
+        { name: "2XL", imageSrc: IMG("size2-2xl") },
+        { name: "3XL", imageSrc: IMG("size2-3xl") },
       ],
     },
   ],
