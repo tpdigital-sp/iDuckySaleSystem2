@@ -33,6 +33,10 @@ interface Row {
   url: string;
   status: Status;
   match: string | null;
+  /** true = บรรทัดที่ทีมงานพิมพ์เพิ่มเอง ไม่ได้มาจากหน้าเว็บ */
+  custom: boolean;
+  /** ชื่อเดิมบนเว็บ ถ้าทีมงานแก้ชื่อไว้ (null = ยังใช้ชื่อเดิม) */
+  webName: string | null;
   /** สินค้าในระบบที่ตรงกับชื่อนี้ — การ์ด 1 ใบบนเว็บอาจตรงกับหลายตัวในระบบ */
   products: {
     id: string;
@@ -67,6 +71,8 @@ interface HiddenRow {
   url: string;
   at: string;
   by: string;
+  /** true = บรรทัดที่เพิ่มเอง (ลบถาวรได้) */
+  custom?: boolean;
 }
 
 interface Extra {
@@ -95,6 +101,7 @@ interface Report {
     priceTasks: number;
     priceDone: number;
     hidden: number;
+    custom: number;
   };
   rows: Row[];
   hiddenRows: HiddenRow[];
@@ -340,6 +347,12 @@ export default function PricelistReportPage() {
   const [showExtras, setShowExtras] = useState(false);
   /** กางถังลบไหม */
   const [showTrash, setShowTrash] = useState(false);
+  /** เปิดฟอร์ม "เพิ่มชื่อเอง" ไหม + ค่าที่พิมพ์ไว้ */
+  const [adding, setAdding] = useState(false);
+  const [newRow, setNewRow] = useState({ name: "", category: "", url: "" });
+  /** บรรทัดที่กำลังแก้ชื่ออยู่ (null = ไม่ได้แก้อะไร) + ค่าที่พิมพ์ไว้ */
+  const [editKey, setEditKey] = useState<string | null>(null);
+  const [editRow, setEditRow] = useState({ name: "", category: "", url: "" });
   /** บรรทัดที่กำลังบันทึกติ๊กอยู่ (กันกดรัวซ้ำ) */
   const [saving, setSaving] = useState<Set<string>>(new Set());
 
@@ -417,30 +430,59 @@ export default function PricelistReportPage() {
     }
   }, []);
 
-  /** ลบบรรทัดออกจากรายงาน / กู้คืน — โหลดใหม่หลังบันทึก เพราะการจับคู่เปลี่ยนตาม */
-  const setHidden = useCallback(
-    async (key: string, hidden: boolean) => {
-      setSaving((s) => new Set(s).add(key));
+  /** ยิงคำสั่งไปเซิร์ฟเวอร์แล้วโหลดรายงานใหม่ — ใช้ร่วมกันทั้งลบ/เพิ่มชื่อ/แก้ชื่อ (การจับคู่เปลี่ยนตามชื่อ) */
+  const send = useCallback(
+    async (body: Record<string, unknown>, busyKey: string, what: string) => {
+      setSaving((s) => new Set(s).add(busyKey));
       try {
         const r = await fetch("/api/admin/pricelist-report", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ key, hidden }),
+          body: JSON.stringify(body),
         });
         const j = await r.json();
         if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
         await load();
+        return true;
       } catch (e) {
-        setError(`${hidden ? "ลบ" : "กู้คืน"}รายการไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);
+        setError(`${what}ไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);
+        return false;
       } finally {
         setSaving((s) => {
           const n = new Set(s);
-          n.delete(key);
+          n.delete(busyKey);
           return n;
         });
       }
     },
     [load]
+  );
+
+  /** ลบบรรทัดออกจากรายงาน / กู้คืน */
+  const setHidden = useCallback(
+    (key: string, hidden: boolean) => send({ key, hidden }, key, hidden ? "ลบรายการ" : "กู้คืนรายการ"),
+    [send]
+  );
+
+  /** เพิ่มบรรทัดชื่อเอง — ชื่อที่ยังไม่มีบนหน้าเว็บตารางราคา */
+  const addRow = useCallback(async () => {
+    const name = newRow.name.trim();
+    if (!name) return;
+    if (await send({ add: { ...newRow, name } }, "__add__", "เพิ่มชื่อ")) {
+      setNewRow({ name: "", category: "", url: "" });
+      setAdding(false);
+    }
+  }, [newRow, send]);
+
+  /** บันทึกชื่อที่แก้ — บรรทัดจากเว็บแก้ได้เฉพาะชื่อ · บรรทัดที่เพิ่มเองแก้หมวด/ลิงก์ได้ด้วย */
+  const saveEdit = useCallback(
+    async (row: Row) => {
+      const name = editRow.name.trim();
+      if (row.custom && !name) return;
+      const edit = row.custom ? { name, category: editRow.category, url: editRow.url } : { name };
+      if (await send({ key: row.key, edit }, row.key, "แก้ชื่อ")) setEditKey(null);
+    },
+    [editRow, send]
   );
 
   /** สินค้าในระบบทุกตัว (ที่จับคู่ไว้แล้ว + ที่ยังไม่เจอบนเว็บ) ไว้ให้ช่องค้นหาตอนย้าย */
@@ -498,7 +540,11 @@ export default function PricelistReportPage() {
             : priceFilter === "todo"
               ? !!r.priceTask && !r.priceDone
               : !!r.priceDone)) &&
-        (!q || r.name.toLowerCase().includes(q) || r.products.some((p) => p.name.toLowerCase().includes(q)))
+        // ค้นด้วยชื่อเดิมบนเว็บก็เจอ ถึงจะแก้ชื่อไปแล้ว
+        (!q ||
+          r.name.toLowerCase().includes(q) ||
+          (r.webName ?? "").toLowerCase().includes(q) ||
+          r.products.some((p) => p.name.toLowerCase().includes(q)))
     );
   }, [data, filter, cat, doneFilter, priceFilter, query]);
 
@@ -541,6 +587,14 @@ export default function PricelistReportPage() {
             ) : null}
           </div>
           <div className="flex gap-2">
+            <button
+              type="button"
+              className={btnNeutral}
+              onClick={() => setAdding((v) => !v)}
+              title="เพิ่มชื่อที่ยังไม่มีบนหน้าเว็บตารางราคาเข้ามาในรายงานเอง"
+            >
+              ➕ เพิ่มชื่อ
+            </button>
             <button type="button" className={btnNeutral} onClick={() => downloadCsv(rows)} disabled={!rows.length}>
               ⬇ ดาวน์โหลด CSV
             </button>
@@ -558,7 +612,11 @@ export default function PricelistReportPage() {
         {sum ? (
           <>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
-              <Tile n={sum.cards} text="ชื่อบนเว็บตารางราคา" hint={`จาก ${sum.categories} หมวดบนหน้าแรก`} />
+              <Tile
+                n={sum.cards}
+                text="ชื่อบนเว็บตารางราคา"
+                hint={`จาก ${sum.categories} หมวดบนหน้าแรก${sum.custom ? ` · เพิ่มเอง ${sum.custom}` : ""}`}
+              />
               <Tile n={sum.published} text="เผยแพร่แล้ว" tone="text-emerald-600" hint="ลูกค้าเห็นบนหน้าร้าน" />
               <Tile n={sum.draft} text="ฉบับร่าง" tone="text-orange-600" hint="มีในระบบ แต่ยังไม่เผยแพร่" />
               <Tile n={sum.missing} text="ยังไม่มีในระบบ" tone="text-rose-600" hint="ต้องนำเข้า/สร้างเพิ่ม" />
@@ -653,6 +711,59 @@ export default function PricelistReportPage() {
           </>
         ) : null}
 
+        {/* ── ฟอร์มเพิ่มชื่อเอง ── */}
+        {adding ? (
+          <div className={`${card} space-y-3 p-4`}>
+            <div>
+              <p className="text-sm font-semibold text-slate-800">➕ เพิ่มชื่อเข้ารายงานเอง</p>
+              <p className={`mt-0.5 text-xs ${faint}`}>
+                สำหรับชื่อที่ยังไม่มีบนหน้าเว็บตารางราคา — เพิ่มแล้วติ๊กทำแล้ว สั่งพี่ปุ๋ยทำราคา และจับคู่สินค้าในระบบได้เหมือนบรรทัดอื่น
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                value={newRow.name}
+                onChange={(e) => setNewRow((v) => ({ ...v, name: e.target.value }))}
+                onKeyDown={(e) => e.key === "Enter" && void addRow()}
+                autoFocus
+                placeholder="ชื่อสินค้า (จำเป็น)"
+                className="w-64 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400"
+              />
+              <input
+                value={newRow.category}
+                onChange={(e) => setNewRow((v) => ({ ...v, category: e.target.value }))}
+                onKeyDown={(e) => e.key === "Enter" && void addRow()}
+                list="pricelist-cats"
+                placeholder="หมวด (ว่างไว้ = เพิ่มเอง)"
+                className="w-52 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400"
+              />
+              <datalist id="pricelist-cats">
+                {cats.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+              <input
+                value={newRow.url}
+                onChange={(e) => setNewRow((v) => ({ ...v, url: e.target.value }))}
+                onKeyDown={(e) => e.key === "Enter" && void addRow()}
+                placeholder="ลิงก์หน้าตารางราคา (ถ้ามี)"
+                className="w-72 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400"
+              />
+              <button
+                type="button"
+                className={btnSmNeutral}
+                disabled={!newRow.name.trim() || saving.size > 0}
+                onClick={() => void addRow()}
+              >
+                บันทึก
+              </button>
+              <button type="button" className={`text-xs ${muted} hover:underline`} onClick={() => setAdding(false)}>
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {loading && !data ? <p className={`${card} p-8 text-center text-sm ${muted}`}>กำลังอ่านหน้าเว็บตารางราคา…</p> : null}
 
         {/* ── ตารางรายชื่อ ── */}
@@ -723,7 +834,78 @@ export default function PricelistReportPage() {
                           />
                         </td>
                         <td className={`px-4 py-2 align-top ${r.done ? "text-slate-400 line-through decoration-slate-300" : "text-slate-800"}`}>
+                          {editKey === r.key ? (
+                            <span className="flex flex-wrap items-center gap-1.5 no-underline">
+                              <input
+                                value={editRow.name}
+                                onChange={(e) => setEditRow((v) => ({ ...v, name: e.target.value }))}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") void saveEdit(r);
+                                  if (e.key === "Escape") setEditKey(null);
+                                }}
+                                autoFocus
+                                placeholder="ชื่อบนเว็บตารางราคา"
+                                className="w-56 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800"
+                              />
+                              {r.custom ? (
+                                <>
+                                  <input
+                                    value={editRow.category}
+                                    onChange={(e) => setEditRow((v) => ({ ...v, category: e.target.value }))}
+                                    list="pricelist-cats"
+                                    placeholder="หมวด"
+                                    className="w-36 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800"
+                                  />
+                                  <input
+                                    value={editRow.url}
+                                    onChange={(e) => setEditRow((v) => ({ ...v, url: e.target.value }))}
+                                    placeholder="ลิงก์ (ถ้ามี)"
+                                    className="w-48 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800"
+                                  />
+                                </>
+                              ) : null}
+                              <button
+                                type="button"
+                                disabled={saving.size > 0 || (r.custom && !editRow.name.trim())}
+                                onClick={() => void saveEdit(r)}
+                                className="rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-50"
+                              >
+                                บันทึก
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditKey(null)}
+                                className={`text-[11px] ${muted} hover:underline`}
+                              >
+                                ยกเลิก
+                              </button>
+                              {!r.custom && r.webName ? (
+                                <button
+                                  type="button"
+                                  disabled={saving.size > 0}
+                                  onClick={async () => {
+                                    if (await send({ key: r.key, edit: { name: "" } }, r.key, "คืนชื่อเดิม")) setEditKey(null);
+                                  }}
+                                  title={`คืนชื่อเดิมจากเว็บ — ${r.webName}`}
+                                  className="text-[11px] font-semibold text-amber-600 hover:underline disabled:cursor-wait"
+                                >
+                                  คืนชื่อเดิม
+                                </button>
+                              ) : null}
+                            </span>
+                          ) : (
+                            <>
                           {r.name}
+                          {r.custom ? (
+                            <span className={`ml-2 ${badge} bg-violet-50 text-violet-700 no-underline`} title="บรรทัดที่ทีมงานเพิ่มเอง ไม่ได้มาจากหน้าเว็บตารางราคา">
+                              เพิ่มเอง
+                            </span>
+                          ) : null}
+                          {r.webName ? (
+                            <span className={`ml-2 text-[11px] ${faint} no-underline`} title="ชื่อเดิมบนหน้าเว็บตารางราคา">
+                              (เว็บ: {r.webName})
+                            </span>
+                          ) : null}
                           {r.done ? (
                             <span className={`ml-2 text-[11px] ${faint} no-underline`}>
                               ✓ {r.done.by} · {whenOf(r.done.at)}
@@ -764,6 +946,8 @@ export default function PricelistReportPage() {
                               ) : null}
                             </span>
                           ) : null}
+                            </>
+                          )}
                         </td>
                         <td className="px-4 py-2 align-top">
                           {r.url ? (
@@ -794,7 +978,19 @@ export default function PricelistReportPage() {
                           />
                         </td>
                         <td className={`px-4 py-2 align-top text-xs ${faint}`}>{r.match ?? "—"}</td>
-                        <td className="px-2 py-2 align-top">
+                        <td className="px-2 py-2 align-top whitespace-nowrap">
+                          <button
+                            type="button"
+                            disabled={saving.size > 0}
+                            onClick={() => {
+                              setEditKey(r.key);
+                              setEditRow({ name: r.name, category: r.category, url: r.url });
+                            }}
+                            title="แก้ชื่อบนเว็บตารางราคาของบรรทัดนี้"
+                            className="rounded px-1.5 py-0.5 text-sm text-slate-300 transition hover:bg-amber-50 hover:text-amber-600 disabled:cursor-wait"
+                          >
+                            ✎
+                          </button>
                           <button
                             type="button"
                             disabled={saving.size > 0}
@@ -854,6 +1050,19 @@ export default function PricelistReportPage() {
                     >
                       กู้คืน
                     </button>
+                    {h.custom ? (
+                      <button
+                        type="button"
+                        disabled={saving.size > 0}
+                        onClick={() => {
+                          if (confirm(`ลบ "${h.name}" ทิ้งถาวร? (เป็นบรรทัดที่เพิ่มเอง กู้คืนไม่ได้อีก)`))
+                            void send({ key: h.key, remove: true }, h.key, "ลบถาวร");
+                        }}
+                        className="text-xs font-semibold text-rose-600 hover:underline disabled:cursor-wait"
+                      >
+                        ลบถาวร
+                      </button>
+                    ) : null}
                   </li>
                 ))}
               </ul>

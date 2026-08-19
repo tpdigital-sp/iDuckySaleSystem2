@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { fetchPricelistHome, PRICELIST_HOME } from "@/lib/server/pricelist-home";
+import { fetchPricelistHome, PRICELIST_HOME, type PricelistCard } from "@/lib/server/pricelist-home";
 import type { Product } from "@/lib/products";
 
 export const runtime = "nodejs";
@@ -49,6 +49,19 @@ export type DoneMap = Record<string, DoneMark>;
  */
 export type AssignMap = Record<string, string>;
 
+/** บรรทัดที่ทีมงานพิมพ์ชื่อเพิ่มเอง (ไม่ได้มาจากหน้าเว็บตารางราคา) */
+export interface CustomRow {
+  name: string;
+  category: string;
+  url: string;
+  at: string;
+  by: string;
+}
+
+/** ขึ้นต้นแบบนี้ = บรรทัดที่เพิ่มเอง (รหัสของชื่อบนเว็บเป็น "หมวด|ชื่อ|ลำดับ" จึงไม่ชนกัน) */
+const CUSTOM_PREFIX = "__custom__|";
+export const isCustomKey = (key: string) => key.startsWith(CUSTOM_PREFIX);
+
 /** แถวเก็บสถานะของรายงาน (เช็กลิสต์ + การจับคู่เอง) — แถวพิเศษในตาราง products แบบเดียวกับตั้งค่าร้าน */
 const STATE_ID = "__pricelist_done__";
 
@@ -61,6 +74,10 @@ interface ReportState {
   /** ลบออกจากรายงาน — ชื่อที่ไม่ใช่สินค้าจริง (หัวข้อย่อย/คำอธิบายบนเว็บ) เก็บไว้กู้คืนได้ */
   hidden: DoneMap;
   assign: AssignMap;
+  /** ชื่อที่ทีมงานเพิ่มเอง — รหัสบรรทัด → รายละเอียด */
+  custom: Record<string, CustomRow>;
+  /** แก้ชื่อของบรรทัดที่มาจากหน้าเว็บ — รหัสบรรทัด → ชื่อใหม่ (รหัสยังยึดชื่อเดิม ติ๊กเดิมจึงไม่หาย) */
+  rename: Record<string, string>;
 }
 
 /** บรรทัดที่ถูกลบออกจากรายงาน (ไว้โชว์ในถังลบ ให้กู้คืนได้) */
@@ -71,6 +88,8 @@ export interface HiddenRow {
   url: string;
   at: string;
   by: string;
+  /** true = บรรทัดที่ทีมงานเพิ่มเอง (ลบถาวรได้) */
+  custom?: boolean;
 }
 
 export interface PricelistRow {
@@ -96,6 +115,10 @@ export interface PricelistRow {
    * (เช่น "พวงกุญแจ" ในระบบแตกเป็นพวงกุญแจหลายแบบตามตารางราคา)
    */
   products: MatchedProduct[];
+  /** true = บรรทัดที่ทีมงานพิมพ์เพิ่มเอง ไม่ได้มาจากหน้าเว็บ */
+  custom: boolean;
+  /** ชื่อเดิมบนหน้าเว็บ ถ้าทีมงานแก้ชื่อไว้ (null = ยังใช้ชื่อเดิม) */
+  webName: string | null;
 }
 
 /** ชื่อในรูปที่เทียบกันได้ — ตัดเว้นวรรค เครื่องหมาย และวรรณยุกต์/การันต์ไทยออก */
@@ -132,7 +155,15 @@ type Db = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 async function loadState(sb: Db): Promise<ReportState> {
   const { data } = await sb.from("products").select("data").eq("id", STATE_ID).maybeSingle();
   const d = (data?.data ?? {}) as Partial<ReportState>;
-  return { done: d.done ?? {}, price: d.price ?? {}, priceDone: d.priceDone ?? {}, hidden: d.hidden ?? {}, assign: d.assign ?? {} };
+  return {
+    done: d.done ?? {},
+    price: d.price ?? {},
+    priceDone: d.priceDone ?? {},
+    hidden: d.hidden ?? {},
+    assign: d.assign ?? {},
+    custom: d.custom ?? {},
+    rename: d.rename ?? {},
+  };
 }
 
 /** บันทึกสถานะรายงานกลับลงแถวเดิม */
@@ -212,10 +243,28 @@ export async function GET(req: Request) {
     const dup = `${card.category}|${card.name}`;
     const no = (seen.get(dup) ?? 0) + 1;
     seen.set(dup, no);
-    return { card, rowKey: `${dup}|${no}` };
+    const rowKey = `${dup}|${no}`;
+    // ทีมงานแก้ชื่อไว้ = ใช้ชื่อใหม่ทั้งตอนโชว์และตอนจับคู่ (รหัสบรรทัดยังยึดชื่อเดิม ติ๊กที่ทำไว้จึงไม่หาย)
+    const renamed = state.rename[rowKey]?.trim();
+    return {
+      rowKey,
+      card: renamed ? { ...card, name: renamed } : card,
+      webName: renamed ? card.name : null,
+      custom: false,
+    };
   });
 
-  const hiddenRows: HiddenRow[] = keyed
+  /** บรรทัดที่ทีมงานพิมพ์เพิ่มเอง — ต่อท้ายชื่อจากหน้าเว็บ (หมวดเดียวกันไปรวมกลุ่มเดียวกันเอง) */
+  const customKeyed = Object.entries(state.custom).map(([rowKey, c]) => ({
+    rowKey,
+    card: { name: c.name, category: c.category, url: c.url } as PricelistCard,
+    webName: null as string | null,
+    custom: true,
+  }));
+
+  const allKeyed = [...keyed, ...customKeyed];
+
+  const hiddenRows: HiddenRow[] = allKeyed
     .filter((x) => state.hidden[x.rowKey])
     .map((x) => ({
       key: x.rowKey,
@@ -224,11 +273,12 @@ export async function GET(req: Request) {
       url: x.card.url,
       at: state.hidden[x.rowKey].at,
       by: state.hidden[x.rowKey].by,
+      custom: x.custom,
     }));
 
-  const rows: PricelistRow[] = keyed
+  const rows: PricelistRow[] = allKeyed
     .filter((x) => !state.hidden[x.rowKey])
-    .map(({ card, rowKey }) => {
+    .map(({ card, rowKey, webName, custom }) => {
     const key = norm(card.name);
     let how: string | null = null;
     let hits = guessable.filter((p) => p.key === key);
@@ -262,6 +312,8 @@ export async function GET(req: Request) {
       url: card.url,
       status: "missing", // คำนวณจริงหลังใส่ของที่จับคู่เองแล้ว
       match: how,
+      custom,
+      webName,
       products: hits.map((p) => ({
         id: p.id,
         slug: p.slug,
@@ -326,6 +378,7 @@ export async function GET(req: Request) {
       priceTasks: rows.filter((r) => r.priceTask).length,
       priceDone: rows.filter((r) => r.priceDone).length,
       hidden: hiddenRows.length,
+      custom: rows.filter((r) => r.custom).length,
     },
     rows,
     hiddenRows,
@@ -341,6 +394,9 @@ export async function GET(req: Request) {
  *   { key, price }         ติ๊ก/ยกเลิกติ๊ก "ให้พี่ปุ๋ยทำราคา" ของชื่อบนเว็บ 1 บรรทัด
  *   { key, priceDone }     กด/ยกเลิก "เสร็จแล้ว" ของงานทำราคา 1 บรรทัด
  *   { key, hidden }        ลบบรรทัดออกจากรายงาน / กู้คืน (ไม่ได้ลบข้อมูลอะไรจริง)
+ *   { add: {name,…} }      เพิ่มบรรทัดชื่อเอง (ชื่อที่ยังไม่มีบนเว็บตารางราคา)
+ *   { key, edit: {name,…} } แก้ชื่อบนเว็บตารางราคาของบรรทัดนั้น (ชื่อว่าง = คืนชื่อเดิมจากเว็บ)
+ *   { key, remove: true }  ลบบรรทัดที่เพิ่มเองทิ้งถาวร (ใช้ได้เฉพาะบรรทัดที่เพิ่มเอง)
  *   { productId, key }     ย้ายสินค้าในระบบไปอยู่บรรทัดชื่อที่ต้องการ
  *                          key = ""   → เอาออก (สั่งว่าไม่ใช่ของบรรทัดไหนเลย)
  *                          key = null → ล้างคำสั่ง กลับไปใช้การจับคู่อัตโนมัติ
@@ -352,21 +408,50 @@ export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 
-  let body: { key?: string | null; done?: boolean; price?: boolean; priceDone?: boolean; hidden?: boolean; productId?: string };
+  /** ชื่อ/หมวด/ลิงก์ ของบรรทัดที่เพิ่มเองหรือที่แก้ชื่อ */
+  interface RowInput {
+    name?: string;
+    category?: string;
+    url?: string;
+  }
+  let body: {
+    key?: string | null;
+    done?: boolean;
+    price?: boolean;
+    priceDone?: boolean;
+    hidden?: boolean;
+    productId?: string;
+    add?: RowInput;
+    edit?: RowInput;
+    remove?: boolean;
+  };
   try {
-    body = (await req.json()) as {
-      key?: string | null;
-      done?: boolean;
-      price?: boolean;
-      priceDone?: boolean;
-      hidden?: boolean;
-      productId?: string;
-    };
+    body = (await req.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
   }
 
   const state = await loadState(sb);
+  const who = gate.actor.name || gate.actor.username;
+
+  // ── เพิ่มบรรทัดชื่อเอง (ชื่อที่ยังไม่มีบนหน้าเว็บตารางราคา) ──
+  if (body.add) {
+    const name = String(body.add.name ?? "").trim();
+    if (!name) return NextResponse.json({ error: "ยังไม่ได้ใส่ชื่อ" }, { status: 400 });
+    let key = "";
+    do {
+      key = `${CUSTOM_PREFIX}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    } while (state.custom[key]);
+    state.custom[key] = {
+      name,
+      category: String(body.add.category ?? "").trim() || "เพิ่มเอง",
+      url: String(body.add.url ?? "").trim(),
+      at: new Date().toISOString(),
+      by: who,
+    };
+    const { error } = await saveState(sb, state);
+    return error ? NextResponse.json({ error: error.message }, { status: 500 }) : NextResponse.json({ ok: true, key });
+  }
 
   // ── ย้าย/เอาออก/คืนค่าอัตโนมัติ ของสินค้า 1 ตัว ──
   if (body.productId) {
@@ -380,10 +465,44 @@ export async function POST(req: Request) {
       : NextResponse.json({ ok: true, assign: state.assign[productId] ?? null });
   }
 
-  // ── ติ๊กช่องของ 1 บรรทัด ("ทำแล้ว" หรือ "ให้พี่ปุ๋ยทำราคา") ──
   const key = String(body.key ?? "").trim();
   if (!key) return NextResponse.json({ error: "ไม่ได้ระบุว่าติ๊กบรรทัดไหน" }, { status: 400 });
 
+  // ── แก้ชื่อบรรทัด (เพิ่มเอง = แก้ชื่อ/หมวด/ลิงก์ได้หมด · จากเว็บ = แก้ได้เฉพาะชื่อ ชื่อว่าง = คืนชื่อเดิม) ──
+  if (body.edit) {
+    const name = String(body.edit.name ?? "").trim();
+    if (isCustomKey(key)) {
+      const cur = state.custom[key];
+      if (!cur) return NextResponse.json({ error: "ไม่พบบรรทัดนี้" }, { status: 404 });
+      if (!name) return NextResponse.json({ error: "ยังไม่ได้ใส่ชื่อ" }, { status: 400 });
+      state.custom[key] = {
+        ...cur,
+        name,
+        category: body.edit.category === undefined ? cur.category : String(body.edit.category).trim() || "เพิ่มเอง",
+        url: body.edit.url === undefined ? cur.url : String(body.edit.url).trim(),
+      };
+    } else if (name) state.rename[key] = name;
+    else delete state.rename[key];
+
+    const { error } = await saveState(sb, state);
+    return error ? NextResponse.json({ error: error.message }, { status: 500 }) : NextResponse.json({ ok: true });
+  }
+
+  // ── ลบบรรทัดที่เพิ่มเองทิ้งถาวร (พร้อมติ๊ก/คำสั่งงาน/การจับคู่ที่ผูกกับบรรทัดนั้น) ──
+  if (body.remove) {
+    if (!isCustomKey(key)) return NextResponse.json({ error: "ลบถาวรได้เฉพาะบรรทัดที่เพิ่มเอง" }, { status: 400 });
+    delete state.custom[key];
+    delete state.done[key];
+    delete state.price[key];
+    delete state.priceDone[key];
+    delete state.hidden[key];
+    for (const [productId, at] of Object.entries(state.assign)) if (at === key) delete state.assign[productId];
+
+    const { error } = await saveState(sb, state);
+    return error ? NextResponse.json({ error: error.message }, { status: 500 }) : NextResponse.json({ ok: true });
+  }
+
+  // ── ติ๊กช่องของ 1 บรรทัด ("ทำแล้ว" หรือ "ให้พี่ปุ๋ยทำราคา") ──
   const field =
     body.hidden !== undefined
       ? "hidden"
@@ -393,9 +512,7 @@ export async function POST(req: Request) {
           ? "price"
           : "done";
   const map = state[field];
-  const mark: DoneMark | null = body[field]
-    ? { at: new Date().toISOString(), by: gate.actor.name || gate.actor.username }
-    : null;
+  const mark: DoneMark | null = body[field] ? { at: new Date().toISOString(), by: who } : null;
   if (mark) map[key] = mark;
   else delete map[key];
   // ยกเลิกคำสั่งงานทำราคา = ล้าง "เสร็จแล้ว" ของบรรทัดนั้นด้วย จะได้ไม่ค้างเป็นงานที่ไม่มีอยู่จริง
