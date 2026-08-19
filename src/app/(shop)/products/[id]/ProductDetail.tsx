@@ -256,19 +256,23 @@ export default function ProductDetail({
    * รูปประกอบในเนื้อหา (section) ไม่อยู่ในลิสต์นี้ — เปิดดูเดี่ยว ๆ ไม่มีลูกศร
    */
   /**
-   * รูปในแกลเลอรี = รูปของสินค้า + รูปประจำเรทที่แอดมินตั้งไว้แต่ลืมใส่ในแกลเลอรี
+   * รูปในแกลเลอรี = รูปของสินค้า + รูปประจำเรท/ประจำตัวเลือก ที่ไม่ได้อยู่ในแกลเลอรี
    *
-   * ถ้าไม่เติมให้ กดเลือกเรทนั้นแล้ว "ภาพไม่เปลี่ยน" เพราะระบบหาภาพในแกลเลอรีไม่เจอ
-   * (เจอกับสแตนดี้แบบที่ 4 มาแล้ว — รูปเรทมี แต่ไม่ได้อยู่ในแกลเลอรี เลยเงียบไปเฉย ๆ)
+   * ถ้าไม่เติมให้ กดเลือกเรท/ตัวเลือกนั้นแล้ว "ภาพไม่เปลี่ยน" เพราะระบบหาภาพในแกลเลอรีไม่เจอ
+   * (เจอกับสแตนดี้แบบที่ 4 มาแล้ว — รูปเรทมี แต่ไม่ได้อยู่ในแกลเลอรี เลยเงียบไปเฉย ๆ
+   *  และกับสติ๊กเกอร์สูญญากาศที่ภาพประจำขนาดมี 10 ใบ แต่แกลเลอรีเก็บได้แค่ 5 รูป)
    */
   const galleryImages = useMemo(() => {
     const list = [...product.images];
     const srcAt = (im: ProductImage, i: number) => im.src ?? (i === 0 ? product.imageSrc : undefined);
-    for (const r of product.priceRates ?? []) {
-      const src = r.imageSrc?.trim();
+    const add = (raw: string | undefined, label: string) => {
+      const src = raw?.trim();
       if (src && !list.some((im, i) => srcAt(im, i) === src))
-        list.push({ emoji: product.emoji, gradient: product.gradient, label: r.label, src });
-    }
+        list.push({ emoji: product.emoji, gradient: product.gradient, label, src });
+    };
+    for (const r of product.priceRates ?? []) add(r.imageSrc, r.label);
+    for (const opt of product.options ?? [])
+      for (const c of opt.choices ?? []) add(c.imageSrc, `${opt.label}: ${c.name}`);
     return list;
   }, [product]);
   const zoomList = useMemo(() => {
