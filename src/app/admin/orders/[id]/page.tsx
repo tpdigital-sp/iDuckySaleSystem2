@@ -430,41 +430,52 @@ export default function AdminOrderDetailPage() {
     return !moneyIn;
   }
 
-  /** บันทึก "ที่มาของราคา" ที่แอดมินพิมพ์ (ลูกค้าเห็นด้วย) — เรียกตอนออกจากช่อง */
-  function saveQuoteNote(itemIndex: number, text: string) {
+  /**
+   * บันทึกผลการตีราคาของรายการ — ราคา/หน่วย และ/หรือ "ที่มาของราคา" ในครั้งเดียว
+   *
+   * ⚠️ ต้องรวมเป็นฟังก์ชันเดียว: ถ้าแยกสองฟังก์ชันแล้วถูกเรียกติด ๆ กัน (เช่นกดปุ่ม
+   * "บันทึกราคา" ที่ต้องเก็บทั้งสองอย่าง) ทั้งคู่จะอ่าน `order` จาก closure เดิม
+   * แล้วตัวหลังเขียนทับตัวแรก — ของที่บันทึกไปก่อนหายเงียบ ๆ
+   *
+   * ส่ง price/note เป็น undefined = ไม่แตะค่านั้น · close = ปิดแผงตีราคาด้วย
+   */
+  function saveQuote(
+    itemIndex: number,
+    { price, note, close = true }: { price?: string; note?: string; close?: boolean }
+  ) {
+    if (close) setEditPrice(null);
     if (!order) return;
     const it = order.items[itemIndex];
     if (!it) return;
-    const value = text.trim();
-    if (value === (it.quoteNote ?? "").trim()) return;
-    const items = order.items.map((x, i) => (i === itemIndex ? { ...x, quoteNote: value || undefined } : x));
-    const next = withLog(
-      { ...order, items },
-      actor,
-      value ? "ที่มาของราคา" : "ลบที่มาของราคา",
-      `${it.name}${value ? `: ${value}` : ""}`
-    );
-    applyOrder(next);
-  }
 
-  /** บันทึกราคาต่อหน่วยที่แอดมินตีให้ (ลง log ว่าใครตีจากเท่าไรเป็นเท่าไร) */
-  function savePrice(itemIndex: number, text: string) {
-    if (!order) return;
-    const it = order.items[itemIndex];
-    setEditPrice(null);
-    if (!it) return;
-    const raw = text.trim();
-    if (raw === "") return; // ปล่อยว่าง = ไม่แก้ (ไม่ใช่ตั้งเป็น 0)
-    const value = Math.max(0, Math.round(Number(raw) || 0));
-    if (value === it.unitPrice) return;
-    const items = order.items.map((x, i) => (i === itemIndex ? { ...x, unitPrice: value } : x));
-    const next = withLog(
-      { ...order, items },
-      actor,
-      it.unitPrice > 0 ? "แก้ราคา/หน่วย" : "ตีราคา",
-      `${it.name}: ${it.unitPrice > 0 ? `${formatPrice(it.unitPrice)} → ` : ""}${formatPrice(value)}/หน่วย ×${it.qty.toLocaleString("th-TH")} = ${formatPrice(value * it.qty)}`
-    );
-    applyOrder(next);
+    const patch: Partial<OrderItem> = {};
+    const logs: string[] = [];
+
+    // ราคา/หน่วย — ปล่อยว่าง = ไม่แก้ (ไม่ใช่ตั้งเป็น 0)
+    const raw = (price ?? "").trim();
+    if (price !== undefined && raw !== "") {
+      const value = Math.max(0, Math.round(Number(raw) || 0));
+      if (value !== it.unitPrice) {
+        patch.unitPrice = value;
+        logs.push(
+          `${it.unitPrice > 0 ? `${formatPrice(it.unitPrice)} → ` : ""}${formatPrice(value)}/หน่วย ×${it.qty.toLocaleString("th-TH")} = ${formatPrice(value * it.qty)}`
+        );
+      }
+    }
+
+    // ที่มาของราคา (ลูกค้าเห็น)
+    if (note !== undefined) {
+      const value = note.trim();
+      if (value !== (it.quoteNote ?? "").trim()) {
+        patch.quoteNote = value || undefined;
+        logs.push(value ? `ที่มาของราคา: ${value}` : "ลบที่มาของราคา");
+      }
+    }
+
+    if (!logs.length) return; // ไม่มีอะไรเปลี่ยน — ไม่ต้องเขียนฐาน/ไม่ต้องรกประวัติ
+    const items = order.items.map((x, i) => (i === itemIndex ? { ...x, ...patch } : x));
+    const what = patch.unitPrice !== undefined ? (it.unitPrice > 0 ? "แก้ราคา/หน่วย" : "ตีราคา") : "ที่มาของราคา";
+    applyOrder(withLog({ ...order, items }, actor, what, `${it.name}: ${logs.join(" · ")}`));
   }
   // ♻️ ทำงานใหม่จากออเดอร์นี้ — เคลม (ฟรี) หรือสั่งซ้ำ (คิดเงิน)
   const [redoOpen, setRedoOpen] = useState(false);
@@ -1923,10 +1934,18 @@ export default function AdminOrderDetailPage() {
                             step={1}
                             value={priceDraft}
                             onChange={(e) => setPriceDraft(e.target.value)}
-                            onBlur={() => savePrice(i, priceDraft)}
+                            onBlur={(e) => {
+                              /**
+                               * ย้ายโฟกัสไปช่องในแผงช่วยตีราคา (เช่น "ที่มาของราคา") = ยังตีราคาไม่เสร็จ
+                               * ห้ามบันทึก+ปิดแผงตรงนี้ ไม่งั้นแผงหายทันทีที่คลิกช่องนั้น (พิมพ์ไม่ได้เลย)
+                               */
+                              const to = e.relatedTarget as HTMLElement | null;
+                              if (to?.closest("[data-quote-panel]")) return;
+                              saveQuote(i, { price: priceDraft });
+                            }}
                             onKeyDown={(e) => {
                               if (e.key === "Escape") setEditPrice(null);
-                              if (e.key === "Enter") savePrice(i, priceDraft);
+                              if (e.key === "Enter") saveQuote(i, { price: priceDraft });
                             }}
                             placeholder="0"
                             title="ราคาต่อ 1 หน่วย (ไม่ใช่ยอดรวม) — ระบบคูณจำนวนให้เอง"
@@ -2078,7 +2097,10 @@ export default function AdminOrderDetailPage() {
                     <QuotePanel
                       item={it}
                       onPick={(p) => setPriceDraft(String(p))}
-                      onNote={mayEdit ? (t) => saveQuoteNote(i, t) : undefined}
+                      /* ออกจากช่อง = เก็บที่มาของราคาไว้ก่อน แต่ยังไม่ปิดแผง (ยังตีราคาไม่เสร็จ) */
+                      onNote={mayEdit ? (t) => saveQuote(i, { note: t, close: false }) : undefined}
+                      /* ปุ่ม ✓ = เก็บราคา + ที่มา ในครั้งเดียว แล้วปิดแผง */
+                      onDone={mayEdit ? (t) => saveQuote(i, { price: priceDraft, note: t }) : undefined}
                     />
                   )}
 

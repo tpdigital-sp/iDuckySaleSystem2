@@ -38,12 +38,15 @@ export default function QuotePanel({
   item,
   onPick,
   onNote,
+  onDone,
 }: {
   item: OrderItem;
   /** กดตัวเลขในแผง → เติมลงช่องราคา/หน่วย (ยังไม่บันทึก แอดมินกด Enter เอง) */
   onPick: (unitPrice: number) => void;
   /** บันทึก "ที่มาของราคา" (เรียกตอนออกจากช่อง) — ไม่ส่งมา = ไม่ให้แก้ */
   onNote?: (text: string) => void;
+  /** กด "✓ บันทึก" — เก็บทั้งราคาที่พิมพ์ไว้และที่มาของราคาในครั้งเดียว แล้วปิดแผง */
+  onDone?: (note: string) => void;
 }) {
   const [product, setProduct] = useState<Product | null | undefined>(undefined);
   const [note, setNote] = useState(item.quoteNote ?? "");
@@ -94,10 +97,13 @@ export default function QuotePanel({
 
   return (
     <div
+      /* ช่องราคาเช็ค attribute นี้ตอน blur — โฟกัสย้ายมาในแผง = ยังตีราคาไม่เสร็จ อย่าปิดแผง */
+      data-quote-panel=""
       className="mt-2 rounded-2xl bg-gradient-to-br from-amber-50 to-white p-3 ring-1 ring-amber-200"
       /**
        * กันโฟกัสหลุดจากช่องราคา — ช่องนั้นบันทึกตอน blur ถ้าคลิกในแผงนี้แล้วโฟกัสหลุด
        * มันจะเด้งบันทึก+ปิดแผงทั้งที่แอดมินยังเลือกราคาไม่เสร็จ (คลิกยังทำงานปกติ)
+       * ช่องกรอกในแผง (ที่มาของราคา) หยุด event นี้ไว้เอง เพื่อให้คลิกโฟกัสได้
        */
       onMouseDown={(e) => e.preventDefault()}
     >
@@ -150,10 +156,22 @@ export default function QuotePanel({
             placeholder="เช่น 230 (แบบที่ 3) + 10 (เพิ่มขนาดตัวหลัง 20 ซม.) + 50 (สกรีนฐาน) = 290 บาท/ชิ้น"
             className="mt-1 w-full resize-y rounded-lg border border-indigo-200 bg-white px-2 py-1.5 text-[11px] leading-relaxed text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
           />
-          <p className="mt-0.5 text-[10px] text-slate-400">
-            คลิกนอกช่อง (หรือ ⌘/Ctrl+Enter) เพื่อบันทึก · แสดงใต้รายการในหน้าเช็คออเดอร์ของลูกค้า และติดไปกับข้อความแจ้งราคาทางไลน์
-            {" · "}บันทึกภายในที่ลูกค้าไม่เห็น ใช้ “📝 หมายเหตุใบงาน” ด้านล่างแทน
-          </p>
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[10px] leading-relaxed text-slate-400">
+              แสดงใต้รายการในหน้าเช็คออเดอร์ของลูกค้า และติดไปกับข้อความแจ้งราคาทางไลน์
+              {" · "}บันทึกภายในที่ลูกค้าไม่เห็น ใช้ “📝 หมายเหตุใบงาน” ด้านล่างแทน
+            </p>
+            {onDone && (
+              <button
+                type="button"
+                onClick={() => onDone(note)}
+                title="เก็บทั้งราคาที่พิมพ์ไว้และที่มาของราคา แล้วปิดแผงนี้"
+                className="shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-indigo-700"
+              >
+                ✓ บันทึกราคา + ที่มา
+              </button>
+            )}
+          </div>
         </div>
       )}
 
