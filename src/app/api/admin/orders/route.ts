@@ -301,7 +301,12 @@ export async function PATCH(req: Request) {
     const quoted = existing.items
       .map((old, i) => ({ old, now: toSave.items[i] }))
       .filter((p) => p.old.unitPrice <= 0 && p.now && p.now.name === p.old.name)
-      .map((p) => `• ${p.now!.name} ×${p.now!.qty.toLocaleString("th-TH")} = ${(p.now!.qty * p.now!.unitPrice).toLocaleString("th-TH")} บาท`)
+      .map((p) => {
+        const line = `• ${p.now!.name} ×${p.now!.qty.toLocaleString("th-TH")} = ${(p.now!.qty * p.now!.unitPrice).toLocaleString("th-TH")} บาท`;
+        // ที่มาของราคาที่แอดมินพิมพ์ไว้ (เช่น "230 + 10 + 50 = 290") — ลูกค้าจะได้ไม่ต้องทักถาม
+        const why = (p.now!.quoteNote ?? "").trim();
+        return why ? `${line}\n   ${why.replace(/\n+/g, " · ")}` : line;
+      })
       .join("\n");
     void notifyCustomerLogged(
       sb,

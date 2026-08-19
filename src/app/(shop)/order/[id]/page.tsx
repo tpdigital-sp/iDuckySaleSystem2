@@ -965,6 +965,13 @@ export default function CustomerOrderPage() {
                       className="mt-1 text-xs text-stone-400"
                       stripLinks
                     />
+                    {/* 💬 ที่มาของราคาที่ร้านตีให้ (งานสั่งทำ) — บอกวิธีคิดตรง ๆ ไม่ต้องทักถาม */}
+                    {it.quoteNote && (
+                      <p className="mt-1.5 whitespace-pre-line rounded-xl bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold leading-relaxed text-amber-900 ring-1 ring-amber-200">
+                        <span className="mr-1 font-bold text-amber-600">💬 ที่มาของราคา:</span>{" "}
+                        {it.quoteNote}
+                      </p>
+                    )}
                     {/* ⚠️ ข้อควรทราบของสินค้าตัวนี้ — ย้ำอีกครั้งหลังสั่ง กันเข้าใจผิด/เคลมทีหลัง */}
                     {termsById[it.productId] && (
                       <details className="group mt-1.5">

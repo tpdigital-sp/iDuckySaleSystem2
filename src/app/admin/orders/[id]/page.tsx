@@ -430,6 +430,23 @@ export default function AdminOrderDetailPage() {
     return !moneyIn;
   }
 
+  /** บันทึก "ที่มาของราคา" ที่แอดมินพิมพ์ (ลูกค้าเห็นด้วย) — เรียกตอนออกจากช่อง */
+  function saveQuoteNote(itemIndex: number, text: string) {
+    if (!order) return;
+    const it = order.items[itemIndex];
+    if (!it) return;
+    const value = text.trim();
+    if (value === (it.quoteNote ?? "").trim()) return;
+    const items = order.items.map((x, i) => (i === itemIndex ? { ...x, quoteNote: value || undefined } : x));
+    const next = withLog(
+      { ...order, items },
+      actor,
+      value ? "ที่มาของราคา" : "ลบที่มาของราคา",
+      `${it.name}${value ? `: ${value}` : ""}`
+    );
+    applyOrder(next);
+  }
+
   /** บันทึกราคาต่อหน่วยที่แอดมินตีให้ (ลง log ว่าใครตีจากเท่าไรเป็นเท่าไร) */
   function savePrice(itemIndex: number, text: string) {
     if (!order) return;
@@ -1716,10 +1733,11 @@ export default function AdminOrderDetailPage() {
               ⚠️ {err}
             </p>
           )}
-          {/* หัวตาราง (จอกว้าง) — อ่านรายการแบบใบสั่งงาน */}
-          <div className="mt-3 hidden items-center gap-3 px-4 text-[11px] font-bold uppercase tracking-wide text-slate-400 sm:flex">
+          {/* หัวตาราง (จอกว้างพอจะเรียงคอลัมน์เดียวกันได้) — อ่านรายการแบบใบสั่งงาน
+              ซ่อนต่ำกว่า xl เพราะแถวข้างล่างจะพับคอลัมน์ตัวเลขลงบรรทัดใหม่ หัวตารางจะไม่ตรงกัน */}
+          <div className="mt-3 hidden items-center gap-3 px-4 text-[11px] font-bold uppercase tracking-wide text-slate-400 xl:flex">
             <span className="w-6 shrink-0 text-center">#</span>
-            <span className="w-72 shrink-0 text-center">รูป</span>
+            <span className="w-20 shrink-0 text-center">รูป</span>
             <span className="min-w-0 flex-1">ชื่อสินค้า / รายละเอียด</span>
             <span className="w-12 shrink-0 text-center">จำนวน</span>
             {seesMoney && <span className="w-28 shrink-0 text-right">ราคา/หน่วย</span>}
@@ -1782,8 +1800,11 @@ export default function AdminOrderDetailPage() {
                     </span>
                   </div>
                   <div className="p-4">
-                  {/* แถวรายการ — อ่านเป็นตาราง: # · รูป · รายละเอียด · จำนวน · ราคา/หน่วย · ยอดรวม */}
-                  <div className="flex items-start gap-3">
+                  {/* แถวรายการ — อ่านเป็นตาราง: # · รูป · รายละเอียด · จำนวน · ราคา/หน่วย · ยอดรวม
+                      พับได้: คอลัมน์ตัวเลขกินที่ 256px ถ้าเบียดจนช่องรายละเอียดแคบกว่า 16rem
+                      มันจะตกลงบรรทัดใหม่ ให้รายละเอียดงานได้กว้างเต็มแถว (เดิมเหลือ 135px
+                      บนจอ 1280 ข้อความหักบรรทัดทีละ 2-3 คำจนอ่านไม่รู้เรื่อง) */}
+                  <div className="flex flex-wrap items-start gap-3">
                     <button
                       type="button"
                       onClick={() => setItemOpen((cur) => ({ ...cur, [i]: !open }))}
@@ -1817,7 +1838,7 @@ export default function AdminOrderDetailPage() {
                         </button>
                       );
                     })()}
-                    <div className="min-w-0 max-w-xl flex-1">
+                    <div className="min-w-0 flex-1 basis-64">
                       <button
                         type="button"
                         onClick={() => setItemOpen((cur) => ({ ...cur, [i]: !open }))}
@@ -1863,6 +1884,22 @@ export default function AdminOrderDetailPage() {
                           )}
                         </div>
                       )}
+                      {/* 📝 ที่มาของราคาที่แอดมินตีไว้ (ลูกค้าเห็นด้วย) — กดเพื่อเปิดแผงตีราคาไปแก้ */}
+                      {it.quoteNote && seesMoney && (
+                        <button
+                          type="button"
+                          disabled={!mayQuote(it)}
+                          onClick={() => {
+                            setPriceDraft(it.unitPrice > 0 ? String(it.unitPrice) : "");
+                            setEditPrice(i);
+                          }}
+                          title={mayQuote(it) ? "กดเพื่อแก้ที่มาของราคา" : "ลูกค้าโอนแล้ว — แก้ไม่ได้"}
+                          className="mt-1 block w-full rounded-lg bg-indigo-50 px-2 py-1 text-left text-[11px] font-semibold leading-snug text-indigo-800 ring-1 ring-indigo-200 transition enabled:hover:bg-indigo-100"
+                        >
+                          <span className="text-[10px] font-bold text-indigo-500">📝 ที่มาของราคา (ลูกค้าเห็น)</span>
+                          <span className="block whitespace-pre-line">{it.quoteNote}</span>
+                        </button>
+                      )}
                       <p className="mt-0.5 text-[11px] text-slate-400">
                         {it.proofStatus ? `แบบ: ${it.proofStatus === "รอตรวจ" ? "รอลูกค้าตรวจ" : it.proofStatus === "อนุมัติ" ? "ลูกค้าอนุมัติแล้ว" : "ลูกค้าขอแก้ไข"}` : "แบบ: รอกราฟฟิกทำแบบ"}
                         {proofs.length > 0 ? ` · ${proofs.length} แบบ` : ""}
@@ -1871,6 +1908,8 @@ export default function AdminOrderDetailPage() {
                         {it.needStockCheck ? " · 📦 รอเช็คสต๊อก" : ""}
                       </p>
                     </div>
+                    {/* จำนวน · ราคา/หน่วย · ยอดรวม — มัดไว้ด้วยกัน จะพับลงบรรทัดใหม่ทั้งชุด ไม่แตกกลางทาง */}
+                    <span className="ml-auto flex shrink-0 items-start gap-3">
                     <span className="w-12 shrink-0 text-center text-sm font-semibold text-slate-700">{it.qty}</span>
                     <span className={`w-28 shrink-0 text-right text-sm font-bold text-slate-900 ${seesMoney ? "" : "hidden"}`}>
                       {/* ราคา/หน่วย — กดที่ตัวเลข (หรือป้าย "รอตีราคา") เพื่อตีราคา · Enter บันทึก · Esc ยกเลิก */}
@@ -2031,10 +2070,17 @@ export default function AdminOrderDetailPage() {
                         </button>
                       ) : null}
                     </span>
+                    </span>
                   </div>
 
                   {/* 💬 แผงช่วยตีราคา — กางเต็มความกว้างใต้แถว (ช่องราคาแคบเกินจะยัดตาราง) */}
-                  {editPrice === i && <QuotePanel item={it} onPick={(p) => setPriceDraft(String(p))} />}
+                  {editPrice === i && (
+                    <QuotePanel
+                      item={it}
+                      onPick={(p) => setPriceDraft(String(p))}
+                      onNote={mayEdit ? (t) => saveQuoteNote(i, t) : undefined}
+                    />
+                  )}
 
                   {open && (
                     <>

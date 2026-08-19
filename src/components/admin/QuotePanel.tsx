@@ -37,12 +37,16 @@ function cellPrice(m: PriceMatrix, sel: Record<string, string>, tier: number): n
 export default function QuotePanel({
   item,
   onPick,
+  onNote,
 }: {
   item: OrderItem;
   /** กดตัวเลขในแผง → เติมลงช่องราคา/หน่วย (ยังไม่บันทึก แอดมินกด Enter เอง) */
   onPick: (unitPrice: number) => void;
+  /** บันทึก "ที่มาของราคา" (เรียกตอนออกจากช่อง) — ไม่ส่งมา = ไม่ให้แก้ */
+  onNote?: (text: string) => void;
 }) {
   const [product, setProduct] = useState<Product | null | undefined>(undefined);
+  const [note, setNote] = useState(item.quoteNote ?? "");
 
   useEffect(() => {
     let alive = true;
@@ -125,6 +129,32 @@ export default function QuotePanel({
             ? "🛠 งานพิเศษที่กรอกเอง — ไม่มีตารางราคาในระบบให้อ้าง ตีราคาตามหน้างาน"
             : "⚠️ หาสินค้าตัวนี้ในระบบไม่เจอ (อาจถูกลบไปแล้ว) — ตีราคาตามหน้างาน"}
         </p>
+      )}
+
+      {/* ── 📝 ที่มาของราคา — แอดมินโชว์วิธีคิดให้ลูกค้าเห็น (กันลูกค้าทักถามว่าทำไมเท่านี้) ── */}
+      {onNote && (
+        <div className="mt-2 rounded-xl bg-white p-2.5 ring-1 ring-indigo-200">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-indigo-500">
+            📝 ที่มาของราคา · <span className="text-rose-500">ลูกค้าเห็นข้อความนี้</span>
+          </p>
+          <textarea
+            value={note}
+            /* แผงกัน mousedown ไว้ (กันโฟกัสหลุดจากช่องราคา) — ช่องนี้ต้องคลิกโฟกัสได้ จึงหยุดไว้ตรงนี้ */
+            onMouseDown={(e) => e.stopPropagation()}
+            onChange={(e) => setNote(e.target.value)}
+            onBlur={() => onNote(note)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) onNote(note);
+            }}
+            rows={2}
+            placeholder="เช่น 230 (แบบที่ 3) + 10 (เพิ่มขนาดตัวหลัง 20 ซม.) + 50 (สกรีนฐาน) = 290 บาท/ชิ้น"
+            className="mt-1 w-full resize-y rounded-lg border border-indigo-200 bg-white px-2 py-1.5 text-[11px] leading-relaxed text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+          />
+          <p className="mt-0.5 text-[10px] text-slate-400">
+            คลิกนอกช่อง (หรือ ⌘/Ctrl+Enter) เพื่อบันทึก · แสดงใต้รายการในหน้าเช็คออเดอร์ของลูกค้า และติดไปกับข้อความแจ้งราคาทางไลน์
+            {" · "}บันทึกภายในที่ลูกค้าไม่เห็น ใช้ “📝 หมายเหตุใบงาน” ด้านล่างแทน
+          </p>
+        </div>
       )}
 
       <div className="mt-2 grid gap-2 lg:grid-cols-2">
