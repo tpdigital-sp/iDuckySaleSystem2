@@ -26,9 +26,10 @@
  *   gallery-6 959b83_19efffb25f6840b39821ca693c8bc041~mv2.png  นางแบบ
  *   gallery-7 959b83_7f8ad05b8f76401ca987613b630862cd~mv2.png  นางแบบ (2)
  *   gallery-8 959b83_02d85d4c964445f1b61c785f09c4b96b~mv2.png  ระยะใกล้ เห็นเนื้อผ้า/งานพิมพ์
- *   size-*    959b83_54faf294bccd49a9b2236d8fc6d215f7~mv2.jpg  ตารางไซซ์ของเว็บ (แท็บ "Size เสื้อ")
+ *   size-chart 959b83_54faf294bccd49a9b2236d8fc6d215f7~mv2.jpg ตารางไซซ์ของเว็บ (แท็บ "Size เสื้อ")
  *             ครอปเฉพาะบล็อก UNISEX ของเสื้อไม่มียี่ห้อ (กลุ่มที่ระบุว่าพิมพ์ Sublimation ได้)
- *             → size-chart = ทั้งตาราง · size-sml = หัวตาราง+แถว S/M/L · size-xl = หัวตาราง+แถว XL/XXL
+ *   size-s … size-3xl  การ์ดไซซ์รายตัว วาดขึ้นจากตัวเลขในตารางเดียวกัน (รอบอก/ความยาว/ความยาวแขน)
+ *             3XL ในตารางเว็บยังไม่มีตัวเลข → การ์ดเขียนว่าให้สอบถามแอดมิน
  */
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -62,8 +63,12 @@ const FILES = [
   "gallery-7.jpg",
   "gallery-8.jpg",
   "size-chart.jpg",
-  "size-sml.jpg",
+  "size-s.jpg",
+  "size-m.jpg",
+  "size-l.jpg",
   "size-xl.jpg",
+  "size-2xl.jpg",
+  "size-3xl.jpg",
 ];
 const IMG = (name: string) =>
   `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/${name}.jpg`;
@@ -80,9 +85,15 @@ const PRICING: PriceMatrix = {
     { upTo: 199, label: "100-199 ตัว" },
     { upTo: null, label: "200 ตัวขึ้นไป" },
   ],
+  // เว็บคิดราคาเป็น 2 คอลัมน์ (S,M,L / XL,2XL,3XL) — ที่นี่แยกเป็นไซซ์ละบรรทัด
+  // ให้ลูกค้าเลือกไซซ์ตรง ๆ ราคาแต่ละไซซ์ยังเท่ากับคอลัมน์เดิมทุกช่วง
   cells: {
-    "Size S , M , L": [350, 280, 250, 220, 190, 180],
-    "Size XL , 2XL , 3XL": [380, 300, 280, 240, 210, 200],
+    S: [350, 280, 250, 220, 190, 180],
+    M: [350, 280, 250, 220, 190, 180],
+    L: [350, 280, 250, 220, 190, 180],
+    XL: [380, 300, 280, 240, 210, 200],
+    "2XL": [380, 300, 280, 240, 210, 200],
+    "3XL": [380, 300, 280, 240, 210, 200],
   },
 };
 
@@ -156,8 +167,12 @@ const product: Partial<Product> = {
     {
       label: "ขนาด",
       choices: [
-        { name: "Size S , M , L", imageSrc: IMG("size-sml") },
-        { name: "Size XL , 2XL , 3XL", imageSrc: IMG("size-xl") },
+        { name: "S", imageSrc: IMG("size-s") },
+        { name: "M", imageSrc: IMG("size-m") },
+        { name: "L", imageSrc: IMG("size-l") },
+        { name: "XL", imageSrc: IMG("size-xl") },
+        { name: "2XL", imageSrc: IMG("size-2xl") },
+        { name: "3XL", imageSrc: IMG("size-3xl") },
       ],
     },
   ],
@@ -206,6 +221,18 @@ async function main() {
     tabs: [...(product.tabs ?? []), ...keepTabs],
     savedAt: new Date().toISOString(),
   } as Product;
+  // FAQ ข้อ "มีขนาดอะไรบ้าง" เขียนไว้ตั้งแต่ตอนที่ตัวเลือกยังรวมเป็น 2 กลุ่ม — อัปเดตให้ตรงกับไซซ์ที่แยกแล้ว
+  if (next.seo?.faqs?.length) {
+    next.seo = {
+      ...next.seo,
+      faqs: next.seo.faqs.map((f) =>
+        f.q.includes("ขนาด")
+          ? { ...f, a: "มีไซซ์ S M L XL 2XL 3XL — ไซซ์ S/M/L ราคาเดียวกัน ส่วน XL ขึ้นไปเพิ่มตัวละ 20-30 บาทตามช่วงจำนวน" }
+          : f
+      ),
+    };
+  }
+
   const range = priceRange(next);
   next.priceMin = range.min;
   next.priceMax = range.max;
