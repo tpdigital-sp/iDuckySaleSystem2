@@ -54,6 +54,18 @@ export async function getCustomer(): Promise<Customer | null> {
   return toCustomer(data.user);
 }
 
+/**
+ * ผู้ใช้จากเซสชันที่เก็บไว้ในเครื่อง — อ่านทันที ไม่ต้องรอเน็ต
+ * ใช้กับ "หน้าตา" ของเว็บเท่านั้น (ชื่อ/รูป/เมนู) เพื่อไม่ให้จอค้าง "กำลังโหลด…" ระหว่างรอ Supabase ตอบ
+ * ข้อมูลจริงยังยิง API ที่ตรวจ token ฝั่งเซิร์ฟเวอร์เสมอ — เซสชันปลอมในเครื่องจึงไม่ได้อะไรเพิ่ม
+ */
+export async function getCachedCustomer(): Promise<Customer | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data } = await sb.auth.getSession();
+  return toCustomer(data.session?.user);
+}
+
 export async function signUp(
   email: string,
   password: string,

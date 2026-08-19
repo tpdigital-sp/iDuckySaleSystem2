@@ -8,7 +8,7 @@ import { orderBalance, orderTotal, STATUS_STYLES, type Order, type OrderStatus }
 import StepDots from "@/components/StepDots";
 import { useCustomer } from "@/lib/customer-context";
 import { useCart } from "@/lib/cart-context";
-import { getAccessToken } from "@/lib/customer-auth";
+import { fetchMyOrders } from "@/lib/my-orders";
 
 /** กลุ่มกรอง — รวมสถานะที่ลูกค้าเข้าใจง่าย */
 const FILTERS: { key: string; label: string; match: (s: OrderStatus) => boolean }[] = [
@@ -34,10 +34,8 @@ export default function MyOrdersPage() {
   useEffect(() => {
     if (!customer) return;
     (async () => {
-      const token = await getAccessToken();
-      const res = await fetch("/api/orders/mine", { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" });
-      const data = await res.json().catch(() => ({}));
-      setOrders(data.orders ?? []);
+      const data = await fetchMyOrders();
+      setOrders(data.orders);
       setState(data.needsSetup ? "setup" : "ready");
     })();
   }, [customer]);

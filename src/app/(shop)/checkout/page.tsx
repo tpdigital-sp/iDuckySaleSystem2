@@ -19,6 +19,7 @@ import {
   type ShippingMethod,
 } from "@/lib/shop-settings";
 import { getAccessToken } from "@/lib/customer-auth";
+import { fetchMyOrders } from "@/lib/my-orders";
 import { paidSpend, tierForSpend, tierDiscountAmount } from "@/lib/tiers";
 import type { Order, Proof } from "@/lib/admin-data";
 import { appendToOrder, placeOrder, reportPayment } from "@/lib/order-repo";
@@ -229,12 +230,8 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (!customer || appendTo) { setTier(null); return; } // สั่งเพิ่มไม่คิดส่วนลดใหม่
     (async () => {
-      const token = await getAccessToken();
-      const [ordRes, sett] = await Promise.all([
-        fetch("/api/orders/mine", { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
-        fetchShopPayment(),
-      ]);
-      const spend = paidSpend((ordRes.orders ?? []) as Order[]);
+      const [ordRes, sett] = await Promise.all([fetchMyOrders(), fetchShopPayment()]);
+      const spend = paidSpend(ordRes.orders);
       const t = tierForSpend(spend, tiersConfigOf(sett));
       setTier(t.discountPct > 0 ? { name: t.name, icon: t.icon, pct: t.discountPct } : null);
     })();

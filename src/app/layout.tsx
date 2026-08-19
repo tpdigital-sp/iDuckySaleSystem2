@@ -11,6 +11,9 @@ const prompt = Prompt({
   weight: ["400", "500", "600", "700", "800"],
   variable: "--font-prompt",
   display: "swap",
+  // ไม่ preload — หน้าร้าน (ทุกอย่างอยู่ใน .dl) ใช้ Mitr/Plex Looped ล้วน ไม่แตะ Prompt เลย
+  // แต่เดิม preload ทั้ง 10 ไฟล์ (~100 KB) แย่งคิวโหลดกับ JS ทุกหน้า · หลังบ้านที่ใช้จริงยังโหลดปกติ (display:swap)
+  preload: false,
 });
 
 // ฟอนต์ดีไซน์หน้าแรก/หัว-ท้ายเว็บ (ตามไฟล์ต้นแบบ): Mitr = หัวเรื่อง/ปุ่ม · Plex Looped = เนื้อความ

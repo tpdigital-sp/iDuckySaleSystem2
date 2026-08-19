@@ -1,7 +1,8 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { getCustomer, getAccessToken, onAuthChange, type Customer } from "./customer-auth";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { getCachedCustomer, getCustomer, getAccessToken, onAuthChange, type Customer } from "./customer-auth";
+import { clearMyOrders } from "./my-orders";
 
 /** ขอคูปองต้อนรับให้สมาชิกใหม่ (idempotent ฝั่งเซิร์ฟเวอร์) — ทำครั้งเดียวต่อเซสชัน */
 async function claimWelcomeCoupon() {
@@ -29,19 +30,47 @@ interface CustomerCtx {
 const Ctx = createContext<CustomerCtx>({ customer: null, loading: true, refresh: () => {} });
 
 export function CustomerProvider({ children }: { children: ReactNode }) {
-  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [customer, setCustomerState] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastRef = useRef<string>("null");
+
+  /**
+   * ตั้งค่าลูกค้าแบบ "เหมือนเดิมไม่ต้องเปลี่ยน" — กัน re-render/ยิง API ซ้ำ
+   * (เซสชันในเครื่องกับที่เซิร์ฟเวอร์ยืนยันมักได้ค่าเดียวกัน ถ้าสร้างอ็อบเจกต์ใหม่ทุกครั้ง
+   *  useEffect ที่ผูกกับ customer ของทุกหน้าจะทำงานสองรอบ)
+   */
+  const setCustomer = (c: Customer | null) => {
+    const key = JSON.stringify(c);
+    if (key === lastRef.current) return;
+    lastRef.current = key;
+    setCustomerState(c);
+  };
 
   useEffect(() => {
+    let alive = true;
+    // 1) เซสชันในเครื่องก่อน — ได้ทันที หน้าจึงเริ่มวาด/เริ่มโหลดข้อมูลได้เลย ไม่ต้องรอ Supabase ตอบ
+    getCachedCustomer().then((c) => {
+      if (!alive || !c) return;
+      setCustomer(c);
+      setLoading(false);
+    });
+    // 2) แล้วค่อยยืนยันกับเซิร์ฟเวอร์ (token หมดอายุ/ถูกถอน = เคลียร์ทิ้ง)
     getCustomer().then((c) => {
+      if (!alive) return;
       setCustomer(c);
       setLoading(false);
       if (c) claimWelcomeCoupon();
     });
-    return onAuthChange((c) => {
+    const off = onAuthChange((c) => {
+      // เปลี่ยนคน (เข้า/ออกจากระบบ) = ข้อมูลออเดอร์ที่แคชไว้ของคนเก่าใช้ไม่ได้แล้ว
+      if (JSON.stringify(c) !== lastRef.current) clearMyOrders();
       setCustomer(c);
       if (c) claimWelcomeCoupon();
     });
+    return () => {
+      alive = false;
+      off();
+    };
   }, []);
 
   const refresh = () => getCustomer().then(setCustomer);

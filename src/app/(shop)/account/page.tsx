@@ -8,7 +8,8 @@ import { graphicWaitingItems, orderBalance, orderTotal, ORDER_STEPS, STEP_OF, ty
 import { fetchShopPayment, tiersConfigOf } from "@/lib/shop-settings";
 import { nextTier, paidSpend, tierForSpend, tiersOf, type Tier } from "@/lib/tiers";
 import { useCustomer } from "@/lib/customer-context";
-import { getAccessToken, signOut, updateProfile } from "@/lib/customer-auth";
+import { signOut, updateProfile } from "@/lib/customer-auth";
+import { clearMyOrders, fetchMyOrders } from "@/lib/my-orders";
 import { uploadAvatar } from "@/lib/avatar-upload";
 import { LINE_URL } from "@/components/LineButton";
 import MyCoupons from "@/components/MyCoupons";
@@ -125,13 +126,9 @@ export default function AccountPage() {
 
   useEffect(() => {
     if (!customer) return;
-      (async () => {
-      const token = await getAccessToken();
-      const [res, sett] = await Promise.all([
-        fetch("/api/orders/mine", { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
-        fetchShopPayment(),
-      ]);
-      setOrders(res.orders ?? []);
+    (async () => {
+      const [res, sett] = await Promise.all([fetchMyOrders(), fetchShopPayment()]);
+      setOrders(res.orders);
       setTierList(tiersConfigOf(sett));
     })();
   }, [customer]);
@@ -209,6 +206,7 @@ export default function AccountPage() {
   }
 
   async function logout() {
+    clearMyOrders();
     await signOut();
     router.push("/products");
   }

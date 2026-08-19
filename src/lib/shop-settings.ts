@@ -152,7 +152,36 @@ export function hasPayment(p: ShopPayment | null | undefined): boolean {
 }
 
 /** อ่านข้อมูลบัญชีร้าน (Supabase anon → public read; ไม่ตั้งค่า → localStorage เดโม) */
-export async function fetchShopPayment(): Promise<ShopPayment> {
+/**
+ * แคชตั้งค่าร้านต่อการเปิดเว็บหนึ่งครั้ง — หลายหน้า/หลายคอมโพเนนต์เรียกซ้ำ (ตะกร้า/เช็คเอาต์/บัญชี/ออเดอร์)
+ * ทั้งที่เป็นข้อมูลชุดเดียวกันและเปลี่ยนนานๆ ครั้ง · คำขอที่ค้างอยู่ใช้ร่วมกันด้วย
+ */
+const SETTINGS_TTL = 60_000;
+let settingsCache: { at: number; value: ShopPayment } | null = null;
+let settingsInflight: Promise<ShopPayment> | null = null;
+
+/** ล้างแคชตั้งค่าร้าน (หลังแอดมินบันทึก) */
+export function clearShopPaymentCache() {
+  settingsCache = null;
+  settingsInflight = null;
+}
+
+export function fetchShopPayment(): Promise<ShopPayment> {
+  if (settingsCache && Date.now() - settingsCache.at < SETTINGS_TTL) return Promise.resolve(settingsCache.value);
+  if (settingsInflight) return settingsInflight;
+  const p = loadShopPayment()
+    .then((v) => {
+      settingsCache = { at: Date.now(), value: v };
+      return v;
+    })
+    .finally(() => {
+      if (settingsInflight === p) settingsInflight = null;
+    });
+  settingsInflight = p;
+  return p;
+}
+
+async function loadShopPayment(): Promise<ShopPayment> {
   const sb = getSupabase();
   if (!sb) {
     try {
@@ -170,6 +199,7 @@ export async function fetchShopPayment(): Promise<ShopPayment> {
 
 /** บันทึกบัญชีร้าน (แอดมิน) — ผ่าน API (service role); ไม่ตั้งค่า → localStorage */
 export async function persistShopPayment(p: ShopPayment): Promise<{ ok: boolean; error?: string }> {
+  clearShopPaymentCache(); // บันทึกแล้วต้องอ่านใหม่ ไม่ใช้ของเก่าในแคช
   try {
     const res = await fetch("/api/admin/shop-settings", {
       method: "POST",

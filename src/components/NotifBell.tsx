@@ -5,8 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { graphicWaitingItems, orderBalance, type Order } from "@/lib/admin-data";
 import { formatPrice } from "@/lib/products";
-import { getAccessToken } from "@/lib/customer-auth";
 import { useCustomer } from "@/lib/customer-context";
+import { fetchMyOrders } from "@/lib/my-orders";
 
 /**
  * กระดิ่งแจ้งเตือนบนแถบเมนู (ตามต้นแบบ USER PROFILE UPDATE_01.html) — โชว์เฉพาะสมาชิกที่ล็อกอิน
@@ -54,15 +54,14 @@ export default function NotifBell() {
       return;
     }
     let alive = true;
-    const load = async () => {
-      const token = await getAccessToken();
-      if (!token) return;
-      const res = await fetch("/api/orders/mine", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }).catch(() => null);
-      const j = res ? await res.json().catch(() => ({})) : {};
-      if (alive) setNotifs(buildNotifs(j.orders ?? []));
+    // ใช้ผลร่วมกับหน้าที่กำลังเปิด (my-orders) — ไม่ยิง /api/orders/mine ซ้ำอีกรอบต่อการโหลดหนึ่งครั้ง
+    const load = async (force?: boolean) => {
+      const j = await fetchMyOrders({ force });
+      if (alive) setNotifs(buildNotifs(j.orders));
     };
     load();
-    const onFocus = () => load();
+    // กลับมาที่แท็บ (หลังไปจ่ายเงิน/อนุมัติแบบมา) = ขอของใหม่จริงๆ
+    const onFocus = () => load(true);
     window.addEventListener("focus", onFocus);
     return () => {
       alive = false;
