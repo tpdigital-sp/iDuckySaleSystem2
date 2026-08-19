@@ -1761,15 +1761,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                   !(await confirmDropDriver(opt.label, "ติ๊กหลายอย่างพร้อมกันแล้วตารางหาราคาต่อคอลัมน์ไม่เจอ"))
                 )
                   return;
-                // ช่องกรอกก็เป็นคอลัมน์ตารางราคาไม่ได้ — ค่าที่ลูกค้าพิมพ์ไม่มีวันตรงกับคีย์ในตาราง
-                if (
-                  mode.id === "input" &&
-                  isDriver &&
-                  !(await confirmDropDriver(opt.label, "ค่าที่ลูกค้าพิมพ์เองไม่มีในตารางราคา"))
-                )
-                  return;
-                // เปลี่ยนมาเป็นช่องกรอก = งานสั่งทำ ตั้ง 💬 ให้แอดมินตีราคาให้เลย (ปลดเองได้)
-                setOpt({ display: mode.id, ...(mode.id === "input" ? { askPrice: true } : {}) });
+                setOpt({ display: mode.id });
               }}
               className={`px-2.5 py-1 text-[11px] font-semibold transition ${
                 opt.display === mode.id ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
@@ -1787,11 +1779,7 @@ export default function ProductEditor({ product }: { product: Product }) {
               : "🔢 อยากให้ลูกค้าระบุจำนวน — ติ๊กสวิตช์ 🔢 ด้านล่างก่อน"}
           </span>
         )}
-        {opt.display === "input" && (
-          <span className="text-[11px] font-semibold text-slate-400">
-            ✍️ ลูกค้าพิมพ์ค่าเอง — ตั้งรายละเอียดช่องด้านล่าง
-          </span>
-        )}
+
       </>
     );
   }
@@ -1919,16 +1907,14 @@ export default function ProductEditor({ product }: { product: Product }) {
    * แถวตั้ง "ค่าธรรมเนียมช่วงสั่งน้อย" ของกลุ่มตัวเลือก (เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น)
    * เขียนเป็นฟังก์ชันคืน JSX (ไม่ใช่คอมโพเนนต์ย่อย) เพื่อไม่ให้ช่องกรอกถูก remount ทุกครั้งที่พิมพ์
    */
-  function smallFeeRow(gi: number, opt: DraftOption) {
-    const feeNum = Number(opt.smallFee);
-    // ติดลบ = ลดให้ต่อชิ้นในช่วงนั้น (คำอธิบาย/ป้ายในแถวนี้พลิกตามเครื่องหมาย)
-    const minus = Number.isFinite(feeNum) && feeNum < 0;
-    const on = (Number.isFinite(feeNum) && feeNum !== 0) || Number(opt.smallUpTo) > 0;
+  /**
+   * แถวเงื่อนไข "แสดงเมื่อ" ของกลุ่มตัวเลือก — โชว์กลุ่มนี้เฉพาะตอนกลุ่มอื่น/เรทราคาเลือกค่าที่กำหนด
+   * แยกออกมาเป็นฟังก์ชันของตัวเอง เพราะใช้ทั้งในแผงตัวเลือกสินค้าและแผงช่องกรอก (งานสั่งทำ)
+   */
+  function showWhenBlock(gi: number, opt: DraftOption) {
     const setOpt = (patchObj: Partial<DraftOption>) =>
       patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, ...patchObj } : o)) });
-    const whenGroup = draft.options.find((o) => o.label === opt.smallWhenLabel);
-    // "เรทราคา" ใช้เป็นเงื่อนไข "แสดงเมื่อ" ได้เหมือนกลุ่มตัวเลือกทั่วไป — ค่าที่เลือกคือชื่อเรท
-    // (ผ้าเชียร์: ค่ากว้างเกินขนาดคนละราคาระหว่างเรท 1 ด้าน กับ 2 ด้าน)
+    // "เรทราคา" ใช้เป็นเงื่อนไขได้เหมือนกลุ่มตัวเลือกทั่วไป — ค่าที่เลือกคือชื่อเรท
     const rateLabels =
       draft.extraRates.length > 0 || draft.rateMeta.label.trim()
         ? [draft.rateMeta, ...draft.extraRates].map((m, i) => m.label.trim() || `เรทที่ ${i + 1}`)
@@ -1937,8 +1923,8 @@ export default function ProductEditor({ product }: { product: Product }) {
       label === RATE_LABEL
         ? rateLabels
         : (draft.options.find((o) => o.label === label)?.choices ?? []).map((c) => c.name).filter((n) => n.trim());
-    /** 1 แถวเงื่อนไข "แสดงเมื่อ" — ใช้ทั้งข้อแรกและข้อ "และ" (ต้องตรงพร้อมกันถึงจะแสดง) */
-    const showWhenRow = (which: "" | "Also") => {
+    /** 1 แถวเงื่อนไข — ใช้ทั้งข้อแรกและข้อ "และ" (ต้องตรงพร้อมกันถึงจะแสดง) */
+    const row = (which: "" | "Also") => {
       const labelKey = `showWhen${which}Label` as "showWhenLabel" | "showWhenAlsoLabel";
       const choicesKey = `showWhen${which}Choices` as "showWhenChoices" | "showWhenAlsoChoices";
       const curLabel = opt[labelKey];
@@ -1987,6 +1973,144 @@ export default function ProductEditor({ product }: { product: Product }) {
         </div>
       );
     };
+    return (
+      <>
+        {row("")}
+        {/* เงื่อนไขข้อสองโผล่เมื่อตั้งข้อแรกแล้ว (หรือเคยตั้งค้างไว้) — ไม่งั้นรกเปล่า ๆ */}
+        {(opt.showWhenLabel || opt.showWhenAlsoLabel) && <div className="mt-1">{row("Also")}</div>}
+        {opt.showWhenLabel && (
+          <p className="mt-1 rounded-lg bg-white/70 px-2 py-1.5 text-[10px] leading-relaxed text-slate-500 ring-1 ring-slate-200">
+            📖 อ่านว่า: “กลุ่ม <b className="font-bold text-indigo-700">{opt.label}</b> จะโผล่ให้ลูกค้าเลือก
+            <b className="font-bold"> เฉพาะเมื่อ {opt.showWhenLabel} = ค่าที่ติ๊กไว้</b>
+            {opt.showWhenAlsoLabel && (opt.showWhenAlsoChoices ?? []).length > 0 && (
+              <b className="font-bold"> และ {opt.showWhenAlsoLabel} = ค่าที่ติ๊กไว้</b>
+            )}
+            ”
+          </p>
+        )}
+      </>
+    );
+  }
+
+  /**
+   * ✍️ แผงช่องกรอก (งานสั่งทำ) — อยู่ในส่วน 📐 ตัวเลือกกำหนดเอง
+   *
+   * ช่องกรอกเก็บอยู่ใน draft.options เหมือนกลุ่มตัวเลือกอื่น (ค่าที่ลูกค้ากรอกจะได้ติดไปกับ
+   * ตะกร้า/ออเดอร์/ใบงานเองโดยไม่ต้องต่อท่อใหม่) แต่ "ที่ตั้งค่า" อยู่ตรงนี้ เพราะมันคือเรื่องงานสั่งทำ
+   * — แผง 🎛️ ตัวเลือกสินค้าจึงข้ามกลุ่มชนิดนี้ไป ไม่ให้แก้ได้สองที่แล้วงงว่าอันไหนจริง
+   */
+  function inputFieldsPanel() {
+    // เก็บ index จริงใน draft.options ไว้ด้วย — ปุ่มแก้/ลบ/สลับลำดับต้องอ้างตำแหน่งจริง
+    const fields = draft.options
+      .map((o, gi) => ({ o, gi }))
+      .filter(({ o }) => o.display === "input");
+    /** สลับลำดับ "เฉพาะในกลุ่มช่องกรอกด้วยกัน" — ลูกค้าเห็นเรียงตามนี้ (ตัวหน้า → ตัวหลัง → ฐาน) */
+    const swap = (k: number, dir: -1 | 1) => {
+      const a = fields[k], b = fields[k + dir];
+      if (!a || !b) return;
+      const next = [...draft.options];
+      [next[a.gi], next[b.gi]] = [next[b.gi], next[a.gi]];
+      patch({ options: next });
+    };
+    return (
+      <div className="mt-3 rounded-2xl bg-violet-50/60 p-3 ring-1 ring-violet-200">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-xs font-bold text-violet-800">✍️ ช่องให้ลูกค้ากรอกเอง</h3>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">
+              เพิ่มได้ไม่จำกัดช่อง ตั้งชื่อเองได้ทุกช่อง (เช่น “(ตัวหน้า) ขนาด”, “ฐาน”) ·
+              ตั้ง 👁 แสดงเมื่อ ให้โผล่เฉพาะแบบ/เรทที่ต้องการ · ค่าที่กรอกติดไปกับตะกร้า → ออเดอร์ → ใบงาน
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              patch({
+                options: [
+                  ...draft.options,
+                  { label: "", choices: [], display: "input", inKind: "number", askPrice: true },
+                ],
+              })
+            }
+            className="shrink-0 rounded-full bg-violet-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-violet-700"
+          >
+            ＋ เพิ่มช่องกรอก
+          </button>
+        </div>
+
+        {fields.length === 0 ? (
+          <p className="mt-2.5 rounded-xl bg-white/70 px-3 py-2.5 text-[11px] leading-relaxed text-slate-500 ring-1 ring-violet-100">
+            ยังไม่มีช่องกรอก — กด <b className="font-bold text-violet-700">＋ เพิ่มช่องกรอก</b> เพื่อให้ลูกค้าระบุขนาด/รายละเอียดเอง
+            แล้วให้แอดมินตีราคาให้ทีหลัง
+          </p>
+        ) : (
+          <div className="mt-2.5 space-y-2.5">
+            {fields.map(({ o, gi }, k) => (
+              <div key={gi} className="rounded-2xl bg-white p-3 ring-1 ring-violet-200">
+                <div className="flex items-center gap-2">
+                  <span className="w-4 text-center text-xs font-bold text-violet-300">{k + 1}</span>
+                  <MoveBtns
+                    size="xs"
+                    what="ช่องกรอก"
+                    onUp={() => swap(k, -1)}
+                    onDown={() => swap(k, 1)}
+                    upDisabled={k === 0}
+                    downDisabled={k === fields.length - 1}
+                  />
+                  <input
+                    value={o.label}
+                    onChange={(e) => renameOptionGroup(gi, e.target.value)}
+                    placeholder="ชื่อช่อง เช่น (ตัวหน้า) ขนาด, ฐาน, ข้อความที่ต้องการสลัก"
+                    className={`flex-1 font-bold ${inputCls}`}
+                    aria-label={`ชื่อช่องกรอกที่ ${k + 1}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => patch({ options: draft.options.filter((_, i) => i !== gi) })}
+                    className="shrink-0 rounded-full bg-rose-50 px-3 py-2 text-xs font-bold text-rose-500 hover:bg-rose-100"
+                  >
+                    🗑 ลบ
+                  </button>
+                </div>
+                {!o.label.trim() && (
+                  <p className="mt-1.5 text-[11px] font-bold text-amber-600">
+                    ⚠ ยังไม่ได้ตั้งชื่อช่อง — ช่องที่ไม่มีชื่อจะไม่ถูกบันทึก
+                  </p>
+                )}
+                {inputSpecRow(gi, o)}
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-semibold text-slate-400">ราคา:</span>
+                  {priceSourceRow(gi, o)}
+                </div>
+                <div className="mt-2 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+                  {showWhenBlock(gi, o)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function smallFeeRow(gi: number, opt: DraftOption) {
+    const feeNum = Number(opt.smallFee);
+    // ติดลบ = ลดให้ต่อชิ้นในช่วงนั้น (คำอธิบาย/ป้ายในแถวนี้พลิกตามเครื่องหมาย)
+    const minus = Number.isFinite(feeNum) && feeNum < 0;
+    const on = (Number.isFinite(feeNum) && feeNum !== 0) || Number(opt.smallUpTo) > 0;
+    const setOpt = (patchObj: Partial<DraftOption>) =>
+      patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, ...patchObj } : o)) });
+    const whenGroup = draft.options.find((o) => o.label === opt.smallWhenLabel);
+    // "เรทราคา" ใช้เป็นเงื่อนไข "แสดงเมื่อ" ได้เหมือนกลุ่มตัวเลือกทั่วไป — ค่าที่เลือกคือชื่อเรท
+    // (ผ้าเชียร์: ค่ากว้างเกินขนาดคนละราคาระหว่างเรท 1 ด้าน กับ 2 ด้าน)
+    const rateLabels =
+      draft.extraRates.length > 0 || draft.rateMeta.label.trim()
+        ? [draft.rateMeta, ...draft.extraRates].map((m, i) => m.label.trim() || `เรทที่ ${i + 1}`)
+        : [];
+    const choiceNamesOf = (label?: string) =>
+      label === RATE_LABEL
+        ? rateLabels
+        : (draft.options.find((o) => o.label === label)?.choices ?? []).map((c) => c.name).filter((n) => n.trim());
     return (
       <div className="mt-2 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
         <label className="flex cursor-pointer items-center gap-2 text-[11px] font-bold text-slate-600">
@@ -2231,29 +2355,7 @@ export default function ProductEditor({ product }: { product: Product }) {
         )}
         {/* ── แสดงเมื่อ: โชว์ทั้งกลุ่มเฉพาะตอนกลุ่มอื่นเลือกค่านี้ (เช่น สีตะขอ C โผล่เฉพาะตอนเลือกตะขอ C) ── */}
         <div className="mt-1.5 border-t border-dashed border-slate-200 pt-1.5">
-          {showWhenRow("")}
-          {/* เงื่อนไขข้อสองโผล่เมื่อตั้งข้อแรกแล้ว (หรือเคยตั้งค้างไว้) — ไม่งั้นรกเปล่า ๆ */}
-          {(opt.showWhenLabel || opt.showWhenAlsoLabel) && <div className="mt-1">{showWhenRow("Also")}</div>}
-          {opt.showWhenLabel && (
-            <p className="mt-1 rounded-lg bg-white/70 px-2 py-1.5 text-[10px] leading-relaxed text-slate-500 ring-1 ring-slate-200">
-              📖 อ่านว่า: “กลุ่ม <b className="font-bold text-indigo-700">{opt.label}</b> จะโผล่ให้ลูกค้าเลือก
-              <b className="font-bold"> เฉพาะเมื่อ {opt.showWhenLabel} = ค่าที่ติ๊กไว้</b>
-              {opt.showWhenAlsoLabel && (opt.showWhenAlsoChoices ?? []).length > 0 && (
-                <b className="font-bold"> และ {opt.showWhenAlsoLabel} = ค่าที่ติ๊กไว้</b>
-              )}{" "}
-              · กรณีอื่น
-              <b className="font-bold"> ซ่อนทั้งกลุ่ม</b> (ไม่ถาม ไม่คิดเงิน ไม่ติดไปกับออเดอร์)”
-              <br />
-              ตัวอย่างที่ใช้จริง: กลุ่ม “สีตะขอ C” แสดงเมื่อ ตะขอ = C เท่านั้น · กลุ่ม “FLEX ลงด้านไหน” แสดงเมื่อ
-              เรทราคา = สกรีน 2 ด้าน และ FLEX = เลือกไว้แล้ว
-              {(opt.showWhenChoices ?? []).length === 0 && (
-                <>
-                  <br />
-                  <b className="font-bold text-rose-500">⚠️ ยังไม่ได้ติ๊กค่าไหนเลย — ตอนนี้ยังแสดงตลอด</b>
-                </>
-              )}
-            </p>
-          )}
+          {showWhenBlock(gi, opt)}
         </div>
       </div>
     );
@@ -3930,27 +4032,12 @@ export default function ProductEditor({ product }: { product: Product }) {
             >
               ＋ เพิ่มกลุ่มตัวเลือก
             </button>
-            {/* ✍️ ช่องกรอก — งานสั่งทำที่ขนาด/รายละเอียดมาจากลูกค้า (ตั้ง 💬 ให้แอดมินตีราคาไว้ให้เลย) */}
-            <button
-              type="button"
-              onClick={() =>
-                patch({
-                  options: [
-                    ...draft.options,
-                    { label: "", choices: [], display: "input", inKind: "number", askPrice: true },
-                  ],
-                })
-              }
-              title="ช่องให้ลูกค้าพิมพ์ค่าเอง เช่น ขนาดงานสั่งทำ — ค่าที่กรอกติดไปกับตะกร้า/ออเดอร์/ใบงาน"
-              className="rounded-full bg-violet-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-violet-700"
-            >
-              ＋ เพิ่มช่องกรอก
-            </button>
           </div>
         </div>
         <div className="space-y-3">
           {draft.options.map((opt, gi) =>
-            opt.presetId ? (
+            // ✍️ ช่องกรอกตั้งค่าที่ 📐 ตัวเลือกกำหนดเอง (งานสั่งทำ) ที่เดียว — ไม่ให้แก้ได้สองที่แล้วงงว่าอันไหนจริง
+            opt.display === "input" ? null : opt.presetId ? (
               <div
                 key={gi}
                 onDragOver={(e) => {
@@ -4190,19 +4277,8 @@ export default function ProductEditor({ product }: { product: Product }) {
               </div>
               {isOptFolded(gi) && (
                 <p className="mt-2 truncate text-xs text-slate-400">
-                  {opt.display === "input" ? (
-                    <>
-                      ✍️ ช่องกรอก
-                      {opt.inKind === "text" ? " · ข้อความสั้น" : opt.inKind === "textarea" ? " · ข้อความยาว" : " · ตัวเลข"}
-                      {opt.inUnit ? ` (${opt.inUnit})` : ""}
-                      {opt.askPrice ? " · 💬 ให้แอดมินตีราคา" : ""}
-                    </>
-                  ) : (
-                    <>
-                      {opt.choices.length} ตัวเลือก · {opt.choices.slice(0, 6).map((c) => c.name).filter(Boolean).join(" · ")}
-                      {opt.choices.length > 6 ? " …" : ""}
-                    </>
-                  )}
+                  {opt.choices.length} ตัวเลือก · {opt.choices.slice(0, 6).map((c) => c.name).filter(Boolean).join(" · ")}
+                  {opt.choices.length > 6 ? " …" : ""}
                 </p>
               )}
               {/* พับกลุ่มไว้ก็ยังต้องเห็นว่ามีตัวเลือกที่หน้าร้านซ่อนอยู่ ไม่ต้องกางทีละกลุ่มหา */}
@@ -4259,10 +4335,6 @@ export default function ProductEditor({ product }: { product: Product }) {
                 </label>
               </div>
               {smallFeeRow(gi, opt)}
-              {opt.display === "input" ? (
-                inputSpecRow(gi, opt)
-              ) : (
-              <>
               <div className="mt-2 space-y-1.5">
                 {opt.choices.map((ch, ci) => (
                   <div key={ci} className="flex items-center gap-2">
@@ -4511,8 +4583,6 @@ export default function ProductEditor({ product }: { product: Product }) {
               </button>
               </>
               )}
-              </>
-              )}
             </div>
             )
           )}
@@ -4520,6 +4590,21 @@ export default function ProductEditor({ product }: { product: Product }) {
         <p className="mt-2 text-[11px] text-slate-400">
           💡 ตัวเลือกแรกของแต่ละกลุ่มคือค่าเริ่มต้น · ราคาคุมด้วยราคาขั้นบันได · กลุ่ม 🔗 ลิงก์คลัง แก้รวมได้ที่หน้าคลังตัวเลือก
         </p>
+        {/* บอกว่าช่องกรอกไปอยู่ไหน — ไม่งั้นเปิดมาแล้วหาไม่เจอว่าที่ตั้งไว้หายไปไหน */}
+        {draft.options.some((o) => o.display === "input") && (
+          <p className="mt-1 text-[11px] font-semibold text-violet-700">
+            ✍️ ช่องกรอก {draft.options.filter((o) => o.display === "input").length} ช่อง (
+            {draft.options.filter((o) => o.display === "input").map((o) => o.label.trim() || "ยังไม่ตั้งชื่อ").join(" · ")}
+            ) — ตั้งค่าที่{" "}
+            <button
+              type="button"
+              onClick={() => document.getElementById("sec-custom")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              className="font-bold underline decoration-dotted underline-offset-2 hover:text-violet-900"
+            >
+              📐 ตัวเลือกกำหนดเอง (งานสั่งทำ)
+            </button>
+          </p>
+        )}
       </section>
 
 
@@ -4734,21 +4819,33 @@ export default function ProductEditor({ product }: { product: Product }) {
       {/* ตัวเลือกกำหนดเอง (custom) — งานสั่งทำนอกเหนือขนาดมาตรฐาน */}
       <section id="sec-custom" className={`relative border-l-4 border-l-fuchsia-400 mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("custom")}`}>
         <SecToggle id="custom" />
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-bold text-fuchsia-800">📐 ตัวเลือกกำหนดเอง (งานสั่งทำ)</h2>
-          <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
+        <h2 className="text-sm font-bold text-fuchsia-800">📐 ตัวเลือกกำหนดเอง (งานสั่งทำ)</h2>
+        <p className="mt-1 text-[11px] text-slate-400">
+          งานที่ขนาด/รายละเอียดมาจากลูกค้า ไม่ได้อยู่ในตารางราคาปกติ — ให้ลูกค้ากรอกมาก่อน แล้วแอดมินตีราคาให้ทีหลัง
+        </p>
+
+        {/* ✍️ ช่องกรอกแบบยืดหยุ่น — กี่ช่องก็ได้ ตั้งชื่อเองได้ทุกช่อง (แทนช่องกว้าง×ยาวชุดเดียวแบบเดิม) */}
+        {inputFieldsPanel()}
+
+        {/* ── แบบเดิม: ช่องกว้าง × ยาว ชุดเดียวต่อสินค้า (คงไว้ให้สินค้าที่ตั้งไว้แล้วใช้ต่อได้) ── */}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-slate-200 pt-3">
+          <div>
+            <h3 className="text-xs font-bold text-slate-600">📏 แบบเดิม: ช่องกว้าง × ยาว ชุดเดียว</h3>
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              ติ๊กแล้วลูกค้าเห็นกล่อง &ldquo;กำหนดขนาดเอง&rdquo; แยกต่างหาก และตัวเลือกกลุ่มอื่นจะถูกปิดไว้ ·
+              งานใหม่แนะนำใช้ ✍️ ช่องกรอกด้านบนแทน (ยืดหยุ่นกว่า ไม่ปิดตัวเลือกอื่น)
+            </p>
+          </div>
+          <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
             <input
               type="checkbox"
               checked={draft.custom.enabled}
               onChange={(e) => patchCustom({ enabled: e.target.checked })}
               className="h-4 w-4 accent-amber-500"
             />
-            เปิดให้ลูกค้ากำหนดขนาดเอง
+            เปิดใช้แบบเดิม
           </label>
         </div>
-        <p className="mt-1 text-[11px] text-slate-400">
-          ให้ลูกค้าระบุขนาดเอง (นอกเหนือตารางราคาปกติ) เช่น ผ้าห่มขนาดพิเศษ · คิดราคาอัตโนมัติตามพื้นที่ หรือให้แอดมินตีราคาเอง
-        </p>
 
         {draft.custom.enabled && (
           <div className="mt-3 space-y-3 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
