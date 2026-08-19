@@ -2563,14 +2563,40 @@ export default function ProductEditor({ product }: { product: Product }) {
     const items = draft.options.map((o, gi) => ({ o, gi })).filter(({ o }) => isMadeToOrder(o));
     const setOpt = (gi: number, patchObj: Partial<DraftOption>) =>
       patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, ...patchObj } : o)) });
-    /** สลับลำดับ "เฉพาะในแผงนี้ด้วยกัน" — ลูกค้าเห็นเรียงตามนี้ (ตัวหน้า → ตัวหลัง → ฐาน) */
-    const swap = (k: number, dir: -1 | 1) => {
-      const a = items[k], b = items[k + dir];
-      if (!a || !b) return;
+    /** สลับลำดับกับรายการข้าง ๆ "ในหัวข้อเดียวกัน" — ลูกค้าเห็นเรียงตามนี้ (ตัวหน้า → ตัวหลัง → ฐาน) */
+    const swap = (a: { gi: number }, b: { gi: number } | undefined) => {
+      if (!b) return;
       const next = [...draft.options];
       [next[a.gi], next[b.gi]] = [next[b.gi], next[a.gi]];
       patch({ options: next });
     };
+    /**
+     * แยกหัวข้อตาม "แสดงเมื่อ" — ของแบบที่ 3 กับแบบที่ 4 จะได้ไม่กองรวมกันจนหาไม่เจอ
+     * รายการที่ไม่ได้ตั้งเงื่อนไข = โผล่ทุกแบบ ไปอยู่หัวข้อแยกท้ายสุด
+     */
+    const condKey = (o: DraftOption) =>
+      `${o.showWhenLabel ?? ""}|${(o.showWhenChoices ?? []).join("+")}|${o.showWhenAlsoLabel ?? ""}|${(o.showWhenAlsoChoices ?? []).join("+")}`;
+    // ชื่อเรทมักขึ้นต้นด้วยชื่อสินค้า ("สแตนดี้ตั้งโทรศัพท์ แบบที่ 3") — ตัดออกให้หัวข้อสั้น อ่านง่าย
+    const trimName = (v: string) => {
+      const n = draft.name.trim();
+      return n && v.startsWith(n) ? v.slice(n.length).trim() || v : v;
+    };
+    const condTitle = (o: DraftOption) => {
+      const picked = (o.showWhenChoices ?? []).map(trimName);
+      if (!o.showWhenLabel || !picked.length) return "แสดงทุกแบบ (ไม่ได้ตั้งเงื่อนไข)";
+      const head = o.showWhenLabel === RATE_LABEL ? picked.join(" + ") : `${o.showWhenLabel} = ${picked.join(" / ")}`;
+      const also = (o.showWhenAlsoChoices ?? []).map(trimName);
+      return o.showWhenAlsoLabel && also.length ? `${head} · และ ${o.showWhenAlsoLabel} = ${also.join(" / ")}` : head;
+    };
+    const groups: { key: string; title: string; entries: typeof items }[] = [];
+    for (const it of items) {
+      const key = condKey(it.o);
+      const g = groups.find((x) => x.key === key);
+      if (g) g.entries.push(it);
+      else groups.push({ key, title: condTitle(it.o), entries: [it] });
+    }
+    // หัวข้อ "แสดงทุกแบบ" ไว้ท้ายสุดเสมอ — ของเฉพาะแบบสำคัญกว่า ควรเห็นก่อน
+    groups.sort((a, b) => Number(a.key.startsWith("|")) - Number(b.key.startsWith("|")));
     const movable = draft.options.filter((o) => !isMadeToOrder(o) && o.label.trim());
     return (
       <div className="mt-3 rounded-2xl bg-violet-50/60 p-3 ring-1 ring-violet-200">
@@ -2629,18 +2655,28 @@ export default function ProductEditor({ product }: { product: Product }) {
             แล้วให้แอดมินตีราคาให้ทีหลัง
           </p>
         ) : (
-          <div className="mt-2.5 space-y-2.5">
-            {items.map(({ o, gi }, k) => (
+          <div className="mt-2.5 space-y-4">
+            {groups.map((g) => (
+              <div key={g.key}>
+                {/* หัวข้อบอกว่ากลุ่มด้านล่างนี้เป็นของแบบไหน — กันสับสนตอนมีหลายแบบในสินค้าเดียว */}
+                <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-violet-600 px-3 py-1 text-[11px] font-bold text-white">
+                    🎯 {g.title}
+                  </span>
+                  <span className="text-[11px] font-semibold text-slate-400">{g.entries.length} รายการ</span>
+                </div>
+                <div className="space-y-2.5">
+            {g.entries.map(({ o, gi }, k) => (
               <div key={gi} className="rounded-2xl bg-white p-3 ring-1 ring-violet-200">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="w-4 text-center text-xs font-bold text-violet-300">{k + 1}</span>
                   <MoveBtns
                     size="xs"
                     what="รายการ"
-                    onUp={() => swap(k, -1)}
-                    onDown={() => swap(k, 1)}
+                    onUp={() => swap(g.entries[k], g.entries[k - 1])}
+                    onDown={() => swap(g.entries[k], g.entries[k + 1])}
                     upDisabled={k === 0}
-                    downDisabled={k === items.length - 1}
+                    downDisabled={k === g.entries.length - 1}
                   />
                   {o.display === "input" ? (
                     <>
@@ -2696,6 +2732,9 @@ export default function ProductEditor({ product }: { product: Product }) {
                   // กลุ่มตัวเลือกปกติ — ใช้การ์ดตัวเดียวกับแผง 🎛️ จะได้แก้ได้ครบเหมือนกันทุกอย่าง
                   optionGroupCard(o, gi)
                 )}
+              </div>
+            ))}
+                </div>
               </div>
             ))}
           </div>
