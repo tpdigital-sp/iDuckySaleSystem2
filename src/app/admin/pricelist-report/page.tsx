@@ -141,6 +141,49 @@ const linkName = (url: string) => {
   }
 };
 
+/** เว็บตารางราคา — ใช้เติมโฮสต์ให้ลิงก์ที่วางมาแบบ "/griptok" */
+const PRICELIST_SITE = "https://www.iduckyofficial-pricelists.com";
+
+/**
+ * ข้อความที่วาง/พิมพ์มา เป็นลิงก์ไหม — คืนลิงก์เต็มที่เก็บได้เลย (ไม่ใช่ลิงก์ = คืนค่าว่าง)
+ * รับทั้ง https://… · www…. · และ path สั้น ๆ อย่าง "/griptok" ที่ก๊อปมาจากแถบที่อยู่
+ */
+const asLink = (raw: string): string => {
+  const t = raw.trim();
+  if (!t || /\s/.test(t)) return ""; // มีเว้นวรรค = เป็นชื่อสินค้า ไม่ใช่ลิงก์
+  try {
+    if (/^https?:\/\//i.test(t)) return new URL(t).toString();
+    if (/^www\./i.test(t)) return new URL(`https://${t}`).toString();
+    if (t.startsWith("/")) return new URL(t, PRICELIST_SITE).toString();
+  } catch {
+    return "";
+  }
+  return "";
+};
+
+/** ชื่อตั้งต้นจากท้ายลิงก์ เช่น …/griptok → "griptok" (ว่าง = เอาชื่อจากลิงก์ไม่ได้) */
+const nameFromLink = (url: string): string => {
+  try {
+    const last = decodeURIComponent(new URL(url).pathname).split("/").filter(Boolean).pop() ?? "";
+    return last.replace(/[-_]+/g, " ").trim();
+  } catch {
+    return "";
+  }
+};
+
+/** ลิงก์ 2 อันชี้หน้าเดียวกันไหม (ตัดโฮสต์/สแลชท้าย/ตัวพิมพ์ออก) */
+const samePage = (a: string, b: string): boolean => {
+  const path = (u: string) => {
+    try {
+      return decodeURIComponent(new URL(u).pathname).replace(/\/+$/, "").toLowerCase();
+    } catch {
+      return "";
+    }
+  };
+  const pa = path(a);
+  return !!pa && pa === path(b);
+};
+
 /** วันที่แบบสั้น เช่น 18 ส.ค. 14:20 */
 const whenOf = (iso: string) => {
   const d = new Date(iso);
@@ -534,12 +577,36 @@ export default function PricelistReportPage() {
     []
   );
 
+  /**
+   * วางลิงก์ลงช่องไหนก็ได้ในฟอร์มเพิ่มชื่อ — ระบบย้ายไปช่อง "ลิงก์" ให้เอง
+   * แล้วเติมหมวดจากบรรทัดอื่นที่ใช้ลิงก์หน้าเดียวกัน (เช่น วาง /griptok ได้หมวดของหน้านั้น)
+   * และตั้งชื่อตั้งต้นจากท้ายลิงก์ให้ ถ้ายังไม่ได้พิมพ์ชื่อไว้
+   */
+  const fillFromLink = useCallback(
+    (link: string) =>
+      setNewRow((r) => {
+        const hit = (data?.rows ?? []).find((x) => x.url && samePage(x.url, link));
+        return {
+          name: r.name.trim() || nameFromLink(link),
+          category: r.category.trim() || hit?.category || "",
+          url: link,
+        };
+      }),
+    [data]
+  );
+
   /** เพิ่มบรรทัดชื่อเอง — ชื่อที่ยังไม่มีบนหน้าเว็บตารางราคา */
   const addRow = useCallback(async () => {
     const name = newRow.name.trim();
     if (!name) return;
     setCreated("");
-    const added = await send({ add: { ...newRow, name } }, "__add__", "เพิ่มชื่อ");
+    // เก็บลิงก์ให้เป็นรูปแบบเดียวกับบรรทัดที่มาจากเว็บเสมอ (วาง "/griptok" มาก็เติมโฮสต์ให้)
+    // แล้วเดาหมวดจากบรรทัดอื่นที่ใช้ลิงก์หน้าเดียวกัน ถ้ายังไม่ได้ใส่หมวด
+    const link = asLink(newRow.url) || newRow.url.trim();
+    const category =
+      newRow.category.trim() ||
+      (link ? ((data?.rows ?? []).find((x) => x.url && samePage(x.url, link))?.category ?? "") : "");
+    const added = await send({ add: { name, category, url: link } }, "__add__", "เพิ่มชื่อ");
     if (!added) return;
     setNewRow({ name: "", category: "", url: "" });
     setAdding(false);
@@ -559,7 +626,7 @@ export default function PricelistReportPage() {
         return n;
       });
     }
-  }, [newRow, send, mayManage, addWithProduct, createProductFor, load]);
+  }, [newRow, send, mayManage, addWithProduct, createProductFor, load, data]);
 
   /** บันทึกชื่อที่แก้ — บรรทัดจากเว็บแก้ได้เฉพาะชื่อ · บรรทัดที่เพิ่มเองแก้หมวด/ลิงก์ได้ด้วย */
   const saveEdit = useCallback(
@@ -843,20 +910,29 @@ export default function PricelistReportPage() {
               <p className={`mt-0.5 text-xs ${faint}`}>
                 สำหรับชื่อที่ยังไม่มีบนหน้าเว็บตารางราคา — เพิ่มแล้วติ๊กทำแล้ว สั่งพี่ปุ๋ยทำราคา และจับคู่สินค้าในระบบได้เหมือนบรรทัดอื่น
                 {mayManage ? " · ติ๊ก 🆕 ไว้ = สร้างสินค้าในระบบให้พร้อมกันเลย" : ""}
+                {" · วางลิงก์ช่องไหนก็ได้ ระบบย้ายไปช่องลิงก์ + เดาหมวดให้เอง"}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <input
                 value={newRow.name}
-                onChange={(e) => setNewRow((v) => ({ ...v, name: e.target.value }))}
+                onChange={(e) => {
+                  const link = asLink(e.target.value);
+                  if (link) fillFromLink(link); // วางลิงก์ผิดช่อง — ย้ายให้เอง ไม่ต้องตัดวางใหม่
+                  else setNewRow((v) => ({ ...v, name: e.target.value }));
+                }}
                 onKeyDown={(e) => e.key === "Enter" && void addRow()}
                 autoFocus
-                placeholder="ชื่อสินค้า (จำเป็น)"
+                placeholder="ชื่อสินค้า (จำเป็น) · วางลิงก์ตรงนี้ก็ได้"
                 className="w-64 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400"
               />
               <input
                 value={newRow.category}
-                onChange={(e) => setNewRow((v) => ({ ...v, category: e.target.value }))}
+                onChange={(e) => {
+                  const link = asLink(e.target.value);
+                  if (link) fillFromLink(link);
+                  else setNewRow((v) => ({ ...v, category: e.target.value }));
+                }}
                 onKeyDown={(e) => e.key === "Enter" && void addRow()}
                 list="pricelist-cats"
                 placeholder="หมวด (ว่างไว้ = เพิ่มเอง)"
@@ -870,8 +946,13 @@ export default function PricelistReportPage() {
               <input
                 value={newRow.url}
                 onChange={(e) => setNewRow((v) => ({ ...v, url: e.target.value }))}
+                onBlur={() => {
+                  // วางเสร็จ/ออกจากช่อง = เติมโฮสต์ให้ลิงก์สั้น แล้วเดาหมวด+ชื่อจากลิงก์ให้ถ้ายังว่าง
+                  const link = asLink(newRow.url);
+                  if (link) fillFromLink(link);
+                }}
                 onKeyDown={(e) => e.key === "Enter" && void addRow()}
-                placeholder="ลิงก์หน้าตารางราคา (ถ้ามี)"
+                placeholder="ลิงก์หน้าตารางราคา (ถ้ามี) เช่น /griptok"
                 className="w-72 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400"
               />
               {mayManage ? (
