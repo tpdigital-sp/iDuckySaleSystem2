@@ -10,6 +10,11 @@ import {
   inputError,
   INPUT_MAX_LEN,
   isInputOption,
+  isMadeToOrderOption,
+  madeToOrderOn,
+  optionActive,
+  MTO_LABEL,
+  MTO_ON,
   needsQuote,
   parseInputValue,
   customUnitPrice,
@@ -416,10 +421,12 @@ export default function ProductDetail({
 
   // เรทที่เลือกติดไปกับ selections → ตะกร้า/ออเดอร์เห็นเป็น "เรทราคา: …" และคิดราคาตามเรทนั้น
   // (จำนวนลายเติมทีหลังตรง effectiveWithDesigns — ต้องประกาศ designs ก่อน)
-  const effective = useMemo(
-    () => (rate ? { ...resolved, [RATE_LABEL]: rate.label } : resolved),
-    [resolved, rate]
-  );
+  const effective = useMemo(() => {
+    const base: Record<string, string> = rate ? { ...resolved, [RATE_LABEL]: rate.label } : { ...resolved };
+    // ติ๊ก "สั่งทำ" ไม่ใช่กลุ่มตัวเลือกของสินค้า จึงไม่ผ่าน resolveSelections — พากลับมาเอง
+    if (selections[MTO_LABEL]) base[MTO_LABEL] = selections[MTO_LABEL];
+    return base;
+  }, [resolved, rate, selections]);
   const rateMinQty = rate?.minQty ?? 1;
   /**
    * ร้านรับสั่งขั้นต่ำ 1 ชิ้นเสมอ — ห้ามบล็อกการสั่งเพราะ "เรทที่เลือกไว้" มีขั้นต่ำสูง
@@ -605,10 +612,13 @@ export default function ProductDetail({
    */
   const inputErrors = useMemo(
     () =>
-      product.options
-        .filter((o) => isInputOption(o) && optionVisible(o, effective))
-        .map((o) => inputError(o, effective[o.label]))
-        .filter((e): e is string => !!e),
+      // ยังไม่ติ๊ก "สั่งทำ" = ไม่ต้องกรอกอะไร ปุ่มสั่งไม่ควรถูกล็อก
+      !madeToOrderOn(effective)
+        ? []
+        : product.options
+            .filter((o) => isInputOption(o) && optionVisible(o, effective))
+            .map((o) => inputError(o, effective[o.label]))
+            .filter((e): e is string => !!e),
     [product, effective]
   );
 
@@ -1222,7 +1232,8 @@ export default function ProductDetail({
       addItem(product.id, { ...kept, [custom.label]: customValue, ...extra }, qty, product);
     } else {
       // กลุ่มที่ถูกซ่อนอยู่ (showWhen ไม่ตรง) ไม่ต้องติดไปกับตะกร้า/ออเดอร์ — ลูกค้าไม่ได้เลือกเอง
-      const hidden = product.options.filter((o) => !optionVisible(o, effective)).map((o) => o.label);
+      // กลุ่มที่ถูกซ่อน (showWhen ไม่ตรง) หรือกลุ่มงานสั่งทำที่ลูกค้าไม่ได้ติ๊ก — ไม่ต้องติดไปกับตะกร้า/ออเดอร์
+      const hidden = product.options.filter((o) => !optionActive(o, effective)).map((o) => o.label);
       // ค่าว่าง = กลุ่มติ๊กหลายอย่างที่ลูกค้าไม่ได้ติ๊กอะไรเลย — ไม่ต้องโชว์เป็นบรรทัดเปล่าในตะกร้า/ออเดอร์
       const shown = Object.fromEntries(
         Object.entries(effectiveWithDesigns).filter(([k, v]) => !hidden.includes(k) && v !== "")
@@ -1752,10 +1763,10 @@ export default function ProductDetail({
               );
   }
 
-  /** กลุ่มนี้เป็นของ "งานสั่งทำ" ไหม — ช่องกรอกเป็นเสมอ · กลุ่มตัวเลือกปกติต้องถูกย้ายเข้ามา */
-  const isMadeToOrderOpt = (o: ProductOption) => isInputOption(o) || o.madeToOrder === true;
-  /** กลุ่มงานสั่งทำที่ต้องโชว์ตอนนี้ (ตาม "แสดงเมื่อ") — ว่าง = ไม่ต้องกางกล่อง 📐 ให้รก */
-  const mtoVisible = product.options.filter((o) => isMadeToOrderOpt(o) && optionVisible(o, effective));
+  /** กลุ่มงานสั่งทำที่เข้าเงื่อนไข "แสดงเมื่อ" ตอนนี้ — ว่าง = ไม่ต้องกางกล่อง 📐 ให้รก */
+  const mtoVisible = product.options.filter((o) => isMadeToOrderOption(o) && optionVisible(o, effective));
+  /** ลูกค้าติ๊ก "สั่งทำ" ไว้ไหม — ยังไม่ติ๊ก = ราคายังคิดตามตารางปกติ ไม่ต้องกรอกอะไร */
+  const mtoOn = madeToOrderOn(effective);
 
   return (
     <div className="mx-auto max-w-6xl px-4 pt-6">
@@ -2099,12 +2110,15 @@ export default function ProductDetail({
                           <th
                             key={col}
                             title={col.split("│").join(" · ")}
-                            // ชิดซ้าย เพื่อให้ขีดนำหน้าแต่ละบรรทัดเรียงตรงกัน (ตรงกลางจะดูรุ่งริ่ง)
-                            className="px-3 py-2 text-left font-bold leading-tight"
+                            /**
+                             * หลายคอลัมน์ = ชิดซ้าย เพื่อให้ขีดนำหน้าแต่ละบรรทัดเรียงตรงกัน (ตรงกลางจะดูรุ่งริ่ง)
+                             * คอลัมน์เดียว = จัดกลางให้ตรงกับตัวเลขในช่อง (ไม่งั้นหัวตารางเยื้องไปคนละทางกับราคา)
+                             */
+                            className={`px-3 py-2 font-bold leading-tight ${cols.length === 1 ? "text-center" : "text-left"}`}
                           >
                             {shortComboParts(col).map((part, i) => (
                               <span key={i} className="block whitespace-nowrap">
-                                <span className="mr-1 text-sky-400">•</span>
+                                {cols.length > 1 && <span className="mr-1 text-sky-400">•</span>}
                                 {part}
                               </span>
                             ))}
@@ -2328,7 +2342,7 @@ export default function ProductDetail({
           <div id="opt-groups" className="mt-4 space-y-3">
             {/* กลุ่มที่ตั้ง "แสดงเมื่อ" ไว้ และเงื่อนไขยังไม่ตรง → ไม่ต้องโชว์ (เช่น สีตะขอของแบบที่ไม่ได้เลือก) */}
             {product.options
-              .filter((opt) => !isMadeToOrderOpt(opt) && optionVisible(opt, effective))
+              .filter((opt) => !isMadeToOrderOption(opt) && optionVisible(opt, effective))
               .map((opt) => optionGroupUI(opt))}
           </div>
 
@@ -2338,12 +2352,38 @@ export default function ProductDetail({
           */}
           {mtoVisible.length > 0 && (
             <div className="mt-5 rounded-2xl bg-sky-50/60 p-4 ring-1 ring-sky-200">
-              <p className="text-sm font-bold text-stone-700">📐 รายละเอียดงานสั่งทำ</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-stone-500">
-                กรอก/เลือกให้ครบแล้วกดสั่งได้เลย — {askQuote ? "แอดมินจะตีราคาให้หลังเห็นรายละเอียด" : "รายละเอียดนี้จะติดไปกับออเดอร์ให้ทีมผลิต"}
-              </p>
-              <div className="mt-3 space-y-3">{mtoVisible.map((opt) => optionGroupUI(opt))}</div>
-              {askQuote && (
+              {/* ติ๊กก่อนถึงกางช่องกรอก — ไม่ติ๊ก = ใช้ขนาดมาตรฐาน ราคายังคิดเองได้ตามตารางปกติ */}
+              <label className="flex cursor-pointer items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={mtoOn}
+                  onChange={(e) =>
+                    setSelections((sel) => {
+                      const next: Record<string, string> = { ...sel, [MTO_LABEL]: e.target.checked ? MTO_ON : "" };
+                      // เอาติ๊กออก = ล้างค่าที่กรอกไว้ด้วย ไม่งั้นค่าเก่าค้างแล้วติดไปกับออเดอร์
+                      if (!e.target.checked)
+                        for (const o of product.options) if (isMadeToOrderOption(o)) next[o.label] = "";
+                      return next;
+                    })
+                  }
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-sky-600"
+                />
+                <span>
+                  <span className="text-sm font-bold text-stone-700">📐 ต้องการสั่งทำ — กำหนดขนาด/รายละเอียดเอง</span>
+                  <span className="mt-0.5 block text-[11px] leading-relaxed text-stone-500">
+                    ไม่ติ๊ก = ใช้ขนาดมาตรฐานของแบบนี้ ราคาตามตารางปกติ · ติ๊กแล้วระบุขนาดที่ต้องการได้
+                    แล้วแอดมินจะตีราคาให้
+                  </span>
+                </span>
+              </label>
+              {mtoOn && (
+                <>
+                  <div className="mt-3 space-y-3 border-t border-dashed border-sky-200 pt-3">
+                    {mtoVisible.map((opt) => optionGroupUI(opt))}
+                  </div>
+                </>
+              )}
+              {mtoOn && askQuote && (
                 <div className="mt-3 border-t border-dashed border-sky-200 pt-3">
                   <p className="text-xs font-bold text-sky-800">
                     💬 อยากรู้ราคาก่อนสั่ง ทักมาถามได้เลย

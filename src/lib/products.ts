@@ -2768,6 +2768,33 @@ export function priceMatrixKey(m: PriceMatrix, selections: Record<string, string
 }
 
 /**
+ * 📐 คีย์ในตัวเลือกที่บอกว่าลูกค้า "ติ๊กสั่งทำ" ไว้
+ * เก็บเป็นตัวเลือกปกติ จะได้ติดไปกับตะกร้า/ออเดอร์/ใบงานเองว่าใบนี้เป็นงานสั่งทำ
+ */
+export const MTO_LABEL = "งานสั่งทำ";
+export const MTO_ON = "กำหนดขนาด/รายละเอียดเอง";
+
+/** กลุ่มนี้เป็นของงานสั่งทำไหม — ช่องกรอกเป็นเสมอ · กลุ่มตัวเลือกปกติต้องถูกย้ายเข้ามา (madeToOrder) */
+export function isMadeToOrderOption(o: ProductOption): boolean {
+  return isInputOption(o) || o.madeToOrder === true;
+}
+
+/** ลูกค้าติ๊ก "สั่งทำ" ไว้ไหม */
+export function madeToOrderOn(selections: Record<string, string>): boolean {
+  return selections[MTO_LABEL] === MTO_ON;
+}
+
+/**
+ * กลุ่มนี้ "มีผลจริง" กับลูกค้าตอนนี้ไหม — ต้องทั้งไม่ถูกซ่อนด้วย showWhen
+ * และถ้าเป็นกลุ่มงานสั่งทำ ลูกค้าต้องติ๊กสั่งทำไว้ด้วย
+ * ไม่เข้าเงื่อนไข = ไม่ถาม ไม่คิดเงิน ไม่ติดไปกับออเดอร์ (เหมือนกลุ่มที่ถูกซ่อน)
+ */
+export function optionActive(opt: ProductOption, selections: Record<string, string>): boolean {
+  if (!optionVisible(opt, selections)) return false;
+  return !isMadeToOrderOption(opt) || madeToOrderOn(selections);
+}
+
+/**
  * 💬 ตัวเลือกชุดนี้เป็น "งานสั่งทำที่ต้องให้แอดมินตีราคา" ไหม
  *
  * เข้าเงื่อนไขเมื่อกลุ่มที่แสดงอยู่ (ไม่ถูกซ่อนด้วย showWhen) เข้าข้อใดข้อหนึ่ง:
@@ -2778,7 +2805,7 @@ export function priceMatrixKey(m: PriceMatrix, selections: Record<string, string
  */
 export function needsQuote(p: Product, selections: Record<string, string>): boolean {
   for (const opt of p.options) {
-    if (!optionVisible(opt, selections)) continue;
+    if (!optionActive(opt, selections)) continue;
     const picked = selectedNames(opt, selections);
     // ช่องกรอกที่ตั้ง 💬 ไว้: แค่ "โผล่ให้กรอก" ก็ถือว่าเป็นงานสั่งทำแล้ว
     // (ไม่ต้องรอให้พิมพ์ก่อน ไม่งั้นราคาจะกระพริบจากราคาปกติ → รอตีราคา ตอนลูกค้าเริ่มพิมพ์)
@@ -2820,7 +2847,8 @@ export function unitPriceFor(
     // กลุ่มตัวเลือกที่ไม่ใช่แกนตาราง (เช่น อะไหล่พิเศษ) บวกเพิ่มต่อหน่วยตาม extra ของตัวที่เลือก
     // (กลุ่มที่ตั้ง extraFromQty ไว้ ต่ำกว่าเกณฑ์ = ราคารวมแล้ว ไม่บวก)
     for (const opt of product.options) {
-      if (!optionVisible(opt, selections)) continue; // กลุ่มที่ถูกซ่อนอยู่ = ไม่คิดเงิน
+      // กลุ่มที่ถูกซ่อน หรือกลุ่มงานสั่งทำที่ลูกค้ายังไม่ได้ติ๊ก = ไม่คิดเงิน
+      if (!optionActive(opt, selections)) continue;
       // กลุ่มที่เป็นแกนตาราง ราคาอยู่ในช่องตารางแล้ว — เหลือแค่ค่าธรรมเนียมช่วงปลีกของกลุ่มนั้น
       if (m.driverLabels.includes(opt.label)) {
         base += smallQtyFeeOf(opt, selections, tierQty);
@@ -2833,7 +2861,8 @@ export function unitPriceFor(
   }
   let price = product.price;
   for (const opt of product.options) {
-    if (!optionVisible(opt, selections)) continue; // กลุ่มที่ถูกซ่อนอยู่ = ไม่คิดเงิน
+    // กลุ่มที่ถูกซ่อน หรือกลุ่มงานสั่งทำที่ลูกค้ายังไม่ได้ติ๊ก = ไม่คิดเงิน
+    if (!optionActive(opt, selections)) continue;
     price += groupAddOf(opt, selections, tierQty);
   }
   return Math.max(0, price);
