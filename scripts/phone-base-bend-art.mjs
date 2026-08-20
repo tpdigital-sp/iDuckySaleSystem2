@@ -7,9 +7,10 @@
  *
  * ได้ 3 ชุด แล้วให้ scripts/add-phone-base-bend.ts อัปขึ้น Supabase Storage:
  *   1. gallery-1..4   ภาพงานจริงจากเว็บตารางราคา (หัวข้อ "ตัวอย่าง สแตนดี้ที่ตั้งโทรศัพท์ (แบบฐานดัดง้อ) แบบที่ 5")
- *   2. size-14..20    ภาพประกอบ "ขนาด" — วาดเป็น SVG สเกลจริง เทียบกันได้ทั้งชุด (มีเงาขนาดใหญ่สุดไว้เทียบ)
- *   3. bend-points    ภาพอธิบาย "จุดดัดงอ 3 จุด" ว่าแผ่นอะคริลิคแผ่นเดียวถูกดัดเป็นอะไรบ้าง
- *      clear / special  ภาพประกอบกลุ่ม "สีอะคริลิค" (ใส = ภาพงานจริง · พิเศษใช้ชุดกลาง acrylic-colors.mjs)
+ *   2. bend-points    ภาพอธิบาย "จุดดัดงอ 3 จุด" + ขนาด (สูง 14 ซม. · ฐานกว้าง 8 ซม.)
+ *   3. clear          ภาพประกอบตัวเลือก "อะคริลิคใส" (สีพิเศษใช้ชาร์ตชุดกลาง acrylic-colors.mjs)
+ *
+ * สินค้านี้มี "ขนาดเดียว" (สูง 14 ซม.) จึงไม่มีชุดภาพขนาดให้ติดปุ่มตัวเลือกเหมือนสินค้าตัวอื่น
  *
  * ⚠️ อัปทับ "ชื่อไฟล์เดิม" ไม่ได้ — CDN/Next แคชของเก่าไว้ ต้องขยับ REV ใน add-phone-base-bend.ts เสมอ
  */
@@ -112,55 +113,6 @@ const PRINT = "#93c5fd";
 const PRINT_WARM = "#fdba74";
 const PRINT_BASE = "#fcd34d";
 
-/**
- * ── ภาพ "ขนาด" = มองจากด้านหน้า ──
- * ภาพนี้ถูกใช้ 2 ขนาดพร้อมกัน: ภาพย่อบนปุ่มตัวเลือก (~44px) และภาพใหญ่ในแกลเลอรีตอนกดเลือก
- * ที่ 44px อ่านตัวหนังสือไม่ออกเลย — องค์ประกอบจึงเหลือแค่ 3 อย่างที่ "ต่างกันเห็นชัดตอนย่อ":
- *   1) ตัวสแตนดี้เต็มเฟรม เทียบกับเงาเส้นประของขนาดใหญ่สุด → เห็นสัดส่วนความสูง
- *   2) แถบบอกความสูงสีฟ้าเข้ม ยาวตามขนาด → เป็นสัญญาณที่อ่านง่ายที่สุดตอนย่อ
- *   3) ตัวเลขขนาดตัวใหญ่ → รูปทรงต่างกันชัดแม้อ่านไม่ออก
- * หัวเรื่อง/คำบรรยายยาว ๆ ตัดออกทั้งหมด (ปุ่มมีชื่อขนาดกำกับอยู่แล้ว)
- */
-function sizeShot(cm) {
-  const S = 26.5; // px ต่อ ซม. — 20 ซม. = 530px เกือบเต็มเฟรม
-  const GY = 620; // เส้นพื้น
-  const cx = 226; // ตัวสแตนดี้ชิดซ้าย เว้นครึ่งขวาให้ตัวเลข
-  const y = (v) => GY - v * S;
-  const bw = BASE_CM * S;
-  const pw = PANEL_W * S;
-  const panelTop = y(cm);
-  const panelH = y(PANEL_BOTTOM) - panelTop;
-  const dimX = cx + bw / 2 + 34;
-
-  const band = (x, w, top, bottom, fill) =>
-    `<rect x="${x}" y="${top}" width="${w}" height="${bottom - top}" fill="${fill}" stroke="${GLASS_EDGE}" stroke-width="4" stroke-linejoin="round"/>`;
-
-  return frame(`
-    ${cm < MAX_CM
-      ? `<rect x="${cx - pw / 2}" y="${y(MAX_CM)}" width="${pw}" height="${y(PANEL_BOTTOM) - y(MAX_CM)}" rx="10"
-           fill="none" stroke="#cbd5e1" stroke-width="3" stroke-dasharray="12 10"/>`
-      : ""}
-    ${band(cx - pw / 2, pw, panelTop, y(PANEL_BOTTOM), PRINT)}
-    ${artwork(cx, panelTop + panelH * 0.42, pw, panelH)}
-    ${band(cx - bw / 2, bw, y(PANEL_BOTTOM), y(BASE_TOP), PRINT_WARM)}
-    ${band(cx - bw / 2, bw, y(BASE_TOP), y(LIP_TOP), PRINT_BASE)}
-    ${band(cx - bw / 2, bw, y(LIP_TOP), GY, "rgba(56,189,248,0.25)")}
-    <line x1="${cx - bw / 2 - 26}" y1="${GY + 7}" x2="${cx + bw / 2 + 26}" y2="${GY + 7}" stroke="#cbd5e1" stroke-width="5"/>
-
-    <!-- แถบบอกความสูง — ตัวชี้วัดหลักตอนภาพถูกย่อเป็นภาพย่อบนปุ่ม -->
-    <line x1="${dimX}" y1="${panelTop}" x2="${dimX}" y2="${GY}" stroke="${CYAN}" stroke-width="9" stroke-linecap="round"/>
-    <line x1="${dimX - 15}" y1="${panelTop}" x2="${dimX + 15}" y2="${panelTop}" stroke="${CYAN}" stroke-width="7" stroke-linecap="round"/>
-    <line x1="${dimX - 15}" y1="${GY}" x2="${dimX + 15}" y2="${GY}" stroke="${CYAN}" stroke-width="7" stroke-linecap="round"/>
-
-    <!-- ตัวเลขขนาด: ใหญ่พอให้รูปทรงต่างกันชัดแม้ตอนย่อจนอ่านไม่ออก -->
-    <text x="${dimX + 46}" y="${H / 2 + 6}" font-family="${TH}" font-size="150" font-weight="700" fill="${CYAN}">${cm}</text>
-    <text x="${dimX + 50}" y="${H / 2 + 76}" font-family="${TH}" font-size="52" font-weight="700" fill="${CYAN}">ซม.</text>
-    <text x="${dimX + 50}" y="${H / 2 - 140}" font-family="${TH}" font-size="30" fill="${SUB}">${
-      cm === 14 ? "มาตรฐาน" : `+${(cm - 14) * 10} บาท`
-    }</text>
-    <text x="${cx}" y="${GY + 44}" font-family="${TH}" font-size="26" text-anchor="middle" fill="${SUB}">ฐาน 8 ซม.</text>`);
-}
-
 /** ── ภาพ "จุดดัดงอ 3 จุด" = มองจากด้านข้าง (เห็นองศาการดัด + มือถือที่พิง) ── */
 const SIDE = (() => {
   const total = 14;
@@ -203,13 +155,25 @@ function bendShot() {
 
   const labels = [
     { i: 1, t: "ดัดจุดที่ 1", s: "ริมกันเครื่องไหล", ax: -18, ay: 4, tx: -204, ty: -18 },
-    { i: 2, t: "ดัดจุดที่ 2", s: "ยกแผ่นหลังขึ้น", ax: 10, ay: 12, tx: 52, ty: 40 },
+    { i: 2, t: "ดัดจุดที่ 2", s: "ยกแผ่นหลังขึ้น", ax: 14, ay: 6, tx: 56, ty: 12 },
     { i: 3, t: "ดัดจุดที่ 3", s: "ตั้งองศาพิงเครื่อง", ax: 16, ay: 0, tx: 46, ty: 6 },
   ];
 
+  const topY = Y(SIDE.total);
+  const dimX = W - 100; // ริมขวาสุด — พ้นป้ายชื่อจุดดัดที่ยื่นออกไปทางขวา
+  const baseL = P[1].px;
+  const baseR = P[2].px;
   return frame(`
     ${title("จุดดัดงอ 3 จุด", "อะคริลิคแผ่นเดียว ดัดขึ้นรูป ไม่ต้องประกอบ")}
     <line x1="70" y1="${GROUND + 6}" x2="${W - 70}" y2="${GROUND + 6}" stroke="#e2e8f0" stroke-width="4"/>
+    <line x1="${dimX}" y1="${topY}" x2="${dimX}" y2="${GROUND}" stroke="${CYAN}" stroke-width="3"/>
+    <line x1="${dimX - 12}" y1="${topY}" x2="${dimX + 12}" y2="${topY}" stroke="${CYAN}" stroke-width="3"/>
+    <line x1="${dimX - 12}" y1="${GROUND}" x2="${dimX + 12}" y2="${GROUND}" stroke="${CYAN}" stroke-width="3"/>
+    <text x="${dimX}" y="${topY - 16}" font-family="${TH}" font-size="30" font-weight="700" text-anchor="middle" fill="${CYAN}">14 ซม.</text>
+    <line x1="${baseL}" y1="${GROUND + 34}" x2="${baseR}" y2="${GROUND + 34}" stroke="${LINE}" stroke-width="3"/>
+    <line x1="${baseL}" y1="${GROUND + 25}" x2="${baseL}" y2="${GROUND + 43}" stroke="${LINE}" stroke-width="3"/>
+    <line x1="${baseR}" y1="${GROUND + 25}" x2="${baseR}" y2="${GROUND + 43}" stroke="${LINE}" stroke-width="3"/>
+    <text x="${(baseL + baseR) / 2}" y="${GROUND + 62}" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">ฐานกว้าง 8 ซม.</text>
     <g opacity="0.55">
       <polygon points="${foot.x},${foot.y} ${tip.x},${tip.y} ${tip.x + uy * th},${tip.y - ux * th} ${foot.x + uy * th},${foot.y - ux * th}"
         fill="#e2e8f0" stroke="#94a3b8" stroke-width="3" stroke-linejoin="round"/>
@@ -228,15 +192,11 @@ function bendShot() {
                 <text x="${lx}" y="${ly + 26}" font-family="${TH}" font-size="20" fill="${SUB}">${s}</text>`;
       })
       .join("")}
-    <text x="${W / 2}" y="${H - 52}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">พิมพ์ลายเต็มแผ่นทั้งฐานและแผ่นหลัง · วางได้ทั้งแนวตั้งและแนวนอน</text>
-    <text x="${W / 2}" y="${H - 24}" font-family="${TH}" font-size="19" text-anchor="middle" fill="${LINE}">ขนาดเป็นขนาดโดยประมาณ ขึ้นกับการดัดง้อ แต่ละชิ้นอาจไม่เท่ากัน</text>`);
+    <text x="${W / 2}" y="${H - 46}" font-family="${TH}" font-size="20" text-anchor="middle" fill="${SUB}">พิมพ์ลายเต็มแผ่นทั้งฐานและแผ่นหลัง · วางได้ทั้งแนวตั้งและแนวนอน</text>
+    <text x="${W / 2}" y="${H - 22}" font-family="${TH}" font-size="18" text-anchor="middle" fill="${LINE}">ขนาดเป็นขนาดโดยประมาณ ขึ้นกับการดัดง้อ แต่ละชิ้นอาจไม่เท่ากัน</text>`);
 }
 
-const SIZES = [14, 15, 16, 17, 18, 19, 20];
-const svgs = {
-  ...Object.fromEntries(SIZES.map((cm) => [`size-${cm}`, sizeShot(cm)])),
-  "bend-points": bendShot(),
-};
+const svgs = { "bend-points": bendShot() };
 for (const [name, svg] of Object.entries(svgs)) {
   await sharp(Buffer.from(svg)).png().resize(700, 700).jpeg({ quality: 90 }).toFile(`${OUT}/${name}.jpg`);
 }
