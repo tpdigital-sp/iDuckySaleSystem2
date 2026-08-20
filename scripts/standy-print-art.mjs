@@ -2,168 +2,85 @@
 /**
  * ภาพประกอบกลุ่ม "งานสกรีน" ของสินค้าสแตนดี้อะคริลิค (Acrylic Standee) — id: standy
  *
- *   node scripts/standy-print-art.mjs [--out=<dir>]     # วาดลง .cache/standy/print
+ *   node scripts/standy-print-art.mjs                    # ครอปไว้ดูก่อน (ไม่แตะคลัง/ฐานข้อมูล)
+ *   node scripts/standy-print-art.mjs --upload --write   # อัปขึ้นคลัง + ชี้ตัวเลือกมาที่ภาพชุดนี้
  *
- * ได้ 4 ใบ: opt-print-1side-v6 · opt-print-2side-v6 · opt-print-3layer-v6 · opt-print-4layer-v6
+ * ครอปมาจากแผ่น "HOW TO PRINT" ของร้านโดยตรง (งานฝ่าย Content — ดู scripts/acrylic-howto-print.mjs)
+ * ไม่วาดใหม่ เพราะแผ่นนี้คือภาษาภาพที่ร้านใช้อธิบายลูกค้าอยู่แล้ว ลูกค้าเห็นแล้วตรงกับที่แอดมินอธิบาย
  *
- * ทำไมต้องวาดใหม่: ชุดเดิม (-v5) ใช้ตัวการ์ตูนคนละตัวกับมาสคอตเป็ด iDucky (เป็นตัวคล้ายมะม่วง
- * มีใบไม้บนหัว) ขนาดไม่เท่ากันสักใบ (460×340 / 460×310 / 460×295 / 460×282 ทั้งที่ภาพตัวเลือก
- * ของทั้งเว็บเป็น 700×700) และวางป้ายชี้จนอ่านไม่ออกว่าต่างกันตรงไหน
+ * ⚠️ ชุดก่อนหน้า:
+ *    -v5 ครอปจากแผ่นเดียวกันแต่ครอปเบี้ยว หัวป้ายแหว่ง ขนาดไม่เท่ากันสักใบ (460×340/310/295/282)
+ *    -v6 วาดใหม่เป็นสไตล์เว็บ (เป็ด iDucky 3D) — สวยแต่ไม่ตรงกับแผ่นที่ร้านใช้อธิบาย
+ *    -v7 (ชุดนี้) ครอปจากแผ่นจริงให้ตรงกรอบ แล้ววางบนพื้น 700×700 เท่ากันทุกใบ
  *
- * ภาษาภาพยึดตามชุดพวงกุญแจ (scripts/keyring-stopper-art.mjs) — ด้านหน้า/ด้านหลัง สำหรับ 1-2 ด้าน
- * และ ด้านหน้า/ชั้นที่ซ้อนกัน สำหรับ 3-4 เลเยอร์ เพื่อให้ลูกค้าเทียบข้ามสินค้าได้
- *
- * ⚠️ อัปทับ "ชื่อไฟล์เดิม" ไม่ได้ — CDN/Next แคชของเก่าไว้ ชุดนี้ลงท้าย -v6
+ * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคชไว้) — ขึ้นรุ่นใหม่ให้ขยับ REV
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
-// ลายที่ "สกรีน" บนชิ้นงาน = มาสคอตเป็ด iDucky ของฝ่าย Content (ตัวเดียวกับสินค้าอะคริลิคตัวอื่น)
-import { mascotDataUri } from "./iducky-assets.mjs";
 
 const UPLOAD = process.argv.includes("--upload");
 const WRITE = process.argv.includes("--write");
 
 const ID = "standy";
 const GROUP = "งานสกรีน";
-/** ตัวเลือกในกลุ่ม → ชื่อไฟล์ภาพของตัวนั้น */
-const PICK = {
-  "สกรีน 1 ด้าน": "opt-print-1side-v6",
-  "สกรีน 2 ด้าน": "opt-print-2side-v6",
-  "สกรีน 3 เลเยอร์": "opt-print-3layer-v6",
-  "สกรีน 4 เลเยอร์": "opt-print-4layer-v6",
+const REV = "v7";
+const OUT = ".cache/standy/print";
+
+/** ต้นฉบับแผ่น HOW TO PRINT — แคชไว้ที่เดียวกับ scripts/acrylic-howto-print.mjs */
+const SOURCES = [
+  "/Volumes/iDuckyShop/- ข้อมูลตอบลูกค้า/10_อะคริลิค/พวงกุญแจแผ่นอะคริลิค/howto-Print_Mesa de trabajo 1.jpg",
+  ".cache/acrylic-howto/source.jpg",
+];
+
+/**
+ * พิกัดกรอบภาพบนแผ่นต้นฉบับ (2867×5000) — วัดจากการครอปทดลอง
+ * แผ่นวาง 2 คอลัมน์ × 3 แถว · ครอปเอา "หัวป้าย + กรอบภาพ" ไม่เอาคำอธิบายใต้กรอบ
+ * (คำอธิบายตัวเล็ก ย่อเป็นภาพชิปแล้วอ่านไม่ออกอยู่ดี — ลูกค้าดูฉบับเต็มได้ในแท็บ)
+ */
+const COL = [170, 1522];
+const ROW = [500, 1950, 3320];
+const PANEL_W = 1200;
+const PANEL_H = 1030;
+
+/** ตัวเลือกในกลุ่ม → กรอบที่ครอป (บางตัวครอปสองกรอบมาต่อกัน) */
+const SHOTS = {
+  // "สกรีน 1 ด้าน" ของสินค้านี้ยังไม่ได้แยกใต้/บน — ครอปทั้งแถวให้เห็นทั้งสองแบบในใบเดียว
+  [`print-1side-${REV}`]: { left: COL[0], top: ROW[0], width: COL[1] - COL[0] + PANEL_W, height: PANEL_H },
+  [`print-2side-under-top-${REV}`]: { left: COL[0], top: ROW[1], width: PANEL_W, height: PANEL_H },
+  [`print-2side-top-top-${REV}`]: { left: COL[1], top: ROW[1], width: PANEL_W, height: PANEL_H },
+  [`print-3layer-${REV}`]: { left: COL[0], top: ROW[2], width: PANEL_W, height: PANEL_H },
+  [`print-4layer-${REV}`]: { left: COL[1], top: ROW[2], width: PANEL_W, height: PANEL_H },
 };
 
-const MASCOT = await mascotDataUri("heart", 560);
+/** ชื่อตัวเลือกในกลุ่ม → ชื่อไฟล์ภาพ (ลำดับนี้คือลำดับที่จะโชว์ในหน้าสินค้า) */
+const CHOICES = [
+  ["สกรีน 1 ด้าน", `print-1side-${REV}`],
+  ["สกรีน 2 ด้าน (ใต้-บน)", `print-2side-under-top-${REV}`],
+  ["สกรีน 2 ด้าน (บน-บน)", `print-2side-top-top-${REV}`],
+  ["สกรีน 3 เลเยอร์", `print-3layer-${REV}`],
+  ["สกรีน 4 เลเยอร์", `print-4layer-${REV}`],
+];
 
-const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || ".cache/standy/print").replace(
-  /\/$/,
-  ""
-);
+const SIZE = 700;
+const PAD = 24;
+/** สีพื้นของแผ่นต้นฉบับ — วางกรอบที่ครอปบนพื้นสีเดียวกัน ภาพจะดูต่อเนื่องเป็นชุดเดียว */
+const BG = { r: 255, g: 239, b: 205 };
+
+const src = SOURCES.find((f) => existsSync(f));
+if (!src) throw new Error(`ไม่พบต้นฉบับ — ต่อไดรฟ์ร้านก่อน หรือรัน node scripts/acrylic-howto-print.mjs ให้แคชไฟล์ไว้`);
 mkdirSync(OUT, { recursive: true });
 
-const W = 700;
-const H = 700;
-const TH = "Thonburi, 'Noto Sans Thai', 'Sukhumvit Set', sans-serif";
-const INK = "#0f172a";
-const SUB = "#64748b";
-const LINE = "#94a3b8";
-const CYAN = "#0891b2";
-const GLASS = "rgba(56,189,248,0.20)";
-const GLASS_EDGE = "#38bdf8";
-
-const frame = (body) => `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-  <rect width="${W}" height="${H}" fill="#f8fafc"/>
-  <rect x="18" y="18" width="${W - 36}" height="${H - 36}" rx="28" fill="#ffffff" stroke="#e2e8f0" stroke-width="2"/>
-  ${body}
-</svg>`;
-
-const title = (t, sub) => `
-  <text x="${W / 2}" y="72" font-family="${TH}" font-size="40" font-weight="700" text-anchor="middle" fill="${INK}">${t}</text>
-  <text x="${W / 2}" y="112" font-family="${TH}" font-size="24" text-anchor="middle" fill="${SUB}">${sub}</text>`;
-
-const foot = (lines) =>
-  lines
-    .map(
-      (t, i) =>
-        `<text x="${W / 2}" y="${H - 40 - (lines.length - 1 - i) * 32}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">${t}</text>`
-    )
-    .join("");
-
-const caption = (cx, y, t) =>
-  `<text x="${cx}" y="${y}" font-family="${TH}" font-size="26" font-weight="700" text-anchor="middle" fill="${CYAN}">${t}</text>`;
-
-/** ลายที่สกรีน — คงสัดส่วนภาพจริง ไม่ให้เป็ดยืด */
-const artwork = (cx, cy, box, opacity = 1) => {
-  const aw = MASCOT.ratio >= 1 ? box : box * MASCOT.ratio;
-  const ah = MASCOT.ratio >= 1 ? box / MASCOT.ratio : box;
-  return `<image href="${MASCOT.uri}" x="${cx - aw / 2}" y="${cy - ah / 2}" width="${aw}" height="${ah}"
-    preserveAspectRatio="xMidYMid meet" opacity="${opacity}"/>`;
-};
-
-const PW = 196; // กว้างตัวสแตนดี้
-const PH = 244; // สูงตัวสแตนดี้
-const TOP = 232;
-
-/** ตัวสแตนดี้ 1 ชิ้น = แผ่นอะคริลิค + ฐานเสียบด้านล่าง */
-function standee(cx, o = {}) {
-  const { art = true, blank = false, offset = 0, opacity = 1 } = o;
-  const x = cx - PW / 2 + offset;
-  const y = TOP + offset * 0.5;
-  return `
-    <g opacity="${opacity}">
-      <rect x="${x}" y="${y}" width="${PW}" height="${PH}" rx="22" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="4"/>
-      ${art && !blank ? artwork(x + PW / 2, y + PH * 0.46, Math.min(PW * 0.78, PH * 0.72)) : ""}
-      ${
-        blank
-          ? `<text x="${x + PW / 2}" y="${y + PH * 0.52}" font-family="${TH}" font-size="22" text-anchor="middle" fill="${LINE}">ใสไม่มีลาย</text>`
-          : ""
-      }
-    </g>`;
-}
-
-/** ฐานเสียบ (มองจากด้านข้าง) — บอกว่านี่คือสแตนดี้ ไม่ใช่พวงกุญแจ */
-const base = (cx, y) => `
-  <rect x="${cx - PW * 0.46}" y="${y}" width="${PW * 0.92}" height="26" rx="13" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="4"/>
-  <line x1="${cx - 26}" y1="${y + 13}" x2="${cx + 26}" y2="${y + 13}" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>`;
-
-/** ภาพแบบ "ด้านหน้า / ด้านหลัง" — ใช้กับสกรีน 1-2 ด้าน */
-function sidesArt(t, sub, backBlank, foots) {
-  const L = 218;
-  const R = 482;
-  return frame(`
-    ${title(t, sub)}
-    ${caption(L, 190, "ด้านหน้า")}
-    ${caption(R, 190, "ด้านหลัง")}
-    ${standee(L)}
-    ${base(L, TOP + PH + 14)}
-    ${standee(R, { blank: backBlank })}
-    ${base(R, TOP + PH + 14)}
-    ${foot(foots)}`);
-}
-
-/** ภาพแบบ "ด้านหน้า / ชั้นที่ซ้อนกัน" — ใช้กับสกรีน 3-4 เลเยอร์ */
-function layersArt(t, sub, layers, foots) {
-  const L = 218;
-  const R = 482;
-  const ghosts = Array.from({ length: layers - 1 }, (_, i) =>
-    standee(R, { art: false, offset: (layers - 1 - i) * 13, opacity: 0.42 })
-  ).join("");
-  return frame(`
-    ${title(t, sub)}
-    ${caption(L, 190, "ด้านหน้า")}
-    ${caption(R, 190, `ชั้นที่ซ้อนกัน (${layers} ชั้น)`)}
-    ${standee(L)}
-    ${base(L, TOP + PH + 14)}
-    ${ghosts}
-    ${standee(R)}
-    ${base(R, TOP + PH + 14)}
-    ${foot(foots)}`);
-}
-
-const PRICE_NOTE = "ราคาต่างกันตามแบบที่เลือก — ระบบคิดให้ในตารางแล้ว";
-
-const SHOTS = {
-  "opt-print-1side-v6": sidesArt("สกรีน 1 ด้าน", "พิมพ์ลายด้านหน้าด้านเดียว", true, [
-    "ด้านหลังปล่อยเป็นอะคริลิคใส มองทะลุเห็นลายด้านหน้า",
-    PRICE_NOTE,
-  ]),
-  "opt-print-2side-v6": sidesArt("สกรีน 2 ด้าน", "พิมพ์ลายทั้งด้านหน้าและด้านหลัง", false, [
-    "หันด้านไหนก็เห็นลายเต็ม ๆ ไม่ทะลุจากอีกด้าน",
-    PRICE_NOTE,
-  ]),
-  "opt-print-3layer-v6": layersArt("สกรีน 3 เลเยอร์", "พิมพ์ซ้อน 3 ชั้น ให้ลายมีมิติ", 3, [
-    "ซ้อนชั้นสี-ขาว ลายทึบขึ้น สีสดกว่าสกรีนธรรมดา",
-    PRICE_NOTE,
-  ]),
-  "opt-print-4layer-v6": layersArt("สกรีน 4 เลเยอร์", "พิมพ์ซ้อน 4 ชั้น ลายคมทั้งสองด้าน", 4, [
-    "ชั้นขาวคั่นกลาง มองด้านไหนลายก็คมและทึบเท่ากัน",
-    PRICE_NOTE,
-  ]),
-};
-
 const files = {};
-for (const [name, svg] of Object.entries(SHOTS)) {
-  const buf = await sharp(Buffer.from(svg)).jpeg({ quality: 90, chromaSubsampling: "4:4:4" }).toBuffer();
+for (const [name, box] of Object.entries(SHOTS)) {
+  const inner = SIZE - PAD * 2;
+  const panel = await sharp(src)
+    .extract(box)
+    .resize(inner, inner, { fit: "contain", background: BG })
+    .toBuffer();
+  const buf = await sharp({ create: { width: SIZE, height: SIZE, channels: 3, background: BG } })
+    .composite([{ input: panel, left: PAD, top: PAD }])
+    .jpeg({ quality: 88, chromaSubsampling: "4:4:4" })
+    .toBuffer();
   writeFileSync(`${OUT}/${name}.jpg`, buf);
   files[name] = buf;
   console.log(`🎨 ${name}.jpg (${Math.round(buf.length / 1024)} KB)`);
@@ -201,21 +118,75 @@ if (UPLOAD) {
     console.log(`⬆️  ${name}.jpg`);
   }
 }
-
 if (!WRITE) process.exit(0);
 
-// ── ชี้ตัวเลือกในกลุ่ม "งานสกรีน" มาที่ภาพชุดใหม่ (แตะแค่ imageSrc ไม่ยุ่งราคา/ชื่อ) ──
+// ── แยก "สกรีน 2 ด้าน" เป็นใต้-บน / บน-บน แล้วชี้ทุกตัวมาที่ภาพชุดใหม่ ─────
+const OLD_2SIDE = "สกรีน 2 ด้าน";
+const NEW_2SIDE = ["สกรีน 2 ด้าน (ใต้-บน)", "สกรีน 2 ด้าน (บน-บน)"];
+
 const { data: row, error } = await sb.from("products").select("data").eq("id", ID).single();
 if (error) throw new Error(`อ่านสินค้าไม่สำเร็จ: ${error.message}`);
 const d = structuredClone(row.data);
+const before = structuredClone(row.data);
+
 const opt = d.options?.find((o) => o.label === GROUP);
 if (!opt) throw new Error(`ไม่เจอกลุ่ม "${GROUP}"`);
-const unmapped = opt.choices.filter((c) => !PICK[c.name]);
-if (unmapped.length) throw new Error(`มีตัวเลือกที่ยังไม่รู้ว่าใช้ภาพไหน: ${unmapped.map((c) => c.name).join(" · ")}`);
-for (const c of opt.choices) c.imageSrc = IMG(PICK[c.name]);
+const known = new Set(CHOICES.map(([n]) => n));
+const extra = opt.choices.filter((c) => c.name !== OLD_2SIDE && !known.has(c.name));
+if (extra.length) throw new Error(`มีตัวเลือกที่ไม่รู้จักในกลุ่ม: ${extra.map((c) => c.name).join(" · ")} — ไม่บันทึก`);
+opt.choices = CHOICES.map(([name, file]) => ({
+  ...(opt.choices.find((c) => c.name === name) ?? {}),
+  name,
+  imageSrc: IMG(file),
+}));
+
+/** ตารางราคา — "สกรีน 2 ด้าน" เป็นแกนราคา แตกเป็นสองชื่อ ราคาเท่าเดิมทั้งคู่ (งานสองด้านเหมือนกัน) */
+for (const m of [d.pricing, ...(d.priceRates ?? []).map((r) => r.pricing)]) {
+  if (!m?.cells || !(m.driverLabels ?? []).includes(GROUP)) continue;
+  const at = m.driverLabels.indexOf(GROUP);
+  const cells = {};
+  for (const [k, v] of Object.entries(m.cells)) {
+    const parts = k.split("│");
+    if (parts[at] !== OLD_2SIDE) cells[k] = v;
+    else for (const n of NEW_2SIDE) cells[parts.map((p, i) => (i === at ? n : p)).join("│")] = v;
+  }
+  m.cells = cells;
+}
+
+/** กฎที่ระบุชื่อ "สกรีน 2 ด้าน" ไว้ในลิสต์ที่อนุญาต — ต้องเปลี่ยนเป็นสองชื่อใหม่ */
+for (const r of d.rules ?? []) {
+  if (r.limit?.label === GROUP && r.limit.allow.includes(OLD_2SIDE))
+    r.limit.allow = r.limit.allow.flatMap((n) => (n === OLD_2SIDE ? NEW_2SIDE : [n]));
+  if (r.when?.label === GROUP) {
+    const list = r.when.choices ?? [r.when.choice];
+    if (list.includes(OLD_2SIDE)) r.when.choices = list.flatMap((n) => (n === OLD_2SIDE ? NEW_2SIDE : [n]));
+  }
+}
+
+/** คำถามที่พบบ่อยไล่ชื่อตัวเลือกไว้ — ให้ตรงกับของจริง */
+for (const f of d.seo?.faqs ?? []) {
+  if (f.a?.includes(`${GROUP}:`))
+    f.a = f.a.replace(new RegExp(`(${GROUP}:\\s*)([^·]*)`), `$1${opt.choices.map((c) => c.name).join(", ")}`);
+}
 
 console.log(`\n📦 ${d.name} (${ID})`);
-opt.choices.forEach((c) => console.log(`   ${c.name.padEnd(18)} → ${c.imageSrc.split("/").pop()}`));
+opt.choices.forEach((c) => console.log(`   ${c.name.padEnd(24)} → ${c.imageSrc.split("/").pop()}`));
+for (const [label, m, b] of [
+  ["ตารางหลัก", d.pricing, before.pricing],
+  ...(d.priceRates ?? []).map((r, i) => [`เรท ${r.id}`, r.pricing, before.priceRates[i].pricing]),
+]) {
+  if (!m?.cells) continue;
+  console.log(`   ${label}: ${Object.keys(b.cells).length} → ${Object.keys(m.cells).length} ช่อง`);
+  const at = (m.driverLabels ?? []).indexOf(GROUP);
+  const bad = Object.entries(m.cells).filter(([k, v]) => {
+    const parts = k.split("│");
+    const old = at >= 0 && NEW_2SIDE.includes(parts[at]) ? parts.map((p, i) => (i === at ? OLD_2SIDE : p)).join("│") : k;
+    return JSON.stringify(b.cells[old]) !== JSON.stringify(v);
+  });
+  if (bad.length) throw new Error(`${label}: ราคาเพี้ยน ${bad.length} ช่อง เช่น ${bad[0][0]} — ไม่บันทึก`);
+  console.log(`   ${label}: ราคาตรงกับของเดิมทุกช่อง ✅`);
+}
+
 const { error: saveErr } = await sb.from("products").update({ data: d }).eq("id", ID);
 if (saveErr) throw new Error(`บันทึกไม่สำเร็จ: ${saveErr.message}`);
 console.log(`✅ บันทึกแล้ว: ${ID}`);

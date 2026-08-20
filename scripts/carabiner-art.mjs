@@ -5,7 +5,7 @@
  *   node scripts/carabiner-art.mjs [--out=<dir>]      # วาดลง .cache/carabiner/upload
  *
  * ได้:
- *   clear-plain-v3            ประเภทอะคริลิค → อะคริลิคใส (อีก 2 ตัวใช้สวอตช์จริงจากชาร์ตสีกลาง)
+ *   clear-plain-v4            ประเภทอะคริลิค → อะคริลิคใส (อีก 2 ตัวใช้สวอตช์จริงจากชาร์ตสีกลาง)
  *   size-5..size-10           ขนาดชิ้นงาน 5-10 ซม. (สเกลจริง เทียบกันได้ทั้งชุด)
  *   part-small | part-large   อะไหล่ "ก้านตะขอ" 1.8 / 2.8 ซม.
  *   print-1 | print-2         สกรีน 1 ด้าน / 2 ด้าน
@@ -37,7 +37,7 @@ const SUB = "#64748b";
 const LINE = "#94a3b8";
 const CYAN = "#0891b2";
 const GLASS = "rgba(56,189,248,0.20)";
-const GLASS_EDGE = "#38bdf8";
+const GLASS_EDGE = "#7dd3fc";
 const METAL = "#cbd5e1";
 const METAL_EDGE = "#94a3b8";
 
@@ -75,17 +75,27 @@ const artwork = (cx, cy, box, opacity = 1) => {
 };
 
 /**
- * ก้านตะขอสแตนเลสบนชิ้นงาน — หมุดที่ริมแผ่นด้านล่าง โก่งออกนิดหน่อย ปลายงอเป็นตะขอชี้ขึ้น
- * (rx,ry = จุดหมุด · tx,ty = ปลายก้าน · bow = ระยะที่โก่งออก · ติดลบ = โก่งไปทางขวา)
+ * ก้านตะขอสแตนเลส — เส้นลวดแข็ง หมุดที่รูเล็ก ๆ ริมแผ่นด้านล่าง ตัวก้านตรงเลียบขอบลาย
+ * แล้วดัดเป็นตะขอครึ่งวงกลมโผล่พ้นขอบบน ปลายชี้ลง (ตามภาพงานจริง)
+ *
+ * cx,top,w,h = กรอบของชิ้นงาน · side = ฝั่งที่ติดก้าน (1 = ซ้าย · -1 = ขวา)
  */
-function gateWire(rx, ry, tx, ty, bow, color = METAL_EDGE) {
+function gateWire(cx, top, w, h, side = 1, color = METAL_EDGE) {
+  const rx = cx - side * w * 0.33; // จุดหมุด (รูเจาะเล็ก ๆ ริมล่างของลาย)
+  const ry = top + h * 0.72;
+  const sx = cx - side * w * 0.42; // ปลายบนของก้านตรง ก่อนดัดเป็นตะขอ
+  const sy = top + h * 0.16;
+  const r = w * 0.12; // รัศมีตะขอ
+  const ex = sx + side * r * 2;
+  const sweep = side > 0 ? 1 : 0;
+  const wire = Math.max(7, w * 0.042);
   const d =
-    `M${rx} ${ry} C${rx - bow} ${ry - (ry - ty) * 0.4} ${tx - bow} ${ty + (ry - ty) * 0.45} ${tx} ${ty} ` +
-    `C${tx + bow * 0.9} ${ty - 26} ${tx + bow * 2.2} ${ty - 6} ${tx + bow * 1.5} ${ty + 24}`;
+    `M${rx} ${ry} C${rx - side * w * 0.06} ${ry - h * 0.16} ${sx} ${sy + h * 0.14} ${sx} ${sy} ` +
+    `A${r} ${r} 0 0 ${sweep} ${ex} ${sy} L${ex} ${sy + h * 0.07}`;
   return `
-    <path d="${d}" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round"/>
-    <path d="${d}" fill="none" stroke="#f1f5f9" stroke-width="3" stroke-linecap="round" opacity="0.85"/>
-    <circle cx="${rx}" cy="${ry}" r="10" fill="${METAL}" stroke="${METAL_EDGE}" stroke-width="3"/>`;
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="${wire.toFixed(1)}" stroke-linecap="round"/>
+    <path d="${d}" fill="none" stroke="#ffffff" stroke-width="${(wire * 0.3).toFixed(1)}" stroke-linecap="round" opacity="0.7"/>
+    <circle cx="${rx}" cy="${ry}" r="${(wire * 1.1).toFixed(1)}" fill="#ffffff" stroke="${color}" stroke-width="${(wire * 0.5).toFixed(1)}"/>`;
 }
 
 /** ตัวนับไว้ตั้งชื่อ filter ไม่ให้ชนกัน (รัศมีไดคัทต่างกันตามขนาดชิ้นงาน) */
@@ -100,7 +110,7 @@ let cutId = 0;
  */
 function piece(cx, top, h, o = {}) {
   const {
-    fill = "#dbf2fe", // เนื้ออะคริลิคใสในภาพวาด
+    fill = "#e8f6fd", // เนื้ออะคริลิคใสในภาพวาด (จาง ๆ ให้ดูเป็นเนื้อใส)
     edge = GLASS_EDGE,
     gates = 1, // จำนวนก้านตะขอ (มาตรฐาน 1 ก้าน)
     gateSide = "left", // พลิกดูอีกด้าน ก้านจะสลับไปอยู่ฝั่งตรงข้าม
@@ -115,11 +125,6 @@ function piece(cx, top, h, o = {}) {
   const body = ghost ? "#eef2f7" : fill;
   const ring = ghost ? "#e2e8f0" : edge;
   const flip = gateSide === "right" ? -1 : 1;
-  // ก้านพาดอยู่บนแผ่น ชิดริมซ้าย (ตามภาพงานจริง) — หมุดล่าง ปลายตะขอชี้ขึ้นด้านบน
-  const rivetX = cx - flip * w * 0.3;
-  const rivetY = top + h * 0.78;
-  const tipX = cx - flip * w * 0.36;
-  const tipY = top + h * 0.24;
   return `
     <defs>
       <filter id="${id}" x="-25%" y="-20%" width="150%" height="140%">
@@ -135,8 +140,8 @@ function piece(cx, top, h, o = {}) {
     <g filter="url(#${id})">${img}</g>
     ${ghost || blank ? "" : img}
     ${blank ? `<text x="${cx}" y="${top + h * 0.55}" font-family="${TH}" font-size="${Math.max(15, h * 0.09)}" text-anchor="middle" fill="${LINE}">ไม่มีลาย</text>` : ""}
-    ${ghost ? "" : gateWire(rivetX, rivetY, tipX, tipY, flip * w * 0.12, gateColor)}
-    ${!ghost && gates > 1 ? gateWire(cx + w * 0.3, rivetY, cx + w * 0.36, tipY, -w * 0.12, gateColor) : ""}`;
+    ${ghost ? "" : gateWire(cx, top, w, h, flip, gateColor)}
+    ${!ghost && gates > 1 ? gateWire(cx, top, w, h, -flip, gateColor) : ""}`;
 }
 
 // ── ประเภทอะคริลิค → อะคริลิคใส ─────────────────────────────────────────
@@ -168,18 +173,18 @@ function sizeArt(cm) {
 const GATE_PX_PER_CM = 74;
 
 /**
- * ก้านตะขอแบบขยาย วางตั้ง — หูหมุดด้านล่าง · ก้านโก่งเล็กน้อย · ปลายงอเป็นตะขอ
- * len = ความยาวจริงในภาพ (px)
+ * ก้านตะขอแบบขยาย วางตั้ง — หูหมุดล่าง · ก้านตรง · ดัดเป็นตะขอครึ่งวงกลมด้านบน ปลายชี้ลง
+ * len = ความยาวจริงในภาพ (px) วัดจากหูหมุดถึงยอดตะขอ
  */
 function gatePart(x, bottom, len, color, dash = false) {
-  const d =
-    `M${x} ${bottom - 14} C${x - 20} ${bottom - len * 0.45} ${x - 20} ${bottom - len * 0.72} ${x - 2} ${bottom - len + 18} ` +
-    `C${x + 12} ${bottom - len + 4} ${x + 26} ${bottom - len + 10} ${x + 26} ${bottom - len + 26}`;
+  const r = Math.min(len * 0.2, 26); // รัศมีตะขอ
+  const topY = bottom - len + r;
+  const d = `M${x} ${bottom - 15} L${x} ${topY} A${r} ${r} 0 0 1 ${x + r * 2} ${topY} L${x + r * 2} ${topY + len * 0.3}`;
   return `
     <path d="${d}" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round"
       ${dash ? 'stroke-dasharray="10 9" opacity="0.6"' : ""}/>
-    ${dash ? "" : `<path d="${d}" fill="none" stroke="#f1f5f9" stroke-width="3" stroke-linecap="round" opacity="0.8"/>`}
-    <circle cx="${x}" cy="${bottom}" r="14" fill="none" stroke="${color}" stroke-width="8"
+    ${dash ? "" : `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" opacity="0.7"/>`}
+    <circle cx="${x}" cy="${bottom}" r="13" fill="#ffffff" stroke="${color}" stroke-width="7"
       ${dash ? 'stroke-dasharray="7 7" opacity="0.6"' : ""}/>`;
 }
 
@@ -229,11 +234,11 @@ async function render(name, svg) {
   console.log(`🎨 ${name}.jpg (${Math.round(buf.length / 1024)} KB)`);
 }
 
-await render("clear-plain-v3", clearArt);
-for (let cm = 5; cm <= 10; cm++) await render(`size-${cm}-v2`, sizeArt(cm));
-await render("part-small-v2", gateArt(1.8, 2.8));
-await render("part-large-v2", gateArt(2.8, 1.8));
-await render("print-1-v2", printArt(1));
-await render("print-2-v2", printArt(2));
-await render("hook-extra-v2", hookExtraArt);
+await render("clear-plain-v4", clearArt);
+for (let cm = 5; cm <= 10; cm++) await render(`size-${cm}-v3`, sizeArt(cm));
+await render("part-small-v3", gateArt(1.8, 2.8));
+await render("part-large-v3", gateArt(2.8, 1.8));
+await render("print-1-v3", printArt(1));
+await render("print-2-v3", printArt(2));
+await render("hook-extra-v3", hookExtraArt);
 console.log(`\n✅ ไฟล์ทั้งหมดอยู่ที่ ${OUT}`);
