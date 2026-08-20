@@ -27,7 +27,8 @@ const ART_DIR = (process.argv.find((a) => a.startsWith("--images=")) || "").spli
 const ID = "carabiner-acrylic";
 const GROUP = "ประเภทอะคริลิค";
 const COLOR_GROUP = "สีอะคริลิค";
-const ART = "clear-plain-v1";
+// v1 วาดเป็นห่วงคาราไบเนอร์โลหะแยกชิ้น (ไม่ตรงกับของจริง) — v2 วาดใหม่ ดู scripts/carabiner-art.mjs
+const ART = "clear-plain-v2";
 
 const OLD_PLAIN = "ธรรมดา";
 const OLD_SPECIAL = "พิเศษ";
