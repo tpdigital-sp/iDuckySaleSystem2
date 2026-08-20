@@ -106,6 +106,59 @@ const SPECIAL_COLORS = [
 
 const FILES = [...PHOTOS, ...SIZES.map((cm) => `size-${cm}`), "part-figure", "part-base"];
 
+/**
+ * ตาราง "Add on เพิ่มอะคริลิคพิเศษ" ตามเว็บตารางราคา (ตารางที่ 2 ของหน้า standeewobbles)
+ * เรทปลีก = สั่ง 1-10 ชิ้น · เรทส่ง = 11 ชิ้นขึ้นไป · คิดต่อ "ชิ้นอะคริลิค" ตามขนาดชิ้นนั้น
+ * ช่วง 10-15 ซม. คือช่วงที่สินค้านี้ทำได้จริง — ไฮไลต์ไว้ให้ดูง่าย (สองเรทตัวเลขเท่ากันพอดี)
+ */
+const ADDON_SIZES = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+const ADDON_RETAIL = [10, 10, 10, 10, 10, 10, 10, 10, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
+const ADDON_WHOLESALE = [5, 5, 5, 5, 8, 8, 8, 10, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
+/** ขนาดที่สั่งได้จริงของสินค้านี้ (ช่องอื่นเก็บไว้ให้ครบตามเว็บ แต่ทำให้จางลง) */
+const usable = (cm: number) => cm >= SIZES[0] && cm <= SIZES[SIZES.length - 1];
+
+const HEAD = "background:#8fb8dd;color:#ffffff;font-weight:700;white-space:nowrap";
+const ROWHEAD = "text-align:left;white-space:nowrap;font-weight:700;color:#334155";
+const cellStyle = (cm: number) =>
+  `text-align:center;white-space:nowrap;${usable(cm) ? "background:#ecfeff;font-weight:700;color:#0e7490" : "color:#94a3b8"}`;
+
+const addonRow = (label: string, prices: number[], zebra: boolean) =>
+  `<tr style="${zebra ? "background:#f8fafc;" : ""}border-top:1px solid #e2e8f0">` +
+  `<th scope="row" style="${ROWHEAD}">${label}</th>` +
+  ADDON_SIZES.map((cm, i) => `<td style="${cellStyle(cm)}">${prices[i]}</td>`).join("") +
+  `</tr>`;
+
+/** ตารางเต็มตามเว็บ (2-20 ซม. · เรทปลีก/เรทส่ง) — เก็บไว้ในกล่องพับ กดกางดูได้ */
+const ADDON_FULL =
+  `<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:14px">` +
+  `<table style="min-width:940px;border-collapse:collapse;font-size:12px;margin:0">` +
+  `<thead><tr style="${HEAD}"><th scope="col" style="text-align:left;white-space:nowrap">เพิ่มเติม</th>` +
+  ADDON_SIZES.map((cm) => `<th scope="col" style="text-align:center;white-space:nowrap">${cm}cm</th>`).join("") +
+  `</tr></thead><tbody>` +
+  addonRow("(เรทราคาปลีก) อคล.พิเศษ", ADDON_RETAIL, false) +
+  addonRow("(เรทราคาส่ง) อคล.พิเศษ", ADDON_WHOLESALE, true) +
+  `</tbody></table></div>`;
+
+/** ตารางย่อเฉพาะขนาดที่สินค้านี้ทำได้ — ไม่ต้องเลื่อนก็เห็นครบ */
+const ADDON_TABLE =
+  `<div style="overflow:hidden;border:1px solid #e2e8f0;border-radius:16px">` +
+  `<table style="width:100%;border-collapse:collapse;font-size:14px;margin:0">` +
+  `<thead><tr style="${HEAD}"><th scope="col" style="text-align:left;white-space:nowrap">ขนาด</th>` +
+  SIZES.map((cm) => `<th scope="col" style="text-align:center;white-space:nowrap">${cm}cm</th>`).join("") +
+  `</tr></thead><tbody><tr style="border-top:1px solid #e2e8f0">` +
+  `<th scope="row" style="${ROWHEAD}">บวกเพิ่ม / ชิ้น</th>` +
+  SIZES.map(
+    (cm) => `<td style="text-align:center;white-space:nowrap;font-weight:700;color:#0e7490">${SPECIAL_FEE[cm]}</td>`
+  ).join("") +
+  `</tr></tbody></table></div>` +
+  `<p style="margin-top:8px">คิดเพิ่มต่อ <strong>“ชิ้นอะคริลิค”</strong> ที่เปลี่ยนเป็นสีพิเศษ — สแตนดี้โยกเยกมี 2 ชิ้น (ตัวกลาง · ฐานโยกเยก) เลือกเปลี่ยนเฉพาะชิ้นที่ต้องการได้</p>` +
+  `<p style="margin-top:6px;color:#0e7490">ช่วง 10-15 ซม. <strong>เรทราคาปลีก (1-10 ชิ้น) กับ เรทราคาส่ง (11 ชิ้นขึ้นไป) ราคาเท่ากัน</strong> — เลือกในหน้าสั่งซื้อได้เลย ระบบบวกให้อัตโนมัติ</p>` +
+  `<details style="margin-top:12px">` +
+  `<summary style="cursor:pointer;font-weight:700;color:#0e7490">ดูตารางเต็มจากเว็บตารางราคา (2-20 ซม. · เรทปลีก / เรทส่ง)</summary>` +
+  `<div style="margin-top:8px">${ADDON_FULL}` +
+  `<p style="margin-top:8px;font-size:12px;color:#64748b">ช่องสีฟ้า = ขนาดที่สแตนดี้โยกเยกทำได้จริง · ขนาดต่ำกว่า 10 ซม. เป็นเรทกลางของงานอะคริลิคอื่น สินค้านี้สั่งไม่ได้</p>` +
+  `</div></details>`;
+
 const SPECIAL = "อะคริลิคพิเศษ (สี / กลิตเตอร์ / โฮโลแกรม)";
 
 const options: ProductOption[] = [
@@ -232,6 +285,15 @@ const product: Product = {
   ],
   tierByDesign: true,
   bulkAskQty: 20,
+  // โซน "ข้างแผงสั่งซื้อ" = ต่อท้ายตารางราคาในคอลัมน์เดียวกัน
+  body: [
+    {
+      heading: "Add on เพิ่มอะคริลิคพิเศษ — ราคาบวกเพิ่มตามขนาด",
+      text: "",
+      html: ADDON_TABLE,
+      slot: "side",
+    },
+  ],
   tabs: [
     {
       title: "รายละเอียดเพิ่มเติม",
