@@ -44,19 +44,15 @@ export function NavIco({ name }: { name: IcoName }) {
 }
 
 /* ───────── เมนูข้าง ───────── */
-export type AccountTab = "home" | "orders" | "proof" | "files" | "profile" | "address" | "howto";
+export type AccountTab = "home" | "orders" | "proof" | "production" | "files" | "receipts" | "profile" | "address" | "howto";
 
 export function AccountSideNav({
   active,
-  proofHref = "/account/orders",
   proofCount = 0,
-  onFiles,
   onLogout,
 }: {
   active: AccountTab;
-  proofHref?: string;
   proofCount?: number;
-  onFiles?: () => void;
   onLogout: () => void;
 }) {
   /** แถวที่เป็นหน้าปัจจุบัน = ป้ายนิ่ง (ไม่ใช่ลิงก์) ให้รู้ว่าอยู่ตรงไหน */
@@ -82,15 +78,11 @@ export function AccountSideNav({
           <>
             อนุมัติแบบ {proofCount > 0 && <span className="acd-sidedot" />}
           </>,
-          proofHref,
+          "/account/proofs",
         )}
-        {onFiles ? (
-          <button type="button" onClick={onFiles}>
-            <NavIco name="files" /> ไฟล์งานของฉัน
-          </button>
-        ) : (
-          row("files", "files", "ไฟล์งานของฉัน", "/account/orders")
-        )}
+        {row("production", "production", "ติดตามการผลิต", "/account/production")}
+        {row("files", "files", "ไฟล์งานของฉัน", "/account/files")}
+        {row("receipts", "receipt", "ใบเสร็จ", "/account/receipts")}
         {row("profile", "profile", "ข้อมูลส่วนตัว", "/account/profile")}
         {row("address", "address", "ที่อยู่จัดส่ง", "/account/profile")}
         {row("howto", "howto", "วิธีสั่งซื้อ", "/how-to-order")}
@@ -106,15 +98,11 @@ export function AccountSideNav({
 /* ───────── โครงหน้า ───────── */
 export function AccountShell({
   active,
-  proofHref,
   proofCount,
-  onFiles,
   children,
 }: {
   active: AccountTab;
-  proofHref?: string;
   proofCount?: number;
-  onFiles?: () => void;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -137,7 +125,7 @@ export function AccountShell({
         <img className="bg-cloud acd-c3" src="/landing/cloud.webp" alt="" aria-hidden="true" />
         <div className="acd-wrap acd-dash">
           <div className="acd-grid">
-            <AccountSideNav active={active} proofHref={proofHref} proofCount={proofCount} onFiles={onFiles} onLogout={() => setLogoutAsk(true)} />
+            <AccountSideNav active={active} proofCount={proofCount} onLogout={() => setLogoutAsk(true)} />
             <div className="acd-content">{children}</div>
           </div>
         </div>

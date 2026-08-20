@@ -6,7 +6,7 @@ import Link from "next/link";
 import { formatPrice } from "@/lib/products";
 import { orderBalance, orderTotal, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { useCustomer } from "@/lib/customer-context";
-import { useCart } from "@/lib/cart-context";
+import { useReorder } from "@/lib/reorder";
 import { fetchMyOrders, readStoredOrders, setOrdersOwner } from "@/lib/my-orders";
 import { AccountHead, AccountShell, OrderTracker, statusIcon } from "@/components/account/AccountShell";
 
@@ -29,7 +29,6 @@ const ITEM_PEEK = 3;
 export default function MyOrdersPage() {
   const router = useRouter();
   const { customer, loading } = useCustomer();
-  const { addItem, productOf } = useCart();
   const [orders, setOrders] = useState<Order[]>([]);
   const [state, setState] = useState<"loading" | "ready">("loading");
   const [filter, setFilter] = useState("all");
@@ -70,17 +69,7 @@ export default function MyOrdersPage() {
     setTimeout(() => setToast(""), 2600);
   }
 
-  /** สั่งซ้ำ — ดึงรายการเดิมเข้าตะกร้า (ใช้ตัวเลือกเดิมถ้ามี) แล้วไปตะกร้า */
-  function reorder(o: Order) {
-    let added = 0;
-    for (const it of o.items) {
-      if (!productOf(it.productId)) continue; // สินค้าถูกลบไปแล้ว → ข้าม
-      addItem(it.productId, it.sel ?? {}, it.qty);
-      added++;
-    }
-    if (added === 0) return showToast("สินค้าในออเดอร์นี้ไม่มีขายแล้ว สั่งซ้ำไม่ได้");
-    router.push("/cart");
-  }
+  const { reorder, canReorder } = useReorder(showToast);
 
   if (loading || !customer) {
     return (
@@ -157,7 +146,7 @@ export default function MyOrdersPage() {
       ) : (
         <div className="acd-olist">
           {shown.map((o) => (
-            <OrderCard key={o.id} order={o} onReorder={reorder} canReorder={o.items.some((it) => productOf(it.productId))} />
+            <OrderCard key={o.id} order={o} onReorder={reorder} canReorder={canReorder(o)} />
           ))}
         </div>
       )}

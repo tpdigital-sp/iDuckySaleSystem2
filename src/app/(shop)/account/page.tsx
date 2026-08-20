@@ -320,7 +320,6 @@ export default function AccountPage() {
     showToast(on ? `เปิดใช้ธีมสี ${paintTier?.name ?? "ระดับของคุณ"} แล้ว 🎨` : "กลับไปใช้สีปกติแล้ว");
   }
 
-  const proofHref = proofOrders[0] ? orderHref(proofOrders[0]) : "/account/orders";
   const tierStyle = { "--ring-a": shownRing[0], "--ring-b": shownRing[1] } as React.CSSProperties;
   const realStyle = { "--ring-a": realRing[0], "--ring-b": realRing[1] } as React.CSSProperties;
   const shownArt = medalArt(shownTier, shownIdx);
@@ -347,13 +346,7 @@ export default function AccountPage() {
         <div className="acd-wrap acd-dash">
           <div className="acd-grid">
             {/* ===== เมนูข้าง ===== */}
-            <AccountSideNav
-              active="home"
-              proofHref={proofHref}
-              proofCount={proofCount}
-              onFiles={() => showToast("คลังไฟล์งานของฉัน — เร็วๆ นี้! ตอนนี้สั่งซ้ำได้จากประวัติการสั่งซื้อ")}
-              onLogout={() => setLogoutAsk(true)}
-            />
+            <AccountSideNav active="home" proofCount={proofCount} onLogout={() => setLogoutAsk(true)} />
 
             {/* ===== เนื้อหา ===== */}
             <div className="acd-content">
@@ -668,10 +661,10 @@ export default function AccountPage() {
               <div className="acd-menu">
                 <div className="acd-menu-head">คำสั่งซื้อ</div>
                 <MenuItem href="/account/orders" ico="orders" tone="blue" label="ประวัติการสั่งซื้อ" meta={orders ? `${orders.length} ออเดอร์${active.length ? ` · ${active.length} กำลังดำเนินการ` : ""}` : ""} />
-                <MenuItem href={proofHref} ico="proof" tone="yolk" label="อนุมัติแบบ / ขอแก้ไข" badge={proofCount > 0 ? `${proofCount} รอตรวจ` : undefined} meta={proofCount ? undefined : "ไม่มีแบบรอตรวจ"} />
-                <MenuItem onClick={() => (tracked ? openTrack(tracked.id) : showToast("ยังไม่มีออเดอร์ให้ติดตาม"))} ico="production" tone="blue" label="ติดตามสถานะการผลิต" meta={producing ? `กำลังผลิต ${producing} ออเดอร์` : "ไม่มีงานกำลังผลิต"} />
-                <MenuItem href="/account/orders" ico="files" tone="lilac" label="ไฟล์งานของฉัน / สั่งซ้ำ" meta="สั่งซ้ำจากออเดอร์เดิม" />
-                <MenuItem href={latest ? orderHref(latest, "/receipt") : "/account/orders"} ico="receipt" tone="navy" label="ใบเสร็จ / ใบกำกับภาษี" meta={latest ? "ออเดอร์ล่าสุด" : undefined} />
+                <MenuItem href="/account/proofs" ico="proof" tone="yolk" label="อนุมัติแบบ / ขอแก้ไข" badge={proofCount > 0 ? `${proofCount} รอตรวจ` : undefined} meta={proofCount ? undefined : "ไม่มีแบบรอตรวจ"} />
+                <MenuItem href="/account/production" ico="production" tone="blue" label="ติดตามสถานะการผลิต" meta={producing ? `กำลังผลิต ${producing} ออเดอร์` : "ไม่มีงานกำลังผลิต"} />
+                <MenuItem href="/account/files" ico="files" tone="lilac" label="ไฟล์งานของฉัน / สั่งซ้ำ" meta="สั่งซ้ำจากออเดอร์เดิม" />
+                <MenuItem href="/account/receipts" ico="receipt" tone="navy" label="ใบเสร็จ / ใบกำกับภาษี" meta={latest ? "ออเดอร์ล่าสุด" : undefined} />
                 <MenuItem href={LINE_URL} external ico="claim" tone="coral" label="แจ้งปัญหา / เคลมสินค้า" meta="ทักแอดมินทาง LINE" />
                 <MenuItem onClick={() => showToast("ให้คะแนนสินค้า — เร็วๆ นี้!")} ico="review" tone="mint" label="รีวิว / ให้คะแนนสินค้า" meta={reviewable ? `${reviewable} รอรีวิว` : undefined} />
 
