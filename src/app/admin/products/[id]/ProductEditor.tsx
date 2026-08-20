@@ -119,7 +119,8 @@ type DraftOption = {
 function choiceQtyVisible(opt: DraftOption): boolean {
   return opt.display === "multi" && !!opt.qtyOn;
 }
-type DraftImage = { emoji: string; gradient: string; label: string; src?: string };
+/** videoSrc: ช่องแกลเลอรีที่เป็นคลิป (src = ภาพปกของคลิป) — หน้าแก้ไขยังเพิ่มคลิปเองไม่ได้ แค่ถือไว้ไม่ให้หายตอนบันทึก */
+type DraftImage = { emoji: string; gradient: string; label: string; src?: string; videoSrc?: string };
 type DraftBody = {
   heading: string;
   text: string;
@@ -3523,7 +3524,13 @@ export default function ProductEditor({ product }: { product: Product }) {
     let imageSrc: string | undefined;
     if (photos.length > 0) {
       // มีรูปจริง → รูปแรกเป็นรูปหลัก, ที่เหลือเป็นรูปมุมอื่น (ไม่มีชื่อ/สีพื้น)
-      images = photos.map((src) => ({ emoji, gradient: draft.gradient, label: "", src }));
+      // ช่องไหนเป็นคลิป (ตั้งมาจากสคริปต์) ให้ยก videoSrc + ชื่อมุมมองเดิมมาด้วย ไม่งั้นบันทึกทีเดียวคลิปหาย
+      images = photos.map((src) => {
+        const was = draft.images.find((im) => im.src === src);
+        return was?.videoSrc
+          ? { emoji, gradient: draft.gradient, label: was.label, src, videoSrc: was.videoSrc }
+          : { emoji, gradient: draft.gradient, label: "", src };
+      });
       imageSrc = photos[0];
     } else {
       // ยังไม่มีรูปจริง → คงภาพ placeholder อีโมจิเดิมไว้

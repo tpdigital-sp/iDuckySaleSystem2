@@ -297,7 +297,10 @@ export default function ProductDetail({
     return list;
   }, [product]);
   const zoomList = useMemo(() => {
-    const srcs = galleryImages.map((img, i) => img.src ?? (i === 0 ? product.imageSrc : undefined));
+    // ช่องที่เป็นคลิปไม่เข้าลิสต์ซูม — กดขยายแล้วจะได้ภาพนิ่ง (โปสเตอร์) เฉย ๆ ทั้งที่ตั้งใจดูคลิป
+    const srcs = galleryImages.map((img, i) =>
+      img.videoSrc ? undefined : img.src ?? (i === 0 ? product.imageSrc : undefined)
+    );
     if (!srcs.length && product.imageSrc) srcs.push(product.imageSrc);
     return srcs.filter((s): s is string => !!s);
   }, [galleryImages, product.imageSrc]);
@@ -2131,6 +2134,27 @@ export default function ProductDetail({
             <div className="group relative">
               {(() => {
                 const shownSrc = shown.src ?? (at === 0 ? product.imageSrc : undefined);
+                /**
+                 * ช่องที่เป็นคลิป — เล่นในกรอบเดียวกับรูป (โปสเตอร์คือ src ของช่องนั้น)
+                 * คลิปงานจริงของร้านเป็นแนวตั้ง กรอบเป็นจัตุรัส จึงใช้ object-contain บนพื้นเข้ม
+                 * ไม่ให้ครอปหัว-ท้ายทิ้ง · ปิดเสียงไว้ก่อนเพื่อให้เบราว์เซอร์ยอมเล่นเองตอนกดสลับมา
+                 */
+                if (shown.videoSrc)
+                  return (
+                    <video
+                      key={shown.videoSrc}
+                      src={shown.videoSrc}
+                      poster={shownSrc}
+                      controls
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      preload="metadata"
+                      aria-label={`${product.name} — ${shown.label}`}
+                      className="aspect-square w-full rounded-[2rem] bg-stone-900 object-contain shadow-inner"
+                    />
+                  );
                 const visual = (
                   <ProductVisual
                     emoji={shown.emoji}
@@ -2185,14 +2209,22 @@ export default function ProductDetail({
                   key={i}
                   type="button"
                   onClick={() => setImageIndex(i)}
-                  className={`shrink-0 overflow-hidden rounded-2xl transition ${
+                  className={`relative shrink-0 overflow-hidden rounded-2xl transition ${
                     i === at
                       ? "ring-3 ring-ducky"
                       : "opacity-60 ring-1 ring-amber-100 hover:opacity-100"
                   }`}
-                  aria-label={`ดูรูป${img.label}`}
+                  aria-label={img.videoSrc ? `ดูคลิป${img.label}` : `ดูรูป${img.label}`}
                 >
                   <ProductVisual emoji={img.emoji} gradient={img.gradient} src={img.src ?? (i === 0 ? product.imageSrc : undefined)} alt={img.label} size="text-3xl" className="h-16 w-16" />
+                  {/* ช่องที่เป็นคลิป — ติดปุ่มเล่นทับรูปย่อ ให้รู้ว่ากดแล้วเป็นวิดีโอ ไม่ใช่รูปนิ่ง */}
+                  {img.videoSrc && (
+                    <span className="pointer-events-none absolute inset-0 grid place-items-center bg-stone-900/25">
+                      <span className="grid h-6 w-6 place-items-center rounded-full bg-white/90 pl-0.5 text-[9px] leading-none text-stone-800 shadow">
+                        ▶
+                      </span>
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
