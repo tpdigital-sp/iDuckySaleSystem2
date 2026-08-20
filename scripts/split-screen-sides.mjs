@@ -31,10 +31,29 @@ const EXTRA_IDS = ["1-4", "photoframe-4"];
 const DENY = new Set(["otheracrylicproducts2-2"]);
 
 const GROUP_RE = /^(งานสกรีน|สกรีน|การสกรีน)$/;
-const TWO_RE = /2\s*ด้าน|สองด้าน/;
-const DONE_RE = /ใต้\s*-\s*บน|บน\s*-\s*บน/;
-const SUFFIX = ["(ใต้-บน)", "(บน-บน)"];
-const CROP = ["screen-2side-under-top-v1", "screen-2side-top-top-v1"];
+
+/**
+ * งานที่ต้องแยก — ทำเรียงตามลำดับนี้ในสินค้าเดียวกันได้ (แยก 2 ด้านก่อน แล้วค่อย 1 ด้าน)
+ *   match = ชื่อตัวเลือกที่เข้าข่ายต้องแยก · done = แยกไปแล้ว (กันรันซ้ำแล้วแตกซ้อน)
+ *   suffix = ต่อท้ายชื่อเดิม · crop = ภาพช่องจากแผ่น HOW TO PRINT ของแต่ละแบบ
+ * ⚠️ "2 ด้าน (ใต้-บน)" ต้องไม่ถูกจับด้วยกฎของ 1 ด้าน — จึงเทียบ "(ใต้)" แบบมีวงเล็บปิดติดกัน
+ */
+const SPLITS = [
+  {
+    label: "2 ด้าน",
+    match: /2\s*ด้าน|สองด้าน/,
+    done: /ใต้\s*-\s*บน|บน\s*-\s*บน/,
+    suffix: ["(ใต้-บน)", "(บน-บน)"],
+    crop: ["screen-2side-under-top-v1", "screen-2side-top-top-v1"],
+  },
+  {
+    label: "1 ด้าน",
+    match: /1\s*ด้าน|ด้านเดียว/,
+    done: /\(ใต้\)|\(บน\)/,
+    suffix: ["(ใต้)", "(บน)"],
+    crop: ["screen-1side-under-v1", "screen-1side-top-v1"],
+  },
+];
 
 const env = Object.fromEntries(
   readFileSync(new URL("../.env.local", import.meta.url), "utf8")
@@ -59,46 +78,45 @@ const rows = [...a.data, ...b.data]
   .filter((r) => !ONLY || r.id === ONLY)
   .sort((x, y) => x.id.localeCompare(y.id));
 
-let touched = 0;
-for (const row of rows) {
-  const d = structuredClone(row.data);
-  const before = structuredClone(row.data);
-  const opt = (d.options ?? []).find((o) => GROUP_RE.test(o.label));
-  if (!opt) continue;
-  const i = opt.choices.findIndex((c) => TWO_RE.test(c.name) && !DONE_RE.test(c.name));
-  if (i < 0) continue; // แยกไปแล้ว หรือไม่มีงานสองด้าน
+/**
+ * แยกตัวเลือก 1 ตัวในกลุ่มเป็น 2 ตัวตาม spec — คืนบรรทัดสรุป หรือ null ถ้าไม่มีอะไรต้องแยก
+ * ตรวจราคาทุกครั้งที่แยก โดยเทียบกับ "ก่อนแยกรอบนี้" (ไม่ใช่ก่อนเริ่มทั้งหมด)
+ * จะได้ย้อนคีย์กลับทีละชั้น สินค้าที่แยกทั้ง 2 ด้านและ 1 ด้าน ก็ตรวจได้ถูก
+ */
+function applySplit(d, opt, spec, id) {
+  const i = opt.choices.findIndex((c) => spec.match.test(c.name) && !spec.done.test(c.name));
+  if (i < 0) return null;
 
   const old = opt.choices[i];
-  const names = SUFFIX.map((s) => `${old.name} ${s}`);
+  const names = spec.suffix.map((s) => `${old.name} ${s}`);
   opt.choices = [
     ...opt.choices.slice(0, i),
-    ...names.map((name, k) => ({ ...old, name, imageSrc: IMG(CROP[k]) })),
+    ...names.map((name, k) => ({ ...old, name, imageSrc: IMG(spec.crop[k]) })),
     ...opt.choices.slice(i + 1),
   ];
 
   // ตารางราคา — ทุกเรท ไม่ใช่แค่ตารางหลัก
-  const matrices = [d.pricing, ...(d.priceRates ?? []).map((r) => r.pricing)];
-  const olds = [before.pricing, ...(before.priceRates ?? []).map((r) => r.pricing)];
   const grew = [];
-  matrices.forEach((m, mi) => {
-    if (!m?.cells || !(m.driverLabels ?? []).includes(opt.label)) return;
+  for (const m of [d.pricing, ...(d.priceRates ?? []).map((r) => r.pricing)]) {
+    if (!m?.cells || !(m.driverLabels ?? []).includes(opt.label)) continue;
     const at = m.driverLabels.indexOf(opt.label);
+    const prev = m.cells;
     const cells = {};
-    for (const [k, v] of Object.entries(m.cells)) {
+    for (const [k, v] of Object.entries(prev)) {
       const parts = k.split("│");
       if (parts[at] !== old.name) cells[k] = v;
       else for (const n of names) cells[parts.map((p, j) => (j === at ? n : p)).join("│")] = v;
     }
-    grew.push(`${Object.keys(m.cells).length}→${Object.keys(cells).length}`);
+    grew.push(`${Object.keys(prev).length}→${Object.keys(cells).length}`);
     m.cells = cells;
     // ราคาต้องไม่เปลี่ยน — ย้อนชื่อใหม่กลับเป็นชื่อเดิมแล้วเทียบทีละช่อง
     const bad = Object.entries(cells).filter(([k, v]) => {
       const parts = k.split("│");
       const oldKey = names.includes(parts[at]) ? parts.map((p, j) => (j === at ? old.name : p)).join("│") : k;
-      return JSON.stringify(olds[mi].cells[oldKey]) !== JSON.stringify(v);
+      return JSON.stringify(prev[oldKey]) !== JSON.stringify(v);
     });
-    if (bad.length) throw new Error(`${row.id}: ราคาเพี้ยน ${bad.length} ช่อง เช่น ${bad[0][0]} — ไม่บันทึก`);
-  });
+    if (bad.length) throw new Error(`${id}: ราคาเพี้ยน ${bad.length} ช่อง เช่น ${bad[0][0]} — ไม่บันทึก`);
+  }
 
   // กฎที่อ้างชื่อเดิม (ทั้งฝั่งเงื่อนไขและฝั่งลิสต์ที่อนุญาต)
   let ruleHits = 0;
@@ -117,19 +135,42 @@ for (const row of rows) {
     }
   }
 
-  // คำถามที่พบบ่อยไล่ชื่อตัวเลือกไว้ — ให้ตรงกับของจริง
+  return `      ${old.name} → ${names.join(" · ")}${grew.length ? `\n         ช่องราคา ${grew.join(" · ")} · ราคาตรงกับของเดิมทุกช่อง ✅` : ""}${ruleHits ? `\n         อัปเดตกฎ ${ruleHits} จุด` : ""}`;
+}
+
+let touched = 0;
+const perSplit = Object.fromEntries(SPLITS.map((s) => [s.label, 0]));
+for (const row of rows) {
+  const d = structuredClone(row.data);
+  const opt = (d.options ?? []).find((o) => GROUP_RE.test(o.label));
+  if (!opt) continue;
+
+  const lines = [];
+  for (const spec of SPLITS) {
+    const line = applySplit(d, opt, spec, row.id);
+    if (!line) continue;
+    lines.push(line);
+    perSplit[spec.label]++;
+  }
+  if (!lines.length) continue;
+
+  // คำถามที่พบบ่อยไล่ชื่อตัวเลือกไว้ — ให้ตรงกับของจริง (ทำครั้งเดียวหลังแยกครบ)
   for (const f of d.seo?.faqs ?? []) {
     if (f.a?.includes(`${opt.label}:`))
       f.a = f.a.replace(new RegExp(`(${opt.label}:\\s*)([^·]*)`), `$1${opt.choices.map((c) => c.name).join(", ")}`);
   }
 
   console.log(`📦 ${row.id.padEnd(24)} "${d.name}"`);
-  console.log(`      ${old.name} → ${names.join(" · ")}`);
-  if (grew.length) console.log(`      ช่องราคา ${grew.join(" · ")} · ราคาตรงกับของเดิมทุกช่อง ✅`);
-  if (ruleHits) console.log(`      อัปเดตกฎ ${ruleHits} จุด`);
+  lines.forEach((l) => console.log(l));
   touched++;
   if (!WRITE) continue;
   const { error } = await sb.from("products").update({ data: d }).eq("id", row.id);
   if (error) throw new Error(`${row.id}: บันทึกไม่สำเร็จ — ${error.message}`);
 }
-console.log(WRITE ? `\n✅ แยกไป ${touched} สินค้า` : `\n(ยังไม่บันทึก — ใส่ --write · จะแยก ${touched} สินค้า)`);
+console.log(
+  `${WRITE ? "\n✅ แก้ไป" : "\n(ยังไม่บันทึก — ใส่ --write · จะแก้"} ${touched} สินค้า · ` +
+    Object.entries(perSplit)
+      .map(([k, v]) => `แยก ${k}: ${v}`)
+      .join(" · ") +
+    (WRITE ? "" : ")")
+);
