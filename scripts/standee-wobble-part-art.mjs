@@ -9,7 +9,7 @@
  *   part-figure-*  ตัวกลาง · part-baseL-*  ฐานซ้าย · part-baseR-*  ฐานขวา
  *   *-plain = อะคริลิคใส (ฟ้าอ่อน) · *-special = อะคริลิคพิเศษ (ไฮไลต์เหลือง)
  *
- * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ — CDN/Next แคชของเก่า ชุดนี้ลงท้าย -v3
+ * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ — CDN/Next แคชของเก่า ชุดนี้ลงท้าย -v5
  */
 import { mkdirSync } from "node:fs";
 import sharp from "sharp";
@@ -97,7 +97,7 @@ function shot(part, mode) {
   };
   const modeText = hot
     ? "อะคริลิคพิเศษ (สี · กลิตเตอร์ · โฮโลแกรม) — คิดเพิ่มตามขนาด"
-    : "อะคริลิคใส / ขาวขุ่น C-02 — ไม่บวกเพิ่ม";
+    : "อะคริลิคใส — ราคาตามตาราง ไม่บวกเพิ่ม (เท่ากับขาวขุ่น C-02)";
 
   // ฐานซ้ายวาดเหลื่อมไปทางซ้าย ฐานขวาเหลื่อมไปทางขวา ให้เห็นว่าเป็นคนละชิ้น
   const pointer =
@@ -122,7 +122,7 @@ function shot(part, mode) {
 
 const svgs = {};
 for (const part of ["figure", "baseL", "baseR"]) {
-  for (const mode of ["plain", "special"]) svgs[`part-${part}-${mode}-v3`] = shot(part, mode);
+  for (const mode of ["plain", "special"]) svgs[`part-${part}-${mode}-v5`] = shot(part, mode);
 }
 for (const [name, svg] of Object.entries(svgs)) {
   await sharp(Buffer.from(svg)).png().resize(700, 700).jpeg({ quality: 90 }).toFile(`${OUT}/${name}.jpg`);

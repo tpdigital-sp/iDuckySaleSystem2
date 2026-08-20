@@ -26,13 +26,19 @@
  *      baseshape-*           ทรงฐาน (กลม / สี่เหลี่ยม / ไดคัทตามทรง)
  *      screen-1|screen-2     งานสกรีน 1 ด้าน / 2 ด้าน
  *      layout-portrait|landscape  ตัวสแตนดี้แนวตั้ง / แนวนอน
- *      clear                 อะคริลิคใส (ตัวเลือกสีมาตรฐาน)
+ *      clear-plain           อะคริลิคใส (ตัวเลือกมาตรฐาน · ขาวขุ่น C-02 ใช้สวอตช์จริงจากชาร์ตสีกลาง)
  *      hookcolor-*           สีตะขอรายสี (~190 สี) — วาดทรงตะขอตามตระกูลแล้วลงสีจริง
  *
  * ⚠️ อัปทับ "ชื่อไฟล์เดิม" ไม่ได้ — CDN/Next แคชของเก่าไว้ ต้องขึ้น REV ใหม่ที่สคริปต์ add-
  */
 import { mkdirSync, existsSync, copyFileSync } from "node:fs";
 import sharp from "sharp";
+// ลายที่ "สกรีน" บนชิ้นงานในภาพประกอบ = มาสคอตเป็ด iDucky ของฝ่าย Content (น่ารักกว่าวาดเอง)
+import { mascotDataUri } from "./iducky-assets.mjs";
+
+let MASCOT = null;
+/** โหลดมาสคอตครั้งเดียวตอนเริ่มเรนเดอร์ (ไม่ใช้ top-level await — สคริปต์อื่น import ไฟล์นี้ได้) */
+const loadMascot = async () => (MASCOT ??= await mascotDataUri("heart", 560));
 
 const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || ".cache/keyring/upload").replace(
   /\/$/,
@@ -91,17 +97,18 @@ const dimH = (y, x1, x2, label) => `
   <text x="${(x1 + x2) / 2}" y="${y + 42}" font-family="${TH}" font-size="28" font-weight="700" text-anchor="middle" fill="${CYAN}">${label}</text>`;
 
 /** ลายสกรีนจำลองบนตัวสแตนดี้ */
-const artwork = (cx, cy, w, h) => {
-  const u = Math.min(w, h);
-  return `
-  <g opacity="0.9">
-    <circle cx="${cx}" cy="${cy - h * 0.06}" r="${u * 0.19}" fill="#fbbf24"/>
-    <circle cx="${cx - u * 0.09}" cy="${cy - h * 0.09}" r="${u * 0.035}" fill="#0f172a"/>
-    <circle cx="${cx + u * 0.09}" cy="${cy - h * 0.09}" r="${u * 0.035}" fill="#0f172a"/>
-    <path d="M${cx - u * 0.075} ${cy + h * 0.01} q${u * 0.075} ${u * 0.07} ${u * 0.15} 0" stroke="#0f172a" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <path d="M${cx - w * 0.24} ${cy + h * 0.22} q${w * 0.24} ${h * 0.13} ${w * 0.48} 0" stroke="#f472b6" stroke-width="7" fill="none" stroke-linecap="round"/>
-  </g>`;
+/**
+ * ลายที่สกรีนบนชิ้นงาน — ใช้มาสคอตเป็ด iDucky (ไฟล์จริงจากฝ่าย Content)
+ * วางให้พอดีกรอบ (w × h) โดยคงสัดส่วนภาพไว้ · faded = ชั้นที่อยู่ลึกลงไป (งานหลายเลเยอร์)
+ */
+const artwork = (cx, cy, w, h, faded = false) => {
+  const box = Math.min(w, h * 0.98);
+  const aw = MASCOT.ratio >= 1 ? box : box * MASCOT.ratio;
+  const ah = MASCOT.ratio >= 1 ? box / MASCOT.ratio : box;
+  return `<image href="${MASCOT.uri}" x="${cx - aw / 2}" y="${cy - ah / 2}" width="${aw}" height="${ah}"
+    preserveAspectRatio="xMidYMid meet" opacity="${faded ? 0.4 : 1}"/>`;
 };
+
 
 /** ฐานอะคริลิคมองแบบเฉียง */
 const baseSideView = (cx, cy, rx, screened = false) => {
@@ -124,6 +131,19 @@ const hangHole = (cx, topY, r, ringR) => `
   <circle cx="${cx}" cy="${topY + r * 2.1}" r="${r}" fill="#ffffff" stroke="${LINE}" stroke-width="${Math.max(2, r * 0.34)}"/>
   <circle cx="${cx}" cy="${topY - ringR * 0.72}" r="${ringR}" fill="none" stroke="#a1a1aa" stroke-width="${Math.max(3, ringR * 0.28)}"/>
   <circle cx="${cx}" cy="${topY - ringR * 0.72}" r="${ringR}" fill="none" stroke="#e4e4e7" stroke-width="${Math.max(1, ringR * 0.1)}"/>`;
+
+/**
+ * จุกใส (จุกยางใส) — ติดที่ตัวงานตามตำแหน่งที่ลูกค้าระบุ ไม่ได้อยู่ที่รูตะขอ
+ * วาดเป็นจุกโปร่งมองจากด้านหน้า (วงนอก = ขอบจุก · วงใน = เนื้อใส · จุดขาว = ไฮไลต์)
+ */
+const clearPlug = (cx, cy, r) => `
+  <circle cx="${cx}" cy="${cy}" r="${r}" fill="rgba(226,232,240,0.9)" stroke="#cbd5e1" stroke-width="3"/>
+  <circle cx="${cx}" cy="${cy}" r="${r * 0.62}" fill="rgba(255,255,255,0.92)" stroke="#e2e8f0" stroke-width="2"/>
+  <ellipse cx="${cx - r * 0.3}" cy="${cy - r * 0.32}" rx="${r * 0.22}" ry="${r * 0.14}" fill="#ffffff"/>`;
+
+/** ตำแหน่งที่ "เลือกได้" — วงประจาง ๆ ไว้บอกว่าติดจุดไหนก็ได้ */
+const ghostPlug = (cx, cy, r) => `
+  <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${LINE}" stroke-width="3" stroke-dasharray="8 7"/>`;
 
 const png = async (name, svg) => {
   await sharp(Buffer.from(svg)).jpeg({ quality: 92 }).toFile(`${OUT}/${name}.jpg`);
@@ -291,17 +311,21 @@ async function sizeArt() {
 }
 
 /** ขนาดฐานที่เปิดให้เลือก (ตรงกับตาราง "ราคาฐาน สแตนดี้" ของร้าน) */
-const BASE_KEYS = [3, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
-const BASE_CM = { 3: 4, 6: 6.5 };
+const BASE_KEYS = [3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+const BASE_CM = { 3: 4 };
 const baseCm = (k) => BASE_CM[k] ?? k;
-const baseName = (k) => (k === 3 ? "ฐาน 3-5 ซม." : k === 6 ? "ฐาน 6-7 ซม." : `ฐาน ${k} ซม.`);
+/** ด้านที่ใหญ่สุดของช่วงฐานนั้น — ใช้คิดค่าฐานช่วงปลีก (เกิน 6 ซม. ซม. ละ 5 บาท) */
+const BASE_MAX_CM = { 3: 5 };
+const baseMaxCm = (k) => BASE_MAX_CM[k] ?? k;
+const baseRetailFee = (k) => Math.max(0, baseMaxCm(k) - 6) * 5;
+const baseName = (k) => (k === 3 ? "ฐาน 3-5 ซม." : `ฐาน ${k} ซม.`);
 
 async function baseArt() {
-  const PPC = 15;
+  const PPC = 13;
   for (const k of BASE_KEYS) {
     const r = (baseCm(k) * PPC) / 2;
     const refR = (4 * PPC) / 2;
-    const cy = 360;
+    const cy = 322;
     const body = `
       ${title(baseName(k), "มองจากด้านบน · เทียบกับฐานเล็กสุด (3-5 ซม.)")}
       <circle cx="${W / 2}" cy="${cy}" r="${refR}" fill="none" stroke="${LINE}" stroke-width="2" stroke-dasharray="7 7"/>
@@ -311,7 +335,10 @@ async function baseArt() {
       ${dimH(cy + r + 46, W / 2 - r, W / 2 + r, `${baseCm(k)} ซม.`)}
       ${foot([
         "ตัวยิ่งสูง ยิ่งควรใช้ฐานใหญ่ขึ้นเพื่อให้ตั้งมั่นคง",
-        "1-10 ชิ้น ราคาในตารางรวมค่าฐานมาแล้ว · 11 ชิ้นขึ้นไปคิดตามขนาดฐาน",
+        baseRetailFee(k)
+          ? `ปลีก 1-10 ชิ้น +${baseRetailFee(k)} บาท/ชิ้น (ส่วนที่เกิน 6 ซม. คิด ซม. ละ 5)`
+          : "ปลีก 1-10 ชิ้น ไม่บวกเพิ่ม (ฐานไม่เกิน 6 ซม. รวมในราคาแล้ว)",
+        "11 ชิ้นขึ้นไป คิดค่าฐานตามตารางของร้าน",
       ])}`;
     await png(`base-${k}`, frame(body));
   }
@@ -337,8 +364,8 @@ async function optionArt() {
       ${screened ? `<text x="${W / 2}" y="${476}" font-family="${TH}" font-size="20" text-anchor="middle" fill="#0f766e">ลายบนฐาน</text>` : ""}
       ${foot(
         screened
-          ? ["11 ชิ้นขึ้นไป คิดเพิ่มตามขนาดฐาน (20-90 บาท/ชิ้น)", "1-10 ชิ้น รวมอยู่ในราคาตารางแล้ว"]
-          : ["11 ชิ้นขึ้นไป คิดเพิ่มตามขนาดฐาน (10-80 บาท/ชิ้น)", "1-10 ชิ้น รวมอยู่ในราคาตารางแล้ว"]
+          ? ["ปลีก 1-10 ชิ้น สกรีนลายฐานไม่บวกเพิ่ม", "11 ชิ้นขึ้นไป คิดตามขนาดฐาน (20-90 บาท/ชิ้น)"]
+          : ["ปลีก 1-10 ชิ้น ไม่บวกเพิ่ม", "11 ชิ้นขึ้นไป คิดตามขนาดฐาน (10-80 บาท/ชิ้น)"]
       )}`;
     await png(name, frame(body));
   }
@@ -410,13 +437,13 @@ async function optionArt() {
 
   // ── อะคริลิคใส ─────────────────────────────────────────────────────────
   await png(
-    "clear",
+    "clear-plain",
     frame(`
-      ${title("อะคริลิคใส / ขาวขุ่น C-02", "ชนิดมาตรฐาน หนาประมาณ 3 มม.")}
+      ${title("อะคริลิคใส", "ชนิดมาตรฐาน หนาประมาณ 3 มม. · เนื้อใสมองทะลุ")}
       <rect x="${W / 2 - 110}" y="200" width="220" height="240" rx="18" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="3"/>
       ${artwork(W / 2, 320, 220, 240)}
       ${hangHole(W / 2, 200, 8, 20)}
-      ${foot(["ราคาตามตารางคือชนิดนี้ ไม่บวกเพิ่ม", "อยากได้สี/กลิตเตอร์/โฮโลแกรม เลือกอะคริลิคพิเศษได้"])}`)
+      ${foot(["ราคาตามตารางคือชนิดนี้ ไม่บวกเพิ่ม (เท่ากับขาวขุ่น C-02)", "อยากได้สี/กลิตเตอร์/โฮโลแกรม เลือกอะคริลิคพิเศษได้"])}`)
   );
 
   // ── hero ───────────────────────────────────────────────────────────────
@@ -439,28 +466,66 @@ async function optionArt() {
       <path d="M470 195 q-42 6 -42 34" fill="none" stroke="#a1a1aa" stroke-width="7" stroke-linecap="round"/>
       <text x="470" y="546" font-family="${TH}" font-size="22" text-anchor="middle" fill="${INK}">ห้อยเป็นพวงกุญแจ</text>
 
-      ${foot(["สั่ง 1-10 ชิ้น ราคารวม ตัวสแตนดี้ + ฐาน + รูเจาะ + ตะขอ ครบแล้ว"])}`)
+      ${foot(["ปลีก 1-10 ชิ้น เริ่มต้น 160 บาท/ชิ้น", "รวม ตัวสแตนดี้ + ฐาน + รูเจาะ + ตะขอ ครบแล้ว"])}`)
   );
 
   // ── รายละเอียดรูเจาะ ───────────────────────────────────────────────────
   await png(
     "hole-detail",
     frame(`
-      ${title("รูเจาะสำหรับห้อยพวงกุญแจ", "เจาะที่ขอบบนของตัวงาน อยู่ในเนื้ออะคริลิค")}
+      ${title("รูเจาะห้อยพวงกุญแจ", "ระบุตำแหน่งรูเจาะเองได้ — ค่ามาตรฐานคือขอบบนกลางชิ้น")}
       <rect x="${W / 2 - 120}" y="215" width="240" height="260" rx="18" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="3"/>
-      ${artwork(W / 2, 360, 240, 260)}
+      ${artwork(W / 2, 372, 240, 260)}
       ${hangHole(W / 2, 215, 12, 27)}
-      <line x1="${W / 2 + 22}" y1="240" x2="${W / 2 + 150}" y2="212" stroke="${CYAN}" stroke-width="3"/>
-      <text x="${W / 2 + 156}" y="208" font-family="${TH}" font-size="21" fill="${CYAN}">รูเจาะ</text>
-      <line x1="${W / 2 - 22}" y1="196" x2="${W / 2 - 158}" y2="172" stroke="${CYAN}" stroke-width="3"/>
-      <text x="${W / 2 - 164}" y="168" font-family="${TH}" font-size="21" text-anchor="end" fill="${CYAN}">ตะขอ/ห่วง</text>
+      <line x1="${W / 2 + 22}" y1="242" x2="${W / 2 + 148}" y2="214" stroke="${CYAN}" stroke-width="3"/>
+      <text x="${W / 2 + 154}" y="210" font-family="${TH}" font-size="20" fill="${CYAN}">รูเจาะ</text>
+      <line x1="${W / 2 - 24}" y1="196" x2="${W / 2 - 156}" y2="172" stroke="${CYAN}" stroke-width="3"/>
+      <text x="${W / 2 - 162}" y="168" font-family="${TH}" font-size="20" text-anchor="end" fill="${CYAN}">ตะขอ/ห่วง</text>
+      <!-- ตำแหน่งอื่นที่ขอได้ -->
+      ${ghostPlug(W / 2 - 92, 246, 13)}
+      ${ghostPlug(W / 2 + 92, 246, 13)}
+      <text x="${W / 2}" y="${508}" font-family="${TH}" font-size="19" text-anchor="middle" fill="${SUB}">
+        มุมซ้าย/ขวา หรือจุดอื่น แจ้งในหมายเหตุได้
+      </text>
       ${foot([
         "ขนาดที่สั่งไม่นับรวมรูตะขอ — อยากให้นับรวมแจ้งได้",
         "เลี่ยงวางตัวหนังสือ/รายละเอียดสำคัญตรงจุดเจาะรู",
       ])}`)
   );
 
-  console.log("🎨 ภาพวาดตัวเลือกสแตนดี้ 12 ใบ");
+  // ── จุกใส — ติดตำแหน่งไหนก็ได้ตามที่ลูกค้าระบุ (คนละจุดกับรูตะขอ) ─────────
+  const plugPiece = (withPlug) => `
+    <rect x="${W / 2 - 118}" y="212" width="236" height="256" rx="18" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="3"/>
+    ${artwork(W / 2, 348, 236, 256)}
+    ${hangHole(W / 2, 212, 11, 25)}
+    ${
+      withPlug
+        ? `${clearPlug(W / 2 + 66, 418, 26)}
+           ${ghostPlug(W / 2 - 70, 418, 26)}
+           ${ghostPlug(W / 2 - 70, 266, 26)}
+           <line x1="${W / 2 + 92}" y1="418" x2="${W / 2 + 168}" y2="452" stroke="${CYAN}" stroke-width="3"/>
+           <text x="${W / 2 + 174}" y="460" font-family="${TH}" font-size="20" fill="${CYAN}">จุกใส</text>`
+        : ""
+    }`;
+  await png(
+    "plug-no",
+    frame(`
+      ${title("ไม่ใส่จุกใส", "ตัวงานเปล่า มีแค่รูเจาะกับตะขอ")}
+      ${plugPiece(false)}
+      ${foot(["ค่ามาตรฐาน ไม่บวกเพิ่ม"])}`)
+  );
+  await png(
+    "plug-yes",
+    frame(`
+      ${title("ใส่จุกใส", "จุกยางใส ติดที่ตัวงานตามตำแหน่งที่ระบุ")}
+      ${plugPiece(true)}
+      ${foot([
+        "ติดจุดไหนก็ได้ตามที่ลูกค้าแจ้ง — ไม่ได้ติดที่รูตะขอ",
+        "1-10 ชิ้น ไม่บวกเพิ่ม · 11 ชิ้นขึ้นไป +10 บาท/ชิ้น",
+      ])}`)
+  );
+
+  console.log("🎨 ภาพวาดตัวเลือกสแตนดี้ 14 ใบ");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -798,6 +863,7 @@ export const HOOK_COLOR_GROUPS = [
 ];
 
 async function main() {
+  await loadMascot();
   await photos();
   await sizeArt();
   await baseArt();

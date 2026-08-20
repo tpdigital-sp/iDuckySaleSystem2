@@ -18,7 +18,7 @@
  *      stopper-detail    จุกสีใสคืออะไร ใส่ตรงไหน ช่วยอะไร
  *      size-2..size-10   ขนาดชิ้นงาน (สเกลจริง มีเงาชิ้น 10 ซม. ไว้เทียบ · รูเจาะไม่นับรวมขนาด)
  *      screen-1|2|3l|4l  งานสกรีน 1 ด้าน / 2 ด้าน / 3 เลเยอร์ / 4 เลเยอร์
- *      clear             อะคริลิคใส (ตัวเลือกสีมาตรฐาน)
+ *      clear-plain       อะคริลิคใส (ตัวเลือกมาตรฐาน · ขาวขุ่น C-02 ใช้สวอตช์จริงจากชาร์ตสีกลาง)
  * ⚠️ อัปทับ "ชื่อไฟล์เดิม" ไม่ได้ — CDN/Next แคชของเก่าไว้ ต้องตั้งชื่อไฟล์ใหม่เสมอ (ขยับ REV ที่สคริปต์ add-)
  */
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -29,6 +29,9 @@ import { mascotDataUri } from "./iducky-assets.mjs";
 let MASCOT = null;
 /** โหลดมาสคอตครั้งเดียวตอนเริ่มเรนเดอร์ (ไม่ใช้ top-level await — สคริปต์อื่น import ไฟล์นี้ได้) */
 const loadMascot = async () => (MASCOT ??= await mascotDataUri("heart", 560));
+// สคริปต์นี้รันตรง ๆ อย่างเดียว (ไม่มีไฟล์ไหน import) — ต้องโหลดมาสคอตก่อนสร้าง SVG
+// เพราะภาพอย่าง hero/clearArt ประกอบเป็นค่าคงที่ตั้งแต่โหลดไฟล์ ถ้าโหลดทีหลัง MASCOT ยังเป็น null
+await loadMascot();
 
 const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || ".cache/keyring-stopper/upload").replace(
   /\/$/,
@@ -246,13 +249,17 @@ function screenArt(s) {
 
 // ── 5. อะคริลิคใส (ตัวเลือกสีมาตรฐาน) ────────────────────────────────────
 const clearArt = frame(`
-  ${title("อะคริลิคใส", "ราคาตามตาราง (ใส / ขาวขุ่น C-02)")}
+  ${title("อะคริลิคใส", "ชนิดมาตรฐาน หนาประมาณ 3 มม. · เนื้อใสมองทะลุ")}
   <rect x="222" y="206" width="256" height="300" rx="26" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="4"/>
   <path d="M242 478 L458 232" stroke="#ffffff" stroke-width="24" opacity="0.55"/>
   <path d="M272 494 L478 258" stroke="#ffffff" stroke-width="11" opacity="0.4"/>
   ${artwork(350, 380, 256, 260)}
   ${stopper(350, 236, 17)}
-  ${foot(["อะคริลิคหนา 3 มม. พิมพ์ระบบ UV · ตัดตกด้านละ 3 มม.", "อยากได้สี/กลิตเตอร์/โฮโลแกรม เลือกช่องถัดไป (คิดเพิ่มตามขนาด)"])}`);
+  ${foot([
+    "อะคริลิคหนา 3 มม. พิมพ์ระบบ UV · ตัดตกด้านละ 3 มม.",
+    "ราคาตามตารางคือชนิดนี้ ไม่บวกเพิ่ม (เท่ากับขาวขุ่น C-02)",
+    "อยากได้สี/กลิตเตอร์/โฮโลแกรม เลือกอะคริลิคพิเศษได้ (คิดเพิ่มตามขนาด)",
+  ])}`);
 
 // ── เขียนไฟล์ ────────────────────────────────────────────────────────────
 async function render(name, svg) {
@@ -294,11 +301,10 @@ async function photos() {
   }
 }
 
-await loadMascot();
 await photos();
 await render("hero", hero);
 await render("stopper-detail", stopperDetail);
 for (const cm of SIZES) await render(`size-${cm}`, sizeArt(cm));
 for (const [name, s] of Object.entries(SCREENS)) await render(name, screenArt(s));
-await render("clear", clearArt);
+await render("clear-plain", clearArt);
 console.log(`\n✅ ไฟล์ทั้งหมดอยู่ที่ ${OUT}`);

@@ -19,7 +19,7 @@
  *      screen-1|screen-2     งานสกรีน 1 ด้าน / 2 ด้าน
  *      card-slot             กรอบใส่การ์ด (ทางร้านมีแค่แนวตั้ง)
  *      layout-portrait|landscape  ตัวสแตนดี้แนวตั้ง / แนวนอน
- *      clear                 อะคริลิคใส (ตัวเลือกสีมาตรฐาน)
+ *      clear-plain           อะคริลิคใส (ตัวเลือกมาตรฐาน · ขาวขุ่น C-02 ใช้สวอตช์จริงจากชาร์ตสีกลาง)
  * ⚠️ อัปทับ "ชื่อไฟล์เดิม" ไม่ได้ — CDN/Next แคชของเก่าไว้ ต้องตั้งชื่อไฟล์ใหม่เสมอ (ขยับ REV ที่สคริปต์ add-)
  */
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -30,6 +30,9 @@ import { mascotDataUri } from "./iducky-assets.mjs";
 let MASCOT = null;
 /** โหลดมาสคอตครั้งเดียวตอนเริ่มเรนเดอร์ (ไม่ใช้ top-level await — สคริปต์อื่น import ไฟล์นี้ได้) */
 const loadMascot = async () => (MASCOT ??= await mascotDataUri("heart", 560));
+// สคริปต์นี้รันตรง ๆ อย่างเดียว (ไม่มีไฟล์ไหน import) — ต้องโหลดมาสคอตก่อนสร้าง SVG
+// เพราะภาพอย่าง hero/clearArt ประกอบเป็นค่าคงที่ตั้งแต่โหลดไฟล์ ถ้าโหลดทีหลัง MASCOT ยังเป็น null
+await loadMascot();
 
 const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || ".cache/framecard/upload").replace(
   /\/$/,
@@ -378,12 +381,16 @@ const cardSlotArt = (() => {
 
 // ── 7. อะคริลิคใส (ตัวเลือกสีมาตรฐาน) ────────────────────────────────────
 const clearArt = frame(`
-  ${title("อะคริลิคใส", "ราคาตามตาราง (ใส / ขาวขุ่น C-02)")}
+  ${title("อะคริลิคใส", "ชนิดมาตรฐาน หนาประมาณ 3 มม. · เนื้อใสมองทะลุ")}
   <rect x="212" y="196" width="276" height="300" rx="26" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="4"/>
   <path d="M232 470 L468 220" stroke="#ffffff" stroke-width="26" opacity="0.55"/>
   <path d="M262 486 L488 246" stroke="#ffffff" stroke-width="12" opacity="0.4"/>
   ${artwork(350, 330, 276, 300)}
-  ${foot(["อะคริลิคหนาประมาณ 3 มม. พิมพ์ระบบ UV", "อยากได้สี/กลิตเตอร์/โฮโลแกรม เลือกช่องถัดไป (คิดเพิ่มตามขนาด)"])}`);
+  ${foot([
+    "อะคริลิคหนาประมาณ 3 มม. พิมพ์ระบบ UV",
+    "ราคาตามตารางคือชนิดนี้ ไม่บวกเพิ่ม (เท่ากับขาวขุ่น C-02)",
+    "อยากได้สี/กลิตเตอร์/โฮโลแกรม เลือกอะคริลิคพิเศษได้ (คิดเพิ่มตามขนาด)",
+  ])}`);
 
 // ── เขียนไฟล์ ────────────────────────────────────────────────────────────
 async function render(name, svg) {
@@ -453,7 +460,6 @@ async function clip() {
   console.log(`📷 clip-card-poster.jpg (${Math.round(pbuf.length / 1024)} KB)`);
 }
 
-await loadMascot();
 await photos();
 await clip();
 await render("hero", hero);
@@ -465,7 +471,7 @@ await render("basescreen-yes", baseScreenYes);
 await render("screen-1", screenArt(1));
 await render("screen-2", screenArt(2));
 await render("card-slot", cardSlotArt);
-await render("clear", clearArt);
+await render("clear-plain", clearArt);
 await render("layout-portrait", layoutArt(false));
 await render("layout-landscape", layoutArt(true));
 console.log(`\n✅ ไฟล์ทั้งหมดอยู่ที่ ${OUT}`);

@@ -173,11 +173,16 @@ const SHAPE_SPECIAL = "ทรงพิเศษ (ไดคัทตามทร�
 const SHAPE_FEE_WHOLESALE = 5;
 const SHAPE_FEE_RETAIL = 10;
 
-const CLEAR = "อะคริลิคใส / ขาวขุ่น C-02";
+/**
+ * ชนิดอะคริลิคมาตรฐาน — ตารางร้านเขียนรวมว่า "(หนา 3mm) อะคริลิคใส | ขาวขุ่น C-02"
+ * ราคาเท่ากันทั้งคู่ แต่เนื้อวัสดุคนละแบบ (ใสมองทะลุ / ขาวขุ่นทึบ) — แยกให้ลูกค้าเลือกเองในหน้าสั่งซื้อ
+ */
+const CLEAR = "อะคริลิคใส";
+const C02 = "อะคริลิคขาวขุ่น C-02";
 const SPECIAL = "อะคริลิคพิเศษ (สี / กลิตเตอร์ / โฮโลแกรม)";
 /** สีพิเศษ = สีทั้งหมดในชาร์ตของร้าน ยกเว้นตัวที่อยู่ในราคามาตรฐานแล้ว */
 const SPECIAL_COLORS: string[] = Object.keys(COLORS as Record<string, unknown>).filter(
-  (name) => name !== "อะคริลิคขาวขุ่น C-02"
+  (name) => name !== C02 && name !== CLEAR
 );
 
 const TIERS: PriceTier[] = [
@@ -263,7 +268,8 @@ const options: ProductOption[] = [
     label: ACRYLIC_LABEL,
     stockBearing: true,
     choices: [
-      { name: CLEAR, imageSrc: IMG("clear") },
+      { name: CLEAR, imageSrc: IMG("clear-plain") },
+      { name: C02, imageSrc: acrylicColorImage(C02) },
       { name: SPECIAL, imageSrc: acrylicColorImage("hologram-รุ้ง") },
     ],
   },
@@ -344,7 +350,8 @@ const TABS: Product["tabs"] = [
     title: "ชนิดอะคริลิค",
     text:
       "อะคริลิคใส / ขาวขุ่น C-02 (มาตรฐาน)::\n" +
-      "• ราคาตามตารางคืออะคริลิคใส หรือขาวขุ่น C-02 หนาประมาณ 3 มม.\n" +
+      "• ราคาตามตารางคืออะคริลิคใส หรือขาวขุ่น C-02 หนาประมาณ 3 มม. ราคาเท่ากัน เลือกได้ในหน้าสั่งซื้อ\n" +
+      "• อะคริลิคใส = เนื้อใสมองทะลุ · ขาวขุ่น C-02 = เนื้อขาวขุ่นทึบ ลายเด่นกว่าเพราะไม่มีพื้นหลังทะลุมา\n" +
       "• งานสกรีนอะคริลิค โดยปกติทางร้านสกรีนใต้ (ยกเว้นโฮโลแกรม 01 / สีพิเศษ จะสกรีนบน) " +
       "หากต้องการสกรีนบนต้องแจ้งก่อน เพื่อเขียนกำกับไว้ที่บิล\n\n" +
       "อะคริลิคพิเศษ (สี / กลิตเตอร์ / โฮโลแกรม)::\n" +
@@ -535,7 +542,7 @@ const FILES = [
   "screen-2",
   "layout-portrait",
   "layout-landscape",
-  "clear",
+  "clear-plain",
 ];
 
 async function uploadImages() {
