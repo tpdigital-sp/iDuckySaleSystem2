@@ -82,7 +82,17 @@ export default function ClaimsPage() {
       />
 
       <div className="acd-clm-bar">
-        <button type="button" className="btn btn-yolk acd-btn-compact" onClick={() => setFormOpen(true)} disabled={needsSetup}>
+        <button
+          type="button"
+          className="btn btn-yolk acd-btn-compact"
+          onClick={() =>
+            claims === null
+              ? showToast("กำลังโหลดข้อมูล รอสักครู่นะครับ…")
+              : needsSetup
+                ? showToast("ระบบเคลมกำลังเตรียมเปิดใช้ — ระหว่างนี้ทักแอดมินทาง LINE ได้เลยครับ")
+                : setFormOpen(true)
+          }
+        >
           ＋ แจ้งเคลมใหม่
         </button>
         <a href={LINE_URL} target="_blank" rel="noopener noreferrer" className="btn btn-ghost acd-btn-compact">
