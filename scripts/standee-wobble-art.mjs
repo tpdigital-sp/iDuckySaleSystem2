@@ -14,6 +14,15 @@
  */
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import sharp from "sharp";
+// ลายที่ "สกรีน" บนชิ้นงานในภาพประกอบ = มาสคอตเป็ด iDucky ของฝ่าย Content (น่ารักกว่าวาดเอง)
+import { mascotDataUri } from "./iducky-assets.mjs";
+
+let MASCOT = null;
+/** โหลดมาสคอตครั้งเดียวตอนเริ่มเรนเดอร์ (ไม่ใช้ top-level await — สคริปต์อื่น import ไฟล์นี้ได้) */
+const loadMascot = async () => (MASCOT ??= await mascotDataUri("heart", 560));
+// สคริปต์นี้รันตรง ๆ อย่างเดียว (ไม่มีไฟล์ไหน import) — โหลดมาสคอตก่อนสร้าง SVG ได้เลย
+await loadMascot();
+
 
 const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || ".cache/wobble/upload").replace(/\/$/, "");
 mkdirSync(OUT, { recursive: true });
@@ -78,17 +87,18 @@ const dimV = (x, y1, y2, label) => `
   <text x="${x + 22}" y="${(y1 + y2) / 2 + 10}" font-family="${TH}" font-size="30" font-weight="700" fill="${CYAN}">${label}</text>`;
 
 /** ลายสกรีนจำลองบนตัวสแตนดี้ */
-const artwork = (cx, cy, w, h) => {
-  const r = Math.min(w, h);
-  return `
-  <g opacity="0.9">
-    <circle cx="${cx}" cy="${cy}" r="${r * 0.2}" fill="#fbbf24"/>
-    <circle cx="${cx - r * 0.1}" cy="${cy - r * 0.05}" r="${r * 0.04}" fill="#0f172a"/>
-    <circle cx="${cx + r * 0.1}" cy="${cy - r * 0.05}" r="${r * 0.04}" fill="#0f172a"/>
-    <path d="M${cx - r * 0.11} ${cy + r * 0.08} q${r * 0.11} ${r * 0.09} ${r * 0.22} 0" stroke="#0f172a" stroke-width="5" fill="none" stroke-linecap="round"/>
-    <path d="M${cx - w * 0.3} ${cy + h * 0.3} q${w * 0.3} ${h * 0.16} ${w * 0.6} 0" stroke="#f472b6" stroke-width="7" fill="none" stroke-linecap="round"/>
-  </g>`;
+/**
+ * ลายที่สกรีนบนชิ้นงาน — ใช้มาสคอตเป็ด iDucky (ไฟล์จริงจากฝ่าย Content)
+ * วางให้พอดีกรอบ (w × h) โดยคงสัดส่วนภาพไว้ · faded = ชั้นที่อยู่ลึกลงไป
+ */
+const artwork = (cx, cy, w, h, faded = false) => {
+  const box = Math.min(w, h * 0.98);
+  const aw = MASCOT.ratio >= 1 ? box : box * MASCOT.ratio;
+  const ah = MASCOT.ratio >= 1 ? box / MASCOT.ratio : box;
+  return `<image href="${MASCOT.uri}" x="${cx - aw / 2}" y="${cy - ah / 2}" width="${aw}" height="${ah}"
+    preserveAspectRatio="xMidYMid meet" opacity="${faded ? 0.4 : 1}"/>`;
 };
+
 
 /**
  * ฐานโยกเยก — ส่วนโค้งคว่ำ (rocker) ที่ทำให้สแตนดี้โยกไปมาได้

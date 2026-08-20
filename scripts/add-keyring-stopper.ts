@@ -3,7 +3,7 @@
  *
  *   npx tsx scripts/add-keyring-stopper.ts                                # ดูข้อมูลที่จะบันทึก (ไม่เขียนจริง)
  *   node scripts/keyring-stopper-art.mjs                                  # เตรียมภาพ
- *   npx tsx scripts/add-keyring-stopper.ts --upload --images=.cache/keyring/upload
+ *   npx tsx scripts/add-keyring-stopper.ts --upload --images=.cache/keyring-stopper/upload
  *   npx tsx scripts/add-keyring-stopper.ts --write                        # เขียนลง Supabase (เป็นฉบับร่าง)
  *
  * ที่มา: iduckyofficial-pricelists.com/keyring — ตาราง
@@ -70,7 +70,7 @@ const env = Object.fromEntries(
 );
 
 const ID = "keyring-clear-stopper";
-const REV = "v2";
+const REV = "v3";
 const IMG = (name: string) =>
   `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/${name}-${REV}.jpg`;
 

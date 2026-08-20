@@ -15,6 +15,15 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
+// ลายที่ "สกรีน" บนชิ้นงาน = มาสคอตเป็ด iDucky ของฝ่าย Content (น่ารักกว่าวาดเอง)
+import { mascotDataUri } from "./iducky-assets.mjs";
+
+let MASCOT = null;
+/** โหลดมาสคอตครั้งเดียวตอนเริ่มเรนเดอร์ */
+const loadMascot = async () => (MASCOT ??= await mascotDataUri("heart", 560));
+// สคริปต์นี้รันตรง ๆ อย่างเดียว — โหลดมาสคอตก่อนสร้าง SVG ได้เลย
+await loadMascot();
+
 
 const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || ".cache/rot/upload").replace(
   /\/$/,
@@ -72,13 +81,18 @@ const dimH = (y, x1, x2, label) => `
   <text x="${(x1 + x2) / 2}" y="${y + 44}" font-family="${TH}" font-size="30" font-weight="700" text-anchor="middle" fill="${CYAN}">${label}</text>`;
 
 /** ลายสกรีนจำลองบนตัวสแตนดี้ (จุด + เส้นโค้ง) */
-const artwork = (cx, cy, w, h) => `
-  <g opacity="0.85">
-    <circle cx="${cx}" cy="${cy - h * 0.1}" r="${Math.min(w, h) * 0.17}" fill="#fbbf24"/>
-    <circle cx="${cx - Math.min(w, h) * 0.09}" cy="${cy - h * 0.14}" r="${Math.min(w, h) * 0.035}" fill="#0f172a"/>
-    <circle cx="${cx + Math.min(w, h) * 0.09}" cy="${cy - h * 0.14}" r="${Math.min(w, h) * 0.035}" fill="#0f172a"/>
-    <path d="M${cx - w * 0.22} ${cy + h * 0.2} q${w * 0.22} ${h * 0.14} ${w * 0.44} 0" stroke="#f472b6" stroke-width="7" fill="none" stroke-linecap="round"/>
-  </g>`;
+/**
+ * ลายที่สกรีนบนชิ้นงาน — ใช้มาสคอตเป็ด iDucky (ไฟล์จริงจากฝ่าย Content)
+ * วางให้พอดีกรอบ (w × h) โดยคงสัดส่วนภาพไว้
+ */
+const artwork = (cx, cy, w, h) => {
+  const box = Math.min(w, h * 0.98);
+  const aw = MASCOT.ratio >= 1 ? box : box * MASCOT.ratio;
+  const ah = MASCOT.ratio >= 1 ? box / MASCOT.ratio : box;
+  return `<image href="${MASCOT.uri}" x="${cx - aw / 2}" y="${cy - ah / 2}" width="${aw}" height="${ah}"
+    preserveAspectRatio="xMidYMid meet"/>`;
+};
+
 
 // ── 1. ขนาดตัวสแตนดี้ 5-12 ซม. (สเกลจริง เทียบกันได้ทั้งชุด) ──────────────
 const PX_PER_CM = 33; // 12cm = 396px

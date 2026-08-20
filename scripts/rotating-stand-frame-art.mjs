@@ -15,6 +15,20 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
+// ตัวสแตนดี้ที่แขวนหมุนอยู่กลางกรอบ = มาสคอตเป็ด iDucky ของฝ่าย Content (น่ารักกว่าวาดเอง)
+import { mascotDataUri } from "./iducky-assets.mjs";
+
+let MASCOT = null;
+const loadMascot = async () => (MASCOT ??= await mascotDataUri("heart", 560));
+await loadMascot();
+
+/** วางมาสคอตให้พอดีกรอบ (w × h) โดยคงสัดส่วน */
+const mascotArt = (cx, cy, w, h) => {
+  const box = Math.min(w, h);
+  const aw = MASCOT.ratio >= 1 ? box : box * MASCOT.ratio;
+  const ah = MASCOT.ratio >= 1 ? box / MASCOT.ratio : box;
+  return `<image href="${MASCOT.uri}" x="${cx - aw / 2}" y="${cy - ah / 2}" width="${aw}" height="${ah}" preserveAspectRatio="xMidYMid meet"/>`;
+};
 
 const OUT = (
   (process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || ".cache/rot/upload-frame"
@@ -76,12 +90,7 @@ function frameSet(addCm) {
     <!-- แกนแขวนกลางกรอบ + ตัวสแตนดี้หมุน -->
     <line x1="${cx}" y1="${top + inner + 6}" x2="${cx}" y2="${top + h * 0.34}" stroke="${LINE}" stroke-width="4"/>
     <rect x="${cx - 34}" y="${top + h * 0.3}" width="68" height="16" rx="6" fill="#e2e8f0" stroke="${LINE}" stroke-width="2"/>
-    <g>
-      <ellipse cx="${cx}" cy="${top + h * 0.58}" rx="${w * 0.27}" ry="${h * 0.19}" fill="#fde68a" stroke="#f59e0b" stroke-width="4"/>
-      <circle cx="${cx - w * 0.09}" cy="${top + h * 0.54}" r="7" fill="#0f172a"/>
-      <circle cx="${cx + w * 0.09}" cy="${top + h * 0.54}" r="7" fill="#0f172a"/>
-      <path d="M${cx - w * 0.07} ${top + h * 0.63} q${w * 0.07} ${h * 0.05} ${w * 0.14} 0" stroke="#ea580c" stroke-width="6" fill="none" stroke-linecap="round"/>
-    </g>
+    ${mascotArt(cx, top + h * 0.58, w * 0.54, h * 0.38)}
     <line x1="${cx}" y1="${top + h * 0.72}" x2="${cx}" y2="${bottom - inner - 6}" stroke="${LINE}" stroke-width="4"/>
     <!-- ฐานสกรีน 3-4 ซม. -->
     <path d="M${cx - 92} ${bottom + 4} v16 a92 23 0 0 0 184 0 v-16 z" fill="rgba(148,197,255,0.28)" stroke="#7dd3fc" stroke-width="3"/>

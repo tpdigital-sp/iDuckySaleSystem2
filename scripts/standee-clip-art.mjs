@@ -27,7 +27,9 @@ import sharp from "sharp";
 // ลายที่ "สกรีน" บนชิ้นงานในภาพประกอบ = มาสคอตเป็ด iDucky ของฝ่าย Content (น่ารักกว่าวาดเอง)
 import { mascotDataUri } from "./iducky-assets.mjs";
 
-const MASCOT = await mascotDataUri("heart", 560);
+let MASCOT = null;
+/** โหลดมาสคอตครั้งเดียวตอนเริ่มเรนเดอร์ (ไม่ใช้ top-level await — สคริปต์อื่น import ไฟล์นี้ได้) */
+const loadMascot = async () => (MASCOT ??= await mascotDataUri("heart", 560));
 
 const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || ".cache/clip/upload").replace(
   /\/$/,
@@ -435,6 +437,7 @@ async function photos() {
   }
 }
 
+await loadMascot();
 await photos();
 await render("hero", hero);
 for (const cm of SIZES) await render(`size-${cm}`, sizeArt(cm));

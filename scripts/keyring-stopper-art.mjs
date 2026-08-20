@@ -4,6 +4,9 @@
  *
  *   node scripts/keyring-stopper-art.mjs [--out=<dir>]
  *
+ * ⚠️ เขียนลง .cache/keyring-stopper/ (ไม่ใช่ .cache/keyring/) เพราะสคริปต์ standee-keyring-art.mjs
+ *    ใช้ชื่อไฟล์ซ้ำกันหลายตัว (hero · clear · screen · size) — ถ้าใช้โฟลเดอร์เดียวกันจะทับกัน
+ *
  * ได้ 2 ชุด แล้วให้ scripts/add-keyring-stopper.ts --upload อัปขึ้น Supabase Storage:
  *   1. ภาพงานจริง/แผ่นข้อมูลจากเว็บตารางราคา (iduckyofficial-pricelists.com/keyring · /partskeychain)
  *      photo-1..4    งานจริงพวงกุญแจอะคริลิคของร้าน
@@ -23,9 +26,11 @@ import sharp from "sharp";
 // ลายที่ "สกรีน" บนชิ้นงานในภาพประกอบ = มาสคอตเป็ด iDucky ของฝ่าย Content (น่ารักกว่าวาดเอง)
 import { mascotDataUri } from "./iducky-assets.mjs";
 
-const MASCOT = await mascotDataUri("heart", 560);
+let MASCOT = null;
+/** โหลดมาสคอตครั้งเดียวตอนเริ่มเรนเดอร์ (ไม่ใช้ top-level await — สคริปต์อื่น import ไฟล์นี้ได้) */
+const loadMascot = async () => (MASCOT ??= await mascotDataUri("heart", 560));
 
-const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || ".cache/keyring/upload").replace(
+const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || ".cache/keyring-stopper/upload").replace(
   /\/$/,
   ""
 );
@@ -289,6 +294,7 @@ async function photos() {
   }
 }
 
+await loadMascot();
 await photos();
 await render("hero", hero);
 await render("stopper-detail", stopperDetail);

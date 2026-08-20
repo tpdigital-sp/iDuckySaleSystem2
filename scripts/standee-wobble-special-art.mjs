@@ -12,6 +12,15 @@
  */
 import { mkdirSync } from "node:fs";
 import sharp from "sharp";
+// ลายที่ "สกรีน" บนชิ้นงานในภาพประกอบ = มาสคอตเป็ด iDucky ของฝ่าย Content (น่ารักกว่าวาดเอง)
+import { mascotDataUri } from "./iducky-assets.mjs";
+
+let MASCOT = null;
+/** โหลดมาสคอตครั้งเดียวตอนเริ่มเรนเดอร์ (ไม่ใช้ top-level await — สคริปต์อื่น import ไฟล์นี้ได้) */
+const loadMascot = async () => (MASCOT ??= await mascotDataUri("heart", 560));
+// สคริปต์นี้รันตรง ๆ อย่างเดียว (ไม่มีไฟล์ไหน import) — โหลดมาสคอตก่อนสร้าง SVG ได้เลย
+await loadMascot();
+
 
 const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || ".cache/wobble/special").replace(/\/$/, "");
 mkdirSync(OUT, { recursive: true });
@@ -33,15 +42,18 @@ const title = (t, sub) => `
   <text x="${W / 2}" y="72" font-family="${TH}" font-size="38" font-weight="700" text-anchor="middle" fill="${INK}">${t}</text>
   ${sub ? `<text x="${W / 2}" y="112" font-family="${TH}" font-size="23" text-anchor="middle" fill="${SUB}">${sub}</text>` : ""}`;
 
-const artwork = (cx, cy, w, h) => {
-  const r = Math.min(w, h);
-  return `<g opacity="0.9">
-    <circle cx="${cx}" cy="${cy}" r="${r * 0.2}" fill="#fbbf24"/>
-    <circle cx="${cx - r * 0.1}" cy="${cy - r * 0.05}" r="${r * 0.04}" fill="#0f172a"/>
-    <circle cx="${cx + r * 0.1}" cy="${cy - r * 0.05}" r="${r * 0.04}" fill="#0f172a"/>
-    <path d="M${cx - r * 0.11} ${cy + r * 0.08} q${r * 0.11} ${r * 0.09} ${r * 0.22} 0" stroke="#0f172a" stroke-width="5" fill="none" stroke-linecap="round"/>
-  </g>`;
+/**
+ * ลายที่สกรีนบนชิ้นงาน — ใช้มาสคอตเป็ด iDucky (ไฟล์จริงจากฝ่าย Content)
+ * วางให้พอดีกรอบ (w × h) โดยคงสัดส่วนภาพไว้ · faded = ชั้นที่อยู่ลึกลงไป
+ */
+const artwork = (cx, cy, w, h, faded = false) => {
+  const box = Math.min(w, h * 0.98);
+  const aw = MASCOT.ratio >= 1 ? box : box * MASCOT.ratio;
+  const ah = MASCOT.ratio >= 1 ? box / MASCOT.ratio : box;
+  return `<image href="${MASCOT.uri}" x="${cx - aw / 2}" y="${cy - ah / 2}" width="${aw}" height="${ah}"
+    preserveAspectRatio="xMidYMid meet" opacity="${faded ? 0.4 : 1}"/>`;
 };
+
 
 const rocker = (cx, topY, w, d, fill, edge) => `
   <path d="M${cx - w / 2} ${topY} Q${cx} ${topY + d * 2} ${cx + w / 2} ${topY}

@@ -93,7 +93,8 @@ export async function iconDataUri(name, width = 256) {
 }
 
 // รันตรง ๆ = แคชไฟล์ที่ใช้บ่อยไว้ให้ครบ (เผื่อวันหลังไดรฟ์ไม่ได้ต่อ)
-if (process.argv[1] && process.argv[1].endsWith("iducky-assets.mjs")) {
+// ⚠️ ห่อไว้ในฟังก์ชัน ไม่ใช้ top-level await — สคริปต์ .ts ที่ import ไฟล์นี้ผ่าน tsx จะพังถ้ามี
+async function cacheAll() {
   mkdirSync(CACHE, { recursive: true });
   const all = [...Object.values(MASCOTS), ...Object.values(ICONS)];
   let ok = 0;
@@ -109,4 +110,11 @@ if (process.argv[1] && process.argv[1].endsWith("iducky-assets.mjs")) {
   const { uri } = await mascotDataUri("heart", 520);
   writeFileSync(`${CACHE}/preview-mascot.txt`, `${uri.length} bytes data-uri`);
   console.log(`   มาสคอต heart → data URI ${Math.round(uri.length / 1024)} KB`);
+}
+
+if (process.argv[1] && process.argv[1].endsWith("iducky-assets.mjs")) {
+  cacheAll().catch((e) => {
+    console.error("❌", e.message);
+    process.exit(1);
+  });
 }
