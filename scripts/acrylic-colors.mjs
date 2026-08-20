@@ -19,11 +19,24 @@ import { createClient } from "@supabase/supabase-js";
 
 const UPLOAD = process.argv.includes("--upload");
 const WRITE = process.argv.includes("--write");
+/**
+ * ต้นฉบับชาร์ต — ไล่จากคมสุดลงมา
+ * ตัวบนสุดอยู่ในไดรฟ์ร้าน 5710×6000 (คมกว่าตัวใน academy-assets 3.75 เท่า)
+ * ถ้าไดรฟ์ไม่ได้ต่อ ค่อยตกไปใช้ตัวเล็ก — ภาพจะเบลอกว่า
+ */
+const CHARTS = [
+  "/Volumes/iDuckyShop/- ข้อมูลตอบลูกค้า/10_อะคริลิค/พวงกุญแจแผ่นอะคริลิค/P-สีอะคริลิค-01.jpg",
+  `${process.env.HOME}/Desktop/AdminBuddy/academy-assets/acrylic/colors.jpg`,
+];
 const CHART =
-  (process.argv.find((a) => a.startsWith("--chart=")) || "").split("=")[1] ||
-  `${process.env.HOME}/Desktop/AdminBuddy/academy-assets/acrylic/colors.jpg`;
+  (process.argv.find((a) => a.startsWith("--chart=")) || "").split("=")[1] || CHARTS.find((f) => existsSync(f));
 const OUT = ".cache/acrylic-colors";
-const REV = "v1";
+const REV = "v2";
+/** พิกัดช่องสีด้านล่างอ้างชาร์ตขนาดนี้ — ไฟล์จริงใหญ่กว่าก็คูณสเกลให้เอง */
+const REF_W = 1522;
+const REF_H = 1600;
+/** ด้านกว้างของภาพที่ได้ (ช่องบนชาร์ตคมสุดราว 490-650 px จึงไม่ต้องดันเกินนี้) */
+const SIZE = 640;
 
 const env = Object.fromEntries(
   readFileSync(new URL("../.env.local", import.meta.url), "utf8")
@@ -81,7 +94,8 @@ export const acrylicColorImage = (name) => (COLORS[name] ? IMG(COLORS[name][0]) 
 export const COLORS = {
   // แผงซ้ายชุดบน — ฝั่งหนึ่งผิวด้าน ฝั่งหนึ่งผิวเงา (ยกเว้น C-02 เงา 2 ด้าน · ไม่บวกเพิ่ม)
   "อะคริลิคใสขุ่น C-01": ["c01", cell(LC, LR1, 0, 0)],
-  "อะคริลิคขาวขุ่น C-02": ["c02", cell(LC, LR1, 1, 0)],
+  // C-02 มีป้าย "ไม่บวกเพิ่ม" ยื่นออกมานอกช่อง — กันกรอบให้กว้างกว่าช่องอื่น
+  "อะคริลิคขาวขุ่น C-02": ["c02", [252, 334, 402, 470]],
   "อะคริลิคสีขาว (W)": ["w", cell(LC, LR1, 2, 0)],
   "อะคริลิคสีฟ้า (B)": ["b", cell(LC, LR1, 3, 0)],
   "อะคริลิคสีชมพู (P)": ["p", cell(LC, LR1, 0, 1)],
@@ -131,13 +145,23 @@ export const COLORS = {
 
 async function crop() {
   mkdirSync(OUT, { recursive: true });
-  if (!existsSync(CHART)) throw new Error(`ไม่เจอชาร์ตสี: ${CHART}`);
-  for (const [key, [x1, y1, x2, y2]] of Object.values(COLORS).map((v, i) => [v[0], v[1]])) {
-    await sharp(CHART)
-      .extract({ left: x1, top: y1, width: x2 - x1, height: y2 - y1 })
+  if (!CHART || !existsSync(CHART)) throw new Error(`ไม่เจอชาร์ตสี — ต่อไดรฟ์ร้านหรือส่ง --chart=<ไฟล์>`);
+  const meta = await sharp(CHART, { limitInputPixels: false }).metadata();
+  const sx = meta.width / REF_W;
+  const sy = meta.height / REF_H;
+  console.log(`🖼  ชาร์ต ${meta.width}×${meta.height} (สเกล ${sx.toFixed(2)}× จากพิกัดอ้างอิง) — ${CHART}`);
+  for (const [key, box] of Object.values(COLORS)) {
+    const [x1, y1, x2, y2] = box;
+    await sharp(CHART, { limitInputPixels: false })
+      .extract({
+        left: Math.round(x1 * sx),
+        top: Math.round(y1 * sy),
+        width: Math.round((x2 - x1) * sx),
+        height: Math.round((y2 - y1) * sy),
+      })
       // ครอบทั้งช่อง (มีป้ายชื่อ/รหัสสีติดมาด้วย) แล้วเติมขอบขาวให้เป็นสี่เหลี่ยมจัตุรัส
-      .resize(260, 260, { fit: "contain", background: "#ffffff" })
-      .jpeg({ quality: 90 })
+      .resize(SIZE, SIZE, { fit: "contain", background: "#ffffff", kernel: "lanczos3" })
+      .jpeg({ quality: 92, chromaSubsampling: "4:4:4" })
       .toFile(`${OUT}/${key}.jpg`);
   }
   console.log(`🎨 ครอป ${Object.keys(COLORS).length} สี → ${OUT}`);
