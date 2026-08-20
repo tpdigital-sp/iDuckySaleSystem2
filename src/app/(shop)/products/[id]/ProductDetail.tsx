@@ -277,8 +277,11 @@ export default function ProductDetail({
         list.push({ emoji: product.emoji, gradient: product.gradient, label, src });
     };
     for (const r of product.priceRates ?? []) add(r.imageSrc, r.label);
-    for (const opt of product.options ?? [])
+    for (const opt of product.options ?? []) {
+      // กลุ่มสวอตช์สี: รูปเป็นชิปเล็กไว้โชว์บนปุ่มเท่านั้น — เข้าแกลเลอรีแล้วขยายเบลอ (แถมทะลัก 80 รูป)
+      if (opt.swatchGrid) continue;
       for (const c of opt.choices ?? []) add(c.imageSrc, `${opt.label}: ${c.name}`);
+    }
     return list;
   }, [product]);
   const zoomList = useMemo(() => {
@@ -1547,6 +1550,67 @@ export default function ProductDetail({
                         </div>
                       );
                     })()
+                  ) : multi && opt.swatchGrid ? (
+                    /*
+                     * 🎨 ตารางสวอตช์สี — ตัวเลือกเยอะ (เช่น สีไหม 80 เบอร์) ปุ่ม pill ปกติจะยาวทั้งหน้า
+                     * วงกลมสี + เลขใต้ เรียง 8 ต่อแถวในกล่องสูงคงที่เลื่อนได้ · กดสลับติ๊กเหมือน multi ปกติ
+                     * ไม่เรียก jumpToImage — ชิปไม่อยู่ในแกลเลอรี (ดู galleryImages)
+                     */
+                    <div className="grid max-h-72 grid-cols-[repeat(auto-fill,minmax(3rem,1fr))] gap-1 overflow-y-auto rounded-2xl bg-white/70 p-2 ring-1 ring-amber-100">
+                      {opt.choices
+                        .filter((c) => allowed.includes(c.name))
+                        .map((c) => {
+                          const on = picked.includes(c.name);
+                          const short = c.name.split(" ")[0];
+                          return (
+                            <button
+                              key={c.name}
+                              type="button"
+                              role="checkbox"
+                              aria-checked={on}
+                              title={c.name}
+                              onClick={() =>
+                                writePicks((cur) =>
+                                  opt.choices
+                                    .filter((x) => (x.name === c.name ? !on : cur.some((p) => p.name === x.name)))
+                                    .map((x) => ({ name: x.name, qty: cur.find((p) => p.name === x.name)?.qty ?? 1 }))
+                                )
+                              }
+                              className={`flex flex-col items-center gap-0.5 rounded-xl p-1 transition ${
+                                on ? "bg-amber-400/90 shadow" : "hover:bg-amber-50"
+                              }`}
+                            >
+                              <span className="relative">
+                                {c.imageSrc ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={c.imageSrc}
+                                    alt={c.name}
+                                    className={`h-9 w-9 rounded-full object-cover ${
+                                      on ? "ring-2 ring-white" : "ring-1 ring-black/10"
+                                    }`}
+                                    loading="lazy"
+                                  />
+                                ) : (
+                                  <span className="grid h-9 w-9 place-items-center rounded-full bg-stone-100 text-[10px] text-stone-400 ring-1 ring-black/10">
+                                    ?
+                                  </span>
+                                )}
+                                {on && (
+                                  <span className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-teal-600 text-[9px] font-black text-white ring-2 ring-white">
+                                    ✓
+                                  </span>
+                                )}
+                              </span>
+                              <span
+                                className={`text-[10px] font-bold leading-none ${on ? "text-white" : "text-stone-500"}`}
+                              >
+                                {short}
+                              </span>
+                            </button>
+                          );
+                        })}
+                    </div>
                   ) : multi ? (
                     <div className="flex flex-wrap gap-1.5">
                       {opt.choices
