@@ -1966,3 +1966,22 @@ main:has(.dl-page) + .dl footer{margin-top:0}
   .dl .acd-prf-acts .btn{flex:1;justify-content:center}
   .dl .acd-thp{padding:12px}
 }
+
+/* ตัวแบ่งหน้า (ก่อนหน้า · 1 2 3 · ถัดไป) — ใช้ทุกลิสต์ในโซนบัญชี */
+.dl .acd-pager{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:20px}
+.dl .acd-pager-nav{all:unset;cursor:pointer;font-family:var(--display);font-size:.8rem;font-weight:500;color:var(--navy);
+  padding:8px 16px;border-radius:999px;background:rgba(255,255,255,.72);border:1px solid var(--sky-200);transition:all .15s ease}
+.dl .acd-pager-nav:hover:not(:disabled){background:var(--sky-100);border-color:var(--blue-deep)}
+.dl .acd-pager-nav:disabled{opacity:.4;cursor:default}
+.dl .acd-pager-nums{display:flex;align-items:center;gap:4px}
+.dl .acd-pager-num{all:unset;cursor:pointer;display:grid;place-items:center;min-width:36px;height:36px;padding:0 4px;
+  border-radius:999px;font-family:var(--display);font-size:.82rem;color:var(--navy);transition:all .15s ease}
+.dl .acd-pager-num:hover{background:var(--sky-100)}
+.dl .acd-pager-num.on{background:var(--acd-theme-bg,var(--blue-deep));color:var(--acd-theme-fg,#fff);
+  box-shadow:0 6px 14px rgba(44,129,196,.28);cursor:default}
+.dl .acd-pager-gap{color:var(--navy-soft);font-size:.8rem;padding:0 2px}
+.dl .acd-pager-info{flex-basis:100%;text-align:center;font-size:.74rem;color:var(--navy-soft);margin-top:2px}
+@media (max-width:640px){
+  .dl .acd-pager{gap:6px}
+  .dl .acd-pager-nav{padding:8px 12px}
+}

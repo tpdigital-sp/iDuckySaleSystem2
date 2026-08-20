@@ -7,6 +7,7 @@ import { orderBalance, orderFullyPaid, orderTotal, STEP_OF, type Order } from "@
 import { LINE_URL } from "@/components/LineButton";
 import { AccountHead, AccountShell, statusIcon } from "@/components/account/AccountShell";
 import { orderHref, useAccountOrders } from "@/components/account/useAccountOrders";
+import { Pager, usePager } from "@/components/account/Pager";
 
 /*
  * ใบเสร็จ / ใบกำกับภาษี — รวมทุกออเดอร์ที่เปิดใบเสร็จได้ไว้หน้าเดียว
@@ -19,6 +20,7 @@ export default function ReceiptsPage() {
 
   const list = useMemo(() => (orders ?? []).filter((o) => o.status !== "ยกเลิก"), [orders]);
   const ready = list.filter((o) => orderFullyPaid(o));
+  const pager = usePager(list, 10);
 
   if (loading || !customer) {
     return (
@@ -55,11 +57,14 @@ export default function ReceiptsPage() {
           </Link>
         </div>
       ) : (
-        <div className="acd-olist">
-          {list.map((o) => (
-            <ReceiptRow key={o.id} order={o} />
-          ))}
-        </div>
+        <>
+          <div className="acd-olist">
+            {pager.slice.map((o) => (
+              <ReceiptRow key={o.id} order={o} />
+            ))}
+          </div>
+          <Pager {...pager} />
+        </>
       )}
 
       {/* ใบกำกับภาษี — ระหว่างรอระบบเต็มรูปแบบ */}

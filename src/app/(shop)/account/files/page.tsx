@@ -6,6 +6,7 @@ import { proofsOf, type Order } from "@/lib/admin-data";
 import { useReorder } from "@/lib/reorder";
 import { AccountHead, AccountShell } from "@/components/account/AccountShell";
 import { orderHref, useAccountOrders } from "@/components/account/useAccountOrders";
+import { Pager, usePager } from "@/components/account/Pager";
 
 /*
  * ไฟล์งานของฉัน / สั่งซ้ำ — รวมไฟล์จากทุกออเดอร์ไว้ที่เดียว:
@@ -48,6 +49,7 @@ export default function FilesPage() {
   const totalMine = groups.reduce((n, g) => n + g.mine.length, 0);
   const totalShop = groups.reduce((n, g) => n + g.shop.length, 0);
   const shown = groups.filter((g) => (kind === "mine" ? g.mine.length : kind === "shop" ? g.shop.length : g.mine.length + g.shop.length) > 0);
+  const pager = usePager(shown, 6, kind);
 
   if (loading || !customer) {
     return (
@@ -100,8 +102,9 @@ export default function FilesPage() {
           </Link>
         </div>
       ) : (
+        <>
         <div className="acd-olist">
-          {shown.map(({ order: o, mine, shop }) => (
+          {pager.slice.map(({ order: o, mine, shop }) => (
             <article key={o.id} className="acd-ocard">
               <div className="acd-ocard-top">
                 <div className="acd-ocard-idcol">
@@ -131,6 +134,8 @@ export default function FilesPage() {
             </article>
           ))}
         </div>
+        <Pager {...pager} />
+        </>
       )}
 
       <div className={`acd-toast${toast ? " show" : ""}`} role="status" aria-live="polite">

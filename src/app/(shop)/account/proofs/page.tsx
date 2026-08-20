@@ -6,6 +6,7 @@ import { proofsOf, type Order, type OrderItem } from "@/lib/admin-data";
 import { reviewProof } from "@/lib/order-repo";
 import { AccountHead, AccountShell } from "@/components/account/AccountShell";
 import { orderHref, useAccountOrders } from "@/components/account/useAccountOrders";
+import { Pager, usePager } from "@/components/account/Pager";
 
 /*
  * อนุมัติแบบ / ขอแก้ไข — กล่องรวมแบบงานจากทุกออเดอร์ไว้หน้าเดียว
@@ -42,6 +43,7 @@ export default function ProofsPage() {
     [orders],
   );
   const pendingCount = pending.reduce((n, g) => n + g.items.length, 0);
+  const pager = usePager(pending, 6);
 
   function showToast(t: string) {
     setToast(t);
@@ -107,8 +109,9 @@ export default function ProofsPage() {
           </Link>
         </div>
       ) : (
+        <>
         <div className="acd-olist">
-          {pending.map(({ order: o, items }) => (
+          {pager.slice.map(({ order: o, items }) => (
             <article key={o.id} className="acd-ocard">
               <div className="acd-ocard-top">
                 <div className="acd-ocard-idcol">
@@ -161,6 +164,8 @@ export default function ProofsPage() {
             </article>
           ))}
         </div>
+        <Pager {...pager} />
+        </>
       )}
 
       {/* ผลตรวจที่ผ่านมา */}

@@ -7,6 +7,7 @@ import { orderBalance, STEP_OF, type Order } from "@/lib/admin-data";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { AccountHead, AccountShell, OrderTracker, statusIcon } from "@/components/account/AccountShell";
 import { orderHref, useAccountOrders } from "@/components/account/useAccountOrders";
+import { Pager, usePager } from "@/components/account/Pager";
 
 /*
  * ติดตามสถานะการผลิต — ทุกออเดอร์ที่ยังไม่จบ กางแถบ 5 ขั้นเต็ม + สถานะพัสดุไปรษณีย์ไทยสด
@@ -23,6 +24,7 @@ export default function ProductionPage() {
   );
   const producing = ongoing.filter((o) => o.status === "กำลังผลิต").length;
   const shipping = ongoing.filter((o) => o.status === "จัดส่งแล้ว").length;
+  const pager = usePager(ongoing, 6);
 
   if (loading || !customer) {
     return (
@@ -64,8 +66,9 @@ export default function ProductionPage() {
           </Link>
         </div>
       ) : (
+        <>
         <div className="acd-olist">
-          {ongoing.map((o) => {
+          {pager.slice.map((o) => {
             const owed = orderBalance(o);
             return (
               <article key={o.id} className="acd-ocard">
@@ -115,6 +118,8 @@ export default function ProductionPage() {
             );
           })}
         </div>
+        <Pager {...pager} />
+        </>
       )}
     </AccountShell>
   );

@@ -9,6 +9,7 @@ import { useCustomer } from "@/lib/customer-context";
 import { useReorder } from "@/lib/reorder";
 import { fetchMyOrders, readStoredOrders, setOrdersOwner } from "@/lib/my-orders";
 import { AccountHead, AccountShell, OrderTracker, statusIcon } from "@/components/account/AccountShell";
+import { Pager, usePager } from "@/components/account/Pager";
 
 /*
  * ประวัติการสั่งซื้อ — ดีไซน์เดียวกับหน้าแรก/แดชบอร์ด (โทนฟ้า-กรมท่า-ไข่แดง, ฟอนต์ Mitr + IBM Plex Sans Thai Looped)
@@ -56,6 +57,7 @@ export default function MyOrdersPage() {
 
   const active = FILTERS.find((f) => f.key === filter) ?? FILTERS[0];
   const shown = useMemo(() => orders.filter((o) => active.match(o.status)), [orders, active]);
+  const pager = usePager(shown, 8, filter);
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
     for (const f of FILTERS) c[f.key] = orders.filter((o) => f.match(o.status)).length;
@@ -144,11 +146,14 @@ export default function MyOrdersPage() {
           </button>
         </div>
       ) : (
-        <div className="acd-olist">
-          {shown.map((o) => (
-            <OrderCard key={o.id} order={o} onReorder={reorder} canReorder={canReorder(o)} />
-          ))}
-        </div>
+        <>
+          <div className="acd-olist">
+            {pager.slice.map((o) => (
+              <OrderCard key={o.id} order={o} onReorder={reorder} canReorder={canReorder(o)} />
+            ))}
+          </div>
+          <Pager {...pager} />
+        </>
       )}
 
       <div className={`acd-toast${toast ? " show" : ""}`} role="status" aria-live="polite">
