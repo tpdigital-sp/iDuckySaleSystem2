@@ -1817,6 +1817,7 @@ export default function ProductDetail({
                         .map((c) => (
                           <option key={c.name} value={c.name}>
                             {c.name}
+                            {c.popular ? " *" : ""}
                             {choiceBadgeOf(opt, effective, c.name, feeQty) > 0
                               ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty))}`
                               : ""}
@@ -1855,12 +1856,27 @@ export default function ProductDetail({
                               />
                             )}
                             {c.name}
+                            {/* ⭐ แบบที่ลูกค้านิยมสั่ง — ดอกจันแดง (ปุ่มที่เลือกอยู่พื้นเหลือง ใช้แดงเข้มขึ้นให้อ่านออก) */}
+                            {c.popular && (
+                              <span
+                                aria-label="แบบที่นิยม"
+                                className={effective[opt.label] === c.name ? "text-red-700" : "text-red-500"}
+                              >
+                                *
+                              </span>
+                            )}
                             {choiceBadgeOf(opt, effective, c.name, feeQty) > 0
                               ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty))}`
                               : ""}
                           </button>
                         ))}
                     </div>
+                  )}
+                  {/* ⭐ คำอธิบายดอกจัน — ขึ้นเฉพาะกลุ่มที่มีแบบยอดนิยม ลูกค้าจะได้รู้ว่าดอกจันแปลว่าอะไร */}
+                  {opt.choices.some((c) => c.popular && allowed.includes(c.name)) && (
+                    <p className="mt-1 text-[11px] font-semibold text-stone-500">
+                      <span className="text-red-500">*</span> แบบที่ลูกค้านิยมสั่ง
+                    </p>
                   )}
                   {/* กลุ่มที่ระบุจำนวนได้ — สรุปยอดรวมของทั้งกลุ่มหลังคูณจำนวนแล้ว */}
                   {withQty && picks.length > 0 && groupAddOf(opt, effective, feeQty) > 0 && (

@@ -58,6 +58,8 @@ type DraftChoice = {
   stockQtyPer?: number;
   /** 💬 เลือกตัวนี้แล้ว = งานสั่งทำ ให้แอดมินตีราคา (เช่น "แบบที่ 3 กำหนดขนาดเอง") */
   askPrice?: boolean;
+  /** ⭐ แบบที่ลูกค้านิยมสั่ง — หน้าสินค้าโชว์ดอกจันแดง */
+  popular?: boolean;
 };
 /** presetId มี = กลุ่มนี้ "ลิงก์" คลังตัวเลือกกลาง (label+choices มาจากคลัง แก้ในกลุ่มไม่ได้จนกว่าจะตัดลิงก์) */
 type DraftOption = {
@@ -425,6 +427,7 @@ function toDraft(p: Product): Draft {
         ...(c.stockItemId ? { stockItemId: c.stockItemId } : {}),
         ...(c.stockQtyPer ? { stockQtyPer: c.stockQtyPer } : {}),
         ...(c.askPrice ? { askPrice: true } : {}),
+        ...(c.popular ? { popular: true } : {}),
       })),
       ...(o.presetId ? { presetId: o.presetId } : {}),
       // มีตัวไหนเปิด "ระบุจำนวน" ไว้ = กลุ่มนี้เคยเปิดสวิตช์ → เปิดค้างไว้ให้เห็นค่าเดิม
@@ -656,6 +659,8 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             ...(c.stockItemId ? { stockItemId: c.stockItemId } : {}),
             ...(c.stockQtyPer ? { stockQtyPer: c.stockQtyPer } : {}),
             ...(c.askPrice ? { askPrice: true as const } : {}),
+            // ⭐ ป้าย "แบบยอดนิยม" — ต้องส่งกลับ ไม่งั้นบันทึกแล้วหาย
+            ...(c.popular ? { popular: true as const } : {}),
           };
         }),
       ...(o.presetId ? { presetId: o.presetId } : {}),
@@ -2498,6 +2503,33 @@ export default function ProductEditor({ product }: { product: Product }) {
                       }`}
                     >
                       💬 ตีราคา
+                    </button>
+                    {/* ⭐ ป้าย "แบบยอดนิยม" — หน้าสินค้าโชว์ดอกจันแดงท้ายชื่อ (ไม่มีผลกับราคา) */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        patch({
+                          options: draft.options.map((o, i) =>
+                            i === gi
+                              ? {
+                                  ...o,
+                                  choices: o.choices.map((c, j) =>
+                                    j === ci ? { ...c, popular: !c.popular } : c
+                                  ),
+                                }
+                              : o
+                          ),
+                        })
+                      }
+                      title="แบบที่ลูกค้านิยมสั่ง — หน้าสินค้าจะขึ้นดอกจันแดงท้ายชื่อ พร้อมคำอธิบายใต้กลุ่ม (ไม่มีผลกับราคา)"
+                      aria-pressed={!!ch.popular}
+                      className={`shrink-0 rounded-lg px-2 py-1.5 text-[11px] font-semibold ring-1 transition ${
+                        ch.popular
+                          ? "bg-red-50 text-red-600 ring-red-200"
+                          : "bg-white text-slate-300 ring-slate-200 hover:text-red-500 hover:ring-red-200"
+                      }`}
+                    >
+                      * ยอดนิยม
                     </button>
                     {/*
                       ให้ลูกค้าระบุจำนวนของตัวเลือกนี้ (เช่น เพิ่มสาย 2 เส้น = +฿ ของสาย × 2) — เฉพาะกลุ่มติ๊กหลายอย่าง
