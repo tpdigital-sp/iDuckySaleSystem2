@@ -62,26 +62,19 @@ const MATCH = [
   [/1\s*ด้าน|ด้านเดียว/, `screen-1side-${REV}`],
 ];
 
-/** สินค้าที่ให้ใส่ภาพชุดนี้ + แท็บที่จะแนบแผ่นเต็ม (ไม่ระบุ tab = ไม่แนบแผ่น) */
-const TARGETS = [
-  { id: "3d-acrylic", tab: "การเตรียมไฟล์" },
-  { id: "acrylic-prakob", tab: "การเตรียมไฟล์" },
-  { id: "carabiner-acrylic", tab: "การเตรียมไฟล์" },
-  { id: "clipboard-acrylic", tab: "การเตรียมไฟล์" },
-  { id: "keyring", tab: "รายละเอียดงานสกรีน/ไฟล์" },
-  { id: "keyring-clear-stopper", tab: "ขนาดและงานสกรีน" },
-  { id: "keyring-copy", tab: "รายละเอียดงานสกรีน/ไฟล์" },
-  { id: "keyring-copy-copy", tab: "รายละเอียดงานสกรีน/ไฟล์" },
-  { id: "new-mszjfv14-2341", tab: "การเตรียมไฟล์" },
-  { id: "standee-clip", tab: "ขนาดและสเปกงาน" },
-  { id: "standee-frame-card", tab: "ขนาดและสเปกงาน" },
-  { id: "standee-keyring", tab: "ขนาดและสเปกงาน" },
-  { id: "standee-spring", tab: "การเตรียมไฟล์" },
-  { id: "1-4", tab: "การเตรียมไฟล์" }, // Griptok อะคริลิค
-  { id: "1-3", tab: "การเตรียมไฟล์" }, // สแตนดี้ฐานไฟ — ตัวเลือกคือสกรีนบน/ใต้อะคริลิค
-  { id: "photoframe-4", tab: "การเตรียมไฟล์" },
-  { id: "standy", tab: null }, // ทำไปแล้วรอบก่อน (ใช้ไฟล์ใต้โฟลเดอร์ตัวเอง) — เว้นไว้
-];
+/** กวาดทั้งหมวด — สินค้าอะคริลิคทุกตัวควรมีแผ่นนี้ให้ลูกค้าดู ไม่ใช่เฉพาะตัวที่มีตัวเลือกงานสกรีน */
+const CATEGORIES = ["acrylic", "standee"];
+/** งานอะคริลิคที่ไปอยู่หมวดอื่น — ดึงเข้ามาด้วย */
+const EXTRA_IDS = ["1-3", "1-4", "photoframe-4"];
+/** ไม่ใช่งานอะคริลิค แม้จะอยู่ในหมวด — แผ่นนี้ใช้อธิบายไม่ได้ */
+const DENY = new Set(["new-msztcowc-3339"]); // "กระดาษเนื้อพิเศษ" หลุดหมวดมา
+
+/**
+ * แท็บที่จะแนบแผ่น — ไล่ตามลำดับนี้ เจอตัวแรกที่มีก็ใช้
+ * (สินค้าที่ยังไม่มีแท็บเลย จะสร้างแท็บ "งานสกรีน" ให้ใหม่)
+ */
+const TAB_ORDER = [/สกรีน/, /^การเตรียมไฟล์$/, /^วิธีสั่งงาน$/];
+const NEW_TAB_TITLE = "งานสกรีน";
 
 const GROUP_RE = /^(งานสกรีน|สกรีน|การสกรีน)$/;
 const CHART = `howto-print-v1`;
@@ -133,23 +126,34 @@ if (UPLOAD) {
   console.log(`⬆️  อัปขึ้นคลังกลาง products/acrylic-howto/ แล้ว`);
 }
 
-// ── 2. ใส่ให้สินค้าแต่ละตัว ────────────────────────────────────────────────
-console.log(`\nโหมด: ${REPLACE ? "ทับภาพเดิมทั้งหมด" : "เติมเฉพาะตัวเลือกที่ยังไม่มีภาพ"}${WRITE ? "" : " (ดูผลอย่างเดียว)"}\n`);
+// ── 2. ใส่ให้สินค้าทุกตัวในหมวด ────────────────────────────────────────────
+const { data: byCat, error: e1 } = await sb.from("products").select("id,data").in("category", CATEGORIES);
+if (e1) throw new Error(e1.message);
+const { data: extra, error: e2 } = await sb.from("products").select("id,data").in("id", EXTRA_IDS);
+if (e2) throw new Error(e2.message);
+const all = [...byCat, ...extra]
+  .filter((r, i, a) => a.findIndex((x) => x.id === r.id) === i && !DENY.has(r.id))
+  .filter((r) => !ONLY || r.id === ONLY)
+  .sort((a, b) => a.id.localeCompare(b.id));
+
+console.log(
+  `\nกวาด ${all.length} สินค้า · โหมดภาพตัวเลือก: ${REPLACE ? "ทับของเดิมด้วย" : "เติมเฉพาะที่ยังว่าง"}${WRITE ? "" : " (ดูผลอย่างเดียว)"}\n`
+);
+
 let touched = 0;
-for (const t of TARGETS) {
-  if (t.tab === null && !ONLY) continue;
-  if (ONLY && t.id !== ONLY) continue;
-  const { data: row, error } = await sb.from("products").select("data").eq("id", t.id).single();
-  if (error) throw new Error(`${t.id}: อ่านไม่สำเร็จ — ${error.message}`);
+let withGroup = 0;
+let chartOnly = 0;
+const unknown = [];
+for (const row of all) {
   const d = structuredClone(row.data);
   const opt = (d.options ?? []).find((o) => GROUP_RE.test(o.label));
-  if (!opt) throw new Error(`${t.id}: ไม่เจอกลุ่มงานสกรีน`);
 
+  // ภาพประจำตัวเลือก (เฉพาะสินค้าที่มีกลุ่มงานสกรีน)
   const changes = [];
-  for (const c of opt.choices) {
+  for (const c of opt?.choices ?? []) {
     const hit = MATCH.find(([re]) => re.test(c.name));
     if (!hit) {
-      console.log(`   ⚠️ ${t.id}: ไม่รู้ว่า "${c.name}" ใช้ภาพไหน — ข้ามตัวนี้`);
+      unknown.push(`${row.id}: "${c.name}"`);
       continue;
     }
     if (c.imageSrc && !REPLACE) continue;
@@ -159,25 +163,38 @@ for (const t of TARGETS) {
     c.imageSrc = next;
   }
 
+  // แผ่นเต็มในแท็บ — ทุกตัวควรมี ไม่ว่าจะมีกลุ่มงานสกรีนหรือไม่
+  d.tabs ??= [];
+  let tab = TAB_ORDER.map((re) => d.tabs.find((x) => re.test(x.title))).find(Boolean);
   let tabNote = "";
-  const tab = t.tab ? d.tabs?.find((x) => x.title === t.tab) : null;
-  if (t.tab && !tab) throw new Error(`${t.id}: ไม่เจอแท็บ "${t.tab}"`);
-  if (tab && !(tab.images ?? []).includes(IMG(CHART))) {
+  if (!tab) {
+    tab = { title: NEW_TAB_TITLE, text: "" };
+    d.tabs.push(tab);
+    tabNote = ` · สร้างแท็บ "${NEW_TAB_TITLE}" ใหม่`;
+  }
+  if (!(tab.images ?? []).includes(IMG(CHART))) {
     tab.images = [...(tab.images ?? []), IMG(CHART)];
     tab.imageSize = "lg";
-    if (!tab.text.includes("HOW TO PRINT")) tab.text = `${tab.text.trimEnd()}\n${NOTE}`;
-    tabNote = ` · แนบแผ่นเข้าแท็บ "${t.tab}"`;
+    if (!tab.text.includes("HOW TO PRINT")) tab.text = `${tab.text.trimEnd()}\n${NOTE}`.trim();
+    tabNote += ` · แนบแผ่นเข้าแท็บ "${tab.title}"`;
   }
 
-  if (!changes.length && !tabNote) {
-    console.log(`📦 ${t.id.padEnd(24)} (ไม่มีอะไรต้องแก้)`);
-    continue;
-  }
-  console.log(`📦 ${t.id.padEnd(24)} "${d.name}"${tabNote}`);
+  if (!changes.length && !tabNote) continue;
+  console.log(`📦 ${row.id.padEnd(24)} "${d.name}"${tabNote}`);
   changes.forEach((c) => console.log(`      ${c}`));
   touched++;
+  if (opt) withGroup++;
+  else chartOnly++;
   if (!WRITE) continue;
-  const { error: saveErr } = await sb.from("products").update({ data: d }).eq("id", t.id);
-  if (saveErr) throw new Error(`${t.id}: บันทึกไม่สำเร็จ — ${saveErr.message}`);
+  const { error: saveErr } = await sb.from("products").update({ data: d }).eq("id", row.id);
+  if (saveErr) throw new Error(`${row.id}: บันทึกไม่สำเร็จ — ${saveErr.message}`);
 }
-console.log(WRITE ? `\n✅ แก้ไป ${touched} สินค้า` : `\n(ยังไม่บันทึก — ใส่ --upload --write · จะแตะ ${touched} สินค้า)`);
+
+if (unknown.length) {
+  console.log(`\n⚠️ ตัวเลือกที่ไม่รู้ว่าใช้ภาพไหน (ข้ามไว้ ไม่ใส่ภาพมั่ว):`);
+  unknown.forEach((u) => console.log(`   ${u}`));
+}
+console.log(
+  `\n${WRITE ? "✅ แก้ไป" : "(ยังไม่บันทึก — ใส่ --upload --write · จะแตะ"} ${touched} สินค้า` +
+    ` (มีกลุ่มงานสกรีน ${withGroup} · แนบแผ่นอย่างเดียว ${chartOnly})${WRITE ? "" : ")"}`
+);
