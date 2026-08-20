@@ -136,6 +136,20 @@ const UNIT_OTHER = "__other__";
 /** กฎ: เมื่อเลือก [whenLabel = whenChoice] → จำกัดกลุ่ม [limitLabel] เหลือเฉพาะ allow[] */
 type DraftRule = { whenLabel: string; whenChoice: string; whenChoices: string[]; limitLabel: string; allow: string[] };
 type DraftTier = { upTo: string; label: string };
+/** 📐 ตั้งค่าคิดราคาตามพื้นที่ — สองเรทดึงจากคอลัมน์ในตารางราคา จึงเปลี่ยนตามช่วงจำนวนเอง */
+type DraftArea = {
+  enabled: boolean;
+  widthLabel: string;
+  heightLabel: string;
+  baseColumn: string;
+  stepColumn: string;
+  baseArea: string;
+  round: "ceil" | "round" | "none";
+};
+const EMPTY_AREA: DraftArea = {
+  enabled: false, widthLabel: "", heightLabel: "", baseColumn: "", stepColumn: "", baseArea: "", round: "ceil",
+};
+
 type DraftPricing = {
   enabled: boolean;
   unit: string;
@@ -207,6 +221,10 @@ type Draft = {
   }[];
   seo: DraftSeo;
   custom: DraftCustom;
+  /** 📐 กางกล่องงานสั่งทำค้างไว้เลย ไม่ต้องให้ลูกค้าติ๊กก่อน (สินค้าที่ไม่มีขนาดมาตรฐาน) */
+  mtoAlways: boolean;
+  /** 📐 คิดราคาตามพื้นที่ลาย (baseArea เก็บเป็น string เพราะกรอกในช่อง) */
+  area: DraftArea;
   /** ⭐ ขึ้นบล็อก "สินค้าแนะนำ" บนหน้าแรก */
   featured: boolean;
   /** ป้ายบนการ์ดสินค้า ('' = ไม่มี) */
@@ -363,6 +381,18 @@ function fileToBlob(file: File, max = 1200, quality = 0.82): Promise<Blob> {
 function toDraft(p: Product): Draft {
   return {
     name: p.name,
+    mtoAlways: p.mtoAlways === true,
+    area: p.areaPricing
+      ? {
+          enabled: p.areaPricing.enabled,
+          widthLabel: p.areaPricing.widthLabel,
+          heightLabel: p.areaPricing.heightLabel,
+          baseColumn: p.areaPricing.baseColumn,
+          stepColumn: p.areaPricing.stepColumn,
+          baseArea: String(p.areaPricing.baseArea),
+          round: p.areaPricing.round ?? "ceil",
+        }
+      : EMPTY_AREA,
     slug: p.slug ?? "",
     category: p.category,
     price: String(p.price),
@@ -3623,6 +3653,23 @@ export default function ProductEditor({ product }: { product: Product }) {
       gradient: draft.gradient,
       ...(imageSrc ? { imageSrc } : {}),
       options: fromDraftOptions(draft.options),
+      mtoAlways: draft.mtoAlways ? true : undefined,
+      areaPricing: (() => {
+        const a = draft.area;
+        // ตั้งไม่ครบ = ไม่บันทึก (ไม่งั้นหน้าร้านคิดราคาเพี้ยนเงียบ ๆ)
+        if (!a.enabled || !a.widthLabel || !a.heightLabel || !a.baseColumn || !a.stepColumn) return undefined;
+        const baseArea = Number(a.baseArea);
+        if (!Number.isFinite(baseArea) || baseArea < 0) return undefined;
+        return {
+          enabled: true,
+          widthLabel: a.widthLabel,
+          heightLabel: a.heightLabel,
+          baseColumn: a.baseColumn,
+          stepColumn: a.stepColumn,
+          baseArea,
+          round: a.round,
+        };
+      })(),
       ...(rules.length > 0 ? { rules } : { rules: undefined }),
       pricing,
       priceRates,
@@ -4960,6 +5007,112 @@ export default function ProductEditor({ product }: { product: Product }) {
 
         {/* ✍️ ช่องกรอกแบบยืดหยุ่น — กี่ช่องก็ได้ ตั้งชื่อเองได้ทุกช่อง (แทนช่องกว้าง×ยาวชุดเดียวแบบเดิม) */}
         {madeToOrderPanel()}
+
+        {/* สินค้าที่ทุกออเดอร์ต้องระบุขนาดเองอยู่แล้ว — ไม่ควรให้ลูกค้าต้องติ๊กก่อนถึงเห็นช่องกรอก */}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-slate-200 pt-3">
+          <div>
+            <h3 className="text-xs font-bold text-slate-600">📐 ไม่มีขนาดมาตรฐาน — กางช่องกรอกให้เลย</h3>
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              ปกติลูกค้าต้องติ๊ก &ldquo;ต้องการสั่งทำ&rdquo; ก่อนถึงเห็นช่องกรอก (ไม่ติ๊ก = ใช้ขนาดมาตรฐาน) ·
+              ติ๊กข้อนี้สำหรับสินค้าที่ <span className="font-semibold text-slate-500">ไม่มีขนาดมาตรฐานเลย</span>{" "}
+              เช่น อาร์มปักที่คิดราคาตาม ตร.ซม. — ช่องกรอกจะกางรอไว้ ลูกค้าไม่ต้องติ๊กอะไรก่อน
+            </p>
+          </div>
+          <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
+            <input
+              type="checkbox"
+              checked={draft.mtoAlways}
+              onChange={(e) => patch({ mtoAlways: e.target.checked })}
+              className="h-4 w-4 accent-amber-500"
+            />
+            กางไว้เลย
+          </label>
+        </div>
+
+        {/* 📐 คิดราคาตามพื้นที่ — งานที่ราคาผูกกับขนาดลาย (อาร์มปัก ฯลฯ) ระบบคิดให้เอง ไม่ต้องรอแอดมินตีราคา */}
+        {(() => {
+          const a = draft.area;
+          const patchArea = (x: Partial<DraftArea>) => patch({ area: { ...a, ...x } });
+          const inputGroups = draft.options.filter((o) => o.display === "input").map((o) => o.label);
+          const columns = Object.keys(draft.pricing.cells);
+          return (
+            <div className="mt-4 border-t border-dashed border-slate-200 pt-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-xs font-bold text-slate-600">🧮 คิดราคาตามพื้นที่ลาย</h3>
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    ราคา/ชิ้น = <span className="font-semibold text-slate-500">ราคาก้อนแรก + (พื้นที่ที่เกิน × เรทต่อหน่วย)</span> ·
+                    ทั้งสองเรทดึงจากคอลัมน์ในตารางราคา จึงลดตามช่วงจำนวนเอง · ลูกค้ากรอกขนาดแล้วเห็นราคาทันที ไม่ต้องให้แอดมินตีราคา
+                  </p>
+                </div>
+                <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={a.enabled}
+                    onChange={(e) => patchArea({ enabled: e.target.checked })}
+                    className="h-4 w-4 accent-amber-500"
+                  />
+                  เปิดใช้
+                </label>
+              </div>
+              {a.enabled && (
+                <div className="mt-3 grid gap-3 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200 sm:grid-cols-2">
+                  {(
+                    [
+                      ["ช่องกรอก “กว้าง”", "widthLabel", inputGroups],
+                      ["ช่องกรอก “ยาว”", "heightLabel", inputGroups],
+                      ["คอลัมน์ราคาก้อนแรก", "baseColumn", columns],
+                      ["คอลัมน์เรทต่อหน่วยที่เกิน", "stepColumn", columns],
+                    ] as const
+                  ).map(([label, key, list]) => (
+                    <label key={key} className="text-xs font-semibold text-slate-500">
+                      {label}
+                      <select
+                        value={a[key]}
+                        onChange={(e) => patchArea({ [key]: e.target.value } as Partial<DraftArea>)}
+                        className="mt-1 block w-full rounded-xl bg-white px-3 py-1.5 text-sm text-slate-800 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                      >
+                        <option value="">— ยังไม่เลือก —</option>
+                        {list.map((x) => (
+                          <option key={x} value={x}>
+                            {x}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                  <label className="text-xs font-semibold text-slate-500">
+                    พื้นที่ที่รวมในราคาก้อนแรก
+                    <input
+                      value={a.baseArea}
+                      onChange={(e) => patchArea({ baseArea: e.target.value })}
+                      inputMode="decimal"
+                      placeholder="15"
+                      className="mt-1 block w-full rounded-xl bg-white px-3 py-1.5 text-sm text-slate-800 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-500">
+                    ปัดเศษราคา/ชิ้น
+                    <select
+                      value={a.round}
+                      onChange={(e) => patchArea({ round: e.target.value as DraftArea["round"] })}
+                      className="mt-1 block w-full rounded-xl bg-white px-3 py-1.5 text-sm text-slate-800 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    >
+                      <option value="ceil">ปัดขึ้นเป็นบาท</option>
+                      <option value="round">ปัดตามหลักคณิต</option>
+                      <option value="none">ไม่ปัด (มีเศษสตางค์)</option>
+                    </select>
+                  </label>
+                  {inputGroups.length < 2 && (
+                    <p className="text-[11px] font-semibold text-rose-500 sm:col-span-2">
+                      ⚠ ต้องมีช่องกรอกอย่างน้อย 2 ช่อง (กว้าง/ยาว) ในแผงนี้ก่อน ถึงจะเลือกได้
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ── แบบเดิม: ช่องกว้าง × ยาว ชุดเดียวต่อสินค้า (คงไว้ให้สินค้าที่ตั้งไว้แล้วใช้ต่อได้) ── */}
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-slate-200 pt-3">

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   activeMatrix,
+  areaPriceBreakdown,
   allowedChoices,
   formatInputValue,
   inputError,
@@ -223,10 +224,12 @@ function termLines(raw: string): string[] {
  * ตัวเลือกตั้งต้นตอนเปิดหน้าสินค้า — กลุ่มปกติเริ่มที่ตัวแรก
  * กลุ่ม "ติ๊กได้หลายอย่าง" เริ่มที่ยังไม่ติ๊กอะไรเลย (ของเสริม ไม่ควรบวกเงินให้เอง)
  */
-function initialSelections(options: ProductOption[]): Record<string, string> {
-  return Object.fromEntries(
-    options.map((o) => [o.label, isMultiOption(o) ? "" : (o.choices[0]?.name ?? "")])
+function initialSelections(p: Product): Record<string, string> {
+  const base = Object.fromEntries(
+    p.options.map((o) => [o.label, isMultiOption(o) ? "" : (o.choices[0]?.name ?? "")])
   );
+  // 📐 สินค้าที่ไม่มีขนาดมาตรฐาน (mtoAlways) — ติ๊ก "สั่งทำ" ให้ตั้งแต่แรก ช่องกรอกจะได้กางรอเลย
+  return p.mtoAlways ? { ...base, [MTO_LABEL]: MTO_ON } : base;
 }
 
 /** ค่าที่เป็นตัวเลขจริงใช้ตามนั้น · Infinity (= ไม่จำกัด) ค่อยใช้ค่าสำรอง */
@@ -332,7 +335,7 @@ export default function ProductDetail({
   /** พนักงานเปิดโหมดแอดมินอยู่ไหม — เช็คสิทธิ์ควบเสมอ ลูกค้าทั่วไปจะไม่มีทางเข้าโหมดนี้ */
   const staffOrdering = isAdmin && adminMode;
   const [selections, setSelections] = useState<Record<string, string>>(() =>
-    initialSelections(initialProduct.options)
+    initialSelections(initialProduct)
   );
   // งานกำหนดขนาดเอง (custom)
   const [useCustom, setUseCustom] = useState(false);
@@ -419,7 +422,7 @@ export default function ProductDetail({
     fetchProduct(initialProduct.id).then((m) => {
       if (active && m) {
         setProduct(m);
-        setSelections(initialSelections(m.options));
+        setSelections(initialSelections(m));
         setImageIndex(0);
       }
     });
@@ -1881,6 +1884,20 @@ export default function ProductDetail({
   /** ลูกค้าติ๊ก "สั่งทำ" ไว้ไหม — ยังไม่ติ๊ก = ราคายังคิดตามตารางปกติ ไม่ต้องกรอกอะไร */
   const mtoOn = madeToOrderOn(effective);
 
+  /**
+   * 📐 สินค้าที่คิดราคาตามพื้นที่ — คอลัมน์ในตารางราคา ("15 ตร.ซม. แรก" / "ตร.ซม. ต่อไป")
+   * เป็นเรทที่ระบบใช้คิดเอง ไม่ใช่ของให้ลูกค้ากด → ซ่อนปุ่มกลุ่มนั้นจากหน้าร้าน
+   * (ตารางราคายังโชว์ตามเดิม ลูกค้าเห็นเรททั้งสองคอลัมน์อยู่แล้ว)
+   */
+  const areaOn = product.areaPricing?.enabled === true;
+  const areaDriver = (opt: ProductOption) =>
+    areaOn && (matrix?.driverLabels ?? []).includes(opt.label);
+  /** วิธีคิดราคาจากขนาดที่ลูกค้ากรอก (null = ยังกรอกไม่ครบ) — โชว์ให้ลูกค้าเห็นว่าราคามาจากไหน */
+  const areaBreakdown = useMemo(
+    () => areaPriceBreakdown(product, effective, qty),
+    [product, effective, qty]
+  );
+
   return (
     <div className="mx-auto max-w-6xl px-4 pt-6">
       {/* สินค้าที่ปิดการมองเห็นไว้ — ลูกค้าเปิดไม่ได้ (404) หน้านี้เห็นเฉพาะทีมงานที่ล็อกอิน */}
@@ -2394,7 +2411,7 @@ export default function ProductDetail({
           <div id="opt-groups" className="mt-4 space-y-3">
             {/* กลุ่มที่ตั้ง "แสดงเมื่อ" ไว้ และเงื่อนไขยังไม่ตรง → ไม่ต้องโชว์ (เช่น สีตะขอของแบบที่ไม่ได้เลือก) */}
             {product.options
-              .filter((opt) => !isMadeToOrderOption(opt) && optionVisible(opt, effective))
+              .filter((opt) => !isMadeToOrderOption(opt) && optionVisible(opt, effective) && !areaDriver(opt))
               .map((opt) => optionGroupUI(opt))}
           </div>
 
@@ -2407,36 +2424,78 @@ export default function ProductDetail({
           */}
           {mtoVisible.length > 0 && (
             <div className="mt-5 rounded-2xl bg-sky-50/60 p-4 ring-1 ring-sky-200">
-              {/* ติ๊กก่อนถึงกางช่องกรอก — ไม่ติ๊ก = ใช้ขนาดมาตรฐาน ราคายังคิดเองได้ตามตารางปกติ */}
-              <label className="flex cursor-pointer items-start gap-2.5">
-                <input
-                  type="checkbox"
-                  checked={mtoOn}
-                  onChange={(e) =>
-                    setSelections((sel) => {
-                      const next: Record<string, string> = { ...sel, [MTO_LABEL]: e.target.checked ? MTO_ON : "" };
-                      // เอาติ๊กออก = ล้างค่าที่กรอกไว้ด้วย ไม่งั้นค่าเก่าค้างแล้วติดไปกับออเดอร์
-                      if (!e.target.checked)
-                        for (const o of product.options) if (isMadeToOrderOption(o)) next[o.label] = "";
-                      return next;
-                    })
-                  }
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-sky-600"
-                />
-                <span>
-                  <span className="text-sm font-bold text-stone-700">📐 ต้องการสั่งทำ — กำหนดขนาด/รายละเอียดเอง</span>
+              {/*
+                สินค้าที่ไม่มีขนาดมาตรฐาน (mtoAlways) ไม่ต้องให้ติ๊ก — ช่องกรอกกางรอเลย
+                (ติ๊กแล้วเขียนว่า "ไม่ติ๊ก = ใช้ขนาดมาตรฐาน" ทั้งที่ไม่มีขนาดมาตรฐาน = ลูกค้าไม่ติ๊ก แล้วออเดอร์เข้ามาไม่มีขนาด)
+              */}
+              {product.mtoAlways ? (
+                <div>
+                  <span className="text-sm font-bold text-stone-700">📐 ระบุขนาดที่ต้องการ</span>
                   <span className="mt-0.5 block text-[11px] leading-relaxed text-stone-500">
-                    ไม่ติ๊ก = ใช้ขนาดมาตรฐานของแบบนี้ ราคาตามตารางปกติ · ติ๊กแล้วระบุขนาดที่ต้องการได้
-                    แล้วแอดมินจะตีราคาให้
+                    {areaOn
+                      ? "งานนี้คิดราคาตามพื้นที่ลาย — กรอกขนาดมาให้ครบ ระบบคำนวณราคาให้ทันที ไม่ต้องรอสอบถาม"
+                      : "งานนี้ทำตามขนาดที่ลูกค้ากำหนด — กรอกขนาดมาให้ครบ แล้วแอดมินจะตีราคาให้"}
                   </span>
-                </span>
-              </label>
+                </div>
+              ) : (
+                /* ติ๊กก่อนถึงกางช่องกรอก — ไม่ติ๊ก = ใช้ขนาดมาตรฐาน ราคายังคิดเองได้ตามตารางปกติ */
+                <label className="flex cursor-pointer items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={mtoOn}
+                    onChange={(e) =>
+                      setSelections((sel) => {
+                        const next: Record<string, string> = { ...sel, [MTO_LABEL]: e.target.checked ? MTO_ON : "" };
+                        // เอาติ๊กออก = ล้างค่าที่กรอกไว้ด้วย ไม่งั้นค่าเก่าค้างแล้วติดไปกับออเดอร์
+                        if (!e.target.checked)
+                          for (const o of product.options) if (isMadeToOrderOption(o)) next[o.label] = "";
+                        return next;
+                      })
+                    }
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-sky-600"
+                  />
+                  <span>
+                    <span className="text-sm font-bold text-stone-700">📐 ต้องการสั่งทำ — กำหนดขนาด/รายละเอียดเอง</span>
+                    <span className="mt-0.5 block text-[11px] leading-relaxed text-stone-500">
+                      ไม่ติ๊ก = ใช้ขนาดมาตรฐานของแบบนี้ ราคาตามตารางปกติ · ติ๊กแล้วระบุขนาดที่ต้องการได้
+                      แล้วแอดมินจะตีราคาให้
+                    </span>
+                  </span>
+                </label>
+              )}
               {mtoOn && (
                 <>
                   <div className="mt-3 space-y-3 border-t border-dashed border-sky-200 pt-3">
                     {mtoVisible.map((opt) => optionGroupUI(opt))}
                   </div>
                 </>
+              )}
+              {/* 📐 โชว์วิธีคิดราคาจากขนาดที่กรอก — ลูกค้าเห็นเองว่าราคามาจากไหน ไม่ต้องทักถามแอดมิน */}
+              {mtoOn && areaBreakdown && (
+                <div className="mt-3 border-t border-dashed border-sky-200 pt-3">
+                  <p className="text-xs font-bold text-sky-800">
+                    🧮 พื้นที่ลาย {areaBreakdown.width} × {areaBreakdown.height} ={" "}
+                    {Math.round(areaBreakdown.area * 100) / 100} ตร.ซม.
+                  </p>
+                  <ul className="mt-1.5 space-y-0.5 text-[11px] leading-relaxed text-stone-600">
+                    <li>
+                      · {areaBreakdown.baseArea} ตร.ซม. แรก = {formatPrice(areaBreakdown.basePrice)}
+                    </li>
+                    {areaBreakdown.extraArea > 0 && (
+                      <li>
+                        · อีก {Math.round(areaBreakdown.extraArea * 100) / 100} ตร.ซม. ×{" "}
+                        {formatPrice(areaBreakdown.stepPrice)} = {formatPrice(areaBreakdown.extraPrice)}
+                      </li>
+                    )}
+                    <li className="font-bold text-stone-700">
+                      · รวม {formatPrice(areaBreakdown.unitPrice)} / ชิ้น
+                      {qty > 1 && <> × {qty} ชิ้น = {formatPrice(areaBreakdown.unitPrice * qty)}</>}
+                    </li>
+                  </ul>
+                  <p className="mt-1.5 text-[10px] text-stone-400">
+                    เรทเปลี่ยนตามช่วงจำนวนที่สั่ง — สั่งเยอะขึ้น ราคาต่อชิ้นลดเองอัตโนมัติ
+                  </p>
+                </div>
               )}
               {mtoOn && askQuote && (
                 <div className="mt-3 border-t border-dashed border-sky-200 pt-3">

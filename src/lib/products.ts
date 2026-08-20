@@ -945,6 +945,17 @@ export interface Product {
    * ไม่ระบุ = สั่งได้เลยตามปกติ
    */
   artworkConsult?: ArtworkConsult;
+  /**
+   * 📐 กล่องงานสั่งทำเปิดค้างไว้เสมอ — ไม่ต้องให้ลูกค้าติ๊ก "ต้องการสั่งทำ" ก่อน
+   * ใช้กับสินค้าที่ "ไม่มีขนาดมาตรฐาน" ทุกออเดอร์ต้องระบุขนาดเองอยู่แล้ว (เช่น อาร์มปักที่คิดราคาตาม ตร.ซม.)
+   * ไม่ตั้ง = ตามเดิม ลูกค้าต้องติ๊กก่อนถึงกางช่องกรอก (ไม่ติ๊ก = ใช้ขนาดมาตรฐาน ราคาตามตารางปกติ)
+   */
+  mtoAlways?: boolean;
+  /**
+   * 📐 คิดราคาจาก "พื้นที่ลาย" ที่ลูกค้ากรอก แทนราคาคอลัมน์เดียวในตาราง
+   * ใช้กับงานที่ราคาผูกกับขนาด เช่น อาร์มปัก: 15 ตร.ซม. แรก ฿40 · ตร.ซม. ต่อไป ฿2
+   */
+  areaPricing?: AreaPricing;
   /** สถานะตรวจสอบหลังบ้าน — มีค่า = ทีมงานเช็คสินค้านี้แล้ว (ใช้กันเช็คซ้ำเมื่อหลายคนช่วยกัน) */
   reviewed?: ProductReview;
   /**
@@ -1003,6 +1014,84 @@ export interface CustomOption {
    * ไม่ตั้ง/ว่าง = ปิดทุกกลุ่ม
    */
   keepOptions?: string[];
+}
+
+/**
+ * 📐 คิดราคาตาม "พื้นที่ลาย" — ราคาเหมาก้อนแรก + ส่วนที่เกินคิดต่อหน่วยพื้นที่
+ *
+ * ทั้งสองเรทดึงจากตารางราคาเดิม (คนละคอลัมน์) จึงเปลี่ยนตามช่วงจำนวนที่สั่งเองอัตโนมัติ
+ * ตัวอย่างอาร์มปัก 150 ชิ้น ลาย 5×7 = 35 ตร.ซม.
+ *   15 ตร.ซม. แรก ฿25 + (35−15) × ฿1.25 = ฿25 → รวม ฿50/ชิ้น
+ *
+ * ยังไม่กรอกขนาด = ตกกลับไปใช้ราคาคอลัมน์ตามปกติ (ลูกค้าเห็น "เริ่มต้น ฿X" ก่อนกรอก)
+ */
+export interface AreaPricing {
+  enabled: boolean;
+  /** ชื่อกลุ่มช่องกรอกด้านกว้าง/ยาว — พื้นที่ = กว้าง × ยาว (หน่วยเดียวกับที่ตั้งในช่องกรอก) */
+  widthLabel: string;
+  heightLabel: string;
+  /** ชื่อคอลัมน์ในตารางราคาที่เป็น "ราคาเหมาก้อนแรก" (เช่น "15 ตร.ซม. แรก") */
+  baseColumn: string;
+  /** ชื่อคอลัมน์ที่เป็น "ราคาต่อ 1 หน่วยพื้นที่ที่เกินก้อนแรก" (เช่น "ตร.ซม. ต่อไป") */
+  stepColumn: string;
+  /** พื้นที่ที่รวมอยู่ในราคาก้อนแรกแล้ว (เช่น 15 ตร.ซม.) */
+  baseArea: number;
+  /** ปัดเศษราคาต่อชิ้น — ไม่ตั้ง = ปัดขึ้น (ร้านไม่ขาดทุนเศษสตางค์) */
+  round?: "none" | "ceil" | "round";
+}
+
+/** ตัวเลขที่ลูกค้ากรอกในกลุ่มช่องกรอก (ตัดหน่วยท้ายออก) — ยังไม่กรอก/ไม่ใช่ตัวเลข = 0 */
+function inputNumberOf(selections: Record<string, string>, label: string): number {
+  const n = Number(String(selections[label] ?? "").replace(/[^\d.]/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** รายละเอียดการคิดราคาตามพื้นที่ — ใช้ทั้งคิดเงินและโชว์วิธีคิดให้ลูกค้าอ่าน */
+export interface AreaBreakdown {
+  width: number;
+  height: number;
+  /** พื้นที่รวม (กว้าง × ยาว) */
+  area: number;
+  /** พื้นที่ที่รวมในราคาก้อนแรก */
+  baseArea: number;
+  /** ราคาก้อนแรกของช่วงจำนวนที่สั่งอยู่ */
+  basePrice: number;
+  /** ราคาต่อหน่วยพื้นที่ส่วนเกิน ของช่วงจำนวนที่สั่งอยู่ */
+  stepPrice: number;
+  /** พื้นที่ส่วนที่เกินก้อนแรก */
+  extraArea: number;
+  /** เงินของส่วนเกิน */
+  extraPrice: number;
+  /** ราคาต่อชิ้นสุทธิ (ปัดแล้ว) */
+  unitPrice: number;
+}
+
+/**
+ * คิดราคา/ชิ้น จากพื้นที่ที่ลูกค้ากรอก · คืน null เมื่อยังคิดไม่ได้
+ * (ไม่ได้เปิดใช้ · ยังไม่กรอกขนาด · ไม่มีคอลัมน์ที่อ้างถึงในตาราง)
+ */
+export function areaPriceBreakdown(
+  p: Product,
+  selections: Record<string, string>,
+  qty: number
+): AreaBreakdown | null {
+  const a = p.areaPricing;
+  if (!a?.enabled) return null;
+  const width = inputNumberOf(selections, a.widthLabel);
+  const height = inputNumberOf(selections, a.heightLabel);
+  if (!width || !height) return null;
+  const m = activeMatrix(p, selections);
+  if (!m) return null;
+  const i = tierIndex(m, tierQtyFor(p, selections, qty));
+  const basePrice = m.cells[a.baseColumn]?.[i];
+  const stepPrice = m.cells[a.stepColumn]?.[i];
+  if (typeof basePrice !== "number" || typeof stepPrice !== "number") return null;
+  const area = width * height;
+  const extraArea = Math.max(0, area - a.baseArea);
+  const extraPrice = extraArea * stepPrice;
+  const raw = basePrice + extraPrice;
+  const unitPrice = a.round === "none" ? raw : a.round === "round" ? Math.round(raw) : Math.ceil(raw);
+  return { width, height, area, baseArea: a.baseArea, basePrice, stepPrice, extraArea, extraPrice, unitPrice };
 }
 
 /**
@@ -2739,6 +2828,19 @@ export function matrixChoiceAvailable(m: PriceMatrix, label: string, choice: str
 
 /** ช่วงราคาต่ำสุด–สูงสุดของสินค้า — ถ้ามีตารางราคาขั้นบันไดคิดจากทุกช่อง, ไม่งั้นคิดจากราคาตั้งต้น + option.extra */
 export function priceRange(p: Product): { min: number; max: number } {
+  /**
+   * 📐 สินค้าคิดตามพื้นที่: คอลัมน์ "ต่อหน่วยพื้นที่" (เช่น ฿1/ตร.ซม.) ไม่ใช่ราคาต่อชิ้น
+   * เอามารวมช่วงราคาจะได้ "฿1 – ฿40" ซึ่งอ่านผิดความหมาย — ใช้เฉพาะคอลัมน์ราคาก้อนแรก
+   * (= ราคาต่อชิ้นของลายที่ไม่เกินพื้นที่ก้อนแรก คือราคาเริ่มต้นจริง ๆ ของงาน)
+   */
+  const ap = p.areaPricing;
+  if (ap?.enabled) {
+    const base = [
+      ...(p.priceRates ?? []).flatMap((r) => r.pricing.cells[ap.baseColumn] ?? []),
+      ...(p.pricing?.cells[ap.baseColumn] ?? []),
+    ].filter((n) => n > 0);
+    if (base.length) return { min: Math.min(...base), max: Math.max(...base) };
+  }
   if (p.priceRates?.length) {
     const all = p.priceRates.flatMap((r) => Object.values(r.pricing.cells).flat()).filter((n) => n > 0);
     if (all.length) return { min: Math.min(...all), max: Math.max(...all) };
@@ -2858,6 +2960,10 @@ export function unitPriceFor(
   if (m) {
     const cells = m.cells[priceMatrixKey(m, selections)];
     let base = cells && cells.length ? (cells[tierIndex(m, tierQty)] ?? product.price) : product.price;
+    // 📐 คิดตามพื้นที่ลาย — ราคาก้อนแรก + ส่วนเกินคูณเรทต่อหน่วยพื้นที่ (แทนราคาคอลัมน์เดียว)
+    // ยังไม่กรอกขนาด = คืน null แล้วใช้ราคาคอลัมน์ตามเดิม (โชว์เป็นราคาเริ่มต้น)
+    const areaBd = areaPriceBreakdown(product, selections, qty);
+    if (areaBd) base = areaBd.unitPrice;
     // กลุ่มตัวเลือกที่ไม่ใช่แกนตาราง (เช่น อะไหล่พิเศษ) บวกเพิ่มต่อหน่วยตาม extra ของตัวที่เลือก
     // (กลุ่มที่ตั้ง extraFromQty ไว้ ต่ำกว่าเกณฑ์ = ราคารวมแล้ว ไม่บวก)
     for (const opt of product.options) {
