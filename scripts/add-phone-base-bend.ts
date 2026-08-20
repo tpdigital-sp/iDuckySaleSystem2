@@ -53,13 +53,12 @@ const SIZE_CM = 14;
 const SPECIAL_FEE = 30;
 
 /**
- * สีอะคริลิคพิเศษที่แบบนี้ทำได้ — เว็บระบุ "ได้เฉพาะอะคริลิคใส , โฮโลแกรม , กลิสเตอร์"
- * จึงไม่มีอะคริลิคสีทึบ/สีขุ่น/กระจก เหมือนสินค้าอะคริลิคตัวอื่น
+ * สีอะคริลิคที่แบบนี้ทำได้ — เว็บระบุ "ได้เฉพาะอะคริลิคใส , โฮโลแกรม , กลิสเตอร์"
+ * จึงแยกเป็น 3 ตัวเลือกตามนั้น (ไม่มีอะคริลิคสีทึบ / สีขุ่น / กระจก เหมือนสินค้าอะคริลิคตัวอื่น)
+ * ⚠️ สะกดว่า "กลิตเตอร์" ให้ตรงกับชื่อสีในชาร์ตกลาง (acrylic-colors.mjs) ที่โผล่ในเมนูเลือกสีถัดไป
+ *    ส่วนบรรทัดในข้อควรทราบ/แท็บ คงคำตามเว็บไว้
  */
-const SPECIAL_COLORS = [
-  "อะคริลิคกลิตเตอร์-เงิน",
-  "อะคริลิคกลิตเตอร์-ทอง",
-  "อะคริลิคกลิตเตอร์-รุ้ง",
+const HOLO_COLORS = [
   "hologram-01",
   "hologram-02",
   "hologram-รุ้ง",
@@ -70,6 +69,7 @@ const SPECIAL_COLORS = [
   "hologram-Dust",
   "hologram-หัวใจ",
 ];
+const GLITTER_COLORS = ["อะคริลิคกลิตเตอร์-เงิน", "อะคริลิคกลิตเตอร์-ทอง", "อะคริลิคกลิตเตอร์-รุ้ง"];
 
 const FILES = [...GALLERY, "bend-points", "clear"];
 
@@ -95,7 +95,24 @@ const ADDON_TABLE =
   `<p style="margin-top:6px;color:#0e7490"><strong>เรทราคาปลีก (1-10 ชิ้น) กับ เรทราคาส่ง (11 ชิ้นขึ้นไป) ราคาเท่ากัน</strong> — เลือกในหน้าสั่งซื้อได้เลย ระบบบวกให้อัตโนมัติ</p>` +
   `<p style="margin-top:6px;color:#b45309">แบบนี้ทำได้เฉพาะ <strong>อะคริลิคใส · โฮโลแกรม · กลิตเตอร์</strong> เท่านั้น (ไม่มีอะคริลิคสีทึบ)</p>`;
 
-const SPECIAL = "อะคริลิคพิเศษ (โฮโลแกรม / กลิตเตอร์)";
+const HOLO = "โฮโลแกรม";
+const GLITTER = "กลิตเตอร์";
+
+/**
+ * เมนูเลือกลาย — โผล่เมื่อเลือกกลุ่มนั้น
+ * ⚠️ ค่าอะคริลิคพิเศษ 30 บาท/ชิ้น คิดที่ปุ่ม "สีอะคริลิค" ไปแล้ว
+ *    ตรงนี้ต้องไม่ใส่ extra อีก ไม่งั้นบวกซ้ำเป็น 60
+ */
+const colorPicker = (group: string, names: string[]): ProductOption => ({
+  label: `เลือกลาย${group}`,
+  display: "dropdown",
+  stockBearing: true,
+  showWhen: { label: "สีอะคริลิค", choices: [group] },
+  choices: names.map((name) => {
+    const img = acrylicColorImage(name);
+    return { name, ...(img ? { imageSrc: img } : {}) };
+  }),
+});
 
 const options: ProductOption[] = [
   {
@@ -103,20 +120,12 @@ const options: ProductOption[] = [
     stockBearing: true,
     choices: [
       { name: "อะคริลิคใส", imageSrc: IMG("clear") },
-      { name: SPECIAL, imageSrc: acrylicColorImage("hologram-รุ้ง") },
+      { name: HOLO, extra: SPECIAL_FEE, imageSrc: acrylicColorImage("hologram-รุ้ง") },
+      { name: GLITTER, extra: SPECIAL_FEE, imageSrc: acrylicColorImage("อะคริลิคกลิตเตอร์-รุ้ง") },
     ],
   },
-  {
-    // ขนาดเดียว = ค่าอะคริลิคพิเศษคงที่ 30 บาท/ชิ้น ไม่ต้องแตกกลุ่มตามขนาดเหมือนสินค้าตัวอื่น
-    label: `เลือกสีพิเศษ (+${SPECIAL_FEE} บาท/ชิ้น)`,
-    display: "dropdown",
-    stockBearing: true,
-    showWhen: { label: "สีอะคริลิค", choices: [SPECIAL] },
-    choices: SPECIAL_COLORS.map((name) => {
-      const img = acrylicColorImage(name);
-      return { name, extra: SPECIAL_FEE, ...(img ? { imageSrc: img } : {}) };
-    }),
-  },
+  colorPicker(HOLO, HOLO_COLORS),
+  colorPicker(GLITTER, GLITTER_COLORS),
 ];
 
 const TIERS = [
