@@ -15,6 +15,7 @@
  *      size-15..size-20      ขนาดตัวสแตนดี้ (สเกลจริง มีเงาตัว 20 ซม. เทียบ + การ์ด 5.4×8.5 ซม. สเกลเดียวกัน)
  *      base-6/8/9/10/11/12   ขนาดฐาน (มองจากด้านบน เทียบฐาน 6-7 ซม.)
  *      basescreen-no|yes     ฐานสกรีนลาย / ไม่สกรีน
+ *      baseshape-round|square|special  ทรงฐาน (พิเศษ = ปลีก +10 · ส่ง +5 บาท/ชิ้น)
  *      screen-1|screen-2     งานสกรีน 1 ด้าน / 2 ด้าน
  *      card-slot             กรอบใส่การ์ด (ทางร้านมีแค่แนวตั้ง)
  *      layout-portrait|landscape  ตัวสแตนดี้แนวตั้ง / แนวนอน
@@ -284,6 +285,48 @@ const baseScreenYes = frame(`
   ${slot(350, 378)}
   ${foot(["1-10 ชิ้น รวมฐานในราคาแล้ว · 11 ชิ้นขึ้นไปคิดเพิ่ม:", "6-7 ซม. +25 · 8 +30 · 9 +35 · 10 +40 · 11 +45 · 12 +50 บาท"])}`);
 
+// ── 4.5 ทรงฐาน (กลม / สี่เหลี่ยม ไม่บวกเพิ่ม · ทรงพิเศษ คิดเพิ่ม) ─────────
+/** ฐานไดคัททรงดอกไม้ — ตัวอย่าง "ฐานทรงพิเศษ" (เส้นรอบรูปเส้นเดียว) */
+function flowerPath(cx, cy, r) {
+  const petals = 5;
+  const step = (Math.PI * 2) / petals;
+  const inner = r * 0.56;
+  const at = (rad, ang) => [cx + Math.cos(ang) * rad, cy + Math.sin(ang) * rad];
+  let d = "";
+  for (let i = 0; i < petals; i++) {
+    const a = i * step - Math.PI / 2;
+    const [sx, sy] = at(inner, a - step / 2);
+    const [ex, ey] = at(inner, a + step / 2);
+    const [c1x, c1y] = at(r * 1.22, a - step * 0.3);
+    const [c2x, c2y] = at(r * 1.22, a + step * 0.3);
+    d += `${i === 0 ? `M${sx.toFixed(1)} ${sy.toFixed(1)}` : ""} C${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`;
+  }
+  return `<path d="${d} Z" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="4" stroke-linejoin="round"/>`;
+}
+
+const SHAPES = {
+  "baseshape-round": {
+    t: "ฐานทรงกลม",
+    s: "ทรงมาตรฐาน — ไม่บวกเพิ่ม",
+    draw: `<circle cx="350" cy="374" r="172" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="4"/>`,
+    foot: ["ทรงมาตรฐานของร้าน ราคาตามตารางเลย", "เลือกขนาดฐานได้ 6-7 ถึง 12 ซม."],
+  },
+  "baseshape-square": {
+    t: "ฐานทรงสี่เหลี่ยม",
+    s: "ทรงมาตรฐาน — ไม่บวกเพิ่ม",
+    draw: `<rect x="192" y="216" width="316" height="316" rx="22" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="4"/>`,
+    foot: ["ทรงมาตรฐานของร้าน ราคาตามตารางเลย", "เลือกขนาดฐานได้ 6-7 ถึง 12 ซม."],
+  },
+  "baseshape-special": {
+    t: "ฐานทรงพิเศษ",
+    s: "ไดคัทตามทรงที่ออกแบบ (เช่น ดอกไม้ ดาว หัวใจ)",
+    draw: flowerPath(350, 374, 182),
+    foot: ["ราคาปลีก (1-10 ชิ้น) บวกเพิ่ม 10 บาท/ชิ้น", "11 ชิ้นขึ้นไป บวกเพิ่ม 5 บาท/ชิ้น"],
+  },
+};
+
+const shapeArt = (s) => frame(`${title(s.t, s.s)}${s.draw}${slot(350, 374)}${foot(s.foot)}`);
+
 // ── 5. งานสกรีน 1 ด้าน / 2 ด้าน ──────────────────────────────────────────
 function screenArt(sides) {
   const h = 300;
@@ -408,6 +451,7 @@ await clip();
 await render("hero", hero);
 for (const cm of SIZES) await render(`size-${cm}`, sizeArt(cm));
 for (const b of BASES) await render(`base-${b.key}`, baseArt(b));
+for (const [name, sh] of Object.entries(SHAPES)) await render(name, shapeArt(sh));
 await render("basescreen-no", baseScreenNo);
 await render("basescreen-yes", baseScreenYes);
 await render("screen-1", screenArt(1));
