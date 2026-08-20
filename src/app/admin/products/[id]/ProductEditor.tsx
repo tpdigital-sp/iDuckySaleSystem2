@@ -101,6 +101,8 @@ type DraftOption = {
   showWhenAlsoChoices?: string[];
   /** 🎨 โชว์เป็นตารางสวอตช์สีบนหน้าร้าน (กลุ่ม multi ที่ตัวเลือกเยอะ เช่น สีไหม) */
   swatchGrid?: boolean;
+  /** 🔍 รูปตารางสีเต็มของกลุ่มสวอตช์ (เปิดดูขยายจากหน้าร้าน) */
+  chartSrc?: string;
 };
 /**
  * กางช่อง "🔢 ระบุจำนวน" ที่แถวตัวเลือกไหม — ติ๊กสวิตช์ที่หัวกลุ่มก่อนถึงโผล่
@@ -406,6 +408,7 @@ function toDraft(p: Product): Draft {
     options: p.options.map((o) => ({
       label: o.label,
       ...(o.swatchGrid ? { swatchGrid: true } : {}),
+      ...(o.chartSrc ? { chartSrc: o.chartSrc } : {}),
       choices: o.choices.map((c) => ({
         name: c.name,
         extra: c.extra ? String(c.extra) : "",
@@ -625,6 +628,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
     .map((o) => ({
       label: o.label.trim(),
       ...(o.swatchGrid ? { swatchGrid: true } : {}),
+      ...(o.chartSrc ? { chartSrc: o.chartSrc } : {}),
       choices: o.choices
         .filter((c) => c.name.trim())
         // ชื่อซ้ำในกลุ่มเดียวกันเหลือตัวแรกตัวเดียว — ตัวที่ซ้ำใช้ช่องราคาคอลัมน์เดียวกัน

@@ -257,6 +257,8 @@ export default function ProductDetail({
   const [qty, setQty] = useState(1);
   // 🔍 รูปที่กำลังเปิดดูขนาดใหญ่ (lightbox) — ว่าง = ปิดอยู่
   const [zoomSrc, setZoomSrc] = useState("");
+  /** 🎨 สีที่แตะล่าสุดของแต่ละกลุ่มสวอตช์ (คีย์ = ชื่อกลุ่ม) — โชว์แถบพรีวิวใหญ่ใต้ตาราง */
+  const [swatchTap, setSwatchTap] = useState<Record<string, string>>({});
   /**
    * รูปทั้งหมดที่เลื่อนดูใน lightbox ได้ (เรียงตามแกลเลอรี เฉพาะช่องที่มีไฟล์รูปจริง)
    * รูปประกอบในเนื้อหา (section) ไม่อยู่ในลิสต์นี้ — เปิดดูเดี่ยว ๆ ไม่มีลูกศร
@@ -1555,7 +1557,9 @@ export default function ProductDetail({
                      * 🎨 ตารางสวอตช์สี — ตัวเลือกเยอะ (เช่น สีไหม 80 เบอร์) ปุ่ม pill ปกติจะยาวทั้งหน้า
                      * วงกลมสี + เลขใต้ เรียง 8 ต่อแถวในกล่องสูงคงที่เลื่อนได้ · กดสลับติ๊กเหมือน multi ปกติ
                      * ไม่เรียก jumpToImage — ชิปไม่อยู่ในแกลเลอรี (ดู galleryImages)
+                     * ใต้ตารางมีแถบพรีวิวใหญ่ของสีที่แตะล่าสุด + ปุ่มเปิดตารางสีเต็ม (chartSrc)
                      */
+                    <>
                     <div className="grid max-h-72 grid-cols-[repeat(auto-fill,minmax(3rem,1fr))] gap-1 overflow-y-auto rounded-2xl bg-white/70 p-2 ring-1 ring-amber-100">
                       {opt.choices
                         .filter((c) => allowed.includes(c.name))
@@ -1569,13 +1573,14 @@ export default function ProductDetail({
                               role="checkbox"
                               aria-checked={on}
                               title={c.name}
-                              onClick={() =>
+                              onClick={() => {
                                 writePicks((cur) =>
                                   opt.choices
                                     .filter((x) => (x.name === c.name ? !on : cur.some((p) => p.name === x.name)))
                                     .map((x) => ({ name: x.name, qty: cur.find((p) => p.name === x.name)?.qty ?? 1 }))
-                                )
-                              }
+                                );
+                                setSwatchTap((m) => ({ ...m, [opt.label]: c.name }));
+                              }}
                               className={`flex flex-col items-center gap-0.5 rounded-xl p-1 transition ${
                                 on ? "bg-amber-400/90 shadow" : "hover:bg-amber-50"
                               }`}
@@ -1610,7 +1615,37 @@ export default function ProductDetail({
                             </button>
                           );
                         })}
-                    </div>
+    </div>
+                      {/* 🔍 ดูรูปใหญ่: แถบพรีวิวสีที่แตะล่าสุด + ปุ่มเปิดตารางสีเต็มใน lightbox */}
+                      {(() => {
+                        const tapName = swatchTap[opt.label] ?? picked[picked.length - 1];
+                        const tap = opt.choices.find((c) => c.name === tapName);
+                        return (
+                          <div className="mt-1.5 flex items-center gap-2">
+                            {tap?.imageSrc && (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={tap.imageSrc}
+                                alt={tap.name}
+                                className="h-12 min-w-0 flex-1 rounded-xl object-cover ring-1 ring-black/10"
+                              />
+                            )}
+                            {tap && (
+                              <span className="shrink-0 text-[12px] font-bold text-stone-600">{tap.name}</span>
+                            )}
+                            {opt.chartSrc && (
+                              <button
+                                type="button"
+                                onClick={() => setZoomSrc(opt.chartSrc!)}
+                                className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
+                              >
+                                🔍 ดูตารางสีเต็ม
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </>
                   ) : multi ? (
                     <div className="flex flex-wrap gap-1.5">
                       {opt.choices
