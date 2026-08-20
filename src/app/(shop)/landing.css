@@ -1737,3 +1737,173 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .dl .nbell-foot{display:block;font-size:.72rem;color:var(--blue-deep);text-align:center;padding:8px 4px 4px;font-family:var(--display)}
 .dl .nbell-foot:hover{text-decoration:underline}
 @media (max-width:420px){.dl .nbell-panel{width:min(296px,calc(100vw - 40px));right:-52px}}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   หน้าย่อยของบัญชี (ประวัติการสั่งซื้อ · ข้อมูลส่วนตัว) — prefix .acd- เหมือนแดชบอร์ด
+   ใช้โทเคนชุดเดียวกับหน้าแรก: ฟอนต์ Mitr (หัวเรื่อง/ปุ่ม) + IBM Plex Sans Thai Looped (เนื้อความ),
+   สีฟ้า→กรมท่า พร้อมไข่แดงเป็นสีเน้น, การ์ดกระจกขอบมน r-l, เงา shadow-s/m
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.dl .acd-loading{padding:60px 10px;text-align:center;color:var(--navy-soft);font-size:.9rem}
+
+/* --- หัวเรื่องของหน้า --- */
+.dl .acd-head{display:flex;flex-direction:column;gap:9px}
+.dl .acd-head-back{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;font-size:.8rem;font-weight:500;
+  color:var(--blue-deep);background:rgba(255,255,255,.7);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  border:1px solid var(--sky-200);border-radius:999px;padding:6px 14px;transition:.22s}
+.dl .acd-head-back:hover{background:#fff;transform:translateX(-3px);box-shadow:0 8px 16px rgba(44,129,196,.14)}
+.dl .acd-head-row{display:flex;align-items:center;gap:15px}
+.dl .acd-head-ico{width:54px;height:54px;border-radius:20px;flex:none;display:grid;place-items:center;
+  background:linear-gradient(160deg,#fff,var(--sky-100));border:1px solid var(--sky-200);
+  box-shadow:0 10px 20px -10px rgba(44,129,196,.4)}
+.dl .acd-head-ico img{width:36px;height:36px;object-fit:contain}
+.dl .acd-head-txt{min-width:0}
+.dl .acd-head-txt h1{font-family:var(--display);font-weight:600;font-size:1.72rem;line-height:1.25;color:var(--navy);margin:0}
+.dl .acd-head-txt p{font-size:.86rem;color:var(--navy-soft);margin:3px 0 0}
+
+/* --- แถบสรุปตัวเลข --- */
+.dl .acd-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.dl .acd-stat{background:linear-gradient(180deg,rgba(255,255,255,.78) 0%,rgba(255,255,255,.58) 100%);
+  -webkit-backdrop-filter:blur(9px);backdrop-filter:blur(9px);border:1px solid rgba(255,255,255,.85);
+  border-radius:var(--r-m);padding:15px 18px;box-shadow:var(--shadow-s);display:flex;flex-direction:column;gap:3px;
+  transition:transform .25s ease,box-shadow .3s ease}
+.dl .acd-stat:hover{transform:translateY(-3px);box-shadow:var(--shadow-m)}
+.dl .acd-stat-label{font-size:.76rem;color:var(--navy-soft)}
+.dl .acd-stat-value{font-family:var(--display);font-weight:600;font-size:1.5rem;line-height:1.15;color:var(--navy)}
+.dl .acd-stat.warn{border-color:rgba(242,69,107,.28);background:linear-gradient(180deg,rgba(255,240,243,.9),rgba(255,255,255,.62))}
+.dl .acd-stat.warn .acd-stat-value{color:var(--coral-deep)}
+
+/* --- แถวตัวกรอง (ใช้ปุ่ม .acd-ttab ร่วมกับแท็บติดตามสถานะ) --- */
+.dl .acd-filters{display:flex;gap:8px;flex-wrap:wrap}
+.dl .acd-filters .acd-ttab{background:rgba(255,255,255,.72);border:1px solid var(--sky-200);padding:8px 8px 8px 15px;
+  display:inline-flex;align-items:center;gap:8px}
+.dl .acd-filters .acd-ttab.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.dl .acd-ttab-n{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;
+  background:var(--sky-100);color:var(--blue-deep);font-size:.68rem;font-weight:600}
+.dl .acd-filters .acd-ttab.on .acd-ttab-n{background:rgba(255,255,255,.2);color:var(--yolk)}
+
+/* --- การ์ดออเดอร์ --- */
+.dl .acd-olist{display:flex;flex-direction:column;gap:18px}
+.dl .acd-ocard{background:linear-gradient(180deg,rgba(255,255,255,.8) 0%,rgba(255,255,255,.6) 100%);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.9);
+  border-radius:var(--r-l);padding:24px 26px;box-shadow:var(--shadow-s);position:relative;
+  display:flex;flex-direction:column;gap:14px;transition:transform .28s ease,box-shadow .35s ease,border-color .3s ease}
+.dl .acd-ocard:hover{transform:translateY(-4px);box-shadow:var(--shadow-m);border-color:var(--sky-200)}
+.dl .acd-ocard.cancelled{opacity:.72}
+.dl .acd-ocard-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.dl .acd-ocard-idcol{min-width:0}
+.dl .acd-ocard .acd-order-id{font-size:1.14rem}
+.dl .acd-ocard-items{list-style:none;margin:0;padding:12px 16px;border-radius:var(--r-s);background:var(--sky-50);
+  border:1px solid var(--sky-100);display:flex;flex-direction:column;gap:6px}
+.dl .acd-ocard-items li{display:flex;align-items:baseline;gap:10px;font-size:.86rem;color:var(--navy)}
+.dl .acd-ocard-item-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dl .acd-ocard-item-qty{flex:none;color:var(--navy-soft);font-size:.8rem}
+.dl .acd-ocard-more button{all:unset;cursor:pointer;font-size:.78rem;color:var(--blue-deep);font-weight:500}
+.dl .acd-ocard-more button:hover{text-decoration:underline}
+.dl .acd-ocard-track{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;font-size:.78rem;
+  background:var(--sky-100);color:var(--blue-deep);border-radius:999px;padding:6px 14px;margin:0}
+.dl .acd-ocard-track b{font-weight:600;letter-spacing:.02em}
+.dl .acd-ocard .acd-divider{margin:2px 0 0}
+.dl .acd-ocard-foot{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.dl .acd-ocard-sum{display:flex;flex-direction:column;gap:1px;min-width:0}
+.dl .acd-ocard-sum span{font-size:.74rem;color:var(--navy-soft)}
+.dl .acd-ocard-sum b{font-family:var(--display);font-weight:600;font-size:1.32rem;color:var(--navy);line-height:1.15}
+.dl .acd-ocard-sum.owed b{color:var(--coral-deep)}
+.dl .acd-ocard-actions{display:flex;gap:10px;flex-wrap:wrap;margin-left:auto}
+.dl .acd-ocard-actions .acd-btn-compact{flex:none}
+/* แถบขั้นตอนแบบย่อในการ์ดรายการ — จุดเล็กลง ไม่มีบรรทัดเวลา */
+.dl .acd-tracker.compact{padding:4px 2px 0}
+.dl .acd-tracker.compact .tdot{width:30px;height:30px;font-size:.86rem}
+.dl .acd-tracker.compact .tline{top:15px;left:calc(-50% + 15px);width:calc(100% - 30px);height:3px}
+.dl .acd-tracker.compact .tlabel{font-size:.7rem;margin-top:7px}
+
+/* --- สถานะว่างเปล่า --- */
+.dl .acd-empty{background:linear-gradient(180deg,rgba(255,255,255,.8) 0%,rgba(255,255,255,.6) 100%);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.9);
+  border-radius:var(--r-l);box-shadow:var(--shadow-s);padding:48px 26px;text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:10px}
+.dl .acd-empty.small{padding:30px 22px}
+.dl .acd-empty-ico{font-size:2.8rem;line-height:1;animation:acdFloatY 3.6s ease-in-out infinite}
+.dl .acd-empty h3{font-family:var(--display);font-weight:600;font-size:1.2rem;color:var(--navy);margin:0}
+.dl .acd-empty p{font-size:.86rem;color:var(--navy-soft);margin:0}
+.dl .acd-empty .btn{margin-top:8px}
+@keyframes acdFloatY{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+
+/* --- การ์ดทั่วไปในหน้าข้อมูลส่วนตัว --- */
+.dl .acd-card{background:linear-gradient(180deg,rgba(255,255,255,.8) 0%,rgba(255,255,255,.6) 100%);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.9);
+  border-radius:var(--r-l);box-shadow:var(--shadow-s);padding:26px}
+.dl .acd-card-head{margin-bottom:16px}
+.dl .acd-card-sub{font-size:.82rem;color:var(--navy-soft);margin:-6px 0 0}
+.dl .acd-chip-sky{background:var(--sky-100);color:var(--blue-deep)}
+
+/* รูปโปรไฟล์ */
+.dl .acd-photo{display:flex;align-items:center;gap:22px}
+.dl .acd-ring-plain{background:linear-gradient(135deg,var(--blue),var(--blue-deep))}
+.dl .acd-avatar.has-photo{all:unset;display:grid;place-items:center;width:100%;height:100%;border-radius:50%;
+  overflow:hidden;position:relative;cursor:pointer;background:linear-gradient(160deg,var(--sky-100),var(--sky-200));
+  transition:transform .25s cubic-bezier(.34,1.56,.64,1)}
+.dl .acd-photo-txt{flex:1;min-width:0}
+.dl .acd-photo-txt .acd-chip{margin-bottom:8px}
+.dl .acd-photo-hint{font-size:.8rem;color:var(--navy-soft);margin:0 0 12px}
+.dl .acd-photo-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.dl .acd-photo-actions .acd-btn-compact{flex:none}
+.dl .acd-file-btn{position:relative;overflow:hidden;cursor:pointer}
+.dl .acd-file-btn input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.dl .acd-file-btn.disabled{pointer-events:none;opacity:.55}
+.dl .acd-link-danger{all:unset;cursor:pointer;font-size:.8rem;color:var(--coral-deep);padding:6px 12px;border-radius:999px;transition:.2s}
+.dl .acd-link-danger:hover{background:rgba(242,69,107,.1)}
+.dl .acd-msg{font-size:.78rem;margin:10px 0 0}
+.dl .acd-msg.ok{color:#1D9A55}
+.dl .acd-msg.bad{color:var(--coral-deep)}
+
+/* ฟอร์ม */
+.dl .acd-form{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.dl .acd-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.dl .acd-field.full{grid-column:1/-1}
+.dl .acd-field label{font-family:var(--display);font-size:.8rem;font-weight:400;color:var(--navy)}
+.dl .acd-input{width:100%;font-family:var(--body);font-size:.9rem;color:var(--navy);background:#fff;
+  border:1.5px solid var(--sky-200);border-radius:var(--r-s);padding:11px 14px;resize:vertical;
+  transition:border-color .2s ease,box-shadow .2s ease}
+.dl .acd-input::placeholder{color:#A9BBD2}
+.dl .acd-input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 4px rgba(87,182,232,.18)}
+.dl .acd-field-hint{font-size:.74rem;color:var(--navy-soft);margin:2px 0 0}
+.dl .acd-save-bar{display:flex;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap;
+  margin-top:20px;padding-top:18px;border-top:1px dashed var(--sky-200)}
+.dl .acd-save-note{font-size:.78rem;color:var(--navy-soft);margin-right:auto}
+.dl .acd-save-note.ok{color:#1D9A55;font-weight:500}
+.dl .acd-save-bar .btn{padding:12px 20px 12px 26px;font-size:.92rem}
+
+/* แถวเมนูที่ไม่ได้กดได้ (โชว์ข้อมูลอย่างเดียว) */
+.dl .acd-menu-item.static{cursor:default}
+.dl .acd-menu-item.static:hover{background:transparent}
+.dl .acd-menu-item.static:hover .acd-menu-ico{transform:none}
+
+/* ดูรูปโปรไฟล์ขนาดใหญ่ */
+.dl .acd-lightbox{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:24px;
+  background:rgba(23,58,107,.62);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);animation:acdFade .2s ease}
+.dl .acd-lightbox img{max-height:80vh;max-width:100%;border-radius:var(--r-l);background:#fff;object-fit:contain;
+  box-shadow:var(--shadow-l);border:5px solid rgba(255,255,255,.75)}
+.dl .acd-lightbox .acd-modal-close{position:absolute;top:20px;right:20px}
+@keyframes acdFade{from{opacity:0}to{opacity:1}}
+
+@media (max-width:900px){
+  .dl .acd-stats{grid-template-columns:1fr 1fr}
+  .dl .acd-stats>.acd-stat:last-child{grid-column:1/-1}
+}
+@media (max-width:640px){
+  .dl .acd-head-txt h1{font-size:1.42rem}
+  .dl .acd-head-ico{width:46px;height:46px;border-radius:16px}
+  .dl .acd-head-ico img{width:30px;height:30px}
+  .dl .acd-ocard{padding:20px 18px;border-radius:var(--r-m)}
+  .dl .acd-ocard-actions{width:100%;margin-left:0}
+  .dl .acd-ocard-actions .acd-btn-compact{flex:1}
+  .dl .acd-card{padding:20px 18px;border-radius:var(--r-m)}
+  .dl .acd-form{grid-template-columns:1fr}
+  .dl .acd-photo{flex-direction:column;align-items:flex-start;gap:16px}
+  .dl .acd-empty{padding:36px 20px;border-radius:var(--r-m)}
+  .dl .acd-tracker.compact{overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  .dl .acd-tracker.compact::-webkit-scrollbar{display:none}
+  .dl .acd-tracker.compact .acd-tstep{min-width:72px}
+  .dl .acd-save-bar .btn{width:100%;justify-content:center}
+}

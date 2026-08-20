@@ -4,11 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatPrice } from "@/lib/products";
-import { orderBalance, orderTotal, STATUS_STYLES, type Order, type OrderStatus } from "@/lib/admin-data";
-import StepDots from "@/components/StepDots";
+import { orderBalance, orderTotal, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { useCustomer } from "@/lib/customer-context";
 import { useCart } from "@/lib/cart-context";
 import { fetchMyOrders, readStoredOrders, setOrdersOwner } from "@/lib/my-orders";
+import { AccountHead, AccountShell, OrderTracker, statusIcon } from "@/components/account/AccountShell";
+
+/*
+ * ประวัติการสั่งซื้อ — ดีไซน์เดียวกับหน้าแรก/แดชบอร์ด (โทนฟ้า-กรมท่า-ไข่แดง, ฟอนต์ Mitr + IBM Plex Sans Thai Looped)
+ * โครง: เมนูข้าง + [หัวเรื่อง → สรุปตัวเลข → ตัวกรอง → การ์ดออเดอร์]
+ */
 
 /** กลุ่มกรอง — รวมสถานะที่ลูกค้าเข้าใจง่าย */
 const FILTERS: { key: string; label: string; match: (s: OrderStatus) => boolean }[] = [
@@ -18,14 +23,17 @@ const FILTERS: { key: string; label: string; match: (s: OrderStatus) => boolean 
   { key: "cancelled", label: "ยกเลิก", match: (s) => s === "ยกเลิก" },
 ];
 
+/** จำนวนรายการที่โชว์ในการ์ดก่อนยุบเป็น "+ อีก n รายการ" */
+const ITEM_PEEK = 3;
+
 export default function MyOrdersPage() {
   const router = useRouter();
   const { customer, loading } = useCustomer();
   const { addItem, productOf } = useCart();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [state, setState] = useState<"loading" | "ready" | "setup">("loading");
+  const [state, setState] = useState<"loading" | "ready">("loading");
   const [filter, setFilter] = useState("all");
-  const [reordered, setReordered] = useState<string | null>(null);
+  const [toast, setToast] = useState("");
 
   useEffect(() => {
     if (!loading && !customer) router.replace("/account/login");
@@ -43,7 +51,7 @@ export default function MyOrdersPage() {
     (async () => {
       const data = await fetchMyOrders();
       setOrders(data.orders);
-      setState(data.needsSetup ? "setup" : "ready");
+      setState("ready");
     })();
   }, [customer]);
 
@@ -54,6 +62,13 @@ export default function MyOrdersPage() {
     for (const f of FILTERS) c[f.key] = orders.filter((o) => f.match(o.status)).length;
     return c;
   }, [orders]);
+  /** ยอดที่ยังค้างชำระรวมทุกออเดอร์ (ไม่นับที่ยกเลิก) */
+  const owedAll = useMemo(() => orders.reduce((s, o) => (o.status === "ยกเลิก" ? s : s + orderBalance(o)), 0), [orders]);
+
+  function showToast(t: string) {
+    setToast(t);
+    setTimeout(() => setToast(""), 2600);
+  }
 
   /** สั่งซ้ำ — ดึงรายการเดิมเข้าตะกร้า (ใช้ตัวเลือกเดิมถ้ามี) แล้วไปตะกร้า */
   function reorder(o: Order) {
@@ -63,139 +78,167 @@ export default function MyOrdersPage() {
       addItem(it.productId, it.sel ?? {}, it.qty);
       added++;
     }
-    if (added === 0) {
-      setReordered(o.id + ":none");
-      return;
-    }
+    if (added === 0) return showToast("สินค้าในออเดอร์นี้ไม่มีขายแล้ว สั่งซ้ำไม่ได้");
     router.push("/cart");
   }
 
   if (loading || !customer) {
-    return <div className="mx-auto max-w-3xl px-4 py-16 text-center text-sm text-stone-400">กำลังโหลด…</div>;
+    return (
+      <AccountShell active="orders">
+        <div className="acd-loading">กำลังโหลด…</div>
+      </AccountShell>
+    );
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10">
-      <Link href="/account" className="text-sm font-semibold text-stone-400 hover:text-stone-600">← บัญชีของฉัน</Link>
-      <h1 className="mt-1 text-2xl font-extrabold text-amber-950 sm:text-3xl">ประวัติการสั่งซื้อ</h1>
-      {orders.length > 0 && <p className="mt-1 text-sm text-stone-400">ทั้งหมด {orders.length} ออเดอร์ · กดสั่งซ้ำหรือดูรายละเอียดได้เลย</p>}
+    <AccountShell active="orders">
+      <AccountHead
+        ico="orders"
+        title="ประวัติการสั่งซื้อ"
+        sub={orders.length > 0 ? "ทุกออเดอร์ของคุณอยู่ที่นี่ — กดสั่งซ้ำหรือดูรายละเอียดได้เลย" : "ออเดอร์ที่สั่งผ่านเว็บจะมาโผล่ที่หน้านี้"}
+      />
+
+      {/* สรุปตัวเลข */}
+      {orders.length > 0 && (
+        <div className="acd-stats">
+          <div className="acd-stat">
+            <span className="acd-stat-label">ออเดอร์ทั้งหมด</span>
+            <b className="acd-stat-value">{orders.length}</b>
+          </div>
+          <div className="acd-stat">
+            <span className="acd-stat-label">กำลังดำเนินการ</span>
+            <b className="acd-stat-value">{counts.active}</b>
+          </div>
+          <div className={`acd-stat${owedAll > 0 ? " warn" : ""}`}>
+            <span className="acd-stat-label">{owedAll > 0 ? "ยอดค้างชำระ" : "ค้างชำระ"}</span>
+            <b className="acd-stat-value">{owedAll > 0 ? formatPrice(owedAll) : "ไม่มี ✓"}</b>
+          </div>
+        </div>
+      )}
 
       {/* ตัวกรอง */}
       {orders.length > 0 && (
-        <div className="mt-5 flex flex-wrap gap-2">
+        <div className="acd-filters" role="tablist" aria-label="กรองออเดอร์">
           {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              onClick={() => setFilter(f.key)}
-              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
-                filter === f.key ? "bg-amber-400 text-white" : "bg-white text-stone-500 ring-1 ring-amber-200 hover:bg-amber-50"
-              }`}
-            >
-              {f.label} ({counts[f.key]})
+            <button key={f.key} type="button" role="tab" aria-selected={filter === f.key} className={`acd-ttab${filter === f.key ? " on" : ""}`} onClick={() => setFilter(f.key)}>
+              {f.label} <span className="acd-ttab-n">{counts[f.key]}</span>
             </button>
           ))}
         </div>
       )}
 
-      {state === "loading" ? (
-        <p className="mt-8 text-center text-sm text-stone-400">กำลังโหลด…</p>
+      {state === "loading" && orders.length === 0 ? (
+        <div className="acd-olist">
+          {[0, 1].map((i) => (
+            <div key={i} className="acd-ocard" aria-label="กำลังโหลดออเดอร์">
+              <span className="acd-skel acd-skel-line w40" />
+              <span className="acd-skel acd-skel-line w60" />
+              <span className="acd-skel acd-skel-btn" />
+            </div>
+          ))}
+        </div>
       ) : orders.length === 0 ? (
-        <div className="mt-8 rounded-2xl bg-white p-10 text-center ring-1 ring-amber-100">
-          <span className="text-5xl">🧾</span>
-          <p className="mt-3 text-sm text-stone-500">ยังไม่มีคำสั่งซื้อ</p>
-          <Link href="/products" className="mt-4 inline-block rounded-full bg-amber-400 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-amber-500">
-            🛍️ ไปเลือกสินค้า
+        <div className="acd-empty">
+          <span className="acd-empty-ico">🧾</span>
+          <h3>ยังไม่มีคำสั่งซื้อ</h3>
+          <p>เลือกสินค้าที่ถูกใจ แล้วออเดอร์แรกของคุณจะมาอยู่ตรงนี้</p>
+          <Link href="/products" className="btn btn-yolk">
+            ไปเลือกสินค้า <span className="dot">→</span>
           </Link>
         </div>
       ) : shown.length === 0 ? (
-        <p className="mt-8 text-center text-sm text-stone-400">ไม่มีออเดอร์ในกลุ่มนี้</p>
+        <div className="acd-empty small">
+          <span className="acd-empty-ico">🔍</span>
+          <p>ไม่มีออเดอร์ในกลุ่ม &quot;{active.label}&quot;</p>
+          <button type="button" className="btn btn-ghost acd-btn-compact" onClick={() => setFilter("all")}>
+            ดูทั้งหมด <span className="dot">↺</span>
+          </button>
+        </div>
       ) : (
-        <div className="mt-6 space-y-4">
-          {shown.map((o) => {
-            const owed = orderBalance(o);
-            const href = `/order/${encodeURIComponent(o.id)}${o.key ? `?key=${encodeURIComponent(o.key)}` : ""}`;
-            const canReorder = o.items.some((it) => productOf(it.productId));
-            return (
-              <div
-                key={o.id}
-                className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-amber-100 transition hover:shadow-md sm:flex sm:items-stretch sm:gap-6 sm:p-6"
-              >
-                {/* ── รายละเอียดออเดอร์ ── */}
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-base font-bold text-stone-800">{o.id}</p>
-                      <p className="text-xs text-stone-400">{o.date}</p>
-                    </div>
-                    <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ${STATUS_STYLES[o.status]}`}>
-                      {o.status}
-                    </span>
-                  </div>
-
-                  {/* แถบความคืบหน้า */}
-                  {o.status !== "ยกเลิก" && (
-                    <div className="mt-4">
-                      <StepDots status={o.status} />
-                    </div>
-                  )}
-
-                  <ul className="mt-4 space-y-0.5 text-sm text-stone-500">
-                    {o.items.map((it, i) => (
-                      <li key={i} className="truncate">
-                        {it.name} <span className="text-stone-400">×{it.qty}</span>
-                      </li>
-                    ))}
-                  </ul>
-
-                  {o.tracking && (
-                    <p className="mt-3 inline-block rounded-lg bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700">
-                      🚚 เลขพัสดุ: <span className="font-mono">{o.tracking}</span>
-                    </p>
-                  )}
-                </div>
-
-                {/* ── ยอด + ปุ่ม (ขวาบนจอกว้าง / ล่างบนมือถือ) ── */}
-                <div className="mt-4 flex items-center justify-between gap-3 border-t border-amber-50 pt-4 sm:mt-0 sm:w-44 sm:flex-col sm:items-end sm:justify-center sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0 sm:text-right">
-                  <div className="sm:order-first">
-                    {owed > 0 ? (
-                      <>
-                        <p className="text-xs text-stone-400">ค้างชำระ</p>
-                        <p className="text-lg font-extrabold text-rose-600">{formatPrice(owed)}</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-xs text-stone-400">ยอดรวม</p>
-                        <p className="text-lg font-extrabold text-stone-900">{formatPrice(orderTotal(o))}</p>
-                      </>
-                    )}
-                  </div>
-                  <div className="flex gap-2 sm:w-full sm:flex-col">
-                    {canReorder && (
-                      <button
-                        type="button"
-                        onClick={() => reorder(o)}
-                        className="rounded-full bg-amber-50 px-4 py-2 text-xs font-bold text-amber-700 ring-1 ring-amber-200 transition hover:bg-amber-100"
-                      >
-                        🔁 สั่งซ้ำ
-                      </button>
-                    )}
-                    <Link
-                      href={href}
-                      className="rounded-full bg-amber-400 px-4 py-2 text-center text-xs font-bold text-white transition hover:bg-amber-500"
-                    >
-                      ดูรายละเอียด →
-                    </Link>
-                  </div>
-                </div>
-                {reordered === o.id + ":none" && (
-                  <p className="mt-2 text-xs text-rose-500 sm:hidden">สินค้าในออเดอร์นี้ไม่มีขายแล้ว สั่งซ้ำไม่ได้</p>
-                )}
-              </div>
-            );
-          })}
+        <div className="acd-olist">
+          {shown.map((o) => (
+            <OrderCard key={o.id} order={o} onReorder={reorder} canReorder={o.items.some((it) => productOf(it.productId))} />
+          ))}
         </div>
       )}
-    </div>
+
+      <div className={`acd-toast${toast ? " show" : ""}`} role="status" aria-live="polite">
+        {toast}
+      </div>
+    </AccountShell>
+  );
+}
+
+/** การ์ดออเดอร์ 1 ใบ */
+function OrderCard({ order: o, onReorder, canReorder }: { order: Order; onReorder: (o: Order) => void; canReorder: boolean }) {
+  const [openItems, setOpenItems] = useState(false);
+  const owed = orderBalance(o);
+  const href = `/order/${encodeURIComponent(o.id)}${o.key ? `?key=${encodeURIComponent(o.key)}` : ""}`;
+  const rest = o.items.length - ITEM_PEEK;
+  const items = openItems ? o.items : o.items.slice(0, ITEM_PEEK);
+
+  return (
+    <article className={`acd-ocard${o.status === "ยกเลิก" ? " cancelled" : ""}`}>
+      <div className="acd-ocard-top">
+        <div className="acd-ocard-idcol">
+          <div className="acd-order-id">{o.id}</div>
+          <div className="acd-order-date">
+            {o.date} · {o.items.length} รายการ
+          </div>
+        </div>
+        <span className={`acd-status s-${STEP_OF[o.status]}`}>
+          <i>{statusIcon(o)}</i> {o.status}
+        </span>
+      </div>
+
+      {o.status !== "ยกเลิก" && <OrderTracker order={o} compact />}
+
+      <ul className="acd-ocard-items">
+        {items.map((it, i) => (
+          <li key={i}>
+            <span className="acd-ocard-item-name">{it.name}</span>
+            <span className="acd-ocard-item-qty">×{it.qty}</span>
+          </li>
+        ))}
+        {rest > 0 && (
+          <li className="acd-ocard-more">
+            <button type="button" onClick={() => setOpenItems((v) => !v)}>
+              {openItems ? "ย่อรายการ ▴" : `อีก ${rest} รายการ ▾`}
+            </button>
+          </li>
+        )}
+      </ul>
+
+      {o.tracking && (
+        <p className="acd-ocard-track">
+          🚚 เลขพัสดุ <b>{o.tracking}</b>
+        </p>
+      )}
+
+      <div className="acd-divider" />
+
+      <div className="acd-ocard-foot">
+        <div className={`acd-ocard-sum${owed > 0 && o.status !== "ยกเลิก" ? " owed" : ""}`}>
+          <span>{owed > 0 && o.status !== "ยกเลิก" ? "ค้างชำระ" : "ยอดรวม"}</span>
+          <b>{formatPrice(owed > 0 && o.status !== "ยกเลิก" ? owed : orderTotal(o))}</b>
+        </div>
+        <div className="acd-ocard-actions">
+          {canReorder && (
+            <button type="button" className="btn btn-ghost acd-btn-compact" onClick={() => onReorder(o)}>
+              สั่งซ้ำ <span className="dot">🔁</span>
+            </button>
+          )}
+          {owed > 0 && o.status !== "ยกเลิก" ? (
+            <Link href={href} className="btn btn-yolk acd-btn-compact">
+              ชำระเงิน <span className="dot">→</span>
+            </Link>
+          ) : (
+            <Link href={href} className="btn btn-primary acd-btn-compact">
+              ดูรายละเอียด <span className="dot">→</span>
+            </Link>
+          )}
+        </div>
+      </div>
+    </article>
   );
 }

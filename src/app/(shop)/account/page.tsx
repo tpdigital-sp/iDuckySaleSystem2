@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatPrice } from "@/lib/products";
-import { graphicWaitingItems, orderBalance, orderTotal, ORDER_STEPS, STEP_OF, type Order } from "@/lib/admin-data";
+import { graphicWaitingItems, orderBalance, STEP_OF, type Order } from "@/lib/admin-data";
 import { fetchShopPayment, readStoredShopPayment, tiersConfigOf } from "@/lib/shop-settings";
 import { nextTier, paidSpend, tierForSpend, tiersOf, type Tier } from "@/lib/tiers";
 import { useCustomer } from "@/lib/customer-context";
@@ -13,6 +13,7 @@ import { clearMyOrders, fetchMyOrders, readStoredOrders, setOrdersOwner } from "
 import { uploadAvatar } from "@/lib/avatar-upload";
 import { LINE_URL } from "@/components/LineButton";
 import MyCoupons from "@/components/MyCoupons";
+import { AccountSideNav, MenuIco, OrderTracker, statusIcon, type IcoName } from "@/components/account/AccountShell";
 
 /*
  * หน้า "บัญชีของฉัน" — พอร์ตจากไฟล์ต้นแบบ USER PROFILE UPDATE_03.html
@@ -99,25 +100,6 @@ function customerCode(id: string): string {
 }
 
 /** ขั้นตอนบนแถบติดตาม 5 ขั้น (ตรงกับ ORDER_STEPS) */
-const STEP_ICONS = ["✓", "💳", "🖼️", "🏭", "🚚"];
-/** ป้ายขั้นตอนตามสถานะจริง (ขั้นที่กำลังทำเปลี่ยนคำให้ตรงกับที่ค้างอยู่) */
-function stepLabel(i: number, o: Order): string {
-  const cur = STEP_OF[o.status];
-  if (i === 0) return "สั่งซื้อสำเร็จ";
-  if (i === 1) return cur > 1 ? "ชำระเงินแล้ว" : o.status === "รอตรวจสอบ" ? "รอตรวจสลิป" : "รอชำระเงิน";
-  if (i === 2) return cur > 2 ? "อนุมัติแบบแล้ว" : o.status === "แก้ไขแบบ" ? "กำลังแก้แบบ" : o.status === "รอตรวจแบบ" ? "รอคุณตรวจแบบ" : "ทำแบบงาน";
-  if (i === 3) return cur > 3 ? "ผลิตเสร็จ" : "กำลังผลิต";
-  return o.status === "เสร็จสิ้น" ? "จัดส่งสำเร็จ" : o.status === "จัดส่งแล้ว" ? "จัดส่งแล้ว" : "จัดส่ง";
-}
-function stepTime(i: number, o: Order): string {
-  const cur = STEP_OF[o.status];
-  if (i === 0) return o.date;
-  if (i === 1 && cur === 1) return orderBalance(o) > 0 ? `ค้างชำระ ${formatPrice(orderBalance(o))}` : "รอตรวจสอบ";
-  if (i === 4 && o.tracking) return `พัสดุ ${o.tracking}`;
-  if (i < cur) return "เรียบร้อย";
-  return "—";
-}
-
 const thMonth = (iso: string) => {
   const d = new Date(iso);
   if (!isFinite(d.getTime())) return "";
@@ -365,35 +347,13 @@ export default function AccountPage() {
         <div className="acd-wrap acd-dash">
           <div className="acd-grid">
             {/* ===== เมนูข้าง ===== */}
-            <aside className="acd-side">
-              <nav className="acd-sidenav" aria-label="เมนูบัญชี">
-                <span className="on">
-                  <NavIco name="home" /> บัญชีของฉัน
-                </span>
-                <Link href="/account/orders">
-                  <NavIco name="orders" /> ประวัติการสั่งซื้อ
-                </Link>
-                <Link href={proofHref}>
-                  <NavIco name="proof" /> อนุมัติแบบ {proofCount > 0 && <span className="acd-sidedot" />}
-                </Link>
-                <button type="button" onClick={() => showToast("คลังไฟล์งานของฉัน — เร็วๆ นี้! ตอนนี้สั่งซ้ำได้จากประวัติการสั่งซื้อ")}>
-                  <NavIco name="files" /> ไฟล์งานของฉัน
-                </button>
-                <Link href="/account/profile">
-                  <NavIco name="profile" /> ข้อมูลส่วนตัว
-                </Link>
-                <Link href="/account/profile">
-                  <NavIco name="address" /> ที่อยู่จัดส่ง
-                </Link>
-                <Link href="/how-to-order">
-                  <NavIco name="howto" /> วิธีสั่งซื้อ
-                </Link>
-                <hr />
-                <button type="button" className="logout" onClick={() => setLogoutAsk(true)}>
-                  ออกจากระบบ
-                </button>
-              </nav>
-            </aside>
+            <AccountSideNav
+              active="home"
+              proofHref={proofHref}
+              proofCount={proofCount}
+              onFiles={() => showToast("คลังไฟล์งานของฉัน — เร็วๆ นี้! ตอนนี้สั่งซ้ำได้จากประวัติการสั่งซื้อ")}
+              onLogout={() => setLogoutAsk(true)}
+            />
 
             {/* ===== เนื้อหา ===== */}
             <div className="acd-content">
@@ -631,7 +591,7 @@ export default function AccountPage() {
                           </div>
                         </div>
                         <span className={`acd-status s-${STEP_OF[latest.status]}`}>
-                          <i>{latest.status === "รอชำระเงิน" || latest.status === "รอตรวจสอบ" ? "⏳" : latest.status === "ยกเลิก" ? "✕" : STEP_ICONS[Math.min(STEP_OF[latest.status], 4)]}</i> {latest.status}
+                          <i>{statusIcon(latest)}</i> {latest.status}
                         </span>
                       </div>
                       <div className="acd-divider" />
@@ -694,20 +654,7 @@ export default function AccountPage() {
                       {tracked.status === "ยกเลิก" ? (
                         <p className="acd-track-cancel">ออเดอร์นี้ถูกยกเลิกแล้ว</p>
                       ) : (
-                        <div className="acd-tracker">
-                          {ORDER_STEPS.map((_, i) => {
-                            const cur = STEP_OF[tracked.status];
-                            const cls = i < cur ? " done" : i === cur ? " current" : "";
-                            return (
-                              <div key={i} className={`acd-tstep${cls}`}>
-                                <span className="tline" />
-                                <div className="tdot">{STEP_ICONS[i]}</div>
-                                <div className="tlabel">{stepLabel(i, tracked)}</div>
-                                <div className="ttime">{stepTime(i, tracked)}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                        <OrderTracker order={tracked} />
                       )}
                     </div>
                   </div>
@@ -791,35 +738,6 @@ export default function AccountPage() {
         </div>
       )}
     </div>
-  );
-}
-
-/** ไอคอนภาพจริงของเมนู (ไฟล์อยู่ที่ public/account/menu) */
-type IcoName = "home" | "orders" | "proof" | "files" | "profile" | "address" | "howto" | "production" | "receipt" | "claim" | "review" | "bell";
-const ICO_ALT: Record<IcoName, string> = {
-  home: "บัญชีของฉัน",
-  orders: "ประวัติการสั่งซื้อ",
-  proof: "อนุมัติแบบ",
-  files: "ไฟล์งานของฉัน",
-  profile: "ข้อมูลส่วนตัว",
-  address: "ที่อยู่จัดส่ง",
-  howto: "วิธีสั่งซื้อ",
-  production: "ติดตามสถานะการผลิต",
-  receipt: "ใบเสร็จ",
-  claim: "แจ้งปัญหา",
-  review: "รีวิว",
-  bell: "แจ้งเตือน",
-};
-function MenuIco({ name }: { name: IcoName }) {
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={`/account/menu/${name}.webp`} alt="" title={ICO_ALT[name]} loading="lazy" />;
-}
-/** ไอคอนในเมนูข้าง — วงกลมพื้นฟ้าครอบภาพ */
-function NavIco({ name }: { name: IcoName }) {
-  return (
-    <span className="ico">
-      <MenuIco name={name} />
-    </span>
   );
 }
 

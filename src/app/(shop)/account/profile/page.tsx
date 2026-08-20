@@ -7,6 +7,12 @@ import { useCustomer } from "@/lib/customer-context";
 import { updateProfile } from "@/lib/customer-auth";
 import { checkAvatarFile, removeAvatar, uploadAvatarBlob } from "@/lib/avatar-upload";
 import AvatarCropper from "@/components/AvatarCropper";
+import { AccountHead, AccountShell, MenuIco } from "@/components/account/AccountShell";
+
+/*
+ * ข้อมูลส่วนตัว — ดีไซน์เดียวกับหน้าแรก/แดชบอร์ด (โทนฟ้า-กรมท่า-ไข่แดง, ฟอนต์ Mitr + IBM Plex Sans Thai Looped)
+ * โครง: เมนูข้าง + [หัวเรื่อง → การ์ดรูปโปรไฟล์ → การ์ดข้อมูลติดต่อ → การ์ดบัญชี/ความปลอดภัย]
+ */
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -36,10 +42,6 @@ export default function ProfilePage() {
     if (!loading && !customer) router.replace("/account/login");
   }, [loading, customer, router]);
 
-  if (loading || !customer) {
-    return <div className="mx-auto max-w-md px-4 py-16 text-center text-sm text-stone-400">กำลังโหลด…</div>;
-  }
-
   async function save() {
     setSaving(true);
     setSaved(false);
@@ -48,7 +50,7 @@ export default function ProfilePage() {
     if (res.ok) {
       refresh();
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      setTimeout(() => setSaved(false), 2400);
     }
   }
 
@@ -74,6 +76,7 @@ export default function ProfilePage() {
       setAvaMsg({ ok: true, text: "เปลี่ยนรูปโปรไฟล์แล้ว ✓" });
     } else setAvaMsg({ ok: false, text: r.error });
   }
+
   async function onRemoveAvatar() {
     setAvaBusy(true);
     setAvaMsg(null);
@@ -85,143 +88,166 @@ export default function ProfilePage() {
     } else setAvaMsg({ ok: false, text: r.error || "ลบไม่สำเร็จ" });
   }
 
-  const inputCls = "w-full rounded-2xl bg-white px-4 py-3 text-sm text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300";
+  if (loading || !customer) {
+    return (
+      <AccountShell active="profile">
+        <div className="acd-loading">กำลังโหลด…</div>
+      </AccountShell>
+    );
+  }
+
+  const viaLine = /@line\.iducky\.local$/i.test(customer.email) || !!customer.lineUserId;
+  const initial = (customer.name || customer.email || "ล").trim().charAt(0).toUpperCase();
+  const dirty = name !== customer.name || phone !== customer.phone || address !== customer.address;
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
-      <Link href="/account" className="text-sm font-semibold text-stone-400 hover:text-stone-600">← บัญชีของฉัน</Link>
-      <h1 className="mt-1 text-2xl font-extrabold text-amber-950 sm:text-3xl">ข้อมูลส่วนตัว</h1>
-      <p className="mt-1 text-sm text-stone-400">ใช้เติมอัตโนมัติตอนสั่งซื้อครั้งต่อไป — กรอกครั้งเดียว ไม่ต้องพิมพ์ซ้ำทุกออเดอร์</p>
+    <AccountShell active="profile">
+      <AccountHead ico="profile" title="ข้อมูลส่วนตัว" sub="กรอกครั้งเดียว ระบบเติมให้อัตโนมัติทุกครั้งที่สั่งซื้อ — ไม่ต้องพิมพ์ซ้ำ" />
 
-      <div className="mt-6 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-amber-100 sm:p-8">
-        {/* รูปโปรไฟล์ — ช่องเดียวกับหน้าบัญชี (user_metadata.picture) · LINE login เติมรูปมาให้ก่อน */}
-        <div className="mb-6 flex items-center gap-4 rounded-2xl bg-amber-50/60 px-4 py-4 ring-1 ring-amber-100">
-          {/* มีรูปแล้ว = กดเพื่อดูรูปใหญ่ · ยังไม่มีรูป = กดเพื่อเลือกไฟล์ (ปุ่มกล้องมุมล่างขวาไว้เปลี่ยนรูป) */}
-          <div className="relative shrink-0">
-            {customer.picture ? (
-              <button
-                type="button"
-                onClick={() => setZoomOpen(true)}
-                title="ดูรูปใหญ่"
-                aria-label="ดูรูปโปรไฟล์ขนาดใหญ่"
-                className={`group relative grid h-28 w-28 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-sky-100 to-sky-200 shadow ring-4 ring-white sm:h-32 sm:w-32 ${avaBusy ? "opacity-70" : ""}`}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={customer.picture} alt="รูปโปรไฟล์" className="h-full w-full object-cover" />
-                <span className="absolute inset-0 grid place-items-center bg-amber-950/45 text-xl text-white opacity-0 transition group-hover:opacity-100">
-                  {avaBusy ? "⏳" : "🔍"}
-                </span>
-              </button>
-            ) : (
-              <label
-                title="อัปโหลดรูปโปรไฟล์"
-                className={`group relative grid h-28 w-28 cursor-pointer place-items-center overflow-hidden rounded-full bg-gradient-to-br from-sky-100 to-sky-200 shadow ring-4 ring-white sm:h-32 sm:w-32 ${avaBusy ? "opacity-70" : ""}`}
-              >
-                <span className="text-4xl font-extrabold text-sky-700">{(customer.name || customer.email || "ส").trim().charAt(0).toUpperCase()}</span>
-                <span className="absolute inset-0 grid place-items-center bg-amber-950/45 text-xl text-white opacity-0 transition group-hover:opacity-100">
-                  {avaBusy ? "⏳" : "📷"}
-                </span>
-                <input type="file" accept="image/*" onChange={onPickAvatar} disabled={avaBusy} className="absolute inset-0 cursor-pointer opacity-0" aria-label="อัปโหลดรูปโปรไฟล์" />
-              </label>
-            )}
-            <label
-              title="เปลี่ยนรูปโปรไฟล์"
-              className={`absolute bottom-0 right-0 grid h-9 w-9 cursor-pointer place-items-center rounded-full bg-amber-400 text-sm text-white shadow ring-2 ring-white transition hover:bg-amber-500 ${avaBusy ? "pointer-events-none opacity-50" : ""}`}
+      {/* ───── รูปโปรไฟล์ ───── */}
+      <section className="acd-card acd-photo">
+        <div className="acd-ring acd-ring-plain">
+          {customer.picture ? (
+            <button
+              type="button"
+              className={`acd-avatar has-photo${avaBusy ? " busy" : ""}`}
+              onClick={() => setZoomOpen(true)}
+              title="ดูรูปใหญ่"
+              aria-label="ดูรูปโปรไฟล์ขนาดใหญ่"
             >
-              📷
-              <input type="file" accept="image/*" onChange={onPickAvatar} disabled={avaBusy} className="hidden" aria-label="เปลี่ยนรูปโปรไฟล์" />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={customer.picture} alt="รูปโปรไฟล์" />
+              <span className="acd-avatar-edit">{avaBusy ? "⏳" : "🔍"}</span>
+            </button>
+          ) : (
+            <label className={`acd-avatar${avaBusy ? " busy" : ""}`} title="อัปโหลดรูปโปรไฟล์">
+              <span className="acd-initial">{initial}</span>
+              <span className="acd-avatar-edit">{avaBusy ? "⏳" : "📷"}</span>
+              <input type="file" accept="image/*" onChange={onPickAvatar} disabled={avaBusy} aria-label="อัปโหลดรูปโปรไฟล์" />
             </label>
+          )}
+          {viaLine && (
+            <span className="acd-avatar-badge" title="ยืนยันตัวตนผ่าน LINE">
+              ✓
+            </span>
+          )}
+        </div>
+
+        <div className="acd-photo-txt">
+          <span className="acd-chip acd-chip-sky">รูปโปรไฟล์</span>
+          <p className="acd-photo-hint">
+            JPG / PNG ไม่เกิน 8MB — เลือกไฟล์แล้วซูม/เลื่อนให้พอดีวงกลมได้เอง
+            {customer.picture ? " · กดที่รูปเพื่อดูขนาดใหญ่" : ""}
+          </p>
+          <div className="acd-photo-actions">
+            <label className={`btn btn-primary acd-btn-compact acd-file-btn${avaBusy ? " disabled" : ""}`}>
+              {avaBusy ? "กำลังอัปโหลด…" : customer.picture ? "เปลี่ยนรูป" : "อัปโหลดรูป"} <span className="dot">📷</span>
+              <input type="file" accept="image/*" onChange={onPickAvatar} disabled={avaBusy} />
+            </label>
+            {customer.picture && (
+              <button type="button" className="acd-link-danger" onClick={onRemoveAvatar} disabled={avaBusy}>
+                ลบรูป
+              </button>
+            )}
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">รูปโปรไฟล์</p>
-            <p className="text-xs text-stone-500">
-              JPG / PNG ไม่เกิน 8MB — เลือกไฟล์แล้วซูม/เลื่อนให้พอดีวงกลมได้เอง
-              {customer.picture ? " · กดที่รูปเพื่อดูขนาดใหญ่" : ""}
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <label className={`cursor-pointer rounded-full bg-amber-400 px-4 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-amber-500 ${avaBusy ? "pointer-events-none opacity-50" : ""}`}>
-                {avaBusy ? "กำลังอัปโหลด…" : customer.picture ? "เปลี่ยนรูป" : "อัปโหลดรูป"}
-                <input type="file" accept="image/*" onChange={onPickAvatar} disabled={avaBusy} className="hidden" />
-              </label>
-              {customer.picture && (
-                <button type="button" onClick={onRemoveAvatar} disabled={avaBusy} className="rounded-full px-3 py-1.5 text-xs font-semibold text-stone-400 transition hover:bg-rose-50 hover:text-rose-500 disabled:opacity-50">
-                  ลบรูป
-                </button>
-              )}
-              {avaMsg && <span className={`text-xs font-semibold ${avaMsg.ok ? "text-emerald-600" : "text-rose-500"}`}>{avaMsg.text}</span>}
-            </div>
+          {avaMsg && <p className={`acd-msg${avaMsg.ok ? " ok" : " bad"}`}>{avaMsg.text}</p>}
+        </div>
+      </section>
+
+      {/* ───── ข้อมูลติดต่อ ───── */}
+      <section className="acd-card">
+        <div className="acd-card-head">
+          <span className="acd-chip acd-chip-sky">ข้อมูลติดต่อ</span>
+          <p className="acd-card-sub">ใช้สำหรับออกใบเสร็จและจัดส่งพัสดุ</p>
+        </div>
+
+        <div className="acd-form">
+          <div className="acd-field">
+            <label htmlFor="pf-name">ชื่อ-นามสกุล</label>
+            <input
+              id="pf-name"
+              className="acd-input"
+              value={name}
+              placeholder="ชื่อผู้รับ / ชื่อร้าน"
+              onChange={(e) => {
+                setName(e.target.value);
+                setSaved(false);
+              }}
+            />
+          </div>
+          <div className="acd-field">
+            <label htmlFor="pf-phone">เบอร์โทร</label>
+            <input
+              id="pf-phone"
+              className="acd-input"
+              value={phone}
+              inputMode="tel"
+              placeholder="08x-xxx-xxxx"
+              onChange={(e) => {
+                setPhone(e.target.value.replace(/[^\d\-+ ]/g, ""));
+                setSaved(false);
+              }}
+            />
+          </div>
+          <div className="acd-field full">
+            <label htmlFor="pf-addr">ที่อยู่จัดส่ง</label>
+            <textarea
+              id="pf-addr"
+              className="acd-input"
+              rows={4}
+              value={address}
+              placeholder="บ้านเลขที่ · ถนน · ตำบล/อำเภอ · จังหวัด · รหัสไปรษณีย์"
+              onChange={(e) => {
+                setAddress(e.target.value);
+                setSaved(false);
+              }}
+            />
+            <p className="acd-field-hint">📍 ที่อยู่นี้จะถูกเติมให้อัตโนมัติในหน้าชำระเงิน แก้ไขตอนสั่งซื้อได้เสมอ</p>
           </div>
         </div>
 
-        {/* บัญชีเข้าสู่ระบบ (แก้ไม่ได้) — LINE จะไม่โชว์อีเมลสังเคราะห์ */}
-        {customer.email &&
-          (() => {
-            const isLine = /@line\.iducky\.local$/i.test(customer.email);
-            return (
-              <div
-                className={`mb-6 flex items-center gap-3 rounded-2xl px-4 py-3 ring-1 ${
-                  isLine ? "bg-[#06C755]/5 ring-[#06C755]/25" : "bg-amber-50/60 ring-amber-100"
-                }`}
-              >
-                <span
-                  className={`grid h-10 w-10 shrink-0 place-items-center rounded-full text-lg ${
-                    isLine ? "bg-[#06C755]/15" : "bg-amber-100"
-                  }`}
-                >
-                  {isLine ? "💬" : "📧"}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">บัญชีเข้าสู่ระบบ</p>
-                  {isLine ? (
-                    <p className="text-sm font-bold text-[#06C755]">เข้าสู่ระบบผ่าน LINE</p>
-                  ) : (
-                    <p className="truncate text-sm font-bold text-stone-700">{customer.email}</p>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
-
-        <div className="grid gap-5 sm:grid-cols-2">
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold text-stone-500">ชื่อ-นามสกุล</label>
-            <input value={name} onChange={(e) => { setName(e.target.value); setSaved(false); }} className={inputCls} />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold text-stone-500">เบอร์โทร</label>
-            <input value={phone} onChange={(e) => { setPhone(e.target.value.replace(/[^\d\-+ ]/g, "")); setSaved(false); }} inputMode="tel" className={inputCls} />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="mb-1.5 block text-xs font-semibold text-stone-500">ที่อยู่จัดส่ง</label>
-            <textarea value={address} onChange={(e) => { setAddress(e.target.value); setSaved(false); }} rows={4} placeholder="บ้านเลขที่ · ถนน · ตำบล/อำเภอ · จังหวัด · รหัสไปรษณีย์" className={`${inputCls} resize-y`} />
-          </div>
-        </div>
-
-        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <Link href="/account/reset" className="text-center text-sm font-semibold text-stone-400 hover:text-stone-600">
-            🔒 เปลี่ยนรหัสผ่าน
-          </Link>
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving}
-            className={`rounded-full px-8 py-3 text-sm font-bold text-white shadow transition disabled:opacity-50 sm:min-w-48 ${saved ? "bg-emerald-500" : "bg-amber-400 hover:bg-amber-500"}`}
-          >
-            {saving ? "กำลังบันทึก…" : saved ? "✓ บันทึกแล้ว" : "💾 บันทึกข้อมูล"}
+        <div className="acd-save-bar">
+          <span className={`acd-save-note${saved ? " ok" : ""}`}>{saved ? "บันทึกเรียบร้อยแล้ว ✓" : dirty ? "มีการแก้ไขที่ยังไม่ได้บันทึก" : ""}</span>
+          <button type="button" className={`btn ${saved ? "btn-ghost" : "btn-primary"}`} onClick={save} disabled={saving || (!dirty && !saved)}>
+            {saving ? "กำลังบันทึก…" : saved ? "บันทึกแล้ว" : "บันทึกข้อมูล"} <span className="dot">{saved ? "✓" : "💾"}</span>
           </button>
         </div>
-      </div>
+      </section>
+
+      {/* ───── บัญชีเข้าสู่ระบบ ───── */}
+      <section className="acd-menu">
+        <div className="acd-menu-head">บัญชีเข้าสู่ระบบ</div>
+        <div className="acd-menu-item static">
+          <div className={`acd-menu-ico ${viaLine ? "ico-mint" : "ico-blue"}`}>{viaLine ? "💬" : "✉️"}</div>
+          <div className="acd-menu-col">
+            <div className="acd-menu-label">{viaLine ? "เข้าสู่ระบบผ่าน LINE" : "เข้าสู่ระบบด้วยอีเมล"}</div>
+            <div className="acd-menu-sub">{viaLine ? "ยืนยันตัวตนแล้ว — แจ้งเตือนสถานะออเดอร์ทาง LINE ได้" : customer.email}</div>
+          </div>
+          {viaLine && <span className="acd-line-badge">L</span>}
+        </div>
+        {!viaLine && (
+          <Link href="/account/reset" className="acd-menu-item">
+            <div className="acd-menu-ico ico-navy">🔒</div>
+            <div className="acd-menu-label">เปลี่ยนรหัสผ่าน</div>
+            <div className="acd-chevron">›</div>
+          </Link>
+        )}
+        <Link href="/account/orders" className="acd-menu-item">
+          <div className="acd-menu-ico ico-blue">
+            <MenuIco name="orders" />
+          </div>
+          <div className="acd-menu-label">ประวัติการสั่งซื้อ</div>
+          <div className="acd-menu-meta">ดูออเดอร์ทั้งหมด</div>
+          <div className="acd-chevron">›</div>
+        </Link>
+      </section>
 
       {/* ซูม/เลื่อนรูปที่เพิ่งเลือกก่อนอัปโหลด */}
-      {cropFile && (
-        <AvatarCropper file={cropFile} busy={avaBusy} onCancel={() => setCropFile(null)} onDone={onCropped} />
-      )}
+      {cropFile && <AvatarCropper file={cropFile} busy={avaBusy} onCancel={() => setCropFile(null)} onDone={onCropped} />}
 
       {/* ดูรูปโปรไฟล์ขนาดใหญ่ — คลิกพื้นหลังหรือกด Esc เพื่อปิด */}
-      {zoomOpen && customer.picture && (
-        <AvatarLightbox src={customer.picture} onClose={() => setZoomOpen(false)} />
-      )}
-    </div>
+      {zoomOpen && customer.picture && <AvatarLightbox src={customer.picture} onClose={() => setZoomOpen(false)} />}
+    </AccountShell>
   );
 }
 
@@ -236,26 +262,10 @@ function AvatarLightbox({ src, onClose }: { src: string; onClose: () => void }) 
   }, [onClose]);
 
   return (
-    <div
-      className="fixed inset-0 z-[60] grid place-items-center bg-stone-900/80 p-6 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-label="รูปโปรไฟล์ขนาดใหญ่"
-      onClick={onClose}
-    >
+    <div className="acd-lightbox" role="dialog" aria-modal="true" aria-label="รูปโปรไฟล์ขนาดใหญ่" onClick={onClose}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt="รูปโปรไฟล์"
-        onClick={(e) => e.stopPropagation()}
-        className="max-h-[80vh] max-w-full rounded-3xl bg-white object-contain shadow-2xl ring-4 ring-white/70"
-      />
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="ปิด"
-        className="absolute right-5 top-5 grid h-10 w-10 place-items-center rounded-full bg-white/90 text-lg font-bold text-stone-600 shadow transition hover:bg-white"
-      >
+      <img src={src} alt="รูปโปรไฟล์" onClick={(e) => e.stopPropagation()} />
+      <button type="button" className="acd-modal-close" onClick={onClose} aria-label="ปิด">
         ✕
       </button>
     </div>
