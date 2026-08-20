@@ -55,8 +55,10 @@ const IMG_DIR = "rotating-stand-frame";
  * ของจริงในฐานข้อมูลตอนนี้เป็น v2 แล้ว (ขยับด้วย scripts/repoint-product-images.mjs ตอนเปลี่ยนมาใช้มาสคอตเป็ด)
  */
 const REV = "v2";
+/** ไฟล์ที่ขึ้นรุ่นใหม่ทีหลัง (ของอื่นยังเป็น REV) — acrylic-special เปลี่ยนจากภาพถ่ายเว็บเป็นภาพวาดเข้าชุด */
+const REV_OF: Record<string, string> = { "acrylic-special": "v3" };
 const IMG = (name: string) =>
-  `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${IMG_DIR}/${name}-${REV}.jpg`;
+  `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${IMG_DIR}/${name}-${REV_OF[name] ?? REV}.jpg`;
 
 const UNIT = "ชิ้น";
 const SIZE_ADD_LABEL = "เพิ่มขนาดอะคริลิค";
@@ -288,12 +290,13 @@ async function uploadImages() {
     auth: { persistSession: false },
   });
   for (const name of FILES) {
+    const rev = REV_OF[name] ?? REV;
     const buf = await readFile(`${IMAGES_DIR.replace(/\/$/, "")}/${name}.jpg`);
     const { error } = await sb.storage
       .from("product-images")
-      .upload(`products/${IMG_DIR}/${name}-${REV}.jpg`, buf, { contentType: "image/jpeg", upsert: true });
+      .upload(`products/${IMG_DIR}/${name}-${rev}.jpg`, buf, { contentType: "image/jpeg", upsert: true });
     if (error) throw new Error(`${name}: ${error.message}`);
-    console.log(`⬆️  ${name}-${REV}.jpg (${Math.round(buf.length / 1024)} KB)`);
+    console.log(`⬆️  ${name}-${rev}.jpg (${Math.round(buf.length / 1024)} KB)`);
   }
 }
 
