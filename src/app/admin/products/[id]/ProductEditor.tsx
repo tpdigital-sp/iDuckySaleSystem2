@@ -75,6 +75,8 @@ type DraftOption = {
   inHint?: string;
   /** ไม่ติ๊ก = ไม่บังคับกรอก (ค่าเริ่มต้นคือบังคับ) */
   inOptional?: boolean;
+  /** รับเฉพาะจำนวนเต็ม (เฉพาะช่องตัวเลข) */
+  inInteger?: boolean;
   /** 💬 ใช้กลุ่มนี้แล้ว = งานสั่งทำ ให้แอดมินตีราคา */
   askPrice?: boolean;
   /** กลุ่มนี้ย้ายไปแก้ที่แผง 📐 งานสั่งทำ (แทนแผง 🎛️ ตัวเลือกสินค้า) */
@@ -460,6 +462,7 @@ function toDraft(p: Product): Draft {
             inPlaceholder: o.input.placeholder ?? "",
             inHint: o.input.hint ?? "",
             ...(o.input.required === false ? { inOptional: true } : {}),
+            ...(o.input.integer ? { inInteger: true } : {}),
           }
         : {}),
       ...(o.askPrice ? { askPrice: true } : {}),
@@ -692,6 +695,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
               ...(o.inPlaceholder?.trim() ? { placeholder: o.inPlaceholder.trim() } : {}),
               ...(o.inHint?.trim() ? { hint: o.inHint.trim() } : {}),
               ...(o.inOptional ? { required: false } : {}),
+              ...(o.inInteger ? { integer: true } : {}),
             } satisfies OptionInput,
           }
         : {}),

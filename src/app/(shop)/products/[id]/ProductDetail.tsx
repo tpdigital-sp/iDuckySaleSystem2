@@ -561,6 +561,14 @@ export default function ProductDetail({
    *  ลูกค้าจะเห็นราคาหน้าสินค้าไม่ตรงกับตอนจ่ายเงิน)
    */
   const designFee = designFeeFor(product, { ...effective, [DESIGN_LABEL]: `${designs} ลาย` }, qty);
+  /**
+   * 🔒 ขั้นต่ำต่อลายแบบแข็ง (hardMinPerDesign) — ต่ำกว่าเกณฑ์ = ปุ่มสั่งล็อก
+   * เช่น อาร์มปักขั้นต่ำ 5 ชิ้น/ลาย: สั่ง 3 ชิ้นไม่ได้ · สั่ง 8 ชิ้นคละ 2 ลายก็ไม่ได้ (ต้อง 10)
+   * งานกำหนดขนาดเอง (useCustom) แอดมินตีราคา/คุยเองอยู่แล้ว — ไม่ล็อก
+   */
+  const hardMin = product.hardMinPerDesign ? (rate?.minPerDesign ?? 0) : 0;
+  const hardMinNeed = hardMin * Math.max(1, designs);
+  const belowMin = !useCustom && hardMin > 0 && qty < hardMinNeed;
   // จำนวนลายติดไปกับ selections ตั้งแต่ตอนดูราคา → ราคาสด/ตะกร้า/ออเดอร์คิดเรทตามชิ้นต่อลายตรงกัน
   const effectiveWithDesigns = useMemo(
     () =>
@@ -1187,6 +1195,8 @@ export default function ProductDetail({
   const artBlocked = studioMode || staffOrdering ? false : artRequired && !artProvided;
 
   function handleAdd() {
+    // 🔒 ต่ำกว่าขั้นต่ำต่อลาย — ปุ่มถูกล็อกอยู่แล้ว กันไว้อีกชั้นเผื่อเรียกจากเส้นทางอื่น
+    if (belowMin) return;
     // 🔒 กันกดรัว/แตะซ้ำบนมือถือ — 1 คลิก = 1 รายการเสมอ
     // (กดครั้งแรกสำเร็จ ระบบเคลียร์ลาย/หมายเหตุทิ้ง ครั้งที่สองจึงกลายเป็น "อีกรายการ" คนละใบงาน)
     // ล็อกเฉพาะตอนที่เพิ่มเข้าตะกร้าได้จริง — โดนเตือนแล้วกดแก้ต่อได้ทันที ไม่ต้องรอ
@@ -2867,7 +2877,7 @@ export default function ProductDetail({
                     type="button"
                     onClick={handleAdd}
                     // ขนาดกำหนดเอง = ราคาไม่อิงเรทปกติ → ไม่ติดขั้นต่ำของเรทด้วย (สั่งกี่ชิ้นก็ได้ แอดมินตีราคาตามจริง)
-                    disabled={(useCustom && !customValid) || artBlocked || inputErrors.length > 0}
+                    disabled={(useCustom && !customValid) || artBlocked || inputErrors.length > 0 || belowMin}
                     className={`flex-1 rounded-full px-5 py-3 text-[13px] font-bold shadow-lg transition sm:flex-none sm:px-8 ${
                       added
                         ? "bg-emerald-500 text-white"
@@ -2882,12 +2892,26 @@ export default function ProductDetail({
                         ? "🎨 แนบลายก่อนถึงจะสั่งได้"
                         : inputErrors.length > 0
                         ? "✍️ กรอกข้อมูลด้านบนให้ครบก่อน"
+                        : belowMin
+                        ? `⚠ ขั้นต่ำ ${hardMin} ชิ้นต่อลาย — สั่งอย่างน้อย ${hardMinNeed.toLocaleString("th-TH")} ชิ้น`
                         : (useCustom && customAsk) || askQuote
                         ? "🛒 สั่งเลย — แอดมินตีราคาแล้วแจ้งกลับ"
                         : `🛒 เพิ่มลงตะกร้า — ${formatPrice(unitPrice * qty + designFee)}`}
                   </button>
                 )}
 
+                {belowMin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQty(hardMinNeed);
+                      setQtyText(String(hardMinNeed));
+                    }}
+                    className="shrink-0 rounded-full bg-white px-4 py-2 text-[12px] font-bold text-amber-700 ring-1 ring-amber-300 transition hover:bg-amber-50"
+                  >
+                    ปรับเป็น {hardMinNeed.toLocaleString("th-TH")} ชิ้น
+                  </button>
+                )}
                 {/* โหมดแอดมินยังเปิดจอวางลายเองได้ ถ้าลูกค้าอยากให้จัดลายให้ตรงนี้เลย */}
                 {staffOrdering && studioTarget && !designDone && (
                   <button
@@ -3675,7 +3699,7 @@ export default function ProductDetail({
             <button
               type="button"
               onClick={handleAdd}
-              disabled={(useCustom && !customValid) || artBlocked || inputErrors.length > 0}
+              disabled={(useCustom && !customValid) || artBlocked || inputErrors.length > 0 || belowMin}
               className={`ml-auto shrink-0 rounded-full px-6 py-3 text-sm font-bold text-white shadow-lg transition ${
                 added ? "bg-emerald-500" : "bg-amber-400 hover:bg-amber-500 disabled:opacity-40"
               }`}
@@ -3688,7 +3712,9 @@ export default function ProductDetail({
                     ? "🎨 แนบลายก่อน"
                     : inputErrors.length > 0
                       ? "✍️ กรอกให้ครบก่อน"
-                      : "🛒 เพิ่มลงตะกร้า"}
+                      : belowMin
+                        ? `⚠ ขั้นต่ำ ${hardMinNeed.toLocaleString("th-TH")} ชิ้น`
+                        : "🛒 เพิ่มลงตะกร้า"}
             </button>
           )}
         </div>

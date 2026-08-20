@@ -194,6 +194,8 @@ export interface OptionInput {
   /** ค่าต่ำสุด/สูงสุดที่ยอมรับ (number) — กันลูกค้าพิมพ์ขนาดที่ทำไม่ได้ */
   min?: number;
   max?: number;
+  /** รับเฉพาะจำนวนเต็ม (number) — เช่น ขนาดอาร์มปักไม่รับทศนิยม */
+  integer?: boolean;
   /** ความยาวสูงสุด (text/textarea) — ไม่ตั้ง = 200 */
   maxLength?: number;
   /** ข้อความจาง ๆ ในช่อง เช่น "2.5" */
@@ -246,6 +248,7 @@ export function inputError(opt: ProductOption, stored: string | undefined): stri
   if (cfg.kind === "number") {
     const n = Number(raw);
     if (!Number.isFinite(n) || n <= 0) return `${name} ต้องเป็นตัวเลข`;
+    if (cfg.integer && !Number.isInteger(n)) return `${name} ต้องเป็นจำนวนเต็ม (ไม่รับทศนิยม)`;
     const u = cfg.unit ? ` ${cfg.unit}` : "";
     if (cfg.min != null && n < cfg.min) return `${name} ต้องไม่ต่ำกว่า ${cfg.min}${u}`;
     if (cfg.max != null && n > cfg.max) return `${name} ต้องไม่เกิน ${cfg.max}${u}`;
@@ -1004,6 +1007,12 @@ export interface Product {
    * ไม่ตั้ง = ตามเดิม ลูกค้าต้องติ๊กก่อนถึงกางช่องกรอก (ไม่ติ๊ก = ใช้ขนาดมาตรฐาน ราคาตามตารางปกติ)
    */
   mtoAlways?: boolean;
+  /**
+   * 🔒 บังคับ "ขั้นต่ำต่อลาย" (minPerDesign ของเรท) แบบแข็ง — จำนวน ÷ ลาย ต่ำกว่าเกณฑ์ = กดสั่งไม่ได้
+   * ค่าเริ่มต้นของระบบเป็นแบบนุ่ม (สั่งน้อยกว่าได้ แค่ราคาปรับ) — สินค้าที่โรงงานไม่รับผลิตต่ำกว่า
+   * ขั้นต่ำจริง ๆ (เช่น อาร์มปัก 5 ชิ้น/ลาย) ตั้งธงนี้
+   */
+  hardMinPerDesign?: boolean;
   /**
    * 📐 คิดราคาจาก "พื้นที่ลาย" ที่ลูกค้ากรอก แทนราคาคอลัมน์เดียวในตาราง
    * ใช้กับงานที่ราคาผูกกับขนาด เช่น อาร์มปัก: 15 ตร.ซม. แรก ฿40 · ตร.ซม. ต่อไป ฿2
