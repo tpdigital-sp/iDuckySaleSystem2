@@ -28,7 +28,7 @@ const ID = "carabiner-acrylic";
 const GROUP = "ประเภทอะคริลิค";
 const COLOR_GROUP = "สีอะคริลิค";
 // v1 วาดเป็นห่วงคาราไบเนอร์โลหะแยกชิ้น (ไม่ตรงกับของจริง) — v2 วาดใหม่ ดู scripts/carabiner-art.mjs
-const ART = "clear-plain-v2";
+const ART = "clear-plain-v3";
 
 const OLD_PLAIN = "ธรรมดา";
 const OLD_SPECIAL = "พิเศษ";

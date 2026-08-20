@@ -5,14 +5,14 @@
  *   node scripts/carabiner-art.mjs [--out=<dir>]      # วาดลง .cache/carabiner/upload
  *
  * ได้:
- *   clear-plain-v2            ประเภทอะคริลิค → อะคริลิคใส (อีก 2 ตัวใช้สวอตช์จริงจากชาร์ตสีกลาง)
+ *   clear-plain-v3            ประเภทอะคริลิค → อะคริลิคใส (อีก 2 ตัวใช้สวอตช์จริงจากชาร์ตสีกลาง)
  *   size-5..size-10           ขนาดชิ้นงาน 5-10 ซม. (สเกลจริง เทียบกันได้ทั้งชุด)
  *   part-small | part-large   อะไหล่ "ก้านตะขอ" 1.8 / 2.8 ซม.
  *   print-1 | print-2         สกรีน 1 ด้าน / 2 ด้าน
  *   hook-extra                เพิ่มก้านตะขอ (+15 บาท/ก้าน)
  *
- * ทรงชิ้นงานอ้างจากภาพงานจริงของหน้าสินค้า — ส่วนบนเป็นลายที่สกรีน ส่วนล่างไดคัทเป็นห่วงเจาะกลาง
- * แล้วมีก้านตะขอสแตนเลสหมุดติดที่ห่วง ดีดปิดเป็นตัวเกี่ยว (ไม่ใช่ห่วงคาราไบเนอร์โลหะแยกชิ้น)
+ * ทรงชิ้นงานอ้างจากภาพงานจริงของหน้าสินค้า — อะคริลิคไดคัทตามลาย เหลือขอบใสรอบ ๆ
+ * แล้วมีก้านตะขอสแตนเลสหมุดที่ริมแผ่น ดีดขึ้นเป็นตัวเกี่ยว (ไม่ใช่ห่วงคาราไบเนอร์โลหะแยกชิ้น)
  *
  * ⚠️ อัปทับ "ชื่อไฟล์เดิม" ไม่ได้ — CDN/Next แคชของเก่าไว้ ต้องขึ้นเลขรุ่นใหม่เสมอ
  */
@@ -75,58 +75,68 @@ const artwork = (cx, cy, box, opacity = 1) => {
 };
 
 /**
- * ก้านตะขอสแตนเลส — หมุดที่ห่วงด้านล่าง โก่งออกทางซ้าย ปลายงอเกี่ยวกับขอบห่วงด้านบน
- * (r = จุดหมุด · t = ปลายก้าน · bow = ระยะที่โก่งออก)
+ * ก้านตะขอสแตนเลสบนชิ้นงาน — หมุดที่ริมแผ่นด้านล่าง โก่งออกนิดหน่อย ปลายงอเป็นตะขอชี้ขึ้น
+ * (rx,ry = จุดหมุด · tx,ty = ปลายก้าน · bow = ระยะที่โก่งออก · ติดลบ = โก่งไปทางขวา)
  */
-function gateWire(rx, ry, tx, ty, bow, color = METAL_EDGE, dash = false) {
-  const d = `M${rx} ${ry} C${rx - bow} ${ry - (ry - ty) * 0.35} ${tx - bow} ${ty + (ry - ty) * 0.45} ${tx} ${ty}`;
+function gateWire(rx, ry, tx, ty, bow, color = METAL_EDGE) {
+  const d =
+    `M${rx} ${ry} C${rx - bow} ${ry - (ry - ty) * 0.4} ${tx - bow} ${ty + (ry - ty) * 0.45} ${tx} ${ty} ` +
+    `C${tx + bow * 0.9} ${ty - 26} ${tx + bow * 2.2} ${ty - 6} ${tx + bow * 1.5} ${ty + 24}`;
   return `
-    <path d="${d}" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round"
-      ${dash ? 'stroke-dasharray="10 9" opacity="0.55"' : ""}/>
-    ${dash ? "" : `<path d="${d}" fill="none" stroke="#f1f5f9" stroke-width="3" stroke-linecap="round" opacity="0.85"/>`}
-    ${dash ? "" : `<circle cx="${rx}" cy="${ry}" r="9" fill="${METAL}" stroke="${METAL_EDGE}" stroke-width="3"/>`}`;
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round"/>
+    <path d="${d}" fill="none" stroke="#f1f5f9" stroke-width="3" stroke-linecap="round" opacity="0.85"/>
+    <circle cx="${rx}" cy="${ry}" r="10" fill="${METAL}" stroke="${METAL_EDGE}" stroke-width="3"/>`;
 }
+
+/** ตัวนับไว้ตั้งชื่อ filter ไม่ให้ชนกัน (รัศมีไดคัทต่างกันตามขนาดชิ้นงาน) */
+let cutId = 0;
 
 /**
  * ชิ้นงาน 1 ชิ้น — h คือด้านที่ยาวที่สุด (ตามวิธีวัดขนาดของร้าน)
- * อะคริลิคเป็นแผ่นเดียวไดคัทรวด — ครึ่งบนเป็นลายที่สกรีน ครึ่งล่างเจาะเป็นช่องเกี่ยว
- * แล้วมีก้านตะขอสแตนเลสหมุดอยู่ริมซ้าย ดีดปิดช่องไว้ (ตามงานจริงในภาพสินค้า)
+ *
+ * งานจริงคือ "ไดคัทตามลาย" — อะคริลิคถูกตัดตามรูปลายโดยเหลือขอบใสไว้รอบ ๆ
+ * แล้วมีก้านตะขอสแตนเลสหมุดที่ริมแผ่น ดีดเป็นตัวเกี่ยว (ดูภาพงานจริงในแกลเลอรีสินค้า)
+ * ขอบใสรอบลายวาดด้วย feMorphology (ขยายเงาของลายออกไปแล้วเติมสีอะคริลิค)
  */
 function piece(cx, top, h, o = {}) {
   const {
-    fill = GLASS,
+    fill = "#dbf2fe", // เนื้ออะคริลิคใสในภาพวาด
     edge = GLASS_EDGE,
     gates = 1, // จำนวนก้านตะขอ (มาตรฐาน 1 ก้าน)
     gateSide = "left", // พลิกดูอีกด้าน ก้านจะสลับไปอยู่ฝั่งตรงข้าม
     gateColor = METAL_EDGE,
-    ghost = false,
-    blank = false, // ด้านหลังไม่มีลาย
+    ghost = false, // เงาจาง ๆ ไว้เทียบขนาด
+    blank = false, // ด้านที่ไม่มีลาย — เห็นแต่เนื้ออะคริลิคที่ไดคัทไว้
   } = o;
-  const w = h * 0.66;
-  const left = cx - w / 2;
-  const band = w * 0.2; // ความหนาของเนื้ออะคริลิครอบช่องเกี่ยว
-  const holeTop = top + h * 0.54;
-  const holeH = h * 0.46 - band;
-  if (ghost)
-    return `<rect x="${left}" y="${top}" width="${w}" height="${h}" rx="${w * 0.22}"
-      fill="none" stroke="#e2e8f0" stroke-width="3" stroke-dasharray="8 8"/>`;
+  const id = `cut${++cutId}`;
+  const w = h * MASCOT.ratio;
+  const rim = h * 0.032; // ขอบใสรอบลาย (ไดคัทเผื่อไว้ประมาณ 2-3 มม.)
+  const img = `<image href="${MASCOT.uri}" x="${cx - w / 2}" y="${top}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid meet"/>`;
+  const body = ghost ? "#eef2f7" : fill;
+  const ring = ghost ? "#e2e8f0" : edge;
   const flip = gateSide === "right" ? -1 : 1;
-  const rivetX = flip > 0 ? left + band * 0.5 : left + w - band * 0.5;
-  const rivetY = holeTop + holeH - band * 0.1;
-  const tipY = holeTop + band * 0.2;
+  // ก้านพาดอยู่บนแผ่น ชิดริมซ้าย (ตามภาพงานจริง) — หมุดล่าง ปลายตะขอชี้ขึ้นด้านบน
+  const rivetX = cx - flip * w * 0.3;
+  const rivetY = top + h * 0.78;
+  const tipX = cx - flip * w * 0.36;
+  const tipY = top + h * 0.24;
   return `
-    <!-- แผ่นอะคริลิคไดคัทรวดชิ้นเดียว -->
-    <rect x="${left}" y="${top}" width="${w}" height="${h}" rx="${w * 0.22}" fill="${fill}" stroke="${edge}" stroke-width="4"/>
-    <path d="M${left + w * 0.16} ${top + h * 0.9} L${left + w * 0.84} ${top + h * 0.12}"
-      stroke="#ffffff" stroke-width="${w * 0.12}" opacity="0.45" stroke-linecap="round"/>
-    ${blank ? "" : artwork(cx, top + h * 0.29, Math.min(w * 0.8, h * 0.44))}
-    ${blank ? `<text x="${cx}" y="${top + h * 0.31}" font-family="${TH}" font-size="${Math.max(15, w * 0.12)}" text-anchor="middle" fill="${LINE}">ไม่มีลาย</text>` : ""}
-    <!-- ช่องเกี่ยวที่เจาะไว้ครึ่งล่าง -->
-    <rect x="${left + band}" y="${holeTop}" width="${w - band * 2}" height="${holeH}" rx="${band * 0.7}"
-      fill="#ffffff" stroke="${edge}" stroke-width="3"/>
-    <!-- ก้านตะขอ (หมุดริมซ้าย โก่งออกนอกแผ่น ปลายกลับมาชนขอบบนของช่อง) -->
-    ${gateWire(rivetX, rivetY, rivetX, tipY, flip * w * 0.34, gateColor)}
-    ${gates > 1 ? gateWire(left + w - band * 0.5, rivetY, left + w - band * 0.5, tipY, -w * 0.34, gateColor) : ""}`;
+    <defs>
+      <filter id="${id}" x="-25%" y="-20%" width="150%" height="140%">
+        <feMorphology in="SourceAlpha" operator="dilate" radius="${(rim * 1.3).toFixed(1)}" result="d1"/>
+        <feFlood flood-color="${ring}" result="c1"/>
+        <feComposite in="c1" in2="d1" operator="in" result="ringLayer"/>
+        <feMorphology in="SourceAlpha" operator="dilate" radius="${rim.toFixed(1)}" result="d2"/>
+        <feFlood flood-color="${body}" result="c2"/>
+        <feComposite in="c2" in2="d2" operator="in" result="bodyLayer"/>
+        <feMerge><feMergeNode in="ringLayer"/><feMergeNode in="bodyLayer"/></feMerge>
+      </filter>
+    </defs>
+    <g filter="url(#${id})">${img}</g>
+    ${ghost || blank ? "" : img}
+    ${blank ? `<text x="${cx}" y="${top + h * 0.55}" font-family="${TH}" font-size="${Math.max(15, h * 0.09)}" text-anchor="middle" fill="${LINE}">ไม่มีลาย</text>` : ""}
+    ${ghost ? "" : gateWire(rivetX, rivetY, tipX, tipY, flip * w * 0.12, gateColor)}
+    ${!ghost && gates > 1 ? gateWire(cx + w * 0.3, rivetY, cx + w * 0.36, tipY, -w * 0.12, gateColor) : ""}`;
 }
 
 // ── ประเภทอะคริลิค → อะคริลิคใส ─────────────────────────────────────────
@@ -134,7 +144,7 @@ const clearArt = frame(`
   ${title("อะคริลิคใส", "ชนิดมาตรฐาน หนา 3 มม. · เนื้อใสมองทะลุ")}
   ${piece(350, 168, 372)}
   ${foot([
-    "อะคริลิคไดคัทเป็นตัวตะขอในตัว + ก้านตะขอสแตนเลส 1 ก้าน",
+    "ไดคัทตามลาย เหลือขอบใสรอบลาย + ก้านตะขอสแตนเลส 1 ก้าน",
     "ราคาตามตารางคือชนิดนี้ (เท่ากับขาวขุ่น C-02)",
     "อยากได้กลิตเตอร์/โฮโลแกรม เลือก 'สีพิเศษ' ได้",
   ])}`);
@@ -151,7 +161,7 @@ function sizeArt(cm) {
     ${piece(330, GROUND - ghostH, ghostH, { ghost: true })}
     ${piece(330, top, h)}
     ${dimV(330 + (ghostH * 0.62) / 2 + 40, top, GROUND, `${cm} ซม.`)}
-    ${foot(["เส้นประ = ขนาดใหญ่สุด 10 ซม. ไว้เทียบ", "ขนาดอื่นแจ้งในหมายเหตุถึงร้านได้"])}`);
+    ${foot(["เงาจาง = ขนาดใหญ่สุด 10 ซม. ไว้เทียบ", "ขนาดอื่นแจ้งในหมายเหตุถึงร้านได้"])}`);
 }
 
 // ── อะไหล่ "ก้านตะขอ" 1.8 / 2.8 ซม. ─────────────────────────────────────
@@ -178,7 +188,7 @@ function gateArt(cm, other) {
   return frame(`
     ${title(`ก้านตะขอ ${cm} ซม.`, cm < 2 ? "ก้านสั้น — งานชิ้นเล็ก เกี่ยวห่วง/ซิป" : "ก้านยาว — เกี่ยวสายกระเป๋าหนา ๆ ได้ถนัดกว่า")}
     ${piece(215, 178, 340, { gateColor: CYAN })}
-    <text x="215" y="576" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">ก้านหมุดที่ริมแผ่น ดีดปิดช่องเกี่ยวไว้</text>
+    <text x="215" y="576" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">ก้านสแตนเลสหมุดที่ริมแผ่นอะคริลิค</text>
     <!-- ก้านแบบขยาย: ขนาดที่เลือก (ทึบ) เทียบกับอีกขนาด (เส้นประ) -->
     ${gatePart(555, base, other * GATE_PX_PER_CM, LINE, true)}
     ${gatePart(440, base, cm * GATE_PX_PER_CM, CYAN)}
@@ -219,11 +229,11 @@ async function render(name, svg) {
   console.log(`🎨 ${name}.jpg (${Math.round(buf.length / 1024)} KB)`);
 }
 
-await render("clear-plain-v2", clearArt);
-for (let cm = 5; cm <= 10; cm++) await render(`size-${cm}-v1`, sizeArt(cm));
-await render("part-small-v1", gateArt(1.8, 2.8));
-await render("part-large-v1", gateArt(2.8, 1.8));
-await render("print-1-v1", printArt(1));
-await render("print-2-v1", printArt(2));
-await render("hook-extra-v1", hookExtraArt);
+await render("clear-plain-v3", clearArt);
+for (let cm = 5; cm <= 10; cm++) await render(`size-${cm}-v2`, sizeArt(cm));
+await render("part-small-v2", gateArt(1.8, 2.8));
+await render("part-large-v2", gateArt(2.8, 1.8));
+await render("print-1-v2", printArt(1));
+await render("print-2-v2", printArt(2));
+await render("hook-extra-v2", hookExtraArt);
 console.log(`\n✅ ไฟล์ทั้งหมดอยู่ที่ ${OUT}`);
