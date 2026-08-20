@@ -20,6 +20,8 @@ import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createClient } from "@supabase/supabase-js";
 import { hasQuoteOption, priceRange, type Product, type ProductOption } from "../src/lib/products";
+// @ts-expect-error — สคริปต์ JS ล้วน (ภาพสีอะคริลิคชุดกลางของทั้งระบบ)
+import { acrylicColorImage } from "./acrylic-colors.mjs";
 
 const WRITE = process.argv.includes("--write");
 const UPLOAD = process.argv.includes("--upload");
@@ -54,55 +56,55 @@ const SIZES = [10, 11, 12, 13, 14, 15];
 const SPECIAL_FEE: Record<number, number> = { 10: 10, 11: 15, 12: 20, 13: 25, 14: 30, 15: 35 };
 const SIZE_LABEL = (cm: number) => `${cm} ซม.`;
 
-/** สีอะคริลิคพิเศษ + ไฟล์ภาพที่ครอปมาจากชาร์ต /coloracrylic ("" = ยังไม่มีภาพในชาร์ต) */
-const SPECIAL_COLORS: [name: string, img: string][] = [
-  ["อะคริลิคใสขุ่น C-01", "color-c01"],
-  ["อะคริลิคกลิตเตอร์-เงิน", "color-glitter-silver"],
-  ["อะคริลิคกลิตเตอร์-ทอง", "color-glitter-gold"],
-  ["อะคริลิคกลิตเตอร์-รุ้ง", "color-glitter-rainbow"],
-  ["อะคริลิคกระจก", "color-mirror"],
-  ["hologram-01", "color-holo-01"],
-  ["hologram-02", "color-holo-02"],
-  ["hologram-รุ้ง", "color-holo-rainbow"],
-  ["hologram-จุด", "color-holo-dot"],
-  ["hologram-หิมะ", "color-holo-snow"],
-  ["hologram-ดาว", "color-holo-star"],
-  ["hologram-Stardust", ""],
-  ["hologram-Dust", ""],
-  ["hologram-หัวใจ", ""],
-  ["อะคริลิคสีขาว (W)", "color-w"],
-  ["อะคริลิคสีฟ้า (B)", "color-b"],
-  ["อะคริลิคสีชมพู (P)", "color-p"],
-  ["อะคริลิคสีเหลือง (Y)", "color-y"],
-  ["อะคริลิคสีส้ม (OR)", "color-or"],
-  ["อะคริลิคสีส้มอ่อน (OR-02)", "color-or02"],
-  ["อะคริลิคสีเขียว (GR)", "color-gr"],
-  ["อะคริลิคสีแดง (R)", "color-r"],
-  ["อะคริลิคสีเทา (G)", "color-g"],
-  ["อะคริลิคสีดำ (BK)", "color-bk"],
-  ["อะคริลิคสีครีม", ""],
-  ["อะคริลิคสีเลมอน (603)", "color-603"],
-  ["อะคริลิคสีไข่แดง (605)", "color-605"],
-  ["อะคริลิคสีส้มแดง (606)", "color-606"],
-  ["อะคริลิคสีน้ำตาล (611)", "color-611"],
-  ["อะคริลิคสีทอง (626)", "color-626"],
-  ["อะคริลิคสีมัสตาร์ด (235)", "color-235"],
-  ["อะคริลิคสีเหลืองเข้ม (206)", "color-206"],
-  ["อะคริลิคสีเทามุก (621)", "color-621"],
-  ["อะคริลิคสีท้องฟ้า (612)", "color-612"],
-  ["อะคริลิคสีน้ำเงิน (619)", "color-619"],
-  ["อะคริลิคสีกุหลาบแดง (601)", "color-601"],
-  ["อะคริลิคสีหญ้าเขียว (610)", "color-610"],
-  ["อะคริลิคสีแอปเปิ้ลเขียว (622)", "color-622"],
-  ["อะคริลิคสีม่วง (137)", "color-137"],
-  ["อะคริลิคสีกุหลาบชมพู", ""],
-  ["อะคริลิคสีกากเพชรเงิน", ""],
-  ["อะคริลิคสีกากเพชรโรสโกลด์", ""],
-  ["อะคริลิคสีกากเพชรสีแดง", ""],
-  ["อะคริลิคสีกากเพชรสีม่วง", ""],
+/** สีอะคริลิคพิเศษ (ตามชาร์ต "อะคริลิคสีพิเศษ" ของร้าน) — ภาพมาจากชุดกลาง scripts/acrylic-colors.mjs */
+const SPECIAL_COLORS = [
+  "อะคริลิคใสขุ่น C-01",
+  "อะคริลิคกลิตเตอร์-เงิน",
+  "อะคริลิคกลิตเตอร์-ทอง",
+  "อะคริลิคกลิตเตอร์-รุ้ง",
+  "อะคริลิคกระจก",
+  "hologram-01",
+  "hologram-02",
+  "hologram-รุ้ง",
+  "hologram-จุด",
+  "hologram-หิมะ",
+  "hologram-ดาว",
+  "hologram-Stardust",
+  "hologram-Dust",
+  "hologram-หัวใจ",
+  "อะคริลิคสีขาว (W)",
+  "อะคริลิคสีฟ้า (B)",
+  "อะคริลิคสีชมพู (P)",
+  "อะคริลิคสีเหลือง (Y)",
+  "อะคริลิคสีส้ม (OR)",
+  "อะคริลิคสีส้มอ่อน (OR-02)",
+  "อะคริลิคสีเขียว (GR)",
+  "อะคริลิคสีแดง (R)",
+  "อะคริลิคสีเทา (G)",
+  "อะคริลิคสีดำ (BK)",
+  "อะคริลิคสีครีม",
+  "อะคริลิคสีเลมอน (603)",
+  "อะคริลิคสีไข่แดง (605)",
+  "อะคริลิคสีส้มแดง (606)",
+  "อะคริลิคสีน้ำตาล (611)",
+  "อะคริลิคสีทอง (626)",
+  "อะคริลิคสีมัสตาร์ด (235)",
+  "อะคริลิคสีเหลืองเข้ม (206)",
+  "อะคริลิคสีเทามุก (621)",
+  "อะคริลิคสีท้องฟ้า (612)",
+  "อะคริลิคสีน้ำเงิน (619)",
+  "อะคริลิคสีกุหลาบแดง (601)",
+  "อะคริลิคสีหญ้าเขียว (610)",
+  "อะคริลิคสีแอปเปิ้ลเขียว (622)",
+  "อะคริลิคสีม่วง (137)",
+  "อะคริลิคสีกุหลาบชมพู",
+  "อะคริลิคสีกากเพชรเงิน",
+  "อะคริลิคสีกากเพชรโรสโกลด์",
+  "อะคริลิคสีกากเพชรสีแดง",
+  "อะคริลิคสีกากเพชรสีม่วง",
 ];
 
-const FILES = [...PHOTOS, ...SIZES.map((cm) => `size-${cm}`), "part-figure", "part-base", ...SPECIAL_COLORS.map(([, f]) => f).filter(Boolean)];
+const FILES = [...PHOTOS, ...SIZES.map((cm) => `size-${cm}`), "part-figure", "part-base"];
 
 const SPECIAL = "อะคริลิคพิเศษ (สี / กลิตเตอร์ / โฮโลแกรม)";
 
@@ -119,15 +121,18 @@ const options: ProductOption[] = [
     label: "สีอะคริลิค",
     choices: [
       { name: "อะคริลิคใส" },
-      { name: "อะคริลิคขาวขุ่น C-02", imageSrc: IMG("color-c02") },
-      { name: SPECIAL, imageSrc: IMG("color-holo-rainbow") },
+      { name: "อะคริลิคขาวขุ่น C-02", imageSrc: acrylicColorImage("อะคริลิคขาวขุ่น C-02") },
+      { name: SPECIAL, imageSrc: acrylicColorImage("hologram-รุ้ง") },
     ],
   },
   {
     label: "เลือกสีพิเศษ",
     display: "dropdown",
     showWhen: { label: "สีอะคริลิค", choices: [SPECIAL] },
-    choices: SPECIAL_COLORS.map(([name, img]) => ({ name, ...(img ? { imageSrc: IMG(img) } : {}) })),
+    choices: SPECIAL_COLORS.map((name) => {
+      const img = acrylicColorImage(name);
+      return { name, ...(img ? { imageSrc: img } : {}) };
+    }),
   },
   // ค่าอะคริลิคพิเศษต่างกันตามขนาด → แยกกลุ่มต่อขนาด แล้วโชว์ทีละกลุ่มด้วย showWhen
   ...SIZES.map(

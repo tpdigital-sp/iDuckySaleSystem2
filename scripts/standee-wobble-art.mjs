@@ -8,7 +8,7 @@
  *   1. gallery-1..9        ภาพงานจริงจากเว็บตารางราคา (iduckyofficial-pricelists.com/standeewobbles)
  *   2. size-10..15         ภาพประกอบ "ขนาด" — วาดเป็น SVG สเกลจริง เทียบกันได้ทั้งชุด
  *      part-figure/base    ชิ้นไหนคือ "ตัวกลาง" / "ฐานโยกเยก" (ใช้กับ Add on อะคริลิคพิเศษ)
- *   3. color-*             สีอะคริลิค — ครอปจากชาร์ตหน้า /coloracrylic ของเว็บตารางราคา
+ *   (สีอะคริลิคใช้ชุดกลางของทั้งระบบ — ดู scripts/acrylic-colors.mjs)
  *
  * ⚠️ อัปทับ "ชื่อไฟล์เดิม" ไม่ได้ — CDN/Next แคชของเก่าไว้ ต้องตั้งชื่อไฟล์ใหม่เสมอ
  */
@@ -48,60 +48,6 @@ const GALLERY = [
 for (const [i, id] of GALLERY.entries()) {
   const src = await grab(`src-g${i + 1}.jpg`, `${WIX}/${id}/v1/fill/w_1200,h_1200,al_c,q_88/file.jpg`);
   await sharp(src).resize(1100, 1100, { fit: "inside" }).jpeg({ quality: 86 }).toFile(`${OUT}/gallery-${i + 1}.jpg`);
-}
-
-// ── 3. สีอะคริลิค — ครอปจากชาร์ต /coloracrylic ────────────────────────────
-const CHART = await grab("chart.jpg", `${WIX}/959b83_ece384645d784b25ab624c67f2cbd4d8~mv2.jpg`); // 2000×2162
-
-/** [x1,y1,x2,y2] บนภาพชาร์ตต้นฉบับ */
-const SWATCH = {
-  // แผงซ้าย — ฝั่งหนึ่งผิวด้าน ฝั่งหนึ่งผิวเงา
-  "color-c01": [176, 186, 309, 304],
-  "color-w": [517, 148, 659, 309],
-  "color-b": [108, 313, 271, 480],
-  "color-r": [286, 313, 440, 480],
-  "color-g": [455, 313, 608, 480],
-  "color-bk": [621, 313, 780, 480],
-  "color-p": [108, 484, 271, 652],
-  "color-y": [286, 484, 440, 652],
-  "color-or": [455, 484, 608, 652],
-  "color-gr": [621, 484, 780, 652],
-  "color-or02": [601, 656, 780, 773],
-  // แผงขวา — ผิวเงาทั้ง 2 ด้าน
-  "color-601": [872, 134, 1063, 307],
-  "color-603": [1074, 134, 1262, 307],
-  "color-605": [1273, 134, 1460, 307],
-  "color-606": [1488, 134, 1681, 307],
-  "color-610": [1696, 134, 1886, 307],
-  "color-611": [872, 318, 1063, 481],
-  "color-612": [1074, 318, 1262, 481],
-  "color-619": [1273, 318, 1460, 481],
-  "color-621": [1488, 318, 1681, 481],
-  "color-622": [1696, 318, 1886, 481],
-  "color-626": [872, 498, 1063, 660],
-  "color-137": [1074, 498, 1262, 660],
-  "color-235": [1311, 498, 1500, 660],
-  "color-206": [1544, 498, 1746, 660],
-  // กลิตเตอร์ / โฮโลแกรม / กระจก
-  "color-glitter-silver": [820, 905, 1000, 1050],
-  "color-glitter-gold": [1200, 905, 1380, 1050],
-  "color-glitter-rainbow": [1650, 905, 1830, 1050],
-  "color-c02": [92, 837, 708, 1417],
-  "color-holo-01": [733, 1125, 1033, 1425],
-  "color-holo-02": [1050, 1125, 1525, 1425],
-  "color-mirror": [1550, 1125, 1967, 1425],
-  "color-holo-star": [100, 1587, 550, 2050],
-  "color-holo-rainbow": [580, 1587, 892, 2050],
-  "color-holo-snow": [933, 1587, 1317, 2050],
-  "color-holo-dot": [1350, 1587, 1900, 2050],
-};
-
-for (const [name, [x1, y1, x2, y2]] of Object.entries(SWATCH)) {
-  await sharp(CHART)
-    .extract({ left: x1, top: y1, width: x2 - x1, height: y2 - y1 })
-    .resize(420, 420, { fit: "cover", position: "centre" })
-    .jpeg({ quality: 88 })
-    .toFile(`${OUT}/${name}.jpg`);
 }
 
 // ── 2. ภาพประกอบ "ขนาด" + "ชิ้นส่วน" — วาดเป็น SVG ────────────────────────
@@ -235,4 +181,4 @@ for (const [name, svg] of Object.entries(svgs)) {
   await sharp(Buffer.from(svg)).png().resize(700, 700).jpeg({ quality: 90 }).toFile(`${OUT}/${name}.jpg`);
 }
 
-console.log(`✅ ${GALLERY.length} ภาพงานจริง · ${Object.keys(SWATCH).length} สีอะคริลิค · ${Object.keys(svgs).length} ภาพวาด → ${OUT}`);
+console.log(`✅ ${GALLERY.length} ภาพงานจริง · ${Object.keys(svgs).length} ภาพวาด → ${OUT}`);
