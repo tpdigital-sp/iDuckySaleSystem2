@@ -28,8 +28,13 @@ const CLEAR = "อะคริลิคใส";
 const C02 = "อะคริลิคขาวขุ่น C-02";
 
 /**
- * สินค้าที่ต้องแยก — `merged` คือชื่อตัวเลือกเดิมที่รวมสองชนิดไว้ด้วยกัน (แต่ละสินค้าเขียนไม่เหมือนกัน)
+ * สินค้าที่ต้องแยก — `merged` คือชื่อตัวเลือกเดิมที่จะกลายเป็น "อะคริลิคใส" แล้วแตก C-02 ออกมาอีกตัว
+ * มี 2 แบบ: ชื่อที่รวมสองชนิดไว้ ("ใส / ขาวขุ่น C-02") กับชื่อที่มีแต่ใส ("อะคริลิคใส", "อะคริลิคใส (มาตรฐาน)")
  * `clearImage` ใส่เมื่ออยากเปลี่ยนภาพของตัวเลือก "ใส" ด้วย · ไม่ใส่ = ใช้ภาพเดิมของตัวเลือกนั้น
+ *
+ * ⚠️ สินค้าที่มีกลุ่ม "สีอะคริลิค" 44 สีอยู่แล้ว (keyring-copy · acrylicmagnet-1 · otheracrylicproducts2-5)
+ *    กลุ่มหยาบที่แยกในนี้ทำหน้าที่เป็น "ช่องราคา" (ราคามาตรฐาน / ราคาสีพิเศษ) ไม่ใช่ตัวเลือกวัสดุ
+ *    แยกแล้วลูกค้าจะเห็น C-02 สองที่ — ตั้งใจตามที่ทางร้านสั่ง แต่ถ้าอยากยุบกลุ่มซ้ำ ค่อยจัดการทีหลัง
  */
 const TARGETS = [
   {
@@ -62,6 +67,26 @@ const TARGETS = [
         "• เลือกได้เฉพาะ 'ตัวสแตนดี้' — ฐานเป็นอะคริลิคใสเท่านั้น\n",
     },
   },
+
+  // ── สำเนาพวงกุญแจ — กลุ่ม "ประเภทอะคริลิค" เป็นช่องราคา (มีกลุ่มสีอะคริลิค 44 สีแยกอีกกลุ่ม) ──
+  { id: "keyring-copy", groups: ["ประเภทอะคริลิค"], merged: "ใส / ขาวขุ่น C-02" },
+  { id: "keyring-copy-copy", groups: ["ประเภทอะคริลิค"], merged: "ใส / ขาวขุ่น C-02" }, // ⚠️ ตัวนี้เผยแพร่อยู่จริง
+
+  // ── กลุ่มที่มีแต่ "ใส" ยังไม่มี C-02 เลย — ชาร์ตสีของร้านกำกับ C-02 ว่า "ไม่บวกเพิ่ม" ราคาจึงเท่ากัน ──
+  { id: "3d-acrylic", groups: ["ชนิดอะคริลิค"], merged: CLEAR },
+  { id: "acrylicmagnet-1", groups: ["ชนิดอะคริลิค"], merged: CLEAR },
+  { id: "otheracrylicproducts2-5", groups: ["ประเภท"], merged: CLEAR }, // ⚠️ ตัวนี้เผยแพร่อยู่จริง
+  { id: "phone-stand-bend-base", groups: ["สีอะคริลิค"], merged: CLEAR },
+  {
+    id: "rotating-stand",
+    groups: ["ชนิดอะคริลิค"],
+    merged: "อะคริลิคใส (มาตรฐาน)",
+    /**
+     * สินค้านี้เดิมนับ "ทุกสีที่ไม่ใช่ใส" เป็นของพิเศษที่ร้านตีราคาให้ — C-02 จึงไปอยู่ในลิสต์สีพิเศษด้วย
+     * พอ C-02 ขึ้นมาเป็นเรทมาตรฐานแล้ว ต้องถอดออกจากลิสต์สีพิเศษ ไม่งั้นวัสดุเดียวกันมีสองราคา
+     */
+    dropFrom: { group: "เลือกสีอะคริลิคพิเศษ", choice: C02 },
+  },
 ];
 
 const env = Object.fromEntries(
@@ -83,6 +108,7 @@ const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_
  * ⚠️ ไม่ก๊อป stockItemId — คนละวัสดุ ถ้าผูกไว้จะไปตัดสต๊อกผิดตัว
  */
 function splitChoices(choices, merged, clearImage) {
+  if (choices.some((c) => c.name === C02)) return null; // แยกไปแล้ว (สำคัญตอน merged ชื่อเดียวกับ CLEAR)
   const i = choices.findIndex((c) => c.name === merged);
   if (i < 0) return null;
   const orig = choices[i];
@@ -160,7 +186,17 @@ for (const t of TARGETS) {
     done.push(label);
     console.log(`   [${label}] → ${next.map((c) => c.name).join(" | ")}`);
   }
-  if (!done.length) {
+  // ถอดตัวเลือกที่ซ้ำซ้อนออก (ทำแยกจากการแยกตัวเลือก เพราะบางทีแยกไปแล้วแต่ยังไม่ได้ถอด)
+  let dropped = false;
+  if (t.dropFrom) {
+    const g = d.options?.find((o) => o.label === t.dropFrom.group);
+    if (g?.choices.some((c) => c.name === t.dropFrom.choice)) {
+      g.choices = g.choices.filter((c) => c.name !== t.dropFrom.choice);
+      dropped = true;
+      console.log(`   [${t.dropFrom.group}] ถอด "${t.dropFrom.choice}" ออก (ย้ายไปอยู่เรทมาตรฐานแล้ว)`);
+    }
+  }
+  if (!done.length && !dropped) {
     console.log("   (ไม่มีอะไรต้องแก้)");
     continue;
   }

@@ -120,6 +120,8 @@ const options: ProductOption[] = [
     stockBearing: true,
     choices: [
       { name: "อะคริลิคใส", imageSrc: IMG("clear") },
+      // ชาร์ตสีของร้านกำกับ C-02 ว่า "ไม่บวกเพิ่ม" — ราคาเท่าใส แต่เนื้อขาวขุ่นทึบ ลายเด่นกว่า
+      { name: "อะคริลิคขาวขุ่น C-02", imageSrc: acrylicColorImage("อะคริลิคขาวขุ่น C-02") },
       { name: HOLO, extra: SPECIAL_FEE, imageSrc: acrylicColorImage("hologram-รุ้ง") },
       { name: GLITTER, extra: SPECIAL_FEE, imageSrc: acrylicColorImage("อะคริลิคกลิตเตอร์-รุ้ง") },
     ],
