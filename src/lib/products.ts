@@ -66,6 +66,13 @@ export interface ProductOptionChoice {
    * เป็นป้ายบอกทางเฉย ๆ ไม่มีผลกับราคา ตารางราคา หรือการคิดเงินใด ๆ
    */
   popular?: boolean;
+  /**
+   * 💰 +฿ ของ "ช่วงสั่งน้อย" — ใช้เมื่อจำนวนยังไม่ถึง extraFromQty ของกลุ่ม
+   * มีไว้สำหรับกลุ่มที่ช่วงปลีกกับช่วงส่งคิดคนละเรท เช่น สแตนดี้: ช่วงปลีกฐาน 7 ซม.ขึ้นไป
+   * คิด ซม.ละ 5 บาท ส่วนช่วงส่ง (11 ชิ้นขึ้นไป) คิดตามตาราง extra ปกติ
+   * ไม่ตั้ง = ช่วงที่ต่ำกว่าเกณฑ์ไม่คิดเพิ่ม (พฤติกรรมเดิม) · ไม่มีผลกับกลุ่ม extraPerDesign
+   */
+  extraBelow?: number;
 }
 
 export interface ProductOption {
@@ -422,6 +429,36 @@ export function choiceExtraOf(
  * +฿ รวมของกลุ่มนี้ตามที่ลูกค้าเลือกไว้ — กลุ่มปกติ = ตัวที่เลือก · กลุ่ม multi = บวกทุกตัวที่ติ๊ก
  * กลุ่มที่เปิดช่องจำนวน คูณตามจำนวนที่ลูกค้าระบุ (เพิ่มสาย 2 เส้น = +฿ ของสาย × 2)
  */
+/**
+ * +฿ ของตัวเลือกหนึ่ง ณ จำนวนที่สั่ง — ถึงเกณฑ์ extraFromQty ใช้ extra ปกติ
+ * ยังไม่ถึงเกณฑ์ใช้ extraBelow (ไม่ตั้ง = ไม่คิดเพิ่ม เหมือนเดิม)
+ */
+export function choiceExtraAtQty(
+  opt: ProductOption,
+  selections: Record<string, string>,
+  choiceName: string,
+  qty: number
+): number {
+  if (optionExtraApplies(opt, qty)) return choiceExtraOf(opt, selections, choiceName);
+  const below = opt.choices.find((c) => c.name === choiceName)?.extraBelow ?? 0;
+  if (!below) return 0;
+  const f = opt.freeWhen;
+  if (f && f.choices.includes(choiceName) && valueMatchesAny(selections[f.when.label], f.when.choices)) return 0;
+  return below;
+}
+
+/** +฿ รวมของกลุ่ม ณ จำนวนที่สั่ง (คู่กับ groupExtraOf แต่รู้จำนวน จึงเลือกเรทถูกช่วง) */
+export function groupExtraAtQty(opt: ProductOption, selections: Record<string, string>, qty: number): number {
+  let free = Math.max(0, Math.floor(opt.freeFirstN ?? 0));
+  let sum = 0;
+  for (const p of selectedPicks(opt, selections)) {
+    const charged = Math.max(0, p.qty - free);
+    free = Math.max(0, free - p.qty);
+    sum += choiceExtraAtQty(opt, selections, p.name, qty) * charged;
+  }
+  return sum;
+}
+
 export function groupExtraOf(opt: ProductOption, selections: Record<string, string>): number {
   // 🎁 โควตา "รวมในราคาแล้ว" ถูกใช้ไปตามลำดับที่ติ๊ก — เหลือเท่าไหร่ค่อยคิดเงินส่วนที่เกิน
   let free = Math.max(0, Math.floor(opt.freeFirstN ?? 0));
@@ -467,7 +504,7 @@ export function groupAddOf(opt: ProductOption, selections: Record<string, string
   if (fee > 0) return fee;
   // กลุ่มที่คิดต่อลาย: +฿ ไม่เข้าราคา/ชิ้น — ไปคิดรวมครั้งเดียวใน designFeeFor
   if (opt.extraPerDesign) return fee;
-  const extra = optionExtraApplies(opt, qty) ? groupExtraOf(opt, selections) : 0;
+  const extra = groupExtraAtQty(opt, selections, qty);
   return extra + fee; // fee ติดลบ = ลดให้
 }
 
@@ -493,7 +530,7 @@ export function choiceBadgeOf(
     const used = picks.filter((p) => p.name !== choiceName).reduce((n, p) => n + p.qty, 0);
     if (used < free) return 0;
   }
-  return optionExtraApplies(opt, qty) ? choiceExtraOf(opt, view, choiceName) : 0;
+  return choiceExtraAtQty(opt, view, choiceName, qty);
 }
 
 export interface ProductImage {

@@ -60,6 +60,8 @@ type DraftChoice = {
   askPrice?: boolean;
   /** ⭐ แบบที่ลูกค้านิยมสั่ง — หน้าสินค้าโชว์ป้าย "นิยม" */
   popular?: boolean;
+  /** 💰 +฿ ของช่วงสั่งน้อย (ต่ำกว่า extraFromQty) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  extraBelow?: number;
 };
 /** presetId มี = กลุ่มนี้ "ลิงก์" คลังตัวเลือกกลาง (label+choices มาจากคลัง แก้ในกลุ่มไม่ได้จนกว่าจะตัดลิงก์) */
 type DraftOption = {
@@ -428,6 +430,7 @@ function toDraft(p: Product): Draft {
         ...(c.stockQtyPer ? { stockQtyPer: c.stockQtyPer } : {}),
         ...(c.askPrice ? { askPrice: true } : {}),
         ...(c.popular ? { popular: true } : {}),
+        ...(c.extraBelow ? { extraBelow: c.extraBelow } : {}),
       })),
       ...(o.presetId ? { presetId: o.presetId } : {}),
       // มีตัวไหนเปิด "ระบุจำนวน" ไว้ = กลุ่มนี้เคยเปิดสวิตช์ → เปิดค้างไว้ให้เห็นค่าเดิม
@@ -661,6 +664,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             ...(c.askPrice ? { askPrice: true as const } : {}),
             // ⭐ ป้าย "แบบยอดนิยม" — ต้องส่งกลับ ไม่งั้นบันทึกแล้วหาย
             ...(c.popular ? { popular: true as const } : {}),
+            ...(c.extraBelow ? { extraBelow: c.extraBelow } : {}),
           };
         }),
       ...(o.presetId ? { presetId: o.presetId } : {}),

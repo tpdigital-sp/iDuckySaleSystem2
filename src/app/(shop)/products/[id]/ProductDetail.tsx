@@ -1936,6 +1936,17 @@ export default function ProductDetail({
                       const unitTxt = perDesign ? `${unit}ต่อลาย` : unit;
                       const from = opt.extraFromQty!.toLocaleString("th-TH");
                       if (!optionExtraApplies(opt, feeQty)) {
+                        // ช่วงปลีกบางกลุ่มคิดเพิ่มคนละเรท (extraBelow) — อย่าบอกว่า "รวมแล้ว" ทั้งที่ยังคิดเงิน
+                        const below = groupAddOf(opt, effective, feeQty);
+                        if (opt.choices.some((c) => c.extraBelow)) {
+                          return (
+                            <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
+                              💡 จำนวนนี้คิด{opt.label}ตามเรทช่วงปลีก{" "}
+                              {below > 0 ? `(ตอนนี้ +${formatPrice(below)}/${unit})` : "(ตอนนี้ไม่คิดเพิ่ม)"} · สั่งตั้งแต่ {from}{" "}
+                              {unitTxt}ขึ้นไปคิดตามเรทส่ง
+                            </p>
+                          );
+                        }
                         return (
                           <p className="mt-1.5 text-[11px] text-stone-400">
                             💡 จำนวนนี้ราคารวม{opt.label}แล้ว · สั่งตั้งแต่ {from} {unitTxt}ขึ้นไปคิดเพิ่มตามตัวเลือก
