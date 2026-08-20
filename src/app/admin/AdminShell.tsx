@@ -32,6 +32,7 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   { href: "/admin/diecut", label: "เส้นไดคัท (ทดลอง)", emoji: "✂️", perm: "products.manage", group: "สินค้า" },
   // 💛 ลูกค้า & การตลาด
   { href: "/admin/coupons", label: "คูปอง", emoji: "🎟️", perm: "coupons.manage", group: "ลูกค้า" },
+  { href: "/admin/claims", label: "เคลมสินค้า", emoji: "🧰", perm: "orders.view", group: "ลูกค้า" },
   { href: "/admin/ratings", label: "ความพึงพอใจ", emoji: "💬", perm: "orders.viewAll", group: "ลูกค้า" },
   // ⚙️ ร้าน & ระบบ
   { href: "/admin/articles", label: "บทความ", emoji: "✍️", perm: "products.view", group: "ระบบ" },

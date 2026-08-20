@@ -11,7 +11,6 @@ import { useCustomer } from "@/lib/customer-context";
 import { signOut, updateProfile } from "@/lib/customer-auth";
 import { clearMyOrders, fetchMyOrders, readStoredOrders, setOrdersOwner } from "@/lib/my-orders";
 import { uploadAvatar } from "@/lib/avatar-upload";
-import { LINE_URL } from "@/components/LineButton";
 import MyCoupons from "@/components/MyCoupons";
 import { AccountSideNav, MenuIco, OrderTracker, statusIcon, type IcoName } from "@/components/account/AccountShell";
 
@@ -665,7 +664,7 @@ export default function AccountPage() {
                 <MenuItem href="/account/production" ico="production" tone="blue" label="ติดตามสถานะการผลิต" meta={producing ? `กำลังผลิต ${producing} ออเดอร์` : "ไม่มีงานกำลังผลิต"} />
                 <MenuItem href="/account/files" ico="files" tone="lilac" label="ไฟล์งานของฉัน / สั่งซ้ำ" meta="สั่งซ้ำจากออเดอร์เดิม" />
                 <MenuItem href="/account/receipts" ico="receipt" tone="navy" label="ใบเสร็จ / บิลเงินสด" meta={latest ? "ออเดอร์ล่าสุด" : undefined} />
-                <MenuItem href={LINE_URL} external ico="claim" tone="coral" label="แจ้งปัญหา / เคลมสินค้า" meta="ทักแอดมินทาง LINE" />
+                <MenuItem href="/account/claims" ico="claim" tone="coral" label="แจ้งปัญหา / เคลมสินค้า" meta="แจ้งในระบบ หรือทัก LINE ก็ได้" />
                 <MenuItem onClick={() => showToast("ให้คะแนนสินค้า — เร็วๆ นี้!")} ico="review" tone="mint" label="รีวิว / ให้คะแนนสินค้า" meta={reviewable ? `${reviewable} รอรีวิว` : undefined} />
 
                 <div className="acd-menu-head">บัญชี</div>

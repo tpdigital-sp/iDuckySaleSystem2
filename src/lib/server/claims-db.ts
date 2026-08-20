@@ -24,7 +24,7 @@ export function isMissingTable(error: { code?: string; message: string }): boole
 export async function withSignedPhotos(sb: SupabaseClient, claim: Claim): Promise<Claim> {
   if (!claim.photoPaths?.length) return { ...claim, photoUrls: [] };
   const { data } = await sb.storage.from(CLAIM_BUCKET).createSignedUrls(claim.photoPaths, 3600);
-  return { ...claim, photoUrls: (data ?? []).map((d) => d.signedUrl).filter(Boolean) };
+  return { ...claim, photoUrls: (data ?? []).map((d) => d.signedUrl).filter((u): u is string => !!u) };
 }
 
 export async function loadClaim(sb: SupabaseClient, id: string): Promise<Claim | null> {

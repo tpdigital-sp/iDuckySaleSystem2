@@ -1985,3 +1985,45 @@ main:has(.dl-page) + .dl footer{margin-top:0}
   .dl .acd-pager{gap:6px}
   .dl .acd-pager-nav{padding:8px 12px}
 }
+
+/* ═══════ หน้าแจ้งปัญหา / เคลมสินค้า (เฟส 3) ═══════ */
+.dl .acd-clm-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+.dl .acd-clm-chip{flex:none;font-family:var(--display);font-size:.72rem;font-weight:600;padding:4px 12px;border-radius:999px;border:1px solid}
+.dl .acd-clm-chip.new{background:var(--sky-100);color:var(--blue-deep);border-color:rgba(44,129,196,.28)}
+.dl .acd-clm-chip.work{background:#EEE9FF;color:#6A4FD0;border-color:rgba(106,79,208,.28)}
+.dl .acd-clm-chip.ok{background:#DFF5E6;color:#1D9A55;border-color:rgba(29,154,85,.28)}
+.dl .acd-clm-chip.no{background:#FDEBE7;color:var(--coral-deep);border-color:rgba(217,93,80,.3)}
+.dl .acd-clm-chip.done{background:#F1F1F1;color:#8A8A8A;border-color:#E2E2E2}
+.dl .acd-clm-items{margin:0;font-size:.8rem;color:var(--navy-soft)}
+.dl .acd-clm-detail{margin:0;padding:12px 16px;border-radius:var(--r-s);background:var(--sky-50);font-size:.88rem;color:var(--navy);white-space:pre-wrap}
+.dl .acd-clm-resolve{padding:12px 16px;border-radius:var(--r-s);background:#DFF5E6;border:1px solid rgba(29,154,85,.25);font-size:.85rem;color:#166B3D}
+.dl .acd-clm-resolve.no{background:#FDEBE7;border-color:rgba(217,93,80,.25);color:var(--coral-deep)}
+.dl .acd-clm-thread{display:flex;flex-direction:column;gap:8px}
+.dl .acd-clm-msg{max-width:85%;padding:9px 14px;border-radius:14px;font-size:.85rem;line-height:1.6;color:var(--navy)}
+.dl .acd-clm-msg .acd-clm-msg-by{display:block;font-family:var(--display);font-size:.68rem;font-weight:600;color:var(--navy-soft);margin-bottom:2px}
+.dl .acd-clm-msg.me{align-self:flex-end;background:var(--sky-100);border-bottom-right-radius:4px}
+.dl .acd-clm-msg.shop{align-self:flex-start;background:#fff;border:1px solid var(--sky-100);border-bottom-left-radius:4px}
+.dl .acd-clm-reply{display:flex;gap:8px}
+.dl .acd-clm-reply input{flex:1;min-width:0;border:1px solid var(--sky-200);border-radius:999px;padding:9px 16px;font-size:.86rem;
+  font-family:inherit;color:var(--navy);background:#fff;outline:none}
+.dl .acd-clm-reply input:focus{border-color:var(--blue-deep);box-shadow:0 0 0 3px rgba(44,129,196,.14)}
+/* ฟอร์มยื่นเคลม */
+.dl .acd-clm-form{max-width:520px;text-align:left}
+.dl .acd-clm-label{display:block;font-family:var(--display);font-size:.78rem;font-weight:600;color:var(--navy);margin:14px 0 6px}
+.dl .acd-clm-hint{font-weight:400;color:var(--navy-soft)}
+.dl .acd-clm-select{width:100%;border:1px solid var(--sky-200);border-radius:12px;padding:10px 12px;font-size:.86rem;
+  font-family:inherit;color:var(--navy);background:#fff;outline:none}
+.dl .acd-clm-checks{display:flex;flex-direction:column;gap:6px;max-height:150px;overflow-y:auto;padding:10px 12px;
+  border:1px solid var(--sky-100);border-radius:12px;background:var(--sky-50)}
+.dl .acd-clm-checks label{display:flex;align-items:center;gap:8px;font-size:.84rem;color:var(--navy);cursor:pointer}
+.dl .acd-clm-types{display:flex;gap:6px;flex-wrap:wrap}
+.dl .acd-clm-types .acd-ttab{border:1px solid var(--sky-200);background:#fff}
+.dl .acd-clm-photos{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.dl .acd-clm-photo-chip{display:inline-flex;align-items:center;gap:6px;font-size:.76rem;color:var(--navy);
+  background:var(--sky-50);border:1px solid var(--sky-100);border-radius:999px;padding:5px 10px}
+.dl .acd-clm-photo-chip button{all:unset;cursor:pointer;color:var(--coral-deep);font-weight:700;padding:0 2px}
+.dl .acd-clm-err{margin:10px 0 0;font-size:.82rem;font-weight:600;color:var(--coral-deep)}
+@media (max-width:640px){
+  .dl .acd-clm-msg{max-width:100%}
+  .dl .acd-clm-bar .btn{flex:1;justify-content:center}
+}
