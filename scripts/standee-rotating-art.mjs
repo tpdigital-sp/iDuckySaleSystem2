@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * เตรียมภาพของสินค้า "Rotating Stand" (สแตนดี้อะคริลิคหมุนได้)
+ * เตรียมภาพของสินค้า "สแตนดี้อะคริลิค หมุนได้" (ตาราง 170/95/… ของหน้า acrylicrotatingstand)
  *
- *   node scripts/rotating-stand-art.mjs [--out=<dir>]
+ *   node scripts/standee-rotating-art.mjs [--out=<dir>]
  *
- * ได้ 2 ชุด แล้วให้ scripts/add-rotating-stand.ts --upload อัปขึ้น Supabase Storage:
+ * ได้ 2 ชุด แล้วให้ scripts/add-standee-rotating.ts --upload อัปขึ้น Supabase Storage:
  *   1. gallery-1..8  ภาพงานจริงจากเว็บตารางราคา (iduckyofficial-pricelists.com/acrylicrotatingstand)
  *   2. ภาพประกอบตัวเลือก — วาดเองเป็น SVG แล้วเรนเดอร์ด้วย sharp ให้สไตล์เดียวกันทั้งชุด
  *      size-5..size-12    ขนาดตัวสแตนดี้ (เทียบสเกลจริง มีเส้นบอกขนาด + เงาตัว 12cm ไว้เทียบ)

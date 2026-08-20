@@ -1,13 +1,16 @@
 /**
- * สร้างสินค้า "Rotating Stand" (สแตนดี้อะคริลิคหมุนได้) จากตารางราคาเว็บ
- * iduckyofficial-pricelists.com/acrylicrotatingstand — บล็อก "Rotating Stand"
+ * สร้างสินค้า "สแตนดี้อะคริลิค หมุนได้" จากตารางราคาเว็บ
+ * iduckyofficial-pricelists.com/acrylicrotatingstand — บล็อก "สแตนดี้อะคริลิค หมุนได้"
  *
- *   npx tsx scripts/add-rotating-stand.ts                              # ดูข้อมูลที่จะบันทึก (ไม่เขียนจริง)
- *   node scripts/rotating-stand-art.mjs                                # เตรียมภาพ (ภาพงานจริง + ภาพประกอบตัวเลือก)
- *   npx tsx scripts/add-rotating-stand.ts --upload --images=.cache/rot/upload
- *   npx tsx scripts/add-rotating-stand.ts --write                      # เขียนลง Supabase (เป็นฉบับร่าง)
+ * ⚠️ อย่าสับสนกับบล็อก "Rotating Stand" ของหน้าเดียวกัน (ตาราง 350/320/310/300)
+ *   อันนั้นเป็นชุด "กรอบอะคริลิค + ตัวสแตนดี้แขวนหมุนในกรอบ" คนละสินค้า → scripts/add-rotating-stand-frame.ts
  *
- * ราคาจากเว็บ — ตาราง "Rotating Stand · ราคาสแตนดี้ รวมราคาฐาน (สกรีน 2 ด้าน / ไม่สกรีนฐาน)"
+ *   npx tsx scripts/add-standee-rotating.ts                              # ดูข้อมูลที่จะบันทึก (ไม่เขียนจริง)
+ *   node scripts/standee-rotating-art.mjs                                # เตรียมภาพ (ภาพงานจริง + ภาพประกอบตัวเลือก)
+ *   npx tsx scripts/add-standee-rotating.ts --upload --images=.cache/rot/upload
+ *   npx tsx scripts/add-standee-rotating.ts --write                      # เขียนลง Supabase (เป็นฉบับร่าง)
+ *
+ * ราคาจากเว็บ — ตาราง "สแตนดี้อะคริลิค หมุนได้ · ราคาสแตนดี้ รวมราคาฐาน (สกรีน 2 ด้าน / ไม่สกรีนฐาน)"
  *   ขนาด        5    6    7    8    9   10   11   12 cm
  *   1-10 ชิ้น  170  180  190  200  210  220  230  240
  *   11-29      95  100  105  125  145  155  165  175
@@ -23,7 +26,7 @@
  * สเปกงานจากใต้ตารางในเว็บ: ตัวสแตนดี้อะคริลิคหนา 3 มม. สกรีน 2 ด้าน · ฐานอะคริลิคใสหนา 5 มม.
  *   แกนหมุน 13 มม. · ฐานทรงกลม/ทรงสี่เหลี่ยมไม่บวกเพิ่ม · 11 ชิ้นขึ้นไปคละลายได้ ลายละ 5 ชิ้นขึ้นไป
  *
- * ภาพประกอบทุกตัวเลือก (สร้างด้วย scripts/rotating-stand-art.mjs):
+ * ภาพประกอบทุกตัวเลือก (สร้างด้วย scripts/standee-rotating-art.mjs):
  *   gallery-1..8   ภาพงานจริงจากหน้าเว็บตารางราคา (ฐานกลมฟ้า/แดง · ฐานไดคัททรงดอกไม้ · อะคริลิคกลิตเตอร์ · แกนหมุน)
  *   size-5..12     ภาพเทียบขนาดตัวสแตนดี้ (สเกลจริง มีเงาตัว 12 ซม. ไว้เทียบ)
  *   basesize-5..12 ภาพขนาดฐานมองจากด้านบน เทียบกับฐานมาตรฐาน 5 ซม.
@@ -50,7 +53,7 @@ const env = Object.fromEntries(
     })
 );
 
-const ID = "rotating-stand";
+const ID = "standee-rotating";
 const IMG = (name: string) =>
   `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/${name}.jpg`;
 
@@ -117,7 +120,7 @@ const TABS: Product["tabs"] = [
   {
     title: "รายละเอียดเพิ่มเติม",
     text:
-      "Rotating Stand (สแตนดี้อะคริลิคหมุนได้) — ตัวสแตนดี้เสียบบนแกนหมุน หมุนได้รอบตัว 360° " +
+      "สแตนดี้อะคริลิค หมุนได้ — ตัวสแตนดี้เสียบบนแกนหมุน หมุนได้รอบตัว 360° " +
       "ราคาในตารางรวมค่าฐานเรียบร้อยแล้ว ไม่มีขั้นต่ำในการสั่งผลิต\n" +
       "• ตัวสแตนดี้: อะคริลิคหนา 3 มม. · สกรีน 2 ด้าน · ไดคัทตามรูปทรงที่ออกแบบได้\n" +
       "• ฐาน: อะคริลิคใสหนา 5 มม. (อะคริลิคใสเท่านั้น) · ขนาดมาตรฐาน 3-5 ซม.\n" +
@@ -205,8 +208,8 @@ const TABS: Product["tabs"] = [
 
 const product: Product = {
   id: ID,
-  slug: "rotating-stand",
-  name: "Rotating Stand",
+  slug: "standee-rotating",
+  name: "สแตนดี้อะคริลิค หมุนได้",
   category: "standee",
   price: 80,
   emoji: "🔄",
@@ -216,7 +219,7 @@ const product: Product = {
   sold: 0,
   badge: "ใหม่",
   description:
-    "Rotating Stand (สแตนดี้อะคริลิคหมุนได้) — ตัวสแตนดี้เสียบบนแกนหมุน 13 มม. หมุนเล่นได้รอบตัว " +
+    "สแตนดี้อะคริลิค หมุนได้ (Acrylic Rotating Standee) — ตัวสแตนดี้เสียบบนแกนหมุน 13 มม. หมุนเล่นได้รอบตัว " +
     "ตัวสแตนดี้อะคริลิคหนา 3 มม. สกรีน 2 ด้าน ไดคัทตามลายที่ออกแบบ ฐานอะคริลิคใสหนา 5 มม. " +
     "เลือกขนาดตัวสแตนดี้ได้ตั้งแต่ 5 ถึง 12 ซม. เลือกขนาดฐาน 3-5 ซม. ถึง 12 ซม. เลือกทรงฐานกลม/สี่เหลี่ยม/ไดคัทตามทรง " +
     "และจะสกรีนลายลงบนฐานด้วยก็ได้ ราคาในตารางรวมค่าฐานแล้ว ไม่มีขั้นต่ำในการสั่งผลิต " +
@@ -231,7 +234,7 @@ const product: Product = {
     "ยิ่งสั่งเยอะยิ่งถูก — 200 ชิ้นขึ้นไป เริ่มต้นชิ้นละ 80 บาท",
   ],
   images: [
-    { emoji: "🔄", gradient: "from-sky-100 to-cyan-200", label: "สแตนดี้หมุนได้ ฐานกลม (ลายกลอง)", src: IMG("gallery-1") },
+    { emoji: "🔄", gradient: "from-sky-100 to-cyan-200", label: "สแตนดี้อะคริลิคหมุนได้ ฐานกลม (ลายกลอง)", src: IMG("gallery-1") },
     { emoji: "🐕", gradient: "from-teal-100 to-cyan-200", label: "ตัวสแตนดี้ไดคัทตามลาย สกรีน 2 ด้าน", src: IMG("gallery-2") },
     { emoji: "🎠", gradient: "from-rose-100 to-red-200", label: "ฐานทรงกลม อะคริลิคสี", src: IMG("gallery-3") },
     { emoji: "✨", gradient: "from-orange-100 to-amber-200", label: "งานจริงตั้งโชว์ — ฐานทรงกลม", src: IMG("gallery-4") },
@@ -243,7 +246,7 @@ const product: Product = {
   priceRates: [
     {
       id: "rotating",
-      label: "Rotating Stand (รวมฐาน)",
+      label: "สแตนดี้อะคริลิค หมุนได้ (รวมฐาน)",
       desc: "ราคาสแตนดี้รวมราคาฐานแล้ว · ตัวสแตนดี้สกรีน 2 ด้าน · ฐานอะคริลิคใสหนา 5 มม.",
       imageSrc: IMG("gallery-1"),
       freeMixBelowQty: 11,
