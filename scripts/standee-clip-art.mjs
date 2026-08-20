@@ -11,8 +11,8 @@
  *      photo-1/2     งานจริงสแตนดี้ (ไว้ให้เห็นทรงงาน + ฐาน)
  *      color-chart   ตารางสีอะคริลิคของร้าน (ใช้ในแท็บ "ชนิดอะคริลิค")
  *   2. ภาพประกอบตัวเลือก — วาดเป็น SVG แล้วเรนเดอร์ด้วย sharp ให้สไตล์เดียวกันทั้งชุด
- *      hero                  ภาพอธิบายสินค้า (ด้านหน้าสกรีนลาย · ด้านหลังคลิปหนีบรูป)
- *      clip-detail           คลิปหนีบคืออะไร หนีบอะไรได้บ้าง
+ *      hero                  ภาพอธิบายสินค้า (ด้านหน้าสกรีนลาย · คลิปหนีบรูปที่ขอบบน)
+ *      clip-detail           คลิปหนีบที่ขอบบน หนีบอะไรได้บ้าง
  *      size-6..size-20       ขนาดตัวสแตนดี้ (สเกลจริง แนวตั้ง+แนวนอนในภาพเดียว)
  *      base-3/6/8/9/10/11/12 ขนาดฐาน (มองจากด้านบน เทียบฐาน 3-5 ซม.)
  *      basescreen-no|yes     ฐานสกรีนลาย / ไม่สกรีน
@@ -134,26 +134,27 @@ const dimHUp = (y, x1, x2, label) => `
   <line x1="${x2}" y1="${y - 11}" x2="${x2}" y2="${y + 11}" stroke="${CYAN}" stroke-width="3"/>
   <text x="${(x1 + x2) / 2}" y="${y - 16}" font-family="${TH}" font-size="26" font-weight="700" text-anchor="middle" fill="${CYAN}">${label}</text>`;
 
-/** ตัวสแตนดี้ 1 ตัว (ลายด้านหน้า + คลิปหนีบด้านหลังเป็นเส้นประ) พร้อมฐาน */
+/** ตัวสแตนดี้ 1 ตัว (ลายด้านหน้า + คลิปหนีบคร่อมขอบบน) พร้อมฐาน */
 function body(cx, bottom, w, h, landscape, showClipLabel = true) {
   const clipW = Math.max(16, CLIP_W_CM * PX_PER_CM);
   const clipH = Math.max(20, CLIP_H_CM * PX_PER_CM);
   const top = bottom - h;
-  // ลายสกรีนกินพื้นที่เกือบทั้งแผ่น · คลิปเป็นชิ้นเล็กอยู่กลางแผ่นด้านหลัง (วาดเป็นเส้นประ = มองทะลุ)
-  const artCy = landscape ? top + h * 0.4 : top + h * 0.3;
+  // ทางร้านติดคลิปไว้ที่ "ขอบบน" ของตัวงาน (หนีบรูปได้ง่ายกว่าติดกลางแผ่น)
+  // จึงวาดคลิปคร่อมขอบบน — ครึ่งบนโผล่พ้นตัวงาน ครึ่งล่างทาบอยู่หลังแผ่น (เส้นประ = มองทะลุ)
+  const artCy = landscape ? top + h * 0.46 : top + h * 0.36;
   const artW = landscape ? w * 0.62 : w * 0.82;
-  const artH = landscape ? h * 0.55 : h * 0.44;
+  const artH = landscape ? h * 0.55 : h * 0.46;
   const clipX = cx - clipW / 2;
-  const clipY = top + h * 0.58;
+  const clipY = top - clipH * 0.45;
   return `
     <rect x="${cx - w / 2}" y="${top}" width="${w}" height="${h}" rx="${Math.min(28, Math.min(w, h) * 0.14)}"
       fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="4"/>
     ${artwork(cx, artCy, artW, artH)}
     <rect x="${clipX}" y="${clipY}" width="${clipW}" height="${clipH}" rx="4"
-      fill="rgba(148,163,184,0.2)" stroke="#94a3b8" stroke-width="3" stroke-dasharray="7 5"/>
+      fill="rgba(226,232,240,0.9)" stroke="#94a3b8" stroke-width="3" stroke-dasharray="7 5"/>
     ${
-      showClipLabel && clipW > 30
-        ? `<text x="${cx}" y="${clipY + clipH + 20}" font-family="${TH}" font-size="16" text-anchor="middle" fill="${SUB}">คลิปหนีบ</text>`
+      showClipLabel && clipW > 26
+        ? `<text x="${cx + clipW / 2 + 8}" y="${clipY + clipH * 0.45}" font-family="${TH}" font-size="16" fill="${SUB}">คลิปที่ขอบบน</text>`
         : ""
     }
     ${baseSideView(cx, bottom + 26, Math.max(58, w * 0.46))}`;
@@ -182,7 +183,7 @@ function sizeArt(cm) {
     ${body(cxL, bottom, long, short, true)}
     ${dimHUp(bottom - short - 30, cxL - long / 2, cxL + long / 2, `${cm} ซม.`)}
     ${foot([
-      "คลิปหนีบพลาสติกแปะกาวที่ด้านหลัง — หนีบรูป/การ์ด/โน้ตได้",
+      "คลิปหนีบแปะไว้ที่ขอบบนของตัวงาน — หนีบรูป/การ์ด/โน้ตได้ง่าย",
       cm < 20
         ? "เส้นประ = ขนาดใหญ่สุด 20 ซม. · ราคาเท่ากันทั้งแนวตั้ง/แนวนอน"
         : "ขนาดใหญ่สุดที่สั่งได้ · ราคาเท่ากันทั้งแนวตั้ง/แนวนอน",
@@ -197,7 +198,7 @@ function layoutArt(landscape) {
   const w = landscape ? long : short;
   const h = landscape ? short : long;
   return frame(`
-    ${title(landscape ? "แนวนอน" : "แนวตั้ง", landscape ? "ตัวงานเป็นแผ่นกว้าง คลิปอยู่ด้านหลัง" : "ตัวงานเป็นแผ่นสูง คลิปอยู่ด้านหลัง")}
+    ${title(landscape ? "แนวนอน" : "แนวตั้ง", landscape ? "ตัวงานเป็นแผ่นกว้าง คลิปอยู่ขอบบน" : "ตัวงานเป็นแผ่นสูง คลิปอยู่ขอบบน")}
     ${body(350, bottom, w, h, landscape)}
     ${foot([
       "ราคาเท่ากันทั้งสองแนว — ขนาดที่สั่งคือด้านที่ยาวที่สุด",
@@ -216,22 +217,22 @@ const hero = (() => {
   const clipW = 46;
   const clipH = 56;
   return frame(`
-    ${title("สแตนดี้ + คลิปหนีบ", "สกรีนลายด้านหน้า · ด้านหลังมีคลิปหนีบรูป")}
+    ${title("สแตนดี้ + คลิปหนีบ", "สกรีนลายด้านหน้า · คลิปหนีบรูปที่ขอบบน")}
     <text x="${lx}" y="180" font-family="${TH}" font-size="26" font-weight="700" text-anchor="middle" fill="${CYAN}">ด้านหน้า</text>
     <rect x="${lx - w / 2}" y="${top}" width="${w}" height="${h}" rx="30" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="4"/>
     ${artwork(lx, top + h * 0.42, w, h)}
     ${baseSideView(lx, bottom + 22, 92)}
     <text x="${rx}" y="180" font-family="${TH}" font-size="26" font-weight="700" text-anchor="middle" fill="${CYAN}">ด้านหลัง</text>
     <!-- รูปที่หนีบไว้ โผล่พ้นขอบบนของตัวสแตนดี้ (แบบงานจริง) -->
-    <rect x="${rx - 62}" y="${top - 66}" width="124" height="150" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="3"/>
-    <text x="${rx}" y="${top - 4}" font-family="${TH}" font-size="19" text-anchor="middle" fill="${SUB}">รูป / การ์ด</text>
+    <rect x="${rx - 62}" y="${top - 132}" width="124" height="150" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="3"/>
+    <text x="${rx}" y="${top - 62}" font-family="${TH}" font-size="19" text-anchor="middle" fill="${SUB}">รูป / การ์ด</text>
     <rect x="${rx - w / 2}" y="${top}" width="${w}" height="${h}" rx="30" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="4" fill-opacity="0.9"/>
-    ${clipPart(rx, top + 96, clipW, clipH)}
-    <path d="M${rx + clipW / 2 + 16} ${top + 118} h34" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/>
-    <text x="${rx + clipW / 2 + 22}" y="${top + 110}" font-family="${TH}" font-size="19" fill="${SUB}">คลิปหนีบ</text>
+    ${clipPart(rx, top - clipH * 0.45, clipW, clipH)}
+    <path d="M${rx + clipW / 2 + 16} ${top - 2} h30" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/>
+    <text x="${rx + clipW / 2 + 22}" y="${top - 26}" font-family="${TH}" font-size="19" fill="${SUB}">คลิปที่ขอบบน</text>
     ${baseSideView(rx, bottom + 22, 92)}
     ${foot([
-      "คลิปหนีบแปะกาวที่ด้านหลัง (+10 บาท/ชิ้น รวมในราคาแล้ว)",
+      "คลิปหนีบแปะไว้ที่ขอบบน (+10 บาท/ชิ้น รวมในราคาแล้ว)",
       "หนีบรูป โฟโต้การ์ด โน้ต หรือการ์ดอวยพรได้ เปลี่ยนเองได้ตลอด",
     ])}`);
 })();
@@ -342,38 +343,41 @@ function screenArt(sides) {
   const two = sides === 2;
   return frame(`
     ${title(`สกรีน ${sides} ด้าน`, two ? "พิมพ์ลายทั้งด้านหน้าและด้านหลัง" : "พิมพ์ลายด้านหน้าด้านเดียว")}
-    <text x="${lx}" y="186" font-family="${TH}" font-size="25" font-weight="700" text-anchor="middle" fill="${CYAN}">ด้านหน้า</text>
+    <text x="${lx}" y="168" font-family="${TH}" font-size="25" font-weight="700" text-anchor="middle" fill="${CYAN}">ด้านหน้า</text>
     <rect x="${lx - w / 2}" y="${top}" width="${w}" height="${h}" rx="30" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="4"/>
     ${artwork(lx, top + h * 0.3, w * 0.85, h * 0.55)}
-    <text x="${rx}" y="186" font-family="${TH}" font-size="25" font-weight="700" text-anchor="middle" fill="${CYAN}">ด้านหลัง</text>
+    <text x="${rx}" y="168" font-family="${TH}" font-size="25" font-weight="700" text-anchor="middle" fill="${CYAN}">ด้านหลัง</text>
     <rect x="${rx - w / 2}" y="${top}" width="${w}" height="${h}" rx="30" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="4"/>
     ${
       two
         ? artwork(rx, top + h * 0.3, w * 0.85, h * 0.55)
         : `<text x="${rx}" y="${top + h * 0.5}" font-family="${TH}" font-size="24" text-anchor="middle" fill="${LINE}">ใสไม่มีลาย</text>`
     }
-    ${clipPart(rx, top + h * 0.52, 40, 50)}
+    ${clipPart(rx, top - 22, 40, 50)}
     ${foot([
       two
         ? "บวกตามขนาด · 6-7 ซม. +15 · 8-10 +25 · 11-13 +30"
         : "ราคามาตรฐานตามตาราง (ค่าคลิปหนีบรวมแล้ว)",
-      two ? "14-16 +35 · 17 +40 · 18 +45 · 19 +50 · 20 +55 บาท/ชิ้น" : "คลิปหนีบอยู่ที่ด้านหลังทุกแบบ",
+      two ? "14-16 +35 · 17 +40 · 18 +45 · 19 +50 · 20 +55 บาท/ชิ้น" : "คลิปหนีบอยู่ที่ขอบบนทุกแบบ",
     ])}`);
 }
 
-// ── 6. คลิปหนีบ (อะไหล่ที่แปะไว้ด้านหลัง) ────────────────────────────────
+// ── 6. คลิปหนีบ (อะไหล่ที่แปะไว้ขอบบน) ──────────────────────────────────
 const clipDetailArt = (() => {
-  const h = 300;
+  const h = 280;
   const w = h * 0.78;
   const cx = 350;
-  const top = 230;
+  const top = 300;
   return frame(`
-    ${title("คลิปหนีบด้านหลัง", "แปะกาวไว้กลางแผ่น หนีบรูปเปลี่ยนเองได้")}
-    <rect x="${cx - 78}" y="${top - 92}" width="156" height="186" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="3"/>
-    <text x="${cx}" y="${top - 6}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">รูป / โฟโต้การ์ด</text>
+    ${title("คลิปหนีบที่ขอบบน", "ทางร้านติดคลิปไว้ขอบบน หนีบรูปได้ง่าย")}
+    <rect x="${cx - 78}" y="${top - 176}" width="156" height="186" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="3"/>
+    <text x="${cx}" y="${top - 84}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">รูป / โฟโต้การ์ด</text>
     <rect x="${cx - w / 2}" y="${top}" width="${w}" height="${h}" rx="30" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="4"/>
-    ${clipPart(cx, top + 96, 58, 72)}
-    ${foot(["คลิปพลาสติกสีขาว กว้างประมาณ 2.5 ซม.", "ค่าคลิป 10 บาท/ชิ้น รวมอยู่ในราคาที่แสดงแล้ว"])}`);
+    ${artwork(cx, top + h * 0.5, w * 0.8, h * 0.5)}
+    ${clipPart(cx, top - 32, 58, 72)}
+    <path d="M${cx + 46} ${top - 4} h32" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/>
+    <text x="${cx + 52}" y="${top - 26}" font-family="${TH}" font-size="19" fill="${SUB}">คลิปหนีบ</text>
+    ${foot(["คลิปพลาสติกสีขาว กว้างประมาณ 2.5 ซม. ติดที่ขอบบน", "อยากให้ติดจุดอื่น (เช่น กลางแผ่นด้านหลัง) แจ้งได้"])}`);
 })();
 
 // ── 7. อะคริลิคใส (ตัวเลือกสีมาตรฐาน) ────────────────────────────────────
