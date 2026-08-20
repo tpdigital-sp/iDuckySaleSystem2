@@ -24,7 +24,15 @@
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createClient } from "@supabase/supabase-js";
-import { hasQuoteOption, priceRange, type PriceMatrix, type PriceTier, type Product } from "../src/lib/products";
+import {
+  hasQuoteOption,
+  priceRange,
+  type PriceMatrix,
+  type PriceTier,
+  type Product,
+  type ProductOption,
+} from "../src/lib/products";
+import { COLORS, acrylicColorImage } from "./acrylic-colors.mjs";
 
 const WRITE = process.argv.includes("--write");
 const UPLOAD = process.argv.includes("--upload");
@@ -42,12 +50,25 @@ const env = Object.fromEntries(
 
 const ID = "rotating-stand";
 const IMG_DIR = "rotating-stand-frame";
+/**
+ * รุ่นของไฟล์รูป — อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคชของเก่าไว้) ขึ้นรุ่นใหม่ให้ขยับตัวนี้
+ * ของจริงในฐานข้อมูลตอนนี้เป็น v2 แล้ว (ขยับด้วย scripts/repoint-product-images.mjs ตอนเปลี่ยนมาใช้มาสคอตเป็ด)
+ */
+const REV = "v2";
 const IMG = (name: string) =>
-  `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${IMG_DIR}/${name}.jpg`;
+  `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${IMG_DIR}/${name}-${REV}.jpg`;
 
 const UNIT = "ชิ้น";
 const SIZE_ADD_LABEL = "เพิ่มขนาดอะคริลิค";
 const ACRYLIC_LABEL = "ชนิดอะคริลิค";
+const CLEAR = "อะคริลิคใส (มาตรฐาน)";
+const SPECIAL = "อะคริลิคพิเศษ (สี/กลิตเตอร์/โฮโลแกรม)";
+const COLOR_LABEL = "เลือกสีอะคริลิคพิเศษ";
+/**
+ * สีพิเศษ = ทั้งชาร์ตของร้าน (scripts/acrylic-colors.mjs)
+ * สินค้านี้ราคาตามตารางได้เฉพาะ "อะคริลิคใส" เท่านั้น สีอื่นทั้งหมดจึงเป็นของพิเศษที่ร้านตีราคาให้
+ */
+const SPECIAL_COLORS: string[] = Object.keys(COLORS as Record<string, unknown>);
 const SIZE_STD = "ขนาดมาตรฐาน";
 const ADD_CM = [1, 2, 3, 4, 5];
 const addName = (cm: number) => `เพิ่ม ${cm} ซม.`;
@@ -102,7 +123,8 @@ const TABS: Product["tabs"] = [
       "อะคริลิคใส (มาตรฐาน)::\n" +
       "• ราคาตามตารางคืออะคริลิคใส หนาประมาณ 3 มม.\n\n" +
       "อะคริลิคพิเศษ (สี / กลิตเตอร์ / โฮโลแกรม)::\n" +
-      "• หนาประมาณ 2.5-3 มม. · บวกราคาเพิ่มตามขนาด — เลือกในหน้าสั่งซื้อแล้วทางร้านตีราคาให้\n" +
+      "• หนาประมาณ 2.5-3 มม. · บวกราคาเพิ่มตามขนาด — เลือกชนิดและสีที่ต้องการในหน้าสั่งซื้อได้เลย " +
+      "แล้วทางร้านตีราคาให้ก่อนเริ่มผลิต\n" +
       "• ดูสีทั้งหมดได้จากตารางสีอะคริลิคของร้านด้านล่าง",
     images: [IMG("color-chart")],
     imageSize: "lg" as const,
@@ -207,11 +229,26 @@ const product: Product = {
       label: ACRYLIC_LABEL,
       stockBearing: true,
       choices: [
-        { name: "อะคริลิคใส (มาตรฐาน)", imageSrc: IMG("acrylic-clear") },
+        { name: CLEAR, imageSrc: IMG("acrylic-clear") },
         // เว็บบอกแค่ "อะคริลิคพิเศษหนา 2.5-3mm" ไม่มีตัวเลขบวกในตารางนี้ — ให้แอดมินตีราคา
-        { name: "อะคริลิคพิเศษ (สี/กลิตเตอร์/โฮโลแกรม)", askPrice: true, imageSrc: IMG("acrylic-special") },
+        { name: SPECIAL, askPrice: true, imageSrc: IMG("acrylic-special") },
       ],
     },
+    /*
+     * เลือกอะคริลิคพิเศษแล้วต้องบอกได้ว่า "สีไหน" — เหมือนสินค้าอะคริลิคตัวอื่นของร้าน
+     * ต่างกันตรงที่ตารางราคาหน้านี้ไม่มีตัวเลขบวกตามสี/ขนาด สีจึงไม่มี +฿ (ราคายังเป็น "รอแอดมินตีราคา"
+     * จากชิป "อะคริลิคพิเศษ" อยู่แล้ว) — เก็บสีที่ลูกค้าเลือกติดไปกับออเดอร์ให้แอดมินตีราคาได้ตรงตัว
+     */
+    {
+      label: COLOR_LABEL,
+      display: "dropdown",
+      stockBearing: true,
+      showWhen: { label: ACRYLIC_LABEL, choices: [SPECIAL] },
+      choices: SPECIAL_COLORS.map((name) => {
+        const img = acrylicColorImage(name);
+        return { name, ...(img ? { imageSrc: img } : {}) };
+      }),
+    } as ProductOption,
   ],
   terms: [
     "ราคาต่อ 1 ชุด รวมกรอบ + ตัวสแตนดี้แขวนหมุน + ฐาน(สกรีน) ขนาด 3-4 ซม. แล้ว",
@@ -254,9 +291,9 @@ async function uploadImages() {
     const buf = await readFile(`${IMAGES_DIR.replace(/\/$/, "")}/${name}.jpg`);
     const { error } = await sb.storage
       .from("product-images")
-      .upload(`products/${IMG_DIR}/${name}.jpg`, buf, { contentType: "image/jpeg", upsert: true });
+      .upload(`products/${IMG_DIR}/${name}-${REV}.jpg`, buf, { contentType: "image/jpeg", upsert: true });
     if (error) throw new Error(`${name}: ${error.message}`);
-    console.log(`⬆️  ${name}.jpg (${Math.round(buf.length / 1024)} KB)`);
+    console.log(`⬆️  ${name}-${REV}.jpg (${Math.round(buf.length / 1024)} KB)`);
   }
 }
 
