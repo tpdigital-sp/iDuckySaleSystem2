@@ -257,7 +257,14 @@ export default function ProductDetail({
   const [imageIndex, setImageIndex] = useState(0);
   // แท็บข้อมูลสินค้า (รายละเอียดเพิ่มเติม / วิธีสั่งงาน ฯลฯ)
   const [tabIndex, setTabIndex] = useState(0);
-  const [qty, setQty] = useState(1);
+  /**
+   * จำนวนตั้งต้น — สินค้าที่บังคับขั้นต่ำต่อลาย (hardMinPerDesign) เปิดหน้ามาก็เริ่มที่ขั้นต่ำเลย
+   * (เริ่มที่ 1 แล้วให้ลูกค้าเจอปุ่มล็อก "ขั้นต่ำ 5 ชิ้น" เอง = เสียจังหวะฟรี)
+   */
+  const initialQty = initialProduct.hardMinPerDesign
+    ? Math.max(1, initialProduct.priceRates?.[0]?.minPerDesign ?? 1)
+    : 1;
+  const [qty, setQty] = useState(initialQty);
   // 🔍 รูปที่กำลังเปิดดูขนาดใหญ่ (lightbox) — ว่าง = ปิดอยู่
   const [zoomSrc, setZoomSrc] = useState("");
   /** 🎨 สีที่แตะล่าสุดของแต่ละกลุ่มสวอตช์ (คีย์ = ชื่อกลุ่ม) — โชว์แถบพรีวิวใหญ่ใต้ตาราง */
@@ -326,7 +333,7 @@ export default function ProductDetail({
     };
   }, [zoomSrc]);
   // ข้อความในช่องจำนวนระหว่างพิมพ์ — แยกจาก qty เพื่อให้ลบจนว่างแล้วพิมพ์ใหม่ได้
-  const [qtyText, setQtyText] = useState("1");
+  const [qtyText, setQtyText] = useState(String(initialQty));
   useEffect(() => {
     // qty เปลี่ยนจากปุ่ม +/− หรือเด้งตามขั้นต่ำเรท → ปรับข้อความตาม (ตอนช่องว่างอยู่ = กำลังพิมพ์ ไม่ทับ)
     setQtyText((t) => (t === "" ? t : String(qty)));
