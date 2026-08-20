@@ -41,7 +41,7 @@ const env = Object.fromEntries(
 
 const ID = "phone-stand-bend-base";
 /** ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคชไว้) — ขึ้นรุ่นใหม่ให้ขยับ v1 → v2 */
-const REV = "v1";
+const REV = "v2";
 const IMG = (name: string) =>
   `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/${name}-${REV}.jpg`;
 

@@ -112,39 +112,53 @@ const PRINT = "#93c5fd";
 const PRINT_WARM = "#fdba74";
 const PRINT_BASE = "#fcd34d";
 
-/** ── ภาพ "ขนาด" = มองจากด้านหน้า (เห็นทั้งความสูง และฐานกว้าง 8 ซม.) ── */
+/**
+ * ── ภาพ "ขนาด" = มองจากด้านหน้า ──
+ * ภาพนี้ถูกใช้ 2 ขนาดพร้อมกัน: ภาพย่อบนปุ่มตัวเลือก (~44px) และภาพใหญ่ในแกลเลอรีตอนกดเลือก
+ * ที่ 44px อ่านตัวหนังสือไม่ออกเลย — องค์ประกอบจึงเหลือแค่ 3 อย่างที่ "ต่างกันเห็นชัดตอนย่อ":
+ *   1) ตัวสแตนดี้เต็มเฟรม เทียบกับเงาเส้นประของขนาดใหญ่สุด → เห็นสัดส่วนความสูง
+ *   2) แถบบอกความสูงสีฟ้าเข้ม ยาวตามขนาด → เป็นสัญญาณที่อ่านง่ายที่สุดตอนย่อ
+ *   3) ตัวเลขขนาดตัวใหญ่ → รูปทรงต่างกันชัดแม้อ่านไม่ออก
+ * หัวเรื่อง/คำบรรยายยาว ๆ ตัดออกทั้งหมด (ปุ่มมีชื่อขนาดกำกับอยู่แล้ว)
+ */
 function sizeShot(cm) {
-  const cx = W / 2 - 34; // เว้นที่ขวาไว้ให้เส้นบอกความสูง
-  const y = (v) => GROUND - v * PX_PER_CM;
-  const bw = BASE_CM * PX_PER_CM;
-  const pw = PANEL_W * PX_PER_CM;
+  const S = 26.5; // px ต่อ ซม. — 20 ซม. = 530px เกือบเต็มเฟรม
+  const GY = 620; // เส้นพื้น
+  const cx = 226; // ตัวสแตนดี้ชิดซ้าย เว้นครึ่งขวาให้ตัวเลข
+  const y = (v) => GY - v * S;
+  const bw = BASE_CM * S;
+  const pw = PANEL_W * S;
   const panelTop = y(cm);
   const panelH = y(PANEL_BOTTOM) - panelTop;
-  const ghostTop = y(MAX_CM);
+  const dimX = cx + bw / 2 + 34;
 
   const band = (x, w, top, bottom, fill) =>
-    `<rect x="${x}" y="${top}" width="${w}" height="${bottom - top}" fill="${fill}" stroke="${GLASS_EDGE}" stroke-width="3" stroke-linejoin="round"/>`;
+    `<rect x="${x}" y="${top}" width="${w}" height="${bottom - top}" fill="${fill}" stroke="${GLASS_EDGE}" stroke-width="4" stroke-linejoin="round"/>`;
 
   return frame(`
-    ${title(`ขนาด ${cm} ซม.`, "มองจากด้านหน้า · ความสูงวัดจากพื้นฐาน")}
     ${cm < MAX_CM
-      ? `<rect x="${cx - pw / 2}" y="${ghostTop}" width="${pw}" height="${y(PANEL_BOTTOM) - ghostTop}" rx="10"
-           fill="none" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="9 9"/>`
+      ? `<rect x="${cx - pw / 2}" y="${y(MAX_CM)}" width="${pw}" height="${y(PANEL_BOTTOM) - y(MAX_CM)}" rx="10"
+           fill="none" stroke="#cbd5e1" stroke-width="3" stroke-dasharray="12 10"/>`
       : ""}
     ${band(cx - pw / 2, pw, panelTop, y(PANEL_BOTTOM), PRINT)}
     ${artwork(cx, panelTop + panelH * 0.42, pw, panelH)}
     ${band(cx - bw / 2, bw, y(PANEL_BOTTOM), y(BASE_TOP), PRINT_WARM)}
     ${band(cx - bw / 2, bw, y(BASE_TOP), y(LIP_TOP), PRINT_BASE)}
-    ${band(cx - bw / 2, bw, y(LIP_TOP), GROUND, "rgba(56,189,248,0.22)")}
-    <line x1="${cx - bw / 2 - 40}" y1="${GROUND + 6}" x2="${cx + bw / 2 + 40}" y2="${GROUND + 6}" stroke="#e2e8f0" stroke-width="4"/>
-    ${dimV(cx + bw / 2 + 46, panelTop, GROUND, `${cm} ซม.`)}
-    <line x1="${cx - bw / 2}" y1="${GROUND + 32}" x2="${cx + bw / 2}" y2="${GROUND + 32}" stroke="${LINE}" stroke-width="3"/>
-    <line x1="${cx - bw / 2}" y1="${GROUND + 22}" x2="${cx - bw / 2}" y2="${GROUND + 42}" stroke="${LINE}" stroke-width="3"/>
-    <line x1="${cx + bw / 2}" y1="${GROUND + 22}" x2="${cx + bw / 2}" y2="${GROUND + 42}" stroke="${LINE}" stroke-width="3"/>
-    <text x="${cx}" y="${GROUND + 64}" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">ฐานกว้าง 8 ซม. (ทุกขนาด)</text>
-    <text x="${W / 2}" y="${H - 34}" font-family="${TH}" font-size="20" text-anchor="middle" fill="${
-      cm < MAX_CM ? LINE : SUB
-    }">${cm < MAX_CM ? `เส้นประ = ขนาดใหญ่สุด ${MAX_CM} ซม. (ไว้เทียบขนาด)` : "ขนาดใหญ่สุดที่สั่งผ่านหน้าเว็บได้ — ใหญ่กว่านี้ทักแอดมิน"}</text>`);
+    ${band(cx - bw / 2, bw, y(LIP_TOP), GY, "rgba(56,189,248,0.25)")}
+    <line x1="${cx - bw / 2 - 26}" y1="${GY + 7}" x2="${cx + bw / 2 + 26}" y2="${GY + 7}" stroke="#cbd5e1" stroke-width="5"/>
+
+    <!-- แถบบอกความสูง — ตัวชี้วัดหลักตอนภาพถูกย่อเป็นภาพย่อบนปุ่ม -->
+    <line x1="${dimX}" y1="${panelTop}" x2="${dimX}" y2="${GY}" stroke="${CYAN}" stroke-width="9" stroke-linecap="round"/>
+    <line x1="${dimX - 15}" y1="${panelTop}" x2="${dimX + 15}" y2="${panelTop}" stroke="${CYAN}" stroke-width="7" stroke-linecap="round"/>
+    <line x1="${dimX - 15}" y1="${GY}" x2="${dimX + 15}" y2="${GY}" stroke="${CYAN}" stroke-width="7" stroke-linecap="round"/>
+
+    <!-- ตัวเลขขนาด: ใหญ่พอให้รูปทรงต่างกันชัดแม้ตอนย่อจนอ่านไม่ออก -->
+    <text x="${dimX + 46}" y="${H / 2 + 6}" font-family="${TH}" font-size="150" font-weight="700" fill="${CYAN}">${cm}</text>
+    <text x="${dimX + 50}" y="${H / 2 + 76}" font-family="${TH}" font-size="52" font-weight="700" fill="${CYAN}">ซม.</text>
+    <text x="${dimX + 50}" y="${H / 2 - 140}" font-family="${TH}" font-size="30" fill="${SUB}">${
+      cm === 14 ? "มาตรฐาน" : `+${(cm - 14) * 10} บาท`
+    }</text>
+    <text x="${cx}" y="${GY + 44}" font-family="${TH}" font-size="26" text-anchor="middle" fill="${SUB}">ฐาน 8 ซม.</text>`);
 }
 
 /** ── ภาพ "จุดดัดงอ 3 จุด" = มองจากด้านข้าง (เห็นองศาการดัด + มือถือที่พิง) ── */
