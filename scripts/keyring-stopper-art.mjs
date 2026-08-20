@@ -20,6 +20,10 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
+// ลายที่ "สกรีน" บนชิ้นงานในภาพประกอบ = มาสคอตเป็ด iDucky ของฝ่าย Content (น่ารักกว่าวาดเอง)
+import { mascotDataUri } from "./iducky-assets.mjs";
+
+const MASCOT = await mascotDataUri("heart", 560);
 
 const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || ".cache/keyring/upload").replace(
   /\/$/,
@@ -63,17 +67,18 @@ const dimV = (x, y1, y2, label) => `
   <text x="${x + 16}" y="${(y1 + y2) / 2 + 9}" font-family="${TH}" font-size="27" font-weight="700" fill="${CYAN}">${label}</text>`;
 
 /** ลายสกรีนจำลองบนชิ้นงาน */
+/**
+ * ลายที่สกรีนบนชิ้นงาน — ใช้มาสคอตเป็ด iDucky (ไฟล์จริงจากฝ่าย Content)
+ * วางให้พอดีกรอบ (w × h) โดยคงสัดส่วนภาพไว้ · faded = ชั้นที่อยู่ลึกลงไป (งานหลายเลเยอร์)
+ */
 const artwork = (cx, cy, w, h, faded = false) => {
-  const u = Math.min(w, h);
-  return `
-  <g opacity="${faded ? 0.35 : 0.92}">
-    <circle cx="${cx}" cy="${cy - h * 0.05}" r="${u * 0.22}" fill="#fbbf24"/>
-    <circle cx="${cx - u * 0.1}" cy="${cy - h * 0.09}" r="${u * 0.04}" fill="#0f172a"/>
-    <circle cx="${cx + u * 0.1}" cy="${cy - h * 0.09}" r="${u * 0.04}" fill="#0f172a"/>
-    <path d="M${cx - u * 0.085} ${cy + h * 0.02} q${u * 0.085} ${u * 0.08} ${u * 0.17} 0" stroke="#0f172a" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <path d="M${cx - w * 0.26} ${cy + h * 0.26} q${w * 0.26} ${h * 0.14} ${w * 0.52} 0" stroke="#f472b6" stroke-width="6" fill="none" stroke-linecap="round"/>
-  </g>`;
+  const box = Math.min(w, h * 0.98);
+  const aw = MASCOT.ratio >= 1 ? box : box * MASCOT.ratio;
+  const ah = MASCOT.ratio >= 1 ? box / MASCOT.ratio : box;
+  return `<image href="${MASCOT.uri}" x="${cx - aw / 2}" y="${cy - ah / 2}" width="${aw}" height="${ah}"
+    preserveAspectRatio="xMidYMid meet" opacity="${faded ? 0.4 : 1}"/>`;
 };
+
 
 /**
  * จุกสีใส (จุกยาง/ซิลิโคนใส) ที่ใส่ในรูเจาะ — วาดเป็นวงแหวนใสซ้อนในรู

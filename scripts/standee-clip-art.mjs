@@ -24,6 +24,10 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
+// ลายที่ "สกรีน" บนชิ้นงานในภาพประกอบ = มาสคอตเป็ด iDucky ของฝ่าย Content (น่ารักกว่าวาดเอง)
+import { mascotDataUri } from "./iducky-assets.mjs";
+
+const MASCOT = await mascotDataUri("heart", 560);
 
 const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || ".cache/clip/upload").replace(
   /\/$/,
@@ -75,17 +79,18 @@ const dimH = (y, x1, x2, label) => `
   <text x="${(x1 + x2) / 2}" y="${y + 42}" font-family="${TH}" font-size="28" font-weight="700" text-anchor="middle" fill="${CYAN}">${label}</text>`;
 
 /** ลายสกรีนจำลองบนตัวสแตนดี้ */
-const artwork = (cx, cy, w, h) => {
-  const u = Math.min(w, h);
-  return `
-  <g opacity="0.9">
-    <circle cx="${cx}" cy="${cy - h * 0.06}" r="${u * 0.19}" fill="#fbbf24"/>
-    <circle cx="${cx - u * 0.09}" cy="${cy - h * 0.09}" r="${u * 0.035}" fill="#0f172a"/>
-    <circle cx="${cx + u * 0.09}" cy="${cy - h * 0.09}" r="${u * 0.035}" fill="#0f172a"/>
-    <path d="M${cx - u * 0.075} ${cy + h * 0.01} q${u * 0.075} ${u * 0.07} ${u * 0.15} 0" stroke="#0f172a" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <path d="M${cx - w * 0.24} ${cy + h * 0.22} q${w * 0.24} ${h * 0.13} ${w * 0.48} 0" stroke="#f472b6" stroke-width="7" fill="none" stroke-linecap="round"/>
-  </g>`;
+/**
+ * ลายที่สกรีนบนชิ้นงาน — ใช้มาสคอตเป็ด iDucky (ไฟล์จริงจากฝ่าย Content)
+ * วางให้พอดีกรอบ (w × h) โดยคงสัดส่วนภาพไว้ · faded = ชั้นที่อยู่ลึกลงไป (งานหลายเลเยอร์)
+ */
+const artwork = (cx, cy, w, h, faded = false) => {
+  const box = Math.min(w, h * 0.98);
+  const aw = MASCOT.ratio >= 1 ? box : box * MASCOT.ratio;
+  const ah = MASCOT.ratio >= 1 ? box / MASCOT.ratio : box;
+  return `<image href="${MASCOT.uri}" x="${cx - aw / 2}" y="${cy - ah / 2}" width="${aw}" height="${ah}"
+    preserveAspectRatio="xMidYMid meet" opacity="${faded ? 0.4 : 1}"/>`;
 };
+
 
 /** ฐานอะคริลิคมองแบบเฉียง */
 const baseSideView = (cx, cy, rx, screened = false) => {

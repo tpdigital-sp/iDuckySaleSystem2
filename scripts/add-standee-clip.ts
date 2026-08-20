@@ -77,7 +77,7 @@ const env = Object.fromEntries(
 );
 
 const ID = "standee-clip";
-const REV = "v3";
+const REV = "v4";
 const IMG = (name: string) =>
   `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/${name}-${REV}.jpg`;
 
