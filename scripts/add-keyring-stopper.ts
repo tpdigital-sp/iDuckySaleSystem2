@@ -39,6 +39,9 @@
  *
  * ภาพ: เตรียมด้วย scripts/keyring-stopper-art.mjs (งานจริง 4 · แผ่นอะไหล่/ชาร์ต 7 · ภาพวาดตัวเลือก 15)
  * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคชไว้) — ขึ้นรุ่นใหม่ให้ขยับ REV
+ * ⚠️ ของจริงใน DB มีสื่อเพิ่มที่ไฟล์นี้ไม่ได้ถือไว้ — รูปแรก photo-clear (อะคริลิคใสเห็นจุกสีใส) และ
+ *    คลิป clip-stopper ในแท็บ "อะไหล่จุกสีใส" · ถ้าจำเป็นต้องรันตัวนี้ทับจริง ๆ ให้รัน
+ *    scripts/keyring-stopper-clear-media.mjs --write ตามหลังทุกครั้ง ไม่งั้นทั้งสองอย่างหายไป
  */
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
