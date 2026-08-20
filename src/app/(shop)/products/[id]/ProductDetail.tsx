@@ -1645,6 +1645,14 @@ export default function ProductDetail({
                           </div>
                         );
                       })()}
+                      {/* 💡 กติกาคิดต่อลาย + แนะนำแยกรายการต่อลาย (โชว์เฉพาะกลุ่มที่ตั้ง extraPerDesign) */}
+                      {opt.extraPerDesign && (
+                        <p className="mt-1.5 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800 ring-1 ring-amber-100">
+                          💡 สีที่เกินโควตาคิดเพิ่ม <span className="font-bold">ต่อลาย</span> (ไม่คูณจำนวนชิ้น) ·
+                          แนะนำ <span className="font-bold">1 ลาย ต่อ 1 รายการสั่งซื้อ</span> — มีหลายลาย
+                          กดเพิ่มลงตะกร้าแยกทีละลาย เพื่อเลือกสีไหมของแต่ละลายได้ถูกต้อง
+                        </p>
+                      )}
                     </>
                   ) : multi ? (
                     <div className="flex flex-wrap gap-1.5">
@@ -3026,7 +3034,7 @@ export default function ProductDetail({
               ) : matrix ? (
                 <p className="mt-2 text-sm text-stone-500">
                   {formatPrice(unitPrice)} / {matrix.unit} × {qty.toLocaleString("th-TH")}
-                  {designFee > 0 && <> + ค่าคละลาย {formatPrice(designFee)}</>} ={" "}
+                  {designFee > 0 && <> + ค่าลาย/สีเพิ่ม {formatPrice(designFee)}</>} ={" "}
                   <span className="font-extrabold text-amber-600">{formatPrice(unitPrice * qty + designFee)}</span>
                 </p>
               ) : null}

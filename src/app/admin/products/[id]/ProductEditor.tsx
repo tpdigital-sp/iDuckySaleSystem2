@@ -103,6 +103,8 @@ type DraftOption = {
   swatchGrid?: boolean;
   /** 🔍 รูปตารางสีเต็มของกลุ่มสวอตช์ (เปิดดูขยายจากหน้าร้าน) */
   chartSrc?: string;
+  /** 💰 +฿ ของกลุ่มนี้คิดต่อลาย ไม่คูณจำนวนชิ้น */
+  extraPerDesign?: boolean;
 };
 /**
  * กางช่อง "🔢 ระบุจำนวน" ที่แถวตัวเลือกไหม — ติ๊กสวิตช์ที่หัวกลุ่มก่อนถึงโผล่
@@ -409,6 +411,7 @@ function toDraft(p: Product): Draft {
       label: o.label,
       ...(o.swatchGrid ? { swatchGrid: true } : {}),
       ...(o.chartSrc ? { chartSrc: o.chartSrc } : {}),
+      ...(o.extraPerDesign ? { extraPerDesign: true } : {}),
       choices: o.choices.map((c) => ({
         name: c.name,
         extra: c.extra ? String(c.extra) : "",
@@ -629,6 +632,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       label: o.label.trim(),
       ...(o.swatchGrid ? { swatchGrid: true } : {}),
       ...(o.chartSrc ? { chartSrc: o.chartSrc } : {}),
+      ...(o.extraPerDesign ? { extraPerDesign: true } : {}),
       choices: o.choices
         .filter((c) => c.name.trim())
         // ชื่อซ้ำในกลุ่มเดียวกันเหลือตัวแรกตัวเดียว — ตัวที่ซ้ำใช้ช่องราคาคอลัมน์เดียวกัน

@@ -173,6 +173,12 @@ export interface ProductOption {
    * (สวอตช์บนปุ่มเป็นชิปเล็ก ขยายแล้วเบลอ — รูปนี้คือไฟล์ความละเอียดเต็มไว้เปิด lightbox)
    */
   chartSrc?: string;
+  /**
+   * 💰 +฿ ของกลุ่มนี้คิด "ต่อลาย" ไม่ใช่ต่อชิ้น — เช่น สีไหมเกิน 3 สี คิดสีละ 10 บาทต่อแบบ
+   * (ค่าขึ้นบล็อค/ค่าสีเป็นงานครั้งเดียวต่อลาย ไม่ขึ้นกับจำนวนชิ้นที่ปัก)
+   * เงินส่วนนี้ไปโผล่ใน designFeeFor (ค่าเพิ่มทั้งรายการ) แทนราคา/ชิ้น
+   */
+  extraPerDesign?: boolean;
 }
 
 /**
@@ -451,6 +457,8 @@ export function smallQtyFeeOf(
 export function groupAddOf(opt: ProductOption, selections: Record<string, string>, qty: number): number {
   const fee = smallQtyFeeOf(opt, selections, qty);
   if (fee > 0) return fee;
+  // กลุ่มที่คิดต่อลาย: +฿ ไม่เข้าราคา/ชิ้น — ไปคิดรวมครั้งเดียวใน designFeeFor
+  if (opt.extraPerDesign) return fee;
   const extra = optionExtraApplies(opt, qty) ? groupExtraOf(opt, selections) : 0;
   return extra + fee; // fee ติดลบ = ลดให้
 }
@@ -859,7 +867,23 @@ export function tierQtyFor(product: Product, selections: Record<string, string>,
  * ค่าคละลายเกินโควตา (บาท ทั้งรายการ) — ลูกค้าเลือกจำนวนลายมากกว่าที่รวมในราคา
  * และเรทนั้นเปิดให้คละเกินได้ (extraDesignFee) → ส่วนเกินคิดลายละ extraDesignFee
  */
+/** 💰 ค่าเพิ่ม "ต่อลาย" จากกลุ่มตัวเลือก (เช่น สีไหมเกิน 3 สี สีละ 10) × จำนวนลายที่คละ */
+export function perDesignExtraOf(product: Product, selections: Record<string, string>): number {
+  let sum = 0;
+  for (const opt of product.options ?? []) {
+    if (!opt.extraPerDesign || !optionActive(opt, selections)) continue;
+    sum += groupExtraOf(opt, selections); // หักโควตาฟรี (freeFirstN) ให้แล้ว
+  }
+  return sum * designCountOf(selections);
+}
+
 export function designFeeFor(product: Product, selections: Record<string, string>, qty: number): number {
+  // ค่าเพิ่มต่อลายจากตัวเลือก (สีไหมเกินโควตา ฯลฯ) — คิดครั้งเดียวต่อลาย ไม่คูณจำนวนชิ้น
+  const optionFee = perDesignExtraOf(product, selections);
+  return optionFee + designFeeBase(product, selections, qty);
+}
+
+function designFeeBase(product: Product, selections: Record<string, string>, qty: number): number {
   // กติกาคละแบบคิดต่อหน่วยมาก่อน — ค่าคละ = (ค่าต่อหน่วยตามจำนวนลาย) × จำนวนที่สั่ง
   if (product.mixRule) return mixFeeTotal(product.mixRule, designCountOf(selections), Math.max(0, qty));
   const r = activeRate(product, selections);
