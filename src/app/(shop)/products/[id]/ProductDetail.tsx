@@ -1471,6 +1471,18 @@ export default function ProductDetail({
                         ☑ เลือกได้หลายอย่าง{withQty ? " · ระบุจำนวนได้" : ""}
                       </span>
                     )}
+                    {/* 🎁 กลุ่มที่ให้ฟรี N ตัวแรก — บอกยอดที่เหลือสด ๆ ลูกค้าจะได้รู้ว่าอีกกี่ตัวถึงเริ่มคิดเงิน */}
+                    {multi && (opt.freeFirstN ?? 0) > 0 && (
+                      <span className="ml-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 ring-1 ring-amber-100">
+                        {(() => {
+                          const used = picks.reduce((n, p) => n + p.qty, 0);
+                          const left = Math.max(0, (opt.freeFirstN ?? 0) - used);
+                          return left > 0
+                            ? `🎁 เลือกได้อีก ${left} ตัวโดยไม่คิดเพิ่ม`
+                            : `🎁 ครบ ${opt.freeFirstN} ตัวที่รวมในราคาแล้ว — ตัวถัดไปคิดเพิ่ม`;
+                        })()}
+                      </span>
+                    )}
                     {isInput && opt.input?.required === false && (
                       <span className="ml-1 rounded-full bg-stone-100 px-1.5 py-0.5 text-[10px] font-bold text-stone-500">
                         ไม่บังคับ

@@ -156,6 +156,12 @@ export interface ProductOption {
    * ตั้งรายตัวเลือกก็ได้ที่ ProductOptionChoice.askPrice — เข้าข้อไหนข้อหนึ่งก็ถือว่าต้องตีราคา
    */
   askPrice?: boolean;
+  /**
+   * 🎁 "กี่ตัวแรกรวมในราคา" ของกลุ่มติ๊กหลายอย่าง — ตัวที่เกินจากนี้ถึงคิด +฿
+   * เช่น สีไหม 3 สีแรกรวมในราคาแล้ว สีที่ 4 เป็นต้นไปคิดสีละ 10
+   * นับตามลำดับที่แสดงในกลุ่ม (ตัวที่ระบุจำนวนได้ นับตามจำนวนที่ระบุ) · ไม่ตั้ง/0 = คิดทุกตัวตามปกติ
+   */
+  freeFirstN?: number;
 }
 
 /**
@@ -392,10 +398,15 @@ export function choiceExtraOf(
  * กลุ่มที่เปิดช่องจำนวน คูณตามจำนวนที่ลูกค้าระบุ (เพิ่มสาย 2 เส้น = +฿ ของสาย × 2)
  */
 export function groupExtraOf(opt: ProductOption, selections: Record<string, string>): number {
-  return selectedPicks(opt, selections).reduce(
-    (sum, p) => sum + choiceExtraOf(opt, selections, p.name) * p.qty,
-    0
-  );
+  // 🎁 โควตา "รวมในราคาแล้ว" ถูกใช้ไปตามลำดับที่ติ๊ก — เหลือเท่าไหร่ค่อยคิดเงินส่วนที่เกิน
+  let free = Math.max(0, Math.floor(opt.freeFirstN ?? 0));
+  let sum = 0;
+  for (const p of selectedPicks(opt, selections)) {
+    const charged = Math.max(0, p.qty - free);
+    free = Math.max(0, free - p.qty);
+    sum += choiceExtraOf(opt, selections, p.name) * charged;
+  }
+  return sum;
 }
 
 /**
@@ -448,6 +459,13 @@ export function choiceBadgeOf(
 ): number {
   const view = { ...selections, [opt.label]: choiceName };
   if (!isMultiOption(opt) && smallQtyFeeOf(opt, view, qty) > 0) return 0;
+  // ยังไม่เต็มโควตา "รวมในราคา" = ตัวนี้ยังไม่คิดเงิน อย่าขึ้นป้าย +฿ ให้ลูกค้าเข้าใจผิด
+  const free = Math.max(0, Math.floor(opt.freeFirstN ?? 0));
+  if (free > 0) {
+    const picks = selectedPicks(opt, selections);
+    const used = picks.filter((p) => p.name !== choiceName).reduce((n, p) => n + p.qty, 0);
+    if (used < free) return 0;
+  }
   return optionExtraApplies(opt, qty) ? choiceExtraOf(opt, view, choiceName) : 0;
 }
 

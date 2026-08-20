@@ -664,7 +664,7 @@ export default function AccountPage() {
                 <MenuItem href="/account/proofs" ico="proof" tone="yolk" label="อนุมัติแบบ / ขอแก้ไข" badge={proofCount > 0 ? `${proofCount} รอตรวจ` : undefined} meta={proofCount ? undefined : "ไม่มีแบบรอตรวจ"} />
                 <MenuItem href="/account/production" ico="production" tone="blue" label="ติดตามสถานะการผลิต" meta={producing ? `กำลังผลิต ${producing} ออเดอร์` : "ไม่มีงานกำลังผลิต"} />
                 <MenuItem href="/account/files" ico="files" tone="lilac" label="ไฟล์งานของฉัน / สั่งซ้ำ" meta="สั่งซ้ำจากออเดอร์เดิม" />
-                <MenuItem href="/account/receipts" ico="receipt" tone="navy" label="ใบเสร็จ / ใบกำกับภาษี" meta={latest ? "ออเดอร์ล่าสุด" : undefined} />
+                <MenuItem href="/account/receipts" ico="receipt" tone="navy" label="ใบเสร็จ / บิลเงินสด" meta={latest ? "ออเดอร์ล่าสุด" : undefined} />
                 <MenuItem href={LINE_URL} external ico="claim" tone="coral" label="แจ้งปัญหา / เคลมสินค้า" meta="ทักแอดมินทาง LINE" />
                 <MenuItem onClick={() => showToast("ให้คะแนนสินค้า — เร็วๆ นี้!")} ico="review" tone="mint" label="รีวิว / ให้คะแนนสินค้า" meta={reviewable ? `${reviewable} รอรีวิว` : undefined} />
 
