@@ -2027,3 +2027,25 @@ main:has(.dl-page) + .dl footer{margin-top:0}
   .dl .acd-clm-msg{max-width:100%}
   .dl .acd-clm-bar .btn{flex:1;justify-content:center}
 }
+
+/* ═══════ หน้ารีวิว / ให้คะแนนสินค้า (เฟส 4) ═══════ */
+.dl .acd-rvw-grid{display:flex;flex-direction:column;gap:12px}
+.dl .acd-rvw-card{display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:var(--r-m);
+  background:linear-gradient(180deg,rgba(255,255,255,.8),rgba(255,255,255,.6));border:1px solid rgba(255,255,255,.9);box-shadow:var(--shadow-s)}
+.dl .acd-rvw-img{width:56px;height:56px;border-radius:12px;object-fit:cover;flex:none;border:1px solid var(--sky-100);background:#fff}
+.dl .acd-rvw-img-empty{display:grid;place-items:center;font-size:1.4rem}
+.dl .acd-rvw-col{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.dl .acd-rvw-col b{font-size:.9rem;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dl .acd-rvw-col span{font-size:.76rem;color:var(--navy-soft)}
+.dl .acd-rvw-stars{font-size:1.05rem;letter-spacing:.1em;color:#F5B301}
+.dl .acd-rvw-mine .acd-clm-detail{font-size:.85rem}
+/* ดาวเลือกคะแนนในฟอร์ม */
+.dl .acd-rvw-pick{display:flex;align-items:center;gap:2px;margin-top:12px}
+.dl .acd-rvw-pick button{all:unset;cursor:pointer;font-size:2rem;line-height:1;color:#D8E4EE;transition:transform .1s ease,color .1s ease;padding:2px}
+.dl .acd-rvw-pick button.on{color:#F5B301}
+.dl .acd-rvw-pick button:hover{transform:scale(1.15)}
+.dl .acd-rvw-pick-label{margin-left:10px;font-family:var(--display);font-size:.82rem;font-weight:600;color:var(--navy)}
+@media (max-width:640px){
+  .dl .acd-rvw-card{flex-wrap:wrap}
+  .dl .acd-rvw-card .btn{flex:1;justify-content:center}
+}

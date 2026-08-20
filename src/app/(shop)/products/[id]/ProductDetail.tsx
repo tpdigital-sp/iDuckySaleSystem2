@@ -243,10 +243,13 @@ export default function ProductDetail({
   templates = [],
   /** เปิดดูสินค้าที่ "ปิดการมองเห็น" อยู่ (เฉพาะทีมงานที่ล็อกอิน) — ขึ้นแถบเตือนไว้กันเข้าใจผิด */
   preview = false,
+  /** ⭐ สรุปคะแนนรีวิวจริง (ฝั่งเซิร์ฟเวอร์) — มีเมื่อไหร่ใช้แทน rating ที่ตั้งมือใน JSON-LD */
+  reviewStats = null,
 }: {
   product: Product;
   templates?: DesignTemplate[];
   preview?: boolean;
+  reviewStats?: { avg: number; count: number } | null;
 }) {
   const [product, setProduct] = useState<Product>(initialProduct);
   const category = getCategory(product.category);
@@ -1298,15 +1301,24 @@ export default function ProductDetail({
         description: product.seo?.description || product.description,
         ...(product.imageSrc ? { image: [product.imageSrc] } : {}),
         category: getCategory(product.category).name,
-        ...(product.rating
+        // ดาวจากรีวิวลูกค้าจริงมาก่อน — ไม่มีค่อยถอยไปใช้ rating ที่แอดมินตั้งมือ
+        ...(reviewStats
           ? {
               aggregateRating: {
                 "@type": "AggregateRating",
-                ratingValue: product.rating,
-                reviewCount: Math.max(1, product.sold),
+                ratingValue: reviewStats.avg,
+                reviewCount: reviewStats.count,
               },
             }
-          : {}),
+          : product.rating
+            ? {
+                aggregateRating: {
+                  "@type": "AggregateRating",
+                  ratingValue: product.rating,
+                  reviewCount: Math.max(1, product.sold),
+                },
+              }
+            : {}),
         offers: {
           "@type": "Offer",
           priceCurrency: "THB",
@@ -1327,7 +1339,7 @@ export default function ProductDetail({
       });
     }
     return graph;
-  }, [product, faqs]);
+  }, [product, faqs, reviewStats]);
 
   /**
    * บล็อก "รายละเอียดสินค้า" — แอดมินเลือกโซนได้ต่อท่อน (ดู BodySection.slot)

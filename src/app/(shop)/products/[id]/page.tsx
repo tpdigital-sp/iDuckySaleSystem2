@@ -4,7 +4,9 @@ import { PRODUCTS } from "@/lib/products";
 import { getProductServer, getProductTemplates } from "@/lib/products-server";
 import { productAutoSeo } from "@/lib/auto-seo";
 import { currentActor } from "@/lib/server/require-perm";
+import { fetchProductReviewStats } from "@/lib/server/reviews-db";
 import ProductDetail from "./ProductDetail";
+import ProductReviews from "@/components/ProductReviews";
 
 /**
  * ให้ CDN เก็บหน้าไว้ 5 นาที แล้วค่อยสร้างใหม่เบื้องหลัง (ISR)
@@ -58,5 +60,12 @@ export default async function ProductPage({
   if (product.hidden && !staff) notFound();
   // 📐 เทมเพลตไฟล์งานที่ผูกไว้ — ดึงฝั่งเซิร์ฟเวอร์ให้ลิงก์โหลดติดมากับหน้าเลย
   const templates = await getProductTemplates(product.templateIds ?? []);
-  return <ProductDetail product={product} templates={templates} preview={!!staff && !!product.hidden} />;
+  // ⭐ สรุปคะแนนรีวิวจริง — ดึงฝั่งเซิร์ฟเวอร์เพื่อให้ aggregateRating ติดไปกับ JSON-LD ตั้งแต่ HTML แรก (Google เห็นดาว)
+  const reviewStats = await fetchProductReviewStats(product.id);
+  return (
+    <>
+      <ProductDetail product={product} templates={templates} preview={!!staff && !!product.hidden} reviewStats={reviewStats} />
+      <ProductReviews productId={product.id} />
+    </>
+  );
 }

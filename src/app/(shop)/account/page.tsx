@@ -665,7 +665,7 @@ export default function AccountPage() {
                 <MenuItem href="/account/files" ico="files" tone="lilac" label="ไฟล์งานของฉัน / สั่งซ้ำ" meta="สั่งซ้ำจากออเดอร์เดิม" />
                 <MenuItem href="/account/receipts" ico="receipt" tone="navy" label="ใบเสร็จ / บิลเงินสด" meta={latest ? "ออเดอร์ล่าสุด" : undefined} />
                 <MenuItem href="/account/claims" ico="claim" tone="coral" label="แจ้งปัญหา / เคลมสินค้า" meta="แจ้งในระบบ หรือทัก LINE ก็ได้" />
-                <MenuItem onClick={() => showToast("ให้คะแนนสินค้า — เร็วๆ นี้!")} ico="review" tone="mint" label="รีวิว / ให้คะแนนสินค้า" meta={reviewable ? `${reviewable} รอรีวิว` : undefined} />
+                <MenuItem href="/account/reviews" ico="review" tone="mint" label="รีวิว / ให้คะแนนสินค้า" meta={reviewable ? `${reviewable} ออเดอร์รอรีวิว` : "รีวิวจากการซื้อจริงเท่านั้น"} />
 
                 <div className="acd-menu-head">บัญชี</div>
                 <MenuItem href="/account/profile" ico="profile" tone="navy" label="ข้อมูลส่วนตัว" meta="ชื่อ · เบอร์ · ที่อยู่" />

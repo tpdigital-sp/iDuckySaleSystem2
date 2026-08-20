@@ -44,7 +44,7 @@ export function NavIco({ name }: { name: IcoName }) {
 }
 
 /* ───────── เมนูข้าง ───────── */
-export type AccountTab = "home" | "orders" | "proof" | "production" | "files" | "receipts" | "claims" | "profile" | "address" | "howto";
+export type AccountTab = "home" | "orders" | "proof" | "production" | "files" | "receipts" | "claims" | "reviews" | "profile" | "address" | "howto";
 
 export function AccountSideNav({
   active,
@@ -84,6 +84,7 @@ export function AccountSideNav({
         {row("files", "files", "ไฟล์งานของฉัน", "/account/files")}
         {row("receipts", "receipt", "ใบเสร็จ", "/account/receipts")}
         {row("claims", "claim", "แจ้งปัญหา / เคลม", "/account/claims")}
+        {row("reviews", "review", "รีวิวสินค้า", "/account/reviews")}
         {row("profile", "profile", "ข้อมูลส่วนตัว", "/account/profile")}
         {row("address", "address", "ที่อยู่จัดส่ง", "/account/profile")}
         {row("howto", "howto", "วิธีสั่งซื้อ", "/how-to-order")}
