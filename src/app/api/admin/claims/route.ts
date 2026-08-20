@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { isMissingTable, loadClaim, saveClaim, withSignedPhotos } from "@/lib/server/claims-db";
+import { CLAIM_TABLE, isMissingTable, loadClaim, saveClaim, withSignedPhotos } from "@/lib/server/claims-db";
 import { notifyCustomer } from "@/lib/server/notify";
 import { CLAIM_STATUSES, type Claim, type ClaimResolution, type ClaimStatus } from "@/lib/claims";
 import type { Order } from "@/lib/admin-data";
@@ -15,7 +15,7 @@ export async function GET() {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ claims: [] });
 
-  const { data, error } = await sb.from("claims").select("data").order("created_at", { ascending: false }).limit(300);
+  const { data, error } = await sb.from(CLAIM_TABLE).select("data").order("created_at", { ascending: false }).limit(300);
   if (error) {
     if (isMissingTable(error)) return NextResponse.json({ claims: [], needsSetup: true });
     return NextResponse.json({ error: error.message, claims: [] }, { status: 500 });

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { bearerUser, isMissingTable, withSignedPhotos } from "@/lib/server/claims-db";
+import { bearerUser, CLAIM_TABLE, isMissingTable, withSignedPhotos } from "@/lib/server/claims-db";
 import type { Claim } from "@/lib/claims";
 
 export const runtime = "nodejs";
@@ -14,7 +14,7 @@ export async function GET(req: Request) {
   if (!user) return NextResponse.json({ error: "ต้องเข้าสู่ระบบ" }, { status: 401 });
 
   const { data, error } = await sb
-    .from("claims")
+    .from(CLAIM_TABLE)
     .select("data")
     .eq("data->>customerId", user.id)
     .order("created_at", { ascending: false });

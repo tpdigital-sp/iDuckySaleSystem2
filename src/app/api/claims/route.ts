@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { bearerUser, isMissingTable } from "@/lib/server/claims-db";
+import { bearerUser, CLAIM_TABLE, isMissingTable } from "@/lib/server/claims-db";
 import { CLAIM_TYPES, CLAIM_WINDOW_DAYS, isOpenClaim, type Claim } from "@/lib/claims";
 import type { Order } from "@/lib/admin-data";
 
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
     );
 
   // กันยื่นซ้ำ — ออเดอร์เดียวมีเคลมที่ยังเดินเรื่องได้ทีละใบ
-  const { data: existing, error: listErr } = await sb.from("claims").select("data").eq("data->>orderId", orderId);
+  const { data: existing, error: listErr } = await sb.from(CLAIM_TABLE).select("data").eq("data->>orderId", orderId);
   if (listErr) {
     if (isMissingTable(listErr)) return NextResponse.json({ error: "ระบบเคลมยังไม่พร้อม — ผู้ดูแลต้องรัน supabase/claims.sql ก่อน" }, { status: 503 });
     return NextResponse.json({ error: listErr.message }, { status: 500 });
@@ -96,10 +96,10 @@ export async function POST(req: Request) {
   };
 
   // id ชนกัน (โอกาสน้อยมาก) → สุ่มใหม่อีกรอบ
-  let { error } = await sb.from("claims").insert({ id: claim.id, data: claim });
+  let { error } = await sb.from(CLAIM_TABLE).insert({ id: claim.id, data: claim });
   if (error && /duplicate|unique/i.test(error.message)) {
     claim.id = claimId();
-    ({ error } = await sb.from("claims").insert({ id: claim.id, data: claim }));
+    ({ error } = await sb.from(CLAIM_TABLE).insert({ id: claim.id, data: claim }));
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
