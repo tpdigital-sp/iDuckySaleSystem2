@@ -58,7 +58,7 @@ type DraftChoice = {
   stockQtyPer?: number;
   /** 💬 เลือกตัวนี้แล้ว = งานสั่งทำ ให้แอดมินตีราคา (เช่น "แบบที่ 3 กำหนดขนาดเอง") */
   askPrice?: boolean;
-  /** ⭐ แบบที่ลูกค้านิยมสั่ง — หน้าสินค้าโชว์ดอกจันแดง */
+  /** ⭐ แบบที่ลูกค้านิยมสั่ง — หน้าสินค้าโชว์ป้าย "นิยม" */
   popular?: boolean;
 };
 /** presetId มี = กลุ่มนี้ "ลิงก์" คลังตัวเลือกกลาง (label+choices มาจากคลัง แก้ในกลุ่มไม่ได้จนกว่าจะตัดลิงก์) */
@@ -2521,15 +2521,15 @@ export default function ProductEditor({ product }: { product: Product }) {
                           ),
                         })
                       }
-                      title="แบบที่ลูกค้านิยมสั่ง — หน้าสินค้าจะขึ้นดอกจันแดงท้ายชื่อ พร้อมคำอธิบายใต้กลุ่ม (ไม่มีผลกับราคา)"
+                      title="แบบที่ลูกค้านิยมสั่ง — หน้าสินค้าจะขึ้นป้าย “นิยม” ท้ายชื่อ พร้อมคำอธิบายใต้กลุ่ม (ไม่มีผลกับราคา)"
                       aria-pressed={!!ch.popular}
                       className={`shrink-0 rounded-lg px-2 py-1.5 text-[11px] font-semibold ring-1 transition ${
                         ch.popular
-                          ? "bg-red-50 text-red-600 ring-red-200"
-                          : "bg-white text-slate-300 ring-slate-200 hover:text-red-500 hover:ring-red-200"
+                          ? "bg-ducky text-amber-900 ring-ducky-dark"
+                          : "bg-white text-slate-300 ring-slate-200 hover:text-amber-700 hover:ring-ducky"
                       }`}
                     >
-                      * ยอดนิยม
+                      ⭐ นิยม
                     </button>
                     {/*
                       ให้ลูกค้าระบุจำนวนของตัวเลือกนี้ (เช่น เพิ่มสาย 2 เส้น = +฿ ของสาย × 2) — เฉพาะกลุ่มติ๊กหลายอย่าง

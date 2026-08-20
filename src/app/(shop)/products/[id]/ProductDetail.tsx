@@ -1817,7 +1817,7 @@ export default function ProductDetail({
                         .map((c) => (
                           <option key={c.name} value={c.name}>
                             {c.name}
-                            {c.popular ? " *" : ""}
+                            {c.popular ? " (นิยม)" : ""}
                             {choiceBadgeOf(opt, effective, c.name, feeQty) > 0
                               ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty))}`
                               : ""}
@@ -1856,13 +1856,10 @@ export default function ProductDetail({
                               />
                             )}
                             {c.name}
-                            {/* ⭐ แบบที่ลูกค้านิยมสั่ง — ดอกจันแดง (ปุ่มที่เลือกอยู่พื้นเหลือง ใช้แดงเข้มขึ้นให้อ่านออก) */}
+                            {/* ป้าย "นิยม" — เหลืองเป็ดคู่กับฟ้าแบรนด์ อ่านออกทั้งบนปุ่มที่เลือกอยู่และปุ่มเปล่า */}
                             {c.popular && (
-                              <span
-                                aria-label="แบบที่นิยม"
-                                className={effective[opt.label] === c.name ? "text-red-700" : "text-red-500"}
-                              >
-                                *
+                              <span className="rounded-full bg-ducky px-1.5 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-ducky-dark">
+                                นิยม
                               </span>
                             )}
                             {choiceBadgeOf(opt, effective, c.name, feeQty) > 0
@@ -1872,10 +1869,13 @@ export default function ProductDetail({
                         ))}
                     </div>
                   )}
-                  {/* ⭐ คำอธิบายดอกจัน — ขึ้นเฉพาะกลุ่มที่มีแบบยอดนิยม ลูกค้าจะได้รู้ว่าดอกจันแปลว่าอะไร */}
+                  {/* บอกให้ชัดว่าป้ายนี้แปลว่าอะไร — ขึ้นเฉพาะกลุ่มที่มีแบบยอดนิยม */}
                   {opt.choices.some((c) => c.popular && allowed.includes(c.name)) && (
                     <p className="mt-1 text-[11px] font-semibold text-stone-500">
-                      <span className="text-red-500">*</span> แบบที่ลูกค้านิยมสั่ง
+                      <span className="rounded-full bg-ducky px-1.5 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-ducky-dark">
+                        นิยม
+                      </span>{" "}
+                      = แบบที่ลูกค้าสั่งบ่อยที่สุด (ทางร้านแนะนำ)
                     </p>
                   )}
                   {/* กลุ่มที่ระบุจำนวนได้ — สรุปยอดรวมของทั้งกลุ่มหลังคูณจำนวนแล้ว */}
