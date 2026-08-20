@@ -43,6 +43,11 @@ const TARGETS = [
     merged: "ใส / ขาวขุ่น C-02",
   },
   {
+    id: "keyring", // พวงกุญแจอะคริลิค (Acrylic Keyring) — ของที่นำเข้ามา ไม่มีสคริปต์ add-
+    groups: ["สีอะคริลิค"],
+    merged: "ใส / ขาวขุ่น C-02",
+  },
+  {
     id: "standee-rotating", // สแตนดี้อะคริลิค หมุนได้ — เดิมมีแต่ "ใส" ยังไม่มี C-02 ให้เลือก
     groups: ["ชนิดอะคริลิคตัวสแตนดี้"],
     merged: "อะคริลิคใส (มาตรฐาน)",
@@ -83,7 +88,8 @@ function splitChoices(choices, merged, clearImage) {
   const orig = choices[i];
   if (orig.stockItemId) throw new Error(`"${merged}" ผูกคลังไว้ (${orig.stockItemId}) — ต้องผูก SKU ของ C-02 เองก่อน`);
   const clear = { ...orig, name: CLEAR, ...(clearImage ? { imageSrc: clearImage } : {}) };
-  const c02 = { name: C02, imageSrc: acrylicColorImage(C02) };
+  // ให้สวอตช์ C-02 เฉพาะตอนตัวเลือกเดิมมีภาพอยู่แล้ว — กลุ่มที่ยังไม่มีภาพสักตัว ใส่ตัวเดียวจะดูแหว่ง
+  const c02 = { name: C02, ...(clear.imageSrc ? { imageSrc: acrylicColorImage(C02) } : {}) };
   if (orig.extra != null) c02.extra = orig.extra;
   if (orig.askPrice) c02.askPrice = orig.askPrice;
   return [...choices.slice(0, i), clear, c02, ...choices.slice(i + 1)];
@@ -159,15 +165,17 @@ for (const t of TARGETS) {
     continue;
   }
 
-  // ตารางราคา — ทั้งตารางหลักและทุกเรท
-  for (const [name, m] of [["ตารางหลัก", d.pricing], ...(d.priceRates ?? []).map((r) => [`เรท ${r.id}`, r.pricing])]) {
+  // ตารางราคา — ทั้งตารางหลักและทุกเรท (เก็บของเดิมไว้เทียบก่อน)
+  const matrices = [["ตารางหลัก", d.pricing], ...(d.priceRates ?? []).map((r) => [`เรท ${r.id}`, r.pricing])];
+  const originals = new Map(matrices.map(([name, m], i) => [i, structuredClone(m)]));
+  matrices.forEach(([name, m], i) => {
     const added = expandCells(m, t.groups, t.merged);
-    if (added) console.log(`   ${name}: +${added} ช่อง → ${Object.keys(m.cells).length} ช่อง`);
-  }
-  for (const [name, m] of [["ตารางหลัก", d.pricing], ...(d.priceRates ?? []).map((r) => [`เรท ${r.id}`, r.pricing])]) {
-    const miss = missingCells(d, m);
-    if (miss.length) throw new Error(`${t.id} ${name}: ยังขาด ${miss.length} ช่อง เช่น "${miss[0]}" — ไม่บันทึก`);
-  }
+    if (!added) return;
+    console.log(`   ${name}: +${added} ช่อง → ${Object.keys(m.cells).length} ช่อง`);
+    const bad = priceDiff(originals.get(i), m, t.groups, t.merged);
+    if (bad.length) throw new Error(`${t.id} ${name}: ราคาเพี้ยน ${bad.length} ช่อง เช่น ${bad[0]} — ไม่บันทึก`);
+    console.log(`   ${name}: ราคาตรงกับของเดิมทุกช่อง ✅`);
+  });
 
   // ข้อความที่เขียนชื่อตัวเลือกเดิมไว้ (คำถามที่พบบ่อยของ SEO · แท็บชนิดอะคริลิค)
   for (const f of d.seo?.faqs ?? []) {

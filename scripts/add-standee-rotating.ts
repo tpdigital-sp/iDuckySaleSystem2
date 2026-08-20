@@ -38,6 +38,7 @@ import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createClient } from "@supabase/supabase-js";
 import { hasQuoteOption, priceRange, type PriceMatrix, type PriceTier, type Product } from "../src/lib/products";
+import { acrylicColorImage } from "./acrylic-colors.mjs";
 
 const WRITE = process.argv.includes("--write");
 const UPLOAD = process.argv.includes("--upload");
@@ -152,8 +153,10 @@ const TABS: Product["tabs"] = [
   {
     title: "ชนิดอะคริลิค",
     text:
-      "อะคริลิคใส (มาตรฐาน)::\n" +
-      "• ราคาตามตารางคืออะคริลิคใส · ฐานเป็นอะคริลิคใสเท่านั้น\n" +
+      "อะคริลิคใส / ขาวขุ่น C-02 (มาตรฐาน)::\n" +
+      "• ราคาตามตารางคืออะคริลิคใส หรือขาวขุ่น C-02 ราคาเท่ากัน เลือกได้ในหน้าสั่งซื้อ\n" +
+      "• อะคริลิคใส = เนื้อใสมองทะลุ · ขาวขุ่น C-02 = เนื้อขาวขุ่นทึบ ลายเด่นกว่าเพราะไม่มีพื้นหลังทะลุมา\n" +
+      "• เลือกได้เฉพาะ 'ตัวสแตนดี้' — ฐานเป็นอะคริลิคใสเท่านั้น\n" +
       "• งานสกรีนอะคริลิค โดยปกติทางร้านสกรีนใต้ หากต้องการสกรีนบนต้องแจ้งก่อน เพื่อเขียนกำกับไว้ที่บิล\n\n" +
       "อะคริลิคพิเศษ (สี / กลิตเตอร์ / โฮโลแกรม)::\n" +
       "• ใช้กับ 'ตัวสแตนดี้' ได้ บวกราคาเพิ่มตามขนาด — เลือกในหน้าสั่งซื้อแล้วทางร้านตีราคาให้\n" +
@@ -285,7 +288,9 @@ const product: Product = {
       label: ACRYLIC_LABEL,
       stockBearing: true,
       choices: [
-        { name: "อะคริลิคใส (มาตรฐาน)", imageSrc: IMG("gallery-1") },
+        // ชาร์ตสีของร้านกำกับ C-02 ว่า "ไม่บวกเพิ่ม" — ราคาเท่าใส แต่คนละเนื้อวัสดุ จึงแยกให้เลือกเอง
+        { name: "อะคริลิคใส", imageSrc: IMG("gallery-1") },
+        { name: "อะคริลิคขาวขุ่น C-02", imageSrc: acrylicColorImage("อะคริลิคขาวขุ่น C-02") },
         // เว็บบอกแค่ "บวกราคาเพิ่มตามขนาด" ไม่มีตัวเลข — ให้แอดมินตีราคาให้ตอนตรวจออเดอร์
         { name: "อะคริลิคพิเศษ (สี/กลิตเตอร์/โฮโลแกรม)", askPrice: true, imageSrc: IMG("gallery-6") },
       ],
