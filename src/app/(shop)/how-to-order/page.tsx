@@ -127,7 +127,7 @@ export default async function HowToOrderPage() {
   if (override) return <PageOverride article={override} />;
 
   return (
-    <div className="dl dl-page">
+    <div className="dl dl-page hto-page">
       {/* ── แถบฟ้าหัวหน้า (ผืนเดียวกับหน้าแรก): หัวข้อ + เงื่อนไขชำระเงิน + 7 ขั้นตอน ── */}
       <div className="top-stack">
         <section className="hto-top">

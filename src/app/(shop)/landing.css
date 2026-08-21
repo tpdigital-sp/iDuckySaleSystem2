@@ -18,6 +18,9 @@
   --display:var(--font-mitr),'Mitr',system-ui,sans-serif;
   --body:var(--font-looped),var(--font-mitr),system-ui,sans-serif;
   --wrap:1160px;
+  /* พื้นหลัง "ขาวจาง" ของหน้าใน (ทุกหน้ายกเว้นหน้าแรก) — เหลือฟ้าไว้แค่ช่วงบน
+     ให้ต่อเนื่องกับแถบเมนูที่เป็นกระจกโปร่ง แล้วไล่เป็นขาวลงมาตลอดหน้า */
+  --pale-bg:linear-gradient(172deg,var(--sky-100) 0%,#EDF7FE 14%,#F6FBFF 30%,#FBFDFF 46%,#FFFFFF 62%,#FFFFFF 100%);
 }
 .dl *{box-sizing:border-box;margin:0;padding:0}
 .dl{font-family:var(--body);color:var(--navy);background:#fff;-webkit-font-smoothing:antialiased;line-height:1.7}
@@ -1007,6 +1010,7 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .dl .head h1::after{left:calc(100% + 20px);background:linear-gradient(90deg,var(--sky-300),rgba(156,216,246,0))}
 @media(max-width:620px){.dl .head h1::before,.dl .head h1::after{display:none}}
 /* ═══════ หน้าวิธีสั่งซื้อ (/how-to-order) — prefix .hto- ═══════ */
+.dl.hto-page .top-stack{background:var(--pale-bg)}
 .dl .hto-top{padding:26px 0 56px}
 
 /* --- หัวหน้า 2 คอลัมน์: ข้อความซ้าย + เป็ดขวา --- */
@@ -1248,8 +1252,7 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .dl .cpn-empty p{font-size:.8rem;color:var(--navy-soft);margin-top:6px}
 
 /* ═══════ หน้าบัญชี (แดชบอร์ด) — พอร์ตจาก USER PROFILE UPDATE_01.html · prefix .acd- ═══════ */
-.dl.acd-page{--coral-deep:#F2456B;
-  background:linear-gradient(168deg,var(--sky-200) 0%,var(--sky-100) 30%,var(--sky-50) 54%,#EAF6FE 72%,#F5FBFF 88%,#FFFFFF 100%)}
+.dl.acd-page{--coral-deep:#F2456B;background:var(--pale-bg)}
 .dl .acd-stack{background:transparent;padding-bottom:70px;overflow:clip}
 /* เมฆ — อยู่ในผืนเดียวกับพื้นหลัง (ตำแหน่งวัดจากขอบบนของ top-stack ที่มี padding-top 200px) */
 .dl .acd-c1{width:190px;top:230px;left:-46px;opacity:.9;animation:bgFloat1 18s ease-in-out infinite, bgPuff 8s ease-in-out infinite}
@@ -2302,7 +2305,7 @@ main:has(.dl-page) + .dl footer{margin-top:0}
    ใช้ภาษาการออกแบบเดียวกับหน้าแรก: พื้นฟ้าไล่สี + เมฆลอย · การ์ดกระจกขอบมน r-l
    · Mitr หัวเรื่อง/ปุ่ม + Plex Looped เนื้อความ · ปุ่ม .btn ไข่แดง/กรมท่า
    ═══════════════════════════════════════════════════════════════════════════ */
-.dl.auth-page{background:linear-gradient(168deg,var(--sky-200) 0%,var(--sky-100) 28%,var(--sky-50) 52%,#EAF6FE 72%,#F5FBFF 88%,#FFFFFF 100%)}
+.dl.auth-page{background:var(--pale-bg)}
 .dl .auth-stack{background:transparent;padding-bottom:80px;overflow:clip}
 .dl .auth-c1{width:190px;top:210px;left:-52px;opacity:.9;animation:bgFloat1 18s ease-in-out infinite, bgPuff 8s ease-in-out infinite}
 .dl .auth-c2{width:230px;top:330px;right:-64px;left:auto;opacity:.85;animation:bgFloat2 22s ease-in-out infinite reverse, bgPuff 9s ease-in-out infinite reverse}
@@ -2410,7 +2413,7 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 /* min-height: หน้าที่เนื้อหาสั้น (ตะกร้าว่าง/เปิดออเดอร์ไม่ได้) ต้องมีที่ให้ไล่สีจบเป็นขาว
    ไม่งั้นจะเห็นรอยต่อฟ้า→ขาวคาดกลางหน้า */
 .shopp{position:relative;margin-top:-200px;padding-top:200px;min-height:calc(100svh + 200px);font-family:var(--body);color:var(--navy);line-height:1.7;
-  background:linear-gradient(168deg,var(--sky-200) 0%,var(--sky-100) 26%,var(--sky-50) 48%,#EAF6FE 68%,#F5FBFF 86%,#FFFFFF 100%)}
+  background:var(--pale-bg)}
 .shopp-in{position:relative;z-index:1;width:min(100% - 32px,1160px);margin-inline:auto;padding:26px 0 60px}
 /* เมฆลอย — ชุดเดียวกับหน้าแรก */
 .shopp-sky{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}
@@ -2630,7 +2633,7 @@ main:has(.dl-page) + .dl footer{margin-top:0}
    ═══════════════════════════════════════════════════════════════════════════ */
 /* padding-top ต้องคง 200px ของ .top-stack ไว้ (คลาสนี้อยู่บน element เดียวกัน ถ้าใส่ padding สั้นกว่าจะทับ
    แล้วเนื้อหามุดไปอยู่ใต้แถบเมนู) */
-.dl .plist-top{padding:226px 0 70px}
+.dl .plist-top{padding:226px 0 70px;background:var(--pale-bg)}
 .dl .plist-wrap{position:relative;z-index:1;width:min(100% - 40px,var(--wrap));margin-inline:auto}
 /* เมฆพื้นหลัง — ตำแหน่งวัดจากขอบบนของ .top-stack ที่มี padding-top 200px */
 .dl .plist-c1{width:190px;top:250px;left:-52px;opacity:.85;animation:bgFloat1 18s ease-in-out infinite, bgPuff 8s ease-in-out infinite}
@@ -2750,13 +2753,16 @@ main:has(.dl-page) + .dl footer{margin-top:0}
   font-size:.73rem;line-height:1.75;color:var(--navy-soft)}
 .shopp .ord-hint b,.shopp .ord-hint strong{color:var(--blue-deep);font-weight:600}
 
-/* --- พื้นหลังขาวจาง (.shopp.pale) — ใช้กับหน้าที่ข้อมูลแน่นมากอย่างหน้าสินค้า ---
-   ฟ้าเข้มเต็มหน้าอ่านแล้วล้าตา เหลือฟ้าไว้แค่ช่วงบนให้ต่อกับแถบเมนู แล้วไล่เป็นขาวลงมา
-   การ์ดข้างในเลยต้องเพิ่มน้ำหนักขอบ/เงานิดหน่อย ไม่งั้นจะจมไปกับพื้น */
-.shopp.pale{background:linear-gradient(172deg,var(--sky-100) 0%,#EDF7FE 14%,#F6FBFF 30%,#FBFDFF 46%,#FFFFFF 62%,#FFFFFF 100%)}
-.shopp.pale .shopp-sky img{opacity:.5}
-.shopp.pale .shopp-sky .oc2,.shopp.pale .shopp-sky .oc3,.shopp.pale .shopp-sky .oc4{opacity:.32}
-.shopp.pale .ord-card{background:#fff;border-color:#fff;
+/* --- บนพื้นขาวจาง การ์ดต้องเพิ่มน้ำหนักเงานิดหน่อย ไม่งั้นขาวบนขาวแล้วจมหายไปกับพื้น --- */
+.shopp .shopp-sky img{opacity:.5}
+.shopp .shopp-sky .oc2,.shopp .shopp-sky .oc3,.shopp .shopp-sky .oc4{opacity:.32}
+.shopp .ord-card{background:#fff;border-color:#fff;
   box-shadow:0 1px 0 rgba(255,255,255,.9) inset,0 10px 24px -14px rgba(44,129,196,.4),0 2px 6px -2px rgba(23,58,107,.06)}
-.shopp.pale .ord-card.flat{background:rgba(242,250,255,.72);border-color:var(--sky-100);box-shadow:none}
-.shopp.pale .ord-tile{background:rgba(242,250,255,.8);border-color:var(--sky-100)}
+.shopp .ord-card.flat{background:rgba(242,250,255,.72);border-color:var(--sky-100);box-shadow:none}
+.shopp .ord-tile{background:rgba(242,250,255,.8);border-color:var(--sky-100)}
+
+/* --- เมฆบนพื้นขาวจาง: ลดความเข้มลง ไม่ให้เด่นกว่าเนื้อหา --- */
+.dl.acd-page .bg-cloud,.dl.auth-page .bg-cloud,.dl .plist-top>.bg-cloud{opacity:.42 !important}
+.dl.acd-page .acd-c2,.dl.acd-page .acd-c3,.dl.acd-page .acd-c4,
+.dl.auth-page .auth-c2,.dl.auth-page .auth-c3,
+.dl .plist-top>.plist-c2,.dl .plist-top>.plist-c3{opacity:.28 !important}
