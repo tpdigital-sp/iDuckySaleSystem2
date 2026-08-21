@@ -226,6 +226,33 @@ const isProductLink = (url: string): boolean => {
 /** ลิงก์หน้าแก้ไขสินค้า — ใช้ slug ถ้ามี (URL อ่านรู้เรื่องกว่า) */
 const editPath = (p: { id: string; slug: string }) => `/admin/products/${encodeURIComponent(p.slug || p.id)}`;
 
+/**
+ * คิวคำสั่งบันทึก — ยิงทีละคำสั่ง ไม่ยิงซ้อนกัน
+ *
+ * สถานะทั้งหน้า (ติ๊กทำแล้ว · งานทำราคา · การจับคู่เอง · ชื่อที่เพิ่ม) อยู่ในเอกสารก้อนเดียวกัน
+ * กดรัว ๆ หลายบรรทัดแล้วยิงพร้อมกัน = ฝั่งเซิร์ฟเวอร์ต้องวนทำซ้ำเพราะชนกันเอง (ช้าและอาจถึงขั้นยอมแพ้)
+ * เข้าคิวไว้ตั้งแต่ต้นทางจึงเรียบร้อยกว่า — คนเดียวกดเร็วแค่ไหนก็ไม่ชนตัวเอง
+ */
+let saveQueue: Promise<unknown> = Promise.resolve();
+const queued = <T,>(run: () => Promise<T>): Promise<T> => {
+  const next = saveQueue.then(run, run);
+  saveQueue = next.catch(() => {});
+  return next;
+};
+
+/** ยิงคำสั่งบันทึกของรายงาน (เข้าคิวให้เอง) — ไม่ ok = โยน Error พร้อมข้อความจากเซิร์ฟเวอร์ */
+const postReport = (body: Record<string, unknown>): Promise<Record<string, unknown>> =>
+  queued(async () => {
+    const r = await fetch("/api/admin/pricelist-report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!r.ok) throw new Error(String(j?.error ?? `HTTP ${r.status}`));
+    return j;
+  });
+
 /** โหลดไฟล์ CSV ให้เปิดใน Excel ได้เลย (ใส่ BOM ไม่งั้นภาษาไทยเพี้ยน) */
 function downloadCsv(rows: Row[]) {
   const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`;
@@ -539,19 +566,13 @@ export default function PricelistReportPage() {
       });
     apply(want ? { at: new Date().toISOString(), by: "กำลังบันทึก…" } : null);
     try {
-      const r = await fetch("/api/admin/pricelist-report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          field === "done"
-            ? { key: row.key, done: want }
-            : field === "priceDone"
-              ? { key: row.key, priceDone: want }
-              : { key: row.key, price: want }
-        ),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+      const j = await postReport(
+        field === "done"
+          ? { key: row.key, done: want }
+          : field === "priceDone"
+            ? { key: row.key, priceDone: want }
+            : { key: row.key, price: want }
+      );
       apply((j.mark as DoneMark | null) ?? null);
     } catch (e) {
       apply(row[field]); // บันทึกไม่ผ่าน — คืนค่าเดิม จะได้ไม่เข้าใจผิดว่าทำแล้ว
@@ -570,13 +591,7 @@ export default function PricelistReportPage() {
     async (body: Record<string, unknown>, busyKey: string, what: string) => {
       setSaving((s) => new Set(s).add(busyKey));
       try {
-        const r = await fetch("/api/admin/pricelist-report", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        const j = await r.json();
-        if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+        const j = await postReport(body);
         await load();
         // คืนคำตอบจากเซิร์ฟเวอร์ (ไม่ใช่แค่ true/false) เพราะตอนเพิ่มบรรทัดต้องใช้ key ที่เพิ่งได้มาต่อ
         return j as { key?: string };
@@ -631,13 +646,7 @@ export default function PricelistReportPage() {
         const res = await persistProduct(blank);
         if (!res.ok) throw new Error(res.error ?? "บันทึกสินค้าไม่สำเร็จ");
         // ผูกกับบรรทัดนี้เอง ไม่ต้องรอให้ระบบเดาชื่อตรง (ชื่อบนเว็บกับในระบบมักไม่เหมือนกันเป๊ะ)
-        const r = await fetch("/api/admin/pricelist-report", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ productId: id, key }),
-        });
-        const j = await r.json();
-        if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+        await postReport({ productId: id, key });
       }
     },
     []
@@ -717,13 +726,7 @@ export default function PricelistReportPage() {
     try {
       if (picked) {
         // ผูกสินค้าที่มีอยู่แล้วเข้ากับบรรทัดใหม่ (ไม่สร้างตัวใหม่ ถึงจะติ๊ก 🆕 ไว้ก็ตาม)
-        const r = await fetch("/api/admin/pricelist-report", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ productId: picked.id, key: added.key }),
-        });
-        const j = await r.json();
-        if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+        await postReport({ productId: picked.id, key: added.key });
         await load();
         setCreated(`เพิ่ม “${name}” เข้ารายงาน และผูกกับสินค้าที่มีอยู่แล้ว “${picked.name}” ให้เรียบร้อย`);
       } else if (mayManage && addWithProduct) {
@@ -759,13 +762,7 @@ export default function PricelistReportPage() {
     async (productId: string, key: string | null) => {
       setSaving((s) => new Set(s).add(productId));
       try {
-        const r = await fetch("/api/admin/pricelist-report", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ productId, key }),
-        });
-        const j = await r.json();
-        if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+        await postReport({ productId, key });
         await load();
       } catch (e) {
         setError(`ย้ายสินค้าไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);

@@ -79,6 +79,8 @@ interface ReportState {
   custom: Record<string, CustomRow>;
   /** แก้ชื่อของบรรทัดที่มาจากหน้าเว็บ — รหัสบรรทัด → ชื่อใหม่ (รหัสยังยึดชื่อเดิม ติ๊กเดิมจึงไม่หาย) */
   rename: Record<string, string>;
+  /** เลขรุ่นของเอกสารสถานะ — เพิ่มทีละ 1 ทุกครั้งที่บันทึก ใช้กันคำสั่งที่ยิงพร้อมกันเขียนทับกัน */
+  rev?: number;
 }
 
 /** บรรทัดที่ถูกลบออกจากรายงาน (ไว้โชว์ในถังลบ ให้กู้คืนได้) */
@@ -152,32 +154,85 @@ const SIMILAR_ENOUGH = 0.72;
 
 type Db = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 
-/** อ่านสถานะรายงาน (ติ๊กว่าทำแล้ว + การจับคู่เอง) */
-async function loadState(sb: Db): Promise<ReportState> {
+/**
+ * อ่านสถานะรายงาน (ติ๊กว่าทำแล้ว + การจับคู่เอง)
+ * คืน rev มาด้วย — สถานะทั้งหน้าอยู่ในเอกสารก้อนเดียว ตอนบันทึกต้องเช็คว่าไม่มีใครเขียนแทรก
+ */
+async function loadState(sb: Db): Promise<{ state: ReportState; rev: number | null; exists: boolean }> {
   const { data } = await sb.from("products").select("data").eq("id", STATE_ID).maybeSingle();
   const d = (data?.data ?? {}) as Partial<ReportState>;
   return {
-    done: d.done ?? {},
-    price: d.price ?? {},
-    priceDone: d.priceDone ?? {},
-    hidden: d.hidden ?? {},
-    assign: d.assign ?? {},
-    custom: d.custom ?? {},
-    rename: d.rename ?? {},
+    state: {
+      done: d.done ?? {},
+      price: d.price ?? {},
+      priceDone: d.priceDone ?? {},
+      hidden: d.hidden ?? {},
+      assign: d.assign ?? {},
+      custom: d.custom ?? {},
+      rename: d.rename ?? {},
+      rev: d.rev,
+    },
+    rev: typeof d.rev === "number" ? d.rev : null,
+    exists: !!data,
   };
 }
 
-/** บันทึกสถานะรายงานกลับลงแถวเดิม */
-async function saveState(sb: Db, state: ReportState) {
-  return sb.from("products").upsert(
-    {
-      id: STATE_ID,
-      name: "(รายงานเทียบเว็บตารางราคา — เช็กลิสต์ + งานพี่ปุ๋ย + การจับคู่เอง)",
-      category: "__settings__",
-      price: 0,
-      data: state,
-    },
-    { onConflict: "id" }
+const STATE_NAME = "(รายงานเทียบเว็บตารางราคา — เช็กลิสต์ + งานพี่ปุ๋ย + การจับคู่เอง)";
+
+/**
+ * บันทึกสถานะกลับลงแถวเดิมแบบ "เช็คก่อนเขียน" (compare-and-swap)
+ * เขียนสำเร็จเฉพาะตอนที่ rev ในฐานข้อมูลยังเป็นตัวเดียวกับที่อ่านมา — ถ้ามีใครบันทึกแทรกไปก่อน
+ * จะได้ 0 แถว แล้วให้ผู้เรียกวนไปอ่านใหม่ทำซ้ำ
+ *
+ * ⚠️ เคยเป็นบั๊ก: เดิมใช้ upsert ทับทั้งก้อน — กดติ๊ก/จับคู่รัว ๆ หลายบรรทัด คำสั่งที่ยิงพร้อมกัน
+ *    ต่างคนต่างอ่านสถานะเดิมมาแล้วเขียนทับกัน ตัวที่เขียนก่อนหายเงียบ ๆ ทั้งที่หน้าจอขึ้นว่าบันทึกแล้ว
+ */
+async function saveState(
+  sb: Db,
+  state: ReportState,
+  rev: number | null,
+  exists: boolean
+): Promise<{ ok?: true; conflict?: true; error?: string }> {
+  const next: ReportState = { ...state, rev: (rev ?? 0) + 1 };
+  if (!exists) {
+    const { error } = await sb
+      .from("products")
+      .insert({ id: STATE_ID, name: STATE_NAME, category: "__settings__", price: 0, data: next });
+    // ชนกับคนที่เพิ่งสร้างแถวนี้พร้อมกัน = ให้ไปอ่านใหม่แล้วทำซ้ำ
+    return error ? { conflict: true } : { ok: true };
+  }
+  const base = sb.from("products").update({ data: next }).eq("id", STATE_ID);
+  const { data, error } = await (rev === null
+    ? base.is("data->>rev", null)
+    : base.eq("data->>rev", String(rev))
+  ).select("id");
+  if (error) return { error: error.message };
+  return data?.length ? { ok: true } : { conflict: true };
+}
+
+/**
+ * อ่าน–แก้–บันทึก แบบวนซ้ำจนกว่าจะเขียนติด (กันคำสั่งที่ยิงพร้อมกันเขียนทับกัน)
+ * apply ต้องเป็นฟังก์ชันที่รันซ้ำได้ — ทุกครั้งจะได้สถานะล่าสุดมาใหม่เสมอ
+ * คืน NextResponse ออกมาจาก apply = จบทันที (เช่นข้อมูลไม่ครบ) ไม่ต้องบันทึก
+ */
+async function updateState(
+  sb: Db,
+  apply: (state: ReportState) => NextResponse | Record<string, unknown>
+): Promise<NextResponse> {
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const { state, rev, exists } = await loadState(sb);
+    const out = apply(state);
+    if (out instanceof NextResponse) return out;
+    const saved = await saveState(sb, state, rev, exists);
+    if (saved.ok) return NextResponse.json({ ok: true, ...out });
+    if (saved.error) return NextResponse.json({ error: saved.error }, { status: 500 });
+    // ชนกัน — ถอยแป๊บนึงแล้วอ่านใหม่ · หน่วงเพิ่มทีละรอบ + สุ่มนิดหน่อย
+    // (ถ้าทุกคนถอยเท่ากันเป๊ะ จะกลับมาชนพร้อมกันที่เดิมไม่จบสักที)
+    await new Promise((r) => setTimeout(r, 30 * (attempt + 1) + Math.random() * 90));
+  }
+  return NextResponse.json(
+    { error: "มีการบันทึกพร้อมกันหลายรายการ ลองอีกครั้ง" },
+    { status: 409 }
   );
 }
 
@@ -200,7 +255,7 @@ export async function GET(req: Request) {
   }
 
   // ── 2. สินค้าในระบบ (เอาทั้งที่เผยแพร่แล้วและฉบับร่าง) + รายการที่ติ๊กว่าทำแล้ว ──
-  const [{ data, error }, state] = await Promise.all([
+  const [{ data, error }, { state }] = await Promise.all([
     sb.from("products").select("id,name,category,data"),
     loadState(sb),
   ]);
@@ -432,95 +487,84 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
   }
 
-  const state = await loadState(sb);
   const who = gate.actor.name || gate.actor.username;
 
-  // ── เพิ่มบรรทัดชื่อเอง (ชื่อที่ยังไม่มีบนหน้าเว็บตารางราคา) ──
-  if (body.add) {
-    const name = String(body.add.name ?? "").trim();
-    if (!name) return NextResponse.json({ error: "ยังไม่ได้ใส่ชื่อ" }, { status: 400 });
-    let key = "";
-    do {
-      key = `${CUSTOM_PREFIX}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-    } while (state.custom[key]);
-    state.custom[key] = {
-      name,
-      category: String(body.add.category ?? "").trim() || "เพิ่มเอง",
-      url: String(body.add.url ?? "").trim(),
-      at: new Date().toISOString(),
-      by: who,
-    };
-    const { error } = await saveState(sb, state);
-    return error ? NextResponse.json({ error: error.message }, { status: 500 }) : NextResponse.json({ ok: true, key });
-  }
-
-  // ── ย้าย/เอาออก/คืนค่าอัตโนมัติ ของสินค้า 1 ตัว ──
-  if (body.productId) {
-    const productId = String(body.productId).trim();
-    if (body.key === null || body.key === undefined) delete state.assign[productId];
-    else state.assign[productId] = String(body.key);
-
-    const { error } = await saveState(sb, state);
-    return error
-      ? NextResponse.json({ error: error.message }, { status: 500 })
-      : NextResponse.json({ ok: true, assign: state.assign[productId] ?? null });
-  }
-
-  const key = String(body.key ?? "").trim();
-  if (!key) return NextResponse.json({ error: "ไม่ได้ระบุว่าติ๊กบรรทัดไหน" }, { status: 400 });
-
-  // ── แก้ชื่อบรรทัด (เพิ่มเอง = แก้ชื่อ/หมวด/ลิงก์ได้หมด · จากเว็บ = แก้ได้เฉพาะชื่อ ชื่อว่าง = คืนชื่อเดิม) ──
-  if (body.edit) {
-    const name = String(body.edit.name ?? "").trim();
-    if (isCustomKey(key)) {
-      const cur = state.custom[key];
-      if (!cur) return NextResponse.json({ error: "ไม่พบบรรทัดนี้" }, { status: 404 });
+  // ทุกคำสั่งแก้เอกสารสถานะก้อนเดียวกัน — ส่งผ่าน updateState เสมอ (อ่านใหม่+ทำซ้ำถ้าชนกัน)
+  return updateState(sb, (state) => {
+    // ── เพิ่มบรรทัดชื่อเอง (ชื่อที่ยังไม่มีบนหน้าเว็บตารางราคา) ──
+    if (body.add) {
+      const name = String(body.add.name ?? "").trim();
       if (!name) return NextResponse.json({ error: "ยังไม่ได้ใส่ชื่อ" }, { status: 400 });
+      let key = "";
+      do {
+        key = `${CUSTOM_PREFIX}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      } while (state.custom[key]);
       state.custom[key] = {
-        ...cur,
         name,
-        category: body.edit.category === undefined ? cur.category : String(body.edit.category).trim() || "เพิ่มเอง",
-        url: body.edit.url === undefined ? cur.url : String(body.edit.url).trim(),
+        category: String(body.add.category ?? "").trim() || "เพิ่มเอง",
+        url: String(body.add.url ?? "").trim(),
+        at: new Date().toISOString(),
+        by: who,
       };
-    } else if (name) state.rename[key] = name;
-    else delete state.rename[key];
+      return { key };
+    }
 
-    const { error } = await saveState(sb, state);
-    return error ? NextResponse.json({ error: error.message }, { status: 500 }) : NextResponse.json({ ok: true });
-  }
+    // ── ย้าย/เอาออก/คืนค่าอัตโนมัติ ของสินค้า 1 ตัว ──
+    if (body.productId) {
+      const productId = String(body.productId).trim();
+      if (body.key === null || body.key === undefined) delete state.assign[productId];
+      else state.assign[productId] = String(body.key);
+      return { assign: state.assign[productId] ?? null };
+    }
 
-  // ── ลบบรรทัดที่เพิ่มเองทิ้งถาวร (พร้อมติ๊ก/คำสั่งงาน/การจับคู่ที่ผูกกับบรรทัดนั้น) ──
-  if (body.remove) {
-    if (!isCustomKey(key)) return NextResponse.json({ error: "ลบถาวรได้เฉพาะบรรทัดที่เพิ่มเอง" }, { status: 400 });
-    delete state.custom[key];
-    delete state.done[key];
-    delete state.price[key];
-    delete state.priceDone[key];
-    delete state.hidden[key];
-    for (const [productId, at] of Object.entries(state.assign)) if (at === key) delete state.assign[productId];
+    const key = String(body.key ?? "").trim();
+    if (!key) return NextResponse.json({ error: "ไม่ได้ระบุว่าติ๊กบรรทัดไหน" }, { status: 400 });
 
-    const { error } = await saveState(sb, state);
-    return error ? NextResponse.json({ error: error.message }, { status: 500 }) : NextResponse.json({ ok: true });
-  }
+    // ── แก้ชื่อบรรทัด (เพิ่มเอง = แก้ชื่อ/หมวด/ลิงก์ได้หมด · จากเว็บ = แก้ได้เฉพาะชื่อ ชื่อว่าง = คืนชื่อเดิม) ──
+    if (body.edit) {
+      const name = String(body.edit.name ?? "").trim();
+      if (isCustomKey(key)) {
+        const cur = state.custom[key];
+        if (!cur) return NextResponse.json({ error: "ไม่พบบรรทัดนี้" }, { status: 404 });
+        if (!name) return NextResponse.json({ error: "ยังไม่ได้ใส่ชื่อ" }, { status: 400 });
+        state.custom[key] = {
+          ...cur,
+          name,
+          category: body.edit.category === undefined ? cur.category : String(body.edit.category).trim() || "เพิ่มเอง",
+          url: body.edit.url === undefined ? cur.url : String(body.edit.url).trim(),
+        };
+      } else if (name) state.rename[key] = name;
+      else delete state.rename[key];
+      return {};
+    }
 
-  // ── ติ๊กช่องของ 1 บรรทัด ("ทำแล้ว" หรือ "ให้พี่ปุ๋ยทำราคา") ──
-  const field =
-    body.hidden !== undefined
-      ? "hidden"
-      : body.priceDone !== undefined
-        ? "priceDone"
-        : body.price !== undefined
-          ? "price"
-          : "done";
-  const map = state[field];
-  const mark: DoneMark | null = body[field] ? { at: new Date().toISOString(), by: who } : null;
-  if (mark) map[key] = mark;
-  else delete map[key];
-  // ยกเลิกคำสั่งงานทำราคา = ล้าง "เสร็จแล้ว" ของบรรทัดนั้นด้วย จะได้ไม่ค้างเป็นงานที่ไม่มีอยู่จริง
-  if (field === "price" && !mark) delete state.priceDone[key];
+    // ── ลบบรรทัดที่เพิ่มเองทิ้งถาวร (พร้อมติ๊ก/คำสั่งงาน/การจับคู่ที่ผูกกับบรรทัดนั้น) ──
+    if (body.remove) {
+      if (!isCustomKey(key)) return NextResponse.json({ error: "ลบถาวรได้เฉพาะบรรทัดที่เพิ่มเอง" }, { status: 400 });
+      delete state.custom[key];
+      delete state.done[key];
+      delete state.price[key];
+      delete state.priceDone[key];
+      delete state.hidden[key];
+      for (const [productId, at] of Object.entries(state.assign)) if (at === key) delete state.assign[productId];
+      return {};
+    }
 
-  const { error } = await saveState(sb, state);
-  return error
-    ? NextResponse.json({ error: error.message }, { status: 500 })
-    : NextResponse.json({ ok: true, mark });
+    // ── ติ๊กช่องของ 1 บรรทัด ("ทำแล้ว" หรือ "ให้พี่ปุ๋ยทำราคา") ──
+    const field =
+      body.hidden !== undefined
+        ? "hidden"
+        : body.priceDone !== undefined
+          ? "priceDone"
+          : body.price !== undefined
+            ? "price"
+            : "done";
+    const map = state[field];
+    const mark: DoneMark | null = body[field] ? { at: new Date().toISOString(), by: who } : null;
+    if (mark) map[key] = mark;
+    else delete map[key];
+    // ยกเลิกคำสั่งงานทำราคา = ล้าง "เสร็จแล้ว" ของบรรทัดนั้นด้วย จะได้ไม่ค้างเป็นงานที่ไม่มีอยู่จริง
+    if (field === "price" && !mark) delete state.priceDone[key];
+    return { mark };
+  });
 }
