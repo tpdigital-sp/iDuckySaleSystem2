@@ -2749,3 +2749,14 @@ main:has(.dl-page) + .dl footer{margin-top:0}
   border-radius:0 !important;padding:1px 0 1px 11px !important;box-shadow:none !important;
   font-size:.73rem;line-height:1.75;color:var(--navy-soft)}
 .shopp .ord-hint b,.shopp .ord-hint strong{color:var(--blue-deep);font-weight:600}
+
+/* --- พื้นหลังขาวจาง (.shopp.pale) — ใช้กับหน้าที่ข้อมูลแน่นมากอย่างหน้าสินค้า ---
+   ฟ้าเข้มเต็มหน้าอ่านแล้วล้าตา เหลือฟ้าไว้แค่ช่วงบนให้ต่อกับแถบเมนู แล้วไล่เป็นขาวลงมา
+   การ์ดข้างในเลยต้องเพิ่มน้ำหนักขอบ/เงานิดหน่อย ไม่งั้นจะจมไปกับพื้น */
+.shopp.pale{background:linear-gradient(172deg,var(--sky-100) 0%,#EDF7FE 14%,#F6FBFF 30%,#FBFDFF 46%,#FFFFFF 62%,#FFFFFF 100%)}
+.shopp.pale .shopp-sky img{opacity:.5}
+.shopp.pale .shopp-sky .oc2,.shopp.pale .shopp-sky .oc3,.shopp.pale .shopp-sky .oc4{opacity:.32}
+.shopp.pale .ord-card{background:#fff;border-color:#fff;
+  box-shadow:0 1px 0 rgba(255,255,255,.9) inset,0 10px 24px -14px rgba(44,129,196,.4),0 2px 6px -2px rgba(23,58,107,.06)}
+.shopp.pale .ord-card.flat{background:rgba(242,250,255,.72);border-color:var(--sky-100);box-shadow:none}
+.shopp.pale .ord-tile{background:rgba(242,250,255,.8);border-color:var(--sky-100)}
