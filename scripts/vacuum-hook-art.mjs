@@ -19,8 +19,12 @@
  *  B) ภาพวาด — สิ่งที่รูปถ่ายบอกไม่ได้
  *     size-58     จานขนาด 58 มม. วาดตามสเกลจริง พร้อมก้านตะขอ
  *     set-5       1 เซ็ต = 5 ชิ้น (ขายเป็นเซ็ต ราคาในตารางเป็นราคาต่อเซ็ต)
- *     coat-*      ผิวเคลือบ 5 แบบ (เงา · ด้าน · เนื้อทราย · กลิสเตอร์ · โฮโลแกรม)
+ *     coat-gloss  ผิวเงา · coat-matte ผิวด้าน (สองแบบนี้ฟรี)
+ *     coat-special ภาพรวมเคลือบพิเศษ 3 ตระกูล (+40/ชุด) — ทราย · กลิตเตอร์ · โฮโลแกรม
  *                 วาดบนทรงตะขอจริงทุกใบ สเกลเดียวกัน เทียบกันได้ตรง ๆ
+ *
+ *     ⚠️ ชนิดฟิล์มพิเศษรายตัวไม่ต้องวาด — มาจากคลังตัวเลือกกลาง "เคลือบ" (preset-2)
+ *        ซึ่งมีรูปงานจริงของฟิล์มครบ 10 แบบอยู่แล้ว
  *
  * ที่มาของตัวเลข: iduckyofficial-pricelists.com/otheracrylicproducts3 หัวข้อ "ตะขอแขวน สูญญากาศ"
  *   จำหน่ายเป็นเซ็ต 1 เซ็ต 5 ชิ้น · ขนาด 58mm · ฟรี เคลือบเงา/เคลือบด้าน
@@ -269,25 +273,12 @@ const COATS = {
     foot: ["ฟิล์มด้านจะทำให้สีดรอปลงจากเคลือบเงาเล็กน้อย", "1 ชุด เลือกชนิดผิวเคลือบได้ 1 แบบ"],
     layer: (g, clip) => matte(g, clip),
   },
-  "coat-sand": {
-    name: "เคลือบพิเศษ · เนื้อทราย",
-    sub: "ผิวสากละเอียดเหมือนเม็ดทราย จับแล้วรู้สึกได้",
-    foot: ["บวกเพิ่มชุดละ 40 บาท", "1 ชุด เลือกชนิดผิวเคลือบได้ 1 แบบ"],
-    layer: (g, clip) => `${matte(g, clip)}${speckles(g, clip, { count: 900, size: 2.1, colors: ["#ffffff", "#e2e8f0", "#94a3b8"], opacity: 0.5 })}`,
-  },
-  "coat-glitter": {
-    name: "เคลือบพิเศษ · กลิสเตอร์",
-    sub: "ฟิล์มกากเพชร มีประกายวิบวับเวลาโดนแสง",
-    foot: ["บวกเพิ่มชุดละ 40 บาท", "1 ชุด เลือกชนิดผิวเคลือบได้ 1 แบบ"],
-    layer: (g, clip) => `${gloss(g, 0.4)}${sparkles(g, clip, 150)}`,
-  },
-  "coat-holo": {
-    name: "เคลือบพิเศษ · โฮโลแกรม",
-    sub: "ฟิล์มเหลือบรุ้ง เปลี่ยนสีตามมุมมอง",
-    foot: ["บวกเพิ่มชุดละ 40 บาท", "1 ชุด เลือกชนิดผิวเคลือบได้ 1 แบบ"],
-    layer: (g, clip, grad) => `${holo(g, clip, grad)}${gloss(g, 0.45)}`,
-  },
 };
+/**
+ * ⚠️ ผิวเคลือบพิเศษ (ทราย · กลิตเตอร์ · โฮโลแกรม 8 ลาย) ไม่ได้ออกเป็นภาพเดี่ยวจากที่นี่
+ * ชนิดฟิล์มมาจาก "คลังตัวเลือกกลาง" ชื่อ เคลือบ (preset-2) ซึ่งมีรูปงานจริงของทุกฟิล์มอยู่แล้ว
+ * ที่นี่ออกให้แค่ภาพรวม coat-special ใช้เป็นภาพประจำปุ่ม "เคลือบพิเศษ" ในกลุ่มที่คิดเงิน
+ */
 
 function coatArt(key) {
   const c = COATS[key];
@@ -361,7 +352,45 @@ function setArt() {
   );
 }
 
+// ── เคลือบพิเศษ (รวม 3 ตระกูล) ────────────────────────────────────────────
+/**
+ * ภาพประจำตัวเลือก "เคลือบพิเศษ" ในกลุ่มที่คิดเงิน — เลือกตัวนี้แล้วจะมีกลุ่ม "เคลือบ"
+ * (ลิงก์คลังตัวเลือกกลาง) โผล่ขึ้นมาให้เลือกชนิดฟิล์มจริงอีกที ภาพนี้จึงต้องบอกว่า
+ * "พิเศษ" มีตระกูลอะไรบ้าง ไม่ใช่ฟิล์มตัวใดตัวหนึ่ง
+ */
+function specialArt() {
+  const r = 116;
+  const cols = [-1, 0, 1].map((i) => W / 2 + i * (r * 2 + 34));
+  const rowY = 372;
+  const kinds = [
+    { key: "sand", label: "เนื้อทราย", layer: (g, clip) => `${matte(g, clip)}${speckles(g, clip, { count: 520, size: 1.5, colors: ["#ffffff", "#e2e8f0", "#94a3b8"], opacity: 0.5 })}` },
+    { key: "glitter", label: "กลิตเตอร์", layer: (g, clip) => `${gloss(g, 0.4)}${sparkles(g, clip, 90)}` },
+    { key: "holo", label: "โฮโลแกรม", layer: (g, clip) => `${holo(g, clip, "holo")}${gloss(g, 0.45)}` },
+  ];
+  const clips = cols.map((cx, i) => discClip(`s${i}`, hookGeom(cx, rowY, r))).join("");
+  const body = kinds
+    .map((k, i) => {
+      const g = hookGeom(cols[i], rowY, r);
+      return `${hookStem(g)}${hookShell(g)}${discArt(g, `s${i}`)}${k.layer(g, `s${i}`)}
+        <circle cx="${g.cx}" cy="${g.cy}" r="${g.r * 0.9}" fill="none" stroke="#ffffff" stroke-width="5" opacity="0.85"/>
+        <circle cx="${g.cx}" cy="${g.cy}" r="${g.r}" fill="none" stroke="${SHELL_EDGE}" stroke-width="3"/>
+        <text x="${g.cx}" y="${g.bottom + 50}" font-family="${TH}" font-size="26" font-weight="700" text-anchor="middle" fill="${INK}">${k.label}</text>`;
+    })
+    .join("");
+  return frame(
+    `
+    ${title("เคลือบพิเศษ", "บวกเพิ่มชุดละ 40 บาท · 1 ชุดเลือกได้ 1 แบบ")}
+    ${body}
+    ${foot([
+      "เลือก “เคลือบพิเศษ” แล้วจะมีตัวเลือกชนิดฟิล์มให้เลือกต่ออีกที",
+      "โฮโลแกรมมีหลายลาย — รุ้ง · ดาว · หิมะ · หัวใจ · เหลี่ยม · จุด · Dust · Stardust",
+    ])}`,
+    `${clips}${HOLO_GRAD("holo")}`
+  );
+}
+
 const DRAWN = {
+  "coat-special": { svg: specialArt(), note: "เคลือบพิเศษ 3 ตระกูล (+40/ชุด)" },
   "size-58": { svg: sizeArt(), note: "จาน 58 มม. ตามสเกลจริง" },
   "set-5": { svg: setArt(), note: "1 เซ็ต 5 ชิ้น + ราคาต่อเซ็ต" },
   ...Object.fromEntries(Object.keys(COATS).map((k) => [k, { svg: coatArt(k), note: COATS[k].name }])),
