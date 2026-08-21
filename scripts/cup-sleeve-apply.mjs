@@ -53,6 +53,7 @@ const COAT_LABEL = "เคลือบ (ด้านหน้า)";
 const COAT_IN_LABEL = "เคลือบ (ด้านหลัง)";
 const FILM_LABEL = "เคลือบ"; // กลุ่มที่ลิงก์คลังตัวเลือกกลาง (ผิวฟิล์มพิเศษ 10 แบบ) — ชื่อกลุ่มมาจากคลัง
 const FILM_BACK_LABEL = "ผิวฟิล์มพิเศษ (ด้านหลัง)";
+const WHITE_LABEL = "พิมพ์รองสีขาว";
 const FILM_PRESET = "preset-2";
 const COAT_NONE = "ไม่เคลือบ";
 const COAT_GLOSS = "เคลือบเงา";
@@ -290,7 +291,20 @@ const GLOSS_ONLY = [
   "กระดาษสีเงิน ผิวเงา (250 แกรม)",
   "กระดาษสีทอง ผิวเงา (250 แกรม)",
 ];
-const missing = GLOSS_ONLY.filter((n) => !texPapers.some((t) => t.name === n));
+/**
+ * กระดาษเนื้อโลหะ/โฮโลแกรม พิมพ์ทับแล้วสีจม — สั่ง "พิมพ์รองสีขาว" ก่อนได้ (บวกเพิ่มต่อแผ่น A3 = ต่อเซ็ต)
+ * ราคาตามที่ร้านแจ้ง 21 ส.ค. 69 · เท่ากับ Add On ของสินค้า paper-art-pet
+ */
+const UNDERPRINT = [
+  "โฮโลแกรม SeaSand (300 แกรม)",
+  "โฮโลแกรม Rainbow (300 แกรม)",
+  "กระดาษสีเงิน ผิวเงา (250 แกรม)",
+  "กระดาษสีเงิน ผิวด้าน (250 แกรม)",
+  "กระดาษสีทอง ผิวเงา (250 แกรม)",
+  "กระดาษสีทอง ผิวด้าน (250 แกรม)",
+];
+const UNDERPRINT_FEE = 20;
+const missing = [...GLOSS_ONLY, ...UNDERPRINT].filter((n) => !texPapers.some((t) => t.name === n));
 if (missing.length) throw new Error(`ไม่เจอเนื้อกระดาษ "${missing.join(", ")}" ใน ${SRC_TEX} แล้ว — ตรวจก่อน`);
 const texCoatable = texPapers.filter((t) => GLOSS_ONLY.includes(t.name));
 const texPlain = texPapers.filter((t) => !GLOSS_ONLY.includes(t.name));
@@ -379,6 +393,8 @@ const ART_FILES = [
   "coat-special",
   "set-of-6",
   "size-3-levels",
+  "underprint",
+  "underprint-none",
 ];
 const art = {};
 for (const f of ART_FILES) art[f] = await put(`${f}-${V}`, local(f));
@@ -491,6 +507,15 @@ d.options = [
     ],
   },
   {
+    label: WHITE_LABEL,
+    showWhen: { label: PAPER_LABEL, choices: [PAPER_TEX] },
+    showWhenAlso: { label: TEX_LABEL, choices: texPapers.filter((t) => UNDERPRINT.includes(t.name)).map(texName) },
+    choices: [
+      { name: "ไม่พิมพ์รองสีขาว", imageSrc: art["underprint-none"] },
+      { name: "พิมพ์รองสีขาว", extra: UNDERPRINT_FEE, imageSrc: art["underprint"] },
+    ],
+  },
+  {
     label: COAT_IN_LABEL,
     showWhen: { label: PAPER_LABEL, choices: ART_PAPERS },
     choices: [
@@ -535,6 +560,7 @@ d.terms = [
   `กระดาษพิเศษเนื้อมุก STARDREAM บวกเพิ่มเซ็ตละ ${STAR_EXTRA} บาท`,
   "กระดาษพิเศษเนื้อโฮโลแกรม และเงิน-ทองผิวเงา เลือกได้ระหว่าง “เคลือบเงาด้านหน้า” (รวมในราคาแล้ว ไม่บวกเพิ่ม) หรือ “ไม่เคลือบ” — เคลือบด้าน/เคลือบพิเศษ และการเคลือบด้านหลัง ทำไม่ได้",
   "กระดาษพิเศษเนื้อเงิน-ทองผิวด้าน · Texture · มุก STARDREAM เคลือบไม่ได้ทั้งสองด้าน",
+  `กระดาษโฮโลแกรมและเงิน-ทอง สั่ง “พิมพ์รองสีขาว” ได้ บวกเพิ่มเซ็ตละ ${UNDERPRINT_FEE} บาท (ราคายังไม่รวมพิมพ์รอง — ไม่รองสีขาว สีลายจะจมไปกับเนื้อกระดาษ)`,
   `เคลือบเงา / เคลือบด้าน บวกเพิ่ม ${COAT_FEE} บาทต่อด้าน · เคลือบพิเศษ (กลิตเตอร์ · ทราย · โฮโลแกรม) บวกเพิ่ม ${SPECIAL_FEE} บาทต่อด้าน`,
   `ขนาดงานมีแบบเดียว ${SIZE.name} (วัดตอนกางแบน) — เป็นทรงมาตรฐานของร้าน ไม่ได้ตัดตามแก้วเฉพาะรุ่น`,
   "ปลายปลอกมีลิ้นล็อก + ช่องเสียบ 3 ตำแหน่ง ปรับความกว้างได้ตามขนาดแก้ว",
@@ -609,6 +635,7 @@ d.tabs = [
       `• กระดาษพิเศษเลือกเนื้อได้ ${texPapers.length} แบบ ในกลุ่มเดียว (โฮโลแกรม · เงิน-ทอง · Texture · มุก STARDREAM)`,
       `• เนื้อโฮโลแกรม และเงิน-ทอง "ผิวเงา" (${texCoatable.length} แบบ) เลือกได้ระหว่างเคลือบเงาด้านหน้า (รวมในราคาแล้ว) หรือไม่เคลือบ · ด้านหลังเคลือบไม่ได้`,
       `• เนื้ออื่นอีก ${texPlain.length} แบบ (เงิน-ทองผิวด้าน · Texture · มุก STARDREAM) เคลือบไม่ได้ทั้งสองด้าน`,
+      `• กระดาษโฮโลแกรม · เงิน-ทอง สั่งพิมพ์รองสีขาวได้ บวกเพิ่มเซ็ตละ ${UNDERPRINT_FEE} บาท (ช่วยให้สีลายไม่จมไปกับเนื้อกระดาษ)`,
       `• เนื้อมุก STARDREAM บวกเพิ่มเซ็ตละ ${STAR_EXTRA} บาท · เนื้ออื่นราคาเท่ากันหมด`,
       "::ราคาบวกเพิ่ม::",
       `• เคลือบเงา / เคลือบด้าน บวกเพิ่ม ${COAT_FEE} บาท ต่อด้าน`,

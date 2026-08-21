@@ -345,6 +345,58 @@ async function sizeCard2() {
   save(SIZE.key, buf);
 }
 
+
+/* ── 5. การ์ด "พิมพ์รองสีขาว" (วาดเอง) ───────────────────────────── */
+
+/**
+ * กระดาษเนื้อโลหะ/โฮโลแกรมเป็นพื้นสะท้อนแสง พิมพ์ทับตรง ๆ แล้วสีจม
+ * การ์ดคู่นี้เทียบให้เห็นว่า "รองขาวก่อน" กับ "ไม่รอง" ต่างกันยังไง (ภาพวาดอธิบาย ไม่ใช่รูปงานจริง)
+ */
+function metalBg(x, y, w, h) {
+  return `<g>
+    <defs>
+      <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#f5e6a8"/><stop offset="25%" stop-color="#d8b45a"/>
+        <stop offset="50%" stop-color="#fbf3cf"/><stop offset="75%" stop-color="#c9a24a"/>
+        <stop offset="100%" stop-color="#efdda0"/>
+      </linearGradient>
+    </defs>
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="18" fill="url(#metal)" stroke="${CARD_EDGE}" stroke-width="2.5"/>
+  </g>`;
+}
+
+/** ลายตัวอย่างบนกระดาษ — opacity ต่ำ = สีจมไปกับเนื้อกระดาษ (ไม่ได้รองขาว) */
+function sampleArt(cx, cy, opacity, white) {
+  return `<g opacity="${opacity}">
+    ${white ? `<circle cx="${cx}" cy="${cy}" r="86" fill="#ffffff"/>` : ""}
+    <circle cx="${cx}" cy="${cy}" r="80" fill="#38bdf8"/>
+    <circle cx="${cx - 26}" cy="${cy - 18}" r="26" fill="#fde047"/>
+    <path d="M ${cx - 6} ${cy + 26} Q ${cx + 30} ${cy + 46} ${cx + 56} ${cy + 6}" stroke="#f97316" stroke-width="13" fill="none" stroke-linecap="round"/>
+  </g>`;
+}
+
+async function underprintCards() {
+  console.log("🖼  การ์ดพิมพ์รองสีขาว (วาดเอง)");
+  const card = (name, cardTitle, sub, opacity, white, notes) =>
+    saveSvg(
+      name,
+      frame(`
+        ${title(cardTitle, sub)}
+        ${metalBg(150, 230, 600, 400)}
+        ${sampleArt(450, 430, opacity, white)}
+        <text x="450" y="686" font-family="${TH}" font-size="24" text-anchor="middle" fill="${SUB}">พื้นหลัง = กระดาษเนื้อโลหะ / โฮโลแกรม</text>
+        ${foot(notes)}`)
+    );
+  await card("underprint-none", "ไม่พิมพ์รองสีขาว", "พิมพ์ลายลงบนเนื้อกระดาษตรง ๆ", 0.45, false, [
+    "สีลายจะจมไปกับเนื้อกระดาษ เห็นประกายกระดาษผ่านลาย",
+    "เหมาะกับลายที่อยากได้ลุคเมทัลลิก",
+  ]);
+  await card("underprint", "พิมพ์รองสีขาว", "รองพื้นขาวก่อน แล้วค่อยพิมพ์ลายทับ", 1, true, [
+    "สีลายสด ตรงกับไฟล์งานมากกว่า ไม่โดนสีกระดาษกลืน",
+    "คิดเพิ่มต่อเซ็ต (1 เซ็ต = 1 แผ่น A3)",
+  ]);
+}
+
 /* ── รัน ─────────────────────────────────────────────────────────── */
 
 console.log(`📁 ${OUT}`);
@@ -353,4 +405,5 @@ await coatCards();
 await setCard();
 await sizeCard();
 await sizeCard2();
+await underprintCards();
 console.log("\n✅ เสร็จ — ต่อด้วย: node scripts/cup-sleeve-apply.mjs --write");
