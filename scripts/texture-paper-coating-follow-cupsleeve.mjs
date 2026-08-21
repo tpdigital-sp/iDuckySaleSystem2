@@ -54,7 +54,8 @@ if (missing.length) throw new Error(`ไม่เจอเนื้อกระ�
 /** ถอดกลุ่มเคลือบด้านหลังทิ้ง แล้ววางกลุ่มเคลือบด้านหน้าไว้ตำแหน่งเดิม (ก่อนกลุ่มพิมพ์รองสีขาว) */
 const front = {
   label: FRONT_LABEL,
-  choices: [{ name: "เคลือบเงา (รวมในราคาแล้ว)" }],
+  // ชุดเดียวกับกลุ่มกระดาษพิเศษของ cup-sleeve — เคลือบเงารวมในราคาแล้ว จะไม่เคลือบก็ได้ ไม่ลดราคา
+  choices: [{ name: "เคลือบเงา" }, { name: "ไม่เคลือบ" }],
   showWhen: { label: PAPER_LABEL, choices: COATABLE },
 };
 const kept = d.options.filter((o) => o.label !== OLD_BACK_LABEL && o.label !== FRONT_LABEL);
