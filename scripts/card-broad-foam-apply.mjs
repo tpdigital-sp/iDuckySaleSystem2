@@ -392,6 +392,41 @@ d.highlights = [
   `สั่ง 1-${FREE_MIX_BELOW} ชิ้นคละลายได้อิสระ · ตั้งแต่ ${FREE_MIX_BELOW + 1} ชิ้นขึ้นไป คละได้ลายละ ${MIN_PER_DESIGN} ชิ้นขึ้นไป · ไม่มีขั้นต่ำ`,
 ];
 
+/**
+ * 📄 กระดาษพิเศษ (Texture Paper) — ดึงรายการสดจากสินค้า "กระดาษ Texture Paper" (texture-paper)
+ *    ผู้ใช้สั่ง 21 ส.ค. 69: "มีเนื้อกระดาษ ตามลิ้งนี้เลย" → แก้เนื้อกระดาษที่สินค้านั้นที่เดียว การ์ดบอร์ดตามไปเอง
+ *    ภาพประจำเนื้อกระดาษก็ลิงก์ของสินค้านั้นตรง ๆ ไม่อัปซ้ำ
+ * 💰 ตัวกระดาษไม่คิดเงินเพิ่ม — ค่ากระดาษ 40 บาทไปรวมอยู่ใน "พิมพ์รองสีขาว" แล้ว
+ *    (ค่าหมึกขาว 20 + ค่ากระดาษ 40 = 60 บาทต่อแผ่น A3 · ปัดขึ้นเต็มแผ่นแบบเดียวกับงานเคลือบ)
+ *    พิมพ์รองสีขาวมีให้เลือกเฉพาะกระดาษผิวโฮโลแกรม/เมทัลลิก — ยึดรายการเดียวกับที่ texture-paper ตั้ง showWhen ไว้
+ */
+const WHITE_BASE_PRINT_FEE = 20;
+const WHITE_BASE_PAPER_FEE = 40;
+const WHITE_BASE_FEE = WHITE_BASE_PRINT_FEE + WHITE_BASE_PAPER_FEE;
+const PAPER_LABEL = "กระดาษพิเศษ (Add On)";
+const WHITE_BASE_LABEL = "พิมพ์รองสีขาว";
+const PAPER_NONE = "ไม่ใช้กระดาษพิเศษ";
+
+const tex = await sb.from("products").select("data").eq("id", "texture-paper").single();
+if (tex.error) throw new Error(`อ่านสินค้า texture-paper ไม่ได้ — ${tex.error.message}`);
+const texPaperOpt = tex.data.data.options?.find((o) => o.label === "ชนิดกระดาษ");
+const texWhiteOpt = tex.data.data.options?.find((o) => o.label === WHITE_BASE_LABEL);
+if (!texPaperOpt || !texWhiteOpt)
+  throw new Error(`สินค้า texture-paper ไม่มีกลุ่ม "ชนิดกระดาษ" หรือ "${WHITE_BASE_LABEL}" — โครงสินค้านั้นอาจเปลี่ยน`);
+const SPECIAL_PAPERS = texPaperOpt.choices.map((c) => ({ name: c.name, imageSrc: c.imageSrc }));
+const noPaperArt = SPECIAL_PAPERS.filter((p) => !p.imageSrc).map((p) => p.name);
+if (noPaperArt.length)
+  throw new Error(`เนื้อกระดาษ "${noPaperArt.join(", ")}" ไม่มีภาพในสินค้า texture-paper — เพิ่มภาพที่นั่นก่อน`);
+/** กระดาษที่ต้องมีตัวเลือกพิมพ์รองสีขาว (ผิวโฮโลแกรม/เงิน/ทอง) — ยึดตามที่ texture-paper ตั้งไว้ */
+const WHITE_BASE_PAPERS = (texWhiteOpt.showWhen?.choices ?? []).filter((n) => SPECIAL_PAPERS.some((p) => p.name === n));
+if (!WHITE_BASE_PAPERS.length) throw new Error("อ่านรายการกระดาษที่ต้องพิมพ์รองสีขาวจาก texture-paper ไม่ได้ — ตรวจก่อน");
+const WHITE_BASE_ART = texWhiteOpt.choices.map((c) => c.imageSrc);
+console.log(
+  `📄 กระดาษพิเศษ ${SPECIAL_PAPERS.length} เนื้อ (ลิงก์จากสินค้า texture-paper) · พิมพ์รองสีขาวใช้ได้ ${WHITE_BASE_PAPERS.length} เนื้อ · ` +
+    `ค่าพิมพ์รอง ฿${WHITE_BASE_PRINT_FEE} + ค่ากระดาษ ฿${WHITE_BASE_PAPER_FEE} = ฿${WHITE_BASE_FEE}/แผ่น A3`
+);
+const PAPER_NONE_ART = `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/ultra-hard-cardboard-2-mm/paper-standard-v1.jpg`;
+
 d.options = [
   {
     label: SIZE_LABEL,
@@ -403,6 +438,25 @@ d.options = [
       perSheet: s.perSheet,
       imageSrc: art[s.key],
     })),
+  },
+  {
+    // เนื้อกระดาษไม่คิดเงินเพิ่ม (ค่ากระดาษไปอยู่ใน "พิมพ์รองสีขาว" แล้ว)
+    label: PAPER_LABEL,
+    stockBearing: true,
+    choices: [
+      { name: PAPER_NONE, imageSrc: PAPER_NONE_ART },
+      ...SPECIAL_PAPERS.map((p) => ({ name: p.name, imageSrc: p.imageSrc })),
+    ],
+  },
+  {
+    // ค่าพิมพ์รองสีขาว = ค่าหมึกขาว + ค่ากระดาษ คิดต่อแผ่น A3 ปัดขึ้นเต็มแผ่นแบบเดียวกับงานเคลือบ
+    label: WHITE_BASE_LABEL,
+    sheetFee: { from: SIZE_LABEL, unit: SHEET_UNIT },
+    showWhen: { label: PAPER_LABEL, choices: WHITE_BASE_PAPERS },
+    choices: [
+      { name: "ไม่พิมพ์รองสีขาว", imageSrc: WHITE_BASE_ART[0] },
+      { name: "พิมพ์รองสีขาว", extra: WHITE_BASE_FEE, imageSrc: WHITE_BASE_ART[1] },
+    ],
   },
   {
     // ค่าเคลือบเป็นค่าฟิล์มต่อแผ่น A3 ไม่ใช่ต่อชิ้น — ⌈จำนวนที่สั่ง ÷ ใบต่อแผ่นของขนาดที่เลือก⌉
@@ -509,6 +563,8 @@ d.terms = [
   `ค่าเคลือบและค่าฟอยล์คิดเป็นค่าวัสดุ "ต่อ 1 ${SHEET_UNIT}" ไม่ใช่ต่อชิ้น — เคลือบเงา/ด้าน ${COAT_FEE} บาท · เคลือบพิเศษ ${SPECIAL_FEE} บาท · ฟอยล์ 1 เลเยอร์ ${FOIL_1} บาท · 2 เลเยอร์ ${FOIL_2} บาท · สีโฮโลแกรม +${HOLO_FEE} บาท (ทั้งหมดต่อแผ่น)`,
   `สั่งไม่ถึงโควตาต่อแผ่นก็คิด 1 ${SHEET_UNIT} · เกินโควตาขึ้นแผ่นถัดไป — 1 แผ่น A3 ตัดได้ ${SIZES.map((s) => `${s.name} ${s.perSheet} ใบ`).join(" · ")} ` +
     `(เช่น A5 เคลือบพิเศษ สั่ง 1-4 ใบ = ${SPECIAL_FEE} บาท · สั่ง 5 ใบ = 2 แผ่น = ${SPECIAL_FEE * 2} บาท)`,
+  `กระดาษพิเศษ (Add On) ปูหน้าเลือกได้ ${SPECIAL_PAPERS.length} เนื้อ — ตัวกระดาษไม่คิดเงินเพิ่ม`,
+  `สีพิมพ์บนกระดาษผิวโฮโลแกรม/เมทัลลิกจะจมไปกับผิวกระดาษ อยากให้สีเด่นต้องเลือก "พิมพ์รองสีขาว" — คิดเพิ่ม ${WHITE_BASE_FEE} บาทต่อ${SHEET_UNIT} (ค่าหมึกขาว ${WHITE_BASE_PRINT_FEE} + ค่ากระดาษ ${WHITE_BASE_PAPER_FEE}) ปัดขึ้นเต็มแผ่นแบบเดียวกับงานเคลือบ`,
   `งานฟอยล์ทำร่วมกับการเคลือบลามิเนตไม่ได้ — เลือกได้อย่างใดอย่างหนึ่ง (เลือกข้างไหนแล้ว หน้าสินค้าจะล็อกอีกข้างให้เอง · อยากสลับให้ปลดข้างที่เลือกไว้กลับเป็น "ไม่..." ก่อน)`,
   `สีฟอยล์: ${FOIL_COLORS.map((c) => c.name.replace(/^สี/, "")).join(" · ")} — สีโฮโลแกรมปั๊มได้ใหญ่สุดแค่ ${HOLO_MAX_SIZE} (ขนาด ${TOO_BIG_FOR_HOLO.join(" · ")} เลือกสีโฮโลแกรมไม่ได้)`,
   `งานพิมพ์ฟอยล์ 2 เลเยอร์ ตำแหน่งงานพิมพ์จะเลื่อนประมาณ 1-2 มม. เพราะกระดาษหดตัวจากการพิมพ์และเคลือบหลายรอบ`,
@@ -530,6 +586,8 @@ d.tabs = [
       "::ราคาต่อชิ้น (ค่าเคลือบ/ฟอยล์คิดแยกต่อแผ่น A3)::",
       ...headSizes.map((n) => `• ${n} — ${tiers.map((t, i) => `${t.label} ฿${base[n][i]}`).join(" · ")}`),
       `::ราคาบวกเพิ่ม (คิดต่อ 1 ${SHEET_UNIT} ปัดขึ้นเต็มแผ่น)::`,
+      `• กระดาษพิเศษ (Texture Paper) ${SPECIAL_PAPERS.length} เนื้อ — ไม่คิดค่ากระดาษเพิ่ม`,
+      `• พิมพ์รองสีขาว (เฉพาะกระดาษโฮโลแกรม/เงิน/ทอง) +${WHITE_BASE_FEE} บาท ต่อ 1 ${SHEET_UNIT} = ค่าหมึกขาว ${WHITE_BASE_PRINT_FEE} + ค่ากระดาษ ${WHITE_BASE_PAPER_FEE}`,
       `• เคลือบลามิเนตเงา / ด้าน +${COAT_FEE} บาท · เคลือบพิเศษ +${SPECIAL_FEE} บาท`,
       `• ${FOIL1.name} +${FOIL_1} บาท · ${FOIL2.name} +${FOIL_2} บาท`,
       `• สีฟอยล์เลือกได้ ${FOIL_COLORS.map((c) => c.name.replace(/^สี/, "")).join(" · ")} — สีโฮโลแกรม +${HOLO_FEE} บาทต่อแผ่น และปั๊มได้ใหญ่สุดแค่ ${HOLO_MAX_SIZE}`,

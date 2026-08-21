@@ -403,7 +403,26 @@ async function foilCards(foil1, foil2, holoFee) {
   }
 }
 
-/* ── 5. อินโฟกราฟิกจำนวนต่อแผ่น A3 (ภาพของร้านเอง) ──────────────── */
+/* ── 5. การ์ด "ไม่ใช้กระดาษพิเศษ" (วาดเอง) ──────────────────────── */
+
+/**
+ * เนื้อกระดาษพิเศษ 6 แบบใช้ "ภาพจริงจากคลังของร้าน" (products/texture-paper/*) ลิงก์ตรงใน apply.mjs
+ * ที่นี่วาดเฉพาะการ์ด "ไม่ใช้กระดาษพิเศษ" ที่คลังไม่มี — ให้ครบทุกตัวเลือกมีภาพ
+ */
+async function paperCard() {
+  console.log("🖼  การ์ดไม่ใช้กระดาษพิเศษ (วาดเอง — เนื้อกระดาษพิเศษใช้ภาพจริงจากคลัง texture-paper)");
+  await saveSvg(
+    "paper-standard",
+    frame(`
+      ${title("ไม่ใช้กระดาษพิเศษ", "พิมพ์ลงเนื้อการ์ดบอร์ดมาตรฐาน")}
+      ${board(300, 260, 300, 400, { art: artwork(300, 260, 300, 400) })}
+      <text x="450" y="708" font-family="${TH}" font-size="27" text-anchor="middle" fill="${INK}">ผิวขาวเรียบเนียน สีพิมพ์ตรงตามไฟล์งาน</text>
+      <text x="450" y="750" font-family="${TH}" font-size="24" text-anchor="middle" fill="${SUB}">ไม่มีค่ากระดาษบวกเพิ่ม</text>
+      ${foot(["อยากได้ผิวโฮโลแกรม / เมทัลลิก เลือกกระดาษพิเศษได้", "กระดาษพิเศษคิดค่ากระดาษเพิ่มต่อแผ่น A3"])}`)
+  );
+}
+
+/* ── 6. อินโฟกราฟิกจำนวนต่อแผ่น A3 (ภาพของร้านเอง) ──────────────── */
 
 async function a3Chart() {
   console.log("🖼  อินโฟกราฟิกจำนวนต่อแผ่น A3 (ภาพของร้านเอง — paper-foil/a3-chart.jpg)");
@@ -432,6 +451,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   await thicknessCard();
   await coatCards(FEES.coat, FEES.special);
   await foilCards(FEES.foil1, FEES.foil2, FEES.holo);
+  await paperCard();
   await a3Chart();
   console.log("\n✅ เสร็จ — ต่อด้วย: node scripts/ultra-hard-cardboard-apply.mjs --write");
 }
