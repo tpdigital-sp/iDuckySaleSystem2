@@ -462,7 +462,7 @@ export default function CartPage() {
                           {item.qty > 1 && (
                             <span className="block text-[11px] text-stone-400">
                               {formatPrice(item.unitPrice)} / ชิ้น
-                              {(item.extraFee ?? 0) > 0 && <> · 🎨 ค่าคละลาย +{formatPrice(item.extraFee!)}</>}
+                              {(item.extraFee ?? 0) > 0 && <> · 🎨 Add on +{formatPrice(item.extraFee!)}</>}
                             </span>
                           )}
                         </>

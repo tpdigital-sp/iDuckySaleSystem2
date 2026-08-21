@@ -1004,7 +1004,7 @@ export function designFeeFor(product: Product, selections: Record<string, string
   return optionFee + sheetFee + designFeeBase(product, selections, qty);
 }
 
-/** 1 บรรทัดของการแจกแจง "ค่าลาย/สีเพิ่ม" — ชื่อรายการ + ยอด + วิธีคิดสั้น ๆ */
+/** 1 บรรทัดของการแจกแจง "Add on" — ชื่อรายการ + ยอด + วิธีคิดสั้น ๆ */
 export interface FeeLine {
   label: string;
   amount: number;
@@ -1013,7 +1013,7 @@ export interface FeeLine {
 }
 
 /**
- * 🧾 แจกแจงว่า designFeeFor() มาจากค่าอะไรบ้าง — ลูกค้าเห็นบรรทัด "+ ค่าลาย/สีเพิ่ม ฿100" แล้วต้องรู้ว่าคืออะไร
+ * 🧾 แจกแจงว่า designFeeFor() มาจากค่าอะไรบ้าง — ลูกค้าเห็นบรรทัด "+ Add on ฿100" แล้วต้องรู้ว่าคืออะไร
  * ไล่ตามลำดับเดียวกับ designFeeFor เป๊ะ ๆ (ต่อลาย → ต่อแผ่น → ค่าคละลาย) ยอดรวมของทุกบรรทัดจึงเท่ากันเสมอ
  */
 export function feeBreakdown(product: Product, selections: Record<string, string>, qty: number): FeeLine[] {

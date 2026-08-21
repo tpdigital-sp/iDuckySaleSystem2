@@ -335,13 +335,14 @@ export default function CheckoutPage() {
         ...(bulkFlag ? { needStockCheck: true } : {}),
       };
     });
-    // ค่าคละลายเกินโควตา → แยกเป็นบรรทัดของตัวเอง (โชว์ชัดในออเดอร์/ใบเสร็จ · id ต่อท้าย #designfee ไม่ไปตัดสต๊อก)
+    // ค่า Add on (ค่าเคลือบต่อแผ่น · ค่าสีต่อลาย · ค่าคละลายเกินโควตา) → แยกเป็นบรรทัดของตัวเอง
+    // (โชว์ชัดในออเดอร์/ใบเสร็จ · id ต่อท้าย #designfee ไม่ไปตัดสต๊อก)
     for (const it of items) {
       const fee = it.extraFee ?? 0;
       if (fee <= 0) continue;
       orderItems.push({
         productId: `${it.productId}#designfee`,
-        name: `🎨 ค่าคละลายเพิ่ม — ${productOf(it.productId)?.name ?? it.productId} (${it.selections["จำนวนลาย"] ?? ""})`.trim(),
+        name: `🎨 Add on — ${productOf(it.productId)?.name ?? it.productId} (${it.selections["จำนวนลาย"] ?? ""})`.trim(),
         selections: "",
         sel: {},
         qty: 1,

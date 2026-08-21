@@ -3185,13 +3185,13 @@ export default function ProductDetail({
                 <>
                   <p className="mt-2 text-sm text-stone-500">
                     {formatPrice(unitPrice)} / {matrix.unit} × {qty.toLocaleString("th-TH")}
-                    {designFee > 0 && <> + ค่าลาย/สีเพิ่ม {formatPrice(designFee)}</>} ={" "}
+                    {designFee > 0 && <> + Add on {formatPrice(designFee)}</>} ={" "}
                     <span className="font-extrabold text-amber-600">{formatPrice(unitPrice * qty + designFee)}</span>
                   </p>
                   {/* แจกแจงค่าเพิ่มสั้น ๆ — ลูกค้าจะได้รู้ว่ายอดที่บวกมาเป็นค่าอะไร ไม่ต้องเดา */}
                   {designFee > 0 && feeLines.length > 0 && (
                     <p className="mt-0.5 text-xs leading-relaxed text-stone-500">
-                      ค่าลาย/สีเพิ่ม ={" "}
+                      Add on ={" "}
                       {feeLines.map((f, i) => (
                         <span key={`${f.label}-${i}`}>
                           {i > 0 ? " + " : ""}
