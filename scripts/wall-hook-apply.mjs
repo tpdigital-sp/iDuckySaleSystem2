@@ -18,7 +18,7 @@
  */
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
-import { HOOK_COLORS } from "./wall-hook-art.mjs";
+import { HOOK_COLORS, SIZES, sizeExtra } from "./wall-hook-art.mjs";
 
 const WRITE = process.argv.includes("--write");
 const ID = "otheracrylicproducts3-5";
@@ -31,18 +31,36 @@ const V = "v1";
 /** ชื่อเดิมที่ยอมให้ทับได้ — กันเผลอรันทับสินค้าตัวอื่นถ้า id ถูกใช้ซ้ำวันหลัง */
 const EXPECT_NAMES = ["อะคริลิค", NAME];
 
+const SIZE_LABEL = "ขนาด";
+const SHEET_LABEL = "สีอะคริลิค";
 const HOOK_LABEL = "สีตะขอแขวน";
-const SHEET_LABEL = "ชนิดอะคริลิค";
-const SIZE_LABEL = "เพิ่มขนาด (ชิ้นงานเกิน 6 ซม.)";
-const SHEET_CLEAR = "อะคริลิคใส หนา 3 มม. (มาตรฐาน)";
-const SHEET_SPECIAL = "อะคริลิคพิเศษ (สี / กระจกเงา / กลิตเตอร์)";
+
+/**
+ * "สีอะคริลิค" ใช้ชื่อ + ภาพชุดเดียวกับสินค้าสแตนดี้ (standy) ทั้งร้านจะได้เรียกเหมือนกัน
+ * ภาพก๊อปมาลงโฟลเดอร์ของสินค้านี้เอง — สแตนดี้แก้ภาพเมื่อไหร่ตัวนี้ไม่พังตาม (แลกกับต้องรันซ้ำถ้าอยากได้ภาพใหม่)
+ */
+const SHEETS = [
+  { name: "อะคริลิคใส", file: "sheet-clear", from: "standy/opt-color-clear-v4.png", popular: true },
+  { name: "อะคริลิคขาวขุ่น C-02", file: "sheet-c02", from: "acrylic-colors/c02-v2.jpg" },
+  { name: "สีพิเศษ (โฮโลแกรม/กลิสเตอร์/สี)", file: "sheet-special", from: "standy/opt-color-special-v4.png" },
+];
+const SHEET_SPECIAL = SHEETS[2].name;
+
+/**
+ * ตาราง "Add on อะคริลิคพิเศษ" ชุดกลางของร้าน (หน้า pricelists "พวงกุญแจ notprint")
+ *   เรทราคาปลีก : 2-10cm = 10 ทุกขนาด
+ *   เรทราคาส่ง  : 2-5cm = 5 · 6-8cm = 8 · 9-10cm = 10
+ * ปลีก = ช่วงจำนวนแรก (1-10 อัน) · ส่ง = ช่วงถัดไปทั้งหมด — วิธีคิดเดียวกับสแตนดี้/พวงกุญแจ
+ * ที่ฝังส่วนต่างลงในช่องราคาเลย ไม่ได้ตั้งเป็น +฿ ของตัวเลือก (เพราะมันขึ้นกับทั้งขนาดและช่วงจำนวน)
+ */
+const specialExtra = (cm, tierIndex) => (tierIndex === 0 ? 10 : cm <= 5 ? 5 : cm <= 8 ? 8 : 10);
 
 /**
  * รูปในแกลเลอรี (id ของ wixstatic จากท่อน "ตะขอแขวนผนัง อะคริลิค" บนหน้าเว็บ)
  * ⚠️ ได้แค่ 5 รูป — หน้าแก้ไขสินค้าหลังบ้านตัดที่ MAX_PHOTOS = 5 ตอนโหลดเข้าฟอร์ม
  *    ใส่เกินไว้ = ทีมงานเปิดหน้าแก้ไขแล้วกดบันทึกครั้งเดียว รูปส่วนเกินหายเงียบ ๆ
  * รูปที่ตัดออกจากท่อนนี้: อนิเมะตะขอดำ · โคลสอัพโซ่ห้อย · เทียบขนาดกับมือ
- * (ภาพประจำตัวเลือกอีก 10 ภาพไม่นับรวมตรงนี้ — หน้าร้านดึงขึ้นแกลเลอรีให้เองตอนลูกค้ากดเลือก)
+ * (ภาพประจำตัวเลือกอีก 19 ภาพไม่นับรวมตรงนี้ — หน้าร้านดึงขึ้นแกลเลอรีให้เองตอนลูกค้ากดเลือก)
  */
 const PHOTOS = [
   ["photo-diecut", "959b83_3afa038b6a92411abcec59244c8f5767~mv2.jpg", "งานจริง — ตัดตามรูป ตะขอสีขาว/เหลือง/ดำ"],
@@ -98,9 +116,27 @@ const prices = rows.slice(1).map((r) => {
 });
 if (tiers.some((t, i) => i < tiers.length - 1 && !t.upTo)) throw new Error("ช่วงจำนวนบนเว็บอ่านไม่ครบ — ตรวจก่อน");
 
-const pricing = { unit: "อัน", cells: { "": prices }, tiers, driverLabels: [] };
 console.log(`📊 ตาราง "${SECTION} อะคริลิค" จากเว็บ · ${tiers.length} ช่วงจำนวน`);
 console.log(`   ${tiers.map((t, i) => `${t.label} = ฿${prices[i]}`).join(" · ")}`);
+
+/**
+ * กางเป็นตารางราคา 2 แกน: ขนาด × สีอะคริลิค
+ *   ราคาช่อง = ราคาตามจำนวนจากเว็บ + ค่าเพิ่มขนาด (เกิน 6 ซม. ซม.ละ 10) + ค่าอะคริลิคพิเศษ (ตามตารางกลาง)
+ * ทำแบบเดียวกับสแตนดี้/พวงกุญแจ — ค่าอะคริลิคพิเศษขึ้นกับ "ขนาด" และ "ช่วงจำนวน" พร้อมกัน
+ * ตั้งเป็น +฿ ของตัวเลือกไม่ได้ (ตัวเลือกมี +฿ ค่าเดียว แยกได้แค่ปลีก/ส่ง ไม่แยกตามขนาด)
+ */
+const cells = {};
+for (const cm of SIZES)
+  for (const s of SHEETS)
+    cells[`${cm}cm│${s.name}`] = prices.map(
+      (p, ti) => p + sizeExtra(cm) + (s.name === SHEET_SPECIAL ? specialExtra(cm, ti) : 0)
+    );
+const pricing = { unit: "อัน", cells, tiers, driverLabels: [SIZE_LABEL, SHEET_LABEL] };
+const allPrices = Object.values(cells).flat();
+console.log(`   → กางเป็น ${SIZES.length} ขนาด × ${SHEETS.length} สีอะคริลิค = ${Object.keys(cells).length} ช่อง`);
+console.log(`   ตย. 6cm ใส = ${cells[`6cm│${SHEETS[0].name}`].join("/")}`);
+console.log(`       6cm พิเศษ = ${cells[`6cm│${SHEET_SPECIAL}`].join("/")}   (ปลีก +10 · ส่ง +8)`);
+console.log(`       10cm พิเศษ = ${cells[`10cm│${SHEET_SPECIAL}`].join("/")}  (เพิ่มขนาด +40 · พิเศษ ปลีก +10 · ส่ง +10)`);
 
 /* ── 2. อัปภาพ + เขียนสินค้า ─────────────────────────────────────── */
 const env = Object.fromEntries(
@@ -113,15 +149,17 @@ const env = Object.fromEntries(
     })
 );
 const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-const url = (name) => `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/${name}.jpg`;
+const url = (file) => `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/${file}`;
 
-async function put(name, buf) {
-  if (!WRITE) return url(name);
+/** อัปไฟล์เดียว — ต่อ .jpg ให้เอง เว้นแต่ส่งนามสกุลมา (ภาพสีอะคริลิคเป็น .png ที่มีพื้นหลังโปร่ง แปลงเป็น jpg ไม่ได้) */
+async function put(name, buf, ext = "jpg") {
+  const file = `${name}.${ext}`;
+  if (!WRITE) return url(file);
   const up = await sb.storage
     .from("product-images")
-    .upload(`products/${ID}/${name}.jpg`, buf, { contentType: "image/jpeg", upsert: true });
-  if (up.error) throw new Error(`อัป ${name}: ${up.error.message}`);
-  return url(name);
+    .upload(`products/${ID}/${file}`, buf, { contentType: ext === "png" ? "image/png" : "image/jpeg", upsert: true });
+  if (up.error) throw new Error(`อัป ${file}: ${up.error.message}`);
+  return url(file);
 }
 
 // รูปงานจริง — ดึงจาก wixstatic แล้วอัปเข้า storage ของเราเอง (เว็บ Wix เปลี่ยนลิงก์เมื่อไหร่ก็ไม่พัง)
@@ -138,9 +176,17 @@ console.log(`🖼  รูปงานจริง ${gallery.length} ภาพ (�
 // ภาพประจำตัวเลือก — วาด/ครอปไว้แล้วโดย wall-hook-art.mjs
 const local = (f) => readFileSync(`${DIR}/${f}.jpg`);
 const art = {};
-for (const f of ["size-extra", "acrylic-clear", "acrylic-special", ...Object.keys(HOOK_COLORS).map((c) => `hook-${c}`)])
+for (const f of [...SIZES.map((cm) => `size-${cm}`), ...Object.keys(HOOK_COLORS).map((c) => `hook-${c}`)])
   art[f] = await put(`${f}-${V}`, local(f));
-console.log(`🖼  ภาพตัวเลือก ${Object.keys(art).length} ภาพ (จาก ${DIR})`);
+
+// ภาพ "สีอะคริลิค" — ก๊อปจากสินค้าสแตนดี้ที่ฝ่าย Content ทำไว้ (ไฟล์อยู่ใน bucket เดียวกัน)
+const PUBLIC = `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products`;
+for (const s of SHEETS) {
+  const res = await fetch(`${PUBLIC}/${s.from}`);
+  if (!res.ok) throw new Error(`โหลดภาพสีอะคริลิค ${s.from} ไม่ได้ — HTTP ${res.status} (สแตนดี้อาจเปลี่ยนชื่อไฟล์)`);
+  art[s.file] = await put(`${s.file}-${V}`, Buffer.from(await res.arrayBuffer()), s.from.endsWith(".png") ? "png" : "jpg");
+}
+console.log(`🖼  ภาพตัวเลือก ${Object.keys(art).length} ภาพ (${SIZES.length} ขนาด + 7 สีตะขอ + ${SHEETS.length} สีอะคริลิคจากสแตนดี้)`);
 
 const { data: row, error } = await sb.from("products").select("id,data").eq("id", ID).single();
 if (error) throw new Error(`อ่านสินค้า ${ID} ไม่ได้ — ${error.message}`);
@@ -159,39 +205,35 @@ d.pricing = pricing;
 d.priceRates = [{ id: "r1", label: "เรทมาตรฐาน", freeMixBelowQty: 11, minPerDesign: 5, pricing }];
 delete d.tierByDesign;
 
+// ลำดับสองกลุ่มแรกต้องตรงกับ pricing.driverLabels (ขนาด → สีอะคริลิค) เพราะเป็นแกนของตารางราคา
 d.options = [
+  {
+    label: SIZE_LABEL,
+    display: "dropdown", // 9 ขนาด — ปุ่มแยกจะยาวเกินไป (สแตนดี้ก็ใช้เมนูเลือก)
+    choices: SIZES.map((cm) => ({ name: `${cm}cm`, imageSrc: art[`size-${cm}`], ...(cm === 6 ? { popular: true } : {}) })),
+  },
+  {
+    label: SHEET_LABEL,
+    display: "pills",
+    stockBearing: true,
+    choices: SHEETS.map((s) => ({ name: s.name, imageSrc: art[s.file], ...(s.popular ? { popular: true } : {}) })),
+  },
   {
     label: HOOK_LABEL,
     display: "pills",
     stockBearing: true, // ตัวตะขอเป็นวัสดุที่กินสต๊อก — รอผูก SKU ตอนตั้งคลังตะขอแขวนผนัง
     choices: Object.entries(HOOK_COLORS).map(([code, thai]) => ({ name: `${code} ${thai}`, imageSrc: art[`hook-${code}`] })),
   },
-  {
-    label: SHEET_LABEL,
-    display: "pills",
-    stockBearing: true,
-    choices: [
-      { name: SHEET_CLEAR, imageSrc: art["acrylic-clear"], popular: true },
-      // เว็บเขียนว่า "อะคริลิคพิเศษ บวกเพิ่มตามขนาด" — ไม่มีตารางราคา จึงให้แอดมินตีราคาให้
-      { name: SHEET_SPECIAL, askPrice: true, imageSrc: art["acrylic-special"] },
-    ],
-  },
-  {
-    label: SIZE_LABEL,
-    display: "multi",
-    // ติ๊ก "เซนละ" แล้วกดจำนวนเซนติเมตรที่เกินจาก 6 ซม. (แบบเดียวกับ CABLE CARE)
-    choices: [{ name: "เซนละ", extra: 10, qty: true, qtyMax: 20, imageSrc: art["size-extra"] }],
-  },
 ];
 
 d.images = gallery;
 d.imageSrc = gallery[0].src;
 d.description =
-  "ตะขอแขวนผนังอะคริลิค พิมพ์ลายตามสั่งลงบนอะคริลิคใสหนา 3 มม. ตัดตามรูปได้ทุกทรง ประกบกับตะขอพลาสติกขนาด 3 × 5.5 ซม. เลือกสีตะขอได้ 7 สี ติดผนังด้วยเทปกาวสองหน้า ไม่ต้องเจาะผนัง ขนาดชิ้นงานไม่เกิน 6 ซม. ราคาตามตารางเลย";
-d.highlights = ["อะคริลิคใส 3 มม. ตัดตามรูป", "สีตะขอให้เลือก 7 สี (H01-H07)", "ติดผนังด้วยเทปกาว ไม่ต้องเจาะ"];
+  "ตะขอแขวนผนังอะคริลิค พิมพ์ลายตามสั่งลงบนอะคริลิคหนา 3 มม. ตัดตามรูปได้ทุกทรง เลือกขนาดได้ 2-10 ซม. และเลือกเนื้ออะคริลิคได้ทั้งแบบใส ขาวขุ่น C-02 และสีพิเศษ (โฮโลแกรม/กลิสเตอร์/สี) ประกบกับตะขอพลาสติกขนาด 3 × 5.5 ซม. เลือกสีตะขอได้ 7 สี ติดผนังด้วยเทปกาวสองหน้า ไม่ต้องเจาะผนัง";
+d.highlights = ["เลือกขนาดได้ 2-10 ซม.", "สีตะขอให้เลือก 7 สี (H01-H07)", "ติดผนังด้วยเทปกาว ไม่ต้องเจาะ"];
 d.terms = [
   "*ขนาดชิ้นงานไม่เกิน 6 ซม. รวมอยู่ในราคาแล้ว — ตั้งแต่ 7 ซม. ขึ้นไป คิดเพิ่มเซนติเมตรละ 10 บาท/ชิ้น (วัดด้านที่ยาวที่สุด)",
-  "*อะคริลิคพิเศษ (สี / กระจกเงา / กลิตเตอร์) คิดเพิ่มตามขนาดงาน — กดสั่งไว้ก่อนได้ แอดมินจะตีราคาให้",
+  "*สีพิเศษ (โฮโลแกรม/กลิสเตอร์/สี) คิดเพิ่มตามขนาด — เรทปลีก (1-10 อัน) +10 บาท/ชิ้นทุกขนาด · เรทส่ง (11 อันขึ้นไป) 2-5 ซม. +5 · 6-8 ซม. +8 · 9-10 ซม. +10 (รวมอยู่ในตารางราคาแล้ว)",
   "*จำนวน 1-10 อัน คละลายได้อิสระ · 11 อันขึ้นไป คละลายได้ สั่งลายละ 5 อันขึ้นไป",
   "*ตัวตะขอกว้าง 3 ซม. สูง 5.5 ซม. ติดผนังด้วยเทปกาวสองหน้า — เหมาะกับผนังเรียบ ไม่เหมาะกับผนังปูนหยาบ/ผิวฝุ่นเกาะ",
   "*ใช้แขวนของเบา เช่น กุญแจ สายชาร์จ หมวก ถุงผ้า — ไม่รองรับของหนัก",
@@ -201,16 +243,16 @@ d.hidden = false;
 
 /**
  * ฟิลด์ที่ปกติ /api/admin/products เขียนให้ตอนกดบันทึกในหน้าแก้ไข — สคริปต์เขียน DB ตรงจึงต้องทำเอง
- * quoteOption : มีแบบที่ต้องให้แอดมินตีราคา (อะคริลิคพิเศษ) → การ์ดหน้ารายการโชว์ "เริ่มต้น ฿X"
- * priceMin/Max: ช่วงราคาจากตาราง ใช้โชว์บนการ์ดโดยไม่ต้องโหลดตารางราคาทั้งก้อน
+ * quoteOption : ไม่มีแบบที่ต้องให้แอดมินตีราคาแล้ว (อะคริลิคพิเศษคิดจากตารางได้) → ล้างธงเดิมทิ้ง
+ * priceMin/Max: ช่วงราคาจากทุกช่องในตาราง ใช้โชว์บนการ์ดโดยไม่ต้องโหลดตารางราคาทั้งก้อน
  */
 d.quoteOption = d.options.some((o) => o.askPrice || o.choices.some((c) => c.askPrice)) || undefined;
-d.priceMin = Math.min(...prices);
-d.priceMax = Math.max(...prices);
+d.priceMin = Math.min(...allPrices);
+d.priceMax = Math.max(...allPrices);
 d.savedAt = new Date().toISOString();
 
 console.log(`\n📦 ${d.name} (${ID}) · หมวด ${d.category}`);
-console.log(`   ราคาเริ่มต้น ฿${d.price}/อัน · ตัวเลือก ${d.options.map((o) => `${o.label} ${o.choices.length} แบบ`).join(" · ")}`);
+console.log(`   ราคา ฿${d.priceMin}-${d.priceMax}/อัน (เริ่มต้น ฿${d.price}) · ตัวเลือก ${d.options.map((o) => `${o.label} ${o.choices.length} แบบ`).join(" · ")}`);
 console.log(`   แกลเลอรี ${d.images.length} ภาพ · ภาพประจำตัวเลือกครบทุกตัว (${Object.keys(art).length} ภาพ) · สถานะ: เผยแพร่`);
 if (!WRITE) {
   console.log("\n(ยังไม่อัปไฟล์ ไม่บันทึก — ใส่ --write)");

@@ -4,12 +4,14 @@
  *
  *   node scripts/wall-hook-art.mjs [--out=<dir>]
  *
- * ได้ 10 ไฟล์ ลง .cache/wall-hook/upload :
+ * ได้ 16 ไฟล์ ลง .cache/wall-hook/upload :
  *   hook-H01..H07.jpg   สีตะขอ 7 สี — ครอปจาก "ตารางสีตะขอ" ของจริงบนหน้า pricelists
  *                       (ไม่วาดเอง เพราะสีพลาสติกของจริงเทียบยาก ลูกค้าต้องเห็นสีจริง)
- *   size-extra.jpg      เกิน 6 ซม. — เซนละ +10 บาท (วาดเทียบ 6 ซม. กับ 9 ซม. สเกลเดียวกัน)
- *   acrylic-clear.jpg   อะคริลิคใส 3 มม. (มาตรฐาน)
- *   acrylic-special.jpg อะคริลิคพิเศษ (สี/กระจกเงา/กลิตเตอร์) — แอดมินตีราคาตามขนาด
+ *   size-2..size-10.jpg ขนาดชิ้นงาน 9 ขนาด — ทุกใบสเกลเดียวกัน มีกรอบเส้นประ 10 ซม. ไว้เทียบ
+ *                       (ภาษาภาพชุดเดียวกับการ์ดขนาดของสแตนดี้ optart-size-*)
+ *
+ * ภาพ "สีอะคริลิค" (ใส / ขาวขุ่น C-02 / สีพิเศษ) ไม่ได้วาดที่นี่ — wall-hook-apply.mjs
+ * ก๊อปจากสินค้าสแตนดี้ (standy) ที่ฝ่าย Content ทำไว้แล้ว จะได้หน้าตาชุดเดียวกันทั้งร้าน
  *
  * ที่มาของตัวเลข: iduckyofficial-pricelists.com/otheracrylicproducts3 ท่อน "ตะขอแขวนผนัง อะคริลิค"
  *   อะคริลิค หนา 3 mm · ขนาดไม่เกิน 6cm · ตั้งแต่ 7cm ขึ้นไป บวกเพิ่ม cm ละ 10 บาท
@@ -123,96 +125,69 @@ async function hookCards() {
   }
 }
 
-/* ── 2. ขนาดชิ้นงาน — วาดเอง (เว็บไม่มีรูปเทียบขนาด) ────────────────── */
+/* ── 2. ขนาดชิ้นงาน 2-10 ซม. — วาดเอง (เว็บไม่มีรูปเทียบขนาด) ────────── */
 
-const PX_PER_CM = 46;
+/** ขนาดที่ให้เลือก (ซม.) — ตรงกับแกน "ขนาด" ของตารางราคา ใน wall-hook-apply.mjs */
+export const SIZES = [2, 3, 4, 5, 6, 7, 8, 9, 10];
+/** ไม่เกิน 6 ซม. รวมในราคาแล้ว · 7 ซม. ขึ้นไป บวกเพิ่ม ซม.ละ 10 บาท (ตามเว็บตารางราคา) */
+export const sizeExtra = (cm) => (cm <= 6 ? 0 : (cm - 6) * 10);
 
-/** ชิ้นอะคริลิคตัดตามรูป (ทรงมนแบบไดคัต) กว้าง=สูง=cm ซม. */
-const plate = (cx, cy, cm, { fill, stroke, dash = "", art = true }) => {
+const PX_PER_CM = 33; // 10 ซม. = 330 px — กรอบเส้นประของทุกใบเท่ากัน เทียบขนาดกันได้ทันที
+const BOX = SIZES.at(-1) * PX_PER_CM;
+const BASE_Y = 512; // เส้นพื้นที่ชิ้นงานยืนอยู่ (ก้นชิ้นอะคริลิค) — ทุกใบตรงกัน
+
+/** ชิ้นอะคริลิคตัดตามรูป (ทรงมนแบบไดคัต) กว้าง=สูง=cm ซม. ก้นอยู่ที่ BASE_Y */
+const plate = (cm) => {
   const s = cm * PX_PER_CM;
-  const r = s * 0.22;
+  const x = 450 - s / 2;
+  const y = BASE_Y - s;
   return `
-    <rect x="${cx - s / 2}" y="${cy - s / 2}" width="${s}" height="${s}" rx="${r}"
-          fill="${fill}" stroke="${stroke}" stroke-width="3" ${dash ? `stroke-dasharray="${dash}"` : ""}/>
-    ${art ? `<image href="${HEART}" x="${cx - s * 0.31}" y="${cy - s * 0.31}" width="${s * 0.62}" height="${s * 0.62}" preserveAspectRatio="xMidYMid meet"/>` : ""}`;
+    <rect x="${x}" y="${y}" width="${s}" height="${s}" rx="${s * 0.22}" fill="#ecfeff" stroke="${CYAN}" stroke-width="3"/>
+    <image href="${HEART}" x="${450 - s * 0.31}" y="${BASE_Y - s * 0.81}" width="${s * 0.62}" height="${s * 0.62}" preserveAspectRatio="xMidYMid meet"/>`;
 };
 
-/** เส้นบอกขนาดแนวนอนพร้อมป้าย */
-const ruler = (x1, x2, y, label, color = CYAN) => `
-  <line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${color}" stroke-width="3"/>
-  <line x1="${x1}" y1="${y - 12}" x2="${x1}" y2="${y + 12}" stroke="${color}" stroke-width="3"/>
-  <line x1="${x2}" y1="${y - 12}" x2="${x2}" y2="${y + 12}" stroke="${color}" stroke-width="3"/>
-  <rect x="${(x1 + x2) / 2 - 62}" y="${y - 19}" width="124" height="38" rx="19" fill="#ffffff"/>
-  <text x="${(x1 + x2) / 2}" y="${y + 9}" font-family="${TH}" font-size="24" font-weight="700" text-anchor="middle" fill="${color}">${label}</text>`;
+/** ก้านตะขอที่โผล่ใต้ชิ้นงาน (ตัวตะขออยู่ด้านหลัง หน้าปัด 3 ซม. ถูกชิ้นอะคริลิคบัง) */
+const stem = () => {
+  const w = 13;
+  const h = 2.2 * PX_PER_CM;
+  return `
+    <rect x="${450 - w / 2}" y="${BASE_Y - 6}" width="${w}" height="${h}" rx="${w / 2}" fill="#cbd5e1"/>
+    <ellipse cx="450" cy="${BASE_Y + h - 12}" rx="${w / 2 + 3}" ry="11" fill="#cbd5e1"/>`;
+};
 
-/**
- * ── เพิ่มขนาด: เกิน 6 ซม. คิดเซนละ 10 บาท ──
- * วาดใบเดียวจบ (6 ซม. เส้นประ ซ้อนใน 9 ซม. เส้นทึบ สเกลเดียวกัน) — ขนาดมาตรฐานไม่มีการ์ดของตัวเอง
- * เพราะ "ไม่ติ๊ก = ไม่เกิน 6 ซม." อยู่แล้ว และแกลเลอรีมีที่ให้แค่ 5 รูป (MAX_PHOTOS หลังบ้าน)
- */
+/** เส้นบอกขนาดแนวตั้งด้านขวาของชิ้นงาน พร้อมป้าย */
+const ruler = (cm) => {
+  const s = cm * PX_PER_CM;
+  const x = 450 + BOX / 2 + 40;
+  return `
+    <line x1="${x}" y1="${BASE_Y - s}" x2="${x}" y2="${BASE_Y}" stroke="${CYAN}" stroke-width="3"/>
+    <line x1="${x - 12}" y1="${BASE_Y - s}" x2="${x + 12}" y2="${BASE_Y - s}" stroke="${CYAN}" stroke-width="3"/>
+    <line x1="${x - 12}" y1="${BASE_Y}" x2="${x + 12}" y2="${BASE_Y}" stroke="${CYAN}" stroke-width="3"/>
+    <text x="${x + 22}" y="${BASE_Y - s / 2 + 10}" font-family="${TH}" font-size="27" font-weight="700" fill="${CYAN}">${cm} ซม.</text>`;
+};
+
 async function sizeCards() {
-  const s6 = 6 * PX_PER_CM;
-  const s9 = 9 * PX_PER_CM;
-  await save(
-    "size-extra",
-    frame(`
-      ${title("เพิ่มขนาด — เซนละ +10 บาท", "ตั้งแต่ 7 ซม. ขึ้นไป คิดเพิ่มเซนติเมตรละ 10 บาท/ชิ้น")}
-      ${plate(450, 440, 9, { fill: "#ecfeff", stroke: CYAN, art: false })}
-      ${plate(450, 440, 6, { fill: "#ffffff", stroke: LINE, dash: "10 8" })}
-      ${ruler(450 - s6 / 2, 450 + s6 / 2, 440 - s6 / 2 - 34, "6 ซม.", SUB)}
-      ${ruler(450 - s9 / 2, 450 + s9 / 2, 440 + s9 / 2 + 46, "9 ซม.")}
-      <text x="${W / 2}" y="744" font-family="${TH}" font-size="27" font-weight="700" text-anchor="middle" fill="${CYAN}">9 ซม. = เพิ่มมา 3 ซม. → +30 บาท/ชิ้น</text>
-      ${foot(["ติ๊ก “เซนละ” แล้วกดจำนวนเซนติเมตรที่เกินจาก 6 ซม.", "เช่น งาน 8 ซม. = เกิน 2 ซม. → กดจำนวน 2"])}
-    `)
-  );
-}
-
-/* ── 3. ชนิดอะคริลิค ────────────────────────────────────────────────── */
-
-async function acrylicCards() {
-  // ลายตารางหมากรุกอ่อน ๆ ไว้หลังแผ่นใส — ให้เห็นว่า "ใส" มองทะลุได้
-  const checker = `
-    <defs><pattern id="ck" width="36" height="36" patternUnits="userSpaceOnUse">
-      <rect width="36" height="36" fill="#f1f5f9"/>
-      <rect width="18" height="18" fill="#e2e8f0"/>
-      <rect x="18" y="18" width="18" height="18" fill="#e2e8f0"/>
-    </pattern></defs>`;
-  await save(
-    "acrylic-clear",
-    frame(`
-      ${checker}
-      ${title("อะคริลิคใส หนา 3 มม.", "แบบมาตรฐาน — ราคาตามตารางเลย")}
-      <rect x="255" y="230" width="390" height="390" rx="26" fill="url(#ck)"/>
-      ${plate(450, 425, 6.5, { fill: "rgba(224,242,254,0.55)", stroke: "#7dd3fc" })}
-      <text x="${W / 2}" y="700" font-family="${TH}" font-size="26" font-weight="700" text-anchor="middle" fill="${CYAN}">พิมพ์ลาย UV ลงบนแผ่นใส · ตัดตามรูป</text>
-      ${foot(["พื้นหลังโปร่ง มองทะลุได้ตรงส่วนที่ไม่มีลาย", "ต้องการพื้นขาวทึบ แจ้งในหมายเหตุได้"])}
-    `)
-  );
-
-  const swatch = (x, y, fill, stroke, label) => `
-    <rect x="${x - 82}" y="${y - 82}" width="164" height="164" rx="34" fill="${fill}" stroke="${stroke}" stroke-width="3"/>
-    <text x="${x}" y="${y + 122}" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">${label}</text>`;
-  await save(
-    "acrylic-special",
-    frame(`
-      <defs>
-        <linearGradient id="mirror" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#f8fafc"/><stop offset="45%" stop-color="#cbd5e1"/><stop offset="100%" stop-color="#94a3b8"/>
-        </linearGradient>
-        <linearGradient id="glit" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#fde68a"/><stop offset="50%" stop-color="#f9a8d4"/><stop offset="100%" stop-color="#a5b4fc"/>
-        </linearGradient>
-      </defs>
-      ${title("อะคริลิคพิเศษ", "สี / กระจกเงา / กลิตเตอร์ — คิดเพิ่มตามขนาด")}
-      ${swatch(255, 330, "url(#mirror)", "#94a3b8", "กระจกเงา")}
-      ${swatch(450, 330, "url(#glit)", "#e9d5ff", "กลิตเตอร์")}
-      ${swatch(645, 330, "#fecdd3", "#fb7185", "อะคริลิคสี")}
-      ${swatch(352, 560, "#dbeafe", "#93c5fd", "ใสขุ่น")}
-      ${swatch(548, 560, "#fef9c3", "#fde047", "พาสเทล")}
-      <text x="${W / 2}" y="742" font-family="${TH}" font-size="26" font-weight="700" text-anchor="middle" fill="${CYAN}">เลือกแบบนี้ = แอดมินตีราคาให้ตามขนาดงาน</text>
-      ${foot(["กดสั่งไว้ก่อนได้ ราคาจะขึ้นหลังแอดมินใส่ให้", "แจ้งสี/เนื้อที่ต้องการในช่องหมายเหตุถึงร้าน"])}
-    `)
-  );
+  for (const cm of SIZES) {
+    const extra = sizeExtra(cm);
+    await save(
+      `size-${cm}`,
+      frame(`
+        ${title(`ขนาด ${cm} ซม.`, "วัดจากด้านที่ยาวที่สุด (ไม่วัดแนวทแยง)")}
+        <rect x="${450 - BOX / 2}" y="${BASE_Y - BOX}" width="${BOX}" height="${BOX}" rx="26"
+              fill="none" stroke="${LINE}" stroke-width="2" stroke-dasharray="9 8"/>
+        ${stem()}
+        ${plate(cm)}
+        ${ruler(cm)}
+        <text x="${W / 2}" y="640" font-family="${TH}" font-size="27" font-weight="700" text-anchor="middle" fill="${extra ? CYAN : "#16a34a"}">${
+          extra ? `+${extra} บาท/ชิ้น (เกิน 6 ซม. คิด ซม.ละ 10)` : "รวมอยู่ในราคาตามตารางแล้ว"
+        }</text>
+        ${foot([
+          "อะคริลิคใส หนา 3 มม. · ไดคัทตามลาย · พิมพ์ระบบ UV",
+          "เส้นประ = ขนาดใหญ่สุด 10 ซม. (ไว้เทียบขนาด) · ก้านล่าง = ตัวตะขอด้านหลัง",
+        ])}
+      `)
+    );
+  }
 }
 
 async function main() {
@@ -220,8 +195,7 @@ async function main() {
   HEART = await iconDataUri("heart", 300);
   await hookCards();
   await sizeCards();
-  await acrylicCards();
-  console.log("✅ ครบ 10 ภาพ — ต่อด้วย node scripts/wall-hook-apply.mjs --write");
+  console.log(`✅ ครบ ${7 + SIZES.length} ภาพ — ต่อด้วย node scripts/wall-hook-apply.mjs --write`);
 }
 
 // รันตรง ๆ เท่านั้นถึงวาด — wall-hook-apply.mjs import ไฟล์นี้เอา HOOK_COLORS ไปใช้ ไม่ควรวาดใหม่ทุกครั้ง
