@@ -1558,6 +1558,8 @@ export default function ProductDetail({
                       </span>
                     )}
                   </span>
+                  {/* 📝 สเปกที่ลูกค้าเลือกไม่ได้ แต่ควรรู้ตอนกำลังเลือก (เช่น ชนิดกระดาษที่ใช้) */}
+                  {opt.note && <span className="mb-1.5 block text-[11px] leading-snug text-stone-500">{opt.note}</span>}
                   {isInput ? (
                     (() => {
                       const cfg = opt.input;

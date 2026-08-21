@@ -294,6 +294,7 @@ d.highlights = [
 d.options = [
   {
     label: SIZE_LABEL,
+    note: `ทุกขนาดใช้การ์ดบอร์ดหนา ${THICK} มม. · ตัวภาพพิมพ์บนกระดาษอาร์ตการ์ด ${GSM} แกรม`,
     choices: SIZES.map((s) => ({
       name: s.key,
       ...(s.key === "A6" ? { popular: true } : {}),
@@ -313,6 +314,7 @@ d.options = [
   },
   {
     label: COAT_LABEL,
+    note: `เคลือบลงบนตัวภาพ (กระดาษอาร์ตการ์ด ${GSM} แกรม) · ค่าเคลือบคิดต่อ 1 แผ่น A3`,
     sheetFee: SHEET_FEE, // ค่าเคลือบคิดต่อแผ่น A3 ปัดขึ้น ไม่ใช่ต่อชิ้น
     choices: [
       { name: COAT_NONE, imageSrc: art["coat-none"] },

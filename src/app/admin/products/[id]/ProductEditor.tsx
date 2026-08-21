@@ -118,6 +118,8 @@ type DraftOption = {
   swatchGrid?: boolean;
   /** 🔍 รูปตารางสีเต็มของกลุ่มสวอตช์ (เปิดดูขยายจากหน้าร้าน) */
   chartSrc?: string;
+  /** 📝 ข้อความกำกับใต้ชื่อกลุ่มบนหน้าสินค้า (สเปกที่ลูกค้าเลือกไม่ได้ แต่ควรรู้) */
+  note?: string;
   /** 💰 +฿ ของกลุ่มนี้คิดต่อลาย ไม่คูณจำนวนชิ้น */
   extraPerDesign?: boolean;
   /** 📄 +฿ ของกลุ่มนี้คิดต่อแผ่นวัสดุ — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
@@ -429,6 +431,7 @@ function toDraft(p: Product): Draft {
       label: o.label,
       ...(o.swatchGrid ? { swatchGrid: true } : {}),
       ...(o.chartSrc ? { chartSrc: o.chartSrc } : {}),
+      ...(o.note ? { note: o.note } : {}),
       ...(o.extraPerDesign ? { extraPerDesign: true } : {}),
       ...(o.sheetFee ? { sheetFee: o.sheetFee } : {}),
       choices: o.choices.map((c) => ({
@@ -657,6 +660,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       label: o.label.trim(),
       ...(o.swatchGrid ? { swatchGrid: true } : {}),
       ...(o.chartSrc ? { chartSrc: o.chartSrc } : {}),
+      ...(o.note?.trim() ? { note: o.note.trim() } : {}),
       ...(o.extraPerDesign ? { extraPerDesign: true } : {}),
       ...(o.sheetFee ? { sheetFee: o.sheetFee } : {}),
       choices: o.choices
@@ -2354,6 +2358,16 @@ export default function ProductEditor({ product }: { product: Product }) {
               )}
               {!isOptFolded(gi) && (
               <>
+              {/* 📝 ข้อความกำกับใต้ชื่อกลุ่มบนหน้าร้าน — สเปกที่ลูกค้าเลือกไม่ได้ แต่ควรรู้ตอนเลือก */}
+              <input
+                value={opt.note ?? ""}
+                onChange={(e) =>
+                  patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, note: e.target.value } : o)) })
+                }
+                placeholder="📝 ข้อความกำกับใต้ชื่อกลุ่ม (ไม่บังคับ) เช่น ตัวภาพพิมพ์บนกระดาษอาร์ตการ์ด 260 แกรม"
+                className={`mt-2 w-full text-xs ${inputCls}`}
+                aria-label={`ข้อความกำกับของกลุ่มตัวเลือกที่ ${gi + 1}`}
+              />
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-semibold text-slate-400">ราคา:</span>
                 {priceSourceRow(gi, opt)}
