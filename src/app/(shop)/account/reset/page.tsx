@@ -7,16 +7,9 @@ import Link from "next/link";
 import { onAuthChange, requestPasswordReset, updatePassword } from "@/lib/customer-auth";
 import { getSupabase } from "@/lib/supabase";
 
-/* โทน/ฟอนต์ตามหน้าแรก: ครอบด้วย .dl ใช้ token ของ landing.css (ชุดเดียวกับหน้า login) */
-
-const inputCls =
-  "h-11 w-full rounded-full bg-white px-4 text-center text-[13.5px] text-[#173A6B] ring-1 ring-[#C6E8FB] placeholder:text-[#8FA6C4] focus:outline-none focus:ring-2 focus:ring-[#57B6E8]";
-
-/** ปุ่ม .btn ของหน้าแรกใหญ่ไปสำหรับการ์ดนี้ — ย่อระยะขอบ/ตัวอักษรลง (ชุดเดียวกับหน้า login) */
-const btnCompact = { padding: "12px 16px 12px 24px", fontSize: ".95rem" } as const;
-
-/**
- * รีเซ็ตรหัสผ่าน 2 โหมด:
+/*
+ * รีเซ็ตรหัสผ่าน — ชุดดีไซน์เดียวกับหน้าเข้าสู่ระบบ (prefix .auth- ใน landing.css)
+ * 2 โหมด:
  *  • ยังไม่มีลิงก์ → กรอกอีเมล ส่งลิงก์รีเซ็ต
  *  • มาจากลิงก์อีเมล (เซสชัน recovery) → ตั้งรหัสใหม่
  */
@@ -49,96 +42,94 @@ export default function ResetPasswordPage() {
 
   async function sendLink() {
     setErr("");
-    if (!email.trim()) return setErr("Enter your email");
+    if (!email.trim()) return setErr("กรอกอีเมลที่สมัครไว้ก่อนนะครับ");
     setBusy(true);
     const res = await requestPasswordReset(email.trim());
     setBusy(false);
-    if (!res.ok) return setErr(res.error ?? "Could not send the link");
+    if (!res.ok) return setErr(res.error ?? "ส่งลิงก์ไม่สำเร็จ");
     setSent(true);
   }
 
   async function setNewPassword() {
     setErr("");
-    if (password.length < 6) return setErr("Password must be at least 6 characters");
+    if (password.length < 6) return setErr("รหัสผ่านต้องยาว 6 ตัวขึ้นไป");
     setBusy(true);
     const res = await updatePassword(password);
     setBusy(false);
-    if (!res.ok) return setErr(res.error ?? "Could not update your password");
+    if (!res.ok) return setErr(res.error ?? "เปลี่ยนรหัสผ่านไม่สำเร็จ");
     setDone(true);
     setTimeout(() => router.replace("/account"), 1500);
   }
 
   return (
-    <div style={{ fontFamily: "var(--font-sans)", color: "var(--navy)" }}>
-      <div className="mx-auto max-w-[480px] px-4 py-6 sm:py-9">
-        <div
-          className="px-4 pb-7 pt-6 sm:px-9 sm:pb-8"
-          style={{ background: "var(--sky-100)", borderRadius: "var(--r-l)", boxShadow: "var(--shadow-m)" }}
-        >
-          {/* เป็ดงง ๆ กับกุญแจล็อกรหัส */}
-          <img src="/account/duck-reset.svg" alt="" className="mx-auto w-[52%] max-w-[196px]" width={343} height={303} />
-          <h1 className="mt-3 text-center text-[1.75rem] sm:text-[2.05rem]" style={{ color: "var(--navy)", fontFamily: "var(--display)", fontWeight: 500 }}>
-            {mode === "set" ? "New Password" : "Reset Password"}
-          </h1>
-          <p className="mt-1 text-center text-[12.5px] sm:text-[13.5px]" style={{ color: "var(--navy-soft)" }}>
-            {mode === "set" ? "Set a new password for your account" : "Reset your member password"}
-          </p>
+    <div className="dl dl-page auth-page">
+      <div className="top-stack auth-stack">
+        <img className="bg-cloud auth-c1" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+        <img className="bg-cloud auth-c2" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+        <img className="bg-cloud auth-c3" src="/landing/cloud.webp" alt="" aria-hidden="true" />
 
-          {mode === "set" ? (
-            done ? (
-              <p className="mx-auto mt-5 max-w-[360px] rounded-2xl bg-emerald-50 p-3.5 text-center text-[13px] font-medium text-emerald-700 ring-1 ring-emerald-200">
-                ✅ Password updated — taking you to your account…
+        <div className="auth-wrap">
+          <div className="auth-card">
+            {/* เป็ดงง ๆ กับกุญแจล็อกรหัส */}
+            <img src="/account/duck-reset.svg" alt="" className="auth-art" style={{ maxWidth: 196 }} width={343} height={303} />
+            <h1 className="auth-h1">{mode === "set" ? <>ตั้ง<em>รหัสผ่านใหม่</em></> : <>ลืม<em>รหัสผ่าน</em>?</>}</h1>
+            <p className="auth-sub">
+              {mode === "set" ? "ตั้งรหัสผ่านใหม่ให้บัญชีของคุณ แล้วเข้าใช้งานได้ทันที" : "กรอกอีเมลที่สมัครไว้ เราจะส่งลิงก์ตั้งรหัสใหม่ไปให้"}
+            </p>
+
+            {mode === "set" ? (
+              done ? (
+                <p className="auth-msg ok">✅ เปลี่ยนรหัสผ่านเรียบร้อย — กำลังพาไปหน้าบัญชีของคุณ…</p>
+              ) : (
+                <>
+                  <div className="auth-form">
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="รหัสผ่านใหม่ (6 ตัวขึ้นไป) *"
+                      aria-label="รหัสผ่านใหม่"
+                      onKeyDown={(e) => e.key === "Enter" && !busy && setNewPassword()}
+                      className="auth-input"
+                    />
+                  </div>
+                  {err && <p className="auth-msg err">{err}</p>}
+                  <div className="auth-actions">
+                    <button type="button" onClick={setNewPassword} disabled={busy} className="btn btn-yolk">
+                      {busy ? "กำลังบันทึก…" : "บันทึกรหัสผ่านใหม่"} <span className="dot">→</span>
+                    </button>
+                  </div>
+                </>
+              )
+            ) : sent ? (
+              <p className="auth-msg ok">
+                📧 ส่งลิงก์รีเซ็ตไปที่ <b>{email}</b> แล้ว — เปิดอีเมลแล้วกดลิงก์เพื่อตั้งรหัสใหม่ได้เลย
               </p>
             ) : (
-              <div className="mx-auto mt-4 max-w-[360px] space-y-3">
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="New password (6+ characters) *"
-                  onKeyDown={(e) => e.key === "Enter" && !busy && setNewPassword()}
-                  className={inputCls}
-                />
-                {err && <p className="rounded-2xl bg-rose-50 px-4 py-2 text-[13px] font-medium text-rose-600">{err}</p>}
-                <div className="dl pt-1 text-center" style={{ background: "transparent" }}>
-                  <button type="button" onClick={setNewPassword} disabled={busy} className="btn btn-yolk" style={busy ? { ...btnCompact, opacity: 0.6 } : btnCompact}>
-                    {busy ? "Saving…" : "Save New Password"} <span className="dot">→</span>
+              <>
+                <div className="auth-form">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="อีเมล *"
+                    aria-label="อีเมล"
+                    onKeyDown={(e) => e.key === "Enter" && !busy && sendLink()}
+                    className="auth-input"
+                  />
+                  <p className="auth-hint">* จำเป็นต้องกรอก</p>
+                </div>
+                {err && <p className="auth-msg err">{err}</p>}
+                <div className="auth-actions">
+                  <button type="button" onClick={sendLink} disabled={busy} className="btn btn-yolk">
+                    {busy ? "กำลังส่ง…" : "ส่งลิงก์รีเซ็ต"} <span className="dot">→</span>
                   </button>
                 </div>
-              </div>
-            )
-          ) : sent ? (
-            <p className="mx-auto mt-5 max-w-[360px] rounded-2xl bg-emerald-50 p-3.5 text-center text-[13px] text-emerald-700 ring-1 ring-emerald-200">
-              📧 Reset link sent to <strong>{email}</strong> — open the email and tap the link to set a new password
-            </p>
-          ) : (
-            <div className="mx-auto mt-4 max-w-[360px] space-y-3">
-              <p className="text-center text-[13px]" style={{ color: "var(--navy-soft)" }}>
-                กรอกอีเมลที่สมัครไว้ เราจะส่งลิงก์ตั้งรหัสใหม่ให้
-              </p>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Email *"
-                onKeyDown={(e) => e.key === "Enter" && !busy && sendLink()}
-                className={inputCls}
-              />
-              <p className="px-1 text-[11.5px]" style={{ color: "var(--navy-soft)" }}>
-                * จำเป็นต้องกรอก
-              </p>
-              {err && <p className="rounded-2xl bg-rose-50 px-4 py-2 text-[13px] font-medium text-rose-600">{err}</p>}
-              <div className="dl pt-1 text-center" style={{ background: "transparent" }}>
-                <button type="button" onClick={sendLink} disabled={busy} className="btn btn-yolk" style={busy ? { ...btnCompact, opacity: 0.6 } : btnCompact}>
-                  {busy ? "Sending…" : "ส่งลิงก์รีเซ็ต"} <span className="dot">→</span>
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+              </>
+            )}
+          </div>
 
-        <div className="mt-4 text-center">
-          <Link href="/account/login" className="text-[13px] hover:underline" style={{ color: "var(--navy-soft)" }}>
+          <Link href="/account/login" className="auth-back">
             ← กลับไปเข้าสู่ระบบ
           </Link>
         </div>

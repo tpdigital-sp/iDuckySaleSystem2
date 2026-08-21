@@ -8,53 +8,46 @@ import { signIn, signUp } from "@/lib/customer-auth";
 import { useCustomer } from "@/lib/customer-context";
 
 const LINE_ERR: Record<string, string> = {
-  notset: "LINE Login is not set up yet",
-  state: "Session expired — please try again",
-  token: "Could not connect to LINE (check Channel ID/Secret)",
-  profile: "Could not load your LINE profile",
-  session: "Could not create a session",
-  createuser: "Could not create your account",
-  nodb: "Service is not ready yet",
+  notset: "ยังไม่ได้ตั้งค่าเข้าสู่ระบบด้วย LINE",
+  state: "เซสชันหมดอายุ — ลองใหม่อีกครั้งครับ",
+  token: "เชื่อมต่อ LINE ไม่สำเร็จ (ตรวจ Channel ID/Secret)",
+  profile: "โหลดโปรไฟล์ LINE ไม่สำเร็จ",
+  session: "สร้างเซสชันไม่สำเร็จ",
+  createuser: "สร้างบัญชีไม่สำเร็จ",
+  nodb: "ระบบยังไม่พร้อมใช้งาน",
 };
 
 /*
- * โทน/ฟอนต์ตามหน้าแรก: ครอบด้วย .dl เพื่อใช้ token ของ landing.css ตรง ๆ
- * (Mitr หัวเรื่อง+ปุ่ม · Plex Looped เนื้อความ · sky/navy/yolk · ปุ่ม .btn มี .dot ลูกศร)
+ * หน้าเข้าสู่ระบบ / สมัครสมาชิก — ภาษาการออกแบบเดียวกับหน้าแรก
+ * ครอบด้วย .dl dl-page auth-page เพื่อใช้ token ของ landing.css ทั้งชุด
+ * (Mitr หัวเรื่อง+ปุ่ม · Plex Looped เนื้อความ · sky/navy/yolk · พื้นฟ้าไล่สี + เมฆลอย)
+ * สไตล์ทั้งหมดอยู่ใน landing.css หัวข้อ "หน้าเข้าสู่ระบบ…" prefix .auth-
  */
 
-/** ช่องกรอกแบบมีไอคอนวงกลมฟ้าด้านซ้าย (หน้า login) */
-function IconField({
-  icon,
-  ...props
-}: { icon: "user" | "lock" } & React.InputHTMLAttributes<HTMLInputElement>) {
+/** ไอคอนวงกลมฟ้าหน้าช่องกรอก */
+function FieldIcon({ name }: { name: "user" | "lock" }) {
   const d =
-    icon === "user"
+    name === "user"
       ? "M12 12a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Zm-5.6 6.4a5.6 5.6 0 0 1 11.2 0"
       : "M8.4 11V8.8a3.6 3.6 0 0 1 7.2 0V11M7.6 11h8.8a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H7.6a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1Z";
   return (
-    <div className="relative">
-      <span
-        className="pointer-events-none absolute left-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full bg-[#E2F3FE]"
-        aria-hidden="true"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="#2C81C4" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" width={15} height={15}>
-          <path d={d} />
-        </svg>
-      </span>
-      <input
-        {...props}
-        className="h-11 w-full rounded-full bg-white pl-[44px] pr-4 text-[13.5px] text-[#173A6B] ring-1 ring-[#C6E8FB] placeholder:text-[#8FA6C4] focus:outline-none focus:ring-2 focus:ring-[#57B6E8]"
-      />
-    </div>
+    <span className="ico" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+        <path d={d} />
+      </svg>
+    </span>
   );
 }
 
-/** ช่องกรอกข้อความกลางช่อง (หน้าสมัครสมาชิก) */
-const centerInputCls =
-  "h-11 w-full rounded-full bg-white px-4 text-center text-[13.5px] text-[#173A6B] ring-1 ring-[#C6E8FB] placeholder:text-[#8FA6C4] focus:outline-none focus:ring-2 focus:ring-[#57B6E8]";
-
-/** ปุ่ม .btn ของหน้าแรกใหญ่ไปสำหรับการ์ดล็อกอิน — ย่อระยะขอบ/ตัวอักษรลง (มือถืออ่านง่ายขึ้น ไม่ล้นจอ) */
-const btnCompact = { padding: "12px 16px 12px 24px", fontSize: ".95rem" } as const;
+/** ช่องกรอกแบบมีไอคอนด้านซ้าย */
+function IconField({ icon, ...props }: { icon: "user" | "lock" } & React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <label className="auth-field">
+      <FieldIcon name={icon} />
+      <input {...props} className="auth-input" />
+    </label>
+  );
+}
 
 function LoginInner() {
   const router = useRouter();
@@ -73,7 +66,7 @@ function LoginInner() {
   const params = useSearchParams();
   useEffect(() => {
     const l = params.get("line");
-    if (l) setErr(LINE_ERR[l] ?? "Sign in with LINE failed");
+    if (l) setErr(LINE_ERR[l] ?? "เข้าสู่ระบบด้วย LINE ไม่สำเร็จ");
   }, [params]);
 
   // "จำอีเมลไว้" — เก็บเฉพาะอีเมลใน localStorage ไว้เติมให้ครั้งหน้า (เซสชันล็อกอินคงอยู่ตามระบบอยู่แล้ว)
@@ -91,7 +84,7 @@ function LoginInner() {
     setErr("");
     setConfirmMsg("");
     if (!email.trim() || !password) {
-      setErr("Enter your email and password");
+      setErr("กรอกอีเมลและรหัสผ่านก่อนนะครับ");
       return;
     }
     try {
@@ -102,19 +95,19 @@ function LoginInner() {
     if (mode === "login") {
       const res = await signIn(email.trim(), password);
       setBusy(false);
-      if (!res.ok) return setErr(res.error ?? "Sign in failed");
+      if (!res.ok) return setErr(res.error ?? "เข้าสู่ระบบไม่สำเร็จ");
       refresh();
       router.push("/account");
     } else {
       if (!name.trim()) {
         setBusy(false);
-        return setErr("Enter your name");
+        return setErr("กรอกชื่อ-นามสกุลด้วยครับ");
       }
       const res = await signUp(email.trim(), password, { name: name.trim(), phone: phone.trim(), address: address.trim() });
       setBusy(false);
-      if (!res.ok) return setErr(res.error ?? "Sign up failed");
+      if (!res.ok) return setErr(res.error ?? "สมัครสมาชิกไม่สำเร็จ");
       if (res.needsConfirm) {
-        setConfirmMsg("Account created! Please confirm your email, then sign in.");
+        setConfirmMsg("สมัครเรียบร้อย! กรุณายืนยันอีเมลก่อน แล้วกลับมาเข้าสู่ระบบได้เลย");
         setMode("login");
         return;
       }
@@ -123,158 +116,135 @@ function LoginInner() {
     }
   }
 
-  function switchMode() {
-    setMode(mode === "login" ? "signup" : "login");
+  function pickMode(m: "login" | "signup") {
+    if (m === mode) return;
+    setMode(m);
     setErr("");
     setConfirmMsg("");
   }
 
   return (
-    <div style={{ fontFamily: "var(--font-sans)", color: "var(--navy)" }}>
-      <div className="mx-auto max-w-[480px] px-4 py-6 sm:py-9">
-        <div
-          className="relative px-4 pb-7 pt-4 sm:px-9 sm:pb-8 sm:pt-5"
-          style={{ background: "var(--sky-100)", borderRadius: "var(--r-l)", boxShadow: "var(--shadow-m)" }}
-        >
-          {/* ปุ่มสลับโหมดมุมขวาบน — ปุ่ม pill แบบเดียวกับหน้าแรก */}
-          <div className="dl flex justify-end" style={{ background: "transparent" }}>
-            <button
-              type="button"
-              onClick={switchMode}
-              className="btn btn-primary"
-              style={{ padding: "7px 11px 7px 16px", fontSize: ".82rem" }}
-            >
-              {mode === "login" ? "Create Account" : "เข้าสู่ระบบ"} <span className="dot">→</span>
-            </button>
-          </div>
+    <div className="dl dl-page auth-page">
+      <div className="top-stack auth-stack">
+        <img className="bg-cloud auth-c1" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+        <img className="bg-cloud auth-c2" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+        <img className="bg-cloud auth-c3" src="/landing/cloud.webp" alt="" aria-hidden="true" />
 
-          {mode === "login" ? (
-            <>
-              {/* เป็ดนั่งหน้าคอมในซุ้มโค้ง */}
-              <img
-                src="/account/duck-login.svg"
-                alt=""
-                className="mx-auto -mt-2 w-[68%] max-w-[248px]"
-                width={408}
-                height={317}
-              />
-              <h1 className="mt-3 text-center text-[1.75rem] sm:text-[2.05rem]" style={{ color: "var(--navy)", fontFamily: "var(--display)", fontWeight: 500 }}>
-                User Login
-              </h1>
-              <p className="mt-1 text-center text-[12.5px] sm:text-[13.5px]" style={{ color: "var(--navy-soft)" }}>
-                เข้าสู่ระบบสมาชิก — ยินดีต้อนรับกลับมาที่ iDucky Prints Studio
-              </p>
-
-              <div className="mx-auto mt-5 max-w-[360px] space-y-3">
-                <IconField
-                  icon="user"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  type="email"
-                  inputMode="email"
-                  placeholder="Email"
-                  aria-label="Email"
-                />
-                <IconField
-                  icon="lock"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  type="password"
-                  placeholder="Password"
-                  aria-label="Password"
-                  onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
-                />
-                <div className="flex items-center justify-between px-1 text-[13px]" style={{ color: "var(--navy-soft)" }}>
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={remember}
-                      onChange={(e) => setRemember(e.target.checked)}
-                      className="h-4 w-4 rounded accent-[#57B6E8]"
-                    />
-                    จำอีเมลไว้
-                  </label>
-                  <Link href="/account/reset" className="font-medium hover:underline" style={{ color: "var(--blue-deep)" }}>
-                    Forgot password?
-                  </Link>
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              {/* เป็ดในวงกลม + หัวข้อสมัครสมาชิก */}
-              <img
-                src="/account/duck-avatar.svg"
-                alt=""
-                className="mx-auto mt-1 w-[36%] max-w-[132px]"
-                width={243}
-                height={299}
-              />
-              <h1 className="mt-2 text-center text-[1.75rem] sm:text-[2.05rem]" style={{ color: "var(--navy)", fontFamily: "var(--display)", fontWeight: 500 }}>
-                Create Account
-              </h1>
-              <p className="mt-1 text-center text-[12.5px] sm:text-[13.5px]" style={{ color: "var(--navy-soft)" }}>
-                สมัครสมาชิกฟรี เก็บประวัติสั่งซื้อ รับส่วนลดสมาชิก
-              </p>
-
-              <div className="mx-auto mt-5 max-w-[360px] space-y-3">
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name *" className={centerInputCls} />
-                <input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/[^\d\-+ ]/g, ""))}
-                  inputMode="tel"
-                  placeholder="Phone (optional)"
-                  className={centerInputCls}
-                />
-                <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Shipping address (optional)" className={centerInputCls} />
-                <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" inputMode="email" placeholder="Email *" className={centerInputCls} />
-                <input
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  type="password"
-                  placeholder="Password (6+ characters) *"
-                  onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
-                  className={centerInputCls}
-                />
-                <p className="px-1 text-[11.5px]" style={{ color: "var(--navy-soft)" }}>
-                  * จำเป็นต้องกรอก
-                </p>
-              </div>
-            </>
-          )}
-
-          <div className="mx-auto max-w-[360px]">
-            {err && <p className="mt-3 rounded-2xl bg-rose-50 px-4 py-2 text-[13px] font-medium text-rose-700">{err}</p>}
-            {confirmMsg && <p className="mt-3 rounded-2xl bg-emerald-50 px-4 py-2 text-[13px] font-medium text-emerald-700">{confirmMsg}</p>}
-          </div>
-
-          <div className="dl mt-5 text-center" style={{ background: "transparent" }}>
-            <button type="button" onClick={submit} disabled={busy} className="btn btn-yolk" style={busy ? { ...btnCompact, opacity: 0.6 } : btnCompact}>
-              {busy ? "Please wait…" : mode === "login" ? "เข้าสู่ระบบ" : "Create Account"} <span className="dot">→</span>
-            </button>
-          </div>
-
-          <div className="mx-auto mt-5 max-w-[360px]">
-            <div className="flex items-center gap-3 text-[11.5px]" style={{ color: "var(--navy-soft)" }}>
-              <span className="h-px flex-1 bg-[#C6E8FB]" /> or <span className="h-px flex-1 bg-[#C6E8FB]" />
+        <div className="auth-wrap">
+          <div className="auth-card">
+            {/* สลับโหมด — เห็นทั้งสองทางเลือกพร้อมกัน รู้ว่าอยู่โหมดไหน */}
+            <div className="auth-tabs" role="tablist" aria-label="เลือกโหมด">
+              <button type="button" role="tab" aria-selected={mode === "login"} className={`auth-tab${mode === "login" ? " on" : ""}`} onClick={() => pickMode("login")}>
+                เข้าสู่ระบบ
+              </button>
+              <button type="button" role="tab" aria-selected={mode === "signup"} className={`auth-tab${mode === "signup" ? " on" : ""}`} onClick={() => pickMode("signup")}>
+                สมัครสมาชิก
+              </button>
             </div>
-            <a
-              href="/api/auth/line/login"
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-[#06C755] px-5 py-2.5 text-[15px] font-medium text-white shadow-sm transition hover:bg-[#05b34c]"
-              style={{ fontFamily: "var(--display)" }}
-            >
-              💬 เข้าสู่ระบบด้วย LINE
+
+            {mode === "login" ? (
+              <>
+                {/* เป็ดนั่งหน้าคอมในซุ้มโค้ง */}
+                <img src="/account/duck-login.svg" alt="" className="auth-art" width={408} height={317} />
+                <h1 className="auth-h1">
+                  ยินดีต้อนรับ<em>กลับมา</em>
+                </h1>
+                <p className="auth-sub">เข้าสู่ระบบสมาชิก iDucky Prints Studio</p>
+
+                <div className="auth-form">
+                  <IconField
+                    icon="user"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    type="email"
+                    inputMode="email"
+                    placeholder="อีเมล"
+                    aria-label="อีเมล"
+                  />
+                  <IconField
+                    icon="lock"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    type="password"
+                    placeholder="รหัสผ่าน"
+                    aria-label="รหัสผ่าน"
+                    onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
+                  />
+                  <div className="auth-row">
+                    <label className="auth-check">
+                      <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+                      จำอีเมลไว้
+                    </label>
+                    <Link href="/account/reset" className="auth-link">
+                      ลืมรหัสผ่าน?
+                    </Link>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* เป็ดในวงกลม + หัวข้อสมัครสมาชิก */}
+                <img src="/account/duck-avatar.svg" alt="" className="auth-art small" width={243} height={299} />
+                <h1 className="auth-h1">
+                  สมัครสมาชิก<em>ฟรี</em>
+                </h1>
+                <p className="auth-sub">เก็บประวัติสั่งซื้อ ติดตามงาน และรับส่วนลดสมาชิก</p>
+
+                <div className="auth-form">
+                  <input value={name} onChange={(e) => setName(e.target.value)} placeholder="ชื่อ-นามสกุล *" aria-label="ชื่อ-นามสกุล" className="auth-input" />
+                  <input
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value.replace(/[^\d\-+ ]/g, ""))}
+                    inputMode="tel"
+                    placeholder="เบอร์โทร (ไม่บังคับ)"
+                    aria-label="เบอร์โทร"
+                    className="auth-input"
+                  />
+                  <textarea
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    rows={2}
+                    placeholder="ที่อยู่จัดส่ง (ไม่บังคับ)"
+                    aria-label="ที่อยู่จัดส่ง"
+                    className="auth-input"
+                  />
+                  <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" inputMode="email" placeholder="อีเมล *" aria-label="อีเมล" className="auth-input" />
+                  <input
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    type="password"
+                    placeholder="รหัสผ่าน (6 ตัวขึ้นไป) *"
+                    aria-label="รหัสผ่าน"
+                    onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
+                    className="auth-input"
+                  />
+                  <p className="auth-hint">* จำเป็นต้องกรอก</p>
+                </div>
+              </>
+            )}
+
+            {err && <p className="auth-msg err">{err}</p>}
+            {confirmMsg && <p className="auth-msg ok">{confirmMsg}</p>}
+
+            <div className="auth-actions">
+              <button type="button" onClick={submit} disabled={busy} className="btn btn-yolk">
+                {busy ? "รอสักครู่…" : mode === "login" ? "เข้าสู่ระบบ" : "สมัครสมาชิก"} <span className="dot">→</span>
+              </button>
+            </div>
+
+            <div className="auth-or">หรือ</div>
+            <a href="/api/auth/line/login" className="auth-line">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+                <path d="M12 3C6.9 3 2.8 6.4 2.8 10.5c0 3.7 3.2 6.8 7.6 7.4.3.06.7.2.8.45.1.23.06.58.03.81l-.13.77c-.04.23-.18.9.79.49s5.23-3.08 7.13-5.27c1.31-1.44 1.94-2.9 1.94-4.65C20.96 6.4 16.9 3 12 3Z" />
+              </svg>
+              เข้าสู่ระบบด้วย LINE
             </a>
           </div>
-        </div>
 
-        <Link
-          href="/products"
-          className="mt-4 block text-center text-[13px] hover:underline"
-          style={{ color: "var(--navy-soft)" }}
-        >
-          ← เลือกซื้อสินค้าต่อ
-        </Link>
+          <Link href="/products" className="auth-back">
+            ← เลือกซื้อสินค้าต่อ
+          </Link>
+        </div>
       </div>
     </div>
   );
@@ -282,7 +252,7 @@ function LoginInner() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="py-16 text-center text-sm text-stone-400">Loading…</div>}>
+    <Suspense fallback={<div className="dl dl-page auth-page"><div className="top-stack auth-stack"><div className="auth-wrap"><p className="auth-sub">กำลังโหลด…</p></div></div></div>}>
       <LoginInner />
     </Suspense>
   );

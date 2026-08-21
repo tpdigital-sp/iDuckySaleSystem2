@@ -2203,3 +2203,104 @@ main:has(.dl-page) + .dl footer{margin-top:0}
   .dl .acd-rvw-card{flex-wrap:wrap}
   .dl .acd-rvw-card .btn{flex:1;justify-content:center}
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   หน้าเข้าสู่ระบบ / สมัครสมาชิก / รีเซ็ตรหัสผ่าน — prefix .auth-
+   ใช้ภาษาการออกแบบเดียวกับหน้าแรก: พื้นฟ้าไล่สี + เมฆลอย · การ์ดกระจกขอบมน r-l
+   · Mitr หัวเรื่อง/ปุ่ม + Plex Looped เนื้อความ · ปุ่ม .btn ไข่แดง/กรมท่า
+   ═══════════════════════════════════════════════════════════════════════════ */
+.dl.auth-page{background:linear-gradient(168deg,var(--sky-200) 0%,var(--sky-100) 28%,var(--sky-50) 52%,#EAF6FE 72%,#F5FBFF 88%,#FFFFFF 100%)}
+.dl .auth-stack{background:transparent;padding-bottom:80px;overflow:clip}
+.dl .auth-c1{width:190px;top:210px;left:-52px;opacity:.9;animation:bgFloat1 18s ease-in-out infinite, bgPuff 8s ease-in-out infinite}
+.dl .auth-c2{width:230px;top:330px;right:-64px;left:auto;opacity:.85;animation:bgFloat2 22s ease-in-out infinite reverse, bgPuff 9s ease-in-out infinite reverse}
+.dl .auth-c3{width:120px;top:640px;left:8%;opacity:.5;animation:bgFloat3 15s ease-in-out infinite, bgPuff 7s ease-in-out infinite}
+.dl .auth-wrap{position:relative;z-index:1;width:min(100% - 32px,528px);margin-inline:auto;padding-top:30px}
+
+/* --- การ์ดหลัก --- */
+.dl .auth-card{background:linear-gradient(180deg,rgba(255,255,255,.82) 0%,rgba(255,255,255,.64) 100%);
+  -webkit-backdrop-filter:blur(16px) saturate(150%);backdrop-filter:blur(16px) saturate(150%);
+  border:2px solid #fff;border-radius:var(--r-l);padding:22px 30px 30px;
+  box-shadow:var(--shadow-m),inset 0 1px 0 rgba(255,255,255,.7),inset 0 -1px 0 rgba(23,58,107,.05);
+  position:relative}
+.dl .auth-card::after{content:"";position:absolute;left:14%;right:14%;bottom:-14px;height:9px;border-radius:50%;
+  background:radial-gradient(ellipse at 50% 50%,rgba(44,129,196,.2),rgba(44,129,196,0) 72%);pointer-events:none}
+
+/* --- สลับโหมด เข้าสู่ระบบ / สมัครสมาชิก (segmented) --- */
+.dl .auth-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:999px;
+  background:var(--sky-100);border:1px solid var(--sky-200);width:min(100%,300px);margin:0 auto 4px}
+.dl .auth-tab{all:unset;cursor:pointer;text-align:center;padding:9px 10px;border-radius:999px;
+  font-family:var(--display);font-size:.86rem;color:var(--navy-soft);
+  transition:background .25s ease,color .25s ease,box-shadow .25s ease,transform .2s cubic-bezier(.34,1.56,.64,1)}
+.dl .auth-tab:hover{color:var(--navy)}
+.dl .auth-tab:active{transform:scale(.96)}
+.dl .auth-tab.on{background:linear-gradient(100deg,var(--blue) 0%,var(--blue-deep) 100%);color:#fff;
+  box-shadow:0 6px 14px -4px rgba(44,129,196,.5)}
+
+/* --- ภาพเป็ด + หัวเรื่อง --- */
+.dl .auth-art{display:block;margin:14px auto 0;width:68%;max-width:236px;height:auto;
+  animation:bobble 4.6s ease-in-out infinite}
+.dl .auth-art.small{width:38%;max-width:128px;margin-top:10px}
+.dl .auth-h1{font-family:var(--display);font-weight:500;font-size:clamp(1.55rem,5vw,1.95rem);line-height:1.25;
+  color:var(--navy);text-align:center;margin-top:10px}
+.dl .auth-h1 em{font-style:normal;color:var(--blue-deep)}
+.dl .auth-sub{text-align:center;font-size:.84rem;color:var(--navy-soft);margin-top:4px;line-height:1.6}
+
+/* --- ฟอร์ม --- */
+.dl .auth-form{display:flex;flex-direction:column;gap:11px;max-width:376px;margin:20px auto 0}
+.dl .auth-field{position:relative;display:block}
+.dl .auth-field>.ico{position:absolute;left:6px;top:50%;transform:translateY(-50%);width:34px;height:34px;
+  border-radius:50%;background:var(--sky-100);display:grid;place-items:center;pointer-events:none;
+  color:var(--blue-deep);transition:background .25s ease,color .25s ease}
+.dl .auth-field:focus-within>.ico{background:var(--blue);color:#fff}
+.dl .auth-input{width:100%;box-sizing:border-box;height:48px;border-radius:999px;background:#fff;
+  border:1.5px solid var(--sky-200);padding:0 18px;font-family:var(--body);font-size:.9rem;color:var(--navy);
+  outline:0;transition:border-color .2s ease,box-shadow .2s ease}
+.dl .auth-field .auth-input{padding-left:48px}
+.dl .auth-input::placeholder{color:#93AAC8}
+.dl .auth-input:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(44,129,196,.14)}
+.dl textarea.auth-input{height:auto;border-radius:var(--r-s);padding:12px 16px;resize:vertical;line-height:1.6}
+.dl .auth-hint{font-size:.72rem;color:var(--navy-soft);padding-inline:6px}
+
+.dl .auth-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  font-size:.8rem;color:var(--navy-soft);padding-inline:6px;flex-wrap:wrap;row-gap:6px}
+.dl .auth-check{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.dl .auth-check input{appearance:none;width:19px;height:19px;border-radius:7px;border:1.5px solid var(--sky-200);
+  background:#fff;cursor:pointer;display:grid;place-items:center;transition:.2s cubic-bezier(.34,1.56,.64,1)}
+.dl .auth-check input::after{content:"✓";font-size:.7rem;color:#fff;opacity:0;transform:scale(.5);transition:.2s cubic-bezier(.34,1.56,.64,1)}
+.dl .auth-check input:checked{background:var(--blue-deep);border-color:var(--blue-deep)}
+.dl .auth-check input:checked::after{opacity:1;transform:scale(1)}
+.dl .auth-link{color:var(--blue-deep);font-weight:500}
+.dl .auth-link:hover{text-decoration:underline}
+
+/* --- ข้อความแจ้งผล --- */
+.dl .auth-msg{max-width:376px;margin:12px auto 0;border-radius:var(--r-s);padding:11px 16px;
+  font-size:.82rem;line-height:1.6;text-align:center}
+.dl .auth-msg.err{background:#FFE9EE;color:#B3234A;border:1px solid rgba(242,69,107,.28)}
+.dl .auth-msg.ok{background:var(--mint);color:#0F6B4F;border:1px solid rgba(15,107,79,.2)}
+.dl .auth-msg b{font-weight:600}
+
+/* --- ปุ่มหลัก --- */
+.dl .auth-actions{display:flex;justify-content:center;margin-top:18px}
+.dl .auth-actions .btn{padding:13px 18px 13px 26px;font-size:.95rem}
+.dl .auth-actions .btn:disabled{opacity:.55;cursor:not-allowed;transform:none;box-shadow:none}
+
+/* --- คั่น "หรือ" + ปุ่ม LINE --- */
+.dl .auth-or{display:flex;align-items:center;gap:12px;max-width:376px;margin:20px auto 0;
+  font-size:.74rem;color:var(--navy-soft)}
+.dl .auth-or::before,.dl .auth-or::after{content:"";height:1px;flex:1;background:var(--sky-200)}
+.dl .auth-line{display:flex;align-items:center;justify-content:center;gap:9px;max-width:376px;margin:12px auto 0;
+  height:48px;border-radius:999px;background:#06C755;color:#fff;font-family:var(--display);font-size:.94rem;
+  box-shadow:0 2px 10px rgba(6,199,85,.3);transition:transform .22s cubic-bezier(.34,1.56,.64,1),box-shadow .25s ease,background .25s ease}
+.dl .auth-line img{width:22px;height:22px;object-fit:contain}
+.dl .auth-line:hover{background:#05B34C;transform:translateY(-3px);box-shadow:0 14px 26px rgba(6,199,85,.34)}
+.dl .auth-line:active{transform:translateY(1px) scale(.99)}
+
+/* --- ลิงก์ท้ายการ์ด --- */
+.dl .auth-back{display:block;text-align:center;margin-top:20px;font-size:.82rem;color:var(--navy-soft)}
+.dl .auth-back:hover{color:var(--navy);text-decoration:underline}
+
+@media (max-width:560px){
+  .dl .auth-card{padding:18px 18px 24px;border-radius:var(--r-m)}
+  .dl .auth-art{width:64%;max-width:200px}
+  .dl .auth-wrap{padding-top:18px}
+}
