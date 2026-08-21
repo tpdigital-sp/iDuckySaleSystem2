@@ -38,7 +38,7 @@ const DIR = (process.argv.find((a) => a.startsWith("--from=")) || "").split("=")
 const PAGE = "https://www.iduckyofficial-pricelists.com/cardboard";
 const SECTION = "Card Broad Foam หนา 2 mm";
 const NAME = "Card Broad Foam หนา 2 mm";
-const V = "v2";
+const V = "v3";
 
 /** ชื่อเดิมที่ยอมให้ทับได้ — กันเผลอรันทับสินค้าตัวอื่นถ้า id ถูกใช้ซ้ำวันหลัง */
 const EXPECT_NAMES = [NAME];

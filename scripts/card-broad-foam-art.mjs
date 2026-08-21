@@ -166,14 +166,31 @@ async function sizeCards() {
     const sh = (SHEET.h / SHEET.w) * sw;
     const sx = 534;
     const sy = 330;
-    const cw = sw / s.cols;
-    const ch = sh / s.rows;
+    /*
+      วางใบตาม "ขนาดจริง" ไม่ใช่หารกรอบให้เต็มแผ่น
+      ของเดิมหาร sw/cols × sh/rows ทำให้ใบจัตุรัส 10×10 ซม. ถูกยืดเป็นสี่เหลี่ยมผืนผ้า
+      และแผ่นดูเหมือนถูกใช้จนหมด ทั้งที่จริงเหลือขอบทิ้งอยู่ (10×10 เหลือ 2 ซม. × 9.7 ซม.)
+      ใบที่วางลงตัวพอดี (A7/A6/A5/A4/A3) หน้าตาเหมือนเดิม เพราะขอบเหลือเกือบศูนย์อยู่แล้ว
+    */
+    const px = sw / SHEET.w; // px ต่อ 1 มม. ของผังแผ่น
+    // เลือกแนววางที่ใส่ได้จริงตาม cols × rows (บางใบต้องหมุน เช่น A3 กับ A4)
+    const fits = (tw, th) => s.cols * tw <= SHEET.w + 0.5 && s.rows * th <= SHEET.h + 0.5;
+    const [tw, th] = fits(s.w, s.h) ? [s.w, s.h] : [s.h, s.w];
+    const cw = tw * px;
+    const ch = th * px;
     const tiles = [];
     for (let r = 0; r < s.rows; r++)
       for (let c = 0; c < s.cols; c++)
         tiles.push(
-          `<rect x="${(sx + c * cw + 2).toFixed(1)}" y="${(sy + r * ch + 2).toFixed(1)}" width="${(cw - 4).toFixed(1)}" height="${(ch - 4).toFixed(1)}" rx="2" fill="#bae6fd" stroke="${CYAN}" stroke-width="1.5"/>`
+          `<rect x="${(sx + c * cw + 1.5).toFixed(1)}" y="${(sy + r * ch + 1.5).toFixed(1)}" width="${(cw - 3).toFixed(1)}" height="${(ch - 3).toFixed(1)}" rx="2" fill="#bae6fd" stroke="${CYAN}" stroke-width="1.5"/>`
         );
+    /** เศษที่เหลือบนแผ่น — บอกไปเลยว่าเหลือเท่าไหร่ ลูกค้าจะได้เห็นว่าทำไมได้แค่จำนวนนี้ */
+    const leftW = SHEET.w - s.cols * tw;
+    const leftH = SHEET.h - s.rows * th;
+    const leftNote =
+      leftW >= 10 || leftH >= 10
+        ? `เหลือขอบ ${[leftW >= 10 ? `${cm(leftW)} ซม.` : null, leftH >= 10 ? `${cm(leftH)} ซม.` : null].filter(Boolean).join(" × ")} (ตัดไม่ได้อีกใบ)`
+        : "วางได้พอดีทั้งแผ่น";
 
     await saveSvg(
       s.key,
@@ -188,7 +205,8 @@ async function sizeCards() {
       <text x="677" y="270" font-family="${TH}" font-size="46" font-weight="700" text-anchor="middle" fill="${CYAN}">${s.perSheet} ใบ</text>
       <rect x="${sx - 8}" y="${sy - 8}" width="${sw + 16}" height="${sh + 16}" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2"/>
       ${tiles.join("")}
-      <text x="677" y="${sy + sh + 44}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">แผ่น A3 (29.7 × 42 ซม.)</text>
+      <text x="677" y="${sy + sh + 40}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">แผ่น A3 (29.7 × 42 ซม.)</text>
+      <text x="677" y="${sy + sh + 68}" font-family="${TH}" font-size="19" text-anchor="middle" fill="${SUB}">${esc(leftNote)}</text>
       ${foot([
         "หนา 2 mm ทุกขนาด — สันตัดเห็นไส้โฟมสีขาว",
         `ค่าเคลือบ/ค่าฟอยล์คิดต่อแผ่น A3 → หารลง ${s.perSheet} ใบ`,
