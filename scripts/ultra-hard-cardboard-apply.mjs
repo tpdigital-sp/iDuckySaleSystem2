@@ -357,6 +357,9 @@ if (!SPECIAL_PAPERS.length)
 const noPaperArt = SPECIAL_PAPERS.filter((p) => !p.imageSrc).map((p) => p.name);
 if (noPaperArt.length)
   throw new Error(`เนื้อกระดาษ "${noPaperArt.join(", ")}" ไม่มีภาพในสินค้า texture-paper — เพิ่มภาพที่นั่นก่อน`);
+/** เนื้อกระดาษผิวด้าน — เคลือบลามิเนตไม่ได้ (ฟิล์มไม่ยึด) คัดจากชื่อ ไม่ได้พิมพ์ทับไว้ */
+const MATTE_PAPERS = SPECIAL_PAPERS.filter((p) => /ผิวด้าน/.test(p.name)).map((p) => p.name);
+const FOIL_NONE_NAME = FOIL_NONE;
 const WHITE_BASE_ART = texWhiteOpt.choices.map((c) => c.imageSrc);
 console.log(
   `📄 กระดาษเนื้อพิเศษ ${SPECIAL_PAPERS.length} เนื้อ (ผิวโฮโลแกรม/เมทัลลิก · ลิงก์จากสินค้า texture-paper) · ` +
@@ -496,6 +499,28 @@ d.options = [
 ];
 
 d.rules = [
+  /**
+   * กระดาษเนื้อพิเศษ (ผิวโฮโลแกรม/เมทัลลิก) มีข้อจำกัดของงานพิมพ์ (ผู้ใช้ยืนยัน 21 ส.ค. 69):
+   *   ทุกเนื้อ      → เคลือบฟอยล์ไม่ได้ · เคลือบลามิเนตได้เฉพาะ "เคลือบเงา" (หรือไม่เคลือบ)
+   *   เนื้อผิวด้าน  → เคลือบลามิเนตไม่ได้เลย (ฟิล์มไม่ยึดกับผิวด้าน) — คัดจากชื่อที่มีคำว่า "ผิวด้าน"
+   * กฎซ้อนกันได้ — allowedChoices กรองต่อกันทีละข้อ เนื้อผิวด้านจึงเหลือแค่ "ไม่เคลือบ"
+   */
+  {
+    when: { label: PAPER_LABEL, choice: SPECIAL_PAPERS[0].name, choices: SPECIAL_PAPERS.map((p) => p.name) },
+    limit: { label: FOIL_LABEL, allow: [FOIL_NONE_NAME] },
+  },
+  {
+    when: { label: PAPER_LABEL, choice: SPECIAL_PAPERS[0].name, choices: SPECIAL_PAPERS.map((p) => p.name) },
+    limit: { label: COAT_LABEL, allow: ["ไม่เคลือบ", "เคลือบเงา"] },
+  },
+  ...(MATTE_PAPERS.length
+    ? [
+        {
+          when: { label: PAPER_LABEL, choice: MATTE_PAPERS[0], choices: MATTE_PAPERS },
+          limit: { label: COAT_LABEL, allow: ["ไม่เคลือบ"] },
+        },
+      ]
+    : []),
   /** กลุ่มผิวฟิล์มเปิดใช้เฉพาะตอนเลือกเคลือบพิเศษ (คู่กับ showWhen — กันเลือกค้างไว้จากตัวเลือกเดิม) */
   {
     when: { label: COAT_LABEL, choice: COAT_SPECIAL, choices: [COAT_SPECIAL] },
@@ -561,6 +586,7 @@ d.terms = [
   `เคลือบฟอยล์คิดต่อ${SHEET_UNIT} เหมือนเคลือบลามิเนต — ${FOIL1.name} ${FOIL1.price} บาทต่อ${SHEET_UNIT} · ${FOIL2.name} ${FOIL2.price} บาทต่อ${SHEET_UNIT} · เลือกสีฟอยล์ได้ ${WEB_FOIL_COLORS.join(" / ")} (โฮโลแกรมบวกเพิ่ม ${HOLO_FEE} บาทต่อ${SHEET_UNIT})`,
   `กระดาษมาตรฐานของงานนี้คือ${PAPER_STD} · เลือกเปลี่ยนเป็นเนื้อพิเศษได้อีก ${SPECIAL_PAPERS.length} เนื้อ (Texture Paper) โดยไม่คิดค่ากระดาษเพิ่ม`,
   `สีพิมพ์บนกระดาษผิวโฮโลแกรม/เมทัลลิกจะจมไปกับผิวกระดาษ อยากให้สีเด่นต้องเลือก "พิมพ์รองสีขาว" — คิดเพิ่ม ${WHITE_BASE_FEE} บาทต่อ${SHEET_UNIT} (ค่าหมึกขาว ${WHITE_BASE_PRINT_FEE} + ค่ากระดาษ ${WHITE_BASE_PAPER_FEE}) ปัดขึ้นเต็มแผ่นแบบเดียวกับงานเคลือบ`,
+  `กระดาษเนื้อพิเศษทุกเนื้อ เคลือบฟอยล์ไม่ได้ และเคลือบลามิเนตได้เฉพาะ "เคลือบเงา" · เนื้อผิวด้าน (เงิน/ทอง) เคลือบลามิเนตไม่ได้เลย — หน้าสินค้าตัดตัวเลือกที่ทำไม่ได้ออกให้เอง`,
   `งานเคลือบฟอยล์ทำร่วมกับการเคลือบลามิเนตไม่ได้ — เลือกได้อย่างใดอย่างหนึ่ง (เลือกข้างไหนแล้ว หน้าสินค้าจะล็อกอีกข้างให้เอง · อยากสลับให้ปลดข้างที่เลือกไว้กลับเป็น "ไม่..." ก่อน)`,
   `โควตาชิ้นต่อ 1 ${SHEET_UNIT} — ${SIZE_ORDER.filter((s) => s.perA3 > 1)
     .map((s) => `${s.name} ได้ ${s.perA3} ใบ`)
