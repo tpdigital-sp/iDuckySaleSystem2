@@ -1394,7 +1394,7 @@ export default function ProductDetail({
     return (
       <section className={mtCls}>
         {withHeading && (
-          <h2 className="text-center text-2xl font-extrabold t-ink">
+          <h2 className="text-center text-2xl font-extrabold text-amber-950">
             รายละเอียดสินค้า {product.name}
           </h2>
         )}
@@ -1421,7 +1421,7 @@ export default function ProductDetail({
                       decoding="async"
                       className="w-full rounded-[2rem] shadow-sm ring-1 ring-amber-100/70 transition group-hover:brightness-95"
                     />
-                    <span className="absolute bottom-3 right-3 rounded-full bg-white/85 px-2.5 py-1 text-[11px] font-bold t-soft shadow-sm backdrop-blur transition group-hover:bg-white">
+                    <span className="absolute bottom-3 right-3 rounded-full bg-white/85 px-2.5 py-1 text-[11px] font-bold text-stone-500 shadow-sm backdrop-blur transition group-hover:bg-white">
                       🔍 กดเพื่อขยาย
                     </span>
                   </button>
@@ -1443,11 +1443,11 @@ export default function ProductDetail({
                 {/* เนื้อหาแบบจัดรูปแบบจากหลังบ้าน (ผ่าน sanitize ฝั่งเซิร์ฟเวอร์ตอนบันทึก) — ไม่มีค่อยใช้ข้อความธรรมดาแบบเดิม */}
                 {sec.html?.trim() ? (
                   <div
-                    className={`mx-auto mt-3 max-w-lg overflow-x-auto text-left text-sm leading-relaxed t-soft ${TAB_PROSE}`}
+                    className={`mx-auto mt-3 max-w-lg overflow-x-auto text-left text-sm leading-relaxed text-stone-600 ${TAB_PROSE}`}
                     dangerouslySetInnerHTML={{ __html: sec.html }}
                   />
                 ) : (
-                  <div className="mx-auto mt-3 max-w-lg text-sm leading-relaxed t-soft">
+                  <div className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-stone-600">
                     {sec.text.split("\n").map((line, j) =>
                       line.trim().startsWith("•") ? (
                         <p key={j} className="text-left md:pl-10">
@@ -1460,7 +1460,7 @@ export default function ProductDetail({
                   </div>
                 )}
                 {sec.image?.label && (
-                  <p className="mt-2 text-xs t-faint">({sec.image.label})</p>
+                  <p className="mt-2 text-xs text-stone-400">({sec.image.label})</p>
                 )}
               </div>
             </div>
@@ -1509,15 +1509,15 @@ export default function ProductDetail({
               return (
                 <div
                   key={opt.label}
-                  className={`ord-optgrp${customLocked ? " pointer-events-none select-none opacity-40" : ""}`}
+                  className={customLocked ? "pointer-events-none select-none opacity-40" : undefined}
                   aria-disabled={customLocked || undefined}
                 >
-                  <span className="ord-optgrp-label mb-1.5 block">
+                  <span className="mb-1 block text-[13px] font-bold text-stone-700">
                     {opt.label}:{" "}
                     <span
                       className={
                         (multi && !picked.length) || (isInput && !effective[opt.label])
-                          ? "font-semibold t-faint"
+                          ? "font-semibold text-stone-400"
                           : "font-semibold text-amber-600"
                       }
                     >
@@ -1536,7 +1536,7 @@ export default function ProductDetail({
                           : effective[opt.label]}
                     </span>
                     {multi && (
-                      <span className="ml-1 rounded-full bg-teal-50 px-1.5 py-0.5 text-[10px] font-bold t-ok ring-1 ring-teal-100">
+                      <span className="ml-1 rounded-full bg-teal-50 px-1.5 py-0.5 text-[10px] font-bold text-teal-700 ring-1 ring-teal-100">
                         ☑ เลือกได้หลายอย่าง{withQty ? " · ระบุจำนวนได้" : ""}
                       </span>
                     )}
@@ -1553,13 +1553,13 @@ export default function ProductDetail({
                       </span>
                     )}
                     {isInput && opt.input?.required === false && (
-                      <span className="ml-1 rounded-full bg-[#E2F3FE] px-1.5 py-0.5 text-[10px] font-bold t-soft">
+                      <span className="ml-1 rounded-full bg-stone-100 px-1.5 py-0.5 text-[10px] font-bold text-stone-500">
                         ไม่บังคับ
                       </span>
                     )}
                   </span>
                   {/* 📝 สเปกที่ลูกค้าเลือกไม่ได้ แต่ควรรู้ตอนกำลังเลือก (เช่น ชนิดกระดาษที่ใช้) */}
-                  {opt.note && <span className="mb-1.5 block text-[11px] leading-snug t-soft">{opt.note}</span>}
+                  {opt.note && <span className="mb-1.5 block text-[11px] leading-snug text-stone-500">{opt.note}</span>}
                   {isInput ? (
                     (() => {
                       const cfg = opt.input;
@@ -1580,7 +1580,7 @@ export default function ProductDetail({
                                 placeholder={cfg.placeholder}
                                 rows={3}
                                 aria-label={opt.label}
-                                className="ord-input"
+                                className="w-full rounded-xl bg-white px-3 py-2 text-[13px] text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
                               />
                             ) : (
                               <input
@@ -1590,17 +1590,17 @@ export default function ProductDetail({
                                 onChange={(e) => write(clean(e.target.value))}
                                 placeholder={cfg?.placeholder}
                                 aria-label={opt.label}
-                                className={`rounded-xl bg-white px-3 py-2 text-[13px] font-semibold t-ink ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300 ${
+                                className={`rounded-xl bg-white px-3 py-2 text-[13px] font-semibold text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300 ${
                                   cfg?.kind === "number" ? "w-28" : "w-full"
                                 }`}
                               />
                             )}
-                            {cfg?.unit && <span className="text-xs font-semibold t-soft">{cfg.unit}</span>}
+                            {cfg?.unit && <span className="text-xs font-semibold text-stone-500">{cfg.unit}</span>}
                           </div>
-                          {cfg?.hint && <p className="mt-1 text-[11px] t-soft">{cfg.hint}</p>}
+                          {cfg?.hint && <p className="mt-1 text-[11px] text-stone-500">{cfg.hint}</p>}
                           {/* เกณฑ์ที่รับได้ — บอกไว้ก่อนพิมพ์ ดีกว่าให้พิมพ์เสร็จแล้วค่อยขึ้นแดง */}
                           {cfg?.kind === "number" && (cfg.min != null || cfg.max != null) && (
-                            <p className="mt-0.5 text-[11px] t-faint">
+                            <p className="mt-0.5 text-[11px] text-stone-400">
                               รับ {cfg.min != null ? cfg.min : "0"}
                               {cfg.max != null ? `–${cfg.max}` : " ขึ้นไป"} {cfg.unit ?? ""}
                             </p>
@@ -1609,7 +1609,7 @@ export default function ProductDetail({
                           {err && (
                             <p
                               className={`mt-1 text-[11px] font-bold ${
-                                raw === "" ? "text-amber-600" : "t-danger"
+                                raw === "" ? "text-amber-600" : "text-rose-600"
                               }`}
                             >
                               {raw === "" ? "✍️" : "⚠"} {err}
@@ -1663,7 +1663,7 @@ export default function ProductDetail({
                                     loading="lazy"
                                   />
                                 ) : (
-                                  <span className="grid h-9 w-9 place-items-center rounded-full bg-[#E2F3FE] text-[10px] t-faint ring-1 ring-black/10">
+                                  <span className="grid h-9 w-9 place-items-center rounded-full bg-stone-100 text-[10px] text-stone-400 ring-1 ring-black/10">
                                     ?
                                   </span>
                                 )}
@@ -1674,7 +1674,7 @@ export default function ProductDetail({
                                 )}
                               </span>
                               <span
-                                className={`text-[10px] font-bold leading-none ${on ? "text-white" : "t-soft"}`}
+                                className={`text-[10px] font-bold leading-none ${on ? "text-white" : "text-stone-500"}`}
                               >
                                 {short}
                               </span>
@@ -1697,7 +1697,7 @@ export default function ProductDetail({
                               />
                             )}
                             {tap && (
-                              <span className="shrink-0 text-[12px] font-bold t-soft">{tap.name}</span>
+                              <span className="shrink-0 text-[12px] font-bold text-stone-600">{tap.name}</span>
                             )}
                             {opt.chartSrc && (
                               <button
@@ -1754,12 +1754,12 @@ export default function ProductDetail({
                                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition ${
                                   on
                                     ? "bg-amber-400 text-white shadow"
-                                    : "bg-white t-soft ring-1 ring-amber-200 hover:bg-amber-50"
+                                    : "bg-white text-stone-600 ring-1 ring-amber-200 hover:bg-amber-50"
                                 }`}
                               >
                                 <span
                                   className={`grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] leading-none ${
-                                    on ? "border-white bg-white/25 text-white" : "border-[#9CD8F6] text-transparent"
+                                    on ? "border-white bg-white/25 text-white" : "border-stone-300 text-transparent"
                                   }`}
                                   aria-hidden
                                 >
@@ -1786,7 +1786,7 @@ export default function ProductDetail({
                                     onClick={() => setChoiceQty(c.name, cQty - 1)}
                                     disabled={cQty <= 1}
                                     aria-label={`ลดจำนวน ${c.name}`}
-                                    className="grid h-6 w-6 place-items-center rounded-full text-[13px] font-extrabold t-soft hover:bg-amber-50 disabled:text-[#C6E8FB] disabled:hover:bg-transparent"
+                                    className="grid h-6 w-6 place-items-center rounded-full text-[13px] font-extrabold text-stone-500 hover:bg-amber-50 disabled:text-stone-300 disabled:hover:bg-transparent"
                                   >
                                     −
                                   </button>
@@ -1808,7 +1808,7 @@ export default function ProductDetail({
                                     onClick={() => setChoiceQty(c.name, cQty + 1)}
                                     disabled={cQty >= cQtyMax}
                                     aria-label={`เพิ่มจำนวน ${c.name}`}
-                                    className="grid h-6 w-6 place-items-center rounded-full text-[13px] font-extrabold t-soft hover:bg-amber-50 disabled:text-[#C6E8FB] disabled:hover:bg-transparent"
+                                    className="grid h-6 w-6 place-items-center rounded-full text-[13px] font-extrabold text-stone-500 hover:bg-amber-50 disabled:text-stone-300 disabled:hover:bg-transparent"
                                   >
                                     ＋
                                   </button>
@@ -1826,10 +1826,10 @@ export default function ProductDetail({
                     </div>
                   ) : locked ? (
                     <div>
-                      <span className="inline-flex items-center gap-2 rounded-full bg-[#E2F3FE] px-3 py-1.5 text-[13px] font-semibold t-soft ring-1 ring-[#C6E8FB]">
+                      <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1.5 text-[13px] font-semibold text-stone-500 ring-1 ring-stone-200">
                         🔒 {effective[opt.label]}
                       </span>
-                      <p className="mt-1.5 text-[11px] t-faint">
+                      <p className="mt-1.5 text-[11px] text-stone-400">
                         ตัวเลือกนี้ถูกกำหนดอัตโนมัติตามตัวเลือกอื่นที่คุณเลือก เพื่อป้องกันการสั่งผิด
                       </p>
                     </div>
@@ -1851,7 +1851,7 @@ export default function ProductDetail({
                         setSelections((s) => ({ ...s, [opt.label]: e.target.value }));
                         jumpToImage(opt.choices.find((c) => c.name === e.target.value)?.imageSrc);
                       }}
-                      className="ord-input font-semibold"
+                      className="w-full rounded-xl bg-white px-3 py-2 text-[13px] font-semibold text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
                       aria-label={opt.label}
                     >
                       {opt.choices
@@ -1885,7 +1885,7 @@ export default function ProductDetail({
                             } ${
                               effective[opt.label] === c.name
                                 ? "bg-amber-400 text-white shadow"
-                                : "bg-white t-soft ring-1 ring-amber-200 hover:bg-amber-50"
+                                : "bg-white text-stone-600 ring-1 ring-amber-200 hover:bg-amber-50"
                             }`}
                           >
                             {/* ภาพประจำตัวเลือก (ถ้ามี) — เห็นหน้าตาแบบนั้น ๆ ก่อนเลือก */}
@@ -1924,7 +1924,7 @@ export default function ProductDetail({
                     popularLegendShown = opt.choices.some((c) => c.popular && allowed.includes(c.name));
                     return popularLegendShown;
                   })() && (
-                    <p className="mt-1 text-[11px] font-semibold t-soft">
+                    <p className="mt-1 text-[11px] font-semibold text-stone-500">
                       <span className="rounded-full bg-ducky px-1.5 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-ducky-dark">
                         นิยม
                       </span>{" "}
@@ -1939,7 +1939,7 @@ export default function ProductDetail({
                     const sheetUnit = opt.sheetFee!.unit ?? "แผ่น";
                     const unit = matrix?.unit ?? "ชิ้น";
                     return (
-                      <p className="ord-hint mt-2">
+                      <p className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
                         📄 {opt.label}แบบที่คิดเงิน คิดเป็น<span className="font-bold">ค่าวัสดุต่อ{sheetUnit}</span> ไม่ใช่ต่อ{unit} —
                         ตอนนี้ 1 {sheetUnit} ได้ <span className="font-bold">{per.toLocaleString("th-TH")} {unit}</span>
                         {fee > 0 ? (
@@ -1956,7 +1956,7 @@ export default function ProductDetail({
                   })()}
                   {/* กลุ่มที่ระบุจำนวนได้ — สรุปยอดรวมของทั้งกลุ่มหลังคูณจำนวนแล้ว */}
                   {withQty && picks.length > 0 && groupAddOf(opt, effective, feeQty) > 0 && (
-                    <p className="mt-1 text-[11px] font-semibold t-ok">
+                    <p className="mt-1 text-[11px] font-semibold text-teal-700">
                       💡 {opt.label}ที่เลือกไว้ รวม +{formatPrice(groupAddOf(opt, effective, feeQty))} ต่อ
                       {matrix?.unit ?? "ชิ้น"} (คิดตามจำนวนที่ระบุ)
                     </p>
@@ -1973,7 +1973,7 @@ export default function ProductDetail({
                     const exempt = (s.freeChoices ?? []).join(" / ");
                     if (inRange && fee !== 0) {
                       return (
-                        <p className={`mt-1 text-[11px] font-semibold ${fee < 0 ? "t-ok" : "text-amber-700"}`}>
+                        <p className={`mt-1 text-[11px] font-semibold ${fee < 0 ? "text-emerald-700" : "text-amber-700"}`}>
                           {fee < 0 ? "🎉" : "💡"} ช่วงสั่งไม่เกิน {s.upToQty.toLocaleString("th-TH")} {unitTxt} · เลือก{opt.label}
                           {fee < 0
                             ? `ลดให้ ${formatPrice(-fee)}/${unit}`
@@ -1985,7 +1985,7 @@ export default function ProductDetail({
                     if (inRange) {
                       // อยู่ในช่วงแต่ตัวที่เลือกได้รับยกเว้น (เช่น ห่วงแถม) — คิดราคาตัวเลือกตามปกติ
                       return (
-                        <p className="mt-1 text-[11px] font-semibold t-soft">
+                        <p className="mt-1 text-[11px] font-semibold text-stone-500">
                           💡 ช่วงสั่งไม่เกิน {s.upToQty.toLocaleString("th-TH")} {unitTxt} · {opt.label}ที่เลือกอยู่ไม่คิดค่าเหมา ฿
                           {Math.abs(s.fee).toLocaleString("th-TH")} — คิดราคาตามตัวเลือกตามปกติ
                         </p>
@@ -1994,7 +1994,7 @@ export default function ProductDetail({
                     // พ้นช่วงเหมาแล้ว — บอกว่าตอนนี้คิดตามราคาตัวเลือก และตัวที่เลือกอยู่บวกเท่าไร
                     const now = groupAddOf(opt, effective, feeQty);
                     return (
-                      <p className="mt-1 text-[11px] font-semibold t-ok">
+                      <p className="mt-1 text-[11px] font-semibold text-teal-700">
                         💡 สั่งตั้งแต่ {(s.upToQty + 1).toLocaleString("th-TH")} {unitTxt}ขึ้นไป · ไม่คิดค่าเหมา ฿
                         {Math.abs(s.fee).toLocaleString("th-TH")}/{unit} แล้ว — {opt.label}คิดตามราคาตัวเลือก{" "}
                         {now > 0 ? `(ตอนนี้ +${formatPrice(now)}/${unit})` : "(ตอนนี้ไม่คิดเพิ่ม)"}
@@ -2016,7 +2016,7 @@ export default function ProductDetail({
                         const below = groupAddOf(opt, effective, feeQty);
                         if (opt.choices.some((c) => c.extraBelow)) {
                           return (
-                            <p className="mt-1.5 text-[11px] font-semibold t-ok">
+                            <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
                               💡 จำนวนนี้คิด{opt.label}ตามเรทช่วงปลีก{" "}
                               {below > 0 ? `(ตอนนี้ +${formatPrice(below)}/${unit})` : "(ตอนนี้ไม่คิดเพิ่ม)"} · สั่งตั้งแต่ {from}{" "}
                               {unitTxt}ขึ้นไปคิดตามเรทส่ง
@@ -2024,14 +2024,14 @@ export default function ProductDetail({
                           );
                         }
                         return (
-                          <p className="mt-1.5 text-[11px] t-faint">
+                          <p className="mt-1.5 text-[11px] text-stone-400">
                             💡 จำนวนนี้ราคารวม{opt.label}แล้ว · สั่งตั้งแต่ {from} {unitTxt}ขึ้นไปคิดเพิ่มตามตัวเลือก
                           </p>
                         );
                       }
                       const now = groupAddOf(opt, effective, feeQty);
                       return (
-                        <p className="mt-1.5 text-[11px] font-semibold t-ok">
+                        <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
                           💡 สั่งตั้งแต่ {from} {unitTxt}ขึ้นไป · {opt.label}คิดเพิ่มตามตัวเลือก{" "}
                           {now > 0 ? `(ตอนนี้ +${formatPrice(now)}/${unit})` : "(ตอนนี้ไม่คิดเพิ่ม)"}
                         </p>
@@ -2049,7 +2049,7 @@ export default function ProductDetail({
   const ratePickerUI =
     rates.length > 1 && rate ? (
       <div className={`mt-5 ${useCustom ? "pointer-events-none select-none opacity-40" : ""}`} aria-disabled={useCustom}>
-        <span className="mb-1.5 block text-[13px] font-bold t-ink">
+        <span className="mb-1.5 block text-[13px] font-bold text-stone-700">
           {RATE_LABEL}: <span className="font-semibold text-amber-600">{rate.label}</span>
         </span>
         <div className="grid gap-1.5">
@@ -2077,8 +2077,8 @@ export default function ProductDetail({
                   on
                     ? "bg-amber-50 font-bold text-amber-900 ring-2 ring-amber-400"
                     : locked
-                      ? "bg-[#F2FAFF] t-faint ring-1 ring-dashed ring-[#9CD8F6] hover:ring-[#57B6E8]"
-                      : "bg-white t-soft ring-1 ring-[#C6E8FB] hover:ring-amber-300"
+                      ? "bg-stone-50 text-stone-400 ring-1 ring-dashed ring-stone-300 hover:ring-stone-400"
+                      : "bg-white text-stone-600 ring-1 ring-stone-200 hover:ring-amber-300"
                 }`}
               >
                 <span className="flex items-center gap-2">
@@ -2088,25 +2088,25 @@ export default function ProductDetail({
                     <img
                       src={r.imageSrc}
                       alt={r.label}
-                      className={`h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-[#C6E8FB] ${locked ? "opacity-50 grayscale" : ""}`}
+                      className={`h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-stone-200 ${locked ? "opacity-50 grayscale" : ""}`}
                       loading="lazy"
                     />
                   )}
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
-                      <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${on ? "border-amber-500" : "border-[#9CD8F6]"}`}>
+                      <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${on ? "border-amber-500" : "border-stone-300"}`}>
                         {on && <span className="h-2 w-2 rounded-full bg-amber-500" />}
                       </span>
                       {r.label}
                       {locked && (
-                        <span className="rounded-full bg-[#C6E8FB]/70 px-1.5 py-px text-[10px] font-bold t-soft">
+                        <span className="rounded-full bg-stone-200/70 px-1.5 py-px text-[10px] font-bold text-stone-500">
                           🔒 ต้องสั่ง {need.toLocaleString("th-TH")}+
                         </span>
                       )}
                     </span>
-                    {r.desc && <span className="mt-0.5 block pl-6 text-[11px] font-normal leading-snug t-soft">{r.desc}</span>}
+                    {r.desc && <span className="mt-0.5 block pl-6 text-[11px] font-normal leading-snug text-stone-500">{r.desc}</span>}
                     {(r.minQty || r.minPerDesign) && (
-                      <span className={`mt-0.5 block pl-6 text-[10px] font-semibold leading-snug ${locked ? "t-faint" : "t-ok"}`}>
+                      <span className={`mt-0.5 block pl-6 text-[10px] font-semibold leading-snug ${locked ? "text-stone-400" : "text-teal-700"}`}>
                         {[
                           r.minQty ? `สั่งรวม ${r.minQty.toLocaleString("th-TH")} ${r.pricing.unit}ขึ้นไป` : "",
                           r.minPerDesign ? `คละลายขั้นต่ำลายละ ${r.minPerDesign.toLocaleString("th-TH")} ${r.pricing.unit}` : "",
@@ -2123,7 +2123,7 @@ export default function ProductDetail({
           })}
         </div>
         {autoRateNote && (
-          <p className="mt-2 rounded-xl bg-teal-50 px-3 py-2 text-[11px] font-bold leading-relaxed t-ok ring-1 ring-teal-100">
+          <p className="mt-2 rounded-xl bg-teal-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-teal-800 ring-1 ring-teal-100">
             ✨ {autoRateNote}
           </p>
         )}
@@ -2150,18 +2150,10 @@ export default function ProductDetail({
   );
 
   return (
-    <div className="shopp plain">
-      {/* เมฆลอย — ชุดเดียวกับหน้าแรก */}
-      <div className="shopp-sky" aria-hidden="true">
-        <img className="oc1" src="/landing/cloud.webp" alt="" />
-        <img className="oc2" src="/landing/cloud.webp" alt="" />
-        <img className="oc3" src="/landing/cloud.webp" alt="" />
-        <img className="oc4" src="/landing/cloud.webp" alt="" />
-      </div>
-      <div className="shopp-in">
+    <div className="mx-auto max-w-6xl px-4 pt-6">
       {/* สินค้าที่ปิดการมองเห็นไว้ — ลูกค้าเปิดไม่ได้ (404) หน้านี้เห็นเฉพาะทีมงานที่ล็อกอิน */}
       {preview && (
-        <div className="ord-note danger mb-4 px-4 py-3 text-sm font-semibold">
+        <div className="mb-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 ring-1 ring-rose-200">
           🚫 สินค้านี้ <span className="underline">ปิดการมองเห็น</span> อยู่ — ลูกค้าไม่เห็นในหน้ารายการ/ค้นหา และเปิดลิงก์ตรงก็ไม่เจอ
           <span className="font-semibold"> (คุณเห็นหน้านี้เพราะล็อกอินหลังบ้านอยู่)</span>
         </div>
@@ -2177,14 +2169,14 @@ export default function ProductDetail({
       {/* ปุ่มลัดไปแก้ไขสินค้านี้ในหลังบ้าน (เฉพาะแอดมิน) */}
       {isAdmin && <AdminEditFab href={adminProductPath(product)} title="เปิดหน้าแก้ไขสินค้านี้ในระบบหลังบ้าน" />}
       {/* breadcrumb */}
-      <nav className="flex items-center gap-1 overflow-hidden whitespace-nowrap text-[11px] t-faint">
+      <nav className="flex items-center gap-1 overflow-hidden whitespace-nowrap text-[11px] text-stone-400">
         <Link href="/" className="shrink-0 hover:text-amber-600">หน้าแรก</Link>
         <span className="shrink-0">›</span>
         <Link href={`/products?category=${category.id}`} className="shrink-0 hover:text-amber-600">
           {category.name}
         </Link>
         <span className="shrink-0">›</span>
-        <span className="truncate t-soft">{product.name}</span>
+        <span className="truncate text-stone-600">{product.name}</span>
       </nav>
 
       {/* ═══ โครง 3 คอลัมน์: รูป | รายละเอียด | แผงสั่งซื้อ (ติดหนึบ)
@@ -2233,7 +2225,7 @@ export default function ProductDetail({
                       playsInline
                       preload="metadata"
                       aria-label={`${product.name} — ${shown.label}`}
-                      className="aspect-square w-full rounded-[2rem] bg-[#0E2545] object-contain shadow-inner"
+                      className="aspect-square w-full rounded-[2rem] bg-stone-900 object-contain shadow-inner"
                     />
                   );
                 const visual = (
@@ -2272,13 +2264,13 @@ export default function ProductDetail({
                       type="button"
                       onClick={() => step(a.d)}
                       aria-label={a.label}
-                      className={`absolute ${a.side} top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-white/85 pb-0.5 text-2xl font-bold leading-none t-soft shadow-md ring-1 ring-[#C6E8FB] backdrop-blur transition hover:bg-white hover:text-amber-600 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100`}
+                      className={`absolute ${a.side} top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-white/85 pb-0.5 text-2xl font-bold leading-none text-stone-600 shadow-md ring-1 ring-stone-200 backdrop-blur transition hover:bg-white hover:text-amber-600 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100`}
                     >
                       {a.glyph}
                     </button>
                   ))}
                   {/* บอกว่าดูอยู่รูปที่เท่าไหร่จากทั้งหมด — โผล่พร้อมลูกศร */}
-                  <span className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-[#173A6B]/60 px-2.5 py-0.5 text-[11px] font-bold tabular-nums text-white transition sm:opacity-0 sm:group-hover:opacity-100">
+                  <span className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-stone-900/55 px-2.5 py-0.5 text-[11px] font-bold tabular-nums text-white transition sm:opacity-0 sm:group-hover:opacity-100">
                     {at + 1}/{gallery.length}
                   </span>
                 </>
@@ -2300,8 +2292,8 @@ export default function ProductDetail({
                   <ProductVisual emoji={img.emoji} gradient={img.gradient} src={img.src ?? (i === 0 ? product.imageSrc : undefined)} alt={img.label} size="text-3xl" className="h-16 w-16" />
                   {/* ช่องที่เป็นคลิป — ติดปุ่มเล่นทับรูปย่อ ให้รู้ว่ากดแล้วเป็นวิดีโอ ไม่ใช่รูปนิ่ง */}
                   {img.videoSrc && (
-                    <span className="pointer-events-none absolute inset-0 grid place-items-center bg-[#173A6B]/30">
-                      <span className="grid h-6 w-6 place-items-center rounded-full bg-white/90 pl-0.5 text-[9px] leading-none t-ink shadow">
+                    <span className="pointer-events-none absolute inset-0 grid place-items-center bg-stone-900/25">
+                      <span className="grid h-6 w-6 place-items-center rounded-full bg-white/90 pl-0.5 text-[9px] leading-none text-stone-800 shadow">
                         ▶
                       </span>
                     </span>
@@ -2310,7 +2302,7 @@ export default function ProductDetail({
               ))}
             </div>
             {shown.label && (
-              <p className="mt-2 text-center text-xs t-faint">
+              <p className="mt-2 text-center text-xs text-stone-400">
                 มุมมอง: {shown.label}
               </p>
             )}
@@ -2325,37 +2317,33 @@ export default function ProductDetail({
           <span className="text-xs font-semibold text-amber-500">
             {category.emoji} {category.name}
           </span>
-          <h1 className="mt-1 text-base font-extrabold leading-snug t-ink md:text-xl">
+          <h1 className="mt-1 text-base font-extrabold leading-snug text-stone-900 md:text-xl">
             {product.name}
           </h1>
-          <div className="mt-2 flex items-center gap-3 text-sm t-soft">
+          <div className="mt-2 flex items-center gap-3 text-sm text-stone-500">
             <span>⭐ {product.rating}</span>
             <span>·</span>
             <span>ขายแล้ว {product.sold.toLocaleString("th-TH")} ชิ้น</span>
           </div>
 
-          <p className="mt-3 text-[13px] leading-relaxed t-soft">{product.description}</p>
+          <p className="mt-3 text-[13px] leading-relaxed text-stone-600">{product.description}</p>
 
           {/* ═══ ข้อควรทราบ / เงื่อนไขงาน — อ่านก่อนสั่ง (แอดมินตั้งต่อสินค้าในหลังบ้าน) ═══ */}
-          {/* พับได้ — เดิมเป็นกำแพงตัวหนังสือแดงตัวจิ๋ว 20 กว่าบรรทัด ลูกค้าข้ามทั้งก้อน
-              เปิดค้างไว้ให้เห็นก่อน แต่กดพับเก็บได้ถ้าอ่านแล้ว */}
           {product.terms?.trim() && (
-            <details className="ord-note warn ord-terms mt-4" open>
-              <summary>
+            <div className="mt-4 overflow-hidden rounded-2xl border-2 border-rose-200 bg-rose-50/60 shadow-sm">
+              <div className="flex items-center gap-2 bg-rose-500 px-4 py-2">
                 <span className="text-base leading-none">⚠️</span>
-                ข้อควรทราบก่อนสั่ง — รบกวนอ่านก่อนนะครับ
-                <span className="ord-terms-n">{termLines(product.terms).length} ข้อ</span>
-                <span className="ord-terms-chev">▾</span>
-              </summary>
-              <ul>
+                <p className="text-xs font-extrabold tracking-tight text-white">ข้อควรทราบก่อนสั่ง — รบกวนอ่านก่อนนะครับ</p>
+              </div>
+              <ul className="space-y-2 px-4 py-3">
                 {termLines(product.terms).map((t, i) => (
-                  <li key={i}>
-                    <i aria-hidden="true" />
-                    <span>{t}</span>
+                  <li key={i} className="flex gap-2">
+                    <span className="mt-[3px] shrink-0 text-[9px] leading-none text-rose-500">🔴</span>
+                    <span className="whitespace-pre-line text-[11px] font-medium leading-relaxed text-rose-950">{t}</span>
                   </li>
                 ))}
               </ul>
-            </details>
+            </div>
           )}
 
           {/* ═══ 📐 เทมเพลตไฟล์งาน — โหลดไปวางลายก่อนส่งกลับมาให้ร้าน (ไม่ต้องล็อกอิน) ═══ */}
@@ -2416,19 +2404,19 @@ export default function ProductDetail({
                       ) : (
                         <span className="grid h-14 w-full place-items-center rounded-lg bg-sky-50 text-xl">📐</span>
                       )}
-                      <span className="mt-1 block truncate text-[12px] font-bold t-ink" title={f.name}>
+                      <span className="mt-1 block truncate text-[12px] font-bold text-stone-800" title={f.name}>
                         {f.name}
                         {f.choice && <span className="ml-1 font-semibold text-sky-700">· {f.choice}</span>}
                       </span>
-                      {f.note && <span className="block truncate text-[10px] t-soft">{f.note}</span>}
-                      <span className="block truncate text-[10px] t-faint">
+                      {f.note && <span className="block truncate text-[10px] text-stone-500">{f.note}</span>}
+                      <span className="block truncate text-[10px] text-stone-400">
                         {f.outside ? "เปิดลิงก์ไฟล์" : f.fileName || "ไฟล์เทมเพลต"}
                         {f.fileSize ? ` · ${formatFileSize(f.fileSize)}` : ""}
                       </span>
                       {f.matched && (
                         <span className="mt-0.5 block text-[10px] font-bold text-sky-700">✓ ตรงกับที่คุณเลือก</span>
                       )}
-                      {f.anyNote && <span className="mt-0.5 block text-[10px] t-faint">{f.anyNote}</span>}
+                      {f.anyNote && <span className="mt-0.5 block text-[10px] text-stone-400">{f.anyNote}</span>}
                       {/* ที่นี่มีแค่ปุ่มโหลดไฟล์ — การวางลายบนเว็บใช้ปุ่ม "เริ่มสร้าง" ในกล่องสั่งซื้อ */}
                       <a
                         href={f.href}
@@ -2463,41 +2451,38 @@ export default function ProductDetail({
           )}
 
           {/* ═══ ความมั่นใจก่อนกดสั่ง ═══ */}
-          <ul className="mt-4 grid grid-cols-2 gap-2 text-[11px] font-semibold t-soft">
-            <li className="ord-tile center">🖼️ ส่งแบบให้ตรวจ<br />ก่อนผลิตทุกงาน</li>
-            <li className="ord-tile center">✅ แก้แบบได้<br />จนกว่าจะพอใจ</li>
-            <li className="ord-tile center">🚚 ส่งไว<br />ทั่วไทย</li>
-            <li className="ord-tile center">💬 ทักไลน์<br />ปรึกษาฟรี</li>
+          <ul className="mt-4 grid grid-cols-2 gap-2 text-[11px] font-semibold text-stone-500">
+            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">🖼️ ส่งแบบให้ตรวจ<br />ก่อนผลิตทุกงาน</li>
+            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">✅ แก้แบบได้<br />จนกว่าจะพอใจ</li>
+            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">🚚 ส่งไว<br />ทั่วไทย</li>
+            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">💬 ทักไลน์<br />ปรึกษาฟรี</li>
           </ul>
         </div>
 
       {/* ═══ ข้อมูลประกอบ — ไหลต่อจากรูป/รายละเอียด (เดิมอยู่ท้ายหน้า ทำให้ตรงนี้เป็นช่องขาว) ═══ */}
       <div className="grid gap-6 sm:col-span-2 lg:grid-cols-2">
-        {/* สินค้าที่ไม่มีตารางราคาขั้นบันได = ไม่มีอะไรอยู่ในกล่องนี้ — ไม่ต้องตีกรอบให้เห็นเป็นกล่องว่าง */}
-        <div className={`relative${matrix ? " ord-card flat p-4 sm:p-5" : ""}`}>
+        <div className="relative">
           {/* ใช้ขนาดกำหนดเองอยู่ — คลุมตารางไว้ กันเข้าใจผิดว่าราคาอิงเรทขนาดปกติ
               (โหมด "ระบุขนาด" ไม่ต้องคลุม เพราะราคายังคิดจากตารางนี้จริง ๆ) */}
           {useCustom && custom?.mode !== "size" && (
-            <div className="absolute inset-0 z-10 grid place-items-center rounded-[var(--r-l)] bg-white/72 backdrop-blur-[2px]">
-              <p className="ord-btn blue sm text-center">
+            <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/70">
+              <p className="rounded-full bg-sky-600 px-4 py-2 text-center text-xs font-bold text-white shadow-lg">
                 📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตารางนี้
               </p>
             </div>
           )}
           {/* งานสั่งทำ (แบบที่แอดมินตั้งให้ตีราคา) — ตารางนี้ไม่ใช่ราคาของงานนี้ คลุมไว้กันเข้าใจผิด */}
           {askQuote && !useCustom && (
-            <div className="absolute inset-0 z-10 grid place-items-center rounded-[var(--r-l)] bg-white/72 backdrop-blur-[2px]">
-              <p className="ord-btn blue sm text-center">
+            <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/70">
+              <p className="rounded-full bg-sky-600 px-4 py-2 text-center text-xs font-bold text-white shadow-lg">
                 💬 งานสั่งทำ — ราคาไม่อิงตารางนี้ แอดมินตีราคาให้
               </p>
             </div>
           )}
-          {matrix && (
-            <p className="ord-title text-[.98rem]">
-              💰 ราคาต่อหน่วยตามจำนวน
-              {rate && <span className="ml-1 font-semibold t-ok">· {rate.label}</span>}
-            </p>
-          )}
+          <p className="text-sm font-bold text-stone-700">
+            💰 ราคาต่อหน่วยตามจำนวน
+            {rate && <span className="ml-1 font-semibold text-teal-700">· {rate.label}</span>}
+          </p>
           {/* ตารางราคาขั้นบันได (rate card) — หลายคอลัมน์ = โชว์ทีละแบบตามที่เลือกอยู่ (กดเทียบทุกแบบได้) */}
           {matrix &&
             (() => {
@@ -2508,10 +2493,10 @@ export default function ProductDetail({
               // ตัวเลือกที่เลือกอยู่ไม่มีราคาในตาราง (แอดมินเว้นช่องไว้) → กางทั้งหมดแทนตารางเปล่า
               const cols = !manyCols || priceAllCols || !only.length ? allKeys : only;
               return (
-                <div className="mt-2 overflow-hidden rounded-2xl ring-1 ring-[#C6E8FB]">
+                <div className="mt-2 overflow-hidden rounded-2xl ring-1 ring-stone-200">
                   {manyCols && (
-                    <div className="flex flex-wrap items-center justify-between gap-2 bg-[#F2FAFF] px-3 py-1.5">
-                      <p className="text-[11px] t-soft">
+                    <div className="flex flex-wrap items-center justify-between gap-2 bg-stone-50 px-3 py-1.5">
+                      <p className="text-[11px] text-stone-500">
                         {cols.length > 1
                           ? `💡 เทียบราคาทั้ง ${allKeys.length} แบบ`
                           : `💡 ราคาของ “${shortComboParts(selectedKey).join(" · ")}” — เปลี่ยนตัวเลือกด้านบนเพื่อดูแบบอื่น`}
@@ -2557,7 +2542,7 @@ export default function ProductDetail({
                         return (
                           <tr
                             key={tier.label}
-                            className={active ? "bg-[#E2F3FE] font-bold t-ink" : "odd:bg-white even:bg-[#F2FAFF]"}
+                            className={active ? "bg-stone-100 font-bold text-stone-900" : "odd:bg-white even:bg-stone-50"}
                           >
                             <td className="whitespace-nowrap px-3 py-2">
                               {active && "▶ "}
@@ -2581,7 +2566,7 @@ export default function ProductDetail({
               );
             })()}
           {rate?.minPerDesign != null && rate.minPerDesign > 0 && (
-            <p className="ord-hint mt-2">
+            <p className="mt-2 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
               🎨 เรทนี้คละลายขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
               {/* ร้านรับสั่งขั้นต่ำ 1 ชิ้นเสมอ — ตัวเลขนี้คือ "เรทนี้เริ่มใช้ที่เท่าไหร่" ไม่ใช่ห้ามสั่งน้อยกว่า
                   (สั่งน้อยกว่านี้ระบบสลับไปเรทที่ถูกต้องให้เอง) */}
@@ -2592,13 +2577,13 @@ export default function ProductDetail({
           )}
         </div>
         <div>
-          <p className="ord-title text-[.98rem]">✨ จุดเด่นของงานนี้</p>
+          <p className="text-sm font-bold text-stone-700">✨ จุดเด่นของงานนี้</p>
           {/* จุดเด่น */}
           <ul className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {product.highlights.map((h) => (
               <li
                 key={h}
-                className="ord-tile"
+                className="flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-sm text-stone-600 ring-1 ring-amber-100"
               >
                 <span className="text-amber-500">✔</span> {h}
               </li>
@@ -2615,8 +2600,8 @@ export default function ProductDetail({
 
         {/* ── ขวา: แผงสั่งซื้อ ติดหนึบตอนเลื่อน ── */}
         <div className="lg:col-span-4 lg:sticky lg:top-24">
-          <div className="ord-card p-4 sm:p-5">
-            <p className="ord-eyebrow">ราคา</p>
+          <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">ราคา</p>
             <div className="mt-4 flex items-baseline gap-2">
               {useCustom && customAsk ? (
                 // ขนาดกำหนดเอง (โหมดตีราคา/คุยกับแอดมิน) — ไม่โชว์ ฿0 ให้งง
@@ -2630,10 +2615,10 @@ export default function ProductDetail({
                 <>
                   <span className="text-2xl font-extrabold text-amber-600">{formatPrice(unitPrice)}</span>
                   {matrix ? (
-                    <span className="text-sm font-semibold t-soft">/ {matrix.unit}</span>
+                    <span className="text-sm font-semibold text-stone-500">/ {matrix.unit}</span>
                   ) : (
                     product.oldPrice && (
-                      <span className="text-base t-faint line-through">
+                      <span className="text-base text-stone-400 line-through">
                         {formatPrice(product.oldPrice)}
                       </span>
                     )
@@ -2673,12 +2658,12 @@ export default function ProductDetail({
                 </p>
               )
             ) : matrix ? (
-              <p className="mt-1 text-xs t-faint">
+              <p className="mt-1 text-xs text-stone-400">
                 💡 เรทราคา {formatPriceRange(product)} ต่อ{matrix.unit} — ยิ่งสั่งเยอะ ยิ่งถูก (ราคาปรับตามจำนวน)
               </p>
             ) : (
               priceRange(product).max > priceRange(product).min && (
-                <p className="mt-1 text-xs t-faint">
+                <p className="mt-1 text-xs text-stone-400">
                   💡 เรทราคา {formatPriceRange(product)} ขึ้นกับตัวเลือกที่เลือก
                 </p>
               )
@@ -2725,8 +2710,8 @@ export default function ProductDetail({
               */}
               {product.mtoAlways ? (
                 <div>
-                  <span className="text-sm font-bold t-ink">📐 ระบุขนาดที่ต้องการ</span>
-                  <span className="mt-0.5 block text-[11px] leading-relaxed t-soft">
+                  <span className="text-sm font-bold text-stone-700">📐 ระบุขนาดที่ต้องการ</span>
+                  <span className="mt-0.5 block text-[11px] leading-relaxed text-stone-500">
                     {areaOn
                       ? "งานนี้คิดราคาตามพื้นที่ลาย — กรอกขนาดมาให้ครบ ระบบคำนวณราคาให้ทันที ไม่ต้องรอสอบถาม"
                       : "งานนี้ทำตามขนาดที่ลูกค้ากำหนด — กรอกขนาดมาให้ครบ แล้วแอดมินจะตีราคาให้"}
@@ -2750,8 +2735,8 @@ export default function ProductDetail({
                     className="mt-0.5 h-4 w-4 shrink-0 accent-sky-600"
                   />
                   <span>
-                    <span className="text-sm font-bold t-ink">📐 ต้องการสั่งทำ — กำหนดขนาด/รายละเอียดเอง</span>
-                    <span className="mt-0.5 block text-[11px] leading-relaxed t-soft">
+                    <span className="text-sm font-bold text-stone-700">📐 ต้องการสั่งทำ — กำหนดขนาด/รายละเอียดเอง</span>
+                    <span className="mt-0.5 block text-[11px] leading-relaxed text-stone-500">
                       ไม่ติ๊ก = ใช้ขนาดมาตรฐานของแบบนี้ ราคาตามตารางปกติ · ติ๊กแล้วระบุขนาดที่ต้องการได้
                       แล้วแอดมินจะตีราคาให้
                     </span>
@@ -2772,7 +2757,7 @@ export default function ProductDetail({
                     🧮 พื้นที่ลาย {areaBreakdown.width} × {areaBreakdown.height} ={" "}
                     {Math.round(areaBreakdown.area * 100) / 100} ตร.ซม.
                   </p>
-                  <ul className="mt-1.5 space-y-0.5 text-[11px] leading-relaxed t-soft">
+                  <ul className="mt-1.5 space-y-0.5 text-[11px] leading-relaxed text-stone-600">
                     <li>
                       · {areaBreakdown.baseArea} ตร.ซม. แรก = {formatPrice(areaBreakdown.basePrice)}
                     </li>
@@ -2782,12 +2767,12 @@ export default function ProductDetail({
                         {formatPrice(areaBreakdown.stepPrice)} = {formatPrice(areaBreakdown.extraPrice)}
                       </li>
                     )}
-                    <li className="font-bold t-ink">
+                    <li className="font-bold text-stone-700">
                       · รวม {formatPrice(areaBreakdown.unitPrice)} / ชิ้น
                       {qty > 1 && <> × {qty} ชิ้น = {formatPrice(areaBreakdown.unitPrice * qty)}</>}
                     </li>
                   </ul>
-                  <p className="mt-1.5 text-[10px] t-faint">
+                  <p className="mt-1.5 text-[10px] text-stone-400">
                     เรทเปลี่ยนตามช่วงจำนวนที่สั่ง — สั่งเยอะขึ้น ราคาต่อชิ้นลดเองอัตโนมัติ
                   </p>
                 </div>
@@ -2820,9 +2805,9 @@ export default function ProductDetail({
                   onChange={(e) => setUseCustom(e.target.checked)}
                   className="h-4 w-4 accent-amber-500"
                 />
-                <span className="text-sm font-bold t-ink">📐 {custom.label}</span>
+                <span className="text-sm font-bold text-stone-700">📐 {custom.label}</span>
               </label>
-              {custom.note && <p className="mt-1.5 pl-7 text-[11px] t-soft">{custom.note}</p>}
+              {custom.note && <p className="mt-1.5 pl-7 text-[11px] text-stone-500">{custom.note}</p>}
               {useCustom && customChat && (
                 // โหมดคุยกับแอดมิน — ไม่มีอะไรให้กรอก มีแค่ทางลัดไปแชท
                 <div className="mt-3 pl-7">
@@ -2837,7 +2822,7 @@ export default function ProductDetail({
                   >
                     💬 ทักไลน์คุยกับแอดมิน
                   </a>
-                  <p className="mt-1.5 text-[11px] t-soft">
+                  <p className="mt-1.5 text-[11px] text-stone-500">
                     หรือกดสั่งไว้ก่อนก็ได้ — แอดมินจะตีราคาให้หลังคุยกันเสร็จ
                   </p>
                 </div>
@@ -2845,7 +2830,7 @@ export default function ProductDetail({
               {useCustom && !customChat && (
                 <div className="mt-3 pl-7">
                   <div className="flex flex-wrap items-end gap-2">
-                    <label className="text-xs font-semibold t-soft">
+                    <label className="text-xs font-semibold text-stone-600">
                       กว้าง
                       <input
                         type="text"
@@ -2856,8 +2841,8 @@ export default function ProductDetail({
                         className="mt-1 block w-24 rounded-xl bg-white px-3 py-2 text-sm font-semibold ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
                       />
                     </label>
-                    <span className="pb-2 t-faint">×</span>
-                    <label className="text-xs font-semibold t-soft">
+                    <span className="pb-2 text-stone-400">×</span>
+                    <label className="text-xs font-semibold text-stone-600">
                       ยาว
                       <input
                         type="text"
@@ -2868,21 +2853,21 @@ export default function ProductDetail({
                         className="mt-1 block w-24 rounded-xl bg-white px-3 py-2 text-sm font-semibold ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
                       />
                     </label>
-                    <span className="pb-2 text-xs font-semibold t-soft">{custom.unit}</span>
+                    <span className="pb-2 text-xs font-semibold text-stone-500">{custom.unit}</span>
                   </div>
                   <p className="mt-2 text-sm">
                     {!customValid ? (
-                      <span className="t-faint">
+                      <span className="text-stone-400">
                         {custom.mode === "size" ? "กรอกกว้าง × ยาว ที่ต้องการ" : "กรอกกว้าง × ยาว เพื่อคิดราคา"}
                       </span>
                     ) : custom.mode === "size" ? (
-                      <span className="t-soft">
+                      <span className="text-stone-600">
                         📐 ระบุขนาด <span className="font-bold">{cW}×{cH} {custom.unit}</span> — ราคาคิดตามตารางราคาปกติ
                       </span>
                     ) : custom.mode === "area" ? (
                       <>
                         ราคา/ชิ้น <span className="font-extrabold text-amber-600">{formatPrice(customPrice)}</span>
-                        <span className="t-faint"> · {cW}×{cH} {custom.unit}</span>
+                        <span className="text-stone-400"> · {cW}×{cH} {custom.unit}</span>
                       </>
                     ) : (
                       <span className="font-semibold text-amber-600">💬 สอบถามราคา — แอดมินจะตีราคาให้หลังสั่ง</span>
@@ -2899,7 +2884,7 @@ export default function ProductDetail({
                       >
                         💬 ทักไลน์สอบถามราคา
                       </a>
-                      <span className="text-[11px] t-soft">
+                      <span className="text-[11px] text-stone-500">
                         {customValid
                           ? `ส่งขนาด ${cW}×${cH} ${custom.unit} ให้แอดมินดูก่อนได้`
                           : "อยากรู้ราคาก่อนสั่ง ทักมาถามได้เลย"}
@@ -2933,7 +2918,7 @@ export default function ProductDetail({
           )}
 
           {/* ═══ กล่องสั่งซื้อ — จำนวน + ยอด + ปุ่ม (ติดกับตัวเลือก ไม่ให้ของไม่บังคับมาคั่น) ═══ */}
-          <div ref={orderBoxRef} className="ord-card mt-5 p-4">
+          <div ref={orderBoxRef} className="mt-5 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-amber-100">
             {/* ═══ สลับโหมดสั่งของ (เห็นเฉพาะพนักงานที่ล็อกอินหลังบ้าน) ═══
                  โหมดลูกค้า = เห็นหน้าเหมือนลูกค้าเป๊ะ ๆ · โหมดแอดมิน = สั่งแทนลูกค้า ข้ามขั้นวางลาย */}
             {isAdmin && (
@@ -2946,7 +2931,7 @@ export default function ProductDetail({
                       onClick={() => switchAdminMode(false)}
                       aria-pressed={!adminMode}
                       className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
-                        adminMode ? "t-soft hover:bg-sky-50" : "bg-sky-600 text-white"
+                        adminMode ? "text-stone-500 hover:bg-sky-50" : "bg-sky-600 text-white"
                       }`}
                     >
                       👤 ลูกค้า
@@ -2956,7 +2941,7 @@ export default function ProductDetail({
                       onClick={() => switchAdminMode(true)}
                       aria-pressed={adminMode}
                       className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
-                        adminMode ? "bg-sky-600 text-white" : "t-soft hover:bg-sky-50"
+                        adminMode ? "bg-sky-600 text-white" : "text-stone-500 hover:bg-sky-50"
                       }`}
                     >
                       🧑‍💼 แอดมิน
@@ -2974,7 +2959,7 @@ export default function ProductDetail({
             {/* จำนวน + เพิ่มลงตะกร้า */}
             <div>
               {matrix && !designDone && (
-                <label className="mb-1 block text-[13px] font-bold t-ink">
+                <label className="mb-1 block text-[13px] font-bold text-stone-700">
                   จำนวน ({matrix.unit})
                 </label>
               )}
@@ -2986,7 +2971,7 @@ export default function ProductDetail({
                     type="button"
                     // ลดได้ถึง 1 เสมอ — ถ้าต่ำกว่าขั้นต่ำของเรทที่เลือกไว้ ระบบจะสลับลงเรทที่เหมาะเอง
                     onClick={() => setQty((q) => Math.max(1, q - 1))}
-                    className="h-10 w-10 rounded-l-full text-base font-bold t-soft hover:bg-amber-50"
+                    className="h-10 w-10 rounded-l-full text-base font-bold text-stone-600 hover:bg-amber-50"
                     aria-label="ลดจำนวน"
                   >
                     −
@@ -3009,7 +2994,7 @@ export default function ProductDetail({
                   <button
                     type="button"
                     onClick={() => setQty((q) => Math.min(matrix ? 99999 : 99, q + 1))}
-                    className="h-10 w-10 rounded-r-full text-base font-bold t-soft hover:bg-amber-50"
+                    className="h-10 w-10 rounded-r-full text-base font-bold text-stone-600 hover:bg-amber-50"
                     aria-label="เพิ่มจำนวน"
                   >
                     +
@@ -3095,19 +3080,19 @@ export default function ProductDetail({
                               alt={sd.name || `แบบที่ ${i + 1}`}
                               className="h-12 w-12 rounded-lg object-cover ring-1 ring-sky-200"
                             />
-                            {sd.name && <span className="mt-0.5 block text-[9px] font-bold t-faint">{sd.name}</span>}
+                            {sd.name && <span className="mt-0.5 block text-[9px] font-bold text-stone-400">{sd.name}</span>}
                           </span>
                         ))}
                         <span className="min-w-0 flex-1">
-                          <span className="block text-[12px] font-bold t-ink">ลายที่ {i + 1}</span>
-                          <span className="block truncate text-[10px] t-faint">{d.summary}</span>
+                          <span className="block text-[12px] font-bold text-stone-800">ลายที่ {i + 1}</span>
+                          <span className="block truncate text-[10px] text-stone-400">{d.summary}</span>
                         </span>
                         {/* จำนวนของลายนี้ — ทีมผลิตอ่านจากตรงนี้ว่าลายไหนกี่ชิ้น */}
                         <span className="flex shrink-0 items-center rounded-full bg-amber-50 ring-1 ring-amber-200">
                           <button
                             type="button"
                             onClick={() => bumpDesignQty(i, -1)}
-                            className="h-8 w-8 rounded-l-full text-sm font-bold t-soft hover:bg-amber-100"
+                            className="h-8 w-8 rounded-l-full text-sm font-bold text-stone-600 hover:bg-amber-100"
                             aria-label={`ลดจำนวนลายที่ ${i + 1}`}
                           >
                             −
@@ -3122,7 +3107,7 @@ export default function ProductDetail({
                           <button
                             type="button"
                             onClick={() => bumpDesignQty(i, 1)}
-                            className="h-8 w-8 rounded-r-full text-sm font-bold t-soft hover:bg-amber-100"
+                            className="h-8 w-8 rounded-r-full text-sm font-bold text-stone-600 hover:bg-amber-100"
                             aria-label={`เพิ่มจำนวนลายที่ ${i + 1}`}
                           >
                             +
@@ -3158,7 +3143,7 @@ export default function ProductDetail({
                     กันเข้าใจผิดที่แพงที่สุดของหน้านี้ — จำนวนที่สั่ง = ผลรวมของทุกลาย
                     ลูกค้าที่คิดว่า "ลายที่ 2 คือด้านหลัง" จะได้ของมาสองเท่าโดยไม่รู้ตัว
                   */}
-                  <p className="mt-1.5 px-1 text-[11px] leading-relaxed t-soft">
+                  <p className="mt-1.5 px-1 text-[11px] leading-relaxed text-stone-500">
                     แต่ละลาย = สินค้าคนละชิ้น จำนวนที่สั่งคือผลรวมของทุกลาย
                     {multiSide && (
                       <span className="mt-1 block font-bold text-amber-700">
@@ -3176,7 +3161,7 @@ export default function ProductDetail({
                     setConsultWarn(true);
                     document.getElementById("consult-box")?.scrollIntoView({ block: "center", behavior: "smooth" });
                   }}
-                  className="mt-2 w-full rounded-xl bg-emerald-50 px-3 py-2 text-left text-xs font-bold t-ok ring-1 ring-emerald-200 transition hover:bg-emerald-100"
+                  className="mt-2 w-full rounded-xl bg-emerald-50 px-3 py-2 text-left text-xs font-bold text-emerald-800 ring-1 ring-emerald-200 transition hover:bg-emerald-100"
                 >
                   💬 งานนี้ต้องคุยลายกับแอดมินก่อน — แตะเพื่อไปที่ขั้นตอนทักไลน์
                 </button>
@@ -3189,7 +3174,7 @@ export default function ProductDetail({
                     setExtraOpen("art");
                     document.getElementById("art-link")?.scrollIntoView({ block: "center", behavior: "smooth" });
                   }}
-                  className="mt-2 w-full rounded-xl bg-rose-50 px-3 py-2 text-left text-xs font-bold t-danger ring-1 ring-rose-200 transition hover:bg-rose-100"
+                  className="mt-2 w-full rounded-xl bg-rose-50 px-3 py-2 text-left text-xs font-bold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100"
                 >
                   🎨 สินค้านี้ต้องแนบลายก่อนสั่ง — แตะเพื่ออัปโหลดรูป หรือใส่ลิงก์ไฟล์/อีเมล
                 </button>
@@ -3223,31 +3208,31 @@ export default function ProductDetail({
                 </p>
               ) : matrix ? (
                 <>
-                  <p className="mt-2 text-sm t-soft">
+                  <p className="mt-2 text-sm text-stone-500">
                     {formatPrice(unitPrice)} / {matrix.unit} × {qty.toLocaleString("th-TH")}
                     {designFee > 0 && <> + Add on {formatPrice(designFee)}</>} ={" "}
                     <span className="font-extrabold text-amber-600">{formatPrice(unitPrice * qty + designFee)}</span>
                   </p>
                   {/* Add on ที่รวมอยู่ในราคาต่อหน่วยแล้ว — บอกว่าราคาต่อหน่วยที่เห็นมีอะไรบวกอยู่ข้างใน */}
                   {unitAddOnTotal > 0 && (
-                    <p className="mt-0.5 text-xs leading-relaxed t-soft">
+                    <p className="mt-0.5 text-xs leading-relaxed text-stone-500">
                       รวม Add on ในราคาต่อ{matrix.unit} แล้ว {formatPrice(unitAddOnTotal)} ={" "}
                       {unitAddOns.map((f, i) => (
                         <span key={`${f.label}-${i}`}>
                           {i > 0 ? " + " : ""}
-                          <strong className="font-bold t-soft">{f.label}</strong> {formatPrice(f.amount)}
+                          <strong className="font-bold text-stone-600">{f.label}</strong> {formatPrice(f.amount)}
                         </span>
                       ))}
                     </p>
                   )}
                   {/* แจกแจงค่าเพิ่มสั้น ๆ — ลูกค้าจะได้รู้ว่ายอดที่บวกมาเป็นค่าอะไร ไม่ต้องเดา */}
                   {designFee > 0 && feeLines.length > 0 && (
-                    <p className="mt-0.5 text-xs leading-relaxed t-soft">
+                    <p className="mt-0.5 text-xs leading-relaxed text-stone-500">
                       Add on ={" "}
                       {feeLines.map((f, i) => (
                         <span key={`${f.label}-${i}`}>
                           {i > 0 ? " + " : ""}
-                          <strong className="font-bold t-soft">{f.label}</strong> {formatPrice(f.amount)}
+                          <strong className="font-bold text-stone-600">{f.label}</strong> {formatPrice(f.amount)}
                           {f.note ? ` (${f.note})` : ""}
                         </span>
                       ))}
@@ -3285,7 +3270,7 @@ export default function ProductDetail({
                           setDesigns((d) => Math.max(1, d - 1));
                         }}
                         disabled={designsSet && designs <= 1}
-                        className="h-8 w-8 rounded-l-full text-sm font-bold t-ok hover:bg-teal-50 disabled:opacity-30"
+                        className="h-8 w-8 rounded-l-full text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
                         aria-label="ลดจำนวนลาย"
                       >
                         −
@@ -3318,21 +3303,21 @@ export default function ProductDetail({
                           setDesigns((d) => Math.min(maxDesigns, d + 1));
                         }}
                         disabled={designs >= maxDesigns}
-                        className="h-8 w-8 rounded-r-full text-sm font-bold t-ok hover:bg-teal-50 disabled:opacity-30"
+                        className="h-8 w-8 rounded-r-full text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
                         aria-label="เพิ่มจำนวนลาย"
                       >
                         +
                       </button>
                     </div>
                     {!designsTouched && artFiles.length > 0 && (
-                      <span className="rounded-full bg-teal-600/10 px-2 py-0.5 text-[10px] font-bold t-ok" title="นับตามรูปลายที่แนบ — กด +/− เพื่อปรับเอง">
+                      <span className="rounded-full bg-teal-600/10 px-2 py-0.5 text-[10px] font-bold text-teal-700" title="นับตามรูปลายที่แนบ — กด +/− เพื่อปรับเอง">
                         ✨ นับตามรูปที่แนบ
                       </span>
                     )}
                     {/* ไม่ต้องมีป้าย +฿ ตรงนี้ — บรรทัดสรุปด้านบนกับคำอธิบายใต้กล่องบอกยอดค่าคละอยู่แล้ว */}
                   </div>
                   {!designsSet && (
-                    <p className={`mt-1 text-[10px] font-bold leading-snug ${designsWarn ? "t-danger" : "text-amber-700"}`}>
+                    <p className={`mt-1 text-[10px] font-bold leading-snug ${designsWarn ? "text-rose-600" : "text-amber-700"}`}>
                       👉 กด + / − หรือแตะที่ตัวเลขเพื่อระบุจำนวนลายที่จะคละ — แนบรูปลายแล้วระบบจะนับให้อัตโนมัติ
                     </p>
                   )}
@@ -3355,10 +3340,10 @@ export default function ProductDetail({
                       const simple = mt.baseFee === 0 && mt.includedDesigns === 1;
                       const over = Math.max(0, designs - qty);
                       return (
-                        <div className="mt-1 space-y-1 text-[11px] leading-relaxed t-ok">
+                        <div className="mt-1 space-y-1 text-[11px] leading-relaxed text-teal-800">
                           {/* เพดานจากจำนวนชิ้นที่ใส่ได้จริงต่อแผ่น — บอกเหตุผลไว้ ไม่งั้นลูกค้างงว่าทำไมกด + ไม่ขึ้น */}
                           {unitCap ? (
-                            <p className="t-ok">
+                            <p className="text-teal-700">
                               📐 ขนาดที่เลือกได้ <strong className="font-bold">{unitCap.toLocaleString("th-TH")} ชิ้น</strong> ต่อ 1{" "}
                               {unit} — สั่ง {qty.toLocaleString("th-TH")} {unit} จึงคละได้สูงสุด{" "}
                               <strong className="font-bold">{capByPieces.toLocaleString("th-TH")} ลาย</strong>
@@ -3412,7 +3397,7 @@ export default function ProductDetail({
                                 ?.fromQty ?? mixRule.onePerUnitFromQty;
                             if (capped)
                               return (
-                                <p className="t-ok">
+                                <p className="text-teal-700">
                                   📐 สั่งตั้งแต่ {onePerFrom?.toLocaleString("th-TH")} {unit}ขึ้นไป ต้องมีอย่างน้อย 1 ลายต่อ 1 {unit}
                                   — สั่ง {qty.toLocaleString("th-TH")} {unit} จึงคละได้สูงสุด{" "}
                                   <strong className="font-bold">{qty.toLocaleString("th-TH")} ลาย</strong>
@@ -3420,7 +3405,7 @@ export default function ProductDetail({
                               );
                             if (onePerFrom)
                               return (
-                                <p className="t-ok">
+                                <p className="text-teal-700">
                                   ✨ ช่วงนี้คละได้อิสระ หลายลายอยู่บน{unit}เดียวกันได้ · ตั้งแต่{" "}
                                   {onePerFrom.toLocaleString("th-TH")} {unit}ขึ้นไป ต้องมีอย่างน้อย 1 ลายต่อ 1 {unit}
                                 </p>
@@ -3437,7 +3422,7 @@ export default function ProductDetail({
                       const perDesign = Math.max(1, Math.floor(qty / Math.max(1, designs)));
                       const tierLabel = matrix ? matrix.tiers[tierIndex(matrix, perDesign)]?.label?.trim() : "";
                       return (
-                        <p className="mt-1 text-[11px] leading-relaxed t-ok">
+                        <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
                           💡 คละ {designs.toLocaleString("th-TH")} ลาย เกินโควตาเรทนี้ (รวมในราคา {included.toLocaleString("th-TH")} ลาย ·
                           ขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {unit}) — ราคาจึงคิดตามชิ้นต่อลาย:
                           ตกลายละ {perDesign.toLocaleString("th-TH")} {unit} → ใช้เรท{" "}
@@ -3455,7 +3440,7 @@ export default function ProductDetail({
                       const perDesign = Math.max(1, Math.floor(qty / Math.max(1, designs)));
                       const tierLabel = matrix ? matrix.tiers[tierIndex(matrix, perDesign)]?.label?.trim() : "";
                       return (
-                        <p className="mt-1 text-[11px] leading-relaxed t-ok">
+                        <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
                           💡 สั่ง {qty.toLocaleString("th-TH")} {unit} คละ {designs.toLocaleString("th-TH")} ลาย
                           = ตกลายละ {perDesign.toLocaleString("th-TH")} {unit} ราคาจึงคิดตามเรท{" "}
                           <strong className="font-bold">
@@ -3467,7 +3452,7 @@ export default function ProductDetail({
                       );
                     })()
                   ) : freeMix && rate?.minPerDesign ? (
-                    <p className="mt-1 text-[11px] leading-relaxed t-ok">
+                    <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
                       {/* เพดานลาย = จำนวน "ชิ้น" ไม่ใช่จำนวนหน่วยสั่ง — สินค้าขายเป็นเซ็ต (เซ็ตละ N ชิ้น) คละได้ตามชิ้น */}
                       ✨ ช่วงราคาปลีกคละลายได้อิสระ — ลายละกี่ชิ้นก็ได้ ไม่คิดเพิ่ม (สูงสุด {maxDesigns.toLocaleString("th-TH")} ลาย)
                       {rate.freeMixBelowQty
@@ -3475,7 +3460,7 @@ export default function ProductDetail({
                         : ""}
                     </p>
                   ) : rate?.minPerDesign ? (
-                  <p className="mt-1 text-[11px] leading-relaxed t-ok">
+                  <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
                     รวมในราคา {included.toLocaleString("th-TH")} ลาย (ขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"})
                     {rate.extraDesignFee
                       ? ` · คละเกินได้ ลายละ +${formatPrice(rate.extraDesignFee)}`
@@ -3529,17 +3514,17 @@ export default function ProductDetail({
               <div className="flex items-start gap-2">
                 <span className="text-lg leading-none">💬</span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold t-ink">
+                  <p className="text-sm font-bold text-stone-700">
                     คุยลายกับแอดมินก่อนสั่ง
                     {consultOk ? (
                       <span className="ml-2 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">คุยแล้ว ✓</span>
                     ) : consultGate ? (
                       <span className="ml-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">ต้องคุยก่อน *</span>
                     ) : (
-                      <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold t-ok">แนะนำ</span>
+                      <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">แนะนำ</span>
                     )}
                   </p>
-                  <p className="mt-1 text-[12px] leading-relaxed t-soft">{consult.note?.trim() || CONSULT_NOTE_DEFAULT}</p>
+                  <p className="mt-1 text-[12px] leading-relaxed text-stone-600">{consult.note?.trim() || CONSULT_NOTE_DEFAULT}</p>
                 </div>
               </div>
 
@@ -3563,8 +3548,8 @@ export default function ProductDetail({
                   className="mt-0.5 h-4 w-4 accent-emerald-500"
                 />
                 <span className="text-xs">
-                  <span className="block font-bold t-ink">คุยกับแอดมินเรียบร้อยแล้ว — ตกลงลายกันแล้ว</span>
-                  <span className="block t-soft">ติ๊กช่องนี้แล้วกดสั่งได้เลย ทางร้านจะเริ่มงานตามลายที่ตกลงกันไว้</span>
+                  <span className="block font-bold text-stone-700">คุยกับแอดมินเรียบร้อยแล้ว — ตกลงลายกันแล้ว</span>
+                  <span className="block text-stone-500">ติ๊กช่องนี้แล้วกดสั่งได้เลย ทางร้านจะเริ่มงานตามลายที่ตกลงกันไว้</span>
                 </span>
               </label>
 
@@ -3574,19 +3559,19 @@ export default function ProductDetail({
                   value={consultRef}
                   onChange={(e) => setConsultRef(e.target.value.slice(0, 120))}
                   placeholder="ชื่อไลน์ที่ใช้คุย / เลขอ้างอิงที่แอดมินให้ไว้ (ไม่บังคับ)"
-                  className="mt-2 w-full rounded-xl bg-white px-3.5 py-2 text-sm t-ink ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  className="mt-2 w-full rounded-xl bg-white px-3.5 py-2 text-sm text-stone-700 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-300"
                 />
               )}
 
               {consultWarn && !consultOk && (
-                <p className="mt-2 text-[11px] font-bold t-danger">
+                <p className="mt-2 text-[11px] font-bold text-rose-600">
                   ⚠️ งานนี้ต้องคุยลายกับแอดมินก่อนนะครับ — ทักไลน์คุยให้จบ แล้วกลับมาติ๊กช่องด้านบน
                 </p>
               )}
             </div>
           )}
 
-          <div className={`ord-card flat mt-4 overflow-hidden ${studioMode ? "hidden" : ""}`}>
+          <div className={`mt-4 overflow-hidden rounded-3xl bg-white ring-1 ring-stone-200 ${studioMode ? "hidden" : ""}`}>
             <button
               type="button"
               onClick={() => {
@@ -3598,10 +3583,10 @@ export default function ProductDetail({
             >
               <span className="text-lg leading-none">🎨</span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-bold t-ink">
+                <span className="block text-sm font-bold text-stone-700">
                   แนบลายของคุณ
                   {artProvided ? (
-                    <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold t-ok">
+                    <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
                       {artFiles.length > 0 ? `แนบแล้ว ${artFiles.length} รูป` : "ใส่ลิงก์แล้ว"}
                     </span>
                   ) : artRequired && !staffOrdering ? (
@@ -3611,9 +3596,9 @@ export default function ProductDetail({
                     <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700">แนะนำ</span>
                   )}
                 </span>
-                <span className="block text-[11px] t-faint">อัปโหลดรูป (ลากมาวางได้) · หรือแนบลิงก์ไฟล์ / อีเมล</span>
+                <span className="block text-[11px] text-stone-400">อัปโหลดรูป (ลากมาวางได้) · หรือแนบลิงก์ไฟล์ / อีเมล</span>
               </span>
-              <span className={`shrink-0 t-faint transition ${extraOpen === "art" ? "rotate-180" : ""}`}>⌄</span>
+              <span className={`shrink-0 text-stone-400 transition ${extraOpen === "art" ? "rotate-180" : ""}`}>⌄</span>
             </button>
             {(extraOpen === "art" || (artBlocked && !artTouched)) && <div className="px-4 pb-4">
               {/* ── ลายของลูกค้า: อัปโหลดภาพตัวอย่าง + ลิงก์ไฟล์ต้นฉบับ ── */}
@@ -3638,8 +3623,8 @@ export default function ProductDetail({
                 {/* 1) อัปโหลดภาพ — หัวข้อใหญ่ซ้ำกับแถบพับด้านบน จึงตัดออก เข้าเรื่องเป็นขั้นตอนเลย */}
                 <div className="flex items-center gap-2">
                   <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-sky-600 text-[11px] font-bold text-white">1</span>
-                  <p className="text-xs font-bold t-ink">
-                    อัปโหลดภาพตัวอย่าง <span className="font-normal t-faint">— ใช้เป็นแนวทางให้กราฟฟิก</span>
+                  <p className="text-xs font-bold text-stone-700">
+                    อัปโหลดภาพตัวอย่าง <span className="font-normal text-stone-400">— ใช้เป็นแนวทางให้กราฟฟิก</span>
                   </p>
                 </div>
 
@@ -3660,7 +3645,7 @@ export default function ProductDetail({
                           ✕
                         </button>
                         {f.w > 0 && (
-                          <p className={`mt-0.5 w-20 text-center text-[9px] leading-tight ${Math.max(f.w, f.h) < 1500 ? "font-bold text-amber-600" : "t-faint"}`}>
+                          <p className={`mt-0.5 w-20 text-center text-[9px] leading-tight ${Math.max(f.w, f.h) < 1500 ? "font-bold text-amber-600" : "text-stone-400"}`}>
                             {f.w}×{f.h}
                             {Math.max(f.w, f.h) < 1500 ? " · ภาพเล็ก" : ""}
                           </p>
@@ -3700,7 +3685,7 @@ export default function ProductDetail({
                     ) : (
                       <>
                         <span className="text-xs font-extrabold text-sky-700">🖼️ แตะเลือกไฟล์ · ลากมาวาง · ⌘/Ctrl+V</span>
-                        <span className="text-[10px] font-normal t-faint">JPG / PNG / WEBP · สูงสุด 5 รูป · ไม่เกิน 15MB</span>
+                        <span className="text-[10px] font-normal text-stone-400">JPG / PNG / WEBP · สูงสุด 5 รูป · ไม่เกิน 15MB</span>
                       </>
                     )}
                     <input
@@ -3716,12 +3701,12 @@ export default function ProductDetail({
                     />
                   </label>
                 )}
-                {artErr && <p className="mt-1.5 text-[11px] font-semibold t-danger">⚠️ {artErr}</p>}
+                {artErr && <p className="mt-1.5 text-[11px] font-semibold text-rose-600">⚠️ {artErr}</p>}
 
                 {/* 2) ลิงก์ไฟล์ต้นฉบับ */}
                 <div className="mt-3.5 flex items-center gap-2">
                   <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-sky-600 text-[11px] font-bold text-white">2</span>
-                  <label htmlFor="art-link" className="text-xs font-bold t-ink">
+                  <label htmlFor="art-link" className="text-xs font-bold text-stone-700">
                     ลิงก์ไฟล์งานจริง / อีเมล <span className="font-semibold text-sky-700">(แนะนำ — ได้ไฟล์คุณภาพเต็ม)</span>
                   </label>
                 </div>
@@ -3731,9 +3716,9 @@ export default function ProductDetail({
                   value={artLink}
                   onChange={(e) => setArtLink(e.target.value.slice(0, 500))}
                   placeholder="เช่น https://drive.google.com/…  หรือ  yourmail@gmail.com"
-                  className="mt-1.5 w-full rounded-xl bg-white px-3.5 py-2 text-sm t-ink ring-1 ring-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-300"
+                  className="mt-1.5 w-full rounded-xl bg-white px-3.5 py-2 text-sm text-stone-700 ring-1 ring-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-300"
                 />
-                <p className="mt-1 text-[10px] leading-relaxed t-faint">
+                <p className="mt-1 text-[10px] leading-relaxed text-stone-400">
                   Google Drive / Dropbox / OneDrive หรืออีเมลที่ส่งไฟล์ไว้ — เราดึงไฟล์ต้นฉบับไปใช้ผลิต
                 </p>
               </div>
@@ -3744,14 +3729,14 @@ export default function ProductDetail({
               เดิมเป็นแถบพับที่หัวข้อเขียน "หมายเหตุถึงร้าน" ซ้ำกับป้ายในช่องอีกที
               ลูกค้าพิมพ์ช่องนี้บ่อย (สี/ข้อความบนงาน) ซ่อนไว้แล้วหาไม่เจอ → เหลือหัวข้อเดียว ช่องพร้อมพิมพ์เลย
             */}
-            <div className="border-t border-[#E2F3FE] px-4 py-3.5">
+            <div className="border-t border-stone-100 px-4 py-3.5">
               <label htmlFor="order-note" className="flex cursor-text items-center gap-2">
                 <span className="text-lg leading-none">📝</span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-bold t-ink">
-                    หมายเหตุถึงร้าน <span className="font-semibold t-faint">(ไม่บังคับ)</span>
+                  <span className="block text-sm font-bold text-stone-700">
+                    หมายเหตุถึงร้าน <span className="font-semibold text-stone-400">(ไม่บังคับ)</span>
                   </span>
-                  <span className="block text-[11px] t-faint">สีที่ต้องการ · ข้อความที่อยากให้ใส่ · รายละเอียดเพิ่มเติม</span>
+                  <span className="block text-[11px] text-stone-400">สีที่ต้องการ · ข้อความที่อยากให้ใส่ · รายละเอียดเพิ่มเติม</span>
                 </span>
               </label>
               <textarea
@@ -3760,14 +3745,14 @@ export default function ProductDetail({
                 onChange={(e) => setNote(e.target.value.slice(0, 500))}
                 rows={3}
                 placeholder="พิมพ์สิ่งที่อยากบอกร้านได้เลย — เช่น อยากได้สีเข้มกว่าในภาพ · ใส่ชื่อ “iDucky” ใต้โลโก้"
-                className="ord-input mt-2 resize-y leading-relaxed transition placeholder:text-[#93AAC8] focus:outline-none focus:ring-2 focus:ring-amber-300"
+                className="mt-2 w-full resize-y rounded-2xl bg-white px-4 py-2.5 text-sm leading-relaxed text-stone-700 ring-1 ring-amber-200 transition placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-300"
               />
               {/* ตัวนับโผล่เมื่อเริ่มพิมพ์ · ใกล้เต็มเปลี่ยนเป็นแดงเตือนก่อนโดนตัดที่ 500
                   (ใช้ rose ไม่ใช่ amber — amber ถูกรีแมปเป็นฟ้าแบรนด์ใน globals.css แล้ว ไม่อ่านเป็นคำเตือน) */}
               {note.length > 0 && (
                 <p
                   className={`mt-1 text-right text-[11px] tabular-nums ${
-                    note.length >= 450 ? "font-bold text-rose-500" : "t-faint"
+                    note.length >= 450 ? "font-bold text-rose-500" : "text-stone-400"
                   }`}
                 >
                   {note.length}/500
@@ -3821,15 +3806,15 @@ export default function ProductDetail({
       {/* คำถามที่พบบ่อย (AEO) */}
       {faqs.length > 0 && (
         <section className="mt-14">
-          <h2 className="mb-5 text-xl font-extrabold t-ink">❓ คำถามที่พบบ่อย</h2>
+          <h2 className="mb-5 text-xl font-extrabold text-amber-950">❓ คำถามที่พบบ่อย</h2>
           <div className="space-y-3">
             {faqs.map((f, i) => (
               <details key={i} className="group rounded-2xl border border-amber-100 bg-white p-4 open:shadow-sm">
-                <summary className="flex cursor-pointer list-none items-center justify-between font-bold t-ink">
+                <summary className="flex cursor-pointer list-none items-center justify-between font-bold text-amber-950">
                   {f.q}
                   <span className="ml-3 text-amber-400 transition group-open:rotate-45">＋</span>
                 </summary>
-                <p className="mt-2 whitespace-pre-line text-sm leading-relaxed t-soft">{f.a}</p>
+                <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-stone-600">{f.a}</p>
               </details>
             ))}
           </div>
@@ -3839,7 +3824,7 @@ export default function ProductDetail({
       {/* สินค้าใกล้เคียง */}
       {related.length > 0 && (
         <section className="mt-14">
-          <h2 className="mb-5 text-xl font-extrabold t-ink">
+          <h2 className="mb-5 text-xl font-extrabold text-amber-950">
             {category.emoji} สินค้าอื่นในหมวด{category.name}
           </h2>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -3858,7 +3843,7 @@ export default function ProductDetail({
       >
         <div className="flex items-center gap-3">
           <div className="min-w-0">
-            <p className="truncate text-[11px] t-faint">
+            <p className="truncate text-[11px] text-stone-400">
               {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
               {artFiles.length > 0 ? ` · แนบลาย ${artFiles.length} รูป` : ""}
             </p>
@@ -3881,7 +3866,9 @@ export default function ProductDetail({
               type="button"
               onClick={handleAdd}
               disabled={(useCustom && !customValid) || artBlocked || inputErrors.length > 0 || belowMin}
-              className={`ord-btn lg ml-auto shrink-0 ${added ? "ok" : "yolk"}`}
+              className={`ml-auto shrink-0 rounded-full px-6 py-3 text-sm font-bold text-white shadow-lg transition ${
+                added ? "bg-emerald-500" : "bg-amber-400 hover:bg-amber-500 disabled:opacity-40"
+              }`}
             >
               {added
                 ? "✓ เพิ่มแล้ว!"
@@ -3912,14 +3899,14 @@ export default function ProductDetail({
         const save = atNeed > 0 && curAtNeed > atNeed ? curAtNeed - atNeed : 0;
         return (
           <div
-            className="fixed inset-0 z-[90] flex items-end justify-center bg-[#173A6B]/50 p-4 backdrop-blur-sm sm:items-center"
+            className="fixed inset-0 z-[90] flex items-end justify-center bg-stone-900/50 p-4 backdrop-blur-sm sm:items-center"
             onClick={() => setRateLock(null)}
             role="dialog"
             aria-modal="true"
             aria-label={`${rateLock.label} ยังใช้ไม่ได้`}
           >
             <div
-              className="shopp-modal-box p-5"
+              className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl ring-1 ring-stone-200"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start gap-3">
@@ -3927,12 +3914,12 @@ export default function ProductDetail({
                   🔒
                 </span>
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-[15px] font-extrabold leading-snug t-ink">
+                  <h3 className="text-[15px] font-extrabold leading-snug text-stone-800">
                     “{rateLock.label}” ยังใช้ไม่ได้ตอนนี้
                   </h3>
-                  <p className="mt-1 text-[13px] leading-relaxed t-soft">
+                  <p className="mt-1 text-[13px] leading-relaxed text-stone-600">
                     เรทนี้ต้องสั่งรวมอย่างน้อย{" "}
-                    <strong className="t-ink">
+                    <strong className="text-stone-800">
                       {need.toLocaleString("th-TH")} {unit}
                     </strong>{" "}
                     — ตอนนี้คุณสั่ง {qty.toLocaleString("th-TH")} {unit}
@@ -3949,13 +3936,13 @@ export default function ProductDetail({
               </div>
 
               {rateLock.desc && (
-                <p className="mt-3 rounded-2xl bg-[#F2FAFF] px-3 py-2 text-[12px] leading-relaxed t-soft ring-1 ring-[#E2F3FE]">
+                <p className="mt-3 rounded-2xl bg-stone-50 px-3 py-2 text-[12px] leading-relaxed text-stone-600 ring-1 ring-stone-100">
                   {rateLock.desc}
                 </p>
               )}
 
               {save > 0 && (
-                <p className="mt-2 rounded-2xl bg-teal-50 px-3 py-2 text-[12px] font-bold leading-relaxed t-ok ring-1 ring-teal-100">
+                <p className="mt-2 rounded-2xl bg-teal-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-teal-800 ring-1 ring-teal-100">
                   ✨ สั่งครบ {need.toLocaleString("th-TH")} {unit} จะได้ {formatPrice(atNeed)}/{unit} — ถูกกว่าเรทที่ใช้อยู่{" "}
                   {formatPrice(save)}/{unit}
                 </p>
@@ -3980,7 +3967,7 @@ export default function ProductDetail({
                 <button
                   type="button"
                   onClick={() => setRateLock(null)}
-                  className="rounded-2xl px-4 py-2 text-sm font-bold t-soft transition hover:bg-[#E2F3FE] hover:text-[#173A6B]"
+                  className="rounded-2xl px-4 py-2 text-sm font-bold text-stone-500 transition hover:bg-stone-100 hover:text-stone-700"
                 >
                   ไว้ก่อน ใช้เรทเดิม
                 </button>
@@ -4023,12 +4010,12 @@ export default function ProductDetail({
                     zoomStep(a.d);
                   }}
                   aria-label={a.label}
-                  className={`absolute ${a.side} top-1/2 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/90 pb-1 text-3xl font-bold leading-none t-soft shadow-lg transition hover:bg-white hover:text-amber-600`}
+                  className={`absolute ${a.side} top-1/2 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/90 pb-1 text-3xl font-bold leading-none text-stone-600 shadow-lg transition hover:bg-white hover:text-amber-600`}
                 >
                   {a.glyph}
                 </button>
               ))}
-              <span className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-white/90 px-3 py-1 text-xs font-bold tabular-nums t-ink shadow-lg">
+              <span className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-white/90 px-3 py-1 text-xs font-bold tabular-nums text-stone-700 shadow-lg">
                 {zi + 1}/{zoomList.length}
               </span>
             </>
@@ -4036,7 +4023,7 @@ export default function ProductDetail({
           <button
             type="button"
             onClick={() => setZoomSrc("")}
-            className="absolute right-4 top-4 rounded-full bg-white/90 px-4 py-2 text-sm font-bold t-ink shadow-lg transition hover:bg-white"
+            className="absolute right-4 top-4 rounded-full bg-white/90 px-4 py-2 text-sm font-bold text-stone-700 shadow-lg transition hover:bg-white"
           >
             ✕ ปิด
           </button>
@@ -4077,7 +4064,6 @@ export default function ProductDetail({
           onApply={applyStudio}
         />
       )}
-      </div>
     </div>
   );
 }
