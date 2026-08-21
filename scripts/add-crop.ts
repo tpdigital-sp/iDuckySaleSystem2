@@ -85,7 +85,8 @@ const FILES = [
 const UNIT = "ตัว";
 const FRONT_LABEL = "ขนาดสกรีน ด้านหน้า";
 const BACK_LABEL = "ขนาดสกรีน ด้านหลัง";
-const EMB_LABEL = "ขนาดปัก";
+// งานปักของร้านทำด้านหน้าเป็นหลัก — ใส่ชื่อด้านไว้ในป้ายให้ตรงกับกลุ่มขนาดสกรีน
+const EMB_LABEL = "ขนาดปัก ด้านหน้า";
 const FLEX_FINISH_LABEL = "ผิวงาน FLEX";
 const COLOR_LABEL = "สีเสื้อ";
 const COLOR_SUB_LABEL = "สีเสื้อ (งานซับลิเมชั่น)";

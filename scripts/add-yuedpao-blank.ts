@@ -40,7 +40,8 @@ const IMG = (name: string) =>
 const UNIT = "ตัว";
 const FRONT_LABEL = "ขนาดสกรีน ด้านหน้า";
 const BACK_LABEL = "ขนาดสกรีน ด้านหลัง";
-const EMB_LABEL = "ขนาดปัก";
+// งานปักของร้านทำด้านหน้าเป็นหลัก — ใส่ชื่อด้านไว้ในป้ายให้ตรงกับกลุ่มขนาดสกรีน
+const EMB_LABEL = "ขนาดปัก ด้านหน้า";
 const RATE_DTF = "พิมพ์ DTF/DFT";
 const RATE_FLEX = "พิมพ์ FLEX";
 const RATE_EMB = "งานปัก";
