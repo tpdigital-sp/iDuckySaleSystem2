@@ -2633,7 +2633,10 @@ main:has(.dl-page) + .dl footer{margin-top:0}
    ═══════════════════════════════════════════════════════════════════════════ */
 /* padding-top ต้องคง 200px ของ .top-stack ไว้ (คลาสนี้อยู่บน element เดียวกัน ถ้าใส่ padding สั้นกว่าจะทับ
    แล้วเนื้อหามุดไปอยู่ใต้แถบเมนู) */
-.dl .plist-top{padding:226px 0 70px;background:var(--pale-bg)}
+/* หน้ารายการสินค้า: การ์ดสินค้าเรียงเต็มหน้าอยู่แล้ว เมฆข้างหลังทำให้ลายตา → พื้นขาวล้วน */
+.dl .plist-top{padding:226px 0 70px;
+  background:linear-gradient(180deg,var(--sky-100) 0,#F4FAFF 120px,#FFFFFF 215px,#FFFFFF 100%)}
+.dl .plist-top>.bg-cloud{display:none}
 .dl .plist-wrap{position:relative;z-index:1;width:min(100% - 40px,var(--wrap));margin-inline:auto}
 /* เมฆพื้นหลัง — ตำแหน่งวัดจากขอบบนของ .top-stack ที่มี padding-top 200px */
 .dl .plist-c1{width:190px;top:250px;left:-52px;opacity:.85;animation:bgFloat1 18s ease-in-out infinite, bgPuff 8s ease-in-out infinite}
@@ -2766,3 +2769,9 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .dl.acd-page .acd-c2,.dl.acd-page .acd-c3,.dl.acd-page .acd-c4,
 .dl.auth-page .auth-c2,.dl.auth-page .auth-c3,
 .dl .plist-top>.plist-c2,.dl .plist-top>.plist-c3{opacity:.28 !important}
+
+/* --- พื้นขาวล้วน (.shopp.plain) — ใช้กับหน้าสินค้าที่ข้อมูลแน่นที่สุด ---
+   หน้าอื่นมีเมฆลอย+ฟ้าจางเป็นบรรยากาศได้ แต่หน้าสินค้าตัวหนังสือ/ตัวเลือก/ตารางเยอะมาก
+   มีอะไรขยับอยู่ข้างหลังแล้วอ่านล้าตา → พื้นขาวล้วน เหลือฟ้าแค่แถบบนสุดให้ต่อกับแถบเมนู */
+.shopp.plain{background:linear-gradient(180deg,var(--sky-100) 0,#F4FAFF 120px,#FFFFFF 215px,#FFFFFF 100%)}
+.shopp.plain .shopp-sky{display:none}

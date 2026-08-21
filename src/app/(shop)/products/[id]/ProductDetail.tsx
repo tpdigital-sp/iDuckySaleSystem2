@@ -2150,7 +2150,7 @@ export default function ProductDetail({
   );
 
   return (
-    <div className="shopp">
+    <div className="shopp plain">
       {/* เมฆลอย — ชุดเดียวกับหน้าแรก */}
       <div className="shopp-sky" aria-hidden="true">
         <img className="oc1" src="/landing/cloud.webp" alt="" />
