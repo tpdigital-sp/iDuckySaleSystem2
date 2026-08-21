@@ -2311,15 +2311,17 @@ main:has(.dl-page) + .dl footer{margin-top:0}
    จะไปล้าง margin/padding ของ utility ทั้งหน้า) — ใช้คลาสชุดนี้คู่กับ utility
    ของ Tailwind แทน โดยยืม token สีและฟอนต์ชุดเดียวกับหน้าแรกมาใช้
    ═══════════════════════════════════════════════════════════════════════════ */
-.ordp{position:relative;font-family:var(--body);color:var(--navy);line-height:1.7;
+/* ดึงพื้นฟ้าขึ้นไปไว้หลังแถบเมนู (แถบเมนูเป็นกระจกโปร่ง) — สูตรเดียวกับ .top-stack ของหน้าแรก
+   ไม่งั้นจะมีแถบขาวคั่นใต้เมนู แล้วหัวเว็บดูหลุดจากหน้า */
+.ordp{position:relative;margin-top:-200px;padding-top:200px;font-family:var(--body);color:var(--navy);line-height:1.7;
   background:linear-gradient(168deg,var(--sky-200) 0%,var(--sky-100) 26%,var(--sky-50) 48%,#EAF6FE 68%,#F5FBFF 86%,#FFFFFF 100%)}
 .ordp-in{position:relative;z-index:1;width:min(100% - 32px,1160px);margin-inline:auto;padding:26px 0 60px}
 /* เมฆลอย — ชุดเดียวกับหน้าแรก */
 .ordp-sky{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}
 .ordp-sky img{position:absolute;opacity:.85;filter:drop-shadow(0 10px 20px rgba(44,129,196,.12))}
-.ordp-sky .oc1{width:190px;top:120px;left:-54px;animation:bgFloat1 18s ease-in-out infinite, bgPuff 8s ease-in-out infinite}
-.ordp-sky .oc2{width:230px;top:340px;right:-66px;opacity:.7;animation:bgFloat2 22s ease-in-out infinite reverse, bgPuff 9s ease-in-out infinite reverse}
-.ordp-sky .oc3{width:130px;top:760px;left:4%;opacity:.45;animation:bgFloat3 15s ease-in-out infinite, bgPuff 7s ease-in-out infinite}
+.ordp-sky .oc1{width:190px;top:300px;left:-54px;animation:bgFloat1 18s ease-in-out infinite, bgPuff 8s ease-in-out infinite}
+.ordp-sky .oc2{width:230px;top:520px;right:-66px;opacity:.7;animation:bgFloat2 22s ease-in-out infinite reverse, bgPuff 9s ease-in-out infinite reverse}
+.ordp-sky .oc3{width:130px;top:900px;left:4%;opacity:.45;animation:bgFloat3 15s ease-in-out infinite, bgPuff 7s ease-in-out infinite}
 .ordp-sky .oc4{width:160px;bottom:120px;right:6%;opacity:.5;animation:bgFloat1 20s ease-in-out infinite reverse, bgPuff 10s ease-in-out infinite}
 
 /* --- ตัวอักษร --- */
