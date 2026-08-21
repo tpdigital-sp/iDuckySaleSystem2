@@ -2897,3 +2897,66 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .ptab-secname i{font-style:normal;width:30px;height:30px;flex:none;border-radius:11px;display:grid;place-items:center;
   background:linear-gradient(150deg,#E4F3FE,#fff 70%);font-size:.92rem;
   box-shadow:inset 0 2px 4px rgba(255,255,255,.8),0 5px 12px rgba(44,129,196,.14)}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   .pgal-* — แกลเลอรีรูปสินค้า (หน้ารายละเอียดสินค้า)
+   ปัญหาเดิม: แถบรูปย่อโชว์ "สกรอลล์บาร์ดิบ" ของเบราว์เซอร์ (ที่อื่นในเว็บซ่อนหมดแล้ว)
+   · รูปย่อโดนตัดขอบขวาโดยไม่มีอะไรบอกว่ายังมีต่อ · รูปที่ไม่ได้เลือกจาง 60% ดูมัว
+   · ปุ่มลูกศร/ป้ายนับรูปใช้สีเทา stone หลุดจากโทนแบรนด์
+   ไม่ครอบ .dl (หน้านี้เป็น Tailwind) จึงไม่มี prefix
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* รูปหลัก — กรอบขาวหนาแบบการ์ดทั้งเว็บ แทนเงาขุ่นด้านใน */
+.pgal-main{position:relative;border-radius:var(--r-l);overflow:hidden;border:2px solid #fff;background:var(--sky-50);
+  box-shadow:0 18px 38px -20px rgba(44,129,196,.45),0 3px 10px -4px rgba(23,58,107,.08)}
+.pgal-main>*{display:block;width:100%}
+
+/* ปุ่มเลื่อนซ้าย-ขวา */
+.pgal-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:2;
+  width:40px;height:40px;border-radius:50%;display:grid;place-items:center;
+  background:rgba(255,255,255,.9);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  color:var(--navy);font-size:1.5rem;line-height:1;padding-bottom:3px;border:0;cursor:pointer;
+  box-shadow:0 6px 16px -4px rgba(23,58,107,.3);
+  opacity:0;transition:opacity .22s ease,background .22s ease,transform .22s cubic-bezier(.34,1.56,.64,1)}
+.pgal-wrap:hover .pgal-nav,.pgal-nav:focus-visible{opacity:1}
+.pgal-nav:hover{background:#fff;transform:translateY(-50%) scale(1.08)}
+.pgal-nav.prev{left:10px}
+.pgal-nav.next{right:10px}
+/* จอสัมผัสไม่มี hover — โชว์ลูกศรกับป้าย "กดเพื่อขยาย" ค้างไว้เลย ไม่งั้นไม่มีอะไรบอกว่ากดได้ */
+@media(hover:none){.pgal-nav,.pgal-zoom{opacity:1}}
+
+/* ป้ายนับรูป + ป้ายบอกว่ากดขยายได้ */
+.pgal-count{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:2;pointer-events:none;
+  border-radius:999px;background:rgba(23,58,107,.62);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+  color:#fff;font-family:var(--display);font-size:.72rem;padding:4px 12px;font-variant-numeric:tabular-nums}
+.pgal-zoom{position:absolute;right:12px;bottom:12px;z-index:2;pointer-events:none;
+  display:inline-flex;align-items:center;gap:5px;border-radius:999px;background:rgba(255,255,255,.92);
+  color:var(--navy);font-family:var(--display);font-size:.7rem;padding:5px 12px;
+  box-shadow:0 5px 14px -4px rgba(23,58,107,.3);opacity:0;transition:opacity .22s ease}
+.pgal-wrap:hover .pgal-zoom{opacity:1}
+
+/* แถบรูปย่อ — ซ่อนสกรอลล์บาร์ + ไล่สีจางขอบขวาบอกว่ายังมีต่อ */
+.pgal-strip{position:relative;margin-top:12px}
+.pgal-strip::after{content:"";position:absolute;top:0;bottom:0;right:0;width:34px;pointer-events:none;z-index:1;
+  background:linear-gradient(90deg,rgba(255,255,255,0),#fff 78%)}
+.pgal-thumbs{display:flex;gap:9px;overflow-x:auto;padding:3px 2px 4px;
+  scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
+.pgal-thumbs::-webkit-scrollbar{display:none}
+.pgal-thumb{position:relative;flex:none;width:66px;height:66px;border-radius:18px;overflow:hidden;cursor:pointer;
+  border:2px solid var(--sky-200);background:var(--sky-50);padding:0;
+  transition:border-color .22s ease,transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s ease}
+.pgal-thumb>*{width:100%;height:100%;object-fit:cover}
+.pgal-thumb:hover{border-color:var(--blue);transform:translateY(-2px);box-shadow:0 8px 16px -6px rgba(44,129,196,.5)}
+.pgal-thumb.on{border-color:var(--blue-deep);
+  box-shadow:0 0 0 3px rgba(44,129,196,.2),0 8px 16px -6px rgba(44,129,196,.45)}
+.pgal-play{position:absolute;inset:0;display:grid;place-items:center;background:rgba(23,58,107,.28)}
+.pgal-play>span{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;
+  background:rgba(255,255,255,.94);color:var(--navy);font-size:.56rem;padding-left:2px;
+  box-shadow:0 3px 8px rgba(23,58,107,.3)}
+
+/* คำบรรยายใต้แกลเลอรี */
+.pgal-cap{margin-top:10px;text-align:center;font-family:var(--display);font-size:.76rem;color:var(--navy-soft)}
+.pgal-cap b{font-weight:500;color:var(--navy)}
+@media(max-width:640px){
+  .pgal-thumb{width:58px;height:58px;border-radius:15px}
+  .pgal-nav{width:36px;height:36px;font-size:1.3rem}
+}

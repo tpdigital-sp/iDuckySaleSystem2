@@ -2288,7 +2288,7 @@ export default function ProductDetail({
             return (
           <div className="lg:sticky lg:top-24">
             {/* group + relative: ปุ่มลูกศรซ่อนไว้ โผล่ตอนเอาเมาส์ชี้รูป (จอเล็กไม่มี hover จึงโชว์ค้างไว้) */}
-            <div className="group relative">
+            <div className="pgal-wrap group relative">
               {(() => {
                 const shownSrc = shown.src ?? (at === 0 ? product.imageSrc : undefined);
                 /**
@@ -2309,7 +2309,7 @@ export default function ProductDetail({
                       playsInline
                       preload="metadata"
                       aria-label={`${product.name} — ${shown.label}`}
-                      className="aspect-square w-full rounded-[2rem] bg-stone-900 object-contain shadow-inner"
+                      className="pgal-main aspect-square w-full bg-[#0E2545] object-contain"
                     />
                   );
                 const visual = (
@@ -2320,7 +2320,7 @@ export default function ProductDetail({
                     alt={`${product.name} — ${shown.label}`}
                     size="text-[8rem]"
                     eager
-                    className="aspect-square w-full rounded-[2rem] shadow-inner"
+                    className="pgal-main aspect-square w-full"
                   />
                 );
                 // มีไฟล์รูปจริงเท่านั้นถึงกดขยายได้ (สินค้าอีโมจิล้วนไม่มีอะไรให้ซูม)
@@ -2332,6 +2332,10 @@ export default function ProductDetail({
                     className="block w-full cursor-zoom-in"
                   >
                     {visual}
+                    {/* บอกว่ากดรูปแล้วขยายได้ — เดิมไม่มีอะไรบอก ลูกค้าไม่รู้ว่ากดได้ */}
+                    <span className="pgal-zoom" aria-hidden="true">
+                      ⤢ กดเพื่อขยาย
+                    </span>
                   </button>
                 ) : (
                   visual
@@ -2340,54 +2344,53 @@ export default function ProductDetail({
               {gallery.length > 1 && (
                 <>
                   {([
-                    { d: -1, side: "left-2", glyph: "‹", label: "ดูรูปก่อนหน้า" },
-                    { d: 1, side: "right-2", glyph: "›", label: "ดูรูปถัดไป" },
+                    { d: -1, side: "prev", glyph: "‹", label: "ดูรูปก่อนหน้า" },
+                    { d: 1, side: "next", glyph: "›", label: "ดูรูปถัดไป" },
                   ] as const).map((a) => (
                     <button
                       key={a.label}
                       type="button"
                       onClick={() => step(a.d)}
                       aria-label={a.label}
-                      className={`absolute ${a.side} top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-white/85 pb-0.5 text-2xl font-bold leading-none text-stone-600 shadow-md ring-1 ring-stone-200 backdrop-blur transition hover:bg-white hover:text-amber-600 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100`}
+                      className={`pgal-nav ${a.side}`}
                     >
                       {a.glyph}
                     </button>
                   ))}
                   {/* บอกว่าดูอยู่รูปที่เท่าไหร่จากทั้งหมด — โผล่พร้อมลูกศร */}
-                  <span className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-stone-900/55 px-2.5 py-0.5 text-[11px] font-bold tabular-nums text-white transition sm:opacity-0 sm:group-hover:opacity-100">
+                  <span className="pgal-count">
                     {at + 1}/{gallery.length}
                   </span>
                 </>
               )}
             </div>
-            <div className="-mx-1 mt-3 flex gap-2 overflow-x-auto px-1 pb-1">
+            {/* แถบรูปย่อ — ซ่อนสกรอลล์บาร์ดิบของเบราว์เซอร์ (เหมือนแถบเลื่อนอื่นทั้งเว็บ)
+                แล้วใช้ไล่สีจางขอบขวาบอกแทนว่ายังมีรูปต่อ */}
+            <div className="pgal-strip">
+              <div className="pgal-thumbs">
               {gallery.map((img, i) => (
                 <button
                   key={i}
                   type="button"
                   onClick={() => setImageIndex(i)}
-                  className={`relative shrink-0 overflow-hidden rounded-2xl transition ${
-                    i === at
-                      ? "ring-3 ring-ducky"
-                      : "opacity-60 ring-1 ring-amber-100 hover:opacity-100"
-                  }`}
+                  className={`pgal-thumb${i === at ? " on" : ""}`}
                   aria-label={img.videoSrc ? `ดูคลิป${img.label}` : `ดูรูป${img.label}`}
+                  aria-current={i === at || undefined}
                 >
-                  <ProductVisual emoji={img.emoji} gradient={img.gradient} src={img.src ?? (i === 0 ? product.imageSrc : undefined)} alt={img.label} size="text-3xl" className="h-16 w-16" />
+                  <ProductVisual emoji={img.emoji} gradient={img.gradient} src={img.src ?? (i === 0 ? product.imageSrc : undefined)} alt={img.label} size="text-2xl" className="h-full w-full" />
                   {/* ช่องที่เป็นคลิป — ติดปุ่มเล่นทับรูปย่อ ให้รู้ว่ากดแล้วเป็นวิดีโอ ไม่ใช่รูปนิ่ง */}
                   {img.videoSrc && (
-                    <span className="pointer-events-none absolute inset-0 grid place-items-center bg-stone-900/25">
-                      <span className="grid h-6 w-6 place-items-center rounded-full bg-white/90 pl-0.5 text-[9px] leading-none text-stone-800 shadow">
-                        ▶
-                      </span>
+                    <span className="pgal-play pointer-events-none">
+                      <span>▶</span>
                     </span>
                   )}
                 </button>
               ))}
+              </div>
             </div>
             {shown.label && (
-              <p className="mt-2 text-center text-xs text-stone-400">
-                มุมมอง: {shown.label}
+              <p className="pgal-cap">
+                มุมมอง: <b>{shown.label}</b>
               </p>
             )}
           </div>
