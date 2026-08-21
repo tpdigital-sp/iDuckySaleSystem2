@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
@@ -20,6 +22,14 @@ import { canAccessAdmin } from "@/lib/auth";
 
 /** ป้ายขั้นตอนฝั่งลูกค้า (คำอ่านง่ายกว่าฝั่งหลังบ้าน) — ลำดับตรงกับ STEP_OF */
 const STEPS = ["สั่งซื้อ", "ชำระเงิน", "ตรวจแบบงาน", "ผลิต", "จัดส่ง"];
+/** ไอคอนภาพจริงของแต่ละขั้น — ชุดเดียวกับแถบขั้นตอนในหน้าบัญชีของฉัน (null = ใช้เครื่องหมายถูก) */
+const STEP_ART: (string | null)[] = [
+  null,
+  "/account/step/pay.webp",
+  "/account/menu/proof.webp",
+  "/account/menu/production.webp",
+  "/account/step/truck.webp",
+];
 
 /** คำอธิบายใต้ขั้นที่กำลังทำอยู่ */
 const STEP_HINT: Partial<Record<OrderStatus, string>> = {
@@ -282,22 +292,36 @@ export default function CustomerOrderPage() {
   }
 
   if (loading) {
-    return <div className="mx-auto max-w-2xl px-4 py-16 text-center text-sm text-stone-400">กำลังโหลดออเดอร์…</div>;
+    return (
+      <div className="ordp">
+        <div className="ordp-in" style={{ textAlign: "center", padding: "90px 0" }}>
+          <p className="ord-eyebrow">iDucky Prints Studio</p>
+          <p className="mt-2 text-sm t-soft">กำลังโหลดออเดอร์…</p>
+        </div>
+      </div>
+    );
   }
 
   if (!order) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-16 text-center">
-        <span className="text-5xl">🔒</span>
-        <h1 className="mt-4 text-xl font-extrabold text-amber-950">เปิดออเดอร์ไม่ได้</h1>
-        <p className="mt-2 text-sm text-stone-500">{loadErr}</p>
-        <p className="mt-1 text-xs text-stone-400">กรุณาเปิดจากลิงก์ที่ร้านส่งให้ (ลิงก์ต้องมีรหัสครบ)</p>
-        <Link
-          href="/products"
-          className="mt-6 inline-block rounded-full bg-amber-400 px-8 py-3 text-sm font-bold text-white shadow-lg transition hover:scale-105"
-        >
-          🛍️ ไปเลือกสินค้า
-        </Link>
+      <div className="ordp">
+        <div className="ordp-sky" aria-hidden="true">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="oc1" src="/landing/cloud.webp" alt="" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="oc2" src="/landing/cloud.webp" alt="" />
+        </div>
+        <div className="ordp-in" style={{ maxWidth: 520, padding: "70px 0 90px" }}>
+          <div className="ord-card p-8 text-center">
+            <span className="text-5xl">🔒</span>
+            <h1 className="mt-3 text-xl">เปิดออเดอร์ไม่ได้</h1>
+            <p className="mt-2 text-sm t-soft">{loadErr}</p>
+            <p className="mt-1 text-xs t-faint">กรุณาเปิดจากลิงก์ที่ร้านส่งให้ (ลิงก์ต้องมีรหัสครบ)</p>
+            <Link href="/products" className="ord-btn yolk lg mt-6">
+              🛍️ ไปเลือกสินค้า
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
@@ -333,9 +357,9 @@ export default function CustomerOrderPage() {
         ออเดอร์ที่ยกเลิกแล้วไม่ต้องชวนคุย
       */}
       {!cancelled && (
-        <div className="mt-4 rounded-2xl bg-[#06C755]/10 p-4 ring-1 ring-[#06C755]/40">
-          <p className="text-sm font-extrabold text-emerald-900">💬 คุยออเดอร์นี้กับร้านได้เลย</p>
-          <p className="mt-1 text-xs leading-relaxed text-stone-600">
+        <div className="ord-note line mt-4 p-4">
+          <p className="ord-title text-[.94rem]" style={{ color: "inherit" }}>💬 คุยออเดอร์นี้กับร้านได้เลย</p>
+          <p className="mt-1 text-xs leading-relaxed">
             ยืนยันลาย/แบบงาน · เช็คคิวผลิตกับวันได้รับ · ติดปัญหาตรงไหนทักได้ตลอด (อ้างอิงเลข {order.id})
           </p>
           <button
@@ -349,12 +373,12 @@ export default function CustomerOrderPage() {
               setLineOpened(true);
               window.open(LINE_URL, "_blank", "noopener,noreferrer");
             }}
-            className="mt-2.5 w-full rounded-full bg-[#06C755] px-5 py-3 text-sm font-bold text-white shadow transition hover:brightness-95"
+            className="ord-btn line block mt-3"
           >
             💬 ทักไลน์ร้าน — คุยรายละเอียดออเดอร์
           </button>
           {lineOpened && (
-            <p className="mt-2 text-center text-[11px] font-bold text-emerald-700">
+            <p className="mt-2 text-center text-[11px] font-semibold">
               ✓ คัดลอกเลขออเดอร์ + ลิงก์ให้แล้ว — วาง (Ctrl/⌘+V) ส่งในแชทได้เลย
             </p>
           )}
@@ -362,17 +386,17 @@ export default function CustomerOrderPage() {
       )}
 
       {order.useByDate && (
-        <p className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-stone-700 ring-1 ring-stone-200">
-          📅 วันที่คุณแจ้งว่าต้องใช้งาน: <strong className="text-amber-700">{order.useByDate}</strong>
-          {order.rush ? <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">🔥 งานเร่ง</span> : null}
+        <p className="ord-card mt-4 px-4 py-3 text-sm">
+          📅 วันที่คุณแจ้งว่าต้องใช้งาน: <strong className="t-blue">{order.useByDate}</strong>
+          {order.rush ? <span className="ord-chip danger ml-2">🔥 งานเร่ง</span> : null}
         </p>
       )}
 
       {/* ── สั่งจำนวนมาก: รอร้านเช็คสต๊อก/คิวผลิตแล้วยืนยันกลับ ── */}
       {order.items.some((it) => it.needStockCheck) && !cancelled && (
-        <div className="mt-4 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
-          <p className="text-sm font-extrabold text-amber-900">📦 รายการสั่งจำนวนมาก — รอทางร้านยืนยัน</p>
-          <p className="mt-1 text-xs leading-relaxed text-amber-800">
+        <div className="ord-note info mt-4 p-4">
+          <p className="ord-title text-[.94rem]" style={{ color: "inherit" }}>📦 รายการสั่งจำนวนมาก — รอทางร้านยืนยัน</p>
+          <p className="mt-1 text-xs leading-relaxed">
             ทางร้านกำลังเช็คสต๊อกและคิวผลิตของรายการที่สั่งจำนวนมาก จะรีบแจ้ง<strong>จำนวนที่ผลิตได้และวันจัดส่ง</strong>กลับทางไลน์ให้ครับ
             {order.status === "รอชำระเงิน" ? " — รอผลยืนยันก่อนโอนได้เลย ไม่ต้องรีบครับ" : ""}
           </p>
@@ -380,7 +404,7 @@ export default function CustomerOrderPage() {
             {order.items
               .filter((it) => it.needStockCheck)
               .map((it, i) => (
-                <li key={i} className="text-xs font-semibold text-amber-900">
+                <li key={i} className="text-xs font-semibold">
                   • {it.name} × {it.qty.toLocaleString("th-TH")}
                 </li>
               ))}
@@ -390,23 +414,23 @@ export default function CustomerOrderPage() {
 
       {/* ── มีรายการรอตีราคา: ยังไม่เปิดหน้าแจ้งโอน — กันโอนเงินทั้งที่ยอดรวมยังไม่ครบ ── */}
       {order.status === "รอชำระเงิน" && pendingQuote.length > 0 && (
-        <div className="mt-4 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
-          <p className="text-sm font-extrabold text-amber-900">
+        <div className="ord-note warn mt-4 p-4">
+          <p className="ord-title text-[.94rem]" style={{ color: "inherit" }}>
             ⏳ รอทางร้านใส่ราคา {pendingQuote.length.toLocaleString("th-TH")} รายการ — <u>ยังไม่ต้องโอนตอนนี้</u>
           </p>
-          <p className="mt-1 text-xs leading-relaxed text-amber-800">
+          <p className="mt-1 text-xs leading-relaxed">
             ออเดอร์นี้มีงานที่แอดมินต้องตีราคาก่อน (เช่น งานกำหนดขนาดเอง) — เมื่อใส่ราคาครบทุกรายการ
             หน้าแจ้งโอนพร้อมยอดรวมที่ถูกต้องจะเปิดให้อัตโนมัติ ทางร้านจะรีบทักไปแจ้งครับ
           </p>
           <ul className="mt-2 space-y-0.5">
             {pendingQuote.map((it, i) => (
-              <li key={i} className="text-xs font-semibold text-amber-900">
+              <li key={i} className="text-xs font-semibold">
                 • {it.name} × {it.qty.toLocaleString("th-TH")} — 💬 รอตีราคา
               </li>
             ))}
           </ul>
           {/* ให้เร็วขึ้น: copy ลิงก์ออเดอร์นี้ส่งให้แอดมินทางไลน์ เพื่อให้ใส่ราคาได้ทันที */}
-          <p className="mt-3 text-xs font-bold text-amber-900">
+          <p className="mt-3 text-xs font-semibold">
             ⚡ อยากได้ราคาไว ๆ — คัดลอกลิงก์ออเดอร์นี้ส่งให้แอดมินทางไลน์ได้เลย
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -418,7 +442,7 @@ export default function CustomerOrderPage() {
                   setTimeout(() => setLinkCopied(false), 2500);
                 });
               }}
-              className={`rounded-full px-4 py-2 text-xs font-bold text-white transition ${linkCopied ? "bg-emerald-500" : "bg-amber-500 hover:bg-amber-600"}`}
+              className={`ord-btn sm ${linkCopied ? "ok" : "blue"}`}
             >
               {linkCopied ? "✓ คัดลอกแล้ว — ส่งให้แอดมินได้เลย" : "📋 คัดลอกลิงก์ออเดอร์ (copy)"}
             </button>
@@ -426,7 +450,7 @@ export default function CustomerOrderPage() {
               href={LINE_URL}
               target="_blank"
               rel="noreferrer"
-              className="rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
+              className="ord-btn line sm"
             >
               💬 ทักไลน์ร้าน — ให้แอดมินใส่ราคา
             </a>
@@ -448,9 +472,9 @@ export default function CustomerOrderPage() {
             const f = e.dataTransfer.files?.[0];
             if (f) void uploadSlip(f);
           }}
-          className={`mt-4 rounded-2xl p-4 ring-2 transition ${slipDrag ? "bg-rose-100 ring-rose-400 ring-dashed" : "bg-rose-50 ring-1 ring-rose-200"}`}
+          className={`ord-note danger mt-4 p-4${slipDrag ? " drop" : ""}`}
         >
-          <p className="text-sm font-bold text-rose-800">
+          <p className="ord-title text-[.96rem]" style={{ color: "inherit" }}>
             💸{" "}
             {order.deposit && !order.deposit.firstPaidAt
               ? `โอนมัดจำ 50% ก่อนเริ่มงาน ${formatPrice(amountDueNow(order))}`
@@ -458,7 +482,7 @@ export default function CustomerOrderPage() {
                 ? `มียอดค้างชำระ ${formatPrice(balance)}`
                 : `รอชำระเงิน ${formatPrice(orderTotal(order))}`}
           </p>
-          <p className="mt-1 text-xs leading-relaxed text-rose-700">
+          <p className="mt-1 text-xs leading-relaxed">
             {order.deposit && !order.deposit.firstPaidAt
               ? `ออเดอร์นี้ตกลงมัดจำก่อน — โอน ${formatPrice(amountDueNow(order))} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} แล้วแนบสลิป · ส่วนที่เหลือชำระก่อนจัดส่ง`
               : (order.paidTotal ?? 0) > 0
@@ -473,7 +497,7 @@ export default function CustomerOrderPage() {
               const f = e.dataTransfer.files?.[0];
               if (f) void uploadSlip(f);
             }}
-            className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-rose-700"
+            className="ord-btn danger block mt-3 cursor-pointer"
           >
             {slipBusy ? "กำลังส่งสลิป…" : "📤 แนบสลิปการโอน — แตะเลือกรูป หรือลากมาวางตรงนี้"}
             <input
@@ -487,17 +511,17 @@ export default function CustomerOrderPage() {
               }}
             />
           </label>
-          {slipErr && <p className="mt-2 text-xs font-semibold text-rose-700">⚠️ {slipErr}</p>}
+          {slipErr && <p className="mt-2 text-xs font-semibold">⚠️ {slipErr}</p>}
         </div>
       )}
       {/* ── มัดจำผ่านแล้ว: เก็บยอดคงเหลือก่อนจัดส่ง — แนบสลิปได้ตลอด ── */}
       {order.deposit?.firstPaidAt && !order.deposit.settledAt && order.status !== "รอชำระเงิน" && order.status !== "รอตรวจสอบ" && !cancelled && (
-        <div className="mt-4 rounded-2xl bg-rose-50 p-4 ring-1 ring-rose-200">
-          <p className="text-sm font-bold text-rose-800">💳 ค้างชำระยอดคงเหลือ {formatPrice(amountDueNow(order))}</p>
-          <p className="mt-1 text-xs leading-relaxed text-rose-700">
+        <div className="ord-note danger mt-4 p-4">
+          <p className="ord-title text-[.96rem]" style={{ color: "inherit" }}>💳 ค้างชำระยอดคงเหลือ {formatPrice(amountDueNow(order))}</p>
+          <p className="mt-1 text-xs leading-relaxed">
             รับมัดจำ {formatPrice(order.deposit.amount)} แล้ว — โอนส่วนที่เหลือแล้วแนบสลิปตรงนี้ ก่อนทางร้านจัดส่งของ
           </p>
-          <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-rose-700">
+          <label className="ord-btn danger block mt-3 cursor-pointer">
             {slipBusy ? "กำลังส่งสลิป…" : "📤 แนบสลิปยอดคงเหลือ"}
             <input
               type="file"
@@ -510,27 +534,27 @@ export default function CustomerOrderPage() {
               }}
             />
           </label>
-          {slipErr && <p className="mt-2 text-xs font-semibold text-rose-700">⚠️ {slipErr}</p>}
+          {slipErr && <p className="mt-2 text-xs font-semibold">⚠️ {slipErr}</p>}
         </div>
       )}
 
       {order.status === "รอตรวจสอบ" && (
-        <div className="mt-4 rounded-2xl bg-orange-50 p-4 text-sm text-orange-800 ring-1 ring-orange-200">
+        <div className="ord-note warn mt-4 p-4 text-sm">
           🧾 <strong>ได้รับสลิปแล้ว</strong> — ทางร้านกำลังตรวจสอบการชำระเงิน เดี๋ยวจะเริ่มงานให้ครับ
           {order.slipUrl && (
             <span className="mt-3 flex items-center gap-3">
-              <a href={order.slipUrl} target="_blank" rel="noreferrer" className="block h-16 w-16 shrink-0 overflow-hidden rounded-lg ring-1 ring-orange-200 transition hover:ring-orange-400">
+              <a href={order.slipUrl} target="_blank" rel="noreferrer" className="block h-16 w-16 shrink-0 overflow-hidden rounded-xl ring-2 ring-white transition hover:ring-[#FFB627]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={order.slipUrl} alt="สลิปที่คุณแนบ" className="h-full w-full object-cover" />
               </a>
               <span className="min-w-0 text-xs">
                 <span className="block font-bold">สลิปที่คุณแนบไว้ (แตะเพื่อดูเต็ม)</span>
                 {order.paidReportedAt && (
-                  <span className="block text-orange-600/80">
+                  <span className="block opacity-80">
                     แจ้งโอนเมื่อ {new Date(order.paidReportedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}
                   </span>
                 )}
-                <label className="mt-1 inline-block cursor-pointer rounded-full bg-white px-3 py-1 text-[11px] font-bold text-orange-700 ring-1 ring-orange-300 transition hover:bg-orange-100">
+                <label className="ord-btn ghost sm mt-1.5 cursor-pointer">
                   {slipBusy ? "กำลังส่ง…" : "📤 แนบสลิปใหม่ (แทนใบเดิม)"}
                   <input
                     type="file"
@@ -551,13 +575,13 @@ export default function CustomerOrderPage() {
 
       {/* สลิปที่แนบ — โชว์ต่อหลังร้านยืนยันแล้วด้วย (หลักฐานการชำระของลูกค้า) */}
       {order.slipUrl && order.status !== "รอตรวจสอบ" && order.status !== "รอชำระเงิน" && (
-        <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
-          <a href={order.slipUrl} target="_blank" rel="noreferrer" className="block h-14 w-14 shrink-0 overflow-hidden rounded-lg ring-1 ring-stone-200 transition hover:ring-amber-300">
+        <div className="ord-card mt-4 flex items-center gap-3 p-4">
+          <a href={order.slipUrl} target="_blank" rel="noreferrer" className="block h-14 w-14 shrink-0 overflow-hidden rounded-xl ring-2 ring-white transition hover:ring-[#57B6E8]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={order.slipUrl} alt="สลิปการโอน" className="h-full w-full object-cover" />
           </a>
-          <span className="min-w-0 text-xs text-stone-600">
-            <span className="block text-sm font-bold text-stone-800">🧾 สลิปการโอนของคุณ</span>
+          <span className="min-w-0 text-xs t-soft">
+            <span className="ord-title block text-sm">🧾 สลิปการโอนของคุณ</span>
             {order.paidReportedAt && (
               <span className="block">
                 แจ้งโอนเมื่อ {new Date(order.paidReportedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })} · แตะรูปเพื่อดูเต็ม
@@ -570,7 +594,19 @@ export default function CustomerOrderPage() {
   );
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <div className="ordp">
+      {/* เมฆลอย — ชุดเดียวกับหน้าแรก */}
+      <div className="ordp-sky" aria-hidden="true">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="oc1" src="/landing/cloud.webp" alt="" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="oc2" src="/landing/cloud.webp" alt="" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="oc3" src="/landing/cloud.webp" alt="" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="oc4" src="/landing/cloud.webp" alt="" />
+      </div>
+      <div className="ordp-in">
       {/*
         ทีมงานที่ล็อกอินหลังบ้านอยู่ (แอดมิน/กราฟฟิก/เจ้าของ) เปิดลิงก์ลูกค้ามาดู
         → มีปุ่มลัดเข้าออเดอร์นี้ในหลังบ้านเลย ไม่ต้องไปไล่หาในรายการออเดอร์
@@ -585,16 +621,16 @@ export default function CustomerOrderPage() {
       )}
 
       {/* ── หัวออเดอร์ + แถบขั้นตอน ── */}
-      <div className="rounded-2xl bg-white p-5 ring-1 ring-stone-200">
+      <div className="ord-card p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">เลขออเดอร์</p>
-            <p className="select-all text-xl font-extrabold tracking-wide text-amber-950">{order.id}</p>
-            <p className="mt-1 text-xs text-stone-400">
-              {order.date} · ยอดรวม <span className="font-bold text-amber-600">{formatPrice(orderTotal(order))}</span>
+            <p className="ord-eyebrow">เลขออเดอร์</p>
+            <p className="ord-title select-all text-2xl tracking-wide" style={{ fontWeight: 600 }}>{order.id}</p>
+            <p className="mt-1 text-xs t-soft">
+              {order.date} · ยอดรวม <span className="ord-title t-blue" style={{ fontSize: ".95rem" }}>{formatPrice(orderTotal(order))}</span>
             </p>
             {live && (
-              <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-stone-400">
+              <p className="mt-1.5 flex items-center gap-1.5 text-[11px] t-faint">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 หน้านี้อัปเดตเองอัตโนมัติ ไม่ต้องรีเฟรช
               </p>
@@ -606,7 +642,7 @@ export default function CustomerOrderPage() {
             </span>
             <Link
               href={`/order/${encodeURIComponent(orderId)}/receipt${orderKey ? `?key=${encodeURIComponent(orderKey)}` : ""}`}
-              className="rounded-full bg-stone-100 px-3 py-1 text-xs font-bold text-stone-600 transition hover:bg-stone-200"
+              className="ord-btn ghost sm"
             >
               🧾 ใบเสร็จ
             </Link>
@@ -615,8 +651,8 @@ export default function CustomerOrderPage() {
 
         {/* ── ลูกค้าเลือกเองว่าอยากให้เราอัปเดตแค่ไหน (ส่งทาง LINE) ── */}
         {!cancelled && (
-          <div className="mt-4 rounded-2xl bg-white/70 p-3 ring-1 ring-stone-200">
-            <p className="text-xs font-bold text-stone-600">🔔 แจ้งความคืบหน้าทาง LINE</p>
+          <div className="mt-4 ord-sub p-3.5">
+            <p className="ord-title text-[.82rem]">🔔 แจ้งความคืบหน้าทาง LINE</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {(
                 [
@@ -651,9 +687,7 @@ export default function CustomerOrderPage() {
                         setPrefBusy(false);
                       }
                     }}
-                    className={`rounded-full px-3 py-1.5 text-xs font-bold transition disabled:opacity-50 ${
-                      on ? "bg-[#06C755] text-white shadow-sm" : "border border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
-                    }`}
+                    className={`ord-btn sm ${on ? "line" : "ghost"}`}
                   >
                     {on ? "✓ " : ""}
                     {label}
@@ -661,48 +695,30 @@ export default function CustomerOrderPage() {
                 );
               })}
             </div>
-            <p className="mt-1.5 text-[11px] leading-snug text-stone-400">
+            <p className="mt-2 text-[11px] leading-snug t-faint">
               “เฉพาะเรื่องสำคัญ” = แจ้งตอนยืนยันการชำระเงิน จัดส่ง และยกเลิกเท่านั้น ·
               เรื่องยอดค้างชำระจะแจ้งเสมอ เว้นแต่เลือก “ไม่รับแจ้งเตือน”
-              {prefMsg && <span className="ml-1 font-bold text-stone-600">{prefMsg}</span>}
+              {prefMsg && <span className="ml-1 font-semibold t-blue">{prefMsg}</span>}
             </p>
           </div>
         )}
 
         {/* แถบขั้นตอน */}
         {cancelled ? (
-          <p className="mt-4 rounded-xl bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-500">
+          <p className="ord-note plain mt-4 px-4 py-3 text-sm">
             ออเดอร์นี้ถูกยกเลิกแล้ว — สอบถามเพิ่มเติมทักร้านได้เลยครับ
           </p>
         ) : (
-          <ol className="mt-5 flex overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <ol className="ord-steps mt-5">
             {STEPS.map((label, i) => {
               const done = i < step;
               const now = i === step;
               return (
-                <li key={label} className="relative min-w-[92px] flex-1 pt-7 text-center">
-                  {/* เส้นเชื่อม */}
-                  {i < STEPS.length - 1 && (
-                    <span
-                      className={`absolute left-1/2 right-[-50%] top-[9px] h-0.5 ${done ? "bg-amber-500" : "bg-stone-200"}`}
-                    />
-                  )}
-                  {/* จุด */}
-                  <span
-                    className={`absolute left-1/2 top-0.5 z-10 h-[14px] w-[14px] -translate-x-1/2 rounded-full border-2 ${
-                      now
-                        ? "border-ducky bg-ducky ring-4 ring-ducky/35"
-                        : done
-                          ? "border-amber-500 bg-amber-500"
-                          : "border-stone-200 bg-white"
-                    }`}
-                  />
-                  <span className={`block text-xs font-bold ${done || now ? "text-amber-950" : "text-stone-400"}`}>
-                    {label}
-                  </span>
-                  <span className="block text-[10px] text-stone-400">
-                    {now ? (STEP_HINT[order.status] ?? "กำลังทำ") : done ? "เรียบร้อย" : "—"}
-                  </span>
+                <li key={label} className={`ord-step${done ? " done" : now ? " now" : ""}`}>
+                  <span className="sline" />
+                  <span className="sdot">{STEP_ART[i] ? <img src={STEP_ART[i]!} alt="" /> : "✓"}</span>
+                  <span className="slabel">{label}</span>
+                  <span className="stime">{now ? (STEP_HINT[order.status] ?? "กำลังทำ") : done ? "เรียบร้อย" : "—"}</span>
                 </li>
               );
             })}
@@ -714,12 +730,12 @@ export default function CustomerOrderPage() {
 
 
       {waitingItems > 0 && (
-        <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
+        <div className="ord-note warn mt-4 p-4 text-sm">
           🎨 <strong>มีแบบงานรอให้คุณตรวจ {waitingItems} รายการ — เหลืออีก {waitingProofs} ภาพ</strong> · แตะรูปเพื่อดูใหญ่ แล้วกดอนุมัติทีละภาพได้เลย{" "}
           <button
             type="button"
             onClick={() => setShowGuide(true)}
-            className="mt-1 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-bold text-amber-700 ring-1 ring-amber-300 transition hover:bg-amber-100"
+            className="ord-btn ghost sm mt-1.5"
           >
             ❓ วิธีตรวจ/อนุมัติแบบ
           </button>
@@ -729,35 +745,32 @@ export default function CustomerOrderPage() {
       {/* ── กล่องยืนยันก่อนอนุมัติแบบงาน ── */}
       {confirmApprove && (
         // z สูงกว่า ImageLightbox (z-[100]) — กล่องยืนยันต้องลอยเหนือภาพขยายเสมอ
-        <div className="fixed inset-0 z-[110] grid place-items-center bg-stone-900/70 p-4" onClick={() => confirmApprove.resolve(false)}>
-          <div
-            className="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="bg-gradient-to-b from-teal-50 to-white px-6 pb-2 pt-6 text-center">
+        <div className="ordp-modal" onClick={() => confirmApprove.resolve(false)}>
+          <div className="ordp-modal-box" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 pb-2 pt-7 text-center" style={{ background: "linear-gradient(180deg,#DEF5EC,transparent)" }}>
               <span className="text-5xl">✅</span>
-              <h2 className="mt-2 text-lg font-extrabold text-teal-700">ยืนยันการอนุมัติแบบงาน</h2>
+              <h2 className="mt-2 text-lg t-ok">ยืนยันการอนุมัติแบบงาน</h2>
             </div>
             <div className="px-6 pb-6 pt-2">
-              <p className="text-center text-sm leading-relaxed text-stone-600">
-                ทางบริษัทจะ<strong className="text-rose-600">จัดทำงานตามภาพที่อนุมัติทันที</strong>
+              <p className="text-center text-sm leading-relaxed t-soft">
+                ทางบริษัทจะ<strong className="t-danger">จัดทำงานตามภาพที่อนุมัติทันที</strong>
                 <br />
-                หาก<strong className="text-amber-600">ไม่มั่นใจ</strong> รบกวน
-                <strong className="text-stone-800">ตรวจสอบอีกรอบ</strong>
+                หาก<strong className="t-warn">ไม่มั่นใจ</strong> รบกวน
+                <strong className="t-ink">ตรวจสอบอีกรอบ</strong>
                 <br />
-                หรือ<strong className="text-teal-600">สอบถามแอดมิน</strong>ก่อนนะคะ 🙏
+                หรือ<strong className="t-ok">สอบถามแอดมิน</strong>ก่อนนะคะ 🙏
               </p>
               <button
                 type="button"
                 onClick={() => confirmApprove.resolve(true)}
-                className="mt-5 w-full rounded-full bg-teal-500 px-6 py-3 text-sm font-extrabold text-white shadow-lg transition hover:bg-teal-600"
+                className="ord-btn ok block mt-5"
               >
                 ✅ ยืนยันอนุมัติ — ให้เริ่มผลิตได้เลย
               </button>
               <button
                 type="button"
                 onClick={() => confirmApprove.resolve(false)}
-                className="mt-2 w-full rounded-full px-6 py-2.5 text-sm font-bold text-stone-500 transition hover:bg-stone-100"
+                className="ord-btn quiet block mt-2"
               >
                 ↩️ ขอดูอีกครั้ง
               </button>
@@ -768,41 +781,38 @@ export default function CustomerOrderPage() {
 
       {/* ── คู่มือวิธีตรวจแบบงาน (เด้งครั้งแรก / กดเปิดซ้ำได้) ── */}
       {showGuide && (
-        <div className="fixed inset-0 z-[120] grid place-items-center bg-stone-900/60 p-4" onClick={closeGuide}>
-          <div
-            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="ordp-modal" style={{ zIndex: 120 }} onClick={closeGuide}>
+          <div className="ordp-modal-box tall p-6" onClick={(e) => e.stopPropagation()}>
             <p className="text-center text-4xl">🎨</p>
-            <h2 className="mt-2 text-center text-lg font-extrabold text-amber-950">วิธีตรวจ & อนุมัติแบบงาน</h2>
-            <div className="mt-4 space-y-3 text-sm text-stone-700">
+            <h2 className="mt-2 text-center text-lg">วิธีตรวจ &amp; อนุมัติแบบงาน</h2>
+            <div className="mt-4 space-y-3 text-sm t-soft">
               <p className="flex gap-2.5">
-                <span className="shrink-0 grid h-6 w-6 place-items-center rounded-full bg-amber-100 text-xs font-extrabold text-amber-700">1</span>
+                <span className="shrink-0 grid h-6 w-6 place-items-center rounded-full bg-[#E2F3FE] text-xs font-bold t-blue">1</span>
                 <span>
                   <strong>แตะรูปแบบงาน</strong> เพื่อขยายดูเต็มจอ — เลื่อนซ้าย/ขวาดูภาพถัดไปได้ มีตัวเลขบอกว่าดูภาพที่เท่าไหร่จากทั้งหมด
                 </span>
               </p>
               <p className="flex gap-2.5">
-                <span className="shrink-0 grid h-6 w-6 place-items-center rounded-full bg-amber-100 text-xs font-extrabold text-amber-700">2</span>
+                <span className="shrink-0 grid h-6 w-6 place-items-center rounded-full bg-[#E2F3FE] text-xs font-bold t-blue">2</span>
                 <span>
-                  ในภาพขยาย กด <strong className="text-teal-600">✅ อนุมัติภาพนี้</strong> ถ้าถูกต้อง หรือ{" "}
-                  <strong className="text-rose-500">✏️ ขอแก้ไขภาพนี้</strong> แล้วพิมพ์จุดที่อยากแก้ — ระบบจะเด้งภาพถัดไปให้อัตโนมัติจนครบ
+                  ในภาพขยาย กด <strong className="t-ok">✅ อนุมัติภาพนี้</strong> ถ้าถูกต้อง หรือ{" "}
+                  <strong className="t-danger">✏️ ขอแก้ไขภาพนี้</strong> แล้วพิมพ์จุดที่อยากแก้ — ระบบจะเด้งภาพถัดไปให้อัตโนมัติจนครบ
                 </span>
               </p>
               <p className="flex gap-2.5">
-                <span className="shrink-0 grid h-6 w-6 place-items-center rounded-full bg-amber-100 text-xs font-extrabold text-amber-700">3</span>
+                <span className="shrink-0 grid h-6 w-6 place-items-center rounded-full bg-[#E2F3FE] text-xs font-bold t-blue">3</span>
                 <span>
                   ถ้าดูครบและมั่นใจทั้งชุด กดปุ่ม <strong>✅ อนุมัติทุกภาพที่เหลือ</strong> ทีเดียวได้เลย
                 </span>
               </p>
             </div>
-            <p className="mt-4 rounded-xl bg-rose-50 px-3 py-2.5 text-xs leading-relaxed text-rose-700 ring-1 ring-rose-100">
+            <p className="ord-note danger mt-4 px-3 py-2.5 text-xs leading-relaxed">
               ⚠️ <strong>ทางบริษัทจะจัดทำงานตามภาพที่อนุมัติทันที</strong> — หากไม่มั่นใจ รบกวนตรวจสอบอีกรอบ หรือสอบถามแอดมินก่อนนะคะ
             </p>
             <button
               type="button"
               onClick={closeGuide}
-              className="mt-4 w-full rounded-full bg-amber-400 px-6 py-3 text-sm font-extrabold text-white shadow-lg transition hover:bg-amber-500"
+              className="ord-btn yolk block mt-4"
             >
               เข้าใจแล้ว เริ่มตรวจแบบ 🎨
             </button>
@@ -814,21 +824,21 @@ export default function CustomerOrderPage() {
       {(order.status === "จัดส่งแล้ว" || order.status === "เสร็จสิ้น") &&
         (order.rated || rateDone ? (
           rateDone && (
-            <div className="mt-4 rounded-2xl bg-teal-50 p-4 text-center text-sm font-semibold text-teal-700 ring-1 ring-teal-200">
+            <div className="ord-note ok mt-4 p-4 text-center text-sm font-semibold">
               🙏 ขอบคุณสำหรับการประเมินครับ — ความเห็นของคุณช่วยให้ร้านพัฒนาขึ้น 🦆
             </div>
           )
         ) : (
-          <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-amber-200 sm:p-5">
-            <p className="text-sm font-bold text-stone-800">💬 ได้รับสินค้าแล้ว เป็นยังไงบ้างครับ?</p>
+          <div className="ord-card mt-4 p-4 sm:p-5">
+            <p className="ord-title text-[.98rem]">💬 ได้รับสินค้าแล้ว เป็นยังไงบ้างครับ?</p>
             {/* ป้ายนิรนาม — ต้องมองผ่าน ๆ แล้วรู้ทันทีว่าไม่ระบุตัวตน */}
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-1 text-[11px] font-extrabold text-white shadow-sm">
+              <span className="ord-chip ok" style={{ background: "#12876A", color: "#fff", borderColor: "transparent" }}>
                 🕵️ ไม่ระบุตัวตน 100%
               </span>
-              <span className="text-[11px] font-semibold text-stone-500">
-                ร้าน<span className="mx-0.5 rounded bg-emerald-50 px-1 py-0.5 font-extrabold text-emerald-600">ไม่มีทางรู้</span>ว่าใครประเมิน
-                — <span className="font-bold text-stone-600">ติได้เต็มที่ ชมได้เต็มใจ</span> 🦆
+              <span className="text-[11px] t-soft">
+                ร้าน<span className="mx-0.5 rounded bg-[#DEF5EC] px-1 py-0.5 font-semibold t-ok">ไม่มีทางรู้</span>ว่าใครประเมิน
+                — <span className="font-semibold t-ink">ติได้เต็มที่ ชมได้เต็มใจ</span> 🦆
               </span>
             </div>
 
@@ -839,19 +849,19 @@ export default function CustomerOrderPage() {
                   key={f.score}
                   type="button"
                   onClick={() => setRateScore(f.score)}
-                  className={`flex w-14 flex-col items-center rounded-xl px-1 py-2 transition ${
-                    rateScore === f.score ? "bg-amber-100 ring-2 ring-amber-400" : "hover:bg-stone-50"
+                  className={`flex w-14 flex-col items-center rounded-2xl px-1 py-2 transition ${
+                    rateScore === f.score ? "bg-[#E2F3FE] ring-2 ring-[#57B6E8]" : "hover:bg-[#F2FAFF]"
                   }`}
                 >
                   <span className={`text-2xl ${rateScore && rateScore !== f.score ? "grayscale opacity-40" : ""}`}>{f.emoji}</span>
-                  <span className="mt-0.5 text-[10px] font-semibold text-stone-500">{f.label}</span>
+                  <span className="mt-0.5 text-[10px] font-semibold t-soft">{f.label}</span>
                 </button>
               ))}
             </div>
 
             {rateScore > 0 && (
               <>
-                <p className="mt-3 text-xs font-semibold text-stone-600">
+                <p className="mt-3 text-xs font-semibold t-soft">
                   {rateScore >= 4 ? "ชอบตรงไหนเป็นพิเศษ?" : "อยากให้ปรับปรุงเรื่องไหน?"} (เลือกได้หลายข้อ)
                 </p>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -860,11 +870,7 @@ export default function CustomerOrderPage() {
                       key={t}
                       type="button"
                       onClick={() => setRateTags((v) => (v.includes(t) ? v.filter((x) => x !== t) : [...v, t]))}
-                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                        rateTags.includes(t)
-                          ? "bg-amber-400 text-white"
-                          : "bg-stone-100 text-stone-500 hover:bg-stone-200"
-                      }`}
+                      className={`ord-btn sm ${rateTags.includes(t) ? "blue" : "ghost"}`}
                     >
                       {t}
                     </button>
@@ -874,15 +880,15 @@ export default function CustomerOrderPage() {
             )}
 
             {/* หมายเหตุ — โชว์ตลอด ไม่ต้องรอเลือกอีโมจิ */}
-            <p className="mt-3 text-xs font-semibold text-stone-600">📝 หมายเหตุถึงร้าน (ไม่บังคับ)</p>
+            <p className="mt-3 text-xs font-semibold t-soft">📝 หมายเหตุถึงร้าน (ไม่บังคับ)</p>
             <textarea
               value={rateComment}
               onChange={(e) => setRateComment(e.target.value)}
               rows={2}
               placeholder="เช่น สีเพี้ยนจากแบบนิดหน่อย · แพ็คดีมาก · อยากให้มีลายใหม่ ๆ"
-              className="mt-1.5 w-full resize-y rounded-xl bg-stone-50 px-3 py-2 text-sm text-stone-700 ring-1 ring-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+              className="ord-input mt-1.5"
             />
-            {rateErr && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{rateErr}</p>}
+            {rateErr && <p className="ord-note danger mt-2 px-3 py-2 text-xs">{rateErr}</p>}
             <button
               type="button"
               disabled={rateBusy || rateScore === 0}
@@ -902,20 +908,20 @@ export default function CustomerOrderPage() {
                 setRateDone(true);
                 setOrder((cur) => (cur ? { ...cur, rated: true } : cur));
               }}
-              className="mt-3 w-full rounded-full bg-amber-400 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-amber-500 disabled:opacity-50 sm:w-auto sm:px-8"
+              className="ord-btn yolk mt-3 w-full sm:w-auto"
             >
               {rateBusy ? "กำลังส่ง…" : rateScore === 0 ? "เลือกอีโมจิด้านบนก่อนครับ" : "ส่งแบบประเมิน"}
             </button>
           </div>
         ))}
 
-      {actionErr && <p className="mt-4 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{actionErr}</p>}
+      {actionErr && <p className="ord-note danger mt-4 px-4 py-2.5 text-sm">{actionErr}</p>}
 
       {/* งานเคลม — บอกลูกค้าชัดว่าไม่มีค่าใช้จ่าย ร้านทำส่งใหม่ให้ */}
       {order.claimOf && (
-        <div className="mt-4 rounded-2xl bg-rose-50 p-4 ring-1 ring-rose-200">
-          <p className="text-sm font-extrabold text-rose-800">♻️ งานทำใหม่ให้ (เคลม) — ไม่มีค่าใช้จ่าย</p>
-          <p className="mt-0.5 text-xs leading-relaxed text-rose-700">
+        <div className="ord-note ok mt-4 p-4">
+          <p className="ord-title text-[.94rem]" style={{ color: "inherit" }}>♻️ งานทำใหม่ให้ (เคลม) — ไม่มีค่าใช้จ่าย</p>
+          <p className="mt-0.5 text-xs leading-relaxed">
             ทางร้านจัดทำงานชิ้นนี้ใหม่ให้จากออเดอร์ <span className="font-mono font-bold">{order.claimOf}</span>
             {order.claimReason ? ` · เหตุผล: ${order.claimReason}` : ""} — ไม่ต้องโอนเงินเพิ่มครับ
           </p>
@@ -932,7 +938,7 @@ export default function CustomerOrderPage() {
               <div
                 key={`${it.productId}-${i}`}
                 /* สลับสีคู่/คี่ — ออเดอร์ที่มีหลายรายการจะไล่สายตาแยกออกง่ายขึ้น */
-                className={`rounded-2xl p-4 ring-1 sm:p-5 ${i % 2 === 0 ? "bg-white ring-stone-200" : "bg-sky-50/50 ring-sky-200"}`}
+                className={`ord-card p-4 sm:p-5${i % 2 === 0 ? "" : " tint"}`}
               >
                 <div className="flex justify-between gap-3">
                   {picById[it.productId] && (
@@ -946,9 +952,9 @@ export default function CustomerOrderPage() {
                     />
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="font-bold text-amber-950">
+                    <p className="ord-title text-[1rem]">
                       {order.items.length > 1 && (
-                        <span className={`mr-1.5 text-xs font-extrabold ${i % 2 === 0 ? "text-stone-400" : "text-sky-500"}`}>
+                        <span className={`mr-1.5 text-xs ${i % 2 === 0 ? "t-faint" : "t-blue"}`}>
                           {i + 1}.
                         </span>
                       )}
@@ -962,32 +968,32 @@ export default function CustomerOrderPage() {
                     <SpecLines
                       sel={it.sel}
                       text={it.selections}
-                      className="mt-1 text-xs text-stone-400"
+                      className="mt-1 text-xs t-soft"
                       stripLinks
                     />
                     {/* 💬 ที่มาของราคาที่ร้านตีให้ (งานสั่งทำ) — บอกวิธีคิดตรง ๆ ไม่ต้องทักถาม */}
                     {it.quoteNote && (
-                      <p className="mt-1.5 whitespace-pre-line rounded-xl bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold leading-relaxed text-amber-900 ring-1 ring-amber-200">
-                        <span className="mr-1 font-bold text-amber-600">💬 ที่มาของราคา:</span>{" "}
+                      <p className="ord-note info mt-1.5 whitespace-pre-line px-2.5 py-1.5 text-[11px] leading-relaxed">
+                        <span className="mr-1 font-semibold">💬 ที่มาของราคา:</span>{" "}
                         {it.quoteNote}
                       </p>
                     )}
                     {/* ⚠️ ข้อควรทราบของสินค้าตัวนี้ — ย้ำอีกครั้งหลังสั่ง กันเข้าใจผิด/เคลมทีหลัง */}
                     {termsById[it.productId] && (
                       <details className="group mt-1.5">
-                        <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100">
+                        <summary className="ord-chip danger cursor-pointer list-none">
                           ⚠️ ข้อควรทราบของงานนี้
-                          <span className="text-rose-400 group-open:hidden">· แตะอ่าน</span>
-                          <span className="hidden text-rose-400 group-open:inline">· ย่อ</span>
+                          <span className="opacity-60 group-open:hidden">· แตะอ่าน</span>
+                          <span className="hidden opacity-60 group-open:inline">· ย่อ</span>
                         </summary>
-                        <ul className="mt-1.5 space-y-1 rounded-xl bg-rose-50/70 p-2.5 ring-1 ring-rose-100">
+                        <ul className="ord-note danger mt-1.5 space-y-1 p-2.5">
                           {termsById[it.productId]
                             .split(/\n+/)
                             .map((line) => line.replace(/^[-•*\s]+/, "").trim())
                             .filter(Boolean)
                             .map((line, k) => (
-                              <li key={k} className="flex gap-1.5 text-[11px] leading-relaxed text-rose-800">
-                                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-rose-400" />
+                              <li key={k} className="flex gap-1.5 text-[11px] leading-relaxed">
+                                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#F2456B]" />
                                 {line}
                               </li>
                             ))}
@@ -995,17 +1001,15 @@ export default function CustomerOrderPage() {
                       </details>
                     )}
                   </div>
-                  <span className="shrink-0 text-right text-sm font-bold text-amber-950">
+                  <span className="ord-title shrink-0 text-right text-sm">
                     {it.unitPrice > 0 ? (
                       `${it.qty} × ${formatPrice(it.unitPrice)}`
                     ) : (
                       /* งานสั่งทำที่ร้านยังไม่ได้ตีราคา — บอกตรง ๆ ดีกว่าโชว์ ฿0 */
-                      <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 ring-1 ring-amber-200">
-                        {it.qty} ชิ้น · รอร้านแจ้งราคา
-                      </span>
+                      <span className="ord-chip yolk">{it.qty} ชิ้น · รอร้านแจ้งราคา</span>
                     )}
                     {itemDiscountAmount(it) > 0 && (
-                      <span className="block text-[11px] font-semibold text-emerald-600">
+                      <span className="block text-[11px] font-semibold t-ok">
                         ส่วนลด{(it.discountPct ?? 0) > 0 ? ` ${it.discountPct}%` : ""} −{formatPrice(itemDiscountAmount(it))}
                       </span>
                     )}
@@ -1013,11 +1017,11 @@ export default function CustomerOrderPage() {
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-bold text-stone-600">
+                  <span className="ord-title text-[.82rem]">
                     🖼 แบบงาน
-                    {proofs.length > 1 && <span className="ml-1 font-normal text-stone-400">{proofs.length} รูป</span>}
+                    {proofs.length > 1 && <span className="ml-1 t-faint" style={{ fontFamily: "var(--body)" }}>{proofs.length} รูป</span>}
                     {!proofs.length && (it.artworkUrls?.length ?? 0) > 0 && (
-                      <span className="ml-1 font-normal text-stone-400">— ตอนนี้แสดงลายที่คุณส่งมาไว้ก่อน</span>
+                      <span className="ml-1 t-faint" style={{ fontFamily: "var(--body)" }}>— ตอนนี้แสดงลายที่คุณส่งมาไว้ก่อน</span>
                     )}
                   </span>
                   {it.proofStatus && (
@@ -1032,22 +1036,20 @@ export default function CustomerOrderPage() {
                   <div className="mt-2 flex flex-wrap gap-2">
                     {(it.artworkUrls ?? []).map((u, k) => (
                       <a key={`${u}-${k}`} href={u} target="_blank" rel="noreferrer" className="w-24" title="ลายที่คุณส่งมา — แตะเพื่อดูเต็ม">
-                        <span className="relative block aspect-[4/3] overflow-hidden rounded-xl ring-1 ring-sky-200 transition hover:ring-2 hover:ring-sky-400">
+                        <span className="ord-proof">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={u} alt={`ลายที่คุณส่ง ${k + 1}`} className="h-full w-full bg-stone-50 object-cover" />
-                          <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-sky-600/85 px-1 py-0.5 text-[9px] font-bold text-white">
-                            ลายที่คุณส่ง
-                          </span>
+                          <img src={u} alt={`ลายที่คุณส่ง ${k + 1}`} style={{ objectFit: "cover" }} />
+                          <span className="ord-proof-n">ลายที่คุณส่ง</span>
                         </span>
                       </a>
                     ))}
-                    <span className="grid aspect-[4/3] w-24 place-items-center rounded-xl border-2 border-dashed border-stone-200 bg-stone-50/60 px-1 text-center text-[10px] font-bold leading-tight text-stone-400">
+                    <span className="ord-proof-empty" style={{ width: "6rem" }}>
                       🎨 รอแบบ<br />จากร้าน
                     </span>
                   </div>
                 )}
                 {!proofs.length ? (
-                  <p className="mt-1.5 text-[11px] leading-relaxed text-stone-400">
+                  <p className="mt-1.5 text-[11px] leading-relaxed t-faint">
                     ทีมกราฟฟิกกำลังจัดทำแบบจากลายของคุณ เดี๋ยวจะแจ้งให้เข้ามาตรวจครับ
                   </p>
                 ) : (
@@ -1059,41 +1061,35 @@ export default function CustomerOrderPage() {
                             type="button"
                             onClick={() => openLightbox(i, j)}
                             aria-label={`ขยายดูแบบงาน ${it.name} รูปที่ ${j + 1}`}
-                            className={`relative block aspect-[4/3] w-full cursor-zoom-in overflow-hidden rounded-xl ring-1 transition hover:ring-amber-300 ${
-                              p.review === "อนุมัติ" ? "ring-teal-300" : p.review === "ขอแก้ไข" ? "ring-rose-300" : "ring-stone-200"
-                            }`}
+                            className={`ord-proof${p.review === "อนุมัติ" ? " approved" : p.review === "ขอแก้ไข" ? " revise" : ""}`}
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={p.url} alt={`แบบงาน ${it.name} รูปที่ ${j + 1}`} className="h-full w-full bg-stone-50 object-contain" />
+                            <img src={p.url} alt={`แบบงาน ${it.name} รูปที่ ${j + 1}`} />
                             {/* เลขรูป — เลขเดียวกับที่ทีมงานเห็น อ้างถึงกันได้ตรง ๆ ว่า "รูปที่ N" */}
-                            <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-stone-900/55 px-1 py-0.5 text-[9px] font-bold text-white">
-                              รูปที่ {j + 1}
-                            </span>
+                            <span className="ord-proof-n">รูปที่ {j + 1}</span>
                             {p.review && (
                               <span
-                                className={`absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold text-white ${
-                                  p.review === "อนุมัติ" ? "bg-teal-500" : "bg-rose-500"
-                                }`}
+                                className={`ord-proof-mark ${p.review === "อนุมัติ" ? "ok" : "revise"}`}
                               >
                                 {p.review === "อนุมัติ" ? "✓" : "✏"}
                               </span>
                             )}
                             {/* กราฟฟิกแก้ตามที่ขอแล้ว และยังไม่ได้ตรวจรอบใหม่ */}
                             {!p.review && p.revisedAt && (
-                              <span className="absolute left-1 top-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white shadow">
+                              <span className="ord-proof-n" style={{ left: 5, top: 5, bottom: "auto", background: "var(--yolk-deep)", color: "var(--navy)" }}>
                                 🔄 แก้ไขให้แล้ว
                               </span>
                             )}
                           </button>
                           {!p.review && p.revisedAt && (
-                            <p className="mt-1 rounded-lg bg-amber-50 px-1.5 py-1 text-[10px] font-bold leading-snug text-amber-700 ring-1 ring-amber-100">
+                            <p className="ord-note warn mt-1 px-2 py-1 text-[10px] leading-snug">
                               🔄 แก้ไขให้แล้ว — รบกวนตรวจอีกครั้ง
-                              {p.revisedFromNote ? <span className="block font-normal text-amber-600">แก้ตามที่ขอ: “{p.revisedFromNote}”</span> : null}
+                              {p.revisedFromNote ? <span className="block opacity-80">แก้ตามที่ขอ: “{p.revisedFromNote}”</span> : null}
                             </p>
                           )}
                           {(p.qty || p.note) && (
-                            <p className="mt-1 text-[11px] leading-tight text-stone-500">
-                              {p.qty ? <span className="font-bold text-stone-700">{p.qty} ชิ้น</span> : null}
+                            <p className="mt-1 text-[11px] leading-tight t-soft">
+                              {p.qty ? <span className="font-semibold t-ink">{p.qty} ชิ้น</span> : null}
                               {p.qty && p.note ? " · " : null}
                               {p.note}
                             </p>
@@ -1101,7 +1097,7 @@ export default function CustomerOrderPage() {
                         </div>
                       ))}
                     </div>
-                    <p className="mt-1.5 text-[11px] text-stone-400">
+                    <p className="mt-1.5 text-[11px] t-faint">
                       แตะรูปเพื่อดูขนาดเต็ม
                       {it.proofStatus !== "อนุมัติ" && proofs.some((p) => !p.review) && (
                         <>
@@ -1109,7 +1105,7 @@ export default function CustomerOrderPage() {
                           <button
                             type="button"
                             onClick={() => setShowGuide(true)}
-                            className="font-bold text-amber-600 underline underline-offset-2 hover:text-amber-700"
+                            className="font-semibold t-blue underline underline-offset-2"
                           >
                             ❓ วิธีตรวจ/อนุมัติแบบ
                           </button>
@@ -1120,34 +1116,34 @@ export default function CustomerOrderPage() {
                 )}
 
                 {it.proofStatus === "ขอแก้ไข" && it.proofNote && (
-                  <p className="mt-3 rounded-xl bg-rose-50/70 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-100">
+                  <p className="ord-note danger mt-3 px-3 py-2 text-xs">
                     ✏️ คุณขอแก้ไข: “{it.proofNote}” — ทีมกราฟฟิกกำลังแก้ให้ครับ
                   </p>
                 )}
 
                 {it.proofStatus === "อนุมัติ" && (
-                  <p className="mt-3 rounded-xl bg-teal-50/70 px-3 py-2 text-xs font-semibold text-teal-700 ring-1 ring-teal-100">
+                  <p className="ord-note ok mt-3 px-3 py-2 text-xs font-semibold">
                     ✅ คุณอนุมัติแบบนี้แล้ว — ทางร้านจะเริ่มผลิตให้เลย
                   </p>
                 )}
 
                 {it.proofStatus === "รอตรวจ" &&
                   (editingIdx === i ? (
-                    <div className="mt-3 rounded-xl bg-stone-50 p-3">
-                      <label className="mb-1 block text-xs font-bold text-stone-600">อยากให้แก้ตรงไหน?</label>
+                    <div className="ord-sub mt-3 p-3">
+                      <label className="ord-title mb-1.5 block text-xs">อยากให้แก้ตรงไหน?</label>
                       <textarea
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
                         rows={3}
                         placeholder="เช่น ขอเปลี่ยนสีพื้นหลังเป็นฟ้า · ตัวหนังสือใหญ่ขึ้น"
-                        className="w-full resize-y rounded-xl bg-white px-3 py-2 text-sm text-stone-700 ring-1 ring-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                        className="ord-input"
                       />
-                      <div className="mt-2 flex gap-2">
+                      <div className="mt-2.5 flex gap-2">
                         <button
                           type="button"
                           onClick={() => act(i, "request")}
                           disabled={!note.trim() || busyIdx === i}
-                          className="rounded-full bg-rose-500 px-4 py-2 text-[13px] font-bold text-white transition hover:bg-rose-600 disabled:opacity-50"
+                          className="ord-btn danger sm"
                         >
                           {busyIdx === i ? "กำลังส่ง…" : "ส่งคำขอแก้ไข"}
                         </button>
@@ -1157,7 +1153,7 @@ export default function CustomerOrderPage() {
                             setEditingIdx(null);
                             setNote("");
                           }}
-                          className="rounded-full px-4 py-2 text-[13px] font-semibold text-stone-500 hover:bg-stone-100"
+                          className="ord-btn quiet sm"
                         >
                           ยกเลิก
                         </button>
@@ -1171,7 +1167,7 @@ export default function CustomerOrderPage() {
                           if (await confirmViaModal()) void act(i, "approve");
                         }}
                         disabled={busyIdx === i}
-                        className="rounded-full bg-amber-500 px-4 py-2 text-[13px] font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-50"
+                        className="ord-btn ok sm"
                       >
                         {busyIdx === i
                           ? "กำลังส่ง…"
@@ -1183,7 +1179,7 @@ export default function CustomerOrderPage() {
                           setEditingIdx(i);
                           setNote("");
                         }}
-                        className="rounded-full px-4 py-2 text-[13px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
+                        className="ord-btn danger-ghost sm"
                       >
                         ✏️ ขอแก้ไข
                       </button>
@@ -1197,47 +1193,47 @@ export default function CustomerOrderPage() {
         {/* ขวา: สรุป (ติดหนึบตอนเลื่อน) */}
         <aside className="space-y-4 lg:sticky lg:top-6">
           <div className="hidden lg:block">{payFlow}</div>
-          <div className="rounded-2xl bg-white p-4 ring-1 ring-stone-200 sm:p-5">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">สรุปยอด</p>
-            <div className="mt-2.5 flex justify-between text-sm">
-              <span className="text-stone-500">รวมสินค้า ({order.items.reduce((s, i) => s + i.qty, 0)} ชิ้น)</span>
+          <div className="ord-card p-4 sm:p-5">
+            <p className="ord-eyebrow">สรุปยอด</p>
+            <div className="mt-3 flex justify-between text-sm">
+              <span className="t-soft">รวมสินค้า ({order.items.reduce((s, i) => s + i.qty, 0)} ชิ้น)</span>
               <span>{formatPrice(subtotal)}</span>
             </div>
             <div className="mt-1.5 flex justify-between text-sm">
-              <span className="text-stone-500">ค่าจัดส่ง ({order.shippingLabel || order.shipping})</span>
+              <span className="t-soft">ค่าจัดส่ง ({order.shippingLabel || order.shipping})</span>
               <span>{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
             </div>
             {order.discount && order.discount.amount > 0 && (
-              <div className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
+              <div className="mt-1.5 flex justify-between text-sm font-semibold t-ok">
                 <span>{order.discount.label}</span>
                 <span>−{formatPrice(order.discount.amount)}</span>
               </div>
             )}
             {orderItemDiscounts(order) > 0 && (
-              <div className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
+              <div className="mt-1.5 flex justify-between text-sm font-semibold t-ok">
                 <span>ส่วนลดรายการสินค้า</span>
                 <span>−{formatPrice(orderItemDiscounts(order))}</span>
               </div>
             )}
             {adminDiscountAmount(order) > 0 && (
-              <div className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
+              <div className="mt-1.5 flex justify-between text-sm font-semibold t-ok">
                 <span>{order.adminDiscount?.label?.trim() || "ส่วนลดพิเศษจากร้าน"}{(order.adminDiscount?.pct ?? 0) > 0 ? ` (${order.adminDiscount!.pct}%)` : ""}</span>
                 <span>−{formatPrice(adminDiscountAmount(order))}</span>
               </div>
             )}
-            <div className="mt-2.5 flex justify-between border-t border-stone-100 pt-2.5 text-base font-extrabold text-amber-950">
+            <div className="ord-title mt-3 flex justify-between pt-3 text-base" style={{ borderTop: "1px dashed var(--sky-200)" }}>
               <span>ยอดรวม</span>
-              <span className="text-amber-600">{formatPrice(orderTotal(order))}</span>
+              <span className="t-blue" style={{ fontWeight: 600 }}>{formatPrice(orderTotal(order))}</span>
             </div>
             {order.deposit && (
-              <div className="mt-2 space-y-1 rounded-xl bg-stone-50 p-2.5 text-xs">
+              <div className="ord-sub mt-2.5 space-y-1 p-2.5 text-xs">
                 <div className="flex justify-between font-semibold">
-                  <span className="text-stone-500">มัดจำ 50% {order.deposit.firstPaidAt ? "· รับแล้ว ✓" : "· รอโอน"}</span>
-                  <span className={order.deposit.firstPaidAt ? "text-emerald-600" : "text-rose-600"}>{formatPrice(order.deposit.amount)}</span>
+                  <span className="t-soft">มัดจำ 50% {order.deposit.firstPaidAt ? "· รับแล้ว ✓" : "· รอโอน"}</span>
+                  <span className={order.deposit.firstPaidAt ? "t-ok" : "t-danger"}>{formatPrice(order.deposit.amount)}</span>
                 </div>
                 <div className="flex justify-between font-semibold">
-                  <span className="text-stone-500">ยอดคงเหลือ {order.deposit.settledAt ? "· ครบแล้ว ✓" : "· ชำระก่อนจัดส่ง"}</span>
-                  <span className={order.deposit.settledAt ? "text-emerald-600" : "text-rose-600"}>
+                  <span className="t-soft">ยอดคงเหลือ {order.deposit.settledAt ? "· ครบแล้ว ✓" : "· ชำระก่อนจัดส่ง"}</span>
+                  <span className={order.deposit.settledAt ? "t-ok" : "t-danger"}>
                     {formatPrice(Math.max(0, orderTotal(order) - order.deposit.amount))}
                   </span>
                 </div>
@@ -1246,22 +1242,22 @@ export default function CustomerOrderPage() {
           </div>
 
           {order.tracking && (
-            <div className="rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200 sm:p-5">
-              <p className="text-[11px] font-bold uppercase tracking-widest text-amber-700">เลขพัสดุ</p>
-              <p className="mt-1 select-all break-all font-mono text-lg font-extrabold text-amber-950">{order.tracking}</p>
+            <div className="ord-note info p-4 sm:p-5">
+              <p className="ord-eyebrow">เลขพัสดุ</p>
+              <p className="mt-1 select-all break-all font-mono text-lg font-bold t-ink">{order.tracking}</p>
               {/^[A-Z]{2}\d{9}TH$/i.test(order.tracking.trim()) ? (
                 <CustomerThaiPostStatus orderId={order.id} orderKey={orderKey} tracking={order.tracking.trim()} />
               ) : (
-                <p className="mt-1 text-xs text-stone-500">แตะค้างเพื่อคัดลอก แล้วนำไปเช็คสถานะกับขนส่งได้เลย</p>
+                <p className="mt-1 text-xs t-soft">แตะค้างเพื่อคัดลอก แล้วนำไปเช็คสถานะกับขนส่งได้เลย</p>
               )}
             </div>
           )}
 
           {/* 📸 ภาพของในกล่องก่อนปิด — ทีมแพ็คถ่ายเก็บไว้ ลูกค้าเห็นว่าของครบตามที่ส่งจริง */}
           {(order.packPhotos?.length ?? 0) > 0 && (
-            <div className="rounded-2xl bg-white p-4 ring-1 ring-stone-200 sm:p-5">
-              <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">📸 ภาพของในกล่องก่อนปิด</p>
-              <p className="mt-1 text-xs text-stone-500">ทีมแพ็คถ่ายไว้ก่อนปิดกล่อง — ของตามภาพนี้ถูกจัดส่งไปกับพัสดุของคุณ</p>
+            <div className="ord-card p-4 sm:p-5">
+              <p className="ord-eyebrow">📸 ภาพของในกล่องก่อนปิด</p>
+              <p className="mt-1.5 text-xs t-soft">ทีมแพ็คถ่ายไว้ก่อนปิดกล่อง — ของตามภาพนี้ถูกจัดส่งไปกับพัสดุของคุณ</p>
               <div className="mt-2.5 grid grid-cols-3 gap-2">
                 {(order.packPhotos ?? []).map((ph, i) => (
                   <a key={`${ph.url}-${i}`} href={ph.url} target="_blank" rel="noreferrer" className="group">
@@ -1269,7 +1265,7 @@ export default function CustomerOrderPage() {
                     <img
                       src={ph.url}
                       alt={`ภาพก่อนปิดกล่อง ${i + 1}`}
-                      className="h-24 w-full rounded-xl object-cover ring-1 ring-stone-200 transition group-hover:ring-amber-300"
+                      className="h-24 w-full rounded-2xl object-cover ring-2 ring-white transition group-hover:ring-[#57B6E8]"
                     />
                   </a>
                 ))}
@@ -1280,17 +1276,17 @@ export default function CustomerOrderPage() {
           {(() => {
             const addrLocked = !!order.printedAt || ["จัดส่งแล้ว", "เสร็จสิ้น", "ยกเลิก"].includes(order.status);
             return (
-              <div className="rounded-2xl bg-white p-4 ring-1 ring-stone-200 sm:p-5">
+              <div className="ord-card p-4 sm:p-5">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">จัดส่งถึง</p>
+                  <p className="ord-eyebrow">จัดส่งถึง</p>
                   {!editAddr &&
                     (addrLocked ? (
-                      <span className="text-[11px] font-semibold text-stone-400">🔒 ล็อกแล้ว</span>
+                      <span className="text-[11px] font-semibold t-faint">🔒 ล็อกแล้ว</span>
                     ) : (
                       <button
                         type="button"
                         onClick={startEditAddr}
-                        className="text-xs font-bold text-amber-600 hover:text-amber-700 hover:underline"
+                        className="ord-btn ghost sm"
                       >
                         ✏️ แก้ไข
                       </button>
@@ -1303,36 +1299,36 @@ export default function CustomerOrderPage() {
                       value={addrForm.customer}
                       onChange={(e) => setAddrForm((f) => ({ ...f, customer: e.target.value }))}
                       placeholder="ชื่อผู้รับ"
-                      className="w-full rounded-xl bg-white px-3 py-2 text-sm text-stone-700 ring-1 ring-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                      className="ord-input"
                     />
                     <input
                       value={addrForm.phone}
                       onChange={(e) => setAddrForm((f) => ({ ...f, phone: e.target.value.replace(/[^\d\-+ ]/g, "") }))}
                       inputMode="tel"
                       placeholder="เบอร์โทร"
-                      className="w-full rounded-xl bg-white px-3 py-2 text-sm text-stone-700 ring-1 ring-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                      className="ord-input"
                     />
                     <textarea
                       value={addrForm.address}
                       onChange={(e) => setAddrForm((f) => ({ ...f, address: e.target.value }))}
                       rows={3}
                       placeholder="บ้านเลขที่ · ถนน · ตำบล/อำเภอ · จังหวัด · รหัสไปรษณีย์"
-                      className="w-full resize-y rounded-xl bg-white px-3 py-2 text-sm text-stone-700 ring-1 ring-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                      className="ord-input"
                     />
-                    {addrErr && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-600">{addrErr}</p>}
+                    {addrErr && <p className="ord-note danger px-3 py-2 text-xs">{addrErr}</p>}
                     <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={saveAddr}
                         disabled={addrBusy}
-                        className="flex-1 rounded-full bg-amber-400 px-4 py-2 text-sm font-bold text-white transition hover:bg-amber-500 disabled:opacity-50"
+                        className="ord-btn yolk flex-1"
                       >
                         {addrBusy ? "กำลังบันทึก…" : "💾 บันทึกที่อยู่"}
                       </button>
                       <button
                         type="button"
                         onClick={() => setEditAddr(false)}
-                        className="rounded-full px-4 py-2 text-sm font-semibold text-stone-400 hover:text-stone-600"
+                        className="ord-btn quiet"
                       >
                         ยกเลิก
                       </button>
@@ -1340,12 +1336,12 @@ export default function CustomerOrderPage() {
                   </div>
                 ) : (
                   <>
-                    <p className="mt-2 text-sm font-bold text-amber-950">{order.customer}</p>
-                    <p className="text-sm leading-snug text-stone-500">{order.address}</p>
-                    <p className="mt-1.5 text-xs text-stone-400">
+                    <p className="ord-title mt-2 text-sm">{order.customer}</p>
+                    <p className="text-sm leading-snug t-soft">{order.address}</p>
+                    <p className="mt-1.5 text-xs t-faint">
                       {order.phone} · ชำระโดย{order.payment}
                     </p>
-                    <p className="mt-2 text-[11px] leading-relaxed text-stone-400">
+                    <p className="mt-2 text-[11px] leading-relaxed t-faint">
                       {addrLocked
                         ? "🔒 ทางร้านเริ่มทำใบงานแล้ว แก้ไขที่อยู่ไม่ได้ — หากต้องแก้ ติดต่อร้านทางไลน์"
                         : "แก้ไขที่อยู่ได้จนกว่าทางร้านจะปริ้นใบงาน"}
@@ -1357,17 +1353,15 @@ export default function CustomerOrderPage() {
           })()}
 
           {order.log && order.log.length > 0 && (
-            <details className="rounded-2xl bg-white p-4 ring-1 ring-stone-200 sm:p-5">
-              <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-widest text-stone-400">
-                ประวัติทั้งหมด ({order.log.length})
-              </summary>
-              <ul className="mt-3 space-y-2 border-l-2 border-stone-100 pl-4">
+            <details className="ord-card p-4 sm:p-5">
+              <summary className="ord-eyebrow cursor-pointer">ประวัติทั้งหมด ({order.log.length})</summary>
+              <ul className="mt-3 space-y-2 pl-4" style={{ borderLeft: "2px dashed var(--sky-200)" }}>
                 {[...order.log].reverse().map((l, i) => (
-                  <li key={i} className="text-xs text-stone-500">
-                    <span className="font-semibold text-stone-700">{l.action}</span>
+                  <li key={i} className="text-xs t-soft">
+                    <span className="font-semibold t-ink">{l.action}</span>
                     {l.detail ? ` · ${l.detail}` : ""}
                     <br />
-                    <span className="text-stone-400">
+                    <span className="t-faint">
                       {l.by} ·{" "}
                       {new Date(l.at).toLocaleString("th-TH", {
                         day: "numeric",
@@ -1385,12 +1379,12 @@ export default function CustomerOrderPage() {
       </div>
 
       {/* สั่งเพิ่มในออเดอร์นี้ — กันลูกค้าเปิดออเดอร์ใหม่แล้วโดนค่าส่งซ้ำ */}
-      <div className="mt-6 rounded-2xl bg-white p-5 text-center ring-1 ring-stone-200">
+      <div className="ord-card mt-6 p-5 text-center sm:p-6">
         {canAppend ? (
           <>
-            <p className="text-sm font-bold text-amber-950">อยากสั่งเพิ่มไหม?</p>
-            <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-stone-500">
-              สั่งเพิ่มในออเดอร์นี้ได้เลย — <strong className="text-amber-700">ไม่เสียค่าส่งเพิ่ม</strong> เพราะส่งรวมกล่องเดียวกัน
+            <p className="ord-title text-[1.05rem]">อยากสั่งเพิ่มไหม?</p>
+            <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed t-soft">
+              สั่งเพิ่มในออเดอร์นี้ได้เลย — <strong className="t-blue">ไม่เสียค่าส่งเพิ่ม</strong> เพราะส่งรวมกล่องเดียวกัน
               (โอนเฉพาะส่วนต่างทีหลัง)
             </p>
             <button
@@ -1399,20 +1393,20 @@ export default function CustomerOrderPage() {
                 setAppendTarget({ id: order.id, key: orderKey, shippingCost: order.shippingCost });
                 router.push("/products");
               }}
-              className="mt-3 rounded-full bg-amber-500 px-6 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-amber-600"
+              className="ord-btn yolk mt-4"
             >
               🛍️ สั่งเพิ่มในออเดอร์นี้
             </button>
           </>
         ) : (
           <>
-            <p className="text-sm font-bold text-stone-700">ออเดอร์นี้ปิดรับสินค้าเพิ่มแล้ว</p>
-            <p className="mt-1 text-xs text-stone-500">
+            <p className="ord-title text-[1rem]">ออเดอร์นี้ปิดรับสินค้าเพิ่มแล้ว</p>
+            <p className="mt-1 text-xs t-soft">
               เพราะอยู่ในขั้น “{order.status}” — ถ้าอยากสั่งเพิ่ม จะเป็นออเดอร์ใหม่ (คิดค่าส่งแยก)
             </p>
           </>
         )}
-        <Link href="/products" className="mt-3 block text-xs font-semibold text-stone-400 hover:text-stone-600">
+        <Link href="/products" className="mt-4 block text-xs font-semibold t-faint">
           ← ดูสินค้าทั้งหมด
         </Link>
       </div>
@@ -1481,14 +1475,15 @@ export default function CustomerOrderPage() {
                           if (target >= 0) openLightbox(lightbox.itemIdx, target);
                         }}
                         disabled={busyIdx === lightbox.itemIdx}
-                        className="rounded-full bg-teal-500 px-5 py-2.5 text-sm font-extrabold text-white shadow-lg transition hover:bg-teal-600 disabled:opacity-50"
+                        className="ord-btn ok"
                       >
                         ✅ ยืนยันอนุมัติ — ให้เริ่มผลิตได้เลย
                       </button>
                       <button
                         type="button"
                         onClick={() => setLbConfirm(false)}
-                        className="rounded-full px-4 py-2.5 text-sm font-bold text-white/70 hover:bg-white/10"
+                        className="ord-btn"
+                        style={{ background: "rgba(255,255,255,.1)", color: "rgba(255,255,255,.8)" }}
                       >
                         ↩️ ขอดูอีกครั้ง
                       </button>
@@ -1502,7 +1497,7 @@ export default function CustomerOrderPage() {
                       rows={2}
                       autoFocus
                       placeholder="อยากให้แก้ตรงไหนในภาพนี้?"
-                      className="w-full resize-y rounded-xl bg-white px-3 py-2 text-sm text-stone-700 focus:outline-none"
+                      className="ord-input"
                     />
                     <div className="mt-2 flex justify-center gap-2">
                       <button
@@ -1515,14 +1510,15 @@ export default function CustomerOrderPage() {
                           }
                         }}
                         disabled={!lbNote.trim() || busyIdx === lightbox.itemIdx}
-                        className="rounded-full bg-rose-500 px-4 py-2 text-[13px] font-bold text-white transition hover:bg-rose-600 disabled:opacity-50"
+                        className="ord-btn danger sm"
                       >
                         {busyIdx === lightbox.itemIdx ? "กำลังส่ง…" : "ส่งคำขอแก้ไขภาพนี้"}
                       </button>
                       <button
                         type="button"
                         onClick={() => setLbEdit(false)}
-                        className="rounded-full px-4 py-2 text-[13px] font-semibold text-white/70 hover:bg-white/10"
+                        className="ord-btn sm"
+                        style={{ background: "rgba(255,255,255,.1)", color: "rgba(255,255,255,.8)" }}
                       >
                         ยกเลิก
                       </button>
@@ -1540,14 +1536,15 @@ export default function CustomerOrderPage() {
                       type="button"
                       onClick={approveThis}
                       disabled={busyIdx === lightbox.itemIdx}
-                      className="rounded-full bg-amber-500 px-5 py-2.5 text-sm font-bold text-white shadow-lg transition hover:bg-amber-600 disabled:opacity-50"
+                      className="ord-btn yolk"
                     >
                       {busyIdx === lightbox.itemIdx ? "กำลังส่ง…" : "✅ อนุมัติภาพนี้"}
                     </button>
                     <button
                       type="button"
                       onClick={() => setLbEdit(true)}
-                      className="rounded-full bg-white/10 px-5 py-2.5 text-sm font-bold text-rose-300 ring-1 ring-rose-300/50 transition hover:bg-rose-500/20"
+                      className="ord-btn"
+                      style={{ background: "rgba(255,255,255,.12)", color: "#FFB8C7", borderColor: "rgba(255,158,176,.5)" }}
                     >
                       ✏️ ขอแก้ไขภาพนี้
                     </button>
@@ -1557,6 +1554,7 @@ export default function CustomerOrderPage() {
             />
           );
         })()}
+      </div>
     </div>
   );
 }
@@ -1587,17 +1585,17 @@ function CustomerThaiPostStatus({ orderId, orderKey, tracking }: { orderId: stri
   return (
     <div className="mt-2">
       {st.events?.length ? (
-        <div className="rounded-xl bg-white/80 p-3 ring-1 ring-amber-200/60">
+        <div className="ord-sub p-3">
           <ThaiPostTimeline events={st.events} />
         </div>
       ) : st.loading && orderKey ? (
-        <p className="text-xs text-stone-400">กำลังเช็คสถานะกับไปรษณีย์ไทย…</p>
+        <p className="text-xs t-faint">กำลังเช็คสถานะกับไปรษณีย์ไทย…</p>
       ) : null}
       <a
         href={trackUrl}
         target="_blank"
         rel="noreferrer"
-        className="mt-1.5 inline-block text-xs font-bold text-amber-700 underline decoration-amber-300 underline-offset-2 hover:text-amber-800"
+        className="mt-2 inline-block text-xs font-semibold t-blue underline underline-offset-2"
       >
         เช็คสถานะเต็ม ๆ ที่เว็บไปรษณีย์ไทย ↗
       </a>
