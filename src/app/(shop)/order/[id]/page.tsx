@@ -293,8 +293,8 @@ export default function CustomerOrderPage() {
 
   if (loading) {
     return (
-      <div className="ordp">
-        <div className="ordp-in" style={{ textAlign: "center", padding: "90px 0" }}>
+      <div className="shopp">
+        <div className="shopp-in" style={{ textAlign: "center", padding: "90px 0" }}>
           <p className="ord-eyebrow">iDucky Prints Studio</p>
           <p className="mt-2 text-sm t-soft">กำลังโหลดออเดอร์…</p>
         </div>
@@ -304,14 +304,14 @@ export default function CustomerOrderPage() {
 
   if (!order) {
     return (
-      <div className="ordp">
-        <div className="ordp-sky" aria-hidden="true">
+      <div className="shopp">
+        <div className="shopp-sky" aria-hidden="true">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="oc1" src="/landing/cloud.webp" alt="" />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="oc2" src="/landing/cloud.webp" alt="" />
         </div>
-        <div className="ordp-in" style={{ maxWidth: 520, padding: "70px 0 90px" }}>
+        <div className="shopp-in" style={{ maxWidth: 520, padding: "70px 0 90px" }}>
           <div className="ord-card p-8 text-center">
             <span className="text-5xl">🔒</span>
             <h1 className="mt-3 text-xl">เปิดออเดอร์ไม่ได้</h1>
@@ -594,9 +594,9 @@ export default function CustomerOrderPage() {
   );
 
   return (
-    <div className="ordp">
+    <div className="shopp">
       {/* เมฆลอย — ชุดเดียวกับหน้าแรก */}
-      <div className="ordp-sky" aria-hidden="true">
+      <div className="shopp-sky" aria-hidden="true">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="oc1" src="/landing/cloud.webp" alt="" />
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -606,7 +606,7 @@ export default function CustomerOrderPage() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="oc4" src="/landing/cloud.webp" alt="" />
       </div>
-      <div className="ordp-in">
+      <div className="shopp-in">
       {/*
         ทีมงานที่ล็อกอินหลังบ้านอยู่ (แอดมิน/กราฟฟิก/เจ้าของ) เปิดลิงก์ลูกค้ามาดู
         → มีปุ่มลัดเข้าออเดอร์นี้ในหลังบ้านเลย ไม่ต้องไปไล่หาในรายการออเดอร์
@@ -745,8 +745,8 @@ export default function CustomerOrderPage() {
       {/* ── กล่องยืนยันก่อนอนุมัติแบบงาน ── */}
       {confirmApprove && (
         // z สูงกว่า ImageLightbox (z-[100]) — กล่องยืนยันต้องลอยเหนือภาพขยายเสมอ
-        <div className="ordp-modal" onClick={() => confirmApprove.resolve(false)}>
-          <div className="ordp-modal-box" onClick={(e) => e.stopPropagation()}>
+        <div className="shopp-modal" onClick={() => confirmApprove.resolve(false)}>
+          <div className="shopp-modal-box" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 pb-2 pt-7 text-center" style={{ background: "linear-gradient(180deg,#DEF5EC,transparent)" }}>
               <span className="text-5xl">✅</span>
               <h2 className="mt-2 text-lg t-ok">ยืนยันการอนุมัติแบบงาน</h2>
@@ -781,8 +781,8 @@ export default function CustomerOrderPage() {
 
       {/* ── คู่มือวิธีตรวจแบบงาน (เด้งครั้งแรก / กดเปิดซ้ำได้) ── */}
       {showGuide && (
-        <div className="ordp-modal" style={{ zIndex: 120 }} onClick={closeGuide}>
-          <div className="ordp-modal-box tall p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="shopp-modal" style={{ zIndex: 120 }} onClick={closeGuide}>
+          <div className="shopp-modal-box tall p-6" onClick={(e) => e.stopPropagation()}>
             <p className="text-center text-4xl">🎨</p>
             <h2 className="mt-2 text-center text-lg">วิธีตรวจ &amp; อนุมัติแบบงาน</h2>
             <div className="mt-4 space-y-3 text-sm t-soft">

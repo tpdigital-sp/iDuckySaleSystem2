@@ -246,458 +246,405 @@ export default function CartPage() {
   const total = subtotal + shippingCost;
   const remainForFree = freeMin - subtotal;
 
+  /** เมฆพื้นหลัง — ชุดเดียวกับหน้าแรก */
+  const sky = (
+    <div className="shopp-sky" aria-hidden="true">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img className="oc1" src="/landing/cloud.webp" alt="" />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img className="oc2" src="/landing/cloud.webp" alt="" />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img className="oc3" src="/landing/cloud.webp" alt="" />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img className="oc4" src="/landing/cloud.webp" alt="" />
+    </div>
+  );
+
   if (items.length === 0) {
     return (
-      <div className="mx-auto max-w-2xl px-4 pt-16 text-center">
-        <span className="text-7xl">🛒</span>
-        <h1 className="mt-4 text-2xl font-extrabold text-amber-950">ตะกร้ายังว่างอยู่เลย</h1>
-        <p className="mt-2 text-sm text-stone-500">
-          ไปเลือกสินค้าน่ารัก ๆ มาใส่ตะกร้ากันเถอะ 🐥
-        </p>
-        <Link
-          href="/products"
-          className="mt-6 inline-block rounded-full bg-amber-400 px-8 py-3.5 text-sm font-bold text-white shadow-lg transition hover:scale-105"
-        >
-          🛍️ ไปช้อปเลย
-        </Link>
+      <div className="shopp">
+        {sky}
+        <div className="shopp-in" style={{ maxWidth: 540 }}>
+          <div className="ord-card p-8 text-center sm:p-10">
+            <span className="text-7xl">🛒</span>
+            <h1 className="mt-4 text-2xl">ตะกร้ายังว่างอยู่เลย</h1>
+            <p className="mt-2 text-sm t-soft">ไปเลือกสินค้าน่ารัก ๆ มาใส่ตะกร้ากันเถอะ 🐥</p>
+            <Link href="/products" className="ord-btn yolk lg mt-6">
+              🛍️ ไปช้อปเลย
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pt-6">
-      <h1 className="text-2xl font-extrabold text-amber-950 md:text-3xl">
-        🛒 ตะกร้าสินค้า{" "}
-        <span className="text-base font-semibold text-stone-400">
-          ({items.length} รายการ · เลือกสั่ง {pickedItems.length} รายการ {totalQty} ชิ้น)
-        </span>
-      </h1>
-
-      {/* 📄 แอดมินกำลังหยิบของใส่ใบเสนอราคา — ไม่ต้องผ่านหน้าชำระเงิน โยนเข้าใบได้เลย */}
-      {quoteTo && (
-        <div className="mt-4 rounded-3xl bg-teal-50 p-4 ring-1 ring-teal-200">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-extrabold text-teal-900">📄 กำลังหยิบใส่ใบเสนอราคา {quoteTo.id}</p>
-              <p className="mt-0.5 text-xs text-teal-700">
-                ลูกค้า: {quoteTo.customer} · หยิบสินค้าให้ครบก่อน แล้วกดปุ่มขวาเพื่อโยนเข้าใบทีเดียว (ยังไม่สร้างออเดอร์)
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void sendToQuote()}
-                disabled={quoteBusy}
-                className="rounded-full bg-teal-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-teal-700 disabled:opacity-40"
-              >
-                {quoteBusy ? "กำลังเพิ่ม…" : `➕ ใส่ในใบเสนอราคา (${pickedItems.length} รายการ)`}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  clearQuoteTarget();
-                  setQuoteTo(null);
-                }}
-                className="rounded-full px-3 py-2 text-xs font-semibold text-teal-700 hover:bg-teal-100"
-              >
-                ยกเลิกโหมดนี้
-              </button>
-            </div>
-          </div>
-          {quoteErr && <p className="mt-2 text-xs font-bold text-rose-600">{quoteErr}</p>}
+    <div className="shopp">
+      {sky}
+      <div className="shopp-in">
+        <div className="shopp-head">
+          <h1 className="ord-title">🛒 ตะกร้าสินค้า</h1>
+          <span className="ord-chip">
+            {items.length} รายการ · เลือกสั่ง {pickedItems.length} รายการ {totalQty} ชิ้น
+          </span>
         </div>
-      )}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
-        {/* รายการสินค้า */}
-        <div className="space-y-3">
-          {/* ✅ แถบเลือกรายการ — ติ๊กเฉพาะที่จะสั่งรอบนี้ ที่เหลือค้างไว้ในตะกร้า */}
-          <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white px-4 py-2.5 shadow-sm ring-1 ring-amber-100">
-            <label className="flex cursor-pointer items-center gap-2 text-sm font-bold text-stone-700">
-              <input
-                type="checkbox"
-                checked={allPicked}
-                onChange={togglePickAll}
-                className="h-5 w-5 accent-amber-500"
-              />
-              เลือกทั้งหมด
-            </label>
-            <span className="text-xs text-stone-400">
-              เลือกแล้ว <strong className="text-amber-700">{pickedItems.length}</strong>/{items.length} รายการ ·
-              ที่ไม่ติ๊กจะยังอยู่ในตะกร้า สั่งทีหลังได้
-            </span>
-            {pickedItems.length > 0 && (
-              <button
-                type="button"
-                onClick={removePicked}
-                className="ml-auto rounded-full px-3 py-1 text-xs font-bold text-stone-400 transition hover:bg-rose-50 hover:text-rose-600"
-              >
-                🗑 ลบที่เลือก
-              </button>
-            )}
-          </div>
-          {items.map((item) => {
-            const product = productOf(item.productId);
-            if (!product) return null;
-            return (
-              <div
-                key={item.key}
-                className={`flex gap-4 rounded-3xl p-4 shadow-sm ring-1 transition ${
-                  isPicked(item.key) ? "bg-white ring-amber-100" : "bg-stone-50 opacity-60 ring-stone-200"
-                }`}
-              >
-                {/* ✅ ติ๊ก = สั่งรายการนี้รอบนี้ · เอาติ๊กออก = พักไว้ในตะกร้าก่อน */}
-                <label
-                  className="flex shrink-0 cursor-pointer items-start pt-1"
-                  title={appendTo ? "ติ๊ก = ส่งรายการนี้เข้าออเดอร์เดิม" : "ติ๊ก = สั่งรายการนี้"}
+        {/* 📄 แอดมินกำลังหยิบของใส่ใบเสนอราคา — ไม่ต้องผ่านหน้าชำระเงิน โยนเข้าใบได้เลย */}
+        {quoteTo && (
+          <div className="ord-note ok mb-4 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="ord-title text-[.96rem]" style={{ color: "inherit" }}>
+                  📄 กำลังหยิบใส่ใบเสนอราคา {quoteTo.id}
+                </p>
+                <p className="mt-0.5 text-xs leading-relaxed">
+                  ลูกค้า: {quoteTo.customer} · หยิบสินค้าให้ครบก่อน แล้วกดปุ่มขวาเพื่อโยนเข้าใบทีเดียว (ยังไม่สร้างออเดอร์)
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" onClick={() => void sendToQuote()} disabled={quoteBusy} className="ord-btn ok">
+                  {quoteBusy ? "กำลังเพิ่ม…" : `➕ ใส่ในใบเสนอราคา (${pickedItems.length} รายการ)`}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearQuoteTarget();
+                    setQuoteTo(null);
+                  }}
+                  className="ord-btn quiet sm"
                 >
-                  <input
-                    type="checkbox"
-                    checked={isPicked(item.key)}
-                    onChange={() => togglePick(item.key)}
-                    className="h-5 w-5 accent-amber-500"
-                    aria-label={`เลือกสั่ง ${product.name}`}
-                  />
-                </label>
-                {(() => {
-                  // ลายที่ลูกค้าแนบ (เก็บมาในตัวเลือกเป็น url คั่นด้วย " | ") — โชว์ลายจริงแทนรูปสินค้า
-                  const artUrls = String(item.selections["ภาพลายที่แนบ"] ?? "")
-                    .split("|")
-                    .map((u) => u.trim())
-                    .filter(Boolean);
-                  return (
-                    <Link href={productPath(product)} className="relative shrink-0">
-                      {artUrls[0] ? (
-                        <>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={artUrls[0]}
-                            alt={`ลายที่แนบของ ${product.name}`}
-                            className="h-24 w-24 rounded-2xl object-cover ring-1 ring-sky-200"
-                          />
-                          <span className="absolute bottom-1 left-1 rounded bg-sky-600/85 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                            🎨 ลายของคุณ{artUrls.length > 1 ? ` +${artUrls.length - 1}` : ""}
-                          </span>
-                        </>
-                      ) : (
-                        <ProductVisual
-                          emoji={product.emoji}
-                          gradient={product.gradient}
-                          src={product.imageSrc}
-                          alt={product.name}
-                          size="text-4xl"
-                          className="h-24 w-24 rounded-2xl"
-                        />
-                      )}
-                    </Link>
-                  );
-                })()}
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <div className="flex items-start justify-between gap-2">
-                    <Link
-                      href={productPath(product)}
-                      className="line-clamp-1 text-sm font-bold text-stone-800 hover:text-amber-700"
-                    >
-                      {product.name}
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => removeItem(item.key)}
-                      className="shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
-                      aria-label={`ลบ ${product.name} ออกจากตะกร้า`}
-                    >
-                      ✕ ลบ
-                    </button>
-                  </div>
-                  {(() => {
-                    // ซ่อน url ลาย/ธงภายในระบบ — สรุปเป็นข้อความสั้นแทน
-                    // (บรรทัดตัวเลขของทีมผลิตซ่อนอยู่แล้วใน SPEC_HIDE — ลูกค้าไม่ต้องอ่าน แต่ยังติดไปกับออเดอร์)
-                    const artCount = String(item.selections["ภาพลายที่แนบ"] ?? "").split("|").filter((u) => u.trim()).length;
-                    return (
-                      <SpecLines
-                        sel={item.selections}
-                        className="mt-0.5 text-xs text-stone-400"
-                        after={
-                          artCount > 0 ? (
-                            <p className="font-semibold text-sky-600">🎨 แนบลายแล้ว {artCount} รูป</p>
-                          ) : null
-                        }
-                      />
-                    );
-                  })()}
-                  {(() => {
-                    // ร้านรับสั่งขั้นต่ำ 1 ชิ้นทุกสินค้า — ลดต่ำกว่าขั้นต่ำของเรทได้ ระบบสลับเรทให้เอง
-                    return (
-                  <div className="mt-auto flex items-center justify-between pt-2">
-                    <div>
-                    <div className="flex items-center rounded-full bg-amber-50 ring-1 ring-amber-200">
-                      <button
-                        type="button"
-                        onClick={() => changeQty(item, item.qty - 1)}
-                        disabled={item.qty <= 1}
-                        className="h-9 w-9 rounded-l-full font-bold text-stone-600 hover:bg-amber-100 disabled:opacity-30"
-                        aria-label="ลดจำนวน"
-                      >
-                        −
-                      </button>
-                      <span className="w-8 text-center text-sm font-bold">{item.qty}</span>
-                      <button
-                        type="button"
-                        onClick={() => changeQty(item, item.qty + 1)}
-                        className="h-9 w-9 rounded-r-full font-bold text-stone-600 hover:bg-amber-100"
-                        aria-label="เพิ่มจำนวน"
-                      >
-                        +
-                      </button>
-                    </div>
-                    </div>
-                    <div className="text-right">
-                      {item.unitPrice <= 0 ? (
-                        <span className="text-sm font-bold text-amber-600">💬 รอตีราคา</span>
-                      ) : (
-                        <>
-                          <span className="text-base font-extrabold text-amber-600">
-                            {formatPrice(item.unitPrice * item.qty + (item.extraFee ?? 0))}
-                          </span>
-                          {item.qty > 1 && (
-                            <span className="block text-[11px] text-stone-400">
-                              {formatPrice(item.unitPrice)} / ชิ้น
-                              {(item.extraFee ?? 0) > 0 && <> · 🎨 Add on +{formatPrice(item.extraFee!)}</>}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            );
-          })}
-          <button
-            type="button"
-            onClick={clear}
-            className="text-xs font-semibold text-stone-400 underline-offset-2 hover:text-rose-500 hover:underline"
-          >
-            ล้างตะกร้าทั้งหมด
-          </button>
-        </div>
-
-        {/* สรุปยอด */}
-        <aside className="h-fit rounded-3xl bg-white p-6 shadow-sm ring-1 ring-amber-100 lg:sticky lg:top-20">
-          <h2 className="text-lg font-extrabold text-amber-950">สรุปคำสั่งซื้อ</h2>
-
-          {/* ── ออเดอร์ใหม่ หรือ เพิ่มเข้าออเดอร์เดิม — เลือกให้ชัดก่อนไปหน้าชำระเงิน ── */}
-          {appendTo && (
-            <div className="mt-3 space-y-2 rounded-2xl bg-sky-50 p-3 ring-1 ring-sky-200">
-              <p className="text-xs font-bold text-sky-900">สั่งซื้อแบบไหน?</p>
-              <label className="flex cursor-pointer items-start gap-2 rounded-xl bg-white p-2.5 ring-1 ring-sky-200">
-                <input
-                  type="radio"
-                  name="order-mode"
-                  checked
-                  readOnly
-                  className="mt-0.5 h-4 w-4 accent-sky-600"
-                />
-                <span className="text-xs leading-relaxed text-stone-700">
-                  <strong className="block text-sm text-sky-800">➕ เพิ่มเข้าออเดอร์เดิม {appendTo.id}</strong>
-                  ใช้ชื่อ/ที่อยู่เดิม · <strong className="text-emerald-700">ไม่คิดค่าส่งเพิ่ม</strong> เพราะส่งรวมกล่องเดียวกัน
-                  <span className="mt-1 block font-bold text-sky-700">
-                    ติ๊กเลือกรายการที่จะส่งเข้าออเดอร์เดิมได้ — เลือกแล้ว {pickedItems.length}/{items.length} รายการ
-                    <span className="block font-normal text-stone-500">รายการที่ไม่ติ๊กจะยังอยู่ในตะกร้า สั่งทีหลังได้</span>
-                  </span>
-                </span>
-              </label>
-              <button
-                type="button"
-                onClick={() => {
-                  clearAppendTarget();
-                  clearUnpicked();
-                  setAppendTo(null);
-                  setUnpicked([]);
-                }}
-                className="flex w-full cursor-pointer items-start gap-2 rounded-xl bg-white p-2.5 text-left ring-1 ring-stone-200 transition hover:ring-stone-300"
-              >
-                <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full ring-1 ring-stone-300" />
-                <span className="text-xs leading-relaxed text-stone-600">
-                  <strong className="block text-sm text-stone-700">🆕 สั่งเป็นออเดอร์ใหม่</strong>
-                  แยกออเดอร์ · คิดค่าส่งใหม่ · กรอกที่อยู่ใหม่ได้
-                </span>
-              </button>
-            </div>
-          )}
-
-          {!freeShipping && remainForFree > 0 && (
-            <div className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800 ring-1 ring-amber-200">
-              🚚 ซื้อเพิ่มอีก <strong>{formatPrice(remainForFree)}</strong> รับส่งฟรีเลย!
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-amber-200">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-ducky to-amber-500 transition-all"
-                  style={{ width: `${freeMin > 0 ? Math.min(100, (subtotal / freeMin) * 100) : 0}%` }}
-                />
+                  ยกเลิกโหมดนี้
+                </button>
               </div>
             </div>
-          )}
-          {freeShipping && (
-            <div className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
-              🎉 ยินดีด้วย! คุณได้รับสิทธิ์ส่งฟรี
-              {qtyShipApplied && (
-                <span className="mt-1 block font-normal text-emerald-800">
-                  (ยกเว้นของชิ้นใหญ่/ของหนักที่ต้องคิดค่าขนส่งตามน้ำหนัก {formatPrice(qtyShip.fee)})
-                </span>
-              )}
-            </div>
-          )}
-
-          <div className="mt-4">
-            <span className="mb-2 block text-sm font-bold text-stone-700">วิธีจัดส่ง</span>
-            {auto.reason && (
-              <p className="mb-2 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-200">
-                🚚 ระบบเลือกกล่องที่พอดีกับออเดอร์นี้ให้แล้ว — {auto.reason}
-              </p>
-            )}
-            {(qtyShipApplied || qtyShip.lines.some((l) => l.switchedTo)) && (
-              <p className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 ring-1 ring-amber-200">
-                📦 ออเดอร์นี้มีสินค้าที่<strong>คิดค่าส่งตามจำนวนชิ้น</strong> (ของมีน้ำหนัก):{" "}
-                {qtyShip.lines
-                  .map((l) =>
-                    l.switchedTo
-                      ? `${l.name} ${l.qty} ชิ้น → เกินเกณฑ์ ต้องส่งแบบ "${l.switchedTo.name}"`
-                      : `${l.name} ${l.qty} ชิ้น = ${formatPrice(l.fee)}`
-                  )
-                  .join(" · ")}
-                {qtyShip.fee > 0 && <> — เลือก "มารับเอง" ได้ ไม่คิดค่าส่งส่วนนี้</>}
-              </p>
-            )}
-            <div className="space-y-2">
-              {shipRows.map((s) => {
-                const real = methods.find((m) => m.id === s.id);
-                const ok = !real || shippingAllowed(real, methods, auto);
-                const checked = s.covers ? s.covers.includes(shippingId) : shippingId === s.id;
-                return (
-                  <label
-                    key={s.covers ? "__qty__" : s.id}
-                    title={ok ? undefined : "ออเดอร์นี้ของเยอะเกินกล่องนี้"}
-                    className={`flex items-center justify-between rounded-2xl px-4 py-3 text-sm ring-1 transition ${
-                      !ok
-                        ? "cursor-not-allowed bg-stone-50 text-stone-300 ring-stone-100"
-                        : checked
-                          ? "cursor-pointer bg-amber-50 font-bold ring-ducky"
-                          : "cursor-pointer ring-amber-100 hover:bg-amber-50/50"
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name="shipping"
-                        disabled={!ok}
-                        checked={checked}
-                        onChange={() => setShippingId(s.id)}
-                        className="accent-amber-500"
-                      />
-                      <span>
-                        {s.name}
-                        {!ok && <span className="ml-1 text-[11px] font-semibold text-stone-400">· ของใส่ไม่พอ</span>}
-                        {s.note && <span className="block text-[11px] font-normal text-stone-400">{s.note}</span>}
-                      </span>
-                    </span>
-                    {/* ขีดฆ่าเฉพาะตอนส่งฟรีล้วน ๆ — ถ้ามีค่าของหนัก แถวยุบโชว์ราคาที่จ่ายจริงอยู่แล้ว */}
-                    <span className={freeShipping && ok && !qtyShipApplied ? "text-stone-400 line-through" : ""}>
-                      {formatPrice(s.price)}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
+            {quoteErr && <p className="mt-2 text-xs font-semibold t-danger">{quoteErr}</p>}
           </div>
+        )}
 
-          <dl className="mt-5 space-y-2 border-t border-amber-100 pt-4 text-sm">
-            <div className="flex justify-between text-stone-600">
-              <dt>ยอดรวมสินค้า ({totalQty} ชิ้น)</dt>
-              <dd className="font-semibold">{formatPrice(subtotal)}</dd>
-            </div>
-            <div className="flex justify-between text-stone-600">
-              <dt>
-                {qtyShipApplied && methodFree
-                  ? "ค่าจัดส่ง (ของหนัก — กล่องเพิ่ม)"
-                  : appendTo
-                    ? "ค่าจัดส่ง (รวมกล่องเดิม)"
-                    : "ค่าจัดส่ง"}
-              </dt>
-              <dd className="font-semibold">
-                {shippingCost === 0 ? (
-                  <span className="text-emerald-600">ฟรี!</span>
-                ) : (
-                  formatPrice(shippingCost)
-                )}
-              </dd>
-            </div>
-            <div className="flex justify-between border-t border-amber-100 pt-3 text-base font-extrabold text-amber-950">
-              <dt>ยอดชำระทั้งหมด</dt>
-              <dd className="text-amber-600">{formatPrice(total)}</dd>
-            </div>
-          </dl>
-
-          {/* 📅 วันที่ต้องใช้งาน — ทักเช็คคิวงานกับแอดมินก่อน */}
-          <div className="mt-5 rounded-2xl bg-sky-50/70 p-4 ring-1 ring-sky-200">
-            <label htmlFor="use-by" className="block text-sm font-bold text-stone-700">
-              📅 ต้องใช้งานวันไหน? <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
-            </label>
-            <p className="mt-1 text-[11px] leading-relaxed text-stone-500">
-              มีกำหนดใช้งาน (อีเวนต์ · วันเกิด · ของขวัญ) ระบุไว้ได้เลย —{" "}
-              <strong className="text-sky-700">รบกวนทักแอดมินเช็คคิวงานก่อนนะครับ</strong> ทางร้านจะยืนยันว่าทันไหมก่อนเริ่มผลิต
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <input
-                id="use-by"
-                type="date"
-                value={useBy}
-                min={new Date().toISOString().slice(0, 10)}
-                onChange={(e) => saveUseBy(e.target.value)}
-                className="rounded-xl bg-white px-3 py-2 text-sm text-stone-700 ring-1 ring-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-300"
-              />
-              {useBy && (
-                <button type="button" onClick={() => saveUseBy("")} className="rounded-full px-3 py-1 text-xs font-bold text-stone-400 hover:bg-white hover:text-stone-600">
-                  ล้างวันที่
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_366px] lg:items-start">
+          {/* ───────── รายการสินค้า ───────── */}
+          <div className="flex flex-col gap-3">
+            {/* ✅ แถบเลือกรายการ — ติ๊กเฉพาะที่จะสั่งรอบนี้ ที่เหลือค้างไว้ในตะกร้า */}
+            <div className="ord-card flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
+              <label className="ord-title flex cursor-pointer items-center gap-2.5 text-[.86rem]">
+                <input type="checkbox" checked={allPicked} onChange={togglePickAll} className="ord-check" />
+                เลือกทั้งหมด
+              </label>
+              <span className="text-xs t-soft">
+                เลือกแล้ว <strong className="t-blue">{pickedItems.length}</strong>/{items.length} รายการ · ที่ไม่ติ๊กจะยังอยู่ในตะกร้า สั่งทีหลังได้
+              </span>
+              {pickedItems.length > 0 && (
+                <button type="button" onClick={removePicked} className="ord-btn quiet sm ml-auto">
+                  🗑 ลบที่เลือก
                 </button>
               )}
-              <a
-                href={LINE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="ml-auto inline-flex items-center gap-1 rounded-full bg-[#06C755] px-3.5 py-1.5 text-xs font-bold text-white transition hover:brightness-95"
-              >
-                💬 ทักเช็คคิวงาน
-              </a>
             </div>
+
+            {items.map((item) => {
+              const product = productOf(item.productId);
+              if (!product) return null;
+              const picked = isPicked(item.key);
+              return (
+                <div key={item.key} className={`ord-card cart-item${picked ? "" : " tint dim"}`}>
+                  {/* ✅ ติ๊ก = สั่งรายการนี้รอบนี้ · เอาติ๊กออก = พักไว้ในตะกร้าก่อน */}
+                  <label
+                    className="flex shrink-0 cursor-pointer items-start pt-1"
+                    title={appendTo ? "ติ๊ก = ส่งรายการนี้เข้าออเดอร์เดิม" : "ติ๊ก = สั่งรายการนี้"}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={picked}
+                      onChange={() => togglePick(item.key)}
+                      className="ord-check"
+                      aria-label={`เลือกสั่ง ${product.name}`}
+                    />
+                  </label>
+                  {(() => {
+                    // ลายที่ลูกค้าแนบ (เก็บมาในตัวเลือกเป็น url คั่นด้วย " | ") — โชว์ลายจริงแทนรูปสินค้า
+                    const artUrls = String(item.selections["ภาพลายที่แนบ"] ?? "")
+                      .split("|")
+                      .map((u) => u.trim())
+                      .filter(Boolean);
+                    return (
+                      <Link href={productPath(product)} className="cart-thumb">
+                        {artUrls[0] ? (
+                          <>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={artUrls[0]} alt={`ลายที่แนบของ ${product.name}`} />
+                            <span className="ord-proof-n">
+                              🎨 ลายของคุณ{artUrls.length > 1 ? ` +${artUrls.length - 1}` : ""}
+                            </span>
+                          </>
+                        ) : (
+                          <ProductVisual
+                            emoji={product.emoji}
+                            gradient={product.gradient}
+                            src={product.imageSrc}
+                            alt={product.name}
+                            size="text-4xl"
+                            className="h-full w-full"
+                          />
+                        )}
+                      </Link>
+                    );
+                  })()}
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex items-start justify-between gap-2">
+                      <Link href={productPath(product)} className="cart-name">
+                        {product.name}
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item.key)}
+                        className="ord-btn quiet sm shrink-0"
+                        style={{ padding: "5px 10px", fontSize: ".72rem" }}
+                        aria-label={`ลบ ${product.name} ออกจากตะกร้า`}
+                      >
+                        ✕ ลบ
+                      </button>
+                    </div>
+                    {(() => {
+                      // ซ่อน url ลาย/ธงภายในระบบ — สรุปเป็นข้อความสั้นแทน
+                      // (บรรทัดตัวเลขของทีมผลิตซ่อนอยู่แล้วใน SPEC_HIDE — ลูกค้าไม่ต้องอ่าน แต่ยังติดไปกับออเดอร์)
+                      const artCount = String(item.selections["ภาพลายที่แนบ"] ?? "").split("|").filter((u) => u.trim()).length;
+                      return (
+                        <SpecLines
+                          sel={item.selections}
+                          className="mt-1 text-xs t-soft"
+                          after={artCount > 0 ? <p className="font-semibold t-blue">🎨 แนบลายแล้ว {artCount} รูป</p> : null}
+                        />
+                      );
+                    })()}
+                    {/* ร้านรับสั่งขั้นต่ำ 1 ชิ้นทุกสินค้า — ลดต่ำกว่าขั้นต่ำของเรทได้ ระบบสลับเรทให้เอง */}
+                    <div className="mt-auto flex items-center justify-between gap-3 pt-3">
+                      <div className="ord-qty">
+                        <button type="button" onClick={() => changeQty(item, item.qty - 1)} disabled={item.qty <= 1} aria-label="ลดจำนวน">
+                          −
+                        </button>
+                        <span>{item.qty}</span>
+                        <button type="button" onClick={() => changeQty(item, item.qty + 1)} aria-label="เพิ่มจำนวน">
+                          +
+                        </button>
+                      </div>
+                      <div className="text-right">
+                        {item.unitPrice <= 0 ? (
+                          <span className="ord-chip yolk">💬 รอตีราคา</span>
+                        ) : (
+                          <>
+                            <span className="cart-price">{formatPrice(item.unitPrice * item.qty + (item.extraFee ?? 0))}</span>
+                            {item.qty > 1 && (
+                              <span className="block text-[11px] t-faint">
+                                {formatPrice(item.unitPrice)} / ชิ้น
+                                {(item.extraFee ?? 0) > 0 && <> · 🎨 Add on +{formatPrice(item.extraFee!)}</>}
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            <button type="button" onClick={clear} className="ord-btn quiet sm self-start">
+              ล้างตะกร้าทั้งหมด
+            </button>
           </div>
 
-          {/* ร้านรับสั่งขั้นต่ำ 1 ชิ้นทุกสินค้า — ขั้นต่ำของเรทไม่บล็อกการสั่งอีกต่อไป
-              (จำนวนต่ำกว่าเกณฑ์เรท = ระบบสลับลงเรทที่เหมาะให้เอง ราคาถูกต้องตามช่วงจำนวน) */}
-          {pickedItems.length === 0 && (
-            <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-2.5 text-xs font-bold leading-relaxed text-amber-800 ring-1 ring-amber-200">
-              ☑️ ยังไม่ได้ติ๊กเลือกรายการที่จะสั่ง — ติ๊กอย่างน้อย 1 รายการก่อนนะครับ
+          {/* ───────── สรุปยอด ───────── */}
+          <aside className="ord-card cart-sum h-fit p-5 sm:p-6">
+            <h2 className="ord-title text-lg">สรุปคำสั่งซื้อ</h2>
+
+            {/* ── ออเดอร์ใหม่ หรือ เพิ่มเข้าออเดอร์เดิม — เลือกให้ชัดก่อนไปหน้าชำระเงิน ── */}
+            {appendTo && (
+              <div className="ord-note info mt-3 space-y-2 p-3">
+                <p className="ord-title text-[.8rem]" style={{ color: "inherit" }}>
+                  สั่งซื้อแบบไหน?
+                </p>
+                <label className="ord-opt on" style={{ alignItems: "flex-start" }}>
+                  <input type="radio" name="order-mode" checked readOnly className="mt-0.5" />
+                  <span className="flex-1 text-xs leading-relaxed t-soft">
+                    <strong className="ord-opt-name block text-[.86rem] t-ink">➕ เพิ่มเข้าออเดอร์เดิม {appendTo.id}</strong>
+                    ใช้ชื่อ/ที่อยู่เดิม · <strong className="t-ok">ไม่คิดค่าส่งเพิ่ม</strong> เพราะส่งรวมกล่องเดียวกัน
+                    <span className="mt-1 block font-semibold t-blue">
+                      ติ๊กเลือกรายการที่จะส่งเข้าออเดอร์เดิมได้ — เลือกแล้ว {pickedItems.length}/{items.length} รายการ
+                      <span className="block font-normal t-soft">รายการที่ไม่ติ๊กจะยังอยู่ในตะกร้า สั่งทีหลังได้</span>
+                    </span>
+                  </span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearAppendTarget();
+                    clearUnpicked();
+                    setAppendTo(null);
+                    setUnpicked([]);
+                  }}
+                  className="ord-opt"
+                  style={{ alignItems: "flex-start" }}
+                >
+                  <span className="mt-0.5 grid h-[19px] w-[19px] shrink-0 place-items-center rounded-full" style={{ border: "1.5px solid var(--sky-200)", background: "#fff" }} />
+                  <span className="flex-1 text-xs leading-relaxed t-soft">
+                    <strong className="ord-opt-name block text-[.86rem] t-ink">🆕 สั่งเป็นออเดอร์ใหม่</strong>
+                    แยกออเดอร์ · คิดค่าส่งใหม่ · กรอกที่อยู่ใหม่ได้
+                  </span>
+                </button>
+              </div>
+            )}
+
+            {!freeShipping && remainForFree > 0 && (
+              <div className="ord-note warn mt-3 px-4 py-3 text-xs leading-relaxed">
+                🚚 ซื้อเพิ่มอีก <strong>{formatPrice(remainForFree)}</strong> รับส่งฟรีเลย!
+                <div className="ord-bar">
+                  <i style={{ width: `${freeMin > 0 ? Math.min(100, (subtotal / freeMin) * 100) : 0}%` }} />
+                </div>
+              </div>
+            )}
+            {freeShipping && (
+              <div className="ord-note ok mt-3 px-4 py-3 text-xs font-semibold">
+                🎉 ยินดีด้วย! คุณได้รับสิทธิ์ส่งฟรี
+                {qtyShipApplied && (
+                  <span className="mt-1 block font-normal">
+                    (ยกเว้นของชิ้นใหญ่/ของหนักที่ต้องคิดค่าขนส่งตามน้ำหนัก {formatPrice(qtyShip.fee)})
+                  </span>
+                )}
+              </div>
+            )}
+
+            <div className="mt-5">
+              <span className="ord-eyebrow mb-2 block">วิธีจัดส่ง</span>
+              {auto.reason && (
+                <p className="ord-note info mb-2 px-3 py-2 text-xs leading-relaxed">
+                  🚚 ระบบเลือกกล่องที่พอดีกับออเดอร์นี้ให้แล้ว — {auto.reason}
+                </p>
+              )}
+              {(qtyShipApplied || qtyShip.lines.some((l) => l.switchedTo)) && (
+                <p className="ord-note warn mb-2 px-3 py-2 text-xs leading-relaxed">
+                  📦 ออเดอร์นี้มีสินค้าที่<strong>คิดค่าส่งตามจำนวนชิ้น</strong> (ของมีน้ำหนัก):{" "}
+                  {qtyShip.lines
+                    .map((l) =>
+                      l.switchedTo
+                        ? `${l.name} ${l.qty} ชิ้น → เกินเกณฑ์ ต้องส่งแบบ "${l.switchedTo.name}"`
+                        : `${l.name} ${l.qty} ชิ้น = ${formatPrice(l.fee)}`
+                    )
+                    .join(" · ")}
+                  {qtyShip.fee > 0 && <> — เลือก &quot;มารับเอง&quot; ได้ ไม่คิดค่าส่งส่วนนี้</>}
+                </p>
+              )}
+              <div className="flex flex-col gap-2">
+                {shipRows.map((s) => {
+                  const real = methods.find((m) => m.id === s.id);
+                  const ok = !real || shippingAllowed(real, methods, auto);
+                  const checked = s.covers ? s.covers.includes(shippingId) : shippingId === s.id;
+                  return (
+                    <label
+                      key={s.covers ? "__qty__" : s.id}
+                      title={ok ? undefined : "ออเดอร์นี้ของเยอะเกินกล่องนี้"}
+                      className={`ord-opt${!ok ? " off" : checked ? " on" : ""}`}
+                    >
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <input
+                          type="radio"
+                          name="shipping"
+                          disabled={!ok}
+                          checked={checked}
+                          onChange={() => setShippingId(s.id)}
+                        />
+                        <span className="min-w-0">
+                          <span className="ord-opt-name">{s.name}</span>
+                          {!ok && <span className="ml-1 text-[11px] t-faint">· ของใส่ไม่พอ</span>}
+                          {s.note && <span className="ord-opt-note">{s.note}</span>}
+                        </span>
+                      </span>
+                      {/* ขีดฆ่าเฉพาะตอนส่งฟรีล้วน ๆ — ถ้ามีค่าของหนัก แถวยุบโชว์ราคาที่จ่ายจริงอยู่แล้ว */}
+                      <span className={`ord-opt-name shrink-0${freeShipping && ok && !qtyShipApplied ? " t-faint line-through" : ""}`}>
+                        {formatPrice(s.price)}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <dl className="mt-5 flex flex-col gap-2 pt-4 text-sm" style={{ borderTop: "1px dashed var(--sky-200)" }}>
+              <div className="flex justify-between t-soft">
+                <dt>ยอดรวมสินค้า ({totalQty} ชิ้น)</dt>
+                <dd className="font-semibold t-ink">{formatPrice(subtotal)}</dd>
+              </div>
+              <div className="flex justify-between t-soft">
+                <dt>
+                  {qtyShipApplied && methodFree
+                    ? "ค่าจัดส่ง (ของหนัก — กล่องเพิ่ม)"
+                    : appendTo
+                      ? "ค่าจัดส่ง (รวมกล่องเดิม)"
+                      : "ค่าจัดส่ง"}
+                </dt>
+                <dd className="font-semibold t-ink">
+                  {shippingCost === 0 ? <span className="t-ok">ฟรี!</span> : formatPrice(shippingCost)}
+                </dd>
+              </div>
+              <div className="ord-title mt-1 flex justify-between pt-3 text-base" style={{ borderTop: "1px dashed var(--sky-200)" }}>
+                <dt>ยอดชำระทั้งหมด</dt>
+                <dd className="t-blue" style={{ fontWeight: 600 }}>
+                  {formatPrice(total)}
+                </dd>
+              </div>
+            </dl>
+
+            {/* 📅 วันที่ต้องใช้งาน — ทักเช็คคิวงานกับแอดมินก่อน */}
+            <div className="ord-sub mt-5 p-4">
+              <label htmlFor="use-by" className="ord-title block text-[.86rem]">
+                📅 ต้องใช้งานวันไหน? <span className="t-faint" style={{ fontFamily: "var(--body)", fontWeight: 400 }}>(ไม่บังคับ)</span>
+              </label>
+              <p className="mt-1 text-[11px] leading-relaxed t-soft">
+                มีกำหนดใช้งาน (อีเวนต์ · วันเกิด · ของขวัญ) ระบุไว้ได้เลย —{" "}
+                <strong className="t-blue">รบกวนทักแอดมินเช็คคิวงานก่อนนะครับ</strong> ทางร้านจะยืนยันว่าทันไหมก่อนเริ่มผลิต
+              </p>
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <input
+                  id="use-by"
+                  type="date"
+                  value={useBy}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => saveUseBy(e.target.value)}
+                  className="ord-input"
+                  style={{ width: "auto" }}
+                />
+                {useBy && (
+                  <button type="button" onClick={() => saveUseBy("")} className="ord-btn quiet sm">
+                    ล้างวันที่
+                  </button>
+                )}
+                <a href={LINE_URL} target="_blank" rel="noopener noreferrer" className="ord-btn line sm ml-auto">
+                  💬 ทักเช็คคิวงาน
+                </a>
+              </div>
+            </div>
+
+            {/* ร้านรับสั่งขั้นต่ำ 1 ชิ้นทุกสินค้า — ขั้นต่ำของเรทไม่บล็อกการสั่งอีกต่อไป
+                (จำนวนต่ำกว่าเกณฑ์เรท = ระบบสลับลงเรทที่เหมาะให้เอง ราคาถูกต้องตามช่วงจำนวน) */}
+            {pickedItems.length === 0 && (
+              <p className="ord-note warn mt-4 px-4 py-2.5 text-xs font-semibold leading-relaxed">
+                ☑️ ยังไม่ได้ติ๊กเลือกรายการที่จะสั่ง — ติ๊กอย่างน้อย 1 รายการก่อนนะครับ
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => router.push("/checkout")}
+              disabled={pickedItems.length === 0}
+              className="ord-btn yolk block lg mt-5"
+            >
+              ✅ ยืนยันการสั่งซื้อ{allPicked ? "" : ` (${pickedItems.length} รายการ)`}
+            </button>
+            <p className="mt-2.5 text-center text-[11px] leading-relaxed t-soft">
+              ตรวจสอบรายการ · ตัวเลือก · ลิงก์ไฟล์ลาย ให้ครบ แล้วไปหน้าแจ้งโอนเงิน
             </p>
-          )}
-          <button
-            type="button"
-            onClick={() => router.push("/checkout")}
-            disabled={pickedItems.length === 0}
-            className="mt-5 w-full rounded-full bg-amber-400 px-6 py-3.5 text-base font-bold text-white shadow-lg transition hover:scale-[1.02] hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
-          >
-            ✅ ยืนยันการสั่งซื้อ{allPicked ? "" : ` (${pickedItems.length} รายการ)`}
-          </button>
-          <p className="mt-2 text-center text-[11px] leading-relaxed text-stone-500">
-            ตรวจสอบรายการ · ตัวเลือก · ลิงก์ไฟล์ลาย ให้ครบ แล้วไปหน้าแจ้งโอนเงิน
-          </p>
-          <Link
-            href="/products"
-            className="mt-3 block rounded-full bg-amber-100 px-6 py-3 text-center text-sm font-bold text-amber-900 transition hover:bg-amber-200"
-          >
-            ← เลือกซื้อสินค้าต่อ
-          </Link>
-        </aside>
+            <Link href="/products" className="ord-btn ghost block mt-3">
+              ← เลือกซื้อสินค้าต่อ
+            </Link>
+          </aside>
+        </div>
       </div>
     </div>
   );
