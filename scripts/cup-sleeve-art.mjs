@@ -11,7 +11,7 @@
  *    (ตัวเลือกผิวฟิล์มรายตัวในกลุ่ม "เคลือบ" ลิงก์ไฟล์คลังตรง ๆ ผ่าน preset ไม่ต้องอัปซ้ำ)
  *
  * 2) วาดเอง — ความหนากระดาษ (250/300/400 แกรม + กระดาษพิเศษ) · ไม่เคลือบ ·
- *    การ์ด "1 เซ็ต = 6 ชิ้น" · การ์ด "ปรับขนาดได้ 3 ระดับ"
+ *    การ์ด "1 เซ็ต = 6 ชิ้น" · การ์ด "ปรับขนาดได้ 3 ระดับ" · การ์ดสเปกขนาดงาน (ไดคัทจริง)
  *    รูปงานจริงของสินค้าตัวนี้ไม่มีป้ายบอกว่าใบไหนกระดาษกี่แกรม/เคลือบแบบไหน
  *    จึงไม่เอารูปงานจริงมาแปะเป็นภาพตัวเลือก (จะกลายเป็นบอกลูกค้าผิด) — ใช้ภาพวาดอธิบายแทน
  *
@@ -308,36 +308,19 @@ async function sizeCard() {
 /* ── 4. การ์ดขนาด (จากไฟล์ไดคัทจริงในคลังเทมเพลตของร้าน) ─────────── */
 
 /**
- * 3 ขนาดที่ร้านมีไฟล์ไดคัทไว้จริง (คลังเทมเพลต หมวด "cup sleeve")
- * skin = ภาพพรีวิวไดคัทของไฟล์นั้น — เอามาเป็นภาพประจำตัวเลือกเลย ลูกค้าจะได้เห็นทรงจริง
- * cm = ขนาดกางแบน (กว้าง × สูง) ตามชื่อไฟล์
+ * ขนาดเดียวที่ร้านขายจริง — ตามใบสเปกของร้าน "1 เซ็ต ได้ 6 ชิ้น ขนาด 27.7x7.6 cm"
+ * ⚠️ ในคลังเทมเพลตมีไฟล์ไดคัทหมวด cup sleeve อีก 2 ไฟล์ (35.2x7.8 · 42x9.3)
+ *    ร้านยืนยันแล้วว่า "ขายขนาดเดียว" — สองไฟล์นั้นไม่ได้เอามาทำเป็นตัวเลือกให้ลูกค้า
+ * skin = ภาพพรีวิวไดคัทของไฟล์นั้น (ทรงจริงพร้อมลิ้นล็อกและช่องเสียบ 3 ระดับ)
  */
-export const SIZES = [
-  {
-    key: "size-s",
-    name: "27.7 × 7.6 ซม.",
-    cm: [27.7, 7.6],
-    tpl: "tpl-658smodrd",
-    skin: "https://upvigfvxloelzevwneof.supabase.co/storage/v1/object/public/design-templates/preview/03e14879-Cup-250g-27.7x7.6--F-01.png",
-    note: "ทรงเล็ก — แก้วกาแฟ/แก้วร้อนขนาดมาตรฐาน",
-  },
-  {
-    key: "size-m",
-    name: "35.2 × 7.8 ซม.",
-    cm: [35.2, 7.8],
-    tpl: "tpl-thojzgqk8",
-    skin: "https://upvigfvxloelzevwneof.supabase.co/storage/v1/object/public/design-templates/preview/d2edd181-Cup-250g-35.2x7.8cm--F-01.png",
-    note: "ทรงกลาง — แก้วน้ำเย็นทั่วไป",
-  },
-  {
-    key: "size-l",
-    name: "42 × 9.3 ซม.",
-    cm: [42, 9.3],
-    tpl: "tpl-8v5s2si64",
-    skin: "https://upvigfvxloelzevwneof.supabase.co/storage/v1/object/public/design-templates/preview/a15c4541-Cup-250g-42x9.3cm--F-01.png",
-    note: "ทรงใหญ่ — แก้วใบใหญ่/ทัมเบลอร์",
-  },
-];
+export const SIZE = {
+  key: "size-spec",
+  name: "27.7 × 7.6 ซม.",
+  cm: [27.7, 7.6],
+  bleedCm: 0.5, // เผื่อตัดตกด้านละ 0.5 ซม. ตามใบสเปกของร้าน
+  tpl: "tpl-658smodrd",
+  skin: "https://upvigfvxloelzevwneof.supabase.co/storage/v1/object/public/design-templates/preview/03e14879-Cup-250g-27.7x7.6--F-01.png",
+};
 
 /** ภาพไดคัทจากคลังเทมเพลต → ตัดขอบขาวออก แล้วย่อตามความกว้างที่ขอ */
 async function dieline(url, width) {
@@ -348,56 +331,30 @@ async function dieline(url, width) {
     .toBuffer();
 }
 
-async function sizeCards() {
-  console.log("🖼  การ์ดขนาด (ภาพไดคัทจริงจากคลังเทมเพลตของร้าน)");
-  const maxCm = Math.max(...SIZES.map((s) => s.cm[0]));
-  for (const s of SIZES) {
-    // ย่อภาพตามสัดส่วนขนาดจริง — วางเรียงกันแล้วเทียบขนาดกันได้ทันที
-    const w = Math.round(740 * (s.cm[0] / maxCm));
-    const img = await dieline(s.skin, w);
-    const meta = await sharp(img).metadata();
-    const left = Math.round((W - w) / 2);
-    const top = Math.round(360 - meta.height / 2);
-    const svg = frame(`
-      ${title(`ปลอกขนาด ${s.name}`, "ขนาดกางแบน (ก่อนสวม) ตามแบบไดคัทจริงของร้าน")}
-      <g stroke="${CYAN}" stroke-width="2.5" fill="none">
-        <path d="M ${left} ${top + meta.height + 34} L ${left + w} ${top + meta.height + 34}"/>
-        <path d="M ${left} ${top + meta.height + 24} L ${left} ${top + meta.height + 44} M ${left + w} ${top + meta.height + 24} L ${left + w} ${top + meta.height + 44}"/>
-      </g>
-      <text x="450" y="${top + meta.height + 78}" font-family="${TH}" font-size="27" font-weight="700" text-anchor="middle" fill="${CYAN}">กว้าง ${s.cm[0]} ซม. · สูง ${s.cm[1]} ซม.</text>
-      <text x="450" y="${top + meta.height + 122}" font-family="${TH}" font-size="25" text-anchor="middle" fill="${INK}">${esc(s.note)}</text>
-      ${foot(["ทั้ง 3 ขนาดราคาเท่ากัน — เลือกตามขนาดแก้วที่จะใช้", "ปลายปลอกมีรอยล็อก 3 ตำแหน่ง ปรับความกว้างได้อีก"])}`);
-    const buf = await sharp(Buffer.from(svg))
-      .composite([{ input: img, left, top }])
-      .jpeg({ quality: 92, chromaSubsampling: "4:4:4" })
-      .toBuffer();
-    save(s.key, buf);
-  }
-
-  // การ์ดรวม — 3 ขนาดวางซ้อนกันตามสเกลจริง ใช้ในแท็บรายละเอียด
-  const imgs = [];
-  for (const s of SIZES) imgs.push(await dieline(s.skin, Math.round(560 * (s.cm[0] / maxCm))));
-  const metas = await Promise.all(imgs.map((b) => sharp(b).metadata()));
-  const LABEL = 52; // ที่ว่างใต้ภาพแต่ละแถวสำหรับป้ายขนาด
-  const stack = metas.reduce((n, m) => n + m.height + LABEL, 0);
-  const tops = [];
-  let y = Math.round(180 + (600 - stack) / 2); // จัดทั้งกองให้อยู่กลางช่องว่างระหว่างหัวข้อกับบรรทัดท้าย
-  for (const m of metas) {
-    tops.push(y);
-    y += m.height + LABEL;
-  }
+/** การ์ดสเปกขนาด — ไดคัทจริง + ขนาดกางแบน + ระยะเผื่อตัดตก */
+async function sizeCard2() {
+  console.log("🖼  การ์ดขนาดงาน (ภาพไดคัทจริงจากคลังเทมเพลตของร้าน)");
+  const w = 720;
+  const img = await dieline(SIZE.skin, w);
+  const meta = await sharp(img).metadata();
+  const left = Math.round((W - w) / 2);
+  const top = Math.round(370 - meta.height / 2);
   const svg = frame(`
-    ${title("3 ขนาดที่มีให้เลือก", "เทียบขนาดกางแบนตามสเกลจริง — ราคาเท่ากันทุกขนาด")}
-    ${SIZES.map(
-      (s, i) =>
-        `<text x="450" y="${tops[i] + metas[i].height + 36}" font-family="${TH}" font-size="25" font-weight="700" text-anchor="middle" fill="${INK}">${esc(s.name)} — ${esc(s.note)}</text>`
-    ).join("")}
-    ${foot(["ไฟล์เทมเพลตทั้ง 3 ขนาดโหลดได้ที่หน้าสินค้า", "ปลายปลอกมีรอยล็อก 3 ตำแหน่ง ปรับความกว้างได้อีก"])}`);
+    ${title(`ขนาดงาน ${SIZE.name}`, "ขนาดเดียว — วัดตอนกางแบน (ก่อนสวม)")}
+    <g stroke="${CYAN}" stroke-width="2.5" fill="none">
+      <path d="M ${left} ${top + meta.height + 34} L ${left + w} ${top + meta.height + 34}"/>
+      <path d="M ${left} ${top + meta.height + 24} L ${left} ${top + meta.height + 44} M ${left + w} ${top + meta.height + 24} L ${left + w} ${top + meta.height + 44}"/>
+      <path d="M ${left - 34} ${top} L ${left - 34} ${top + meta.height}"/>
+      <path d="M ${left - 44} ${top} L ${left - 24} ${top} M ${left - 44} ${top + meta.height} L ${left - 24} ${top + meta.height}"/>
+    </g>
+    <text x="450" y="${top + meta.height + 80}" font-family="${TH}" font-size="28" font-weight="700" text-anchor="middle" fill="${CYAN}">กว้าง ${SIZE.cm[0]} ซม. · สูง ${SIZE.cm[1]} ซม.</text>
+    <text x="450" y="${top + meta.height + 126}" font-family="${TH}" font-size="25" text-anchor="middle" fill="${INK}">วางลายเผื่อตัดตกด้านละ ${SIZE.bleedCm} ซม.</text>
+    ${foot(["ปลายปลอกมีลิ้นล็อก + ช่องเสียบ 3 ระดับ ปรับความกว้างได้ตามขนาดแก้ว", "โหลดไฟล์เทมเพลตไดคัทไปวางลายได้ที่หน้าสินค้า"])}`);
   const buf = await sharp(Buffer.from(svg))
-    .composite(imgs.map((input, i) => ({ input, left: Math.round((W - metas[i].width) / 2), top: tops[i] })))
+    .composite([{ input: img, left, top }])
     .jpeg({ quality: 92, chromaSubsampling: "4:4:4" })
     .toBuffer();
-  save("size-compare", buf);
+  save(SIZE.key, buf);
 }
 
 /* ── รัน ─────────────────────────────────────────────────────────── */
@@ -407,5 +364,5 @@ await paperCards();
 await coatCards();
 await setCard();
 await sizeCard();
-await sizeCards();
+await sizeCard2();
 console.log("\n✅ เสร็จ — ต่อด้วย: node scripts/cup-sleeve-apply.mjs --write");
