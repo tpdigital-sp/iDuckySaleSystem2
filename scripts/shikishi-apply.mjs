@@ -42,6 +42,9 @@ const COAT_LABEL = "เคลือบลามิเนต";
 const FILM_LABEL = "เคลือบ"; // กลุ่มที่ลิงก์คลังตัวเลือกกลาง (ผิวฟิล์มพิเศษ 10 แบบ)
 const FILM_PRESET = "preset-2";
 const COAT_SPECIAL = "เคลือบพิเศษ";
+/** ชนิดเคลือบลามิเนตที่ "ทำจริง" (ทุกแบบยกเว้นไม่เคลือบ) — ใช้เป็นเงื่อนไขล็อกกับงานฟอยล์ */
+const PAID_COATS = ["เคลือบเงา", "เคลือบด้าน", COAT_SPECIAL];
+const COAT_NONE = "ไม่เคลือบ";
 const FOIL_LABEL = "เคลือบฟอยล์ (Add On)";
 const FOIL_COLOR_LABEL = "สีฟอยล์";
 const FOIL_NONE = "ไม่เคลือบฟอยล์";
@@ -312,9 +315,9 @@ d.options = [
     label: COAT_LABEL,
     sheetFee: SHEET_FEE, // ค่าเคลือบคิดต่อแผ่น A3 ปัดขึ้น ไม่ใช่ต่อชิ้น
     choices: [
-      { name: "ไม่เคลือบ", imageSrc: art["coat-none"] },
-      { name: "เคลือบเงา", extra: COAT_FEE, imageSrc: art["coat-gloss"] },
-      { name: "เคลือบด้าน", extra: COAT_FEE, imageSrc: art["coat-matte"] },
+      { name: COAT_NONE, imageSrc: art["coat-none"] },
+      { name: PAID_COATS[0], extra: COAT_FEE, imageSrc: art["coat-gloss"] },
+      { name: PAID_COATS[1], extra: COAT_FEE, imageSrc: art["coat-matte"] },
       { name: COAT_SPECIAL, extra: SPECIAL_FEE, imageSrc: art["coat-special"] },
     ],
   },
@@ -359,6 +362,22 @@ d.rules = [
     when: { label: SIZE_LABEL, choice: NO_HOLO_SIZE, choices: [NO_HOLO_SIZE] },
     limit: { label: FOIL_COLOR_LABEL, allow: FOIL_COLORS },
   },
+  /**
+   * งานเคลือบฟอยล์ทำร่วมกับเคลือบลามิเนตไม่ได้ (ผู้ใช้ยืนยัน 21 ส.ค. 69) — ล็อกกันทั้งสองทาง
+   *   เลือกเคลือบลามิเนต → กลุ่มเคลือบฟอยล์เหลือ "ไม่เคลือบฟอยล์"
+   *   เลือกฟอยล์        → กลุ่มเคลือบลามิเนตเหลือ "ไม่เคลือบ"
+   * อยากสลับข้าง ให้ปลดข้างที่เลือกไว้กลับเป็น "ไม่..." ก่อน อีกกลุ่มถึงจะปลดล็อก
+   * (สองกฎอยู่ด้วยกันได้ — กลุ่มที่กำลังถูกล็อกเหลือตัวเลือกเดียว หน้าร้านซ่อนปุ่มอื่นให้เอง
+   *  แบบเดียวกับ ultra-hard-cardboard-2-mm / card-broad-foam)
+   */
+  {
+    when: { label: COAT_LABEL, choice: PAID_COATS[0], choices: PAID_COATS },
+    limit: { label: FOIL_LABEL, allow: [FOIL_NONE] },
+  },
+  {
+    when: { label: FOIL_LABEL, choice: FOIL_1.name, choices: [FOIL_1.name, FOIL_2.name] },
+    limit: { label: COAT_LABEL, allow: [COAT_NONE] },
+  },
 ];
 
 d.terms = [
@@ -370,6 +389,7 @@ d.terms = [
   `สั่งไม่ถึงโควตาต่อแผ่นก็คิด 1 แผ่น A3 · เกินโควตาขึ้นแผ่นถัดไป เช่น A5 (1 แผ่นได้ ${SIZES.find((s) => s.key === "A5").perA3} ใบ) เคลือบพิเศษ สั่ง 1-4 ใบ = ${SPECIAL_FEE} บาท · สั่ง 5 ใบ = 2 แผ่น = ${SPECIAL_FEE * 2} บาท`,
   `เคลือบฟอยล์คิดต่อแผ่น A3 เหมือนเคลือบลามิเนต — ${FOIL_1.name} ${FOIL_1.price} บาทต่อแผ่น A3 · ${FOIL_2.name} ${FOIL_2.price} บาทต่อแผ่น A3 · ฟอยล์${FOIL_HOLO}บวกเพิ่มอีก ${HOLO_FEE} บาทต่อแผ่น A3`,
   "เคลือบฟอยล์ทำได้เฉพาะงานกระดาษ",
+  'งานเคลือบฟอยล์ทำร่วมกับการเคลือบลามิเนตไม่ได้ — เลือกได้อย่างใดอย่างหนึ่ง (เลือกข้างไหนแล้ว หน้าสินค้าจะล็อกอีกข้างให้เอง · อยากสลับให้ปลดข้างที่เลือกไว้กลับเป็น "ไม่..." ก่อน)',
   `ขนาด ${NO_HOLO_SIZE} ทำฟอยล์${FOIL_HOLO}ไม่ได้ — เลือกได้เฉพาะ ${FOIL_COLORS.join(" / ")}`,
   `โควตาชิ้นต่อ 1 แผ่น A3 — ${SIZES.map((s) => `${s.key} ได้ ${s.perA3} ใบ`).join(" · ")}`,
   "งานพิมพ์ฟอยล์ 2 เลเยอร์ ตำแหน่งลายอาจเลื่อนประมาณ 1-2 มม. เพราะกระดาษหดตัวจากการพิมพ์และเคลือบหลายรอบ",
@@ -406,6 +426,7 @@ d.tabs = [
       "• พิมพ์ 2 เลเยอร์ = พิมพ์สีก่อน แล้วปั๊มฟอยล์ทับ ได้ทั้งลายสีและจุดที่เป็นฟอยล์",
       "• ฟอยล์มี 4 สี: เงิน · ทอง · โรสโกลด์ · โฮโลแกรม (โฮโลแกรมบวกเพิ่ม " + HOLO_FEE + " บาท)",
       "• เคลือบฟอยล์ทำได้เฉพาะงานกระดาษ",
+      "• เคลือบลามิเนตกับงานฟอยล์ทำร่วมกันไม่ได้ — เลือกข้างไหน อีกข้างจะถูกล็อกให้เอง",
       `• ขนาด ${NO_HOLO_SIZE} ทำฟอยล์${FOIL_HOLO}ไม่ได้ — เลือกได้เฉพาะ ${FOIL_COLORS.join(" / ")}`,
       "• งาน 2 เลเยอร์ ตำแหน่งลายอาจเลื่อน 1-2 มม. เพราะกระดาษหดตัวจากการพิมพ์และเคลือบหลายรอบ",
     ].join("\n"),
