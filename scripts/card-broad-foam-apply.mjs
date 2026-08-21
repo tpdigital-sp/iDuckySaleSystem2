@@ -172,10 +172,26 @@ if (!priceTable) throw new Error(`ในบล็อก "${SECTION}" ไม่�
 const rows = priceTable.table;
 
 /** หัวตารางคือชื่อขนาด — ต้องตรงกับตาราง SIZES ในไฟล์ art ทั้งชื่อและลำดับ (art ถือ "ได้กี่ใบต่อแผ่น A3" ไว้) */
-const headSizes = rows[0].slice(1);
+/**
+ * ขนาดที่ "ไม่รับทำ" แม้หน้าเว็บจะมีคอลัมน์ราคาให้ (ร้านสั่งถอด 21 ส.ค. 69)
+ * ⚠️ ระบุเป็นรายชื่อ แล้วเช็คว่ายังมีอยู่บนเว็บจริง — วันหลังเว็บเปลี่ยนชื่อคอลัมน์
+ *    จะได้หยุดให้คนมาดู ไม่ใช่แอบเลิกถอดเงียบ ๆ แล้วขนาดที่เลิกขายโผล่กลับมาเอง
+ */
+const SIZES_NOT_OFFERED = ["10x10cm", "15x15cm"];
+
+const webSizes = rows[0].slice(1);
+const goneFromWeb = SIZES_NOT_OFFERED.filter((n) => !webSizes.includes(n));
+if (goneFromWeb.length)
+  throw new Error(
+    `ขนาดที่สั่งถอด "${goneFromWeb.join(", ")}" ไม่มีในตารางเว็บแล้ว — ` +
+      `เว็บมี [${webSizes.join(", ")}] · ตรวจ SIZES_NOT_OFFERED ก่อนรันทับ`
+  );
+
+/** คอลัมน์ที่เอามาขายจริง = ของบนเว็บ หักที่ถอดออก — ต้องตรงกับชุดที่เตรียมภาพไว้ใน art.mjs */
+const headSizes = webSizes.filter((n) => !SIZES_NOT_OFFERED.includes(n));
 const wantSizes = SIZES.map((s) => s.name);
 if (headSizes.join("|") !== wantSizes.join("|"))
-  throw new Error(`ขนาดบนเว็บเปลี่ยนไปแล้ว — เว็บ [${headSizes.join(", ")}] · สคริปต์ [${wantSizes.join(", ")}]`);
+  throw new Error(`ขนาดบนเว็บเปลี่ยนไปแล้ว — เว็บ (หักที่ถอด) [${headSizes.join(", ")}] · สคริปต์ [${wantSizes.join(", ")}]`);
 
 const tiers = rows.slice(1).map((r) => tierOf(r[0]));
 tiers.at(-1).upTo = null; // ช่วงสุดท้ายเปิดปลายเสมอ
@@ -183,7 +199,8 @@ if (tiers.some((t, i) => i < tiers.length - 1 && !t.upTo)) throw new Error("ช�
 
 /** ราคาพื้นฐานต่อใบ (ยังไม่รวมเคลือบ/ฟอยล์) — base[ชื่อขนาด] = [ราคาเรียงตามช่วงจำนวน] */
 const base = {};
-headSizes.forEach((name, col) => {
+headSizes.forEach((name) => {
+  const col = webSizes.indexOf(name); // ตำแหน่งคอลัมน์จริงบนเว็บ (หลังหักที่ถอด ลำดับไม่ตรงกันแล้ว)
   base[name] = rows.slice(1).map((r) => {
     const n = Number(String(r[col + 1]).replace(/[^\d]/g, ""));
     if (!n) throw new Error(`ช่องราคา "${name}" แถว "${r[0]}" อ่านไม่ออก ("${r[col + 1]}")`);
