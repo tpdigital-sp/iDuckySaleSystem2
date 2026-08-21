@@ -52,6 +52,8 @@ type DraftChoice = {
   extra: string;
   qty?: boolean;
   qtyMax?: string;
+  /** หน่วยของจำนวนที่ลูกค้าระบุ เช่น "ซม." (ว่าง = นับเป็นจำนวนอัน) */
+  qtyUnit?: string;
   perUnit?: string;
   imageSrc?: string;
   stockItemId?: string;
@@ -63,6 +65,9 @@ type DraftChoice = {
   /** 💰 +฿ ของช่วงสั่งน้อย (ต่ำกว่า extraFromQty) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   extraBelow?: number;
 };
+/** id ของรายการหน่วยแนะนำข้างช่อง "🔢 ระบุจำนวน" (พิมพ์หน่วยเองก็ได้) */
+const QTY_UNIT_LIST = "qty-unit-suggestions";
+
 /** presetId มี = กลุ่มนี้ "ลิงก์" คลังตัวเลือกกลาง (label+choices มาจากคลัง แก้ในกลุ่มไม่ได้จนกว่าจะตัดลิงก์) */
 type DraftOption = {
   label: string;
@@ -425,6 +430,7 @@ function toDraft(p: Product): Draft {
         // กลุ่มที่เคยเปิด "ระบุจำนวน" ไว้ทั้งกลุ่ม (ของเก่า) → ย้ายมาเป็นรายตัวให้เลย
         ...(c.qty ?? o.qtyPerChoice ? { qty: true } : {}),
         ...(c.qtyMax || o.qtyMax ? { qtyMax: String(c.qtyMax ?? o.qtyMax) } : {}),
+        ...(c.qtyUnit ? { qtyUnit: c.qtyUnit } : {}),
         ...(c.perUnit ? { perUnit: String(c.perUnit) } : {}),
         ...(c.imageSrc ? { imageSrc: c.imageSrc } : {}),
         ...(c.stockItemId ? { stockItemId: c.stockItemId } : {}),
@@ -655,7 +661,13 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
           return {
             name: c.name.trim(),
             ...(Number.isFinite(extra) && extra > 0 ? { extra } : {}),
-            ...(qty ? { qty: true, ...(Number(c.qtyMax) > 0 ? { qtyMax: Math.floor(Number(c.qtyMax)) } : {}) } : {}),
+            ...(qty
+              ? {
+                  qty: true as const,
+                  ...(Number(c.qtyMax) > 0 ? { qtyMax: Math.floor(Number(c.qtyMax)) } : {}),
+                  ...(c.qtyUnit?.trim() ? { qtyUnit: c.qtyUnit.trim() } : {}),
+                }
+              : {}),
             // 📐 ชิ้น/หน่วย กรอกในตารางราคา (คอลัมน์แรก) แล้วเก็บกลับมาที่ตัวเลือกตามเดิม
             ...(Number(c.perUnit) > 0 ? { perUnit: Math.floor(Number(c.perUnit)) } : {}),
             ...(c.imageSrc ? { imageSrc: c.imageSrc } : {}),
@@ -2558,7 +2570,11 @@ export default function ProductEditor({ product }: { product: Product }) {
                                       ...o,
                                       choices: o.choices.map((c, j) =>
                                         j === ci
-                                          ? { ...c, qty: e.target.checked, ...(e.target.checked ? {} : { qtyMax: "" }) }
+                                          ? {
+                                              ...c,
+                                              qty: e.target.checked,
+                                              ...(e.target.checked ? {} : { qtyMax: "", qtyUnit: "" }),
+                                            }
                                           : c
                                       ),
                                     }
@@ -2592,6 +2608,29 @@ export default function ProductEditor({ product }: { product: Product }) {
                               placeholder="99"
                               className="w-11 rounded-lg bg-white px-1 py-0.5 text-center text-[11px] text-slate-600 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
                               aria-label={`จำนวนสูงสุดของตัวเลือกที่ ${ci + 1}`}
+                            />
+                            <span className="text-slate-400">· หน่วย</span>
+                            <input
+                              value={ch.qtyUnit ?? ""}
+                              onChange={(e) =>
+                                patch({
+                                  options: draft.options.map((o, i) =>
+                                    i === gi
+                                      ? {
+                                          ...o,
+                                          choices: o.choices.map((c, j) =>
+                                            j === ci ? { ...c, qtyUnit: e.target.value } : c
+                                          ),
+                                        }
+                                      : o
+                                  ),
+                                })
+                              }
+                              list={QTY_UNIT_LIST}
+                              placeholder="ชิ้น"
+                              title="หน่วยของจำนวนที่ลูกค้าระบุ เช่น “ซม.” สำหรับตัวเลือกที่คิดตามขนาด (เซนละ +฿8) · ว่าง = ไม่ขึ้นหน่วย"
+                              className="w-14 rounded-lg bg-white px-1 py-0.5 text-center text-[11px] text-slate-600 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                              aria-label={`หน่วยของจำนวนของตัวเลือกที่ ${ci + 1}`}
                             />
                           </>
                         )}
@@ -3095,7 +3134,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                     qtyOn: e.target.checked,
                     ...(e.target.checked
                       ? {}
-                      : { choices: opt.choices.map((c) => ({ ...c, qty: false, qtyMax: "" })) }),
+                      : { choices: opt.choices.map((c) => ({ ...c, qty: false, qtyMax: "", qtyUnit: "" })) }),
                   })
                 }
                 className="mt-0.5 h-3.5 w-3.5 accent-amber-500"
@@ -4763,6 +4802,13 @@ export default function ProductEditor({ product }: { product: Product }) {
           ))}
         </div>
       </section>
+
+      {/* หน่วยแนะนำของช่อง "🔢 ระบุจำนวน" — ดึงจากคลังหน่วยกลางชุดเดียวกับงานกำหนดขนาดเอง */}
+      <datalist id={QTY_UNIT_LIST}>
+        {units.map((u) => (
+          <option key={u.label} value={u.label} />
+        ))}
+      </datalist>
 
       {/* ตัวเลือกสินค้า */}
       <section id="sec-options" className={`relative border-l-4 border-l-orange-400 mt-4 scroll-mt-32 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]${secCls("options")}`}>

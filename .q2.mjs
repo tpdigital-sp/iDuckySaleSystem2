@@ -1,0 +1,10 @@
+import {readFileSync} from "node:fs";
+import {createClient} from "@supabase/supabase-js";
+const env=Object.fromEntries(readFileSync(".env.local","utf8").split("\n").filter(l=>l.includes("=")&&!l.trim().startsWith("#")).map(l=>{const i=l.indexOf("=");return [l.slice(0,i).trim(),l.slice(i+1).trim().replace(/^["']|["']$/g,"")]}));
+const sb=createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false}});
+const {data}=await sb.from("products").select("id,data").limit(2000);
+console.log("--- otheracrylicproducts3* ---");
+for(const r of data.filter(r=>r.id.startsWith("otheracrylicproducts3"))) console.log(r.id,"|",r.data.name,"| hidden:",r.data.hidden);
+console.log("\n--- keyring-clear-stopper structure (options labels) ---");
+const k=data.find(r=>r.id==="keyring-clear-stopper");
+console.log(JSON.stringify({name:k.data.name,category:k.data.category,price:k.data.price,pricing:k.data.pricing?{unit:k.data.pricing.unit,driverLabels:k.data.pricing.driverLabels,tiers:k.data.pricing.tiers,cellKeys:Object.keys(k.data.pricing.cells||{}).slice(0,5)}:null, optionLabels:(k.data.options||[]).map(o=>({label:o.label,display:o.display,n:o.choices?.length,sample:o.choices?.slice(0,3)}))},null,1).slice(0,4000));

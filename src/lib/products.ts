@@ -36,6 +36,12 @@ export interface ProductOptionChoice {
   /** จำนวนสูงสุดของตัวเลือกนี้ (ไม่ตั้ง = 99) */
   qtyMax?: number;
   /**
+   * หน่วยของ "จำนวน" ที่ลูกค้าระบุ เช่น "ซม." — ตัวเลือกที่คิดเป็นขนาด (เซนละ +฿8) จะได้เห็นชัดว่ากรอกกี่เซนติเมตร
+   * มีผลกับหน้าสินค้าอย่างเดียว (ป้ายข้างช่องจำนวน/ยอดรวมของตัวเลือก) — ราคายังคิด +฿ × จำนวน เหมือนเดิม
+   * ไม่ตั้ง = นับเป็น "จำนวนอัน" เฉย ๆ เหมือนก่อน
+   */
+  qtyUnit?: string;
+  /**
    * เลือกตัวนี้แล้ว 1 หน่วยที่สั่งได้ของกี่ชิ้น
    * เช่น สติกเกอร์ขนาด 3cm ได้ 45 ชิ้นต่อแผ่น A3 · ขนาด 20cm ได้ 1 ชิ้น
    * ใช้เป็นเพดานจำนวนลายที่คละได้ — คละ 1 ลายต้องใช้อย่างน้อย 1 ชิ้น
@@ -292,6 +298,14 @@ export function hasChoiceQty(opt: ProductOption, choiceName: string): boolean {
 /** กลุ่มนี้มีตัวเลือกที่ระบุจำนวนได้อย่างน้อยหนึ่งตัวไหม (ใช้ตัดสินใจว่าจะขึ้นป้ายบอกลูกค้าไหม) */
 export function anyChoiceQty(opt: ProductOption): boolean {
   return isMultiOption(opt) && opt.choices.some((c) => hasChoiceQty(opt, c.name));
+}
+
+/**
+ * หน่วยของจำนวนที่ลูกค้าระบุในตัวเลือกนี้ (เช่น "ซม.") — ไม่ตั้ง = ไม่มีหน่วย นับเป็นจำนวนอัน
+ * ใช้แค่กับข้อความที่แสดง ไม่แตะการคิดราคา
+ */
+export function choiceQtyUnit(opt: ProductOption, choiceName: string): string {
+  return opt.choices.find((x) => x.name === choiceName)?.qtyUnit?.trim() ?? "";
 }
 
 /** เพดานจำนวนต่อตัวเลือก */

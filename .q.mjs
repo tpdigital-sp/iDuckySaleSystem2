@@ -1,0 +1,11 @@
+import {readFileSync} from "node:fs";
+import {createClient} from "@supabase/supabase-js";
+const env=Object.fromEntries(readFileSync(".env.local","utf8").split("\n").filter(l=>l.includes("=")&&!l.trim().startsWith("#")).map(l=>{const i=l.indexOf("=");return [l.slice(0,i).trim(),l.slice(i+1).trim().replace(/^["']|["']$/g,"")]}));
+const sb=createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false}});
+const {data,error}=await sb.from("products").select("id,data").limit(2000);
+if(error) throw error;
+console.log("total rows:", data.length);
+const hit=data.filter(r=>/ตะขอ/.test(JSON.stringify(r.data?.name||"")));
+console.log("ชื่อมี 'ตะขอ':", hit.map(h=>h.id+" | "+h.data.name).join("\n"));
+console.log("\n--- ids sample acrylic ---");
+console.log(data.filter(r=>r.data?.category==="acrylic").map(r=>r.id+" | "+r.data.name).join("\n"));

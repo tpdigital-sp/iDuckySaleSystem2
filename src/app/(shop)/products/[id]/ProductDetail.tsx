@@ -47,6 +47,7 @@ import {
   shortComboParts,
   smallQtyFeeOf,
   groupAddOf,
+  choiceQtyUnit,
   tierIndex,
   tierQtyFor,
   unitPriceFor,
@@ -1497,7 +1498,13 @@ export default function ProductDetail({
                     >
                       {multi
                         ? picks.length
-                          ? picks.map((p) => formatMultiPick(p.name, p.qty)).join(", ")
+                          ? picks
+                              .map((p) => {
+                                // ตัวเลือกที่จำนวนคือ "ขนาด" (เช่น เซนละ) ต่อหน่วยให้ด้วย จะได้อ่านออกว่ากี่เซนติเมตร
+                                const u = choiceQtyUnit(opt, p.name);
+                                return formatMultiPick(p.name, p.qty) + (u && p.qty > 1 ? ` ${u}` : "");
+                              })
+                              .join(", ")
                           : "ไม่เลือก"
                         : isInput
                           ? effective[opt.label] || "ยังไม่ได้กรอก"
@@ -1697,6 +1704,8 @@ export default function ProductDetail({
                           // ตัวเลือกนี้ระบุจำนวนได้ไหม — ตั้งแยกทีละตัวในหลังบ้าน
                           const cWithQty = hasChoiceQty(opt, c.name);
                           const cQtyMax = choiceQtyMax(opt, c.name);
+                          // หน่วยของจำนวน (เช่น "ซม.") — ตัวเลือกที่คิดตามขนาดจะได้ไม่ต้องเดาว่าเลขนี้คืออะไร
+                          const cQtyUnit = choiceQtyUnit(opt, c.name);
                           return (
                             <span key={c.name} className="inline-flex items-center gap-1">
                               <button
@@ -1761,9 +1770,12 @@ export default function ProductDetail({
                                       if (n >= 1) setChoiceQty(c.name, n);
                                     }}
                                     inputMode="numeric"
-                                    aria-label={`จำนวน ${c.name}`}
+                                    aria-label={`จำนวน ${c.name}${cQtyUnit ? ` (${cQtyUnit})` : ""}`}
                                     className="w-8 bg-transparent text-center text-[13px] font-extrabold text-amber-700 outline-none"
                                   />
+                                  {cQtyUnit && (
+                                    <span className="pr-0.5 text-[11px] font-bold text-amber-700">{cQtyUnit}</span>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => setChoiceQty(c.name, cQty + 1)}
@@ -1778,7 +1790,7 @@ export default function ProductDetail({
                               {/* จำนวนมากกว่า 1 บอกยอดรวมของตัวนี้ไปเลย จะได้ไม่ต้องคูณเอง */}
                               {cWithQty && on && cQty > 1 && unitAdd > 0 && (
                                 <span className="text-[11px] font-bold text-amber-700">
-                                  = +{formatPrice(unitAdd * cQty)}
+                                  {cQtyUnit ? `${cQty} ${cQtyUnit} ` : ""}= +{formatPrice(unitAdd * cQty)}
                                 </span>
                               )}
                             </span>
