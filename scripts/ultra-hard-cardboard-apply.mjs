@@ -297,7 +297,7 @@ const ART_FILES = [
   ...SIZE_ORDER.map((s) => s.key),
   "size-chart",
   "thickness-2mm",
-  "paper-standard",
+  "paper-art300",
   "coat-none",
   "coat-gloss",
   "coat-matte",
@@ -332,9 +332,10 @@ console.log(`🎞  ผิวฟิล์มพิเศษ ${FILMS.length} แ�
 const WHITE_BASE_PRINT_FEE = 20;
 const WHITE_BASE_PAPER_FEE = 40;
 const WHITE_BASE_FEE = WHITE_BASE_PRINT_FEE + WHITE_BASE_PAPER_FEE;
-const PAPER_LABEL = "กระดาษพิเศษ (Add On)";
+const PAPER_LABEL = "ชนิดกระดาษ";
 const WHITE_BASE_LABEL = "พิมพ์รองสีขาว";
-const PAPER_NONE = "ไม่ใช้กระดาษพิเศษ";
+/** กระดาษมาตรฐานของงานนี้ — ตัวเลือกแรกของกลุ่ม ไม่คิดเงินเพิ่ม (ผู้ใช้ยืนยัน 21 ส.ค. 69) */
+const PAPER_STD = "กระดาษอาร์ต 300 แกรม";
 
 const tex = await sb.from("products").select("data").eq("id", "texture-paper").single();
 if (tex.error) throw new Error(`อ่านสินค้า texture-paper ไม่ได้ — ${tex.error.message}`);
@@ -342,19 +343,26 @@ const texPaperOpt = tex.data.data.options?.find((o) => o.label === "ชนิด
 const texWhiteOpt = tex.data.data.options?.find((o) => o.label === WHITE_BASE_LABEL);
 if (!texPaperOpt || !texWhiteOpt)
   throw new Error(`สินค้า texture-paper ไม่มีกลุ่ม "ชนิดกระดาษ" หรือ "${WHITE_BASE_LABEL}" — โครงสินค้านั้นอาจเปลี่ยน`);
-const SPECIAL_PAPERS = texPaperOpt.choices.map((c) => ({ name: c.name, imageSrc: c.imageSrc }));
+/**
+ * เอาเฉพาะกระดาษผิวโฮโลแกรม/เมทัลลิก (เนื้อที่ texture-paper ตั้ง showWhen ของพิมพ์รองสีขาวไว้)
+ * งานการ์ดบอร์ดไม่ขายเนื้อ Canvas / 100 Pond / Extra White / E-Photo / STARDREAM (ผู้ใช้สั่งถอด 21 ส.ค. 69)
+ * เนื้อพวกนั้นยังขายอยู่ที่สินค้า "กระดาษ Texture Paper" ตามเดิม
+ */
+const WHITE_BASE_PAPERS = texWhiteOpt.showWhen?.choices ?? [];
+const SPECIAL_PAPERS = texPaperOpt.choices
+  .filter((c) => WHITE_BASE_PAPERS.includes(c.name))
+  .map((c) => ({ name: c.name, imageSrc: c.imageSrc }));
+if (!SPECIAL_PAPERS.length)
+  throw new Error("อ่านรายการกระดาษผิวโฮโลแกรม/เมทัลลิกจาก texture-paper ไม่ได้ — โครงสินค้านั้นอาจเปลี่ยน");
 const noPaperArt = SPECIAL_PAPERS.filter((p) => !p.imageSrc).map((p) => p.name);
 if (noPaperArt.length)
   throw new Error(`เนื้อกระดาษ "${noPaperArt.join(", ")}" ไม่มีภาพในสินค้า texture-paper — เพิ่มภาพที่นั่นก่อน`);
-/** กระดาษที่ต้องมีตัวเลือกพิมพ์รองสีขาว (ผิวโฮโลแกรม/เงิน/ทอง) — ยึดตามที่ texture-paper ตั้งไว้ */
-const WHITE_BASE_PAPERS = (texWhiteOpt.showWhen?.choices ?? []).filter((n) => SPECIAL_PAPERS.some((p) => p.name === n));
-if (!WHITE_BASE_PAPERS.length) throw new Error("อ่านรายการกระดาษที่ต้องพิมพ์รองสีขาวจาก texture-paper ไม่ได้ — ตรวจก่อน");
 const WHITE_BASE_ART = texWhiteOpt.choices.map((c) => c.imageSrc);
 console.log(
-  `📄 กระดาษพิเศษ ${SPECIAL_PAPERS.length} เนื้อ (ลิงก์จากสินค้า texture-paper) · พิมพ์รองสีขาวใช้ได้ ${WHITE_BASE_PAPERS.length} เนื้อ · ` +
+  `📄 กระดาษเนื้อพิเศษ ${SPECIAL_PAPERS.length} เนื้อ (ผิวโฮโลแกรม/เมทัลลิก · ลิงก์จากสินค้า texture-paper) · ` +
     `ค่าพิมพ์รอง ฿${WHITE_BASE_PRINT_FEE} + ค่ากระดาษ ฿${WHITE_BASE_PAPER_FEE} = ฿${WHITE_BASE_FEE}/แผ่น A3`
 );
-const PAPER_NONE_ART = art["paper-standard"];
+const PAPER_STD_ART = art["paper-art300"];
 
 const { data: row, error } = await sb.from("products").select("id,sort,sold,data").eq("id", ID).maybeSingle();
 if (error) throw new Error(`อ่านสินค้า ${ID} ไม่ได้ — ${error.message}`);
@@ -433,11 +441,11 @@ d.options = [
     })),
   },
   {
-    // เนื้อกระดาษไม่คิดเงินเพิ่ม (ค่ากระดาษไปอยู่ใน "พิมพ์รองสีขาว" แล้ว)
+    // กระดาษมาตรฐาน = อาร์ต 300 แกรม · เนื้อพิเศษก็ไม่คิดเงินเพิ่ม (ค่ากระดาษไปอยู่ใน "พิมพ์รองสีขาว" แล้ว)
     label: PAPER_LABEL,
     stockBearing: true,
     choices: [
-      { name: PAPER_NONE, imageSrc: PAPER_NONE_ART },
+      { name: PAPER_STD, popular: true, imageSrc: PAPER_STD_ART },
       ...SPECIAL_PAPERS.map((p) => ({ name: p.name, imageSrc: p.imageSrc })),
     ],
   },
@@ -551,7 +559,7 @@ d.terms = [
   `ค่าเคลือบลามิเนตคิดเป็นค่าฟิล์ม "ต่อ 1 ${SHEET_UNIT}" ไม่ใช่ต่อชิ้น — เนื้อเงา / ด้าน ${COAT_FEE} บาทต่อ${SHEET_UNIT} · เคลือบพิเศษ (กลิตเตอร์ · ทราย · โฮโลแกรม) ${SPECIAL_FEE} บาทต่อ${SHEET_UNIT}`,
   `สั่งไม่ถึงโควตาต่อแผ่นก็คิด 1 ${SHEET_UNIT} · เกินโควตาขึ้นแผ่นถัดไป เช่น A5 (1 แผ่นได้ 4 ใบ) เคลือบพิเศษ สั่ง 1-4 ใบ = ${SPECIAL_FEE} บาท · สั่ง 5 ใบ = 2 แผ่น = ${SPECIAL_FEE * 2} บาท`,
   `เคลือบฟอยล์คิดต่อ${SHEET_UNIT} เหมือนเคลือบลามิเนต — ${FOIL1.name} ${FOIL1.price} บาทต่อ${SHEET_UNIT} · ${FOIL2.name} ${FOIL2.price} บาทต่อ${SHEET_UNIT} · เลือกสีฟอยล์ได้ ${WEB_FOIL_COLORS.join(" / ")} (โฮโลแกรมบวกเพิ่ม ${HOLO_FEE} บาทต่อ${SHEET_UNIT})`,
-  `กระดาษพิเศษ (Add On) ปูหน้าเลือกได้ ${SPECIAL_PAPERS.length} เนื้อ — ตัวกระดาษไม่คิดเงินเพิ่ม`,
+  `กระดาษมาตรฐานของงานนี้คือ${PAPER_STD} · เลือกเปลี่ยนเป็นเนื้อพิเศษได้อีก ${SPECIAL_PAPERS.length} เนื้อ (Texture Paper) โดยไม่คิดค่ากระดาษเพิ่ม`,
   `สีพิมพ์บนกระดาษผิวโฮโลแกรม/เมทัลลิกจะจมไปกับผิวกระดาษ อยากให้สีเด่นต้องเลือก "พิมพ์รองสีขาว" — คิดเพิ่ม ${WHITE_BASE_FEE} บาทต่อ${SHEET_UNIT} (ค่าหมึกขาว ${WHITE_BASE_PRINT_FEE} + ค่ากระดาษ ${WHITE_BASE_PAPER_FEE}) ปัดขึ้นเต็มแผ่นแบบเดียวกับงานเคลือบ`,
   `งานเคลือบฟอยล์ทำร่วมกับการเคลือบลามิเนตไม่ได้ — เลือกได้อย่างใดอย่างหนึ่ง (เลือกข้างไหนแล้ว หน้าสินค้าจะล็อกอีกข้างให้เอง · อยากสลับให้ปลดข้างที่เลือกไว้กลับเป็น "ไม่..." ก่อน)`,
   `โควตาชิ้นต่อ 1 ${SHEET_UNIT} — ${SIZE_ORDER.filter((s) => s.perA3 > 1)
@@ -622,7 +630,7 @@ d.tabs = [
       "• พิมพ์ด้วยระบบ Digital · ไม่มีขั้นต่ำในการสั่งผลิต",
       `• ${SIZE_ORDER.length} ขนาด — ${SIZE_ORDER.map((s) => `${s.name} ${s.mm[0]}x${s.mm[1]} มม.`).join(" · ")}`,
       "::ราคาบวกเพิ่ม::",
-      `• กระดาษพิเศษ (Texture Paper) ${SPECIAL_PAPERS.length} เนื้อ — ไม่คิดค่ากระดาษเพิ่ม`,
+      `• กระดาษมาตรฐาน ${PAPER_STD} · เนื้อพิเศษ (Texture Paper) อีก ${SPECIAL_PAPERS.length} เนื้อ — ไม่คิดค่ากระดาษเพิ่ม`,
       `• พิมพ์รองสีขาว (เฉพาะกระดาษโฮโลแกรม/เงิน/ทอง) +${WHITE_BASE_FEE} บาท ต่อ 1 ${SHEET_UNIT} = ค่าหมึกขาว ${WHITE_BASE_PRINT_FEE} + ค่ากระดาษ ${WHITE_BASE_PAPER_FEE}`,
       `• เคลือบลามิเนตเนื้อเงา / ด้าน +${COAT_FEE} บาท ต่อ 1 ${SHEET_UNIT} (ไม่ใช่ต่อชิ้น)`,
       `• เคลือบพิเศษ (กลิตเตอร์ · ทราย · โฮโลแกรม) +${SPECIAL_FEE} บาท ต่อ 1 ${SHEET_UNIT}`,
