@@ -2817,3 +2817,50 @@ main:has(.dl-page) + .dl footer{margin-top:0}
   padding:44px 26px 34px;margin-bottom:40px}
 @media(max-width:900px){.homebg-sheet{border-radius:34px;padding:34px 18px 28px}}
 @media(max-width:640px){.homebg-sheet{border-radius:26px;padding:26px 13px 22px;margin-bottom:26px}}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   .ptab-* — เนื้อหาในแท็บข้อมูลสินค้า (หน้ารายละเอียดสินค้า)
+   เดิมทุกหัวข้อหน้าตาเหมือนกันหมด (กรมท่า + ขีดเหลือง) และหัวข้อที่ความหมาย
+   ตรงข้ามกัน ("รับเคลม" / "ไม่รับเคลม") ก็แยกไม่ออก ลูกค้ากวาดตาผ่านแล้วอ่านสลับกันได้
+   → ให้สีตามความหมายของหัวข้อ (เขียว=ได้ · ชมพู=ไม่ได้ · ฟ้า=ข้อมูล/เวลา)
+   ไม่ใส่กล่องสีเต็มใบ ใช้แค่ไอคอนหัวข้อ + สีของจุดนำหน้า จะได้ไม่ลายตา
+   ไม่ครอบ .dl (หน้านี้เป็น Tailwind) จึงไม่มี prefix
+   ═══════════════════════════════════════════════════════════════════════════ */
+.ptab{display:flex;flex-direction:column;gap:26px;font-family:var(--body);
+  font-size:.92rem;line-height:1.85;color:var(--navy-soft)}
+.ptab-sec + .ptab-sec{padding-top:24px;border-top:1px dashed var(--sky-200)}
+.ptab-head{display:flex;align-items:center;gap:11px;margin-bottom:12px}
+.ptab-ico{flex:none;width:30px;height:30px;border-radius:11px;display:grid;place-items:center;
+  font-size:.9rem;line-height:1;font-weight:700}
+.ptab-title{font-family:var(--display);font-weight:500;font-size:1.06rem;color:var(--navy);line-height:1.3}
+.ptab-body{display:flex;flex-direction:column;gap:9px;max-width:74ch}
+.ptab-li{display:flex;gap:11px;align-items:flex-start}
+.ptab-li>i{flex:none;margin-top:.42em;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;
+  font-style:normal;font-size:.6rem;line-height:1;font-weight:700}
+.ptab-li>span{min-width:0;flex:1}
+.ptab-p{max-width:74ch}
+
+/* โทนตามความหมายของหัวข้อ */
+.ptab-sec.ok .ptab-ico{background:#DEF5EC;color:#0E6B52}
+.ptab-sec.ok .ptab-li>i{background:#DEF5EC;color:#12876A}
+.ptab-sec.no .ptab-ico{background:#FFE4EB;color:#B3234A}
+.ptab-sec.no .ptab-li>i{background:#FFE4EB;color:#D8305A}
+.ptab-sec.info .ptab-ico{background:var(--sky-100);color:var(--blue-deep)}
+.ptab-sec.info .ptab-li>i{background:var(--sky-100);color:var(--blue-deep)}
+.ptab-sec.plain .ptab-ico{background:var(--yolk-soft);color:#8A5B00}
+.ptab-sec.plain .ptab-li>i{background:var(--yolk-soft);color:#A57200}
+
+@media (max-width:640px){
+  .ptab{gap:20px;font-size:.87rem}
+  .ptab-sec + .ptab-sec{padding-top:18px}
+  .ptab-title{font-size:.98rem}
+  .ptab-ico{width:26px;height:26px;border-radius:9px;font-size:.8rem}
+}
+
+/* ป้ายหัวโซน "ข้อมูลสินค้าเพิ่มเติม" — เดิมเป็นเม็ดยาสีกรมท่า ไปยืนคู่กับแท็บที่เลือกอยู่
+   เลยดูเหมือนมีแท็บถูกเลือก 2 อัน · เปลี่ยนเป็นหัวข้อธรรมดาให้แยกออกจากแถวแท็บชัด ๆ */
+.ptab-secname{display:inline-flex;align-items:center;gap:8px;font-family:var(--display);font-weight:500;
+  font-size:1.02rem;color:var(--navy)}
+.ptab-secname i{font-style:normal;width:30px;height:30px;flex:none;border-radius:11px;display:grid;place-items:center;
+  background:linear-gradient(150deg,#E4F3FE,#fff 70%);font-size:.92rem;
+  box-shadow:inset 0 2px 4px rgba(255,255,255,.8),0 5px 12px rgba(44,129,196,.14)}

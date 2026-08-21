@@ -127,6 +127,51 @@ const TAB_PROSE =
   "[&_table]:mt-3 [&_table]:w-full [&_th]:px-2 [&_th]:py-1 [&_td]:px-2 [&_td]:py-1 " +
   "[&_iframe]:my-3 [&_iframe]:aspect-video [&_iframe]:w-full";
 
+/**
+ * โทนของหัวข้อในแท็บ — เดาจากคำขึ้นต้น/คำสำคัญ
+ * เพื่อไม่ให้หัวข้อที่ความหมายตรงข้ามกัน ("รับเคลม" กับ "ไม่รับเคลม") หน้าตาเหมือนกันเป๊ะ
+ * ลูกค้ากวาดตาผ่าน ๆ แล้วอ่านสลับลิสต์กันได้ง่ายมาก
+ */
+type TabTone = "ok" | "no" | "info" | "plain";
+function tabTone(title: string): TabTone {
+  const t = title.replace(/\s+/g, "");
+  // เช็ค "ไม่/ห้าม/ยกเว้น" ก่อนเสมอ — ไม่งั้น "ไม่รับเคลม" จะไปเข้าเงื่อนไข "รับ"
+  if (/ไม่รับ|ไม่ได้|ไม่คิด|ไม่มี|ห้าม|ยกเว้น|ข้อจำกัด|ข้อควรระวัง|ข้อยกเว้น/.test(t)) return "no";
+  if (/^รับ|ทำได้|สั่งได้|เลือกได้|รวมอยู่|ฟรี|ข้อดี|จุดเด่น/.test(t)) return "ok";
+  if (/ระยะเวลา|เวลา|ขั้นตอน|วิธี|หมายเหตุ|เงื่อนไข|ติดต่อ|จัดส่ง|ราคา|ขนาด/.test(t)) return "info";
+  return "plain";
+}
+const TONE_ICON: Record<TabTone, string> = { ok: "✓", no: "✕", info: "!", plain: "•" };
+const TONE_BULLET: Record<TabTone, string> = { ok: "✓", no: "✕", info: "•", plain: "•" };
+
+interface TabLine {
+  bullet: boolean;
+  text: string;
+}
+interface TabBlock {
+  title: string;
+  tone: TabTone;
+  lines: TabLine[];
+}
+/** แยกข้อความในแท็บเป็นบล็อกตามหัวข้อ `::หัวข้อ::` — บรรทัดที่ขึ้นต้นด้วย • คือรายการย่อย */
+function parseTabText(text: string): TabBlock[] {
+  const blocks: TabBlock[] = [];
+  let cur: TabBlock = { title: "", tone: "plain", lines: [] };
+  for (const raw of text.split("\n")) {
+    const t = raw.trim();
+    if (!t) continue;
+    if (/^::.*::$|::$/.test(t)) {
+      if (cur.title || cur.lines.length) blocks.push(cur);
+      const title = t.replace(/^::|::$/g, "").trim();
+      cur = { title, tone: tabTone(title), lines: [] };
+      continue;
+    }
+    cur.lines.push({ bullet: t.startsWith("•"), text: t.replace(/^•\s*/, "") });
+  }
+  if (cur.title || cur.lines.length) blocks.push(cur);
+  return blocks;
+}
+
 function ProductTabText({ tab }: { tab: ProductTab }) {
   const { text, images = [] } = tab;
   /** เนื้อหาแบบจัดรูปแบบ (ตัวเขียนหลังบ้าน) — มีแล้วใช้แทนข้อความธรรมดา */
@@ -187,27 +232,36 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
       {tab.imagePos === "top" && gallery}
       {/* HTML ผ่าน sanitize ฝั่งเซิร์ฟเวอร์ตั้งแต่ตอนบันทึกสินค้า (ตัดแท็ก script, on-handler, javascript:) */}
       {rich && <div className={`overflow-x-auto ${TAB_PROSE}`} dangerouslySetInnerHTML={{ __html: rich }} />}
-      {!rich && hasText && text.split("\n").map((line, i) => {
-        const t = line.trim();
-        if (!t) return <div key={i} className="h-2" />;
-        if (t.startsWith("•"))
-          return (
-            <p key={i} className="flex gap-2.5 pl-1">
-              <span className="mt-[10px] h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--blue)]" />
-              <span className="min-w-0 flex-1">{t.replace(/^•\s*/, "")}</span>
-            </p>
-          );
-        if (/^::.*::$|::$/.test(t))
-          return (
-            <p
-              key={i}
-              className="relative mt-3 w-max max-w-full pb-1.5 font-display text-[1.02rem] font-medium text-[var(--navy)] after:absolute after:bottom-0 after:left-0 after:h-[3px] after:w-[26px] after:rounded after:bg-[var(--yolk-deep)] after:content-['']"
-            >
-              {t.replace(/^::|::$/g, "").trim()}
-            </p>
-          );
-        return <p key={i}>{t}</p>;
-      })}
+      {!rich && hasText && (
+        <div className="ptab">
+          {parseTabText(text).map((b, i) => (
+            <section key={i} className={`ptab-sec ${b.tone}`}>
+              {b.title && (
+                <div className="ptab-head">
+                  <span className="ptab-ico" aria-hidden="true">
+                    {TONE_ICON[b.tone]}
+                  </span>
+                  <h3 className="ptab-title">{b.title}</h3>
+                </div>
+              )}
+              <div className="ptab-body">
+                {b.lines.map((l, k) =>
+                  l.bullet ? (
+                    <p key={k} className="ptab-li">
+                      <i aria-hidden="true">{TONE_BULLET[b.tone]}</i>
+                      <span>{l.text}</span>
+                    </p>
+                  ) : (
+                    <p key={k} className="ptab-p">
+                      {l.text}
+                    </p>
+                  ),
+                )}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
       {tab.imagePos !== "top" && gallery}
       {lightbox}
     </div>
@@ -3786,8 +3840,10 @@ export default function ProductDetail({
         <section className="mt-14">
           {/* ป้ายหัวโซน + แท็บเม็ดยา — โทน/ฟอนต์ชุดเดียวกับหน้าแรกและหน้าบัญชี (.acd-ttab) */}
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-3">
-            <span className="inline-flex items-center gap-2 rounded-full bg-[var(--navy)] px-4 py-1.5 font-display text-[.8rem] text-white shadow-[0_6px_14px_rgba(23,58,107,.18)]">
-              📋 ข้อมูลสินค้าเพิ่มเติม
+            {/* ป้ายหัวโซน — เดิมเป็นเม็ดยาสีกรมท่า ไปยืนคู่กับแท็บที่เลือกอยู่
+                เลยดูเหมือนมีแท็บถูกเลือก 2 อัน */}
+            <span className="ptab-secname">
+              <i aria-hidden="true">📋</i>ข้อมูลสินค้าเพิ่มเติม
             </span>
             <div className="flex gap-1.5 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist">
               {product.tabs!.map((t, i) => {
