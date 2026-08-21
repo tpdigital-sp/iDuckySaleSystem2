@@ -2897,3 +2897,37 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .ptab-secname i{font-style:normal;width:30px;height:30px;flex:none;border-radius:11px;display:grid;place-items:center;
   background:linear-gradient(150deg,#E4F3FE,#fff 70%);font-size:.92rem;
   box-shadow:inset 0 2px 4px rgba(255,255,255,.8),0 5px 12px rgba(44,129,196,.14)}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   .pterms — กล่อง "ข้อควรทราบก่อนสั่ง" ในหน้าสินค้า
+   เดิมเป็นหัวแดงทึบ + ตัวหนังสือแดง 11px ยาว 20 กว่าบรรทัดติดกันเป็นพืด
+   อ่านไม่ไหวจนลูกค้าข้ามทั้งก้อน — ซึ่งแย่กว่าไม่มีกล่อง เพราะร้านคิดว่าแจ้งแล้ว
+   ลูกค้าคิดว่าไม่เคยเห็น → เปลี่ยนเป็นโทนไข่แดง (เตือน ไม่ใช่ปลุก) พับเก็บได้
+   ตัวหนังสือใหญ่ขึ้น เว้นบรรทัดหายใจได้ · ใช้ภาษาการ์ดชุดเดียวกับแท็บข้อมูลสินค้า
+   ═══════════════════════════════════════════════════════════════════════════ */
+.pterms{border-radius:var(--r-m);overflow:hidden;background:#fff;border:2px solid #fff;
+  box-shadow:var(--shadow-s);font-family:var(--body)}
+.pterms>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;
+  padding:12px 14px;background:linear-gradient(100deg,#FFF3D2,#FFF9E9);
+  border-bottom:1.5px solid rgba(255,182,39,.42);transition:background .25s ease}
+.pterms>summary::-webkit-details-marker{display:none}
+.pterms>summary:hover{background:linear-gradient(100deg,#FFEBB8,#FFF5DC)}
+.pterms-ico{flex:none;width:30px;height:30px;border-radius:11px;display:grid;place-items:center;
+  font-size:.92rem;line-height:1;background:linear-gradient(135deg,var(--yolk),var(--yolk-deep));
+  box-shadow:0 6px 14px -4px rgba(255,182,39,.6)}
+.pterms-title{flex:1;min-width:0;font-family:var(--display);font-weight:500;font-size:.9rem;
+  line-height:1.35;color:#7A5100}
+.pterms-n{flex:none;border-radius:999px;background:#fff;border:1px solid rgba(255,182,39,.5);
+  padding:3px 10px;font-size:.68rem;color:#8A5B00;white-space:nowrap}
+.pterms-chev{flex:none;font-size:.66rem;color:#A57200;transition:transform .28s cubic-bezier(.34,1.56,.64,1)}
+.pterms[open]>summary .pterms-chev{transform:rotate(180deg)}
+.pterms-body{display:flex;flex-direction:column;gap:10px;padding:14px 16px 16px}
+.pterms-li{display:flex;gap:10px;align-items:flex-start}
+.pterms-li>i{flex:none;margin-top:.5em;width:7px;height:7px;border-radius:50%;
+  background:var(--yolk-deep);box-shadow:0 0 0 3px rgba(255,182,39,.22)}
+.pterms-li>span{min-width:0;flex:1;white-space:pre-line;
+  font-size:.84rem;line-height:1.85;color:#5E4A22}
+@media(max-width:640px){
+  .pterms-body{padding:12px 13px 14px}
+  .pterms-li>span{font-size:.81rem}
+}
