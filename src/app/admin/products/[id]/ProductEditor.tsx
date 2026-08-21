@@ -192,7 +192,17 @@ const EMPTY_MIX_TIER: DraftMixTier = { fromQty: "", baseFee: "", includedDesigns
 /** ข้อมูลกำกับเรทราคา (ชื่อ + เงื่อนไขการสั่ง + ภาพประจำเรท) */
 type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; freeMixBelowQty: string; imageSrc?: string };
 /** เรทเพิ่มเติม — มีช่วงจำนวน+ตารางราคาของตัวเอง (คอลัมน์/หน่วยใช้ร่วมกับเรทหลัก) */
-type DraftExtraRate = DraftRateMeta & { id: string; tiers: DraftTier[]; cells: Record<string, string[]> };
+type DraftExtraRate = DraftRateMeta & {
+  id: string;
+  /**
+   * แกนคอลัมน์ของเรทนี้ — ปกติชุดเดียวกับเรทหลัก
+   * แต่บางเรทมีแกนของตัวเอง (เช่นเรท "งานปัก" ของเสื้อ คิดตาม "ขนาดปัก" ไม่ใช่ "ขนาดสกรีน")
+   * เคยไม่เก็บไว้ แล้วตอนบันทึกประกอบตารางจากแกนของเรทหลัก คีย์ไม่ตรงสักช่อง → เรทหายทั้งเรท
+   */
+  driverLabels: string[];
+  tiers: DraftTier[];
+  cells: Record<string, string[]>;
+};
 const EMPTY_RATE_META: DraftRateMeta = { label: "", desc: "", minQty: "", minPerDesign: "", extraDesignFee: "", freeMixBelowQty: "" };
 /** ชื่อเรทมาตรฐานของร้าน (ตามหน้ารายการราคา) — เลือกจากลิสต์ได้ ไม่ต้องพิมพ์เอง */
 const RATE_NAME_PRESETS = [
@@ -328,6 +338,8 @@ function pricingColumns(options: DraftOption[], driverLabels: string[]): string[
   return combos;
 }
 const columnKey = (combo: string[]) => combo.join("│");
+/** เรทนี้ใช้แกนคอลัมน์ชุดเดียวกับเรทหลักไหม (คนละชุด = ห้ามไปยุ่งกับคีย์ราคาของมัน) */
+const sameDrivers = (a: string[], b: string[]) => a.length === b.length && a.every((v, i) => v === b[i]);
 
 const MAX_PHOTOS = 5;
 /** รูปประกอบต่อ 1 แท็บข้อมูลสินค้า */
@@ -559,6 +571,7 @@ function toDraft(p: Product): Draft {
       : { ...EMPTY_RATE_META },
     extraRates: (p.priceRates ?? []).slice(1).map((r) => ({
       id: r.id,
+      driverLabels: [...r.pricing.driverLabels],
       label: r.label,
       desc: r.desc ?? "",
       minQty: r.minQty != null ? String(r.minQty) : "",
@@ -1512,6 +1525,11 @@ export default function ProductEditor({ product }: { product: Product }) {
           ...d.pricing,
           driverLabels: d.pricing.driverLabels.map((l) => (l === oldLabel ? newLabel : l)),
         },
+        // เรทเพิ่มเติมอ้างชื่อกลุ่มเป็นแกนของตัวเองด้วย — ไม่เปลี่ยนตาม = ตอนบันทึกหากลุ่มไม่เจอ
+        extraRates: d.extraRates.map((r) => ({
+          ...r,
+          driverLabels: r.driverLabels.map((l) => (l === oldLabel ? newLabel : l)),
+        })),
         rules: d.rules.map((r) => ({
           ...r,
           whenLabel: r.whenLabel === oldLabel ? newLabel : r.whenLabel,
@@ -1530,9 +1548,10 @@ export default function ProductEditor({ product }: { product: Product }) {
       const group = d.options[gi];
       if (!group) return d;
       const oldName = group.choices[ci]?.name ?? "";
-      const di = d.pricing.driverLabels.indexOf(group.label); // กลุ่มนี้เป็นแกนของตารางราคาไหม
-      // ย้ายคีย์ราคาไปชื่อใหม่ — ทั้งตารางเรทหลักและทุกเรทเพิ่มเติม (ใช้คีย์คอลัมน์ร่วมกัน)
-      const remap = (cells: Record<string, string[]>): Record<string, string[]> => {
+      // ย้ายคีย์ราคาไปชื่อใหม่ — ทั้งเรทหลักและทุกเรทเพิ่มเติม โดยดูแกนของ "เรทนั้น ๆ"
+      // (เรทที่มีแกนของตัวเอง เช่น งานปัก คีย์คนละชุดกับเรทหลัก ต้องหาตำแหน่งแกนของมันเอง)
+      const remap = (cells: Record<string, string[]>, drivers: string[]): Record<string, string[]> => {
+        const di = drivers.indexOf(group.label); // กลุ่มนี้เป็นแกนของตารางราคานี้ไหม
         if (di < 0 || !oldName || oldName === newName) return cells;
         return Object.fromEntries(
           Object.entries(cells).map(([key, v]) => {
@@ -1547,8 +1566,8 @@ export default function ProductEditor({ product }: { product: Product }) {
         options: d.options.map((op, i) =>
           i === gi ? { ...op, choices: op.choices.map((c, j) => (j === ci ? { ...c, name: newName } : c)) } : op
         ),
-        pricing: { ...d.pricing, cells: remap(d.pricing.cells) },
-        extraRates: d.extraRates.map((r) => ({ ...r, cells: remap(r.cells) })),
+        pricing: { ...d.pricing, cells: remap(d.pricing.cells, d.pricing.driverLabels) },
+        extraRates: d.extraRates.map((r) => ({ ...r, cells: remap(r.cells, r.driverLabels) })),
         rules: d.rules.map((r) => ({
           ...r,
           whenChoice: r.whenLabel === group.label && r.whenChoice === oldName ? newName : r.whenChoice,
@@ -1692,19 +1711,29 @@ export default function ProductEditor({ product }: { product: Product }) {
     const name = choiceName.trim();
     const di = draft.pricing.driverLabels.indexOf(optLabel);
     if (!draft.pricing.enabled || di < 0 || !name) return [];
-    const cols = pricingColumns(draft.options, draft.pricing.driverLabels).filter((c) => c[di] === name);
-    if (!cols.length) return [];
+    if (!pricingColumns(draft.options, draft.pricing.driverLabels).some((c) => c[di] === name)) return [];
     const tables = [
-      { label: draft.rateMeta.label.trim() || "เรทที่ 1", tiers: draft.pricing.tiers, cells: draft.pricing.cells },
+      {
+        label: draft.rateMeta.label.trim() || "เรทที่ 1",
+        drivers: draft.pricing.driverLabels,
+        tiers: draft.pricing.tiers,
+        cells: draft.pricing.cells,
+      },
       ...draft.extraRates.map((r, i) => ({
         label: r.label.trim() || `เรทที่ ${i + 2}`,
+        drivers: r.driverLabels,
         tiers: r.tiers,
         cells: r.cells,
       })),
     ];
     return tables
       .filter((t) => t.tiers.length > 0)
-      .filter((t) => !cols.some((c) => (t.cells[columnKey(c)] ?? []).some((v) => String(v ?? "").trim())))
+      // เรทที่ไม่ได้ใช้กลุ่มนี้เป็นแกน (เช่น เรทงานปัก ไม่มีคอลัมน์ "ขนาดสกรีน") ไม่ต้องเตือน
+      .filter((t) => t.drivers.includes(optLabel))
+      .filter((t) => {
+        const cols = pricingColumns(draft.options, t.drivers).filter((c) => c[t.drivers.indexOf(optLabel)] === name);
+        return cols.length > 0 && !cols.some((c) => (t.cells[columnKey(c)] ?? []).some((v) => String(v ?? "").trim()));
+      })
       .map((t) => t.label);
   }
 
@@ -3227,6 +3256,10 @@ export default function ProductEditor({ product }: { product: Product }) {
         ...d.pricing,
         driverLabels: d.pricing.driverLabels.map((l) => (l === oldLabel ? newLabel : l)),
       },
+      extraRates: d.extraRates.map((r) => ({
+        ...r,
+        driverLabels: r.driverLabels.map((l) => (l === oldLabel ? newLabel : l)),
+      })),
       rules: d.rules.map((r) => ({
         ...r,
         whenLabel: r.whenLabel === oldLabel ? newLabel : r.whenLabel,
@@ -3314,7 +3347,14 @@ export default function ProductEditor({ product }: { product: Product }) {
     setDraft((d) => {
       const has = d.pricing.driverLabels.includes(label);
       if (has) return dropDriverIn(d, label);
-      return { ...d, pricing: { ...d.pricing, driverLabels: [...d.pricing.driverLabels, label] } };
+      return {
+        ...d,
+        pricing: { ...d.pricing, driverLabels: [...d.pricing.driverLabels, label] },
+        // เรทที่ใช้แกนชุดเดียวกับเรทหลักให้เพิ่มแกนตามไปด้วย · เรทที่มีแกนของตัวเองไม่ยุ่ง
+        extraRates: d.extraRates.map((r) =>
+          sameDrivers(r.driverLabels, d.pricing.driverLabels) ? { ...r, driverLabels: [...r.driverLabels, label] } : r
+        ),
+      };
     });
   }
 
@@ -3394,7 +3434,12 @@ export default function ProductEditor({ product }: { product: Product }) {
         driverLabels: d.pricing.driverLabels.filter((_, i) => i !== di),
         cells: collapse(d.pricing.cells),
       },
-      extraRates: d.extraRates.map((r) => ({ ...r, cells: collapse(r.cells) })),
+      // เรทที่มีแกนของตัวเอง (คีย์คนละชุด) ยุบไม่ได้และไม่ควรยุ่ง — collapse จะทิ้งคีย์ทั้งตาราง
+      extraRates: d.extraRates.map((r) =>
+        sameDrivers(r.driverLabels, d.pricing.driverLabels)
+          ? { ...r, driverLabels: r.driverLabels.filter((_, i) => i !== di), cells: collapse(r.cells) }
+          : r
+      ),
     };
   }
 
@@ -3491,6 +3536,8 @@ export default function ProductEditor({ product }: { product: Product }) {
   const activeTiers = rateIdx === 0 ? draft.pricing.tiers : (activeExtra?.tiers ?? []);
   const activeCells = rateIdx === 0 ? draft.pricing.cells : (activeExtra?.cells ?? {});
   const activeMeta: DraftRateMeta = rateIdx === 0 ? draft.rateMeta : (activeExtra ?? EMPTY_RATE_META);
+  /** แกนคอลัมน์ของเรทที่กำลังแก้ — เรทเพิ่มเติมอาจใช้แกนของตัวเอง (เช่น งานปัก ใช้ "ขนาดปัก") */
+  const activeDrivers = rateIdx === 0 ? draft.pricing.driverLabels : (activeExtra?.driverLabels ?? draft.pricing.driverLabels);
 
   function patchActiveTiers(tiers: DraftTier[]) {
     if (rateIdx === 0) patchPricing({ tiers });
@@ -3540,7 +3587,8 @@ export default function ProductEditor({ product }: { product: Product }) {
           minPerDesign: "",
           extraDesignFee: "",
           freeMixBelowQty: "",
-          // เริ่มด้วยช่วงจำนวนชุดเดียวกับเรทหลัก (แก้ทีหลังได้) — ราคาให้กรอกใหม่
+          // เริ่มด้วยแกนคอลัมน์ + ช่วงจำนวนชุดเดียวกับเรทหลัก (แก้ทีหลังได้) — ราคาให้กรอกใหม่
+          driverLabels: [...d.pricing.driverLabels],
           tiers: d.pricing.tiers.map((t) => ({ ...t })),
           cells: {},
         },
@@ -3695,26 +3743,37 @@ export default function ProductEditor({ product }: { product: Product }) {
     const metaHasValue =
       draft.rateMeta.label.trim() || Number(draft.rateMeta.minQty) > 0 || Number(draft.rateMeta.minPerDesign) > 0;
     if (pricing && (draft.extraRates.length > 0 || metaHasValue)) {
-      const buildRateMatrix = (tiersDraft: DraftTier[], cellsDraft: Record<string, string[]>): PriceMatrix | undefined => {
-        if (!tiersDraft.length) return undefined;
-        const tiers = tiersDraft.map((t) => ({
+      const buildRateMatrix = (r: DraftExtraRate): PriceMatrix | undefined => {
+        if (!r.tiers.length) return undefined;
+        const tiers = r.tiers.map((t) => ({
           upTo: t.upTo.trim() === "" ? null : Number(t.upTo),
           label: t.label.trim() || `≤ ${t.upTo}`,
         }));
-        const cols = pricingColumns(draft.options, draft.pricing.driverLabels);
-        const cells: Record<string, number[]> = {};
-        for (const combo of cols) {
-          const key = columnKey(combo);
-          const raw = cellsDraft[key] ?? [];
-          // แถวว่างทั้งแถว = ไม่ขายคู่ตัวเลือกนี้ในเรทนี้
-          if (tiers.every((_, ti) => !String(raw[ti] ?? "").trim())) continue;
-          cells[key] = tiers.map((_, ti) => {
+        const num = (raw: string[]) =>
+          tiers.map((_, ti) => {
             const n = Number(raw[ti]);
             return Number.isFinite(n) && n >= 0 ? n : 0;
           });
+        // แกนของ "เรทนี้" ไม่ใช่ของเรทหลัก — เรทงานปักคิดตาม "ขนาดปัก" คนละคีย์กับ "ขนาดสกรีน"
+        const drivers = r.driverLabels.length ? r.driverLabels : draft.pricing.driverLabels;
+        const cells: Record<string, number[]> = {};
+        for (const combo of pricingColumns(draft.options, drivers)) {
+          const key = columnKey(combo);
+          const raw = r.cells[key] ?? [];
+          // แถวว่างทั้งแถว = ไม่ขายคู่ตัวเลือกนี้ในเรทนี้
+          if (tiers.every((_, ti) => !String(raw[ti] ?? "").trim())) continue;
+          cells[key] = num(raw);
         }
-        if (!Object.keys(cells).length) return undefined;
-        return { unit: pricing!.unit, driverLabels: [...pricing!.driverLabels], tiers, cells };
+        if (Object.keys(cells).length) return { unit: pricing!.unit, driverLabels: [...drivers], tiers, cells };
+        // กันเหนียว: ประกอบตารางใหม่ไม่ได้ (แกนชี้กลุ่มที่ถูกลบ/เปลี่ยนชื่อ) — เก็บราคาที่กรอกไว้ตามเดิม
+        // ห้ามคืน undefined ทั้งที่ยังมีราคาอยู่ ไม่งั้นเรทนั้นหายทั้งเรทตอนกดบันทึก (เคยทำเรท "งานปัก" หายมาแล้ว)
+        const kept = Object.fromEntries(
+          Object.entries(r.cells)
+            .filter(([, v]) => v.some((x) => String(x ?? "").trim()))
+            .map(([k, v]) => [k, num(v)])
+        );
+        if (!Object.keys(kept).length) return undefined;
+        return { unit: pricing!.unit, driverLabels: [...drivers], tiers, cells: kept };
       };
       const metaOf = (m: DraftRateMeta, fallbackLabel: string) => ({
         label: m.label.trim() || fallbackLabel,
@@ -3729,7 +3788,7 @@ export default function ProductEditor({ product }: { product: Product }) {
         { id: "r1", ...metaOf(draft.rateMeta, "เรทที่ 1"), pricing },
       ];
       draft.extraRates.forEach((r, i) => {
-        const m = buildRateMatrix(r.tiers, r.cells);
+        const m = buildRateMatrix(r);
         if (m) list.push({ id: r.id, ...metaOf(r, `เรทที่ ${i + 2}`), pricing: m });
       });
       // เรทเดียวและไม่มีเงื่อนไขอะไรเลย = ไม่ต้องเก็บเป็นหลายเรท
@@ -5542,7 +5601,7 @@ export default function ProductEditor({ product }: { product: Product }) {
               </button>
             </div>
             {(() => {
-            const cols = pricingColumns(draft.options, draft.pricing.driverLabels);
+            const cols = pricingColumns(draft.options, activeDrivers);
             return (
               <div className="mt-3 space-y-4">
                 {/* แท็บเรทราคา — สินค้าบางตัวมีหลายเรท (เช่น พิน: คละดีเทล / ไม่คละดีเทล) */}
@@ -5699,7 +5758,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                   </div>
                   <p className="w-full text-[11px] text-slate-400">
                     💡 เช่น เรท 2 สั่งรวม 50 ขึ้นไป + ลายละ 25 → สั่ง 50 {draft.pricing.unit || "ชิ้น"}คละได้ 2 ลายในราคา ·
-                    ใส่ &quot;คละเกินโควตา ลายละ +฿&quot; (เช่น 10) = ลูกค้าเพิ่มลายเกินโควตาได้ โดยจ่ายเพิ่มลายละ 10 บาท · เว้นว่าง = คละเกินไม่ได้ · ทุกเรทใช้คอลัมน์ตัวเลือกชุดเดียวกัน
+                    ใส่ &quot;คละเกินโควตา ลายละ +฿&quot; (เช่น 10) = ลูกค้าเพิ่มลายเกินโควตาได้ โดยจ่ายเพิ่มลายละ 10 บาท · เว้นว่าง = คละเกินไม่ได้
                   </p>
                 </div>
 
@@ -5779,7 +5838,9 @@ export default function ProductEditor({ product }: { product: Product }) {
                 </div>
                 ) : (
                   <p className="text-[11px] text-slate-400">
-                    หน่วยนับและคอลัมน์ตัวเลือกใช้ร่วมกับเรทหลัก — เรทนี้ตั้งได้เฉพาะช่วงจำนวน + ราคาของตัวเอง
+                    หน่วยนับใช้ร่วมกับเรทหลัก — เรทนี้ตั้งได้เฉพาะช่วงจำนวน + ราคาของตัวเอง ·{" "}
+                    คอลัมน์ตัวเลือกของเรทนี้: <b className="text-slate-500">{activeDrivers.join(" × ") || "ไม่มี (ราคาเดียว)"}</b>
+                    {!sameDrivers(activeDrivers, draft.pricing.driverLabels) && " (แกนของเรทนี้เอง ไม่เหมือนเรทหลัก)"}
                   </p>
                 )}
 
