@@ -2798,7 +2798,11 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 
 /* --- .homebg-sheet — แผ่นขาวรองเนื้อหา วางบนพื้นฟ้าของ .homebg ---
    ให้เนื้อหาอ่านง่ายบนพื้นขาว แล้วเหลือฟ้า+เมฆเป็นกรอบรอบนอกไว้เป็นบรรยากาศ */
-.homebg-sheet{background:#fff;border-radius:var(--r-l);border:1px solid rgba(255,255,255,.95);
+.homebg-sheet{border-radius:var(--r-l);border:1px solid rgba(255,255,255,.95);
+  /* ขาวจาง ๆ ไม่ขาวโพลน — ให้ฟ้ากับเมฆข้างหลังซึมผ่านมานิดหน่อย
+     ใส่ blur ไว้ด้วย เมฆที่ซึมผ่านจะได้เป็นฝ้าจาง ๆ ไม่เป็นก้อนแข่งกับเนื้อหา */
+  background:rgba(255,255,255,.78);
+  -webkit-backdrop-filter:blur(14px) saturate(125%);backdrop-filter:blur(14px) saturate(125%);
   box-shadow:0 24px 56px -34px rgba(23,58,107,.3),0 2px 8px -4px rgba(23,58,107,.06);
   padding:22px 26px 34px;margin-bottom:40px}
 @media(max-width:900px){.homebg-sheet{padding:18px 18px 28px}}
