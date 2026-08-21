@@ -43,12 +43,19 @@ const V = "v1";
 const EXPECT_NAMES = [NAME];
 
 const PAPER_LABEL = "ชนิดกระดาษ";
-const TEX_LABEL = "เนื้อกระดาษพิเศษ";
+const TEX_LABEL = "เนื้อกระดาษพิเศษ (โฮโลแกรม · เงิน-ทอง)";
+const TEX_PLAIN_LABEL = "เนื้อกระดาษพิเศษ (Texture · มุก)";
 const COAT_LABEL = "เคลือบ (ด้านนอก)";
 const COAT_IN_LABEL = "เคลือบ (ด้านใน)";
 const FILM_LABEL = "เคลือบ"; // กลุ่มที่ลิงก์คลังตัวเลือกกลาง (ผิวฟิล์มพิเศษ 10 แบบ)
 const FILM_PRESET = "preset-2";
+const COAT_NONE = "ไม่เคลือบ";
+const COAT_GLOSS = "เคลือบเงา";
+const COAT_MATTE = "เคลือบด้าน";
 const COAT_SPECIAL = "เคลือบพิเศษ";
+const COAT_IN_NONE = "ไม่เคลือบด้านใน";
+const COAT_IN_NORMAL = "เคลือบเงา/ด้าน (ด้านใน)";
+const COAT_IN_SPECIAL = "เคลือบพิเศษ (ด้านใน)";
 
 /**
  * รูปงานจริงในบล็อก CUP SLEEVE ของหน้าเว็บ (id wixstatic — ตรวจแล้วว่าอยู่ในช่วง DOM ของหัวข้อนี้จริง)
@@ -258,7 +265,24 @@ const artCol = (gsm) => remap(artM.tiers, column(artM, `กระดาษอา
 const PAPER_STD = `กระดาษอาร์ตมัน ${GSM} แกรม`;
 const PAPER_300 = "กระดาษอาร์ตมัน 300 แกรม";
 const PAPER_400 = "กระดาษอาร์ตมัน 400 แกรม";
-const PAPER_TEX = "กระดาษพิเศษ (Texture Paper)";
+/**
+ * เนื้อกระดาษพิเศษแบ่ง 2 กลุ่มตามข้อจำกัดการเคลือบ (ร้านยืนยัน 21 ส.ค. 69):
+ *   โฮโลแกรม / เงิน / ทอง → เคลือบเงา หรือ เคลือบด้าน ได้เท่านั้น (ราคารวมเคลือบแล้ว ไม่บวกเพิ่ม)
+ *   เนื้อ Texture / มุก STARDREAM → เคลือบไม่ได้เลย
+ * รายชื่อกลุ่มแรกอ่านจากสินค้า texture-paper เอง (กลุ่ม "เคลือบเพิ่ม (ด้านหลัง)" เปิดให้เฉพาะกระดาษพวกนี้)
+ * เพื่อไม่ให้ต้องมาไล่แก้ชื่อสองที่เวลาร้านเพิ่มเนื้อกระดาษใหม่
+ */
+const coatableFrom = (srcTex.options ?? []).find((o) => /เคลือบเพิ่ม/.test(o.label))?.showWhen?.choices ?? [];
+if (coatableFrom.length === 0) throw new Error(`${SRC_TEX} ไม่มีรายชื่อกระดาษที่เคลือบได้ (กลุ่ม "เคลือบเพิ่ม") — ตรวจก่อน`);
+const texCoatable = texPapers.filter((t) => coatableFrom.includes(t.name));
+const texPlain = texPapers.filter((t) => !coatableFrom.includes(t.name));
+if (!texCoatable.length || !texPlain.length)
+  throw new Error(`แบ่งกลุ่มเนื้อกระดาษพิเศษไม่ได้ (เคลือบได้ ${texCoatable.length} · เคลือบไม่ได้ ${texPlain.length}) — ตรวจก่อน`);
+if (texCoatable.some((t) => t.prices.join() !== texGroups[0].prices.join()))
+  throw new Error(`กระดาษกลุ่มโฮโลแกรม/เงิน-ทอง ราคาไม่เท่ากับเนื้อพิเศษทั่วไปแล้ว — ตรวจ ${SRC_TEX} ก่อน`);
+
+const PAPER_TEX = "กระดาษพิเศษ โฮโลแกรม · เงิน-ทอง";
+const PAPER_TEX_PLAIN = "กระดาษพิเศษ เนื้อ Texture · มุก STARDREAM";
 
 /**
  * STARDREAM (เนื้อมุก) แพงกว่าเนื้อพิเศษอื่นเท่ากันทุกช่วง — เก็บเป็น "+฿ ของตัวเลือกย่อย"
@@ -288,14 +312,15 @@ const PRICING = {
     [PAPER_300]: artCol(300),
     [PAPER_400]: artCol(400),
     [PAPER_TEX]: remap(texM.tiers, texGroups[0].prices),
+    [PAPER_TEX_PLAIN]: remap(texM.tiers, texGroups[0].prices),
   },
 };
 
 console.log(`\n📋 ตารางราคารวม (คอลัมน์ = ชนิดกระดาษ · ต้นทาง: เว็บ + ${SRC_ART} + ${SRC_TEX} เรท "${DIECUT}")`);
-const shortCol = { [PAPER_STD]: "250 แกรม", [PAPER_300]: "300 แกรม", [PAPER_400]: "400 แกรม", [PAPER_TEX]: "พิเศษ" };
-console.log(`   ${"ช่วงจำนวน".padEnd(24)}${Object.keys(PRICING.cells).map((k) => shortCol[k].padStart(11)).join("")}`);
+const shortCol = { [PAPER_STD]: "250 แกรม", [PAPER_300]: "300 แกรม", [PAPER_400]: "400 แกรม", [PAPER_TEX]: "พิเศษ(เคลือบ)", [PAPER_TEX_PLAIN]: "พิเศษ(ไม่เคลือบ)" };
+console.log(`   ${"ช่วงจำนวน".padEnd(24)}${Object.keys(PRICING.cells).map((k) => shortCol[k].padStart(15)).join("")}`);
 PRICING.tiers.forEach((t, i) =>
-  console.log(`   ${t.label.padEnd(24)}${Object.values(PRICING.cells).map((c) => `฿${c[i]}`.padStart(11)).join("")}`)
+  console.log(`   ${t.label.padEnd(24)}${Object.values(PRICING.cells).map((c) => `฿${c[i]}`.padStart(15)).join("")}`)
 );
 console.log(`   (เนื้อ STARDREAM บวกเพิ่มอีก ฿${STAR_EXTRA}/เซ็ต ทุกช่วง)`);
 
@@ -330,7 +355,6 @@ const ART_FILES = [
   "paper-250",
   "paper-300",
   "paper-400",
-  "paper-special",
   "coat-none",
   "coat-gloss",
   "coat-matte",
@@ -396,25 +420,36 @@ d.options = [
       { name: PAPER_STD, popular: true, imageSrc: art["paper-250"] },
       { name: PAPER_300, imageSrc: art["paper-300"] },
       { name: PAPER_400, imageSrc: art["paper-400"] },
-      { name: PAPER_TEX, imageSrc: art["paper-special"] },
+      { name: PAPER_TEX, imageSrc: texCoatable[0].imageSrc },
+      { name: PAPER_TEX_PLAIN, imageSrc: texPlain[0].imageSrc },
     ],
   },
-  // เนื้อกระดาษพิเศษทุกแบบรวมอยู่กลุ่มเดียว (รูปลิงก์จาก texture-paper) — เนื้อมุก STARDREAM บวกเพิ่ม
+  // เนื้อกระดาษพิเศษ (รูปลิงก์จาก texture-paper) — แยกตามข้อจำกัดการเคลือบ ราคาเท่ากันทั้งสองกลุ่ม
   {
     label: TEX_LABEL,
     display: "dropdown",
     showWhen: { label: PAPER_LABEL, choices: [PAPER_TEX] },
-    choices: [
-      ...texGroups[0].papers.map((t) => ({ name: t.name, ...(t.imageSrc ? { imageSrc: t.imageSrc } : {}) })),
-      ...texGroups[1].papers.map((t) => ({ name: t.name, extra: STAR_EXTRA, ...(t.imageSrc ? { imageSrc: t.imageSrc } : {}) })),
-    ],
+    choices: texCoatable.map((t) => ({ name: t.name, ...(t.imageSrc ? { imageSrc: t.imageSrc } : {}) })),
+  },
+  {
+    label: TEX_PLAIN_LABEL,
+    display: "dropdown",
+    showWhen: { label: PAPER_LABEL, choices: [PAPER_TEX_PLAIN] },
+    // เนื้อมุก STARDREAM แพงกว่าเนื้ออื่นในกลุ่มเท่ากันทุกช่วง — เก็บเป็น +฿ ของตัวเลือก
+    choices: texPlain.map((t) => ({
+      name: t.name,
+      ...(t.prices.join() === texGroups[1].prices.join() ? { extra: STAR_EXTRA } : {}),
+      ...(t.imageSrc ? { imageSrc: t.imageSrc } : {}),
+    })),
   },
   {
     label: COAT_LABEL,
+    // กระดาษโฮโลแกรม/เงิน-ทอง ราคารวมเคลือบหน้าไว้แล้ว (ตามสินค้า texture-paper) จึงไม่บวกเพิ่มอีก
+    freeWhen: { choices: [COAT_GLOSS, COAT_MATTE], when: { label: PAPER_LABEL, choices: [PAPER_TEX] } },
     choices: [
-      { name: "ไม่เคลือบ", imageSrc: art["coat-none"] },
-      { name: "เคลือบเงา", extra: COAT_FEE, imageSrc: art["coat-gloss"] },
-      { name: "เคลือบด้าน", extra: COAT_FEE, imageSrc: art["coat-matte"] },
+      { name: COAT_NONE, imageSrc: art["coat-none"] },
+      { name: COAT_GLOSS, extra: COAT_FEE, imageSrc: art["coat-gloss"] },
+      { name: COAT_MATTE, extra: COAT_FEE, imageSrc: art["coat-matte"] },
       { name: COAT_SPECIAL, extra: SPECIAL_FEE, imageSrc: art["coat-special"] },
     ],
   },
@@ -428,18 +463,39 @@ d.options = [
   {
     label: COAT_IN_LABEL,
     choices: [
-      { name: "ไม่เคลือบด้านใน", imageSrc: art["coat-none"] },
-      { name: "เคลือบเงา/ด้าน (ด้านใน)", extra: COAT_FEE, imageSrc: art["coat-gloss"] },
-      { name: "เคลือบพิเศษ (ด้านใน)", extra: SPECIAL_FEE, imageSrc: art["coat-special"] },
+      { name: COAT_IN_NONE, imageSrc: art["coat-none"] },
+      { name: COAT_IN_NORMAL, extra: COAT_FEE, imageSrc: art["coat-gloss"] },
+      { name: COAT_IN_SPECIAL, extra: SPECIAL_FEE, imageSrc: art["coat-special"] },
     ],
   },
 ];
 
-/** กลุ่มผิวฟิล์มเปิดใช้เฉพาะตอนเลือกเคลือบพิเศษ (คู่กับ showWhen — กันเลือกค้างไว้จากตัวเลือกเดิม) */
+/**
+ * กฎเงื่อนไขข้ามกลุ่ม
+ * - ผิวฟิล์มพิเศษเปิดใช้เฉพาะตอนเลือกเคลือบพิเศษ (คู่กับ showWhen — กันเลือกค้างไว้จากตัวเลือกเดิม)
+ * - ข้อจำกัดการเคลือบของกระดาษพิเศษ ผูกกับ "ชนิดกระดาษ" ไม่ใช่กลุ่มเนื้อกระดาษ
+ *   เพราะกลุ่มเนื้อกระดาษถูกซ่อนตอนเลือกกระดาษอาร์ตมัน แต่ค่าที่เลือกไว้ยังค้างอยู่ (จะไปตัดเคลือบผิดตัว)
+ */
 d.rules = [
   {
     when: { label: COAT_LABEL, choice: COAT_SPECIAL, choices: [COAT_SPECIAL] },
     limit: { label: FILM_LABEL, allow: FILMS.map((f) => f.name) },
+  },
+  {
+    when: { label: PAPER_LABEL, choice: PAPER_TEX, choices: [PAPER_TEX] },
+    limit: { label: COAT_LABEL, allow: [COAT_GLOSS, COAT_MATTE] },
+  },
+  {
+    when: { label: PAPER_LABEL, choice: PAPER_TEX, choices: [PAPER_TEX] },
+    limit: { label: COAT_IN_LABEL, allow: [COAT_IN_NONE, COAT_IN_NORMAL] },
+  },
+  {
+    when: { label: PAPER_LABEL, choice: PAPER_TEX_PLAIN, choices: [PAPER_TEX_PLAIN] },
+    limit: { label: COAT_LABEL, allow: [COAT_NONE] },
+  },
+  {
+    when: { label: PAPER_LABEL, choice: PAPER_TEX_PLAIN, choices: [PAPER_TEX_PLAIN] },
+    limit: { label: COAT_IN_LABEL, allow: [COAT_IN_NONE] },
   },
 ];
 
@@ -449,6 +505,7 @@ d.terms = [
   `กระดาษมาตรฐานคืออาร์ตมัน ${GSM} แกรม · เลือกอาร์ตมัน 300 / 400 แกรม หรือกระดาษพิเศษได้ ราคาปรับตามชนิดกระดาษในตารางเลย`,
   "ราคากระดาษ 300 / 400 แกรม และกระดาษพิเศษ คิดตามเรทงานไดคัทของกระดาษชนิดนั้น (1 เซ็ต = 1 แผ่น A3)",
   `กระดาษพิเศษเนื้อมุก STARDREAM บวกเพิ่มเซ็ตละ ${STAR_EXTRA} บาท`,
+  "กระดาษพิเศษกลุ่มโฮโลแกรม · เงิน-ทอง เคลือบได้เฉพาะเงา/ด้าน (รวมในราคาแล้ว) · กลุ่มเนื้อ Texture · มุก STARDREAM เคลือบไม่ได้",
   `เคลือบเงา / เคลือบด้าน บวกเพิ่ม ${COAT_FEE} บาทต่อด้าน · เคลือบพิเศษ (กลิตเตอร์ · ทราย · โฮโลแกรม) บวกเพิ่ม ${SPECIAL_FEE} บาทต่อด้าน`,
   `ขนาดงานมีแบบเดียว ${SIZE.name} (วัดตอนกางแบน) — เป็นทรงมาตรฐานของร้าน ไม่ได้ตัดตามแก้วเฉพาะรุ่น`,
   "ปลายปลอกมีลิ้นล็อก + ช่องเสียบ 3 ตำแหน่ง ปรับความกว้างได้ตามขนาดแก้ว",
@@ -520,7 +577,9 @@ d.tabs = [
       "::วัสดุ::",
       `• กระดาษอาร์ตมัน ${GSM} แกรม (มาตรฐาน)`,
       `• เลือกเป็นอาร์ตมัน 300 / 400 แกรม หรือกระดาษพิเศษได้ — ราคาต่อเซ็ตปรับตามตาราง`,
-      `• ${PAPER_TEX} เลือกเนื้อได้ ${texPapers.length} แบบ (โฮโลแกรม · เงิน-ทอง · Canvas · มุก STARDREAM)`,
+      `• กระดาษพิเศษเลือกเนื้อได้ ${texPapers.length} แบบ — โฮโลแกรม/เงิน-ทอง ${texCoatable.length} เนื้อ · เนื้อ Texture/มุก ${texPlain.length} เนื้อ`,
+      `• กลุ่มโฮโลแกรม · เงิน-ทอง เคลือบเงาหรือเคลือบด้านได้เท่านั้น (รวมในราคาแล้ว ไม่บวกเพิ่ม)`,
+      "• กลุ่มเนื้อ Texture · มุก STARDREAM เคลือบไม่ได้",
       `• เนื้อมุก STARDREAM บวกเพิ่มเซ็ตละ ${STAR_EXTRA} บาท · เนื้ออื่นราคาเท่ากันหมด`,
       "::ราคาบวกเพิ่ม::",
       `• เคลือบเงา / เคลือบด้าน บวกเพิ่ม ${COAT_FEE} บาท ต่อด้าน`,
