@@ -20,7 +20,7 @@
  *      ตัวเลขในภาพ (A4=2 · A5=4 · A6=8 · A7=16) ตรงกับที่หน้าเว็บตารางราคาบอกไว้
  *
  * 3) วาดเอง — ขนาด A7-A3 (วาดตามสเกลจริงจากขนาดกระดาษมาตรฐาน ISO 216) ·
- *    การ์ดเทียบขนาด · ความหนา 2 มม. · ไม่เคลือบ · ไม่เคลือบฟอยล์ · ปั๊มฟอยล์
+ *    การ์ดเทียบขนาด · ความหนา 2 มม. · ไม่เคลือบ · ไม่เคลือบฟอยล์
  *
  * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคชไว้) — ชุดนี้ลงท้าย -v1 ตอนอัป ครั้งหน้าขึ้น v2
  */
@@ -403,47 +403,7 @@ async function foilCards(foil1, foil2, holoFee) {
   }
 }
 
-/* ── 5. การ์ดปั๊มฟอยล์ (วาดเอง) ──────────────────────────────────── */
-
-async function stampCards(stampFee) {
-  console.log("🖼  การ์ดปั๊มฟอยล์ (วาดเอง)");
-  await saveSvg(
-    "stamp-none",
-    frame(`
-      ${title("ไม่ปั๊มฟอยล์", "ผิวหน้าเรียบ ไม่มีรอยปั๊มจม")}
-      ${board(300, 250, 300, 400, { art: artwork(300, 250, 300, 400) })}
-      <text x="450" y="700" font-family="${TH}" font-size="27" text-anchor="middle" fill="${INK}">งานพิมพ์อย่างเดียว ไม่มีขั้นตอนปั๊ม</text>
-      <text x="450" y="742" font-family="${TH}" font-size="24" text-anchor="middle" fill="${SUB}">ไม่มีค่าบวกเพิ่มจากราคาในตาราง</text>
-      ${foot(["ปั๊มฟอยล์เป็นงาน Add On แยกจากการเคลือบฟอยล์", "ปั๊มได้ทั้งบนงานพิมพ์และบนแผ่นเปล่า"])}`)
-  );
-
-  // รอยปั๊มจม: ลายฟอยล์ทองที่มีเงาขอบ (highlight ด้านบน + เงาด้านล่าง) ให้ดูเป็นรอยกดลงในเนื้อแผ่น
-  const emblem = `
-    <defs>
-      <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stop-color="#fff3c4"/><stop offset="45%" stop-color="#e0b23c"/>
-        <stop offset="70%" stop-color="#b8860b"/><stop offset="100%" stop-color="#f6dd93"/>
-      </linearGradient>
-    </defs>
-    <g>
-      <circle cx="450" cy="410" r="98" fill="none" stroke="#cbd5e1" stroke-width="9"/>
-      <circle cx="450" cy="410" r="98" fill="none" stroke="url(#gold)" stroke-width="6"/>
-      <path d="M 398 372 h 104 M 398 410 h 104 M 398 448 h 68" stroke="url(#gold)" stroke-width="11" stroke-linecap="round" fill="none"/>
-      <path d="M 398 372 h 104 M 398 410 h 104 M 398 448 h 68" stroke="#ffffff" stroke-opacity="0.55" stroke-width="3" stroke-linecap="round" fill="none" transform="translate(0,-3)"/>
-    </g>`;
-  await saveSvg(
-    "stamp-foil",
-    frame(`
-      ${title("ปั๊มฟอยล์", `งาน Add On — บวกเพิ่ม ${stampFee} บาท`)}
-      ${board(295, 240, 310, 420, { fill: "#fbfbf9" })}
-      ${emblem}
-      <text x="450" y="706" font-family="${TH}" font-size="27" text-anchor="middle" fill="${INK}">ปั๊มความร้อนให้ฟอยล์ติดเป็นรอยจมลงในเนื้อแผ่น</text>
-      <text x="450" y="748" font-family="${TH}" font-size="24" text-anchor="middle" fill="${SUB}">ผิวสัมผัสเป็นโลหะเงา จับแล้วรู้สึกเป็นร่อง</text>
-      ${foot(["ภาพวาดจำลองลักษณะงาน — ลายปั๊มทำตามไฟล์ของลูกค้า", "แจ้งตำแหน่ง/ขนาดลายที่จะปั๊มกับแอดมินก่อนผลิต"])}`)
-  );
-}
-
-/* ── 6. อินโฟกราฟิกจำนวนต่อแผ่น A3 (ภาพของร้านเอง) ──────────────── */
+/* ── 5. อินโฟกราฟิกจำนวนต่อแผ่น A3 (ภาพของร้านเอง) ──────────────── */
 
 async function a3Chart() {
   console.log("🖼  อินโฟกราฟิกจำนวนต่อแผ่น A3 (ภาพของร้านเอง — paper-foil/a3-chart.jpg)");
@@ -458,7 +418,7 @@ async function a3Chart() {
 /* ── รัน ─────────────────────────────────────────────────────────── */
 
 /** ค่าบวกเพิ่มที่เขียนลงการ์ด — apply.mjs อ่านค่าจริงจากเว็บแล้วทวนกับชุดนี้ ไม่ตรง = หยุด */
-export const FEES = { coat: 10, special: 40, foil1: 40, foil2: 60, holo: 10, stamp: 60 };
+export const FEES = { coat: 10, special: 40, foil1: 40, foil2: 60, holo: 10 };
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   console.log(`📁 ${OUT}`);
@@ -467,7 +427,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   await thicknessCard();
   await coatCards(FEES.coat, FEES.special);
   await foilCards(FEES.foil1, FEES.foil2, FEES.holo);
-  await stampCards(FEES.stamp);
   await a3Chart();
   console.log("\n✅ เสร็จ — ต่อด้วย: node scripts/ultra-hard-cardboard-apply.mjs --write");
 }

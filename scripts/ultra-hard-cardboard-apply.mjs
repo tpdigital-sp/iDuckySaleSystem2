@@ -13,7 +13,8 @@
  *      อ่านไม่ครบหรือจำนวนตัวเลขไม่ลงล็อกเมื่อไหร่ = หยุด ไม่เดาราคาเอง
  *
  * ค่าบวกเพิ่มทุกตัวก็อ่านจากเว็บ ไม่ได้พิมพ์ทับไว้ในโค้ด:
- *   เคลือบเงา/ด้าน · เคลือบพิเศษ · ปั๊มฟอยล์ (ในบล็อกนี้) · เคลือบฟอยล์ 1/2 เลเยอร์ + โฮโลแกรม (ตาราง Add On ของทั้งหน้า)
+ *   เคลือบเงา/ด้าน · เคลือบพิเศษ (ในบล็อกนี้) · เคลือบฟอยล์ 1/2 เลเยอร์ + โฮโลแกรม (ตาราง Add On ของทั้งหน้า)
+ *   ⚠️ เว็บมี "ปั๊มฟอยล์ +60" อยู่ด้วย แต่ผู้ใช้สั่งไม่ขายผ่านหน้าเว็บ (21 ส.ค. 69) — ไม่ทำเป็นตัวเลือก ไม่โชว์ราคา
  *   แล้วทวนกับตัวเลขที่เขียนอยู่บนการ์ดภาพ (FEES ใน art.mjs) — ไม่ตรง = หยุด ให้ไปสร้างภาพใหม่ก่อน
  *
  * ⚠️ สคริปต์เขียนแบบ upsert ลงแถวเดิม id นี้ (แถวนี้มีอยู่แล้วจากรอบนำเข้าสินค้าจากเว็บ — ราคายังเป็นชุดเดียวกัน
@@ -45,7 +46,6 @@ const FILM_PRESET = "preset-2";
 const COAT_SPECIAL = "เคลือบพิเศษ";
 const FOIL_LABEL = "เคลือบฟอยล์ (Add On)";
 const FOIL_COLOR_LABEL = "สีฟอยล์";
-const STAMP_LABEL = "ปั๊มฟอยล์ (Add On)";
 const FOIL_NONE = "ไม่เคลือบฟอยล์";
 
 /**
@@ -158,7 +158,6 @@ function detail(re, what, pool = SEC_TEXT) {
 }
 const COAT_FEE = detail(/เคลือบเงา\s*\/\s*ด้าน\s*บวก\s*(\d+)\s*บาท/, "ค่าเคลือบเงา/ด้าน");
 const SPECIAL_FEE = detail(/เคลือบพิเศษ\s*บวก\s*(\d+)\s*บาท/, "ค่าเคลือบพิเศษ");
-const STAMP_FEE = detail(/ปั๊มฟอยล์\s*บวกเพิ่ม\s*(\d+)\s*บาท/, "ค่าปั๊มฟอยล์");
 const THICK_MM = detail(/ความหนา\s*([\d.]+)\s*mm/i, "ความหนาของแผ่น");
 const MIX_FREE_BELOW = detail(/ตั้งแต่\s*(\d+)\s*ชิ้นขึ้นไป\s*คละลาย/, "เงื่อนไขคละลาย (ตั้งแต่กี่ชิ้น)");
 const MIX_MIN = detail(/คละลาย\s*ขั้นต่ำลายละ\s*(\d+)\s*ชิ้น/, "คละลายขั้นต่ำลายละกี่ชิ้น");
@@ -198,7 +197,6 @@ const feeCheck = [
   ["ค่าเคลือบฟอยล์ 1 เลเยอร์", FOIL1.price, FEES.foil1],
   ["ค่าเคลือบฟอยล์ 2 เลเยอร์", FOIL2.price, FEES.foil2],
   ["ค่าฟอยล์โฮโลแกรม", HOLO_FEE, FEES.holo],
-  ["ค่าปั๊มฟอยล์", STAMP_FEE, FEES.stamp],
 ].filter(([, web, art]) => web !== art);
 if (feeCheck.length)
   throw new Error(
@@ -235,7 +233,7 @@ console.log(`   ${"ขนาด".padEnd(22)}${tiers.map((t) => t.label.padStart(
 for (const s of SIZE_ORDER)
   console.log(`   ${sizeChoiceName(s).padEnd(22)}${cells[sizeChoiceName(s)].map((p) => `฿${p}`.padStart(16)).join("")}`);
 console.log(`   ความหนา ${THICK_MM} มม. · คละลาย: ต่ำกว่า ${MIX_FREE_BELOW} ชิ้นอิสระ · ตั้งแต่ ${MIX_FREE_BELOW} ชิ้นขึ้นไป ลายละ ${MIX_MIN} ชิ้นขึ้นไป`);
-console.log(`   เคลือบเงา/ด้าน +฿${COAT_FEE} · เคลือบพิเศษ +฿${SPECIAL_FEE} · ปั๊มฟอยล์ +฿${STAMP_FEE}`);
+console.log(`   เคลือบเงา/ด้าน +฿${COAT_FEE} · เคลือบพิเศษ +฿${SPECIAL_FEE}`);
 console.log(`   เคลือบฟอยล์: ${FOIL1.name} +฿${FOIL1.price} · ${FOIL2.name} +฿${FOIL2.price} · โฮโลแกรม +฿${HOLO_FEE}`);
 console.log(`   สีฟอยล์บนเว็บ: ${WEB_FOIL_COLORS.join(" · ")}`);
 
@@ -295,8 +293,6 @@ const ART_FILES = [
   "foil-gold",
   "foil-rosegold",
   "foil-hologram",
-  "stamp-none",
-  "stamp-foil",
   "a3-chart",
 ];
 const art = {};
@@ -391,13 +387,6 @@ d.options = [
     showWhen: { label: FOIL_LABEL, choices: FOIL_LAYERS.map((f) => f.name) },
     choices: FOIL_COLORS.map((c) => ({ name: c.name, ...(c.extra ? { extra: c.extra } : {}), imageSrc: art[c.art] })),
   },
-  {
-    label: STAMP_LABEL,
-    choices: [
-      { name: "ไม่ปั๊มฟอยล์", imageSrc: art["stamp-none"] },
-      { name: "ปั๊มฟอยล์", extra: STAMP_FEE, imageSrc: art["stamp-foil"] },
-    ],
-  },
 ];
 
 /** กลุ่มผิวฟิล์มเปิดใช้เฉพาะตอนเลือกเคลือบพิเศษ (คู่กับ showWhen — กันเลือกค้างไว้จากตัวเลือกเดิม) */
@@ -420,7 +409,7 @@ d.description =
   `เนื้อแผ่นแข็ง ผิวสัมผัสเรียบเนียน ตั้งโชว์ได้ไม่งอ เลือกได้ ${SIZE_ORDER.length} ขนาด (${sizeList}) ` +
   `เริ่มต้นชิ้นละ ${startAt} บาท สั่งเยอะเหลือชิ้นละ ${cheapest} บาท ` +
   `เคลือบลามิเนตเงา / ด้าน / เคลือบพิเศษ (กลิตเตอร์ · ทราย · โฮโลแกรม) ได้ ` +
-  `และเพิ่มงานฟอยล์ได้ทั้งเคลือบฟอยล์ (1-2 เลเยอร์) และปั๊มฟอยล์ ` +
+  `เพิ่มงานเคลือบฟอยล์ได้ทั้งแบบ 1 และ 2 เลเยอร์ ` +
   `ทุกตัวเลือกมีภาพให้ดูก่อนสั่งว่าหน้าตาเป็นแบบไหน`;
 
 d.highlights = [
@@ -428,7 +417,7 @@ d.highlights = [
   `${SIZE_ORDER.length} ขนาดให้เลือก พร้อมภาพเทียบขนาดทุกใบ — ${sizeList}`,
   `เริ่มต้นชิ้นละ ${startAt} บาท · สั่ง ${GRID.rows.at(-1).label} เหลือชิ้นละ ${cheapest} บาท`,
   `เคลือบเงา / ด้าน +${COAT_FEE} บาท · เคลือบพิเศษ +${SPECIAL_FEE} บาท (เลือกผิวฟิล์มได้ ${FILMS.length} แบบ)`,
-  `เคลือบฟอยล์ 1 เลเยอร์ +${FOIL1.price} บาท · 2 เลเยอร์ +${FOIL2.price} บาท (${WEB_FOIL_COLORS.length} สีฟอยล์) · ปั๊มฟอยล์ +${STAMP_FEE} บาท`,
+  `เคลือบฟอยล์ 1 เลเยอร์ +${FOIL1.price} บาท · 2 เลเยอร์ +${FOIL2.price} บาท (เลือกได้ ${WEB_FOIL_COLORS.length} สีฟอยล์)`,
   `ไม่มีขั้นต่ำ — สั่ง 1 ชิ้นก็ได้ · 1-${MIX_FREE_BELOW - 1} ชิ้นคละลายได้อิสระ`,
 ];
 
@@ -439,8 +428,7 @@ d.terms = [
   `จำนวน 1-${MIX_FREE_BELOW - 1} ชิ้น คละลายได้อิสระ · ตั้งแต่ ${MIX_FREE_BELOW} ชิ้นขึ้นไป คละลายได้ ลายละ ${MIX_MIN} ชิ้นขึ้นไป ไม่ถึงตามจำนวน คิดตามราคาปลีก`,
   `เคลือบลามิเนตเนื้อเงา / ด้าน บวกเพิ่ม ${COAT_FEE} บาท · เคลือบพิเศษ (กลิตเตอร์ · ทราย · โฮโลแกรม) บวกเพิ่ม ${SPECIAL_FEE} บาท`,
   `เคลือบฟอยล์: ${FOIL1.name} ${FOIL1.price} บาท · ${FOIL2.name} ${FOIL2.price} บาท · เลือกสีฟอยล์ได้ ${WEB_FOIL_COLORS.join(" / ")} (โฮโลแกรมบวกเพิ่ม ${HOLO_FEE} บาท)`,
-  `ปั๊มฟอยล์ (Add On) บวกเพิ่ม ${STAMP_FEE} บาท`,
-  `จำนวนงานเคลือบลามิเนตและปั๊มฟอยล์คิดต่อ 1 แผ่น A3 — ${SIZE_ORDER.filter((s) => s.perA3 > 1)
+  `จำนวนงานเคลือบลามิเนตคิดต่อ 1 แผ่น A3 — ${SIZE_ORDER.filter((s) => s.perA3 > 1)
     .map((s) => `${s.name} ได้ ${s.perA3} ใบ`)
     .join(" · ")}`,
   "งานพิมพ์ 2 เลเยอร์ ตำแหน่งพิมพ์อาจเลื่อนประมาณ 1-2 มม. เพราะกระดาษหดตัวจากการพิมพ์และเคลือบหลายรอบ",
@@ -512,7 +500,6 @@ d.tabs = [
       `• เคลือบพิเศษ (กลิตเตอร์ · ทราย · โฮโลแกรม) +${SPECIAL_FEE} บาท`,
       `• เคลือบฟอยล์ ${FOIL1.name} +${FOIL1.price} บาท · ${FOIL2.name} +${FOIL2.price} บาท`,
       `• สีฟอยล์: ${WEB_FOIL_COLORS.join(" / ")} — โฮโลแกรม +${HOLO_FEE} บาท`,
-      `• ปั๊มฟอยล์ +${STAMP_FEE} บาท`,
       "::การคละลาย::",
       `• 1-${MIX_FREE_BELOW - 1} ชิ้น คละลายได้อิสระ`,
       `• ตั้งแต่ ${MIX_FREE_BELOW} ชิ้นขึ้นไป คละลายได้ ลายละ ${MIX_MIN} ชิ้นขึ้นไป`,
@@ -528,7 +515,7 @@ d.tabs = [
   {
     title: "จำนวนต่อแผ่น A3",
     text: [
-      "งานเคลือบลามิเนตและปั๊มฟอยล์คิดจำนวนต่อ 1 แผ่น A3::",
+      "งานเคลือบลามิเนตคิดจำนวนต่อ 1 แผ่น A3::",
       ...SIZE_ORDER.filter((s) => s.perA3 > 1).map((s) => `• ${s.name} ได้ ${s.perA3} ใบ ต่อ 1 แผ่น A3`),
       "• A3 = เต็มแผ่น (1 แผ่นได้ 1 ใบ)",
     ].join("\n"),
@@ -543,7 +530,7 @@ d.seo = {
   description:
     `รับผลิต Ultra-Hard CardBoard การ์ดบอร์ดแบบหนา ${THICK_MM} มม. ผิวเรียบเนียน พิมพ์ระบบ Digital ` +
     `${SIZE_ORDER.length} ขนาด (${sizeList}) เริ่มต้นชิ้นละ ${startAt} บาท สั่งเยอะเหลือชิ้นละ ${cheapest} บาท ` +
-    `เคลือบเงา ด้าน กลิตเตอร์ โฮโลแกรม · เคลือบฟอยล์ · ปั๊มฟอยล์ได้ ไม่มีขั้นต่ำ`,
+    `เคลือบเงา ด้าน กลิตเตอร์ โฮโลแกรม · เคลือบฟอยล์ 1-2 เลเยอร์ ไม่มีขั้นต่ำ`,
   keywords: [
     "ultra hard cardboard",
     "การ์ดบอร์ดหนา",
@@ -568,12 +555,12 @@ d.seo = {
       a: `เคลือบเงาหรือเคลือบด้าน บวกเพิ่ม ${COAT_FEE} บาท · เคลือบพิเศษ (กลิตเตอร์ ทราย โฮโลแกรม) บวกเพิ่ม ${SPECIAL_FEE} บาท`,
     },
     {
-      q: "ทำงานฟอยล์ได้ไหม?",
-      a: `ได้ทั้งเคลือบฟอยล์และปั๊มฟอยล์ — เคลือบฟอยล์ ${FOIL1.name} ${FOIL1.price} บาท · ${FOIL2.name} ${FOIL2.price} บาท (สี ${WEB_FOIL_COLORS.join(" / ")} โฮโลแกรมบวก ${HOLO_FEE} บาท) · ปั๊มฟอยล์ ${STAMP_FEE} บาท`,
+      q: "ทำงานเคลือบฟอยล์ได้ไหม?",
+      a: `ได้ — ${FOIL1.name} ${FOIL1.price} บาท · ${FOIL2.name} ${FOIL2.price} บาท เลือกสีฟอยล์ได้ ${WEB_FOIL_COLORS.join(" / ")} (โฮโลแกรมบวกเพิ่ม ${HOLO_FEE} บาท)`,
     },
     {
       q: "1 แผ่น A3 ได้กี่ใบ?",
-      a: SIZE_ORDER.filter((s) => s.perA3 > 1).map((s) => `${s.name} ได้ ${s.perA3} ใบ`).join(" · ") + " (ใช้คิดจำนวนงานเคลือบและปั๊มฟอยล์)",
+      a: SIZE_ORDER.filter((s) => s.perA3 > 1).map((s) => `${s.name} ได้ ${s.perA3} ใบ`).join(" · ") + " (ใช้คิดจำนวนงานเคลือบลามิเนต)",
     },
   ],
 };
@@ -584,7 +571,7 @@ d.seo = {
  */
 d.quoteOption = d.options.some((o) => o.askPrice || o.choices.some((c) => c.askPrice)) || undefined;
 d.priceMin = Math.min(...allPrices);
-d.priceMax = Math.max(...allPrices) + SPECIAL_FEE + FOIL2.price + HOLO_FEE + STAMP_FEE;
+d.priceMax = Math.max(...allPrices) + SPECIAL_FEE + FOIL2.price + HOLO_FEE;
 d.savedAt = new Date().toISOString();
 
 const choices = d.options.flatMap((o) => o.choices);
