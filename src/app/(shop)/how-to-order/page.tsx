@@ -14,37 +14,37 @@ export const metadata: Metadata = {
 
 const STEPS = [
   {
-    emoji: "🛍️",
+    ico: "pick",
     title: "เลือกสินค้า + ตัวเลือก",
     desc: "เลือกสินค้าที่ต้องการ แล้วเลือกขนาด/วัสดุ/จำนวน — ราคาจะขยับให้เห็นทันที สั่งเยอะราคาต่อชิ้นถูกลงอัตโนมัติ",
   },
   {
-    emoji: "🎨",
+    ico: "art",
     title: "แนบลายของคุณ",
     desc: "อัปโหลดไฟล์ลายบนเว็บได้เลย (JPG / PNG) หรือจะใส่ลิงก์ไฟล์/อีเมลก็ได้ · สินค้าส่วนใหญ่ต้องแนบลายก่อนถึงจะกดใส่ตะกร้าได้ · แนะนำไฟล์ความละเอียดสูง",
   },
   {
-    emoji: "🛒",
+    ico: "parcel",
     title: "ตรวจตะกร้า เลือกวิธีจัดส่ง",
     desc: "เช็ครายการอีกครั้ง เลือกวิธีจัดส่ง และระบุวันที่ต้องใช้งานได้ถ้ามีกำหนด (ไม่บังคับ) — ระบบจะเลือกกล่องที่พอดีกับออเดอร์ให้เอง",
   },
   {
-    emoji: "📝",
+    ico: "address",
     title: "กรอกที่อยู่ ยืนยันคำสั่งซื้อ",
     desc: "กรอกชื่อผู้รับ เบอร์โทร ที่อยู่ และใส่โค้ดส่วนลดถ้ามี — ไม่ต้องสมัครสมาชิกก็สั่งได้ · ยืนยันแล้วจะได้ลิงก์ออเดอร์ของคุณเอง เก็บลิงก์นี้ไว้ใช้ทุกขั้นตอนถัดไป",
   },
   {
-    emoji: "💸",
+    ico: "pay",
     title: "โอนเงิน แล้วแนบสลิป",
     desc: "โอนเข้าบัญชีธนาคารของร้าน แล้วแนบสลิปในหน้าออเดอร์ของคุณ — ระบบตรวจสลิปอัตโนมัติ ผ่านแล้วเริ่มงานให้ทันที · ทางร้านเริ่มจัดทำงานหลังได้รับเงินแล้วเท่านั้น",
   },
   {
-    emoji: "👀",
+    ico: "proof",
     title: "ตรวจแบบก่อนพิมพ์จริง",
     desc: "ทีมกราฟฟิกทำแบบแล้วส่งให้ตรวจ คุณกด “อนุมัติ” หรือ “ขอแก้ไข” ได้เองในหน้าออเดอร์ ขอแก้ได้จนกว่าจะพอใจ",
   },
   {
-    emoji: "📦",
+    ico: "ship",
     title: "ผลิต แล้วจัดส่ง",
     desc: "อนุมัติแบบแล้วเข้าสายผลิตทันที เสร็จแล้วแพ็คส่ง พร้อมเลขพัสดุที่กดติดตามได้เองในหน้าออเดอร์",
   },
@@ -53,28 +53,28 @@ const STEPS = [
 /** สิ่งที่ลูกค้าทำเองได้หลังสั่งแล้ว — จุดที่ถูกถามบ่อยที่สุด */
 const AFTER = [
   {
-    emoji: "🏠",
+    ico: "address",
     title: "แก้ที่อยู่จัดส่งเอง",
     desc: "เปิดลิงก์ออเดอร์ → กดแก้ที่ช่องที่อยู่ แก้ได้ทั้งชื่อผู้รับ เบอร์โทร และที่อยู่",
     when: "แก้ได้เรื่อย ๆ จนกว่าทางร้านจะปริ้นใบงาน (ปกติคือตอนใกล้จะแพ็ค) · หลังจากนั้นระบบจะล็อกไว้ ต้องทักแอดมินให้แก้ให้",
     tone: "t-sky",
   },
   {
-    emoji: "➕",
+    ico: "orders",
     title: "สั่งเพิ่มในออเดอร์เดิม",
     desc: "เลื่อนลงล่างสุดของหน้าออเดอร์ → กด “สั่งเพิ่มในออเดอร์นี้” → เลือกสินค้าใส่ตะกร้าตามปกติ แล้วเลือกว่ารายการไหนจะรวมเข้าออเดอร์เดิม",
     when: "ทำได้ตราบใดที่งานยังไม่เข้าสายผลิต · รวมส่งกล่องเดียวกัน ไม่คิดค่าส่งเพิ่ม โอนแค่ส่วนต่างที่เพิ่มขึ้น",
     tone: "t-mint",
   },
   {
-    emoji: "🧾",
+    ico: "receipt",
     title: "เปิดใบเสร็จเอง",
     desc: "กดปุ่มใบเสร็จในหน้าออเดอร์ ดูและสั่งพิมพ์ได้เอง",
     when: "เปิดได้เมื่อชำระครบแล้ว",
     tone: "t-lilac",
   },
   {
-    emoji: "🚚",
+    ico: "ship",
     title: "ติดตามพัสดุ",
     desc: "พอทางร้านยิงเลขพัสดุ หน้าออเดอร์จะขึ้นสถานะให้ดูเอง ไม่ต้องทักถาม",
     when: "ดูได้ทันทีหลังสถานะเปลี่ยนเป็น “จัดส่งแล้ว”",
@@ -131,16 +131,42 @@ export default async function HowToOrderPage() {
       {/* ── แถบฟ้าหัวหน้า (ผืนเดียวกับหน้าแรก): หัวข้อ + เงื่อนไขชำระเงิน + 7 ขั้นตอน ── */}
       <div className="top-stack">
         <section className="hto-top">
-          <div className="head">
-            <span className="kicker kicker-yolk">
-              <i className="folder">📖</i>คู่มือการสั่งซื้อ
-            </span>
-            <h1>
-              สั่งซื้อ<em>ง่าย ๆ</em> แค่ 7 ขั้นตอน
-            </h1>
-            <p>
-              สั่งของพิมพ์ลายกับ iDucky ไม่มีขั้นต่ำ เริ่มที่ 1 ชิ้น 💛 · <FreeShipNote />
-            </p>
+          {/* หัวหน้า — ข้อความซ้าย เป็ดขวา (ผังเดียวกับฮีโร่หน้าแรก) */}
+          <div className="hto-hero">
+            <div className="hto-hero-txt">
+              <span className="kicker kicker-yolk">
+                <i className="folder">📖</i>คู่มือการสั่งซื้อ
+              </span>
+              <h1>
+                สั่งซื้อ<em>ง่าย ๆ</em>
+                <br />
+                แค่ <span className="yolk-underline">7 ขั้นตอน</span>
+              </h1>
+              <p className="hto-lead">
+                สั่งของพิมพ์ลายกับ iDucky ตั้งแต่เลือกของจนพัสดุถึงบ้าน — ทำเองได้ทุกขั้นบนเว็บ
+                ไม่ต้องรอแอดมินตอบทีละข้อความ
+              </p>
+              <div className="hto-facts">
+                <span className="hto-fact">ไม่มีขั้นต่ำ เริ่มที่ 1 ชิ้น</span>
+                <span className="hto-fact yolk">
+                  <FreeShipNote />
+                </span>
+                <span className="hto-fact mint">ไม่ต้องสมัครสมาชิกก็สั่งได้</span>
+              </div>
+              <div className="hto-hero-btns">
+                <Link className="btn btn-yolk" href="/products">
+                  เริ่มเลือกสินค้า <span className="dot">→</span>
+                </Link>
+                <a className="btn btn-ghost" href="#faq">
+                  ดูคำถามที่พบบ่อย <span className="dot">↓</span>
+                </a>
+              </div>
+            </div>
+            <div className="hto-hero-art">
+              <span className="hto-bub b1">เลือก → แนบลาย → โอน 🐥</span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/landing/duck-hug.webp" alt="" aria-hidden="true" />
+            </div>
           </div>
 
           {/* เงื่อนไขหลักของร้าน — วางไว้บนสุดก่อนขั้นตอน ลูกค้าจะได้เห็นก่อนสั่ง ไม่ใช่มารู้ทีหลัง */}
@@ -150,7 +176,7 @@ export default async function HowToOrderPage() {
               <li>
                 <b>โอนผ่านธนาคารเท่านั้น</b> — โอนเข้าบัญชีของร้าน แล้วแนบสลิปในหน้าออเดอร์
               </li>
-              <li>
+              <li className="no">
                 <b className="warn">ไม่รับบัตรเครดิต และไม่มีเก็บเงินปลายทาง (COD)</b>
               </li>
               <li>
@@ -159,10 +185,15 @@ export default async function HowToOrderPage() {
             </ul>
           </div>
 
-          <ol className="hto-steps">
+          {/* 7 ขั้นตอน — ไทม์ไลน์สลับซ้าย-ขวา อ่านไล่ลงมาได้เป็นจังหวะ */}
+          <ol className="hto-flow">
             {STEPS.map((s, i) => (
               <li className="hto-step" key={s.title}>
-                <span className="hto-ico">{s.emoji}</span>
+                <span className="hto-node">{i + 1}</span>
+                <span className="hto-ico">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={`/how-to/${s.ico}.webp`} alt="" aria-hidden="true" />
+                </span>
                 <div>
                   <span className="stepno">ขั้นที่ {i + 1}</span>
                   <h2>{s.title}</h2>
@@ -193,11 +224,16 @@ export default async function HowToOrderPage() {
             {AFTER.map((a) => (
               <div className="hto-card" key={a.title}>
                 <div className="hto-card-head">
-                  <i className={a.tone}>{a.emoji}</i>
+                  <i className={a.tone}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`/how-to/${a.ico}.webp`} alt="" aria-hidden="true" />
+                  </i>
                   <b>{a.title}</b>
                 </div>
                 <p>{a.desc}</p>
-                <p className="hto-when">⏱ {a.when}</p>
+                <p className="hto-when">
+                  <span>⏱ {a.when}</span>
+                </p>
               </div>
             ))}
           </div>
@@ -205,7 +241,7 @@ export default async function HowToOrderPage() {
       </div>
 
       {/* ── คำถามที่พบบ่อย ── */}
-      <section className="hto-sec">
+      <section className="hto-sec" id="faq" style={{ scrollMarginTop: 100 }}>
         <div className="head">
           <span className="kicker kicker-why">
             <i className="beat-heart">❓</i>คำถามที่พบบ่อย

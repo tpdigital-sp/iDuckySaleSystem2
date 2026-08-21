@@ -18,7 +18,8 @@ export default function FreeShipNote() {
   if (min <= 0) return <>คิดค่าจัดส่งตามวิธีที่เลือก</>;
   return (
     <>
-      ส่งฟรีเมื่อซื้อครบ <strong className="text-emerald-600">{formatPrice(min)}</strong>
+      {/* ใช้สีเขียวมิ้นต์ของแบรนด์ ไม่ใช้คลาสสี Tailwind (หน้านี้อยู่ในระบบดีไซน์ .dl) */}
+      ส่งฟรีเมื่อซื้อครบ <strong style={{ color: "#12876A", fontWeight: 600 }}>{formatPrice(min)}</strong>
     </>
   );
 }
