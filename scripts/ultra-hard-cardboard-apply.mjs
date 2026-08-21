@@ -393,24 +393,38 @@ d.options = [
     choices: FILMS,
   },
   {
+    // ค่าเคลือบฟอยล์คิดต่อแผ่น A3 เหมือนเคลือบลามิเนต (ผู้ใช้ยืนยัน 21 ส.ค. 69)
     label: FOIL_LABEL,
+    sheetFee: { from: SIZE_LABEL, unit: SHEET_UNIT },
     choices: [
       { name: FOIL_NONE, imageSrc: art["foil-none"] },
       ...FOIL_LAYERS.map((f) => ({ name: f.name, extra: f.extra, imageSrc: art[f.art] })),
     ],
   },
   {
+    // ค่าสีโฮโลแกรมเป็นส่วนหนึ่งของค่าฟอยล์ จึงคิดต่อแผ่น A3 เหมือนกัน
     label: FOIL_COLOR_LABEL,
+    sheetFee: { from: SIZE_LABEL, unit: SHEET_UNIT },
     showWhen: { label: FOIL_LABEL, choices: FOIL_LAYERS.map((f) => f.name) },
     choices: FOIL_COLORS.map((c) => ({ name: c.name, ...(c.extra ? { extra: c.extra } : {}), imageSrc: art[c.art] })),
   },
 ];
 
-/** กลุ่มผิวฟิล์มเปิดใช้เฉพาะตอนเลือกเคลือบพิเศษ (คู่กับ showWhen — กันเลือกค้างไว้จากตัวเลือกเดิม) */
 d.rules = [
+  /** กลุ่มผิวฟิล์มเปิดใช้เฉพาะตอนเลือกเคลือบพิเศษ (คู่กับ showWhen — กันเลือกค้างไว้จากตัวเลือกเดิม) */
   {
     when: { label: COAT_LABEL, choice: COAT_SPECIAL, choices: [COAT_SPECIAL] },
     limit: { label: FILM_LABEL, allow: FILMS.map((f) => f.name) },
+  },
+  /**
+   * งานเคลือบฟอยล์ทำร่วมกับเคลือบลามิเนตไม่ได้ (ผู้ใช้ยืนยัน 21 ส.ค. 69) —
+   * เลือกฟอยล์เมื่อไหร่ กลุ่มเคลือบลามิเนตเหลือ "ไม่เคลือบ" อย่างเดียว (หน้าร้านล็อกให้เอง)
+   * ใส่ทางเดียวพอ — อยากกลับไปเคลือบลามิเนตก็เปลี่ยนฟอยล์เป็น "ไม่เคลือบฟอยล์" ก่อน
+   * (ใส่กฎย้อนกลับด้วยจะกลายเป็นล็อกตายทั้งคู่ เพราะ resolveSelections ไล่ตามลำดับกลุ่ม)
+   */
+  {
+    when: { label: FOIL_LABEL, choice: FOIL_LAYERS[0].name, choices: FOIL_LAYERS.map((f) => f.name) },
+    limit: { label: COAT_LABEL, allow: ["ไม่เคลือบ"] },
   },
 ];
 
@@ -445,7 +459,8 @@ d.terms = [
   `จำนวน 1-${MIX_FREE_BELOW - 1} ชิ้น คละลายได้อิสระ · ตั้งแต่ ${MIX_FREE_BELOW} ชิ้นขึ้นไป คละลายได้ ลายละ ${MIX_MIN} ชิ้นขึ้นไป ไม่ถึงตามจำนวน คิดตามราคาปลีก`,
   `ค่าเคลือบลามิเนตคิดเป็นค่าฟิล์ม "ต่อ 1 ${SHEET_UNIT}" ไม่ใช่ต่อชิ้น — เนื้อเงา / ด้าน ${COAT_FEE} บาทต่อ${SHEET_UNIT} · เคลือบพิเศษ (กลิตเตอร์ · ทราย · โฮโลแกรม) ${SPECIAL_FEE} บาทต่อ${SHEET_UNIT}`,
   `สั่งไม่ถึงโควตาต่อแผ่นก็คิด 1 ${SHEET_UNIT} · เกินโควตาขึ้นแผ่นถัดไป เช่น A5 (1 แผ่นได้ 4 ใบ) เคลือบพิเศษ สั่ง 1-4 ใบ = ${SPECIAL_FEE} บาท · สั่ง 5 ใบ = 2 แผ่น = ${SPECIAL_FEE * 2} บาท`,
-  `เคลือบฟอยล์: ${FOIL1.name} ${FOIL1.price} บาท · ${FOIL2.name} ${FOIL2.price} บาท · เลือกสีฟอยล์ได้ ${WEB_FOIL_COLORS.join(" / ")} (โฮโลแกรมบวกเพิ่ม ${HOLO_FEE} บาท)`,
+  `เคลือบฟอยล์คิดต่อ${SHEET_UNIT} เหมือนเคลือบลามิเนต — ${FOIL1.name} ${FOIL1.price} บาทต่อ${SHEET_UNIT} · ${FOIL2.name} ${FOIL2.price} บาทต่อ${SHEET_UNIT} · เลือกสีฟอยล์ได้ ${WEB_FOIL_COLORS.join(" / ")} (โฮโลแกรมบวกเพิ่ม ${HOLO_FEE} บาทต่อ${SHEET_UNIT})`,
+  `งานเคลือบฟอยล์ทำร่วมกับการเคลือบลามิเนตไม่ได้ — เลือกได้อย่างใดอย่างหนึ่ง (เลือกเคลือบฟอยล์แล้ว หน้าสินค้าจะล็อกเคลือบลามิเนตเป็น "ไม่เคลือบ" ให้เอง)`,
   `โควตาชิ้นต่อ 1 ${SHEET_UNIT} — ${SIZE_ORDER.filter((s) => s.perA3 > 1)
     .map((s) => `${s.name} ได้ ${s.perA3} ใบ`)
     .join(" · ")}`,
@@ -517,8 +532,9 @@ d.tabs = [
       `• เคลือบลามิเนตเนื้อเงา / ด้าน +${COAT_FEE} บาท ต่อ 1 ${SHEET_UNIT} (ไม่ใช่ต่อชิ้น)`,
       `• เคลือบพิเศษ (กลิตเตอร์ · ทราย · โฮโลแกรม) +${SPECIAL_FEE} บาท ต่อ 1 ${SHEET_UNIT}`,
       `• 1 ${SHEET_UNIT} ได้ ${SIZE_ORDER.filter((s) => s.perA3 > 1).map((s) => `${s.name} ${s.perA3} ใบ`).join(" · ")} — สั่งเกินโควตาขึ้นแผ่นถัดไป`,
-      `• เคลือบฟอยล์ ${FOIL1.name} +${FOIL1.price} บาท · ${FOIL2.name} +${FOIL2.price} บาท`,
-      `• สีฟอยล์: ${WEB_FOIL_COLORS.join(" / ")} — โฮโลแกรม +${HOLO_FEE} บาท`,
+      `• เคลือบฟอยล์ ${FOIL1.name} +${FOIL1.price} บาท · ${FOIL2.name} +${FOIL2.price} บาท — คิดต่อ 1 ${SHEET_UNIT} เหมือนเคลือบลามิเนต`,
+      `• สีฟอยล์: ${WEB_FOIL_COLORS.join(" / ")} — โฮโลแกรม +${HOLO_FEE} บาท ต่อ 1 ${SHEET_UNIT}`,
+      "• เลือกเคลือบฟอยล์แล้ว เคลือบลามิเนตจะถูกล็อกเป็น “ไม่เคลือบ” (ทำร่วมกันไม่ได้)",
       "::การคละลาย::",
       `• 1-${MIX_FREE_BELOW - 1} ชิ้น คละลายได้อิสระ`,
       `• ตั้งแต่ ${MIX_FREE_BELOW} ชิ้นขึ้นไป คละลายได้ ลายละ ${MIX_MIN} ชิ้นขึ้นไป`,
@@ -539,6 +555,7 @@ d.tabs = [
       "• A3 = เต็มแผ่น (1 แผ่นได้ 1 ใบ)",
       "::คิดเงินยังไง::",
       `• เงา / ด้าน ${COAT_FEE} บาทต่อ${SHEET_UNIT} · เคลือบพิเศษ ${SPECIAL_FEE} บาทต่อ${SHEET_UNIT}`,
+      `• เคลือบฟอยล์คิดแบบเดียวกัน — ${FOIL1.price} / ${FOIL2.price} บาทต่อ${SHEET_UNIT} (โฮโลแกรม +${HOLO_FEE})`,
       `• สั่งไม่ถึงโควตาก็คิด 1 แผ่น — A5 เคลือบพิเศษ สั่ง 1-4 ใบ = ${SPECIAL_FEE} บาท`,
       `• เกินโควตาขึ้นแผ่นถัดไป — A5 สั่ง 5 ใบ = 2 แผ่น = ${SPECIAL_FEE * 2} บาท`,
       "• หน้าสินค้าคิดยอดนี้ให้อัตโนมัติตามขนาดและจำนวนที่เลือก",
@@ -580,7 +597,7 @@ d.seo = {
     },
     {
       q: "ทำงานเคลือบฟอยล์ได้ไหม?",
-      a: `ได้ — ${FOIL1.name} ${FOIL1.price} บาท · ${FOIL2.name} ${FOIL2.price} บาท เลือกสีฟอยล์ได้ ${WEB_FOIL_COLORS.join(" / ")} (โฮโลแกรมบวกเพิ่ม ${HOLO_FEE} บาท)`,
+      a: `ได้ — ${FOIL1.name} ${FOIL1.price} บาท · ${FOIL2.name} ${FOIL2.price} บาท (โฮโลแกรม +${HOLO_FEE}) คิดต่อ 1 ${SHEET_UNIT} เหมือนเคลือบลามิเนต ไม่ใช่ต่อชิ้น — และเลือกเคลือบฟอยล์แล้วจะเคลือบลามิเนตด้วยไม่ได้ ต้องเลือกอย่างใดอย่างหนึ่ง`,
     },
     {
       q: "1 แผ่น A3 ได้กี่ใบ?",
@@ -595,8 +612,8 @@ d.seo = {
  */
 d.quoteOption = d.options.some((o) => o.askPrice || o.choices.some((c) => c.askPrice)) || undefined;
 d.priceMin = Math.min(...allPrices);
-// ค่าเคลือบไม่เข้าราคา/ชิ้น (คิดต่อแผ่น A3 → ไปอยู่ใน "ค่าเพิ่มทั้งรายการ") ช่วงราคาต่อชิ้นจึงมีแค่ค่าฟอยล์
-d.priceMax = Math.max(...allPrices) + FOIL2.price + HOLO_FEE;
+// ค่าเคลือบ/ค่าฟอยล์คิดต่อแผ่น A3 ทั้งคู่ → ไปอยู่ใน "ค่าเพิ่มทั้งรายการ" ไม่เข้าราคา/ชิ้น
+d.priceMax = Math.max(...allPrices);
 d.savedAt = new Date().toISOString();
 
 const choices = d.options.flatMap((o) => o.choices);
