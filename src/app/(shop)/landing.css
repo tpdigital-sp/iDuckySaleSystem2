@@ -1162,6 +1162,7 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .dl .acd-c1{width:190px;top:230px;left:-46px;opacity:.9;animation:bgFloat1 18s ease-in-out infinite, bgPuff 8s ease-in-out infinite}
 .dl .acd-c2{width:230px;top:400px;right:-58px;left:auto;opacity:.9;animation:bgFloat2 22s ease-in-out infinite reverse, bgPuff 9s ease-in-out infinite reverse}
 .dl .acd-c3{width:110px;top:720px;left:6%;opacity:.55;animation:bgFloat3 15s ease-in-out infinite, bgPuff 7s ease-in-out infinite}
+.dl .acd-c4{width:170px;top:1180px;left:-50px;opacity:.65;animation:bgFloat1 19s ease-in-out infinite reverse, bgPuff 9s ease-in-out infinite}
 .dl .acd-wrap{width:min(100% - 40px,var(--wrap));margin-inline:auto}
 .dl .acd-dash{position:relative;z-index:1;padding-top:26px}
 .dl .acd-grid{display:grid;grid-template-columns:246px 1fr;gap:22px;align-items:start}
@@ -1177,15 +1178,19 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .dl .acd-sidenav>a,.dl .acd-sidenav>button,.dl .acd-sidenav>span{display:flex;align-items:center;gap:12px;padding:13px 14px;margin-bottom:2px;border-radius:999px;position:relative;
   font-family:var(--body);font-size:.92rem;color:var(--navy-soft);border:0;background:transparent;cursor:pointer;text-align:left;width:100%;
   transition:.22s cubic-bezier(.34,1.56,.64,1)}
-.dl .acd-sidenav .ico{width:38px;height:38px;border-radius:50%;background:var(--sky-100);display:grid;place-items:center;
-  font-size:1rem;flex:none;transition:.3s cubic-bezier(.34,1.56,.64,1);overflow:visible}
+.dl .acd-sidenav .ico{width:38px;height:38px;border-radius:50%;background:var(--acd-theme-icon-bg,var(--sky-100));display:grid;place-items:center;
+  font-size:1rem;flex:none;transition:.3s cubic-bezier(.34,1.56,.64,1),background .4s ease;overflow:visible}
 .dl .acd-sidenav .ico img{width:29px;height:29px;object-fit:contain;pointer-events:none}
-.dl .acd-sidenav>a:hover,.dl .acd-sidenav>button:hover{background:var(--acd-theme-bg,var(--sky-50));color:var(--acd-theme-fg,var(--navy));transform:translateX(3px)}
-.dl .acd-sidenav>a:hover .ico,.dl .acd-sidenav>button:hover .ico{background:var(--sky-200)}
+.dl .acd-sidenav>a:hover,.dl .acd-sidenav>button:hover{background:var(--acd-theme-bg,linear-gradient(100deg,var(--blue) 0%,var(--blue-deep) 100%));
+  color:var(--acd-theme-fg,#fff);transform:translateX(3px)}
+.dl .acd-sidenav>a:hover .ico,.dl .acd-sidenav>button:hover .ico{background:var(--acd-theme-icon-hover-bg,rgba(255,255,255,.62));
+  box-shadow:0 0 0 1.5px var(--acd-theme-icon-hover-ring,rgba(44,129,196,.4)) inset,0 4px 10px -2px rgba(0,0,0,.12)}
 .dl .acd-sidenav>a:active,.dl .acd-sidenav>button:active{transform:scale(.97)}
 .dl .acd-sidenav .on{background:var(--acd-theme-bg,linear-gradient(100deg,var(--blue) 0%,var(--blue-deep) 100%));color:var(--acd-theme-fg,#fff);
-  box-shadow:0 10px 22px rgba(44,129,196,.28);font-weight:500;cursor:default}
-.dl .acd-sidenav .on .ico{background:rgba(255,255,255,.22);color:var(--yolk)}
+  box-shadow:0 10px 22px var(--acd-theme-toggle-shadow,rgba(44,129,196,.28));font-weight:500;cursor:default;
+  transition:background .35s ease,color .35s ease,box-shadow .3s ease}
+.dl .acd-sidenav .on .ico{background:var(--acd-theme-icon-hover-bg,rgba(255,255,255,.62));color:var(--yolk);
+  box-shadow:0 0 0 1.5px var(--acd-theme-icon-hover-ring,rgba(44,129,196,.4)) inset,0 4px 10px -2px rgba(0,0,0,.12)}
 .dl .acd-sidenav hr{border:0;border-top:1px dashed var(--sky-200);margin:10px 4px}
 .dl .acd-sidenav .logout{color:var(--coral-deep);font-weight:600;background:rgba(255,158,176,.12);
   border:1.5px solid rgba(242,69,107,.25);margin-top:2px;justify-content:center}
@@ -1202,7 +1207,11 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .dl .acd-content{display:flex;flex-direction:column;gap:20px;min-width:0}
 .dl .acd-content>*{min-width:0;max-width:100%}
 .dl .acd-topbar{display:flex;align-items:center;gap:18px;background:rgba(255,255,255,.7);-webkit-backdrop-filter:blur(8px);
-  backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.85);border-radius:var(--r-l);padding:22px 26px;box-shadow:var(--shadow-s)}
+  backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.85);border-radius:var(--r-l);padding:22px 26px;
+  box-shadow:var(--acd-theme-shadow,var(--shadow-s));
+  transition:box-shadow .5s ease,border-color .3s ease,transform .25s cubic-bezier(.34,1.56,.64,1)}
+.dl .acd-topbar:hover{border-color:var(--acd-theme-border-soft,rgba(87,182,232,.4));
+  box-shadow:var(--acd-theme-shadow-hover,var(--shadow-m));transform:scale(1.015)}
 .dl .acd-ring{width:112px;height:112px;border-radius:50%;flex:none;padding:5px;position:relative;
   background:linear-gradient(135deg,var(--ring-a,var(--blue)),var(--ring-b,var(--blue-deep)));
   box-shadow:0 10px 20px rgba(44,129,196,.18);transition:background .5s ease}
@@ -1221,7 +1230,7 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .dl .acd-who{flex:1;min-width:0;padding-top:1px}
 .dl .acd-wave{display:inline-block;animation:acdWave 1.8s ease-in-out infinite}
 @keyframes acdWave{0%,100%{transform:rotate(0)}20%{transform:rotate(16deg)}40%{transform:rotate(-8deg)}60%{transform:rotate(12deg)}80%{transform:rotate(0)}}
-.dl .acd-name-row{display:flex;align-items:center;gap:9px;margin-top:2px;flex-wrap:wrap}
+.dl .acd-name-row{display:flex;align-items:center;gap:9px;margin-top:2px;flex-wrap:wrap;row-gap:6px;min-width:0}
 .dl .acd-shopname{font-family:var(--display);font-weight:600;font-size:1.42rem;line-height:1.3;margin:0;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .dl .acd-name-input{font-family:var(--display);font-weight:600;font-size:1.42rem;color:var(--navy);background:var(--sky-50);
@@ -1232,24 +1241,29 @@ main:has(.dl-page) + .dl footer{margin-top:0}
   background-size:220% 220%;animation:acdTierShimmer 22s ease-in-out infinite;
   color:#fff;flex:none}
 .dl .acd-tier-tag.dark{color:var(--navy)}
-.dl .acd-meta{display:flex;align-items:center;gap:10px;margin-top:9px;font-size:.82rem;color:var(--navy-soft);flex-wrap:wrap;row-gap:6px}
+.dl .acd-meta{display:flex;align-items:center;gap:10px;margin-top:9px;font-size:.82rem;color:var(--navy-soft);flex-wrap:wrap;row-gap:6px;line-height:1.55}
+.dl .acd-meta.addr{align-items:flex-start}
+.dl .acd-meta.addr .acd-meta-item{align-items:flex-start;line-height:1.5}
+.dl .acd-meta.addr .acd-meta-ico{margin-top:2px}
 .dl .acd-meta+.acd-meta{margin-top:6px}
 .dl .acd-meta-item{display:flex;align-items:center;gap:6px;min-width:0}
-.dl .acd-meta-ico{font-size:.85rem;opacity:.85}
+.dl .acd-meta-ico{font-size:.85rem;opacity:.85;display:inline-flex;align-items:center}
+.dl .acd-meta-ico img{width:16px;height:16px;object-fit:contain}
 .dl .acd-meta-dot{opacity:.4}
 .dl .acd-meta-link{color:var(--blue-deep);text-decoration:underline dotted}
-.dl .acd-line-badge{width:18px;height:18px;border-radius:6px;background:#06C755;color:#fff;display:grid;place-items:center;font-size:.64rem;font-family:var(--display);flex:none}
-.dl .acd-line-text{white-space:nowrap;font-weight:500;color:var(--navy)}
+.dl .acd-line-badge{width:18px;height:18px;border-radius:6px;display:grid;place-items:center;overflow:hidden;flex:none}
+.dl .acd-line-badge img{width:100%;height:100%;object-fit:contain}
+.dl .acd-line-text{white-space:nowrap;font-weight:400;color:var(--navy)}
 .dl .acd-ellip{overflow:hidden;text-overflow:ellipsis;max-width:220px}
 .dl .acd-copy{all:unset;cursor:pointer;font-size:.66rem;padding:4px 10px;border-radius:999px;background:var(--sky-100);
   color:var(--blue-deep);flex:none;transition:.2s ease}
 .dl .acd-copy:hover{background:var(--sky-200)}
 .dl .acd-copy:active{transform:scale(.94)}
 .dl .acd-copy.copied{background:#DFF5E6;color:#1D9A55}
-.dl .acd-edit-btn{cursor:pointer;font-family:var(--display);font-size:.82rem;color:var(--navy);
-  background:#fff;border:2px solid var(--sky-200);padding:9px 17px;border-radius:999px;white-space:nowrap;
+.dl .acd-edit-btn{cursor:pointer;font-family:var(--display);font-size:.74rem;color:var(--navy-soft);
+  background:transparent;border:1.5px solid var(--sky-200);padding:6px 13px;border-radius:999px;white-space:nowrap;
   flex:none;margin-left:auto;transition:.22s cubic-bezier(.34,1.56,.64,1)}
-.dl .acd-edit-btn:hover{background:var(--sky-50);border-color:var(--blue);transform:translateY(-2px);box-shadow:0 10px 20px rgba(44,129,196,.16)}
+.dl .acd-edit-btn:hover{background:var(--sky-50);border-color:var(--blue);color:var(--navy);transform:translateY(-2px);box-shadow:0 10px 20px rgba(44,129,196,.16)}
 .dl .acd-edit-btn:active{transform:translateY(1px) scale(.97)}
 
 /* --- การ์ดระดับ + ออเดอร์ล่าสุด --- */
@@ -1262,7 +1276,7 @@ main:has(.dl-page) + .dl footer{margin-top:0}
   box-shadow:var(--shadow-m),inset 0 -14px 26px -14px rgba(0,0,0,.16),inset 0 2px 0 rgba(255,255,255,.35);
   transition:transform .3s cubic-bezier(.34,1.56,.64,1),box-shadow .3s ease;
   text-shadow:0 1px 2px rgba(23,58,107,.18)}
-.dl .acd-tier:hover{transform:translateY(-6px);box-shadow:var(--shadow-l),inset 0 -14px 26px -14px rgba(0,0,0,.16),inset 0 2px 0 rgba(255,255,255,.35)}
+.dl .acd-tier:hover{transform:scale(1.015);box-shadow:var(--shadow-l),inset 0 -14px 26px -14px rgba(0,0,0,.16),inset 0 2px 0 rgba(255,255,255,.35)}
 .dl .acd-tier::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 88% 8%,rgba(255,255,255,.20),transparent 55%);pointer-events:none;z-index:0}
 .dl .acd-tier::before{content:"";position:absolute;top:-60%;left:-70%;width:36%;height:240%;
   background:linear-gradient(100deg,transparent 25%,rgba(255,255,255,.4) 50%,transparent 75%);
@@ -1316,7 +1330,7 @@ main:has(.dl-page) + .dl footer{margin-top:0}
   box-shadow:var(--acd-theme-shadow,var(--shadow-s)),inset 0 1px 0 rgba(255,255,255,.6),inset 0 -1px 0 rgba(23,58,107,.06);
   display:flex;flex-direction:column;border:2px solid #fff;position:relative;
   transition:transform .3s cubic-bezier(.34,1.56,.64,1),box-shadow .5s ease,border-color .3s ease}
-.dl .acd-order:hover{transform:translateY(-6px);box-shadow:var(--shadow-m);border-color:var(--sky-200)}
+.dl .acd-order:hover{transform:scale(1.015);box-shadow:var(--acd-theme-shadow-hover,var(--shadow-m));border-color:var(--acd-theme-border-soft,var(--sky-200))}
 .dl .acd-order::after,.dl .acd-track::after{content:"";position:absolute;left:16%;right:16%;bottom:-13px;height:8px;
   border-radius:50%;background:radial-gradient(ellipse at 50% 50%,rgba(44,129,196,.22),rgba(44,129,196,0) 72%);
   transition:.3s cubic-bezier(.34,1.56,.64,1);pointer-events:none;opacity:.7}
@@ -1359,18 +1373,22 @@ main:has(.dl-page) + .dl footer{margin-top:0}
   -webkit-backdrop-filter:blur(16px) saturate(150%);backdrop-filter:blur(16px) saturate(150%);
   border-radius:var(--r-l);padding:24px 28px;
   box-shadow:var(--acd-theme-shadow,var(--shadow-s)),inset 0 1px 0 rgba(255,255,255,.6),inset 0 -1px 0 rgba(23,58,107,.06);
-  border:2px solid #fff;transition:box-shadow .3s ease,border-color .3s ease;position:relative}
-.dl .acd-track:hover{box-shadow:var(--shadow-m);border-color:var(--sky-200)}
+  border:2px solid #fff;position:relative;
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1),box-shadow .3s ease,border-color .3s ease}
+.dl .acd-track:hover{transform:scale(1.015);box-shadow:var(--acd-theme-shadow-hover,var(--shadow-m));
+  border-color:var(--acd-theme-border-soft,var(--sky-200))}
 .dl .acd-track.acd-jump{animation:acdJump 1.2s ease}
 @keyframes acdJump{0%{box-shadow:0 0 0 0 rgba(255,182,39,.5)}60%{box-shadow:0 0 0 14px rgba(255,182,39,0)}100%{box-shadow:var(--shadow-s)}}
 .dl .acd-track-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px}
 .dl .acd-track-head .acd-chip{margin-bottom:0}
 .dl .acd-track-tabs{display:flex;gap:6px;flex-wrap:wrap}
 .dl .acd-ttab{all:unset;cursor:pointer;font-family:var(--display);font-size:.76rem;padding:7px 14px;border-radius:999px;
-  background:var(--sky-50);color:var(--navy-soft);transition:.22s cubic-bezier(.34,1.56,.64,1)}
-.dl .acd-ttab:hover{background:var(--sky-100);color:var(--navy)}
-.dl .acd-ttab:active{transform:scale(.95)}
-.dl .acd-ttab.on{background:var(--acd-theme-bg,var(--blue-deep));color:var(--acd-theme-fg,#fff);transition:background .4s ease,color .4s ease;box-shadow:0 6px 14px rgba(44,129,196,.28)}
+  background:var(--acd-theme-chip-pale,var(--sky-50));color:var(--acd-theme-chip-pale-fg,var(--navy-soft));
+  transform:scale(.94);transition:background .25s ease,color .25s ease,transform .25s cubic-bezier(.34,1.56,.64,1)}
+.dl .acd-ttab:hover{background:var(--acd-theme-chip-hover,var(--sky-100));color:var(--acd-theme-chip-pale-fg,var(--navy));transform:scale(1)}
+.dl .acd-ttab:active{transform:scale(.9)}
+.dl .acd-ttab.on{background:var(--acd-theme-bg,var(--blue-deep));color:var(--acd-theme-fg,#fff);transform:scale(1.08);
+  transition:background .4s ease,color .4s ease,transform .25s cubic-bezier(.34,1.56,.64,1)}
 .dl .acd-track-meta{margin-bottom:20px;font-size:.82rem;color:var(--navy-soft)}
 .dl .acd-track-meta b{color:var(--navy);font-family:var(--display);font-weight:500}
 .dl .acd-track-link{color:var(--blue-deep);font-weight:500}
@@ -1379,20 +1397,33 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .dl .acd-tstep{flex:1;display:flex;flex-direction:column;align-items:center;text-align:center;position:relative;z-index:1}
 .dl .acd-tstep .tdot{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-size:1.05rem;
   background:var(--sky-100);color:var(--sky-300);border:3px solid #fff;box-shadow:0 4px 10px rgba(44,129,196,.14);
-  transition:.3s cubic-bezier(.34,1.56,.64,1);filter:grayscale(1);opacity:.75}
+  transition:.3s cubic-bezier(.34,1.56,.64,1),background .4s ease;filter:grayscale(1);opacity:.75;overflow:visible}
+.dl .acd-tstep .tdot img{width:22px;height:22px;object-fit:contain;pointer-events:none}
+.dl .acd-tstep:last-child.done .tdot img{width:28px;height:28px}
 .dl .acd-tstep .tline{position:absolute;top:19px;left:calc(-50% + 19px);width:calc(100% - 38px);height:4px;
   background:var(--sky-100);z-index:-1;border-radius:4px;transition:background .4s ease}
 .dl .acd-tstep:first-child .tline{display:none}
 .dl .acd-tstep .tlabel{font-size:.78rem;color:var(--navy-soft);margin-top:9px;font-family:var(--display);font-weight:400;line-height:1.3}
 .dl .acd-tstep .ttime{font-size:.68rem;color:#9aa0b4;margin-top:2px}
-.dl .acd-tstep.done .tdot{background:var(--acd-theme-bg,var(--blue-deep));color:var(--acd-theme-fg,#fff);box-shadow:0 6px 14px rgba(44,129,196,.32);filter:none;opacity:1}
+.dl .acd-tstep.done .tdot{background:var(--acd-theme-bg,var(--blue-deep));color:var(--acd-theme-fg,#fff);
+  box-shadow:0 6px 14px var(--acd-theme-toggle-shadow,rgba(44,129,196,.32));filter:none;opacity:1}
+.dl .acd-tstep:last-child.done .tdot{
+  animation:acdDeliveredPop .6s cubic-bezier(.34,1.56,.64,1) backwards,
+            acdDeliveredPulse 2.4s ease-in-out .6s infinite,
+            acdDeliveredBounce 4.5s ease-in-out .6s infinite}
+.dl .acd-tstep:last-child.done .tlabel{font-weight:700}
+@keyframes acdDeliveredPop{0%{transform:scale(.3) rotate(-15deg);opacity:0}55%{transform:scale(1.25) rotate(8deg);opacity:1}
+  80%{transform:scale(.92) rotate(-3deg)}100%{transform:scale(1) rotate(0)}}
+@keyframes acdDeliveredPulse{0%,100%{box-shadow:0 6px 14px var(--acd-theme-toggle-shadow,rgba(44,129,196,.32))}
+  50%{box-shadow:0 6px 20px var(--acd-theme-toggle-shadow,rgba(44,129,196,.5)),0 0 0 6px var(--acd-theme-toggle-shadow,rgba(44,129,196,.14))}}
+@keyframes acdDeliveredBounce{0%,78%,100%{scale:1}88%{scale:1.22}94%{scale:.96}}
 .dl .acd-tstep.done .tline{background:var(--acd-theme-bg,var(--blue-deep))}
 .dl .acd-tstep.done .tlabel{color:var(--navy);font-weight:500}
 .dl .acd-tstep.current .tdot{background:var(--yolk);color:var(--navy);filter:none;opacity:1;
   box-shadow:0 0 0 6px rgba(255,182,39,.25),0 6px 14px rgba(255,182,39,.35);animation:acdPulse 1.8s ease-in-out infinite}
 .dl .acd-tstep.current .tline{background:linear-gradient(90deg,var(--blue-deep),var(--yolk))}
 .dl .acd-tstep.current .tlabel{color:var(--navy);font-weight:600}
-@media (max-width:600px){.dl .acd-tracker{overflow-x:auto;padding-bottom:6px}.dl .acd-tstep{min-width:78px}}
+/* จอแคบ: ย่อขั้นตอนให้พอดีจอ ไม่ต้องเลื่อนแนวนอน (UPDATE_05) */
 
 /* --- คูปอง (แบนเนอร์ตั๋ว — ต้นแบบ USER PROFILE UPDATE_02) --- */
 .dl .acd-coupon{position:relative;border-radius:var(--r-l);padding:20px 32px;overflow:hidden;min-height:176px;
@@ -1459,22 +1490,20 @@ main:has(.dl-page) + .dl footer{margin-top:0}
   box-shadow:var(--acd-theme-shadow,var(--shadow-s)),inset 0 1px 0 rgba(255,255,255,.6),inset 0 -1px 0 rgba(23,58,107,.06);
   transition:box-shadow .5s ease;overflow:hidden}
 .dl .acd-menu-head{padding:16px 24px 8px;font-family:var(--display);font-size:.78rem;font-weight:500;
-  color:var(--acd-theme-fg,var(--navy-soft));letter-spacing:.02em;background:var(--acd-theme-bg,var(--sky-50));
+  color:var(--acd-theme-fg,var(--blue-deep));letter-spacing:.02em;background:var(--acd-theme-bg,rgba(87,182,232,.11));
   transition:background .4s ease,color .4s ease}
 .dl .acd-menu>.acd-menu-head:first-child{padding-top:18px}
 .dl .acd-menu-item{display:flex;align-items:center;gap:15px;padding:16px 24px;transition:.2s;cursor:pointer;position:relative;
   width:100%;border:0;background:transparent;font-family:var(--body);font-size:1rem;color:var(--navy);text-align:left}
 .dl .acd-menu-item:active{background:var(--sky-100)}
 .dl .acd-menu-item:not(:last-child){border-bottom:1px solid var(--sky-100)}
-.dl .acd-menu-item:hover{background:var(--acd-theme-row-tint,linear-gradient(90deg,transparent 0%,var(--sky-50) 100%))}
+.dl .acd-menu-item:hover{background:var(--acd-theme-row-tint,linear-gradient(90deg,rgba(135,206,250,.02) 0%,rgba(135,206,250,.16) 60%,rgba(87,182,232,.14) 100%))}
 .dl .acd-menu-item.disabled{opacity:.6;cursor:not-allowed}
 .dl .acd-menu-ico{width:40px;height:40px;border-radius:14px;display:grid;place-items:center;font-size:1.1rem;flex:none;
   box-shadow:inset 0 2px 4px rgba(255,255,255,.75),0 4px 10px rgba(44,129,196,.14);transition:.3s cubic-bezier(.34,1.56,.64,1);
-  animation:acdIcoFloat 4.8s ease-in-out infinite;overflow:visible}
+  overflow:visible}
 .dl .acd-menu-ico img{width:34px;height:34px;object-fit:contain;pointer-events:none}
-.dl .acd-menu-item:nth-child(2n) .acd-menu-ico{animation-duration:5.4s;animation-delay:-1.6s}
-.dl .acd-menu-item:nth-child(3n) .acd-menu-ico{animation-duration:5.9s;animation-delay:-2.8s}
-.dl .acd-menu-item:hover .acd-menu-ico{animation:none;transform:scale(1.14) rotate(-7deg) translateY(-3px)}
+.dl .acd-menu-item:hover .acd-menu-ico{transform:scale(1.14) rotate(-7deg) translateY(-3px)}
 .dl .ico-blue{background:var(--sky-300)}
 .dl .ico-navy{background:linear-gradient(135deg,var(--blue) 0%,var(--blue-deep) 100%)}
 .dl .ico-coral{background:#FFB8C7;color:var(--coral-deep)}
@@ -1536,23 +1565,115 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .dl .acd-modal-actions{display:flex;gap:10px;margin-top:6px}
 .dl .acd-modal-actions .btn{flex:1;justify-content:center;padding:11px 14px;font-size:.86rem}
 
-@media (max-width:900px){
-  .dl .acd-grid{grid-template-columns:1fr}
-  .dl .acd-side{position:static;padding:12px;border-radius:var(--r-m);max-width:100%;overflow:hidden}
-  .dl .acd-sidenav{flex-direction:row;overflow-x:auto;gap:6px;scrollbar-width:none}
-  .dl .acd-sidenav::-webkit-scrollbar{display:none}
-  .dl .acd-sidenav>a,.dl .acd-sidenav>button,.dl .acd-sidenav>span{width:auto;white-space:nowrap;padding:8px 14px 8px 8px;font-size:.84rem;flex:none}
-  .dl .acd-sidenav .ico{width:30px;height:30px;font-size:.9rem}
-  .dl .acd-sidenav .ico img{width:24px;height:24px}
+/* ═══ จอเล็ก — ชุดใหม่ตามต้นแบบ USER PROFILE UPDATE_05 ═══ */
+
+/* ปุ่มออกจากระบบของจอเล็ก (เมนูข้างกลายเป็นไอคอน เลยย้ายปุ่มมาไว้ล่างสุด) */
+.dl .acd-mlogout{display:none}
+.dl .acd-mlogout-btn{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;
+  padding:13px 14px;border-radius:999px;font-family:var(--display);font-size:.92rem;font-weight:600;
+  color:var(--coral-deep);background:#FFE1E8;border:1.5px solid rgba(242,69,107,.35);cursor:pointer;
+  transition:.22s cubic-bezier(.34,1.56,.64,1)}
+.dl .acd-mlogout-btn .ico{width:38px;height:38px;border-radius:50%;background:#FFD5DF;color:var(--coral-deep);
+  display:grid;place-items:center;font-size:1rem;flex:none}
+.dl .acd-mlogout-btn:hover{background:#FFD0DA;border-color:rgba(242,69,107,.5);box-shadow:0 8px 18px rgba(242,69,107,.18)}
+.dl .acd-mlogout-btn:hover .ico{background:var(--coral-deep);color:#fff}
+.dl .acd-mlogout-btn:active{transform:scale(.97)}
+
+@media (max-width:860px){
+  .dl .acd-grid{grid-template-columns:minmax(0,1fr)}
+  .dl .acd-side{position:static;padding:16px 12px;border-radius:var(--r-m);max-width:100%;overflow:hidden;align-items:center}
+  /* เมนูข้าง → แถวไอคอนกลม (ป้ายชื่อซ่อน ใช้เมนูลิสต์ด้านล่างแทน) */
+  .dl .acd-sidenav{display:flex;flex-direction:row;flex-wrap:wrap;justify-content:center;align-items:center;
+    gap:10px 12px;width:100%;margin-inline:auto}
+  .dl .acd-sidenav>a,.dl .acd-sidenav>button,.dl .acd-sidenav>span{width:38px;height:38px;padding:0;border-radius:50%;
+    justify-content:center;align-items:center;margin-bottom:0;font-size:0;background:none !important;
+    box-shadow:none !important;transform:none !important;transition:transform .25s cubic-bezier(.34,1.56,.64,1)}
+  .dl .acd-sidenav .ico{width:38px;height:38px;margin:0;box-shadow:none;transition:background .35s ease,box-shadow .35s ease}
+  .dl .acd-sidenav .ico img{width:23px;height:23px}
+  .dl .acd-sidenav .on{transform:scale(1.08) !important}
+  .dl .acd-sidenav .on .ico{background:var(--acd-theme-bg,linear-gradient(135deg,var(--blue),var(--blue-deep)));
+    box-shadow:0 6px 14px -4px var(--acd-theme-toggle-shadow,rgba(44,129,196,.5)),inset 0 0 0 2px rgba(255,255,255,.55);
+    animation:acdSideGlow 2s ease-in-out infinite}
+  .dl .acd-sidenav .on .ico img{filter:drop-shadow(0 1px 2px rgba(0,0,0,.2))}
+  /* จุดแดง "มีงานรออนุมัติ" → เกาะมุมวงไอคอน */
+  .dl .acd-sidedot{position:absolute;top:-1px;right:-1px;margin-left:0;width:9px;height:9px;
+    border:2px solid #fff;box-sizing:content-box;animation:none}
   .dl .acd-sidenav hr{display:none}
-  .dl .acd-cards{grid-template-columns:1fr}
+  .dl .acd-sidenav .logout{display:none}
+  .dl .acd-mlogout{display:block}
+  .dl .acd-mlogout-btn{padding:11px 14px;gap:10px;font-size:.86rem}
+  .dl .acd-mlogout-btn .ico{width:32px;height:32px;font-size:.88rem}
 }
+@keyframes acdSideGlow{
+  0%,100%{box-shadow:0 6px 14px -4px var(--acd-theme-toggle-shadow,rgba(44,129,196,.5)),inset 0 0 0 2px rgba(255,255,255,.55)}
+  50%{box-shadow:0 8px 18px -2px var(--acd-theme-toggle-shadow,rgba(44,129,196,.65)),inset 0 0 0 2px rgba(255,255,255,.75)}}
+@media (max-width:520px){
+  .dl .acd-sidenav{gap:9px 10px}
+}
+
+@media (max-width:900px){
+  .dl .acd-topbar{flex-wrap:wrap;padding:20px}
+  .dl .acd-topbar-actions{width:100%;margin-left:0;justify-content:space-between}
+  .dl .acd-edit-btn{width:auto;text-align:center}
+}
+
+@media (max-width:700px){
+  .dl .acd-cards{grid-template-columns:minmax(0,1fr)}
+  .dl .acd-tier,.dl .acd-order{min-width:0}
+  .dl .acd-tier{padding:20px 20px 18px}
+  .dl .acd-order{padding:20px 18px}
+  .dl .acd-order-top{flex-wrap:wrap;row-gap:8px}
+  .dl .acd-order-id{font-size:1.05rem}
+  .dl .acd-status{width:100%;justify-content:center;padding:8px 15px;margin-top:2px}
+  .dl .acd-order-bottom{flex-wrap:nowrap}
+  .dl .acd-btn-compact{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    flex:1 1 0;padding:9px 8px;font-size:.68rem;gap:3px}
+  .dl .acd-btn-compact .dot{width:16px;height:16px;font-size:.6rem}
+  .dl .acd-medal-wrap{width:64px;height:64px}
+  .dl .acd-tier-hero{gap:12px;margin:14px 0 4px}
+  .dl .acd-tier-hero-label{font-size:1.5rem}
+  .dl .acd-tier-hero-tag{font-size:.7rem}
+  .dl .acd-tier-stats b{font-size:1.05rem}
+  .dl .acd-tier-stats small{font-size:.68rem}
+  .dl .acd-tier-foot{font-size:.76rem}
+  .dl .acd-chip{font-size:.68rem;padding:5px 12px;margin-bottom:10px}
+  .dl .acd-order-date{font-size:.74rem}
+  .dl .acd-status{font-size:.68rem}
+}
+
+@media (max-width:640px){
+  .dl .acd-track{padding:16px 14px}
+  .dl .acd-track-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;width:100%}
+  .dl .acd-ttab{font-size:.66rem;padding:6px 8px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dl .acd-track-meta{font-size:.7rem;margin-bottom:14px}
+  .dl .acd-tracker{overflow-x:visible;padding:0}
+  .dl .acd-tstep{min-width:0}
+  .dl .acd-tstep .tdot{width:28px;height:28px}
+  .dl .acd-tstep .tdot img{width:16px;height:16px}
+  .dl .acd-tstep:last-child.done .tdot img{width:20px;height:20px}
+  .dl .acd-tstep .tlabel{font-size:.6rem;margin-top:5px;line-height:1.2}
+  .dl .acd-tstep .ttime{font-size:.52rem;margin-top:1px}
+  .dl .acd-tstep .tline{top:14px;left:calc(-50% + 14px);width:calc(100% - 28px)}
+  .dl .acd-tracker.compact .tdot{width:26px;height:26px}
+  .dl .acd-tracker.compact .tdot img{width:15px;height:15px}
+  .dl .acd-tracker.compact .tline{top:13px;left:calc(-50% + 13px);width:calc(100% - 26px)}
+}
+
 @media (max-width:560px){
-  .dl .acd-topbar{flex-wrap:wrap;padding:18px}
-  .dl .acd-ring{width:88px;height:88px}
-  .dl .acd-menu-item{padding:14px 16px;gap:12px}
-  .dl .acd-menu-meta{display:none}
-  .dl .acd-tier,.dl .acd-order,.dl .acd-track{padding:20px 18px}
+  .dl .acd-topbar{flex-direction:column;align-items:center;text-align:center;padding:18px 16px;gap:8px}
+  .dl .acd-who{width:100%}
+  .dl .acd-name-row{justify-content:center}
+  .dl .acd-meta{justify-content:flex-start;text-align:left;row-gap:8px;font-size:.76rem}
+  .dl .acd-meta-dot{display:none}
+  .dl .acd-meta-item{flex-wrap:wrap;row-gap:4px;min-width:0}
+  .dl .acd-meta.addr .acd-meta-item{flex-wrap:nowrap;align-items:flex-start}
+  .dl .acd-menu-item{padding:11px 14px;gap:9px;align-items:center}
+  .dl .acd-menu-ico{width:24px;height:24px;border-radius:8px}
+  .dl .acd-menu-ico img{width:18px;height:18px}
+  .dl .acd-menu-label{font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+  .dl .acd-menu-head{font-size:.68rem;padding:11px 14px 5px}
+  .dl .acd-menu-meta{white-space:normal;font-size:.58rem;text-align:right;max-width:76px;flex:none;line-height:1.35;word-break:break-word}
+  .dl .acd-track{padding:16px 14px}
 }
 
 /* ═══════ เพิ่มตามต้นแบบ USER PROFILE UPDATE_02.html ═══════ */
@@ -1593,35 +1714,48 @@ main:has(.dl-page) + .dl footer{margin-top:0}
   width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:9px solid #fff}
 
 /* --- ชิปรหัสลูกค้า (แตะเพื่อคัดลอก) --- */
-.dl .acd-cid{display:inline-flex;align-items:center;gap:9px;margin-top:9px;padding:6px 7px 6px 14px;
-  border:2px dashed var(--blue);border-radius:999px;background:var(--sky-50);width:fit-content;max-width:100%;
-  cursor:pointer;transition:.25s cubic-bezier(.34,1.56,.64,1)}
-.dl .acd-cid:hover{border-color:var(--blue-deep);background:var(--sky-100);
-  transform:translateY(-2px);box-shadow:0 6px 14px -4px rgba(44,129,196,.28)}
+@property --acdCidAngle{syntax:'<angle>';inherits:false;initial-value:135deg}
+.dl .acd-cid{display:inline-flex;align-items:center;gap:10px;margin-top:10px;padding:5px 14px 5px 5px;
+  border:0;border-radius:999px;width:fit-content;max-width:100%;cursor:pointer;
+  background:linear-gradient(rgba(255,255,255,.74),rgba(255,255,255,.74)),
+    linear-gradient(var(--acdCidAngle,135deg),var(--acd-theme-chip-a,var(--blue)) 0%,var(--acd-theme-chip-b,var(--blue-deep)) 100%);
+  animation:acdCidAngle 6s ease-in-out infinite;
+  transition:.25s cubic-bezier(.34,1.56,.64,1),background .5s ease}
+@keyframes acdCidAngle{0%,100%{--acdCidAngle:135deg}50%{--acdCidAngle:315deg}}
+.dl .acd-cid:hover{transform:translateY(-2px) scale(1.02)}
 .dl .acd-cid:active{transform:translateY(0) scale(.98)}
-.dl .acd-cid-label{font-size:.68rem;color:var(--blue-deep);white-space:nowrap;font-weight:600}
-.dl .acd-cid-code{font-family:var(--body);font-size:.85rem;font-weight:600;color:var(--navy);
+.dl .acd-cid-badge{width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.65);flex:none;
+  display:grid;place-items:center;font-size:.62rem;font-weight:700;color:var(--navy);font-family:var(--display)}
+.dl .acd-cid-text{display:flex;flex-direction:column;line-height:1.25;min-width:0;text-align:left}
+.dl .acd-cid-label{font-size:.6rem;color:var(--navy-soft);white-space:nowrap;font-weight:500;opacity:.9}
+.dl .acd-cid-code{font-family:var(--body);font-size:.83rem;font-weight:700;color:var(--navy);
   letter-spacing:.03em;white-space:nowrap;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis}
-.dl .acd-cid-copy{width:27px;height:27px;border-radius:50%;display:grid;place-items:center;
-  background:var(--sky-100);color:var(--blue-deep);flex:none;transition:.2s cubic-bezier(.34,1.56,.64,1)}
-.dl .acd-cid:hover .acd-cid-copy{background:var(--blue);color:#fff}
-.dl .acd-cid-copy.copied{background:#DFF5E6;color:#1D9A55}
+.dl .acd-cid-copy{width:25px;height:25px;border-radius:50%;display:grid;place-items:center;
+  background:rgba(255,255,255,.6);color:var(--navy);flex:none;transition:.2s cubic-bezier(.34,1.56,.64,1);
+  box-shadow:inset 0 2px 3px rgba(23,58,107,.2),inset 0 -1px 0 rgba(255,255,255,.6),0 0 0 0 rgba(44,129,196,.35);
+  animation:acdCidHint 2.2s ease-in-out infinite}
+@keyframes acdCidHint{
+  0%,100%{box-shadow:inset 0 2px 3px rgba(23,58,107,.2),inset 0 -1px 0 rgba(255,255,255,.6),0 0 0 0 rgba(44,129,196,.35)}
+  50%{box-shadow:inset 0 2px 3px rgba(23,58,107,.2),inset 0 -1px 0 rgba(255,255,255,.6),0 0 0 6px rgba(44,129,196,0)}}
+.dl .acd-cid:hover .acd-cid-copy{background:var(--blue);color:#fff;transform:scale(1.15);animation:none;
+  box-shadow:inset 0 2px 3px rgba(23,58,107,.25),inset 0 -1px 0 rgba(255,255,255,.35)}
+.dl .acd-cid-copy.copied{background:#DFF5E6;color:#1D9A55;animation:none;box-shadow:inset 0 1px 3px rgba(29,154,85,.25)}
 
 /* --- ปุ่มขวาบน: สวิตช์ธีมสีตามระดับ + แก้ไขโปรไฟล์ --- */
 .dl .acd-topbar-actions{display:flex;align-items:center;gap:10px;margin-left:auto;align-self:flex-start;position:relative}
-.dl .acd-theme-toggle{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:9px;box-sizing:border-box;
-  background:#fff;border:2px solid var(--sky-200);padding:8px 14px 8px 16px;border-radius:999px;flex:none;
+.dl .acd-theme-toggle{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:7px;box-sizing:border-box;
+  background:transparent;border:1.5px solid var(--sky-200);padding:5px 11px 5px 13px;border-radius:999px;flex:none;
   transition:.22s cubic-bezier(.34,1.56,.64,1)}
-.dl .acd-theme-toggle:hover{border-color:var(--blue);transform:translateY(-2px);box-shadow:0 10px 20px rgba(44,129,196,.16)}
+.dl .acd-theme-toggle:hover{border-color:var(--blue);background:var(--sky-50);transform:translateY(-2px);box-shadow:0 10px 20px rgba(44,129,196,.16)}
 .dl .acd-theme-toggle:active{transform:translateY(1px) scale(.97)}
-.dl .acd-theme-toggle-label{font-family:var(--display);font-size:.78rem;color:var(--navy);white-space:nowrap}
-.dl .acd-theme-toggle-track{width:34px;height:20px;border-radius:999px;background:var(--sky-200);position:relative;flex:none;
+.dl .acd-theme-toggle-label{font-family:var(--display);font-size:.7rem;color:var(--navy-soft);white-space:nowrap}
+.dl .acd-theme-toggle-track{width:28px;height:16px;border-radius:999px;background:var(--sky-200);position:relative;flex:none;
   transition:background .3s ease}
-.dl .acd-theme-toggle-track::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;
+.dl .acd-theme-toggle-track::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;
   box-shadow:0 2px 4px rgba(23,58,107,.3);transition:transform .3s cubic-bezier(.34,1.56,.64,1)}
 .dl .acd-theme-toggle[aria-checked="true"]{border-color:var(--acd-theme-line,var(--navy))}
 .dl .acd-theme-toggle[aria-checked="true"] .acd-theme-toggle-track{background:var(--acd-theme-line,var(--navy))}
-.dl .acd-theme-toggle[aria-checked="true"] .acd-theme-toggle-track::after{transform:translateX(14px)}
+.dl .acd-theme-toggle[aria-checked="true"] .acd-theme-toggle-track::after{transform:translateX(12px)}
 
 /* --- แผงแก้ไขที่อยู่ (โผล่ตอนกด "แก้ไขโปรไฟล์") --- */
 .dl .acd-addr-panel{margin-top:12px;background:var(--sky-50);border:1px solid var(--sky-100);
@@ -1657,26 +1791,45 @@ main:has(.dl-page) + .dl footer{margin-top:0}
   flex:none;display:grid;place-items:center;transition:.2s;font-size:.7rem;color:#fff;font-weight:700}
 .dl .acd-cp-opt.selected .co-radio{border-color:var(--yolk-deep);background:var(--yolk-deep)}
 
+@media (max-width:1024px){
+  .dl .acd-coupon{padding:16px 24px;min-height:130px}
+  .dl .acd-gift-wrap{width:130px;height:130px;left:26px;top:10px}
+  .dl .acd-duck-wrap{width:170px;height:170px;right:14px;bottom:-56px}
+  .dl .acd-gift-spacer{width:84px}
+}
 @media (max-width:640px){
   .dl .acd-coupon{padding:16px 14px;min-height:126px;gap:8px}
-  .dl .acd-gift-spacer{width:58px}
-  .dl .acd-cp-chev{min-width:18px;font-size:1rem}
+  .dl .acd-gift-spacer{width:54px}
+  .dl .acd-cp-chev{min-width:54px;font-size:1rem}
   .dl .acd-gift-wrap{width:76px;height:76px;left:6px;top:2px}
   .dl .acd-duck-wrap{width:104px;height:104px;right:2px;bottom:-34px}
   .dl .acd-coupon-txt h3{font-size:.9rem}
   .dl .acd-coupon-txt p{font-size:.7rem;margin-top:2px}
   .dl .acd-cp-badge{top:6px;right:6px;min-width:18px;height:18px;font-size:.6rem}
 }
+/* ชิปรหัสลูกค้าฉบับจอมือถือ (ขึ้นไปอยู่เหนือรูปโปรไฟล์) — จอใหญ่ซ่อนไว้ */
+.dl .acd-cid-top{display:none}
+
 @media (max-width:560px){
-  .dl .acd-topbar-actions{width:100%;margin-left:0;justify-content:space-between}
-  .dl .acd-edit-btn{min-width:0;text-align:center;justify-content:center}
-  .dl .acd-ring{width:84px;height:84px}
-  .dl .acd-avatar-badge{width:22px;height:22px;font-size:.62rem}
-  .dl .acd-shopname{font-size:1.2rem}
-  .dl .acd-greet{font-size:.78rem;padding:7px 13px}
-  .dl .acd-cid{padding:5px 5px 5px 11px;gap:6px}
-  .dl .acd-cid-label{font-size:.62rem}
-  .dl .acd-cid-code{font-size:.78rem}
+  .dl .acd-topbar-actions{width:100%;margin-left:0;justify-content:space-between;flex-wrap:nowrap;gap:8px}
+  .dl .acd-edit-btn{min-width:0;text-align:center;justify-content:center;font-size:.66rem;padding:5px 11px}
+  .dl .acd-theme-toggle{padding:4px 9px 4px 10px}
+  .dl .acd-theme-toggle-label{font-size:.64rem}
+  .dl .acd-theme-toggle-track{width:24px;height:14px}
+  .dl .acd-theme-toggle-track::after{width:10px;height:10px}
+  .dl .acd-theme-toggle[aria-checked="true"] .acd-theme-toggle-track::after{transform:translateX(10px)}
+  .dl .acd-ring{width:96px;height:96px}
+  .dl .acd-avatar-badge{width:22px;height:22px;font-size:.6rem}
+  .dl .acd-shopname{font-size:1.08rem}
+  .dl .acd-tier-tag{font-size:.64rem;padding:3px 9px 3px 7px}
+  /* ชิปรหัสลูกค้าย้ายมาอยู่เหนือรูปแล้ว — บอลลูนทักทายจะทับพอดี เลยพักไว้ก่อนบนจอมือถือ */
+  .dl .acd-greet{display:none}
+  .dl .acd-who .acd-cid{display:none}
+  .dl .acd-cid-top{display:inline-flex;margin:0 auto 12px}
+  .dl .acd-cid{padding:4px 12px 4px 4px}
+  .dl .acd-cid-label{font-size:.56rem}
+  .dl .acd-cid-code{font-size:.76rem}
+  .dl .acd-cid-badge{width:24px;height:24px}
   .dl .acd-cid-copy{width:24px;height:24px}
   .dl .acd-tier-hero{gap:12px;margin:14px 0 4px}
   .dl .acd-medal-wrap{width:68px;height:68px}
@@ -1814,6 +1967,7 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 /* แถบขั้นตอนแบบย่อในการ์ดรายการ — จุดเล็กลง ไม่มีบรรทัดเวลา */
 .dl .acd-tracker.compact{padding:4px 2px 0}
 .dl .acd-tracker.compact .tdot{width:30px;height:30px;font-size:.86rem}
+.dl .acd-tracker.compact .tdot img{width:18px;height:18px}
 .dl .acd-tracker.compact .tline{top:15px;left:calc(-50% + 15px);width:calc(100% - 30px);height:3px}
 .dl .acd-tracker.compact .tlabel{font-size:.7rem;margin-top:7px}
 

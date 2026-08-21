@@ -12,7 +12,7 @@ import { signOut, updateProfile } from "@/lib/customer-auth";
 import { clearMyOrders, fetchMyOrders, readStoredOrders, setOrdersOwner } from "@/lib/my-orders";
 import { uploadAvatar } from "@/lib/avatar-upload";
 import MyCoupons from "@/components/MyCoupons";
-import { AccountSideNav, MenuIco, OrderTracker, statusIcon, type IcoName } from "@/components/account/AccountShell";
+import { AccountSideNav, MenuIco, MobileLogout, OrderTracker, statusIcon, type IcoName } from "@/components/account/AccountShell";
 
 /*
  * หน้า "บัญชีของฉัน" — พอร์ตจากไฟล์ต้นแบบ USER PROFILE UPDATE_03.html
@@ -61,6 +61,12 @@ const THEME_KEY = "ducky_acc_theme";
 const rgba = (hex: string, a: number) => {
   const h = hex.replace("#", "");
   return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
+};
+/** สีเดิมแบบเข้มขึ้น — ใช้กับตัวหนังสือบนชิปสีจาง ให้อ่านออกทุกระดับ */
+const darken = (hex: string, amount: number) => {
+  const h = hex.replace("#", "");
+  const c = (i: number) => Math.max(0, Math.round(parseInt(h.slice(i, i + 2), 16) * (1 - amount)));
+  return `rgb(${c(0)},${c(2)},${c(4)})`;
 };
 
 /**
@@ -320,9 +326,27 @@ export default function AccountPage() {
   }
 
   const tierStyle = { "--ring-a": shownRing[0], "--ring-b": shownRing[1] } as React.CSSProperties;
-  const realStyle = { "--ring-a": realRing[0], "--ring-b": realRing[1] } as React.CSSProperties;
+  /** สีระดับบนวงรูป/ป้ายระดับ — ใช้เฉพาะตอนเปิดธีม ปิดแล้วกลับเป็นฟ้าปกติ (ต้นแบบ UPDATE_04) */
+  const realStyle = themeOn ? ({ "--ring-a": realRing[0], "--ring-b": realRing[1] } as React.CSSProperties) : undefined;
+  const ringTier = themeOn ? paintTier?.id : undefined;
   const shownArt = medalArt(shownTier, shownIdx);
   const cid = customerCode(customer.id);
+
+  /** ชิปรหัสลูกค้า — จอใหญ่อยู่ใต้ชื่อ · จอมือถือย้ายขึ้นไปเหนือรูปโปรไฟล์ (ต้นแบบ UPDATE_05) */
+  const cidChip = (cls = "") => (
+    <button type="button" className={`acd-cid${cls ? ` ${cls}` : ""}`} onClick={copyId} title={copied ? "คัดลอกแล้ว ✓" : "แตะเพื่อคัดลอกรหัสลูกค้า"}>
+      <span className="acd-cid-badge" aria-hidden="true">
+        ID
+      </span>
+      <span className="acd-cid-text">
+        <span className="acd-cid-label">รหัสลูกค้า</span>
+        <span className="acd-cid-code">{cid}</span>
+      </span>
+      <span className={`acd-cid-copy${copied ? " copied" : ""}`} aria-hidden="true">
+        {copied ? "✓" : "⧉"}
+      </span>
+    </button>
+  );
 
   // ธีมสีตามระดับจริง → ตัวแปร CSS ให้ชิป/เมนูข้าง/เงาการ์ดเปลี่ยนสีตาม
   const pageStyle =
@@ -333,6 +357,17 @@ export default function AccountPage() {
           "--acd-theme-line": realRing[1],
           "--acd-theme-row-tint": `linear-gradient(90deg,${rgba(realRing[0], 0.06)} 0%,${rgba(realRing[1], 0.32)} 100%)`,
           "--acd-theme-shadow": `0 16px 32px -14px ${rgba(realRing[1], 0.4)},0 4px 10px -4px ${rgba(realRing[0], 0.22)}`,
+          "--acd-theme-shadow-hover": `0 26px 46px -16px ${rgba(realRing[1], 0.5)},0 8px 16px -4px ${rgba(realRing[0], 0.3)}`,
+          "--acd-theme-icon-bg": rgba(realRing[0], 0.3),
+          "--acd-theme-icon-hover-bg": "rgba(255,255,255,.62)",
+          "--acd-theme-icon-hover-ring": rgba(realRing[1], 0.4),
+          "--acd-theme-toggle-shadow": rgba(realRing[1], 0.32),
+          "--acd-theme-border-soft": rgba(realRing[1], 0.4),
+          "--acd-theme-chip-a": realRing[0],
+          "--acd-theme-chip-b": realRing[1],
+          "--acd-theme-chip-pale": `linear-gradient(135deg,${rgba(realRing[0], 0.22)},${rgba(realRing[1], 0.1)})`,
+          "--acd-theme-chip-pale-fg": darken(realRing[0], 0.42),
+          "--acd-theme-chip-hover": `linear-gradient(135deg,${rgba(realRing[0], 0.46)},${rgba(realRing[1], 0.24)})`,
         } as React.CSSProperties)
       : undefined;
 
@@ -342,6 +377,7 @@ export default function AccountPage() {
         <img className="bg-cloud acd-c1" src="/landing/cloud.webp" alt="" aria-hidden="true" />
         <img className="bg-cloud acd-c2" src="/landing/cloud.webp" alt="" aria-hidden="true" />
         <img className="bg-cloud acd-c3" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+        <img className="bg-cloud acd-c4" src="/landing/cloud.webp" alt="" aria-hidden="true" />
         <div className="acd-wrap acd-dash">
           <div className="acd-grid">
             {/* ===== เมนูข้าง ===== */}
@@ -351,7 +387,8 @@ export default function AccountPage() {
             <div className="acd-content">
               {/* โปรไฟล์ */}
               <div className="acd-topbar">
-                <div className="acd-ring" style={realStyle} data-ring={paintTier?.id}>
+                {cidChip("acd-cid-top")}
+                <div className="acd-ring" style={realStyle} data-ring={ringTier}>
                   <div className={`acd-greet${greet ? " show" : ""}`} aria-hidden="true">
                     <span className="acd-wave">👋</span> สวัสดีค่ะ
                   </div>
@@ -386,24 +423,22 @@ export default function AccountPage() {
                       <h1 className="acd-shopname">{displayName}</h1>
                     )}
                     {paintTier && (
-                      <span className={`acd-tier-tag${DARK_TEXT_TIERS.has(paintTier.id) ? " dark" : ""}`} style={realStyle}>
+                      <span className={`acd-tier-tag${themeOn && DARK_TEXT_TIERS.has(paintTier.id) ? " dark" : ""}`} style={realStyle}>
                         {paintTier.icon} {paintTier.name}
                       </span>
                     )}
                   </div>
                   {/* รหัสลูกค้า — แตะทั้งชิปเพื่อคัดลอก (แจ้งแอดมินเวลาสอบถาม) */}
-                  <button type="button" className="acd-cid" onClick={copyId} title={copied ? "คัดลอกแล้ว ✓" : "แตะเพื่อคัดลอกรหัสลูกค้า"}>
-                    <span className="acd-cid-label">รหัสลูกค้า</span>
-                    <span className="acd-cid-code">{cid}</span>
-                    <span className={`acd-cid-copy${copied ? " copied" : ""}`} aria-hidden="true">
-                      {copied ? "✓" : "⧉"}
-                    </span>
-                  </button>
+                  {cidChip()}
                   <div className="acd-meta">
                     {memberSince && (
                       <>
                         <span className="acd-meta-item">
-                          <span className="acd-meta-ico">📅</span>สมาชิกตั้งแต่ {memberSince}
+                          <span className="acd-meta-ico">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src="/account/meta/since.webp" alt="" loading="lazy" />
+                          </span>
+                          สมาชิกตั้งแต่ {memberSince}
                         </span>
                         <span className="acd-meta-dot">•</span>
                       </>
@@ -411,7 +446,10 @@ export default function AccountPage() {
                     <span className="acd-meta-item">
                       {viaLine ? (
                         <>
-                          <span className="acd-line-badge">L</span>
+                          <span className="acd-line-badge">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src="/account/meta/line.webp" alt="" loading="lazy" />
+                          </span>
                           <span className="acd-line-text">เชื่อมต่อ LINE แล้ว</span>
                         </>
                       ) : (
@@ -447,9 +485,12 @@ export default function AccountPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="acd-meta">
+                    <div className="acd-meta addr">
                       <span className="acd-meta-item">
-                        <span className="acd-meta-ico">📍</span>
+                        <span className="acd-meta-ico">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src="/account/meta/pin.webp" alt="" loading="lazy" />
+                        </span>
                         {customer.address ? <span>{customer.address}</span> : <span className="acd-meta-link">ยังไม่ได้ใส่ที่อยู่จัดส่ง — กด &quot;แก้ไขโปรไฟล์&quot;</span>}
                       </span>
                     </div>
@@ -464,7 +505,7 @@ export default function AccountPage() {
                     title={`ใช้ธีมสีตามระดับ${paintTier ? ` ${paintTier.name}` : ""}`}
                     onClick={toggleTheme}
                   >
-                    <span className="acd-theme-toggle-label">ธีมสีตามระดับ</span>
+                    <span className="acd-theme-toggle-label">ธีม</span>
                     <span className="acd-theme-toggle-track" />
                   </button>
                   <button type="button" className="acd-edit-btn" onClick={() => (editing ? saveEdit() : enterEdit())} disabled={saving}>
@@ -698,6 +739,9 @@ export default function AccountPage() {
                 <div className="acd-menu-head">ช่วยเหลือ</div>
                 <MenuItem href="/how-to-order" ico="howto" tone="coral" label="วิธีสั่งซื้อ" />
               </div>
+
+              {/* ปุ่มออกจากระบบของจอเล็ก (เมนูข้างเหลือแต่ไอคอน) */}
+              <MobileLogout onLogout={() => setLogoutAsk(true)} />
             </div>
           </div>
         </div>

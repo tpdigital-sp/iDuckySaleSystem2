@@ -43,6 +43,17 @@ export function NavIco({ name }: { name: IcoName }) {
   );
 }
 
+/** ปุ่มออกจากระบบใต้เนื้อหา — โผล่เฉพาะจอ ≤860px ที่เมนูข้างเหลือแต่ไอคอน */
+export function MobileLogout({ onLogout }: { onLogout: () => void }) {
+  return (
+    <div className="acd-mlogout">
+      <button type="button" className="acd-mlogout-btn" onClick={onLogout}>
+        <span className="ico">🚪</span> ออกจากระบบ
+      </button>
+    </div>
+  );
+}
+
 /* ───────── เมนูข้าง ───────── */
 export type AccountTab = "home" | "orders" | "proof" | "production" | "files" | "receipts" | "claims" | "reviews" | "profile" | "address" | "howto";
 
@@ -128,7 +139,10 @@ export function AccountShell({
         <div className="acd-wrap acd-dash">
           <div className="acd-grid">
             <AccountSideNav active={active} proofCount={proofCount} onLogout={() => setLogoutAsk(true)} />
-            <div className="acd-content">{children}</div>
+            <div className="acd-content">
+              {children}
+              <MobileLogout onLogout={() => setLogoutAsk(true)} />
+            </div>
           </div>
         </div>
       </div>
@@ -181,6 +195,8 @@ export function AccountHead({ ico, title, sub, back = true }: { ico: IcoName; ti
 
 /* ───────── แถบขั้นตอนออเดอร์ (ใช้ทั้งแดชบอร์ดและหน้าประวัติ) ───────── */
 export const STEP_ICONS = ["✓", "💳", "🖼️", "🏭", "🚚"];
+/** ไอคอนภาพจริงของแต่ละขั้น (ขั้นแรกใช้เครื่องหมายถูกตามต้นแบบ) — null = ใช้ตัวอักษรจาก STEP_ICONS */
+const STEP_ART: (string | null)[] = [null, "/account/step/pay.webp", "/account/menu/proof.webp", "/account/menu/production.webp", "/account/step/truck.webp"];
 
 /** ไอคอนหน้าป้ายสถานะ */
 export function statusIcon(o: Order): string {
@@ -218,7 +234,14 @@ export function OrderTracker({ order, compact = false }: { order: Order; compact
         return (
           <div key={i} className={`acd-tstep${cls}`}>
             <span className="tline" />
-            <div className="tdot">{STEP_ICONS[i]}</div>
+            <div className="tdot">
+              {STEP_ART[i] ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={STEP_ART[i]!} alt="" loading="lazy" />
+              ) : (
+                STEP_ICONS[i]
+              )}
+            </div>
             <div className="tlabel">{stepLabel(i, order)}</div>
             {!compact && <div className="ttime">{stepTime(i, order)}</div>}
           </div>
