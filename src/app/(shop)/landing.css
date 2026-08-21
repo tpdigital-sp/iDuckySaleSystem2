@@ -2729,3 +2729,23 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .shopp .ord-terms li>i{flex:none;margin-top:.62em;width:6px;height:6px;border-radius:50%;
   background:var(--yolk-deep);box-shadow:0 0 0 3px rgba(255,182,39,.22)}
 .shopp .ord-terms li>span{white-space:pre-line;min-width:0}
+
+/* --- ระดับความลอย: หน้าสินค้ามีกล่องเยอะมาก ถ้าลอยเท่ากันหมดจะลายตา ---
+   ลอย (.ord-card ปกติ) = เฉพาะแผงหลักที่อยากให้สายตาไปเกาะ (ราคา · แผงสั่งซื้อ · แกลเลอรี)
+   แบน (.ord-card.flat / .ord-tile) = กล่องประกอบทั้งหมด — มีขอบบาง ๆ พอแยกกลุ่ม แต่ไม่มีเงา ไม่ลอย */
+.shopp .ord-card.flat{background:rgba(255,255,255,.6);border:1px solid var(--sky-200);
+  border-radius:var(--r-m);box-shadow:none}
+.shopp .ord-tile{display:flex;align-items:center;gap:9px;padding:10px 13px;border-radius:var(--r-m);
+  background:rgba(255,255,255,.58);border:1px solid var(--sky-200);
+  font-size:.79rem;line-height:1.6;color:var(--navy-soft)}
+.shopp .ord-tile.center{justify-content:center;text-align:center}
+
+/* --- กลุ่มตัวเลือกในหน้าสินค้า — คั่นด้วยเส้นประ ให้สายตาแบ่งกลุ่มออก ---
+   เดิมป้าย/คำอธิบาย/ปุ่ม/กล่องหมายเหตุ ของหลายกลุ่มไหลต่อกันเป็นพืด แยกไม่ออกว่าอันไหนของใคร */
+.shopp .ord-optgrp + .ord-optgrp{margin-top:18px;padding-top:18px;border-top:1px dashed var(--sky-200)}
+.shopp .ord-optgrp-label{font-family:var(--display);font-weight:500;font-size:.92rem;color:var(--navy)}
+/* คำอธิบายประกอบ — ขีดข้างซ้ายแทนกล่องสีเต็มใบ (กล่องสีเยอะ ๆ ทำให้หน้าลายตา) */
+.shopp .ord-hint{background:none !important;border:0 !important;border-left:3px solid var(--sky-200) !important;
+  border-radius:0 !important;padding:1px 0 1px 11px !important;box-shadow:none !important;
+  font-size:.73rem;line-height:1.75;color:var(--navy-soft)}
+.shopp .ord-hint b,.shopp .ord-hint strong{color:var(--blue-deep);font-weight:600}

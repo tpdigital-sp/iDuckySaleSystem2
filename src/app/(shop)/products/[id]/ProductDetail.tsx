@@ -1509,10 +1509,10 @@ export default function ProductDetail({
               return (
                 <div
                   key={opt.label}
-                  className={customLocked ? "pointer-events-none select-none opacity-40" : undefined}
+                  className={`ord-optgrp${customLocked ? " pointer-events-none select-none opacity-40" : ""}`}
                   aria-disabled={customLocked || undefined}
                 >
-                  <span className="mb-1 block text-[13px] font-bold t-ink">
+                  <span className="ord-optgrp-label mb-1.5 block">
                     {opt.label}:{" "}
                     <span
                       className={
@@ -1939,7 +1939,7 @@ export default function ProductDetail({
                     const sheetUnit = opt.sheetFee!.unit ?? "แผ่น";
                     const unit = matrix?.unit ?? "ชิ้น";
                     return (
-                      <p className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
+                      <p className="ord-hint mt-2">
                         📄 {opt.label}แบบที่คิดเงิน คิดเป็น<span className="font-bold">ค่าวัสดุต่อ{sheetUnit}</span> ไม่ใช่ต่อ{unit} —
                         ตอนนี้ 1 {sheetUnit} ได้ <span className="font-bold">{per.toLocaleString("th-TH")} {unit}</span>
                         {fee > 0 ? (
@@ -2464,16 +2464,17 @@ export default function ProductDetail({
 
           {/* ═══ ความมั่นใจก่อนกดสั่ง ═══ */}
           <ul className="mt-4 grid grid-cols-2 gap-2 text-[11px] font-semibold t-soft">
-            <li className="ord-card px-2.5 py-2.5 text-center">🖼️ ส่งแบบให้ตรวจ<br />ก่อนผลิตทุกงาน</li>
-            <li className="ord-card px-2.5 py-2.5 text-center">✅ แก้แบบได้<br />จนกว่าจะพอใจ</li>
-            <li className="ord-card px-2.5 py-2.5 text-center">🚚 ส่งไว<br />ทั่วไทย</li>
-            <li className="ord-card px-2.5 py-2.5 text-center">💬 ทักไลน์<br />ปรึกษาฟรี</li>
+            <li className="ord-tile center">🖼️ ส่งแบบให้ตรวจ<br />ก่อนผลิตทุกงาน</li>
+            <li className="ord-tile center">✅ แก้แบบได้<br />จนกว่าจะพอใจ</li>
+            <li className="ord-tile center">🚚 ส่งไว<br />ทั่วไทย</li>
+            <li className="ord-tile center">💬 ทักไลน์<br />ปรึกษาฟรี</li>
           </ul>
         </div>
 
       {/* ═══ ข้อมูลประกอบ — ไหลต่อจากรูป/รายละเอียด (เดิมอยู่ท้ายหน้า ทำให้ตรงนี้เป็นช่องขาว) ═══ */}
       <div className="grid gap-6 sm:col-span-2 lg:grid-cols-2">
-        <div className="ord-card relative p-4 sm:p-5">
+        {/* สินค้าที่ไม่มีตารางราคาขั้นบันได = ไม่มีอะไรอยู่ในกล่องนี้ — ไม่ต้องตีกรอบให้เห็นเป็นกล่องว่าง */}
+        <div className={`relative${matrix ? " ord-card flat p-4 sm:p-5" : ""}`}>
           {/* ใช้ขนาดกำหนดเองอยู่ — คลุมตารางไว้ กันเข้าใจผิดว่าราคาอิงเรทขนาดปกติ
               (โหมด "ระบุขนาด" ไม่ต้องคลุม เพราะราคายังคิดจากตารางนี้จริง ๆ) */}
           {useCustom && custom?.mode !== "size" && (
@@ -2491,10 +2492,12 @@ export default function ProductDetail({
               </p>
             </div>
           )}
-          <p className="ord-title text-[.98rem]">
-            💰 ราคาต่อหน่วยตามจำนวน
-            {rate && <span className="ml-1 font-semibold t-ok">· {rate.label}</span>}
-          </p>
+          {matrix && (
+            <p className="ord-title text-[.98rem]">
+              💰 ราคาต่อหน่วยตามจำนวน
+              {rate && <span className="ml-1 font-semibold t-ok">· {rate.label}</span>}
+            </p>
+          )}
           {/* ตารางราคาขั้นบันได (rate card) — หลายคอลัมน์ = โชว์ทีละแบบตามที่เลือกอยู่ (กดเทียบทุกแบบได้) */}
           {matrix &&
             (() => {
@@ -2578,7 +2581,7 @@ export default function ProductDetail({
               );
             })()}
           {rate?.minPerDesign != null && rate.minPerDesign > 0 && (
-            <p className="mt-2 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
+            <p className="ord-hint mt-2">
               🎨 เรทนี้คละลายขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
               {/* ร้านรับสั่งขั้นต่ำ 1 ชิ้นเสมอ — ตัวเลขนี้คือ "เรทนี้เริ่มใช้ที่เท่าไหร่" ไม่ใช่ห้ามสั่งน้อยกว่า
                   (สั่งน้อยกว่านี้ระบบสลับไปเรทที่ถูกต้องให้เอง) */}
@@ -2595,7 +2598,7 @@ export default function ProductDetail({
             {product.highlights.map((h) => (
               <li
                 key={h}
-                className="ord-card flex items-center gap-2 px-4 py-2.5 text-sm t-soft"
+                className="ord-tile"
               >
                 <span className="text-amber-500">✔</span> {h}
               </li>
@@ -3583,7 +3586,7 @@ export default function ProductDetail({
             </div>
           )}
 
-          <div className={`ord-card mt-4 overflow-hidden ${studioMode ? "hidden" : ""}`}>
+          <div className={`ord-card flat mt-4 overflow-hidden ${studioMode ? "hidden" : ""}`}>
             <button
               type="button"
               onClick={() => {
