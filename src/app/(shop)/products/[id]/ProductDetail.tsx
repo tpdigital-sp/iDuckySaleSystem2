@@ -232,20 +232,17 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
       {tab.imagePos === "top" && gallery}
       {/* HTML ผ่าน sanitize ฝั่งเซิร์ฟเวอร์ตั้งแต่ตอนบันทึกสินค้า (ตัดแท็ก script, on-handler, javascript:) */}
       {rich && <div className={`overflow-x-auto ${TAB_PROSE}`} dangerouslySetInnerHTML={{ __html: rich }} />}
-      {!rich && hasText && (
-        <div className="ptab">
-          {parseTabText(text).map((b, i) => (
-            <section key={i} className={`ptab-sec ${b.tone}`}>
-              {b.title && (
-                <div className="ptab-head">
-                  <span className="ptab-ico" aria-hidden="true">
-                    {TONE_ICON[b.tone]}
-                  </span>
-                  <h3 className="ptab-title">{b.title}</h3>
-                </div>
-              )}
-              <div className="ptab-body">
-                {b.lines.map((l, k) =>
+      {!rich &&
+        hasText &&
+        (() => {
+          const blocks = parseTabText(text);
+          // หัวข้อกลาง ๆ (ไม่ได้/ได้/ข้อมูล) นับเป็น "ขั้นที่ N" ให้สายตามีตัวยึด
+          // แท็บอย่าง "วิธีสั่งงาน" จะกลายเป็นขั้น 1-2-3 ทันที โดยแอดมินไม่ต้องพิมพ์เลขเอง
+          let step = 0;
+          return (
+            <div className="ptab">
+              {blocks.map((b, i) => {
+                const lines = b.lines.map((l, k) =>
                   l.bullet ? (
                     <p key={k} className="ptab-li">
                       <i aria-hidden="true">{TONE_BULLET[b.tone]}</i>
@@ -256,12 +253,31 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
                       {l.text}
                     </p>
                   ),
-                )}
-              </div>
-            </section>
-          ))}
-        </div>
-      )}
+                );
+                // ก้อนแรกที่ยังไม่มีหัวข้อ = ย่อหน้านำ พาดเต็มความกว้าง ไม่ต้องเป็นการ์ด
+                if (!b.title) {
+                  return (
+                    <div key={i} className="ptab-lead">
+                      {lines}
+                    </div>
+                  );
+                }
+                if (b.tone === "plain") step += 1;
+                return (
+                  <section key={i} className={`ptab-sec ${b.tone}`}>
+                    <div className="ptab-head">
+                      <span className="ptab-ico" aria-hidden="true">
+                        {b.tone === "plain" ? step : TONE_ICON[b.tone]}
+                      </span>
+                      <h3 className="ptab-title">{b.title}</h3>
+                    </div>
+                    <div className="ptab-body">{lines}</div>
+                  </section>
+                );
+              })}
+            </div>
+          );
+        })()}
       {tab.imagePos !== "top" && gallery}
       {lightbox}
     </div>
@@ -3867,7 +3883,7 @@ export default function ProductDetail({
               })}
             </div>
           </div>
-          <div className="rounded-[34px] border-2 border-white bg-[linear-gradient(180deg,#fff_0%,var(--sky-50)_100%)] p-6 shadow-[var(--shadow-s)] md:p-8">
+          <div className="ptab-panel">
             <ProductTabText tab={product.tabs![Math.min(tabIndex, product.tabs!.length - 1)]} />
           </div>
         </section>
