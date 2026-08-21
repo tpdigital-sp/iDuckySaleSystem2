@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { PRODUCTS, type CategoryId, type Product } from "@/lib/products";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { fetchProductsLite } from "@/lib/product-repo";
-import ProductCard from "@/components/ProductCard";
+import ShopProductCard from "@/components/ShopProductCard";
 
 type SortKey = "popular" | "price-asc" | "price-desc" | "rating";
 
@@ -110,95 +110,92 @@ export default function ProductListing() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pt-6">
-      <h1 className="text-2xl font-extrabold text-amber-950 md:text-3xl">🛍️ สินค้าทั้งหมด</h1>
-      <p className="mt-1 text-sm text-stone-500">
-        ทุกชิ้นพิมพ์ลายของคุณเองได้ — เลือกหมวด ค้นหา หรือเรียงราคาได้เลย
-      </p>
+    <div className="dl dl-page">
+      <div className="top-stack plist-top">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="bg-cloud plist-c1" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="bg-cloud plist-c2" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="bg-cloud plist-c3" src="/landing/cloud.webp" alt="" aria-hidden="true" />
 
-      {/* ค้นหา + เรียงลำดับ */}
-      <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-        <label className="relative flex-1">
-          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg">🔍</span>
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="ค้นหาสินค้า เช่น แก้ว, เสื้อยืด, เคส..."
-            className="w-full rounded-full border-0 bg-white py-3 pl-12 pr-4 text-sm shadow-sm ring-1 ring-amber-200 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-ducky"
-          />
-        </label>
-        <select
-          value={sort}
-          onChange={(e) => setSort(e.target.value as SortKey)}
-          className="rounded-full bg-white px-5 py-3 text-sm font-semibold text-stone-700 shadow-sm ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-ducky"
-          aria-label="เรียงลำดับสินค้า"
-        >
-          {SORTS.map((s) => (
-            <option key={s.id} value={s.id}>
-              เรียงตาม: {s.label}
-            </option>
-          ))}
-        </select>
-      </div>
+        <div className="plist-wrap">
+          {/* หัวหน้า */}
+          <div className="plist-head">
+            <div>
+              <span className="kicker kicker-yolk">
+                <i className="folder">🛍️</i>เลือกซื้อสินค้า
+              </span>
+              <h1>
+                สินค้า<em>ทั้งหมด</em>
+              </h1>
+              <p>ทุกชิ้นพิมพ์ลายของคุณเองได้ — เลือกหมวด ค้นหา หรือเรียงราคาได้เลย</p>
+            </div>
+            <span className="plist-count">
+              พบ <b>{filtered.length.toLocaleString("th-TH")}</b> รายการ
+            </span>
+          </div>
 
-      {/* แท็บหมวดหมู่ */}
-      <div className="mt-4 flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <button
-          type="button"
-          onClick={() => selectCategory("all")}
-          className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition ${
-            category === "all"
-              ? "bg-amber-400 text-white shadow"
-              : "bg-white text-stone-600 ring-1 ring-amber-200 hover:bg-amber-50"
-          }`}
-        >
-          ✨ ทั้งหมด
-        </button>
-        {cats.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            onClick={() => selectCategory(c.id)}
-            className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition ${
-              category === c.id
-                ? "bg-amber-400 text-white shadow"
-                : "bg-white text-stone-600 ring-1 ring-amber-200 hover:bg-amber-50"
-            }`}
-          >
-            {c.emoji} {c.name}
-          </button>
-        ))}
-      </div>
+          {/* ค้นหา + เรียงลำดับ */}
+          <div className="plist-bar">
+            <label className="plist-search">
+              <i aria-hidden="true">🔍</i>
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="ค้นหาสินค้า เช่น แก้ว, เสื้อยืด, เคส..."
+                aria-label="ค้นหาสินค้า"
+              />
+            </label>
+            <div className="plist-sort">
+              <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label="เรียงลำดับสินค้า">
+                {SORTS.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    เรียงตาม: {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-      {/* ผลลัพธ์ */}
-      <p className="mt-3 text-xs text-stone-400">พบ {filtered.length} รายการ</p>
-      {filtered.length === 0 ? (
-        <div className="mt-8 rounded-3xl bg-white p-12 text-center ring-1 ring-amber-100">
-          <span className="text-5xl">🐥</span>
-          <p className="mt-3 font-bold text-stone-700">ไม่พบสินค้าที่ค้นหา</p>
-          <p className="mt-1 text-sm text-stone-500">ลองเปลี่ยนคำค้นหรือเลือกหมวดอื่นดูนะ</p>
-        </div>
-      ) : (
-        <>
-          <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-            {visible.map((p) => (
-              <ProductCard key={p.id} product={p} />
+          {/* แท็บหมวดหมู่ */}
+          <div className="plist-cats">
+            <button type="button" onClick={() => selectCategory("all")} className={`plist-cat${category === "all" ? " on" : ""}`}>
+              <em>✨</em> ทั้งหมด
+            </button>
+            {cats.map((c) => (
+              <button key={c.id} type="button" onClick={() => selectCategory(c.id)} className={`plist-cat${category === c.id ? " on" : ""}`}>
+                <em>{c.emoji}</em> {c.name}
+              </button>
             ))}
           </div>
-          {shown < filtered.length && (
-            <div ref={sentinel} className="mt-6 flex justify-center">
-              <button
-                type="button"
-                onClick={() => setShown((n) => n + PAGE)}
-                className="rounded-full bg-white px-6 py-2.5 text-sm font-bold text-stone-600 shadow-sm ring-1 ring-amber-200 hover:bg-amber-50"
-              >
-                แสดงเพิ่ม ({filtered.length - shown} รายการ)
-              </button>
+
+          {/* ผลลัพธ์ */}
+          {filtered.length === 0 ? (
+            <div className="plist-empty">
+              <span>🐥</span>
+              <h2>ไม่พบสินค้าที่ค้นหา</h2>
+              <p>ลองเปลี่ยนคำค้นหรือเลือกหมวดอื่นดูนะ</p>
             </div>
+          ) : (
+            <>
+              <div className="plist-grid">
+                {visible.map((p) => (
+                  <ShopProductCard key={p.id} product={p} />
+                ))}
+              </div>
+              {shown < filtered.length && (
+                <div ref={sentinel} className="plist-more">
+                  <button type="button" onClick={() => setShown((n) => n + PAGE)} className="btn btn-ghost">
+                    แสดงเพิ่ม ({(filtered.length - shown).toLocaleString("th-TH")} รายการ) <span className="dot">↓</span>
+                  </button>
+                </div>
+              )}
+            </>
           )}
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -525,7 +525,9 @@ to{opacity:1;transform:none}}
 .dl .rail.in .card:nth-child(6){transition-delay:.4s}
 .dl .rail.in .card:nth-child(7){transition-delay:.48s}
 .dl .rail.in .card:nth-child(8){transition-delay:.56s}
-.dl .thumb{aspect-ratio:1/.82;display:grid;place-items:center;font-size:3.6rem;position:relative;overflow:hidden}
+/* พื้นฟ้าจาง — สินค้าที่ยังไม่มีรูปจะได้ไม่เป็นช่องขาวโบ๋ (รูปจริงทับเต็มอยู่แล้ว) */
+.dl .thumb{aspect-ratio:1/.82;display:grid;place-items:center;font-size:3.6rem;position:relative;overflow:hidden;
+  background:linear-gradient(160deg,var(--sky-100),#fff 72%)}
 .dl .thumb::after{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;
   background:linear-gradient(100deg,rgba(255,255,255,0) 38%,rgba(255,255,255,.55) 50%,rgba(255,255,255,0) 62%);
   transform:translateX(-120%)}
@@ -548,6 +550,9 @@ to{opacity:1;transform:none}}
 .dl .tag-hot i{animation:flicker 1.5s ease-in-out infinite}
 .dl .tag-new{background:linear-gradient(100deg,#5FC4F5,#3E86E0 58%,#6C6BE0);letter-spacing:.04em;
   box-shadow:0 6px 16px rgba(62,134,224,.45)}
+/* ป้าย "ลดราคา" — ใช้ในหน้ารายการสินค้า (หน้าแรกมีแค่ขายดี/ใหม่) */
+.dl .tag-sale{background:linear-gradient(100deg,var(--yolk),var(--yolk-deep) 60%,#F0A400);color:var(--navy);
+  box-shadow:0 6px 16px rgba(255,182,39,.5)}
 .dl .tag-new i{animation:sparkTwist 3.4s ease-in-out infinite}
 .dl .tag-new::after{content:"";position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(100deg,rgba(255,255,255,0) 36%,rgba(255,255,255,.55) 50%,rgba(255,255,255,0) 64%);
@@ -2618,3 +2623,91 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 /* หัวเรื่องหน้า */
 .shopp .shopp-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;row-gap:8px;margin-bottom:18px}
 .shopp .shopp-head h1{font-size:clamp(1.45rem,4vw,1.95rem);font-weight:600}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   หน้ารายการสินค้า (/products) — prefix .plist-
+   ใช้การ์ดสินค้าชุดเดียวกับโซน "ขายดี" ของหน้าแรก (.card/.thumb/.tag/.card-body)
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* padding-top ต้องคง 200px ของ .top-stack ไว้ (คลาสนี้อยู่บน element เดียวกัน ถ้าใส่ padding สั้นกว่าจะทับ
+   แล้วเนื้อหามุดไปอยู่ใต้แถบเมนู) */
+.dl .plist-top{padding:226px 0 70px}
+.dl .plist-wrap{position:relative;z-index:1;width:min(100% - 40px,var(--wrap));margin-inline:auto}
+/* เมฆพื้นหลัง — ตำแหน่งวัดจากขอบบนของ .top-stack ที่มี padding-top 200px */
+.dl .plist-c1{width:190px;top:250px;left:-52px;opacity:.85;animation:bgFloat1 18s ease-in-out infinite, bgPuff 8s ease-in-out infinite}
+.dl .plist-c2{width:230px;top:430px;right:-64px;left:auto;opacity:.7;animation:bgFloat2 22s ease-in-out infinite reverse, bgPuff 9s ease-in-out infinite reverse}
+.dl .plist-c3{width:120px;top:820px;left:5%;opacity:.45;animation:bgFloat3 15s ease-in-out infinite, bgPuff 7s ease-in-out infinite}
+
+/* --- หัวหน้า --- */
+.dl .plist-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:20px}
+.dl .plist-head h1{font-family:var(--display);font-weight:600;font-size:clamp(1.6rem,4vw,2.4rem);line-height:1.2;
+  color:var(--navy);margin-top:14px}
+.dl .plist-head h1 em{font-style:normal;color:var(--blue-deep)}
+.dl .plist-head p{margin-top:6px;font-size:.92rem;line-height:1.8;color:var(--navy-soft);max-width:38em}
+.dl .plist-count{display:inline-flex;align-items:center;gap:7px;padding:9px 17px;border-radius:999px;
+  background:rgba(255,255,255,.82);border:1.5px solid #fff;box-shadow:var(--shadow-s);
+  font-family:var(--display);font-size:.86rem;color:var(--navy);white-space:nowrap}
+.dl .plist-count b{color:var(--blue-deep);font-weight:600}
+
+/* --- แถบเครื่องมือ: ค้นหา + เรียงลำดับ --- */
+.dl .plist-bar{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.dl .plist-search{position:relative;flex:1 1 320px;min-width:0}
+.dl .plist-search>i{position:absolute;left:8px;top:50%;transform:translateY(-50%);width:36px;height:36px;
+  border-radius:50%;background:var(--sky-100);display:grid;place-items:center;font-style:normal;font-size:.95rem;
+  color:var(--blue-deep);pointer-events:none;transition:background .25s ease,color .25s ease}
+.dl .plist-search:focus-within>i{background:var(--blue);color:#fff}
+.dl .plist-search input{width:100%;box-sizing:border-box;height:52px;border-radius:999px;background:#fff;
+  border:1.5px solid var(--sky-200);padding:0 20px 0 54px;font-family:var(--body);font-size:.92rem;color:var(--navy);
+  outline:0;box-shadow:var(--shadow-s);transition:border-color .2s ease,box-shadow .2s ease}
+.dl .plist-search input::placeholder{color:#93AAC8}
+.dl .plist-search input:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(44,129,196,.14)}
+.dl .plist-search input::-webkit-search-cancel-button{cursor:pointer}
+.dl .plist-sort{position:relative;flex:none}
+.dl .plist-sort select{appearance:none;-webkit-appearance:none;height:52px;border-radius:999px;background:#fff;
+  border:1.5px solid var(--sky-200);padding:0 46px 0 22px;font-family:var(--display);font-size:.88rem;color:var(--navy);
+  outline:0;cursor:pointer;box-shadow:var(--shadow-s);transition:border-color .2s ease,box-shadow .2s ease}
+.dl .plist-sort select:hover{border-color:var(--blue)}
+.dl .plist-sort select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(44,129,196,.14)}
+.dl .plist-sort::after{content:"▾";position:absolute;right:20px;top:50%;transform:translateY(-50%);
+  color:var(--blue-deep);pointer-events:none;font-size:.8rem}
+@media(max-width:560px){
+  .dl .plist-sort,.dl .plist-sort select{width:100%}
+}
+
+/* --- ชิปหมวดหมู่ --- */
+.dl .plist-cats{display:flex;gap:9px;overflow-x:auto;padding:4px 2px 10px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.dl .plist-cats::-webkit-scrollbar{display:none}
+.dl .plist-cat{all:unset;box-sizing:border-box;cursor:pointer;flex:none;display:inline-flex;align-items:center;gap:7px;
+  padding:10px 18px;border-radius:999px;background:rgba(255,255,255,.86);border:1.5px solid var(--sky-200);
+  font-family:var(--display);font-size:.86rem;color:var(--navy-soft);white-space:nowrap;
+  transition:background .25s ease,color .25s ease,border-color .25s ease,box-shadow .25s ease,transform .25s cubic-bezier(.34,1.56,.64,1)}
+.dl .plist-cat:hover{background:#fff;color:var(--navy);border-color:var(--blue);transform:translateY(-2px)}
+.dl .plist-cat:active{transform:scale(.96)}
+.dl .plist-cat.on{background:linear-gradient(100deg,var(--blue) 0%,var(--blue-deep) 100%);color:#fff;
+  border-color:transparent;box-shadow:0 8px 18px -6px rgba(44,129,196,.55)}
+.dl .plist-cat em{font-style:normal;font-size:.98rem;line-height:1}
+
+/* --- ตะแกรงการ์ด (ใช้ .card ชุดเดียวกับหน้าแรก) --- */
+.dl .plist-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px;perspective:1100px}
+@media(max-width:1000px){.dl .plist-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}}
+@media(max-width:760px){.dl .plist-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}}
+@media(max-width:400px){.dl .plist-grid{gap:12px}}
+/* จอเล็กบีบการ์ดให้อ่านง่ายขึ้น */
+@media(max-width:560px){
+  .dl .plist-grid .card-body{padding:12px 13px 15px;gap:4px}
+  .dl .plist-grid .card-body h3{font-size:.86rem}
+  .dl .plist-grid .price{font-size:1rem}
+  .dl .plist-grid .stars{font-size:.68rem}
+  .dl .plist-grid .meta{padding-top:8px;gap:4px}
+  .dl .plist-grid .tag{font-size:.66rem;padding:5px 11px 5px 8px;top:9px;left:9px}
+}
+/* ไม่มีเอฟเฟกต์ทยอยโผล่แบบ .rail — หน้านี้โหลดทีละ 48 ใบ ถ้าให้ fade จะกระพริบตอนเติมชุดใหม่ */
+.dl .plist-grid .card{opacity:1;transform:none}
+
+/* --- ปุ่มแสดงเพิ่ม + สถานะว่าง --- */
+.dl .plist-more{display:flex;justify-content:center;margin-top:26px}
+.dl .plist-empty{margin-top:24px;border-radius:var(--r-l);padding:56px 26px;text-align:center;
+  background:linear-gradient(180deg,rgba(255,255,255,.86) 0%,rgba(255,255,255,.66) 100%);
+  border:2px solid #fff;box-shadow:var(--shadow-s)}
+.dl .plist-empty span{font-size:3.2rem;line-height:1;display:block}
+.dl .plist-empty h2{font-family:var(--display);font-weight:500;font-size:1.2rem;color:var(--navy);margin-top:12px}
+.dl .plist-empty p{margin-top:6px;font-size:.9rem;color:var(--navy-soft)}
