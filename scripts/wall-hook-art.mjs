@@ -190,12 +190,79 @@ async function sizeCards() {
   }
 }
 
+/* ── 3. ภาพ 2 ใบที่คลังสีอะคริลิคกลางไม่มี ────────────────────────────
+ * คลัง products/acrylic-colors/ เป็นรูปถ่ายเนื้ออะคริลิคจริง ครอปจากชาร์ตของร้าน
+ * แต่ไม่มีช่อง "ใส" (โปร่งใส ถ่ายเป็นช่องสีไม่ได้) และไม่มีช่องรวมที่แทน "สีพิเศษ"
+ * สองใบนี้จึงทำเอง — ขนาด 640 เท่าไฟล์ในคลัง จะได้วางเรียงกันแล้วดูเป็นชุดเดียวกัน
+ */
+const SW = 640;
+const CHIP = "https://upvigfvxloelzevwneof.supabase.co/storage/v1/object/public/product-images/products/acrylic-colors";
+/** 4 สีที่หยิบมาทำภาพรวม "สีพิเศษ" — เลือกให้เห็นครบทั้งโฮโลแกรม กลิตเตอร์ กระจก และสีทึบ */
+const SPECIAL_MIX = ["holo-rainbow-v2", "glitter-gold-v2", "mirror-v2", "p-v2"];
+
+const saveRaw = async (name, buf) => {
+  writeFileSync(`${OUT}/${name}.jpg`, buf);
+  console.log(`   ${name}.jpg  ${Math.round(buf.length / 1024)} KB`);
+};
+
+/** "อะคริลิคใส" — แผ่นโปร่งวางบนตารางหมากรุก ให้เห็นว่ามองทะลุได้ + ป้ายวงรีแบบเดียวกับชาร์ต */
+async function sheetClear() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${SW}" height="${SW}" viewBox="0 0 ${SW} ${SW}">
+    <defs>
+      <pattern id="ck" width="64" height="64" patternUnits="userSpaceOnUse">
+        <rect width="64" height="64" fill="#f8fafc"/>
+        <rect width="32" height="32" fill="#e8edf3"/><rect x="32" y="32" width="32" height="32" fill="#e8edf3"/>
+      </pattern>
+      <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#ffffff" stop-opacity="0.62"/>
+        <stop offset="42%" stop-color="#e0f2fe" stop-opacity="0.30"/>
+        <stop offset="100%" stop-color="#ffffff" stop-opacity="0.55"/>
+      </linearGradient>
+    </defs>
+    <rect width="${SW}" height="${SW}" fill="url(#ck)"/>
+    <!-- แผ่นอะคริลิควางเฉียง แบบเดียวกับรูปถ่ายในชาร์ต (เห็นสันหนา 3 มม.) -->
+    <path d="M96 118 L556 78 L556 470 L96 512 Z" fill="url(#glass)" stroke="#bae6fd" stroke-width="4"/>
+    <path d="M96 512 L556 470 L556 500 L96 542 Z" fill="#e0f2fe" stroke="#bae6fd" stroke-width="3"/>
+    <path d="M150 140 L300 128 L190 470 L120 476 Z" fill="#ffffff" opacity="0.5"/>
+    <ellipse cx="${SW / 2}" cy="300" rx="118" ry="56" fill="#ffffff"/>
+    <text x="${SW / 2}" y="318" font-family="${TH}" font-size="52" font-weight="700" text-anchor="middle" fill="${INK}">ใส</text>
+    <text x="${SW / 2}" y="590" font-family="${TH}" font-size="36" font-weight="700" text-anchor="middle" fill="${INK}">อะคริลิคใส</text>
+  </svg>`;
+  await saveRaw("sheet-clear", await sharp(Buffer.from(svg)).jpeg({ quality: 92, chromaSubsampling: "4:4:4" }).toBuffer());
+}
+
+/** "สีพิเศษ" — ภาพรวม 4 ช่องจากคลังสีกลาง (รูปเนื้ออะคริลิคจริง ไม่ใช่ภาพวาด) */
+async function sheetSpecial() {
+  const half = SW / 2;
+  const tiles = [];
+  for (const [i, f] of SPECIAL_MIX.entries()) {
+    const res = await fetch(`${CHIP}/${f}.jpg`);
+    if (!res.ok) throw new Error(`โหลดสวอตช์ ${f} จากคลังสีกลางไม่ได้ — HTTP ${res.status}`);
+    tiles.push({
+      input: await sharp(Buffer.from(await res.arrayBuffer())).resize(half, half).toBuffer(),
+      left: (i % 2) * half,
+      top: Math.floor(i / 2) * half,
+    });
+  }
+  const label = `<svg xmlns="http://www.w3.org/2000/svg" width="${SW}" height="${SW}">
+    <ellipse cx="${SW / 2}" cy="${SW / 2}" rx="150" ry="58" fill="#ffffff" opacity="0.94"/>
+    <text x="${SW / 2}" y="${SW / 2 + 17}" font-family="${TH}" font-size="44" font-weight="700" text-anchor="middle" fill="${INK}">สีพิเศษ</text>
+  </svg>`;
+  const buf = await sharp({ create: { width: SW, height: SW, channels: 3, background: "#ffffff" } })
+    .composite([...tiles, { input: Buffer.from(label) }])
+    .jpeg({ quality: 92, chromaSubsampling: "4:4:4" })
+    .toBuffer();
+  await saveRaw("sheet-special", buf);
+}
+
 async function main() {
   console.log(`🎨 วาดภาพตัวเลือก "ตะขอแขวนผนังอะคริลิค" → ${OUT}`);
   HEART = await iconDataUri("heart", 300);
   await hookCards();
   await sizeCards();
-  console.log(`✅ ครบ ${7 + SIZES.length} ภาพ — ต่อด้วย node scripts/wall-hook-apply.mjs --write`);
+  await sheetClear();
+  await sheetSpecial();
+  console.log(`✅ ครบ ${7 + SIZES.length + 2} ภาพ — ต่อด้วย node scripts/wall-hook-apply.mjs --write`);
 }
 
 // รันตรง ๆ เท่านั้นถึงวาด — wall-hook-apply.mjs import ไฟล์นี้เอา HOOK_COLORS ไปใช้ ไม่ควรวาดใหม่ทุกครั้ง

@@ -19,6 +19,7 @@
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { HOOK_COLORS, SIZES, sizeExtra } from "./wall-hook-art.mjs";
+import { COLORS, acrylicColorImage } from "./acrylic-colors.mjs";
 
 const WRITE = process.argv.includes("--write");
 const ID = "otheracrylicproducts3-5";
@@ -35,16 +36,27 @@ const SIZE_LABEL = "ขนาด";
 const SHEET_LABEL = "สีอะคริลิค";
 const HOOK_LABEL = "สีตะขอแขวน";
 
+const PICK_LABEL = "เลือกสีพิเศษ";
+
 /**
- * "สีอะคริลิค" ใช้ชื่อ + ภาพชุดเดียวกับสินค้าสแตนดี้ (standy) ทั้งร้านจะได้เรียกเหมือนกัน
- * ภาพก๊อปมาลงโฟลเดอร์ของสินค้านี้เอง — สแตนดี้แก้ภาพเมื่อไหร่ตัวนี้ไม่พังตาม (แลกกับต้องรันซ้ำถ้าอยากได้ภาพใหม่)
+ * "สีอะคริลิค" ใช้ชื่อชุดเดียวกับสินค้าสแตนดี้ (standy) ทั้งร้านจะได้เรียกเหมือนกัน
+ * ภาพเป็น "รูปเนื้ออะคริลิคจริง" ไม่ใช่ภาพงานพิมพ์ —
+ *   C-02 ใช้ไฟล์จากคลังสีกลาง products/acrylic-colors/ ตรง ๆ (ที่เดียวกับพวงกุญแจ/สแตนดี้ใช้)
+ *   ใส / สีพิเศษ คลังกลางไม่มีช่องให้ (ใสถ่ายเป็นช่องสีไม่ได้ · สีพิเศษเป็นภาพรวมหลายสี) → wall-hook-art.mjs ทำให้
  */
 const SHEETS = [
-  { name: "อะคริลิคใส", file: "sheet-clear", from: "standy/opt-color-clear-v4.png", popular: true },
-  { name: "อะคริลิคขาวขุ่น C-02", file: "sheet-c02", from: "acrylic-colors/c02-v2.jpg" },
-  { name: "สีพิเศษ (โฮโลแกรม/กลิสเตอร์/สี)", file: "sheet-special", from: "standy/opt-color-special-v4.png" },
+  { name: "อะคริลิคใส", local: "sheet-clear", popular: true },
+  { name: "อะคริลิคขาวขุ่น C-02", shared: true },
+  { name: "สีพิเศษ (โฮโลแกรม/กลิสเตอร์/สี)", local: "sheet-special" },
 ];
 const SHEET_SPECIAL = SHEETS[2].name;
+
+/**
+ * รายชื่อ "สีพิเศษ" ให้เลือกต่อ = ทุกสีในคลังสีกลาง หัก C-02 (แยกเป็นตัวเลือกหลักไปแล้ว)
+ * ได้ 44 สี ลำดับเดียวกับกลุ่ม "เลือกสีพิเศษ" ของสแตนดี้+คลิปหนีบ — ลูกค้าเห็นลิสต์เดียวกันทั้งร้าน
+ * ไม่ต้องใส่ +฿ ตรงนี้ เพราะส่วนต่างสีพิเศษฝังอยู่ในช่องตารางราคาแล้ว (ใส่ซ้ำ = คิดเงินสองรอบ)
+ */
+const SPECIAL_COLORS = Object.keys(COLORS).filter((n) => n !== "อะคริลิคขาวขุ่น C-02");
 
 /**
  * ตาราง "Add on อะคริลิคพิเศษ" ชุดกลางของร้าน (หน้า pricelists "พวงกุญแจ notprint")
@@ -176,17 +188,21 @@ console.log(`🖼  รูปงานจริง ${gallery.length} ภาพ (�
 // ภาพประจำตัวเลือก — วาด/ครอปไว้แล้วโดย wall-hook-art.mjs
 const local = (f) => readFileSync(`${DIR}/${f}.jpg`);
 const art = {};
-for (const f of [...SIZES.map((cm) => `size-${cm}`), ...Object.keys(HOOK_COLORS).map((c) => `hook-${c}`)])
+for (const f of [
+  ...SIZES.map((cm) => `size-${cm}`),
+  ...Object.keys(HOOK_COLORS).map((c) => `hook-${c}`),
+  ...SHEETS.filter((s) => s.local).map((s) => s.local),
+])
   art[f] = await put(`${f}-${V}`, local(f));
 
-// ภาพ "สีอะคริลิค" — ก๊อปจากสินค้าสแตนดี้ที่ฝ่าย Content ทำไว้ (ไฟล์อยู่ใน bucket เดียวกัน)
-const PUBLIC = `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products`;
-for (const s of SHEETS) {
-  const res = await fetch(`${PUBLIC}/${s.from}`);
-  if (!res.ok) throw new Error(`โหลดภาพสีอะคริลิค ${s.from} ไม่ได้ — HTTP ${res.status} (สแตนดี้อาจเปลี่ยนชื่อไฟล์)`);
-  art[s.file] = await put(`${s.file}-${V}`, Buffer.from(await res.arrayBuffer()), s.from.endsWith(".png") ? "png" : "jpg");
-}
-console.log(`🖼  ภาพตัวเลือก ${Object.keys(art).length} ภาพ (${SIZES.length} ขนาด + 7 สีตะขอ + ${SHEETS.length} สีอะคริลิคจากสแตนดี้)`);
+// สีพิเศษทั้ง 44 สี ใช้ภาพจากคลังสีกลางตรง ๆ — ไม่ก๊อปมา เพราะคลังนั้นมีสคริปต์ดูแลอยู่แล้ว
+// (scripts/acrylic-colors.mjs · ชาร์ตออกรุ่นใหม่เมื่อไหร่ ทุกสินค้าที่อ้างอยู่ได้ภาพใหม่พร้อมกัน)
+const missing = SPECIAL_COLORS.filter((n) => !acrylicColorImage(n));
+if (missing.length) throw new Error(`คลังสีกลางไม่มีภาพของ: ${missing.join(", ")}`);
+console.log(
+  `🖼  ภาพตัวเลือก ${Object.keys(art).length} ภาพของตัวเอง (${SIZES.length} ขนาด + 7 สีตะขอ + 2 สีอะคริลิค)` +
+    ` · อีก ${SPECIAL_COLORS.length + 1} ภาพอ้างคลังสีกลาง acrylic-colors/`
+);
 
 const { data: row, error } = await sb.from("products").select("id,data").eq("id", ID).single();
 if (error) throw new Error(`อ่านสินค้า ${ID} ไม่ได้ — ${error.message}`);
@@ -216,7 +232,26 @@ d.options = [
     label: SHEET_LABEL,
     display: "pills",
     stockBearing: true,
-    choices: SHEETS.map((s) => ({ name: s.name, imageSrc: art[s.file], ...(s.popular ? { popular: true } : {}) })),
+    choices: SHEETS.map((s) => ({
+      name: s.name,
+      imageSrc: s.shared ? acrylicColorImage(s.name) : art[s.local],
+      ...(s.popular ? { popular: true } : {}),
+    })),
+  },
+  {
+    // เลือก "สีพิเศษ" แล้วต้องบอกต่อว่าสีไหน — ราคาบวกไปแล้วในตาราง กลุ่มนี้จึงไม่มี +฿
+    label: PICK_LABEL,
+    display: "dropdown", // 44 สี — ปุ่มแยกยาวเกิน (สแตนดี้+คลิปหนีบก็ใช้เมนูเลือก)
+    /**
+     * ธงนี้ทำหน้าที่อย่างเดียวตรงนี้: กันไม่ให้ 44 ภาพสีไหลเข้าแถบรูปย่อของแกลเลอรี
+     * (ดู galleryImages ใน ProductDetail.tsx — ข้ามกลุ่มที่ตั้งธงนี้)
+     * ส่วนหน้าตากลุ่มยังเป็นเมนูเลื่อนตามปกติ เพราะโหมด "ตารางสวอตช์" ใช้ได้เฉพาะกลุ่มติ๊กหลายอย่าง
+     * ภาพสีที่เลือกอยู่ยังโชว์เป็นรูปย่อข้างเมนูเหมือนเดิม
+     */
+    swatchGrid: true,
+    stockBearing: true,
+    showWhen: { label: SHEET_LABEL, choices: [SHEET_SPECIAL] },
+    choices: SPECIAL_COLORS.map((n) => ({ name: n, imageSrc: acrylicColorImage(n) })),
   },
   {
     label: HOOK_LABEL,
