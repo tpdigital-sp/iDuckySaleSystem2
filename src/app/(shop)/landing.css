@@ -2840,15 +2840,22 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .ptab-li>span{min-width:0;flex:1}
 .ptab-p{max-width:74ch}
 
-/* โทนตามความหมายของหัวข้อ */
-.ptab-sec.ok .ptab-ico{background:#DEF5EC;color:#0E6B52}
-.ptab-sec.ok .ptab-li>i{background:#DEF5EC;color:#12876A}
-.ptab-sec.no .ptab-ico{background:#FFE4EB;color:#B3234A}
-.ptab-sec.no .ptab-li>i{background:#FFE4EB;color:#D8305A}
-.ptab-sec.info .ptab-ico{background:var(--sky-100);color:var(--blue-deep)}
-.ptab-sec.info .ptab-li>i{background:var(--sky-100);color:var(--blue-deep)}
-.ptab-sec.plain .ptab-ico{background:var(--yolk-soft);color:#8A5B00}
-.ptab-sec.plain .ptab-li>i{background:var(--yolk-soft);color:#A57200}
+/* โทนตามความหมายของหัวข้อ — ไอคอนหัวข้อเป็นสีทึบไล่เฉด + หัวข้อเป็นสีเข้มของโทนนั้น
+   (เคยใช้พื้นพาสเทลจาง ๆ แล้วสีจมหายไปกับพื้นขาว มองไม่ออกว่าโทนไหนเป็นโทนไหน) */
+.ptab-ico{color:#fff}
+.ptab-sec.ok .ptab-ico{background:linear-gradient(135deg,#4FD3A8,#12876A);box-shadow:0 5px 12px -3px rgba(18,135,106,.45)}
+.ptab-sec.ok .ptab-title{color:#0E6B52}
+.ptab-sec.ok .ptab-li>i{background:#12876A;color:#fff}
+.ptab-sec.no .ptab-ico{background:linear-gradient(135deg,#FF9EB0,#F2456B);box-shadow:0 5px 12px -3px rgba(242,69,107,.45)}
+.ptab-sec.no .ptab-title{color:#B3234A}
+.ptab-sec.no .ptab-li>i{background:#F2456B;color:#fff}
+.ptab-sec.info .ptab-ico{background:linear-gradient(135deg,var(--blue),var(--blue-deep));box-shadow:0 5px 12px -3px rgba(44,129,196,.45)}
+.ptab-sec.info .ptab-title{color:var(--blue-deep)}
+.ptab-sec.info .ptab-li>i{background:var(--blue-deep);color:#fff;font-size:.5rem}
+.ptab-sec.plain .ptab-ico{background:linear-gradient(135deg,var(--yolk),var(--yolk-deep));color:var(--navy);
+  box-shadow:0 5px 12px -3px rgba(255,182,39,.5)}
+.ptab-sec.plain .ptab-title{color:var(--navy)}
+.ptab-sec.plain .ptab-li>i{background:var(--blue);color:#fff;font-size:.5rem}
 
 @media (max-width:640px){
   .ptab{gap:20px;font-size:.87rem}
