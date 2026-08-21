@@ -47,6 +47,9 @@ import {
   shortComboParts,
   smallQtyFeeOf,
   groupAddOf,
+  groupExtraOf,
+  perSheetOf,
+  sheetCountOf,
   choiceQtyUnit,
   tierIndex,
   tierQtyFor,
@@ -1833,6 +1836,7 @@ export default function ProductDetail({
                           <option key={c.name} value={c.name}>
                             {c.name}
                             {c.popular ? " (นิยม)" : ""}
+                            {c.badge ? ` (${c.badge})` : ""}
                             {choiceBadgeOf(opt, effective, c.name, feeQty) > 0
                               ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty))}`
                               : ""}
@@ -1877,6 +1881,12 @@ export default function ProductDetail({
                                 นิยม
                               </span>
                             )}
+                            {/* ป้ายอิสระที่แอดมินพิมพ์เอง เช่น "ฟรี!" — เขียวเพื่อไม่ให้ชนกับป้าย "นิยม" */}
+                            {c.badge && (
+                              <span className="rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white ring-1 ring-emerald-600">
+                                {c.badge}
+                              </span>
+                            )}
                             {choiceBadgeOf(opt, effective, c.name, feeQty) > 0
                               ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty))}`
                               : ""}
@@ -1893,6 +1903,29 @@ export default function ProductDetail({
                       = แบบที่ลูกค้าสั่งบ่อยที่สุด (ทางร้านแนะนำ)
                     </p>
                   )}
+                  {/* 📄 ค่าธรรมเนียมที่คิดต่อแผ่นวัสดุ — กางเลขให้เห็นว่าทำไมสั่งเกินโควตาแผ่นแล้วราคาขยับ */}
+                  {opt.sheetFee && (() => {
+                    const per = perSheetOf(product, opt, effective);
+                    const fee = groupExtraOf(opt, effective);
+                    const sheets = sheetCountOf(product, opt, effective, qty);
+                    const sheetUnit = opt.sheetFee!.unit ?? "แผ่น";
+                    const unit = matrix?.unit ?? "ชิ้น";
+                    return (
+                      <p className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
+                        📄 {opt.label}แบบที่คิดเงิน คิดเป็น<span className="font-bold">ค่าวัสดุต่อ{sheetUnit}</span> ไม่ใช่ต่อ{unit} —
+                        ตอนนี้ 1 {sheetUnit} ได้ <span className="font-bold">{per.toLocaleString("th-TH")} {unit}</span>
+                        {fee > 0 ? (
+                          <>
+                            {" "}· สั่ง {qty.toLocaleString("th-TH")} {unit} = {sheets.toLocaleString("th-TH")} {sheetUnit} ={" "}
+                            <span className="font-bold text-amber-700">{formatPrice(fee * sheets)}</span>
+                            {sheets > 1 ? ` (${sheets}×${formatPrice(fee)})` : ""}
+                          </>
+                        ) : (
+                          <> · ตอนนี้เลือกแบบที่ไม่คิดเพิ่ม จึงไม่มีค่าวัสดุ</>
+                        )}
+                      </p>
+                    );
+                  })()}
                   {/* กลุ่มที่ระบุจำนวนได้ — สรุปยอดรวมของทั้งกลุ่มหลังคูณจำนวนแล้ว */}
                   {withQty && picks.length > 0 && groupAddOf(opt, effective, feeQty) > 0 && (
                     <p className="mt-1 text-[11px] font-semibold text-teal-700">

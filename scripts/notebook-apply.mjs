@@ -19,7 +19,7 @@
  *    ให้ไปเพิ่มการ์ดใน scripts/notebook-art.mjs ก่อน
  *    (โจทย์ของสินค้าตัวนี้คือ "ทุกตัวเลือกต้องมีภาพว่าหน้าตาเป็นแบบไหน")
  *
- * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคชไว้) — ชุดนี้ลงท้าย -v1 ครั้งหน้าขึ้น v2
+ * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคชไว้) — ชุดนี้ลงท้าย -v2 ครั้งหน้าขึ้น v3
  */
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
@@ -30,7 +30,7 @@ const DIR = (process.argv.find((a) => a.startsWith("--from=")) || "").split("=")
 const PAGE = "https://www.iduckyofficial-pricelists.com/otheracrylicproducts2";
 const SECTION = "สมุดโน๊ต";
 const NAME = SECTION;
-const V = "v1";
+const V = "v2";
 
 /** ชื่อเดิมที่ยอมให้ทับได้ — กันเผลอรันทับสินค้าตัวอื่นถ้า id ถูกใช้ซ้ำวันหลัง */
 const EXPECT_NAMES = [NAME];
@@ -49,10 +49,13 @@ const COAT_SPECIAL = "เคลือบพิเศษ";
  * ขนาดเป็นมิลลิเมตรมาตรฐานกระดาษ A (เว็บบอกแค่ชื่อขนาด) — หน้าสินค้าจึงเขียนกำกับว่า "ประมาณ"
  */
 const SIZE_META = {
-  A7: { cm: "7.4 x 10.5", art: "size-a7" },
-  A6: { cm: "10.5 x 14.8", art: "size-a6" },
-  A5: { cm: "14.8 x 21", art: "size-a5" },
+  A7: { cm: "7.4 x 10.5", art: "size-a7", perSheet: 16 },
+  A6: { cm: "10.5 x 14.8", art: "size-a6", perSheet: 8 },
+  A5: { cm: "14.8 x 21", art: "size-a5", perSheet: 4 },
 };
+
+/** หน่วยของ "แผ่นวัสดุ" ที่ค่าเคลือบพิเศษคิดตาม (ฟิล์มมาเป็นแผ่น A3 — 1 แผ่นเคลือบได้ตาม perSheet) */
+const SHEET_UNIT = "แผ่น A3";
 
 /**
  * รูปงานจริงในบล็อก "สมุดโน๊ต" ของหน้าเว็บ (id wixstatic — สคริปต์ตรวจให้ทุกครั้งว่ายังอยู่ในเซกชันนี้จริง)
@@ -144,9 +147,12 @@ const SIZES = COLS.map((c) => ({
   head: c.head,
   cm: SIZE_META[c.head].cm,
   art: SIZE_META[c.head].art,
+  perSheet: SIZE_META[c.head].perSheet,
   name: `${c.head} (${SIZE_META[c.head].cm} ซม.)`,
   prices: c.prices,
 }));
+
+const SHEET_TEXT = SIZES.map((s) => `${s.head} ${s.perSheet} ${UNIT}`).join(" · ");
 
 /** ตัวเลขในบรรทัด "รายละเอียดเพิ่มเติม" ของบล็อกนี้ — อ่านไม่ออก = หยุด ไม่เดาเอง */
 const detail = (re, what) => {
@@ -177,8 +183,8 @@ const PRICING = { unit: UNIT, driverLabels: [SIZE_LABEL], tiers, cells };
 const allPrices = Object.values(cells).flat();
 
 console.log(`📊 บล็อก "${SECTION}" จากเว็บ · ${tiers.length} ช่วงจำนวน (${tiers.map((t) => t.label).join(" · ")})`);
-for (const s of SIZES) console.log(`   ${s.name} · ${RING[s.head]} : ${s.prices.join(" / ")}`);
-console.log(`   พิมพ์ระบบ ${PRINT_SYS} · เคลือบเงา/ด้าน ฟรี · เคลือบพิเศษ เริ่มต้น ฿${SPECIAL_FEE}`);
+for (const s of SIZES) console.log(`   ${s.name} · ${RING[s.head]} · ${s.perSheet} ${UNIT}/${SHEET_UNIT} : ${s.prices.join(" / ")}`);
+console.log(`   พิมพ์ระบบ ${PRINT_SYS} · เคลือบเงา/ด้าน ฟรี · เคลือบพิเศษ ฿${SPECIAL_FEE}/${SHEET_UNIT}`);
 console.log(`   คละลาย: ต่ำกว่า ${MIX_FROM} ${UNIT} คละอิสระ · ตั้งแต่ ${MIX_FROM} ${UNIT}ขึ้นไป ลายละ ${MIX_MIN} ${UNIT}ขึ้นไป`);
 console.log(`   → ราคา ฿${Math.min(...allPrices)}-${Math.max(...allPrices)}/${UNIT}`);
 
@@ -268,16 +274,22 @@ d.options = [
   {
     label: SIZE_LABEL,
     stockBearing: true,
-    choices: SIZES.map((s) => ({ name: s.name, imageSrc: art[s.art], ...(s.head === "A6" ? { popular: true } : {}) })),
+    choices: SIZES.map((s) => ({
+      name: s.name,
+      imageSrc: art[s.art],
+      perSheet: s.perSheet, // 1 แผ่นฟิล์ม A3 เคลือบปกขนาดนี้ได้กี่เล่ม (ใช้คิดค่าเคลือบพิเศษ)
+      ...(s.head === "A6" ? { popular: true } : {}),
+    })),
   },
   {
-    // ค่าเคลือบพิเศษเป็นค่าฟิล์มต่อลาย ไม่ใช่ต่อเล่ม — เว็บเขียนว่า "เริ่มต้น 30 บาท (ชิ้นถัดๆไปหารตามจำนวน A3)"
-    // จึงคิดครั้งเดียวต่อลาย (extraPerDesign) แทนการคูณจำนวนเล่ม แล้วบอกไว้ในข้อตกลงว่างานใหญ่ร้านยืนยันราคาก่อนผลิต
+    // ค่าเคลือบพิเศษเป็น "ค่าฟิล์มต่อแผ่น A3" ไม่ใช่ต่อเล่ม — เว็บเขียนว่า
+    // "เริ่มต้น 30 บาท (ชิ้นถัดๆไปหารตามจำนวน A3)" คือสั่งไม่ถึง 1 แผ่นก็คิด 1 แผ่น เกินไปแผ่นที่ 2 ก็คิดเพิ่ม
+    // เช่น A5 ได้ 4 เล่ม/แผ่น → สั่ง 4 เล่ม = ฿30 · สั่ง 5 เล่ม = 2 แผ่น = ฿60
     label: COAT_LABEL,
-    extraPerDesign: true,
+    sheetFee: { from: SIZE_LABEL, unit: SHEET_UNIT },
     choices: [
-      { name: COAT_GLOSS, imageSrc: art["coat-gloss"] },
-      { name: COAT_MATTE, imageSrc: art["coat-matte"] },
+      { name: COAT_GLOSS, badge: "ฟรี!", imageSrc: art["coat-gloss"] },
+      { name: COAT_MATTE, badge: "ฟรี!", imageSrc: art["coat-matte"] },
       { name: COAT_SPECIAL, extra: SPECIAL_FEE, imageSrc: art["coat-special"] },
     ],
   },
@@ -306,11 +318,12 @@ d.description =
   `สมุดโน๊ตห่วงเกลียว พิมพ์ปกลายตามสั่งด้วยระบบ ${PRINT_SYS} ไม่มีขั้นต่ำในการสั่งผลิต ` +
   `เลือกได้ ${SIZES.length} ขนาด — ${sizeList} ` +
   `ปกเคลือบเงาหรือเคลือบด้านฟรี และอัปเกรดเป็นเคลือบพิเศษ (กลิตเตอร์ · ทราย · โฮโลแกรม) ได้ ` +
+  `โดยค่าฟิล์มคิด${SPECIAL_FEE} บาทต่อ${SHEET_UNIT} (1 ${SHEET_UNIT} เคลือบได้ ${SHEET_TEXT}) ` +
   `ทุกตัวเลือกมีภาพให้ดูก่อนสั่งว่าหน้าตาเป็นแบบไหน ` +
   `ยิ่งสั่งเยอะยิ่งถูก เริ่มต้นเล่มละ ${d.price} บาท`;
 d.highlights = [
   `${SIZES.length} ขนาดให้เลือก พร้อมภาพประกอบทุกขนาด — ${sizeList}`,
-  `ฟรี! เคลือบปกเงาหรือด้าน · เคลือบพิเศษเริ่มต้น ${SPECIAL_FEE} บาท (เลือกผิวฟิล์มได้ ${FILMS.length} แบบ)`,
+  `ฟรี! เคลือบปกเงาหรือด้าน · เคลือบพิเศษ ${SPECIAL_FEE} บาทต่อ${SHEET_UNIT} (เลือกผิวฟิล์มได้ ${FILMS.length} แบบ)`,
   `พิมพ์ปกระบบ ${PRINT_SYS} สีสด คมชัด`,
   ...SIZES.map((s) => `${s.head} — ${RING[s.head]}`).filter((v, i, a) => a.indexOf(v) === i),
   `ไม่มีขั้นต่ำ — สั่ง 1 ${UNIT}ก็ได้ · ต่ำกว่า ${MIX_FROM} ${UNIT} คละลายได้อิสระ`,
@@ -325,7 +338,9 @@ d.tabs = [
       `สมุดโน๊ตห่วงเกลียว พิมพ์ปกลายตามสั่ง — พิมพ์ระบบ ${PRINT_SYS} ไม่มีขั้นต่ำในการสั่งผลิต\n` +
       SIZES.map((s) => `• ขนาด ${s.head} ประมาณ ${s.cm} ซม. — ${RING[s.head]}`).join("\n") +
       "\n• เคลือบปกเงา | ด้าน ฟรี! ไม่บวกเพิ่มจากราคาในตาราง\n" +
-      `• เคลือบพิเศษ (กลิตเตอร์ · ทราย · โฮโลแกรม) เริ่มต้น ${SPECIAL_FEE} บาท คิดเป็นค่าฟิล์มต่อลาย\n` +
+      `• เคลือบพิเศษ (กลิตเตอร์ · ทราย · โฮโลแกรม) คิดค่าฟิล์ม ${SPECIAL_FEE} บาทต่อ${SHEET_UNIT}\n` +
+      `• 1 ${SHEET_UNIT} เคลือบปกได้ ${SHEET_TEXT} — สั่งไม่ถึง 1 ${SHEET_UNIT} ก็คิด 1 ${SHEET_UNIT} เกินไปแผ่นถัดไปคิดเพิ่มทีละแผ่น\n` +
+      `  (เช่น A5 สั่ง 4 ${UNIT} = ${SPECIAL_FEE} บาท · สั่ง 5 ${UNIT} = 2 ${SHEET_UNIT} = ${SPECIAL_FEE * 2} บาท)\n` +
       `• จำนวนต่ำกว่า ${MIX_FROM} ${UNIT} คละลายได้อิสระ · ตั้งแต่ ${MIX_FROM} ${UNIT}ขึ้นไป คละลายได้ ลายละ ${MIX_MIN} ${UNIT}ขึ้นไป\n` +
       "• ไม่ถึงจำนวนตามที่กำหนด คิดตามราคาปลีก\n" +
       "• ขนาดที่ระบุเป็นขนาดมาตรฐานกระดาษ A (โดยประมาณ)",
@@ -381,7 +396,7 @@ d.terms = [
   `จำนวนต่ำกว่า ${MIX_FROM} ${UNIT} คละลายได้อิสระ · ตั้งแต่ ${MIX_FROM} ${UNIT}ขึ้นไป คละลายได้ ลายละ ${MIX_MIN} ${UNIT}ขึ้นไป ไม่ถึงตามจำนวน คิดตามราคาปลีก`,
   ...SIZES.map((s) => `ขนาด ${s.head} ประมาณ ${s.cm} ซม. — ${RING[s.head]} (ขนาดอ้างอิงมาตรฐานกระดาษ A)`),
   "เคลือบปกเงา | ด้าน ฟรี ไม่บวกเพิ่มจากราคาในตาราง",
-  `เคลือบพิเศษเริ่มต้น ${SPECIAL_FEE} บาท — เป็นค่าฟิล์มต่อลาย (ชิ้นถัด ๆ ไปหารตามจำนวนแผ่น A3 ที่ใช้) งานจำนวนมากทางร้านยืนยันราคาให้ก่อนผลิต`,
+  `เคลือบพิเศษคิดค่าฟิล์ม ${SPECIAL_FEE} บาทต่อ${SHEET_UNIT} — 1 ${SHEET_UNIT} เคลือบได้ ${SHEET_TEXT} · สั่งไม่ถึง 1 ${SHEET_UNIT} ก็คิด 1 ${SHEET_UNIT} เกินไปแผ่นถัดไปคิดเพิ่มทีละแผ่น (เช่น A5 สั่ง 5 ${UNIT} = 2 ${SHEET_UNIT} = ${SPECIAL_FEE * 2} บาท)`,
   "ทางร้านใช้สีระบบ RGB สีงานพิมพ์ที่ได้อาจสว่างกว่าหรือดรอปลงตามไฟล์งาน ±5% ถึง ±15%",
   "ทางร้านมีเครื่องผลิตหลายเครื่อง สีแต่ละเครื่องต่างกันประมาณ 5-10% งานคนละรอบอาจสีไม่เท่ากันพอดี",
 ].join("\n");
@@ -390,7 +405,7 @@ d.seo = {
   title: `รับทำสมุดโน๊ต พิมพ์ปกลายตามสั่ง A7 A6 A5 เริ่มต้น ${d.price} บาท`,
   description:
     `รับทำ/รับผลิตสมุดโน๊ตห่วงเกลียว พิมพ์ปกลายของคุณเอง มี ${SIZES.length} ขนาด — ${sizeList} ` +
-    `เริ่มต้นเล่มละ ${d.price} บาท · ฟรีเคลือบปกเงา/ด้าน · เพิ่มเคลือบกลิตเตอร์-โฮโลแกรมได้ · ตรวจแบบก่อนผลิตทุกงาน`,
+    `เริ่มต้นเล่มละ ${d.price} บาท · ฟรีเคลือบปกเงา/ด้าน · เพิ่มเคลือบกลิตเตอร์-โฮโลแกรมได้ (ค่าฟิล์ม ${SPECIAL_FEE} บาทต่อ${SHEET_UNIT}) · ตรวจแบบก่อนผลิตทุกงาน`,
   keywords: [
     "รับทำสมุดโน๊ต",
     "สมุดโน๊ตพิมพ์ลาย",
@@ -416,7 +431,9 @@ d.seo = {
     },
     {
       q: "เคลือบปกได้ไหม คิดเงินยังไง?",
-      a: `เคลือบเงาหรือเคลือบด้านฟรี ไม่บวกเพิ่ม · เคลือบพิเศษ (กลิตเตอร์ ทราย โฮโลแกรม) เริ่มต้น ${SPECIAL_FEE} บาท คิดเป็นค่าฟิล์มต่อลาย`,
+      a:
+        `เคลือบเงาหรือเคลือบด้านฟรี ไม่บวกเพิ่ม · เคลือบพิเศษ (กลิตเตอร์ ทราย โฮโลแกรม) คิดค่าฟิล์ม ${SPECIAL_FEE} บาทต่อ${SHEET_UNIT} ` +
+        `โดย 1 ${SHEET_UNIT} เคลือบได้ ${SHEET_TEXT} — สั่งไม่ถึง 1 แผ่นก็คิด 1 แผ่น เช่น A5 สั่ง 4 ${UNIT} = ${SPECIAL_FEE} บาท สั่ง 5 ${UNIT} = ${SPECIAL_FEE * 2} บาท`,
     },
     {
       q: "สั่งขั้นต่ำกี่เล่ม คละลายได้ไหม?",

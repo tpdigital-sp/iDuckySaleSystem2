@@ -62,6 +62,10 @@ type DraftChoice = {
   askPrice?: boolean;
   /** ⭐ แบบที่ลูกค้านิยมสั่ง — หน้าสินค้าโชว์ป้าย "นิยม" */
   popular?: boolean;
+  /** 🏷️ ป้ายอิสระท้ายชื่อ เช่น "ฟรี!" — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  badge?: string;
+  /** 📄 วัสดุ 1 แผ่นทำได้กี่ชิ้น (คู่กับกลุ่มที่คิดค่าธรรมเนียมต่อแผ่น) — ส่งกลับเฉย ๆ */
+  perSheet?: number;
   /** 💰 +฿ ของช่วงสั่งน้อย (ต่ำกว่า extraFromQty) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   extraBelow?: number;
 };
@@ -116,6 +120,8 @@ type DraftOption = {
   chartSrc?: string;
   /** 💰 +฿ ของกลุ่มนี้คิดต่อลาย ไม่คูณจำนวนชิ้น */
   extraPerDesign?: boolean;
+  /** 📄 +฿ ของกลุ่มนี้คิดต่อแผ่นวัสดุ — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  sheetFee?: { from: string; unit?: string };
 };
 /**
  * กางช่อง "🔢 ระบุจำนวน" ที่แถวตัวเลือกไหม — ติ๊กสวิตช์ที่หัวกลุ่มก่อนถึงโผล่
@@ -424,6 +430,7 @@ function toDraft(p: Product): Draft {
       ...(o.swatchGrid ? { swatchGrid: true } : {}),
       ...(o.chartSrc ? { chartSrc: o.chartSrc } : {}),
       ...(o.extraPerDesign ? { extraPerDesign: true } : {}),
+      ...(o.sheetFee ? { sheetFee: o.sheetFee } : {}),
       choices: o.choices.map((c) => ({
         name: c.name,
         extra: c.extra ? String(c.extra) : "",
@@ -437,6 +444,8 @@ function toDraft(p: Product): Draft {
         ...(c.stockQtyPer ? { stockQtyPer: c.stockQtyPer } : {}),
         ...(c.askPrice ? { askPrice: true } : {}),
         ...(c.popular ? { popular: true } : {}),
+        ...(c.badge ? { badge: c.badge } : {}),
+        ...(c.perSheet ? { perSheet: c.perSheet } : {}),
         ...(c.extraBelow ? { extraBelow: c.extraBelow } : {}),
       })),
       ...(o.presetId ? { presetId: o.presetId } : {}),
@@ -649,6 +658,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       ...(o.swatchGrid ? { swatchGrid: true } : {}),
       ...(o.chartSrc ? { chartSrc: o.chartSrc } : {}),
       ...(o.extraPerDesign ? { extraPerDesign: true } : {}),
+      ...(o.sheetFee ? { sheetFee: o.sheetFee } : {}),
       choices: o.choices
         .filter((c) => c.name.trim())
         // ชื่อซ้ำในกลุ่มเดียวกันเหลือตัวแรกตัวเดียว — ตัวที่ซ้ำใช้ช่องราคาคอลัมน์เดียวกัน
@@ -677,6 +687,9 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             ...(c.askPrice ? { askPrice: true as const } : {}),
             // ⭐ ป้าย "แบบยอดนิยม" — ต้องส่งกลับ ไม่งั้นบันทึกแล้วหาย
             ...(c.popular ? { popular: true as const } : {}),
+            // 🏷️ ป้ายอิสระ ("ฟรี!") + 📄 ชิ้นต่อแผ่นวัสดุ — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
+            ...(c.badge ? { badge: c.badge } : {}),
+            ...(c.perSheet ? { perSheet: c.perSheet } : {}),
             ...(c.extraBelow ? { extraBelow: c.extraBelow } : {}),
           };
         }),

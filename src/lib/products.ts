@@ -73,6 +73,17 @@ export interface ProductOptionChoice {
    */
   popular?: boolean;
   /**
+   * 🏷️ ป้ายสั้น ๆ ท้ายชื่อตัวเลือก เช่น "ฟรี!" · "แนะนำ" — บอกทางเฉย ๆ ไม่มีผลกับราคา
+   * (ต่างจาก popular ตรงที่พิมพ์ข้อความเองได้ · ใส่ทั้งคู่ก็ได้ ป้ายจะขึ้นเรียงกัน)
+   */
+  badge?: string;
+  /**
+   * 📄 เลือกตัวนี้แล้ว วัสดุ 1 แผ่นทำได้กี่ชิ้น — เช่น สมุด A5 ได้ 4 เล่มต่อฟิล์ม A3 แผ่นหนึ่ง
+   * ใช้คู่กับกลุ่มที่ตั้ง ProductOption.sheetFee (ค่าธรรมเนียมที่คิดต่อแผ่น ไม่ใช่ต่อชิ้น)
+   * ไม่ตั้ง = 1 ชิ้นต่อแผ่น
+   */
+  perSheet?: number;
+  /**
    * 💰 +฿ ของ "ช่วงสั่งน้อย" — ใช้เมื่อจำนวนยังไม่ถึง extraFromQty ของกลุ่ม
    * มีไว้สำหรับกลุ่มที่ช่วงปลีกกับช่วงส่งคิดคนละเรท เช่น สแตนดี้: ช่วงปลีกฐาน 7 ซม.ขึ้นไป
    * คิด ซม.ละ 5 บาท ส่วนช่วงส่ง (11 ชิ้นขึ้นไป) คิดตามตาราง extra ปกติ
@@ -197,6 +208,18 @@ export interface ProductOption {
    * เงินส่วนนี้ไปโผล่ใน designFeeFor (ค่าเพิ่มทั้งรายการ) แทนราคา/ชิ้น
    */
   extraPerDesign?: boolean;
+  /**
+   * 📄 +฿ ของกลุ่มนี้คิด "ต่อแผ่นวัสดุ" ไม่ใช่ต่อชิ้น — เช่น ค่าฟิล์มเคลือบพิเศษคิดต่อแผ่น A3
+   * จำนวนแผ่น = ⌈จำนวนที่สั่ง ÷ ชิ้นต่อแผ่น⌉ · ชิ้นต่อแผ่นมาจาก perSheet ของตัวเลือกที่เลือกในกลุ่ม from
+   * เช่น สมุด A5 (4 เล่ม/แผ่น) สั่ง 5 เล่ม = 2 แผ่น = ค่าฟิล์ม ×2
+   * เงินส่วนนี้ไปโผล่ใน designFeeFor (ค่าเพิ่มทั้งรายการ) เหมือน extraPerDesign ไม่เข้าราคา/ชิ้น
+   */
+  sheetFee?: {
+    /** กลุ่มที่บอกว่า 1 แผ่นได้กี่ชิ้น (อ่าน perSheet ของตัวเลือกที่เลือกในกลุ่มนั้น) */
+    from: string;
+    /** ชื่อ "แผ่น" ที่โชว์ให้ลูกค้า เช่น "แผ่น A3" (ไม่ตั้ง = "แผ่น") */
+    unit?: string;
+  };
 }
 
 /**
@@ -516,8 +539,8 @@ export function smallQtyFeeOf(
 export function groupAddOf(opt: ProductOption, selections: Record<string, string>, qty: number): number {
   const fee = smallQtyFeeOf(opt, selections, qty);
   if (fee > 0) return fee;
-  // กลุ่มที่คิดต่อลาย: +฿ ไม่เข้าราคา/ชิ้น — ไปคิดรวมครั้งเดียวใน designFeeFor
-  if (opt.extraPerDesign) return fee;
+  // กลุ่มที่คิดต่อลาย/ต่อแผ่น: +฿ ไม่เข้าราคา/ชิ้น — ไปคิดรวมครั้งเดียวใน designFeeFor
+  if (opt.extraPerDesign || opt.sheetFee) return fee;
   const extra = groupExtraAtQty(opt, selections, qty);
   return extra + fee; // fee ติดลบ = ลดให้
 }
@@ -942,10 +965,43 @@ export function perDesignExtraOf(product: Product, selections: Record<string, st
   return sum * designCountOf(selections);
 }
 
+/**
+ * 📄 ชิ้นต่อแผ่นวัสดุของกลุ่มที่ sheetFee อ้างถึง — เช่น กลุ่ม "ขนาด" เลือก A5 ไว้ → 4 เล่ม/แผ่น A3
+ * อ่านไม่ได้/ไม่ได้ตั้ง = 1 ชิ้นต่อแผ่น (คิดค่าฟิล์มทุกชิ้น — ปลอดภัยกว่าคิดขาด)
+ */
+export function perSheetOf(product: Product, opt: ProductOption, selections: Record<string, string>): number {
+  const src = product.options?.find((o) => o.label === opt.sheetFee?.from);
+  const picked = src ? selections[src.label] : undefined;
+  const n = src?.choices.find((c) => c.name === picked)?.perSheet;
+  return Number.isFinite(n) && (n as number) >= 1 ? Math.floor(n as number) : 1;
+}
+
+/** 📄 จำนวนแผ่นวัสดุที่ต้องใช้ของกลุ่มนี้ — ⌈จำนวนที่สั่ง ÷ ชิ้นต่อแผ่น⌉ (อย่างน้อย 1 แผ่น) */
+export function sheetCountOf(product: Product, opt: ProductOption, selections: Record<string, string>, qty: number): number {
+  return Math.max(1, Math.ceil(Math.max(1, qty) / perSheetOf(product, opt, selections)));
+}
+
+/**
+ * 💰 ค่าเพิ่ม "ต่อแผ่นวัสดุ" จากกลุ่มตัวเลือก (เช่น ค่าฟิล์มเคลือบพิเศษ ต่อแผ่น A3)
+ * สั่งไม่ถึง 1 แผ่นก็คิด 1 แผ่น · เกินไปแผ่นที่ 2 ก็คิดเพิ่มอีกแผ่น
+ */
+export function sheetFeeTotalOf(product: Product, selections: Record<string, string>, qty: number): number {
+  let sum = 0;
+  for (const opt of product.options ?? []) {
+    if (!opt.sheetFee || !optionActive(opt, selections)) continue;
+    const fee = groupExtraOf(opt, selections); // +฿ ของตัวเลือกที่เลือกในกลุ่มนี้ (เคลือบเงา/ด้าน = 0)
+    if (fee <= 0) continue;
+    sum += fee * sheetCountOf(product, opt, selections, qty);
+  }
+  return sum;
+}
+
 export function designFeeFor(product: Product, selections: Record<string, string>, qty: number): number {
   // ค่าเพิ่มต่อลายจากตัวเลือก (สีไหมเกินโควตา ฯลฯ) — คิดครั้งเดียวต่อลาย ไม่คูณจำนวนชิ้น
   const optionFee = perDesignExtraOf(product, selections);
-  return optionFee + designFeeBase(product, selections, qty);
+  // ค่าเพิ่มต่อแผ่นวัสดุ (ค่าฟิล์มเคลือบพิเศษ ฯลฯ) — คิดตามจำนวนแผ่นที่ใช้จริง
+  const sheetFee = sheetFeeTotalOf(product, selections, qty);
+  return optionFee + sheetFee + designFeeBase(product, selections, qty);
 }
 
 function designFeeBase(product: Product, selections: Record<string, string>, qty: number): number {

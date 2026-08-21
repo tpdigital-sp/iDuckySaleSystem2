@@ -159,6 +159,9 @@ async function coatCard(name, cardTitle, cardSub, films, notes) {
   save(name, buf);
 }
 
+/** 1 แผ่นฟิล์ม A3 เคลือบได้กี่เล่ม — A3 พับครึ่งไปเรื่อย ๆ ได้ A5 4 · A6 8 · A7 16 */
+const PER_SHEET_TEXT = "A7 16 เล่ม · A6 8 เล่ม · A5 4 เล่ม";
+
 async function coatCards(specialFee) {
   console.log("🖼  การ์ดชนิดเคลือบ (ภาพฟิล์มจริงจากคลังของร้าน)");
   await coatCard("coat-gloss", "เคลือบเงา", "ฟิล์มผิวมันวาว — ตัวอย่างผิวงานจริงของร้าน", [{ file: "gloss", label: "ผิวเงา" }], [
@@ -178,7 +181,10 @@ async function coatCards(specialFee) {
       { file: "rainbow", label: "โฮโลแกรม-รุ้ง" },
       { file: "sand", label: "ทราย" },
     ],
-    [`เริ่มต้น ${specialFee} บาท (ต่อลาย) — เลือกผิวฟิล์มย่อยได้ในกลุ่ม “เคลือบ”`, "ปกที่เห็นวิบวับในรูปงานจริงคือเคลือบแบบนี้"]
+    [
+      `ค่าฟิล์มแผ่นละ ${specialFee} บาท — 1 แผ่น A3 เคลือบได้ ${PER_SHEET_TEXT}`,
+      "เลือกผิวฟิล์มย่อยได้ในกลุ่ม “เคลือบ” · ปกที่เห็นวิบวับในรูปงานจริงคือเคลือบแบบนี้",
+    ]
   );
 }
 
