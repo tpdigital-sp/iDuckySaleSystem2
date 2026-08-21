@@ -14,9 +14,9 @@
  * ชุด form-* จึงวาดเทียบสเกลจริงทั้ง 4 แบบ (เส้นประ = 11x13 ซม. ใบใหญ่สุด) + วาดวิธีห้อยของแต่ละแบบ
  * (10x10 เชือกขาวเย็บติดถุง · 11x13 เจาะตาไก่ร้อยเชือก · 11x12.5 หูรูด) ตรงตามรูปงานจริง
  *
- * ชุด fab-* คือ "ชนิดผ้า" 3 แบบที่เว็บระบุไว้ (ซาตินอินโด · ดัชเชส · บาร์บี้) — ราคาเท่ากันทุกชนิด
- * ต่างกันที่ความเงา/น้ำหนักผ้า จึงวาดเป็นภาพเปรียบเทียบความเงา + วงขยายเนื้อผ้า
- * (เป็นภาพประกอบ ไม่ใช่รูปถ่ายผ้าจริง — เขียนกำกับไว้ในภาพแล้ว)
+ * ⛔ เคยมีชุด fab-* (ภาพเทียบความเงาของผ้า 3 ชนิด) — ถอดออกแล้ว เพราะผู้ใช้ตรวจแล้วว่าภาพวาด
+ * ไม่ตรงกับเนื้อผ้าจริง กลุ่ม "ชนิดผ้าถุง" บนหน้าสินค้าจึงเป็นปุ่มข้อความล้วน
+ * จะกลับมามีภาพได้ก็ต่อเมื่อถ่ายรูปผ้าจริงทั้ง 3 ชนิดมาใช้
  */
 import { mkdirSync, writeFileSync, readdirSync } from "node:fs";
 import sharp from "sharp";
@@ -333,91 +333,6 @@ async function forms() {
   }
 }
 
-/* ── ชนิดผ้า 3 แบบ ────────────────────────────────────────────────── */
-
-const FABRIC_BASE = "#ef5f52"; // สีถุงในภาพ — ใช้สีเดียวกันทุกแบบ ให้เห็นว่าต่างกันที่ "ความเงา" ไม่ใช่สี
-
-const FABRICS = [
-  {
-    file: "fab-satin",
-    name: "ผ้าซาตินอินโด",
-    sub: "เงาวาว ทิ้งตัว นิ่ม — ผ้ามาตรฐานของถุงหอม",
-    sheen: `<stop offset="0%" stop-color="#ffffff" stop-opacity="0.55"/>
-            <stop offset="16%" stop-color="#ffffff" stop-opacity="0.02"/>
-            <stop offset="42%" stop-color="#ffffff" stop-opacity="0.62"/>
-            <stop offset="58%" stop-color="#0f172a" stop-opacity="0.1"/>
-            <stop offset="82%" stop-color="#ffffff" stop-opacity="0.45"/>
-            <stop offset="100%" stop-color="#0f172a" stop-opacity="0.08"/>`,
-    swatch: "เส้นใยเรียบ แสงสะท้อนเป็นแถบคม",
-    note: "ผิวลื่นมัน สะท้อนแสงชัด สีลายสดที่สุดในสามแบบ · เนื้อบางทิ้งตัว",
-  },
-  {
-    file: "fab-duchess",
-    name: "ผ้าดัชเชส",
-    sub: "เนื้อหนา อยู่ทรง เงานวลแบบผ้าชุดราตรี",
-    sheen: `<stop offset="0%" stop-color="#ffffff" stop-opacity="0.3"/>
-            <stop offset="35%" stop-color="#ffffff" stop-opacity="0.34"/>
-            <stop offset="62%" stop-color="#0f172a" stop-opacity="0.07"/>
-            <stop offset="100%" stop-color="#ffffff" stop-opacity="0.2"/>`,
-    swatch: "เนื้อแน่นหนา เงาเป็นวงกว้าง",
-    note: "หนากว่าซาติน ถุงตั้งอยู่ทรง ดูมีราคา · เงานุ่มกระจายทั้งใบ",
-  },
-  {
-    file: "fab-barbie",
-    name: "ผ้าบาร์บี้",
-    sub: "ผิวเนียนนุ่ม เงาน้อย ดูละมุน",
-    sheen: `<stop offset="0%" stop-color="#ffffff" stop-opacity="0.2"/>
-            <stop offset="45%" stop-color="#ffffff" stop-opacity="0.16"/>
-            <stop offset="100%" stop-color="#0f172a" stop-opacity="0.05"/>`,
-    grain: true,
-    swatch: "ผิวละเอียด สัมผัสนุ่มมือ",
-    note: "เงาน้อยที่สุด โทนภาพนุ่มตา เหมาะกับลายพาสเทล · เนื้อนุ่มมือ ยับยาก",
-  },
-];
-
-async function fabrics() {
-  const w = 10.5 * PX_PER_CM;
-  const h = 12 * PX_PER_CM;
-  const cx = 268;
-  const bottom = 498;
-  const top = bottom - h;
-
-  for (const f of FABRICS) {
-    const grain = f.grain
-      ? `<pattern id="grain" width="6" height="6" patternUnits="userSpaceOnUse">
-           <circle cx="1.5" cy="1.5" r="0.9" fill="#ffffff" opacity="0.28"/>
-           <circle cx="4.5" cy="4.5" r="0.9" fill="#0f172a" opacity="0.07"/>
-         </pattern>`
-      : "";
-    const svg = frame(
-      `${sheenDef("fsheen", f.sheen)}${grain}
-       <clipPath id="zoomClip"><circle cx="536" cy="378" r="94"/></clipPath>`,
-      `${title(f.name, f.sub)}
-       ${shadow(cx, bottom, w)}
-       <path d="${pouchPath(cx, bottom, w, h)}" fill="${FABRIC_BASE}" stroke="#c94a3f" stroke-width="2.5" stroke-linejoin="round"/>
-       <path d="${pouchPath(cx, bottom, w, h)}" fill="url(#fsheen)"/>
-       ${f.grain ? `<path d="${pouchPath(cx, bottom, w, h)}" fill="url(#grain)"/>` : ""}
-       ${seam(cx, bottom, w, h)}
-       ${sewnLoop(cx, top)}
-       <text x="${cx}" y="${bottom + 46}" font-family="${TH}" font-size="20" font-weight="700" text-anchor="middle" fill="${INK}">ตัวอย่างถุงเนื้อ${f.name.replace("ผ้า", "")}</text>
-       <text x="${cx}" y="${bottom + 72}" font-family="${TH}" font-size="18" text-anchor="middle" fill="${SUB}">พิมพ์ลายได้เต็มใบ (ซับลิเมชั่น)</text>
-
-       <circle cx="536" cy="378" r="94" fill="${FABRIC_BASE}"/>
-       <g clip-path="url(#zoomClip)">
-         <rect x="442" y="284" width="188" height="188" fill="url(#fsheen)"/>
-         ${f.grain ? `<rect x="442" y="284" width="188" height="188" fill="url(#grain)"/>` : ""}
-       </g>
-       <circle cx="536" cy="378" r="94" fill="none" stroke="#ffffff" stroke-width="6"/>
-       <circle cx="536" cy="378" r="94" fill="none" stroke="#e2e8f0" stroke-width="2"/>
-       <text x="536" y="504" font-family="${TH}" font-size="18" font-weight="700" text-anchor="middle" fill="${INK}">ขยายเนื้อผ้า</text>
-       <text x="536" y="530" font-family="${TH}" font-size="17" text-anchor="middle" fill="${SUB}">${f.swatch}</text>
-
-       ${foot([f.note, "ราคาเท่ากันทุกชนิดผ้า · ภาพวาดประกอบเพื่อเทียบความเงา"])}`
-    );
-    await write(f.file, svg);
-  }
-}
-
 /* ── คอนแทคชีตไว้ตรวจก่อนอัป ─────────────────────────────────────── */
 async function sheet() {
   const files = readdirSync(OUT).filter((f) => f.endsWith(".jpg") && f !== "_sheet.jpg").sort();
@@ -447,7 +362,6 @@ async function sheet() {
 
 await photos();
 await forms();
-await fabrics();
 if (SHEET) await sheet();
 console.log(`\n✅ ภาพพร้อมที่ ${OUT}/`);
 console.log("   ขั้นต่อไป: npx tsx scripts/add-scented-bag.ts --upload --images=" + OUT);

@@ -73,11 +73,10 @@ const FORM_IMG: Record<string, string> = {
   [F_BAG1113]: IMG("form-bag1113"),
   [F_DRAWSTRING]: IMG("form-drawstring"),
 };
-const FABRIC_IMG: Record<string, string> = {
-  [FAB_SATIN]: IMG("fab-satin"),
-  [FAB_DUCHESS]: IMG("fab-duchess"),
-  [FAB_BARBIE]: IMG("fab-barbie"),
-};
+/**
+ * ⛔ กลุ่ม "ชนิดผ้าถุง" ไม่มีภาพประจำตัวเลือก — เคยวาดภาพเทียบความเงาไว้ แต่ผู้ใช้ตรวจแล้วว่า
+ * ไม่ตรงกับผ้าจริง เลยถอดออกทั้งชุด (ทั้งปุ่มตัวเลือกและแท็บ) · จะใส่กลับได้ก็ต่อเมื่อมีรูปถ่ายผ้าจริง
+ */
 
 /* ── 1. ดึงตารางราคาสดจากเว็บ ─────────────────────────────────────── */
 
@@ -178,9 +177,9 @@ function buildProduct(PRICING: PriceMatrix) {
       // เลือกเฉพาะตอนสั่งแบบมีถุงผ้า — สั่งเม็ดหอมล้วนไม่ต้องถาม
       showWhen: { label: FORM_LABEL, choices: [F_BAG10, F_BAG1113, F_DRAWSTRING] },
       choices: [
-        { name: FAB_SATIN, imageSrc: FABRIC_IMG[FAB_SATIN], popular: true },
-        { name: FAB_DUCHESS, imageSrc: FABRIC_IMG[FAB_DUCHESS] },
-        { name: FAB_BARBIE, imageSrc: FABRIC_IMG[FAB_BARBIE] },
+        { name: FAB_SATIN, popular: true },
+        { name: FAB_DUCHESS },
+        { name: FAB_BARBIE },
       ],
     },
   ];
@@ -221,10 +220,8 @@ function buildProduct(PRICING: PriceMatrix) {
         "• ผ้าดัชเชส — เนื้อหนากว่า ถุงตั้งอยู่ทรง เงานวลกระจายทั้งใบ ดูมีราคา\n" +
         "• ผ้าบาร์บี้ — ผิวเนียนนุ่มมือ เงาน้อยที่สุด โทนภาพนุ่มตา เหมาะกับลายพาสเทล\n\n" +
         "ข้อควรรู้::\n" +
-        "• ภาพประกอบชนิดผ้าเป็นภาพวาดเทียบ “ความเงา” ให้เห็นความต่าง ไม่ใช่รูปถ่ายผ้าจริง\n" +
-        "• งานพิมพ์ซับลิเมชั่นพิมพ์ได้เฉพาะผ้าสีอ่อน/ผ้าเฉพาะเท่านั้น",
-      images: [IMG("fab-satin"), IMG("fab-duchess"), IMG("fab-barbie")],
-      imageSize: "md",
+        "• งานพิมพ์ซับลิเมชั่นพิมพ์ได้เฉพาะผ้าสีอ่อน/ผ้าเฉพาะเท่านั้น\n" +
+        "• อยากดูเนื้อผ้าจริงก่อนสั่ง ทักไลน์ร้านขอดูรูปตัวอย่างได้",
     },
     {
       title: "ข้อจำกัดของงาน",
@@ -396,9 +393,6 @@ const FILES = [
   "form-bag10",
   "form-bag1113",
   "form-drawstring",
-  "fab-satin",
-  "fab-duchess",
-  "fab-barbie",
 ];
 
 const sb = () => createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
