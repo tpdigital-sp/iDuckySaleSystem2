@@ -23,6 +23,7 @@ import {
   adminProductPath,
   DESIGN_LABEL,
   designFeeFor,
+  feeBreakdown,
   formatPrice,
   formatPriceRange,
   getCategory,
@@ -575,6 +576,8 @@ export default function ProductDetail({
    *  ลูกค้าจะเห็นราคาหน้าสินค้าไม่ตรงกับตอนจ่ายเงิน)
    */
   const designFee = designFeeFor(product, { ...effective, [DESIGN_LABEL]: `${designs} ลาย` }, qty);
+  /** แจกแจงว่าค่าเพิ่มก้อนนั้นมาจากอะไร (ค่าเคลือบต่อแผ่น · ค่าสีต่อลาย · ค่าคละลาย) */
+  const feeLines = feeBreakdown(product, { ...effective, [DESIGN_LABEL]: `${designs} ลาย` }, qty);
   /**
    * 🔒 ขั้นต่ำต่อลายแบบแข็ง (hardMinPerDesign) — ต่ำกว่าเกณฑ์ = ปุ่มสั่งล็อก
    * เช่น อาร์มปักขั้นต่ำ 5 ชิ้น/ลาย: สั่ง 3 ชิ้นไม่ได้ · สั่ง 8 ชิ้นคละ 2 ลายก็ไม่ได้ (ต้อง 10)
@@ -3179,11 +3182,26 @@ export default function ProductDetail({
                   </a>
                 </p>
               ) : matrix ? (
-                <p className="mt-2 text-sm text-stone-500">
-                  {formatPrice(unitPrice)} / {matrix.unit} × {qty.toLocaleString("th-TH")}
-                  {designFee > 0 && <> + ค่าลาย/สีเพิ่ม {formatPrice(designFee)}</>} ={" "}
-                  <span className="font-extrabold text-amber-600">{formatPrice(unitPrice * qty + designFee)}</span>
-                </p>
+                <>
+                  <p className="mt-2 text-sm text-stone-500">
+                    {formatPrice(unitPrice)} / {matrix.unit} × {qty.toLocaleString("th-TH")}
+                    {designFee > 0 && <> + ค่าลาย/สีเพิ่ม {formatPrice(designFee)}</>} ={" "}
+                    <span className="font-extrabold text-amber-600">{formatPrice(unitPrice * qty + designFee)}</span>
+                  </p>
+                  {/* แจกแจงค่าเพิ่มสั้น ๆ — ลูกค้าจะได้รู้ว่ายอดที่บวกมาเป็นค่าอะไร ไม่ต้องเดา */}
+                  {designFee > 0 && feeLines.length > 0 && (
+                    <p className="mt-0.5 text-xs leading-relaxed text-stone-500">
+                      ค่าลาย/สีเพิ่ม ={" "}
+                      {feeLines.map((f, i) => (
+                        <span key={`${f.label}-${i}`}>
+                          {i > 0 ? " + " : ""}
+                          <strong className="font-bold text-stone-600">{f.label}</strong> {formatPrice(f.amount)}
+                          {f.note ? ` (${f.note})` : ""}
+                        </span>
+                      ))}
+                    </p>
+                  )}
+                </>
               ) : null}
               {/* จำนวนลายที่คละ — ต้องระบุก่อนสั่ง (แตะปุ่ม/พิมพ์เลข หรือแนบรูปให้ระบบนับอัตโนมัติ) */}
               {needDesignsChoice && (

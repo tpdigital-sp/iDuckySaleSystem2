@@ -1004,6 +1004,51 @@ export function designFeeFor(product: Product, selections: Record<string, string
   return optionFee + sheetFee + designFeeBase(product, selections, qty);
 }
 
+/** 1 บรรทัดของการแจกแจง "ค่าลาย/สีเพิ่ม" — ชื่อรายการ + ยอด + วิธีคิดสั้น ๆ */
+export interface FeeLine {
+  label: string;
+  amount: number;
+  /** วิธีคิด เช่น "฿40 × 2 แผ่น A3" (ไม่มี = ยอดตรง ๆ ไม่ต้องอธิบาย) */
+  note?: string;
+}
+
+/**
+ * 🧾 แจกแจงว่า designFeeFor() มาจากค่าอะไรบ้าง — ลูกค้าเห็นบรรทัด "+ ค่าลาย/สีเพิ่ม ฿100" แล้วต้องรู้ว่าคืออะไร
+ * ไล่ตามลำดับเดียวกับ designFeeFor เป๊ะ ๆ (ต่อลาย → ต่อแผ่น → ค่าคละลาย) ยอดรวมของทุกบรรทัดจึงเท่ากันเสมอ
+ */
+export function feeBreakdown(product: Product, selections: Record<string, string>, qty: number): FeeLine[] {
+  const lines: FeeLine[] = [];
+  const designs = designCountOf(selections);
+  for (const opt of product.options ?? []) {
+    if (!optionActive(opt, selections)) continue;
+    const picked = selections[opt.label];
+    if (opt.extraPerDesign) {
+      const per = groupExtraOf(opt, selections);
+      if (per > 0)
+        lines.push({
+          label: picked ? `${opt.label}: ${picked}` : opt.label,
+          amount: per * designs,
+          note: `${formatPrice(per)} × ${designs.toLocaleString("th-TH")} ลาย`,
+        });
+    }
+    if (opt.sheetFee) {
+      const fee = groupExtraOf(opt, selections);
+      if (fee > 0) {
+        const sheets = sheetCountOf(product, opt, selections, qty);
+        const unit = opt.sheetFee.unit ?? "แผ่น";
+        lines.push({
+          label: picked || opt.label,
+          amount: fee * sheets,
+          note: `${formatPrice(fee)} × ${sheets.toLocaleString("th-TH")} ${unit}`,
+        });
+      }
+    }
+  }
+  const mix = designFeeBase(product, selections, qty);
+  if (mix > 0) lines.push({ label: "ค่าคละลาย", amount: mix, note: `คละ ${designs.toLocaleString("th-TH")} ลาย` });
+  return lines;
+}
+
 function designFeeBase(product: Product, selections: Record<string, string>, qty: number): number {
   // กติกาคละแบบคิดต่อหน่วยมาก่อน — ค่าคละ = (ค่าต่อหน่วยตามจำนวนลาย) × จำนวนที่สั่ง
   if (product.mixRule) return mixFeeTotal(product.mixRule, designCountOf(selections), Math.max(0, qty));
