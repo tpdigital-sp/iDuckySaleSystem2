@@ -1459,6 +1459,13 @@ export default function ProductDetail({
   };
 
   /**
+   * คำอธิบายป้าย "นิยม" ขึ้นครั้งเดียวต่อหน้า — ที่กลุ่มแรกที่มีป้ายนี้โผล่
+   * (เดิมขึ้นซ้ำใต้ทุกกลุ่มที่มีแบบยอดนิยม สินค้าที่ตั้งไว้หลายกลุ่มเลยอ่านเจอบรรทัดเดิม 3-4 รอบ)
+   * ตั้งใหม่ทุกครั้งที่ component เรนเดอร์ · optionGroupUI ถูกเรียกตามลำดับ JSX จากบนลงล่าง
+   */
+  let popularLegendShown = false;
+
+  /**
    * กลุ่มตัวเลือก 1 กลุ่มบนหน้าสินค้า — ใช้ทั้งในรายการตัวเลือกปกติ และในกล่อง 📐 งานสั่งทำ
    * (กลุ่มเดียวกันโผล่แค่ที่เดียว ตัดสินด้วย isMadeToOrderOpt)
    */
@@ -1897,8 +1904,12 @@ export default function ProductDetail({
                         ))}
                     </div>
                   )}
-                  {/* บอกให้ชัดว่าป้ายนี้แปลว่าอะไร — ขึ้นเฉพาะกลุ่มที่มีแบบยอดนิยม */}
-                  {opt.choices.some((c) => c.popular && allowed.includes(c.name)) && (
+                  {/* บอกให้ชัดว่าป้ายนี้แปลว่าอะไร — ขึ้นครั้งเดียวทั้งหน้า ที่กลุ่มแรกที่มีป้าย "นิยม" */}
+                  {(() => {
+                    if (popularLegendShown) return false;
+                    popularLegendShown = opt.choices.some((c) => c.popular && allowed.includes(c.name));
+                    return popularLegendShown;
+                  })() && (
                     <p className="mt-1 text-[11px] font-semibold text-stone-500">
                       <span className="rounded-full bg-ducky px-1.5 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-ducky-dark">
                         นิยม
