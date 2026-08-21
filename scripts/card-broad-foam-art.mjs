@@ -323,6 +323,10 @@ const FOIL_GRAD = `
     <stop offset="0.5" stop-color="#6ee7b7"/><stop offset="0.75" stop-color="#fde68a"/><stop offset="1" stop-color="#fca5a5"/>
   </linearGradient>`;
 
+/**
+ * การ์ดชนิดการปั๊มฟอยล์ — โฮโลแกรมไม่มีการ์ดของตัวเองแล้ว
+ * (ย้ายไปเป็น "สีโฮโลแกรม" ในกลุ่มสีฟอยล์ ใช้ภาพงานจริงชุดเดียวกับ Photo card Digital)
+ */
 async function foilCards() {
   await saveSvg(
     "foil-none",
@@ -334,9 +338,7 @@ async function foilCards() {
 
   const cards = [
     ["foil-1layer", "ปั๊มฟอยล์ 1 เลเยอร์", "ฟอยล์ลงบนการ์ดเปล่า — ไม่มีพิมพ์สีรองข้างใต้", false, "url(#gold)", "เงิน · ทอง · โรสโกลด์ (เลือกสีได้)"],
-    ["foil-1layer-holo", "ปั๊มฟอยล์ 1 เลเยอร์ · โฮโลแกรม", "ฟอยล์โฮโลแกรมลงบนการ์ดเปล่า", false, "url(#holo)", "ฟอยล์โฮโลแกรมบวกเพิ่มจากฟอยล์สีปกติ"],
     ["foil-2layer", "ปั๊มฟอยล์ 2 เลเยอร์", "พิมพ์สีก่อน แล้วปั๊มฟอยล์ทับบนงานพิมพ์", true, "url(#gold)", "เงิน · ทอง · โรสโกลด์ (เลือกสีได้)"],
-    ["foil-2layer-holo", "ปั๊มฟอยล์ 2 เลเยอร์ · โฮโลแกรม", "พิมพ์สีก่อน แล้วปั๊มฟอยล์โฮโลแกรมทับ", true, "url(#holo)", "ฟอยล์โฮโลแกรมบวกเพิ่มจากฟอยล์สีปกติ"],
   ];
   for (const [key, head, sub, printed, fill, note] of cards) {
     await saveSvg(

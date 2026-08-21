@@ -61,6 +61,11 @@ export function resolveOptions(
   options: ProductOption[],
   presets: OptionPreset[]
 ): ProductOption[] {
+  /**
+   * ชื่อกลุ่มที่ "ไม่ได้ลิงก์คลัง" — กลุ่มพวกนี้เปลี่ยนชื่อไม่ได้ ถือเป็นเจ้าของชื่อนั้น
+   * ใช้กันเคสชื่อคลังไปชนกับชื่อกลุ่มของสินค้าเอง (ดูหมายเหตุด้านล่าง)
+   */
+  const ownNames = new Set(options.filter((o) => !o.presetId).map((o) => o.label));
   return options
     .map((o) => {
       if (!o.presetId) return o;
@@ -69,7 +74,13 @@ export function resolveOptions(
       // คลังถูก "ปิดใช้งาน" ที่หน้าคลังตัวเลือก = เลิกใช้แล้ว → ไม่ต้องโชว์/ไม่คิดเงินบนหน้าร้าน
       // (ลิงก์ยังอยู่ในสินค้า หน้าแก้ไขยังเห็นและเปิดกลับได้ที่ /admin/options)
       if (preset.hidden) return null;
-      return { ...o, label: preset.label, choices: preset.choices };
+      /**
+       * ⚠️ ชื่อคลังชนกับกลุ่มอื่นของสินค้า = สองกลุ่มใช้ค่าที่เลือกช่องเดียวกัน (selections คีย์ด้วย label)
+       * ผลคือกลุ่มที่ลิงก์คลังเลือกอะไรไม่ได้เลย และกฎ/showWhen ที่อ้างชื่อเดิมก็ไม่ทำงาน
+       * กรณีนี้คงชื่อเดิมของสินค้าไว้ ดีกว่าปล่อยให้กลุ่มพัง (ตัวเลือกยังมาจากคลังตามปกติ)
+       */
+      const label = ownNames.has(preset.label) ? o.label : preset.label;
+      return { ...o, label, choices: preset.choices };
     })
     .filter((o): o is ProductOption => o !== null);
 }

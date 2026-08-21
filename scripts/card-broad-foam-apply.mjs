@@ -11,7 +11,7 @@
  *   สคริปต์อ่านสดทุกครั้ง ราคาบนเว็บเปลี่ยนเมื่อไหร่รันซ้ำได้เลย
  *
  * นอกจากตารางราคา (7 ขนาด × 5 ช่วงจำนวน) ยังอ่านค่าบวกเพิ่มจากหน้าเว็บมาใช้ด้วย —
- *   ค่าเคลือบเงา/ด้าน · ค่าเคลือบพิเศษ · ตาราง Add On เคลือบฟอยล์ (1/2 เลเยอร์) · ค่าฟอยล์โฮโลแกรม
+ *   ค่าเคลือบเงา/ด้าน · ค่าเคลือบพิเศษ · ตาราง Add On เคลือบฟอยล์ (1/2 เลเยอร์) · ค่าฟอยล์โฮโลแกรม (ไปเป็น +฿ ของ "สีโฮโลแกรม")
  *   · จำนวนใบต่อแผ่น A3 ของแต่ละขนาด   อ่านไม่ครบเมื่อไหร่ = หยุด ไม่เดาตัวเลขเอง
  *
  * 💡 ค่าเคลือบ/ค่าฟอยล์ของหน้านี้คิด "ต่อ 1 แผ่น A3" ไม่ใช่ต่อใบ
@@ -42,8 +42,15 @@ const V = "v1";
 const EXPECT_NAMES = [NAME];
 
 const SIZE_LABEL = "ขนาด";
-const COAT_LABEL = "เคลือบ";
-const FILM_LABEL = "ผิวเคลือบพิเศษ";
+/**
+ * ⚠️ ห้ามตั้ง COAT_LABEL เป็น "เคลือบ" — ชนกับ label ของคลังตัวเลือกกลาง preset-2
+ * resolveOptions ทับชื่อกลุ่มที่ลิงก์คลังด้วยชื่อของคลังเสมอ ("ผิวเคลือบพิเศษ" → "เคลือบ")
+ * ถ้าชื่อชนกัน สองกลุ่มจะใช้ค่าที่เลือกช่องเดียวกัน → กลุ่มผิวเคลือบพิเศษเลือกอะไรไม่ได้เลย
+ * (เจอมาแล้วรอบหนึ่ง — หน้าร้านโชว์ "เคลือบพิเศษ" แต่ไม่มีผิวให้เลือกต่อ)
+ */
+const COAT_LABEL = "เคลือบลามิเนต";
+/** ตั้งให้ตรงกับ label ของคลัง preset-2 ไปเลย กฎ/showWhen จะได้อ้างชื่อเดียวกันทั้งก่อนและหลัง resolve */
+const FILM_LABEL = "เคลือบ";
 const FOIL_LABEL = "ปั๊มฟอยล์";
 const FOIL_COLOR_LABEL = "สีฟอยล์";
 const FILM_PRESET = "preset-2";
@@ -65,10 +72,15 @@ const PHOTOS = [
 /** สีฟอยล์ — ใช้ภาพชุดเดียวกับ Photo card Digital (งานจริงของร้าน) แล้วสำเนาเข้าโฟลเดอร์ของสินค้าตัวนี้ */
 const FOIL_COLOR_SRC = "https://upvigfvxloelzevwneof.supabase.co/storage/v1/object/public/product-images/products/photocard-digital";
 const FOIL_COLORS = [
-  ["foil-silver", "สีเงิน", "foil-silver"],
-  ["foil-gold", "สีทอง", "foil-gold"],
-  ["foil-rosegold", "สีโรสโกลด์", "foil-rosegold"],
+  { key: "foil-silver", name: "สีเงิน", src: "foil-silver" },
+  { key: "foil-gold", name: "สีทอง", src: "foil-gold" },
+  { key: "foil-rosegold", name: "สีโรสโกลด์", src: "foil-rosegold" },
+  // ฟอยล์โฮโลแกรมเป็น "สีของฟอยล์" ไม่ใช่ชนิดการปั๊ม — คิดเพิ่มคงที่ต่อใบ เหมือนที่ร้านคิดกับ Photo card Digital
+  { key: "foil-hologram", name: "สีโฮโลแกรม", src: "foil-hologram", holo: true },
 ];
+
+/** ฟอยล์โฮโลแกรมปั๊มได้ใหญ่สุดแค่ขนาดนี้ — ขนาดที่ใหญ่กว่านี้จะไม่มีสีโฮโลแกรมให้เลือก */
+const HOLO_MAX_SIZE = "A4";
 
 /* ── 1. ดึงบล็อก "Card Broad Foam หนา 2 mm" จากหน้าเว็บ ──────────── */
 
@@ -209,16 +221,25 @@ const COATS = [
 ];
 
 /**
- * ฟอยล์โฮโลแกรมแยกเป็นตัวเลือกของตัวเอง ไม่ใช่ +฿ ในกลุ่ม "สีฟอยล์"
- * เพราะค่าฟอยล์คิดต่อแผ่น A3 เหมือนกัน → ต้องหารตามขนาดด้วย จึงต้องอยู่ในแกนตารางราคา
+ * กลุ่มนี้คือ "ปั๊มกี่เลเยอร์" อย่างเดียว — ค่าฟอยล์คิดต่อแผ่น A3 จึงต้องอยู่ในแกนตารางราคา (หารตามขนาด)
+ * ส่วนโฮโลแกรมย้ายไปเป็น "สี" ในกลุ่มสีฟอยล์ (บวกคงที่ต่อใบตามค่าที่อ่านจากเว็บ) ให้ตรงกับ Photo card Digital
  */
 const FOILS = [
   { name: "ไม่ปั๊มฟอยล์", fee: 0, art: "foil-none", popular: true },
   { name: "ปั๊มฟอยล์ 1 เลเยอร์", fee: FOIL_1, art: "foil-1layer", color: true },
-  { name: "ปั๊มฟอยล์ 1 เลเยอร์ · โฮโลแกรม", fee: FOIL_1 + HOLO_FEE, art: "foil-1layer-holo" },
   { name: "ปั๊มฟอยล์ 2 เลเยอร์", fee: FOIL_2, art: "foil-2layer", color: true },
-  { name: "ปั๊มฟอยล์ 2 เลเยอร์ · โฮโลแกรม", fee: FOIL_2 + HOLO_FEE, art: "foil-2layer-holo" },
 ];
+
+/**
+ * ขนาดที่ใหญ่เกินกว่าจะปั๊มฟอยล์โฮโลแกรมได้ — วัดจากด้านกว้าง/ยาวจริง (มม.) ไม่ใช่ลำดับในตาราง
+ * (ลำดับใน SIZES ไม่ได้เรียงตามพื้นที่ เช่น 15x15cm ใหญ่กว่า A7 แต่อยู่ก่อน)
+ */
+const HOLO_MAX = SIZES.find((s) => s.name === HOLO_MAX_SIZE);
+if (!HOLO_MAX) throw new Error(`ไม่มีขนาด "${HOLO_MAX_SIZE}" ในตารางขนาด — ตรวจค่า HOLO_MAX_SIZE ก่อน`);
+const fitsHolo = (s) =>
+  Math.max(s.w, s.h) <= Math.max(HOLO_MAX.w, HOLO_MAX.h) && Math.min(s.w, s.h) <= Math.min(HOLO_MAX.w, HOLO_MAX.h);
+const TOO_BIG_FOR_HOLO = SIZES.filter((s) => !fitsHolo(s)).map((s) => s.name);
+const NON_HOLO_COLORS = FOIL_COLORS.filter((c) => !c.holo).map((c) => c.name);
 
 /** ปัดทศนิยม 2 ตำแหน่ง — ค่าเคลือบหารลงต่อใบแล้วมักไม่ลงตัว (10 ÷ 16 = 0.625) */
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -243,7 +264,8 @@ const PRICE_MAX = Math.max(...allPrices);
 console.log(`📋 ตารางราคาจากเว็บ (${SECTION})`);
 console.log(`   ${"ช่วงจำนวน".padEnd(16)}${headSizes.map((n) => n.padStart(9)).join("")}`);
 tiers.forEach((t, i) => console.log(`   ${t.label.padEnd(16)}${headSizes.map((n) => String(base[n][i]).padStart(9)).join("")}`));
-console.log(`   ค่าเคลือบเงา/ด้าน +฿${COAT_FEE} · เคลือบพิเศษ +฿${SPECIAL_FEE} · ฟอยล์ 1 เลเยอร์ +฿${FOIL_1} · 2 เลเยอร์ +฿${FOIL_2} · โฮโลแกรม +฿${HOLO_FEE}`);
+console.log(`   ค่าเคลือบเงา/ด้าน +฿${COAT_FEE} · เคลือบพิเศษ +฿${SPECIAL_FEE} · ฟอยล์ 1 เลเยอร์ +฿${FOIL_1} · 2 เลเยอร์ +฿${FOIL_2} (ต่อแผ่น A3)`);
+console.log(`   สีฟอยล์ ${FOIL_COLORS.map((c) => c.name).join(" · ")} — สีโฮโลแกรม +฿${HOLO_FEE}/ใบ · ปั๊มได้ใหญ่สุด ${HOLO_MAX_SIZE} (ขนาด ${TOO_BIG_FOR_HOLO.join(" · ")} เลือกไม่ได้)`);
 console.log(`   (ทั้งหมดคิดต่อแผ่น A3 → หารลงต่อใบ: ${SIZES.map((s) => `${s.name}÷${s.perSheet}`).join(" · ")})`);
 console.log(`   คละลาย: 1-${FREE_MIX_BELOW} ชิ้นอิสระ · ${FREE_MIX_BELOW + 1} ชิ้นขึ้นไป ลายละ ${MIN_PER_DESIGN} ชิ้นขึ้นไป`);
 console.log(`   ตารางราคา ${Object.keys(cells).length} คอลัมน์ × ${tiers.length} ช่วง · ราคา ฿${PRICE_MIN}-${PRICE_MAX}/ชิ้น`);
@@ -306,7 +328,7 @@ console.log(`🖼  ภาพประจำตัวเลือก ${ART_FILES.
 // สีฟอยล์ — สำเนาภาพงานจริงชุดเดียวกับ Photo card Digital มาไว้ในโฟลเดอร์ของสินค้าตัวนี้
 // (ลิงก์ข้ามโฟลเดอร์สินค้าอื่นตรง ๆ ไม่ได้ — วันหลังเขาลบไฟล์ ภาพฝั่งนี้จะหายตาม)
 const foilColorArt = {};
-for (const [key, , srcFile] of FOIL_COLORS) foilColorArt[key] = await put(`${key}-${V}`, await grab(`${FOIL_COLOR_SRC}/${srcFile}.jpg`));
+for (const c of FOIL_COLORS) foilColorArt[c.key] = await put(`${c.key}-${V}`, await grab(`${FOIL_COLOR_SRC}/${c.src}.jpg`));
 console.log(`🖼  สีฟอยล์ ${FOIL_COLORS.length} ภาพ (สำเนาจากงานจริงของ Photo card Digital)`);
 
 // ผิวเคลือบพิเศษ — ใช้ตัวเลือกจากคลังกลาง (แก้ที่คลังครั้งเดียว ทุกสินค้าที่ลิงก์ได้ตามไปด้วย)
@@ -372,7 +394,11 @@ d.options = [
   {
     label: FOIL_COLOR_LABEL,
     showWhen: { label: FOIL_LABEL, choices: FOILS.filter((f) => f.color).map((f) => f.name) },
-    choices: FOIL_COLORS.map(([key, name]) => ({ name, imageSrc: foilColorArt[key] })),
+    choices: FOIL_COLORS.map((c) => ({
+      name: c.name,
+      ...(c.holo ? { extra: HOLO_FEE } : {}), // โฮโลแกรมบวกคงที่ต่อใบ (ไม่หารตามแผ่น A3 เหมือนค่าปั๊ม)
+      imageSrc: foilColorArt[c.key],
+    })),
   },
 ];
 
@@ -382,6 +408,15 @@ d.rules = [
     when: { label: COAT_LABEL, choice: COAT_SPECIAL, choices: [COAT_SPECIAL] },
     limit: { label: FILM_LABEL, allow: FILMS.map((f) => f.name) },
   },
+  // ฟอยล์โฮโลแกรมปั๊มได้ใหญ่สุดแค่ A4 — ขนาดที่ใหญ่กว่านั้นตัดสีโฮโลแกรมออกจากกลุ่มสีฟอยล์
+  ...(TOO_BIG_FOR_HOLO.length
+    ? [
+        {
+          when: { label: SIZE_LABEL, choice: TOO_BIG_FOR_HOLO[0], choices: TOO_BIG_FOR_HOLO },
+          limit: { label: FOIL_COLOR_LABEL, allow: NON_HOLO_COLORS },
+        },
+      ]
+    : []),
 ];
 
 /**
@@ -406,10 +441,10 @@ d.terms = [
   `สั่ง 1-${FREE_MIX_BELOW} ชิ้น คละลายได้อิสระ · ตั้งแต่ ${FREE_MIX_BELOW + 1} ชิ้นขึ้นไป คละลายได้ ขั้นต่ำลายละ ${MIN_PER_DESIGN} ชิ้น`,
   `คละเกินโควตาสั่งได้ แต่ราคาจะตกไปคิดตามจำนวนชิ้นต่อลาย (เช่น ${FREE_MIX_BELOW + 1} ชิ้น คละ ${MIN_PER_DESIGN} ลาย = คิดเรทปลีก)`,
   `เคลือบลามิเนตเงา / ด้าน บวกเพิ่ม ${COAT_FEE} บาท · เคลือบพิเศษ (กลิตเตอร์ · ทราย · โฮโลแกรม) บวกเพิ่ม ${SPECIAL_FEE} บาท`,
-  `ปั๊มฟอยล์ 1 เลเยอร์ บวกเพิ่ม ${FOIL_1} บาท · 2 เลเยอร์ บวกเพิ่ม ${FOIL_2} บาท · ฟอยล์โฮโลแกรมบวกเพิ่มอีก ${HOLO_FEE} บาท`,
+  `ปั๊มฟอยล์ 1 เลเยอร์ บวกเพิ่ม ${FOIL_1} บาท · 2 เลเยอร์ บวกเพิ่ม ${FOIL_2} บาท (คิดต่อแผ่น A3 หารลงต่อใบให้แล้ว) · เลือกสีฟอยล์เป็นสีโฮโลแกรม บวกเพิ่มใบละ ${HOLO_FEE} บาท`,
   `ค่าเคลือบและค่าปั๊มฟอยล์คิด "ต่อ 1 แผ่น A3" — 1 แผ่น A3 ตัดได้ ${SIZES.map((s) => `${s.name} ${s.perSheet} ใบ`).join(" · ")} ` +
     `ราคาที่แสดงหารลงเป็นต่อใบให้แล้ว`,
-  `เคลือบฟอยล์ได้เฉพาะงานกระดาษ · สีฟอยล์: เงิน ทอง โรสโกลด์ โฮโลแกรม`,
+  `สีฟอยล์: ${FOIL_COLORS.map((c) => c.name.replace(/^สี/, "")).join(" · ")} — สีโฮโลแกรมปั๊มได้ใหญ่สุดแค่ ${HOLO_MAX_SIZE} (ขนาด ${TOO_BIG_FOR_HOLO.join(" · ")} เลือกสีโฮโลแกรมไม่ได้)`,
   `งานพิมพ์ฟอยล์ 2 เลเยอร์ ตำแหน่งงานพิมพ์จะเลื่อนประมาณ 1-2 มม. เพราะกระดาษหดตัวจากการพิมพ์และเคลือบหลายรอบ`,
   `ทางร้านใช้สีระบบ RGB สีงานพิมพ์ที่ได้อาจสว่างกว่าหรือดรอปลงตามไฟล์งาน ±5% ถึง ±15%`,
   `การตัดคลาดเคลื่อนได้ +/- 0.5-2mm ตามข้อจำกัดของเครื่องตัด · งานที่พิมพ์ด้านหลังคลาดเคลื่อนได้ +/- 3-5mm (ไม่ควรวางลายชิดขอบหรือมีเส้นขอบ)`,
@@ -430,7 +465,8 @@ d.tabs = [
       ...headSizes.map((n) => `• ${n} — ${tiers.map((t, i) => `${t.label} ฿${base[n][i]}`).join(" · ")}`),
       "::ราคาบวกเพิ่ม (คิดต่อ 1 แผ่น A3)::",
       `• เคลือบลามิเนตเงา / ด้าน +${COAT_FEE} บาท · เคลือบพิเศษ +${SPECIAL_FEE} บาท`,
-      `• ปั๊มฟอยล์ 1 เลเยอร์ +${FOIL_1} บาท · 2 เลเยอร์ +${FOIL_2} บาท · โฮโลแกรม +${HOLO_FEE} บาท`,
+      `• ปั๊มฟอยล์ 1 เลเยอร์ +${FOIL_1} บาท · 2 เลเยอร์ +${FOIL_2} บาท (คิดต่อแผ่น A3)`,
+      `• สีฟอยล์เลือกได้ ${FOIL_COLORS.map((c) => c.name.replace(/^สี/, "")).join(" · ")} — สีโฮโลแกรมบวกใบละ ${HOLO_FEE} บาท และปั๊มได้ใหญ่สุดแค่ ${HOLO_MAX_SIZE}`,
       `• 1 แผ่น A3 ตัดได้ ${SIZES.map((s) => `${s.name} ${s.perSheet} ใบ`).join(" · ")} — ราคาหน้าเว็บหารลงต่อใบให้แล้ว`,
     ].join("\n"),
     images: [art["thick-2mm"], art["size-compare"]],
@@ -483,7 +519,7 @@ d.seo = {
       q: "ค่าเคลือบกับค่าปั๊มฟอยล์คิดยังไง?",
       a:
         `คิดต่อ 1 แผ่น A3 — เคลือบเงา/ด้าน ${COAT_FEE} บาท · เคลือบพิเศษ ${SPECIAL_FEE} บาท · ปั๊มฟอยล์ 1 เลเยอร์ ${FOIL_1} บาท · ` +
-        `2 เลเยอร์ ${FOIL_2} บาท · โฮโลแกรมบวกอีก ${HOLO_FEE} บาท · 1 แผ่น A3 ตัดได้ ${SIZES.map((s) => `${s.name} ${s.perSheet} ใบ`).join(" · ")} ` +
+        `2 เลเยอร์ ${FOIL_2} บาท · เลือกสีฟอยล์เป็นสีโฮโลแกรมบวกใบละ ${HOLO_FEE} บาท (ปั๊มได้ใหญ่สุด ${HOLO_MAX_SIZE}) · 1 แผ่น A3 ตัดได้ ${SIZES.map((s) => `${s.name} ${s.perSheet} ใบ`).join(" · ")} ` +
         `ราคาในหน้าสินค้าหารลงเป็นต่อใบให้แล้ว`,
     },
     {
