@@ -4,20 +4,19 @@
  *
  *   node scripts/griptok-magsafe-art.mjs [--out=<dir>]
  *
- * ได้ 14 ไฟล์ ลง .cache/griptok-magsafe/upload — ที่มาแยกเป็น 2 ทาง:
+ * ได้ 12 ไฟล์ ลง .cache/griptok-magsafe/upload — ที่มาแยกเป็น 2 ทาง:
  *
  * 1) ครอปรูปงานจริงจากบล็อก "GRIPTOK MAGSAFE UV Printing" หน้า pricelists
  *    mode-a / mode-b     ครอปจากภาพเทียบ "ตัวอย่าง แบบ A | แบบ B" ของร้าน (959b83_c1f74e1d…)
  *                        ภาพเดียวกันถ่ายลายเดียวกัน ต่างกันแค่ A ประกบตาย B แยกได้ — เทียบกันตรง ๆ
- *    shape-circle        รูปงานจริง ฐานทรงกลมบนมือถือ (959b83_d89a8ca1…)
- *    shape-oval          รูปงานจริง ฐานทรงรีบนมือถือ (959b83_4cb94956…) — ลายเป็ดลายเดียวกับทรงกลม
+ *    shape-circle /      ครอปจากภาพเทียบ "ตัวอย่าง ทรง Circle | ทรง Oval" ของร้าน (959b83_09fc734a…)
+ *    shape-oval          ⚠️ ต้องใช้ภาพใบนี้เท่านั้น (ผู้ใช้ทักเมื่อ 21 ส.ค. 69 ว่าเคยใส่รูปอื่นแล้วผิด)
+ *                        เป็นภาพที่ร้านเขียนกำกับ Circle/Oval ไว้เอง จึงไม่มีทางสลับทรงผิด
  *    addon-none          รูปงานจริง Griptok + ฐาน Magsafe เปล่า ๆ (ไม่มีแผ่นอะคริลิคเสริม)
- *    griptok-yes         ครอปแบบ B ครบชุด
  *
  * 2) ประกอบเอง (การ์ดอธิบาย ไม่ใช่รูปถ่าย — เขียนกำกับไว้บนการ์ดทุกใบ)
  *    addon-5 … addon-10  แผ่นอะคริลิคเสริมวาดตามสเกลจริง (5-10 ซม.) + รูปงานจริงที่ใส่แผ่นแล้วเป็นภาพประกอบ
  *    size-chart          ซ้อนทั้ง 6 ขนาดตามสเกลจริงในใบเดียว (ใช้ในแท็บ)
- *    griptok-no          ภาพแบบ B ที่ทำเครื่องหมายกากบาททับตัว Griptok — อธิบาย "ไม่รับตัว Griptok ลด 15 บาท"
  *    coil-base           ไดอะแกรมแผ่น Magsafe coil base ที่ติดหลังเคส (ร้านไม่มีรูปถ่ายของชิ้นนี้บนหน้าเว็บ)
  *
  * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคชไว้) — ชุดนี้ลงท้าย -v1 ตอนอัป ครั้งหน้าขึ้น v2
@@ -73,8 +72,7 @@ const wix = (id) => `https://static.wixstatic.com/media/${id}~mv2.jpg/v1/fit/w_9
 /** รูปงานจริงในบล็อก "GRIPTOK MAGSAFE" (id เดิมบนเว็บ กำกับไว้ให้ตรวจย้อนได้) */
 const SRC = {
   compare: "959b83_c1f74e1d98324df0a2a0cd92555e3ccd", // เทียบ แบบ A | แบบ B (900x616)
-  circle: "959b83_d89a8ca1f2b24de8990afd5cea349a3a", // ฐานทรงกลมบนมือถือ (900x596)
-  oval: "959b83_4cb9495629f04f32baae7b5548a784b0", // ฐานทรงรีบนมือถือ ลายเดียวกัน (900x612)
+  shapes: "959b83_09fc734a43f6441fa8a135122a3b4d54", // เทียบ ทรง Circle | ทรง Oval ของร้าน (900x660)
   plate: "959b83_424bedc250a0408dbae119e2a8800265", // งานที่เสริมแผ่นอะคริลิคไดคัทด้านหลัง (900x697)
   plain: "959b83_85f9f3237f4444f580a2a6334b8df44d", // ฐานทรงรีบนมือถือ ไม่มีแผ่นอะคริลิคเสริม (900x598)
 };
@@ -123,16 +121,16 @@ await photoCard("mode-b", await crop("compare", 520, { left: 470, top: 140, widt
 
 /* ── 2. ทรงกลม / ทรงรี — รูปงานจริง ลายเป็ดลายเดียวกันทั้งสองทรง ──── */
 
-await photoCard("shape-circle", await sharp(await src("circle")).resize({ width: 700 }).toBuffer(), {
+await photoCard("shape-circle", await crop("shapes", 520, { left: 520, top: 235, width: 380, height: 390 }), {
   head: "ทรงกลม (Circle)",
   sub: "ฐาน Magsafe พิมพ์ลาย ทรงกลม",
-  notes: ["รูปงานจริงของร้าน — ลายเดียวกับภาพทรงรี เทียบทรงกันได้ตรง ๆ"],
+  notes: ["ครอปจากภาพเทียบ ทรง Circle | ทรง Oval ของร้าน"],
 });
 
-await photoCard("shape-oval", await sharp(await src("oval")).resize({ width: 700 }).toBuffer(), {
+await photoCard("shape-oval", await crop("shapes", 520, { left: 130, top: 10, width: 430, height: 500 }), {
   head: "ทรงรี (Oval)",
   sub: "ฐาน Magsafe พิมพ์ลาย ทรงรี (พื้นที่ลายมากกว่าทรงกลม)",
-  notes: ["รูปงานจริงของร้าน — ลายเดียวกับภาพทรงกลม เทียบทรงกันได้ตรง ๆ", "ทรงรีคิดราคาสูงกว่าทรงกลม ดูตารางราคา"],
+  notes: ["ครอปจากภาพเทียบใบเดียวกับทรงกลม เทียบทรงกันได้ตรง ๆ", "ทรงรีคิดราคาสูงกว่าทรงกลม ดูตารางราคา"],
 });
 
 /* ── 3. Add On แผ่นอะคริลิค — การ์ดสเกลจริง 5-10 ซม. ──────────────── */
@@ -209,42 +207,7 @@ await saveSvg(
   )
 );
 
-/* ── 4. แบบ B: รับ / ไม่รับตัว Griptok ─────────────────────────────── */
-
-const bCrop = await crop("compare", 520, { left: 470, top: 140, width: 370, height: 395 });
-
-await photoCard("griptok-yes", bCrop, {
-  head: "รับตัว Griptok ด้วย",
-  sub: "ได้ครบชุด — ตัว Griptok + ฐาน Magsafe พิมพ์ลาย",
-  notes: ["คิดราคาตามตารางแบบ B ตามปกติ"],
-});
-
-{
-  const meta = await sharp(bCrop).metadata();
-  const left = Math.round((W - meta.width) / 2);
-  const top = 190 + Math.round((560 - meta.height) / 2);
-  // ตัว Griptok อยู่ค่อนไปทางซ้ายบนของครอป — วงกากบาททับตรงนั้น
-  const gx = left + Math.round(meta.width * 0.42);
-  const gy = top + Math.round(meta.height * 0.3);
-  const r = Math.round(meta.width * 0.26);
-  const svg = frame(
-    `${title("ไม่รับตัว Griptok", "ได้เฉพาะฐาน Magsafe พิมพ์ลาย — ลด 15 บาท/ชิ้น")}
-     ${foot(["ทำเครื่องหมายบนรูปงานจริงเพื่ออธิบาย ไม่ใช่รูปถ่ายของจริง", "เลือกได้เฉพาะแบบ B (แบบ A แกะแยกไม่ได้)"])}`
-  );
-  const mark = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
-      <circle cx="${gx}" cy="${gy}" r="${r}" fill="#ffffff" fill-opacity="0.62" stroke="#e11d48" stroke-width="6" stroke-dasharray="14 10"/>
-      <line x1="${gx - r * 0.6}" y1="${gy - r * 0.6}" x2="${gx + r * 0.6}" y2="${gy + r * 0.6}" stroke="#e11d48" stroke-width="9" stroke-linecap="round"/>
-      <line x1="${gx + r * 0.6}" y1="${gy - r * 0.6}" x2="${gx - r * 0.6}" y2="${gy + r * 0.6}" stroke="#e11d48" stroke-width="9" stroke-linecap="round"/>
-      <text x="${gx}" y="${gy + r + 40}" font-family="${TH}" font-size="26" font-weight="700" text-anchor="middle" fill="#e11d48">ไม่รวมตัว Griptok</text>
-    </svg>`;
-  const buf = await sharp(Buffer.from(svg))
-    .composite([{ input: bCrop, left, top }, { input: Buffer.from(mark), left: 0, top: 0 }])
-    .jpeg({ quality: 92, chromaSubsampling: "4:4:4" })
-    .toBuffer();
-  save("griptok-no", buf);
-}
-
-/* ── 5. Magsafe coil base — ไดอะแกรม (ร้านไม่มีรูปถ่ายชิ้นนี้บนหน้าเว็บ) ─ */
+/* ── 4. Magsafe coil base — ไดอะแกรม (ร้านไม่มีรูปถ่ายชิ้นนี้บนหน้าเว็บ) ─ */
 
 await saveSvg(
   "coil-base",

@@ -22,7 +22,10 @@
  * ⚠️ ตัวเลขในหมายเหตุ (ไม่รับตัว Griptok ลด 15 · coil base 15) ก็อ่านจากเว็บ ไม่ได้พิมพ์ทับไว้
  *    ข้อความบนเว็บเปลี่ยนรูปประโยคเมื่อไหร่ = สคริปต์หยุด ให้มาดูก่อนว่าเงื่อนไขเปลี่ยนจริงไหม
  *
- * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคชไว้) — ชุดนี้ลงท้าย -v1 ครั้งหน้าขึ้น v2
+ * ⚠️ "ไม่รับตัว Griptok (ลด 15)" ไม่ทำเป็นกลุ่มตัวเลือกให้ลูกค้ากด (ผู้ใช้สั่งถอดออก 21 ส.ค. 69)
+ *    เหลือไว้เป็นข้อความในแท็บ/ข้อตกลงว่าให้แจ้งหมายเหตุถึงร้านแทน — อย่าเผลอเพิ่มกลับ
+ *
+ * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคชไว้) — ชุดนี้ลงท้าย -v2 ครั้งหน้าขึ้น v3
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
@@ -34,7 +37,7 @@ const DIR = (process.argv.find((a) => a.startsWith("--from=")) || "").split("=")
 const PAGE = "https://www.iduckyofficial-pricelists.com/griptok";
 const SECTION = "GRIPTOK MAGSAFE UV Printing";
 const NAME = "GRIPTOK MAGSAFE";
-const V = "v1";
+const V = "v2";
 
 /** ชื่อเดิมที่ยอมให้ทับได้ — กันเผลอรันทับสินค้าตัวอื่นถ้า id ถูกใช้ซ้ำวันหลัง */
 const EXPECT_NAMES = [NAME];
@@ -43,7 +46,6 @@ const UNIT = "ชิ้น";
 const MODE_LABEL = "แบบ";
 const SHAPE_LABEL = "ทรง";
 const ADDON_LABEL = "เพิ่มแผ่นอะคริลิค (Add On)";
-const GRIPTOK_LABEL = "ตัว Griptok";
 const COIL_LABEL = "Magsafe coil base";
 
 const MODE_A = "แบบ A (สำเร็จรูป)";
@@ -339,8 +341,6 @@ const ART_FILES = [
   "addon-none",
   ...ADDON.cols.map((c) => `addon-${c.head.replace(/[^\d]/g, "")}`),
   "size-chart",
-  "griptok-yes",
-  "griptok-no",
   "coil-base",
 ];
 const art = {};
@@ -402,15 +402,6 @@ d.options = [
     choices: ADDON_CHOICES.map((name) => ({ name, imageSrc: addonImage(name) })),
   },
   {
-    // แบบ A แกะแยกไม่ได้ กลุ่มนี้จึงถามเฉพาะตอนเลือกแบบ B
-    label: GRIPTOK_LABEL,
-    showWhen: { label: MODE_LABEL, choices: [MODE_B] },
-    choices: [
-      { name: "รับตัว Griptok ด้วย", imageSrc: art["griptok-yes"] },
-      { name: `ไม่รับตัว Griptok (ลด ${noGriptokOff} บาท)`, extra: -noGriptokOff, imageSrc: art["griptok-no"] },
-    ],
-  },
-  {
     label: COIL_LABEL,
     display: "multi",
     stockBearing: true,
@@ -446,7 +437,7 @@ d.tabs = [
       "GRIPTOK MAGSAFE พิมพ์ลายตามสั่งด้วยระบบ UV — ดูดติดกับเคส Magsafe ได้เลย\n" +
       "• แบบ A — สำเร็จรูป ตัว Griptok ประกบติดกับฐาน Magsafe แกะแยกออกจากกันไม่ได้\n" +
       "• แบบ B — ตัว Griptok แยกกับฐาน Magsafe ถอดออกจากกันได้\n" +
-      `• แบบ B หากไม่รับตัว Griptok ลดให้ ${UNIT}ละ ${noGriptokOff} บาท\n` +
+      `• แบบ B หากไม่รับตัว Griptok ลดให้ ${UNIT}ละ ${noGriptokOff} บาท — แจ้งในหมายเหตุถึงร้านตอนสั่ง\n` +
       `• มี 2 ทรง: ${circleHead} และ ${ovalHead}\n` +
       (clearBaseNote ? `• ${clearBaseNote}\n` : "") +
       `• ${addonHead} — แผ่นอะคริลิคไดคัทตามลาย ประกบด้านหลัง เลือกได้ ${ADDON.cols.map((c) => c.head).join(" / ")}\n` +
@@ -467,7 +458,7 @@ d.tabs = [
       `\n\n${addonHead} (บวกเพิ่มต่อ${UNIT})::\n` +
       ADDON.cols.map((c) => `• ${c.head} — ${webLine(ADDON, c)}`).join("\n") +
       `\n\nส่วนลด / ของเสริม::\n` +
-      `• แบบ B ไม่รับตัว Griptok — ลด ${noGriptokOff} บาท/${UNIT}\n` +
+      `• แบบ B ไม่รับตัว Griptok — ลด ${noGriptokOff} บาท/${UNIT} (แจ้งในหมายเหตุถึงร้าน ทางร้านหักให้ตอนสรุปยอด)\n` +
       `• Magsafe coil base — เพิ่ม ${coilPrice} บาท/${UNIT}`,
   },
   {
@@ -515,7 +506,7 @@ d.terms = [
   "พิมพ์ระบบ UV ลงบนตัวงานโดยตรง · ไม่มีขั้นต่ำในการสั่งผลิต",
   `1-${freeMixBelow} ${UNIT} คละลายได้อิสระ · ตั้งแต่ ${mixFrom} ${UNIT}ขึ้นไป คละลาย/คละขนาดได้ ลายละ ${mixMin} ${UNIT}ขึ้นไป ไม่ถึงตามจำนวน คิดตามราคาปลีก`,
   "แบบ A สำเร็จรูป แกะแยกตัว Griptok ออกจากฐาน Magsafe ไม่ได้",
-  `แบบ B ถอดแยกได้ · หากไม่รับตัว Griptok ลดให้ ${UNIT}ละ ${noGriptokOff} บาท`,
+  `แบบ B ถอดแยกได้ · หากไม่รับตัว Griptok ลดให้ ${UNIT}ละ ${noGriptokOff} บาท (แจ้งในหมายเหตุถึงร้าน ไม่มีให้กดเลือกบนหน้าสินค้า)`,
   ...(clearBaseNote ? [clearBaseNote] : []),
   `${addonHead} คิดเพิ่มตามขนาดแผ่นและจำนวนที่สั่ง (ตารางแยกจากราคาหลัก)`,
   `Magsafe coil base อันละ ${coilPrice} บาท สำหรับติดในเคสที่ยังไม่รองรับ Magsafe`,
