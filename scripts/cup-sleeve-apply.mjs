@@ -44,7 +44,6 @@ const EXPECT_NAMES = [NAME];
 
 const PAPER_LABEL = "ชนิดกระดาษ";
 const TEX_LABEL = "เนื้อกระดาษพิเศษ";
-const STAR_LABEL = "เนื้อ STARDREAM";
 const COAT_LABEL = "เคลือบ (ด้านนอก)";
 const COAT_IN_LABEL = "เคลือบ (ด้านใน)";
 const FILM_LABEL = "เคลือบ"; // กลุ่มที่ลิงก์คลังตัวเลือกกลาง (ผิวฟิล์มพิเศษ 10 แบบ)
@@ -260,7 +259,16 @@ const PAPER_STD = `กระดาษอาร์ตมัน ${GSM} แกร�
 const PAPER_300 = "กระดาษอาร์ตมัน 300 แกรม";
 const PAPER_400 = "กระดาษอาร์ตมัน 400 แกรม";
 const PAPER_TEX = "กระดาษพิเศษ (Texture Paper)";
-const PAPER_STAR = "กระดาษพิเศษ STARDREAM (เนื้อมุก)";
+
+/**
+ * STARDREAM (เนื้อมุก) แพงกว่าเนื้อพิเศษอื่นเท่ากันทุกช่วง — เก็บเป็น "+฿ ของตัวเลือกย่อย"
+ * แทนที่จะแยกเป็นคอลัมน์ของตัวเอง ลูกค้าจะได้เลือกเนื้อพิเศษทั้ง 12 แบบจากที่เดียว
+ * ต้นทางปรับราคาจนส่วนต่างไม่เท่ากันเมื่อไหร่ = หยุด ให้คนมาตัดสินใจก่อน
+ */
+const starDiff = [...new Set(texGroups[1].prices.map((n, i) => n - texGroups[0].prices[i]))];
+if (starDiff.length !== 1 || starDiff[0] <= 0)
+  throw new Error(`ส่วนต่างราคา STARDREAM ใน ${SRC_TEX} ไม่คงที่ (${starDiff.join(", ")}) — ตรวจก่อน`);
+const STAR_EXTRA = starDiff[0];
 
 /** ตารางราคาปลอกแก้ว: คอลัมน์ = ชนิดกระดาษ · ช่วง = บันไดรวม (หน่วยเป็น "เซ็ต") */
 let from = 1;
@@ -280,16 +288,16 @@ const PRICING = {
     [PAPER_300]: artCol(300),
     [PAPER_400]: artCol(400),
     [PAPER_TEX]: remap(texM.tiers, texGroups[0].prices),
-    [PAPER_STAR]: remap(texM.tiers, texGroups[1].prices),
   },
 };
 
 console.log(`\n📋 ตารางราคารวม (คอลัมน์ = ชนิดกระดาษ · ต้นทาง: เว็บ + ${SRC_ART} + ${SRC_TEX} เรท "${DIECUT}")`);
-const shortCol = { [PAPER_STD]: "250 แกรม", [PAPER_300]: "300 แกรม", [PAPER_400]: "400 แกรม", [PAPER_TEX]: "Texture", [PAPER_STAR]: "STARDREAM" };
+const shortCol = { [PAPER_STD]: "250 แกรม", [PAPER_300]: "300 แกรม", [PAPER_400]: "400 แกรม", [PAPER_TEX]: "พิเศษ" };
 console.log(`   ${"ช่วงจำนวน".padEnd(24)}${Object.keys(PRICING.cells).map((k) => shortCol[k].padStart(11)).join("")}`);
 PRICING.tiers.forEach((t, i) =>
   console.log(`   ${t.label.padEnd(24)}${Object.values(PRICING.cells).map((c) => `฿${c[i]}`.padStart(11)).join("")}`)
 );
+console.log(`   (เนื้อ STARDREAM บวกเพิ่มอีก ฿${STAR_EXTRA}/เซ็ต ทุกช่วง)`);
 
 async function put(name, buf) {
   const file = `${name}.jpg`;
@@ -371,7 +379,7 @@ d.description =
 d.highlights = [
   `เซ็ตละ ${Math.max(...prices)} บาท — 1 เซ็ตได้ ${PER_SET} ชิ้น (สั่งเยอะเหลือเซ็ตละ ${Math.min(...prices)} บาท)`,
   `กระดาษอาร์ตมัน ${GSM} แกรม พิมพ์สีคมชัด ไม่มีขั้นต่ำในการสั่งผลิต`,
-  `อัปเกรดเป็นอาร์ตมัน 300 / 400 แกรม หรือกระดาษพิเศษ (โฮโลแกรม · เงิน-ทอง · มุก STARDREAM) ได้`,
+  `อัปเกรดเป็นอาร์ตมัน 300 / 400 แกรม หรือกระดาษพิเศษ ${texPapers.length} เนื้อ (โฮโลแกรม · เงิน-ทอง · มุก STARDREAM) ได้`,
   `ขนาด ${SIZE.name} — ปลายปลอกล็อกปรับความกว้างได้ 3 ระดับ ใช้ได้ทั้งแก้วร้อน-แก้วเย็น`,
   `เคลือบเงา / ด้าน +฿${COAT_FEE} ต่อด้าน · เคลือบพิเศษ +฿${SPECIAL_FEE} ต่อด้าน`,
 ];
@@ -389,20 +397,17 @@ d.options = [
       { name: PAPER_300, imageSrc: art["paper-300"] },
       { name: PAPER_400, imageSrc: art["paper-400"] },
       { name: PAPER_TEX, imageSrc: art["paper-special"] },
-      { name: PAPER_STAR, imageSrc: texGroups[1].papers[0].imageSrc },
     ],
   },
-  // เนื้อกระดาษพิเศษ — ราคาเท่ากันทั้งกลุ่ม เลือกไว้เพื่อบอกทีมผลิตว่าใช้เนื้อไหน (รูปลิงก์จาก texture-paper)
+  // เนื้อกระดาษพิเศษทุกแบบรวมอยู่กลุ่มเดียว (รูปลิงก์จาก texture-paper) — เนื้อมุก STARDREAM บวกเพิ่ม
   {
     label: TEX_LABEL,
     display: "dropdown",
     showWhen: { label: PAPER_LABEL, choices: [PAPER_TEX] },
-    choices: texGroups[0].papers.map((t) => ({ name: t.name, ...(t.imageSrc ? { imageSrc: t.imageSrc } : {}) })),
-  },
-  {
-    label: STAR_LABEL,
-    showWhen: { label: PAPER_LABEL, choices: [PAPER_STAR] },
-    choices: texGroups[1].papers.map((t) => ({ name: t.name, ...(t.imageSrc ? { imageSrc: t.imageSrc } : {}) })),
+    choices: [
+      ...texGroups[0].papers.map((t) => ({ name: t.name, ...(t.imageSrc ? { imageSrc: t.imageSrc } : {}) })),
+      ...texGroups[1].papers.map((t) => ({ name: t.name, extra: STAR_EXTRA, ...(t.imageSrc ? { imageSrc: t.imageSrc } : {}) })),
+    ],
   },
   {
     label: COAT_LABEL,
@@ -443,6 +448,7 @@ d.terms = [
   "จำนวน 1-10 ชิ้น คละลายได้ · ตั้งแต่ 11 ชิ้นขึ้นไป คิด 1 ลาย / 1 ขนาด ต่อ 1 แผ่น A3 — อยากได้หลายลาย เพิ่มจำนวนเซ็ตตามจำนวนลาย",
   `กระดาษมาตรฐานคืออาร์ตมัน ${GSM} แกรม · เลือกอาร์ตมัน 300 / 400 แกรม หรือกระดาษพิเศษได้ ราคาปรับตามชนิดกระดาษในตารางเลย`,
   "ราคากระดาษ 300 / 400 แกรม และกระดาษพิเศษ คิดตามเรทงานไดคัทของกระดาษชนิดนั้น (1 เซ็ต = 1 แผ่น A3)",
+  `กระดาษพิเศษเนื้อมุก STARDREAM บวกเพิ่มเซ็ตละ ${STAR_EXTRA} บาท`,
   `เคลือบเงา / เคลือบด้าน บวกเพิ่ม ${COAT_FEE} บาทต่อด้าน · เคลือบพิเศษ (กลิตเตอร์ · ทราย · โฮโลแกรม) บวกเพิ่ม ${SPECIAL_FEE} บาทต่อด้าน`,
   `ขนาดงานมีแบบเดียว ${SIZE.name} (วัดตอนกางแบน) — เป็นทรงมาตรฐานของร้าน ไม่ได้ตัดตามแก้วเฉพาะรุ่น`,
   "ปลายปลอกมีลิ้นล็อก + ช่องเสียบ 3 ตำแหน่ง ปรับความกว้างได้ตามขนาดแก้ว",
@@ -514,7 +520,8 @@ d.tabs = [
       "::วัสดุ::",
       `• กระดาษอาร์ตมัน ${GSM} แกรม (มาตรฐาน)`,
       `• เลือกเป็นอาร์ตมัน 300 / 400 แกรม หรือกระดาษพิเศษได้ — ราคาต่อเซ็ตปรับตามตาราง`,
-      `• ${PAPER_TEX} มีให้เลือก ${texGroups[0].papers.length} เนื้อ · ${PAPER_STAR} อีก ${texGroups[1].papers.length} เนื้อ`,
+      `• ${PAPER_TEX} เลือกเนื้อได้ ${texPapers.length} แบบ (โฮโลแกรม · เงิน-ทอง · Canvas · มุก STARDREAM)`,
+      `• เนื้อมุก STARDREAM บวกเพิ่มเซ็ตละ ${STAR_EXTRA} บาท · เนื้ออื่นราคาเท่ากันหมด`,
       "::ราคาบวกเพิ่ม::",
       `• เคลือบเงา / เคลือบด้าน บวกเพิ่ม ${COAT_FEE} บาท ต่อด้าน`,
       `• เคลือบพิเศษ (กลิตเตอร์ · ทราย · โฮโลแกรม) บวกเพิ่ม ${SPECIAL_FEE} บาท ต่อด้าน`,
@@ -570,7 +577,7 @@ d.seo = {
     },
     {
       q: "ใช้กระดาษหนากว่านี้ได้ไหม?",
-      a: `มาตรฐานเป็นอาร์ตมัน ${GSM} แกรม (เซ็ตละ ${prices[0]} บาท) · เลือกอาร์ตมัน 300 / 400 แกรม หรือกระดาษพิเศษ (Texture / STARDREAM) ได้ ราคาต่อเซ็ตปรับตามชนิดกระดาษที่เลือกในหน้าสินค้าเลย`,
+      a: `มาตรฐานเป็นอาร์ตมัน ${GSM} แกรม (เซ็ตละ ${prices[0]} บาท) · เลือกอาร์ตมัน 300 / 400 แกรม หรือกระดาษพิเศษ ${texPapers.length} เนื้อได้ ราคาต่อเซ็ตปรับตามชนิดกระดาษที่เลือกในหน้าสินค้าเลย (เนื้อมุก STARDREAM บวกเพิ่มเซ็ตละ ${STAR_EXTRA} บาท)`,
     },
   ],
 };
