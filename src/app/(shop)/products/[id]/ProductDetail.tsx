@@ -2413,29 +2413,21 @@ export default function ProductDetail({
           <p className="mt-3 text-[13px] leading-relaxed text-stone-600">{product.description}</p>
 
           {/* ═══ ข้อควรทราบ / เงื่อนไขงาน — อ่านก่อนสั่ง (แอดมินตั้งต่อสินค้าในหลังบ้าน) ═══ */}
-          {/* คงไว้ใต้คำอธิบายสินค้าเหมือนเดิม — ลูกค้าต้องเจอเงื่อนไขตั้งแต่ตอนอ่านว่าสินค้าคืออะไร
-              (คอลัมน์นี้แคบ ~300px ก็จริง แต่บรรทัดสั้นอ่านง่ายกว่าลากยาว 700px อยู่แล้ว) */}
           {product.terms?.trim() && (
-            <details className="pterms mt-4" open>
-              <summary>
-                <span className="pterms-ico" aria-hidden="true">
-                  ⚠️
-                </span>
-                <span className="pterms-title">ข้อควรทราบก่อนสั่ง — รบกวนอ่านก่อนนะครับ</span>
-                <span className="pterms-n">{termLines(product.terms).length} ข้อ</span>
-                <span className="pterms-chev" aria-hidden="true">
-                  ▼
-                </span>
-              </summary>
-              <div className="pterms-body">
-                {termLines(product.terms).map((t, i) => (
-                  <p key={i} className="pterms-li">
-                    <i aria-hidden="true" />
-                    <span>{t}</span>
-                  </p>
-                ))}
+            <div className="mt-4 overflow-hidden rounded-2xl border-2 border-rose-200 bg-rose-50/60 shadow-sm">
+              <div className="flex items-center gap-2 bg-rose-500 px-4 py-2">
+                <span className="text-base leading-none">⚠️</span>
+                <p className="text-xs font-extrabold tracking-tight text-white">ข้อควรทราบก่อนสั่ง — รบกวนอ่านก่อนนะครับ</p>
               </div>
-            </details>
+              <ul className="space-y-2 px-4 py-3">
+                {termLines(product.terms).map((t, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="mt-[3px] shrink-0 text-[9px] leading-none text-rose-500">🔴</span>
+                    <span className="whitespace-pre-line text-[11px] font-medium leading-relaxed text-rose-950">{t}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           {/* ═══ 📐 เทมเพลตไฟล์งาน — โหลดไปวางลายก่อนส่งกลับมาให้ร้าน (ไม่ต้องล็อกอิน) ═══ */}
@@ -2688,47 +2680,6 @@ export default function ProductDetail({
       {bodyOf("side").length > 0 && (
         <div className="sm:col-span-2">{detailsSection("side", "mt-2")}</div>
       )}
-
-        {/* แท็บข้อมูลสินค้า — ย้ายเข้ามาอยู่ในคอลัมน์ซ้าย
-            เดิมเป็นแถบเต็มความกว้างอยู่ใต้กริด ทำให้เกิดช่องว่างเปล่าเกือบ 500px
-            เพราะแผงสั่งซื้อฝั่งขวายาวกว่าคอลัมน์ซ้ายมาก */}
-      {(product.tabs?.length ?? 0) > 0 && (
-        <section className="mt-6 sm:col-span-2">
-          {/* ป้ายหัวโซน + แท็บเม็ดยา — โทน/ฟอนต์ชุดเดียวกับหน้าแรกและหน้าบัญชี (.acd-ttab) */}
-          <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-3">
-            {/* ป้ายหัวโซน — เดิมเป็นเม็ดยาสีกรมท่า ไปยืนคู่กับแท็บที่เลือกอยู่
-                เลยดูเหมือนมีแท็บถูกเลือก 2 อัน */}
-            <span className="ptab-secname">
-              <i aria-hidden="true">📋</i>ข้อมูลสินค้าเพิ่มเติม
-            </span>
-            <div className="flex gap-1.5 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist">
-              {product.tabs!.map((t, i) => {
-                const on = i === Math.min(tabIndex, product.tabs!.length - 1);
-                return (
-                  <button
-                    key={i}
-                    type="button"
-                    role="tab"
-                    onClick={() => setTabIndex(i)}
-                    aria-selected={on}
-                    className={`whitespace-nowrap rounded-full px-[18px] py-2 font-display text-[.88rem] transition duration-200 ${
-                      on
-                        ? "bg-[var(--blue-deep)] text-white shadow-[0_6px_14px_rgba(44,129,196,.28)]"
-                        : "bg-[var(--sky-50)] text-[var(--navy-soft)] ring-1 ring-[var(--sky-100)] hover:bg-[var(--sky-100)] hover:text-[var(--navy)]"
-                    }`}
-                  >
-                    {t.title}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div className="ptab-panel">
-            <ProductTabText tab={product.tabs![Math.min(tabIndex, product.tabs!.length - 1)]} />
-          </div>
-        </section>
-      )}
-
         </div>
 
         {/* ── ขวา: แผงสั่งซื้อ ติดหนึบตอนเลื่อน ── */}
@@ -3901,6 +3852,43 @@ export default function ProductDetail({
       {detailsSection("wide", "mt-16")}
 
       {/* ═══ แท็บข้อมูลสินค้า — รายละเอียดเพิ่มเติม / วิธีสั่งงาน / การรับประกัน (แบบหน้า pricelist เว็บเดิม) ═══ */}
+      {(product.tabs?.length ?? 0) > 0 && (
+        <section className="mt-14">
+          {/* ป้ายหัวโซน + แท็บเม็ดยา — โทน/ฟอนต์ชุดเดียวกับหน้าแรกและหน้าบัญชี (.acd-ttab) */}
+          <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-3">
+            {/* ป้ายหัวโซน — เดิมเป็นเม็ดยาสีกรมท่า ไปยืนคู่กับแท็บที่เลือกอยู่
+                เลยดูเหมือนมีแท็บถูกเลือก 2 อัน */}
+            <span className="ptab-secname">
+              <i aria-hidden="true">📋</i>ข้อมูลสินค้าเพิ่มเติม
+            </span>
+            <div className="flex gap-1.5 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist">
+              {product.tabs!.map((t, i) => {
+                const on = i === Math.min(tabIndex, product.tabs!.length - 1);
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    role="tab"
+                    onClick={() => setTabIndex(i)}
+                    aria-selected={on}
+                    className={`whitespace-nowrap rounded-full px-[18px] py-2 font-display text-[.88rem] transition duration-200 ${
+                      on
+                        ? "bg-[var(--blue-deep)] text-white shadow-[0_6px_14px_rgba(44,129,196,.28)]"
+                        : "bg-[var(--sky-50)] text-[var(--navy-soft)] ring-1 ring-[var(--sky-100)] hover:bg-[var(--sky-100)] hover:text-[var(--navy)]"
+                    }`}
+                  >
+                    {t.title}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="ptab-panel">
+            <ProductTabText tab={product.tabs![Math.min(tabIndex, product.tabs!.length - 1)]} />
+          </div>
+        </section>
+      )}
+
       {/* คำถามที่พบบ่อย (AEO) */}
       {faqs.length > 0 && (
         <section className="mt-14">
