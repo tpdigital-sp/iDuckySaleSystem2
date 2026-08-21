@@ -1049,6 +1049,33 @@ export function feeBreakdown(product: Product, selections: Record<string, string
   return lines;
 }
 
+/**
+ * 🧾 แจกแจง Add on ที่ "รวมอยู่ในราคาต่อหน่วยแล้ว" — คนละก้อนกับ feeBreakdown
+ *
+ * ต่างกันตรง:
+ *   - feeBreakdown       = ค่าที่บวกท้ายบิล (ค่าวัสดุต่อแผ่น · ค่าต่อลาย · ค่าคละลาย) → โผล่เป็นบรรทัด "+ Add on"
+ *   - ตัวนี้             = +฿ ต่อหน่วยธรรมดา (เช่น พิมพ์รองสีขาว +20/แผ่น) ซึ่งบวกเข้าไปในราคาต่อหน่วยไปแล้ว
+ *
+ * ไม่มีบรรทัดนี้ ลูกค้าเห็นแค่ "฿110 / แผ่น A3" แล้วไม่รู้ว่ามีค่าพิมพ์รองสีขาว 20 บาทรวมอยู่ข้างใน
+ * ⚠️ อย่าเอายอดจากที่นี่ไปบวกกับราคารวม — มันถูกนับไปแล้วในราคาต่อหน่วย ที่นี่ทำหน้าที่ "อธิบาย" อย่างเดียว
+ */
+export function unitAddOnBreakdown(product: Product, selections: Record<string, string>, qty: number): FeeLine[] {
+  const m = activeMatrix(product, selections);
+  const lines: FeeLine[] = [];
+  for (const opt of product.options ?? []) {
+    if (!optionActive(opt, selections)) continue;
+    // กลุ่มที่เป็นแกนตารางราคา — ราคาอยู่ในช่องตารางอยู่แล้ว ไม่ใช่ของแถมที่บวกทีหลัง
+    if (m?.driverLabels.includes(opt.label)) continue;
+    // สองชนิดนี้ไม่เข้าราคาต่อหน่วย (ไปโผล่ที่ feeBreakdown แทน) — ใส่ซ้ำจะกลายเป็นบอกสองรอบ
+    if (opt.extraPerDesign || opt.sheetFee) continue;
+    const add = groupAddOf(opt, selections, qty);
+    if (add <= 0) continue;
+    const picked = selections[opt.label];
+    lines.push({ label: picked || opt.label, amount: add });
+  }
+  return lines;
+}
+
 function designFeeBase(product: Product, selections: Record<string, string>, qty: number): number {
   // กติกาคละแบบคิดต่อหน่วยมาก่อน — ค่าคละ = (ค่าต่อหน่วยตามจำนวนลาย) × จำนวนที่สั่ง
   if (product.mixRule) return mixFeeTotal(product.mixRule, designCountOf(selections), Math.max(0, qty));

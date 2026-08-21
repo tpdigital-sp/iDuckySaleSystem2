@@ -24,6 +24,7 @@ import {
   DESIGN_LABEL,
   designFeeFor,
   feeBreakdown,
+  unitAddOnBreakdown,
   formatPrice,
   formatPriceRange,
   getCategory,
@@ -733,6 +734,17 @@ export default function ProductDetail({
 
   // tier ปัจจุบันของราคาขั้นบันได (ถ้ามี) — สินค้าคิดเรทตามชิ้นต่อลาย ไฮไลต์เรทของ ⌊จำนวน ÷ ลาย⌋
   const currentTier = useMemo(() => (matrix ? tierIndex(matrix, feeQty) : null), [matrix, feeQty]);
+
+  /**
+   * Add on ที่บวกอยู่ใน "ราคาต่อหน่วย" แล้ว (เช่น พิมพ์รองสีขาว +20/แผ่น)
+   * ไม่บอกไว้ ลูกค้าเห็นแค่ "฿110 / แผ่น A3" แล้วไม่รู้ว่ามีค่าอะไรรวมอยู่ข้างในบ้าง
+   * (คนละก้อนกับ feeLines ที่บวกท้ายบิล — อันนี้แค่กางให้ดู ไม่บวกซ้ำ)
+   */
+  const unitAddOns = useMemo(
+    () => unitAddOnBreakdown(product, effectiveWithDesigns, feeQty),
+    [product, effectiveWithDesigns, feeQty]
+  );
+  const unitAddOnTotal = unitAddOns.reduce((n, f) => n + f.amount, 0);
 
   const related = PRODUCTS.filter(
     (p) => p.category === product.category && p.id !== product.id
@@ -3199,6 +3211,18 @@ export default function ProductDetail({
                     {designFee > 0 && <> + Add on {formatPrice(designFee)}</>} ={" "}
                     <span className="font-extrabold text-amber-600">{formatPrice(unitPrice * qty + designFee)}</span>
                   </p>
+                  {/* Add on ที่รวมอยู่ในราคาต่อหน่วยแล้ว — บอกว่าราคาต่อหน่วยที่เห็นมีอะไรบวกอยู่ข้างใน */}
+                  {unitAddOnTotal > 0 && (
+                    <p className="mt-0.5 text-xs leading-relaxed text-stone-500">
+                      รวม Add on ในราคาต่อ{matrix.unit} แล้ว {formatPrice(unitAddOnTotal)} ={" "}
+                      {unitAddOns.map((f, i) => (
+                        <span key={`${f.label}-${i}`}>
+                          {i > 0 ? " + " : ""}
+                          <strong className="font-bold text-stone-600">{f.label}</strong> {formatPrice(f.amount)}
+                        </span>
+                      ))}
+                    </p>
+                  )}
                   {/* แจกแจงค่าเพิ่มสั้น ๆ — ลูกค้าจะได้รู้ว่ายอดที่บวกมาเป็นค่าอะไร ไม่ต้องเดา */}
                   {designFee > 0 && feeLines.length > 0 && (
                     <p className="mt-0.5 text-xs leading-relaxed text-stone-500">
