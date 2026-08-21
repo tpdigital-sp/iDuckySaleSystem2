@@ -38,7 +38,7 @@ const DIR = (process.argv.find((a) => a.startsWith("--from=")) || "").split("=")
 const PAGE = "https://www.iduckyofficial-pricelists.com/cardboard";
 const SECTION = "Card Broad Foam หนา 2 mm";
 const NAME = "Card Broad Foam หนา 2 mm";
-const V = "v1";
+const V = "v2";
 
 /** ชื่อเดิมที่ยอมให้ทับได้ — กันเผลอรันทับสินค้าตัวอื่นถ้า id ถูกใช้ซ้ำวันหลัง */
 const EXPECT_NAMES = [NAME];
@@ -53,7 +53,12 @@ const SIZE_LABEL = "ขนาด";
 const COAT_LABEL = "เคลือบลามิเนต";
 /** ตั้งให้ตรงกับ label ของคลัง preset-2 ไปเลย กฎ/showWhen จะได้อ้างชื่อเดียวกันทั้งก่อนและหลัง resolve */
 const FILM_LABEL = "เคลือบ";
-const FOIL_LABEL = "ปั๊มฟอยล์";
+/**
+ * ชื่อกลุ่มฟอยล์ตั้งให้ตรงกับ Ultra-Hard CardBoard (สินค้าพี่น้องบนหน้าตารางราคาเดียวกัน)
+ * ชื่อชนิดการปั๊มก็อ่านจากตาราง Add On บนเว็บโดยตรง ไม่ตั้งเอง — เว็บแก้คำเมื่อไหร่ สองตัวเปลี่ยนตามพร้อมกัน
+ */
+const FOIL_LABEL = "เคลือบฟอยล์ (Add On)";
+const FOIL_NONE = "ไม่เคลือบฟอยล์";
 const FOIL_COLOR_LABEL = "สีฟอยล์";
 const FILM_PRESET = "preset-2";
 const COAT_SPECIAL = "เคลือบพิเศษ";
@@ -131,15 +136,18 @@ const ALL = blocks();
 /* ตาราง Add On เคลือบฟอยล์ อยู่หัวหน้าเว็บ (ใช้ร่วมทั้งหน้า) — ต้องอ่านก่อนตัดเฉพาะบล็อกสินค้า */
 const foilTable = ALL.find((b) => b.table && /ฟอยล์/.test(b.table[0][0] ?? ""));
 if (!foilTable) throw new Error('ไม่เจอตาราง "Add On เคลือบฟอยล์" บนหน้าเว็บ — โครงหน้าเว็บอาจเปลี่ยน');
-const foilPrice = (re, what) => {
+/** คืนทั้งชื่อแถวและราคา — ชื่อตัวเลือกฟอยล์ในหน้าสินค้าใช้ถ้อยคำเดียวกับตารางบนเว็บเป๊ะ */
+const foilRow = (re, what) => {
   const row = foilTable.table.slice(1).find((r) => re.test(r[0]));
   if (!row) throw new Error(`ในตาราง Add On เคลือบฟอยล์ ไม่เจอแถว${what} — โครงหน้าเว็บอาจเปลี่ยน`);
   const n = Number(String(row[1]).replace(/[^\d]/g, ""));
   if (!n) throw new Error(`ราคาแถว "${row[0]}" อ่านไม่ออก ("${row[1]}")`);
-  return n;
+  return { name: row[0], price: n };
 };
-const FOIL_1 = foilPrice(/1\s*เลเยอร์/, ' "พิมพ์ 1 เลเยอร์"');
-const FOIL_2 = foilPrice(/2\s*เลเยอร์/, ' "พิมพ์ 2 เลเยอร์"');
+const FOIL1 = foilRow(/1\s*เลเยอร์/, ' "พิมพ์ 1 เลเยอร์"');
+const FOIL2 = foilRow(/2\s*เลเยอร์/, ' "พิมพ์ 2 เลเยอร์"');
+const FOIL_1 = FOIL1.price;
+const FOIL_2 = FOIL2.price;
 
 const holoLine = ALL.find((b) => b.text && /โฮโลแกรม\s*บวกเพิ่ม\s*\d+\s*บาท/.test(b.text));
 if (!holoLine) throw new Error('ไม่เจอบรรทัด "โฮโลแกรม บวกเพิ่ม N บาท" บนหน้าเว็บ — โครงหน้าเว็บอาจเปลี่ยน');
@@ -231,10 +239,21 @@ const COATS = [
  * ส่วนโฮโลแกรมย้ายไปเป็น "สี" ในกลุ่มสีฟอยล์ (บวกคงที่ต่อใบตามค่าที่อ่านจากเว็บ) ให้ตรงกับ Photo card Digital
  */
 const FOILS = [
-  { name: "ไม่ปั๊มฟอยล์", fee: 0, art: "foil-none", popular: true },
-  { name: "ปั๊มฟอยล์ 1 เลเยอร์", fee: FOIL_1, art: "foil-1layer", color: true },
-  { name: "ปั๊มฟอยล์ 2 เลเยอร์", fee: FOIL_2, art: "foil-2layer", color: true },
+  { name: FOIL_NONE, fee: 0, art: "foil-none", popular: true },
+  { name: FOIL1.name, fee: FOIL_1, art: "foil-1layer", color: true },
+  { name: FOIL2.name, fee: FOIL_2, art: "foil-2layer", color: true },
 ];
+
+/**
+ * ชื่อตัวเลือกขนาดที่ลูกค้าเห็น — ใส่ ซม. กำกับให้เหมือน Ultra-Hard CardBoard (สินค้าพี่น้อง)
+ * ชื่อรหัส A7/A6/… อ่านแล้วไม่เห็นภาพว่าใหญ่แค่ไหน ส่วน 10x10cm / 15x15cm บอกขนาดอยู่ในชื่อแล้ว จึงไม่ต่อท้ายซ้ำ
+ * ⚠️ ชื่อนี้เป็น key ของตารางราคาด้วย (ขนาดเป็นแกนเดียวของตาราง) — ใช้ตัวเดียวกันทุกที่ทั้งไฟล์
+ */
+const sizeName = (s) => {
+  if (!/^A\d+$/.test(s.name)) return s.name;
+  const [w, h] = [Math.min(s.w, s.h), Math.max(s.w, s.h)];
+  return `${s.name} (${(w / 10).toFixed(1)} x ${(h / 10).toFixed(1)} ซม.)`;
+};
 
 /**
  * ขนาดที่ใหญ่เกินกว่าจะปั๊มฟอยล์โฮโลแกรมได้ — วัดจากด้านกว้าง/ยาวจริง (มม.) ไม่ใช่ลำดับในตาราง
@@ -244,7 +263,7 @@ const HOLO_MAX = SIZES.find((s) => s.name === HOLO_MAX_SIZE);
 if (!HOLO_MAX) throw new Error(`ไม่มีขนาด "${HOLO_MAX_SIZE}" ในตารางขนาด — ตรวจค่า HOLO_MAX_SIZE ก่อน`);
 const fitsHolo = (s) =>
   Math.max(s.w, s.h) <= Math.max(HOLO_MAX.w, HOLO_MAX.h) && Math.min(s.w, s.h) <= Math.min(HOLO_MAX.w, HOLO_MAX.h);
-const TOO_BIG_FOR_HOLO = SIZES.filter((s) => !fitsHolo(s)).map((s) => s.name);
+const TOO_BIG_FOR_HOLO = SIZES.filter((s) => !fitsHolo(s)).map(sizeName);
 const NON_HOLO_COLORS = FOIL_COLORS.filter((c) => !c.holo).map((c) => c.name);
 
 /**
@@ -252,7 +271,7 @@ const NON_HOLO_COLORS = FOIL_COLORS.filter((c) => !c.holo).map((c) => c.name);
  * ค่าเคลือบ/ค่าฟอยล์ไม่เข้าราคาต่อชิ้น แต่คิดเป็นค่าวัสดุต่อแผ่น A3 (ดู sheetFee ในกลุ่มตัวเลือก)
  */
 const cells = {};
-for (const s of SIZES) cells[s.name] = base[s.name];
+for (const s of SIZES) cells[sizeName(s)] = base[s.name];
 
 const PRICING = {
   unit: "ชิ้น",
@@ -349,6 +368,7 @@ const d = structuredClone(row.data);
 if (!EXPECT_NAMES.includes(d.name)) throw new Error(`${ID} ชื่อ "${d.name}" ไม่ใช่แถวที่ตั้งใจแก้ — ตรวจก่อน`);
 
 d.name = NAME;
+d.slug = "card-broad-foam";
 d.category = "card-photo";
 d.emoji = "🗂️";
 d.gradient = "from-sky-100 to-blue-200";
@@ -377,7 +397,7 @@ d.options = [
     label: SIZE_LABEL,
     stockBearing: true,
     choices: SIZES.map((s) => ({
-      name: s.name,
+      name: sizeName(s),
       ...(s.name === "A6" ? { popular: true } : {}),
       // 1 แผ่น A3 ได้กี่ใบ — กลุ่มเคลือบ/ฟอยล์เอาไปหารจำนวนที่สั่งเพื่อคิดค่าวัสดุต่อแผ่น
       perSheet: s.perSheet,
@@ -435,7 +455,7 @@ d.rules = [
   /**
    * งานฟอยล์ทำร่วมกับเคลือบลามิเนตไม่ได้ (ผู้ใช้ยืนยัน 21 ส.ค. 69) — ล็อกกันทั้งสองทาง
    *   เลือกฟอยล์  → กลุ่มเคลือบลามิเนตเหลือ "ไม่เคลือบ"
-   *   เลือกเคลือบ → กลุ่มฟอยล์เหลือ "ไม่ปั๊มฟอยล์"
+   *   เลือกเคลือบ → กลุ่มเคลือบฟอยล์เหลือ "ไม่เคลือบฟอยล์"
    * อยากสลับข้าง ให้ปลดข้างที่เลือกไว้กลับเป็น "ไม่..." ก่อน อีกกลุ่มถึงจะปลดล็อก
    */
   {
@@ -511,7 +531,7 @@ d.tabs = [
       ...headSizes.map((n) => `• ${n} — ${tiers.map((t, i) => `${t.label} ฿${base[n][i]}`).join(" · ")}`),
       `::ราคาบวกเพิ่ม (คิดต่อ 1 ${SHEET_UNIT} ปัดขึ้นเต็มแผ่น)::`,
       `• เคลือบลามิเนตเงา / ด้าน +${COAT_FEE} บาท · เคลือบพิเศษ +${SPECIAL_FEE} บาท`,
-      `• ปั๊มฟอยล์ 1 เลเยอร์ +${FOIL_1} บาท · 2 เลเยอร์ +${FOIL_2} บาท`,
+      `• ${FOIL1.name} +${FOIL_1} บาท · ${FOIL2.name} +${FOIL_2} บาท`,
       `• สีฟอยล์เลือกได้ ${FOIL_COLORS.map((c) => c.name.replace(/^สี/, "")).join(" · ")} — สีโฮโลแกรม +${HOLO_FEE} บาทต่อแผ่น และปั๊มได้ใหญ่สุดแค่ ${HOLO_MAX_SIZE}`,
       `• 1 แผ่น A3 ตัดได้ ${SIZES.map((s) => `${s.name} ${s.perSheet} ใบ`).join(" · ")} — สั่งไม่ถึงโควตาก็คิด 1 แผ่นเต็ม`,
       "• เคลือบลามิเนตกับงานฟอยล์ทำร่วมกันไม่ได้ — เลือกข้างไหน อีกข้างจะถูกล็อกให้เอง",
@@ -566,7 +586,7 @@ d.seo = {
       q: "ค่าเคลือบกับค่าปั๊มฟอยล์คิดยังไง?",
       a:
         `คิดเป็นค่าวัสดุต่อ 1 แผ่น A3 ไม่ใช่ต่อชิ้น และปัดขึ้นเป็นแผ่นเต็มเสมอ — เคลือบเงา/ด้าน ${COAT_FEE} บาท · เคลือบพิเศษ ${SPECIAL_FEE} บาท · ` +
-        `ปั๊มฟอยล์ 1 เลเยอร์ ${FOIL_1} บาท · 2 เลเยอร์ ${FOIL_2} บาท · สีโฮโลแกรม +${HOLO_FEE} บาท (ปั๊มได้ใหญ่สุด ${HOLO_MAX_SIZE}) · ` +
+        `${FOIL1.name} ${FOIL_1} บาท · ${FOIL2.name} ${FOIL_2} บาท · สีโฮโลแกรม +${HOLO_FEE} บาท (ปั๊มได้ใหญ่สุด ${HOLO_MAX_SIZE}) · ` +
         `1 แผ่น A3 ตัดได้ ${SIZES.map((s) => `${s.name} ${s.perSheet} ใบ`).join(" · ")} — เช่น A5 เคลือบพิเศษ สั่ง 1-4 ใบ ${SPECIAL_FEE} บาท · สั่ง 5 ใบ ${SPECIAL_FEE * 2} บาท`,
     },
     {

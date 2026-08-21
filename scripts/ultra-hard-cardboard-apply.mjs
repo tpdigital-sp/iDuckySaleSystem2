@@ -53,6 +53,8 @@ const FILM_PRESET = "preset-2";
 const COAT_SPECIAL = "เคลือบพิเศษ";
 const FOIL_LABEL = "เคลือบฟอยล์ (Add On)";
 const FOIL_COLOR_LABEL = "สีฟอยล์";
+/** ฟอยล์โฮโลแกรมปั๊มได้ใหญ่สุดแค่ขนาดนี้ (เท่ากับ Card Broad Foam) */
+const HOLO_MAX_SIZE = "A4";
 const FOIL_NONE = "ไม่เคลือบฟอยล์";
 
 /**
@@ -340,6 +342,13 @@ d.sold = d.sold ?? 0;
 d.artworkRequired = true;
 
 d.pricing = PRICING;
+/**
+ * คละเกินโควตาแล้ว "ราคาตกไปคิดตามจำนวนชิ้นต่อลาย" — ไม่บล็อกการสั่ง
+ * ⚠️ ไม่ตั้งธงนี้ minPerDesign ของเรทจะไม่มีผลกับราคาเลย (tierQtyFor คืนจำนวนเต็มทันที)
+ *    สั่ง 11 ชิ้นคละ 11 ลาย ก็ยังได้เรทส่ง ทั้งที่หน้าเว็บเขียนว่าคละได้แค่ลายละ 5 ชิ้นขึ้นไป
+ *    (ตั้งให้ตรงกับ Card Broad Foam ซึ่งหน้าเว็บเขียนกติกาคละลายไว้เหมือนกันเป๊ะ)
+ */
+d.tierByDesign = true;
 d.priceRates = [
   {
     id: "r1",
@@ -357,6 +366,17 @@ const FOIL_COLORS = [
   { name: "สีโรสโกลด์", art: "foil-rosegold" },
   { name: "สีโฮโลแกรม", art: "foil-hologram", extra: HOLO_FEE },
 ];
+/**
+ * ขนาดที่ใหญ่เกินกว่าจะปั๊มฟอยล์โฮโลแกรมได้ — วัดจากด้านกว้าง/ยาวจริง (มม.) ไม่ใช่ลำดับในตาราง
+ * กติกาเดียวกับ Card Broad Foam (สินค้าพี่น้องบนหน้าตารางราคาเดียวกัน)
+ */
+const HOLO_MAX = SIZES.find((s) => s.name === HOLO_MAX_SIZE);
+if (!HOLO_MAX) throw new Error(`ไม่มีขนาด "${HOLO_MAX_SIZE}" ในตารางขนาด — ตรวจค่า HOLO_MAX_SIZE ก่อน`);
+const TOO_BIG_FOR_HOLO = SIZE_ORDER.filter(
+  (s) => s.mm[0] > HOLO_MAX.mm[0] || s.mm[1] > HOLO_MAX.mm[1]
+).map(sizeChoiceName);
+const NON_HOLO_COLORS = FOIL_COLORS.filter((c) => !c.extra).map((c) => c.name);
+
 /** ชนิดเคลือบลามิเนตที่ "ทำจริง" (ทุกแบบยกเว้นไม่เคลือบ) — ใช้เป็นเงื่อนไขล็อกกับงานฟอยล์ */
 const PAID_COATS = ["เคลือบเงา", "เคลือบด้าน", COAT_SPECIAL];
 const FOIL_LAYERS = [
@@ -433,6 +453,15 @@ d.rules = [
     when: { label: COAT_LABEL, choice: PAID_COATS[0], choices: PAID_COATS },
     limit: { label: FOIL_LABEL, allow: [FOIL_NONE] },
   },
+  // ฟอยล์โฮโลแกรมปั๊มได้ใหญ่สุดแค่ A4 — ขนาดที่ใหญ่กว่านั้นตัดสีโฮโลแกรมออกจากกลุ่มสีฟอยล์
+  ...(TOO_BIG_FOR_HOLO.length
+    ? [
+        {
+          when: { label: SIZE_LABEL, choice: TOO_BIG_FOR_HOLO[0], choices: TOO_BIG_FOR_HOLO },
+          limit: { label: FOIL_COLOR_LABEL, allow: NON_HOLO_COLORS },
+        },
+      ]
+    : []),
 ];
 
 d.images = gallery;
