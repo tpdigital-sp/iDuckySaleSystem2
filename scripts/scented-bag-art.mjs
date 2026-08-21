@@ -217,24 +217,54 @@ const eyeletCord = (cx, top) => `
   <circle cx="${cx}" cy="${top + 27}" r="6" fill="#eef3f7" stroke="#c3d2de" stroke-width="1.5"/>`;
 
 /**
- * ปากถุงรูดจีบ — คว้านมุมบนสองข้างด้วยสีพื้น (ขาว) ให้คอถุงสอบเข้า
- * แล้ววางเชือกขาวสองข้างที่ระดับคอ ตรงตามถุงหูรูดของจริง
+ * ถุงหูรูดทั้งใบ — วาดแยกจาก pouch() เพราะทรงไม่เหมือนถุงแบน
+ * อ้างจากรูปงานจริง: ตัวถุงกว้างเต็ม แล้วสอบเข้าที่คอ · เหนือคอเป็นผ้าจีบฟูขึ้นมาเป็นจุก
+ * เชือกเป็นสายผ้าแบนสีขาว ออกสองข้างที่คอแล้วห้อยยาวลงมาเลยก้นถุง
  */
-const drawstringTop = (cx, top, w, h) => {
-  const yNeck = top + h * 0.2;
-  const half = w / 2;
-  const neck = w * 0.3;
-  const folds = Array.from({ length: 6 }, (_, i) => {
-    const x = cx - neck + (neck / 2.5) * i;
-    return `<path d="M ${x.toFixed(1)} ${yNeck - 4} q 4 -${(yNeck - top) * 0.55} 8 -${yNeck - top - 2}" fill="none" stroke="#0f172a" stroke-width="2" opacity="0.15"/>`;
+const drawstringBag = (cx, bottom, w, h) => {
+  const yB = bottom;
+  const yT = bottom - h;
+  const crownH = h * 0.17;
+  const yC = yT + crownH; // แนวรูดเชือก
+  const yS = yC + h * 0.15; // ไหล่ถุง — ต่ำกว่านี้กว้างเต็มใบ
+  const x0 = cx - w / 2;
+  const x1 = cx + w / 2;
+  const neck = w * 0.44;
+  const nx0 = cx - neck / 2;
+  const nx1 = cx + neck / 2;
+  const b = w * 0.035;
+
+  const body = `M ${x0} ${yB} Q ${cx} ${yB + b} ${x1} ${yB}
+                L ${x1} ${yS}
+                C ${x1} ${yC + 10} ${nx1 + 12} ${yC + 6} ${nx1} ${yC}
+                L ${nx0} ${yC}
+                C ${nx0 - 12} ${yC + 6} ${x0} ${yC + 10} ${x0} ${yS} Z`;
+
+  /** ผ้าจีบเหนือแนวรูด — วงรีซ้อนกันเป็นจุกฟู */
+  const crown = Array.from({ length: 5 }, (_, i) => {
+    const ex = nx0 + (neck / 4) * i;
+    const ry = crownH * (i % 2 ? 0.62 : 0.78);
+    const ey = yC - ry * 0.5;
+    return `<ellipse cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" rx="${(neck * 0.24).toFixed(1)}" ry="${ry.toFixed(1)}" fill="url(#cloth)" stroke="#9db8cc" stroke-width="1.5"/>
+            <ellipse cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" rx="${(neck * 0.24).toFixed(1)}" ry="${ry.toFixed(1)}" fill="url(#sheen)"/>`;
   }).join("");
+
+  /** รอยจีบผ้าที่รูดแล้วสาดลงมาในตัวถุง */
+  const folds = Array.from({ length: 5 }, (_, i) => {
+    const t = (i - 2) / 2; // -1 … 1
+    return `<path d="M ${(cx + t * neck * 0.42).toFixed(1)} ${yC + 4} C ${(cx + t * neck * 0.6).toFixed(1)} ${yC + h * 0.12} ${(cx + t * w * 0.34).toFixed(1)} ${yS} ${(cx + t * w * 0.4).toFixed(1)} ${(yS + h * 0.16).toFixed(1)}"
+             fill="none" stroke="#0f172a" stroke-width="2" opacity="0.13"/>`;
+  }).join("");
+
   return `
-    <path d="M ${cx - half - 8} ${top - 10} L ${cx - neck} ${top - 10} L ${cx - half - 8} ${yNeck + 6} Z" fill="#ffffff"/>
-    <path d="M ${cx + half + 8} ${top - 10} L ${cx + neck} ${top - 10} L ${cx + half + 8} ${yNeck + 6} Z" fill="#ffffff"/>
+    ${shadow(cx, yB, w)}
+    ${cord(`M ${nx0 + 10} ${yC + 2} C ${x0 - 18} ${yC + 6} ${x0 - 30} ${yC + h * 0.45} ${x0 - 16} ${yB + 30}`, 17, 11)}
+    ${cord(`M ${nx1 - 10} ${yC + 2} C ${x1 + 18} ${yC + 6} ${x1 + 30} ${yC + h * 0.45} ${x1 + 16} ${yB + 30}`, 17, 11)}
+    ${crown}
+    <path d="${body}" fill="url(#cloth)" stroke="#9db8cc" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="${body}" fill="url(#sheen)"/>
     ${folds}
-    ${cord(`M ${cx - neck - 4} ${yNeck} q ${neck + 4} 16 ${(neck + 4) * 2} 0`, 14, 9)}
-    ${cord(`M ${cx - neck} ${yNeck + 3} C ${cx - w * 0.78} ${yNeck - 8} ${cx - w * 0.8} ${yNeck + 46} ${cx - w * 0.62} ${yNeck + 78}`, 13, 8)}
-    ${cord(`M ${cx + neck} ${yNeck + 3} C ${cx + w * 0.78} ${yNeck - 8} ${cx + w * 0.8} ${yNeck + 46} ${cx + w * 0.62} ${yNeck + 78}`, 13, 8)}`;
+    ${cord(`M ${nx0 - 10} ${yC} Q ${cx} ${yC + 14} ${nx1 + 10} ${yC}`, 15, 10)}`;
 };
 
 const write = async (name, svg) => {
@@ -307,9 +337,8 @@ async function forms() {
       const h = f.cm.h * PX_PER_CM;
       const top = BASE_Y - h;
       art = `
-        ${pouch(cx, BASE_Y, w, h)}
-        ${f.drawstring ? drawstringTop(cx, top, w, h) : ""}
-        ${beadSachet(cx, BASE_Y - h * 0.13, w * 0.68, h * (f.drawstring ? 0.46 : 0.54), { ghost: true, label: "ซองเม็ดหอม 30 ก." })}
+        ${f.drawstring ? drawstringBag(cx, BASE_Y, w, h) : pouch(cx, BASE_Y, w, h)}
+        ${beadSachet(cx, BASE_Y - h * 0.1, w * 0.62, h * (f.drawstring ? 0.4 : 0.54), { ghost: true, label: "ซองเม็ดหอม 30 ก." })}
         ${f.drawstring ? "" : f.top(cx, top)}`;
       dims = `${dimH(BASE_Y + 40, cx - w / 2, cx + w / 2, `${f.cm.w} ซม.`)}
               ${dimV(cx + w / 2 + 30, top, BASE_Y, `${f.cm.h} ซม.`)}`;

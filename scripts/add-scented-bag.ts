@@ -48,8 +48,14 @@ const env = Object.fromEntries(
 
 const ID = "scented-bag";
 const REV = "v1";
+/**
+ * ไฟล์ที่วาดใหม่ทีหลัง ต้องขึ้นรุ่นแยกเป็นรายไฟล์ — อัปทับชื่อเดิมแล้ว CDN/Next ยังคืนภาพเก่าอยู่
+ * (form-drawstring v2 = วาดทรงถุงหูรูดใหม่ให้ตรงกับรูปงานจริง — จุกผ้าจีบ + สายผ้าห้อยสองข้าง)
+ */
+const REV_BY_FILE: Record<string, string> = { "form-drawstring": "v2" };
+const revOf = (name: string) => REV_BY_FILE[name] ?? REV;
 const IMG = (name: string) =>
-  `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/${name}-${REV}.jpg`;
+  `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/${name}-${revOf(name)}.jpg`;
 
 const PAGE = "https://www.iduckyofficial-pricelists.com/" + encodeURIComponent("รับทำแผ่นหินน้ำหอม");
 const SECTION = "scented bag";
@@ -404,9 +410,9 @@ async function uploadImages() {
     const buf = await readFile(`${IMAGES_DIR.replace(/\/$/, "")}/${name}.jpg`);
     const { error } = await client.storage
       .from("product-images")
-      .upload(`products/${ID}/${name}-${REV}.jpg`, buf, { contentType: "image/jpeg", upsert: true });
+      .upload(`products/${ID}/${name}-${revOf(name)}.jpg`, buf, { contentType: "image/jpeg", upsert: true });
     if (error) throw new Error(`${name}: ${error.message}`);
-    console.log(`⬆️  ${name}-${REV}.jpg (${Math.round(buf.length / 1024)} KB)`);
+    console.log(`⬆️  ${name}-${revOf(name)}.jpg (${Math.round(buf.length / 1024)} KB)`);
   }
 }
 
