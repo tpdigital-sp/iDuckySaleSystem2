@@ -1,155 +1,194 @@
 /*
- * แผงหน้าร้าน (Shop Board) — ชั้นภาพของหน้า /admin
- * โทนเดียวกับหน้าร้าน (landing.css): พื้นฟ้าจางไล่เป็นครีม · การ์ดขาวลอยด้วยเงาอมฟ้า · หมึกน้ำเงิน
+ * แผงหน้าร้าน — ชั้นภาพของหน้า /admin  ("รางเบนโตะกระจก")
+ * ลูกผสมของแบบร่างสองตัวที่ผู้ใช้เลือก:
+ *   · โครง  ← เส้นทางงาน  : รางไล่สีเรียงตามลำดับที่ใบงานเดินจริง + วงแหวนบอกสัดส่วน
+ *   · ผิว   ← เบนโตะกระจก : พื้นเมชไล่สีจากจานสีแบรนด์ + กล่องกระจกฝ้า
+ *   · ของใหม่ที่เกิดจากการผสม: ความสูงของกล่อง = ปริมาณงานที่ค้างอยู่ขั้นนั้น
+ *     (ตั้งผ่าน --h จาก .tsx) กวาดตาลงรางครั้งเดียวได้ทั้งลำดับและปริมาณ
  *
- * ⚠️ บทเรียนรอบแรก: ทำเป็นบอร์ดน้ำเงินทึบ + ตัวอักษรหนา 700–800 ทุกจุด → หน้าดู "แน่นและหนัก"
- *    คนละเรื่องกับหน้าร้านที่สว่างและโปร่ง · รอบนี้จึงยึดกติกา 3 ข้อ
- *      1. ลำดับความสำคัญมาจาก "ขนาด + พื้นที่ว่าง" ไม่ใช่ความหนาหรือพื้นสีทึบ
- *      2. ตัวเลขใหญ่ใช้ Mitr 500 (ฟอนต์หัวเรื่องหน้าร้าน) ไม่ใช่ Prompt 800
- *      3. หนึ่งหน้าจอมีสีเข้มได้ไม่กี่จุด — ปุ่มหลัก กับแถบงานด่วน เท่านั้น
- *
+ * จานสีทั้งหมดยกจากหน้าร้าน (landing.css) — ฟ้า เหลืองเป็ด น้ำเงินเข้ม คอรัล มินต์ ลิแลค
  * ⚠️ ห้ามใช้ .dl ครอบหน้านี้ (`.dl *{margin:0;padding:0}` จะล้าง utility ของ Tailwind ทั้งหน้า)
- * กติกา: ทุกสีในคอมโพเนนต์ต้องอ้าง token ในไฟล์นี้ ห้ามเขียน hex ตรง ๆ ใน .tsx
+ * ⚠️ ห้ามเขียน hex ตรง ๆ ใน .tsx — อ้าง var(--dk-*) เท่านั้น
+ * ⚠️ ตัวเลขต้องใช้ Prompt ไม่ใช่ Mitr — เลข 0 ของ Mitr มีขีดทับ (฿0 อ่านเป็น ฿ø)
  */
 
 .dkb {
   /* หมึก */
-  --dk-ink: #173a6b;
-  --dk-ink-soft: #5b7799;
-  --dk-ink-faint: #96abc4;
-  --dk-line: rgba(23, 58, 107, 0.08);
+  --dk-navy: #173a6b;
+  --dk-navy-soft: #4a6a96;
+  --dk-faint: #8aa3c4;
+  --dk-hair: rgba(23, 58, 107, 0.09);
 
-  /* สีเน้น — ใช้น้อยและตั้งใจ */
+  /* จานสีแบรนด์ */
+  --dk-sky: #e2f3fe;
+  --dk-sky-300: #9cd8f6;
+  --dk-blue: #57b6e8;
+  --dk-blue-deep: #2c81c4;
   --dk-yolk: #ffd447;
   --dk-yolk-deep: #ffb627;
-  --dk-yolk-wash: #fff6dc;
-  --dk-yolk-ink: #8a5a00;
-  --dk-sky-wash: #f4f9fd;
-  --dk-sky-hover: #e7f3fd;
-  --dk-sky-deep: #2c81c4;
-  --dk-blue: #57b6e8;
-  --dk-mint-ink: #0f7a5c;
-  --dk-mint-wash: #e9f8f2;
-  --dk-mint: #a9e5d2;
+  --dk-yolk-ink: #8a6209;
+  --dk-yolk-wash: #fff4d4;
   --dk-coral: #ff9eb0;
-  --dk-coral-ink: #d13a55;
-  --dk-coral-wash: #fff2f4;
+  --dk-coral-deep: #f4668c;
+  --dk-coral-ink: #c9425f;
+  --dk-coral-wash: #ffeef2;
+  --dk-mint: #5fc9a8;
+  --dk-mint-ink: #0d6b51;
+  --dk-mint-wash: #e6f8f1;
   --dk-lilac: #c7c4f5;
-  --dk-lilac-ink: #4f49b5;
-  --dk-lilac-wash: #f2f1fd;
-
-  /* เงาแบบหน้าร้าน — ฟุ้งอมฟ้า ไม่ใช่ขอบเส้น */
-  --dk-sh-card: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 10px 26px rgba(44, 129, 196, 0.09), 0 2px 6px rgba(23, 58, 107, 0.04);
-  --dk-sh-hero: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 20px 44px rgba(44, 129, 196, 0.13), 0 5px 12px rgba(23, 58, 107, 0.05);
+  --dk-lilac-ink: #5b53c2;
+  --dk-lilac-wash: #f1f0fd;
 
   --dk-display: var(--font-mitr), "Mitr", var(--font-prompt), sans-serif;
 
-  /* ฟ้าจาง ๆ ช่วงบน แล้วไล่เป็นครีมอุ่นของร้าน — ต่อเนื่องกับหน้าร้าน */
-  background: linear-gradient(172deg, #e6f3fd 0%, #f3f9fd 12%, #fdfaf2 30%, #fdf8ee 100%) no-repeat;
-  background-attachment: local;
-  color: var(--dk-ink);
+  color: var(--dk-navy);
+
+  /* พื้นเมชไล่สีสี่มุม — ตรึงขนาดก้อนสีไว้ ไม่ให้ยืดตามความสูงของหน้า */
+  background-color: #eaf6ff;
+  background-image:
+    radial-gradient(circle, rgba(255, 212, 71, 0.5), transparent 70%),
+    radial-gradient(circle, rgba(255, 158, 176, 0.45), transparent 70%),
+    radial-gradient(circle, rgba(199, 196, 245, 0.5), transparent 70%),
+    radial-gradient(circle, rgba(169, 229, 210, 0.5), transparent 70%),
+    linear-gradient(160deg, #dcefff 0%, #eaf6ff 45%, #f6fbff 100%);
+  background-size: 620px 520px, 560px 480px, 640px 540px, 600px 500px, 100% 100%;
+  background-position:
+    -120px -130px,
+    right -110px top -150px,
+    right -150px bottom -170px,
+    -150px bottom -150px,
+    0 0;
+  background-repeat: no-repeat;
 }
 
-/* ── ตัวอักษร: เน้นด้วยขนาดกับสี ไม่ใช่ความหนา ───────────── */
+/* ── ตัวอักษร: เน้นด้วยขนาดกับพื้นที่ว่าง ไม่ใช่ความหนา ── */
 .dkb-display { font-family: var(--dk-display); font-weight: 400; letter-spacing: -0.005em; }
 .dkb-h2 { font-family: var(--dk-display); font-weight: 500; letter-spacing: -0.01em; }
-/* ตัวเลขหลัก — ใหญ่พอให้อ่านจากระยะแขน แต่น้ำหนักเบา (500) ไม่ทึบ
-   ⚠️ ห้ามใช้ Mitr กับตัวเลข: เลขศูนย์ของ Mitr มีขีดทับ (฿0 อ่านเป็น ฿ø) — ใช้ Prompt เท่านั้น */
-.dkb-num { font-family: var(--font-prompt), sans-serif; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -0.005em; line-height: 1; }
+.dkb-num { font-family: var(--font-prompt), sans-serif; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1; }
 .dkb-num-sm { font-variant-numeric: tabular-nums; font-weight: 600; }
 .dkb-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem; letter-spacing: -0.02em; }
 .dkb-eyebrow { font-size: 0.72rem; font-weight: 500; letter-spacing: 0.1em; }
 
-/* ── พื้นผิว: การ์ดขาวลอย ไม่มีเส้นขอบ ───────────────────── */
-.dkb-card {
-  background: #fffefb;
-  border-radius: 26px;
-  box-shadow: var(--dk-sh-card);
+/* ── กล่องกระจกฝ้า ── */
+.dkb-g {
+  background: rgba(255, 255, 255, 0.62);
+  -webkit-backdrop-filter: blur(18px) saturate(165%);
+  backdrop-filter: blur(18px) saturate(165%);
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  border-radius: 24px;
+  box-shadow: 0 10px 26px rgba(44, 129, 196, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.92);
 }
-.dkb-hero {
-  background: #fffefb;
-  border-radius: 32px;
-  box-shadow: var(--dk-sh-hero);
+/* ทางถอยสำหรับเครื่องที่ไม่รองรับ/ผู้ใช้ปิดความโปร่งใส — กระจกฝ้ากินแรงบนมือถือรุ่นเก่า */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .dkb-g { background: rgba(255, 255, 255, 0.94); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .dkb-g { background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 
-/* ── ช่องงานค้าง: พื้นฟ้าจาง ไม่มีกรอบ ไม่มีแถบหนา ── */
+/* ── กล่องหัว + วงแหวนสัดส่วน ── */
+.dkb-ring {
+  width: 88px; height: 88px; flex: none; border-radius: 50%; padding: 7px;
+  display: grid; place-items: center;
+  background: conic-gradient(from -90deg, var(--dk-yolk-deep) 0 var(--dk-pct), rgba(23, 58, 107, 0.09) var(--dk-pct));
+}
+.dkb-ring > i { width: 100%; height: 100%; border-radius: 50%; background: #fff; display: grid; place-items: center; }
+
+/* ── ราง: ลำดับงานจริง ── */
+.dkb-rail { position: relative; padding-left: 64px; }
+.dkb-rail::before,
+.dkb-rail::after {
+  content: ""; position: absolute; left: 25px; top: 16px; bottom: 18px;
+  width: 9px; border-radius: 9px;
+}
+.dkb-rail::before {
+  background: linear-gradient(180deg, var(--dk-yolk-deep) 0%, var(--dk-coral) 32%, var(--dk-mint) 64%, var(--dk-sky-300) 100%);
+  box-shadow: 0 3px 10px rgba(44, 129, 196, 0.24);
+}
+/* เกล็ดวิ่งลงราง — บอกว่างานกำลังไหล */
+.dkb-rail::after {
+  background: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0 7px, transparent 7px 42px);
+  animation: dkb-flow 6.5s linear infinite;
+}
+@keyframes dkb-flow { from { background-position: 0 0; } to { background-position: 0 -260px; } }
+
+.dkb-node { position: relative; }
+.dkb-knob {
+  position: absolute; left: -64px; top: 14px; width: 58px; height: 58px; border-radius: 50%;
+  padding: 5px; display: grid; place-items: center; z-index: 2;
+  background: conic-gradient(from -90deg, var(--dk-tone) 0 var(--dk-pct), rgba(255, 255, 255, 0.6) var(--dk-pct));
+  box-shadow: 0 6px 14px rgba(23, 58, 107, 0.14);
+}
+.dkb-knob > i { width: 100%; height: 100%; border-radius: 50%; background: #fff; display: grid; place-items: center; }
+
+/* ความสูงกล่อง = ปริมาณงาน (ตั้ง --dk-h จาก .tsx) */
 .dkb-tile {
-  display: block;
-  width: 100%;
-  min-height: 104px;
-  padding: 16px 16px 14px;
-  border-radius: 20px;
-  background: var(--dk-sky-wash);
-  text-align: left;
-  transition: background 0.2s ease, transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex; flex-direction: column; justify-content: center;
+  min-height: var(--dk-h, 74px); padding: 13px 16px;
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.22s ease;
 }
-.dkb-tile:hover { background: var(--dk-sky-hover); transform: translateY(-2px); }
-.dkb-tile:active { transform: translateY(0); }
-/* ช่องที่ว่างต้องเงียบกว่าช่องที่มีงานค้างอย่างเห็นได้ชัด — เงียบด้วยการ "หายไป" ไม่ใช่ด้วยสีจาง */
-.dkb-tile[data-idle="1"] { background: transparent; }
-.dkb-tile[data-idle="1"]:hover { background: var(--dk-sky-wash); }
-.dkb-tile[data-idle="1"] .dkb-tile-num { color: var(--dk-ink-faint); }
-.dkb-tile[data-idle="1"] .dkb-dot { background: var(--dk-line) !important; }
-.dkb-tile-num { font-size: 2.6rem; color: var(--dk-ink); }
-.dkb-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.dkb-tile:hover { transform: translateY(-2px); box-shadow: 0 16px 32px rgba(44, 129, 196, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.92); }
+.dkb-tile[data-void="1"] { background: rgba(255, 255, 255, 0.34); }
+.dkb-bar { height: 7px; border-radius: 7px; background: rgba(23, 58, 107, 0.08); margin-top: 9px; overflow: hidden; }
+.dkb-bar > i { display: block; height: 100%; border-radius: 7px; background: var(--dk-tone); width: var(--dk-pct); }
+.dkb-go {
+  align-self: flex-start; margin-top: 9px; border-radius: 999px; padding: 4px 14px;
+  font-size: 0.75rem; color: #fff;
+  background: linear-gradient(120deg, var(--dk-blue), var(--dk-blue-deep));
+  box-shadow: 0 6px 13px rgba(44, 129, 196, 0.32);
+}
 
-/* ── แถบงานด่วน — หนึ่งในไม่กี่จุดที่ยอมให้สีจัด ── */
-.dkb-alarm {
+/* ── แถบงานด่วน: แทรกขวางราง ── */
+.dkb-rush {
   display: flex; align-items: center; gap: 14px; width: 100%;
-  padding: 14px 18px; min-height: 62px;
-  border-radius: 20px;
-  background: var(--dk-coral-wash);
-  color: var(--dk-coral-ink);
-  text-align: left;
-  transition: background 0.2s ease, transform 0.2s ease;
+  padding: 14px 18px; color: #fff; position: relative; overflow: hidden;
+  background: linear-gradient(120deg, rgba(255, 158, 176, 0.96), rgba(244, 102, 140, 0.96));
+  border-color: rgba(255, 255, 255, 0.5);
+  animation: dkb-pulse 3.6s ease-out infinite;
 }
-.dkb-alarm:hover { background: #ffe9ee; transform: translateY(-1px); }
-
-/* ── ปุ่มหลัก — ทรงเดียวกับปุ่มหน้าร้าน (.btn-primary) ── */
-.dkb-btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
-  min-height: 48px; padding: 0 24px;
-  border-radius: 999px;
-  background: var(--dk-ink); color: #fff;
-  box-shadow: 0 2px 10px rgba(23, 58, 107, 0.14);
-  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease, background 0.25s ease;
+@keyframes dkb-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(244, 102, 140, 0.5); }
+  70% { box-shadow: 0 0 0 15px rgba(244, 102, 140, 0); }
 }
-.dkb-btn:hover { background: #1e4a85; transform: translateY(-2px); box-shadow: 0 12px 24px rgba(23, 58, 107, 0.24); }
-/* สลับปุ่มมือถือ/เดสก์ท็อปด้วย media query ไม่ใช่คลาส hidden ของ Tailwind
-   — dashboard.css โหลดหลัง utility ทำให้ display ของ .dkb-btn ชนะ .lg\:hidden เสมอ */
-.dkb-btn-wide { display: none; }
-.dkb-btn-rail { display: none; }
-@media (max-width: 1023px) { .dkb-btn-wide { display: flex; width: 100%; } }
-@media (min-width: 1024px) { .dkb-btn-rail { display: inline-flex; } }
 
-/* ── แถวรายการ — สูงโปร่ง เส้นคั่นบางมาก ── */
+/* ── แสงกวาดผ่าน ── */
+.dkb-shine { position: absolute; inset: 0; overflow: hidden; pointer-events: none; border-radius: inherit; }
+.dkb-shine::before {
+  content: ""; position: absolute; top: -45%; bottom: -45%; left: -45%; width: 34%;
+  background: linear-gradient(100deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0));
+  transform: skewX(-18deg); animation: dkb-shine 6s ease-in-out infinite;
+}
+@keyframes dkb-shine { 0%, 64% { left: -45%; } 100% { left: 135%; } }
+
+/* ── กราฟ 7 วัน ── */
+.dkb-spark { display: flex; align-items: flex-end; gap: 5px; height: 40px; margin-top: 10px; }
+.dkb-spark > i { flex: 1; border-radius: 5px 5px 2px 2px; background: linear-gradient(180deg, var(--dk-yolk), var(--dk-yolk-deep)); }
+.dkb-spark > i[data-today="1"] { background: linear-gradient(180deg, #3f8fd0, var(--dk-navy)); }
+
+/* ── แถวรายการ (กดได้ทั้งแถว) ── */
 .dkb-row {
-  display: flex; align-items: center; gap: 14px;
-  min-height: 64px; padding: 12px 10px;
-  border-radius: 16px;
+  display: flex; align-items: center; gap: 13px;
+  min-height: 62px; padding: 11px 10px; border-radius: 16px;
   transition: background 0.15s ease;
 }
-.dkb-row:hover { background: var(--dk-sky-wash); }
-.dkb-row + .dkb-row { box-shadow: 0 -1px 0 var(--dk-line); }
+.dkb-row:hover { background: rgba(255, 255, 255, 0.7); }
+.dkb-row + .dkb-row { box-shadow: 0 -1px 0 var(--dk-hair); }
 
-/* ── ป้ายสถานะ — พื้นนุ่ม ไม่มีขอบ แยกด้วยจุดสี + สีตัวอักษร ── */
+/* ── ป้ายสถานะ — งานที่จบแล้วไม่มีพื้น เงียบกว่างานค้างเสมอ ── */
 .dkb-chip {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 4px 11px 4px 9px;
-  border-radius: 999px;
+  padding: 4px 11px 4px 9px; border-radius: 999px;
   font-size: 0.74rem; font-weight: 600; white-space: nowrap;
 }
-.dkb-chip i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
-/* งานที่จบแล้วไม่มีพื้น — ต้องเงียบกว่างานค้างเสมอ */
+.dkb-chip > i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
 .dkb-chip[data-done="1"] { font-weight: 400; }
 
-/* ── กราฟแท่ง 7 วัน ── */
-.dkb-bars { display: flex; align-items: stretch; gap: 8px; height: 84px; border-bottom: 1px solid var(--dk-line); }
-/* ไม่ใส่พื้นราง — รางเต็มความสูงทำให้วันที่ยอด 0 ดูเหมือนมียอด */
-.dkb-bar { flex: 1; position: relative; }
-.dkb-bar > span { position: absolute; inset: auto 0 0 0; border-radius: 8px 8px 2px 2px; background: var(--dk-yolk); }
-.dkb-bar[data-today="1"] > span { background: var(--dk-yolk-deep); }
-
 /* ── โครงกระดูกตอนโหลด ── */
-@keyframes dkb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-.dkb-skel { background: rgba(44, 129, 196, 0.07); border-radius: 26px; animation: dkb-pulse 1.5s ease-in-out infinite; }
+@keyframes dkb-skel { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.dkb-skel { background: rgba(255, 255, 255, 0.55); border-radius: 24px; animation: dkb-skel 1.5s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dkb-rail::after, .dkb-rush, .dkb-shine::before, .dkb-skel { animation: none; }
+  .dkb-tile { transition: none; }
+  .dkb-tile:hover { transform: none; }
+}
