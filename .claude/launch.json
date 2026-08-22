@@ -2,6 +2,22 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "iducky-dev-3005",
+      "runtimeExecutable": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "3005"
+      ],
+      "port": 3005,
+      "autoPort": false,
+      "env": {
+        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+      }
+    },
+    {
       "name": "iducky-attach-3005",
       "url": "http://localhost:3005",
       "port": 3005
@@ -14,7 +30,13 @@
     {
       "name": "iducky-dev",
       "runtimeExecutable": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin/npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "3001"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "3001"
+      ],
       "port": 3001,
       "autoPort": false,
       "env": {
@@ -24,7 +46,13 @@
     {
       "name": "iducky-dev-3007",
       "runtimeExecutable": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin/npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "3007"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "3007"
+      ],
       "port": 3007,
       "autoPort": false,
       "env": {
@@ -34,7 +62,13 @@
     {
       "name": "iducky-dev-3012",
       "runtimeExecutable": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin/npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "3012"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "3012"
+      ],
       "port": 3012,
       "autoPort": false,
       "env": {
@@ -44,7 +78,13 @@
     {
       "name": "iducky-dev-3014",
       "runtimeExecutable": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin/npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "3014"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "3014"
+      ],
       "port": 3014,
       "autoPort": false,
       "env": {

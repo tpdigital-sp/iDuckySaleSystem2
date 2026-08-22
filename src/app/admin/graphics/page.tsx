@@ -2,33 +2,52 @@
 
 /* eslint-disable @next/next/no-img-element */
 
+/**
+ * ออเดอร์กราฟฟิก /admin/graphics — งานของฝ่ายกราฟฟิก 2 มุม (ดีไซน์ "รางเบนโตะกระจก")
+ *
+ * 1) คิวรอทำแบบ — ใบที่เงินเข้าแล้ว/กำลังยืนยันเงินเข้า = ยังไม่มีใครทำแบบ
+ * 2) แบบที่ส่งแล้ว — รูปที่อัปไปแล้ว รอลูกค้าอนุมัติ หรือลูกค้าขอแก้กลับมา
+ *
+ * (ภาพที่ลูกค้าจัดวางลายเองอยู่คนละเมนู — "ลายจากลูกค้า")
+ *
+ * ของที่ยกขึ้นมาให้เห็นในแถว: คอมเมนต์ที่ลูกค้าขอแก้ — เป็นสิ่งเดียวที่ตัดสินใจได้ทันที
+ * ไม่ต้องเปิดเข้าใบไปอ่าน · แบบที่ค้างอยู่ที่ลูกค้าเกิน 3 วันขึ้นป้ายเตือนให้ทวง
+ */
+
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import StepDots from "@/components/StepDots";
+import StatusChip, { chipStyle, STATUS_TONE } from "@/components/admin/StatusChip";
 import {
   daysToUseBy,
   graphicTodoItems,
   isSelfDesigned,
   proofsOf,
-  STATUS_STYLES,
   type Order,
   type OrderItem,
   type OrderStatus,
   type Proof,
 } from "@/lib/admin-data";
-import { badge, card, faint, h1, muted } from "@/lib/admin-ui";
+import {
+  Btn,
+  Empty,
+  FilterCard,
+  FChip,
+  HeroStat,
+  ListHead,
+  PageHead,
+  PageShell,
+  Row,
+  RowMain,
+  RowSide,
+  Rows,
+  SearchBox,
+  Stat,
+  Stats,
+  Tab,
+  TabRow,
+  Tag,
+} from "@/components/admin/ui";
 import { orderMatches, useGraphicsOrders } from "./data";
 
-/**
- * 🎨 ออเดอร์กราฟฟิก — งานของฝ่ายกราฟฟิก 2 มุม
- *
- * 1) คิวรอทำแบบ — ตารางเดียวกับหน้าคำสั่งซื้อ กรองเหลือ "ชำระแล้ว" กับ "รอตรวจสอบ"
- *    (เงินเข้าแล้ว หรือกำลังยืนยันเงินเข้า = ใบที่ยังไม่มีใครทำแบบ)
- * 2) แบบที่ส่งแล้ว — รูปแบบงานที่กราฟฟิกอัปไปแล้ว ยังรอลูกค้ากดอนุมัติ หรือลูกค้าขอแก้กลับมา
- *
- * (ภาพที่ลูกค้าจัดวางลายเองอยู่คนละเมนู — "ลายจากลูกค้า")
- */
 const QUEUE: OrderStatus[] = ["ชำระแล้ว", "รอตรวจสอบ"];
 
 type View = "queue" | "sent";
@@ -48,6 +67,15 @@ interface Sent {
 const qtyOf = (o: Order) => o.items.reduce((s, i) => s + i.qty, 0);
 const dayOf = (d: string) => d.split(" ").slice(0, 3).join(" ");
 
+/** ส่งแบบไปกี่วันแล้ว — ใช้บอกว่าควรทวงลูกค้าหรือยัง */
+function daysSince(iso?: string): number | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const mid = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  return Math.floor((mid(new Date()) - mid(d)) / 86400000);
+}
+
 /**
  * แบบที่กราฟฟิกส่งไปแล้วและยัง "ค้างอยู่ที่ลูกค้า"
  * ตัดออก: ลายที่ลูกค้าจัดวางเอง (ไม่ใช่ฝีมือเรา) · รูปที่ลูกค้าอนุมัติแล้ว · ออเดอร์ที่ยกเลิก
@@ -63,7 +91,6 @@ function sentProofs(orders: Order[]): Sent[] {
         /**
          * รูปที่ลูกค้ากดขอแก้ตรง ๆ = แก้แน่นอน
          * ส่วนรูปที่ยังไม่ได้ตรวจ ถ้าทั้งรายการอยู่สถานะ "ขอแก้ไข" ก็นับว่ารอแก้ด้วย
-         * (ลูกค้าบางคนพิมพ์รวมทีเดียวว่าจะแก้รูปไหน ระบบเก็บเป็นคอมเมนต์ของทั้งรายการ)
          */
         const redo = proof.review === "ขอแก้ไข" || item.proofStatus === "ขอแก้ไข";
         rows.push({ order, item, proof, no: i + 1, state: redo ? "ขอแก้ไข" : "รอลูกค้าตรวจ" });
@@ -75,7 +102,6 @@ function sentProofs(orders: Order[]): Sent[] {
 }
 
 export default function GraphicsOrdersPage() {
-  const router = useRouter();
   const { orders, demo } = useGraphicsOrders();
   const [view, setView] = useState<View>("queue");
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
@@ -85,7 +111,7 @@ export default function GraphicsOrdersPage() {
   /** คิวของฝ่ายกราฟฟิก — ใบเก่าขึ้นก่อน ค้างนานสุดต้องรีบสุด */
   const queue = useMemo(
     () => orders.filter((o) => QUEUE.includes(o.status)).sort((a, b) => a.id.localeCompare(b.id)),
-    [orders],
+    [orders]
   );
 
   const counts = useMemo(() => {
@@ -99,6 +125,12 @@ export default function GraphicsOrdersPage() {
 
   const sent = useMemo(() => sentProofs(orders), [orders]);
   const redoCount = sent.filter((s) => s.state === "ขอแก้ไข").length;
+  /** ค้างอยู่ที่ลูกค้านานสุดกี่วัน — ตัวเลขที่บอกว่าถึงเวลาทวงหรือยัง */
+  const stalest = useMemo(() => {
+    const days = sent.filter((s) => s.state === "รอลูกค้าตรวจ").map((s) => daysSince(s.proof.at) ?? 0);
+    return days.length ? Math.max(...days) : 0;
+  }, [sent]);
+
   const shownSent = sent
     .filter((s) => (sentFilter === "all" ? true : s.state === sentFilter))
     .filter((s) => orderMatches(s.order, q));
@@ -106,357 +138,234 @@ export default function GraphicsOrdersPage() {
   const shown = queue.filter((o) => (filter === "all" ? true : o.status === filter)).filter((o) => orderMatches(o, q));
 
   return (
-    <div className="mx-auto max-w-7xl">
-      {/* ── หัวหน้า ── */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className={h1}>🎨 ออเดอร์กราฟฟิก</h1>
-          <p className={`mt-1 text-sm ${muted}`}>
-            {view === "queue" ? (
-              <>
-                เฉพาะใบที่รอทำแบบ — สถานะ <strong>ชำระแล้ว</strong> กับ <strong>รอตรวจสอบ</strong>
-              </>
-            ) : (
-              <>แบบที่ส่งให้ลูกค้าแล้ว — รอลูกค้ากดอนุมัติ หรือลูกค้าขอแก้กลับมา</>
-            )}{" "}
-            ·{" "}
-            {demo ? (
-              <span className="text-slate-400">ยังไม่มีออเดอร์จริง — แสดงตัวอย่างไว้ก่อน</span>
-            ) : (
-              <span className="font-semibold text-green-600">● ออเดอร์จริง</span>
-            )}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/admin/graphics/designs"
-            className="rounded-full bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
-          >
-            📋 รายงานแบบงาน
-          </Link>
-          <label className="flex min-w-[240px] items-center gap-2 rounded-full border-2 border-amber-200 bg-white px-4 py-2.5 focus-within:border-amber-400">
-            <span className="text-sm text-amber-500">🔍</span>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="ค้นเลขออเดอร์ / ชื่อลูกค้า"
-              className="w-full bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
-            />
-          </label>
-        </div>
-      </div>
+    <PageShell>
+      <PageHead
+        group="กราฟฟิก"
+        title="ออเดอร์กราฟฟิก"
+        count={`${queue.length} ใบ`}
+        sub={
+          view === "queue"
+            ? "เฉพาะใบที่รอทำแบบ — เงินเข้าแล้วหรือกำลังยืนยันเงินเข้า"
+            : "แบบที่ส่งให้ลูกค้าแล้ว — รอลูกค้ากดอนุมัติ หรือขอแก้กลับมา"
+        }
+        live={demo ? { ok: false, text: "ยังไม่มีออเดอร์จริง — แสดงตัวอย่างไว้ก่อน" } : { ok: true, text: "ออเดอร์จริง" }}
+        tools={
+          <>
+            <SearchBox value={q} onChange={setQ} placeholder="ค้นเลขออเดอร์ / ชื่อลูกค้า" />
+            <Btn tone="navy" href="/admin/graphics/designs">
+              รายงานแบบงาน
+            </Btn>
+          </>
+        }
+      />
 
-      {/* ── การ์ดสรุป ── */}
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Tile label="ใบรอทำแบบ" value={queue.length.toString()} tone="warn" />
-        <Tile label="ลายที่ต้องทำ" value={todoCount.toString()} />
-        <Tile label="ส่งแล้ว รอลูกค้าตรวจ" value={(sent.length - redoCount).toString()} />
-        <Tile label="ลูกค้าขอแก้" value={redoCount.toString()} tone={redoCount ? "alert" : undefined} />
-      </div>
+      <Stats cols={4}>
+        <HeroStat
+          n={todoCount}
+          label="ลายที่ต้องทำ"
+          detail={
+            redoCount
+              ? `ในนี้ลูกค้าขอแก้ ${redoCount} รูป · ลายใหม่ ${Math.max(0, todoCount - redoCount)}`
+              : `จาก ${queue.length} ใบที่รอทำแบบ`
+          }
+          pct={sent.length + todoCount > 0 ? (todoCount / (sent.length + todoCount)) * 100 : 0}
+        />
+        <Stat label="รอลูกค้าตรวจ" value={sent.length - redoCount} hint="ค้างอยู่ที่ลูกค้า" />
+        <Stat
+          label="ค้างนานสุด"
+          value={stalest}
+          hint={stalest >= 3 ? "วัน — ควรทวงแล้ว" : "วัน"}
+          tone={stalest >= 3 ? "due" : undefined}
+        />
+      </Stats>
 
-      {/* ── สลับมุมมอง: คิวรอทำแบบ / แบบที่ส่งไปแล้ว ── */}
-      <div className="mt-5 flex flex-wrap gap-2">
-        <ViewTab on={view === "queue"} onClick={() => setView("queue")} label="📋 คิวรอทำแบบ" count={queue.length} />
-        <ViewTab on={view === "sent"} onClick={() => setView("sent")} label="🖼 แบบที่ส่งแล้ว" count={sent.length} />
-      </div>
+      <FilterCard>
+        <TabRow>
+          <Tab on={view === "queue"} onClick={() => setView("queue")} label="คิวรอทำแบบ" count={queue.length} />
+          <Tab on={view === "sent"} onClick={() => setView("sent")} label="แบบที่ส่งแล้ว" count={sent.length} />
+        </TabRow>
+        <TabRow divider>
+          {view === "sent" ? (
+            <>
+              <FChip on={sentFilter === "all"} onClick={() => setSentFilter("all")} label="ทั้งหมด" count={sent.length} />
+              <FChip
+                on={sentFilter === "ขอแก้ไข"}
+                onClick={() => setSentFilter("ขอแก้ไข")}
+                label="ลูกค้าขอแก้"
+                count={redoCount}
+                style={chipStyle("แก้ไขแบบ")}
+              />
+              <FChip
+                on={sentFilter === "รอลูกค้าตรวจ"}
+                onClick={() => setSentFilter("รอลูกค้าตรวจ")}
+                label="รอลูกค้าตรวจ"
+                count={sent.length - redoCount}
+                style={chipStyle("รอตรวจแบบ")}
+              />
+            </>
+          ) : (
+            <>
+              <FChip on={filter === "all"} onClick={() => setFilter("all")} label="ทุกสถานะ" count={counts.all} />
+              {QUEUE.map((s) => (
+                <FChip
+                  key={s}
+                  on={filter === s}
+                  onClick={() => setFilter(s)}
+                  label={s}
+                  count={counts[s] ?? 0}
+                  style={chipStyle(s)}
+                />
+              ))}
+            </>
+          )}
+        </TabRow>
+      </FilterCard>
 
       {view === "sent" ? (
         <>
-          {/* ── ชิปผลตรวจของลูกค้า ── */}
-          <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <Chip active={sentFilter === "all"} onClick={() => setSentFilter("all")} label="ทั้งหมด" count={sent.length} />
-            <Chip
-              active={sentFilter === "ขอแก้ไข"}
-              onClick={() => setSentFilter("ขอแก้ไข")}
-              label="🔁 ลูกค้าขอแก้"
-              count={redoCount}
-              status="แก้ไขแบบ"
-            />
-            <Chip
-              active={sentFilter === "รอลูกค้าตรวจ"}
-              onClick={() => setSentFilter("รอลูกค้าตรวจ")}
-              label="⏳ รอลูกค้าตรวจ"
-              count={sent.length - redoCount}
-              status="รอตรวจแบบ"
-            />
-          </div>
-
+          <ListHead title="แบบที่ค้างอยู่ที่ลูกค้า" note="ขอแก้ขึ้นก่อน" />
           {shownSent.length === 0 ? (
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-12 text-center">
-              <span className="text-4xl">🎉</span>
-              <p className="mt-3 font-semibold text-slate-600">
-                {q.trim() ? `ไม่พบแบบที่ตรงกับ "${q}"` : "ไม่มีแบบค้างอยู่ที่ลูกค้า"}
-              </p>
-              {!q.trim() && <p className="mt-1 text-sm text-slate-400">ลูกค้าตรวจครบหมดแล้ว</p>}
-            </div>
+            <Empty
+              title={q.trim() ? `ไม่พบแบบที่ตรงกับ “${q.trim()}”` : "ไม่มีแบบค้างอยู่ที่ลูกค้า"}
+              body={q.trim() ? "ลองค้นด้วยเลขออเดอร์หรือชื่อลูกค้าแทน" : "ลูกค้าตรวจครบหมดแล้ว — ดูคิวรอทำแบบได้ที่แท็บซ้าย"}
+            />
           ) : (
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            <Rows>
               {shownSent.map((s, i) => (
-                <SentCard key={`${s.order.id}-${s.proof.url}-${i}`} sent={s} />
+                <SentRow key={`${s.order.id}-${s.proof.url}-${i}`} sent={s} />
               ))}
-            </div>
+            </Rows>
           )}
         </>
       ) : (
         <>
-      {/* ── ชิปสถานะ ── */}
-      <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <Chip active={filter === "all"} onClick={() => setFilter("all")} label="ทุกสถานะ" count={counts.all} />
-        {QUEUE.map((s) => (
-          <Chip key={s} active={filter === s} onClick={() => setFilter(s)} label={s} count={counts[s] ?? 0} status={s} />
-        ))}
-      </div>
-
-      {/* ── ตาราง ── */}
-      {shown.length === 0 ? (
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-12 text-center">
-          <span className="text-4xl">🎉</span>
-          <p className="mt-3 font-semibold text-slate-600">
-            {q.trim() ? `ไม่พบออเดอร์ที่ตรงกับ "${q}"` : "ไม่มีใบรอทำแบบ"}
-          </p>
-          {!q.trim() && <p className="mt-1 text-sm text-slate-400">เคลียร์หมดแล้ว</p>}
-        </div>
-      ) : (
-        <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] border-collapse text-left">
-              <thead>
-                <tr className="bg-amber-500 text-white">
-                  <Th>ออเดอร์</Th>
-                  <Th>ลูกค้า</Th>
-                  <Th className="w-[210px]">ความคืบหน้า</Th>
-                  <Th>สถานะ</Th>
-                  <Th className="w-[130px] text-right">ลายที่ต้องทำ</Th>
-                  <Th className="w-8" />
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map((o, i) => {
-                  const todo = graphicTodoItems(o).length;
-                  const selfMade = o.items.filter(isSelfDesigned).length;
-                  const done = o.items.filter((it) => !isSelfDesigned(it) && proofsOf(it).length > 0).length;
-                  return (
-                    <tr
-                      key={o.id}
-                      onClick={() => router.push(`/admin/orders/${encodeURIComponent(o.id)}`)}
-                      className={`cursor-pointer border-b border-slate-100 transition last:border-b-0 hover:bg-amber-100/60 ${
-                        i % 2 === 1 ? "bg-amber-50/70" : ""
-                      }`}
-                    >
-                      <td className={`px-4 py-3.5 align-middle ${o.rush ? "border-l-4 border-l-rose-500" : ""}`}>
-                        <p className="flex flex-wrap items-center gap-1.5 font-bold tabular-nums text-slate-900">
-                          {o.id}
-                          {o.rush && (
-                            <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold text-white" title="งานเร่ง">
-                              🔥 เร่ง
-                            </span>
-                          )}
-                          {o.claimOf && (
-                            <span
-                              className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 ring-1 ring-rose-200"
-                              title={`งานเคลมจาก ${o.claimOf}${o.claimReason ? ` — ${o.claimReason}` : ""}`}
-                            >
-                              ♻️ เคลม
-                            </span>
-                          )}
-                          {o.reorderOf && (
-                            <span
-                              className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200"
-                              title={`สั่งซ้ำจาก ${o.reorderOf}`}
-                            >
-                              🔁 สั่งซ้ำ
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          {dayOf(o.date)}
-                          {(() => {
-                            const d = o.useByDate ? daysToUseBy(o) : null;
-                            if (d == null) return null;
-                            const tone = d < 0 ? "text-rose-600" : d <= 3 ? "text-orange-600" : "text-slate-400";
-                            return (
-                              <span className={`ml-1 font-bold ${tone}`} title="วันที่ลูกค้าต้องใช้งาน">
-                                · ⏱ {d < 0 ? `เลย ${Math.abs(d)} วัน` : d === 0 ? "ใช้งานวันนี้" : `อีก ${d} วัน`}
-                              </span>
-                            );
-                          })()}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3.5 align-middle">
-                        <p className="text-slate-700">{o.customer}</p>
-                        <p className="text-xs text-slate-400">
-                          {qtyOf(o)} ชิ้น
-                          {selfMade > 0 && (
-                            <span className="ml-1 font-semibold text-emerald-600" title="ลูกค้าจัดวางลายเองมาแล้ว — ไม่ต้องทำแบบ">
-                              · 🖼 ลูกค้าทำเอง {selfMade}
-                            </span>
-                          )}
-                          {done > 0 && (
-                            <span className="ml-1 font-semibold text-violet-600" title="ทำแบบไปแล้วกี่รายการในใบนี้">
-                              · ✅ ทำแล้ว {done}
-                            </span>
-                          )}
-                          {o.items.some((it) => !it.artworkUrls?.length && !isSelfDesigned(it)) && (
-                            <span className="ml-1 font-semibold text-orange-600" title="มีรายการที่ลูกค้าไม่ได้แนบไฟล์ลายมา">
-                              · ⚠️ ไม่มีไฟล์ลาย
-                            </span>
-                          )}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3.5 align-middle">
-                        <StepDots status={o.status} />
-                      </td>
-                      <td className="px-4 py-3.5 align-middle">
-                        <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${STATUS_STYLES[o.status]}`}>
-                          {o.status}
-                        </span>
-                        {o.status === "รอตรวจสอบ" && (
-                          <span className="mt-1 block">
-                            <span className="inline-flex whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500 ring-1 ring-slate-200">
-                              ⏳ รอยืนยันเงินเข้า
-                            </span>
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5 text-right align-middle">
-                        <span
-                          className={`font-bold tabular-nums ${todo > 0 ? "text-slate-900" : "text-emerald-600"}`}
-                          title="รายการที่กราฟฟิกต้องทำแบบในใบนี้"
-                        >
-                          {todo > 0 ? `${todo} รายการ` : "ครบแล้ว"}
-                        </span>
-                      </td>
-                      <td className="pr-4 align-middle text-slate-300">›</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+          <ListHead title="คิวลาย" note="ค้างนานสุดขึ้นก่อน" />
+          {shown.length === 0 ? (
+            <Empty
+              title={q.trim() ? `ไม่พบออเดอร์ที่ตรงกับ “${q.trim()}”` : "ไม่มีใบรอทำแบบ"}
+              body={q.trim() ? "ลองค้นด้วยเลขออเดอร์หรือชื่อลูกค้าแทน" : "เคลียร์หมดแล้ว — ใบใหม่จะขึ้นเมื่อลูกค้าโอนเงินเข้ามา"}
+            />
+          ) : (
+            <Rows>
+              {shown.map((o) => (
+                <QueueRow key={o.id} o={o} />
+              ))}
+            </Rows>
+          )}
         </>
       )}
-    </div>
+    </PageShell>
   );
 }
 
-function Th({ children, className = "" }: { children?: React.ReactNode; className?: string }) {
-  return <th className={`px-4 py-3 text-[11px] font-bold uppercase tracking-wider ${className}`}>{children}</th>;
-}
+/** หนึ่งใบในคิวรอทำแบบ */
+function QueueRow({ o }: { o: Order }) {
+  const todo = graphicTodoItems(o).length;
+  const selfMade = o.items.filter(isSelfDesigned).length;
+  const done = o.items.filter((it) => !isSelfDesigned(it) && proofsOf(it).length > 0).length;
+  const noArt = o.items.some((it) => !it.artworkUrls?.length && !isSelfDesigned(it));
+  const left = o.useByDate ? daysToUseBy(o) : null;
 
-function Tile({ label, value, tone }: { label: string; value: string; tone?: "warn" | "alert" }) {
-  const box =
-    tone === "warn" ? "border-ducky bg-ducky/15" : tone === "alert" ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-white";
-  const val = tone === "warn" ? "text-yellow-700" : tone === "alert" ? "text-rose-600" : "text-slate-900";
   return (
-    <div className={`rounded-2xl border p-4 ${box}`}>
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className={`mt-0.5 text-2xl font-bold tracking-tight ${val}`}>{value}</div>
-    </div>
+    <Row tone={todo > 0 ? STATUS_TONE[o.status] : "var(--dk-mint)"} href={`/admin/orders/${encodeURIComponent(o.id)}`}>
+      <RowMain
+        name={o.customer || "ยังไม่ระบุชื่อ"}
+        tags={
+          <>
+            {o.rush && <Tag tone="solid">งานเร่ง</Tag>}
+            {o.claimOf && (
+              <Tag tone="lilac" title={`งานเคลมจาก ${o.claimOf}${o.claimReason ? ` — ${o.claimReason}` : ""}`}>
+                งานเคลม
+              </Tag>
+            )}
+            {o.reorderOf && (
+              <Tag tone="sky" title={`สั่งซ้ำจาก ${o.reorderOf}`}>
+                สั่งซ้ำ
+              </Tag>
+            )}
+            {o.status === "รอตรวจสอบ" && <Tag tone="yolk" title="เงินยังไม่ยืนยัน — ทำแบบไปก่อนได้แต่ยังไม่เข้าผลิต">รอยืนยันเงินเข้า</Tag>}
+            {noArt && <Tag tone="coral" title="มีรายการที่ลูกค้าไม่ได้แนบไฟล์ลายมา">ไม่มีไฟล์ลาย</Tag>}
+          </>
+        }
+        meta={
+          <>
+            <span className="id">{o.id}</span>
+            <span>{dayOf(o.date)}</span>
+            {left !== null && (
+              <span className={left <= 3 ? "hot" : undefined}>
+                {left < 0 ? `เลยกำหนด ${Math.abs(left)} วัน` : left === 0 ? "ใช้งานวันนี้" : `ใช้งานอีก ${left} วัน`}
+              </span>
+            )}
+            <span>{qtyOf(o)} ชิ้น</span>
+            {selfMade > 0 && <span title="ลูกค้าจัดวางลายเองมาแล้ว — ไม่ต้องทำแบบ">ลูกค้าทำเอง {selfMade}</span>}
+            {done > 0 && <span>ทำแล้ว {done}</span>}
+          </>
+        }
+      />
+      <RowSide>
+        <StatusChip s={o.status} />
+        <span className="dkb-amt" style={todo === 0 ? { color: "var(--dk-mint-ink)" } : undefined}>
+          {todo > 0 ? `${todo} ลาย` : "ครบแล้ว"}
+        </span>
+      </RowSide>
+    </Row>
   );
 }
 
-function ViewTab({ on, onClick, label, count }: { on: boolean; onClick: () => void; label: string; count: number }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={on}
-      className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-        on ? "bg-amber-500 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-600 hover:border-amber-200 hover:text-slate-900"
-      }`}
-    >
-      {label} <span className={on ? "opacity-80" : "text-slate-400"}>{count}</span>
-    </button>
-  );
-}
-
-/** แบบ 1 รูปที่ส่งไปแล้ว — เห็นรูป ผลตรวจ และคอมเมนต์ที่ลูกค้าขอแก้ในใบเดียว */
-function SentCard({ sent }: { sent: Sent }) {
+/** แบบ 1 รูปที่ส่งไปแล้ว — เห็นรูป ผลตรวจ และคอมเมนต์ที่ลูกค้าขอแก้ในแถวเดียว */
+function SentRow({ sent }: { sent: Sent }) {
   const { order, item, proof, no, state } = sent;
   const redo = state === "ขอแก้ไข";
   /** คอมเมนต์รายรูปมาก่อน · ไม่มีค่อยใช้ของทั้งรายการ (บอกให้ชัดว่าไม่ใช่ของรูปนี้รูปเดียว) */
   const note = proof.reviewNote || (redo ? item.proofNote : "");
   const noteWhole = !proof.reviewNote && !!note;
-  return (
-    <figure className={`${card} overflow-hidden ${redo ? "ring-1 ring-rose-200" : ""}`}>
-      <a href={proof.url} target="_blank" rel="noreferrer" className="block bg-slate-50" title="เปิดรูปเต็ม">
-        <img
-          src={proof.url}
-          alt={`แบบรูปที่ ${no} ของ ${order.id}`}
-          loading="lazy"
-          decoding="async"
-          className="aspect-square w-full object-contain"
-        />
-      </a>
-      <figcaption className="space-y-1.5 p-2.5">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span
-            className={`${badge} ${
-              redo ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200/70" : "bg-violet-50 text-violet-700 ring-1 ring-violet-200/70"
-            }`}
-          >
-            {redo ? "🔁 ขอแก้ไข" : "⏳ รอลูกค้าตรวจ"}
-          </span>
-          {proof.revisedAt && <span className={`${badge} bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/70`}>แก้ให้แล้ว</span>}
-        </div>
-        <Link
-          href={`/admin/orders/${encodeURIComponent(order.id)}`}
-          className="block font-mono text-xs font-bold text-slate-900 hover:underline"
-        >
-          {order.id}
-        </Link>
-        <p className="truncate text-xs font-semibold text-slate-700" title={item.name}>
-          {item.name}
-        </p>
-        <p className={`text-[11px] ${faint}`}>
-          รูปที่ {no}
-          {proof.qty ? ` · ${proof.qty} ชิ้น` : ""} · {order.customer}
-        </p>
-        {note && (
-          <p className="rounded-lg bg-rose-50 px-2 py-1.5 text-[11px] leading-relaxed text-rose-700 ring-1 ring-rose-100">
-            💬 {noteWhole && <span className="font-semibold">คอมเมนต์ของทั้งรายการ: </span>}
-            {note}
-          </p>
-        )}
-        <Link
-          href={`/admin/orders/${encodeURIComponent(order.id)}`}
-          className="inline-flex text-[11px] font-semibold text-sky-700 hover:underline"
-        >
-          {redo ? "แก้แบบใบนี้ →" : "เปิดออเดอร์ →"}
-        </Link>
-      </figcaption>
-    </figure>
-  );
-}
+  const waited = daysSince(proof.at);
 
-function Chip({
-  active,
-  onClick,
-  label,
-  count,
-  status,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  count: number;
-  status?: OrderStatus;
-}) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-        active
-          ? status
-            ? `ring-1 ${STATUS_STYLES[status]}`
-            : "bg-slate-900 text-white"
-          : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-      }`}
-    >
-      {label} <span className={active && !status ? "opacity-70" : "text-slate-400"}>{count}</span>
-    </button>
+    <Row tone={redo ? "var(--dk-coral-deep)" : "var(--dk-lilac)"}>
+      <span className="flex min-w-0 flex-1 items-center gap-3">
+        <a
+          href={proof.url}
+          target="_blank"
+          rel="noreferrer"
+          title="เปิดรูปเต็ม"
+          className="dkb-thumb !h-[62px] w-[62px] shrink-0"
+        >
+          <img src={proof.url} alt={`แบบรูปที่ ${no} ของ ${order.id}`} loading="lazy" decoding="async" />
+        </a>
+        <RowMain
+          name={item.name}
+          href={`/admin/orders/${encodeURIComponent(order.id)}`}
+          tags={
+            <>
+              {redo ? <Tag tone="solid">ลูกค้าขอแก้</Tag> : <Tag tone="lilac">รอลูกค้าตรวจ</Tag>}
+              {proof.revisedAt && <Tag tone="mint">แก้ให้แล้ว</Tag>}
+              {!redo && waited !== null && waited >= 3 && <Tag tone="yolk">ค้าง {waited} วัน — ควรทวง</Tag>}
+            </>
+          }
+          meta={
+            <>
+              <span className="id">{order.id}</span>
+              <span>{order.customer}</span>
+              <span>
+                รูปที่ {no}
+                {proof.qty ? ` · ${proof.qty} ชิ้น` : ""}
+              </span>
+              {note && (
+                <span className="hot" title={note}>
+                  {noteWhole ? "คอมเมนต์ทั้งรายการ: " : ""}
+                  {note}
+                </span>
+              )}
+            </>
+          }
+        />
+      </span>
+      <RowSide>
+        <Btn tone={redo ? "navy" : "ghost"} small href={`/admin/orders/${encodeURIComponent(order.id)}`}>
+          {redo ? "แก้แบบใบนี้" : "เปิดออเดอร์"}
+        </Btn>
+      </RowSide>
+    </Row>
   );
 }
