@@ -1,151 +1,155 @@
 /*
- * แผงหน้าร้าน (Shop Board) — ดีไซน์หน้าภาพรวมหลังบ้าน /admin
- * โทนเดียวกับหน้าร้าน (landing.css): กระดาษครีม · หมึกน้ำเงินเข้ม · เหลืองเป็ดเป็นสีเน้นจุดเดียว
+ * แผงหน้าร้าน (Shop Board) — ชั้นภาพของหน้า /admin
+ * โทนเดียวกับหน้าร้าน (landing.css): พื้นฟ้าจางไล่เป็นครีม · การ์ดขาวลอยด้วยเงาอมฟ้า · หมึกน้ำเงิน
+ *
+ * ⚠️ บทเรียนรอบแรก: ทำเป็นบอร์ดน้ำเงินทึบ + ตัวอักษรหนา 700–800 ทุกจุด → หน้าดู "แน่นและหนัก"
+ *    คนละเรื่องกับหน้าร้านที่สว่างและโปร่ง · รอบนี้จึงยึดกติกา 3 ข้อ
+ *      1. ลำดับความสำคัญมาจาก "ขนาด + พื้นที่ว่าง" ไม่ใช่ความหนาหรือพื้นสีทึบ
+ *      2. ตัวเลขใหญ่ใช้ Mitr 500 (ฟอนต์หัวเรื่องหน้าร้าน) ไม่ใช่ Prompt 800
+ *      3. หนึ่งหน้าจอมีสีเข้มได้ไม่กี่จุด — ปุ่มหลัก กับแถบงานด่วน เท่านั้น
+ *
  * ⚠️ ห้ามใช้ .dl ครอบหน้านี้ (`.dl *{margin:0;padding:0}` จะล้าง utility ของ Tailwind ทั้งหน้า)
- *    จึงยกเฉพาะ "ค่าสี/เงา/มุม" มาเป็น token ของตัวเองใต้ .dkb แทน
  * กติกา: ทุกสีในคอมโพเนนต์ต้องอ้าง token ในไฟล์นี้ ห้ามเขียน hex ตรง ๆ ใน .tsx
  */
 
 .dkb {
-  /* กระดาษ + หมึก */
-  --dk-paper: #fffbf2;
-  --dk-paper-edge: #f6ecd9;
-  --dk-card: #ffffff;
+  /* หมึก */
   --dk-ink: #173a6b;
   --dk-ink-soft: #5b7799;
-  --dk-ink-faint: #8ba3c0;
-  --dk-line: #efe3cc;
+  --dk-ink-faint: #96abc4;
+  --dk-line: rgba(23, 58, 107, 0.08);
 
-  /* บอร์ดงานค้าง (จุดที่กล้าที่สุดของหน้า) */
-  --dk-board: #173a6b;
-  --dk-board-tile: #1e4a83;
-  --dk-board-tile-line: #2c5f9f;
-  --dk-on-board: #ffffff;
-  --dk-on-board-soft: #bcd6f0;
-
-  /* สีเน้น */
+  /* สีเน้น — ใช้น้อยและตั้งใจ */
   --dk-yolk: #ffd447;
   --dk-yolk-deep: #ffb627;
-  --dk-yolk-wash: #fff3cd;
-  --dk-sky: #e2f3fe;
+  --dk-yolk-wash: #fff6dc;
+  --dk-yolk-ink: #8a5a00;
+  --dk-sky-wash: #f4f9fd;
+  --dk-sky-hover: #e7f3fd;
   --dk-sky-deep: #2c81c4;
   --dk-blue: #57b6e8;
-  --dk-mint: #a9e5d2;
   --dk-mint-ink: #0f7a5c;
+  --dk-mint-wash: #e9f8f2;
+  --dk-mint: #a9e5d2;
   --dk-coral: #ff9eb0;
-  --dk-coral-ink: #cf2f4c;
-  --dk-coral-wash: #ffeef1;
+  --dk-coral-ink: #d13a55;
+  --dk-coral-wash: #fff2f4;
   --dk-lilac: #c7c4f5;
   --dk-lilac-ink: #4f49b5;
-  --dk-lilac-wash: #f0effc;
-  --dk-yolk-ink: #8a5a00;
-  --dk-mint-wash: #e7f8f1;
-  --dk-sky-wash: #e8f4fd;
+  --dk-lilac-wash: #f2f1fd;
 
-  /* เงา + มุม (ชุดเดียวกับหน้าร้าน) */
-  --dk-sh-s: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 8px 18px rgba(44, 129, 196, 0.1), 0 2px 5px rgba(23, 58, 107, 0.06);
-  --dk-sh-m: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 18px 36px rgba(44, 129, 196, 0.14), 0 6px 14px rgba(23, 58, 107, 0.08);
-  --dk-sh-board: 0 22px 44px rgba(23, 58, 107, 0.24), 0 6px 14px rgba(23, 58, 107, 0.14);
-  --dk-r-s: 14px;
-  --dk-r-m: 22px;
-  --dk-r-l: 30px;
+  /* เงาแบบหน้าร้าน — ฟุ้งอมฟ้า ไม่ใช่ขอบเส้น */
+  --dk-sh-card: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 10px 26px rgba(44, 129, 196, 0.09), 0 2px 6px rgba(23, 58, 107, 0.04);
+  --dk-sh-hero: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 20px 44px rgba(44, 129, 196, 0.13), 0 5px 12px rgba(23, 58, 107, 0.05);
 
   --dk-display: var(--font-mitr), "Mitr", var(--font-prompt), sans-serif;
 
-  background: var(--dk-paper);
+  /* ฟ้าจาง ๆ ช่วงบน แล้วไล่เป็นครีมอุ่นของร้าน — ต่อเนื่องกับหน้าร้าน */
+  background: linear-gradient(172deg, #e6f3fd 0%, #f3f9fd 12%, #fdfaf2 30%, #fdf8ee 100%) no-repeat;
+  background-attachment: local;
   color: var(--dk-ink);
 }
 
-/* ── ตัวอักษร ───────────────────────────────────────────── */
-.dkb-display { font-family: var(--dk-display); font-weight: 500; letter-spacing: -0.01em; }
-/* หัวข้อส่วน — หนาขึ้นอีกขั้น ให้กวาดตาเจอจากระยะแขน (Mitr โหลดถึง 600) */
-.dkb-h2 { font-family: var(--dk-display); font-weight: 600; letter-spacing: -0.01em; }
-/* ตัวเลขต้องอ่านจากระยะแขนได้ — Prompt 700/800 + หลักตรงกันทุกแถว */
-.dkb-num { font-variant-numeric: tabular-nums; font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
-.dkb-num-sm { font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: -0.01em; }
-.dkb-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -0.02em; }
-.dkb-eyebrow { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+/* ── ตัวอักษร: เน้นด้วยขนาดกับสี ไม่ใช่ความหนา ───────────── */
+.dkb-display { font-family: var(--dk-display); font-weight: 400; letter-spacing: -0.005em; }
+.dkb-h2 { font-family: var(--dk-display); font-weight: 500; letter-spacing: -0.01em; }
+/* ตัวเลขหลัก — ใหญ่พอให้อ่านจากระยะแขน แต่น้ำหนักเบา (500) ไม่ทึบ
+   ⚠️ ห้ามใช้ Mitr กับตัวเลข: เลขศูนย์ของ Mitr มีขีดทับ (฿0 อ่านเป็น ฿ø) — ใช้ Prompt เท่านั้น */
+.dkb-num { font-family: var(--font-prompt), sans-serif; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -0.005em; line-height: 1; }
+.dkb-num-sm { font-variant-numeric: tabular-nums; font-weight: 600; }
+.dkb-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem; letter-spacing: -0.02em; }
+.dkb-eyebrow { font-size: 0.72rem; font-weight: 500; letter-spacing: 0.1em; }
 
-/* ── พื้นผิว ───────────────────────────────────────────── */
+/* ── พื้นผิว: การ์ดขาวลอย ไม่มีเส้นขอบ ───────────────────── */
 .dkb-card {
-  background: var(--dk-card);
-  border: 1px solid var(--dk-line);
-  border-radius: var(--dk-r-m);
-  box-shadow: var(--dk-sh-s);
+  background: #fffefb;
+  border-radius: 26px;
+  box-shadow: var(--dk-sh-card);
 }
-.dkb-board {
-  background: linear-gradient(160deg, #1c4479 0%, var(--dk-board) 52%, #12305a 100%);
-  border-radius: var(--dk-r-l);
-  box-shadow: var(--dk-sh-board);
-  color: var(--dk-on-board);
+.dkb-hero {
+  background: #fffefb;
+  border-radius: 32px;
+  box-shadow: var(--dk-sh-hero);
 }
 
-/* ── ช่องงานค้าง (กดได้ทั้งช่อง · สูงเกิน 44px ทุกจอ) ── */
+/* ── ช่องงานค้าง: พื้นฟ้าจาง ไม่มีกรอบ ไม่มีแถบหนา ── */
 .dkb-tile {
   display: block;
   width: 100%;
-  min-height: 92px;
-  padding: 12px 12px 11px;
-  border-radius: var(--dk-r-s);
-  background: var(--dk-board-tile);
-  border: 1px solid var(--dk-board-tile-line);
-  border-left-width: 5px;
+  min-height: 104px;
+  padding: 16px 16px 14px;
+  border-radius: 20px;
+  background: var(--dk-sky-wash);
   text-align: left;
-  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.18s ease, border-color 0.18s ease;
+  transition: background 0.2s ease, transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-.dkb-tile:hover { background: #24568f; transform: translateY(-2px); }
-.dkb-tile:active { transform: translateY(0) scale(0.99); }
-/* ช่องที่ "ว่าง" ต้องเงียบกว่าช่องที่มีงานค้างอย่างเห็นได้ชัด */
-.dkb-tile[data-idle="1"] { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.12); border-left-color: rgba(255, 255, 255, 0.18); }
-.dkb-tile[data-idle="1"] .dkb-tile-num { color: var(--dk-on-board-soft); font-weight: 600; }
-.dkb-tile-num { font-size: 2.1rem; color: var(--dk-yolk); }
-@media (min-width: 640px) { .dkb-tile-num { font-size: 2.4rem; } }
+.dkb-tile:hover { background: var(--dk-sky-hover); transform: translateY(-2px); }
+.dkb-tile:active { transform: translateY(0); }
+/* ช่องที่ว่างต้องเงียบกว่าช่องที่มีงานค้างอย่างเห็นได้ชัด — เงียบด้วยการ "หายไป" ไม่ใช่ด้วยสีจาง */
+.dkb-tile[data-idle="1"] { background: transparent; }
+.dkb-tile[data-idle="1"]:hover { background: var(--dk-sky-wash); }
+.dkb-tile[data-idle="1"] .dkb-tile-num { color: var(--dk-ink-faint); }
+.dkb-tile[data-idle="1"] .dkb-dot { background: var(--dk-line) !important; }
+.dkb-tile-num { font-size: 2.6rem; color: var(--dk-ink); }
+.dkb-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
 
-/* ── แถบด่วน (เลยกำหนด/งานเร่ง) — โผล่เฉพาะตอนมีจริง ── */
+/* ── แถบงานด่วน — หนึ่งในไม่กี่จุดที่ยอมให้สีจัด ── */
 .dkb-alarm {
-  display: flex; align-items: center; gap: 12px; width: 100%;
-  padding: 12px 14px; min-height: 56px;
-  border-radius: var(--dk-r-s);
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  padding: 14px 18px; min-height: 62px;
+  border-radius: 20px;
   background: var(--dk-coral-wash);
-  border: 1px solid var(--dk-coral);
-  border-left: 6px solid var(--dk-coral-ink);
   color: var(--dk-coral-ink);
   text-align: left;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  transition: background 0.2s ease, transform 0.2s ease;
 }
-.dkb-alarm:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(207, 47, 76, 0.18); }
+.dkb-alarm:hover { background: #ffe9ee; transform: translateY(-1px); }
 
-/* ── แถวรายการ (กดได้ทั้งแถว) ── */
+/* ── ปุ่มหลัก — ทรงเดียวกับปุ่มหน้าร้าน (.btn-primary) ── */
+.dkb-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 48px; padding: 0 24px;
+  border-radius: 999px;
+  background: var(--dk-ink); color: #fff;
+  box-shadow: 0 2px 10px rgba(23, 58, 107, 0.14);
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease, background 0.25s ease;
+}
+.dkb-btn:hover { background: #1e4a85; transform: translateY(-2px); box-shadow: 0 12px 24px rgba(23, 58, 107, 0.24); }
+/* สลับปุ่มมือถือ/เดสก์ท็อปด้วย media query ไม่ใช่คลาส hidden ของ Tailwind
+   — dashboard.css โหลดหลัง utility ทำให้ display ของ .dkb-btn ชนะ .lg\:hidden เสมอ */
+.dkb-btn-wide { display: none; }
+.dkb-btn-rail { display: none; }
+@media (max-width: 1023px) { .dkb-btn-wide { display: flex; width: 100%; } }
+@media (min-width: 1024px) { .dkb-btn-rail { display: inline-flex; } }
+
+/* ── แถวรายการ — สูงโปร่ง เส้นคั่นบางมาก ── */
 .dkb-row {
-  display: flex; align-items: center; gap: 12px;
-  min-height: 60px; padding: 10px 12px;
-  border-radius: var(--dk-r-s);
+  display: flex; align-items: center; gap: 14px;
+  min-height: 64px; padding: 12px 10px;
+  border-radius: 16px;
   transition: background 0.15s ease;
 }
-.dkb-row:hover { background: var(--dk-sky); }
+.dkb-row:hover { background: var(--dk-sky-wash); }
 .dkb-row + .dkb-row { box-shadow: 0 -1px 0 var(--dk-line); }
 
-/* ── ป้ายสถานะ — แยกด้วยสี + แถบซ้าย + น้ำหนักตัวอักษร (ไม่พึ่งสีอย่างเดียว) ── */
+/* ── ป้ายสถานะ — พื้นนุ่ม ไม่มีขอบ แยกด้วยจุดสี + สีตัวอักษร ── */
 .dkb-chip {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 10px 3px 8px;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 11px 4px 9px;
   border-radius: 999px;
-  font-size: 0.72rem; font-weight: 700; white-space: nowrap;
-  border: 1px solid currentColor;
+  font-size: 0.74rem; font-weight: 600; white-space: nowrap;
 }
-.dkb-chip i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.dkb-chip i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+/* งานที่จบแล้วไม่มีพื้น — ต้องเงียบกว่างานค้างเสมอ */
+.dkb-chip[data-done="1"] { font-weight: 400; }
 
 /* ── กราฟแท่ง 7 วัน ── */
-/* รางเต็มความสูงเสมอ (stretch) แล้วให้แท่งจริงยืนที่ก้นราง — ถ้าใช้ flex-end รางจะยุบจนแท่งหาย */
-.dkb-bars { display: flex; align-items: stretch; gap: 6px; height: 76px; border-bottom: 2px solid var(--dk-line); }
-/* ไม่ใส่พื้นรางแท่ง — รางเต็มความสูงทำให้วันที่ยอด 0 ดูเหมือนมียอด */
+.dkb-bars { display: flex; align-items: stretch; gap: 8px; height: 84px; border-bottom: 1px solid var(--dk-line); }
+/* ไม่ใส่พื้นราง — รางเต็มความสูงทำให้วันที่ยอด 0 ดูเหมือนมียอด */
 .dkb-bar { flex: 1; position: relative; }
-.dkb-bar > span { position: absolute; inset: auto 0 0 0; border-radius: 5px 5px 3px 3px; background: var(--dk-yolk-deep); }
-.dkb-bar[data-today="1"] > span { background: var(--dk-ink); }
+.dkb-bar > span { position: absolute; inset: auto 0 0 0; border-radius: 8px 8px 2px 2px; background: var(--dk-yolk); }
+.dkb-bar[data-today="1"] > span { background: var(--dk-yolk-deep); }
 
 /* ── โครงกระดูกตอนโหลด ── */
-@keyframes dkb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
-.dkb-skel { background: var(--dk-paper-edge); border-radius: var(--dk-r-s); animation: dkb-pulse 1.4s ease-in-out infinite; }
-
-/* งานที่ "กำลังเดิน" (ผลิตอยู่) ไม่ใช่งานค้าง — ตัวเลขคนละสีจากงานที่รอเรา */
-.dkb-tile[data-flow="1"] .dkb-tile-num { color: var(--dk-blue); }
+@keyframes dkb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.dkb-skel { background: rgba(44, 129, 196, 0.07); border-radius: 26px; animation: dkb-pulse 1.5s ease-in-out infinite; }
