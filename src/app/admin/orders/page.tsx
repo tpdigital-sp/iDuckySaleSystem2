@@ -60,11 +60,15 @@ export default function AdminOrdersPage() {
   const seesMoney = can("orders.money");
 
   useEffect(() => {
-    const deepLink = new URLSearchParams(window.location.search).get("order");
+    const qs = new URLSearchParams(window.location.search);
+    const deepLink = qs.get("order");
     if (deepLink) {
       router.replace(`/admin/orders/${encodeURIComponent(deepLink)}`);
       return;
     }
+    // มาจากช่อง "ต้องทำตอนนี้" ในหน้าภาพรวม → เปิดมาพร้อมตัวกรองสถานะนั้นเลย
+    const wanted = qs.get("status") as OrderStatus | null;
+    if (wanted && ORDER_STATUSES.includes(wanted)) setFilter(wanted);
     fetchOrdersAdmin().then((r) => {
       if (r.orders.length > 0) setOrders(visibleTo(r.orders, seesAll));
       else {

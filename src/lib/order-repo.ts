@@ -214,14 +214,18 @@ export async function uploadProof(
   }
 }
 
-/** แอดมินดึงออเดอร์ทั้งหมด · needsSetup = true เมื่อตาราง orders ยังไม่ถูกสร้าง */
-export async function fetchOrdersAdmin(): Promise<{ orders: Order[]; needsSetup: boolean }> {
+/**
+ * แอดมินดึงออเดอร์ทั้งหมด · needsSetup = true เมื่อตาราง orders ยังไม่ถูกสร้าง
+ * ok = false เมื่อยิงไม่ถึงเซิร์ฟเวอร์ (เน็ตหลุด) — คนละเรื่องกับ "ยิงถึงแต่ยังไม่มีออเดอร์"
+ * หน้าจอที่โชว์ตัวเลขสรุปต้องแยกสองกรณีนี้ให้ออก ไม่งั้นเน็ตหลุดจะกลายเป็น "ยอดขาย 0"
+ */
+export async function fetchOrdersAdmin(): Promise<{ orders: Order[]; needsSetup: boolean; ok: boolean }> {
   try {
     const res = await fetch("/api/admin/orders", { cache: "no-store" });
     const data = await res.json().catch(() => ({}));
-    return { orders: data.orders ?? [], needsSetup: !!data.needsSetup };
+    return { orders: data.orders ?? [], needsSetup: !!data.needsSetup, ok: res.ok };
   } catch {
-    return { orders: [], needsSetup: false };
+    return { orders: [], needsSetup: false, ok: false };
   }
 }
 
