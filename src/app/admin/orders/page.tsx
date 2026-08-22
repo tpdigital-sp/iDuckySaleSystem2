@@ -34,7 +34,6 @@ import { useCan } from "@/lib/perm-context";
 import { PACKING_QUEUE_STATUSES } from "@/lib/permissions";
 import StatusChip, { chipStyle, STATUS_TONE } from "@/components/admin/StatusChip";
 import "@/components/admin/dashboard.css";
-import "@/components/admin/orders.css";
 
 /** แบ่งสถานะตามแผนกที่รับผิดชอบ — แต่ละแผนกเห็นเฉพาะงานของตัวเอง */
 const DEPARTMENTS: { key: string; label: string; statuses: OrderStatus[] }[] = [
@@ -186,7 +185,7 @@ export default function AdminOrdersPage() {
             </p>
           </div>
           <div className="flex flex-1 flex-wrap items-center gap-2.5 sm:justify-end">
-            <label className="oda-search">
+            <label className="dkb-search">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
                 <circle cx="11" cy="11" r="7" />
                 <path d="m20 20-3.5-3.5" />
@@ -194,7 +193,7 @@ export default function AdminOrdersPage() {
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นเลขออเดอร์ / ชื่อลูกค้า / เบอร์โทร" />
             </label>
             {can("orders.edit") && <NewOrderButton onCreated={(id) => router.push(`/admin/orders/${id}`)} />}
-            <Link href="/admin/orders/scan" className="oda-btn oda-btn-navy">
+            <Link href="/admin/orders/scan" className="dkb-btn dkb-btn-navy">
               ยิงเลขพัสดุ
             </Link>
           </div>
@@ -220,9 +219,9 @@ export default function AdminOrdersPage() {
         )}
 
         {/* ── การ์ดสรุปแบบเบนโตะ — "ต้องทำตอนนี้" ใหญ่สุด ── */}
-        <div className="oda-stats mt-4" data-cols={seesMoney ? undefined : "4"}>
-          <div className="dkb-g oda-stat oda-stat-need" style={{ ["--dk-pct" as string]: `${needPct}%` }}>
-            <span className="oda-ring">
+        <div className="dkb-stats mt-4" data-cols={seesMoney ? undefined : "4"}>
+          <div className="dkb-g dkb-stat dkb-stat-hero" style={{ ["--dk-pct" as string]: `${needPct}%` }}>
+            <span className="dkb-ring-sm">
               <i>
                 <span className="dkb-num text-[1.55rem]">{stats.needUs}</span>
               </i>
@@ -235,10 +234,10 @@ export default function AdminOrdersPage() {
             </span>
           </div>
 
-          <div className="dkb-g oda-stat">
-            <span className="oda-stat-lb">กำลังผลิต</span>
-            <span className="dkb-num oda-stat-v">{stats.making}</span>
-            <span className="oda-stat-hint">เดินอยู่ในโรงพิมพ์</span>
+          <div className="dkb-g dkb-stat">
+            <span className="dkb-stat-lb">กำลังผลิต</span>
+            <span className="dkb-num dkb-stat-v">{stats.making}</span>
+            <span className="dkb-stat-hint">เดินอยู่ในโรงพิมพ์</span>
           </div>
 
           {seesMoney && stats.dueCount > 0 ? (
@@ -247,53 +246,53 @@ export default function AdminOrdersPage() {
               onClick={() => setOnlyDue((v) => !v)}
               aria-pressed={onlyDue}
               data-on={onlyDue ? "1" : undefined}
-              className="dkb-g oda-stat oda-stat-due"
+              className="dkb-g dkb-stat dkb-stat-due"
             >
-              <span className="oda-stat-lb">ค้างเก็บเงิน · {onlyDue ? "กำลังกรอง ✕" : "กดเพื่อกรอง"}</span>
-              <span className="dkb-num oda-stat-v" style={{ color: "var(--dk-coral-ink)" }}>
+              <span className="dkb-stat-lb">ค้างเก็บเงิน · {onlyDue ? "กำลังกรอง ✕" : "กดเพื่อกรอง"}</span>
+              <span className="dkb-num dkb-stat-v" style={{ color: "var(--dk-coral-ink)" }}>
                 {formatPrice(stats.dueAmount)}
               </span>
-              <span className="oda-stat-hint">{stats.dueCount} ใบ (มัดจำยังไม่ครบ)</span>
+              <span className="dkb-stat-hint">{stats.dueCount} ใบ (มัดจำยังไม่ครบ)</span>
             </button>
           ) : (
-            <div className="dkb-g oda-stat">
-              <span className="oda-stat-lb">รอลูกค้าตอบ</span>
-              <span className="dkb-num oda-stat-v">{stats.waitCustomer}</span>
-              <span className="oda-stat-hint">รอชำระ / รอตรวจแบบ</span>
+            <div className="dkb-g dkb-stat">
+              <span className="dkb-stat-lb">รอลูกค้าตอบ</span>
+              <span className="dkb-num dkb-stat-v">{stats.waitCustomer}</span>
+              <span className="dkb-stat-hint">รอชำระ / รอตรวจแบบ</span>
             </div>
           )}
 
           {seesMoney && (
-            <div className="dkb-g oda-stat oda-stat-money">
-              <span className="oda-stat-lb">ยอดขายวันนี้</span>
-              <span className="dkb-num oda-stat-v">{formatPrice(stats.todaySales)}</span>
-              <span className="oda-stat-hint">จากออเดอร์ที่ไม่ถูกยกเลิก</span>
+            <div className="dkb-g dkb-stat dkb-stat-money">
+              <span className="dkb-stat-lb">ยอดขายวันนี้</span>
+              <span className="dkb-num dkb-stat-v">{formatPrice(stats.todaySales)}</span>
+              <span className="dkb-stat-hint">จากออเดอร์ที่ไม่ถูกยกเลิก</span>
             </div>
           )}
         </div>
 
         {/* ── ตัวกรอง: แผนก + สถานะ ── */}
         <div className="dkb-g mt-4 px-3 py-3">
-          <div className="oda-scroll">
+          <div className="dkb-scroll">
             {DEPARTMENTS.map((d) => (
               <button
                 key={d.key}
                 type="button"
                 onClick={() => pickDept(d.key)}
                 aria-pressed={d.key === dept}
-                className="oda-tab"
+                className="dkb-tab"
               >
                 {d.label} <b>{deptCounts[d.key] ?? 0}</b>
               </button>
             ))}
           </div>
-          <div className="oda-scroll mt-2.5 border-t pt-2.5" style={{ borderColor: "var(--dk-hair)" }}>
+          <div className="dkb-scroll mt-2.5 border-t pt-2.5" style={{ borderColor: "var(--dk-hair)" }}>
             {seesMoney && stats.dueCount > 0 && (
               <button
                 type="button"
                 onClick={() => setOnlyDue((v) => !v)}
                 aria-pressed={onlyDue}
-                className="oda-chip"
+                className="dkb-fchip"
                 style={onlyDue ? undefined : { background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}
               >
                 <i />
@@ -302,7 +301,7 @@ export default function AdminOrdersPage() {
             )}
             {!onlyDue && (
               <>
-                <button type="button" onClick={() => setFilter("all")} aria-pressed={filter === "all"} className="oda-chip">
+                <button type="button" onClick={() => setFilter("all")} aria-pressed={filter === "all"} className="dkb-fchip">
                   <i />
                   ทุกสถานะ <b>{deptCounts[activeDept.key] ?? 0}</b>
                 </button>
@@ -316,7 +315,7 @@ export default function AdminOrdersPage() {
                       onClick={() => setFilter(s)}
                       aria-pressed={on}
                       data-zero={n === 0 ? "1" : undefined}
-                      className="oda-chip"
+                      className="dkb-fchip"
                       style={on || n === 0 ? undefined : chipStyle(s)}
                     >
                       <i />
@@ -351,7 +350,7 @@ export default function AdminOrdersPage() {
             </p>
           </div>
         ) : (
-          <div className="oda-rows">
+          <div className="dkb-rows">
             {shown.map((o) => (
               <OrderRow key={o.id} o={o} orders={orders} openByPhone={openByPhone} seesMoney={seesMoney} />
             ))}
@@ -384,22 +383,22 @@ function OrderRow({
   return (
     <Link
       href={`/admin/orders/${encodeURIComponent(o.id)}`}
-      className="dkb-g oda-row"
+      className="dkb-g dkb-lrow"
       data-done={done ? "1" : undefined}
       style={{ ["--dk-tone" as string]: STATUS_TONE[o.status] }}
     >
-      <span className="oda-main">
-        <span className="oda-who">
+      <span className="dkb-main">
+        <span className="dkb-who">
           <span className="nm">{o.customer || "ยังไม่ระบุชื่อ"}</span>
           {o.rush && (
-            <span className="oda-tag" style={{ background: "var(--dk-coral-deep)", color: "#fff" }} title="งานเร่ง">
+            <span className="dkb-tag" style={{ background: "var(--dk-coral-deep)", color: "#fff" }} title="งานเร่ง">
               <i />
               งานเร่ง
             </span>
           )}
           {o.deposit && !o.deposit.settledAt && o.status !== "ยกเลิก" && (
             <span
-              className="oda-tag"
+              className="dkb-tag"
               style={
                 o.deposit.firstPaidAt
                   ? { background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }
@@ -417,7 +416,7 @@ function OrderRow({
           )}
           {o.claimOf && (
             <span
-              className="oda-tag"
+              className="dkb-tag"
               style={{ background: "var(--dk-lilac-wash)", color: "var(--dk-lilac-ink)" }}
               title={`งานเคลมจาก ${o.claimOf}${o.claimReason ? ` — ${o.claimReason}` : ""}`}
             >
@@ -427,7 +426,7 @@ function OrderRow({
           )}
           {o.reorderOf && (
             <span
-              className="oda-tag"
+              className="dkb-tag"
               style={{ background: "var(--dk-sky)", color: "var(--dk-blue-deep)" }}
               title={`สั่งซ้ำจาก ${o.reorderOf}`}
             >
@@ -438,7 +437,7 @@ function OrderRow({
           {/* สถานะ LINE ของลูกค้า — ใบที่จบแล้วไม่ต้องเตือน */}
           {!done && (
             <span
-              className="oda-tag"
+              className="dkb-tag"
               style={
                 line
                   ? { background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" }
@@ -460,7 +459,7 @@ function OrderRow({
           )}
           {seesMoney && o.slipVerify?.status === "pass" && (
             <span
-              className="oda-tag"
+              className="dkb-tag"
               style={{ background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" }}
               title="ระบบตรวจสลิปอัตโนมัติผ่านแล้ว"
             >
@@ -470,7 +469,7 @@ function OrderRow({
           )}
           {seesMoney && o.slipVerify?.status === "fail" && o.status === "รอตรวจสอบ" && (
             <span
-              className="oda-tag"
+              className="dkb-tag"
               style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}
               title="ตรวจสลิปอัตโนมัติไม่ผ่าน — ต้องตรวจเอง"
             >
@@ -480,7 +479,7 @@ function OrderRow({
           )}
         </span>
 
-        <span className="oda-meta">
+        <span className="dkb-meta">
           <span className="id">{o.id}</span>
           <span>{o.date}</span>
           {days !== null && (
@@ -497,7 +496,7 @@ function OrderRow({
         </span>
       </span>
 
-      <span className="oda-dots">
+      <span className="dkb-dots">
         {step < 0 ? (
           <span className="lb" style={{ marginLeft: 0 }}>
             ยกเลิกแล้ว
@@ -517,9 +516,9 @@ function OrderRow({
         )}
       </span>
 
-      <span className="oda-side">
+      <span className="dkb-side">
         <StatusChip s={o.status} />
-        <span className="oda-amt">
+        <span className="dkb-amt">
           {seesMoney ? formatPrice(orderTotal(o)) : `${qtyOf(o)} ชิ้น`}
           {/* ออเดอร์มัดจำ: บอกยอดที่ยังต้องเก็บ "งวดนี้" ใต้ยอดเต็ม */}
           {seesMoney && o.deposit && !o.deposit.settledAt && o.status !== "ยกเลิก" && (
@@ -552,7 +551,7 @@ function NewOrderButton({ onCreated }: { onCreated: (id: string) => void }) {
   }
 
   return (
-    <button type="button" onClick={create} disabled={busy} className="oda-btn oda-btn-yolk">
+    <button type="button" onClick={create} disabled={busy} className="dkb-btn dkb-btn-yolk">
       {busy ? "กำลังสร้าง…" : "สร้างออเดอร์งานพิเศษ"}
     </button>
   );

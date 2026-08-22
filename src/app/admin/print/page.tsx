@@ -1,21 +1,40 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import RequirePerm from "@/components/RequirePerm";
-import { daysToUseBy, orderFullyPaid, proofsOf, STATUS_STYLES, type Order } from "@/lib/admin-data";
-import { fetchOrdersAdmin } from "@/lib/order-repo";
-import { usePolling } from "@/lib/use-polling";
-import { card, h1, muted } from "@/lib/admin-ui";
-
 /**
- * 🖨 คิวปริ้น — ใบงานที่พร้อมปริ้นได้แล้ว
+ * คิวปริ้น /admin/print — ใบงานที่พร้อมปริ้นได้แล้ว  (ดีไซน์ "รางเบนโตะกระจก")
  *
  * เอาเฉพาะสถานะ "อนุมัติแบบ" เท่านั้น (ลูกค้าตรวจแบบผ่านแล้ว = แบบนิ่ง ปริ้นไปทำได้)
  * ก่อนหน้านั้นแบบยังเปลี่ยนได้ ปริ้นไปก็ต้องทิ้ง
+ *
+ * คนที่ใช้: ฝ่ายผลิตยืนหน้าเครื่อง มือไม่ว่าง — ปุ่มปริ้นจึงอยู่ในแถวเลย ไม่ต้องเปิดเข้าใบก่อน
  */
 
-type Tab = "todo" | "done" | "all";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import RequirePerm from "@/components/RequirePerm";
+import { daysToUseBy, orderFullyPaid, proofsOf, type Order } from "@/lib/admin-data";
+import { fetchOrdersAdmin } from "@/lib/order-repo";
+import { usePolling } from "@/lib/use-polling";
+import {
+  Btn,
+  Empty,
+  FilterCard,
+  HeroStat,
+  ListHead,
+  PageHead,
+  PageShell,
+  Row,
+  RowMain,
+  RowSide,
+  Rows,
+  SearchBox,
+  Stat,
+  Stats,
+  Tab,
+  TabRow,
+  Tag,
+} from "@/components/admin/ui";
+
+type TabKey = "todo" | "done" | "all";
 
 const qtyOf = (o: Order) => o.items.reduce((s, i) => s + i.qty, 0);
 const printCountOf = (o: Order) => o.printCount ?? (o.printedAt ? 1 : 0);
@@ -30,7 +49,7 @@ function urgency(o: Order): number {
 function PrintQueueInner() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("todo");
+  const [tab, setTab] = useState<TabKey>("todo");
   const [q, setQ] = useState("");
 
   const load = useCallback(async () => {
@@ -55,6 +74,19 @@ function PrintQueueInner() {
     [ready]
   );
 
+  /** ของที่ต้องรีบในคิว — ใช้เป็นคำอธิบายใต้ตัวเลขใหญ่ */
+  const urgent = useMemo(() => {
+    const todo = ready.filter((o) => printCountOf(o) === 0);
+    return {
+      rush: todo.filter((o) => o.rush).length,
+      today: todo.filter((o) => {
+        const d = daysToUseBy(o);
+        return d !== null && d <= 0;
+      }).length,
+      pieces: ready.reduce((s, o) => s + qtyOf(o), 0),
+    };
+  }, [ready]);
+
   const kw = q.trim().toLowerCase();
   const shown = useMemo(
     () =>
@@ -66,166 +98,104 @@ function PrintQueueInner() {
   );
 
   return (
-    <div className="w-full">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className={h1}>🖨 คิวปริ้น</h1>
-          <p className={`mt-1 text-sm ${muted}`}>
-            เฉพาะออเดอร์ที่ <strong className="text-slate-600">ลูกค้าอนุมัติแบบแล้ว</strong> — แบบนิ่งแล้ว ปริ้นใบงานไปทำได้เลย
-          </p>
-        </div>
-        <label className="flex min-w-[220px] items-center gap-2 rounded-full border-2 border-amber-200 bg-white px-4 py-2.5 focus-within:border-amber-400">
-          <span className="text-sm text-amber-500">🔍</span>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="ค้นเลขออเดอร์ / ชื่อลูกค้า"
-            className="w-full bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
-          />
-        </label>
-      </div>
+    <PageShell>
+      <PageHead
+        group="งานขาย"
+        title="คิวปริ้น"
+        count={`${counts.all} ใบ`}
+        sub="เฉพาะออเดอร์ที่ลูกค้าอนุมัติแบบแล้ว — แบบนิ่งแล้ว ปริ้นใบงานไปทำได้เลย"
+        tools={<SearchBox value={q} onChange={setQ} placeholder="ค้นเลขออเดอร์ / ชื่อลูกค้า" />}
+      />
 
-      <div className="mt-5 flex flex-wrap gap-2">
-        {(
-          [
-            ["todo", `🖨 ยังไม่ปริ้น (${counts.todo})`],
-            ["done", `✓ ปริ้นแล้ว (${counts.done})`],
-            ["all", `ทั้งหมด (${counts.all})`],
-          ] as [Tab, string][]
-        ).map(([k, label]) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => setTab(k)}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-              tab === k ? "bg-amber-500 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-600 hover:border-amber-200"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <Stats cols={4}>
+        <HeroStat
+          n={counts.todo}
+          label="ยังไม่ปริ้น"
+          detail={
+            urgent.rush || urgent.today
+              ? `ในนี้เป็นงานเร่ง ${urgent.rush} ใบ · ถึงกำหนดใช้แล้ว ${urgent.today} ใบ`
+              : "ไม่มีงานเร่งในคิวตอนนี้"
+          }
+          pct={counts.all > 0 ? (counts.todo / counts.all) * 100 : 0}
+        />
+        <Stat label="ปริ้นแล้ว" value={counts.done} hint="รอเข้าเครื่อง" />
+        <Stat label="ชิ้นงานรวม" value={urgent.pieces.toLocaleString("th-TH")} hint="ทุกใบในคิว" />
+      </Stats>
 
-      <div className={`mt-4 overflow-hidden ${card}`}>
-        {loading ? (
-          <p className="p-10 text-center text-sm text-slate-400">กำลังโหลด…</p>
-        ) : shown.length === 0 ? (
-          <div className="p-10 text-center">
-            {/* กำลังค้นอยู่ = ไม่เจอคำค้น · ไม่ได้ค้น = คิวว่างจริง (อย่าบอกว่าเคลียร์หมดทั้งที่ยังมีงานค้าง) */}
-            <span className="text-4xl">{kw ? "🔍" : "🖨"}</span>
-            {kw ? (
-              <>
-                <p className="mt-2 text-sm font-semibold text-slate-600">ไม่เจอ “{q.trim()}” ในหมวดนี้</p>
-                <p className="mt-1 text-xs text-slate-400">
-                  ลองดูแท็บอื่น หรือ
-                  <button type="button" onClick={() => setQ("")} className="ml-1 font-bold text-amber-600 hover:underline">
-                    ล้างคำค้น
-                  </button>
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="mt-2 text-sm font-semibold text-slate-600">
-                  {tab === "todo" ? "ไม่มีใบงานรอปริ้น — เคลียร์หมดแล้ว 🎉" : "ไม่มีออเดอร์ในหมวดนี้"}
-                </p>
-                <p className="mt-1 text-xs text-slate-400">คิวนี้จะขึ้นเมื่อลูกค้ากดอนุมัติแบบเรียบร้อย</p>
-              </>
-            )}
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {shown.map((o) => {
-              const printed = printCountOf(o);
-              const left = daysToUseBy(o);
-              const paid = orderFullyPaid(o);
-              const noProof = o.items.some((it) => proofsOf(it).length === 0);
-              return (
-                <div key={o.id} className="flex flex-wrap items-center gap-3 px-4 py-3 transition hover:bg-amber-50/40">
-                  <span className="min-w-36 flex-1">
-                    <Link
-                      href={`/admin/orders/${encodeURIComponent(o.id)}`}
-                      className="block font-bold tabular-nums text-slate-900 hover:text-amber-600 hover:underline"
-                    >
-                      {o.id}
-                    </Link>
-                    <span className="block text-xs text-slate-400">
-                      {o.date} · {o.items.length} รายการ · {qtyOf(o)} ชิ้น
-                    </span>
-                  </span>
+      <FilterCard>
+        <TabRow>
+          <Tab on={tab === "todo"} onClick={() => setTab("todo")} label="ยังไม่ปริ้น" count={counts.todo} />
+          <Tab on={tab === "done"} onClick={() => setTab("done")} label="ปริ้นแล้ว" count={counts.done} />
+          <Tab on={tab === "all"} onClick={() => setTab("all")} label="ทั้งหมด" count={counts.all} />
+        </TabRow>
+      </FilterCard>
 
-                  <span className="min-w-32 flex-1 text-sm text-slate-700">{o.customer}</span>
+      <ListHead title="คิวงาน" note="งานเร่งขึ้นก่อน แล้วตามด้วยงานที่ใกล้วันใช้งานที่สุด" />
 
-                  {/* ความเร่ง */}
-                  <span className="flex min-w-32 flex-wrap items-center gap-1.5">
-                    {o.rush && (
-                      <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200">
-                        🔥 งานเร่ง
-                      </span>
-                    )}
-                    {left !== null && (
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[11px] font-bold ring-1 ${
-                          left < 0
-                            ? "bg-rose-50 text-rose-700 ring-rose-200"
-                            : left <= 3
-                              ? "bg-orange-50 text-orange-700 ring-orange-200"
-                              : "bg-slate-50 text-slate-500 ring-slate-200"
-                        }`}
-                      >
-                        {left < 0 ? `เลยกำหนด ${-left} วัน` : left === 0 ? "ใช้วันนี้" : `อีก ${left} วัน`}
-                      </span>
-                    )}
-                  </span>
+      {loading ? (
+        <Empty title="กำลังโหลดคิว…" body="ดึงออเดอร์ที่อนุมัติแบบแล้วจากเซิร์ฟเวอร์" />
+      ) : shown.length === 0 ? (
+        <Empty
+          title={kw ? `ไม่เจอ “${q.trim()}” ในหมวดนี้` : tab === "todo" ? "ไม่มีใบงานรอปริ้น" : "ไม่มีออเดอร์ในหมวดนี้"}
+          body={kw ? "ลองดูแท็บอื่น หรือค้นด้วยชื่อลูกค้าแทน" : "คิวนี้จะขึ้นเมื่อลูกค้ากดอนุมัติแบบเรียบร้อย"}
+        />
+      ) : (
+        <Rows>
+          {shown.map((o) => (
+            <PrintRow key={o.id} o={o} />
+          ))}
+        </Rows>
+      )}
 
-                  {/* สิ่งที่ต้องรู้ก่อนกดปริ้น */}
-                  <span className="flex min-w-40 flex-wrap items-center gap-1.5">
-                    {printed > 0 ? (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">
-                        🖨 ปริ้นแล้ว {printed} ครั้ง
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 ring-1 ring-amber-200">
-                        ยังไม่ปริ้น
-                      </span>
-                    )}
-                    {!paid && (
-                      <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200">
-                        🔒 ไม่มีใบปะหน้า
-                      </span>
-                    )}
-                    {noProof && (
-                      <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-bold text-orange-700 ring-1 ring-orange-200">
-                        ⚠️ มีรายการยังไม่มีแบบ
-                      </span>
-                    )}
-                  </span>
-
-                  <span className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${STATUS_STYLES[o.status]}`}>
-                    {o.status}
-                  </span>
-
-                  <Link
-                    href={`/admin/orders/${encodeURIComponent(o.id)}/print`}
-                    className={`shrink-0 rounded-lg px-4 py-2 text-xs font-bold shadow-sm transition ${
-                      printed > 0
-                        ? "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                        : "bg-amber-500 text-white hover:bg-amber-600"
-                    }`}
-                  >
-                    {printed > 0 ? "🖨 ปริ้นซ้ำ" : "🖨 ปริ้นใบงาน"}
-                  </Link>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <p className="mt-3 text-xs leading-relaxed text-slate-400">
-        เรียงให้อัตโนมัติ: <strong className="text-slate-500">งานเร่ง</strong> ก่อน แล้วตามด้วยงานที่ใกล้วันใช้งานที่สุด ·
+      <p className="mt-4 px-2 text-center text-[12px]" style={{ color: "var(--dk-faint)" }}>
         กดปริ้นทุกครั้งระบบลงประวัติให้ว่าใครปริ้น ครั้งที่เท่าไร
       </p>
-    </div>
+    </PageShell>
+  );
+}
+
+function PrintRow({ o }: { o: Order }) {
+  const printed = printCountOf(o);
+  const left = daysToUseBy(o);
+  const paid = orderFullyPaid(o);
+  const noProof = o.items.some((it) => proofsOf(it).length === 0);
+  /** ยังไม่ปริ้น = งานค้าง (คอรัล) · ปริ้นแล้ว = เดินต่อได้ (เงียบ) */
+  const tone = printed > 0 ? "var(--dk-quiet)" : o.rush || (left !== null && left <= 0) ? "var(--dk-coral-deep)" : "var(--dk-mint)";
+
+  return (
+    <Row tone={tone} done={printed > 0}>
+      <RowMain
+        name={o.customer || "ยังไม่ระบุชื่อ"}
+        href={`/admin/orders/${encodeURIComponent(o.id)}`}
+        tags={
+          <>
+            {o.rush && <Tag tone="solid">งานเร่ง</Tag>}
+            {left !== null && (
+              <Tag tone={left < 0 ? "coral" : left <= 3 ? "yolk" : "quiet"} title="วันที่ลูกค้าต้องใช้งาน">
+                {left < 0 ? `เลยกำหนด ${-left} วัน` : left === 0 ? "ใช้วันนี้" : `อีก ${left} วัน`}
+              </Tag>
+            )}
+            {!paid && <Tag tone="coral" title="ยังเก็บเงินไม่ครบ — ใบงานจะไม่มีใบปะหน้า">ไม่มีใบปะหน้า</Tag>}
+            {noProof && <Tag tone="yolk" title="ยังมีรายการที่ไม่มีแบบงาน">มีรายการยังไม่มีแบบ</Tag>}
+          </>
+        }
+        meta={
+          <>
+            <span className="id">{o.id}</span>
+            <span>{o.date}</span>
+            <span>
+              {o.items.length} รายการ · {qtyOf(o)} ชิ้น
+            </span>
+            {printed > 0 ? <span>ปริ้นแล้ว {printed} ครั้ง</span> : <span className="warn">ยังไม่ปริ้นใบงาน</span>}
+          </>
+        }
+      />
+      <RowSide>
+        <Btn tone={printed > 0 ? "ghost" : "navy"} small href={`/admin/orders/${encodeURIComponent(o.id)}/print`}>
+          {printed > 0 ? "ปริ้นซ้ำ" : "ปริ้นใบงาน"}
+        </Btn>
+      </RowSide>
+    </Row>
   );
 }
 
