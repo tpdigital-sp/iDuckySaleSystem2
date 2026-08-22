@@ -1,5 +1,15 @@
 "use client";
 
+/**
+ * หน้าคำสั่งซื้อ /admin/orders — ดีไซน์ "รางเบนโตะกระจก" ชุดเดียวกับหน้าภาพรวม
+ *
+ * ⚠️ ของเดิมเป็นตารางกว้างขั้นต่ำ 860px มือถือต้องเลื่อนซ้าย-ขวาถึงจะเห็นสถานะกับยอด
+ *    ของใหม่เป็น "แถว" ที่พับ 3 บรรทัดบนจอแคบ และคลี่เป็นแถวเดียวบนจอกว้าง
+ *    ข้อมูลทุกตัวยังอยู่ครบ (LINE · เร่ง · เคลม · สั่งซ้ำ · มัดจำ · SlipOK · วันใช้งาน · ออเดอร์ซ้ำ)
+ *
+ * แยกสถานะด้วยมากกว่าสี: แถบสีซ้ายสุดของแถว + ป้ายสถานะ + สีแถบความคืบหน้า
+ */
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -11,25 +21,27 @@ import {
   lineChatOf,
   MOCK_ORDERS,
   ORDER_STATUSES,
+  ORDER_STEPS,
   orderTotal,
   proofsOf,
-  STATUS_STYLES,
+  STEP_OF,
   type Order,
   type OrderStatus,
 } from "@/lib/admin-data";
 import { fetchOrdersAdmin } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
-import StepDots from "@/components/StepDots";
-import { h1, muted } from "@/lib/admin-ui";
 import { useCan } from "@/lib/perm-context";
 import { PACKING_QUEUE_STATUSES } from "@/lib/permissions";
+import StatusChip, { chipStyle, STATUS_TONE } from "@/components/admin/StatusChip";
+import "@/components/admin/dashboard.css";
+import "@/components/admin/orders.css";
 
 /** แบ่งสถานะตามแผนกที่รับผิดชอบ — แต่ละแผนกเห็นเฉพาะงานของตัวเอง */
-const DEPARTMENTS: { key: string; label: string; emoji: string; statuses: OrderStatus[] }[] = [
-  { key: "all", label: "ทั้งหมด", emoji: "📋", statuses: [...ORDER_STATUSES] },
-  { key: "sales", label: "คำสั่งซื้อ", emoji: "🧾", statuses: ["รอชำระเงิน", "รอตรวจสอบ", "ชำระแล้ว", "ยกเลิก"] },
-  { key: "design", label: "ทำแบบ", emoji: "🎨", statuses: ["รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"] },
-  { key: "pack", label: "แพ็คของ", emoji: "📦", statuses: ["กำลังผลิต", "จัดส่งแล้ว", "เสร็จสิ้น"] },
+const DEPARTMENTS: { key: string; label: string; statuses: OrderStatus[] }[] = [
+  { key: "all", label: "ทั้งหมด", statuses: [...ORDER_STATUSES] },
+  { key: "sales", label: "คำสั่งซื้อ", statuses: ["รอชำระเงิน", "รอตรวจสอบ", "ชำระแล้ว", "ยกเลิก"] },
+  { key: "design", label: "ทำแบบ", statuses: ["รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"] },
+  { key: "pack", label: "แพ็คของ", statuses: ["กำลังผลิต", "จัดส่งแล้ว", "เสร็จสิ้น"] },
 ];
 
 /** ฝ่ายแพ็คเห็นเฉพาะออเดอร์ที่ถึงคิวแพ็คแล้ว — จอสะอาด หยิบผิดใบยาก */
@@ -42,9 +54,10 @@ const dayOf = (d: string) => d.split(" ").slice(0, 3).join(" ");
 const openProofs = (o: Order) => o.items.filter((i) => !proofsOf(i).length || i.proofStatus === "ขอแก้ไข").length;
 /** ออเดอร์มัดจำที่ยังเก็บเงินไม่ครบ — ต้องตามเก็บก่อนส่งของ */
 const isDue = (o: Order) => !!o.deposit && !o.deposit.settledAt && o.status !== "ยกเลิก";
-
 /** งานที่ต้องให้ทีมงานลงมือตอนนี้ (ไม่ใช่รอลูกค้า) */
 const NEEDS_US: OrderStatus[] = ["รอตรวจสอบ", "ชำระแล้ว", "แก้ไขแบบ", "อนุมัติแบบ"];
+/** สถานะที่ถือว่าจบแล้ว — แถวต้องเงียบกว่าใบที่ยังค้าง */
+const DONE: OrderStatus[] = ["จัดส่งแล้ว", "เสร็จสิ้น", "ยกเลิก"];
 
 export default function AdminOrdersPage() {
   const router = useRouter();
@@ -66,9 +79,10 @@ export default function AdminOrdersPage() {
       router.replace(`/admin/orders/${encodeURIComponent(deepLink)}`);
       return;
     }
-    // มาจากช่อง "ต้องทำตอนนี้" ในหน้าภาพรวม → เปิดมาพร้อมตัวกรองสถานะนั้นเลย
+    // มาจากช่องขั้นงานในหน้าภาพรวม → เปิดมาพร้อมตัวกรองสถานะนั้นเลย
     const wanted = qs.get("status") as OrderStatus | null;
     if (wanted && ORDER_STATUSES.includes(wanted)) setFilter(wanted);
+
     fetchOrdersAdmin().then((r) => {
       if (r.orders.length > 0) setOrders(visibleTo(r.orders, seesAll));
       else {
@@ -131,386 +145,391 @@ export default function AdminOrdersPage() {
   }, [orders]);
 
   const kw = q.trim().toLowerCase();
+  const digits = kw.replace(/\D/g, "");
   const shown = orders
     .filter((o) => (onlyDue ? isDue(o) : true))
     .filter((o) => (onlyDue ? o.status !== "ยกเลิก" : activeDept.statuses.includes(o.status)))
     .filter((o) => (filter === "all" ? true : o.status === filter))
-    .filter((o) => (kw ? o.id.toLowerCase().includes(kw) || o.customer.toLowerCase().includes(kw) : true));
+    .filter((o) => {
+      if (!kw) return true;
+      if (o.id.toLowerCase().includes(kw) || o.customer.toLowerCase().includes(kw)) return true;
+      // ค้นด้วยเบอร์โทรได้ด้วย — แอดมินมักได้เบอร์จากไลน์ก่อนได้เลขออเดอร์
+      return digits.length >= 4 && (o.phone ?? "").replace(/\D/g, "").includes(digits);
+    });
+
+  const needPct = stats.total > 0 ? Math.round((stats.needUs / stats.total) * 100) : 0;
 
   return (
-    <div className="mx-auto max-w-7xl">
-      {/* ── หัวหน้า ── */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className={h1}>🦆 คำสั่งซื้อ</h1>
-          <p className={`mt-1 text-sm ${muted}`}>
-            {orders.length} ออเดอร์ ·{" "}
-            {demo ? (
-              <span className="text-slate-400">ยังไม่มีออเดอร์จริง — แสดงตัวอย่างไว้ก่อน</span>
-            ) : (
-              <span className="font-semibold text-green-600">● ออเดอร์จริง</span>
-            )}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {can("orders.edit") && <NewOrderButton onCreated={(id) => router.push(`/admin/orders/${id}`)} />}
-          <Link
-            href="/admin/orders/scan"
-            className="rounded-full bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
-          >
-            📮 ยิงเลขพัสดุ
-          </Link>
-          <label className="flex min-w-[240px] items-center gap-2 rounded-full border-2 border-amber-200 bg-white px-4 py-2.5 focus-within:border-amber-400">
-            <span className="text-sm text-amber-500">🔍</span>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="ค้นเลขออเดอร์ / ชื่อลูกค้า"
-              className="w-full bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
-            />
-          </label>
-        </div>
-      </div>
-
-      {/* แนะนำวิธีสั่งแทนลูกค้า — ให้เลือกทางถูกก่อนกดสร้าง (เห็นเฉพาะคนที่สร้างออเดอร์ได้) */}
-      {can("orders.edit") && (
-        <p className="mt-3 rounded-xl bg-sky-50/70 px-4 py-2.5 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
-          💡 <strong>สั่งแทนลูกค้า:</strong> สินค้ามีบนเว็บ →{" "}
-          <Link href="/" className="font-bold underline underline-offset-2 hover:text-sky-600">
-            ไปหน้าร้าน
-          </Link>{" "}
-          หยิบใส่ตะกร้าแล้วติ๊ก 🧑‍💼 สั่งแทนลูกค้า (ได้ตัวเลือก/ราคาอัตโนมัติ) · งานสั่งทำที่<strong>ไม่มีบนเว็บ</strong> → กด
-          “🛠️ สร้างออเดอร์งานพิเศษ” แล้วเพิ่มรายการจาก{" "}
-          <Link href="/admin/special-products" className="font-bold underline underline-offset-2 hover:text-sky-600">
-            รูปแบบการสินค้าสั่งพิเศษ
-          </Link>
-        </p>
-      )}
-
-      {/* ── การ์ดสรุป ── */}
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Tile label="ทั้งหมด" value={stats.total.toString()} />
-        <Tile label="ต้องทำตอนนี้" value={stats.needUs.toString()} tone="warn" />
-        <Tile label="รอลูกค้า" value={stats.waitCustomer.toString()} />
-        {seesMoney && stats.dueCount > 0 ? (
-          <Tile
-            label={`ค้างเก็บเงิน ${stats.dueCount} ออเดอร์`}
-            value={formatPrice(stats.dueAmount)}
-            tone="due"
-            onClick={() => setOnlyDue((v) => !v)}
-            active={onlyDue}
-          />
-        ) : (
-          <Tile label="กำลังผลิต" value={stats.making.toString()} />
-        )}
-        {seesMoney && <Tile label="ยอดขายวันนี้" value={formatPrice(stats.todaySales)} tone="brand" />}
-      </div>
-
-      {/* ── แท็บแผนก ── */}
-      <div className="mt-5 flex flex-wrap gap-2">
-        {DEPARTMENTS.map((d) => {
-          const on = d.key === dept;
-          return (
-            <button
-              key={d.key}
-              type="button"
-              onClick={() => pickDept(d.key)}
-              aria-pressed={on}
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                on
-                  ? "bg-amber-500 text-white shadow-sm"
-                  : "border border-slate-200 bg-white text-slate-600 hover:border-amber-200 hover:text-slate-900"
-              }`}
-            >
-              {d.emoji} {d.label}{" "}
-              <span className={on ? "opacity-80" : "text-slate-400"}>{deptCounts[d.key] ?? 0}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ── ชิปสถานะย่อยของแผนกนั้น ── */}
-      <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {seesMoney && stats.dueCount > 0 && (
-          <button
-            type="button"
-            onClick={() => setOnlyDue((v) => !v)}
-            aria-pressed={onlyDue}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition ${
-              onlyDue ? "bg-rose-600 text-white" : "border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100"
-            }`}
-          >
-            💳 ค้างเก็บเงิน <span className={onlyDue ? "opacity-80" : "text-rose-400"}>{stats.dueCount}</span>
-          </button>
-        )}
-        {!onlyDue && (
-          <>
-            <Chip active={filter === "all"} onClick={() => setFilter("all")} label="ทุกสถานะ" count={deptCounts[activeDept.key] ?? 0} />
-            {activeDept.statuses.map((s) => (
-              <Chip key={s} active={filter === s} onClick={() => setFilter(s)} label={s} count={counts[s]} status={s} />
-            ))}
-          </>
-        )}
-      </div>
-
-      {/* ── ตาราง ── */}
-      {shown.length === 0 ? (
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-12 text-center">
-          <span className="text-4xl">🗒️</span>
-          <p className="mt-3 font-semibold text-slate-600">
-            {kw ? `ไม่พบออเดอร์ที่ตรงกับ "${q}"` : filter === "all" ? `ไม่มีงานในแผนก${activeDept.label}` : `ไม่มีออเดอร์สถานะ "${filter}"`}
-          </p>
-          {!kw && <p className="mt-1 text-sm text-slate-400">ว่างแล้ว 🎉</p>}
-        </div>
-      ) : (
-        <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] border-collapse text-left">
-              <thead>
-                <tr className="bg-amber-500 text-white">
-                  <Th>ออเดอร์</Th>
-                  <Th>ลูกค้า</Th>
-                  <Th className="w-[210px]">ความคืบหน้า</Th>
-                  <Th>สถานะ</Th>
-                  <Th className="w-[110px] text-right">{seesMoney ? "ยอด" : "จำนวน"}</Th>
-                  <Th className="w-8" />
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map((o, i) => {
-                  const open = openProofs(o);
-                  return (
-                    <tr
-                      key={o.id}
-                      onClick={() => router.push(`/admin/orders/${encodeURIComponent(o.id)}`)}
-                      className={`cursor-pointer border-b border-slate-100 transition last:border-b-0 hover:bg-amber-100/60 ${
-                        i % 2 === 1 ? "bg-amber-50/70" : ""
-                      }`}
-                    >
-                      <td className={`px-4 py-3.5 align-middle ${o.rush ? "border-l-4 border-l-rose-500" : ""}`}>
-                        <p className="flex flex-wrap items-center gap-1.5 font-bold tabular-nums text-slate-900">
-                          {o.id}
-                          {o.rush && (
-                            <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold text-white" title="งานเร่ง">
-                              🔥 เร่ง
-                            </span>
-                          )}
-                          {o.claimOf && (
-                            <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 ring-1 ring-rose-200" title={`งานเคลมจาก ${o.claimOf}${o.claimReason ? ` — ${o.claimReason}` : ""}`}>
-                              ♻️ เคลม
-                            </span>
-                          )}
-                          {o.reorderOf && (
-                            <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200" title={`สั่งซ้ำจาก ${o.reorderOf}`}>
-                              🔁 สั่งซ้ำ
-                            </span>
-                          )}
-                          {/* ออเดอร์มัดจำที่ยังเก็บไม่ครบ — ทุกแผนกต้องเห็น (ฝ่ายแพ็คห้ามส่งของ) */}
-                          {o.deposit && !o.deposit.settledAt && o.status !== "ยกเลิก" && (
-                            <span
-                              className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ring-1 ${
-                                o.deposit.firstPaidAt
-                                  ? "bg-rose-100 text-rose-700 ring-rose-200"
-                                  : "bg-violet-100 text-violet-700 ring-violet-200"
-                              }`}
-                              title={
-                                o.deposit.firstPaidAt
-                                  ? "รับมัดจำงวดแรกแล้ว ยังค้างยอดคงเหลือ — ห้ามส่งของจนเก็บครบ 100%"
-                                  : "ออเดอร์มัดจำ 50% — รอลูกค้าโอนงวดแรก"
-                              }
-                            >
-                              ➗ {o.deposit.firstPaidAt ? "ค้างครึ่งหลัง" : "รอครึ่งแรก"}
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          {o.date}
-                          {(() => {
-                            const d = o.useByDate ? daysToUseBy(o) : null;
-                            if (d == null || o.status === "เสร็จสิ้น" || o.status === "ยกเลิก") return null;
-                            const tone = d < 0 ? "text-rose-600" : d <= 3 ? "text-orange-600" : "text-slate-400";
-                            return (
-                              <span className={`ml-1 font-bold ${tone}`} title="วันที่ลูกค้าต้องใช้งาน">
-                                · ⏱ {d < 0 ? `เลย ${Math.abs(d)} วัน` : d === 0 ? "ใช้งานวันนี้" : `อีก ${d} วัน`}
-                              </span>
-                            );
-                          })()}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3.5 align-middle">
-                        <p className="flex items-center gap-1.5 text-slate-700">
-                          {/* ป้ายสถานะ LINE ของลูกค้า: เขียว = ผูก userId แล้ว (ระบบแจ้งเองได้) · เหลือง = มีแค่ลิงก์ห้องแชท · แดง = ยังไม่ผูก */}
-                          {(() => {
-                            const l = lineUserOf(o, orders);
-                            const chat = lineChatOf(o, orders);
-                            const done = o.status === "ยกเลิก" || o.status === "เสร็จสิ้น";
-                            const cls = l
-                              ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-                              : chat
-                                ? "bg-yellow-50 text-yellow-700 ring-yellow-300"
-                                : "bg-rose-50 text-rose-600 ring-rose-200";
-                            const label = l ? "✓ ผูก LINE แล้ว" : chat ? "LINE แค่ลิงก์แชท" : "✕ ยังไม่ผูก LINE";
-                            const title = l
-                              ? `ผูก LINE แล้ว${l.name ? ` — ${l.name}` : ""}${l.source === "prev" ? " (จำจากออเดอร์เก่า)" : ""}${chat ? "" : " · ยังไม่มีลิงก์ห้องแชท"}`
-                              : chat
-                                ? "มีลิงก์ห้องแชทแล้ว แต่ยังไม่ผูก userId — ระบบส่งข้อความอัตโนมัติไม่ได้"
-                                : "ยังไม่ผูก LINE — ระบบแจ้งเตือนอัตโนมัติจะไม่ส่ง";
-                            return (
-                              <span
-                                className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${cls} ${done ? "opacity-50" : ""}`}
-                                title={title}
-                              >
-                                {label}
-                              </span>
-                            );
-                          })()}
-                          {o.customer}
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          {qtyOf(o)} ชิ้น
-                          {o.slipUrl && <span className="ml-1 font-semibold text-orange-600">· 📎</span>}
-                          {open > 0 && <span className="ml-1 font-semibold text-violet-600">· 🎨 {open}</span>}
-                          {o.items.some((i) => i.needStockCheck) && (
-                            <span className="ml-1 font-semibold text-amber-600" title="สั่งจำนวนมาก — ต้องเช็คสต๊อก/คิวผลิตแล้วยืนยันกับลูกค้า">· 📦 รอเช็คสต๊อก</span>
-                          )}
-                        {(openByPhone[(o.phone ?? "").replace(/\D/g, "")] ?? 0) > 1 && (
-                          <span className="ml-1 font-semibold text-orange-600">· ⚠️ ออเดอร์ซ้ำ</span>
-                        )}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3.5 align-middle">
-                        <StepDots status={o.status} />
-                      </td>
-                      <td className="px-4 py-3.5 align-middle">
-                        <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${STATUS_STYLES[o.status]}`}>
-                          {o.status}
-                        </span>
-                        {/* ใครเป็นคนตรวจสลิป — SlipOK อัตโนมัติ หรือแอดมินตรวจเอง (เห็นเฉพาะคนเห็นข้อมูลเงิน) */}
-                        {seesMoney && o.slipVerify?.status === "pass" && (
-                          <span className="mt-1 block">
-                            <span className="inline-flex whitespace-nowrap rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200">
-                              🤖 SlipOK ตรวจ ✓
-                            </span>
-                          </span>
-                        )}
-                        {seesMoney && o.slipVerify?.status === "fail" && o.status === "รอตรวจสอบ" && (
-                          <span className="mt-1 block">
-                            <span className="inline-flex whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 ring-1 ring-amber-200">
-                              ⚠️ SlipOK ไม่ผ่าน — ตรวจเอง
-                            </span>
-                          </span>
-                        )}
-                        {seesMoney &&
-                          (o.slipPath || o.slipUrl) &&
-                          o.slipVerify?.status !== "pass" &&
-                          o.status !== "รอชำระเงิน" &&
-                          o.status !== "รอตรวจสอบ" &&
-                          o.status !== "ยกเลิก" && (
-                            <span className="mt-1 block">
-                              <span className="inline-flex whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500 ring-1 ring-slate-200">
-                                🧑‍💼 แอดมินตรวจเอง
-                              </span>
-                            </span>
-                          )}
-                      </td>
-                      <td className="px-4 py-3.5 text-right align-middle font-bold tabular-nums text-slate-900">
-                        {seesMoney ? formatPrice(orderTotal(o)) : `${qtyOf(o)} ชิ้น`}
-                        {/* ออเดอร์มัดจำ: บอกยอดที่ยังต้องเก็บ "งวดนี้" ใต้ยอดเต็ม */}
-                        {seesMoney && o.deposit && !o.deposit.settledAt && o.status !== "ยกเลิก" && (
-                          <p className={`text-[10px] font-bold ${o.deposit.firstPaidAt ? "text-rose-600" : "text-violet-600"}`}>
-                            {o.deposit.firstPaidAt ? "ค้าง" : "มัดจำ"} {formatPrice(amountDueNow(o))}
-                          </p>
-                        )}
-                      </td>
-                      <td className="pr-4 align-middle text-slate-300">›</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+    <div className="dkb -mx-4 -my-6 min-h-[calc(100vh-1px)] px-4 py-6 md:-mx-8 md:-my-8 md:px-8 md:py-8">
+      <div className="mx-auto max-w-[1180px]">
+        {/* ── หัวหน้า + แถบเครื่องมือ ── */}
+        <div className="flex flex-wrap items-end justify-between gap-4 px-1">
+          <div>
+            <p className="dkb-eyebrow" style={{ color: "var(--dk-faint)" }}>
+              งานขาย
+            </p>
+            <h1 className="dkb-display mt-1 text-[1.6rem] leading-tight sm:text-[1.95rem]">
+              คำสั่งซื้อ
+              <span className="ml-2.5 text-[1.05rem] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
+                {stats.total} ใบ
+              </span>
+            </h1>
+            <p className="mt-0.5 text-[13px]">
+              {demo ? (
+                <span style={{ color: "var(--dk-faint)" }}>ยังไม่มีออเดอร์จริง — แสดงตัวอย่างไว้ก่อน</span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5" style={{ color: "var(--dk-mint-ink)" }}>
+                  <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: "var(--dk-mint)" }} />
+                  ออเดอร์จริง
+                </span>
+              )}
+            </p>
+          </div>
+          <div className="flex flex-1 flex-wrap items-center gap-2.5 sm:justify-end">
+            <label className="oda-search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" />
+              </svg>
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นเลขออเดอร์ / ชื่อลูกค้า / เบอร์โทร" />
+            </label>
+            {can("orders.edit") && <NewOrderButton onCreated={(id) => router.push(`/admin/orders/${id}`)} />}
+            <Link href="/admin/orders/scan" className="oda-btn oda-btn-navy">
+              ยิงเลขพัสดุ
+            </Link>
           </div>
         </div>
-      )}
+
+        {/* แนะนำวิธีสั่งแทนลูกค้า — ให้เลือกทางถูกก่อนกดสร้าง (เห็นเฉพาะคนที่สร้างออเดอร์ได้) */}
+        {can("orders.edit") && (
+          <p className="dkb-g mt-4 px-4 py-2.5 text-[12.5px] leading-relaxed" style={{ color: "var(--dk-navy-soft)" }}>
+            <b style={{ color: "var(--dk-navy)" }}>สั่งแทนลูกค้า:</b> สินค้ามีบนเว็บ →{" "}
+            <Link href="/" className="font-semibold underline underline-offset-2" style={{ color: "var(--dk-blue-deep)" }}>
+              ไปหน้าร้าน
+            </Link>{" "}
+            หยิบใส่ตะกร้าแล้วติ๊ก “สั่งแทนลูกค้า” (ได้ตัวเลือก/ราคาอัตโนมัติ) · งานสั่งทำที่
+            <b style={{ color: "var(--dk-navy)" }}>ไม่มีบนเว็บ</b> → กด “สร้างออเดอร์งานพิเศษ” แล้วเพิ่มรายการจาก{" "}
+            <Link
+              href="/admin/special-products"
+              className="font-semibold underline underline-offset-2"
+              style={{ color: "var(--dk-blue-deep)" }}
+            >
+              รูปแบบการสินค้าสั่งพิเศษ
+            </Link>
+          </p>
+        )}
+
+        {/* ── การ์ดสรุปแบบเบนโตะ — "ต้องทำตอนนี้" ใหญ่สุด ── */}
+        <div className="oda-stats mt-4" data-cols={seesMoney ? undefined : "4"}>
+          <div className="dkb-g oda-stat oda-stat-need" style={{ ["--dk-pct" as string]: `${needPct}%` }}>
+            <span className="oda-ring">
+              <i>
+                <span className="dkb-num text-[1.55rem]">{stats.needUs}</span>
+              </i>
+            </span>
+            <span className="min-w-0">
+              <span className="dkb-h2 block text-[1.02rem]">ต้องทำตอนนี้</span>
+              <span className="block text-[0.75rem]" style={{ color: "var(--dk-yolk-ink)" }}>
+                {needPct}% ของ {stats.total} ใบ · รอลูกค้าตอบอีก {stats.waitCustomer} ใบ
+              </span>
+            </span>
+          </div>
+
+          <div className="dkb-g oda-stat">
+            <span className="oda-stat-lb">กำลังผลิต</span>
+            <span className="dkb-num oda-stat-v">{stats.making}</span>
+            <span className="oda-stat-hint">เดินอยู่ในโรงพิมพ์</span>
+          </div>
+
+          {seesMoney && stats.dueCount > 0 ? (
+            <button
+              type="button"
+              onClick={() => setOnlyDue((v) => !v)}
+              aria-pressed={onlyDue}
+              data-on={onlyDue ? "1" : undefined}
+              className="dkb-g oda-stat oda-stat-due"
+            >
+              <span className="oda-stat-lb">ค้างเก็บเงิน · {onlyDue ? "กำลังกรอง ✕" : "กดเพื่อกรอง"}</span>
+              <span className="dkb-num oda-stat-v" style={{ color: "var(--dk-coral-ink)" }}>
+                {formatPrice(stats.dueAmount)}
+              </span>
+              <span className="oda-stat-hint">{stats.dueCount} ใบ (มัดจำยังไม่ครบ)</span>
+            </button>
+          ) : (
+            <div className="dkb-g oda-stat">
+              <span className="oda-stat-lb">รอลูกค้าตอบ</span>
+              <span className="dkb-num oda-stat-v">{stats.waitCustomer}</span>
+              <span className="oda-stat-hint">รอชำระ / รอตรวจแบบ</span>
+            </div>
+          )}
+
+          {seesMoney && (
+            <div className="dkb-g oda-stat oda-stat-money">
+              <span className="oda-stat-lb">ยอดขายวันนี้</span>
+              <span className="dkb-num oda-stat-v">{formatPrice(stats.todaySales)}</span>
+              <span className="oda-stat-hint">จากออเดอร์ที่ไม่ถูกยกเลิก</span>
+            </div>
+          )}
+        </div>
+
+        {/* ── ตัวกรอง: แผนก + สถานะ ── */}
+        <div className="dkb-g mt-4 px-3 py-3">
+          <div className="oda-scroll">
+            {DEPARTMENTS.map((d) => (
+              <button
+                key={d.key}
+                type="button"
+                onClick={() => pickDept(d.key)}
+                aria-pressed={d.key === dept}
+                className="oda-tab"
+              >
+                {d.label} <b>{deptCounts[d.key] ?? 0}</b>
+              </button>
+            ))}
+          </div>
+          <div className="oda-scroll mt-2.5 border-t pt-2.5" style={{ borderColor: "var(--dk-hair)" }}>
+            {seesMoney && stats.dueCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setOnlyDue((v) => !v)}
+                aria-pressed={onlyDue}
+                className="oda-chip"
+                style={onlyDue ? undefined : { background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}
+              >
+                <i />
+                ค้างเก็บเงิน <b>{stats.dueCount}</b>
+              </button>
+            )}
+            {!onlyDue && (
+              <>
+                <button type="button" onClick={() => setFilter("all")} aria-pressed={filter === "all"} className="oda-chip">
+                  <i />
+                  ทุกสถานะ <b>{deptCounts[activeDept.key] ?? 0}</b>
+                </button>
+                {activeDept.statuses.map((s) => {
+                  const n = counts[s] ?? 0;
+                  const on = filter === s;
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setFilter(s)}
+                      aria-pressed={on}
+                      data-zero={n === 0 ? "1" : undefined}
+                      className="oda-chip"
+                      style={on || n === 0 ? undefined : chipStyle(s)}
+                    >
+                      <i />
+                      {s} <b>{n}</b>
+                    </button>
+                  );
+                })}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* ── รายการ ── */}
+        <div className="flex items-baseline justify-between gap-3 px-2 pb-2 pt-5">
+          <h2 className="dkb-h2 text-[1.06rem]">รายการ</h2>
+          <span className="text-[12.5px]" style={{ color: "var(--dk-faint)" }}>
+            เรียงใหม่ → เก่า · แสดง {shown.length} จาก {orders.length} ใบ
+          </span>
+        </div>
+
+        {shown.length === 0 ? (
+          <div className="dkb-g px-4 py-12 text-center">
+            <p className="dkb-h2 text-[16px]">
+              {kw
+                ? `ไม่พบออเดอร์ที่ตรงกับ “${q}”`
+                : filter === "all"
+                  ? `ไม่มีงานในแผนก${activeDept.label}`
+                  : `ไม่มีออเดอร์สถานะ “${filter}”`}
+            </p>
+            <p className="mt-1.5 text-[13px]" style={{ color: "var(--dk-navy-soft)" }}>
+              {kw ? "ลองค้นด้วยเลขออเดอร์ ชื่อลูกค้า หรือเบอร์โทรแทน" : "เคลียร์หมดแล้ว — ใบใหม่จะโผล่ตรงนี้ทันทีที่ลูกค้าสั่ง"}
+            </p>
+          </div>
+        ) : (
+          <div className="oda-rows">
+            {shown.map((o) => (
+              <OrderRow key={o.id} o={o} orders={orders} openByPhone={openByPhone} seesMoney={seesMoney} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function Th({ children, className = "" }: { children?: React.ReactNode; className?: string }) {
-  return (
-    <th className={`px-4 py-3 text-[11px] font-bold uppercase tracking-wider ${className}`}>{children}</th>
-  );
-}
-
-function Tile({
-  label,
-  value,
-  tone,
-  onClick,
-  active,
+function OrderRow({
+  o,
+  orders,
+  openByPhone,
+  seesMoney,
 }: {
-  label: string;
-  value: string;
-  tone?: "warn" | "brand" | "due";
-  /** กดแล้วกรองรายการ (เช่นการ์ด "ค้างเก็บเงิน") */
-  onClick?: () => void;
-  active?: boolean;
+  o: Order;
+  orders: Order[];
+  openByPhone: Record<string, number>;
+  seesMoney: boolean;
 }) {
-  const box =
-    tone === "warn"
-      ? "border-ducky bg-ducky/15"
-      : tone === "brand"
-        ? "border-amber-200 bg-amber-50"
-        : tone === "due"
-          ? active
-            ? "border-rose-400 bg-rose-100/70"
-            : "border-rose-200 bg-rose-50"
-          : "border-slate-200 bg-white";
-  const val =
-    tone === "warn" ? "text-yellow-700" : tone === "brand" ? "text-amber-600" : tone === "due" ? "text-rose-600" : "text-slate-900";
-  const inner = (
-    <>
-      <div className="text-xs text-slate-500">
-        {label}
-        {onClick && <span className="ml-1 text-slate-400">{active ? "· กำลังกรอง ✕" : "· กดเพื่อกรอง"}</span>}
-      </div>
-      <div className={`mt-0.5 text-2xl font-bold tracking-tight ${val}`}>{value}</div>
-    </>
-  );
-  if (!onClick) return <div className={`rounded-2xl border p-4 ${box}`}>{inner}</div>;
-  return (
-    <button type="button" onClick={onClick} aria-pressed={active} className={`rounded-2xl border p-4 text-left transition hover:brightness-95 ${box}`}>
-      {inner}
-    </button>
-  );
-}
+  const open = openProofs(o);
+  const done = DONE.includes(o.status);
+  const step = STEP_OF[o.status];
+  const days = o.useByDate && !done ? daysToUseBy(o) : null;
+  const line = lineUserOf(o, orders);
+  const chat = lineChatOf(o, orders);
+  const dup = (openByPhone[(o.phone ?? "").replace(/\D/g, "")] ?? 0) > 1;
 
-function Chip({
-  active,
-  onClick,
-  label,
-  count,
-  status,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  count: number;
-  status?: OrderStatus;
-}) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-        active
-          ? status
-            ? `ring-1 ${STATUS_STYLES[status]}`
-            : "bg-slate-900 text-white"
-          : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-      }`}
+    <Link
+      href={`/admin/orders/${encodeURIComponent(o.id)}`}
+      className="dkb-g oda-row"
+      data-done={done ? "1" : undefined}
+      style={{ ["--dk-tone" as string]: STATUS_TONE[o.status] }}
     >
-      {label} <span className={active && !status ? "opacity-70" : "text-slate-400"}>{count}</span>
-    </button>
+      <span className="oda-main">
+        <span className="oda-who">
+          <span className="nm">{o.customer || "ยังไม่ระบุชื่อ"}</span>
+          {o.rush && (
+            <span className="oda-tag" style={{ background: "var(--dk-coral-deep)", color: "#fff" }} title="งานเร่ง">
+              <i />
+              งานเร่ง
+            </span>
+          )}
+          {o.deposit && !o.deposit.settledAt && o.status !== "ยกเลิก" && (
+            <span
+              className="oda-tag"
+              style={
+                o.deposit.firstPaidAt
+                  ? { background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }
+                  : { background: "var(--dk-lilac-wash)", color: "var(--dk-lilac-ink)" }
+              }
+              title={
+                o.deposit.firstPaidAt
+                  ? "รับมัดจำงวดแรกแล้ว ยังค้างยอดคงเหลือ — ห้ามส่งของจนเก็บครบ 100%"
+                  : "ออเดอร์มัดจำ 50% — รอลูกค้าโอนงวดแรก"
+              }
+            >
+              <i />
+              {o.deposit.firstPaidAt ? "ค้างครึ่งหลัง" : "รอมัดจำครึ่งแรก"}
+            </span>
+          )}
+          {o.claimOf && (
+            <span
+              className="oda-tag"
+              style={{ background: "var(--dk-lilac-wash)", color: "var(--dk-lilac-ink)" }}
+              title={`งานเคลมจาก ${o.claimOf}${o.claimReason ? ` — ${o.claimReason}` : ""}`}
+            >
+              <i />
+              งานเคลม
+            </span>
+          )}
+          {o.reorderOf && (
+            <span
+              className="oda-tag"
+              style={{ background: "var(--dk-sky)", color: "var(--dk-blue-deep)" }}
+              title={`สั่งซ้ำจาก ${o.reorderOf}`}
+            >
+              <i />
+              สั่งซ้ำ
+            </span>
+          )}
+          {/* สถานะ LINE ของลูกค้า — ใบที่จบแล้วไม่ต้องเตือน */}
+          {!done && (
+            <span
+              className="oda-tag"
+              style={
+                line
+                  ? { background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" }
+                  : chat
+                    ? { background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }
+                    : { background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }
+              }
+              title={
+                line
+                  ? `ผูก LINE แล้ว${line.name ? ` — ${line.name}` : ""}${line.source === "prev" ? " (จำจากออเดอร์เก่า)" : ""}`
+                  : chat
+                    ? "มีลิงก์ห้องแชทแล้ว แต่ยังไม่ผูก userId — ระบบส่งข้อความอัตโนมัติไม่ได้"
+                    : "ยังไม่ผูก LINE — ระบบแจ้งเตือนอัตโนมัติจะไม่ส่ง"
+              }
+            >
+              <i />
+              {line ? "ผูก LINE แล้ว" : chat ? "LINE แค่ลิงก์แชท" : "ยังไม่ผูก LINE"}
+            </span>
+          )}
+          {seesMoney && o.slipVerify?.status === "pass" && (
+            <span
+              className="oda-tag"
+              style={{ background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" }}
+              title="ระบบตรวจสลิปอัตโนมัติผ่านแล้ว"
+            >
+              <i />
+              SlipOK ตรวจผ่าน
+            </span>
+          )}
+          {seesMoney && o.slipVerify?.status === "fail" && o.status === "รอตรวจสอบ" && (
+            <span
+              className="oda-tag"
+              style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}
+              title="ตรวจสลิปอัตโนมัติไม่ผ่าน — ต้องตรวจเอง"
+            >
+              <i />
+              SlipOK ไม่ผ่าน
+            </span>
+          )}
+        </span>
+
+        <span className="oda-meta">
+          <span className="id">{o.id}</span>
+          <span>{o.date}</span>
+          {days !== null && (
+            <span className={days <= 3 ? "hot" : undefined}>
+              {days < 0 ? `เลยกำหนด ${Math.abs(days)} วัน` : days === 0 ? "ใช้งานวันนี้" : `ใช้งานอีก ${days} วัน`}
+            </span>
+          )}
+          <span>{qtyOf(o)} ชิ้น</span>
+          {o.slipUrl && <span className="warn">แนบสลิปแล้ว</span>}
+          {open > 0 && <span className="warn">แบบรอทำ {open}</span>}
+          {o.items.some((i) => i.needStockCheck) && <span className="warn">รอเช็คสต๊อก</span>}
+          {dup && <span className="warn">ออเดอร์ซ้ำเบอร์เดียวกัน</span>}
+          {o.tracking && <span className="id">{o.tracking}</span>}
+        </span>
+      </span>
+
+      <span className="oda-dots">
+        {step < 0 ? (
+          <span className="lb" style={{ marginLeft: 0 }}>
+            ยกเลิกแล้ว
+          </span>
+        ) : (
+          <>
+            <span className="lb">
+              {step >= ORDER_STEPS.length ? "จบงานแล้ว" : ORDER_STEPS[step]} ·{" "}
+              {Math.min(step + 1, ORDER_STEPS.length)}/{ORDER_STEPS.length}
+            </span>
+            <span className="bars" aria-hidden>
+              {ORDER_STEPS.map((label, i) => (
+                <span key={label} className="seg" data-on={i <= step ? "1" : undefined} />
+              ))}
+            </span>
+          </>
+        )}
+      </span>
+
+      <span className="oda-side">
+        <StatusChip s={o.status} />
+        <span className="oda-amt">
+          {seesMoney ? formatPrice(orderTotal(o)) : `${qtyOf(o)} ชิ้น`}
+          {/* ออเดอร์มัดจำ: บอกยอดที่ยังต้องเก็บ "งวดนี้" ใต้ยอดเต็ม */}
+          {seesMoney && o.deposit && !o.deposit.settledAt && o.status !== "ยกเลิก" && (
+            <small style={{ color: o.deposit.firstPaidAt ? "var(--dk-coral-ink)" : "var(--dk-lilac-ink)" }}>
+              {o.deposit.firstPaidAt ? "ค้าง" : "มัดจำ"} {formatPrice(amountDueNow(o))}
+            </small>
+          )}
+        </span>
+      </span>
+    </Link>
   );
 }
 
@@ -533,13 +552,8 @@ function NewOrderButton({ onCreated }: { onCreated: (id: string) => void }) {
   }
 
   return (
-    <button
-      type="button"
-      onClick={create}
-      disabled={busy}
-      className="rounded-full bg-amber-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-amber-600 disabled:opacity-50"
-    >
-      {busy ? "กำลังสร้าง…" : "🛠️ สร้างออเดอร์งานพิเศษ"}
+    <button type="button" onClick={create} disabled={busy} className="oda-btn oda-btn-yolk">
+      {busy ? "กำลังสร้าง…" : "สร้างออเดอร์งานพิเศษ"}
     </button>
   );
 }

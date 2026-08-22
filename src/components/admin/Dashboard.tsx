@@ -20,32 +20,9 @@ import Link from "next/link";
 import { useMemo } from "react";
 import "./dashboard.css";
 import { formatPrice } from "@/lib/products";
-import { orderTotal, type Order, type OrderStatus } from "@/lib/admin-data";
-import { CLOSED, computeDash, parseThaiDate, thaiToday } from "@/lib/admin-dash";
-
-/** สีป้ายสถานะ — งานที่จบแล้วไม่มีพื้น (เงียบกว่างานค้างเสมอ) */
-const CHIP: Record<OrderStatus, { fg: string; bg: string }> = {
-  รอชำระเงิน: { fg: "var(--dk-yolk-ink)", bg: "var(--dk-yolk-wash)" },
-  รอตรวจสอบ: { fg: "var(--dk-coral-ink)", bg: "var(--dk-coral-wash)" },
-  ชำระแล้ว: { fg: "var(--dk-mint-ink)", bg: "var(--dk-mint-wash)" },
-  รอตรวจแบบ: { fg: "var(--dk-lilac-ink)", bg: "var(--dk-lilac-wash)" },
-  แก้ไขแบบ: { fg: "var(--dk-coral-ink)", bg: "var(--dk-coral-wash)" },
-  อนุมัติแบบ: { fg: "var(--dk-mint-ink)", bg: "var(--dk-mint-wash)" },
-  กำลังผลิต: { fg: "var(--dk-blue-deep)", bg: "var(--dk-sky)" },
-  จัดส่งแล้ว: { fg: "var(--dk-navy-soft)", bg: "transparent" },
-  เสร็จสิ้น: { fg: "var(--dk-faint)", bg: "transparent" },
-  ยกเลิก: { fg: "var(--dk-faint)", bg: "transparent" },
-};
-
-function StatusChip({ s }: { s: OrderStatus }) {
-  const t = CHIP[s] ?? CHIP["เสร็จสิ้น"];
-  return (
-    <span className="dkb-chip" data-done={CLOSED.includes(s) ? "1" : undefined} style={{ color: t.fg, background: t.bg }}>
-      <i />
-      {s}
-    </span>
-  );
-}
+import { orderTotal, type Order } from "@/lib/admin-data";
+import { computeDash, parseThaiDate, thaiToday } from "@/lib/admin-dash";
+import StatusChip from "./StatusChip";
 
 /** "20 ส.ค. 14:22" — ตัดปีออกให้แถวสั้น (ปีเต็มอยู่ในหน้ารายละเอียดแล้ว) */
 function shortDate(raw: string): string {

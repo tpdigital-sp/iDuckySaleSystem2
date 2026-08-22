@@ -1,0 +1,161 @@
+/*
+ * หน้าคำสั่งซื้อ /admin/orders — ต่อภาษาเดียวกับ "รางเบนโตะกระจก" ของหน้าภาพรวม
+ * ใช้ shell + token + กล่องกระจก (.dkb, .dkb-g, .dkb-chip …) จาก dashboard.css
+ * ไฟล์นี้เพิ่มเฉพาะของที่หน้านี้ต้องใช้: แถบเครื่องมือ · การ์ดสรุปเบนโตะ · ตัวกรอง · แถวออเดอร์
+ *
+ * ⚠️ ของเดิมเป็นตารางกว้างขั้นต่ำ 860px — มือถือต้องเลื่อนซ้าย-ขวาถึงจะเห็นสถานะกับยอด
+ *    ของใหม่เป็นแถวที่พับเป็น 3 บรรทัดบนจอแคบ และคลี่เป็นแถวเดียวบนจอกว้าง
+ * ⚠️ ห้ามเขียน hex ตรง ๆ ที่นี่และใน .tsx — อ้าง var(--dk-*) จาก dashboard.css
+ */
+
+/* ── แถบเครื่องมือหัวหน้า ── */
+.oda-search {
+  display: flex; align-items: center; gap: 9px;
+  min-height: 44px; padding: 0 16px; border-radius: 999px;
+  min-width: 220px; flex: 1 1 220px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 6px 16px rgba(44, 129, 196, 0.12);
+}
+.oda-search:focus-within { border-color: var(--dk-sky-300); box-shadow: 0 6px 18px rgba(44, 129, 196, 0.22); }
+.oda-search svg { width: 15px; height: 15px; flex: none; color: var(--dk-blue-deep); }
+.oda-search input {
+  width: 100%; border: 0; background: transparent; outline: none;
+  font-size: 0.9rem; color: var(--dk-navy);
+}
+.oda-search input::placeholder { color: var(--dk-faint); }
+
+.oda-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 44px; padding: 0 18px; border-radius: 999px; white-space: nowrap;
+  font-family: var(--dk-display); font-weight: 500; font-size: 0.9rem;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, background 0.2s ease;
+}
+.oda-btn:disabled { opacity: 0.55; }
+.oda-btn-navy { background: var(--dk-navy); color: #fff; box-shadow: 0 6px 16px rgba(23, 58, 107, 0.24); }
+.oda-btn-navy:hover { background: #1e4a85; transform: translateY(-2px); }
+.oda-btn-yolk {
+  background: linear-gradient(120deg, #ffe28c, var(--dk-yolk));
+  color: var(--dk-navy); box-shadow: 0 6px 16px rgba(255, 182, 39, 0.36);
+}
+.oda-btn-yolk:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 24px rgba(255, 182, 39, 0.44); }
+
+/* ── การ์ดสรุปแบบเบนโตะ ── */
+.oda-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 11px; }
+/* จอกว้าง: กล่อง "ต้องทำตอนนี้" กิน 2 ช่อง แล้วที่เหลือช่องละใบ — ไม่ให้เหลือช่องว่าง
+   (จำนวนกล่องต่างกันตามสิทธิ์ ฝ่ายแพ็คไม่เห็นกล่องเงิน) */
+@media (min-width: 900px) {
+  .oda-stats { grid-template-columns: repeat(5, 1fr); }
+  .oda-stats[data-cols="4"] { grid-template-columns: repeat(4, 1fr); }
+}
+/* จอแคบ: กล่องยอดขายกินเต็มแถว ไม่ให้เหลือครึ่งว่าง */
+.oda-stat-money { grid-column: span 2; }
+@media (min-width: 900px) { .oda-stat-money { grid-column: auto; } }
+.oda-stat { padding: 12px 15px; text-align: left; }
+.oda-stat-lb { font-size: 0.76rem; color: var(--dk-navy-soft); }
+.oda-stat-v { display: block; margin-top: 3px; font-size: 1.8rem; }
+.oda-stat-hint { display: block; margin-top: 1px; font-size: 0.7rem; color: var(--dk-faint); }
+/* กล่อง "ต้องทำตอนนี้" — จุดที่กล้าที่สุดของหน้า */
+.oda-stat-need {
+  grid-column: span 2; display: flex; align-items: center; gap: 14px;
+  background: linear-gradient(120deg, rgba(255, 226, 140, 0.85), rgba(255, 212, 71, 0.85));
+  border-color: rgba(255, 255, 255, 0.72);
+}
+.oda-ring {
+  width: 66px; height: 66px; flex: none; border-radius: 50%; padding: 6px;
+  display: grid; place-items: center;
+  background: conic-gradient(from -90deg, var(--dk-navy) 0 var(--dk-pct), rgba(23, 58, 107, 0.14) var(--dk-pct));
+}
+.oda-ring > i { width: 100%; height: 100%; border-radius: 50%; background: #fff; display: grid; place-items: center; }
+.oda-stat-due { background: rgba(255, 238, 242, 0.8); border-color: rgba(255, 255, 255, 0.75); }
+.oda-stat-due[data-on="1"] { background: rgba(255, 214, 224, 0.9); border-color: var(--dk-coral); }
+
+/* ── ตัวกรอง (แท็บแผนก + ชิปสถานะ) ── */
+.oda-scroll { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.oda-scroll::-webkit-scrollbar { display: none; }
+/* ไล่จางขอบขวา — บอกว่ายังเลื่อนต่อได้ */
+.oda-scroll { -webkit-mask-image: linear-gradient(90deg, #000 0, #000 93%, transparent 100%); mask-image: linear-gradient(90deg, #000 0, #000 93%, transparent 100%); }
+.oda-tab {
+  display: inline-flex; align-items: center; gap: 7px; flex: none;
+  min-height: 40px; padding: 0 15px; border-radius: 999px;
+  font-family: var(--dk-display); font-weight: 400; font-size: 0.9rem;
+  color: var(--dk-navy-soft); background: rgba(255, 255, 255, 0.55);
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.oda-tab:hover { background: rgba(255, 255, 255, 0.85); }
+.oda-tab b { font-weight: 600; font-size: 0.8rem; font-variant-numeric: tabular-nums; color: var(--dk-faint); }
+.oda-tab[aria-pressed="true"] { background: var(--dk-navy); color: #fff; box-shadow: 0 6px 14px rgba(23, 58, 107, 0.26); }
+.oda-tab[aria-pressed="true"] b { color: var(--dk-yolk); }
+
+.oda-chip {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  min-height: 32px; padding: 0 12px; border-radius: 999px;
+  font-size: 0.78rem; font-weight: 600;
+  background: rgba(255, 255, 255, 0.6); color: var(--dk-navy-soft);
+  transition: background 0.18s ease;
+}
+.oda-chip > i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.oda-chip b { font-weight: 600; font-variant-numeric: tabular-nums; opacity: 0.6; }
+.oda-chip[aria-pressed="true"] { background: var(--dk-navy); color: #fff; }
+.oda-chip[aria-pressed="true"] > i { background: var(--dk-yolk); }
+.oda-chip[data-zero="1"] { opacity: 0.42; }
+
+/* ── แถวออเดอร์ ── */
+.oda-rows { display: grid; gap: 9px; }
+.oda-row {
+  position: relative; overflow: hidden; text-align: left;
+  padding: 12px 14px 12px 18px;
+  display: grid; gap: 9px 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "main side" "dots dots";
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+}
+.oda-row:hover { transform: translateY(-2px); box-shadow: 0 16px 32px rgba(44, 129, 196, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.92); }
+/* แถบสีสถานะซ้ายสุด — รู้สถานะโดยไม่ต้องอ่านป้าย */
+.oda-row::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--dk-tone); }
+/* ใบที่จบแล้วต้องเงียบกว่าใบที่ยังค้างเสมอ */
+.oda-row[data-done="1"] { background: rgba(255, 255, 255, 0.4); }
+.oda-row[data-done="1"] .oda-who, .oda-row[data-done="1"] .oda-amt { color: var(--dk-faint); }
+
+.oda-main { grid-area: main; min-width: 0; }
+.oda-who { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 1rem; }
+.oda-who .nm { font-family: var(--dk-display); font-weight: 400; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.oda-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 3px; font-size: 0.76rem; color: var(--dk-navy-soft); }
+.oda-meta .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.74rem; letter-spacing: -0.02em; color: var(--dk-faint); }
+.oda-meta .hot { color: var(--dk-coral-ink); font-weight: 600; }
+.oda-meta .warn { color: var(--dk-yolk-ink); font-weight: 600; }
+
+.oda-tag {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  padding: 2px 9px; border-radius: 999px;
+  font-size: 0.69rem; font-weight: 600; white-space: nowrap;
+}
+.oda-tag > i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: none; }
+
+.oda-side { grid-area: side; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; text-align: right; }
+.oda-amt { font-weight: 600; font-variant-numeric: tabular-nums; font-size: 1.02rem; }
+.oda-amt small { display: block; font-size: 0.7rem; font-weight: 600; }
+
+/* ความคืบหน้า 5 ขั้น — ใช้สีเดียวกับแถบซ้าย */
+.oda-dots { grid-area: dots; display: flex; align-items: center; gap: 0; }
+.oda-dots .bars { display: flex; align-items: center; flex: 1; }
+.oda-dots .seg { flex: 1; height: 4px; border-radius: 4px; background: rgba(23, 58, 107, 0.1); margin: 0 2px; }
+.oda-dots .seg[data-on="1"] { background: var(--dk-tone); }
+.oda-dots .lb { margin-left: 9px; font-size: 0.69rem; color: var(--dk-faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+@media (min-width: 900px) {
+  .oda-row {
+    grid-template-columns: minmax(0, 1fr) 210px auto;
+    grid-template-areas: "main dots side";
+    align-items: center;
+    padding: 13px 16px 13px 20px;
+  }
+  /* จอกว้าง: ป้ายขั้นตอนขึ้นบรรทัดบน แถบกินเต็มช่อง อ่านง่ายกว่าต่อท้ายบรรทัดเดียว */
+  .oda-dots { flex-direction: column; align-items: stretch; gap: 5px; }
+  .oda-dots .lb { order: -1; margin-left: 2px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oda-row, .oda-btn { transition: none; }
+  .oda-row:hover, .oda-btn:hover { transform: none; }
+}
