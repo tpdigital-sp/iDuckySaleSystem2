@@ -1,18 +1,60 @@
 "use client";
 
+/**
+ * ใบเสนอราคา /admin/quotes  (ดีไซน์ "รางเบนโตะกระจก")
+ *
+ * เสนอลูกค้าได้หลายใบ (หลายแบบ/หลายงบ) โดยไม่ไปโผล่ในคิวกราฟฟิก
+ * พอลูกค้าตกลงใบไหน ค่อยกดแปลงเป็นออเดอร์ แล้วระบบปิดใบอื่นของลูกค้ารายนั้นให้อัตโนมัติ
+ *
+ * เรียง "ใกล้หมดวันยืนราคาขึ้นก่อน" — ใบที่เงียบเกินวันยืนราคาคือใบที่หลุดมือ
+ * ของเดิมเรียงตามลำดับที่ได้มาจากฐานข้อมูล ซึ่งไม่ได้บอกว่าใบไหนต้องรีบโทรตาม
+ */
+
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import RequirePerm from "@/components/RequirePerm";
 import { formatPrice } from "@/lib/products";
-import { QUOTE_STATUSES, QUOTE_STYLES, daysToExpire, quoteStatusOf, quoteTotal, type Quote, type QuoteStatus } from "@/lib/quotes";
-import { card, h1, muted } from "@/lib/admin-ui";
+import { daysToExpire, quoteStatusOf, quoteTotal, type Quote, type QuoteStatus } from "@/lib/quotes";
+import {
+  Banner,
+  Btn,
+  Empty,
+  FChip,
+  FilterCard,
+  HeroStat,
+  ListHead,
+  PageHead,
+  PageShell,
+  Row,
+  RowMain,
+  RowSide,
+  Rows,
+  SearchBox,
+  Stat,
+  Stats,
+  Tag,
+  TabRow,
+} from "@/components/admin/ui";
 
-/**
- * 📄 ใบเสนอราคา — แยกจากคิวงานจริง
- * เสนอลูกค้าได้หลายใบ (หลายแบบ/หลายงบ) โดยไม่ไปโผล่ในคิวกราฟฟิก
- * พอลูกค้าตกลงใบไหน ค่อยกดแปลงเป็นออเดอร์ แล้วระบบปิดใบอื่นของลูกค้ารายนั้นให้อัตโนมัติ
- */
+/** ใบที่ยังลุ้นอยู่ = ยังไม่ตกลง ไม่ปฏิเสธ ไม่หมดอายุ */
+const OPEN: QuoteStatus[] = ["ร่าง", "ส่งให้ลูกค้าแล้ว"];
+
+/** สีแถบซ้าย + ป้าย ตามสถานะใบเสนอราคา */
+const TONE: Record<QuoteStatus, string> = {
+  ร่าง: "var(--dk-yolk-deep)",
+  ส่งให้ลูกค้าแล้ว: "var(--dk-blue)",
+  ลูกค้าตกลง: "var(--dk-mint)",
+  ไม่รับ: "var(--dk-quiet)",
+  หมดอายุ: "var(--dk-quiet)",
+};
+const CHIP: Record<QuoteStatus, "yolk" | "sky" | "mint" | "quiet"> = {
+  ร่าง: "yolk",
+  ส่งให้ลูกค้าแล้ว: "sky",
+  ลูกค้าตกลง: "mint",
+  ไม่รับ: "quiet",
+  หมดอายุ: "quiet",
+};
+
 function QuotesPageInner() {
   const router = useRouter();
   const [quotes, setQuotes] = useState<Quote[]>([]);
@@ -33,12 +75,12 @@ function QuotesPageInner() {
     void load();
   }, [load]);
 
-  async function createQuote(copyFrom?: string) {
+  async function createQuote() {
     setCreating(true);
     const res = await fetch("/api/admin/quotes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(copyFrom ? { copyFrom } : {}),
+      body: JSON.stringify({}),
     });
     const j = await res.json();
     setCreating(false);
@@ -48,31 +90,46 @@ function QuotesPageInner() {
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: quotes.length, open: 0 };
-    for (const s of QUOTE_STATUSES) c[s] = 0;
     for (const qt of quotes) {
       const st = quoteStatusOf(qt);
       c[st] = (c[st] ?? 0) + 1;
-      if (st === "ร่าง" || st === "ส่งให้ลูกค้าแล้ว") c.open += 1;
+      if (OPEN.includes(st)) c.open += 1;
     }
     return c;
   }, [quotes]);
+
+  /** ใบที่ยืนราคาใกล้หมด — ตัวเลขที่บอกว่าวันนี้ต้องโทรหาใคร */
+  const expiring = useMemo(
+    () =>
+      quotes.filter((qt) => {
+        if (!OPEN.includes(quoteStatusOf(qt))) return false;
+        const d = daysToExpire(qt);
+        return d !== null && d >= 0 && d <= 3;
+      }).length,
+    [quotes]
+  );
+  const openValue = useMemo(
+    () => quotes.filter((qt) => OPEN.includes(quoteStatusOf(qt))).reduce((s, qt) => s + quoteTotal(qt), 0),
+    [quotes]
+  );
 
   const kw = q.trim().toLowerCase();
   const shown = quotes
     .filter((qt) => {
       const st = quoteStatusOf(qt);
       if (filter === "all") return true;
-      if (filter === "open") return st === "ร่าง" || st === "ส่งให้ลูกค้าแล้ว";
+      if (filter === "open") return OPEN.includes(st);
       return st === filter;
     })
-    .filter((qt) => (kw ? qt.id.toLowerCase().includes(kw) || qt.customer.toLowerCase().includes(kw) : true));
+    .filter((qt) => (kw ? qt.id.toLowerCase().includes(kw) || qt.customer.toLowerCase().includes(kw) : true))
+    // ใกล้หมดวันยืนราคาขึ้นก่อน — ใบที่เงียบเกินวันยืนราคาคือใบที่หลุดมือ
+    .sort((a, b) => (daysToExpire(a) ?? 9999) - (daysToExpire(b) ?? 9999));
 
   // ลูกค้ารายไหนมีใบค้างหลายใบ — เตือนให้เลือกใบเดียว
   const openByPhone = useMemo(() => {
     const m: Record<string, number> = {};
     for (const qt of quotes) {
-      const st = quoteStatusOf(qt);
-      if (st !== "ร่าง" && st !== "ส่งให้ลูกค้าแล้ว") continue;
+      if (!OPEN.includes(quoteStatusOf(qt))) continue;
       const k = (qt.phone ?? "").replace(/\D/g, "");
       if (k.length >= 8) m[k] = (m[k] ?? 0) + 1;
     }
@@ -80,131 +137,119 @@ function QuotesPageInner() {
   }, [quotes]);
 
   return (
-    <div className="w-full">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className={h1}>📄 ใบเสนอราคา</h1>
-          <p className={`mt-1 text-sm ${muted}`}>
-            เสนอราคาได้หลายใบต่อลูกค้า 1 ราย — ใบเสนอราคา<strong className="text-slate-600">ไม่เข้าคิวกราฟฟิก</strong> จนกว่าลูกค้าจะตกลง
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void createQuote()}
-            disabled={creating}
-            className="rounded-full bg-amber-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-amber-600 disabled:opacity-40"
-          >
-            {creating ? "กำลังสร้าง…" : "＋ ใบเสนอราคาใหม่"}
-          </button>
-          <label className="flex min-w-[220px] items-center gap-2 rounded-full border-2 border-amber-200 bg-white px-4 py-2.5 focus-within:border-amber-400">
-            <span className="text-sm text-amber-500">🔍</span>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="ค้นเลขใบ / ชื่อลูกค้า"
-              className="w-full bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
-            />
-          </label>
-        </div>
-      </div>
+    <PageShell>
+      <PageHead
+        group="งานขาย"
+        title="ใบเสนอราคา"
+        count={`${counts.all} ใบ`}
+        sub="เสนอได้หลายใบต่อลูกค้า 1 ราย — ไม่เข้าคิวกราฟฟิกจนกว่าลูกค้าจะตกลง"
+        tools={
+          <>
+            <SearchBox value={q} onChange={setQ} placeholder="ค้นเลขใบ / ชื่อลูกค้า" />
+            <Btn tone="yolk" onClick={() => void createQuote()} disabled={creating}>
+              {creating ? "กำลังสร้าง…" : "ใบเสนอราคาใหม่"}
+            </Btn>
+          </>
+        }
+      />
 
       {needsSetup && (
-        <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm ring-1 ring-amber-200">
-          <p className="font-bold text-amber-900">⚠️ ยังไม่ได้สร้างตารางใบเสนอราคา</p>
-          <p className="mt-1 text-xs leading-relaxed text-amber-800">
-            เปิด Supabase → SQL Editor แล้วรันไฟล์ <code className="rounded bg-white px-1 font-mono">supabase/quotes.sql</code> ในโปรเจกต์นี้ครั้งเดียว
-            จากนั้นรีเฟรชหน้านี้
-          </p>
+        <div className="mt-4">
+          <Banner
+            tone="warm"
+            title="ยังไม่ได้สร้างตารางใบเสนอราคา"
+            detail="เปิด Supabase → SQL Editor แล้วรันไฟล์ supabase/quotes.sql ครั้งเดียว จากนั้นรีเฟรชหน้านี้"
+          />
         </div>
       )}
 
-      {/* ตัวกรองสถานะ */}
-      <div className="mt-5 flex flex-wrap gap-2">
-        {(
-          [
-            ["open", `⏳ ที่ยังรอลูกค้า (${counts.open})`],
-            ["all", `ทั้งหมด (${counts.all})`],
-            ["ลูกค้าตกลง", `✅ ตกลง (${counts["ลูกค้าตกลง"] ?? 0})`],
-            ["ไม่รับ", `✕ ไม่รับ (${counts["ไม่รับ"] ?? 0})`],
-            ["หมดอายุ", `⌛ หมดอายุ (${counts["หมดอายุ"] ?? 0})`],
-          ] as [QuoteStatus | "all" | "open", string][]
-        ).map(([k, label]) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => setFilter(k)}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-              filter === k ? "bg-amber-500 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-600 hover:border-amber-200"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <Stats cols={4}>
+        <HeroStat
+          n={counts.open}
+          label="ยังรอลูกค้าตอบ"
+          detail={expiring ? `ในนี้ยืนราคาเหลือไม่เกิน 3 วัน ${expiring} ใบ` : "ยังไม่มีใบไหนใกล้หมดวันยืนราคา"}
+          pct={counts.all > 0 ? (counts.open / counts.all) * 100 : 0}
+        />
+        <Stat label="มูลค่าที่ลุ้นอยู่" value={formatPrice(openValue)} hint="รวมใบที่ยังไม่ปิด" />
+        <Stat
+          label="ใกล้หมดวันยืนราคา"
+          value={expiring}
+          hint={expiring ? "ใบ — ควรโทรตาม" : "ใบ"}
+          tone={expiring ? "due" : undefined}
+        />
+      </Stats>
 
-      <div className={`mt-4 overflow-hidden ${card}`}>
-        {loading ? (
-          <p className="p-10 text-center text-sm text-slate-400">กำลังโหลด…</p>
-        ) : shown.length === 0 ? (
-          <div className="p-10 text-center">
-            <span className="text-4xl">📄</span>
-            <p className="mt-2 text-sm font-semibold text-slate-600">ยังไม่มีใบเสนอราคาในหมวดนี้</p>
-            <button
-              type="button"
-              onClick={() => void createQuote()}
-              className="mt-3 rounded-full bg-amber-500 px-5 py-2 text-xs font-bold text-white hover:bg-amber-600"
-            >
-              ＋ สร้างใบแรก
-            </button>
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {shown.map((qt) => {
-              const st = quoteStatusOf(qt);
-              const left = daysToExpire(qt);
-              const dup = (openByPhone[(qt.phone ?? "").replace(/\D/g, "")] ?? 0) > 1;
-              return (
-                <Link
-                  key={qt.id}
-                  href={`/admin/quotes/${encodeURIComponent(qt.id)}`}
-                  className="flex flex-wrap items-center gap-3 px-4 py-3 transition hover:bg-amber-50/50"
-                >
-                  <span className="min-w-40 flex-1">
-                    <span className="block font-bold tabular-nums text-slate-900">{qt.id}</span>
-                    <span className="block text-xs text-slate-400">{qt.date}</span>
-                  </span>
-                  <span className="min-w-40 flex-1">
-                    <span className="block text-sm text-slate-700">{qt.customer}</span>
-                    <span className="block text-xs text-slate-400">
-                      {qt.items.length} รายการ
-                      {dup && (st === "ร่าง" || st === "ส่งให้ลูกค้าแล้ว") && (
-                        <span className="ml-1 font-bold text-orange-600">· ⚠️ ลูกค้ารายนี้มีใบค้างหลายใบ</span>
+      <FilterCard>
+        <TabRow>
+          <FChip on={filter === "open"} onClick={() => setFilter("open")} label="ยังรอลูกค้า" count={counts.open} />
+          <FChip on={filter === "all"} onClick={() => setFilter("all")} label="ทั้งหมด" count={counts.all} />
+          <FChip
+            on={filter === "ลูกค้าตกลง"}
+            onClick={() => setFilter("ลูกค้าตกลง")}
+            label="ตกลงแล้ว"
+            count={counts["ลูกค้าตกลง"] ?? 0}
+            style={{ background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" }}
+          />
+          <FChip on={filter === "ไม่รับ"} onClick={() => setFilter("ไม่รับ")} label="ไม่รับ" count={counts["ไม่รับ"] ?? 0} />
+          <FChip on={filter === "หมดอายุ"} onClick={() => setFilter("หมดอายุ")} label="หมดอายุ" count={counts["หมดอายุ"] ?? 0} />
+        </TabRow>
+      </FilterCard>
+
+      <ListHead title="รายการ" note="ใกล้หมดวันยืนราคาขึ้นก่อน" />
+
+      {loading ? (
+        <Empty title="กำลังโหลด…" body="ดึงใบเสนอราคาจากเซิร์ฟเวอร์" />
+      ) : shown.length === 0 ? (
+        <Empty
+          title={kw ? `ไม่พบใบที่ตรงกับ “${q.trim()}”` : "ยังไม่มีใบเสนอราคาในหมวดนี้"}
+          body={kw ? "ลองค้นด้วยเลขใบหรือชื่อลูกค้าแทน" : "กดปุ่ม “ใบเสนอราคาใหม่” มุมขวาบนเพื่อสร้างใบแรก"}
+        />
+      ) : (
+        <Rows>
+          {shown.map((qt) => {
+            const st = quoteStatusOf(qt);
+            const left = daysToExpire(qt);
+            const dup = (openByPhone[(qt.phone ?? "").replace(/\D/g, "")] ?? 0) > 1;
+            const open = OPEN.includes(st);
+            const hot = open && left !== null && left <= 3;
+            return (
+              <Row
+                key={qt.id}
+                tone={hot ? "var(--dk-coral-deep)" : TONE[st]}
+                done={!open}
+                href={`/admin/quotes/${encodeURIComponent(qt.id)}`}
+              >
+                <RowMain
+                  name={qt.customer || "ยังไม่ระบุชื่อ"}
+                  tags={
+                    <>
+                      {hot && (
+                        <Tag tone="solid">{left! < 0 ? "หมดอายุแล้ว" : left === 0 ? "หมดอายุวันนี้" : `ยืนราคาเหลือ ${left} วัน`}</Tag>
                       )}
-                    </span>
-                  </span>
-                  <span className="w-28 text-right text-sm font-bold text-slate-900">{formatPrice(quoteTotal(qt))}</span>
-                  <span className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${QUOTE_STYLES[st]}`}>{st}</span>
-                  <span className="w-28 text-right text-[11px] text-slate-400">
-                    {qt.orderId ? (
-                      <span className="font-bold text-emerald-600">→ {qt.orderId}</span>
-                    ) : left !== null && (st === "ร่าง" || st === "ส่งให้ลูกค้าแล้ว") ? (
-                      left < 0 ? (
-                        <span className="font-bold text-amber-600">หมดอายุแล้ว</span>
-                      ) : (
-                        `ยืนราคาอีก ${left} วัน`
-                      )
-                    ) : (
-                      ""
-                    )}
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
+                      {dup && open && <Tag tone="yolk">ลูกค้ารายนี้มีใบค้างหลายใบ</Tag>}
+                      {qt.orderId && <Tag tone="mint" title={`แปลงเป็นออเดอร์ ${qt.orderId} แล้ว`}>แปลงเป็นออเดอร์แล้ว</Tag>}
+                    </>
+                  }
+                  meta={
+                    <>
+                      <span className="id">{qt.id}</span>
+                      <span>{qt.date}</span>
+                      <span>{qt.items.length} รายการ</span>
+                      {qt.orderId && <span className="id">{qt.orderId}</span>}
+                      {!hot && open && left !== null && <span>ยืนราคาอีก {left} วัน</span>}
+                    </>
+                  }
+                />
+                <RowSide>
+                  <Tag tone={CHIP[st]}>{st}</Tag>
+                  <span className="dkb-amt">{formatPrice(quoteTotal(qt))}</span>
+                </RowSide>
+              </Row>
+            );
+          })}
+        </Rows>
+      )}
+    </PageShell>
   );
 }
 

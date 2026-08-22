@@ -1,11 +1,31 @@
 "use client";
 
-import RequirePerm from "@/components/RequirePerm";
-import { useEffect, useState } from "react";
-import { cardPad, faint, h1, h2, muted } from "@/lib/admin-ui";
-import { markRatingsSeen, SCORE_FACES, type RatingRow } from "@/lib/ratings";
+/**
+ * ความพึงพอใจลูกค้า /admin/ratings  (ดีไซน์ "รางเบนโตะกระจก")
+ *
+ * ประเมินแบบนิรนาม — ระบบไม่บันทึกว่าใครประเมิน (เก็บเวลาแค่ระดับเดือน)
+ *
+ * ⚠️ ของเดิมโชว์ค่าเฉลี่ยลอย ๆ ตัวเดียว ซึ่งบอกอะไรไม่ได้เลยว่าดีขึ้นหรือแย่ลง
+ *    ของใหม่เทียบ "30 วันล่าสุด" กับ "ก่อนหน้านั้น" และแยกจำนวนที่ต่ำกว่า 3 ดาวออกมา
+ *    เพราะนั่นคือรายการที่ต้องตามต่อ ไม่ใช่ตัวเลขไว้ดูเฉย ๆ
+ */
 
-/** หน้าสรุปผลประเมินความพึงพอใจ (ข้อมูลนิรนาม — ระบบไม่รู้ว่าใครประเมิน) */
+import RequirePerm from "@/components/RequirePerm";
+import { useEffect, useMemo, useState } from "react";
+import { markRatingsSeen, SCORE_FACES, type RatingRow } from "@/lib/ratings";
+import { Banner, Empty, HeroStat, ListHead, PageHead, PageShell, Row, RowMain, RowSide, Rows, Stat, Stats, Tag } from "@/components/admin/ui";
+
+const face = (s: number) => SCORE_FACES.find((f) => f.score === s)?.emoji ?? "⭐";
+
+/** "2569-08" → เดือนนี้ห่างจากเดือนปัจจุบันกี่เดือน (0 = เดือนนี้) */
+function monthsAgo(month: string): number | null {
+  const m = month?.match(/(\d{4})-(\d{2})/);
+  if (!m) return null;
+  const y = Number(m[1]) - 543;
+  const now = new Date();
+  return (now.getFullYear() - y) * 12 + (now.getMonth() + 1 - Number(m[2]));
+}
+
 function RatingsPageInner() {
   const [ratings, setRatings] = useState<RatingRow[] | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
@@ -22,92 +42,141 @@ function RatingsPageInner() {
       .catch(() => setRatings([]));
   }, []);
 
-  const face = (s: number) => SCORE_FACES.find((f) => f.score === s)?.emoji ?? "⭐";
+  const m = useMemo(() => {
+    const rows = ratings ?? [];
+    const avgOf = (list: RatingRow[]) => (list.length ? list.reduce((s, r) => s + r.score, 0) / list.length : 0);
+    // เทียบเดือนนี้กับเดือนก่อน — ตัวเลขคะแนนที่ไม่มีตัวเทียบบอกอะไรไม่ได้
+    const recent = rows.filter((r) => (monthsAgo(r.month) ?? 99) <= 0);
+    const before = rows.filter((r) => (monthsAgo(r.month) ?? 99) === 1);
+    const dist = [5, 4, 3, 2, 1].map((s) => ({ s, n: rows.filter((r) => r.score === s).length }));
+    const tagCount = new Map<string, number>();
+    rows.forEach((r) => (r.tags ?? []).forEach((t) => tagCount.set(t, (tagCount.get(t) ?? 0) + 1)));
+    return {
+      count: rows.length,
+      avg: avgOf(rows),
+      avgRecent: avgOf(recent),
+      avgBefore: avgOf(before),
+      recentCount: recent.length,
+      low: rows.filter((r) => r.score <= 2).length,
+      dist,
+      topTags: [...tagCount.entries()].sort((a, b) => b[1] - a[1]),
+      // คะแนนต่ำขึ้นก่อน แล้วค่อยเรียงตามเดือนใหม่สุด
+      rows: [...rows].sort((a, b) => a.score - b.score || (monthsAgo(a.month) ?? 99) - (monthsAgo(b.month) ?? 99)),
+    };
+  }, [ratings]);
 
   if (ratings === null) {
-    return <p className="py-16 text-center text-sm text-slate-400">กำลังโหลด…</p>;
+    return (
+      <PageShell>
+        <Empty title="กำลังโหลด…" body="ดึงผลประเมินจากเซิร์ฟเวอร์" />
+      </PageShell>
+    );
   }
 
-  const count = ratings.length;
-  const avg = count ? ratings.reduce((s, r) => s + r.score, 0) / count : 0;
-  const dist = [5, 4, 3, 2, 1].map((s) => ({ s, n: ratings.filter((r) => r.score === s).length }));
-  const tagCount = new Map<string, number>();
-  ratings.forEach((r) => (r.tags ?? []).forEach((t) => tagCount.set(t, (tagCount.get(t) ?? 0) + 1)));
-  const topTags = [...tagCount.entries()].sort((a, b) => b[1] - a[1]);
-  const comments = ratings.filter((r) => r.comment);
+  const delta = m.avgBefore > 0 ? m.avgRecent - m.avgBefore : null;
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <h1 className={h1}>💬 ความพึงพอใจลูกค้า</h1>
-      <p className={`mt-1 ${muted}`}>ประเมินแบบนิรนาม — ระบบไม่บันทึกว่าใครประเมิน (เก็บเวลาแค่ระดับเดือน)</p>
+    <PageShell>
+      <PageHead
+        group="ลูกค้า"
+        title="ความพึงพอใจ"
+        count={`${m.count} ครั้ง`}
+        sub="ประเมินแบบนิรนาม — ระบบไม่บันทึกว่าใครประเมิน (เก็บเวลาแค่ระดับเดือน)"
+      />
 
       {needsSetup ? (
-        <p className="mt-5 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-200">
-          ยังไม่มีตาราง <code className="font-mono">ratings</code> — รัน <code className="font-mono">supabase/ratings.sql</code> ใน
-          Supabase SQL Editor หนึ่งครั้ง
-        </p>
-      ) : count === 0 ? (
-        <div className={`mt-5 p-10 text-center ${cardPad}`}>
-          <span className="text-4xl">💬</span>
-          <p className={`mt-3 text-sm ${muted}`}>ยังไม่มีการประเมิน — ลูกค้าจะเห็นแบบประเมินในหน้าออเดอร์เมื่อได้รับสินค้าแล้ว</p>
+        <div className="mt-4">
+          <Banner
+            tone="warm"
+            title="ยังไม่มีตาราง ratings"
+            detail="รัน supabase/ratings.sql ใน Supabase SQL Editor หนึ่งครั้ง แล้วรีเฟรชหน้านี้"
+          />
+        </div>
+      ) : m.count === 0 ? (
+        <div className="mt-4">
+          <Empty
+            title="ยังไม่มีการประเมิน"
+            body="ลูกค้าจะเห็นแบบประเมินในหน้าออเดอร์เมื่อได้รับสินค้าแล้ว — ยังไม่ต้องทำอะไร"
+          />
         </div>
       ) : (
         <>
-          {/* สรุปรวม */}
-          <div className="mt-5 grid gap-4 sm:grid-cols-[200px_1fr]">
-            <div className={`text-center ${cardPad}`}>
-              <p className="text-5xl">{face(Math.round(avg))}</p>
-              <p className="mt-2 text-4xl font-bold tracking-tight text-slate-900">{avg.toFixed(1)}</p>
-              <p className={`mt-1 text-xs ${faint}`}>จาก 5 · ทั้งหมด {count} ครั้ง</p>
+          <Stats cols={4}>
+            <HeroStat
+              n={m.avgRecent > 0 ? m.avgRecent.toFixed(1) : m.avg.toFixed(1)}
+              label="คะแนนเฉลี่ยเดือนนี้"
+              detail={
+                delta === null
+                  ? `จาก ${m.recentCount || m.count} ครั้ง · ยังไม่มีเดือนก่อนให้เทียบ`
+                  : `${delta >= 0 ? "▲" : "▼"} ${Math.abs(delta).toFixed(1)} จากเดือนก่อน (${m.avgBefore.toFixed(1)}) · ${m.recentCount} ครั้ง`
+              }
+              pct={(m.avgRecent || m.avg) * 20}
+            />
+            <Stat label="เฉลี่ยตลอดกาล" value={m.avg.toFixed(1)} hint={`จาก ${m.count} ครั้ง`} />
+            <Stat
+              label="ต่ำกว่า 3 ดาว"
+              value={m.low}
+              hint={m.low ? "ครั้ง — ควรตามต่อ" : "ครั้ง"}
+              tone={m.low ? "due" : undefined}
+            />
+          </Stats>
+
+          {/* การกระจายคะแนน + คำที่ลูกค้าเลือกบ่อย */}
+          <div className="dkb-g mt-4 p-4 sm:p-5">
+            <h2 className="dkb-h2 px-1 text-[1.06rem]">การกระจายคะแนน</h2>
+            <div className="mt-3 space-y-2">
+              {m.dist.map(({ s, n }) => (
+                <div key={s} className="flex items-center gap-3 text-[13px]">
+                  <span className="w-6 text-center text-base">{face(s)}</span>
+                  <span className="dkb-bar !mt-0 flex-1" style={{ ["--dk-tone" as string]: s <= 2 ? "var(--dk-coral-deep)" : "var(--dk-yolk-deep)", ["--dk-pct" as string]: m.count ? `${(n / m.count) * 100}%` : "0%" }}>
+                    <i />
+                  </span>
+                  <span className="dkb-num-sm w-8 text-right" style={{ color: "var(--dk-faint)" }}>
+                    {n}
+                  </span>
+                </div>
+              ))}
             </div>
-            <div className={cardPad}>
-              <div className="space-y-2">
-                {dist.map(({ s, n }) => (
-                  <div key={s} className="flex items-center gap-2.5 text-sm">
-                    <span className="w-6 text-center">{face(s)}</span>
-                    <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-100">
-                      <div className="h-full rounded-full bg-amber-400" style={{ width: count ? `${(n / count) * 100}%` : 0 }} />
-                    </div>
-                    <span className={`w-8 text-right tabular-nums ${faint}`}>{n}</span>
-                  </div>
+            {m.topTags.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2 border-t pt-3" style={{ borderColor: "var(--dk-hair)" }}>
+                {m.topTags.map(([t, n]) => (
+                  <Tag key={t} tone="sky">
+                    {t} · {n}
+                  </Tag>
                 ))}
               </div>
-              {topTags.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
-                  {topTags.map(([t, n]) => (
-                    <span key={t} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-                      {t} · {n}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
+            )}
           </div>
 
-          {/* คอมเมนต์ทั้งหมด */}
-          <section className={`mt-4 ${cardPad}`}>
-            <h2 className={`mb-3 ${h2}`}>คอมเมนต์จากลูกค้า ({comments.length})</h2>
-            {comments.length === 0 ? (
-              <p className={`text-sm ${faint}`}>ยังไม่มีคอมเมนต์ — ลูกค้าให้คะแนนอย่างเดียวก็ได้</p>
-            ) : (
-              <ul className="grid gap-2.5 lg:grid-cols-2">
-                {comments.map((r) => (
-                  <li key={r.id} className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700 ring-1 ring-slate-100">
-                    <span className="mr-1.5 text-base">{face(r.score)}</span>
-                    “{r.comment}”
-                    <span className={`ml-2 text-xs ${faint}`}>
-                      {(r.tags ?? []).join(" · ")}
-                      {r.tags?.length ? " · " : ""}
-                      {r.month}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          <ListHead title="คะแนนที่ได้" note="คะแนนต่ำขึ้นก่อน" />
+          <Rows>
+            {m.rows.map((r) => (
+              <Row key={r.id} tone={r.score <= 2 ? "var(--dk-coral-deep)" : r.score <= 3 ? "var(--dk-yolk-deep)" : "var(--dk-mint)"} done={r.score >= 4}>
+                <RowMain
+                  name={`${face(r.score)} ${r.score} ดาว`}
+                  tags={r.score <= 2 ? <Tag tone="solid">ควรตามต่อ</Tag> : undefined}
+                  meta={
+                    <>
+                      <span>{r.month}</span>
+                      {(r.tags ?? []).length > 0 && <span>{(r.tags ?? []).join(" · ")}</span>}
+                      {r.comment && (
+                        <span className={r.score <= 2 ? "hot" : undefined} title={r.comment}>
+                          “{r.comment}”
+                        </span>
+                      )}
+                      {!r.comment && <span style={{ opacity: 0.7 }}>ไม่มีคอมเมนต์</span>}
+                    </>
+                  }
+                />
+                <RowSide>
+                  <span className="dkb-num text-[1.3rem]">{r.score}</span>
+                </RowSide>
+              </Row>
+            ))}
+          </Rows>
         </>
       )}
-    </div>
+    </PageShell>
   );
 }
 
