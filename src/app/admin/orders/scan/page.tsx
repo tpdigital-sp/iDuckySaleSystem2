@@ -1,11 +1,37 @@
 "use client";
 
+/**
+ * สถานีแพ็ค–ส่ง /admin/orders/scan  (ดีไซน์ "รางเบนโตะกระจก")
+ *
+ * คนที่ใช้: ฝ่ายแพ็คยืนหน้าโต๊ะ มือถือข้างเดียว เครื่องยิงอีกข้าง
+ * ช่องยิงจึงใหญ่เต็มความกว้างและอยู่บนสุด · ใบที่ยังยิงไม่ได้บอกเหตุผลตรง ๆ ในแถว
+ * ไม่ใช่แค่ปุ่มเทา — จะได้รู้ว่าต้องไปทำอะไรก่อน
+ *
+ *  • ยิงเลขพัสดุ: ยิง QR เลขออเดอร์ → ยิงเลขพัสดุ + ลิสต์ออเดอร์ที่ตรวจแพ็คครบ
+ *  • รอปริ้น/แพ็ค: ออเดอร์ที่แบบผ่านแล้ว ยังตรวจแพ็คไม่ครบ
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import StatusChip, { STATUS_TONE } from "@/components/admin/StatusChip";
+import {
+  Banner,
+  Btn,
+  Empty,
+  ListHead,
+  PageHead,
+  PageShell,
+  Row,
+  RowMain,
+  RowSide,
+  Rows,
+  Tab,
+  TabRow,
+  Tag,
+} from "@/components/admin/ui";
 import {
   MOCK_ORDERS,
   packGate,
-  STATUS_STYLES,
   withLog,
   type Order,
   type OrderStatus,
@@ -13,7 +39,6 @@ import {
 } from "@/lib/admin-data";
 import { fetchOrdersAdmin, saveOrderAdmin } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
-import { h1, muted } from "@/lib/admin-ui";
 
 type Msg = { kind: "ok" | "err" | "info"; text: string } | null;
 type Tab = "scan" | "print";
@@ -157,243 +182,227 @@ export default function ScanTrackingPage() {
     reset({ kind: "ok", text: `บันทึกแล้ว — ${next.id} · ${v}` });
   }
 
+
   const waiting = !target;
 
   return (
-    <div className="w-full">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className={h1}>📮 สถานีแพ็ค–ส่ง</h1>
-          <p className={`mt-1 text-sm ${muted}`}>ปริ้นใบงาน → แพ็ค+ตรวจ → ยิงเลขพัสดุ · แยกเป็นแท็บตามงานที่ต้องทำ</p>
+    <PageShell>
+      <PageHead
+        group="งานขาย"
+        title="สถานีแพ็ค–ส่ง"
+        sub="ปริ้นใบงาน → แพ็ค+ตรวจ → ยิงเลขพัสดุ"
+        live={demo ? { ok: false, text: "โหมดตัวอย่าง — การบันทึกจะไม่ถูกเก็บถาวร" } : { ok: true, text: "ออเดอร์จริง" }}
+        tools={<Btn href="/admin/orders">คำสั่งซื้อทั้งหมด</Btn>}
+      />
+
+      <div className="mt-4">
+        <div className="dkb-g px-3 py-3">
+          <TabRow>
+            <Tab on={tab === "scan"} onClick={() => setTab("scan")} label="ยิงเลขพัสดุ" count={toScan.length} />
+            <Tab on={tab === "print"} onClick={() => setTab("print")} label="รอปริ้น/แพ็ค" count={toPrint.length} />
+          </TabRow>
         </div>
-        <Link href="/admin/orders" className="text-sm font-semibold text-amber-600 hover:underline">
-          ← คำสั่งซื้อทั้งหมด
-        </Link>
-      </div>
-
-      {demo && (
-        <p className="mt-4 rounded-xl bg-yellow-50 px-4 py-2.5 text-sm text-yellow-800 ring-1 ring-yellow-200">
-          โหมดตัวอย่าง — ยังไม่มีออเดอร์จริง การบันทึกจะไม่ถูกเก็บถาวร
-        </p>
-      )}
-
-      {/* ── แท็บ ── */}
-      <div className="mt-4 flex gap-2 rounded-2xl bg-slate-100 p-1">
-        <button
-          type="button"
-          onClick={() => setTab("scan")}
-          className={`flex-1 rounded-xl py-2.5 text-sm font-bold transition ${
-            tab === "scan" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          📮 ยิงเลขพัสดุ{" "}
-          <span className="ml-1 rounded-full bg-green-100 px-1.5 text-xs text-green-700">{toScan.length}</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("print")}
-          className={`flex-1 rounded-xl py-2.5 text-sm font-bold transition ${
-            tab === "print" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          🖨️ รอปริ้น/แพ็ค{" "}
-          <span className="ml-1 rounded-full bg-amber-100 px-1.5 text-xs text-amber-700">{toPrint.length}</span>
-        </button>
       </div>
 
       {tab === "scan" ? (
         <>
-          {/* ── ช่องรับการยิง ── */}
+          {/* ── ช่องรับการยิง — ใหญ่ที่สุดในหน้า เพราะเป็นสิ่งเดียวที่ต้องใช้ ── */}
           <form onSubmit={onSubmit} className="mt-4">
-            <div
-              className={`rounded-2xl border-2 p-5 transition ${
-                waiting ? "border-amber-300 bg-amber-50/50" : "border-green-400 bg-green-50/50"
-              }`}
-            >
-              <label htmlFor="scan" className="block text-xs font-bold uppercase tracking-widest text-slate-500">
+            <div className="dkb-g dkb-scanbox">
+              <label htmlFor="scan" className="big">
                 {waiting ? "รอยิง QR เลขออเดอร์" : `รอเลขพัสดุของ ${target.id}`}
               </label>
-              <input
-                id="scan"
-                ref={inputRef}
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                onBlur={() => {
-                  if (!blocked) setTimeout(focusInput, 120);
-                }}
-                autoComplete="off"
-                autoFocus
-                placeholder={waiting ? "ยิง QR หรือพิมพ์เลขออเดอร์ แล้วกด Enter" : "ยิงเลขพัสดุ แล้วกด Enter"}
-                className="mt-2 w-full bg-transparent font-mono text-2xl font-bold tracking-wide text-slate-900 placeholder:font-sans placeholder:text-base placeholder:font-normal placeholder:text-slate-400 focus:outline-none"
-              />
-              <p className="mt-1 text-xs text-slate-400">{busy ? "กำลังบันทึก…" : "ช่องนี้โฟกัสอยู่ตลอด — ยิงได้เลย"}</p>
+              <span className="cap">
+                {waiting ? "เอาเครื่องยิงจ่อที่ใบงาน หรือพิมพ์เลขเองก็ได้" : "ยิงเลขพัสดุ แล้วกด Enter"}
+              </span>
+              <div className="dkb-scanline">
+                <input
+                  id="scan"
+                  ref={inputRef}
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  onBlur={() => {
+                    if (!blocked) setTimeout(focusInput, 120);
+                  }}
+                  autoComplete="off"
+                  autoFocus
+                  placeholder={waiting ? "ยิง QR หรือพิมพ์เลขออเดอร์" : "ยิงเลขพัสดุ"}
+                />
+              </div>
+              <span className="cap mt-2 block">{busy ? "กำลังบันทึก…" : "ช่องนี้โฟกัสอยู่ตลอด — ยิงได้เลย"}</span>
             </div>
           </form>
 
           {msg && (
-            <p
-              className={`mt-3 rounded-xl px-4 py-3 text-sm font-semibold ring-1 ${
-                msg.kind === "ok"
-                  ? "bg-green-50 text-green-700 ring-green-200"
-                  : msg.kind === "err"
-                    ? "bg-rose-50 text-rose-700 ring-rose-200"
-                    : "bg-sky-50 text-sky-700 ring-sky-200"
-              }`}
-            >
-              {msg.kind === "ok" ? "✅ " : msg.kind === "err" ? "⚠️ " : "👉 "}
-              {msg.text}
-            </p>
+            <div className="mt-3">
+              {msg.kind === "err" ? (
+                <Banner tone="hot" title={msg.text} />
+              ) : msg.kind === "ok" ? (
+                <div className="dkb-g px-4 py-3 text-[14px]" style={{ background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" }}>
+                  {msg.text}
+                </div>
+              ) : (
+                <div className="dkb-g px-4 py-3 text-[14px]" style={{ background: "var(--dk-sky)", color: "var(--dk-blue-deep)" }}>
+                  {msg.text}
+                </div>
+              )}
+            </div>
           )}
 
           {/* ── ออเดอร์ที่กำลังรอเลขพัสดุ ── */}
           {target && (
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="dkb-g mt-3 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="font-mono text-lg font-bold text-slate-900">{target.id}</p>
-                  <p className="text-sm text-slate-600">
-                    {target.customer} · {target.phone}
+                <div className="min-w-0">
+                  <p className="dkb-code text-[13px]" style={{ color: "var(--dk-navy-soft)" }}>
+                    {target.id}
                   </p>
-                  <p className="mt-1 text-sm leading-snug text-slate-500">{target.address}</p>
+                  <p className="dkb-display text-[1.05rem]">{target.customer}</p>
+                  <p className="text-[13px]" style={{ color: "var(--dk-navy-soft)" }}>
+                    {target.phone}
+                  </p>
+                  <p className="mt-1 text-[12.5px] leading-snug" style={{ color: "var(--dk-faint)" }}>
+                    {target.address}
+                  </p>
                 </div>
-                <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${STATUS_STYLES[target.status]}`}>
-                  {target.status}
-                </span>
+                <StatusChip s={target.status} />
               </div>
-              <button
-                type="button"
-                onClick={() => reset({ kind: "info", text: "ยกเลิกแล้ว — ยิง QR ออเดอร์ใหม่ได้เลย" })}
-                className="mt-3 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
-              >
-                ยกเลิก / เปลี่ยนออเดอร์
-              </button>
+              <div className="mt-3">
+                <Btn small onClick={() => reset({ kind: "info", text: "ยกเลิกแล้ว — ยิง QR ออเดอร์ใหม่ได้เลย" })}>
+                  ยกเลิก / เปลี่ยนออเดอร์
+                </Btn>
+              </div>
             </div>
           )}
 
-          {/* ── ลิสต์ออเดอร์พร้อมยิง ── */}
-          <p className="mt-6 text-xs font-bold uppercase tracking-widest text-slate-400">
-            ✅ ตรวจแพ็คครบแล้ว พร้อมยิงเลข ({toScan.length})
-          </p>
-          <ul className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            {toScan.map((o) => (
-              <li key={o.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                <Link href={`/admin/orders/${encodeURIComponent(o.id)}`} className="min-w-0 flex-1">
-                  <p className="font-mono text-sm font-bold text-slate-800">{o.id}</p>
-                  <p className="truncate text-xs text-slate-500">
-                    {o.customer} · {qtyOf(o)} ชิ้น · {o.status}
-                  </p>
-                </Link>
-                <span className="shrink-0 rounded-lg bg-green-50 px-3 py-1.5 text-xs font-bold text-green-700 ring-1 ring-green-200">
-                  พร้อมยิง
-                </span>
-              </li>
-            ))}
-            {toScan.length === 0 && (
-              <li className="px-4 py-6 text-center text-sm text-slate-400">ยังไม่มีออเดอร์พร้อมยิง — ตรวจแพ็คให้ครบก่อน</li>
-            )}
-          </ul>
+          <ListHead title="ตรวจแพ็คครบแล้ว พร้อมยิงเลข" note={`${toScan.length} ใบ`} />
+          {toScan.length === 0 ? (
+            <Empty title="ยังไม่มีออเดอร์พร้อมยิง" body="ไปที่แท็บ “รอปริ้น/แพ็ค” แล้วตรวจนับของให้ครบก่อน" />
+          ) : (
+            <Rows>
+              {toScan.map((o) => (
+                <Row key={o.id} tone="var(--dk-mint)" href={`/admin/orders/${encodeURIComponent(o.id)}`}>
+                  <RowMain
+                    name={o.customer || "ยังไม่ระบุชื่อ"}
+                    tags={<Tag tone="mint">พร้อมยิง</Tag>}
+                    meta={
+                      <>
+                        <span className="id">{o.id}</span>
+                        <span>{qtyOf(o)} ชิ้น</span>
+                        <span>ตรวจนับครบ · ถ่ายรูปแล้ว</span>
+                      </>
+                    }
+                  />
+                  <RowSide>
+                    <StatusChip s={o.status} />
+                  </RowSide>
+                </Row>
+              ))}
+            </Rows>
+          )}
 
-          {/* ── ประวัติการยิงรอบนี้ ── */}
           {history.length > 0 && (
-            <div className="mt-6">
-              <p className="text-xs font-bold uppercase tracking-widest text-slate-400">บันทึกแล้วรอบนี้ ({history.length})</p>
-              <ul className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <>
+              <ListHead title="บันทึกแล้วรอบนี้" note={`${history.length} ใบ`} />
+              <Rows>
                 {history.map((h, i) => (
-                  <li key={`${h.id}-${i}`} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                    <span className="font-mono font-bold text-slate-800">{h.id}</span>
-                    <span className="flex-1 truncate font-mono text-slate-600">{h.tracking}</span>
-                    <span className="text-xs text-slate-400">{h.at}</span>
-                  </li>
+                  <Row key={`${h.id}-${i}`} tone="var(--dk-quiet)" done>
+                    <RowMain
+                      name={h.id}
+                      href={`/admin/orders/${encodeURIComponent(h.id)}`}
+                      meta={
+                        <>
+                          <span className="id">{h.tracking}</span>
+                          <span>ยิงเมื่อ {h.at}</span>
+                        </>
+                      }
+                    />
+                    <RowSide>
+                      <Tag tone="quiet">จัดส่งแล้ว</Tag>
+                    </RowSide>
+                  </Row>
                 ))}
-              </ul>
-            </div>
+              </Rows>
+            </>
           )}
         </>
       ) : (
-        /* ── แท็บ รอปริ้น/แพ็ค ── */
         <>
-          <p className="mt-5 text-xs font-bold uppercase tracking-widest text-slate-400">
-            🖨️ แบบผ่านแล้ว รอปริ้นใบงาน + แพ็ค ({toPrint.length})
-          </p>
-          <ul className="mt-2 space-y-2">
-            {toPrint.map((o) => {
-              const g = packGate(o);
-              const need = [
-                g.uncounted.length ? `ตรวจนับ ${g.uncounted.length} รูป` : "",
-                g.unread.length ? `อ่านรายละเอียด ${g.unread.length} รายการ` : "",
-                g.unsampled.length ? `🎁 ใส่งานตัวอย่าง ${g.unsampled.length} รายการ` : "",
-              ]
-                .filter(Boolean)
-                .join(" · ");
-              return (
-                <li key={o.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="min-w-0">
-                    <p className="font-mono text-sm font-bold text-slate-800">{o.id}</p>
-                    <p className="truncate text-xs text-slate-500">
-                      {o.customer} · {qtyOf(o)} ชิ้น
-                    </p>
-                    <span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 ring-1 ring-amber-200">
-                      {o.status}
-                      {need ? ` · เหลือ ${need}` : " · ยังไม่ได้ตรวจแพ็ค"}
-                    </span>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    <a
-                      href={`/admin/orders/${encodeURIComponent(o.id)}/print?doc=work`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-700"
-                    >
-                      🖨️ ปริ้นใบงาน
-                    </a>
-                    <Link
+          <ListHead title="แบบผ่านแล้ว รอปริ้นใบงาน + แพ็ค" note={`${toPrint.length} ใบ`} />
+          {toPrint.length === 0 ? (
+            <Empty title="ไม่มีออเดอร์รอปริ้น" body="ใบใหม่จะขึ้นตรงนี้เมื่อลูกค้ากดอนุมัติแบบ" />
+          ) : (
+            <Rows>
+              {toPrint.map((o) => {
+                const g = packGate(o);
+                const need = [
+                  g.uncounted.length ? `ตรวจนับ ${g.uncounted.length} รูป` : "",
+                  g.unread.length ? `อ่านรายละเอียด ${g.unread.length} รายการ` : "",
+                  g.unsampled.length ? `ใส่งานตัวอย่าง ${g.unsampled.length} รายการ` : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+                return (
+                  <Row key={o.id} tone={STATUS_TONE[o.status]}>
+                    <RowMain
+                      name={o.customer || "ยังไม่ระบุชื่อ"}
                       href={`/admin/orders/${encodeURIComponent(o.id)}`}
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
-                    >
-                      เปิด
-                    </Link>
-                  </div>
-                </li>
-              );
-            })}
-            {toPrint.length === 0 && (
-              <li className="rounded-2xl border border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-400">
-                ไม่มีออเดอร์รอปริ้น 🎉
-              </li>
-            )}
-          </ul>
+                      tags={<Tag tone="coral">ยังยิงไม่ได้</Tag>}
+                      meta={
+                        <>
+                          <span className="id">{o.id}</span>
+                          <span>{qtyOf(o)} ชิ้น</span>
+                          <span className="warn">{need ? `เหลือ ${need}` : "ยังไม่ได้ตรวจแพ็ค"}</span>
+                        </>
+                      }
+                    />
+                    <RowSide>
+                      <Btn tone="navy" small href={`/admin/orders/${encodeURIComponent(o.id)}/print?doc=work`}>
+                        ปริ้นใบงาน
+                      </Btn>
+                    </RowSide>
+                  </Row>
+                );
+              })}
+            </Rows>
+          )}
         </>
       )}
 
-      {/* ── ป๊อปอัปเตือน: ตรวจแพ็คไม่ครบ ยิงไม่ได้ ── */}
+      {/* ── ด่านกันพลาด: ตรวจแพ็คไม่ครบ ยิงไม่ได้ ── */}
       {blocked && (
         <div
           role="dialog"
           aria-modal="true"
           aria-labelledby="block-title"
-          className="fixed inset-0 z-[100] grid place-items-center bg-slate-900/75 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] grid place-items-center p-4"
+          style={{ background: "rgba(23,58,107,.62)", backdropFilter: "blur(4px)" }}
         >
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <p className="text-4xl">🚫</p>
-            <h2 id="block-title" className="mt-2 text-xl font-extrabold text-slate-900">
+          <div className="dkb w-full max-w-md rounded-[26px] p-5" style={{ boxShadow: "0 30px 60px rgba(23,58,107,.4)" }}>
+            <h2 id="block-title" className="dkb-display text-[1.3rem]">
               ยังยิงเลขพัสดุไม่ได้
             </h2>
-            <p className="mt-1 font-mono text-sm font-bold text-slate-700">{blocked.order.id}</p>
-            <p className="text-sm text-slate-600">{blocked.order.customer}</p>
+            <p className="dkb-code mt-1 text-[13px]" style={{ color: "var(--dk-navy-soft)" }}>
+              {blocked.order.id}
+            </p>
+            <p className="text-[14px]">{blocked.order.customer}</p>
 
-            <div className="mt-4 rounded-xl bg-rose-50 p-3 ring-1 ring-rose-200">
-              <p className="text-xs font-bold text-rose-800">ต้องทำให้ครบก่อน:</p>
-              <ul className="mt-1 space-y-1 text-sm leading-relaxed text-rose-700">
-                {blocked.gate.uncounted.length > 0 && <li>• ยังไม่ได้ตรวจนับของ {blocked.gate.uncounted.length} รูป</li>}
-                {blocked.gate.unread.length > 0 && <li>• ยังไม่ได้ยืนยันอ่านรายละเอียด {blocked.gate.unread.length} รายการ</li>}
+            <div
+              className="mt-3 rounded-[18px] px-4 py-3"
+              style={{ background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}
+            >
+              <p className="dkb-h2 text-[13px]">ต้องทำให้ครบก่อน</p>
+              <ul className="mt-1.5 space-y-1 text-[13px] leading-relaxed">
+                {blocked.gate.uncounted.length > 0 && <li>· ยังไม่ได้ตรวจนับของ {blocked.gate.uncounted.length} รูป</li>}
+                {blocked.gate.unread.length > 0 && <li>· ยังไม่ได้ยืนยันอ่านรายละเอียด {blocked.gate.unread.length} รายการ</li>}
                 {blocked.gate.unsampled.map((name, k) => (
-                  <li key={`s-${k}`} className="font-bold">
-                    • 🎁 ยังไม่ได้ยืนยันใส่งานตัวอย่าง: {name}
+                  <li key={`s-${k}`} className="font-semibold">
+                    · ยังไม่ได้ยืนยันใส่งานตัวอย่าง: {name}
                   </li>
                 ))}
                 {blocked.gate.short.map((s, k) => (
-                  <li key={k} className="font-bold">
-                    • ของไม่ครบ: {s.item} — นับได้ {s.got}
+                  <li key={k} className="font-semibold">
+                    · ของไม่ครบ: {s.item} — นับได้ {s.got}
                     {s.need ? ` จาก ${s.need}` : ""} ชิ้น
                   </li>
                 ))}
@@ -401,27 +410,22 @@ export default function ScanTrackingPage() {
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              <Link
-                href={`/admin/orders/${encodeURIComponent(blocked.order.id)}`}
-                className="flex-1 rounded-xl bg-slate-900 px-4 py-3 text-center text-sm font-bold text-white transition hover:bg-slate-700"
-              >
+              <Btn tone="navy" href={`/admin/orders/${encodeURIComponent(blocked.order.id)}`}>
                 เปิดหน้าออเดอร์เพื่อตรวจ
-              </Link>
-              <button
-                type="button"
+              </Btn>
+              <Btn
                 onClick={() => {
                   setBlocked(null);
                   setValue("");
                   setTimeout(focusInput, 50);
                 }}
-                className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50"
               >
                 ปิด · ยิงออเดอร์อื่น
-              </button>
+              </Btn>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }
