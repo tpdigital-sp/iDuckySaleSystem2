@@ -7,6 +7,8 @@
  * ได้ 8 ไฟล์ ลง .cache/3d-acrylic/upload — ใช้ของจริงของร้านทั้งหมด ไม่ได้วาดเดาเอง:
  *
  *   size-2 … size-6      ขนาดอะคริลิค 2-6 cm (ใช้ทั้งกลุ่ม "ขนาดชิ้นที่ 1" และ "ขนาดชิ้นที่ 2")
+ *       ครึ่งบน = รูปงานจริง 2 ใบที่เห็นว่า "ชิ้นที่ 2 ติดกาวประกบอยู่บนชิ้นที่ 1" (ปักหมุด ① ② ให้ดู)
+ *       ครึ่งล่าง = แถบเทียบขนาดจริง
  *       ครอปจากรูปเทียบขนาดจริงของร้าน (academy-assets/acrylic/size-compare.jpg — วางเรียง 2-10 cm
  *       บนพื้นเดียวกัน) แล้วหรี่ขนาดอื่นลง เหลือขนาดที่เลือกสว่าง — ลูกค้าเห็นทั้งของจริงและเทียบขนาดได้
  *       ⚠️ ครอปเป็น "แถบเดียว" ไม่ได้ตัดทีละชิ้นมาแปะ ภาพจึงไม่มีรอยต่อ และสเกลระหว่างขนาดตรงของจริง
@@ -18,7 +20,7 @@
  *
  * งานสกรีน 6 แบบมีภาพจากชุด acrylic-howto อยู่แล้ว จึงไม่แตะ
  *
- * ⚠️ อัปทับ "ชื่อไฟล์เดิม" ไม่ได้ — CDN/Next แคชของเก่าไว้ ชุดนี้ลงท้าย -v1 ครั้งหน้าขึ้น v2
+ * ⚠️ อัปทับ "ชื่อไฟล์เดิม" ไม่ได้ — CDN/Next แคชของเก่าไว้ (การ์ดขนาด = v2 · ชนิดอะคริลิค = v1)
  */
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
@@ -27,7 +29,8 @@ import { fetch3dAcrylicPrices } from "./3d-acrylic-prices.mjs";
 const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || ".cache/3d-acrylic/upload").replace(/\/$/, "");
 mkdirSync(OUT, { recursive: true });
 
-const V = "v1";
+const SIZE_V = "v2"; // การ์ดขนาดขึ้นรุ่นใหม่ (เพิ่มรูปงานจริง 2 ชิ้นประกบกัน) — ทับชื่อไฟล์ v1 ไม่ได้
+const TYPE_V = "v1";
 const W = 900;
 const H = 900; // จัตุรัส — แกลเลอรีหน้าสินค้าครอปเป็นจัตุรัส (object-cover)
 const TH = "Thonburi, 'Noto Sans Thai', 'Sukhumvit Set', sans-serif";
@@ -93,14 +96,33 @@ const PIECE_BOX = {
   "5cm": [360, 472, 429],
   "6cm": [505, 642, 400],
 };
-/** แถบที่ครอปมาใช้ = ขนาด 2-6 cm พร้อมห่วงพวงกุญแจด้านบนและป้าย cm ด้านล่าง */
-const STRIP = { x: 42, y: 230, w: 616, h: 382 };
-const STRIP_W = 760; // ความกว้างตอนวางบนการ์ด
+/** แถบที่ครอปมาใช้ = เฉพาะตัวชิ้นงาน 2-6 cm + ป้าย cm (ตัดห่วงพวงกุญแจด้านบนทิ้ง ให้การ์ดเตี้ยลง) */
+const STRIP = { x: 42, y: 380, w: 616, h: 232 };
+const STRIP_W = 700;
 const STRIP_H = Math.round((STRIP_W * STRIP.h) / STRIP.w);
 const STRIP_X = (W - STRIP_W) / 2;
-const STRIP_Y = 176;
+const STRIP_Y = 536;
 const k = STRIP_W / STRIP.w; // สเกลจากพิกัดรูปต้นฉบับ → พิกัดบนการ์ด
 const onCard = (x, y) => [STRIP_X + (x - STRIP.x) * k, STRIP_Y + (y - STRIP.y) * k];
+
+/**
+ * รูปงานจริง 2 ใบที่โชว์ว่า "1 ชุด = 2 ชิ้นประกบกัน"
+ * jr = จุดชิ้นฐาน · jt = จุดชิ้นที่ติดอยู่ด้านบน (สัดส่วน 0-1 ของกรอบที่ครอป) ไว้ปักหมุด ① ②
+ * ใบซ้ายเห็นชัดที่สุด (โดมใส + ตัวแมวติดทับ) จึงปักหมุดเฉพาะใบซ้าย ใบขวาปล่อยเป็นตัวอย่างเฉย ๆ
+ */
+const WORK = {
+  left: { file: "01.jpg", crop: [200, 225, 615], jr: [0.30, 0.64], jt: [0.72, 0.68] },
+  right: { file: "02.jpg", crop: [440, 300, 560] },
+};
+const TILE = 250;
+const TILE_Y = 168;
+const TILE_X = [152, 498];
+
+/** หมุดเลข ① ② บนรูป */
+const pin = (cx, cy, n) => `
+  <circle cx="${cx}" cy="${cy}" r="19" fill="#ffffff" opacity="0.94"/>
+  <circle cx="${cx}" cy="${cy}" r="19" fill="none" stroke="${CYAN}" stroke-width="3"/>
+  <text x="${cx}" y="${cy + 9}" font-family="${TH}" font-size="24" font-weight="700" text-anchor="middle" fill="${CYAN}">${n}</text>`;
 
 async function sizeArt(size, prices) {
   const strip = await sharp(SIZE_PHOTO)
@@ -108,40 +130,58 @@ async function sizeArt(size, prices) {
     .resize(STRIP_W * 2) // อัดความละเอียดไว้ 2 เท่า กันเบลอตอนย่อเป็น JPEG
     .jpeg({ quality: 94 })
     .toBuffer();
+  const tiles = await Promise.all(
+    [WORK.left, WORK.right].map(async (w) => uri(await square(await grab(`${STORAGE}/3d-acrylic/${w.file}`), ...w.crop, TILE * 3)))
+  );
 
   const [x0, x1, top] = PIECE_BOX[size];
-  const [wx, wy] = onCard(x0 - 14, top - 26);
-  const [wx2, wy2] = onCard(x1 + 14, 606); // ล่างสุดเผื่อถึงป้าย "N cm" ใต้ชิ้นงาน
+  const [wx, wy] = onCard(x0 - 12, top - 12);
+  const [wx2, wy2] = onCard(x1 + 12, 606); // ล่างสุดเผื่อถึงป้าย "N cm" ใต้ชิ้นงาน
   const [ww, wh] = [wx2 - wx, wy2 - wy];
 
   const cm = Number(size.replace("cm", ""));
   const [first] = prices.base[size];
+  const L = WORK.left;
 
   return frame(`
-    ${title(`ขนาด ${cm} cm`, "วัดจากด้านที่ยาวที่สุดของอะคริลิค")}
+    <text x="${W / 2}" y="80" font-family="${TH}" font-size="44" font-weight="700" text-anchor="middle" fill="${INK}">ขนาด ${cm} cm</text>
+    <text x="${W / 2}" y="124" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">วัดจากด้านที่ยาวที่สุด · ราคาชุดละ <tspan fill="${CYAN}" font-weight="700">${first}.-</tspan> (${prices.tiers[0]} · สกรีน 1 ด้าน/ชิ้น · อะคริลิคใส)</text>
+
+    <!-- ① งานจริง: 2 ชิ้นประกบกัน -->
     <defs>
-      <clipPath id="strip"><rect x="${STRIP_X}" y="${STRIP_Y}" width="${STRIP_W}" height="${STRIP_H}" rx="22"/></clipPath>
+      <clipPath id="pA"><rect x="${TILE_X[0]}" y="${TILE_Y}" width="${TILE}" height="${TILE}" rx="22"/></clipPath>
+      <clipPath id="pB"><rect x="${TILE_X[1]}" y="${TILE_Y}" width="${TILE}" height="${TILE}" rx="22"/></clipPath>
+    </defs>
+    ${tiles
+      .map(
+        (img, i) => `
+      <image href="${img}" x="${TILE_X[i]}" y="${TILE_Y}" width="${TILE}" height="${TILE}" clip-path="url(#p${i ? "B" : "A"})" preserveAspectRatio="xMidYMid slice"/>
+      <rect x="${TILE_X[i]}" y="${TILE_Y}" width="${TILE}" height="${TILE}" rx="22" fill="none" stroke="${EDGE}" stroke-width="2"/>`
+      )
+      .join("")}
+    ${pin(TILE_X[0] + L.jr[0] * TILE, TILE_Y + L.jr[1] * TILE, "1")}
+    ${pin(TILE_X[0] + L.jt[0] * TILE, TILE_Y + L.jt[1] * TILE, "2")}
+    <text x="${W / 2}" y="${TILE_Y + TILE + 36}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${INK}">① ชิ้นที่ 1 = ชิ้นฐาน (ชิ้นใหญ่สุด เป็นตัวคิดราคา) · ② ชิ้นที่ 2 = ติดกาวประกบอยู่ด้านบน</text>
+    <text x="${W / 2}" y="${TILE_Y + TILE + 68}" font-family="${TH}" font-size="20" text-anchor="middle" fill="${SUB}">รูปงานจริงของร้าน — ใบขวาเป็นอีกตัวอย่าง ชิ้นด้านหน้าซ้อนอยู่บนชิ้นด้านหลัง</text>
+
+    <!-- ② เทียบขนาดจริง -->
+    <text x="${W / 2}" y="${STRIP_Y - 18}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">เทียบขนาดจริง 2-6 cm บนพื้นเดียวกัน — กรอบฟ้าคือขนาดที่เลือก</text>
+    <defs>
+      <clipPath id="strip"><rect x="${STRIP_X}" y="${STRIP_Y}" width="${STRIP_W}" height="${STRIP_H}" rx="20"/></clipPath>
       <!-- หรี่ทั้งแถบ เว้นช่องขนาดที่เลือกไว้สว่าง -->
       <mask id="dim">
         <rect x="${STRIP_X}" y="${STRIP_Y}" width="${STRIP_W}" height="${STRIP_H}" fill="#ffffff"/>
-        <rect x="${wx}" y="${wy}" width="${ww}" height="${wh}" rx="16" fill="#000000"/>
+        <rect x="${wx}" y="${wy}" width="${ww}" height="${wh}" rx="14" fill="#000000"/>
       </mask>
     </defs>
     <g clip-path="url(#strip)">
       <image href="${uri(strip)}" x="${STRIP_X}" y="${STRIP_Y}" width="${STRIP_W}" height="${STRIP_H}" preserveAspectRatio="xMidYMid slice"/>
       <rect x="${STRIP_X}" y="${STRIP_Y}" width="${STRIP_W}" height="${STRIP_H}" fill="#ffffff" opacity="0.66" mask="url(#dim)"/>
     </g>
-    <rect x="${STRIP_X}" y="${STRIP_Y}" width="${STRIP_W}" height="${STRIP_H}" rx="22" fill="none" stroke="${EDGE}" stroke-width="2"/>
-    <rect x="${wx}" y="${wy}" width="${ww}" height="${wh}" rx="16" fill="none" stroke="${CYAN}" stroke-width="4"/>
-    <text x="${STRIP_X + 16}" y="${STRIP_Y + STRIP_H + 32}" font-family="${TH}" font-size="21" fill="${SUB}">รูปงานจริงของร้าน — วางเทียบขนาด 2-6 cm บนพื้นเดียวกัน</text>
-    ${priceChip(`ราคาชุดละ ${first}.-`, 682)}
-    ${foot(
-      [
-        `${prices.tiers[0]} · สกรีน 1 ด้าน/ชิ้น · อะคริลิคใส — คิดราคาจากชิ้นที่ใหญ่ที่สุด`,
-        "1 ชุด = อะคริลิค 2 ชิ้น เลือกขนาดได้ทั้ง 2 ชิ้น (ชิ้นที่ 2 ไม่เกินชิ้นที่ 1)",
-      ],
-      790
-    )}`);
+    <rect x="${STRIP_X}" y="${STRIP_Y}" width="${STRIP_W}" height="${STRIP_H}" rx="20" fill="none" stroke="${EDGE}" stroke-width="2"/>
+    <rect x="${wx}" y="${wy}" width="${ww}" height="${wh}" rx="14" fill="none" stroke="${CYAN}" stroke-width="4"/>
+
+    ${foot(["1 ชุด = อะคริลิค 2 ชิ้น เลือกขนาดได้ทั้ง 2 ชิ้น (ชิ้นที่ 2 ไม่เกินชิ้นที่ 1)"], 852)}`);
 }
 
 // ── ชนิดอะคริลิค ─────────────────────────────────────────────────────────
@@ -238,9 +278,9 @@ const prices = await fetch3dAcrylicPrices();
 console.log(`📥 ราคาบนการ์ดดึงสดจากเว็บตารางราคา — ${prices.sizes.map((s) => `${s} ${prices.base[s][0]}.-`).join(" · ")}\n`);
 console.log(`📷 รูปเทียบขนาด: ${SIZE_PHOTO}\n`);
 
-for (const size of prices.sizes) await save(`size-${size.replace("cm", "")}-${V}`, await sizeArt(size, prices));
-await save(`acrylic-clear-${V}`, await clearArt());
-await save(`acrylic-c02-${V}`, await c02Art());
-await save(`acrylic-special-${V}`, await specialArt(prices));
+for (const size of prices.sizes) await save(`size-${size.replace("cm", "")}-${SIZE_V}`, await sizeArt(size, prices));
+await save(`acrylic-clear-${TYPE_V}`, await clearArt());
+await save(`acrylic-c02-${TYPE_V}`, await c02Art());
+await save(`acrylic-special-${TYPE_V}`, await specialArt(prices));
 
 console.log(`\n✅ ไฟล์ทั้งหมดอยู่ที่ ${OUT}`);
