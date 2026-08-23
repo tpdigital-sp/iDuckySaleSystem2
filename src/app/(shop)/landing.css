@@ -2802,7 +2802,7 @@ main:has(.dl-page) + .dl footer{margin-top:0}
    วิธี: ขอบบนไล่จากโปร่ง (เห็นฟ้าซึมผ่าน) → ขาวทึบภายใน ~180px  ตากวาดลงมาแล้วไม่เจอเส้นตัด
    · ขอบเป็นขาวโปร่ง ไม่ใช่ขาวทึบ · มุมมนขึ้น · เงาเป็นฮาโลฟุ้งกว้าง แทนเงาขอบคม
    · เนื้อในยังทึบ 96% ให้ตัวหนังสืออ่านชัดเต็มที่ */
-.homebg-sheet{border-radius:44px;border:1px solid rgba(255,255,255,.62);
+.homebg-sheet{position:relative;border-radius:44px;border:1px solid rgba(255,255,255,.62);
   background:linear-gradient(180deg,
     rgba(255,255,255,.34) 0%,
     rgba(255,255,255,.72) 72px,
@@ -2810,11 +2810,19 @@ main:has(.dl-page) + .dl footer{margin-top:0}
     rgba(255,255,255,.96) 260px,
     rgba(255,255,255,.96) 76%,
     rgba(244,251,255,.93) 100%);
-  -webkit-backdrop-filter:blur(18px) saturate(140%);backdrop-filter:blur(18px) saturate(140%);
   /* inset: ขอบด้านในอมฟ้าจาง ๆ ให้ขาวค่อย ๆ เริ่ม ไม่ใช่เริ่มปุ๊บที่เส้นขอบ */
   box-shadow:inset 0 0 46px rgba(198,232,251,.55),
     0 46px 100px -52px rgba(44,129,196,.55),0 10px 34px -22px rgba(44,129,196,.3);
   padding:44px 26px 34px;margin-bottom:40px}
+/* ⚠️ ฝ้า (backdrop-filter) ต้องอยู่ที่ "ชั้นลูก" ห้ามใส่ที่ตัว .homebg-sheet เอง
+   backdrop-filter ทำให้ element กลายเป็น containing block ของลูกที่ position:fixed
+   → ทุกอย่างที่ลอยติดจอในแผ่นนี้จะไปยึดขอบแผ่นแทนขอบจอ:
+     ปุ่ม "แก้ไขในหลังบ้าน" หลุดไปอยู่ก้นแผ่น (สูงจากจอ 4,800px = หายไปเลย)
+     แถบซื้อลอยล่างจอบนมือถือ · ไลต์บ็อกซ์ดูรูป · ป๊อปอัปเปลี่ยนเรทราคา ก็เพี้ยนตามกันหมด
+   z-index:-1 ดันชั้นฝ้าไปอยู่ "หลังพื้นของแผ่น" — ลำดับการวาดจึงเป็น ฟ้า → ฝ้า → พื้นขาว → เนื้อหา
+   เหมือนตอนใส่ backdrop-filter ที่ตัวแผ่นเป๊ะ (อย่าใส่ z-index ให้ .homebg-sheet ไม่งั้นชั้นฝ้าจะโผล่ทับพื้น) */
+.homebg-sheet::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;
+  -webkit-backdrop-filter:blur(18px) saturate(140%);backdrop-filter:blur(18px) saturate(140%)}
 @media(max-width:900px){.homebg-sheet{border-radius:34px;padding:34px 18px 28px}}
 @media(max-width:640px){.homebg-sheet{border-radius:26px;padding:26px 13px 22px;margin-bottom:26px}}
 
