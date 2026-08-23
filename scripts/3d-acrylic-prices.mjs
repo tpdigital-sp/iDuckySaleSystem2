@@ -98,3 +98,34 @@ export async function fetch3dAcrylicPrices() {
     },
   };
 }
+
+/**
+ * ตารางแผ่นอะคริลิคของ "พวงกุญแจ" เรทที่ 1 (หนา 3mm · อะคริลิคใส/ขาวขุ่น C-02)
+ *   https://www.iduckyofficial-pricelists.com/keyring  ตารางแรกของหน้า
+ *
+ * 3D Acrylic อ้างตารางนี้อยู่ 1 จุด — บรรทัดบนโปสเตอร์กล่อง "เพิ่มจำนวนชิ้น":
+ *   "จำนวน 11 ชิ้นขึ้นไป คิดราคาเรทส่งตามตารางแผ่นอะคริลิค (เรทที่ 1)"
+ * คือชิ้นที่เพิ่มจากมาตรฐาน 2 ชิ้น พอสั่งเยอะจะไม่คิด cm ละ 15/10 แล้ว แต่คิดตามตารางนี้แทน
+ *
+ * @returns {Promise<{ sizes:string[], tiers:string[], cell:(size:string,tier:string)=>number }>}
+ */
+export async function fetchKeyringRate1() {
+  const res = await fetch(`${HOST}/keyring`, { headers: { "User-Agent": UA } });
+  if (!res.ok) throw new Error(`โหลดหน้าพวงกุญแจไม่ได้ — HTTP ${res.status}`);
+  const tables = tablesOf(await res.text());
+  // หน้าพวงกุญแจมีตารางหัว "2cm…10cm" หลายใบ (3mm / 2mm / 1mm / 5mm) — เรทที่ 1 ใบเดียวที่มีแถว "500++"
+  const rows = tables.find(
+    (r) => r[0]?.slice(1).join(",") === "2cm,3cm,4cm,5cm,6cm,7cm,8cm,9cm,10cm" && r.some((x) => x[0] === "500++")
+  );
+  if (!rows) throw new Error("ไม่เจอตารางแผ่นอะคริลิคเรทที่ 1 บนหน้าพวงกุญแจ — หน้าเว็บเปลี่ยนโครง");
+  const byName = byRow(rows);
+  return {
+    sizes: rows[0].slice(1),
+    tiers: rows.slice(1).map((r) => r[0]),
+    cell: (size, tier) => {
+      const v = byName[tier]?.[size];
+      if (v === undefined) throw new Error(`ตารางเรทที่ 1 ไม่มีช่อง "${tier} × ${size}"`);
+      return v;
+    },
+  };
+}

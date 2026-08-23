@@ -4,7 +4,7 @@
  *
  *   node scripts/3d-acrylic-art.mjs [--out=<dir>]
  *
- * ได้ 13 ไฟล์ ลง .cache/3d-acrylic/upload
+ * ได้ 15 ไฟล์ ลง .cache/3d-acrylic/upload
  *
  * ── การ์ดขนาด (10 ใบ · แยกกลุ่มละ 5 ขนาด) ────────────────────────────────
  *   p1-size-2 … p1-size-6   กลุ่ม "ขนาดชิ้นที่ 1" (ชิ้นฐาน ชิ้นใหญ่สุด เป็นตัวคิดราคา)
@@ -18,6 +18,11 @@
  *     • แถบล่าง          รูปงานจริงของร้าน เทียบขนาด 2-6 cm บนพื้นเดียวกัน (ของจริง ไม่ใช่ภาพวาด)
  *   ราคาบนการ์ดดึงสดจากเว็บตารางราคา (3d-acrylic-prices.mjs) — ตัวเลขไม่มีวันหลุดจากหน้าเว็บจริง
  *
+ * ── การ์ดกลุ่ม "เพิ่มจำนวนชิ้น" (2 ใบ) ────────────────────────────────────
+ *   extra-screen / extra-plain   ชิ้นที่ 3 ขึ้นไป แบบสกรีน / ไม่สกรีน
+ *       วางเรียง ชิ้นที่ 1 + ชิ้นที่ 2 + ชิ้นที่เพิ่ม ให้เห็นว่า "เพิ่มจากอะไร"
+ *       พร้อมตารางราคาต่อชิ้นตามขนาด (ปลีก ซม.ละ 15/10 · เรทส่งจากตารางแผ่นอะคริลิคเรทที่ 1)
+ *
  * ── การ์ดชนิดอะคริลิค (3 ใบ) ─────────────────────────────────────────────
  *   acrylic-clear    อะคริลิคใส          ← รูปงานจริงของสินค้านี้ (แกลเลอรีใบที่ 5 "อะคริลิคใสล้วน")
  *   acrylic-c02      อะคริลิคขาวขุ่น C-02 ← สวอตช์จากชาร์ตสีทางการของร้าน (acrylic-colors/c02)
@@ -29,7 +34,7 @@
  */
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
-import { fetch3dAcrylicPrices } from "./3d-acrylic-prices.mjs";
+import { fetch3dAcrylicPrices, fetchKeyringRate1 } from "./3d-acrylic-prices.mjs";
 // ลายที่ "สกรีน" บนชิ้นงานในภาพจำลอง = มาสคอตเป็ด iDucky ของฝ่าย Content
 import { mascotDataUri } from "./iducky-assets.mjs";
 
@@ -137,7 +142,8 @@ const pin = (cx, cy, n, on) => `
  * ชิ้นงานไดคัท (ชิ้นที่ 2) — ขยายเงาของลายออกไปเป็น "ขอบใสรอบลาย" ตามงานไดคัทจริง
  * แล้วเติมเนื้ออะคริลิค ทับด้วยตัวลายอีกที · มีเงาตกกระทบเพราะชิ้นนี้ยกลอยอยู่บนชิ้นฐาน
  */
-function diecut(cx, bottom, longest, on) {
+function diecut(cx, bottom, longest, on, o = {}) {
+  const { id = "cut", blank = false } = o; // blank = ชิ้นที่ยังไม่สกรีน เห็นแต่เนื้ออะคริลิคที่ไดคัทไว้
   const ch = longest; // มาสคอตสูงกว่ากว้าง (ratio < 1) ด้านยาวสุดจึงเป็นความสูง
   const cw = ch * MASCOT.ratio;
   const top = bottom - ch;
@@ -151,7 +157,7 @@ function diecut(cx, bottom, longest, on) {
     top,
     svg: `
     <defs>
-      <filter id="cut" x="-30%" y="-25%" width="160%" height="150%">
+      <filter id="${id}" x="-30%" y="-25%" width="160%" height="150%">
         <feMorphology in="SourceAlpha" operator="dilate" radius="${(rim * 1.35).toFixed(1)}" result="d1"/>
         <feFlood flood-color="${ring}" result="c1"/>
         <feComposite in="c1" in2="d1" operator="in" result="ringLayer"/>
@@ -160,12 +166,14 @@ function diecut(cx, bottom, longest, on) {
         <feComposite in="c2" in2="d2" operator="in" result="bodyLayer"/>
         <feMerge><feMergeNode in="ringLayer"/><feMergeNode in="bodyLayer"/></feMerge>
       </filter>
-      <filter id="lift" x="-40%" y="-40%" width="180%" height="180%">
+      <filter id="lift-${id}" x="-40%" y="-40%" width="180%" height="180%">
         <feDropShadow dx="0" dy="7" stdDeviation="6" flood-color="#0f172a" flood-opacity="0.26"/>
       </filter>
     </defs>
-    <g filter="url(#lift)"><g filter="url(#cut)">${img}</g></g>
-    ${img}`,
+    <g filter="url(#lift-${id})"><g filter="url(#${id})">${img}</g></g>
+    ${blank
+      ? `<text x="${cx}" y="${top + ch * 0.56}" font-family="${TH}" font-size="${Math.max(14, ch * 0.11)}" text-anchor="middle" fill="#94a3b8">ไม่มีลาย</text>`
+      : img}`,
   };
 }
 
@@ -280,6 +288,61 @@ async function sizeArt(piece, size, prices) {
     <text x="${W / 2}" y="${STRIP_Y + STRIP_H + 66}" font-family="${TH}" font-size="20" text-anchor="middle" fill="${SUB}">${esc(last)}</text>`);
 }
 
+/**
+ * การ์ดกลุ่ม "เพิ่มจำนวนชิ้น" — 1 ชุดมี 2 ชิ้นอยู่แล้ว ชิ้นที่ 3 ขึ้นไปคิดเพิ่ม
+ * @param {"สกรีน"|"ไม่สกรีน"} kind
+ */
+function extraPieceArt(kind, prices, rate1Tier, rate1) {
+  const screened = kind === "สกรีน";
+  const perCm = screened ? 15 : 10;
+  const TS = 210; // ความสูงชิ้นงานในแถวตัวอย่าง
+  const BASE_Y = 400; // ขอบล่างของชิ้นงานทั้งแถว
+  const cxs = [216, 450, 684];
+  const plus = (x) => `<text x="${x}" y="330" font-family="${TH}" font-size="46" font-weight="700" text-anchor="middle" fill="${LINE}">+</text>`;
+  const cap = (x, l1, l2, on) => `
+    <text x="${x}" y="452" font-family="${TH}" font-size="20" font-weight="700" text-anchor="middle" fill="${on ? CYAN : INK}">${esc(l1)}</text>
+    <text x="${x}" y="480" font-family="${TH}" font-size="18" text-anchor="middle" fill="${SUB}">${esc(l2)}</text>`;
+
+  // ตารางราคาต่อชิ้นตามขนาด (ช่วงปลีก) + เรทส่งใต้ตาราง
+  const TW = 760;
+  const TX = (W - TW) / 2;
+  const TY = 528;
+  const CW = TW / prices.sizes.length;
+  const cells = prices.sizes
+    .map((sz, i) => {
+      const cm = Number(sz.replace("cm", ""));
+      const x = TX + i * CW + CW / 2;
+      return `
+      ${i ? `<line x1="${TX + i * CW}" y1="${TY}" x2="${TX + i * CW}" y2="${TY + 116}" stroke="${EDGE}" stroke-width="2"/>` : ""}
+      <text x="${x}" y="${TY + 36}" font-family="${TH}" font-size="21" font-weight="700" text-anchor="middle" fill="${SUB}">${sz}</text>
+      <text x="${x}" y="${TY + 78}" font-family="${TH}" font-size="27" font-weight="700" text-anchor="middle" fill="${CYAN}">${cm * perCm}.-</text>
+      <text x="${x}" y="${TY + 106}" font-family="${TH}" font-size="17" text-anchor="middle" fill="${SUB}">ส่ง ${Math.min(cm * perCm, rate1.cell(sz, rate1Tier))}.-</text>`;
+    })
+    .join("");
+
+  return frame(`
+    ${title(`ชิ้นเพิ่ม — งาน${kind}`, `เพิ่มจากมาตรฐาน 2 ชิ้น · คิด ซม.ละ ${perCm} บาท ต่อ 1 ชิ้น`)}
+    <path d="${dome(cxs[0], BASE_Y, TS, TS)}" fill="rgba(148,163,184,0.28)" stroke="#94a3b8" stroke-width="3"/>
+    ${diecut(cxs[1], BASE_Y, TS, false, { id: "p2" }).svg}
+    ${diecut(cxs[2], BASE_Y, TS, true, { id: "p3", blank: !screened }).svg}
+    ${plus(333)}${plus(567)}
+    ${cap(cxs[0], "ชิ้นที่ 1", "รวมในราคาชุดแล้ว", false)}
+    ${cap(cxs[1], "ชิ้นที่ 2", "รวมในราคาชุดแล้ว", false)}
+    ${cap(cxs[2], "ชิ้นที่ 3 ขึ้นไป", "คิดเพิ่มตามขนาด", true)}
+    <rect x="${TX}" y="${TY}" width="${TW}" height="116" rx="18" fill="${PAPER}" stroke="${EDGE}" stroke-width="2"/>
+    ${cells}
+    <text x="${W / 2}" y="${TY + 152}" font-family="${TH}" font-size="20" text-anchor="middle" fill="${SUB}">ราคาต่อ 1 ชิ้นที่เพิ่ม (คิดแบบอะคริลิคใส) · แถวล่าง = เรทส่งตั้งแต่ 11 ชุดขึ้นไป</text>
+    ${foot(
+      [
+        screened
+          ? "ชิ้นที่เพิ่มพิมพ์ลายให้ 1 ด้าน เหมือน 2 ชิ้นในชุด"
+          : "ชิ้นที่เพิ่มเป็นอะคริลิคเปล่า ไม่พิมพ์ลาย (ใช้เป็นฐาน/ตัวเว้นระยะ)",
+        "ติ๊กขนาดที่ต้องการแล้วใส่จำนวน — ระบบคูณราคาให้เอง",
+      ],
+      TY + 200
+    )}`);
+}
+
 // ══ การ์ดชนิดอะคริลิค ════════════════════════════════════════════════════
 /** การ์ดรูปเดี่ยว — รูปจัตุรัสใหญ่กลางการ์ด */
 const heroCard = (t, sub, img, size, lines) => {
@@ -377,6 +440,9 @@ console.log(`📷 รูปเทียบขนาด: ${SIZE_PHOTO}\n`);
 for (const piece of [1, 2]) {
   for (const size of prices.sizes) await save(`p${piece}-size-${size.replace("cm", "")}-${SIZE_V}`, await sizeArt(piece, size, prices));
 }
+const rate1 = await fetchKeyringRate1();
+await save(`extra-screen-${TYPE_V}`, extraPieceArt("สกรีน", prices, "11-29 ชิ้น", rate1));
+await save(`extra-plain-${TYPE_V}`, extraPieceArt("ไม่สกรีน", prices, "11-29 ชิ้น", rate1));
 await save(`acrylic-clear-${TYPE_V}`, await clearArt());
 await save(`acrylic-c02-${TYPE_V}`, await c02Art());
 await save(`acrylic-special-${TYPE_V}`, await specialArt(prices));

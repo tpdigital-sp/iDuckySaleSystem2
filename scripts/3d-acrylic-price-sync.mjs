@@ -11,7 +11,7 @@
  * สูตรประกอบราคา 1 ชุด (= อะคริลิค 2 ชิ้น) — ADD ON บนเว็บเป็นราคา "ต่อชิ้น" จึงคูณ 2:
  *   ราคาชุด = ฐาน[ขนาดชิ้นที่ 1][ช่วงจำนวน]
  *           + ค่าสกรีนเพิ่ม[ขนาด] × 2        (สกรีน 1 ด้าน = 0 · 2 ด้าน / 3 / 4 เลเยอร์ ตามตาราง ADD ON)
- *           + ค่าอะคริลิคพิเศษ[ขนาด] × 2     (ช่วง 1-10 ชุด ใช้เรทปลีก · 11 ชุดขึ้นไปใช้เรทส่ง)
+ *           + ค่าอะคริลิคพิเศษ[ขนาด] × 2     (ยึดตามโปสเตอร์ +5/+8/+10 ทุกช่วงจำนวน — ดู SPECIAL_RATE_ROW)
  *   อะคริลิคใส / ขาวขุ่น C-02 = ไม่บวกเพิ่ม (ราคาตามตารางฐาน)
  *
  * ขนาดชิ้นที่ 2 ไม่มีผลกับราคา — ราคาคิดจากชิ้นที่ใหญ่ที่สุด (= ชิ้นที่ 1) ตามที่เว็บกำกับไว้
@@ -45,6 +45,18 @@ const ACRYLIC_SPECIAL = {
 
 const PIECES_PER_SET = 2;
 
+/**
+ * 🏷 ค่าอะคริลิคพิเศษ (กลิตเตอร์ / สีพิเศษ / โฮโลแกรม) — ต่อชิ้น ทุกช่วงจำนวน
+ *
+ * บนเว็บมี 2 แถวให้เลือก: "(เรทราคาปลีก) อคล.พิเศษ" = +10 เท่ากันหมด 2-10cm
+ * กับ "(เรทราคาส่ง) อคล.พิเศษ" = 2-5cm +5 · 6-8cm +8 · 9-10cm +10
+ * ส่วนโปสเตอร์ 3D Acrylic เขียนกล่อง "กลิตเตอร์/สีพิเศษ/โฮโลแกรม" ไว้ชุดเดียว = +5 / +8 / +10
+ *
+ * ทางร้านยืนยัน (23 ส.ค. 69) ให้ยึด "ตามโปสเตอร์" ทุกช่วงจำนวน ไม่แยกปลีก/ส่ง
+ * ตัวเลขชุดนั้นตรงกับแถวเรทส่งบนเว็บพอดี จึงอ่านสดจากแถวนั้นได้เลย ไม่ต้องพิมพ์ตัวเลขทับในโค้ด
+ */
+const SPECIAL_RATE_ROW = "wholesale";
+
 const env = Object.fromEntries(
   readFileSync(new URL("../.env.local", import.meta.url), "utf8")
     .split("\n")
@@ -59,7 +71,9 @@ const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_
 });
 
 const web = await fetch3dAcrylicPrices();
+const SPECIAL_RATE = web.special[SPECIAL_RATE_ROW];
 console.log(`📥 ดึงจากเว็บ: ขนาด ${web.sizes.join(" / ")} · ช่วงจำนวน ${web.tiers.join(" / ")}`);
+console.log(`   ค่าอะคริลิคพิเศษ (ต่อชิ้น ทุกช่วงจำนวน): ${web.sizes.map((s) => `${s} +${SPECIAL_RATE[s]}`).join(" · ")}`);
 
 const { data: row, error } = await sb.from("products").select("data").eq("id", ID).single();
 if (error) throw error;
@@ -90,9 +104,8 @@ for (const size of sizes) {
     const screenFee = addonRow ? (web.screen[addonRow][size] ?? 0) * PIECES_PER_SET : 0;
     for (const acrylic of acrylics) {
       const special = ACRYLIC_SPECIAL[acrylic];
-      cells[`${size}│${screen}│${acrylic}`] = web.base[size].map((baseAt, tier) => {
-        const rate = tier === 0 ? web.special.retail : web.special.wholesale;
-        const acrylicFee = special ? (rate[size] ?? 0) * PIECES_PER_SET : 0;
+      cells[`${size}│${screen}│${acrylic}`] = web.base[size].map((baseAt) => {
+        const acrylicFee = special ? (SPECIAL_RATE[size] ?? 0) * PIECES_PER_SET : 0;
         return baseAt + screenFee + acrylicFee;
       });
     }
