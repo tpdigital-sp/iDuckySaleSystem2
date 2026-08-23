@@ -41,8 +41,7 @@ const SCREEN_ART = {
   "สกรีน 1 ด้าน (บน)": "acrylic-howto/screen-1side-top-v1",
   "สกรีน 2 ด้าน (ใต้-บน)": "acrylic-howto/screen-2side-under-top-v1",
   "สกรีน 2 ด้าน (บน-บน)": "acrylic-howto/screen-2side-top-top-v1",
-  "สกรีน 3 เลเยอร์": "acrylic-howto/screen-3layer-v1",
-  "สกรีน 4 เลเยอร์": "acrylic-howto/screen-4layer-v1",
+  // ⛔ ไม่มี 3/4 เลเยอร์ — 3D Acrylic สกรีนได้แค่ 1 หรือ 2 ด้านต่อชิ้น (ดู SCREENS ใน 3d-acrylic-build.mjs)
 };
 const ACRYLIC_ART = {
   อะคริลิคใส: "acrylic-clear-v1",
