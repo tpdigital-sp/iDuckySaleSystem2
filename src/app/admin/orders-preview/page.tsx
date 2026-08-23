@@ -841,8 +841,10 @@ function Row({
   const href = `/admin/orders/${encodeURIComponent(o.id)}`;
   const done = DONE.includes(o.status);
   const step = STEP_OF[o.status];
-  const days = o.useByDate && !done ? daysToUseBy(o) : null;
+  const daysRaw = o.useByDate && !done ? daysToUseBy(o) : null;
   const attn = attentionOf(o, dup);
+  // เลยกำหนด/ถึงกำหนดวันนี้ ขึ้นเป็นป้าย ⚠ ทางซ้ายแล้ว — ไม่ต้องพูดซ้ำในคอลัมน์วันที่
+  const days = daysRaw !== null && daysRaw <= 0 ? null : daysRaw;
   const pay = payOf(o);
   const open = openProofs(o);
   const line = lineUserOf(o, orders);

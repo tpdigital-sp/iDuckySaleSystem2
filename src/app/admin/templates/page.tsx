@@ -59,6 +59,7 @@ import {
   navItemActive,
   navItemIdle,
 } from "@/lib/admin-ui";
+import { Btn, HeroStat, PageHead, PageShell, Stat, Stats } from "@/components/admin/ui";
 
 const input =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-slate-100";
@@ -867,49 +868,43 @@ function AdminTemplatesInner() {
       });
 
   return (
-    <div className="mx-auto w-full max-w-[112rem] px-4 py-6">
-      {/* ── หัวหน้า (โทนแบรนด์ฟ้า-เหลืองเป็ด ให้เข้ากับหน้าร้าน) ── */}
-      <div className={brandHero}>
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className={h1}>📐 คลังเทมเพลตไฟล์งาน</h1>
-            <p className={`mt-1 max-w-2xl text-sm ${muted}`}>
-              <strong>ลากไฟล์ .ai มาวางได้เลย</strong> (ทีละหลายไฟล์) — 1 ชุดมีหลายไฟล์ได้
-              แล้วผูกแต่ละไฟล์กับ<strong>ตัวเลือกสินค้า</strong> เช่น เคสมือถือ ผูกไฟล์กับ &ldquo;รุ่น&rdquo; ·
-              ลูกค้าเลือกรุ่นไหน ก็เห็นไฟล์ของรุ่นนั้น
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {/* เลือกหมวดอยู่ = เพิ่มเข้าหมวดนั้นเลย ไม่ต้องมาเลือกหมวดทีหลัง */}
-            <button
-              type="button"
-              onClick={() => add(cat)}
-              className={btnDucky}
-              title={cat && cat !== NO_CATEGORY ? `เพิ่มชุดใหม่ในหมวด ${cat}` : "เพิ่มชุดใหม่"}
-            >
-              ＋ เพิ่มชุดเทมเพลต
-              {cat && cat !== NO_CATEGORY ? <span className="font-normal opacity-90"> ใน &ldquo;{cat}&rdquo;</span> : ""}
-            </button>
-          </div>
-        </div>
-        {/* สรุปตัวเลข — เห็นภาพรวมคลังทันทีโดยไม่ต้องเลื่อน */}
-        {list.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            <span className={chipBrand}>📦 {list.length} ชุด</span>
-            <span className={chipBrand}>📎 {totalFiles} ไฟล์</span>
-            <span className={chipDucky}>🗂 {cats.length} หมวด</span>
-            {noCatCount > 0 && <span className={chipMuted}>ยังไม่จัดหมวด {noCatCount}</span>}
-            {list.some((t) => t._dirty) && (
-              <span className={`${badge} bg-rose-50 text-rose-600 ring-1 ring-rose-200`}>
-                ● มีชุดที่ยังไม่บันทึก
-              </span>
-            )}
-          </div>
-        )}
-      </div>
+    <PageShell>
+      <PageHead
+        group="สินค้า"
+        title="คลังเทมเพลตไฟล์งาน"
+        count={`${list.length} ชุด`}
+        sub="ลากไฟล์ .ai มาวางได้เลย (ทีละหลายไฟล์) — 1 ชุดมีหลายไฟล์ได้ แล้วผูกแต่ละไฟล์กับตัวเลือกสินค้า เช่น เคสมือถือผูกไฟล์กับ “รุ่น” · ลูกค้าเลือกรุ่นไหน ก็เห็นไฟล์ของรุ่นนั้น"
+        tools={
+          <Btn
+            tone="yolk"
+            onClick={() => add(cat)}
+            title={cat && cat !== NO_CATEGORY ? `เพิ่มชุดใหม่ในหมวด ${cat}` : "เพิ่มชุดใหม่"}
+          >
+            เพิ่มชุดเทมเพลต
+            {cat && cat !== NO_CATEGORY ? ` ใน “${cat}”` : ""}
+          </Btn>
+        }
+      />
+
+      {list.length > 0 && (
+        <Stats cols={4}>
+          <HeroStat
+            n={noCatCount}
+            label="ยังไม่จัดหมวด"
+            detail={
+              list.some((t) => t._dirty)
+                ? "มีชุดที่ยังไม่บันทึก — กดบันทึกก่อนออกจากหน้า"
+                : `จาก ${list.length} ชุด · ${cats.length} หมวด`
+            }
+            pct={list.length ? (noCatCount / list.length) * 100 : 0}
+          />
+          <Stat label="ไฟล์ทั้งหมด" value={totalFiles} hint="รวมทุกชุด" />
+          <Stat label="หมวดหมู่" value={cats.length} hint="จัดกลุ่มให้หาง่าย" />
+        </Stats>
+      )}
 
       {/* ── แท็บ: เทมเพลต | หมวดหมู่ ── */}
-      <div className="mt-4 flex gap-1 border-b border-slate-200">
+      <div className="mt-4 flex gap-1 border-b" style={{ borderColor: "var(--dk-hair)" }}>
         {(
           [
             ["templates", `📐 เทมเพลต${list.length ? ` (${list.length})` : ""}`],
@@ -2663,7 +2658,7 @@ function AdminTemplatesInner() {
       </p>
 
       {confirmDialog}
-    </div>
+    </PageShell>
   );
 }
 

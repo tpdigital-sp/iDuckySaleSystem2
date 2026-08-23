@@ -41,6 +41,7 @@ import { MegaPanel } from "@/components/MegaMenu";
 import { fetchProductNamesLite } from "@/lib/product-repo";
 import type { Product } from "@/lib/products";
 import { btnNeutral, btnPrimary, btnSmDanger, btnSmGhost, card, faint, h1, muted } from "@/lib/admin-ui";
+import { Btn, Empty, PageHead, PageShell } from "@/components/admin/ui";
 
 /**
  * 🧭 เมนูหน้าร้าน — แอดมินจัดเมนูเองได้ ไม่ต้องแก้โค้ด
@@ -645,24 +646,24 @@ function NavEditorInner() {
 
   const shownTiles = nav.tilesOn ? nav.tiles.filter((t) => !t.hidden) : [];
 
-  if (loading) return <div className={`mx-auto max-w-7xl p-10 text-center text-sm ${muted} ${card}`}>กำลังโหลด…</div>;
+  if (loading)
+    return (
+      <PageShell>
+        <Empty title="กำลังโหลด…" body="ดึงเมนูและผังหน้าแรกจากเซิร์ฟเวอร์" />
+      </PageShell>
+    );
 
   return (
-    <div className="w-full">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className={h1}>🧭 หน้าร้าน — เมนู &amp; หน้าแรก</h1>
-          <p className={`mt-1 text-sm ${muted}`}>
-            คุมทุกอย่างที่ลูกค้าเห็นบนหัวเว็บและหน้าแรก — แก้แล้วกด 💾 บันทึก ลูกค้าเห็นทันที
-          </p>
-        </div>
-        <Link href="/" target="_blank" className={`${btnNeutral} text-xs`}>
-          เปิดหน้าร้านจริง ↗
-        </Link>
-      </div>
+    <PageShell>
+      <PageHead
+        group="ระบบ"
+        title="เมนู & หน้าแรก"
+        sub="คุมทุกอย่างที่ลูกค้าเห็นบนหัวเว็บและหน้าแรก — แก้แล้วกดบันทึก ลูกค้าเห็นทันที"
+        tools={<Btn href="/">เปิดหน้าร้านจริง</Btn>}
+      />
 
       {/* ── 🏠 ผังหน้าแรก (Home Builder) — เพิ่ม/ลบ/เลื่อน/ซ่อน บล็อกได้เหมือน page builder ── */}
-      <section className={`mt-5 p-4 ${card}`}>
+      <section className="dkb-g mt-4 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-sm font-semibold text-slate-800">🏠 ผังหน้าแรก — เรียงจากบนลงล่างตามที่ลูกค้าเห็น</h2>
@@ -2742,11 +2743,11 @@ function NavEditorInner() {
             คืนค่าเริ่มต้น
           </button>
           <button type="button" onClick={save} disabled={saving} className={btnPrimary}>
-            {saving ? "กำลังบันทึก…" : "💾 บันทึก"}
+            {saving ? "กำลังบันทึก…" : "บันทึก"}
           </button>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }
 
