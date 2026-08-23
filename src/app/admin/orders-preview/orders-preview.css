@@ -1,0 +1,298 @@
+/*
+ * ═══════════════════════════════════════════════════════════════
+ *  ชั้นภาพของหน้าตัวอย่าง /admin/orders-preview  ("โต๊ะงานกระดาษ")
+ * ═══════════════════════════════════════════════════════════════
+ *  แนวคิด: หน้าคำสั่งซื้อคือ "โต๊ะทำงาน" ไม่ใช่ "แดชบอร์ดโชว์"
+ *  แอดมินเปิดค้างไว้ทั้งวัน กวาดตาหาใบงาน ค้น เปิด ปิด วนอยู่แบบนั้น
+ *  จึงเป็นตารางแน่น ๆ บนพื้นกระดาษเทาอ่อน เส้นบาง เงาน้อย ไม่มีกระจกฝ้า
+ *
+ *  ที่ต่างจาก dashboard.css (รางเบนโตะกระจก) โดยตั้งใจ:
+ *   · พื้นทึบ ไม่ไล่สี ไม่ blur — จ้องนาน ๆ ไม่ล้าตา และ scroll ลื่นกว่ามาก
+ *   · มุม 8px ไม่ใช่ 24px · เงาแทบไม่มี · แถวสูง ~44px เห็นได้ 20+ ใบต่อจอ
+ *   · สีใช้แค่ "แยกสถานะ" อย่างเดียว ไม่ได้ใช้ตกแต่ง
+ *
+ *  ⚠️ ห้ามเขียน hex ใน .tsx — อ้าง var(--op-*) จากไฟล์นี้เท่านั้น
+ *  ⚠️ แยกสถานะด้วยมากกว่าสีเสมอ: จุดนำหน้า + ตัวอักษร + แถบสีซ้ายของแถว
+ *  ⚠️ ตัวเลขใช้ Prompt (tabular) — Mitr มีขีดทับเลข 0
+ */
+
+.opv {
+  /* ── หมึก ── */
+  --op-ink: #16233c;        /* ตัวหลัก */
+  --op-mid: #566781;        /* ข้อมูลรอง */
+  --op-faint: #8c99ad;      /* ข้อมูลที่แทบไม่ต้องอ่าน */
+  --op-line: #e2e7ee;       /* เส้นคั่นหลัก */
+  --op-line-soft: #eef1f5;  /* เส้นคั่นในตาราง */
+  --op-bg: #f5f7f9;         /* พื้นหน้า */
+  --op-panel: #ffffff;
+  --op-hover: #f7f9fb;      /* แถวที่เมาส์ชี้อยู่ */
+  --op-sel: #eef6fd;        /* แถวที่ถูกเลือก/โฟกัส */
+
+  /* ── สีเน้นจุดเดียวของหน้า: น้ำเงินแบรนด์ ── */
+  --op-accent: #2c81c4;
+  --op-accent-ink: #1c6099;
+  --op-accent-wash: #eaf4fc;
+
+  /* ── สีสถานะ (ทึบ อ่านออกกลางแดด) ── */
+  --op-amber: #b7791f;  --op-amber-bg: #fdf3dc;
+  --op-rose: #c2405e;   --op-rose-bg: #fdeaef;
+  --op-green: #0f7a5a;  --op-green-bg: #e4f6ef;
+  --op-violet: #5b53c2; --op-violet-bg: #efeefc;
+  --op-blue: #1f6fb2;   --op-blue-bg: #e8f2fb;
+  --op-slate: #6b7a90;  --op-slate-bg: #eef1f5;
+  --op-off: #98a4b6;    --op-off-bg: #f2f4f7;
+
+  --op-display: var(--font-mitr), "Mitr", var(--font-prompt), sans-serif;
+  --op-num: var(--font-prompt), "Prompt", sans-serif;
+
+  background: var(--op-bg);
+  color: var(--op-ink);
+  font-size: 14px;
+}
+
+.opv *:focus-visible { outline: 2px solid var(--op-accent); outline-offset: 2px; border-radius: 6px; }
+.opv-num { font-family: var(--op-num); font-variant-numeric: tabular-nums; }
+.opv-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+
+/* ── หัวหน้า ─────────────────────────────────────────────── */
+.opv-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.opv-eyebrow { font-size: 11.5px; font-weight: 600; letter-spacing: 0.09em; color: var(--op-faint); text-transform: uppercase; }
+.opv-title { font-family: var(--op-display); font-weight: 500; font-size: 24px; line-height: 1.2; margin-top: 2px; }
+.opv-title span { font-family: var(--op-num); font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 500; color: var(--op-mid); margin-left: 9px; }
+.opv-live { display: inline-flex; align-items: center; gap: 6px; margin-top: 5px; font-size: 12.5px; color: var(--op-mid); }
+.opv-live i { width: 6px; height: 6px; border-radius: 50%; background: var(--op-green); flex: none; }
+.opv-live[data-demo="1"] i { background: var(--op-amber); }
+
+/* ── ปุ่ม ─────────────────────────────────────────────────── */
+.opv-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 36px; padding: 0 13px; border-radius: 8px; white-space: nowrap;
+  font-size: 13.5px; font-weight: 500; line-height: 1;
+  border: 1px solid var(--op-line); background: var(--op-panel); color: var(--op-ink);
+  transition: background .14s ease, border-color .14s ease, color .14s ease;
+}
+.opv-btn:hover:not(:disabled) { background: var(--op-hover); border-color: #d4dbe4; }
+.opv-btn:disabled { opacity: .5; }
+.opv-btn-primary { background: var(--op-ink); border-color: var(--op-ink); color: #fff; }
+.opv-btn-primary:hover:not(:disabled) { background: #23334f; border-color: #23334f; }
+.opv-btn-sm { min-height: 30px; padding: 0 10px; font-size: 12.5px; border-radius: 7px; }
+.opv-btn-icon { min-height: 30px; width: 30px; padding: 0; border-radius: 7px; }
+.opv-btn svg { width: 15px; height: 15px; flex: none; }
+
+/* ── แถบแจ้งว่านี่คือหน้าตัวอย่าง ── */
+.opv-note {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-top: 12px; padding: 9px 12px; border-radius: 8px;
+  border: 1px dashed #d7c48a; background: #fdf8e9; color: #7d5f14; font-size: 12.5px;
+}
+.opv-note b { font-weight: 600; }
+.opv-note a { color: var(--op-accent-ink); text-decoration: underline; text-underline-offset: 2px; font-weight: 500; }
+
+/* ── การ์ดสรุป — เล็ก กดเพื่อกรอง ───────────────────────── */
+.opv-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+@media (min-width: 640px) { .opv-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1000px) { .opv-cards { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.opv-card {
+  position: relative; overflow: hidden; text-align: left;
+  padding: 9px 11px 10px; border-radius: 9px;
+  border: 1px solid var(--op-line); background: var(--op-panel);
+  transition: border-color .14s ease, background .14s ease;
+}
+.opv-card:hover { border-color: #cfd8e3; background: var(--op-hover); }
+/* แถบบางบนหัวการ์ด = สีประจำกลุ่ม (แยกกลุ่มได้โดยไม่ต้องอ่าน) */
+.opv-card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 2px; background: var(--op-tone, transparent); }
+.opv-card .lb { display: block; font-size: 12px; color: var(--op-mid); }
+.opv-card .v { display: block; margin-top: 3px; font-family: var(--op-num); font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 600; line-height: 1.1; }
+.opv-card .hint { display: block; margin-top: 1px; font-size: 11px; color: var(--op-faint); }
+.opv-card[aria-pressed="true"] { border-color: var(--op-ink); background: var(--op-panel); box-shadow: inset 0 0 0 1px var(--op-ink); }
+.opv-card[aria-pressed="true"] .lb { color: var(--op-ink); font-weight: 600; }
+/* กลุ่ม "ต้องตรวจสอบ" — เน้นแบบสุภาพ ไม่ใช่แดงทั้งใบ */
+.opv-card-attn { background: #fffaf9; }
+.opv-card-attn .v { color: var(--op-rose); }
+
+/* ── แถบเครื่องมือ: ค้นหา + ตัวกรอง ───────────────────────── */
+.opv-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-top: 14px; padding: 10px; border-radius: 10px 10px 0 0;
+  border: 1px solid var(--op-line); border-bottom: 0; background: var(--op-panel);
+}
+.opv-search {
+  display: flex; align-items: center; gap: 8px; flex: 1 1 300px; min-width: 220px;
+  min-height: 36px; padding: 0 10px; border-radius: 8px;
+  border: 1px solid var(--op-line); background: var(--op-bg);
+  transition: border-color .14s ease, background .14s ease;
+}
+.opv-search:focus-within { background: var(--op-panel); border-color: var(--op-accent); box-shadow: 0 0 0 3px var(--op-accent-wash); }
+.opv-search svg { width: 15px; height: 15px; flex: none; color: var(--op-faint); }
+.opv-search input { width: 100%; min-width: 0; border: 0; background: transparent; outline: none; font: inherit; font-size: 13.5px; color: var(--op-ink); }
+.opv-search input::placeholder { color: var(--op-faint); }
+.opv-search kbd {
+  flex: none; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--op-line);
+  background: var(--op-panel); color: var(--op-faint); font-family: var(--op-num); font-size: 10.5px;
+}
+.opv-x { flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; color: var(--op-mid); background: #dfe4ea; }
+.opv-x:hover { background: #cfd6df; color: var(--op-ink); }
+.opv-x svg { width: 10px; height: 10px; color: inherit; }
+
+.opv-sel-wrap { position: relative; display: inline-flex; align-items: center; }
+.opv-sel-wrap > svg { position: absolute; right: 9px; width: 12px; height: 12px; pointer-events: none; color: var(--op-faint); }
+.opv-select {
+  appearance: none; min-height: 36px; padding: 0 26px 0 11px; border-radius: 8px;
+  border: 1px solid var(--op-line); background: var(--op-panel); color: var(--op-ink);
+  font: inherit; font-size: 13px; cursor: pointer;
+}
+.opv-select:hover { border-color: #d4dbe4; }
+.opv-select[data-on="1"] { border-color: var(--op-accent); background: var(--op-accent-wash); color: var(--op-accent-ink); font-weight: 500; }
+.opv-date { min-height: 36px; padding: 0 9px; border-radius: 8px; border: 1px solid var(--op-line); background: var(--op-panel); font: inherit; font-size: 12.5px; color: var(--op-ink); }
+
+/* ตัวกรองที่ใช้อยู่ — เห็นทั้งหมดในบรรทัดเดียว ปลดทีละอันได้ */
+.opv-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 10px 10px; border: 1px solid var(--op-line); border-top: 0; border-bottom: 0; background: var(--op-panel); }
+.opv-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 6px 3px 9px; border-radius: 999px;
+  border: 1px solid var(--op-line); background: var(--op-bg); font-size: 12px; color: var(--op-mid);
+}
+.opv-chip b { font-weight: 600; color: var(--op-ink); }
+.opv-chip .rm { display: grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; color: var(--op-faint); }
+.opv-chip .rm:hover { background: #dfe4ea; color: var(--op-ink); }
+.opv-chip .rm svg { width: 9px; height: 9px; }
+.opv-clear { font-size: 12px; color: var(--op-accent-ink); text-decoration: underline; text-underline-offset: 2px; }
+
+/* ── ตาราง ──────────────────────────────────────────────── */
+.opv-tablewrap { border: 1px solid var(--op-line); border-radius: 0 0 10px 10px; background: var(--op-panel); overflow: hidden; }
+.opv-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.opv-table th, .opv-table td { text-align: left; vertical-align: middle; }
+.opv-table thead th {
+  position: sticky; top: 0; z-index: 3;
+  padding: 0; height: 34px;
+  background: #fbfcfd; border-bottom: 1px solid var(--op-line); border-top: 1px solid var(--op-line);
+  font-size: 11.5px; font-weight: 600; color: var(--op-mid); white-space: nowrap;
+}
+.opv-th { display: flex; align-items: center; gap: 4px; width: 100%; height: 34px; padding: 0 10px; font: inherit; color: inherit; }
+.opv-th.r { justify-content: flex-end; }
+button.opv-th:hover { color: var(--op-ink); background: #f1f4f7; }
+.opv-th i { font-style: normal; font-size: 9px; color: var(--op-faint); }
+.opv-th[data-sort] i { color: var(--op-accent); }
+.opv-table tbody td { padding: 7px 10px; border-bottom: 1px solid var(--op-line-soft); }
+.opv-table tbody tr:last-child td { border-bottom: 0; }
+.opv-row { cursor: pointer; transition: background .1s ease; }
+.opv-row:hover td { background: var(--op-hover); }
+.opv-row:focus-visible { outline: none; }
+.opv-row:focus-visible td { background: var(--op-sel); box-shadow: inset 0 -1px 0 var(--op-accent), inset 0 1px 0 var(--op-accent); }
+/* ใบที่จบแล้วต้องเงียบกว่าใบที่ยังค้างเสมอ */
+.opv-row[data-done="1"] td { color: var(--op-faint); }
+.opv-row[data-done="1"] .opv-id b, .opv-row[data-done="1"] .opv-cust b, .opv-row[data-done="1"] .opv-amt { color: var(--op-mid); font-weight: 500; }
+
+/* แถบสีสถานะซ้ายสุด — รู้สถานะโดยไม่ต้องอ่าน */
+.opv-table td.opv-c1 { position: relative; padding-left: 15px; }
+.opv-table td.opv-c1::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--op-tone); }
+
+.opv-id { display: flex; flex-direction: column; gap: 3px; }
+.opv-id b { font-family: var(--op-num); font-variant-numeric: tabular-nums; font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; color: var(--op-ink); }
+.opv-row:hover .opv-id b { color: var(--op-accent-ink); text-decoration: underline; text-underline-offset: 2px; }
+.opv-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.opv-tag {
+  display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border-radius: 5px;
+  font-size: 10.5px; font-weight: 600; white-space: nowrap; line-height: 1.5;
+  background: var(--op-slate-bg); color: var(--op-slate);
+}
+.opv-tag-hot { background: var(--op-rose-bg); color: var(--op-rose); }
+.opv-tag-warm { background: var(--op-amber-bg); color: var(--op-amber); }
+.opv-tag-cool { background: var(--op-blue-bg); color: var(--op-blue); }
+.opv-tag-soft { background: var(--op-violet-bg); color: var(--op-violet); }
+
+.opv-cust { display: flex; flex-direction: column; min-width: 0; }
+.opv-cust b { font-weight: 500; font-size: 13.5px; color: var(--op-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opv-cust span { font-size: 11.5px; color: var(--op-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opv-items { font-size: 12.5px; color: var(--op-mid); }
+.opv-items b { font-weight: 500; color: var(--op-ink); }
+.opv-items span { display: block; font-size: 11.5px; color: var(--op-faint); }
+
+.opv-badge {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 600; white-space: nowrap; line-height: 1.6;
+  background: var(--op-b-bg); color: var(--op-b-fg);
+}
+.opv-badge i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: none; }
+/* ใบที่จบแล้ว: ป้ายไม่มีพื้น ตัวอักษรจาง */
+.opv-badge[data-quiet="1"] { background: transparent; color: var(--op-off); font-weight: 500; padding-left: 0; }
+
+.opv-step { display: block; margin-top: 3px; font-family: var(--op-num); font-variant-numeric: tabular-nums; font-size: 10.5px; color: var(--op-faint); }
+.opv-amt { display: block; text-align: right; font-family: var(--op-num); font-variant-numeric: tabular-nums; font-size: 13.5px; font-weight: 600; color: var(--op-ink); }
+.opv-amt small { display: block; font-size: 10.5px; font-weight: 600; }
+.opv-when { font-family: var(--op-num); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--op-mid); white-space: nowrap; }
+.opv-when span { display: block; font-size: 11px; color: var(--op-faint); }
+.opv-when span.hot { color: var(--op-rose); font-weight: 600; }
+
+/* เตือนแบบสุภาพ — ไม่ทำพื้นแดงทั้งแถว */
+.opv-attn { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: var(--op-rose); }
+.opv-attn svg { width: 11px; height: 11px; flex: none; }
+
+/* ── ปุ่มจัดการท้ายแถว ── */
+.opv-act { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
+.opv-menu-wrap { position: relative; }
+.opv-menu {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; min-width: 194px;
+  padding: 4px; border-radius: 9px; border: 1px solid var(--op-line); background: var(--op-panel);
+  box-shadow: 0 10px 26px rgba(22, 35, 60, .14);
+}
+.opv-menu[data-up="1"] { top: auto; bottom: calc(100% + 4px); }
+.opv-menu button, .opv-menu a {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px; border-radius: 6px;
+  font-size: 13px; color: var(--op-ink); text-align: left; white-space: nowrap;
+}
+.opv-menu button:hover, .opv-menu a:hover { background: var(--op-hover); }
+.opv-menu hr { margin: 4px 2px; border: 0; border-top: 1px solid var(--op-line-soft); }
+.opv-menu .sub { padding: 5px 9px 3px; font-size: 10.5px; font-weight: 600; letter-spacing: .05em; color: var(--op-faint); }
+.opv-menu svg { width: 14px; height: 14px; flex: none; color: var(--op-faint); }
+
+/* ── ท้ายตาราง: แบ่งหน้า ── */
+.opv-page {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 11px; border-top: 1px solid var(--op-line); background: #fbfcfd;
+  font-size: 12.5px; color: var(--op-mid);
+}
+.opv-page .grp { display: flex; align-items: center; gap: 6px; }
+.opv-pbtn {
+  min-width: 30px; height: 30px; padding: 0 8px; border-radius: 7px;
+  border: 1px solid var(--op-line); background: var(--op-panel); color: var(--op-ink);
+  font-family: var(--op-num); font-variant-numeric: tabular-nums; font-size: 12.5px;
+}
+.opv-pbtn:hover:not(:disabled) { background: var(--op-hover); }
+.opv-pbtn:disabled { opacity: .4; }
+.opv-pbtn[aria-current="page"] { background: var(--op-ink); border-color: var(--op-ink); color: #fff; font-weight: 600; }
+.opv-page .dots { color: var(--op-faint); padding: 0 2px; }
+
+/* ── สถานะโหลด / ว่าง ── */
+.opv-skel { height: 11px; border-radius: 4px; background: linear-gradient(90deg, #eef1f5 25%, #e4e9ef 37%, #eef1f5 63%); background-size: 400% 100%; animation: opv-sh 1.3s ease infinite; }
+@keyframes opv-sh { from { background-position: 100% 50%; } to { background-position: 0 50%; } }
+.opv-empty { padding: 52px 20px; text-align: center; }
+.opv-empty b { display: block; font-family: var(--op-display); font-weight: 500; font-size: 15.5px; }
+.opv-empty p { margin-top: 5px; font-size: 13px; color: var(--op-mid); }
+.opv-empty .opv-btn { margin-top: 13px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .opv-skel { animation: none; }
+  .opv * { transition: none !important; }
+}
+
+/* ── จอแคบ (< 900px): ตารางกลายเป็นการ์ด ───────────────────
+   ไม่บีบ 8 คอลัมน์ลงจอมือถือ — พับเป็นการ์ดที่ยังกดได้ทั้งใบ    */
+@media (max-width: 899px) {
+  .opv-tablewrap { border-radius: 10px; margin-top: 8px; }
+  .opv-bar { border-radius: 10px; border-bottom: 1px solid var(--op-line); }
+  .opv-chips { border: 0; padding: 8px 2px 0; background: transparent; }
+  .opv-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .opv-table, .opv-table tbody, .opv-table tr, .opv-table td { display: block; width: 100%; }
+  .opv-row { position: relative; padding: 10px 12px 10px 15px; border-bottom: 1px solid var(--op-line-soft); }
+  .opv-row::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--op-tone); }
+  .opv-table tbody td { padding: 2px 0; border: 0; }
+  .opv-table td.opv-c1 { padding-left: 0; }
+  .opv-table td.opv-c1::before { display: none; }
+  /* จับคู่ค่า–ป้ายกำกับ ให้ยังรู้ว่าตัวเลขคืออะไร */
+  .opv-table td[data-lb]::before { content: attr(data-lb) " "; font-size: 11px; color: var(--op-faint); }
+  .opv-table td[data-lb] { display: flex; align-items: baseline; gap: 6px; }
+  .opv-amt { text-align: left; }
+  .opv-act { justify-content: flex-start; margin-top: 7px; }
+  .opv-btn-sm, .opv-btn-icon { min-height: 36px; }
+  .opv-btn-icon { width: 36px; }
+}

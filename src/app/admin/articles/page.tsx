@@ -7,7 +7,24 @@ import { useCan } from "@/lib/perm-context";
 import RichEditor from "@/components/RichEditor";
 import { PAGE_OVERRIDES, articleOf, blocksToHtml, isPageSlug, slugify, thaiDate, type Article } from "@/lib/articles";
 import { PAGE_STARTERS } from "@/lib/page-starters";
+// ⚠️ โหมด "แก้ไขบทความ" ยังใช้ชุดเดิมอยู่ (ตัวเขียนเนื้อหา RichEditor ผูกกับสไตล์ชุดนั้น)
+// หน้ารายการแปลงเป็นชุดใหม่แล้ว — จะรื้อตัวแก้ไขทีหลังเป็นงานแยก
 import { btnNeutral, btnPrimary, btnSmDanger, btnSmGhost, card, faint, h1, muted, shortTime } from "@/lib/admin-ui";
+import {
+  Btn,
+  Empty,
+  HeroStat,
+  ListHead,
+  PageHead,
+  PageShell,
+  Row,
+  RowMain,
+  RowSide,
+  Rows,
+  Stat,
+  Stats,
+  Tag,
+} from "@/components/admin/ui";
 
 /**
  * ✍️ เขียนบทความ — ทีมคอนเทนต์เขียนเอง ไม่ต้องรอโปรแกรมเมอร์
@@ -315,83 +332,101 @@ function ArticlesInner() {
 
   /* ── รายการ ── */
   const blogList = list.filter((a) => !isPageSlug(a.slug));
-  return (
-    <div className="w-full">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className={h1}>✍️ บทความ</h1>
-          <p className={`mt-1 text-sm ${muted}`}>
-            เขียนบทความขึ้นหน้าเว็บ <Link href="/articles" target="_blank" className="font-semibold text-amber-600 hover:underline">/articles ↗</Link> — ช่วย SEO ให้ลูกค้าหาร้านเจอ
-          </p>
-        </div>
-        {mayManage && (
-          <button type="button" onClick={startNew} className={btnPrimary}>
-            ＋ เขียนบทความใหม่
-          </button>
-        )}
-      </div>
+  const drafts = blogList.filter((a) => !a.published).length;
+  const overridden = PAGE_OVERRIDES.filter((pg) => list.some((a) => a.slug === pg.slug && a.published)).length;
 
-      {msg && <p className="mt-3 text-sm font-semibold text-emerald-600">{msg}</p>}
+  return (
+    <PageShell>
+      <PageHead
+        group="ระบบ"
+        title="บทความ"
+        count={`${blogList.length} เรื่อง`}
+        sub={
+          <>
+            เขียนบทความขึ้นหน้าเว็บ{" "}
+            <Link href="/articles" target="_blank" className="font-semibold underline-offset-4 hover:underline" style={{ color: "var(--dk-blue-deep)" }}>
+              /articles
+            </Link>{" "}
+            — ช่วย SEO ให้ลูกค้าหาร้านเจอ
+          </>
+        }
+        tools={mayManage ? <Btn tone="yolk" onClick={startNew}>เขียนบทความใหม่</Btn> : undefined}
+      />
+
+      {msg && (
+        <p className="mt-3 px-2 text-[13px] font-semibold" style={{ color: "var(--dk-mint-ink)" }}>
+          {msg}
+        </p>
+      )}
+
+      <Stats cols={4}>
+        <HeroStat
+          n={drafts}
+          label="ฉบับร่าง"
+          detail={drafts ? "ยังไม่ขึ้นหน้าเว็บ — เผยแพร่เมื่อพร้อม" : "เผยแพร่ครบทุกเรื่องแล้ว"}
+          pct={blogList.length ? (drafts / blogList.length) * 100 : 0}
+        />
+        <Stat label="เผยแพร่แล้ว" value={blogList.length - drafts} hint="ขึ้นหน้าเว็บอยู่" />
+        <Stat label="หน้าหลักที่เขียนทับ" value={overridden} hint={`จาก ${PAGE_OVERRIDES.length} หน้า`} />
+      </Stats>
 
       {/* ── หน้าเว็บหลักที่เขียนทับได้ ── */}
-      <section className={`mt-5 p-4 ${card}`}>
-        <h2 className="text-sm font-semibold text-slate-800">📄 หน้าเว็บหลัก (เขียนทับได้)</h2>
-        <p className={`mt-0.5 text-xs ${faint}`}>
-          เขียนเนื้อหาของตัวเองทับหน้าสำเร็จรูปได้ — เผยแพร่เมื่อไหร่หน้านั้นใช้เนื้อหาที่เขียน ·
-          ลบทิ้ง = กลับไปใช้หน้าสำเร็จรูปเดิมทันที
+      <section className="dkb-g mt-4 p-4">
+        <h2 className="dkb-h2 text-[1.02rem]">หน้าเว็บหลัก (เขียนทับได้)</h2>
+        <p className="mt-0.5 text-[12.5px]" style={{ color: "var(--dk-navy-soft)" }}>
+          เขียนเนื้อหาของตัวเองทับหน้าสำเร็จรูปได้ — เผยแพร่เมื่อไหร่หน้านั้นใช้เนื้อหาที่เขียน · ลบทิ้ง = กลับไปใช้หน้าสำเร็จรูปเดิมทันที
         </p>
-        <div className="mt-3 space-y-2">
+        <div className="mt-3 grid gap-2">
           {PAGE_OVERRIDES.map((pg) => {
             const ov = list.find((a) => a.slug === pg.slug);
             return (
-              <div key={pg.slug} className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-3">
+              <div
+                key={pg.slug}
+                className="relative flex flex-wrap items-center gap-2 overflow-hidden rounded-[16px] px-4 py-3 pl-5"
+                style={{ background: "rgba(255,255,255,.6)" }}
+              >
+                <span
+                  className="absolute inset-y-0 left-0 w-[5px]"
+                  style={{ background: ov?.published ? "var(--dk-yolk-deep)" : "var(--dk-quiet)" }}
+                />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-bold text-slate-800">{pg.label}</span>
-                  <span className={`block text-xs ${faint}`}>{pg.path}</span>
+                  <span className="dkb-display block text-[0.95rem]">{pg.label}</span>
+                  <span className="dkb-code block" style={{ color: "var(--dk-faint)" }}>
+                    {pg.path}
+                  </span>
                 </span>
                 {ov ? (
                   <>
-                    <span
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${
-                        ov.published
-                          ? "bg-amber-50 text-amber-700 ring-amber-200"
-                          : "bg-slate-100 text-slate-500 ring-slate-200"
-                      }`}
-                    >
-                      {ov.published ? "✍️ ใช้ฉบับที่เขียนเอง" : "ร่าง (หน้าเดิมยังแสดงอยู่)"}
-                    </span>
+                    <Tag tone={ov.published ? "yolk" : "quiet"}>{ov.published ? "ใช้ฉบับที่เขียนเอง" : "ร่าง (หน้าเดิมยังแสดงอยู่)"}</Tag>
                     {mayManage && (
                       <>
-                        <button type="button" onClick={() => startEdit(ov)} className={`${btnSmGhost} font-bold`}>
+                        <Btn small onClick={() => startEdit(ov)}>
                           แก้ไข
-                        </button>
-                        <button
-                          type="button"
+                        </Btn>
+                        <Btn
+                          small
                           onClick={() => {
                             if (confirm(`ลบฉบับที่เขียนเอง แล้วกลับไปใช้หน้า ${pg.label} สำเร็จรูปเดิม?`))
                               void fetch(`/api/admin/articles?slug=${pg.slug}`, { method: "DELETE" }).then(() => load());
                           }}
-                          className={btnSmDanger}
                         >
                           กลับหน้าเดิม
-                        </button>
+                        </Btn>
                       </>
                     )}
                   </>
                 ) : (
                   <>
-                    <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200">
-                      ใช้หน้าสำเร็จรูป
-                    </span>
+                    <Tag tone="mint">ใช้หน้าสำเร็จรูป</Tag>
                     {mayManage && (
-                      <button type="button" onClick={() => startPage(pg.slug, pg.label)} className={`${btnNeutral} text-xs`}>
-                        ✍️ เขียนทับหน้านี้
-                      </button>
+                      <Btn small onClick={() => startPage(pg.slug, pg.label)}>
+                        เขียนทับหน้านี้
+                      </Btn>
                     )}
                   </>
                 )}
-                <a href={pg.path} target="_blank" rel="noopener noreferrer" className={btnSmGhost}>
-                  ดู ↗
+                <a href={pg.path} target="_blank" rel="noopener noreferrer" className="dkb-btn dkb-btn-ghost dkb-btn-sm">
+                  ดู
                 </a>
               </div>
             );
@@ -399,71 +434,65 @@ function ArticlesInner() {
         </div>
       </section>
 
-      <div className={`mt-5 overflow-hidden ${card}`}>
-        {loading ? (
-          <p className="p-10 text-center text-sm text-slate-400">กำลังโหลด…</p>
-        ) : blogList.length === 0 ? (
-          <div className="p-12 text-center">
-            <span className="text-5xl">✍️</span>
-            <p className="mt-3 text-sm font-semibold text-slate-600">ยังไม่มีบทความ — เริ่มเขียนเรื่องแรกเลย</p>
-            <p className={`mt-1 text-xs ${faint}`}>ไอเดีย: วิธีเตรียมไฟล์ · เลือกกระดาษยังไง · รีวิวงานที่เคยทำ</p>
-          </div>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {blogList.map((a) => (
-              <li key={a.slug} className="flex flex-wrap items-center gap-3 p-4 transition hover:bg-slate-50/70">
+      <ListHead title="บทความ" note="แก้ล่าสุดขึ้นก่อน" />
+
+      {loading ? (
+        <Empty title="กำลังโหลด…" body="ดึงบทความจากเซิร์ฟเวอร์" />
+      ) : blogList.length === 0 ? (
+        <Empty
+          title="ยังไม่มีบทความ"
+          body="ไอเดียเริ่มต้น: วิธีเตรียมไฟล์ · เลือกกระดาษยังไง · รีวิวงานที่เคยทำ"
+        />
+      ) : (
+        <Rows>
+          {blogList.map((a) => (
+            <Row key={a.slug} tone={a.published ? "var(--dk-mint)" : "var(--dk-yolk-deep)"} done={a.published}>
+              <span className="flex min-w-0 flex-1 items-center gap-3">
                 {a.cover ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={a.cover} alt="" className="h-12 w-20 shrink-0 rounded-lg object-cover ring-1 ring-slate-200" />
+                  <span className="dkb-thumb !h-[46px] w-[74px] shrink-0">
+                    <img src={a.cover} alt="" />
+                  </span>
                 ) : (
-                  <span className="grid h-12 w-20 shrink-0 place-items-center rounded-lg bg-slate-100 text-xl">📝</span>
+                  <span className="dkb-thumb !h-[46px] w-[74px] shrink-0" />
                 )}
-                <div className="min-w-0 flex-1">
-                  <button
-                    type="button"
-                    onClick={() => startEdit(a)}
-                    className="block max-w-full truncate text-left text-sm font-bold text-slate-800 hover:text-amber-600 hover:underline"
-                  >
-                    {a.title}
-                  </button>
-                  <p className={`truncate text-xs ${faint}`}>
-                    /articles/{a.slug} · {thaiDate(a.createdAt)} · แก้ล่าสุด {shortTime(a.updatedAt)}
-                  </p>
-                </div>
-                <span
-                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${
-                    a.published ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : "bg-slate-50 text-slate-500 ring-slate-200"
-                  }`}
-                >
-                  {a.published ? "เผยแพร่" : "ฉบับร่าง"}
+                <RowMain
+                  name={a.title}
+                  tags={!a.published ? <Tag tone="yolk">ฉบับร่าง</Tag> : undefined}
+                  meta={
+                    <>
+                      <span className="id">/articles/{a.slug}</span>
+                      <span>{thaiDate(a.createdAt)}</span>
+                      <span>แก้ล่าสุด {shortTime(a.updatedAt)}</span>
+                      {!a.cover && <span className="warn">ยังไม่ใส่รูปปก</span>}
+                    </>
+                  }
+                />
+              </span>
+              <RowSide>
+                <span className="flex items-center gap-2">
+                  {a.published && (
+                    <a href={`/articles/${a.slug}`} target="_blank" rel="noopener noreferrer" className="dkb-btn dkb-btn-ghost dkb-btn-sm">
+                      ดูหน้าจริง
+                    </a>
+                  )}
+                  {mayManage && (
+                    <>
+                      <Btn tone="navy" small onClick={() => startEdit(a)}>
+                        แก้ไข
+                      </Btn>
+                      <Btn small onClick={() => void remove(a.slug)}>
+                        ลบ
+                      </Btn>
+                    </>
+                  )}
                 </span>
-                {a.published && (
-                  <a
-                    href={`/articles/${a.slug}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={btnSmGhost}
-                    title="เปิดหน้าจริง"
-                  >
-                    ดู ↗
-                  </a>
-                )}
-                {mayManage && (
-                  <>
-                    <button type="button" onClick={() => startEdit(a)} className={`${btnSmGhost} font-bold`}>
-                      แก้ไข
-                    </button>
-                    <button type="button" onClick={() => void remove(a.slug)} className={btnSmDanger}>
-                      ลบ
-                    </button>
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
+              </RowSide>
+            </Row>
+          ))}
+        </Rows>
+      )}
+    </PageShell>
   );
 }
 
