@@ -21,6 +21,8 @@ import {
   TONE,
   type Tone,
 } from "@/lib/admin-ui";
+// ⚠️ หน้านี้มี <Banner> ของตัวเองอยู่แล้ว — import ของชุดกลางจึงตั้งชื่อใหม่กันชน
+import { Btn, HeroStat, PageHead, PageShell, SearchBox, Stat, Stats } from "@/components/admin/ui";
 
 /**
  * คลังสต๊อกวัสดุ — ยอดคงเหลือมาจาก ledger (stockMoves) เท่านั้น แก้ตัวเลขลอย ๆ ไม่ได้
@@ -248,35 +250,46 @@ export default function StockPage() {
   }, [moves, moveFilter, logQ]);
 
   return (
-    <div className="w-full pb-16">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className={h1}>คลังสต๊อกวัสดุ</h1>
-          <p className={`mt-1 ${subtle}`}>
-            ขายหน้าเว็บตัดอัตโนมัติ · ฝั่งผลิตเบิกจากระบบเบิกของ · ทุกการเปลี่ยนมีบันทึกใน ledger
-          </p>
-        </div>
-        {mayEdit && (
-          <div className="flex items-center gap-2">
-            <a href="/admin/stock/link" className={btnNeutral}>
-              ผูกตัวเลือกสินค้า
-            </a>
-            <button type="button" onClick={() => setAddOpen(true)} className={btnPrimary}>
-              เพิ่มวัสดุ
-            </button>
-          </div>
-        )}
-      </div>
+    <PageShell>
+      <PageHead
+        group="สินค้า"
+        title="คลังสต๊อกวัสดุ"
+        count={`${fmtN(items.length)} รายการ`}
+        sub="ขายหน้าเว็บตัดอัตโนมัติ · ฝั่งผลิตเบิกจากระบบเบิกของ · ทุกการเปลี่ยนมีบันทึกใน ledger"
+        tools={
+          mayEdit ? (
+            <>
+              <Btn href="/admin/stock/link">ผูกตัวเลือกสินค้า</Btn>
+              <Btn tone="yolk" onClick={() => setAddOpen(true)}>
+                เพิ่มวัสดุ
+              </Btn>
+            </>
+          ) : undefined
+        }
+      />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatTile label="วัสดุในคลัง" value={fmtN(items.length)} suffix="รายการ" />
-        <StatTile label="ถึงจุดต้องสั่ง" value={fmtN(needOrder.length)} suffix="รายการ" tone={needOrder.length ? "danger" : "ok"} />
-        <StatTile label="เคลื่อนไหววันนี้" value={fmtN(todayMoves)} suffix="ครั้ง" />
-        <StatTile label="เบิกทำเสีย 30 วัน" value={fmtN(monthDefect)} suffix="ชิ้น" tone={monthDefect ? "warn" : undefined} />
-      </div>
+      <Stats cols={4}>
+        <HeroStat
+          n={fmtN(needOrder.length)}
+          label="ถึงจุดต้องสั่ง"
+          detail={
+            needOrder.length
+              ? `สั่งเพิ่มก่อนของหมด · เคลื่อนไหววันนี้ ${fmtN(todayMoves)} ครั้ง`
+              : `ของพอใช้ทุกตัว · เคลื่อนไหววันนี้ ${fmtN(todayMoves)} ครั้ง`
+          }
+          pct={items.length ? (needOrder.length / items.length) * 100 : 0}
+        />
+        <Stat label="เคลื่อนไหววันนี้" value={fmtN(todayMoves)} hint="ครั้ง (รับเข้า/เบิก/ขาย)" />
+        <Stat
+          label="เบิกทำเสีย 30 วัน"
+          value={fmtN(monthDefect)}
+          hint={monthDefect ? "ชิ้น — ควรดูสาเหตุ" : "ชิ้น"}
+          tone={monthDefect ? "due" : undefined}
+        />
+      </Stats>
 
       {/* ── แท็บ ── */}
-      <div className="mb-4 inline-flex rounded-xl border border-slate-200 bg-white p-1" role="tablist">
+      <div className="dkb-g mb-4 mt-4 inline-flex p-1" role="tablist">
         {TABS.map((t) => (
           <button
             key={t}
@@ -289,7 +302,7 @@ export default function StockPage() {
               setErr("");
             }}
             className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
-              tab === t ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"
+              tab === t ? "bg-[color:var(--dk-navy)] text-white" : "text-[color:var(--dk-navy-soft)] hover:bg-white/70"
             }`}
           >
             {t}
@@ -540,7 +553,7 @@ export default function StockPage() {
           }}
         />
       )}
-    </div>
+    </PageShell>
   );
 }
 
@@ -563,16 +576,6 @@ function Banner({ tone, children }: { tone: Tone; children: React.ReactNode }) {
   );
 }
 
-function StatTile({ label: text, value, suffix, tone }: { label: string; value: string; suffix: string; tone?: Tone }) {
-  return (
-    <div className={`${card} p-4`}>
-      <p className={labelCls}>{text}</p>
-      <p className={`mt-1.5 ${metric} ${tone ? TONE[tone].text : ""}`}>
-        {value} <span className="text-xs font-medium text-slate-400">{suffix}</span>
-      </p>
-    </div>
-  );
-}
 
 function Chip({
   children,

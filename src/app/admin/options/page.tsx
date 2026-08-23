@@ -14,7 +14,8 @@ import { deletePreset, fetchPresets, persistPreset } from "@/lib/preset-repo";
 import { resetPresetsLocal } from "@/lib/preset-store";
 import { fetchPresetUsage } from "@/lib/product-repo";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { badge, btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
+import { badge, card, faint, muted } from "@/lib/admin-ui";
+import { Banner, Btn, Empty, HeroStat, PageHead, PageShell, SearchBox, Stat, Stats } from "@/components/admin/ui";
 
 type Draft = OptionPreset & { _saving?: boolean; _dirty?: boolean };
 
@@ -211,49 +212,62 @@ function AdminOptionsPageInner() {
 
   const sel = presets[selected] as Draft | undefined;
 
+  const linked = Object.values(usage).reduce((a: number, b) => a + (b as number), 0);
+  const unused = presets.filter((p) => !(usage[p.id] ?? 0)).length;
+
   return (
-    <div className="w-full">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className={h1}>
-            คลังตัวเลือก <span className="font-medium text-slate-400">({presets.length})</span>
-          </h1>
-          <p className={`mt-1 ${muted}`}>
-            กลุ่มตัวเลือกที่ใช้ซ้ำได้ เช่น ชนิดกระดาษ เคลือบ — แก้ที่นี่ที่เดียว สินค้าที่ “ลิงก์” จะอัปเดตตามทันที
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {!isSupabaseConfigured && (
-            <button
-              type="button"
-              onClick={handleReset}
-              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
-            >
-              ↩ คืนค่าตั้งต้น
-            </button>
-          )}
-          <button type="button" onClick={addPreset} className={btnPrimary}>
-            ＋ คลังใหม่
-          </button>
-        </div>
-      </div>
+    <PageShell>
+      <PageHead
+        group="สินค้า"
+        title="คลังตัวเลือก"
+        count={`${presets.length} คลัง`}
+        sub="กลุ่มตัวเลือกที่ใช้ซ้ำได้ เช่น ชนิดกระดาษ เคลือบ — แก้ที่นี่ที่เดียว สินค้าที่ลิงก์จะอัปเดตตามทันที"
+        tools={
+          <>
+            {!isSupabaseConfigured && <Btn onClick={handleReset}>คืนค่าตั้งต้น</Btn>}
+            <Btn tone="yolk" onClick={addPreset}>
+              คลังใหม่
+            </Btn>
+          </>
+        }
+      />
 
       {error && (
-        <div className="mt-4 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{error}</div>
+        <div className="mt-4">
+          <Banner tone="hot" title={error} />
+        </div>
       )}
 
+      <Stats cols={4}>
+        <HeroStat
+          n={presets.length}
+          label="คลังตัวเลือก"
+          detail={unused ? `ในนี้ยังไม่มีสินค้าลิงก์ ${unused} คลัง — แก้ไปก็ไม่มีผลกับใคร` : "ทุกคลังมีสินค้าลิงก์อยู่"}
+          pct={presets.length ? ((presets.length - unused) / presets.length) * 100 : 0}
+        />
+        <Stat label="สินค้าที่ลิงก์อยู่" value={linked} hint="รวมทุกคลัง" />
+        <Stat
+          label="คลังที่ไม่มีใครใช้"
+          value={unused}
+          hint={unused ? "คลัง — พิจารณาลบ" : "คลัง"}
+          tone={unused ? "due" : undefined}
+        />
+      </Stats>
+
       {loading ? (
-        <div className={`mt-5 p-10 text-center text-sm ${muted} ${card}`}>กำลังโหลด…</div>
+        <div className="mt-4">
+          <Empty title="กำลังโหลด…" body="ดึงคลังตัวเลือกจากเซิร์ฟเวอร์" />
+        </div>
       ) : presets.length === 0 ? (
-        <div className={`mt-5 p-10 text-center text-sm ${muted} ${card}`}>
-          ยังไม่มีคลัง — กด “＋ คลังใหม่” หรือ{" "}
+        <div className="dkb-g mt-4 p-10 text-center text-[14px]" style={{ color: "var(--dk-navy-soft)" }}>
+          ยังไม่มีคลัง — กดปุ่ม “คลังใหม่” มุมขวาบน หรือ{" "}
           <button
             type="button"
             onClick={() => {
               setPresets(DEFAULT_PRESETS.map((p) => ({ ...p, _dirty: true })));
               setSelected(0);
             }}
-            className="font-semibold text-amber-600 underline"
+            className="font-semibold underline" style={{ color: "var(--dk-blue-deep)" }}
           >
             โหลดคลังตั้งต้น
           </button>
@@ -261,17 +275,9 @@ function AdminOptionsPageInner() {
       ) : (
         <div className="mt-5 grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
           {/* ── ซ้าย: รายการคลัง ── */}
-          <div className={`overflow-hidden ${card}`}>
-            <div className="border-b border-slate-100 p-2">
-              <div className="relative">
-                <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="ค้นหาคลัง…"
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-8 pr-3 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
-                />
-              </div>
+          <div className="dkb-g overflow-hidden">
+            <div className="border-b p-2" style={{ borderColor: "var(--dk-hair)" }}>
+              <SearchBox value={query} onChange={setQuery} placeholder="ค้นหาคลัง" />
             </div>
             <ul className="max-h-[60vh] overflow-y-auto">
               {filtered.map(({ p, i }) => {
@@ -536,7 +542,7 @@ function AdminOptionsPageInner() {
         </Link>{" "}
         → แก้ไข → ส่วน “ตัวเลือกสินค้า” → “แทรกจากคลัง”
       </p>
-    </div>
+    </PageShell>
   );
 }
 
