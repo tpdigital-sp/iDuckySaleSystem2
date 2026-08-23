@@ -1047,7 +1047,7 @@ export default function PricelistReportPage() {
               4 ช่อง ไม่ใช่ 7 — เผยแพร่แล้ว/ฉบับร่าง/ยังไม่มีในระบบ อยู่ในแถบบนสุดไปแล้ว
               เอามาซ้ำอีกรอบทำให้ช่องแคบจนป้ายไทยตัดคำกลางคำ ("ยังไม่เผย/แพร่")
             */}
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
               <Tile
                 n={sum.cards}
                 text="ชื่อบนเว็บตารางราคา"
@@ -1073,7 +1073,7 @@ export default function PricelistReportPage() {
             </div>
 
             {/* ── ตัวกรอง ── */}
-            <div className={`${card} space-y-3 p-3`}>
+            <div className={`${card} mt-4 space-y-3 p-3`}>
               {/* แถวบน: 3 กลุ่ม แต่ละกลุ่มเลือกได้ทีละอัน — รางเทาบอกขอบเขตกลุ่มแทนพิลล์เรียงยาว */}
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                 <FilterGroup
@@ -1153,7 +1153,7 @@ export default function PricelistReportPage() {
 
         {/* ── ฟอร์มเพิ่มชื่อเอง ── */}
         {adding ? (
-          <div className={`${card} space-y-3 p-4`}>
+          <div className={`${card} mt-4 space-y-3 p-4`}>
             <div>
               <p className="text-sm font-semibold text-slate-800">➕ เพิ่มชื่อเข้ารายงานเอง</p>
               <p className={`mt-0.5 text-xs ${faint}`}>
@@ -1255,11 +1255,11 @@ export default function PricelistReportPage() {
           </div>
         ) : null}
 
-        {loading && !data ? <p className={`${card} p-8 text-center text-sm ${muted}`}>กำลังอ่านหน้าเว็บตารางราคา…</p> : null}
+        {loading && !data ? <p className={`${card} mt-4 p-8 text-center text-sm ${muted}`}>กำลังอ่านหน้าเว็บตารางราคา…</p> : null}
 
         {/* ── ตารางรายชื่อ ── */}
         {data ? (
-          <div className={`${card} overflow-hidden`}>
+          <div className={`${card} mt-4 overflow-hidden`}>
             {/* จอแคบให้เลื่อนตารางแนวนอนแทนการบีบคอลัมน์จนอ่านไม่ออก */}
             <div className="overflow-x-auto">
             <table className="w-full min-w-[960px] text-sm">
@@ -1510,7 +1510,7 @@ export default function PricelistReportPage() {
 
         {/* ── ถังลบ: บรรทัดที่ลบออกจากรายงาน (กู้คืนได้) ── */}
         {data && data.hiddenRows.length ? (
-          <div className={`${card} p-4`}>
+          <div className={`${card} mt-4 p-4`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-sm font-semibold text-slate-800">
@@ -1562,7 +1562,7 @@ export default function PricelistReportPage() {
 
         {/* ── สินค้าในระบบที่ไม่ได้อยู่บนหน้าแรกเว็บตารางราคา ── */}
         {data && data.extras.length ? (
-          <div className={`${card} p-4`}>
+          <div className={`${card} mt-4 p-4`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-sm font-semibold text-slate-800">
