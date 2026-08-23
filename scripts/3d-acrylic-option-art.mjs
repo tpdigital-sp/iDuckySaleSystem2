@@ -83,8 +83,13 @@ const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_
 const url = (art) =>
   `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${art.includes("/") ? art : `${ID}/${art}`}.jpg`;
 
+/** ไฟล์ที่ไม่ได้ผูกกับตัวเลือก แต่หน้าสินค้าใช้ — อัปให้ด้วยจะได้ไม่ต้องมีสคริปต์แยก */
+const LOOSE_UPLOADS = ["pricesheet-v1"]; // ใบราคาของร้าน (ใช้ในแท็บ "ตารางราคาบวกเพิ่ม")
+
 /** ชื่อไฟล์ที่สคริปต์นี้ต้องอัปเอง (ชุดกลางที่มี "/" มีอยู่บน Storage แล้ว ไม่ต้องอัปทับ) */
-const ARTS = [...new Set(Object.values(MAP).flatMap((m) => Object.values(m)))].filter((a) => !a.includes("/"));
+const ARTS = [...new Set([...Object.values(MAP).flatMap((m) => Object.values(m)), ...LOOSE_UPLOADS])].filter(
+  (a) => !a.includes("/")
+);
 
 const { data: row, error } = await sb.from("products").select("data").eq("id", ID).single();
 if (error) throw error;

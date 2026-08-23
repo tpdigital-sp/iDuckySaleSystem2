@@ -295,6 +295,11 @@ swap(
  * แท็บนี้อัปเดตตามเอง ไม่มีทางค้างเป็นตัวเลขเก่า
  */
 const PRICE_TAB_TITLE = "ตารางราคาบวกเพิ่ม";
+/**
+ * ใบราคาฉบับที่ร้านออกแบบไว้ วางไว้บนสุดของแท็บ — ลูกค้ากดขยายอ่านได้เหมือนที่ร้านส่งให้ทางไลน์
+ * ไฟล์มาจากไดรฟ์ร้าน ย่อ + อัปด้วย 3d-acrylic-art.mjs → 3d-acrylic-option-art.mjs (LOOSE_UPLOADS)
+ */
+const PRICE_SHEET_URL = `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/pricesheet-v1.jpg`;
 const perSize = (fn) => SIZES.map((s) => `${s} ${fn(s)}`).join(" · ");
 const cmOf = (s) => Number(s.replace("cm", ""));
 /** ขนาดที่ตาราง ADD ON บนเว็บมี แต่หน้าเว็บยังไม่เปิดขาย (7cm ขึ้นไป) — ไว้ให้แอดมินตีราคา */
@@ -338,14 +343,22 @@ const priceTabText = [
 
 p.tabs = p.tabs ?? [];
 const pt = p.tabs.findIndex((t) => t.title === PRICE_TAB_TITLE);
+const priceTab = {
+  title: PRICE_TAB_TITLE,
+  text: priceTabText,
+  images: [PRICE_SHEET_URL],
+  imagePos: "top", // ใบราคาอยู่บนสุด เห็นภาพรวมก่อน แล้วค่อยอ่านตัวเลขแยกข้อ
+  imageSize: "lg", // เต็มความกว้าง — ใบราคาเป็นแนวนอน ตัวหนังสือเล็ก ย่อกว่านี้อ่านไม่ออก
+  imageAlign: "center",
+};
 if (pt >= 0) {
-  if (p.tabs[pt].text !== priceTabText) {
-    p.tabs[pt] = { ...p.tabs[pt], text: priceTabText };
-    texts.push(`tabs[${PRICE_TAB_TITLE}] (อัปเดตตัวเลข)`);
+  if (JSON.stringify({ ...p.tabs[pt], ...priceTab }) !== JSON.stringify(p.tabs[pt])) {
+    p.tabs[pt] = { ...p.tabs[pt], ...priceTab };
+    texts.push(`tabs[${PRICE_TAB_TITLE}] (อัปเดตเนื้อหา/ใบราคา)`);
   }
 } else {
   const after = p.tabs.findIndex((t) => t.title === "รายละเอียดเพิ่มเติม");
-  p.tabs.splice(after >= 0 ? after + 1 : p.tabs.length, 0, { title: PRICE_TAB_TITLE, text: priceTabText });
+  p.tabs.splice(after >= 0 ? after + 1 : p.tabs.length, 0, priceTab);
   texts.push(`tabs: เพิ่มแท็บ "${PRICE_TAB_TITLE}"`);
 }
 

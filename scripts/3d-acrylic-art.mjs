@@ -4,7 +4,7 @@
  *
  *   node scripts/3d-acrylic-art.mjs [--out=<dir>]
  *
- * ได้ 14 ไฟล์ ลง .cache/3d-acrylic/upload
+ * ได้ 15 ไฟล์ ลง .cache/3d-acrylic/upload (รวมใบราคาของร้านที่ย่อมาจากไดรฟ์)
  *
  * ── การ์ดขนาด (10 ใบ · แยกกลุ่มละ 5 ขนาด) ────────────────────────────────
  *   p1-size-2 … p1-size-6   กลุ่ม "ขนาดชิ้นที่ 1" (ชิ้นฐาน ชิ้นใหญ่สุด เป็นตัวคิดราคา)
@@ -62,6 +62,18 @@ const SIZE_PHOTOS = [
 ];
 const SIZE_PHOTO = SIZE_PHOTOS.find((f) => existsSync(f));
 if (!SIZE_PHOTO) throw new Error(`ไม่เจอรูปเทียบขนาด — หาที่:\n  ${SIZE_PHOTOS.join("\n  ")}`);
+
+/**
+ * ใบราคา 3D Acrylic ฉบับที่ร้านออกแบบไว้ (โปสเตอร์ที่ส่งให้ลูกค้าทางไลน์)
+ * ต้นฉบับ 7691×5000 บนไดรฟ์ร้าน — ย่อลงให้ขึ้นเว็บได้ แต่ยังอ่านตัวเลขออกตอนกดขยาย
+ */
+const PRICE_SHEETS = [
+  "/Volumes/iDuckyShop/- ข้อมูลตอบลูกค้า/10_อะคริลิค/พวงกุญแจแผ่นอะคริลิค/04_อคล3D/P-n3D-01.jpg",
+  `${process.env.HOME}/Desktop/AdminBuddy/academy-assets/acrylic/price-3d.jpg`,
+];
+const PRICE_SHEET = PRICE_SHEETS.find((f) => existsSync(f));
+/** ความกว้างที่ย่อไป — 2000px อ่านตัวเลขในตารางย่อยออกตอนเปิดไลต์บ็อกซ์ (~290KB) */
+const PRICE_SHEET_W = 2000;
 
 const MASCOT = await mascotDataUri("heart", 560);
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -454,5 +466,17 @@ await save(`extra-ask-${TYPE_V}`, extraPieceArt(prices, "11-29 ชิ้น", ra
 await save(`acrylic-clear-${TYPE_V}`, await clearArt());
 await save(`acrylic-c02-${TYPE_V}`, await c02Art());
 await save(`acrylic-special-${TYPE_V}`, await specialArt(prices));
+
+// ── ใบราคาของร้าน (ก๊อปมาย่อ ไม่ได้วาดใหม่) ────────────────────────────
+if (PRICE_SHEET) {
+  const buf = await sharp(PRICE_SHEET, { limitInputPixels: false })
+    .resize(PRICE_SHEET_W)
+    .jpeg({ quality: 86, chromaSubsampling: "4:4:4" })
+    .toBuffer();
+  writeFileSync(`${OUT}/pricesheet-${TYPE_V}.jpg`, buf);
+  console.log(`🧾 pricesheet-${TYPE_V}.jpg (${Math.round(buf.length / 1024)} KB) ← ${PRICE_SHEET}`);
+} else {
+  console.log(`⚠️ ข้ามใบราคา — ไม่เจอไฟล์ต้นฉบับ (ต่อไดรฟ์ร้านก่อน):\n   ${PRICE_SHEETS.join("\n   ")}`);
+}
 
 console.log(`\n✅ ไฟล์ทั้งหมดอยู่ที่ ${OUT}`);
