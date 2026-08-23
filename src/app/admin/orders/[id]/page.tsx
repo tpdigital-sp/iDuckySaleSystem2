@@ -39,6 +39,7 @@ import {
 import { fetchOrderAdmin, fetchOrdersAdmin, saveOrderAdmin, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
 import { card, faint, muted, shortTime } from "@/lib/admin-ui";
+import { Banner, PageShell } from "@/components/admin/ui";
 import ImageLightbox from "@/components/ImageLightbox";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import PackCheckPanel from "@/components/PackCheckPanel";
@@ -1425,20 +1426,41 @@ export default function AdminOrderDetailPage() {
     ? `${origin}/order/${encodeURIComponent(order.id)}${order.key ? `?key=${encodeURIComponent(order.key)}` : ""}`
     : "";
 
+  /**
+   * งานที่ต้องทำต่อ + สิ่งที่ถูกล็อกอยู่ — ยกขึ้นบนสุดของหน้า
+   * ⚠️ ของเดิมต้องเลื่อนหาเองว่าใบนี้ติดตรงไหน (เก็บเงินไม่ครบ? ยังไม่ตรวจแบบ?)
+   */
+  const blockers: string[] = [];
+  if (order.deposit && !order.deposit.settledAt && order.status !== "ยกเลิก") {
+    blockers.push(
+      order.deposit.firstPaidAt
+        ? `ยังเก็บครึ่งหลังไม่ครบ ${formatPrice(amountDueNow(order))} — พิมพ์ใบงาน/ยิงเลขพัสดุไม่ได้จนเก็บครบ`
+        : `รอลูกค้าโอนมัดจำงวดแรก ${formatPrice(amountDueNow(order))} — ยังไม่เริ่มงาน`
+    );
+  }
+  const nextStep = NEXT_STATUS[order.status]?.to;
+
   return (
-    <div className={`mx-auto w-full max-w-[112rem] overflow-hidden ${card}`}>
+    <PageShell>
+      {blockers.length > 0 && (
+        <div className="mb-4">
+          <Banner tone="hot" title={`ต้องทำต่อ · ${blockers[0]}`} detail={nextStep ? `ขั้นถัดไปหลังเคลียร์แล้ว: ${nextStep}` : undefined} />
+        </div>
+      )}
+
+      <div className="dkb-g overflow-hidden">
       {/* ── แถบหัว ── */}
-      <div className="border-b border-slate-200/70 bg-slate-50/70 px-6 py-5">
+      <div className="border-b px-5 py-4" style={{ borderColor: "var(--dk-hair)" }}>
         {/* บรรทัดบน = ข้อมูลล้วน (เลขออเดอร์ · สถานะตอนนี้ · ยอดรวม) ไม่มีปุ่มปน */}
         <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
           <div className="min-w-0">
-            <Link href="/admin/orders" className="text-xs text-slate-400 hover:text-slate-600">
-              ← คำสั่งซื้อทั้งหมด
+            <Link href="/admin/orders" className="dkb-eyebrow" style={{ color: "var(--dk-faint)" }}>
+              คำสั่งซื้อทั้งหมด
             </Link>
-            <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold tracking-tight text-slate-900">
+            <h1 className="dkb-display mt-1 flex flex-wrap items-center gap-2 text-[1.55rem] leading-tight">
               {order.id}
               {order.rush && (
-                <span className="rounded-full bg-rose-500 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">🔥 งานเร่ง</span>
+                <span className="dkb-tag" style={{ background: "var(--dk-coral-deep)", color: "#fff" }}><i />งานเร่ง</span>
               )}
               {(() => {
                 const d = order.useByDate ? daysToUseBy(order) : null;
@@ -1458,7 +1480,7 @@ export default function AdminOrderDetailPage() {
             {seesMoney && (
               <div className="text-right">
                 <div className={LBL}>ยอดรวม</div>
-                <div className="mt-1 text-2xl font-bold leading-none tracking-tight text-slate-900">{formatPrice(orderTotal(order))}</div>
+                <div className="dkb-num mt-1 text-[1.6rem]">{formatPrice(orderTotal(order))}</div>
               </div>
             )}
             <div className="flex items-center gap-2">
@@ -3562,7 +3584,8 @@ export default function AdminOrderDetailPage() {
           onClose={() => setLightbox(null)}
         />
       )}
-    </div>
+      </div>
+    </PageShell>
   );
 }
 
