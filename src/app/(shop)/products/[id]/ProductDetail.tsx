@@ -228,7 +228,7 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
     />
   );
   return (
-    <div className="space-y-2 font-[family-name:var(--font-looped)] text-[.92rem] leading-[1.8] text-[var(--navy-soft)]">
+    <div className="space-y-2 font-[family-name:var(--font-looped)] text-[.86rem] leading-[1.75] text-[var(--navy-soft)]">
       {tab.imagePos === "top" && gallery}
       {/* HTML ผ่าน sanitize ฝั่งเซิร์ฟเวอร์ตั้งแต่ตอนบันทึกสินค้า (ตัดแท็ก script, on-handler, javascript:) */}
       {rich && <div className={`overflow-x-auto ${TAB_PROSE}`} dangerouslySetInnerHTML={{ __html: rich }} />}

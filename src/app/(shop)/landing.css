@@ -2833,6 +2833,8 @@ main:has(.dl-page) + .dl footer{margin-top:0}
         (แบบ .orb/.cat หน้าแรก) · หัวข้อฟอนต์ Mitr สีตามความหมาย
    หัวข้อทั่วไปได้ "เลขลำดับ" เป็นตัวยึดสายตา (แท็บอย่าง "วิธีสั่งงาน" จะกลายเป็นขั้นที่ 1-2-3 ทันที)
    ไม่ครอบ .dl (หน้านี้เป็น Tailwind) จึงไม่มี prefix
+   ⚠️ ขนาดตัวอักษรชุดนี้ย่อลงจากรอบแรกราว 1 ขั้น (ทางร้านบอกว่าของเดิมตัวใหญ่เกิน)
+      แท็บบางอันมีข้อความยาวมาก (ตารางราคาบวกเพิ่ม) ตัวใหญ่แล้วยืดจนต้องเลื่อนหลายจอ
    ═══════════════════════════════════════════════════════════════════════════ */
 /* แผงพื้นหลัง — ฟ้าอ่อนแบบแถบโซนหน้าแรก ให้การ์ดขาวข้างในเด้งออกมา */
 .ptab-panel{border-radius:var(--r-l);border:2px solid #fff;
@@ -2842,11 +2844,11 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 @media(max-width:640px){.ptab-panel{border-radius:var(--r-m);padding:14px}}
 
 .ptab{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;
-  font-family:var(--body);font-size:.9rem;line-height:1.85;color:var(--navy-soft)}
+  font-family:var(--body);font-size:.82rem;line-height:1.78;color:var(--navy-soft)}
 @media(max-width:900px){.ptab{grid-template-columns:1fr}}
 
 /* ย่อหน้านำ (ก้อนที่ยังไม่มีหัวข้อ) — พาดเต็มความกว้าง ไม่ต้องเป็นการ์ด */
-.ptab-lead{grid-column:1/-1;font-size:.95rem;line-height:1.9;color:var(--navy);
+.ptab-lead{grid-column:1/-1;font-size:.86rem;line-height:1.82;color:var(--navy);
   display:flex;flex-direction:column;gap:8px;padding:0 4px 2px}
 .ptab-lead .ptab-li>i{background:var(--blue);color:#fff}
 
@@ -2858,9 +2860,9 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 /* แถบสีบางบนหัวการ์ด — บอกโทนตั้งแต่ยังไม่ทันอ่าน */
 .ptab-sec::before{content:"";position:absolute;top:0;left:0;right:0;height:5px}
 .ptab-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
-.ptab-ico{flex:none;width:42px;height:42px;border-radius:15px;display:grid;place-items:center;
-  font-family:var(--display);font-size:1.05rem;font-weight:600;line-height:1;color:#fff}
-.ptab-title{font-family:var(--display);font-weight:500;font-size:1.12rem;line-height:1.3}
+.ptab-ico{flex:none;width:36px;height:36px;border-radius:13px;display:grid;place-items:center;
+  font-family:var(--display);font-size:.94rem;font-weight:600;line-height:1;color:#fff}
+.ptab-title{font-family:var(--display);font-weight:500;font-size:1.02rem;line-height:1.32}
 .ptab-body{display:flex;flex-direction:column;gap:10px}
 .ptab-li{display:flex;gap:10px;align-items:flex-start}
 .ptab-li>i{flex:none;margin-top:.44em;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;
@@ -2892,10 +2894,11 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .ptab-sec.plain .ptab-li>i{background:var(--blue);color:#fff;font-size:.48rem}
 
 @media(max-width:640px){
-  .ptab{gap:13px;font-size:.86rem}
+  .ptab{gap:13px;font-size:.8rem}
+  .ptab-lead{font-size:.82rem}
   .ptab-sec{border-radius:var(--r-m);padding:16px 16px 18px}
-  .ptab-ico{width:36px;height:36px;border-radius:13px;font-size:.94rem}
-  .ptab-title{font-size:1rem}
+  .ptab-ico{width:32px;height:32px;border-radius:12px;font-size:.86rem}
+  .ptab-title{font-size:.95rem}
 }
 
 /* ป้ายหัวโซน "ข้อมูลสินค้าเพิ่มเติม" — เดิมเป็นเม็ดยาสีกรมท่า ไปยืนคู่กับแท็บที่เลือกอยู่
