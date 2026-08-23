@@ -4,7 +4,7 @@ import RequirePerm from "@/components/RequirePerm";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildDiecut, exportFrame, toSvgPath, type DiecutResult, type RingTab } from "@/lib/diecut";
 import { buildAiFile } from "@/lib/diecut-ai";
-import { btnNeutral, btnPrimary, card, faint, h1, h2, muted } from "@/lib/admin-ui";
+import { Banner, Btn, PageHead, PageShell } from "@/components/admin/ui";
 
 /** ขนาดที่ใช้คำนวณเส้น (ยิ่งเล็กยิ่งไว) และขนาดรูปที่ฝังลงไฟล์ .ai */
 const TRACE_MAX = 1200;
@@ -214,17 +214,25 @@ function DiecutLabInner() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className={h1}>✂️ เส้นไดคัท</h1>
-        <p className="mt-1 rounded-xl bg-amber-50 px-3 py-2 text-[13px] font-semibold text-amber-800 ring-1 ring-amber-200">
-          🧪 โหมดทดลอง — หน้านี้อยู่ในหลังบ้านอย่างเดียว ลูกค้าหน้าร้านยังไม่เห็นและยังไม่มีผลกับออเดอร์ใด ๆ
-        </p>
+    <PageShell>
+      <PageHead
+        group="สินค้า"
+        title="เส้นไดคัท"
+        count="ทดลอง"
+        sub="ทำเส้นตัดจากลายลูกค้า → ไฟล์เข้าเครื่องตัด"
+      />
+
+      <div className="mt-4">
+        <Banner
+          tone="warm"
+          title="โหมดทดลอง"
+          detail="หน้านี้อยู่ในหลังบ้านอย่างเดียว ลูกค้าหน้าร้านยังไม่เห็นและยังไม่มีผลกับออเดอร์ใด ๆ"
+        />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
         {/* ซ้าย: ลาย + ตัวอย่างเส้น */}
-        <div className={`${card} p-4`}>
+        <div className="dkb-g p-4">
           <label
             onDragOver={(e) => {
               e.preventDefault();
@@ -238,7 +246,7 @@ function DiecutLabInner() {
               if (f) void loadFile(f);
             }}
             className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 py-6 text-center transition ${
-              dragOver ? "border-amber-400 bg-amber-50" : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+              dragOver ? "border-[color:var(--dk-blue)] bg-white/80" : "border-[color:var(--dk-sky-300)] bg-white/50 hover:bg-white/80"
             }`}
           >
             <input
@@ -251,37 +259,41 @@ function DiecutLabInner() {
                 if (f) void loadFile(f);
               }}
             />
-            <span className="text-sm font-bold text-slate-700">🖼️ เลือกไฟล์ลาย · หรือลากมาวางตรงนี้</span>
-            <span className={`mt-1 text-[11px] ${faint}`}>PNG พื้นใส (ไล่พื้นหลังออกแล้ว) · WEBP ก็ได้</span>
+            <span className="dkb-h2 text-[0.98rem]">เลือกไฟล์ลาย · หรือลากมาวางตรงนี้</span>
+            <span className="mt-1 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>PNG พื้นใส (ไล่พื้นหลังออกแล้ว) · WEBP ก็ได้</span>
             {fileName && (
-              <span className="mt-2 rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200">
+              <span className="dkb-tag mt-2" style={{ background: "var(--dk-sky)", color: "var(--dk-blue-deep)" }}>
                 {fileName} · {natural.w}×{natural.h} px
               </span>
             )}
           </label>
 
-          {err && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-[13px] font-semibold text-rose-700 ring-1 ring-rose-200">{err}</p>}
+          {err && (
+            <p className="mt-3 rounded-[16px] px-3 py-2 text-[13px] font-semibold" style={{ background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}>
+              {err}
+            </p>
+          )}
 
           {result && (
             <div className="mt-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className={h2}>ตัวอย่างเส้นตัด</h2>
+                <h2 className="dkb-h2 text-[1.02rem]">ตัวอย่างเส้นตัด</h2>
                 <label className="flex cursor-pointer items-center gap-1.5 text-[11px] font-semibold text-slate-500">
-                  <input type="checkbox" checked={showAnchors} onChange={(e) => setShowAnchors(e.target.checked)} className="h-3.5 w-3.5 accent-sky-500" />
+                  <input type="checkbox" checked={showAnchors} onChange={(e) => setShowAnchors(e.target.checked)} className="h-3.5 w-3.5" style={{ accentColor: "var(--dk-blue-deep)" }} />
                   โชว์จุดแองเคอร์
                 </label>
-                <span className={`text-[11px] ${muted}`}>
+                <span className="text-[11.5px]" style={{ color: "var(--dk-navy-soft)" }}>
                   งานจริง {result.widthMm.toFixed(1)} × {result.heightMm.toFixed(1)} มม. · เส้นสีบานเย็น = แนวตัด
                 </span>
               </div>
-              <div className="mt-2 overflow-auto rounded-2xl ring-1 ring-slate-200">
+              <div className="mt-2 overflow-auto rounded-[18px]" style={{ boxShadow: "inset 0 0 0 1px var(--dk-hair)" }}>
                 <canvas ref={previewRef} className="block" />
               </div>
               {result.warnings.length > 0 && (
                 <ul className="mt-3 space-y-1">
                   {result.warnings.map((warn, i) => (
-                    <li key={i} className="rounded-xl bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-800 ring-1 ring-amber-200">
-                      ⚠️ {warn}
+                    <li key={i} className="rounded-[14px] px-3 py-2 text-[12px] font-semibold" style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}>
+                      {warn}
                     </li>
                   ))}
                 </ul>
@@ -292,8 +304,8 @@ function DiecutLabInner() {
 
         {/* ขวา: ค่าตั้ง + ปุ่มโหลดไฟล์ */}
         <div className="space-y-4">
-          <div className={`${card} p-4`}>
-            <h2 className={h2}>ขนาด & ค่าตัดเผื่อ</h2>
+          <div className="dkb-g p-4">
+            <h2 className="dkb-h2 text-[1.02rem]">ขนาด & ค่าตัดเผื่อ</h2>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <label className="text-[11px] font-semibold text-slate-500">
                 ความกว้างงานจริง (มม.)
@@ -304,7 +316,7 @@ function DiecutLabInner() {
                 <input value={offsetMm} onChange={(e) => setOffsetMm(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" className={`mt-1 ${inputCls}`} />
               </label>
             </div>
-            <p className={`mt-2 text-[11px] ${faint}`}>
+            <p className="mt-2 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
               สูงคำนวณให้เองตามสัดส่วนภาพ · ค่าตัดเผื่อมาตรฐานของร้าน = 2 มม.
             </p>
             <label className="mt-3 block text-[11px] font-semibold text-slate-500">
@@ -316,9 +328,9 @@ function DiecutLabInner() {
                 step={0.1}
                 value={smoothMm}
                 onChange={(e) => setSmoothMm(e.target.value)}
-                className="mt-1 w-full accent-amber-500"
+                className="mt-1 w-full" style={{ accentColor: "var(--dk-blue-deep)" }}
               />
-              <span className={`text-[11px] ${faint}`}>
+              <span className="text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
                 0 = วิ่งตามหยักของลายเป๊ะ · ยิ่งมากยิ่งลื่น (กลืนร่องแคบ ๆ ระหว่างตัวอักษรให้เป็นเส้นเดียว)
               </span>
             </label>
@@ -331,14 +343,14 @@ function DiecutLabInner() {
                 step={0.01}
                 value={curveTol}
                 onChange={(e) => setCurveTol(e.target.value)}
-                className="mt-1 w-full accent-amber-500"
+                className="mt-1 w-full" style={{ accentColor: "var(--dk-blue-deep)" }}
               />
-              <span className={`text-[11px] ${faint}`}>
+              <span className="text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
                 เส้นถูกแปลงเป็นโค้งเบซิเยร์แบบโปรแกรมตัด · น้อย = เกาะลายแน่นแต่จุดเยอะ · มาก = จุดน้อย เส้นลื่น แก้ต่อง่ายใน Illustrator
               </span>
             </label>
             <label className="mt-3 flex cursor-pointer items-center gap-2 text-[12px] font-semibold text-slate-600">
-              <input type="checkbox" checked={fillHoles} onChange={(e) => setFillHoles(e.target.checked)} className="h-4 w-4 accent-amber-500" />
+              <input type="checkbox" checked={fillHoles} onChange={(e) => setFillHoles(e.target.checked)} className="h-4 w-4" style={{ accentColor: "var(--dk-blue-deep)" }} />
               ปิดรูกลางลาย (ไม่ตัดทะลุช่องว่างในตัวอักษร)
             </label>
             <label className="mt-3 block text-[11px] font-semibold text-slate-500">
@@ -349,15 +361,15 @@ function DiecutLabInner() {
                 max={200}
                 value={alphaThreshold}
                 onChange={(e) => setAlphaThreshold(e.target.value)}
-                className="mt-1 w-full accent-amber-500"
+                className="mt-1 w-full" style={{ accentColor: "var(--dk-blue-deep)" }}
               />
-              <span className={`text-[11px] ${faint}`}>ลายที่ขอบฟุ้ง/มีเงา ถ้าเส้นตัดกินเงามาด้วยให้เลื่อนไปทางขวา</span>
+              <span className="text-[11.5px]" style={{ color: "var(--dk-faint)" }}>ลายที่ขอบฟุ้ง/มีเงา ถ้าเส้นตัดกินเงามาด้วยให้เลื่อนไปทางขวา</span>
             </label>
           </div>
 
-          <div className={`${card} p-4`}>
+          <div className="dkb-g p-4">
             <label className="flex cursor-pointer items-center gap-2 text-sm font-bold text-slate-700">
-              <input type="checkbox" checked={ringOn} onChange={(e) => setRingOn(e.target.checked)} className="h-4 w-4 accent-amber-500" />
+              <input type="checkbox" checked={ringOn} onChange={(e) => setRingOn(e.target.checked)} className="h-4 w-4" style={{ accentColor: "var(--dk-blue-deep)" }} />
               🔗 หูร้อยห่วง
             </label>
             {ringOn && (
@@ -376,7 +388,7 @@ function DiecutLabInner() {
                     <input value={ringOverlap} onChange={(e) => setRingOverlap(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" className={`mt-1 ${inputCls}`} />
                   </label>
                 </div>
-                <p className={`mt-1.5 text-[11px] ${faint}`}>
+                <p className="mt-1.5 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
                   แท็บกลม = วงกลมยื่นออกจากตัวงานสำหรับร้อยห่วง (ใส่ 0 = ไม่ทำแท็บ เจาะรูบนตัวงานเลย) · ซ้อนงาน = ให้แท็บทับตัวงานกี่ มม. จะได้เป็นชิ้นเดียว
                 </p>
                 <div className="mt-3 grid grid-cols-3 gap-1.5">
@@ -394,7 +406,7 @@ function DiecutLabInner() {
                       type="button"
                       onClick={() => setRingPos(id)}
                       className={`rounded-lg px-2 py-1.5 text-[11px] font-semibold transition ${
-                        ringPos === id ? "bg-slate-900 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50"
+                        ringPos === id ? "bg-[color:var(--dk-navy)] text-white" : "bg-white/70 text-[color:var(--dk-navy-soft)] hover:bg-white"
                       }`}
                     >
                       {label}
@@ -405,21 +417,21 @@ function DiecutLabInner() {
             )}
           </div>
 
-          <div className={`${card} p-4`}>
-            <h2 className={h2}>ไฟล์ส่งเข้าเครื่องตัด</h2>
-            <p className={`mt-1 text-[11px] ${faint}`}>
+          <div className="dkb-g p-4">
+            <h2 className="dkb-h2 text-[1.02rem]">ไฟล์ส่งเข้าเครื่องตัด</h2>
+            <p className="mt-1 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
               ไฟล์ .ai เปิดใน Illustrator ได้เลย — ในไฟล์มีรูปลายขนาดจริง + เส้นตัดเป็นเวกเตอร์สี spot ชื่อ <b>CutContour</b>
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <button type="button" onClick={downloadAi} disabled={!result || busy} className={btnPrimary}>
-                {busy ? "กำลังสร้าง…" : "⬇️ ดาวน์โหลด .ai"}
-              </button>
-              <button type="button" onClick={downloadSvg} disabled={!result} className={btnNeutral}>
-                ⬇️ .svg (เส้นอย่างเดียว)
-              </button>
+              <Btn tone="yolk" onClick={downloadAi} disabled={!result || busy}>
+                {busy ? "กำลังสร้าง…" : "ดาวน์โหลด .ai"}
+              </Btn>
+              <Btn onClick={downloadSvg} disabled={!result}>
+                .svg (เส้นอย่างเดียว)
+              </Btn>
             </div>
             {result && (
-              <p className={`mt-3 text-[11px] ${muted}`}>
+              <p className="mt-3 text-[11.5px]" style={{ color: "var(--dk-navy-soft)" }}>
                 ชิ้นงาน {result.pieces} ชิ้น
                 {result.innerHoles > 0 ? ` · รูตัดทะลุ ${result.innerHoles} รู` : ""} · จุดแองเคอร์{" "}
                 {result.anchors.toLocaleString("th-TH")} จุด
@@ -429,7 +441,7 @@ function DiecutLabInner() {
           </div>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }
 

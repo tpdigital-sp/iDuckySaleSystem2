@@ -6,7 +6,17 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { type CategoryId } from "@/lib/products";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
-import { btnPrimary, card, faint, h1, muted } from "@/lib/admin-ui";
+import {
+  Banner,
+  Btn,
+  HeroStat,
+  ListHead,
+  PageHead,
+  PageShell,
+  SearchBox,
+  Stat,
+  Stats,
+} from "@/components/admin/ui";
 
 interface Row {
   name: string;
@@ -98,116 +108,147 @@ function AdminImportPageInner() {
   const selected = rows.filter((r) => r._include).length;
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <h1 className={h1}>นำเข้าสินค้าจาก URL</h1>
-      <p className={`mt-1 ${muted}`}>
-        วางลิงก์หน้ารายการราคา (เว็บ Wix) → ระบบดึงตาราง+ชื่อ+รูปมาให้ <strong>ตรวจ/แก้ก่อนนำเข้า</strong> — ราคาขั้นบันไดแปลงให้อัตโนมัติ
-      </p>
+    <PageShell>
+      <PageHead
+        group="สินค้า"
+        title="นำเข้าสินค้าจาก URL"
+        sub="วางลิงก์หน้ารายการราคา (เว็บ Wix) → ระบบดึงตาราง ชื่อ และรูปมาให้ตรวจ/แก้ก่อนนำเข้า — ราคาขั้นบันไดแปลงให้อัตโนมัติ"
+      />
 
-      <div className={`mt-5 flex flex-wrap items-center gap-2 p-3 ${card}`}>
-        <input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !loading && scrape()}
-          placeholder="เช่น https://www.iduckyofficial-pricelists.com/keyring หรือ /keyring"
-          className="min-w-64 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
-        />
-        <button type="button" onClick={scrape} disabled={loading || !url.trim()} className={btnPrimary}>
-          {loading ? "กำลังดึง…" : "🔍 ดึงข้อมูล"}
-        </button>
+      {/* ขั้นที่ 1 — วางลิงก์ */}
+      <div className="dkb-g mt-4 flex flex-wrap items-center gap-2 p-3">
+        <label className="dkb-search flex-1">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !loading && scrape()}
+            placeholder="เช่น https://www.iduckyofficial-pricelists.com/keyring หรือ /keyring"
+          />
+        </label>
+        <Btn tone="navy" onClick={scrape} disabled={loading || !url.trim()}>
+          {loading ? "กำลังดึง…" : "ดึงข้อมูล"}
+        </Btn>
       </div>
 
-      {error && <div className="mt-4 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{error}</div>}
-      {result && <div className="mt-4 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700">{result}</div>}
+      {error && (
+        <div className="mt-3">
+          <Banner tone="hot" title={error} />
+        </div>
+      )}
+      {result && (
+        <div className="dkb-g mt-3 px-4 py-3 text-[14px]" style={{ background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" }}>
+          {result}
+        </div>
+      )}
 
       {rows.length > 0 && (
         <>
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm text-slate-600">
-              พบ <strong>{rows.length}</strong> สินค้า{skipped > 0 ? ` · ข้าม ${skipped} ตาราง (ADD-ON/รูปแบบพิเศษ)` : ""} · เลือก <strong>{selected}</strong>
-            </p>
-            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
-              ตั้งหมวดทุกตัว:
-              <select
-                onChange={(e) => setAllCategory(e.target.value as CategoryId)}
-                defaultValue=""
-                className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-amber-400"
-              >
-                <option value="" disabled>— เลือก —</option>
-                {cats.map((c) => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
+          <Stats cols={4}>
+            <HeroStat
+              n={selected}
+              label="เลือกไว้จะนำเข้า"
+              detail={`จากที่ดึงมาได้ ${rows.length} สินค้า${skipped > 0 ? ` · ข้าม ${skipped} ตาราง (ADD-ON/รูปแบบพิเศษ)` : ""}`}
+              pct={rows.length ? (selected / rows.length) * 100 : 0}
+            />
+            <Stat label="ไม่มีรูป" value={rows.filter((r) => !r.imageUrl).length} hint="ต้องอัปรูปเองทีหลัง" />
+            <Stat label="ดึงมาได้" value={rows.length} hint="ก่อนกรอง" />
+          </Stats>
+
+          <div className="dkb-g mt-4 flex flex-wrap items-center gap-2 p-3">
+            <SearchBox value={filter} onChange={setFilter} placeholder="ค้นหาสินค้าในหน้านี้" />
+            <Btn small onClick={() => setAllInclude(true)}>
+              เลือก{filter.trim() ? "ที่ค้นเจอ" : "ทั้งหมด"}
+            </Btn>
+            <Btn small onClick={() => setAllInclude(false)}>
+              ไม่เลือก{filter.trim() ? "ที่ค้นเจอ" : "เลย"}
+            </Btn>
+            <label className="dkb-g dkb-field !py-1.5">
+              <span className="lb">ตั้งหมวดทุกตัว</span>
+              <select onChange={(e) => setAllCategory(e.target.value as CategoryId)} defaultValue="">
+                <option value="" disabled>
+                  — เลือก —
+                </option>
+                {cats.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
               </select>
             </label>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <div className="relative min-w-52 flex-1">
-              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
-              <input
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                placeholder="ค้นหาสินค้าในหน้านี้… (กรองด้วยชื่อ)"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-8 pr-3 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
-              />
-            </div>
-            <button type="button" onClick={() => setAllInclude(true)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-              ✓ เลือก{filter.trim() ? "ที่ค้นเจอ" : "ทั้งหมด"}
-            </button>
-            <button type="button" onClick={() => setAllInclude(false)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-              ✕ ไม่เลือก{filter.trim() ? "ที่ค้นเจอ" : "เลย"}
-            </button>
-          </div>
+          <ListHead title="ตรวจก่อนนำเข้า" note="ติ๊กออกได้ถ้าไม่อยากนำเข้าตัวไหน" />
 
-          <div className={`mt-3 overflow-hidden ${card}`}>
-            <ul className="divide-y divide-slate-100">
-              {rows.map((r, i) => ({ r, i })).filter(({ r }) => !filter.trim() || r.name.toLowerCase().includes(filter.trim().toLowerCase())).map(({ r, i }) => (
-                <li key={i} className={`flex flex-wrap items-center gap-3 p-3 ${r._include ? "" : "opacity-50"}`}>
-                  <input
-                    type="checkbox"
-                    checked={r._include}
-                    onChange={(e) => setRows((rs) => rs.map((x, j) => (j === i ? { ...x, _include: e.target.checked } : x)))}
-                    className="h-4 w-4 accent-amber-500"
-                  />
-                  <span className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-slate-100">
-                    {r.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={r.imageUrl} alt="" className="h-12 w-12 object-cover" />
-                    ) : (
-                      <span className="grid h-12 w-12 place-items-center text-lg text-slate-300">📦</span>
-                    )}
-                  </span>
-                  <input
-                    value={r.name}
-                    onChange={(e) => setRows((rs) => rs.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
-                    className="min-w-48 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
-                  />
-                  <select
-                    value={r._category}
-                    onChange={(e) => setRows((rs) => rs.map((x, j) => (j === i ? { ...x, _category: e.target.value as CategoryId } : x)))}
-                    className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-amber-400"
-                  >
-                    {cats.map((c) => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
-                  </select>
-                  <span className="shrink-0 text-right text-xs text-slate-500">
-                    <span className="block font-bold text-slate-900">฿{r.price} / {r.unit}</span>
-                    <span className={faint}>{KIND_LABEL[r.kind]} · {r.pricing.tiers.length} ช่วง{r.pricing.driverLabels.length ? ` × ${Object.keys(r.pricing.cells).length}` : ""}</span>
-                  </span>
-                </li>
-              ))}
+          <div className="dkb-g overflow-hidden">
+            <ul>
+              {rows
+                .map((r, i) => ({ r, i }))
+                .filter(({ r }) => !filter.trim() || r.name.toLowerCase().includes(filter.trim().toLowerCase()))
+                .map(({ r, i }) => (
+                  <li key={i} className={`dkb-row !rounded-none px-4 ${r._include ? "" : "opacity-45"}`}>
+                    <input
+                      type="checkbox"
+                      checked={r._include}
+                      onChange={(e) => setRows((rs) => rs.map((x, j) => (j === i ? { ...x, _include: e.target.checked } : x)))}
+                      className="h-4 w-4 shrink-0"
+                      style={{ accentColor: "var(--dk-blue-deep)" }}
+                    />
+                    <span className="dkb-thumb !h-12 w-12 shrink-0">
+                      {r.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={r.imageUrl} alt="" />
+                      ) : null}
+                    </span>
+                    <input
+                      value={r.name}
+                      onChange={(e) => setRows((rs) => rs.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
+                      className="dkb-g min-w-48 flex-1 border-0 px-3 py-1.5 text-[14px] outline-none"
+                    />
+                    <select
+                      value={r._category}
+                      onChange={(e) => setRows((rs) => rs.map((x, j) => (j === i ? { ...x, _category: e.target.value as CategoryId } : x)))}
+                      className="dkb-g shrink-0 border-0 px-2 py-1.5 text-[13px] outline-none"
+                    >
+                      {cats.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="shrink-0 text-right">
+                      <span className="dkb-amt block">
+                        ฿{r.price} / {r.unit}
+                      </span>
+                      <span className="block text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+                        {KIND_LABEL[r.kind]} · {r.pricing.tiers.length} ช่วง
+                        {r.pricing.driverLabels.length ? ` × ${Object.keys(r.pricing.cells).length}` : ""}
+                      </span>
+                    </span>
+                  </li>
+                ))}
             </ul>
           </div>
 
           <div className="mt-4 flex justify-end">
-            <button type="button" onClick={save} disabled={importing || selected === 0} className={`${btnPrimary} disabled:opacity-40`}>
+            <Btn tone="yolk" onClick={save} disabled={importing || selected === 0}>
               {importing ? "กำลังนำเข้า…" : `นำเข้า ${selected} รายการ`}
-            </button>
+            </Btn>
           </div>
         </>
       )}
 
-      <p className={`mt-6 text-center text-xs ${faint}`}>
-        นำเข้าแล้วดู/แก้ต่อได้ที่ <Link href="/admin/products" className="font-semibold text-amber-600 hover:underline">หน้าสินค้า</Link> · ชื่อ/หมวด/รูป/ราคา แก้ได้ทั้งหมด
+      <p className="mt-6 text-center text-[12px]" style={{ color: "var(--dk-faint)" }}>
+        นำเข้าแล้วดู/แก้ต่อได้ที่{" "}
+        <Link href="/admin/products" className="font-semibold underline-offset-4 hover:underline" style={{ color: "var(--dk-blue-deep)" }}>
+          หน้าสินค้า
+        </Link>{" "}
+        · ชื่อ/หมวด/รูป/ราคา แก้ได้ทั้งหมด
       </p>
-    </div>
+    </PageShell>
   );
 }
 
