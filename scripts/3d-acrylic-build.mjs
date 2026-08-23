@@ -341,11 +341,86 @@ const priceTabText = [
   "• ชิ้นงานที่ติดกาวจะเห็นคราบกาวบ้าง และตำแหน่งจุดที่ติดกาวอาจคลาดเคลื่อนจากแบบเล็กน้อย",
 ].join("\n");
 
+/**
+ * ── ฉบับ HTML: ตัวเลขราคาขึ้นเป็น "ตาราง" จริง ──
+ * ฉบับข้อความล้วน (priceTabText) อ่านยากมาก เพราะราคาไล่เป็นแถวยาว "2cm 120 · 3cm 140 · …"
+ * ต้องกวาดตาหาเลขทีละตัว แถมการ์ดในแท็บยังถูกไล่เลข 1-2-3 เหมือน "ขั้นตอน" ทั้งที่เป็นหมวดราคา
+ * ตารางอ่านง่ายกว่ามาก — เทียบข้ามขนาด/ข้ามช่วงจำนวนได้ในสายตาเดียว
+ *
+ * ใส่สีกับเส้นด้วย inline style เพราะ HTML ก้อนนี้ไม่ผ่าน Tailwind (อยู่ใน dangerouslySetInnerHTML)
+ * และตัวกรอง HTML ฝั่งเซิร์ฟเวอร์ตัดเฉพาะ <style>/<script>/on-handler — attribute style ยังอยู่ครบ
+ */
+const T_WRAP = 'style="overflow-x:auto;margin-top:10px"';
+const T_TBL = 'style="border-collapse:collapse;width:100%;min-width:420px"';
+const T_TH = 'style="background:#E8F3FD;color:#1B4B7E;font-weight:600;border:1px solid #D3E6F6;padding:7px 9px;text-align:center;white-space:nowrap"';
+const T_RH = 'style="background:#F6FAFE;color:#1B4B7E;font-weight:600;border:1px solid #D3E6F6;padding:7px 9px;text-align:left;white-space:nowrap"';
+const T_TD = 'style="border:1px solid #E4EFF8;padding:7px 9px;text-align:center;white-space:nowrap"';
+const T_NOTE = 'style="margin-top:6px;color:#5B7A99"';
+const T_H3 = 'style="margin-top:22px"';
+
+/** ตารางที่คอลัมน์คือขนาด: rows = [ชื่อแถว, [ค่าแต่ละขนาด] หรือ ข้อความพาดยาว] */
+const sizeTable = (head, rows) => `<div ${T_WRAP}><table ${T_TBL}>
+<thead><tr><th ${T_TH}>${head}</th>${SIZES.map((s) => `<th ${T_TH}>${s}</th>`).join("")}</tr></thead>
+<tbody>${rows
+  .map(
+    ([name, cells]) =>
+      `<tr><th ${T_RH}>${name}</th>${
+        typeof cells === "string"
+          ? `<td ${T_TD} colspan="${SIZES.length}">${cells}</td>`
+          : cells.map((c) => `<td ${T_TD}>${c}</td>`).join("")
+      }</tr>`
+  )
+  .join("")}</tbody></table></div>`;
+
+const priceTabHtml = [
+  `<p>ราคาทั้งหมดของงาน 3D Acrylic อยู่ในหน้านี้ — ลูกค้ากะงบเองได้ แอดมินตีราคางานนอกตารางได้เลย</p>`,
+  `<h3 ${T_H3}>1 · ราคาฐาน — 1 ชุด = อะคริลิค 2 ชิ้น</h3>`,
+  `<p>สกรีน 1 ด้าน/ชิ้น · อะคริลิคใส หรือ ขาวขุ่น C-02 · <strong>คิดราคาจากชิ้นที่ใหญ่ที่สุด</strong> (= ชิ้นที่ 1)</p>`,
+  sizeTable("จำนวนที่สั่ง", web.tiers.map((t, i) => [t, SIZES.map((sz) => web.base[sz][i])])),
+  `<p ${T_NOTE}>คละลาย — 1-10 ชุด คละได้อิสระ · 11 ชุดขึ้นไป คละได้โดยลายละ 5 ชุดขึ้นไป</p>`,
+
+  `<h3 ${T_H3}>2 · บวกเพิ่มรายชิ้น</h3>`,
+  `<p>ชิ้นที่ 1 กับชิ้นที่ 2 <strong>เลือกแยกกันได้</strong> — คิดเพิ่มตามขนาดของชิ้นนั้นเอง (บาท/ชิ้น)</p>`,
+  sizeTable("รายการ", [
+    ["สกรีน 1 ด้าน (ใต้/บน)", "รวมในราคาฐานแล้ว ไม่บวกเพิ่ม"],
+    ["สกรีน 2 ด้าน", SIZES.map((sz) => `+${web.screen["สกรีน 2 ด้าน"][sz]}`)],
+    ["อะคริลิคพิเศษ (กลิตเตอร์ / สีพิเศษ / โฮโลแกรม)", SIZES.map((sz) => `+${SPECIAL_RATE[sz]}`)],
+    ["อะคริลิคใส · ขาวขุ่น C-02", "ไม่บวกเพิ่ม"],
+  ]),
+
+  `<h3 ${T_H3}>3 · เพิ่มจำนวนชิ้น (ชิ้นที่ 3 ขึ้นไป)</h3>`,
+  `<p>ปกติ 1 ชุดได้ 2 ชิ้น — อยากได้มากกว่านั้นคิดเพิ่มต่อชิ้นตามนี้ (คิดแบบอะคริลิคใส)</p>`,
+  sizeTable("ชิ้นที่เพิ่ม", [
+    [`งานสกรีน (ซม.ละ ${EXTRA_PER_CM["สกรีน"]})`, SIZES.map((sz) => cmOf(sz) * EXTRA_PER_CM["สกรีน"])],
+    [`งานไม่สกรีน (ซม.ละ ${EXTRA_PER_CM["ไม่สกรีน"]})`, SIZES.map((sz) => cmOf(sz) * EXTRA_PER_CM["ไม่สกรีน"])],
+    [`สั่ง 11 ชุดขึ้นไป (เรทส่ง)`, SIZES.map((sz) => rate1.cell(sz, EXTRA_WHOLESALE_TIER))],
+  ]),
+  `<p ${T_NOTE}>วิธีสั่ง — ติ๊กช่อง “เพิ่มจำนวนชิ้น” ในหน้าสั่งซื้อ แล้วบอกจำนวน/ขนาดในช่อง “หมายเหตุถึงร้าน” แอดมินจะคิดราคาให้</p>`,
+
+  `<h3 ${T_H3}>4 · งานที่ต้องให้แอดมินตีราคา</h3>`,
+  `<p>หน้าเว็บเปิดให้เลือก ${SIZES[0]}-${SIZES[SIZES.length - 1]} — นอกเหนือจากนี้ทักไลน์ร้าน</p>`,
+  "<ul>",
+  `<li><strong>ขนาด ${OVERSIZE.fromCm}cm ขึ้นไป</strong> — บวกเพิ่ม ซม.ละ ${OVERSIZE.perCm} บาท ต่อ 1 ชิ้น (ยังไม่รวมค่าอะคริลิคพิเศษ)</li>`,
+  `<li><strong>สกรีน 2 ด้าน ขนาดเกิน ${OVERSIZE.screenOverCm}cm</strong> — บวกเพิ่ม ซม.ละ ${OVERSIZE.screenPerCm} บาท ต่อ 1 ชิ้น</li>`,
+  ...(overSizes.length
+    ? [`<li><strong>อะคริลิคพิเศษขนาดใหญ่</strong> — ${overSizes.map((sz) => `${sz} +${SPECIAL_RATE[sz]}`).join(" · ")} บาท/ชิ้น</li>`]
+    : []),
+  `<li><strong>ค่าอะไหล่</strong> — ตะขอ / ห่วง / โซ่ / ฐานตั้ง / Griptok (ราคาในตารางยังไม่รวม)</li>`,
+  "</ul>",
+
+  `<h3 ${T_H3}>หมายเหตุ</h3>`,
+  "<ul>",
+  "<li>ทำได้ทั้งพวงกุญแจ · Griptok · สแตนดี้ และอื่น ๆ</li>",
+  "<li>ชิ้นงานที่ติดกาวจะเห็นคราบกาวบ้าง และตำแหน่งจุดที่ติดกาวอาจคลาดเคลื่อนจากแบบเล็กน้อย</li>",
+  "</ul>",
+].join("\n");
+
 p.tabs = p.tabs ?? [];
 const pt = p.tabs.findIndex((t) => t.title === PRICE_TAB_TITLE);
 const priceTab = {
   title: PRICE_TAB_TITLE,
-  text: priceTabText,
+  text: priceTabText, // สำรองไว้เผื่อ html หาย — หน้าเว็บใช้ html ก่อนเสมอ
+  html: priceTabHtml,
   images: [PRICE_SHEET_URL],
   imagePos: "top", // ใบราคาอยู่บนสุด เห็นภาพรวมก่อน แล้วค่อยอ่านตัวเลขแยกข้อ
   imageSize: "lg", // เต็มความกว้าง — ใบราคาเป็นแนวนอน ตัวหนังสือเล็ก ย่อกว่านี้อ่านไม่ออก
