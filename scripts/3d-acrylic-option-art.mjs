@@ -7,12 +7,11 @@
  *   node scripts/3d-acrylic-option-art.mjs --upload --write
  *
  * โจทย์: "ทุกตัวเลือกต้องมีภาพว่าหน้าตาเป็นแบบไหน"
- *   ขนาดชิ้นที่ 1 / ขนาดชิ้นที่ 2  → การ์ดภาพจำลอง "อะคริลิค 2 ชิ้นประกบกัน" (มองด้านหน้า + ตัดขวาง)
- *                                    แยกไฟล์ 2 ชุด p1-/p2- เพราะการ์ดไฮไลต์คนละชิ้นกัน
- *                                    (p1 = ชิ้นฐาน · p2 = ชิ้นที่ติดกาวอยู่ด้านบน)
- *   เพิ่มจำนวนชิ้น                  → การ์ด "ชิ้นที่ 3 ขึ้นไป" แบบสกรีน / ไม่สกรีน (ใบละภาพ ใช้ร่วมทุกขนาด)
- *   ชนิดอะคริลิค                    → ใส / ขาวขุ่น C-02 / พิเศษ
- *   งานสกรีน                        → มีภาพชุด acrylic-howto อยู่แล้ว ไม่แตะ
+ *   ขนาดชิ้นที่ 1 / ขนาดชิ้นที่ 2      → การ์ดภาพจำลอง "อะคริลิค 2 ชิ้นประกบกัน" (มองด้านหน้า + ตัดขวาง)
+ *                                      แยกไฟล์ 2 ชุด p1-/p2- เพราะการ์ดไฮไลต์คนละชิ้นกัน
+ *   งานสกรีน (ชิ้นที่ 1 / ชิ้นที่ 2)   → ภาพชุดกลาง acrylic-howto (ใช้ร่วมกับสินค้าอะคริลิคตัวอื่น)
+ *   ชนิดอะคริลิค (ชิ้นที่ 1 / ชิ้นที่ 2) → ใส / ขาวขุ่น C-02 / พิเศษ
+ *   เพิ่มจำนวนชิ้น                     → การ์ด "ชิ้นที่ 3 ขึ้นไป" แบบสกรีน / ไม่สกรีน
  *
  * แตะเฉพาะฟิลด์ imageSrc ของตัวเลือกในตาราง MAP — ไม่แตะราคา ไม่แตะกฎ ไม่เขียนทับสินค้าทั้ง row
  * ตัวเลือกไหนโผล่มาใหม่แล้วไม่มีในตาราง = สคริปต์เตือน (ไปเพิ่มภาพใน 3d-acrylic-art.mjs ก่อน)
@@ -30,26 +29,51 @@ const ART_DIR = ((process.argv.find((a) => a.startsWith("--from=")) || "").split
 const ID = "3d-acrylic";
 const EXPECT_NAME = "3D Acrylic"; // กันเผลอรันทับสินค้าตัวอื่นถ้า id ถูกใช้ซ้ำวันหลัง
 
-/** กลุ่มตัวเลือก → { ชื่อตัวเลือก: ชื่อไฟล์ภาพ } */
-const MAP = {
-  "ขนาดชิ้นที่ 1": { "2cm": "p1-size-2-v1", "3cm": "p1-size-3-v1", "4cm": "p1-size-4-v1", "5cm": "p1-size-5-v1", "6cm": "p1-size-6-v1" },
-  "ขนาดชิ้นที่ 2": { "2cm": "p2-size-2-v1", "3cm": "p2-size-3-v1", "4cm": "p2-size-4-v1", "5cm": "p2-size-5-v1", "6cm": "p2-size-6-v1" },
-  // กลุ่ม "เพิ่มจำนวนชิ้น" — ทุกขนาดของแบบเดียวกันใช้ภาพใบเดียว (การ์ดมีตารางราคาครบทุกขนาดอยู่แล้ว)
-  // แกลเลอรีตัดภาพซ้ำ src เดียวกันทิ้งให้เอง จึงเพิ่มในแกลเลอรีแค่ 2 ใบ ไม่ใช่ 10
-  เพิ่มจำนวนชิ้น: Object.fromEntries(
-    ["2cm", "3cm", "4cm", "5cm", "6cm"].flatMap((sz) => [
-      [`${sz} · สกรีน`, "extra-screen-v1"],
-      [`${sz} · ไม่สกรีน`, "extra-plain-v1"],
-    ])
-  ),
-  ชนิดอะคริลิค: {
-    อะคริลิคใส: "acrylic-clear-v1",
-    "อะคริลิคขาวขุ่น C-02": "acrylic-c02-v1",
-    "อะคริลิคพิเศษ (สี / โฮโลแกรม / กลิตเตอร์)": "acrylic-special-v1",
-  },
+/**
+ * กลุ่มตัวเลือก → { ชื่อตัวเลือก: ภาพ }
+ * ค่าภาพเป็น "ชื่อไฟล์" = โฟลเดอร์ของสินค้านี้ (products/3d-acrylic/…)
+ * ใส่ "โฟลเดอร์/ชื่อไฟล์" ได้ด้วย ถ้าเป็นภาพชุดกลางที่ใช้ร่วมกับสินค้าอื่น (เช่น acrylic-howto)
+ */
+const SIZES = ["2cm", "3cm", "4cm", "5cm", "6cm"];
+/** ภาพชุด "HOW TO สกรีน" ของงานอะคริลิค — ใช้ร่วมกันทั้งชิ้นที่ 1 และชิ้นที่ 2 */
+const SCREEN_ART = {
+  "สกรีน 1 ด้าน (ใต้)": "acrylic-howto/screen-1side-under-v1",
+  "สกรีน 1 ด้าน (บน)": "acrylic-howto/screen-1side-top-v1",
+  "สกรีน 2 ด้าน (ใต้-บน)": "acrylic-howto/screen-2side-under-top-v1",
+  "สกรีน 2 ด้าน (บน-บน)": "acrylic-howto/screen-2side-top-top-v1",
+  "สกรีน 3 เลเยอร์": "acrylic-howto/screen-3layer-v1",
+  "สกรีน 4 เลเยอร์": "acrylic-howto/screen-4layer-v1",
 };
-/** กลุ่มที่ตั้งใจไม่แตะ — มีภาพจากชุดอื่นอยู่แล้ว */
-const SKIP = ["งานสกรีน"];
+const ACRYLIC_ART = {
+  อะคริลิคใส: "acrylic-clear-v1",
+  "อะคริลิคขาวขุ่น C-02": "acrylic-c02-v1",
+  "อะคริลิคพิเศษ (สี / โฮโลแกรม / กลิตเตอร์)": "acrylic-special-v1",
+};
+const sizeArt = (prefix) => Object.fromEntries(SIZES.map((s) => [s, `${prefix}-size-${s.replace("cm", "")}-v1`]));
+
+const MAP = {
+  "ขนาดชิ้นที่ 1": sizeArt("p1"),
+  "งานสกรีน (ชิ้นที่ 1)": SCREEN_ART,
+  "ชนิดอะคริลิค (ชิ้นที่ 1)": ACRYLIC_ART,
+  "ขนาดชิ้นที่ 2": sizeArt("p2"),
+  // กลุ่มของชิ้นที่ 2 แตกเป็นใบละช่วงขนาด (ดู 3d-acrylic-build.mjs) — ภาพชุดเดียวกันทุกใบ
+  "งานสกรีน (ชิ้นที่ 2)": SCREEN_ART,
+  "งานสกรีน (ชิ้นที่ 2) · ขนาด 6cm": SCREEN_ART,
+  "ชนิดอะคริลิค (ชิ้นที่ 2)": ACRYLIC_ART,
+  "ชนิดอะคริลิค (ชิ้นที่ 2) · ขนาด 6cm": ACRYLIC_ART,
+  // กลุ่ม "เพิ่มจำนวนชิ้น" — ทุกขนาด/ชนิดอะคริลิคของแบบเดียวกันใช้ภาพใบเดียว
+  // (การ์ดมีตารางราคาครบทุกขนาดอยู่แล้ว · แกลเลอรีตัดภาพซ้ำ src เดียวกันทิ้งให้เอง)
+  เพิ่มจำนวนชิ้น: Object.fromEntries(
+    SIZES.flatMap((sz) =>
+      ["สกรีน", "ไม่สกรีน"].flatMap((kind) =>
+        ["", " · อคล.พิเศษ"].map((sp) => [`${sz} · ${kind}${sp}`, kind === "สกรีน" ? "extra-screen-v1" : "extra-plain-v1"])
+      )
+    )
+  ),
+};
+
+/** กลุ่มที่ตั้งใจไม่แตะ (ตอนนี้ไม่มี — ทุกกลุ่มมีภาพครบแล้ว) */
+const SKIP = [];
 
 const env = Object.fromEntries(
   readFileSync(new URL("../.env.local", import.meta.url), "utf8")
@@ -63,10 +87,12 @@ const env = Object.fromEntries(
 const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
-const url = (art) => `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/${art}.jpg`;
+/** "ชื่อไฟล์" = โฟลเดอร์สินค้านี้ · "โฟลเดอร์/ชื่อไฟล์" = ชุดภาพกลางที่ใช้ร่วมกับสินค้าอื่น */
+const url = (art) =>
+  `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${art.includes("/") ? art : `${ID}/${art}`}.jpg`;
 
-/** ชื่อไฟล์ที่ต้องมีจริง (ไม่ซ้ำ) */
-const ARTS = [...new Set(Object.values(MAP).flatMap((m) => Object.values(m)))];
+/** ชื่อไฟล์ที่สคริปต์นี้ต้องอัปเอง (ชุดกลางที่มี "/" มีอยู่บน Storage แล้ว ไม่ต้องอัปทับ) */
+const ARTS = [...new Set(Object.values(MAP).flatMap((m) => Object.values(m)))].filter((a) => !a.includes("/"));
 
 const { data: row, error } = await sb.from("products").select("data").eq("id", ID).single();
 if (error) throw error;
