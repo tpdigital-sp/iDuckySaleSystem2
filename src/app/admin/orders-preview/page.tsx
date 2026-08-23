@@ -330,7 +330,8 @@ export default function OrdersPreviewPage() {
     for (const o of orders) {
       if (o.status === "เสร็จสิ้น" || o.status === "ยกเลิก") continue;
       const k = (o.phone ?? "").replace(/\D/g, "");
-      if (k.length >= 8) m[k] = (m[k] ?? 0) + 1;
+      // 0000000000 / 9999999999 = เบอร์ที่ยังไม่ได้กรอกจริง — ไม่ใช่ลูกค้าคนเดียวกัน
+      if (k.length >= 8 && !/^(\d)\1+$/.test(k)) m[k] = (m[k] ?? 0) + 1;
     }
     return m;
   }, [orders]);

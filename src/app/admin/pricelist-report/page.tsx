@@ -20,6 +20,7 @@ import {
   segItemIdle,
   segWrap,
 } from "@/lib/admin-ui";
+import { Banner, Btn, HeroStat, PageHead, PageShell, Stat, Stats } from "@/components/admin/ui";
 import { persistProduct } from "@/lib/product-repo";
 import { useCan } from "@/lib/perm-context";
 import type { Product } from "@/lib/products";
@@ -848,63 +849,81 @@ export default function PricelistReportPage() {
 
   return (
     <RequirePerm perm="products.view">
-      <div className="space-y-5">
-        {/* ── หัวหน้า ── */}
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className={h1}>🔍 เทียบเว็บตารางราคากับระบบ</h1>
-            <p className={`mt-1 text-sm ${muted}`}>
+      <PageShell>
+        <PageHead
+          group="สินค้า"
+          title="เทียบเว็บตารางราคา"
+          count={sum ? `${sum.cards} ชื่อ` : undefined}
+          sub={
+            <>
               ชื่อสินค้าทุกใบบนหน้าแรก{" "}
               <a
                 href="https://www.iduckyofficial-pricelists.com/"
                 target="_blank"
                 rel="noreferrer"
-                className="font-semibold text-amber-600 hover:underline"
+                className="font-semibold underline-offset-4 hover:underline"
+                style={{ color: "var(--dk-blue-deep)" }}
               >
                 iduckyofficial-pricelists.com
               </a>{" "}
               เทียบกับสินค้าในระบบ — ตัวไหนเผยแพร่แล้ว ตัวไหนยังเป็นร่าง ตัวไหนยังไม่มี
-            </p>
-            {data ? (
-              <p className={`mt-1 text-xs ${faint}`}>
-                ดึงข้อมูลเมื่อ {new Date(data.fetchedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}
-                {" · "}หน้าเว็บถูกแคชไว้ 30 นาที กด “ดึงใหม่” ถ้าเพิ่งแก้หน้าเว็บ
-              </p>
-            ) : null}
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className={btnNeutral}
-              onClick={() => setAdding((v) => !v)}
-              title="เพิ่มชื่อที่ยังไม่มีบนหน้าเว็บตารางราคาเข้ามาในรายงานเอง"
-            >
-              ➕ เพิ่มชื่อ
-            </button>
-            <button type="button" className={btnNeutral} onClick={() => downloadCsv(rows)} disabled={!rows.length}>
-              ⬇ ดาวน์โหลด CSV
-            </button>
-            <button type="button" className={btnNeutral} onClick={() => void load(true)} disabled={loading}>
-              {loading ? "กำลังดึง…" : "🔄 ดึงใหม่"}
-            </button>
-          </div>
-        </div>
+              {data ? (
+                <>
+                  <br />
+                  ดึงข้อมูลเมื่อ {new Date(data.fetchedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })} · แคชไว้ 30 นาที
+                </>
+              ) : null}
+            </>
+          }
+          tools={
+            <>
+              <Btn onClick={() => setAdding((v) => !v)} title="เพิ่มชื่อที่ยังไม่มีบนหน้าเว็บตารางราคาเข้ามาในรายงานเอง">
+                เพิ่มชื่อ
+              </Btn>
+              <Btn onClick={() => downloadCsv(rows)} disabled={!rows.length}>
+                ดาวน์โหลด CSV
+              </Btn>
+              <Btn tone="navy" onClick={() => void load(true)} disabled={loading}>
+                {loading ? "กำลังดึง…" : "ดึงใหม่"}
+              </Btn>
+            </>
+          }
+        />
 
         {error ? (
-          <div className={`${card} border-rose-200 bg-rose-50 p-4 text-sm text-rose-700`}>⚠ {error}</div>
+          <div className="mt-4">
+            <Banner tone="hot" title={error} />
+          </div>
         ) : null}
 
         {created ? (
-          <div className={`${card} flex items-start gap-3 border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800`}>
-            <span className="flex-1">✓ {created}</span>
-            <button
-              type="button"
-              onClick={() => setCreated("")}
-              className="shrink-0 rounded px-1.5 text-emerald-500 transition hover:bg-emerald-100 hover:text-emerald-700"
-            >
+          <div
+            className="dkb-g mt-4 flex items-start gap-3 p-4 text-[14px]"
+            style={{ background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" }}
+          >
+            <span className="flex-1">{created}</span>
+            <button type="button" onClick={() => setCreated("")} className="shrink-0 px-1.5">
               ✕
             </button>
           </div>
+        ) : null}
+
+        {sum ? (
+          <Stats cols={4}>
+            <HeroStat
+              n={sum.missing}
+              label="ยังไม่มีในระบบ"
+              detail={`ต้องนำเข้าหรือสร้างเพิ่ม · ยังไม่ทำราคาอีก ${sum.priceTasks - sum.priceDone} รายการ`}
+              pct={sum.cards ? (sum.missing / sum.cards) * 100 : 0}
+            />
+            <Stat label="เผยแพร่แล้ว" value={sum.published} hint="ลูกค้าเห็นบนหน้าร้าน" />
+            <Stat
+              label="ฉบับร่าง"
+              value={sum.draft}
+              hint={sum.draft ? "มีในระบบ แต่ยังไม่เผยแพร่" : "ไม่มีร่างค้าง"}
+              tone={sum.draft ? "due" : undefined}
+            />
+          </Stats>
         ) : null}
 
         {/* ── สรุป ── */}
@@ -1465,7 +1484,7 @@ export default function PricelistReportPage() {
             ) : null}
           </div>
         ) : null}
-      </div>
+      </PageShell>
     </RequirePerm>
   );
 }
