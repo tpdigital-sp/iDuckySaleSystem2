@@ -1,9 +1,34 @@
 "use client";
 
+/**
+ * คูปองส่วนลด /admin/coupons  (ดีไซน์ "รางเบนโตะกระจก")
+ *
+ * สร้างโค้ด/ลิงก์แจกลูกค้า · ใช้ได้ครั้งเดียวต่อใบ · ระบบตัดใช้ฝั่งเซิร์ฟเวอร์กันใช้ซ้ำ
+ *
+ * ของที่เพิ่มจากเดิม: นับใบที่ "ใกล้หมดอายุใน 7 วัน" — คูปองที่แจกไปแล้ว
+ * แต่หมดอายุก่อนลูกค้าได้ใช้ คือส่วนลดที่เสียเปล่าทั้งงบและความรู้สึกลูกค้า
+ */
+
 import { useCallback, useEffect, useState } from "react";
 import { publicOrigin } from "@/lib/shop-info";
 import { couponLabel, type Coupon } from "@/lib/coupons";
 import { fetchProductsLite } from "@/lib/product-repo";
+import {
+  Banner,
+  Btn,
+  Empty,
+  HeroStat,
+  ListHead,
+  PageHead,
+  PageShell,
+  Row,
+  RowMain,
+  RowSide,
+  Rows,
+  Stat,
+  Stats,
+  Tag,
+} from "@/components/admin/ui";
 
 type Form = {
   type: "percent" | "fixed";
@@ -29,11 +54,20 @@ const EMPTY: Form = {
   codePrefix: "",
 };
 
-const STATUS: Record<Coupon["status"], { label: string; cls: string }> = {
-  active: { label: "พร้อมใช้", cls: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
-  redeemed: { label: "ใช้แล้ว", cls: "bg-slate-100 text-slate-500 ring-slate-200" },
-  void: { label: "ยกเลิก", cls: "bg-rose-50 text-rose-600 ring-rose-200" },
+const STATUS: Record<Coupon["status"], { label: string; tone: "mint" | "quiet" | "coral"; bar: string }> = {
+  active: { label: "พร้อมใช้", tone: "mint", bar: "var(--dk-mint)" },
+  redeemed: { label: "ใช้แล้ว", tone: "quiet", bar: "var(--dk-quiet)" },
+  void: { label: "ยกเลิก", tone: "coral", bar: "var(--dk-quiet)" },
 };
+
+/** เหลืออีกกี่วันจะหมดอายุ (null = ไม่มีวันหมดอายุ) */
+function daysLeft(iso?: string): number | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (!isFinite(d.getTime())) return null;
+  const mid = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  return Math.round((mid(d) - mid(new Date())) / 86400000);
+}
 
 function couponUrl(code: string) {
   return `${publicOrigin()}/coupon/${encodeURIComponent(code)}`;
@@ -132,26 +166,51 @@ export default function AdminCouponsPage() {
   const active = coupons.filter((c) => c.status === "active").length;
   const redeemed = coupons.filter((c) => c.status === "redeemed").length;
 
+  const expiring = coupons.filter((c) => {
+    if (c.status !== "active") return false;
+    const d = daysLeft(c.expiresAt);
+    return d !== null && d >= 0 && d <= 7;
+  }).length;
+
   return (
-    <div className="mx-auto max-w-5xl">
-      <header className="mb-6">
-        <h1 className="text-xl font-bold text-slate-900">🎟️ คูปองส่วนลด</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          สร้างโค้ด/ลิงก์แจกลูกค้า · ใช้ได้ครั้งเดียวต่อใบ · ระบบตัดใช้ฝั่งเซิร์ฟเวอร์กันใช้ซ้ำ
-        </p>
-      </header>
+    <PageShell>
+      <PageHead
+        group="ลูกค้า"
+        title="คูปองส่วนลด"
+        count={`${coupons.length} ใบ`}
+        sub="สร้างโค้ด/ลิงก์แจกลูกค้า · ใช้ได้ครั้งเดียวต่อใบ · ระบบตัดใช้ฝั่งเซิร์ฟเวอร์กันใช้ซ้ำ"
+      />
 
       {needsSetup && (
-        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          ยังไม่มีตาราง <code className="font-mono">coupons</code> — เปิด Supabase SQL editor แล้วรัน{" "}
-          <code className="font-mono">supabase/coupons.sql</code> หนึ่งครั้ง จากนั้นรีเฟรชหน้านี้
+        <div className="mt-4">
+          <Banner
+            tone="warm"
+            title="ยังไม่มีตาราง coupons"
+            detail="เปิด Supabase SQL editor แล้วรัน supabase/coupons.sql หนึ่งครั้ง จากนั้นรีเฟรชหน้านี้"
+          />
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,340px)_1fr]">
+      <Stats cols={4}>
+        <HeroStat
+          n={active}
+          label="พร้อมใช้"
+          detail={expiring ? `ในนี้หมดอายุใน 7 วัน ${expiring} ใบ — แจกให้ทันก่อนเสียเปล่า` : "ยังไม่มีใบไหนใกล้หมดอายุ"}
+          pct={coupons.length ? (active / coupons.length) * 100 : 0}
+        />
+        <Stat label="ใช้แล้ว" value={redeemed} hint="ตัดใช้ไปแล้ว" />
+        <Stat
+          label="ใกล้หมดอายุ"
+          value={expiring}
+          hint={expiring ? "ใบ — ภายใน 7 วัน" : "ใบ"}
+          tone={expiring ? "due" : undefined}
+        />
+      </Stats>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,350px)_1fr]">
         {/* ── ฟอร์มสร้าง ── */}
-        <form onSubmit={create} className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-sm font-bold text-slate-800">สร้างคูปองใหม่</h2>
+        <form onSubmit={create} className="dkb-g h-fit p-4 sm:p-5">
+          <h2 className="dkb-h2 mb-3 text-[1.06rem]">สร้างคูปองใหม่</h2>
 
           <div className="mb-3 grid grid-cols-2 gap-2">
             {(["percent", "fixed"] as const).map((t) => (
@@ -159,11 +218,8 @@ export default function AdminCouponsPage() {
                 key={t}
                 type="button"
                 onClick={() => setForm((f) => ({ ...f, type: t }))}
-                className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
-                  form.type === t
-                    ? "border-sky-400 bg-sky-50 text-sky-700"
-                    : "border-slate-200 text-slate-500 hover:bg-slate-50"
-                }`}
+                aria-pressed={form.type === t}
+                className="dkb-tab justify-center"
               >
                 {t === "percent" ? "ลด %" : "ลดเป็นบาท"}
               </button>
@@ -228,16 +284,16 @@ export default function AdminCouponsPage() {
             <button
               type="button"
               onClick={() => setExOpen((v) => !v)}
-              className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-50"
+              className="dkb-g flex w-full items-center justify-between px-3 py-2.5 text-left text-[12px]" style={{ color: "var(--dk-navy-soft)" }}
             >
               <span>
-                🚫 สินค้าไม่ร่วมรายการ — ไม่บังคับ
-                {exclude.length > 0 && <span className="ml-1 font-bold text-rose-600">({exclude.length})</span>}
+                สินค้าไม่ร่วมรายการ — ไม่บังคับ
+                {exclude.length > 0 && <span className="ml-1 font-semibold" style={{ color: "var(--dk-coral-ink)" }}>({exclude.length})</span>}
               </span>
-              <span className="text-slate-400">{exOpen ? "▲" : "▼"}</span>
+              <span style={{ color: "var(--dk-faint)" }}>{exOpen ? "▲" : "▼"}</span>
             </button>
             {exOpen && (
-              <div className="mt-2 rounded-lg border border-slate-200 p-2">
+              <div className="dkb-g mt-2 p-2">
                 <input
                   value={exSearch}
                   onChange={(e) => setExSearch(e.target.value)}
@@ -248,24 +304,24 @@ export default function AdminCouponsPage() {
                   {products
                     .filter((p) => !exSearch.trim() || p.name.toLowerCase().includes(exSearch.trim().toLowerCase()))
                     .map((p) => (
-                      <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs text-slate-700 hover:bg-slate-50">
+                      <label key={p.id} className="dkb-row !min-h-0 cursor-pointer gap-2 px-2 py-1.5 text-[12px]">
                         <input
                           type="checkbox"
                           checked={exclude.includes(p.id)}
                           onChange={(e) =>
                             setExclude((xs) => (e.target.checked ? [...xs, p.id] : xs.filter((x) => x !== p.id)))
                           }
-                          className="accent-rose-500"
+                          style={{ accentColor: "var(--dk-coral-deep)" }}
                         />
                         <span className="truncate">{p.name}</span>
                       </label>
                     ))}
-                  {products.length === 0 && <p className="px-1.5 py-2 text-xs text-slate-400">กำลังโหลดรายการสินค้า…</p>}
+                  {products.length === 0 && <p className="px-1.5 py-2 text-[12px]" style={{ color: "var(--dk-faint)" }}>กำลังโหลดรายการสินค้า…</p>}
                 </div>
                 {exclude.length > 0 && (
-                  <p className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
+                  <p className="mt-2 border-t pt-2 text-[11.5px]" style={{ borderColor: "var(--dk-hair)", color: "var(--dk-navy-soft)" }}>
                     เลือกแล้ว {exclude.length} สินค้า — ลูกค้าใช้คูปองได้ แต่ส่วนลดจะไม่คิดจากสินค้าเหล่านี้
-                    <button type="button" onClick={() => setExclude([])} className="ml-2 font-medium text-rose-600 hover:underline">
+                    <button type="button" onClick={() => setExclude([])} className="ml-2 font-semibold hover:underline" style={{ color: "var(--dk-coral-ink)" }}>
                       ล้างทั้งหมด
                     </button>
                   </p>
@@ -305,29 +361,29 @@ export default function AdminCouponsPage() {
             />
           </Field>
 
-          {err && <p className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{err}</p>}
+          {err && (
+            <p className="mb-3 rounded-[14px] px-3 py-2 text-[12px]" style={{ background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}>
+              {err}
+            </p>
+          )}
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-sky-600 disabled:opacity-50"
-          >
+          <button type="submit" disabled={busy} className="dkb-btn dkb-btn-navy w-full">
             {busy ? "กำลังสร้าง…" : "สร้างคูปอง"}
           </button>
 
           {justMade.length > 0 && (
-            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-              <p className="mb-2 text-xs font-bold text-emerald-800">สร้างแล้ว {justMade.length} ใบ — คัดลอกลิงก์แจกได้เลย</p>
+            <div className="mt-4 rounded-[18px] p-3" style={{ background: "var(--dk-mint-wash)" }}>
+              <p className="mb-2 text-[12px] font-semibold" style={{ color: "var(--dk-mint-ink)" }}>สร้างแล้ว {justMade.length} ใบ — คัดลอกลิงก์แจกได้เลย</p>
               <div className="space-y-1.5">
                 {justMade.map((code) => (
                   <div key={code} className="flex items-center gap-1.5">
-                    <code className="flex-1 truncate rounded bg-white px-2 py-1 font-mono text-xs text-slate-700 ring-1 ring-emerald-200">
+                    <code className="dkb-code flex-1 truncate rounded-lg bg-white px-2 py-1">
                       {code}
                     </code>
                     <button
                       type="button"
                       onClick={() => copy(couponUrl(code), `link-${code}`)}
-                      className="rounded bg-emerald-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-emerald-700"
+                      className="dkb-btn dkb-btn-navy dkb-btn-sm !min-h-[28px] !px-2.5 !text-[11px]"
                     >
                       {copied === `link-${code}` ? "คัดลอกแล้ว" : "คัดลอกลิงก์"}
                     </button>
@@ -340,86 +396,73 @@ export default function AdminCouponsPage() {
 
         {/* ── รายการคูปอง ── */}
         <section>
-          <div className="mb-3 flex items-center gap-4 text-xs text-slate-500">
-            <span>ทั้งหมด {coupons.length} ใบ</span>
-            <span className="text-emerald-600">พร้อมใช้ {active}</span>
-            <span className="text-slate-400">ใช้แล้ว {redeemed}</span>
-          </div>
+          <ListHead title="คูปอง" note={`พร้อมใช้ ${active} · ใช้แล้ว ${redeemed}`} />
 
           {loading ? (
-            <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">กำลังโหลด…</p>
+            <Empty title="กำลังโหลด…" body="ดึงคูปองจากเซิร์ฟเวอร์" />
           ) : coupons.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-400">
-              ยังไม่มีคูปอง — สร้างใบแรกจากฟอร์มด้านซ้าย
-            </p>
+            <Empty title="ยังไม่มีคูปอง" body="สร้างใบแรกจากฟอร์มด้านซ้าย — สร้างทีเดียวหลายใบได้" />
           ) : (
-            <div className="space-y-2">
-              {coupons.map((c) => (
-                <div
-                  key={c.code}
-                  className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
-                >
-                  <code className="font-mono text-sm font-bold text-slate-800">{c.code}</code>
-                  <span className="text-xs text-slate-500">{couponLabel(c)}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ${STATUS[c.status].cls}`}>
-                    {STATUS[c.status].label}
-                  </span>
-                  <div className="ml-auto flex items-center gap-2">
-                    {c.status === "active" && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => copy(couponUrl(c.code), `row-${c.code}`)}
-                          className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                        >
-                          {copied === `row-${c.code}` ? "คัดลอกแล้ว" : "คัดลอกลิงก์"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => voidCoupon(c.code)}
-                          className="rounded-lg border border-rose-200 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50"
-                        >
-                          ยกเลิก
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  <div className="w-full text-[11px] text-slate-400">
-                    {c.minSpend ? `ขั้นต่ำ ฿${c.minSpend} · ` : ""}
-                    {c.maxDiscount ? `สูงสุด ฿${c.maxDiscount} · ` : ""}
-                    {c.excludeProducts?.length ? (
-                      <span
-                        className="cursor-help underline decoration-dotted"
-                        title={c.excludeProducts.map((id) => products.find((p) => p.id === id)?.name ?? id).join(", ")}
-                      >
-                        ไม่ร่วม {c.excludeProducts.length} สินค้า
-                      </span>
-                    ) : (
-                      ""
-                    )}
-                    {c.excludeProducts?.length ? " · " : ""}
-                    {c.expiresAt ? `หมดอายุ ${new Date(c.expiresAt).toLocaleDateString("th-TH")} · ` : ""}
-                    {c.assignedTo ? "เจาะจงบัญชี · " : ""}
-                    {c.note ? `“${c.note}” · ` : ""}
-                    {c.status === "redeemed" && c.redeemedOrderId ? `ใช้กับ ${c.redeemedOrderId}` : ""}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <Rows>
+              {coupons.map((c) => {
+                const left = daysLeft(c.expiresAt);
+                const soon = c.status === "active" && left !== null && left >= 0 && left <= 7;
+                return (
+                  <Row key={c.code} tone={soon ? "var(--dk-coral-deep)" : STATUS[c.status].bar} done={c.status !== "active"}>
+                    <RowMain
+                      name={<span className="dkb-code text-[0.95rem]">{c.code}</span>}
+                      tags={
+                        <>
+                          <Tag tone={STATUS[c.status].tone}>{STATUS[c.status].label}</Tag>
+                          {soon && <Tag tone="solid">{left === 0 ? "หมดอายุวันนี้" : `หมดอายุอีก ${left} วัน`}</Tag>}
+                          {c.assignedTo && <Tag tone="lilac">เจาะจงบัญชี</Tag>}
+                        </>
+                      }
+                      meta={
+                        <>
+                          <span>{couponLabel(c)}</span>
+                          {c.minSpend ? <span>ขั้นต่ำ ฿{c.minSpend}</span> : null}
+                          {c.maxDiscount ? <span>สูงสุด ฿{c.maxDiscount}</span> : null}
+                          {c.excludeProducts?.length ? (
+                            <span title={c.excludeProducts.map((id) => products.find((p) => p.id === id)?.name ?? id).join(", ")}>
+                              ไม่ร่วม {c.excludeProducts.length} สินค้า
+                            </span>
+                          ) : null}
+                          {!soon && c.expiresAt ? <span>หมดอายุ {new Date(c.expiresAt).toLocaleDateString("th-TH")}</span> : null}
+                          {c.note ? <span>“{c.note}”</span> : null}
+                          {c.status === "redeemed" && c.redeemedOrderId ? <span className="id">{c.redeemedOrderId}</span> : null}
+                        </>
+                      }
+                    />
+                    <RowSide>
+                      {c.status === "active" && (
+                        <span className="flex items-center gap-2">
+                          <Btn small onClick={() => copy(couponUrl(c.code), `row-${c.code}`)}>
+                            {copied === `row-${c.code}` ? "คัดลอกแล้ว" : "คัดลอกลิงก์"}
+                          </Btn>
+                          <Btn small onClick={() => void voidCoupon(c.code)}>
+                            ยกเลิก
+                          </Btn>
+                        </span>
+                      )}
+                    </RowSide>
+                  </Row>
+                );
+              })}
+            </Rows>
           )}
         </section>
       </div>
-    </div>
+    </PageShell>
   );
 }
 
-const inputCls =
-  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100";
+const inputCls = "w-full border-0 bg-transparent p-0 text-[0.94rem] outline-none";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="mb-3 block">
-      <span className="mb-1 block text-xs font-medium text-slate-600">{label}</span>
+    <label className="dkb-g dkb-field mb-2.5 block">
+      <span className="lb">{label}</span>
       {children}
     </label>
   );
