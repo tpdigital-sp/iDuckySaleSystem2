@@ -4,9 +4,27 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { isSelfDesigned, proofsOf, STATUS_STYLES, type Order, type OrderItem, type Proof } from "@/lib/admin-data";
-import { h1, muted } from "@/lib/admin-ui";
+import StatusChip from "@/components/admin/StatusChip";
+import {
+  Btn,
+  Empty,
+  FChip,
+  FilterCard,
+  HeroStat,
+  ListHead,
+  PageHead,
+  PageShell,
+  Row,
+  RowMain,
+  RowSide,
+  Rows,
+  SearchBox,
+  Stat,
+  Stats,
+  TabRow,
+  Tag,
+} from "@/components/admin/ui";
+import { isSelfDesigned, proofsOf, type Order, type OrderItem, type Proof } from "@/lib/admin-data";
 import { dayOf, orderMatches, useGraphicsOrders } from "../data";
 
 /**
@@ -23,13 +41,17 @@ type State = "ขอแก้ไข" | "ยังไม่ยืนยัน" | 
 /** ลำดับความสำคัญในตาราง — ที่ค้างอยู่ที่เราขึ้นก่อน */
 const ORDER_OF: Record<State, number> = { ขอแก้ไข: 0, ยังไม่ยืนยัน: 1, อนุมัติแล้ว: 2 };
 
-const STATE_STYLE: Record<State, string> = {
-  ขอแก้ไข: "bg-rose-50 text-rose-700 ring-rose-200/70",
-  ยังไม่ยืนยัน: "bg-violet-50 text-violet-700 ring-violet-200/70",
-  อนุมัติแล้ว: "bg-emerald-50 text-emerald-700 ring-emerald-200/70",
+/** สีแถบซ้ายของแถว + โทนป้าย ตามผลยืนยันของลูกค้า */
+const STATE_TONE: Record<State, string> = {
+  ขอแก้ไข: "var(--dk-coral-deep)",
+  ยังไม่ยืนยัน: "var(--dk-lilac)",
+  อนุมัติแล้ว: "var(--dk-quiet)",
 };
-
-const STATE_EMOJI: Record<State, string> = { ขอแก้ไข: "🔁", ยังไม่ยืนยัน: "⏳", อนุมัติแล้ว: "✅" };
+const STATE_TAG: Record<State, "coral" | "lilac" | "mint"> = {
+  ขอแก้ไข: "coral",
+  ยังไม่ยืนยัน: "lilac",
+  อนุมัติแล้ว: "mint",
+};
 
 /** ความละเอียดที่พิมพ์แล้วคม — ต่ำกว่านี้ควรทักลูกค้าก่อนพิมพ์ */
 const DPI_WARN = 150;
@@ -94,7 +116,6 @@ function buildRows(orders: Order[]): Row[] {
 type Filter = State | "all" | "self" | "lowdpi";
 
 export default function DesignReportPage() {
-  const router = useRouter();
   const { orders, demo } = useGraphicsOrders();
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
@@ -118,6 +139,7 @@ export default function DesignReportPage() {
     return c;
   }, [rows]);
 
+
   const shown = rows
     .filter((r) =>
       filter === "all"
@@ -126,7 +148,7 @@ export default function DesignReportPage() {
           ? r.self
           : filter === "lowdpi"
             ? r.dpi !== null && r.dpi < DPI_WARN
-            : r.state === filter,
+            : r.state === filter
     )
     .filter((r) => orderMatches(r.order, q));
 
@@ -143,236 +165,170 @@ export default function DesignReportPage() {
   }, [shown]);
 
   return (
-    <div className="mx-auto max-w-7xl">
-      {/* ── หัวหน้า ── */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className={h1}>📋 รายงานแบบงาน</h1>
-          <p className={`mt-1 text-sm ${muted}`}>
-            สรุปว่าแบบของออเดอร์ไหนค้างอยู่ตรงไหน — ลูกค้าขอแก้ · ส่งไปแล้วยังไม่ยืนยัน · อนุมัติแล้ว ·{" "}
-            {demo ? (
-              <span className="text-slate-400">ยังไม่มีออเดอร์จริง — แสดงตัวอย่างไว้ก่อน</span>
-            ) : (
-              <span className="font-semibold text-green-600">● ออเดอร์จริง</span>
-            )}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/admin/graphics"
-            className="rounded-full bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
-          >
-            🎨 ออเดอร์กราฟฟิก
-          </Link>
-          <label className="flex min-w-[240px] items-center gap-2 rounded-full border-2 border-amber-200 bg-white px-4 py-2.5 focus-within:border-amber-400">
-            <span className="text-sm text-amber-500">🔍</span>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="ค้นเลขออเดอร์ / ชื่อลูกค้า / ชื่อสินค้า"
-              className="w-full bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
-            />
-          </label>
-        </div>
-      </div>
+    <PageShell>
+      <PageHead
+        group="กราฟฟิก"
+        title="รายงานแบบงาน"
+        count={`${counts.all} ลาย`}
+        sub="สรุปว่าแบบของออเดอร์ไหนค้างอยู่ตรงไหน — ลูกค้าขอแก้ · ส่งไปแล้วยังไม่ยืนยัน · อนุมัติแล้ว"
+        live={demo ? { ok: false, text: "ยังไม่มีออเดอร์จริง — แสดงตัวอย่างไว้ก่อน" } : { ok: true, text: "ออเดอร์จริง" }}
+        tools={
+          <>
+            <SearchBox value={q} onChange={setQ} placeholder="ค้นเลขออเดอร์ / ชื่อลูกค้า / ชื่อสินค้า" />
+            <Btn tone="navy" href="/admin/graphics">
+              ออเดอร์กราฟฟิก
+            </Btn>
+          </>
+        }
+      />
 
-      {/* ── การ์ดสรุป ── */}
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Tile label="ลายทั้งหมด" value={counts.all} />
-        <Tile label="🔁 ลูกค้าขอแก้" value={counts["ขอแก้ไข"]} tone={counts["ขอแก้ไข"] ? "alert" : undefined} />
-        <Tile label="⏳ ยังไม่ยืนยัน" value={counts["ยังไม่ยืนยัน"]} tone="warn" />
-        <Tile label="✅ อนุมัติแล้ว" value={counts["อนุมัติแล้ว"]} />
-      </div>
+      <Stats cols={4}>
+        <HeroStat
+          n={counts["ขอแก้ไข"] + counts["ยังไม่ยืนยัน"]}
+          label="ยังไม่จบเรื่อง"
+          detail={`ลูกค้าขอแก้ ${counts["ขอแก้ไข"]} · ส่งไปแล้วยังไม่ยืนยัน ${counts["ยังไม่ยืนยัน"]}`}
+          pct={counts.all ? ((counts["ขอแก้ไข"] + counts["ยังไม่ยืนยัน"]) / counts.all) * 100 : 0}
+        />
+        <Stat label="อนุมัติแล้ว" value={counts["อนุมัติแล้ว"]} hint="จบเรื่องแล้ว" />
+        <Stat
+          label="ความละเอียดต่ำ"
+          value={counts.lowdpi}
+          hint={counts.lowdpi ? `ต่ำกว่า ${DPI_WARN} DPI — ควรทักลูกค้า` : `เกิน ${DPI_WARN} DPI ทุกลาย`}
+          tone={counts.lowdpi ? "due" : undefined}
+        />
+      </Stats>
 
-      {/* ── ชิปกรอง ── */}
-      <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <Chip on={filter === "all"} onClick={() => setFilter("all")} label="ทั้งหมด" count={counts.all} />
-        <Chip on={filter === "ขอแก้ไข"} onClick={() => setFilter("ขอแก้ไข")} label="🔁 ขอแก้ไข" count={counts["ขอแก้ไข"]} />
-        <Chip on={filter === "ยังไม่ยืนยัน"} onClick={() => setFilter("ยังไม่ยืนยัน")} label="⏳ ยังไม่ยืนยัน" count={counts["ยังไม่ยืนยัน"]} />
-        <Chip on={filter === "อนุมัติแล้ว"} onClick={() => setFilter("อนุมัติแล้ว")} label="✅ อนุมัติแล้ว" count={counts["อนุมัติแล้ว"]} />
-        <span className="my-1 w-px shrink-0 bg-slate-200" aria-hidden="true" />
-        <Chip on={filter === "self"} onClick={() => setFilter("self")} label="🖼 ลูกค้าจัดวางเอง" count={counts.self} />
-        <Chip on={filter === "lowdpi"} onClick={() => setFilter("lowdpi")} label="⚠️ ความละเอียดต่ำ" count={counts.lowdpi} />
-      </div>
+      <FilterCard>
+        <TabRow>
+          <FChip on={filter === "all"} onClick={() => setFilter("all")} label="ทั้งหมด" count={counts.all} />
+          <FChip
+            on={filter === "ขอแก้ไข"}
+            onClick={() => setFilter("ขอแก้ไข")}
+            label="ขอแก้ไข"
+            count={counts["ขอแก้ไข"]}
+            style={{ background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}
+          />
+          <FChip
+            on={filter === "ยังไม่ยืนยัน"}
+            onClick={() => setFilter("ยังไม่ยืนยัน")}
+            label="ยังไม่ยืนยัน"
+            count={counts["ยังไม่ยืนยัน"]}
+            style={{ background: "var(--dk-lilac-wash)", color: "var(--dk-lilac-ink)" }}
+          />
+          <FChip on={filter === "อนุมัติแล้ว"} onClick={() => setFilter("อนุมัติแล้ว")} label="อนุมัติแล้ว" count={counts["อนุมัติแล้ว"]} />
+        </TabRow>
+        <TabRow divider>
+          <FChip on={filter === "self"} onClick={() => setFilter("self")} label="ลูกค้าจัดวางเอง" count={counts.self} />
+          <FChip
+            on={filter === "lowdpi"}
+            onClick={() => setFilter("lowdpi")}
+            label="ความละเอียดต่ำ"
+            count={counts.lowdpi}
+            style={{ background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}
+          />
+        </TabRow>
+      </FilterCard>
 
-      {/* ── ตารางรายงาน (จัดกลุ่มตามออเดอร์) ── */}
+      <ListHead title="ลาย" note="จัดกลุ่มตามออเดอร์ · ที่ค้างอยู่ที่เราขึ้นก่อน" />
+
       {groups.length === 0 ? (
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-12 text-center">
-          <span className="text-4xl">📋</span>
-          <p className="mt-3 font-semibold text-slate-600">
-            {q.trim() ? `ไม่พบแบบที่ตรงกับ "${q}"` : "ไม่มีข้อมูลในกลุ่มนี้"}
-          </p>
-        </div>
+        <Empty
+          title={q.trim() ? `ไม่พบแบบที่ตรงกับ “${q.trim()}”` : "ไม่มีข้อมูลในกลุ่มนี้"}
+          body={q.trim() ? "ลองค้นด้วยเลขออเดอร์ ชื่อลูกค้า หรือชื่อสินค้าแทน" : "ลองดูกลุ่มอื่นจากปุ่มด้านบน"}
+        />
       ) : (
-        <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] border-collapse text-left">
-              <thead>
-                <tr className="bg-amber-500 text-white">
-                  <Th className="w-[300px]">ลาย</Th>
-                  <Th className="w-[150px]">ที่มาของแบบ</Th>
-                  <Th className="w-[140px]">การยืนยัน</Th>
-                  <Th>คอมเมนต์ลูกค้า</Th>
-                  <Th className="w-8" />
-                </tr>
-              </thead>
-              {groups.map((g) => {
-                const redo = g.rows.filter((r) => r.state === "ขอแก้ไข").length;
-                const wait = g.rows.filter((r) => r.state === "ยังไม่ยืนยัน").length;
-                return (
-                  <tbody key={g.order.id} className="border-b-8 border-slate-100 last:border-b-0">
-                    {/* หัวกลุ่ม = 1 ออเดอร์ */}
-                    <tr className="bg-slate-50">
-                      <td colSpan={5} className="px-4 py-2.5">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <Link
-                            href={`/admin/orders/${encodeURIComponent(g.order.id)}`}
-                            className="font-bold tabular-nums text-slate-900 hover:underline"
-                          >
-                            {g.order.id}
-                          </Link>
-                          <span className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${STATUS_STYLES[g.order.status]}`}>
-                            {g.order.status}
-                          </span>
-                          <span className="truncate text-xs text-slate-500" title={g.order.customer}>
-                            · {g.order.customer} · {dayOf(g.order.date)}
-                          </span>
-                          <span className="ml-auto flex flex-wrap items-center gap-1.5">
-                            {redo > 0 && (
-                              <span className="whitespace-nowrap rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">
-                                🔁 ขอแก้ {redo}
-                              </span>
-                            )}
-                            {wait > 0 && (
-                              <span className="whitespace-nowrap rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700">
-                                ⏳ ยังไม่ยืนยัน {wait}
-                              </span>
-                            )}
-                            <span className="whitespace-nowrap text-[11px] text-slate-400">{g.rows.length} ลาย</span>
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
+        <div className="grid gap-4">
+          {groups.map((g) => {
+            const redo = g.rows.filter((r) => r.state === "ขอแก้ไข").length;
+            const wait = g.rows.filter((r) => r.state === "ยังไม่ยืนยัน").length;
+            return (
+              <section key={g.order.id}>
+                {/* หัวกลุ่ม = 1 ออเดอร์ */}
+                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-2 pb-2">
+                  <Link
+                    href={`/admin/orders/${encodeURIComponent(g.order.id)}`}
+                    className="dkb-code text-[12.5px] underline-offset-4 hover:underline"
+                    style={{ color: "var(--dk-navy-soft)" }}
+                  >
+                    {g.order.id}
+                  </Link>
+                  <StatusChip s={g.order.status} />
+                  <span className="truncate text-[13px]" style={{ color: "var(--dk-navy)" }} title={g.order.customer}>
+                    {g.order.customer}
+                  </span>
+                  <span className="text-[12px]" style={{ color: "var(--dk-faint)" }}>
+                    {dayOf(g.order.date)}
+                  </span>
+                  <span className="ml-auto flex flex-wrap items-center gap-1.5">
+                    {redo > 0 && <Tag tone="solid">ขอแก้ {redo}</Tag>}
+                    {wait > 0 && <Tag tone="lilac">ยังไม่ยืนยัน {wait}</Tag>}
+                    <span className="text-[12px]" style={{ color: "var(--dk-faint)" }}>
+                      {g.rows.length} ลาย
+                    </span>
+                  </span>
+                </div>
 
-                    {g.rows.map((r, i) => {
-                      const low = r.dpi !== null && r.dpi < DPI_WARN;
-                      return (
-                        <tr
-                          key={`${r.proof.url}-${i}`}
-                          onClick={() => router.push(`/admin/orders/${encodeURIComponent(r.order.id)}`)}
-                          className="cursor-pointer border-b border-slate-100 align-middle transition last:border-b-0 hover:bg-amber-100/60"
-                        >
-                          <td className="px-4 py-2.5">
-                            <div className="flex items-center gap-2.5">
-                              {/* รูปเล็กพอให้จำได้ว่าลายไหน — กดเพื่อเปิดเต็ม */}
-                              <a
-                                href={r.proof.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                title="เปิดรูปเต็ม"
-                                className="shrink-0"
-                              >
-                                <img
-                                  src={r.proof.url}
-                                  alt={`ลายที่ ${r.no}`}
-                                  loading="lazy"
-                                  decoding="async"
-                                  className="h-11 w-11 rounded-lg border border-slate-200 bg-white object-contain transition hover:border-slate-400"
-                                />
-                              </a>
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold text-slate-800" title={r.item.name}>
-                                  {r.item.name}
-                                </p>
-                                <p className="text-xs text-slate-400">
+                <Rows>
+                  {g.rows.map((r, i) => {
+                    const low = r.dpi !== null && r.dpi < DPI_WARN;
+                    return (
+                      <Row key={`${r.proof.url}-${i}`} tone={STATE_TONE[r.state]} done={r.state === "อนุมัติแล้ว"}>
+                        <span className="flex min-w-0 flex-1 items-center gap-3">
+                          <a
+                            href={r.proof.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="เปิดรูปเต็ม"
+                            className="dkb-thumb !h-[52px] w-[52px] shrink-0"
+                          >
+                            <img src={r.proof.url} alt={`ลายที่ ${r.no}`} loading="lazy" decoding="async" />
+                          </a>
+                          <RowMain
+                            name={r.item.name}
+                            href={`/admin/orders/${encodeURIComponent(r.order.id)}`}
+                            tags={
+                              <>
+                                <Tag tone={STATE_TAG[r.state]}>{r.state}</Tag>
+                                {r.proof.revisedAt && <Tag tone="mint">แก้ให้แล้ว</Tag>}
+                                {r.self ? <Tag tone="sky">ลูกค้าจัดวางเอง</Tag> : <Tag tone="quiet">กราฟฟิกทำ</Tag>}
+                                {low && (
+                                  <Tag tone="solid" title={`ต่ำกว่า ${DPI_WARN} DPI — พิมพ์แล้วอาจไม่คม`}>
+                                    {r.dpi} DPI
+                                  </Tag>
+                                )}
+                              </>
+                            }
+                            meta={
+                              <>
+                                <span>
                                   ลายที่ {r.no}
                                   {r.proof.qty ? ` · ${r.proof.qty} ชิ้น` : ""}
-                                </p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-2.5">
-                            {r.self ? (
-                              <>
-                                <span className="inline-flex whitespace-nowrap rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200/70">
-                                  🖼 ลูกค้าจัดวางเอง
                                 </span>
-                                {r.dpi !== null && (
-                                  <span
-                                    className={`mt-1 block text-[11px] font-bold ${low ? "text-rose-600" : "text-slate-400"}`}
-                                    title={low ? `ต่ำกว่า ${DPI_WARN} DPI — พิมพ์แล้วอาจไม่คม` : "ความละเอียดพอสำหรับงานพิมพ์"}
-                                  >
-                                    {low ? "⚠️ " : ""}
-                                    {r.dpi} DPI
+                                {r.dpi !== null && !low && <span>{r.dpi} DPI</span>}
+                                {r.note && (
+                                  <span className="hot" title={r.note}>
+                                    {r.noteWhole ? "(ของทั้งรายการ) " : ""}
+                                    {r.note}
                                   </span>
                                 )}
                               </>
-                            ) : (
-                              <span className="inline-flex whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200">
-                                🎨 กราฟฟิกทำ
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${STATE_STYLE[r.state]}`}>
-                              {STATE_EMOJI[r.state]} {r.state}
-                            </span>
-                            {r.proof.revisedAt && (
-                              <span className="mt-1 block text-[10px] font-bold text-emerald-600">แก้ให้แล้ว</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-2.5">
-                            {r.note ? (
-                              <p className="text-xs leading-relaxed text-rose-700">
-                                {r.noteWhole && <span className="font-semibold">(ของทั้งรายการ) </span>}
-                                {r.note}
-                              </p>
-                            ) : (
-                              <span className="text-xs text-slate-300">—</span>
-                            )}
-                          </td>
-                          <td className="pr-4 text-slate-300">›</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                );
-              })}
-            </table>
-          </div>
+                            }
+                          />
+                        </span>
+                        <RowSide>
+                          <Btn small href={`/admin/orders/${encodeURIComponent(r.order.id)}`}>
+                            เปิดออเดอร์
+                          </Btn>
+                        </RowSide>
+                      </Row>
+                    );
+                  })}
+                </Rows>
+              </section>
+            );
+          })}
         </div>
       )}
-    </div>
-  );
-}
-
-function Th({ children, className = "" }: { children?: React.ReactNode; className?: string }) {
-  return <th className={`px-4 py-3 text-[11px] font-bold uppercase tracking-wider ${className}`}>{children}</th>;
-}
-
-function Tile({ label, value, tone }: { label: string; value: number; tone?: "warn" | "alert" }) {
-  const box =
-    tone === "warn" ? "border-ducky bg-ducky/15" : tone === "alert" ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-white";
-  const val = tone === "warn" ? "text-yellow-700" : tone === "alert" ? "text-rose-600" : "text-slate-900";
-  return (
-    <div className={`rounded-2xl border p-4 ${box}`}>
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className={`mt-0.5 text-2xl font-bold tracking-tight tabular-nums ${val}`}>{value}</div>
-    </div>
-  );
-}
-
-function Chip({ on, onClick, label, count }: { on: boolean; onClick: () => void; label: string; count: number }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-        on ? "bg-slate-900 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-      }`}
-    >
-      {label} <span className={on ? "opacity-70" : "text-slate-400"}>{count}</span>
-    </button>
+    </PageShell>
   );
 }

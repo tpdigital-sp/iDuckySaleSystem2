@@ -1,16 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
+/**
+ * รูปแบบสินค้าสั่งพิเศษ /admin/special-products  (ดีไซน์ "รางเบนโตะกระจก")
+ *
+ * คลังแม่แบบ "ชื่องาน + สเปค" ให้พนักงานเลือกตอนกด "เพิ่มรายการพิเศษ" ในออเดอร์
+ * ⚠️ ไม่โชว์บนหน้าเว็บ — ลูกค้าสั่งเองไม่ได้ ต้องให้พนักงานคีย์ให้
+ *
+ * ของที่เพิ่มจากเดิม: กล่องสรุปบอกว่ามีกี่รายการที่ยังไม่ได้ตั้งชื่อ/ยังไม่ใส่สเปค
+ * — คลัง 200+ รายการที่นำเข้ามาจากระบบเดิมมักมีของกลวงปนอยู่โดยไม่มีใครรู้
+ */
+
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import RequirePerm from "@/components/RequirePerm";
-import { faint, muted } from "@/lib/admin-ui";
+import { Banner, Btn, Empty, HeroStat, ListHead, PageHead, PageShell, Row, RowMain, RowSide, Rows, SearchBox, Stat, Stats, Tag } from "@/components/admin/ui";
 
 interface SP {
   name: string;
   detail: string;
 }
 
-/** คลังสินค้าสั่งพิเศษ — แม่แบบชื่อ+สเปคให้พนักงานเลือกตอนกด "เพิ่มรายการพิเศษ" ในออเดอร์ */
 function SpecialProductsInner() {
   const [list, setList] = useState<SP[] | null>(null);
   const [q, setQ] = useState("");
@@ -70,182 +79,148 @@ function SpecialProductsInner() {
     .map((p, i) => ({ ...p, i }))
     .filter((p) => !kw || p.name.toLowerCase().includes(kw) || p.detail.toLowerCase().includes(kw));
 
-  const inp =
-    "w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100";
+  /** ของกลวงในคลัง — คลังที่นำเข้ามามักมีรายการที่ไม่มีสเปคปนอยู่ */
+  const hollow = useMemo(() => (list ?? []).filter((p) => !p.detail.trim()).length, [list]);
+  const unnamed = useMemo(() => (list ?? []).filter((p) => !p.name.trim()).length, [list]);
 
   return (
-    <div className="w-full">
-      {/* หัวหน้า — โทนแบรนด์ฟ้าอ่อน ฟอนต์หัวเรื่องเดียวกับหน้าร้าน (ชุดเดียวกับหน้า ตั้งค่าระบบ) */}
-      <header className="rounded-[22px] border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-amber-50/40 px-5 py-4 shadow-[0_6px_18px_rgba(44,129,196,0.07)] sm:px-6 sm:py-5">
-        <div className="flex items-center gap-3.5">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-2xl shadow-sm ring-1 ring-amber-100">🛠️</span>
-          <div className="min-w-0 flex-1">
-            <h1 className="font-display text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">รูปแบบการสินค้าสั่งพิเศษ</h1>
-            <p className="mt-0.5 text-[13px] text-slate-500">
-              คลังแม่แบบงานสั่งทำ (นำเข้าจากระบบเดิม) — พนักงานเลือกใช้ตอนกด “เพิ่มรายการพิเศษ” ในออเดอร์
-            </p>
-          </div>
-          {list && (
-            <span className="hidden shrink-0 items-center rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800 ring-1 ring-amber-200 sm:inline-flex">
-              {list.length} รายการ
-            </span>
-          )}
+    <PageShell>
+      <PageHead
+        group="สินค้า"
+        title="สินค้าสั่งพิเศษ"
+        count={list ? `${list.length} รายการ` : undefined}
+        sub="แม่แบบงานสั่งทำ — ไม่โชว์บนหน้าเว็บ พนักงานเลือกใช้ตอนกด “เพิ่มรายการพิเศษ” ในออเดอร์"
+        tools={
+          <>
+            <SearchBox value={q} onChange={setQ} placeholder="ค้นชื่อ / สเปค" />
+            <Btn tone="yolk" onClick={add}>
+              เพิ่มรายการพิเศษ
+            </Btn>
+          </>
+        }
+      />
+
+      {err && (
+        <div className="mt-4">
+          <Banner tone="hot" title={err} />
         </div>
-      </header>
+      )}
+
+      <Stats cols={4}>
+        <HeroStat
+          n={list?.length ?? 0}
+          label="รายการในคลัง"
+          detail={hollow ? `ในนี้ยังไม่ใส่สเปค ${hollow} รายการ — พนักงานเลือกไปแล้วต้องพิมพ์เองทุกครั้ง` : "ใส่สเปคครบทุกรายการ"}
+          pct={list?.length ? ((list.length - hollow) / list.length) * 100 : 0}
+        />
+        <Stat label="ยังไม่ใส่สเปค" value={hollow} hint={hollow ? "รายการ — ควรเติม" : "รายการ"} tone={hollow ? "due" : undefined} />
+        <Stat label="ยังไม่ตั้งชื่อ" value={unnamed} hint="ไม่บันทึกถ้าไม่มีชื่อ" />
+      </Stats>
 
       {/* สินค้า vs สินค้าสั่งพิเศษ ต่างกันยังไง — เขียนให้จบไม่ต้องถาม */}
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-          <p className="flex items-center gap-2 font-display text-sm font-semibold text-slate-800">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-100 text-base">🏷️</span>
-            สินค้า (เมนู “สินค้า”)
-          </p>
-          <ul className="mt-2.5 space-y-1 text-xs leading-relaxed text-slate-600">
-            <li>• โชว์บนหน้าเว็บ — ลูกค้ากดสั่งเองได้เลย</li>
-            <li>• มีตัวเลือก (ขนาด/วัสดุ) และราคาขั้นบันได คิดราคาอัตโนมัติ</li>
-            <li>• เหมาะกับของที่ขายประจำ สเปคตายตัว</li>
+        <div className="dkb-g p-4">
+          <p className="dkb-h2 text-[0.95rem]">สินค้า (เมนู “สินค้า”)</p>
+          <ul className="mt-2 space-y-1 text-[12.5px] leading-relaxed" style={{ color: "var(--dk-navy-soft)" }}>
+            <li>· โชว์บนหน้าเว็บ — ลูกค้ากดสั่งเองได้เลย</li>
+            <li>· มีตัวเลือก (ขนาด/วัสดุ) และราคาขั้นบันได คิดราคาอัตโนมัติ</li>
+            <li>· เหมาะกับของที่ขายประจำ สเปคตายตัว</li>
           </ul>
         </div>
-        <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-          <p className="flex items-center gap-2 font-display text-sm font-semibold text-slate-800">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white text-base ring-1 ring-amber-100">🛠️</span>
-            รูปแบบการสินค้าสั่งพิเศษ (หน้านี้)
-          </p>
-          <ul className="mt-2.5 space-y-1 text-xs leading-relaxed text-slate-600">
-            <li>• <strong>ไม่โชว์บนหน้าเว็บ</strong> — ลูกค้าสั่งเองไม่ได้ ต้องให้พนักงานคีย์ให้</li>
-            <li>• เป็นแค่ “แม่แบบชื่องาน+สเปค” — พนักงานเลือกจากคลังนี้ตอนกด “เพิ่มรายการพิเศษ” ในออเดอร์ แล้วกรอกจำนวน/ราคาเองเป็นงาน ๆ ไป</li>
-            <li>• เหมาะกับงานสั่งทำ/ตีราคาเป็นเคส เช่น ป้าย งานเย็บ งานตามแบบลูกค้า</li>
+        <div className="dkb-g p-4" style={{ background: "rgba(255,244,212,.7)" }}>
+          <p className="dkb-h2 text-[0.95rem]">สินค้าสั่งพิเศษ (หน้านี้)</p>
+          <ul className="mt-2 space-y-1 text-[12.5px] leading-relaxed" style={{ color: "var(--dk-yolk-ink)" }}>
+            <li>
+              · <b>ไม่โชว์บนหน้าเว็บ</b> — ลูกค้าสั่งเองไม่ได้ ต้องให้พนักงานคีย์ให้
+            </li>
+            <li>· เป็นแค่แม่แบบชื่องาน+สเปค — พนักงานกรอกจำนวน/ราคาเองเป็นงาน ๆ ไป</li>
+            <li>· เหมาะกับงานสั่งทำ/ตีราคาเป็นเคส เช่น ป้าย งานเย็บ งานตามแบบลูกค้า</li>
           </ul>
         </div>
       </div>
 
-      {/* แถบเครื่องมือ: ค้นหา + เพิ่มรายการ */}
-      <div className="mt-5 flex flex-wrap items-center gap-2">
-        <label className="flex min-w-[240px] flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 transition focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-100">
-          <span className="text-sm text-slate-400">🔍</span>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="ค้นหาชื่อ/สเปค…"
-            className="w-full bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
-          />
-          {kw && <span className="shrink-0 text-[11px] font-semibold text-slate-400">พบ {shown.length}</span>}
-        </label>
-        <button
-          type="button"
-          onClick={add}
-          className="rounded-xl border border-dashed border-amber-300 bg-white px-4 py-2.5 text-sm font-bold text-amber-700 transition hover:bg-amber-50"
-        >
-          ＋ เพิ่มรายการ
-        </button>
-      </div>
-      {err && <p className="mt-2 rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700 ring-1 ring-rose-100">{err}</p>}
+      <ListHead title="รายการ" note={kw ? `พบ ${shown.length} รายการ` : "กดเพื่อแก้ไข"} />
 
-      {/* รายการ — กริด 2 คอลัมน์บนจอกว้าง ใบที่กำลังแก้กางเต็มแถว */}
       {list === null ? (
-        <p className={`py-16 text-center text-sm ${muted}`}>กำลังโหลดคลัง…</p>
+        <Empty title="กำลังโหลดคลัง…" body="ดึงแม่แบบงานสั่งทำจากเซิร์ฟเวอร์" />
+      ) : shown.length === 0 ? (
+        <Empty
+          title={kw ? "ไม่พบรายการที่ค้นหา" : "คลังยังว่าง"}
+          body={kw ? "ลองค้นด้วยคำอื่น หรือล้างคำค้น" : "กดปุ่ม “เพิ่มรายการพิเศษ” มุมขวาบนเพื่อสร้างแม่แบบแรก"}
+        />
       ) : (
-        <div className="mt-3 grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
-          {shown.map((p) => (
-            <div
-              key={p.i}
-              className={
-                openIdx === p.i
-                  ? "rounded-2xl bg-white ring-2 ring-amber-300 lg:col-span-full"
-                  : "rounded-2xl bg-white ring-1 ring-slate-200 transition hover:ring-amber-300"
-              }
-            >
-              {openIdx === p.i ? (
-                <div className="space-y-2.5 p-4">
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-semibold text-slate-500">ชื่อสินค้าสั่งพิเศษ</span>
-                    <input
-                      value={p.name}
-                      onChange={(e) => patch(p.i, { name: e.target.value })}
-                      className={inp}
-                      placeholder="เช่น ป้ายอะคริลิคตามแบบ"
-                      autoFocus
-                    />
+        <Rows>
+          {shown.map((p) =>
+            openIdx === p.i ? (
+              <div key={p.i} className="dkb-g relative overflow-hidden p-4 pl-5" style={{ ["--dk-tone" as string]: "var(--dk-blue)" }}>
+                <span className="absolute inset-y-0 left-0 w-[6px]" style={{ background: "var(--dk-tone)" }} />
+                <div className="grid gap-2.5">
+                  <label className="dkb-g dkb-field">
+                    <span className="lb">ชื่อสินค้าสั่งพิเศษ</span>
+                    <input value={p.name} onChange={(e) => patch(p.i, { name: e.target.value })} placeholder="เช่น ป้ายอะคริลิคตามแบบ" autoFocus />
                   </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-semibold text-slate-500">สเปค/รายละเอียด (ขึ้นบรรทัดใหม่ได้)</span>
+                  <label className="dkb-g dkb-field">
+                    <span className="lb">สเปค / รายละเอียด (ขึ้นบรรทัดใหม่ได้)</span>
                     <textarea
                       value={p.detail}
                       onChange={(e) => patch(p.i, { detail: e.target.value })}
                       rows={Math.min(12, Math.max(4, p.detail.split("\n").length + 1))}
-                      className={`${inp} resize-y font-mono text-[13px]`}
-                      placeholder="สเปค/รายละเอียด (ขึ้นบรรทัดใหม่ได้)"
+                      placeholder="เช่น อะคริลิกใส 3 มม. · ตัดตามแบบ · ติดสติกเกอร์ด้านหลัง"
+                      style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "13px" }}
                     />
                   </label>
-                  <div className="flex items-center gap-2 border-t border-slate-100 pt-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setOpenIdx(null)}
-                      className="rounded-full bg-slate-800 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-slate-700"
-                    >
+                  <div className="flex items-center gap-2 border-t pt-2.5" style={{ borderColor: "var(--dk-hair)" }}>
+                    <Btn tone="navy" small onClick={() => setOpenIdx(null)}>
                       ปิด
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => remove(p.i)}
-                      className="ml-auto rounded-full px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
-                    >
-                      🗑 ลบรายการนี้
-                    </button>
+                    </Btn>
+                    <span className="ml-auto">
+                      <Btn small onClick={() => remove(p.i)}>
+                        ลบรายการนี้
+                      </Btn>
+                    </span>
                   </div>
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setOpenIdx(p.i)}
-                  className="group flex w-full items-center gap-3 px-3.5 py-3 text-left"
-                  title="กดเพื่อแก้ไข"
-                >
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-50 text-base ring-1 ring-amber-100">🛠</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold text-slate-800">{p.name || "(ยังไม่ตั้งชื่อ)"}</span>
-                    <span className={`block truncate text-xs ${faint}`}>{p.detail.split("\n")[0] || "—"}</span>
-                  </span>
-                  <span className="shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-amber-500">›</span>
-                </button>
-              )}
-            </div>
-          ))}
-          {shown.length === 0 && (
-            <p className={`rounded-2xl bg-slate-50 px-4 py-10 text-center text-sm ${muted} lg:col-span-full`}>
-              {kw ? "ไม่พบรายการที่ค้นหา" : "คลังยังว่าง — กด ＋ เพิ่มรายการ"}
-            </p>
+              </div>
+            ) : (
+              <Row key={p.i} tone={p.detail.trim() ? "var(--dk-sky-300)" : "var(--dk-yolk-deep)"} onClick={() => setOpenIdx(p.i)}>
+                <RowMain
+                  name={p.name || "(ยังไม่ตั้งชื่อ)"}
+                  tags={!p.detail.trim() ? <Tag tone="yolk">ยังไม่ใส่สเปค</Tag> : undefined}
+                  meta={<span title={p.detail}>{p.detail.split("\n")[0] || "—"}</span>}
+                />
+                <RowSide>
+                  <span style={{ color: "var(--dk-faint)" }}>›</span>
+                </RowSide>
+              </Row>
+            )
           )}
-        </div>
+        </Rows>
       )}
 
-      {/* แถบบันทึกลอยติดขอบล่าง — เห็นตลอด ไม่ต้องเลื่อนหา (ชุดเดียวกับหน้า ตั้งค่าระบบ) */}
-      <div className="sticky bottom-3 z-20 mt-5 flex items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-2.5 shadow-[0_10px_30px_rgba(15,23,42,0.14)] backdrop-blur">
+      {/* แถบบันทึกลอยติดขอบล่าง — เห็นตลอด ไม่ต้องเลื่อนหา */}
+      <div className="dkb-g sticky bottom-3 z-20 mt-5 flex items-center justify-between gap-3 px-4 py-2.5">
         {dirty ? (
-          <p className="text-xs font-semibold text-orange-500">⚠️ มีการแก้ไขที่ยังไม่ได้บันทึก</p>
+          <p className="text-[12.5px] font-semibold" style={{ color: "var(--dk-coral-ink)" }}>
+            มีการแก้ไขที่ยังไม่ได้บันทึก
+          </p>
         ) : (
-          <p className={`text-xs ${faint}`}>แก้เสร็จแล้วกดบันทึก — มีผลกับปุ่ม “เพิ่มรายการพิเศษ” ทันที</p>
+          <p className="text-[12.5px]" style={{ color: "var(--dk-faint)" }}>
+            แก้เสร็จแล้วกดบันทึก — มีผลกับปุ่ม “เพิ่มรายการพิเศษ” ทันที
+          </p>
         )}
-        <button
-          type="button"
-          onClick={save}
-          disabled={!dirty || saving}
-          className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${
-            saved ? "bg-emerald-600" : "bg-amber-500 hover:bg-amber-600"
-          }`}
-        >
-          {saving ? "กำลังบันทึก…" : saved ? "✓ บันทึกแล้ว" : "💾 บันทึก"}
-        </button>
+        <Btn tone={saved ? "ghost" : "navy"} onClick={() => void save()} disabled={!dirty || saving}>
+          {saving ? "กำลังบันทึก…" : saved ? "บันทึกแล้ว" : "บันทึก"}
+        </Btn>
       </div>
 
-      <p className={`mt-4 text-center text-xs ${faint}`}>
-        ใช้งานคลังนี้ได้ที่หน้าออเดอร์ →{" "}
-        <Link href="/admin/orders" className="font-semibold text-amber-600 hover:underline">
+      <p className="mt-4 text-center text-[12px]" style={{ color: "var(--dk-faint)" }}>
+        ใช้งานคลังนี้ได้ที่{" "}
+        <Link href="/admin/orders" className="font-semibold underline-offset-4 hover:underline" style={{ color: "var(--dk-blue-deep)" }}>
           คำสั่งซื้อ
         </Link>{" "}
-        → เปิดออเดอร์ → “＋ เพิ่มรายการพิเศษ”
+        → เปิดออเดอร์ → “เพิ่มรายการพิเศษ”
       </p>
-    </div>
+    </PageShell>
   );
 }
 
