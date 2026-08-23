@@ -26,7 +26,7 @@
  */
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
-import { fetch3dAcrylicPrices } from "./3d-acrylic-prices.mjs";
+import { fetch3dAcrylicPrices, fetchKeyringRate1 } from "./3d-acrylic-prices.mjs";
 
 const WRITE = process.argv.includes("--write");
 const ID = "3d-acrylic";
@@ -67,6 +67,14 @@ const SPECIAL_RATE_ROW = "wholesale";
 
 /** กล่อง "เพิ่มจำนวนชิ้น" บนโปสเตอร์ — ราคาปลีกต่อ 1 ซม. ของชิ้นที่เพิ่ม (ใช้เป็นตัวเลขบอกลูกค้าคร่าว ๆ) */
 const EXTRA_PER_CM = { สกรีน: 15, ไม่สกรีน: 10 };
+/** เรทส่งของชิ้นที่เพิ่ม — "จำนวน 11 ชิ้นขึ้นไป คิดราคาเรทส่งตามตารางแผ่นอะคริลิค (เรทที่ 1)" */
+const EXTRA_WHOLESALE_TIER = "11-29 ชิ้น";
+/**
+ * กฎขนาดเกินตารางบนโปสเตอร์ (เว็บตารางราคาไม่มีตัวเลขชุดนี้ จึงพิมพ์ไว้ตรงนี้ที่เดียว)
+ *   "ตั้งแต่ 7 cm. ขึ้นไป เพิ่มขนาด cm.ละ 10 บาท / 1 ชิ้น (ราคาไม่รวมอะคริลิคพิเศษ)"
+ *   "สกรีนเพิ่ม Layer / 1 ด้าน — เกิน 6 cm บวกเพิ่ม cm ละ 10"
+ */
+const OVERSIZE = { fromCm: 7, perCm: 10, screenOverCm: 6, screenPerCm: 10 };
 
 const env = Object.fromEntries(
   readFileSync(new URL("../.env.local", import.meta.url), "utf8")
@@ -82,6 +90,7 @@ const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_
 });
 
 const web = await fetch3dAcrylicPrices();
+const rate1 = await fetchKeyringRate1();
 const SPECIAL_RATE = web.special[SPECIAL_RATE_ROW];
 const SIZES = web.sizes;
 
@@ -275,6 +284,70 @@ swap(
   "• เลือกขนาดชิ้นที่ 1 (ชิ้นใหญ่สุด) → ขนาดชิ้นที่ 2 → งานสกรีน → ชนิดอะคริลิค → ใส่จำนวน (นับเป็นชุด ชุดละ 2 ชิ้น)",
   "• ชิ้นที่ 1 (ชิ้นใหญ่สุด): เลือกขนาด → งานสกรีน → ชนิดอะคริลิค · แล้วเลือกของชิ้นที่ 2 แยกอีกชุด\n• อยากได้เกิน 2 ชิ้นต่อชุด ติ๊กที่ “เพิ่มจำนวนชิ้น” แล้วใส่จำนวน → ใส่จำนวนชุด"
 );
+
+// ── 5.1) แท็บ "ตารางราคาบวกเพิ่ม" — รวมกฎราคาทุกข้อไว้ที่เดียว ──
+/**
+ * โจทย์จากทางร้าน (23 ส.ค. 69): แอดมินต้องตีราคางานนอกตาราง (ขนาดเกิน 6cm · เพิ่มชิ้น · อะไหล่)
+ * แล้วต้องไปเปิดหาตัวเลขจากโปสเตอร์/เว็บตารางราคา/หน้าพวงกุญแจ คนละที่ — เลยรวมมาไว้ในหน้าสินค้าเลย
+ * ลูกค้าเห็นด้วย จะได้กะงบเองได้ ไม่ต้องทักถามทุกเคส
+ *
+ * ตัวเลขทั้งหมด "ประกอบจากตัวแปรชุดเดียวกับที่ใช้คิดเงินจริง" — แก้ราคาที่เว็บแล้วรันสคริปต์ซ้ำ
+ * แท็บนี้อัปเดตตามเอง ไม่มีทางค้างเป็นตัวเลขเก่า
+ */
+const PRICE_TAB_TITLE = "ตารางราคาบวกเพิ่ม";
+const perSize = (fn) => SIZES.map((s) => `${s} ${fn(s)}`).join(" · ");
+const cmOf = (s) => Number(s.replace("cm", ""));
+/** ขนาดที่ตาราง ADD ON บนเว็บมี แต่หน้าเว็บยังไม่เปิดขาย (7cm ขึ้นไป) — ไว้ให้แอดมินตีราคา */
+const overSizes = Object.keys(SPECIAL_RATE).filter((s) => cmOf(s) > cmOf(SIZES[SIZES.length - 1]) && cmOf(s) <= 10);
+const priceTabText = [
+  "ตัวเลขในหน้านี้คือกฎราคาที่ระบบใช้คิดเงินจริง รวมงานที่ต้องให้แอดมินตีราคาด้วย — ดูที่เดียวจบ",
+  "",
+  "ราคาฐาน 1 ชุด = อะคริลิค 2 ชิ้น (สกรีน 1 ด้าน/ชิ้น · อะคริลิคใส หรือ ขาวขุ่น C-02)::",
+  ...web.tiers.map((t, i) => `• ${t} — ${SIZES.map((s) => `${s} ${web.base[s][i]}`).join(" · ")} บาท/ชุด`),
+  "• คิดราคาจากชิ้นที่ใหญ่ที่สุดของชุด (= ชิ้นที่ 1)",
+  "• คละลาย: 1-10 ชุด คละได้อิสระ · 11 ชุดขึ้นไป คละได้โดยลายละ 5 ชุดขึ้นไป",
+  "",
+  "ค่าสกรีนเพิ่ม (คิดต่อ 1 ชิ้น — ชิ้นที่ 1 กับชิ้นที่ 2 คิดแยกตามขนาดของชิ้นนั้นเอง)::",
+  "• สกรีน 1 ด้าน (ใต้ หรือ บน) — รวมในราคาฐานแล้ว ไม่บวกเพิ่ม",
+  `• สกรีน 2 ด้าน — ${perSize((s) => `+${web.screen["สกรีน 2 ด้าน"][s]}`)} บาท/ชิ้น`,
+  `• ขนาดเกิน ${OVERSIZE.screenOverCm}cm — บวกเพิ่ม ซม.ละ ${OVERSIZE.screenPerCm} บาท ต่อ 1 ชิ้น`,
+  "",
+  "ค่าอะคริลิคพิเศษ — กลิตเตอร์ / สีพิเศษ / โฮโลแกรม (คิดต่อ 1 ชิ้น)::",
+  `• ${perSize((s) => `+${SPECIAL_RATE[s]}`)} บาท/ชิ้น`,
+  ...(overSizes.length ? [`• ขนาดใหญ่กว่านั้น — ${overSizes.map((s) => `${s} +${SPECIAL_RATE[s]}`).join(" · ")} บาท/ชิ้น`] : []),
+  "• อะคริลิคใส และ ขาวขุ่น C-02 ไม่บวกเพิ่ม",
+  "",
+  "เพิ่มจำนวนชิ้น — ชิ้นที่ 3 ขึ้นไป (คิดแบบอะคริลิคใส)::",
+  ...Object.entries(EXTRA_PER_CM).map(
+    ([kind, perCm]) => `• งาน${kind} ซม.ละ ${perCm} บาท ต่อ 1 ชิ้น — ${perSize((s) => cmOf(s) * perCm)} บาท`
+  ),
+  `• 11 ชุดขึ้นไป คิดเรทส่งตามตารางแผ่นอะคริลิคของพวงกุญแจ เรทที่ 1 (${EXTRA_WHOLESALE_TIER}) — ${perSize((s) => rate1.cell(s, EXTRA_WHOLESALE_TIER))} บาท`,
+  "• หน้าสั่งซื้อติ๊กช่อง “เพิ่มจำนวนชิ้น” แล้วบอกจำนวน/ขนาดในหมายเหตุ แอดมินจะคิดราคาให้",
+  "",
+  "ขนาดเกินตาราง::",
+  `• ตั้งแต่ ${OVERSIZE.fromCm}cm ขึ้นไป เพิ่มขนาด ซม.ละ ${OVERSIZE.perCm} บาท ต่อ 1 ชิ้น (ยังไม่รวมค่าอะคริลิคพิเศษ)`,
+  `• หน้าเว็บเปิดให้เลือก ${SIZES[0]}-${SIZES[SIZES.length - 1]} — ใหญ่กว่านี้ทักไลน์ร้าน แอดมินตีราคาให้`,
+  "",
+  "ราคานี้ยังไม่รวม::",
+  "• ค่าอะไหล่ (ตะขอ / ห่วง / โซ่ / ฐานตั้ง / Griptok) — แจ้งแอดมินเพื่อคิดราคาเพิ่ม",
+  "",
+  "หมายเหตุ::",
+  "• ทำได้ทั้งพวงกุญแจ · Griptok · สแตนดี้ และอื่น ๆ",
+  "• ชิ้นงานที่ติดกาวจะเห็นคราบกาวบ้าง และตำแหน่งจุดที่ติดกาวอาจคลาดเคลื่อนจากแบบเล็กน้อย",
+].join("\n");
+
+p.tabs = p.tabs ?? [];
+const pt = p.tabs.findIndex((t) => t.title === PRICE_TAB_TITLE);
+if (pt >= 0) {
+  if (p.tabs[pt].text !== priceTabText) {
+    p.tabs[pt] = { ...p.tabs[pt], text: priceTabText };
+    texts.push(`tabs[${PRICE_TAB_TITLE}] (อัปเดตตัวเลข)`);
+  }
+} else {
+  const after = p.tabs.findIndex((t) => t.title === "รายละเอียดเพิ่มเติม");
+  p.tabs.splice(after >= 0 ? after + 1 : p.tabs.length, 0, { title: PRICE_TAB_TITLE, text: priceTabText });
+  texts.push(`tabs: เพิ่มแท็บ "${PRICE_TAB_TITLE}"`);
+}
 
 // ── 6) สรุปให้ดูก่อนเขียน ──
 const before = p.pricing?.cells ?? {};
