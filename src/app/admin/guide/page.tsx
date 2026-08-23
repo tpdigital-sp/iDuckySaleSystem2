@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import RequirePerm from "@/components/RequirePerm";
-import { card, h1 } from "@/lib/admin-ui";
+import "@/components/admin/dashboard.css";
 import { TOPICS, Key, B, Mark, type Group, type Role } from "./topics";
 
 /**
@@ -167,7 +167,7 @@ function GuideInner() {
     <nav className="flex flex-col gap-4">
       {sections.map((g) => (
         <div key={g.key}>
-          <p className="px-2 text-[0.68rem] font-bold uppercase tracking-[0.12em] text-slate-400">
+          <p className="dkb-eyebrow px-2" style={{ color: "var(--dk-faint)" }}>
             {g.emoji} {g.label}
           </p>
           <ul className="mt-1 flex flex-col">
@@ -177,7 +177,7 @@ function GuideInner() {
                   href={`#${t.id}`}
                   onClick={() => jump(t.id)}
                   className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[0.82rem] leading-snug transition ${
-                    active === t.id ? "bg-amber-50 font-bold text-amber-800" : "text-slate-600 hover:bg-slate-100"
+                    active === t.id ? "bg-[color:var(--dk-navy)] font-semibold text-white" : "text-[color:var(--dk-navy-soft)] hover:bg-white/70"
                   }`}
                 >
                   <span className="shrink-0">{t.icon}</span>
@@ -193,7 +193,8 @@ function GuideInner() {
   );
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div className="dkb -mx-4 -my-6 min-h-[calc(100vh-1px)] px-4 py-6 md:-mx-8 md:-my-8 md:px-8 md:py-8">
+      <div className="mx-auto max-w-[1180px]">
       <style>{`
         @media print {
           aside, .no-print { display: none !important; }
@@ -204,17 +205,20 @@ function GuideInner() {
       `}</style>
 
       {/* ── หัวหน้า + ค้นหา (ติดบน) ── */}
-      <div className="no-print sticky top-0 z-30 -mx-4 bg-slate-50/95 px-4 pb-3 pt-4 backdrop-blur md:-mx-8 md:px-8">
+      <div className="no-print sticky top-0 z-30 -mx-4 px-4 pb-3 pt-4 backdrop-blur md:-mx-8 md:px-8" style={{ background: "rgba(234,246,255,.92)" }}>
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <h1 className={h1}>📋 คู่มือใช้ระบบ</h1>
+          <span>
+            <p className="dkb-eyebrow" style={{ color: "var(--dk-faint)" }}>ระบบ</p>
+            <h1 className="dkb-display text-[1.6rem] leading-tight sm:text-[1.95rem]">คู่มือใช้ระบบ</h1>
+          </span>
           <div className="flex items-center gap-2">
-            <span className="hidden text-xs text-slate-400 sm:inline">
+            <span className="hidden text-[12px] sm:inline" style={{ color: "var(--dk-faint)" }}>
               {shown.length} เรื่อง{role !== "all" && ` · ที่ ${role} ต้องรู้`}
             </span>
             <button
               type="button"
               onClick={() => window.print()}
-              className="rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+              className="dkb-btn dkb-btn-ghost dkb-btn-sm"
             >
               🖨️ พิมพ์
             </button>
@@ -222,16 +226,18 @@ function GuideInner() {
         </div>
 
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
-          <label className="flex min-w-[16rem] flex-1 items-center gap-2 rounded-full border-2 border-amber-200 bg-white px-4 py-2 focus-within:border-amber-400">
-            <span className="text-amber-500">🔍</span>
+          <label className="dkb-search min-w-[16rem] flex-1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="ค้นหา… เช่น เคลม · มัดจำ · ยิงเลขพัสดุ · ล้างรูป"
-              className="w-full bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
-            />
+              />
             {q && (
-              <button type="button" onClick={() => setQ("")} className="shrink-0 text-xs font-bold text-slate-400 hover:text-slate-600">
+              <button type="button" onClick={() => setQ("")} className="shrink-0 text-xs font-bold" style={{ color: "var(--dk-faint)" }}>
                 ✕
               </button>
             )}
@@ -271,7 +277,7 @@ function GuideInner() {
         </button>
       </div>
 
-      {tocOpen && <div className={`${card} no-print mt-2 max-h-80 overflow-y-auto p-3 lg:hidden`}>{toc}</div>}
+      {tocOpen && <div className={`$dkb-g no-print mt-2 max-h-80 overflow-y-auto p-3 lg:hidden`}>{toc}</div>}
 
       <div ref={contentTop} className="guide-grid mt-3 grid scroll-mt-40 gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
         {/* ── สารบัญ (จอกว้าง) ── */}
@@ -283,7 +289,7 @@ function GuideInner() {
         <div className="min-w-0 max-w-4xl">
           {/* เริ่มที่นี่ — ซ่อนเมื่อกำลังค้น/กรอง */}
           {!filtering && (
-            <section className={`${card} guide-block mb-6 overflow-hidden`}>
+            <section className="dkb-g guide-block mb-6 overflow-hidden">
               <div className="border-b border-slate-100 bg-slate-50/60 px-5 py-3">
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">เริ่มที่นี่ · อ่าน 1 นาที</p>
                 <p className="text-lg font-extrabold tracking-tight text-slate-900">
@@ -311,7 +317,7 @@ function GuideInner() {
 
           {/* หัวข้อ แยกตามหมวด */}
           {!sections.length ? (
-            <div className={`${card} p-10 text-center`}>
+            <div className="dkb-g p-10 text-center">
               <span className="text-4xl">🔍</span>
               <p className="mt-2 text-sm font-semibold text-slate-600">ไม่เจอเรื่อง “{q}”</p>
               <p className="mt-1 text-xs text-slate-400">ลองคำสั้นลง เช่น “เคลม” “มัดจำ” “สลิป” “พัสดุ” “สต๊อก”</p>
@@ -329,7 +335,7 @@ function GuideInner() {
 
                 <div className="flex flex-col gap-4">
                   {g.items.map((t) => (
-                    <article key={t.id} id={t.id} className={`${card} guide-block scroll-mt-40 p-5`}>
+                    <article key={t.id} id={t.id} className="dkb-g guide-block scroll-mt-40 p-5">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xl">{t.icon}</span>
                         <h3 className="text-base font-extrabold tracking-tight text-slate-900">{t.title}</h3>
@@ -357,7 +363,7 @@ function GuideInner() {
 
           {/* อ้างอิงด่วน */}
           {!filtering && (
-            <section className={`${card} guide-block mb-6 p-5`}>
+            <section className="dkb-g guide-block mb-6 p-5">
               <h2 className="text-base font-extrabold tracking-tight text-slate-900">🏷 ป้ายสถานะ — ดูสีอย่างเดียวก็รู้</h2>
               <p className="mt-0.5 text-sm text-slate-500">เรียงตามลำดับงานจริง · แถวไหนค้างนานผิดปกติ แปลว่ามีอะไรติด</p>
               <div className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
@@ -376,6 +382,7 @@ function GuideInner() {
             <span>ไม่แน่ใจตรงไหน — ถามในกลุ่มก่อนกด</span>
           </footer>
         </div>
+      </div>
       </div>
     </div>
   );

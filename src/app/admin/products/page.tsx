@@ -19,7 +19,8 @@ import { loadOverrides, resetAll } from "@/lib/product-store";
 import { deleteProductDb, fetchProductRaw, fetchProductsAdminLite, fetchProductSort, persistProduct } from "@/lib/product-repo";
 import { getAdminSession } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { badge, btnPrimary, card, faint, muted } from "@/lib/admin-ui";
+import { badge, card, faint, muted } from "@/lib/admin-ui";
+import { Btn, HeroStat, PageHead, PageShell, SearchBox, Stat, Stats } from "@/components/admin/ui";
 import { useCan } from "@/lib/perm-context";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 
@@ -306,58 +307,48 @@ export default function AdminProductsPage() {
   const grouped = catFilter === "all" && sort === "default";
 
   return (
-    // เต็มความกว้างจอ (แบบเดียวกับหน้าแก้ไขสินค้า) — ลิสต์ 341 ตัวได้พื้นที่หายใจ
-    <div className="w-full">
-      {/* หัวหน้า — hero โทนแบรนด์ + ปุ่มหลัก (ชุดเดียวกับหน้า ตั้งค่าระบบ/สินค้าสั่งพิเศษ) */}
-      <header className="rounded-[22px] border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-amber-50/40 px-5 py-4 shadow-[0_6px_18px_rgba(44,129,196,0.07)] sm:px-6 sm:py-5">
-      <div className="flex flex-wrap items-center gap-3.5">
-        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-2xl shadow-sm ring-1 ring-amber-100">🏷️</span>
-        <div className="min-w-0 flex-1">
-          <h1 className="font-display text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
-            สินค้า <span className="text-base font-normal text-slate-400">({products.length})</span>
-          </h1>
-          <p className="mt-0.5 text-[13px] text-slate-500">
-            ค้นหา กรอง และแก้ไขสินค้าได้ในหน้าเดียว — การแก้ไขบันทึกลงฐานข้อมูลและหน้าร้านแสดงตามที่แก้
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {!mayManage && (
-            <span className="self-center rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500">
-              👁 ดูอย่างเดียว
-            </span>
-          )}
-          {mayManage && !isSupabaseConfigured && (
-            <button
-              type="button"
-              onClick={handleResetAll}
-              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
-              title="ลบการแก้ไขทั้งหมด กลับเป็นข้อมูลตั้งต้น"
-            >
-              ↩ รีเซ็ตทั้งหมด
-            </button>
-          )}
-          {mayManage && (
-            <button
-              type="button"
-              onClick={createProduct}
-              disabled={creating}
-              title="สร้างสินค้าใหม่เปล่า แล้วไปหน้าแก้ไข"
-              className={btnPrimary}
-            >
-              {creating ? "กำลังสร้าง…" : "＋ เพิ่มสินค้า"}
-            </button>
-          )}
-        </div>
-      </div>
-      </header>
+    <PageShell>
+      <PageHead
+        group="สินค้า"
+        title="สินค้า"
+        count={`${products.length} รายการ`}
+        sub="ค้นหา กรอง และแก้ไขสินค้าได้ในหน้าเดียว — การแก้ไขบันทึกลงฐานข้อมูลและหน้าร้านแสดงตามที่แก้"
+        tools={
+          <>
+            {!mayManage && (
+              <span className="dkb-tag" style={{ background: "var(--dk-sky)", color: "var(--dk-blue-deep)" }}>
+                <i />
+                ดูอย่างเดียว
+              </span>
+            )}
+            {mayManage && !isSupabaseConfigured && (
+              <Btn onClick={handleResetAll} title="ลบการแก้ไขทั้งหมด กลับเป็นข้อมูลตั้งต้น">
+                รีเซ็ตทั้งหมด
+              </Btn>
+            )}
+            {mayManage && (
+              <Btn tone="yolk" onClick={createProduct} disabled={creating} title="สร้างสินค้าใหม่เปล่า แล้วไปหน้าแก้ไข">
+                {creating ? "กำลังสร้าง…" : "เพิ่มสินค้า"}
+              </Btn>
+            )}
+          </>
+        }
+      />
 
-      {/* แถบสรุปภาพรวม */}
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatTile icon="🏷️" tone="teal" label="สินค้าทั้งหมด" value={products.length.toString()} />
-        <StatTile icon="✅" tone={reviewedCount > 0 ? "emerald" : "slate"} label="ตรวจแล้ว" value={`${reviewedCount}/${products.length}`} />
-        <StatTile icon="📝" tone={hiddenCount > 0 ? "rose" : "slate"} label="ยังไม่เผยแพร่" value={hiddenCount.toString()} />
-        <StatTile icon="📈" tone="yellow" label="ยอดขายรวม" value={totalSold.toLocaleString("th-TH")} />
-      </div>
+      <Stats cols={4}>
+        <HeroStat
+          n={hiddenCount}
+          label="ยังไม่เผยแพร่"
+          detail={
+            hiddenCount
+              ? `ลูกค้ายังไม่เห็น ${hiddenCount} รายการ · ยังไม่ตรวจอีก ${products.length - reviewedCount}`
+              : "เผยแพร่ครบทุกรายการแล้ว"
+          }
+          pct={products.length ? (hiddenCount / products.length) * 100 : 0}
+        />
+        <Stat label="ตรวจแล้ว" value={`${reviewedCount}/${products.length}`} hint="ทีมงานเช็คซ้ำแล้ว" />
+        <Stat label="ยอดขายรวม" value={totalSold.toLocaleString("th-TH")} hint="ทุกสินค้ารวมกัน" />
+      </Stats>
 
       {/*
         แถบเครื่องมือ — รวมเป็นการ์ดเดียว 3 ชั้น อ่านจากบนลงล่าง
@@ -365,23 +356,14 @@ export default function AdminProductsPage() {
         ขึ้นต้นด้วยปุ่ม "ทั้งหมด" ทั้งคู่ ไม่มีป้ายบอกว่าอันไหนคืออะไร — ต้องกดลองถึงจะรู้
         ชั้น 1 ค้นหา+มุมมอง · ชั้น 2 ตัวกรองสถานะ (มีป้ายกำกับ+ตัวเลข) · ชั้น 3 หมวด (ยุบได้)
       */}
-      <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="dkb-g mt-4 p-3">
         {/* ชั้น 1: ค้นหา · เรียง · มุมมอง */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[220px] flex-1">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="ค้นหาชื่อสินค้า…"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-100"
-            />
-          </div>
+          <SearchBox value={query} onChange={setQuery} placeholder="ค้นหาชื่อสินค้า" />
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as SortMode)}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-amber-400"
+            className="dkb-g border-0 px-3 py-2 text-[13.5px] outline-none"
             aria-label="เรียงลำดับ"
           >
             {SORTS.map((s) => (
@@ -390,7 +372,7 @@ export default function AdminProductsPage() {
               </option>
             ))}
           </select>
-          <div className="inline-flex overflow-hidden rounded-xl border border-slate-200">
+          <div className="dkb-g inline-flex overflow-hidden">
             {([
               ["table", "☰", "มุมมองตาราง"],
               ["cards", "▦", "มุมมองการ์ด"],
@@ -402,7 +384,7 @@ export default function AdminProductsPage() {
                 aria-pressed={view === id}
                 title={tip}
                 className={`px-3 py-2 text-sm transition ${
-                  view === id ? "bg-amber-500 text-white" : "bg-white text-slate-500 hover:bg-amber-50"
+                  view === id ? "bg-[color:var(--dk-navy)] text-white" : "text-[color:var(--dk-navy-soft)] hover:bg-white/70"
                 }`}
               >
                 {glyph}
@@ -412,7 +394,7 @@ export default function AdminProductsPage() {
         </div>
 
         {/* ชั้น 2: ตัวกรองสถานะ — ป้ายกำกับหน้ากลุ่ม กันสับสนว่าปุ่ม "ทั้งหมด" อันไหนของอะไร */}
-        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 pt-2.5">
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t pt-2.5" style={{ borderColor: "var(--dk-hair)" }}>
           <SegGroup
             label="เผยแพร่"
             aria="กรองสถานะเผยแพร่"
@@ -544,54 +526,17 @@ export default function AdminProductsPage() {
           <button
             type="button"
             onClick={() => setShown((n) => n + PAGE)}
-            className="rounded-full bg-white px-6 py-2.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200 transition hover:border-amber-200 hover:bg-amber-50/60 hover:text-amber-800"
+            className="dkb-btn dkb-btn-ghost"
           >
             แสดงเพิ่ม (เหลืออีก {(sorted.length - shown).toLocaleString("th-TH")} รายการ)
           </button>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }
 
 /* ── ชิ้นส่วนย่อย ─────────────────────────────────────────── */
-
-function StatTile({
-  label,
-  value,
-  icon,
-  tone = "slate",
-}: {
-  label: string;
-  value: string;
-  icon: string;
-  tone?: "slate" | "teal" | "emerald" | "rose" | "yellow";
-}) {
-  // สีไอคอน/ตัวเลขตามความหมาย — teal = แบรนด์ · emerald = ผ่าน · rose = ค้าง · yellow = ยอดขาย
-  const chip = {
-    slate: "bg-slate-100",
-    teal: "bg-amber-50 ring-1 ring-amber-100",
-    emerald: "bg-emerald-50 ring-1 ring-emerald-100",
-    rose: "bg-rose-50 ring-1 ring-rose-100",
-    yellow: "bg-[var(--color-ducky)]/25 ring-1 ring-[var(--color-ducky)]",
-  }[tone];
-  const num = {
-    slate: "text-slate-900",
-    teal: "text-amber-700",
-    emerald: "text-emerald-600",
-    rose: "text-rose-600",
-    yellow: "text-slate-900",
-  }[tone];
-  return (
-    <div className="flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-lg ${chip}`}>{icon}</span>
-      <div className="min-w-0">
-        <div className="truncate text-xs text-slate-500">{label}</div>
-        <div className={`font-display text-xl font-semibold tabular-nums ${num}`}>{value}</div>
-      </div>
-    </div>
-  );
-}
 
 function FilterChip({
   active,
