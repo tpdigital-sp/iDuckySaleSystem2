@@ -36,6 +36,7 @@ import {
   type RolePermsMap,
 } from "@/lib/permissions";
 import { btnPrimary, card, faint, muted } from "@/lib/admin-ui";
+import { PageHead, PageShell } from "@/components/admin/ui";
 
 /** โลโก้/สีประจำธนาคาร — จับจากชื่อที่พิมพ์อิสระ (พิมพ์ "กสิกร" ก็ขึ้นโลโก้เขียว K ให้เอง)
  *  ใช้ตัวย่อ+สีแบรนด์แทนไฟล์ภาพ: ไม่ต้องเก็บ asset, จับได้ทั้งชื่อไทย/อังกฤษ/พิมพ์ย่อ */
@@ -572,19 +573,14 @@ function AdminSettingsPageInner() {
     "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100";
 
   return (
-    <div className="w-full">
-      {/* หัวหน้า — โทนแบรนด์ฟ้าอ่อน ฟอนต์หัวเรื่องเดียวกับหน้าร้าน */}
-      <header className="rounded-[22px] border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-amber-50/40 px-5 py-4 shadow-[0_6px_18px_rgba(44,129,196,0.07)] sm:px-6 sm:py-5">
-        <div className="flex items-center gap-3.5">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-2xl shadow-sm ring-1 ring-amber-100">⚙️</span>
-          <div className="min-w-0">
-            <h1 className="font-display text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">ตั้งค่าระบบ</h1>
-            <p className="mt-0.5 text-[13px] text-slate-500">ข้อมูลร้าน · ช่องทางรับเงิน · การจัดส่ง · สิทธิ์ทีมงาน — ตั้งครบจากที่เดียว</p>
-          </div>
-        </div>
-      </header>
+    <PageShell>
+      <PageHead
+        group="ระบบ"
+        title="ตั้งค่าระบบ"
+        sub="ข้อมูลร้าน · ช่องทางรับเงิน · การจัดส่ง · สิทธิ์ทีมงาน — ตั้งครบจากที่เดียว · แก้แล้วมีผลกับหน้าร้านทันที"
+      />
 
-      <div className="mt-5 items-start gap-5 lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
+      <div className="mt-4 items-start gap-5 lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
         {/* เมนูหัวข้อ — จอกว้างเป็นแถบข้าง sticky · จอเล็กเป็นชิปเลื่อนซ้ายขวา */}
         <aside className="max-lg:-mx-4 max-lg:px-4 lg:sticky lg:top-6">
           <nav className="flex gap-1.5 overflow-x-auto pb-1 lg:flex-col lg:gap-1 lg:overflow-visible lg:rounded-2xl lg:border lg:border-slate-200/70 lg:bg-white lg:p-2 lg:shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -1615,7 +1611,7 @@ function AdminSettingsPageInner() {
       )}
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }
 

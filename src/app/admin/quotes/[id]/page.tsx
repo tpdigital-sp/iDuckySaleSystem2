@@ -15,6 +15,7 @@ import {
 } from "@/lib/quotes";
 import type { OrderItem } from "@/lib/admin-data";
 import { card, faint, h1, muted } from "@/lib/admin-ui";
+import { Banner, Btn, PageShell } from "@/components/admin/ui";
 import { useActor } from "@/lib/perm-context";
 import ItemAdder from "@/components/admin/ItemAdder";
 import { setQuoteTarget } from "@/lib/append-quote";
@@ -121,66 +122,75 @@ function QuoteDetailInner() {
   const customerUrl = origin ? `${origin}/quote/${encodeURIComponent(quote.id)}?key=${encodeURIComponent(quote.key)}` : "";
   const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-300 focus:outline-none";
 
+  const soon = !locked && left !== null && left <= 3;
+
   return (
-    <div className={`mx-auto max-w-5xl overflow-hidden ${card}`}>
-      {/* หัวใบ */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-slate-200/70 bg-slate-50/70 px-6 py-5">
-        <div>
-          <Link href="/admin/quotes" className="text-xs text-slate-400 hover:text-slate-600">
-            ← ใบเสนอราคาทั้งหมด
-          </Link>
-          <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold tracking-tight text-slate-900">
-            {quote.id}
-            <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${QUOTE_STYLES[st]}`}>{st}</span>
-          </h1>
-          <p className={`text-xs ${faint}`}>
-            {quote.date}
-            {quote.createdBy ? ` · โดย ${quote.createdBy}` : ""}
-          </p>
-        </div>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          {saved && <span className="text-xs font-bold text-emerald-600">✓ บันทึกแล้ว</span>}
-          {!locked && (
-            <>
-              <button
-                type="button"
-                onClick={acceptQuote}
-                disabled={busy || !quote.items.length}
-                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-40"
-              >
-                ✅ ลูกค้าตกลง — สร้างออเดอร์
-              </button>
-              <button
-                type="button"
-                onClick={declineQuote}
-                className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-bold text-rose-600 transition hover:bg-rose-50"
-              >
-                ✕ ลูกค้าไม่รับ
-              </button>
-            </>
-          )}
-          {quote.orderId && (
-            <Link
-              href={`/admin/orders/${encodeURIComponent(quote.orderId)}`}
-              className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-emerald-700"
-            >
-              → เปิดออเดอร์ {quote.orderId}
-            </Link>
-          )}
-          <span className="text-right">
-            <span className={`block text-[11px] ${faint}`}>ยอดรวม</span>
-            <span className="block text-xl font-extrabold text-slate-900">{formatPrice(quoteTotal(quote))}</span>
-          </span>
-        </div>
-      </div>
-
-      {err && <p className="border-b border-rose-100 bg-rose-50 px-6 py-2 text-xs font-bold text-rose-600">⚠️ {err}</p>}
-
-      {locked && (
-        <p className="border-b border-emerald-100 bg-emerald-50 px-6 py-2.5 text-xs font-bold text-emerald-800">
-          ใบนี้ลูกค้าตกลงแล้ว และกลายเป็นออเดอร์ {quote.orderId} — แก้ไขต่อที่หน้าออเดอร์แทน
-        </p>
+    <PageShell>
+      {/* งานที่ต้องทำต่ออยู่บนสุดเสมอ — ใบเสนอราคาที่เงียบเกินวันยืนราคาคือใบที่หลุดมือ */}
+      {soon && (
+        <Banner
+          tone="warm"
+          title={left! < 0 ? `หมดอายุไปแล้ว ${Math.abs(left!)} วัน` : left === 0 ? "ยืนราคาหมดวันนี้" : `ยืนราคาเหลือ ${left} วัน`}
+          detail="ลูกค้ายังไม่ตอบ — ทวงทาง LINE หรือขยายวันยืนราคาก่อนใบหลุดมือ"
+        />
       )}
+      {locked && (
+        <Banner
+          tone="warm"
+          title={`ใบนี้ลูกค้าตกลงแล้ว และกลายเป็นออเดอร์ ${quote.orderId}`}
+          detail="แก้ไขต่อที่หน้าออเดอร์แทน"
+          href={quote.orderId ? `/admin/orders/${encodeURIComponent(quote.orderId)}` : undefined}
+        />
+      )}
+      {err && (
+        <div className={soon || locked ? "mt-3" : ""}>
+          <Banner tone="hot" title={err} />
+        </div>
+      )}
+
+      <div className={`dkb-g overflow-hidden ${soon || locked || err ? "mt-4" : ""}`}>
+        {/* หัวใบ */}
+        <div className="flex flex-wrap items-center gap-3 border-b px-5 py-4" style={{ borderColor: "var(--dk-hair)" }}>
+          <div className="min-w-0">
+            <Link href="/admin/quotes" className="dkb-eyebrow" style={{ color: "var(--dk-faint)" }}>
+              ใบเสนอราคาทั้งหมด
+            </Link>
+            <h1 className="dkb-display mt-1 flex flex-wrap items-center gap-2 text-[1.5rem] leading-tight">
+              {quote.id}
+              <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${QUOTE_STYLES[st]}`}>{st}</span>
+            </h1>
+            <p className="text-[12.5px]" style={{ color: "var(--dk-navy-soft)" }}>
+              {quote.date}
+              {quote.createdBy ? ` · โดย ${quote.createdBy}` : ""}
+            </p>
+          </div>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {saved && (
+              <span className="text-[12px] font-semibold" style={{ color: "var(--dk-mint-ink)" }}>
+                บันทึกแล้ว
+              </span>
+            )}
+            {!locked && (
+              <>
+                <Btn tone="navy" onClick={acceptQuote} disabled={busy || !quote.items.length}>
+                  ลูกค้าตกลง — สร้างออเดอร์
+                </Btn>
+                <Btn onClick={declineQuote}>ลูกค้าไม่รับ</Btn>
+              </>
+            )}
+            {quote.orderId && (
+              <Btn tone="yolk" href={`/admin/orders/${encodeURIComponent(quote.orderId)}`}>
+                เปิดออเดอร์ {quote.orderId}
+              </Btn>
+            )}
+            <span className="text-right">
+              <span className="block text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+                ยอดรวม
+              </span>
+              <span className="dkb-num block text-[1.4rem]">{formatPrice(quoteTotal(quote))}</span>
+            </span>
+          </div>
+        </div>
 
       <div className="grid gap-5 p-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
         {/* ── ซ้าย: รายการ ── */}
@@ -456,7 +466,8 @@ function QuoteDetailInner() {
           </ul>
         </div>
       )}
-    </div>
+      </div>
+    </PageShell>
   );
 }
 

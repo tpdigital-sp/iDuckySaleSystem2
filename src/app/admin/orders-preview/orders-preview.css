@@ -158,7 +158,8 @@
 .opv-clear { font-size: 12px; color: var(--op-accent-ink); text-decoration: underline; text-underline-offset: 2px; }
 
 /* ── ตาราง ──────────────────────────────────────────────── */
-.opv-tablewrap { border: 1px solid var(--op-line); border-radius: 0 0 10px 10px; background: var(--op-panel); overflow: hidden; }
+/* ⚠️ ห้ามใส่ overflow:hidden ที่นี่ — จะทำให้หัวตาราง position:sticky ไม่ยอมติดบนสุดตอนเลื่อนหน้า */
+.opv-tablewrap { border: 1px solid var(--op-line); border-radius: 0 0 10px 10px; background: var(--op-panel); }
 .opv-table { width: 100%; border-collapse: separate; border-spacing: 0; }
 .opv-table th, .opv-table td { text-align: left; vertical-align: middle; }
 .opv-table thead th {
@@ -172,7 +173,19 @@
 button.opv-th:hover { color: var(--op-ink); background: #f1f4f7; }
 .opv-th i { font-style: normal; font-size: 9px; color: var(--op-faint); }
 .opv-th[data-sort] i { color: var(--op-accent); }
-.opv-table tbody td { padding: 7px 10px; border-bottom: 1px solid var(--op-line-soft); }
+.opv-table tbody td { padding: 6px 10px; border-bottom: 1px solid var(--op-line-soft); }
+
+/* ความกว้างคอลัมน์ — นับจากท้ายตาราง เพราะคอลัมน์ "ชำระเงิน" หายไปเมื่อไม่มีสิทธิ์เห็นเงิน
+   ช่อง "รายการ" คือช่องเดียวที่ยืดได้ ที่เหลือคุมความกว้างไว้ให้ตัวเลขเรียงตรงกันทุกแถว */
+@media (min-width: 900px) {
+  .opv-table th:first-child { width: 208px; }
+  .opv-table th:nth-child(2) { width: 190px; }
+  .opv-table th:nth-last-child(5) { width: 132px; }
+  .opv-table th:nth-last-child(4) { width: 148px; }
+  .opv-table th:nth-last-child(3) { width: 104px; }
+  .opv-table th:nth-last-child(2) { width: 146px; }
+  .opv-table th:last-child { width: 94px; }
+}
 .opv-table tbody tr:last-child td { border-bottom: 0; }
 .opv-row { cursor: pointer; transition: background .1s ease; }
 .opv-row:hover td { background: var(--op-hover); }
@@ -189,7 +202,7 @@ button.opv-th:hover { color: var(--op-ink); background: #f1f4f7; }
 .opv-id { display: flex; flex-direction: column; gap: 3px; }
 .opv-id b { font-family: var(--op-num); font-variant-numeric: tabular-nums; font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; color: var(--op-ink); }
 .opv-row:hover .opv-id b { color: var(--op-accent-ink); text-decoration: underline; text-underline-offset: 2px; }
-.opv-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.opv-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .opv-tag {
   display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border-radius: 5px;
   font-size: 10.5px; font-weight: 600; white-space: nowrap; line-height: 1.5;
@@ -216,7 +229,7 @@ button.opv-th:hover { color: var(--op-ink); background: #f1f4f7; }
 /* ใบที่จบแล้ว: ป้ายไม่มีพื้น ตัวอักษรจาง */
 .opv-badge[data-quiet="1"] { background: transparent; color: var(--op-off); font-weight: 500; padding-left: 0; }
 
-.opv-step { display: block; margin-top: 3px; font-family: var(--op-num); font-variant-numeric: tabular-nums; font-size: 10.5px; color: var(--op-faint); }
+.opv-step { display: block; margin-top: 2px; font-family: var(--op-num); font-variant-numeric: tabular-nums; font-size: 10.5px; color: var(--op-faint); }
 .opv-amt { display: block; text-align: right; font-family: var(--op-num); font-variant-numeric: tabular-nums; font-size: 13.5px; font-weight: 600; color: var(--op-ink); }
 .opv-amt small { display: block; font-size: 10.5px; font-weight: 600; }
 .opv-when { font-family: var(--op-num); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--op-mid); white-space: nowrap; }
@@ -248,7 +261,7 @@ button.opv-th:hover { color: var(--op-ink); background: #f1f4f7; }
 /* ── ท้ายตาราง: แบ่งหน้า ── */
 .opv-page {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 9px 11px; border-top: 1px solid var(--op-line); background: #fbfcfd;
+  padding: 9px 11px; border-top: 1px solid var(--op-line); background: #fbfcfd; border-radius: 0 0 9px 9px;
   font-size: 12.5px; color: var(--op-mid);
 }
 .opv-page .grp { display: flex; align-items: center; gap: 6px; }
