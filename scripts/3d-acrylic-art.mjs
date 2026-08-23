@@ -4,39 +4,48 @@
  *
  *   node scripts/3d-acrylic-art.mjs [--out=<dir>]
  *
- * ได้ 8 ไฟล์ ลง .cache/3d-acrylic/upload — ใช้ของจริงของร้านทั้งหมด ไม่ได้วาดเดาเอง:
+ * ได้ 13 ไฟล์ ลง .cache/3d-acrylic/upload
  *
- *   size-2 … size-6      ขนาดอะคริลิค 2-6 cm (ใช้ทั้งกลุ่ม "ขนาดชิ้นที่ 1" และ "ขนาดชิ้นที่ 2")
- *       ครึ่งบน = รูปงานจริง 2 ใบที่เห็นว่า "ชิ้นที่ 2 ติดกาวประกบอยู่บนชิ้นที่ 1" (ปักหมุด ① ② ให้ดู)
- *       ครึ่งล่าง = แถบเทียบขนาดจริง
- *       ครอปจากรูปเทียบขนาดจริงของร้าน (academy-assets/acrylic/size-compare.jpg — วางเรียง 2-10 cm
- *       บนพื้นเดียวกัน) แล้วหรี่ขนาดอื่นลง เหลือขนาดที่เลือกสว่าง — ลูกค้าเห็นทั้งของจริงและเทียบขนาดได้
- *       ⚠️ ครอปเป็น "แถบเดียว" ไม่ได้ตัดทีละชิ้นมาแปะ ภาพจึงไม่มีรอยต่อ และสเกลระหว่างขนาดตรงของจริง
- *       ราคาบนการ์ดดึงสดจากเว็บตารางราคา (3d-acrylic-prices.mjs) — ตัวเลขไม่มีวันหลุดจากหน้าเว็บจริง
+ * ── การ์ดขนาด (10 ใบ · แยกกลุ่มละ 5 ขนาด) ────────────────────────────────
+ *   p1-size-2 … p1-size-6   กลุ่ม "ขนาดชิ้นที่ 1" (ชิ้นฐาน ชิ้นใหญ่สุด เป็นตัวคิดราคา)
+ *   p2-size-2 … p2-size-6   กลุ่ม "ขนาดชิ้นที่ 2" (ชิ้นที่ติดกาวประกบอยู่ด้านบน)
  *
- *   acrylic-clear        อะคริลิคใส        ← รูปงานจริงของสินค้านี้ (แกลเลอรีใบที่ 5 "งานอะคริลิคใสล้วน")
- *   acrylic-c02          อะคริลิคขาวขุ่น C-02 ← สวอตช์จากชาร์ตสีทางการของร้าน (acrylic-colors/c02)
- *   acrylic-special      อะคริลิคพิเศษ      ← รูปงานจริงใบที่ 1 (ฐานโฮโลแกรม) + สวอตช์จริงอีก 4 ลาย
+ *   แต่ละใบเป็น "ภาพจำลอง" ที่อธิบายตัวงานตรง ๆ ว่า 1 ชุด = อะคริลิค 2 ชิ้นประกบกัน:
+ *     • มองจากด้านหน้า   ชิ้นฐาน ① + ชิ้นที่ติดด้านบน ② วาดตามสเกลจริงของขนาดที่เลือก
+ *                        มีเงาโครง 6 cm (ใหญ่สุด) จาง ๆ ไว้เทียบ · ชิ้นที่กำลังเลือกเป็นสีฟ้า
+ *     • มองจากด้านข้าง   ตัดขวางให้เห็นว่าอะคริลิคหนา 3 มม. 2 แผ่น ติดกาวเฉพาะจุด
+ *                        ชิ้นที่ 2 จึง "ยกลอย" ขึ้นมาเป็นมิติ 3D
+ *     • แถบล่าง          รูปงานจริงของร้าน เทียบขนาด 2-6 cm บนพื้นเดียวกัน (ของจริง ไม่ใช่ภาพวาด)
+ *   ราคาบนการ์ดดึงสดจากเว็บตารางราคา (3d-acrylic-prices.mjs) — ตัวเลขไม่มีวันหลุดจากหน้าเว็บจริง
+ *
+ * ── การ์ดชนิดอะคริลิค (3 ใบ) ─────────────────────────────────────────────
+ *   acrylic-clear    อะคริลิคใส          ← รูปงานจริงของสินค้านี้ (แกลเลอรีใบที่ 5 "อะคริลิคใสล้วน")
+ *   acrylic-c02      อะคริลิคขาวขุ่น C-02 ← สวอตช์จากชาร์ตสีทางการของร้าน (acrylic-colors/c02)
+ *   acrylic-special  อะคริลิคพิเศษ        ← รูปงานจริงใบที่ 1 (ฐานโฮโลแกรม) + สวอตช์จริงอีก 4 ลาย
  *
  * งานสกรีน 6 แบบมีภาพจากชุด acrylic-howto อยู่แล้ว จึงไม่แตะ
  *
- * ⚠️ อัปทับ "ชื่อไฟล์เดิม" ไม่ได้ — CDN/Next แคชของเก่าไว้ (การ์ดขนาด = v2 · ชนิดอะคริลิค = v1)
+ * ⚠️ อัปทับ "ชื่อไฟล์เดิม" ไม่ได้ — CDN/Next แคชของเก่าไว้ (การ์ดขนาดชุดนี้ขึ้นต้น p1-/p2- จึงเริ่ม v1 ใหม่)
  */
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
 import { fetch3dAcrylicPrices } from "./3d-acrylic-prices.mjs";
+// ลายที่ "สกรีน" บนชิ้นงานในภาพจำลอง = มาสคอตเป็ด iDucky ของฝ่าย Content
+import { mascotDataUri } from "./iducky-assets.mjs";
 
 const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || ".cache/3d-acrylic/upload").replace(/\/$/, "");
 mkdirSync(OUT, { recursive: true });
 
-const SIZE_V = "v2"; // การ์ดขนาดขึ้นรุ่นใหม่ (เพิ่มรูปงานจริง 2 ชิ้นประกบกัน) — ทับชื่อไฟล์ v1 ไม่ได้
+const SIZE_V = "v1"; // การ์ดขนาดชุดใหม่ (ชื่อไฟล์ขึ้นต้น p1-/p2- จึงเริ่มนับ v1 ใหม่)
 const TYPE_V = "v1";
 const W = 900;
 const H = 900; // จัตุรัส — แกลเลอรีหน้าสินค้าครอปเป็นจัตุรัส (object-cover)
 const TH = "Thonburi, 'Noto Sans Thai', 'Sukhumvit Set', sans-serif";
 const INK = "#0f172a";
 const SUB = "#64748b";
+const LINE = "#cbd5e1";
 const CYAN = "#0891b2";
+const GLUE = "#f59e0b";
 const PAPER = "#f8fafc";
 const EDGE = "#e2e8f0";
 
@@ -49,6 +58,7 @@ const SIZE_PHOTOS = [
 const SIZE_PHOTO = SIZE_PHOTOS.find((f) => existsSync(f));
 if (!SIZE_PHOTO) throw new Error(`ไม่เจอรูปเทียบขนาด — หาที่:\n  ${SIZE_PHOTOS.join("\n  ")}`);
 
+const MASCOT = await mascotDataUri("heart", 560);
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 // ── โครงการ์ด ────────────────────────────────────────────────────────────
@@ -68,11 +78,6 @@ const foot = (lines, y0) =>
     .map((l, i) => `<text x="${W / 2}" y="${y0 + i * 36}" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">${esc(l)}</text>`)
     .join("");
 
-/** ป้ายราคา — กล่องฟ้าอ่อนกลางการ์ด */
-const priceChip = (text, y, w = 560) => `
-  <rect x="${(W - w) / 2}" y="${y}" width="${w}" height="66" rx="20" fill="#ecfeff" stroke="#a5f3fc" stroke-width="2"/>
-  <text x="${W / 2}" y="${y + 44}" font-family="${TH}" font-size="31" font-weight="700" text-anchor="middle" fill="${CYAN}">${esc(text)}</text>`;
-
 const uri = (buf, mime = "image/jpeg") => `data:${mime};base64,${buf.toString("base64")}`;
 
 async function grab(url) {
@@ -84,7 +89,7 @@ async function grab(url) {
 const square = async (buf, left, top, size, out) =>
   sharp(buf).extract({ left, top, width: size, height: size }).resize(out, out).jpeg({ quality: 92 }).toBuffer();
 
-// ── ขนาด 2-6 cm ──────────────────────────────────────────────────────────
+// ══ การ์ดขนาด ════════════════════════════════════════════════════════════
 /**
  * กรอบชิ้นงานแต่ละขนาดบนรูปเทียบขนาด (พิกัดจริงของ size-compare.jpg 1600×814)
  * วัดมาจากตัวรูปเอง (สแกนหาพิกเซลที่มีสี) — ชิ้นงานวางชิดพื้นเดียวกัน สเกลจึงเทียบกันได้ตรง ๆ
@@ -96,95 +101,186 @@ const PIECE_BOX = {
   "5cm": [360, 472, 429],
   "6cm": [505, 642, 400],
 };
-/** แถบที่ครอปมาใช้ = เฉพาะตัวชิ้นงาน 2-6 cm + ป้าย cm (ตัดห่วงพวงกุญแจด้านบนทิ้ง ให้การ์ดเตี้ยลง) */
+/** แถบที่ครอปมาใช้ = ตัวชิ้นงาน 2-6 cm + ป้าย cm (ตัดห่วงพวงกุญแจส่วนบนทิ้ง ให้แถบเตี้ยลง) */
 const STRIP = { x: 42, y: 380, w: 616, h: 232 };
-const STRIP_W = 700;
+const STRIP_W = 520;
 const STRIP_H = Math.round((STRIP_W * STRIP.h) / STRIP.w);
 const STRIP_X = (W - STRIP_W) / 2;
-const STRIP_Y = 536;
-const k = STRIP_W / STRIP.w; // สเกลจากพิกัดรูปต้นฉบับ → พิกัดบนการ์ด
-const onCard = (x, y) => [STRIP_X + (x - STRIP.x) * k, STRIP_Y + (y - STRIP.y) * k];
+const STRIP_Y = 596;
+const kStrip = STRIP_W / STRIP.w;
+const onStrip = (x, y) => [STRIP_X + (x - STRIP.x) * kStrip, STRIP_Y + (y - STRIP.y) * kStrip];
+
+/** ── ภาพจำลอง: แผงซ้าย "มองจากด้านหน้า" ── */
+const PA = { x: 46, y: 142, w: 414, h: 396 };
+const CXA = PA.x + PA.w / 2;
+const GROUND = 452; // ขอบล่างของชิ้นฐานในภาพจำลอง
+const PX_PER_CM = 38; // 6 cm = 228 px — ใหญ่สุดยังอยู่ในแผง
 
 /**
- * รูปงานจริง 2 ใบที่โชว์ว่า "1 ชุด = 2 ชิ้นประกบกัน"
- * jr = จุดชิ้นฐาน · jt = จุดชิ้นที่ติดอยู่ด้านบน (สัดส่วน 0-1 ของกรอบที่ครอป) ไว้ปักหมุด ① ②
- * ใบซ้ายเห็นชัดที่สุด (โดมใส + ตัวแมวติดทับ) จึงปักหมุดเฉพาะใบซ้าย ใบขวาปล่อยเป็นตัวอย่างเฉย ๆ
+ * ทรงชิ้นฐาน: แผ่นก้นแบนหัวโค้ง (เลียนงานจริงแบบ "ฉากหลัง") — วาดเป็นจัตุรัส w = h
+ * จงใจให้สูงเท่ากว้าง ชิ้นที่ 2 ที่ขนาดเท่ากันจะได้ไม่ล้นออกนอกชิ้นฐานในภาพจำลอง
  */
-const WORK = {
-  left: { file: "01.jpg", crop: [200, 225, 615], jr: [0.30, 0.64], jt: [0.72, 0.68] },
-  right: { file: "02.jpg", crop: [440, 300, 560] },
+const dome = (cx, ground, w, h) => {
+  const x0 = cx - w / 2;
+  const x1 = cx + w / 2;
+  const flat = h * 0.55;
+  return `M${x0} ${ground} L${x0} ${ground - flat} A${w / 2} ${h - flat} 0 0 1 ${x1} ${ground - flat} L${x1} ${ground} Z`;
 };
-const TILE = 250;
-const TILE_Y = 168;
-const TILE_X = [152, 498];
 
-/** หมุดเลข ① ② บนรูป */
-const pin = (cx, cy, n) => `
-  <circle cx="${cx}" cy="${cy}" r="19" fill="#ffffff" opacity="0.94"/>
-  <circle cx="${cx}" cy="${cy}" r="19" fill="none" stroke="${CYAN}" stroke-width="3"/>
-  <text x="${cx}" y="${cy + 9}" font-family="${TH}" font-size="24" font-weight="700" text-anchor="middle" fill="${CYAN}">${n}</text>`;
+/** หมุดเลข ① ② */
+const pin = (cx, cy, n, on) => `
+  <circle cx="${cx}" cy="${cy}" r="15" fill="#ffffff" opacity="0.95"/>
+  <circle cx="${cx}" cy="${cy}" r="15" fill="none" stroke="${on ? CYAN : "#94a3b8"}" stroke-width="3"/>
+  <text x="${cx}" y="${cy + 7}" font-family="${TH}" font-size="19" font-weight="700" text-anchor="middle" fill="${on ? CYAN : "#64748b"}">${n}</text>`;
 
-async function sizeArt(size, prices) {
+/**
+ * ชิ้นงานไดคัท (ชิ้นที่ 2) — ขยายเงาของลายออกไปเป็น "ขอบใสรอบลาย" ตามงานไดคัทจริง
+ * แล้วเติมเนื้ออะคริลิค ทับด้วยตัวลายอีกที · มีเงาตกกระทบเพราะชิ้นนี้ยกลอยอยู่บนชิ้นฐาน
+ */
+function diecut(cx, bottom, longest, on) {
+  const ch = longest; // มาสคอตสูงกว่ากว้าง (ratio < 1) ด้านยาวสุดจึงเป็นความสูง
+  const cw = ch * MASCOT.ratio;
+  const top = bottom - ch;
+  const rim = ch * 0.035;
+  const body = on ? "#cffafe" : "#eef2f7";
+  const ring = on ? "#22d3ee" : "#cbd5e1";
+  const img = `<image href="${MASCOT.uri}" x="${cx - cw / 2}" y="${top}" width="${cw}" height="${ch}" preserveAspectRatio="xMidYMid meet"/>`;
+  return {
+    cw,
+    ch,
+    top,
+    svg: `
+    <defs>
+      <filter id="cut" x="-30%" y="-25%" width="160%" height="150%">
+        <feMorphology in="SourceAlpha" operator="dilate" radius="${(rim * 1.35).toFixed(1)}" result="d1"/>
+        <feFlood flood-color="${ring}" result="c1"/>
+        <feComposite in="c1" in2="d1" operator="in" result="ringLayer"/>
+        <feMorphology in="SourceAlpha" operator="dilate" radius="${rim.toFixed(1)}" result="d2"/>
+        <feFlood flood-color="${body}" result="c2"/>
+        <feComposite in="c2" in2="d2" operator="in" result="bodyLayer"/>
+        <feMerge><feMergeNode in="ringLayer"/><feMergeNode in="bodyLayer"/></feMerge>
+      </filter>
+      <filter id="lift" x="-40%" y="-40%" width="180%" height="180%">
+        <feDropShadow dx="0" dy="7" stdDeviation="6" flood-color="#0f172a" flood-opacity="0.26"/>
+      </filter>
+    </defs>
+    <g filter="url(#lift)"><g filter="url(#cut)">${img}</g></g>
+    ${img}`,
+  };
+}
+
+/** แผงซ้าย: มองจากด้านหน้า */
+function frontView(baseCm, topCm, hi) {
+  const bw = baseCm * PX_PER_CM;
+  const bh = bw; // สูงเท่ากว้าง — ด้านที่ยาวที่สุดคือ baseCm ทั้งสองแกน
+  const on1 = hi === 1;
+  const ghost =
+    baseCm < 6
+      ? `<path d="${dome(CXA, GROUND, 6 * PX_PER_CM, 6 * PX_PER_CM)}" fill="none" stroke="${LINE}" stroke-width="2" stroke-dasharray="9 7"/>
+         <text x="${CXA + 3 * PX_PER_CM + 8}" y="${GROUND - 2}" font-family="${TH}" font-size="17" fill="${LINE}">6 cm</text>`
+      : "";
+  const pcx = CXA + bw * 0.1;
+  // ชิ้นฐานยิ่งใหญ่กว่าชิ้นบนมาก ยิ่งยกชิ้นบนขึ้นให้เห็นว่าลอยอยู่ — ขนาดเท่ากันก็วางชิดขอบล่างพอดี
+  const piece = diecut(pcx, GROUND - (baseCm - topCm) * PX_PER_CM * 0.18, topCm * PX_PER_CM, hi === 2);
+  return `
+    <rect x="${PA.x}" y="${PA.y}" width="${PA.w}" height="${PA.h}" rx="22" fill="${PAPER}" stroke="${EDGE}" stroke-width="2"/>
+    <text x="${CXA}" y="${PA.y + 34}" font-family="${TH}" font-size="20" font-weight="700" text-anchor="middle" fill="${SUB}">มองจากด้านหน้า</text>
+    ${ghost}
+    <path d="${dome(CXA, GROUND, bw, bh)}" fill="${on1 ? "rgba(103,232,249,0.5)" : "rgba(148,163,184,0.28)"}" stroke="${on1 ? "#22d3ee" : "#94a3b8"}" stroke-width="3"/>
+    ${piece.svg}
+    ${pin(CXA - bw * 0.34, GROUND - bh * 0.4, "1", on1)}
+    ${pin(pcx + piece.cw / 2 + 6, piece.top + piece.ch * 0.28, "2", hi === 2)}
+    <text x="${CXA}" y="${PA.y + PA.h - 48}" font-family="${TH}" font-size="19" text-anchor="middle" fill="${INK}">① ชิ้นฐาน ${on1 ? `<tspan fill="${CYAN}" font-weight="700">${baseCm} cm</tspan>` : "(เลือกแยก)"}</text>
+    <text x="${CXA}" y="${PA.y + PA.h - 18}" font-family="${TH}" font-size="19" text-anchor="middle" fill="${INK}">② ชิ้นที่ติดด้านบน ${hi === 2 ? `<tspan fill="${CYAN}" font-weight="700">${topCm} cm</tspan>` : "(เลือกแยก)"}</text>`;
+}
+
+/** แผงขวา: มองจากด้านข้าง (ตัดขวาง) — ให้เห็นว่าชิ้นที่ 2 ติดกาวอยู่บนชิ้นที่ 1 */
+function sideView(hi) {
+  const PB = { x: 478, y: 142, w: 376, h: 396 };
+  const cx = PB.x + PB.w / 2;
+  const T = 18; // อะคริลิคหนา 3 มม. ในภาพจำลอง
+  const bY = 372;
+  const tY = bY - T - 18; // เว้นช่องกาวไว้ 18 px
+  const bX = [cx - 150, cx + 150];
+  const tX = [cx - 64, cx + 64];
+  const slab = (x0, x1, y, on) =>
+    `<rect x="${x0}" y="${y}" width="${x1 - x0}" height="${T}" rx="5" fill="${on ? "rgba(103,232,249,0.55)" : "rgba(148,163,184,0.3)"}" stroke="${on ? "#22d3ee" : "#94a3b8"}" stroke-width="2.5"/>`;
+  const dots = [-44, 0, 44].map((d) => `<circle cx="${cx + d}" cy="${bY - 9}" r="6" fill="${GLUE}"/>`).join("");
+  return `
+    <rect x="${PB.x}" y="${PB.y}" width="${PB.w}" height="${PB.h}" rx="22" fill="${PAPER}" stroke="${EDGE}" stroke-width="2"/>
+    <defs><marker id="arw" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0 0 L9 4.5 L0 9 Z" fill="${SUB}"/></marker></defs>
+    <text x="${cx}" y="${PB.y + 34}" font-family="${TH}" font-size="20" font-weight="700" text-anchor="middle" fill="${SUB}">มองจากด้านข้าง (ตัดขวาง)</text>
+    <text x="${cx}" y="${PB.y + 92}" font-family="${TH}" font-size="19" text-anchor="middle" fill="${INK}">ชิ้นที่ 2 ติดกาวอยู่บนชิ้นที่ 1</text>
+    <text x="${cx}" y="${PB.y + 120}" font-family="${TH}" font-size="18" text-anchor="middle" fill="${SUB}">จึงยกลอยขึ้นมา เห็นเป็นมิติ 3D</text>
+    <path d="M${cx} ${PB.y + 140} L${cx} ${tY - 12}" stroke="${SUB}" stroke-width="2" marker-end="url(#arw)"/>
+    ${slab(tX[0], tX[1], tY, hi === 2)}
+    ${dots}
+    ${slab(bX[0], bX[1], bY, hi === 1)}
+    ${pin(bX[0] - 22, bY + T / 2, "1", hi === 1)}
+    ${pin(tX[0] - 22, tY + T / 2, "2", hi === 2)}
+    <text x="${cx}" y="${bY + 76}" font-family="${TH}" font-size="19" text-anchor="middle" fill="${INK}">อะคริลิคหนา 3 มม. ต่อชิ้น</text>
+    <text x="${cx}" y="${bY + 106}" font-family="${TH}" font-size="18" text-anchor="middle" fill="${SUB}"><tspan fill="${GLUE}" font-weight="700">●</tspan> จุดสีส้ม = จุดที่ติดกาว</text>`;
+}
+
+/**
+ * @param {1|2} piece   1 = การ์ดของกลุ่ม "ขนาดชิ้นที่ 1" · 2 = กลุ่ม "ขนาดชิ้นที่ 2"
+ * @param {string} size "4cm"
+ */
+async function sizeArt(piece, size, prices) {
   const strip = await sharp(SIZE_PHOTO)
     .extract({ left: STRIP.x, top: STRIP.y, width: STRIP.w, height: STRIP.h })
-    .resize(STRIP_W * 2) // อัดความละเอียดไว้ 2 เท่า กันเบลอตอนย่อเป็น JPEG
+    .resize(STRIP_W * 3) // อัดความละเอียดไว้ 3 เท่า กันเบลอตอนย่อเป็น JPEG
     .jpeg({ quality: 94 })
     .toBuffer();
-  const tiles = await Promise.all(
-    [WORK.left, WORK.right].map(async (w) => uri(await square(await grab(`${STORAGE}/3d-acrylic/${w.file}`), ...w.crop, TILE * 3)))
-  );
 
   const [x0, x1, top] = PIECE_BOX[size];
-  const [wx, wy] = onCard(x0 - 12, top - 12);
-  const [wx2, wy2] = onCard(x1 + 12, 606); // ล่างสุดเผื่อถึงป้าย "N cm" ใต้ชิ้นงาน
+  const [wx, wy] = onStrip(x0 - 12, top - 12);
+  const [wx2, wy2] = onStrip(x1 + 12, 606); // ล่างสุดเผื่อถึงป้าย "N cm" ใต้ชิ้นงาน
   const [ww, wh] = [wx2 - wx, wy2 - wy];
 
   const cm = Number(size.replace("cm", ""));
+  // ชิ้นที่ไม่ได้เลือกวาดเป็นตัวประกอบ: ของการ์ดชิ้นที่ 1 ให้ชิ้นบนเล็กกว่า · ของการ์ดชิ้นที่ 2 ให้ชิ้นฐาน 6 cm
+  const baseCm = piece === 1 ? cm : 6;
+  const topCm = piece === 1 ? Math.max(1.2, +(cm * 0.58).toFixed(1)) : cm;
   const [first] = prices.base[size];
-  const L = WORK.left;
+
+  const sub =
+    piece === 1
+      ? `ชิ้นฐาน ชิ้นใหญ่สุด เป็นตัวคิดราคา · ราคาชุดละ ${first}.- (${prices.tiers[0]})`
+      : "ชิ้นที่ติดกาวประกบอยู่บนชิ้นที่ 1 · รวมในราคาชุดแล้ว ไม่บวกเพิ่ม";
+  const last =
+    piece === 1
+      ? `${prices.tiers[0]} · สกรีน 1 ด้าน/ชิ้น · อะคริลิคใส — 1 ชุด = อะคริลิค 2 ชิ้น`
+      : "เลือกได้ไม่เกินขนาดชิ้นที่ 1 — เท่ากันก็ได้";
 
   return frame(`
-    <text x="${W / 2}" y="80" font-family="${TH}" font-size="44" font-weight="700" text-anchor="middle" fill="${INK}">ขนาด ${cm} cm</text>
-    <text x="${W / 2}" y="124" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">วัดจากด้านที่ยาวที่สุด · ราคาชุดละ <tspan fill="${CYAN}" font-weight="700">${first}.-</tspan> (${prices.tiers[0]} · สกรีน 1 ด้าน/ชิ้น · อะคริลิคใส)</text>
+    <text x="${W / 2}" y="76" font-family="${TH}" font-size="42" font-weight="700" text-anchor="middle" fill="${INK}">ขนาดชิ้นที่ ${piece} — ${cm} cm</text>
+    <text x="${W / 2}" y="118" font-family="${TH}" font-size="20" text-anchor="middle" fill="${SUB}">${esc(sub)}</text>
 
-    <!-- ① งานจริง: 2 ชิ้นประกบกัน -->
-    <defs>
-      <clipPath id="pA"><rect x="${TILE_X[0]}" y="${TILE_Y}" width="${TILE}" height="${TILE}" rx="22"/></clipPath>
-      <clipPath id="pB"><rect x="${TILE_X[1]}" y="${TILE_Y}" width="${TILE}" height="${TILE}" rx="22"/></clipPath>
-    </defs>
-    ${tiles
-      .map(
-        (img, i) => `
-      <image href="${img}" x="${TILE_X[i]}" y="${TILE_Y}" width="${TILE}" height="${TILE}" clip-path="url(#p${i ? "B" : "A"})" preserveAspectRatio="xMidYMid slice"/>
-      <rect x="${TILE_X[i]}" y="${TILE_Y}" width="${TILE}" height="${TILE}" rx="22" fill="none" stroke="${EDGE}" stroke-width="2"/>`
-      )
-      .join("")}
-    ${pin(TILE_X[0] + L.jr[0] * TILE, TILE_Y + L.jr[1] * TILE, "1")}
-    ${pin(TILE_X[0] + L.jt[0] * TILE, TILE_Y + L.jt[1] * TILE, "2")}
-    <text x="${W / 2}" y="${TILE_Y + TILE + 36}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${INK}">① ชิ้นที่ 1 = ชิ้นฐาน (ชิ้นใหญ่สุด เป็นตัวคิดราคา) · ② ชิ้นที่ 2 = ติดกาวประกบอยู่ด้านบน</text>
-    <text x="${W / 2}" y="${TILE_Y + TILE + 68}" font-family="${TH}" font-size="20" text-anchor="middle" fill="${SUB}">รูปงานจริงของร้าน — ใบขวาเป็นอีกตัวอย่าง ชิ้นด้านหน้าซ้อนอยู่บนชิ้นด้านหลัง</text>
+    ${frontView(baseCm, topCm, piece)}
+    ${sideView(piece)}
 
-    <!-- ② เทียบขนาดจริง -->
-    <text x="${W / 2}" y="${STRIP_Y - 18}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">เทียบขนาดจริง 2-6 cm บนพื้นเดียวกัน — กรอบฟ้าคือขนาดที่เลือก</text>
+    <!-- แถบรูปงานจริง เทียบขนาด 2-6 cm -->
     <defs>
-      <clipPath id="strip"><rect x="${STRIP_X}" y="${STRIP_Y}" width="${STRIP_W}" height="${STRIP_H}" rx="20"/></clipPath>
+      <clipPath id="strip"><rect x="${STRIP_X}" y="${STRIP_Y}" width="${STRIP_W}" height="${STRIP_H}" rx="18"/></clipPath>
       <!-- หรี่ทั้งแถบ เว้นช่องขนาดที่เลือกไว้สว่าง -->
       <mask id="dim">
         <rect x="${STRIP_X}" y="${STRIP_Y}" width="${STRIP_W}" height="${STRIP_H}" fill="#ffffff"/>
-        <rect x="${wx}" y="${wy}" width="${ww}" height="${wh}" rx="14" fill="#000000"/>
+        <rect x="${wx}" y="${wy}" width="${ww}" height="${wh}" rx="12" fill="#000000"/>
       </mask>
     </defs>
     <g clip-path="url(#strip)">
       <image href="${uri(strip)}" x="${STRIP_X}" y="${STRIP_Y}" width="${STRIP_W}" height="${STRIP_H}" preserveAspectRatio="xMidYMid slice"/>
       <rect x="${STRIP_X}" y="${STRIP_Y}" width="${STRIP_W}" height="${STRIP_H}" fill="#ffffff" opacity="0.66" mask="url(#dim)"/>
     </g>
-    <rect x="${STRIP_X}" y="${STRIP_Y}" width="${STRIP_W}" height="${STRIP_H}" rx="20" fill="none" stroke="${EDGE}" stroke-width="2"/>
-    <rect x="${wx}" y="${wy}" width="${ww}" height="${wh}" rx="14" fill="none" stroke="${CYAN}" stroke-width="4"/>
-
-    ${foot(["1 ชุด = อะคริลิค 2 ชิ้น เลือกขนาดได้ทั้ง 2 ชิ้น (ชิ้นที่ 2 ไม่เกินชิ้นที่ 1)"], 852)}`);
+    <rect x="${STRIP_X}" y="${STRIP_Y}" width="${STRIP_W}" height="${STRIP_H}" rx="18" fill="none" stroke="${EDGE}" stroke-width="2"/>
+    <rect x="${wx}" y="${wy}" width="${ww}" height="${wh}" rx="12" fill="none" stroke="${CYAN}" stroke-width="4"/>
+    <text x="${W / 2}" y="${STRIP_Y + STRIP_H + 30}" font-family="${TH}" font-size="19" text-anchor="middle" fill="${SUB}">รูปงานจริงของร้าน — เทียบขนาด 2-6 cm บนพื้นเดียวกัน</text>
+    <text x="${W / 2}" y="${STRIP_Y + STRIP_H + 66}" font-family="${TH}" font-size="20" text-anchor="middle" fill="${SUB}">${esc(last)}</text>`);
 }
 
-// ── ชนิดอะคริลิค ─────────────────────────────────────────────────────────
+// ══ การ์ดชนิดอะคริลิค ════════════════════════════════════════════════════
 /** การ์ดรูปเดี่ยว — รูปจัตุรัสใหญ่กลางการ์ด */
 const heroCard = (t, sub, img, size, lines) => {
   const x = (W - size) / 2;
@@ -275,10 +371,12 @@ const save = async (name, svg) => {
 };
 
 const prices = await fetch3dAcrylicPrices();
-console.log(`📥 ราคาบนการ์ดดึงสดจากเว็บตารางราคา — ${prices.sizes.map((s) => `${s} ${prices.base[s][0]}.-`).join(" · ")}\n`);
+console.log(`📥 ราคาบนการ์ดดึงสดจากเว็บตารางราคา — ${prices.sizes.map((s) => `${s} ${prices.base[s][0]}.-`).join(" · ")}`);
 console.log(`📷 รูปเทียบขนาด: ${SIZE_PHOTO}\n`);
 
-for (const size of prices.sizes) await save(`size-${size.replace("cm", "")}-${SIZE_V}`, await sizeArt(size, prices));
+for (const piece of [1, 2]) {
+  for (const size of prices.sizes) await save(`p${piece}-size-${size.replace("cm", "")}-${SIZE_V}`, await sizeArt(piece, size, prices));
+}
 await save(`acrylic-clear-${TYPE_V}`, await clearArt());
 await save(`acrylic-c02-${TYPE_V}`, await c02Art());
 await save(`acrylic-special-${TYPE_V}`, await specialArt(prices));
