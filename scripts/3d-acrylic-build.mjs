@@ -11,7 +11,7 @@
  * ── โครงตัวเลือก (ทางร้านสั่ง 23 ส.ค. 69: "ชิ้นที่ 1 กับ 2 ต้องเลือกแยกกันได้") ──
  *   ขนาดชิ้นที่ 1 · งานสกรีน (ชิ้นที่ 1) · ชนิดอะคริลิค (ชิ้นที่ 1)   ← 3 แกนของตารางราคา
  *   ขนาดชิ้นที่ 2 · งานสกรีน (ชิ้นที่ 2) · ชนิดอะคริลิค (ชิ้นที่ 2)   ← บวกเพิ่มด้วย +฿ ของตัวเลือก
- *   เพิ่มจำนวนชิ้น (ชิ้นที่ 3 ขึ้นไป)                                ← ติ๊กหลายอย่าง + ระบุจำนวน
+ *   เพิ่มจำนวนชิ้น (ชิ้นที่ 3 ขึ้นไป)                                ← ติ๊กแจ้ง แล้วแอดมินคิดราคาให้
  *
  * สูตรราคา 1 ชุด — ADD ON บนเว็บเป็นราคา "ต่อชิ้น" คิดแยกทีละชิ้นตามขนาดของชิ้นนั้นเอง:
  *   ช่องตาราง = ฐาน[ขนาดชิ้นที่ 1][ช่วงจำนวน] + ค่าสกรีน[ขนาด1][สกรีน1] + ค่าอคล.พิเศษ[ขนาด1][อคล1]
@@ -26,7 +26,7 @@
  */
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
-import { fetch3dAcrylicPrices, fetchKeyringRate1 } from "./3d-acrylic-prices.mjs";
+import { fetch3dAcrylicPrices } from "./3d-acrylic-prices.mjs";
 
 const WRITE = process.argv.includes("--write");
 const ID = "3d-acrylic";
@@ -65,13 +65,8 @@ const ACRYLICS = [
  */
 const SPECIAL_RATE_ROW = "wholesale";
 
-/** กล่อง "เพิ่มจำนวนชิ้น" บนโปสเตอร์ — ราคาปลีกต่อ 1 ซม. ของชิ้นที่เพิ่ม */
+/** กล่อง "เพิ่มจำนวนชิ้น" บนโปสเตอร์ — ราคาปลีกต่อ 1 ซม. ของชิ้นที่เพิ่ม (ใช้เป็นตัวเลขบอกลูกค้าคร่าว ๆ) */
 const EXTRA_PER_CM = { สกรีน: 15, ไม่สกรีน: 10 };
-/** "จำนวน 11 ชิ้นขึ้นไป คิดราคาเรทส่งตามตารางแผ่นอะคริลิค (เรทที่ 1)" */
-const EXTRA_WHOLESALE_TIER = "11-29 ชิ้น";
-const EXTRA_WHOLESALE_FROM_QTY = 11;
-/** ต่อท้ายชื่อตัวเลือกของชิ้นที่เพิ่มเมื่อเลือกอะคริลิคพิเศษ (ไม่ต่อท้าย = ใส/ขาวขุ่น ราคาเท่ากัน) */
-const EXTRA_SPECIAL_SUFFIX = " · อคล.พิเศษ";
 
 const env = Object.fromEntries(
   readFileSync(new URL("../.env.local", import.meta.url), "utf8")
@@ -87,7 +82,6 @@ const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_
 });
 
 const web = await fetch3dAcrylicPrices();
-const rate1 = await fetchKeyringRate1();
 const SPECIAL_RATE = web.special[SPECIAL_RATE_ROW];
 const SIZES = web.sizes;
 
@@ -168,38 +162,25 @@ bands.forEach((b, i) => {
   });
 });
 
-// ── 3) กลุ่ม "เพิ่มจำนวนชิ้น" — ขนาด × สกรีน/ไม่สกรีน × ใส/พิเศษ ──
-const extraChoices = [];
-for (const [kind, perCm] of Object.entries(EXTRA_PER_CM)) {
-  for (const size of SIZES) {
-    const cm = Number(size.replace("cm", ""));
-    const retail = cm * perCm;
-    /**
-     * เรทส่งของชิ้นที่เพิ่มมาจากตารางแผ่นอะคริลิคเรทที่ 1 ซึ่งเป็นราคา "แผ่นที่สกรีนแล้ว"
-     * งานไม่สกรีนจึงไม่ควรแพงกว่าราคาปลีกของตัวเอง — กันด้วย min() ไม่ให้สั่งเยอะแล้วแพงขึ้น
-     */
-    const wholesale = Math.min(retail, rate1.cell(size, EXTRA_WHOLESALE_TIER));
-    for (const special of [false, true]) {
-      const sp = special ? (SPECIAL_RATE[size] ?? 0) : 0;
-      extraChoices.push({
-        name: `${size} · ${kind}${special ? EXTRA_SPECIAL_SUFFIX : ""}`,
-        qty: true,
-        qtyMax: 10,
-        extraBelow: retail + sp,
-        extra: wholesale + sp,
-      });
-    }
-  }
-}
+// ── 3) กลุ่ม "เพิ่มจำนวนชิ้น" — ติ๊กแจ้งความต้องการ แล้วให้แอดมินคิดราคา ──
+/**
+ * เคยกางเป็น 20 ตัวเลือก (ขนาด × สกรีน/ไม่สกรีน × ใส/พิเศษ) คิดราคาเองครบ
+ * แต่รายการยาวจนกลบตัวเลือกอื่น และเคสจริงมักมีเงื่อนไขนอกตาราง (ขนาดพิเศษ อะไหล่ ตำแหน่งติดกาว)
+ * ทางร้านจึงให้เปลี่ยนเป็น "ติ๊กแล้วทักแอดมิน" (23 ส.ค. 69)
+ *
+ * askPrice ที่ตัวเลือก = ติ๊กแล้วออเดอร์นี้เข้าโหมด "รอแอดมินตีราคา" (ราคาขึ้น 0 จนแอดมินใส่ให้)
+ * ไม่ติ๊ก = ราคายังคิดตามตารางปกติทุกอย่าง — ลูกค้าที่เอา 2 ชิ้นมาตรฐานไม่โดนผลกระทบ
+ */
+const EXTRA_ASK_CHOICE = "ต้องการเพิ่มจำนวนชิ้น (ให้แอดมินคิดราคา)";
 const extraGroup = {
   label: EXTRA,
   display: "multi",
-  extraFromQty: EXTRA_WHOLESALE_FROM_QTY,
   note:
-    "1 ชุดได้อะคริลิค 2 ชิ้นอยู่แล้ว — อยากได้มากกว่านั้นติ๊กแบบของชิ้นที่เพิ่มแล้วใส่จำนวน " +
-    "(งานสกรีน ซม.ละ 15 บาท · ไม่สกรีน ซม.ละ 10 บาท ต่อ 1 ชิ้น · อคล.พิเศษบวกเพิ่มตามขนาด) " +
-    "— สั่งตั้งแต่ 11 ชุดขึ้นไป คิดเรทส่งตามตารางแผ่นอะคริลิค (เรทที่ 1) ให้อัตโนมัติ",
-  choices: extraChoices.map((c) => withImage([EXTRA], c)),
+    "1 ชุดได้อะคริลิค 2 ชิ้นอยู่แล้ว — อยากได้มากกว่านั้นติ๊กช่องนี้ แล้วบอกจำนวน/ขนาดที่ต้องการ " +
+    "ในช่อง “หมายเหตุถึงร้าน” หรือทักไลน์ร้าน แอดมินจะคิดราคาเพิ่มให้ " +
+    `(ราคาโดยประมาณ: งานสกรีน ซม.ละ ${EXTRA_PER_CM["สกรีน"]} บาท · ไม่สกรีน ซม.ละ ${EXTRA_PER_CM["ไม่สกรีน"]} บาท ต่อ 1 ชิ้น) ` +
+    "— ติ๊กแล้วราคาจะขึ้นเป็น “รอแอดมินตีราคา” จนกว่าแอดมินจะใส่ราคาให้",
+  choices: [withImage([EXTRA], { name: EXTRA_ASK_CHOICE, askPrice: true })],
 };
 
 // ── 4) ประกอบ options ใหม่ทั้งชุด (คงกลุ่มอื่นที่ไม่เกี่ยวไว้ตามเดิม) ──
