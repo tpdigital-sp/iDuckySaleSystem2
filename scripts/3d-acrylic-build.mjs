@@ -69,6 +69,8 @@ const SPECIAL_RATE_ROW = "wholesale";
 const EXTRA_PER_CM = { สกรีน: 15, ไม่สกรีน: 10 };
 /** เรทส่งของชิ้นที่เพิ่ม — "จำนวน 11 ชิ้นขึ้นไป คิดราคาเรทส่งตามตารางแผ่นอะคริลิค (เรทที่ 1)" */
 const EXTRA_WHOLESALE_TIER = "11-29 ชิ้น";
+/** สั่งกี่ชุดขึ้นไปถึงเปลี่ยนไปใช้เรทส่งของชิ้นที่เพิ่ม */
+const EXTRA_WHOLESALE_FROM_QTY = 11;
 /**
  * กฎขนาดเกินตารางบนโปสเตอร์ (เว็บตารางราคาไม่มีตัวเลขชุดนี้ จึงพิมพ์ไว้ตรงนี้ที่เดียว)
  *   "ตั้งแต่ 7 cm. ขึ้นไป เพิ่มขนาด cm.ละ 10 บาท / 1 ชิ้น (ราคาไม่รวมอะคริลิคพิเศษ)"
@@ -130,15 +132,25 @@ for (const size of SIZES)
       cells[`${size}│${s.name}│${a.name}`] = web.base[size].map((b) => b + screenFee(size, s) + specialFee(size, a));
 
 // ── 2) กลุ่มของชิ้นที่ 2: แตกตาม "ช่วงขนาดที่ค่าบวกเพิ่มเท่ากัน" (คำนวณจากตัวเลขบนเว็บเอง) ──
-const feeKey = (size) => JSON.stringify([...SCREENS.map((s) => screenFee(size, s)), ...ACRYLICS.map((a) => specialFee(size, a))]);
-const bands = [];
-for (const size of SIZES) {
-  const key = feeKey(size);
-  const hit = bands.find((b) => b.key === key);
-  if (hit) hit.sizes.push(size);
-  else bands.push({ key, sizes: [size], ref: size });
-}
-console.log(`\n🎚 ช่วงขนาดของค่าบวกเพิ่ม: ${bands.map((b) => b.sizes.join("/")).join("  |  ")}`);
+/**
+ * จับขนาดที่ "ค่าบวกเพิ่มเท่ากันเป๊ะ" มัดเป็นช่วงเดียวกัน แล้วทำกลุ่มตัวเลือกใบละช่วง
+ * (+฿ ของตัวเลือกเก็บได้ค่าเดียว จะให้เปลี่ยนตามขนาดต้องแตกกลุ่มแล้วสลับด้วย showWhen)
+ * ช่วงคำนวณจากตัวเลขจริง ไม่ได้พิมพ์ทับ — ราคาบนเว็บเปลี่ยนกี่ช่วงก็แตกตาม
+ */
+const bandsBy = (keyFn) => {
+  const out = [];
+  for (const size of SIZES) {
+    const key = keyFn(size);
+    const hit = out.find((b) => b.key === key);
+    if (hit) hit.sizes.push(size);
+    else out.push({ key, sizes: [size], ref: size });
+  }
+  return out;
+};
+const bands = bandsBy((size) =>
+  JSON.stringify([...SCREENS.map((s) => screenFee(size, s)), ...ACRYLICS.map((a) => specialFee(size, a))])
+);
+console.log(`\n🎚 ช่วงขนาดของค่าบวกเพิ่ม (ชิ้นที่ 2): ${bands.map((b) => b.sizes.join("/")).join("  |  ")}`);
 
 /** ใบแรกใช้ชื่อกลุ่มล้วน ๆ · ใบต่อ ๆ ไปต่อท้ายด้วยช่วงขนาด (ชื่อกลุ่มซ้ำกันไม่ได้ selections คีย์ด้วย label) */
 const bandLabel = (base, b, i) => (i === 0 ? base : `${base} · ขนาด ${b.sizes.join("/")}`);
@@ -171,24 +183,119 @@ bands.forEach((b, i) => {
   });
 });
 
-// ── 3) กลุ่ม "เพิ่มจำนวนชิ้น" — ติ๊กแจ้งความต้องการ แล้วให้แอดมินคิดราคา ──
+// ── 3) ชิ้นที่ 3 และ 4 — เปิด/ปิดได้ เลือกขนาด/สกรีน/อะคริลิคแยกเหมือนชิ้นที่ 1-2 ──
 /**
- * เคยกางเป็น 20 ตัวเลือก (ขนาด × สกรีน/ไม่สกรีน × ใส/พิเศษ) คิดราคาเองครบ
- * แต่รายการยาวจนกลบตัวเลือกอื่น และเคสจริงมักมีเงื่อนไขนอกตาราง (ขนาดพิเศษ อะไหล่ ตำแหน่งติดกาว)
- * ทางร้านจึงให้เปลี่ยนเป็น "ติ๊กแล้วทักแอดมิน" (23 ส.ค. 69)
+ * โครง 1 ชิ้น = 4 ส่วน
+ *   ก) สวิตช์ "ชิ้นที่ N"      ไม่คิดเงิน · ค่าตั้งต้น = ไม่เพิ่ม → อีก 3 กลุ่มซ่อนอยู่
+ *   ข) ขนาดชิ้นที่ N          คิด "ราคาอะคริลิคเปล่า" = ซม.ละ 10 (เรทงานไม่สกรีนบนโปสเตอร์)
+ *   ค) งานสกรีน (ชิ้นที่ N)   ไม่สกรีน = 0 · สกรีนแล้วบวกส่วนต่างเป็น ซม.ละ 5 (10 → 15 ตามโปสเตอร์)
+ *                             + ค่าสกรีน 2 ด้านตามตาราง ADD ON
+ *   ง) ชนิดอะคริลิค (ชิ้นที่ N)  อคล.พิเศษบวกตามขนาด เหมือนชิ้นที่ 1-2
  *
- * askPrice ที่ตัวเลือก = ติ๊กแล้วออเดอร์นี้เข้าโหมด "รอแอดมินตีราคา" (ราคาขึ้น 0 จนแอดมินใส่ให้)
- * ไม่ติ๊ก = ราคายังคิดตามตารางปกติทุกอย่าง — ลูกค้าที่เอา 2 ชิ้นมาตรฐานไม่โดนผลกระทบ
+ * ⚠️ ส่วนต่างค่าสกรีนเป็น "ซม.ละ 5" จึงต่างกันทุกขนาด → กลุ่ม ค) แตกเป็นใบละขนาด (5 ใบ)
+ *    ลูกค้าเห็นทีละใบเท่านั้น แต่ในหน้าแก้ไขหลังบ้านจะเห็นเป็นกลุ่มเยอะ — ตั้งใจแบบนี้
  */
-const EXTRA_ASK_CHOICE = "ต้องการเพิ่มจำนวนชิ้น (ให้แอดมินคิดราคา)";
+const EXTRA_PIECES = [3, 4];
+const PIECE_LABEL = { on: (n) => `เพิ่มชิ้นที่ ${n}`, off: (n) => `ไม่เพิ่มชิ้นที่ ${n}` };
+const TOGGLE_N = (n) => `ชิ้นที่ ${n}`;
+const SIZE_N = (n) => `ขนาดชิ้นที่ ${n}`;
+const SCREEN_N = (n) => `งานสกรีน (ชิ้นที่ ${n})`;
+const ACRYLIC_N = (n) => `ชนิดอะคริลิค (ชิ้นที่ ${n})`;
+const NO_SCREEN = "ไม่สกรีน (อะคริลิคเปล่า)";
+const cmOf2 = (sz) => Number(sz.replace("cm", ""));
+/** ส่วนต่าง "สกรีนแล้ว" เทียบกับอะคริลิคเปล่า — ซม.ละ (15 − 10) ตามกล่องเพิ่มจำนวนชิ้นบนโปสเตอร์ */
+const SCREEN_STEP_PER_CM = EXTRA_PER_CM["สกรีน"] - EXTRA_PER_CM["ไม่สกรีน"];
+
+/** ราคาชิ้นเปล่าของชิ้นที่เพิ่ม — ช่วงปลีก / ช่วงส่ง (11 ชุดขึ้นไป) */
+const bareRetail = (sz) => cmOf2(sz) * EXTRA_PER_CM["ไม่สกรีน"];
+/**
+ * ช่วงส่งยึด "เรทที่ 1" ของตารางแผ่นอะคริลิคพวงกุญแจ ซึ่งเป็นราคาแผ่นที่สกรีนแล้ว
+ * ตัวเลขในกลุ่มขนาดเป็นชิ้นเปล่า จึงหักส่วนต่างค่าสกรีนออกก่อน (บวกกลับตอนเลือกสกรีน = ได้เรทที่ 1 พอดี)
+ * แล้วกันด้วย min() ไม่ให้สั่งเยอะแล้วแพงกว่าสั่งน้อย
+ */
+const bareWholesale = (sz) =>
+  Math.min(bareRetail(sz), rate1.cell(sz, EXTRA_WHOLESALE_TIER) - cmOf2(sz) * SCREEN_STEP_PER_CM);
+
+/** ค่าสกรีนของชิ้นที่เพิ่ม ณ ขนาดหนึ่ง (ไม่สกรีน = 0) */
+const extraScreenFee = (sz, s) => (s.none ? 0 : cmOf2(sz) * SCREEN_STEP_PER_CM + screenFee(sz, s));
+/**
+ * ลำดับตัวเลือก: เอา "สกรีน 1 ด้าน (ใต้)" ไว้ตัวแรก เพราะตัวแรกคือค่าตั้งต้น
+ * เปิดชิ้นที่ 3 มาปุ๊บจะได้ราคาชิ้นสกรีน (ซม.ละ 15) ตรงกับพาดหัวบนโปสเตอร์ทันที
+ * ส่วน "ไม่สกรีน" เป็นเคสรอง ไว้ท้ายสุด
+ */
+const EXTRA_SCREENS = [...SCREENS, { name: NO_SCREEN, none: true }];
+
+const extraScreenBands = bandsBy((sz) => JSON.stringify(EXTRA_SCREENS.map((s) => extraScreenFee(sz, s))));
+const extraAcrylicBands = bandsBy((sz) => String(SPECIAL_RATE[sz] ?? 0));
+console.log(`🎚 ช่วงขนาด (ชิ้นที่ 3-4): สกรีน ${extraScreenBands.length} ใบ · อะคริลิค ${extraAcrylicBands.length} ใบ`);
+
+const extraPieceGroups = [];
+for (const n of EXTRA_PIECES) {
+  const toggle = TOGGLE_N(n);
+  const on = { label: toggle, choices: [PIECE_LABEL.on(n)] };
+  // ชิ้นที่ 4 เปิดได้ต่อเมื่อเปิดชิ้นที่ 3 แล้ว — กันสั่งข้ามลำดับจนใบงานอ่านสับสน
+  const prevOn = n > EXTRA_PIECES[0] ? { label: TOGGLE_N(n - 1), choices: [PIECE_LABEL.on(n - 1)] } : undefined;
+
+  extraPieceGroups.push({
+    label: toggle,
+    ...(prevOn ? { showWhen: prevOn } : {}),
+    note:
+      `1 ชุดได้อะคริลิค 2 ชิ้นอยู่แล้ว — เพิ่มชิ้นที่ ${n} ได้ เลือกขนาด/งานสกรีน/ชนิดอะคริลิคแยกของตัวเอง ` +
+      `(ชิ้นเปล่า ซม.ละ ${EXTRA_PER_CM["ไม่สกรีน"]} บาท · สกรีนแล้ว ซม.ละ ${EXTRA_PER_CM["สกรีน"]} บาท)`,
+    choices: [{ name: PIECE_LABEL.off(n) }, { name: PIECE_LABEL.on(n) }].map((c) => withImage([toggle], c)),
+  });
+
+  extraPieceGroups.push({
+    label: SIZE_N(n),
+    display: "dropdown",
+    showWhen: on,
+    extraFromQty: EXTRA_WHOLESALE_FROM_QTY,
+    note: `ต้องไม่ใหญ่กว่าชิ้นที่ 1 — ราคาฐานของชุดคิดจากชิ้นที่ใหญ่ที่สุด`,
+    choices: SIZES.map((sz) =>
+      withImage([SIZE_N(n)], { name: sz, extraBelow: bareRetail(sz), extra: bareWholesale(sz) })
+    ),
+  });
+
+  extraScreenBands.forEach((b, i) => {
+    extraPieceGroups.push({
+      label: bandLabel(SCREEN_N(n), b, i),
+      showWhen: { label: SIZE_N(n), choices: b.sizes },
+      showWhenAlso: on,
+      note: `ไม่สกรีนก็ได้ — ใช้เป็นชิ้นฐาน/ตัวเว้นระยะให้งานดูมีมิติขึ้น`,
+      choices: EXTRA_SCREENS.map((s) =>
+        withImage([bandLabel(SCREEN_N(n), b, i), SCREEN_N(n), SCREEN1], {
+          name: s.name,
+          ...(s.popular ? { popular: true } : {}),
+          ...(extraScreenFee(b.ref, s) ? { extra: extraScreenFee(b.ref, s) } : {}),
+        })
+      ),
+    });
+  });
+
+  extraAcrylicBands.forEach((b, i) => {
+    extraPieceGroups.push({
+      label: bandLabel(ACRYLIC_N(n), b, i),
+      showWhen: { label: SIZE_N(n), choices: b.sizes },
+      showWhenAlso: on,
+      choices: ACRYLICS.map((a) =>
+        withImage([bandLabel(ACRYLIC_N(n), b, i), ACRYLIC_N(n), ACRYLIC1], {
+          name: a.name,
+          ...(specialFee(b.ref, a) ? { extra: specialFee(b.ref, a) } : {}),
+        })
+      ),
+    });
+  });
+}
+
+/** เผื่อลูกค้าอยากได้เกิน 4 ชิ้น — เกินจากนี้ให้แอดมินคิดราคาเอง */
+const EXTRA_ASK_CHOICE = "ต้องการมากกว่า 4 ชิ้น (ให้แอดมินคิดราคา)";
 const extraGroup = {
   label: EXTRA,
   display: "multi",
+  showWhen: { label: TOGGLE_N(EXTRA_PIECES[EXTRA_PIECES.length - 1]), choices: [PIECE_LABEL.on(EXTRA_PIECES[EXTRA_PIECES.length - 1])] },
   note:
-    "1 ชุดได้อะคริลิค 2 ชิ้นอยู่แล้ว — อยากได้มากกว่านั้นติ๊กช่องนี้ แล้วบอกจำนวน/ขนาดที่ต้องการ " +
-    "ในช่อง “หมายเหตุถึงร้าน” หรือทักไลน์ร้าน แอดมินจะคิดราคาเพิ่มให้ " +
-    `(ราคาโดยประมาณ: งานสกรีน ซม.ละ ${EXTRA_PER_CM["สกรีน"]} บาท · ไม่สกรีน ซม.ละ ${EXTRA_PER_CM["ไม่สกรีน"]} บาท ต่อ 1 ชิ้น) ` +
-    "— ติ๊กแล้วราคาจะขึ้นเป็น “รอแอดมินตีราคา” จนกว่าแอดมินจะใส่ราคาให้",
+    "หน้าเว็บเลือกได้ถึงชิ้นที่ 4 — อยากได้มากกว่านั้นติ๊กช่องนี้ แล้วบอกจำนวน/ขนาดในช่อง “หมายเหตุถึงร้าน” " +
+    "หรือทักไลน์ร้าน แอดมินจะคิดราคาเพิ่มให้ (ติ๊กแล้วราคาจะขึ้นเป็น “รอแอดมินตีราคา”)",
   choices: [withImage([EXTRA], { name: EXTRA_ASK_CHOICE, askPrice: true })],
 };
 
@@ -200,7 +307,11 @@ const keepSize = (label) => {
 };
 const size1 = keepSize(SIZE1);
 const size2 = keepSize(SIZE2);
-const known = new Set([SIZE1, SIZE2, SCREEN1, ACRYLIC1, OLD_SCREEN, OLD_ACRYLIC, EXTRA, ...piece2Groups.map((g) => g.label)]);
+const known = new Set([
+  SIZE1, SIZE2, SCREEN1, ACRYLIC1, OLD_SCREEN, OLD_ACRYLIC, EXTRA,
+  ...piece2Groups.map((g) => g.label),
+  ...extraPieceGroups.map((g) => g.label),
+]);
 const untouched = (p.options ?? []).filter((o) => !known.has(o.label));
 
 const screen1Group = {
@@ -216,7 +327,16 @@ const acrylic1Group = {
   choices: ACRYLICS.map((a) => withImage([ACRYLIC1, OLD_ACRYLIC], { name: a.name })),
 };
 
-const options = [size1, screen1Group, acrylic1Group, size2, ...piece2Groups, extraGroup, ...untouched];
+const options = [size1, screen1Group, acrylic1Group, size2, ...piece2Groups, ...extraPieceGroups, extraGroup, ...untouched];
+
+// ── 4.1) กฎ: ทุกชิ้นที่เพิ่มต้องไม่ใหญ่กว่าชิ้นที่ 1 (ราคาฐานคิดจากชิ้นใหญ่สุด จะได้ไม่เพี้ยน) ──
+const LIMITED = [SIZE2, ...EXTRA_PIECES.map((n) => SIZE_N(n))];
+p.rules = (p.rules ?? []).filter((r) => !LIMITED.includes(r.limit?.label));
+for (const target of LIMITED)
+  SIZES.forEach((sz, i) => {
+    if (i === SIZES.length - 1) return; // ชิ้นที่ 1 ใหญ่สุด = เลือกได้ทุกขนาด ไม่ต้องมีกฎ
+    p.rules.push({ when: { label: SIZE1, choice: sz, choices: [sz] }, limit: { label: target, allow: SIZES.slice(0, i + 1) } });
+  });
 
 // ── 5) ข้อความที่ต้องตามไปแก้เพราะโครงตัวเลือกเปลี่ยน ──
 /**
@@ -388,14 +508,19 @@ const priceTabHtml = [
     ["อะคริลิคใส · ขาวขุ่น C-02", "ไม่บวกเพิ่ม"],
   ]),
 
-  `<h3 ${T_H3}>3 · เพิ่มจำนวนชิ้น (ชิ้นที่ 3 ขึ้นไป)</h3>`,
-  `<p>ปกติ 1 ชุดได้ 2 ชิ้น — อยากได้มากกว่านั้นคิดเพิ่มต่อชิ้นตามนี้ (คิดแบบอะคริลิคใส)</p>`,
+  `<h3 ${T_H3}>3 · ชิ้นที่ 3 และ 4 (เพิ่มได้)</h3>`,
+  `<p>ปกติ 1 ชุดได้ 2 ชิ้น — เพิ่มได้ถึงชิ้นที่ 4 แต่ละชิ้นเลือก <strong>ขนาด · งานสกรีน · ชนิดอะคริลิค</strong> ของตัวเองแยกกัน (บาท/ชิ้น)</p>`,
   sizeTable("ชิ้นที่เพิ่ม", [
-    [`งานสกรีน (ซม.ละ ${EXTRA_PER_CM["สกรีน"]})`, SIZES.map((sz) => cmOf(sz) * EXTRA_PER_CM["สกรีน"])],
-    [`งานไม่สกรีน (ซม.ละ ${EXTRA_PER_CM["ไม่สกรีน"]})`, SIZES.map((sz) => cmOf(sz) * EXTRA_PER_CM["ไม่สกรีน"])],
-    [`สั่ง 11 ชุดขึ้นไป (เรทส่ง)`, SIZES.map((sz) => rate1.cell(sz, EXTRA_WHOLESALE_TIER))],
+    [`อะคริลิคเปล่า ไม่สกรีน (ซม.ละ ${EXTRA_PER_CM["ไม่สกรีน"]})`, SIZES.map((sz) => cmOf(sz) * EXTRA_PER_CM["ไม่สกรีน"])],
+    [`สกรีน 1 ด้าน (ซม.ละ ${EXTRA_PER_CM["สกรีน"]})`, SIZES.map((sz) => cmOf(sz) * EXTRA_PER_CM["สกรีน"])],
+    [
+      "สกรีน 2 ด้าน",
+      SIZES.map((sz) => cmOf(sz) * EXTRA_PER_CM["สกรีน"] + web.screen["สกรีน 2 ด้าน"][sz]),
+    ],
+    ["อะคริลิคพิเศษ (บวกจากราคาข้างบน)", SIZES.map((sz) => `+${SPECIAL_RATE[sz]}`)],
+    [`สั่ง ${EXTRA_WHOLESALE_FROM_QTY} ชุดขึ้นไป — สกรีน 1 ด้าน (เรทส่ง)`, SIZES.map((sz) => rate1.cell(sz, EXTRA_WHOLESALE_TIER))],
   ]),
-  `<p ${T_NOTE}>วิธีสั่ง — ติ๊กช่อง “เพิ่มจำนวนชิ้น” ในหน้าสั่งซื้อ แล้วบอกจำนวน/ขนาดในช่อง “หมายเหตุถึงร้าน” แอดมินจะคิดราคาให้</p>`,
+  `<p ${T_NOTE}>ชิ้นที่เพิ่มต้องไม่ใหญ่กว่าชิ้นที่ 1 · เปิดชิ้นที่ 4 ได้เมื่อเปิดชิ้นที่ 3 แล้ว · อยากได้มากกว่า 4 ชิ้น ทักไลน์ร้าน</p>`,
 
   `<h3 ${T_H3}>4 · งานที่ต้องให้แอดมินตีราคา</h3>`,
   `<p>หน้าเว็บเปิดให้เลือก ${SIZES[0]}-${SIZES[SIZES.length - 1]} — นอกเหนือจากนี้ทักไลน์ร้าน</p>`,

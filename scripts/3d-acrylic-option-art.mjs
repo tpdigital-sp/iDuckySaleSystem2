@@ -50,6 +50,15 @@ const ACRYLIC_ART = {
 };
 const sizeArt = (prefix) => Object.fromEntries(SIZES.map((s) => [s, `${prefix}-size-${s.replace("cm", "")}-v1`]));
 
+/** ชิ้นที่ 3-4 แตกกลุ่มเป็นใบละช่วงขนาด — ชื่อกลุ่มใบที่ 2 ขึ้นไปต่อท้ายด้วย " · ขนาด …" */
+const bandLabels = (base, bandsSizes) => bandsSizes.map((sizes, i) => (i === 0 ? base : `${base} · ขนาด ${sizes.join("/")}`));
+/** ช่วงขนาดต้องตรงกับที่ 3d-acrylic-build.mjs คำนวณไว้ (สกรีนชิ้นเพิ่ม = ใบละขนาด · อะคริลิค = 2 ใบ) */
+const EXTRA_SCREEN_BANDS = SIZES.map((s) => [s]);
+const EXTRA_ACRYLIC_BANDS = [["2cm", "3cm", "4cm", "5cm"], ["6cm"]];
+const NO_SCREEN = "ไม่สกรีน (อะคริลิคเปล่า)";
+/** การ์ด "ชิ้นที่ 3 ขึ้นไป" ใช้ร่วมทุกขนาด — ในการ์ดมีตารางราคาครบทุกขนาดอยู่แล้ว */
+const EXTRA_CARD = "extra-ask-v1";
+
 const MAP = {
   "ขนาดชิ้นที่ 1": sizeArt("p1"),
   "งานสกรีน (ชิ้นที่ 1)": SCREEN_ART,
@@ -60,8 +69,21 @@ const MAP = {
   "งานสกรีน (ชิ้นที่ 2) · ขนาด 6cm": SCREEN_ART,
   "ชนิดอะคริลิค (ชิ้นที่ 2)": ACRYLIC_ART,
   "ชนิดอะคริลิค (ชิ้นที่ 2) · ขนาด 6cm": ACRYLIC_ART,
-  // กลุ่ม "เพิ่มจำนวนชิ้น" — เหลือช่องติ๊กเดียว (ราคาจริงแอดมินคิดให้)
-  เพิ่มจำนวนชิ้น: { "ต้องการเพิ่มจำนวนชิ้น (ให้แอดมินคิดราคา)": "extra-ask-v1" },
+  // ── ชิ้นที่ 3 และ 4 ──
+  ...Object.fromEntries(
+    [3, 4].flatMap((n) => [
+      // สวิตช์เปิด/ปิด: ฝั่ง "ไม่เพิ่ม" ไม่ต้องมีภาพ (null = ตั้งใจไม่มี)
+      [`ชิ้นที่ ${n}`, { [`ไม่เพิ่มชิ้นที่ ${n}`]: null, [`เพิ่มชิ้นที่ ${n}`]: EXTRA_CARD }],
+      [`ขนาดชิ้นที่ ${n}`, Object.fromEntries(SIZES.map((s) => [s, EXTRA_CARD]))],
+      ...bandLabels(`งานสกรีน (ชิ้นที่ ${n})`, EXTRA_SCREEN_BANDS).map((l) => [
+        l,
+        { ...SCREEN_ART, [NO_SCREEN]: null }, // ไม่สกรีน = ตั้งใจไม่มีภาพ
+      ]),
+      ...bandLabels(`ชนิดอะคริลิค (ชิ้นที่ ${n})`, EXTRA_ACRYLIC_BANDS).map((l) => [l, ACRYLIC_ART]),
+    ])
+  ),
+  // เกิน 4 ชิ้น — ให้แอดมินคิดราคา
+  เพิ่มจำนวนชิ้น: { "ต้องการมากกว่า 4 ชิ้น (ให้แอดมินคิดราคา)": EXTRA_CARD },
 };
 
 /** กลุ่มที่ตั้งใจไม่แตะ (ตอนนี้ไม่มี — ทุกกลุ่มมีภาพครบแล้ว) */
@@ -88,7 +110,7 @@ const LOOSE_UPLOADS = ["pricesheet-v1"]; // ใบราคาของร้า
 
 /** ชื่อไฟล์ที่สคริปต์นี้ต้องอัปเอง (ชุดกลางที่มี "/" มีอยู่บน Storage แล้ว ไม่ต้องอัปทับ) */
 const ARTS = [...new Set([...Object.values(MAP).flatMap((m) => Object.values(m)), ...LOOSE_UPLOADS])].filter(
-  (a) => !a.includes("/")
+  (a) => a && !a.includes("/")
 );
 
 const { data: row, error } = await sb.from("products").select("data").eq("id", ID).single();
@@ -107,11 +129,12 @@ for (const opt of p.options ?? []) {
     continue;
   }
   for (const ch of opt.choices ?? []) {
-    const art = m[ch.name];
-    if (!art) {
+    if (!(ch.name in m)) {
       problems.push(`"${opt.label} → ${ch.name}" ไม่มีในตาราง MAP — ไปเพิ่มภาพใน 3d-acrylic-art.mjs ก่อน`);
       continue;
     }
+    const art = m[ch.name];
+    if (art === null) continue; // ตั้งใจไม่มีภาพ (สวิตช์เปิด/ปิด · ตัวเลือก "ไม่สกรีน")
     const src = url(art);
     if (ch.imageSrc === src) continue;
     plan.push({ opt: opt.label, choice: ch.name, art, from: ch.imageSrc, to: src, ref: ch });
