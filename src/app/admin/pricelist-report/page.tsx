@@ -349,9 +349,9 @@ function downloadCsv(rows: Row[]) {
 function Tile({ n, text, hint, tone }: { n: number; text: string; hint?: string; tone?: string }) {
   return (
     <div className={`${card} p-4`}>
-      <p className={label}>{text}</p>
-      <p className={`${metric} mt-2 ${tone ?? ""}`}>{n.toLocaleString("th-TH")}</p>
-      {hint ? <p className={`mt-1 text-xs ${faint}`}>{hint}</p> : null}
+      <p className={`${label} text-pretty`}>{text}</p>
+      <p className={`${metric} mt-1.5 ${tone ?? ""}`}>{n.toLocaleString("th-TH")}</p>
+      {hint ? <p className={`mt-1 text-pretty text-xs leading-relaxed ${faint}`}>{hint}</p> : null}
     </div>
   );
 }
@@ -522,25 +522,31 @@ function FilterGroup<T extends string>({
   options: readonly { id: T; label: string; n?: number; title?: string }[];
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className={`flex items-center gap-1.5 ${filterGroupLabel}`}>
+    <div className="flex min-w-0 max-w-full items-center gap-2">
+      <span className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap ${filterGroupLabel}`}>
         {dot ? <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot }} /> : null}
         {title}
       </span>
-      <div className={segWrap} role="group" aria-label={title}>
-        {options.map((o) => (
-          <button
-            key={o.id}
-            type="button"
-            aria-pressed={value === o.id}
-            title={o.title}
-            className={value === o.id ? segItemActive : segItemIdle}
-            onClick={() => onChange(o.id)}
-          >
-            {o.label}
-            {typeof o.n === "number" ? <span className={segCount}>{o.n}</span> : null}
-          </button>
-        ))}
+      {/*
+        จอมือถือ: ให้รางพิลล์เลื่อนซ้ายขวาในตัวเอง ไม่ใช่ไปดันทั้งหน้าให้เลื่อนตาม
+        (ก่อนหน้านี้หน้ากว้าง 598px บนจอ 375px — การ์ดสรุปเลยลอยไปครึ่งจอ)
+      */}
+      <div className="-my-0.5 min-w-0 overflow-x-auto py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className={segWrap} role="group" aria-label={title}>
+          {options.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              aria-pressed={value === o.id}
+              title={o.title}
+              className={`${value === o.id ? segItemActive : segItemIdle} whitespace-nowrap`}
+              onClick={() => onChange(o.id)}
+            >
+              {o.label}
+              {typeof o.n === "number" ? <span className={segCount}>{o.n}</span> : null}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1021,7 +1027,7 @@ export default function PricelistReportPage() {
             <HeroStat
               n={sum.missing}
               label="ยังไม่มีในระบบ"
-              detail={`ต้องนำเข้าหรือสร้างเพิ่ม · ยังไม่ทำราคาอีก ${sum.priceTasks - sum.priceDone} รายการ`}
+              detail={`ต้องนำเข้าหรือสร้างเพิ่ม · งานทำราคายังไม่เสร็จอีก ${sum.priceTasks - sum.priceDone} รายการ`}
               pct={sum.cards ? (sum.missing / sum.cards) * 100 : 0}
             />
             <Stat label="เผยแพร่แล้ว" value={sum.published} hint="ลูกค้าเห็นบนหน้าร้าน" />
@@ -1037,15 +1043,16 @@ export default function PricelistReportPage() {
         {/* ── สรุป ── */}
         {sum ? (
           <>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
+            {/*
+              4 ช่อง ไม่ใช่ 7 — เผยแพร่แล้ว/ฉบับร่าง/ยังไม่มีในระบบ อยู่ในแถบบนสุดไปแล้ว
+              เอามาซ้ำอีกรอบทำให้ช่องแคบจนป้ายไทยตัดคำกลางคำ ("ยังไม่เผย/แพร่")
+            */}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <Tile
                 n={sum.cards}
                 text="ชื่อบนเว็บตารางราคา"
                 hint={`จาก ${sum.categories} หมวดบนหน้าแรก${sum.custom ? ` · เพิ่มเอง ${sum.custom}` : ""}`}
               />
-              <Tile n={sum.published} text="เผยแพร่แล้ว" tone="text-emerald-600" hint="ลูกค้าเห็นบนหน้าร้าน" />
-              <Tile n={sum.draft} text="ฉบับร่าง" tone="text-orange-600" hint="มีในระบบ แต่ยังไม่เผยแพร่" />
-              <Tile n={sum.missing} text="ยังไม่มีในระบบ" tone="text-rose-600" hint="ต้องนำเข้า/สร้างเพิ่ม" />
               <Tile
                 n={sum.priceTasks}
                 text="ให้พี่ปุ๋ยทำราคา"
@@ -1055,7 +1062,7 @@ export default function PricelistReportPage() {
               <Tile
                 n={sum.done}
                 text="ติ๊กว่าทำแล้ว"
-                tone="text-sky-600"
+                tone="text-emerald-600"
                 hint={`เหลืออีก ${sum.cards - sum.done} รายการ`}
               />
               <Tile
