@@ -46,6 +46,8 @@ interface Row {
   done: DoneMark | null;
   /** ติ๊กว่า "ให้พี่ปุ๋ยทำราคา" (คนละช่องกับ "ทำแล้ว") */
   priceTask: DoneMark | null;
+  /** พี่ปุ๋ยกดว่าเริ่มลงมือทำราคาบรรทัดนี้แล้ว (null = ยังไม่เริ่ม) */
+  priceWip: DoneMark | null;
   /** พี่ปุ๋ยกดปุ่ม "เสร็จแล้ว" ของงานทำราคาบรรทัดนี้ (null = ยังไม่เสร็จ) */
   priceDone: DoneMark | null;
   name: string;
@@ -119,6 +121,7 @@ interface Report {
     extras: number;
     done: number;
     priceTasks: number;
+    priceWip: number;
     priceDone: number;
     hidden: number;
     custom: number;
@@ -254,6 +257,61 @@ const postReport = (body: Record<string, unknown>): Promise<Record<string, unkno
     return j;
   });
 
+/** ขั้นของงานพี่ปุ๋ยทำราคา 1 บรรทัด */
+type PriceStage = "todo" | "wip" | "done";
+
+const PRICE_STAGES: { id: PriceStage; label: string; on: string; done: string }[] = [
+  { id: "todo", label: "รอทำ", on: "bg-slate-600 text-white", done: "bg-slate-100 text-slate-500" },
+  // ⚠️ ห้ามใช้ amber ที่นี่ — ทั้งเว็บ remap amber เป็นสีฟ้าใน globals.css จะไปชนกับป้าย "พี่ปุ๋ยทำราคา"
+  { id: "wip", label: "กำลังทำ", on: "bg-orange-500 text-white", done: "bg-orange-50 text-orange-700" },
+  { id: "done", label: "เสร็จแล้ว", on: "bg-emerald-600 text-white", done: "" },
+];
+
+/**
+ * แถบขั้นงานทำราคา — กดขั้นไหนก็ไปขั้นนั้น (เดินหน้า/ย้อนกลับได้ในคลิกเดียว)
+ * โชว์ทั้งสามขั้นพร้อมกันเพราะพี่ปุ๋ยต้องเห็นว่าเหลืออีกกี่ก้าวโดยไม่ต้องกดดู
+ * ขั้นปัจจุบันแยกจากขั้นอื่นด้วยพื้นทึบ + ตัวหนา ไม่ได้ใช้แค่สี
+ */
+function PriceSteps({
+  stage,
+  busy,
+  onPick,
+  titles,
+}: {
+  stage: PriceStage;
+  busy: boolean;
+  onPick: (s: PriceStage) => void;
+  titles: Record<PriceStage, string>;
+}) {
+  const at = PRICE_STAGES.findIndex((s) => s.id === stage);
+  return (
+    <span className="inline-flex overflow-hidden rounded-full ring-1 ring-slate-200 align-middle no-underline">
+      {PRICE_STAGES.map((s, i) => (
+        <button
+          key={s.id}
+          type="button"
+          disabled={busy}
+          onClick={() => onPick(s.id)}
+          title={titles[s.id]}
+          aria-current={i === at ? "step" : undefined}
+          className={`px-2 py-0.5 text-[11px] no-underline transition disabled:cursor-wait ${
+            i > 0 ? "border-l border-slate-200" : ""
+          } ${
+            i === at
+              ? `font-bold ${s.on}`
+              : i < at
+                ? `font-semibold ${s.done || "bg-slate-100 text-slate-500"}`
+                : "bg-white font-medium text-slate-500 hover:bg-slate-50"
+          }`}
+        >
+          {i < at ? "✓ " : ""}
+          {s.label}
+        </button>
+      ))}
+    </span>
+  );
+}
+
 /** โหลดไฟล์ CSV ให้เปิดใน Excel ได้เลย (ใส่ BOM ไม่งั้นภาษาไทยเพี้ยน) */
 function downloadCsv(rows: Row[]) {
   const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`;
@@ -269,7 +327,9 @@ function downloadCsv(rows: Row[]) {
       r.priceTask
         ? r.priceDone
           ? `ทำราคาเสร็จแล้ว · ${r.priceDone.by} · ${new Date(r.priceDone.at).toLocaleDateString("th-TH")}`
-          : `ให้พี่ปุ๋ยทำราคา · สั่งโดย ${r.priceTask.by}`
+          : r.priceWip
+            ? `กำลังทำราคา · ${r.priceWip.by} · เริ่ม ${new Date(r.priceWip.at).toLocaleDateString("th-TH")}`
+            : `รอทำราคา · สั่งโดย ${r.priceTask.by}`
         : "",
       r.url,
     ]
@@ -495,7 +555,7 @@ export default function PricelistReportPage() {
   const [query, setQuery] = useState("");
   const [doneFilter, setDoneFilter] = useState<"all" | "todo" | "done">("all");
   /** กรองงานพี่ปุ๋ยทำราคา — off = ไม่กรอง · all = ทุกงานที่สั่งไว้ · todo = ยังไม่เสร็จ · done = เสร็จแล้ว */
-  const [priceFilter, setPriceFilter] = useState<"off" | "all" | "todo" | "done">("off");
+  const [priceFilter, setPriceFilter] = useState<"off" | "all" | "todo" | "wip" | "done">("off");
   const [showExtras, setShowExtras] = useState(false);
   /** กางถังลบไหม */
   const [showTrash, setShowTrash] = useState(false);
@@ -540,9 +600,9 @@ export default function PricelistReportPage() {
 
   /**
    * ติ๊ก/ยกเลิกติ๊กช่องของบรรทัดหนึ่ง — เปลี่ยนบนจอทันที ถ้าบันทึกไม่ผ่านค่อยคืนค่าเดิม
-   * field "done" = ทำแล้ว · "priceTask" = ให้พี่ปุ๋ยทำราคา · "priceDone" = พี่ปุ๋ยทำราคาเสร็จแล้ว
+   * field "done" = ทำแล้ว · "priceTask" = ให้พี่ปุ๋ยทำราคา (ขั้นของงานทำราคาอยู่ที่ setPriceStage)
    */
-  const toggleMark = useCallback(async (row: Row, field: "done" | "priceTask" | "priceDone") => {
+  const toggleMark = useCallback(async (row: Row, field: "done" | "priceTask") => {
     const want = !row[field];
     setSaving((s) => new Set(s).add(row.key));
     const apply = (mark: DoneMark | null) =>
@@ -550,8 +610,8 @@ export default function PricelistReportPage() {
         if (!d) return d;
         const rows = d.rows.map((r) =>
           r.key === row.key
-            ? // ยกเลิกคำสั่งงานทำราคา = "เสร็จแล้ว" ของบรรทัดนั้นหายไปด้วย (ตรงกับฝั่งเซิร์ฟเวอร์)
-              { ...r, [field]: mark, ...(field === "priceTask" && !mark ? { priceDone: null } : null) }
+            ? // ยกเลิกคำสั่งงานทำราคา = ขั้น "กำลังทำ/เสร็จแล้ว" ของบรรทัดนั้นหายไปด้วย (ตรงกับฝั่งเซิร์ฟเวอร์)
+              { ...r, [field]: mark, ...(field === "priceTask" && !mark ? { priceWip: null, priceDone: null } : null) }
             : r
         );
         return {
@@ -561,23 +621,69 @@ export default function PricelistReportPage() {
             ...d.sum,
             done: rows.filter((r) => r.done).length,
             priceTasks: rows.filter((r) => r.priceTask).length,
+            priceWip: rows.filter((r) => r.priceWip && !r.priceDone).length,
             priceDone: rows.filter((r) => r.priceDone).length,
           },
         };
       });
     apply(want ? { at: new Date().toISOString(), by: "กำลังบันทึก…" } : null);
     try {
-      const j = await postReport(
-        field === "done"
-          ? { key: row.key, done: want }
-          : field === "priceDone"
-            ? { key: row.key, priceDone: want }
-            : { key: row.key, price: want }
-      );
+      const j = await postReport(field === "done" ? { key: row.key, done: want } : { key: row.key, price: want });
       apply((j.mark as DoneMark | null) ?? null);
     } catch (e) {
       apply(row[field]); // บันทึกไม่ผ่าน — คืนค่าเดิม จะได้ไม่เข้าใจผิดว่าทำแล้ว
       setError(`บันทึกเช็กลิสต์ไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving((s) => {
+        const n = new Set(s);
+        n.delete(row.key);
+        return n;
+      });
+    }
+  }, []);
+
+  /**
+   * เปลี่ยนขั้นงานพี่ปุ๋ยทำราคาของบรรทัดหนึ่ง: รอทำ → กำลังทำ → เสร็จแล้ว (กดย้อนกลับได้)
+   * ส่งเป็น "ขั้น" ค่าเดียวไม่ใช่ติ๊กทีละช่อง เพราะข้ามขั้นได้ในคลิกเดียวและสองช่องจะไม่มีวันขัดกันเอง
+   */
+  const setPriceStage = useCallback(async (row: Row, stage: PriceStage) => {
+    const before = { priceWip: row.priceWip, priceDone: row.priceDone };
+    const apply = (next: { priceWip: DoneMark | null; priceDone: DoneMark | null }) =>
+      setData((d) => {
+        if (!d) return d;
+        const rows = d.rows.map((r) => (r.key === row.key ? { ...r, ...next } : r));
+        return {
+          ...d,
+          rows,
+          sum: {
+            ...d.sum,
+            priceWip: rows.filter((r) => r.priceWip && !r.priceDone).length,
+            priceDone: rows.filter((r) => r.priceDone).length,
+          },
+        };
+      });
+    const guess: DoneMark = { at: new Date().toISOString(), by: "กำลังบันทึก…" };
+    setSaving((s) => new Set(s).add(row.key));
+    apply(
+      stage === "todo"
+        ? { priceWip: null, priceDone: null }
+        : stage === "wip"
+          ? { priceWip: row.priceWip ?? guess, priceDone: null }
+          : { priceWip: row.priceWip ?? guess, priceDone: guess }
+    );
+    try {
+      const j = await postReport({ key: row.key, priceStage: stage });
+      const mark = (j.mark as DoneMark | null) ?? null;
+      apply(
+        stage === "todo"
+          ? { priceWip: null, priceDone: null }
+          : stage === "wip"
+            ? { priceWip: mark, priceDone: null }
+            : { priceWip: row.priceWip ?? mark, priceDone: mark }
+      );
+    } catch (e) {
+      apply(before); // บันทึกไม่ผ่าน — คืนขั้นเดิม จะได้ไม่เข้าใจผิดว่างานเดินไปแล้ว
+      setError(`บันทึกขั้นงานทำราคาไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving((s) => {
         const n = new Set(s);
@@ -815,8 +921,10 @@ export default function PricelistReportPage() {
           (priceFilter === "all"
             ? !!r.priceTask
             : priceFilter === "todo"
-              ? !!r.priceTask && !r.priceDone
-              : !!r.priceDone)) &&
+              ? !!r.priceTask && !r.priceWip && !r.priceDone
+              : priceFilter === "wip"
+                ? !!r.priceWip && !r.priceDone
+                : !!r.priceDone)) &&
         // ค้นด้วยชื่อเดิมบนเว็บก็เจอ ถึงจะแก้ชื่อไปแล้ว
         (!q ||
           r.name.toLowerCase().includes(q) ||
@@ -942,7 +1050,7 @@ export default function PricelistReportPage() {
                 n={sum.priceTasks}
                 text="ให้พี่ปุ๋ยทำราคา"
                 tone="text-sky-600"
-                hint={`เสร็จแล้ว ${sum.priceDone} · ยังไม่เสร็จ ${sum.priceTasks - sum.priceDone}`}
+                hint={`รอทำ ${sum.priceTasks - sum.priceWip - sum.priceDone} · กำลังทำ ${sum.priceWip} · เสร็จแล้ว ${sum.priceDone}`}
               />
               <Tile
                 n={sum.done}
@@ -982,10 +1090,11 @@ export default function PricelistReportPage() {
                     { id: "all", label: "สั่งแล้ว", n: sum.priceTasks, title: "ทุกบรรทัดที่ติ๊กให้พี่ปุ๋ยทำราคา" },
                     {
                       id: "todo",
-                      label: "ยังไม่เสร็จ",
-                      n: sum.priceTasks - sum.priceDone,
-                      title: "สั่งไว้แล้ว แต่ยังไม่ได้กดปุ่ม “เสร็จแล้ว”",
+                      label: "รอทำ",
+                      n: sum.priceTasks - sum.priceWip - sum.priceDone,
+                      title: "สั่งไว้แล้ว แต่พี่ปุ๋ยยังไม่ได้เริ่มลงมือ",
                     },
+                    { id: "wip", label: "กำลังทำ", n: sum.priceWip, title: "พี่ปุ๋ยกดว่าเริ่มทำแล้ว แต่ยังไม่เสร็จ" },
                     { id: "done", label: "เสร็จแล้ว", n: sum.priceDone, title: "พี่ปุ๋ยกดปุ่ม “เสร็จแล้ว” ไว้" },
                   ]}
                 />
@@ -1174,7 +1283,7 @@ export default function PricelistReportPage() {
                         <span className={`ml-2 font-normal ${faint}`}>
                           {list.length} รายการ · ทำแล้ว {list.filter((r) => r.done).length}
                           {list.some((r) => r.priceTask)
-                            ? ` · พี่ปุ๋ยทำราคา ${list.filter((r) => r.priceTask).length} (เสร็จแล้ว ${list.filter((r) => r.priceDone).length})`
+                            ? ` · พี่ปุ๋ยทำราคา ${list.filter((r) => r.priceTask).length} (กำลังทำ ${list.filter((r) => r.priceWip && !r.priceDone).length} · เสร็จแล้ว ${list.filter((r) => r.priceDone).length})`
                             : ""}
                         </span>
                       </td>
@@ -1287,36 +1396,34 @@ export default function PricelistReportPage() {
                             </span>
                           ) : null}
                           {r.priceTask ? (
-                            <span className="ml-2 inline-flex items-center gap-1.5 align-middle">
+                            <span className="ml-2 inline-flex flex-wrap items-center gap-1.5 align-middle">
                               <span
-                                className={`${badge} no-underline ${
-                                  r.priceDone ? "bg-emerald-50 text-emerald-700" : "bg-sky-50 text-sky-700"
-                                }`}
-                                title={`สั่งโดย ${r.priceTask.by} · ${whenOf(r.priceTask.at)}`}
+                                className={`${badge} bg-sky-50 text-sky-700 no-underline`}
+                                title={`สั่งให้พี่ปุ๋ยทำราคาโดย ${r.priceTask.by} · ${whenOf(r.priceTask.at)}`}
                               >
-                                {r.priceDone ? "✓ ทำราคาเสร็จแล้ว" : "พี่ปุ๋ยทำราคา"}
+                                พี่ปุ๋ยทำราคา
                               </span>
-                              {/* ปุ่มให้พี่ปุ๋ยกดเองเมื่อทำราคาชื่อนี้เสร็จ — กดซ้ำเพื่อยกเลิก */}
-                              <button
-                                type="button"
-                                disabled={saving.size > 0}
-                                onClick={() => void toggleMark(r, "priceDone")}
-                                title={
-                                  r.priceDone
-                                    ? `เสร็จแล้วโดย ${r.priceDone.by} · ${whenOf(r.priceDone.at)} — กดเพื่อยกเลิก`
-                                    : "กดเมื่อทำราคาของชื่อนี้เสร็จแล้ว"
-                                }
-                                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold no-underline transition disabled:cursor-wait ${
-                                  r.priceDone
-                                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                                    : "bg-white text-emerald-700 ring-1 ring-emerald-300 hover:bg-emerald-50"
-                                }`}
-                              >
-                                {r.priceDone ? "✓ เสร็จแล้ว" : "เสร็จแล้ว"}
-                              </button>
+                              <PriceSteps
+                                stage={r.priceDone ? "done" : r.priceWip ? "wip" : "todo"}
+                                busy={saving.size > 0}
+                                onPick={(st) => void setPriceStage(r, st)}
+                                titles={{
+                                  todo: "ยังไม่ได้เริ่ม — กดเพื่อย้อนกลับมาขั้นนี้",
+                                  wip: r.priceWip
+                                    ? `เริ่มทำโดย ${r.priceWip.by} · ${whenOf(r.priceWip.at)}`
+                                    : "กดเมื่อเริ่มลงมือทำราคาของชื่อนี้",
+                                  done: r.priceDone
+                                    ? `เสร็จแล้วโดย ${r.priceDone.by} · ${whenOf(r.priceDone.at)}`
+                                    : "กดเมื่อทำราคาของชื่อนี้เสร็จแล้ว",
+                                }}
+                              />
                               {r.priceDone ? (
                                 <span className={`text-[11px] ${faint} no-underline`}>
                                   {r.priceDone.by} · {whenOf(r.priceDone.at)}
+                                </span>
+                              ) : r.priceWip ? (
+                                <span className={`text-[11px] ${faint} no-underline`}>
+                                  เริ่ม {whenOf(r.priceWip.at)} · {r.priceWip.by}
                                 </span>
                               ) : null}
                             </span>

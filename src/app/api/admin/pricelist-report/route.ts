@@ -70,6 +70,8 @@ interface ReportState {
   done: DoneMap;
   /** สั่งให้พี่ปุ๋ยทำราคาของชื่อนี้ (คนละช่องกับ "ทำแล้ว") */
   price: DoneMap;
+  /** พี่ปุ๋ยเริ่มลงมือทำราคาของชื่อนี้แล้ว (ต้องมีคำสั่งงานใน price ก่อน) */
+  priceWip: DoneMap;
   /** พี่ปุ๋ยทำราคาของชื่อนี้เสร็จแล้ว (ต้องมีคำสั่งงานใน price ก่อน) */
   priceDone: DoneMap;
   /** ลบออกจากรายงาน — ชื่อที่ไม่ใช่สินค้าจริง (หัวข้อย่อย/คำอธิบายบนเว็บ) เก็บไว้กู้คืนได้ */
@@ -105,6 +107,8 @@ export interface PricelistRow {
   done: DoneMark | null;
   /** ติ๊กว่า "ให้พี่ปุ๋ยทำราคา" โดยใคร เมื่อไหร่ (null = ยังไม่ติ๊ก) */
   priceTask: DoneMark | null;
+  /** พี่ปุ๋ยกดว่าเริ่มลงมือทำราคาแล้ว โดยใคร เมื่อไหร่ (null = ยังไม่เริ่ม) */
+  priceWip: DoneMark | null;
   /** พี่ปุ๋ยกดว่าทำราคาเสร็จแล้ว โดยใคร เมื่อไหร่ (null = ยังไม่เสร็จ) */
   priceDone: DoneMark | null;
   name: string;
@@ -165,6 +169,7 @@ async function loadState(sb: Db): Promise<{ state: ReportState; rev: number | nu
     state: {
       done: d.done ?? {},
       price: d.price ?? {},
+      priceWip: d.priceWip ?? {},
       priceDone: d.priceDone ?? {},
       hidden: d.hidden ?? {},
       assign: d.assign ?? {},
@@ -362,6 +367,7 @@ export async function GET(req: Request) {
       key: rowKey,
       done: state.done[rowKey] ?? null,
       priceTask: state.price[rowKey] ?? null,
+      priceWip: state.priceWip[rowKey] ?? null,
       priceDone: state.priceDone[rowKey] ?? null,
       name: card.name,
       category: card.category,
@@ -432,6 +438,7 @@ export async function GET(req: Request) {
       extras: extras.length,
       done: rows.filter((r) => r.done).length,
       priceTasks: rows.filter((r) => r.priceTask).length,
+      priceWip: rows.filter((r) => r.priceWip && !r.priceDone).length,
       priceDone: rows.filter((r) => r.priceDone).length,
       hidden: hiddenRows.length,
       custom: rows.filter((r) => r.custom).length,
@@ -448,7 +455,8 @@ export async function GET(req: Request) {
  *
  *   { key, done }          ติ๊ก/ยกเลิกติ๊ก "ทำแล้ว" ของชื่อบนเว็บ 1 บรรทัด
  *   { key, price }         ติ๊ก/ยกเลิกติ๊ก "ให้พี่ปุ๋ยทำราคา" ของชื่อบนเว็บ 1 บรรทัด
- *   { key, priceDone }     กด/ยกเลิก "เสร็จแล้ว" ของงานทำราคา 1 บรรทัด
+ *   { key, priceStage }    เปลี่ยนขั้นงานทำราคาของ 1 บรรทัด: "todo" | "wip" | "done"
+ *                          (ส่งค่าเดียวจบ — ไม่ต้องยิงสองรอบตอนข้ามขั้น)
  *   { key, hidden }        ลบบรรทัดออกจากรายงาน / กู้คืน (ไม่ได้ลบข้อมูลอะไรจริง)
  *   { add: {name,…} }      เพิ่มบรรทัดชื่อเอง (ชื่อที่ยังไม่มีบนเว็บตารางราคา)
  *   { key, edit: {name,…} } แก้ชื่อบนเว็บตารางราคาของบรรทัดนั้น (ชื่อว่าง = คืนชื่อเดิมจากเว็บ)
@@ -474,7 +482,7 @@ export async function POST(req: Request) {
     key?: string | null;
     done?: boolean;
     price?: boolean;
-    priceDone?: boolean;
+    priceStage?: "todo" | "wip" | "done";
     hidden?: boolean;
     productId?: string;
     add?: RowInput;
@@ -544,27 +552,44 @@ export async function POST(req: Request) {
       delete state.custom[key];
       delete state.done[key];
       delete state.price[key];
+      delete state.priceWip[key];
       delete state.priceDone[key];
       delete state.hidden[key];
       for (const [productId, at] of Object.entries(state.assign)) if (at === key) delete state.assign[productId];
       return {};
     }
 
+    // ── เปลี่ยนขั้นงานพี่ปุ๋ยทำราคา (รอ → กำลังทำ → เสร็จ) ──
+    // จบในคำสั่งเดียว เพราะสองแมปต้องสอดคล้องกันเสมอ ถ้าให้ฝั่งหน้าเว็บยิงทีละช่อง
+    // แล้วมีคำสั่งหลุดกลางทาง จะได้บรรทัดที่ "เสร็จแล้ว" ทั้งที่ยังไม่เคยเริ่ม
+    if (body.priceStage) {
+      const now = () => ({ at: new Date().toISOString(), by: who });
+      if (body.priceStage === "todo") {
+        delete state.priceWip[key];
+        delete state.priceDone[key];
+      } else if (body.priceStage === "wip") {
+        state.priceWip[key] = state.priceWip[key] ?? now();
+        delete state.priceDone[key];
+      } else {
+        // กดข้ามจาก "รอ" ไป "เสร็จ" ได้เลย — บันทึกเวลาเริ่มให้ด้วย จะได้ไม่มีงานที่เสร็จโดยไม่เคยเริ่ม
+        state.priceWip[key] = state.priceWip[key] ?? now();
+        state.priceDone[key] = now();
+      }
+      return { mark: state.priceDone[key] ?? state.priceWip[key] ?? null };
+    }
+
     // ── ติ๊กช่องของ 1 บรรทัด ("ทำแล้ว" หรือ "ให้พี่ปุ๋ยทำราคา") ──
-    const field =
-      body.hidden !== undefined
-        ? "hidden"
-        : body.priceDone !== undefined
-          ? "priceDone"
-          : body.price !== undefined
-            ? "price"
-            : "done";
+    const field = body.hidden !== undefined ? "hidden" : body.price !== undefined ? "price" : "done";
     const map = state[field];
     const mark: DoneMark | null = body[field] ? { at: new Date().toISOString(), by: who } : null;
     if (mark) map[key] = mark;
     else delete map[key];
-    // ยกเลิกคำสั่งงานทำราคา = ล้าง "เสร็จแล้ว" ของบรรทัดนั้นด้วย จะได้ไม่ค้างเป็นงานที่ไม่มีอยู่จริง
-    if (field === "price" && !mark) delete state.priceDone[key];
+    // ยกเลิกคำสั่งงานทำราคา = ล้างทั้ง "กำลังทำ" และ "เสร็จแล้ว" ของบรรทัดนั้น
+    // จะได้ไม่ค้างเป็นงานที่ไม่มีอยู่จริง
+    if (field === "price" && !mark) {
+      delete state.priceWip[key];
+      delete state.priceDone[key];
+    }
     return { mark };
   });
 }
