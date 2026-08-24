@@ -43,8 +43,8 @@ const env = Object.fromEntries(
 );
 
 const ID = "griptok-emboss";
-const IMG = (name: string) =>
-  `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/${name}-v1.jpg`;
+const IMG = (name: string, v = "v1") =>
+  `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/${name}-${v}.jpg`;
 /** ภาพฐาน Griptok ที่มีในคลังอยู่แล้ว (สินค้า Griptok อะคริลิค ใช้ชุดเดียวกัน) */
 const BASE_IMG = (name: string) =>
   `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/griptok-acrylic/${name}.jpg`;
@@ -152,7 +152,8 @@ const product: Product = {
   options: [
     {
       label: "ขนาด",
-      choices: SIZES.map((s) => ({ name: s, imageSrc: IMG(`size-${s.replace("cm", "")}`) })),
+      // การ์ดขนาด v2 (ออกแบบใหม่ 24 ส.ค. 69 — เทียบสเกลจริงบนหลังมือถือ)
+      choices: SIZES.map((s) => ({ name: s, imageSrc: IMG(`size-${s.replace("cm", "")}`, "v2") })),
     },
     {
       label: "ฐาน Griptok",

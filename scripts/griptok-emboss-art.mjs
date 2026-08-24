@@ -166,46 +166,100 @@ await photoCard("fimo-strand-v1", await tall("vidFimoStrand"), {
   );
 }
 
-/* ── 3. การ์ดสเกลขนาด 5-10 ซม. (สไตล์เดียวกับ griptok-magsafe) ────── */
+/* ── 3. การ์ดสเกลขนาด 5-10 ซม. — v2 ออกแบบใหม่ (ผู้ใช้สั่ง 24 ส.ค. 69) ──
+ * เทียบขนาดจริงบน "หลังมือถือ" ที่วาดตามสเกลจริง (7.15×14.67 ซม. ขนาดมือถือมาตรฐาน)
+ * ลูกค้าเห็นทันทีว่า Griptok ขนาดที่เลือกใหญ่แค่ไหนเมื่อติดหลังเครื่อง
+ * + แถบจุดบอกตำแหน่งขนาดในไลน์ 5-10 · เหรียญรูปงานจริงมุมขวาบน · ไม้บรรทัดใต้เครื่อง */
 
-/** px ต่อ 1 ซม. — 10 ซม. = 460 px ยังเหลือที่ให้ไม้บรรทัดใต้กรอบ */
-const PPC = 46;
-const PLATE_TOP = 200;
-const PLATE_CX = 530;
+/** px ต่อ 1 ซม. ของการ์ดสเกล v2 — มือถือสูง 14.67 ซม. ต้องไม่ล้นการ์ด */
+const PPC = 38;
+const PH_W = Math.round(7.15 * PPC); // 272
+const PH_H = Math.round(14.67 * PPC); // 558
+const PH_CX = 450;
+const PH_Y = 176;
 
-const plateBox = (cm, cx, cy) => {
-  const s = cm * PPC;
+/** หลังมือถือตามสเกลจริง (มีโมดูลกล้องเหมือนรูปถ่ายงานจริง) */
+const phoneBack = () => {
+  const x = PH_CX - PH_W / 2;
   return `
-    <rect x="${cx - s / 2}" y="${cy - s / 2}" width="${s}" height="${s}" rx="${Math.round(s * 0.18)}"
-          fill="#e0f2fe" fill-opacity="0.55" stroke="${ACCENT}" stroke-width="3" stroke-dasharray="10 7"/>
-    <text x="${cx}" y="${cy + 12}" font-family="${TH}" font-size="${Math.max(26, Math.round(s * 0.13))}"
-          font-weight="700" text-anchor="middle" fill="${ACCENT}">${cm} cm</text>`;
+    <rect x="${x}" y="${PH_Y}" width="${PH_W}" height="${PH_H}" rx="44" fill="#eef2f7" stroke="#94a3b8" stroke-width="3"/>
+    <rect x="${x + 16}" y="${PH_Y + 16}" width="76" height="76" rx="22" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="2"/>
+    <circle cx="${x + 40}" cy="${PH_Y + 42}" r="12" fill="#cbd5e1"/>
+    <circle cx="${x + 68}" cy="${PH_Y + 70}" r="12" fill="#cbd5e1"/>
+    <text x="${PH_CX}" y="${PH_Y + PH_H - 22}" font-family="${TH}" font-size="19" text-anchor="middle" fill="#94a3b8">มือถือมาตรฐาน 7.1 × 14.7 ซม.</text>`;
 };
 
-const ruler = (cm, cx, y) => {
+/** ตัว Griptok ขนาดที่สั่ง — วงกลมเส้นประกลางหลังเครื่อง + เส้นวัดเส้นผ่านศูนย์กลาง */
+const griptokCircle = (cm) => {
+  const r = (cm * PPC) / 2;
+  const cy = PH_Y + Math.round(PH_H * 0.46);
+  const dim = `
+    <line x1="${PH_CX - r}" y1="${cy + r + 24}" x2="${PH_CX + r}" y2="${cy + r + 24}" stroke="${ACCENT}" stroke-width="2.5"/>
+    <line x1="${PH_CX - r}" y1="${cy + r + 16}" x2="${PH_CX - r}" y2="${cy + r + 32}" stroke="${ACCENT}" stroke-width="2.5"/>
+    <line x1="${PH_CX + r}" y1="${cy + r + 16}" x2="${PH_CX + r}" y2="${cy + r + 32}" stroke="${ACCENT}" stroke-width="2.5"/>`;
+  return `
+    <circle cx="${PH_CX}" cy="${cy}" r="${r}" fill="#e0f2fe" fill-opacity="0.75" stroke="${ACCENT}" stroke-width="3.5" stroke-dasharray="11 8"/>
+    <circle cx="${PH_CX}" cy="${cy}" r="${Math.max(14, r * 0.16)}" fill="#ffffff" stroke="${ACCENT}" stroke-width="2" stroke-opacity="0.5"/>
+    <text x="${PH_CX}" y="${cy - Math.max(20, r * 0.28)}" font-family="${TH}" font-size="${Math.max(30, Math.round(r * 0.42))}"
+          font-weight="700" text-anchor="middle" fill="${ACCENT}">${cm} ซม.</text>
+    ${dim}`;
+};
+
+/** แถบจุด 5-10 — เห็นว่าขนาดที่เลือกอยู่ตรงไหนของไลน์ (เทียบข้ามการ์ดได้) */
+const sizeStrip = (cur) =>
+  [5, 6, 7, 8, 9, 10]
+    .map((cm, i) => {
+      const x = 285 + i * 66;
+      const on = cm === cur;
+      return `
+      <circle cx="${x}" cy="768" r="20" fill="${on ? ACCENT : "#ffffff"}" stroke="${on ? ACCENT : LINE}" stroke-width="2"/>
+      <text x="${x}" y="776" font-family="${TH}" font-size="21" font-weight="700" text-anchor="middle" fill="${on ? "#ffffff" : SUB}">${cm}</text>`;
+    })
+    .join("") + `<text x="${PH_CX + 250}" y="776" font-family="${TH}" font-size="20" text-anchor="start" fill="${SUB}">6 ขนาด (ซม.)</text>`;
+
+/** ไม้บรรทัดกำกับความกว้างตัว Griptok (แนวตั้ง ซ้ายของเครื่อง — เลยระยะวง 10 ซม. เพื่อไม่ให้ชนกัน) */
+const sideRuler = (cm) => {
   const s = cm * PPC;
-  const x0 = cx - s / 2;
-  const ticks = Array.from({ length: cm + 1 }, (_, i) => `<line x1="${x0 + i * PPC}" y1="${y - 7}" x2="${x0 + i * PPC}" y2="${y + 7}" stroke="${LINE}" stroke-width="2"/>`).join("");
-  return `<line x1="${x0}" y1="${y}" x2="${x0 + s}" y2="${y}" stroke="${LINE}" stroke-width="2"/>${ticks}
-    <text x="${cx}" y="${y + 38}" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">สเกลจริง 1 ช่อง = 1 ซม.</text>`;
+  const x = PH_CX - (10 * PPC) / 2 - 42;
+  const y0 = PH_Y + Math.round(PH_H * 0.46) - s / 2;
+  const ticks = Array.from({ length: cm + 1 }, (_, i) => `<line x1="${x - 7}" y1="${y0 + i * PPC}" x2="${x + 7}" y2="${y0 + i * PPC}" stroke="${LINE}" stroke-width="2"/>`).join("");
+  return `<line x1="${x}" y1="${y0}" x2="${x}" y2="${y0 + s}" stroke="${LINE}" stroke-width="2"/>${ticks}
+    <text x="${x}" y="${y0 - 16}" font-family="${TH}" font-size="19" text-anchor="middle" fill="${SUB}">1 ช่อง = 1 ซม.</text>`;
 };
 
-const sizeExample = await sharp(await src("photoSideAngle")).resize({ width: 250 }).toBuffer();
-const sizeExampleMeta = await sharp(sizeExample).metadata();
+/** เหรียญรูปงานจริง (คลิปเป็นวงกลม) มุมขวาบน */
+const badgeSize = 180;
+const badgePhoto = await sharp(await src("photoPearlPink"))
+  .resize(badgeSize, badgeSize, { fit: "cover", position: "attention" })
+  .composite([
+    {
+      input: Buffer.from(
+        `<svg width="${badgeSize}" height="${badgeSize}"><circle cx="${badgeSize / 2}" cy="${badgeSize / 2}" r="${badgeSize / 2}" fill="#fff"/></svg>`
+      ),
+      blend: "dest-in",
+    },
+  ])
+  .png()
+  .toBuffer();
+const BADGE_X = 682;
+const BADGE_Y = 178;
 
 for (const cm of [5, 6, 7, 8, 9, 10]) {
   const svg = frame(
-    `${title(`ขนาด ${cm} cm`, "Griptok อะคริลิคปั๊มนูน — กรอบเส้นประคือขนาดที่สั่ง")}
-     ${plateBox(cm, PLATE_CX, PLATE_TOP + (cm * PPC) / 2)}
-     ${ruler(cm, PLATE_CX, 706)}
-     <text x="152" y="${205 + sizeExampleMeta.height + 34}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">ตัวอย่างงานจริง</text>
-     ${foot(["ขนาดนับจากด้านที่ยาวที่สุด ไม่วัดแนวทแยง · ไดคัทตามลายที่ส่งมา", "ภาพประกอบตามสเกลจริง ไม่ใช่รูปถ่าย"])}`
+    `${title(`ขนาด ${cm} ซม.`, "เทียบขนาดจริงเมื่อติดหลังมือถือ — กรอบเส้นประคือขนาดที่สั่ง")}
+     ${phoneBack()}
+     ${griptokCircle(cm)}
+     ${sideRuler(cm)}
+     ${sizeStrip(cm)}
+     <circle cx="${BADGE_X + badgeSize / 2}" cy="${BADGE_Y + badgeSize / 2}" r="${badgeSize / 2 + 4}" fill="none" stroke="${LINE}" stroke-width="2"/>
+     <text x="${BADGE_X + badgeSize / 2}" y="${BADGE_Y + badgeSize + 30}" font-family="${TH}" font-size="20" text-anchor="middle" fill="${SUB}">งานจริง</text>
+     <text x="${W / 2}" y="838" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">ขนาดนับจากด้านที่ยาวที่สุด ไม่วัดแนวทแยง · รูปทรงไดคัทตามลายที่ส่งมา</text>`
   );
   const buf = await sharp(Buffer.from(svg))
-    .composite([{ input: sizeExample, left: 27, top: 205 }])
+    .composite([{ input: badgePhoto, left: BADGE_X, top: BADGE_Y }])
     .jpeg({ quality: 92, chromaSubsampling: "4:4:4" })
     .toBuffer();
-  save(`size-${cm}-v1`, buf);
+  save(`size-${cm}-v2`, buf);
 }
 
 /* ── 4. คลิปงานจริง (ผู้ใช้ส่งลิงก์ pgid มาให้ 24 ส.ค. 69) ─────────────
