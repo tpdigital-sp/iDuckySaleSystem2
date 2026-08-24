@@ -918,6 +918,13 @@ export interface PriceRate {
   minQty?: number;
   /** คละลายขั้นต่ำลายละกี่ชิ้น เช่น 25 → สั่ง 50 คละได้ 2 ลาย */
   minPerDesign?: number;
+  /**
+   * ล็อก "จำนวนลายที่รวมในราคา" เป็นค่าคงที่ ไม่ผูกกับจำนวนที่สั่ง
+   * (ปกติ = ⌊จำนวน ÷ minPerDesign⌋ ซึ่งโตตามจำนวนเซ็ต) — ตั้ง 1 = รวม 1 ลายเสมอ
+   * ใช้กับกติกา "คละลายคิดเพิ่มลายละเท่าไรก็ตาม ตั้งแต่ชิ้นแรก" (คู่กับ extraDesignFee)
+   * เช่น Cup Sleeve: คละลายลายละ 5 บาท ตั้งแต่ 1 เซ็ต → รวม 1 ลาย เกินจากนั้นลายละ 5
+   */
+  includedDesignsFlat?: number;
   /** คละลายเกินโควตาได้ โดยคิดเพิ่มลายละ (บาท) — ไม่ตั้ง = คละเกินโควตาไม่ได้ */
   extraDesignFee?: number;
   /**
@@ -1119,6 +1126,8 @@ export const DESIGN_LABEL = "จำนวนลาย";
  */
 export function includedDesigns(rate: PriceRate, qty: number, perUnit = 1): number {
   if (!rate.minPerDesign || rate.minPerDesign <= 0) return 0;
+  // ล็อกจำนวนลายที่รวมในราคาเป็นค่าคงที่ (คละลายคิดเพิ่มตั้งแต่ลายแรก ไม่ผูกกับจำนวนเซ็ต)
+  if (rate.includedDesignsFlat != null) return Math.max(0, rate.includedDesignsFlat);
   // ช่วงปลีกคละอิสระ — ทุกชิ้นเป็นคนละลายได้ ไม่คิดเพิ่ม
   if (isFreeMix(rate, qty)) return qty * Math.max(1, perUnit);
   return Math.max(1, Math.floor(qty / rate.minPerDesign));
