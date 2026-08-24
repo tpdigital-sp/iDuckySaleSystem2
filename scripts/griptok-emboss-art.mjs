@@ -155,10 +155,11 @@ await fullCard("fimo-star-v3", "vidFimoStar", {
   sub: "ตัวน้อยเขย่าในกระเปาะ (ฟรี)",
   note: "Fimo กำหนดปริมาณไม่ได้ · ภาพจากคลิปของร้าน",
 });
-await fullCard("fimo-pearl-v3", "vidFimoPearl", {
+// ผู้ใช้สั่ง (24 ส.ค. 69): ใบไข่มุกใช้รูปงานจริงใบแรกของแกลเลอรี (เห็นเม็ดไข่มุกชัดกว่าเฟรมคลิป)
+await fullCard("fimo-pearl-v4", "photoPearlPink", {
   head: "Fimo ไข่มุก",
   sub: "ตัวน้อยเขย่าในกระเปาะ (ฟรี)",
-  note: "Fimo กำหนดปริมาณไม่ได้ · ภาพจากคลิปของร้าน",
+  note: "Fimo กำหนดปริมาณไม่ได้ · ภาพงานจริงของร้าน",
 });
 await fullCard("fimo-strand-v3", "vidFimoStrand", {
   head: "Fimo เส้น",
