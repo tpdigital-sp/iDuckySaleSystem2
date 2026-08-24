@@ -127,12 +127,21 @@ const product: Product = {
     "1-10 ชิ้น คละลายได้ · 11 ชิ้นขึ้นไป คละลาย คละขนาด",
     "ยิ่งสั่งเยอะยิ่งถูก — เริ่มต้น 110 บาท/ชิ้น",
   ],
+  // แกลเลอรีจำกัด 5 ช่อง (MAX_PHOTOS ใน ProductEditor) — ช่องคลิปแทนรูป "มุมเฉียง" (gallery-5 เนื้อหาเดียวกับคลิป)
+  // ⚠️ คลิปห้ามเป็นช่องแรก — รูปแรกถูกใช้เป็นภาพหน้าปกสินค้าในที่อื่นทั้งเว็บ (ดู ProductImage.videoSrc)
   images: [
     { emoji: "🤳", gradient: "from-slate-100 to-blue-100", label: "กระเปาะไข่มุก", src: IMG("gallery-1") },
+    {
+      emoji: "🎬",
+      gradient: "from-violet-100 to-indigo-200",
+      // ปุ่มรูปย่ออ่านออกเสียงว่า "ดูคลิป" + ชื่อนี้ต่อกัน — ตั้งชื่อให้ต่อแล้วเป็นประโยค
+      label: "งานจริง — กระเปาะปั๊มนูน ใส่ Fimo เขย่าได้",
+      src: IMG("clip-emboss-poster"),
+      videoSrc: `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/clip-emboss-v1.mp4`,
+    },
     { emoji: "⭐", gradient: "from-amber-100 to-yellow-200", label: "Fimo ดาวพาสเทล", src: IMG("gallery-2") },
     { emoji: "🐶", gradient: "from-sky-100 to-blue-200", label: "ตัวอย่างงานจริง", src: IMG("gallery-3") },
     { emoji: "🦁", gradient: "from-orange-100 to-amber-200", label: "กระเปาะไข่มุก ลายสิงโต", src: IMG("gallery-4") },
-    { emoji: "💠", gradient: "from-violet-100 to-indigo-200", label: "ความนูนของกระเปาะ", src: IMG("gallery-5") },
   ],
   pricing: {
     unit: "ชิ้น",
@@ -215,12 +224,12 @@ async function main() {
     console.error(`ไม่พบโฟลเดอร์ภาพ ${DIR} — รัน node scripts/griptok-emboss-art.mjs ก่อน`);
     process.exit(1);
   }
-  const files = readdirSync(DIR).filter((f) => f.endsWith(".jpg"));
+  const files = readdirSync(DIR).filter((f) => f.endsWith(".jpg") || f.endsWith(".mp4"));
   for (const file of files) {
     const buf = readFileSync(`${DIR}/${file}`);
     const up = await sb.storage
       .from("product-images")
-      .upload(`products/${ID}/${file}`, buf, { contentType: "image/jpeg", upsert: true });
+      .upload(`products/${ID}/${file}`, buf, { contentType: file.endsWith(".mp4") ? "video/mp4" : "image/jpeg", upsert: true });
     if (up.error) {
       console.error(`อัป ${file} ไม่สำเร็จ:`, up.error.message);
       process.exit(1);

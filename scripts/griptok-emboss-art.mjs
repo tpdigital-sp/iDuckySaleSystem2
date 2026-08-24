@@ -208,4 +208,17 @@ for (const cm of [5, 6, 7, 8, 9, 10]) {
   save(`size-${cm}-v1`, buf);
 }
 
+/* ── 4. คลิปงานจริง (ผู้ใช้ส่งลิงก์ pgid มาให้ 24 ส.ค. 69) ─────────────
+ * item fc7cb8e2-ed95-40ca-a231-a03992fe97a5 ในโปรแกลเลอรีหน้า /griptok
+ * = วิดีโอ 959b83_45a666ecf89b4235bd4bef1d41dfcc96 (โชว์กระเปาะปั๊มนูน/Fimo)
+ * โหลดไฟล์ 720p + ภาพปกเฟรมแรก (f000) มาเก็บเพื่ออัปเข้าคลังของเราเอง */
+{
+  const VID = "959b83_45a666ecf89b4235bd4bef1d41dfcc96";
+  const mp4 = await get(`https://video.wixstatic.com/video/${VID}/720p/mp4/file.mp4`);
+  writeFileSync(`${OUT}/clip-emboss-v1.mp4`, mp4);
+  console.log(`   clip-emboss-v1.mp4  ${Math.round(mp4.length / 1024)} KB`);
+  const poster = await get(`https://static.wixstatic.com/media/${VID}f000.jpg/v1/fit/w_1200,h_1200/x.jpg`);
+  save("clip-emboss-poster-v1", await sharp(poster).jpeg({ quality: 90 }).toBuffer());
+}
+
 console.log(`\n✅ เสร็จ — อัป + เขียนสินค้าต่อด้วย: npx tsx scripts/add-griptok-emboss.ts --write`);
