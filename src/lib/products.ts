@@ -3509,14 +3509,18 @@ export function unitPriceFor(
 }
 
 /**
- * รวมราคาแบบ "กลุ่มสเปคเดียวกัน" ในตะกร้า
+ * รวมราคาแบบ "ล็อตผลิตเดียวกัน" ในตะกร้า
  *
- * ปัญหา: ลูกค้าสั่งของสเปคเดียวกันคนละลายเป็นหลายบรรทัด (เช่น พวงกุญแจ 25 ชิ้น 1 ลาย × 2 บรรทัด)
+ * ปัญหา: ลูกค้าสั่งของชิ้นเดียวกันคนละลายเป็นหลายบรรทัด (เช่น พวงกุญแจ 25 ชิ้น 1 ลาย × 2 บรรทัด)
  * แต่ละบรรทัดคิดราคาแยก → ได้เรท 25 ชิ้นทั้งคู่ ทั้งที่จริงเป็นงานผลิตล็อตเดียว 50 ชิ้น 2 ลาย ควรได้เรท 2
  *
- * วิธีคิด: จับบรรทัดที่ "สินค้าเดียวกัน + สเปคตรงกันทุกตัว" (ยกเว้นเรทราคา/จำนวนลาย) เป็นกลุ่มเดียว
- * แล้วคิดราคาใหม่ตามจำนวนรวม + จำนวนลายรวมของกลุ่ม โดยเลือกเรทตามจำนวนรวม (กติกาเดียวกับหน้าสินค้า
- * — เรทที่ minQty ≤ จำนวนรวม สูงสุด) ทับเรทที่ลูกค้ากดไว้เดิม ทุกบรรทัดในกลุ่มจึงได้ราคาต่อชิ้นเท่ากัน
+ * กติกา (ตามที่ร้านกำหนด):
+ * 1. สินค้าเดียวกัน = รวมยอดหาเรท/ขั้นราคา แม้สเปคต่างกัน (ตะขอคนละแบบ · อะคริลิคพิเศษ · ขนาด)
+ *    — เรทเลือกจากจำนวนรวม (minQty ≤ จำนวนรวม สูงสุด — กติกาเดียวกับหน้าสินค้า) ทับเรทที่กดไว้
+ *    — แต่ "ราคาต่อชิ้นของแต่ละบรรทัด" ยังอ่านจากคอลัมน์สเปคของบรรทัดนั้นเอง (ของแพงยังแพงตามสเปค)
+ * 2. ยกเว้นบรรทัดช่วงราคาปลีกคละอิสระ (isFreeMix เช่น 1-10 ชิ้น) = ออเดอร์ปลีก ไม่นับรวมล็อต
+ * 3. สินค้า hardMinQty (เรทเป็นคนละหน่วยสั่ง เช่น สติ๊กเกอร์ UV แผ่น A3 / ตร.ม.) — เรทเป็นทางเลือก
+ *    เชิงโครงสร้าง ไม่ใช่ขั้นบันไดจำนวน: รวมได้เฉพาะบรรทัดที่อยู่เรทเดียวกัน และไม่สลับเรทให้
  *
  * คืนค่า index ตรงกับ lines ที่ส่งเข้ามา — บรรทัดที่ไม่ได้ถูกรวม (กลุ่มมีบรรทัดเดียว/ของพิเศษ) คงราคาเดิมเป๊ะ
  */
@@ -3527,40 +3531,36 @@ export interface GroupReprice {
   merged?: { lines: number; totalQty: number; totalDesigns: number; rateLabel?: string };
 }
 
-/**
- * บรรทัดนี้เอามารวมกลุ่มคิดราคาตามจำนวนรวมได้ไหม — คิดตามพื้นที่/งานตีราคา/ใช้ขนาด-อุปกรณ์กำหนดเอง = คนละตรรกะ ไม่รวม
- * ⚠️ ต้องเช็คเป็น "รายบรรทัด" ไม่ใช่ทั้งสินค้า — สินค้าที่แค่ "มี" ออปชั่นกำหนดเอง (custom.enabled)
- * แต่ลูกค้าเลือกสเปคมาตรฐาน (ไม่ได้เลือก custom) ยังต้องรวมได้ตามปกติ
- * (เจอกับพวงกุญแจอะคริลิคที่มีออปชั่น "อุปกรณ์เสริม" mode chat — กันทั้งสินค้าแล้วไม่มีวันรวมเลย)
- */
-function lineMergeable(p: Product, selections: Record<string, string>): boolean {
-  if (p.areaPricing?.enabled) return false;
-  // ใช้ออปชั่นกำหนดเอง/ตีราคาจริงในบรรทัดนี้ (เลือกค่าไว้) = ราคาไม่อิงเรทตามจำนวน ไม่รวม
-  if (p.custom?.enabled && (selections[p.custom.label] ?? "").trim()) return false;
-  if (needsQuote(p, selections)) return false;
-  return true;
-}
-
-/**
- * คีย์จัดกลุ่ม = สินค้า + ค่าของ "ตัวเลือกจริง" (สเปค) ทุกตัว ยกเว้นเรทราคา/จำนวนลาย
- * ⚠️ ต้องอิงเฉพาะ product.options — ห้ามเอาทั้ง selections มาทำคีย์
- * เพราะ selections มีของแนบต่อบรรทัด (ภาพลายที่แนบ/ลิงก์ไฟล์/หมายเหตุ/ธงเช็คสต๊อก/ลายแต่ละด้าน)
- * ที่ต่างกันทุกบรรทัด — เอาเข้าคีย์แล้วสเปคเดียวกันจะกลายเป็นคนละกลุ่ม ไม่มีวันรวมกันได้
- */
-function groupKeyOf(p: Product, selections: Record<string, string>): string {
-  const parts = (p.options ?? [])
-    .map((o) => o.label)
-    .filter((l) => l !== RATE_LABEL && l !== DESIGN_LABEL)
-    .sort((a, b) => a.localeCompare(b))
-    .map((l) => `${l}=${selections[l] ?? ""}`);
-  return `${p.id}|${parts.join("│")}`;
-}
-
 /** เรทที่จำนวน qty เข้าเงื่อนไข minQty สูงสุด (กติกาเดียวกับ ProductDetail) — ไม่มีหลายเรท = undefined */
 function pickRateForQty(p: Product, qty: number): PriceRate | undefined {
   const rs = p.priceRates;
   if (!rs?.length) return undefined;
   return [...rs].filter((r) => (r.minQty ?? 1) <= qty).sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0] ?? rs[0];
+}
+
+/**
+ * บรรทัดนี้เอามารวมล็อตได้ไหม — เช็คเป็น "รายบรรทัด" ไม่ใช่ทั้งสินค้า
+ * (สินค้าที่แค่ "มี" ออปชั่นกำหนดเอง custom.enabled แต่ลูกค้าไม่ได้เลือก ยังต้องรวมได้ —
+ * เจอกับพวงกุญแจอะคริลิคที่มีออปชั่น "อุปกรณ์เสริม" mode chat กันทั้งสินค้าแล้วไม่มีวันรวมเลย)
+ */
+function lineMergeable(p: Product, selections: Record<string, string>, qty: number): boolean {
+  if (p.areaPricing?.enabled) return false;
+  // ใช้ออปชั่นกำหนดเอง/ตีราคาจริงในบรรทัดนี้ (เลือกค่าไว้) = ราคาไม่อิงเรทตามจำนวน ไม่รวม
+  if (p.custom?.enabled && (selections[p.custom.label] ?? "").trim()) return false;
+  if (needsQuote(p, selections)) return false;
+  // ช่วงราคาปลีกคละอิสระ (เช่น 1-10 ชิ้น) = ออเดอร์ปลีก จ่ายราคาปลีกตามเดิม ไม่นับรวมล็อตผลิต
+  const r = p.hardMinQty ? activeRate(p, selections) : pickRateForQty(p, qty);
+  if (r && isFreeMix(r, qty)) return false;
+  return true;
+}
+
+/**
+ * คีย์จัดกลุ่ม — สินค้าเรทตามจำนวน: รวมกันทั้งสินค้า (สเปคต่างกันได้ ราคาแยกตามคอลัมน์ของใครของมัน)
+ * สินค้า hardMinQty: แยกกลุ่มตามเรทที่เลือก เพราะเรทคนละหน่วยสั่ง เอายอดข้ามเรทมาบวกกันไม่ได้
+ * ⚠️ ห้ามเอาของแนบต่อบรรทัด (ภาพลาย/ลิงก์/หมายเหตุ) มาเป็นคีย์ — ต่างกันทุกบรรทัด จะไม่มีวันรวม
+ */
+function groupKeyOf(p: Product, selections: Record<string, string>): string {
+  return p.hardMinQty ? `${p.id}|${activeRate(p, selections)?.label ?? ""}` : p.id;
 }
 
 export function repriceCartGroups(
@@ -3579,7 +3579,7 @@ export function repriceCartGroups(
   const groups = new Map<string, number[]>();
   lines.forEach((l, idx) => {
     const p = productOf(l.productId);
-    if (!p || !lineMergeable(p, l.selections)) return;
+    if (!p || !lineMergeable(p, l.selections, l.qty)) return;
     const key = groupKeyOf(p, l.selections);
     const arr = groups.get(key);
     if (arr) arr.push(idx);
@@ -3592,15 +3592,27 @@ export function repriceCartGroups(
     if (!p) continue;
     const totalQty = idxs.reduce((s, i) => s + lines[i].qty, 0);
     const totalDesigns = idxs.reduce((s, i) => s + designCountOf(lines[i].selections), 0);
-    const rate = pickRateForQty(p, totalQty);
+    // hardMinQty = เรทเป็นทางเลือกเชิงโครงสร้าง (กลุ่มนี้อยู่เรทเดียวกันอยู่แล้ว) — คงเรทเดิม ไม่สลับ
+    const rate = p.hardMinQty ? activeRate(p, lines[idxs[0]].selections) : pickRateForQty(p, totalQty);
     idxs.forEach((i, k) => {
-      const sel: Record<string, string> = { ...lines[i].selections, [DESIGN_LABEL]: String(totalDesigns) };
-      if (rate) sel[RATE_LABEL] = rate.label;
+      const own = lines[i].selections;
+      const sel: Record<string, string> = { ...own, [DESIGN_LABEL]: String(totalDesigns) };
+      if (rate) {
+        // สเปคของบรรทัดนี้มีราคาขายในเรทรวมไหม — แถวที่แอดมินล้างราคา (ไม่ขายในเรทนั้น) ห้ามสลับเรทให้
+        // ไม่งั้นคีย์หาช่องไม่เจอ ราคาหล่นไป product.price เงียบ ๆ · แกนที่ไม่มีค่าปล่อยให้ matrixKeyFilled เติม
+        const m = rate.pricing;
+        const cellOk = !!m.cells[priceMatrixKey(m, sel)] || m.driverLabels.some((l) => !sel[l]);
+        if (cellOk) sel[RATE_LABEL] = rate.label;
+      }
       out[i] = {
         unitPrice: unitPriceFor(p, sel, totalQty),
-        // ค่าคละลายเป็นของ "ทั้งกลุ่ม" — เกาะบรรทัดแรกบรรทัดเดียว กันนับซ้ำ
-        extraFee: k === 0 ? designFeeFor(p, sel, totalQty) : 0,
-        merged: { lines: idxs.length, totalQty, totalDesigns, rateLabel: rate?.label },
+        // ค่าประจำบรรทัด (ต่อลาย/ต่อแผ่น) คิดตามสเปค+จำนวนลายของบรรทัดตัวเอง (สเปคในกลุ่มต่างกันได้)
+        // ส่วน "ค่าคละลาย" เป็นของทั้งกลุ่ม — เกาะบรรทัดแรกบรรทัดเดียว กันนับซ้ำ
+        extraFee:
+          perDesignExtraOf(p, own) +
+          sheetFeeTotalOf(p, own, lines[i].qty) +
+          (k === 0 ? designFeeBase(p, sel, totalQty) : 0),
+        merged: { lines: idxs.length, totalQty, totalDesigns, rateLabel: sel[RATE_LABEL] },
       };
     });
   }
