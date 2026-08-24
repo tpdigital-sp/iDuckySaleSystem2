@@ -116,6 +116,8 @@ type DraftOption = {
   /** เงื่อนไข "และ" ข้อที่สอง (ว่าง = ใช้เงื่อนไขเดียว) */
   showWhenAlsoLabel?: string;
   showWhenAlsoChoices?: string[];
+  /** เงื่อนไข "และ" ข้อที่ 3+ — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  showWhenAll?: { label: string; choices: string[] }[];
   /** 🎨 โชว์เป็นตารางสวอตช์สีบนหน้าร้าน (กลุ่ม multi ที่ตัวเลือกเยอะ เช่น สีไหม) */
   swatchGrid?: boolean;
   /** 🔍 รูปตารางสีเต็มของกลุ่มสวอตช์ (เปิดดูขยายจากหน้าร้าน) */
@@ -509,6 +511,7 @@ function toDraft(p: Product): Draft {
       ...(o.showWhenAlso
         ? { showWhenAlsoLabel: o.showWhenAlso.label, showWhenAlsoChoices: [...o.showWhenAlso.choices] }
         : {}),
+      ...(o.showWhenAll?.length ? { showWhenAll: o.showWhenAll.map((c) => ({ label: c.label, choices: [...c.choices] })) } : {}),
       ...(o.input
         ? {
             inKind: o.input.kind,
@@ -760,6 +763,9 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
         : {}),
       ...(o.showWhenAlsoLabel && (o.showWhenAlsoChoices ?? []).length
         ? { showWhenAlso: { label: o.showWhenAlsoLabel, choices: [...o.showWhenAlsoChoices!] } }
+        : {}),
+      ...(o.showWhenAll?.length
+        ? { showWhenAll: o.showWhenAll.filter((c) => c.label && c.choices.length).map((c) => ({ label: c.label, choices: [...c.choices] })) }
         : {}),
       // กลุ่ม "ช่องกรอก" — ไม่มีรายการให้เลือก จึงเก็บสเปกของช่องแทน choices
       ...(o.display === "input"

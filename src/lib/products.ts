@@ -145,6 +145,13 @@ export interface ProductOption {
    */
   showWhenAlso?: { label: string; choices: string[] };
   /**
+   * เงื่อนไข "และ" เพิ่มเติม (ข้อที่ 3 เป็นต้นไป) — ทุกข้อต้องตรงพร้อมกันกับ showWhen/showWhenAlso
+   * ใช้กับกลุ่มที่ต้องเช็คตัวแปรมากกว่า 2 ตัว เช่น สติ๊กเกอร์ UV: ช่องกรอกขนาดไดคัทเอง
+   * ต้องตรงทั้ง โหมดตัด (50%) + เรทราคา (A3/ตร.ม.) + ขนาดตัด (กำหนดเอง) พร้อมกัน
+   * ไม่ตั้ง/ว่าง = ไม่มีเงื่อนไขเพิ่ม (พฤติกรรมเดิม)
+   */
+  showWhenAll?: { label: string; choices: string[] }[];
+  /**
    * ราคาบวกเพิ่ม (+฿) ของกลุ่มนี้ มีผลเมื่อสั่งตั้งแต่กี่ชิ้นขึ้นไป
    * เช่น อะไหล่เข็มกลัด ตั้ง 11 = ช่วงปลีก 1-10 ชิ้น ราคารวมอะไหล่แล้ว (ไม่บวกเพิ่ม)
    * สั่ง 11 ชิ้นขึ้นไปค่อยคิดเพิ่มต่อชิ้นตามตัวเลือก · ไม่ตั้ง = บวกเพิ่มทุกจำนวน
@@ -642,7 +649,7 @@ export function optionVisible(opt: ProductOption, selections: Record<string, str
   // ตั้งไม่ครบ (ไม่มีกลุ่ม หรือไม่ได้ติ๊กค่าไหนเลย) = ข้อนั้นไม่นับ · ตั้งครบทั้งสองข้อ = ต้องตรงทั้งคู่
   const pass = (s?: { label: string; choices: string[] }) =>
     !s?.label || !s.choices?.length || valueMatchesAny(selections[s.label], s.choices);
-  return pass(opt.showWhen) && pass(opt.showWhenAlso);
+  return pass(opt.showWhen) && pass(opt.showWhenAlso) && (opt.showWhenAll ?? []).every(pass);
 }
 
 /** ราคาบวกเพิ่มของกลุ่มนี้ใช้กับจำนวนนี้ไหม (ต่ำกว่าเกณฑ์ = รวมในราคาแล้ว) */
