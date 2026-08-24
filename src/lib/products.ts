@@ -345,6 +345,14 @@ export interface SheetYield {
   gap?: number;
   /** ชื่อแผ่นที่โชว์ให้ลูกค้า เช่น "แผ่น A3" (ไม่ตั้ง = "แผ่น") */
   sheetName?: string;
+  /**
+   * 🔁 หน่วยขายที่ "ใหญ่กว่าแผ่น" 1 หน่วยเท่ากับกี่แผ่น — คีย์คือหน่วยขายของเรทนั้น
+   * เช่น { "ตร.ม.": 8 } = 1 ตร.ม. เท่ากับ 8 แผ่น A3 (เรทตารางเมตรของสติ๊กเกอร์ UV)
+   * มีตัวคูณแล้ว unitYieldOf จึงสรุป "สั่งกี่หน่วย = ได้กี่ชิ้น" ให้เรทนั้นได้ด้วย
+   * ไม่ตั้ง (หรือหน่วยขายไม่มีในนี้) = ไม่รู้ตัวคูณ → โชว์แค่ "ต่อ 1 แผ่น" ไม่คูณจำนวนที่สั่ง
+   * ⚠️ เลขนี้ต้องตรงกับที่ร้านคิดเงินจริง อย่าคำนวณจากพื้นที่เอง (ปัดเศษไม่เหมือนกัน)
+   */
+  unitSheets?: Record<string, number>;
 }
 
 /**
@@ -435,6 +443,11 @@ export interface UnitYield {
   unit: string | null;
   /** true = คำนวณสดจากการจัดวาง (ไดคัทตามขนาด) จำนวนจริงขึ้นกับรูปทรงลาย · false = ขนาดตัดตายตัว */
   approx: boolean;
+  /**
+   * 🔁 มีเมื่อ per ถูกแปลงจาก "ต่อแผ่น" มาเป็น "ต่อหน่วยขาย" แล้ว (เรทตารางเมตร)
+   * ใช้กางที่มาให้ลูกค้าเห็น: 40 ชิ้น/แผ่น A3 × 8 แผ่น = 320 ชิ้น/ตร.ม.
+   */
+  via?: { perSheet: number; sheets: number; sheetName: string };
 }
 
 /**
@@ -459,21 +472,34 @@ export function unitYieldOf(product: Product, selections: Record<string, string>
     if (choice?.piecesPerUnit && choice.piecesPerUnit > 0) {
       return { per: choice.piecesPerUnit, size: choice.name, label, optLabel: opt.label, unit: null, approx: false };
     }
-    if (!opt.sheetYield) continue;
-    const per = sheetYieldCount(product, opt, selections);
-    if (per == null) continue;
-    const pair = product.options.find((o) => o.label === opt.sheetYield!.pairLabel);
+    const cfg = opt.sheetYield;
+    if (!cfg) continue;
+    const perSheet = sheetYieldCount(product, opt, selections);
+    if (perSheet == null) continue;
+    const pair = product.options.find((o) => o.label === cfg.pairLabel);
     const unit = opt.input?.unit ?? "";
     const w = pair ? parseInputValue(pair, selections[pair.label]) : "";
     const h = parseInputValue(opt, selections[opt.label]);
-    return {
-      per,
-      size: `${w} × ${h}${unit ? ` ${unit}` : ""}`,
-      label,
-      optLabel: opt.label,
-      unit: opt.sheetYield.sheetName ?? "แผ่น",
-      approx: true,
-    };
+    const sheetName = cfg.sheetName ?? "แผ่น";
+    const size = `${w} × ${h}${unit ? ` ${unit}` : ""}`;
+    /*
+     * เรทที่ขายเป็นหน่วยใหญ่กว่าแผ่น (ตร.ม.) — แปลง "ต่อแผ่น" เป็น "ต่อหน่วยขาย" ด้วยตัวคูณที่ตั้งไว้
+     * ไม่มีตัวคูณ = คืนเลขต่อแผ่นไปตามเดิม (ฝั่งโชว์จะไม่คูณจำนวนที่สั่งให้ ดู UnitYield.unit)
+     */
+    const saleUnit = activeMatrix(product, selections)?.unit ?? "";
+    const sheets = saleUnit && saleUnit !== sheetName ? cfg.unitSheets?.[saleUnit] : undefined;
+    if (sheets && sheets > 0) {
+      return {
+        per: perSheet * sheets,
+        size,
+        label,
+        optLabel: opt.label,
+        unit: null,
+        approx: true,
+        via: { perSheet, sheets, sheetName },
+      };
+    }
+    return { per: perSheet, size, label, optLabel: opt.label, unit: sheetName, approx: true };
   }
   return null;
 }

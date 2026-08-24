@@ -1720,10 +1720,17 @@ export default function ProductDetail({
                             return n >= 1 ? (
                               <p className="mt-1 text-[11px] font-bold text-teal-700">
                                 📐 ขนาดนี้ได้ประมาณ {n} ชิ้น ต่อ 1 {sheet}
-                                {/* คูณจำนวนที่สั่งให้เลย — แต่เฉพาะเรทที่ขายเป็นแผ่นเดียวกัน (เรท ตร.ม. คูณตรง ๆ ไม่ได้) */}
+                                {/*
+                                  * คูณจำนวนที่สั่งให้เลย · เรทที่ขายเป็นหน่วยใหญ่กว่าแผ่น (ตร.ม.)
+                                  * กางตัวคูณให้เห็นด้วย ไม่งั้นลูกค้าคิดตามไม่ได้ว่าเลขมาจากไหน
+                                  */}
                                 {yieldTotal != null && (
                                   <>
-                                    {" "}
+                                    {unitYield?.via
+                                      ? ` = ${unitYield.per.toLocaleString("th-TH")} ชิ้น ต่อ 1 ${
+                                          matrix?.unit ?? sheet
+                                        } (${unitYield.via.sheets} ${sheet} ต่อ 1 ${matrix?.unit ?? sheet})`
+                                      : ""}{" "}
                                     · สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? sheet} ={" "}
                                     <span className="font-extrabold text-teal-900">
                                       ได้ประมาณ {yieldTotal.toLocaleString("th-TH")} ชิ้น
@@ -3293,6 +3300,12 @@ export default function ProductDetail({
                   <span className="font-semibold text-teal-700">
                     {" "}
                     ({unitYield!.per.toLocaleString("th-TH")} ชิ้น ต่อ 1 {matrix?.unit ?? "ชิ้น"}
+                    {/* เรทตารางเมตร: กางตัวคูณให้เห็นว่า 320 ชิ้น/ตร.ม. มาจาก 40 ชิ้น/แผ่น × 8 แผ่น */}
+                    {unitYield!.via
+                      ? ` = ${unitYield!.via.perSheet.toLocaleString("th-TH")} ชิ้น ต่อ 1 ${
+                          unitYield!.via.sheetName
+                        } × ${unitYield!.via.sheets} ${unitYield!.via.sheetName}`
+                      : ""}
                     {unitYield!.approx ? " — จำนวนจริงขึ้นกับรูปทรงลาย" : ""})
                   </span>
                 </p>
