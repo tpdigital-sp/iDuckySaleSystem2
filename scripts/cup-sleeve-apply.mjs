@@ -43,15 +43,13 @@ const V = "v1";
 const EXPECT_NAMES = [NAME];
 
 const PAPER_LABEL = "ชนิดกระดาษ";
-const TEX_LABEL = "เนื้อกระดาษพิเศษ";
 /**
- * กระดาษพิเศษกลุ่มโฮโลแกรม/เงิน-ทองผิวเงา — เคลือบได้แค่ "เคลือบเงา" หรือ "ไม่เคลือบ"
- * ⚠️ สินค้าตัวนี้ขายการเคลือบเฉพาะด้านหน้า — ร้านสั่งถอดกลุ่ม "เคลือบ (ด้านหลัง)" ออกแล้ว (24 ส.ค. 69) ห้ามใส่กลับ
+ * ⚠️ สินค้าตัวนี้เหลือกระดาษอาร์ตมัน 250 แกรมอย่างเดียว และเคลือบเฉพาะด้านหน้า —
+ * ร้านสั่งถอดกลุ่ม "เคลือบ (ด้านหลัง)" (24 ส.ค. 69) และตัวเลือกกระดาษ 300/400 แกรม +
+ * กระดาษพิเศษ (Texture Paper) ทั้งชุด (24 ส.ค. 69) ออกแล้ว ห้ามใส่กลับ
  */
-const COAT_HOLO_LABEL = "เคลือบ ด้านหน้า (กระดาษโฮโลแกรม · เงิน-ทอง)";
 const COAT_LABEL = "เคลือบ (ด้านหน้า)";
 const FILM_LABEL = "เคลือบ"; // กลุ่มที่ลิงก์คลังตัวเลือกกลาง (ผิวฟิล์มพิเศษ 10 แบบ) — ชื่อกลุ่มมาจากคลัง
-const WHITE_LABEL = "พิมพ์รองสีขาว";
 const FILM_PRESET = "preset-2";
 const COAT_NONE = "ไม่เคลือบ";
 const COAT_GLOSS = "เคลือบเงา";
@@ -182,173 +180,26 @@ const env = Object.fromEntries(
 const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const url = (file) => `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/cup-sleeve/${file}`;
 
-/* ── 2. ราคากระดาษอื่น ๆ — อ่านจาก "สินค้ากระดาษ" ของร้านเอง (เรทไดคัทตามทรง) ────
- *
- * หน้าตารางราคาบอกแค่ "กระดาษ 300/400 แกรม หรือกระดาษพิเศษ คิดตามราคา" ไม่ได้ลงตัวเลข
- * ร้านให้ยึดราคาจากสินค้ากระดาษของร้าน 2 ตัว โดยใช้เรท "ไดคัทตามทรง" (ปลอกแก้วเป็นงานไดคัท):
- *   paper-art-pet  → กระดาษอาร์ตมัน 300 / 400 แกรม
- *   texture-paper  → กระดาษพิเศษ 12 เนื้อ
- *
- * ⚠️ ราคาสองตัวนั้นคิดเป็น "แผ่น A3" ส่วนปลอกแก้วขายเป็น "เซ็ต" — ตีเท่ากันแบบ 1 แผ่น A3 = 1 เซ็ต
- *    (1 เซ็ต 6 ชิ้น และใบสเปกของร้านเขียนว่า "11 อันขึ้นไป คละลาย 1 ลาย/1 ขนาด ต่อ 1 แผ่น A3")
- * ⚠️ ค่าเคลือบยังใช้กติกาของปลอกแก้วเอง (+฿COAT ต่อด้าน) บวกทับราคากระดาษ ไม่ได้ใช้คอลัมน์เคลือบ
- *    ของ paper-art-pet (ของเขาเคลือบพิเศษ +30 ปลอกแก้ว +40) — ยึดหน้าตารางราคาของสินค้าตัวนี้
- *
- * ช่วงจำนวนของสองฝั่งไม่เท่ากัน (ปลอกแก้ว 4 ช่วง · กระดาษ 7 ช่วง) จึงรวมเป็นบันไดเดียว
- * แล้วดึงราคาของแต่ละคอลัมน์จาก "ช่วงต้นทางที่ครอบช่วงนั้น" — ไม่มีการเกลี่ย/เดาตัวเลขใหม่
- */
-const DIECUT = "ไดคัทตามทรง";
-const SRC_ART = "paper-art-pet";
-const SRC_TEX = "texture-paper";
-
-async function loadSource(id) {
-  const { data, error } = await sb.from("products").select("data").eq("id", id).maybeSingle();
-  if (error || !data) throw new Error(`อ่านสินค้าต้นทางราคา ${id} ไม่ได้ — ${error?.message ?? "ไม่มีแถวนี้"}`);
-  return data.data;
-}
-
-const srcArt = await loadSource(SRC_ART);
-const srcTex = await loadSource(SRC_TEX);
-
-const artRate = (srcArt.priceRates ?? []).find((r) => r.label === DIECUT);
-if (!artRate) throw new Error(`${SRC_ART} ไม่มีเรท "${DIECUT}" แล้ว — ตรวจสินค้าต้นทางก่อน`);
-const artM = artRate.pricing;
-const texM = srcTex.pricing;
-if (!texM?.driverLabels?.includes("การตัด")) throw new Error(`${SRC_TEX} ไม่มีแกน "การตัด" ในตารางราคาแล้ว — ตรวจก่อน`);
-
-/** ราคาคอลัมน์หนึ่งจากตารางต้นทาง (พังทันทีถ้าคอลัมน์หาย = ต้นทางเปลี่ยนโครง) */
-function column(m, key, what) {
-  const cells = m.cells[key];
-  if (!cells?.length) throw new Error(`ไม่เจอคอลัมน์ "${key}" ใน${what} — ตรวจสินค้าต้นทางก่อน`);
-  return cells;
-}
-
-/** เนื้อกระดาษพิเศษของ texture-paper (ชื่อ + รูป) — เอามาเป็นตัวเลือกย่อยของ "กระดาษพิเศษ" */
-const texGroup = (srcTex.options ?? []).find((o) => o.label === "ชนิดกระดาษ");
-if (!texGroup) throw new Error(`${SRC_TEX} ไม่มีกลุ่ม "ชนิดกระดาษ" แล้ว — ตรวจก่อน`);
-const texPapers = texGroup.choices.map((c) => ({
-  name: c.name,
-  imageSrc: c.imageSrc,
-  prices: column(texM, `${c.name}│${DIECUT}`, `ตารางราคา ${SRC_TEX}`),
-}));
-/** เนื้อพิเศษแบ่งเป็น 2 กลุ่มราคา — กลุ่มทั่วไป กับ STARDREAM (แพงกว่า) */
-const texGroups = [];
-for (const t of texPapers) {
-  const g = texGroups.find((x) => x.prices.join() === t.prices.join());
-  if (g) g.papers.push(t);
-  else texGroups.push({ prices: t.prices, papers: [t] });
-}
-texGroups.sort((a, b) => a.prices[0] - b.prices[0]);
-if (texGroups.length !== 2)
-  throw new Error(`${SRC_TEX} เรทไดคัทมี ${texGroups.length} กลุ่มราคา (คาดว่า 2: ทั่วไป / STARDREAM) — ตรวจก่อน`);
-
-/** บันไดจำนวนรวมของทั้งสองฝั่ง (ขอบช่วงที่ฝั่งไหนมีก็เอามาหมด) */
-const srcTiers = [
-  { tiers, prices },
-  { tiers: artM.tiers, prices: column(artM, "กระดาษอาร์ตมัน 300 แกรม│ไม่เคลือบ", `เรท "${DIECUT}" ของ ${SRC_ART}`) },
-  { tiers: texM.tiers, prices: texGroups[0].prices },
-];
-const bounds = [...new Set(srcTiers.flatMap((s) => s.tiers.map((t) => t.upTo)).filter((n) => n !== null))].sort(
-  (a, b) => a - b
-);
-const UNION = [...bounds.map((upTo) => ({ upTo })), { upTo: null }];
-
-/** ราคาของช่วงรวมนี้ = ราคาของ "ช่วงต้นทางที่ครอบมันอยู่" */
-function remap(src, srcPrices) {
-  return UNION.map((u) => {
-    const i = src.findIndex((t) => t.upTo === null || (u.upTo !== null && u.upTo <= t.upTo));
-    if (i < 0) throw new Error("บันไดจำนวนของตารางต้นทางไม่ครอบช่วงที่ต้องการ — ตรวจก่อน");
-    return srcPrices[i];
-  });
-}
-const artCol = (gsm) => remap(artM.tiers, column(artM, `กระดาษอาร์ตมัน ${gsm} แกรม│ไม่เคลือบ`, `เรท "${DIECUT}" ของ ${SRC_ART}`));
-
 const PAPER_STD = `กระดาษอาร์ตมัน ${GSM} แกรม`;
-const PAPER_300 = "กระดาษอาร์ตมัน 300 แกรม";
-const PAPER_400 = "กระดาษอาร์ตมัน 400 แกรม";
-/**
- * เนื้อกระดาษพิเศษแบ่ง 2 กลุ่มตามข้อจำกัดการเคลือบ (ร้านยืนยัน 21 ส.ค. 69):
- *   โฮโลแกรม / เงิน / ทอง → เคลือบเงา หรือ เคลือบด้าน ได้เท่านั้น (ราคารวมเคลือบแล้ว ไม่บวกเพิ่ม)
- *   เนื้อ Texture / มุก STARDREAM → เคลือบไม่ได้เลย
- * รายชื่อกลุ่มแรกอ่านจากสินค้า texture-paper เอง (กลุ่ม "เคลือบเพิ่ม (ด้านหลัง)" เปิดให้เฉพาะกระดาษพวกนี้)
- * เพื่อไม่ให้ต้องมาไล่แก้ชื่อสองที่เวลาร้านเพิ่มเนื้อกระดาษใหม่
- */
-/**
- * เนื้อกระดาษพิเศษที่ "เคลือบได้" — ร้านยืนยัน 21 ส.ค. 69 ว่าได้แค่ผิวเงา และเฉพาะด้านหน้าเท่านั้น
- *   โฮโลแกรม 2 แบบ + สีเงิน/สีทอง เฉพาะ "ผิวเงา"
- *   สีเงิน/สีทอง "ผิวด้าน" และเนื้อ Texture/มุก ทั้งหมด = ไม่เคลือบอะไรเลย
- * (สินค้า texture-paper ของร้านเปิดเคลือบไว้กว้างกว่านี้ — ของปลอกแก้วแคบกว่า จึงระบุรายชื่อตรง ๆ)
- */
-const GLOSS_ONLY = [
-  "โฮโลแกรม SeaSand (300 แกรม)",
-  "โฮโลแกรม Rainbow (300 แกรม)",
-  "กระดาษสีเงิน ผิวเงา (250 แกรม)",
-  "กระดาษสีทอง ผิวเงา (250 แกรม)",
-];
-/**
- * กระดาษเนื้อโลหะ/โฮโลแกรม พิมพ์ทับแล้วสีจม — สั่ง "พิมพ์รองสีขาว" ก่อนได้ (บวกเพิ่มต่อแผ่น A3 = ต่อเซ็ต)
- * ราคาตามที่ร้านแจ้ง 21 ส.ค. 69 · เท่ากับ Add On ของสินค้า paper-art-pet
- */
-const UNDERPRINT = [
-  "โฮโลแกรม SeaSand (300 แกรม)",
-  "โฮโลแกรม Rainbow (300 แกรม)",
-  "กระดาษสีเงิน ผิวเงา (250 แกรม)",
-  "กระดาษสีเงิน ผิวด้าน (250 แกรม)",
-  "กระดาษสีทอง ผิวเงา (250 แกรม)",
-  "กระดาษสีทอง ผิวด้าน (250 แกรม)",
-];
-const UNDERPRINT_FEE = 20;
-const missing = [...GLOSS_ONLY, ...UNDERPRINT].filter((n) => !texPapers.some((t) => t.name === n));
-if (missing.length) throw new Error(`ไม่เจอเนื้อกระดาษ "${missing.join(", ")}" ใน ${SRC_TEX} แล้ว — ตรวจก่อน`);
-const texCoatable = texPapers.filter((t) => GLOSS_ONLY.includes(t.name));
-const texPlain = texPapers.filter((t) => !GLOSS_ONLY.includes(t.name));
-if (texCoatable.some((t) => t.prices.join() !== texGroups[0].prices.join()))
-  throw new Error(`กระดาษกลุ่มโฮโลแกรม/เงิน-ทองผิวเงา ราคาไม่เท่ากับเนื้อพิเศษทั่วไปแล้ว — ตรวจ ${SRC_TEX} ก่อน`);
-
-const PAPER_TEX = "กระดาษพิเศษ (Texture Paper)";
-/** กระดาษอาร์ตมันทั้งสามแบบ — ใช้เป็นเงื่อนไข "แสดงเมื่อ" ของกลุ่มเคลือบชุดปกติ */
-const ART_PAPERS = [PAPER_STD, PAPER_300, PAPER_400];
-/** ชื่อเนื้อกระดาษที่ลูกค้าเห็น — เนื้อที่เคลือบไม่ได้ต่อท้ายไว้ให้รู้ตั้งแต่ตอนเลือก */
-const texName = (t) => (GLOSS_ONLY.includes(t.name) ? t.name : `${t.name} — เคลือบไม่ได้`);
 
 /**
- * STARDREAM (เนื้อมุก) แพงกว่าเนื้อพิเศษอื่นเท่ากันทุกช่วง — เก็บเป็น "+฿ ของตัวเลือกย่อย"
- * แทนที่จะแยกเป็นคอลัมน์ของตัวเอง ลูกค้าจะได้เลือกเนื้อพิเศษทั้ง 12 แบบจากที่เดียว
- * ต้นทางปรับราคาจนส่วนต่างไม่เท่ากันเมื่อไหร่ = หยุด ให้คนมาตัดสินใจก่อน
+ * ตารางราคาปลอกแก้ว: บันไดจากเว็บตรง ๆ (หน่วยเป็น "เซ็ต") — กระดาษมีชนิดเดียวแล้ว
+ * ป้ายกำกับใส่จำนวนชิ้นต่อท้ายให้ลูกค้าเทียบง่าย (1 เซ็ต = PER_SET ชิ้น)
  */
-const starDiff = [...new Set(texGroups[1].prices.map((n, i) => n - texGroups[0].prices[i]))];
-if (starDiff.length !== 1 || starDiff[0] <= 0)
-  throw new Error(`ส่วนต่างราคา STARDREAM ใน ${SRC_TEX} ไม่คงที่ (${starDiff.join(", ")}) — ตรวจก่อน`);
-const STAR_EXTRA = starDiff[0];
-
-/** ตารางราคาปลอกแก้ว: คอลัมน์ = ชนิดกระดาษ · ช่วง = บันไดรวม (หน่วยเป็น "เซ็ต") */
 let from = 1;
 const PRICING = {
   unit: "เซ็ต",
   driverLabels: [PAPER_LABEL],
-  tiers: UNION.map((u) => {
-    const label = u.upTo
-      ? `${from}-${u.upTo} เซ็ต (${from * PER_SET}-${u.upTo * PER_SET} ชิ้น)`
+  tiers: tiers.map((t) => {
+    const label = t.upTo
+      ? `${from}-${t.upTo} เซ็ต (${from * PER_SET}-${t.upTo * PER_SET} ชิ้น)`
       : `${from} เซ็ตขึ้นไป (${from * PER_SET} ชิ้นขึ้นไป)`;
-    const row = { upTo: u.upTo, label };
-    from = (u.upTo ?? 0) + 1;
+    const row = { upTo: t.upTo, label };
+    from = (t.upTo ?? 0) + 1;
     return row;
   }),
-  cells: {
-    [PAPER_STD]: remap(tiers, prices),
-    [PAPER_300]: artCol(300),
-    [PAPER_400]: artCol(400),
-    [PAPER_TEX]: remap(texM.tiers, texGroups[0].prices),
-  },
+  cells: { [PAPER_STD]: prices },
 };
-
-console.log(`\n📋 ตารางราคารวม (คอลัมน์ = ชนิดกระดาษ · ต้นทาง: เว็บ + ${SRC_ART} + ${SRC_TEX} เรท "${DIECUT}")`);
-const shortCol = { [PAPER_STD]: "250 แกรม", [PAPER_300]: "300 แกรม", [PAPER_400]: "400 แกรม", [PAPER_TEX]: "พิเศษ" };
-console.log(`   ${"ช่วงจำนวน".padEnd(24)}${Object.keys(PRICING.cells).map((k) => shortCol[k].padStart(11)).join("")}`);
-PRICING.tiers.forEach((t, i) =>
-  console.log(`   ${t.label.padEnd(24)}${Object.values(PRICING.cells).map((c) => `฿${c[i]}`.padStart(11)).join("")}`)
-);
-console.log(`   (เนื้อ STARDREAM บวกเพิ่มอีก ฿${STAR_EXTRA}/เซ็ต ทุกช่วง)`);
 
 async function put(name, buf) {
   const file = `${name}.jpg`;
@@ -379,16 +230,12 @@ const local = (f) => readFileSync(`${DIR}/${f}.jpg`);
 const ART_FILES = [
   SIZE.key,
   "paper-250",
-  "paper-300",
-  "paper-400",
   "coat-none",
   "coat-gloss",
   "coat-matte",
   "coat-special",
   "set-of-6",
   "size-3-levels",
-  "underprint",
-  "underprint-none",
 ];
 const art = {};
 for (const f of ART_FILES) art[f] = await put(`${f}-${V}`, local(f));
@@ -426,14 +273,13 @@ d.description =
   `ที่ครอบแก้วกระดาษ (Cup Sleeve) พิมพ์ลายตามสั่ง กระดาษอาร์ตมัน ${GSM} แกรม ` +
   `ขายเป็นเซ็ต 1 เซ็ตได้ ${PER_SET} ชิ้น เริ่มต้นเซ็ตละ ${Math.max(...prices)} บาท สั่งเยอะราคาลดตามตาราง ` +
   `ขนาด ${SIZE.name} (กางแบน) ปลายปลอกมีลิ้นล็อก 3 ระดับ ปรับความกว้างได้ตามขนาดแก้ว ` +
-  `เลือกเคลือบเงา / เคลือบด้าน / เคลือบพิเศษ (กลิตเตอร์ · โฮโลแกรม) และอัปเกรดกระดาษเป็น 300 / 400 แกรม หรือกระดาษพิเศษได้`;
+  `เลือกเคลือบเงา / เคลือบด้าน / เคลือบพิเศษ (กลิตเตอร์ · โฮโลแกรม) ได้`;
 
 d.highlights = [
   `เซ็ตละ ${Math.max(...prices)} บาท — 1 เซ็ตได้ ${PER_SET} ชิ้น (สั่งเยอะเหลือเซ็ตละ ${Math.min(...prices)} บาท)`,
   `กระดาษอาร์ตมัน ${GSM} แกรม พิมพ์สีคมชัด ไม่มีขั้นต่ำในการสั่งผลิต`,
-  `อัปเกรดเป็นอาร์ตมัน 300 / 400 แกรม หรือกระดาษพิเศษ ${texPapers.length} เนื้อ (โฮโลแกรม · เงิน-ทอง · มุก STARDREAM) ได้`,
   `ขนาด ${SIZE.name} — ปลายปลอกล็อกปรับความกว้างได้ 3 ระดับ ใช้ได้ทั้งแก้วร้อน-แก้วเย็น`,
-  `เคลือบเงา / ด้าน +฿${COAT_FEE} ต่อด้าน · เคลือบพิเศษ +฿${SPECIAL_FEE} ต่อด้าน (เลือกผิวฟิล์มได้ ${FILMS.length} แบบ)`,
+  `เคลือบเงา / ด้าน (ด้านหน้า) +฿${COAT_FEE} · เคลือบพิเศษ +฿${SPECIAL_FEE} (เลือกผิวฟิล์มได้ ${FILMS.length} แบบ)`,
 ];
 
 d.templateIds = [SIZE.tpl];
@@ -441,35 +287,14 @@ d.templateIds = [SIZE.tpl];
 // ขนาดมีแบบเดียว จึงไม่ทำเป็นกลุ่มตัวเลือก — บอกไว้ในรายละเอียด/แท็บ/ภาพสเปกแทน
 d.options = [
   {
-    // แกนของตารางราคา — ราคาต่อเซ็ตอยู่ในตารางแล้ว ไม่ต้องตั้ง +฿ รายตัว
+    // แกนของตารางราคา — เหลือกระดาษชนิดเดียว คงกลุ่มไว้ให้ลูกค้าเห็นสเปกกระดาษ + ผูกสต๊อก
     label: PAPER_LABEL,
     stockBearing: true,
-    choices: [
-      { name: PAPER_STD, popular: true, imageSrc: art["paper-250"] },
-      { name: PAPER_300, imageSrc: art["paper-300"] },
-      { name: PAPER_400, imageSrc: art["paper-400"] },
-      { name: PAPER_TEX, imageSrc: texCoatable[0].imageSrc },
-    ],
-  },
-  /**
-   * เนื้อกระดาษพิเศษทั้ง 12 แบบอยู่กลุ่มเดียวกัน (รูปลิงก์จาก texture-paper)
-   * เนื้อที่เคลือบไม่ได้ต่อท้ายชื่อไว้เลย ลูกค้าจะได้รู้ตั้งแต่ตอนเลือก ไม่ต้องไปงงว่าทำไมไม่มีปุ่มเคลือบ
-   */
-  {
-    label: TEX_LABEL,
-    display: "dropdown",
-    showWhen: { label: PAPER_LABEL, choices: [PAPER_TEX] },
-    choices: texPapers.map((t) => ({
-      name: texName(t),
-      // เนื้อมุก STARDREAM แพงกว่าเนื้ออื่นเท่ากันทุกช่วง — เก็บเป็น +฿ ของตัวเลือก
-      ...(t.prices.join() === texGroups[1].prices.join() ? { extra: STAR_EXTRA } : {}),
-      ...(t.imageSrc ? { imageSrc: t.imageSrc } : {}),
-    })),
+    choices: [{ name: PAPER_STD, popular: true, imageSrc: art["paper-250"] }],
   },
   {
     label: COAT_LABEL,
-    // กระดาษอาร์ตมันเท่านั้น — กระดาษพิเศษมีข้อจำกัดของตัวเอง ใช้กลุ่มด้านล่างแทน
-    showWhen: { label: PAPER_LABEL, choices: ART_PAPERS },
+    showWhen: { label: PAPER_LABEL, choices: [PAPER_STD] },
     choices: [
       { name: COAT_NONE, imageSrc: art["coat-none"] },
       { name: COAT_GLOSS, extra: COAT_FEE, imageSrc: art["coat-gloss"] },
@@ -481,33 +306,9 @@ d.options = [
     label: FILM_LABEL,
     display: "pills",
     presetId: FILM_PRESET,
-    // เงื่อนไขข้อสองกันค่าค้าง — เคยเลือกเคลือบพิเศษไว้ตอนใช้กระดาษอาร์ตมัน แล้วสลับไปกระดาษพิเศษ
     showWhen: { label: COAT_LABEL, choices: [COAT_SPECIAL] },
-    showWhenAlso: { label: PAPER_LABEL, choices: ART_PAPERS },
+    showWhenAlso: { label: PAPER_LABEL, choices: [PAPER_STD] },
     choices: FILMS,
-  },
-  /**
-   * กระดาษโฮโลแกรม / เงิน-ทอง — เคลือบเงาหรือด้านได้เท่านั้น และราคารวมเคลือบผิวหน้าไว้แล้ว
-   * (ตามสินค้า texture-paper ของร้าน) จึงไม่บวกเพิ่มอีก · เนื้อ Texture/มุก เคลือบไม่ได้ = ไม่มีกลุ่มนี้ให้เลือก
-   */
-  {
-    label: COAT_HOLO_LABEL,
-    showWhen: { label: PAPER_LABEL, choices: [PAPER_TEX] },
-    showWhenAlso: { label: TEX_LABEL, choices: texCoatable.map(texName) },
-    // เลือกได้ 2 แบบ — เคลือบเงา (รวมในราคาแล้ว ไม่บวกเพิ่ม) หรือไม่เคลือบ · เคลือบด้าน/เคลือบพิเศษ ทำไม่ได้
-    choices: [
-      { name: COAT_GLOSS, imageSrc: art["coat-gloss"] },
-      { name: COAT_NONE, imageSrc: art["coat-none"] },
-    ],
-  },
-  {
-    label: WHITE_LABEL,
-    showWhen: { label: PAPER_LABEL, choices: [PAPER_TEX] },
-    showWhenAlso: { label: TEX_LABEL, choices: texPapers.filter((t) => UNDERPRINT.includes(t.name)).map(texName) },
-    choices: [
-      { name: "ไม่พิมพ์รองสีขาว", imageSrc: art["underprint-none"] },
-      { name: "พิมพ์รองสีขาว", extra: UNDERPRINT_FEE, imageSrc: art["underprint"] },
-    ],
   },
 ];
 
@@ -527,12 +328,7 @@ d.rules = [
 d.terms = [
   `จำหน่ายเป็นเซ็ต — 1 เซ็ต ${PER_SET} ชิ้น (1 แบบ | 1 ขนาด : 1 เซ็ต) ราคาในตารางคิดต่อเซ็ต`,
   "จำนวน 1-10 ชิ้น คละลายได้ · ตั้งแต่ 11 ชิ้นขึ้นไป คิด 1 ลาย / 1 ขนาด ต่อ 1 แผ่น A3 — อยากได้หลายลาย เพิ่มจำนวนเซ็ตตามจำนวนลาย",
-  `กระดาษมาตรฐานคืออาร์ตมัน ${GSM} แกรม · เลือกอาร์ตมัน 300 / 400 แกรม หรือกระดาษพิเศษได้ ราคาปรับตามชนิดกระดาษในตารางเลย`,
-  "ราคากระดาษ 300 / 400 แกรม และกระดาษพิเศษ คิดตามเรทงานไดคัทของกระดาษชนิดนั้น (1 เซ็ต = 1 แผ่น A3)",
-  `กระดาษพิเศษเนื้อมุก STARDREAM บวกเพิ่มเซ็ตละ ${STAR_EXTRA} บาท`,
-  "กระดาษพิเศษเนื้อโฮโลแกรม และเงิน-ทองผิวเงา เลือกได้ระหว่าง “เคลือบเงาด้านหน้า” (รวมในราคาแล้ว ไม่บวกเพิ่ม) หรือ “ไม่เคลือบ” — เคลือบด้าน/เคลือบพิเศษ ทำไม่ได้",
-  "กระดาษพิเศษเนื้อเงิน-ทองผิวด้าน · Texture · มุก STARDREAM เคลือบไม่ได้",
-  `กระดาษโฮโลแกรมและเงิน-ทอง สั่ง “พิมพ์รองสีขาว” ได้ บวกเพิ่มเซ็ตละ ${UNDERPRINT_FEE} บาท (ราคายังไม่รวมพิมพ์รอง — ไม่รองสีขาว สีลายจะจมไปกับเนื้อกระดาษ)`,
+  `กระดาษที่ใช้คืออาร์ตมัน ${GSM} แกรม`,
   `เคลือบเงา / เคลือบด้าน (ด้านหน้า) บวกเพิ่ม ${COAT_FEE} บาท · เคลือบพิเศษ (กลิตเตอร์ · ทราย · โฮโลแกรม) บวกเพิ่ม ${SPECIAL_FEE} บาท`,
   `ขนาดงานมีแบบเดียว ${SIZE.name} (วัดตอนกางแบน) — เป็นทรงมาตรฐานของร้าน ไม่ได้ตัดตามแก้วเฉพาะรุ่น`,
   "ปลายปลอกมีลิ้นล็อก + ช่องเสียบ 3 ตำแหน่ง ปรับความกว้างได้ตามขนาดแก้ว",
@@ -550,14 +346,14 @@ const STD_TABS = [
     title: "วิธีสั่งงาน",
     text: [
       "สั่งผ่านหน้าเว็บนี้ได้เลย::",
-      "• เลือกชนิดกระดาษ → การเคลือบ → ใส่จำนวนเซ็ต",
+      "• เลือกการเคลือบ → ใส่จำนวนเซ็ต",
       '• แนบภาพลาย หรือใส่ลิงก์ไฟล์งาน/อีเมลในช่อง "แนบลายของคุณ"',
       '• ระบุรายละเอียดเพิ่มเติมในช่อง "หมายเหตุถึงร้าน" เช่น ขนาดแก้วที่จะใช้ · วันที่ต้องการใช้งาน',
       "• กดเพิ่มลงตะกร้า → ชำระเงิน — ทางร้านจะส่งแบบให้ตรวจก่อนผลิตทุกงาน",
       "",
       "หรือสั่งทางอีเมล::",
       "• ส่งอีเมลมาที่ iduckyshop03@gmail.com · หัวข้ออีเมล: ชื่อ LINE ลูกค้า และเบอร์โทรติดต่อ",
-      "• ระบุรายละเอียด: ชนิดกระดาษ · การเคลือบ · จำนวนเซ็ต · วันที่ใช้งาน (ถ้ามี)",
+      "• ระบุรายละเอียด: การเคลือบ · จำนวนเซ็ต · วันที่ใช้งาน (ถ้ามี)",
     ].join("\n"),
   },
   {
@@ -602,13 +398,7 @@ d.tabs = [
       "• ปลายปลอกมีลิ้นล็อก + ช่องเสียบ 3 ตำแหน่ง ปรับความกว้างได้ตามขนาดแก้ว",
       `• วางลายเผื่อตัดตกด้านละ ${SIZE.bleedCm} ซม. · มีไฟล์เทมเพลตไดคัทให้โหลด`,
       "::วัสดุ::",
-      `• กระดาษอาร์ตมัน ${GSM} แกรม (มาตรฐาน)`,
-      `• เลือกเป็นอาร์ตมัน 300 / 400 แกรม หรือกระดาษพิเศษได้ — ราคาต่อเซ็ตปรับตามตาราง`,
-      `• กระดาษพิเศษเลือกเนื้อได้ ${texPapers.length} แบบ ในกลุ่มเดียว (โฮโลแกรม · เงิน-ทอง · Texture · มุก STARDREAM)`,
-      `• เนื้อโฮโลแกรม และเงิน-ทอง "ผิวเงา" (${texCoatable.length} แบบ) เลือกได้ระหว่างเคลือบเงาด้านหน้า (รวมในราคาแล้ว) หรือไม่เคลือบ`,
-      `• เนื้ออื่นอีก ${texPlain.length} แบบ (เงิน-ทองผิวด้าน · Texture · มุก STARDREAM) เคลือบไม่ได้`,
-      `• กระดาษโฮโลแกรม · เงิน-ทอง สั่งพิมพ์รองสีขาวได้ บวกเพิ่มเซ็ตละ ${UNDERPRINT_FEE} บาท (ช่วยให้สีลายไม่จมไปกับเนื้อกระดาษ)`,
-      `• เนื้อมุก STARDREAM บวกเพิ่มเซ็ตละ ${STAR_EXTRA} บาท · เนื้ออื่นราคาเท่ากันหมด`,
+      `• กระดาษอาร์ตมัน ${GSM} แกรม พิมพ์สีคมชัด`,
       "::ราคาบวกเพิ่ม::",
       `• เคลือบเงา / เคลือบด้าน (ด้านหน้า) บวกเพิ่ม ${COAT_FEE} บาท`,
       `• เคลือบพิเศษ (กลิตเตอร์ · ทราย · โฮโลแกรม) (ด้านหน้า) บวกเพิ่ม ${SPECIAL_FEE} บาท — เลือกผิวฟิล์มได้ ${FILMS.length} แบบ`,
@@ -661,11 +451,11 @@ d.seo = {
     },
     {
       q: "เคลือบผิวได้ไหม คิดเงินยังไง?",
-      a: `เคลือบเงาหรือเคลือบด้าน บวกเพิ่ม ${COAT_FEE} บาทต่อด้าน · เคลือบพิเศษ (กลิตเตอร์ ทราย โฮโลแกรม) บวกเพิ่ม ${SPECIAL_FEE} บาทต่อด้าน และเลือกผิวฟิล์มได้ ${FILMS.length} แบบ`,
+      a: `เคลือบได้เฉพาะด้านหน้า (ด้านที่พิมพ์ลาย) — เคลือบเงาหรือเคลือบด้าน บวกเพิ่ม ${COAT_FEE} บาท · เคลือบพิเศษ (กลิตเตอร์ ทราย โฮโลแกรม) บวกเพิ่ม ${SPECIAL_FEE} บาท และเลือกผิวฟิล์มได้ ${FILMS.length} แบบ`,
     },
     {
       q: "ใช้กระดาษหนากว่านี้ได้ไหม?",
-      a: `มาตรฐานเป็นอาร์ตมัน ${GSM} แกรม (เซ็ตละ ${prices[0]} บาท) · เลือกอาร์ตมัน 300 / 400 แกรม หรือกระดาษพิเศษ ${texPapers.length} เนื้อได้ ราคาต่อเซ็ตปรับตามชนิดกระดาษที่เลือกในหน้าสินค้าเลย (เนื้อมุก STARDREAM บวกเพิ่มเซ็ตละ ${STAR_EXTRA} บาท)`,
+      a: `งานมาตรฐานใช้กระดาษอาร์ตมัน ${GSM} แกรม เนื้อแน่นพิมพ์สีคมชัด — ตอนนี้ไม่มีตัวเลือกอัปเกรดกระดาษ`,
     },
   ],
 };
