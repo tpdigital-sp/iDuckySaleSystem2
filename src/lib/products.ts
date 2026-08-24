@@ -3188,6 +3188,34 @@ export function matrixChoiceAvailable(m: PriceMatrix, label: string, choice: str
   return Object.keys(m.cells).some((k) => k.split("│")[di] === choice);
 }
 
+/**
+ * ทุกกลุ่มที่เป็น "แกนตารางราคา" ของสินค้านี้ (รวมทุกเรท) — ค่าของกลุ่มพวกนี้คือกุญแจหาราคาในตาราง
+ * ขาดไปแม้กลุ่มเดียว คีย์จะหาช่องไม่เจอ แล้วราคาหล่นไปใช้ราคาตั้งต้นของสินค้า
+ * → ตะกร้า/ออเดอร์ต้องเก็บค่ากลุ่มพวกนี้ไว้เสมอ แม้กลุ่มนั้นจะถูกซ่อนจากหน้าร้าน (showWhen ไม่ตรง)
+ */
+export function priceDriverLabels(p: Product): string[] {
+  const all = [p.pricing, ...(p.priceRates ?? []).map((r) => r.pricing)];
+  return [...new Set(all.flatMap((m) => m?.driverLabels ?? []))];
+}
+
+/**
+ * คีย์คอลัมน์ราคา ที่เติมค่าเริ่มต้นให้แกนตารางที่ "ไม่มีค่า" ใน selections
+ * ใช้กับของที่อยู่ในตะกร้า/ออเดอร์เก่าซึ่งเคยถูกตัดกลุ่มที่ซ่อนไว้ออกไป — ราคาจะได้ตรงกับที่ลูกค้าเห็นตอนสั่ง
+ * (ค่าเริ่มต้นเลือกแบบเดียวกับ resolveSelections: ตัวแรกที่กฎอนุญาตและมีราคาในตาราง)
+ */
+function matrixKeyFilled(product: Product, m: PriceMatrix, selections: Record<string, string>): string {
+  const filled = { ...selections };
+  for (const label of m.driverLabels) {
+    if (filled[label]) continue;
+    if (!product.options?.some((o) => o.label === label)) continue;
+    const allowed = allowedChoices(product, filled, label);
+    const priced = allowed.filter((n) => matrixChoiceAvailable(m, label, n));
+    const pick = (priced.length > 0 ? priced : allowed)[0];
+    if (pick) filled[label] = pick;
+  }
+  return priceMatrixKey(m, filled);
+}
+
 /** ช่วงราคาต่ำสุด–สูงสุดของสินค้า — ถ้ามีตารางราคาขั้นบันไดคิดจากทุกช่อง, ไม่งั้นคิดจากราคาตั้งต้น + option.extra */
 export function priceRange(p: Product): { min: number; max: number } {
   /**
@@ -3323,7 +3351,11 @@ export function unitPriceFor(
   const tierQty = tierQtyFor(product, selections, qty);
   const m = activeMatrix(product, selections);
   if (m) {
-    const cells = m.cells[priceMatrixKey(m, selections)];
+    // หาช่องราคาไม่เจอเพราะแกนตารางบางกลุ่มไม่มีค่า (ของเก่าในตะกร้าที่ถูกตัดกลุ่มซ่อนออกไป)
+    // → เติมค่าเริ่มต้นให้แกนที่ขาด แล้วหาใหม่ ก่อนจะยอมตกไปใช้ราคาตั้งต้นของสินค้า
+    const cells =
+      m.cells[priceMatrixKey(m, selections)] ??
+      (m.driverLabels.some((l) => !selections[l]) ? m.cells[matrixKeyFilled(product, m, selections)] : undefined);
     let base = cells && cells.length ? (cells[tierIndex(m, tierQty)] ?? product.price) : product.price;
     // 📐 คิดตามพื้นที่ลาย — ราคาก้อนแรก + ส่วนเกินคูณเรทต่อหน่วยพื้นที่ (แทนราคาคอลัมน์เดียว)
     // ยังไม่กรอกขนาด = คืน null แล้วใช้ราคาคอลัมน์ตามเดิม (โชว์เป็นราคาเริ่มต้น)

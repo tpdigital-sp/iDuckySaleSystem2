@@ -15,6 +15,7 @@ import {
   isMadeToOrderOption,
   madeToOrderOn,
   optionActive,
+  priceDriverLabels,
   MTO_LABEL,
   MTO_ON,
   needsQuote,
@@ -1378,7 +1379,12 @@ export default function ProductDetail({
     } else {
       // กลุ่มที่ถูกซ่อนอยู่ (showWhen ไม่ตรง) ไม่ต้องติดไปกับตะกร้า/ออเดอร์ — ลูกค้าไม่ได้เลือกเอง
       // กลุ่มที่ถูกซ่อน (showWhen ไม่ตรง) หรือกลุ่มงานสั่งทำที่ลูกค้าไม่ได้ติ๊ก — ไม่ต้องติดไปกับตะกร้า/ออเดอร์
-      const hidden = product.options.filter((o) => !optionActive(o, effective)).map((o) => o.label);
+      // ⚠️ ยกเว้นกลุ่มที่เป็นแกนตารางราคา — ตัดออกแล้วตะกร้าหาช่องราคาไม่เจอ ราคาหล่นไปที่ราคาตั้งต้น
+      // (เคยพลาด: พวงกุญแจ "ประเภทอะคริลิค" ถูกซ่อนด้วย showWhen หน้าสินค้า ฿110 แต่ในตะกร้าเหลือ ฿90)
+      const drivers = priceDriverLabels(product);
+      const hidden = product.options
+        .filter((o) => !optionActive(o, effective) && !drivers.includes(o.label))
+        .map((o) => o.label);
       // ค่าว่าง = กลุ่มติ๊กหลายอย่างที่ลูกค้าไม่ได้ติ๊กอะไรเลย — ไม่ต้องโชว์เป็นบรรทัดเปล่าในตะกร้า/ออเดอร์
       const shown = Object.fromEntries(
         Object.entries(effectiveWithDesigns).filter(([k, v]) => !hidden.includes(k) && v !== "")
