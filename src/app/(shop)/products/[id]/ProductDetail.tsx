@@ -11,6 +11,7 @@ import {
   inputError,
   INPUT_MAX_LEN,
   isInputOption,
+  sheetYieldCount,
   isMadeToOrderOption,
   madeToOrderOn,
   optionActive,
@@ -758,13 +759,13 @@ export default function ProductDetail({
    */
   const inputErrors = useMemo(
     () =>
-      // ยังไม่ติ๊ก "สั่งทำ" = ไม่ต้องกรอกอะไร ปุ่มสั่งไม่ควรถูกล็อก
-      !madeToOrderOn(effective)
-        ? []
-        : product.options
-            .filter((o) => isInputOption(o) && optionVisible(o, effective))
-            .map((o) => inputError(o, effective[o.label]))
-            .filter((e): e is string => !!e),
+      product.options
+        .filter((o) => isInputOption(o) && optionVisible(o, effective))
+        // ช่องกรอกงานสั่งทำ ตรวจเฉพาะตอนติ๊ก "สั่งทำ" (ไม่ติ๊ก = ไม่ต้องกรอก ปุ่มสั่งไม่ควรถูกล็อก)
+        // ช่องกรอกของงานปกติ (standardInput เช่น ขนาดไดคัท) แสดงอยู่เมื่อไหร่ต้องกรอกเสมอ
+        .filter((o) => o.standardInput === true || madeToOrderOn(effective))
+        .map((o) => inputError(o, effective[o.label]))
+        .filter((e): e is string => !!e),
     [product, effective]
   );
 
@@ -1668,6 +1669,22 @@ export default function ProductDetail({
                             {cfg?.unit && <span className="text-xs font-semibold text-stone-500">{cfg.unit}</span>}
                           </div>
                           {cfg?.hint && <p className="mt-1 text-[11px] text-stone-500">{cfg.hint}</p>}
+                          {/* 📐 จำนวนชิ้นโดยประมาณต่อแผ่น — คำนวณสดจากกว้าง×สูงที่กรอก (ดู sheetYield) */}
+                          {(() => {
+                            const n = sheetYieldCount(product, opt, effective);
+                            if (n == null) return null;
+                            const sheet = opt.sheetYield?.sheetName ?? "แผ่น";
+                            return n >= 1 ? (
+                              <p className="mt-1 text-[11px] font-bold text-teal-700">
+                                📐 ขนาดนี้ได้ประมาณ {n} ชิ้น ต่อ 1 {sheet} (ตัวเลขคร่าว ๆ จากการเรียงแนวตรง —
+                                จำนวนจริงขึ้นกับรูปทรงลายและการจัดวาง)
+                              </p>
+                            ) : (
+                              <p className="mt-1 text-[11px] font-bold text-rose-600">
+                                ⚠ ขนาดนี้ใหญ่เกิน 1 {sheet} — รบกวนทักแชทเช็คกับแอดมินก่อนนะครับ
+                              </p>
+                            );
+                          })()}
                           {/* เกณฑ์ที่รับได้ — บอกไว้ก่อนพิมพ์ ดีกว่าให้พิมพ์เสร็จแล้วค่อยขึ้นแดง */}
                           {cfg?.kind === "number" && (cfg.min != null || cfg.max != null) && (
                             <p className="mt-0.5 text-[11px] text-stone-400">

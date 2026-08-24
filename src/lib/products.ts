@@ -174,6 +174,19 @@ export interface ProductOption {
    */
   input?: OptionInput;
   /**
+   * ✍️ ช่องกรอกนี้เป็น "ข้อมูลประกอบของงานปกติ" ไม่ใช่งานสั่งทำ — โชว์เรียงกับกลุ่มตัวเลือกปกติ
+   * (ไม่เข้ากล่อง 📐 ไม่ต้องติ๊ก "สั่งทำ" ก่อน และตรวจว่ากรอกครบก่อนสั่งเสมอ)
+   * เช่น ขนาดไดคัทของงานกระดาษ — ราคายังคิดตามตารางเดิม แค่ต้องรู้ขนาดไว้ผลิต
+   * ใช้คู่กับ showWhen ได้ (ถามเฉพาะเรท/ตัวเลือกที่ต้องใช้) · มีผลเฉพาะกลุ่ม display 'input'
+   */
+  standardInput?: boolean;
+  /**
+   * 📐 โชว์ "จำนวนชิ้นโดยประมาณต่อแผ่นวัสดุ" ใต้ช่องกรอกของกลุ่มนี้ (กลุ่มนี้ = ด้านสูง)
+   * อ่านด้านกว้างจากช่องกรอกกลุ่ม pairLabel — กรอกครบสองช่องแล้วคำนวณจากการเรียงแนวตรง
+   * เลือกแนวตั้ง/แนวนอนที่ได้เยอะกว่า · เป็นตัวเลขบอกทางเฉย ๆ ไม่มีผลกับราคา/ตะกร้า
+   */
+  sheetYield?: SheetYield;
+  /**
    * กลุ่มนี้เป็นส่วนของ "งานสั่งทำ" — มีผลแค่ในหน้าแก้ไขหลังบ้าน (ไปแก้ที่แผง 📐 แทนแผง 🎛️)
    * หน้าร้านแสดง/คิดราคาเหมือนกลุ่มอื่นทุกอย่าง · กลุ่มช่องกรอก (display 'input') ถือเป็นงานสั่งทำเสมอ
    * โดยไม่ต้องตั้งธงนี้
@@ -304,6 +317,40 @@ export function inputError(opt: ProductOption, stored: string | undefined): stri
   const max = cfg.maxLength ?? INPUT_MAX_LEN;
   if (raw.length > max) return `${name} ยาวเกิน ${max} ตัวอักษร`;
   return null;
+}
+
+/**
+ * 📐 สเปกคำนวณ "จำนวนชิ้นโดยประมาณต่อแผ่นวัสดุ" ของคู่ช่องกรอกกว้าง×สูง (ดู ProductOption.sheetYield)
+ * ขนาดแผ่นเป็นหน่วยเดียวกับที่ลูกค้ากรอก (เช่น ซม. — A3 = 29.7 × 42)
+ */
+export interface SheetYield {
+  /** ชื่อกลุ่มช่องกรอก "ด้านกว้าง" ที่ใช้คู่กัน (กลุ่มที่ตั้ง sheetYield เองคือด้านสูง) */
+  pairLabel: string;
+  /** ขนาดแผ่นวัสดุ ด้านกว้าง × ด้านยาว */
+  sheetW: number;
+  sheetH: number;
+  /** ชื่อแผ่นที่โชว์ให้ลูกค้า เช่น "แผ่น A3" (ไม่ตั้ง = "แผ่น") */
+  sheetName?: string;
+}
+
+/**
+ * จำนวนชิ้นโดยประมาณต่อ 1 แผ่น จากค่าที่ลูกค้ากรอก (กว้างจากกลุ่ม pairLabel × สูงจากกลุ่มนี้)
+ * เรียงแนวตรงเลือกแนวที่ได้เยอะกว่า — null = ไม่ได้ตั้ง sheetYield หรือยังกรอกไม่ครบ · 0 = ใหญ่เกินแผ่น
+ */
+export function sheetYieldCount(
+  product: Product,
+  opt: ProductOption,
+  selections: Record<string, string>
+): number | null {
+  const cfg = opt.sheetYield;
+  if (!cfg) return null;
+  const pair = product.options.find((o) => o.label === cfg.pairLabel);
+  if (!pair) return null;
+  const w = Number(parseInputValue(pair, selections[pair.label]));
+  const h = Number(parseInputValue(opt, selections[opt.label]));
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  const fit = (a: number, b: number) => Math.floor(cfg.sheetW / a) * Math.floor(cfg.sheetH / b);
+  return Math.max(fit(w, h), fit(h, w));
 }
 
 /** ตัวคั่นค่าของกลุ่ม "เลือกได้หลายอย่าง" (display: 'multi') เมื่อเก็บลง selections */
@@ -3148,9 +3195,12 @@ export function priceMatrixKey(m: PriceMatrix, selections: Record<string, string
 export const MTO_LABEL = "งานสั่งทำ";
 export const MTO_ON = "กำหนดขนาด/รายละเอียดเอง";
 
-/** กลุ่มนี้เป็นของงานสั่งทำไหม — ช่องกรอกเป็นเสมอ · กลุ่มตัวเลือกปกติต้องถูกย้ายเข้ามา (madeToOrder) */
+/**
+ * กลุ่มนี้เป็นของงานสั่งทำไหม — ช่องกรอกเป็นโดยธรรมชาติ · กลุ่มตัวเลือกปกติต้องถูกย้ายเข้ามา (madeToOrder)
+ * ยกเว้นช่องกรอกที่ตั้ง standardInput = ข้อมูลประกอบของงานปกติ (เช่น ขนาดไดคัท) ไม่เข้ากล่อง 📐
+ */
 export function isMadeToOrderOption(o: ProductOption): boolean {
-  return isInputOption(o) || o.madeToOrder === true;
+  return (isInputOption(o) && o.standardInput !== true) || o.madeToOrder === true;
 }
 
 /** ลูกค้าติ๊ก "สั่งทำ" ไว้ไหม */

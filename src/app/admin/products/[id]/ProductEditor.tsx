@@ -124,6 +124,10 @@ type DraftOption = {
   extraPerDesign?: boolean;
   /** 📄 +฿ ของกลุ่มนี้คิดต่อแผ่นวัสดุ — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   sheetFee?: { from: string; unit?: string };
+  /** ✍️ ช่องกรอกของงานปกติ (ไม่เข้ากล่อง 📐) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  standardInput?: boolean;
+  /** 📐 สเปกโชว์จำนวนชิ้นต่อแผ่นจากกว้าง×สูง — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  sheetYield?: { pairLabel: string; sheetW: number; sheetH: number; sheetName?: string };
 };
 /**
  * กางช่อง "🔢 ระบุจำนวน" ที่แถวตัวเลือกไหม — ติ๊กสวิตช์ที่หัวกลุ่มก่อนถึงโผล่
@@ -446,6 +450,8 @@ function toDraft(p: Product): Draft {
       ...(o.note ? { note: o.note } : {}),
       ...(o.extraPerDesign ? { extraPerDesign: true } : {}),
       ...(o.sheetFee ? { sheetFee: o.sheetFee } : {}),
+      ...(o.standardInput ? { standardInput: true } : {}),
+      ...(o.sheetYield ? { sheetYield: o.sheetYield } : {}),
       choices: o.choices.map((c) => ({
         name: c.name,
         extra: c.extra ? String(c.extra) : "",
@@ -676,6 +682,9 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       ...(o.note?.trim() ? { note: o.note.trim() } : {}),
       ...(o.extraPerDesign ? { extraPerDesign: true } : {}),
       ...(o.sheetFee ? { sheetFee: o.sheetFee } : {}),
+      // ✍️📐 ช่องกรอกงานปกติ + สเปกจำนวนชิ้นต่อแผ่น — ไม่มีช่องกรอกในหน้าแก้ไข ต้องส่งกลับ ไม่งั้นหาย
+      ...(o.standardInput ? { standardInput: true as const } : {}),
+      ...(o.sheetYield ? { sheetYield: o.sheetYield } : {}),
       choices: o.choices
         .filter((c) => c.name.trim())
         // ชื่อซ้ำในกลุ่มเดียวกันเหลือตัวแรกตัวเดียว — ตัวที่ซ้ำใช้ช่องราคาคอลัมน์เดียวกัน
