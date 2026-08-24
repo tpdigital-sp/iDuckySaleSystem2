@@ -347,6 +347,8 @@ export default function ProductDetail({
     1
   );
   const [qty, setQty] = useState(initialQty);
+  /** ลูกค้าปรับจำนวนเองแล้วหรือยัง — ยังไม่ปรับ = จำนวนเดินตามขั้นต่ำของเรทที่เลือกไปเรื่อย ๆ */
+  const [qtyTouched, setQtyTouched] = useState(false);
   // 🔍 รูปที่กำลังเปิดดูขนาดใหญ่ (lightbox) — ว่าง = ปิดอยู่
   const [zoomSrc, setZoomSrc] = useState("");
   /** 🎨 สีที่แตะล่าสุดของแต่ละกลุ่มสวอตช์ (คีย์ = ชื่อกลุ่ม) — โชว์แถบพรีวิวใหญ่ใต้ตาราง */
@@ -575,11 +577,16 @@ export default function ProductDetail({
    * สินค้าที่ตั้ง hardMinQty ใช้ขั้นต่ำของเรทที่เลือกเป็นพื้น เช่น สติ๊กเกอร์ UV เรท A3 = 3 แผ่น
    */
   const qtyFloor = product.hardMinQty ? rateMinQty : 1;
-  /** เปลี่ยนเรทแล้วจำนวนต่ำกว่าขั้นต่ำของเรทใหม่ → ดันขึ้นให้ถึงขั้นต่ำ (ไม่ปล่อยให้ค้างต่ำกว่าเกณฑ์) */
+  /**
+   * เปลี่ยนเรทแล้วจำนวนต้องตามขั้นต่ำของเรทใหม่ — ตราบใดที่ลูกค้ายังไม่ได้ตั้งจำนวนเอง
+   * ขึ้นก็ได้ลงก็ได้: A3 (3 แผ่น) → ตร.ม. ต้องกลับมา 1 ไม่ใช่ค้างที่ 3 (คนละหน่วยกัน)
+   * ลูกค้าปรับจำนวนเองแล้ว = ไม่ยุ่งอีก เหลือแค่กันไม่ให้ต่ำกว่าขั้นต่ำ (ปุ่ม − กับตอนออกจากช่อง)
+   */
   useEffect(() => {
-    if (!product.hardMinQty || useCustom) return;
-    setQty((q) => (q < qtyFloor ? qtyFloor : q));
-  }, [qtyFloor, product.hardMinQty, useCustom]);
+    if (!product.hardMinQty || useCustom || qtyTouched) return;
+    setQty(qtyFloor);
+    setQtyText(String(qtyFloor));
+  }, [qtyFloor, product.hardMinQty, useCustom, qtyTouched]);
   /**
    * ร้านรับสั่งขั้นต่ำ 1 ชิ้นเสมอ — ห้ามบล็อกการสั่งเพราะ "เรทที่เลือกไว้" มีขั้นต่ำสูง
    * ลูกค้ากดเลือกเรทส่งเองแล้วลดจำนวนลงต่ำกว่าขั้นต่ำ → สลับลงเรทที่รับจำนวนนั้นได้ (ปกติคือเรทปลีก)
@@ -3183,7 +3190,10 @@ export default function ProductDetail({
                     type="button"
                     // ลดได้ถึง 1 เสมอ — ถ้าต่ำกว่าขั้นต่ำของเรทที่เลือกไว้ ระบบจะสลับลงเรทที่เหมาะเอง
                     // (สินค้าที่ตั้ง hardMinQty ลดได้แค่ถึงขั้นต่ำจริงของเรท เช่น 3 แผ่น A3)
-                    onClick={() => setQty((q) => Math.max(qtyFloor, q - 1))}
+                    onClick={() => {
+                      setQtyTouched(true);
+                      setQty((q) => Math.max(qtyFloor, q - 1));
+                    }}
                     aria-disabled={qty <= qtyFloor}
                     className="h-10 w-10 rounded-l-full text-base font-bold text-stone-600 hover:bg-amber-50"
                     aria-label="ลดจำนวน"
@@ -3196,6 +3206,7 @@ export default function ProductDetail({
                     value={qtyText}
                     onChange={(e) => {
                       // ปล่อยให้ลบจนว่างได้ระหว่างพิมพ์ (เดิมยัด 1 กลับทันที ลบแล้วพิมพ์ใหม่ไม่ได้)
+                      setQtyTouched(true);
                       const raw = e.target.value.replace(/\D/g, "").slice(0, 5);
                       setQtyText(raw);
                       const n = parseInt(raw, 10);
@@ -3212,7 +3223,10 @@ export default function ProductDetail({
                   />
                   <button
                     type="button"
-                    onClick={() => setQty((q) => Math.min(matrix ? 99999 : 99, q + 1))}
+                    onClick={() => {
+                      setQtyTouched(true);
+                      setQty((q) => Math.min(matrix ? 99999 : 99, q + 1));
+                    }}
                     className="h-10 w-10 rounded-r-full text-base font-bold text-stone-600 hover:bg-amber-50"
                     aria-label="เพิ่มจำนวน"
                   >
