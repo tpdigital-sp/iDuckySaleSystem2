@@ -3527,9 +3527,17 @@ export interface GroupReprice {
   merged?: { lines: number; totalQty: number; totalDesigns: number; rateLabel?: string };
 }
 
-/** สินค้านี้เอามารวมกลุ่มคิดราคาตามจำนวนรวมได้ไหม — งานสั่งทำ/คิดตามพื้นที่คนละตรรกะ ไม่รวม */
-function mergeableForGrouping(p: Product): boolean {
-  if (p.custom?.enabled || p.areaPricing?.enabled) return false;
+/**
+ * บรรทัดนี้เอามารวมกลุ่มคิดราคาตามจำนวนรวมได้ไหม — คิดตามพื้นที่/งานตีราคา/ใช้ขนาด-อุปกรณ์กำหนดเอง = คนละตรรกะ ไม่รวม
+ * ⚠️ ต้องเช็คเป็น "รายบรรทัด" ไม่ใช่ทั้งสินค้า — สินค้าที่แค่ "มี" ออปชั่นกำหนดเอง (custom.enabled)
+ * แต่ลูกค้าเลือกสเปคมาตรฐาน (ไม่ได้เลือก custom) ยังต้องรวมได้ตามปกติ
+ * (เจอกับพวงกุญแจอะคริลิคที่มีออปชั่น "อุปกรณ์เสริม" mode chat — กันทั้งสินค้าแล้วไม่มีวันรวมเลย)
+ */
+function lineMergeable(p: Product, selections: Record<string, string>): boolean {
+  if (p.areaPricing?.enabled) return false;
+  // ใช้ออปชั่นกำหนดเอง/ตีราคาจริงในบรรทัดนี้ (เลือกค่าไว้) = ราคาไม่อิงเรทตามจำนวน ไม่รวม
+  if (p.custom?.enabled && (selections[p.custom.label] ?? "").trim()) return false;
+  if (needsQuote(p, selections)) return false;
   return true;
 }
 
@@ -3571,7 +3579,7 @@ export function repriceCartGroups(
   const groups = new Map<string, number[]>();
   lines.forEach((l, idx) => {
     const p = productOf(l.productId);
-    if (!p || !mergeableForGrouping(p) || needsQuote(p, l.selections)) return;
+    if (!p || !lineMergeable(p, l.selections)) return;
     const key = groupKeyOf(p, l.selections);
     const arr = groups.get(key);
     if (arr) arr.push(idx);
