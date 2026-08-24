@@ -1617,7 +1617,9 @@ export default function ProductDetail({
               // ✍️ ช่องกรอก — ลูกค้าพิมพ์ค่าเอง (ไม่มีรายการให้เลือก จึงไม่มีการล็อก/ไม่มีป้าย +฿)
               const isInput = isInputOption(opt);
               // กลุ่มติ๊กหลายอย่างไม่ล็อกอัตโนมัติ — เหลือตัวเลือกเดียวก็ยังต้องให้ติ๊ก/ไม่ติ๊กเองได้
-              const locked = !multi && !isInput && allowed.length === 1;
+              // กลุ่มที่แอดมินตั้งไว้ตัวเลือกเดียวตั้งแต่ต้น ไม่ได้ "ถูกกำหนดอัตโนมัติ" จากตัวเลือกอื่น
+              // (เช่น ขนาดตัดที่มีแบบเดียว) — โชว์เป็นปุ่มปกติที่เลือกไว้แล้ว ไม่ใช่ป้ายล็อก 🔒
+              const locked = !multi && !isInput && allowed.length === 1 && opt.choices.length > 1;
               const picks: MultiPick[] = multi ? selectedPicks(opt, effective) : [];
               const picked = picks.map((p) => p.name);
               // กลุ่มนี้มีตัวเลือกที่ระบุจำนวนได้ไหม (เช่น เพิ่มสาย 2 เส้น) — +฿ ของตัวนั้นคูณตามจำนวน
