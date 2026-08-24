@@ -423,8 +423,10 @@ export interface UnitYield {
   per: number;
   /** ขนาดที่ทำให้ได้เท่านี้ เช่น "A5" (ขนาดตัด) หรือ "12 × 8 ซม." (ไดคัทตามขนาด) */
   size: string;
-  /** ชื่อกลุ่มที่ให้ตัวเลขนี้มา เช่น "ขนาดตัด" — ใช้อธิบายที่มาให้ลูกค้า */
+  /** ชื่อกลุ่มแบบอ่านให้ลูกค้า เช่น "ขนาดตัด" — ตัดวงเล็บบอกหน่วย/ด้านท้ายชื่อออกแล้ว */
   label: string;
+  /** label จริงของกลุ่ม (ยังมีวงเล็บ) — ฝั่งหน้าสินค้าใช้เทียบว่ากลุ่มไหนเป็นเจ้าของตัวเลขนี้ */
+  optLabel: string;
   /**
    * per นับต่อ 1 หน่วยอะไร · null = ต่อ 1 หน่วยขายของเรทที่เลือกอยู่ (คูณจำนวนที่สั่งได้ตรง ๆ)
    * มีชื่อ = ต่อแผ่นวัสดุชื่อนั้น เช่น "แผ่น A3" — เรทที่ขายเป็น ตร.ม. คูณจำนวนที่สั่งตรง ๆ ไม่ได้
@@ -446,10 +448,16 @@ export interface UnitYield {
 export function unitYieldOf(product: Product, selections: Record<string, string>): UnitYield | null {
   for (const opt of product.options ?? []) {
     if (!optionActive(opt, selections)) continue;
+    /*
+     * ชื่อกลุ่มพวกนี้ห้อยวงเล็บบอกหน่วย/ด้านไว้ท้าย ("ขนาดตัด (ตร.ม.)" · "ขนาดไดคัท (สูง)")
+     * ตัดออกเหลือชื่อขนาดเดียว ไม่งั้นสรุปอ่านเป็น "ขนาดไดคัท (สูง) 5 × 5 ซม." ซึ่งงง
+     * (หน่วยบอกอยู่ในประโยคสรุปแล้วว่า "ต่อ 1 ตร.ม." จึงไม่ต้องซ้ำในชื่อกลุ่ม)
+     */
+    const label = opt.label.replace(/\s*\([^()]*\)\s*$/, "").trim() || opt.label;
     const picked = selections[opt.label];
     const choice = picked ? opt.choices.find((c) => c.name === picked) : undefined;
     if (choice?.piecesPerUnit && choice.piecesPerUnit > 0) {
-      return { per: choice.piecesPerUnit, size: choice.name, label: opt.label, unit: null, approx: false };
+      return { per: choice.piecesPerUnit, size: choice.name, label, optLabel: opt.label, unit: null, approx: false };
     }
     if (!opt.sheetYield) continue;
     const per = sheetYieldCount(product, opt, selections);
@@ -461,9 +469,8 @@ export function unitYieldOf(product: Product, selections: Record<string, string>
     return {
       per,
       size: `${w} × ${h}${unit ? ` ${unit}` : ""}`,
-      // คู่ช่องกว้าง/สูงตั้งชื่อว่า "ขนาดไดคัท (กว้าง)" / "ขนาดไดคัท (สูง)" — ตัดวงเล็บท้ายออก
-      // ให้เหลือชื่อขนาดเดียว ไม่งั้นสรุปอ่านเป็น "ขนาดไดคัท (สูง) 5 × 5 ซม." ซึ่งงง
-      label: opt.label.replace(/\s*\([^()]*\)\s*$/, "").trim() || opt.label,
+      label,
+      optLabel: opt.label,
       unit: opt.sheetYield.sheetName ?? "แผ่น",
       approx: true,
     };

@@ -2075,9 +2075,9 @@ export default function ProductDetail({
                     * 📐 งานแบ่งแผ่น — เลือกขนาดตัดแล้วสรุปว่าจำนวนที่สั่งอยู่ตอนนี้ได้งานกี่ชิ้น
                     * (ป้ายบนปุ่มบอกแค่ "ต่อ 1 หน่วย" ลูกค้าต้องคูณเอง — คูณให้เลยตรงนี้)
                     */}
-                  {unitYield && !unitYield.approx && unitYield.label === opt.label && yieldTotal != null && (
+                  {unitYield && !unitYield.approx && unitYield.optLabel === opt.label && yieldTotal != null && (
                     <p className="mt-1.5 rounded-xl bg-teal-50 px-3 py-2 text-[11px] leading-relaxed text-teal-800 ring-1 ring-teal-100">
-                      📐 {opt.label} <span className="font-bold">{unitYield.size}</span> ได้{" "}
+                      📐 {unitYield.label} <span className="font-bold">{unitYield.size}</span> ได้{" "}
                       <span className="font-bold">{unitYield.per.toLocaleString("th-TH")} ชิ้น</span> ต่อ 1{" "}
                       {matrix?.unit ?? "ชิ้น"} · สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} ={" "}
                       <span className="font-extrabold text-teal-900">

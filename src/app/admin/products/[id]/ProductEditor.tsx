@@ -66,6 +66,8 @@ type DraftChoice = {
   badge?: string;
   /** 📄 วัสดุ 1 แผ่นทำได้กี่ชิ้น (คู่กับกลุ่มที่คิดค่าธรรมเนียมต่อแผ่น) — ส่งกลับเฉย ๆ */
   perSheet?: number;
+  /** 📐 ขนาดตัดนี้ได้กี่ชิ้นต่อ 1 หน่วยสั่ง (งานแบ่งแผ่น) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  piecesPerUnit?: number;
   /** 💰 +฿ ของช่วงสั่งน้อย (ต่ำกว่า extraFromQty) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   extraBelow?: number;
 };
@@ -467,6 +469,7 @@ function toDraft(p: Product): Draft {
         ...(c.popular ? { popular: true } : {}),
         ...(c.badge ? { badge: c.badge } : {}),
         ...(c.perSheet ? { perSheet: c.perSheet } : {}),
+        ...(c.piecesPerUnit ? { piecesPerUnit: c.piecesPerUnit } : {}),
         ...(c.extraBelow ? { extraBelow: c.extraBelow } : {}),
       })),
       ...(o.presetId ? { presetId: o.presetId } : {}),
@@ -716,6 +719,8 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             // 🏷️ ป้ายอิสระ ("ฟรี!") + 📄 ชิ้นต่อแผ่นวัสดุ — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
             ...(c.badge ? { badge: c.badge } : {}),
             ...(c.perSheet ? { perSheet: c.perSheet } : {}),
+            // 📐 ชิ้นต่อหน่วยของงานแบ่งแผ่น (ขนาดตัด A4-A7) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
+            ...(c.piecesPerUnit ? { piecesPerUnit: c.piecesPerUnit } : {}),
             ...(c.extraBelow ? { extraBelow: c.extraBelow } : {}),
           };
         }),
