@@ -329,6 +329,11 @@ export interface SheetYield {
   /** ขนาดแผ่นวัสดุ ด้านกว้าง × ด้านยาว */
   sheetW: number;
   sheetH: number;
+  /**
+   * ระยะห่างระหว่างชิ้นงาน (หน่วยเดียวกับที่ลูกค้ากรอก) — งานไดคัทวางชิ้นติดกันไม่ได้
+   * เช่น 0.5 = เว้น 5 มม. · คิดเฉพาะช่องไฟ "ระหว่าง" ชิ้น ไม่กินขอบแผ่น · ไม่ตั้ง = วางชิด
+   */
+  gap?: number;
   /** ชื่อแผ่นที่โชว์ให้ลูกค้า เช่น "แผ่น A3" (ไม่ตั้ง = "แผ่น") */
   sheetName?: string;
 }
@@ -349,7 +354,10 @@ export function sheetYieldCount(
   const w = Number(parseInputValue(pair, selections[pair.label]));
   const h = Number(parseInputValue(opt, selections[opt.label]));
   if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
-  const fit = (a: number, b: number) => Math.floor(cfg.sheetW / a) * Math.floor(cfg.sheetH / b);
+  // n ชิ้นต่อแกน = n×ชิ้น + (n-1)×gap ≤ แผ่น → ⌊(แผ่น + gap) ÷ (ชิ้น + gap)⌋ (gap คิดเฉพาะระหว่างชิ้น)
+  const gap = cfg.gap ?? 0;
+  const across = (piece: number, sheet: number) => Math.floor((sheet + gap) / (piece + gap));
+  const fit = (a: number, b: number) => across(a, cfg.sheetW) * across(b, cfg.sheetH);
   return Math.max(fit(w, h), fit(h, w));
 }
 

@@ -1674,9 +1674,12 @@ export default function ProductDetail({
                             const n = sheetYieldCount(product, opt, effective);
                             if (n == null) return null;
                             const sheet = opt.sheetYield?.sheetName ?? "แผ่น";
+                            const gap = opt.sheetYield?.gap ?? 0;
+                            // gap เก็บหน่วยเดียวกับช่องกรอก (ซม.) — บอกลูกค้าเป็น มม. อ่านง่ายกว่า
+                            const gapNote = gap > 0 ? ` เว้นระยะระหว่างชิ้น ${Math.round(gap * 10)} มม.` : "";
                             return n >= 1 ? (
                               <p className="mt-1 text-[11px] font-bold text-teal-700">
-                                📐 ขนาดนี้ได้ประมาณ {n} ชิ้น ต่อ 1 {sheet} (ตัวเลขคร่าว ๆ จากการเรียงแนวตรง —
+                                📐 ขนาดนี้ได้ประมาณ {n} ชิ้น ต่อ 1 {sheet} (ตัวเลขคร่าว ๆ จากการเรียงแนวตรง{gapNote} —
                                 จำนวนจริงขึ้นกับรูปทรงลายและการจัดวาง)
                               </p>
                             ) : (

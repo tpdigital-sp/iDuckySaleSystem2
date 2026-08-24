@@ -127,7 +127,7 @@ type DraftOption = {
   /** ✍️ ช่องกรอกของงานปกติ (ไม่เข้ากล่อง 📐) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   standardInput?: boolean;
   /** 📐 สเปกโชว์จำนวนชิ้นต่อแผ่นจากกว้าง×สูง — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
-  sheetYield?: { pairLabel: string; sheetW: number; sheetH: number; sheetName?: string };
+  sheetYield?: { pairLabel: string; sheetW: number; sheetH: number; gap?: number; sheetName?: string };
 };
 /**
  * กางช่อง "🔢 ระบุจำนวน" ที่แถวตัวเลือกไหม — ติ๊กสวิตช์ที่หัวกลุ่มก่อนถึงโผล่
