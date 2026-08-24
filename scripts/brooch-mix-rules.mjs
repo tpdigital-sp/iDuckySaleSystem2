@@ -13,6 +13,8 @@
  * วิธี: แพตช์ของจริงจาก DB (ไม่เขียนทับทั้งก้อน)
  *   1) เรทแรก: extraDesignFee = 5   (freeMixBelowQty 11 + minPerDesign 1 มีอยู่แล้ว)
  *   2) กลุ่ม "ขนาด": ตั้ง perUnit ตามชิ้นต่อเซตที่อ่านจากชื่อ "(1 เซตได้ N ชิ้น)"
+ *   3) ถอด tierByDesign — ⚠️ ธงนี้ทับกติกา minPerDesign ในหน้าเว็บ (เพดานลาย = จำนวนเซต)
+ *      สั่ง 2 เซตเลยคละได้แค่ 2 ลาย ไม่ใช่ 20 · สินค้านี้ใช้กติกาโควตา+ค่าคละเกินแทน
  */
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
@@ -42,8 +44,9 @@ const data = row.data;
 const rate = data.priceRates?.[0];
 if (!rate) throw new Error("ไม่พบ priceRates ในสินค้า — โครงสร้างเปลี่ยน ต้องดูก่อน");
 
-console.log(`เดิม: minPerDesign=${rate.minPerDesign} freeMixBelowQty=${rate.freeMixBelowQty} extraDesignFee=${rate.extraDesignFee}`);
+console.log(`เดิม: minPerDesign=${rate.minPerDesign} freeMixBelowQty=${rate.freeMixBelowQty} extraDesignFee=${rate.extraDesignFee} tierByDesign=${data.tierByDesign}`);
 rate.extraDesignFee = 5;
+delete data.tierByDesign;
 
 const sizeGroup = data.options?.find((o) => o.label === "ขนาด");
 if (!sizeGroup) throw new Error('ไม่พบกลุ่มตัวเลือก "ขนาด"');
