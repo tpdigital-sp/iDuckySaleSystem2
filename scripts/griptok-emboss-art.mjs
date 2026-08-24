@@ -134,38 +134,33 @@ const overlayText = (head, sub, note) => `
   ${sub ? `<text x="${W / 2}" y="136" font-family="${TH}" font-size="27" text-anchor="middle" fill="#e2e8f0">${esc(sub)}</text>` : ""}
   ${note ? `<text x="${W / 2}" y="${H - 42}" font-family="${TH}" font-size="23" text-anchor="middle" fill="#e2e8f0">${esc(note)}</text>` : ""}`;
 
-/** การ์ดภาพเต็มใบ: เบลอถมพื้น + รูปชัดตรงกลาง + ข้อความบนสคริม */
+/** การ์ดภาพเต็มใบ: ครอปรูปเดียวถมเต็มการ์ด (ไม่มีพื้นหลังซ้อน — ผู้ใช้สั่ง 24 ส.ค. 69) + ข้อความบนสคริม */
 async function fullCard(name, key, { head, sub, note }) {
   const orig = await src(key);
-  const bg = await sharp(orig).resize(W, H, { fit: "cover" }).blur(28).modulate({ brightness: 0.82, saturation: 1.05 }).toBuffer();
-  const fg = await sharp(orig).resize({ height: 780 }).toBuffer();
-  const meta = await sharp(fg).metadata();
+  const bg = await sharp(orig).resize(W, H, { fit: "cover", position: "attention" }).toBuffer();
   const buf = await sharp(bg)
-    .composite([
-      { input: fg, left: Math.round((W - meta.width) / 2), top: Math.round((H - meta.height) / 2) },
-      { input: Buffer.from(scrim(overlayText(head, sub, note))), left: 0, top: 0 },
-    ])
+    .composite([{ input: Buffer.from(scrim(overlayText(head, sub, note))), left: 0, top: 0 }])
     .jpeg({ quality: 92, chromaSubsampling: "4:4:4" })
     .toBuffer();
   save(name, buf);
 }
 
-await fullCard("addon-mini-v2", "vidCharm", {
+await fullCard("addon-mini-v3", "vidCharm", {
   head: "เพิ่มอะคริลิคตัวน้อย",
   sub: "ขนาด 1.5-2 ซม. หนา 1.5 mm ใส่ในกระเปาะเขย่าได้ · +15 บาท/ตัว",
   note: "ภาพจากคลิป “ใส่ตัวน้อยเขย่าเพิ่ม” ของร้าน",
 });
-await fullCard("fimo-star-v2", "vidFimoStar", {
+await fullCard("fimo-star-v3", "vidFimoStar", {
   head: "Fimo ดาว",
   sub: "ตัวน้อยเขย่าในกระเปาะ (ฟรี)",
   note: "Fimo กำหนดปริมาณไม่ได้ · ภาพจากคลิปของร้าน",
 });
-await fullCard("fimo-pearl-v2", "vidFimoPearl", {
+await fullCard("fimo-pearl-v3", "vidFimoPearl", {
   head: "Fimo ไข่มุก",
   sub: "ตัวน้อยเขย่าในกระเปาะ (ฟรี)",
   note: "Fimo กำหนดปริมาณไม่ได้ · ภาพจากคลิปของร้าน",
 });
-await fullCard("fimo-strand-v2", "vidFimoStrand", {
+await fullCard("fimo-strand-v3", "vidFimoStrand", {
   head: "Fimo เส้น",
   sub: "ตัวน้อยเขย่าในกระเปาะ (ฟรี)",
   note: "Fimo กำหนดปริมาณไม่ได้ · ภาพจากคลิปของร้าน",

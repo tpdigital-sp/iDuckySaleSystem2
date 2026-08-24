@@ -169,7 +169,7 @@ const product: Product = {
       label: "อะคริลิคตัวน้อย (Add On)",
       display: "multi",
       choices: [
-        { name: MINI_YES, extra: 15, qty: true, qtyMax: 20, imageSrc: IMG("addon-mini", "v2") },
+        { name: MINI_YES, extra: 15, qty: true, qtyMax: 20, imageSrc: IMG("addon-mini", "v3") },
       ],
     },
     {
@@ -178,9 +178,9 @@ const product: Product = {
       label: "Fimo ตัวน้อยเขย่า (ฟรี)",
       choices: [
         { name: FIMO_MIX, popular: true, imageSrc: IMG("fimo-mix", "v2") },
-        { name: "Fimo ดาว", imageSrc: IMG("fimo-star", "v2") },
-        { name: "Fimo ไข่มุก", imageSrc: IMG("fimo-pearl", "v2") },
-        { name: "Fimo เส้น", imageSrc: IMG("fimo-strand", "v2") },
+        { name: "Fimo ดาว", imageSrc: IMG("fimo-star", "v3") },
+        { name: "Fimo ไข่มุก", imageSrc: IMG("fimo-pearl", "v3") },
+        { name: "Fimo เส้น", imageSrc: IMG("fimo-strand", "v3") },
         { name: FIMO_NO },
       ],
     },
