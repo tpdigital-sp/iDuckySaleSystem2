@@ -611,6 +611,8 @@ export default function ProductDetail({
   const [designsWarn, setDesignsWarn] = useState(false);
   // สินค้าที่ตั้ง "คิดเรทตามชิ้นต่อลาย" — คละกี่ลายก็ได้ แต่เรทราคาคิดจาก ⌊จำนวน ÷ ลาย⌋
   const tierByDesign = !!product.tierByDesign;
+  /** 🔒 ห้ามคละเกินโควตาเรท — ช่อง "คละกี่ลาย" ตันที่โควตา แทนที่จะปล่อยให้ราคาตกไปเรทต่อลาย (ดู Product.hardMaxDesigns) */
+  const hardMaxDesigns = !!product.hardMaxDesigns;
   /** กติกาคละแบบคิดค่าคละต่อหน่วย (ถ้าสินค้าตั้งไว้) — มาก่อนกติกาเดิมทั้งหมด */
   const mixRule = product.mixRule;
   /**
@@ -634,11 +636,14 @@ export default function ProductDetail({
       // ส่วนช่วงที่บังคับ 1 ลาย/หน่วย เพดาน = จำนวนที่สั่ง ซึ่งเป็นเลขจริง ห้ามเอา 99 ไปกดทับ
       // (เคยพลาด: สั่ง 100 เซ็ต ควรคละได้ 100 ลาย แต่โดนตัดเหลือ 99)
       Math.max(1, finiteOr(mixMaxDesigns(mixRule, qty), 99))
-    : tierByDesign
-      ? qty
-      : rate?.minPerDesign
-        ? maxDesignsFor(rate, qty, unitCap ?? 1)
-        : 0;
+    : // 🔒 สินค้าที่ล็อกโควตาไว้ (ขั้นต่ำต่อลายเป็นข้อจำกัดการผลิตจริง) — ตันที่โควตาของเรท ไม่ปล่อยให้เลยไปเรทต่อลาย
+      hardMaxDesigns && rate?.minPerDesign
+      ? maxDesignsFor(rate, qty, unitCap ?? 1)
+      : tierByDesign
+        ? qty
+        : rate?.minPerDesign
+          ? maxDesignsFor(rate, qty, unitCap ?? 1)
+          : 0;
   // เพดานจากจำนวนชิ้นที่ใส่ได้จริง ทับกติกาอื่นเสมอ — ใส่ไม่ลงแผ่นก็ผลิตไม่ได้
   const maxDesigns = maxDesignsRaw > 0 ? Math.max(1, Math.min(maxDesignsRaw, capByPieces)) : maxDesignsRaw;
   // "ระบุจำนวนลายแล้ว" = แตะ +/− หรือพิมพ์เลขเอง หรือแนบรูปให้ระบบนับ — สินค้าที่มีระบบลายต้องระบุก่อนสั่ง
@@ -3726,9 +3731,12 @@ export default function ProductDetail({
                     รวมในราคา {included.toLocaleString("th-TH")} ลาย (ขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"})
                     {rate.extraDesignFee
                       ? ` · คละเกินได้ ลายละ +${formatPrice(rate.extraDesignFee)}`
-                      : tierByDesign
-                        ? " · คละเกินได้เลย — ราคาจะปรับเป็นเรทตามชิ้นต่อลาย"
-                        : " · เพิ่มลายได้ด้วยการเพิ่มจำนวนสั่ง"}
+                      : hardMaxDesigns
+                        ? /* โควตาล็อกไว้ — บอกเพดานตรง ๆ ว่าคละได้ถึงไหน และต้องทำยังไงถึงจะคละได้มากกว่านี้ */
+                          ` · สั่ง ${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} คละได้สูงสุด ${maxDesigns.toLocaleString("th-TH")} ลาย — อยากคละมากกว่านี้ ต้องเพิ่มจำนวนสั่ง (เพิ่มลายละ ${rate.minPerDesign.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"})`
+                        : tierByDesign
+                          ? " · คละเกินได้เลย — ราคาจะปรับเป็นเรทตามชิ้นต่อลาย"
+                          : " · เพิ่มลายได้ด้วยการเพิ่มจำนวนสั่ง"}
                   </p>
                   ) : null}
                   {/* แนบภาพลายมากกว่าจำนวนลายที่นับไว้ → เตือน (ราคา/เงื่อนไขคิดตามจำนวนลาย) */}

@@ -199,6 +199,8 @@ type DraftPricing = {
   cells: Record<string, string[]>;
   /** คิดเรทตามจำนวนชิ้น "ต่อลาย" — คละ 11 ลายใน 11 ชิ้น = เรทราคาปลีก (กันคละลายเยอะแต่ได้เรทส่ง) */
   tierByDesign: boolean;
+  /** 🔒 ห้ามคละเกินโควตาเรท — ช่อง "คละกี่ลาย" ของลูกค้าตันที่ ⌊จำนวน ÷ ขั้นต่ำต่อลาย⌋ */
+  hardMaxDesigns: boolean;
 };
 /** หนึ่งช่วงของตารางค่าคละลาย (กรอกเป็น string) */
 type DraftMixTier = { fromQty: string; baseFee: string; includedDesigns: string; extraFee: string; onePerUnit: boolean };
@@ -539,8 +541,9 @@ function toDraft(p: Product): Draft {
             Object.entries(p.pricing.cells).map(([k, v]) => [k, v.map((n) => String(n))])
           ),
           tierByDesign: !!p.tierByDesign,
+          hardMaxDesigns: !!p.hardMaxDesigns,
         }
-      : { enabled: false, unit: "ชิ้น", driverLabels: [], tiers: [], cells: {}, tierByDesign: !!p.tierByDesign },
+      : { enabled: false, unit: "ชิ้น", driverLabels: [], tiers: [], cells: {}, tierByDesign: !!p.tierByDesign, hardMaxDesigns: !!p.hardMaxDesigns },
     mix: {
       on: !!p.mixRule,
       // มีตารางแล้วใช้ตาราง · ของเก่าที่ตั้งเป็นค่าเดี่ยว แปลงเป็นตาราง 1-2 แถวให้อัตโนมัติ
@@ -3881,6 +3884,8 @@ export default function ProductEditor({ product }: { product: Product }) {
       priceRates,
       // คิดเรทตามชิ้นต่อลาย — มีผลเฉพาะเมื่อเปิดตารางราคาขั้นบันไดอยู่
       tierByDesign: pricing && draft.pricing.tierByDesign ? true : undefined,
+      // ล็อกโควตาคละลาย — คู่กับ tierByDesign เท่านั้น (ปิดตารางราคาแล้วไม่มีโควตาให้ล็อก)
+      hardMaxDesigns: pricing && draft.pricing.hardMaxDesigns ? true : undefined,
       // ค่าคละลายแบบคิดต่อหน่วย — ต้องมีค่าคละเหมาถึงจะถือว่าตั้งจริง (ไม่งั้นเปิดสวิตช์เปล่า ๆ ก็ไม่มีผล)
       mixRule: (() => {
         if (!draft.mix.on) return undefined;
@@ -4106,6 +4111,7 @@ export default function ProductEditor({ product }: { product: Product }) {
         tiers: p.pricing.tiers.map((t) => ({ upTo: t.upTo == null ? "" : String(t.upTo), label: t.label })),
         cells: Object.fromEntries(Object.entries(p.pricing.cells).map(([k, v]) => [k, v.map(String)])),
         tierByDesign: draft.pricing.tierByDesign,
+        hardMaxDesigns: draft.pricing.hardMaxDesigns,
       },
       ...(photos.length ? { photos } : {}),
     });
@@ -5035,6 +5041,23 @@ export default function ProductEditor({ product }: { product: Product }) {
                 (หน้าสินค้าจะมีช่อง &ldquo;คละกี่ลาย&rdquo; ให้ลูกค้าเลือก และนับอัตโนมัติตามรูปลายที่แนบ)
               </span>
             </label>
+
+            {/* ล็อกโควตาคละลาย — ใช้ได้เมื่อคิดเรทตามชิ้นต่อลายเท่านั้น (โควตามาจาก "ขั้นต่ำลายละ N" ของเรท) */}
+            {draft.pricing.tierByDesign && (
+              <label className="mb-2.5 ml-6 flex cursor-pointer items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 ring-1 ring-rose-100">
+                <input
+                  type="checkbox"
+                  checked={draft.pricing.hardMaxDesigns}
+                  onChange={(e) => patchPricing({ hardMaxDesigns: e.target.checked })}
+                  className="mt-0.5 h-4 w-4 accent-rose-600"
+                />
+                <span className="text-xs leading-relaxed text-rose-900">
+                  <span className="font-bold">🔒 ห้ามคละเกินโควตา</span> — ปกติลูกค้าคละเกินได้ แล้วราคาตกไปเรทต่อลายเอง
+                  · เปิดอันนี้แล้วช่อง &ldquo;คละกี่ลาย&rdquo; จะตันที่โควตา (⌊จำนวน ÷ ขั้นต่ำลายละ N⌋)
+                  อยากคละมากกว่านี้ต้องเพิ่มจำนวนสั่งเท่านั้น — ใช้กับงานที่ขั้นต่ำต่อลายเป็นข้อจำกัดการผลิตจริง เช่น เคสมือถือ ลายละ 3 ชิ้น
+                </span>
+              </label>
+            )}
 
             {/* ── ค่าคละลายแบบคิดเป็นเงินต่อหน่วย ──
                 ต่างจากช่องบน: อันบนลด "เรทราคา" ตามจำนวนลาย · อันนี้ราคาเรทเท่าเดิม แต่บวกค่าคละตรง ๆ

@@ -4,7 +4,16 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LINE_URL } from "@/components/LineButton";
-import { activeRate, formatPrice, productPath, RATE_LABEL } from "@/lib/products";
+import {
+  activeRate,
+  designCountOf,
+  DESIGN_LABEL,
+  formatPrice,
+  maxDesignsFor,
+  perUnitCapacity,
+  productPath,
+  RATE_LABEL,
+} from "@/lib/products";
 import {
   fetchShopPayment,
   freeShippingMinOf,
@@ -103,16 +112,30 @@ export default function CartPage() {
     if (next < 1) return;
     const p = productOf(item.productId);
     const rates = p?.priceRates ?? [];
-    const cur = p ? activeRate(p, item.selections) : undefined;
-    if (p && rates.length > 1 && cur && (cur.minQty ?? 1) > next) {
+    let rate = p ? activeRate(p, item.selections) : undefined;
+    let selections = item.selections;
+    if (p && rates.length > 1 && rate && (rate.minQty ?? 1) > next) {
       const fit = [...rates]
         .filter((r) => (r.minQty ?? 1) <= next)
         .sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
-      if (fit && fit.label !== cur.label) {
-        removeItem(item.key);
-        addItem(item.productId, { ...item.selections, [RATE_LABEL]: fit.label }, next, p);
-        return;
+      if (fit && fit.label !== rate.label) {
+        selections = { ...selections, [RATE_LABEL]: fit.label };
+        rate = fit;
       }
+    }
+    /*
+     * 🔒 สินค้าที่ล็อกโควตาคละลาย (hardMaxDesigns) — ลดจำนวนในตะกร้าแล้วโควตาลายต้องหดตามด้วย
+     * ไม่งั้นเลี่ยงกติกาได้: สั่ง 12 ชิ้นคละ 4 ลายที่หน้าสินค้า แล้วมาลดเหลือ 11 ชิ้นในตะกร้า
+     */
+    if (p?.hardMaxDesigns && rate?.minPerDesign) {
+      const cap = maxDesignsFor(rate, next, perUnitCapacity(p, selections) ?? 1);
+      if (designCountOf(selections) > cap) selections = { ...selections, [DESIGN_LABEL]: `${cap} ลาย` };
+    }
+    // เปลี่ยนตัวเลือก = คนละรายการในตะกร้า (key คิดจาก selections) จึงต้องถอดของเดิมแล้วใส่ใหม่
+    if (selections !== item.selections) {
+      removeItem(item.key);
+      addItem(item.productId, selections, next, p);
+      return;
     }
     setQty(item.key, next);
   }
