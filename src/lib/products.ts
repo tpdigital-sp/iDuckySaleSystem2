@@ -321,12 +321,14 @@ export function inputError(opt: ProductOption, stored: string | undefined): stri
 
 /**
  * 📐 สเปกคำนวณ "จำนวนชิ้นโดยประมาณต่อแผ่นวัสดุ" ของคู่ช่องกรอกกว้าง×สูง (ดู ProductOption.sheetYield)
- * ขนาดแผ่นเป็นหน่วยเดียวกับที่ลูกค้ากรอก (เช่น ซม. — A3 = 29.7 × 42)
+ * ขนาดเป็นหน่วยเดียวกับที่ลูกค้ากรอก (ซม.) — ตัวเลขและวิธีวางอิงโปรแกรมจัดวางจริงของร้าน
+ * (Print-Fit บน Desktop): ชีท Dicut 100% 48.3×33 ซม. พื้นที่พิมพ์ 44.76×29.89 หักขอบเผื่อ 0.5
+ * รอบด้าน → พื้นที่วางจริง 43.76×28.89 · ระยะห่างระหว่างชิ้น 0.5
  */
 export interface SheetYield {
   /** ชื่อกลุ่มช่องกรอก "ด้านกว้าง" ที่ใช้คู่กัน (กลุ่มที่ตั้ง sheetYield เองคือด้านสูง) */
   pairLabel: string;
-  /** ขนาดแผ่นวัสดุ ด้านกว้าง × ด้านยาว */
+  /** พื้นที่วางชิ้นงานจริง ด้านกว้าง × ด้านยาว (หักขอบพื้นที่พิมพ์/ขอบเผื่อออกแล้ว) */
   sheetW: number;
   sheetH: number;
   /**
@@ -339,8 +341,59 @@ export interface SheetYield {
 }
 
 /**
+ * วางชิ้นขนาดเดียวกันให้ได้มากที่สุดในกล่อง — พอร์ตจากโปรแกรมจัดวาง Print-Fit ของร้าน
+ * (MaxRects: ชิ้นถูกบวกระยะห่างรอบตัว กล่องขยายด้วยระยะห่างหนึ่งข้าง จึงคิดช่องไฟเฉพาะระหว่างชิ้น
+ *  หมุนได้รายชิ้น · ให้คะแนนช่องว่างแบบ Best Short Side Fit / Best Area Fit แล้วเอาค่าที่ดีกว่า)
+ */
+function packSingleSize(itemW: number, itemH: number, binW: number, binH: number, gap: number): number {
+  const w = itemW + gap;
+  const h = itemH + gap;
+  let best = 0;
+  for (const heuristic of ["BSSF", "BAF"] as const) {
+    const free: { x: number; y: number; w: number; h: number }[] = [
+      { x: 0, y: 0, w: binW + gap, h: binH + gap },
+    ];
+    let count = 0;
+    // เพดานกันลูป (ชิ้นเล็กสุด 1 ซม. วางได้ราวห้าร้อยกว่าชิ้น) — ถึงเพดานคือ "เยอะมาก" พอสำหรับตัวเลขบอกทาง
+    while (count < 2000) {
+      let fit = { score: Infinity, at: -1, rot: false };
+      for (let i = 0; i < free.length; i++) {
+        const r = free[i];
+        if (w <= r.w && h <= r.h) {
+          const score = heuristic === "BSSF" ? Math.min(r.w - w, r.h - h) : r.w * r.h - w * h;
+          if (score < fit.score) fit = { score, at: i, rot: false };
+        }
+        if (h <= r.w && w <= r.h) {
+          const score = heuristic === "BSSF" ? Math.min(r.w - h, r.h - w) : r.w * r.h - h * w;
+          if (score < fit.score) fit = { score, at: i, rot: true };
+        }
+      }
+      if (fit.at < 0) break;
+      const target = free.splice(fit.at, 1)[0];
+      const pw = fit.rot ? h : w;
+      const ph = fit.rot ? w : h;
+      count++;
+      const contains = (a: (typeof free)[0], b: (typeof free)[0]) =>
+        a.x >= b.x && a.y >= b.y && a.x + a.w <= b.x + b.w && a.y + a.h <= b.y + b.h;
+      const placed = { x: target.x, y: target.y, w: pw, h: ph };
+      for (let i = free.length - 1; i >= 0; i--) if (contains(free[i], placed)) free.splice(i, 1);
+      if (ph < target.h) free.push({ x: target.x, y: target.y + ph, w: target.w, h: target.h - ph });
+      if (pw < target.w) free.push({ x: target.x + pw, y: target.y, w: target.w - pw, h: ph });
+      for (let i = free.length - 1; i >= 0; i--)
+        for (let j = free.length - 1; j >= 0; j--)
+          if (i !== j && contains(free[i], free[j])) {
+            free.splice(i, 1);
+            break;
+          }
+    }
+    if (count > best) best = count;
+  }
+  return best;
+}
+
+/**
  * จำนวนชิ้นโดยประมาณต่อ 1 แผ่น จากค่าที่ลูกค้ากรอก (กว้างจากกลุ่ม pairLabel × สูงจากกลุ่มนี้)
- * เรียงแนวตรงเลือกแนวที่ได้เยอะกว่า — null = ไม่ได้ตั้ง sheetYield หรือยังกรอกไม่ครบ · 0 = ใหญ่เกินแผ่น
+ * จัดวางแบบเดียวกับโปรแกรม Print-Fit — null = ไม่ได้ตั้ง sheetYield หรือยังกรอกไม่ครบ · 0 = ใหญ่เกินแผ่น
  */
 export function sheetYieldCount(
   product: Product,
@@ -354,11 +407,7 @@ export function sheetYieldCount(
   const w = Number(parseInputValue(pair, selections[pair.label]));
   const h = Number(parseInputValue(opt, selections[opt.label]));
   if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
-  // n ชิ้นต่อแกน = n×ชิ้น + (n-1)×gap ≤ แผ่น → ⌊(แผ่น + gap) ÷ (ชิ้น + gap)⌋ (gap คิดเฉพาะระหว่างชิ้น)
-  const gap = cfg.gap ?? 0;
-  const across = (piece: number, sheet: number) => Math.floor((sheet + gap) / (piece + gap));
-  const fit = (a: number, b: number) => across(a, cfg.sheetW) * across(b, cfg.sheetH);
-  return Math.max(fit(w, h), fit(h, w));
+  return packSingleSize(w, h, cfg.sheetW, cfg.sheetH, cfg.gap ?? 0);
 }
 
 /** ตัวคั่นค่าของกลุ่ม "เลือกได้หลายอย่าง" (display: 'multi') เมื่อเก็บลง selections */

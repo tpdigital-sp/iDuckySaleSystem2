@@ -1679,8 +1679,8 @@ export default function ProductDetail({
                             const gapNote = gap > 0 ? ` เว้นระยะระหว่างชิ้น ${Math.round(gap * 10)} มม.` : "";
                             return n >= 1 ? (
                               <p className="mt-1 text-[11px] font-bold text-teal-700">
-                                📐 ขนาดนี้ได้ประมาณ {n} ชิ้น ต่อ 1 {sheet} (ตัวเลขคร่าว ๆ จากการเรียงแนวตรง{gapNote} —
-                                จำนวนจริงขึ้นกับรูปทรงลายและการจัดวาง)
+                                📐 ขนาดนี้ได้ประมาณ {n} ชิ้น ต่อ 1 {sheet} (จัดวางบนพื้นที่พิมพ์จริง{gapNote} —
+                                ตัวเลขคร่าว ๆ จำนวนจริงขึ้นกับรูปทรงลาย)
                               </p>
                             ) : (
                               <p className="mt-1 text-[11px] font-bold text-rose-600">
