@@ -1,7 +1,7 @@
 "use client";
 
 import { productAutoSeo } from "@/lib/auto-seo";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   activeMatrix,
@@ -12,6 +12,7 @@ import {
   INPUT_MAX_LEN,
   isInputOption,
   sheetYieldCount,
+  unitYieldOf,
   isMadeToOrderOption,
   madeToOrderOn,
   optionActive,
@@ -339,9 +340,12 @@ export default function ProductDetail({
    * จำนวนตั้งต้น — สินค้าที่บังคับขั้นต่ำต่อลาย (hardMinPerDesign) เปิดหน้ามาก็เริ่มที่ขั้นต่ำเลย
    * (เริ่มที่ 1 แล้วให้ลูกค้าเจอปุ่มล็อก "ขั้นต่ำ 5 ชิ้น" เอง = เสียจังหวะฟรี)
    */
-  const initialQty = initialProduct.hardMinPerDesign
-    ? Math.max(1, initialProduct.priceRates?.[0]?.minPerDesign ?? 1)
-    : 1;
+  const initialQty = Math.max(
+    initialProduct.hardMinPerDesign ? (initialProduct.priceRates?.[0]?.minPerDesign ?? 1) : 1,
+    // ขั้นต่ำต่อออเดอร์ของเรทแรก (hardMinQty) เช่น สติ๊กเกอร์ UV เริ่มขายที่ 3 แผ่น A3
+    initialProduct.hardMinQty ? (initialProduct.priceRates?.[0]?.minQty ?? 1) : 1,
+    1
+  );
   const [qty, setQty] = useState(initialQty);
   // 🔍 รูปที่กำลังเปิดดูขนาดใหญ่ (lightbox) — ว่าง = ปิดอยู่
   const [zoomSrc, setZoomSrc] = useState("");
@@ -567,17 +571,28 @@ export default function ProductDetail({
   }, [resolved, rate, selections]);
   const rateMinQty = rate?.minQty ?? 1;
   /**
+   * 🔒 จำนวนต่ำสุดที่กดลงได้ — ปกติคือ 1 (ร้านรับสั่งขั้นต่ำ 1 ชิ้นเสมอ)
+   * สินค้าที่ตั้ง hardMinQty ใช้ขั้นต่ำของเรทที่เลือกเป็นพื้น เช่น สติ๊กเกอร์ UV เรท A3 = 3 แผ่น
+   */
+  const qtyFloor = product.hardMinQty ? rateMinQty : 1;
+  /** เปลี่ยนเรทแล้วจำนวนต่ำกว่าขั้นต่ำของเรทใหม่ → ดันขึ้นให้ถึงขั้นต่ำ (ไม่ปล่อยให้ค้างต่ำกว่าเกณฑ์) */
+  useEffect(() => {
+    if (!product.hardMinQty || useCustom) return;
+    setQty((q) => (q < qtyFloor ? qtyFloor : q));
+  }, [qtyFloor, product.hardMinQty, useCustom]);
+  /**
    * ร้านรับสั่งขั้นต่ำ 1 ชิ้นเสมอ — ห้ามบล็อกการสั่งเพราะ "เรทที่เลือกไว้" มีขั้นต่ำสูง
    * ลูกค้ากดเลือกเรทส่งเองแล้วลดจำนวนลงต่ำกว่าขั้นต่ำ → สลับลงเรทที่รับจำนวนนั้นได้ (ปกติคือเรทปลีก)
    * ราคาจึงถูกต้องเสมอ และปุ่มสั่งซื้อไม่ตายอีก
+   * (สินค้าที่ตั้ง hardMinQty ไม่สลับ — ขั้นต่ำเป็นของจริง ดันจำนวนขึ้นแทน)
    */
   useEffect(() => {
-    if (useCustom || rates.length === 0 || qty >= rateMinQty) return;
+    if (product.hardMinQty || useCustom || rates.length === 0 || qty >= rateMinQty) return;
     const fit = [...rates]
       .filter((r) => (r.minQty ?? 1) <= qty)
       .sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
     if (fit && fit.label !== rate?.label) setRateLabel(fit.label);
-  }, [qty, rateMinQty, useCustom, rates, rate]);
+  }, [qty, rateMinQty, useCustom, rates, rate, product.hardMinQty]);
 
   // ── จำนวนลายที่คละ (เรทที่กำหนดขั้นต่ำต่อลาย / สินค้าที่คิดเรทตามชิ้นต่อลาย) ──
   const [designs, setDesigns] = useState(1);
@@ -597,6 +612,11 @@ export default function ProductDetail({
    */
   const unitCap = perUnitCapacity(product, effective);
   const capByPieces = unitCap ? unitCap * Math.max(1, qty) : Infinity;
+  /**
+   * 📐 งานแบ่งแผ่น/ไดคัทตามขนาด — สั่ง 1 หน่วยได้งานกี่ชิ้น (ดู unitYieldOf)
+   * ใช้สรุปให้ลูกค้าว่า "สั่ง 10 แผ่น A3 ขนาดตัด A5 = ได้ 40 ชิ้น" · ไม่เกี่ยวกับราคา
+   */
+  const unitYield = useMemo(() => unitYieldOf(product, effective), [product, effective]);
   // ลายที่รวมในราคาตามจำนวนที่สั่ง · เรทที่เปิด extraDesignFee คละเกินได้ (จ่ายเพิ่มต่อลาย ไม่เกินจำนวนชิ้น)
   // ส่ง unitCap ไปด้วยเสมอ — สินค้าขายเป็นเซ็ต โควตาช่วงคละอิสระต้องนับเป็นชิ้น ไม่ใช่จำนวนเซ็ต
   const included = rate?.minPerDesign ? includedDesigns(rate, qty, unitCap ?? 1) : 0;
@@ -659,6 +679,11 @@ export default function ProductDetail({
   const hardMin = product.hardMinPerDesign ? (rate?.minPerDesign ?? 0) : 0;
   const hardMinNeed = hardMin * Math.max(1, designs);
   const belowMin = !useCustom && hardMin > 0 && qty < hardMinNeed;
+  /**
+   * 🔒 ยอดสั่งขั้นต่ำของเรทแบบแข็ง (hardMinQty) — กันจำนวนที่มาจากทางอื่นหลุดต่ำกว่าเกณฑ์
+   * (ช่องจำนวนกันไว้แล้ว แต่จำนวนที่คิดจาก "จัดลายเอง" ไม่ได้ผ่านช่องนั้น)
+   */
+  const belowMinQty = !useCustom && product.hardMinQty === true && qty < rateMinQty;
   // จำนวนลายติดไปกับ selections ตั้งแต่ตอนดูราคา → ราคาสด/ตะกร้า/ออเดอร์คิดเรทตามชิ้นต่อลายตรงกัน
   const effectiveWithDesigns = useMemo(
     () =>
@@ -772,6 +797,15 @@ export default function ProductDetail({
 
   // ตารางราคาที่ใช้อยู่ (ตามเรทที่เลือก — สินค้าเรทเดียวคือ pricing เดิม)
   const matrix = useMemo(() => activeMatrix(product, effective), [product, effective]);
+  /**
+   * 📐 จำนวนงานรวมที่ได้จากจำนวนที่สั่งอยู่ตอนนี้ (เช่น 10 แผ่น A3 ตัด A5 = 40 ชิ้น)
+   * null = ยังไม่รู้ หรือคูณไม่ได้เพราะหน่วยที่นับไม่ใช่หน่วยขาย
+   * (เรทที่ขายเป็น ตร.ม. แต่ตัวเลขนับต่อแผ่น A3 — 1 ตร.ม. ไม่ใช่ 1 แผ่น)
+   */
+  const yieldTotal =
+    unitYield && unitYield.per > 0 && (unitYield.unit == null || unitYield.unit === (matrix?.unit ?? ""))
+      ? unitYield.per * qty
+      : null;
 
   // ตัวเลือกที่แอดมินล้างราคาทิ้งในเรทนี้ (ไม่ขาย) → ถ้าลูกค้าค้างอยู่ที่ตัวนั้น สลับให้เป็นตัวแรกที่ขาย
   useEffect(() => {
@@ -1685,8 +1719,18 @@ export default function ProductDetail({
                             const gapNote = gap > 0 ? ` เว้นระยะระหว่างชิ้น ${Math.round(gap * 10)} มม.` : "";
                             return n >= 1 ? (
                               <p className="mt-1 text-[11px] font-bold text-teal-700">
-                                📐 ขนาดนี้ได้ประมาณ {n} ชิ้น ต่อ 1 {sheet} (จัดวางบนพื้นที่พิมพ์จริง{gapNote} —
-                                ตัวเลขคร่าว ๆ จำนวนจริงขึ้นกับรูปทรงลาย)
+                                📐 ขนาดนี้ได้ประมาณ {n} ชิ้น ต่อ 1 {sheet}
+                                {/* คูณจำนวนที่สั่งให้เลย — แต่เฉพาะเรทที่ขายเป็นแผ่นเดียวกัน (เรท ตร.ม. คูณตรง ๆ ไม่ได้) */}
+                                {yieldTotal != null && (
+                                  <>
+                                    {" "}
+                                    · สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? sheet} ={" "}
+                                    <span className="font-extrabold text-teal-900">
+                                      ได้ประมาณ {yieldTotal.toLocaleString("th-TH")} ชิ้น
+                                    </span>
+                                  </>
+                                )}{" "}
+                                (จัดวางบนพื้นที่พิมพ์จริง{gapNote} — ตัวเลขคร่าว ๆ จำนวนจริงขึ้นกับรูปทรงลาย)
                               </p>
                             ) : (
                               <p className="mt-1 text-[11px] font-bold text-rose-600">
@@ -2027,6 +2071,20 @@ export default function ProductDetail({
                       = แบบที่ลูกค้าสั่งบ่อยที่สุด (ทางร้านแนะนำ)
                     </p>
                   )}
+                  {/*
+                    * 📐 งานแบ่งแผ่น — เลือกขนาดตัดแล้วสรุปว่าจำนวนที่สั่งอยู่ตอนนี้ได้งานกี่ชิ้น
+                    * (ป้ายบนปุ่มบอกแค่ "ต่อ 1 หน่วย" ลูกค้าต้องคูณเอง — คูณให้เลยตรงนี้)
+                    */}
+                  {unitYield && !unitYield.approx && unitYield.label === opt.label && yieldTotal != null && (
+                    <p className="mt-1.5 rounded-xl bg-teal-50 px-3 py-2 text-[11px] leading-relaxed text-teal-800 ring-1 ring-teal-100">
+                      📐 {opt.label} <span className="font-bold">{unitYield.size}</span> ได้{" "}
+                      <span className="font-bold">{unitYield.per.toLocaleString("th-TH")} ชิ้น</span> ต่อ 1{" "}
+                      {matrix?.unit ?? "ชิ้น"} · สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} ={" "}
+                      <span className="font-extrabold text-teal-900">
+                        ได้ {yieldTotal.toLocaleString("th-TH")} ชิ้น
+                      </span>
+                    </p>
+                  )}
                   {/* 📄 ค่าธรรมเนียมที่คิดต่อแผ่นวัสดุ — กางเลขให้เห็นว่าทำไมสั่งเกินโควตาแผ่นแล้วราคาขยับ */}
                   {opt.sheetFee && (() => {
                     const per = perSheetOf(product, opt, effective);
@@ -2152,8 +2210,9 @@ export default function ProductDetail({
           {rates.map((r) => {
             const on = r.label === rate.label;
             // จำนวนที่สั่งอยู่ยังไม่ถึงขั้นต่ำของเรทนี้ = กดเลือกไม่ได้ (กดแล้วขึ้นป๊อปอัปบอกเหตุผลแทน)
+            // สินค้าที่ตั้ง hardMinQty เลือกได้เสมอ — กดแล้วดันจำนวนขึ้นให้ถึงขั้นต่ำของเรทนั้นแทนการล็อก
             const need = r.minQty ?? 1;
-            const locked = need > qty;
+            const locked = !product.hardMinQty && need > qty;
             return (
               <button
                 key={r.id}
@@ -2168,6 +2227,11 @@ export default function ProductDetail({
                   setRateLabel(r.label);
                   setAutoRateNote("");
                   jumpToImage(r.imageSrc);
+                  // เรทใหม่ขั้นต่ำสูงกว่าจำนวนที่สั่งอยู่ → ดันขึ้นให้ถึงขั้นต่ำทันที (ช่องตัวเลขต้องตามด้วย)
+                  if (product.hardMinQty && need > qty) {
+                    setQty(need);
+                    setQtyText(String(need));
+                  }
                 }}
                 className={`rounded-xl px-3 py-2 text-left text-[13px] transition ${
                   on
@@ -2239,6 +2303,29 @@ export default function ProductDetail({
   const areaOn = product.areaPricing?.enabled === true;
   const areaDriver = (opt: ProductOption) =>
     areaOn && (matrix?.driverLabels ?? []).includes(opt.label);
+  /** กลุ่มตัวเลือกที่แสดงให้ลูกค้าเลือกอยู่ตอนนี้ (เรียงตามที่ตั้งไว้) */
+  const visibleOptions = product.options.filter(
+    (opt) => !isMadeToOrderOption(opt) && optionVisible(opt, effective) && !areaDriver(opt)
+  );
+  /**
+   * แผงเรทไปแทรกใต้กลุ่มลำดับที่เท่าไหร่ (product.rateAfterOption) · -1 = ไม่แทรก ใช้ตำแหน่งบน/ล่างตามเดิม
+   * นับกลุ่มที่ "ขึ้นกับกลุ่มนั้น" ที่ต่อท้ายกันมาเป็นพวกเดียวกันด้วย — เช่น ผิวเนื้อขาว ที่โผล่เมื่อเลือก
+   * เนื้อขาว ต้องอยู่ติดกับเนื้อสติ๊กเกอร์ ไม่ใช่โดนแผงเรทมาคั่นกลาง
+   */
+  const ratePickerAfterIdx = (() => {
+    if (!product.rateAfterOption) return -1;
+    const at = visibleOptions.findIndex((o) => o.label === product.rateAfterOption);
+    if (at < 0) return -1; // ชื่อไม่ตรง/กลุ่มถูกซ่อนอยู่ — อย่าให้แผงเรทหายไปทั้งอัน
+    let last = at;
+    while (
+      last + 1 < visibleOptions.length &&
+      [visibleOptions[last + 1].showWhen?.label, visibleOptions[last + 1].showWhenAlso?.label].includes(
+        product.rateAfterOption
+      )
+    )
+      last++;
+    return last;
+  })();
   /** วิธีคิดราคาจากขนาดที่ลูกค้ากรอก (null = ยังกรอกไม่ครบ) — โชว์ให้ลูกค้าเห็นว่าราคามาจากไหน */
   const areaBreakdown = useMemo(
     () => areaPriceBreakdown(product, effective, qty),
@@ -2783,8 +2870,9 @@ export default function ProductDetail({
             )}
           </div>
 
-          {/* เลือกเรทราคา — ค่าเริ่มต้นอยู่เหนือกลุ่มตัวเลือก (สินค้าที่ตั้ง rateAfterOptions จะไปโผล่ใต้แทน) */}
-          {!product.rateAfterOptions && ratePickerUI}
+          {/* เลือกเรทราคา — ค่าเริ่มต้นอยู่เหนือกลุ่มตัวเลือก
+              (rateAfterOption = แทรกใต้กลุ่มที่ระบุ · rateAfterOptions = ใต้กลุ่มทั้งหมด) */}
+          {!product.rateAfterOptions && ratePickerAfterIdx < 0 && ratePickerUI}
 
           {/* ตัวเลือกสินค้า (กรอง/ล็อกตามกฎเงื่อนไข)
               ใช้ขนาดกำหนดเองอยู่ = ปิดเฉพาะกลุ่มที่แอดมินไม่ได้ตั้งให้ "ยังเลือกได้" (custom.keepOptions) */}
@@ -2803,13 +2891,17 @@ export default function ProductDetail({
           )}
           <div id="opt-groups" className="mt-4 space-y-3">
             {/* กลุ่มที่ตั้ง "แสดงเมื่อ" ไว้ และเงื่อนไขยังไม่ตรง → ไม่ต้องโชว์ (เช่น สีตะขอของแบบที่ไม่ได้เลือก) */}
-            {product.options
-              .filter((opt) => !isMadeToOrderOption(opt) && optionVisible(opt, effective) && !areaDriver(opt))
-              .map((opt) => optionGroupUI(opt))}
+            {visibleOptions.map((opt, i) => (
+              <Fragment key={`grp-${opt.label}`}>
+                {optionGroupUI(opt)}
+                {/* แผงเรทแทรกกลางกลุ่มตัวเลือก — กลุ่มที่อยู่ถัดไปถึงจะขึ้นกับเรทที่เพิ่งเลือกได้ */}
+                {i === ratePickerAfterIdx && ratePickerUI}
+              </Fragment>
+            ))}
           </div>
 
           {/* สินค้าที่ให้เลือกของก่อน แล้วค่อยเลือกวิธีขาย — แผงเรทมาต่อท้ายกลุ่มตัวเลือก */}
-          {product.rateAfterOptions && ratePickerUI}
+          {product.rateAfterOptions && ratePickerAfterIdx < 0 && ratePickerUI}
 
           {/*
             📐 กล่องงานสั่งทำ — รวมทุกอย่างที่ลูกค้าต้อง "ระบุเอง" ไว้ที่เดียว
@@ -3083,7 +3175,9 @@ export default function ProductDetail({
                   <button
                     type="button"
                     // ลดได้ถึง 1 เสมอ — ถ้าต่ำกว่าขั้นต่ำของเรทที่เลือกไว้ ระบบจะสลับลงเรทที่เหมาะเอง
-                    onClick={() => setQty((q) => Math.max(1, q - 1))}
+                    // (สินค้าที่ตั้ง hardMinQty ลดได้แค่ถึงขั้นต่ำจริงของเรท เช่น 3 แผ่น A3)
+                    onClick={() => setQty((q) => Math.max(qtyFloor, q - 1))}
+                    aria-disabled={qty <= qtyFloor}
                     className="h-10 w-10 rounded-l-full text-base font-bold text-stone-600 hover:bg-amber-50"
                     aria-label="ลดจำนวน"
                   >
@@ -3100,7 +3194,12 @@ export default function ProductDetail({
                       const n = parseInt(raw, 10);
                       if (Number.isFinite(n) && n > 0) setQty(Math.min(n, 99999));
                     }}
-                    onBlur={() => setQtyText(String(qty))}
+                    // พิมพ์ต่ำกว่าขั้นต่ำได้ระหว่างแก้ — ออกจากช่องแล้วค่อยดันขึ้นให้ถึงขั้นต่ำ
+                    onBlur={() => {
+                      const fixed = Math.max(qtyFloor, qty);
+                      setQty(fixed);
+                      setQtyText(String(fixed));
+                    }}
                     className="w-14 bg-transparent text-center text-sm font-bold focus:outline-none"
                     aria-label="จำนวน"
                   />
@@ -3129,7 +3228,7 @@ export default function ProductDetail({
                     type="button"
                     onClick={handleAdd}
                     // ขนาดกำหนดเอง = ราคาไม่อิงเรทปกติ → ไม่ติดขั้นต่ำของเรทด้วย (สั่งกี่ชิ้นก็ได้ แอดมินตีราคาตามจริง)
-                    disabled={(useCustom && !customValid) || artBlocked || inputErrors.length > 0 || belowMin}
+                    disabled={(useCustom && !customValid) || artBlocked || inputErrors.length > 0 || belowMin || belowMinQty}
                     className={`flex-1 rounded-full px-5 py-3 text-[13px] font-bold shadow-lg transition sm:flex-none sm:px-8 ${
                       added
                         ? "bg-emerald-500 text-white"
@@ -3146,22 +3245,26 @@ export default function ProductDetail({
                         ? "✍️ กรอกข้อมูลด้านบนให้ครบก่อน"
                         : belowMin
                         ? `⚠ ขั้นต่ำ ${hardMin} ชิ้นต่อลาย — สั่งอย่างน้อย ${hardMinNeed.toLocaleString("th-TH")} ชิ้น`
+                        : belowMinQty
+                        ? `⚠ เรทนี้เริ่มขายที่ ${rateMinQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}`
                         : (useCustom && customAsk) || askQuote
                         ? "🛒 สั่งเลย — แอดมินตีราคาแล้วแจ้งกลับ"
                         : `🛒 เพิ่มลงตะกร้า — ${formatPrice(unitPrice * qty + designFee)}`}
                   </button>
                 )}
 
-                {belowMin && (
+                {(belowMin || belowMinQty) && (
                   <button
                     type="button"
                     onClick={() => {
-                      setQty(hardMinNeed);
-                      setQtyText(String(hardMinNeed));
+                      const need = belowMin ? hardMinNeed : rateMinQty;
+                      setQty(need);
+                      setQtyText(String(need));
                     }}
                     className="shrink-0 rounded-full bg-white px-4 py-2 text-[12px] font-bold text-amber-700 ring-1 ring-amber-300 transition hover:bg-amber-50"
                   >
-                    ปรับเป็น {hardMinNeed.toLocaleString("th-TH")} ชิ้น
+                    ปรับเป็น {(belowMin ? hardMinNeed : rateMinQty).toLocaleString("th-TH")}{" "}
+                    {belowMin ? "ชิ้น" : (matrix?.unit ?? "ชิ้น")}
                   </button>
                 )}
                 {/* โหมดแอดมินยังเปิดจอวางลายเองได้ ถ้าลูกค้าอยากให้จัดลายให้ตรงนี้เลย */}
@@ -3175,6 +3278,25 @@ export default function ProductDetail({
                   </button>
                 )}
               </div>
+              {/*
+                * 📐 สรุปงานแบ่งแผ่น/ไดคัทตามขนาด — ลูกค้าสั่งเป็น "แผ่น A3" แต่อยากรู้ว่าได้งานกี่ชิ้น
+                * (สั่ง 10 แผ่น A3 ขนาดตัด A5 = 40 ชิ้น) · ไม่โชว์ตอนวางลายเอง เพราะจำนวนคุมที่ลายแต่ละอัน
+                */}
+              {yieldTotal != null && !designDone && (
+                <p className="mt-2 rounded-2xl bg-teal-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-teal-900 ring-1 ring-teal-200">
+                  📐 สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} · {unitYield!.label}{" "}
+                  {unitYield!.size} ={" "}
+                  <span className="text-[13px] font-extrabold">
+                    ได้{unitYield!.approx ? "ประมาณ " : " "}
+                    {yieldTotal.toLocaleString("th-TH")} ชิ้น
+                  </span>
+                  <span className="font-semibold text-teal-700">
+                    {" "}
+                    ({unitYield!.per.toLocaleString("th-TH")} ชิ้น ต่อ 1 {matrix?.unit ?? "ชิ้น"}
+                    {unitYield!.approx ? " — จำนวนจริงขึ้นกับรูปทรงลาย" : ""})
+                  </span>
+                </p>
+              )}
               {/* แบบที่ลูกค้าวางเอง — สั่งหลายลายในรายการเดียวได้ กำหนดจำนวนแยกแต่ละลาย */}
               {designDone && (
                 <div className="mt-3 rounded-2xl bg-sky-50 p-2.5 ring-1 ring-sky-200">

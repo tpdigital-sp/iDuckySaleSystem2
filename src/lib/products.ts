@@ -84,6 +84,13 @@ export interface ProductOptionChoice {
    */
   perSheet?: number;
   /**
+   * 📐 เลือกขนาดตัดนี้แล้ว 1 หน่วยที่สั่งได้งานกี่ชิ้น — งาน "แบ่งแผ่น" เช่น ขนาดตัด A5 = 4 ชิ้น / แผ่น A3
+   * ใช้สรุปให้ลูกค้าว่าสั่งกี่หน่วยแล้วได้งานกี่ชิ้น (ดู unitYieldOf) — ตัวเลขบอกทางเฉย ๆ
+   * ไม่มีผลกับราคา/โควตาคละลาย/ตะกร้า (คนละตัวกับ perUnit ที่เป็นเพดานจำนวนลาย)
+   * หน่วยที่อ้างถึงคือหน่วยขายของเรทนั้น — กลุ่มขนาดตัดที่ผูกเรทคนละหน่วย (แผ่น A3 / ตร.ม.) ต้องแยกกลุ่ม
+   */
+  piecesPerUnit?: number;
+  /**
    * 💰 +฿ ของ "ช่วงสั่งน้อย" — ใช้เมื่อจำนวนยังไม่ถึง extraFromQty ของกลุ่ม
    * มีไว้สำหรับกลุ่มที่ช่วงปลีกกับช่วงส่งคิดคนละเรท เช่น สแตนดี้: ช่วงปลีกฐาน 7 ซม.ขึ้นไป
    * คิด ซม.ละ 5 บาท ส่วนช่วงส่ง (11 ชิ้นขึ้นไป) คิดตามตาราง extra ปกติ
@@ -408,6 +415,60 @@ export function sheetYieldCount(
   const h = Number(parseInputValue(opt, selections[opt.label]));
   if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
   return packSingleSize(w, h, cfg.sheetW, cfg.sheetH, cfg.gap ?? 0);
+}
+
+/** 📐 ผลของ unitYieldOf — สั่ง 1 หน่วยแล้วได้งานกี่ชิ้น */
+export interface UnitYield {
+  /** จำนวนชิ้นต่อ 1 หน่วยที่สั่ง · 0 = ขนาดที่กรอกใหญ่เกิน 1 แผ่น */
+  per: number;
+  /** ขนาดที่ทำให้ได้เท่านี้ เช่น "A5" (ขนาดตัด) หรือ "12 × 8 ซม." (ไดคัทตามขนาด) */
+  size: string;
+  /** ชื่อกลุ่มที่ให้ตัวเลขนี้มา เช่น "ขนาดตัด" — ใช้อธิบายที่มาให้ลูกค้า */
+  label: string;
+  /**
+   * per นับต่อ 1 หน่วยอะไร · null = ต่อ 1 หน่วยขายของเรทที่เลือกอยู่ (คูณจำนวนที่สั่งได้ตรง ๆ)
+   * มีชื่อ = ต่อแผ่นวัสดุชื่อนั้น เช่น "แผ่น A3" — เรทที่ขายเป็น ตร.ม. คูณจำนวนที่สั่งตรง ๆ ไม่ได้
+   * (1 ตร.ม. ไม่ใช่ 1 แผ่น A3) ฝั่งที่เอาไปโชว์ต้องเทียบกับหน่วยขายก่อนคูณ
+   */
+  unit: string | null;
+  /** true = คำนวณสดจากการจัดวาง (ไดคัทตามขนาด) จำนวนจริงขึ้นกับรูปทรงลาย · false = ขนาดตัดตายตัว */
+  approx: boolean;
+}
+
+/**
+ * 📐 สั่ง 1 หน่วย (แผ่น A3 / ตร.ม.) แล้วได้งานกี่ชิ้น — งานที่ "แบ่งแผ่น" ทั้งสองแบบมาที่นี่ที่เดียว
+ *  - เลือกขนาดตัดตายตัว (A4-A7) → อ่านจาก ProductOptionChoice.piecesPerUnit
+ *  - ไดคัทตามขนาดที่กรอกเอง → คำนวณจากการจัดวางเหมือน sheetYieldCount
+ * เอากลุ่มที่ "แสดงอยู่จริง" ตัวแรกที่อ่านได้ (สินค้าจริงมีกลุ่มที่โผล่พร้อมกันได้กลุ่มเดียว —
+ * ขนาดตัดของแต่ละเรทแยกกลุ่มกันด้วย showWhenAlso อยู่แล้ว)
+ * null = งานนี้ไม่ได้แบ่งแผ่น (1 หน่วย = 1 ชิ้น) หรือยังเลือก/กรอกไม่ครบ
+ */
+export function unitYieldOf(product: Product, selections: Record<string, string>): UnitYield | null {
+  for (const opt of product.options ?? []) {
+    if (!optionActive(opt, selections)) continue;
+    const picked = selections[opt.label];
+    const choice = picked ? opt.choices.find((c) => c.name === picked) : undefined;
+    if (choice?.piecesPerUnit && choice.piecesPerUnit > 0) {
+      return { per: choice.piecesPerUnit, size: choice.name, label: opt.label, unit: null, approx: false };
+    }
+    if (!opt.sheetYield) continue;
+    const per = sheetYieldCount(product, opt, selections);
+    if (per == null) continue;
+    const pair = product.options.find((o) => o.label === opt.sheetYield!.pairLabel);
+    const unit = opt.input?.unit ?? "";
+    const w = pair ? parseInputValue(pair, selections[pair.label]) : "";
+    const h = parseInputValue(opt, selections[opt.label]);
+    return {
+      per,
+      size: `${w} × ${h}${unit ? ` ${unit}` : ""}`,
+      // คู่ช่องกว้าง/สูงตั้งชื่อว่า "ขนาดไดคัท (กว้าง)" / "ขนาดไดคัท (สูง)" — ตัดวงเล็บท้ายออก
+      // ให้เหลือชื่อขนาดเดียว ไม่งั้นสรุปอ่านเป็น "ขนาดไดคัท (สูง) 5 × 5 ซม." ซึ่งงง
+      label: opt.label.replace(/\s*\([^()]*\)\s*$/, "").trim() || opt.label,
+      unit: opt.sheetYield.sheetName ?? "แผ่น",
+      approx: true,
+    };
+  }
+  return null;
 }
 
 /** ตัวคั่นค่าของกลุ่ม "เลือกได้หลายอย่าง" (display: 'multi') เมื่อเก็บลง selections */
@@ -1240,6 +1301,13 @@ export interface Product {
    */
   rateAfterOptions?: boolean;
   /**
+   * วางแผงเลือกเรทราคาไว้ "ใต้กลุ่มที่ระบุ" — เจาะจงกว่า rateAfterOptions (ได้แค่บนสุด/ล่างสุด)
+   * ใช้เมื่อมีกลุ่มที่ขึ้นกับเรท ต้องให้เลือกเรทก่อนถึงจะเจอกลุ่มนั้น
+   * เช่น สติ๊กเกอร์ UV — เนื้อสติ๊กเกอร์ → เรทราคา (A3/ตร.ม.) → แบบไดคัท → ขนาดตัดของเรทนั้น
+   * ชื่อกลุ่มไม่ตรง/กลุ่มถูกซ่อนอยู่ = ตกกลับไปใช้ตำแหน่งตาม rateAfterOptions ตามเดิม
+   */
+  rateAfterOption?: string;
+  /**
    * คิดเรทราคาตามจำนวนชิ้น "ต่อลาย" ไม่ใช่ยอดรวม — สำหรับสินค้าที่คละลายแล้วต้นทุนไม่ลด
    * เช่น เคส 11 ชิ้นคละ 11 ลาย = ลายละ 1 ชิ้น → คิดเรทราคาปลีก (ราคารวมยังคูณ 11 ชิ้นตามเดิม)
    */
@@ -1313,6 +1381,13 @@ export interface Product {
    * ขั้นต่ำจริง ๆ (เช่น อาร์มปัก 5 ชิ้น/ลาย) ตั้งธงนี้
    */
   hardMinPerDesign?: boolean;
+  /**
+   * 🔒 บังคับ "ยอดสั่งขั้นต่ำ" (minQty ของเรท) แบบแข็ง — ลดจำนวนต่ำกว่าขั้นต่ำของเรทที่เลือกไม่ได้
+   * ค่าเริ่มต้นของระบบเป็นแบบนุ่ม: minQty = "เรทนี้เริ่มใช้ที่เท่าไหร่" สั่งน้อยกว่าได้ แล้วระบบสลับลงเรทที่รับ
+   * สินค้าที่โรงงานไม่รับต่ำกว่าขั้นต่ำจริง ๆ (เช่น สติ๊กเกอร์ UV เริ่มขายที่ 3 แผ่น A3) ตั้งธงนี้
+   * เปิดแล้วปุ่มเลือกเรทจะไม่ล็อกอีก — กดเรทที่ขั้นต่ำสูงกว่า ระบบดันจำนวนขึ้นให้ถึงขั้นต่ำแทน
+   */
+  hardMinQty?: boolean;
   /**
    * 📐 คิดราคาจาก "พื้นที่ลาย" ที่ลูกค้ากรอก แทนราคาคอลัมน์เดียวในตาราง
    * ใช้กับงานที่ราคาผูกกับขนาด เช่น อาร์มปัก: 15 ตร.ซม. แรก ฿40 · ตร.ซม. ต่อไป ฿2
