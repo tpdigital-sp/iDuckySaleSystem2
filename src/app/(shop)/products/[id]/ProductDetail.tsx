@@ -1447,7 +1447,9 @@ export default function ProductDetail({
     setArtFiles([]);
     setPlaced([]);
     setAdded(true);
-    setTimeout(() => setAdded(false), 1800);
+    // โชว์ "✓ เพิ่มลงตะกร้าแล้ว!" ~5 วิ — พอให้ลูกค้าเห็นชัดว่าสั่งสำเร็จ
+    // (เดิม 1.8 วิ สั้นไป แล้วป้าย "ต้องแนบลาย" เด้งกลับมาเพราะเพิ่งล้าง artFiles ทิ้ง ดูเหมือนระบบฟ้อง)
+    setTimeout(() => setAdded(false), 5000);
   }
 
   // ── SEO/AEO: FAQ + structured data (JSON-LD) ให้ Google/AI ดึงไปตอบ ──
@@ -3433,7 +3435,9 @@ export default function ProductDetail({
                   💬 งานนี้ต้องคุยลายกับแอดมินก่อน — แตะเพื่อไปที่ขั้นตอนทักไลน์
                 </button>
               )}
-              {artBlocked && (
+              {/* เพิ่งเพิ่มลงตะกร้าสำเร็จ (added) = เพิ่งล้าง artFiles ทิ้งเพื่อเตรียมรายการถัดไป
+                  อย่าเด้งป้าย "ต้องแนบลาย" กลับมาทันที ไม่งั้นดูเหมือนระบบฟ้องทั้งที่เพิ่งสั่งสำเร็จ */}
+              {artBlocked && !added && (
                 <button
                   type="button"
                   onClick={() => {

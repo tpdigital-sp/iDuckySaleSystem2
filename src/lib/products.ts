@@ -3533,13 +3533,19 @@ function mergeableForGrouping(p: Product): boolean {
   return true;
 }
 
-/** คีย์จัดกลุ่ม = สินค้า + สเปคทุกตัว ยกเว้นเรทราคา/จำนวนลาย (สองตัวนี้คือสิ่งที่ระบบจะคิดใหม่ให้) */
-function groupKeyOf(productId: string, selections: Record<string, string>): string {
-  const parts = Object.entries(selections)
-    .filter(([k]) => k !== RATE_LABEL && k !== DESIGN_LABEL)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}=${v}`);
-  return `${productId}|${parts.join("│")}`;
+/**
+ * คีย์จัดกลุ่ม = สินค้า + ค่าของ "ตัวเลือกจริง" (สเปค) ทุกตัว ยกเว้นเรทราคา/จำนวนลาย
+ * ⚠️ ต้องอิงเฉพาะ product.options — ห้ามเอาทั้ง selections มาทำคีย์
+ * เพราะ selections มีของแนบต่อบรรทัด (ภาพลายที่แนบ/ลิงก์ไฟล์/หมายเหตุ/ธงเช็คสต๊อก/ลายแต่ละด้าน)
+ * ที่ต่างกันทุกบรรทัด — เอาเข้าคีย์แล้วสเปคเดียวกันจะกลายเป็นคนละกลุ่ม ไม่มีวันรวมกันได้
+ */
+function groupKeyOf(p: Product, selections: Record<string, string>): string {
+  const parts = (p.options ?? [])
+    .map((o) => o.label)
+    .filter((l) => l !== RATE_LABEL && l !== DESIGN_LABEL)
+    .sort((a, b) => a.localeCompare(b))
+    .map((l) => `${l}=${selections[l] ?? ""}`);
+  return `${p.id}|${parts.join("│")}`;
 }
 
 /** เรทที่จำนวน qty เข้าเงื่อนไข minQty สูงสุด (กติกาเดียวกับ ProductDetail) — ไม่มีหลายเรท = undefined */
@@ -3566,7 +3572,7 @@ export function repriceCartGroups(
   lines.forEach((l, idx) => {
     const p = productOf(l.productId);
     if (!p || !mergeableForGrouping(p) || needsQuote(p, l.selections)) return;
-    const key = groupKeyOf(l.productId, l.selections);
+    const key = groupKeyOf(p, l.selections);
     const arr = groups.get(key);
     if (arr) arr.push(idx);
     else groups.set(key, [idx]);
