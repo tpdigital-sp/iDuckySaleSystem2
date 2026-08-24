@@ -178,7 +178,7 @@ const product: Product = {
       label: "Fimo ตัวน้อยเขย่า (ฟรี)",
       choices: [
         { name: FIMO_MIX, popular: true, imageSrc: IMG("fimo-mix", "v2") },
-        { name: "Fimo ดาว", imageSrc: IMG("fimo-star", "v3") },
+        { name: "Fimo ดาว", imageSrc: IMG("fimo-star", "v4") },
         { name: "Fimo ไข่มุก", imageSrc: IMG("fimo-pearl", "v4") },
         { name: "Fimo เส้น", imageSrc: IMG("fimo-strand", "v3") },
         { name: FIMO_NO },
