@@ -169,7 +169,7 @@ const product: Product = {
       label: "อะคริลิคตัวน้อย (Add On)",
       display: "multi",
       choices: [
-        { name: MINI_YES, extra: 15, qty: true, qtyMax: 20, imageSrc: IMG("addon-mini") },
+        { name: MINI_YES, extra: 15, qty: true, qtyMax: 20, imageSrc: IMG("addon-mini", "v2") },
       ],
     },
     {
@@ -177,10 +177,10 @@ const product: Product = {
       // ผู้ใช้สั่ง (24 ส.ค. 69): กางเป็นตัวเลือกรายแบบ ดาว/ไข่มุก/เส้น พร้อมภาพประกอบรายตัว
       label: "Fimo ตัวน้อยเขย่า (ฟรี)",
       choices: [
-        { name: FIMO_MIX, popular: true, imageSrc: IMG("fimo-mix") },
-        { name: "Fimo ดาว", imageSrc: IMG("fimo-star") },
-        { name: "Fimo ไข่มุก", imageSrc: IMG("fimo-pearl") },
-        { name: "Fimo เส้น", imageSrc: IMG("fimo-strand") },
+        { name: FIMO_MIX, popular: true, imageSrc: IMG("fimo-mix", "v2") },
+        { name: "Fimo ดาว", imageSrc: IMG("fimo-star", "v2") },
+        { name: "Fimo ไข่มุก", imageSrc: IMG("fimo-pearl", "v2") },
+        { name: "Fimo เส้น", imageSrc: IMG("fimo-strand", "v2") },
         { name: FIMO_NO },
       ],
     },

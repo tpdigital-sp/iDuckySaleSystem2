@@ -111,59 +111,91 @@ for (const [name, key] of GALLERY) {
   save(name, await sharp(await src(key)).resize({ width: 1200, withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer());
 }
 
-/* ── 2. การ์ด Add On จากหน้าปกวิดีโอของร้าน ───────────────────────── */
+/* ── 2. การ์ด Add On จากหน้าปกวิดีโอของร้าน — v2 ภาพเต็มใบ (ผู้ใช้สั่ง 24 ส.ค. 69) ──
+ * พื้นหลัง = รูปเดียวกันเบลอถมเต็มการ์ด · รูปชัดวางกลางสูง ~86% ของการ์ด
+ * ข้อความทับบนสคริมมืดบน-ล่าง อ่านออกบนรูปทุกโทน */
 
-const tall = async (key) => sharp(await src(key)).resize({ height: 560 }).toBuffer();
+const scrim = (extra = "") => `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
+  <defs>
+    <linearGradient id="top" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0f172a" stop-opacity="0.62"/><stop offset="1" stop-color="#0f172a" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="bot" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0f172a" stop-opacity="0"/><stop offset="1" stop-color="#0f172a" stop-opacity="0.66"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="${W}" height="210" fill="url(#top)"/>
+  <rect x="0" y="${H - 170}" width="${W}" height="170" fill="url(#bot)"/>
+  ${extra}
+</svg>`;
 
-await photoCard("addon-mini-v1", await tall("vidCharm"), {
+const overlayText = (head, sub, note) => `
+  <text x="${W / 2}" y="86" font-family="${TH}" font-size="50" font-weight="700" text-anchor="middle" fill="#ffffff">${esc(head)}</text>
+  ${sub ? `<text x="${W / 2}" y="136" font-family="${TH}" font-size="27" text-anchor="middle" fill="#e2e8f0">${esc(sub)}</text>` : ""}
+  ${note ? `<text x="${W / 2}" y="${H - 42}" font-family="${TH}" font-size="23" text-anchor="middle" fill="#e2e8f0">${esc(note)}</text>` : ""}`;
+
+/** การ์ดภาพเต็มใบ: เบลอถมพื้น + รูปชัดตรงกลาง + ข้อความบนสคริม */
+async function fullCard(name, key, { head, sub, note }) {
+  const orig = await src(key);
+  const bg = await sharp(orig).resize(W, H, { fit: "cover" }).blur(28).modulate({ brightness: 0.82, saturation: 1.05 }).toBuffer();
+  const fg = await sharp(orig).resize({ height: 780 }).toBuffer();
+  const meta = await sharp(fg).metadata();
+  const buf = await sharp(bg)
+    .composite([
+      { input: fg, left: Math.round((W - meta.width) / 2), top: Math.round((H - meta.height) / 2) },
+      { input: Buffer.from(scrim(overlayText(head, sub, note))), left: 0, top: 0 },
+    ])
+    .jpeg({ quality: 92, chromaSubsampling: "4:4:4" })
+    .toBuffer();
+  save(name, buf);
+}
+
+await fullCard("addon-mini-v2", "vidCharm", {
   head: "เพิ่มอะคริลิคตัวน้อย",
-  sub: "ตัวน้อยขนาด 1.5-2 ซม. ใส่ในกระเปาะเขย่าได้ · บวกเพิ่มชิ้นละ 15 บาท",
-  notes: ["แผ่นอะคริลิคตัวน้อย หนา 1.5 mm", "ภาพจากคลิป “ใส่ตัวน้อยเขย่าเพิ่ม” ของร้าน"],
+  sub: "ขนาด 1.5-2 ซม. หนา 1.5 mm ใส่ในกระเปาะเขย่าได้ · +15 บาท/ตัว",
+  note: "ภาพจากคลิป “ใส่ตัวน้อยเขย่าเพิ่ม” ของร้าน",
 });
-
-await photoCard("fimo-star-v1", await tall("vidFimoStar"), {
+await fullCard("fimo-star-v2", "vidFimoStar", {
   head: "Fimo ดาว",
   sub: "ตัวน้อยเขย่าในกระเปาะ (ฟรี)",
-  notes: ["Fimo กำหนดปริมาณไม่ได้ · ภาพจากคลิปของร้าน"],
+  note: "Fimo กำหนดปริมาณไม่ได้ · ภาพจากคลิปของร้าน",
 });
-await photoCard("fimo-pearl-v1", await tall("vidFimoPearl"), {
+await fullCard("fimo-pearl-v2", "vidFimoPearl", {
   head: "Fimo ไข่มุก",
   sub: "ตัวน้อยเขย่าในกระเปาะ (ฟรี)",
-  notes: ["Fimo กำหนดปริมาณไม่ได้ · ภาพจากคลิปของร้าน"],
+  note: "Fimo กำหนดปริมาณไม่ได้ · ภาพจากคลิปของร้าน",
 });
-await photoCard("fimo-strand-v1", await tall("vidFimoStrand"), {
+await fullCard("fimo-strand-v2", "vidFimoStrand", {
   head: "Fimo เส้น",
   sub: "ตัวน้อยเขย่าในกระเปาะ (ฟรี)",
-  notes: ["Fimo กำหนดปริมาณไม่ได้ · ภาพจากคลิปของร้าน"],
+  note: "Fimo กำหนดปริมาณไม่ได้ · ภาพจากคลิปของร้าน",
 });
 
-/** ใบรวม 3 แบบ — ใช้กับตัวเลือก "รับ Fimo (ร้านคละให้)" */
+/** ใบรวม 3 แบบ v2 — ภาพเต็มใบ 3 คอลัมน์ชิดกัน + ป้ายชื่อคาดใต้ภาพ */
 {
-  const shots = await Promise.all(
-    ["vidFimoStar", "vidFimoPearl", "vidFimoStrand"].map(async (k) => sharp(await src(k)).resize({ height: 480 }).toBuffer())
-  );
-  const metas = await Promise.all(shots.map((b) => sharp(b).metadata()));
+  const keys = ["vidFimoStar", "vidFimoPearl", "vidFimoStrand"];
   const labels = ["ดาว", "ไข่มุก", "เส้น"];
-  const gap = 24;
-  const totalW = metas.reduce((s, m) => s + m.width, 0) + gap * (metas.length - 1);
-  let x = Math.round((W - totalW) / 2);
-  const composites = [];
-  const captions = [];
-  for (let i = 0; i < shots.length; i++) {
-    composites.push({ input: shots[i], left: x, top: 200 });
-    captions.push(
-      `<text x="${x + metas[i].width / 2}" y="726" font-family="${TH}" font-size="28" font-weight="700" text-anchor="middle" fill="${INK}">${esc(labels[i])}</text>`
-    );
-    x += metas[i].width + gap;
-  }
-  const svg = frame(
-    `${title("Fimo ตัวน้อยเขย่า (ฟรี)", "มี 3 แบบ — ดาว | ไข่มุก | เส้น · ร้านคละให้")}${captions.join("")}
-     ${foot(["Fimo ไม่สามารถกำหนดปริมาณได้ · หากไม่รับ Fimo รบกวนแจ้ง", "ภาพจากคลิปของร้านทั้ง 3 ใบ"])}`
+  const colW = W / 3; // 300
+  const shots = await Promise.all(
+    keys.map(async (k) => sharp(await src(k)).resize(Math.ceil(colW), H, { fit: "cover", position: "attention" }).toBuffer())
   );
-  save(
-    "fimo-mix-v1",
-    await sharp(Buffer.from(svg)).composite(composites).jpeg({ quality: 92, chromaSubsampling: "4:4:4" }).toBuffer()
-  );
+  const captions = labels
+    .map((l, i) => {
+      const cx = colW * i + colW / 2;
+      return `<rect x="${colW * i + colW / 2 - 84}" y="${H - 128}" width="168" height="52" rx="26" fill="#0f172a" fill-opacity="0.55"/>
+        <text x="${cx}" y="${H - 92}" font-family="${TH}" font-size="29" font-weight="700" text-anchor="middle" fill="#ffffff">${esc(l)}</text>`;
+    })
+    .join("");
+  const seams = [1, 2].map((i) => `<line x1="${colW * i}" y1="0" x2="${colW * i}" y2="${H}" stroke="#ffffff" stroke-width="4"/>`).join("");
+  const overlay = scrim(`${seams}${overlayText("Fimo ตัวน้อยเขย่า (ฟรี)", "มี 3 แบบ — เลือกได้ หรือให้ร้านคละให้", "Fimo กำหนดปริมาณไม่ได้ · ภาพจากคลิปของร้าน")}${captions}`);
+  const buf = await sharp({ create: { width: W, height: H, channels: 3, background: "#ffffff" } })
+    .composite([
+      ...shots.map((input, i) => ({ input, left: Math.round(colW * i), top: 0 })),
+      { input: Buffer.from(overlay), left: 0, top: 0 },
+    ])
+    .jpeg({ quality: 92, chromaSubsampling: "4:4:4" })
+    .toBuffer();
+  save("fimo-mix-v2", buf);
 }
 
 /* ── 3. การ์ดสเกลขนาด 5-10 ซม. — v2 ออกแบบใหม่ (ผู้ใช้สั่ง 24 ส.ค. 69) ──
