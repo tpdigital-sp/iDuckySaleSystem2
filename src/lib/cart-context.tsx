@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { designFeeFor, getProduct, unitPriceFor, type Product } from "./products";
+import { getProduct, repriceCartGroups, unitPriceFor, type Product } from "./products";
 import { fetchProductsByIds } from "./product-repo";
 
 export interface CartItem {
@@ -21,6 +21,11 @@ export interface CartItem {
   unitPrice: number;
   /** ค่าคละลายเกินโควตา (บาท ทั้งรายการ) — คำนวณใหม่ตามจำนวนเสมอ */
   extraFee?: number;
+  /**
+   * ถูกรวมกับบรรทัดสเปคเดียวกันเพื่อคิดเรทตามจำนวนรวม (เช่น 25+25 = 50 ชิ้น 2 ลาย เรท 2)
+   * ไว้โชว์ป้ายในตะกร้าให้ลูกค้ารู้ว่าทำไมราคาต่อชิ้นเปลี่ยน — undefined = คิดแบบบรรทัดเดี่ยวตามเดิม
+   */
+  merged?: { lines: number; totalQty: number; totalDesigns: number; rateLabel?: string };
 }
 
 interface CartState {
@@ -152,14 +157,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<CartContextValue>(() => {
     // คำนวณราคา/หน่วยใหม่ทุกครั้งตามจำนวนปัจจุบัน (รองรับราคาขั้นบันได)
-    const items: CartItem[] = state.items.map((i) => {
-      const product = productOf(i.productId);
-      if (!product) return i;
-      return {
-        ...i,
-        unitPrice: unitPriceFor(product, i.selections, i.qty),
-        extraFee: designFeeFor(product, i.selections, i.qty),
-      };
+    // + รวมบรรทัดสเปคเดียวกันเป็นกลุ่ม แล้วคิดเรทตามจำนวนรวม (25+25 = 50 ชิ้น 2 ลาย → เรท 2)
+    const priced = repriceCartGroups(state.items, productOf);
+    const items: CartItem[] = state.items.map((i, idx) => {
+      if (!productOf(i.productId)) return i;
+      const r = priced[idx];
+      return { ...i, unitPrice: r.unitPrice, extraFee: r.extraFee, merged: r.merged };
     });
     const totalQty = items.reduce((s, i) => s + i.qty, 0);
     const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice + (i.extraFee ?? 0), 0);

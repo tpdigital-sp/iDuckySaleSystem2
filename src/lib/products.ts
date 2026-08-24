@@ -3508,6 +3508,91 @@ export function unitPriceFor(
   return Math.max(0, price);
 }
 
+/**
+ * รวมราคาแบบ "กลุ่มสเปคเดียวกัน" ในตะกร้า
+ *
+ * ปัญหา: ลูกค้าสั่งของสเปคเดียวกันคนละลายเป็นหลายบรรทัด (เช่น พวงกุญแจ 25 ชิ้น 1 ลาย × 2 บรรทัด)
+ * แต่ละบรรทัดคิดราคาแยก → ได้เรท 25 ชิ้นทั้งคู่ ทั้งที่จริงเป็นงานผลิตล็อตเดียว 50 ชิ้น 2 ลาย ควรได้เรท 2
+ *
+ * วิธีคิด: จับบรรทัดที่ "สินค้าเดียวกัน + สเปคตรงกันทุกตัว" (ยกเว้นเรทราคา/จำนวนลาย) เป็นกลุ่มเดียว
+ * แล้วคิดราคาใหม่ตามจำนวนรวม + จำนวนลายรวมของกลุ่ม โดยเลือกเรทตามจำนวนรวม (กติกาเดียวกับหน้าสินค้า
+ * — เรทที่ minQty ≤ จำนวนรวม สูงสุด) ทับเรทที่ลูกค้ากดไว้เดิม ทุกบรรทัดในกลุ่มจึงได้ราคาต่อชิ้นเท่ากัน
+ *
+ * คืนค่า index ตรงกับ lines ที่ส่งเข้ามา — บรรทัดที่ไม่ได้ถูกรวม (กลุ่มมีบรรทัดเดียว/ของพิเศษ) คงราคาเดิมเป๊ะ
+ */
+export interface GroupReprice {
+  unitPrice: number;
+  extraFee: number;
+  /** ข้อมูลกลุ่มไว้โชว์ใน UI — undefined = ไม่ได้ถูกรวมกับใคร (คิดแบบบรรทัดเดี่ยวตามเดิม) */
+  merged?: { lines: number; totalQty: number; totalDesigns: number; rateLabel?: string };
+}
+
+/** สินค้านี้เอามารวมกลุ่มคิดราคาตามจำนวนรวมได้ไหม — งานสั่งทำ/คิดตามพื้นที่คนละตรรกะ ไม่รวม */
+function mergeableForGrouping(p: Product): boolean {
+  if (p.custom?.enabled || p.areaPricing?.enabled) return false;
+  return true;
+}
+
+/** คีย์จัดกลุ่ม = สินค้า + สเปคทุกตัว ยกเว้นเรทราคา/จำนวนลาย (สองตัวนี้คือสิ่งที่ระบบจะคิดใหม่ให้) */
+function groupKeyOf(productId: string, selections: Record<string, string>): string {
+  const parts = Object.entries(selections)
+    .filter(([k]) => k !== RATE_LABEL && k !== DESIGN_LABEL)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`);
+  return `${productId}|${parts.join("│")}`;
+}
+
+/** เรทที่จำนวน qty เข้าเงื่อนไข minQty สูงสุด (กติกาเดียวกับ ProductDetail) — ไม่มีหลายเรท = undefined */
+function pickRateForQty(p: Product, qty: number): PriceRate | undefined {
+  const rs = p.priceRates;
+  if (!rs?.length) return undefined;
+  return [...rs].filter((r) => (r.minQty ?? 1) <= qty).sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0] ?? rs[0];
+}
+
+export function repriceCartGroups(
+  lines: { productId: string; selections: Record<string, string>; qty: number }[],
+  productOf: (id: string) => Product | undefined
+): GroupReprice[] {
+  // ตั้งต้น: คิดแบบบรรทัดเดี่ยวตามเดิม แล้วค่อยทับเฉพาะกลุ่มที่รวมได้
+  const out: GroupReprice[] = lines.map((l) => {
+    const p = productOf(l.productId);
+    return {
+      unitPrice: p ? unitPriceFor(p, l.selections, l.qty) : 0,
+      extraFee: p ? designFeeFor(p, l.selections, l.qty) : 0,
+    };
+  });
+
+  const groups = new Map<string, number[]>();
+  lines.forEach((l, idx) => {
+    const p = productOf(l.productId);
+    if (!p || !mergeableForGrouping(p) || needsQuote(p, l.selections)) return;
+    const key = groupKeyOf(l.productId, l.selections);
+    const arr = groups.get(key);
+    if (arr) arr.push(idx);
+    else groups.set(key, [idx]);
+  });
+
+  for (const idxs of groups.values()) {
+    if (idxs.length < 2) continue; // บรรทัดเดี่ยว = ตรงกับราคาตั้งต้น ไม่ต้องทำอะไร
+    const p = productOf(lines[idxs[0]].productId);
+    if (!p) continue;
+    const totalQty = idxs.reduce((s, i) => s + lines[i].qty, 0);
+    const totalDesigns = idxs.reduce((s, i) => s + designCountOf(lines[i].selections), 0);
+    const rate = pickRateForQty(p, totalQty);
+    idxs.forEach((i, k) => {
+      const sel: Record<string, string> = { ...lines[i].selections, [DESIGN_LABEL]: String(totalDesigns) };
+      if (rate) sel[RATE_LABEL] = rate.label;
+      out[i] = {
+        unitPrice: unitPriceFor(p, sel, totalQty),
+        // ค่าคละลายเป็นของ "ทั้งกลุ่ม" — เกาะบรรทัดแรกบรรทัดเดียว กันนับซ้ำ
+        extraFee: k === 0 ? designFeeFor(p, sel, totalQty) : 0,
+        merged: { lines: idxs.length, totalQty, totalDesigns, rateLabel: rate?.label },
+      };
+    });
+  }
+  return out;
+}
+
 /** ข้อความราคา: แสดงเป็นช่วง "฿ต่ำสุด – ฿สูงสุด" ถ้าตัวเลือกทำให้ราคาต่างกัน */
 export function formatPriceRange(p: Product): string {
   const { min, max } = priceRange(p);

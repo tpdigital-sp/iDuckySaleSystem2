@@ -438,6 +438,16 @@ export default function CartPage() {
                         />
                       );
                     })()}
+                    {/* 🧮 บรรทัดนี้ถูกคิดรวมกับบรรทัดสเปคเดียวกัน เพื่อให้ได้เรทตามจำนวนรวม (เช่น 25+25 = 50 ชิ้น 2 ลาย) */}
+                    {item.merged && (
+                      <p className="ord-note info mt-2 p-2 text-[11px] leading-relaxed t-soft">
+                        🧮 คิดรวมกับอีก {item.merged.lines - 1} รายการสเปคเดียวกัน →{" "}
+                        <strong className="t-blue">
+                          รวม {item.merged.totalQty.toLocaleString("th-TH")} ชิ้น {item.merged.totalDesigns.toLocaleString("th-TH")} ลาย
+                        </strong>
+                        {item.merged.rateLabel ? <> · {item.merged.rateLabel}</> : null} จึงได้ราคาต่อชิ้นนี้
+                      </p>
+                    )}
                     {/* ร้านรับสั่งขั้นต่ำ 1 ชิ้นทุกสินค้า — ลดต่ำกว่าขั้นต่ำของเรทได้ ระบบสลับเรทให้เอง */}
                     <div className="mt-auto flex items-center justify-between gap-3 pt-3">
                       <div className="ord-qty">
