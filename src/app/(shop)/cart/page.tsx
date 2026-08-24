@@ -438,10 +438,11 @@ export default function CartPage() {
                         />
                       );
                     })()}
-                    {/* 🧮 บรรทัดนี้ถูกคิดรวมกับบรรทัดสเปคเดียวกัน เพื่อให้ได้เรทตามจำนวนรวม (เช่น 25+25 = 50 ชิ้น 2 ลาย) */}
+                    {/* 🧮 บรรทัดนี้ถูกคิดรวมกับบรรทัดอื่นในล็อตเดียวกัน เพื่อให้ได้เรทตามจำนวนรวม (เช่น 25+25 = 50 ชิ้น 2 ลาย)
+                        สเปคต่างกันก็รวมได้ (ตะขอคนละแบบ/สีอะคริลิคคนละสี) — ราคาฐานเท่ากัน ต่างกันแค่ค่าตัวเลือก */}
                     {item.merged && (
                       <p className="ord-note info mt-2 p-2 text-[11px] leading-relaxed t-soft">
-                        🧮 คิดรวมกับอีก {item.merged.lines - 1} รายการสเปคเดียวกัน →{" "}
+                        🧮 คิดรวมกับอีก {item.merged.lines - 1} รายการในล็อตผลิตเดียวกัน →{" "}
                         <strong className="t-blue">
                           รวม {item.merged.totalQty.toLocaleString("th-TH")} ชิ้น {item.merged.totalDesigns.toLocaleString("th-TH")} ลาย
                         </strong>
@@ -469,6 +470,19 @@ export default function CartPage() {
                               <span className="block text-[11px] t-faint">
                                 {formatPrice(item.unitPrice)} / ชิ้น
                                 {(item.extraFee ?? 0) > 0 && <> · 🎨 Add on +{formatPrice(item.extraFee!)}</>}
+                              </span>
+                            )}
+                            {/* แจกแจงราคาต่อชิ้น — สองบรรทัดในล็อตเดียวกันราคาไม่เท่ากันได้ ถ้าเลือกตัวเลือกที่มีค่าเพิ่ม
+                                (เช่น ตะขอสปริง +฿10 ขณะที่ห่วงกลมฟรี) ราคาฐานจากเรทรวมเท่ากันทั้งคู่ */}
+                            {item.addOns && item.addOns.length > 0 && (
+                              <span className="block text-[11px] t-faint">
+                                ราคาเรท {formatPrice(item.unitPrice - item.addOns.reduce((s, a) => s + a.amount, 0))}
+                                {item.addOns.map((a) => (
+                                  <span key={a.label}>
+                                    {" "}
+                                    {a.amount < 0 ? "−" : "+"} {a.label} {formatPrice(Math.abs(a.amount))}
+                                  </span>
+                                ))}
                               </span>
                             )}
                           </>

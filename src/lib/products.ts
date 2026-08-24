@@ -3452,12 +3452,48 @@ export function hasQuoteOption(p: Product): boolean {
   return (p.options ?? []).some((o) => o.askPrice || o.choices.some((c) => c.askPrice));
 }
 
-/** ราคา/หน่วย ตามตัวเลือก + จำนวน — ใช้ตารางราคาถ้ามี, ไม่งั้น price + option.extra */
-export function unitPriceFor(
+/** ค่าเพิ่มต่อชิ้นที่มาจากตัวเลือก 1 กลุ่ม — ไว้แจกแจงให้ลูกค้าเห็นว่าราคาต่อชิ้นมาจากไหน */
+export interface UnitPriceAddOn {
+  /** ชื่อกลุ่มตัวเลือก เช่น "ตะขอ" */
+  label: string;
+  /** ค่าที่ลูกค้าเลือก เช่น "E ตะขอสปริง 19.2×33mm (เงิน)" */
+  choice: string;
+  /** บวกเพิ่มกี่บาทต่อชิ้น (ติดลบได้ = ส่วนลดช่วงปลีก) */
+  amount: number;
+}
+
+/**
+ * ราคา/หน่วย แบบแจกแจง — ราคาฐานจากตารางเรท + ค่าตัวเลือกที่บวกเพิ่มทีละกลุ่ม
+ * ใช้ตอนอยากอธิบายให้ลูกค้าเห็นว่าทำไมสองบรรทัดในล็อตเดียวกันราคาต่อชิ้นไม่เท่ากัน
+ * (เช่น ตะขอสปริง +฿10 ขณะที่ห่วงกลมฟรี — ราคาฐานเรทรวมเท่ากันทั้งคู่)
+ */
+export function unitPriceParts(
   product: Product,
   selections: Record<string, string>,
   qty: number
+): { base: number; addOns: UnitPriceAddOn[]; total: number } {
+  const addOns: UnitPriceAddOn[] = [];
+  const total = unitPriceFor(product, selections, qty, addOns);
+  // ราคาฐาน = ราคาต่อชิ้นหักค่าตัวเลือกออก (ใช้ total เป็นตัวตั้งเพื่อไม่ให้ต่างจากที่คิดเงินจริง)
+  const base = total - addOns.reduce((s, a) => s + a.amount, 0);
+  return { base, addOns, total };
+}
+
+/**
+ * ราคา/หน่วย ตามตัวเลือก + จำนวน — ใช้ตารางราคาถ้ามี, ไม่งั้น price + option.extra
+ * `collect` (ถ้าส่งมา) จะถูกเติมรายการค่าตัวเลือกที่บวกเพิ่ม — ดู unitPriceParts()
+ */
+export function unitPriceFor(
+  product: Product,
+  selections: Record<string, string>,
+  qty: number,
+  collect?: UnitPriceAddOn[]
 ): number {
+  const note = (label: string, amount: number) => {
+    if (!collect || !amount) return;
+    const choice = selections[label] ?? "";
+    collect.push({ label, choice, amount });
+  };
   // 💬 งานสั่งทำที่ต้องให้แอดมินตีราคา — ยังไม่มีราคาจนกว่าแอดมินจะใส่ให้
   if (needsQuote(product, selections)) return 0;
   // งานกำหนดขนาดเอง (custom) มาก่อน — ราคาพิเศษแทนตารางปกติ
@@ -3491,10 +3527,14 @@ export function unitPriceFor(
       if (!optionActive(opt, selections)) continue;
       // กลุ่มที่เป็นแกนตาราง ราคาอยู่ในช่องตารางแล้ว — เหลือแค่ค่าธรรมเนียมช่วงปลีกของกลุ่มนั้น
       if (m.driverLabels.includes(opt.label)) {
-        base += smallQtyFeeOf(opt, selections, tierQty);
+        const fee = smallQtyFeeOf(opt, selections, tierQty);
+        base += fee;
+        note(opt.label, fee);
         continue;
       }
-      base += groupAddOf(opt, selections, tierQty);
+      const add = groupAddOf(opt, selections, tierQty);
+      base += add;
+      note(opt.label, add);
     }
     // ค่าธรรมเนียมช่วงปลีกใส่ค่าติดลบได้ (ลดให้) — กันหักจนราคาติดลบ
     return Math.max(0, base);
@@ -3503,7 +3543,9 @@ export function unitPriceFor(
   for (const opt of product.options) {
     // กลุ่มที่ถูกซ่อน หรือกลุ่มงานสั่งทำที่ลูกค้ายังไม่ได้ติ๊ก = ไม่คิดเงิน
     if (!optionActive(opt, selections)) continue;
-    price += groupAddOf(opt, selections, tierQty);
+    const add = groupAddOf(opt, selections, tierQty);
+    price += add;
+    note(opt.label, add);
   }
   return Math.max(0, price);
 }
@@ -3527,6 +3569,8 @@ export function unitPriceFor(
 export interface GroupReprice {
   unitPrice: number;
   extraFee: number;
+  /** แจกแจงราคาต่อชิ้น: ราคาฐานจากเรท + ค่าตัวเลือกแต่ละกลุ่ม (ไว้อธิบายว่าทำไมแต่ละบรรทัดไม่เท่ากัน) */
+  addOns?: UnitPriceAddOn[];
   /** ข้อมูลกลุ่มไว้โชว์ใน UI — undefined = ไม่ได้ถูกรวมกับใคร (คิดแบบบรรทัดเดี่ยวตามเดิม) */
   merged?: { lines: number; totalQty: number; totalDesigns: number; rateLabel?: string };
 }
@@ -3570,9 +3614,11 @@ export function repriceCartGroups(
   // ตั้งต้น: คิดแบบบรรทัดเดี่ยวตามเดิม แล้วค่อยทับเฉพาะกลุ่มที่รวมได้
   const out: GroupReprice[] = lines.map((l) => {
     const p = productOf(l.productId);
+    const parts = p ? unitPriceParts(p, l.selections, l.qty) : undefined;
     return {
-      unitPrice: p ? unitPriceFor(p, l.selections, l.qty) : 0,
+      unitPrice: parts?.total ?? 0,
       extraFee: p ? designFeeFor(p, l.selections, l.qty) : 0,
+      addOns: parts?.addOns,
     };
   });
 
@@ -3604,8 +3650,10 @@ export function repriceCartGroups(
         const cellOk = !!m.cells[priceMatrixKey(m, sel)] || m.driverLabels.some((l) => !sel[l]);
         if (cellOk) sel[RATE_LABEL] = rate.label;
       }
+      const parts = unitPriceParts(p, sel, totalQty);
       out[i] = {
-        unitPrice: unitPriceFor(p, sel, totalQty),
+        unitPrice: parts.total,
+        addOns: parts.addOns,
         // ค่าประจำบรรทัด (ต่อลาย/ต่อแผ่น) คิดตามสเปค+จำนวนลายของบรรทัดตัวเอง (สเปคในกลุ่มต่างกันได้)
         // ส่วน "ค่าคละลาย" เป็นของทั้งกลุ่ม — เกาะบรรทัดแรกบรรทัดเดียว กันนับซ้ำ
         extraFee:
@@ -3617,6 +3665,79 @@ export function repriceCartGroups(
     });
   }
   return out;
+}
+
+/**
+ * พรีวิว "รวมล็อตกับของที่อยู่ในตะกร้าแล้ว" — ใช้ที่หน้าสินค้า ให้ลูกค้าเห็นก่อนกดเพิ่มลงตะกร้า
+ * ว่าจำนวนที่กำลังเลือกจะถูกคิดรวมกับบรรทัดในตะกร้าเป็นยอดเดียว (กติกาชุดเดียวกับ repriceCartGroups)
+ * คืน undefined เมื่อไม่มีอะไรให้รวม (ตะกร้าไม่มีสินค้านี้ / บรรทัดนี้เป็นงานตีราคา / ช่วงปลีกคละอิสระ)
+ */
+export interface LotPreview {
+  /** จำนวนที่อยู่ในตะกร้าแล้ว (นับเฉพาะบรรทัดที่รวมล็อตได้) */
+  cartQty: number;
+  /** กี่บรรทัดในตะกร้า */
+  cartLines: number;
+  /** ยอดรวมล็อตที่ใช้คิดพรีวิว (retailLine = คิดที่ mergeFromQty แทนจำนวนที่เลือกอยู่) */
+  combinedQty: number;
+  totalDesigns: number;
+  rateLabel?: string;
+  /** ราคา/ชิ้นของสเปคที่เลือกอยู่ เมื่อคิดที่ยอดรวมล็อต */
+  unitPrice: number;
+  /** จำนวนที่เลือกอยู่อยู่ช่วงราคาปลีกคละอิสระ (เช่น 1-10 ชิ้น) — บรรทัดนี้ยังไม่ถูกรวมล็อต */
+  retailLine?: boolean;
+  /** ต้องสั่งอย่างน้อยกี่ชิ้นบรรทัดนี้ถึงเริ่มรวมล็อต (มีเมื่อ retailLine) */
+  mergeFromQty?: number;
+}
+
+export function lotPreviewFor(
+  product: Product,
+  cartLines: { productId: string; selections: Record<string, string>; qty: number }[],
+  selections: Record<string, string>,
+  qty: number,
+  designs = 1
+): LotPreview | undefined {
+  if (qty < 1) return undefined;
+  // งานตีราคา/กำหนดเอง/คิดตามพื้นที่ = ไม่รวมล็อตเสมอ — ไม่มีอะไรให้บอก
+  if (product.areaPricing?.enabled) return undefined;
+  if (product.custom?.enabled && (selections[product.custom.label] ?? "").trim()) return undefined;
+  if (needsQuote(product, selections)) return undefined;
+
+  const key = groupKeyOf(product, selections);
+  const match = cartLines.filter(
+    (l) =>
+      l.productId === product.id &&
+      lineMergeable(product, l.selections, l.qty) &&
+      groupKeyOf(product, l.selections) === key
+  );
+  const cartQty = match.reduce((s, l) => s + l.qty, 0);
+  if (cartQty <= 0) return undefined;
+  const cartDesigns = match.reduce((s, l) => s + designCountOf(l.selections), 0);
+
+  // จำนวนที่เลือกอยู่ช่วงปลีกคละอิสระ → บรรทัดนี้คิดราคาปลีกแยก แต่บอกเกณฑ์เริ่มรวมให้รู้
+  // พรีวิวราคาคิดที่ "สั่งขั้นต่ำที่เริ่มรวมได้" (mergeFromQty) แทนจำนวนที่เลือกอยู่
+  const rNow = product.hardMinQty ? activeRate(product, selections) : pickRateForQty(product, qty);
+  const retailLine = !!rNow && isFreeMix(rNow, qty);
+  const lineQty = retailLine ? rNow!.freeMixBelowQty! : qty;
+
+  const combinedQty = cartQty + lineQty;
+  const totalDesigns = cartDesigns + Math.max(1, designs);
+  // เลือกเรทตามยอดรวม (hardMinQty คงเรทเดิม ไม่สลับ) + กันสลับเรทให้สเปคที่ไม่มีราคาขายในเรทรวม
+  const rate = product.hardMinQty ? activeRate(product, selections) : pickRateForQty(product, combinedQty);
+  const sel: Record<string, string> = { ...selections, [DESIGN_LABEL]: String(totalDesigns) };
+  if (rate) {
+    const m = rate.pricing;
+    const cellOk = !!m.cells[priceMatrixKey(m, sel)] || m.driverLabels.some((l) => !sel[l]);
+    if (cellOk) sel[RATE_LABEL] = rate.label;
+  }
+  return {
+    cartQty,
+    cartLines: match.length,
+    combinedQty,
+    totalDesigns,
+    rateLabel: sel[RATE_LABEL],
+    unitPrice: unitPriceFor(product, sel, combinedQty),
+    ...(retailLine ? { retailLine, mergeFromQty: rNow!.freeMixBelowQty } : {}),
+  };
 }
 
 /** ข้อความราคา: แสดงเป็นช่วง "฿ต่ำสุด – ฿สูงสุด" ถ้าตัวเลือกทำให้ราคาต่างกัน */

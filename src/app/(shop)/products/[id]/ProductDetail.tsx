@@ -59,6 +59,7 @@ import {
   tierIndex,
   tierQtyFor,
   unitPriceFor,
+  lotPreviewFor,
   needsStockCheck,
   artworkIsRequired,
   artworkConsultOf,
@@ -332,7 +333,7 @@ export default function ProductDetail({
 }) {
   const [product, setProduct] = useState<Product>(initialProduct);
   const category = getCategory(product.category);
-  const { addItem } = useCart();
+  const { addItem, items: cartItems } = useCart();
   const [imageIndex, setImageIndex] = useState(0);
   // แท็บข้อมูลสินค้า (รายละเอียดเพิ่มเติม / วิธีสั่งงาน ฯลฯ)
   const [tabIndex, setTabIndex] = useState(0);
@@ -784,6 +785,15 @@ export default function ProductDetail({
   );
   // โหมด "size" ลูกค้าแค่ระบุขนาด — ราคายังคิดจากตารางปกติ · โหมดอื่นใช้ราคาของงานกำหนดเอง
   const unitPrice = useCustom && custom?.mode !== "size" ? customPrice : baseUnitPrice;
+
+  /**
+   * 🧮 ในตะกร้ามีสินค้าตัวนี้อยู่แล้วไหม — บอกลูกค้าตั้งแต่หน้าสินค้าว่าจำนวนที่กำลังเลือก
+   * จะถูกคิดรวมกับของในตะกร้าเป็นล็อตเดียว (เรทตามยอดรวม) ไม่ต้องเข้าไปดูในตะกร้าก่อน
+   */
+  const lotPreview = useMemo(
+    () => (useCustom ? undefined : lotPreviewFor(product, cartItems, effectiveWithDesigns, qty, designs)),
+    [product, cartItems, effectiveWithDesigns, qty, designs, useCustom]
+  );
 
   /**
    * 💬 ตัวเลือกที่เลือกอยู่เป็น "งานสั่งทำ" ที่ต้องให้แอดมินตีราคาไหม
@@ -2849,6 +2859,40 @@ export default function ProductDetail({
                 </>
               )}
             </div>
+            {/* 🧮 มีสินค้านี้ในตะกร้าแล้ว — บอกก่อนกดสั่งว่าจะรวมล็อตคิดเรทตามยอดรวม */}
+            {lotPreview && !askQuote && (
+              <div className="mt-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs leading-relaxed text-emerald-800 ring-1 ring-emerald-100">
+                🧮 <strong className="font-bold">ในตะกร้ามีสินค้านี้อยู่แล้ว {lotPreview.cartQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}</strong>
+                {lotPreview.retailLine ? (
+                  // จำนวนที่เลือกยังอยู่ช่วงราคาปลีกคละอิสระ — บรรทัดนี้คิดแยก แต่บอกเกณฑ์เริ่มรวมให้รู้
+                  <>
+                    {" — "}จำนวน 1-{((lotPreview.mergeFromQty ?? 1) - 1).toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}เป็นราคาปลีก คิดแยก
+                    {" · "}สั่งตั้งแต่ <strong className="font-bold">{(lotPreview.mergeFromQty ?? 1).toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}ขึ้นไป</strong>
+                    จะคิดรวมล็อตกับตะกร้า (รวม {lotPreview.combinedQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} ≈{" "}
+                    <strong className="font-bold">{formatPrice(lotPreview.unitPrice)}/{matrix?.unit ?? "ชิ้น"}</strong>)
+                  </>
+                ) : (
+                  <>
+                    {" — "}สั่งเพิ่ม {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}นี้จะคิดรวมเป็นล็อตเดียว{" "}
+                    <strong className="font-bold">
+                      {lotPreview.combinedQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} {lotPreview.totalDesigns.toLocaleString("th-TH")} ลาย
+                    </strong>
+                    {lotPreview.rateLabel ? <> · {lotPreview.rateLabel}</> : null}
+                    {lotPreview.unitPrice < unitPrice ? (
+                      <>
+                        {" → "}สเปคนี้เหลือ{" "}
+                        <strong className="font-bold">
+                          {formatPrice(lotPreview.unitPrice)}/{matrix?.unit ?? "ชิ้น"}
+                        </strong>{" "}
+                        <span className="text-stone-400 line-through">{formatPrice(unitPrice)}</span> (ราคาสุทธิคิดให้ในตะกร้า)
+                      </>
+                    ) : (
+                      <> — ราคาต่อ{matrix?.unit ?? "ชิ้น"}คิดตามยอดรวมให้อัตโนมัติในตะกร้า</>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
             {askQuote && !useCustom ? (
               <div className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
                 <p>
@@ -4128,7 +4172,16 @@ export default function ProductDetail({
             {askQuote || (useCustom && customAsk) ? (
               <p className="text-sm font-extrabold leading-tight text-sky-700">💬 รอแอดมินตีราคา</p>
             ) : (
-              <p className="text-lg font-extrabold leading-tight text-amber-600">{formatPrice(unitPrice * qty + designFee)}</p>
+              <>
+                <p className="text-lg font-extrabold leading-tight text-amber-600">{formatPrice(unitPrice * qty + designFee)}</p>
+                {/* 🧮 แถบล่างมือถือ — บอกสั้น ๆ ว่าจะรวมล็อตกับของในตะกร้า (ช่วงปลีกยังไม่รวม ไม่ต้องโชว์) */}
+                {lotPreview && !lotPreview.retailLine && (
+                  <p className="truncate text-[10px] font-semibold text-emerald-700">
+                    🧮 รวมกับในตะกร้าเป็น {lotPreview.combinedQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
+                    {lotPreview.unitPrice < unitPrice && <> → {formatPrice(lotPreview.unitPrice)}/{matrix?.unit ?? "ชิ้น"}</>}
+                  </p>
+                )}
+              </>
             )}
           </div>
           {studioMode && !designDone ? (
