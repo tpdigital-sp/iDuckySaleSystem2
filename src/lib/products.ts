@@ -3649,10 +3649,40 @@ function groupKeyOf(p: Product, selections: Record<string, string>): string {
   return p.hardMinQty ? `${p.id}|${activeRate(p, selections)?.label ?? ""}` : p.id;
 }
 
+/**
+ * เติมค่า "กลุ่มควบคุม" (showWhen/showWhenAlso/showWhenAll) ที่หายไป ให้ของเก่าในตะกร้า
+ * บรรทัดเก่าอาจเกิดก่อนร้านเพิ่มกลุ่มใหม่ (เช่น "รับตะขอไหม") — selections จึงไม่มีค่ากลุ่มนั้น
+ * ทำให้กลุ่มลูก (เช่น "สีตะขอ · โลหะ" ที่ตั้ง showWhenAlso: รับตะขอ) ถูกมองว่าซ่อน
+ * → ค่าตะขอ +฿8 ไม่ถูกคิดเงินและไม่โชว์ป้าย ทั้งที่ลูกค้าเลือกตะขอไว้ชัด ๆ
+ *
+ * กติกา: กลุ่มไหน "มีค่าที่ลูกค้าเลือกไว้" = กลุ่มนั้นเคยแสดงจริงตอนสั่ง → เงื่อนไขที่อ้างถึง
+ * กลุ่มที่ไม่มีค่า ให้เติมเป็นตัวเลือกแรกของเงื่อนไข (ค่าที่ทำให้แสดง)
+ * ⚠️ กลุ่มควบคุมที่มีค่าอยู่แล้ว "ไม่แตะ" — ค่าไม่ตรงเงื่อนไข = ลูกค้าตั้งใจเปลี่ยน ต้องซ่อนตามจริง
+ */
+function backfillShowWhen(p: Product, selections: Record<string, string>): Record<string, string> {
+  let out = selections;
+  for (const opt of p.options ?? []) {
+    if (!selections[opt.label]) continue; // กลุ่มนี้ไม่มีค่า — ไม่มีหลักฐานว่าเคยแสดง
+    for (const cond of [opt.showWhen, opt.showWhenAlso, ...(opt.showWhenAll ?? [])]) {
+      if (!cond?.label || !cond.choices?.length) continue;
+      if (out[cond.label] !== undefined) continue;
+      if (out === selections) out = { ...selections };
+      out[cond.label] = cond.choices[0];
+    }
+  }
+  return out;
+}
+
 export function repriceCartGroups(
-  lines: { productId: string; selections: Record<string, string>; qty: number }[],
+  rawLines: { productId: string; selections: Record<string, string>; qty: number }[],
   productOf: (id: string) => Product | undefined
 ): GroupReprice[] {
+  // เติมค่ากลุ่มควบคุมที่หายไปก่อนคิดราคา (ของเก่าในตะกร้าที่เกิดก่อนร้านเพิ่มกลุ่มใหม่)
+  const lines = rawLines.map((l) => {
+    const p = productOf(l.productId);
+    return p ? { ...l, selections: backfillShowWhen(p, l.selections) } : l;
+  });
+
   // ตั้งต้น: คิดแบบบรรทัดเดี่ยวตามเดิม แล้วค่อยทับเฉพาะกลุ่มที่รวมได้
   const out: GroupReprice[] = lines.map((l) => {
     const p = productOf(l.productId);
