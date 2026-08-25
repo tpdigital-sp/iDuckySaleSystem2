@@ -247,9 +247,10 @@ const artSpecs: Record<string, ImgSrc> = {
   "edge-none": { kind: "drive", path: `${DIR_POSTER}/สกรีนเต็มหลาไม่ตัด.jpg` },
   // การ์ดคอมโพสเอง (รูปจริง + กราฟิก สไตล์การ์ดเย็บ/โพ้งของร้าน) — อยู่ใน repo
   "cut-card": { kind: "drive", path: new URL("./assets/fabric-poster/cut-card.jpg", import.meta.url).pathname },
-  // ⚠️ เคยอัป eyelet-top-v1 เป็นฉบับ 2 คู่ไปแล้ว — เปลี่ยนคีย์/ชื่อไฟล์กัน Next/CDN แคชรูปเก่า
-  "eyelet-top-2r": { kind: "drive", path: new URL("./assets/fabric-poster/eyelet-top.jpg", import.meta.url).pathname },
-  "eyelet-4r": { kind: "drive", path: new URL("./assets/fabric-poster/eyelet-4r.jpg", import.meta.url).pathname },
+  // ⚠️ แก้รูปการ์ดพวกนี้ครั้งหน้าต้องเปลี่ยน "คีย์" ใหม่เสมอ (ชื่อไฟล์เดิมโดน Next/CDN แคช)
+  // ฉบับ v2 25 ส.ค. 69: ม็อคอัพผืนเรียบจากรูปจริง (tapestry LINE_ALBUM ครอปหน้าผ้า) + หมุดขาว + ตาไก่
+  "eyelet-2top": { kind: "drive", path: new URL("./assets/fabric-poster/eyelet-top.jpg", import.meta.url).pathname },
+  "eyelet-4c": { kind: "drive", path: new URL("./assets/fabric-poster/eyelet-4r.jpg", import.meta.url).pathname },
   "edge-sew": { kind: "drive", path: `${DIR_POSTER}/1754293120031.jpg` },
   "edge-serge": { kind: "drive", path: `${DIR_POSTER}/1754293125352.jpg` },
   // กราฟิก "แบบเจาะรูแขวนผนัง + ตาไก่ คู่ละ 10 บาท" จากหน้า pricelists
@@ -342,8 +343,8 @@ const OPTIONS: ProductOption[] = [
     note: "ตาไก่ **คู่ละ 10 บาท** สำหรับร้อยเชือก/เกี่ยวตะขอแขวนผนัง — ต้องการตำแหน่งหรือจำนวนคู่แบบอื่น แจ้งในช่องหมายเหตุถึงร้าน",
     choices: [
       { name: "ไม่เจาะรู", badge: "ฟรี", imageSrc: art["photo-poster"], desc: "รับผ้าเรียบ ไม่เจาะรู — แขวนด้วยคลิปหนีบ/รางแขวนเองได้" },
-      { name: "เจาะ 2 รู ด้านบน", extra: 10, imageSrc: art["eyelet-top-2r"], desc: "ตาไก่ 2 ตัว (1 คู่) มุมบนซ้าย-ขวา สำหรับร้อยเชือกหรือเกี่ยวตะขอแขวนผนัง" },
-      { name: "เจาะทั้ง 4 รู", extra: 20, imageSrc: art["eyelet-4r"], desc: "ตาไก่ 4 ตัว (2 คู่) — 1 คู่ด้านบน และ 1 คู่ด้านล่าง แขวนได้ตึงทั้งผืน" },
+      { name: "เจาะ 2 รู ด้านบน", extra: 10, imageSrc: art["eyelet-2top"], desc: "ตาไก่ 2 ตัว (1 คู่) มุมบนซ้าย-ขวา สำหรับร้อยเชือกหรือเกี่ยวตะขอแขวนผนัง" },
+      { name: "เจาะทั้ง 4 รู", extra: 20, imageSrc: art["eyelet-4c"], desc: "ตาไก่ 4 ตัว (2 คู่) — 1 คู่ด้านบน และ 1 คู่ด้านล่าง แขวนได้ตึงทั้งผืน" },
     ],
   },
 ];
