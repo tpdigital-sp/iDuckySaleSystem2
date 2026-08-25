@@ -2066,7 +2066,7 @@ export default function ProductDetail({
                      * ไม่เรียก jumpToImage — แถบตัวอย่างไม่อยู่ในแกลเลอรี (ดู galleryImages)
                      */
                     <>
-                      <div className="grid max-h-72 grid-cols-[repeat(auto-fill,minmax(6.5rem,1fr))] gap-1.5 overflow-y-auto rounded-2xl bg-white/70 p-2 ring-1 ring-amber-100">
+                      <div className="grid max-h-72 grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-1.5 overflow-y-auto rounded-2xl bg-white/70 p-2 ring-1 ring-amber-100">
                         {opt.choices
                           .filter((c) => allowed.includes(c.name))
                           .map((c) => {
@@ -2108,18 +2108,25 @@ export default function ProductDetail({
                             );
                           })}
                       </div>
-                      {/* 🔍 แถบเต็มบรรทัดของแบบที่เลือกอยู่ + ปุ่มเปิดชาร์ตเต็มใน lightbox */}
+                      {/* 🔍 แถบเต็มบรรทัดของแบบที่เลือกอยู่ (กดดูเต็มจอได้ — ในแผงแคบตัวเล็ก) + ชาร์ตเต็ม */}
                       {(() => {
                         const sel = opt.choices.find((c) => c.name === effective[opt.label]);
                         return (
                           <div className="mt-1.5 flex items-center gap-2">
                             {sel?.imageSrc && (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={sel.imageSrc}
-                                alt={sel.name}
-                                className="h-11 min-w-0 flex-1 rounded-xl bg-white object-contain p-1 ring-1 ring-black/10"
-                              />
+                              <button
+                                type="button"
+                                onClick={() => setZoomSrc(sel.imageSrc!)}
+                                title={`ดูตัวอย่าง ${sel.name} เต็มจอ`}
+                                className="min-w-0 flex-1"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={sel.imageSrc}
+                                  alt={sel.name}
+                                  className="h-11 w-full rounded-xl bg-white object-contain p-1 ring-1 ring-black/10"
+                                />
+                              </button>
                             )}
                             {sel && <span className="shrink-0 text-[12px] font-bold text-stone-600">{sel.name}</span>}
                             {opt.chartSrc && (

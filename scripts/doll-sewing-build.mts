@@ -19,7 +19,8 @@
  *   • สีตุ๊กตา = display "cards" 3 ตัวเลือก มีรูปประกอบ (ผู้ใช้สั่ง 25 ส.ค. 69: ตัวเลือกต้องมีภาพ
  *     ให้เห็นว่าแต่ละแบบหน้าตายังไง) — ชมพู/ขาว ครอปจากรูปงานจริง · เทา ไม่มีรูปถ่าย ใช้สวอตช์สีผ้า
  *   • ข้อความปักชื่อ = กลุ่มช่องกรอก (display "input" + standardInput — งานปกติ ไม่ใช่กล่องสั่งทำ)
- *   • ฟอนต์ = dropdown E1-E11 / T1-T15 · ชาร์ตฟอนต์+อีโมจิอยู่แท็บ "ฟอนต์ / อีโมจิ"
+ *   • ฟอนต์ = ตารางแถบตัวอย่างลายมือ (sampleGrid) E1-E11 / T1-T15 — ครอปทีละบรรทัดจากชาร์ต YourChoice
+ *     ตอนรัน + ปุ่มดูชาร์ตเต็ม (chartSrc) · ชาร์ตใบเดียวกันแนบไว้ในแท็บ "ฟอนต์ / อีโมจิ" ด้วย
  *   • สีไหมปัก = swatchGrid 80 เบอร์ Madeira — ก็อปกลุ่มจาก armpatch-1 ตอนรัน (รูปสวอตช์+ชาร์ต
  *     ใช้ URL ร่วมจาก products/armpatch-1 แบบเดียวกับฐาน griptok-mirror ที่ใช้ภาพร่วม) แต่ไม่คิด +฿
  *     เพราะการ์ดร้านกำหนด "ปักได้ไม่เกิน 3 สีไหม" (รวมในราคา ไม่มีเรทเกิน 3 สี)
@@ -63,6 +64,21 @@ const GROUP_THREAD = `สีไหมปัก (เลือกได้ไม�
 
 const DRIVE = "/Volumes/iDuckyShop/Case Web/ใหม่/ตุ๊กตาหูปัก";
 const FONT_CHART = "/Volumes/iDuckyShop/- ข้อมูลตอบลูกค้า/40_เสื้อผ้าและงานผ้า/ตุ๊กตาปัก-ซับ/YourChoice-01.jpg";
+
+/**
+ * 📐 โซนตัวอย่างฟอนต์บนชาร์ต YOUR CHOICE (สัดส่วน 0-1 ของภาพเต็ม 7108×4345)
+ * ชาร์ตเป็น "ภาพถ่ายผ้าปักจริง" ไม่ใช่ไฟล์เวคเตอร์ — บรรทัดตัวอย่างเรียงห่างเท่า ๆ กัน 15 บรรทัด
+ * ต่อคอลัมน์ (อังกฤษมีป้ายกำกับแค่ E1-E11 · ไทยครบ T1-T15) · y0/y1 = กลางบรรทัดแรก/บรรทัดที่ 15
+ * สคริปต์ยึดค่าพวกนี้เป็นโครง แล้วหาขอบบน-ล่างจริงของแต่ละบรรทัดจากรอยหมึกอีกที (กันภาพเอียง)
+ * ⚠️ เปลี่ยนไฟล์ชาร์ตเมื่อไหร่ต้องวัดค่าพวกนี้ใหม่ — สคริปต์ assert ว่าเจอรอยหมึกครบทุกบรรทัด
+ */
+const FONT_COLS = {
+  // x0/x1 = ขอบซ้าย-ขวาของ "บรรทัดที่ยาวที่สุด" ในคอลัมน์นั้น (บรรทัดจัดกึ่งกลาง สั้นยาวไม่เท่ากัน)
+  // — กันชนไว้พ้นคอลัมน์ป้ายรหัส (อังกฤษจบ 0.158 · ไทยจบ 0.438) และพ้นคอลัมน์อีโมจิ (เริ่ม 0.716)
+  en: { x0: 0.16, x1: 0.4, y0: 0.308, y1: 0.879, prefix: "E", count: 11, lang: "อังกฤษ" },
+  th: { x0: 0.441, x1: 0.694, y0: 0.299, y1: 0.879, prefix: "T", count: 15, lang: "ไทย" },
+} as const;
+const FONT_ROWS = 15; // จำนวนบรรทัดตัวอย่างต่อคอลัมน์ (ใช้คำนวณระยะห่าง — มากกว่าจำนวนที่มีป้ายกำกับ)
 
 const OUT = new URL("../scratchpad_out/doll-sewing/", import.meta.url).pathname;
 mkdirSync(OUT, { recursive: true });
@@ -132,9 +148,11 @@ console.log(`📊 ตารางจากเว็บ (${tiers.map((x) => x.lab
 console.log(`   ราคา: ${prices.map((p) => `฿${p}`).join(" / ")} · คละ: 1-${MIX_FROM - 1} อิสระ · ${MIX_FROM}+ แบบละ ${MIX_MIN}`);
 
 /* ── 2. รูปภาพ ──────────────────────────────────────────────────── */
+type Box = { left: number; top: number; width: number; height: number }; // สัดส่วน 0-1 ของภาพเต็ม
 type ImgSrc =
   | { kind: "drive"; path: string; width?: number }
   | { kind: "square"; path: string } // ครอปกลางเป็นจัตุรัส — ภาพการ์ดตัวเลือก
+  | { kind: "strip"; path: string; box: Box } // ครอปแถบยาว 1 บรรทัด — ตัวอย่างฟอนต์
   | { kind: "swatch"; rgb: { r: number; g: number; b: number } }; // สวอตช์สีผ้า (ไม่มีรูปถ่าย)
 
 async function render(src: ImgSrc): Promise<Buffer> {
@@ -144,7 +162,64 @@ async function render(src: ImgSrc): Promise<Buffer> {
       .toBuffer();
   const img = sharp(src.path).rotate();
   if (src.kind === "square") return img.resize(900, 900, { fit: "cover" }).jpeg({ quality: 88 }).toBuffer();
+  if (src.kind === "strip") {
+    const meta = await sharp(src.path).metadata();
+    const b = src.box;
+    return img
+      .extract({
+        left: Math.round(b.left * meta.width!),
+        top: Math.round(b.top * meta.height!),
+        width: Math.round(b.width * meta.width!),
+        height: Math.round(b.height * meta.height!),
+      })
+      .resize({ width: 800 })
+      .jpeg({ quality: 88 })
+      .toBuffer();
+  }
   return img.resize({ width: src.width ?? 1200, withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer();
+}
+
+/**
+ * หาแถบครอบ "บรรทัดตัวอย่างฟอนต์" ทีละบรรทัดจากชาร์ต (คืนกล่องสัดส่วน 0-1)
+ * ทำไมต้องหาเอง: ชาร์ตเป็นภาพถ่ายผ้า บรรทัดเอียงเล็กน้อยและความสูงตัวอักษรไม่เท่ากัน
+ * (ตัวพิมพ์ใหญ่/หางไทยกินที่มากกว่า) — ครอปตามระยะห่างคงที่เฉย ๆ จะตัดหัว-ตัดหางบางบรรทัด
+ * วิธี: ไล่หารอยหมึก (สีจัด หรือ เข้มกว่าพื้นผ้า) ในกรอบ ±45% ของระยะห่างรอบกลางบรรทัดตามโครง
+ */
+async function fontRowBoxes(col: (typeof FONT_COLS)[keyof typeof FONT_COLS]): Promise<Box[]> {
+  const { data, info } = await sharp(FONT_CHART).rotate().resize({ width: 1200 }).raw().toBuffer({ resolveWithObject: true });
+  const { width: w, height: h, channels: ch } = info;
+  const inky = (x: number, y: number) => {
+    const i = (y * w + x) * ch;
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    return Math.max(r, g, b) - Math.min(r, g, b) > 28 || 0.299 * r + 0.587 * g + 0.114 * b < 170;
+  };
+  const step = (col.y1 - col.y0) / (FONT_ROWS - 1);
+  const x0 = Math.round(col.x0 * w), x1 = Math.round(col.x1 * w);
+  const boxes: Box[] = [];
+  for (let i = 0; i < col.count; i++) {
+    const cy = col.y0 + step * i;
+    let top: number | null = null, bot = 0;
+    for (let y = Math.round((cy - step * 0.45) * h); y < Math.round((cy + step * 0.45) * h); y++) {
+      let n = 0;
+      for (let x = x0; x < x1; x++) if (inky(x, y)) n++;
+      if (n > 2) {
+        if (top === null) top = y;
+        bot = y;
+      }
+    }
+    if (top === null)
+      throw new Error(`หาบรรทัดตัวอย่างฟอนต์ ${col.prefix}${i + 1} บนชาร์ตไม่เจอ — ไฟล์ชาร์ตเปลี่ยน ต้องวัด FONT_COLS ใหม่`);
+    const pad = 0.006; // เผื่อหัว-หางตัวอักษรที่จางจนไม่นับเป็นรอยหมึก
+    let t = top / h - pad, b = bot / h + pad;
+    const minH = 0.03;
+    if (b - t < minH) {
+      const m = (t + b) / 2;
+      t = m - minH / 2;
+      b = m + minH / 2;
+    }
+    boxes.push({ left: col.x0, top: t, width: col.x1 - col.x0, height: b - t });
+  }
+  return boxes;
 }
 
 async function put(name: string, src: ImgSrc): Promise<string> {
@@ -170,9 +245,25 @@ art["photo-thai"] = await put("photo-thai", { kind: "drive", path: `${DRIVE}/1.9
 art["opt-pink"] = await put("opt-pink", { kind: "square", path: `${DRIVE}/2.2.jpg` });
 art["opt-white"] = await put("opt-white", { kind: "square", path: `${DRIVE}/1.4.jpg` });
 art["opt-gray"] = await put("opt-gray", { kind: "swatch", rgb: { r: 171, g: 171, b: 177 } });
-// ชาร์ตฟอนต์ + อีโมจิ (YOUR CHOICE) — ไว้ในแท็บ (กว้าง 1600 ให้ซูมอ่านรหัสได้)
-art["font-chart"] = await put("font-chart", { kind: "drive", path: FONT_CHART, width: 1600 });
-console.log(`🖼  อัปรูป ${Object.keys(art).length} ไฟล์ — ตัวอย่างอยู่ที่ ${OUT}`);
+// ชาร์ตฟอนต์ + อีโมจิ (YOUR CHOICE) — ไว้ในแท็บ + ปุ่ม "ดูชาร์ตเต็ม" ของกลุ่มฟอนต์ (กว้าง 2000 ให้ซูมอ่านรหัสได้)
+art["font-chart"] = await put("font-chart", { kind: "drive", path: FONT_CHART, width: 2000 });
+
+/**
+ * ✍️ แถบตัวอย่างลายมือรายฟอนต์ (ผู้ใช้สั่ง 25 ส.ค. 69: "กลุ่มฟอนต์ตัวปักควรมีตัวอย่าง font ด้วย")
+ * ครอปทีละบรรทัดจากชาร์ตเดียวกัน — 1 ไฟล์ = 1 ฟอนต์ เต็มประโยคตัวอย่าง
+ * หน้าร้านโชว์เป็นตารางแถบ (ProductOption.sampleGrid) ครึ่งซ้ายในตาราง + เต็มบรรทัดของตัวที่เลือกใต้ตาราง
+ */
+const fontChoices: { name: string; imageSrc: string }[] = [];
+for (const col of [FONT_COLS.en, FONT_COLS.th]) {
+  const boxes = await fontRowBoxes(col);
+  for (let i = 0; i < boxes.length; i++) {
+    const code = `${col.prefix}${i + 1}`;
+    // ชื่อขึ้นต้นด้วยรหัสเสมอ — หน้าร้านตัดคำแรกมาเป็นป้ายใต้แถบ (ช่องแคบ) ส่วนตะกร้า/ใบงานเห็นเต็ม
+    fontChoices.push({ name: `${code} (${col.lang})`, imageSrc: await put(`font-${code}`, { kind: "strip", path: FONT_CHART, box: boxes[i] }) });
+  }
+}
+console.log(`✍️  แถบตัวอย่างฟอนต์ ${fontChoices.length} แบบ (อังกฤษ ${FONT_COLS.en.count} · ไทย ${FONT_COLS.th.count}) ครอปจากชาร์ต YOUR CHOICE`);
+console.log(`🖼  อัปรูป ${Object.keys(art).length + fontChoices.length} ไฟล์ — ตัวอย่างอยู่ที่ ${OUT}`);
 
 /* ── 2.5 กลุ่มสีไหม Madeira 80 เบอร์ — ก็อปจาก armpatch-1 (ดูหมายเหตุหัวไฟล์) ── */
 const { data: apRow, error: apErr } = await sb.from("products").select("data").eq("id", ARMPATCH_ID).single();
@@ -194,9 +285,6 @@ const threadOption: ProductOption = {
 console.log(`🧵 สีไหมจากอาร์มปัก: ${threadOption.choices.length} เบอร์ (ใช้รูปสวอตช์+ชาร์ตร่วมจาก ${ARMPATCH_ID})`);
 
 /* ── 3. ประกอบสินค้า ─────────────────────────────────────────────── */
-const FONT_EN = Array.from({ length: 11 }, (_, i) => `E${i + 1}`);
-const FONT_TH = Array.from({ length: 15 }, (_, i) => `T${i + 1}`);
-
 const OPTIONS: ProductOption[] = [
   {
     label: GROUP_COLOR,
@@ -222,12 +310,14 @@ const OPTIONS: ProductOption[] = [
   },
   {
     label: GROUP_FONT,
+    // ตารางแถบตัวอย่าง (หน้าร้านทับ display ให้เอง) · display dropdown ไว้เป็นทรงสำรองของที่อื่น
     display: "dropdown",
-    note: `ฟอนต์อังกฤษ E1-E11 · ฟอนต์ไทย T1-T15 — ดูตัวอย่างลายมือแต่ละฟอนต์ในแท็บ **"ฟอนต์ / อีโมจิ"** ท้ายหน้า`,
-    choices: [
-      ...FONT_EN.map((n) => ({ name: `ฟอนต์อังกฤษ ${n}` })),
-      ...FONT_TH.map((n) => ({ name: `ฟอนต์ไทย ${n}` })),
-    ],
+    sampleGrid: true,
+    chartSrc: art["font-chart"], // ปุ่ม 🔍 ดูชาร์ตเต็ม — ไฟล์เดียวกับที่แนบในแท็บ "ฟอนต์ / อีโมจิ"
+    note:
+      `แตะเลือกจากตัวอย่างลายมือจริงได้เลย — **${FONT_COLS.en.prefix}1-${FONT_COLS.en.prefix}${FONT_COLS.en.count} เป็นฟอนต์อังกฤษ · ` +
+      `${FONT_COLS.th.prefix}1-${FONT_COLS.th.prefix}${FONT_COLS.th.count} เป็นฟอนต์ไทย** · แถบใต้ตารางคือตัวอย่างเต็มประโยคของแบบที่เลือกอยู่`,
+    choices: fontChoices,
   },
   threadOption,
 ];
@@ -256,7 +346,7 @@ const product: Product = {
     `เหมาะเป็นของขวัญรับปริญญา วันเกิด ของฝากแทนใจ ไม่มีขั้นต่ำในการสั่งผลิต เริ่ม${UNIT}ละ ${prices[0]} บาท`,
   highlights: [
     `ไม่มีขั้นต่ำ · เริ่ม${UNIT}ละ ${prices[0]} บาท (สั่งเยอะลดถึง ${prices[prices.length - 1]} บาท)`,
-    `ปักชื่อที่หู 1 ข้าง — ฟอนต์อังกฤษ/ไทย ${FONT_EN.length + FONT_TH.length} แบบ + สีไหม 80 เบอร์ (ไม่เกิน ${THREAD_MAX} สี รวมในราคา)`,
+    `ปักชื่อที่หู 1 ข้าง — ฟอนต์อังกฤษ/ไทย ${fontChoices.length} แบบ + สีไหม 80 เบอร์ (ไม่เกิน ${THREAD_MAX} สี รวมในราคา)`,
     `ตุ๊กตากำมะหยี่ ${SIZE} มี 3 สี ชมพู · เทา · ขาว`,
   ],
   options: OPTIONS,
@@ -329,7 +419,7 @@ const product: Product = {
       "รับปักตุ๊กตา",
       "iDucky",
     ],
-    description: `รับปักชื่อตุ๊กตากระต่าย DOLL SEWING ขนาด ${SIZE} เนื้อกำมะหยี่ มี 3 สี ชมพู เทา ขาว ปักชื่อที่หูด้วยไหม Madeira ฟอนต์ไทย/อังกฤษ ${FONT_EN.length + FONT_TH.length} แบบ ไม่มีขั้นต่ำ เริ่ม${UNIT}ละ ${prices[0]} บาท`,
+    description: `รับปักชื่อตุ๊กตากระต่าย DOLL SEWING ขนาด ${SIZE} เนื้อกำมะหยี่ มี 3 สี ชมพู เทา ขาว ปักชื่อที่หูด้วยไหม Madeira ฟอนต์ไทย/อังกฤษ ${fontChoices.length} แบบ ไม่มีขั้นต่ำ เริ่ม${UNIT}ละ ${prices[0]} บาท`,
     faqs: [
       {
         q: "ตุ๊กตากระต่ายปักชื่อ ราคาเท่าไหร่?",
