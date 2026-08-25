@@ -21,6 +21,8 @@ import {
   MTO_ON,
   needsQuote,
   parseInputValue,
+  inputFeeOf,
+  inputFeeRateOf,
   customUnitPrice,
   customKeepsOption,
   adminProductPath,
@@ -1819,6 +1821,20 @@ export default function ProductDetail({
                             ) : (
                               <p className="mt-1 text-[11px] font-bold text-rose-600">
                                 ⚠ ขนาดนี้ใหญ่เกิน 1 {sheet} — รบกวนทักแชทเช็คกับแอดมินก่อนนะครับ
+                              </p>
+                            );
+                          })()}
+                          {/* 💰 ค่าบริการที่คิดจากค่าที่กรอก (เช่น เพิ่มขนาดนิ้วละ 15) — กางที่มาให้เห็น ไม่งั้นราคาขยับเงียบ ๆ */}
+                          {(() => {
+                            const fee = inputFeeOf(opt, effective);
+                            if (!fee) return null;
+                            const rate = inputFeeRateOf(opt.inputFee!, effective);
+                            const n = Number(parseInputValue(opt, effective[opt.label]));
+                            return (
+                              <p className="mt-1 text-[11px] font-bold text-teal-700">
+                                💰 {n.toLocaleString("th-TH")} {cfg?.unit ?? ""} × {formatPrice(rate)} ={" "}
+                                <span className="font-extrabold text-teal-900">+{formatPrice(fee)}</span> ต่อ
+                                {matrix?.unit ?? "ชิ้น"}
                               </p>
                             );
                           })()}

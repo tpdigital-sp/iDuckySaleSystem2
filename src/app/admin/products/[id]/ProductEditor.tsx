@@ -20,6 +20,7 @@ import {
   type ShipOptionRule,
   type ShipTier,
   type SizeFee,
+  type InputFee,
 } from "@/lib/products";
 import RichEditor from "@/components/RichEditor";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
@@ -141,6 +142,8 @@ type DraftOption = {
   sheetFee?: { from: string; unit?: string };
   /** ✍️ ช่องกรอกของงานปกติ (ไม่เข้ากล่อง 📐) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   standardInput?: boolean;
+  /** 💰 คิดเงินตามค่าที่กรอก × เรทต่อหน่วย — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  inputFee?: InputFee;
   /** 📐 สเปกโชว์จำนวนชิ้นต่อแผ่นจากกว้าง×สูง — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   sheetYield?: {
     pairLabel: string;
@@ -486,6 +489,7 @@ function toDraft(p: Product): Draft {
       ...(o.extraPerDesign ? { extraPerDesign: true } : {}),
       ...(o.sheetFee ? { sheetFee: o.sheetFee } : {}),
       ...(o.standardInput ? { standardInput: true } : {}),
+      ...(o.inputFee ? { inputFee: o.inputFee } : {}),
       ...(o.sheetYield ? { sheetYield: o.sheetYield } : {}),
       choices: o.choices.map((c) => ({
         name: c.name,
@@ -732,6 +736,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       ...(o.sheetFee ? { sheetFee: o.sheetFee } : {}),
       // ✍️📐 ช่องกรอกงานปกติ + สเปกจำนวนชิ้นต่อแผ่น — ไม่มีช่องกรอกในหน้าแก้ไข ต้องส่งกลับ ไม่งั้นหาย
       ...(o.standardInput ? { standardInput: true as const } : {}),
+      ...(o.inputFee ? { inputFee: o.inputFee } : {}),
       ...(o.sheetYield ? { sheetYield: o.sheetYield } : {}),
       choices: o.choices
         .filter((c) => c.name.trim())

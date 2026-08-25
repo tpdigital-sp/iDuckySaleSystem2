@@ -213,6 +213,12 @@ export interface ProductOption {
    */
   input?: OptionInput;
   /**
+   * 💰 คิดเงินตามตัวเลขที่ลูกค้ากรอกในกลุ่มนี้ — บาทต่อ 1 หน่วยที่กรอก (ดู InputFee)
+   * เช่น ปฏิทินผ้าแคนวาส "เพิ่มขนาด (นิ้ว/ด้าน)" กรอก 2 → +30 บาท/ผืน เมื่อเรทนิ้วละ 15
+   * มีผลเฉพาะกลุ่ม display 'input' ที่ input.kind = 'number'
+   */
+  inputFee?: InputFee;
+  /**
    * ✍️ ช่องกรอกนี้เป็น "ข้อมูลประกอบของงานปกติ" ไม่ใช่งานสั่งทำ — โชว์เรียงกับกลุ่มตัวเลือกปกติ
    * (ไม่เข้ากล่อง 📐 ไม่ต้องติ๊ก "สั่งทำ" ก่อน และตรวจว่ากรอกครบก่อนสั่งเสมอ)
    * เช่น ขนาดไดคัทของงานกระดาษ — ราคายังคิดตามตารางเดิม แค่ต้องรู้ขนาดไว้ผลิต
@@ -534,6 +540,39 @@ export function sizeFeeBreakdownOf(cfg: SizeFee, selections: Record<string, stri
 /** 💰 เฉพาะยอดรวมของ sizeFeeBreakdownOf — ตัวที่ choiceExtraOf ใช้คิดเงินจริง */
 export function sizeFeeOf(cfg: SizeFee, selections: Record<string, string>): number {
   return sizeFeeBreakdownOf(cfg, selections)?.fee ?? 0;
+}
+
+/**
+ * 💰 สเปก "คิดเงินตามตัวเลขที่กรอก" ของกลุ่มช่องกรอก (ดู ProductOption.inputFee)
+ * ต่างจาก SizeFee ตรงที่ SizeFee = ขั้นบันไดตามด้านยาวสุดของชิ้นงาน
+ * ส่วนตัวนี้ = คูณตรง ๆ กับค่าที่กรอก (ปฏิทินผ้าแคนวาส: เพิ่มขนาดนิ้วละ 15/25 บาทต่อด้าน)
+ */
+export interface InputFee {
+  /** บาทต่อ 1 หน่วยที่กรอก เมื่อไม่มีเรทเงื่อนไขไหนตรง (0 = นอกเงื่อนไขไม่คิด) */
+  perUnit: number;
+  /** เรทที่ต่างกันตามตัวเลือกของกลุ่มอื่น — ใช้ข้อแรกที่ตรง (เช่น ซับลิเมชั่น 15 · UV 25) */
+  rates?: { when: { label: string; choices: string[] }; perUnit: number }[];
+}
+
+/** 💰 เรทต่อหน่วยที่มีผลตอนนี้ — ไล่ rates ตามลำดับ ไม่ตรงข้อไหนใช้ perUnit กลาง */
+export function inputFeeRateOf(cfg: InputFee, selections: Record<string, string>): number {
+  for (const r of cfg.rates ?? []) {
+    if (valueMatchesAny(selections[r.when.label], r.when.choices)) return r.perUnit;
+  }
+  return cfg.perUnit;
+}
+
+/**
+ * 💰 ค่าบริการของกลุ่มช่องกรอกนี้ = ค่าที่กรอก × เรทต่อหน่วย (0 = ยังไม่กรอก/เรทเป็น 0)
+ * กลุ่มช่องกรอกไม่มี choices ให้บวก จึงเป็นทางเดียวที่กลุ่มชนิดนี้คิดเงินได้
+ */
+export function inputFeeOf(opt: ProductOption, selections: Record<string, string>): number {
+  const cfg = opt.inputFee;
+  if (!cfg || !isInputOption(opt)) return 0;
+  const n = Number(parseInputValue(opt, selections[opt.label]));
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  const rate = inputFeeRateOf(cfg, selections);
+  return rate > 0 ? n * rate : 0;
 }
 
 /** 📐 ผลของ unitYieldOf — สั่ง 1 หน่วยแล้วได้งานกี่ชิ้น */
@@ -881,7 +920,8 @@ export function groupAddOf(opt: ProductOption, selections: Record<string, string
   if (fee > 0) return fee;
   // กลุ่มที่คิดต่อลาย/ต่อแผ่น: +฿ ไม่เข้าราคา/ชิ้น — ไปคิดรวมครั้งเดียวใน designFeeFor
   if (opt.extraPerDesign || opt.sheetFee) return fee;
-  const extra = groupExtraAtQty(opt, selections, qty);
+  // 💰 กลุ่มช่องกรอกที่คิดเงินตามค่าที่กรอก (เช่น เพิ่มขนาดนิ้วละ 15) — ไม่มี choices ให้บวก จึงบวกแยก
+  const extra = groupExtraAtQty(opt, selections, qty) + inputFeeOf(opt, selections);
   return extra + fee; // fee ติดลบ = ลดให้
 }
 
@@ -1445,7 +1485,9 @@ export function unitAddOnBreakdown(product: Product, selections: Record<string, 
     const add = groupAddOf(opt, selections, qty);
     if (add <= 0) continue;
     const picked = selections[opt.label];
-    lines.push({ label: picked || opt.label, amount: add });
+    // ช่องกรอกเก็บแค่ตัวเลข ("2 นิ้ว") — ลำพังอ่านไม่รู้ว่าค่าอะไร ใส่ชื่อกลุ่มนำหน้าให้
+    const label = isInputOption(opt) && picked ? `${opt.label} ${picked}` : picked || opt.label;
+    lines.push({ label, amount: add });
   }
   return lines;
 }

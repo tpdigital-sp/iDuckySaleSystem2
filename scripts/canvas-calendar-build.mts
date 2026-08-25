@@ -42,6 +42,8 @@ const PAGE = "https://www.iduckyofficial-pricelists.com/calendar";
 const UNIT = "ผืน";
 const V = "v1"; // ⚠️ แก้รูป/คลิปครั้งหน้าขยับเป็น v2 (กันแคช)
 const GROUP_TECH = "เทคนิคการพิมพ์";
+const GROUP_SIZE = "ขนาด";
+const SIZE_STD = "40x85 ซม.";
 
 const OUT = new URL("../scratchpad_out/canvas-calendar/", import.meta.url).pathname;
 mkdirSync(OUT, { recursive: true });
@@ -196,10 +198,8 @@ const OPTIONS: ProductOption[] = [
   {
     label: GROUP_TECH,
     display: "cards",
-    note:
-      `ขนาด 40x85 ซม. ทั้งสองแบบ · เพิ่มขนาดได้ **${SUB} นิ้วละ ${FEE_SUB} บาท/ด้าน · ${UV} นิ้วละ ${FEE_UV} บาท/ด้าน** ` +
-      `— ต้องการขนาดพิเศษ แจ้งในหมายเหตุถึงร้าน · ` +
-      `ภาพบนการ์ดเป็นตัวอย่างงานจริงของร้าน ให้ดูลักษณะเนื้อผ้าและงานพิมพ์ — จุดต่างของสองเทคนิคดูที่คำอธิบายใต้ชื่อ`,
+    // ผู้ใช้สั่งถอด note ใต้ชื่อกลุ่มออก (25 ส.ค. 69) — ค่าเพิ่มขนาดต่อนิ้วยังอยู่ใน terms/highlights/FAQ
+    note: "",
     choices: [
       {
         name: SUB,
@@ -214,6 +214,35 @@ const OPTIONS: ProductOption[] = [
       },
     ],
   },
+  {
+    // ผู้ใช้สั่งเพิ่ม (25 ส.ค. 69) — ขนาดมาตรฐานตัวเดียวตามตารางเว็บ
+    // ⚠️ ไม่ใช่แกนราคา (driverLabels มีแต่เทคนิคการพิมพ์) ห้ามใส่เข้า cells
+    label: GROUP_SIZE,
+    choices: [{ name: SIZE_STD }],
+  },
+  // 💰 เพิ่มขนาด: เว็บคิด "นิ้วละ N บาท ต่อด้าน" → แยกช่องกรอกตามด้าน แต่ละช่องคูณเรทของตัวเอง
+  //    เรทตามเทคนิคที่เลือก (ซับลิเมชั่น 15 · UV 25) ผ่าน inputFee.rates
+  ...(["ด้านกว้าง", "ด้านสูง"] as const).map((side) => ({
+    label: `เพิ่มขนาด ${side} (นิ้ว)`,
+    display: "input" as const,
+    standardInput: true, // ข้อมูลประกอบงานปกติ ไม่ใช่งานสั่งทำที่ต้องให้แอดมินตีราคา
+    input: {
+      kind: "number" as const,
+      unit: "นิ้ว",
+      max: 40,
+      required: false, // ไม่เพิ่มก็ปล่อยว่างได้
+      placeholder: "0",
+      hint: `ไม่เพิ่มปล่อยว่างไว้ · เพิ่ม${side}กี่นิ้วจาก ${SIZE_STD} (1 นิ้ว ≈ 2.54 ซม.)`,
+    },
+    inputFee: {
+      perUnit: 0, // ยังไม่เลือกเทคนิค = ยังไม่คิด (เลือกแล้วเข้า rates ข้างล่างเสมอ)
+      rates: [
+        { when: { label: GROUP_TECH, choices: [SUB] }, perUnit: FEE_SUB },
+        { when: { label: GROUP_TECH, choices: [UV] }, perUnit: FEE_UV },
+      ],
+    },
+    choices: [],
+  })),
 ];
 
 /* ── 4. ประกอบสินค้า (patch ทับร่างเดิม — คงแท็บกลาง/ฟิลด์อื่นไว้) ── */
@@ -354,6 +383,10 @@ const checks: [string, unknown, unknown][] = [
   [`cells ${UV}`, JSON.stringify(back.pricing?.cells?.[UV]), JSON.stringify(priceUv)],
   ["กลุ่มตัวเลือก", back.options?.[0]?.label, GROUP_TECH],
   ["จำนวนการ์ด", back.options?.[0]?.choices?.length, 2],
+  ["กลุ่มขนาด", back.options?.[1]?.label, GROUP_SIZE],
+  ["ตัวเลือกขนาด", back.options?.[1]?.choices?.[0]?.name, SIZE_STD],
+  ["ช่องเพิ่มขนาด", back.options?.filter((o) => o.inputFee).length, 2],
+  ["เรทเพิ่มขนาด ซับ/UV", JSON.stringify(back.options?.[2]?.inputFee?.rates?.map((r) => r.perUnit)), JSON.stringify([FEE_SUB, FEE_UV])],
   ["แกลเลอรี", back.images?.length, gallery.length],
 ];
 for (const [what, got, want] of checks) {
