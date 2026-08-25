@@ -20,3 +20,4 @@ Asset*.png
 
 # สคริปต์ทดลองชั่วคราวจากเซสชันทำงาน — ไม่เก็บเข้า repo
 scripts/_tmp-*
+scratchpad_out/
