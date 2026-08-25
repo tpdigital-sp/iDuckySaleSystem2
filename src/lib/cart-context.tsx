@@ -23,8 +23,6 @@ export interface CartItem {
   extraFee?: number;
   /** ค่าตัวเลือกที่บวกอยู่ในราคาต่อชิ้น (เช่น ตะขอสปริง +฿10) — ไว้แจกแจงให้ลูกค้าเห็น */
   addOns?: UnitPriceAddOn[];
-  /** ส่วนต่างของแกนตารางราคา (เช่น สกรีน 2 ด้าน +฿10) — ฝังในราคาเรทแล้ว แสดงอย่างเดียว ห้ามบวกซ้ำ */
-  driverFees?: UnitPriceAddOn[];
   /**
    * ถูกรวมกับบรรทัดอื่นในล็อตผลิตเดียวกันเพื่อคิดเรทตามจำนวนรวม (เช่น 25+25 = 50 ชิ้น 2 ลาย เรท 2)
    * ไว้โชว์ป้ายในตะกร้าให้ลูกค้ารู้ว่าทำไมราคาต่อชิ้นเปลี่ยน — undefined = คิดแบบบรรทัดเดี่ยวตามเดิม
@@ -166,7 +164,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const items: CartItem[] = state.items.map((i, idx) => {
       if (!productOf(i.productId)) return i;
       const r = priced[idx];
-      return { ...i, unitPrice: r.unitPrice, extraFee: r.extraFee, addOns: r.addOns, driverFees: r.driverFees, merged: r.merged };
+      return { ...i, unitPrice: r.unitPrice, extraFee: r.extraFee, addOns: r.addOns, merged: r.merged };
     });
     const totalQty = items.reduce((s, i) => s + i.qty, 0);
     const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice + (i.extraFee ?? 0), 0);

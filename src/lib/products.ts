@@ -3758,43 +3758,6 @@ export function unitPriceParts(
 }
 
 /**
- * 💰 ส่วนต่างราคาของ "แกนตารางราคา" ที่เลือกอยู่ เทียบกับตัวเลือกถูกสุดในแกนเดียวกัน (เรท/ขั้นเดียวกัน)
- * ไว้ติดป้าย +฿ ท้ายบรรทัดสเปค เช่น "งานสกรีน: สกรีน 2 ด้าน +฿10" (แพงกว่าสกรีน 1 ด้าน 10 บาท/ชิ้น)
- * หรือ "ประเภทอะคริลิค: สีพิเศษ +฿5" — ราคาพวกนี้ฝังอยู่ในช่องตารางเรทแล้ว ไม่ใช่ค่าบวกท้ายบิล
- * ⚠️ ใช้แสดงอย่างเดียว ห้ามเอาไปบวกกับราคารวมซ้ำ (ต่างจาก addOns ของ unitPriceParts ที่บวกจริง)
- */
-export function driverDeltasOf(
-  product: Product,
-  selections: Record<string, string>,
-  qty: number
-): UnitPriceAddOn[] {
-  if (product.areaPricing?.enabled) return []; // คิดตามพื้นที่ — คอลัมน์ไม่ใช่ราคาต่อชิ้น เทียบกันไม่ได้
-  const m = activeMatrix(product, selections);
-  if (!m || !m.driverLabels.length) return [];
-  const tierQty = tierQtyFor(product, selections, qty);
-  const cellOf = (sel: Record<string, string>): number | undefined => {
-    const cells = m.cells[priceMatrixKey(m, sel)];
-    return cells?.length ? cells[tierIndex(m, tierQty)] : undefined;
-  };
-  const cur = cellOf(selections);
-  if (cur == null) return []; // ของเก่าที่แกนตารางไม่ครบ — ไม่มีฐานให้เทียบ
-  const out: UnitPriceAddOn[] = [];
-  for (const label of m.driverLabels) {
-    const chosen = selections[label];
-    if (!chosen) continue;
-    // เทียบเฉพาะตัวเลือกที่กฎอนุญาตในสเปคปัจจุบัน — ตัวที่โดนกฎล็อกไม่ใช่ทางเลือกจริงของลูกค้า
-    let min = cur;
-    for (const name of allowedChoices(product, selections, label)) {
-      const v = cellOf({ ...selections, [label]: name });
-      if (v != null && v > 0 && v < min) min = v;
-    }
-    const delta = cur - min;
-    if (delta > 0) out.push({ label, choice: chosen, amount: delta });
-  }
-  return out;
-}
-
-/**
  * ราคา/หน่วย ตามตัวเลือก + จำนวน — ใช้ตารางราคาถ้ามี, ไม่งั้น price + option.extra
  * `collect` (ถ้าส่งมา) จะถูกเติมรายการค่าตัวเลือกที่บวกเพิ่ม — ดู unitPriceParts()
  */
@@ -3886,11 +3849,6 @@ export interface GroupReprice {
   extraFee: number;
   /** แจกแจงราคาต่อชิ้น: ราคาฐานจากเรท + ค่าตัวเลือกแต่ละกลุ่ม (ไว้อธิบายว่าทำไมแต่ละบรรทัดไม่เท่ากัน) */
   addOns?: UnitPriceAddOn[];
-  /**
-   * ส่วนต่างของแกนตารางราคาที่เลือก เทียบตัวเลือกถูกสุด (เช่น สกรีน 2 ด้าน +฿10) — ดู driverDeltasOf
-   * ⚠️ แสดงอย่างเดียว ราคาฝังในช่องตารางแล้ว ห้ามบวกซ้ำ
-   */
-  driverFees?: UnitPriceAddOn[];
   /** ข้อมูลกลุ่มไว้โชว์ใน UI — undefined = ไม่ได้ถูกรวมกับใคร (คิดแบบบรรทัดเดี่ยวตามเดิม) */
   merged?: { lines: number; totalQty: number; totalDesigns: number; rateLabel?: string };
 }
@@ -4011,7 +3969,6 @@ export function repriceCartGroups(
       unitPrice: parts?.total ?? 0,
       extraFee: p ? designFeeFor(p, l.selections, l.qty) : 0,
       addOns: parts?.addOns,
-      driverFees: p ? driverDeltasOf(p, l.selections, l.qty) : undefined,
     };
   });
 
@@ -4069,7 +4026,6 @@ export function repriceCartGroups(
         out[i] = {
           unitPrice: parts.total,
           addOns: parts.addOns,
-          driverFees: driverDeltasOf(p, sel, lotQty),
           // ค่าประจำบรรทัด (ต่อลาย/ต่อแผ่น) คิดตามสเปค+จำนวนลายของบรรทัดตัวเอง (สเปคในกลุ่มต่างกันได้)
           // ส่วน "ค่าคละลาย" เป็นของกลุ่มเรท — เกาะบรรทัดแรกของกลุ่มบรรทัดเดียว กันนับซ้ำ
           extraFee:
