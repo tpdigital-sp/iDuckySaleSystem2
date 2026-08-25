@@ -136,6 +136,8 @@ type DraftOption = {
     sheetW: number;
     sheetH: number;
     gap?: number;
+    /** ระยะเผื่อด้านสูงต่อชิ้น เช่น ส่วนพับครอบปากถุงของใบเย็บบน */
+    addH?: number;
     sheetName?: string;
     /** 1 หน่วยขาย = กี่แผ่น (เช่น ตร.ม. = 8 แผ่น A3) */
     unitSheets?: Record<string, number>;

@@ -6,6 +6,10 @@
  *  - เติมตัวเลือกเข้ากลุ่มขนาดใบ + เติมเซลล์ราคา 45 (กลุ่มนี้เป็น driver ของตารางราคา
  *    ถ้าไม่เติมเซลล์ ราคาจะหล่นไป product.price เงียบ ๆ)
  *  - เพิ่มช่องกรอก "ขนาดใบ (กว้าง)/(สูง)" (standardInput, ซม.) โผล่เมื่อเลือกกำหนดเอง
+ *  - sheetYield บนช่องสูง = โชว์ "ได้ประมาณ N ใบ/แผ่น A3" · สเปคแผ่น 47×26.75 ช่องไฟ 0.5
+ *    เผื่อสูง addH 2 (ส่วนพับครอบปากถุง) — ชุดเดียวที่ทำให้ MaxRects ได้เลขตรงกับ
+ *    5 ขนาดเดิมทั้งหมด (18/15/10/8/5 ใบ/A3)
+ *  - เติม piecesPerUnit ให้ 5 ขนาดเดิมตามเลขในชื่อ ("18 ใบ/1A3" → 18) ให้สรุปยอดรวมโชว์ด้วย
  */
 import { createClient } from "@supabase/supabase-js";
 import fs from "fs";
@@ -90,11 +94,36 @@ if (!opts.some((o) => o.label === W_LABEL)) {
   changed += 2;
 }
 
+// 4) sheetYield บนช่องสูง — โชว์จำนวนใบ/แผ่น A3 จากขนาดที่กรอก (จัดวางแบบ Print-Fit)
+const hOpt = opts.find((o) => o.label === H_LABEL);
+if (hOpt && !hOpt.sheetYield) {
+  hOpt.sheetYield = {
+    pairLabel: W_LABEL,
+    sheetW: 47,
+    sheetH: 26.75,
+    gap: 0.5,
+    addH: 2,
+    sheetName: "แผ่น A3",
+  };
+  changed++;
+}
+
+// 5) piecesPerUnit ของ 5 ขนาดเดิม อ่านจากเลขในชื่อ "(18 ใบ/1A3)" — โชว์เฉย ๆ ไม่กระทบราคา
+for (const c of group.choices) {
+  const m = c.name.match(/\((\d+)\s*ใบ\/1A3\)/);
+  if (m && !c.piecesPerUnit) {
+    c.piecesPerUnit = Number(m[1]);
+    changed++;
+  }
+}
+
 p.options = opts;
 console.log(`${ID} — changed ${changed}`);
 console.log("  ขนาดใบ choices:", group.choices.map((c) => c.name).join(" | "));
 console.log("  cells[custom]:", JSON.stringify(p.pricing?.cells?.[CUSTOM_NAME]));
 console.log("  inputs:", opts.filter((o) => o.display === "input").map((o) => `${o.label} (${o.input.min}-${o.input.max} ${o.input.unit})`).join(" · "));
+console.log("  sheetYield:", JSON.stringify(opts.find((o) => o.label === H_LABEL)?.sheetYield));
+console.log("  piecesPerUnit:", group.choices.map((c) => `${c.name}=${c.piecesPerUnit ?? "-"}`).join(" | "));
 
 if (DRY) {
   console.log("  (dry run — ไม่บันทึก)");

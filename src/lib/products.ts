@@ -350,6 +350,11 @@ export interface SheetYield {
    * เช่น 0.5 = เว้น 5 มม. · คิดเฉพาะช่องไฟ "ระหว่าง" ชิ้น ไม่กินขอบแผ่น · ไม่ตั้ง = วางชิด
    */
   gap?: number;
+  /**
+   * ระยะเผื่อ "ด้านสูง" ต่อชิ้นตอนจัดวาง (หน่วยเดียวกับที่ลูกค้ากรอก) — งานที่ชิ้นพิมพ์จริง
+   * สูงกว่าขนาดสำเร็จ เช่น ใบเย็บบนต้องเผื่อส่วนพับครอบปากถุง 2 ซม. · ไม่ตั้ง = ไม่เผื่อ
+   */
+  addH?: number;
   /** ชื่อแผ่นที่โชว์ให้ลูกค้า เช่น "แผ่น A3" (ไม่ตั้ง = "แผ่น") */
   sheetName?: string;
   /**
@@ -429,7 +434,7 @@ export function sheetYieldCount(
   const w = Number(parseInputValue(pair, selections[pair.label]));
   const h = Number(parseInputValue(opt, selections[opt.label]));
   if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
-  return packSingleSize(w, h, cfg.sheetW, cfg.sheetH, cfg.gap ?? 0);
+  return packSingleSize(w, h + (cfg.addH ?? 0), cfg.sheetW, cfg.sheetH, cfg.gap ?? 0);
 }
 
 /** 📐 ผลของ unitYieldOf — สั่ง 1 หน่วยแล้วได้งานกี่ชิ้น */
