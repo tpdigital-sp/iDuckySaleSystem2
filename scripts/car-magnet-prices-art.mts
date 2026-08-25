@@ -9,6 +9,8 @@
  *   วัสดุมี 2 แบบ ราคาตามตารางเดียวกัน (บนหน้าเว็บทั้งสองแบบอยู่ใต้ตารางเดียว ไม่มีตารางแยก):
  *     • PET+Magnet (งานพิมพ์ Digital) — ไม่ฉีกขาด ทนทานสูง เปียกน้ำได้ ไม่ทิ้งคราบกาว
  *     • สติ๊กเกอร์สะท้อนแสง+Magnet (งานพิมพ์ UV) — กลางวันสีเงิน กลางคืนสะท้อนแสงตอนโดนไฟส่อง
+ *   วัสดุทำเป็น "เรทราคา" 2 การ์ด (priceRates + imageSrc) ไม่ใช่กลุ่มตัวเลือก pills — ผู้ใช้สั่ง 25 ส.ค. 69
+ *     ให้หน้าตาเป็นการ์ดมีรูป+คำอธิบายแบบเดียวกับหมวก (เรทพิมพ์ DTF|FLEX / งานปัก) · กดการ์ดแล้วแกลเลอรีเด้งตามภาพ
  *   หมายเหตุจากหน้าเว็บ: คละลายได้ 2-3 ลาย มากกว่านั้นบวกเพิ่มลายละ 5 บาท → mixRule (รวม 3 ลาย เกิน +5/ลาย)
  *     · เริ่มต้นที่ขนาด 3x3cm · ระยะตัดตก 2-3mm (อาจมีขอบขาวบ้างตามข้อจำกัดเครื่องตัด)
  *
@@ -19,7 +21,7 @@
  */
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
-import { hasQuoteOption, priceRange, type PriceMatrix, type Product, type ProductOption } from "../src/lib/products";
+import { hasQuoteOption, priceRange, type PriceMatrix, type Product } from "../src/lib/products";
 
 const WRITE = process.argv.includes("--write");
 
@@ -144,16 +146,21 @@ const keptOld = (old.images ?? []).filter((im) => !newPhotos.some((n) => n.src =
 const gallery = [...keptOld, ...newPhotos].slice(0, 5);
 console.log(`🖼  แกลเลอรี ${gallery.length} ภาพ (เดิม ${keptOld.length} + ใหม่ ${newPhotos.length}) · ภาพประจำตัวเลือก ${Object.keys(art).length} ภาพ`);
 
-/** ตัวเลือกวัสดุ 2 แบบ ราคาเท่ากันตามตาราง — เลือกแล้วแกลเลอรีเด้งไปภาพของแบบนั้น */
-const OPTIONS: ProductOption[] = [
+/** วัสดุ 2 แบบเป็นเรทราคา (การ์ดมีรูป+คำอธิบาย) — ราคาตารางเดียวกัน · กดการ์ดแล้วแกลเลอรีเด้งไปภาพของแบบนั้น */
+const RATES: Product["priceRates"] = [
   {
-    label: MATERIAL_LABEL,
-    display: "pills",
-    note: "PET+Magnet พิมพ์ Digital สีสด ไม่ฉีกขาด เปียกน้ำได้ ไม่ทิ้งคราบกาว · สติ๊กเกอร์สะท้อนแสง+Magnet พิมพ์ UV พื้นสีเงิน **ตอนกลางคืนสะท้อนแสงตอนโดนไฟส่อง**",
-    choices: [
-      { name: MAT_PET, imageSrc: art["opt-pet"] },
-      { name: MAT_REFLECT, imageSrc: art["opt-reflect"] },
-    ],
+    id: "pet-digital",
+    label: MAT_PET,
+    desc: "พิมพ์ Digital สีสด คมชัด ไดคัทตามทรง — ไม่ฉีกขาด ทนทานสูง เปียกน้ำได้ ไม่ทิ้งคราบกาว",
+    imageSrc: art["opt-pet"],
+    pricing: PRICING,
+  },
+  {
+    id: "reflect-uv",
+    label: MAT_REFLECT,
+    desc: "พิมพ์ UV ลงสติ๊กเกอร์สะท้อนแสงพื้นสีเงิน — ตอนกลางคืนสะท้อนแสงเมื่อโดนไฟส่อง เห็นชัดเพิ่มความปลอดภัย",
+    imageSrc: art["opt-reflect"],
+    pricing: PRICING,
   },
 ];
 
@@ -168,9 +175,10 @@ const product: Product = {
     "วัสดุ 2 แบบ: PET+Magnet (Digital) / สะท้อนแสง+Magnet (UV)",
     "แม่เหล็กดูดติดตัวถัง ถอดได้ ไม่ทิ้งคราบกาว",
   ],
-  options: OPTIONS,
+  options: [], // วัสดุย้ายไปเป็นเรทราคา — ไม่มีกลุ่มตัวเลือกแล้ว
   images: gallery,
   pricing: PRICING,
+  priceRates: RATES,
   /** คละลายได้ 2-3 ลาย มากกว่านั้นบวกเพิ่มลายละ 5 บาท (หมายเหตุบนหน้าเว็บ) */
   mixRule: { baseFee: 0, includedDesigns: 3, extraFee: 5 },
   terms: [
@@ -193,7 +201,7 @@ const saved: Product = {
 
 console.log(`\n📦 ${saved.name} (${ID}) · หมวด ${saved.category}`);
 console.log(`   ราคา ฿${range.min}-${range.max}/${UNIT} (เริ่มต้น ฿${saved.price}) · สถานะ: ${saved.hidden ? "ฉบับร่าง" : "เผยแพร่"}`);
-console.log(`   ตัวเลือก: ${OPTIONS.map((o) => `${o.label} ${o.choices.length} แบบ (มีภาพครบ)`).join(" · ")}`);
+console.log(`   เรทราคา (${MATERIAL_LABEL}): ${RATES.map((r) => r.label).join(" · ")} — การ์ดมีภาพครบ`);
 console.log(`   คละลาย: รวม 3 ลาย เกินบวกลายละ 5 บาท · แกลเลอรี ${gallery.length} ภาพ`);
 
 if (!WRITE) {
