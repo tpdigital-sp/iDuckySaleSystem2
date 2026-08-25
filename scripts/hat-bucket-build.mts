@@ -128,10 +128,12 @@ const PHOTOS: [string, string, string][] = [
   ["photo-emb-baby", "959b83_4318d4ce87c64482b81cde1de2d46b78f003.jpg", "งานปัก — โลโก้ตัวอักษร"],
   ["photo-emb-cat", "959b83_7d5d2c35f172488489f38c352230fdf4f003.jpg", "งานปัก — ลายการ์ตูน"],
 ];
-/** ภาพประจำเรท — งานจริงของแต่ละระบบ ลูกค้าเห็นหน้าตาก่อนเลือก */
+/** ภาพประจำเรท + ภาพประจำตัวเลือก — งานจริงของแต่ละระบบ ลูกค้าเห็นหน้าตาก่อนเลือก */
 const RATE_IMGS: Record<string, string> = {
   "rate-dtf": "959b83_e72db818ee184c3798b427bf8dedd787~mv2.jpg",
   "rate-emb": "959b83_626e82ab3e1d4a4caeea8c451ad17849~mv2.jpg",
+  // ปักนูน = รูปหมวกปักนูนฟอนต์ "Manao" จาก lightbox หน้า /หมวก (pgid ltcrjcnz1-fbf54fc0) — ผู้ใช้เลือกเอง 25 ส.ค. 69
+  "choice-emboss": "959b83_222ef0d7ed364c70a16a3c2836049861~mv2.jpg",
 };
 
 /** ไฟล์ ~mv2 = รูปถ่ายต้นฉบับใหญ่ → ย่อผ่าน wix transform · ไฟล์ f003 = ปกคลิป (เล็กอยู่แล้ว) → เอาตรง ๆ */
@@ -193,8 +195,8 @@ const OPTIONS: ProductOption[] = [
     note: "**ปักนูน** ทำได้เฉพาะฟอนต์/ตัวอักษร · มีค่าขึ้นบล๊อคเพิ่ม (ราคาตามความยากง่ายของแบบ)",
     showWhen: { label: RATE_LABEL, choices: [RATE_EMB] },
     choices: [
-      { name: "ปักธรรมดา", badge: "ฟรี" },
-      { name: "ปักนูน", extra: EMBOSS_FEE },
+      { name: "ปักธรรมดา", badge: "ฟรี", imageSrc: art["rate-emb"] },
+      { name: "ปักนูน", extra: EMBOSS_FEE, imageSrc: art["choice-emboss"] },
     ],
   },
 ];
