@@ -3588,21 +3588,33 @@ function pickRateForQty(p: Product, qty: number): PriceRate | undefined {
  * เจอกับพวงกุญแจอะคริลิคที่มีออปชั่น "อุปกรณ์เสริม" mode chat กันทั้งสินค้าแล้วไม่มีวันรวมเลย)
  */
 /**
- * เรทที่ยอดรวมของล็อต "ตรงและเข้าเงื่อนไข" จริงทั้งสองข้อ:
- * จำนวนถึง minQty และจำนวนลายไม่เกินโควตาคละ (ลายละ minPerDesign) — ตามกติการ้าน:
- * เรท 1 = สั่ง 11 ชิ้นขึ้น คละลายละ 5 · เรท 2 = สั่ง 50 ชิ้นขึ้น คละลายละ 25
- * เช่น 60 ชิ้น 4 ลาย: จำนวนถึงเรท 2 แต่ลายละ 25 ไม่ผ่าน (4 ลายต้อง 100) → ตกมาเรท 1 (ลายละ 5 ผ่าน)
- * เรทที่เปิดคละเกินโควตาแบบจ่ายเพิ่ม (extraDesignFee) ถือว่าผ่านเสมอ — ส่วนเกินไปคิดเงินที่ designFeeBase
+ * แบ่งบรรทัดในล็อตเป็น "กลุ่มเรท" ตามเงื่อนไขที่แต่ละบรรทัดเข้า — ไล่จากเรทสูงสุด (minQty มาก) ลงมา:
+ * บรรทัดที่จำนวนถึงโควตาต่อลายของเรทนั้น (qty ≥ minPerDesign × จำนวนลายของบรรทัด) และกลุ่มผู้เข้าเงื่อนไข
+ * รวมกันถึงขั้นต่ำของเรท (minQty) = ได้เรทนั้น · ที่เหลือไล่ต่อเรทถัดไป · ไม่เข้าเรทไหนเลย = คงราคาเดี่ยว
+ *
+ * ตัวอย่างกติการ้าน (เรท 1 = 11 ชิ้นขึ้น ลายละ 5 · เรท 2 = 50 ชิ้นขึ้น ลายละ 25):
+ * สั่ง 25+25+10+5 → {25,25} รวม 50 เข้าเรท 2 · {10,5} เข้าเรท 1 — ไม่ใช่เหมารวมก้อนเดียวแล้วตกเรท 1 หมด
+ *
+ * คืน array ยาวเท่า entries: เรทของแต่ละบรรทัด (undefined = ไม่เข้าเรทไหน)
  */
-function pickRateForGroup(p: Product, qty: number, designs: number): PriceRate | undefined {
-  const rs = p.priceRates;
-  if (!rs?.length) return undefined;
-  const fit = [...rs]
-    .filter((r) => (r.minQty ?? 1) <= qty)
-    .filter((r) => !r.minPerDesign || !!r.extraDesignFee || designs <= Math.max(1, Math.floor(qty / r.minPerDesign)))
-    .sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
-  // ไม่มีเรทไหนรับได้เลย (ลายเยอะเกินทุกเรท) → ใช้ตัวเลือกตามจำนวนเดิม แล้วให้ tierByDesign ปรับราคาตามชิ้นต่อลาย
-  return fit ?? pickRateForQty(p, qty);
+function ratePoolsFor(p: Product, entries: { qty: number; designs: number }[]): (PriceRate | undefined)[] {
+  const out: (PriceRate | undefined)[] = entries.map(() => undefined);
+  const rs = p.priceRates ?? [];
+  if (!rs.length) return out;
+  const taken = entries.map(() => false);
+  for (const r of [...rs].sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))) {
+    const per = r.minPerDesign ?? 0;
+    const cand = entries
+      .map((_, i) => i)
+      .filter((i) => !taken[i] && (per <= 0 || entries[i].qty >= per * Math.max(1, entries[i].designs)));
+    const candQty = cand.reduce((s, i) => s + entries[i].qty, 0);
+    if (!cand.length || candQty < (r.minQty ?? 1)) continue;
+    for (const i of cand) {
+      out[i] = r;
+      taken[i] = true;
+    }
+  }
+  return out;
 }
 
 /**
@@ -3666,33 +3678,56 @@ export function repriceCartGroups(
     if (idxs.length < 2) continue; // บรรทัดเดี่ยว = ตรงกับราคาตั้งต้น ไม่ต้องทำอะไร
     const p = productOf(lines[idxs[0]].productId);
     if (!p) continue;
-    const totalQty = idxs.reduce((s, i) => s + lines[i].qty, 0);
-    const totalDesigns = idxs.reduce((s, i) => s + designCountOf(lines[i].selections), 0);
-    // hardMinQty = เรทเป็นทางเลือกเชิงโครงสร้าง (กลุ่มนี้อยู่เรทเดียวกันอยู่แล้ว) — คงเรทเดิม ไม่สลับ
-    const rate = p.hardMinQty ? activeRate(p, lines[idxs[0]].selections) : pickRateForGroup(p, totalQty, totalDesigns);
-    idxs.forEach((i, k) => {
-      const own = lines[i].selections;
-      const sel: Record<string, string> = { ...own, [DESIGN_LABEL]: String(totalDesigns) };
-      if (rate) {
-        // สเปคของบรรทัดนี้มีราคาขายในเรทรวมไหม — แถวที่แอดมินล้างราคา (ไม่ขายในเรทนั้น) ห้ามสลับเรทให้
-        // ไม่งั้นคีย์หาช่องไม่เจอ ราคาหล่นไป product.price เงียบ ๆ · แกนที่ไม่มีค่าปล่อยให้ matrixKeyFilled เติม
-        const m = rate.pricing;
-        const cellOk = !!m.cells[priceMatrixKey(m, sel)] || m.driverLabels.some((l) => !sel[l]);
-        if (cellOk) sel[RATE_LABEL] = rate.label;
-      }
-      const parts = unitPriceParts(p, sel, totalQty);
-      out[i] = {
-        unitPrice: parts.total,
-        addOns: parts.addOns,
-        // ค่าประจำบรรทัด (ต่อลาย/ต่อแผ่น) คิดตามสเปค+จำนวนลายของบรรทัดตัวเอง (สเปคในกลุ่มต่างกันได้)
-        // ส่วน "ค่าคละลาย" เป็นของทั้งกลุ่ม — เกาะบรรทัดแรกบรรทัดเดียว กันนับซ้ำ
-        extraFee:
-          perDesignExtraOf(p, own) +
-          sheetFeeTotalOf(p, own, lines[i].qty) +
-          (k === 0 ? designFeeBase(p, sel, totalQty) : 0),
-        merged: { lines: idxs.length, totalQty, totalDesigns, rateLabel: sel[RATE_LABEL] },
-      };
-    });
+    // ขั้นราคา (tier) คิดที่ "ยอดรวมทั้งล็อต" เสมอ — ผลิตพร้อมกันทั้งหมด นับรวมกันทุกบรรทัด
+    const lotQty = idxs.reduce((s, i) => s + lines[i].qty, 0);
+
+    // แบ่งบรรทัดเป็นกลุ่มเรทตามเงื่อนไขที่แต่ละบรรทัดเข้า (25+25+10+5 → {25,25}=เรท 2 · {10,5}=เรท 1)
+    // hardMinQty = เรทเป็นทางเลือกเชิงโครงสร้าง (กลุ่มนี้อยู่เรทเดียวกันอยู่แล้ว) — คงเรทเดิม กลุ่มเดียว
+    let pools: { rate?: PriceRate; idxs: number[] }[];
+    if (p.hardMinQty || !p.priceRates?.length) {
+      pools = [{ rate: p.hardMinQty ? activeRate(p, lines[idxs[0]].selections) : undefined, idxs: [...idxs] }];
+    } else {
+      const assigned = ratePoolsFor(
+        p,
+        idxs.map((i) => ({ qty: lines[i].qty, designs: designCountOf(lines[i].selections) }))
+      );
+      const byLabel = new Map<string, { rate: PriceRate; idxs: number[] }>();
+      idxs.forEach((idx, n) => {
+        const r = assigned[n];
+        if (!r) return; // ไม่เข้าเรทไหน → คงราคาเดี่ยวตามตั้งต้น
+        const cur = byLabel.get(r.label);
+        if (cur) cur.idxs.push(idx);
+        else byLabel.set(r.label, { rate: r, idxs: [idx] });
+      });
+      pools = [...byLabel.values()];
+    }
+
+    for (const pool of pools) {
+      const poolDesigns = pool.idxs.reduce((s, i) => s + designCountOf(lines[i].selections), 0);
+      pool.idxs.forEach((i, k) => {
+        const own = lines[i].selections;
+        const sel: Record<string, string> = { ...own, [DESIGN_LABEL]: String(poolDesigns) };
+        if (pool.rate) {
+          // สเปคของบรรทัดนี้มีราคาขายในเรทนั้นไหม — แถวที่แอดมินล้างราคา (ไม่ขายในเรทนั้น) ห้ามสลับเรทให้
+          // ไม่งั้นคีย์หาช่องไม่เจอ ราคาหล่นไป product.price เงียบ ๆ · แกนที่ไม่มีค่าปล่อยให้ matrixKeyFilled เติม
+          const m = pool.rate.pricing;
+          const cellOk = !!m.cells[priceMatrixKey(m, sel)] || m.driverLabels.some((l) => !sel[l]);
+          if (cellOk) sel[RATE_LABEL] = pool.rate.label;
+        }
+        const parts = unitPriceParts(p, sel, lotQty);
+        out[i] = {
+          unitPrice: parts.total,
+          addOns: parts.addOns,
+          // ค่าประจำบรรทัด (ต่อลาย/ต่อแผ่น) คิดตามสเปค+จำนวนลายของบรรทัดตัวเอง (สเปคในกลุ่มต่างกันได้)
+          // ส่วน "ค่าคละลาย" เป็นของกลุ่มเรท — เกาะบรรทัดแรกของกลุ่มบรรทัดเดียว กันนับซ้ำ
+          extraFee:
+            perDesignExtraOf(p, own) +
+            sheetFeeTotalOf(p, own, lines[i].qty) +
+            (k === 0 ? designFeeBase(p, sel, lotQty) : 0),
+          merged: { lines: idxs.length, totalQty: lotQty, totalDesigns: poolDesigns, rateLabel: sel[RATE_LABEL] },
+        };
+      });
+    }
   }
   return out;
 }
@@ -3744,19 +3779,28 @@ export function lotPreviewFor(
   const cartDesigns = match.reduce((s, l) => s + designCountOf(l.selections), 0);
 
   // บรรทัดที่ "ใช้สิทธิ์คละอิสระช่วงปลีก" (ลายเกินโควตาต่อลาย) → คิดราคาปลีกแยก แต่บอกเกณฑ์เริ่มรวมให้รู้
-  // พรีวิวราคาคิดที่ "สั่งขั้นต่ำที่เริ่มรวมได้" (mergeFromQty) แทนจำนวนที่เลือกอยู่
-  // เกณฑ์เริ่มรวม = อย่างแรกที่ถึงก่อน ระหว่าง พ้นช่วงปลีก (freeMixBelowQty) หรือ จำนวนถึงโควตาลาย (ลาย × ลายละ)
+  // พรีวิวราคาคิดที่ "สั่งขั้นต่ำที่เริ่มรวมได้" = จำนวนถึงโควตาลาย (ลาย × ลายละ) แทนจำนวนที่เลือกอยู่
+  const myDesigns = Math.max(1, designs);
   const rNow = product.hardMinQty ? activeRate(product, selections) : pickRateForQty(product, qty);
-  const retailLine = usesFreeMixRetail(rNow, qty, Math.max(1, designs));
-  const mergeFromQty = retailLine
-    ? Math.min(rNow!.freeMixBelowQty ?? qty, (rNow!.minPerDesign ?? 1) * Math.max(1, designs))
-    : undefined;
+  const retailLine = usesFreeMixRetail(rNow, qty, myDesigns);
+  const mergeFromQty = retailLine ? (rNow!.minPerDesign ?? 1) * myDesigns : undefined;
   const lineQty = retailLine ? mergeFromQty! : qty;
 
+  // ขั้นราคาคิดที่ยอดรวมทั้งล็อต · เรทของบรรทัดนี้มาจากการแบ่งกลุ่มเรทชุดเดียวกับตะกร้า
+  // (25 ในตะกร้า + เลือก 25 อยู่ → เรท 2 · แต่เลือก 10 อยู่ → บรรทัดนี้เข้าเรท 1 แม้ล็อตรวม 35)
   const combinedQty = cartQty + lineQty;
-  const totalDesigns = cartDesigns + Math.max(1, designs);
-  // เลือกเรทตามยอดรวม+โควตาคละลาย (hardMinQty คงเรทเดิม ไม่สลับ) + กันสลับเรทให้สเปคที่ไม่มีราคาขายในเรทรวม
-  const rate = product.hardMinQty ? activeRate(product, selections) : pickRateForGroup(product, combinedQty, totalDesigns);
+  const entries = [
+    ...match.map((l) => ({ qty: l.qty, designs: designCountOf(l.selections) })),
+    { qty: lineQty, designs: myDesigns },
+  ];
+  const assigned = product.hardMinQty ? undefined : ratePoolsFor(product, entries);
+  const rate = product.hardMinQty ? activeRate(product, selections) : assigned![entries.length - 1];
+  // มีหลายเรทแต่บรรทัดนี้ไม่เข้าเรทไหนเลย (เช่น ลายเยอะเกินโควตาทุกเรท) = ไม่มีอะไรให้รวม
+  if (!rate && (product.priceRates?.length ?? 0) > 0) return undefined;
+  // จำนวนลายนับเฉพาะกลุ่มเรทเดียวกัน (กลุ่มอื่นคนละเงื่อนไข ไม่เกี่ยวกับโควตาลายของบรรทัดนี้)
+  const totalDesigns = assigned
+    ? entries.reduce((s, e, i) => (assigned[i]?.label === rate?.label ? s + e.designs : s), 0)
+    : cartDesigns + myDesigns;
   const sel: Record<string, string> = { ...selections, [DESIGN_LABEL]: String(totalDesigns) };
   if (rate) {
     const m = rate.pricing;
