@@ -1454,6 +1454,12 @@ export interface Product {
    * ใช้กับงานที่ราคาผูกกับขนาด เช่น อาร์มปัก: 15 ตร.ซม. แรก ฿40 · ตร.ซม. ต่อไป ฿2
    */
   areaPricing?: AreaPricing;
+  /**
+   * 📐 จำนวนที่สั่งล็อกตามขนาดที่ลูกค้ากรอก — สินค้าที่ขายเป็น "พื้นที่" (เช่น ป้ายไวนิลขายเป็น ตร.ม.)
+   * qty = ⌈กว้าง × สูง ÷ areaPerUnit⌉ ปัดขึ้นเต็มหน่วยขาย · ช่องจำนวนหน้าสินค้า/ตะกร้าถูกล็อก
+   * กันเคสกรอก 140×200 ซม. (2.8 ตร.ม.) แต่จำนวนค้างที่ 1 แล้วจ่ายแค่เรท 1 หน่วย
+   */
+  qtyFromArea?: QtyFromArea;
   /** สถานะตรวจสอบหลังบ้าน — มีค่า = ทีมงานเช็คสินค้านี้แล้ว (ใช้กันเช็คซ้ำเมื่อหลายคนช่วยกัน) */
   reviewed?: ProductReview;
   /**
@@ -1590,6 +1596,40 @@ export function areaPriceBreakdown(
   const raw = basePrice + extraPrice;
   const unitPrice = a.round === "none" ? raw : a.round === "round" ? Math.round(raw) : Math.ceil(raw);
   return { width, height, area, baseArea: a.baseArea, basePrice, stepPrice, extraArea, extraPrice, unitPrice };
+}
+
+/**
+ * 📐 สเปกของ Product.qtyFromArea — จำนวนที่สั่งคำนวณจากขนาดที่ลูกค้ากรอก (ปัดขึ้นเต็มหน่วยขาย)
+ * ใช้กับสินค้าขายเป็นพื้นที่ เช่น ป้ายไวนิล: กรอก ซม. ขายเป็น ตร.ม. → areaPerUnit 10000
+ * กติกาปัดขึ้น: เศษพื้นที่คิดเป็นหน่วยเต็ม (เช่น 2.8 ตร.ม. → คิด 3 ตร.ม.) — ผู้ใช้เคาะ 25 ส.ค. 69
+ */
+export interface QtyFromArea {
+  /** ชื่อกลุ่มช่องกรอกด้านกว้าง/สูง (standardInput หน่วยเดียวกัน เช่น ซม.) */
+  widthLabel: string;
+  heightLabel: string;
+  /** พื้นที่ต่อ 1 หน่วยขาย ในหน่วยช่องกรอกยกกำลังสอง เช่น กรอก ซม. ขาย ตร.ม. = 10000 */
+  areaPerUnit: number;
+}
+
+/** ผลคำนวณจำนวนตามขนาด — พกขนาด/พื้นที่จริงไว้โชว์วิธีคิดให้ลูกค้าเห็น */
+export interface AreaQty {
+  width: number;
+  height: number;
+  /** พื้นที่จริงในหน่วยขาย (ยังไม่ปัด) เช่น 2.8 ตร.ม. */
+  area: number;
+  /** จำนวนหน่วยที่ต้องสั่ง = ปัดขึ้นเต็มหน่วย อย่างน้อย 1 */
+  qty: number;
+}
+
+/** จำนวนหน่วยที่ต้องสั่งตามขนาดที่กรอก — null = สินค้าไม่ได้ตั้ง qtyFromArea หรือยังกรอกไม่ครบ */
+export function qtyFromAreaOf(p: Product, selections: Record<string, string>): AreaQty | null {
+  const c = p.qtyFromArea;
+  if (!c || !(c.areaPerUnit > 0)) return null;
+  const width = inputNumberOf(selections, c.widthLabel);
+  const height = inputNumberOf(selections, c.heightLabel);
+  if (!width || !height) return null;
+  const area = (width * height) / c.areaPerUnit;
+  return { width, height, area, qty: Math.max(1, Math.ceil(area)) };
 }
 
 /**

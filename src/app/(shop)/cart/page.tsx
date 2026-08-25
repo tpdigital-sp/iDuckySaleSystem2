@@ -12,6 +12,7 @@ import {
   maxDesignsFor,
   perUnitCapacity,
   productPath,
+  qtyFromAreaOf,
   RATE_LABEL,
 } from "@/lib/products";
 import {
@@ -111,6 +112,9 @@ export default function CartPage() {
   function changeQty(item: (typeof items)[number], next: number) {
     if (next < 1) return;
     const p = productOf(item.productId);
+    // 📐 สินค้าขายเป็นพื้นที่ (qtyFromArea) — จำนวนล็อกตามขนาดที่กรอกไว้ตอนสั่ง ปรับในตะกร้าไม่ได้
+    // ไม่งั้นเลี่ยงราคาได้: สั่ง 140×200 ซม. (คิด 3 ตร.ม.) แล้วมาลดเหลือ 1 ตร.ม. ที่นี่
+    if (p && qtyFromAreaOf(p, item.selections) != null) return;
     const rates = p?.priceRates ?? [];
     let rate = p ? activeRate(p, item.selections) : undefined;
     let selections = item.selections;
@@ -456,15 +460,22 @@ export default function CartPage() {
                     )}
                     {/* ร้านรับสั่งขั้นต่ำ 1 ชิ้นทุกสินค้า — ลดต่ำกว่าขั้นต่ำของเรทได้ ระบบสลับเรทให้เอง */}
                     <div className="mt-auto flex items-center justify-between gap-3 pt-3">
-                      <div className="ord-qty">
-                        <button type="button" onClick={() => changeQty(item, item.qty - 1)} disabled={item.qty <= 1} aria-label="ลดจำนวน">
+                      {/* 📐 สินค้าขายเป็นพื้นที่ — จำนวน (ตร.ม.) ล็อกตามขนาดที่กรอกไว้ตอนสั่ง แก้ได้ที่หน้าสินค้าเท่านั้น */}
+                      {(() => {
+                        const p = productOf(item.productId);
+                        const areaLocked = p ? qtyFromAreaOf(p, item.selections) != null : false;
+                        return (
+                      <div className="ord-qty" title={areaLocked ? "จำนวนคำนวณจากขนาดที่กรอก — แก้ขนาดได้ที่หน้าสินค้า" : undefined}>
+                        <button type="button" onClick={() => changeQty(item, item.qty - 1)} disabled={areaLocked || item.qty <= 1} aria-label="ลดจำนวน">
                           −
                         </button>
                         <span>{item.qty}</span>
-                        <button type="button" onClick={() => changeQty(item, item.qty + 1)} aria-label="เพิ่มจำนวน">
+                        <button type="button" onClick={() => changeQty(item, item.qty + 1)} disabled={areaLocked} aria-label="เพิ่มจำนวน">
                           +
                         </button>
                       </div>
+                        );
+                      })()}
                       <div className="text-right">
                         {item.unitPrice <= 0 ? (
                           <span className="ord-chip yolk">💬 รอตีราคา</span>

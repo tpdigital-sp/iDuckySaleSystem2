@@ -45,6 +45,7 @@ import {
   perUnitCapacity,
   priceMatrixKey,
   priceRange,
+  qtyFromAreaOf,
   PRODUCTS,
   RATE_LABEL,
   resolveSelections,
@@ -619,6 +620,18 @@ export default function ProductDetail({
       .sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
     if (fit && fit.label !== rate?.label) setRateLabel(fit.label);
   }, [qty, rateMinQty, useCustom, rates, rate, product.hardMinQty]);
+
+  /**
+   * 📐 สินค้าขายเป็นพื้นที่ (qtyFromArea) — จำนวนล็อกตามขนาดที่กรอก ปัดขึ้นเต็มหน่วยขาย
+   * กันเคสกรอก 140×200 ซม. (2.8 ตร.ม.) แต่จำนวนค้างที่ 1 แล้วจ่ายแค่เรท 1 ตร.ม.
+   * ล็อกจริงทั้งปุ่ม −/+ และช่องพิมพ์ (ไม่ใช่แค่ตั้งค่าเริ่มให้) — ราคาถึงจะตรงเสมอ
+   */
+  const areaQty = useMemo(() => qtyFromAreaOf(product, effective), [product, effective]);
+  useEffect(() => {
+    if (areaQty == null) return;
+    setQty(areaQty.qty);
+    setQtyText(String(areaQty.qty));
+  }, [areaQty]);
 
   // ── จำนวนลายที่คละ (เรทที่กำหนดขั้นต่ำต่อลาย / สินค้าที่คิดเรทตามชิ้นต่อลาย) ──
   const [designs, setDesigns] = useState(1);
@@ -3326,11 +3339,12 @@ export default function ProductDetail({
                     // ลดได้ถึง 1 เสมอ — ถ้าต่ำกว่าขั้นต่ำของเรทที่เลือกไว้ ระบบจะสลับลงเรทที่เหมาะเอง
                     // (สินค้าที่ตั้ง hardMinQty ลดได้แค่ถึงขั้นต่ำจริงของเรท เช่น 3 แผ่น A3)
                     onClick={() => {
+                      if (areaQty != null) return; // 📐 จำนวนล็อกตามขนาดที่กรอก
                       setQtyTouched(true);
                       setQty((q) => Math.max(qtyFloor, q - 1));
                     }}
-                    aria-disabled={qty <= qtyFloor}
-                    className="h-10 w-10 rounded-l-full text-base font-bold text-stone-600 hover:bg-amber-50"
+                    aria-disabled={areaQty != null || qty <= qtyFloor}
+                    className={`h-10 w-10 rounded-l-full text-base font-bold ${areaQty != null ? "cursor-not-allowed text-stone-300" : "text-stone-600 hover:bg-amber-50"}`}
                     aria-label="ลดจำนวน"
                   >
                     −
@@ -3339,7 +3353,9 @@ export default function ProductDetail({
                     type="text"
                     inputMode="numeric"
                     value={qtyText}
+                    readOnly={areaQty != null}
                     onChange={(e) => {
+                      if (areaQty != null) return; // 📐 จำนวนล็อกตามขนาดที่กรอก
                       // ปล่อยให้ลบจนว่างได้ระหว่างพิมพ์ (เดิมยัด 1 กลับทันที ลบแล้วพิมพ์ใหม่ไม่ได้)
                       setQtyTouched(true);
                       const raw = e.target.value.replace(/\D/g, "").slice(0, 5);
@@ -3349,6 +3365,7 @@ export default function ProductDetail({
                     }}
                     // พิมพ์ต่ำกว่าขั้นต่ำได้ระหว่างแก้ — ออกจากช่องแล้วค่อยดันขึ้นให้ถึงขั้นต่ำ
                     onBlur={() => {
+                      if (areaQty != null) return;
                       const fixed = Math.max(qtyFloor, qty);
                       setQty(fixed);
                       setQtyText(String(fixed));
@@ -3359,10 +3376,12 @@ export default function ProductDetail({
                   <button
                     type="button"
                     onClick={() => {
+                      if (areaQty != null) return; // 📐 จำนวนล็อกตามขนาดที่กรอก
                       setQtyTouched(true);
                       setQty((q) => Math.min(matrix ? 99999 : 99, q + 1));
                     }}
-                    className="h-10 w-10 rounded-r-full text-base font-bold text-stone-600 hover:bg-amber-50"
+                    aria-disabled={areaQty != null}
+                    className={`h-10 w-10 rounded-r-full text-base font-bold ${areaQty != null ? "cursor-not-allowed text-stone-300" : "text-stone-600 hover:bg-amber-50"}`}
                     aria-label="เพิ่มจำนวน"
                   >
                     +
@@ -3434,6 +3453,17 @@ export default function ProductDetail({
                   </button>
                 )}
               </div>
+              {/* 📐 สินค้าขายเป็นพื้นที่ — กางวิธีคิดให้เห็น: ขนาดที่กรอก → พื้นที่จริง → ปัดขึ้นเต็มหน่วยขาย */}
+              {areaQty != null && !designDone && (
+                <p className="mt-2 rounded-2xl bg-teal-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-teal-900 ring-1 ring-teal-200">
+                  📐 ขนาด {areaQty.width.toLocaleString("th-TH")}×{areaQty.height.toLocaleString("th-TH")} ซม. ={" "}
+                  {(Math.round(areaQty.area * 100) / 100).toLocaleString("th-TH")} {matrix?.unit ?? "ตร.ม."} →{" "}
+                  <span className="text-[13px] font-extrabold">
+                    คิด {areaQty.qty.toLocaleString("th-TH")} {matrix?.unit ?? "ตร.ม."}
+                  </span>
+                  <span className="font-semibold text-teal-700"> (ปัดขึ้นเต็ม {matrix?.unit ?? "ตร.ม."} — จำนวนล็อกตามขนาดที่กรอก)</span>
+                </p>
+              )}
               {/*
                 * 📐 สรุปงานแบ่งแผ่น/ไดคัทตามขนาด — ลูกค้าสั่งเป็น "แผ่น A3" แต่อยากรู้ว่าได้งานกี่ชิ้น
                 * (สั่ง 10 แผ่น A3 ขนาดตัด A5 = 40 ชิ้น) · ไม่โชว์ตอนวางลายเอง เพราะจำนวนคุมที่ลายแต่ละอัน
