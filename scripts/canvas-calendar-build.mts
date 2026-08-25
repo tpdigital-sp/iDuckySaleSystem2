@@ -44,6 +44,8 @@ const V = "v1"; // ⚠️ แก้รูป/คลิปครั้งหน�
 const GROUP_TECH = "เทคนิคการพิมพ์";
 const GROUP_SIZE = "ขนาด";
 const SIZE_STD = "40x85 ซม.";
+const GROUP_ADDSIZE = "เพิ่มขนาด";
+const ADDSIZE_ON = "ต้องการเพิ่มขนาดจากมาตรฐาน";
 
 const OUT = new URL("../scratchpad_out/canvas-calendar/", import.meta.url).pathname;
 mkdirSync(OUT, { recursive: true });
@@ -220,19 +222,33 @@ const OPTIONS: ProductOption[] = [
     label: GROUP_SIZE,
     choices: [{ name: SIZE_STD }],
   },
+  {
+    // ☑️ ผู้ใช้สั่ง (25 ส.ค. 69): ช่องกรอกต้องโผล่ต่อเมื่อติ๊กว่าจะเพิ่มขนาด
+    //    กลุ่ม multi ตัวเลือกเดียว = ช่องติ๊ก · ไม่ติ๊ก → showWhen ไม่ตรง ช่องกรอกซ่อน
+    //    และ optionActive กันกลุ่มที่ซ่อนออกจากการคิดเงินอยู่แล้ว = ค่าที่เผลอกรอกค้างไม่ถูกคิด
+    label: GROUP_ADDSIZE,
+    display: "multi",
+    choices: [
+      {
+        name: ADDSIZE_ON,
+        desc: `${SUB} นิ้วละ ${FEE_SUB} บาท · ${UV} นิ้วละ ${FEE_UV} บาท (คิดต่อด้าน)`,
+      },
+    ],
+  },
   // 💰 เพิ่มขนาด: เว็บคิด "นิ้วละ N บาท ต่อด้าน" → แยกช่องกรอกตามด้าน แต่ละช่องคูณเรทของตัวเอง
   //    เรทตามเทคนิคที่เลือก (ซับลิเมชั่น 15 · UV 25) ผ่าน inputFee.rates
   ...(["ด้านกว้าง", "ด้านสูง"] as const).map((side) => ({
     label: `เพิ่มขนาด ${side} (นิ้ว)`,
     display: "input" as const,
     standardInput: true, // ข้อมูลประกอบงานปกติ ไม่ใช่งานสั่งทำที่ต้องให้แอดมินตีราคา
+    showWhen: { label: GROUP_ADDSIZE, choices: [ADDSIZE_ON] },
     input: {
       kind: "number" as const,
       unit: "นิ้ว",
       max: 40,
-      required: false, // ไม่เพิ่มก็ปล่อยว่างได้
+      required: false, // เพิ่มด้านเดียวก็ได้ — อีกด้านปล่อยว่าง
       placeholder: "0",
-      hint: `ไม่เพิ่มปล่อยว่างไว้ · เพิ่ม${side}กี่นิ้วจาก ${SIZE_STD} (1 นิ้ว ≈ 2.54 ซม.)`,
+      hint: `ด้านนี้ไม่เพิ่มปล่อยว่างไว้ · เพิ่ม${side}กี่นิ้วจาก ${SIZE_STD} (1 นิ้ว ≈ 2.54 ซม.)`,
     },
     inputFee: {
       perUnit: 0, // ยังไม่เลือกเทคนิค = ยังไม่คิด (เลือกแล้วเข้า rates ข้างล่างเสมอ)
@@ -385,8 +401,14 @@ const checks: [string, unknown, unknown][] = [
   ["จำนวนการ์ด", back.options?.[0]?.choices?.length, 2],
   ["กลุ่มขนาด", back.options?.[1]?.label, GROUP_SIZE],
   ["ตัวเลือกขนาด", back.options?.[1]?.choices?.[0]?.name, SIZE_STD],
+  ["ช่องติ๊กเพิ่มขนาด", back.options?.find((o) => o.label === GROUP_ADDSIZE)?.display, "multi"],
   ["ช่องเพิ่มขนาด", back.options?.filter((o) => o.inputFee).length, 2],
-  ["เรทเพิ่มขนาด ซับ/UV", JSON.stringify(back.options?.[2]?.inputFee?.rates?.map((r) => r.perUnit)), JSON.stringify([FEE_SUB, FEE_UV])],
+  ["ช่องกรอกผูกกับช่องติ๊ก", back.options?.filter((o) => o.inputFee && o.showWhen?.label === GROUP_ADDSIZE).length, 2],
+  [
+    "เรทเพิ่มขนาด ซับ/UV",
+    JSON.stringify(back.options?.find((o) => o.inputFee)?.inputFee?.rates?.map((r) => r.perUnit)),
+    JSON.stringify([FEE_SUB, FEE_UV]),
+  ],
   ["แกลเลอรี", back.images?.length, gallery.length],
 ];
 for (const [what, got, want] of checks) {
