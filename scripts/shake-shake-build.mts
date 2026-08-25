@@ -31,6 +31,25 @@ import { createClient } from "@supabase/supabase-js";
 import sharp from "sharp";
 import { hasQuoteOption, priceRange, type PriceMatrix, type Product, type ProductOption } from "../src/lib/products";
 
+/**
+ * ตะขอ/ห่วง (ผู้ใช้สั่ง 25 ส.ค. 69: "เพิ่มในส่วนของตะขอ คล้ายๆกับพวงกุญแจ")
+ * — ดึงกลุ่ม "รับตะขอไหม" + "ตะขอ" (ลิงก์คลังกลาง preset-3) + กลุ่ม "สีตะขอ" ทุกกลุ่ม
+ *   จากสินค้าพวงกุญแจอะคริลิคหลัก (keyring-copy-copy) มาใส่ทั้งชุด — คลังกลางแก้ที่เดียวอัปเดตตาม
+ * — ต่างจากพวงกุญแจตรงเงื่อนไขความหนา: พวงกุญแจผูก Z1/Z2 ฟรี + เหมาปลีกกับ "ความหนาอะคริลิค = 3mm"
+ *   ซึ่งสินค้านี้ไม่มีกลุ่มนั้น (กรอบเขย่าประกบ 2 ชิ้น หนากว่า 3 มม. เสมอ) → ตัด `when` ทิ้ง:
+ *   Z1/Z2 แถมฟรีตลอด (freeWhen ผูกกับ "รับตะขอไหม = รับตะขอ" ที่จริงเสมอเมื่อกลุ่มโชว์)
+ *   และช่วงปลีก 1-10 ชุด เลือกตะขออื่นคิดเหมา 10 บาท/ชุด (smallQtyFee ชุดเดียวกับพวงกุญแจ)
+ * — รูปแผ่นอะไหล่ + ชาร์ตสีตะขอ (G/H/I/S/T/U) ก็อปจาก products/keyring-clear-stopper (ฉบับ v3)
+ *   ไปไว้ในแท็บ "ตะขอ / ห่วง" — ไม่ใส่รูปที่ตัวเลือก กันชาร์ตทะลักเข้าแกลเลอรี (บทเรียน keyring-stopper)
+ */
+const KEYRING_ID = "keyring-copy-copy"; // สินค้าพวงกุญแจหลัก (ลิงก์หน้าร้าน /products/keyring)
+const HOOK_GATE = "รับตะขอไหม";
+const HOOK_GROUP = "ตะขอ";
+const HOOK_FREE = ["Z1 ห่วงกลม (สีเงิน)", "Z2 โซ่ไข่ปลา (สีเงิน)"];
+const HOOK_RETAIL_FEE = 10; // ช่วงปลีก 1-10 ชุด เลือกตะขอ (นอกจาก Z1/Z2) คิดเหมาชุดละ 10 บาท
+const HOOK_CHART_SRC = "products/keyring-clear-stopper"; // โฟลเดอร์รูปอะไหล่ต้นทาง (ฉบับ v3)
+const HOOK_CHARTS = ["parts-board", "hook-g", "hook-h", "hook-i", "hook-s", "hook-t", "hook-u"];
+
 const WRITE = process.argv.includes("--write");
 
 const env = Object.fromEntries(
@@ -201,6 +220,60 @@ art["opt-charms"] = await put("opt-charms", {
 });
 console.log(`🖼  อัปรูป ${Object.keys(art).length} ไฟล์ — ตัวอย่างอยู่ที่ ${OUT}`);
 
+/* ── 2.5 ตะขอ/ห่วง — ดึงชุดกลุ่มจากสินค้าพวงกุญแจหลัก (ดูหมายเหตุหัวไฟล์) ── */
+const { data: keyringRow, error: krErr } = await sb.from("products").select("data").eq("id", KEYRING_ID).single();
+if (krErr) throw new Error(`อ่านสินค้าพวงกุญแจ ${KEYRING_ID} ไม่ได้: ${krErr.message}`);
+const keyringOpts = (keyringRow.data as Product).options ?? [];
+
+const gateSrc = keyringOpts.find((o) => o.label === HOOK_GATE);
+const hookSrc = keyringOpts.find((o) => o.label === HOOK_GROUP);
+if (!gateSrc || !hookSrc) throw new Error(`พวงกุญแจไม่มีกลุ่ม "${HOOK_GATE}"/"${HOOK_GROUP}" — โครงสินค้าต้นทางเปลี่ยน ตรวจก่อน`);
+if (!hookSrc.presetId) throw new Error(`กลุ่ม "${HOOK_GROUP}" ของพวงกุญแจไม่ได้ลิงก์คลังกลางแล้ว — ตรวจก่อน`);
+for (const f of HOOK_FREE)
+  if (!hookSrc.choices.some((c) => c.name === f))
+    throw new Error(`ไม่พบตัวเลือก "${f}" ในกลุ่มตะขอ — ชื่อในคลังกลางเปลี่ยน ต้องอัปเดต HOOK_FREE`);
+// กลุ่มสีตะขอ = ทุกกลุ่มที่โชว์ตามค่าที่เลือกในกลุ่ม "ตะขอ" (ลิงก์คลัง hook-color-* เกือบทั้งหมด)
+const hookColorSrc = keyringOpts.filter((o) => o.showWhen?.label === HOOK_GROUP);
+
+const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
+const GATE_ON = gateSrc.choices[0]?.name ?? "รับตะขอ";
+const hookOptions: ProductOption[] = [
+  {
+    ...clone(gateSrc),
+    note: `ตะขอ/ห่วงมีให้เลือกกว่า 30 แบบตามแผ่นอะไหล่ของร้าน — **ห่วง Z1 / โซ่ Z2 (สีเงิน) แถมฟรี** แบบอื่นคิดเพิ่มตามชนิด (ดูรูปอะไหล่ทั้งหมดในแท็บ "ตะขอ / ห่วง" ท้ายหน้า)`,
+  },
+  {
+    ...clone(hookSrc),
+    showWhen: { label: HOOK_GATE, choices: [GATE_ON] },
+    // พวงกุญแจผูกเงื่อนไขพวกนี้กับ "ความหนาอะคริลิค = 3mm" — สินค้านี้ไม่มีกลุ่มนั้น จึงให้มีผลตลอด
+    // (freeWhen ต้องมีเงื่อนไข when เสมอ → ผูกกับประตู "รับตะขอ" ซึ่งจริงเสมอเมื่อกลุ่มนี้โชว์)
+    smallQtyFee: { fee: HOOK_RETAIL_FEE, upToQty: 10, freeChoices: [...HOOK_FREE] },
+    freeWhen: { choices: [...HOOK_FREE], when: { label: HOOK_GATE, choices: [GATE_ON] } },
+  },
+  ...hookColorSrc.map(clone),
+];
+console.log(
+  `🪝 ตะขอจากพวงกุญแจ: ${hookSrc.choices.length} แบบ (คลัง ${hookSrc.presetId}) + กลุ่มสีตะขอ ${hookColorSrc.length} กลุ่ม · Z1/Z2 ฟรี · ปลีกเหมา ${HOOK_RETAIL_FEE} บาท/${UNIT}`
+);
+
+// รูปแผ่นอะไหล่ + ชาร์ตสีตะขอ — ก็อปจากโฟลเดอร์ keyring-clear-stopper มาเก็บใต้สินค้านี้ (คีย์ v1)
+const hookImg: Record<string, string> = {};
+for (const name of HOOK_CHARTS) {
+  const dl = await sb.storage.from("product-images").download(`${HOOK_CHART_SRC}/${name}-v3.jpg`);
+  if (dl.error) throw new Error(`โหลดรูปอะไหล่ ${name}-v3.jpg: ${dl.error.message}`);
+  const buf = Buffer.from(await dl.data.arrayBuffer());
+  const file = `${name}-${V}.jpg`;
+  writeFileSync(`${OUT}${file}`, buf);
+  if (WRITE) {
+    const up = await sb.storage
+      .from("product-images")
+      .upload(`products/${ID}/${file}`, buf, { contentType: "image/jpeg", upsert: true });
+    if (up.error) throw new Error(`อัป ${file}: ${up.error.message}`);
+  }
+  hookImg[name] = url(file);
+}
+console.log(`🖼  รูปอะไหล่ตะขอ ${Object.keys(hookImg).length} ไฟล์ (ก็อปจาก ${HOOK_CHART_SRC})`);
+
 /* ── 3. ประกอบสินค้า ─────────────────────────────────────────────── */
 const OPTIONS: ProductOption[] = [
   {
@@ -241,6 +314,7 @@ const OPTIONS: ProductOption[] = [
       },
     ],
   },
+  ...hookOptions,
 ];
 
 const gallery: Product["images"] = [
@@ -289,6 +363,7 @@ const product: Product = {
     `*กรอบเขย่าประกบหน้า-หลัง สกรีน 2 ชิ้น — เริ่มต้นที่ขนาด ${BASE_CM} ซม. เพิ่มขนาดบวกเพิ่ม ซม.ละ ${OVERSIZE_BAHT} บาท`,
     `*ตัวน้อยเขย่า ขนาด 2-2.5 ซม. — สั่ง 1-${BULK_FROM - 1} ${UNIT} ตัวละ ${CHARM_RETAIL} บาท · ${BULK_FROM} ${UNIT}ขึ้นไป ตัวละ ${CHARM_BULK} บาท`,
     "*ทำเฉพาะอะคริลิคใส เท่านั้น",
+    `*ตะขอ/ห่วงเลือกได้กว่า 30 แบบตามแผ่นอะไหล่ของร้าน — ห่วง Z1 / โซ่ Z2 (สีเงิน) แถมฟรี · แบบอื่นช่วง 1-${BULK_FROM - 1} ${UNIT} คิดเหมา ${HOOK_RETAIL_FEE} บาท/${UNIT} · ${BULK_FROM} ${UNIT}ขึ้นไปคิดตามราคาอะไหล่จริง (2-15 บาท)`,
     "*ขนาดชิ้นงานนับจากด้านที่ยาวที่สุด (ไม่วัดความยาวแนวทแยง)",
     "*ทางร้านใช้สี R G B สีงานสกรีนที่ได้ออกมาอาจจะมีสีที่สว่างกว่าหรือดรอปลง ตามความแตกต่างของไฟล์งาน +-5% ถึง +-15%",
   ].join("\n"),
@@ -301,9 +376,26 @@ const product: Product = {
         `• กรอบเริ่มต้นที่ขนาด ${BASE_CM} ซม. (นับด้านที่ยาวที่สุด) — เพิ่มขนาดบวกเพิ่ม ซม.ละ ${OVERSIZE_BAHT} บาท · ไดคัทตามทรงลายได้`,
         `• ตัวน้อยเขย่า ขนาด 2-2.5 ซม. — สั่ง 1-${BULK_FROM - 1} ${UNIT} ตัวละ ${CHARM_RETAIL} บาท · ${BULK_FROM} ${UNIT}ขึ้นไป ตัวละ ${CHARM_BULK} บาท`,
         "• ทำเฉพาะอะคริลิคใส เท่านั้น",
+        "• ตะขอ/ห่วงเลือกได้กว่า 30 แบบตามแผ่นอะไหล่ของร้าน — ห่วง Z1 / โซ่ Z2 แถมฟรี (ดูแท็บ ตะขอ / ห่วง)",
         `• จำนวน 1-${BULK_FROM - 1} ${UNIT} คละลายได้อิสระ · ${BULK_FROM} ${UNIT}ขึ้นไป คละลายละ 5 ${UNIT}ขึ้นไป`,
         "• งานสกรีนอะคริลิค โดยปกติทางร้านจะสกรีนใต้ หากต้องการสกรีนบนต้องแจ้งล่วงหน้า",
       ].join("\n"),
+    },
+    {
+      title: "ตะขอ / ห่วง",
+      text: [
+        "เลือกตะขอได้จากแผ่นอะไหล่ของร้าน::",
+        "• ห่วง Z1 (ห่วงกลมเงิน) และ Z2 (โซ่ไข่ปลาเงิน) แถมฟรี",
+        `• ตะขอ/ห่วงแบบอื่น ช่วง 1-${BULK_FROM - 1} ${UNIT} คิดเหมา ${HOOK_RETAIL_FEE} บาท/${UNIT} · สั่ง ${BULK_FROM} ${UNIT}ขึ้นไปคิดตามราคาอะไหล่จริง (ประมาณ 2-15 บาท/ชิ้น) — ระบบบวกให้อัตโนมัติเมื่อเลือก`,
+        "• ตะขอบางแบบเลือกสีได้ (ดูชาร์ตสีด้านล่าง) — เลือกได้ในหน้าสินค้าเมื่อเลือกตะขอแบบนั้น",
+        "• ตะขอ BB/BC เป็นสีสุ่ม เลือกสีไม่ได้",
+        "",
+        "ดูรูปอะไหล่ทั้งหมด::",
+        "• ภาพแรกคือแผ่นอะไหล่รวมของร้าน มีรหัสกำกับทุกตัว (Z1, Z2, A-V, AA-BC)",
+        "• ภาพถัดไปคือชาร์ตสีของตะขอที่มีหลายสี (G · H · I · S · T · U)",
+      ].join("\n"),
+      images: HOOK_CHARTS.map((n) => hookImg[n]),
+      imageSize: "md" as const,
     },
     {
       title: "วิธีสั่งงาน",
@@ -349,6 +441,10 @@ const product: Product = {
       {
         q: "สั่งหลายลายคละกันได้ไหม?",
         a: `สั่ง 1-${BULK_FROM - 1} ${UNIT} คละลายได้อิสระ · สั่ง ${BULK_FROM} ${UNIT}ขึ้นไป คละลายละ 5 ${UNIT}ขึ้นไป`,
+      },
+      {
+        q: "เลือกตะขอ/ห่วงได้ไหม?",
+        a: `ได้ — เลือกได้กว่า 30 แบบตามแผ่นอะไหล่ของร้าน (ห่วงกลม โซ่ไข่ปลา ตะขอสปริง ตะขอรูปหัวใจ/ดาว/แมว ฯลฯ) ห่วง Z1 และโซ่ Z2 สีเงินแถมฟรี แบบอื่นช่วง 1-${BULK_FROM - 1} ${UNIT}คิดเหมา ${HOOK_RETAIL_FEE} บาทต่อ${UNIT} สั่ง ${BULK_FROM} ${UNIT}ขึ้นไปคิดตามราคาอะไหล่จริง ตะขอหลายแบบเลือกสีได้ ดูรูปอะไหล่ทั้งหมดในแท็บ "ตะขอ / ห่วง" บนหน้าสินค้า`,
       },
       {
         q: "ใช้วัสดุอะไร พิมพ์ระบบไหน?",
