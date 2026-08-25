@@ -6,21 +6,22 @@
  *
  * ที่มา: iduckyofficial-pricelists.com/acrylicmagnet หัวข้อ "แม่เหล็กติดตู้เย็น"
  *   สคริปต์อ่านตารางสดทุกครั้ง (ยึดหัวข้อแล้วหา <table> ตัวถัดไป) — ราคาเปลี่ยนเมื่อไหร่รันซ้ำได้
- *   ขายเป็นแผ่น A3 · 7 ช่วงจำนวน · 2 แบบเป็นแกนตารางราคา:
+ *   ขายเป็นแผ่น A3 · 7 ช่วงจำนวน · 2 แบบเป็น "เรทราคา" (การ์ดเลือกเรท มีรูป+คำอธิบาย
+ *   แบบเดียวกับหมวกงานปัก hat-cap-prices.mts — ผู้ใช้สั่งปรับ 25 ส.ค. 69):
  *     • ไดคัท 100%  (แบบตัดขาดเป็นชิ้น ๆ)            300 → 220 บาท/แผ่น
  *     • SET-KIT     (ตัดขาดเป็นชิ้น ๆ + กรอบ + แผ่นรองหลัง) 350 → 280 บาท/แผ่น
  *
- * ภาพประจำตัวเลือก (ผู้ใช้สั่ง 25 ส.ค. 69 — ให้ลูกค้าเห็นหน้าตาแต่ละแบบ):
+ * ภาพประจำเรท (ให้ลูกค้าเห็นหน้าตาแต่ละแบบ):
  *   บนหน้าเว็บมีรูปกำกับป้าย "แบบ ไดคัท 100% | SET-KIT" อยู่แล้ว ใช้ทั้งรูปได้เลยไม่ต้องครอป
- *   แกลเลอรีหน้าสินค้าดูดภาพตัวเลือกเข้ามาเอง — ไม่ต้องใส่ซ้ำใน images
+ *   แกลเลอรีหน้าสินค้าดูดภาพประจำเรทเข้ามาเอง — ไม่ต้องใส่ซ้ำใน images
  *
- * ⚠️ กลุ่มตัวเลือกเดิมชื่อ "ขนาด" (นำเข้าจาก Wix) ตั้งใหม่เป็น "แบบ" ให้ตรงความหมาย
- *    — ต้องเปลี่ยน pricing.driverLabels ให้ตรงกันเสมอ (กับดักแกนตารางราคา) · สินค้ายังเป็นร่าง ไม่มีตะกร้าค้าง
+ * ⚠️ กลุ่มตัวเลือกเดิมชื่อ "ขนาด" (นำเข้าจาก Wix) ถูกถอดออก — แบบสินค้าย้ายไปอยู่ที่เรทราคาแทน
+ *    ตารางบนสุด (pricing) = เรทแรก คอลัมน์เดียว ไม่มี driver · สินค้ายังเป็นร่าง ไม่มีตะกร้าค้าง
  * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคชไว้) — ชุดนี้ลงท้าย v1 ครั้งหน้าขึ้น v2
  */
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
-import { hasQuoteOption, priceRange, type PriceMatrix, type Product, type ProductOption } from "../src/lib/products";
+import { hasQuoteOption, priceRange, type PriceMatrix, type Product } from "../src/lib/products";
 
 const WRITE = process.argv.includes("--write");
 
@@ -39,7 +40,6 @@ const V = "v1";
 const PAGE = "https://www.iduckyofficial-pricelists.com/acrylicmagnet";
 const SECTION = "แม่เหล็กติดตู้เย็น";
 const UNIT = "แผ่น A3";
-const STYLE_LABEL = "แบบ";
 const DIECUT = "ไดคัท 100%";
 const SETKIT = "SET-KIT";
 
@@ -96,10 +96,10 @@ console.log(`📊 ตาราง "${SECTION}" จากเว็บ · ${tiers.
 for (const style of [DIECUT, SETKIT])
   console.log(`   ${style}: ${tiers.map((t, i) => `${t.label} = ฿${cells[style][i]}`).join(" · ")}`);
 
-/** แบบเป็นแกนตารางราคา — driverLabels ต้องตรงกับชื่อกลุ่มตัวเลือกเป๊ะ (กับดักราคาหล่นเงียบ) */
-const PRICING: PriceMatrix = { unit: UNIT, driverLabels: [STYLE_LABEL], tiers, cells };
+/** แต่ละแบบเป็น "เรทราคา" ของตัวเอง — ตารางคอลัมน์เดียว ไม่มี driver (แบบเดียวกับหมวกงานปัก) */
+const rateMatrix = (style: string): PriceMatrix => ({ unit: UNIT, driverLabels: [], tiers, cells: { "": cells[style] } });
 
-/* ── 2. ภาพประจำตัวเลือก — รูปจริงจากท่อนเดียวกันบนหน้าเว็บ ─────── */
+/* ── 2. ภาพประจำเรท — รูปจริงจากท่อนเดียวกันบนหน้าเว็บ ──────────── */
 const STYLE_ART: Record<string, [string, string]> = {
   // wixId จากหน้าเว็บ (มีป้ายกำกับ "แบบ ไดคัท 100% | SET-KIT" ใต้ตาราง)
   [DIECUT]: ["style-diecut", "959b83_245876d9a0b44562b216ffe4307e31b6~mv2.jpg"],
@@ -124,24 +124,12 @@ async function put(name: string, buf: Buffer): Promise<string> {
 
 const art: Record<string, string> = {};
 for (const [style, [name, wixId]] of Object.entries(STYLE_ART)) art[style] = await put(name, await fetchWix(wixId));
-console.log(`🖼  ภาพประจำตัวเลือก ${Object.keys(art).length} ภาพ (แกลเลอรีหน้าสินค้าดูดเข้าไปเอง)`);
+console.log(`🖼  ภาพประจำเรท ${Object.keys(art).length} ภาพ (แกลเลอรีหน้าสินค้าดูดเข้าไปเอง)`);
 
 /* ── 3. ประกอบสินค้า (อัปเดตของเดิม — คงแท็บ/แกลเลอรี/ลำดับ/สถานะร่างไว้) ── */
 const { data: row, error: readErr } = await sb.from("products").select("*").eq("id", ID).single();
 if (readErr || !row) throw new Error(`อ่านสินค้า ${ID} ไม่ได้: ${readErr?.message ?? "ไม่พบ"}`);
 const old = row.data as Product;
-
-const OPTIONS: ProductOption[] = [
-  {
-    label: STYLE_LABEL, // เดิมชื่อ "ขนาด" (นำเข้าจาก Wix) — ชื่อจริงตามเว็บคือ "แบบ"
-    display: "pills",
-    note: `${DIECUT} = ตัดขาดเป็นชิ้น ๆ พร้อมใช้ · ${SETKIT} = ตัดขาดเป็นชิ้น ๆ **+ กรอบ + แผ่นรองหลัง** ครบเป็นชุดของขวัญ`,
-    choices: [
-      { name: DIECUT, imageSrc: art[DIECUT] },
-      { name: SETKIT, imageSrc: art[SETKIT] },
-    ],
-  },
-];
 
 const product: Product = {
   ...old,
@@ -154,8 +142,24 @@ const product: Product = {
     "PET+Magnet ไม่ฉีกขาด เปียกน้ำได้ ไม่ทิ้งคราบกาว",
     `ขายเป็นแผ่น A3 เริ่มแผ่นละ ${cells[DIECUT][0]} บาท`,
   ],
-  options: OPTIONS,
-  pricing: PRICING,
+  options: [], // แบบสินค้าย้ายไปอยู่ที่เรทราคา — ไม่เหลือกลุ่มตัวเลือก
+  pricing: rateMatrix(DIECUT), // ตารางบนสุด = เรทแรก (โครงเดียวกับหมวก)
+  priceRates: [
+    {
+      id: "r1",
+      label: DIECUT,
+      desc: "ตัดขาดเป็นชิ้น ๆ พร้อมติดตู้เย็นได้เลย — วัสดุ PET+Magnet ไม่ฉีกขาด เปียกน้ำได้ ไม่ทิ้งคราบกาว",
+      imageSrc: art[DIECUT],
+      pricing: rateMatrix(DIECUT),
+    },
+    {
+      id: "setkit",
+      label: SETKIT,
+      desc: "ตัดขาดเป็นชิ้น ๆ + กรอบ + แผ่นรองหลัง ครบเป็นชุด เหมาะทำของขวัญ/ของพรีเมียม",
+      imageSrc: art[SETKIT],
+      pricing: rateMatrix(SETKIT),
+    },
+  ],
   terms: [
     `*ราคาในตารางเป็นราคาต่อแผ่น A3`,
     `*${DIECUT} = แบบตัดขาดเป็นชิ้น ๆ · ${SETKIT} = แบบตัดขาดเป็นชิ้น ๆ + กรอบ + แผ่นรองหลัง`,
@@ -175,7 +179,7 @@ const saved: Product = {
 
 console.log(`\n📦 ${saved.name} (${ID}) · หมวด ${saved.category}`);
 console.log(`   ราคา ฿${range.min}-${range.max}/${UNIT} (เริ่มต้น ฿${saved.price})`);
-console.log(`   ตัวเลือก: ${STYLE_LABEL} ${OPTIONS[0].choices.length} แบบ (มีภาพประกอบครบ) · driver = ${PRICING.driverLabels.join(",")}`);
+console.log(`   เรทราคา: ${saved.priceRates!.map((r) => r.label).join(" · ")} (มีภาพ+คำอธิบายครบ)`);
 console.log(`   สถานะ: ${saved.hidden ? "ฉบับร่าง (คงเดิม)" : "เผยแพร่อยู่"} · แกลเลอรี ${saved.images?.length ?? 0} ภาพ (เดิม)`);
 
 if (!WRITE) {
