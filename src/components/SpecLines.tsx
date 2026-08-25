@@ -73,6 +73,7 @@ export function SpecLines({
   labelClassName = "text-stone-700",
   hide,
   stripLinks = false,
+  extras,
   after,
 }: {
   sel?: Record<string, string>;
@@ -84,6 +85,11 @@ export function SpecLines({
   hide?: string[];
   /** ตัด URL ออกจากค่า (หน้าลูกค้า/ใบงานไม่ต้องเห็นลิงก์ยาว ๆ) */
   stripLinks?: boolean;
+  /**
+   * ค่าเพิ่มต่อชิ้นของแต่ละกลุ่ม (label → บาท) — บรรทัดที่มีบวกเงินจะโชว์ "+฿N" ท้ายค่า
+   * เช่น { "ตะขอ": 8 } → "ตะขอ: F ตะขอสปริง… +฿8" (ติดลบ = ส่วนลด แสดง −฿N)
+   */
+  extras?: Record<string, number>;
   /** บรรทัดเสริมท้ายรายละเอียด เช่น "🎨 แนบลายแล้ว N รูป" */
   after?: ReactNode;
 }) {
@@ -91,6 +97,15 @@ export function SpecLines({
     .map(([k, v]) => [k, stripLinks ? stripUrls(v) : v] as [string, string])
     .filter(([, v]) => v);
   if (!entries.length && !after) return null;
+  const feeTag = (k: string) => {
+    const fee = extras?.[k];
+    if (!fee) return null;
+    return (
+      <span className="ml-1 whitespace-nowrap font-semibold text-sky-600">
+        {fee < 0 ? "−" : "+"}฿{Math.abs(fee).toLocaleString("th-TH")}
+      </span>
+    );
+  };
   return (
     <div className={`space-y-0.5 ${className}`}>
       {entries.map(([k, v], i) => {
@@ -104,11 +119,15 @@ export function SpecLines({
                 {parts.map((x, n) => (
                   <span key={n} className="block pl-3">
                     {x}
+                    {n === parts.length - 1 && feeTag(k)}
                   </span>
                 ))}
               </span>
             ) : (
-              (parts[0] ?? v)
+              <>
+                {parts[0] ?? v}
+                {feeTag(k)}
+              </>
             )}
           </p>
         );

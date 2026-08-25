@@ -434,6 +434,8 @@ export default function CartPage() {
                         <SpecLines
                           sel={item.selections}
                           className="mt-1 text-xs t-soft"
+                          // ตัวเลือกที่บวกเงิน (เช่น ตะขอสปริง +฿8) โชว์ราคากำกับท้ายบรรทัดสเปคเลย
+                          extras={Object.fromEntries((item.addOns ?? []).map((a) => [a.label, a.amount]))}
                           after={artCount > 0 ? <p className="font-semibold t-blue">🎨 แนบลายแล้ว {artCount} รูป</p> : null}
                         />
                       );
