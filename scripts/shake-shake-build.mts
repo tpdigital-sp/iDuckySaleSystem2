@@ -122,7 +122,19 @@ if (Number(om[1]) !== BASE_CM)
   throw new Error(`ขนาดเริ่มต้นกรอบบนเว็บ (${om[1]} ซม.) ไม่ตรงกับที่สคริปต์ตั้งไว้ (${BASE_CM} ซม.) — อัปเดต BASE_CM ก่อน`);
 const OVERSIZE_BAHT = Number(om[2]);
 
-const PRICING: PriceMatrix = { unit: UNIT, driverLabels: [], tiers, cells: { "": framePrices } };
+const PRICING: PriceMatrix = {
+  unit: UNIT,
+  driverLabels: [],
+  tiers,
+  cells: { "": framePrices },
+  // 📝 คอลัมน์ตัวน้อยเขย่าต่อช่วงจำนวน — ให้ตารางหน้าสินค้าหน้าตาเหมือนตารางบนเว็บ pricelists
+  // (ผู้ใช้สั่ง 25 ส.ค. 69) · ราคาต่อตัวของแต่ละแถวอ่านจากเว็บตรง ๆ — บอกทางเฉย ๆ ตัวคิดเงินจริง
+  // คือ extra/extraBelow ของกลุ่มตัวน้อยเขย่า (สคริปต์ assert ไว้แล้วว่าค่าชุดเดียวกัน)
+  noteCol: {
+    label: "ตัวน้อยเขย่า\nขนาด 2-2.5 ซม.",
+    values: charmPrices.map((p) => `+ ตัวละ ${p} บาท`),
+  },
+};
 
 console.log(`📊 ตารางจากเว็บ (${tiers.map((x) => x.label).join(" · ")})`);
 console.log(`   กรอบเขย่า: ${framePrices.map((p) => `฿${p}`).join(" / ")}`);

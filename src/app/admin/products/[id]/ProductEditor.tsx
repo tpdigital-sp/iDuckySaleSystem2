@@ -206,6 +206,8 @@ type DraftPricing = {
   tiers: DraftTier[];
   /** key คอลัมน์ → ราคาต่อ tier (เป็น string เพื่อกรอกในช่อง) */
   cells: Record<string, string[]>;
+  /** 📝 คอลัมน์หมายเหตุต่อช่วงจำนวนของหน้าร้าน (เช่น ค่าตัวน้อยเขย่าต่อตัว) — พกไป-กลับเฉย ๆ ยังไม่มี UI แก้ */
+  noteCol?: { label: string; values: string[] };
   /** คิดเรทตามจำนวนชิ้น "ต่อลาย" — คละ 11 ลายใน 11 ชิ้น = เรทราคาปลีก (กันคละลายเยอะแต่ได้เรทส่ง) */
   tierByDesign: boolean;
   /** 🔒 ห้ามคละเกินโควตาเรท — ช่อง "คละกี่ลาย" ของลูกค้าตันที่ ⌊จำนวน ÷ ขั้นต่ำต่อลาย⌋ */
@@ -552,6 +554,9 @@ function toDraft(p: Product): Draft {
           cells: Object.fromEntries(
             Object.entries(p.pricing.cells).map(([k, v]) => [k, v.map((n) => String(n))])
           ),
+          ...(p.pricing.noteCol
+            ? { noteCol: { label: p.pricing.noteCol.label, values: [...p.pricing.noteCol.values] } }
+            : {}),
           tierByDesign: !!p.tierByDesign,
           hardMaxDesigns: !!p.hardMaxDesigns,
         }
@@ -3762,6 +3767,7 @@ export default function ProductEditor({ product }: { product: Product }) {
           driverLabels: [...draft.pricing.driverLabels],
           tiers,
           cells,
+          ...(draft.pricing.noteCol ? { noteCol: draft.pricing.noteCol } : {}),
         };
       } else {
         // กันเหนียว: แกนตารางชี้กลุ่มที่หาไม่เจอ (เช่นลบกลุ่มไป) — เก็บช่องราคาที่กรอกไว้ตามเดิม
@@ -3781,6 +3787,7 @@ export default function ProductEditor({ product }: { product: Product }) {
             driverLabels: [...draft.pricing.driverLabels],
             tiers,
             cells: kept,
+            ...(draft.pricing.noteCol ? { noteCol: draft.pricing.noteCol } : {}),
           };
         }
       }

@@ -2877,6 +2877,16 @@ export default function ProductDetail({
                             ))}
                           </th>
                         ))}
+                        {/* 📝 คอลัมน์หมายเหตุต่อช่วงจำนวน (เช่น ค่าตัวน้อยเขย่าต่อตัวของแต่ละช่วง) */}
+                        {matrix.noteCol && (
+                          <th className="px-3 py-2 text-center font-bold leading-tight">
+                            {matrix.noteCol.label.split("\n").map((part, i) => (
+                              <span key={i} className="block whitespace-nowrap">
+                                {part}
+                              </span>
+                            ))}
+                          </th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -2899,6 +2909,11 @@ export default function ProductDetail({
                                 </td>
                               );
                             })}
+                            {matrix.noteCol && (
+                              <td className={`whitespace-nowrap px-3 py-2 text-center ${active ? "" : "text-stone-500"}`}>
+                                {matrix.noteCol.values[ti] ?? ""}
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
