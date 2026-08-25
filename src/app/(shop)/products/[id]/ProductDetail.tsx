@@ -50,6 +50,7 @@ import {
   RATE_LABEL,
   resolveSelections,
   choiceBadgeOf,
+  sizeFeeBreakdownOf,
   shortComboParts,
   smallQtyFeeOf,
   groupAddOf,
@@ -2083,6 +2084,11 @@ export default function ProductDetail({
                         .map((c) => {
                           const on = effective[opt.label] === c.name;
                           const add = choiceBadgeOf(opt, effective, c.name, feeQty);
+                          // 📏 กางที่มาของค่าบริการตามขนาด (เช่น โพ้งขอบ ฿10 × 8 ชิ้น = ฿80)
+                          // ใช้ view เดียวกับ choiceBadgeOf (สมมติว่าเลือกตัวนี้) ตัวเลขจะได้ตรงกับป้าย +฿ เสมอ
+                          const feeBd = c.sizeFee
+                            ? sizeFeeBreakdownOf(c.sizeFee, { ...effective, [opt.label]: c.name })
+                            : null;
                           return (
                             <button
                               key={c.name}
@@ -2126,7 +2132,16 @@ export default function ProductDetail({
                                       </span>
                                     )}
                                     {add > 0 && (
-                                      <span className="text-[12px] font-bold text-amber-700">+{formatPrice(add)}</span>
+                                      <span className="text-[12px] font-bold text-amber-700">
+                                        +{formatPrice(add)}
+                                        {feeBd && feeBd.pieces > 1 && add === feeBd.fee && (
+                                          // ที่มาของยอด: ชิ้นละ × จำนวนชิ้นต่อหลา (โชว์เฉพาะตอนคูณจริง)
+                                          <span className="font-normal text-stone-500">
+                                            {" "}
+                                            (฿{feeBd.perPiece} × {feeBd.pieces} ชิ้น)
+                                          </span>
+                                        )}
+                                      </span>
                                     )}
                                   </span>
                                   {c.desc && (

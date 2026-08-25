@@ -473,27 +473,46 @@ export interface SizeFee {
   perPiece?: { sheetW: number; sheetH: number; gap?: number };
 }
 
+/** 💰 ที่มาของค่าบริการตามขนาด — ไว้กางให้ลูกค้าเห็นว่า +฿ มาจาก ชิ้นละเท่าไหร่ × กี่ชิ้น */
+export interface SizeFeeBreakdown {
+  /** ยอดรวม = perPiece × pieces */
+  fee: number;
+  /** บาท/ชิ้น ตามขั้นด้านยาวสุด */
+  perPiece: number;
+  /** จำนวนชิ้นที่คูณ (1 = ไม่ได้คูณจากการจัดวาง เช่น เต็มหลา) */
+  pieces: number;
+}
+
 /**
- * 💰 ค่าบริการตามขนาด ณ ค่าที่ลูกค้ากรอกตอนนี้ — 0 = ยังกรอกไม่ครบ/เงื่อนไขไม่คิด
+ * 💰 ค่าบริการตามขนาด ณ ค่าที่ลูกค้ากรอกตอนนี้ พร้อมที่มา — null = ยังกรอกไม่ครบ/เงื่อนไขไม่คิด
  * ใช้ข้อมูลจาก selections ล้วน ๆ (ไม่ต้องมี product) จึงเรียกได้จากทุกชั้นที่คิด extra
  */
-export function sizeFeeOf(cfg: SizeFee, selections: Record<string, string>): number {
+export function sizeFeeBreakdownOf(cfg: SizeFee, selections: Record<string, string>): SizeFeeBreakdown | null {
   const tierFee = (longest: number) =>
     (cfg.tiers.find((t) => longest <= t.upTo) ?? cfg.tiers[cfg.tiers.length - 1])?.fee ?? 0;
-  if (cfg.when && !valueMatchesAny(selections[cfg.when.label], cfg.when.choices))
-    return cfg.defaultLongest ? tierFee(cfg.defaultLongest) : 0;
+  if (cfg.when && !valueMatchesAny(selections[cfg.when.label], cfg.when.choices)) {
+    if (!cfg.defaultLongest) return null;
+    const fee = tierFee(cfg.defaultLongest);
+    return fee ? { fee, perPiece: fee, pieces: 1 } : null;
+  }
   const num = (v: string | undefined) => {
     const n = parseFloat(String(v ?? "").replace(/[^\d.]/g, ""));
     return Number.isFinite(n) && n > 0 ? n : null;
   };
   const w = num(selections[cfg.widthLabel]);
   const h = num(selections[cfg.heightLabel]);
-  if (w == null || h == null) return 0; // ช่องกรอกบังคับกรอกก่อนสั่งอยู่แล้ว — ระหว่างพิมพ์ยังไม่คิด
-  const fee = tierFee(Math.max(w, h));
-  if (!cfg.perPiece || !fee) return fee;
+  if (w == null || h == null) return null; // ช่องกรอกบังคับกรอกก่อนสั่งอยู่แล้ว — ระหว่างพิมพ์ยังไม่คิด
+  const perPiece = tierFee(Math.max(w, h));
+  if (!perPiece) return null;
+  if (!cfg.perPiece) return { fee: perPiece, perPiece, pieces: 1 };
   // ชิ้นใหญ่จนวางไม่ได้ (pieces 0) ก็ยังคิดอย่างน้อย 1 ชิ้น — ช่องกรอกมี max กันขนาดเกินอยู่แล้ว
-  const pieces = packSingleSize(w, h, cfg.perPiece.sheetW, cfg.perPiece.sheetH, cfg.perPiece.gap ?? 0);
-  return fee * Math.max(1, pieces);
+  const pieces = Math.max(1, packSingleSize(w, h, cfg.perPiece.sheetW, cfg.perPiece.sheetH, cfg.perPiece.gap ?? 0));
+  return { fee: perPiece * pieces, perPiece, pieces };
+}
+
+/** 💰 เฉพาะยอดรวมของ sizeFeeBreakdownOf — ตัวที่ choiceExtraOf ใช้คิดเงินจริง */
+export function sizeFeeOf(cfg: SizeFee, selections: Record<string, string>): number {
+  return sizeFeeBreakdownOf(cfg, selections)?.fee ?? 0;
 }
 
 /** 📐 ผลของ unitYieldOf — สั่ง 1 หน่วยแล้วได้งานกี่ชิ้น */
