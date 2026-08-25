@@ -250,6 +250,8 @@ type DraftFaq = { q: string; a: string };
 type DraftSeo = { title: string; description: string; keywords: string; faqs: DraftFaq[] };
 type Draft = {
   name: string;
+  /** ย่อหน้าคำอธิบายใต้ชื่อบนหน้าสินค้า (คนละอันกับ Meta description ของ SEO) */
+  description: string;
   /** ลิงก์ตามชื่อ (slug) ของหน้าสินค้า — ว่าง = ใช้ id ตามเดิม */
   slug: string;
   category: CategoryId;
@@ -448,6 +450,7 @@ function fileToBlob(file: File, max = 1200, quality = 0.82): Promise<Blob> {
 function toDraft(p: Product): Draft {
   return {
     name: p.name,
+    description: p.description ?? "",
     mtoAlways: p.mtoAlways === true,
     area: p.areaPricing
       ? {
@@ -3886,6 +3889,7 @@ export default function ProductEditor({ product }: { product: Product }) {
     const updated: Product = {
       ...original,
       name: draft.name.trim(),
+      description: draft.description.trim(),
       slug: slug && slug !== productId ? slug : undefined,
       category: draft.category,
       featured: draft.featured,
@@ -4667,6 +4671,17 @@ export default function ProductEditor({ product }: { product: Product }) {
             </select>
           </label>
         </div>
+        {/* คำอธิบายสินค้า — ย่อหน้าใต้ชื่อบนหน้าสินค้า (คนละช่องกับ Meta description ของ SEO การ์ดล่าง) */}
+        <label className="mt-3 block text-xs font-semibold text-slate-500">
+          คำอธิบายสินค้า <span className="font-normal text-slate-400">(ย่อหน้าใต้ชื่อบนหน้าสินค้า — คนละช่องกับ Meta description ของ SEO)</span>
+          <textarea
+            value={draft.description}
+            onChange={(e) => patch({ description: e.target.value })}
+            rows={4}
+            placeholder="เล่าว่าสินค้านี้คืออะไร ทำจากอะไร เลือกอะไรได้บ้าง — ลูกค้าเห็นเป็นย่อหน้าแรกใต้ชื่อสินค้า"
+            className={`${inputCls} mt-1 w-full resize-y leading-relaxed`}
+          />
+        </label>
       </section>
 
       {/* รูปสินค้า — ลากวางได้ สูงสุด 5 รูป */}
