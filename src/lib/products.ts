@@ -98,8 +98,12 @@ export interface ProductOptionChoice {
    * 📄 เลือกตัวนี้แล้ว งาน 1 ชิ้น "กิน" วัสดุกี่แผ่น — เช่น ปฏิทิน 8 แผ่น ใช้กระดาษ 4 แผ่น A3 ต่อเล่ม
    * ด้านกลับของ perSheet (ที่เป็นหลายชิ้นต่อ 1 แผ่น) · ใช้คู่กับกลุ่มที่ตั้ง ProductOption.sheetFee เหมือนกัน
    * ไม่ตั้ง = 1 แผ่นต่อชิ้น · ใส่พร้อม perSheet ได้ (จำนวนแผ่น = ⌈จำนวน × แผ่นต่อชิ้น ÷ ชิ้นต่อแผ่น⌉)
+   *
+   * ใส่เป็น **ตาราง** ได้เมื่อจำนวนแผ่นขึ้นกับอีกกลุ่มด้วย — คีย์ = ชื่อตัวเลือกในกลุ่ม sheetFee.by
+   * เช่น ปฏิทินไดคัท ขนาด 6x6-8x8 นิ้ว: { "8 แผ่น (16หน้า)": 4, "14 แผ่น (28หน้า)": 7 }
+   * (จำนวนแผ่นของขนาดหนึ่ง ๆ ไม่ใช่ตัวคูณคงที่ของจำนวนแผ่นในเล่ม จึงต้องกางเป็นตาราง)
    */
-  sheetsPerUnit?: number;
+  sheetsPerUnit?: number | Record<string, number>;
   /**
    * 📐 เลือกขนาดตัดนี้แล้ว 1 หน่วยที่สั่งได้งานกี่ชิ้น — งาน "แบ่งแผ่น" เช่น ขนาดตัด A5 = 4 ชิ้น / แผ่น A3
    * ใช้สรุปให้ลูกค้าว่าสั่งกี่หน่วยแล้วได้งานกี่ชิ้น (ดู unitYieldOf) — ตัวเลขบอกทางเฉย ๆ
@@ -291,6 +295,11 @@ export interface ProductOption {
   sheetFee?: {
     /** กลุ่มที่บอกว่า 1 แผ่นได้กี่ชิ้น (อ่าน perSheet ของตัวเลือกที่เลือกในกลุ่มนั้น) */
     from: string;
+    /**
+     * กลุ่มที่ 2 ที่ร่วมกำหนดจำนวนแผ่น — ตั้งเมื่อ sheetsPerUnit ในกลุ่ม from เป็นตาราง
+     * เช่น ปฏิทินไดคัท: from "ขนาดกระดาษ" × by "จำนวนแผ่น" → 1/1 · 2/3 · 4/7 แผ่น A3 ต่อเล่ม
+     */
+    by?: string;
     /** ชื่อ "แผ่น" ที่โชว์ให้ลูกค้า เช่น "แผ่น A3" (ไม่ตั้ง = "แผ่น") */
     unit?: string;
   };
@@ -1383,7 +1392,13 @@ function sheetNumberOf(
 ): number {
   const src = product.options?.find((o) => o.label === opt.sheetFee?.from);
   const picked = src ? selections[src.label] : undefined;
-  const n = src?.choices.find((c) => c.name === picked)?.[field];
+  const raw = src?.choices.find((c) => c.name === picked)?.[field];
+  // ตารางตามคู่ตัวเลือก (from × by) — ยังไม่ได้เลือกกลุ่ม by ก็หยิบค่ามากสุดไว้ก่อน ตามหลักเดียวกับ
+  // ค่าเริ่มต้น 1 ของ perSheet: ยอมคิดเกินดีกว่าคิดขาด (กลุ่ม by เป็นแกนราคาอยู่แล้ว ปกติมีค่าเสมอ)
+  const n =
+    raw != null && typeof raw === "object"
+      ? (raw[selections[opt.sheetFee?.by ?? ""] ?? ""] ?? Math.max(...Object.values(raw)))
+      : raw;
   return Number.isFinite(n) && (n as number) >= 1 ? Math.floor(n as number) : 1;
 }
 
