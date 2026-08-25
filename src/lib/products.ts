@@ -1609,13 +1609,22 @@ export interface QtyFromArea {
   heightLabel: string;
   /** พื้นที่ต่อ 1 หน่วยขาย ในหน่วยช่องกรอกยกกำลังสอง เช่น กรอก ซม. ขาย ตร.ม. = 10000 */
   areaPerUnit: number;
+  /**
+   * ขั้นต่ำต่อด้าน (หน่วยช่องกรอก) — ด้านที่สั้นกว่านี้คิดเงินเท่าค่านี้ เช่น 100 ซม. = ด้านละ 1 เมตร
+   * (ป้าย 50×200 ซม. พื้นที่จริง 1 ตร.ม. แต่คิดเป็น 100×200 = 2 ตร.ม. — ผู้ใช้เคาะ 25 ส.ค. 69)
+   * ไม่ตั้ง = ไม่มีขั้นต่ำต่อด้าน คิดจากขนาดจริง
+   */
+  minSide?: number;
 }
 
-/** ผลคำนวณจำนวนตามขนาด — พกขนาด/พื้นที่จริงไว้โชว์วิธีคิดให้ลูกค้าเห็น */
+/** ผลคำนวณจำนวนตามขนาด — พกขนาดที่กรอก/ขนาดที่ใช้คิดเงิน/พื้นที่ ไว้โชว์วิธีคิดให้ลูกค้าเห็น */
 export interface AreaQty {
   width: number;
   height: number;
-  /** พื้นที่จริงในหน่วยขาย (ยังไม่ปัด) เช่น 2.8 ตร.ม. */
+  /** ขนาดที่ใช้คิดเงิน — ด้านที่สั้นกว่า minSide ถูกดันขึ้นเป็น minSide แล้ว (ไม่ตั้ง = เท่าที่กรอก) */
+  billedWidth: number;
+  billedHeight: number;
+  /** พื้นที่คิดเงินในหน่วยขาย (จาก billedWidth×billedHeight ยังไม่ปัด) เช่น 2.8 ตร.ม. */
   area: number;
   /** จำนวนหน่วยที่ต้องสั่ง = ปัดขึ้นเต็มหน่วย อย่างน้อย 1 */
   qty: number;
@@ -1628,8 +1637,10 @@ export function qtyFromAreaOf(p: Product, selections: Record<string, string>): A
   const width = inputNumberOf(selections, c.widthLabel);
   const height = inputNumberOf(selections, c.heightLabel);
   if (!width || !height) return null;
-  const area = (width * height) / c.areaPerUnit;
-  return { width, height, area, qty: Math.max(1, Math.ceil(area)) };
+  const billedWidth = Math.max(width, c.minSide ?? 0);
+  const billedHeight = Math.max(height, c.minSide ?? 0);
+  const area = (billedWidth * billedHeight) / c.areaPerUnit;
+  return { width, height, billedWidth, billedHeight, area, qty: Math.max(1, Math.ceil(area)) };
 }
 
 /**

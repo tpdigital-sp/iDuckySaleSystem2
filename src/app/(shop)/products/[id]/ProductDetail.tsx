@@ -3453,11 +3453,16 @@ export default function ProductDetail({
                   </button>
                 )}
               </div>
-              {/* 📐 สินค้าขายเป็นพื้นที่ — กางวิธีคิดให้เห็น: ขนาดที่กรอก → พื้นที่จริง → ปัดขึ้นเต็มหน่วยขาย */}
+              {/* 📐 สินค้าขายเป็นพื้นที่ — กางวิธีคิดให้เห็น: ขนาดที่กรอก → (ดันขั้นต่ำต่อด้าน) → พื้นที่ → ปัดขึ้นเต็มหน่วยขาย */}
               {areaQty != null && !designDone && (
                 <p className="mt-2 rounded-2xl bg-teal-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-teal-900 ring-1 ring-teal-200">
-                  📐 ขนาด {areaQty.width.toLocaleString("th-TH")}×{areaQty.height.toLocaleString("th-TH")} ซม. ={" "}
-                  {(Math.round(areaQty.area * 100) / 100).toLocaleString("th-TH")} {matrix?.unit ?? "ตร.ม."} →{" "}
+                  📐 ขนาด {areaQty.width.toLocaleString("th-TH")}×{areaQty.height.toLocaleString("th-TH")} ซม.
+                  {/* ด้านที่สั้นกว่าขั้นต่ำถูกดันขึ้น — โชว์ขนาดที่ใช้คิดเงินให้ลูกค้าเห็นที่มา (เช่น 50×200 → คิด 100×200) */}
+                  {(areaQty.billedWidth !== areaQty.width || areaQty.billedHeight !== areaQty.height) && (
+                    <> → คิดขั้นต่ำด้านละ {(product.qtyFromArea!.minSide ?? 0).toLocaleString("th-TH")} ซม. ={" "}
+                    {areaQty.billedWidth.toLocaleString("th-TH")}×{areaQty.billedHeight.toLocaleString("th-TH")} ซม.</>
+                  )}{" "}
+                  = {(Math.round(areaQty.area * 100) / 100).toLocaleString("th-TH")} {matrix?.unit ?? "ตร.ม."} →{" "}
                   <span className="text-[13px] font-extrabold">
                     คิด {areaQty.qty.toLocaleString("th-TH")} {matrix?.unit ?? "ตร.ม."}
                   </span>
