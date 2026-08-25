@@ -17,7 +17,7 @@
  *   • ราคา = ตารางขั้นบันไดคอลัมน์เดียว (driverLabels []) หน่วย "ตัว" + colLabel
  *   • คละลาย: priceRates เรทเดียว minPerDesign 3 + freeMixBelowQty 11
  *   • สีตุ๊กตา = display "cards" 3 ตัวเลือก มีรูปประกอบ (ผู้ใช้สั่ง 25 ส.ค. 69: ตัวเลือกต้องมีภาพ
- *     ให้เห็นว่าแต่ละแบบหน้าตายังไง) — ชมพู/ขาว ครอปจากรูปงานจริง · เทา ไม่มีรูปถ่าย ใช้สวอตช์สีผ้า
+ *     ให้เห็นว่าแต่ละแบบหน้าตายังไง) — ชมพู/ขาว ครอปจากรูปไดรฟ์ร้าน · เทา จากรูปที่ผู้ใช้ส่งมาในแชท
  *   • ข้อความปักชื่อ = กลุ่มช่องกรอก (display "input" + standardInput — งานปกติ ไม่ใช่กล่องสั่งทำ)
  *   • ฟอนต์ = ตารางแถบตัวอย่างลายมือ (sampleGrid) E1-E11 / T1-T15 — ครอปทีละบรรทัดจากชาร์ต YourChoice
  *     ตอนรัน + ปุ่มดูชาร์ตเต็ม (chartSrc) · ชาร์ตใบเดียวกันแนบไว้ในแท็บ "ฟอนต์ / อีโมจิ" ด้วย
@@ -64,6 +64,8 @@ const GROUP_THREAD = `สีไหมปัก (เลือกได้ไม�
 
 const DRIVE = "/Volumes/iDuckyShop/Case Web/ใหม่/ตุ๊กตาหูปัก";
 const FONT_CHART = "/Volumes/iDuckyShop/- ข้อมูลตอบลูกค้า/40_เสื้อผ้าและงานผ้า/ตุ๊กตาปัก-ซับ/YourChoice-01.jpg";
+// รูปตุ๊กตาสีเทา — ผู้ใช้ส่งมาในแชท 25 ส.ค. 69 (ไดรฟ์ร้านไม่มีตัวเทา) เก็บเข้า repo ไว้รันซ้ำได้
+const GRAY_PHOTO = new URL("./assets/doll-sewing-gray.jpg", import.meta.url).pathname;
 
 /**
  * 📐 โซนตัวอย่างฟอนต์บนชาร์ต YOUR CHOICE (สัดส่วน 0-1 ของภาพเต็ม 7108×4345)
@@ -151,31 +153,38 @@ console.log(`   ราคา: ${prices.map((p) => `฿${p}`).join(" / ")} · ค
 type Box = { left: number; top: number; width: number; height: number }; // สัดส่วน 0-1 ของภาพเต็ม
 type ImgSrc =
   | { kind: "drive"; path: string; width?: number }
-  | { kind: "square"; path: string } // ครอปกลางเป็นจัตุรัส — ภาพการ์ดตัวเลือก
-  | { kind: "strip"; path: string; box: Box } // ครอปแถบยาว 1 บรรทัด — ตัวอย่างฟอนต์
-  | { kind: "swatch"; rgb: { r: number; g: number; b: number } }; // สวอตช์สีผ้า (ไม่มีรูปถ่าย)
+  // ครอปเป็นจัตุรัส — ภาพการ์ดตัวเลือก · ไม่ระบุ box = ครอปกลางภาพ
+  // brightness = ชดเชยรูปที่ถ่ายในที่แสงน้อย (1 = ตามต้นฉบับ) — ยกแค่พอ ๆ กัน ไม่งั้นสีผ้าเพี้ยน
+  | { kind: "square"; path: string; box?: Box; brightness?: number }
+  | { kind: "strip"; path: string; box: Box }; // ครอปแถบยาว 1 บรรทัด — ตัวอย่างฟอนต์
+
+/** แปลงกล่องสัดส่วน 0-1 เป็นพิกเซลของภาพนั้น */
+async function pixelBox(path: string, b: Box) {
+  const meta = await sharp(path).metadata();
+  return {
+    left: Math.round(b.left * meta.width!),
+    top: Math.round(b.top * meta.height!),
+    width: Math.round(b.width * meta.width!),
+    height: Math.round(b.height * meta.height!),
+  };
+}
 
 async function render(src: ImgSrc): Promise<Buffer> {
-  if (src.kind === "swatch")
-    return sharp({ create: { width: 900, height: 900, channels: 3, background: src.rgb } })
-      .jpeg({ quality: 88 })
-      .toBuffer();
   const img = sharp(src.path).rotate();
-  if (src.kind === "square") return img.resize(900, 900, { fit: "cover" }).jpeg({ quality: 88 }).toBuffer();
-  if (src.kind === "strip") {
-    const meta = await sharp(src.path).metadata();
-    const b = src.box;
-    return img
-      .extract({
-        left: Math.round(b.left * meta.width!),
-        top: Math.round(b.top * meta.height!),
-        width: Math.round(b.width * meta.width!),
-        height: Math.round(b.height * meta.height!),
-      })
-      .resize({ width: 800 })
+  if (src.kind === "square") {
+    const cropped = src.box ? img.extract(await pixelBox(src.path, src.box)) : img;
+    return cropped
+      .resize(900, 900, { fit: "cover" })
+      .modulate({ brightness: src.brightness ?? 1 })
       .jpeg({ quality: 88 })
       .toBuffer();
   }
+  if (src.kind === "strip")
+    return img
+      .extract(await pixelBox(src.path, src.box))
+      .resize({ width: 800 })
+      .jpeg({ quality: 88 })
+      .toBuffer();
   return img.resize({ width: src.width ?? 1200, withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer();
 }
 
@@ -241,10 +250,17 @@ art["photo-pair"] = await put("photo-pair", { kind: "drive", path: `${DRIVE}/1.3
 art["photo-pink"] = await put("photo-pink", { kind: "drive", path: `${DRIVE}/2.2.jpg` });
 art["photo-ear"] = await put("photo-ear", { kind: "drive", path: `${DRIVE}/1.5.jpg` });
 art["photo-thai"] = await put("photo-thai", { kind: "drive", path: `${DRIVE}/1.9.jpg` });
-// ภาพการ์ดตัวเลือกสีตุ๊กตา — ชมพู/ขาว ครอปจัตุรัสจากรูปงานจริง · เทา ไม่มีรูปถ่าย ใช้สวอตช์สีผ้ากำมะหยี่
+// ภาพการ์ดตัวเลือกสีตุ๊กตา — ครอปจัตุรัสจากรูปงานจริงทั้ง 3 สี
 art["opt-pink"] = await put("opt-pink", { kind: "square", path: `${DRIVE}/2.2.jpg` });
 art["opt-white"] = await put("opt-white", { kind: "square", path: `${DRIVE}/1.4.jpg` });
-art["opt-gray"] = await put("opt-gray", { kind: "swatch", rgb: { r: 171, g: 171, b: 177 } });
+// ตัวเทา: รูปงานจริงที่ผู้ใช้ส่งมา 25 ส.ค. 69 (ถ่ายกลางคืน แสงน้อย → ยกสว่างนิดเดียวพอให้เห็นเนื้อผ้า)
+// ครอปเน้นหัว+หูปัก เลี่ยงมือที่จับอยู่มุมล่างซ้าย · ชื่อไฟล์ใหม่ (ของเดิม opt-gray เป็นสวอตช์สีล้วน — กันแคช)
+art["opt-gray"] = await put("opt-gray-photo", {
+  kind: "square",
+  path: GRAY_PHOTO,
+  box: { left: 0.208, top: 0.203, width: 0.749, height: 0.562 }, // ≈ 830×830 px จากภาพ 1108×1478
+  brightness: 1.1,
+});
 // ชาร์ตฟอนต์ + อีโมจิ (YOUR CHOICE) — ไว้ในแท็บ + ปุ่ม "ดูชาร์ตเต็ม" ของกลุ่มฟอนต์ (กว้าง 2000 ให้ซูมอ่านรหัสได้)
 art["font-chart"] = await put("font-chart", { kind: "drive", path: FONT_CHART, width: 2000 });
 
@@ -292,7 +308,7 @@ const OPTIONS: ProductOption[] = [
     note: `ตุ๊กตากระต่ายเนื้อผ้ากำมะหยี่ ขนาด ${SIZE} (แต่ละชิ้นอาจ ±1-2 ซม.) — มีให้เลือก 3 สี`,
     choices: [
       { name: "ชมพู", desc: "กำมะหยี่ชมพู ปักไหมเข้มตัดสีได้สวย", imageSrc: art["opt-pink"], popular: true },
-      { name: "เทา", desc: "กำมะหยี่เทา (สีตามสวอตช์ — ยังไม่มีรูปถ่ายงานจริง)", imageSrc: art["opt-gray"] },
+      { name: "เทา", desc: "กำมะหยี่เทา โทนสุภาพ ปักไหมขาว/สีอ่อนแล้วเด่น", imageSrc: art["opt-gray"] },
       { name: "ขาว", desc: "กำมะหยี่ขาว เข้ากับไหมปักทุกสี", imageSrc: art["opt-white"] },
     ],
   },
