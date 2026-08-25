@@ -7,13 +7,15 @@
  * ที่มา: iduckyofficial-pricelists.com/หมวก หัวข้อ "หมวกแก๊ป" (Tabs: พิมพ์ DTF | FLEX · พิมพ์ ปัก)
  *   สคริปต์อ่านตารางสดทุกครั้ง — ยึดหัวข้อ "หมวกแก๊ป" แล้วเก็บ 2 ตารางแรกก่อนถึงหัวข้อ "หมวกบักเก็ต"
  *   (หน้าเดียวกันมีตารางหมวกบักเก็ต 2 ตาราง + หมวกปีกรอบใบสกรีนเต็มใบอีก 1 — กันหยิบผิดด้วยหัวข้อ)
- *   ราคาต่อใบ 8 ช่วงจำนวน · DTF|FLEX 350→180 · ปัก 400→250 → ตารางเดียว driver "รูปแบบงานพิมพ์"
+ *   ราคาต่อใบ 8 ช่วงจำนวน · DTF|FLEX 350→180 · ปัก 400→250
+ *   → เป็น 2 priceRates (การ์ดเรทราคา มีรูป+คำอธิบาย) ตามแบบสินค้า "หมวก Bucket" (new-mt2omund-2845)
+ *     ที่ผู้ใช้ชี้เป็นต้นแบบ 25 ส.ค. 69 — ไม่ใช่ driver group แบบปุ่ม pills
  *
  * รายละเอียดจากหน้าเดียวกัน:
  *   • ไม่มีขั้นต่ำในการสั่งผลิต · 1-10 ใบ คละลายได้ · 11 ใบขึ้นไป คละลาย สั่งลายละ 5 ชิ้นขึ้นไป
  *   • งานปัก: ไฟล์ .DST/.PXF (ไม่มีไฟล์ = ค่าขึ้นบล๊อคตามความยากง่าย · Font/อิโมจิของร้าน ฟรี)
  *     ไหม Madeira เยอรมนี · เครื่อง TAJIMA ญี่ปุ่น 15 สีเข็ม · แบบนอกเหนือจากร้าน ≤3 สีเข็ม เกิน +10/สี/แบบ
- *   • ปักนูน +50 บาท/ใบ ทำได้เฉพาะฟอนต์ → กลุ่มตัวเลือกโผล่เฉพาะตอนเลือก "พิมพ์ ปัก"
+ *   • ปักนูน +50 บาท/ใบ ทำได้เฉพาะฟอนต์ → กลุ่มตัวเลือกโผล่เฉพาะตอนเลือกเรท "งานปัก"
  *   • ขนาดปัก สูงไม่เกิน 7 cm × กว้างไม่เกิน 15 cm
  *
  * ภาพประจำตัวเลือก (ผู้ใช้สั่ง 25 ส.ค. 69 ให้เห็นว่าแต่ละแบบหน้าตาเป็นยังไง):
@@ -45,10 +47,9 @@ const NAME = "หมวกแก๊ป";
 const V = "v1";
 const PAGE = "https://www.iduckyofficial-pricelists.com/%E0%B8%AB%E0%B8%A1%E0%B8%A7%E0%B8%81";
 const UNIT = "ใบ";
-const DRIVER = "รูปแบบงานพิมพ์";
-const PRINT_DTF = "พิมพ์ DTF | FLEX";
-const PRINT_EMB = "พิมพ์ ปัก";
-const EMBOSS_LABEL = "ปักนูน (เฉพาะฟอนต์)";
+const PRINT_DTF = "พิมพ์ DTF | FLEX"; // ชื่อเรทตรงกับหมวก Bucket ให้ทั้งตระกูลหน้าตาเดียวกัน
+const PRINT_EMB = "งานปัก";
+const EMBOSS_LABEL = "แบบงานปัก";
 const EMBOSS_FEE = 50;
 
 const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
@@ -118,18 +119,15 @@ console.log(`📊 ตาราง "${NAME}" จากเว็บ · ${tiers.len
 console.log(`   ${PRINT_DTF}: ${tiers.map((t, i) => `${t.label}=฿${dtfPrices[i]}`).join(" · ")}`);
 console.log(`   ${PRINT_EMB}: ${tiers.map((t, i) => `${t.label}=฿${embPrices[i]}`).join(" · ")}`);
 
-const PRICING: PriceMatrix = {
-  unit: UNIT,
-  driverLabels: [DRIVER],
-  tiers,
-  cells: { [PRINT_DTF]: dtfPrices, [PRINT_EMB]: embPrices },
-};
+/** เรทละตารางคอลัมน์เดียว (driver ว่าง) — โครงเดียวกับหมวก Bucket */
+const DTF_PRICING: PriceMatrix = { unit: UNIT, driverLabels: [], tiers, cells: { "": dtfPrices } };
+const EMB_PRICING: PriceMatrix = { unit: UNIT, driverLabels: [], tiers, cells: { "": embPrices } };
 
 /* ── 2. รูปแกลเลอรี 5 ภาพจากท่อนหมวกแก๊ปบนหน้าเว็บ ─────────────────── */
 /**
  * wixstatic id จากหน้า /หมวก โซนหมวกแก๊ป — ⚠️ MAX_PHOTOS = 5 ห้ามเกิน
  * ตัดออก: 88d16b98 (หมวกกรมท่าพิมพ์ ซ้ำมุมกับ hero) · 17906c57 (ปักชื่อ Mana มุมซ้ำ) · ddb95188 (กราฟิกตกแต่ง)
- * รูป [1] = ภาพประจำ "พิมพ์ DTF | FLEX" · รูป [3] = "พิมพ์ ปัก"/"ปักธรรมดา" · รูป [2] = "ปักนูน"
+ * รูป [1] = ภาพประจำ "พิมพ์ DTF | FLEX" · รูป [3] = เรท "งานปัก"/"ปักธรรมดา" · รูป [2] = "ปักนูน"
  */
 const PHOTOS: [string, string, string][] = [
   ["photo-print-pair", "959b83_0e5eaaa5ff554703a4b3d5b4cf2df639~mv2.jpg", "งานพิมพ์ DTF | FLEX — หมวกแก๊ปพิมพ์ลายตามสั่ง"],
@@ -169,19 +167,11 @@ console.log(`🖼  แกลเลอรี ${gallery.length} ภาพ (ภา�
 /* ── 3. ประกอบสินค้า ─────────────────────────────────────────────── */
 const OPTIONS: ProductOption[] = [
   {
-    label: DRIVER, // แกนตารางราคา — ⚠️ ห้ามตัดกลุ่มนี้ออกตอนเข้าตะกร้า (driverLabels)
-    display: "pills",
-    choices: [
-      { name: PRINT_DTF, imageSrc: artPrint },
-      { name: PRINT_EMB, imageSrc: artEmbFlat },
-    ],
-  },
-  {
-    // โผล่เฉพาะตอนเลือกงานปัก — ปักนูนทำได้แค่ฟอนต์ +50/ใบ (จากหน้าเว็บ)
+    // โผล่เฉพาะตอนเลือกเรทงานปัก (อ้างเรทผ่าน label พิเศษ "เรทราคา" — แบบเดียวกับหมวก Bucket)
     label: EMBOSS_LABEL,
     display: "pills",
-    note: "ปักนูน ทำได้เฉพาะ**ฟอนต์/ตัวอักษร** เท่านั้น · ขนาดปัก สูงไม่เกิน 7 ซม. × กว้างไม่เกิน 15 ซม.",
-    showWhen: { label: DRIVER, choices: [PRINT_EMB] },
+    note: "**ปักนูน** ทำได้เฉพาะฟอนต์/ตัวอักษร เท่านั้น · ขนาดปัก สูงไม่เกิน 7 ซม. × กว้างไม่เกิน 15 ซม.",
+    showWhen: { label: "เรทราคา", choices: [PRINT_EMB] },
     choices: [
       { name: "ปักธรรมดา", badge: "ฟรี", imageSrc: artEmbFlat },
       { name: "ปักนูน", extra: EMBOSS_FEE, imageSrc: artEmbPuff },
@@ -208,14 +198,25 @@ const product: Product = {
   ],
   options: OPTIONS,
   images: gallery,
-  pricing: PRICING,
+  pricing: DTF_PRICING, // ตารางบนสุด = เรทแรก (โครงเดียวกับหมวก Bucket)
+  // กติกาคละจากหน้าเว็บ: 1-10 ใบคละอิสระ · 11 ใบขึ้นไป สั่งลายละ 5 ชิ้นขึ้นไป (ขั้นต่ำแข็ง ไม่มีค่าคละเกินโควตา)
+  // ⚠️ หมวก Bucket ตัวต้นแบบตั้ง minPerDesign 3 ไว้ — เว็บเขียน 5 เหมือนกันทั้งคู่ ตัวนี้ยึดตามเว็บ
   priceRates: [
     {
       id: "r1",
-      label: NAME,
-      desc: "ราคาต่อใบ ตามรูปแบบงานพิมพ์ (DTF | FLEX หรือ งานปัก) · ไม่มีขั้นต่ำในการสั่งผลิต",
-      pricing: PRICING,
-      // กติกาคละจากหน้าเว็บ: 1-10 ใบคละอิสระ · 11 ใบขึ้นไป สั่งลายละ 5 ชิ้นขึ้นไป (ขั้นต่ำแข็ง ไม่มีค่าคละเกินโควตา)
+      label: PRINT_DTF,
+      desc: "พิมพ์ฟิล์มรีดร้อนติดบนหมวก สีสด คมชัด ระบบ CMYK — DTF เหมาะลายละเอียด · FLEX สีทึบขอบคม",
+      imageSrc: artPrint,
+      pricing: DTF_PRICING,
+      minPerDesign: 5,
+      freeMixBelowQty: 11,
+    },
+    {
+      id: "embroidery",
+      label: PRINT_EMB,
+      desc: "ปักไหมลงเนื้อผ้าโดยตรง ผิวสัมผัสนูน ดูพรีเมียม ทนทานที่สุด — ไหม Madeira · เครื่องปัก TAJIMA",
+      imageSrc: artEmbFlat,
+      pricing: EMB_PRICING,
       minPerDesign: 5,
       freeMixBelowQty: 11,
     },
