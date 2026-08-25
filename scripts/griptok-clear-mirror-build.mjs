@@ -17,6 +17,14 @@
  * → เรทเดียว minPerDesign 5 + freeMixBelowQty 11 (เรทเดียวหน้าร้านไม่โชว์การ์ดเรท — rates.length > 1 เท่านั้น)
  * ฐานดำ/ขาว ฟรี · ฐานใส +5
  *
+ * ผู้ใช้สั่งเพิ่ม (25 ส.ค. 69):
+ * - แกนที่ 2 "สีอะคริลิค (เรทราคา)": ใส / ขาวขุ่น C-02 (ราคาเท่ากัน) / พิเศษ (โฮโลแกรม/กลิตเตอร์/สี)
+ *   พิเศษ: 1-10 ชิ้น +10 ทุกขนาด · 11 ชิ้นขึ้นไป "บวกตามพวงกุญแจ" = 5cm +5 · 6-8cm +8 · 9-10cm +10
+ *   (ชุดเดียวกับส่วนต่างจริงใน Griptok อะคริลิค id 1-4 — ตรวจจาก cells แล้ว: ปลีก 10/ทุกขนาด · ส่ง 5/8/8/8/10/10)
+ *   ราคาต่างตามขนาด×ช่วง → ยุบเข้า cells (option.extra ทำไม่ได้) + กลุ่มสี 46 เฉด ลิงก์คลัง preset + rules ก๊อปจาก 1-4
+ * - Add On "ช่องกรอบใส่ภาพ" +15 บาท/ชิ้น (เพิ่มชั้นอะคริลิค 1mm เป็นช่องเสียบภาพ ตามภาพที่ 1)
+ * - สเปคความหนา: อะคริลิคใสด้านหน้า 1.5mm + ตัวอะคริลิคกระจก 1.5mm (ช่องกรอบ +1mm)
+ *
  * แกลเลอรี 5 ช่องพอดี MAX_PHOTOS (รูปจริง 2 + คลิปงานจริง 3 — คลิป = {src: โปสเตอร์, videoSrc: mp4})
  * ภาพตัวเลือก: การ์ดขนาด v3 (แปะบนหลังมือถือ) + ฐานขาว/ดำ/ใส ก๊อปจาก products/griptok-acrylic/
  * (แต่ละสินค้าถือไฟล์ของตัวเอง — อัปสำเนาใหม่ที่ products/griptok-mirror/)
@@ -84,6 +92,36 @@ rows.slice(1).forEach((r, i) => {
 console.log("📊 ตารางสดจากเว็บ:");
 for (const [k, v] of Object.entries(cells)) console.log(`   ${k}: ${v.join(" / ")}`);
 
+// ── แกนที่ 2: สีอะคริลิค — พิเศษบวกเพิ่มต่างตามขนาด×ช่วงจำนวน จึงยุบเข้า cells ──
+const AX = "สีอะคริลิค (เรทราคา)";
+const CLEAR = "อะคริลิคใส";
+const C02 = "อะคริลิคขาวขุ่น C-02";
+const SPECIAL = "อะคริลิคพิเศษ (โฮโลแกรม/กลิตเตอร์/สี)";
+// "บวกตามพวงกุญแจ" (11 ชิ้นขึ้นไป): 5cm +5 · 6-8cm +8 · 9-10cm +10 · ช่วงปลีก 1-10 ชิ้น +10 ทุกขนาด
+const SPECIAL_WHOLESALE = { "5cm": 5, "6cm": 8, "7cm": 8, "8cm": 8, "9cm": 10, "10cm": 10 };
+const SPECIAL_RETAIL = 10;
+{
+  const flat = {};
+  for (const [size, prices] of Object.entries(cells)) {
+    flat[`${size}│${CLEAR}`] = prices;
+    flat[`${size}│${C02}`] = [...prices];
+    flat[`${size}│${SPECIAL}`] = prices.map((v, i) => v + (i === 0 ? SPECIAL_RETAIL : SPECIAL_WHOLESALE[size]));
+  }
+  for (const k of Object.keys(cells)) delete cells[k];
+  Object.assign(cells, flat);
+}
+
+// กลุ่มสีอะคริลิค 46 เฉด — ก๊อปกลุ่มลิงก์คลัง (presetId "preset") + rules 3 ข้อจาก 1-4 มาทั้งก้อน
+// (rules ล็อก: เลือกใส→สีใส · C-02→สี C-02 · พิเศษ→44 สีพิเศษ — ชื่อแกนเราตรงกับ 1-4 จึงใช้ได้ตรง ๆ)
+const { data: ref14, error: refErr } = await sb.from("products").select("data").eq("id", "1-4").single();
+if (refErr) die(`อ่านสินค้าอ้างอิง 1-4 ไม่ได้: ${refErr.message}`);
+const colorGroup = ref14.data.options.find((o) => o.presetId === "preset");
+const colorRules = ref14.data.rules;
+if (!colorGroup || (colorGroup.choices ?? []).length < 40)
+  die("กลุ่มสีอะคริลิคใน 1-4 หาย/ไม่ครบ 40 สี — ห้ามเขียนต่อ (กัน snapshot สีหายเงียบ ๆ)");
+if (!Array.isArray(colorRules) || colorRules.length !== 3 || colorRules.some((r) => r.when?.label !== AX))
+  die("rules สีอะคริลิคใน 1-4 ไม่ตรงโครงที่คาด (3 ข้อ อิงแกน " + AX + ") — ตรวจก่อน");
+
 const allPrices = Object.values(cells).flat();
 const priceMin = Math.min(...allPrices);
 const priceMax = Math.max(...allPrices);
@@ -126,6 +164,7 @@ const COPY = [
   "base-white.jpg",
   "base-black.jpg",
   "base-clear.jpg",
+  "acrylic-special.jpg", // ชาร์ตสีอะคริลิคพิเศษ (ครอปจาก /coloracrylic — ทำไว้ตอน 1-4)
 ];
 for (const f of COPY) await fetchTo(`${DIR}/${f}`, `${PUB}/products/griptok-acrylic/${f}`);
 
@@ -198,17 +237,18 @@ const data = {
   images,
   highlights: ["มีกระจกส่องหน้าในตัว", "ขนาด 5-10cm", "ราคาปรับตามจำนวน"],
   description:
-    "Griptok อะคริลิคใสพิมพ์ลาย UV ประกบอะคริลิคกระจก มีกระจกส่องหน้าในตัว ขนาด 5-10cm สั่งทำตามแบบ · ฐานสีขาว/ดำ/ใส · คละลาย คละขนาดได้",
+    "Griptok อะคริลิคใสด้านหน้า 1.5 มม. พิมพ์ลาย UV ประกบตัวอะคริลิคกระจก 1.5 มม. มีกระจกส่องหน้าในตัว ขนาด 5-10cm สั่งทำตามแบบ · เลือกอะคริลิคใส / ขาวขุ่น C-02 / สีพิเศษ · เพิ่มช่องกรอบใส่ภาพได้ · คละลาย คละขนาดได้",
   priceRates: [
     {
       id: "r1",
       label: "ราคาตามขนาด",
       desc: "1-10 ชิ้น คละลายอิสระ (ราคาปลีก) · ตั้งแต่ 11 ชิ้นขึ้นไป คละลาย คละขนาด ดีเทลละ 5 ชิ้นขึ้นไป",
-      pricing: { unit: "ชิ้น", driverLabels: ["ขนาด"], tiers, cells },
+      pricing: { unit: "ชิ้น", driverLabels: ["ขนาด", AX], tiers, cells },
       minPerDesign: 5,
       freeMixBelowQty: 11,
     },
   ],
+  rules: colorRules,
   options: [
     {
       label: "ขนาด",
@@ -219,6 +259,19 @@ const data = {
       })),
     },
     {
+      label: AX,
+      display: "dropdown",
+      choices: [
+        // ใสชี้รูปหน้าปก (URL เดียวกับแกลเลอรี → กดเลือกแล้วภาพหลักเด้งตาม)
+        { name: CLEAR, imageSrc: `${BASE}/photo-heart-mirror-v1.jpg` },
+        // C-02 ใช้การ์ดสีชุดกลาง (โฟลเดอร์ acrylic-colors ใช้ร่วมทุกสินค้า)
+        { name: C02, imageSrc: `${PUB}/products/acrylic-colors/c02-v2.jpg` },
+        { name: SPECIAL, imageSrc: `${BASE}/acrylic-special.jpg` },
+      ],
+    },
+    // กลุ่มสี 46 เฉดจากคลังกลาง — rules ล็อกให้ตรงกับแกนที่เลือก (ก๊อปโครงจาก 1-4)
+    { ...colorGroup },
+    {
       label: "ฐาน Griptok",
       display: "dropdown",
       choices: [
@@ -227,12 +280,24 @@ const data = {
         { name: "สีใส (มีรอยขนแมวบ้าง)", extra: 5, imageSrc: `${BASE}/base-clear.jpg` },
       ],
     },
+    {
+      label: "ช่องกรอบใส่ภาพ",
+      choices: [
+        { name: "ไม่เพิ่ม" },
+        // ชี้โปสเตอร์คลิปทรงแสตมป์ (ช่องเสียบภาพ) — URL เดียวกับแกลเลอรี → เลือกแล้วเด้งไปคลิป
+        { name: "เพิ่มช่องกรอบใส่ภาพ", extra: 15, imageSrc: `${BASE}/clip-stamp-poster-v1.jpg` },
+      ],
+    },
   ],
   tabs: [
     {
       title: "รายละเอียดเพิ่มเติม",
       text: [
         "• ราคานี้เป็นของ GRIPTOK อะคริลิคใส+กระจก — พิมพ์ลาย UV บนอะคริลิคใส ประกบอะคริลิคกระจก มีกระจกส่องหน้าในตัว",
+        "• โครงสร้างชิ้นงาน: อะคริลิคใสด้านหน้า (พิมพ์ลาย) หนา 1.5 มม. + ตัวอะคริลิคกระจก หนา 1.5 มม.",
+        "• อะคริลิคด้านหน้าเลือกได้: อะคริลิคใส / อะคริลิคขาวขุ่น C-02 (ราคาเท่ากัน) / อะคริลิคพิเศษ โฮโลแกรม-กลิตเตอร์-สี",
+        "• อะคริลิคพิเศษ: 1-10 ชิ้น บวก 10 บาททุกขนาด · ตั้งแต่ 11 ชิ้นขึ้นไป บวกตามขนาด (5cm +5 · 6-8cm +8 · 9-10cm +10 — อัตราเดียวกับพวงกุญแจ)",
+        "• Add On ช่องกรอบใส่ภาพ บวกเพิ่ม 15 บาท/ชิ้น — เพิ่มชั้นอะคริลิค 1 มม. เป็นช่องเสียบภาพ ถอดเปลี่ยนรูปเองได้ (ตามภาพที่ 1 ในแกลเลอรี)",
         "• 1-10 ชิ้น สามารถคละลายได้ (ราคาปลีก)",
         "• ตั้งแต่ 11 ชิ้นขึ้นไป คละลาย คละขนาด ขั้นต่ำดีเทลละ 5 ชิ้น",
         "• ฐานสีดำและสีขาว ไม่บวกเงินเพิ่ม · เฉพาะฐานใส บวกเพิ่ม 5 บาท (ฐานใสจะมีรอยขนแมวบ้าง)",
@@ -287,7 +352,7 @@ const data = {
     },
   ],
   terms:
-    "1-10 ชิ้น คละลายได้ · ตั้งแต่ 11 ชิ้นขึ้นไป คละลาย คละขนาด ขั้นต่ำดีเทลละ 5 ชิ้น · ฐานสีดำ/สีขาว ฟรี · ฐานใส +5 บาท",
+    "1-10 ชิ้น คละลายได้ · ตั้งแต่ 11 ชิ้นขึ้นไป คละลาย คละขนาด ขั้นต่ำดีเทลละ 5 ชิ้น · ฐานสีดำ/สีขาว ฟรี · ฐานใส +5 บาท · อะคริลิคพิเศษบวกเพิ่มตามขนาด/จำนวน · ช่องกรอบใส่ภาพ +15 บาท",
   seo: {
     title: `รับทำ ${NAME} พิมพ์ลายตามสั่ง`,
     description:
@@ -312,7 +377,11 @@ const data = {
       },
       {
         q: `${NAME} คืออะไร ต่างจาก Griptok ปกติยังไง?`,
-        a: "เป็น Griptok อะคริลิคใสพิมพ์ลาย UV ประกบกับอะคริลิคกระจก ตรงกลางเว้นเป็นช่องกระจกเงา ใช้ส่องหน้าได้จริง",
+        a: "เป็น Griptok อะคริลิคใสด้านหน้าหนา 1.5 มม. พิมพ์ลาย UV ประกบกับตัวอะคริลิคกระจกหนา 1.5 มม. ตรงกลางเว้นเป็นช่องกระจกเงา ใช้ส่องหน้าได้จริง · เพิ่มช่องกรอบใส่ภาพ (ชั้นอะคริลิค 1 มม. ถอดเปลี่ยนรูปเองได้) +15 บาท",
+      },
+      {
+        q: "เลือกสีอะคริลิคได้ไหม?",
+        a: "อะคริลิคด้านหน้าเลือกได้ 3 แบบ: อะคริลิคใส / อะคริลิคขาวขุ่น C-02 (ราคาเท่ากัน) / อะคริลิคพิเศษ โฮโลแกรม-กลิตเตอร์-สี รวม 44 เฉด (1-10 ชิ้น +10 บาท · 11 ชิ้นขึ้นไป +5-10 บาทตามขนาด)",
       },
       {
         q: "คละลาย คละขนาด ได้ไหม?",
@@ -367,9 +436,27 @@ const checks = [
   ["คอลัมน์ name", back.name === NAME],
   ["คอลัมน์ price", back.price === priceMin],
   ["savedAt", b.savedAt === data.savedAt],
-  ["cells ตรงกับเว็บ", JSON.stringify(b.priceRates?.[0]?.pricing?.cells) === JSON.stringify(cells)],
-  ["ตัวเลือก 2 กลุ่ม", (b.options ?? []).length === 2],
-  ["ภาพตัวเลือกครบ", (b.options ?? []).every((o) => o.choices.every((c) => c.imageSrc))],
+  // ⚠️ jsonb ไม่รักษาลำดับคีย์ — เทียบรายคีย์ ห้าม JSON.stringify ทั้งก้อน
+  [
+    "cells ตรงกับเว็บ (18 คีย์)",
+    (() => {
+      const bc = b.priceRates?.[0]?.pricing?.cells ?? {};
+      const keys = Object.keys(cells);
+      return (
+        Object.keys(bc).length === keys.length &&
+        keys.every((k) => JSON.stringify(bc[k]) === JSON.stringify(cells[k]))
+      );
+    })(),
+  ],
+  ["ตัวเลือก 5 กลุ่ม", (b.options ?? []).length === 5],
+  ["กลุ่มสีลิงก์คลัง ≥40 เฉด", (b.options ?? []).some((o) => o.presetId === "preset" && o.choices.length >= 40)],
+  ["rules สี 3 ข้อ", (b.rules ?? []).length === 3],
+  [
+    "ภาพตัวเลือกครบ (นอกกลุ่มคลังสี และ 'ไม่เพิ่ม')",
+    (b.options ?? [])
+      .filter((o) => !o.presetId)
+      .every((o) => o.choices.every((c) => c.imageSrc || c.name === "ไม่เพิ่ม")),
+  ],
   ["แกลเลอรี 5 ช่อง", (b.images ?? []).length === 5],
   ["คลิป 3 ช่อง", (b.images ?? []).filter((i) => i.videoSrc).length === 3],
   ["ฉบับร่าง (hidden)", b.hidden === true],
