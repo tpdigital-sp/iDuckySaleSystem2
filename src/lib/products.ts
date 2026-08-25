@@ -103,6 +103,12 @@ export interface ProductOptionChoice {
    * ไม่ตั้ง = ช่วงที่ต่ำกว่าเกณฑ์ไม่คิดเพิ่ม (พฤติกรรมเดิม) · ไม่มีผลกับกลุ่ม extraPerDesign
    */
   extraBelow?: number;
+  /**
+   * 📏 ค่าบริการตามขนาดชิ้นงานที่ลูกค้ากรอก — ขั้นราคาตาม "ด้านที่ยาวที่สุด" ของคู่ช่องกรอก
+   * กว้าง/ยาว และคูณจำนวนชิ้นต่อ 1 หน่วยขายจากการจัดวางได้ (งานผ้า: ตัดแบ่ง/เย็บขอบ/โพ้งขอบ)
+   * คิดรวมกับ extra ปกติใน choiceExtraOf จึงติดไปทุกที่เอง (ราคาหน้าเว็บ · ป้าย +฿ · ตะกร้า · ใบเสนอราคา)
+   */
+  sizeFee?: SizeFee;
 }
 
 export interface ProductOption {
@@ -445,6 +451,51 @@ export function sheetYieldCount(
   return packSingleSize(w, h + (cfg.addH ?? 0), cfg.sheetW, cfg.sheetH, cfg.gap ?? 0);
 }
 
+/**
+ * 📏 สเปก "ค่าบริการตามขนาดชิ้นงาน" ของตัวเลือกหนึ่ง (ดู ProductOptionChoice.sizeFee)
+ * งานผ้าแขวนผนัง: ค่าตัดแบ่ง/เย็บขอบ/โพ้งขอบ คิดต่อชิ้นตาม "ด้านที่ยาวที่สุด" ของชิ้นงาน
+ * และคูณจำนวนชิ้นที่ตัดได้ต่อ 1 หน่วยขาย (จัดวางแบบเดียวกับ sheetYield)
+ */
+export interface SizeFee {
+  /**
+   * อ่านขนาดจากช่องกรอกเมื่อค่าของกลุ่มนี้ตรงเงื่อนไข (ตั้งให้ตรงกับ showWhen ของช่องกรอก
+   * กันอ่านค่าค้างของช่องที่ถูกซ่อน) — ไม่ตรง = ใช้ defaultLongest แทน · ไม่ตั้ง = อ่านช่องกรอกเสมอ
+   */
+  when?: { label: string; choices: string[] };
+  /** ชื่อกลุ่มช่องกรอก ด้านกว้าง / ด้านยาว (display "input") */
+  widthLabel: string;
+  heightLabel: string;
+  /** ขั้นราคา: ด้านยาวสุดไม่เกิน upTo (หน่วยเดียวกับที่กรอก) → fee บาท/ชิ้น — เรียงเล็ก→ใหญ่ · เกินขั้นสุดท้ายใช้ขั้นสุดท้าย */
+  tiers: { upTo: number; fee: number }[];
+  /** ด้านยาวสุดที่ใช้เมื่อ when ไม่ตรง เช่น ตัดเต็มหลา = 145 — ไม่ตั้ง = ช่วงนั้นไม่คิดค่าบริการ */
+  defaultLongest?: number;
+  /** คูณจำนวนชิ้นต่อ 1 หน่วยขาย จากการจัดวางชิ้น กว้าง×ยาว ในพื้นที่นี้ (ไม่ตั้ง = คิดชิ้นเดียว) */
+  perPiece?: { sheetW: number; sheetH: number; gap?: number };
+}
+
+/**
+ * 💰 ค่าบริการตามขนาด ณ ค่าที่ลูกค้ากรอกตอนนี้ — 0 = ยังกรอกไม่ครบ/เงื่อนไขไม่คิด
+ * ใช้ข้อมูลจาก selections ล้วน ๆ (ไม่ต้องมี product) จึงเรียกได้จากทุกชั้นที่คิด extra
+ */
+export function sizeFeeOf(cfg: SizeFee, selections: Record<string, string>): number {
+  const tierFee = (longest: number) =>
+    (cfg.tiers.find((t) => longest <= t.upTo) ?? cfg.tiers[cfg.tiers.length - 1])?.fee ?? 0;
+  if (cfg.when && !valueMatchesAny(selections[cfg.when.label], cfg.when.choices))
+    return cfg.defaultLongest ? tierFee(cfg.defaultLongest) : 0;
+  const num = (v: string | undefined) => {
+    const n = parseFloat(String(v ?? "").replace(/[^\d.]/g, ""));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const w = num(selections[cfg.widthLabel]);
+  const h = num(selections[cfg.heightLabel]);
+  if (w == null || h == null) return 0; // ช่องกรอกบังคับกรอกก่อนสั่งอยู่แล้ว — ระหว่างพิมพ์ยังไม่คิด
+  const fee = tierFee(Math.max(w, h));
+  if (!cfg.perPiece || !fee) return fee;
+  // ชิ้นใหญ่จนวางไม่ได้ (pieces 0) ก็ยังคิดอย่างน้อย 1 ชิ้น — ช่องกรอกมี max กันขนาดเกินอยู่แล้ว
+  const pieces = packSingleSize(w, h, cfg.perPiece.sheetW, cfg.perPiece.sheetH, cfg.perPiece.gap ?? 0);
+  return fee * Math.max(1, pieces);
+}
+
 /** 📐 ผลของ unitYieldOf — สั่ง 1 หน่วยแล้วได้งานกี่ชิ้น */
 export interface UnitYield {
   /** จำนวนชิ้นต่อ 1 หน่วยที่สั่ง · 0 = ขนาดที่กรอกใหญ่เกิน 1 แผ่น */
@@ -679,7 +730,9 @@ export function choiceExtraOf(
   selections: Record<string, string>,
   choiceName: string
 ): number {
-  const extra = opt.choices.find((c) => c.name === choiceName)?.extra ?? 0;
+  const c = opt.choices.find((ch) => ch.name === choiceName);
+  // 📏 ค่าบริการตามขนาดชิ้นงาน (sizeFee) นับเป็นส่วนหนึ่งของ +฿ ตัวเลือกนี้ — โดนกติกา freeWhen ด้วยกัน
+  const extra = (c?.extra ?? 0) + (c?.sizeFee ? sizeFeeOf(c.sizeFee, selections) : 0);
   if (!extra) return 0;
   const f = opt.freeWhen;
   if (f && f.choices.includes(choiceName) && valueMatchesAny(selections[f.when.label], f.when.choices)) return 0;

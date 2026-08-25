@@ -19,6 +19,7 @@ import {
   type ProductSeo,
   type ShipOptionRule,
   type ShipTier,
+  type SizeFee,
 } from "@/lib/products";
 import RichEditor from "@/components/RichEditor";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
@@ -72,6 +73,8 @@ type DraftChoice = {
   piecesPerUnit?: number;
   /** 💰 +฿ ของช่วงสั่งน้อย (ต่ำกว่า extraFromQty) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   extraBelow?: number;
+  /** 📏 ค่าบริการตามขนาดชิ้นงาน (ผ้า: ตัดแบ่ง/เย็บ/โพ้ง) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  sizeFee?: SizeFee;
 };
 /** id ของรายการหน่วยแนะนำข้างช่อง "🔢 ระบุจำนวน" (พิมพ์หน่วยเองก็ได้) */
 const QTY_UNIT_LIST = "qty-unit-suggestions";
@@ -488,6 +491,7 @@ function toDraft(p: Product): Draft {
         ...(c.perSheet ? { perSheet: c.perSheet } : {}),
         ...(c.piecesPerUnit ? { piecesPerUnit: c.piecesPerUnit } : {}),
         ...(c.extraBelow ? { extraBelow: c.extraBelow } : {}),
+        ...(c.sizeFee ? { sizeFee: c.sizeFee } : {}),
       })),
       ...(o.presetId ? { presetId: o.presetId } : {}),
       // มีตัวไหนเปิด "ระบุจำนวน" ไว้ = กลุ่มนี้เคยเปิดสวิตช์ → เปิดค้างไว้ให้เห็นค่าเดิม
@@ -742,6 +746,8 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             // 📐 ชิ้นต่อหน่วยของงานแบ่งแผ่น (ขนาดตัด A4-A7) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
             ...(c.piecesPerUnit ? { piecesPerUnit: c.piecesPerUnit } : {}),
             ...(c.extraBelow ? { extraBelow: c.extraBelow } : {}),
+            // 📏 ค่าบริการตามขนาด — ไม่มีช่องกรอกในหน้าแก้ไข ต้องส่งกลับ ไม่งั้นหาย
+            ...(c.sizeFee ? { sizeFee: c.sizeFee } : {}),
           };
         }),
       ...(o.presetId ? { presetId: o.presetId } : {}),
