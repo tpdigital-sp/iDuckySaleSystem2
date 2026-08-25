@@ -2869,7 +2869,13 @@ export default function ProductDetail({
                              */
                             className={`px-3 py-2 font-bold leading-tight ${cols.length === 1 ? "text-center" : "text-left"}`}
                           >
-                            {shortComboParts(col).map((part, i) => (
+                            {/* ตารางคอลัมน์เดียวหัวจะว่าง — ใช้ชื่อที่แอดมินตั้ง (colLabel) แทน เช่น "กรอบเขย่า" */}
+                            {(shortComboParts(col).length
+                              ? shortComboParts(col)
+                              : matrix.colLabel
+                                ? [matrix.colLabel]
+                                : []
+                            ).map((part, i) => (
                               <span key={i} className="block whitespace-nowrap">
                                 {cols.length > 1 && <span className="mr-1 text-sky-400">•</span>}
                                 {part}

@@ -206,6 +206,8 @@ type DraftPricing = {
   tiers: DraftTier[];
   /** key คอลัมน์ → ราคาต่อ tier (เป็น string เพื่อกรอกในช่อง) */
   cells: Record<string, string[]>;
+  /** 🏷️ ชื่อหัวคอลัมน์ราคาของตารางคอลัมน์เดียว (เช่น "กรอบเขย่า") — พกไป-กลับเฉย ๆ ยังไม่มี UI แก้ */
+  colLabel?: string;
   /** 📝 คอลัมน์หมายเหตุต่อช่วงจำนวนของหน้าร้าน (เช่น ค่าตัวน้อยเขย่าต่อตัว) — พกไป-กลับเฉย ๆ ยังไม่มี UI แก้ */
   noteCol?: { label: string; values: string[] };
   /** คิดเรทตามจำนวนชิ้น "ต่อลาย" — คละ 11 ลายใน 11 ชิ้น = เรทราคาปลีก (กันคละลายเยอะแต่ได้เรทส่ง) */
@@ -554,6 +556,7 @@ function toDraft(p: Product): Draft {
           cells: Object.fromEntries(
             Object.entries(p.pricing.cells).map(([k, v]) => [k, v.map((n) => String(n))])
           ),
+          ...(p.pricing.colLabel ? { colLabel: p.pricing.colLabel } : {}),
           ...(p.pricing.noteCol
             ? { noteCol: { label: p.pricing.noteCol.label, values: [...p.pricing.noteCol.values] } }
             : {}),
@@ -3767,6 +3770,7 @@ export default function ProductEditor({ product }: { product: Product }) {
           driverLabels: [...draft.pricing.driverLabels],
           tiers,
           cells,
+          ...(draft.pricing.colLabel ? { colLabel: draft.pricing.colLabel } : {}),
           ...(draft.pricing.noteCol ? { noteCol: draft.pricing.noteCol } : {}),
         };
       } else {
@@ -3787,6 +3791,7 @@ export default function ProductEditor({ product }: { product: Product }) {
             driverLabels: [...draft.pricing.driverLabels],
             tiers,
             cells: kept,
+            ...(draft.pricing.colLabel ? { colLabel: draft.pricing.colLabel } : {}),
             ...(draft.pricing.noteCol ? { noteCol: draft.pricing.noteCol } : {}),
           };
         }
