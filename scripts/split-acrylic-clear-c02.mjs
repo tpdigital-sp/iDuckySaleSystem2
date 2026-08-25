@@ -48,6 +48,18 @@ const TARGETS = [
     merged: "อะคริลิคใส / ขาวขุ่น C-02",
   },
   {
+    id: "1-4", // Griptok อะคริลิค (5-10cm) — กลุ่มแกนราคา (มีกลุ่ม "สีอะคริลิค" 46 สีลิงก์คลังแยกอีกกลุ่ม)
+    groups: ["สีอะคริลิค (เรทราคา)"],
+    merged: "ใส / ขาวขุ่น (ปกติ)",
+    /**
+     * สินค้านี้มี rules ผูกกลุ่มแกนราคา → กลุ่มสี 46 สี (เดิม: เลือก "ใส / ขาวขุ่น (ปกติ)" → เหลือ 2 สี)
+     * ถ้าแยกโดยไม่แก้ rule ชื่อเดิมจะไม่แมตช์อะไรอีก = ลูกค้าเห็นครบ 46 สีทุกกรณี (rule ตายเงียบ)
+     * splitRules: แตก rule ของชื่อรวมเป็น 2 ข้อ — เลือกใส → ล็อกสีใส · เลือก C-02 → ล็อกสี C-02
+     * (กลุ่มสีเหลือตัวเดียวหน้าร้านล็อกให้อัตโนมัติ ลูกค้าไม่ต้องกดซ้ำ แต่ยังเห็นสวอตช์สี)
+     */
+    splitRules: true,
+  },
+  {
     id: "standy", // สแตนดี้อะคริลิค (Acrylic Standee) — ไม่มีสคริปต์ add- เป็นของที่นำเข้ามา
     groups: ["สีอะคริลิค"],
     merged: "ใส / ขาวขุ่น C-02",
@@ -227,6 +239,26 @@ for (const t of TARGETS) {
     if (!tab?.text.includes(t.tab.from)) throw new Error(`${t.id}: ข้อความแท็บ "${t.tab.title}" ไม่ตรงกับที่คาดไว้`);
     tab.text = tab.text.replace(t.tab.from, t.tab.to);
     console.log(`   แท็บ "${t.tab.title}": อัปเดตข้อความแล้ว`);
+  }
+
+  /**
+   * แตก rule ที่ผูกชื่อรวมเดิม (เฉพาะสินค้าที่ตั้ง splitRules) — ไม่แก้ = rule ตายเงียบ
+   * ลูกค้าเห็นสีครบทุกตัวไม่ว่าจะเลือกเรทไหน (ดูคำเตือนหัวไฟล์)
+   */
+  if (t.splitRules) {
+    const idx = (d.rules ?? []).findIndex(
+      (r) => t.groups.includes(r.when?.label) && (r.when?.choice === t.merged || r.when?.choices?.includes(t.merged))
+    );
+    if (idx < 0) throw new Error(`${t.id}: ตั้ง splitRules ไว้แต่ไม่เจอ rule ที่อ้าง "${t.merged}"`);
+    const old = d.rules[idx];
+    if (!old.limit?.allow?.includes(CLEAR) || !old.limit.allow.includes(C02))
+      throw new Error(`${t.id}: rule เดิมไม่ได้ allow ["${CLEAR}", "${C02}"] — โครง rule เปลี่ยน มาดูเองก่อน`);
+    const mk = (name) => ({
+      when: { label: old.when.label, choice: name, choices: [name] },
+      limit: { label: old.limit.label, allow: [name] },
+    });
+    d.rules.splice(idx, 1, mk(CLEAR), mk(C02));
+    console.log(`   rules: แตก rule "${t.merged}" → 2 ข้อ (เลือกใสล็อกสีใส · เลือก C-02 ล็อกสี C-02)`);
   }
 
   changed++;
