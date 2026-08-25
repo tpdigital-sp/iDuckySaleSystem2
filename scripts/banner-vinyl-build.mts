@@ -104,9 +104,9 @@ console.log(`   ${tiers.map((t, i) => `${t.label}=฿${prices[i]}`).join(" · ")
 const WIX = {
   eyeletCorner: "959b83_0f22ad1532a5408f9325db63d892a7e0~mv2.jpg", // ตาไก่โลหะที่มุมผืน
   eyeletHook: "959b83_984608b7125b46ca903d4443b5bc2ab6~mv2.jpg", // ตาไก่ + ตะขอยึดใช้งานจริง
-  railNoEyelet: "959b83_1b937023a75d40779b68afba2c1f0307~mv2.jpg", // ผืนหนีบบนราง — งานไม่เจาะตาไก่
   rolled: "959b83_25aa1317ab3345afb695bb3560156193~mv2.jpg", // ม้วนผืนโชว์เนื้อไวนิล 400 แกรม
-  foldedEdge: "959b83_2bde373f138f4f2f93362cd0b05e9f7d~mv2.jpg", // ขอบงานตัดพอดี ไม่พับขอบ
+  // ขอบงานตัดพอดีเรียบ ไม่มีตาไก่ — ใช้ทั้งแกลเลอรีและการ์ด "ไม่เจาะตาไก่" (ผู้ใช้เลือกรูปนี้เอง)
+  foldedEdge: "959b83_2bde373f138f4f2f93362cd0b05e9f7d~mv2.jpg",
 };
 
 async function fetchWix(wixId: string, size = "w_1200,h_1200"): Promise<Buffer> {
@@ -153,8 +153,9 @@ const OPTIONS: ProductOption[] = [
       },
       // "เจาะตาไก่รอบขอบ" เคยมี — ผู้ใช้สั่งถอด 25 ส.ค. 69 (เหลือ 4 มุม / ไม่เจาะ)
       {
+        // รูปผืนขอบเรียบไม่มีตาไก่ — ผู้ใช้เลือกเองจาก lightbox หน้า /banner (pgid lti7jnos1-bfee73f2) 25 ส.ค. 69
         name: "ไม่เจาะตาไก่",
-        imageSrc: art.railNoEyelet,
+        imageSrc: art.foldedEdge,
         desc: "ตัดขอบเรียบ ไม่เจาะรู — เหมาะกับงานใส่รางหนีบ ใส่กรอบ หรือติดด้วยเทป/กาว",
       },
     ],
