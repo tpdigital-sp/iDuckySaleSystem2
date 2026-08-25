@@ -2784,7 +2784,11 @@ main:has(.dl-page) + .dl footer{margin-top:0}
    ═══════════════════════════════════════════════════════════════════════════ */
 .homebg{position:relative;margin-top:-200px;padding-top:200px;min-height:calc(100svh + 200px);
   background:linear-gradient(168deg,var(--sky-200) 0%,var(--sky-100) 35%,var(--sky-50) 58%,#EAF6FE 76%,#F5FBFF 90%,#FFFFFF 100%)}
-.homebg-in{position:relative;z-index:1}
+/* ⚠️ ห้ามใส่ z-index ให้ .homebg-in — position+z-index จะเกิด stacking context ขังทุกอย่างที่
+   position:fixed ข้างใน (ไลต์บ็อกซ์ดูรูป z-80 · ป๊อปอัปเรทราคา z-90) ไว้ที่ชั้น z:1 ของหน้า
+   → เมนูบนหัว (z-60) กับปุ่มแชท (z-75/80) ลอยทับ และ "ปุ่มปิด" โดนเมนูบังจนกดไม่ได้
+   เนื้อหายังอยู่เหนือเมฆ .homebg-sky ได้เองตามลำดับใน DOM (sky มาก่อน .homebg-in) */
+.homebg-in{position:relative}
 .homebg-sky{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}
 .homebg-sky img{position:absolute;filter:drop-shadow(0 10px 20px rgba(44,129,196,.12))}
 .homebg-sky .c1{width:190px;top:250px;left:-52px;opacity:.9;
