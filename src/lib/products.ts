@@ -1409,7 +1409,9 @@ export function feeBreakdown(product: Product, selections: Record<string, string
         const sheets = sheetCountOf(product, opt, selections, qty);
         const unit = opt.sheetFee.unit ?? "แผ่น";
         lines.push({
-          label: picked || opt.label,
+          // ติดชื่อกลุ่มไว้ด้วย — สินค้าที่มีหลายกลุ่มคิดต่อแผ่น (เคลือบด้านหน้า/ด้านหลัง)
+          // ชื่อตัวเลือกซ้ำกันได้ ถ้าโชว์แค่ "เคลือบเงา + เคลือบเงา" ลูกค้าแยกไม่ออกว่าด้านไหน
+          label: picked ? `${opt.label}: ${picked}` : opt.label,
           amount: fee * sheets,
           note: `${formatPrice(fee)} × ${sheets.toLocaleString("th-TH")} ${unit}`,
         });

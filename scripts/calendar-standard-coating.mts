@@ -58,28 +58,76 @@ for (const c of sizeGroup.choices) {
   c.sheetsPerUnit = n;
 }
 
-// 2) กลุ่ม "เคลือบ" — ก๊อปการ์ด/ภาพ/คลิปจาก Mini Calendar แล้วเปลี่ยนฐานคิดเป็นแผ่นต่อเล่ม
-const coat = structuredClone(srcCoat);
-coat.sheetFee = { from: "ขนาด", unit: "แผ่น A3" };
-coat.note =
-  "เคลือบฟิล์มด้านหน้ากระดาษทุกแผ่นในเล่ม — เงา/ด้าน **ด้านละ 10 บาท ต่อแผ่น A3** · " +
-  "เคลือบพิเศษ (เนื้อทราย / กลิสเตอร์ / โฮโลแกรม) **ชุดละ 40 บาท ต่อแผ่น A3** " +
-  "(8 แผ่น ใช้ 4 แผ่น A3 ต่อเล่ม · 14 แผ่น ใช้ 7 แผ่น A3 ต่อเล่ม) — ต้องการเคลือบ 2 ด้าน แจ้งในหมายเหตุถึงร้าน";
-for (const c of coat.choices) {
-  delete c.perSheet; // ของ Mini (1 เล่ม = 1 A3) ใช้กับสินค้านี้ไม่ได้ — จำนวนแผ่นมาจากกลุ่ม "ขนาด" แทน
-}
+// 2) กลุ่มเคลือบ "ด้านละกลุ่ม" — เว็บคิดค่าฟิล์ม **ด้านละ** 10/40 บาทต่อ A3 (ผู้ใช้สั่ง 25 ส.ค. 69)
+//    แยกเป็น 2 กลุ่มเพราะ sheetFeeTotalOf บวกทุกกลุ่มที่ตั้ง sheetFee เข้าด้วยกัน → เลือกเคลือบ 2 ด้าน = ค่าฟิล์ม 2 ชุด
+//    (ทำเป็นกลุ่มเดียวแล้วติ๊ก "หน้า-หลัง" ไม่ได้ ระบบไม่มีตัวคูณค่าธรรมเนียมตามกลุ่มอื่น)
 const FEE: Record<string, number> = { ไม่เคลือบ: 0, เคลือบเงา: 10, เคลือบด้าน: 10, เคลือบพิเศษ: 40 };
-for (const c of coat.choices) {
-  if (!(c.name in FEE)) throw new Error(`ตัวเลือกเคลือบใหม่ "${c.name}" จาก ${FROM} — ยังไม่รู้ราคา มาดูเองก่อน`);
-  if (FEE[c.name]) c.extra = FEE[c.name];
-  else delete c.extra;
+const SHEET_NOTE = "(8 แผ่น ใช้ 4 แผ่น A3 ต่อเล่ม · 14 แผ่น ใช้ 7 แผ่น A3 ต่อเล่ม)";
+
+/** ก๊อปกลุ่มเคลือบต้นแบบมาทำเป็นด้านหนึ่ง — ราคาเท่ากันทั้งสองด้าน ต่างกันแค่ป้ายและโน้ต */
+function coatGroup(label: string, note: string, keepPopular: boolean) {
+  const g = structuredClone(srcCoat);
+  g.label = label;
+  g.note = note;
+  g.sheetFee = { from: "ขนาด", unit: "แผ่น A3" };
+  for (const c of g.choices) {
+    delete c.perSheet; // ของ Mini (1 เล่ม = 1 A3) ใช้กับสินค้านี้ไม่ได้ — จำนวนแผ่นมาจากกลุ่ม "ขนาด" แทน
+    if (!keepPopular) delete c.popular; // ป้าย "นิยม" ไว้ด้านหน้าพอ ด้านหลังส่วนใหญ่ไม่เคลือบ
+    if (!(c.name in FEE)) throw new Error(`ตัวเลือกเคลือบใหม่ "${c.name}" จาก ${FROM} — ยังไม่รู้ราคา มาดูเองก่อน`);
+    if (FEE[c.name]) c.extra = FEE[c.name];
+    else delete c.extra;
+  }
+  return g;
 }
 
-// 3) กลุ่ม "ลายฟิล์มเคลือบพิเศษ" — ยกมาทั้งดุ้น (โผล่เฉพาะตอนเลือกเคลือบพิเศษ)
-const film = structuredClone(srcFilm);
+const coatFront = coatGroup(
+  "เคลือบด้านหน้า",
+  "เคลือบฟิล์มด้านหน้าของกระดาษทุกแผ่นในเล่ม — เงา/ด้าน **10 บาท ต่อแผ่น A3** · " +
+    `เคลือบพิเศษ (เนื้อทราย / กลิสเตอร์ / โฮโลแกรม) **40 บาท ต่อแผ่น A3** ${SHEET_NOTE}`,
+  true
+);
+const coatBack = coatGroup(
+  "เคลือบด้านหลัง",
+  "เคลือบอีกด้านของกระดาษแผ่นเดียวกัน คิดเพิ่มอีกชุดในเรทเดียวกับด้านหน้า — " +
+    "**เลือกด้านหน้ากับด้านหลังคนละแบบได้** · ไม่ต้องการเคลือบหลัง ปล่อยไว้ที่ “ไม่เคลือบ”",
+  false
+);
 
-// ใส่ต่อท้าย (แทนของเดิมถ้าเคยมี) — ลำดับ: ขนาด → แนวปฏิทิน → เคลือบ → ลายฟิล์ม
-d.options = [...d.options.filter((o: { label: string }) => o.label !== "เคลือบ" && o.label !== "ลายฟิล์มเคลือบพิเศษ"), coat, film];
+// 3) กลุ่มลายฟิล์ม — แยกด้านละกลุ่ม (showWhen ต่อได้แบบ "และ" เท่านั้น ใช้กลุ่มเดียวคุมสองด้านไม่ได้)
+function filmGroup(label: string, whenLabel: string, note: string) {
+  const g = structuredClone(srcFilm);
+  g.label = label;
+  g.note = note;
+  g.showWhen = { label: whenLabel, choices: ["เคลือบพิเศษ"] };
+  return g;
+}
+const filmFront = filmGroup(
+  "ลายฟิล์มเคลือบพิเศษ (ด้านหน้า)",
+  "เคลือบด้านหน้า",
+  "ลายฟิล์มเคลือบพิเศษของ**ด้านหน้า** — การ์ดแต่ละใบเล่นคลิปฟิล์มจริง ราคารวมอยู่ในค่าเคลือบพิเศษแล้ว"
+);
+const filmBack = filmGroup(
+  "ลายฟิล์มเคลือบพิเศษ (ด้านหลัง)",
+  "เคลือบด้านหลัง",
+  "ลายฟิล์มเคลือบพิเศษของ**ด้านหลัง** — เลือกคนละลายกับด้านหน้าได้ ราคารวมอยู่ในค่าเคลือบพิเศษแล้ว"
+);
+
+// ใส่ต่อท้าย (แทนของเดิมถ้าเคยมี) — ลำดับ: ขนาด → แนวปฏิทิน → เคลือบหน้า → ลายหน้า → เคลือบหลัง → ลายหลัง
+const COAT_LABELS = [
+  "เคลือบ", // ชื่อเดิมรอบก่อน (ก่อนแยกหน้า-หลัง) — กวาดทิ้ง
+  "ลายฟิล์มเคลือบพิเศษ",
+  coatFront.label,
+  filmFront.label,
+  coatBack.label,
+  filmBack.label,
+];
+d.options = [
+  ...d.options.filter((o: { label: string }) => !COAT_LABELS.includes(o.label)),
+  coatFront,
+  filmFront,
+  coatBack,
+  filmBack,
+];
 
 // 4) FAQ เรื่องเคลือบ (เขียนทับข้อเดิมถ้ามี)
 const faqQ = "ปฏิทินตั้งโต๊ะ ทรงมาตราฐาน เคลือบฟิล์มได้ไหม คิดเงินยังไง?";
@@ -88,26 +136,30 @@ d.seo.faqs = [
   {
     q: faqQ,
     a:
-      "ได้ครับ เคลือบเงา/ด้าน คิดด้านละ 10 บาทต่อแผ่น A3 · เคลือบพิเศษ (เนื้อทราย/กลิสเตอร์/โฮโลแกรม 10 ลาย) ชุดละ 40 บาทต่อแผ่น A3 — " +
-      "ปฏิทิน 8 แผ่นใช้กระดาษ 4 แผ่น A3 ต่อเล่ม (เคลือบเงา/ด้าน +40 บาท/เล่ม · พิเศษ +160 บาท/เล่ม) · " +
-      "14 แผ่นใช้ 7 แผ่น A3 ต่อเล่ม (เคลือบเงา/ด้าน +70 บาท/เล่ม · พิเศษ +280 บาท/เล่ม)",
+      "ได้ครับ เลือกได้ทั้งด้านหน้าและด้านหลัง แยกกันคนละแบบก็ได้ — คิดด้านละ: เคลือบเงา/ด้าน 10 บาทต่อแผ่น A3 · " +
+      "เคลือบพิเศษ (เนื้อทราย/กลิสเตอร์/โฮโลแกรม 10 ลาย) 40 บาทต่อแผ่น A3 — " +
+      "ปฏิทิน 8 แผ่นใช้กระดาษ 4 แผ่น A3 ต่อเล่ม (เคลือบเงา/ด้าน +40 บาท/เล่ม/ด้าน · พิเศษ +160 บาท/เล่ม/ด้าน) · " +
+      "14 แผ่นใช้ 7 แผ่น A3 ต่อเล่ม (เคลือบเงา/ด้าน +70 บาท/เล่ม/ด้าน · พิเศษ +280 บาท/เล่ม/ด้าน) — " +
+      "เคลือบเงาทั้งสองด้าน 8 แผ่น = +80 บาท/เล่ม",
   },
 ];
 
-// ── ตรวจเลขก่อนเขียน (คิดมือตามกติกาเว็บ) ──
-const expect: [size: string, coating: string, qty: number, total: number][] = [
-  ["8 แผ่น (16หน้า)", "เคลือบเงา", 1, 40], // 10 × 4 A3
-  ["8 แผ่น (16หน้า)", "เคลือบพิเศษ", 1, 160], // 40 × 4 A3
-  ["14 แผ่น (28หน้า)", "เคลือบด้าน", 1, 70], // 10 × 7 A3
-  ["14 แผ่น (28หน้า)", "เคลือบพิเศษ", 10, 2800], // 40 × 70 A3
-  ["8 แผ่น (16หน้า)", "ไม่เคลือบ", 5, 0],
+// ── ตรวจเลขก่อนเขียน (คิดมือตามกติกาเว็บ: ค่าฟิล์ม = เรทด้านหน้า + เรทด้านหลัง คูณจำนวนแผ่น) ──
+const expect: [size: string, front: string, back: string, qty: number, total: number][] = [
+  ["8 แผ่น (16หน้า)", "เคลือบเงา", "ไม่เคลือบ", 1, 40], // 10 × 4 A3 ด้านเดียว
+  ["8 แผ่น (16หน้า)", "เคลือบเงา", "เคลือบเงา", 1, 80], // เคลือบสองด้าน = 2 ชุด
+  ["8 แผ่น (16หน้า)", "เคลือบพิเศษ", "ไม่เคลือบ", 1, 160], // 40 × 4 A3
+  ["8 แผ่น (16หน้า)", "เคลือบพิเศษ", "เคลือบด้าน", 1, 200], // (40+10) × 4 A3 — คนละแบบสองด้าน
+  ["14 แผ่น (28หน้า)", "เคลือบด้าน", "ไม่เคลือบ", 1, 70], // 10 × 7 A3
+  ["14 แผ่น (28หน้า)", "เคลือบพิเศษ", "เคลือบพิเศษ", 10, 5600], // (40+40) × 70 A3
+  ["8 แผ่น (16หน้า)", "ไม่เคลือบ", "ไม่เคลือบ", 5, 0],
 ];
-console.log("\n🧮 ตรวจค่าเคลือบ (คิดตาม sheetsPerUnit ของกลุ่มขนาด):");
-for (const [size, coating, qty, want] of expect) {
+console.log("\n🧮 ตรวจค่าเคลือบ (เรทหน้า + เรทหลัง × แผ่นต่อเล่มจากกลุ่มขนาด):");
+for (const [size, front, back, qty, want] of expect) {
   const sheets = Math.ceil(qty * SHEETS_PER_BOOK[size]);
-  const got = (FEE[coating] ?? 0) * sheets;
+  const got = (FEE[front] ?? 0) * sheets + (FEE[back] ?? 0) * sheets;
   const mark = got === want ? "✓" : "✗";
-  console.log(`   ${mark} ${size} · ${coating} · ${qty} เล่ม = ${sheets} A3 → ฿${got} (คาด ฿${want})`);
+  console.log(`   ${mark} ${size} · หน้า ${front} + หลัง ${back} · ${qty} เล่ม = ${sheets} A3 → ฿${got} (คาด ฿${want})`);
   if (got !== want) throw new Error("สูตรค่าเคลือบไม่ตรงที่คาด — หยุดก่อนเขียน");
 }
 console.log("\nกลุ่มตัวเลือกหลังแก้:");
@@ -128,15 +180,22 @@ if (saveErr) throw saveErr;
 const { data: back, error: backErr } = await sb.from("products").select("data").eq("id", ID).single();
 if (backErr) throw backErr;
 const bOpts = back.data.options;
-const bCoat = bOpts.find((o: { label: string }) => o.label === "เคลือบ");
-const bSize = bOpts.find((o: { label: string }) => o.label === "ขนาด");
+const byLabel = (label: string) => bOpts.find((o: { label: string }) => o.label === label);
+const bSize = byLabel("ขนาด");
+const specialOf = (label: string) =>
+  byLabel(label)?.choices.find((c: { name: string }) => c.name === "เคลือบพิเศษ")?.extra;
 const checks: [string, unknown, unknown][] = [
-  ["จำนวนกลุ่ม", bOpts.length, 4],
-  ["ฐานคิดค่าเคลือบ", bCoat?.sheetFee?.from, "ขนาด"],
+  ["จำนวนกลุ่ม", bOpts.length, 6],
+  ["ไม่มีกลุ่ม “เคลือบ” ชื่อเดิมค้าง", byLabel("เคลือบ") ? "ค้างอยู่" : "ไม่มี", "ไม่มี"],
+  ["ฐานคิดค่าเคลือบ ด้านหน้า", byLabel("เคลือบด้านหน้า")?.sheetFee?.from, "ขนาด"],
+  ["ฐานคิดค่าเคลือบ ด้านหลัง", byLabel("เคลือบด้านหลัง")?.sheetFee?.from, "ขนาด"],
   ["แผ่นต่อเล่ม 8 แผ่น", bSize?.choices.find((c: { name: string }) => /^8 /.test(c.name))?.sheetsPerUnit, 4],
   ["แผ่นต่อเล่ม 14 แผ่น", bSize?.choices.find((c: { name: string }) => /^14 /.test(c.name))?.sheetsPerUnit, 7],
-  ["ค่าเคลือบพิเศษ", bCoat?.choices.find((c: { name: string }) => c.name === "เคลือบพิเศษ")?.extra, 40],
-  ["ลายฟิล์ม", bOpts.find((o: { label: string }) => o.label === "ลายฟิล์มเคลือบพิเศษ")?.choices.length, srcFilm.choices.length],
+  ["ค่าเคลือบพิเศษ ด้านหน้า", specialOf("เคลือบด้านหน้า"), 40],
+  ["ค่าเคลือบพิเศษ ด้านหลัง", specialOf("เคลือบด้านหลัง"), 40],
+  ["ลายฟิล์ม ด้านหน้า", byLabel("ลายฟิล์มเคลือบพิเศษ (ด้านหน้า)")?.choices.length, srcFilm.choices.length],
+  ["ลายฟิล์ม ด้านหลัง", byLabel("ลายฟิล์มเคลือบพิเศษ (ด้านหลัง)")?.choices.length, srcFilm.choices.length],
+  ["ลายฟิล์มหลังผูกกับกลุ่มหลัง", byLabel("ลายฟิล์มเคลือบพิเศษ (ด้านหลัง)")?.showWhen?.label, "เคลือบด้านหลัง"],
 ];
 for (const [what, got, want] of checks) {
   if (String(got) !== String(want)) throw new Error(`อ่านกลับไม่ตรง ${what}: ได้ ${got} คาด ${want}`);
