@@ -17,7 +17,9 @@
  *   • ขนาดปัก สูงไม่เกิน 7 cm × กว้างไม่เกิน 15 cm
  *
  * ภาพประจำตัวเลือก (ผู้ใช้สั่ง 25 ส.ค. 69 ให้เห็นว่าแต่ละแบบหน้าตาเป็นยังไง):
- *   ชี้ไปที่รูปแกลเลอรีโดยตรง — พิมพ์ = หมวกลาย Magic vibes · ปัก = หมวกปักชื่อไล่สี
+ *   ชี้ไปที่รูปแกลเลอรีโดยตรง — พิมพ์ = หมวกลาย Magic vibes · ปัก = สไมลีย์ 1998
+ *   กลุ่มปักนูนก็มีภาพทั้งคู่: ปักธรรมดา = สไมลีย์ 1998 (ไหมแบน) · ปักนูน = ปักชื่อ Mana (ตัวนูน)
+ *   — ผู้ใช้ชี้เอง 25 ส.ค. 69 ว่ารูปไหนเป็นปักแบบไหน
  *   (ไม่อัปไฟล์แยก กันแกลเลอรีดูดภาพตัวเลือกเข้ามาซ้ำ — กดเลือกแล้วแกลเลอรีเด้งไปรูปนั้น)
  *
  * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคชไว้) — ชุดนี้ลงท้าย v1 ครั้งหน้าขึ้น v2
@@ -127,13 +129,13 @@ const PRICING: PriceMatrix = {
 /**
  * wixstatic id จากหน้า /หมวก โซนหมวกแก๊ป — ⚠️ MAX_PHOTOS = 5 ห้ามเกิน
  * ตัดออก: 88d16b98 (หมวกกรมท่าพิมพ์ ซ้ำมุมกับ hero) · 17906c57 (ปักชื่อ Mana มุมซ้ำ) · ddb95188 (กราฟิกตกแต่ง)
- * รูป [1] ใช้เป็นภาพประจำตัวเลือก "พิมพ์ DTF | FLEX" · รูป [2] เป็นของ "พิมพ์ ปัก"
+ * รูป [1] = ภาพประจำ "พิมพ์ DTF | FLEX" · รูป [3] = "พิมพ์ ปัก"/"ปักธรรมดา" · รูป [2] = "ปักนูน"
  */
 const PHOTOS: [string, string, string][] = [
   ["photo-print-pair", "959b83_0e5eaaa5ff554703a4b3d5b4cf2df639~mv2.jpg", "งานพิมพ์ DTF | FLEX — หมวกแก๊ปพิมพ์ลายตามสั่ง"],
   ["photo-print-close", "959b83_2d94c210f9774f1580372dccc1154469~mv2.jpg", "งานพิมพ์ DTF — ลายชัด สีสด คมชัด"],
-  ["photo-embro-name", "959b83_222ef0d7ed364c70a16a3c2836049861~mv2.jpg", "งานปัก — ปักชื่อไล่สีด้วยไหมปัก Madeira"],
-  ["photo-embro-close", "959b83_5ec953faf743459cb07b6c09ccc8c295~mv2.jpg", "งานปัก — ลายการ์ตูนหลายสีเข็ม"],
+  ["photo-embro-name", "959b83_222ef0d7ed364c70a16a3c2836049861~mv2.jpg", "งานปักนูน — ปักชื่อไล่สี ตัวอักษรนูนเด่นจากผิวหมวก"],
+  ["photo-embro-close", "959b83_5ec953faf743459cb07b6c09ccc8c295~mv2.jpg", "งานปักธรรมดา — ลายการ์ตูนหลายสีเข็ม ไหมปัก Madeira"],
   ["photo-embro-worn", "959b83_62faa60867d8403ba025b47e4c554fd6~mv2.jpg", "งานปักตอนสวมใส่จริง"],
 ];
 
@@ -158,9 +160,11 @@ for (const [file, wixId, label] of PHOTOS) {
   const src = await put(file, await fetchWix(wixId));
   gallery.push({ emoji: "🧢", gradient: "from-green-200 to-emerald-300", label, src });
 }
-const artPrint = gallery[1].src!; // ภาพประจำตัวเลือกชี้รูปแกลเลอรีตรง ๆ — เลือกแล้วแกลเลอรีเด้งไปรูปนั้น
-const artEmb = gallery[2].src!;
-console.log(`🖼  แกลเลอรี ${gallery.length} ภาพ (ภาพประจำตัวเลือกใช้รูป [1] พิมพ์ · [2] ปัก)`);
+// ภาพประจำตัวเลือกชี้รูปแกลเลอรีตรง ๆ — เลือกแล้วแกลเลอรีเด้งไปรูปนั้น
+const artPrint = gallery[1].src!; // งานพิมพ์ DTF ใกล้ ๆ (Magic vibes)
+const artEmbFlat = gallery[3].src!; // ปักธรรมดา — สไมลีย์ 1998 ไหมแบน (ผู้ใช้ชี้ 25 ส.ค. 69)
+const artEmbPuff = gallery[2].src!; // ปักนูน — ปักชื่อ Mana ตัวอักษรนูน (ผู้ใช้ชี้ 25 ส.ค. 69)
+console.log(`🖼  แกลเลอรี ${gallery.length} ภาพ (ภาพตัวเลือก: พิมพ์=[1] · ปัก/ปักธรรมดา=[3] · ปักนูน=[2])`);
 
 /* ── 3. ประกอบสินค้า ─────────────────────────────────────────────── */
 const OPTIONS: ProductOption[] = [
@@ -169,7 +173,7 @@ const OPTIONS: ProductOption[] = [
     display: "pills",
     choices: [
       { name: PRINT_DTF, imageSrc: artPrint },
-      { name: PRINT_EMB, imageSrc: artEmb },
+      { name: PRINT_EMB, imageSrc: artEmbFlat },
     ],
   },
   {
@@ -179,8 +183,8 @@ const OPTIONS: ProductOption[] = [
     note: "ปักนูน ทำได้เฉพาะ**ฟอนต์/ตัวอักษร** เท่านั้น · ขนาดปัก สูงไม่เกิน 7 ซม. × กว้างไม่เกิน 15 ซม.",
     showWhen: { label: DRIVER, choices: [PRINT_EMB] },
     choices: [
-      { name: "ปักธรรมดา", badge: "ฟรี" },
-      { name: "ปักนูน", extra: EMBOSS_FEE },
+      { name: "ปักธรรมดา", badge: "ฟรี", imageSrc: artEmbFlat },
+      { name: "ปักนูน", extra: EMBOSS_FEE, imageSrc: artEmbPuff },
     ],
   },
 ];
