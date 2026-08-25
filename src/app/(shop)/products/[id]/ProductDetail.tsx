@@ -293,6 +293,12 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
   );
 }
 
+/**
+ * กลุ่มการ์ด (display "cards") ที่มีตัวเลือกตั้งแต่กี่ตัวขึ้นไปถึงเรียงเป็น 2 คอลัมน์แบบกระชับ
+ * — ลายฟิล์มเคลือบ 10 ลายเรียงเต็มความกว้างทำให้หน้ายาวจนต้องเลื่อนหา (ผู้ใช้ทัก 25 ส.ค. 69 ว่ารก)
+ */
+const CARDS_DENSE_FROM = 6;
+
 function termLines(raw: string): string[] {
   const out: string[] = [];
   for (const line of raw.split("\n")) {
@@ -479,6 +485,11 @@ export default function ProductDetail({
   const [selections, setSelections] = useState<Record<string, string>>(() =>
     initialSelections(initialProduct)
   );
+  /**
+   * 🔽 กลุ่ม "ของเสริม" ที่ตั้ง collapsible ไว้ — ปิดอยู่เป็นค่าเริ่มต้น (เก็บชื่อกลุ่มที่ลูกค้ากดเปิด)
+   * ปิด = ยังไม่กางตัวเลือก และค่าคงเป็นตัวแรกของกลุ่ม (ตัวที่ไม่คิดเงิน) จึงไม่ต้องรีเซ็ตอะไรตอนเปิด
+   */
+  const [openAddOns, setOpenAddOns] = useState<Record<string, boolean>>({});
   // งานกำหนดขนาดเอง (custom)
   const [useCustom, setUseCustom] = useState(false);
   const [customW, setCustomW] = useState("");
@@ -1694,12 +1705,72 @@ export default function ProductDetail({
                     p.name === name ? { ...p, qty: Math.min(choiceQtyMax(opt, name), Math.max(1, n)) } : p
                   )
                 );
+              /**
+               * 🔽 กลุ่มของเสริมที่ปิดไว้ก่อน (collapsible) — ปิดอยู่โชว์แค่แถวสวิตช์บรรทัดเดียว
+               * ปิดกลับ = เด้งค่ากลับตัวเลือกแรก (ตัวไม่คิดเงิน) ลูกค้าจะได้ไม่ค้างค่าที่มองไม่เห็น
+               */
+              const addOn = !!opt.collapsible && !multi && !isInput;
+              const addOnOpen = !!openAddOns[opt.label];
+              const addOnFirst = opt.choices[0]?.name ?? "";
+              const toggleAddOn = () =>
+                setOpenAddOns((s) => {
+                  const next = !s[opt.label];
+                  // ปิดสวิตช์ = เด้งกลับตัวเลือกแรก (ตัวไม่คิดเงิน) กันค่าค้างที่ลูกค้ามองไม่เห็นแล้วโดนคิดเงิน
+                  if (!next) setSelections((sel) => ({ ...sel, [opt.label]: addOnFirst }));
+                  return { ...s, [opt.label]: next };
+                });
               return (
                 <div
                   key={opt.label}
-                  className={customLocked ? "pointer-events-none select-none opacity-40" : undefined}
+                  className={
+                    (customLocked ? "pointer-events-none select-none opacity-40" : "") +
+                    // กลุ่มของเสริม: ใส่กรอบให้เห็นว่าเป็นก้อนที่เปิด-ปิดได้ แยกจากตัวเลือกหลักที่ต้องเลือกอยู่แล้ว
+                    (addOn ? " rounded-2xl bg-white/60 p-2.5 ring-1 ring-stone-200" : "")
+                  }
                   aria-disabled={customLocked || undefined}
                 >
+                  {/* 🔽 ของเสริมที่ปิดไว้ก่อน — แถวสวิตช์บรรทัดเดียว กดแล้วค่อยกางตัวเลือกออกมา */}
+                  {addOn ? (
+                    <button
+                      type="button"
+                      onClick={toggleAddOn}
+                      aria-expanded={addOnOpen}
+                      className="flex w-full items-center gap-2.5 py-1 text-left"
+                    >
+                      <span
+                        className={`relative h-6 w-11 shrink-0 rounded-full transition ${addOnOpen ? "bg-amber-400" : "bg-stone-300"}`}
+                      >
+                        <span
+                          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${addOnOpen ? "left-[22px]" : "left-0.5"}`}
+                        />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[13px] font-bold text-stone-700">
+                          {opt.label}
+                          {addOnOpen && effective[opt.label] !== addOnFirst && (
+                            <span className="ml-1.5 font-semibold text-amber-600">{effective[opt.label]}</span>
+                          )}
+                        </span>
+                        {!addOnOpen && (
+                          <span className="mt-0.5 block text-[11px] leading-snug text-stone-500">
+                            {/* ปิดอยู่ = ยังไม่คิดเงิน บอกช่วงราคาไว้ให้ตัดสินใจว่าจะเปิดดูไหม */}
+                            {(() => {
+                              const fees = opt.choices
+                                .map((c) => c.extra ?? 0)
+                                .filter((n) => n > 0)
+                                .sort((a, b) => a - b);
+                              return fees.length
+                                ? `ไม่ใช้ก็ข้ามได้ · เปิดแล้วเริ่ม +${formatPrice(fees[0])}`
+                                : "ไม่ใช้ก็ข้ามได้ · แตะเพื่อดูตัวเลือก";
+                            })()}
+                          </span>
+                        )}
+                      </span>
+                      <span className="shrink-0 rounded-full bg-stone-100 px-2 py-1 text-[11px] font-bold text-stone-500">
+                        {addOnOpen ? "ปิด" : "เปิด"}
+                      </span>
+                    </button>
+                  ) : (
                   <span className="mb-1 block text-[13px] font-bold text-stone-700">
                     {opt.label}:{" "}
                     <span
@@ -1746,6 +1817,10 @@ export default function ProductDetail({
                       </span>
                     )}
                   </span>
+                  )}
+                  {/* กลุ่มของเสริมที่ปิดสวิตช์อยู่ — ไม่กางอะไรต่อ (หน้าจะได้สั้น เหลือแค่แถวสวิตช์) */}
+                  {(!addOn || addOnOpen) && (
+                  <div className={addOn ? "mt-2 border-t border-stone-100 pt-2" : undefined}>
                   {/* 📝 สเปกที่ลูกค้าเลือกไม่ได้ แต่ควรรู้ตอนกำลังเลือก (เช่น ชนิดกระดาษที่ใช้) */}
                   {opt.note && (
                     <span className="mb-1.5 block text-[11px] leading-snug text-stone-500">{noteEmphasis(opt.note)}</span>
@@ -2195,10 +2270,14 @@ export default function ProductDetail({
                     </div>
                   ) : opt.display === "cards" ? (
                     /* การ์ดแนวตั้งหน้าตาเดียวกับแผงเลือกเรทราคา — รูปใหญ่ + วิทยุ + ชื่อ + คำอธิบาย
-                       (กลุ่ม "แบบ/ชนิด/เนื้อ" ที่หน้าตาต่างกันชัด ๆ ผู้ใช้สั่งใช้ทรงนี้ 25 ส.ค. 69) */
-                    <div className="grid gap-1.5">
-                      {opt.choices
-                        .filter((c) => allowed.includes(c.name))
+                       (กลุ่ม "แบบ/ชนิด/เนื้อ" ที่หน้าตาต่างกันชัด ๆ ผู้ใช้สั่งใช้ทรงนี้ 25 ส.ค. 69)
+                       กลุ่มที่ตัวเลือกเยอะ (ลายฟิล์ม 10 ลาย) เรียง 2 คอลัมน์แบบกระชับ ไม่งั้นหน้ายาวจนต้องเลื่อนหา */
+                    (() => {
+                      const cardList = opt.choices.filter((c) => allowed.includes(c.name));
+                      const dense = cardList.length >= CARDS_DENSE_FROM;
+                      return (
+                    <div className={dense ? "grid grid-cols-2 gap-1.5" : "grid gap-1.5"}>
+                      {cardList
                         .map((c) => {
                           const on = effective[opt.label] === c.name;
                           const add = choiceBadgeOf(opt, effective, c.name, feeQty);
@@ -2240,24 +2319,27 @@ export default function ProductDetail({
                                         el.play().catch(() => {});
                                       }
                                     }}
-                                    className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-stone-200"
+                                    className={`${dense ? "h-9 w-9" : "h-12 w-12"} shrink-0 rounded-lg object-cover ring-1 ring-stone-200`}
                                   />
                                 ) : c.imageSrc ? (
                                   // eslint-disable-next-line @next/next/no-img-element
                                   <img
                                     src={c.imageSrc}
                                     alt={c.name}
-                                    className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-stone-200"
+                                    className={`${dense ? "h-9 w-9" : "h-12 w-12"} shrink-0 rounded-lg object-cover ring-1 ring-stone-200`}
                                     loading="lazy"
                                   />
                                 ) : null}
                                 <span className="min-w-0 flex-1">
-                                  <span className="flex flex-wrap items-center gap-2">
-                                    <span
-                                      className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${on ? "border-amber-500" : "border-stone-300"}`}
-                                    >
-                                      {on && <span className="h-2 w-2 rounded-full bg-amber-500" />}
-                                    </span>
+                                  <span className={`flex flex-wrap items-center ${dense ? "gap-1" : "gap-2"}`}>
+                                    {/* ทรงกระชับ: ตัวที่เลือกอยู่มีวงแหวนเหลืองรอบการ์ดบอกอยู่แล้ว วิทยุจึงตัดทิ้งได้ */}
+                                    {!dense && (
+                                      <span
+                                        className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${on ? "border-amber-500" : "border-stone-300"}`}
+                                      >
+                                        {on && <span className="h-2 w-2 rounded-full bg-amber-500" />}
+                                      </span>
+                                    )}
                                     {c.name}
                                     {c.popular && (
                                       <span className="rounded-full bg-ducky px-1.5 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-ducky-dark">
@@ -2282,7 +2364,7 @@ export default function ProductDetail({
                                       </span>
                                     )}
                                   </span>
-                                  {c.desc && (
+                                  {c.desc && !dense && (
                                     <span className="mt-0.5 block pl-6 text-[11px] font-normal leading-snug text-stone-500">
                                       {c.desc}
                                     </span>
@@ -2293,6 +2375,8 @@ export default function ProductDetail({
                           );
                         })}
                     </div>
+                      );
+                    })()
                   ) : (
                     <div className="flex flex-wrap gap-1.5">
                       {opt.choices
@@ -2484,6 +2568,8 @@ export default function ProductDetail({
                         </p>
                       );
                     })()}
+                  </div>
+                  )}
                 </div>
               );
   }

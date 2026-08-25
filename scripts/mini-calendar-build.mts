@@ -265,10 +265,12 @@ const coatGroups = (side: "หน้า" | "หลัง"): ProductOption[] => {
       display: "cards",
       // ค่าเคลือบคิดต่อแผ่น A3 ปัดขึ้น (กลไก sheetFee) — ชี้กลุ่มตัวเอง + perSheet ทุกตัวเลือก
       sheetFee: { from: group, unit: "แผ่น A3" },
-      note:
-        `ฟิล์มเคลือบ**ด้าน${side}**ของกระดาษทุกแผ่นในเล่ม — เงา/ด้าน **ด้านละ ${GLOSS_FEE} บาท ต่อแผ่น A3** · ` +
-        `เคลือบพิเศษ (เนื้อทราย / กลิสเตอร์ / โฮโลแกรม) **ชุดละ ${SPECIAL_FEE} บาท ต่อแผ่น A3** ` +
-        `(Mini Calendar 1 ${UNIT} ใช้กระดาษประมาณ 1 แผ่น A3) — เลือกเคลือบทั้ง 2 ด้าน คิดเงินทั้ง 2 ด้าน`,
+      // ด้านหลังเป็นของเสริม ปิดไว้ก่อน (ผู้ใช้สั่ง 25 ส.ค. 69) — ด้านหน้าเป็นตัวเลือกหลัก กางไว้ตามเดิม
+      ...(back ? { collapsible: true } : {}),
+      // 📝 note สั้นเข้าไว้ ราคาอยู่บนการ์ดทุกใบแล้ว (ยาว+ไฮไลต์เยอะทำให้หน้ารก — ผู้ใช้ทัก 25 ส.ค. 69)
+      note: back
+        ? `เคลือบเพิ่มอีกด้านได้ คิดแยกจากด้านหน้า`
+        : `เคลือบฟิล์มด้านหน้าของกระดาษทุกแผ่นในเล่ม · คิดเป็นค่าวัสดุต่อแผ่น A3`,
       choices: [
         { ...named("film-none"), name: `ไม่เคลือบ${back ? "ด้านหลัง" : ""}`, perSheet: PER_SHEET },
         { ...named("film-gloss"), extra: GLOSS_FEE, perSheet: PER_SHEET, ...(back ? {} : { popular: true }) },
@@ -300,7 +302,7 @@ const coatGroups = (side: "หน้า" | "หลัง"): ProductOption[] => {
       label: filmGroup,
       display: "cards",
       showWhen: { label: group, choices: [special] },
-      note: `ลายฟิล์มเคลือบพิเศษ**ด้าน${side}** มีให้เลือก 10 ลาย — การ์ดแต่ละใบเล่นคลิปฟิล์มจริง ราคารวมอยู่ในค่าเคลือบพิเศษแล้ว`,
+      note: `10 ลาย ราคาเท่ากัน (รวมในค่าเคลือบพิเศษแล้ว) · การ์ดเล่นคลิปฟิล์มจริง`,
       choices: FILMS.filter(([k]) => !["film-none", "film-gloss", "film-matte"].includes(k)).map(([k]) => named(k)),
     },
   ];
@@ -314,10 +316,8 @@ const FOIL_OPTIONS: ProductOption[] = [
     label: GROUP_FOIL,
     display: "cards",
     sheetFee: { from: GROUP_FOIL, unit: "แผ่น A3" },
-    note:
-      `ปั๊มฟอยล์เมทัลลิกทับลายด้านหน้า — 1 เลเยอร์ **${FOIL_L1_FEE} บาท** · 2 เลเยอร์ (ฟอยล์ทับฟอยล์ ให้มิติหนาขึ้น) **${FOIL_L2_FEE} บาท** ต่อแผ่น A3 · ` +
-      `งานเคลือบฟอยล์ทุกงานต้องมีการ**เคลือบด้าน**ร่วมด้วย (รวมในขั้นตอนงานฟอยล์แล้ว ไม่คิดเพิ่ม) และ**ทำร่วมกับการเคลือบลามิเนตแบบอื่นไม่ได้** — ` +
-      `ระบบสลับกลุ่มเคลือบด้านหน้าให้เองเมื่อเลือกฟอยล์`,
+    collapsible: true, // ของเสริมที่ลูกค้าส่วนใหญ่ไม่ได้ใช้ — ปิดไว้ก่อน หน้าจะได้ไม่ยาว
+    note: `ปั๊มฟอยล์เมทัลลิกทับลายด้านหน้า · คิดต่อแผ่น A3 · **ทำร่วมกับเคลือบลามิเนตไม่ได้** — เลือกฟอยล์แล้วระบบสลับด้านหน้าเป็นเคลือบด้านให้เอง (ไม่คิดเพิ่ม)`,
     choices: [
       { name: FOIL_NONE, desc: "งานพิมพ์ปกติ ไม่ปั๊มฟอยล์", perSheet: PER_SHEET },
       {
@@ -341,7 +341,7 @@ const FOIL_OPTIONS: ProductOption[] = [
     display: "cards",
     sheetFee: { from: GROUP_FOIL_COLOR, unit: "แผ่น A3" },
     showWhen: { label: GROUP_FOIL, choices: [FOIL_L1, FOIL_L2] },
-    note: `สีฟอยล์มาตรฐาน 3 สี ไม่คิดเพิ่ม · สีโฮโลแกรมบวกเพิ่ม ${FOIL_HOLO_FEE} บาท ต่อแผ่น A3`,
+    note: `เงิน/ทอง/โรสโกลด์ ราคาเท่ากัน · โฮโลแกรมบวกเพิ่มตามป้าย`,
     choices: [
       { name: "สีเงิน", perSheet: PER_SHEET, imageSrc: `${FOIL_IMG}/foil-silver.jpg` },
       { name: "สีทอง", perSheet: PER_SHEET, imageSrc: `${FOIL_IMG}/foil-gold.jpg` },

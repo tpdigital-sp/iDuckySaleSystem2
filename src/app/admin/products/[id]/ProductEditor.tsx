@@ -91,6 +91,8 @@ type DraftOption = {
   presetId?: string;
   /** pills/dropdown/cards = เลือกได้ 1 อย่าง · multi = ติ๊กได้หลายอย่าง · input = ให้ลูกค้ากรอกเอง */
   display: "pills" | "dropdown" | "multi" | "input" | "cards";
+  /** 🔽 กลุ่มของเสริม — หน้าสินค้าปิดไว้ก่อน โชว์แค่สวิตช์ (ตัวเลือกแรกต้องเป็นตัวที่ไม่คิดเงิน) */
+  collapsible?: boolean;
   /** ── กลุ่มชนิด "ช่องกรอก" (display: input) — เก็บเป็น string เพราะกรอกในช่อง ── */
   inKind?: "number" | "text" | "textarea";
   inUnit?: string;
@@ -516,6 +518,7 @@ function toDraft(p: Product): Draft {
       ...(o.presetId ? { presetId: o.presetId } : {}),
       // มีตัวไหนเปิด "ระบุจำนวน" ไว้ = กลุ่มนี้เคยเปิดสวิตช์ → เปิดค้างไว้ให้เห็นค่าเดิม
       ...(o.choices.some((c) => c.qty) || o.qtyPerChoice ? { qtyOn: true } : {}),
+      ...(o.collapsible ? { collapsible: true } : {}),
       display: o.display ?? "pills",
       ...(o.extraFromQty ? { extraFromQty: String(o.extraFromQty) } : {}),
       ...(o.smallQtyFee
@@ -784,6 +787,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       ...(o.display === "dropdown" || o.display === "multi" || o.display === "input" || o.display === "cards"
         ? { display: o.display }
         : {}),
+      ...(o.collapsible ? { collapsible: true } : {}),
       ...(Number(o.extraFromQty) > 0 ? { extraFromQty: Math.floor(Number(o.extraFromQty)) } : {}),
       ...(Number.isFinite(Number(o.smallFee)) && Number(o.smallFee) !== 0 && String(o.smallFee ?? "").trim() !== "" && Number(o.smallUpTo) > 0
         ? {
@@ -1974,6 +1978,22 @@ export default function ProductEditor({ product }: { product: Product }) {
               ? "🔢 ให้ลูกค้าระบุจำนวน — ติ๊กที่ตัวเลือกทีละตัวด้านล่าง"
               : "🔢 อยากให้ลูกค้าระบุจำนวน — ติ๊กสวิตช์ 🔢 ด้านล่างก่อน"}
           </span>
+        )}
+        {/* 🔽 ของเสริมที่ปิดไว้ก่อน — กลุ่มที่ลูกค้าส่วนใหญ่ไม่ได้ใช้ (เคลือบด้านหลัง/ฟอยล์)
+            หน้าสินค้าจะโชว์แค่แถวสวิตช์ กดเปิดถึงจะเห็นตัวเลือก · ปิดกลับ = เด้งไปตัวเลือกแรก */}
+        {opt.display !== "multi" && opt.display !== "input" && (
+          <label
+            className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] font-semibold text-slate-500"
+            title="หน้าสินค้าจะปิดกลุ่มนี้ไว้ก่อน โชว์แค่สวิตช์ — ตัวเลือกแรกต้องเป็นตัวที่ไม่คิดเงิน (เช่น ไม่เคลือบ)"
+          >
+            <input
+              type="checkbox"
+              checked={!!opt.collapsible}
+              onChange={(e) => setOpt({ collapsible: e.target.checked || undefined })}
+              className="h-3.5 w-3.5 accent-slate-900"
+            />
+            🔽 ของเสริม (ปิดไว้ก่อน)
+          </label>
         )}
 
       </>
