@@ -301,6 +301,24 @@ function termLines(raw: string): string[] {
 }
 
 /**
+ * note ของกลุ่มตัวเลือกที่มีคำเน้น `**คำ**` — โชว์คำนั้นหนา+สีชมพูบนพื้นไฮไลต์ให้ลูกค้าสะดุดตา
+ * (เช่น งานฟอยล์ต้องมีการ**เคลือบด้าน**) · ไม่มีเครื่องหมายก็แสดงเป็นข้อความธรรมดาตามเดิม
+ */
+function noteEmphasis(note: string) {
+  const parts = note.split(/\*\*(.+?)\*\*/g);
+  if (parts.length === 1) return note;
+  return parts.map((part, i) =>
+    i % 2 === 1 ? (
+      <strong key={i} className="mx-0.5 rounded bg-rose-50 px-1 py-px font-bold text-rose-600 ring-1 ring-rose-200">
+        {part}
+      </strong>
+    ) : (
+      part
+    )
+  );
+}
+
+/**
  * ตัวเลือกตั้งต้นตอนเปิดหน้าสินค้า — กลุ่มปกติเริ่มที่ตัวแรก
  * กลุ่ม "ติ๊กได้หลายอย่าง" เริ่มที่ยังไม่ติ๊กอะไรเลย (ของเสริม ไม่ควรบวกเงินให้เอง)
  */
@@ -1696,7 +1714,9 @@ export default function ProductDetail({
                     )}
                   </span>
                   {/* 📝 สเปกที่ลูกค้าเลือกไม่ได้ แต่ควรรู้ตอนกำลังเลือก (เช่น ชนิดกระดาษที่ใช้) */}
-                  {opt.note && <span className="mb-1.5 block text-[11px] leading-snug text-stone-500">{opt.note}</span>}
+                  {opt.note && (
+                    <span className="mb-1.5 block text-[11px] leading-snug text-stone-500">{noteEmphasis(opt.note)}</span>
+                  )}
                   {isInput ? (
                     (() => {
                       const cfg = opt.input;
@@ -2118,10 +2138,12 @@ export default function ProductDetail({
                       </span>
                     </p>
                   )}
-                  {/* 📄 ค่าธรรมเนียมที่คิดต่อแผ่นวัสดุ — กางเลขให้เห็นว่าทำไมสั่งเกินโควตาแผ่นแล้วราคาขยับ */}
+                  {/* 📄 ค่าธรรมเนียมที่คิดต่อแผ่นวัสดุ — กางเลขให้เห็นว่าทำไมสั่งเกินโควตาแผ่นแล้วราคาขยับ
+                    * โชว์เฉพาะตอนเลือกแบบที่คิดเงินจริง (เคลือบ/ฟอยล์แบบมีค่าวัสดุ) — เลือก "ไม่เคลือบ" ไม่ต้องขึ้น */}
                   {opt.sheetFee && (() => {
-                    const per = perSheetOf(product, opt, effective);
                     const fee = groupExtraOf(opt, effective);
+                    if (fee <= 0) return null;
+                    const per = perSheetOf(product, opt, effective);
                     const sheets = sheetCountOf(product, opt, effective, qty);
                     const sheetUnit = opt.sheetFee!.unit ?? "แผ่น";
                     const unit = matrix?.unit ?? "ชิ้น";
@@ -2129,15 +2151,9 @@ export default function ProductDetail({
                       <p className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
                         📄 {opt.label}แบบที่คิดเงิน คิดเป็น<span className="font-bold">ค่าวัสดุต่อ{sheetUnit}</span> ไม่ใช่ต่อ{unit} —
                         ตอนนี้ 1 {sheetUnit} ได้ <span className="font-bold">{per.toLocaleString("th-TH")} {unit}</span>
-                        {fee > 0 ? (
-                          <>
-                            {" "}· สั่ง {qty.toLocaleString("th-TH")} {unit} = {sheets.toLocaleString("th-TH")} {sheetUnit} ={" "}
-                            <span className="font-bold text-amber-700">{formatPrice(fee * sheets)}</span>
-                            {sheets > 1 ? ` (${sheets}×${formatPrice(fee)})` : ""}
-                          </>
-                        ) : (
-                          <> · ตอนนี้เลือกแบบที่ไม่คิดเพิ่ม จึงไม่มีค่าวัสดุ</>
-                        )}
+                        {" "}· สั่ง {qty.toLocaleString("th-TH")} {unit} = {sheets.toLocaleString("th-TH")} {sheetUnit} ={" "}
+                        <span className="font-bold text-amber-700">{formatPrice(fee * sheets)}</span>
+                        {sheets > 1 ? ` (${sheets}×${formatPrice(fee)})` : ""}
                       </p>
                     );
                   })()}
