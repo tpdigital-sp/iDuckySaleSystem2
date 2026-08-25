@@ -3587,14 +3587,26 @@ function pickRateForQty(p: Product, qty: number): PriceRate | undefined {
  * (สินค้าที่แค่ "มี" ออปชั่นกำหนดเอง custom.enabled แต่ลูกค้าไม่ได้เลือก ยังต้องรวมได้ —
  * เจอกับพวงกุญแจอะคริลิคที่มีออปชั่น "อุปกรณ์เสริม" mode chat กันทั้งสินค้าแล้วไม่มีวันรวมเลย)
  */
+/**
+ * บรรทัดนี้ "ใช้สิทธิ์คละอิสระช่วงปลีก" จริงไหม — จำนวนอยู่ช่วงปลีก และจำนวนลายเกินโควตา
+ * minPerDesign ที่จำนวนนั้น (เช่น 8 ชิ้น 5 ลาย ที่กติกาลายละ 5)
+ * สั่งน้อยแต่เข้าเกณฑ์ต่อลายอยู่แล้ว (เช่น 5 ชิ้น 1 ลาย = ลายละ 5 พอดี) = ล็อตผลิตปกติ รวมล็อตได้
+ * — เดิมตัดทุกบรรทัดช่วงปลีกแบบเหมารวม ทำให้ 25+5 ไม่รวมเป็น 30 ทั้งที่ควรได้เรทส่ง
+ */
+function usesFreeMixRetail(r: PriceRate | undefined, qty: number, designs: number): boolean {
+  if (!r || !isFreeMix(r, qty)) return false;
+  const per = r.minPerDesign ?? 0;
+  return per > 0 && designs > Math.floor(qty / per);
+}
+
 function lineMergeable(p: Product, selections: Record<string, string>, qty: number): boolean {
   if (p.areaPricing?.enabled) return false;
   // ใช้ออปชั่นกำหนดเอง/ตีราคาจริงในบรรทัดนี้ (เลือกค่าไว้) = ราคาไม่อิงเรทตามจำนวน ไม่รวม
   if (p.custom?.enabled && (selections[p.custom.label] ?? "").trim()) return false;
   if (needsQuote(p, selections)) return false;
-  // ช่วงราคาปลีกคละอิสระ (เช่น 1-10 ชิ้น) = ออเดอร์ปลีก จ่ายราคาปลีกตามเดิม ไม่นับรวมล็อตผลิต
+  // ออเดอร์ปลีกคละอิสระ (ลายเกินโควตาต่อลายในช่วงปลีก) = จ่ายราคาปลีกตามเดิม ไม่นับรวมล็อตผลิต
   const r = p.hardMinQty ? activeRate(p, selections) : pickRateForQty(p, qty);
-  if (r && isFreeMix(r, qty)) return false;
+  if (usesFreeMixRetail(r, qty, designCountOf(selections))) return false;
   return true;
 }
 
@@ -3713,11 +3725,15 @@ export function lotPreviewFor(
   if (cartQty <= 0) return undefined;
   const cartDesigns = match.reduce((s, l) => s + designCountOf(l.selections), 0);
 
-  // จำนวนที่เลือกอยู่ช่วงปลีกคละอิสระ → บรรทัดนี้คิดราคาปลีกแยก แต่บอกเกณฑ์เริ่มรวมให้รู้
+  // บรรทัดที่ "ใช้สิทธิ์คละอิสระช่วงปลีก" (ลายเกินโควตาต่อลาย) → คิดราคาปลีกแยก แต่บอกเกณฑ์เริ่มรวมให้รู้
   // พรีวิวราคาคิดที่ "สั่งขั้นต่ำที่เริ่มรวมได้" (mergeFromQty) แทนจำนวนที่เลือกอยู่
+  // เกณฑ์เริ่มรวม = อย่างแรกที่ถึงก่อน ระหว่าง พ้นช่วงปลีก (freeMixBelowQty) หรือ จำนวนถึงโควตาลาย (ลาย × ลายละ)
   const rNow = product.hardMinQty ? activeRate(product, selections) : pickRateForQty(product, qty);
-  const retailLine = !!rNow && isFreeMix(rNow, qty);
-  const lineQty = retailLine ? rNow!.freeMixBelowQty! : qty;
+  const retailLine = usesFreeMixRetail(rNow, qty, Math.max(1, designs));
+  const mergeFromQty = retailLine
+    ? Math.min(rNow!.freeMixBelowQty ?? qty, (rNow!.minPerDesign ?? 1) * Math.max(1, designs))
+    : undefined;
+  const lineQty = retailLine ? mergeFromQty! : qty;
 
   const combinedQty = cartQty + lineQty;
   const totalDesigns = cartDesigns + Math.max(1, designs);
@@ -3736,7 +3752,7 @@ export function lotPreviewFor(
     totalDesigns,
     rateLabel: sel[RATE_LABEL],
     unitPrice: unitPriceFor(product, sel, combinedQty),
-    ...(retailLine ? { retailLine, mergeFromQty: rNow!.freeMixBelowQty } : {}),
+    ...(retailLine ? { retailLine, mergeFromQty } : {}),
   };
 }
 
