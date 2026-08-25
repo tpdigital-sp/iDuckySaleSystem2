@@ -57,6 +57,8 @@ type DraftChoice = {
   qtyUnit?: string;
   perUnit?: string;
   imageSrc?: string;
+  /** 🎬 คลิปของตัวเลือก (การ์ดเล่นคลิปวน) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  videoSrc?: string;
   stockItemId?: string;
   stockQtyPer?: number;
   /** 💬 เลือกตัวนี้แล้ว = งานสั่งทำ ให้แอดมินตีราคา (เช่น "แบบที่ 3 กำหนดขนาดเอง") */
@@ -489,6 +491,7 @@ function toDraft(p: Product): Draft {
         ...(c.qtyUnit ? { qtyUnit: c.qtyUnit } : {}),
         ...(c.perUnit ? { perUnit: String(c.perUnit) } : {}),
         ...(c.imageSrc ? { imageSrc: c.imageSrc } : {}),
+        ...(c.videoSrc ? { videoSrc: c.videoSrc } : {}),
         ...(c.stockItemId ? { stockItemId: c.stockItemId } : {}),
         ...(c.stockQtyPer ? { stockQtyPer: c.stockQtyPer } : {}),
         ...(c.askPrice ? { askPrice: true } : {}),
@@ -744,6 +747,8 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             // 📐 ชิ้น/หน่วย กรอกในตารางราคา (คอลัมน์แรก) แล้วเก็บกลับมาที่ตัวเลือกตามเดิม
             ...(Number(c.perUnit) > 0 ? { perUnit: Math.floor(Number(c.perUnit)) } : {}),
             ...(c.imageSrc ? { imageSrc: c.imageSrc } : {}),
+            // 🎬 คลิปของตัวเลือก — หน้าแก้ไขไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นบันทึกแล้วหาย
+            ...(c.videoSrc ? { videoSrc: c.videoSrc } : {}),
             // ลิงก์คลังวัสดุ — หน้าแก้ไขไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นบันทึกแล้วหาย
             ...(c.stockItemId ? { stockItemId: c.stockItemId } : {}),
             ...(c.stockQtyPer ? { stockQtyPer: c.stockQtyPer } : {}),

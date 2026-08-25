@@ -388,16 +388,19 @@ export default function ProductDetail({
   const galleryImages = useMemo(() => {
     const list = [...product.images];
     const srcAt = (im: ProductImage, i: number) => im.src ?? (i === 0 ? product.imageSrc : undefined);
-    const add = (raw: string | undefined, label: string) => {
+    const add = (raw: string | undefined, label: string, videoSrc?: string) => {
       const src = raw?.trim();
-      if (src && !list.some((im, i) => srcAt(im, i) === src))
-        list.push({ emoji: product.emoji, gradient: product.gradient, label, src });
+      if (!src) return;
+      // ตัวเลือกที่มีคลิป: แกลเลอรีมีช่องคลิปเดียวกันอยู่แล้วก็ไม่เพิ่มซ้ำ (กดเลือกแล้ว jump หาด้วย videoSrc เจอ)
+      if (videoSrc && list.some((im) => im.videoSrc === videoSrc)) return;
+      if (list.some((im, i) => srcAt(im, i) === src)) return;
+      list.push({ emoji: product.emoji, gradient: product.gradient, label, src, ...(videoSrc ? { videoSrc } : {}) });
     };
     for (const r of product.priceRates ?? []) add(r.imageSrc, r.label);
     for (const opt of product.options ?? []) {
       // กลุ่มสวอตช์สี: รูปเป็นชิปเล็กไว้โชว์บนปุ่มเท่านั้น — เข้าแกลเลอรีแล้วขยายเบลอ (แถมทะลัก 80 รูป)
       if (opt.swatchGrid) continue;
-      for (const c of opt.choices ?? []) add(c.imageSrc, `${opt.label}: ${c.name}`);
+      for (const c of opt.choices ?? []) add(c.imageSrc, `${opt.label}: ${c.name}`, c.videoSrc);
     }
     return list;
   }, [product]);
@@ -416,7 +419,8 @@ export default function ProductDetail({
   const jumpToImage = (src?: string) => {
     if (!src) return;
     const i = galleryImages.findIndex(
-      (im, idx) => (im.src ?? (idx === 0 ? product.imageSrc : undefined)) === src
+      // จับคู่ได้ทั้งรูปนิ่งและคลิป — ตัวเลือกที่มีคลิปส่ง videoSrc มา จะเด้งไปช่องคลิปนั้นเล่นเลย
+      (im, idx) => (im.src ?? (idx === 0 ? product.imageSrc : undefined)) === src || im.videoSrc === src
     );
     if (i >= 0) setImageIndex(i);
   };
@@ -440,6 +444,17 @@ export default function ProductDetail({
       document.body.style.overflow = "";
     };
   }, [zoomSrc]);
+  // 🎬 คลิปบนการ์ดตัวเลือก: เบราว์เซอร์หยุดคลิปตอนแท็บถูกซ่อน และบางตัวไม่เล่นต่อให้ตอนกลับมา — ปลุกเอง
+  useEffect(() => {
+    const resume = () => {
+      if (document.visibilityState !== "visible") return;
+      document.querySelectorAll<HTMLVideoElement>("video[data-card-clip]").forEach((v) => {
+        if (v.paused) v.play().catch(() => {});
+      });
+    };
+    document.addEventListener("visibilitychange", resume);
+    return () => document.removeEventListener("visibilitychange", resume);
+  }, []);
   // ข้อความในช่องจำนวนระหว่างพิมพ์ — แยกจาก qty เพื่อให้ลบจนว่างแล้วพิมพ์ใหม่ได้
   const [qtyText, setQtyText] = useState(String(initialQty));
   useEffect(() => {
@@ -2095,7 +2110,7 @@ export default function ProductDetail({
                               type="button"
                               onClick={() => {
                                 setSelections((s) => ({ ...s, [opt.label]: c.name }));
-                                jumpToImage(c.imageSrc);
+                                jumpToImage(c.videoSrc ?? c.imageSrc);
                               }}
                               className={`rounded-xl px-3 py-2 text-left text-[13px] transition ${
                                 on
@@ -2104,7 +2119,27 @@ export default function ProductDetail({
                               }`}
                             >
                               <span className="flex items-center gap-2">
-                                {c.imageSrc && (
+                                {c.videoSrc ? (
+                                  // 🎬 ตัวเลือกที่มีคลิป — การ์ดเล่นคลิปวนเงียบ ๆ แทนภาพนิ่ง (imageSrc เป็นโปสเตอร์ระหว่างโหลด)
+                                  // ref เขี่ยให้เล่นเอง: การ์ดถูก SSR มาตั้งแต่แรก จังหวะ autoplay ของเบราว์เซอร์
+                                  // ผ่านไปก่อน hydration เสร็จ (คลิปในแกลเลอรีไม่เจอเพราะ mount ทีหลังตอนกดสลับ)
+                                  <video
+                                    data-card-clip
+                                    src={c.videoSrc}
+                                    poster={c.imageSrc}
+                                    autoPlay
+                                    muted
+                                    loop
+                                    playsInline
+                                    ref={(el) => {
+                                      if (el && el.paused) {
+                                        el.muted = true;
+                                        el.play().catch(() => {});
+                                      }
+                                    }}
+                                    className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-stone-200"
+                                  />
+                                ) : c.imageSrc ? (
                                   // eslint-disable-next-line @next/next/no-img-element
                                   <img
                                     src={c.imageSrc}
@@ -2112,7 +2147,7 @@ export default function ProductDetail({
                                     className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-stone-200"
                                     loading="lazy"
                                   />
-                                )}
+                                ) : null}
                                 <span className="min-w-0 flex-1">
                                   <span className="flex flex-wrap items-center gap-2">
                                     <span
