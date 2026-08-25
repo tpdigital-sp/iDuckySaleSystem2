@@ -37,9 +37,15 @@ const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL!, env.SUPABASE_SERVICE_ROLE
 // ── ต้นแบบ: อ่านกลุ่มเคลือบสดจาก Mini Calendar (ลายฟิล์มเพิ่ม/ลด จะตามกันเอง) ──
 const { data: src, error: srcErr } = await sb.from("products").select("name,data").eq("id", FROM).single();
 if (srcErr) throw srcErr;
-const srcCoat = (src.data.options ?? []).find((o: { label: string }) => o.label === "เคลือบ");
-const srcFilm = (src.data.options ?? []).find((o: { label: string }) => o.label === "ลายฟิล์มเคลือบพิเศษ");
-if (!srcCoat || !srcFilm) throw new Error(`${FROM} ไม่มีกลุ่มเคลือบ/ลายฟิล์มแล้ว — โครงต้นแบบเปลี่ยน มาดูเองก่อน`);
+// ⚠️ Mini Calendar แยกกลุ่มเป็น "(ด้านหน้า)/(ด้านหลัง)" แล้ว (25 ส.ค. 69) — ยึดกลุ่มด้านหน้าเป็นต้นแบบ
+// (ชื่อเดิมไม่มีวงเล็บยังรองรับไว้ เผื่ออ่านสินค้าต้นแบบรุ่นก่อนหน้า)
+const srcOf = (...labels: string[]) => {
+  const g = (src.data.options ?? []).find((o: { label: string }) => labels.includes(o.label));
+  if (!g) throw new Error(`${FROM} ไม่มีกลุ่ม "${labels[0]}" แล้ว — โครงต้นแบบเปลี่ยน มาดูเองก่อน`);
+  return g;
+};
+const srcCoat = srcOf("เคลือบ (ด้านหน้า)", "เคลือบ");
+const srcFilm = srcOf("ลายฟิล์มเคลือบพิเศษ (ด้านหน้า)", "ลายฟิล์มเคลือบพิเศษ");
 console.log(`📋 ต้นแบบ ${src.name}: เคลือบ ${srcCoat.choices.length} แบบ · ลายฟิล์ม ${srcFilm.choices.length} ลาย`);
 
 // ── สินค้าปลายทาง ──
@@ -70,6 +76,9 @@ function coatGroup(label: string, note: string, keepPopular: boolean) {
   g.label = label;
   g.note = note;
   g.sheetFee = { from: "ขนาด", unit: "แผ่น A3" };
+  // ตัวล็อก "เคลือบด้าน (มากับงานฟอยล์)" ของต้นแบบ ใช้กับสินค้านี้ไม่ได้ — สินค้านี้ยังไม่มีกลุ่มฟอยล์
+  // (ทิ้งไว้จะกลายเป็นตัวเลือกเคลือบด้านฟรีที่กดเองได้ ทั้งที่งานจริงต้องมากับงานฟอยล์เท่านั้น)
+  g.choices = g.choices.filter((c: { name: string }) => !/มากับงานฟอยล์/.test(c.name));
   for (const c of g.choices) {
     delete c.perSheet; // ของ Mini (1 เล่ม = 1 A3) ใช้กับสินค้านี้ไม่ได้ — จำนวนแผ่นมาจากกลุ่ม "ขนาด" แทน
     if (!keepPopular) delete c.popular; // ป้าย "นิยม" ไว้ด้านหน้าพอ ด้านหลังส่วนใหญ่ไม่เคลือบ
@@ -80,18 +89,20 @@ function coatGroup(label: string, note: string, keepPopular: boolean) {
   return g;
 }
 
+// 📝 note สั้นเข้าไว้ — ราคาอยู่บนการ์ดทุกใบ และจำนวนแผ่น A3 กางให้เองในแถบ 📄 ใต้กลุ่ม
+// (ผู้ใช้ทัก 25 ส.ค. 69 ว่าแผงเคลือบดูรก: note ยาว + ไฮไลต์ชมพูเกือบทุกวลี)
 const coatFront = coatGroup(
   "เคลือบด้านหน้า",
-  "เคลือบฟิล์มด้านหน้าของกระดาษทุกแผ่นในเล่ม — เงา/ด้าน **10 บาท ต่อแผ่น A3** · " +
-    `เคลือบพิเศษ (เนื้อทราย / กลิสเตอร์ / โฮโลแกรม) **40 บาท ต่อแผ่น A3** ${SHEET_NOTE}`,
+  "เคลือบฟิล์มด้านหน้าของกระดาษทุกแผ่นในเล่ม · คิดเป็นค่าวัสดุต่อแผ่น A3",
   true
 );
 const coatBack = coatGroup(
   "เคลือบด้านหลัง",
-  "เคลือบอีกด้านของกระดาษแผ่นเดียวกัน คิดเพิ่มอีกชุดในเรทเดียวกับด้านหน้า — " +
-    "**เลือกด้านหน้ากับด้านหลังคนละแบบได้** · ไม่ต้องการเคลือบหลัง ปล่อยไว้ที่ “ไม่เคลือบ”",
+  "เคลือบเพิ่มอีกด้านได้ คิดแยกจากด้านหน้า · เลือกคนละแบบกับด้านหน้าได้",
   false
 );
+// 🔽 ด้านหลังเป็นของเสริม — หน้าสินค้าปิดไว้ก่อน โชว์แค่สวิตช์ กดเปิดถึงกางการ์ด
+coatBack.collapsible = true;
 
 // 3) กลุ่มลายฟิล์ม — แยกด้านละกลุ่ม (showWhen ต่อได้แบบ "และ" เท่านั้น ใช้กลุ่มเดียวคุมสองด้านไม่ได้)
 function filmGroup(label: string, whenLabel: string, note: string) {
@@ -101,16 +112,9 @@ function filmGroup(label: string, whenLabel: string, note: string) {
   g.showWhen = { label: whenLabel, choices: ["เคลือบพิเศษ"] };
   return g;
 }
-const filmFront = filmGroup(
-  "ลายฟิล์มเคลือบพิเศษ (ด้านหน้า)",
-  "เคลือบด้านหน้า",
-  "ลายฟิล์มเคลือบพิเศษของ**ด้านหน้า** — การ์ดแต่ละใบเล่นคลิปฟิล์มจริง ราคารวมอยู่ในค่าเคลือบพิเศษแล้ว"
-);
-const filmBack = filmGroup(
-  "ลายฟิล์มเคลือบพิเศษ (ด้านหลัง)",
-  "เคลือบด้านหลัง",
-  "ลายฟิล์มเคลือบพิเศษของ**ด้านหลัง** — เลือกคนละลายกับด้านหน้าได้ ราคารวมอยู่ในค่าเคลือบพิเศษแล้ว"
-);
+const FILM_NOTE = "10 ลาย ราคาเท่ากัน (รวมในค่าเคลือบพิเศษแล้ว) · การ์ดเล่นคลิปฟิล์มจริง";
+const filmFront = filmGroup("ลายฟิล์มเคลือบพิเศษ (ด้านหน้า)", "เคลือบด้านหน้า", FILM_NOTE);
+const filmBack = filmGroup("ลายฟิล์มเคลือบพิเศษ (ด้านหลัง)", "เคลือบด้านหลัง", FILM_NOTE);
 
 // ใส่ต่อท้าย (แทนของเดิมถ้าเคยมี) — ลำดับ: ขนาด → แนวปฏิทิน → เคลือบหน้า → ลายหน้า → เคลือบหลัง → ลายหลัง
 const COAT_LABELS = [
