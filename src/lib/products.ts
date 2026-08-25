@@ -3588,6 +3588,24 @@ function pickRateForQty(p: Product, qty: number): PriceRate | undefined {
  * เจอกับพวงกุญแจอะคริลิคที่มีออปชั่น "อุปกรณ์เสริม" mode chat กันทั้งสินค้าแล้วไม่มีวันรวมเลย)
  */
 /**
+ * เรทที่ยอดรวมของล็อต "ตรงและเข้าเงื่อนไข" จริงทั้งสองข้อ:
+ * จำนวนถึง minQty และจำนวนลายไม่เกินโควตาคละ (ลายละ minPerDesign) — ตามกติการ้าน:
+ * เรท 1 = สั่ง 11 ชิ้นขึ้น คละลายละ 5 · เรท 2 = สั่ง 50 ชิ้นขึ้น คละลายละ 25
+ * เช่น 60 ชิ้น 4 ลาย: จำนวนถึงเรท 2 แต่ลายละ 25 ไม่ผ่าน (4 ลายต้อง 100) → ตกมาเรท 1 (ลายละ 5 ผ่าน)
+ * เรทที่เปิดคละเกินโควตาแบบจ่ายเพิ่ม (extraDesignFee) ถือว่าผ่านเสมอ — ส่วนเกินไปคิดเงินที่ designFeeBase
+ */
+function pickRateForGroup(p: Product, qty: number, designs: number): PriceRate | undefined {
+  const rs = p.priceRates;
+  if (!rs?.length) return undefined;
+  const fit = [...rs]
+    .filter((r) => (r.minQty ?? 1) <= qty)
+    .filter((r) => !r.minPerDesign || !!r.extraDesignFee || designs <= Math.max(1, Math.floor(qty / r.minPerDesign)))
+    .sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
+  // ไม่มีเรทไหนรับได้เลย (ลายเยอะเกินทุกเรท) → ใช้ตัวเลือกตามจำนวนเดิม แล้วให้ tierByDesign ปรับราคาตามชิ้นต่อลาย
+  return fit ?? pickRateForQty(p, qty);
+}
+
+/**
  * บรรทัดนี้ "ใช้สิทธิ์คละอิสระช่วงปลีก" จริงไหม — จำนวนอยู่ช่วงปลีก และจำนวนลายเกินโควตา
  * minPerDesign ที่จำนวนนั้น (เช่น 8 ชิ้น 5 ลาย ที่กติกาลายละ 5)
  * สั่งน้อยแต่เข้าเกณฑ์ต่อลายอยู่แล้ว (เช่น 5 ชิ้น 1 ลาย = ลายละ 5 พอดี) = ล็อตผลิตปกติ รวมล็อตได้
@@ -3651,7 +3669,7 @@ export function repriceCartGroups(
     const totalQty = idxs.reduce((s, i) => s + lines[i].qty, 0);
     const totalDesigns = idxs.reduce((s, i) => s + designCountOf(lines[i].selections), 0);
     // hardMinQty = เรทเป็นทางเลือกเชิงโครงสร้าง (กลุ่มนี้อยู่เรทเดียวกันอยู่แล้ว) — คงเรทเดิม ไม่สลับ
-    const rate = p.hardMinQty ? activeRate(p, lines[idxs[0]].selections) : pickRateForQty(p, totalQty);
+    const rate = p.hardMinQty ? activeRate(p, lines[idxs[0]].selections) : pickRateForGroup(p, totalQty, totalDesigns);
     idxs.forEach((i, k) => {
       const own = lines[i].selections;
       const sel: Record<string, string> = { ...own, [DESIGN_LABEL]: String(totalDesigns) };
@@ -3737,8 +3755,8 @@ export function lotPreviewFor(
 
   const combinedQty = cartQty + lineQty;
   const totalDesigns = cartDesigns + Math.max(1, designs);
-  // เลือกเรทตามยอดรวม (hardMinQty คงเรทเดิม ไม่สลับ) + กันสลับเรทให้สเปคที่ไม่มีราคาขายในเรทรวม
-  const rate = product.hardMinQty ? activeRate(product, selections) : pickRateForQty(product, combinedQty);
+  // เลือกเรทตามยอดรวม+โควตาคละลาย (hardMinQty คงเรทเดิม ไม่สลับ) + กันสลับเรทให้สเปคที่ไม่มีราคาขายในเรทรวม
+  const rate = product.hardMinQty ? activeRate(product, selections) : pickRateForGroup(product, combinedQty, totalDesigns);
   const sel: Record<string, string> = { ...selections, [DESIGN_LABEL]: String(totalDesigns) };
   if (rate) {
     const m = rate.pricing;
