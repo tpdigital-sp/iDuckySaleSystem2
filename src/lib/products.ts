@@ -669,11 +669,34 @@ export function parseMultiEntry(entry: string, choiceNames?: string[]): MultiPic
 
 /** แยกค่าที่เก็บรวมไว้กลับเป็นรายชื่อ+จำนวน ("ซิปใน + สายสะพาย ×2" → [{ซิปใน,1},{สายสะพาย,2}]) */
 export function splitMultiPicks(value: string | undefined, choiceNames?: string[]): MultiPick[] {
-  return (value ?? "")
+  const parts = (value ?? "")
     .split(MULTI_SEP)
     .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s) => parseMultiEntry(s, choiceNames));
+    .filter(Boolean);
+  /*
+   * ⚠️ ชื่อตัวเลือกที่มี " + " ในตัว (เช่น "เจาะรู + ใส่ตาไก่") จะโดน split ผ่าแตกเป็นชื่อที่ไม่มีจริง
+   * แล้วถูกกรองทิ้ง = ติ๊กไม่ติด — ประกอบชิ้นที่แตกกลับก่อน โดยลองรวมช่วงที่ยาวสุดที่ตรงชื่อจริง
+   * (รองรับท้ายชื่อมีจำนวน "×N" ด้วย) · ชื่อปกติไม่เข้าเงื่อนไขนี้ พฤติกรรมเดิมทุกอย่าง
+   */
+  if (parts.length > 1 && choiceNames?.some((n) => n.includes(MULTI_SEP))) {
+    const merged: string[] = [];
+    for (let i = 0; i < parts.length; ) {
+      let take = 1;
+      let piece = parts[i];
+      for (let j = parts.length; j > i + 1; j--) {
+        const cand = parts.slice(i, j).join(MULTI_SEP);
+        if (choiceNames.includes(cand) || choiceNames.includes(cand.replace(/\s*×\s*\d+$/, "").trim())) {
+          piece = cand;
+          take = j - i;
+          break;
+        }
+      }
+      merged.push(piece);
+      i += take;
+    }
+    return merged.map((s) => parseMultiEntry(s, choiceNames));
+  }
+  return parts.map((s) => parseMultiEntry(s, choiceNames));
 }
 
 /** แยกค่าที่เก็บรวมไว้กลับเป็นรายชื่อตัวเลือก (ตัดจำนวนออก) */
