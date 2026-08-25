@@ -2364,8 +2364,9 @@ export default function ProductDetail({
                                       </span>
                                     )}
                                   </span>
+                                  {/* pre-line: desc ที่เขียนแยกบรรทัด (เช่น จำนวน A3 ของแต่ละจำนวนแผ่น) จะได้ขึ้นบรรทัดจริง */}
                                   {c.desc && !dense && (
-                                    <span className="mt-0.5 block pl-6 text-[11px] font-normal leading-snug text-stone-500">
+                                    <span className="mt-0.5 block whitespace-pre-line pl-6 text-[11px] font-normal leading-snug text-stone-500">
                                       {c.desc}
                                     </span>
                                   )}
