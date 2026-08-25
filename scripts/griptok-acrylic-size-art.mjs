@@ -6,22 +6,22 @@
  *   node scripts/griptok-acrylic-size-art.mjs --write   # อัปขึ้น storage + ใส่ imageSrc ให้ตัวเลือกขนาดทั้ง 6
  *
  * กลุ่มตัวเลือกอื่นของสินค้านี้มีภาพครบแล้ว (งานสกรีน/สีอะคริลิค/ฐาน/เคลือบ/ติ่งห้อย)
- * ขาดแค่ "ขนาด" — ทำเป็นการ์ดสเกลจริงแบบเดียวกับแผ่นอะคริลิคเสริมของ griptok-magsafe:
- * กรอบเส้นประขนาดจริง + ไม้บรรทัด 1 ช่อง = 1 ซม. + รูปงานจริงประกอบ (acrylic-1.jpg ของสินค้าเอง)
- * ทุกขนาดวางกรอบชิดขอบบนเดียวกัน เปิดการ์ดคนละใบเทียบขนาดกันได้ด้วยตา
+ * ขาดแค่ "ขนาด" — การ์ดออกแบบรอบ 2 (ผู้ใช้ตีแบบแรกกลับ 25 ส.ค. 69 ว่าดูโล่ง/องค์ประกอบลอย):
+ *   เทียบขนาดกับ "มือถือ" (7.2×14.7 ซม.) ที่สเกลจริงเดียวกัน วางบนเส้นพื้นเดียวกัน
+ *   กรอบเส้นประ = ขนาดชิ้นงาน + เลขขนาดตัวใหญ่ (ภาพย่อบนปุ่มตัวเลือกเล็กมาก ต้องอ่านเลขออก)
+ *   ไม้บรรทัดชิดใต้กรอบ · ทุกใบสเกลเดียวกัน เปิดคนละใบเทียบกันได้ด้วยตา
  *
  * ⚠️ "อะคริลิคใส" ในกลุ่มสีอะคริลิคไม่มีภาพ ทั้งระบบจงใจปล่อยว่าง (ชาร์ตสี 45 ใบไม่มีชิพใส) — อย่าเติม
- * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคชไว้) — ชุดนี้ลงท้าย -v1 ครั้งหน้าขึ้น v2
+ * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคชไว้) — รอบนี้ -v2 (v1 คือแบบแรกที่ถูกตีกลับ) ครั้งหน้าขึ้น v3
  */
-import { mkdirSync, writeFileSync } from "node:fs";
-import { readFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import sharp from "sharp";
 import { createClient } from "@supabase/supabase-js";
 
 const WRITE = process.argv.includes("--write");
 const ID = "1-4";
 const OUT = ".cache/griptok-acrylic/upload";
-const V = "v1";
+const V = "v2";
 mkdirSync(OUT, { recursive: true });
 
 const env = Object.fromEntries(
@@ -38,72 +38,87 @@ const TH = "Thonburi, 'Noto Sans Thai', 'Sukhumvit Set', sans-serif";
 const INK = "#0f172a";
 const SUB = "#64748b";
 const LINE = "#cbd5e1";
-const ACCENT = "#0ea5e9";
-const PAPER = "#f8fafc";
+const ACCENT = "#0284c7";
+const ACCENT_SOFT = "#bae6fd";
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+/** px ต่อ 1 ซม. — สเกลเดียวทุกใบ (มือถือ 14.7 ซม. ต้องอยู่ในการ์ดพร้อมหัวเรื่อง) */
+const PPC = 38;
+const GROUND = 712; // เส้นพื้นร่วมของมือถือกับกรอบขนาด
+const PHONE_CM = { w: 7.15, h: 14.7 };
+const PHONE_CX = 250;
+const PLATE_CX = 615;
+
 const frame = (body) => `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-  <rect width="${W}" height="${H}" fill="${PAPER}"/>
-  <rect x="18" y="18" width="${W - 36}" height="${H - 36}" rx="28" fill="#ffffff" stroke="#e2e8f0" stroke-width="2"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e0f2fe"/><stop offset="0.55" stop-color="#f8fafc"/><stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+    <linearGradient id="plate" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e0f2fe" stop-opacity="0.9"/><stop offset="1" stop-color="#bae6fd" stop-opacity="0.55"/>
+    </linearGradient>
+  </defs>
+  <rect width="${W}" height="${H}" fill="url(#bg)"/>
+  <rect x="20" y="20" width="${W - 40}" height="${H - 40}" rx="30" fill="#ffffff" fill-opacity="0.72" stroke="#e2e8f0" stroke-width="2"/>
   ${body}
 </svg>`;
 
-const title = (t, sub) => `
-  <text x="${W / 2}" y="88" font-family="${TH}" font-size="46" font-weight="700" text-anchor="middle" fill="${INK}">${esc(t)}</text>
-  ${sub ? `<text x="${W / 2}" y="134" font-family="${TH}" font-size="26" text-anchor="middle" fill="${SUB}">${esc(sub)}</text>` : ""}`;
+const header = (cm) => `
+  <text x="${W / 2}" y="96" font-family="${TH}" font-size="52" font-weight="700" text-anchor="middle" fill="${INK}">ขนาดชิ้นงาน <tspan fill="${ACCENT}">${cm} cm</tspan></text>
+  <text x="${W / 2}" y="142" font-family="${TH}" font-size="25" text-anchor="middle" fill="${SUB}">Griptok อะคริลิค — เทียบขนาดกับมือถือที่สเกลจริงเดียวกัน</text>`;
 
-const foot = (lines) =>
-  lines
-    .map((l, i) => `<text x="${W / 2}" y="${800 + i * 34}" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">${esc(l)}</text>`)
-    .join("");
-
-/** px ต่อ 1 ซม. — 10 ซม. = 460px ยังเหลือที่ให้ไม้บรรทัดใต้กรอบ (สเกลเดียวกับการ์ด magsafe) */
-const PPC = 46;
-const PLATE_TOP = 200;
-const PLATE_CX = 530;
+/** มือถือเงาอ้างอิงสเกล (7.15×14.7 ซม.) ยืนบนเส้นพื้นเดียวกับกรอบขนาด */
+const phone = () => {
+  const w = PHONE_CM.w * PPC;
+  const h = PHONE_CM.h * PPC;
+  const x = PHONE_CX - w / 2;
+  const y = GROUND - h;
+  return `
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="34" fill="#eef2f7" stroke="#94a3b8" stroke-width="3"/>
+    <rect x="${x + 12}" y="${y + 12}" width="${w - 24}" height="${h - 24}" rx="24" fill="#dbe3ee"/>
+    <rect x="${x + w / 2 - 42}" y="${y + 22}" width="84" height="18" rx="9" fill="#b6c2d4"/>
+    <text x="${PHONE_CX}" y="${y + h / 2 + 10}" font-family="${TH}" font-size="26" text-anchor="middle" fill="#8aa0bd">มือถือ</text>
+    <text x="${PHONE_CX}" y="${GROUND + 40}" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">มือถือทั่วไป สูง ~14.7 ซม.</text>`;
+};
 
 /** งานไดคัทตามลายลูกค้า รูปทรงไม่ตายตัว — วาดเป็น "กรอบขนาด" ของขนาดที่สั่ง */
-const plateBox = (cm, cx, cy) => {
+const plate = (cm) => {
   const s = cm * PPC;
+  const x = PLATE_CX - s / 2;
+  const y = GROUND - s;
+  const numSize = Math.max(64, Math.round(s * 0.34));
   return `
-    <rect x="${cx - s / 2}" y="${cy - s / 2}" width="${s}" height="${s}" rx="${Math.round(s * 0.18)}"
-          fill="#e0f2fe" fill-opacity="0.55" stroke="${ACCENT}" stroke-width="3" stroke-dasharray="10 7"/>
-    <text x="${cx}" y="${cy + 12}" font-family="${TH}" font-size="${Math.max(26, Math.round(s * 0.13))}"
-          font-weight="700" text-anchor="middle" fill="${ACCENT}">${cm} cm</text>`;
+    <rect x="${x}" y="${y}" width="${s}" height="${s}" rx="${Math.round(s * 0.16)}" fill="url(#plate)" stroke="${ACCENT}" stroke-width="4" stroke-dasharray="12 8"/>
+    <text x="${PLATE_CX}" y="${y + s / 2 + numSize * 0.34}" font-family="${TH}" font-size="${numSize}" font-weight="800" text-anchor="middle" fill="${ACCENT}">${cm}<tspan font-size="${Math.round(numSize * 0.45)}" font-weight="700"> cm</tspan></text>
+    <line x1="${x}" y1="${y - 26}" x2="${x + s}" y2="${y - 26}" stroke="${ACCENT}" stroke-width="2"/>
+    <line x1="${x}" y1="${y - 33}" x2="${x}" y2="${y - 19}" stroke="${ACCENT}" stroke-width="2"/>
+    <line x1="${x + s}" y1="${y - 33}" x2="${x + s}" y2="${y - 19}" stroke="${ACCENT}" stroke-width="2"/>
+    <text x="${PLATE_CX}" y="${y - 40}" font-family="${TH}" font-size="22" text-anchor="middle" fill="${ACCENT}">ด้านที่ยาวที่สุด ${cm} ซม.</text>`;
 };
 
-const ruler = (cm, cx, y) => {
+/** ไม้บรรทัดชิดใต้กรอบขนาด (1 ช่อง = 1 ซม.) */
+const ruler = (cm) => {
   const s = cm * PPC;
-  const x0 = cx - s / 2;
-  const ticks = Array.from({ length: cm + 1 }, (_, i) => `<line x1="${x0 + i * PPC}" y1="${y - 7}" x2="${x0 + i * PPC}" y2="${y + 7}" stroke="${LINE}" stroke-width="2"/>`).join("");
-  return `<line x1="${x0}" y1="${y}" x2="${x0 + s}" y2="${y}" stroke="${LINE}" stroke-width="2"/>${ticks}
-    <text x="${cx}" y="${y + 38}" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">สเกลจริง 1 ช่อง = 1 ซม.</text>`;
+  const x0 = PLATE_CX - s / 2;
+  const y = GROUND + 16;
+  const ticks = Array.from({ length: cm + 1 }, (_, i) => `<line x1="${x0 + i * PPC}" y1="${y}" x2="${x0 + i * PPC}" y2="${y + (i % 5 === 0 ? 16 : 10)}" stroke="#94a3b8" stroke-width="2"/>`).join("");
+  return `<line x1="${x0}" y1="${y}" x2="${x0 + s}" y2="${y}" stroke="#94a3b8" stroke-width="2.5"/>${ticks}
+    <text x="${PLATE_CX}" y="${y + 44}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">1 ช่อง = 1 ซม.</text>`;
 };
 
-async function get(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`โหลด ${url} ไม่ได้ — HTTP ${res.status}`);
-  return Buffer.from(await res.arrayBuffer());
-}
+const groundLine = () => `<line x1="70" y1="${GROUND}" x2="${W - 70}" y2="${GROUND}" stroke="${LINE}" stroke-width="2"/>`;
 
-console.log(`🎨 การ์ดขนาด Griptok อะคริลิค → ${OUT}`);
-const example = await sharp(await get(`${BASE}/acrylic-1.jpg`)).resize({ width: 250 }).toBuffer();
-const exampleMeta = await sharp(example).metadata();
+const foot = () => `
+  <rect x="80" y="806" width="${W - 160}" height="62" rx="16" fill="#f1f5f9"/>
+  <text x="${W / 2}" y="832" font-family="${TH}" font-size="21" text-anchor="middle" fill="#475569">รูปทรงไดคัทตามลายที่ส่งมา · กรอบเส้นประคือขนาดที่สั่ง (สเกลจริง)</text>
+  <text x="${W / 2}" y="858" font-family="${TH}" font-size="21" text-anchor="middle" fill="#475569">ขนาดนับจากด้านที่ยาวที่สุด ไม่วัดแนวทแยง · ตัดตกจากขนาดจริงด้านละ 3mm</text>`;
 
+console.log(`🎨 การ์ดขนาด Griptok อะคริลิค (${V}) → ${OUT}`);
 const files = [];
 for (const cm of [5, 6, 7, 8, 9, 10]) {
-  const svg = frame(
-    `${title(`ขนาด ${cm} cm`, "ขนาดชิ้นงาน Griptok อะคริลิค — นับจากด้านที่ยาวที่สุด")}
-     ${plateBox(cm, PLATE_CX, PLATE_TOP + (cm * PPC) / 2)}
-     ${ruler(cm, PLATE_CX, 706)}
-     <text x="152" y="${205 + exampleMeta.height + 34}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">ตัวอย่างงานจริง</text>
-     ${foot(["รูปทรงไดคัทตามลายที่ส่งมา · กรอบเส้นประคือขนาดที่สั่ง (สเกลจริง)", "ขนาดนับจากด้านที่ยาวที่สุด ไม่วัดแนวทแยง · ตัดตกจากขนาดจริงด้านละ 3mm"])}`
-  );
-  const buf = await sharp(Buffer.from(svg))
-    .composite([{ input: example, left: 27, top: 205 }])
-    .jpeg({ quality: 92, chromaSubsampling: "4:4:4" })
-    .toBuffer();
+  const svg = frame(`${header(cm)}${groundLine()}${phone()}${plate(cm)}${ruler(cm)}${foot()}`);
+  const buf = await sharp(Buffer.from(svg)).jpeg({ quality: 92, chromaSubsampling: "4:4:4" }).toBuffer();
   const name = `size-${cm}-${V}.jpg`;
   writeFileSync(`${OUT}/${name}`, buf);
   console.log(`   ${name}  ${Math.round(buf.length / 1024)} KB`);
