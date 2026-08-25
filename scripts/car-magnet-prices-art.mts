@@ -175,7 +175,8 @@ const product: Product = {
     "วัสดุ 2 แบบ: PET+Magnet (Digital) / สะท้อนแสง+Magnet (UV)",
     "แม่เหล็กดูดติดตัวถัง ถอดได้ ไม่ทิ้งคราบกาว",
   ],
-  options: [], // วัสดุย้ายไปเป็นเรทราคา — ไม่มีกลุ่มตัวเลือกแล้ว
+  // วัสดุย้ายไปเป็นเรทราคาแล้ว — คงกลุ่มที่มีใน DB ไว้ (ช่องกรอกขนาดชิ้นงานมาจาก car-magnet-size-input.mts)
+  options: old.options ?? [],
   images: gallery,
   pricing: PRICING,
   priceRates: RATES,
