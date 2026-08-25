@@ -12,7 +12,14 @@
  *   คละลาย: 1-10 เล่ม อิสระ · 11+ คละลายละ 5 เล่ม (บนเว็บพิมพ์ "11เล่น" — regex เผื่อไว้แล้ว)
  *
  * วิธีโมเดลราคาเคลือบ (กลไก sheetFee ที่มีอยู่แล้ว — ค่าเคลือบงานกระดาษคิดต่อแผ่น A3 ปัดขึ้น):
- *   กลุ่ม "เคลือบ" ตั้ง sheetFee ชี้กลุ่มตัวเอง + ทุกตัวเลือก perSheet 1
+ *   เว็บเขียน "บวกด้านละ 10 บาท" = คิดแยกด้าน (ผู้ใช้ยืนยัน 25 ส.ค. 69) → ทำ 2 ชุดกลุ่ม ด้านหน้า/ด้านหลัง
+ *   แต่ละชุด = กลุ่มเคลือบ + กลุ่มลายฟิล์มที่โผล่เมื่อเลือก "เคลือบพิเศษ" (แพทเทิร์น photocard-digital)
+ *   กลุ่ม "เคลือบ (ด้านX)" ตั้ง sheetFee ชี้กลุ่มตัวเอง + ทุกตัวเลือก perSheet 1
+ *   sheetFeeTotalOf วนทุกกลุ่มที่มี sheetFee แล้วบวกกัน → เลือก 2 ด้านคิดเงิน 2 ด้านเอง ไม่ต้องแตะ lib
+ *   เคลือบฟอยล์ (ผู้ใช้สั่งเพิ่ม 25 ส.ค. 69 "ตามงานกระดาษ") = ชุดเดียวกับ SHIKISHI/โฟโต้การ์ด:
+ *   กลุ่มฟอยล์ (1 เลเยอร์ 40 · 2 เลเยอร์ 60) + สีฟอยล์ (โฮโลแกรม +10) คิดต่อแผ่น A3 เหมือนกัน
+ *   rules 3 ข้อล็อกว่า ฟอยล์กับเคลือบลามิเนตด้านหน้าทำร่วมกันไม่ได้ (เลือกฟอยล์ = สลับเป็น
+ *   "เคลือบด้าน (มากับงานฟอยล์)" 0 บาทให้เอง) · รูปฟอยล์ใช้ไฟล์กลางของ photocard-digital ร่วมกัน
  *   = 1 เล่ม ใช้ A3 ประมาณ 1 แผ่น (เล่มหนึ่งมีกระดาษ 6×8 ซม. ~13 หน้า วางบน A3 ได้ ~21 ชิ้น)
  *   ⚠️ ถ้าหน้างานจริง 1 แผ่น A3 ทำได้มากกว่า 1 เล่ม แก้ตัวเลข PER_SHEET ตัวเดียวแล้วรันซ้ำ
  *
@@ -26,7 +33,14 @@
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import sharp from "sharp";
-import { hasQuoteOption, priceRange, type PriceMatrix, type Product, type ProductOption } from "../src/lib/products";
+import {
+  hasQuoteOption,
+  priceRange,
+  type OptionRule,
+  type PriceMatrix,
+  type Product,
+  type ProductOption,
+} from "../src/lib/products";
 
 const WRITE = process.argv.includes("--write");
 
@@ -49,6 +63,23 @@ const PER_SHEET = 1; // 1 เล่ม ≈ A3 1 แผ่น (ดูหมาย
 const GROUP_COAT = "เคลือบ";
 const GROUP_FILM = "ลายฟิล์มเคลือบพิเศษ";
 const CHOICE_SPECIAL = "เคลือบพิเศษ";
+
+/**
+ * เคลือบฟอยล์ — ชุดเดียวกับงานกระดาษตัวอื่น (ผู้ใช้สั่ง 25 ส.ค. 69 "เพิ่มกลุ่มเคลือบฟอยล์ ตามงานกระดาษ")
+ * ยึดโครง SHIKISHI/โฟโต้การ์ด: ค่าฟอยล์คิดต่อแผ่น A3 · สีโฮโลแกรมบวกเพิ่ม · งานฟอยล์ต้องเคลือบด้านเสมอ
+ * และทำร่วมกับเคลือบลามิเนตปกติไม่ได้ (บังคับด้วย rules 3 ข้อ — ชุดเดียวกับ shikishi)
+ * รูปใช้ไฟล์กลางของโฟโต้การ์ดร่วมกัน (แบบที่ shikishi ทำ) — แก้ที่เดียวได้ทุกสินค้า
+ */
+const GROUP_FOIL = "เคลือบฟอยล์ (Add On)";
+const GROUP_FOIL_COLOR = "สีฟอยล์";
+const FOIL_NONE = "ไม่เคลือบฟอยล์";
+const FOIL_L1 = "พิมพ์ 1 เลเยอร์ / 1 ด้าน";
+const FOIL_L2 = "พิมพ์ 2 เลเยอร์ / 1 ด้าน";
+const COAT_WITH_FOIL = "เคลือบด้าน (มากับงานฟอยล์)";
+const FOIL_IMG = `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/photocard-digital`;
+const FOIL_L1_FEE = 40;
+const FOIL_L2_FEE = 60;
+const FOIL_HOLO_FEE = 10;
 
 const OUT = new URL("../scratchpad_out/mini-calendar/", import.meta.url).pathname;
 mkdirSync(OUT, { recursive: true });
@@ -212,38 +243,137 @@ const film = (key: string) => {
   return { name: f[2], desc: f[3], imageSrc: filmMedia[key].img, videoSrc: filmMedia[key].vid };
 };
 
-const OPTIONS: ProductOption[] = [
+/**
+ * ค่าเคลือบบนเว็บเขียน "บวก**ด้านละ** 10 บาท ต่อ A3" — คิดแยกด้าน (ผู้ใช้ยืนยัน 25 ส.ค. 69)
+ * จึงทำเป็น 2 ชุดกลุ่ม (ด้านหน้า / ด้านหลัง) แบบเดียวกับโฟโต้การ์ด: กลุ่มเคลือบ + กลุ่มลายฟิล์มที่โผล่เมื่อเลือก "เคลือบพิเศษ"
+ * sheetFeeTotalOf วนทุกกลุ่มที่มี sheetFee แล้วบวกกัน → เลือกทั้งสองด้านคิดเงินทั้งสองด้านเอง
+ * ชื่อตัวเลือกฝั่งหลังต่อท้าย "(ด้านหลัง)" ให้ใบงาน/ตะกร้าอ่านแล้วรู้ทันทีว่าคนละด้าน (แพทเทิร์น photocard-digital)
+ */
+const coatGroups = (side: "หน้า" | "หลัง"): ProductOption[] => {
+  const back = side === "หลัง";
+  const suffix = back ? " (ด้านหลัง)" : "";
+  const group = `${GROUP_COAT} (ด้าน${side})`;
+  const filmGroup = `${GROUP_FILM} (ด้าน${side})`;
+  const special = `${CHOICE_SPECIAL}${suffix}`;
+  const named = (key: string) => {
+    const f = film(key);
+    return { ...f, name: `${f.name}${suffix}` };
+  };
+  return [
+    {
+      label: group,
+      display: "cards",
+      // ค่าเคลือบคิดต่อแผ่น A3 ปัดขึ้น (กลไก sheetFee) — ชี้กลุ่มตัวเอง + perSheet ทุกตัวเลือก
+      sheetFee: { from: group, unit: "แผ่น A3" },
+      note:
+        `ฟิล์มเคลือบ**ด้าน${side}**ของกระดาษทุกแผ่นในเล่ม — เงา/ด้าน **ด้านละ ${GLOSS_FEE} บาท ต่อแผ่น A3** · ` +
+        `เคลือบพิเศษ (เนื้อทราย / กลิสเตอร์ / โฮโลแกรม) **ชุดละ ${SPECIAL_FEE} บาท ต่อแผ่น A3** ` +
+        `(Mini Calendar 1 ${UNIT} ใช้กระดาษประมาณ 1 แผ่น A3) — เลือกเคลือบทั้ง 2 ด้าน คิดเงินทั้ง 2 ด้าน`,
+      choices: [
+        { ...named("film-none"), name: `ไม่เคลือบ${back ? "ด้านหลัง" : ""}`, perSheet: PER_SHEET },
+        { ...named("film-gloss"), extra: GLOSS_FEE, perSheet: PER_SHEET, ...(back ? {} : { popular: true }) },
+        { ...named("film-matte"), extra: GLOSS_FEE, perSheet: PER_SHEET },
+        {
+          name: special,
+          desc: "เนื้อทราย / กลิสเตอร์ / โฮโลแกรม — เลือกลายฟิล์มด้านล่าง",
+          extra: SPECIAL_FEE,
+          perSheet: PER_SHEET,
+          imageSrc: filmMedia["film-glitter"].img,
+          videoSrc: filmMedia["film-glitter"].vid,
+        },
+        // งานฟอยล์พิมพ์ด้านหน้า — ตัวเลือกล็อก 0 บาทที่ rules สลับให้เองเมื่อเลือกฟอยล์ (ไม่ต้องกดเอง)
+        ...(back
+          ? []
+          : [
+              {
+                name: COAT_WITH_FOIL,
+                desc: "งานฟอยล์ต้องเคลือบด้านเสมอ — รวมอยู่ในขั้นตอนงานฟอยล์แล้ว ไม่คิดเพิ่ม",
+                badge: "ฟรี!",
+                perSheet: PER_SHEET,
+                imageSrc: filmMedia["film-matte"].img,
+                videoSrc: filmMedia["film-matte"].vid,
+              },
+            ]),
+      ],
+    },
+    {
+      label: filmGroup,
+      display: "cards",
+      showWhen: { label: group, choices: [special] },
+      note: `ลายฟิล์มเคลือบพิเศษ**ด้าน${side}** มีให้เลือก 10 ลาย — การ์ดแต่ละใบเล่นคลิปฟิล์มจริง ราคารวมอยู่ในค่าเคลือบพิเศษแล้ว`,
+      choices: FILMS.filter(([k]) => !["film-none", "film-gloss", "film-matte"].includes(k)).map(([k]) => named(k)),
+    },
+  ];
+};
+
+const COAT_FRONT = `${GROUP_COAT} (ด้านหน้า)`;
+
+/** ฟอยล์ปั๊มด้านหน้า 1 ด้าน — ค่าฟอยล์/สีโฮโลแกรมคิดต่อแผ่น A3 เหมือนค่าเคลือบ */
+const FOIL_OPTIONS: ProductOption[] = [
   {
-    label: GROUP_COAT,
+    label: GROUP_FOIL,
     display: "cards",
-    // ค่าเคลือบคิดต่อแผ่น A3 ปัดขึ้น (กลไก sheetFee) — ชี้กลุ่มตัวเอง + perSheet ทุกตัวเลือก
-    sheetFee: { from: GROUP_COAT, unit: "แผ่น A3" },
+    sheetFee: { from: GROUP_FOIL, unit: "แผ่น A3" },
     note:
-      `เคลือบฟิล์มด้านหน้ากระดาษทุกแผ่นในเล่ม — เงา/ด้าน **ด้านละ ${GLOSS_FEE} บาท ต่อแผ่น A3** · ` +
-      `เคลือบพิเศษ (เนื้อทราย / กลิสเตอร์ / โฮโลแกรม) **ชุดละ ${SPECIAL_FEE} บาท ต่อแผ่น A3** ` +
-      `(Mini Calendar 1 ${UNIT} ใช้กระดาษประมาณ 1 แผ่น A3) — ต้องการเคลือบ 2 ด้าน แจ้งในหมายเหตุถึงร้าน`,
+      `ปั๊มฟอยล์เมทัลลิกทับลายด้านหน้า — 1 เลเยอร์ **${FOIL_L1_FEE} บาท** · 2 เลเยอร์ (ฟอยล์ทับฟอยล์ ให้มิติหนาขึ้น) **${FOIL_L2_FEE} บาท** ต่อแผ่น A3 · ` +
+      `งานเคลือบฟอยล์ทุกงานต้องมีการ**เคลือบด้าน**ร่วมด้วย (รวมในขั้นตอนงานฟอยล์แล้ว ไม่คิดเพิ่ม) และ**ทำร่วมกับการเคลือบลามิเนตแบบอื่นไม่ได้** — ` +
+      `ระบบสลับกลุ่มเคลือบด้านหน้าให้เองเมื่อเลือกฟอยล์`,
     choices: [
-      { ...film("film-none"), perSheet: PER_SHEET },
-      { ...film("film-gloss"), extra: GLOSS_FEE, perSheet: PER_SHEET, popular: true },
-      { ...film("film-matte"), extra: GLOSS_FEE, perSheet: PER_SHEET },
+      { name: FOIL_NONE, desc: "งานพิมพ์ปกติ ไม่ปั๊มฟอยล์", perSheet: PER_SHEET },
       {
-        name: CHOICE_SPECIAL,
-        desc: "เนื้อทราย / กลิสเตอร์ / โฮโลแกรม — เลือกลายฟิล์มด้านล่าง",
-        extra: SPECIAL_FEE,
+        name: FOIL_L1,
+        desc: "ปั๊มฟอยล์ 1 ชั้น บนตำแหน่งที่กำหนดในไฟล์งาน",
+        extra: FOIL_L1_FEE,
         perSheet: PER_SHEET,
-        imageSrc: filmMedia["film-glitter"].img,
-        videoSrc: filmMedia["film-glitter"].vid,
+        imageSrc: `${FOIL_IMG}/foil-1layer-info.jpg`,
+      },
+      {
+        name: FOIL_L2,
+        desc: "ปั๊มฟอยล์ทับกัน 2 ชั้น เนื้อฟอยล์แน่นและคมขึ้น",
+        extra: FOIL_L2_FEE,
+        perSheet: PER_SHEET,
+        imageSrc: `${FOIL_IMG}/foil-2layer-info.jpg`,
       },
     ],
   },
   {
-    label: GROUP_FILM,
+    label: GROUP_FOIL_COLOR,
     display: "cards",
-    showWhen: { label: GROUP_COAT, choices: [CHOICE_SPECIAL] },
-    note: "ลายฟิล์มเคลือบพิเศษมีให้เลือก 10 ลาย — การ์ดแต่ละใบเล่นคลิปฟิล์มจริง ราคารวมอยู่ในค่าเคลือบพิเศษแล้ว",
-    choices: FILMS.filter(([k]) => !["film-none", "film-gloss", "film-matte"].includes(k)).map(([k]) => film(k)),
+    sheetFee: { from: GROUP_FOIL_COLOR, unit: "แผ่น A3" },
+    showWhen: { label: GROUP_FOIL, choices: [FOIL_L1, FOIL_L2] },
+    note: `สีฟอยล์มาตรฐาน 3 สี ไม่คิดเพิ่ม · สีโฮโลแกรมบวกเพิ่ม ${FOIL_HOLO_FEE} บาท ต่อแผ่น A3`,
+    choices: [
+      { name: "สีเงิน", perSheet: PER_SHEET, imageSrc: `${FOIL_IMG}/foil-silver.jpg` },
+      { name: "สีทอง", perSheet: PER_SHEET, imageSrc: `${FOIL_IMG}/foil-gold.jpg` },
+      { name: "สีโรสโกลด์", perSheet: PER_SHEET, imageSrc: `${FOIL_IMG}/foil-rosegold.jpg` },
+      { name: "สีโฮโลแกรม", extra: FOIL_HOLO_FEE, perSheet: PER_SHEET, imageSrc: `${FOIL_IMG}/foil-hologram.jpg` },
+    ],
   },
 ];
+
+/** กฎล็อกฟอยล์ ↔ เคลือบด้านหน้า — ชุดเดียวกับ SHIKISHI/โฟโต้การ์ด (ฟอยล์กับลามิเนตร่วมกันไม่ได้) */
+const FILM_FRONT = FILMS.filter(([k]) => !["film-none", "film-gloss", "film-matte"].includes(k)).map(([, , n]) => n);
+const RULES: OptionRule[] = [
+  {
+    when: { label: COAT_FRONT, choice: "เคลือบเงา", choices: ["เคลือบเงา", "เคลือบด้าน", CHOICE_SPECIAL] },
+    limit: { label: GROUP_FOIL, allow: [FOIL_NONE] },
+  },
+  {
+    when: { label: GROUP_FOIL, choice: FOIL_L1, choices: [FOIL_L1, FOIL_L2] },
+    limit: { label: COAT_FRONT, allow: [COAT_WITH_FOIL] },
+  },
+  {
+    when: { label: GROUP_FOIL, choice: FOIL_NONE, choices: [FOIL_NONE] },
+    limit: { label: COAT_FRONT, allow: ["ไม่เคลือบ", "เคลือบเงา", "เคลือบด้าน", CHOICE_SPECIAL] },
+  },
+  // เลือกเคลือบพิเศษด้านหน้าแล้วเท่านั้นถึงเลือกลายฟิล์มได้ (กันลายค้างเมื่อสลับกลับไปเงา/ด้าน/ฟอยล์)
+  {
+    when: { label: COAT_FRONT, choice: CHOICE_SPECIAL, choices: [CHOICE_SPECIAL] },
+    limit: { label: `${GROUP_FILM} (ด้านหน้า)`, allow: FILM_FRONT },
+  },
+];
+
+const OPTIONS: ProductOption[] = [...coatGroups("หน้า"), ...FOIL_OPTIONS, ...coatGroups("หลัง")];
 
 /* ── 4. ประกอบสินค้า (patch ทับร่างเดิม — คงแท็บกลาง/ฟิลด์อื่นไว้) ── */
 const { data: row, error: rowErr } = await sb.from("products").select("name,data").eq("id", ID).single();
@@ -268,13 +398,15 @@ const product: Product = {
   description:
     `Mini Calendar ปฏิทินตั้งโต๊ะขนาดจิ๋ว พิมพ์ลายตามสั่งทั้งเล่ม กระดาษ กว้าง 6 × สูง 8 ซม. หนา 260 แกรม ` +
     `ฐานปฏิทินกระดาษอาร์ตขาวหนา 400 แกรม เข้าเล่มห่วงสันเกลียวสีขาว ตั้งโต๊ะได้ ` +
-    `เลือกเคลือบฟิล์มเงา/ด้าน/พิเศษได้ ไม่มีขั้นต่ำในการสั่งผลิต เริ่ม${UNIT}ละ ${prices[0]} บาท`,
+    `เลือกเคลือบฟิล์มเงา/ด้าน/พิเศษได้ แยกด้านหน้า-ด้านหลัง ไม่มีขั้นต่ำในการสั่งผลิต เริ่ม${UNIT}ละ ${prices[0]} บาท`,
   highlights: [
     `ไม่มีขั้นต่ำ · เริ่ม${UNIT}ละ ${prices[0]} บาท (สั่งเยอะลดถึง ${prices[prices.length - 1]} บาท)`,
     "กระดาษ 6×8 ซม. หนา 260 แกรม · ฐานกระดาษอาร์ตขาว 400 แกรม · ห่วงสันเกลียวสีขาว",
-    `เคลือบเงา/ด้าน ด้านละ ${GLOSS_FEE} บาท · เคลือบพิเศษ 10 ลาย (ทราย/กลิสเตอร์/โฮโลแกรม) ${SPECIAL_FEE} บาท ต่อแผ่น A3`,
+    `เลือกเคลือบแยกด้านหน้า-ด้านหลัง · เงา/ด้าน ด้านละ ${GLOSS_FEE} บาท · เคลือบพิเศษ 10 ลาย (ทราย/กลิสเตอร์/โฮโลแกรม) ด้านละ ${SPECIAL_FEE} บาท ต่อแผ่น A3`,
+    `ปั๊มฟอยล์เมทัลลิกได้ — 1 เลเยอร์ ${FOIL_L1_FEE} บาท · 2 เลเยอร์ ${FOIL_L2_FEE} บาท ต่อแผ่น A3 (เงิน/ทอง/โรสโกลด์/โฮโลแกรม)`,
   ],
   options: OPTIONS,
+  rules: RULES,
   images: gallery,
   pricing: PRICING,
   priceRates: [
@@ -293,6 +425,10 @@ const product: Product = {
     "*กระดาษ กว้าง 6 ซม. × สูง 8 ซม. หนา 260 แกรม",
     "*ฐานปฏิทิน กระดาษอาร์ต ขาว หนา 400 แกรม · เข้าเล่มห่วงสันเกลียว สีขาว",
     `*เคลือบเงา/ด้าน บวกด้านละ ${GLOSS_FEE} บาท ต่อแผ่น A3 · เคลือบพิเศษ (เนื้อทราย/กลิสเตอร์/โฮโลแกรม) ชุดละ ${SPECIAL_FEE} บาท ต่อแผ่น A3 (1 ${UNIT} ≈ A3 1 แผ่น)`,
+    `*เลือกเคลือบแยกด้านหน้า-ด้านหลังได้ — เลือกทั้ง 2 ด้าน คิดค่าเคลือบทั้ง 2 ด้าน (เช่น เงาหน้า+เงาหลัง = ${GLOSS_FEE * 2} บาท ต่อแผ่น A3)`,
+    `*เคลือบฟอยล์ (Add On) ปั๊มด้านหน้า — 1 เลเยอร์ ${FOIL_L1_FEE} บาท · 2 เลเยอร์ ${FOIL_L2_FEE} บาท ต่อแผ่น A3 · สีฟอยล์เงิน/ทอง/โรสโกลด์ ไม่คิดเพิ่ม · สีโฮโลแกรมบวก ${FOIL_HOLO_FEE} บาท ต่อแผ่น A3`,
+    "*งานเคลือบฟอยล์ทุกงานต้องมีการเคลือบด้านร่วมด้วย (รวมอยู่ในขั้นตอนงานฟอยล์แล้ว ไม่คิดเพิ่ม)",
+    "*งานเคลือบฟอยล์ทำร่วมกับการเคลือบลามิเนตแบบอื่นไม่ได้",
     "*ทางร้านใช้สี R G B สีงานพิมพ์ที่ได้ออกมาอาจจะมีสีที่สว่างกว่าหรือดรอปลง ตามความแตกต่างของไฟล์งาน +-5% ถึง +-15%",
   ].join("\n"),
   seo: {
@@ -323,6 +459,14 @@ const product: Product = {
         a: `ได้ — เคลือบเงาหรือเคลือบด้าน บวกด้านละ ${GLOSS_FEE} บาท ต่อแผ่น A3 และเคลือบพิเศษบวกชุดละ ${SPECIAL_FEE} บาท ต่อแผ่น A3 มีให้เลือก 10 ลาย ได้แก่ เนื้อทราย กลิสเตอร์ และโฮโลแกรมลายดาว จุด หัวใจ เหลี่ยม หิมะ รุ้ง Dust และ Stardust ดูคลิปฟิล์มจริงได้ที่ตัวเลือกบนหน้าสินค้า`,
       },
       {
+        q: "เคลือบด้านหน้ากับด้านหลังเลือกแยกกันได้ไหม?",
+        a: `ได้ — บนหน้าสินค้ามีกลุ่มตัวเลือก "เคลือบ (ด้านหน้า)" และ "เคลือบ (ด้านหลัง)" แยกกัน เลือกฟิล์มคนละแบบได้ เช่น หน้าเคลือบโฮโลแกรม หลังเคลือบด้าน ค่าเคลือบคิดตามจำนวนด้านที่เลือก (เงา/ด้าน ด้านละ ${GLOSS_FEE} บาท · เคลือบพิเศษ ด้านละ ${SPECIAL_FEE} บาท ต่อแผ่น A3) ไม่ต้องการเคลือบด้านไหนก็เลือก "ไม่เคลือบ" ของด้านนั้น`,
+      },
+      {
+        q: "ปั๊มฟอยล์ได้ไหม ราคาเท่าไหร่?",
+        a: `ได้ — เลือกกลุ่ม "เคลือบฟอยล์ (Add On)" บนหน้าสินค้า ปั๊มฟอยล์เมทัลลิกทับลายด้านหน้า 1 เลเยอร์ ${FOIL_L1_FEE} บาท หรือ 2 เลเยอร์ (ฟอยล์ทับฟอยล์ ให้มิติหนาขึ้น) ${FOIL_L2_FEE} บาท ต่อแผ่น A3 เลือกสีได้ 4 สี — เงิน ทอง โรสโกลด์ ไม่คิดเพิ่ม ส่วนสีโฮโลแกรมบวก ${FOIL_HOLO_FEE} บาท ต่อแผ่น A3 · งานฟอยล์ทุกงานต้องเคลือบด้านร่วมด้วย (รวมในขั้นตอนงานฟอยล์แล้ว ไม่คิดเพิ่ม) และทำร่วมกับการเคลือบลามิเนตแบบอื่นไม่ได้`,
+      },
+      {
         q: "สั่งหลายลายคละกันได้ไหม?",
         a: `สั่ง 1-${FREE_MIX_BELOW - 1} ${UNIT} คละลายได้อิสระ · สั่ง ${FREE_MIX_BELOW} ${UNIT}ขึ้นไป คละลายละ ${MIN_PER_DESIGN} ${UNIT}ขึ้นไป`,
       },
@@ -343,8 +487,17 @@ console.log(`\n📦 ${saved.name} (${ID}) · หมวด ${saved.category} · �
 console.log(`   ราคา ฿${range.min}-${range.max}/${UNIT} (เริ่มต้น ฿${saved.price})`);
 console.log(`   ตัวเลือก: ${OPTIONS.map((o) => `${o.label} (${o.choices.length} แบบ)`).join(" · ")}`);
 console.log(`   แกลเลอรี ${gallery.length} ภาพ · แท็บเดิม ${saved.tabs?.length ?? 0} · FAQ ${saved.seo!.faqs!.length} ข้อ`);
-console.log(`   ตัวอย่างราคา: 1 ${UNIT} เคลือบเงา = ${prices[0]} + ${GLOSS_FEE} = ฿${prices[0] + GLOSS_FEE}`);
-console.log(`   ตัวอย่างราคา: 30 ${UNIT} เคลือบพิเศษ = ${prices[2]}×30 + ${SPECIAL_FEE}×30 = ฿${prices[2] * 30 + SPECIAL_FEE * 30}`);
+console.log(`   ตัวอย่างราคา: 1 ${UNIT} เคลือบเงาด้านหน้าอย่างเดียว = ${prices[0]} + ${GLOSS_FEE} = ฿${prices[0] + GLOSS_FEE}`);
+console.log(
+  `   ตัวอย่างราคา: 1 ${UNIT} เคลือบเงาทั้ง 2 ด้าน = ${prices[0]} + ${GLOSS_FEE}×2 = ฿${prices[0] + GLOSS_FEE * 2}`
+);
+console.log(
+  `   ตัวอย่างราคา: 30 ${UNIT} พิเศษหน้า + ด้านหลัง = (${prices[2]} + ${SPECIAL_FEE} + ${GLOSS_FEE})×30 = ฿${(prices[2] + SPECIAL_FEE + GLOSS_FEE) * 30}`
+);
+console.log(
+  `   ตัวอย่างราคา: 1 ${UNIT} ฟอยล์ 1 เลเยอร์ สีโฮโลแกรม = ${prices[0]} + ${FOIL_L1_FEE} + ${FOIL_HOLO_FEE} = ฿${prices[0] + FOIL_L1_FEE + FOIL_HOLO_FEE} (เคลือบด้านมากับงานฟอยล์ ไม่คิดเพิ่ม)`
+);
+console.log(`   กฎล็อก: ${RULES.length} ข้อ (ฟอยล์ ↔ เคลือบลามิเนตด้านหน้า ทำร่วมกันไม่ได้)`);
 
 if (!WRITE) {
   console.log(`\n(ยังไม่อัปรูป ไม่เขียนฐานข้อมูล — เปิดดูรูป/คลิปที่ ${OUT} แล้วใส่ --write เพื่อบันทึกจริง)`);
