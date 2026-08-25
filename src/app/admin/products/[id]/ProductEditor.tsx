@@ -64,6 +64,8 @@ type DraftChoice = {
   popular?: boolean;
   /** 🏷️ ป้ายอิสระท้ายชื่อ เช่น "ฟรี!" — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   badge?: string;
+  /** 📝 คำอธิบายใต้ชื่อ (โชว์เฉพาะกลุ่ม display "cards") — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  desc?: string;
   /** 📄 วัสดุ 1 แผ่นทำได้กี่ชิ้น (คู่กับกลุ่มที่คิดค่าธรรมเนียมต่อแผ่น) — ส่งกลับเฉย ๆ */
   perSheet?: number;
   /** 📐 ขนาดตัดนี้ได้กี่ชิ้นต่อ 1 หน่วยสั่ง (งานแบ่งแผ่น) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
@@ -79,8 +81,8 @@ type DraftOption = {
   label: string;
   choices: DraftChoice[];
   presetId?: string;
-  /** pills/dropdown = เลือกได้ 1 อย่าง · multi = ติ๊กได้หลายอย่าง · input = ให้ลูกค้ากรอกเอง */
-  display: "pills" | "dropdown" | "multi" | "input";
+  /** pills/dropdown/cards = เลือกได้ 1 อย่าง · multi = ติ๊กได้หลายอย่าง · input = ให้ลูกค้ากรอกเอง */
+  display: "pills" | "dropdown" | "multi" | "input" | "cards";
   /** ── กลุ่มชนิด "ช่องกรอก" (display: input) — เก็บเป็น string เพราะกรอกในช่อง ── */
   inKind?: "number" | "text" | "textarea";
   inUnit?: string;
@@ -482,6 +484,7 @@ function toDraft(p: Product): Draft {
         ...(c.askPrice ? { askPrice: true } : {}),
         ...(c.popular ? { popular: true } : {}),
         ...(c.badge ? { badge: c.badge } : {}),
+        ...(c.desc ? { desc: c.desc } : {}),
         ...(c.perSheet ? { perSheet: c.perSheet } : {}),
         ...(c.piecesPerUnit ? { piecesPerUnit: c.piecesPerUnit } : {}),
         ...(c.extraBelow ? { extraBelow: c.extraBelow } : {}),
@@ -732,8 +735,9 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             ...(c.askPrice ? { askPrice: true as const } : {}),
             // ⭐ ป้าย "แบบยอดนิยม" — ต้องส่งกลับ ไม่งั้นบันทึกแล้วหาย
             ...(c.popular ? { popular: true as const } : {}),
-            // 🏷️ ป้ายอิสระ ("ฟรี!") + 📄 ชิ้นต่อแผ่นวัสดุ — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
+            // 🏷️ ป้ายอิสระ ("ฟรี!") + 📝 คำอธิบายการ์ด + 📄 ชิ้นต่อแผ่นวัสดุ — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
             ...(c.badge ? { badge: c.badge } : {}),
+            ...(c.desc ? { desc: c.desc } : {}),
             ...(c.perSheet ? { perSheet: c.perSheet } : {}),
             // 📐 ชิ้นต่อหน่วยของงานแบ่งแผ่น (ขนาดตัด A4-A7) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
             ...(c.piecesPerUnit ? { piecesPerUnit: c.piecesPerUnit } : {}),
@@ -741,7 +745,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
           };
         }),
       ...(o.presetId ? { presetId: o.presetId } : {}),
-      ...(o.display === "dropdown" || o.display === "multi" || o.display === "input"
+      ...(o.display === "dropdown" || o.display === "multi" || o.display === "input" || o.display === "cards"
         ? { display: o.display }
         : {}),
       ...(Number(o.extraFromQty) > 0 ? { extraFromQty: Math.floor(Number(o.extraFromQty)) } : {}),
@@ -1880,6 +1884,11 @@ export default function ProductEditor({ product }: { product: Product }) {
     const MODES = [
       { id: "pills", text: "▭ ปุ่มแยก", tip: "ปุ่มเรียงกัน เลือกได้ 1 อย่าง" },
       { id: "dropdown", text: "▾ dropdown", tip: "เมนูเลื่อน เลือกได้ 1 อย่าง (เหมาะกับตัวเลือกเยอะ)" },
+      {
+        id: "cards",
+        text: "🃏 การ์ด",
+        tip: "การ์ดแนวตั้งแบบเดียวกับแผงเลือกเรทราคา (รูปใหญ่ + ชื่อ + คำอธิบาย) เลือกได้ 1 อย่าง — เหมาะกับกลุ่ม แบบ/ชนิด/เนื้อ ที่มีภาพประกอบ",
+      },
       {
         id: "multi",
         text: "☑ ติ๊กหลายอย่าง",

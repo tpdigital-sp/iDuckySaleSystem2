@@ -2061,6 +2061,72 @@ export default function ProductDetail({
                         ))}
                     </select>
                     </div>
+                  ) : opt.display === "cards" ? (
+                    /* การ์ดแนวตั้งหน้าตาเดียวกับแผงเลือกเรทราคา — รูปใหญ่ + วิทยุ + ชื่อ + คำอธิบาย
+                       (กลุ่ม "แบบ/ชนิด/เนื้อ" ที่หน้าตาต่างกันชัด ๆ ผู้ใช้สั่งใช้ทรงนี้ 25 ส.ค. 69) */
+                    <div className="grid gap-1.5">
+                      {opt.choices
+                        .filter((c) => allowed.includes(c.name))
+                        .map((c) => {
+                          const on = effective[opt.label] === c.name;
+                          const add = choiceBadgeOf(opt, effective, c.name, feeQty);
+                          return (
+                            <button
+                              key={c.name}
+                              type="button"
+                              onClick={() => {
+                                setSelections((s) => ({ ...s, [opt.label]: c.name }));
+                                jumpToImage(c.imageSrc);
+                              }}
+                              className={`rounded-xl px-3 py-2 text-left text-[13px] transition ${
+                                on
+                                  ? "bg-amber-50 font-bold text-amber-900 ring-2 ring-amber-400"
+                                  : "bg-white text-stone-600 ring-1 ring-stone-200 hover:ring-amber-300"
+                              }`}
+                            >
+                              <span className="flex items-center gap-2">
+                                {c.imageSrc && (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={c.imageSrc}
+                                    alt={c.name}
+                                    className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-stone-200"
+                                    loading="lazy"
+                                  />
+                                )}
+                                <span className="min-w-0 flex-1">
+                                  <span className="flex flex-wrap items-center gap-2">
+                                    <span
+                                      className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${on ? "border-amber-500" : "border-stone-300"}`}
+                                    >
+                                      {on && <span className="h-2 w-2 rounded-full bg-amber-500" />}
+                                    </span>
+                                    {c.name}
+                                    {c.popular && (
+                                      <span className="rounded-full bg-ducky px-1.5 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-ducky-dark">
+                                        นิยม
+                                      </span>
+                                    )}
+                                    {c.badge && (
+                                      <span className="rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white ring-1 ring-emerald-600">
+                                        {c.badge}
+                                      </span>
+                                    )}
+                                    {add > 0 && (
+                                      <span className="text-[12px] font-bold text-amber-700">+{formatPrice(add)}</span>
+                                    )}
+                                  </span>
+                                  {c.desc && (
+                                    <span className="mt-0.5 block pl-6 text-[11px] font-normal leading-snug text-stone-500">
+                                      {c.desc}
+                                    </span>
+                                  )}
+                                </span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                    </div>
                   ) : (
                     <div className="flex flex-wrap gap-1.5">
                       {opt.choices
