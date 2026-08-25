@@ -56,6 +56,7 @@ import {
   groupAddOf,
   groupExtraOf,
   perSheetOf,
+  sheetsPerUnitOf,
   sheetCountOf,
   choiceQtyUnit,
   tierIndex,
@@ -398,8 +399,9 @@ export default function ProductDetail({
     };
     for (const r of product.priceRates ?? []) add(r.imageSrc, r.label);
     for (const opt of product.options ?? []) {
-      // กลุ่มสวอตช์สี: รูปเป็นชิปเล็กไว้โชว์บนปุ่มเท่านั้น — เข้าแกลเลอรีแล้วขยายเบลอ (แถมทะลัก 80 รูป)
-      if (opt.swatchGrid) continue;
+      // กลุ่มสวอตช์สี/แถบตัวอย่าง: รูปเป็นชิปเล็กไว้โชว์บนปุ่มเท่านั้น — เข้าแกลเลอรีแล้วขยายเบลอ
+      // (แถมทะลัก 80 รูปจากสีไหม / 26 แถบจากฟอนต์) · ดูรูปเต็มได้จาก chartSrc ในกลุ่มนั้นแทน
+      if (opt.swatchGrid || opt.sampleGrid) continue;
       for (const c of opt.choices ?? []) add(c.imageSrc, `${opt.label}: ${c.name}`, c.videoSrc);
     }
     return list;
@@ -2055,6 +2057,84 @@ export default function ProductDetail({
                         ตัวเลือกนี้ถูกกำหนดอัตโนมัติตามตัวเลือกอื่นที่คุณเลือก เพื่อป้องกันการสั่งผิด
                       </p>
                     </div>
+                  ) : opt.sampleGrid ? (
+                    /*
+                     * ✍️ ตารางแถบตัวอย่าง (เลือกได้อย่างเดียว) — กลุ่มที่ "หน้าตาของตัวอย่าง" คือสาระ
+                     * เช่น ฟอนต์ปัก 26 แบบ: เมนูเลื่อนเห็นแค่รหัส E1/T1 ลูกค้าเดาลายมือไม่ออก
+                     * รูปประจำตัวเลือก = ทั้งบรรทัดตัวอย่าง (แถบยาว) — ในตารางครอปโชว์ครึ่งซ้าย
+                     * (object-left) ให้ตัวโตพอเห็นทรง แล้วโชว์เต็มบรรทัดของแบบที่เลือกใต้ตาราง
+                     * ไม่เรียก jumpToImage — แถบตัวอย่างไม่อยู่ในแกลเลอรี (ดู galleryImages)
+                     */
+                    <>
+                      <div className="grid max-h-72 grid-cols-[repeat(auto-fill,minmax(6.5rem,1fr))] gap-1.5 overflow-y-auto rounded-2xl bg-white/70 p-2 ring-1 ring-amber-100">
+                        {opt.choices
+                          .filter((c) => allowed.includes(c.name))
+                          .map((c) => {
+                            const on = effective[opt.label] === c.name;
+                            const short = c.name.split(" ")[0];
+                            return (
+                              <button
+                                key={c.name}
+                                type="button"
+                                role="radio"
+                                aria-checked={on}
+                                title={c.name}
+                                onClick={() => setSelections((s) => ({ ...s, [opt.label]: c.name }))}
+                                className={`flex flex-col items-stretch gap-1 rounded-xl p-1 transition ${
+                                  on ? "bg-amber-400/90 shadow" : "hover:bg-amber-50"
+                                }`}
+                              >
+                                {c.imageSrc ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={c.imageSrc}
+                                    alt={c.name}
+                                    className={`h-9 w-full rounded-lg bg-white object-cover object-left ${
+                                      on ? "ring-2 ring-white" : "ring-1 ring-black/10"
+                                    }`}
+                                    loading="lazy"
+                                  />
+                                ) : (
+                                  <span className="grid h-9 w-full place-items-center rounded-lg bg-stone-100 text-[10px] text-stone-400 ring-1 ring-black/10">
+                                    ?
+                                  </span>
+                                )}
+                                <span
+                                  className={`truncate text-[10px] font-bold leading-none ${on ? "text-white" : "text-stone-500"}`}
+                                >
+                                  {short}
+                                </span>
+                              </button>
+                            );
+                          })}
+                      </div>
+                      {/* 🔍 แถบเต็มบรรทัดของแบบที่เลือกอยู่ + ปุ่มเปิดชาร์ตเต็มใน lightbox */}
+                      {(() => {
+                        const sel = opt.choices.find((c) => c.name === effective[opt.label]);
+                        return (
+                          <div className="mt-1.5 flex items-center gap-2">
+                            {sel?.imageSrc && (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={sel.imageSrc}
+                                alt={sel.name}
+                                className="h-11 min-w-0 flex-1 rounded-xl bg-white object-contain p-1 ring-1 ring-black/10"
+                              />
+                            )}
+                            {sel && <span className="shrink-0 text-[12px] font-bold text-stone-600">{sel.name}</span>}
+                            {opt.chartSrc && (
+                              <button
+                                type="button"
+                                onClick={() => setZoomSrc(opt.chartSrc!)}
+                                className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
+                              >
+                                🔍 ดูชาร์ตเต็ม
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </>
                   ) : opt.display === "dropdown" ? (
                     <div className="flex items-center gap-2">
                       {/* ภาพประจำตัวเลือกที่เลือกอยู่ — เมนูเลื่อนใส่รูปในตัวเลือกไม่ได้ จึงโชว์ไว้ข้าง ๆ
@@ -2273,13 +2353,25 @@ export default function ProductDetail({
                     const fee = groupExtraOf(opt, effective);
                     if (fee <= 0) return null;
                     const per = perSheetOf(product, opt, effective);
+                    const sheetsPer = sheetsPerUnitOf(product, opt, effective);
                     const sheets = sheetCountOf(product, opt, effective, qty);
                     const sheetUnit = opt.sheetFee!.unit ?? "แผ่น";
                     const unit = matrix?.unit ?? "ชิ้น";
                     return (
                       <p className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
                         📄 {opt.label}แบบที่คิดเงิน คิดเป็น<span className="font-bold">ค่าวัสดุต่อ{sheetUnit}</span> ไม่ใช่ต่อ{unit} —
-                        ตอนนี้ 1 {sheetUnit} ได้ <span className="font-bold">{per.toLocaleString("th-TH")} {unit}</span>
+                        {/* งานที่ 1 ชิ้นกินหลายแผ่น (ปฏิทิน 1 เล่ม = 4 A3) พูดกลับด้าน ไม่งั้นอ่านแล้วเหมือนคิดน้อยกว่าจริง */}
+                        {sheetsPer > 1 ? (
+                          <>
+                            {" "}ตอนนี้ 1 {unit} ใช้{" "}
+                            <span className="font-bold">{sheetsPer.toLocaleString("th-TH")} {sheetUnit}</span>
+                          </>
+                        ) : (
+                          <>
+                            {" "}ตอนนี้ 1 {sheetUnit} ได้{" "}
+                            <span className="font-bold">{per.toLocaleString("th-TH")} {unit}</span>
+                          </>
+                        )}
                         {" "}· สั่ง {qty.toLocaleString("th-TH")} {unit} = {sheets.toLocaleString("th-TH")} {sheetUnit} ={" "}
                         <span className="font-bold text-amber-700">{formatPrice(fee * sheets)}</span>
                         {sheets > 1 ? ` (${sheets}×${formatPrice(fee)})` : ""}

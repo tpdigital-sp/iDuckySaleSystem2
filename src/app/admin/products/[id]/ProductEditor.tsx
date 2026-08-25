@@ -71,6 +71,8 @@ type DraftChoice = {
   desc?: string;
   /** 📄 วัสดุ 1 แผ่นทำได้กี่ชิ้น (คู่กับกลุ่มที่คิดค่าธรรมเนียมต่อแผ่น) — ส่งกลับเฉย ๆ */
   perSheet?: number;
+  /** 📄 งาน 1 ชิ้นกินวัสดุกี่แผ่น (ปฏิทิน 1 เล่ม = 4 A3) — ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  sheetsPerUnit?: number;
   /** 📐 ขนาดตัดนี้ได้กี่ชิ้นต่อ 1 หน่วยสั่ง (งานแบ่งแผ่น) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
   piecesPerUnit?: number;
   /** 💰 +฿ ของช่วงสั่งน้อย (ต่ำกว่า extraFromQty) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
@@ -127,7 +129,9 @@ type DraftOption = {
   showWhenAll?: { label: string; choices: string[] }[];
   /** 🎨 โชว์เป็นตารางสวอตช์สีบนหน้าร้าน (กลุ่ม multi ที่ตัวเลือกเยอะ เช่น สีไหม) */
   swatchGrid?: boolean;
-  /** 🔍 รูปตารางสีเต็มของกลุ่มสวอตช์ (เปิดดูขยายจากหน้าร้าน) */
+  /** ✍️ โชว์เป็นตารางแถบตัวอย่างบนหน้าร้าน (กลุ่มเลือกอย่างเดียว เช่น ฟอนต์ปัก) — ส่งกลับเฉย ๆ */
+  sampleGrid?: boolean;
+  /** 🔍 รูปตารางเต็มของกลุ่มสวอตช์/แถบตัวอย่าง (เปิดดูขยายจากหน้าร้าน) */
   chartSrc?: string;
   /** 📝 ข้อความกำกับใต้ชื่อกลุ่มบนหน้าสินค้า (สเปกที่ลูกค้าเลือกไม่ได้ แต่ควรรู้) */
   note?: string;
@@ -476,6 +480,7 @@ function toDraft(p: Product): Draft {
     options: p.options.map((o) => ({
       label: o.label,
       ...(o.swatchGrid ? { swatchGrid: true } : {}),
+      ...(o.sampleGrid ? { sampleGrid: true } : {}),
       ...(o.chartSrc ? { chartSrc: o.chartSrc } : {}),
       ...(o.note ? { note: o.note } : {}),
       ...(o.extraPerDesign ? { extraPerDesign: true } : {}),
@@ -499,6 +504,7 @@ function toDraft(p: Product): Draft {
         ...(c.badge ? { badge: c.badge } : {}),
         ...(c.desc ? { desc: c.desc } : {}),
         ...(c.perSheet ? { perSheet: c.perSheet } : {}),
+        ...(c.sheetsPerUnit ? { sheetsPerUnit: c.sheetsPerUnit } : {}),
         ...(c.piecesPerUnit ? { piecesPerUnit: c.piecesPerUnit } : {}),
         ...(c.extraBelow ? { extraBelow: c.extraBelow } : {}),
         ...(c.sizeFee ? { sizeFee: c.sizeFee } : {}),
@@ -718,6 +724,8 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
     .map((o) => ({
       label: o.label.trim(),
       ...(o.swatchGrid ? { swatchGrid: true } : {}),
+      // ✍️ ตารางแถบตัวอย่าง (ฟอนต์ปัก) — ไม่มีปุ่มเปิด/ปิดในหน้าแก้ไข ต้องส่งกลับ ไม่งั้นหาย
+      ...(o.sampleGrid ? { sampleGrid: true as const } : {}),
       ...(o.chartSrc ? { chartSrc: o.chartSrc } : {}),
       ...(o.note?.trim() ? { note: o.note.trim() } : {}),
       ...(o.extraPerDesign ? { extraPerDesign: true } : {}),
@@ -759,6 +767,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             ...(c.badge ? { badge: c.badge } : {}),
             ...(c.desc ? { desc: c.desc } : {}),
             ...(c.perSheet ? { perSheet: c.perSheet } : {}),
+            ...(c.sheetsPerUnit ? { sheetsPerUnit: c.sheetsPerUnit } : {}),
             // 📐 ชิ้นต่อหน่วยของงานแบ่งแผ่น (ขนาดตัด A4-A7) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
             ...(c.piecesPerUnit ? { piecesPerUnit: c.piecesPerUnit } : {}),
             ...(c.extraBelow ? { extraBelow: c.extraBelow } : {}),

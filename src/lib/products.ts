@@ -95,6 +95,12 @@ export interface ProductOptionChoice {
    */
   perSheet?: number;
   /**
+   * 📄 เลือกตัวนี้แล้ว งาน 1 ชิ้น "กิน" วัสดุกี่แผ่น — เช่น ปฏิทิน 8 แผ่น ใช้กระดาษ 4 แผ่น A3 ต่อเล่ม
+   * ด้านกลับของ perSheet (ที่เป็นหลายชิ้นต่อ 1 แผ่น) · ใช้คู่กับกลุ่มที่ตั้ง ProductOption.sheetFee เหมือนกัน
+   * ไม่ตั้ง = 1 แผ่นต่อชิ้น · ใส่พร้อม perSheet ได้ (จำนวนแผ่น = ⌈จำนวน × แผ่นต่อชิ้น ÷ ชิ้นต่อแผ่น⌉)
+   */
+  sheetsPerUnit?: number;
+  /**
    * 📐 เลือกขนาดตัดนี้แล้ว 1 หน่วยที่สั่งได้งานกี่ชิ้น — งาน "แบ่งแผ่น" เช่น ขนาดตัด A5 = 4 ชิ้น / แผ่น A3
    * ใช้สรุปให้ลูกค้าว่าสั่งกี่หน่วยแล้วได้งานกี่ชิ้น (ดู unitYieldOf) — ตัวเลขบอกทางเฉย ๆ
    * ไม่มีผลกับราคา/โควตาคละลาย/ตะกร้า (คนละตัวกับ perUnit ที่เป็นเพดานจำนวนลาย)
@@ -244,8 +250,16 @@ export interface ProductOption {
    */
   swatchGrid?: boolean;
   /**
-   * 🔍 รูป "ตารางสีเต็ม" ของกลุ่มสวอตช์ — ลูกค้ากดดูสีขยาย/เทียบทุกเบอร์ในรูปเดียว
-   * (สวอตช์บนปุ่มเป็นชิปเล็ก ขยายแล้วเบลอ — รูปนี้คือไฟล์ความละเอียดเต็มไว้เปิด lightbox)
+   * ✍️ แสดงกลุ่ม "เลือกได้อย่างเดียว" เป็น "ตารางแถบตัวอย่าง" — รูปแถบยาว + รหัสใต้ภาพ เรียงตาราง
+   * ใช้กับกลุ่มที่หน้าตาของตัวอย่างคือสาระหลักและตัวเลือกเยอะ (เช่น ฟอนต์ปัก 26 แบบ)
+   * รูปประจำตัวเลือกคือ "ทั้งบรรทัดตัวอย่าง" — ในตารางโชว์ครึ่งซ้าย (ตัวโตพอเห็นทรง)
+   * แล้วโชว์เต็มบรรทัดของแบบที่เลือกไว้ใต้ตาราง · คู่กับ chartSrc ให้กดดูชาร์ตเต็มได้
+   * ทับค่า display บนหน้าร้าน (ตั้ง display เป็นเมนูเลื่อนไว้เป็นทรงสำรองได้) · ไม่เข้าแกลเลอรี
+   */
+  sampleGrid?: boolean;
+  /**
+   * 🔍 รูป "ตารางเต็ม" ของกลุ่มสวอตช์/แถบตัวอย่าง — ลูกค้ากดดูขยาย/เทียบทุกแบบในรูปเดียว
+   * (ชิปบนปุ่มเป็นรูปเล็ก ขยายแล้วเบลอ — รูปนี้คือไฟล์ความละเอียดเต็มไว้เปิด lightbox)
    */
   chartSrc?: string;
   /**
@@ -262,8 +276,10 @@ export interface ProductOption {
   extraPerDesign?: boolean;
   /**
    * 📄 +฿ ของกลุ่มนี้คิด "ต่อแผ่นวัสดุ" ไม่ใช่ต่อชิ้น — เช่น ค่าฟิล์มเคลือบพิเศษคิดต่อแผ่น A3
-   * จำนวนแผ่น = ⌈จำนวนที่สั่ง ÷ ชิ้นต่อแผ่น⌉ · ชิ้นต่อแผ่นมาจาก perSheet ของตัวเลือกที่เลือกในกลุ่ม from
+   * จำนวนแผ่น = ⌈จำนวนที่สั่ง × แผ่นต่อชิ้น ÷ ชิ้นต่อแผ่น⌉ — ทั้งสองค่ามาจากตัวเลือกที่เลือกในกลุ่ม from
+   * (ชิ้นต่อแผ่น = perSheet · แผ่นต่อชิ้น = sheetsPerUnit · ไม่ตั้ง = 1 ทั้งคู่)
    * เช่น สมุด A5 (4 เล่ม/แผ่น) สั่ง 5 เล่ม = 2 แผ่น = ค่าฟิล์ม ×2
+   * เช่น ปฏิทิน 8 แผ่น (4 A3/เล่ม) สั่ง 5 เล่ม = 20 แผ่น = ค่าฟิล์ม ×20
    * เงินส่วนนี้ไปโผล่ใน designFeeFor (ค่าเพิ่มทั้งรายการ) เหมือน extraPerDesign ไม่เข้าราคา/ชิ้น
    */
   sheetFee?: {
@@ -1307,15 +1323,34 @@ export function perDesignExtraOf(product: Product, selections: Record<string, st
  * อ่านไม่ได้/ไม่ได้ตั้ง = 1 ชิ้นต่อแผ่น (คิดค่าฟิล์มทุกชิ้น — ปลอดภัยกว่าคิดขาด)
  */
 export function perSheetOf(product: Product, opt: ProductOption, selections: Record<string, string>): number {
+  return sheetNumberOf(product, opt, selections, "perSheet");
+}
+
+/**
+ * 📄 แผ่นวัสดุที่งาน 1 ชิ้นกิน ของกลุ่มที่ sheetFee อ้างถึง — เช่น ปฏิทิน 8 แผ่น = 4 แผ่น A3 ต่อเล่ม
+ * อ่านไม่ได้/ไม่ได้ตั้ง = 1 แผ่นต่อชิ้น (พฤติกรรมเดิมก่อนมีฟิลด์นี้)
+ */
+export function sheetsPerUnitOf(product: Product, opt: ProductOption, selections: Record<string, string>): number {
+  return sheetNumberOf(product, opt, selections, "sheetsPerUnit");
+}
+
+/** อ่านตัวเลขแผ่นวัสดุ (perSheet / sheetsPerUnit) จากตัวเลือกที่เลือกอยู่ในกลุ่ม sheetFee.from */
+function sheetNumberOf(
+  product: Product,
+  opt: ProductOption,
+  selections: Record<string, string>,
+  field: "perSheet" | "sheetsPerUnit"
+): number {
   const src = product.options?.find((o) => o.label === opt.sheetFee?.from);
   const picked = src ? selections[src.label] : undefined;
-  const n = src?.choices.find((c) => c.name === picked)?.perSheet;
+  const n = src?.choices.find((c) => c.name === picked)?.[field];
   return Number.isFinite(n) && (n as number) >= 1 ? Math.floor(n as number) : 1;
 }
 
-/** 📄 จำนวนแผ่นวัสดุที่ต้องใช้ของกลุ่มนี้ — ⌈จำนวนที่สั่ง ÷ ชิ้นต่อแผ่น⌉ (อย่างน้อย 1 แผ่น) */
+/** 📄 จำนวนแผ่นวัสดุที่ต้องใช้ของกลุ่มนี้ — ⌈จำนวนที่สั่ง × แผ่นต่อชิ้น ÷ ชิ้นต่อแผ่น⌉ (อย่างน้อย 1 แผ่น) */
 export function sheetCountOf(product: Product, opt: ProductOption, selections: Record<string, string>, qty: number): number {
-  return Math.max(1, Math.ceil(Math.max(1, qty) / perSheetOf(product, opt, selections)));
+  const sheets = (Math.max(1, qty) * sheetsPerUnitOf(product, opt, selections)) / perSheetOf(product, opt, selections);
+  return Math.max(1, Math.ceil(sheets));
 }
 
 /**
