@@ -17,11 +17,17 @@
  *
  * ⚠️ กลุ่มตัวเลือกเดิมชื่อ "ขนาด" (นำเข้าจาก Wix) ถูกถอดออก — แบบสินค้าย้ายไปอยู่ที่เรทราคาแทน
  *    ตารางบนสุด (pricing) = เรทแรก คอลัมน์เดียว ไม่มี driver · สินค้ายังเป็นร่าง ไม่มีตะกร้าค้าง
+ *
+ * ช่องระบุขนาดชิ้นงาน (ผู้ใช้สั่ง 25 ส.ค. 69 — "จะต้องระบุขนาด" ตามภาพ pricelist):
+ *   เริ่มต้นที่ขนาด 3×3 cm ทั้งสองเรท · ช่องกรอก กว้าง/สูง แบบ standardInput (ข้อมูลประกอบ
+ *   ของงานปกติ ราคายังคิดต่อแผ่น A3 ตามตารางเดิม) + sheetYield โชว์จำนวนชิ้นโดยประมาณต่อแผ่น
+ *   พื้นที่วางจริงชุดเดียวกับสติ๊กเกอร์ไดคัท (Print-Fit: 43.76×28.89 ช่องไฟ 0.5)
+ *   กติกาจากเว็บ: ไดคัท 100% ขนาดเดียวกันทั้งแผ่น A3 · SET-KIT 1 pattern ต่อ 1 A3 คละขนาด/ลายได้
  * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคชไว้) — ชุดนี้ลงท้าย v1 ครั้งหน้าขึ้น v2
  */
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
-import { hasQuoteOption, priceRange, type PriceMatrix, type Product } from "../src/lib/products";
+import { hasQuoteOption, priceRange, type PriceMatrix, type Product, type ProductOption } from "../src/lib/products";
 
 const WRITE = process.argv.includes("--write");
 
@@ -42,6 +48,11 @@ const SECTION = "แม่เหล็กติดตู้เย็น";
 const UNIT = "แผ่น A3";
 const DIECUT = "ไดคัท 100%";
 const SETKIT = "SET-KIT";
+const SIZE_MIN = 3; // เริ่มต้นที่ขนาด 3×3 cm (ตามหน้า pricelist ทั้งสองแบบ)
+const SIZE_W_LABEL = "ขนาดชิ้นงาน (กว้าง)";
+const SIZE_H_LABEL = "ขนาดชิ้นงาน (สูง)";
+/** พื้นที่วางชิ้นงานจริงต่อแผ่น A3 — ชุดเดียวกับสติ๊กเกอร์ไดคัท (Print-Fit ของร้าน) */
+const SHEET = { sheetW: 43.76, sheetH: 28.89, gap: 0.5, sheetName: UNIT };
 
 const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const url = (file: string) => `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/${file}`;
@@ -127,6 +138,30 @@ for (const [style, [name, wixId]] of Object.entries(STYLE_ART)) art[style] = awa
 console.log(`🖼  ภาพประจำเรท ${Object.keys(art).length} ภาพ (แกลเลอรีหน้าสินค้าดูดเข้าไปเอง)`);
 
 /* ── 3. ประกอบสินค้า (อัปเดตของเดิม — คงแท็บ/แกลเลอรี/ลำดับ/สถานะร่างไว้) ── */
+/**
+ * ช่องระบุขนาดชิ้นงาน — standardInput = ข้อมูลประกอบของงานปกติ (ไม่ใช่งานตีราคา
+ * ราคายังคิดต่อแผ่น A3 ตามตาราง) · min กันลูกค้ากรอกต่ำกว่าขนาดเริ่มต้น 3×3 cm
+ * กลุ่ม "สูง" ตั้ง sheetYield → โชว์จำนวนชิ้นโดยประมาณต่อแผ่น A3 ใต้ช่องกรอก
+ */
+const OPTIONS: ProductOption[] = [
+  {
+    label: SIZE_W_LABEL,
+    choices: [],
+    display: "input",
+    standardInput: true,
+    note: `เริ่มต้นที่ขนาด ${SIZE_MIN}×${SIZE_MIN} ซม. · ${DIECUT} ใช้ขนาดเดียวกันทั้งแผ่น A3 · ${SETKIT} 1 pattern ต่อ 1 A3 คละขนาด/ลายได้`,
+    input: { kind: "number", unit: "ซม.", min: SIZE_MIN, max: 42, placeholder: "เช่น 3", hint: "ขนาดชิ้นหลังไดคัท วัดด้านที่กว้างที่สุด" },
+  },
+  {
+    label: SIZE_H_LABEL,
+    choices: [],
+    display: "input",
+    standardInput: true,
+    input: { kind: "number", unit: "ซม.", min: SIZE_MIN, max: 42, placeholder: "เช่น 3" },
+    sheetYield: { pairLabel: SIZE_W_LABEL, ...SHEET },
+  },
+];
+
 const { data: row, error: readErr } = await sb.from("products").select("*").eq("id", ID).single();
 if (readErr || !row) throw new Error(`อ่านสินค้า ${ID} ไม่ได้: ${readErr?.message ?? "ไม่พบ"}`);
 const old = row.data as Product;
@@ -136,26 +171,31 @@ const product: Product = {
   price: cells[DIECUT][0],
   description:
     "แม่เหล็กติดตู้เย็น พิมพ์ลายตามสั่ง วัสดุ PET+Magnet ไม่ฉีกขาด ทนทานสูง เปียกน้ำ/โดนน้ำได้ ไม่ทิ้งคราบกาว " +
-    `เลือกได้ 2 แบบ — ${DIECUT} ตัดขาดเป็นชิ้น ๆ พร้อมใช้ หรือ ${SETKIT} ตัดขาดเป็นชิ้น ๆ พร้อมกรอบและแผ่นรองหลัง — ขายเป็นแผ่น A3 ราคาปรับตามจำนวน`,
+    `เลือกได้ 2 แบบ — ${DIECUT} ตัดขาดเป็นชิ้น ๆ พร้อมใช้ หรือ ${SETKIT} ตัดขาดเป็นชิ้น ๆ พร้อมกรอบและแผ่นรองหลัง — ` +
+    `ระบุขนาดที่ต้องการได้ เริ่มต้นที่ ${SIZE_MIN}×${SIZE_MIN} ซม. ขายเป็นแผ่น A3 ราคาปรับตามจำนวน`,
   highlights: [
     `2 แบบ: ${DIECUT} · ${SETKIT} (มีกรอบ+แผ่นรองหลัง)`,
-    "PET+Magnet ไม่ฉีกขาด เปียกน้ำได้ ไม่ทิ้งคราบกาว",
+    `ระบุขนาดเองได้ เริ่มต้นที่ ${SIZE_MIN}×${SIZE_MIN} ซม.`,
     `ขายเป็นแผ่น A3 เริ่มแผ่นละ ${cells[DIECUT][0]} บาท`,
   ],
-  options: [], // แบบสินค้าย้ายไปอยู่ที่เรทราคา — ไม่เหลือกลุ่มตัวเลือก
+  options: OPTIONS, // ช่องระบุขนาด (แบบสินค้ายังอยู่ที่เรทราคาเหมือนเดิม)
   pricing: rateMatrix(DIECUT), // ตารางบนสุด = เรทแรก (โครงเดียวกับหมวก)
   priceRates: [
     {
       id: "r1",
       label: DIECUT,
-      desc: "ตัดขาดเป็นชิ้น ๆ พร้อมติดตู้เย็นได้เลย — วัสดุ PET+Magnet ไม่ฉีกขาด เปียกน้ำได้ ไม่ทิ้งคราบกาว",
+      desc:
+        `ตัดขาดเป็นชิ้น ๆ พร้อมติดตู้เย็นได้เลย — เริ่มต้นที่ขนาด ${SIZE_MIN}×${SIZE_MIN} ซม. ` +
+        "ขนาดเดียวกันทั้งแผ่น A3 · วัสดุ PET+Magnet ไม่ฉีกขาด เปียกน้ำได้ ไม่ทิ้งคราบกาว",
       imageSrc: art[DIECUT],
       pricing: rateMatrix(DIECUT),
     },
     {
       id: "setkit",
       label: SETKIT,
-      desc: "ตัดขาดเป็นชิ้น ๆ + กรอบ + แผ่นรองหลัง ครบเป็นชุด เหมาะทำของขวัญ/ของพรีเมียม",
+      desc:
+        `ตัดขาดเป็นชิ้น ๆ + กรอบ + แผ่นรองหลัง ครบเป็นชุด เหมาะทำของขวัญ/ของพรีเมียม — ` +
+        `เริ่มต้นที่ขนาด ${SIZE_MIN}×${SIZE_MIN} ซม. · 1 pattern ต่อ 1 A3 คละขนาด/ลายได้`,
       imageSrc: art[SETKIT],
       pricing: rateMatrix(SETKIT),
     },
@@ -163,6 +203,8 @@ const product: Product = {
   terms: [
     `*ราคาในตารางเป็นราคาต่อแผ่น A3`,
     `*${DIECUT} = แบบตัดขาดเป็นชิ้น ๆ · ${SETKIT} = แบบตัดขาดเป็นชิ้น ๆ + กรอบ + แผ่นรองหลัง`,
+    `*เริ่มต้นที่ขนาด ${SIZE_MIN}×${SIZE_MIN} cm — ระบุขนาดที่ต้องการตอนสั่ง`,
+    `*${DIECUT} ขนาดเดียวกันทั้งแผ่น A3 · ${SETKIT} 1 pattern ต่อ 1 A3 (1 pattern คละขนาด/ลายได้)`,
     "*วัสดุ PET+Magnet ไม่ฉีกขาด มีความทนทานสูง เปียกน้ำได้ โดนน้ำได้ ไม่ทิ้งคราบกาว",
     "*ทางร้านใช้สี R G B สีงานสกรีนที่ได้ออกมาอาจจะมีสีที่สว่างกว่าหรือดรอปลง ตามความแตกต่างของไฟล์งาน +-5% ถึง +-15%",
   ].join("\n"),
@@ -180,6 +222,7 @@ const saved: Product = {
 console.log(`\n📦 ${saved.name} (${ID}) · หมวด ${saved.category}`);
 console.log(`   ราคา ฿${range.min}-${range.max}/${UNIT} (เริ่มต้น ฿${saved.price})`);
 console.log(`   เรทราคา: ${saved.priceRates!.map((r) => r.label).join(" · ")} (มีภาพ+คำอธิบายครบ)`);
+console.log(`   ช่องกรอกขนาด: ${OPTIONS.map((o) => o.label).join(" · ")} (เริ่มต้น ${SIZE_MIN}×${SIZE_MIN} ซม. + จำนวนชิ้นต่อแผ่น A3)`);
 console.log(`   สถานะ: ${saved.hidden ? "ฉบับร่าง (คงเดิม)" : "เผยแพร่อยู่"} · แกลเลอรี ${saved.images?.length ?? 0} ภาพ (เดิม)`);
 
 if (!WRITE) {
