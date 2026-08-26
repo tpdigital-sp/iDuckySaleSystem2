@@ -1740,15 +1740,16 @@ export default function ProductDetail({
               /**
                * 🔽 กลุ่มของเสริมที่ปิดไว้ก่อน (collapsible) — ปิดอยู่โชว์แค่แถวสวิตช์บรรทัดเดียว
                * ปิดกลับ = เด้งค่ากลับตัวเลือกแรก (ตัวไม่คิดเงิน) ลูกค้าจะได้ไม่ค้างค่าที่มองไม่เห็น
+               * กลุ่มติ๊กหลายอย่าง (multi) ปิดกลับ = ล้างที่ติ๊กทั้งหมด (ไม่ติ๊ก = ไม่คิดเงินอยู่แล้ว)
                */
-              const addOn = !!opt.collapsible && !multi && !isInput;
+              const addOn = !!opt.collapsible && !isInput;
               const addOnOpen = !!openAddOns[opt.label];
               const addOnFirst = opt.choices[0]?.name ?? "";
               const toggleAddOn = () =>
                 setOpenAddOns((s) => {
                   const next = !s[opt.label];
-                  // ปิดสวิตช์ = เด้งกลับตัวเลือกแรก (ตัวไม่คิดเงิน) กันค่าค้างที่ลูกค้ามองไม่เห็นแล้วโดนคิดเงิน
-                  if (!next) setSelections((sel) => ({ ...sel, [opt.label]: addOnFirst }));
+                  // ปิดสวิตช์ = เด้งกลับตัวเลือกแรก/ล้างที่ติ๊ก กันค่าค้างที่ลูกค้ามองไม่เห็นแล้วโดนคิดเงิน
+                  if (!next) setSelections((sel) => ({ ...sel, [opt.label]: multi ? "" : addOnFirst }));
                   return { ...s, [opt.label]: next };
                 });
               return (
@@ -1779,8 +1780,17 @@ export default function ProductDetail({
                       <span className="min-w-0 flex-1">
                         <span className="block text-[13px] font-bold text-stone-700">
                           {opt.label}
-                          {addOnOpen && effective[opt.label] !== addOnFirst && (
-                            <span className="ml-1.5 font-semibold text-amber-600">{effective[opt.label]}</span>
+                          {addOnOpen && (multi ? picks.length > 0 : effective[opt.label] !== addOnFirst) && (
+                            <span className="ml-1.5 font-semibold text-amber-600">
+                              {multi
+                                ? picks
+                                    .map((p) => {
+                                      const u = choiceQtyUnit(opt, p.name);
+                                      return formatMultiPick(p.name, p.qty) + (u && p.qty > 1 ? ` ${u}` : "");
+                                    })
+                                    .join(", ")
+                                : effective[opt.label]}
+                            </span>
                           )}
                         </span>
                         {!addOnOpen && (
