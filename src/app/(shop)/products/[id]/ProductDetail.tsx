@@ -22,8 +22,11 @@ import {
   needsQuote,
   parseInputValue,
   inputFeeOf,
+  inputFeeQuotaOf,
   inputFeeRateOf,
   customUnitPrice,
+  customSizeError,
+  longestSizePlan,
   customKeepsOption,
   adminProductPath,
   DESIGN_LABEL,
@@ -54,6 +57,7 @@ import {
   RATE_LABEL,
   resolveSelections,
   choiceBadgeOf,
+  unitPieceCountOf,
   sizeFeeBreakdownOf,
   shortComboParts,
   smallQtyFeeOf,
@@ -694,23 +698,26 @@ export default function ProductDetail({
    * ใช้สรุปให้ลูกค้าว่า "สั่ง 10 แผ่น A3 ขนาดตัด A5 = ได้ 40 ชิ้น" · ไม่เกี่ยวกับราคา
    */
   const unitYield = useMemo(() => unitYieldOf(product, effective), [product, effective]);
+  // 🧮 สินค้าหลายชิ้นต่อหน่วย (pieceCountLabel — พวงละหลายชิ้น): เกณฑ์ลาย/เรทนับจาก "จำนวนชิ้นรวม"
+  // = จำนวนหน่วยที่สั่ง × ชิ้นต่อหน่วย (สินค้าปกติ = 1 เท่าเดิม) · หน่วยในข้อความเกณฑ์พวกนี้ = ชิ้น
+  const pieceQty = qty * unitPieceCountOf(product, effective);
   // ลายที่รวมในราคาตามจำนวนที่สั่ง · เรทที่เปิด extraDesignFee คละเกินได้ (จ่ายเพิ่มต่อลาย ไม่เกินจำนวนชิ้น)
   // ส่ง unitCap ไปด้วยเสมอ — สินค้าขายเป็นเซ็ต โควตาช่วงคละอิสระต้องนับเป็นชิ้น ไม่ใช่จำนวนเซ็ต
-  const included = rate?.minPerDesign ? includedDesigns(rate, qty, unitCap ?? 1) : 0;
+  const included = rate?.minPerDesign ? includedDesigns(rate, pieceQty, unitCap ?? 1) : 0;
   // สินค้าที่คิดเรทตามชิ้นต่อลาย: คละได้ถึงจำนวนชิ้นเสมอ (เกินโควตาเรท = ราคาปรับเป็นเรทต่อลายเอง ไม่บล็อก)
   const maxDesignsRaw = mixRule
     ? // ช่วงที่ยังไม่ถึงเกณฑ์ "1 ลาย/หน่วย" คละได้ไม่จำกัด (หลายลายอยู่บนแผ่นเดียวกันได้)
       // = Infinity → ช่อง +/− ต้องมีเพดานที่จับต้องได้ เลยตั้งเพดานใช้งานจริงไว้ 99 ลาย
       // ส่วนช่วงที่บังคับ 1 ลาย/หน่วย เพดาน = จำนวนที่สั่ง ซึ่งเป็นเลขจริง ห้ามเอา 99 ไปกดทับ
       // (เคยพลาด: สั่ง 100 เซ็ต ควรคละได้ 100 ลาย แต่โดนตัดเหลือ 99)
-      Math.max(1, finiteOr(mixMaxDesigns(mixRule, qty), 99))
+      Math.max(1, finiteOr(mixMaxDesigns(mixRule, pieceQty), 99))
     : // 🔒 สินค้าที่ล็อกโควตาไว้ (ขั้นต่ำต่อลายเป็นข้อจำกัดการผลิตจริง) — ตันที่โควตาของเรท ไม่ปล่อยให้เลยไปเรทต่อลาย
       hardMaxDesigns && rate?.minPerDesign
-      ? maxDesignsFor(rate, qty, unitCap ?? 1)
+      ? maxDesignsFor(rate, pieceQty, unitCap ?? 1)
       : tierByDesign
-        ? qty
+        ? pieceQty
         : rate?.minPerDesign
-          ? maxDesignsFor(rate, qty, unitCap ?? 1)
+          ? maxDesignsFor(rate, pieceQty, unitCap ?? 1)
           : 0;
   // เพดานจากจำนวนชิ้นที่ใส่ได้จริง ทับกติกาอื่นเสมอ — ใส่ไม่ลงแผ่นก็ผลิตไม่ได้
   const maxDesigns = maxDesignsRaw > 0 ? Math.max(1, Math.min(maxDesignsRaw, capByPieces)) : maxDesignsRaw;
@@ -719,7 +726,7 @@ export default function ProductDetail({
   const designsSet = designsTouched || artFiles.length > 0 || maxDesigns <= 1;
   /** สินค้านี้มีระบบจำนวนลาย → ลูกค้าต้องระบุจำนวนลายก่อนสั่ง */
   const needDesignsChoice = ((rate?.minPerDesign ?? 0) > 0 || tierByDesign || !!mixRule) && maxDesigns >= 1;
-  const freeMix = !!rate && rate.minPerDesign != null && isFreeMix(rate, qty);
+  const freeMix = !!rate && rate.minPerDesign != null && isFreeMix(rate, pieceQty);
   useEffect(() => {
     if (maxDesigns > 0) setDesigns((d) => Math.min(Math.max(1, d), maxDesigns));
   }, [maxDesigns]);
@@ -786,7 +793,7 @@ export default function ProductDetail({
       const needDesigns = designsTouched ? designs : Math.max(artFiles.length, 1);
       const fitsDesigns = (r: (typeof rates)[number]) => {
         if (!r.minPerDesign) return true;
-        return maxDesignsFor(r, qty, unitCap ?? 1) >= needDesigns;
+        return maxDesignsFor(r, pieceQty, unitCap ?? 1) >= needDesigns;
       };
       /**
        * เรทนี้ยังขายตัวเลือกที่ลูกค้าเลือกอยู่ไหม (เช่น เรท 2 ไม่มีตาราง 1mm)
@@ -797,7 +804,7 @@ export default function ProductDetail({
           const chosen = effective[label];
           return !chosen || matrixChoiceAvailable(r.pricing, label, chosen);
         });
-      const qualified = rates.filter((r) => qty >= (r.minQty ?? 1));
+      const qualified = rates.filter((r) => pieceQty >= (r.minQty ?? 1));
       if (!rateTouched) {
         let best: (typeof rates)[number] | undefined;
         const pick = (list: typeof rates, sorter: (a: (typeof rates)[number], b: (typeof rates)[number]) => number) => {
@@ -834,7 +841,7 @@ export default function ProductDetail({
       if (rate && fitsDesigns(rate) && rates.every(fitsDesigns)) setAutoRateNote("");
     }, 450);
     return () => clearTimeout(t);
-  }, [qty, rates, rateTouched, designs, designsTouched, artFiles.length, rate, effective, unitCap]);
+  }, [qty, pieceQty, rates, rateTouched, designs, designsTouched, artFiles.length, rate, effective, unitCap]);
 
   const custom = product.custom?.enabled ? product.custom : null;
   const cW = parseFloat(customW), cH = parseFloat(customH);
@@ -842,24 +849,48 @@ export default function ProductDetail({
   const customChat = custom?.mode === "chat";
   /** โหมดที่ยังไม่รู้ราคาตอนสั่ง (แอดมินตีให้ทีหลัง) */
   const customAsk = custom?.mode === "quote" || customChat;
+  /**
+   * 📐 โหมดที่ "ราคายังคิดจากตารางเรทปกติ" — ระบุขนาดเฉย ๆ (size) และอิงด้านที่ยาวที่สุด (longest)
+   * ต่างจาก area/quote/chat ที่ราคาไม่อิงตาราง จึงต้องคลุมตาราง/ขึ้นข้อความเตือนคนละแบบ
+   */
+  const customUsesMatrix = custom?.mode === "size" || custom?.mode === "longest";
   const customValid = useCustom && (customChat || (cW > 0 && cH > 0));
-  // ราคา custom: area = คำนวณจากพื้นที่ · quote/chat = ยังไม่รู้ราคา · size = ใช้ราคาตามตารางปกติ
+  // ราคา custom: area = คำนวณจากพื้นที่ · quote/chat = ยังไม่รู้ราคา · size/longest = ใช้ราคาตามตารางปกติ
   const customPrice = custom && customValid && custom.mode === "area" ? customUnitPrice(custom, cW, cH) : 0;
+  /** ขนาดที่กรอกเกินที่รับผลิตได้ (เช่น ใหญ่กว่า A3) — มีค่า = กดสั่งไม่ได้ */
+  const customSizeErr = useCustom && customValid && !customChat ? customSizeError(custom, cW, cH) : null;
 
+  /**
+   * 📐 ขนาดที่กรอกต้องติดไปกับ selections ตอนคิดราคาด้วย (โหมด longest)
+   * ไม่งั้นหน้าสินค้าจะโชว์ราคาแถวขนาดที่เลือกค้างไว้ ไม่ใช่แถวที่ครอบขนาดจริงที่ลูกค้ากรอก
+   */
+  const pricingSelections = useMemo(() => {
+    if (!useCustom || custom?.mode !== "longest" || !(cW > 0 && cH > 0)) return effectiveWithDesigns;
+    return { ...effectiveWithDesigns, [custom.label]: `${cW}×${cH} ${custom.unit}` };
+  }, [effectiveWithDesigns, useCustom, custom, cW, cH]);
   const baseUnitPrice = useMemo(
-    () => unitPriceFor(product, effectiveWithDesigns, qty),
-    [product, effectiveWithDesigns, qty]
+    () => unitPriceFor(product, pricingSelections, qty),
+    [product, pricingSelections, qty]
   );
-  // โหมด "size" ลูกค้าแค่ระบุขนาด — ราคายังคิดจากตารางปกติ · โหมดอื่นใช้ราคาของงานกำหนดเอง
-  const unitPrice = useCustom && custom?.mode !== "size" ? customPrice : baseUnitPrice;
+  /** ที่มาของราคาโหมด longest — เอาไว้กางให้ลูกค้าเห็นว่าคิดจากแถวไหน + ส่วนเกินกี่บาท */
+  const longestPlan = useMemo(
+    () => (useCustom && custom?.mode === "longest" ? longestSizePlan(product, pricingSelections) : null),
+    [product, pricingSelections, useCustom, custom]
+  );
+  // โหมด size/longest ราคายังคิดจากตารางปกติ · โหมดอื่นใช้ราคาของงานกำหนดเอง
+  const unitPrice = useCustom && !customUsesMatrix ? customPrice : baseUnitPrice;
 
   /**
    * 🧮 ในตะกร้ามีสินค้าตัวนี้อยู่แล้วไหม — บอกลูกค้าตั้งแต่หน้าสินค้าว่าจำนวนที่กำลังเลือก
    * จะถูกคิดรวมกับของในตะกร้าเป็นล็อตเดียว (เรทตามยอดรวม) ไม่ต้องเข้าไปดูในตะกร้าก่อน
    */
   const lotPreview = useMemo(
-    () => (useCustom ? undefined : lotPreviewFor(product, cartItems, effectiveWithDesigns, qty, designs)),
-    [product, cartItems, effectiveWithDesigns, qty, designs, useCustom]
+    // โหมดที่ราคายังมาจากตารางเรท (size/longest) เข้าล็อตรวมกับบรรทัดอื่นได้ตามปกติ — โหมดอื่นไม่เข้าล็อต
+    () =>
+      useCustom && !customUsesMatrix
+        ? undefined
+        : lotPreviewFor(product, cartItems, pricingSelections, qty, designs),
+    [product, cartItems, pricingSelections, qty, designs, useCustom, customUsesMatrix]
   );
 
   /**
@@ -886,6 +917,8 @@ export default function ProductDetail({
 
   // ตารางราคาที่ใช้อยู่ (ตามเรทที่เลือก — สินค้าเรทเดียวคือ pricing เดิม)
   const matrix = useMemo(() => activeMatrix(product, effective), [product, effective]);
+  // หน่วยของ "เกณฑ์ต่อลาย/ขั้นต่ำเรท" — สินค้าหลายชิ้นต่อหน่วย (พวงละหลายชิ้น) เกณฑ์พวกนี้นับเป็นชิ้น ไม่ใช่พวง
+  const pieceUnit = product.pieceCountLabel ? "ชิ้น" : (matrix?.unit ?? "ชิ้น");
   /**
    * 📐 จำนวนงานรวมที่ได้จากจำนวนที่สั่งอยู่ตอนนี้ (เช่น 10 แผ่น A3 ตัด A5 = 40 ชิ้น)
    * null = ยังไม่รู้ หรือคูณไม่ได้เพราะหน่วยที่นับไม่ใช่หน่วยขาย
@@ -1436,8 +1469,9 @@ export default function ProductDetail({
   // สั่งถึงเกณฑ์จำนวนมากไหม (ตั้งต่อสินค้าได้ในหลังบ้าน)
   const bulkAsk = needsStockCheck(product, qty);
 
-  // 💬 งานที่ต้องคุยลายกับแอดมินก่อน (งานปัก ฯลฯ) — ตั้งต่อสินค้าในหลังบ้าน
-  const consult = artworkConsultOf(product);
+  // 💬 งานที่ต้องคุยลายกับแอดมินก่อน (งานปัก ฯลฯ) — ตั้งได้ 3 ระดับ: ทั้งสินค้า / เรทที่เลือก / ตัวเลือกที่เลือก
+  // (หมวก-เสื้อ: เลือกเรท "งานปัก" หรือแบบปักในกลุ่มตัวเลือก ถึงจะขึ้นกล่องนี้ · เลือกงานพิมพ์สั่งได้เลย)
+  const consult = artworkConsultOf(product, effective, rate);
   // โหมดออกแบบบนเว็บ/โหมดแอดมินสั่งแทน = คุยกันอยู่แล้ว ไม่ต้องกั้นซ้ำ
   const consultGate = !!consult && consult.block !== false && !studioMode && !staffOrdering;
   const consultBlocked = consultGate && !consultOk;
@@ -1523,7 +1557,7 @@ export default function ProductDetail({
     // จำนวนลายที่คละ (เรทที่มีระบบลาย / สินค้าคิดเรทตามชิ้นต่อลาย) — เก็บเป็นตัวเลือกให้เห็นในตะกร้า/ออเดอร์
     if ((rate?.minPerDesign || tierByDesign || mixRule) && designs >= 1) extra[DESIGN_LABEL] = `${designs} ลาย`;
     if (useCustom) {
-      if (!custom || !customValid) return; // ต้องกรอกขนาดให้ครบก่อน
+      if (!custom || !customValid || customSizeErr) return; // ต้องกรอกขนาดให้ครบ + ไม่เกินที่รับผลิตได้
       // เก็บขนาดที่ระบุลง selections (เป็น key ของตะกร้า + ใช้คิดราคาซ้ำ)
       // + กลุ่มตัวเลือกที่แอดมินเปิดให้เลือกต่อได้ (keepOptions) ติดไปกับออเดอร์ด้วย
       const kept = Object.fromEntries(
@@ -1801,11 +1835,12 @@ export default function ProductDetail({
                         {!addOnOpen && (
                           <span className="mt-0.5 block text-[11px] leading-snug text-stone-500">
                             {/* ปิดอยู่ = ยังไม่คิดเงิน บอกช่วงราคาไว้ให้ตัดสินใจว่าจะเปิดดูไหม
-                                ใช้ choiceBadgeOf ตัวเดียวกับป้าย +฿ ตอนกางออก จะได้ไม่บอกเลขเรทส่ง
-                                ให้คนที่สั่งช่วงปลีกอ่าน (กลุ่มที่ตั้ง extraFromQty เลขสองช่วงไม่เท่ากัน) */}
+                                คิดด้วย groupAddOf ทีละตัวเลือก = ยอดที่คิดจริงถ้าเลือกตัวนั้นที่จำนวนนี้
+                                (ไม่บอกเลขเรทส่งให้คนสั่งช่วงปลีกอ่าน · กลุ่มที่มีค่าเหมาช่วงสั่งน้อยก็ได้เลขเหมา
+                                ไม่ใช่เลขเรทที่ยังไม่ถึง) */}
                             {(() => {
                               const fees = opt.choices
-                                .map((c) => choiceBadgeOf(opt, effective, c.name, feeQty))
+                                .map((c) => groupAddOf(opt, { ...effective, [opt.label]: c.name }, feeQty))
                                 .filter((n) => n > 0)
                                 .sort((a, b) => a - b);
                               return fees.length
@@ -1950,13 +1985,26 @@ export default function ProductDetail({
                           })()}
                           {/* 💰 ค่าบริการที่คิดจากค่าที่กรอก (เช่น เพิ่มขนาดนิ้วละ 15) — กางที่มาให้เห็น ไม่งั้นราคาขยับเงียบ ๆ */}
                           {(() => {
-                            const fee = inputFeeOf(opt, effective);
-                            if (!fee) return null;
-                            const rate = inputFeeRateOf(opt.inputFee!, effective);
+                            if (!opt.inputFee) return null;
                             const n = Number(parseInputValue(opt, effective[opt.label]));
+                            if (!Number.isFinite(n) || n <= 0) return null;
+                            const fee = inputFeeOf(opt, effective);
+                            const rate = inputFeeRateOf(opt.inputFee, effective);
+                            const quota = inputFeeQuotaOf(opt.inputFee, effective);
+                            // 🎁 มีโควตาฟรีและยังไม่เกิน — บอกให้ชัดว่าไม่คิดเพิ่ม (เงียบไปลูกค้าจะไม่แน่ใจ)
+                            if (!fee)
+                              return quota > 0 ? (
+                                <p className="mt-1 text-[11px] font-bold text-emerald-600">
+                                  ✓ อยู่ในโควตา {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""}ที่รวมในราคา — ไม่คิดเพิ่ม
+                                </p>
+                              ) : null;
                             return (
                               <p className="mt-1 text-[11px] font-bold text-teal-700">
-                                💰 {n.toLocaleString("th-TH")} {cfg?.unit ?? ""} × {formatPrice(rate)} ={" "}
+                                💰{" "}
+                                {quota > 0
+                                  ? `เกินโควตา ${quota.toLocaleString("th-TH")} อยู่ ${(n - quota).toLocaleString("th-TH")} ${cfg?.unit ?? ""}`
+                                  : `${n.toLocaleString("th-TH")} ${cfg?.unit ?? ""}`}{" "}
+                                × {formatPrice(rate)} ={" "}
                                 <span className="font-extrabold text-teal-900">+{formatPrice(fee)}</span> ต่อ
                                 {matrix?.unit ?? "ชิ้น"}
                               </p>
@@ -2091,7 +2139,7 @@ export default function ProductDetail({
                         .map((c) => {
                           const on = picked.includes(c.name);
                           const cQty = picks.find((p) => p.name === c.name)?.qty ?? 1;
-                          const unitAdd = choiceBadgeOf(opt, effective, c.name, feeQty);
+                          const unitAdd = choiceBadgeOf(opt, effective, c.name, feeQty, product);
                           // ตัวเลือกนี้ระบุจำนวนได้ไหม — ตั้งแยกทีละตัวในหลังบ้าน
                           const cWithQty = hasChoiceQty(opt, c.name);
                           const cQtyMax = choiceQtyMax(opt, c.name);
@@ -2310,8 +2358,8 @@ export default function ProductDetail({
                             {c.name}
                             {c.popular ? " (นิยม)" : ""}
                             {c.badge ? ` (${c.badge})` : ""}
-                            {choiceBadgeOf(opt, effective, c.name, feeQty) > 0
-                              ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty))}`
+                            {choiceBadgeOf(opt, effective, c.name, feeQty, product) > 0
+                              ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty, product))}`
                               : ""}
                           </option>
                         ))}
@@ -2329,7 +2377,7 @@ export default function ProductDetail({
                       {cardList
                         .map((c) => {
                           const on = effective[opt.label] === c.name;
-                          const add = choiceBadgeOf(opt, effective, c.name, feeQty);
+                          const add = choiceBadgeOf(opt, effective, c.name, feeQty, product);
                           // 📏 กางที่มาของค่าบริการตามขนาด (เช่น โพ้งขอบ ฿10 × 8 ชิ้น = ฿80)
                           // ใช้ view เดียวกับ choiceBadgeOf (สมมติว่าเลือกตัวนี้) ตัวเลขจะได้ตรงกับป้าย +฿ เสมอ
                           const feeBd = c.sizeFee
@@ -2419,6 +2467,12 @@ export default function ProductDetail({
                                       {c.desc}
                                     </span>
                                   )}
+                                  {/* 💬 ข้อความกำกับเฉพาะตอนถูกเลือก — เตือนเงื่อนไขของตัวที่เลือกอยู่ (เช่น ฝุ่นหมึกของไดคัทเข้าเนื้อ) */}
+                                  {on && c.selectedNote && (
+                                    <span className="mt-1 block rounded-lg bg-amber-100/70 px-2 py-1 text-[11px] font-normal leading-snug text-amber-900 ring-1 ring-amber-200">
+                                      {noteEmphasis(c.selectedNote)}
+                                    </span>
+                                  )}
                                 </span>
                               </span>
                             </button>
@@ -2470,8 +2524,8 @@ export default function ProductDetail({
                                 {c.badge}
                               </span>
                             )}
-                            {choiceBadgeOf(opt, effective, c.name, feeQty) > 0
-                              ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty))}`
+                            {choiceBadgeOf(opt, effective, c.name, feeQty, product) > 0
+                              ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty, product))}`
                               : ""}
                           </button>
                         ))}
@@ -3107,7 +3161,7 @@ export default function ProductDetail({
         <div className="relative">
           {/* ใช้ขนาดกำหนดเองอยู่ — คลุมตารางไว้ กันเข้าใจผิดว่าราคาอิงเรทขนาดปกติ
               (โหมด "ระบุขนาด" ไม่ต้องคลุม เพราะราคายังคิดจากตารางนี้จริง ๆ) */}
-          {useCustom && custom?.mode !== "size" && (
+          {useCustom && !customUsesMatrix && (
             <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/70">
               <p className="rounded-full bg-sky-600 px-4 py-2 text-center text-xs font-bold text-white shadow-lg">
                 📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตารางนี้
@@ -3231,11 +3285,13 @@ export default function ProductDetail({
             })()}
           {rate?.minPerDesign != null && rate.minPerDesign > 0 && (
             <p className="mt-2 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
-              🎨 เรทนี้คละลายขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
-              {/* ร้านรับสั่งขั้นต่ำ 1 ชิ้นเสมอ — ตัวเลขนี้คือ "เรทนี้เริ่มใช้ที่เท่าไหร่" ไม่ใช่ห้ามสั่งน้อยกว่า
-                  (สั่งน้อยกว่านี้ระบบสลับไปเรทที่ถูกต้องให้เอง) */}
+              🎨 เรทนี้คละลายขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {pieceUnit}
+              {/* สินค้าทั่วไป: ตัวเลขนี้คือ "เรทนี้เริ่มใช้ที่เท่าไหร่" ไม่ใช่ห้ามสั่งน้อยกว่า
+                  (สั่งน้อยกว่านี้ระบบสลับไปเรทที่ถูกต้องให้เอง) — แต่สินค้า hardMinQty ขั้นต่ำเป็นของจริง */}
               {rate.minQty && rate.minQty > 1
-                ? ` · เรทนี้เริ่มใช้ที่ ${rate.minQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป (สั่งน้อยกว่านี้ได้ ระบบคิดราคาตามช่วงจำนวนให้)`
+                ? product.hardMinQty
+                  ? ` · สั่งขั้นต่ำ ${rate.minQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป`
+                  : ` · เรทนี้เริ่มใช้ที่ ${rate.minQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป (สั่งน้อยกว่านี้ได้ ระบบคิดราคาตามช่วงจำนวนให้)`
                 : ""}
             </p>
           )}
@@ -3290,6 +3346,17 @@ export default function ProductDetail({
                 </>
               )}
             </div>
+            {/* 🧮 สินค้าหลายชิ้นต่อหน่วย (พวงละหลายชิ้น) — บอกยอดชิ้นรวมที่ใช้คิดช่วงราคา */}
+            {product.pieceCountLabel && unitPieceCountOf(product, effective) > 1 && !askQuote && (
+              <p className="mt-1.5 text-xs leading-relaxed text-stone-500">
+                🧮 {matrix?.unit ?? "พวง"}ละ {unitPieceCountOf(product, effective)} ชิ้น ×{" "}
+                {qty.toLocaleString("th-TH")} {matrix?.unit ?? "พวง"} ={" "}
+                <strong className="font-bold text-stone-600">
+                  {(unitPieceCountOf(product, effective) * qty).toLocaleString("th-TH")} ชิ้นรวม
+                </strong>{" "}
+                — ช่วงราคาคิดตามชิ้นรวม
+              </p>
+            )}
             {/* 🧮 มีสินค้านี้ในตะกร้าแล้ว — บอกก่อนกดสั่งว่าจะรวมล็อตคิดเรทตามยอดรวม */}
             {lotPreview && !askQuote && (
               <div className="mt-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs leading-relaxed text-emerald-800 ring-1 ring-emerald-100">
@@ -3350,9 +3417,11 @@ export default function ProductDetail({
                 </p>
               ) : (
                 <p className="mt-1 text-xs text-sky-700">
-                  {custom?.mode === "size"
-                    ? "📐 ระบุขนาดเองอยู่ — ราคายังคิดตามตารางเรทปกติ"
-                    : "📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตัวเลือก/ตารางเรทปกติ"}
+                  {custom?.mode === "longest"
+                    ? "📐 กำหนดขนาดเองอยู่ — ราคาคิดจากด้านที่ยาวที่สุด ตามตารางเรทปกติ"
+                    : customUsesMatrix
+                      ? "📐 ระบุขนาดเองอยู่ — ราคายังคิดตามตารางเรทปกติ"
+                      : "📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตัวเลือก/ตารางเรทปกติ"}
                 </p>
               )
             ) : matrix ? (
@@ -3376,7 +3445,12 @@ export default function ProductDetail({
               ใช้ขนาดกำหนดเองอยู่ = ปิดเฉพาะกลุ่มที่แอดมินไม่ได้ตั้งให้ "ยังเลือกได้" (custom.keepOptions) */}
           {useCustom && (
             <p className="mt-5 rounded-xl bg-sky-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-sky-800 ring-1 ring-sky-200">
-              📐 กำลังใช้ &ldquo;{custom?.label ?? "กำหนดขนาดเอง"}&rdquo;{custom?.mode === "size" ? "" : " — ราคาไม่อิงตารางเรทปกติ"}
+              📐 กำลังใช้ &ldquo;{custom?.label ?? "กำหนดขนาดเอง"}&rdquo;
+              {custom?.mode === "longest"
+                ? " — ราคาอิงด้านที่ยาวที่สุด ตามตารางเรทปกติ"
+                : customUsesMatrix
+                  ? ""
+                  : " — ราคาไม่อิงตารางเรทปกติ"}
               {/* ไล่ชื่อจากกลุ่มจริงของสินค้า ไม่ใช่จาก keepOptions ตรง ๆ — ชื่อที่ค้างอยู่แต่ไม่มีกลุ่มแล้วจะได้ไม่โผล่ */}
               {(() => {
                 const kept = product.options.filter((o) => customKeepsOption(custom, o.label)).map((o) => o.label);
@@ -3561,7 +3635,25 @@ export default function ProductDetail({
                   <p className="mt-2 text-sm">
                     {!customValid ? (
                       <span className="text-stone-400">
-                        {custom.mode === "size" ? "กรอกกว้าง × ยาว ที่ต้องการ" : "กรอกกว้าง × ยาว เพื่อคิดราคา"}
+                        {customUsesMatrix ? "กรอกกว้าง × ยาว ที่ต้องการ" : "กรอกกว้าง × ยาว เพื่อคิดราคา"}
+                      </span>
+                    ) : customSizeErr ? (
+                      <span className="font-semibold text-rose-600">⚠️ {customSizeErr} — ปรับขนาดก่อนถึงจะสั่งได้</span>
+                    ) : custom.mode === "longest" && longestPlan ? (
+                      <span className="text-stone-600">
+                        📐 {cW}×{cH} {custom.unit} → คิดราคาตามด้านที่ยาวที่สุด{" "}
+                        <span className="font-bold">
+                          {longestPlan.overCm > 0
+                            ? `${longestPlan.choice} + ${longestPlan.overCm} ${custom.unit}`
+                            : longestPlan.choice}
+                        </span>{" "}
+                        = <span className="font-extrabold text-amber-600">{formatPrice(unitPrice)}</span> / ชิ้น
+                        {longestPlan.overCm > 0 && (
+                          <span className="text-stone-400">
+                            {" "}
+                            (ฐาน {longestPlan.choice} + ส่วนเกิน {longestPlan.overCm} × {formatPrice(longestPlan.overRate)})
+                          </span>
+                        )}
                       </span>
                     ) : custom.mode === "size" ? (
                       <span className="text-stone-600">
@@ -3739,7 +3831,7 @@ export default function ProductDetail({
                     type="button"
                     onClick={handleAdd}
                     // ขนาดกำหนดเอง = ราคาไม่อิงเรทปกติ → ไม่ติดขั้นต่ำของเรทด้วย (สั่งกี่ชิ้นก็ได้ แอดมินตีราคาตามจริง)
-                    disabled={(useCustom && !customValid) || artBlocked || inputErrors.length > 0 || belowMin || belowMinQty}
+                    disabled={(useCustom && !customValid) || !!customSizeErr || artBlocked || inputErrors.length > 0 || belowMin || belowMinQty}
                     className={`flex-1 rounded-full px-5 py-3 text-[13px] font-bold shadow-lg transition sm:flex-none sm:px-8 ${
                       added
                         ? "bg-emerald-500 text-white"
@@ -4139,7 +4231,10 @@ export default function ProductDetail({
                             <p>
                               💡 ลายเดียวไม่มีค่าคละ · ค่าคละคิดจาก<strong className="font-bold">จำนวนลายต่อ 1 {unit}</strong> —
                               {mt.baseFee > 0
-                                ? ` คละ 2–${mt.includedDesigns.toLocaleString("th-TH")} ลาย/${unit} = ${formatPrice(mt.baseFee)}/${unit}`
+                                ? // โควตาเหมาคลุมแค่ 2 ลาย = ช่วง "2–2" ซึ่งอ่านแล้วงง — เขียนเป็นเลขเดียว
+                                  ` คละ ${
+                                    mt.includedDesigns <= 2 ? "2" : `2–${mt.includedDesigns.toLocaleString("th-TH")}`
+                                  } ลาย/${unit} = ${formatPrice(mt.baseFee)}/${unit}`
                                 : ` เกิน ${mt.includedDesigns.toLocaleString("th-TH")} ลาย/${unit}`}
                               {mt.extraFee > 0 ? ` · เกินจากนั้นลายละ ${formatPrice(mt.extraFee)}` : ""}
                             </p>
@@ -4242,23 +4337,23 @@ export default function ProductDetail({
                       {/* เพดานลาย = จำนวน "ชิ้น" ไม่ใช่จำนวนหน่วยสั่ง — สินค้าขายเป็นเซ็ต (เซ็ตละ N ชิ้น) คละได้ตามชิ้น */}
                       ✨ ช่วงราคาปลีกคละลายได้อิสระ — ลายละกี่ชิ้นก็ได้ ไม่คิดเพิ่ม (สูงสุด {maxDesigns.toLocaleString("th-TH")} ลาย)
                       {rate.freeMixBelowQty
-                        ? ` · สั่งตั้งแต่ ${rate.freeMixBelowQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป ขั้นต่ำลายละ ${rate.minPerDesign.toLocaleString("th-TH")}` +
+                        ? ` · สั่งตั้งแต่ ${rate.freeMixBelowQty.toLocaleString("th-TH")} ${pieceUnit}ขึ้นไป ขั้นต่ำลายละ ${rate.minPerDesign.toLocaleString("th-TH")}` +
                           (rate.underMinPieceFee
-                            ? ` (ไม่ถึงคิดส่วนต่าง${matrix?.unit ?? "ชิ้น"}ละ +${formatPrice(rate.underMinPieceFee)})`
+                            ? ` (ไม่ถึงคิดส่วนต่าง${pieceUnit}ละ +${formatPrice(rate.underMinPieceFee)})`
                             : "")
                         : ""}
                     </p>
                   ) : rate?.minPerDesign ? (
                   <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
-                    รวมในราคา {included.toLocaleString("th-TH")} ลาย (ขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"})
+                    รวมในราคา {included.toLocaleString("th-TH")} ลาย (ขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {pieceUnit})
                     {rate.underMinPieceFee
                       ? /* กติกาเคสมือถือ — คละไม่ถึงขั้นต่ำได้ จ่ายส่วนต่างต่อชิ้นแทน */
-                        ` · ลายไหนไม่ถึงลายละ ${rate.minPerDesign.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} คิดส่วนต่าง${matrix?.unit ?? "ชิ้น"}ละ +${formatPrice(rate.underMinPieceFee)}`
+                        ` · ลายไหนไม่ถึงลายละ ${rate.minPerDesign.toLocaleString("th-TH")} ${pieceUnit} คิดส่วนต่าง${pieceUnit}ละ +${formatPrice(rate.underMinPieceFee)}`
                       : rate.extraDesignFee
                       ? ` · คละเกินได้ ลายละ +${formatPrice(rate.extraDesignFee)}`
                       : hardMaxDesigns
                         ? /* โควตาล็อกไว้ — บอกเพดานตรง ๆ ว่าคละได้ถึงไหน และต้องทำยังไงถึงจะคละได้มากกว่านี้ */
-                          ` · สั่ง ${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} คละได้สูงสุด ${maxDesigns.toLocaleString("th-TH")} ลาย — อยากคละมากกว่านี้ ต้องเพิ่มจำนวนสั่ง (เพิ่มลายละ ${rate.minPerDesign.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"})`
+                          ` · สั่ง ${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} คละได้สูงสุด ${maxDesigns.toLocaleString("th-TH")} ลาย — อยากคละมากกว่านี้ ต้องเพิ่มจำนวนสั่ง (เพิ่มลายละ ${rate.minPerDesign.toLocaleString("th-TH")} ${pieceUnit})`
                         : tierByDesign
                           ? " · คละเกินได้เลย — ราคาจะปรับเป็นเรทตามชิ้นต่อลาย"
                           : " · เพิ่มลายได้ด้วยการเพิ่มจำนวนสั่ง"}
@@ -4671,7 +4766,7 @@ export default function ProductDetail({
             <button
               type="button"
               onClick={handleAdd}
-              disabled={(useCustom && !customValid) || artBlocked || inputErrors.length > 0 || belowMin}
+              disabled={(useCustom && !customValid) || !!customSizeErr || artBlocked || inputErrors.length > 0 || belowMin}
               className={`ml-auto shrink-0 rounded-full px-6 py-3 text-sm font-bold text-white shadow-lg transition ${
                 added ? "bg-emerald-500" : "bg-amber-400 hover:bg-amber-500 disabled:opacity-40"
               }`}

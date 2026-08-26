@@ -22,6 +22,7 @@ import {
   type SizeFee,
   type InputFee,
   type MixRule,
+  type ArtworkConsult,
 } from "@/lib/products";
 import RichEditor from "@/components/RichEditor";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
@@ -71,6 +72,8 @@ type DraftChoice = {
   badge?: string;
   /** 📝 คำอธิบายใต้ชื่อ (โชว์เฉพาะกลุ่ม display "cards") — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   desc?: string;
+  /** 💬 ข้อความกำกับที่โชว์เฉพาะตอนตัวเลือกนี้ถูกเลือก — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  selectedNote?: string;
   /** 📄 วัสดุ 1 แผ่นทำได้กี่ชิ้น (คู่กับกลุ่มที่คิดค่าธรรมเนียมต่อแผ่น) — ส่งกลับเฉย ๆ */
   perSheet?: number;
   /** 📄 งาน 1 ชิ้นกินวัสดุกี่แผ่น (ปฏิทิน 1 เล่ม = 4 A3) หรือตารางตามกลุ่ม sheetFee.by — ส่งกลับเฉย ๆ ไม่งั้นหาย */
@@ -79,10 +82,14 @@ type DraftChoice = {
   piecesPerUnit?: number;
   /** 💰 +฿ ของช่วงสั่งน้อย (ต่ำกว่า extraFromQty) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   extraBelow?: number;
+  /** 💰 +฿ ขั้นที่ 3 ช่วงสั่งน้อยสุด (ไม่เกิน extraSmallUpToQty) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  extraSmall?: number;
   /** 📏 ค่าบริการตามขนาดชิ้นงาน (ผ้า: ตัดแบ่ง/เย็บ/โพ้ง) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
   sizeFee?: SizeFee;
   /** 🎨 กติกาคละลายเฉพาะตัวเลือกนี้ (เช่น ไดคัท 50% ลายละ 20) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
   mixRule?: MixRule;
+  /** 💬 เลือกตัวนี้แล้วต้องคุยลายกับแอดมินก่อนสั่ง (งานปัก/งานตีลาย) — ติ๊กปุ่ม 💬 คุยลาย ท้ายบรรทัด */
+  consult?: ArtworkConsult;
 };
 /** id ของรายการหน่วยแนะนำข้างช่อง "🔢 ระบุจำนวน" (พิมพ์หน่วยเองก็ได้) */
 const QTY_UNIT_LIST = "qty-unit-suggestions";
@@ -113,8 +120,12 @@ type DraftOption = {
   madeToOrder?: boolean;
   /** +฿ ของกลุ่มนี้มีผลเมื่อสั่งตั้งแต่กี่ชิ้นขึ้นไป (ว่าง = ทุกจำนวน) */
   extraFromQty?: string;
+  /** ขั้นราคาที่ 3 ของกลุ่ม: สั่งไม่เกินกี่ชิ้นใช้ extraSmall — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  extraSmallUpToQty?: number;
   /** 🔢 ชื่อกลุ่มที่ +฿ ของกลุ่มนี้คูณจำนวนตาม — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   qtyFrom?: string;
+  /** 💰 กลุ่มราคาดึงจากตารางเรท (ขนาดชิ้นที่ 2+ ของพวงหลายชิ้น) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  priceAsDriver?: string;
   /** ค่าธรรมเนียมช่วงสั่งน้อย เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น (ยกเว้นบางตัวเลือก) */
   smallFee?: string;
   smallUpTo?: string;
@@ -153,6 +164,8 @@ type DraftOption = {
   standardInput?: boolean;
   /** 💰 คิดเงินตามค่าที่กรอก × เรทต่อหน่วย — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   inputFee?: InputFee;
+  /** 🎨 ชิ้นต่อแผ่นของกลุ่มนี้ = เพดานจำนวนลาย — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  capDesigns?: boolean;
   /** 📐 สเปกโชว์จำนวนชิ้นต่อแผ่นจากกว้าง×สูง — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   sheetYield?: {
     pairLabel: string;
@@ -237,7 +250,8 @@ type DraftPricing = {
 type DraftMixTier = { fromQty: string; baseFee: string; includedDesigns: string; extraFee: string; onePerUnit: boolean };
 const EMPTY_MIX_TIER: DraftMixTier = { fromQty: "", baseFee: "", includedDesigns: "", extraFee: "", onePerUnit: false };
 /** ข้อมูลกำกับเรทราคา (ชื่อ + เงื่อนไขการสั่ง + ภาพประจำเรท) — mixRule = ค่าคละเฉพาะเรท (ตั้งจากสคริปต์ หน้านี้แค่พาผ่านตอนบันทึก ไม่มี UI แก้) */
-type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; underMinPieceFee: string; freeMixBelowQty: string; imageSrc?: string; mixRule?: MixRule };
+/** consult = เลือกเรทนี้แล้วต้องคุยลายกับแอดมินก่อน (เรท "งานปัก" ของหมวก/เสื้อ) */
+type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; underMinPieceFee: string; freeMixBelowQty: string; imageSrc?: string; mixRule?: MixRule; consult?: ArtworkConsult };
 /** เรทเพิ่มเติม — มีช่วงจำนวน+ตารางราคาของตัวเอง (คอลัมน์/หน่วยใช้ร่วมกับเรทหลัก) */
 type DraftExtraRate = DraftRateMeta & {
   id: string;
@@ -318,6 +332,8 @@ type Draft = {
   soldStr: string;
   /** สั่งกี่ชิ้นขึ้นไปต้องถามสต๊อกก่อน (ว่าง = ใช้ค่ากลาง) */
   bulkAskQty: string;
+  /** 🧮 ชื่อกลุ่ม "จำนวนชิ้นต่อ 1 หน่วยขาย" (พวงหลายชิ้น) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  pieceCountLabel?: string;
   /** วิธีจัดส่งขั้นต่ำของสินค้านี้ ('' = ไม่บังคับ) */
   shippingId: string;
   /** ค่าส่งขั้นบันไดตามจำนวนชิ้น (แถวว่าง = ไม่ใช้) */
@@ -361,7 +377,7 @@ type DraftShipRule = DraftShipTiers & {
 type DraftCustom = {
   enabled: boolean;
   label: string;
-  mode: "area" | "quote" | "size" | "chat";
+  mode: "area" | "quote" | "size" | "chat" | "longest";
   unit: string;
   ratePerSqm: string;
   baseFee: string;
@@ -369,6 +385,15 @@ type DraftCustom = {
   note: string;
   /** กลุ่มตัวเลือกที่ยังให้ลูกค้าเลือกได้ตอนใช้กำหนดขนาดเอง (ไม่ติ๊ก = ปิดกลุ่มนั้น) */
   keepOptions: string[];
+  /** โหมด "อิงด้านที่ยาวที่สุด": ชื่อกลุ่มแกนตารางที่เป็นขนาด */
+  sizeLabel: string;
+  /** โหมด "อิงด้านที่ยาวที่สุด": เกินแถวใหญ่สุดในตาราง คิดเพิ่มหน่วยละกี่บาท/ชิ้น */
+  overRate: string;
+  /** โหมด "อิงด้านที่ยาวที่สุด": ด้านยาวสุด / อีกด้าน ที่รับผลิตได้ */
+  maxLongest: string;
+  maxShortest: string;
+  /** เรทส่วนเกินที่บวกเพิ่มตามตัวเลือกอื่น (ตั้งจากสคริปต์ — หน้านี้แค่พกต่อไม่ให้หาย) */
+  overRateWhen?: { label: string; choices: string[]; add: number }[];
 };
 
 /** แปลงโค้ดหน่วยเดิม (cm/inch/m) → ป้ายหน่วยในคลัง (backward-compat) */
@@ -499,6 +524,7 @@ function toDraft(p: Product): Draft {
       ...(o.sheetFee ? { sheetFee: o.sheetFee } : {}),
       ...(o.standardInput ? { standardInput: true } : {}),
       ...(o.inputFee ? { inputFee: o.inputFee } : {}),
+      ...(o.capDesigns ? { capDesigns: true } : {}),
       ...(o.sheetYield ? { sheetYield: o.sheetYield } : {}),
       choices: o.choices.map((c) => ({
         name: c.name,
@@ -516,12 +542,15 @@ function toDraft(p: Product): Draft {
         ...(c.popular ? { popular: true } : {}),
         ...(c.badge ? { badge: c.badge } : {}),
         ...(c.desc ? { desc: c.desc } : {}),
+        ...(c.selectedNote ? { selectedNote: c.selectedNote } : {}),
         ...(c.perSheet ? { perSheet: c.perSheet } : {}),
         ...(c.sheetsPerUnit ? { sheetsPerUnit: c.sheetsPerUnit } : {}),
         ...(c.piecesPerUnit ? { piecesPerUnit: c.piecesPerUnit } : {}),
         ...(c.extraBelow ? { extraBelow: c.extraBelow } : {}),
+        ...(c.extraSmall ? { extraSmall: c.extraSmall } : {}),
         ...(c.sizeFee ? { sizeFee: c.sizeFee } : {}),
         ...(c.mixRule ? { mixRule: c.mixRule } : {}),
+        ...(c.consult ? { consult: c.consult } : {}),
       })),
       ...(o.presetId ? { presetId: o.presetId } : {}),
       // มีตัวไหนเปิด "ระบุจำนวน" ไว้ = กลุ่มนี้เคยเปิดสวิตช์ → เปิดค้างไว้ให้เห็นค่าเดิม
@@ -529,8 +558,11 @@ function toDraft(p: Product): Draft {
       ...(o.collapsible ? { collapsible: true } : {}),
       display: o.display ?? "pills",
       ...(o.extraFromQty ? { extraFromQty: String(o.extraFromQty) } : {}),
+      ...(o.extraSmallUpToQty ? { extraSmallUpToQty: o.extraSmallUpToQty } : {}),
       // 🔢 กลุ่มที่ +฿ คูณจำนวนจากกลุ่มอื่น (สีตะขอคูณจำนวนตะขอ) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
       ...(o.qtyFrom ? { qtyFrom: o.qtyFrom } : {}),
+      // 💰 กลุ่มราคาดึงจากตารางเรท (ขนาดชิ้นที่ 2+ ของพวงหลายชิ้น) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
+      ...(o.priceAsDriver ? { priceAsDriver: o.priceAsDriver } : {}),
       ...(o.smallQtyFee
         ? {
             smallFee: String(o.smallQtyFee.fee),
@@ -639,6 +671,7 @@ function toDraft(p: Product): Draft {
           freeMixBelowQty: p.priceRates[0].freeMixBelowQty != null ? String(p.priceRates[0].freeMixBelowQty) : "",
           ...(p.priceRates[0].imageSrc ? { imageSrc: p.priceRates[0].imageSrc } : {}),
           ...(p.priceRates[0].mixRule ? { mixRule: p.priceRates[0].mixRule } : {}),
+          ...(p.priceRates[0].consult ? { consult: p.priceRates[0].consult } : {}),
         }
       : { ...EMPTY_RATE_META },
     extraRates: (p.priceRates ?? []).slice(1).map((r) => ({
@@ -653,6 +686,7 @@ function toDraft(p: Product): Draft {
       freeMixBelowQty: r.freeMixBelowQty != null ? String(r.freeMixBelowQty) : "",
       ...(r.imageSrc ? { imageSrc: r.imageSrc } : {}),
       ...(r.mixRule ? { mixRule: r.mixRule } : {}),
+      ...(r.consult ? { consult: r.consult } : {}),
       tiers: r.pricing.tiers.map((t) => ({ upTo: t.upTo == null ? "" : String(t.upTo), label: t.label })),
       cells: Object.fromEntries(Object.entries(r.pricing.cells).map(([k, v]) => [k, v.map((n) => String(n))])),
     })),
@@ -694,11 +728,17 @@ function toDraft(p: Product): Draft {
       minPrice: p.custom?.minPrice != null ? String(p.custom.minPrice) : "",
       note: p.custom?.note ?? "",
       keepOptions: [...(p.custom?.keepOptions ?? [])],
+      sizeLabel: p.custom?.sizeLabel ?? "",
+      overRate: p.custom?.overRate != null ? String(p.custom.overRate) : "",
+      maxLongest: p.custom?.maxLongest != null ? String(p.custom.maxLongest) : "",
+      maxShortest: p.custom?.maxShortest != null ? String(p.custom.maxShortest) : "",
+      ...(p.custom?.overRateWhen?.length ? { overRateWhen: p.custom.overRateWhen.map((w) => ({ ...w })) } : {}),
     },
     featured: !!p.featured,
     badge: p.badge ?? "",
     soldStr: String(p.sold ?? 0),
     bulkAskQty: p.bulkAskQty != null && p.bulkAskQty > 0 ? String(p.bulkAskQty) : "",
+    ...(p.pieceCountLabel ? { pieceCountLabel: p.pieceCountLabel } : {}),
     shippingId: p.shippingId ?? "",
     shipTiers: (p.shipTiers ?? []).map((t) => ({ minQty: String(t.minQty), price: String(t.price) })),
     shipTierMode: p.shipTierMethodId ? "method" : p.shipTierExtra && p.shipTierExtra > 0 ? "extra" : "last",
@@ -755,6 +795,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       // ✍️📐 ช่องกรอกงานปกติ + สเปกจำนวนชิ้นต่อแผ่น — ไม่มีช่องกรอกในหน้าแก้ไข ต้องส่งกลับ ไม่งั้นหาย
       ...(o.standardInput ? { standardInput: true as const } : {}),
       ...(o.inputFee ? { inputFee: o.inputFee } : {}),
+      ...(o.capDesigns ? { capDesigns: true } : {}),
       ...(o.sheetYield ? { sheetYield: o.sheetYield } : {}),
       choices: o.choices
         .filter((c) => c.name.trim())
@@ -789,15 +830,19 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             // 🏷️ ป้ายอิสระ ("ฟรี!") + 📝 คำอธิบายการ์ด + 📄 ชิ้นต่อแผ่นวัสดุ — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
             ...(c.badge ? { badge: c.badge } : {}),
             ...(c.desc ? { desc: c.desc } : {}),
+            ...(c.selectedNote ? { selectedNote: c.selectedNote } : {}),
             ...(c.perSheet ? { perSheet: c.perSheet } : {}),
             ...(c.sheetsPerUnit ? { sheetsPerUnit: c.sheetsPerUnit } : {}),
             // 📐 ชิ้นต่อหน่วยของงานแบ่งแผ่น (ขนาดตัด A4-A7) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
             ...(c.piecesPerUnit ? { piecesPerUnit: c.piecesPerUnit } : {}),
             ...(c.extraBelow ? { extraBelow: c.extraBelow } : {}),
+            ...(c.extraSmall ? { extraSmall: c.extraSmall } : {}),
             // 📏 ค่าบริการตามขนาด — ไม่มีช่องกรอกในหน้าแก้ไข ต้องส่งกลับ ไม่งั้นหาย
             ...(c.sizeFee ? { sizeFee: c.sizeFee } : {}),
             // 🎨 กติกาคละลายเฉพาะตัวเลือก (ไดคัท 50% ลายละ 20) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
             ...(c.mixRule ? { mixRule: c.mixRule } : {}),
+            // 💬 ตัวเลือกที่ต้องคุยลายกับแอดมินก่อน (งานปัก) — ปิดอยู่ = ไม่เก็บฟิลด์
+            ...(c.consult?.enabled ? { consult: c.consult } : {}),
           };
         }),
       ...(o.presetId ? { presetId: o.presetId } : {}),
@@ -806,7 +851,9 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
         : {}),
       ...(o.collapsible ? { collapsible: true } : {}),
       ...(Number(o.extraFromQty) > 0 ? { extraFromQty: Math.floor(Number(o.extraFromQty)) } : {}),
+      ...(Number(o.extraSmallUpToQty) > 0 ? { extraSmallUpToQty: Math.floor(Number(o.extraSmallUpToQty)) } : {}),
       ...(o.qtyFrom ? { qtyFrom: o.qtyFrom } : {}),
+      ...(o.priceAsDriver ? { priceAsDriver: o.priceAsDriver } : {}),
       ...(Number.isFinite(Number(o.smallFee)) && Number(o.smallFee) !== 0 && String(o.smallFee ?? "").trim() !== "" && Number(o.smallUpTo) > 0
         ? {
             smallQtyFee: {
@@ -2704,6 +2751,39 @@ export default function ProductEditor({ product }: { product: Product }) {
                     >
                       💬 ตีราคา
                     </button>
+                    {/*
+                      💬 เลือกตัวนี้แล้วต้องคุยลายกับแอดมินก่อนสั่ง (งานปัก/งานตีลาย)
+                      ตัวเดียวกับสวิตช์ระดับสินค้าในแท็บ "การสั่งซื้อ" แต่กั้นเฉพาะตอนลูกค้าเลือกตัวนี้ —
+                      สินค้าที่ขายทั้งงานพิมพ์และงานปักในตัวเดียว งานพิมพ์จะได้สั่งได้เลยตามปกติ
+                    */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        patch({
+                          options: draft.options.map((o, i) =>
+                            i === gi
+                              ? {
+                                  ...o,
+                                  choices: o.choices.map((c, j) =>
+                                    j === ci
+                                      ? { ...c, consult: c.consult?.enabled ? undefined : { enabled: true } }
+                                      : c
+                                  ),
+                                }
+                              : o
+                          ),
+                        })
+                      }
+                      title="เลือกตัวนี้แล้วต้องคุยลายกับแอดมินก่อนถึงจะสั่งได้ (หน้าร้านขึ้นกล่องเขียว “ทักไลน์ส่งลายให้แอดมินดู” + ติ๊กยืนยันว่าคุยแล้ว · และไม่บังคับแนบลาย)"
+                      aria-pressed={!!ch.consult?.enabled}
+                      className={`shrink-0 rounded-lg px-2 py-1.5 text-[11px] font-semibold ring-1 transition ${
+                        ch.consult?.enabled
+                          ? "bg-emerald-500 text-white ring-emerald-500"
+                          : "bg-white text-slate-300 ring-slate-200 hover:text-emerald-600 hover:ring-emerald-200"
+                      }`}
+                    >
+                      💬 คุยลาย
+                    </button>
                     {/* ⭐ ป้าย "แบบยอดนิยม" — หน้าสินค้าโชว์ดอกจันแดงท้ายชื่อ (ไม่มีผลกับราคา) */}
                     <button
                       type="button"
@@ -3873,7 +3953,11 @@ export default function ProductEditor({ product }: { product: Product }) {
     // หลายเรทราคา — เรทหลัก = ตาราง pricing ข้างบน + เรทเพิ่มเติมแต่ละอันสร้างตารางของตัวเอง
     let priceRates: Product["priceRates"];
     const metaHasValue =
-      draft.rateMeta.label.trim() || Number(draft.rateMeta.minQty) > 0 || Number(draft.rateMeta.minPerDesign) > 0;
+      draft.rateMeta.label.trim() ||
+      Number(draft.rateMeta.minQty) > 0 ||
+      Number(draft.rateMeta.minPerDesign) > 0 ||
+      // 💬 สินค้าเรทเดียวที่ติ๊ก "ต้องคุยลายก่อนสั่ง" — ต้องเก็บเป็นเรทด้วย ไม่งั้นค่าที่ติ๊กหายทันทีที่บันทึก
+      !!draft.rateMeta.consult?.enabled;
     if (pricing && (draft.extraRates.length > 0 || metaHasValue)) {
       const buildRateMatrix = (r: DraftExtraRate): PriceMatrix | undefined => {
         if (!r.tiers.length) return undefined;
@@ -3919,6 +4003,8 @@ export default function ProductEditor({ product }: { product: Product }) {
         ...(m.imageSrc ? { imageSrc: m.imageSrc } : {}),
         // ค่าคละเฉพาะเรท (ตั้งจากสคริปต์) — พาผ่านตอนบันทึก ไม่งั้นกดบันทึกแล้วหายเงียบ ๆ
         ...(m.mixRule ? { mixRule: m.mixRule } : {}),
+        // 💬 เรทที่ต้องคุยลายกับแอดมินก่อน (เรท "งานปัก") — ปิดอยู่ = ไม่เก็บฟิลด์
+        ...(m.consult?.enabled ? { consult: m.consult } : {}),
       });
       const list: NonNullable<Product["priceRates"]> = [
         { id: "r1", ...metaOf(draft.rateMeta, "เรทที่ 1"), pricing },
@@ -3945,6 +4031,16 @@ export default function ProductEditor({ product }: { product: Product }) {
               ratePerSqm: Number(draft.custom.ratePerSqm) || 0,
               baseFee: Number(draft.custom.baseFee) || 0,
               minPrice: Number(draft.custom.minPrice) || 0,
+            }
+          : {}),
+        // 📐 อิงด้านที่ยาวที่สุด — ค่าพวกนี้ต้องพกต่อทุกครั้งที่บันทึก ไม่งั้นกดบันทึกแล้วราคางานสั่งทำหาย
+        ...(draft.custom.mode === "longest"
+          ? {
+              ...(draft.custom.sizeLabel.trim() ? { sizeLabel: draft.custom.sizeLabel.trim() } : {}),
+              ...(Number(draft.custom.overRate) ? { overRate: Number(draft.custom.overRate) } : {}),
+              ...(Number(draft.custom.maxLongest) ? { maxLongest: Number(draft.custom.maxLongest) } : {}),
+              ...(Number(draft.custom.maxShortest) ? { maxShortest: Number(draft.custom.maxShortest) } : {}),
+              ...(draft.custom.overRateWhen?.length ? { overRateWhen: draft.custom.overRateWhen } : {}),
             }
           : {}),
         ...(draft.custom.note.trim() ? { note: draft.custom.note.trim() } : {}),
@@ -4051,6 +4147,7 @@ export default function ProductEditor({ product }: { product: Product }) {
       seo: buildSeo(draft.seo),
       custom,
       bulkAskQty: Number(draft.bulkAskQty) > 0 ? Math.floor(Number(draft.bulkAskQty)) : undefined,
+      ...(draft.pieceCountLabel ? { pieceCountLabel: draft.pieceCountLabel } : {}),
       shippingId: draft.shippingId || undefined,
       shipTiers: (() => {
         const rows = draft.shipTiers
@@ -5528,6 +5625,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                   {draft.custom.mode === "area" && <option value="area">คิดตามพื้นที่ (อัตโนมัติ · เลิกใช้แล้ว)</option>}
                   <option value="quote">ให้แอดมินตีราคา (สอบถาม)</option>
                   <option value="size">ระบุขนาดตามที่ต้องการ (ราคาตามตารางปกติ)</option>
+                  <option value="longest">อิงด้านที่ยาวที่สุด (คิดราคาจากตารางขนาดอัตโนมัติ)</option>
                   <option value="chat">ทักแชทคุยกับแอดมิน (คุยรายละเอียด)</option>
                 </select>
               </label>
@@ -5612,6 +5710,70 @@ export default function ProductEditor({ product }: { product: Product }) {
                     </p>
                   );
                 })()}
+              </>
+            ) : draft.custom.mode === "longest" ? (
+              <>
+                <p className="rounded-xl bg-white px-3 py-2 text-xs leading-relaxed text-slate-500 ring-1 ring-slate-200">
+                  ลูกค้ากรอกกว้าง × ยาว → ระบบคิดราคาจาก<strong className="text-slate-700">แถวที่ครอบด้านยาวสุด</strong>ในตารางราคา
+                  (สั่ง 3×14 ซม. = ราคาแถว 14×14 ซม.) · ใหญ่กว่าแถวสุดท้าย คิดฐานแถวสุดท้าย + ส่วนเกินหน่วยละตามที่ตั้งไว้ ·
+                  ตัวเลือกที่เปิดไว้ใน “ยังเลือกได้” (เช่น พิมพ์กี่ด้าน) ยังคิดราคาตามปกติ
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <label className="text-xs font-semibold text-slate-500">
+                    กลุ่มที่เป็น “ขนาด” ในตารางราคา
+                    <select
+                      value={draft.custom.sizeLabel}
+                      onChange={(e) => patchCustom({ sizeLabel: e.target.value })}
+                      className="mt-1 block rounded-xl bg-white px-3 py-1.5 text-sm text-slate-800 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    >
+                      <option value="">— เลือกกลุ่ม —</option>
+                      {draft.options.map((o) => (
+                        <option key={o.label} value={o.label}>{o.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs font-semibold text-slate-500">
+                    เกินแถวใหญ่สุด คิดเพิ่ม ({draft.custom.unit} ละ บาท/ชิ้น)
+                    <input
+                      value={draft.custom.overRate}
+                      onChange={(e) => patchCustom({ overRate: e.target.value.replace(/[^\d.]/g, "") })}
+                      inputMode="decimal"
+                      placeholder="เช่น 3"
+                      className="mt-1 block w-32 rounded-xl bg-white px-3 py-1.5 text-sm text-slate-800 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-500">
+                    ด้านยาวสุดไม่เกิน ({draft.custom.unit})
+                    <input
+                      value={draft.custom.maxLongest}
+                      onChange={(e) => patchCustom({ maxLongest: e.target.value.replace(/[^\d.]/g, "") })}
+                      inputMode="decimal"
+                      placeholder="เช่น 42"
+                      className="mt-1 block w-28 rounded-xl bg-white px-3 py-1.5 text-sm text-slate-800 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-500">
+                    อีกด้านไม่เกิน ({draft.custom.unit})
+                    <input
+                      value={draft.custom.maxShortest}
+                      onChange={(e) => patchCustom({ maxShortest: e.target.value.replace(/[^\d.]/g, "") })}
+                      inputMode="decimal"
+                      placeholder="เช่น 29.7"
+                      className="mt-1 block w-28 rounded-xl bg-white px-3 py-1.5 text-sm text-slate-800 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    />
+                  </label>
+                </div>
+                {!!draft.custom.overRateWhen?.length && (
+                  <p className="rounded-xl bg-white px-3 py-2 text-xs leading-relaxed text-slate-500 ring-1 ring-slate-200">
+                    ส่วนเกินบวกเพิ่มตามตัวเลือกอื่น (ตั้งจากสคริปต์):{" "}
+                    {draft.custom.overRateWhen.map((w, i) => (
+                      <span key={`${w.label}-${i}`}>
+                        {i > 0 ? " · " : ""}
+                        <strong className="text-slate-700">{w.choices.join(" / ")}</strong> +{w.add}/{draft.custom.unit}
+                      </span>
+                    ))}
+                  </p>
+                )}
               </>
             ) : draft.custom.mode === "size" ? (
               <p className="rounded-xl bg-white px-3 py-2 text-xs text-slate-500 ring-1 ring-slate-200">
@@ -5902,6 +6064,26 @@ export default function ProductEditor({ product }: { product: Product }) {
                       placeholder="เช่น 11"
                       className="w-24 rounded-xl bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
                     />
+                  </label>
+                  {/*
+                    💬 เรทนี้ต้องคุยลายกับแอดมินก่อนสั่ง — ใช้กับสินค้าที่เรทคือ "ชนิดงาน"
+                    (หมวก/เสื้อ: เรทพิมพ์ DTF สั่งได้เลย · เรทงานปัก ต้องตีลายคุยกันก่อน)
+                  */}
+                  <label
+                    className={`flex cursor-pointer items-center gap-2 self-end rounded-xl px-3 py-2 text-xs font-semibold ring-1 transition ${
+                      activeMeta.consult?.enabled
+                        ? "bg-emerald-50 text-emerald-700 ring-emerald-300"
+                        : "bg-white text-slate-500 ring-slate-200"
+                    }`}
+                    title="เลือกเรทนี้แล้วหน้าร้านขึ้นกล่องเขียว “ทักไลน์ส่งลายให้แอดมินดู” + ต้องติ๊กยืนยันว่าคุยแล้วถึงจะสั่งได้ (และไม่บังคับแนบลาย)"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!activeMeta.consult?.enabled}
+                      onChange={(e) => patchActiveMeta({ consult: e.target.checked ? { enabled: true } : undefined })}
+                      className="h-4 w-4 accent-emerald-500"
+                    />
+                    💬 ต้องคุยลายก่อนสั่ง
                   </label>
                   {/* 🖼 ภาพประจำเรท — สินค้าที่ใช้เรทเป็น "แบบสินค้า" (เช่น สายคล้องหลายแบบ) ลูกค้าเห็นหน้าตาบนการ์ดเลือกเรท */}
                   <div className="flex flex-col gap-1 text-xs font-semibold text-slate-500">

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LINE_URL } from "@/components/LineButton";
 import {
+  activeMatrix,
   activeRate,
   designCountOf,
   DESIGN_LABEL,
@@ -485,7 +486,9 @@ export default function CartPage() {
                             <span className="cart-price">{formatPrice(item.unitPrice * item.qty + (item.extraFee ?? 0))}</span>
                             {item.qty > 1 && (
                               <span className="block text-[11px] t-faint">
-                                {formatPrice(item.unitPrice)} / ชิ้น
+                                {/* หน่วยขายตามตารางเรทของสินค้า (พวง/แผ่น/ตร.ม.) — ไม่มีตาราง = ชิ้น */}
+                                {formatPrice(item.unitPrice)} /{" "}
+                                {(product ? activeMatrix(product, item.selections)?.unit : null) ?? "ชิ้น"}
                                 {(item.extraFee ?? 0) > 0 && <> · 🎨 Add on +{formatPrice(item.extraFee!)}</>}
                               </span>
                             )}

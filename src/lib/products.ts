@@ -65,6 +65,13 @@ export interface ProductOptionChoice {
    */
   desc?: string;
   /**
+   * 💬 ข้อความกำกับที่โชว์ "เฉพาะตอนตัวเลือกนี้ถูกเลือกอยู่" — ขึ้นในการ์ดของตัวเลือกนั้น
+   * เช่น ไดคัทเข้าเนื้อ: "**กรณีไดคัทเข้าเนื้อ** จะมีฝุ่นของสีหมึกติดที่งาน สามารถเช็ดออกได้"
+   * ต่างจาก desc ที่โชว์ตลอด — ใช้เตือนเงื่อนไขเฉพาะของตัวที่เลือก · รองรับ **คำเน้น** แบบ note ของกลุ่ม
+   * โชว์เฉพาะกลุ่ม display "cards" (แบบเดียวกับ desc)
+   */
+  selectedNote?: string;
+  /**
    * ผูกกับ SKU ในคลังวัสดุ — ลูกค้าเลือกค่านี้แล้วออเดอร์ชำระเงิน ระบบตัดสต๊อกตัวนี้ให้อัตโนมัติ
    * ใส่ที่ "ตัวเลือก" ไม่ใช่ที่สินค้า เพราะสินค้าหนึ่งตัวใช้วัสดุต่างกันตามที่ลูกค้าเลือก
    * (ตั้งค่าที่ preset ครั้งเดียว = ทุกสินค้าที่ลิงก์คลังนั้นได้ตามไปด้วย)
@@ -119,6 +126,14 @@ export interface ProductOptionChoice {
    */
   extraBelow?: number;
   /**
+   * 💰 +฿ ของ "ช่วงสั่งน้อยสุด" (ขั้นที่ 3) — ใช้เมื่อจำนวนไม่เกิน extraSmallUpToQty ของกลุ่ม
+   * ปกติ +฿ ของตัวเลือกมี 2 ขั้น (extraBelow / extra ตัดที่ extraFromQty) — ตัวนี้เติมขั้นล่างสุดให้
+   * เช่น ติ่งห้อยพวงกุญแจ: 1-10 ชิ้น 20 · 11-29 ชิ้น 15 · 30 ชิ้นขึ้นไป 12 (ราคาต่างกันทุกขนาดติ่งห้อย
+   * จึงใช้ค่าเหมา smallQtyFee ที่เป็นเลขเดียวทั้งกลุ่มแทนไม่ได้)
+   * ไม่ตั้ง (หรือกลุ่มไม่ได้ตั้ง extraSmallUpToQty) = คิดตามกติกา 2 ขั้นเดิมทุกอย่าง
+   */
+  extraSmall?: number;
+  /**
    * 📏 ค่าบริการตามขนาดชิ้นงานที่ลูกค้ากรอก — ขั้นราคาตาม "ด้านที่ยาวที่สุด" ของคู่ช่องกรอก
    * กว้าง/ยาว และคูณจำนวนชิ้นต่อ 1 หน่วยขายจากการจัดวางได้ (งานผ้า: ตัดแบ่ง/เย็บขอบ/โพ้งขอบ)
    * คิดรวมกับ extra ปกติใน choiceExtraOf จึงติดไปทุกที่เอง (ราคาหน้าเว็บ · ป้าย +฿ · ตะกร้า · ใบเสนอราคา)
@@ -130,6 +145,13 @@ export interface ProductOptionChoice {
    * ไดคัท 50% ค่าคละลายละ 20 บาท · ไดคัท 100% ใช้กติกากลางของสินค้าตามเดิม
    */
   mixRule?: MixRule;
+  /**
+   * 💬 เลือกตัวนี้แล้วต้องคุยลายกับแอดมินก่อนสั่ง (งานปัก/งานตีลาย ที่ต้องตีลาย/แปลงไฟล์ให้ดูก่อน)
+   * ทำงานเหมือน Product.artworkConsult แต่ผูกกับตัวเลือกเดียว — สินค้าที่ขายทั้งงานพิมพ์และงานปัก
+   * ในตัวเดียวกัน จะได้กั้นเฉพาะตอนลูกค้าเลือกแบบที่ต้องคุยก่อน ส่วนแบบอื่นสั่งได้เลยตามปกติ
+   * (กลุ่มที่ถูกซ่อนด้วย showWhen ไม่นับ — ดู artworkConsultOf)
+   */
+  consult?: ArtworkConsult;
 }
 
 export interface ProductOption {
@@ -209,6 +231,14 @@ export interface ProductOption {
    */
   extraFromQty?: number;
   /**
+   * ขั้นราคาที่ 3 ของกลุ่มนี้ — สั่งไม่เกินกี่ชิ้นถึงใช้ ProductOptionChoice.extraSmall
+   * (เหนือช่วงนี้กลับไปใช้กติกา 2 ขั้นเดิม extraBelow / extra ตัดที่ extraFromQty)
+   * ต่างจาก smallQtyFee ตรงที่ราคาช่วงนี้ตั้งแยกได้ "ทุกตัวเลือก" ไม่ใช่เลขเหมาเลขเดียวทั้งกลุ่ม
+   * — ใช้กับกลุ่มที่แต่ละแถวราคาไม่เท่ากัน (เช่น ติ่งห้อยแยกตามขนาด)
+   * ไม่ตั้ง = ไม่มีขั้นที่ 3 (พฤติกรรมเดิมของทุกสินค้า)
+   */
+  extraSmallUpToQty?: number;
+  /**
    * 🔢 +฿ ของกลุ่มนี้คูณด้วย "จำนวนที่ระบุไว้ในกลุ่มอื่น" — ใส่ชื่อกลุ่มต้นทาง
    * ใช้กับกลุ่มลูกที่ราคาผูกกับของชิ้นเดียวกัน เช่น Acrylic Kit: กลุ่ม "ตะขอ" ให้ระบุจำนวนได้
    * (ติ๊ก F แล้วใส่ 3 ชิ้น) กลุ่ม "สีตะขอ · โลหะ" ที่โชว์ตามตะขอ F ต้องคิดสีคูณ 3 ตามไปด้วย
@@ -216,6 +246,14 @@ export interface ProductOption {
    * ไม่ตั้ง = คูณ 1 เหมือนเดิม
    */
   qtyFrom?: string;
+  /**
+   * 💰 ราคาตัวเลือกกลุ่มนี้ "ดึงจากตารางเรท" เหมือนเป็นแกนตารางชื่อนี้ — ใส่ชื่อกลุ่มแกน (driver)
+   * ใช้กับสินค้า "หลายชิ้นใน 1 หน่วย" เช่น พวงกุญแจหลายชิ้นใน 1 พวง:
+   * กลุ่ม "ขนาดชิ้นที่ 2..10" ตั้ง priceAsDriver: "ขนาดชิ้นที่ 1" → เลือก 5cm = บวกราคาช่อง 5cm
+   * ของตารางเรท ณ ช่วงจำนวนปัจจุบัน (ความหนา/งานสกรีน/ประเภทตามที่เลือกอยู่)
+   * ราคาจึงขยับตามเรทเองอัตโนมัติ ไม่ต้องกรอก +฿ ตายตัว · ไม่ตั้ง = คิด extra ปกติ
+   */
+  priceAsDriver?: string;
   /**
    * ค่าธรรมเนียม "ช่วงสั่งน้อย" ของกลุ่มนี้ — คิดเพิ่มต่อชิ้นเมื่อสั่งไม่เกินจำนวนที่กำหนด
    * เช่น พวงกุญแจ 3mm ช่วงปลีก 1-10 ชิ้น เลือกตะขอบวกชิ้นละ 10 บาท (ยกเว้นห่วงแถมฟรี Z1/Z2)
@@ -263,8 +301,16 @@ export interface ProductOption {
    * 📐 โชว์ "จำนวนชิ้นโดยประมาณต่อแผ่นวัสดุ" ใต้ช่องกรอกของกลุ่มนี้ (กลุ่มนี้ = ด้านสูง)
    * อ่านด้านกว้างจากช่องกรอกกลุ่ม pairLabel — กรอกครบสองช่องแล้วคำนวณจากการเรียงแนวตรง
    * เลือกแนวตั้ง/แนวนอนที่ได้เยอะกว่า · เป็นตัวเลขบอกทางเฉย ๆ ไม่มีผลกับราคา/ตะกร้า
+   * (ยกเว้นกลุ่มนั้นตั้ง capDesigns ไว้ — ตัวเลขนั้นจะกลายเป็นเพดานจำนวนลายที่คละได้ด้วย)
    */
   sheetYield?: SheetYield;
+  /**
+   * 🎨 จำนวนชิ้นต่อ 1 หน่วยสั่งของกลุ่มนี้ = "เพดานจำนวนลายที่คละได้" ด้วย (ดู perUnitCapacity)
+   * คละ 1 ลายใช้อย่างน้อย 1 ชิ้น — งานไดคัทจึงคละได้ไม่เกินชิ้นที่ตัดได้จริงต่อแผ่น
+   * อ่านจากขนาดตายตัวที่เลือก (choice.piecesPerUnit) หรือขนาดที่กรอกเอง (sheetYield) ก็ได้
+   * ไม่ตั้ง = ตัวเลขต่อแผ่นเป็นแค่ข้อมูลบอกทาง ไม่ไปยุ่งกับโควตาลาย (พฤติกรรมเดิมของทุกสินค้า)
+   */
+  capDesigns?: boolean;
   /**
    * กลุ่มนี้เป็นส่วนของ "งานสั่งทำ" — มีผลแค่ในหน้าแก้ไขหลังบ้าน (ไปแก้ที่แผง 📐 แทนแผง 🎛️)
    * หน้าร้านแสดง/คิดราคาเหมือนกลุ่มอื่นทุกอย่าง · กลุ่มช่องกรอก (display 'input') ถือเป็นงานสั่งทำเสมอ
@@ -448,6 +494,58 @@ export interface SheetYield {
 }
 
 /**
+ * เรียงเป็นกริดแนวเดียวทั้งกล่อง — วิธีที่ช่างวางจริงและเป็นเลขที่การันตีได้ว่าวางได้แน่
+ * (ช่องไฟคิดเฉพาะระหว่างชิ้น จึงขยายกล่องด้วยช่องไฟหนึ่งข้างเหมือน packSingleSize)
+ */
+function gridCount(w: number, h: number, binW: number, binH: number, gap: number): number {
+  if (w <= 0 || h <= 0) return 0;
+  return Math.max(0, Math.floor((binW + gap) / (w + gap))) * Math.max(0, Math.floor((binH + gap) / (h + gap)));
+}
+
+/** กริดที่ดีที่สุดของสองแนววาง (ตั้ง/นอน) */
+function gridBest(itemW: number, itemH: number, binW: number, binH: number, gap: number): number {
+  return Math.max(gridCount(itemW, itemH, binW, binH, gap), gridCount(itemH, itemW, binW, binH, gap));
+}
+
+/**
+ * 📐 เพดานล่างที่ "การันตีว่าวางได้" — กริดเต็มกล่อง หรือแบ่งกล่องเป็น 2 แถบแล้วแถบละแนว
+ *
+ * MaxRects ใน packSingleSize เป็นอัลกอริทึมโลภ เลือกแนวชิ้นแรกผิดแล้วพลาดยาว
+ * เช่น A5 (14.8×21) บนแผ่น A3 (42×29.7): คำตอบจริงคือหมุนนอนทั้ง 4 ใบพอดีแผ่น
+ * แต่ MaxRects วางใบแรกแนวตั้ง (คะแนน BSSF ดีกว่าเฉพาะหน้า) แล้วเหลือเศษวางต่อไม่ได้ → ได้ 2
+ * เลยต้องเทียบกับการวางแบบกริดตรง ๆ ด้วย แล้วเอาค่าที่มากกว่า — ค่าที่ได้จากตรงนี้
+ * มีผังวางจริงรองรับทุกใบ ไม่ใช่การเดา จึงไม่ทำให้บอกลูกค้าเกินจริง
+ */
+function bandBest(itemW: number, itemH: number, binW: number, binH: number, gap: number): number {
+  let best = gridBest(itemW, itemH, binW, binH, gap);
+  if (itemW <= 0 || itemH <= 0) return best;
+  const sides = itemW === itemH ? [itemH] : [itemH, itemW];
+  // แบ่งเป็นแถบบน/ล่าง — แถบบนวางเป็นแถวสูงเท่าด้านที่เลือก n แถว ที่เหลือวางแนวไหนก็ได้
+  for (const rowH of sides) {
+    for (let n = 1; n * rowH + (n - 1) * gap <= binH; n++) {
+      const band = n * rowH + (n - 1) * gap;
+      const rest = binH - band - gap;
+      best = Math.max(
+        best,
+        gridBest(itemW, itemH, binW, band, gap) + (rest > 0 ? gridBest(itemW, itemH, binW, rest, gap) : 0)
+      );
+    }
+  }
+  // แบ่งเป็นแถบซ้าย/ขวา — ตรรกะเดียวกันแต่สลับแกน
+  for (const colW of sides) {
+    for (let n = 1; n * colW + (n - 1) * gap <= binW; n++) {
+      const band = n * colW + (n - 1) * gap;
+      const rest = binW - band - gap;
+      best = Math.max(
+        best,
+        gridBest(itemW, itemH, band, binH, gap) + (rest > 0 ? gridBest(itemW, itemH, rest, binH, gap) : 0)
+      );
+    }
+  }
+  return best;
+}
+
+/**
  * วางชิ้นขนาดเดียวกันให้ได้มากที่สุดในกล่อง — พอร์ตจากโปรแกรมจัดวาง Print-Fit ของร้าน
  * (MaxRects: ชิ้นถูกบวกระยะห่างรอบตัว กล่องขยายด้วยระยะห่างหนึ่งข้าง จึงคิดช่องไฟเฉพาะระหว่างชิ้น
  *  หมุนได้รายชิ้น · ให้คะแนนช่องว่างแบบ Best Short Side Fit / Best Area Fit แล้วเอาค่าที่ดีกว่า)
@@ -495,7 +593,8 @@ function packSingleSize(itemW: number, itemH: number, binW: number, binH: number
     }
     if (count > best) best = count;
   }
-  return best;
+  // MaxRects โลภ พลาดผังที่ดีกว่าได้ (ดู bandBest) — เทียบกับผังกริดที่การันตีว่าวางได้เสมอ
+  return Math.max(best, bandBest(itemW, itemH, binW, binH, gap));
 }
 
 /**
@@ -589,20 +688,55 @@ export function sizeFeeOf(cfg: SizeFee, selections: Record<string, string>): num
 export interface InputFee {
   /** บาทต่อ 1 หน่วยที่กรอก เมื่อไม่มีเรทเงื่อนไขไหนตรง (0 = นอกเงื่อนไขไม่คิด) */
   perUnit: number;
-  /** เรทที่ต่างกันตามตัวเลือกของกลุ่มอื่น — ใช้ข้อแรกที่ตรง (เช่น ซับลิเมชั่น 15 · UV 25) */
-  rates?: { when: { label: string; choices: string[] }; perUnit: number }[];
+  /**
+   * เรทที่ต่างกันตามตัวเลือกของกลุ่มอื่น — ใช้ข้อแรกที่ตรง (เช่น ซับลิเมชั่น 15 · UV 25)
+   * ไม่ระบุ perUnit = ใช้ perUnit กลาง (ข้อที่มีไว้ตั้งแค่โควตาฟรีตามขนาด ก็ไม่ต้องซ้ำเรท)
+   */
+  rates?: { when: { label: string; choices: string[] }; perUnit?: number; free?: number }[];
+  /**
+   * 🎁 โควตาที่รวมในราคา — คิดเงินเฉพาะ "ส่วนที่เกิน" จากนี้ (จุดไดคัท: A5 ฟรี 50 จุดแรก)
+   * ลำดับหา: rates ข้อที่ตรงและตั้ง free ไว้ → freeBySize (ขนาดที่กรอกเอง) → free กลาง → 0
+   */
+  free?: number;
+  /**
+   * 🎁 โควตาตามขนาดที่ลูกค้ากรอกเอง (คู่ช่องกว้าง×สูง) — เทียบพื้นที่ ตร.ซม. กับขั้นบันได
+   * tiers เรียงพื้นที่มาก→น้อย ใช้ข้อแรกที่พื้นที่ถึง · ไม่ถึงสักข้อ/ยังกรอกไม่ครบ = ใช้ free กลาง
+   * (จุดไดคัทของขนาดกำหนดเอง: พื้นที่ระดับ A4 ฟรี 75 · A5 50 · ... · เล็กกว่า A7 ฟรี 1)
+   */
+  freeBySize?: {
+    widthLabel: string;
+    heightLabel: string;
+    tiers: { minArea: number; free: number }[];
+  };
 }
 
-/** 💰 เรทต่อหน่วยที่มีผลตอนนี้ — ไล่ rates ตามลำดับ ไม่ตรงข้อไหนใช้ perUnit กลาง */
+/** 💰 เรทต่อหน่วยที่มีผลตอนนี้ — ไล่ rates ตามลำดับ ไม่ตรงข้อไหน/ข้อที่ตรงไม่ตั้งเรท ใช้ perUnit กลาง */
 export function inputFeeRateOf(cfg: InputFee, selections: Record<string, string>): number {
   for (const r of cfg.rates ?? []) {
-    if (valueMatchesAny(selections[r.when.label], r.when.choices)) return r.perUnit;
+    if (valueMatchesAny(selections[r.when.label], r.when.choices)) return r.perUnit ?? cfg.perUnit;
   }
   return cfg.perUnit;
 }
 
+/** 🎁 โควตาฟรีที่มีผลตอนนี้ — rates ข้อที่ตรง (และตั้ง free) ชนะ · แล้วค่อยดูขนาดที่กรอกเอง · ท้ายสุด free กลาง */
+export function inputFeeQuotaOf(cfg: InputFee, selections: Record<string, string>): number {
+  for (const r of cfg.rates ?? []) {
+    if (r.free != null && valueMatchesAny(selections[r.when.label], r.when.choices)) return r.free;
+  }
+  const bs = cfg.freeBySize;
+  if (bs) {
+    const w = Number(selections[bs.widthLabel]);
+    const h = Number(selections[bs.heightLabel]);
+    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+      const area = w * h;
+      for (const t of bs.tiers) if (area >= t.minArea) return t.free;
+    }
+  }
+  return cfg.free ?? 0;
+}
+
 /**
- * 💰 ค่าบริการของกลุ่มช่องกรอกนี้ = ค่าที่กรอก × เรทต่อหน่วย (0 = ยังไม่กรอก/เรทเป็น 0)
+ * 💰 ค่าบริการของกลุ่มช่องกรอกนี้ = (ค่าที่กรอก − โควตาฟรี) × เรทต่อหน่วย (0 = ยังไม่กรอก/ไม่เกินโควตา)
  * กลุ่มช่องกรอกไม่มี choices ให้บวก จึงเป็นทางเดียวที่กลุ่มชนิดนี้คิดเงินได้
  */
 export function inputFeeOf(opt: ProductOption, selections: Record<string, string>): number {
@@ -611,7 +745,8 @@ export function inputFeeOf(opt: ProductOption, selections: Record<string, string
   const n = Number(parseInputValue(opt, selections[opt.label]));
   if (!Number.isFinite(n) || n <= 0) return 0;
   const rate = inputFeeRateOf(cfg, selections);
-  return rate > 0 ? n * rate : 0;
+  const over = n - inputFeeQuotaOf(cfg, selections);
+  return rate > 0 && over > 0 ? over * rate : 0;
 }
 
 /** 📐 ผลของ unitYieldOf — สั่ง 1 หน่วยแล้วได้งานกี่ชิ้น */
@@ -894,12 +1029,18 @@ export function choiceExtraAtQty(
   choiceName: string,
   qty: number
 ): number {
+  const c = opt.choices.find((x) => x.name === choiceName);
+  const free = () => {
+    const f = opt.freeWhen;
+    return !!f && f.choices.includes(choiceName) && valueMatchesAny(selections[f.when.label], f.when.choices);
+  };
+  // ขั้นที่ 3 (ช่วงสั่งน้อยสุด) มาก่อนเสมอ — ตั้งไว้เฉพาะกลุ่มที่ราคาแต่ละแถวไม่เท่ากัน
+  const small = Math.floor(opt.extraSmallUpToQty ?? 0);
+  if (small > 0 && qty <= small && c?.extraSmall) return free() ? 0 : c.extraSmall;
   if (optionExtraApplies(opt, qty)) return choiceExtraOf(opt, selections, choiceName);
-  const below = opt.choices.find((c) => c.name === choiceName)?.extraBelow ?? 0;
+  const below = c?.extraBelow ?? 0;
   if (!below) return 0;
-  const f = opt.freeWhen;
-  if (f && f.choices.includes(choiceName) && valueMatchesAny(selections[f.when.label], f.when.choices)) return 0;
-  return below;
+  return free() ? 0 : below;
 }
 
 /**
@@ -1008,10 +1149,15 @@ export function choiceBadgeOf(
   opt: ProductOption,
   selections: Record<string, string>,
   choiceName: string,
-  qty: number
+  qty: number,
+  product?: Product
 ): number {
   const view = { ...selections, [opt.label]: choiceName };
-  if (!isMultiOption(opt) && smallQtyFeeOf(opt, view, qty) > 0) return 0;
+  // กลุ่มราคาดึงจากตารางเรท (priceAsDriver) — ป้ายโชว์ราคาช่องจริงของตัวเลือกนั้น ณ จำนวนนี้
+  if (opt.priceAsDriver && product) return priceAsDriverExtraOf(product, opt, view, choiceName, qty);
+  // กลุ่มติ๊กหลายอย่างก็โดนค่าเหมาเหมือนกัน (คิดต่อชิ้นที่ติ๊ก — ดู groupAddOf)
+  // ป้ายราคาตัวเองในช่วงนั้นเป็นเลขที่ไม่ได้คิดจริง (เช่น ติ่งห้อยขึ้น +฿15 แต่ช่วง 1-10 คิด ฿20)
+  if (smallQtyFeeOf(opt, view, qty) > 0) return 0;
   // ยังไม่เต็มโควตา "รวมในราคา" = ตัวนี้ยังไม่คิดเงิน อย่าขึ้นป้าย +฿ ให้ลูกค้าเข้าใจผิด
   const free = Math.max(0, Math.floor(opt.freeFirstN ?? 0));
   if (free > 0) {
@@ -1204,6 +1350,11 @@ export interface PriceRate {
    * ไดคัท 100% ลายละ 5 · SET-KIT ลายละ 20 (ตรรกะเดียวกับสติ๊กเกอร์ไดคัท 100%/50%)
    */
   mixRule?: MixRule;
+  /**
+   * 💬 เลือกเรทนี้แล้วต้องคุยลายกับแอดมินก่อนสั่ง — ใช้กับสินค้าที่เรทคือ "ชนิดงาน"
+   * เช่น หมวก/เสื้อ ที่มีเรท "พิมพ์ DTF | FLEX" (สั่งได้เลย) กับเรท "งานปัก" (ต้องตีลายคุยกันก่อน)
+   */
+  consult?: ArtworkConsult;
   pricing: PriceMatrix;
 }
 
@@ -1398,6 +1549,24 @@ export function perUnitCapacity(product: Product, selections: Record<string, str
     const c = o.choices.find((x) => x.name === picked);
     if (c?.perUnit && c.perUnit > 0) cap = cap === undefined ? c.perUnit : Math.min(cap, c.perUnit);
   }
+  /*
+   * 📐 งานไดคัท — เพดานลายมาจากจำนวนชิ้นที่ตัดได้จริงต่อแผ่น (ต้องติ๊ก capDesigns ที่กลุ่มนั้น
+   * ไม่งั้นตัวเลขต่อแผ่นเป็นแค่ข้อมูลบอกทางเหมือนเดิม) · อ่านได้ทั้งขนาดตายตัวและขนาดที่กรอกเอง
+   *
+   * ⚠️ เช็ค optionActive ด้วย ต่างจากลูป perUnit ด้านบน — กลุ่มขนาดพวกนี้โผล่ตามการตัดที่เลือก
+   * และ resolveSelections ใส่ค่าเริ่มต้นให้กลุ่มที่ซ่อนอยู่ด้วย ไม่เช็คแล้วจะโดนค่าค้างของกลุ่ม
+   * ที่ไม่ได้ใช้กดเพดานไว้ (เลือกไดคัทตามทรง 3×3 ซม. แต่ติดเพดาน 2 ลายของ A4 ที่ค้างอยู่)
+   *
+   * ยังกรอกไม่ครบ = ข้ามไป ปล่อยให้กติกาอื่นคุมแทน · ใหญ่เกินแผ่น (0 ชิ้น) ก็ข้าม
+   * ไม่งั้นเพดานเหลือ 0 แล้วช่องจำนวนลายตันจนกดอะไรไม่ได้ (หน้าสินค้าเตือนเรื่องใหญ่เกินแผ่นอยู่แล้ว)
+   */
+  for (const o of product.options ?? []) {
+    if (!o.capDesigns || !optionActive(o, selections)) continue;
+    const picked = selections[o.label];
+    const fixed = picked ? o.choices.find((x) => x.name === picked)?.piecesPerUnit : undefined;
+    const n = fixed && fixed > 0 ? fixed : sheetYieldCount(product, o, selections);
+    if (n != null && n > 0) cap = cap === undefined ? n : Math.min(cap, n);
+  }
   return cap;
 }
 
@@ -1474,6 +1643,16 @@ export function designCountOf(selections: Record<string, string>): number {
 }
 
 /**
+ * 🧮 จำนวนชิ้นต่อ 1 หน่วยขาย ตามที่ลูกค้าเลือกในกลุ่ม pieceCountLabel — เลขหน้าชื่อตัวเลือก ("3 ชิ้น" → 3)
+ * สินค้าไม่ได้ตั้ง / ยังไม่ได้เลือก = 1 (1 หน่วย = 1 ชิ้น เหมือนเดิม)
+ */
+export function unitPieceCountOf(product: Product, selections: Record<string, string>): number {
+  if (!product.pieceCountLabel) return 1;
+  const n = parseInt(String(selections[product.pieceCountLabel] ?? ""), 10);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+/**
  * จำนวนที่ใช้ "หาเรทราคา" ในตารางขั้นบันได
  * สินค้าที่ตั้ง tierByDesign = คิดเรทตามจำนวนชิ้นต่อลาย ⌊จำนวน ÷ ลาย⌋ (อย่างน้อย 1)
  * เช่น เคส 11 ชิ้นคละ 11 ลาย → 1 ชิ้น/ลาย → เรทราคาปลีก (ไม่ใช่เรท 11 ชิ้น)
@@ -1485,6 +1664,9 @@ export function designCountOf(selections: Record<string, string>): number {
  *   (ลูกค้าอยากคละเยอะยอมจ่ายราคาปลีกได้เอง — ระบบปรับเรทให้เห็นตรง ๆ ไม่ใช่แค่ป้ายเตือน)
  */
 export function tierQtyFor(product: Product, selections: Record<string, string>, qty: number): number {
+  // สินค้าหลายชิ้นต่อหน่วย (pieceCountLabel) — ช่วงราคานับจาก "จำนวนชิ้นรวม" ไม่ใช่จำนวนหน่วย
+  // (เงื่อนไขที่อิงช่วงราคา เช่น extraFromQty/ค่าเหมาช่วงปลีก ใช้เลขเดียวกัน จะได้ไม่คิดซ้ำกับราคาช่วงส่ง)
+  qty = qty * unitPieceCountOf(product, selections);
   // สินค้าที่คิดค่าคละเป็นเงินต่อหน่วยแล้ว (mixRule — ระดับสินค้าหรือระดับตัวเลือก) ห้ามลดเรทซ้ำอีก
   // ไม่งั้นลูกค้าโดนสองเด้ง: จ่ายค่าคละ + ราคาตกไปเรทปลีก
   if (mixRuleFor(product, selections)) return qty;
@@ -1737,6 +1919,13 @@ export interface Product {
    */
   tierByDesign?: boolean;
   /**
+   * 🧮 ชื่อกลุ่ม "จำนวนชิ้นต่อ 1 หน่วยขาย" — สินค้าที่ 1 หน่วยมีหลายชิ้น (พวงกุญแจหลายชิ้นใน 1 พวง)
+   * ตั้งแล้ว: จำนวนที่ใช้หาช่วงราคาขั้นบันได = จำนวนที่สั่ง × ชิ้นต่อหน่วย (เลขหน้าชื่อตัวเลือก เช่น "3 ชิ้น")
+   * สั่ง 4 พวง พวงละ 3 ชิ้น = 12 ชิ้น → เข้าช่วง 11-29 ชิ้น · ราคารวมยังคูณจำนวนหน่วย (พวง) ตามเดิม
+   * ใช้คู่กับ ProductOption.priceAsDriver (ราคาชิ้นที่ 2+ ดึงจากตารางเรทเดียวกัน)
+   */
+  pieceCountLabel?: string;
+  /**
    * 🔒 ห้ามคละเกินโควตาของเรท — ช่อง "คละกี่ลาย" ตันที่ ⌊จำนวน ÷ ขั้นต่ำต่อลาย⌋
    *
    * ค่าเริ่มต้นของ tierByDesign คือ "ไม่บล็อก แต่ราคาตกไปคิดตามชิ้นต่อลาย" (ลูกค้าเลือกจ่ายราคาปลีกเพื่อคละเยอะได้)
@@ -1866,12 +2055,13 @@ export interface Product {
  *  - mode "quote" = กรอกขนาดได้ แต่ไม่คิดราคาอัตโนมัติ ให้แอดมินตีราคา (ลูกค้าเห็น "สอบถามราคา")
  *  - mode "size"  = กรอกขนาดที่ต้องการ แต่ราคายังคิดตามตารางราคาปกติ (ขนาดติดไปกับออเดอร์ให้ทีมผลิต)
  *  - mode "chat"  = ไม่ต้องกรอกอะไร โชว์ปุ่มทักไลน์ให้คุยรายละเอียดกับแอดมินก่อน (ราคา = สอบถาม)
+ *  - mode "longest" = คิดอัตโนมัติจากตารางราคาเดิม โดยอิง "ด้านที่ยาวที่สุด" (ดู longestSizePlan)
  */
 export interface CustomOption {
   enabled: boolean;
   /** ป้ายกลุ่ม เช่น "กำหนดขนาดเอง" */
   label: string;
-  mode: "area" | "quote" | "size" | "chat";
+  mode: "area" | "quote" | "size" | "chat" | "longest";
   /** หน่วยที่ลูกค้ากรอก (area) — ป้ายหน่วย เช่น "ซม." "หลา" (มาจากคลังหน่วย) */
   unit: string;
   /** ตัวแปลง 1 หน่วย → เมตร (area) เก็บติดสินค้าไว้ให้คิดพื้นที่ได้เองแม้คลังเปลี่ยน */
@@ -1889,6 +2079,22 @@ export interface CustomOption {
    * ไม่ตั้ง/ว่าง = ปิดทุกกลุ่ม
    */
   keepOptions?: string[];
+  /**
+   * 📐 (longest) ชื่อกลุ่มแกนตารางราคาที่เป็น "ขนาด" เช่น "ขนาด"
+   * ราคาอิงแถวที่ครอบด้านยาวสุดของงาน — สั่ง 3×14 ซม. คิดราคาแถว "14×14 ซม."
+   */
+  sizeLabel?: string;
+  /** 📐 (longest) ด้านยาวสุดเกินแถวใหญ่สุดในตาราง คิดเพิ่มต่อ 1 หน่วย ต่อชิ้น (เช่น ซม. ละ 3 บาท) */
+  overRate?: number;
+  /**
+   * 📐 (longest) บวกเรทส่วนเกินเพิ่มอีก เมื่อกลุ่มอื่นเลือกค่าที่ระบุ
+   * เช่น สติ๊กเกอร์สูญญากาศ: ใหญ่กว่า 15 ซม. ซม. ละ 3 · ถ้าพิมพ์ 2 ด้าน บวกอีก ซม. ละ 2.5 (รวม 5.5)
+   */
+  overRateWhen?: { label: string; choices: string[]; add: number }[];
+  /** 📐 (longest) ด้านยาวสุดที่รับผลิตได้ (หน่วยเดียวกับ unit) — เกินนี้กดสั่งไม่ได้ */
+  maxLongest?: number;
+  /** 📐 (longest) อีกด้าน (ด้านสั้น) ที่รับผลิตได้ — คู่กับ maxLongest ใช้จำกัดให้อยู่ในกระดาษ A3 */
+  maxShortest?: number;
 }
 
 /**
@@ -2037,9 +2243,29 @@ export const CONSULT_LABEL = "คุยลายกับแอดมิน";
 export const CONSULT_NOTE_DEFAULT =
   "งานแบบนี้ต้องคุยเรื่องลายกับแอดมินก่อนนะครับ — ส่งไฟล์/แบบที่ต้องการมาทางไลน์ ทางร้านจะตีลายให้ดูก่อน ตกลงแบบกันเรียบร้อยแล้วค่อยกดสั่ง";
 
-/** สินค้านี้ต้องคุยลายกับแอดมินก่อนไหม (คืน null ถ้าไม่ได้เปิดใช้) */
-export function artworkConsultOf(p: Product): ArtworkConsult | null {
-  return p.artworkConsult?.enabled ? p.artworkConsult : null;
+/**
+ * ต้องคุยลายกับแอดมินก่อนไหม ณ ตัวเลือกชุดนี้ (คืน null ถ้าไม่เข้าเงื่อนไขไหนเลย)
+ * ไล่จากกว้างไปแคบ: ทั้งสินค้า → เรทที่เลือก → ตัวเลือกที่เลือก (ตัวแรกที่เปิดใช้ชนะ)
+ *   - ทั้งสินค้า = งานที่ต้องคุยทุกกรณี (ตุ๊กตาปัก/งานตีลายล้วน)
+ *   - รายเรท = เรทคือชนิดงาน เช่น หมวก เรท "งานปัก" ต้องคุย แต่เรทพิมพ์ DTF สั่งได้เลย
+ *   - รายตัวเลือก = ชนิดงานอยู่ในกลุ่มตัวเลือก เช่น กลุ่ม "แบบงาน" ตัวเลือก "ปักนูน"
+ * กลุ่มที่ถูกซ่อนอยู่ (showWhen ไม่ผ่าน) ไม่นับ — ลูกค้าไม่เห็นตัวเลือกนั้นแล้ว
+ */
+export function artworkConsultOf(
+  p: Product,
+  selections?: Record<string, string>,
+  rate?: PriceRate | null,
+): ArtworkConsult | null {
+  if (p.artworkConsult?.enabled) return p.artworkConsult;
+  if (rate?.consult?.enabled) return rate.consult;
+  if (!selections) return null;
+  for (const opt of p.options ?? []) {
+    if (!optionVisible(opt, selections)) continue;
+    for (const c of opt.choices) {
+      if (c.consult?.enabled && valueMatchesAny(selections[opt.label], [c.name])) return c.consult;
+    }
+  }
+  return null;
 }
 
 /**
@@ -2117,6 +2343,77 @@ export function customKeepsOption(c: CustomOption | null | undefined, label: str
 export function parseCustomDims(raw?: string): { w: number; h: number } | null {
   const m = (raw ?? "").match(/(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)/);
   return m ? { w: +m[1], h: +m[2] } : null;
+}
+
+/** ขนาด (ด้านยาวสุด) ที่ชื่อตัวเลือกสื่อถึง เช่น "10×10 ซม." → 10 · ไม่มีตัวเลข = null */
+export function choiceSizeCm(name: string): number | null {
+  const nums = String(name).match(/\d+(?:\.\d+)?/g);
+  return nums?.length ? Math.max(...nums.map(Number)) : null;
+}
+
+/** 📐 ที่มาของราคางานกำหนดขนาดเอง แบบอิงด้านที่ยาวที่สุด — ใช้ทั้งคิดเงินและกางให้ลูกค้าอ่าน */
+export interface LongestSizePlan {
+  /** ด้านยาวสุดที่ลูกค้ากรอก (ปัดขึ้นเต็มหน่วย) */
+  longest: number;
+  /** ชื่อตัวเลือกขนาดในตารางที่ใช้เป็นราคาฐาน */
+  choice: string;
+  /** ขนาดของแถวนั้น (ซม.) */
+  choiceCm: number;
+  /** หน่วยที่เกินแถวใหญ่สุด (0 = อยู่ในตาราง ไม่มีส่วนเกิน) */
+  overCm: number;
+  /** เรทส่วนเกินต่อ 1 หน่วย ต่อชิ้น (รวมส่วนที่บวกตามตัวเลือกอื่นแล้ว เช่น พิมพ์ 2 ด้าน) */
+  overRate: number;
+  /** ค่าเพิ่มของส่วนเกิน ต่อชิ้น */
+  overFee: number;
+}
+
+/** เรทส่วนเกินต่อหน่วย ณ ตัวเลือกที่เลือกอยู่ = overRate + ทุกข้อใน overRateWhen ที่เข้าเงื่อนไข */
+function overRateOf(c: CustomOption, selections: Record<string, string>): number {
+  let r = c.overRate ?? 0;
+  for (const w of c.overRateWhen ?? []) if (valueMatchesAny(selections[w.label], w.choices)) r += w.add;
+  return r;
+}
+
+/**
+ * 📐 แผนราคาของงานกำหนดขนาดเอง โหมด "longest" — null เมื่อยังคิดไม่ได้
+ * (ไม่ได้เปิดใช้ · ไม่ใช่โหมดนี้ · ยังไม่กรอกขนาด · ไม่พบกลุ่มขนาด/แถวราคา)
+ *
+ * ด้านยาวสุดปัดขึ้นเต็มหน่วยก่อนเสมอ แล้วเลือก "แถวที่เล็กที่สุดที่ยังครอบขนาดนั้นได้"
+ * เช่น 3×14 ซม. → แถว 14×14 ซม. · 3×14.2 ซม. → แถว 15×15 ซม.
+ * ใหญ่กว่าแถวสุดท้าย = ใช้แถวสุดท้ายเป็นฐาน แล้วคิดส่วนเกินหน่วยละ overRate ต่อชิ้น
+ */
+export function longestSizePlan(p: Product, selections: Record<string, string>): LongestSizePlan | null {
+  const c = p.custom;
+  if (!c?.enabled || c.mode !== "longest" || !c.sizeLabel) return null;
+  const dims = parseCustomDims(selections[c.label]);
+  if (!dims) return null;
+  const want = c.sizeLabel.trim();
+  const opt = p.options.find((o) => o.label.trim() === want);
+  if (!opt) return null;
+  const rows = opt.choices
+    .map((ch) => ({ name: ch.name, cm: choiceSizeCm(ch.name) }))
+    .filter((r): r is { name: string; cm: number } => r.cm != null)
+    .sort((a, b) => a.cm - b.cm);
+  if (!rows.length) return null;
+  // ปัดขึ้นเต็มหน่วย (เผื่อ floating point ของเลขที่ลูกค้าพิมพ์ เช่น 14.000000001)
+  const longest = Math.ceil(Math.max(dims.w, dims.h) - 1e-9);
+  const row = rows.find((r) => longest <= r.cm) ?? rows[rows.length - 1];
+  const overCm = Math.max(0, longest - row.cm);
+  const overRate = overCm > 0 ? overRateOf(c, selections) : 0;
+  return { longest, choice: row.name, choiceCm: row.cm, overCm, overRate, overFee: overCm * overRate };
+}
+
+/**
+ * ขนาดที่ลูกค้ากรอกเกินที่รับผลิตได้ไหม — คืนข้อความบอกเหตุผล (null = ผ่าน)
+ * ใช้ทั้งหน้าสินค้า (ล็อกปุ่มสั่ง) และตอนตรวจของในตะกร้า
+ */
+export function customSizeError(c: CustomOption | null | undefined, w: number, h: number): string | null {
+  if (!c || !(w > 0) || !(h > 0)) return null;
+  const long = Math.max(w, h);
+  const short = Math.min(w, h);
+  if (c.maxLongest && long > c.maxLongest) return `ด้านยาวสุดไม่เกิน ${c.maxLongest} ${c.unit}`;
+  if (c.maxShortest && short > c.maxShortest) return `อีกด้านไม่เกิน ${c.maxShortest} ${c.unit}`;
+  return null;
 }
 
 /** บันทึกว่าใคร "ตรวจแล้ว" เมื่อไหร่ — โชว์เป็นป้ายในหลังบ้านให้ทีมงานไม่ทำงานซ้ำกัน */
@@ -3902,6 +4199,26 @@ export interface UnitPriceAddOn {
  * ใช้ตอนอยากอธิบายให้ลูกค้าเห็นว่าทำไมสองบรรทัดในล็อตเดียวกันราคาต่อชิ้นไม่เท่ากัน
  * (เช่น ตะขอสปริง +฿10 ขณะที่ห่วงกลมฟรี — ราคาฐานเรทรวมเท่ากันทั้งคู่)
  */
+/**
+ * 💰 +฿ ของตัวเลือกในกลุ่ม priceAsDriver — ราคาช่องตารางเรทของตัวเลือกนั้น ณ จำนวน qty
+ * (qty ต้องเป็นเลขเดียวกับที่ใช้หาช่วงราคาฐาน — ผ่าน tierQtyFor มาแล้ว)
+ * ไม่มีช่องในตาราง/ยังไม่ได้เลือก = 0
+ */
+export function priceAsDriverExtraOf(
+  product: Product,
+  opt: ProductOption,
+  selections: Record<string, string>,
+  choiceName: string,
+  qty: number
+): number {
+  const driver = opt.priceAsDriver;
+  if (!driver || !choiceName) return 0;
+  const m = activeMatrix(product, selections);
+  if (!m || !m.driverLabels.includes(driver)) return 0;
+  const cells = m.cells[priceMatrixKey(m, { ...selections, [driver]: choiceName })];
+  return cells?.length ? (cells[tierIndex(m, qty)] ?? 0) : 0;
+}
+
 export function unitPriceParts(
   product: Product,
   selections: Record<string, string>,
@@ -3933,11 +4250,26 @@ export function unitPriceFor(
   if (needsQuote(product, selections)) return 0;
   // งานกำหนดขนาดเอง (custom) มาก่อน — ราคาพิเศษแทนตารางปกติ
   const c = product.custom;
+  /**
+   * 📐 ค่าเพิ่มของงานกำหนดขนาดเองที่ "ใหญ่กว่าแถวสุดท้ายในตาราง" (โหมด longest)
+   * บวกท้ายสุดหลังคิดราคาตารางเสร็จ — ไม่ใช่ราคาแทนตาราง
+   */
+  let overFee = 0;
   if (c?.enabled) {
     // โหมด "chat" = คุยกับแอดมินก่อน ยังไม่มีราคา · โหมด "size" = ระบุขนาดเฉย ๆ ราคาคิดตามตารางปกติ
     if (c.mode === "chat" && selections[c.label]) return 0;
     const dims = parseCustomDims(selections[c.label]);
-    if (dims && c.mode !== "size") return c.mode === "quote" ? 0 : customUnitPrice(c, dims.w, dims.h);
+    if (dims && c.mode === "longest") {
+      // 📐 อิงด้านที่ยาวที่สุด — สลับค่าแกน "ขนาด" เป็นแถวที่ครอบขนาดนั้น แล้วคิดต่อตามตารางปกติ
+      // (แกนตารางต้องมีค่าเสมอ ไม่งั้นราคาหล่นไปที่ราคาตั้งต้นของสินค้าเงียบ ๆ)
+      const plan = longestSizePlan(product, selections);
+      if (plan) {
+        selections = { ...selections, [c.sizeLabel!]: plan.choice };
+        overFee = plan.overFee;
+      }
+    } else if (dims && c.mode !== "size") {
+      return c.mode === "quote" ? 0 : customUnitPrice(c, dims.w, dims.h);
+    }
   }
   // จำนวนที่ใช้ "เทียบช่วงราคา" — สินค้าที่คิดเรทตามชิ้นต่อลายจะเป็น ⌊จำนวน ÷ ลาย⌋
   // เงื่อนไขที่ผูกกับช่วงราคา (ค่าธรรมเนียมช่วงปลีก · extraFromQty) ต้องใช้ตัวเลขเดียวกับที่เลือกช่วงราคา
@@ -3967,12 +4299,22 @@ export function unitPriceFor(
         note(opt.label, fee);
         continue;
       }
+      // 💰 กลุ่มราคาดึงจากตารางเรท (priceAsDriver) — เช่น "ขนาดชิ้นที่ 2" บวกราคาช่องขนาดนั้น
+      // ของเรทปัจจุบัน ณ ช่วงจำนวนเดียวกับราคาฐาน (สเปคอื่น ๆ ตามที่เลือกอยู่)
+      if (opt.priceAsDriver && m.driverLabels.includes(opt.priceAsDriver)) {
+        const add = priceAsDriverExtraOf(product, opt, selections, selections[opt.label] ?? "", tierQty);
+        base += add;
+        note(opt.label, add);
+        continue;
+      }
       const add = groupAddOf(opt, selections, tierQty);
       base += add;
       note(opt.label, add);
     }
+    // 📐 ส่วนที่ใหญ่กว่าแถวสุดท้ายของตาราง (งานกำหนดขนาดเอง) — บวกท้ายสุด
+    if (overFee) note(c!.label, overFee);
     // ค่าธรรมเนียมช่วงปลีกใส่ค่าติดลบได้ (ลดให้) — กันหักจนราคาติดลบ
-    return Math.max(0, base);
+    return Math.max(0, base + overFee);
   }
   let price = product.price;
   for (const opt of product.options) {
@@ -3982,7 +4324,8 @@ export function unitPriceFor(
     price += add;
     note(opt.label, add);
   }
-  return Math.max(0, price);
+  if (overFee) note(c!.label, overFee);
+  return Math.max(0, price + overFee);
 }
 
 /**
@@ -4074,7 +4417,10 @@ function usesFreeMixRetail(r: PriceRate | undefined, qty: number, designs: numbe
 function lineMergeable(p: Product, selections: Record<string, string>, qty: number): boolean {
   if (p.areaPricing?.enabled) return false;
   // ใช้ออปชั่นกำหนดเอง/ตีราคาจริงในบรรทัดนี้ (เลือกค่าไว้) = ราคาไม่อิงเรทตามจำนวน ไม่รวม
-  if (p.custom?.enabled && (selections[p.custom.label] ?? "").trim()) return false;
+  // ยกเว้นโหมดที่ราคายังมาจากตารางเรทตามจำนวน (size = ระบุขนาดเฉย ๆ · longest = อิงด้านยาวสุด)
+  // — บรรทัดพวกนี้เป็นงานล็อตเดียวกับบรรทัดปกติจริง ๆ ต้องรวมยอดหาเรทด้วย
+  const customPriced = p.custom?.mode === "size" || p.custom?.mode === "longest";
+  if (p.custom?.enabled && !customPriced && (selections[p.custom.label] ?? "").trim()) return false;
   if (needsQuote(p, selections)) return false;
   // ออเดอร์ปลีกคละอิสระ (ลายเกินโควตาต่อลายในช่วงปลีก) = จ่ายราคาปลีกตามเดิม ไม่นับรวมล็อตผลิต
   const r = p.hardMinQty ? activeRate(p, selections) : pickRateForQty(p, qty);

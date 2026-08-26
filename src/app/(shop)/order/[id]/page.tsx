@@ -486,7 +486,7 @@ export default function CustomerOrderPage() {
             {order.deposit && !order.deposit.firstPaidAt
               ? `ออเดอร์นี้ตกลงมัดจำก่อน — โอน ${formatPrice(amountDueNow(order))} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} แล้วแนบสลิป · ส่วนที่เหลือชำระก่อนจัดส่ง`
               : (order.paidTotal ?? 0) > 0
-                ? `เกิดจากการสั่งเพิ่ม — โอนเฉพาะส่วนต่างมาที่บัญชีร้าน แล้วแนบสลิป (จ่ายแล้ว ${formatPrice(order.paidTotal ?? 0)} จาก ${formatPrice(orderTotal(order))})`
+                ? `ยอดรวมเพิ่มขึ้นหลังโอนรอบแรก (สั่งเพิ่ม หรือทางร้านตีราคางานสั่งทำให้แล้ว) — โอนเฉพาะส่วนต่างมาที่บัญชีร้าน แล้วแนบสลิป (จ่ายแล้ว ${formatPrice(order.paidTotal ?? 0)} จาก ${formatPrice(orderTotal(order))})`
                 : "โอนเงินมาที่บัญชีร้านแล้วแนบสลิปที่นี่ ทางร้านจะตรวจสอบและเริ่มงานให้"}
           </p>
           <label

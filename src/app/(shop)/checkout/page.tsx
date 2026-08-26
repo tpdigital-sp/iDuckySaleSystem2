@@ -34,6 +34,11 @@ interface Placed {
   total: number;
   url: string;
   key?: string;
+  /**
+   * รายการที่ยังรอทางร้านตีราคา (ราคา ฿0) — มีอย่างน้อย 1 รายการ = ยอดรวมยังไม่ครบ
+   * หน้านี้จะไม่โชว์เลขบัญชี/ปุ่มแนบสลิป จนกว่าแอดมินจะใส่ราคาครบ (กติกาเดียวกับหน้า /order/[id])
+   */
+  pending: string[];
 }
 
 
@@ -410,7 +415,15 @@ export default function CheckoutPage() {
     lines.push("(โอนแล้วแนบรูปสลิปในแชทนี้ได้เลย)");
     lines.push(`🔗 เช็คออเดอร์/ดูแบบงาน: ${orderUrl}`);
     if (res.coupon?.applied) localStorage.removeItem("ducky_coupon"); // คูปองถูกตัดใช้แล้ว
-    setPlaced({ id: res.orderId, text: lines.join("\n"), total, url: orderUrl, key: res.key });
+    setPlaced({
+      id: res.orderId,
+      text: lines.join("\n"),
+      total,
+      url: orderUrl,
+      key: res.key,
+      // งานที่แอดมินต้องตีราคาก่อน (เข้ามาที่ ฿0) — ยังโอนไม่ได้จนกว่าจะได้ราคาครบ
+      pending: orderItems.filter((it) => it.qty > 0 && it.unitPrice <= 0).map((it) => `${it.name} ×${it.qty.toLocaleString("th-TH")}`),
+    });
     // เอาเฉพาะรายการที่สั่งไปออกจากตะกร้า — ที่ไม่ได้ติ๊กยังอยู่ให้สั่งรอบหน้า
     items.forEach((it) => removeItem(it.key));
     clearUnpicked();
@@ -505,7 +518,14 @@ export default function CheckoutPage() {
      * โหมดแอดมินสั่งแทน = ไม่มีขั้นตอนทักไลน์ ไม่ต้องใส่เลขเลย
      */
     const numbered = !staffMode;
-    const stepSlip = hasPayment(payment) ? 3 : 2;
+    /**
+     * 💬 มีงานที่แอดมินต้องตีราคาก่อน → ยังไม่เปิดให้จ่ายเงิน
+     * ซ่อนทั้งเลขบัญชีร้านและปุ่มแนบสลิป จนกว่าแอดมินจะใส่ราคาครบ แล้วลูกค้าค่อยกลับมาที่ลิงก์ออเดอร์
+     * (หน้า /order/[id] ล็อกด้วยกติกาเดียวกัน — ที่นี่คือด่านแรกทันทีหลังกดสั่ง)
+     */
+    const awaitingQuote = placed.pending.length > 0;
+    const showPay = hasPayment(payment) && !awaitingQuote;
+    const stepSlip = showPay ? 3 : 2;
     return (
       <div className="mx-auto max-w-2xl px-4 py-10">
         <div className="rounded-2xl bg-emerald-50/70 p-6 text-center ring-1 ring-emerald-200">
@@ -519,7 +539,15 @@ export default function CheckoutPage() {
           <p className="mt-1 text-sm text-stone-600">{staffMode ? "เลขออเดอร์" : "เลขออเดอร์ของคุณ"}</p>
           <p className="select-all text-2xl font-extrabold tracking-wide text-stone-900">{placed.id}</p>
           <p className="mt-2 text-sm text-stone-500">
-            ยอดที่ต้องโอน <span className="font-bold text-amber-600">{formatPrice(placed.total)}</span>
+            {awaitingQuote ? (
+              <>
+                ยอดที่ต้องโอน <span className="font-bold text-amber-600">💬 รอทางร้านตีราคา</span>
+              </>
+            ) : (
+              <>
+                ยอดที่ต้องโอน <span className="font-bold text-amber-600">{formatPrice(placed.total)}</span>
+              </>
+            )}
           </p>
           <button
             type="button"
@@ -577,7 +605,7 @@ export default function CheckoutPage() {
           </div>
         )}
 
-        {hasPayment(payment) && (
+        {showPay && (
           <div className="mt-4 space-y-2">
             <p className="text-sm font-bold text-stone-700">
               {numbered && (
@@ -606,8 +634,49 @@ export default function CheckoutPage() {
           </div>
         )}
 
+        {/* ── 💬 รอทางร้านตีราคา — ยังไม่เปิดให้โอน แทนที่กล่องบัญชี+แนบสลิปทั้งคู่ ── */}
+        {awaitingQuote && (
+          <div className="mt-4 rounded-2xl bg-amber-50 p-5 ring-2 ring-amber-300">
+            <p className="text-base font-extrabold text-amber-900">
+              {numbered && (
+                <span className="mr-1.5 inline-grid h-6 w-6 place-items-center rounded-full bg-amber-500 text-xs text-white">2</span>
+              )}
+              ⏳ รอทางร้านใส่ราคาก่อน — <u>ยังไม่ต้องโอนตอนนี้</u>
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-stone-600">
+              ออเดอร์นี้มีงานที่ต้องให้แอดมินคำนวณราคาให้ก่อน จึงยังไม่แสดงเลขบัญชีร้าน —
+              ส่งลิงก์ออเดอร์ให้ทางร้านทางไลน์ พอแอดมินใส่ราคาครบแล้ว ระบบจะทักกลับไปหาคุณ
+              และเปิดเลขบัญชีให้โอนที่ลิงก์ออเดอร์นี้เอง
+            </p>
+            <ul className="mt-2 space-y-0.5">
+              {placed.pending.map((t, i) => (
+                <li key={i} className="text-xs font-semibold text-amber-800">• {t} — 💬 รอตีราคา</li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={() => contactShop(placed.text)}
+              className="mt-3 w-full rounded-full bg-[#06C755] px-6 py-3.5 text-base font-bold text-white shadow-lg transition hover:scale-[1.01] hover:brightness-95"
+            >
+              💬 ส่งลิงก์ออเดอร์ให้ร้านตีราคา
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard?.writeText(placed.url).catch(() => {});
+                setLinkCopied(true);
+                setTimeout(() => setLinkCopied(false), 2000);
+              }}
+              className="mt-2 w-full rounded-full bg-white px-4 py-2.5 text-xs font-bold text-stone-600 ring-1 ring-stone-200 transition hover:bg-stone-50"
+            >
+              {linkCopied ? "✓ คัดลอกลิงก์แล้ว — วางส่งในแชทร้านได้เลย" : "🔗 คัดลอกลิงก์ออเดอร์"}
+            </button>
+          </div>
+        )}
+
         {/* ── แจ้งโอน: อัปโหลดสลิป (flow หลัก) ── */}
-        {reported ? (
+        {!awaitingQuote &&
+          (reported ? (
           <div className="mt-5 rounded-2xl bg-emerald-50/70 p-5 text-center ring-1 ring-emerald-200">
             <span className="text-3xl">🎉</span>
             <p className="mt-2 font-bold text-emerald-800">แจ้งโอนเรียบร้อยแล้ว!</p>
@@ -682,7 +751,7 @@ export default function CheckoutPage() {
               </button>
             </div>
           </div>
-        )}
+          ))}
 
         <Link href="/products" className="mt-4 block text-center text-sm font-semibold text-stone-400 hover:text-stone-600">← เลือกซื้อสินค้าต่อ</Link>
       </div>

@@ -17,6 +17,8 @@ import { formatPrice } from "@/lib/products";
 import {
   amountDueNow,
   daysToUseBy,
+  hasUnpaidBalance,
+  orderBalance,
   lineUserOf,
   lineChatOf,
   MOCK_ORDERS,
@@ -51,8 +53,14 @@ const qtyOf = (o: Order) => o.items.reduce((s, i) => s + i.qty, 0);
 const dayOf = (d: string) => d.split(" ").slice(0, 3).join(" ");
 /** งานแบบที่ยังไม่จบ (ยังไม่มีแบบ หรือ ลูกค้าขอแก้) */
 const openProofs = (o: Order) => o.items.filter((i) => !proofsOf(i).length || i.proofStatus === "ขอแก้ไข").length;
-/** ออเดอร์มัดจำที่ยังเก็บเงินไม่ครบ — ต้องตามเก็บก่อนส่งของ */
-const isDue = (o: Order) => !!o.deposit && !o.deposit.settledAt && o.status !== "ยกเลิก";
+/**
+ * ออเดอร์ที่ยังเก็บเงินไม่ครบ — ต้องตามเก็บก่อนส่งของ
+ * ครอบทั้งออเดอร์มัดจำ (ยังไม่ปิดงวดหลัง) และใบธรรมดาที่ยอดโตขึ้นหลังลูกค้าโอนแล้ว
+ * (แอดมินตีราคางานสั่งทำทีหลัง / ลูกค้าสั่งเพิ่ม) — ดู hasUnpaidBalance
+ */
+const isDue = (o: Order) => hasUnpaidBalance(o);
+/** ยอดที่ยังต้องตามเก็บของใบนี้ — ใบมัดจำใช้ยอดงวดนี้ · ใบธรรมดาใช้ส่วนต่างที่ยังขาด */
+const dueOf = (o: Order) => (o.deposit ? amountDueNow(o) : orderBalance(o));
 /** งานที่ต้องให้ทีมงานลงมือตอนนี้ (ไม่ใช่รอลูกค้า) */
 const NEEDS_US: OrderStatus[] = ["รอตรวจสอบ", "ชำระแล้ว", "แก้ไขแบบ", "อนุมัติแบบ"];
 /** สถานะที่ถือว่าจบแล้ว — แถวต้องเงียบกว่าใบที่ยังค้าง */
@@ -64,7 +72,7 @@ export default function AdminOrdersPage() {
   const [dept, setDept] = useState("all");
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [q, setQ] = useState("");
-  const [onlyDue, setOnlyDue] = useState(false); // เห็นเฉพาะออเดอร์มัดจำที่ยังเก็บเงินไม่ครบ
+  const [onlyDue, setOnlyDue] = useState(false); // เห็นเฉพาะออเดอร์ที่ยังเก็บเงินไม่ครบ (มัดจำ + ส่วนต่างที่ตีราคาเพิ่ม)
   const [demo, setDemo] = useState(false);
 
   const can = useCan();
@@ -121,9 +129,9 @@ export default function AdminOrdersPage() {
       waitCustomer: orders.filter((o) => o.status === "รอชำระเงิน" || o.status === "รอตรวจแบบ").length,
       making: orders.filter((o) => o.status === "กำลังผลิต").length,
       todaySales: active.filter((o) => dayOf(o.date) === today).reduce((s, o) => s + orderTotal(o), 0),
-      // ออเดอร์มัดจำที่ยังเก็บเงินไม่ครบ + ยอดที่ยังต้องตามเก็บรวมทั้งหมด
+      // ออเดอร์ที่ยังเก็บเงินไม่ครบ (มัดจำ + ส่วนต่างที่ตีราคาเพิ่ม) + ยอดที่ยังต้องตามเก็บรวม
       dueCount: active.filter(isDue).length,
-      dueAmount: active.filter(isDue).reduce((s, o) => s + amountDueNow(o), 0),
+      dueAmount: active.filter(isDue).reduce((s, o) => s + dueOf(o), 0),
     };
   }, [orders]);
 
@@ -252,7 +260,7 @@ export default function AdminOrdersPage() {
               <span className="dkb-num dkb-stat-v" style={{ color: "var(--dk-coral-ink)" }}>
                 {formatPrice(stats.dueAmount)}
               </span>
-              <span className="dkb-stat-hint">{stats.dueCount} ใบ (มัดจำยังไม่ครบ)</span>
+              <span className="dkb-stat-hint">{stats.dueCount} ใบ (มัดจำ/ส่วนต่างที่ยังไม่ครบ)</span>
             </button>
           ) : (
             <div className="dkb-g dkb-stat">
@@ -520,10 +528,11 @@ function OrderRow({
         <StatusChip s={o.status} />
         <span className="dkb-amt">
           {seesMoney ? formatPrice(orderTotal(o)) : `${qtyOf(o)} ชิ้น`}
-          {/* ออเดอร์มัดจำ: บอกยอดที่ยังต้องเก็บ "งวดนี้" ใต้ยอดเต็ม */}
-          {seesMoney && o.deposit && !o.deposit.settledAt && o.status !== "ยกเลิก" && (
-            <small style={{ color: o.deposit.firstPaidAt ? "var(--dk-coral-ink)" : "var(--dk-lilac-ink)" }}>
-              {o.deposit.firstPaidAt ? "ค้าง" : "มัดจำ"} {formatPrice(amountDueNow(o))}
+          {/* ยังเก็บเงินไม่ครบ: บอกยอดที่ยังต้องตามเก็บใต้ยอดเต็ม
+              ใบมัดจำ = ยอดงวดนี้ · ใบธรรมดา = ส่วนต่างที่โตขึ้นหลังลูกค้าโอนแล้ว (ตีราคาเพิ่ม/สั่งเพิ่ม) */}
+          {seesMoney && isDue(o) && (
+            <small style={{ color: o.deposit && !o.deposit.firstPaidAt ? "var(--dk-lilac-ink)" : "var(--dk-coral-ink)" }}>
+              {o.deposit && !o.deposit.firstPaidAt ? "มัดจำ" : "ค้าง"} {formatPrice(dueOf(o))}
             </small>
           )}
         </span>

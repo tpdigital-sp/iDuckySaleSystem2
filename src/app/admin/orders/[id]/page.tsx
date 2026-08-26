@@ -779,7 +779,7 @@ export default function AdminOrderDetailPage() {
         g.short.length ? `ของไม่ครบ ${g.short.length} รายการ` : "",
         g.unsampled.length ? `ยังไม่ยืนยันใส่ชิ้นงานตัวอย่าง ${g.unsampled.length} รายการ` : "",
         g.noPhoto ? "ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง" : "",
-        g.unpaidBalance ? "ยังเก็บยอดคงเหลือ (มัดจำ 50%) ไม่ครบ" : "",
+        g.unpaidBalance ? (order?.deposit ? "ยังเก็บยอดคงเหลือ (มัดจำ 50%) ไม่ครบ" : "ยังเก็บส่วนต่างที่ตีราคาเพิ่มไม่ครบ") : "",
       ].filter(Boolean);
       if (!mayEdit) {
         setOrder((cur) => (cur ? { ...cur, tracking: trackingRef.current || undefined } : cur));
@@ -3941,7 +3941,7 @@ function PackView({
                 gate.short.length ? `ของไม่ครบ ${gate.short.length} รายการ` : "",
                 gate.unsampled.length ? `🎁 ใส่งานตัวอย่างอีก ${gate.unsampled.length} รายการ` : "",
                 gate.noPhoto ? "📸 ถ่ายภาพก่อนปิดกล่อง" : "",
-                gate.unpaidBalance ? "💳 เก็บยอดคงเหลือ (มัดจำ) ให้ครบ" : "",
+                gate.unpaidBalance ? (order.deposit ? "💳 เก็บยอดคงเหลือ (มัดจำ) ให้ครบ" : "💳 เก็บส่วนต่างที่ค้างให้ครบ") : "",
               ]
                 .filter(Boolean)
                 .join(" · ")}

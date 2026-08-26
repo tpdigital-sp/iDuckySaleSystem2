@@ -61,6 +61,19 @@ export async function POST(req: Request) {
   if (order.status === "ยกเลิก") return NextResponse.json({ error: "ออเดอร์นี้ถูกยกเลิกแล้ว" }, { status: 409 });
   if (!balancePhase && order.status !== "รอชำระเงิน" && order.status !== "รอตรวจสอบ")
     return NextResponse.json({ error: "ออเดอร์นี้ยืนยันการชำระเงินแล้ว ไม่ต้องแจ้งโอนซ้ำ" }, { status: 409 });
+  /**
+   * 💬 ยังมีงานที่แอดมินต้องตีราคา → ยอดรวมยังไม่ครบ ห้ามรับสลิป
+   * หน้าเว็บซ่อนเลขบัญชี/ปุ่มแนบสลิปไว้แล้ว อันนี้คือด่านฝั่งเซิร์ฟเวอร์ (หน้าเก่าค้างในเบราว์เซอร์ / ยิง API ตรง)
+   * ออเดอร์เคลมตั้งใจให้ ฿0 — ไม่นับ
+   */
+  const pendingQuote = order.claimOf || order.claimReason ? [] : order.items.filter((i) => i.qty > 0 && i.unitPrice <= 0);
+  if (pendingQuote.length)
+    return NextResponse.json(
+      {
+        error: `ออเดอร์นี้ยังรอทางร้านตีราคา ${pendingQuote.length} รายการ — ยังโอนไม่ได้ครับ กรุณาส่งลิงก์ออเดอร์ให้แอดมินทางไลน์ก่อน`,
+      },
+      { status: 409 }
+    );
 
   // อัปโหลดสลิป (สร้าง bucket ให้อัตโนมัติถ้ายังไม่มี)
   const safeId = orderId.replace(/[^a-z0-9_-]/gi, "") || "misc";

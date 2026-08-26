@@ -489,11 +489,27 @@ export interface OrderDeposit {
   balanceRemindedAt?: string;
 }
 
+/**
+ * ออเดอร์นี้ยังมี "ยอดค้างชำระ" ที่ยืนยันได้ไหม — เกิดตอนยอดรวมโตขึ้นหลังลูกค้าโอนแล้ว
+ * (แอดมินตีราคางานสั่งทำทีหลัง · ลูกค้าสั่งเพิ่มในออเดอร์เดิม · แอดมินแก้ราคา/ค่าส่ง)
+ *
+ * ⚠️ ต้องมี `paidTotal` ก่อนถึงเทียบได้ — ออเดอร์ที่แอดมินกดชำระแล้วเองโดยไม่ผ่านสลิป
+ * ไม่มีค่านี้ (ของจริง 34 จาก 40 ใบ ตอน 26 ส.ค. 69) ถ้าเช็คแค่ orderBalance > 0
+ * ใบพวกนั้นจะกลายเป็น "ค้างเต็มจำนวน" แล้วโดนล็อกพิมพ์ใบงาน/ยิงเลขพัสดุยกกระดาน
+ * ออเดอร์เคลมตั้งใจให้ ฿0 · ออเดอร์มัดจำมีเส้นทางเก็บงวดหลังของตัวเอง (deposit.settledAt)
+ */
+export function hasUnpaidBalance(o: Order): boolean {
+  if (o.status === "ยกเลิก" || o.claimOf) return false;
+  if (o.deposit) return !o.deposit.settledAt;
+  return o.paidTotal != null && orderBalance(o) > 0;
+}
+
 /** ได้รับเงินครบยอดออเดอร์หรือยัง — ใช้ล็อกการพิมพ์ใบงาน/ใบเสร็จ และยิงเลขพัสดุ */
 export function orderFullyPaid(o: Order): boolean {
   const paidStage = !(["รอชำระเงิน", "รอตรวจสอบ", "ยกเลิก"] as OrderStatus[]).includes(o.status);
   if (o.deposit) return paidStage && !!o.deposit.settledAt;
-  return paidStage;
+  // ยอดโตขึ้นหลังรับเงินแล้ว = ยังเก็บไม่ครบ ห้ามนับว่าจ่ายครบ (ไม่งั้นปิดงานส่งของทั้งที่ยังขาด)
+  return paidStage && !hasUnpaidBalance(o);
 }
 
 /** ยอดที่ลูกค้าต้องโอน "งวดนี้" — มัดจำ / ยอดคงเหลือ / เต็มจำนวน */
@@ -517,7 +533,7 @@ export interface PackGate {
   unsampled: string[];
   /** ยังไม่มีภาพถ่ายของในกล่องก่อนปิด — บังคับอย่างน้อย 1 รูปก่อนยิงเลขพัสดุ */
   noPhoto: boolean;
-  /** ออเดอร์มัดจำที่ยังเก็บยอดคงเหลือไม่ครบ — ห้ามยิงเลขพัสดุ */
+  /** ยังเก็บเงินไม่ครบ (ยอดคงเหลือมัดจำ หรือส่วนต่างที่โตขึ้นหลังโอน) — ห้ามยิงเลขพัสดุ */
   unpaidBalance: boolean;
 }
 
@@ -541,7 +557,7 @@ export function packGate(order: Order): PackGate {
   });
 
   const noPhoto = !(order.packPhotos && order.packPhotos.length > 0);
-  const unpaidBalance = !!order.deposit && !order.deposit.settledAt;
+  const unpaidBalance = hasUnpaidBalance(order);
 
   return {
     ready: !uncounted.length && !unread.length && !short.length && !unsampled.length && !noPhoto && !unpaidBalance,

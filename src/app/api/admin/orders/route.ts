@@ -7,7 +7,7 @@ import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFl
 import { reportPaidToTP } from "@/lib/server/tp-report";
 import { bumpSoldForOrder, unbumpSoldForOrder } from "@/lib/server/sold";
 import { cutStockForOrder, restoreStockForOrder } from "@/lib/server/stock";
-import { orderTotal, packGate, proofsOf, withLog, type Order, type OrderStatus, type PackGate } from "@/lib/admin-data";
+import { hasUnpaidBalance, orderBalance, orderTotal, packGate, proofsOf, withLog, type Order, type OrderStatus, type PackGate } from "@/lib/admin-data";
 
 /** สรุปเหตุผลที่ด่านตรวจยังไม่ผ่าน (ไว้โชว์/ลง log) */
 function gateReasons(g: PackGate): string {
@@ -17,7 +17,7 @@ function gateReasons(g: PackGate): string {
     g.short.length ? `ของไม่ครบ ${g.short.length} รายการ` : "",
     g.unsampled.length ? `ยังไม่ยืนยันใส่งานตัวอย่าง ${g.unsampled.length} รายการ` : "",
     g.noPhoto ? "ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง" : "",
-    g.unpaidBalance ? "ยังเก็บยอดคงเหลือ (มัดจำ 50%) ไม่ครบ" : "",
+    g.unpaidBalance ? "ยังเก็บเงินไม่ครบ (ยอดคงเหลือมัดจำ / ส่วนต่างที่ตีราคาเพิ่ม)" : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -218,6 +218,34 @@ export async function PATCH(req: Request) {
     toSave = mergePackFields(existing, order, can(actor, "pack.ship"));
   }
 
+  /**
+   * 💬 ตีราคา/แก้ราคาบนใบที่ลูกค้าโอนมาแล้ว → ยอดโตขึ้น ต้องตามเก็บส่วนต่าง
+   * ดึงสถานะกลับไป "รอชำระเงิน" เพื่อเปิดหน้าแจ้งโอนให้ลูกค้าโอนเฉพาะส่วนต่าง
+   * (กติกาเดียวกับตอนลูกค้าสั่งเพิ่มในออเดอร์เดิม — /api/orders/append)
+   *
+   * ทำเฉพาะ: แอดมินสิทธิ์เต็ม · คำขอนี้ไม่ได้ตั้งใจเปลี่ยนสถานะเอง (เคารพสิ่งที่แอดมินเลือก)
+   * · ใบที่ยังไม่เข้าไลน์ผลิต (เข้าผลิตแล้วดึงกลับ = ป่วนคิวงาน — ใบพวกนั้นพึ่งป้าย "ค้าง"
+   *   ในลิสต์ + ด่านยิงเลขพัสดุแทน) · ใบมัดจำ/เคลมมีเส้นทางเก็บเงินของตัวเอง (hasUnpaidBalance กันให้แล้ว)
+   */
+  const REOPEN_FOR_BALANCE: OrderStatus[] = ["รอตรวจสอบ", "ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"];
+  const reopenedForBalance =
+    mayEditFull &&
+    !toSave.deposit &&
+    toSave.status === existing.status &&
+    REOPEN_FOR_BALANCE.includes(toSave.status) &&
+    hasUnpaidBalance(toSave);
+  if (reopenedForBalance)
+    toSave = withLog(
+      { ...toSave, status: "รอชำระเงิน" },
+      actor.name?.trim() || actor.username,
+      "ยอดรวมเพิ่มขึ้น — กลับไปรอชำระเงิน",
+      `ค้างอีก ${orderBalance(toSave).toLocaleString("th-TH")} บาท (จ่ายมาแล้ว ${(toSave.paidTotal ?? 0).toLocaleString("th-TH")} จาก ${orderTotal(toSave).toLocaleString("th-TH")})`
+    );
+
+  /** ตีราคางานสั่งทำครบในคำขอนี้ไหม — ใช้ทั้งกันแจ้งซ้ำและข้อความแจ้งราคาด้านล่าง */
+  const quoteJustPriced =
+    !toSave.claimOf && existing.items.some((i) => i.unitPrice <= 0) && toSave.items.length > 0 && toSave.items.every((i) => i.unitPrice > 0);
+
   // อย่าเก็บ signed URL ชั่วคราวลงฐาน — สลิปที่มี slipPath ต้องเซ็นใหม่ทุกครั้งที่ดึง
   if (toSave.slipPath) toSave = { ...toSave, slipUrl: undefined };
   if (toSave.deposit?.balanceSlipUrl) toSave = { ...toSave, deposit: { ...toSave.deposit, balanceSlipUrl: undefined } };
@@ -231,7 +259,7 @@ export async function PATCH(req: Request) {
   const depositFirstNow = !!toSave.deposit?.firstPaidAt && !existing.deposit?.firstPaidAt;
 
   // แจ้งเตือนลูกค้าเมื่อสถานะเปลี่ยนไปขั้นสำคัญ (เงียบถ้ายังไม่ตั้งค่า LINE)
-  if (toSave.status !== oldStatus) {
+  if (toSave.status !== oldStatus && !quoteJustPriced) {
     const origin = new URL(req.url).origin;
     const link = orderLink(origin, toSave);
     // แจ้งลูกค้า "ทุกครั้งที่สถานะเปลี่ยน" — ข้อความต่อสถานะอยู่ใน statusMessage()
@@ -292,9 +320,7 @@ export async function PATCH(req: Request) {
   // 💬 ตีราคาครบในคำขอนี้ → แจ้งลูกค้าทางไลน์ว่าเปิดหน้าแจ้งโอนได้แล้ว
   //    (งานสั่งทำเข้ามาที่ ฿0 · หน้าเช็คออเดอร์ล็อกปุ่มแจ้งโอนไว้จนกว่าทุกรายการมีราคา)
   //    งานเคลมตั้งใจให้ ฿0 อยู่แล้ว — ไม่ต้องแจ้ง
-  const quoteWasPending = !toSave.claimOf && existing.items.some((i) => i.unitPrice <= 0);
-  const quoteNowDone = toSave.items.length > 0 && toSave.items.every((i) => i.unitPrice > 0);
-  if (quoteWasPending && quoteNowDone) {
+  if (quoteJustPriced) {
     const origin = new URL(req.url).origin;
     const total = orderTotal(toSave);
     const bal = Math.max(0, total - (toSave.paidTotal ?? 0));
