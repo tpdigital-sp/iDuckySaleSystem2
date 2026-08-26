@@ -4227,8 +4227,11 @@ export default function ProductEditor({ product }: { product: Product }) {
     patch({ seo });
   }
 
-  async function autoFillSeo() {
-    // ข้อความที่อยู่ในช่องตอนนี้เป็นชุดที่ระบบเพิ่งเขียนให้ (แอดมินยังไม่แก้) → กดซ้ำเพื่อเปลี่ยนสำนวนได้เลย
+  /** เลื่อนชุดสำนวน: +1 = ชุดถัดไป, -1 = ย้อนกลับชุดก่อนหน้า (ต่ำสุดคือชุดที่ 1) */
+  async function stepSeo(delta: number) {
+    const next = Math.max(0, seoVariant + delta);
+    if (next === seoVariant) return; // ย้อนจนสุดแล้ว
+    // ข้อความที่อยู่ในช่องตอนนี้เป็นชุดที่ระบบเพิ่งเขียนให้ (แอดมินยังไม่แก้) → เปลี่ยนสำนวนได้เลย
     const untouched = lastAutoSeoRef.current === JSON.stringify(draft.seo);
     const hasOld = draft.seo.title || draft.seo.description || draft.seo.keywords || draft.seo.faqs.length > 0;
     if (
@@ -4243,7 +4246,6 @@ export default function ProductEditor({ product }: { product: Product }) {
       }))
     )
       return;
-    const next = seoVariant + 1;
     setSeoVariant(next);
     applyAutoSeo(next);
   }
@@ -6517,14 +6519,27 @@ export default function ProductEditor({ product }: { product: Product }) {
         <SecToggle id="seo" />
         <div className="mb-1 flex items-center justify-between gap-2">
           <h2 className="text-sm font-bold text-purple-800">🔎 SEO / AEO (ค้นหา + ให้ AI ตอบ)</h2>
-          <button
-            type="button"
-            onClick={autoFillSeo}
-            title="กดซ้ำได้เรื่อย ๆ — ทุกครั้งจะได้สำนวน/คำค้น/คำถามชุดใหม่"
-            className="rounded-full bg-violet-500 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-violet-600"
-          >
-            ✨ เขียนให้อัตโนมัติ{seoVariant > 0 ? ` (ชุดที่ ${seoVariant + 1})` : ""}
-          </button>
+          <div className="flex items-center gap-1.5">
+            {seoVariant > 0 && (
+              <button
+                type="button"
+                onClick={() => stepSeo(-1)}
+                title={`ย้อนกลับไปชุดที่ ${seoVariant}`}
+                aria-label={`ย้อนกลับไปชุดที่ ${seoVariant}`}
+                className="grid h-7 w-7 place-items-center rounded-full bg-violet-100 text-sm font-bold text-violet-600 transition hover:bg-violet-200"
+              >
+                ↩
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => stepSeo(1)}
+              title="กดซ้ำได้เรื่อย ๆ — ทุกครั้งจะได้สำนวน/คำค้น/คำถามชุดใหม่ (ปุ่ม ↩ ย้อนชุดก่อนหน้า)"
+              className="rounded-full bg-violet-500 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-violet-600"
+            >
+              ✨ เขียนให้อัตโนมัติ{seoVariant > 0 ? ` (ชุดที่ ${seoVariant + 1})` : ""}
+            </button>
+          </div>
         </div>
         <p className="mb-3 text-[11px] text-slate-400">
           ปรับข้อความที่ Google/AI ใช้ตอนค้นหาและสรุปคำตอบ · เว้นว่าง = ใช้ชื่อ/รายละเอียดอัตโนมัติ
