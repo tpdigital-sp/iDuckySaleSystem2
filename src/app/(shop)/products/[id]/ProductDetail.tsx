@@ -2552,33 +2552,40 @@ export default function ProductDetail({
                     const unitTxt = perDesign ? `${unit}ต่อลาย` : unit;
                     const inRange = feeQty <= s.upToQty;
                     const exempt = (s.freeChoices ?? []).join(" / ");
+                    // กลุ่มที่มีเรทปลีก/ส่งด้วย (extraFromQty + extraBelow) — พ้นช่วงเหมาแล้ว
+                    // ให้บรรทัด 💡 ของเรทเป็นคนบอกราคาแทน จะได้ไม่ขึ้นซ้อนกันสองบรรทัด
+                    const tiered = (opt.extraFromQty ?? 0) > 0 && opt.choices.some((c) => c.extraBelow);
                     if (inRange && fee !== 0) {
                       return (
                         <p className={`mt-1 text-[11px] font-semibold ${fee < 0 ? "text-emerald-700" : "text-amber-700"}`}>
-                          {fee < 0 ? "🎉" : "💡"} ช่วงสั่งไม่เกิน {s.upToQty.toLocaleString("th-TH")} {unitTxt} · เลือก{opt.label}
+                          {fee < 0 ? "🎉" : "💡"} ช่วง 1-{s.upToQty.toLocaleString("th-TH")} {unitTxt} · {opt.label}
                           {fee < 0
                             ? `ลดให้ ${formatPrice(-fee)}/${unit}`
-                            : `คิดเหมา ${formatPrice(fee)}/${unit} (แทนราคา${opt.label}ปกติ ไม่บวกซ้ำ)`}
-                          {exempt ? ` (ยกเว้น ${exempt}${fee < 0 ? " ไม่ลด" : " คิดราคาปกติ"})` : ""}
+                            : withQty
+                              ? // กลุ่มที่ระบุจำนวนได้ — ค่าเหมาคิดต่อชิ้นที่ติ๊ก ไม่ใช่ต่อกลุ่ม (ยอดรวมอยู่บรรทัด 💡 ด้านบน)
+                                `คิดเหมาชิ้นละ ${formatPrice(fee)} × จำนวนที่ระบุ`
+                              : `คิดเหมา ${formatPrice(fee)}/${unit}`}
+                          {exempt ? ` (ยกเว้น ${exempt})` : ""}
                         </p>
                       );
                     }
                     if (inRange) {
                       // อยู่ในช่วงแต่ตัวที่เลือกได้รับยกเว้น (เช่น ห่วงแถม) — คิดราคาตัวเลือกตามปกติ
+                      // ตัวที่เลือกไม่มีราคาอยู่แล้ว (เช่น "ไม่เพิ่ม") = ไม่มีอะไรต้องบอก ไม่ขึ้นบรรทัดรก
+                      if (groupAddOf(opt, effective, feeQty) <= 0) return null;
                       return (
                         <p className="mt-1 text-[11px] font-semibold text-stone-500">
-                          💡 ช่วงสั่งไม่เกิน {s.upToQty.toLocaleString("th-TH")} {unitTxt} · {opt.label}ที่เลือกอยู่ไม่คิดค่าเหมา ฿
-                          {Math.abs(s.fee).toLocaleString("th-TH")} — คิดราคาตามตัวเลือกตามปกติ
+                          💡 {opt.label}ที่เลือกอยู่ไม่คิดค่าเหมาช่วง 1-{s.upToQty.toLocaleString("th-TH")} {unitTxt}
                         </p>
                       );
                     }
-                    // พ้นช่วงเหมาแล้ว — บอกว่าตอนนี้คิดตามราคาตัวเลือก และตัวที่เลือกอยู่บวกเท่าไร
+                    if (tiered) return null;
+                    // พ้นช่วงเหมาแล้ว — บอกราคาที่คิดจริงตอนนี้
                     const now = groupAddOf(opt, effective, feeQty);
                     return (
                       <p className="mt-1 text-[11px] font-semibold text-teal-700">
-                        💡 สั่งตั้งแต่ {(s.upToQty + 1).toLocaleString("th-TH")} {unitTxt}ขึ้นไป · ไม่คิดค่าเหมา ฿
-                        {Math.abs(s.fee).toLocaleString("th-TH")}/{unit} แล้ว — {opt.label}คิดตามราคาตัวเลือก{" "}
-                        {now > 0 ? `(ตอนนี้ +${formatPrice(now)}/${unit})` : "(ตอนนี้ไม่คิดเพิ่ม)"}
+                        💡 สั่งตั้งแต่ {(s.upToQty + 1).toLocaleString("th-TH")} {unitTxt}ขึ้นไปไม่มีค่าเหมา ·{" "}
+                        {opt.label}{now > 0 ? ` +${formatPrice(now)}/${unit}` : "ไม่คิดเพิ่ม"}
                       </p>
                     );
                   })()}
@@ -2596,11 +2603,18 @@ export default function ProductDetail({
                         // ช่วงปลีกบางกลุ่มคิดเพิ่มคนละเรท (extraBelow) — อย่าบอกว่า "รวมแล้ว" ทั้งที่ยังคิดเงิน
                         const below = groupAddOf(opt, effective, feeQty);
                         if (opt.choices.some((c) => c.extraBelow)) {
+                          // ช่วงเหมาสั่งน้อย (smallQtyFee) มีบรรทัด 💡 ของค่าเหมาบอกราคาอยู่แล้ว — ไม่ขึ้นซ้ำ
+                          if (smallQtyFeeOf(opt, effective, feeQty) > 0) return null;
+                          // ราคาจริงเมื่อสั่งถึงเกณฑ์ — บอกตัวเลขตรง ๆ แทนคำว่า "เรทส่ง"
+                          const atFrom = groupAddOf(opt, effective, opt.extraFromQty!);
+                          if (below <= 0 && atFrom <= 0) return null;
                           return (
                             <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
-                              💡 จำนวนนี้คิด{opt.label}ตามเรทช่วงปลีก{" "}
-                              {below > 0 ? `(ตอนนี้ +${formatPrice(below)}/${unit})` : "(ตอนนี้ไม่คิดเพิ่ม)"} · สั่งตั้งแต่ {from}{" "}
-                              {unitTxt}ขึ้นไปคิดตามเรทส่ง
+                              💡 จำนวนนี้{opt.label} {below > 0 ? `+${formatPrice(below)}/${unit}` : "ไม่คิดเพิ่ม"} · ครบ{" "}
+                              {from} {unitTxt}
+                              {atFrom > 0
+                                ? ` ${atFrom < below ? "เหลือ" : "คิด"} +${formatPrice(atFrom)}/${unit}`
+                                : "ไม่คิดเพิ่ม"}
                             </p>
                           );
                         }
@@ -2613,8 +2627,8 @@ export default function ProductDetail({
                       const now = groupAddOf(opt, effective, feeQty);
                       return (
                         <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
-                          💡 สั่งตั้งแต่ {from} {unitTxt}ขึ้นไป · {opt.label}คิดเพิ่มตามตัวเลือก{" "}
-                          {now > 0 ? `(ตอนนี้ +${formatPrice(now)}/${unit})` : "(ตอนนี้ไม่คิดเพิ่ม)"}
+                          💡 สั่งครบ {from} {unitTxt}แล้ว · {opt.label}
+                          {now > 0 ? ` +${formatPrice(now)}/${unit}` : "ไม่คิดเพิ่ม"}
                         </p>
                       );
                     })()}
