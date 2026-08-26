@@ -25,6 +25,9 @@
  *   4) เพิ่ม "สีอะคริลิคฐาน" (การ์ด 3 ใบ) + "เลือกสีพิเศษของฐาน" ×19 ขนาด (เฉด 44 สี)
  *      โคลนจาก standy ทั้งชุด — showWhen ขนาดฐาน=Ncm ตรงกับชื่อตัวเลือกกลุ่มใหม่พอดี
  *
+ * รันซ้ำได้ — แต่ละขั้นเช็คก่อนว่าทำไปแล้วหรือยัง (ครั้งแรกเขียนแต่เงา priceRates[0] แล้วโดน
+ * การกดบันทึกจากหน้าแก้ไขสินค้าทับกลับ จึงต้องรันซ้ำได้และเขียน data.pricing ด้วย)
+ *
  * ผลข้างเคียงที่ตั้งใจ (ตรรกะ standy):
  *   • ช่วงปลีก 1-10 ชิ้น: ฐาน 7 ซม.ขึ้นไปเริ่มบวก extraBelow (เดิมปลีกไม่บวกฐานเลย) และ
  *     สกรีนลายฐานบวก +10 (เดิมปลีกไม่บวก) — เรทส่ง 11+ ราคาเท่าเดิมทุกช่วงที่ตารางเดิมมี
@@ -80,47 +83,62 @@ const srcSpecials = (standy.options ?? []).filter((o) => o.label.startsWith("เ
 if (!srcBaseSize || srcBaseSize.extraFromQty !== 11 || !srcColorCards || srcSpecials.length !== 19)
   throw new Error("ต้นแบบ standy เปลี่ยนโครง (ขนาดฐาน extraFromQty 11 / สีอะคริลิคฐาน / เลือกสีพิเศษของฐาน ×19) — ตรวจก่อน");
 
-// ── กันรันซ้ำ ─────────────────────────────────────────────────────────────────
+// ── 1) ถอดขนาดฐาน+ฐานสแตนดี้ออกจากเซลล์ (ตรวจทุกเซลล์ก่อนว่าสูตรถอดลงตัวเป๊ะ) ────
+/**
+ * ⚠️ ตารางของ "เรทที่ 1" เก็บไว้ 2 ที่: data.pricing = ตัวจริงที่หน้าแก้ไขสินค้าใช้ ·
+ * priceRates[0].pricing = เงาที่หน้าร้านอ่าน (ProductEditor สร้างเงาจากตัวจริงทุกครั้งที่กดบันทึก)
+ * แก้ที่เดียวไม่พอ — ครั้งแรกแก้แต่เงา พอมีคนกดบันทึกจากหน้าแก้ไข ตารางเก่ากลับมาทั้งดุ้น
+ */
 const r1 = (fc.priceRates ?? []).find((r) => r.id === "r1");
 if (!r1) throw new Error("frame-card ไม่มีเรท r1 — โครงเปลี่ยน ตรวจก่อน");
-if (JSON.stringify(r1.pricing.driverLabels) !== JSON.stringify(["ขนาดตัวสแตนดี้", "ขนาดฐาน", "ฐานสแตนดี้", "งานสกรีน"]))
-  throw new Error(`แกนตาราง r1 ไม่ตรงที่คาด (${r1.pricing.driverLabels.join(",")}) — แปลงไปแล้ว/โครงเปลี่ยน ไม่ต้องรันซ้ำ`);
-if (grp(fc, BASE_COLOR_LABEL)) throw new Error("frame-card มีสีอะคริลิคฐานแล้ว — เพิ่มไปแล้ว ไม่ต้องรันซ้ำ");
+const OLD_DRIVERS = ["ขนาดตัวสแตนดี้", "ขนาดฐาน", "ฐานสแตนดี้", "งานสกรีน"];
+const NEW_DRIVERS = ["ขนาดตัวสแตนดี้", "งานสกรีน"];
+const drivers = (m) => JSON.stringify(m.driverLabels);
+if (drivers(fc.pricing) !== drivers(r1.pricing))
+  throw new Error("ตารางตัวจริง (data.pricing) กับเงา (priceRates[0]) แกนไม่ตรงกัน — ตรวจก่อน");
 
-// ── 1) ถอดขนาดฐาน+ฐานสแตนดี้ออกจากเซลล์ (ตรวจทุกเซลล์ก่อนว่าสูตรถอดลงตัวเป๊ะ) ────
-const oldCells = r1.pricing.cells;
-const newCells = {};
-let checked = 0;
-for (const key of Object.keys(oldCells)) {
-  const [body, base, screen, print] = key.split("│");
-  if (!(base in EMBED) || (screen !== PLAIN && screen !== PRINTED))
-    throw new Error(`คีย์เซลล์ไม่เข้าสูตร "${key}" — ตรวจก่อน`);
-  const ref = oldCells[[body, REF_BASE, PLAIN, print].join("│")];
-  if (!ref) throw new Error(`ไม่มีเซลล์อ้างอิง ${REF_BASE}·${PLAIN} ของ "${key}" — ตรวจก่อน`);
-  const bare = ref.map((v, i) => (i === 0 ? v : v - EMBED[REF_BASE]));
-  const cell = oldCells[key];
-  cell.forEach((v, i) => {
-    // ช่วงปลีก (tier แรก) เดิมแบนไม่บวกฐาน/สกรีนฐาน · tier ส่งฝังค่าฐาน+สกรีน 10 คงที่
-    const expect = i === 0 ? bare[0] : bare[i] + EMBED[base] + (screen === PRINTED ? 10 : 0);
-    if (v !== expect)
-      throw new Error(`เซลล์ "${key}" tier ${i} ไม่เข้าสูตรถอดฐาน (${v} ≠ ${expect}) — ตรวจก่อน`);
-  });
-  newCells[[body, print].join("│")] = bare;
-  checked++;
+if (drivers(fc.pricing) === JSON.stringify(NEW_DRIVERS)) {
+  console.log(`📦 ${fc.name}: ตารางแปลงแล้ว (${Object.keys(fc.pricing.cells).length} ช่อง) — ข้ามขั้นถอดฐาน`);
+} else {
+  if (drivers(fc.pricing) !== JSON.stringify(OLD_DRIVERS))
+    throw new Error(`แกนตารางไม่ตรงที่คาด (${fc.pricing.driverLabels.join(",")}) — โครงเปลี่ยน ตรวจก่อน`);
+  const oldCells = fc.pricing.cells;
+  const newCells = {};
+  let checked = 0;
+  for (const key of Object.keys(oldCells)) {
+    const [body, base, screen, print] = key.split("│");
+    if (!(base in EMBED) || (screen !== PLAIN && screen !== PRINTED))
+      throw new Error(`คีย์เซลล์ไม่เข้าสูตร "${key}" — ตรวจก่อน`);
+    const ref = oldCells[[body, REF_BASE, PLAIN, print].join("│")];
+    if (!ref) throw new Error(`ไม่มีเซลล์อ้างอิง ${REF_BASE}·${PLAIN} ของ "${key}" — ตรวจก่อน`);
+    const bare = ref.map((v, i) => (i === 0 ? v : v - EMBED[REF_BASE]));
+    oldCells[key].forEach((v, i) => {
+      // ช่วงปลีก (tier แรก) เดิมแบนไม่บวกฐาน/สกรีนฐาน · tier ส่งฝังค่าฐาน+สกรีน 10 คงที่
+      const expect = i === 0 ? bare[0] : bare[i] + EMBED[base] + (screen === PRINTED ? 10 : 0);
+      if (v !== expect)
+        throw new Error(`เซลล์ "${key}" tier ${i} ไม่เข้าสูตรถอดฐาน (${v} ≠ ${expect}) — ตรวจก่อน`);
+    });
+    newCells[[body, print].join("│")] = bare;
+    checked++;
+  }
+  fc.pricing = { ...fc.pricing, driverLabels: [...NEW_DRIVERS], cells: newCells };
+  r1.pricing = structuredClone(fc.pricing);
+  console.log(`📦 ${fc.name}: ตรวจ ${checked} เซลล์ผ่าน → ตารางใหม่ ${Object.keys(newCells).length} ช่อง (แกน ขนาดตัว×งานสกรีน) · เขียนทั้ง data.pricing และ priceRates[0]`);
 }
-r1.pricing.driverLabels = ["ขนาดตัวสแตนดี้", "งานสกรีน"];
-r1.pricing.cells = newCells;
-console.log(`📦 ${fc.name}: ตรวจ ${checked} เซลล์ผ่าน → ตารางใหม่ ${Object.keys(newCells).length} ช่อง (แกน ขนาดตัว×งานสกรีน)`);
 
 // ── 2) กลุ่มขนาดฐาน = ชุด standy (คงภาพ bespoke 6-12 ซม. + stockBearing เดิม) ────
 const fcBaseOld = grp(fc, "ขนาดฐาน");
 if (!fcBaseOld) throw new Error("frame-card ไม่มีกลุ่มขนาดฐาน — ตรวจก่อน");
-const oldImg = Object.fromEntries(fcBaseOld.choices.map((c) => [c.name, c.imageSrc]));
-const newBase = structuredClone(srcBaseSize);
-newBase.stockBearing = true;
-for (const c of newBase.choices) if (KEEP_IMG[c.name] && oldImg[KEEP_IMG[c.name]]) c.imageSrc = oldImg[KEEP_IMG[c.name]];
-fc.options[fc.options.indexOf(fcBaseOld)] = newBase;
-console.log(`   ขนาดฐาน: ${fcBaseOld.choices.length} ตัว (แกนตาราง) → ${newBase.choices.length} ตัว 2-20 ซม. (extraFromQty 11 · ปลีก +5/ซม. จาก 7 ซม.)`);
+if (fcBaseOld.extraFromQty === 11) {
+  console.log(`   ขนาดฐาน: เป็นชุด standy อยู่แล้ว (${fcBaseOld.choices.length} ตัว) — ข้าม`);
+} else {
+  const oldImg = Object.fromEntries(fcBaseOld.choices.map((c) => [c.name, c.imageSrc]));
+  const newBase = structuredClone(srcBaseSize);
+  newBase.stockBearing = true;
+  for (const c of newBase.choices) if (KEEP_IMG[c.name] && oldImg[KEEP_IMG[c.name]]) c.imageSrc = oldImg[KEEP_IMG[c.name]];
+  fc.options[fc.options.indexOf(fcBaseOld)] = newBase;
+  console.log(`   ขนาดฐาน: ${fcBaseOld.choices.length} ตัว (แกนตาราง) → ${newBase.choices.length} ตัว 2-20 ซม. (extraFromQty 11 · ปลีก +5/ซม. จาก 7 ซม.)`);
+}
 
 // ── 3) ฐานสแตนดี้: สกรีนลายฐาน +10 แบนทุกช่วง ────────────────────────────────
 const fcScreen = grp(fc, "ฐานสแตนดี้");
@@ -130,8 +148,12 @@ printed.extra = 10;
 console.log(`   ฐานสแตนดี้: ${PRINTED} = +10 บาท/ชิ้นทุกช่วง (เดิมฝังในตารางเฉพาะเรทส่ง)`);
 
 // ── 4) สีอะคริลิคฐาน + เลือกสีพิเศษของฐาน ×19 (โคลนจาก standy ทั้งชุด) ─────────
-fc.options.push(structuredClone(srcColorCards), ...srcSpecials.map((o) => structuredClone(o)));
-console.log(`   + ${BASE_COLOR_LABEL} (${srcColorCards.choices.length}) · เลือกสีพิเศษของฐาน ×${srcSpecials.length} (เฉด ${srcSpecials[0].choices.length} สี)`);
+if (grp(fc, BASE_COLOR_LABEL)) {
+  console.log(`   ${BASE_COLOR_LABEL} + เลือกสีพิเศษของฐาน: มีอยู่แล้ว — ข้าม`);
+} else {
+  fc.options.push(structuredClone(srcColorCards), ...srcSpecials.map((o) => structuredClone(o)));
+  console.log(`   + ${BASE_COLOR_LABEL} (${srcColorCards.choices.length}) · เลือกสีพิเศษของฐาน ×${srcSpecials.length} (เฉด ${srcSpecials[0].choices.length} สี)`);
+}
 
 // ── ช่วงราคาบนการ์ดสินค้า (สูตรเดียวกับ prakob-standy-base-system) ─────────────
 {
