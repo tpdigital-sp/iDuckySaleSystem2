@@ -1135,6 +1135,13 @@ export interface PriceRate {
   /** คละลายเกินโควตาได้ โดยคิดเพิ่มลายละ (บาท) — ไม่ตั้ง = คละเกินโควตาไม่ได้ */
   extraDesignFee?: number;
   /**
+   * 💰 คละไม่ถึงขั้นต่ำต่อลายได้ โดยคิด "ส่วนต่าง" จากชิ้นที่อยู่ในลายที่ไม่ถึง minPerDesign ชิ้นละ N บาท
+   * (กติกาเคสมือถือ 26 ส.ค. 69: 11 ชิ้นขึ้นไปขั้นต่ำลายละ 3 — ลายไหนมีแค่ 2 ชิ้น = 2 × ฿10 = ฿20)
+   * ตั้งค่านี้แล้ว: ราคา/ชิ้นคิดเรทตามยอดรวมตามปกติ (tierByDesign ไม่ลดเรทซ้ำ — จ่ายค่าคละแทน)
+   * และช่องจำนวนลายไม่ตัน · ช่วงคละอิสระ (freeMixBelowQty) ไม่คิด · ระบบกระจายชิ้นให้ลูกค้าแบบประหยัดสุดเสมอ
+   */
+  underMinPieceFee?: number;
+  /**
    * สั่งต่ำกว่ากี่ชิ้น = คละลายได้อิสระ (ไม่ติดขั้นต่ำต่อลาย ไม่คิดค่าคละเพิ่ม)
    * เช่น ราคาปลีก 1-10 ชิ้น คละได้ทุกชิ้น · ตั้ง 11 = ต่ำกว่า 11 อิสระ ถึง 11 ค่อยใช้ minPerDesign
    */
@@ -1318,7 +1325,35 @@ export function maxDesignsFor(rate: PriceRate, qty: number, perUnit = 1): number
   if (!rate.minPerDesign || rate.minPerDesign <= 0) return pieces;
   if (isFreeMix(rate, qty)) return pieces;
   const included = Math.max(1, Math.floor(qty / rate.minPerDesign));
-  return rate.extraDesignFee ? pieces : included;
+  // เรทที่เปิดให้จ่ายเพิ่มแทนการบล็อก (คละเกินลายละ N / คละไม่ถึงขั้นต่ำชิ้นละ N) → คละได้ถึงจำนวนชิ้น
+  return rate.extraDesignFee || rate.underMinPieceFee ? pieces : included;
+}
+
+/**
+ * 🔢 จำนวนชิ้นที่ "อยู่ในลายที่ไม่ถึงขั้นต่ำต่อลาย" — ฐานคิดค่าคละของ underMinPieceFee
+ *
+ * ระบบรู้แค่ (จำนวนรวม, จำนวนลาย) ไม่รู้ว่าลูกค้าแบ่งลายละกี่ชิ้น จึงกระจายให้แบบประหยัดสุด:
+ * อัดลายให้เต็มขั้นต่ำ (minPerDesign) ให้ได้มากลายที่สุด ที่เหลือหารกันในลายที่ไม่เต็ม
+ * เช่น 11 ชิ้น 4 ลาย ขั้นต่ำลายละ 3 → 3+3+3+2 → ชิ้นที่ไม่ถึงขั้นต่ำ = 2
+ */
+export function underMinPieces(qty: number, designs: number, minPerDesign: number): number {
+  const m = Math.max(1, Math.floor(minPerDesign));
+  const d = Math.min(Math.max(1, designs), Math.max(1, qty)); // ลาย ≤ ชิ้น (1 ลายใช้อย่างน้อย 1 ชิ้น)
+  if (m <= 1 || qty >= m * d) return 0; // ทุกลายถึงขั้นต่ำได้หมด
+  // ลายเต็มได้มากสุด k ลาย โดยลายที่เหลือ (d-k) ยังมีอย่างน้อยลายละ 1 ชิ้น: mk + (d-k) ≤ qty
+  const k = Math.max(0, Math.floor((qty - d) / (m - 1)));
+  return Math.max(0, qty - m * k);
+}
+
+/**
+ * 💰 ค่าคละ "ไม่ถึงขั้นต่ำต่อลาย" ของเรทที่ตั้ง underMinPieceFee (บาท ทั้งรายการ)
+ * qty/designs = ของบรรทัดนั้น · tierQty = ยอดที่ใช้เช็คช่วงคละอิสระ (บรรทัดเดี่ยว = qty เดียวกัน
+ * แต่ตะกร้าที่รวมล็อตต้องส่งยอดรวมล็อตมา — บรรทัด 2 ชิ้นในล็อต 11 ชิ้นถือว่าพ้นช่วงปลีกแล้ว)
+ */
+export function underMinFeeFor(r: PriceRate | undefined, qty: number, designs: number, tierQty = qty): number {
+  if (!r?.underMinPieceFee || !r.minPerDesign) return 0;
+  if (isFreeMix(r, tierQty)) return 0; // ช่วงราคาปลีกคละอิสระ ไม่คิด
+  return r.underMinPieceFee * underMinPieces(qty, designs, r.minPerDesign);
 }
 
 /** ชื่อกลุ่มที่ใช้เก็บเรทที่ลูกค้าเลือกไว้ใน selections (แสดงในตะกร้า/ออเดอร์เหมือนตัวเลือกทั่วไป) */
@@ -1364,6 +1399,8 @@ export function tierQtyFor(product: Product, selections: Record<string, string>,
   const d = designCountOf(selections);
   if (r?.minPerDesign) {
     if (isFreeMix(r, qty) || d <= includedDesigns(r, qty, perUnitCapacity(product, selections) ?? 1)) return qty;
+    // เรทที่คิดค่าคละไม่ถึงขั้นต่ำเป็นเงินแล้ว (underMinPieceFee) — ห้ามลดเรทซ้ำ ไม่งั้นโดนสองเด้ง
+    if (r.underMinPieceFee) return qty;
     return Math.max(1, Math.floor(qty / d));
   }
   return Math.max(1, Math.floor(qty / d));
@@ -1490,7 +1527,20 @@ export function feeBreakdown(product: Product, selections: Record<string, string
     }
   }
   const mix = designFeeBase(product, selections, qty);
-  if (mix > 0) lines.push({ label: "ค่าคละลาย", amount: mix, note: `คละ ${designs.toLocaleString("th-TH")} ลาย` });
+  if (mix > 0) {
+    // กติกาคละไม่ถึงขั้นต่ำ — บอกฐานคิดตรง ๆ ว่ากี่ชิ้น × ชิ้นละเท่าไหร่ (ไม่ใช่จำนวนลาย)
+    const r = activeRate(product, selections);
+    const under = r?.underMinPieceFee && r.minPerDesign ? underMinPieces(qty, designs, r.minPerDesign) : 0;
+    lines.push(
+      under > 0
+        ? {
+            label: "ค่าคละลายไม่ถึงขั้นต่ำ",
+            amount: mix,
+            note: `${formatPrice(r!.underMinPieceFee!)} × ${under.toLocaleString("th-TH")} ชิ้นที่ไม่ถึงลายละ ${r!.minPerDesign!.toLocaleString("th-TH")}`,
+          }
+        : { label: "ค่าคละลาย", amount: mix, note: `คละ ${designs.toLocaleString("th-TH")} ลาย` }
+    );
+  }
   return lines;
 }
 
@@ -1527,6 +1577,8 @@ function designFeeBase(product: Product, selections: Record<string, string>, qty
   // กติกาคละแบบคิดต่อหน่วยมาก่อน — ค่าคละ = (ค่าต่อหน่วยตามจำนวนลาย) × จำนวนที่สั่ง
   if (product.mixRule) return mixFeeTotal(product.mixRule, designCountOf(selections), Math.max(0, qty));
   const r = activeRate(product, selections);
+  // กติกา "คละไม่ถึงขั้นต่ำ คิดส่วนต่างชิ้นละ N" (เคสมือถือ) — คิดจากชิ้นในลายที่ไม่เต็มขั้นต่ำ
+  if (r?.underMinPieceFee) return underMinFeeFor(r, qty, designCountOf(selections));
   if (!r?.minPerDesign || !r.extraDesignFee) return 0;
   const n = parseInt(String(selections[DESIGN_LABEL] ?? ""), 10);
   if (!Number.isFinite(n) || n <= 0) return 0;
@@ -3893,7 +3945,11 @@ function ratePoolsFor(p: Product, entries: { qty: number; designs: number }[]): 
     const per = r.minPerDesign ?? 0;
     const cand = entries
       .map((_, i) => i)
-      .filter((i) => !taken[i] && (per <= 0 || entries[i].qty >= per * Math.max(1, entries[i].designs)));
+      // เรทที่ตั้ง underMinPieceFee — บรรทัดที่คละไม่ถึงโควตาต่อลายก็เข้าเรทได้ (จ่ายส่วนต่างชิ้นละ N แทน)
+      .filter(
+        (i) =>
+          !taken[i] && (per <= 0 || !!r.underMinPieceFee || entries[i].qty >= per * Math.max(1, entries[i].designs))
+      );
     const candQty = cand.reduce((s, i) => s + entries[i].qty, 0);
     if (!cand.length || candQty < (r.minQty ?? 1)) continue;
     for (const i of cand) {
@@ -3912,6 +3968,9 @@ function ratePoolsFor(p: Product, entries: { qty: number; designs: number }[]): 
  */
 function usesFreeMixRetail(r: PriceRate | undefined, qty: number, designs: number): boolean {
   if (!r || !isFreeMix(r, qty)) return false;
+  // เรทที่คิดค่าคละไม่ถึงขั้นต่ำเป็นเงิน (underMinPieceFee) — รวมล็อตได้เสมอ
+  // (เข้าเรทส่งแล้วชิ้นที่ไม่ถึงลายละ 3 จ่ายส่วนต่างเอง ไม่ต้องกันออกไปจ่ายราคาปลีก)
+  if (r.underMinPieceFee) return false;
   const per = r.minPerDesign ?? 0;
   return per > 0 && designs > Math.floor(qty / per);
 }
@@ -4037,10 +4096,16 @@ export function repriceCartGroups(
           addOns: parts.addOns,
           // ค่าประจำบรรทัด (ต่อลาย/ต่อแผ่น) คิดตามสเปค+จำนวนลายของบรรทัดตัวเอง (สเปคในกลุ่มต่างกันได้)
           // ส่วน "ค่าคละลาย" เป็นของกลุ่มเรท — เกาะบรรทัดแรกของกลุ่มบรรทัดเดียว กันนับซ้ำ
+          // ยกเว้นเรท underMinPieceFee: คิด "รายบรรทัด" จากชิ้น/ลายของบรรทัดตัวเอง (แม่นกว่ารวมทั้งล็อต —
+          // ลายของแต่ละบรรทัดแยกกันจริง เอาชิ้นข้ามบรรทัดมาเติมลายกันไม่ได้) · เช็คช่วงปลีกที่ยอดรวมล็อต
           extraFee:
             perDesignExtraOf(p, own) +
             sheetFeeTotalOf(p, own, lines[i].qty) +
-            (k === 0 ? designFeeBase(p, sel, lotQty) : 0),
+            (pool.rate?.underMinPieceFee
+              ? underMinFeeFor(pool.rate, lines[i].qty, designCountOf(own), lotQty)
+              : k === 0
+                ? designFeeBase(p, sel, lotQty)
+                : 0),
           merged: { lines: idxs.length, totalQty: lotQty, totalDesigns: poolDesigns, rateLabel: sel[RATE_LABEL] },
         };
       });

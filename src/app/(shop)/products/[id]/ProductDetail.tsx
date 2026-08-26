@@ -40,6 +40,7 @@ import {
   mixFeePerUnit,
   mixMaxDesigns,
   mixTierFor,
+  underMinPieces,
   mixUnitFee,
   spreadDesigns,
   optionExtraApplies,
@@ -4164,6 +4165,22 @@ export default function ProductDetail({
                         </div>
                       );
                     })()
+                  ) : rate?.underMinPieceFee && rate.minPerDesign && !freeMix && designs > included ? (
+                    // กติกา "คละไม่ถึงขั้นต่ำ คิดส่วนต่างชิ้นละ N" (เคสมือถือ) — ราคายังคิดเรทยอดรวม บอกที่มาของค่าคละตรง ๆ
+                    (() => {
+                      const unit = matrix?.unit ?? "ชิ้น";
+                      const under = underMinPieces(qty, designs, rate.minPerDesign);
+                      return (
+                        <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
+                          💡 สั่ง {qty.toLocaleString("th-TH")} {unit} คละ {designs.toLocaleString("th-TH")} ลาย — จะมี{" "}
+                          {under.toLocaleString("th-TH")} {unit}ที่อยู่ในลายที่ไม่ถึงลายละ{" "}
+                          {rate.minPerDesign.toLocaleString("th-TH")} {unit} คิดส่วนต่าง{unit}ละ{" "}
+                          {formatPrice(rate.underMinPieceFee)} ={" "}
+                          <strong className="font-bold">+{formatPrice(under * rate.underMinPieceFee)}</strong> ·
+                          ราคาต่อ{unit}ยังคิดเรทตามยอดรวมเหมือนเดิม
+                        </p>
+                      );
+                    })()
                   ) : tierByDesign && rate?.minPerDesign && !freeMix && designs > included ? (
                     // คละเกินโควตาของเรท — ไม่บล็อก แต่ราคาตกไปคิดตามชิ้นต่อลาย (บอกลูกค้าตรง ๆ ว่าจ่ายเรทไหน)
                     (() => {
@@ -4205,13 +4222,19 @@ export default function ProductDetail({
                       {/* เพดานลาย = จำนวน "ชิ้น" ไม่ใช่จำนวนหน่วยสั่ง — สินค้าขายเป็นเซ็ต (เซ็ตละ N ชิ้น) คละได้ตามชิ้น */}
                       ✨ ช่วงราคาปลีกคละลายได้อิสระ — ลายละกี่ชิ้นก็ได้ ไม่คิดเพิ่ม (สูงสุด {maxDesigns.toLocaleString("th-TH")} ลาย)
                       {rate.freeMixBelowQty
-                        ? ` · สั่งตั้งแต่ ${rate.freeMixBelowQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป ขั้นต่ำลายละ ${rate.minPerDesign.toLocaleString("th-TH")}`
+                        ? ` · สั่งตั้งแต่ ${rate.freeMixBelowQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป ขั้นต่ำลายละ ${rate.minPerDesign.toLocaleString("th-TH")}` +
+                          (rate.underMinPieceFee
+                            ? ` (ไม่ถึงคิดส่วนต่าง${matrix?.unit ?? "ชิ้น"}ละ +${formatPrice(rate.underMinPieceFee)})`
+                            : "")
                         : ""}
                     </p>
                   ) : rate?.minPerDesign ? (
                   <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
                     รวมในราคา {included.toLocaleString("th-TH")} ลาย (ขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"})
-                    {rate.extraDesignFee
+                    {rate.underMinPieceFee
+                      ? /* กติกาเคสมือถือ — คละไม่ถึงขั้นต่ำได้ จ่ายส่วนต่างต่อชิ้นแทน */
+                        ` · ลายไหนไม่ถึงลายละ ${rate.minPerDesign.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} คิดส่วนต่าง${matrix?.unit ?? "ชิ้น"}ละ +${formatPrice(rate.underMinPieceFee)}`
+                      : rate.extraDesignFee
                       ? ` · คละเกินได้ ลายละ +${formatPrice(rate.extraDesignFee)}`
                       : hardMaxDesigns
                         ? /* โควตาล็อกไว้ — บอกเพดานตรง ๆ ว่าคละได้ถึงไหน และต้องทำยังไงถึงจะคละได้มากกว่านี้ */

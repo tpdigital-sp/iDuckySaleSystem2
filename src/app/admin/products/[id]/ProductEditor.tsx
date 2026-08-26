@@ -232,7 +232,7 @@ type DraftPricing = {
 type DraftMixTier = { fromQty: string; baseFee: string; includedDesigns: string; extraFee: string; onePerUnit: boolean };
 const EMPTY_MIX_TIER: DraftMixTier = { fromQty: "", baseFee: "", includedDesigns: "", extraFee: "", onePerUnit: false };
 /** ข้อมูลกำกับเรทราคา (ชื่อ + เงื่อนไขการสั่ง + ภาพประจำเรท) */
-type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; freeMixBelowQty: string; imageSrc?: string };
+type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; underMinPieceFee: string; freeMixBelowQty: string; imageSrc?: string };
 /** เรทเพิ่มเติม — มีช่วงจำนวน+ตารางราคาของตัวเอง (คอลัมน์/หน่วยใช้ร่วมกับเรทหลัก) */
 type DraftExtraRate = DraftRateMeta & {
   id: string;
@@ -245,7 +245,7 @@ type DraftExtraRate = DraftRateMeta & {
   tiers: DraftTier[];
   cells: Record<string, string[]>;
 };
-const EMPTY_RATE_META: DraftRateMeta = { label: "", desc: "", minQty: "", minPerDesign: "", extraDesignFee: "", freeMixBelowQty: "" };
+const EMPTY_RATE_META: DraftRateMeta = { label: "", desc: "", minQty: "", minPerDesign: "", extraDesignFee: "", underMinPieceFee: "", freeMixBelowQty: "" };
 /** ชื่อเรทมาตรฐานของร้าน (ตามหน้ารายการราคา) — เลือกจากลิสต์ได้ ไม่ต้องพิมพ์เอง */
 const RATE_NAME_PRESETS = [
   "เรทที่ 1 แบบคละดีเทล",
@@ -627,6 +627,7 @@ function toDraft(p: Product): Draft {
           minQty: p.priceRates[0].minQty != null ? String(p.priceRates[0].minQty) : "",
           minPerDesign: p.priceRates[0].minPerDesign != null ? String(p.priceRates[0].minPerDesign) : "",
           extraDesignFee: p.priceRates[0].extraDesignFee != null ? String(p.priceRates[0].extraDesignFee) : "",
+          underMinPieceFee: p.priceRates[0].underMinPieceFee != null ? String(p.priceRates[0].underMinPieceFee) : "",
           freeMixBelowQty: p.priceRates[0].freeMixBelowQty != null ? String(p.priceRates[0].freeMixBelowQty) : "",
           ...(p.priceRates[0].imageSrc ? { imageSrc: p.priceRates[0].imageSrc } : {}),
         }
@@ -639,6 +640,7 @@ function toDraft(p: Product): Draft {
       minQty: r.minQty != null ? String(r.minQty) : "",
       minPerDesign: r.minPerDesign != null ? String(r.minPerDesign) : "",
       extraDesignFee: r.extraDesignFee != null ? String(r.extraDesignFee) : "",
+      underMinPieceFee: r.underMinPieceFee != null ? String(r.underMinPieceFee) : "",
       freeMixBelowQty: r.freeMixBelowQty != null ? String(r.freeMixBelowQty) : "",
       ...(r.imageSrc ? { imageSrc: r.imageSrc } : {}),
       tiers: r.pricing.tiers.map((t) => ({ upTo: t.upTo == null ? "" : String(t.upTo), label: t.label })),
@@ -3698,6 +3700,7 @@ export default function ProductEditor({ product }: { product: Product }) {
           minQty: "",
           minPerDesign: "",
           extraDesignFee: "",
+          underMinPieceFee: "",
           freeMixBelowQty: "",
           // เริ่มด้วยแกนคอลัมน์ + ช่วงจำนวนชุดเดียวกับเรทหลัก (แก้ทีหลังได้) — ราคาให้กรอกใหม่
           driverLabels: [...d.pricing.driverLabels],
@@ -3897,6 +3900,8 @@ export default function ProductEditor({ product }: { product: Product }) {
         ...(Number(m.minQty) > 0 ? { minQty: Math.floor(Number(m.minQty)) } : {}),
         ...(Number(m.minPerDesign) > 0 ? { minPerDesign: Math.floor(Number(m.minPerDesign)) } : {}),
         ...(Number(m.extraDesignFee) > 0 ? { extraDesignFee: Number(m.extraDesignFee) } : {}),
+        // กติกาเคสมือถือ: คละไม่ถึงขั้นต่ำได้ คิดส่วนต่างจากชิ้นในลายที่ไม่ถึง ชิ้นละ N บาท
+        ...(Number(m.underMinPieceFee) > 0 ? { underMinPieceFee: Number(m.underMinPieceFee) } : {}),
         ...(Number(m.freeMixBelowQty) > 0 ? { freeMixBelowQty: Math.floor(Number(m.freeMixBelowQty)) } : {}),
         ...(m.imageSrc ? { imageSrc: m.imageSrc } : {}),
       });
@@ -5852,6 +5857,19 @@ export default function ProductEditor({ product }: { product: Product }) {
                     <input
                       value={activeMeta.extraDesignFee}
                       onChange={(e) => patchActiveMeta({ extraDesignFee: e.target.value })}
+                      inputMode="numeric"
+                      placeholder="เช่น 10"
+                      className="w-24 rounded-xl bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
+                    />
+                  </label>
+                  <label
+                    className="flex flex-col gap-1 text-xs font-semibold text-slate-500"
+                    title={`กติกาเคสมือถือ: คละไม่ถึงขั้นต่ำต่อลายได้ โดยคิดส่วนต่างจาก "ชิ้นที่อยู่ในลายที่ไม่ถึงขั้นต่ำ" ชิ้นละ N บาท เช่น ขั้นต่ำลายละ 3 สั่ง 11 ชิ้น 4 ลาย (3+3+3+2) = 2 ชิ้นไม่ถึง → ${draft.pricing.unit || "ชิ้น"}ละ 10 = 20 บาท · ราคา/ชิ้นยังคิดเรทตามยอดรวม ไม่ตกไปเรทปลีก`}
+                  >
+                    คละไม่ถึงขั้นต่ำ {draft.pricing.unit || "ชิ้น"}ละ +฿
+                    <input
+                      value={activeMeta.underMinPieceFee}
+                      onChange={(e) => patchActiveMeta({ underMinPieceFee: e.target.value })}
                       inputMode="numeric"
                       placeholder="เช่น 10"
                       className="w-24 rounded-xl bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
