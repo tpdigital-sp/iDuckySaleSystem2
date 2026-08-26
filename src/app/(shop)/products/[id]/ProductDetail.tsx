@@ -39,10 +39,11 @@ import {
   maxDesignsFor,
   mixFeePerUnit,
   mixMaxDesigns,
+  mixRuleFor,
+  mixSpread,
   mixTierFor,
   underMinPieces,
   mixUnitFee,
-  spreadDesigns,
   optionExtraApplies,
   optionVisible,
   perUnitCapacity,
@@ -677,8 +678,11 @@ export default function ProductDetail({
   const tierByDesign = !!product.tierByDesign;
   /** 🔒 ห้ามคละเกินโควตาเรท — ช่อง "คละกี่ลาย" ตันที่โควตา แทนที่จะปล่อยให้ราคาตกไปเรทต่อลาย (ดู Product.hardMaxDesigns) */
   const hardMaxDesigns = !!product.hardMaxDesigns;
-  /** กติกาคละแบบคิดค่าคละต่อหน่วย (ถ้าสินค้าตั้งไว้) — มาก่อนกติกาเดิมทั้งหมด */
-  const mixRule = product.mixRule;
+  /**
+   * กติกาคละแบบคิดค่าคละต่อหน่วย (ถ้าสินค้าตั้งไว้) — มาก่อนกติกาเดิมทั้งหมด
+   * อ่านตามตัวเลือกที่เลือกอยู่ (mixRuleFor) — ตัวเลือกอย่าง "ไดคัท 50%" ตั้งค่าคละของตัวเองทับกติกากลางได้
+   */
+  const mixRule = useMemo(() => mixRuleFor(product, effective), [product, effective]);
   /**
    * ชิ้นที่ได้ต่อ 1 หน่วยตามตัวเลือกที่เลือกอยู่ (เช่น สติกเกอร์ 3cm ได้ 45 ชิ้น/แผ่น)
    * คละ 1 ลายต้องใช้อย่างน้อย 1 ชิ้น → คละได้ไม่เกิน ชิ้นต่อหน่วย × จำนวนที่สั่ง
@@ -1796,10 +1800,12 @@ export default function ProductDetail({
                         </span>
                         {!addOnOpen && (
                           <span className="mt-0.5 block text-[11px] leading-snug text-stone-500">
-                            {/* ปิดอยู่ = ยังไม่คิดเงิน บอกช่วงราคาไว้ให้ตัดสินใจว่าจะเปิดดูไหม */}
+                            {/* ปิดอยู่ = ยังไม่คิดเงิน บอกช่วงราคาไว้ให้ตัดสินใจว่าจะเปิดดูไหม
+                                ใช้ choiceBadgeOf ตัวเดียวกับป้าย +฿ ตอนกางออก จะได้ไม่บอกเลขเรทส่ง
+                                ให้คนที่สั่งช่วงปลีกอ่าน (กลุ่มที่ตั้ง extraFromQty เลขสองช่วงไม่เท่ากัน) */}
                             {(() => {
                               const fees = opt.choices
-                                .map((c) => c.extra ?? 0)
+                                .map((c) => choiceBadgeOf(opt, effective, c.name, feeQty))
                                 .filter((n) => n > 0)
                                 .sort((a, b) => a - b);
                               return fees.length
@@ -4077,8 +4083,8 @@ export default function ProductDetail({
                       const unit = matrix?.unit ?? "ชิ้น";
                       const mt = mixTierFor(mixRule, qty);
                       const capped = Number.isFinite(mixMaxDesigns(mixRule, qty));
-                      /* เฉลี่ยลายลงแต่ละหน่วย แล้วกางให้เห็นทีละกลุ่ม — ค่าคละคิดจาก "ลายต่อหน่วย" ไม่ใช่ลายรวม */
-                      const spread = spreadDesigns(designs, Math.max(1, qty), mt.includedDesigns);
+                      /* กระจายลายด้วยตัวเดียวกับที่คิดเงิน (mixSpread เลือกวิธีที่ถูกสุดให้ลูกค้า) — ยอดกางต้องตรงยอดเก็บ */
+                      const spread = mixSpread(mixRule, designs, Math.max(1, qty));
                       const groups = [...new Set(spread)]
                         .sort((a, b) => b - a)
                         .map((n) => ({ n, units: spread.filter((x) => x === n).length, fee: mixUnitFee(mixRule, n, qty) }));

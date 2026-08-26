@@ -124,6 +124,12 @@ export interface ProductOptionChoice {
    * คิดรวมกับ extra ปกติใน choiceExtraOf จึงติดไปทุกที่เอง (ราคาหน้าเว็บ · ป้าย +฿ · ตะกร้า · ใบเสนอราคา)
    */
   sizeFee?: SizeFee;
+  /**
+   * 🎨 กติกาคละลายเฉพาะตอนเลือกตัวนี้ — ทับ mixRule ระดับสินค้า (ดู mixRuleFor)
+   * ใช้กับกลุ่มที่ค่าคละไม่เท่ากันตามแบบงาน เช่น สติ๊กเกอร์ "แบบไดคัท":
+   * ไดคัท 50% ค่าคละลายละ 20 บาท · ไดคัท 100% ใช้กติกากลางของสินค้าตามเดิม
+   */
+  mixRule?: MixRule;
 }
 
 export interface ProductOption {
@@ -202,6 +208,14 @@ export interface ProductOption {
    * สั่ง 11 ชิ้นขึ้นไปค่อยคิดเพิ่มต่อชิ้นตามตัวเลือก · ไม่ตั้ง = บวกเพิ่มทุกจำนวน
    */
   extraFromQty?: number;
+  /**
+   * 🔢 +฿ ของกลุ่มนี้คูณด้วย "จำนวนที่ระบุไว้ในกลุ่มอื่น" — ใส่ชื่อกลุ่มต้นทาง
+   * ใช้กับกลุ่มลูกที่ราคาผูกกับของชิ้นเดียวกัน เช่น Acrylic Kit: กลุ่ม "ตะขอ" ให้ระบุจำนวนได้
+   * (ติ๊ก F แล้วใส่ 3 ชิ้น) กลุ่ม "สีตะขอ · โลหะ" ที่โชว์ตามตะขอ F ต้องคิดสีคูณ 3 ตามไปด้วย
+   * นับเฉพาะตัวเลือกที่กลุ่มนี้ผูกไว้ใน showWhen ของกลุ่มต้นทางเดียวกัน (สีของตะขอ F ไม่นับจำนวนตะขอ C)
+   * ไม่ตั้ง = คูณ 1 เหมือนเดิม
+   */
+  qtyFrom?: string;
   /**
    * ค่าธรรมเนียม "ช่วงสั่งน้อย" ของกลุ่มนี้ — คิดเพิ่มต่อชิ้นเมื่อสั่งไม่เกินจำนวนที่กำหนด
    * เช่น พวงกุญแจ 3mm ช่วงปลีก 1-10 ชิ้น เลือกตะขอบวกชิ้นละ 10 บาท (ยกเว้นห่วงแถมฟรี Z1/Z2)
@@ -888,6 +902,26 @@ export function choiceExtraAtQty(
   return below;
 }
 
+/**
+ * ตัวคูณจำนวนของกลุ่มที่ผูกจำนวนไว้กับกลุ่มอื่น (ดู ProductOption.qtyFrom) — ไม่ตั้ง = 1
+ * อ่านจำนวนจากข้อความที่เก็บใน selections ของกลุ่มต้นทาง ("F ตะขอสปริง … ×3")
+ * และนับเฉพาะตัวเลือกที่กลุ่มนี้ผูกไว้ (showWhen ที่ชี้กลุ่มต้นทางเดียวกัน) — สีของตะขอ F ต้องไม่นับจำนวนของตะขอ C
+ */
+export function qtyMultiplierOf(opt: ProductOption, selections: Record<string, string>): number {
+  const src = opt.qtyFrom;
+  if (!src) return 1;
+  const raw = selections[src];
+  if (!raw) return 1;
+  const only = [opt.showWhen, opt.showWhenAlso, ...(opt.showWhenAll ?? [])].find((c) => c?.label === src)?.choices;
+  let n = 0;
+  for (const entry of raw.split(MULTI_SEP).map((s) => s.trim()).filter(Boolean)) {
+    const p = parseMultiEntry(entry);
+    if (only?.length && !only.includes(p.name)) continue;
+    n += p.qty;
+  }
+  return n > 0 ? n : 1;
+}
+
 /** +฿ รวมของกลุ่ม ณ จำนวนที่สั่ง (คู่กับ groupExtraOf แต่รู้จำนวน จึงเลือกเรทถูกช่วง) */
 export function groupExtraAtQty(opt: ProductOption, selections: Record<string, string>, qty: number): number {
   let free = Math.max(0, Math.floor(opt.freeFirstN ?? 0));
@@ -897,7 +931,7 @@ export function groupExtraAtQty(opt: ProductOption, selections: Record<string, s
     free = Math.max(0, free - p.qty);
     sum += choiceExtraAtQty(opt, selections, p.name, qty) * charged;
   }
-  return sum;
+  return sum * qtyMultiplierOf(opt, selections);
 }
 
 export function groupExtraOf(opt: ProductOption, selections: Record<string, string>): number {
@@ -909,7 +943,7 @@ export function groupExtraOf(opt: ProductOption, selections: Record<string, stri
     free = Math.max(0, free - p.qty);
     sum += choiceExtraOf(opt, selections, p.name) * charged;
   }
-  return sum;
+  return sum * qtyMultiplierOf(opt, selections);
 }
 
 /**
@@ -942,7 +976,20 @@ export function smallQtyFeeOf(
  */
 export function groupAddOf(opt: ProductOption, selections: Record<string, string>, qty: number): number {
   const fee = smallQtyFeeOf(opt, selections, qty);
-  if (fee > 0) return fee;
+  if (fee > 0) {
+    if (!isMultiOption(opt)) return fee;
+    /**
+     * กลุ่มติ๊กหลายอย่างที่ระบุจำนวนได้ — ค่าเหมาคิด "ต่อชิ้นที่ติ๊ก" ไม่ใช่ต่อกลุ่ม
+     * (Acrylic Kit สั่งตะขอ 3 ชิ้นต่อชุด ช่วงปลีกก็คิด 3×10 ไม่ใช่ 10)
+     * ตัวที่ยกเว้นค่าเหมา (ห่วงแถม) ยังคิดราคาตัวเองตามปกติ ตามกติกาเดียวกับกลุ่มเลือกอย่างเดียว
+     */
+    const exempt = opt.smallQtyFee?.freeChoices ?? [];
+    let sum = 0;
+    for (const p of selectedPicks(opt, selections)) {
+      sum += (exempt.includes(p.name) ? choiceExtraOf(opt, selections, p.name) : fee) * p.qty;
+    }
+    return sum;
+  }
   // กลุ่มที่คิดต่อลาย/ต่อแผ่น: +฿ ไม่เข้าราคา/ชิ้น — ไปคิดรวมครั้งเดียวใน designFeeFor
   if (opt.extraPerDesign || opt.sheetFee) return fee;
   // 💰 กลุ่มช่องกรอกที่คิดเงินตามค่าที่กรอก (เช่น เพิ่มขนาดนิ้วละ 15) — ไม่มี choices ให้บวก จึงบวกแยก
@@ -1151,6 +1198,12 @@ export interface PriceRate {
    * แสดงเป็นภาพย่อบนการ์ดเลือกเรท และกดเลือกแล้วแกลเลอรีสลับไปภาพนี้ (ถ้าอยู่ในแกลเลอรี)
    */
   imageSrc?: string;
+  /**
+   * 🎨 กติกาคละลายเฉพาะเรทนี้ — ทับ mixRule ระดับสินค้า (ดู mixRuleFor)
+   * ใช้กับสินค้าที่เรทเป็น "แบบสินค้า" แล้วค่าคละต่างกัน เช่น แม่เหล็กติดตู้เย็น
+   * ไดคัท 100% ลายละ 5 · SET-KIT ลายละ 20 (ตรรกะเดียวกับสติ๊กเกอร์ไดคัท 100%/50%)
+   */
+  mixRule?: MixRule;
   pricing: PriceMatrix;
 }
 
@@ -1256,6 +1309,28 @@ export function spreadDesigns(designs: number, qty: number, cap = Infinity): num
 }
 
 /**
+ * 📊 การกระจายลายที่ "ถูกสุดสำหรับลูกค้า" ตามกติกาของเรทนั้น
+ *
+ * เทียบ 2 วิธีแล้วเอาที่รวมถูกกว่า:
+ *   - เติมเต็มโควตาต่อหน่วยก่อน (spreadDesigns) — ประหยัดเมื่อค่าเหมาคลุมหลายลาย
+ *     เช่น Super Sticker เหมา 20 คลุม 4 ลาย: 3 แผ่น 4 ลาย → [4,1,1] คละแผ่นเดียว = 20
+ *   - เฉลี่ยให้ใช้ทุกหน่วย — ประหยัดเมื่อกติกาเชิงเส้นลายละเท่า ๆ กัน
+ *     เช่น ไดคัท 50% ลายละ 20 (20/2/20): 3 แผ่น 4 ลาย → [2,1,1] = 20 (เติมเต็มจะได้ [2,2,1] = 40 แพงเกินจริง)
+ * เสมอกัน = ใช้วิธีเติมเต็มแบบเดิม (หน้าจอไม่เปลี่ยนหน้าตากับสินค้าเก่า)
+ * ⚠️ หน้าสินค้าที่กางรายแผ่นให้ลูกค้าดูต้องใช้ตัวนี้ตัวเดียวกับที่คิดเงิน — ไม่งั้นยอดกางไม่ตรงยอดเก็บ
+ */
+export function mixSpread(rule: MixRule, designs: number, qty: number): number[] {
+  const t = mixTierFor(rule, qty);
+  const fill = spreadDesigns(designs, qty, t.includedDesigns);
+  if (designs <= qty || qty <= 0) return fill; // ลายละหน่วยขึ้นไป = ไม่ได้คละ ไม่มีอะไรให้เลือก
+  const base = Math.floor(designs / qty);
+  const rem = designs % qty;
+  const even = Array.from({ length: qty }, (_, i) => (i < rem ? base + 1 : base));
+  const feeOf = (arr: number[]) => arr.reduce((s, n) => s + feeOfUnit(t, n), 0);
+  return feeOf(even) < feeOf(fill) ? even : fill;
+}
+
+/**
  * ค่าคละลายทั้งรายการ
  *
  * ⚠️ คิดจาก "ลายต่อหน่วย" ไม่ใช่ "ลายทั้งออเดอร์" — จุดนี้เคยทำผิดมาก่อน
@@ -1265,7 +1340,7 @@ export function spreadDesigns(designs: number, qty: number, cap = Infinity): num
 export function mixFeeTotal(rule: MixRule, designs: number, qty: number): number {
   if (designs <= 1 || qty <= 0) return 0;
   const t = mixTierFor(rule, qty);
-  return spreadDesigns(designs, qty, t.includedDesigns).reduce((sum, n) => sum + feeOfUnit(t, n), 0);
+  return mixSpread(rule, designs, qty).reduce((sum, n) => sum + feeOfUnit(t, n), 0);
 }
 
 /**
@@ -1280,7 +1355,7 @@ export function mixUnitFee(rule: MixRule, designsOnUnit: number, qty: number): n
 export function mixFeePerUnit(rule: MixRule, designs: number, qty = 1): number {
   if (designs <= 1 || qty <= 0) return 0;
   const t = mixTierFor(rule, qty);
-  return feeOfUnit(t, Math.max(...spreadDesigns(designs, qty, t.includedDesigns)));
+  return feeOfUnit(t, Math.max(...mixSpread(rule, designs, qty)));
 }
 
 /**
@@ -1290,6 +1365,25 @@ export function mixFeePerUnit(rule: MixRule, designs: number, qty = 1): number {
 export function mixMaxDesigns(rule: MixRule | undefined, qty: number): number {
   if (!rule) return Infinity;
   return mixTierFor(rule, qty).onePerUnit ? qty : Infinity;
+}
+
+/**
+ * กติกาคละลายที่มีผลจริงตามตัวเลือกที่ลูกค้าเลือก
+ * ตัวเลือกที่ตั้ง mixRule ของตัวเอง (เช่น "ไดคัท 50%" ค่าคละลายละ 20) ทับกติการะดับสินค้า
+ * ถัดมา = เรทราคาที่เลือก (เรทเป็น "แบบสินค้า" ตั้งค่าคละของตัวเองได้ เช่น SET-KIT ลายละ 20)
+ * ไม่มีใครตั้ง = ใช้ mixRule ระดับสินค้าตามเดิม · เจอหลายกลุ่มตั้งพร้อมกัน ใช้กลุ่มแรกที่เจอ
+ */
+export function mixRuleFor(product: Product, selections: Record<string, string>): MixRule | undefined {
+  for (const o of product.options ?? []) {
+    if (!optionActive(o, selections)) continue;
+    const picked = selections[o.label];
+    if (!picked) continue;
+    const c = o.choices.find((x) => x.name === picked);
+    if (c?.mixRule) return c.mixRule;
+  }
+  const rate = activeRate(product, selections);
+  if (rate?.mixRule) return rate.mixRule;
+  return product.mixRule;
 }
 
 /**
@@ -1391,9 +1485,9 @@ export function designCountOf(selections: Record<string, string>): number {
  *   (ลูกค้าอยากคละเยอะยอมจ่ายราคาปลีกได้เอง — ระบบปรับเรทให้เห็นตรง ๆ ไม่ใช่แค่ป้ายเตือน)
  */
 export function tierQtyFor(product: Product, selections: Record<string, string>, qty: number): number {
-  // สินค้าที่คิดค่าคละเป็นเงินต่อหน่วยแล้ว (mixRule) ห้ามลดเรทซ้ำอีก
+  // สินค้าที่คิดค่าคละเป็นเงินต่อหน่วยแล้ว (mixRule — ระดับสินค้าหรือระดับตัวเลือก) ห้ามลดเรทซ้ำอีก
   // ไม่งั้นลูกค้าโดนสองเด้ง: จ่ายค่าคละ + ราคาตกไปเรทปลีก
-  if (product.mixRule) return qty;
+  if (mixRuleFor(product, selections)) return qty;
   if (!product.tierByDesign) return qty;
   const r = activeRate(product, selections);
   const d = designCountOf(selections);
@@ -1575,7 +1669,9 @@ export function unitAddOnBreakdown(product: Product, selections: Record<string, 
 
 function designFeeBase(product: Product, selections: Record<string, string>, qty: number): number {
   // กติกาคละแบบคิดต่อหน่วยมาก่อน — ค่าคละ = (ค่าต่อหน่วยตามจำนวนลาย) × จำนวนที่สั่ง
-  if (product.mixRule) return mixFeeTotal(product.mixRule, designCountOf(selections), Math.max(0, qty));
+  // อ่านผ่าน mixRuleFor เสมอ ให้ตัวเลือกที่ตั้งกติกาเอง (เช่น ไดคัท 50%) ได้ค่าคละของตัวเอง
+  const mr = mixRuleFor(product, selections);
+  if (mr) return mixFeeTotal(mr, designCountOf(selections), Math.max(0, qty));
   const r = activeRate(product, selections);
   // กติกา "คละไม่ถึงขั้นต่ำ คิดส่วนต่างชิ้นละ N" (เคสมือถือ) — คิดจากชิ้นในลายที่ไม่เต็มขั้นต่ำ
   if (r?.underMinPieceFee) return underMinFeeFor(r, qty, designCountOf(selections));
@@ -4238,6 +4334,11 @@ export function allowedChoices(
   let allowed = group.choices.map((c) => c.name);
   for (const rule of product.rules ?? []) {
     if (rule.limit.label !== label) continue;
+    // กลุ่มต้นทางของกฎถูกซ่อนอยู่ (showWhen ไม่ตรง) = ลูกค้าไม่ได้เลือกค่านั้นจริง
+    // ค่าที่ค้างเป็นแค่ default/ของเก่า — ห้ามเอามาตัดตัวเลือกของกลุ่มที่มองเห็น
+    // (เช่น กลุ่มเฉดสีพิเศษที่โชว์เฉพาะตอนเลือก "สีพิเศษ" ต้องไม่จำกัดงานสกรีนตอนลูกค้าเลือก "ใส")
+    const whenGroup = product.options.find((o) => o.label === rule.when.label);
+    if (whenGroup && !optionVisible(whenGroup, selections)) continue;
     if (ruleWhenMatches(rule, selections)) {
       allowed = allowed.filter((n) => rule.limit.allow.includes(n));
     }

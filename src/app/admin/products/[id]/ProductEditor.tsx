@@ -21,6 +21,7 @@ import {
   type ShipTier,
   type SizeFee,
   type InputFee,
+  type MixRule,
 } from "@/lib/products";
 import RichEditor from "@/components/RichEditor";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
@@ -80,6 +81,8 @@ type DraftChoice = {
   extraBelow?: number;
   /** 📏 ค่าบริการตามขนาดชิ้นงาน (ผ้า: ตัดแบ่ง/เย็บ/โพ้ง) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
   sizeFee?: SizeFee;
+  /** 🎨 กติกาคละลายเฉพาะตัวเลือกนี้ (เช่น ไดคัท 50% ลายละ 20) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  mixRule?: MixRule;
 };
 /** id ของรายการหน่วยแนะนำข้างช่อง "🔢 ระบุจำนวน" (พิมพ์หน่วยเองก็ได้) */
 const QTY_UNIT_LIST = "qty-unit-suggestions";
@@ -110,6 +113,8 @@ type DraftOption = {
   madeToOrder?: boolean;
   /** +฿ ของกลุ่มนี้มีผลเมื่อสั่งตั้งแต่กี่ชิ้นขึ้นไป (ว่าง = ทุกจำนวน) */
   extraFromQty?: string;
+  /** 🔢 ชื่อกลุ่มที่ +฿ ของกลุ่มนี้คูณจำนวนตาม — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  qtyFrom?: string;
   /** ค่าธรรมเนียมช่วงสั่งน้อย เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น (ยกเว้นบางตัวเลือก) */
   smallFee?: string;
   smallUpTo?: string;
@@ -231,8 +236,8 @@ type DraftPricing = {
 /** หนึ่งช่วงของตารางค่าคละลาย (กรอกเป็น string) */
 type DraftMixTier = { fromQty: string; baseFee: string; includedDesigns: string; extraFee: string; onePerUnit: boolean };
 const EMPTY_MIX_TIER: DraftMixTier = { fromQty: "", baseFee: "", includedDesigns: "", extraFee: "", onePerUnit: false };
-/** ข้อมูลกำกับเรทราคา (ชื่อ + เงื่อนไขการสั่ง + ภาพประจำเรท) */
-type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; underMinPieceFee: string; freeMixBelowQty: string; imageSrc?: string };
+/** ข้อมูลกำกับเรทราคา (ชื่อ + เงื่อนไขการสั่ง + ภาพประจำเรท) — mixRule = ค่าคละเฉพาะเรท (ตั้งจากสคริปต์ หน้านี้แค่พาผ่านตอนบันทึก ไม่มี UI แก้) */
+type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; underMinPieceFee: string; freeMixBelowQty: string; imageSrc?: string; mixRule?: MixRule };
 /** เรทเพิ่มเติม — มีช่วงจำนวน+ตารางราคาของตัวเอง (คอลัมน์/หน่วยใช้ร่วมกับเรทหลัก) */
 type DraftExtraRate = DraftRateMeta & {
   id: string;
@@ -516,6 +521,7 @@ function toDraft(p: Product): Draft {
         ...(c.piecesPerUnit ? { piecesPerUnit: c.piecesPerUnit } : {}),
         ...(c.extraBelow ? { extraBelow: c.extraBelow } : {}),
         ...(c.sizeFee ? { sizeFee: c.sizeFee } : {}),
+        ...(c.mixRule ? { mixRule: c.mixRule } : {}),
       })),
       ...(o.presetId ? { presetId: o.presetId } : {}),
       // มีตัวไหนเปิด "ระบุจำนวน" ไว้ = กลุ่มนี้เคยเปิดสวิตช์ → เปิดค้างไว้ให้เห็นค่าเดิม
@@ -523,6 +529,8 @@ function toDraft(p: Product): Draft {
       ...(o.collapsible ? { collapsible: true } : {}),
       display: o.display ?? "pills",
       ...(o.extraFromQty ? { extraFromQty: String(o.extraFromQty) } : {}),
+      // 🔢 กลุ่มที่ +฿ คูณจำนวนจากกลุ่มอื่น (สีตะขอคูณจำนวนตะขอ) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
+      ...(o.qtyFrom ? { qtyFrom: o.qtyFrom } : {}),
       ...(o.smallQtyFee
         ? {
             smallFee: String(o.smallQtyFee.fee),
@@ -630,6 +638,7 @@ function toDraft(p: Product): Draft {
           underMinPieceFee: p.priceRates[0].underMinPieceFee != null ? String(p.priceRates[0].underMinPieceFee) : "",
           freeMixBelowQty: p.priceRates[0].freeMixBelowQty != null ? String(p.priceRates[0].freeMixBelowQty) : "",
           ...(p.priceRates[0].imageSrc ? { imageSrc: p.priceRates[0].imageSrc } : {}),
+          ...(p.priceRates[0].mixRule ? { mixRule: p.priceRates[0].mixRule } : {}),
         }
       : { ...EMPTY_RATE_META },
     extraRates: (p.priceRates ?? []).slice(1).map((r) => ({
@@ -643,6 +652,7 @@ function toDraft(p: Product): Draft {
       underMinPieceFee: r.underMinPieceFee != null ? String(r.underMinPieceFee) : "",
       freeMixBelowQty: r.freeMixBelowQty != null ? String(r.freeMixBelowQty) : "",
       ...(r.imageSrc ? { imageSrc: r.imageSrc } : {}),
+      ...(r.mixRule ? { mixRule: r.mixRule } : {}),
       tiers: r.pricing.tiers.map((t) => ({ upTo: t.upTo == null ? "" : String(t.upTo), label: t.label })),
       cells: Object.fromEntries(Object.entries(r.pricing.cells).map(([k, v]) => [k, v.map((n) => String(n))])),
     })),
@@ -786,6 +796,8 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             ...(c.extraBelow ? { extraBelow: c.extraBelow } : {}),
             // 📏 ค่าบริการตามขนาด — ไม่มีช่องกรอกในหน้าแก้ไข ต้องส่งกลับ ไม่งั้นหาย
             ...(c.sizeFee ? { sizeFee: c.sizeFee } : {}),
+            // 🎨 กติกาคละลายเฉพาะตัวเลือก (ไดคัท 50% ลายละ 20) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
+            ...(c.mixRule ? { mixRule: c.mixRule } : {}),
           };
         }),
       ...(o.presetId ? { presetId: o.presetId } : {}),
@@ -794,6 +806,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
         : {}),
       ...(o.collapsible ? { collapsible: true } : {}),
       ...(Number(o.extraFromQty) > 0 ? { extraFromQty: Math.floor(Number(o.extraFromQty)) } : {}),
+      ...(o.qtyFrom ? { qtyFrom: o.qtyFrom } : {}),
       ...(Number.isFinite(Number(o.smallFee)) && Number(o.smallFee) !== 0 && String(o.smallFee ?? "").trim() !== "" && Number(o.smallUpTo) > 0
         ? {
             smallQtyFee: {
@@ -3904,6 +3917,8 @@ export default function ProductEditor({ product }: { product: Product }) {
         ...(Number(m.underMinPieceFee) > 0 ? { underMinPieceFee: Number(m.underMinPieceFee) } : {}),
         ...(Number(m.freeMixBelowQty) > 0 ? { freeMixBelowQty: Math.floor(Number(m.freeMixBelowQty)) } : {}),
         ...(m.imageSrc ? { imageSrc: m.imageSrc } : {}),
+        // ค่าคละเฉพาะเรท (ตั้งจากสคริปต์) — พาผ่านตอนบันทึก ไม่งั้นกดบันทึกแล้วหายเงียบ ๆ
+        ...(m.mixRule ? { mixRule: m.mixRule } : {}),
       });
       const list: NonNullable<Product["priceRates"]> = [
         { id: "r1", ...metaOf(draft.rateMeta, "เรทที่ 1"), pricing },
