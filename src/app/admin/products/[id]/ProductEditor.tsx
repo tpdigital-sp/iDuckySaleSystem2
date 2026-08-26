@@ -22,7 +22,6 @@ import {
   type SizeFee,
   type InputFee,
   type MixRule,
-  type ArtworkConsult,
 } from "@/lib/products";
 import RichEditor from "@/components/RichEditor";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
@@ -88,8 +87,6 @@ type DraftChoice = {
   sizeFee?: SizeFee;
   /** 🎨 กติกาคละลายเฉพาะตัวเลือกนี้ (เช่น ไดคัท 50% ลายละ 20) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
   mixRule?: MixRule;
-  /** 💬 เลือกตัวนี้แล้วต้องคุยลายกับแอดมินก่อนสั่ง (งานปัก/งานตีลาย) — ติ๊กปุ่ม 💬 คุยลาย ท้ายบรรทัด */
-  consult?: ArtworkConsult;
 };
 /** id ของรายการหน่วยแนะนำข้างช่อง "🔢 ระบุจำนวน" (พิมพ์หน่วยเองก็ได้) */
 const QTY_UNIT_LIST = "qty-unit-suggestions";
@@ -156,6 +153,8 @@ type DraftOption = {
   chartSrc?: string;
   /** 📝 ข้อความกำกับใต้ชื่อกลุ่มบนหน้าสินค้า (สเปกที่ลูกค้าเลือกไม่ได้ แต่ควรรู้) */
   note?: string;
+  /** 👀 รูปตัวอย่างประกอบ note (ปุ่มกดเปิดดูเต็มจอท้าย note) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  noteImageSrc?: string;
   /** 💰 +฿ ของกลุ่มนี้คิดต่อลาย ไม่คูณจำนวนชิ้น */
   extraPerDesign?: boolean;
   /** 📄 +฿ ของกลุ่มนี้คิดต่อแผ่นวัสดุ — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
@@ -250,8 +249,7 @@ type DraftPricing = {
 type DraftMixTier = { fromQty: string; baseFee: string; includedDesigns: string; extraFee: string; onePerUnit: boolean };
 const EMPTY_MIX_TIER: DraftMixTier = { fromQty: "", baseFee: "", includedDesigns: "", extraFee: "", onePerUnit: false };
 /** ข้อมูลกำกับเรทราคา (ชื่อ + เงื่อนไขการสั่ง + ภาพประจำเรท) — mixRule = ค่าคละเฉพาะเรท (ตั้งจากสคริปต์ หน้านี้แค่พาผ่านตอนบันทึก ไม่มี UI แก้) */
-/** consult = เลือกเรทนี้แล้วต้องคุยลายกับแอดมินก่อน (เรท "งานปัก" ของหมวก/เสื้อ) */
-type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; underMinPieceFee: string; freeMixBelowQty: string; imageSrc?: string; mixRule?: MixRule; consult?: ArtworkConsult };
+type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; underMinPieceFee: string; freeMixBelowQty: string; imageSrc?: string; mixRule?: MixRule };
 /** เรทเพิ่มเติม — มีช่วงจำนวน+ตารางราคาของตัวเอง (คอลัมน์/หน่วยใช้ร่วมกับเรทหลัก) */
 type DraftExtraRate = DraftRateMeta & {
   id: string;
@@ -358,6 +356,15 @@ type Draft = {
   artworkConsultNote: string;
   /** true = สั่งไม่ได้จนกว่าลูกค้าจะติ๊กว่าคุยแล้ว · false = แค่แนะนำให้ทัก */
   artworkConsultBlock: boolean;
+  /**
+   * 👁 บังคับคุยลายเฉพาะเมื่อลูกค้าเลือกค่านี้ (ว่าง = บังคับทุกกรณี)
+   * label อ้างชื่อกลุ่มตัวเลือก หรือ "เรทราคา" ก็ได้ — ชุดเดียวกับเงื่อนไข "แสดงเมื่อ" ของกลุ่ม
+   */
+  artworkConsultWhenLabel: string;
+  artworkConsultWhenChoices: string[];
+  /** เงื่อนไขข้อที่สอง — ต้องตรงพร้อมกันถึงจะบังคับ */
+  artworkConsultAlsoLabel: string;
+  artworkConsultAlsoChoices: string[];
   /** สถานะตรวจสอบหลังบ้าน (มีค่า = ตรวจแล้ว) */
   reviewed?: ProductReview;
   /** ปิดการมองเห็นบนหน้าร้าน (ตั้งจากหน้ารายการสินค้า) — พกผ่านดราฟต์ไว้ ไม่ให้หายตอนบันทึก */
@@ -520,6 +527,7 @@ function toDraft(p: Product): Draft {
       ...(o.sampleGrid ? { sampleGrid: true } : {}),
       ...(o.chartSrc ? { chartSrc: o.chartSrc } : {}),
       ...(o.note ? { note: o.note } : {}),
+      ...(o.noteImageSrc ? { noteImageSrc: o.noteImageSrc } : {}),
       ...(o.extraPerDesign ? { extraPerDesign: true } : {}),
       ...(o.sheetFee ? { sheetFee: o.sheetFee } : {}),
       ...(o.standardInput ? { standardInput: true } : {}),
@@ -550,7 +558,6 @@ function toDraft(p: Product): Draft {
         ...(c.extraSmall ? { extraSmall: c.extraSmall } : {}),
         ...(c.sizeFee ? { sizeFee: c.sizeFee } : {}),
         ...(c.mixRule ? { mixRule: c.mixRule } : {}),
-        ...(c.consult ? { consult: c.consult } : {}),
       })),
       ...(o.presetId ? { presetId: o.presetId } : {}),
       // มีตัวไหนเปิด "ระบุจำนวน" ไว้ = กลุ่มนี้เคยเปิดสวิตช์ → เปิดค้างไว้ให้เห็นค่าเดิม
@@ -671,7 +678,6 @@ function toDraft(p: Product): Draft {
           freeMixBelowQty: p.priceRates[0].freeMixBelowQty != null ? String(p.priceRates[0].freeMixBelowQty) : "",
           ...(p.priceRates[0].imageSrc ? { imageSrc: p.priceRates[0].imageSrc } : {}),
           ...(p.priceRates[0].mixRule ? { mixRule: p.priceRates[0].mixRule } : {}),
-          ...(p.priceRates[0].consult ? { consult: p.priceRates[0].consult } : {}),
         }
       : { ...EMPTY_RATE_META },
     extraRates: (p.priceRates ?? []).slice(1).map((r) => ({
@@ -686,7 +692,6 @@ function toDraft(p: Product): Draft {
       freeMixBelowQty: r.freeMixBelowQty != null ? String(r.freeMixBelowQty) : "",
       ...(r.imageSrc ? { imageSrc: r.imageSrc } : {}),
       ...(r.mixRule ? { mixRule: r.mixRule } : {}),
-      ...(r.consult ? { consult: r.consult } : {}),
       tiers: r.pricing.tiers.map((t) => ({ upTo: t.upTo == null ? "" : String(t.upTo), label: t.label })),
       cells: Object.fromEntries(Object.entries(r.pricing.cells).map(([k, v]) => [k, v.map((n) => String(n))])),
     })),
@@ -759,6 +764,10 @@ function toDraft(p: Product): Draft {
     artworkConsult: !!p.artworkConsult?.enabled,
     artworkConsultNote: p.artworkConsult?.note ?? "",
     artworkConsultBlock: p.artworkConsult?.block !== false,
+    artworkConsultWhenLabel: p.artworkConsult?.when?.label ?? "",
+    artworkConsultWhenChoices: [...(p.artworkConsult?.when?.choices ?? [])],
+    artworkConsultAlsoLabel: p.artworkConsult?.whenAlso?.label ?? "",
+    artworkConsultAlsoChoices: [...(p.artworkConsult?.whenAlso?.choices ?? [])],
     reviewed: p.reviewed,
     hidden: p.hidden,
   };
@@ -790,6 +799,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       ...(o.sampleGrid ? { sampleGrid: true as const } : {}),
       ...(o.chartSrc ? { chartSrc: o.chartSrc } : {}),
       ...(o.note?.trim() ? { note: o.note.trim() } : {}),
+      ...(o.noteImageSrc ? { noteImageSrc: o.noteImageSrc } : {}),
       ...(o.extraPerDesign ? { extraPerDesign: true } : {}),
       ...(o.sheetFee ? { sheetFee: o.sheetFee } : {}),
       // ✍️📐 ช่องกรอกงานปกติ + สเปกจำนวนชิ้นต่อแผ่น — ไม่มีช่องกรอกในหน้าแก้ไข ต้องส่งกลับ ไม่งั้นหาย
@@ -841,8 +851,6 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             ...(c.sizeFee ? { sizeFee: c.sizeFee } : {}),
             // 🎨 กติกาคละลายเฉพาะตัวเลือก (ไดคัท 50% ลายละ 20) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
             ...(c.mixRule ? { mixRule: c.mixRule } : {}),
-            // 💬 ตัวเลือกที่ต้องคุยลายกับแอดมินก่อน (งานปัก) — ปิดอยู่ = ไม่เก็บฟิลด์
-            ...(c.consult?.enabled ? { consult: c.consult } : {}),
           };
         }),
       ...(o.presetId ? { presetId: o.presetId } : {}),
@@ -2203,6 +2211,96 @@ export default function ProductEditor({ product }: { product: Product }) {
    * แถวเงื่อนไข "แสดงเมื่อ" ของกลุ่มตัวเลือก — โชว์กลุ่มนี้เฉพาะตอนกลุ่มอื่น/เรทราคาเลือกค่าที่กำหนด
    * แยกออกมาเป็นฟังก์ชันของตัวเอง เพราะใช้ทั้งในแผงตัวเลือกสินค้าและแผงช่องกรอก (งานสั่งทำ)
    */
+  /**
+   * 👁 แถวเงื่อนไขของกล่อง 💬 คุยลายกับแอดมิน — หน้าตา/วิธีใช้เหมือน "แสดงเมื่อ" ของกลุ่มตัวเลือก
+   * ต่างกันที่ค่าเก็บอยู่ที่ระดับสินค้า (draft.artworkConsult*) ไม่ใช่ในกลุ่มไหนกลุ่มหนึ่ง
+   * เลือกกลุ่มได้ทั้ง "เรทราคา" และกลุ่มตัวเลือกปกติ (กลุ่มช่องกรอกใช้ไม่ได้ — ไม่มีรายการให้ติ๊กเทียบ)
+   */
+  function consultWhenBlock() {
+    const rateLabels =
+      draft.extraRates.length > 0 || draft.rateMeta.label.trim()
+        ? [draft.rateMeta, ...draft.extraRates].map((m, i) => m.label.trim() || `เรทที่ ${i + 1}`)
+        : [];
+    const choiceNamesOf = (label: string) =>
+      label === RATE_LABEL
+        ? rateLabels
+        : (draft.options.find((o) => o.label === label)?.choices ?? []).map((c) => c.name).filter((n) => n.trim());
+    const row = (which: "When" | "Also") => {
+      const labelKey = `artworkConsult${which}Label` as "artworkConsultWhenLabel" | "artworkConsultAlsoLabel";
+      const choicesKey = `artworkConsult${which}Choices` as "artworkConsultWhenChoices" | "artworkConsultAlsoChoices";
+      const curLabel = draft[labelKey];
+      const picked = draft[choicesKey];
+      return (
+        <div className="flex flex-wrap items-center gap-1">
+          <span
+            className="text-[11px] font-bold text-slate-500"
+            title={
+              which === "Also"
+                ? "เงื่อนไขข้อที่สอง — ต้องตรงพร้อมกันกับข้อแรกถึงจะบังคับ"
+                : "บังคับคุยลายเฉพาะตอนลูกค้าเลือกค่าที่ติ๊กไว้ (ไม่ตั้ง = บังคับทุกกรณี)"
+            }
+          >
+            {which === "Also" ? "และ" : "👁 บังคับเมื่อ"}
+          </span>
+          <select
+            value={curLabel}
+            onChange={(e) => patch({ [labelKey]: e.target.value, [choicesKey]: [] })}
+            className="rounded-lg bg-white px-2 py-1 text-[11px] ring-1 ring-slate-200 focus:outline-none"
+            aria-label={which === "Also" ? "กลุ่มเงื่อนไขข้อที่สองของการคุยลาย" : "กลุ่มเงื่อนไขที่ทำให้ต้องคุยลาย"}
+          >
+            <option value="">{which === "Also" ? "— ไม่ใช้เงื่อนไขที่สอง —" : "— บังคับทุกกรณี —"}</option>
+            {rateLabels.length > 0 && <option value={RATE_LABEL}>{RATE_LABEL}</option>}
+            {draft.options
+              .filter((o) => o.label && o.display !== "input")
+              .map((o) => (
+                <option key={o.label} value={o.label}>{o.label}</option>
+              ))}
+          </select>
+          {choiceNamesOf(curLabel).map((name) => {
+            const sel = picked.includes(name);
+            return (
+              <button
+                key={name}
+                type="button"
+                onClick={() => patch({ [choicesKey]: sel ? picked.filter((n) => n !== name) : [...picked, name] })}
+                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold transition ${
+                  sel ? "bg-emerald-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                {sel ? "✓ " : ""}
+                {name.length > 22 ? name.slice(0, 22) + "…" : name}
+              </button>
+            );
+          })}
+        </div>
+      );
+    };
+    const onLabel = draft.artworkConsultWhenLabel;
+    const onPicked = draft.artworkConsultWhenChoices;
+    return (
+      <div className="rounded-lg bg-white/70 p-2 ring-1 ring-emerald-200">
+        {row("When")}
+        {/* ข้อสองโผล่เมื่อตั้งข้อแรกแล้ว (หรือเคยตั้งค้างไว้) — ไม่งั้นรกเปล่า ๆ */}
+        {(onLabel || draft.artworkConsultAlsoLabel) && <div className="mt-1">{row("Also")}</div>}
+        <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
+          {onLabel && onPicked.length ? (
+            <>
+              📖 อ่านว่า: “บังคับคุยลายก่อนสั่ง <b className="font-bold text-emerald-700">เฉพาะเมื่อ {onLabel} = {onPicked.join(" / ")}</b>
+              {draft.artworkConsultAlsoLabel && draft.artworkConsultAlsoChoices.length > 0 && (
+                <b className="font-bold text-emerald-700"> และ {draft.artworkConsultAlsoLabel} = {draft.artworkConsultAlsoChoices.join(" / ")}</b>
+              )}
+              ” · ตัวเลือกอื่นสั่งได้เลยตามปกติ (และยังบังคับแนบลายตามการตั้งค่าด้านบน)
+            </>
+          ) : onLabel ? (
+            "⚠ เลือกกลุ่มแล้วแต่ยังไม่ได้ติ๊กค่าไหนเลย — ตอนนี้ยังนับเป็น “บังคับทุกกรณี” กดค่าที่ต้องการด้านบนด้วย"
+          ) : (
+            "ไม่ตั้งเงื่อนไข = บังคับคุยลายทุกกรณี · ตั้งได้ถ้าอยากบังคับเฉพาะบางเรท/บางแบบ เช่น เรทราคา = งานปัก"
+          )}
+        </p>
+      </div>
+    );
+  }
+
   function showWhenBlock(gi: number, opt: DraftOption) {
     const setOpt = (patchObj: Partial<DraftOption>) =>
       patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, ...patchObj } : o)) });
@@ -2750,39 +2848,6 @@ export default function ProductEditor({ product }: { product: Product }) {
                       }`}
                     >
                       💬 ตีราคา
-                    </button>
-                    {/*
-                      💬 เลือกตัวนี้แล้วต้องคุยลายกับแอดมินก่อนสั่ง (งานปัก/งานตีลาย)
-                      ตัวเดียวกับสวิตช์ระดับสินค้าในแท็บ "การสั่งซื้อ" แต่กั้นเฉพาะตอนลูกค้าเลือกตัวนี้ —
-                      สินค้าที่ขายทั้งงานพิมพ์และงานปักในตัวเดียว งานพิมพ์จะได้สั่งได้เลยตามปกติ
-                    */}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        patch({
-                          options: draft.options.map((o, i) =>
-                            i === gi
-                              ? {
-                                  ...o,
-                                  choices: o.choices.map((c, j) =>
-                                    j === ci
-                                      ? { ...c, consult: c.consult?.enabled ? undefined : { enabled: true } }
-                                      : c
-                                  ),
-                                }
-                              : o
-                          ),
-                        })
-                      }
-                      title="เลือกตัวนี้แล้วต้องคุยลายกับแอดมินก่อนถึงจะสั่งได้ (หน้าร้านขึ้นกล่องเขียว “ทักไลน์ส่งลายให้แอดมินดู” + ติ๊กยืนยันว่าคุยแล้ว · และไม่บังคับแนบลาย)"
-                      aria-pressed={!!ch.consult?.enabled}
-                      className={`shrink-0 rounded-lg px-2 py-1.5 text-[11px] font-semibold ring-1 transition ${
-                        ch.consult?.enabled
-                          ? "bg-emerald-500 text-white ring-emerald-500"
-                          : "bg-white text-slate-300 ring-slate-200 hover:text-emerald-600 hover:ring-emerald-200"
-                      }`}
-                    >
-                      💬 คุยลาย
                     </button>
                     {/* ⭐ ป้าย "แบบยอดนิยม" — หน้าสินค้าโชว์ดอกจันแดงท้ายชื่อ (ไม่มีผลกับราคา) */}
                     <button
@@ -3953,11 +4018,7 @@ export default function ProductEditor({ product }: { product: Product }) {
     // หลายเรทราคา — เรทหลัก = ตาราง pricing ข้างบน + เรทเพิ่มเติมแต่ละอันสร้างตารางของตัวเอง
     let priceRates: Product["priceRates"];
     const metaHasValue =
-      draft.rateMeta.label.trim() ||
-      Number(draft.rateMeta.minQty) > 0 ||
-      Number(draft.rateMeta.minPerDesign) > 0 ||
-      // 💬 สินค้าเรทเดียวที่ติ๊ก "ต้องคุยลายก่อนสั่ง" — ต้องเก็บเป็นเรทด้วย ไม่งั้นค่าที่ติ๊กหายทันทีที่บันทึก
-      !!draft.rateMeta.consult?.enabled;
+      draft.rateMeta.label.trim() || Number(draft.rateMeta.minQty) > 0 || Number(draft.rateMeta.minPerDesign) > 0;
     if (pricing && (draft.extraRates.length > 0 || metaHasValue)) {
       const buildRateMatrix = (r: DraftExtraRate): PriceMatrix | undefined => {
         if (!r.tiers.length) return undefined;
@@ -4003,8 +4064,6 @@ export default function ProductEditor({ product }: { product: Product }) {
         ...(m.imageSrc ? { imageSrc: m.imageSrc } : {}),
         // ค่าคละเฉพาะเรท (ตั้งจากสคริปต์) — พาผ่านตอนบันทึก ไม่งั้นกดบันทึกแล้วหายเงียบ ๆ
         ...(m.mixRule ? { mixRule: m.mixRule } : {}),
-        // 💬 เรทที่ต้องคุยลายกับแอดมินก่อน (เรท "งานปัก") — ปิดอยู่ = ไม่เก็บฟิลด์
-        ...(m.consult?.enabled ? { consult: m.consult } : {}),
       });
       const list: NonNullable<Product["priceRates"]> = [
         { id: "r1", ...metaOf(draft.rateMeta, "เรทที่ 1"), pricing },
@@ -4188,6 +4247,13 @@ export default function ProductEditor({ product }: { product: Product }) {
             enabled: true,
             note: draft.artworkConsultNote.trim() || undefined,
             block: draft.artworkConsultBlock ? undefined : false, // undefined = บล็อก (ค่าเริ่มต้น)
+            // 👁 เงื่อนไข — ไม่ได้ตั้ง (หรือตั้งกลุ่มแต่ไม่ได้ติ๊กค่าไหนเลย) = บังคับทุกกรณีตามเดิม
+            ...(draft.artworkConsultWhenLabel && draft.artworkConsultWhenChoices.length
+              ? { when: { label: draft.artworkConsultWhenLabel, choices: [...draft.artworkConsultWhenChoices] } }
+              : {}),
+            ...(draft.artworkConsultAlsoLabel && draft.artworkConsultAlsoChoices.length
+              ? { whenAlso: { label: draft.artworkConsultAlsoLabel, choices: [...draft.artworkConsultAlsoChoices] } }
+              : {}),
           }
         : undefined,
       reviewed: draft.reviewed,
@@ -6065,26 +6131,6 @@ export default function ProductEditor({ product }: { product: Product }) {
                       className="w-24 rounded-xl bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
                     />
                   </label>
-                  {/*
-                    💬 เรทนี้ต้องคุยลายกับแอดมินก่อนสั่ง — ใช้กับสินค้าที่เรทคือ "ชนิดงาน"
-                    (หมวก/เสื้อ: เรทพิมพ์ DTF สั่งได้เลย · เรทงานปัก ต้องตีลายคุยกันก่อน)
-                  */}
-                  <label
-                    className={`flex cursor-pointer items-center gap-2 self-end rounded-xl px-3 py-2 text-xs font-semibold ring-1 transition ${
-                      activeMeta.consult?.enabled
-                        ? "bg-emerald-50 text-emerald-700 ring-emerald-300"
-                        : "bg-white text-slate-500 ring-slate-200"
-                    }`}
-                    title="เลือกเรทนี้แล้วหน้าร้านขึ้นกล่องเขียว “ทักไลน์ส่งลายให้แอดมินดู” + ต้องติ๊กยืนยันว่าคุยแล้วถึงจะสั่งได้ (และไม่บังคับแนบลาย)"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={!!activeMeta.consult?.enabled}
-                      onChange={(e) => patchActiveMeta({ consult: e.target.checked ? { enabled: true } : undefined })}
-                      className="h-4 w-4 accent-emerald-500"
-                    />
-                    💬 ต้องคุยลายก่อนสั่ง
-                  </label>
                   {/* 🖼 ภาพประจำเรท — สินค้าที่ใช้เรทเป็น "แบบสินค้า" (เช่น สายคล้องหลายแบบ) ลูกค้าเห็นหน้าตาบนการ์ดเลือกเรท */}
                   <div className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
                     ภาพประจำเรท
@@ -7004,6 +7050,8 @@ export default function ProductEditor({ product }: { product: Product }) {
 
           {draft.artworkConsult && (
             <div className="mt-2.5 space-y-2 pl-6">
+              {/* 👁 เลือกได้ว่าจะบังคับทุกกรณี หรือเฉพาะตอนลูกค้าเลือกเรท/แบบที่ต้องคุยก่อน */}
+              {consultWhenBlock()}
               <label className="block text-[11px] font-bold text-slate-600">
                 ข้อความที่ลูกค้าเห็น (เว้นว่าง = ใช้ข้อความกลางของระบบ)
                 <textarea

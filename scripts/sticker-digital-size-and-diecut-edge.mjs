@@ -43,7 +43,7 @@ const DOT_FEE = "0.50";
 const DOT_NOTE =
   `จำนวนจุดไดคัทต่อ 1 ชิ้น: ${Object.entries(DOT_QUOTA).map(([s, n]) => `${s} ไม่เกิน ${n} จุด`).join(" · ")}` +
   ` — เกินโควตาคิดจุดละ ฿${DOT_FEE} (สั่ง 25 แผ่น A3 ขึ้นไปต่อ 1 ลาย ฟรีค่าจุด)` +
-  ` · วางลายห่างกันอย่างน้อย 2 มม. ไม่งั้นเส้นไดคัทซ้อนกัน · ดูตัวอย่างการนับจุดในแท็บ “ข้อควรทราบ”`;
+  ` · วางลายห่างกันอย่างน้อย 2 มม. ไม่งั้นเส้นไดคัทซ้อนกัน · วิธีนับจุดดูจากรูปตัวอย่าง —`;
 const DOT_IMG = "dicut-dots.jpg";
 const DOT_SRC = "scripts/assets/sticker-pp-dicut-dots.jpg";
 
@@ -121,6 +121,8 @@ log.push(`ขอบไดคัท: ${edge.choices.map((c) => c.name).join(" / "
 const cut = at(CUT);
 if (!cut) throw new Error(`ไม่พบกลุ่ม ${CUT}`);
 cut.note = DOT_NOTE;
+// 👀 ปุ่มท้าย note กดเปิดรูป "การนับจุด DICUT" ดูเต็มจอทันที (รูปเดียวกับที่อยู่ในแท็บข้อควรทราบ)
+cut.noteImageSrc = publicUrl(DOT_IMG);
 // ป้ายบนตัวเลือกเดิมบอกจำนวนชิ้น/แผ่นอยู่แล้ว — ต่อท้ายด้วยโควตาจุดของขนาดนั้น
 for (const c of cut.choices || []) {
   const q = DOT_QUOTA[c.name];

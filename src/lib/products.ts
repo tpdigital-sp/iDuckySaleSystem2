@@ -145,13 +145,6 @@ export interface ProductOptionChoice {
    * ไดคัท 50% ค่าคละลายละ 20 บาท · ไดคัท 100% ใช้กติกากลางของสินค้าตามเดิม
    */
   mixRule?: MixRule;
-  /**
-   * 💬 เลือกตัวนี้แล้วต้องคุยลายกับแอดมินก่อนสั่ง (งานปัก/งานตีลาย ที่ต้องตีลาย/แปลงไฟล์ให้ดูก่อน)
-   * ทำงานเหมือน Product.artworkConsult แต่ผูกกับตัวเลือกเดียว — สินค้าที่ขายทั้งงานพิมพ์และงานปัก
-   * ในตัวเดียวกัน จะได้กั้นเฉพาะตอนลูกค้าเลือกแบบที่ต้องคุยก่อน ส่วนแบบอื่นสั่งได้เลยตามปกติ
-   * (กลุ่มที่ถูกซ่อนด้วย showWhen ไม่นับ — ดู artworkConsultOf)
-   */
-  consult?: ArtworkConsult;
 }
 
 export interface ProductOption {
@@ -348,6 +341,11 @@ export interface ProductOption {
    * (ชิปบนปุ่มเป็นรูปเล็ก ขยายแล้วเบลอ — รูปนี้คือไฟล์ความละเอียดเต็มไว้เปิด lightbox)
    */
   chartSrc?: string;
+  /**
+   * 👀 รูปตัวอย่างประกอบ note ของกลุ่ม — มี note + รูปนี้ = ท้าย note มีปุ่มกดเปิดรูปดูเต็มจอทันที
+   * (ไม่ต้องไล่หาในแท็บ) เช่น อินโฟกราฟิก "การนับจุด DICUT" ของกลุ่มขนาดตัดสติ๊กเกอร์
+   */
+  noteImageSrc?: string;
   /**
    * 📝 ข้อความกำกับใต้ชื่อกลุ่มบนหน้าสินค้า — สเปกที่ลูกค้าควรรู้ตอนกำลังเลือก
    * เช่น "ตัวภาพพิมพ์บนกระดาษอาร์ตการ์ด 260 แกรม" (ของที่ไม่มีให้เลือก แต่ต้องบอก)
@@ -1350,11 +1348,6 @@ export interface PriceRate {
    * ไดคัท 100% ลายละ 5 · SET-KIT ลายละ 20 (ตรรกะเดียวกับสติ๊กเกอร์ไดคัท 100%/50%)
    */
   mixRule?: MixRule;
-  /**
-   * 💬 เลือกเรทนี้แล้วต้องคุยลายกับแอดมินก่อนสั่ง — ใช้กับสินค้าที่เรทคือ "ชนิดงาน"
-   * เช่น หมวก/เสื้อ ที่มีเรท "พิมพ์ DTF | FLEX" (สั่งได้เลย) กับเรท "งานปัก" (ต้องตีลายคุยกันก่อน)
-   */
-  consult?: ArtworkConsult;
   pricing: PriceMatrix;
 }
 
@@ -2234,6 +2227,15 @@ export interface ArtworkConsult {
    * false = แค่แนะนำให้ทักก่อน (กดสั่งได้เลย)
    */
   block?: boolean;
+  /**
+   * 👁 บังคับเฉพาะเมื่อลูกค้าเลือกค่าที่กำหนด — ไม่ตั้ง = บังคับทุกกรณี (ทั้งสินค้า)
+   * label อ้างชื่อกลุ่มตัวเลือก หรือ "เรทราคา" (RATE_LABEL) ก็ได้ เหมือนเงื่อนไข showWhen ของกลุ่ม
+   * เช่น หมวก/เสื้อ ที่ขายทั้งงานพิมพ์และงานปัก: { label: "เรทราคา", choices: ["งานปัก"] }
+   * → เลือกเรทพิมพ์ = สั่งได้เลย · เลือกเรทงานปัก = ต้องคุยลายก่อน
+   */
+  when?: { label: string; choices: string[] };
+  /** เงื่อนไขข้อที่สอง — ต้องตรงพร้อมกันกับ when ถึงจะบังคับ (ไม่ตั้ง = ใช้ข้อเดียว) */
+  whenAlso?: { label: string; choices: string[] };
 }
 
 /** ป้ายที่ติดไปกับรายการในตะกร้า/ออเดอร์เมื่อลูกค้ายืนยันว่าคุยลายกับแอดมินแล้ว */
@@ -2244,28 +2246,21 @@ export const CONSULT_NOTE_DEFAULT =
   "งานแบบนี้ต้องคุยเรื่องลายกับแอดมินก่อนนะครับ — ส่งไฟล์/แบบที่ต้องการมาทางไลน์ ทางร้านจะตีลายให้ดูก่อน ตกลงแบบกันเรียบร้อยแล้วค่อยกดสั่ง";
 
 /**
- * ต้องคุยลายกับแอดมินก่อนไหม ณ ตัวเลือกชุดนี้ (คืน null ถ้าไม่เข้าเงื่อนไขไหนเลย)
- * ไล่จากกว้างไปแคบ: ทั้งสินค้า → เรทที่เลือก → ตัวเลือกที่เลือก (ตัวแรกที่เปิดใช้ชนะ)
- *   - ทั้งสินค้า = งานที่ต้องคุยทุกกรณี (ตุ๊กตาปัก/งานตีลายล้วน)
- *   - รายเรท = เรทคือชนิดงาน เช่น หมวก เรท "งานปัก" ต้องคุย แต่เรทพิมพ์ DTF สั่งได้เลย
- *   - รายตัวเลือก = ชนิดงานอยู่ในกลุ่มตัวเลือก เช่น กลุ่ม "แบบงาน" ตัวเลือก "ปักนูน"
- * กลุ่มที่ถูกซ่อนอยู่ (showWhen ไม่ผ่าน) ไม่นับ — ลูกค้าไม่เห็นตัวเลือกนั้นแล้ว
+ * ต้องคุยลายกับแอดมินก่อนไหม ณ ตัวเลือกชุดนี้ (คืน null ถ้าไม่เข้าเงื่อนไข/ไม่ได้เปิดใช้)
+ * เปิดสวิตช์แล้วไม่ตั้งเงื่อนไข = บังคับทุกกรณี · ตั้งเงื่อนไขไว้ = บังคับเฉพาะตอนที่ลูกค้าเลือกค่านั้น
+ * (เช่น เรทราคา = งานปัก · แบบงาน = ปักนูน) — ตั้งครบสองข้อต้องตรงพร้อมกัน
+ * selections ที่ส่งมาต้องมี "เรทราคา" (RATE_LABEL) รวมอยู่ด้วย ถึงจะอ้างเรทเป็นเงื่อนไขได้
  */
-export function artworkConsultOf(
-  p: Product,
-  selections?: Record<string, string>,
-  rate?: PriceRate | null,
-): ArtworkConsult | null {
-  if (p.artworkConsult?.enabled) return p.artworkConsult;
-  if (rate?.consult?.enabled) return rate.consult;
+export function artworkConsultOf(p: Product, selections?: Record<string, string>): ArtworkConsult | null {
+  const c = p.artworkConsult;
+  if (!c?.enabled) return null;
+  const set = (w?: { label: string; choices: string[] }) => !!w?.label && !!w.choices?.length;
+  if (!set(c.when) && !set(c.whenAlso)) return c;
+  // ตั้งเงื่อนไขไว้แต่ไม่รู้ว่าลูกค้าเลือกอะไร = ตัดสินไม่ได้ ถือว่ายังไม่บังคับ
   if (!selections) return null;
-  for (const opt of p.options ?? []) {
-    if (!optionVisible(opt, selections)) continue;
-    for (const c of opt.choices) {
-      if (c.consult?.enabled && valueMatchesAny(selections[opt.label], [c.name])) return c.consult;
-    }
-  }
-  return null;
+  const pass = (w?: { label: string; choices: string[] }) =>
+    !set(w) || valueMatchesAny(selections[w!.label], w!.choices);
+  return pass(c.when) && pass(c.whenAlso) ? c : null;
 }
 
 /**

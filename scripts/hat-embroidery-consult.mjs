@@ -1,9 +1,9 @@
 /**
- * 💬 หมวก (Bucket / แก๊ป): เลือกเรท "งานปัก" แล้วต้องคุยลายกับแอดมินก่อนสั่ง
+ * 💬 หมวก (Bucket / แก๊ป): บังคับคุยลายกับแอดมิน "เฉพาะเมื่อเลือกเรทงานปัก"
  *
- * งานปักต้องแปลงไฟล์/ตีลายให้ลูกค้าดูก่อนถึงจะเริ่มผลิตได้ ส่วนเรทพิมพ์ DTF | FLEX สั่งได้เลยตามปกติ
- * ตั้งที่ PriceRate.consult (กลไกใหม่ 26 ส.ค. 69) — หน้าสินค้าจะโชว์กล่องเขียว "ทักไลน์ส่งลายให้แอดมินดู"
- * เฉพาะตอนลูกค้าเลือกเรทงานปัก และไม่บังคับแนบลาย (ไฟล์จริงตกลงกันในแชท)
+ * ใช้สวิตช์ระดับสินค้า (Product.artworkConsult) + เงื่อนไข when — ตั้งที่เดียวจบในกล่อง 💬
+ * ของหลังบ้าน ไม่ต้องไล่ติ๊กตามเรท/ตามตัวเลือก · เรทพิมพ์ DTF | FLEX สั่งได้เลยตามปกติ
+ * (รอบก่อนเคยเก็บไว้ที่ PriceRate.consult — สคริปต์นี้ย้ายมาให้ + ล้างของเก่าทิ้ง)
  *
  * รันดูก่อน:  node scripts/hat-embroidery-consult.mjs
  * เขียนจริง:  node scripts/hat-embroidery-consult.mjs --write
@@ -24,9 +24,7 @@ const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_
 
 const WRITE = process.argv.includes("--write");
 const IDS = ["new-mt2omund-2845", "new-mt2omp9n-3490"]; // หมวก Bucket / หมวกแก๊ป
-/** เรทที่ต้องคุยลายก่อน — เทียบจากชื่อเรท */
-const NEEDS_CONSULT = (label) => /ปัก/.test(label ?? "");
-
+const RATE_LABEL = "เรทราคา";
 const NOTE =
   "งานปักต้องคุยลายกับแอดมินก่อนนะครับ — ส่งไฟล์/แบบที่อยากได้มาทางไลน์ ทางร้านจะแปลงไฟล์ปักแล้วตีลายให้ดูก่อน (ลายเส้นเล็ก/ตัวหนังสือเล็กบางแบบปักไม่ขึ้น ต้องปรับให้เหมาะกับงานปัก) ตกลงแบบกันเรียบร้อยแล้วค่อยกดสั่ง";
 
@@ -37,39 +35,46 @@ for (const id of IDS) {
     continue;
   }
   const d = row.data;
-  const rates = d.priceRates ?? [];
-  if (!rates.length) {
-    console.log(`❌ ${id} (${row.name}): ไม่มี priceRates — ข้าม`);
+  // ชื่อเรทที่มีคำว่า "ปัก" = เรทที่ต้องคุยลายก่อน
+  const embRates = (d.priceRates ?? []).filter((r) => /ปัก/.test(r.label ?? "")).map((r) => r.label);
+  if (!embRates.length) {
+    console.log(`❌ ${id} (${row.name}): ไม่เจอเรทงานปัก — ข้าม`);
     continue;
   }
-  let touched = 0;
-  const next = rates.map((r) => {
-    if (!NEEDS_CONSULT(r.label)) {
-      // เรทงานพิมพ์: ต้องไม่มี consult ค้าง (เผื่อเคยตั้งผิด)
-      if (r.consult) {
-        touched++;
-        const { consult: _drop, ...rest } = r;
-        return rest;
-      }
-      return r;
-    }
-    if (r.consult?.enabled && r.consult.note === NOTE) return r;
-    touched++;
-    return { ...r, consult: { enabled: true, note: NOTE } };
+  const artworkConsult = { enabled: true, note: NOTE, when: { label: RATE_LABEL, choices: embRates } };
+  // ล้าง consult รายเรทของรอบก่อนทิ้ง (ย้ายมาไว้ระดับสินค้าแล้ว)
+  let staleRates = 0;
+  const priceRates = (d.priceRates ?? []).map((r) => {
+    if (!r.consult) return r;
+    staleRates++;
+    const { consult: _drop, ...rest } = r;
+    return rest;
   });
 
+  // ⚠️ jsonb ของ Postgres เรียงคีย์ใหม่ตอนอ่านกลับ — เทียบด้วย JSON.stringify ตรง ๆ ไม่ตรงตลอด
+  const norm = (v) => JSON.stringify(v, (_k, x) =>
+    x && typeof x === "object" && !Array.isArray(x)
+      ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1)))
+      : x
+  );
+  const same = norm(d.artworkConsult) === norm(artworkConsult) && !staleRates;
   console.log(`\n=== ${id} · ${row.name}`);
-  for (const r of next) console.log(`   เรท "${r.label}" → ${r.consult?.enabled ? "💬 ต้องคุยลายก่อนสั่ง (บล็อกจนกว่าจะติ๊กยืนยัน)" : "สั่งได้เลย"}`);
-  console.log(`   artworkRequired: ${d.artworkRequired === false ? "ไม่บังคับ" : "บังคับ"} → ตอนเลือกเรทงานปัก ระบบจะไม่บังคับแนบลายให้เอง`);
+  console.log(`   💬 บังคับคุยลายเมื่อ: ${RATE_LABEL} = ${embRates.join(" / ")}`);
+  for (const r of priceRates)
+    console.log(`   เรท "${r.label}" → ${embRates.includes(r.label) ? "ต้องคุยลายก่อน (บล็อกจนกว่าจะติ๊กยืนยัน)" : "สั่งได้เลย"}`);
+  if (staleRates) console.log(`   🧹 ล้าง consult รายเรทของเดิม ${staleRates} จุด`);
 
-  if (!touched) {
-    console.log("   (ไม่มีอะไรต้องแก้)");
+  if (same) {
+    console.log("   (ตั้งไว้ตรงแล้ว ไม่ต้องแก้)");
     continue;
   }
   if (!WRITE) {
-    console.log(`   [dry-run] จะแก้ ${touched} เรท — ใส่ --write เพื่อเขียนจริง`);
+    console.log("   [dry-run] ใส่ --write เพื่อเขียนจริง");
     continue;
   }
-  const { error: upErr } = await sb.from("products").update({ data: { ...d, priceRates: next } }).eq("id", id);
-  console.log(upErr ? `   ❌ เขียนไม่สำเร็จ: ${upErr.message}` : `   ✅ เขียนลง DB แล้ว (${touched} เรท)`);
+  const { error: upErr } = await sb
+    .from("products")
+    .update({ data: { ...d, artworkConsult, priceRates } })
+    .eq("id", id);
+  console.log(upErr ? `   ❌ เขียนไม่สำเร็จ: ${upErr.message}` : "   ✅ เขียนลง DB แล้ว");
 }

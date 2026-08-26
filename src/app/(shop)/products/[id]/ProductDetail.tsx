@@ -1469,9 +1469,9 @@ export default function ProductDetail({
   // สั่งถึงเกณฑ์จำนวนมากไหม (ตั้งต่อสินค้าได้ในหลังบ้าน)
   const bulkAsk = needsStockCheck(product, qty);
 
-  // 💬 งานที่ต้องคุยลายกับแอดมินก่อน (งานปัก ฯลฯ) — ตั้งได้ 3 ระดับ: ทั้งสินค้า / เรทที่เลือก / ตัวเลือกที่เลือก
-  // (หมวก-เสื้อ: เลือกเรท "งานปัก" หรือแบบปักในกลุ่มตัวเลือก ถึงจะขึ้นกล่องนี้ · เลือกงานพิมพ์สั่งได้เลย)
-  const consult = artworkConsultOf(product, effective, rate);
+  // 💬 งานที่ต้องคุยลายกับแอดมินก่อน (งานปัก ฯลฯ) — ตั้งสวิตช์ + เงื่อนไขไว้ในหลังบ้าน
+  // (effective มี "เรทราคา" อยู่แล้ว เงื่อนไขจึงอ้างเรทหรือกลุ่มตัวเลือกไหนก็ได้)
+  const consult = artworkConsultOf(product, effective);
   // โหมดออกแบบบนเว็บ/โหมดแอดมินสั่งแทน = คุยกันอยู่แล้ว ไม่ต้องกั้นซ้ำ
   const consultGate = !!consult && consult.block !== false && !studioMode && !staffOrdering;
   const consultBlocked = consultGate && !consultOk;
@@ -1907,7 +1907,20 @@ export default function ProductDetail({
                   <div className={addOn ? "mt-2 border-t border-stone-100 pt-2" : undefined}>
                   {/* 📝 สเปกที่ลูกค้าเลือกไม่ได้ แต่ควรรู้ตอนกำลังเลือก (เช่น ชนิดกระดาษที่ใช้) */}
                   {opt.note && (
-                    <span className="mb-1.5 block text-[11px] leading-snug text-stone-500">{noteEmphasis(opt.note)}</span>
+                    <span className="mb-1.5 block text-[11px] leading-snug text-stone-500">
+                      {noteEmphasis(opt.note)}
+                      {/* 👀 รูปตัวอย่างประกอบ note — กดเปิดดูเต็มจอทันที ไม่ต้องไล่หาในแท็บ
+                          (กลุ่มช่องกรอกย้ายปุ่มไปไว้ที่ hint ใต้ช่อง — ไม่ขึ้นซ้ำสองที่) */}
+                      {opt.noteImageSrc && !isInput && (
+                        <button
+                          type="button"
+                          onClick={() => setZoomSrc(opt.noteImageSrc!)}
+                          className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 align-middle text-[10px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
+                        >
+                          👀 กดดูรูปตัวอย่าง
+                        </button>
+                      )}
+                    </span>
                   )}
                   {isInput ? (
                     (() => {
@@ -1946,7 +1959,21 @@ export default function ProductDetail({
                             )}
                             {cfg?.unit && <span className="text-xs font-semibold text-stone-500">{cfg.unit}</span>}
                           </div>
-                          {cfg?.hint && <p className="mt-1 text-[11px] text-stone-500">{cfg.hint}</p>}
+                          {cfg?.hint && (
+                            <p className="mt-1 text-[11px] text-stone-500">
+                              {cfg.hint}
+                              {/* 👀 รูปตัวอย่างของกลุ่มช่องกรอก (เช่น วิธีนับจุดไดคัท) — กดเปิดดูเต็มจอทันที */}
+                              {opt.noteImageSrc && (
+                                <button
+                                  type="button"
+                                  onClick={() => setZoomSrc(opt.noteImageSrc!)}
+                                  className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 align-middle text-[10px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
+                                >
+                                  👀 กดดูรูปตัวอย่าง
+                                </button>
+                              )}
+                            </p>
+                          )}
                           {/* 📐 จำนวนชิ้นโดยประมาณต่อแผ่น — คำนวณสดจากกว้าง×สูงที่กรอก (ดู sheetYield) */}
                           {(() => {
                             const n = sheetYieldCount(product, opt, effective);
@@ -2531,6 +2558,21 @@ export default function ProductDetail({
                         ))}
                     </div>
                   )}
+                  {/*
+                    * 💬 ข้อความกำกับของตัวที่เลือกอยู่ (choice.selectedNote) สำหรับกลุ่มที่ไม่ใช่การ์ด
+                    * — การ์ดโชว์ในตัวการ์ดเองแล้ว · pills/dropdown ไม่มีพื้นที่ในปุ่ม/เมนู จึงขึ้นเป็นกล่องใต้กลุ่มแทน
+                    */}
+                  {!multi &&
+                    !isInput &&
+                    opt.display !== "cards" &&
+                    (() => {
+                      const sel = opt.choices.find((c) => c.name === effective[opt.label]);
+                      return sel?.selectedNote ? (
+                        <p className="mt-1.5 rounded-xl bg-amber-100/70 px-3 py-2 text-[11px] leading-snug text-amber-900 ring-1 ring-amber-200">
+                          {noteEmphasis(sel.selectedNote)}
+                        </p>
+                      ) : null;
+                    })()}
                   {/* บอกให้ชัดว่าป้ายนี้แปลว่าอะไร — ขึ้นครั้งเดียวทั้งหน้า ที่กลุ่มแรกที่มีป้าย "นิยม" */}
                   {(() => {
                     if (popularLegendShown) return false;
