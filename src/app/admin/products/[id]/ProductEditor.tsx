@@ -1749,12 +1749,19 @@ export default function ProductEditor({ product }: { product: Product }) {
   // คลังตัวเลือกกลาง (สำหรับปุ่ม "แทรกจากคลัง" + ซิงก์กลุ่มที่ลิงก์)
   const [presets, setPresets] = useState<OptionPreset[]>([]);
 
+  // ปุ่ม ✨ เขียน SEO/AEO: กดซ้ำ = เลื่อนไปสำนวนชุดถัดไป (ไม่ใช่ข้อความเดิม)
+  const [seoVariant, setSeoVariant] = useState(0);
+  // ชุดล่าสุดที่ระบบเขียนให้ — ถ้าแอดมินยังไม่แก้ต่อ กดซ้ำได้เลยไม่ต้องถามเขียนทับ
+  const lastAutoSeoRef = useRef<string | null>(null);
+
   // SEO ยังว่าง → ระบบเขียนให้เลยอัตโนมัติ (ไม่ต้องกดปุ่ม) — แอดมินแก้ต่อได้ก่อนบันทึก
   function withAutoSeo(d: Draft): Draft {
     const empty = !d.seo.title && !d.seo.description && !d.seo.keywords && d.seo.faqs.length === 0;
     if (!empty || !d.name.trim()) return d;
     const auto = autoSeoOf({ name: d.name, price: Number(d.price) || 0, categoryId: d.category, options: d.options, highlights: d.highlights });
-    return { ...d, seo: { title: auto.title, description: auto.description, keywords: auto.keywords.join(", "), faqs: auto.faqs } };
+    const seo = { title: auto.title, description: auto.description, keywords: auto.keywords.join(", "), faqs: auto.faqs };
+    lastAutoSeoRef.current = JSON.stringify(seo); // ระบบเขียนเอง → กดปุ่ม ✨ ครั้งแรกไม่ต้องถามทับ
+    return { ...d, seo };
   }
 
   // โหลดข้อมูลล่าสุด (Supabase หรือ localStorage) + คลังตัวเลือก หลัง mount
@@ -4204,21 +4211,29 @@ export default function ProductEditor({ product }: { product: Product }) {
   const cat = cats.find((c) => c.id === draft.category);
 
   /** ✨ เขียน SEO/AEO อัตโนมัติจากข้อมูลสินค้า (ชื่อ/หมวด/ราคา/ตัวเลือก/จุดเด่น) — เขียนแล้วแก้ต่อได้ */
-  function applyAutoSeo() {
-    const auto = autoSeoOf({
-      name: draft.name,
-      price: Number(draft.price) || 0,
-      categoryId: draft.category,
-      options: draft.options,
-      highlights: draft.highlights,
-    });
-    patch({ seo: { title: auto.title, description: auto.description, keywords: auto.keywords.join(", "), faqs: auto.faqs } });
+  function applyAutoSeo(variant: number) {
+    const auto = autoSeoOf(
+      {
+        name: draft.name,
+        price: Number(draft.price) || 0,
+        categoryId: draft.category,
+        options: draft.options,
+        highlights: draft.highlights,
+      },
+      variant
+    );
+    const seo = { title: auto.title, description: auto.description, keywords: auto.keywords.join(", "), faqs: auto.faqs };
+    lastAutoSeoRef.current = JSON.stringify(seo);
+    patch({ seo });
   }
 
   async function autoFillSeo() {
+    // ข้อความที่อยู่ในช่องตอนนี้เป็นชุดที่ระบบเพิ่งเขียนให้ (แอดมินยังไม่แก้) → กดซ้ำเพื่อเปลี่ยนสำนวนได้เลย
+    const untouched = lastAutoSeoRef.current === JSON.stringify(draft.seo);
     const hasOld = draft.seo.title || draft.seo.description || draft.seo.keywords || draft.seo.faqs.length > 0;
     if (
       hasOld &&
+      !untouched &&
       !(await ask({
         icon: "✨",
         title: "เขียนทับ SEO/AEO ที่มีอยู่?",
@@ -4228,7 +4243,9 @@ export default function ProductEditor({ product }: { product: Product }) {
       }))
     )
       return;
-    applyAutoSeo();
+    const next = seoVariant + 1;
+    setSeoVariant(next);
+    applyAutoSeo(next);
   }
 
   const categoryLabel = cat?.name ?? draft.category;
@@ -6503,9 +6520,10 @@ export default function ProductEditor({ product }: { product: Product }) {
           <button
             type="button"
             onClick={autoFillSeo}
+            title="กดซ้ำได้เรื่อย ๆ — ทุกครั้งจะได้สำนวน/คำค้น/คำถามชุดใหม่"
             className="rounded-full bg-violet-500 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-violet-600"
           >
-            ✨ เขียนให้อัตโนมัติ
+            ✨ เขียนให้อัตโนมัติ{seoVariant > 0 ? ` (ชุดที่ ${seoVariant + 1})` : ""}
           </button>
         </div>
         <p className="mb-3 text-[11px] text-slate-400">
