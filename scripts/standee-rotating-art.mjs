@@ -134,7 +134,11 @@ function baseSize(cm, label, note) {
     ${title(label, note)}
     ${cm > 5 ? `<circle cx="${cx}" cy="${cy}" r="${std}" fill="none" stroke="#e2e8f0" stroke-width="3" stroke-dasharray="8 8"/>` : ""}
     <circle cx="${cx}" cy="${cy}" r="${r}" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="4"/>
-    <rect x="${cx - 60}" y="${cy - 7}" width="120" height="14" rx="7" fill="#ffffff" stroke="${LINE}" stroke-width="2"/>
+    ${(() => {
+      // ร่องเสียบต้องไม่ล้นขอบฐาน — ฐานเล็ก (3 ซม.) วงกลมแคบกว่าร่องมาตรฐาน 120px
+      const half = Math.min(60, r * 0.78);
+      return `<rect x="${cx - half}" y="${cy - 7}" width="${half * 2}" height="14" rx="7" fill="#ffffff" stroke="${LINE}" stroke-width="2"/>`;
+    })()}
     <circle cx="${cx}" cy="${cy}" r="17" fill="#e2e8f0" stroke="#94a3b8" stroke-width="3"/>
     <circle cx="${cx}" cy="${cy}" r="7" fill="#64748b"/>
     ${dimH(cy + r + 46, cx - r, cx + r, `${cm} ซม.`)}
@@ -238,6 +242,18 @@ async function photos() {
     writeFileSync(`${OUT}/${name}.jpg`, out);
     console.log(`📷 ${name}.jpg (${Math.round(out.length / 1024)} KB)`);
   }
+}
+
+/**
+ * โหมดย่อย --only=basesize-split — เรนเดอร์เฉพาะ "ฐาน 3 / 4 / 5 ซม." (ชุด v3)
+ * ผู้ใช้สั่ง 26 ส.ค. 69: แยก 5 ซม. ออกจากตัวเลือกรวม "3-5 ซม. (มาตรฐาน)" เป็นทีละขนาด
+ * (ทั้ง 3 ขนาดยังเป็นฐานมาตรฐาน ไม่บวกค่าฐาน · ค่าสกรีนลายฐาน +10 เท่ากัน)
+ */
+if ((process.argv.find((a) => a.startsWith("--only=")) || "").split("=")[1] === "basesize-split") {
+  for (const cm of [3, 4, 5])
+    await render(`basesize-${cm}-v3`, baseSize(cm, `ฐาน ${cm} ซม.`, "ขนาดฐานมาตรฐาน (รวมในราคาแล้ว)"));
+  console.log(`\n✅ ไฟล์อยู่ที่ ${OUT}`);
+  process.exit(0);
 }
 
 await photos();
