@@ -130,6 +130,8 @@ type DraftOption = {
   showWhenAlsoChoices?: string[];
   /** เงื่อนไข "และ" ข้อที่ 3+ — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   showWhenAll?: { label: string; choices: string[] }[];
+  /** 🎯 ค่าเริ่มต้นตามกลุ่มคุม (เช่น ตามเรทราคา) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  defaultBy?: { label: string; map: Record<string, string> };
   /** 🎨 โชว์เป็นตารางสวอตช์สีบนหน้าร้าน (กลุ่ม multi ที่ตัวเลือกเยอะ เช่น สีไหม) */
   swatchGrid?: boolean;
   /** ✍️ โชว์เป็นตารางแถบตัวอย่างบนหน้าร้าน (กลุ่มเลือกอย่างเดียว เช่น ฟอนต์ปัก) — ส่งกลับเฉย ๆ */
@@ -544,6 +546,7 @@ function toDraft(p: Product): Draft {
         ? { showWhenAlsoLabel: o.showWhenAlso.label, showWhenAlsoChoices: [...o.showWhenAlso.choices] }
         : {}),
       ...(o.showWhenAll?.length ? { showWhenAll: o.showWhenAll.map((c) => ({ label: c.label, choices: [...c.choices] })) } : {}),
+      ...(o.defaultBy ? { defaultBy: { label: o.defaultBy.label, map: { ...o.defaultBy.map } } } : {}),
       ...(o.input
         ? {
             inKind: o.input.kind,
@@ -812,6 +815,10 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
         : {}),
       ...(o.showWhenAll?.length
         ? { showWhenAll: o.showWhenAll.filter((c) => c.label && c.choices.length).map((c) => ({ label: c.label, choices: [...c.choices] })) }
+        : {}),
+      // 🎯 ค่าเริ่มต้นตามกลุ่มคุม — ไม่มีช่องกรอกในหน้าแก้ไข ต้องส่งกลับ ไม่งั้นหาย
+      ...(o.defaultBy?.label && Object.keys(o.defaultBy.map ?? {}).length
+        ? { defaultBy: { label: o.defaultBy.label, map: { ...o.defaultBy.map } } }
         : {}),
       // กลุ่ม "ช่องกรอก" — ไม่มีรายการให้เลือก จึงเก็บสเปกของช่องแทน choices
       ...(o.display === "input"

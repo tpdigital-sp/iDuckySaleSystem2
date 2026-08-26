@@ -914,6 +914,38 @@ export default function ProductDetail({
   }, [matrix, product]);
 
   /**
+   * 🎯 ค่าเริ่มต้นตามกลุ่มคุม (ProductOption.defaultBy) — ค่ากลุ่มคุมเปลี่ยนเมื่อไหร่ (รวมตอนเปิดหน้า)
+   * กลุ่มนี้รีเซ็ตเป็นค่าเริ่มต้นของค่านั้น เช่น เรทราคา "สแตนดี้…" → "รับตะขอไหม" เริ่มที่ "ไม่รับตะขอ"
+   * ผูกกับลายเซ็น "ค่าของกลุ่มคุม" เท่านั้น — ลูกค้ากดเลือกในกลุ่มเองแล้วไปแตะตัวเลือกอื่น ไม่โดนรีเซ็ต
+   * (จะโดนอีกทีก็ต่อเมื่อค่ากลุ่มคุมเปลี่ยนจริง ๆ เช่น สลับเรทไปแล้วสลับกลับ)
+   */
+  const defaultBySignature = product.options
+    .filter((o) => o.defaultBy)
+    .map((o) => JSON.stringify([o.label, effective[o.defaultBy!.label] ?? ""]))
+    .join("\n");
+  useEffect(() => {
+    if (!defaultBySignature) return;
+    setSelections((sel) => {
+      let changed = false;
+      const next = { ...sel };
+      for (const part of defaultBySignature.split("\n")) {
+        const [label, ctrl] = JSON.parse(part) as [string, string];
+        const opt = product.options.find((x) => x.label === label);
+        const want = ctrl ? opt?.defaultBy?.map[ctrl] : undefined;
+        // ค่าที่ตั้งไว้ต้องมีอยู่จริงในกลุ่ม (กันพิมพ์ชื่อผิด/ตัวเลือกถูกลบทีหลัง) — ไม่ตรงก็ไม่แตะ
+        if (!opt || want == null || !opt.choices.some((c) => c.name === want)) continue;
+        if (next[label] !== want) {
+          next[label] = want;
+          changed = true;
+        }
+      }
+      return changed ? next : sel;
+    });
+    // ตั้งใจผูกแค่ลายเซ็น — ใส่ product เข้า deps แล้วรีเฟรชสินค้า (บันทึกจากหลังบ้าน) จะรีเซ็ตทับที่ลูกค้าเลือกไว้
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultBySignature]);
+
+  /**
    * จำนวนที่ใช้เทียบ "ช่วงราคา" — สินค้าคิดเรทตามชิ้นต่อลายจะเป็น ⌊จำนวน ÷ ลาย⌋
    * ป้าย +฿ และข้อความค่าธรรมเนียมช่วงปลีกต้องอิงตัวเลขเดียวกับที่คิดราคาจริง (ดู unitPriceFor)
    */
