@@ -914,10 +914,35 @@ export default function ProductDetail({
         // ช่องกรอกงานสั่งทำ ตรวจเฉพาะตอนติ๊ก "สั่งทำ" (ไม่ติ๊ก = ไม่ต้องกรอก ปุ่มสั่งไม่ควรถูกล็อก)
         // ช่องกรอกของงานปกติ (standardInput เช่น ขนาดไดคัท) แสดงอยู่เมื่อไหร่ต้องกรอกเสมอ
         .filter((o) => o.standardInput === true || madeToOrderOn(effective))
-        .map((o) => inputError(o, effective[o.label], effective))
-        .filter((e): e is string => !!e),
+        // เก็บชื่อกลุ่มไว้ด้วย — ปุ่มสั่งจะได้บอกตรง ๆ ว่าติดช่องไหน และพาเลื่อนไปหาช่องนั้นได้
+        .map((o) => ({ label: o.label, msg: inputError(o, effective[o.label], effective) }))
+        .filter((e): e is { label: string; msg: string } => !!e.msg),
     [product, effective]
   );
+  /**
+   * ช่องที่ "กรอกแล้วแต่ผิดเกณฑ์" (เช่น จุดไดคัทเกินเพดานของขนาดที่เลือก) — ต่างจากช่องที่ยังไม่ได้กรอก
+   * เคสนี้ต้องขึ้นก่อนเหตุผลอื่นบนปุ่ม เพราะลูกค้าพิมพ์ค่าผิดไว้จริง ๆ ถ้าไปบอก "แนบลายก่อน" เฉย ๆ
+   * ลูกค้าจะแนบลายเสร็จแล้วมางงต่อว่าทำไมยังกดไม่ได้
+   */
+  const inputHardError = inputErrors.find((e) => !e.msg.startsWith("กรอก"));
+  /** ข้อความบนปุ่มตอนติดช่องกรอก — บอกปัญหาจริงของช่องแรกที่ติด (มีหลายช่องบอกจำนวนที่เหลือต่อท้าย) */
+  const inputBlockLabel = () => {
+    const first = inputHardError ?? inputErrors[0];
+    if (!first) return "";
+    const more = inputErrors.length > 1 ? ` · อีก ${inputErrors.length - 1} ช่อง` : "";
+    // ข้อความ "กรอก…ด้วยนะครับ" คือยังไม่ได้กรอก · ที่เหลือคือกรอกแล้วแต่ผิดเกณฑ์
+    return `${first.msg.startsWith("กรอก") ? "✍️" : "⚠"} ${first.msg}${more}`;
+  };
+  /** เลื่อนไปที่กลุ่มช่องกรอกที่ติดปัญหา (ไฮไลต์ให้เห็นว่าอยู่ตรงไหน) — ค่าที่ผิดเกณฑ์มาก่อน */
+  const jumpToInputError = () => {
+    const label = (inputHardError ?? inputErrors[0])?.label;
+    const el = label ? document.querySelector<HTMLElement>(`[data-opt-group="${CSS.escape(label)}"]`) : null;
+    (el ?? document.getElementById("opt-groups"))?.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (el) {
+      el.classList.add("ring-2", "ring-rose-400", "rounded-2xl");
+      window.setTimeout(() => el.classList.remove("ring-2", "ring-rose-400", "rounded-2xl"), 2000);
+    }
+  };
 
   // ตารางราคาที่ใช้อยู่ (ตามเรทที่เลือก — สินค้าเรทเดียวคือ pricing เดิม)
   const matrix = useMemo(() => activeMatrix(product, effective), [product, effective]);
@@ -1513,7 +1538,7 @@ export default function ProductDetail({
     }
     // ✍️ งานสั่งทำ — ช่องที่ให้ลูกค้ากรอกต้องครบและอยู่ในเกณฑ์ก่อน ไม่งั้นแอดมินตีราคาไม่ได้
     if (inputErrors.length) {
-      document.getElementById("opt-groups")?.scrollIntoView({ block: "center", behavior: "smooth" });
+      jumpToInputError();
       return;
     }
     // สินค้าที่มีระบบลาย: ต้องระบุจำนวนลายก่อน (แตะ +/− พิมพ์เลข หรือแนบรูปให้นับอัตโนมัติ)
@@ -1798,6 +1823,7 @@ export default function ProductDetail({
               return (
                 <div
                   key={opt.label}
+                  data-opt-group={opt.label}
                   className={
                     (customLocked ? "pointer-events-none select-none opacity-40" : "") +
                     // กลุ่มของเสริม: ใส่กรอบให้เห็นว่าเป็นก้อนที่เปิด-ปิดได้ แยกจากตัวเลือกหลักที่ต้องเลือกอยู่แล้ว
@@ -3943,12 +3969,14 @@ export default function ProductDetail({
                   >
                     {added
                       ? "✓ เพิ่มลงตะกร้าแล้ว!"
+                      : inputHardError
+                        ? inputBlockLabel()
                       : consultBlocked
                         ? "💬 คุยลายกับแอดมินก่อนถึงจะสั่งได้"
                         : artBlocked
                         ? "🎨 แนบลายก่อนถึงจะสั่งได้"
                         : inputErrors.length > 0
-                        ? "✍️ กรอกข้อมูลด้านบนให้ครบก่อน"
+                        ? inputBlockLabel()
                         : belowMin
                         ? `⚠ ขั้นต่ำ ${hardMin} ชิ้นต่อลาย — สั่งอย่างน้อย ${hardMinNeed.toLocaleString("th-TH")} ชิ้น`
                         : belowMinQty
@@ -3959,6 +3987,16 @@ export default function ProductDetail({
                   </button>
                 )}
 
+                {/* ติดช่องกรอก — พาไปที่ช่องนั้นเลย (ปุ่มสั่งกดไม่ได้ ลูกค้าจะได้ไม่ต้องไล่หาเอง) */}
+                {(inputHardError || (inputErrors.length > 0 && !artBlocked && !consultBlocked)) && (
+                  <button
+                    type="button"
+                    onClick={jumpToInputError}
+                    className="shrink-0 rounded-full bg-white px-4 py-2 text-[12px] font-bold text-rose-700 ring-1 ring-rose-300 transition hover:bg-rose-50"
+                  >
+                    👆 ไปที่ “{(inputHardError ?? inputErrors[0]).label}”
+                  </button>
+                )}
                 {(belowMin || belowMinQty) && (
                   <button
                     type="button"
@@ -4878,12 +4916,14 @@ export default function ProductDetail({
             >
               {added
                 ? "✓ เพิ่มแล้ว!"
+                : inputHardError
+                  ? `⚠ ติดที่ “${inputHardError.label}”`
                 : consultBlocked
                   ? "💬 คุยลายก่อน"
                   : artBlocked
                     ? "🎨 แนบลายก่อน"
                     : inputErrors.length > 0
-                      ? "✍️ กรอกให้ครบก่อน"
+                      ? `⚠ ติดที่ “${inputErrors[0].label}”`
                       : belowMin
                         ? `⚠ ขั้นต่ำ ${hardMinNeed.toLocaleString("th-TH")} ชิ้น`
                         : "🛒 เพิ่มลงตะกร้า"}
