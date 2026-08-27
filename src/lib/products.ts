@@ -715,14 +715,18 @@ export interface InputFee {
    */
   free?: number;
   /**
-   * 🎁 โควตาตามขนาดที่ลูกค้ากรอกเอง (คู่ช่องกว้าง×สูง) — เทียบพื้นที่ ตร.ซม. กับขั้นบันได
-   * tiers เรียงพื้นที่มาก→น้อย ใช้ข้อแรกที่พื้นที่ถึง · ไม่ถึงสักข้อ/ยังกรอกไม่ครบ = ใช้ free กลาง
-   * (จุดไดคัทของขนาดกำหนดเอง: พื้นที่ระดับ A4 ฟรี 75 · A5 50 · ... · เล็กกว่า A7 ฟรี 1)
+   * 🎁 โควตาตามขนาดที่ลูกค้ากรอกเอง (คู่ช่องกว้าง×สูง) — ยังกรอกไม่ครบ = ใช้ free กลาง
+   * เทียบได้ 2 แบบตามที่ร้านคิดจริง:
+   *   by ไม่ตั้ง / "area" — เทียบ "พื้นที่ ตร.ซม." กับ minArea · tiers เรียงมาก→น้อย ใช้ข้อแรกที่พื้นที่ถึง
+   *   by "longest"       — เทียบ "ด้านที่ยาวที่สุด" (ซม.) กับ upTo · tiers เรียงน้อย→มาก ใช้ข้อแรกที่ไม่เกิน
+   * (ตารางจุดไดคัทของร้านคิดจากด้านยาวสุด: ≤7 ซม. 5 จุด · ≤11 20 · ≤15 50 · ≤21 70 · ใหญ่กว่านั้น 180)
    */
   freeBySize?: {
     widthLabel: string;
     heightLabel: string;
-    tiers: { minArea: number; free: number }[];
+    by?: "area" | "longest";
+    /** area ใช้ minArea · longest ใช้ upTo (ไม่ใส่ = ข้อสุดท้ายรับทุกขนาดที่เหลือ) */
+    tiers: { minArea?: number; upTo?: number; free: number }[];
   };
 }
 
@@ -741,14 +745,21 @@ export function inputFeeQuotaOf(cfg: InputFee, selections: Record<string, string
   }
   const bs = cfg.freeBySize;
   if (bs) {
-    // ค่าที่เก็บมีหน่วยต่อท้าย ("10 ซม.") — ต้องตัดหน่วยก่อน ไม่งั้น Number() ได้ NaN
-    // แล้วโควตาหล่นไปใช้ free กลาง (จุดไดคัท: ขนาดกำหนดเองได้ฟรี 1 จุด แทนที่จะได้ 12-75 ตามพื้นที่)
-    const num = (v: string | undefined) => Number((v ?? "").replace(/[^0-9.]/g, ""));
+    // ค่าที่เก็บมีหน่วยต่อท้าย ("10 ซม.") — ต้องดึงเฉพาะตัวเลขข้างหน้า ไม่งั้น Number() ได้ NaN
+    // แล้วโควตาหล่นไปใช้ free กลาง แทนที่จะเทียบขนาดจริง
+    // ⚠️ ห้ามใช้ replace(/[^0-9.]/g,"") — "ซม." มีจุดติดมาด้วย "7.1 ซม." จะกลายเป็น "7.1." = NaN
+    // (เลขจำนวนเต็มรอดเพราะ "7." ยัง Number() ได้ บั๊กเลยโผล่เฉพาะค่าทศนิยม)
+    const num = (v: string | undefined) => Number((v ?? "").match(/\d+(\.\d+)?/)?.[0]);
     const w = num(selections[bs.widthLabel]);
     const h = num(selections[bs.heightLabel]);
     if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
-      const area = w * h;
-      for (const t of bs.tiers) if (area >= t.minArea) return t.free;
+      if (bs.by === "longest") {
+        const longest = Math.max(w, h);
+        for (const t of bs.tiers) if (t.upTo == null || longest <= t.upTo) return t.free;
+      } else {
+        const area = w * h;
+        for (const t of bs.tiers) if (t.minArea == null || area >= t.minArea) return t.free;
+      }
     }
   }
   return cfg.free ?? 0;
