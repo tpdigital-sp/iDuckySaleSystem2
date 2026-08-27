@@ -723,8 +723,11 @@ export function inputFeeQuotaOf(cfg: InputFee, selections: Record<string, string
   }
   const bs = cfg.freeBySize;
   if (bs) {
-    const w = Number(selections[bs.widthLabel]);
-    const h = Number(selections[bs.heightLabel]);
+    // ค่าที่เก็บมีหน่วยต่อท้าย ("10 ซม.") — ต้องตัดหน่วยก่อน ไม่งั้น Number() ได้ NaN
+    // แล้วโควตาหล่นไปใช้ free กลาง (จุดไดคัท: ขนาดกำหนดเองได้ฟรี 1 จุด แทนที่จะได้ 12-75 ตามพื้นที่)
+    const num = (v: string | undefined) => Number((v ?? "").replace(/[^0-9.]/g, ""));
+    const w = num(selections[bs.widthLabel]);
+    const h = num(selections[bs.heightLabel]);
     if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
       const area = w * h;
       for (const t of bs.tiers) if (area >= t.minArea) return t.free;

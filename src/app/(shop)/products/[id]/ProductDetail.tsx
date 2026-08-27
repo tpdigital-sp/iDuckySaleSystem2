@@ -2015,10 +2015,26 @@ export default function ProductDetail({
                           {(() => {
                             if (!opt.inputFee) return null;
                             const n = Number(parseInputValue(opt, effective[opt.label]));
-                            if (!Number.isFinite(n) || n <= 0) return null;
                             const fee = inputFeeOf(opt, effective);
                             const rate = inputFeeRateOf(opt.inputFee, effective);
                             const quota = inputFeeQuotaOf(opt.inputFee, effective);
+                            // 🎁 ยังไม่ได้กรอก — บอกโควตาของขนาดที่เลือกอยู่ล่วงหน้าเลย (เช่น A7 ฟรี 12 จุด)
+                            // ลูกค้าจะได้รู้เพดานก่อนพิมพ์ ไม่ใช่พิมพ์แล้วเพิ่งเห็นว่าโดนคิดเพิ่ม
+                            if (!Number.isFinite(n) || n <= 0) {
+                              if (!(rate > 0 && quota > 0)) return null;
+                              // ชื่อขนาดที่ทำให้ได้โควตานี้ (เช่น "A7") — หาไม่เจอ (ขนาดกำหนดเอง) ก็ไม่ใส่ชื่อ
+                              const src = (opt.inputFee.rates ?? []).find(
+                                (r) => r.free != null && r.when.choices.includes(effective[r.when.label])
+                              );
+                              return (
+                                <p className="mt-1 text-[11px] font-bold text-emerald-600">
+                                  🎁 {src ? `ขนาด ${effective[src.when.label]} ` : "ขนาดที่เลือก"}ได้สูงสุด{" "}
+                                  {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""} (รวมในราคา) — เกินจากนั้นคิดเพิ่ม
+                                  {cfg?.unit ?? "หน่วย"}ละ {rate % 1 ? `฿${rate.toFixed(2)}` : formatPrice(rate)} ต่อ
+                                  {matrix?.unit ?? "ชิ้น"}
+                                </p>
+                              );
+                            }
                             // 🎁 มีโควตาฟรีและยังไม่เกิน — บอกให้ชัดว่าไม่คิดเพิ่ม (เงียบไปลูกค้าจะไม่แน่ใจ)
                             if (!fee)
                               return quota > 0 ? (
@@ -2032,7 +2048,7 @@ export default function ProductDetail({
                                 {quota > 0
                                   ? `เกินโควตา ${quota.toLocaleString("th-TH")} อยู่ ${(n - quota).toLocaleString("th-TH")} ${cfg?.unit ?? ""}`
                                   : `${n.toLocaleString("th-TH")} ${cfg?.unit ?? ""}`}{" "}
-                                × {formatPrice(rate)} ={" "}
+                                × {rate % 1 ? `฿${rate.toFixed(2)}` : formatPrice(rate)} ={" "}
                                 <span className="font-extrabold text-teal-900">+{formatPrice(fee)}</span> ต่อ
                                 {matrix?.unit ?? "ชิ้น"}
                               </p>
