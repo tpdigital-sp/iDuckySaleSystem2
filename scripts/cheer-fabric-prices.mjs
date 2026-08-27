@@ -13,10 +13,15 @@
  *   สกรีน 1 ด้าน / ผ้า 1 ชิ้น / โพ้งขอบ            → เรท r1
  *   สกรีน 2 ด้าน / ผ้า 2 ชิ้น / เย็บเชื่อม          → เรท r3-standard
  *   ผ้าเชียร์ พรีเมี่ยม + อัดกาว / สกรีน 2 ด้าน ...  → เรท r2-premium
- *   add option flex                                → เช็คว่า extra ของตัวเลือก FLEX ยังตรงขั้น 1-10 อยู่ไหม
+ *   add option flex                                → ตาราง +฿ ของกลุ่ม FLEX (ทั้งด้านหน้าและด้านที่ 2)
  *
- * ⚠️ ตัวเลือก FLEX ในระบบคิดเป็น extra คงที่ต่อผืน (รองรับแบบเดียว) — ใช้ราคาขั้น 1-10 ของชีท
- *    ชีทมีราคาลดตามจำนวนด้วย (ต่างสุด ฿20 ที่ 500+) แต่ไม่ได้ model ไว้ ถ้าชีทขั้นแรกเปลี่ยน สคริปต์จะเตือน
+ * 💰 FLEX คิดตาม "ขนาด × จำนวนที่สั่ง" — เขียนลง ProductOptionChoice.extraTiers ทั้งคอลัมน์
+ *    (1-10 ผืน ฿250 · 11-29 ฿245 · 30-99 ฿240 · 100-499 ฿235 · 500+ ฿230 สำหรับ 15x55)
+ *    extra ยังใส่ไว้เป็นราคาขั้นแรก เพราะที่ที่ยังไม่รู้จำนวน (ช่วงราคาสินค้า/หน้ารายการ) อ่านค่านั้น
+ *    ทั้ง 2 กลุ่ม FLEX (ด้านหน้า / ด้านที่ 2 ของงานสกรีน 2 ด้าน) ใช้ตารางเดียวกัน
+ *
+ * 🎨 คละลาย: 1-10 ผืน คละอิสระ · 11 ผืนขึ้นไป ลายละ 5 ผืน เกินโควตาคิดลายละ ฿5
+ *    (freeMixBelowQty / minPerDesign / extraDesignFee — ตั้งเท่ากันทั้ง 3 เรท)
  *
  * ⚠️ ขนาดคอลัมน์ชีทเป็น "กว้าง*ยาว" (เช่น 20*60) → key ในระบบคือ "20x60cm"
  */
@@ -36,6 +41,8 @@ const SECTION_TO_RATE = [
   { match: "พรีเมี่ยม", rateId: "r2-premium" },
 ];
 const FLEX_SECTION = "add option flex";
+/** กติกาคละลายของทุกเรท — ผู้ใช้สั่ง 27 ส.ค. 69 (ไม่ได้อยู่บนชีท ตั้งไว้ในสคริปต์) */
+const MIX = { freeMixBelowQty: 11, minPerDesign: 5, extraDesignFee: 5 };
 
 /** ลำดับขนาดที่ต้องมีครบทุกตาราง (ตามคอลัมน์ชีท) */
 const SIZES = ["20*60", "20*80", "15*100", "25*100", "25*150"];
@@ -151,21 +158,69 @@ const sizeOpt = data.options.find((o) => o.label === "ขนาด");
 sizeOpt.choices = SIZES.map((s) => sizeOpt.choices.find((c) => c.name === sizeKey(s)) || { name: sizeKey(s) });
 console.log("\nตัวเลือกขนาด:", sizeOpt.choices.map((c) => c.name).join(" / "));
 
-// FLEX: ระบบคิด extra คงที่ = ราคาขั้น 1-10 ของชีท — เช็คว่ายังตรง
+/*
+  🧹 ค่าเงื่อนไข "แสดงเมื่อ" ที่มีช่องว่างหลงท้าย — เทียบชื่อตัวเลือกไม่ติด กลุ่มนั้นเลยไม่เคยโผล่
+  (กลุ่ม "FLEX ... ด้านที่ 2" ตั้งไว้ว่าโชว์เมื่อ FLEX ลงด้านไหน = "ทั้ง 2 ด้าน " ซึ่งไม่มีตัวเลือกนี้จริง
+   → งานสกรีน 2 ด้านไม่เคยเห็นช่องเลือก FLEX ด้านที่ 2) — ตัดช่องว่างหัวท้ายให้ทุกเงื่อนไข
+*/
+const trimmed = [];
+for (const o of data.options ?? []) {
+  for (const cond of [o.showWhen, o.showWhenAlso, ...(o.showWhenAll ?? [])]) {
+    if (!cond?.choices) continue;
+    const fixed = cond.choices.map((c) => String(c).trim());
+    if (JSON.stringify(fixed) !== JSON.stringify(cond.choices)) {
+      trimmed.push(`${o.label} ← ${cond.label}: ${JSON.stringify(cond.choices)} → ${JSON.stringify(fixed)}`);
+      cond.choices = fixed;
+    }
+  }
+}
+console.log(trimmed.length ? `\n🧹 เงื่อนไขที่มีช่องว่างหลงท้าย (แก้ให้แล้ว):\n  ${trimmed.join("\n  ")}` : "\n🧹 เงื่อนไข \"แสดงเมื่อ\" สะอาดดี");
+
+// FLEX: +฿ ต่อผืนคิดตามขนาด × จำนวนที่สั่ง — เขียน extraTiers ทั้งคอลัมน์ให้ทุกกลุ่ม FLEX
 const flexSec = sections.find((s) => s.head.trim().toLowerCase() === FLEX_SECTION);
 if (flexSec) {
-  const flexOpt = data.options.find((o) => o.label.startsWith("FLEX ("));
-  const tier1 = flexSec.tiers[0].prices;
-  flexSec.sizes.forEach((sz, i) => {
-    const want = tier1[i];
-    const choice = flexOpt.choices.find((c) => c.name.includes(sz.replace("*", "x")));
-    if (!choice) console.log(`⚠️ FLEX ขนาด ${sz} ไม่มีในตัวเลือก`);
-    else if (choice.extra !== want) {
-      console.log(`FLEX ${choice.name}: ฿${choice.extra} → ฿${want}`);
-      choice.extra = want;
-    }
-  });
-  console.log("FLEX extras:", flexOpt.choices.filter((c) => c.extra).map((c) => `${c.name}=฿${c.extra}`).join(" · "));
+  // ขั้นจำนวนของ FLEX เป็นคนละชุดกับตารางราคาผ้า (ชีทแยกตาราง) — อ่านจากแถวของตาราง flex เอง
+  const steps = flexSec.tiers.map((t, i) => ({ upTo: tierUpTo(t.label, i === flexSec.tiers.length - 1), label: t.label }));
+  // กลุ่ม FLEX มี 2 กลุ่ม: ด้านหน้า และ "ด้านที่ 2" ของงานสกรีน 2 ด้าน — ราคาเท่ากันทั้งคู่
+  const flexOpts = data.options.filter((o) => o.label.startsWith("FLEX (") && !o.label.includes("เกินขนาด"));
+  if (!flexOpts.length) throw new Error("ไม่พบกลุ่ม FLEX ในสินค้า — โครงสินค้าเปลี่ยน ตรวจก่อน");
+  console.log(`\nFLEX (${flexOpts.length} กลุ่ม: ${flexOpts.map((o) => o.label).join(" · ")})`);
+  console.log("  ช่วงจำนวน:", steps.map((s) => s.label).join(" | "));
+  for (const flexOpt of flexOpts) {
+    flexSec.sizes.forEach((sz, col) => {
+      const choice = flexOpt.choices.find((c) => c.name.includes(sz.replace("*", "x")));
+      if (!choice) {
+        console.log(`⚠️ FLEX ขนาด ${sz} ไม่มีในกลุ่ม "${flexOpt.label}"`);
+        return;
+      }
+      const extraTiers = steps.map((s, r) => {
+        const price = flexSec.tiers[r].prices[col];
+        if (price == null) throw new Error(`ราคา FLEX ว่างที่ ${sz} แถว "${s.label}"`);
+        return s.upTo == null ? { extra: price } : { upTo: s.upTo, extra: price };
+      });
+      const before = JSON.stringify({ e: choice.extra, t: choice.extraTiers });
+      choice.extra = extraTiers[0].extra; // ราคาขั้นแรก — ที่ที่ยังไม่รู้จำนวนอ่านค่านี้
+      choice.extraTiers = extraTiers;
+      const same = before === JSON.stringify({ e: choice.extra, t: choice.extraTiers });
+      console.log(
+        `  ${same ? "=" : "↻"} ${flexOpt.label} · ${choice.name}: ` +
+          extraTiers.map((t) => `${t.upTo ?? "∞"}→฿${t.extra}`).join(" ")
+      );
+    });
+  }
+}
+
+// 🎨 คละลาย — 1-10 ผืนอิสระ · 11+ ลายละ 5 ผืน เกินโควตาลายละ ฿5 (ทุกเรท)
+console.log("\nคละลาย:");
+for (const rate of data.priceRates) {
+  const before = { min: rate.minPerDesign, free: rate.freeMixBelowQty, fee: rate.extraDesignFee };
+  rate.freeMixBelowQty = MIX.freeMixBelowQty;
+  rate.minPerDesign = MIX.minPerDesign;
+  rate.extraDesignFee = MIX.extraDesignFee;
+  const same = before.min === MIX.minPerDesign && before.free === MIX.freeMixBelowQty && before.fee === MIX.extraDesignFee;
+  console.log(
+    `  ${same ? "=" : "↻"} ${rate.id}: ต่ำกว่า ${MIX.freeMixBelowQty} ผืนคละอิสระ · ตั้งแต่นั้นลายละ ${MIX.minPerDesign} ผืน · เกินโควตาลายละ ฿${MIX.extraDesignFee}`
+  );
 }
 
 // ราคากระจก: price = ราคาขั้นแรกถูกสุดของ r1 · priceMin/priceMax = ต่ำสุด/สูงสุดทุกเรท

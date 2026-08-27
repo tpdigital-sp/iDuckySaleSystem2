@@ -22,6 +22,7 @@ import {
   type SizeFee,
   type InputFee,
   type MixRule,
+  type ExtraTier,
 } from "@/lib/products";
 import RichEditor from "@/components/RichEditor";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
@@ -83,6 +84,8 @@ type DraftChoice = {
   extraBelow?: number;
   /** 💰 +฿ ขั้นที่ 3 ช่วงสั่งน้อยสุด (ไม่เกิน extraSmallUpToQty) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
   extraSmall?: number;
+  /** 💰 ตาราง +฿ ตามจำนวนที่สั่ง (FLEX ผ้าเชียร์ ถูกลงตามจำนวน) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  extraTiers?: ExtraTier[];
   /** 📏 ค่าบริการตามขนาดชิ้นงาน (ผ้า: ตัดแบ่ง/เย็บ/โพ้ง) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
   sizeFee?: SizeFee;
   /** 🎨 กติกาคละลายเฉพาะตัวเลือกนี้ (เช่น ไดคัท 50% ลายละ 20) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
@@ -556,6 +559,7 @@ function toDraft(p: Product): Draft {
         ...(c.piecesPerUnit ? { piecesPerUnit: c.piecesPerUnit } : {}),
         ...(c.extraBelow ? { extraBelow: c.extraBelow } : {}),
         ...(c.extraSmall ? { extraSmall: c.extraSmall } : {}),
+        ...(c.extraTiers?.length ? { extraTiers: c.extraTiers } : {}),
         ...(c.sizeFee ? { sizeFee: c.sizeFee } : {}),
         ...(c.mixRule ? { mixRule: c.mixRule } : {}),
       })),
@@ -847,6 +851,8 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             ...(c.piecesPerUnit ? { piecesPerUnit: c.piecesPerUnit } : {}),
             ...(c.extraBelow ? { extraBelow: c.extraBelow } : {}),
             ...(c.extraSmall ? { extraSmall: c.extraSmall } : {}),
+            // 💰 ตาราง +฿ ตามจำนวน (FLEX ผ้าเชียร์) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
+            ...(c.extraTiers?.length ? { extraTiers: c.extraTiers } : {}),
             // 📏 ค่าบริการตามขนาด — ไม่มีช่องกรอกในหน้าแก้ไข ต้องส่งกลับ ไม่งั้นหาย
             ...(c.sizeFee ? { sizeFee: c.sizeFee } : {}),
             // 🎨 กติกาคละลายเฉพาะตัวเลือก (ไดคัท 50% ลายละ 20) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย

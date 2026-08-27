@@ -57,6 +57,8 @@ import {
   RATE_LABEL,
   resolveSelections,
   choiceBadgeOf,
+  choiceExtraAtQty,
+  extraTierBest,
   unitPieceCountOf,
   sizeFeeBreakdownOf,
   shortComboParts,
@@ -2742,6 +2744,28 @@ export default function ProductDetail({
                         <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
                           💡 สั่งครบ {from} {unitTxt}แล้ว · {opt.label}
                           {now > 0 ? ` +${formatPrice(now)}/${unit}` : "ไม่คิดเพิ่ม"}
+                        </p>
+                      );
+                    })()}
+                  {/* 💰 กลุ่มที่ +฿ ถูกลงตามจำนวน (extraTiers) — บอกราคาที่คิดจริงตอนนี้ + ขั้นที่ถูกที่สุด
+                    * เช่น FLEX ผ้าเชียร์: สั่ง 15 ผืน คิด +฿245/ผืน · สั่งครบ 500 ผืน เหลือ +฿230/ผืน */}
+                  {!locked &&
+                    (() => {
+                      const cur = opt.choices.find(
+                        (c) => c.extraTiers?.length && (multi ? picked.includes(c.name) : effective[opt.label] === c.name)
+                      );
+                      const now = cur ? choiceExtraAtQty(opt, effective, cur.name, feeQty) : 0;
+                      if (!cur || now <= 0) return null;
+                      const unit = matrix?.unit ?? "ชิ้น";
+                      // ขั้นของตารางเทียบกับ feeQty ตรง ๆ — หารด้วยจำนวนลายเฉพาะสินค้าที่คิดเรทต่อลายเท่านั้น
+                      const unitTxt = tierByDesign ? `${unit}ต่อลาย` : unit;
+                      const best = extraTierBest(cur);
+                      return (
+                        <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
+                          💡 {opt.label}ถูกลงตามจำนวนที่สั่ง · จำนวนนี้คิด +{formatPrice(now)}/{unit}
+                          {best && best.extra < now
+                            ? ` · สั่งครบ ${best.fromQty.toLocaleString("th-TH")} ${unitTxt}ขึ้นไป เหลือ +${formatPrice(best.extra)}/${unit}`
+                            : ""}
                         </p>
                       );
                     })()}

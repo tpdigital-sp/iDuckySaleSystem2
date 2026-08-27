@@ -24,6 +24,15 @@ export interface Category {
   description: string;
 }
 
+/**
+ * 1 ขั้นของตาราง "+฿ ตามจำนวนที่สั่ง" ของตัวเลือกหนึ่ง (ดู ProductOptionChoice.extraTiers)
+ * upTo = สั่งไม่เกินกี่ชิ้นถึงใช้ราคานี้ · ไม่ใส่/null = ขั้นสุดท้าย (ตั้งแต่นั้นขึ้นไป)
+ */
+export interface ExtraTier {
+  upTo?: number | null;
+  extra: number;
+}
+
 export interface ProductOptionChoice {
   name: string;
   extra?: number;
@@ -133,6 +142,15 @@ export interface ProductOptionChoice {
    * ไม่ตั้ง (หรือกลุ่มไม่ได้ตั้ง extraSmallUpToQty) = คิดตามกติกา 2 ขั้นเดิมทุกอย่าง
    */
   extraSmall?: number;
+  /**
+   * 💰 ตาราง "+฿ ตามจำนวนที่สั่ง" ของตัวเลือกนี้ — สั่งเยอะ ค่าตัวเลือกถูกลงเป็นขั้น ๆ
+   * เช่น FLEX ผ้าเชียร์ ขนาดไม่เกิน 15x55cm: 1-10 ผืน ฿250 · 11-29 ฿245 · 30-99 ฿240 ·
+   * 100-499 ฿235 · 500 ผืนขึ้นไป ฿230 (ราคาต่างกันทุกขนาด จึงใช้ขั้นราคา 2-3 ขั้นของกลุ่มแทนไม่ได้)
+   * มีตาราง = ใช้แทน extra / extraBelow / extraSmall / extraFromQty ทั้งหมด (ตารางเดียวครอบทุกช่วงอยู่แล้ว)
+   * ⚠️ ยังต้องใส่ extra ไว้เป็นราคาขั้นแรกด้วย — ที่ที่ยังไม่รู้จำนวน (ช่วงราคาสินค้า/หน้ารายการ) อ่านค่านั้น
+   * ไม่ตั้ง = คิด extra ตายตัวเหมือนเดิม
+   */
+  extraTiers?: ExtraTier[];
   /**
    * 📏 ค่าบริการตามขนาดชิ้นงานที่ลูกค้ากรอก — ขั้นราคาตาม "ด้านที่ยาวที่สุด" ของคู่ช่องกรอก
    * กว้าง/ยาว และคูณจำนวนชิ้นต่อ 1 หน่วยขายจากการจัดวางได้ (งานผ้า: ตัดแบ่ง/เย็บขอบ/โพ้งขอบ)
@@ -999,17 +1017,45 @@ export function optionExtraApplies(opt: ProductOption, qty: number): boolean {
 }
 
 /**
+ * +฿ ของตัวเลือกนี้ ณ จำนวนที่สั่ง จากตาราง extraTiers (ดู ProductOptionChoice.extraTiers)
+ * ไม่มีตาราง หรือยังไม่รู้จำนวน = undefined → ผู้เรียกใช้ extra ตายตัวตามเดิม
+ * เรียงขั้นให้เองก่อนเทียบ (ขั้นที่ไม่ใส่ upTo ถือเป็นขั้นสุดท้ายเสมอ) — ตารางที่กรอกสลับลำดับก็ยังคิดถูก
+ */
+export function extraTierAt(c: ProductOptionChoice | undefined, qty?: number): number | undefined {
+  const rows = (c?.extraTiers ?? []).filter((t) => Number.isFinite(t?.extra));
+  if (!rows.length || qty == null || !Number.isFinite(qty)) return undefined;
+  const n = Math.max(1, Math.floor(qty));
+  const sorted = [...rows].sort((a, b) => (a.upTo ?? Infinity) - (b.upTo ?? Infinity));
+  return (sorted.find((t) => t.upTo == null || n <= t.upTo) ?? sorted[sorted.length - 1]).extra;
+}
+
+/**
+ * ขั้นที่ถูกที่สุดของตาราง (ขั้นสุดท้าย) — ใช้บอกลูกค้าว่า "สั่งครบเท่านี้เหลือเท่านี้"
+ * คืน null เมื่อไม่มีตาราง หรือมีขั้นเดียว (ไม่มีอะไรให้ชวนสั่งเพิ่ม)
+ */
+export function extraTierBest(c: ProductOptionChoice | undefined): { fromQty: number; extra: number } | null {
+  const rows = (c?.extraTiers ?? []).filter((t) => Number.isFinite(t?.extra));
+  if (rows.length < 2) return null;
+  const sorted = [...rows].sort((a, b) => (a.upTo ?? Infinity) - (b.upTo ?? Infinity));
+  const last = sorted[sorted.length - 1];
+  const prev = sorted[sorted.length - 2];
+  return { fromQty: Math.max(1, Math.floor(prev.upTo ?? 0) + 1), extra: last.extra };
+}
+
+/**
  * ราคาบวกเพิ่ม (+฿) ของตัวเลือกที่เลือกในกลุ่มนี้ หลังหักเงื่อนไข "ฟรีเมื่อ"
  * ใช้ทั้งตอนคิดราคาและตอนแสดงป้าย +฿ บนหน้าร้าน จะได้ตรงกันเสมอ
  */
 export function choiceExtraOf(
   opt: ProductOption,
   selections: Record<string, string>,
-  choiceName: string
+  choiceName: string,
+  /** จำนวนที่สั่ง — ใส่มาเมื่อไหร่ ตัวเลือกที่มีตาราง extraTiers จะใช้ราคาของช่วงนั้น */
+  qty?: number
 ): number {
   const c = opt.choices.find((ch) => ch.name === choiceName);
   // 📏 ค่าบริการตามขนาดชิ้นงาน (sizeFee) นับเป็นส่วนหนึ่งของ +฿ ตัวเลือกนี้ — โดนกติกา freeWhen ด้วยกัน
-  const extra = (c?.extra ?? 0) + (c?.sizeFee ? sizeFeeOf(c.sizeFee, selections) : 0);
+  const extra = (extraTierAt(c, qty) ?? c?.extra ?? 0) + (c?.sizeFee ? sizeFeeOf(c.sizeFee, selections) : 0);
   if (!extra) return 0;
   const f = opt.freeWhen;
   if (f && f.choices.includes(choiceName) && valueMatchesAny(selections[f.when.label], f.when.choices)) return 0;
@@ -1035,6 +1081,8 @@ export function choiceExtraAtQty(
     const f = opt.freeWhen;
     return !!f && f.choices.includes(choiceName) && valueMatchesAny(selections[f.when.label], f.when.choices);
   };
+  // 💰 ตาราง +฿ ตามจำนวน (extraTiers) มาก่อนทุกกติกาขั้นราคา — ตารางเดียวครอบทุกช่วงอยู่แล้ว
+  if (c?.extraTiers?.length) return choiceExtraOf(opt, selections, choiceName, qty);
   // ขั้นที่ 3 (ช่วงสั่งน้อยสุด) มาก่อนเสมอ — ตั้งไว้เฉพาะกลุ่มที่ราคาแต่ละแถวไม่เท่ากัน
   const small = Math.floor(opt.extraSmallUpToQty ?? 0);
   if (small > 0 && qty <= small && c?.extraSmall) return free() ? 0 : c.extraSmall;

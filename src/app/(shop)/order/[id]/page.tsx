@@ -497,9 +497,16 @@ export default function CustomerOrderPage() {
               const f = e.dataTransfer.files?.[0];
               if (f) void uploadSlip(f);
             }}
-            className="ord-btn danger block mt-3 cursor-pointer"
+            className="ord-btn danger wrap block mt-3 cursor-pointer"
           >
-            {slipBusy ? "กำลังส่งสลิป…" : "📤 แนบสลิปการโอน — แตะเลือกรูป หรือลากมาวางตรงนี้"}
+            {slipBusy ? (
+              "กำลังส่งสลิป…"
+            ) : (
+              <span className="flex flex-col items-center gap-[3px]">
+                <span>📤 แนบสลิปการโอน</span>
+                <span className="text-[.72rem] opacity-90">แตะเลือกรูป หรือลากมาวางตรงนี้</span>
+              </span>
+            )}
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"
@@ -521,7 +528,7 @@ export default function CustomerOrderPage() {
           <p className="mt-1 text-xs leading-relaxed">
             รับมัดจำ {formatPrice(order.deposit.amount)} แล้ว — โอนส่วนที่เหลือแล้วแนบสลิปตรงนี้ ก่อนทางร้านจัดส่งของ
           </p>
-          <label className="ord-btn danger block mt-3 cursor-pointer">
+          <label className="ord-btn danger wrap block mt-3 cursor-pointer">
             {slipBusy ? "กำลังส่งสลิป…" : "📤 แนบสลิปยอดคงเหลือ"}
             <input
               type="file"
