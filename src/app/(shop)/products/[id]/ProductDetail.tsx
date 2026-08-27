@@ -2032,7 +2032,7 @@ export default function ProductDetail({
                                 <p className="mt-1 text-[11px] font-bold text-emerald-600">
                                   🎁 {src ? `ขนาด ${effective[src.when.label]} ` : "ขนาดที่เลือก"}ได้สูงสุด{" "}
                                   {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""} (รวมในราคา) — เกินจากนั้นคิดเพิ่ม
-                                  {cfg?.unit ?? "หน่วย"}ละ {rate % 1 ? `฿${rate.toFixed(2)}` : formatPrice(rate)} ต่อ
+                                  {cfg?.unit ?? "หน่วย"}ละ {formatPrice(rate)} ต่อ
                                   {matrix?.unit ?? "ชิ้น"}
                                 </p>
                               );
@@ -2044,13 +2044,18 @@ export default function ProductDetail({
                                   ✓ อยู่ในโควตา {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""}ที่รวมในราคา — ไม่คิดเพิ่ม
                                 </p>
                               ) : null;
-                            return (
+                            // ⚠ เกินโควตา = เตือนแดง (คิดเงินเพิ่มจากที่เห็นในตาราง ต้องสะดุดตา ไม่ใช่บรรทัดข้อมูลเฉย ๆ)
+                            // กรอกเกินไม่ได้ผิด แค่ต้องรู้ตัวว่ากำลังจ่ายเพิ่ม — ลดจำนวนลงให้อยู่ในโควตาก็หายไปเอง
+                            return quota > 0 ? (
+                              <p className="mt-1 rounded-xl bg-rose-50 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-rose-700 ring-1 ring-rose-200">
+                                ⚠ เกินโควตา {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""}ของขนาดที่เลือก อยู่{" "}
+                                {(n - quota).toLocaleString("th-TH")} {cfg?.unit ?? ""} × {formatPrice(rate)} ={" "}
+                                <span className="font-extrabold text-rose-800">+{formatPrice(fee)}</span> ต่อ
+                                {matrix?.unit ?? "ชิ้น"}
+                              </p>
+                            ) : (
                               <p className="mt-1 text-[11px] font-bold text-teal-700">
-                                💰{" "}
-                                {quota > 0
-                                  ? `เกินโควตา ${quota.toLocaleString("th-TH")} อยู่ ${(n - quota).toLocaleString("th-TH")} ${cfg?.unit ?? ""}`
-                                  : `${n.toLocaleString("th-TH")} ${cfg?.unit ?? ""}`}{" "}
-                                × {rate % 1 ? `฿${rate.toFixed(2)}` : formatPrice(rate)} ={" "}
+                                💰 {n.toLocaleString("th-TH")} {cfg?.unit ?? ""} × {formatPrice(rate)} ={" "}
                                 <span className="font-extrabold text-teal-900">+{formatPrice(fee)}</span> ต่อ
                                 {matrix?.unit ?? "ชิ้น"}
                               </p>

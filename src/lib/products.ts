@@ -4075,7 +4075,10 @@ export function getProduct(id: string): Product | undefined {
 }
 
 export function formatPrice(n: number): string {
-  return `฿${n.toLocaleString("th-TH")}`;
+  // มีสตางค์ = โชว์สองตำแหน่งเสมอ (฿2.50 · ฿202.50) — ตั้งแต่มีค่าบริการระดับสตางค์ (จุดไดคัทจุดละ ฿0.50)
+  // ยอดอย่าง "฿2.5" อ่านเหมือนราคายังพิมพ์ไม่จบ · จำนวนเต็มคงรูปเดิมทุกที่ (฿202 ไม่กลายเป็น ฿202.00)
+  const opts = n % 1 ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : undefined;
+  return `฿${n.toLocaleString("th-TH", opts)}`;
 }
 
 /** เรทที่ลูกค้าเลือกอยู่ (จาก selections) — ไม่เจอ/ไม่ได้เลือก = เรทแรก · สินค้าไม่มีหลายเรท = undefined */
