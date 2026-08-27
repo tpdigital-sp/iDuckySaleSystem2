@@ -110,6 +110,7 @@ import {
 import TemplateStudio, { type Placement as StudioPlacement, type StudioResult } from "@/components/TemplateStudio";
 import SlotStudio, { type SlotResult, type SlotShot } from "@/components/SlotStudio";
 import { useCart } from "@/lib/cart-context";
+import GiftPromoBadge from "@/components/GiftPromoBadge";
 import { canAccessAdmin } from "@/lib/auth";
 import AdminEditFab from "@/components/AdminEditFab";
 import { fetchProduct } from "@/lib/product-repo";
@@ -3923,6 +3924,8 @@ export default function ProductDetail({
                   </button>
                 )}
               </div>
+              {/* 🎁 สินค้านี้ร่วมโปรของแถม — ป้าย+ความคืบหน้า (อัปเดตเองหลังกดเพิ่มลงตะกร้า) */}
+              <GiftPromoBadge product={product} />
               {/* 📐 สินค้าขายเป็นพื้นที่ — กางวิธีคิดให้เห็น: ขนาดที่กรอก → (ดันขั้นต่ำต่อด้าน) → พื้นที่ → ปัดขึ้นเต็มหน่วยขาย */}
               {areaQty != null && !designDone && (
                 <p className="mt-2 rounded-2xl bg-teal-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-teal-900 ring-1 ring-teal-200">

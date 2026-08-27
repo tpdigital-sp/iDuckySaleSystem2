@@ -631,6 +631,20 @@ export default function PrintOrderPage() {
               </div>
             )}
 
+            {/* 🎁 ของแถมฟรีที่ต้องใส่กล่อง — ตีกรอบหนาให้ฝ่ายแพ็คเห็นชัด ไม่งั้นของแถมตกหล่น */}
+            {(order.gifts?.length ?? 0) > 0 && (
+              <div className="keep mt-3 rounded border-2 border-slate-900 p-3">
+                <p className="text-sm font-extrabold">🎁 ของแถมที่ต้องใส่กล่อง</p>
+                <ul className="mt-1 space-y-0.5 text-sm font-bold">
+                  {(order.gifts ?? []).map((g) => (
+                    <li key={g.promoId}>
+                      ☐ {g.name} × {g.qty}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {order.note && (
               <p className="mt-3 rounded border border-slate-300 bg-slate-50 p-3 text-sm">
                 <strong>หมายเหตุลูกค้า:</strong> {order.note}
@@ -789,6 +803,12 @@ export default function PrintOrderPage() {
                 <span className="text-slate-500">ค่าจัดส่ง</span>
                 <span className="tabular-nums">{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
               </div>
+              {(order.gifts ?? []).map((g) => (
+                <div key={g.promoId} className="flex justify-between py-1 font-bold">
+                  <span>🎁 ของแถม — {g.name}</span>
+                  <span className="tabular-nums">×{g.qty}</span>
+                </div>
+              ))}
               {order.discount && order.discount.amount > 0 && (
                 <div className="flex justify-between py-1 text-emerald-600">
                   <span>{order.discount.label}</span>

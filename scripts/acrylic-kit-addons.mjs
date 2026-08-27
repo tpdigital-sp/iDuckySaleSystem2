@@ -17,6 +17,10 @@
  *    (คิดจากชิ้นที่ใหญ่ที่สุด เซนละ 10 บาท)
  *
  * รันซ้ำได้ — เขียนทับกลุ่ม/ข้อความเดิมด้วยค่าล่าสุดของสคริปต์เสมอ
+ *
+ * ⚠️ 27 ส.ค. 69 ค่าตะขอเปลี่ยนเป็น "คิดตั้งแต่ชิ้นแรก ไม่มีของแถม/ไม่มีค่าเหมาช่วงปลีก"
+ *    สคริปต์นี้ยังโคลนกติกาช่วงปลีกของพวงกุญแจ 3 มม. มา (freeWhen · smallQtyFee · extraFromQty 11)
+ *    → รันทับเมื่อไหร่ ต้องรัน scripts/acrylic-kit-hook-price-first-piece.mjs --write ตามทุกครั้ง
  */
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";

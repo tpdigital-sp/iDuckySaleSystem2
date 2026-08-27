@@ -8,16 +8,22 @@ import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { getUnpicked, clearUnpicked } from "@/lib/cart-select";
 import { useCustomer } from "@/lib/customer-context";
 import {
+  boxFeeItemName,
+  orderBoxFees,
+  boxFeeTotal,
+  boxFeesOf,
   fetchShopPayment,
   hasPayment,
   freeShippingMinOf,
   shippingOf,
   tiersConfigOf,
+  giftPromosOf,
   DEFAULT_SHIPPING,
   EMPTY_PAYMENT,
   type ShopPayment,
   type ShippingMethod,
 } from "@/lib/shop-settings";
+import { giftsFor } from "@/lib/gifts";
 import { getAccessToken } from "@/lib/customer-auth";
 import { fetchMyOrders } from "@/lib/my-orders";
 import { paidSpend, tierForSpend, tierDiscountAmount } from "@/lib/tiers";
@@ -75,10 +81,23 @@ export default function CheckoutPage() {
     setUnpicked(getUnpicked());
   }, []);
   const items = allItems.filter((i) => !unpicked.includes(i.key));
-  const subtotal = items.reduce((sum, i) => sum + i.unitPrice * i.qty + (i.extraFee ?? 0), 0);
   const totalQty = items.reduce((sum, i) => sum + i.qty, 0);
   const { customer } = useCustomer();
   const [payment, setPayment] = useState<ShopPayment>(EMPTY_PAYMENT);
+
+  /* 📦 ค่ากล่อง/ค่าแพ็คอัตโนมัติ (เช่น งานโปสเตอร์/ขนาด A3 +30) — คิด "ครั้งเดียวต่อออเดอร์"
+     สูตรเดียวกับหน้าตะกร้า สองหน้าต้องได้เลขเดียวกัน · รวมเข้ายอดสินค้าเหมือนค่า Add on */
+  const boxFeeRows = orderBoxFees(
+    items.map((it) => ({
+      productId: it.productId,
+      category: productOf(it.productId)?.category,
+      selections: it.selections,
+      qty: it.qty,
+    })),
+    boxFeesOf(payment)
+  );
+  const boxFeeSum = boxFeeTotal(boxFeeRows);
+  const subtotal = items.reduce((sum, i) => sum + i.unitPrice * i.qty + (i.extraFee ?? 0), 0) + boxFeeSum;
   const [methods, setMethods] = useState<ShippingMethod[]>(DEFAULT_SHIPPING);
   const [freeMin, setFreeMin] = useState(0);
   const [shippingId, setShippingId] = useState<string>(DEFAULT_SHIPPING[0].id);
@@ -183,6 +202,13 @@ export default function CheckoutPage() {
 
   const shippingMethod = methods.find((s) => s.id === shippingId) ?? methods[0];
   const freeShipping = freeMin > 0 && subtotal >= freeMin;
+
+  // 🎁 ของแถมฟรีตามจำนวนชิ้น — โชว์ให้ลูกค้าเห็นก่อนกดสั่ง (เซิร์ฟเวอร์คิดใหม่เองตอนสร้างออเดอร์)
+  const giftRows = giftsFor(
+    items.map((i) => ({ productId: i.productId, qty: i.qty })),
+    (id) => productOf(id)?.category,
+    giftPromosOf(payment)
+  ).filter((g) => g.earned > 0);
 
   // 📦 สินค้าที่คิดค่าส่งตามจำนวนชิ้น (คิดแบบเดียวกับหน้าตะกร้า — สองหน้าต้องได้เลขเดียวกัน)
   const qtyShipCalc = (() => {
@@ -352,6 +378,21 @@ export default function CheckoutPage() {
         sel: {},
         qty: 1,
         unitPrice: fee,
+      });
+    }
+
+    // 📦 ค่ากล่อง/ค่าแพ็คอัตโนมัติ (ครั้งเดียวต่อออเดอร์) → บรรทัดของตัวเอง (id ต่อท้าย #boxfee ไม่ไปตัดสต๊อก)
+    for (const bl of boxFeeRows) {
+      const first = items[bl.matched[0]];
+      const names = bl.matched.map((idx) => productOf(items[idx].productId)?.name ?? items[idx].productId);
+      orderItems.push({
+        productId: `${first.productId}#boxfee`,
+        name: boxFeeItemName(bl.fee),
+        // บอกฝ่ายแพ็คว่ากล่องนี้มาจากงานตัวไหน + กี่กล่อง (perQty)
+        selections: [bl.boxes > 1 ? `${bl.boxes} กล่อง` : "", `สำหรับ: ${names.join(" · ")}`].filter(Boolean).join(" · "),
+        sel: {},
+        qty: 1,
+        unitPrice: bl.amount,
       });
     }
 
@@ -873,6 +914,26 @@ export default function CheckoutPage() {
       {/* สรุปยอด */}
       <div className="mt-5 rounded-2xl bg-amber-50/70 p-4 ring-1 ring-amber-200">
         <div className="flex justify-between text-sm text-stone-600"><span>รวมสินค้า ({totalQty} ชิ้น)</span><span>{formatPrice(subtotal)}</span></div>
+        {boxFeeSum > 0 && (
+          <div className="mt-1 flex justify-between text-xs text-stone-500">
+            <span>📦 รวมค่ากล่อง/แพ็ค (คิดอยู่ในยอดสินค้าแล้ว)</span>
+            <span>{formatPrice(boxFeeSum)}</span>
+          </div>
+        )}
+        {giftRows.map((g) => (
+          <div key={g.promo.id} className="mt-1 flex items-center justify-between gap-2 text-sm font-semibold text-emerald-600">
+            <span className="flex min-w-0 items-center gap-2">
+              {g.promo.image ? (
+                // eslint-disable-next-line @next/next/no-img-element -- รูปของแถมจากคลังรูปร้าน
+                <img src={g.promo.image} alt="" className="h-7 w-7 shrink-0 rounded-lg object-cover ring-1 ring-emerald-200" />
+              ) : (
+                <span>🎁</span>
+              )}
+              <span className="truncate">ของแถม — {g.promo.name} ×{g.earned}</span>
+            </span>
+            <span className="shrink-0">ฟรี</span>
+          </div>
+        ))}
         {discount > 0 && (
           <div className="mt-1 flex justify-between text-sm font-semibold text-emerald-600">
             <span>

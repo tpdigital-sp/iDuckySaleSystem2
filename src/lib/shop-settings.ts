@@ -12,6 +12,18 @@ import { DEFAULT_TIERS, type Tier } from "./tiers";
 import { SHOP } from "./shop-info";
 import { SETTINGS_ID as SETTINGS_ID_SHARED, type SeoConfig } from "./settings-shared";
 export { seoOf, type SeoConfig } from "./settings-shared";
+export { activeGiftPromos, giftsFor, type GiftPromo, type GiftResult } from "./gifts";
+import type { GiftPromo } from "./gifts";
+export {
+  DEFAULT_BOX_FEES,
+  orderBoxFees,
+  boxFeeTotal,
+  boxFeeItemName,
+  BOX_FEE_SUFFIX,
+  type BoxFee,
+  type OrderBoxFee,
+} from "./box-fee";
+import { DEFAULT_BOX_FEES as _DEFAULT_BOX_FEES, type BoxFee } from "./box-fee";
 export { DEFAULT_IMAGE_CLEANUP, imageCleanupOf, type ImageCleanupConfig } from "./image-cleanup";
 import type { ImageCleanupConfig as _ImageCleanupConfig } from "./image-cleanup";
 
@@ -48,6 +60,13 @@ export interface ShopPayment {
   shipping?: ShippingMethod[];
   /** ซื้อครบเท่านี้ส่งฟรี (บาท) — 0 หรือไม่ตั้ง = ไม่มีโปรส่งฟรี */
   freeShippingMin?: number;
+  /** 🎁 โปรของแถมฟรีตามจำนวนชิ้น (เช่น พวงกุญแจ/สแตนดี้ ครบ 30 ชิ้น ได้แพ็คเกจรองหลัง) */
+  gifts?: GiftPromo[];
+  /**
+   * 📦 ค่ากล่อง/ค่าแพ็คที่ระบบบวกให้เองในตะกร้า (เช่น งานโปสเตอร์/ขนาด A3 +30 บาท)
+   * ไม่เคยตั้ง (undefined) = ใช้ค่าเริ่มต้นในโค้ด · ตั้งเป็นลิสต์ว่าง = ปิดทั้งหมด
+   */
+  boxFees?: BoxFee[];
   /** ระดับสมาชิก — ไม่ตั้ง = ใช้ค่าเริ่มต้น (ดู @/lib/tiers) */
   tiers?: Tier[];
   /** คูปองต้อนรับสมาชิกใหม่ (แจกอัตโนมัติตอนสมัคร) */
@@ -132,6 +151,20 @@ export const DEFAULT_FREE_SHIPPING_MIN = 999;
 export function shippingOf(s: ShopPayment | null | undefined): ShippingMethod[] {
   const list = (s?.shipping ?? []).filter((m) => m.name?.trim());
   return list.length ? list : DEFAULT_SHIPPING;
+}
+
+/** โปรของแถมที่ตั้งไว้ (ยังไม่กรองเรื่องเวลา — ใช้ activeGiftPromos ต่อ) */
+export function giftPromosOf(s: ShopPayment | null | undefined): GiftPromo[] {
+  return (s?.gifts ?? []).filter((g) => g?.id && g?.name?.trim());
+}
+
+/**
+ * 📦 กติกาค่ากล่องที่ใช้จริง
+ * ยังไม่เคยตั้งค่า = ใช้ค่าเริ่มต้นในโค้ด (โปสเตอร์/A3 +30) · ตั้งเป็นลิสต์ว่างไว้ = ตั้งใจปิดทั้งหมด
+ */
+export function boxFeesOf(s: ShopPayment | null | undefined): BoxFee[] {
+  if (!s || s.boxFees === undefined) return _DEFAULT_BOX_FEES;
+  return (s.boxFees ?? []).filter((f) => f?.id && f.name?.trim());
 }
 
 /** ยอดขั้นต่ำส่งฟรี (0 = ปิดโปร) */

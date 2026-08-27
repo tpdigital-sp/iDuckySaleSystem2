@@ -10,6 +10,7 @@ import {
   designCountOf,
   DESIGN_LABEL,
   formatPrice,
+  isRetailRateLine,
   maxDesignsFor,
   perUnitCapacity,
   productPath,
@@ -17,14 +18,23 @@ import {
   RATE_LABEL,
 } from "@/lib/products";
 import {
+  orderBoxFees,
+  boxFeeTotal,
+  boxFeesOf,
   fetchShopPayment,
   freeShippingMinOf,
+  giftPromosOf,
   shippingOf,
   DEFAULT_SHIPPING,
+  type BoxFee,
+  type OrderBoxFee,
   type ShippingMethod,
 } from "@/lib/shop-settings";
+import { giftsFor, type GiftPromo } from "@/lib/gifts";
+import GiftPanel from "@/components/GiftPanel";
 import { useCart } from "@/lib/cart-context";
 import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
+import BoxFeeTag from "@/components/BoxFeeTag";
 import ProductVisual from "@/components/ProductVisual";
 import { SpecLines } from "@/components/SpecLines";
 import { getAppendTarget, clearAppendTarget, type AppendTarget } from "@/lib/append-order";
@@ -88,11 +98,39 @@ export default function CartPage() {
     clearQuoteTarget();
     router.push(`/admin/quotes/${encodeURIComponent(quoteTo.id)}`);
   }
+  /* 📦 ค่ากล่อง/ค่าแพ็คที่ระบบบวกให้เอง (เช่น งานโปสเตอร์/ขนาด A3 +30)
+     คิด "ครั้งเดียวต่อออเดอร์" ต่อกติกา — หลายรายการเข้าเงื่อนไขก็ใบเดียว
+     ตั้งค่าที่ /admin/settings?tab=box — ยังไม่เคยตั้ง = ใช้กติกาเริ่มต้นในโค้ด */
+  const [boxFees, setBoxFees] = useState<BoxFee[]>(boxFeesOf(null));
+
   // ✅ ติ๊กเลือกเฉพาะรายการที่จะสั่งรอบนี้ — ยอดรวม/ค่าส่ง/ปุ่มสั่งซื้อ คิดจากที่ติ๊กไว้เท่านั้น
   const isPicked = (key: string) => !unpicked.includes(key);
   const pickedItems = items.filter((i) => isPicked(i.key));
   const allPicked = pickedItems.length === items.length;
-  const subtotal = pickedItems.reduce((n, i) => n + i.unitPrice * i.qty + (i.extraFee ?? 0), 0);
+  /** ค่ากล่องของ "ออเดอร์รอบนี้" (เฉพาะที่ติ๊ก) — ป้ายราคาแขวนกับรายการแรกที่เข้าเงื่อนไข */
+  const boxFeeRows = orderBoxFees(
+    pickedItems.map((i) => ({
+      productId: i.productId,
+      category: productOf(i.productId)?.category,
+      selections: i.selections,
+      qty: i.qty,
+    })),
+    boxFees
+  );
+  const boxFeeSum = boxFeeTotal(boxFeeRows);
+  /** ป้ายห้อยของแต่ละรายการ: primary = แขวนราคา · included = เข้าเงื่อนไขแต่ไม่คิดซ้ำ */
+  const boxTagByKey = new Map<string, { primary: OrderBoxFee[]; included: BoxFee[] }>();
+  for (const b of boxFeeRows) {
+    b.matched.forEach((idx, j) => {
+      const key = pickedItems[idx].key;
+      const cur = boxTagByKey.get(key) ?? { primary: [], included: [] };
+      if (j === 0) cur.primary.push(b);
+      else cur.included.push(b.fee);
+      boxTagByKey.set(key, cur);
+    });
+  }
+  const subtotal =
+    pickedItems.reduce((n, i) => n + i.unitPrice * i.qty + (i.extraFee ?? 0), 0) + boxFeeSum;
   const totalQty = pickedItems.reduce((n, i) => n + i.qty, 0);
   function commitUnpicked(next: string[]) {
     setUnpicked(next);
@@ -163,9 +201,14 @@ export default function CartPage() {
       else localStorage.removeItem(USE_BY_KEY);
     } catch {}
   }
+  // 🎁 ของแถมฟรี — นับเฉพาะบรรทัดที่ลูกค้าติ๊กสั่งรอบนี้ ให้ตรงกับยอดรวมด้านล่าง
+  //    (เซิร์ฟเวอร์คิดใหม่เองตอนสร้างออเดอร์ ตรงนี้เป็นแค่ป้ายบอกลูกค้า)
+
   // รูปแบบจัดส่ง + โปรส่งฟรี ดึงจากที่แอดมินตั้งค่าไว้ (ระหว่างโหลดใช้ค่าเริ่มต้นไปก่อน)
   const [methods, setMethods] = useState<ShippingMethod[]>(DEFAULT_SHIPPING);
   const [freeMin, setFreeMin] = useState(0);
+  // 🎁 โปรของแถมฟรี (แอดมินตั้งที่ /admin/settings?tab=gift)
+  const [giftPromos, setGiftPromos] = useState<GiftPromo[]>([]);
   const [shippingId, setShippingId] = useState<string>(DEFAULT_SHIPPING[0].id);
 
   useEffect(() => {
@@ -173,6 +216,8 @@ export default function CartPage() {
       const list = shippingOf(p);
       setMethods(list);
       setFreeMin(freeShippingMinOf(p));
+      setGiftPromos(giftPromosOf(p));
+      setBoxFees(boxFeesOf(p));
       // ถ้าที่จำไว้ไม่มีในรายการแล้ว → กลับไปใช้ตัวแรก
       setShippingId((cur) => (list.some((m) => m.id === cur) ? cur : list[0].id));
     });
@@ -215,11 +260,19 @@ export default function CartPage() {
     return cartQtyShipFee([...groups.values()].filter((x) => x.tiers?.length), methods);
   })();
 
+  // 🛍️ ทุกบรรทัดยังอยู่เรทปลีก (เช่น 1-10 ชิ้น) = ของไม่กี่ชิ้น กล่องเล็กใส่พอ
+  // ยอดเงินถึงเกณฑ์กล่องใหญ่ก็ไม่ต้องเด้งค่าส่งแพงขึ้น (ของแพงไม่ได้แปลว่ากล่องใหญ่)
+  const retailOnly = pickedItems.every((i) => {
+    const p = productOf(i.productId);
+    return !p || isRetailRateLine(p, i.selections, i.qty, i.merged?.rateLabel);
+  });
+
   // 🚚 ระบบเลือกวิธีจัดส่งให้เอง — ของเยอะ/ของชิ้นใหญ่ ต้องกล่องใหญ่ ไม่ปล่อยให้ค้างที่กล่องเล็ก
   // รวมทั้งของที่เกินขั้นค่าส่งจนต้องเปลี่ยนวิธีส่ง (เช่น ส่งแมส)
   const auto = pickShipping(methods, {
     totalQty,
     subtotal,
+    retailOnly,
     requiredIds: [
       // ค่าส่งขั้นต่ำ — เอาตามตัวเลือกที่เลือกจริง (ขนาดใหญ่บังคับกล่องใหญ่ได้)
       ...(pickedItems.map((i) => shipProfileOf(productOf(i.productId), i.selections).shippingId).filter(Boolean) as string[]),
@@ -272,6 +325,12 @@ export default function CartPage() {
     return rows;
   })();
   const total = subtotal + shippingCost;
+  // 🎁 ของแถมฟรีที่ออเดอร์นี้ได้ (คิดจากรายการที่ติ๊กไว้)
+  const giftRows = giftsFor(
+    pickedItems.map((i) => ({ productId: i.productId, qty: i.qty })),
+    (id) => productOf(id)?.category,
+    giftPromos
+  );
   const remainForFree = freeMin - subtotal;
 
   /** เมฆพื้นหลัง — ชุดเดียวกับหน้าแรก */
@@ -509,10 +568,49 @@ export default function CartPage() {
                         )}
                       </div>
                     </div>
+                    {/* 📦 ค่ากล่อง/ค่าแพ็คอัตโนมัติ (ครั้งเดียวต่อออเดอร์) — ห้อยใต้รายการแรกที่เข้าเงื่อนไข
+                        รายการอื่นที่เข้าเงื่อนไขได้ป้าย "ใช้กล่องเดียวกัน ไม่คิดเพิ่ม" */}
+                    <BoxFeeTag
+                      lines={boxTagByKey.get(item.key)?.primary}
+                      included={boxTagByKey.get(item.key)?.included}
+                      className="mt-2.5"
+                    />
                   </div>
                 </div>
               );
             })}
+
+            {/* ── 🎁 ของแถมโปรโมชั่นที่ปลดล็อกแล้ว — แถวแสดงผลอย่างเดียว (แก้จำนวน/ลบไม่ได้ ระบบคิดให้เอง) ── */}
+            {giftRows
+              .filter((g) => g.earned > 0)
+              .map((g) => (
+                <div key={`gift-${g.promo.id}`} className="ord-card cart-item" style={{ borderColor: "rgba(18,135,106,.35)", background: "#F2FBF7" }}>
+                  <div className="flex gap-3.5 p-3.5 sm:gap-4 sm:p-4">
+                    {g.promo.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- รูปของแถมจากคลังรูปร้าน
+                      <img src={g.promo.image} alt={g.promo.name} className="cart-thumb object-cover" />
+                    ) : (
+                      <span className="cart-thumb grid place-items-center bg-white text-4xl">🎁</span>
+                    )}
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="ord-chip" style={{ background: "#DEF5EC", color: "#0E6B52" }}>🎁 ของแถมโปรโมชั่น</span>
+                      </div>
+                      <span className="cart-name mt-1" style={{ cursor: "default" }}>{g.promo.name}</span>
+                      {g.promo.note && <span className="text-[11px] t-soft">{g.promo.note}</span>}
+                      <div className="mt-auto flex items-center justify-between gap-3 pt-2">
+                        <span className="text-xs t-soft">จำนวน {g.earned.toLocaleString("th-TH")} ชิ้น · ระบบเพิ่มให้อัตโนมัติ</span>
+                        <span className="text-right">
+                          {(g.promo.value ?? 0) > 0 && (
+                            <s className="mr-1.5 text-[11px] t-faint">{formatPrice((g.promo.value ?? 0) * g.earned)}</s>
+                          )}
+                          <span className="cart-price t-ok">ฟรี</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
 
             <button type="button" onClick={clear} className="ord-btn quiet sm self-start">
               ล้างตะกร้าทั้งหมด
@@ -579,6 +677,9 @@ export default function CartPage() {
               </div>
             )}
 
+            {/* 🎁 ของแถมฟรีตามจำนวนชิ้น (โปรร้าน) */}
+            <GiftPanel rows={giftRows} className="mt-3" />
+
             <div className="mt-5">
               <span className="ord-eyebrow mb-2 block">วิธีจัดส่ง</span>
               {auto.reason && (
@@ -639,6 +740,12 @@ export default function CartPage() {
                 <dt>ยอดรวมสินค้า ({totalQty} ชิ้น)</dt>
                 <dd className="font-semibold t-ink">{formatPrice(subtotal)}</dd>
               </div>
+              {boxFeeSum > 0 && (
+                <div className="flex justify-between text-xs t-soft">
+                  <dt>📦 รวมค่ากล่อง/แพ็ค (คิดอยู่ในยอดสินค้าแล้ว)</dt>
+                  <dd className="font-semibold t-ink">{formatPrice(boxFeeSum)}</dd>
+                </div>
+              )}
               <div className="flex justify-between t-soft">
                 <dt>
                   {qtyShipApplied && methodFree
@@ -651,6 +758,14 @@ export default function CartPage() {
                   {shippingCost === 0 ? <span className="t-ok">ฟรี!</span> : formatPrice(shippingCost)}
                 </dd>
               </div>
+              {giftRows
+                .filter((g) => g.earned > 0)
+                .map((g) => (
+                  <div key={g.promo.id} className="flex justify-between t-soft">
+                    <dt>🎁 ของแถม — {g.promo.name} ×{g.earned}</dt>
+                    <dd className="font-semibold t-ok">ฟรี!</dd>
+                  </div>
+                ))}
               <div className="ord-title mt-1 flex justify-between pt-3 text-base" style={{ borderTop: "1px dashed var(--sky-200)" }}>
                 <dt>ยอดชำระทั้งหมด</dt>
                 <dd className="t-blue" style={{ fontWeight: 600 }}>

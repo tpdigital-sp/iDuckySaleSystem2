@@ -4356,6 +4356,26 @@ function pickRateForQty(p: Product, qty: number): PriceRate | undefined {
 }
 
 /**
+ * บรรทัดนี้ยังอยู่ "เรทปลีก" (เรทต่ำสุดของสินค้า เช่น 1-10 ชิ้น) ไหม — ใช้ตัดสินว่าตะกร้าเป็นออเดอร์ปลีกล้วน
+ * สินค้าที่มีเรทเดียว/ไม่มีเรท = ถือว่าปลีก (ไม่มีเรทส่งให้ขยับ)
+ * mergedRateLabel = เรทที่ตะกร้ารวมล็อตสรุปให้แล้ว (แม่นกว่าคิดรายบรรทัด — 6+6 รวมเป็น 12 ได้เรทส่ง)
+ */
+export function isRetailRateLine(
+  p: Product,
+  selections: Record<string, string>,
+  qty: number,
+  mergedRateLabel?: string
+): boolean {
+  const rs = p.priceRates ?? [];
+  if (rs.length < 2) return true;
+  const retail = [...rs].sort((a, b) => (a.minQty ?? 1) - (b.minQty ?? 1))[0];
+  const applied =
+    (mergedRateLabel ? rs.find((r) => r.label === mergedRateLabel) : undefined) ??
+    (p.hardMinQty ? activeRate(p, selections) : pickRateForQty(p, qty));
+  return (applied ?? retail).label === retail.label;
+}
+
+/**
  * บรรทัดนี้เอามารวมล็อตได้ไหม — เช็คเป็น "รายบรรทัด" ไม่ใช่ทั้งสินค้า
  * (สินค้าที่แค่ "มี" ออปชั่นกำหนดเอง custom.enabled แต่ลูกค้าไม่ได้เลือก ยังต้องรวมได้ —
  * เจอกับพวงกุญแจอะคริลิคที่มีออปชั่น "อุปกรณ์เสริม" mode chat กันทั้งสินค้าแล้วไม่มีวันรวมเลย)

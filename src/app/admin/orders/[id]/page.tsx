@@ -2796,6 +2796,12 @@ export default function AdminOrderDetailPage() {
                   <span>{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
                 )}
               </div>
+              {(order.gifts ?? []).map((g) => (
+                <div key={g.promoId} className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
+                  <span>🎁 ของแถม — {g.name} ×{g.qty}</span>
+                  <span>ฟรี</span>
+                </div>
+              ))}
               {order.discount && order.discount.amount > 0 && (
                 <div className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
                   <span>{order.discount.label}</span>

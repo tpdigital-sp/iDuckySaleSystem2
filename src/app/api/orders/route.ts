@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import type { Order } from "@/lib/admin-data";
 import { paidSpend, tierForSpend, tierDiscountAmount, tiersOf, type Tier } from "@/lib/tiers";
 import { couponLabel, validateCoupon, type Coupon } from "@/lib/coupons";
+import { giftsFor, giftsToOrder, type GiftPromo, type OrderGift } from "@/lib/gifts";
 import { currentActor } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
@@ -118,6 +119,30 @@ export async function POST(req: Request) {
   // ถ้าไม่ได้ใช้คูปอง → ใช้ส่วนลดระดับ (ถ้ามี)
   if (!discount && tierAmount > 0) discount = { label: tierLabel, amount: tierAmount };
 
+  // ── 3) 🎁 ของแถมฟรีตามจำนวนชิ้น — คิดใหม่ฝั่งเซิร์ฟเวอร์เสมอ (ไม่เชื่อค่าที่หน้าเว็บส่งมา) ──
+  let gifts: OrderGift[] = [];
+  try {
+    const ids = [...new Set(input.items.map((i) => i.productId).filter(Boolean))];
+    const [settRes, prodRes] = await Promise.all([
+      sb.from("products").select("data").eq("id", SETTINGS_ROW).maybeSingle(),
+      ids.length ? sb.from("products").select("id,category").in("id", ids) : Promise.resolve({ data: [] as { id: string; category: string }[] }),
+    ]);
+    const promos = ((settRes.data?.data as { gifts?: GiftPromo[] } | undefined)?.gifts ?? []).filter((g) => g?.id);
+    if (promos.length) {
+      const cat = new Map((prodRes.data ?? []).map((r) => [String(r.id), String(r.category ?? "")]));
+      gifts = giftsToOrder(
+        giftsFor(
+          input.items.map((i) => ({ productId: i.productId, qty: i.qty })),
+          (id) => cat.get(id),
+          promos,
+          now.getTime()
+        )
+      );
+    }
+  } catch {
+    // คิดของแถมไม่ได้ = ไม่ควรทำให้สั่งซื้อไม่สำเร็จ — แอดมินเติมให้ทีหลังได้
+  }
+
   const key = randomBytes(24).toString("base64url"); // กุญแจลับต่อออเดอร์
   const order: Order = {
     id,
@@ -137,6 +162,7 @@ export async function POST(req: Request) {
     ...(cid ? { customerId: cid } : {}),
     ...(input.email?.trim() ? { email: input.email.trim() } : {}),
     ...(discount ? { discount } : {}),
+    ...(gifts.length ? { gifts } : {}),
     ...(placedBy ? { placedBy } : {}),
   };
 

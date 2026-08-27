@@ -31,6 +31,11 @@ export interface AutoShippingInput {
   subtotal: number;
   /** วิธีจัดส่งขั้นต่ำที่สินค้าในตะกร้าบังคับไว้ (เอาเฉพาะตัวที่ตั้งค่าไว้) */
   requiredIds?: string[];
+  /**
+   * ทั้งตะกร้ายังเป็นเรทปลีก (เช่น 1-10 ชิ้น) — ยอดเงินถึงเกณฑ์ minSubtotal ก็ไม่เด้งกล่องใหญ่
+   * (ของแพงแต่ไม่กี่ชิ้น กล่องเดิมใส่พอ) · เกณฑ์จำนวนชิ้น minQty ยังทำงานปกติ
+   */
+  retailOnly?: boolean;
 }
 
 const rank = (m: ShippingMethod) => m.price;
@@ -38,7 +43,8 @@ const rank = (m: ShippingMethod) => m.price;
 /** วิธีนี้ถูก "ปลุก" ด้วยเกณฑ์จำนวน/ยอดไหม */
 function triggeredBy(m: ShippingMethod, input: AutoShippingInput): string | null {
   if (m.minQty && input.totalQty >= m.minQty) return `สั่ง ${input.totalQty} ชิ้น (ตั้งแต่ ${m.minQty} ชิ้นขึ้นไป)`;
-  if (m.minSubtotal && input.subtotal >= m.minSubtotal) return `ยอดสั่งซื้อถึง ${m.minSubtotal.toLocaleString()} บาท`;
+  if (m.minSubtotal && input.subtotal >= m.minSubtotal && !input.retailOnly)
+    return `ยอดสั่งซื้อถึง ${m.minSubtotal.toLocaleString()} บาท`;
   return null;
 }
 

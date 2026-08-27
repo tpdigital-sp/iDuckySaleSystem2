@@ -9,6 +9,8 @@ import {
   DEFAULT_SHIPPING,
   fetchShopPayment,
   freeShippingMinOf,
+  giftPromosOf,
+  boxFeesOf,
   persistShopPayment,
   shippingOf,
   tiersConfigOf,
@@ -20,6 +22,8 @@ import {
   type ShippingMethod,
   type ShopPayment,
   type WelcomeCouponConfig,
+  type GiftPromo,
+  type BoxFee,
   type ShopInfo,
   type SeoConfig,
 } from "@/lib/shop-settings";
@@ -99,11 +103,11 @@ const CAT_ICONS: { group: string; items: string[] }[] = [
 ];
 
 /** อัปโหลดรูปหมวดขึ้นคลัง (ใช้ทั้งปุ่มเลือกไฟล์และลากวาง) */
-async function uploadCatImage(file: File): Promise<{ url?: string; error?: string }> {
+async function uploadCatImage(file: File, folder = "categories"): Promise<{ url?: string; error?: string }> {
   try {
     const fd = new FormData();
     fd.append("file", file);
-    fd.append("productId", "categories");
+    fd.append("productId", folder);
     const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
     const j = (await res.json()) as { url?: string; error?: string };
     if (!res.ok || !j.url) return { error: j.error ?? "อัปโหลดไม่สำเร็จ" };
@@ -114,13 +118,13 @@ async function uploadCatImage(file: File): Promise<{ url?: string; error?: strin
 }
 
 /** รูปหมวด: thumbnail + ปุ่มอัปโหลด + รับลากรูปมาวาง */
-function CatImage({ value, onChange }: { value?: string; onChange: (v: string | undefined) => void }) {
+function CatImage({ value, onChange, folder }: { value?: string; onChange: (v: string | undefined) => void; folder?: string }) {
   const [busy, setBusy] = useState(false);
   const [over, setOver] = useState(false);
   async function up(f: File) {
     if (!f.type.startsWith("image/")) return;
     setBusy(true);
-    const r = await uploadCatImage(f);
+    const r = await uploadCatImage(f, folder);
     if (r.url) onChange(r.url);
     setBusy(false);
   }
@@ -173,6 +177,53 @@ function CatImage({ value, onChange }: { value?: string; onChange: (v: string | 
         </label>
       )}
     </span>
+  );
+}
+
+/** ค้นหาสินค้าเพื่อเพิ่มเข้าโปรของแถม (พิมพ์ชื่อ → กดเลือก) */
+function ProductPicker({
+  list,
+  exclude,
+  onPick,
+  inputCls,
+}: {
+  list: { id: string; name: string; category: string }[];
+  exclude: string[];
+  onPick: (id: string) => void;
+  inputCls: string;
+}) {
+  const [q, setQ] = useState("");
+  const term = q.trim().toLowerCase();
+  const hits = term
+    ? list.filter((p) => !exclude.includes(p.id) && (p.name.toLowerCase().includes(term) || p.id.toLowerCase().includes(term))).slice(0, 8)
+    : [];
+  return (
+    <div className="relative">
+      <input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="พิมพ์ชื่อสินค้าเพื่อค้นหา…"
+        className={`${inputCls} text-xs`}
+      />
+      {hits.length > 0 && (
+        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+          {hits.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => {
+                onPick(p.id);
+                setQ("");
+              }}
+              className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs transition hover:bg-amber-50"
+            >
+              <span className="truncate font-medium text-slate-700">{p.name}</span>
+              <span className="shrink-0 text-[10px] text-slate-400">{p.category}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -235,9 +286,9 @@ function IconPicker({ value, onPick }: { value: string; onPick: (v: string) => v
 const newId = (p = "b") =>
   typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${p}-${Date.now()}-${Math.floor(Math.random() * 1e4)}`;
 
-type Tab = "shop" | "pay" | "ship" | "tier" | "welcome" | "roles" | "files" | "cats" | "google";
+type Tab = "shop" | "pay" | "ship" | "tier" | "welcome" | "gift" | "box" | "roles" | "files" | "cats" | "google";
 
-const TAB_KEYS: Tab[] = ["shop", "pay", "ship", "tier", "welcome", "roles", "files", "cats", "google"];
+const TAB_KEYS: Tab[] = ["shop", "pay", "ship", "tier", "welcome", "gift", "box", "roles", "files", "cats", "google"];
 
 /** เมนูหัวข้อตั้งค่า — ไอคอน + ชื่อ + คำอธิบายย่อย (โชว์ในแถบข้างจอกว้าง) */
 const TAB_META: { key: Tab; emoji: string; label: string; hint: string }[] = [
@@ -246,6 +297,8 @@ const TAB_META: { key: Tab; emoji: string; label: string; hint: string }[] = [
   { key: "ship", emoji: "🚚", label: "การจัดส่ง", hint: "ค่าส่ง · โปรส่งฟรี" },
   { key: "tier", emoji: "🏅", label: "ระดับสมาชิก", hint: "ส่วนลดตามยอดสะสม" },
   { key: "welcome", emoji: "🎁", label: "คูปองต้อนรับ", hint: "แจกสมาชิกใหม่อัตโนมัติ" },
+  { key: "gift", emoji: "🎀", label: "ของแถมฟรี", hint: "สั่งครบตามจำนวน แถมฟรี" },
+  { key: "box", emoji: "📦", label: "ค่ากล่องอัตโนมัติ", hint: "โปสเตอร์/A3 บวกค่ากล่อง" },
   { key: "roles", emoji: "👥", label: "บทบาท", hint: "สิทธิ์แต่ละตำแหน่ง" },
   { key: "cats", emoji: "🗂", label: "หมวดหมู่สินค้า", hint: "หมวดบนหน้าร้าน" },
   { key: "files", emoji: "🧹", label: "ล้างรูปเก่า", hint: "คืนพื้นที่เก็บไฟล์" },
@@ -285,6 +338,44 @@ function AdminSettingsPageInner() {
   // ── คูปองต้อนรับ ──
   const [welcome, setWelcome] = useState<WelcomeCouponConfig>(welcomeCouponOf(null));
 
+  // ── 🎀 ของแถมฟรีตามจำนวนชิ้น ──
+  const [gifts, setGifts] = useState<GiftPromo[]>([]);
+  /** รายชื่อสินค้าย่อ — ไว้ค้นหาเพิ่มสินค้าเฉพาะตัวเข้าโปร (เช่น Griptok ที่อยู่ปนหมวดเคสมือถือ) */
+  const [prodList, setProdList] = useState<{ id: string; name: string; category: string }[]>([]);
+  const patchGift = (i: number, patch: Partial<GiftPromo>) => {
+    setGifts((cur) => cur.map((g, k) => (k === i ? { ...g, ...patch } : g)));
+    touch();
+  };
+  const addGift = () => {
+    setGifts((cur) => [
+      ...cur,
+      { id: newId("g"), name: "", minQty: 30, step: 30, giveQty: 1, active: true, categories: [], productIds: [] },
+    ]);
+    touch();
+  };
+  const removeGift = (i: number) => {
+    setGifts((cur) => cur.filter((_, k) => k !== i));
+    touch();
+  };
+
+  // ── 📦 ค่ากล่อง/ค่าแพ็คอัตโนมัติ (เช่น งานโปสเตอร์/ขนาด A3 +30) ──
+  const [boxFees, setBoxFees] = useState<BoxFee[]>([]);
+  const patchBox = (i: number, patch: Partial<BoxFee>) => {
+    setBoxFees((cur) => cur.map((f, k) => (k === i ? { ...f, ...patch } : f)));
+    touch();
+  };
+  const addBox = () => {
+    setBoxFees((cur) => [
+      ...cur,
+      { id: newId("bx"), name: "ค่ากล่องกันกระแทก", amount: 30, keywords: ["A3"], optionGroups: [], categories: [], productIds: [], active: true },
+    ]);
+    touch();
+  };
+  const removeBox = (i: number) => {
+    setBoxFees((cur) => cur.filter((_, k) => k !== i));
+    touch();
+  };
+
   // ── หมวดหมู่สินค้า ──
   const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
   const [catCounts, setCatCounts] = useState<Record<string, number>>({});
@@ -295,10 +386,12 @@ function AdminSettingsPageInner() {
     // นับสินค้าต่อหมวด — กันลบหมวดที่ยังมีสินค้าอยู่
     fetch("/api/admin/products-lite", { cache: "no-store" })
       .then((r) => r.json())
-      .then((j: { list?: { id: string; category?: string }[] }) => {
+      .then((j: { list?: { id: string; name?: string; category?: string }[] }) => {
         const map: Record<string, number> = {};
         for (const p of j.list ?? []) if (p.category) map[p.category] = (map[p.category] ?? 0) + 1;
         setCatCounts(map);
+        // ใช้ซ้ำในแท็บของแถม (ค้นหาสินค้าเฉพาะตัว)
+        setProdList((j.list ?? []).map((p) => ({ id: p.id, name: p.name ?? "", category: p.category ?? "" })));
       })
       .catch(() => {});
   }, []);
@@ -435,6 +528,8 @@ function AdminSettingsPageInner() {
       setFreeMin(freeShippingMinOf(p));
       setTiers(tiersConfigOf(p));
       setWelcome(welcomeCouponOf(p));
+      setGifts(giftPromosOf(p));
+      setBoxFees(boxFeesOf(p));
       setInfo(shopInfoOf(p));
       setCleanup(imageCleanupOf(p));
       setSeo(p?.seo ?? {});
@@ -529,6 +624,37 @@ function AdminSettingsPageInner() {
         gtmId: seo.gtmId?.trim() || undefined,
         noindex: !!seo.noindex,
       },
+      boxFees: boxFees
+        .map((f) => ({
+          ...f,
+          name: f.name.trim(),
+          note: f.note?.trim() || undefined,
+          amount: Math.max(0, Math.round(Number(f.amount) || 0)),
+          perQty: Math.max(0, Math.floor(Number(f.perQty) || 0)) || undefined,
+          categories: (f.categories ?? []).filter(Boolean),
+          productIds: (f.productIds ?? []).filter(Boolean),
+          excludeIds: (f.excludeIds ?? []).filter(Boolean),
+          optionGroups: (f.optionGroups ?? []).map((g) => g.trim()).filter(Boolean),
+          keywords: (f.keywords ?? []).map((k) => k.trim()).filter(Boolean),
+        }))
+        .filter((f) => f.name && f.amount > 0),
+      gifts: gifts
+        .map((g) => ({
+          ...g,
+          name: g.name.trim(),
+          note: g.note?.trim() || undefined,
+          image: g.image?.trim() || undefined,
+          value: Math.max(0, Number(g.value) || 0) || undefined,
+          minQty: Math.max(1, Math.floor(Number(g.minQty) || 1)),
+          step: Math.max(0, Math.floor(Number(g.step) || 0)) || undefined,
+          giveQty: Math.max(1, Math.floor(Number(g.giveQty) || 1)),
+          maxQty: Math.max(0, Math.floor(Number(g.maxQty) || 0)) || undefined,
+          categories: (g.categories ?? []).filter(Boolean),
+          productIds: (g.productIds ?? []).filter(Boolean),
+          from: g.from?.trim() || undefined,
+          to: g.to?.trim() || undefined,
+        }))
+        .filter((g) => g.name),
       welcomeCoupon: {
         enabled: welcome.enabled,
         type: welcome.type,
@@ -892,7 +1018,9 @@ function AdminSettingsPageInner() {
                           />
                           บาท
                         </label>
-                        <span className="text-slate-400">· เว้นว่าง = ไม่เด้ง</span>
+                        <span className="text-slate-400">
+                          · เว้นว่าง = ไม่เด้ง · ยอดถึงเกณฑ์แต่ทั้งตะกร้ายังเป็นเรทปลีก (เช่น 1-10 ชิ้น) = ไม่เด้ง
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -1114,6 +1242,442 @@ function AdminSettingsPageInner() {
                   {!welcome.enabled && <p className="mt-3 text-center text-xs text-slate-400">ปิดอยู่ — ยังไม่แจกให้สมาชิกใหม่</p>}
                 </div>
               </div>
+            </section>
+          )}
+
+          {/* ══════ 🎀 ของแถมฟรีตามจำนวนชิ้น (สั่งครบตามขั้นต่ำ แถมฟรี) ══════ */}
+          {tab === "gift" && (
+            <section className={`${card} p-6 sm:p-8`}>
+              <div className="border-b border-slate-100 pb-5">
+                <h2 className="font-display text-lg font-semibold text-slate-900">🎀 ของแถมฟรีตามจำนวนชิ้น</h2>
+                <p className={`mt-1 text-sm ${muted}`}>
+                  เช่น &quot;สั่งพวงกุญแจ/สแตนดี้/Griptok/อะคริลิค ครบ 30 ชิ้น รับแพ็คเกจรองหลังฟรี · ทุก 30 ชิ้นถัดไปได้เพิ่มอีก 1&quot;
+                  — ลูกค้าเห็นป้ายในตะกร้าทันที และของแถมจะขึ้นบนใบงานให้ฝ่ายแพ็คด้วย
+                </p>
+              </div>
+
+              <div className="mt-6 space-y-5">
+                {gifts.length === 0 && (
+                  <p className={`rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm ${faint}`}>
+                    ยังไม่มีโปรของแถม — กด &quot;+ เพิ่มโปรของแถม&quot; ด้านล่าง
+                  </p>
+                )}
+
+                {gifts.map((g, i) => {
+                  const on = g.active !== false;
+                  const minQty = Math.max(1, Number(g.minQty) || 1);
+                  const step = Math.max(1, Number(g.step) || minQty);
+                  const per = Math.max(1, Number(g.giveQty) || 1);
+                  const picked = prodList.filter((p) => (g.productIds ?? []).includes(p.id));
+                  return (
+                    <div
+                      key={g.id}
+                      className={`rounded-2xl border p-5 transition ${on ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50 opacity-70"}`}
+                    >
+                      {/* หัวการ์ด: รูป + ชื่อ + สวิตช์ + ลบ */}
+                      <div className="flex items-start gap-3">
+                        <CatImage value={g.image} onChange={(v) => patchGift(i, { image: v })} folder="gifts" />
+                        <div className="min-w-0 flex-1">
+                          <input
+                            value={g.name}
+                            onChange={(e) => patchGift(i, { name: e.target.value })}
+                            placeholder="ชื่อของแถม เช่น แพ็คเกจรองหลัง"
+                            className={`${inputCls} font-semibold`}
+                          />
+                          <input
+                            value={g.note ?? ""}
+                            onChange={(e) => patchGift(i, { note: e.target.value })}
+                            placeholder="คำอธิบายสั้น ๆ (ไม่ใส่ก็ได้) เช่น ซองใส + การ์ดรองหลังลายร้าน"
+                            className={`${inputCls} mt-2 text-xs`}
+                          />
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-2">
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={on}
+                            onClick={() => patchGift(i, { active: !on })}
+                            className={`flex items-center gap-2 rounded-full py-1 pl-3 pr-1 text-xs font-bold transition ${
+                              on ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"
+                            }`}
+                          >
+                            {on ? "เปิดอยู่" : "ปิดอยู่"}
+                            <span className={`relative h-6 w-10 rounded-full transition ${on ? "bg-emerald-500" : "bg-slate-300"}`}>
+                              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${on ? "left-[18px]" : "left-0.5"}`} />
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeGift(i)}
+                            className="rounded-lg px-2 py-1 text-xs font-semibold text-rose-500 transition hover:bg-rose-50"
+                          >
+                            ลบโปรนี้
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* เกณฑ์ */}
+                      <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-5">
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-semibold text-slate-700">สั่งครบกี่ชิ้น</span>
+                          <input
+                            type="number"
+                            min={1}
+                            value={g.minQty ?? 1}
+                            onChange={(e) => patchGift(i, { minQty: Number(e.target.value) })}
+                            className={`${inputCls} text-right tabular-nums`}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-semibold text-slate-700">ทุก ๆ กี่ชิ้นได้เพิ่ม</span>
+                          <input
+                            type="number"
+                            min={0}
+                            value={g.step ?? 0}
+                            onChange={(e) => patchGift(i, { step: Number(e.target.value) })}
+                            className={`${inputCls} text-right tabular-nums`}
+                          />
+                          <span className="mt-1 block text-[11px] text-slate-400">ว่าง/0 = เท่ากับขั้นต่ำ</span>
+                        </label>
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-semibold text-slate-700">ได้ครั้งละกี่ชิ้น</span>
+                          <input
+                            type="number"
+                            min={1}
+                            value={g.giveQty ?? 1}
+                            onChange={(e) => patchGift(i, { giveQty: Number(e.target.value) })}
+                            className={`${inputCls} text-right tabular-nums`}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-semibold text-slate-700">แถมสูงสุด/ออเดอร์</span>
+                          <input
+                            type="number"
+                            min={0}
+                            value={g.maxQty ?? 0}
+                            onChange={(e) => patchGift(i, { maxQty: Number(e.target.value) })}
+                            className={`${inputCls} text-right tabular-nums`}
+                          />
+                          <span className="mt-1 block text-[11px] text-slate-400">0 = ไม่จำกัด</span>
+                        </label>
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-semibold text-slate-700">มูลค่า/ชุด (฿)</span>
+                          <input
+                            type="number"
+                            min={0}
+                            value={g.value ?? 0}
+                            onChange={(e) => patchGift(i, { value: Number(e.target.value) })}
+                            className={`${inputCls} text-right tabular-nums`}
+                          />
+                          <span className="mt-1 block text-[11px] text-slate-400">โชว์ราคาขีดฆ่า</span>
+                        </label>
+                      </div>
+
+                      {/* หมวดที่นับเข้าโปร */}
+                      <div className="mt-5">
+                        <span className="mb-2 block text-xs font-semibold text-slate-700">หมวดสินค้าที่นับเข้าโปร</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {cats.map((c) => {
+                            const sel = (g.categories ?? []).includes(c.id);
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() =>
+                                  patchGift(i, {
+                                    categories: sel
+                                      ? (g.categories ?? []).filter((x) => x !== c.id)
+                                      : [...(g.categories ?? []), c.id],
+                                  })
+                                }
+                                className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                                  sel ? "bg-amber-500 text-white shadow-sm" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                }`}
+                              >
+                                {c.emoji} {c.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* สินค้าเฉพาะตัว */}
+                      <div className="mt-5">
+                        <span className="mb-2 block text-xs font-semibold text-slate-700">
+                          เพิ่มสินค้าเฉพาะตัว <span className="font-normal text-slate-400">(สำหรับตัวที่อยู่ปนหมวดอื่น เช่น Griptok)</span>
+                        </span>
+                        {picked.length > 0 && (
+                          <div className="mb-2 flex flex-wrap gap-1.5">
+                            {picked.map((p) => (
+                              <span key={p.id} className="flex items-center gap-1 rounded-full bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 ring-1 ring-sky-100">
+                                {p.name}
+                                <button
+                                  type="button"
+                                  onClick={() => patchGift(i, { productIds: (g.productIds ?? []).filter((x) => x !== p.id) })}
+                                  className="text-sky-400 hover:text-rose-500"
+                                >
+                                  ✕
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <ProductPicker
+                          list={prodList}
+                          exclude={g.productIds ?? []}
+                          onPick={(id) => patchGift(i, { productIds: [...(g.productIds ?? []), id] })}
+                          inputCls={inputCls}
+                        />
+                      </div>
+
+                      {/* ช่วงเวลาโปร + สรุปกติกา */}
+                      <div className="mt-5 grid gap-4 sm:grid-cols-[10rem_10rem_minmax(0,1fr)] sm:items-end">
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-semibold text-slate-700">เริ่มวันที่</span>
+                          <input type="date" value={g.from ?? ""} onChange={(e) => patchGift(i, { from: e.target.value })} className={inputCls} />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-semibold text-slate-700">ถึงวันที่</span>
+                          <input type="date" value={g.to ?? ""} onChange={(e) => patchGift(i, { to: e.target.value })} className={inputCls} />
+                        </label>
+                        <p className="rounded-xl bg-emerald-50 px-3 py-2.5 text-xs leading-relaxed text-emerald-900 ring-1 ring-emerald-100">
+                          🎁 สั่งครบ <strong>{minQty}</strong> ชิ้น ได้ <strong>{g.name?.trim() || "ของแถม"} ×{per}</strong>
+                          {" · "}ทุก ๆ {step} ชิ้นถัดไปได้เพิ่มอีก {per}
+                          {Number(g.maxQty) > 0 ? ` · สูงสุด ${g.maxQty} ชิ้น/ออเดอร์` : ""}
+                          {(g.categories ?? []).length + (g.productIds ?? []).length === 0 && (
+                            <span className="mt-1 block font-semibold text-amber-700">⚠️ ยังไม่เลือกหมวด/สินค้า = นับสินค้าทั้งร้าน</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  onClick={addGift}
+                  className="w-full rounded-2xl border border-dashed border-slate-300 py-3 text-sm font-semibold text-slate-500 transition hover:border-amber-400 hover:text-amber-600"
+                >
+                  + เพิ่มโปรของแถม
+                </button>
+              </div>
+
+              <p className={`mt-5 text-sm ${faint}`}>
+                💡 ระบบคิดของแถมใหม่ฝั่งเซิร์ฟเวอร์ตอนสร้างออเดอร์เสมอ — แก้โปรตรงนี้แล้วมีผลกับออเดอร์ใหม่ทันที (ออเดอร์เก่าไม่เปลี่ยน)
+              </p>
+            </section>
+          )}
+
+          {/* ══════ 📦 ค่ากล่อง/ค่าแพ็คอัตโนมัติ (เช่น งานโปสเตอร์/ขนาด A3 +30) ══════ */}
+          {tab === "box" && (
+            <section className={`${card} p-6 sm:p-8`}>
+              <div className="border-b border-slate-100 pb-5">
+                <h2 className="font-display text-lg font-semibold text-slate-900">📦 ค่ากล่อง/ค่าแพ็คอัตโนมัติ</h2>
+                <p className={`mt-1 text-sm ${muted}`}>
+                  เช่น &quot;งานโปสเตอร์ หรือ งานที่ลูกค้าสั่งขนาด A3 บวกค่ากล่องกันกระแทก 30 บาท&quot; — ระบบบวกให้เอง
+                  <strong> ครั้งเดียวต่อออเดอร์</strong> (หลายรายการเข้าเงื่อนไขก็ใบเดียว ส่งกล่องเดียวกัน)
+                  โดยห้อยป้ายไว้ใต้รายการแรกที่เข้าเงื่อนไขในตะกร้า รายการอื่นขึ้นป้าย &quot;ใช้กล่องเดียวกัน ไม่คิดเพิ่ม&quot;
+                </p>
+              </div>
+
+              <div className="mt-6 space-y-5">
+                {boxFees.length === 0 && (
+                  <p className={`rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm ${faint}`}>
+                    ยังไม่มีกติกาค่ากล่อง — กด &quot;+ เพิ่มกติกา&quot; ด้านล่าง
+                  </p>
+                )}
+
+                {boxFees.map((f, i) => {
+                  const on = f.active !== false;
+                  const picked = prodList.filter((p) => (f.productIds ?? []).includes(p.id));
+                  const per = Math.max(0, Number(f.perQty) || 0);
+                  return (
+                    <div
+                      key={f.id}
+                      className={`rounded-2xl border p-5 transition ${on ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50 opacity-70"}`}
+                    >
+                      {/* หัวการ์ด: ชื่อ + จำนวนเงิน + สวิตช์ + ลบ */}
+                      <div className="flex items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <input
+                            value={f.name}
+                            onChange={(e) => patchBox(i, { name: e.target.value })}
+                            placeholder="ชื่อที่ลูกค้าเห็น เช่น ค่ากล่องกันกระแทก"
+                            className={`${inputCls} font-semibold`}
+                          />
+                          <input
+                            value={f.note ?? ""}
+                            onChange={(e) => patchBox(i, { note: e.target.value })}
+                            placeholder="คำอธิบายสั้น ๆ (ไม่ใส่ก็ได้) เช่น งานขนาด A3 ส่งในกล่องแข็ง กันหักกันยับ"
+                            className={`${inputCls} mt-2 text-xs`}
+                          />
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-2">
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={on}
+                            onClick={() => patchBox(i, { active: !on })}
+                            className={`flex items-center gap-2 rounded-full py-1 pl-3 pr-1 text-xs font-bold transition ${
+                              on ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"
+                            }`}
+                          >
+                            {on ? "เปิดอยู่" : "ปิดอยู่"}
+                            <span className={`relative h-6 w-10 rounded-full transition ${on ? "bg-emerald-500" : "bg-slate-300"}`}>
+                              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${on ? "left-[18px]" : "left-0.5"}`} />
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeBox(i)}
+                            className="rounded-lg px-2 py-1 text-xs font-semibold text-rose-500 transition hover:bg-rose-50"
+                          >
+                            ลบกติกานี้
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* จำนวนเงิน */}
+                      <div className="mt-5 grid gap-4 sm:grid-cols-3">
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-semibold text-slate-700">บวกเพิ่ม (บาท/กล่อง)</span>
+                          <input
+                            type="number"
+                            min={0}
+                            value={f.amount ?? 0}
+                            onChange={(e) => patchBox(i, { amount: Number(e.target.value) })}
+                            className={`${inputCls} text-right tabular-nums`}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-semibold text-slate-700">1 กล่องใส่ได้กี่ชิ้น</span>
+                          <input
+                            type="number"
+                            min={0}
+                            value={f.perQty ?? 0}
+                            onChange={(e) => patchBox(i, { perQty: Number(e.target.value) })}
+                            className={`${inputCls} text-right tabular-nums`}
+                          />
+                          <span className="mt-1 block text-[11px] text-slate-400">ว่าง/0 = กล่องเดียวต่อออเดอร์ ไม่ว่าจะสั่งกี่ชิ้นกี่รายการ</span>
+                        </label>
+                        <p className="rounded-xl bg-sky-50 px-3 py-2.5 text-xs leading-relaxed text-sky-900 ring-1 ring-sky-100 sm:self-end">
+                          {per > 0
+                            ? `นับจำนวนรวมของทุกรายการที่เข้าเงื่อนไข — เกิน ${per} ชิ้น คิดกล่องเพิ่ม (ปัดขึ้น) เช่น รวม ${per * 2 + 1} ชิ้น = 3 กล่อง`
+                            : "คิดค่ากล่องใบเดียวต่อออเดอร์ — หลายรายการเข้าเงื่อนไขก็ไม่บวกซ้ำ"}
+                        </p>
+                      </div>
+
+                      {/* เงื่อนไข: หมวด/สินค้า */}
+                      <div className="mt-5">
+                        <span className="mb-2 block text-xs font-semibold text-slate-700">หมวดสินค้าที่เข้าเงื่อนไข</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {cats.map((c) => {
+                            const sel = (f.categories ?? []).includes(c.id);
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() =>
+                                  patchBox(i, {
+                                    categories: sel
+                                      ? (f.categories ?? []).filter((x) => x !== c.id)
+                                      : [...(f.categories ?? []), c.id],
+                                  })
+                                }
+                                className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                                  sel ? "bg-amber-500 text-white shadow-sm" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                }`}
+                              >
+                                {c.emoji} {c.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="mt-5">
+                        <span className="mb-2 block text-xs font-semibold text-slate-700">
+                          สินค้าเฉพาะตัว <span className="font-normal text-slate-400">(เช่น POSTER ที่อยู่ปนหมวดป้าย)</span>
+                        </span>
+                        {picked.length > 0 && (
+                          <div className="mb-2 flex flex-wrap gap-1.5">
+                            {picked.map((p) => (
+                              <span key={p.id} className="flex items-center gap-1 rounded-full bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 ring-1 ring-sky-100">
+                                {p.name}
+                                <button
+                                  type="button"
+                                  onClick={() => patchBox(i, { productIds: (f.productIds ?? []).filter((x) => x !== p.id) })}
+                                  className="text-sky-400 hover:text-rose-500"
+                                >
+                                  ✕
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <ProductPicker
+                          list={prodList}
+                          exclude={f.productIds ?? []}
+                          onPick={(id) => patchBox(i, { productIds: [...(f.productIds ?? []), id] })}
+                          inputCls={inputCls}
+                        />
+                      </div>
+
+                      {/* เงื่อนไขจากตัวเลือกที่ลูกค้าเลือก (เช่น ขนาด = A3) */}
+                      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-semibold text-slate-700">คำในตัวเลือกที่เข้าเงื่อนไข</span>
+                          <input
+                            value={(f.keywords ?? []).join(", ")}
+                            onChange={(e) => patchBox(i, { keywords: e.target.value.split(",").map((x) => x.trim()) })}
+                            placeholder="เช่น A3, A2 (คั่นด้วยจุลภาค)"
+                            className={inputCls}
+                          />
+                          <span className="mt-1 block text-[11px] text-slate-400">ลูกค้าเลือกตัวเลือกที่มีคำนี้ = โดนค่ากล่อง · เว้นว่าง = ไม่ดูตัวเลือก</span>
+                        </label>
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-semibold text-slate-700">ดูเฉพาะกลุ่มตัวเลือกชื่อ</span>
+                          <input
+                            value={(f.optionGroups ?? []).join(", ")}
+                            onChange={(e) => patchBox(i, { optionGroups: e.target.value.split(",").map((x) => x.trim()) })}
+                            placeholder="เช่น ขนาด, ขนาดกระดาษ, แนวกระดาษ"
+                            className={inputCls}
+                          />
+                          <span className="mt-1 block text-[11px] text-slate-400">
+                            ⚠️ ควรระบุ — เว้นว่างแล้วระบบอ่านทุกกลุ่ม จะชนพวก &quot;สีเคส A3 ดำแข็ง&quot; / &quot;ขนาดสกรีนไม่เกิน A3&quot; ที่ไม่ควรคิดค่ากล่อง
+                          </span>
+                        </label>
+                      </div>
+
+                      <label className="mt-4 flex cursor-pointer items-start gap-2.5 text-xs text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={!!f.matchAll}
+                          onChange={(e) => patchBox(i, { matchAll: e.target.checked || undefined })}
+                          className="mt-0.5 h-4 w-4 accent-amber-500"
+                        />
+                        <span>
+                          ต้องเข้าเงื่อนไข<strong>ทั้งสองอย่าง</strong> (หมวด/สินค้า และ คำในตัวเลือก) ถึงคิดค่ากล่อง
+                          <span className="block text-[11px] text-slate-400">ไม่ติ๊ก = เข้าอย่างใดอย่างหนึ่งก็คิด (เช่น โปสเตอร์ทุกขนาด หรือ งาน A3 ของสินค้าอื่น)</span>
+                        </span>
+                      </label>
+                    </div>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  onClick={addBox}
+                  className="w-full rounded-2xl border border-dashed border-slate-300 py-3 text-sm font-semibold text-slate-500 transition hover:border-amber-400 hover:text-amber-600"
+                >
+                  + เพิ่มกติกา
+                </button>
+              </div>
+
+              <p className={`mt-5 text-sm ${faint}`}>
+                💡 ค่ากล่องขึ้นเป็นแถบห้อยใต้รายการในตะกร้าทันที และเข้าออเดอร์เป็นบรรทัด &quot;📦 ค่ากล่อง&quot; ของตัวเอง —
+                ลบกติกาออกจนหมดแล้วกดบันทึก = ปิดระบบนี้ (ไม่กลับไปใช้ค่าเริ่มต้น)
+              </p>
             </section>
           )}
 

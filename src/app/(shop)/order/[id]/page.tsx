@@ -934,6 +934,9 @@ export default function CustomerOrderPage() {
         <div className="space-y-4">
           {order.items.map((it, i) => {
             const proofs = proofsOf(it);
+            /* บรรทัดค่าธรรมเนียมที่ระบบใส่ให้ (#boxfee ค่ากล่อง · #designfee ค่า Add on)
+               ไม่ใช่งานพิมพ์ — ไม่ต้องโชว์ส่วน "แบบงาน/รอแบบจากร้าน" ให้ลูกค้างง */
+            const feeLine = it.productId.includes("#");
             return (
               <div
                 key={`${it.productId}-${i}`}
@@ -1016,6 +1019,7 @@ export default function CustomerOrderPage() {
                   </span>
                 </div>
 
+                {!feeLine && (<>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <span className="ord-title text-[.82rem]">
                     🖼 แบบงาน
@@ -1185,6 +1189,7 @@ export default function CustomerOrderPage() {
                       </button>
                     </div>
                   ))}
+                </>)}
               </div>
             );
           })}
@@ -1203,6 +1208,12 @@ export default function CustomerOrderPage() {
               <span className="t-soft">ค่าจัดส่ง ({order.shippingLabel || order.shipping})</span>
               <span>{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
             </div>
+            {(order.gifts ?? []).map((g) => (
+              <div key={g.promoId} className="mt-1.5 flex justify-between text-sm font-semibold t-ok">
+                <span>🎁 ของแถม — {g.name} ×{g.qty}</span>
+                <span>ฟรี</span>
+              </div>
+            ))}
             {order.discount && order.discount.amount > 0 && (
               <div className="mt-1.5 flex justify-between text-sm font-semibold t-ok">
                 <span>{order.discount.label}</span>
