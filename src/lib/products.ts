@@ -453,7 +453,12 @@ export function parseInputValue(opt: ProductOption, stored: string | undefined):
  * ตรวจค่าที่กรอกในกลุ่มนี้ — คืนข้อความบอกปัญหา หรือ null ถ้าผ่าน
  * ใช้ทั้งตอนกดสั่ง (บล็อก) และตอนแสดงคำเตือนใต้ช่อง จะได้เกณฑ์เดียวกันเสมอ
  */
-export function inputError(opt: ProductOption, stored: string | undefined): string | null {
+export function inputError(
+  opt: ProductOption,
+  stored: string | undefined,
+  /** ตัวเลือกที่เลือกอยู่ — ส่งมาด้วยถ้าเพดานของช่องนี้ขึ้นกับตัวเลือกอื่น (ดู inputMaxOf) */
+  selections?: Record<string, string>
+): string | null {
   const cfg = opt.input;
   if (!cfg) return null;
   const raw = parseInputValue(opt, stored);
@@ -467,7 +472,8 @@ export function inputError(opt: ProductOption, stored: string | undefined): stri
     if (cfg.integer && !Number.isInteger(n)) return `${name} ต้องเป็นจำนวนเต็ม (ไม่รับทศนิยม)`;
     const u = cfg.unit ? ` ${cfg.unit}` : "";
     if (cfg.min != null && n < cfg.min) return `${name} ต้องไม่ต่ำกว่า ${cfg.min}${u}`;
-    if (cfg.max != null && n > cfg.max) return `${name} ต้องไม่เกิน ${cfg.max}${u}`;
+    const max = inputMaxOf(opt, selections);
+    if (max != null && n > max) return `${name} ต้องไม่เกิน ${max}${u}`;
     return null;
   }
   const max = cfg.maxLength ?? INPUT_MAX_LEN;
@@ -708,12 +714,18 @@ export interface InputFee {
    * เรทที่ต่างกันตามตัวเลือกของกลุ่มอื่น — ใช้ข้อแรกที่ตรง (เช่น ซับลิเมชั่น 15 · UV 25)
    * ไม่ระบุ perUnit = ใช้ perUnit กลาง (ข้อที่มีไว้ตั้งแค่โควตาฟรีตามขนาด ก็ไม่ต้องซ้ำเรท)
    */
-  rates?: { when: { label: string; choices: string[] }; perUnit?: number; free?: number }[];
+  rates?: { when: { label: string; choices: string[] }; perUnit?: number; free?: number; max?: number }[];
   /**
    * 🎁 โควตาที่รวมในราคา — คิดเงินเฉพาะ "ส่วนที่เกิน" จากนี้ (จุดไดคัท: A5 ฟรี 50 จุดแรก)
    * ลำดับหา: rates ข้อที่ตรงและตั้ง free ไว้ → freeBySize (ขนาดที่กรอกเอง) → free กลาง → 0
    */
   free?: number;
+  /**
+   * 🚧 เพดานที่กรอกได้ของขั้นนั้น ๆ — ตารางร้านมีทั้ง "ฟรีถึงเท่าไหร่" (free) และ "รับได้มากสุดเท่าไหร่"
+   * เช่น จุดไดคัทชิ้น A7: ฟรี 12 จุด · เกินจากนั้นจุดละ ฿0.50 · แต่รับไม่เกิน 20 จุด
+   * ลำดับหาเหมือน free (rates ข้อที่ตรง → freeBySize → max กลาง) · ไม่ตั้งที่ไหนเลย = ใช้ input.max ตามเดิม
+   */
+  max?: number;
   /**
    * 🎁 โควตาตามขนาดที่ลูกค้ากรอกเอง (คู่ช่องกว้าง×สูง) — ยังกรอกไม่ครบ = ใช้ free กลาง
    * เทียบได้ 2 แบบตามที่ร้านคิดจริง:
@@ -725,8 +737,8 @@ export interface InputFee {
     widthLabel: string;
     heightLabel: string;
     by?: "area" | "longest";
-    /** area ใช้ minArea · longest ใช้ upTo (ไม่ใส่ = ข้อสุดท้ายรับทุกขนาดที่เหลือ) */
-    tiers: { minArea?: number; upTo?: number; free: number }[];
+    /** area ใช้ minArea · longest ใช้ upTo (ไม่ใส่ = ข้อสุดท้ายรับทุกขนาดที่เหลือ) · max = เพดานของขั้นนั้น */
+    tiers: { minArea?: number; upTo?: number; free: number; max?: number }[];
   };
 }
 
@@ -763,6 +775,39 @@ export function inputFeeQuotaOf(cfg: InputFee, selections: Record<string, string
     }
   }
   return cfg.free ?? 0;
+}
+
+/**
+ * 🚧 เพดานที่กรอกได้ตอนนี้ (null = ไม่ได้ตั้งไว้ ใช้ input.max ตามเดิม)
+ * ไล่ลำดับเดียวกับโควตาฟรี: rates ข้อที่ตรง → ขั้นตามขนาดที่กรอกเอง → max กลาง
+ * แยกจาก inputFeeQuotaOf เพราะบางขั้นตั้งแค่โควตาไม่ได้ตั้งเพดาน (ยังกรอกเกินได้ไม่จำกัด)
+ */
+export function inputFeeMaxOf(cfg: InputFee, selections: Record<string, string>): number | null {
+  for (const r of cfg.rates ?? []) {
+    if (r.max != null && valueMatchesAny(selections[r.when.label], r.when.choices)) return r.max;
+  }
+  const bs = cfg.freeBySize;
+  if (bs) {
+    const num = (v: string | undefined) => Number((v ?? "").match(/\d+(\.\d+)?/)?.[0]);
+    const w = num(selections[bs.widthLabel]);
+    const h = num(selections[bs.heightLabel]);
+    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+      if (bs.by === "longest") {
+        const longest = Math.max(w, h);
+        for (const t of bs.tiers) if (t.upTo == null || longest <= t.upTo) return t.max ?? cfg.max ?? null;
+      } else {
+        const area = w * h;
+        for (const t of bs.tiers) if (t.minArea == null || area >= t.minArea) return t.max ?? cfg.max ?? null;
+      }
+    }
+  }
+  return cfg.max ?? null;
+}
+
+/** 🚧 เพดานที่ใช้จริงของช่องกรอกนี้ — ขั้นตามตัวเลือกที่เลือกอยู่ชนะ input.max ที่ตั้งไว้กลาง ๆ */
+export function inputMaxOf(opt: ProductOption, selections?: Record<string, string>): number | undefined {
+  const byFee = opt.inputFee && selections ? inputFeeMaxOf(opt.inputFee, selections) : null;
+  return byFee ?? opt.input?.max;
 }
 
 /**

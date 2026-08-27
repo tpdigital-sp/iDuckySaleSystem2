@@ -2,7 +2,8 @@
  * ป้ายโควตาจุดไดคัทบนตัวเลือก "ขนาดตัด" ของสติ๊กเกอร์ 8 ตัว — ผู้ใช้สั่ง 26 ส.ค. 69
  *
  * อ่านโควตาจริงจาก inputFee.rates ของกลุ่ม "จำนวนจุดไดคัท" ที่คู่กัน (ไม่ hardcode)
- * แล้วต่อท้าย badge ของแต่ละขนาด: "ได้ 16 ชิ้น / แผ่น A3 · ไดคัทได้ 12 จุด"
+ * แล้วต่อท้าย badge ของแต่ละขนาด: "ได้ 16 ชิ้น / แผ่น A3 · ไดคัทฟรี 12 จุด (สูงสุด 20)"
+ * (ตารางร้านมี 2 เลขต่อขนาด — ฟรีถึงเท่าไหร่ กับ รับได้มากสุดเท่าไหร่)
  * + เขียน note ใต้ชื่อกลุ่มขนาดตัดว่าเกินโควตาคิดจุดละเท่าไหร่ (อ่าน perUnit จาก inputFee)
  *   note ประกอบใหม่จากชิ้นส่วน โดยคงของเดิมที่ยังต้องใช้ไว้: กติกาเว้นระยะ 2 มม. และ
  *   ประโยคนำปุ่มดูรูป (กลุ่มที่ตั้ง noteImageSrc) — ส่วนรายการโควตารายขนาดถอดออก เพราะย้ายไปอยู่บนป้ายแล้ว
@@ -44,20 +45,22 @@ for (const id of IDS) {
     const sizeLabel = cfg.rates[0].when.label;
     const size = opts.find((o) => o.label === sizeLabel);
     if (!size) throw new Error(`${id}: ไม่พบกลุ่ม "${sizeLabel}" ที่ ${dot.label} อ้างถึง`);
-    /** โควตาของชื่อขนาดนั้น จาก rates (ข้อแรกที่ครอบชื่อนี้) */
-    const quotaOf = (name) => cfg.rates.find((r) => r.free != null && r.when.choices.includes(name))?.free;
+    /** โควตา/เพดานของชื่อขนาดนั้น จาก rates (ข้อแรกที่ครอบชื่อนี้) */
+    const tierOf = (name) => cfg.rates.find((r) => r.free != null && r.when.choices.includes(name));
 
     for (const c of size.choices || []) {
-      const q = quotaOf(c.name);
+      const t = tierOf(c.name);
       // ล้างส่วนท้ายเดิมก่อน (รันซ้ำ) แล้วต่อใหม่ — ป้ายชิ้น/แผ่นเดิมอยู่ท่อนแรกเสมอ
       const head = (c.badge || "").split(" · ")[0];
-      c.badge = q ? `${head} · ไดคัทได้ ${q} ${unit}` : head || undefined;
+      c.badge = t
+        ? `${head} · ไดคัทฟรี ${t.free} ${unit}${t.max != null ? ` (สูงสุด ${t.max})` : ""}`
+        : head || undefined;
       if (!c.badge) delete c.badge;
     }
     const parts = [];
     if (/2 มม\./.test(size.note || "")) parts.push("วางลายห่างกันอย่างน้อย 2 มม.");
     parts.push(
-      `โควตา${unit}ไดคัทของแต่ละขนาดรวมในราคาแล้ว — เกินจากนั้นคิดเพิ่ม${unit}ละ ${baht(cfg.perUnit)} ต่อ${p.pricing?.unit || "ชิ้น"} (กรอกจำนวน${unit}ในช่องด้านล่าง)`
+      `${unit}ไดคัทฟรีตามขนาดที่เลือก (รวมในราคาแล้ว) — เกินจากนั้นคิดเพิ่ม${unit}ละ ${baht(cfg.perUnit)} ต่อ${p.pricing?.unit || "ชิ้น"} จนถึงจำนวนสูงสุดของขนาดนั้น (กรอกจำนวน${unit}ในช่องด้านล่าง)`
     );
     if (size.noteImageSrc) parts.push(`วิธีนับ${unit}ดูจากรูปตัวอย่าง —`);
     size.note = parts.join(" · ");

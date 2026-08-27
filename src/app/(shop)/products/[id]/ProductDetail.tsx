@@ -24,6 +24,7 @@ import {
   inputFeeOf,
   inputFeeQuotaOf,
   inputFeeRateOf,
+  inputMaxOf,
   customUnitPrice,
   customSizeError,
   longestSizePlan,
@@ -913,7 +914,7 @@ export default function ProductDetail({
         // ช่องกรอกงานสั่งทำ ตรวจเฉพาะตอนติ๊ก "สั่งทำ" (ไม่ติ๊ก = ไม่ต้องกรอก ปุ่มสั่งไม่ควรถูกล็อก)
         // ช่องกรอกของงานปกติ (standardInput เช่น ขนาดไดคัท) แสดงอยู่เมื่อไหร่ต้องกรอกเสมอ
         .filter((o) => o.standardInput === true || madeToOrderOn(effective))
-        .map((o) => inputError(o, effective[o.label]))
+        .map((o) => inputError(o, effective[o.label], effective))
         .filter((e): e is string => !!e),
     [product, effective]
   );
@@ -1929,7 +1930,7 @@ export default function ProductDetail({
                     (() => {
                       const cfg = opt.input;
                       const raw = parseInputValue(opt, effective[opt.label]);
-                      const err = inputError(opt, effective[opt.label]);
+                      const err = inputError(opt, effective[opt.label], effective);
                       // เขียนกลับลง selections พร้อมหน่วย ("2.5" + "ซม." → "2.5 ซม.")
                       const write = (v: string) =>
                         setSelections((sel) => ({ ...sel, [opt.label]: formatInputValue(opt, v) }));
@@ -2034,6 +2035,16 @@ export default function ProductDetail({
                                   {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""} (รวมในราคา) — เกินจากนั้นคิดเพิ่ม
                                   {cfg?.unit ?? "หน่วย"}ละ {formatPrice(rate)} ต่อ
                                   {matrix?.unit ?? "ชิ้น"}
+                                  {(() => {
+                                    // เพดานของขนาดนี้ — บอกไปพร้อมกันจะได้รู้ว่ากรอกได้ถึงแค่ไหน
+                                    const hardMax = inputMaxOf(opt, effective);
+                                    return hardMax != null ? (
+                                      <span className="font-bold text-stone-500">
+                                        {" "}
+                                        · รับไม่เกิน {hardMax.toLocaleString("th-TH")} {cfg?.unit ?? ""}
+                                      </span>
+                                    ) : null;
+                                  })()}
                                 </p>
                               );
                             }
@@ -2062,12 +2073,16 @@ export default function ProductDetail({
                             );
                           })()}
                           {/* เกณฑ์ที่รับได้ — บอกไว้ก่อนพิมพ์ ดีกว่าให้พิมพ์เสร็จแล้วค่อยขึ้นแดง */}
-                          {cfg?.kind === "number" && (cfg.min != null || cfg.max != null) && (
-                            <p className="mt-0.5 text-[11px] text-stone-400">
-                              รับ {cfg.min != null ? cfg.min : "0"}
-                              {cfg.max != null ? `–${cfg.max}` : " ขึ้นไป"} {cfg.unit ?? ""}
-                            </p>
-                          )}
+                          {(() => {
+                            // เพดานของช่องนี้อาจขึ้นกับตัวเลือกอื่น (จุดไดคัท: A7 รับ 20 จุด · A4 รับ 180)
+                            const hardMax = inputMaxOf(opt, effective);
+                            return cfg?.kind === "number" && (cfg.min != null || hardMax != null) ? (
+                              <p className="mt-0.5 text-[11px] text-stone-400">
+                                รับ {cfg.min != null ? cfg.min : "0"}
+                                {hardMax != null ? `–${hardMax}` : " ขึ้นไป"} {cfg.unit ?? ""}
+                              </p>
+                            ) : null;
+                          })()}
                           {/* เตือนเฉพาะตอนพิมพ์ผิด — ยังไม่ได้กรอกไม่ต้องขึ้นแดงใส่หน้าลูกค้าตั้งแต่เปิดหน้า */}
                           {err && (
                             <p
