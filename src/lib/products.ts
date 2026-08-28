@@ -665,6 +665,13 @@ export interface SizeFee {
    * กันอ่านค่าค้างของช่องที่ถูกซ่อน) — ไม่ตรง = ใช้ defaultLongest แทน · ไม่ตั้ง = อ่านช่องกรอกเสมอ
    */
   when?: { label: string; choices: string[] };
+  /**
+   * 🔒 คิดค่าบริการนี้ "เฉพาะเมื่อ" ค่าของกลุ่มที่ระบุตรงเงื่อนไข — ไม่ตรง = ไม่คิดเลย (ทั้งสองทาง
+   * ทั้งอ่านช่องกรอกและ defaultLongest) · ต่างจาก when ที่แค่สลับว่าจะอ่านขนาดจากไหน
+   * ใช้กับค่าบริการที่ "ขึ้นกับตัวเลือกกลุ่มอื่น" เช่น ค่าตัดขอบของ **ตัดเต็มหลา** ที่คิดเฉพาะตอน
+   * เลือกเย็บขอบ/โพ้งขอบ (ต้องเจียนขอบผ้าให้ก่อน) — เลือกไม่เย็บขอบ = รับผ้าเต็มผืน ไม่มีค่าตัด
+   */
+  onlyWhen?: { label: string; choices: string[] };
   /** ชื่อกลุ่มช่องกรอก ด้านกว้าง / ด้านยาว (display "input") */
   widthLabel: string;
   heightLabel: string;
@@ -693,6 +700,8 @@ export interface SizeFeeBreakdown {
 export function sizeFeeBreakdownOf(cfg: SizeFee, selections: Record<string, string>): SizeFeeBreakdown | null {
   const tierFee = (longest: number) =>
     (cfg.tiers.find((t) => longest <= t.upTo) ?? cfg.tiers[cfg.tiers.length - 1])?.fee ?? 0;
+  // 🔒 ประตูแรก: กลุ่มอื่นยังไม่เข้าเงื่อนไข = ไม่คิดค่าบริการนี้เลย (ดู SizeFee.onlyWhen)
+  if (cfg.onlyWhen && !valueMatchesAny(selections[cfg.onlyWhen.label], cfg.onlyWhen.choices)) return null;
   if (cfg.when && !valueMatchesAny(selections[cfg.when.label], cfg.when.choices)) {
     if (!cfg.defaultLongest) return null;
     const fee = tierFee(cfg.defaultLongest);
