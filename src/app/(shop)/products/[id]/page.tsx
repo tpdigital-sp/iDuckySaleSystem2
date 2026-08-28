@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { PRODUCTS } from "@/lib/products";
-import { getProductServer, getProductTemplates } from "@/lib/products-server";
+import { getProductServer, getProductTemplates, getRelatedProducts } from "@/lib/products-server";
 import { productAutoSeo } from "@/lib/auto-seo";
 import { currentActor } from "@/lib/server/require-perm";
 import { fetchProductReviewStats } from "@/lib/server/reviews-db";
@@ -62,9 +62,17 @@ export default async function ProductPage({
   const templates = await getProductTemplates(product.templateIds ?? []);
   // ⭐ สรุปคะแนนรีวิวจริง — ดึงฝั่งเซิร์ฟเวอร์เพื่อให้ aggregateRating ติดไปกับ JSON-LD ตั้งแต่ HTML แรก (Google เห็นดาว)
   const reviewStats = await fetchProductReviewStats(product.id);
+  // 🧩 "สินค้าอื่นในหมวด…" — ดึงของจริงจากฐานข้อมูล (การ์ดจะได้ขึ้นรูปสินค้า ไม่ใช่อีโมจิของชุดตัวอย่าง)
+  const related = await getRelatedProducts(product.category, product.id);
   return (
     <>
-      <ProductDetail product={product} templates={templates} preview={!!staff && !!product.hidden} reviewStats={reviewStats} />
+      <ProductDetail
+        product={product}
+        templates={templates}
+        preview={!!staff && !!product.hidden}
+        reviewStats={reviewStats}
+        related={related}
+      />
       <ProductReviews productId={product.id} />
     </>
   );

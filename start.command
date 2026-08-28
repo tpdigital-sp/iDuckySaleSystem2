@@ -1,7 +1,7 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────
 # iDucky Prints Studio — ดับเบิลคลิกเพื่อเปิดเว็บอัตโนมัติ
-# สตาร์ท dev server (พอร์ต 3005 · เปลี่ยนได้ด้วย PORT=xxxx ./start.command) แล้วเปิดเบราว์เซอร์ให้เอง
+# สตาร์ท dev server (พอร์ต 3006 · เปลี่ยนได้ด้วย PORT=xxxx ./start.command) แล้วเปิดเบราว์เซอร์ให้เอง
 # ปิดเซิร์ฟเวอร์: กด Ctrl+C หรือปิดหน้าต่าง Terminal นี้
 #
 # กันหน้าต่างปิดเอง:
@@ -35,7 +35,7 @@ trap on_interrupt INT TERM
 NODE_BIN=$(ls -d "$HOME"/.local/node-*/bin 2>/dev/null | head -1)
 [ -n "$NODE_BIN" ] && export PATH="$NODE_BIN:$PATH"
 
-PORT="${PORT:-3005}"
+PORT="${PORT:-3006}"
 URL="http://localhost:$PORT"
 
 echo "🦆 iDucky Prints Studio"

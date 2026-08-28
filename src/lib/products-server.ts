@@ -60,3 +60,63 @@ export const getProductTemplates = cache(async (ids: string[]): Promise<DesignTe
   const picked = all.filter((t) => ids.includes(t.id) && templateReady(t));
   return sortTemplates(picked);
 });
+
+/**
+ * สินค้าอื่นในหมวดเดียวกัน (ท้ายหน้าสินค้า)
+ * เดิมหยิบจาก static PRODUCTS ในโค้ด → ได้สินค้าตัวอย่างที่ไม่มีรูป การ์ดเลยขึ้นเป็นอีโมจิ
+ * ตอนนี้ดึงของจริงจากฐานข้อมูล (เฉพาะฟิลด์ที่การ์ดใช้ แบบเดียวกับหน้ารายการ)
+ * — ตัดสินค้าที่ปิดการมองเห็น/แถวตั้งค่าร้าน (__…) ออก
+ * — เอาตัวที่ "มีรูปจริง" ขึ้นก่อน แล้วค่อยเติมด้วยตัวที่ยังไม่มีรูปให้ครบ
+ */
+export const getRelatedProducts = cache(
+  async (category: string, excludeId: string, limit = 4): Promise<Product[]> => {
+    const sb = serverClient();
+    if (!sb) return [];
+    const { data, error } = await sb
+      .from("products")
+      .select(
+        "id,name,category,price,sold,featured,badge,sort,slug:data->>slug,hidden:data->hidden," +
+          "emoji:data->>emoji,gradient:data->>gradient,imageSrc:data->>imageSrc," +
+          "rating:data->rating,oldPrice:data->oldPrice,priceMin:data->priceMin,priceMax:data->priceMax," +
+          "quoteOption:data->quoteOption"
+      )
+      .eq("category", category)
+      .neq("id", excludeId)
+      .order("sort", { ascending: true })
+      .limit(60);
+    if (error || !data) return [];
+    const rows = (data as unknown as Record<string, unknown>[]).filter(
+      (r) => !String(r.id).startsWith("__") && !r.hidden
+    );
+    const list = rows.map(
+      (r) =>
+        ({
+          id: r.id,
+          slug: (r.slug as string | null) ?? undefined,
+          name: r.name,
+          category: r.category,
+          price: r.price ?? 0,
+          sold: r.sold ?? 0,
+          featured: r.featured ?? false,
+          badge: (r.badge as string | null) ?? undefined,
+          emoji: (r.emoji as string | null) ?? "🦆",
+          gradient: (r.gradient as string | null) ?? "from-amber-100 to-amber-200",
+          imageSrc: (r.imageSrc as string | null) ?? undefined,
+          rating: r.rating ?? 5,
+          oldPrice: (r.oldPrice as number | null) ?? undefined,
+          priceMin: (r.priceMin as number | null) ?? undefined,
+          priceMax: (r.priceMax as number | null) ?? undefined,
+          quoteOption: (r.quoteOption as boolean | null) ?? undefined,
+          // ฟิลด์หนักที่การ์ดไม่ใช้ (priceRange อ่าน priceMin/priceMax ที่บันทึกไว้แล้ว)
+          options: [],
+          rules: [],
+          images: [],
+          body: [],
+          description: "",
+        }) as unknown as Product
+    );
+    const withImage = list.filter((p) => p.imageSrc);
+    const noImage = list.filter((p) => !p.imageSrc);
+    return [...withImage, ...noImage].slice(0, limit);
+  }
+);

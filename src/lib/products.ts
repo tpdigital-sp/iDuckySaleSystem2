@@ -513,6 +513,14 @@ export interface SheetYield {
    * ⚠️ เลขนี้ต้องตรงกับที่ร้านคิดเงินจริง อย่าคำนวณจากพื้นที่เอง (ปัดเศษไม่เหมือนกัน)
    */
   unitSheets?: Record<string, number>;
+  /**
+   * 📋 ตาราง "จำนวนชิ้นต่อแผ่น" ที่ร้านกำหนดเอง — มีตาราง = ใช้เลขในตารางแทนการคำนวณจากการจัดวาง
+   * เทียบด้วย "ด้านที่ยาวที่สุด" (หน่วยเดียวกับที่ลูกค้ากรอก) กับ upTo · เรียงน้อย→มาก ใช้ข้อแรกที่ไม่เกิน
+   * ข้อสุดท้ายไม่ใส่ upTo = รับทุกขนาดที่เหลือ · ไม่มีข้อไหนตรงเลย = กลับไปคำนวณจากการจัดวางตามเดิม
+   * เช่น สติ๊กเกอร์วาชิ ไดคัท 100%: ≤2 ซม. 140 ชิ้น · ≤3 ซม. 70 · ≤4 ซม. 35 …
+   * (เลขที่ร้านใช้จริง เผื่อพื้นที่ mark + ระยะจับชิ้นไว้แล้ว จึงน้อยกว่าที่คำนวณจากการวางชิ้นตรง ๆ)
+   */
+  perSheetTiers?: { upTo?: number; per: number }[];
 }
 
 /**
@@ -635,7 +643,15 @@ export function sheetYieldCount(
   const w = Number(parseInputValue(pair, selections[pair.label]));
   const h = Number(parseInputValue(opt, selections[opt.label]));
   if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
-  return packSingleSize(w, h + (cfg.addH ?? 0), cfg.sheetW, cfg.sheetH, cfg.gap ?? 0);
+  const itemH = h + (cfg.addH ?? 0);
+  /*
+   * ร้านตั้งตารางจำนวนต่อแผ่นเองไว้ (perSheetTiers) = ใช้เลขนั้น ไม่คำนวณจากการจัดวาง
+   * ตารางร้านเผื่อพื้นที่ mark/ระยะจับชิ้นไว้แล้ว การคำนวณตรง ๆ จะได้เยอะกว่าที่ทำได้จริง
+   */
+  for (const t of cfg.perSheetTiers ?? []) {
+    if ((t.upTo == null || Math.max(w, itemH) <= t.upTo) && t.per > 0) return t.per;
+  }
+  return packSingleSize(w, itemH, cfg.sheetW, cfg.sheetH, cfg.gap ?? 0);
 }
 
 /**
@@ -740,6 +756,17 @@ export interface InputFee {
     /** area ใช้ minArea · longest ใช้ upTo (ไม่ใส่ = ข้อสุดท้ายรับทุกขนาดที่เหลือ) · max = เพดานของขั้นนั้น */
     tiers: { minArea?: number; upTo?: number; free: number; max?: number }[];
   };
+  /**
+   * 🎁 สั่งถึงจำนวนนี้ "ต่อ 1 ลาย" = ไม่คิดค่าส่วนที่เกินโควตาเลย (จุดไดคัท: 25 แผ่น A3 ต่อ 1 ลาย ฟรีค่าจุด)
+   * เทียบด้วย ⌊จำนวนที่สั่ง ÷ จำนวนลาย⌋ — สั่ง 50 แผ่น 2 ลาย = 25 แผ่น/ลาย ก็ได้ฟรีเหมือนกัน
+   * ⚠️ ยกเว้นแค่ "ค่าส่วนเกิน" · เพดาน max ยังคุมเหมือนเดิม กรอกเกินเพดานยังสั่งไม่ได้
+   */
+  freeFromQtyPerDesign?: number;
+  /**
+   * หน่วยที่ใช้เขียนเกณฑ์ข้างบนให้ลูกค้าอ่าน (เช่น "ตร.ม.") — ไม่ตั้ง = ใช้หน่วยขายของเรทที่เลือกอยู่
+   * จำเป็นตอนหน่วยของเรทไม่ตรงกับหน่วยที่กรอกจริง (UV เรทตารางเมตร: tiers เป็น ตร.ม. แต่ pricing.unit ยังเป็น "แผ่น A3")
+   */
+  freeFromQtyUnit?: string;
 }
 
 /** 💰 เรทต่อหน่วยที่มีผลตอนนี้ — ไล่ rates ตามลำดับ ไม่ตรงข้อไหน/ข้อที่ตรงไม่ตั้งเรท ใช้ perUnit กลาง */
@@ -814,14 +841,30 @@ export function inputMaxOf(opt: ProductOption, selections?: Record<string, strin
  * 💰 ค่าบริการของกลุ่มช่องกรอกนี้ = (ค่าที่กรอก − โควตาฟรี) × เรทต่อหน่วย (0 = ยังไม่กรอก/ไม่เกินโควตา)
  * กลุ่มช่องกรอกไม่มี choices ให้บวก จึงเป็นทางเดียวที่กลุ่มชนิดนี้คิดเงินได้
  */
-export function inputFeeOf(opt: ProductOption, selections: Record<string, string>): number {
+export function inputFeeOf(opt: ProductOption, selections: Record<string, string>, qty?: number): number {
   const cfg = opt.inputFee;
   if (!cfg || !isInputOption(opt)) return 0;
   const n = Number(parseInputValue(opt, selections[opt.label]));
   if (!Number.isFinite(n) || n <= 0) return 0;
+  if (inputFeeWaived(cfg, selections, qty)) return 0;   // 🎁 สั่งเยอะพอต่อลาย = ส่วนเกินไม่คิดเงิน
   const rate = inputFeeRateOf(cfg, selections);
   const over = n - inputFeeQuotaOf(cfg, selections);
   return rate > 0 && over > 0 ? over * rate : 0;
+}
+
+/**
+ * 🎁 จำนวนที่สั่งถึงขั้น "ฟรีค่าส่วนเกิน" แล้วหรือยัง (freeFromQtyPerDesign)
+ * เทียบต่อ 1 ลาย: ⌊qty ÷ จำนวนลาย⌋ — งานคละลายต้องสั่งถึงเกณฑ์ "ของแต่ละลาย" ถึงจะฟรี
+ * ไม่ได้ตั้งเกณฑ์ / ยังไม่รู้จำนวน (หน้าจอที่ไม่ส่ง qty มา) = ไม่ยกเว้น คิดเงินตามปกติ
+ */
+export function inputFeeWaived(
+  cfg: InputFee,
+  selections: Record<string, string>,
+  qty?: number
+): boolean {
+  const need = cfg.freeFromQtyPerDesign;
+  if (!need || need <= 0 || qty == null || !Number.isFinite(qty)) return false;
+  return Math.floor(qty / Math.max(1, designCountOf(selections))) >= need;
 }
 
 /** 📐 ผลของ unitYieldOf — สั่ง 1 หน่วยแล้วได้งานกี่ชิ้น */
@@ -1239,7 +1282,7 @@ export function groupAddOf(opt: ProductOption, selections: Record<string, string
   // กลุ่มที่คิดต่อลาย/ต่อแผ่น: +฿ ไม่เข้าราคา/ชิ้น — ไปคิดรวมครั้งเดียวใน designFeeFor
   if (opt.extraPerDesign || opt.sheetFee) return fee;
   // 💰 กลุ่มช่องกรอกที่คิดเงินตามค่าที่กรอก (เช่น เพิ่มขนาดนิ้วละ 15) — ไม่มี choices ให้บวก จึงบวกแยก
-  const extra = groupExtraAtQty(opt, selections, qty) + inputFeeOf(opt, selections);
+  const extra = groupExtraAtQty(opt, selections, qty) + inputFeeOf(opt, selections, qty);
   return extra + fee; // fee ติดลบ = ลดให้
 }
 

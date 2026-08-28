@@ -22,6 +22,7 @@ import {
   needsQuote,
   parseInputValue,
   inputFeeOf,
+  inputFeeWaived,
   inputFeeQuotaOf,
   inputFeeRateOf,
   inputMaxOf,
@@ -364,11 +365,14 @@ export default function ProductDetail({
   preview = false,
   /** ⭐ สรุปคะแนนรีวิวจริง (ฝั่งเซิร์ฟเวอร์) — มีเมื่อไหร่ใช้แทน rating ที่ตั้งมือใน JSON-LD */
   reviewStats = null,
+  /** 🧩 สินค้าอื่นในหมวดเดียวกัน (ของจริงจากฐานข้อมูล — มีรูปสินค้า) */
+  related: relatedFromServer,
 }: {
   product: Product;
   templates?: DesignTemplate[];
   preview?: boolean;
   reviewStats?: { avg: number; count: number } | null;
+  related?: Product[];
 }) {
   const [product, setProduct] = useState<Product>(initialProduct);
   const category = getCategory(product.category);
@@ -1035,9 +1039,14 @@ export default function ProductDetail({
   );
   const unitAddOnTotal = unitAddOns.reduce((n, f) => n + f.amount, 0);
 
-  const related = PRODUCTS.filter(
-    (p) => p.category === product.category && p.id !== product.id
-  ).slice(0, 4);
+  /**
+   * สินค้าอื่นในหมวดเดียวกัน — ใช้ชุดที่เซิร์ฟเวอร์ดึงจากฐานข้อมูลมาให้ (มี imageSrc จริง)
+   * ไม่มี/ว่าง (เช่นเครื่องที่ยังไม่ต่อฐานข้อมูล) ค่อยถอยไปใช้ชุดตัวอย่างในโค้ดเหมือนเดิม
+   */
+  const related = useMemo(() => {
+    if (relatedFromServer?.length) return relatedFromServer.slice(0, 4);
+    return PRODUCTS.filter((p) => p.category === product.category && p.id !== product.id && !p.hidden).slice(0, 4);
+  }, [relatedFromServer, product.category, product.id]);
 
   // แสดงปุ่มลัดไปหลังบ้านเฉพาะแอดมิน (โหมดเดโม = เห็นเสมอ, โหมดจริง = ต้องล็อกอิน)
   // ถามตอนเบราว์เซอร์ว่างแล้ว — ปุ่มนี้ไม่เร่งด่วน ลูกค้าทั่วไปไม่ควรต้องรอคำขอนี้ตอนเปิดหน้า
@@ -2044,13 +2053,34 @@ export default function ProductDetail({
                           {(() => {
                             if (!opt.inputFee) return null;
                             const n = Number(parseInputValue(opt, effective[opt.label]));
-                            const fee = inputFeeOf(opt, effective);
+                            // ⚠️ ต้องใช้ effectiveWithDesigns + feeQty ชุดเดียวกับที่คิดราคาจริง (unitPriceFor)
+                            // ไม่งั้นบรรทัดนี้จะบอกว่าคิดเงิน ทั้งที่ราคาจริงยกเว้นให้แล้ว (หรือกลับกัน)
+                            const fee = inputFeeOf(opt, effectiveWithDesigns, feeQty);
                             const rate = inputFeeRateOf(opt.inputFee, effective);
                             const quota = inputFeeQuotaOf(opt.inputFee, effective);
+                            const waived = inputFeeWaived(opt.inputFee, effectiveWithDesigns, feeQty);
+                            const freeFrom = opt.inputFee.freeFromQtyPerDesign;
+                            const freeFromUnit = opt.inputFee.freeFromQtyUnit ?? matrix?.unit ?? "ชิ้น";
                             // 🎁 ยังไม่ได้กรอก — บอกโควตาของขนาดที่เลือกอยู่ล่วงหน้าเลย (เช่น A7 ฟรี 12 จุด)
                             // ลูกค้าจะได้รู้เพดานก่อนพิมพ์ ไม่ใช่พิมพ์แล้วเพิ่งเห็นว่าโดนคิดเพิ่ม
                             if (!Number.isFinite(n) || n <= 0) {
                               if (!(rate > 0 && quota > 0)) return null;
+                              if (waived)
+                                return (
+                                  <p className="mt-1 text-[11px] font-bold text-emerald-600">
+                                    🎁 จำนวนที่สั่งถึงเกณฑ์ {freeFrom?.toLocaleString("th-TH")} {freeFromUnit} ต่อลายแล้ว —{" "}
+                                    {cfg?.unit ?? "หน่วย"}ที่เกินโควตาไม่คิดเงิน
+                                    {(() => {
+                                      const hardMax = inputMaxOf(opt, effective);
+                                      return hardMax != null ? (
+                                        <span className="font-bold text-rose-600">
+                                          {" "}
+                                          · รับไม่เกิน {hardMax.toLocaleString("th-TH")} {cfg?.unit ?? ""}
+                                        </span>
+                                      ) : null;
+                                    })()}
+                                  </p>
+                                );
                               // ชื่อขนาดที่ทำให้ได้โควตานี้ (เช่น "A7") — หาไม่เจอ (ขนาดกำหนดเอง) ก็ไม่ใส่ชื่อ
                               const src = (opt.inputFee.rates ?? []).find(
                                 (r) => r.free != null && r.when.choices.includes(effective[r.when.label])
@@ -2064,8 +2094,9 @@ export default function ProductDetail({
                                   {(() => {
                                     // เพดานของขนาดนี้ — บอกไปพร้อมกันจะได้รู้ว่ากรอกได้ถึงแค่ไหน
                                     const hardMax = inputMaxOf(opt, effective);
+                                    // เพดานรับงาน = ข้อจำกัดจริง กรอกเกินแล้วสั่งไม่ได้ — ต้องแดงให้สะดุดตา ไม่ใช่เทาจาง
                                     return hardMax != null ? (
-                                      <span className="font-bold text-stone-500">
+                                      <span className="font-bold text-rose-600">
                                         {" "}
                                         · รับไม่เกิน {hardMax.toLocaleString("th-TH")} {cfg?.unit ?? ""}
                                       </span>
@@ -2075,12 +2106,24 @@ export default function ProductDetail({
                               );
                             }
                             // 🎁 มีโควตาฟรีและยังไม่เกิน — บอกให้ชัดว่าไม่คิดเพิ่ม (เงียบไปลูกค้าจะไม่แน่ใจ)
-                            if (!fee)
+                            if (!fee) {
+                              // ฟรีเพราะสั่งถึงเกณฑ์ (ทั้งที่เกินโควตา) — ต้องบอกเหตุผลจริง
+                              // ไม่งั้นขึ้นว่า "อยู่ในโควตา" ทั้งที่กรอกเกินโควตาไปแล้ว ลูกค้าจะงง
+                              if (waived && n > quota)
+                                return (
+                                  <p className="mt-1 rounded-xl bg-emerald-50 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-emerald-700 ring-1 ring-emerald-200">
+                                    🎁 เกินโควตา {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""} อยู่{" "}
+                                    {(n - quota).toLocaleString("th-TH")} {cfg?.unit ?? ""} — แต่สั่งถึง{" "}
+                                    {freeFrom?.toLocaleString("th-TH")} {freeFromUnit} ต่อลายแล้ว{" "}
+                                    <span className="font-extrabold text-emerald-800">ฟรีค่า{cfg?.unit ?? "ส่วนเกิน"}</span>
+                                  </p>
+                                );
                               return quota > 0 ? (
                                 <p className="mt-1 text-[11px] font-bold text-emerald-600">
                                   ✓ อยู่ในโควตา {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""}ที่รวมในราคา — ไม่คิดเพิ่ม
                                 </p>
                               ) : null;
+                            }
                             // ⚠ เกินโควตา = เตือนแดง (คิดเงินเพิ่มจากที่เห็นในตาราง ต้องสะดุดตา ไม่ใช่บรรทัดข้อมูลเฉย ๆ)
                             // กรอกเกินไม่ได้ผิด แค่ต้องรู้ตัวว่ากำลังจ่ายเพิ่ม — ลดจำนวนลงให้อยู่ในโควตาก็หายไปเอง
                             return quota > 0 ? (
@@ -3553,7 +3596,8 @@ export default function ProductDetail({
                       : "📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตัวเลือก/ตารางเรทปกติ"}
                 </p>
               )
-            ) : matrix ? (
+            ) : /* ตารางช่วงเดียว (ทุกจำนวนราคาเดียว) ไม่ได้ "ยิ่งสั่งเยอะยิ่งถูก" — ตกไปใช้ข้อความตามตัวเลือกด้านล่าง */
+            matrix && matrix.tiers.length > 1 ? (
               <p className="mt-1 text-xs text-stone-400">
                 💡 เรทราคา {formatPriceRange(product)} ต่อ{matrix.unit} — ยิ่งสั่งเยอะ ยิ่งถูก (ราคาปรับตามจำนวน)
               </p>

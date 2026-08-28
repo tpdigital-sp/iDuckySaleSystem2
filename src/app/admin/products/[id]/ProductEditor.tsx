@@ -179,6 +179,8 @@ type DraftOption = {
     sheetName?: string;
     /** 1 หน่วยขาย = กี่แผ่น (เช่น ตร.ม. = 8 แผ่น A3) */
     unitSheets?: Record<string, number>;
+    /** 📋 ตารางจำนวนชิ้นต่อแผ่นที่ร้านตั้งเอง (เทียบด้านยาวสุด) — ใช้แทนการคำนวณจากการจัดวาง */
+    perSheetTiers?: { upTo?: number; per: number }[];
   };
 };
 /**
@@ -2518,7 +2520,19 @@ export default function ProductEditor({ product }: { product: Product }) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => patch({ options: draft.options.filter((_, i) => i !== gi) })}
+                      onClick={async () => {
+                        if (
+                          !(await ask({
+                            icon: "🗑",
+                            title: `ลบกลุ่ม “${opt.label.trim() || `กลุ่มที่ ${gi + 1}`}” ออกจากสินค้านี้?`,
+                            detail: `ตัวเลือกทั้ง ${opt.choices.length} ตัวจะหายจากสินค้านี้ (คลังตัวเลือกไม่ถูกลบ) — มีผลจริงเมื่อกดบันทึก`,
+                            confirmLabel: "ลบกลุ่ม",
+                            danger: true,
+                          }))
+                        )
+                          return;
+                        patch({ options: draft.options.filter((_, i) => i !== gi) });
+                      }}
                       className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-500 hover:bg-rose-100"
                     >
                       🗑 ลบกลุ่ม
@@ -2625,7 +2639,19 @@ export default function ProductEditor({ product }: { product: Product }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => patch({ options: draft.options.filter((_, i) => i !== gi) })}
+                  onClick={async () => {
+                    if (
+                      !(await ask({
+                        icon: "🗑",
+                        title: `ลบกลุ่ม “${opt.label.trim() || `กลุ่มที่ ${gi + 1}`}”?`,
+                        detail: `ตัวเลือกทั้ง ${opt.choices.length} ตัวในกลุ่มจะหายไปด้วย — มีผลจริงเมื่อกดบันทึก`,
+                        confirmLabel: "ลบกลุ่ม",
+                        danger: true,
+                      }))
+                    )
+                      return;
+                    patch({ options: draft.options.filter((_, i) => i !== gi) });
+                  }}
                   className="shrink-0 rounded-full bg-rose-50 px-3 py-2 text-xs font-bold text-rose-500 hover:bg-rose-100"
                 >
                   🗑 ลบกลุ่ม
@@ -3899,6 +3925,26 @@ export default function ProductEditor({ product }: { product: Product }) {
     const price = Number(draft.price);
     const oldPrice = draft.oldPrice ? Number(draft.oldPrice) : undefined;
     if (!draft.name.trim() || !Number.isFinite(price) || price <= 0) return;
+
+    // 🛡️ กลุ่มที่ไม่มีชื่อ หรือไม่เหลือตัวเลือกที่มีชื่อ จะถูกตัดทิ้งตอนบันทึก (ใน fromDraftOptions)
+    // เดิมหายเงียบ ๆ — เคยทำกลุ่ม "เคลือบเรซิ่น" (กริ๊บต๊อก) และ "งานปัก" (เสื้อ) หายมาแล้ว จึงให้ยืนยันก่อนเสมอ
+    const dropping = draft.options.filter(
+      (o) => !(o.label.trim() && (o.display === "input" || o.choices.some((c) => c.name.trim())))
+    );
+    if (dropping.length > 0) {
+      const names = dropping
+        .map((o) => `“${o.label.trim() || `กลุ่มไม่มีชื่อ (ลำดับที่ ${draft.options.indexOf(o) + 1})`}”`)
+        .join(" · ");
+      const okDrop = await ask({
+        icon: "⚠️",
+        title: `กลุ่มตัวเลือก ${names} จะหายไปเมื่อบันทึก`,
+        detail:
+          "กลุ่มที่ไม่มีชื่อกลุ่ม หรือไม่เหลือตัวเลือกที่มีชื่อเลย จะถูกตัดทิ้งตอนบันทึก — ถ้าไม่ได้ตั้งใจลบ ให้กดยกเลิกแล้วกลับไปเติมชื่อกลุ่ม/ตัวเลือกก่อน",
+        confirmLabel: "บันทึกโดยตัดกลุ่มนี้ทิ้ง",
+        danger: true,
+      });
+      if (!okDrop) return;
+    }
 
     // ลิงก์ตามชื่อ (slug) — กันชนกับสินค้าตัวอื่น (ทั้ง id และ slug ของเขา) ก่อนบันทึก
     const slug = slugifyProductName(draft.slug);
