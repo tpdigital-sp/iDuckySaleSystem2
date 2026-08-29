@@ -262,6 +262,23 @@ export async function fetchProductSort(id: string): Promise<number | null> {
   return (data?.sort as number | null) ?? null;
 }
 
+/** บันทึกลำดับในลิสต์หลายแถวทีเดียว (เฉพาะคอลัมน์ sort ไม่แตะ data) — ใช้ตอนลากจัด/กดลูกศรเลื่อนสินค้าในหน้ารายการ */
+export async function persistProductSorts(order: { id: string; sort: number }[]): Promise<{ ok: boolean; error?: string }> {
+  if (order.length === 0) return { ok: true };
+  try {
+    const res = await fetch("/api/admin/products/sort", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order }),
+    });
+    if (res.status === 503) return { ok: false, error: "โหมดเดโมยังจัดลำดับไม่ได้ (ยังไม่ตั้งค่า Supabase)" };
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    return res.ok ? { ok: true } : { ok: false, error: data.error ?? "บันทึกลำดับไม่สำเร็จ" };
+  } catch {
+    return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
+  }
+}
+
 /** บันทึกสินค้า (แอดมิน) — ผ่าน API route ฝั่งเซิร์ฟเวอร์ (ตรวจสิทธิ์+เขียน Supabase); ยังไม่ตั้งค่า → localStorage */
 export async function persistProduct(
   p: Product,

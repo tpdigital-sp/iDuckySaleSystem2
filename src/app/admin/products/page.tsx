@@ -16,7 +16,7 @@ import {
   type Product,
 } from "@/lib/products";
 import { loadOverrides, resetAll } from "@/lib/product-store";
-import { deleteProductDb, fetchProductRaw, fetchProductsAdminLite, fetchProductSort, persistProduct } from "@/lib/product-repo";
+import { deleteProductDb, fetchProductRaw, fetchProductsAdminLite, fetchProductSort, persistProduct, persistProductSorts } from "@/lib/product-repo";
 import { getAdminSession } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { badge, card, faint, muted } from "@/lib/admin-ui";
@@ -26,6 +26,10 @@ import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/ca
 
 type ViewMode = "table" | "cards";
 type SortMode = "default" | "price-asc" | "price-desc" | "sold-desc";
+/** วางไว้ ก่อน/หลัง เพื่อนบ้านเป้าหมาย — ใช้ร่วมกันทั้งลากวางและปุ่มลูกศร */
+type Place = "before" | "after";
+/** สินค้าพร้อมเลขลำดับในลิสต์ (คอลัมน์ sort — fetchProductsAdminLite ดึงมาให้อยู่แล้ว) */
+type Sortable = Product & { sort?: number };
 type ReviewFilter = "all" | "checked" | "unchecked";
 /** ตัวกรองสถานะเผยแพร่ — published = ลูกค้าเห็นบนหน้าร้าน · draft = ยังไม่เผยแพร่ (data.hidden = true) */
 type ShowFilter = "all" | "published" | "draft";
@@ -68,7 +72,12 @@ export default function AdminProductsPage() {
   const [duplicating, setDuplicating] = useState<string | null>(null);
   /** หมวดหมู่ตามที่แอดมินตั้งไว้ในตั้งค่าระบบ (ยังไม่โหลดเสร็จ = ค่าเริ่มต้นจากโค้ด) */
   const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
-  const mayManage = useCan()("products.manage"); // ฝ่ายแอดมินดูได้อย่างเดียว
+  const can = useCan();
+  const mayManage = can("products.manage"); // ฝ่ายแอดมินดูได้อย่างเดียว
+  const maySettings = can("settings.manage"); // จัดลำดับหมวดหมู่ = แก้ตั้งค่าร้าน
+  // โหมดจัดลำดับหมวดหมู่ (ปิดอยู่ = ชิปหมวดใช้กรองตามปกติ)
+  const [catOrderMode, setCatOrderMode] = useState(false);
+  const [savingCats, setSavingCats] = useState(false);
   const router = useRouter();
 
   /** สร้างสินค้าใหม่เปล่า → บันทึกลงฐานข้อมูล → เด้งเข้าหน้าแก้ไขให้กรอกข้อมูล */
@@ -172,6 +181,78 @@ export default function AdminProductsPage() {
     const raw = (await fetchProductRaw(p.id)) ?? p;
     const res = await persistProduct({ ...raw, hidden });
     if (!res.ok) refresh(); // ล้มเหลว → ดึงสถานะจริงกลับมา
+  }
+
+  /**
+   * ย้ายสินค้าไปไว้ ก่อน/หลัง เพื่อนบ้านที่เห็นในลิสต์ — ใช้ทั้งลากวางและปุ่มลูกศร ▲▼
+   * อัปเดตหน้าจอทันที แล้วบันทึกเฉพาะแถวที่เลขลำดับ (คอลัมน์ sort) เปลี่ยนจริง:
+   * แทรกลงช่องว่างระหว่างเลขเพื่อนบ้านได้ = เขียนแถวเดียวจบ · เลขชนกันค่อยไล่ขยับตัวถัดไปจนเจอช่องว่าง
+   */
+  async function moveProduct(id: string, targetId: string, place: Place) {
+    if (id === targetId) return;
+    const item = products.find((p) => p.id === id);
+    if (!item) return;
+    const arr: Sortable[] = products.filter((p) => p.id !== id);
+    let idx = arr.findIndex((p) => p.id === targetId);
+    if (idx < 0) return;
+    if (place === "after") idx += 1;
+    arr.splice(idx, 0, item);
+    const num = (p: Sortable) => (typeof p.sort === "number" ? p.sort : 0);
+    const changes: { id: string; sort: number }[] = [];
+    // ตัวที่ย้าย: ต่อจากตัวก่อนหน้า (ไปหัวลิสต์ = ก่อนตัวแรกเดิมหนึ่งเลข — ติดลบได้ คอลัมน์เป็น int)
+    let last = idx > 0 ? num(arr[idx - 1]) + 1 : num(arr[idx + 1]) - 1;
+    if (num(arr[idx]) !== last) {
+      arr[idx] = { ...arr[idx], sort: last };
+      changes.push({ id: arr[idx].id, sort: last });
+    }
+    // ตัวถัด ๆ ไป: ขยับเฉพาะที่เลขชนกัน หยุดทันทีที่เจอช่องว่าง
+    for (let i = idx + 1; i < arr.length; i++) {
+      if (num(arr[i]) > last) break;
+      last += 1;
+      arr[i] = { ...arr[i], sort: last };
+      changes.push({ id: arr[i].id, sort: last });
+    }
+    if (!changes.length) return;
+    setProducts(arr);
+    const res = await persistProductSorts(changes);
+    if (!res.ok) {
+      alert(`บันทึกลำดับไม่สำเร็จ: ${res.error ?? "เกิดข้อผิดพลาด"}`);
+      refresh(); // ดึงลำดับจริงกลับมา
+    }
+  }
+
+  /**
+   * ย้ายหมวดหมู่ไปไว้ ก่อน/หลัง หมวดเป้าหมาย แล้วบันทึกทั้งชุดทันที
+   * (ลำดับหมวด = ลำดับ array ในแถวตั้งค่า __categories__ — มีผลทั้งหน้านี้และหน้าร้าน)
+   */
+  async function moveCategory(id: string, targetId: string, place: Place) {
+    if (id === targetId) return;
+    const item = cats.find((c) => c.id === id);
+    if (!item) return;
+    const arr = cats.filter((c) => c.id !== id);
+    let idx = arr.findIndex((c) => c.id === targetId);
+    if (idx < 0) return;
+    if (place === "after") idx += 1;
+    arr.splice(idx, 0, item);
+    const prev = cats;
+    setCats(arr);
+    setSavingCats(true);
+    try {
+      const res = await fetch("/api/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ list: arr }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        alert(`บันทึกลำดับหมวดไม่สำเร็จ: ${j.error ?? "เกิดข้อผิดพลาด"}`);
+        setCats(prev);
+      }
+    } catch {
+      alert("บันทึกลำดับหมวดไม่สำเร็จ — เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
+      setCats(prev);
+    }
+    setSavingCats(false);
   }
 
   /**
@@ -306,6 +387,12 @@ export default function AdminProductsPage() {
   // จัดกลุ่มตามหมวดเฉพาะเมื่อดูทั้งหมด + เรียงตามหมวด
   const grouped = catFilter === "all" && sort === "default";
 
+  /**
+   * จัดลำดับสินค้าได้เฉพาะโหมดเรียง "ตามหมวด" (= ลำดับจริงที่หน้าร้านใช้)
+   * เรียงตามราคา/ยอดขายอยู่ = ตำแหน่งที่เห็นไม่ใช่ลำดับจริง ย้ายไปก็สับสน · โหมดเดโมไม่มีคอลัมน์ลำดับให้บันทึก
+   */
+  const canReorder = mayManage && isSupabaseConfigured && sort === "default";
+
   return (
     <PageShell>
       <PageHead
@@ -422,32 +509,51 @@ export default function AdminProductsPage() {
           </span>
         </div>
 
-        {/* ชั้น 3: หมวด — 15 หมวดกินพื้นที่ 3 บรรทัด ยุบเหลือแถวเดียวไว้ก่อน กดกางเมื่อต้องใช้ */}
+        {/*
+          ชั้น 3: หมวด — จัดเป็นกริดช่องเท่ากัน (ชิปกว้างไม่เท่ากันเรียงฟรีสไตล์ดูรก)
+          ยุบเหลือ ~2 แถวไว้ก่อน กดช่อง "อีก N หมวด" เพื่อกางครบ
+          ปุ่ม "จัดลำดับหมวด" เปิดโหมดลาก/กดลูกศรย้ายหมวด (เฉพาะคนมีสิทธิ์ตั้งค่าระบบ)
+        */}
         <div className="mt-2.5 border-t border-slate-100 pt-2.5">
-          <div className={`flex flex-wrap gap-1.5 ${catOpen ? "" : "max-h-8 overflow-hidden"}`}>
-            <FilterChip
-              active={catFilter === "all"}
-              onClick={() => setCatFilter("all")}
-              label="ทุกหมวด"
-              count={products.length}
-            />
-            {cats.filter((c) => (catCounts.get(c.id) ?? 0) > 0).map((c) => (
-              <FilterChip
-                key={c.id}
-                active={catFilter === c.id}
-                onClick={() => setCatFilter(c.id)}
-                label={`${c.emoji} ${c.name}`}
-                count={catCounts.get(c.id) ?? 0}
-              />
-            ))}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">หมวดหมู่</span>
+            <div className="flex items-center gap-2">
+              {savingCats && <span className="text-[11px] font-semibold text-slate-400">กำลังบันทึกลำดับ…</span>}
+              {maySettings && isSupabaseConfigured && (
+                <button
+                  type="button"
+                  onClick={() => setCatOrderMode((m) => !m)}
+                  className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                    catOrderMode
+                      ? "bg-[color:var(--dk-navy)] text-white"
+                      : "text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50"
+                  }`}
+                  title="จัดลำดับหมวดหมู่ — ลำดับนี้ใช้ทั้งหน้านี้และหน้าร้าน"
+                >
+                  {catOrderMode ? "✓ เสร็จสิ้น" : "↕ จัดลำดับหมวด"}
+                </button>
+              )}
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setCatOpen((o) => !o)}
-            className="mt-1.5 text-[11px] font-bold text-slate-400 transition hover:text-slate-600"
-          >
-            {catOpen ? "▴ ย่อรายการหมวด" : `▾ ดูหมวดทั้งหมด (${cats.filter((c) => (catCounts.get(c.id) ?? 0) > 0).length})`}
-          </button>
+
+          {catOrderMode ? (
+            <>
+              <p className="mt-1.5 text-[11px] text-slate-400">
+                กดค้างแล้วลากการ์ดหมวด หรือกด ◀ ▶ เพื่อย้ายตำแหน่ง — บันทึกให้ทันทีทุกครั้ง · ลำดับนี้มีผลกับหน้าร้านด้วย
+              </p>
+              <CatOrderGrid cats={cats} counts={catCounts} onMove={moveCategory} />
+            </>
+          ) : (
+            <CatFilterGrid
+              cats={cats.filter((c) => (catCounts.get(c.id) ?? 0) > 0)}
+              counts={catCounts}
+              total={products.length}
+              active={catFilter}
+              onPick={setCatFilter}
+              open={catOpen}
+              onToggleOpen={() => setCatOpen((o) => !o)}
+            />
+          )}
         </div>
 
         {/*
@@ -496,6 +602,8 @@ export default function AdminProductsPage() {
           onToggleHidden={toggleHidden}
           onDuplicate={duplicate}
           duplicating={duplicating}
+          canReorder={canReorder}
+          onMove={moveProduct}
         />
       ) : grouped ? (
         <div className="mt-5 space-y-6">
@@ -509,14 +617,14 @@ export default function AdminProductsPage() {
                   <span className="font-display text-[13px] font-semibold text-slate-800">{c.name}</span>
                   <span className="text-xs text-slate-400">· {inCat.length} รายการ</span>
                 </h2>
-                <TableList items={inCat} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onToggleHidden={toggleHidden} onDuplicate={duplicate} duplicating={duplicating} />
+                <TableList items={inCat} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onToggleHidden={toggleHidden} onDuplicate={duplicate} duplicating={duplicating} canReorder={canReorder} onMove={moveProduct} />
               </section>
             );
           })}
         </div>
       ) : (
         <div className="mt-5">
-          <TableList items={visible} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onToggleHidden={toggleHidden} onDuplicate={duplicate} duplicating={duplicating} />
+          <TableList items={visible} overriddenIds={overriddenIds} onRemove={remove} onToggleReview={toggleReview} onToggleHidden={toggleHidden} onDuplicate={duplicate} duplicating={duplicating} canReorder={canReorder} onMove={moveProduct} />
         </div>
       )}
 
@@ -538,29 +646,190 @@ export default function AdminProductsPage() {
 
 /* ── ชิ้นส่วนย่อย ─────────────────────────────────────────── */
 
-function FilterChip({
+/** กริดหมวดช่องเท่ากัน ใช้ร่วมทั้งโหมดกรองและโหมดจัดลำดับ — ช่องกว้างเท่ากันอ่านเป็นระเบียบกว่าชิปเรียงฟรีสไตล์ */
+const CAT_GRID = "mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6";
+/** ยุบแล้วโชว์กี่หมวด — "ทุกหมวด" + 10 หมวด + ช่อง "อีก N หมวด" = 12 ช่อง ลงตัวทุกจำนวนคอลัมน์ (2/3/4/6) */
+const CAT_COLLAPSED = 10;
+
+/** ช่องหมวดในกริด (โหมดกรอง) — อีโมจิ | ชื่อ (ตัดท้าย) | จำนวน ชิดขวา */
+function CatCell({
   active,
   onClick,
+  emoji,
   label,
   count,
+  title,
 }: {
   active: boolean;
   onClick: () => void;
+  emoji: string;
   label: string;
   count: number;
+  title?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+      title={title ?? label}
+      className={`flex min-w-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
         active
           ? "bg-amber-500 text-white shadow-[0_4px_12px_rgba(44,129,196,0.25)]"
           : "border border-slate-200 bg-white text-slate-600 hover:border-amber-200 hover:bg-amber-50/50"
       }`}
     >
-      {label} <span className={active ? "opacity-70" : "text-slate-400"}>{count}</span>
+      <span className="shrink-0">{emoji}</span>
+      <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+      <span className={`shrink-0 tabular-nums ${active ? "opacity-70" : "text-slate-400"}`}>{count}</span>
     </button>
+  );
+}
+
+/** กริดหมวดโหมดกรอง — ยุบเหลือ ~2 แถว กดช่องสุดท้ายเพื่อกางครบ */
+function CatFilterGrid({
+  cats,
+  counts,
+  total,
+  active,
+  onPick,
+  open,
+  onToggleOpen,
+}: {
+  cats: ShopCategory[];
+  counts: Map<string, number>;
+  total: number;
+  active: string;
+  onPick: (id: string) => void;
+  open: boolean;
+  onToggleOpen: () => void;
+}) {
+  const shown = open ? cats : cats.slice(0, CAT_COLLAPSED);
+  const hiddenCount = cats.length - shown.length;
+  return (
+    <div className={CAT_GRID}>
+      <CatCell active={active === "all"} onClick={() => onPick("all")} emoji="🗂️" label="ทุกหมวด" count={total} />
+      {shown.map((c) => (
+        <CatCell
+          key={c.id}
+          active={active === c.id}
+          onClick={() => onPick(c.id)}
+          emoji={c.emoji}
+          label={c.name}
+          count={counts.get(c.id) ?? 0}
+        />
+      ))}
+      {(hiddenCount > 0 || open) && (
+        <button
+          type="button"
+          onClick={onToggleOpen}
+          className="flex items-center justify-center gap-1 rounded-lg border border-dashed border-slate-200 px-2.5 py-1.5 text-[11px] font-bold text-slate-400 transition hover:border-slate-300 hover:text-slate-600"
+        >
+          {open ? "▴ ย่อรายการหมวด" : `▾ อีก ${hiddenCount} หมวด`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * กริดหมวดโหมดจัดลำดับ — ลากการ์ด หรือกด ◀ ▶ ย้ายทีละช่อง
+ * โชว์ทุกหมวด (รวมหมวดว่าง/หมวดที่ซ่อน) เพราะการบันทึกเขียนทั้งชุด — ตัดออกไป = หมวดหายจากระบบ
+ */
+function CatOrderGrid({
+  cats,
+  counts,
+  onMove,
+}: {
+  cats: ShopCategory[];
+  counts: Map<string, number>;
+  onMove: (id: string, targetId: string, place: Place) => void;
+}) {
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [over, setOver] = useState<{ id: string; place: Place } | null>(null);
+  // เริ่มกดที่ปุ่มลูกศร = ตั้งใจกดปุ่ม ไม่ใช่ลากการ์ด
+  const grabOk = useRef(false);
+  const placeOf = (e: React.DragEvent<HTMLDivElement>): Place => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return e.clientX < r.left + r.width / 2 ? "before" : "after";
+  };
+  return (
+    <div className={CAT_GRID}>
+      {cats.map((c, i) => (
+        <div
+          key={c.id}
+          draggable
+          onMouseDown={(e) => {
+            grabOk.current = !(e.target as HTMLElement).closest("button");
+          }}
+          onDragStart={(e) => {
+            if (!grabOk.current) {
+              e.preventDefault();
+              return;
+            }
+            setDragId(c.id);
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", c.id);
+          }}
+          onDragOver={(e) => {
+            if (!dragId || dragId === c.id) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            const place = placeOf(e);
+            setOver((o) => (o?.id === c.id && o.place === place ? o : { id: c.id, place }));
+          }}
+          onDrop={(e) => {
+            if (!dragId || dragId === c.id) return;
+            e.preventDefault();
+            onMove(dragId, c.id, placeOf(e));
+            setDragId(null);
+            setOver(null);
+          }}
+          onDragEnd={() => {
+            setDragId(null);
+            setOver(null);
+          }}
+          title={c.hidden ? `${c.name} — ซ่อนจากหน้าร้านอยู่` : c.name}
+          className={`flex min-w-0 cursor-grab select-none items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-600 transition active:cursor-grabbing ${
+            dragId === c.id ? "opacity-40" : ""
+          } ${c.hidden ? "opacity-60" : ""}`}
+          style={
+            over?.id === c.id && dragId
+              ? {
+                  boxShadow:
+                    over.place === "before"
+                      ? "inset 2px 0 0 0 var(--dk-blue-deep)"
+                      : "inset -2px 0 0 0 var(--dk-blue-deep)",
+                }
+              : undefined
+          }
+        >
+          <span className="shrink-0 text-slate-300">⠿</span>
+          <span className="shrink-0">{c.emoji}</span>
+          <span className="min-w-0 flex-1 truncate">{c.name}</span>
+          <span className="shrink-0 tabular-nums text-slate-400">{counts.get(c.id) ?? 0}</span>
+          <span className="flex shrink-0 items-center">
+            <button
+              type="button"
+              onClick={() => i > 0 && onMove(c.id, cats[i - 1].id, "before")}
+              disabled={i === 0}
+              title="เลื่อนไปก่อนหน้า"
+              className="rounded px-1 text-[10px] text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
+            >
+              ◀
+            </button>
+            <button
+              type="button"
+              onClick={() => i < cats.length - 1 && onMove(c.id, cats[i + 1].id, "after")}
+              disabled={i === cats.length - 1}
+              title="เลื่อนไปถัดไป"
+              className="rounded px-1 text-[10px] text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
+            >
+              ▶
+            </button>
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -759,6 +1028,8 @@ function TableList({
   onToggleHidden,
   onDuplicate,
   duplicating,
+  canReorder,
+  onMove,
 }: {
   items: Product[];
   overriddenIds: Set<string>;
@@ -767,12 +1038,94 @@ function TableList({
   onToggleHidden: (p: Product) => void;
   onDuplicate: (p: Product) => void;
   duplicating: string | null;
+  canReorder: boolean;
+  onMove: (id: string, targetId: string, place: Place) => void;
 }) {
+  // ลากจัดลำดับ — สถานะอยู่ในลิสต์ตัวเอง = มุมมองแบ่งหมวดลากข้ามหมวดไม่ได้ (หมวดของสินค้าไม่เปลี่ยนจากการจัดลำดับ)
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [over, setOver] = useState<{ id: string; place: Place } | null>(null);
+  // จุดที่เริ่มกดเมาส์ — เริ่มจากปุ่ม/ลิงก์ = ไม่ใช่การลากแถว (กันลากค้างตอนตั้งใจกดปุ่ม)
+  const grabOk = useRef(false);
+  const placeOf = (e: React.DragEvent<HTMLLIElement>): Place => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return e.clientY < r.top + r.height / 2 ? "before" : "after";
+  };
   return (
     <div className={`overflow-hidden ${card}`}>
       <ul className="divide-y divide-slate-100">
-        {items.map((p) => (
-          <li key={p.id} className="flex flex-wrap items-center gap-3 p-3 transition hover:bg-slate-50/70">
+        {items.map((p, i) => (
+          <li
+            key={p.id}
+            draggable={canReorder}
+            onMouseDown={(e) => {
+              grabOk.current = !(e.target as HTMLElement).closest("a,button,input,select");
+            }}
+            onDragStart={(e) => {
+              if (!canReorder || !grabOk.current) {
+                e.preventDefault();
+                return;
+              }
+              setDragId(p.id);
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", p.id);
+            }}
+            onDragOver={(e) => {
+              if (!dragId || dragId === p.id) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              const place = placeOf(e);
+              setOver((o) => (o?.id === p.id && o.place === place ? o : { id: p.id, place }));
+            }}
+            onDrop={(e) => {
+              if (!dragId || dragId === p.id) return;
+              e.preventDefault();
+              onMove(dragId, p.id, placeOf(e));
+              setDragId(null);
+              setOver(null);
+            }}
+            onDragEnd={() => {
+              setDragId(null);
+              setOver(null);
+            }}
+            className={`flex flex-wrap items-center gap-3 p-3 transition hover:bg-slate-50/70 ${
+              dragId === p.id ? "opacity-40" : ""
+            }`}
+            style={
+              over?.id === p.id && dragId
+                ? {
+                    boxShadow:
+                      over.place === "before"
+                        ? "inset 0 2px 0 0 var(--dk-blue-deep)"
+                        : "inset 0 -2px 0 0 var(--dk-blue-deep)",
+                  }
+                : undefined
+            }
+          >
+            {canReorder && (
+              <div className="flex shrink-0 select-none flex-col items-center">
+                <button
+                  type="button"
+                  onClick={() => i > 0 && onMove(p.id, items[i - 1].id, "before")}
+                  disabled={i === 0}
+                  title="เลื่อนขึ้นหนึ่งตำแหน่ง"
+                  className="rounded px-1.5 text-[10px] leading-4 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
+                >
+                  ▲
+                </button>
+                <span className="cursor-grab text-[13px] leading-4 text-slate-300" title="กดค้างแล้วลากแถว เพื่อย้ายตำแหน่งสินค้า">
+                  ⠿
+                </span>
+                <button
+                  type="button"
+                  onClick={() => i < items.length - 1 && onMove(p.id, items[i + 1].id, "after")}
+                  disabled={i === items.length - 1}
+                  title="เลื่อนลงหนึ่งตำแหน่ง"
+                  className="rounded px-1.5 text-[10px] leading-4 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
+                >
+                  ▼
+                </button>
+              </div>
+            )}
             <span className="h-11 w-11 shrink-0 overflow-hidden rounded-xl">
               <ProductVisual
                 emoji={p.emoji}
@@ -834,6 +1187,8 @@ function CardGrid({
   onToggleHidden,
   onDuplicate,
   duplicating,
+  canReorder,
+  onMove,
 }: {
   items: Product[];
   overriddenIds: Set<string>;
@@ -842,12 +1197,66 @@ function CardGrid({
   onToggleHidden: (p: Product) => void;
   onDuplicate: (p: Product) => void;
   duplicating: string | null;
+  canReorder: boolean;
+  onMove: (id: string, targetId: string, place: Place) => void;
 }) {
   const mayManage = useCan()("products.manage");
+  // ลากจัดลำดับในกริด — วางครึ่งซ้ายของการ์ดเป้าหมาย = แทรกก่อน · ครึ่งขวา = แทรกหลัง
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [over, setOver] = useState<{ id: string; place: Place } | null>(null);
+  const grabOk = useRef(false);
+  const placeOf = (e: React.DragEvent<HTMLDivElement>): Place => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return e.clientX < r.left + r.width / 2 ? "before" : "after";
+  };
   return (
     <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-      {items.map((p) => (
-        <div key={p.id} className={`group flex flex-col overflow-hidden ${card}`}>
+      {items.map((p, i) => (
+        <div
+          key={p.id}
+          draggable={canReorder}
+          onMouseDown={(e) => {
+            grabOk.current = !(e.target as HTMLElement).closest("a,button,input,select");
+          }}
+          onDragStart={(e) => {
+            if (!canReorder || !grabOk.current) {
+              e.preventDefault();
+              return;
+            }
+            setDragId(p.id);
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", p.id);
+          }}
+          onDragOver={(e) => {
+            if (!dragId || dragId === p.id) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            const place = placeOf(e);
+            setOver((o) => (o?.id === p.id && o.place === place ? o : { id: p.id, place }));
+          }}
+          onDrop={(e) => {
+            if (!dragId || dragId === p.id) return;
+            e.preventDefault();
+            onMove(dragId, p.id, placeOf(e));
+            setDragId(null);
+            setOver(null);
+          }}
+          onDragEnd={() => {
+            setDragId(null);
+            setOver(null);
+          }}
+          className={`group flex flex-col overflow-hidden ${card} ${dragId === p.id ? "opacity-40" : ""}`}
+          style={
+            over?.id === p.id && dragId
+              ? {
+                  boxShadow:
+                    over.place === "before"
+                      ? "inset 3px 0 0 0 var(--dk-blue-deep)"
+                      : "inset -3px 0 0 0 var(--dk-blue-deep)",
+                }
+              : undefined
+          }
+        >
           <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-50">
             <ProductVisual
               emoji={p.emoji}
@@ -860,6 +1269,28 @@ function CardGrid({
             <div className="absolute left-1.5 top-1.5 flex flex-wrap gap-1">
               <NameTags p={p} edited={overriddenIds.has(p.id)} />
             </div>
+            {canReorder && (
+              <div className="absolute bottom-1.5 right-1.5 flex gap-1 opacity-0 transition group-hover:opacity-100">
+                <button
+                  type="button"
+                  onClick={() => i > 0 && onMove(p.id, items[i - 1].id, "before")}
+                  disabled={i === 0}
+                  title="เลื่อนไปก่อนหน้า (หรือกดค้างแล้วลากการ์ด)"
+                  className="rounded-md bg-white/90 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 shadow ring-1 ring-slate-200 transition hover:bg-white disabled:opacity-30"
+                >
+                  ◀
+                </button>
+                <button
+                  type="button"
+                  onClick={() => i < items.length - 1 && onMove(p.id, items[i + 1].id, "after")}
+                  disabled={i === items.length - 1}
+                  title="เลื่อนไปถัดไป (หรือกดค้างแล้วลากการ์ด)"
+                  className="rounded-md bg-white/90 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 shadow ring-1 ring-slate-200 transition hover:bg-white disabled:opacity-30"
+                >
+                  ▶
+                </button>
+              </div>
+            )}
           </div>
           <div className="flex flex-1 flex-col p-2.5">
             <p className="truncate text-sm font-semibold text-slate-800">{p.name}</p>
