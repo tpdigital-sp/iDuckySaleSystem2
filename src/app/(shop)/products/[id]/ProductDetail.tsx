@@ -768,6 +768,23 @@ export default function ProductDetail({
   const lotWord = product.lotItemWord?.trim() || "แผ่น";
   const lotEmoji = product.lotItemEmoji?.trim() || "📄";
   /**
+   * 🛒 โหมด "หย่อนลงตะกร้าทันที" (lotToCart) — กด ➕ แล้ว{lotWord}นั้นลงตะกร้าเลย ไม่พักไว้ในหน้า
+   * แล้วไปนับ/แก้จำนวนกันต่อในตะกร้า (ตะกร้ารวมยอดทั้งล็อตให้อยู่แล้วผ่าน repriceCartGroups)
+   * เคสมือถือใช้โหมดนี้ — ลูกค้าทยอยใส่ทีละรุ่น ปิดหน้าไปแล้วกลับมาเติมทีหลังก็ยังอยู่
+   * ไม่เปิด = โหมดเดิม พักสเปคไว้ในหน้าแล้วกดสั่งรวดเดียว (สติ๊กเกอร์ UV)
+   */
+  const lotToCart = product.lotToCart === true;
+  /** {lotWord}ของสินค้านี้ที่อยู่ในตะกร้าแล้ว — ใช้เดินเลข "รุ่นที่ N" ต่อจากของที่ใส่ไปแล้ว */
+  const cartLot = useMemo(() => {
+    const mine = cartItems.filter((i) => i.productId === product.id);
+    return { lines: mine.length, qty: mine.reduce((n, i) => n + i.qty, 0) };
+  }, [cartItems, product.id]);
+  /**
+   * {lotWord}ที่ "เก็บเรียบร้อยแล้ว" ของรอบนี้ — โหมดหย่อนลงตะกร้านับจากบรรทัดในตะกร้า
+   * โหมดเดิมนับจากสเปคที่พักไว้ในหน้า · ใช้เดินเลขหัวฟอร์มกับป้ายบนปุ่มให้พูดตรงกัน
+   */
+  const lotDone = lotToCart ? cartLot.lines : sheets.length;
+  /**
    * เรทที่ตั้งขั้นต่ำแบบนับทั้งล็อต — ใช้เขียนการ์ด "วิธีสั่งสินค้านี้" ฝั่งซ้าย
    * อ่านจากตัวสินค้าไม่ใช่เรทที่เลือกอยู่ ลูกค้าจะได้เห็นกติกาแม้กำลังดูเรทอื่น (เช่น ตร.ม.)
    */
@@ -1725,15 +1742,17 @@ export default function ProductDetail({
   const artBlocked = studioMode || staffOrdering ? false : artRequired && !artProvided;
 
   /**
-   * 🎨 สินค้าที่นับขั้นต่ำทั้งล็อต: **ไม่ถามจำนวนลาย** — นับจากจำนวนรูปที่ลูกค้าอัปโหลดเอา
+   * 🎨 สินค้าที่นับขั้นต่ำทั้งล็อต (และสินค้าโหมดหย่อนลงตะกร้าทันที): **ไม่ถามจำนวนลาย** —
+   * นับจากจำนวนรูปที่ลูกค้าอัปโหลดเอา
    * (ระบบนับให้อยู่แล้วผ่าน effect ที่ดัน designs ตาม artFiles.length · ผู้ใช้สั่ง 30 ส.ค. 69)
    * แนบเป็นลิงก์อย่างเดียวก็ผ่าน — ถือเป็น 1 ลายไปก่อน แล้วแอดมินเช็คจากไฟล์จริงอีกที
+   * โหมดตะกร้า: 1 บรรทัด = 1 รุ่น/1 ลายอยู่แล้ว จำนวนลายรวมไปนับกันต่อที่ตะกร้า
    *
    * ⚠️ ยึดที่ `lotMinRate` (ตัวสินค้า) ไม่ใช่ `lotMinScope` (เรทที่เลือกอยู่) — ไม่งั้นสินค้าตัวเดียว
    * จะมี 2 มาตรฐาน: เรทแผ่น A3 ไม่ถามจำนวนลาย แต่พอสลับไปเรท ตร.ม. กลับบังคับให้ระบุ
    * แล้วปุ่ม "เพิ่มลงตะกร้า" กดแล้วเงียบ (เด้งไปกล่องจำนวนลายอย่างเดียว ป้ายบนปุ่มไม่บอก) — เจอจริง 31 ส.ค. 69
    */
-  const designsOk = designsSet || (!!lotMinRate && artProvided);
+  const designsOk = designsSet || ((!!lotMinRate || lotToCart) && artProvided);
 
 
   /**
@@ -1864,6 +1883,13 @@ export default function ProductDetail({
       openStudio();
       return false;
     }
+    // ✍️ ช่องที่ให้ลูกค้ากรอกต้องครบและอยู่ในเกณฑ์ก่อน
+    // ⚠️ ต้องตรวจ "ก่อน" แนบลาย — ช่องกรอกอยู่เหนือกล่องแนบลายบนหน้าจอ ไล่จากบนลงล่างถึงจะไม่งง
+    //    (เคยตรวจแนบลายก่อน ปุ่มบนฟ้อง "แนบลายก่อน" ส่วนปุ่ม ➕ ฟ้อง "กรอกจำนวนจุดไดคัท" คนละเรื่องกัน)
+    if (inputErrors.length) {
+      jumpToInputError();
+      return false;
+    }
     // 💬 งานปัก/งานตีลาย — ต้องคุยลายกับแอดมินให้จบก่อนถึงจะสั่งได้
     if (consultBlocked) {
       setConsultWarn(true);
@@ -1873,11 +1899,6 @@ export default function ProductDetail({
     if (artBlocked) {
       setArtTouched(false);
       setExtraOpen("art");
-      return false;
-    }
-    // ✍️ งานสั่งทำ — ช่องที่ให้ลูกค้ากรอกต้องครบและอยู่ในเกณฑ์ก่อน ไม่งั้นแอดมินตีราคาไม่ได้
-    if (inputErrors.length) {
-      jumpToInputError();
       return false;
     }
     // สินค้าที่มีระบบลาย: ต้องระบุจำนวนลายก่อน (แตะ +/− พิมพ์เลข หรือแนบรูปให้นับอัตโนมัติ)
@@ -1993,8 +2014,9 @@ export default function ProductDetail({
   }
 
   /**
-   * ➕ พักสเปคแผ่นนี้ไว้ แล้วให้ลูกค้าตั้งค่าแผ่นถัดไปต่อ (ยังไม่ลงตะกร้า)
-   * ผ่านด่านตรวจชุดเดียวกับการเพิ่มลงตะกร้า — ของที่พักไว้จึงพร้อมสั่งเสมอ
+   * ➕ ตั้ง{lotWord}ถัดไปต่อ — โหมดปกติคือ "พักสเปคนี้ไว้ก่อน" (ยังไม่ลงตะกร้า)
+   * สินค้าที่เปิด lotToCart (เคสมือถือ) หย่อนลงตะกร้าทันทีแทน แล้วไปนับ/แก้จำนวนกันต่อในตะกร้า
+   * ผ่านด่านตรวจชุดเดียวกับการเพิ่มลงตะกร้า — ของที่เก็บไว้จึงพร้อมสั่งเสมอ
    */
   function stageSheet() {
     if (addLock.current) return;
@@ -2006,7 +2028,16 @@ export default function ProductDetail({
     if (!readyToAdd()) return;
     const selections = buildLine();
     if (!selections) return;
-    setSheets((cur) => [...cur, { id: `sh${cur.length}-${Math.random().toString(36).slice(2, 8)}`, selections, qty }]);
+    if (lotToCart) {
+      // 🛒 ลงตะกร้าเลย · ล็อกกันแตะซ้ำเหมือน handleAdd (1 คลิก = 1 บรรทัด)
+      addItem(product.id, selections, qty, product);
+      addLock.current = true;
+      setTimeout(() => {
+        addLock.current = false;
+      }, 1200);
+    } else {
+      setSheets((cur) => [...cur, { id: `sh${cur.length}-${Math.random().toString(36).slice(2, 8)}`, selections, qty }]);
+    }
     clearLineExtras();
     setStaged(true);
     setTimeout(() => setStaged(false), 2500);
@@ -4065,8 +4096,12 @@ export default function ProductDetail({
                       </li>
                     ) : null}
                     <li>
-                      📉 <strong>สั่งน้อยกว่า {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit}</strong>{" "}
-                      — ทางร้านเปิดเครื่องพิมพ์ไม่คุ้ม
+                      🧾 <strong>ยืนยันคำสั่งซื้อทั้งที่ยังไม่ครบ</strong>
+                      <br />
+                      <span className="text-rose-500">
+                        เพิ่มลงตะกร้าได้เลย แต่กด “ยืนยันการสั่งซื้อ” ไม่ได้จนกว่าจะครบ{" "}
+                        {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit}
+                      </span>
                     </li>
                   </ul>
                 </div>
@@ -4078,9 +4113,24 @@ export default function ProductDetail({
               </p>
               <ol className="mt-2 grid gap-2">
                 {[
-                  { t: "ตั้งค่าแผ่นที่ 1", d: "เลือกแบบไดคัท · ขนาด · จำนวน แล้วอัปโหลดภาพลายของแผ่นนี้ (อัปกี่รูป = กี่ลาย)", tone: "bg-sky-50 ring-sky-200", pill: "bg-sky-500" },
-                  { t: "กดปุ่ม “➕ เพิ่มอีกแผ่น (คนละแบบ)”", d: "ระบบเก็บแผ่นที่ 1 ไว้ให้ แล้วเปิดฟอร์มแผ่นที่ 2 ให้ตั้งค่าใหม่ได้เลย — ทำซ้ำจนครบ", tone: "bg-emerald-50 ring-emerald-200", pill: "bg-emerald-500" },
-                  { t: "กด “🛒 สั่งทั้งหมด”", d: "ทุกแผ่นลงตะกร้าพร้อมกัน แยกเป็นคนละรายการตามสเปค · ราคาคิดจากยอดรวม ยิ่งเยอะยิ่งถูก", tone: "bg-violet-50 ring-violet-200", pill: "bg-violet-500" },
+                  {
+                    t: `ตั้งค่า${lotWord}แรก แล้วกด “🛒 เพิ่มลงตะกร้า”`,
+                    d: "เลือกแบบไดคัท · ขนาด · จำนวน แล้วอัปโหลดภาพลาย (อัปกี่รูป = กี่ลาย)",
+                    tone: "bg-sky-50 ring-sky-200",
+                    pill: "bg-sky-500",
+                  },
+                  {
+                    t: `อยากได้อีก${lotWord} — เปลี่ยนตัวเลือกแล้วกดเพิ่มอีกครั้ง`,
+                    d: `แต่ละ${lotWord}เป็นคนละรายการในตะกร้า แนบลายของตัวเองได้ · ราคาคิดจากยอดรวมทุก${lotWord} ยิ่งเยอะยิ่งถูก`,
+                    tone: "bg-emerald-50 ring-emerald-200",
+                    pill: "bg-emerald-500",
+                  },
+                  {
+                    t: `ครบ ${(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} ${lotMinRate.pricing.unit} แล้วไปที่ตะกร้า กด “✅ ยืนยันการสั่งซื้อ”`,
+                    d: "ยังไม่ครบจะกดยืนยันไม่ได้ — ตะกร้าจะบอกว่าขาดอีกเท่าไหร่ พร้อมปุ่มพากลับมาเลือกเพิ่ม",
+                    tone: "bg-violet-50 ring-violet-200",
+                    pill: "bg-violet-500",
+                  },
                 ].map((st, i) => (
                   <li key={st.t} className={`flex gap-2.5 rounded-2xl px-3 py-2.5 ring-1 ${st.tone}`}>
                     <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[12px] font-extrabold text-white ${st.pill}`}>
@@ -4093,10 +4143,16 @@ export default function ProductDetail({
                   </li>
                 ))}
               </ol>
-              <p className="mt-2.5 rounded-xl bg-stone-50 px-3 py-2 text-[11.5px] font-semibold leading-relaxed text-stone-500">
-                💡 อยากได้ทั้ง {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit}{" "}
-                เหมือนกันหมด ก็กดจำนวนเป็น {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} แล้วสั่งได้เลย ไม่ต้องกด ➕
-              </p>
+              <div className="mt-2.5 grid gap-1.5 rounded-xl bg-stone-50 px-3 py-2 text-[11.5px] font-semibold leading-relaxed text-stone-500">
+                <p>
+                  💡 อยากได้ทั้ง {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit}{" "}
+                  เหมือนกันหมด ก็กดจำนวนเป็น {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} แล้วเพิ่มลงตะกร้าครั้งเดียวจบ
+                </p>
+                <p>
+                  🛒 ไม่ต้องสั่งครบในรอบเดียว — <strong>เพิ่มลงตะกร้าไว้ก่อนได้</strong> แล้วค่อยกลับมาเติมทีหลัง
+                  ระบบนับรวมกับที่อยู่ในตะกร้าแล้วให้ (ขอเป็น{product.lotKeyOptions?.[0] ?? "สเปคหลัก"}เดียวกัน)
+                </p>
+              </div>
             </div>
           </div>
         </section>
@@ -4257,20 +4313,21 @@ export default function ProductDetail({
             * เพราะหัวใจของความเข้าใจคือ "ตัวเลขนี้เปลี่ยนจาก 1 เป็น 2" ตอนกดปุ่ม —
             * ถ้าโชว์เฉพาะหลังกด ลูกค้าจะไม่รู้ว่าฟอร์มข้างล่างคือของแผ่นไหน
             */}
-          {lotMinScope && !designDone && sheets.length > 0 && (
+          {lotMinScope && !designDone && lotDone > 0 && (
             <div
               id="sheet-head"
               className={`mt-4 rounded-2xl px-3.5 py-2.5 ring-1 ${
-                sheets.length ? "bg-emerald-50 ring-emerald-200" : "bg-stone-50 ring-stone-200"
+                lotDone ? "bg-emerald-50 ring-emerald-200" : "bg-stone-50 ring-stone-200"
               }`}
             >
               <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <span className={`text-[15px] font-extrabold ${sheets.length ? "text-emerald-800" : "text-stone-800"}`}>
-                  {lotEmoji} {lotWord}ที่ {(sheets.length + 1).toLocaleString("th-TH")}
+                <span className={`text-[15px] font-extrabold ${lotDone ? "text-emerald-800" : "text-stone-800"}`}>
+                  {lotEmoji} {lotWord}ที่ {(lotDone + 1).toLocaleString("th-TH")}
                 </span>
-                {sheets.length > 0 && (
+                {lotDone > 0 && (
                   <span className="text-[12px] font-bold text-emerald-700">
-                    · {lotWord}ที่ 1{sheets.length > 1 ? `–${sheets.length}` : ""} เก็บไว้แล้ว ✓
+                    · {lotWord}ที่ 1{lotDone > 1 ? `–${lotDone}` : ""}{" "}
+                    {lotToCart ? "อยู่ในตะกร้าแล้ว" : "เก็บไว้แล้ว"} ✓
                   </span>
                 )}
               </p>
@@ -4595,6 +4652,28 @@ export default function ProductDetail({
             )}
 
             {/**
+              * 🛒 โหมดหย่อนลงตะกร้าทันที — ของที่ใส่ไปแล้วอยู่ในตะกร้า ไม่ได้ค้างในหน้านี้
+              * สรุปสั้น ๆ ว่าใส่ไปกี่{lotWord}/กี่ชิ้นแล้ว พร้อมทางไปแก้จำนวนที่ตะกร้า
+              */}
+            {lotToCart && cartLot.lines > 0 && !designDone && (
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-emerald-50 px-3 py-2.5 ring-1 ring-emerald-200">
+                <p className="text-[12.5px] font-extrabold text-emerald-800">
+                  🛒 ในตะกร้าแล้ว {cartLot.lines.toLocaleString("th-TH")} {lotWord} · รวม{" "}
+                  {cartLot.qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
+                  <span className="block text-[11px] font-semibold text-emerald-700">
+                    ราคาขั้นบันไดคิดจากยอดรวมในตะกร้า — เพิ่ม{lotWord}ต่อได้เรื่อย ๆ
+                  </span>
+                </p>
+                <Link
+                  href="/cart"
+                  className="shrink-0 rounded-full bg-white px-3.5 py-1.5 text-[11.5px] font-bold text-emerald-700 ring-1 ring-emerald-300 transition hover:bg-emerald-100"
+                >
+                  ดู/แก้จำนวนในตะกร้า →
+                </Link>
+              </div>
+            )}
+
+            {/**
               * 📄 รายการแผ่นที่จะสั่งรอบนี้ — พูดเป็น "แผ่นที่ 1 / 2 / 3" ให้ตรงกับหัวฟอร์มด้านบน
               * ลูกค้าจะได้เชื่อมได้ว่า "ที่กำลังกรอกอยู่ = แผ่นสุดท้ายในลิสต์นี้"
               */}
@@ -4774,7 +4853,7 @@ export default function ProductDetail({
                     onClick={() => openStudio(null)}
                     className="flex-1 rounded-full bg-sky-600 px-5 py-3 text-[13px] font-bold text-white shadow-lg transition hover:scale-105 hover:bg-sky-700 sm:flex-none sm:px-8"
                   >
-                    🎨 เริ่มสร้าง — วางลาย{sheets.length > 0 ? `บน${lotWord}นี้` : "บนสินค้า"}
+                    🎨 เริ่มสร้าง — วางลาย{lotDone > 0 ? `บน${lotWord}นี้` : "บนสินค้า"}
                   </button>
                 )}
                 {/**
@@ -4800,22 +4879,22 @@ export default function ProductDetail({
                   >
                     {added
                       ? "✓ เพิ่มลงตะกร้าแล้ว!"
-                      : needDesignsChoice && !designsOk
-                        ? "⚠ ระบุก่อนว่ามีกี่ลาย"
                       : sheetRoll && !sheetRoll.withCurrent
                         ? `🛒 สั่ง ${sheetRoll.qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} ที่เก็บไว้ — ${formatPrice(sheetRoll.total)}`
-                      : inputHardError
+                      : inputHardError || inputErrors.length > 0
                         ? inputBlockLabel()
                       : consultBlocked
                         ? "💬 คุยลายกับแอดมินก่อนถึงจะสั่งได้"
                         : artBlocked
-                        ? "🎨 แนบลายก่อนถึงจะสั่งได้"
-                        : inputErrors.length > 0
-                        ? inputBlockLabel()
+                        ? "🎨 แนบลายก่อน — อัปโหลดรูป หรือใส่ลิงก์ไฟล์"
                         : belowMin
                         ? `⚠ ขั้นต่ำ ${hardMin} ชิ้นต่อลาย — สั่งอย่างน้อย ${hardMinNeed.toLocaleString("th-TH")} ชิ้น`
                         : belowMinQty
                         ? `⚠ เรทนี้เริ่มขายที่ ${rateMinQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}`
+                        // ⚠️ ต้องอยู่ "หลัง" ช่องกรอก/แนบลาย ให้ตรงลำดับที่ readyToAdd() ตรวจจริง
+                        //    เคยวางไว้หัวบันได ปุ่มเลยฟ้องเรื่องจำนวนลายทั้งที่ยังไม่ได้กรอกช่องด้านบน
+                        : needDesignsChoice && !designsOk
+                        ? "⚠ ระบุก่อนว่ามีกี่ลาย"
                         : (useCustom && customAsk) || askQuote
                         ? "🛒 สั่งเลย — แอดมินตีราคาแล้วแจ้งกลับ"
                         : sheetRoll
@@ -4833,6 +4912,7 @@ export default function ProductDetail({
                 )}
 
                 {/* ➕ สั่งหลายสเปคในครั้งเดียว — พักสเปคนี้ไว้ แล้วตั้งค่าอันถัดไปต่อ (ยังไม่ลงตะกร้า)
+                  * สินค้าที่เปิด lotToCart (เคสมือถือ) = หย่อนลงตะกร้าทันที แล้วไปนับจำนวนกันต่อในตะกร้า
                   * โผล่เฉพาะสินค้าที่เปิดโหมดล็อต — สินค้าอื่นสเปคเดียวจบ ไม่ต้องมีปุ่มนี้มากวน
                   * สินค้าที่ออกแบบบนเว็บได้ (เคสมือถือ) ต้องวางลายให้เสร็จก่อน ปุ่มถึงจะโผล่ */}
                 {lotMinScope && !(studioMode && !designDone) && (
@@ -4850,16 +4930,15 @@ export default function ProductDetail({
                     {/* ⚠️ ชื่อปุ่มต้องอยู่เสมอ — เคยเอาข้อความเตือนไปแทนที่ชื่อ แล้วลูกค้าหาปุ่มไม่เจอ
                         เหตุผลที่กดไม่ได้ไปอยู่บรรทัดที่สองในปุ่มแทน */}
                     {staged ? (
-                      `✓ เก็บ${lotWord}ที่ ${sheets.length.toLocaleString("th-TH")} แล้ว — ตั้งค่า${lotWord}ที่ ${(sheets.length + 1).toLocaleString("th-TH")} ต่อ`
+                      `✓ ${lotToCart ? "" : "เก็บ"}${lotWord}ที่ ${lotDone.toLocaleString("th-TH")} ${
+                        lotToCart ? "ลงตะกร้าแล้ว" : "แล้ว"
+                      } — ตั้งค่า${lotWord}ที่ ${(lotDone + 1).toLocaleString("th-TH")} ต่อ`
                     ) : (
-                      <>
-                        <span className="block">➕ เพิ่มอีก{lotWord} (คนละแบบ)</span>
-                        {sheetTodoLeft.length > 0 && (
-                          <span className="mt-0.5 block text-[11px] font-bold text-rose-600">
-                            ⚠ {sheetTodoLeft[0].cta}
-                          </span>
-                        )}
-                      </>
+                      // ⛔ ไม่ต้องมีบรรทัดเตือนซ้ำตรงนี้ — ปุ่มสั่งหลักข้าง ๆ บอกอยู่แล้วว่าติดตรงไหน
+                      //    และมีปุ่ม "👆 ไปที่…/ไปแนบลาย" พาไปให้ด้วย (ผู้ใช้สั่งเอาออก 31 ส.ค. 69)
+                      lotToCart
+                        ? `➕ ใส่ตะกร้า แล้วตั้ง${lotWord}ถัดไป`
+                        : `➕ เพิ่มอีก${lotWord} (คนละแบบ)`
                     )}
                   </button>
                 )}
@@ -4872,6 +4951,17 @@ export default function ProductDetail({
                     className="shrink-0 rounded-full bg-white px-4 py-2 text-[12px] font-bold text-rose-700 ring-1 ring-rose-300 transition hover:bg-rose-50"
                   >
                     👆 ไปที่ “{(inputHardError ?? inputErrors[0]).label}”
+                  </button>
+                )}
+                {/* ติดที่ยังไม่แนบลาย — เดิมบอกแค่ "แนบลายก่อน" แต่ไม่มีทางไป ลูกค้าต้องไล่หากล่องเอง
+                    (ปุ่ม ➕ มีตัวพาไปอยู่แล้ว ปุ่มสั่งหลักควรมีเหมือนกัน) */}
+                {artBlocked && !inputHardError && !consultBlocked && (
+                  <button
+                    type="button"
+                    onClick={jumpToArt}
+                    className="shrink-0 rounded-full bg-white px-4 py-2 text-[12px] font-bold text-rose-700 ring-1 ring-rose-300 transition hover:bg-rose-50"
+                  >
+                    👆 ไปแนบลาย
                   </button>
                 )}
                 {(belowMin || belowMinQty) && (
@@ -5831,14 +5921,12 @@ export default function ProductDetail({
                 ? "✓ เพิ่มแล้ว!"
                 : sheetRoll
                   ? `🛒 สั่ง ${sheetRoll.qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}`
-                : inputHardError
-                  ? `⚠ ติดที่ “${inputHardError.label}”`
+                : inputHardError || inputErrors.length > 0
+                  ? `⚠ ติดที่ “${(inputHardError ?? inputErrors[0]).label}”`
                 : consultBlocked
                   ? "💬 คุยลายก่อน"
                   : artBlocked
-                    ? "🎨 แนบลายก่อน"
-                    : inputErrors.length > 0
-                      ? `⚠ ติดที่ “${inputErrors[0].label}”`
+                    ? "🎨 อัปโหลดรูป/ใส่ลิงก์ลาย"
                       : belowMin
                         ? `⚠ ขั้นต่ำ ${hardMinNeed.toLocaleString("th-TH")} ชิ้น`
                         : "🛒 เพิ่มลงตะกร้า"}
