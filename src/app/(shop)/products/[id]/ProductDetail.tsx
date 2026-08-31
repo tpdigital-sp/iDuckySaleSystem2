@@ -2540,21 +2540,10 @@ export default function ProductDetail({
                               );
                               return (
                                 <p className="mt-1 text-[11px] font-bold text-emerald-600">
-                                  🎁 {src ? `ขนาด ${effective[src.when.label]} ` : "ขนาดที่เลือก"}ได้สูงสุด{" "}
-                                  {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""} (รวมในราคา) — เกินจากนั้นคิดเพิ่ม
-                                  {cfg?.unit ?? "หน่วย"}ละ {formatPrice(rate)} ต่อ
-                                  {matrix?.unit ?? "ชิ้น"}
-                                  {(() => {
-                                    // เพดานของขนาดนี้ — บอกไปพร้อมกันจะได้รู้ว่ากรอกได้ถึงแค่ไหน
-                                    const hardMax = inputMaxOf(opt, effective);
-                                    // เพดานรับงาน = ข้อจำกัดจริง กรอกเกินแล้วสั่งไม่ได้ — ต้องแดงให้สะดุดตา ไม่ใช่เทาจาง
-                                    return hardMax != null ? (
-                                      <span className="font-bold text-rose-600">
-                                        {" "}
-                                        · รับไม่เกิน {hardMax.toLocaleString("th-TH")} {cfg?.unit ?? ""}
-                                      </span>
-                                    ) : null;
-                                  })()}
+                                  {/* "(รวมในราคา)" ซ้ำกับคำว่า "ฟรี/ได้สูงสุด" · เพดานรับงานมีบรรทัด "รับ 1–N" ใต้ช่องกรอกอยู่แล้ว */}
+                                  🎁 {src ? `ขนาด ${effective[src.when.label]} ` : "ขนาดที่เลือก"}ฟรี{" "}
+                                  {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""} — เกินจากนั้น
+                                  {cfg?.unit ?? "หน่วย"}ละ {formatPrice(rate)} / {matrix?.unit ?? "ชิ้น"}
                                 </p>
                               );
                             }
@@ -3153,9 +3142,18 @@ export default function ProductDetail({
                     */}
                   {unitYield && !unitYield.approx && unitYield.optLabel === opt.label && yieldTotal != null && (
                     <p className="mt-1.5 rounded-xl bg-teal-50 px-3 py-2 text-[11px] leading-relaxed text-teal-800 ring-1 ring-teal-100">
-                      📐 {unitYield.label} <span className="font-bold">{unitYield.size}</span> ได้{" "}
-                      <span className="font-bold">{unitYield.per.toLocaleString("th-TH")} ชิ้น</span> ต่อ 1{" "}
-                      {matrix?.unit ?? "ชิ้น"} · สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} ={" "}
+                      {/* สั่ง 1 หน่วย: "ได้ 2 ชิ้น ต่อ 1 แผ่น A3 · สั่ง 1 แผ่น A3 = ได้ 2 ชิ้น" คือประโยคเดียวกันสองรอบ
+                          เหลือท่อนเดียวพอ · สั่งหลายหน่วยค่อยกางให้เห็นที่มาของยอดรวม */}
+                      📐 {unitYield.label} <span className="font-bold">{unitYield.size}</span>
+                      {qty > 1 ? (
+                        <>
+                          {" "}
+                          ได้ <span className="font-bold">{unitYield.per.toLocaleString("th-TH")} ชิ้น</span> ต่อ 1{" "}
+                          {matrix?.unit ?? "ชิ้น"} · สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} ={" "}
+                        </>
+                      ) : (
+                        " = "
+                      )}
                       <span className="font-extrabold text-teal-900">
                         ได้ {yieldTotal.toLocaleString("th-TH")} ชิ้น
                       </span>
@@ -4994,12 +4992,8 @@ export default function ProductDetail({
                   </p>
                   {/* บอกให้ชัดว่า "เพิ่มได้ แต่ยังยืนยันไม่ได้" ไม่งั้นลูกค้าไปตกใจตอนกดยืนยันในตะกร้า */}
                   <p className="mt-1 font-semibold">
-                    ✅ <strong>เพิ่มลงตะกร้าได้เลย</strong> แล้วค่อยกลับมาเติมให้ครบ —{" "}
-                    <strong className="text-rose-600">แต่จะกด “ยืนยันการสั่งซื้อ” ในตะกร้าไม่ได้จนกว่าจะครบ</strong>
-                  </p>
-                  <p className="mt-1 t-soft">
-                    👉 หรือกด “➕ เพิ่มอีก{lotWord}” ให้ครบในรอบเดียวเลยก็ได้ — แต่ละ{lotWord}เลือกสเปคของตัวเองได้
-                    ขอแค่{product.lotKeyOptions?.[0] ?? "สเปคหลัก"}เดียวกัน
+                    เพิ่มลงตะกร้าได้เลย แล้วค่อยเติมให้ครบ —{" "}
+                    <strong className="text-rose-600">ยังกด “ยืนยันการสั่งซื้อ” ไม่ได้จนกว่าจะครบ</strong>
                   </p>
                 </div>
               )}
@@ -5034,7 +5028,8 @@ export default function ProductDetail({
                     ได้{unitYield!.approx ? "ประมาณ " : " "}
                     {yieldTotal.toLocaleString("th-TH")} ชิ้น
                   </span>
-                  <span className="font-semibold text-teal-700">
+                  {/* สั่ง 1 หน่วย: "(2 ชิ้น ต่อ 1 แผ่น A3)" ซ้ำกับ "= ได้ 2 ชิ้น" ที่อยู่หน้ามันเป๊ะ — ตัดทิ้ง */}
+                  <span className={`font-semibold text-teal-700 ${qty <= 1 && !unitYield!.via ? "hidden" : ""}`}>
                     {" "}
                     ({unitYield!.per.toLocaleString("th-TH")} ชิ้น ต่อ 1 {matrix?.unit ?? "ชิ้น"}
                     {/* เรทตารางเมตร: กางตัวคูณให้เห็นว่า 320 ชิ้น/ตร.ม. มาจาก 40 ชิ้น/แผ่น × 8 แผ่น */}
@@ -5163,7 +5158,7 @@ export default function ProductDetail({
                   }}
                   className="mt-2 w-full rounded-xl bg-rose-50 px-3 py-2 text-left text-xs font-bold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100"
                 >
-                  🎨 สินค้านี้ต้องแนบลายก่อนสั่ง — แตะเพื่ออัปโหลดรูป หรือใส่ลิงก์ไฟล์/อีเมล
+                  🎨 ต้องแนบลายก่อนสั่ง — แตะเพื่ออัปโหลดรูป หรือใส่ลิงก์
                 </button>
               )}
               {useCustom && customAsk ? (

@@ -1964,7 +1964,13 @@ export interface FeeLine {
  * 🧾 แจกแจงว่า designFeeFor() มาจากค่าอะไรบ้าง — ลูกค้าเห็นบรรทัด "+ Add on ฿100" แล้วต้องรู้ว่าคืออะไร
  * ไล่ตามลำดับเดียวกับ designFeeFor เป๊ะ ๆ (ต่อลาย → ต่อแผ่น → ค่าคละลาย) ยอดรวมของทุกบรรทัดจึงเท่ากันเสมอ
  */
-export function feeBreakdown(product: Product, selections: Record<string, string>, qty: number): FeeLine[] {
+export function feeBreakdown(
+  product: Product,
+  selections: Record<string, string>,
+  qty: number,
+  /** ยอดที่ใช้หาช่วงราคา — ตะกร้าที่รวมล็อตส่งยอดรวมทั้งล็อตมา (ดู designFeeBase) */
+  tierQty = qty
+): FeeLine[] {
   const lines: FeeLine[] = [];
   const designs = designCountOf(selections);
   for (const opt of product.options ?? []) {
@@ -1994,7 +2000,7 @@ export function feeBreakdown(product: Product, selections: Record<string, string
       }
     }
   }
-  const mix = designFeeBase(product, selections, qty);
+  const mix = designFeeBase(product, selections, qty, tierQty);
   if (mix > 0) {
     // กติกาคละไม่ถึงขั้นต่ำ — บอกฐานคิดตรง ๆ ว่ากี่ชิ้น × ชิ้นละเท่าไหร่ (ไม่ใช่จำนวนลาย)
     const r = activeRate(product, selections);
@@ -2041,14 +2047,24 @@ export function unitAddOnBreakdown(product: Product, selections: Record<string, 
   return lines;
 }
 
-function designFeeBase(product: Product, selections: Record<string, string>, qty: number): number {
+/**
+ * ค่าคละลายของ 1 บรรทัด — tierQty = จำนวนที่ใช้ตัดสิน "อยู่ช่วงราคาปลีกคละอิสระไหม"
+ * ปกติเท่ากับจำนวนที่สั่ง แต่ในตะกร้าที่รวมล็อต ช่วงราคามาจากยอดรวมทั้งล็อต (เช่น 4 ใบในล็อต 12 ใบ
+ * = พ้นช่วงปลีกแล้ว ต้องคิดค่าคละ) — ไม่ส่งมาจะได้ 0 ทั้งที่ตะกร้าคิดเงินจริง
+ */
+function designFeeBase(
+  product: Product,
+  selections: Record<string, string>,
+  qty: number,
+  tierQty = qty
+): number {
   // กติกาคละแบบคิดต่อหน่วยมาก่อน — ค่าคละ = (ค่าต่อหน่วยตามจำนวนลาย) × จำนวนที่สั่ง
   // อ่านผ่าน mixRuleFor เสมอ ให้ตัวเลือกที่ตั้งกติกาเอง (เช่น ไดคัท 50%) ได้ค่าคละของตัวเอง
   const mr = mixRuleFor(product, selections);
   if (mr) return mixFeeTotal(mr, designCountOf(selections), Math.max(0, qty));
   const r = activeRate(product, selections);
   // กติกา "คละไม่ถึงขั้นต่ำ คิดส่วนต่างชิ้นละ N" (เคสมือถือ) — คิดจากชิ้นในลายที่ไม่เต็มขั้นต่ำ
-  if (r?.underMinPieceFee) return underMinFeeFor(r, qty, designCountOf(selections));
+  if (r?.underMinPieceFee) return underMinFeeFor(r, qty, designCountOf(selections), tierQty);
   if (!r?.minPerDesign || !r.extraDesignFee) return 0;
   const n = parseInt(String(selections[DESIGN_LABEL] ?? ""), 10);
   if (!Number.isFinite(n) || n <= 0) return 0;
@@ -4655,7 +4671,10 @@ export function isRetailRateLine(
  *
  * คืน array ยาวเท่า entries: เรทของแต่ละบรรทัด (undefined = ไม่เข้าเรทไหน)
  */
-function ratePoolsFor(p: Product, entries: { qty: number; designs: number }[]): (PriceRate | undefined)[] {
+function ratePoolsFor(
+  p: Product,
+  entries: { qty: number; designs: number; perUnit?: number }[]
+): (PriceRate | undefined)[] {
   const out: (PriceRate | undefined)[] = entries.map(() => undefined);
   const rs = p.priceRates ?? [];
   if (!rs.length) return out;
@@ -4667,7 +4686,8 @@ function ratePoolsFor(p: Product, entries: { qty: number; designs: number }[]): 
       // เรทที่ตั้ง underMinPieceFee — บรรทัดที่คละไม่ถึงโควตาต่อลายก็เข้าเรทได้ (จ่ายส่วนต่างชิ้นละ N แทน)
       .filter(
         (i) =>
-          !taken[i] && (per <= 0 || !!r.underMinPieceFee || entries[i].qty >= per * Math.max(1, entries[i].designs))
+          !taken[i] &&
+          (per <= 0 || !!r.underMinPieceFee || piecesOfEntry(entries[i]) >= per * Math.max(1, entries[i].designs))
       );
     const candQty = cand.reduce((s, i) => s + entries[i].qty, 0);
     if (!cand.length || candQty < (r.minQty ?? 1)) continue;
@@ -4684,14 +4704,22 @@ function ratePoolsFor(p: Product, entries: { qty: number; designs: number }[]): 
  * minPerDesign ที่จำนวนนั้น (เช่น 8 ชิ้น 5 ลาย ที่กติกาลายละ 5)
  * สั่งน้อยแต่เข้าเกณฑ์ต่อลายอยู่แล้ว (เช่น 5 ชิ้น 1 ลาย = ลายละ 5 พอดี) = ล็อตผลิตปกติ รวมล็อตได้
  * — เดิมตัดทุกบรรทัดช่วงปลีกแบบเหมารวม ทำให้ 25+5 ไม่รวมเป็น 30 ทั้งที่ควรได้เรทส่ง
+ *
+ * ⚠️ โควตาต่อลายนับเป็น "ชิ้น" ไม่ใช่หน่วยสั่ง (ดู perUnit ใน maxDesignsFor) — Jibbitz เซ็ตละ 5 ชิ้น
+ * สั่ง 1 เซ็ตคละ 3 ลาย = 3 ลายบน 5 ชิ้น ยังอยู่ในเกณฑ์ ไม่ใช่การใช้สิทธิ์คละอิสระ ต้องรวมล็อตได้
  */
-function usesFreeMixRetail(r: PriceRate | undefined, qty: number, designs: number): boolean {
+function usesFreeMixRetail(r: PriceRate | undefined, qty: number, designs: number, perUnit = 1): boolean {
   if (!r || !isFreeMix(r, qty)) return false;
   // เรทที่คิดค่าคละไม่ถึงขั้นต่ำเป็นเงิน (underMinPieceFee) — รวมล็อตได้เสมอ
   // (เข้าเรทส่งแล้วชิ้นที่ไม่ถึงลายละ 3 จ่ายส่วนต่างเอง ไม่ต้องกันออกไปจ่ายราคาปลีก)
   if (r.underMinPieceFee) return false;
   const per = r.minPerDesign ?? 0;
-  return per > 0 && designs > Math.floor(qty / per);
+  return per > 0 && designs > Math.floor(piecesOfEntry({ qty, perUnit }) / per);
+}
+
+/** ชิ้นจริงของบรรทัด = จำนวนหน่วยสั่ง × ชิ้นต่อหน่วย (perUnit — สินค้าขายเป็นเซ็ต) */
+function piecesOfEntry(e: { qty: number; perUnit?: number }): number {
+  return e.qty * Math.max(1, e.perUnit ?? 1);
 }
 
 function lineMergeable(p: Product, selections: Record<string, string>, qty: number): boolean {
@@ -4704,7 +4732,7 @@ function lineMergeable(p: Product, selections: Record<string, string>, qty: numb
   if (needsQuote(p, selections)) return false;
   // ออเดอร์ปลีกคละอิสระ (ลายเกินโควตาต่อลายในช่วงปลีก) = จ่ายราคาปลีกตามเดิม ไม่นับรวมล็อตผลิต
   const r = p.hardMinQty ? activeRate(p, selections) : pickRateForQty(p, qty);
-  if (usesFreeMixRetail(r, qty, designCountOf(selections))) return false;
+  if (usesFreeMixRetail(r, qty, designCountOf(selections), perUnitCapacity(p, selections) ?? 1)) return false;
   return true;
 }
 
@@ -4832,7 +4860,11 @@ export function repriceCartGroups(
     } else {
       const assigned = ratePoolsFor(
         p,
-        idxs.map((i) => ({ qty: lines[i].qty, designs: designCountOf(lines[i].selections) }))
+        idxs.map((i) => ({
+          qty: lines[i].qty,
+          designs: designCountOf(lines[i].selections),
+          perUnit: perUnitCapacity(p, lines[i].selections) ?? 1,
+        }))
       );
       const byLabel = new Map<string, { rate: PriceRate; idxs: number[] }>();
       idxs.forEach((idx, n) => {
@@ -5028,16 +5060,24 @@ export function lotPreviewFor(
   // พรีวิวราคาคิดที่ "สั่งขั้นต่ำที่เริ่มรวมได้" = จำนวนถึงโควตาลาย (ลาย × ลายละ) แทนจำนวนที่เลือกอยู่
   const myDesigns = Math.max(1, designs);
   const rNow = product.hardMinQty ? activeRate(product, selections) : pickRateForQty(product, qty);
-  const retailLine = usesFreeMixRetail(rNow, qty, myDesigns);
-  const mergeFromQty = retailLine ? (rNow!.minPerDesign ?? 1) * myDesigns : undefined;
+  const myPerUnit = perUnitCapacity(product, selections) ?? 1;
+  const retailLine = usesFreeMixRetail(rNow, qty, myDesigns, myPerUnit);
+  // จำนวนที่ต้องสั่งถึงจะรวมล็อตได้ = ชิ้นที่ต้องใช้ (ลาย × ลายละ) หารชิ้นต่อหน่วย ปัดขึ้น
+  const mergeFromQty = retailLine
+    ? Math.ceil(((rNow!.minPerDesign ?? 1) * myDesigns) / Math.max(1, myPerUnit))
+    : undefined;
   const lineQty = retailLine ? mergeFromQty! : qty;
 
   // ขั้นราคาคิดที่ยอดรวมทั้งล็อต · เรทของบรรทัดนี้มาจากการแบ่งกลุ่มเรทชุดเดียวกับตะกร้า
   // (25 ในตะกร้า + เลือก 25 อยู่ → เรท 2 · แต่เลือก 10 อยู่ → บรรทัดนี้เข้าเรท 1 แม้ล็อตรวม 35)
   const combinedQty = cartQty + lineQty;
   const entries = [
-    ...match.map((l) => ({ qty: l.qty, designs: designCountOf(l.selections) })),
-    { qty: lineQty, designs: myDesigns },
+    ...match.map((l) => ({
+      qty: l.qty,
+      designs: designCountOf(l.selections),
+      perUnit: perUnitCapacity(product, l.selections) ?? 1,
+    })),
+    { qty: lineQty, designs: myDesigns, perUnit: myPerUnit },
   ];
   const assigned = product.hardMinQty ? undefined : ratePoolsFor(product, entries);
   const rate = product.hardMinQty ? activeRate(product, selections) : assigned![entries.length - 1];

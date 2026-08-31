@@ -9,6 +9,7 @@ import {
   activeRate,
   designCountOf,
   DESIGN_LABEL,
+  feeBreakdown,
   formatPrice,
   isRetailRateLine,
   lotShortfalls,
@@ -488,6 +489,11 @@ export default function CartPage() {
               const product = productOf(item.productId);
               if (!product) return null;
               const picked = isPicked(item.key);
+              // ลายที่ลูกค้าแนบ (เก็บในตัวเลือกเป็น url คั่นด้วย " | ") — คำนวณครั้งเดียว ใช้ทั้งรูปหลักและแถบลายด้านล่าง
+              const artUrls = String(item.selections["ภาพลายที่แนบ"] ?? "")
+                .split("|")
+                .map((u) => u.trim())
+                .filter(Boolean);
               return (
                 <div key={item.key} className={`ord-card cart-item${picked ? "" : " tint dim"}`}>
                   {/* ✅ ติ๊ก = สั่งรายการนี้รอบนี้ · เอาติ๊กออก = พักไว้ในตะกร้าก่อน */}
@@ -503,35 +509,17 @@ export default function CartPage() {
                       aria-label={`เลือกสั่ง ${product.name}`}
                     />
                   </label>
-                  {(() => {
-                    // ลายที่ลูกค้าแนบ (เก็บมาในตัวเลือกเป็น url คั่นด้วย " | ") — โชว์ลายจริงแทนรูปสินค้า
-                    const artUrls = String(item.selections["ภาพลายที่แนบ"] ?? "")
-                      .split("|")
-                      .map((u) => u.trim())
-                      .filter(Boolean);
-                    return (
-                      <Link href={productPath(product)} className="cart-thumb">
-                        {artUrls[0] ? (
-                          <>
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={artUrls[0]} alt={`ลายที่แนบของ ${product.name}`} />
-                            <span className="ord-proof-n">
-                              🎨 ลายของคุณ{artUrls.length > 1 ? ` +${artUrls.length - 1}` : ""}
-                            </span>
-                          </>
-                        ) : (
-                          <ProductVisual
-                            emoji={product.emoji}
-                            gradient={product.gradient}
-                            src={product.imageSrc}
-                            alt={product.name}
-                            size="text-4xl"
-                            className="h-full w-full"
-                          />
-                        )}
-                      </Link>
-                    );
-                  })()}
+                  {/* รูปหลัก = รูปสินค้าเสมอ (ลายที่ลูกค้าแนบกางเป็นแถบใต้รายละเอียด ไม่เอามาแทนรูปสินค้า) */}
+                  <Link href={productPath(product)} className="cart-thumb">
+                    <ProductVisual
+                      emoji={product.emoji}
+                      gradient={product.gradient}
+                      src={product.imageSrc}
+                      alt={product.name}
+                      size="text-4xl"
+                      className="h-full w-full"
+                    />
+                  </Link>
                   <div className="flex min-w-0 flex-1 flex-col">
                     <div className="flex items-start justify-between gap-2">
                       <Link href={productPath(product)} className="cart-name">
@@ -550,7 +538,7 @@ export default function CartPage() {
                     {(() => {
                       // ซ่อน url ลาย/ธงภายในระบบ — สรุปเป็นข้อความสั้นแทน
                       // (บรรทัดตัวเลขของทีมผลิตซ่อนอยู่แล้วใน SPEC_HIDE — ลูกค้าไม่ต้องอ่าน แต่ยังติดไปกับออเดอร์)
-                      const artCount = String(item.selections["ภาพลายที่แนบ"] ?? "").split("|").filter((u) => u.trim()).length;
+                      const artCount = artUrls.length;
                       return (
                         <SpecLines
                           sel={item.selections}
@@ -561,7 +549,30 @@ export default function CartPage() {
                              ราคาพวกนั้นฝังอยู่ในช่องตารางแล้ว = อยู่ใน ฿45 · ติดป้ายไปลูกค้าจะบวกซ้ำเอง
                              (เคยทำแล้วโดนทักว่า "บวกแปลก ๆ" — 3mm +฿5 · 6cm +฿30 ทั้งที่รวมอยู่ในเรทแล้ว) */
                           extras={Object.fromEntries((item.addOns ?? []).map((a) => [a.label, a.amount]))}
-                          after={artCount > 0 ? <p className="font-semibold t-blue">🎨 แนบลายแล้ว {artCount} รูป</p> : null}
+                          /* 🎨 กางลายที่แนบให้ครบทุกรูป — เดิมโชว์แค่รูปแรก ลูกค้าเช็คไม่ได้ว่าส่งลายถูกครบไหม */
+                          after={
+                            artCount > 0 ? (
+                              <>
+                                <p className="font-semibold t-blue">🎨 แนบลายแล้ว {artCount} รูป</p>
+                                <div className="cart-arts">
+                                  {artUrls.map((u, k) => (
+                                    <a
+                                      key={`${u}-${k}`}
+                                      href={u}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="cart-art"
+                                      title={`ลายที่ ${k + 1} — แตะเพื่อดูเต็ม`}
+                                    >
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={u} alt={`ลายที่แนบของ ${product.name} รูปที่ ${k + 1}`} />
+                                      {artCount > 1 && <i>{k + 1}</i>}
+                                    </a>
+                                  ))}
+                                </div>
+                              </>
+                            ) : null
+                          }
                         />
                       );
                     })()}
@@ -600,14 +611,46 @@ export default function CartPage() {
                         ) : (
                           <>
                             <span className="cart-price">{formatPrice(item.unitPrice * item.qty + (item.extraFee ?? 0))}</span>
-                            {item.qty > 1 && (
+                            {/* ⚠️ ป้าย Add on ต้องขึ้นแม้สั่ง 1 หน่วย — ค่าคละลายของทั้งล็อตเกาะบรรทัดแรกของกลุ่มเรท
+                                ซึ่งอาจเป็นบรรทัดที่สั่งแค่ 1 หน่วย เดิมซ่อนทั้งบรรทัดย่อย ค่าคละเลยหายไปจากสายตา */}
+                            {(item.qty > 1 || (item.extraFee ?? 0) > 0) && (
                               <span className="block text-[11px] t-faint">
                                 {/* หน่วยขายตามตารางเรทของสินค้า (พวง/แผ่น/ตร.ม.) — ไม่มีตาราง = ชิ้น */}
-                                {formatPrice(item.unitPrice)} /{" "}
-                                {(product ? activeMatrix(product, item.selections)?.unit : null) ?? "ชิ้น"}
-                                {(item.extraFee ?? 0) > 0 && <> · 🎨 Add on +{formatPrice(item.extraFee!)}</>}
+                                {item.qty > 1 && (
+                                  <>
+                                    {formatPrice(item.unitPrice)} /{" "}
+                                    {(product ? activeMatrix(product, item.selections)?.unit : null) ?? "ชิ้น"}
+                                  </>
+                                )}
+                                {(item.extraFee ?? 0) > 0 && (
+                                  <>
+                                    {item.qty > 1 ? " · " : ""}🎨 Add on +{formatPrice(item.extraFee!)}
+                                  </>
+                                )}
                               </span>
                             )}
+                            {/* 🎨 Add on คืออะไร — "Add on +฿20" ลอย ๆ ลูกค้าเดาไม่ออกว่าค่าอะไร
+                                แจกแจงชื่อ+วิธีคิดจาก feeBreakdown (ชุดเดียวกับหน้าสินค้า)
+                                ⚠️ ตะกร้าคิดค่าคละที่ "ยอดรวมล็อต" — แจกแจงแล้วยอดไม่ตรงกับที่คิดจริงเมื่อไหร่
+                                ไม่เดา ปล่อยให้เห็นแค่ยอดรวมตามเดิม */}
+                            {(() => {
+                              const fee = item.extraFee ?? 0;
+                              if (!product || fee <= 0) return null;
+                              // ช่วงราคาคิดที่ยอดรวมล็อต — บรรทัดเล็กในล็อตใหญ่พ้นช่วงปลีกแล้ว
+                              const parts = feeBreakdown(product, item.selections, item.qty, item.merged?.totalQty ?? item.qty);
+                              const sum = parts.reduce((s, f) => s + f.amount, 0);
+                              if (!parts.length || Math.abs(sum - fee) > 0.01) return null;
+                              return (
+                                <span className="block text-[11px] t-faint">
+                                  {parts.map((f) => (
+                                    <span key={f.label} className="block">
+                                      🎨 {f.label} {formatPrice(f.amount)}
+                                      {f.note ? <> · {f.note}</> : null}
+                                    </span>
+                                  ))}
+                                </span>
+                              );
+                            })()}
                             {/* แจกแจงราคาต่อชิ้น — สองบรรทัดในล็อตเดียวกันราคาไม่เท่ากันได้ ถ้าเลือกตัวเลือกที่มีค่าเพิ่ม
                                 (เช่น ตะขอสปริง +฿10 ขณะที่ห่วงกลมฟรี) ราคาฐานจากเรทรวมเท่ากันทั้งคู่ */}
                             {item.addOns && item.addOns.length > 0 && (

@@ -10,7 +10,8 @@
 
 import { useEffect, useRef } from "react";
 
-export const LINE_URL = "https://lin.ee/x8GkqGZ";
+/** ลิงก์ LINE ร้าน — /line เลือกปลายทางตามอุปกรณ์ให้ (ดู src/app/line/route.ts) */
+export const LINE_URL = "/line";
 
 export const GREETING =
   "สวัสดีครับ 👋 ผมผู้ช่วยของ iDucky Prints ถามราคา วัสดุ ขนาด หรือขั้นตอนสั่งทำได้เลยครับ พิมพ์มาได้เลย เดี๋ยวตอบให้ทันที";

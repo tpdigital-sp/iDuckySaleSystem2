@@ -2609,6 +2609,17 @@ main:has(.dl-page) + .dl footer{margin-top:0}
   transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s ease}
 .shopp .cart-thumb:hover{transform:translateY(-2px) scale(1.03);box-shadow:0 12px 22px -8px rgba(44,129,196,.5)}
 .shopp .cart-thumb>img{width:100%;height:100%;object-fit:cover;display:block}
+/* 🎨 แถบลายที่ลูกค้าแนบมา (ใต้รายละเอียดในตะกร้า) — กางครบทุกรูป ไม่ใช่แค่รูปแรก
+   แตะรูปไหนก็เปิดไฟล์เต็มในแท็บใหม่ ลูกค้าจะได้เช็คได้ว่าส่งลายถูกครบก่อนกดสั่ง */
+.shopp .cart-arts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.shopp .cart-art{position:relative;display:block;width:46px;height:46px;border-radius:9px;overflow:hidden;
+  border:1.5px solid #fff;background:var(--sky-50);box-shadow:0 3px 8px -4px rgba(44,129,196,.5);
+  transition:transform .2s cubic-bezier(.34,1.56,.64,1),border-color .2s ease}
+.shopp .cart-art:hover{transform:translateY(-1px) scale(1.06);border-color:var(--blue)}
+.shopp .cart-art img{width:100%;height:100%;object-fit:cover;display:block}
+.shopp .cart-art i{position:absolute;right:2px;bottom:2px;border-radius:5px;background:rgba(23,58,107,.62);
+  color:#fff;font-size:.55rem;font-style:normal;line-height:1.5;padding:0 3px;font-family:var(--display)}
+@media (max-width:520px){.shopp .cart-art{width:40px;height:40px}}
 .shopp .cart-item{display:flex;gap:14px;padding:14px}
 .shopp .cart-item.dim{opacity:.55}
 .shopp .cart-name{font-family:var(--display);font-size:.94rem;color:var(--navy);line-height:1.35;

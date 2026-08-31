@@ -1,7 +1,11 @@
 /** ปุ่ม LINE ร้าน — ติดต่อ/แจ้งยืนยันออเดอร์ทางแชท */
 
-/** ลิงก์ LINE Official ของร้าน (แก้ที่นี่ที่เดียว) */
-export const LINE_URL = "https://lin.ee/x8GkqGZ";
+/**
+ * ลิงก์ LINE ร้าน (แก้ที่นี่ที่เดียว)
+ * ชี้เข้า /line ของเว็บเอง แล้วให้ route เลือกปลายทางตามอุปกรณ์:
+ * มือถือ = เข้าห้องแชทร้านตรง ๆ · คอม = หน้าโปรไฟล์ + QR (ดู src/app/line/route.ts)
+ */
+export const LINE_URL = "/line";
 
 /** ไอคอนแชท (สื่อถึงการทักแชท LINE) */
 function ChatIcon({ className = "h-5 w-5" }: { className?: string }) {

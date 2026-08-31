@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { formatPrice, lotShortfalls } from "@/lib/products";
+import { feeBreakdown, formatPrice, lotShortfalls } from "@/lib/products";
 import { useCart } from "@/lib/cart-context";
 import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { getUnpicked, clearUnpicked } from "@/lib/cart-select";
@@ -389,9 +389,20 @@ export default function CheckoutPage() {
     for (const it of items) {
       const fee = it.extraFee ?? 0;
       if (fee <= 0) continue;
+      /**
+       * ชื่อบรรทัดต้องบอกว่า "ค่าอะไร" — เดิมเขียน "Add on — ชื่อสินค้า (จำนวนลาย)" ซึ่งงานที่ไม่ได้คิดต่อลาย
+       * (ค่าคละชิ้นที่ไม่ถึงขั้นต่ำ · ค่าเคลือบต่อแผ่น) จะได้วงเล็บว่างเปล่า ฝ่ายแพ็ค/ลูกค้าอ่านไม่รู้เรื่อง
+       * → ใช้ชื่อรายการจริงจาก feeBreakdown (ชุดเดียวกับที่โชว์ในตะกร้า/หน้าสินค้า) แจกแจงไม่ได้ค่อยถอยไปจำนวนลาย
+       */
+      const prod = productOf(it.productId);
+      const parts = prod ? feeBreakdown(prod, it.selections, it.qty, it.merged?.totalQty ?? it.qty) : [];
+      const detail =
+        parts.length && Math.abs(parts.reduce((s, f) => s + f.amount, 0) - fee) < 0.01
+          ? parts.map((f) => (f.note ? `${f.label} · ${f.note}` : f.label)).join(" + ")
+          : (it.selections["จำนวนลาย"] ?? "").trim();
       orderItems.push({
         productId: `${it.productId}#designfee`,
-        name: `🎨 Add on — ${productOf(it.productId)?.name ?? it.productId} (${it.selections["จำนวนลาย"] ?? ""})`.trim(),
+        name: `🎨 Add on — ${prod?.name ?? it.productId}${detail ? ` (${detail})` : ""}`,
         selections: "",
         sel: {},
         qty: 1,
@@ -502,7 +513,8 @@ export default function CheckoutPage() {
       /* ข้าม — เบราว์เซอร์บางตัวไม่ให้เขียนคลิปบอร์ด ยังเปิดแชทได้ตามปกติ */
     }
     setLineOpened(true);
-    window.open(LINE_URL, "_blank", "noopener,noreferrer");
+    // ส่งข้อความไปตั้งต้นในช่องพิมพ์ให้เลย (มือถือ) — ถ้ายาวเกิน route จะข้ามให้เอง แล้วลูกค้าวางจากคลิปบอร์ดแทน
+    window.open(LINE_URL + "?text=" + encodeURIComponent(text), "_blank", "noopener,noreferrer");
   }
 
   function shareToLine(text: string) {

@@ -51,6 +51,11 @@ const COIL_LABEL = "Magsafe coil base";
 const MODE_A = "แบบ A (สำเร็จรูป)";
 const MODE_B = "แบบ B (แยกชิ้น)";
 const ADDON_NONE = "ไม่เพิ่ม";
+const RESIN_LABEL = "เคลือบเรซิ่นแผ่นอะคริลิค";
+const RESIN_NO = "ไม่เคลือบเรซิ่น";
+const RESIN_YES = "เคลือบเรซิ่น";
+/** ค่าเคลือบเรซิ่นของแผ่นที่เพิ่ม — ผู้ใช้กำหนดเอง (ไม่มีในตารางบนเว็บ) */
+const RESIN_FEE = 40;
 
 /* ── 1. ดึงบล็อก "GRIPTOK MAGSAFE UV Printing" จากหน้าเว็บ ──────────── */
 
@@ -402,10 +407,18 @@ d.options = [
     choices: ADDON_CHOICES.map((name) => ({ name, imageSrc: addonImage(name) })),
   },
   {
+    /** โผล่เฉพาะตอนเลือกเพิ่มแผ่น — ดู scripts/griptok-magsafe-resin-addon.mjs (ผู้ใช้สั่ง 31 ส.ค. 69) */
+    label: RESIN_LABEL,
+    display: "pills",
+    showWhen: { label: ADDON_LABEL, choices: ADDON_CHOICES.filter((n) => n !== ADDON_NONE) },
+    note: `เคลือบเฉพาะ**แผ่นอะคริลิคที่เพิ่ม** ผิวนูนเงา สีเข้มขึ้น — คิดเพิ่ม${UNIT}ละ ${RESIN_FEE} บาท`,
+    choices: [{ name: RESIN_NO }, { name: RESIN_YES, extra: RESIN_FEE }],
+  },
+  {
     label: COIL_LABEL,
     display: "multi",
     stockBearing: true,
-    choices: [{ name: `เพิ่ม coil base ติดในเคส (อันละ ${coilPrice} บาท)`, extra: coilPrice, imageSrc: art["coil-base"] }],
+    choices: [{ name: "เพิ่ม coil base ติดในเคส", extra: coilPrice, imageSrc: art["coil-base"] }],
   },
 ];
 
@@ -441,6 +454,7 @@ d.tabs = [
       `• มี 2 ทรง: ${circleHead} และ ${ovalHead}\n` +
       (clearBaseNote ? `• ${clearBaseNote}\n` : "") +
       `• ${addonHead} — แผ่นอะคริลิคไดคัทตามลาย ประกบด้านหลัง เลือกได้ ${ADDON.cols.map((c) => c.head).join(" / ")}\n` +
+      `• แผ่นอะคริลิคที่เพิ่ม เลือกเคลือบเรซิ่นได้ — ผิวนูนเงา สีเข้มขึ้น เพิ่ม${UNIT}ละ ${RESIN_FEE} บาท\n` +
       (addonHookNote ? `• ช่วงปลีกของ Add On บนเว็บระบุไว้ว่า "${addonHookNote}"\n` : "") +
       `• Magsafe coil base อันละ ${coilPrice} บาท — แผ่นแม่เหล็กติดในเคส สำหรับเคสที่ยังไม่รองรับ Magsafe\n` +
       `• 1-${freeMixBelow} ${UNIT} คละลายได้อิสระ · ตั้งแต่ ${mixFrom} ${UNIT}ขึ้นไป คละลาย/คละขนาดได้ ลายละ ${mixMin} ${UNIT}ขึ้นไป\n` +
@@ -459,7 +473,8 @@ d.tabs = [
       ADDON.cols.map((c) => `• ${c.head} — ${webLine(ADDON, c)}`).join("\n") +
       `\n\nส่วนลด / ของเสริม::\n` +
       `• แบบ B ไม่รับตัว Griptok — ลด ${noGriptokOff} บาท/${UNIT} (แจ้งในหมายเหตุถึงร้าน ทางร้านหักให้ตอนสรุปยอด)\n` +
-      `• Magsafe coil base — เพิ่ม ${coilPrice} บาท/${UNIT}`,
+      `• Magsafe coil base — เพิ่ม ${coilPrice} บาท/${UNIT}\n` +
+      `• เคลือบเรซิ่นแผ่นอะคริลิค — เพิ่ม ${RESIN_FEE} บาท/${UNIT}`,
   },
   {
     title: "การเตรียมไฟล์",

@@ -2,10 +2,12 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -39,6 +41,8 @@ export interface CartItem {
 
 interface CartState {
   items: CartItem[];
+  /** อ่านของเดิมจาก localStorage เสร็จหรือยัง — ยังไม่เสร็จห้ามเขียนทับ (ไม่งั้นแท็บที่เพิ่งเปิดจะล้างตะกร้าแท็บอื่น) */
+  hydrated: boolean;
 }
 
 type CartAction =
@@ -53,30 +57,32 @@ const STORAGE_KEY = "iducky-cart-v1";
 function reducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
     case "hydrate":
-      return { items: action.items };
+      return { items: action.items, hydrated: true };
     case "add": {
       const existing = state.items.find((i) => i.key === action.item.key);
       if (existing) {
         return {
+          ...state,
           items: state.items.map((i) =>
             i.key === action.item.key ? { ...i, qty: i.qty + action.item.qty } : i
           ),
         };
       }
-      return { items: [...state.items, action.item] };
+      return { ...state, items: [...state.items, action.item] };
     }
     case "remove":
-      return { items: state.items.filter((i) => i.key !== action.key) };
+      return { ...state, items: state.items.filter((i) => i.key !== action.key) };
     case "setQty":
       if (action.qty < 1) return state;
       return {
+        ...state,
         items: state.items.map((i) =>
           // เพดาน 99999 — สินค้าราคาขั้นบันได/หลายเรทสั่งกันหลักพันหลักหมื่นชิ้น (เดิม 99 ไว้กันพิมพ์ผิดของชิ้นเดี่ยว)
           i.key === action.key ? { ...i, qty: Math.min(action.qty, 99999) } : i
         ),
       };
     case "clear":
-      return { items: [] };
+      return { ...state, items: [] };
   }
 }
 
@@ -112,7 +118,9 @@ interface CartContextValue {
 const CartContext = createContext<CartContextValue | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, { items: [] });
+  const [state, dispatch] = useReducer(reducer, { items: [], hydrated: false });
+  /** JSON ล่าสุดที่ "ตรงกับ localStorage" — ใช้กันเขียน/อ่านวนซ้ำระหว่างแท็บ */
+  const syncedRef = useRef<string>("[]");
 
   // แคตตาล็อกจาก Supabase (รองรับสินค้าที่นำเข้าฐานข้อมูล ไม่ใช่แค่ static array)
   const [catalog, setCatalog] = useState<Map<string, Product>>(new Map());
@@ -121,27 +129,74 @@ export function CartProvider({ children }: { children: ReactNode }) {
     [catalog]
   );
 
-  useEffect(() => {
+  /** อ่านตะกร้าจาก localStorage — คืน null ถ้าเหมือนเดิม (ไม่ต้อง re-render) */
+  const readStored = useCallback((): CartItem[] | null => {
+    let raw: string | null = null;
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as CartItem[];
-        if (Array.isArray(parsed)) {
-          dispatch({ type: "hydrate", items: parsed });
-        }
-      }
+      raw = localStorage.getItem(STORAGE_KEY);
+    } catch {
+      return null; // storage ถูกปิด
+    }
+    const text = raw ?? "[]";
+    if (text === syncedRef.current) return null;
+    try {
+      const parsed = JSON.parse(text) as CartItem[];
+      if (!Array.isArray(parsed)) return null;
+      syncedRef.current = text;
+      return parsed;
     } catch {
       // ข้อมูลในเครื่องเสียหาย — เริ่มตะกร้าว่างแทน
+      syncedRef.current = "[]";
+      return [];
     }
   }, []);
 
   useEffect(() => {
+    dispatch({ type: "hydrate", items: readStored() ?? [] });
+  }, [readStored]);
+
+  useEffect(() => {
+    // ยังไม่ได้อ่านของเดิม = ห้ามเขียน (ไม่งั้นแท็บที่เพิ่งเปิดจะเขียน [] ทับตะกร้าจริง)
+    if (!state.hydrated) return;
+    const text = JSON.stringify(state.items);
+    if (text === syncedRef.current) return;
+    syncedRef.current = text;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.items));
+      localStorage.setItem(STORAGE_KEY, text);
     } catch {
       // storage เต็มหรือถูกปิด — ข้ามการบันทึก
     }
-  }, [state.items]);
+  }, [state.items, state.hydrated]);
+
+  /**
+   * ซิงก์ข้ามแท็บ — เปิดเว็บไว้หลายหน้า แล้วลบของในแท็บหนึ่ง แท็บอื่นต้องรู้ทันที
+   * ไม่งั้นแท็บเก่าจะถือรายการเดิมไว้ในหน่วยความจำ แล้วเขียนทับตอนกดเพิ่มสินค้า (ของที่ลบไปแล้วกลับมา)
+   * - storage event = แท็บอื่นเขียน (เบราว์เซอร์ไม่ยิงให้แท็บที่เขียนเอง)
+   * - visibility/focus/pageshow = เผื่อแท็บโดนพัก (bfcache/มือถือ) แล้วพลาด event
+   */
+  useEffect(() => {
+    const resync = () => {
+      const items = readStored();
+      if (items) dispatch({ type: "hydrate", items });
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== null && e.key !== STORAGE_KEY) return;
+      resync();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") resync();
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", resync);
+    window.addEventListener("pageshow", resync);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", resync);
+      window.removeEventListener("pageshow", resync);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [readStored]);
 
   /**
    * โหลด "เฉพาะสินค้าที่อยู่ในตะกร้า" ไว้คิดราคาใหม่ตามจำนวน
