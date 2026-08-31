@@ -2014,9 +2014,11 @@ export default function ProductDetail({
   }
 
   /**
-   * ➕ ตั้ง{lotWord}ถัดไปต่อ — โหมดปกติคือ "พักสเปคนี้ไว้ก่อน" (ยังไม่ลงตะกร้า)
-   * สินค้าที่เปิด lotToCart (เคสมือถือ) หย่อนลงตะกร้าทันทีแทน แล้วไปนับ/แก้จำนวนกันต่อในตะกร้า
-   * ผ่านด่านตรวจชุดเดียวกับการเพิ่มลงตะกร้า — ของที่เก็บไว้จึงพร้อมสั่งเสมอ
+   * ➕ พักสเปคแผ่นนี้ไว้ แล้วให้ลูกค้าตั้งค่าแผ่นถัดไปต่อ (ยังไม่ลงตะกร้า)
+   * ผ่านด่านตรวจชุดเดียวกับการเพิ่มลงตะกร้า — ของที่พักไว้จึงพร้อมสั่งเสมอ
+   *
+   * ⚠️ ใช้เฉพาะสินค้าที่ **ไม่ได้** เปิด lotToCart (สติ๊กเกอร์ UV) — สินค้าที่เปิดไว้ (เคสมือถือ)
+   *    ไม่มีปุ่ม ➕ แล้ว เหลือปุ่มเดียวคือ "🛒 เพิ่มลงตะกร้า" ที่หย่อนลงตะกร้าให้ทีละรุ่น
    */
   function stageSheet() {
     if (addLock.current) return;
@@ -2028,16 +2030,7 @@ export default function ProductDetail({
     if (!readyToAdd()) return;
     const selections = buildLine();
     if (!selections) return;
-    if (lotToCart) {
-      // 🛒 ลงตะกร้าเลย · ล็อกกันแตะซ้ำเหมือน handleAdd (1 คลิก = 1 บรรทัด)
-      addItem(product.id, selections, qty, product);
-      addLock.current = true;
-      setTimeout(() => {
-        addLock.current = false;
-      }, 1200);
-    } else {
-      setSheets((cur) => [...cur, { id: `sh${cur.length}-${Math.random().toString(36).slice(2, 8)}`, selections, qty }]);
-    }
+    setSheets((cur) => [...cur, { id: `sh${cur.length}-${Math.random().toString(36).slice(2, 8)}`, selections, qty }]);
     clearLineExtras();
     setStaged(true);
     setTimeout(() => setStaged(false), 2500);
@@ -4899,6 +4892,9 @@ export default function ProductDetail({
                         ? "🛒 สั่งเลย — แอดมินตีราคาแล้วแจ้งกลับ"
                         : sheetRoll
                           ? `🛒 สั่งทั้งหมด ${sheetRoll.qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} — ${formatPrice(sheetRoll.total)}`
+                        // โหมดปุ่มเดียว: ใส่ไปแล้วกี่รุ่นก็นับต่อบนปุ่มเลย ลูกค้าจะได้รู้ว่ากดซ้ำได้เรื่อย ๆ
+                        : lotToCart && lotDone > 0
+                          ? `🛒 เพิ่ม${lotWord}ที่ ${(lotDone + 1).toLocaleString("th-TH")} ลงตะกร้า — ${formatPrice(unitPrice * qty + designFee)}`
                           : `🛒 เพิ่มลงตะกร้า — ${formatPrice(unitPrice * qty + designFee)}`}
                     {/* ครบขั้นต่ำเพราะรวมกับของในตะกร้า — ต้องพูดออกมา ไม่ให้ดูเหมือนขั้นต่ำไม่ทำงาน */}
                     {!added && lotMetWithCart && (
@@ -4912,10 +4908,12 @@ export default function ProductDetail({
                 )}
 
                 {/* ➕ สั่งหลายสเปคในครั้งเดียว — พักสเปคนี้ไว้ แล้วตั้งค่าอันถัดไปต่อ (ยังไม่ลงตะกร้า)
-                  * สินค้าที่เปิด lotToCart (เคสมือถือ) = หย่อนลงตะกร้าทันที แล้วไปนับจำนวนกันต่อในตะกร้า
                   * โผล่เฉพาะสินค้าที่เปิดโหมดล็อต — สินค้าอื่นสเปคเดียวจบ ไม่ต้องมีปุ่มนี้มากวน
-                  * สินค้าที่ออกแบบบนเว็บได้ (เคสมือถือ) ต้องวางลายให้เสร็จก่อน ปุ่มถึงจะโผล่ */}
-                {lotMinScope && !(studioMode && !designDone) && (
+                  * ⛔ สินค้าที่เปิด lotToCart (เคสมือถือ) ไม่มีปุ่มนี้ — ปุ่ม "🛒 เพิ่มลงตะกร้า" ทำงานเดียวกันเป๊ะ
+                  *    (กดแล้วรุ่นนั้นลงตะกร้า ฟอร์มพร้อมรับรุ่นถัดไป) มีสองปุ่มทำเรื่องเดียวกันแค่ชวนงง
+                  *    — ผู้ใช้สั่งเอาออก 31 ส.ค. 69
+                  * สินค้าที่ออกแบบบนเว็บได้ ต้องวางลายให้เสร็จก่อน ปุ่มถึงจะโผล่ */}
+                {lotMinScope && !lotToCart && !(studioMode && !designDone) && (
                   <button
                     type="button"
                     onClick={stageSheet}
@@ -4930,15 +4928,11 @@ export default function ProductDetail({
                     {/* ⚠️ ชื่อปุ่มต้องอยู่เสมอ — เคยเอาข้อความเตือนไปแทนที่ชื่อ แล้วลูกค้าหาปุ่มไม่เจอ
                         เหตุผลที่กดไม่ได้ไปอยู่บรรทัดที่สองในปุ่มแทน */}
                     {staged ? (
-                      `✓ ${lotToCart ? "" : "เก็บ"}${lotWord}ที่ ${lotDone.toLocaleString("th-TH")} ${
-                        lotToCart ? "ลงตะกร้าแล้ว" : "แล้ว"
-                      } — ตั้งค่า${lotWord}ที่ ${(lotDone + 1).toLocaleString("th-TH")} ต่อ`
+                      `✓ เก็บ${lotWord}ที่ ${lotDone.toLocaleString("th-TH")} แล้ว — ตั้งค่า${lotWord}ที่ ${(lotDone + 1).toLocaleString("th-TH")} ต่อ`
                     ) : (
                       // ⛔ ไม่ต้องมีบรรทัดเตือนซ้ำตรงนี้ — ปุ่มสั่งหลักข้าง ๆ บอกอยู่แล้วว่าติดตรงไหน
                       //    และมีปุ่ม "👆 ไปที่…/ไปแนบลาย" พาไปให้ด้วย (ผู้ใช้สั่งเอาออก 31 ส.ค. 69)
-                      lotToCart
-                        ? `➕ ใส่ตะกร้า แล้วตั้ง${lotWord}ถัดไป`
-                        : `➕ เพิ่มอีก${lotWord} (คนละแบบ)`
+                      `➕ เพิ่มอีก${lotWord} (คนละแบบ)`
                     )}
                   </button>
                 )}
