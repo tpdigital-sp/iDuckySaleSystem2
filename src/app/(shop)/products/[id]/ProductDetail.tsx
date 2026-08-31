@@ -358,6 +358,110 @@ function finiteOr(n: number, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/**
+ * แถบรูปย่อของแกลเลอรี — เลื่อนดู "ทีละชุด" ด้วยปุ่มลูกศรซ้าย/ขวา
+ *
+ * แกลเลอรีดูดภาพประจำตัวเลือกเข้ามาเองด้วย (ดู galleryImages) สินค้าที่มีตัวเลือกเยอะ ๆ
+ * อย่างเคสมือถือจึงมีรูปย่อหลายสิบใบ — เดิมมีแต่ลากสกรอลล์ ลูกค้าจอคอมไม่มีอะไรให้กด
+ * และไม่รู้ด้วยซ้ำว่ายังมีรูปต่ออยู่ทางขวา
+ *
+ *   • ปุ่มโผล่เฉพาะด้านที่ยังเลื่อนต่อได้ · ไล่สีจางขอบก็โชว์ตามด้านนั้น
+ *   • 1 ชุด = ความกว้างที่มองเห็นอยู่ หัก 1 ใบไว้ให้เห็นว่าต่อกัน (ไม่งั้นดูเหมือนกระโดดข้าม)
+ *   • เปลี่ยนรูปใหญ่ด้วยลูกศร/กดการ์ดตัวเลือก แถบนี้เลื่อนตามให้เอง รูปที่เลือกอยู่จะไม่หลุดจอ
+ */
+function GalleryThumbs({
+  gallery,
+  at,
+  onPick,
+  coverSrc,
+}: {
+  gallery: { emoji: string; gradient: string; label: string; src?: string; videoSrc?: string }[];
+  at: number;
+  onPick: (i: number) => void;
+  /** รูปปกของสินค้า — ใช้กับช่องแรกที่ยังไม่ได้ตั้ง src เอง (กติกาเดียวกับรูปใหญ่) */
+  coverSrc?: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [edge, setEdge] = useState({ left: false, right: false });
+
+  const sync = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    // เผื่อ 4px กันเศษทศนิยมของเบราว์เซอร์ทำให้ปุ่มค้างทั้งที่สุดทางแล้ว
+    setEdge({ left: el.scrollLeft > 4, right: el.scrollLeft < max - 4 });
+  }, []);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    sync();
+    // จำนวนรูป/ความกว้างจอเปลี่ยน = ต้องคิดใหม่ว่ายังเลื่อนต่อได้ไหม
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [sync, gallery.length]);
+
+  // รูปใหญ่เปลี่ยน → เลื่อนให้รูปย่อที่เลือกอยู่โผล่ในจอเสมอ
+  useEffect(() => {
+    ref.current?.children[at]?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+  }, [at]);
+
+  const page = (d: number) => {
+    const el = ref.current;
+    if (!el) return;
+    el.scrollBy({ left: d * Math.max(el.clientWidth - 75, 120), behavior: "smooth" });
+  };
+
+  return (
+    <div className={`pgal-strip${edge.left ? " has-prev" : ""}${edge.right ? " has-next" : ""}`}>
+      <div ref={ref} className="pgal-thumbs" onScroll={sync}>
+        {gallery.map((img, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => onPick(i)}
+            className={`pgal-thumb${i === at ? " on" : ""}`}
+            aria-label={img.videoSrc ? `ดูคลิป${img.label}` : `ดูรูป${img.label}`}
+            aria-current={i === at || undefined}
+          >
+            <ProductVisual
+              emoji={img.emoji}
+              gradient={img.gradient}
+              src={img.src ?? (i === 0 ? coverSrc : undefined)}
+              alt={img.label}
+              size="text-2xl"
+              className="h-full w-full"
+            />
+            {/* ช่องที่เป็นคลิป — ติดปุ่มเล่นทับรูปย่อ ให้รู้ว่ากดแล้วเป็นวิดีโอ ไม่ใช่รูปนิ่ง */}
+            {img.videoSrc && (
+              <span className="pgal-play pointer-events-none">
+                <span>▶</span>
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+      {([
+        { d: -1, side: "prev", glyph: "‹", label: "ดูรูปย่อชุดก่อนหน้า", on: edge.left },
+        { d: 1, side: "next", glyph: "›", label: "ดูรูปย่อชุดถัดไป", on: edge.right },
+      ] as const).map((b) =>
+        b.on ? (
+          <button
+            key={b.side}
+            type="button"
+            onClick={() => page(b.d)}
+            aria-label={b.label}
+            className={`pgal-snav ${b.side}`}
+          >
+            {b.glyph}
+          </button>
+        ) : null
+      )}
+    </div>
+  );
+}
+
 export default function ProductDetail({
   product: initialProduct,
   /** 📐 เทมเพลตไฟล์งานที่ลูกค้าโหลดไปวางลายได้ (ดึงมาให้แล้วจากเซิร์ฟเวอร์) */
@@ -657,6 +761,12 @@ export default function ProductDetail({
    * → หน้าสินค้าไม่ล็อกปุ่มสั่ง ปล่อยให้ทยอยเพิ่มทีละแผ่น แล้วไปเช็คยอดรวมที่ตะกร้า/หน้าชำระเงิน
    */
   const lotMinScope = rate?.minQtyScope === "lot";
+  /**
+   * 📦 คำเรียก "1 รายการ" ในโหมดสั่งหลายสเปคในครั้งเดียว — สติ๊กเกอร์พูดว่า "แผ่น" (ค่าเริ่มต้น)
+   * เคสมือถือตั้ง lotItemWord = "รุ่น" → "➕ เพิ่มอีกรุ่น (คนละแบบ)" · เป็นคำพูดล้วน ไม่กระทบราคา
+   */
+  const lotWord = product.lotItemWord?.trim() || "แผ่น";
+  const lotEmoji = product.lotItemEmoji?.trim() || "📄";
   /**
    * เรทที่ตั้งขั้นต่ำแบบนับทั้งล็อต — ใช้เขียนการ์ด "วิธีสั่งสินค้านี้" ฝั่งซ้าย
    * อ่านจากตัวสินค้าไม่ใช่เรทที่เลือกอยู่ ลูกค้าจะได้เห็นกติกาแม้กำลังดูเรทอื่น (เช่น ตร.ม.)
@@ -1287,8 +1397,13 @@ export default function ProductDetail({
   /**
    * 🎨 สินค้าตัวนี้ "ออกแบบบนเว็บได้เลย" ไหม — มีเทมเพลตที่ถอดขนาดงานจริงได้ตามตัวเลือกที่เลือกอยู่
    * ถ้ามี: หน้าสินค้าเปลี่ยนเป็นโหมด "เริ่มสร้าง" (ไม่ต้องให้ลูกค้าแนบไฟล์ลายเอง)
+   *
+   * แอดมินปิดปุ่มไว้ (studioOff) = ไม่มีโหมดนี้ทั้งฝั่งลูกค้าและฝั่งทีมงาน —
+   * แต่กล่อง 📐 ไฟล์เทมเพลตด้านล่างยังขึ้นตามเดิม (คนละส่วนกัน)
    */
+  const studioOff = product.studioOff === true;
   const studioTarget = (() => {
+    if (studioOff) return null;
     for (const t of templates) {
       const label = t.optionLabel?.trim();
       const chosen = label ? (effective[label] ?? "").trim() : "";
@@ -1680,9 +1795,13 @@ export default function ProductDetail({
   const lotMetWithCart =
     lotMinScope && rateMinQty > 1 && lotShortNeed === 0 && lotAddingQty < rateMinQty && (lotPreview?.cartQty ?? 0) > 0;
   /**
-   * 🔒 ยังไม่ถึงขั้นต่ำของรอบผลิต = กดเพิ่มลงตะกร้าไม่ได้ (ผู้ใช้สั่ง 30 ส.ค. 69)
-   * ต้องกด "➕ เพิ่มอีกแผ่น" สะสมให้ครบก่อน — ปุ่ม ➕ ไม่ถูกล็อก ไม่งั้นจะไม่มีทางครบได้เลย
-   * ยอดที่นับรวมของที่อยู่ในตะกร้าล็อตเดียวกันอยู่แล้วด้วย (ผ่าน lotShortNeed)
+   * 📦 ยังไม่ถึงขั้นต่ำของรอบผลิต — **เตือน ไม่ห้าม** (ผู้ใช้สั่ง 31 ส.ค. 69)
+   *
+   * เพิ่มลงตะกร้าได้ตั้งแต่แผ่นแรก เพราะขั้นต่ำเป็นของ "ทั้งล็อต" ลูกค้าทยอยเก็บของลงตะกร้า
+   * แล้วค่อยเติมให้ครบทีหลังได้ · ประตูจริงย้ายไปที่ปุ่ม "✅ ยืนยันการสั่งซื้อ" ในตะกร้า
+   * (lotShortfalls → cart/page.tsx · checkout · /api/orders) ซึ่งบล็อกจนกว่าจะครบทุกล็อต
+   *
+   * ⚠️ ประวัติ: 30 ส.ค. เคยล็อกปุ่มเพิ่มลงตะกร้าไว้ แล้วผู้ใช้ให้เปลี่ยนเป็นเตือนแทน
    */
   const belowLotMin = lotShortNeed > 0;
 
@@ -1722,9 +1841,9 @@ export default function ProductDetail({
       ? [
           {
             key: "art",
-            label: "ลายของแผ่นนี้",
+            label: `ลายของ${lotWord}นี้`,
             // บอกเป็นคำสั่งที่ทำได้ทันที — "แนบลาย" ลอย ๆ ลูกค้าไม่รู้ว่าต้องทำอะไร
-            cta: "อัปโหลดภาพลายของแผ่นนี้ก่อน",
+            cta: `อัปโหลดภาพลายของ${lotWord}นี้ก่อน`,
             done: artProvided,
             jump: jumpToArt,
           },
@@ -2026,10 +2145,12 @@ export default function ProductDetail({
                 {sec.heading && (
                   <h3 className="text-xl font-extrabold text-amber-600">{sec.heading}</h3>
                 )}
-                {/* เนื้อหาแบบจัดรูปแบบจากหลังบ้าน (ผ่าน sanitize ฝั่งเซิร์ฟเวอร์ตอนบันทึก) — ไม่มีค่อยใช้ข้อความธรรมดาแบบเดิม */}
+                {/* เนื้อหาแบบจัดรูปแบบจากหลังบ้าน (ผ่าน sanitize ฝั่งเซิร์ฟเวอร์ตอนบันทึก) — ไม่มีค่อยใช้ข้อความธรรมดาแบบเดิม
+                    เนื้อหา HTML ที่ออกแบบมาเป็นกล่อง/ตาราง กินเต็มความกว้างที่มี (ไม่ตีกรอบ max-w-lg เหมือนข้อความเปล่า)
+                    มีรูปประกอบคู่กัน = อยู่ในครึ่งคอลัมน์อยู่แล้ว จึงเต็มแค่ครึ่งนั้น */}
                 {sec.html?.trim() ? (
                   <div
-                    className={`mx-auto mt-3 max-w-lg overflow-x-auto text-left text-sm leading-relaxed text-stone-600 ${TAB_PROSE}`}
+                    className={`mt-3 w-full overflow-x-auto text-left text-sm leading-relaxed text-stone-600 ${TAB_PROSE}`}
                     dangerouslySetInnerHTML={{ __html: sec.html }}
                   />
                 ) : (
@@ -2145,7 +2266,7 @@ export default function ProductDetail({
                   {/* 🔒 ล็อกไว้ทั้งออเดอร์ระหว่างสั่งหลายแผ่น — บอกเหตุผลตรงจุด ไม่ให้ลูกค้างงว่ากดไม่ได้ทำไม */}
                   {lotLocked && (
                     <p className="mb-1 text-[11px] font-bold text-amber-700">
-                      🔒 ล็อกไว้ทั้งออเดอร์ — ทุกแผ่นต้องเป็น{opt.label}เดียวกัน
+                      🔒 ล็อกไว้ทั้งออเดอร์ — ทุก{lotWord}ต้องเป็น{opt.label}เดียวกัน
                     </p>
                   )}
                   {/* 🔽 ของเสริมที่ปิดไว้ก่อน — แถวสวิตช์บรรทัดเดียว กดแล้วค่อยกางตัวเลือกออกมา */}
@@ -3239,7 +3360,7 @@ export default function ProductDetail({
                       {r.label}
                       {locked && (
                         <span className="rounded-full bg-stone-200/70 px-1.5 py-px text-[10px] font-bold text-stone-500">
-                          {sheets.length > 0 ? "🔒 กำลังสั่งหลายแผ่น" : `🔒 ต้องสั่ง ${need.toLocaleString("th-TH")}+`}
+                          {sheets.length > 0 ? `🔒 กำลังสั่งหลาย${lotWord}` : `🔒 ต้องสั่ง ${need.toLocaleString("th-TH")}+`}
                         </span>
                       )}
                     </span>
@@ -3491,30 +3612,8 @@ export default function ProductDetail({
                 </>
               )}
             </div>
-            {/* แถบรูปย่อ — ซ่อนสกรอลล์บาร์ดิบของเบราว์เซอร์ (เหมือนแถบเลื่อนอื่นทั้งเว็บ)
-                แล้วใช้ไล่สีจางขอบขวาบอกแทนว่ายังมีรูปต่อ */}
-            <div className="pgal-strip">
-              <div className="pgal-thumbs">
-              {gallery.map((img, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setImageIndex(i)}
-                  className={`pgal-thumb${i === at ? " on" : ""}`}
-                  aria-label={img.videoSrc ? `ดูคลิป${img.label}` : `ดูรูป${img.label}`}
-                  aria-current={i === at || undefined}
-                >
-                  <ProductVisual emoji={img.emoji} gradient={img.gradient} src={img.src ?? (i === 0 ? product.imageSrc : undefined)} alt={img.label} size="text-2xl" className="h-full w-full" />
-                  {/* ช่องที่เป็นคลิป — ติดปุ่มเล่นทับรูปย่อ ให้รู้ว่ากดแล้วเป็นวิดีโอ ไม่ใช่รูปนิ่ง */}
-                  {img.videoSrc && (
-                    <span className="pgal-play pointer-events-none">
-                      <span>▶</span>
-                    </span>
-                  )}
-                </button>
-              ))}
-              </div>
-            </div>
+            {/* แถบรูปย่อ — เลื่อนทีละชุดด้วยปุ่มลูกศร (ดู GalleryThumbs) */}
+            <GalleryThumbs gallery={gallery} at={at} onPick={setImageIndex} coverSrc={product.imageSrc} />
             {shown.label && (
               <p className="pgal-cap">
                 มุมมอง: <b>{shown.label}</b>
@@ -3657,10 +3756,13 @@ export default function ProductDetail({
                 </button>
               )}
 
-              <p className="px-4 pb-3 text-[10px] leading-relaxed text-sky-800">
-                วิธีที่ง่ายที่สุดคือกดปุ่ม <strong>&ldquo;🎨 เริ่มสร้าง&rdquo;</strong> แล้ววางรูปของคุณบนแบบได้เลย
-                ระบบจัดขนาด/ตำแหน่งให้ตรงกับที่ผลิตจริง · ส่วนไฟล์ .ai ตรงนี้มีไว้ให้คนที่อยากทำแบบเองในโปรแกรมกราฟฟิก
-              </p>
+              {/* แอดมินปิดปุ่ม "เริ่มสร้าง" ไว้ = ไม่ชวนให้กดปุ่มที่ไม่มีบนหน้า */}
+              {!studioOff && (
+                <p className="px-4 pb-3 text-[10px] leading-relaxed text-sky-800">
+                  วิธีที่ง่ายที่สุดคือกดปุ่ม <strong>&ldquo;🎨 เริ่มสร้าง&rdquo;</strong> แล้ววางรูปของคุณบนแบบได้เลย
+                  ระบบจัดขนาด/ตำแหน่งให้ตรงกับที่ผลิตจริง · ส่วนไฟล์ .ai ตรงนี้มีไว้ให้คนที่อยากทำแบบเองในโปรแกรมกราฟฟิก
+                </p>
+              )}
             </div>
           )}
 
@@ -4164,11 +4266,11 @@ export default function ProductDetail({
             >
               <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                 <span className={`text-[15px] font-extrabold ${sheets.length ? "text-emerald-800" : "text-stone-800"}`}>
-                  📄 แผ่นที่ {(sheets.length + 1).toLocaleString("th-TH")}
+                  {lotEmoji} {lotWord}ที่ {(sheets.length + 1).toLocaleString("th-TH")}
                 </span>
                 {sheets.length > 0 && (
                   <span className="text-[12px] font-bold text-emerald-700">
-                    · แผ่นที่ 1{sheets.length > 1 ? `–${sheets.length}` : ""} เก็บไว้แล้ว ✓
+                    · {lotWord}ที่ 1{sheets.length > 1 ? `–${sheets.length}` : ""} เก็บไว้แล้ว ✓
                   </span>
                 )}
               </p>
@@ -4176,7 +4278,7 @@ export default function ProductDetail({
                   (ผู้ใช้สั่งเอาออก 30 ส.ค. 69 — ซ้ำซ้อน อ่านสองที่) */}
               {lotLockedLabels.length > 0 && (
                 <p className="mt-1 text-[11px] font-bold text-emerald-700">
-                  🔒 {lotLockedLabels.join(" · ")} ล็อกไว้แล้ว — ทุกแผ่นในออเดอร์นี้ต้องเป็นแบบเดียวกัน
+                  🔒 {lotLockedLabels.join(" · ")} ล็อกไว้แล้ว — ทุก{lotWord}ในออเดอร์นี้ต้องเป็นแบบเดียวกัน
                 </p>
               )}
             </div>
@@ -4499,7 +4601,7 @@ export default function ProductDetail({
             {sheetRoll && (
               <div className="mb-3 rounded-2xl bg-white p-3 ring-1 ring-amber-200">
                 <p className="flex flex-wrap items-baseline justify-between gap-x-2 text-[13px] font-extrabold text-stone-800">
-                  <span>📄 แผ่นที่จะสั่งรอบนี้</span>
+                  <span>{lotEmoji} {lotWord}ที่จะสั่งรอบนี้</span>
                   <span className={lotShortNeed > 0 ? "text-amber-700" : "text-emerald-700"}>
                     รวม {sheetRoll.qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
                     {rateMinQty > 1 &&
@@ -4539,7 +4641,7 @@ export default function ProductDetail({
                         type="button"
                         onClick={() => setSheets((cur) => [...cur, { ...sh, id: `${sh.id}-c${cur.length}` }])}
                         className="shrink-0 rounded-full px-2 py-1 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
-                        aria-label={`สั่งแผ่นที่ ${i + 1} ซ้ำอีกแผ่น`}
+                        aria-label={`สั่ง${lotWord}ที่ ${i + 1} ซ้ำอีก${lotWord}`}
                       >
                         ⧉ ซ้ำ
                       </button>
@@ -4547,7 +4649,7 @@ export default function ProductDetail({
                         type="button"
                         onClick={() => setSheets((cur) => cur.filter((x) => x.id !== sh.id))}
                         className="shrink-0 rounded-full px-2 py-1 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
-                        aria-label={`เอาแผ่นที่ ${i + 1} ออก`}
+                        aria-label={`เอา${lotWord}ที่ ${i + 1} ออก`}
                       >
                         ✕
                       </button>
@@ -4572,8 +4674,8 @@ export default function ProductDetail({
                       </span>
                       <span className={`block text-[11px] font-semibold ${sheetRoll.withCurrent ? "text-amber-700" : "text-stone-400"}`}>
                         {sheetRoll.withCurrent
-                          ? `${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} · ⬆ กำลังกรอกแผ่นนี้อยู่`
-                          : "⬆ กำลังกรอกแผ่นนี้อยู่ — ยังไม่ครบ เลยยังไม่นับรวม"}
+                          ? `${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} · ⬆ กำลังกรอก${lotWord}นี้อยู่`
+                          : `⬆ กำลังกรอก${lotWord}นี้อยู่ — ยังไม่ครบ เลยยังไม่นับรวม`}
                       </span>
                     </span>
                   </li>
@@ -4666,24 +4768,29 @@ export default function ProductDetail({
                 )}
 
                 {/* โหมดออกแบบบนเว็บ: ปุ่มแรกคือ "เริ่มสร้าง" · วางลายเสร็จแล้วค่อยกลายเป็นปุ่มใส่ตะกร้า */}
-                {studioMode && !designDone ? (
+                {studioMode && !designDone && (
                   <button
                     type="button"
                     onClick={() => openStudio(null)}
                     className="flex-1 rounded-full bg-sky-600 px-5 py-3 text-[13px] font-bold text-white shadow-lg transition hover:scale-105 hover:bg-sky-700 sm:flex-none sm:px-8"
                   >
-                    🎨 เริ่มสร้าง — วางลายบนสินค้า
+                    🎨 เริ่มสร้าง — วางลาย{sheets.length > 0 ? `บน${lotWord}นี้` : "บนสินค้า"}
                   </button>
-                ) : (
+                )}
+                {/**
+                  * ปุ่มสั่ง — โผล่เมื่อวางลายเสร็จแล้ว หรือ (โหมดสั่งหลายสเปค) มีของพักไว้แล้ว
+                  * ⚠️ ที่ต้องโผล่คู่กับ "เริ่มสร้าง": พักรุ่นที่ 1 ไว้แล้วระบบล้างลายทิ้งเพื่อรับรุ่นถัดไป
+                  *    ถ้าไม่มีปุ่มนี้ ลูกค้าที่พอแล้วจะไม่มีทางสั่งของที่เก็บไว้ นอกจากวางลายรุ่นถัดไปให้จบก่อน
+                  */}
+                {(!(studioMode && !designDone) || sheets.length > 0) && (
                   <button
                     type="button"
                     onClick={handleAdd}
                     // ขนาดกำหนดเอง = ราคาไม่อิงเรทปกติ → ไม่ติดขั้นต่ำของเรทด้วย (สั่งกี่ชิ้นก็ได้ แอดมินตีราคาตามจริง)
-                    // ยังไม่ถึงขั้นต่ำรอบผลิต = สั่งไม่ได้ · มีแผ่นเก็บไว้แล้ว = กดได้เสมอ (สั่งเฉพาะที่เก็บไว้)
+                    // ยังไม่ถึงขั้นต่ำรอบผลิต = ยังเพิ่มลงตะกร้าได้ (แค่เตือน) · ไปบล็อกที่ปุ่มยืนยันในตะกร้าแทน
                     disabled={
-                      belowLotMin ||
-                      (!sheets.length &&
-                        ((useCustom && !customValid) || !!customSizeErr || artBlocked || inputErrors.length > 0 || belowMin || belowMinQty))
+                      !sheets.length &&
+                      ((useCustom && !customValid) || !!customSizeErr || artBlocked || inputErrors.length > 0 || belowMin || belowMinQty)
                     }
                     className={`flex-1 rounded-full px-5 py-3 text-[13px] font-bold shadow-lg transition sm:flex-none sm:px-8 ${
                       added
@@ -4693,8 +4800,6 @@ export default function ProductDetail({
                   >
                     {added
                       ? "✓ เพิ่มลงตะกร้าแล้ว!"
-                      : belowLotMin
-                        ? `📦 ยังขาดอีก ${lotShortNeed.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} — ขั้นต่ำ ${rateMinQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}`
                       : needDesignsChoice && !designsOk
                         ? "⚠ ระบุก่อนว่ามีกี่ลาย"
                       : sheetRoll && !sheetRoll.withCurrent
@@ -4727,9 +4832,10 @@ export default function ProductDetail({
                   </button>
                 )}
 
-                {/* ➕ สั่งหลายแผ่นในครั้งเดียว — พักสเปคแผ่นนี้ไว้ แล้วตั้งค่าแผ่นถัดไปต่อ (ยังไม่ลงตะกร้า)
-                  * โผล่เฉพาะสินค้าที่ขั้นต่ำนับทั้งล็อต — สินค้าอื่นสเปคเดียวจบ ไม่ต้องมีปุ่มนี้มากวน */}
-                {lotMinScope && !designDone && !(studioMode && !designDone) && (
+                {/* ➕ สั่งหลายสเปคในครั้งเดียว — พักสเปคนี้ไว้ แล้วตั้งค่าอันถัดไปต่อ (ยังไม่ลงตะกร้า)
+                  * โผล่เฉพาะสินค้าที่เปิดโหมดล็อต — สินค้าอื่นสเปคเดียวจบ ไม่ต้องมีปุ่มนี้มากวน
+                  * สินค้าที่ออกแบบบนเว็บได้ (เคสมือถือ) ต้องวางลายให้เสร็จก่อน ปุ่มถึงจะโผล่ */}
+                {lotMinScope && !(studioMode && !designDone) && (
                   <button
                     type="button"
                     onClick={stageSheet}
@@ -4744,10 +4850,10 @@ export default function ProductDetail({
                     {/* ⚠️ ชื่อปุ่มต้องอยู่เสมอ — เคยเอาข้อความเตือนไปแทนที่ชื่อ แล้วลูกค้าหาปุ่มไม่เจอ
                         เหตุผลที่กดไม่ได้ไปอยู่บรรทัดที่สองในปุ่มแทน */}
                     {staged ? (
-                      `✓ เก็บแผ่นที่ ${sheets.length.toLocaleString("th-TH")} แล้ว — ตั้งค่าแผ่นที่ ${(sheets.length + 1).toLocaleString("th-TH")} ต่อ`
+                      `✓ เก็บ${lotWord}ที่ ${sheets.length.toLocaleString("th-TH")} แล้ว — ตั้งค่า${lotWord}ที่ ${(sheets.length + 1).toLocaleString("th-TH")} ต่อ`
                     ) : (
                       <>
-                        <span className="block">➕ เพิ่มอีกแผ่น (คนละแบบ)</span>
+                        <span className="block">➕ เพิ่มอีก{lotWord} (คนละแบบ)</span>
                         {sheetTodoLeft.length > 0 && (
                           <span className="mt-0.5 block text-[11px] font-bold text-rose-600">
                             ⚠ {sheetTodoLeft[0].cta}
@@ -4793,17 +4899,23 @@ export default function ProductDetail({
                   </button>
                 )}
               </div>
-              {/* 📦 ขั้นต่ำแบบนับทั้งล็อต — ยังไม่ครบก็เพิ่มลงตะกร้าได้ แล้วค่อยเลือกสเปคแผ่นถัดไปมาเติม */}
-              {lotShortNeed > 0 && !designDone && !sheets.length && (
+              {/* 📦 ขั้นต่ำแบบนับทั้งล็อต — เพิ่มลงตะกร้าได้ตั้งแต่ชิ้นแรก แค่เตือน
+                  ประตูจริงอยู่ที่ปุ่ม "ยืนยันการสั่งซื้อ" ในตะกร้า (ผู้ใช้สั่ง 31 ส.ค. 69) */}
+              {lotShortNeed > 0 && !designDone && (
                 <div className="mt-2 rounded-2xl bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-900 ring-1 ring-amber-200">
                   <p className="font-extrabold">
                     📦 ขั้นต่ำ {rateMinQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
                     {product.lotKeyOptions?.length ? ` ต่อ${product.lotKeyOptions[0]} 1 แบบ` : ""} · ยังขาดอีก{" "}
-                    {lotShortNeed.toLocaleString("th-TH")}
+                    {lotShortNeed.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
                   </p>
+                  {/* บอกให้ชัดว่า "เพิ่มได้ แต่ยังยืนยันไม่ได้" ไม่งั้นลูกค้าไปตกใจตอนกดยืนยันในตะกร้า */}
                   <p className="mt-1 font-semibold">
-                    👉 กด “➕ เพิ่มอีกแผ่น” ทำแผ่นต่อไป — แต่ละแผ่นเลือกไดคัทและขนาดของตัวเองได้ ขอแค่
-                    {product.lotKeyOptions?.[0] ?? "สเปคหลัก"}เดียวกัน
+                    ✅ <strong>เพิ่มลงตะกร้าได้เลย</strong> แล้วค่อยกลับมาเติมให้ครบ —{" "}
+                    <strong className="text-rose-600">แต่จะกด “ยืนยันการสั่งซื้อ” ในตะกร้าไม่ได้จนกว่าจะครบ</strong>
+                  </p>
+                  <p className="mt-1 t-soft">
+                    👉 หรือกด “➕ เพิ่มอีก{lotWord}” ให้ครบในรอบเดียวเลยก็ได้ — แต่ละ{lotWord}เลือกสเปคของตัวเองได้
+                    ขอแค่{product.lotKeyOptions?.[0] ?? "สเปคหลัก"}เดียวกัน
                   </p>
                 </div>
               )}
@@ -5404,7 +5516,7 @@ export default function ProductDetail({
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-bold text-stone-700">
                   {/* สั่งหลายแผ่น: บอกให้ชัดว่าลายนี้เป็นของแผ่นไหน — แต่ละแผ่นใช้ลายของตัวเอง */}
-                  {lotMinScope ? `แนบลายของแผ่นที่ ${(sheets.length + 1).toLocaleString("th-TH")}` : "แนบลายของคุณ"}
+                  {lotMinScope ? `แนบลายของ${lotWord}ที่ ${(sheets.length + 1).toLocaleString("th-TH")}` : "แนบลายของคุณ"}
                   {artProvided ? (
                     <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
                       {artFiles.length > 0 ? `แนบแล้ว ${artFiles.length} รูป` : "ใส่ลิงก์แล้ว"}
@@ -5680,7 +5792,7 @@ export default function ProductDetail({
                 {/* 📦 ยังไม่ครบขั้นต่ำของรอบผลิต — บอกตรงแถบล่างด้วย ลูกค้ามือถือไม่ต้องเลื่อนหา */}
                 {lotShortNeed > 0 && (
                   <p className="truncate text-[10px] font-bold text-amber-700">
-                    📦 ยังขาดอีก {lotShortNeed.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} ถึงขั้นต่ำ
+                    📦 ขาดอีก {lotShortNeed.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} — เพิ่มได้ แต่ยังยืนยันคำสั่งซื้อไม่ได้
                   </p>
                 )}
                 {/* 🧮 แถบล่างมือถือ — บอกสั้น ๆ ว่าจะรวมล็อตกับของในตะกร้า (ช่วงปลีกยังไม่รวม ไม่ต้องโชว์) */}
@@ -5693,7 +5805,8 @@ export default function ProductDetail({
               </>
             )}
           </div>
-          {studioMode && !designDone ? (
+          {/* แถบล่างมือถือ — ยังไม่วางลาย = ปุ่มเริ่มสร้าง · มีสเปคพักไว้แล้วก็ต้องสั่งของที่เก็บไว้ได้ด้วย */}
+          {studioMode && !designDone && (
             <button
               type="button"
               onClick={() => openStudio(null)}
@@ -5701,14 +5814,14 @@ export default function ProductDetail({
             >
               🎨 เริ่มสร้าง
             </button>
-          ) : (
+          )}
+          {(!(studioMode && !designDone) || sheets.length > 0) && (
             <button
               type="button"
               onClick={handleAdd}
               disabled={
-                belowLotMin ||
-                (!sheets.length &&
-                  ((useCustom && !customValid) || !!customSizeErr || artBlocked || inputErrors.length > 0 || belowMin))
+                !sheets.length &&
+                ((useCustom && !customValid) || !!customSizeErr || artBlocked || inputErrors.length > 0 || belowMin)
               }
               className={`ml-auto shrink-0 rounded-full px-6 py-3 text-sm font-bold text-white shadow-lg transition ${
                 added ? "bg-emerald-500" : "bg-amber-400 hover:bg-amber-500 disabled:opacity-40"
@@ -5716,8 +5829,6 @@ export default function ProductDetail({
             >
               {added
                 ? "✓ เพิ่มแล้ว!"
-                : belowLotMin
-                  ? `📦 ขาดอีก ${lotShortNeed.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}`
                 : sheetRoll
                   ? `🛒 สั่ง ${sheetRoll.qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}`
                 : inputHardError

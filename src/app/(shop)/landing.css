@@ -2971,8 +2971,21 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 
 /* แถบรูปย่อ — ซ่อนสกรอลล์บาร์ + ไล่สีจางขอบขวาบอกว่ายังมีต่อ */
 .pgal-strip{position:relative;margin-top:12px}
-.pgal-strip::after{content:"";position:absolute;top:0;bottom:0;right:0;width:34px;pointer-events:none;z-index:1;
-  background:linear-gradient(90deg,rgba(255,255,255,0),#fff 78%)}
+/* ไล่สีจางขอบ = ยังมีรูปต่อไปทางนั้น — โชว์เฉพาะด้านที่เลื่อนต่อได้จริง (คลาสมาจาก GalleryThumbs) */
+.pgal-strip::before,.pgal-strip::after{content:"";position:absolute;top:0;bottom:0;width:44px;
+  pointer-events:none;z-index:1;opacity:0;transition:opacity .2s ease}
+.pgal-strip::before{left:0;background:linear-gradient(270deg,rgba(255,255,255,0),#fff 78%)}
+.pgal-strip::after{right:0;background:linear-gradient(90deg,rgba(255,255,255,0),#fff 78%)}
+.pgal-strip.has-prev::before,.pgal-strip.has-next::after{opacity:1}
+/* ปุ่มเลื่อนทีละชุด — ลอยทับขอบแถบ ซ้าย/ขวา */
+.pgal-snav{position:absolute;top:50%;transform:translateY(-50%);z-index:2;
+  display:grid;place-items:center;width:30px;height:30px;padding:0;border-radius:50%;cursor:pointer;
+  border:1px solid var(--sky-200);background:rgba(255,255,255,.96);color:var(--navy);
+  font-size:1.15rem;line-height:1;box-shadow:0 3px 10px -3px rgba(23,58,107,.35);
+  transition:background .18s ease,border-color .18s ease,transform .18s ease}
+.pgal-snav:hover{background:#fff;border-color:var(--blue);transform:translateY(-50%) scale(1.08)}
+.pgal-snav.prev{left:-2px}
+.pgal-snav.next{right:-2px}
 .pgal-thumbs{display:flex;gap:9px;overflow-x:auto;padding:3px 2px 4px;
   scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
 .pgal-thumbs::-webkit-scrollbar{display:none}

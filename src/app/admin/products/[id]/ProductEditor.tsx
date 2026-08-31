@@ -357,6 +357,8 @@ type Draft = {
   shipRules: DraftShipRule[];
   /** 📐 เทมเพลตไฟล์งานที่ผูกกับสินค้านี้ (id จากคลังเทมเพลต) */
   templateIds: string[];
+  /** 🎨 เปิดปุ่ม "เริ่มสร้าง — วางลายบนสินค้า" ให้ลูกค้าไหม (ค่าเริ่มต้น = เปิด) */
+  studioOn: boolean;
   /** ข้อควรทราบ/เงื่อนไขงาน (แสดงหน้าสินค้า) */
   terms: string;
   /** บังคับแนบลายก่อนสั่ง (ค่าเริ่มต้น = บังคับ) */
@@ -779,6 +781,7 @@ function toDraft(p: Product): Draft {
       methodId: r.shipTierMethodId ?? "",
     })),
     templateIds: [...(p.templateIds ?? [])],
+    studioOn: p.studioOff !== true,
     terms: p.terms ?? "",
     artworkRequired: p.artworkRequired !== false,
     artworkConsult: !!p.artworkConsult?.enabled,
@@ -4315,6 +4318,7 @@ export default function ProductEditor({ product }: { product: Product }) {
         return list.length ? list : undefined;
       })(),
       templateIds: draft.templateIds.length ? [...draft.templateIds] : undefined,
+      studioOff: draft.studioOn ? undefined : true, // undefined = เปิดปุ่มเริ่มสร้าง (ค่าเริ่มต้น)
       terms: draft.terms.trim() || undefined,
       artworkRequired: draft.artworkRequired ? undefined : false, // undefined = บังคับ (ค่าเริ่มต้น)
       // 💬 คุยลายกับแอดมินก่อน — ปิดอยู่ = ไม่เก็บฟิลด์เลย (undefined = สั่งได้เลยตามปกติ)
@@ -5191,6 +5195,42 @@ export default function ProductEditor({ product }: { product: Product }) {
           </a>{" "}
           แล้วกด 🔗 ผูกสินค้า (เอาติ๊กออกตรงนี้ = ปลดออกจากสินค้านี้)
         </p>
+
+        {/* 🎨 สวิตช์เปิด/ปิดปุ่ม "เริ่มสร้าง" — ปิดแล้วกล่องไฟล์เทมเพลตยังขึ้นตามเดิม แค่ไม่ให้วางลายบนเว็บ */}
+        <div
+          className={`mb-3 flex flex-wrap items-start justify-between gap-3 rounded-xl p-3 ring-1 ${
+            draft.studioOn ? "bg-blue-50/70 ring-blue-300" : "bg-slate-50 ring-slate-200"
+          }`}
+        >
+          <div className="min-w-0 flex-1 text-xs">
+            <p className="font-bold text-slate-700">🎨 ปุ่ม &ldquo;เริ่มสร้าง — วางลายบนสินค้า&rdquo;</p>
+            <p className="mt-0.5 text-slate-500">
+              {draft.studioOn
+                ? "ลูกค้าวางลายบนแบบได้เลยบนเว็บ (ต้องมีเทมเพลตที่ตั้งกรอบงานไว้ถึงจะขึ้นปุ่ม) · ปิดสวิตช์ = กลับไปให้แนบไฟล์ลายเองตามปกติ"
+                : "ตอนนี้ปิดอยู่ — หน้าสินค้าให้ลูกค้าแนบไฟล์ลายเองตามปกติ แต่กล่อง 📐 ไฟล์เทมเพลตยังโหลดได้เหมือนเดิม"}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={draft.studioOn}
+            onClick={() => patch({ studioOn: !draft.studioOn })}
+            className={`flex shrink-0 items-center gap-2.5 rounded-full py-1.5 pl-4 pr-1.5 text-xs font-bold transition ${
+              draft.studioOn ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-500"
+            }`}
+          >
+            {draft.studioOn ? "เปิดอยู่" : "ปิดอยู่"}
+            <span
+              className={`relative h-6 w-11 rounded-full transition ${draft.studioOn ? "bg-blue-600" : "bg-slate-400"}`}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                  draft.studioOn ? "left-[22px]" : "left-0.5"
+                }`}
+              />
+            </span>
+          </button>
+        </div>
         {linkedTemplates.length === 0 ? (
           <p className="rounded-2xl bg-slate-50 p-4 text-center text-xs text-slate-400">
             {templates.length === 0 ? "ยังไม่มีเทมเพลตในคลัง — ไปเพิ่มที่ " : "ยังไม่ได้ผูกเทมเพลตกับสินค้านี้ — ไปผูกที่ "}
