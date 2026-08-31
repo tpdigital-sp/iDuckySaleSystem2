@@ -925,6 +925,8 @@ export default function ProductDetail({
    * ยังไม่ได้เลือกพิมพ์ 2 ด้าน = ไม่มีช่องนี้ ไม่มีค่าคละด้านหลัง
    */
   const backOn = backDesignActive(product, effective);
+  /** กติกาค่าคละของด้านหลังโดยเฉพาะ (งานกระดาษ = ลายละ 5 บาท) — ไม่ตั้ง = ใช้ชุดเดียวกับด้านหน้า */
+  const backMix = product.backDesign?.mixRule;
   const [backDesigns, setBackDesigns] = useState(1);
   const [backDesignsDraft, setBackDesignsDraft] = useState<string | null>(null);
   useEffect(() => {
@@ -5602,7 +5604,16 @@ export default function ProductDetail({
                     {/* ไม่ติดป้าย +฿ ตรงนี้ — บรรทัด "Add on = …" ด้านบนกางยอดค่าคละหน้า/หลังให้แล้ว (เหมือนกล่องด้านหน้า) */}
                   </div>
                   <p className="mt-1 text-[11px] leading-relaxed text-sky-800">
-                    ด้านหลังใช้เงื่อนไขคละลายชุดเดียวกับด้านหน้า — คิดค่าคละแยกอีกชุดหนึ่ง ·
+                    {backMix
+                      ? /* ด้านหลังมีกติกาของตัวเอง (ลายละ N บาท) — บอกราคาตรง ๆ ไม่ต้องให้ลูกค้าไปเทียบกับด้านหน้า */
+                        (() => {
+                          const t = mixTierFor(backMix, Math.max(1, qty));
+                          const free = Math.max(1, t.includedDesigns);
+                          return `ด้านหลังคิดค่าคละแยกจากด้านหน้าอีกชุดหนึ่ง — ${
+                            free > 1 ? `คละ ${free.toLocaleString("th-TH")} ลายแรก ${formatPrice(t.baseFee)} · ลายถัดไป` : "ลายแรกไม่คิด · ลายถัดไป"
+                          }ลายละ ${formatPrice(t.extraFee)} · `;
+                        })()
+                      : "ด้านหลังใช้เงื่อนไขคละลายชุดเดียวกับด้านหน้า — คิดค่าคละแยกอีกชุดหนึ่ง · "}
                     หลังเป็นลายเดียวกันทั้งหมดปล่อยไว้ที่ 1 ลาย (ไม่มีค่าคละ) ·
                     หลังเป็นคนละลายกี่แบบ กด + ให้ตรงด้วยนะครับ
                   </p>

@@ -2106,7 +2106,8 @@ function designFeeBase(
 
 /**
  * 🔄 ค่าคละลาย "ด้านหลัง" ของ 1 บรรทัด — งานพิมพ์ 2 ด้านที่ตั้ง Product.backDesign ไว้
- * ใช้กติกาชุดเดียวกับด้านหน้าเป๊ะ ๆ (mixRule/เรทเดียวกัน) แค่เปลี่ยนจำนวนลายเป็นของด้านหลัง
+ * สินค้าตั้ง backDesign.mixRule ไว้ = ใช้กติกานั้น (งานกระดาษ: ด้านหลังลายละ 5 บาท ลายแรกไม่คิด)
+ * ไม่ได้ตั้ง = ใช้กติกาชุดเดียวกับด้านหน้าเป๊ะ ๆ (mixRule/เรทเดียวกัน) แค่เปลี่ยนจำนวนลายเป็นของด้านหลัง
  * แล้วบวกเพิ่มอีกชุด — หน้า 4 ลาย + หลัง 4 ลาย = จ่ายค่าคละ 2 ชุด
  * ยังไม่ได้เลือกพิมพ์ 2 ด้าน (หรือสินค้าไม่ได้ตั้งไว้) = 0 เสมอ ไม่กระทบสินค้าเดิม
  */
@@ -2117,7 +2118,11 @@ export function backDesignFeeOf(
   tierQty = qty
 ): number {
   if (!backDesignActive(product, selections)) return 0;
-  return mixFeeOfSide(product, selections, qty, tierQty, backDesignCountOf(selections));
+  const designs = backDesignCountOf(selections);
+  // ตั้งกติกาของด้านหลังไว้เอง (เช่น ลายละ 5 บาท) = ใช้ตัวนั้น ไม่ต้องเดินตามด้านหน้า
+  const own = product.backDesign?.mixRule;
+  if (own) return mixFeeTotal(own, designs, Math.max(0, qty));
+  return mixFeeOfSide(product, selections, qty, tierQty, designs);
 }
 
 /** ค่าคละลายของ "ด้านหนึ่ง" ตามจำนวนลายที่ส่งมา — ตัวคิดกลางของทั้งด้านหน้าและด้านหลัง */
@@ -2220,11 +2225,14 @@ export interface Product {
    * เขียนเป็นเงื่อนไขแบบเดียวกับ showWhen ของกลุ่ม: กลุ่มไหน = ตัวเลือกไหน ถึงถือว่าพิมพ์ 2 ด้าน
    * เช่น { label: "จำนวนด้านที่พิมพ์", choices: ["พิมพ์ 2 ด้าน"] }
    *
-   * เข้าเงื่อนไข → หน้าสินค้าขึ้นช่อง "คละกี่ลาย (ด้านหลัง)" อีกช่อง แล้วคิดค่าคละด้วย
-   * กติกาชุดเดียวกับด้านหน้าเป๊ะ ๆ บวกเพิ่มอีกชุด (ดู backDesignFeeOf)
+   * เข้าเงื่อนไข → หน้าสินค้าขึ้นช่อง "คละกี่ลาย (ด้านหลัง)" อีกช่อง แล้วคิดค่าคละอีกชุดหนึ่ง
    * ไม่ตั้ง = ไม่มีเรื่องด้านหลัง ทุกอย่างเหมือนเดิมทั้งหมด
+   *
+   * `mixRule` = กติกาค่าคละ "ของด้านหลังโดยเฉพาะ" — ปกติงานด้านหลังคิดลายละ 5 บาท
+   * ({ baseFee: 0, includedDesigns: 1, extraFee: 5 } → ลายแรกไม่คิด ลายถัดไปลายละ 5)
+   * ไม่ตั้ง = ใช้กติกาชุดเดียวกับด้านหน้าเป๊ะ ๆ ตามเดิม (ดู backDesignFeeOf)
    */
-  backDesign?: { label: string; choices: string[] };
+  backDesign?: { label: string; choices: string[]; mixRule?: MixRule };
   /** ข้อมูล SEO/AEO (ไม่มี = ใช้ค่าจากชื่อ/รายละเอียดอัตโนมัติ) */
   seo?: ProductSeo;
   /**

@@ -29,7 +29,7 @@ import RichEditor from "@/components/RichEditor";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { autoSeoOf } from "@/lib/auto-seo";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
-import { BULK_ASK_DEFAULT, CONSULT_NOTE_DEFAULT, RATE_LABEL } from "@/lib/products";
+import { BULK_ASK_DEFAULT, CONSULT_NOTE_DEFAULT, RATE_LABEL, mixTierFor } from "@/lib/products";
 import { hasOverride, resetOverride } from "@/lib/product-store";
 import { deleteProductDb, fetchProductNamesLite, fetchProductRaw, persistProduct } from "@/lib/product-repo";
 import { adminProductPath, shortChoice, slugifyProductName } from "@/lib/products";
@@ -315,8 +315,11 @@ type Draft = {
   extraRates: DraftExtraRate[];
   /** ค่าคละลายแบบคิดเป็นเงินต่อหน่วย (mixRule) — ตารางแยกตามช่วงจำนวน (string เพราะกรอกในช่อง) */
   mix: { on: boolean; tiers: DraftMixTier[] };
-  /** 🔄 คละลายด้านหลัง (backDesign) — กลุ่ม/ตัวเลือกที่แปลว่า "พิมพ์ 2 ด้าน" (label ว่าง = ปิด) */
-  backDesign: { label: string; choice: string };
+  /**
+   * 🔄 คละลายด้านหลัง (backDesign) — กลุ่ม/ตัวเลือกที่แปลว่า "พิมพ์ 2 ด้าน" (label ว่าง = ปิด)
+   * fee = ค่าคละด้านหลัง "ลายละกี่บาท" (ว่าง/0 = ใช้กติกาชุดเดียวกับด้านหน้า)
+   */
+  backDesign: { label: string; choice: string; fee: string };
   highlights: string[];
   images: DraftImage[];
   body: DraftBody[];
@@ -658,7 +661,11 @@ function toDraft(p: Product): Draft {
           hardMaxDesigns: !!p.hardMaxDesigns,
         }
       : { enabled: false, unit: "ชิ้น", driverLabels: [], tiers: [], cells: {}, tierByDesign: !!p.tierByDesign, hardMaxDesigns: !!p.hardMaxDesigns },
-    backDesign: { label: p.backDesign?.label ?? "", choice: p.backDesign?.choices?.[0] ?? "" },
+    backDesign: {
+      label: p.backDesign?.label ?? "",
+      choice: p.backDesign?.choices?.[0] ?? "",
+      fee: p.backDesign?.mixRule ? String(mixTierFor(p.backDesign.mixRule, 1).extraFee || "") : "",
+    },
     mix: {
       on: !!p.mixRule,
       // มีตารางแล้วใช้ตาราง · ของเก่าที่ตั้งเป็นค่าเดี่ยว แปลงเป็นตาราง 1-2 แถวให้อัตโนมัติ
@@ -4263,10 +4270,16 @@ export default function ProductEditor({ product }: { product: Product }) {
         return { baseFee: first.baseFee, includedDesigns: first.includedDesigns, extraFee: first.extraFee, tiers };
       })(),
       // 🔄 คละลายด้านหลัง — ตั้งครบทั้งกลุ่มและตัวเลือกถึงจะบันทึก (ตั้งครึ่ง ๆ = ปิด ไม่ให้คิดเงินเพี้ยนเงียบ ๆ)
-      backDesign:
-        draft.backDesign.label.trim() && draft.backDesign.choice.trim()
-          ? { label: draft.backDesign.label.trim(), choices: [draft.backDesign.choice.trim()] }
-          : undefined,
+      backDesign: (() => {
+        const label = draft.backDesign.label.trim();
+        const choice = draft.backDesign.choice.trim();
+        if (!label || !choice) return undefined;
+        // กรอกค่าคละของด้านหลังไว้ = คิดลายละเท่านั้น ลายแรกไม่คิด · ว่าง = เดินตามกติกาด้านหน้า
+        const fee = Number(String(draft.backDesign.fee).trim());
+        const mixRule =
+          Number.isFinite(fee) && fee > 0 ? { baseFee: 0, includedDesigns: 1, extraFee: fee } : undefined;
+        return { label, choices: [choice], ...(mixRule ? { mixRule } : {}) };
+      })(),
       highlights: draft.highlights.map((h) => h.trim()).filter(Boolean),
       images,
       body,
@@ -5591,7 +5604,7 @@ export default function ProductEditor({ product }: { product: Product }) {
                 <select
                   value={draft.backDesign.label}
                   onChange={(e) =>
-                    setDraft((d) => ({ ...d, backDesign: { label: e.target.value, choice: "" } }))
+                    setDraft((d) => ({ ...d, backDesign: { ...d.backDesign, label: e.target.value, choice: "" } }))
                   }
                   className="rounded-lg border border-sky-200 bg-white px-2 py-1 text-xs text-slate-700"
                 >
@@ -5617,6 +5630,27 @@ export default function ProductEditor({ product }: { product: Product }) {
                   </select>
                 )}
               </div>
+              {draft.backDesign.label && draft.backDesign.choice && (
+                <label className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-bold text-sky-900">
+                  ค่าคละด้านหลัง ลายละ
+                  <input
+                    value={draft.backDesign.fee}
+                    onChange={(e) =>
+                      setDraft((d) => ({
+                        ...d,
+                        backDesign: { ...d.backDesign, fee: e.target.value.replace(/[^\d.]/g, "") },
+                      }))
+                    }
+                    inputMode="decimal"
+                    placeholder="5"
+                    className="w-20 rounded-lg border border-sky-200 bg-white px-2 py-1 text-xs font-bold text-slate-700"
+                  />
+                  บาท
+                  <span className="font-normal text-sky-800">
+                    (ลายแรกไม่คิด · เว้นว่าง = ใช้กติกาค่าคละชุดเดียวกับด้านหน้า)
+                  </span>
+                </label>
+              )}
               {draft.backDesign.label && !draft.backDesign.choice && (
                 <p className="mt-1.5 text-[11px] font-bold text-rose-600">
                   ยังไม่ได้เลือกตัวเลือก — ตั้งไม่ครบจะไม่ถูกบันทึก (ถือว่าปิด)
