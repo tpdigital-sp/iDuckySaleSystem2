@@ -345,7 +345,7 @@ export default function CheckoutPage() {
       setErr(
         `📦 ${s.productName}${s.groupLabel ? ` · ${s.groupLabel}` : ""} สั่งขั้นต่ำ ${s.need.toLocaleString("th-TH")} ${s.unit} ` +
           `ต่อ 1 รอบผลิต — ตอนนี้มี ${s.have.toLocaleString("th-TH")} ${s.unit} ยังขาดอีก ${s.short.toLocaleString("th-TH")} ${s.unit} ` +
-          `(คละไดคัทและคละขนาดกันได้ ขอแค่เป็นแบบเดียวกัน)`
+          `(แต่ละชิ้นเลือกแบบและขนาดของตัวเองได้ ขอแค่เป็นแบบเดียวกัน)`
       );
       return;
     }

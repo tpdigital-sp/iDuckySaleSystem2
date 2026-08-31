@@ -951,7 +951,7 @@ export default function CartPage() {
                 </p>
                 <p className="mt-1 font-semibold">
                   สั่งขั้นต่ำ {s.need.toLocaleString("th-TH")} {s.unit} ต่อ 1 รอบผลิต (ตอนนี้มี{" "}
-                  {s.have.toLocaleString("th-TH")} {s.unit}) — คละไดคัทและคละขนาดกันได้
+                  {s.have.toLocaleString("th-TH")} {s.unit}) — แต่ละชิ้นเลือกแบบและขนาดของตัวเองได้
                   {s.groupLabel ? " ขอแค่เป็นแบบเดียวกัน" : ""}
                 </p>
                 <Link href={productPath(productOf(s.productId) ?? { id: s.productId })} className="ord-btn quiet sm mt-2">

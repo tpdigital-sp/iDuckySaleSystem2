@@ -388,7 +388,11 @@ export default function ProductDetail({
   const initialQty = Math.max(
     initialProduct.hardMinPerDesign ? (initialProduct.priceRates?.[0]?.minPerDesign ?? 1) : 1,
     // ขั้นต่ำต่อออเดอร์ของเรทแรก (hardMinQty) เช่น สติ๊กเกอร์ UV เริ่มขายที่ 3 แผ่น A3
-    initialProduct.hardMinQty ? (initialProduct.priceRates?.[0]?.minQty ?? 1) : 1,
+    // — ยกเว้นเรทที่นับขั้นต่ำทั้งล็อต (minQtyScope: "lot") เริ่มที่ 1 แผ่น แล้วบอกขั้นต่ำไว้ข้างช่องจำนวนแทน
+    //   (ลูกค้าส่วนใหญ่จะกด ➕ เพิ่มอีกแผ่น ทีละแผ่นอยู่แล้ว เริ่มที่ 3 เลยไม่ตรงกับวิธีสั่งจริง)
+    initialProduct.hardMinQty && initialProduct.priceRates?.[0]?.minQtyScope !== "lot"
+      ? (initialProduct.priceRates?.[0]?.minQty ?? 1)
+      : 1,
     1
   );
   const [qty, setQty] = useState(initialQty);
@@ -654,6 +658,11 @@ export default function ProductDetail({
    */
   const lotMinScope = rate?.minQtyScope === "lot";
   /**
+   * เรทที่ตั้งขั้นต่ำแบบนับทั้งล็อต — ใช้เขียนการ์ด "วิธีสั่งสินค้านี้" ฝั่งซ้าย
+   * อ่านจากตัวสินค้าไม่ใช่เรทที่เลือกอยู่ ลูกค้าจะได้เห็นกติกาแม้กำลังดูเรทอื่น (เช่น ตร.ม.)
+   */
+  const lotMinRate = (product.priceRates ?? []).find((r) => r.minQtyScope === "lot" && (r.minQty ?? 1) > 1);
+  /**
    * 🔒 จำนวนต่ำสุดที่กดลงได้ — ปกติคือ 1 (ร้านรับสั่งขั้นต่ำ 1 ชิ้นเสมอ)
    * สินค้าที่ตั้ง hardMinQty ใช้ขั้นต่ำของเรทที่เลือกเป็นพื้น เช่น สติ๊กเกอร์ UV เรท A3 = 3 แผ่น
    */
@@ -663,7 +672,7 @@ export default function ProductDetail({
    * ⚠️ ต่างจาก qtyFloor: เรทที่นับขั้นต่ำทั้งล็อตยัง "เริ่มที่ 3 แผ่น" (เคสปกติ + เรทอัตโนมัติเลือก A3 ถูก)
    * แต่กด − ลงไปถึง 1 ได้ เพื่อไปเลือกสเปคแผ่นถัดไปมาเติมให้ครบ 3
    */
-  const qtyStart = product.hardMinQty ? rateMinQty : 1;
+  const qtyStart = product.hardMinQty && !lotMinScope ? rateMinQty : 1;
   /**
    * เปลี่ยนเรทแล้วจำนวนต้องตามขั้นต่ำของเรทใหม่ — ตราบใดที่ลูกค้ายังไม่ได้ตั้งจำนวนเอง
    * ขึ้นก็ได้ลงก็ได้: A3 (3 แผ่น) → ตร.ม. ต้องกลับมา 1 ไม่ใช่ค้างที่ 3 (คนละหน่วยกัน)
@@ -1649,18 +1658,23 @@ export default function ProductDetail({
       total: priced.reduce((sum, r, i) => sum + r.unitPrice * mine[i].qty + r.extraFee, 0),
     };
   }, [lotMinScope, sheets, product, pricingSelections, qty, cartItems, productOf, currentReady]);
+  /** จำนวนที่กำลังจะกดสั่งรอบนี้ (แผ่นที่เก็บไว้ด้วยปุ่ม ➕ + แผ่นที่กำลังตั้งค่า) */
+  const lotAddingQty = sheetRoll ? sheetRoll.qty : qty;
   /**
-   * ยังขาดอีกกี่หน่วยถึงขั้นต่ำของรอบผลิต — นับเฉพาะ **ที่กำลังจะกดสั่งรอบนี้**
-   * (แผ่นที่เก็บไว้ด้วยปุ่ม ➕ + แผ่นที่กำลังตั้งค่า)
+   * ยังขาดอีกกี่หน่วยถึงขั้นต่ำของรอบผลิต — นับ "ที่กำลังจะสั่ง + ที่อยู่ในล็อตเดียวกันในตะกร้าแล้ว"
    *
-   * ⚠️ ตั้งใจ **ไม่นับของที่อยู่ในตะกร้าอยู่แล้ว** (ผู้ใช้ตัดสิน 30 ส.ค. 69) — ทุกครั้งที่กดสั่ง
-   * ต้องครบ 3 แผ่นในตัวมันเอง · เดิมนับตะกร้าด้วย ทำให้ตะกร้ามี 2 อยู่แล้วกดเพิ่มทีละ 1 แผ่นได้
-   * ดูเหมือนขั้นต่ำไม่ทำงาน · ราคายังคิดรวมล็อตกับของในตะกร้าเหมือนเดิม (lotPreview) ไม่เกี่ยวกัน
+   * ของในตะกร้านับด้วยเพราะพิมพ์รอบเดียวกันจริง (เนื้อ/เรทเดียวกัน บิลเดียวกัน) การห้ามสั่งเพิ่ม
+   * ทีละแผ่นทั้งที่ระบบเองบอกว่า "รวมเป็นล็อตเดียว" คือขัดกันเอง และเสียยอดขายฟรี ๆ
+   * ⚠️ แต่ต้อง **บอกบนปุ่มทุกครั้ง** ว่าครบเพราะรวมกับตะกร้า (lotMetWithCart) ไม่งั้นปุ่มปลดล็อก
+   * เฉย ๆ แล้วดูเหมือนขั้นต่ำไม่ทำงาน — ซึ่งเป็นสิ่งที่ผู้ใช้แจ้งว่าเป็นบั๊กมาก่อน (30 ส.ค. 69)
    */
   const lotShortNeed = useMemo(() => {
     if (!lotMinScope || useCustom || rateMinQty <= 1) return 0;
-    return Math.max(0, rateMinQty - (sheetRoll ? sheetRoll.qty : qty));
-  }, [lotMinScope, useCustom, rateMinQty, sheetRoll, qty]);
+    return Math.max(0, rateMinQty - ((lotPreview?.cartQty ?? 0) + lotAddingQty));
+  }, [lotMinScope, useCustom, rateMinQty, lotPreview, lotAddingQty]);
+  /** ครบขั้นต่ำได้ "เพราะนับรวมของในตะกร้า" — ลำพังที่กดสั่งรอบนี้ยังไม่ถึง */
+  const lotMetWithCart =
+    lotMinScope && rateMinQty > 1 && lotShortNeed === 0 && lotAddingQty < rateMinQty && (lotPreview?.cartQty ?? 0) > 0;
   /**
    * 🔒 ยังไม่ถึงขั้นต่ำของรอบผลิต = กดเพิ่มลงตะกร้าไม่ได้ (ผู้ใช้สั่ง 30 ส.ค. 69)
    * ต้องกด "➕ เพิ่มอีกแผ่น" สะสมให้ครบก่อน — ปุ่ม ➕ ไม่ถูกล็อก ไม่งั้นจะไม่มีทางครบได้เลย
@@ -3811,6 +3825,177 @@ export default function ProductDetail({
         </div>
       </div>
 
+      {/**
+        * 📦 การ์ด "วิธีสั่งสินค้านี้" — เฉพาะสินค้าที่ขั้นต่ำนับทั้งล็อต (minQtyScope: "lot")
+        * เกิดจากพื้นที่ว่างยาว ๆ ฝั่งซ้ายตรงข้ามแผงสั่งซื้อ + ลูกค้าไม่เข้าใจว่าคละอะไรได้บ้าง
+        * ตัวเลข/ชื่อกลุ่มดึงจากข้อมูลสินค้าจริง ไม่ฮาร์ดโค้ดชื่อสติ๊กเกอร์
+        */}
+      {lotMinRate && (
+        <section className="sm:col-span-2">
+          {/* โครงเดียวกับกล่อง "⚠️ ข้อควรทราบก่อนสั่ง" ของหน้านี้ — แถบหัวสีทึบ + กรอบ border-2 สีอ่อน
+              (ระบบดีไซน์หน้าสินค้าไม่ใช้ gradient เลย ใช้สีทึบ + ริง/กรอบอ่อนล้วน) */}
+          <div className="overflow-hidden rounded-2xl border-2 border-amber-200 bg-white shadow-sm">
+            {/**
+              * แถบหัว — ตามภาษาสีของหน้าแรก (landing.css)
+              * ⚠️ หน้าแรก "ไม่ใช้บล็อกสีเข้มขนาดใหญ่" เลย — --navy ใช้แค่ปุ่มเล็ก (.btn-primary) กับตัวหนังสือ
+              *    ส่วนพื้นของแถบ/เซ็กชันใหญ่เป็นฟ้าอ่อนไล่ลง (.top-stack)
+              *      linear-gradient(168deg, --sky-200 → --sky-100 → --sky-50)
+              *    เดิมทำเป็นพื้น navy เข้มตัวหนังสือขาว = สลับบทบาทสีผิด และเข้มเกินหน้าอื่น
+              * โทเคนที่ใช้: sky-200 #C6E8FB · sky-100 #E2F3FE · sky-50 #F2FAFF
+              *              navy #173A6B (หัวข้อ) · navy-soft #4A6A96 (ตัวรอง) · yolk #FFD447 (เน้น)
+              * เขียน hex ตรงเพราะตัวแปรเหล่านี้อยู่ใต้ :root ของ landing.css ที่ครอบด้วย .dl
+              */}
+            <div
+              className="relative overflow-hidden px-4 py-4 sm:px-5"
+              style={{ background: "linear-gradient(168deg,#C6E8FB 0%,#E2F3FE 42%,#F2FAFF 100%)" }}
+            >
+              <span aria-hidden className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/50" />
+              <span aria-hidden className="pointer-events-none absolute -bottom-14 right-24 h-28 w-28 rounded-full bg-white/35" />
+              <div className="relative flex items-start gap-3">
+                <span
+                  className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-2xl"
+                  style={{ background: "#fff", boxShadow: "0 2px 8px rgba(44,129,196,.16)" }}
+                >
+                  📦
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[15px] font-extrabold leading-snug" style={{ color: "#173A6B" }}>
+                    สั่งขั้นต่ำ{" "}
+                    <span
+                      className="inline-block rounded-lg px-1.5 py-0.5"
+                      style={{ background: "#FFD447", color: "#173A6B" }}
+                    >
+                      {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit}
+                    </span>
+                    {product.lotKeyOptions?.length ? ` ต่อ${product.lotKeyOptions[0]} 1 แบบ` : ""}
+                  </p>
+                  <p className="mt-1.5 text-[12.5px] font-semibold leading-relaxed" style={{ color: "#4A6A96" }}>
+                    <strong style={{ color: "#173A6B" }}>
+                      ไม่ต้องสั่งเหมือนกันทั้ง {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit}
+                    </strong>{" "}
+                    — แต่ละแผ่นเลือกไดคัทและขนาดของตัวเองได้
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 sm:p-5">
+              {/* ── ภาพประกอบ: 3 แผ่นคนละแบบ แยกสีให้เห็นชัดว่าเป็นคนละสเปค ── */}
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                {[
+                  { n: 1, title: "ไดคัท 50%", sub: "ขนาดตัด A4", art: "half", box: "bg-sky-50 ring-sky-200", pill: "bg-sky-500", ink: "text-sky-900", fill: "#bae6fd", line: "#0284c7" },
+                  { n: 2, title: "ไดคัท 100%", sub: "ไดคัท 5×5 ซม.", art: "dots", box: "bg-emerald-50 ring-emerald-200", pill: "bg-emerald-500", ink: "text-emerald-900", fill: "#a7f3d0", line: "#059669" },
+                  { n: 3, title: "ไดคัท 50%", sub: "ขนาดตัด A6", art: "grid", box: "bg-violet-50 ring-violet-200", pill: "bg-violet-500", ink: "text-violet-900", fill: "#ddd6fe", line: "#7c3aed" },
+                ].map((sh) => (
+                  <div key={sh.n} className={`rounded-2xl p-2 text-center ring-1 sm:p-2.5 ${sh.box}`}>
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-[10.5px] font-extrabold text-white ${sh.pill}`}>
+                      แผ่นที่ {sh.n}
+                    </span>
+                    <svg viewBox="0 0 60 42" className="mx-auto mt-1.5 w-full max-w-[110px]" role="img" aria-label={`ตัวอย่างแผ่นที่ ${sh.n}`}>
+                      <rect x="1" y="1" width="58" height="40" rx="3" fill="#fff" stroke={sh.line} strokeWidth="1.5" opacity="0.9" />
+                      {sh.art === "half" && (
+                        <>
+                          <rect x="6" y="6" width="22" height="30" rx="2" fill={sh.fill} />
+                          <rect x="32" y="6" width="22" height="30" rx="2" fill={sh.fill} />
+                          <line x1="30" y1="4" x2="30" y2="38" stroke={sh.line} strokeWidth="1.2" strokeDasharray="2 2" />
+                        </>
+                      )}
+                      {sh.art === "dots" &&
+                        [8, 21, 34, 47].map((x) =>
+                          [14, 28].map((y) => (
+                            <circle key={`${x}-${y}`} cx={x} cy={y} r="5.4" fill={sh.fill} stroke={sh.line} strokeWidth="1.1" strokeDasharray="1.6 1.6" />
+                          ))
+                        )}
+                      {sh.art === "grid" &&
+                        [0, 1, 2, 3].map((c) =>
+                          [0, 1].map((r) => (
+                            <rect key={`${c}-${r}`} x={5 + c * 13} y={6 + r * 16} width="11" height="14" rx="1.5" fill={sh.fill} stroke={sh.line} strokeWidth="0.8" />
+                          ))
+                        )}
+                    </svg>
+                    <p className={`mt-1.5 text-[11.5px] font-extrabold leading-tight ${sh.ink}`}>{sh.title}</p>
+                    <p className="text-[11px] font-semibold leading-tight text-stone-400">{sh.sub}</p>
+                  </div>
+                ))}
+              </div>
+              {product.lotKeyOptions?.length ? (
+                <p className="mt-2.5 flex items-center justify-center gap-2 rounded-2xl bg-yellow-50 px-3 py-2.5 text-center text-[12px] font-bold leading-relaxed text-amber-950 ring-1 ring-yellow-300">
+                  <span className="text-base leading-none">🔒</span>
+                  <span>
+                    แต่ทั้ง {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit} ต้องเป็น
+                    <strong className="mx-1 rounded-md bg-yellow-300 px-1.5 py-0.5">{product.lotKeyOptions[0]}ชนิดเดียวกัน</strong>
+                    เพราะพิมพ์รอบเดียวกัน
+                  </span>
+                </p>
+              ) : null}
+
+              {/* ── อะไรต่างกันได้ / อะไรทำไม่ได้ ── */}
+              <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+                <div className="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-200">
+                  <p className="flex items-center gap-2 text-[12.5px] font-extrabold text-emerald-800">
+                    <span className="grid h-6 w-6 place-items-center rounded-full bg-emerald-500 text-[13px] text-white">✓</span>
+                    แต่ละแผ่นต่างกันได้
+                  </p>
+                  <ul className="mt-2 grid gap-1.5 text-[12px] font-semibold leading-relaxed text-emerald-900">
+                    <li>🔀 <strong>แบบไดคัท</strong> — 50% กับ 100% ปนกันในออเดอร์เดียวได้</li>
+                    <li>📐 <strong>ขนาด</strong> — แต่ละแผ่นคนละขนาดได้</li>
+                    <li>🖼 <strong>ลาย</strong> — แต่ละแผ่นใช้ลายของตัวเอง</li>
+                  </ul>
+                </div>
+                <div className="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-200">
+                  <p className="flex items-center gap-2 text-[12.5px] font-extrabold text-rose-700">
+                    <span className="grid h-6 w-6 place-items-center rounded-full bg-rose-500 text-[13px] text-white">✕</span>
+                    ทำไม่ได้
+                  </p>
+                  <ul className="mt-2 grid gap-1.5 text-[12px] font-semibold leading-relaxed text-rose-900">
+                    {product.lotKeyOptions?.length ? (
+                      <li>
+                        🎞 <strong>{product.lotKeyOptions[0]}</strong> — ต้องชนิดเดียวกันทั้งออเดอร์
+                        <br />
+                        <span className="text-rose-500">
+                          อยากได้ 2 ชนิด = สั่งชนิดละ {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")}{" "}
+                          {lotMinRate.pricing.unit}
+                        </span>
+                      </li>
+                    ) : null}
+                    <li>
+                      📉 <strong>สั่งน้อยกว่า {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit}</strong>{" "}
+                      — ทางร้านเปิดเครื่องพิมพ์ไม่คุ้ม
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* ── 3 ขั้นตอนสั่ง ── */}
+              <p className="mt-4 flex items-center gap-2 text-[13px] font-extrabold text-stone-700">
+                <span className="text-base leading-none">🛒</span> สั่งยังไง — ทำ 3 สเต็ป
+              </p>
+              <ol className="mt-2 grid gap-2">
+                {[
+                  { t: "ตั้งค่าแผ่นที่ 1", d: "เลือกแบบไดคัท · ขนาด · จำนวน แล้วอัปโหลดภาพลายของแผ่นนี้ (อัปกี่รูป = กี่ลาย)", tone: "bg-sky-50 ring-sky-200", pill: "bg-sky-500" },
+                  { t: "กดปุ่ม “➕ เพิ่มอีกแผ่น (คนละแบบ)”", d: "ระบบเก็บแผ่นที่ 1 ไว้ให้ แล้วเปิดฟอร์มแผ่นที่ 2 ให้ตั้งค่าใหม่ได้เลย — ทำซ้ำจนครบ", tone: "bg-emerald-50 ring-emerald-200", pill: "bg-emerald-500" },
+                  { t: "กด “🛒 สั่งทั้งหมด”", d: "ทุกแผ่นลงตะกร้าพร้อมกัน แยกเป็นคนละรายการตามสเปค · ราคาคิดจากยอดรวม ยิ่งเยอะยิ่งถูก", tone: "bg-violet-50 ring-violet-200", pill: "bg-violet-500" },
+                ].map((st, i) => (
+                  <li key={st.t} className={`flex gap-2.5 rounded-2xl px-3 py-2.5 ring-1 ${st.tone}`}>
+                    <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[12px] font-extrabold text-white ${st.pill}`}>
+                      {i + 1}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-[12.5px] font-extrabold leading-snug text-stone-800">{st.t}</span>
+                      <span className="block text-[12px] font-semibold leading-relaxed text-stone-500">{st.d}</span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              <p className="mt-2.5 rounded-xl bg-stone-50 px-3 py-2 text-[11.5px] font-semibold leading-relaxed text-stone-500">
+                💡 อยากได้ทั้ง {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit}{" "}
+                เหมือนกันหมด ก็กดจำนวนเป็น {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} แล้วสั่งได้เลย ไม่ต้องกด ➕
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* รายละเอียดสินค้า โซน "ข้างแผงสั่งซื้อ" — ท่อนที่แอดมินตั้ง slot: side ไว้ */}
       {bodyOf("side").length > 0 && (
         <div className="sm:col-span-2">{detailsSection("side", "mt-2")}</div>
@@ -4406,8 +4591,15 @@ export default function ProductDetail({
             {/* จำนวน + เพิ่มลงตะกร้า */}
             <div>
               {matrix && !designDone && (
-                <label className="mb-1 block text-[13px] font-bold text-stone-700">
-                  จำนวน ({matrix.unit})
+                <label className="mb-1 flex flex-wrap items-baseline gap-x-1.5 text-[13px] font-bold text-stone-700">
+                  <span>จำนวน ({matrix.unit})</span>
+                  {/* กำกับขั้นต่ำไว้ตรงนี้ เพราะช่องจำนวนเริ่มที่ 1 แล้ว ต้องบอกตั้งแต่ก่อนกด */}
+                  {lotMinScope && rateMinQty > 1 && (
+                    <span className="text-[11.5px] font-bold text-amber-700">
+                      · สั่งขั้นต่ำ {rateMinQty.toLocaleString("th-TH")} {matrix.unit}
+                      {product.lotKeyOptions?.length ? ` ต่อ${product.lotKeyOptions[0]} 1 แบบ` : ""}
+                    </span>
+                  )}
                 </label>
               )}
               <div className="flex flex-wrap items-center gap-3">
@@ -4518,6 +4710,14 @@ export default function ProductDetail({
                         : sheetRoll
                           ? `🛒 สั่งทั้งหมด ${sheetRoll.qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} — ${formatPrice(sheetRoll.total)}`
                           : `🛒 เพิ่มลงตะกร้า — ${formatPrice(unitPrice * qty + designFee)}`}
+                    {/* ครบขั้นต่ำเพราะรวมกับของในตะกร้า — ต้องพูดออกมา ไม่ให้ดูเหมือนขั้นต่ำไม่ทำงาน */}
+                    {!added && lotMetWithCart && (
+                      <span className="mt-0.5 block text-[11px] font-bold text-white/90">
+                        ✓ รวมกับในตะกร้าเป็น{" "}
+                        {((lotPreview?.cartQty ?? 0) + lotAddingQty).toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} —
+                        ครบขั้นต่ำแล้ว
+                      </span>
+                    )}
                   </button>
                 )}
 
@@ -4596,7 +4796,7 @@ export default function ProductDetail({
                     {lotShortNeed.toLocaleString("th-TH")}
                   </p>
                   <p className="mt-1 font-semibold">
-                    👉 กด “➕ เพิ่มอีกแผ่น” ทำแผ่นต่อไป — คนละไดคัท/คนละขนาดได้ ขอแค่
+                    👉 กด “➕ เพิ่มอีกแผ่น” ทำแผ่นต่อไป — แต่ละแผ่นเลือกไดคัทและขนาดของตัวเองได้ ขอแค่
                     {product.lotKeyOptions?.[0] ?? "สเปคหลัก"}เดียวกัน
                   </p>
                 </div>
