@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { giftLinesOf } from "@/lib/gifts";
 import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import { useParams, useRouter } from "next/navigation";
@@ -2796,12 +2797,14 @@ export default function AdminOrderDetailPage() {
                   <span>{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
                 )}
               </div>
-              {(order.gifts ?? []).map((g) => (
-                <div key={g.promoId} className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
-                  <span>🎁 ของแถม — {g.name} ×{g.qty}</span>
-                  <span>ฟรี</span>
-                </div>
-              ))}
+              {(order.gifts ?? []).flatMap((g) =>
+                giftLinesOf(g).map((ln, k) => (
+                  <div key={`${g.promoId}-${k}`} className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
+                    <span>🎁 ของแถม — {ln.label} ×{ln.qty}</span>
+                    <span>ฟรี</span>
+                  </div>
+                ))
+              )}
               {order.discount && order.discount.amount > 0 && (
                 <div className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
                   <span>{order.discount.label}</span>

@@ -69,7 +69,7 @@ export const getProductTemplates = cache(async (ids: string[]): Promise<DesignTe
  * — เอาตัวที่ "มีรูปจริง" ขึ้นก่อน แล้วค่อยเติมด้วยตัวที่ยังไม่มีรูปให้ครบ
  */
 export const getRelatedProducts = cache(
-  async (category: string, excludeId: string, limit = 4): Promise<Product[]> => {
+  async (category: string, excludeId: string, limit = 12): Promise<Product[]> => {
     const sb = serverClient();
     if (!sb) return [];
     const { data, error } = await sb

@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useState } from "react";
+import { giftLinesOf } from "@/lib/gifts";
 import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import AdminEditFab from "@/components/AdminEditFab";
@@ -1215,12 +1216,14 @@ export default function CustomerOrderPage() {
               <span className="t-soft">ค่าจัดส่ง ({order.shippingLabel || order.shipping})</span>
               <span>{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
             </div>
-            {(order.gifts ?? []).map((g) => (
-              <div key={g.promoId} className="mt-1.5 flex justify-between text-sm font-semibold t-ok">
-                <span>🎁 ของแถม — {g.name} ×{g.qty}</span>
-                <span>ฟรี</span>
-              </div>
-            ))}
+            {(order.gifts ?? []).flatMap((g) =>
+              giftLinesOf(g).map((ln, k) => (
+                <div key={`${g.promoId}-${k}`} className="mt-1.5 flex justify-between text-sm font-semibold t-ok">
+                  <span>🎁 ของแถม — {ln.label} ×{ln.qty}</span>
+                  <span>ฟรี</span>
+                </div>
+              ))
+            )}
             {order.discount && order.discount.amount > 0 && (
               <div className="mt-1.5 flex justify-between text-sm font-semibold t-ok">
                 <span>{order.discount.label}</span>

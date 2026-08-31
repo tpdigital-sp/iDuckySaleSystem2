@@ -1,0 +1,327 @@
+{
+  "name": "iDucky — สำรองฐานข้อมูลทุกวัน 02:00",
+  "settings": {
+    "timezone": "Asia/Bangkok",
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all"
+  },
+  "nodes": [
+    {
+      "id": "n1",
+      "name": "ทุกวัน 02:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -220,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "n2",
+      "name": "สร้างโฟลเดอร์ตามวันที่",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "resource": "folder",
+        "name": "=iducky-{{ $now.setZone('Asia/Bangkok').toFormat('yyyy-MM-dd') }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n3",
+      "name": "รายชื่อตาราง",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// ตารางที่ต้องสำรอง + จำนวนแถวขั้นต่ำที่ \"ต้องมี\" (กันไฟล์สำรองว่างเปล่าแบบเงียบ ๆ)\nconst folderId = $input.first().json.id;\nreturn [\n  { table: 'products',       minRows: 300 },\n  { table: 'orders',         minRows: 1   },\n  { table: 'profiles',       minRows: 1   },\n  { table: 'quotes',         minRows: 1   },\n  { table: 'coupons',        minRows: 0   },\n  { table: 'ratings',        minRows: 0   },\n  { table: 'reviews',        minRows: 0   },\n  { table: 'product_claims', minRows: 0   },\n].map(t => ({ json: { ...t, folderId } }));"
+      }
+    },
+    {
+      "id": "n4",
+      "name": "วนทีละตาราง",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "options": {
+          "reset": false
+        },
+        "batchSize": 1
+      }
+    },
+    {
+      "id": "n5",
+      "name": "ดึงข้อมูลจาก Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        400
+      ],
+      "parameters": {
+        "url": "=https://upvigfvxloelzevwneof.supabase.co/rest/v1/{{ $json.table }}?select=*",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "headers",
+                    "name": "Range",
+                    "value": "={{ $pageCount * 1000 }}-{{ ($pageCount + 1) * 1000 - 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.body.length < 1000 }}",
+              "maxRequestCount": 50,
+              "requestInterval": 300
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "n6",
+      "name": "รวมเป็นก้อนเดียว",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        880,
+        400
+      ],
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      }
+    },
+    {
+      "id": "n7",
+      "name": "ครบจำนวนขั้นต่ำไหม",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              },
+              "leftValue": "={{ $json.data.length }}",
+              "rightValue": "={{ $('วนทีละตาราง').item.json.minRows }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "n8",
+      "name": "ทำเป็นไฟล์ JSON",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1320,
+        300
+      ],
+      "parameters": {
+        "operation": "toJson",
+        "options": {
+          "format": true,
+          "fileName": "={{ $('วนทีละตาราง').item.json.table }}.json"
+        }
+      }
+    },
+    {
+      "id": "n9",
+      "name": "อัปขึ้น Google Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1540,
+        300
+      ],
+      "parameters": {
+        "name": "={{ $('วนทีละตาราง').item.json.table }}.json",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('รายชื่อตาราง').first().json.folderId }}"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n10",
+      "name": "⚠️ ข้อมูลน้อยผิดปกติ — หยุดและแจ้งเตือน",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        520
+      ],
+      "parameters": {
+        "errorMessage": "=สำรองไม่ผ่าน: ตาราง {{ $('วนทีละตาราง').item.json.table }} ได้ {{ $json.data.length }} แถว น้อยกว่าขั้นต่ำ {{ $('วนทีละตาราง').item.json.minRows }} — น่าจะเป็นปัญหาสิทธิ์ (service_role) ไม่ใช่ข้อมูลหาย อย่าเพิ่งเชื่อไฟล์สำรองชุดนี้"
+      }
+    }
+  ],
+  "connections": {
+    "ทุกวัน 02:00": {
+      "main": [
+        [
+          {
+            "node": "สร้างโฟลเดอร์ตามวันที่",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "สร้างโฟลเดอร์ตามวันที่": {
+      "main": [
+        [
+          {
+            "node": "รายชื่อตาราง",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "รายชื่อตาราง": {
+      "main": [
+        [
+          {
+            "node": "วนทีละตาราง",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "วนทีละตาราง": {
+      "main": [
+        [],
+        [
+          {
+            "node": "ดึงข้อมูลจาก Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ดึงข้อมูลจาก Supabase": {
+      "main": [
+        [
+          {
+            "node": "รวมเป็นก้อนเดียว",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "รวมเป็นก้อนเดียว": {
+      "main": [
+        [
+          {
+            "node": "ครบจำนวนขั้นต่ำไหม",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ครบจำนวนขั้นต่ำไหม": {
+      "main": [
+        [
+          {
+            "node": "ทำเป็นไฟล์ JSON",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "⚠️ ข้อมูลน้อยผิดปกติ — หยุดและแจ้งเตือน",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ทำเป็นไฟล์ JSON": {
+      "main": [
+        [
+          {
+            "node": "อัปขึ้น Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "อัปขึ้น Google Drive": {
+      "main": [
+        [
+          {
+            "node": "วนทีละตาราง",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {}
+}

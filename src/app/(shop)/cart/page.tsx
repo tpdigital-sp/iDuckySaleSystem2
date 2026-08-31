@@ -11,6 +11,7 @@ import {
   DESIGN_LABEL,
   formatPrice,
   isRetailRateLine,
+  lotShortfalls,
   maxDesignsFor,
   perUnitCapacity,
   productPath,
@@ -30,7 +31,15 @@ import {
   type OrderBoxFee,
   type ShippingMethod,
 } from "@/lib/shop-settings";
-import { giftsFor, type GiftPromo } from "@/lib/gifts";
+import {
+  giftsFor,
+  giftSizesOf,
+  resolveGiftSize,
+  splitGiftBySheet,
+  readGiftSizes,
+  writeGiftSizes,
+  type GiftPromo,
+} from "@/lib/gifts";
 import GiftPanel from "@/components/GiftPanel";
 import { useCart } from "@/lib/cart-context";
 import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
@@ -43,6 +52,8 @@ import { getQuoteTarget, clearQuoteTarget, type QuoteTarget } from "@/lib/append
 import { cartQtyShipFee, pickShipping, shipProfileOf, shippingAllowed } from "@/lib/shipping-auto";
 
 const USE_BY_KEY = "ducky-use-by-date";
+/** วิธีจัดส่งที่ลูกค้ากดเลือกเอง (เก็บ "ลายเซ็นตะกร้า" ตอนที่กด — ตะกร้าเปลี่ยน = ให้ระบบคิดใหม่) */
+const SHIP_PICK_KEY = "iducky-shipping-pick-v1";
 
 export default function CartPage() {
   const { items, setQty, removeItem, addItem, clear, productOf } = useCart();
@@ -129,6 +140,15 @@ export default function CartPage() {
       boxTagByKey.set(key, cur);
     });
   }
+  /**
+   * 📦 ล็อตที่ยังไม่ถึงยอดสั่งขั้นต่ำ (เรทที่ตั้ง minQtyScope: "lot")
+   * เช่น สติ๊กเกอร์ UV ขั้นต่ำ 3 แผ่น A3 ต่อเนื้อ 1 ชนิด — 3 แผ่นนั้นคละไดคัท/คละขนาดกันได้
+   * (= คนละบรรทัด บรรทัดละ 1 แผ่น) หน้าสินค้าจึงไม่ล็อก มาบล็อกที่นี่แทนเมื่อยอดรวมยังไม่ถึง
+   */
+  const shortLots = lotShortfalls(
+    pickedItems.map((i) => ({ productId: i.productId, selections: i.selections, qty: i.qty })),
+    productOf
+  );
   const subtotal =
     pickedItems.reduce((n, i) => n + i.unitPrice * i.qty + (i.extraFee ?? 0), 0) + boxFeeSum;
   const totalQty = pickedItems.reduce((n, i) => n + i.qty, 0);
@@ -206,10 +226,28 @@ export default function CartPage() {
 
   // รูปแบบจัดส่ง + โปรส่งฟรี ดึงจากที่แอดมินตั้งค่าไว้ (ระหว่างโหลดใช้ค่าเริ่มต้นไปก่อน)
   const [methods, setMethods] = useState<ShippingMethod[]>(DEFAULT_SHIPPING);
+  /** ดึงรายการวิธีส่งจริงของร้านมาแล้วหรือยัง (ก่อนหน้านั้นเป็นค่าเริ่มต้นในโค้ด ยังตัดสินใจแทนลูกค้าไม่ได้) */
+  const [shipLoaded, setShipLoaded] = useState(false);
   const [freeMin, setFreeMin] = useState(0);
   // 🎁 โปรของแถมฟรี (แอดมินตั้งที่ /admin/settings?tab=gift)
   const [giftPromos, setGiftPromos] = useState<GiftPromo[]>([]);
+  // 📐 ขนาดของแถมที่ลูกค้าเลือกไว้ ({ promoId: "9 × 9 cm" }) — หน้าชำระเงินอ่านต่อไปใส่ในออเดอร์
+  const [giftSize, setGiftSize] = useState<Record<string, string>>({});
+  useEffect(() => setGiftSize(readGiftSizes()), []);
+  function pickGiftSize(promoId: string, label: string) {
+    setGiftSize((cur) => {
+      const next = { ...cur, [promoId]: label };
+      writeGiftSizes(next);
+      return next;
+    });
+  }
   const [shippingId, setShippingId] = useState<string>(DEFAULT_SHIPPING[0].id);
+  /**
+   * ✋ ลายเซ็นตะกร้าตอนที่ลูกค้า "กดเลือกวิธีส่งเอง"
+   * ไม่ตรงกับตะกร้าตอนนี้ = ค่าที่จำไว้มาจากออเดอร์ก่อน → ระบบเลือกกล่องที่พอดีให้ใหม่
+   * (กันเคส: ออเดอร์ก่อนยอดถึงเกณฑ์เลยเด้ง EMS 100 แล้วค้างมาทับออเดอร์ใหม่ที่ยอดไม่ถึง)
+   */
+  const [pickSig, setPickSig] = useState<string>("");
 
   useEffect(() => {
     fetchShopPayment().then((p) => {
@@ -218,6 +256,7 @@ export default function CartPage() {
       setFreeMin(freeShippingMinOf(p));
       setGiftPromos(giftPromosOf(p));
       setBoxFees(boxFeesOf(p));
+      setShipLoaded(true);
       // ถ้าที่จำไว้ไม่มีในรายการแล้ว → กลับไปใช้ตัวแรก
       setShippingId((cur) => (list.some((m) => m.id === cur) ? cur : list[0].id));
     });
@@ -227,6 +266,7 @@ export default function CartPage() {
   useEffect(() => {
     const s = localStorage.getItem("iducky-shipping-v1");
     if (s) setShippingId(s);
+    setPickSig(localStorage.getItem(SHIP_PICK_KEY) ?? "");
   }, []);
   useEffect(() => {
     localStorage.setItem("iducky-shipping-v1", shippingId);
@@ -279,13 +319,30 @@ export default function CartPage() {
       ...qtyShip.forceIds,
     ],
   });
+  /** ตะกร้าชุดนี้เป็นยังไง — เปลี่ยนเมื่อไหร่ ค่าส่งที่ "เลือกเองไว้" ก็ถือว่าหมดอายุ */
+  const cartSig = pickedItems.map((i) => `${i.key}:${i.qty}`).join("|");
+  /** ลูกค้ากดเลือกวิธีส่งเอง — จำคู่กับตะกร้าชุดนี้ไว้ (ข้ามไปหน้า checkout แล้วกลับมาก็ยังอยู่) */
+  function chooseShipping(id: string) {
+    setShippingId(id);
+    setPickSig(cartSig);
+    localStorage.setItem(SHIP_PICK_KEY, cartSig);
+  }
   // ลูกค้าเปลี่ยนเองได้ แต่ถ้าตะกร้าเปลี่ยนจนต้องใช้กล่องใหญ่ขึ้น ระบบยกระดับให้ทันที
   useEffect(() => {
-    if (!methods.length || !auto.id) return;
+    // ⏳ ยังไม่ได้รายการวิธีส่งจริง/ตะกร้ายังโหลดไม่เสร็จ = ยังตัดสินใจแทนลูกค้าไม่ได้
+    // (เผลอทับตอนนี้ = "มารับเอง" ที่ลูกค้าเลือกไว้เด้งกลับเป็นส่งพัสดุทุกครั้งที่รีเฟรช)
+    if (!shipLoaded || !methods.length || !auto.id || !pickedItems.length) return;
     const cur = methods.find((m) => m.id === shippingId);
-    if (!cur || !shippingAllowed(cur, methods, auto)) setShippingId(auto.id);
+    if (!cur || !shippingAllowed(cur, methods, auto)) {
+      setShippingId(auto.id);
+      return;
+    }
+    // ไม่ได้กดเลือกเองกับตะกร้าชุดนี้ + แพงกว่าที่ออเดอร์นี้ต้องใช้ → กลับมาที่กล่องที่พอดี
+    // (มารับเอง/ส่งฟรี ราคา 0 ไม่เข้าเงื่อนไขนี้ ยังจำไว้เหมือนเดิม)
+    const autoM = methods.find((m) => m.id === auto.id);
+    if (pickSig !== cartSig && autoM && cur.price > autoM.price) setShippingId(auto.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auto.id, auto.floorId, methods.length, shippingId]);
+  }, [shipLoaded, auto.id, auto.floorId, methods.length, shippingId, pickSig, cartSig]);
 
   const shippingMethod = methods.find((s) => s.id === shippingId) ?? methods[0];
   const freeShipping = freeMin > 0 && subtotal >= freeMin;
@@ -327,7 +384,7 @@ export default function CartPage() {
   const total = subtotal + shippingCost;
   // 🎁 ของแถมฟรีที่ออเดอร์นี้ได้ (คิดจากรายการที่ติ๊กไว้)
   const giftRows = giftsFor(
-    pickedItems.map((i) => ({ productId: i.productId, qty: i.qty })),
+    pickedItems.map((i) => ({ productId: i.productId, qty: i.qty, selections: i.selections })),
     (id) => productOf(id)?.category,
     giftPromos
   );
@@ -598,6 +655,73 @@ export default function CartPage() {
                       </div>
                       <span className="cart-name mt-1" style={{ cursor: "default" }}>{g.promo.name}</span>
                       {g.promo.note && <span className="text-[11px] t-soft">{g.promo.note}</span>}
+                      {g.promo.condition && (
+                        <span className="mt-1 text-[11px] t-soft">📋 เงื่อนไข: {g.promo.condition}</span>
+                      )}
+
+                      {/* 📐 เลือกขนาดของแถม (แอดมินตั้งลิสต์ไว้ที่ /admin/settings?tab=gift) */}
+                      {(() => {
+                        const sizes = giftSizesOf(g.promo);
+                        if (sizes.length === 0) return null;
+                        const cur = resolveGiftSize(g.promo, giftSize[g.promo.id])!;
+                        const sp = splitGiftBySheet(g.promo, cur, g.earned);
+                        const rem = g.earned - sp.printed;
+                        return (
+                          <div className="mt-2">
+                            <span className="ord-eyebrow block text-[11px]">
+                              {g.promo.sizeLabel?.trim() || "ขนาด"}ที่ต้องการ
+                              {sizes.length > 1 && <span className="t-faint"> (เลือกได้)</span>}
+                            </span>
+                            <div className="mt-1 flex flex-wrap gap-1.5">
+                              {sizes.map((sz) => {
+                                const on = sz.label === cur.label;
+                                return (
+                                  <button
+                                    key={sz.label}
+                                    type="button"
+                                    disabled={sizes.length === 1}
+                                    onClick={() => pickGiftSize(g.promo.id, sz.label)}
+                                    title={sz.note}
+                                    className="flex items-center gap-1.5 rounded-xl px-2 py-1.5 text-[11px] font-semibold transition"
+                                    style={{
+                                      cursor: sizes.length === 1 ? "default" : "pointer",
+                                      border: `1.5px solid ${on ? "rgba(18,135,106,.65)" : "var(--sky-200)"}`,
+                                      background: on ? "#DEF5EC" : "#fff",
+                                      color: on ? "#0E6B52" : "var(--ink-soft, #5A6B84)",
+                                    }}
+                                  >
+                                    {sz.image && (
+                                      // eslint-disable-next-line @next/next/no-img-element -- รูปของแถมจากคลังรูปร้าน
+                                      <img src={sz.image} alt="" className="h-7 w-7 rounded-lg object-cover" />
+                                    )}
+                                    <span className="text-left">
+                                      {sz.label}
+                                      {(sz.perSheet ?? 0) > 0 && (
+                                        <span className="block font-normal t-faint">{sz.perSheet} ใบ / แผ่น A3</span>
+                                      )}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {cur.note && <span className="mt-1 block text-[11px] t-soft">{cur.note}</span>}
+                            {sp.fallback > 0 && (
+                              <span className="mt-1.5 block rounded-lg px-2 py-1.5 text-[11px] leading-relaxed" style={{ background: "#FFF6E2", color: "#7A5A12" }}>
+                                🧾 ได้ <strong>{g.promo.name} {sp.printed.toLocaleString("th-TH")} ชิ้น</strong> ({sp.sheets} แผ่น A3 เต็ม)
+                                · อีก <strong>{sp.fallback.toLocaleString("th-TH")} ชิ้น</strong> ที่เหลือไม่เต็มครึ่งแผ่น
+                                จะได้เป็น <strong>{sp.fallbackName}</strong> แทน
+                                {sp.threshold > rem && (
+                                  <span className="block">
+                                    (เศษต้องครบ {sp.threshold.toLocaleString("th-TH")} ใบ — สั่งเพิ่มอีก{" "}
+                                    {(sp.threshold - rem).toLocaleString("th-TH")} ชิ้น ได้พิมพ์ลายครบทุกชิ้น)
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       <div className="mt-auto flex items-center justify-between gap-3 pt-2">
                         <span className="text-xs t-soft">จำนวน {g.earned.toLocaleString("th-TH")} ชิ้น · ระบบเพิ่มให้อัตโนมัติ</span>
                         <span className="text-right">
@@ -678,7 +802,7 @@ export default function CartPage() {
             )}
 
             {/* 🎁 ของแถมฟรีตามจำนวนชิ้น (โปรร้าน) */}
-            <GiftPanel rows={giftRows} className="mt-3" />
+            <GiftPanel rows={giftRows} sizes={giftSize} className="mt-3" />
 
             <div className="mt-5">
               <span className="ord-eyebrow mb-2 block">วิธีจัดส่ง</span>
@@ -717,7 +841,7 @@ export default function CartPage() {
                           name="shipping"
                           disabled={!ok}
                           checked={checked}
-                          onChange={() => setShippingId(s.id)}
+                          onChange={() => chooseShipping(s.id)}
                         />
                         <span className="min-w-0">
                           <span className="ord-opt-name">{s.name}</span>
@@ -762,7 +886,14 @@ export default function CartPage() {
                 .filter((g) => g.earned > 0)
                 .map((g) => (
                   <div key={g.promo.id} className="flex justify-between t-soft">
-                    <dt>🎁 ของแถม — {g.promo.name} ×{g.earned}</dt>
+                    <dt>
+                      🎁 ของแถม — {g.promo.name}
+                      {(() => {
+                        const cur = resolveGiftSize(g.promo, giftSize[g.promo.id]);
+                        return cur ? ` (${cur.label})` : "";
+                      })()}{" "}
+                      ×{g.earned}
+                    </dt>
                     <dd className="font-semibold t-ok">ฟรี!</dd>
                   </div>
                 ))}
@@ -811,10 +942,27 @@ export default function CartPage() {
                 ☑️ ยังไม่ได้ติ๊กเลือกรายการที่จะสั่ง — ติ๊กอย่างน้อย 1 รายการก่อนนะครับ
               </p>
             )}
+            {/* 📦 ขั้นต่ำต่อรอบผลิต — บอกให้ชัดว่าขาดกลุ่มไหน อีกเท่าไหร่ พร้อมลิงก์กลับไปเลือกเพิ่ม */}
+            {shortLots.map((s) => (
+              <div key={s.key} className="ord-note warn mt-4 px-4 py-2.5 text-xs leading-relaxed">
+                <p className="font-extrabold">
+                  📦 {s.productName}
+                  {s.groupLabel ? ` · ${s.groupLabel}` : ""} — ยังขาดอีก {s.short.toLocaleString("th-TH")} {s.unit}
+                </p>
+                <p className="mt-1 font-semibold">
+                  สั่งขั้นต่ำ {s.need.toLocaleString("th-TH")} {s.unit} ต่อ 1 รอบผลิต (ตอนนี้มี{" "}
+                  {s.have.toLocaleString("th-TH")} {s.unit}) — คละไดคัทและคละขนาดกันได้
+                  {s.groupLabel ? " ขอแค่เป็นแบบเดียวกัน" : ""}
+                </p>
+                <Link href={productPath(productOf(s.productId) ?? { id: s.productId })} className="ord-btn quiet sm mt-2">
+                  ← เลือกเพิ่มอีก {s.short.toLocaleString("th-TH")} {s.unit}
+                </Link>
+              </div>
+            ))}
             <button
               type="button"
               onClick={() => router.push("/checkout")}
-              disabled={pickedItems.length === 0}
+              disabled={pickedItems.length === 0 || shortLots.length > 0}
               className="ord-btn yolk block lg mt-5"
             >
               ✅ ยืนยันการสั่งซื้อ{allPicked ? "" : ` (${pickedItems.length} รายการ)`}

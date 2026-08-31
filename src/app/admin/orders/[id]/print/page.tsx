@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { giftLinesOf } from "@/lib/gifts";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
@@ -636,11 +637,13 @@ export default function PrintOrderPage() {
               <div className="keep mt-3 rounded border-2 border-slate-900 p-3">
                 <p className="text-sm font-extrabold">🎁 ของแถมที่ต้องใส่กล่อง</p>
                 <ul className="mt-1 space-y-0.5 text-sm font-bold">
-                  {(order.gifts ?? []).map((g) => (
-                    <li key={g.promoId}>
-                      ☐ {g.name} × {g.qty}
-                    </li>
-                  ))}
+                  {(order.gifts ?? []).flatMap((g) =>
+                    giftLinesOf(g).map((ln, k) => (
+                      <li key={`${g.promoId}-${k}`}>
+                        ☐ {ln.label} × {ln.qty}
+                      </li>
+                    ))
+                  )}
                 </ul>
               </div>
             )}
@@ -803,12 +806,14 @@ export default function PrintOrderPage() {
                 <span className="text-slate-500">ค่าจัดส่ง</span>
                 <span className="tabular-nums">{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
               </div>
-              {(order.gifts ?? []).map((g) => (
-                <div key={g.promoId} className="flex justify-between py-1 font-bold">
-                  <span>🎁 ของแถม — {g.name}</span>
-                  <span className="tabular-nums">×{g.qty}</span>
-                </div>
-              ))}
+              {(order.gifts ?? []).flatMap((g) =>
+                giftLinesOf(g).map((ln, k) => (
+                  <div key={`${g.promoId}-${k}`} className="flex justify-between py-1 font-bold">
+                    <span>🎁 ของแถม — {ln.label}</span>
+                    <span className="tabular-nums">×{ln.qty}</span>
+                  </div>
+                ))
+              )}
               {order.discount && order.discount.amount > 0 && (
                 <div className="flex justify-between py-1 text-emerald-600">
                   <span>{order.discount.label}</span>

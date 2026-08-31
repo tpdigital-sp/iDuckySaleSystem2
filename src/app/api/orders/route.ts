@@ -8,6 +8,8 @@ import { giftsFor, giftsToOrder, type GiftPromo, type OrderGift } from "@/lib/gi
 import { currentActor } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
+import { getProductServer } from "@/lib/products-server";
+import { lotShortfalls, type Product } from "@/lib/products";
 
 // id เรคอร์ดตั้งค่าร้าน (ตรงกับ SETTINGS_ID ใน shop-settings ซึ่งเป็น "use client")
 const SETTINGS_ROW = "__shop_payment__";
@@ -39,6 +41,8 @@ export async function POST(req: Request) {
     couponCode?: string;
     /** โหมดพนักงานสั่งแทนลูกค้า — ต้องล็อกอินหลังบ้านและมีสิทธิ์ orders.edit (ตรวจจากคุกกี้ฝั่งเซิร์ฟเวอร์) */
     staffOrder?: boolean;
+    /** 📐 ขนาดของแถมที่ลูกค้าเลือก ({ promoId: "9 × 9 cm" }) — ตรวจกับลิสต์ของแอดมินก่อนใช้ */
+    giftSizes?: Record<string, string>;
   };
   try {
     input = await req.json();
@@ -60,6 +64,35 @@ export async function POST(req: Request) {
     input.customerId = undefined;
     input.email = undefined;
     input.couponCode = undefined;
+  }
+
+  /**
+   * 📦 ยอดสั่งขั้นต่ำต่อ "รอบผลิต" (เรทที่ตั้ง minQtyScope: "lot" เช่น สติ๊กเกอร์ UV 3 แผ่น A3 ต่อเนื้อ 1 ชนิด)
+   * หน้าสินค้าปล่อยให้ทยอยเพิ่มทีละแผ่น ประตูจริงอยู่ที่ตะกร้า/หน้าชำระเงิน — ตรงนี้กันคนยิง API ตรง
+   * แอดมินสั่งแทนลูกค้า (staffOrder) ข้ามได้ — เคสตกลงกับลูกค้าเป็นราย ๆ ไป
+   */
+  if (!input.staffOrder) {
+    const withSel = input.items.filter((i) => i.sel && i.productId);
+    const prods = new Map<string, Product>();
+    for (const pid of [...new Set(withSel.map((i) => i.productId))]) {
+      const p = await getProductServer(pid);
+      if (p) prods.set(pid, p);
+    }
+    const short = lotShortfalls(
+      withSel.map((i) => ({ productId: i.productId, selections: i.sel!, qty: i.qty })),
+      (id) => prods.get(id)
+    );
+    if (short.length) {
+      const s = short[0];
+      return NextResponse.json(
+        {
+          error:
+            `${s.productName}${s.groupLabel ? ` · ${s.groupLabel}` : ""} สั่งขั้นต่ำ ${s.need} ${s.unit} ต่อ 1 รอบผลิต ` +
+            `— ตอนนี้มี ${s.have} ${s.unit} ยังขาดอีก ${s.short} ${s.unit}`,
+        },
+        { status: 400 }
+      );
+    }
   }
 
   const subtotal = input.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
@@ -130,13 +163,17 @@ export async function POST(req: Request) {
     const promos = ((settRes.data?.data as { gifts?: GiftPromo[] } | undefined)?.gifts ?? []).filter((g) => g?.id);
     if (promos.length) {
       const cat = new Map((prodRes.data ?? []).map((r) => [String(r.id), String(r.category ?? "")]));
+      // 📐 ขนาดที่ลูกค้าเลือกมา — giftsToOrder ตรวจกับลิสต์ที่แอดมินตั้งไว้อีกชั้น (ไม่ตรง = ใช้ตัวแรก)
+      const chosen: Record<string, string> = {};
+      for (const [k, v] of Object.entries(input.giftSizes ?? {})) if (typeof v === "string") chosen[k] = v;
       gifts = giftsToOrder(
         giftsFor(
-          input.items.map((i) => ({ productId: i.productId, qty: i.qty })),
+          input.items.map((i) => ({ productId: i.productId, qty: i.qty, selections: i.sel })),
           (id) => cat.get(id),
           promos,
           now.getTime()
-        )
+        ),
+        chosen
       );
     }
   } catch {

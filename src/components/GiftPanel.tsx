@@ -1,7 +1,7 @@
 "use client";
 
 import { formatPrice } from "@/lib/products";
-import type { GiftResult } from "@/lib/gifts";
+import { resolveGiftSize, splitGiftBySheet, type GiftResult } from "@/lib/gifts";
 
 /**
  * 🎁 การ์ดโปรของแถมฟรีในตะกร้า/หน้าชำระเงิน (UX แบบร้านค้าออนไลน์)
@@ -14,7 +14,16 @@ import type { GiftResult } from "@/lib/gifts";
  * ตัวเลข/หลอดคำนวณสดจาก state ตะกร้าทุกครั้งที่จำนวนเปลี่ยน — ไม่ต้องรีเฟรชหน้า
  * ⚠️ โชว์เฉพาะโปรที่ลูกค้ามีของเข้าเงื่อนไขอยู่แล้ว (qty > 0) — ไม่งั้นตะกร้ารกด้วยโปรที่ไม่เกี่ยว
  */
-export default function GiftPanel({ rows, className = "" }: { rows: GiftResult[]; className?: string }) {
+export default function GiftPanel({
+  rows,
+  sizes,
+  className = "",
+}: {
+  rows: GiftResult[];
+  /** ขนาดของแถมที่ลูกค้าเลือกไว้ ({ promoId: "9 × 9 cm" }) — ใช้บอกว่าเศษได้ของแทนกี่ชิ้น */
+  sizes?: Record<string, string>;
+  className?: string;
+}) {
   const show = rows.filter((r) => r.earned > 0 || r.qty > 0);
   if (show.length === 0) return null;
 
@@ -41,7 +50,21 @@ export default function GiftPanel({ rows, className = "" }: { rows: GiftResult[]
             <div key={r.promo.id} className="ord-note ok flex items-start gap-3 px-4 py-3 text-xs leading-relaxed">
               {img("")}
               <span className="min-w-0 flex-1">
-                <strong className="block text-[.86rem]">🎉 ปลดล็อกของแถมแล้ว — {r.promo.name} ×{r.earned}</strong>
+                {(() => {
+                  const size = resolveGiftSize(r.promo, sizes?.[r.promo.id]);
+                  const sp = splitGiftBySheet(r.promo, size, r.earned);
+                  return (
+                    <>
+                      <strong className="block text-[.86rem]">
+                        🎉 ปลดล็อกของแถมแล้ว — {r.promo.name}
+                        {size ? ` (${size.label})` : ""} ×{sp.fallback > 0 ? sp.printed : r.earned}
+                      </strong>
+                      {sp.fallback > 0 && (
+                        <span className="block">🧾 + {sp.fallbackName} ×{sp.fallback} (เศษไม่เต็มครึ่งแผ่น A3)</span>
+                      )}
+                    </>
+                  );
+                })()}
                 {r.promo.note && <span className="block opacity-80">{r.promo.note}</span>}
                 <span className="mt-0.5 block">
                   {(r.promo.value ?? 0) > 0 && (

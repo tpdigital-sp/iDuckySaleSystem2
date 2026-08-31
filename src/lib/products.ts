@@ -228,6 +228,20 @@ export interface ProductOption {
    */
   showWhenAll?: { label: string; choices: string[] }[];
   /**
+   * เงื่อนไข "หรือ" — แสดงกลุ่มนี้เมื่อข้อใดข้อหนึ่งตรง (ต่างจาก showWhen/showWhenAll ที่ต้องตรงทุกข้อ)
+   * ใช้กับกลุ่มที่มีทางเปิดหลายทาง เช่น "รูปแบบการห้อย" ของพวงกุญแจหลายชิ้น:
+   * โชว์เมื่อพวงมี 2 ชิ้นขึ้นไป "หรือ" ติ๊กติ่งห้อยไว้ (ชิ้นเดียว+ติ่งห้อยก็มีอะไรให้จัดเรียงแล้ว)
+   * ตั้งคู่กับเงื่อนไข "และ" ได้ — ต้องผ่านทั้งฝั่ง และ/หรือ ถึงจะแสดง · ไม่ตั้ง/ว่าง = ไม่มีเงื่อนไขฝั่งนี้
+   */
+  showWhenAny?: { label: string; choices: string[] }[];
+  /**
+   * 🧩 "ชุดตัวเลือก" — กลุ่มที่ตั้งชื่อชุดเดียวกันและอยู่ติดกัน จะถูกจับใส่กรอบเดียวกันบนหน้าสินค้า
+   * พร้อมหัวชุด (เช่น "ชิ้นที่ 2") กันสายตาหลงเวลาสินค้ามีกลุ่มเยอะ ๆ ที่หน้าตาซ้ำกันทุกชิ้น
+   * ชื่อกลุ่มที่ลงท้ายด้วยชื่อชุด จะตัดส่วนท้ายออกตอนแสดงในกรอบ ("ขนาดชิ้นที่ 2" → "ขนาด")
+   * — ชื่อเต็มยังใช้ในตะกร้า/ออเดอร์/ใบงานเหมือนเดิม · ไม่ตั้ง = เรียงเรียบ ๆ แบบเดิม
+   */
+  section?: string;
+  /**
    * 🎯 ค่าเริ่มต้นของกลุ่มนี้ผูกกับค่าของกลุ่มอื่น — ลูกค้าเปลี่ยนค่ากลุ่มคุมเมื่อไหร่
    * กลุ่มนี้รีเซ็ตเป็นค่าเริ่มต้นของค่านั้น (ที่เลือกไว้ก่อนหน้าไม่เกี่ยว เริ่มใหม่ตามกลุ่มคุม)
    * เช่น อะคริลิคประกบ: "รับตะขอไหม" ตั้ง { label: "เรทราคา", map: { "สแตนดี้…": "ไม่รับตะขอ" } }
@@ -265,6 +279,15 @@ export interface ProductOption {
    * ราคาจึงขยับตามเรทเองอัตโนมัติ ไม่ต้องกรอก +฿ ตายตัว · ไม่ตั้ง = คิด extra ปกติ
    */
   priceAsDriver?: string;
+  /**
+   * แกนอื่นของช่องราคา (นอกจาก priceAsDriver) ให้ดึงค่าจาก "กลุ่มอื่น" แทนกลุ่ม global
+   * รูปแบบ { ชื่อแกนตาราง: ชื่อกลุ่มที่เอาค่ามาใช้ } — ใช้กับสินค้าหลายชิ้นที่แต่ละชิ้น
+   * เลือกสเปคของตัวเอง เช่น "ขนาดชิ้นที่ 2" ตั้ง
+   *   { "ประเภทอะคริลิค ชิ้นที่ 1": "ประเภทอะคริลิค ชิ้นที่ 2", "งานสกรีน ชิ้นที่ 1": "งานสกรีน ชิ้นที่ 2" }
+   * → ราคาชิ้นที่ 2 = ช่องตารางของ (ขนาดชิ้นที่ 2 × ประเภทชิ้นที่ 2 × งานสกรีนชิ้นที่ 2)
+   * กลุ่มต้นทางยังไม่มีค่า/แกนไม่มีจริง = ใช้ค่ากลุ่ม global ตามเดิม · ใช้คู่กับ priceAsDriver เท่านั้น
+   */
+  priceAsDriverAlso?: Record<string, string>;
   /**
    * ค่าธรรมเนียม "ช่วงสั่งน้อย" ของกลุ่มนี้ — คิดเพิ่มต่อชิ้นเมื่อสั่งไม่เกินจำนวนที่กำหนด
    * เช่น พวงกุญแจ 3mm ช่วงปลีก 1-10 ชิ้น เลือกตะขอบวกชิ้นละ 10 บาท (ยกเว้นห่วงแถมฟรี Z1/Z2)
@@ -1116,7 +1139,10 @@ export function optionVisible(opt: ProductOption, selections: Record<string, str
   // ตั้งไม่ครบ (ไม่มีกลุ่ม หรือไม่ได้ติ๊กค่าไหนเลย) = ข้อนั้นไม่นับ · ตั้งครบทั้งสองข้อ = ต้องตรงทั้งคู่
   const pass = (s?: { label: string; choices: string[] }) =>
     !s?.label || !s.choices?.length || valueMatchesAny(selections[s.label], s.choices);
-  return pass(opt.showWhen) && pass(opt.showWhenAlso) && (opt.showWhenAll ?? []).every(pass);
+  // เงื่อนไข "หรือ" (showWhenAny) — ผ่านเมื่อข้อใดข้อหนึ่งตรง (ข้อที่ตั้งไม่ครบไม่นับเป็นทางเปิด)
+  const anyConds = (opt.showWhenAny ?? []).filter((s) => s?.label && s.choices?.length);
+  const anyPass = !anyConds.length || anyConds.some((s) => valueMatchesAny(selections[s.label], s.choices));
+  return anyPass && pass(opt.showWhen) && pass(opt.showWhenAlso) && (opt.showWhenAll ?? []).every(pass);
 }
 
 /** ราคาบวกเพิ่มของกลุ่มนี้ใช้กับจำนวนนี้ไหม (ต่ำกว่าเกณฑ์ = รวมในราคาแล้ว) */
@@ -1210,7 +1236,9 @@ export function qtyMultiplierOf(opt: ProductOption, selections: Record<string, s
   if (!src) return 1;
   const raw = selections[src];
   if (!raw) return 1;
-  const only = [opt.showWhen, opt.showWhenAlso, ...(opt.showWhenAll ?? [])].find((c) => c?.label === src)?.choices;
+  const only = [opt.showWhen, opt.showWhenAlso, ...(opt.showWhenAll ?? []), ...(opt.showWhenAny ?? [])].find(
+    (c) => c?.label === src
+  )?.choices;
   let n = 0;
   for (const entry of raw.split(MULTI_SEP).map((s) => s.trim()).filter(Boolean)) {
     const p = parseMultiEntry(entry);
@@ -1480,6 +1508,18 @@ export interface PriceRate {
   desc?: string;
   /** ยอดสั่งรวมขั้นต่ำของเรทนี้ เช่น เรท 2 ต้องสั่ง 50 ชิ้นขึ้นไป */
   minQty?: number;
+  /**
+   * 📦 ขั้นต่ำ (minQty) นับที่ไหน — ไม่ตั้ง = "line" (นับรายบรรทัดตามเดิม)
+   *
+   * "lot" = นับ "ยอดรวมทั้งล็อตผลิต" ในตะกร้า (บรรทัดสินค้าเดียวกัน เรทเดียวกัน และค่าของกลุ่มใน
+   * lotKeyOptions ตรงกัน) แทนที่จะบังคับทีละบรรทัด — ใช้กับสินค้าที่ขั้นต่ำเป็นของ "รอบผลิต"
+   * ไม่ใช่ของสเปคใดสเปคหนึ่ง เช่น สติ๊กเกอร์ UV ขั้นต่ำ 3 แผ่น A3 ต่อเนื้อสติ๊กเกอร์ 1 ชนิด
+   * แต่ 3 แผ่นนั้นคละไดคัท 50%/100% และคละขนาดกันได้ (= คนละบรรทัดในตะกร้า บรรทัดละ 1 แผ่น)
+   *
+   * ผลที่ตามมา: หน้าสินค้าไม่ล็อกปุ่มสั่งอีก (กดเพิ่มทีละแผ่นสะสมได้) — ประตูขั้นต่ำย้ายไป
+   * ตะกร้า/หน้าชำระเงิน/เซิร์ฟเวอร์ ผ่าน lotShortfalls()
+   */
+  minQtyScope?: "line" | "lot";
   /** คละลายขั้นต่ำลายละกี่ชิ้น เช่น 25 → สั่ง 50 คละได้ 2 ลาย */
   minPerDesign?: number;
   /** คละลายเกินโควตาได้ โดยคิดเพิ่มลายละ (บาท) — ไม่ตั้ง = คละเกินโควตาไม่ได้ */
@@ -2162,6 +2202,16 @@ export interface Product {
    */
   hardMinQty?: boolean;
   /**
+   * 📦 กลุ่มตัวเลือกที่ "แยกล็อตผลิตออกจากกัน" — ค่าต่างกัน = คนละล็อต ไม่รวมยอดกัน
+   * ทั้งขั้นราคาตามจำนวน (tier) และขั้นต่ำแบบ minQtyScope: "lot"
+   *
+   * เช่น สติ๊กเกอร์ UV ตั้ง ["เนื้อสติ๊กเกอร์"] — ขั้นต่ำ 3 แผ่น A3 คิดต่อ "เนื้อ 1 ชนิด"
+   * (เนื้อขาว 2 แผ่น + เนื้อใส 1 แผ่น ≠ ครบ 3 เพราะผลิตคนละรอบ) และช่วงราคาก็นับแยกเนื้อ
+   *
+   * ไม่ตั้ง = รวมล็อตทั้งสินค้าตามเดิม (สเปคต่างกันได้ ราคาอ่านจากคอลัมน์ของบรรทัดตัวเอง)
+   */
+  lotKeyOptions?: string[];
+  /**
    * 📐 คิดราคาจาก "พื้นที่ลาย" ที่ลูกค้ากรอก แทนราคาคอลัมน์เดียวในตาราง
    * ใช้กับงานที่ราคาผูกกับขนาด เช่น อาร์มปัก: 15 ตร.ซม. แรก ฿40 · ตร.ซม. ต่อไป ฿2
    */
@@ -2395,6 +2445,12 @@ export interface ArtworkConsult {
   when?: { label: string; choices: string[] };
   /** เงื่อนไขข้อที่สอง — ต้องตรงพร้อมกันกับ when ถึงจะบังคับ (ไม่ตั้ง = ใช้ข้อเดียว) */
   whenAlso?: { label: string; choices: string[] };
+  /**
+   * เงื่อนไข "หรือ" — ข้อใดข้อหนึ่งตรงก็บังคับ (ต่างจาก when/whenAlso ที่ต้องตรงพร้อมกัน)
+   * ใช้เมื่อมีหลายทางที่พาไปสู่งานที่ต้องคุยก่อน เช่น พวงกุญแจหลายชิ้น:
+   * เลือก "แบบอื่น ๆ" ได้ทั้งกลุ่มรูปแบบการห้อยของชิ้นงาน และของติ่งห้อย
+   */
+  whenAny?: { label: string; choices: string[] }[];
 }
 
 /** ป้ายที่ติดไปกับรายการในตะกร้า/ออเดอร์เมื่อลูกค้ายืนยันว่าคุยลายกับแอดมินแล้ว */
@@ -2414,12 +2470,25 @@ export function artworkConsultOf(p: Product, selections?: Record<string, string>
   const c = p.artworkConsult;
   if (!c?.enabled) return null;
   const set = (w?: { label: string; choices: string[] }) => !!w?.label && !!w.choices?.length;
-  if (!set(c.when) && !set(c.whenAlso)) return c;
+  const anyConds = (c.whenAny ?? []).filter(set);
+  if (!set(c.when) && !set(c.whenAlso) && !anyConds.length) return c;
   // ตั้งเงื่อนไขไว้แต่ไม่รู้ว่าลูกค้าเลือกอะไร = ตัดสินไม่ได้ ถือว่ายังไม่บังคับ
   if (!selections) return null;
+  /**
+   * กลุ่มที่อ้างถึงถูกซ่อนอยู่ = ลูกค้าไม่ได้เลือกค่านั้นจริง (ค่าที่ค้างเป็นของเก่าที่เคยเลือกไว้)
+   * ห้ามเอามาบล็อกการสั่ง — ไม่งั้นเลือก "แบบอื่น ๆ" ไว้แล้วปิดกลุ่มนั้นทิ้ง ปุ่มสั่งจะค้างบล็อกทั้งที่
+   * ลูกค้าไม่เห็นกลุ่มนั้นแล้ว (กติกาเดียวกับที่ allowedChoices ใช้กับกฎเงื่อนไข)
+   */
+  const hiddenSrc = (label: string) => {
+    const g = p.options?.find((o) => o.label === label);
+    return !!g && !optionVisible(g, selections);
+  };
   const pass = (w?: { label: string; choices: string[] }) =>
-    !set(w) || valueMatchesAny(selections[w!.label], w!.choices);
-  return pass(c.when) && pass(c.whenAlso) ? c : null;
+    !set(w) || (!hiddenSrc(w!.label) && valueMatchesAny(selections[w!.label], w!.choices));
+  // เงื่อนไข "หรือ" ผ่านเมื่อข้อใดข้อหนึ่งตรง · ไม่ได้ตั้งไว้ = ไม่มีข้อจำกัดฝั่งนี้
+  const anyPass =
+    !anyConds.length || anyConds.some((w) => !hiddenSrc(w.label) && valueMatchesAny(selections[w.label], w.choices));
+  return anyPass && pass(c.when) && pass(c.whenAlso) ? c : null;
 }
 
 /**
@@ -4372,7 +4441,14 @@ export function priceAsDriverExtraOf(
   if (!driver || !choiceName) return 0;
   const m = activeMatrix(product, selections);
   if (!m || !m.driverLabels.includes(driver)) return 0;
-  const cells = m.cells[priceMatrixKey(m, { ...selections, [driver]: choiceName })];
+  const view = { ...selections, [driver]: choiceName };
+  // แกนอื่นของชิ้นนี้ที่เลือกแยกจากกลุ่ม global (priceAsDriverAlso) — เช่น ประเภท/งานสกรีนรายชิ้น
+  for (const [axis, srcGroup] of Object.entries(opt.priceAsDriverAlso ?? {})) {
+    if (!m.driverLabels.includes(axis)) continue;
+    const v = selections[srcGroup];
+    if (v) view[axis] = v;
+  }
+  const cells = m.cells[priceMatrixKey(m, view)];
   return cells?.length ? (cells[tierIndex(m, qty)] ?? 0) : 0;
 }
 
@@ -4518,8 +4594,11 @@ function pickRateForQty(p: Product, qty: number): PriceRate | undefined {
 }
 
 /**
- * บรรทัดนี้ยังอยู่ "เรทปลีก" (เรทต่ำสุดของสินค้า เช่น 1-10 ชิ้น) ไหม — ใช้ตัดสินว่าตะกร้าเป็นออเดอร์ปลีกล้วน
- * สินค้าที่มีเรทเดียว/ไม่มีเรท = ถือว่าปลีก (ไม่มีเรทส่งให้ขยับ)
+ * บรรทัดนี้ยังเป็น "ราคาปลีก" (ยังไม่เข้าเรทขายส่งเรทไหนเลย เช่น 1-10 ชิ้น) ไหม
+ * — ใช้ตัดสินว่าตะกร้าเป็นออเดอร์ปลีกล้วน (ของแพงไม่กี่ชิ้น กล่องเดิมใส่พอ ไม่ต้องเด้งค่าส่ง)
+ *
+ * ⚠️ ปลีก = "จำนวนยังไม่ถึงขั้นต่ำของเรทไหนเลย" ไม่ใช่ "อยู่เรทต่ำสุด" —
+ * สินค้าที่มีเรทเดียว (เช่น ผ้าห่ม เรทที่ 1 เริ่ม 11 ชิ้น) สั่ง 14 ชิ้น = ขายส่งแล้ว ต้องเด้งกล่องใหญ่ได้
  * mergedRateLabel = เรทที่ตะกร้ารวมล็อตสรุปให้แล้ว (แม่นกว่าคิดรายบรรทัด — 6+6 รวมเป็น 12 ได้เรทส่ง)
  */
 export function isRetailRateLine(
@@ -4529,12 +4608,13 @@ export function isRetailRateLine(
   mergedRateLabel?: string
 ): boolean {
   const rs = p.priceRates ?? [];
-  if (rs.length < 2) return true;
-  const retail = [...rs].sort((a, b) => (a.minQty ?? 1) - (b.minQty ?? 1))[0];
-  const applied =
-    (mergedRateLabel ? rs.find((r) => r.label === mergedRateLabel) : undefined) ??
-    (p.hardMinQty ? activeRate(p, selections) : pickRateForQty(p, qty));
-  return (applied ?? retail).label === retail.label;
+  if (!rs.length) return true; // ไม่มีเรทส่ง = ราคาเดียวตลอด ไม่มีอะไรให้ขยับ
+  // ตะกร้าสรุปเรทจาก "ยอดรวมล็อต" มาแล้ว = เข้าเรทส่งแน่ (บรรทัดเดี่ยวอาจยังไม่ถึงขั้นต่ำ แต่รวมกันแล้วถึง)
+  if (mergedRateLabel && rs.some((r) => r.label === mergedRateLabel)) return false;
+  // สินค้าที่ล็อกให้เลือกเรทเอง (hardMinQty) — ยึดเรทที่ลูกค้าเลือกไว้ เทียบกับขั้นต่ำของเรทนั้น
+  const picked = p.hardMinQty ? activeRate(p, selections) : undefined;
+  if (picked) return (picked.minQty ?? 1) > qty;
+  return !rs.some((r) => (r.minQty ?? 1) <= qty);
 }
 
 /**
@@ -4608,10 +4688,23 @@ function lineMergeable(p: Product, selections: Record<string, string>, qty: numb
 /**
  * คีย์จัดกลุ่ม — สินค้าเรทตามจำนวน: รวมกันทั้งสินค้า (สเปคต่างกันได้ ราคาแยกตามคอลัมน์ของใครของมัน)
  * สินค้า hardMinQty: แยกกลุ่มตามเรทที่เลือก เพราะเรทคนละหน่วยสั่ง เอายอดข้ามเรทมาบวกกันไม่ได้
+ * lotKeyOptions: แยกกลุ่มตามค่าของกลุ่มที่ระบุด้วย (เช่น เนื้อสติ๊กเกอร์ = คนละรอบผลิต)
  * ⚠️ ห้ามเอาของแนบต่อบรรทัด (ภาพลาย/ลิงก์/หมายเหตุ) มาเป็นคีย์ — ต่างกันทุกบรรทัด จะไม่มีวันรวม
  */
 function groupKeyOf(p: Product, selections: Record<string, string>): string {
-  return p.hardMinQty ? `${p.id}|${activeRate(p, selections)?.label ?? ""}` : p.id;
+  const base = p.hardMinQty ? `${p.id}|${activeRate(p, selections)?.label ?? ""}` : p.id;
+  const split = p.lotKeyOptions?.length
+    ? p.lotKeyOptions.map((l) => `${l}=${selections[l] ?? ""}`).join("|")
+    : "";
+  return split ? `${base}|${split}` : base;
+}
+
+/** ป้ายบอกว่าล็อตนี้คือกลุ่มไหน (ค่าของ lotKeyOptions) เช่น "เนื้อพลาสติกใส-แผ่นรองขุ่น" */
+function lotGroupLabel(p: Product, selections: Record<string, string>): string {
+  return (p.lotKeyOptions ?? [])
+    .map((l) => selections[l]?.trim())
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /**
@@ -4699,6 +4792,37 @@ export function repriceCartGroups(
 
     for (const pool of pools) {
       const poolDesigns = pool.idxs.reduce((s, i) => s + designCountOf(lines[i].selections), 0);
+      /**
+       * ค่าคละลายในล็อตที่มี "กติกาคละ" ปนกัน — เช่น สติ๊กเกอร์แผ่นไดคัท 50% (ตั้ง mixRule ของตัวเอง
+       * ลายละ 20 ต่อแผ่น) กับแผ่นไดคัท 100% (ใช้กติการะดับสินค้า ลายละ 5) อยู่ล็อตเดียวกัน
+       *
+       * เดิมคิดครั้งเดียวจาก selections ของ "บรรทัดแรก" ที่ยอดรวมทั้งล็อต → ได้กติกาของบรรทัดแรก
+       * ไปคิดกับจำนวนแผ่นของทั้งล็อต ราคาจึงเปลี่ยนตามลำดับที่ลูกค้าหยิบใส่ตะกร้า
+       * ตอนนี้แยกคิดตามกลุ่มกติกา: แต่ละกลุ่มใช้จำนวน+จำนวนลายของกลุ่มตัวเอง เกาะบรรทัดแรกของกลุ่ม
+       * (กติกาเดียวทั้งล็อต = ไม่แตะ คิดแบบเดิมเป๊ะ)
+       */
+      const mixGroups = new Map<string, { idxs: number[]; qty: number; designs: number }>();
+      for (const i of pool.idxs) {
+        const mk = JSON.stringify(mixRuleFor(p, lines[i].selections) ?? null);
+        const g = mixGroups.get(mk) ?? { idxs: [], qty: 0, designs: 0 };
+        g.idxs.push(i);
+        g.qty += lines[i].qty;
+        g.designs += designCountOf(lines[i].selections);
+        mixGroups.set(mk, g);
+      }
+      const splitMix = mixGroups.size > 1;
+      const mixFeeAt = new Map<number, number>();
+      if (splitMix) {
+        for (const g of mixGroups.values()) {
+          const head = g.idxs[0];
+          const gsel: Record<string, string> = {
+            ...lines[head].selections,
+            [DESIGN_LABEL]: String(g.designs),
+          };
+          if (pool.rate) gsel[RATE_LABEL] = pool.rate.label;
+          mixFeeAt.set(head, designFeeBase(p, gsel, g.qty));
+        }
+      }
       pool.idxs.forEach((i, k) => {
         const own = lines[i].selections;
         const sel: Record<string, string> = { ...own, [DESIGN_LABEL]: String(poolDesigns) };
@@ -4722,15 +4846,81 @@ export function repriceCartGroups(
             sheetFeeTotalOf(p, own, lines[i].qty) +
             (pool.rate?.underMinPieceFee
               ? underMinFeeFor(pool.rate, lines[i].qty, designCountOf(own), lotQty)
-              : k === 0
-                ? designFeeBase(p, sel, lotQty)
-                : 0),
+              : splitMix
+                ? (mixFeeAt.get(i) ?? 0)
+                : k === 0
+                  ? designFeeBase(p, sel, lotQty)
+                  : 0),
           merged: { lines: idxs.length, totalQty: lotQty, totalDesigns: poolDesigns, rateLabel: sel[RATE_LABEL] },
         };
       });
     }
   }
   return out;
+}
+
+/** ล็อตที่ยังไม่ถึงยอดสั่งขั้นต่ำ (เรทที่ตั้ง minQtyScope: "lot") */
+export interface LotShortfall {
+  /** คีย์ล็อต (groupKeyOf) — ใช้แยกแถวเตือน/จับคู่กับบรรทัดในตะกร้า */
+  key: string;
+  productId: string;
+  productName: string;
+  rateLabel: string;
+  /** ค่าของกลุ่มที่แยกล็อต เช่น "เนื้อขาว (เงา/ด้าน)-แผ่นรองกระดาษขาว" (ว่าง = สินค้าไม่ได้ตั้ง lotKeyOptions) */
+  groupLabel: string;
+  /** หน่วยขายของเรทนั้น เช่น "แผ่น A3" */
+  unit: string;
+  /** ขั้นต่ำของเรท */
+  need: number;
+  /** มีแล้วในล็อตนี้ */
+  have: number;
+  /** ยังขาดอีกเท่าไหร่ (need − have) */
+  short: number;
+}
+
+/**
+ * ล็อตไหนในตะกร้ายังไม่ถึงยอดสั่งขั้นต่ำบ้าง — ประตูขั้นต่ำของเรทที่ตั้ง `minQtyScope: "lot"`
+ *
+ * ขั้นต่ำแบบนี้เป็นของ "รอบผลิต" ไม่ใช่ของบรรทัดใดบรรทัดหนึ่ง — สติ๊กเกอร์ UV ขั้นต่ำ 3 แผ่น A3
+ * ต่อเนื้อ 1 ชนิด แต่ 3 แผ่นนั้นคละไดคัท 50%/100% และคละขนาดกันได้ (= คนละบรรทัด บรรทัดละ 1 แผ่น)
+ * หน้าสินค้าจึงปล่อยให้กดเพิ่มทีละแผ่น แล้วมาเช็คยอดรวมตอนจะสั่งจริงแทน
+ *
+ * บรรทัดที่ไม่เข้าล็อต (งานตีราคา/กำหนดขนาดเอง/คิดตามพื้นที่) ไม่นับและไม่ถูกบล็อก
+ * ใช้ที่ตะกร้า · หน้าชำระเงิน · และ /api/orders (ฝั่งเซิร์ฟเวอร์ ห้ามเชื่อ client อย่างเดียว)
+ */
+export function lotShortfalls(
+  rawLines: { productId: string; selections: Record<string, string>; qty: number }[],
+  productOf: (id: string) => Product | undefined
+): LotShortfall[] {
+  const groups = new Map<string, LotShortfall>();
+  for (const l of rawLines) {
+    const p = productOf(l.productId);
+    if (!p) continue;
+    const sel = backfillShowWhen(p, l.selections);
+    if (!lineMergeable(p, sel, l.qty)) continue;
+    const rate = p.hardMinQty ? activeRate(p, sel) : pickRateForQty(p, l.qty);
+    if (rate?.minQtyScope !== "lot" || !rate.minQty || rate.minQty <= 1) continue;
+    const key = groupKeyOf(p, sel);
+    const cur = groups.get(key);
+    if (cur) {
+      cur.have += l.qty;
+      continue;
+    }
+    groups.set(key, {
+      key,
+      productId: p.id,
+      productName: p.name,
+      rateLabel: rate.label,
+      groupLabel: lotGroupLabel(p, sel),
+      unit: rate.pricing.unit || "ชิ้น",
+      need: rate.minQty,
+      have: l.qty,
+      short: 0,
+    });
+  }
+  return [...groups.values()]
+    .map((g) => ({ ...g, short: Math.max(0, g.need - g.have) }))
+    .filter((g) => g.short > 0);
 }
 
 /**

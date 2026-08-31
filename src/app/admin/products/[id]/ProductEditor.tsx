@@ -126,6 +126,8 @@ type DraftOption = {
   qtyFrom?: string;
   /** 💰 กลุ่มราคาดึงจากตารางเรท (ขนาดชิ้นที่ 2+ ของพวงหลายชิ้น) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
   priceAsDriver?: string;
+  /** แกนอื่นของช่องราคาดึงจากกลุ่มอื่น (รายชิ้น) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  priceAsDriverAlso?: Record<string, string>;
   /** ค่าธรรมเนียมช่วงสั่งน้อย เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น (ยกเว้นบางตัวเลือก) */
   smallFee?: string;
   smallUpTo?: string;
@@ -146,6 +148,10 @@ type DraftOption = {
   showWhenAlsoChoices?: string[];
   /** เงื่อนไข "และ" ข้อที่ 3+ — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   showWhenAll?: { label: string; choices: string[] }[];
+  /** เงื่อนไข "หรือ" (ข้อใดข้อหนึ่งตรงก็แสดง) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  showWhenAny?: { label: string; choices: string[] }[];
+  /** 🧩 ชุดตัวเลือกที่กลุ่มนี้สังกัด (หัวกรอบบนหน้าสินค้า) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  section?: string;
   /** 🎯 ค่าเริ่มต้นตามกลุ่มคุม (เช่น ตามเรทราคา) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   defaultBy?: { label: string; map: Record<string, string> };
   /** 🎨 โชว์เป็นตารางสวอตช์สีบนหน้าร้าน (กลุ่ม multi ที่ตัวเลือกเยอะ เช่น สีไหม) */
@@ -254,7 +260,7 @@ type DraftPricing = {
 type DraftMixTier = { fromQty: string; baseFee: string; includedDesigns: string; extraFee: string; onePerUnit: boolean };
 const EMPTY_MIX_TIER: DraftMixTier = { fromQty: "", baseFee: "", includedDesigns: "", extraFee: "", onePerUnit: false };
 /** ข้อมูลกำกับเรทราคา (ชื่อ + เงื่อนไขการสั่ง + ภาพประจำเรท) — mixRule = ค่าคละเฉพาะเรท (ตั้งจากสคริปต์ หน้านี้แค่พาผ่านตอนบันทึก ไม่มี UI แก้) */
-type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; underMinPieceFee: string; freeMixBelowQty: string; imageSrc?: string; mixRule?: MixRule };
+type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; underMinPieceFee: string; freeMixBelowQty: string; imageSrc?: string; mixRule?: MixRule; minQtyScope?: "line" | "lot" };
 /** เรทเพิ่มเติม — มีช่วงจำนวน+ตารางราคาของตัวเอง (คอลัมน์/หน่วยใช้ร่วมกับเรทหลัก) */
 type DraftExtraRate = DraftRateMeta & {
   id: string;
@@ -267,7 +273,7 @@ type DraftExtraRate = DraftRateMeta & {
   tiers: DraftTier[];
   cells: Record<string, string[]>;
 };
-const EMPTY_RATE_META: DraftRateMeta = { label: "", desc: "", minQty: "", minPerDesign: "", extraDesignFee: "", underMinPieceFee: "", freeMixBelowQty: "" };
+const EMPTY_RATE_META: DraftRateMeta = { label: "", desc: "", minQty: "", minPerDesign: "", extraDesignFee: "", underMinPieceFee: "", freeMixBelowQty: "" , minQtyScope: undefined };
 /** ชื่อเรทมาตรฐานของร้าน (ตามหน้ารายการราคา) — เลือกจากลิสต์ได้ ไม่ต้องพิมพ์เอง */
 const RATE_NAME_PRESETS = [
   "เรทที่ 1 แบบคละดีเทล",
@@ -295,7 +301,7 @@ type Draft = {
   emoji: string;
   gradient: string;
   imageSrc?: string;
-  /** รูปสินค้าจริง (data URL) สูงสุด 5 รูป — รูปแรกคือรูปหลัก */
+  /** รูปสินค้าจริง (data URL) สูงสุด MAX_PHOTOS รูป — รูปแรกคือรูปหลัก */
   photos: string[];
   options: DraftOption[];
   rules: DraftRule[];
@@ -370,6 +376,8 @@ type Draft = {
   /** เงื่อนไขข้อที่สอง — ต้องตรงพร้อมกันถึงจะบังคับ */
   artworkConsultAlsoLabel: string;
   artworkConsultAlsoChoices: string[];
+  /** เงื่อนไข "หรือ" ของกล่องคุยแอดมิน — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  artworkConsultWhenAny?: { label: string; choices: string[] }[];
   /** สถานะตรวจสอบหลังบ้าน (มีค่า = ตรวจแล้ว) */
   reviewed?: ProductReview;
   /** ปิดการมองเห็นบนหน้าร้าน (ตั้งจากหน้ารายการสินค้า) — พกผ่านดราฟต์ไว้ ไม่ให้หายตอนบันทึก */
@@ -427,7 +435,7 @@ const columnKey = (combo: string[]) => combo.join("│");
 /** เรทนี้ใช้แกนคอลัมน์ชุดเดียวกับเรทหลักไหม (คนละชุด = ห้ามไปยุ่งกับคีย์ราคาของมัน) */
 const sameDrivers = (a: string[], b: string[]) => a.length === b.length && a.every((v, i) => v === b[i]);
 
-const MAX_PHOTOS = 5;
+const MAX_PHOTOS = 12;
 /** รูปประกอบต่อ 1 แท็บข้อมูลสินค้า */
 const MAX_TAB_IMAGES = 6;
 
@@ -576,6 +584,8 @@ function toDraft(p: Product): Draft {
       ...(o.qtyFrom ? { qtyFrom: o.qtyFrom } : {}),
       // 💰 กลุ่มราคาดึงจากตารางเรท (ขนาดชิ้นที่ 2+ ของพวงหลายชิ้น) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
       ...(o.priceAsDriver ? { priceAsDriver: o.priceAsDriver } : {}),
+      ...(o.section ? { section: o.section } : {}),
+      ...(o.priceAsDriverAlso && Object.keys(o.priceAsDriverAlso).length ? { priceAsDriverAlso: { ...o.priceAsDriverAlso } } : {}),
       ...(o.smallQtyFee
         ? {
             smallFee: String(o.smallQtyFee.fee),
@@ -599,6 +609,7 @@ function toDraft(p: Product): Draft {
         ? { showWhenAlsoLabel: o.showWhenAlso.label, showWhenAlsoChoices: [...o.showWhenAlso.choices] }
         : {}),
       ...(o.showWhenAll?.length ? { showWhenAll: o.showWhenAll.map((c) => ({ label: c.label, choices: [...c.choices] })) } : {}),
+      ...(o.showWhenAny?.length ? { showWhenAny: o.showWhenAny.map((c) => ({ label: c.label, choices: [...c.choices] })) } : {}),
       ...(o.defaultBy ? { defaultBy: { label: o.defaultBy.label, map: { ...o.defaultBy.map } } } : {}),
       ...(o.input
         ? {
@@ -682,6 +693,8 @@ function toDraft(p: Product): Draft {
           extraDesignFee: p.priceRates[0].extraDesignFee != null ? String(p.priceRates[0].extraDesignFee) : "",
           underMinPieceFee: p.priceRates[0].underMinPieceFee != null ? String(p.priceRates[0].underMinPieceFee) : "",
           freeMixBelowQty: p.priceRates[0].freeMixBelowQty != null ? String(p.priceRates[0].freeMixBelowQty) : "",
+          // ขั้นต่ำนับทั้งล็อต (ตั้งจากสคริปต์) — พาผ่านตอนบันทึก ไม่งั้นกดบันทึกแล้วหายเงียบ ๆ
+          minQtyScope: p.priceRates[0].minQtyScope,
           ...(p.priceRates[0].imageSrc ? { imageSrc: p.priceRates[0].imageSrc } : {}),
           ...(p.priceRates[0].mixRule ? { mixRule: p.priceRates[0].mixRule } : {}),
         }
@@ -696,6 +709,7 @@ function toDraft(p: Product): Draft {
       extraDesignFee: r.extraDesignFee != null ? String(r.extraDesignFee) : "",
       underMinPieceFee: r.underMinPieceFee != null ? String(r.underMinPieceFee) : "",
       freeMixBelowQty: r.freeMixBelowQty != null ? String(r.freeMixBelowQty) : "",
+      minQtyScope: r.minQtyScope,
       ...(r.imageSrc ? { imageSrc: r.imageSrc } : {}),
       ...(r.mixRule ? { mixRule: r.mixRule } : {}),
       tiers: r.pricing.tiers.map((t) => ({ upTo: t.upTo == null ? "" : String(t.upTo), label: t.label })),
@@ -774,6 +788,9 @@ function toDraft(p: Product): Draft {
     artworkConsultWhenChoices: [...(p.artworkConsult?.when?.choices ?? [])],
     artworkConsultAlsoLabel: p.artworkConsult?.whenAlso?.label ?? "",
     artworkConsultAlsoChoices: [...(p.artworkConsult?.whenAlso?.choices ?? [])],
+    ...(p.artworkConsult?.whenAny?.length
+      ? { artworkConsultWhenAny: p.artworkConsult.whenAny.map((w) => ({ label: w.label, choices: [...w.choices] })) }
+      : {}),
     reviewed: p.reviewed,
     hidden: p.hidden,
   };
@@ -870,6 +887,8 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       ...(Number(o.extraSmallUpToQty) > 0 ? { extraSmallUpToQty: Math.floor(Number(o.extraSmallUpToQty)) } : {}),
       ...(o.qtyFrom ? { qtyFrom: o.qtyFrom } : {}),
       ...(o.priceAsDriver ? { priceAsDriver: o.priceAsDriver } : {}),
+      ...(o.section ? { section: o.section } : {}),
+      ...(o.priceAsDriverAlso && Object.keys(o.priceAsDriverAlso).length ? { priceAsDriverAlso: { ...o.priceAsDriverAlso } } : {}),
       ...(Number.isFinite(Number(o.smallFee)) && Number(o.smallFee) !== 0 && String(o.smallFee ?? "").trim() !== "" && Number(o.smallUpTo) > 0
         ? {
             smallQtyFee: {
@@ -893,6 +912,9 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
         : {}),
       ...(o.showWhenAll?.length
         ? { showWhenAll: o.showWhenAll.filter((c) => c.label && c.choices.length).map((c) => ({ label: c.label, choices: [...c.choices] })) }
+        : {}),
+      ...(o.showWhenAny?.length
+        ? { showWhenAny: o.showWhenAny.filter((c) => c.label && c.choices.length).map((c) => ({ label: c.label, choices: [...c.choices] })) }
         : {}),
       // 🎯 ค่าเริ่มต้นตามกลุ่มคุม — ไม่มีช่องกรอกในหน้าแก้ไข ต้องส่งกลับ ไม่งั้นหาย
       ...(o.defaultBy?.label && Object.keys(o.defaultBy.map ?? {}).length
@@ -4116,6 +4138,8 @@ export default function ProductEditor({ product }: { product: Product }) {
         ...(m.imageSrc ? { imageSrc: m.imageSrc } : {}),
         // ค่าคละเฉพาะเรท (ตั้งจากสคริปต์) — พาผ่านตอนบันทึก ไม่งั้นกดบันทึกแล้วหายเงียบ ๆ
         ...(m.mixRule ? { mixRule: m.mixRule } : {}),
+        // ขั้นต่ำนับที่ยอดรวมทั้งล็อต (ตั้งจากสคริปต์) — พาผ่านเหมือนกัน
+        ...(m.minQtyScope ? { minQtyScope: m.minQtyScope } : {}),
       });
       const list: NonNullable<Product["priceRates"]> = [
         { id: "r1", ...metaOf(draft.rateMeta, "เรทที่ 1"), pricing },
@@ -4302,6 +4326,9 @@ export default function ProductEditor({ product }: { product: Product }) {
             // 👁 เงื่อนไข — ไม่ได้ตั้ง (หรือตั้งกลุ่มแต่ไม่ได้ติ๊กค่าไหนเลย) = บังคับทุกกรณีตามเดิม
             ...(draft.artworkConsultWhenLabel && draft.artworkConsultWhenChoices.length
               ? { when: { label: draft.artworkConsultWhenLabel, choices: [...draft.artworkConsultWhenChoices] } }
+              : {}),
+            ...(draft.artworkConsultWhenAny?.length
+              ? { whenAny: draft.artworkConsultWhenAny.filter((w) => w.label && w.choices.length).map((w) => ({ label: w.label, choices: [...w.choices] })) }
               : {}),
             ...(draft.artworkConsultAlsoLabel && draft.artworkConsultAlsoChoices.length
               ? { whenAlso: { label: draft.artworkConsultAlsoLabel, choices: [...draft.artworkConsultAlsoChoices] } }
@@ -4984,7 +5011,7 @@ export default function ProductEditor({ product }: { product: Product }) {
         </label>
       </section>
 
-      {/* รูปสินค้า — ลากวางได้ สูงสุด 5 รูป */}
+      {/* รูปสินค้า — ลากวางได้ สูงสุด MAX_PHOTOS รูป */}
       <section
         id="sec-photos"
         // relative เพื่อวางปุ่มยุบมุมขวาบน

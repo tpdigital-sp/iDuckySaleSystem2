@@ -9,7 +9,9 @@
     "lint": "next lint",
     "seed": "tsx scripts/seed-supabase.ts",
     "dev:webpack": "next dev",
-    "prebuild": "node scripts/copy-pdf-worker.mjs"
+    "prebuild": "node scripts/copy-pdf-worker.mjs",
+    "backup": "node scripts/backup-db.mjs",
+    "backup:files": "node scripts/backup-db.mjs --files"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",

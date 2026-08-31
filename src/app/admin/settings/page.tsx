@@ -4,6 +4,7 @@ import RequirePerm from "@/components/RequirePerm";
 import { useIsAdministrator } from "@/lib/perm-context";
 
 import { Fragment, useEffect, useState } from "react";
+import { fetchProduct } from "@/lib/product-repo";
 import Link from "next/link";
 import {
   DEFAULT_SHIPPING,
@@ -23,6 +24,8 @@ import {
   type ShopPayment,
   type WelcomeCouponConfig,
   type GiftPromo,
+  type GiftSize,
+  type GiftRequire,
   type BoxFee,
   type ShopInfo,
   type SeoConfig,
@@ -223,6 +226,223 @@ function ProductPicker({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * 🎁 ผูกของแถมเข้ากับ "สินค้าจริง" ในร้าน (เช่น กระดาษรองหลัง) แล้วดึงขนาด/รูปจากสินค้าตัวนั้นมาใช้เลย
+ * — ไม่ต้องพิมพ์ขนาดเองทีละอัน และรูปตรงกับหน้าสินค้าจริงเสมอ
+ */
+function GiftFromProduct({
+  productId,
+  list,
+  onPick,
+  onSizes,
+  inputCls,
+}: {
+  productId?: string;
+  list: { id: string; name: string; category: string }[];
+  onPick: (id: string | undefined) => void;
+  onSizes: (sizes: GiftSize[], groupLabel: string) => void;
+  inputCls: string;
+}) {
+  const [groups, setGroups] = useState<{ label: string; sizes: GiftSize[] }[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const prod = list.find((p) => p.id === productId);
+
+  async function load() {
+    if (!productId) return;
+    setBusy(true);
+    setErr("");
+    setGroups(null);
+    try {
+      const p = await fetchProduct(productId);
+      // กลุ่มที่พอเป็น "ขนาด" ได้ = มีตัวเลือกตั้งแต่ 2 ตัวขึ้นไป และมีรูป/จำนวนต่อแผ่นให้ดึง
+      const gs = (p?.options ?? [])
+        .filter((o) => (o.choices ?? []).length >= 2)
+        .map((o) => ({
+          label: o.label,
+          // เอาเฉพาะตัวเลือกที่เป็น "ขนาดจริง" — ตัวที่ไม่มีทั้งรูปและจำนวนต่อแผ่น (เช่น 📐 กำหนดขนาดเอง) ไม่ต้องดึงมา
+          sizes: (o.choices ?? [])
+            .map((c) => ({
+              label: c.name,
+              image: c.imageSrc,
+              perSheet: c.piecesPerUnit ?? c.perUnit ?? undefined,
+              note: c.badge,
+            }))
+            .filter((x) => x.image || (x.perSheet ?? 0) > 0),
+        }))
+        .filter((g) => g.sizes.some((x) => x.image || x.perSheet));
+      if (gs.length === 0) setErr("สินค้าตัวนี้ไม่มีกลุ่มตัวเลือกที่ดึงเป็นขนาดได้");
+      setGroups(gs);
+    } catch {
+      setErr("ดึงข้อมูลสินค้าไม่สำเร็จ");
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <span className="text-xs font-semibold text-slate-700">🎁 ของแถมนี้คือสินค้าตัวไหนในร้าน</span>
+      <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+        เลือกสินค้าจริง (เช่น <strong className="text-slate-500">กระดาษรองหลัง</strong>) แล้วกด &quot;ดึงขนาดจากสินค้านี้&quot;
+        — ระบบจะเอาชื่อขนาด · รูป · จำนวนใบต่อแผ่น A3 จากหน้าสินค้ามาใส่ให้เลย (แก้เพิ่มทีหลังได้)
+      </p>
+
+      {prod || productId ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="flex items-center gap-1 rounded-full bg-amber-50 py-1 pl-3 pr-1.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
+            {prod?.name || productId}
+            <button
+              type="button"
+              onClick={() => {
+                onPick(undefined);
+                setGroups(null);
+              }}
+              className="rounded-full px-1 text-amber-400 transition hover:bg-white hover:text-rose-500"
+            >
+              ✕
+            </button>
+          </span>
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={busy}
+            className="rounded-xl bg-slate-800 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-900 disabled:opacity-40"
+          >
+            {busy ? "กำลังดึง…" : "📐 ดึงขนาดจากสินค้านี้"}
+          </button>
+        </div>
+      ) : (
+        <div className="mt-2">
+          <ProductPicker list={list} exclude={[]} onPick={(id) => onPick(id)} inputCls={inputCls} />
+        </div>
+      )}
+
+      {err && <p className="mt-2 text-[11px] font-medium text-rose-500">{err}</p>}
+
+      {groups && groups.length > 0 && (
+        <div className="mt-3 rounded-xl bg-slate-50 p-3">
+          <span className="text-[11px] font-semibold text-slate-600">เลือกกลุ่มตัวเลือกที่จะใช้เป็นขนาดของแถม</span>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {groups.map((g) => (
+              <button
+                key={g.label}
+                type="button"
+                onClick={() => {
+                  onSizes(g.sizes, g.label);
+                  setGroups(null);
+                }}
+                className="rounded-full bg-white px-3 py-1.5 text-xs font-medium text-slate-600 ring-1 ring-slate-200 transition hover:bg-amber-50 hover:text-amber-700 hover:ring-amber-300"
+              >
+                {g.label} <span className="text-[10px] text-slate-400">({g.sizes.length} ตัวเลือก)</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 📐 ขนาด/แบบของแถมที่ให้ลูกค้าเลือกเองในตะกร้า (เช่น "9 × 9 cm")
+ * แต่ละขนาดใส่ได้: รูปตัวอย่าง · ชื่อ · ได้กี่ใบต่อแผ่น A3 · คำอธิบายสั้น ๆ
+ * ตัวแรกในลิสต์ = ค่าเริ่มต้นที่ระบบเลือกให้ (ลูกค้าเปลี่ยนเองได้)
+ */
+function GiftSizes({
+  sizes,
+  label,
+  onChange,
+  onLabel,
+  inputCls,
+}: {
+  sizes: GiftSize[];
+  label?: string;
+  onChange: (v: GiftSize[]) => void;
+  onLabel: (v: string) => void;
+  inputCls: string;
+}) {
+  const patch = (k: number, v: Partial<GiftSize>) => onChange(sizes.map((x, j) => (j === k ? { ...x, ...v } : x)));
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold text-slate-700">📐 ขนาด/แบบที่ให้ลูกค้าเลือก</span>
+        <input
+          value={label ?? ""}
+          onChange={(e) => onLabel(e.target.value)}
+          placeholder='ชื่อกลุ่ม (ไม่ใส่ = "ขนาด")'
+          className={`${inputCls} h-8 w-44 px-2 py-1 text-[11px]`}
+        />
+      </div>
+      <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+        ไม่ใส่เลย = ของแถมไม่มีให้เลือก · ใส่ตัวเดียว = ขนาดตายตัว · ใส่ตั้งแต่ 2 ตัว = ลูกค้าเลือกเองในตะกร้า
+        (⭐ ตัวแรกคือค่าเริ่มต้น) — ขนาดที่เลือกจะขึ้นบนใบงานฝ่ายแพ็ค ·{" "}
+        <strong className="text-slate-500">&quot;ได้กี่ใบ/แผ่น A3&quot;</strong> ใช้คิดว่าเศษที่เหลือถึงครึ่งแผ่นไหม
+      </p>
+
+      <div className="mt-3 space-y-2">
+        {sizes.map((sz, k) => (
+          <div key={k} className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-2">
+            <CatImage value={sz.image} onChange={(v) => patch(k, { image: v })} folder="gifts" />
+            <input
+              value={sz.label}
+              onChange={(e) => patch(k, { label: e.target.value })}
+              placeholder="ขนาด เช่น 9 × 9 cm"
+              className={`${inputCls} h-9 w-40 py-1 text-xs font-semibold`}
+            />
+            <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
+              ได้
+              <input
+                type="number"
+                min={0}
+                value={sz.perSheet ?? 0}
+                onChange={(e) => patch(k, { perSheet: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
+                className={`${inputCls} h-9 w-16 py-1 text-right text-xs tabular-nums`}
+              />
+              ใบ / แผ่น A3
+            </label>
+            <input
+              value={sz.note ?? ""}
+              onChange={(e) => patch(k, { note: e.target.value })}
+              placeholder="คำอธิบาย เช่น ได้ 15 ใบ + ไดคัท พร้อมซองใส"
+              className={`${inputCls} h-9 min-w-[10rem] flex-1 py-1 text-xs`}
+            />
+            {k === 0 ? (
+              <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700" title="ค่าเริ่มต้น">
+                ⭐ ค่าเริ่มต้น
+              </span>
+            ) : (
+              <button
+                type="button"
+                title="ตั้งเป็นค่าเริ่มต้น"
+                onClick={() => onChange([sz, ...sizes.filter((_, j) => j !== k)])}
+                className="rounded-full px-2 py-1 text-[10px] font-semibold text-slate-400 transition hover:bg-emerald-50 hover:text-emerald-600"
+              >
+                ⭐ ตั้งเป็นค่าเริ่มต้น
+              </button>
+            )}
+            <button
+              type="button"
+              title="ลบขนาดนี้"
+              onClick={() => onChange(sizes.filter((_, j) => j !== k))}
+              className="rounded-lg px-2 py-1 text-xs font-semibold text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onChange([...sizes, { label: "" }])}
+        className="mt-2 rounded-xl border border-dashed border-slate-300 px-4 py-2 text-xs font-semibold text-slate-500 transition hover:border-amber-400 hover:text-amber-600"
+      >
+        + เพิ่มขนาด
+      </button>
     </div>
   );
 }
@@ -651,6 +871,33 @@ function AdminSettingsPageInner() {
           maxQty: Math.max(0, Math.floor(Number(g.maxQty) || 0)) || undefined,
           categories: (g.categories ?? []).filter(Boolean),
           productIds: (g.productIds ?? []).filter(Boolean),
+          sizes: (g.sizes ?? [])
+            .map((x) => ({
+              label: x.label.trim(),
+              image: x.image?.trim() || undefined,
+              perSheet: Math.max(0, Math.floor(Number(x.perSheet) || 0)) || undefined,
+              note: x.note?.trim() || undefined,
+            }))
+            .filter((x) => x.label),
+          sizeLabel: g.sizeLabel?.trim() || undefined,
+          giftProductId: g.giftProductId?.trim() || undefined,
+          condition: g.condition?.trim() || undefined,
+          requires: (g.requires ?? [])
+            .map((r) => ({
+              label: r.label?.trim() || undefined,
+              contains: r.contains?.trim() || undefined,
+              minCm: Math.max(0, Number(r.minCm) || 0) || undefined,
+              cmMode: r.cmMode === "max" ? ("max" as const) : ("min" as const),
+              whenMissing: r.whenMissing === "fail" ? ("fail" as const) : ("pass" as const),
+            }))
+            .filter((r) => r.contains || r.minCm),
+          partial: g.partial?.name?.trim()
+            ? {
+                name: g.partial.name.trim(),
+                image: g.partial.image?.trim() || undefined,
+                minFill: Math.min(1, Math.max(0.01, Number(g.partial.minFill) || 0.5)),
+              }
+            : undefined,
           from: g.from?.trim() || undefined,
           to: g.to?.trim() || undefined,
         }))
@@ -1371,6 +1618,159 @@ function AdminSettingsPageInner() {
                           />
                           <span className="mt-1 block text-[11px] text-slate-400">โชว์ราคาขีดฆ่า</span>
                         </label>
+                      </div>
+
+                      {/* 🎁 ผูกกับสินค้าจริง + ดึงขนาดจากสินค้านั้น */}
+                      <div className="mt-5">
+                        <GiftFromProduct
+                          productId={g.giftProductId}
+                          list={prodList}
+                          onPick={(id) => patchGift(i, { giftProductId: id })}
+                          onSizes={(sizes, groupLabel) =>
+                            patchGift(i, { sizes, sizeLabel: g.sizeLabel?.trim() || groupLabel })
+                          }
+                          inputCls={inputCls}
+                        />
+                      </div>
+
+                      {/* 📐 ขนาด/แบบที่ให้ลูกค้าเลือก */}
+                      <div className="mt-3 rounded-xl bg-slate-50 p-4">
+                        <GiftSizes
+                          sizes={g.sizes ?? []}
+                          label={g.sizeLabel}
+                          onChange={(v) => patchGift(i, { sizes: v })}
+                          onLabel={(v) => patchGift(i, { sizeLabel: v })}
+                          inputCls={inputCls}
+                        />
+
+                        {/* 🧾 เศษไม่เต็มแผ่น A3 → ได้ของแทน */}
+                        <div className="mt-4 border-t border-slate-200 pt-4">
+                          <span className="text-xs font-semibold text-slate-700">🧾 เศษที่ไม่เต็มแผ่น A3 ได้ของแทน</span>
+                          <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                            เช่น 9 × 9 ได้ 15 ใบ/แผ่น · ลูกค้าสั่ง 20 ชิ้น → 15 ชิ้นแรกได้รองหลังพิมพ์ลาย
+                            ส่วนอีก 5 ชิ้นไม่ถึงครึ่งแผ่น (ต้อง 8 ใบขึ้นไป) จะได้ของแทนตามที่ตั้งไว้นี้ —
+                            เว้นชื่อของแทนว่าง = ไม่ใช้กติกานี้ (ได้ของแถมครบทุกชิ้น)
+                          </p>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <CatImage
+                              value={g.partial?.image}
+                              onChange={(v) => patchGift(i, { partial: { ...(g.partial ?? { name: "" }), image: v } })}
+                              folder="gifts"
+                            />
+                            <input
+                              value={g.partial?.name ?? ""}
+                              onChange={(e) => patchGift(i, { partial: { ...(g.partial ?? {}), name: e.target.value } })}
+                              placeholder="ชื่อของแทน เช่น ซองใส-หลังขาว"
+                              className={`${inputCls} h-9 w-56 py-1 text-xs font-semibold`}
+                            />
+                            <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                              เศษต้องเต็ม
+                              <input
+                                type="number"
+                                min={1}
+                                max={100}
+                                value={Math.round((g.partial?.minFill ?? 0.5) * 100)}
+                                onChange={(e) =>
+                                  patchGift(i, {
+                                    partial: {
+                                      ...(g.partial ?? { name: "" }),
+                                      minFill: Math.min(1, Math.max(0.01, (Number(e.target.value) || 50) / 100)),
+                                    },
+                                  })
+                                }
+                                className={`${inputCls} h-9 w-16 py-1 text-right text-xs tabular-nums`}
+                              />
+                              % ของแผ่น ถึงจะพิมพ์ให้
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 📋 เงื่อนไขเพิ่มเติม (ข้อความ) + เงื่อนไขที่ระบบตรวจให้ */}
+                      <label className="mt-5 block">
+                        <span className="mb-1.5 block text-xs font-semibold text-slate-700">📋 เงื่อนไขเพิ่มเติม (ลูกค้าเห็นในตะกร้า)</span>
+                        <input
+                          value={g.condition ?? ""}
+                          onChange={(e) => patchGift(i, { condition: e.target.value })}
+                          placeholder="เช่น อะคริลิคที่สั่งต้องขนาด 4 ซม. ขึ้นไป หนา 3 มม."
+                          className={`${inputCls} text-xs`}
+                        />
+                      </label>
+
+                      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+                        <span className="text-xs font-semibold text-slate-700">🔎 เงื่อนไขที่ระบบตรวจให้เอง (ตัดสิทธิ์อัตโนมัติ)</span>
+                        <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                          ดูจากตัวเลือกที่ลูกค้าเลือกในสินค้าชิ้นนั้น — ชิ้นที่ไม่ผ่านจะ<strong className="text-slate-500">ไม่นับเข้าโปร</strong>
+                          (ยังสั่งซื้อได้ปกติ) · ไม่ใส่เลย = นับทุกชิ้นของสินค้าที่เข้าโปร ·
+                          ⚠️ ชิ้นที่หากลุ่มตัวเลือกนี้ไม่เจอ ถือว่าไม่ผ่าน
+                        </p>
+                        <div className="mt-2 space-y-2">
+                          {(g.requires ?? []).map((r, k) => {
+                            const patchReq = (v: Partial<GiftRequire>) =>
+                              patchGift(i, { requires: (g.requires ?? []).map((x, j) => (j === k ? { ...x, ...v } : x)) });
+                            return (
+                              <div key={k} className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-2">
+                                <input
+                                  value={r.label ?? ""}
+                                  onChange={(e) => patchReq({ label: e.target.value })}
+                                  placeholder="กลุ่มตัวเลือก เช่น ขนาด"
+                                  className={`${inputCls} h-9 w-40 py-1 text-xs font-semibold`}
+                                />
+                                <input
+                                  value={r.contains ?? ""}
+                                  onChange={(e) => patchReq({ contains: e.target.value })}
+                                  placeholder='ต้องมีคำว่า เช่น "3 มม."'
+                                  className={`${inputCls} h-9 w-40 py-1 text-xs`}
+                                />
+                                <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                                  ขนาดขั้นต่ำ
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step="0.1"
+                                    value={r.minCm ?? 0}
+                                    onChange={(e) => patchReq({ minCm: Math.max(0, Number(e.target.value) || 0) })}
+                                    className={`${inputCls} h-9 w-16 py-1 text-right text-xs tabular-nums`}
+                                  />
+                                  ซม.
+                                </label>
+                                <select
+                                  value={r.cmMode ?? "min"}
+                                  onChange={(e) => patchReq({ cmMode: e.target.value as "min" | "max" })}
+                                  className={`${inputCls} h-9 w-40 py-1 text-xs`}
+                                >
+                                  <option value="min">ทุกด้านต้องถึง</option>
+                                  <option value="max">ด้านยาวสุดถึงก็พอ</option>
+                                </select>
+                                <select
+                                  value={r.whenMissing ?? "pass"}
+                                  onChange={(e) => patchReq({ whenMissing: e.target.value as "pass" | "fail" })}
+                                  title="สินค้าที่ไม่มีกลุ่มตัวเลือกนี้ (เช่น Griptok ขนาดตายตัว) จะเอายังไง"
+                                  className={`${inputCls} h-9 w-52 py-1 text-xs`}
+                                >
+                                  <option value="pass">ไม่มีกลุ่มนี้ = ปล่อยผ่าน</option>
+                                  <option value="fail">ไม่มีกลุ่มนี้ = ไม่นับ</option>
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() => patchGift(i, { requires: (g.requires ?? []).filter((_, j) => j !== k) })}
+                                  className="rounded-lg px-2 py-1 text-xs font-semibold text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            patchGift(i, { requires: [...(g.requires ?? []), { label: "", cmMode: "min", whenMissing: "pass" }] })
+                          }
+                          className="mt-2 rounded-xl border border-dashed border-slate-300 px-4 py-2 text-xs font-semibold text-slate-500 transition hover:border-amber-400 hover:text-amber-600"
+                        >
+                          + เพิ่มเงื่อนไข
+                        </button>
                       </div>
 
                       {/* หมวดที่นับเข้าโปร */}

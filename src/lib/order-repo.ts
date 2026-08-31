@@ -17,6 +17,8 @@ export interface CreateOrderInput {
   /** พนักงานสั่งแทนลูกค้า (เซิร์ฟเวอร์ตรวจสิทธิ์จากคุกกี้หลังบ้านเอง) */
   staffOrder?: boolean;
   items: { productId: string; name: string; selections: string; sel?: Record<string, string>; qty: number; unitPrice: number }[];
+  /** 📐 ขนาดของแถมที่ลูกค้าเลือกไว้ ({ promoId: "9 × 9 cm" }) — เซิร์ฟเวอร์ตรวจกับลิสต์ที่แอดมินตั้งไว้อีกที */
+  giftSizes?: Record<string, string>;
 }
 
 /** ลูกค้าสั่งซื้อ → สร้างออเดอร์ (public API, service role เขียน) · คืน key ลับสำหรับแจ้งโอน */

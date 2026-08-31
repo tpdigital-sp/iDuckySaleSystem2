@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { formatPrice } from "@/lib/products";
+import { formatPrice, lotShortfalls } from "@/lib/products";
 import { useCart } from "@/lib/cart-context";
 import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { getUnpicked, clearUnpicked } from "@/lib/cart-select";
@@ -23,7 +23,7 @@ import {
   type ShopPayment,
   type ShippingMethod,
 } from "@/lib/shop-settings";
-import { giftsFor } from "@/lib/gifts";
+import { giftsFor, giftSizesOf, resolveGiftSize, splitGiftBySheet, readGiftSizes } from "@/lib/gifts";
 import { getAccessToken } from "@/lib/customer-auth";
 import { fetchMyOrders } from "@/lib/my-orders";
 import { paidSpend, tierForSpend, tierDiscountAmount } from "@/lib/tiers";
@@ -203,9 +203,13 @@ export default function CheckoutPage() {
   const shippingMethod = methods.find((s) => s.id === shippingId) ?? methods[0];
   const freeShipping = freeMin > 0 && subtotal >= freeMin;
 
+  // 📐 ขนาดของแถมที่ลูกค้าเลือกไว้ตั้งแต่หน้าตะกร้า
+  const [giftChosen, setGiftChosen] = useState<Record<string, string>>({});
+  useEffect(() => setGiftChosen(readGiftSizes()), []);
+
   // 🎁 ของแถมฟรีตามจำนวนชิ้น — โชว์ให้ลูกค้าเห็นก่อนกดสั่ง (เซิร์ฟเวอร์คิดใหม่เองตอนสร้างออเดอร์)
   const giftRows = giftsFor(
-    items.map((i) => ({ productId: i.productId, qty: i.qty })),
+    items.map((i) => ({ productId: i.productId, qty: i.qty, selections: i.selections })),
     (id) => productOf(id)?.category,
     giftPromosOf(payment)
   ).filter((g) => g.earned > 0);
@@ -331,6 +335,20 @@ export default function CheckoutPage() {
   const total = Math.max(0, subtotal - discount + shippingCost);
 
   async function submit() {
+    // 📦 ขั้นต่ำต่อรอบผลิต (เรท minQtyScope: "lot") — กันคนเดินมาหน้านี้ตรง ๆ ข้ามประตูที่ตะกร้า
+    const short = lotShortfalls(
+      items.map((i) => ({ productId: i.productId, selections: i.selections, qty: i.qty })),
+      productOf
+    );
+    if (short.length) {
+      const s = short[0];
+      setErr(
+        `📦 ${s.productName}${s.groupLabel ? ` · ${s.groupLabel}` : ""} สั่งขั้นต่ำ ${s.need.toLocaleString("th-TH")} ${s.unit} ` +
+          `ต่อ 1 รอบผลิต — ตอนนี้มี ${s.have.toLocaleString("th-TH")} ${s.unit} ยังขาดอีก ${s.short.toLocaleString("th-TH")} ${s.unit} ` +
+          `(คละไดคัทและคละขนาดกันได้ ขอแค่เป็นแบบเดียวกัน)`
+      );
+      return;
+    }
     const useByDate = (() => {
       try {
         return localStorage.getItem("ducky-use-by-date") || "";
@@ -433,6 +451,8 @@ export default function CheckoutPage() {
       couponCode: staffMode ? undefined : couponPreview?.code,
       staffOrder: staffMode || undefined,
       items: orderItems,
+      // 📐 ขนาดของแถมที่ลูกค้าเลือกไว้ในตะกร้า (เซิร์ฟเวอร์ตรวจกับลิสต์ของแอดมินอีกชั้น)
+      giftSizes: readGiftSizes(),
         ...(useByDate ? { useByDate } : {}),
     });
     setPlacing(false);
@@ -920,20 +940,40 @@ export default function CheckoutPage() {
             <span>{formatPrice(boxFeeSum)}</span>
           </div>
         )}
-        {giftRows.map((g) => (
-          <div key={g.promo.id} className="mt-1 flex items-center justify-between gap-2 text-sm font-semibold text-emerald-600">
-            <span className="flex min-w-0 items-center gap-2">
-              {g.promo.image ? (
-                // eslint-disable-next-line @next/next/no-img-element -- รูปของแถมจากคลังรูปร้าน
-                <img src={g.promo.image} alt="" className="h-7 w-7 shrink-0 rounded-lg object-cover ring-1 ring-emerald-200" />
-              ) : (
-                <span>🎁</span>
+        {giftRows.map((g) => {
+          // 📐 ขนาดที่ลูกค้าเลือกไว้ในตะกร้า + เศษที่ไม่เต็มแผ่น A3 (ได้ของแทน)
+          const size = resolveGiftSize(g.promo, giftChosen[g.promo.id]);
+          const sp = splitGiftBySheet(g.promo, size, g.earned);
+          const thumb = size?.image || g.promo.image;
+          return (
+            <div key={g.promo.id} className="mt-1 text-sm font-semibold text-emerald-600">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex min-w-0 items-center gap-2">
+                  {thumb ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- รูปของแถมจากคลังรูปร้าน
+                    <img src={thumb} alt="" className="h-7 w-7 shrink-0 rounded-lg object-cover ring-1 ring-emerald-200" />
+                  ) : (
+                    <span>🎁</span>
+                  )}
+                  <span className="truncate">
+                    ของแถม — {g.promo.name}
+                    {size ? ` (${size.label})` : ""} ×{sp.fallback > 0 ? sp.printed : g.earned}
+                  </span>
+                </span>
+                <span className="shrink-0">ฟรี</span>
+              </div>
+              {sp.fallback > 0 && (
+                <div className="mt-0.5 flex items-center justify-between gap-2 pl-9 text-xs font-medium text-amber-700">
+                  <span className="truncate">🧾 {sp.fallbackName} ×{sp.fallback} (เศษไม่เต็มครึ่งแผ่น A3)</span>
+                  <span className="shrink-0">ฟรี</span>
+                </div>
               )}
-              <span className="truncate">ของแถม — {g.promo.name} ×{g.earned}</span>
-            </span>
-            <span className="shrink-0">ฟรี</span>
-          </div>
-        ))}
+              {giftSizesOf(g.promo).length > 1 && (
+                <p className="pl-9 text-[11px] font-normal text-stone-400">เปลี่ยนขนาดได้ที่หน้าตะกร้า</p>
+              )}
+            </div>
+          );
+        })}
         {discount > 0 && (
           <div className="mt-1 flex justify-between text-sm font-semibold text-emerald-600">
             <span>

@@ -12,7 +12,17 @@ import { DEFAULT_TIERS, type Tier } from "./tiers";
 import { SHOP } from "./shop-info";
 import { SETTINGS_ID as SETTINGS_ID_SHARED, type SeoConfig } from "./settings-shared";
 export { seoOf, type SeoConfig } from "./settings-shared";
-export { activeGiftPromos, giftsFor, type GiftPromo, type GiftResult } from "./gifts";
+export {
+  activeGiftPromos,
+  giftsFor,
+  giftSizesOf,
+  resolveGiftSize,
+  splitGiftBySheet,
+  type GiftPromo,
+  type GiftResult,
+  type GiftSize,
+  type GiftRequire,
+} from "./gifts";
 import type { GiftPromo } from "./gifts";
 export {
   DEFAULT_BOX_FEES,
