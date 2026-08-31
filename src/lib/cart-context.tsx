@@ -9,7 +9,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { getProduct, repriceCartGroups, unitPriceFor, type Product, type UnitPriceAddOn } from "./products";
+import {
+  getProduct,
+  repairRateFromOptions,
+  repriceCartGroups,
+  unitPriceFor,
+  type Product,
+  type UnitPriceAddOn,
+} from "./products";
 import { fetchProductsByIds } from "./product-repo";
 
 export interface CartItem {
@@ -162,9 +169,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
     // + รวมบรรทัดสเปคเดียวกันเป็นกลุ่ม แล้วคิดเรทตามจำนวนรวม (25+25 = 50 ชิ้น 2 ลาย → เรท 2)
     const priced = repriceCartGroups(state.items, productOf);
     const items: CartItem[] = state.items.map((i, idx) => {
-      if (!productOf(i.productId)) return i;
+      const p = productOf(i.productId);
+      if (!p) return i;
       const r = priced[idx];
-      return { ...i, unitPrice: r.unitPrice, extraFee: r.extraFee, addOns: r.addOns, merged: r.merged };
+      // 🩹 บรรทัดเก่าที่ฝัง "เรทราคา" ผิดไว้ (ขัดกับสเปคของตัวเอง) — ซ่อมค่าที่โชว์ให้ตรงกับราคาที่คิดจริง
+      // ไม่งั้นตะกร้าจะคิดราคาถูกต้องแต่ยังโชว์ชื่อเรทเดิม ลูกค้าอ่านแล้วยิ่งงง (ดู repairRateFromOptions)
+      const selections = repairRateFromOptions(p, i.selections);
+      return { ...i, selections, unitPrice: r.unitPrice, extraFee: r.extraFee, addOns: r.addOns, merged: r.merged };
     });
     const totalQty = items.reduce((s, i) => s + i.qty, 0);
     const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice + (i.extraFee ?? 0), 0);

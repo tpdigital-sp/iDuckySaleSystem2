@@ -1613,8 +1613,12 @@ export default function ProductDetail({
    * 🎨 สินค้าที่นับขั้นต่ำทั้งล็อต: **ไม่ถามจำนวนลาย** — นับจากจำนวนรูปที่ลูกค้าอัปโหลดเอา
    * (ระบบนับให้อยู่แล้วผ่าน effect ที่ดัน designs ตาม artFiles.length · ผู้ใช้สั่ง 30 ส.ค. 69)
    * แนบเป็นลิงก์อย่างเดียวก็ผ่าน — ถือเป็น 1 ลายไปก่อน แล้วแอดมินเช็คจากไฟล์จริงอีกที
+   *
+   * ⚠️ ยึดที่ `lotMinRate` (ตัวสินค้า) ไม่ใช่ `lotMinScope` (เรทที่เลือกอยู่) — ไม่งั้นสินค้าตัวเดียว
+   * จะมี 2 มาตรฐาน: เรทแผ่น A3 ไม่ถามจำนวนลาย แต่พอสลับไปเรท ตร.ม. กลับบังคับให้ระบุ
+   * แล้วปุ่ม "เพิ่มลงตะกร้า" กดแล้วเงียบ (เด้งไปกล่องจำนวนลายอย่างเดียว ป้ายบนปุ่มไม่บอก) — เจอจริง 31 ส.ค. 69
    */
-  const designsOk = designsSet || (lotMinScope && artProvided);
+  const designsOk = designsSet || (!!lotMinRate && artProvided);
 
 
   /**
@@ -4691,6 +4695,8 @@ export default function ProductDetail({
                       ? "✓ เพิ่มลงตะกร้าแล้ว!"
                       : belowLotMin
                         ? `📦 ยังขาดอีก ${lotShortNeed.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} — ขั้นต่ำ ${rateMinQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}`
+                      : needDesignsChoice && !designsOk
+                        ? "⚠ ระบุก่อนว่ามีกี่ลาย"
                       : sheetRoll && !sheetRoll.withCurrent
                         ? `🛒 สั่ง ${sheetRoll.qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} ที่เก็บไว้ — ${formatPrice(sheetRoll.total)}`
                       : inputHardError

@@ -4731,6 +4731,38 @@ function backfillShowWhen(p: Product, selections: Record<string, string>): Recor
   return out;
 }
 
+/**
+ * 🩹 ซ่อมบรรทัดที่ "เรทราคาขัดกับสเปคของตัวเอง"
+ *
+ * เจอจริง 31 ส.ค. 69: บรรทัดในตะกร้ามี `ขนาดตัด: A7` + `จำนวนจุดไดคัท: 12` (สองกลุ่มนี้ตั้ง
+ * showWhenAlso ให้โผล่เฉพาะเรท "ขายแบบ ขนาด A3") แต่ `เรทราคา` กลับเป็น "ขายแบบ ขนาด ตารางเมตร"
+ * → ราคาถูกคิดที่ตาราง ตร.ม. (฿950/หน่วย) ทั้งที่ลูกค้าสั่งเป็นแผ่น A3 (฿130)
+ * ต้นเหตุคือบั๊กเก่าที่เรทเด้งเองตอนจำนวนเป็น 1 — แก้ที่หน้าสินค้าแล้ว แต่บรรทัดที่ค้าง
+ * อยู่ในตะกร้าลูกค้าฝังเรทผิดไว้ถาวร คิดราคาเพี้ยนไปเรื่อย ๆ เงียบ ๆ
+ *
+ * กติกา: กลุ่มไหน "มีค่าที่ลูกค้าเลือกไว้" แปลว่ากลุ่มนั้นเคยแสดงจริงตอนสั่ง → เงื่อนไขที่อ้าง
+ * ถึงกลุ่มเรทจึงเป็นหลักฐานว่าตอนนั้นอยู่เรทไหน · เชื่อสเปคมากกว่าค่าเรทที่ฝังไว้
+ * ⚠️ ซ่อมเฉพาะตอนที่ "กลุ่มที่ยังมีค่าอยู่ชี้ไปเรทเดียวกันหมด" — ชี้กันคนละทางถือว่าไม่รู้ ไม่แตะ
+ */
+export function repairRateFromOptions(p: Product, selections: Record<string, string>): Record<string, string> {
+  const rates = p.priceRates ?? [];
+  const cur = selections[RATE_LABEL];
+  if (rates.length < 2 || !cur) return selections;
+  const wanted = new Set<string>();
+  for (const opt of p.options ?? []) {
+    if (!(selections[opt.label] ?? "").trim()) continue; // ไม่มีค่า = ไม่ใช่หลักฐาน
+    for (const cond of [opt.showWhen, opt.showWhenAlso, ...(opt.showWhenAll ?? [])]) {
+      if (cond?.label !== RATE_LABEL || !cond.choices?.length) continue;
+      for (const c of cond.choices) wanted.add(c);
+    }
+  }
+  // ชี้ไปเรทเดียวกันหมด และไม่ตรงกับที่ฝังไว้ → เชื่อสเปค
+  if (wanted.size !== 1) return selections;
+  const only = [...wanted][0];
+  if (only === cur || !rates.some((r) => r.label === only)) return selections;
+  return { ...selections, [RATE_LABEL]: only };
+}
+
 export function repriceCartGroups(
   rawLines: { productId: string; selections: Record<string, string>; qty: number }[],
   productOf: (id: string) => Product | undefined
@@ -4738,7 +4770,7 @@ export function repriceCartGroups(
   // เติมค่ากลุ่มควบคุมที่หายไปก่อนคิดราคา (ของเก่าในตะกร้าที่เกิดก่อนร้านเพิ่มกลุ่มใหม่)
   const lines = rawLines.map((l) => {
     const p = productOf(l.productId);
-    return p ? { ...l, selections: backfillShowWhen(p, l.selections) } : l;
+    return p ? { ...l, selections: repairRateFromOptions(p, backfillShowWhen(p, l.selections)) } : l;
   });
 
   // ตั้งต้น: คิดแบบบรรทัดเดี่ยวตามเดิม แล้วค่อยทับเฉพาะกลุ่มที่รวมได้
