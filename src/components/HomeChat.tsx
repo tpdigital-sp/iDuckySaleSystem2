@@ -84,7 +84,12 @@ export default function HomeChat({ catCount }: { catCount: number }) {
       push({ side: "out", text: message });
     }
 
-    const reply = await askShopBot(message, sessionId.current);
+    // ประวัติก่อนข้อความนี้ — เริ่มคุยใหม่ (starting) ถือว่ายังไม่มีบทสนทนาจริง
+    const reply = await askShopBot(
+      message,
+      sessionId.current,
+      starting ? [] : msgs.map((m) => ({ side: m.side, text: m.text })),
+    );
     push({ side: "in", text: reply });
     setBusy(false);
   }

@@ -21,6 +21,7 @@ import {
   type ShipTier,
   type SizeFee,
   type InputFee,
+  type SizeInputSpec,
   type MixRule,
   type ExtraTier,
 } from "@/lib/products";
@@ -172,6 +173,8 @@ type DraftOption = {
   standardInput?: boolean;
   /** 💰 คิดเงินตามค่าที่กรอก × เรทต่อหน่วย — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   inputFee?: InputFee;
+  /** 📐 ตัวเลือก "กำหนดขนาดเอง" ในกลุ่มแกนราคา — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  sizeInput?: SizeInputSpec;
   /** 🎨 ชิ้นต่อแผ่นของกลุ่มนี้ = เพดานจำนวนลาย — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   capDesigns?: boolean;
   /** 📐 สเปกโชว์จำนวนชิ้นต่อแผ่นจากกว้าง×สูง — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
@@ -312,6 +315,8 @@ type Draft = {
   extraRates: DraftExtraRate[];
   /** ค่าคละลายแบบคิดเป็นเงินต่อหน่วย (mixRule) — ตารางแยกตามช่วงจำนวน (string เพราะกรอกในช่อง) */
   mix: { on: boolean; tiers: DraftMixTier[] };
+  /** 🔄 คละลายด้านหลัง (backDesign) — กลุ่ม/ตัวเลือกที่แปลว่า "พิมพ์ 2 ด้าน" (label ว่าง = ปิด) */
+  backDesign: { label: string; choice: string };
   highlights: string[];
   images: DraftImage[];
   body: DraftBody[];
@@ -547,6 +552,7 @@ function toDraft(p: Product): Draft {
       ...(o.sheetFee ? { sheetFee: o.sheetFee } : {}),
       ...(o.standardInput ? { standardInput: true } : {}),
       ...(o.inputFee ? { inputFee: o.inputFee } : {}),
+      ...(o.sizeInput ? { sizeInput: o.sizeInput } : {}),
       ...(o.capDesigns ? { capDesigns: true } : {}),
       ...(o.sheetYield ? { sheetYield: o.sheetYield } : {}),
       choices: o.choices.map((c) => ({
@@ -652,6 +658,7 @@ function toDraft(p: Product): Draft {
           hardMaxDesigns: !!p.hardMaxDesigns,
         }
       : { enabled: false, unit: "ชิ้น", driverLabels: [], tiers: [], cells: {}, tierByDesign: !!p.tierByDesign, hardMaxDesigns: !!p.hardMaxDesigns },
+    backDesign: { label: p.backDesign?.label ?? "", choice: p.backDesign?.choices?.[0] ?? "" },
     mix: {
       on: !!p.mixRule,
       // มีตารางแล้วใช้ตาราง · ของเก่าที่ตั้งเป็นค่าเดี่ยว แปลงเป็นตาราง 1-2 แถวให้อัตโนมัติ
@@ -831,6 +838,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       // ✍️📐 ช่องกรอกงานปกติ + สเปกจำนวนชิ้นต่อแผ่น — ไม่มีช่องกรอกในหน้าแก้ไข ต้องส่งกลับ ไม่งั้นหาย
       ...(o.standardInput ? { standardInput: true as const } : {}),
       ...(o.inputFee ? { inputFee: o.inputFee } : {}),
+      ...(o.sizeInput ? { sizeInput: o.sizeInput } : {}),
       ...(o.capDesigns ? { capDesigns: true } : {}),
       ...(o.sheetYield ? { sheetYield: o.sheetYield } : {}),
       choices: o.choices
@@ -4254,6 +4262,11 @@ export default function ProductEditor({ product }: { product: Product }) {
         const first = tiers[0];
         return { baseFee: first.baseFee, includedDesigns: first.includedDesigns, extraFee: first.extraFee, tiers };
       })(),
+      // 🔄 คละลายด้านหลัง — ตั้งครบทั้งกลุ่มและตัวเลือกถึงจะบันทึก (ตั้งครึ่ง ๆ = ปิด ไม่ให้คิดเงินเพี้ยนเงียบ ๆ)
+      backDesign:
+        draft.backDesign.label.trim() && draft.backDesign.choice.trim()
+          ? { label: draft.backDesign.label.trim(), choices: [draft.backDesign.choice.trim()] }
+          : undefined,
       highlights: draft.highlights.map((h) => h.trim()).filter(Boolean),
       images,
       body,
@@ -5563,6 +5576,53 @@ export default function ProductEditor({ product }: { product: Product }) {
                 )}
               </div>
             )}
+
+            {/* ── 🔄 คละลายด้านหลัง (งานพิมพ์ 2 ด้าน) ──
+                เลือกกลุ่ม+ตัวเลือกที่แปลว่า "พิมพ์ 2 ด้าน" แล้วหน้าสินค้าจะขึ้นช่อง "ด้านหลังคละกี่ลาย" อีกช่อง
+                คิดค่าคละด้วยกติกาชุดเดียวกับด้านหน้า (ตารางด้านบน / เรทที่ตั้งขั้นต่ำต่อลาย) บวกเพิ่มอีกชุด */}
+            <div className="mb-2.5 rounded-xl bg-sky-50 px-3 py-2.5 ring-1 ring-sky-100">
+              <p className="text-xs font-bold text-sky-900">🔄 คละลายด้านหลัง (งานพิมพ์ 2 ด้าน)</p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-sky-800">
+                เลือกกลุ่มและตัวเลือกที่แปลว่า &ldquo;พิมพ์ 2 ด้าน&rdquo; — ลูกค้าเลือกตัวนี้เมื่อไหร่
+                หน้าสินค้าจะขึ้นช่อง &ldquo;ด้านหลังคละกี่ลาย&rdquo; อีกช่อง แล้วคิดค่าคละด้วยเงื่อนไขชุดเดียวกับด้านหน้า
+                บวกเพิ่มอีกชุด · เว้นว่าง = ปิด (ไม่มีเรื่องด้านหลัง)
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <select
+                  value={draft.backDesign.label}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, backDesign: { label: e.target.value, choice: "" } }))
+                  }
+                  className="rounded-lg border border-sky-200 bg-white px-2 py-1 text-xs text-slate-700"
+                >
+                  <option value="">— ปิด (ไม่มีคละลายด้านหลัง) —</option>
+                  {draft.options.map((o) => (
+                    <option key={o.label} value={o.label}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                {draft.backDesign.label && (
+                  <select
+                    value={draft.backDesign.choice}
+                    onChange={(e) => setDraft((d) => ({ ...d, backDesign: { ...d.backDesign, choice: e.target.value } }))}
+                    className="rounded-lg border border-sky-200 bg-white px-2 py-1 text-xs text-slate-700"
+                  >
+                    <option value="">— เลือกตัวเลือก —</option>
+                    {(draft.options.find((o) => o.label === draft.backDesign.label)?.choices ?? []).map((c) => (
+                      <option key={c.name} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              {draft.backDesign.label && !draft.backDesign.choice && (
+                <p className="mt-1.5 text-[11px] font-bold text-rose-600">
+                  ยังไม่ได้เลือกตัวเลือก — ตั้งไม่ครบจะไม่ถูกบันทึก (ถือว่าปิด)
+                </p>
+              )}
+            </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="text-xs text-slate-600">

@@ -50,13 +50,30 @@ export function useChatSession() {
   return sessionId;
 }
 
+/** 1 ตาของบทสนทนาที่ส่งกลับไปให้ผู้ช่วยอ่าน — side เดียวกับบับเบิลในหน้าจอ */
+export type ChatTurn = { side: "in" | "out"; text: string };
+
+/**
+ * ส่งย้อนหลังกี่ตา — agent ฝั่ง n8n จำเองได้ 5 ตา (Window Buffer) แต่จำจาก sessionId เท่านั้น
+ * ชั้นวิเคราะห์คำถาม/จับคู่สินค้า/ตอบสำรองของเว็บไม่เห็นด้วย จึงต้องส่งไปเอง
+ */
+const HISTORY_TURNS = 8;
+
 /** ถามผู้ช่วยร้าน — คืนข้อความตอบเสมอ (ล้มเหลวก็คืนข้อความบอกทางออกให้ลูกค้า ไม่ throw) */
-export async function askShopBot(message: string, sessionId: string): Promise<string> {
+export async function askShopBot(message: string, sessionId: string, history: ChatTurn[] = []): Promise<string> {
   try {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, sessionId }),
+      body: JSON.stringify({
+        message,
+        sessionId,
+        // ตัดคำทักทายอัตโนมัติออก (ไม่ใช่บทสนทนาจริง) แล้วเอาเฉพาะท้าย ๆ ที่ยังเกี่ยวกับเรื่องที่คุยอยู่
+        history: history
+          .filter((t) => t.text && t.text !== GREETING)
+          .slice(-HISTORY_TURNS)
+          .map((t) => ({ role: t.side === "out" ? "customer" : "shop", text: t.text.slice(0, 500) })),
+      }),
     });
     const data = (await res.json().catch(() => ({}))) as { reply?: string; error?: string };
     if (res.ok && data.reply) return data.reply;

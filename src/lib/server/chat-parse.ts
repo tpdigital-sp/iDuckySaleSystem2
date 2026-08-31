@@ -36,7 +36,7 @@ const MODEL = "gemini-2.5-flash-lite";
 const SYSTEM_PROMPT =
   "คุณเป็นแอดมินมืออาชีพของร้านพิมพ์/ผลิตตามสั่ง (Print-on-Demand) ช่วยวิเคราะห์คำถามลูกค้า ให้ตอบเป็น JSON เท่านั้น";
 
-function buildPrompt(msg: string, kbTitles: { index: number; title: string }[]): string {
+function buildPrompt(msg: string, kbTitles: { index: number; title: string }[], history: string): string {
   let kbTitlesList = "";
   if (kbTitles.length) {
     kbTitlesList = "\n\nคลังความรู้ของร้าน (เลือกหัวข้อที่เกี่ยวข้องกับคำถาม ใช้หมายเลขตามที่แสดง):\n";
@@ -47,7 +47,12 @@ function buildPrompt(msg: string, kbTitles: { index: number; title: string }[]):
       "\nจากรายการด้านบน เลือกหมายเลขหัวข้อที่ตรงกับคำถามลูกค้ามากที่สุด (เลือก 1-8 หัวข้อ ถ้าถามหลายสินค้าให้เลือกหัวข้อที่ตรงกับทุกสินค้า) ใส่ใน relevant_kb";
   }
 
-  return `คำถาม: "${msg}"
+  // 🧠 คำถามต่อเนื่อง ("แล้ว 300 ชิ้นล่ะ" / "อันแรกราคาเท่าไหร่") ตีความไม่ได้ถ้าไม่เห็นที่คุยมาก่อน
+  const prior = history
+    ? `\n[บทสนทนาก่อนหน้า - ใช้เติมสิ่งที่ลูกค้าละไว้ในคำถามล่าสุด เช่นชื่อสินค้า/วัสดุ/ขนาดที่เคยพูดถึงแล้ว]\n${history}\n`
+    : "";
+
+  return `${prior}คำถามล่าสุด: "${msg}"
 
 สิ่งที่ต้องทำ:
 1. **วิเคราะห์ intent** — ลูกค้าต้องการรู้เรื่องอะไรจริงๆ คิดเหมือนแอดมินที่เข้าใจลูกค้า
@@ -100,12 +105,14 @@ function buildPrompt(msg: string, kbTitles: { index: number; title: string }[]):
 export async function parseCustomerMessage(
   msg: string,
   kbTitles: { index: number; title: string }[],
+  history = "",
 ): Promise<ParsedMessage | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
   // ข้อความสั้นมาก/คำทักทาย ไม่ต้องเสียเวลาวิเคราะห์ — ให้ n8n ตอบเลย
   const trimmed = msg.trim();
-  if (trimmed.length < 6) return null;
+  // สั้นมากแต่มีบทสนทนาก่อนหน้า = คำถามต่อเนื่อง ("แล้ว 300 ล่ะ") ต้องวิเคราะห์ ไม่ใช่ปล่อยผ่าน
+  if (trimmed.length < 6 && !history) return null;
   if (/^(สวัสดี|หวัดดี|ดีจ้า|ดีครับ|ดีค่ะ|hello|hi|ทดสอบ|เทส)[\sครับค่ะคะจ้า!.~]*$/i.test(trimmed)) return null;
 
   try {
@@ -115,7 +122,7 @@ export async function parseCustomerMessage(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\n${buildPrompt(msg, kbTitles)}` }] }],
+          contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\n${buildPrompt(msg, kbTitles, history)}` }] }],
           generationConfig: { maxOutputTokens: 500, temperature: 0 },
         }),
         signal: AbortSignal.timeout(PARSE_TIMEOUT_MS),
@@ -145,6 +152,7 @@ export async function answerFromContext(
   message: string,
   systemMessage: string | undefined,
   knowledgeContext: string | undefined,
+  history = "",
   timeoutMs = 6_000,
 ): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -164,7 +172,7 @@ ${systemMessage ?? ""}
 
 ${knowledgeContext ?? ""}
 
-คำถามลูกค้า: "${message}"`;
+${history ? `[บทสนทนาก่อนหน้า]\n${history}\n\n` : ""}คำถามลูกค้า: "${message}"`;
 
   try {
     const res = await fetch(
@@ -241,4 +249,57 @@ export function buildParsedHint(parsed: ParsedMessage | null): string {
     hint += "→ ตอบให้ตรงประเด็นกับสิ่งที่ลูกค้าถาม ถ้าถามข้อมูลให้อธิบายข้อมูล ถ้าถามราคาให้ค้นหาราคา\n";
   }
   return hint;
+}
+
+/**
+ * 🗣️ เรียบเรียง "ราคาจริงจากระบบเว็บ" ให้เป็นคำตอบภาษาคนก่อนส่งลูกค้า
+ *
+ * ใช้กับเส้นทางที่เว็บตอบราคาเอง (ไม่ผ่าน agent ของ n8n) — เพราะทดสอบแล้วพบว่า agent
+ * เมินราคาที่เว็บส่งเข้าไป ทั้งใน message และ systemMessage แล้วไปหยิบตัวเลขจาก tool
+ * ของตัวเองซึ่งเป็นคนละตารางกับที่ตะกร้าคิดเงินจริง (system prompt 14k ของมันทับหมด)
+ *
+ * กติกาสำคัญ: ห้ามแก้/ปัด/ตัดตัวเลขทิ้ง — โมเดลมีหน้าที่จัดถ้อยคำอย่างเดียว
+ * ล้มเหลว/ไม่มีคีย์ → คืน null แล้วผู้เรียกส่งตารางดิบไปตรง ๆ (ยังถูกต้องเสมอ)
+ */
+export async function writePriceReply(message: string, priceText: string, history = ""): Promise<string | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || !priceText.trim()) return null;
+
+  const prompt = `คุณคือ "ผู้ช่วย iDucky" แอดมินผู้ชายของร้าน iDucky Prints Studio ตอบลูกค้าทางแชทหน้าเว็บ
+เรียบเรียงข้อมูลราคาด้านล่างให้เป็นคำตอบที่อ่านง่าย
+กติกา (ห้ามฝ่าฝืน):
+- ⚠️ ตัวเลขทุกตัว ช่วงจำนวนทุกช่วง และชื่อตัวเลือกทุกอัน ต้องคงไว้ครบเป๊ะ ห้ามปัด ห้ามตัดทิ้ง ห้ามสรุปรวบ
+- ห้ามเพิ่มราคา/เงื่อนไข/ของแถม ที่ไม่มีในข้อมูล
+- ภาษาไทย สุภาพ เป็นกันเอง ลงท้าย "ครับ" เสมอ (ห้ามใช้ ค่ะ/นะคะ)
+- ใช้บูลเล็ต • ขึ้นต้นบรรทัด ห้ามใช้มาร์กดาวน์อื่น (ห้าม **, ห้าม *, ห้าม #) กล่องแชทแสดงไม่ได้\n- ห้ามขึ้นต้นด้วยคำทักทาย เข้าเรื่องเลย
+- คงลิงก์ที่ให้มาไว้ท้ายคำตอบ วางเป็น URL เต็มในบรรทัดของตัวเอง ห้ามแก้ URL
+- ถ้าลูกค้ายังไม่บอกจำนวน ปิดท้ายด้วยคำถามสั้น ๆ ถามจำนวน/ขนาดที่สนใจ 1 บรรทัด
+- ห้ามเติมประโยคปิดท้ายลอย ๆ เช่น "มีอะไรให้ช่วยเพิ่มไหม"
+${history ? `\n[บทสนทนาก่อนหน้า]\n${history}\n` : ""}
+[คำถามลูกค้า]
+${message}
+
+[ราคาจริงจากระบบ - แหล่งเดียวที่เชื่อได้]
+${priceText}`;
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 1200, temperature: 0.3 },
+        }),
+        signal: AbortSignal.timeout(8_000),
+      },
+    );
+    if (!res.ok) return null;
+    const result = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+    const text = (result.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
+    return text || null;
+  } catch {
+    return null;
+  }
 }

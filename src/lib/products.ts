@@ -332,6 +332,16 @@ export interface ProductOption {
    */
   standardInput?: boolean;
   /**
+   * 📐 ตัวเลือก "กำหนดขนาดเอง" ของกลุ่มที่เป็น **แกนตารางราคา** (เช่น "ขนาด" ของพวงกุญแจ)
+   * ลูกค้าเลือกตัวเลือกชื่อ `choice` แล้วกรอกกว้าง×สูงเอง (ทศนิยมได้) →
+   * ระบบปัดด้านที่ยาวที่สุดขึ้นเต็มหน่วย แล้วคิดราคาเป็น "แถวขนาดที่เล็กที่สุดที่ยังครอบขนาดนั้นได้"
+   * ในตารางเรทเดิม (3.5×2 ซม. → แถว 4cm) · ใหญ่เกินตาราง/เกิน askOver = ให้แอดมินตีราคา
+   *
+   * ต่างจาก 📐 custom โหมด longest ตรงที่อันนี้อยู่ "ในกลุ่มตัวเลือกปกติ" — ไม่ล็อกกลุ่มอื่นทิ้ง
+   * ลูกค้าเลือกความหนา/งานสกรีน/ตะขอ ฯลฯ ต่อได้ตามปกติ (ดู sizeInputPlan)
+   */
+  sizeInput?: SizeInputSpec;
+  /**
    * 📐 โชว์ "จำนวนชิ้นโดยประมาณต่อแผ่นวัสดุ" ใต้ช่องกรอกของกลุ่มนี้ (กลุ่มนี้ = ด้านสูง)
    * อ่านด้านกว้างจากช่องกรอกกลุ่ม pairLabel — กรอกครบสองช่องแล้วคำนวณจากการเรียงแนวตรง
    * เลือกแนวตั้ง/แนวนอนที่ได้เยอะกว่า · เป็นตัวเลขบอกทางเฉย ๆ ไม่มีผลกับราคา/ตะกร้า
@@ -1834,6 +1844,25 @@ export function designCountOf(selections: Record<string, string>): number {
   return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
+/** ชื่อกลุ่มที่เก็บจำนวนลาย "ด้านหลัง" ของงานพิมพ์ 2 ด้าน (ดู Product.backDesign) */
+export const BACK_DESIGN_LABEL = "จำนวนลาย (ด้านหลัง)";
+
+/**
+ * 🔄 ตอนนี้ลูกค้าเลือกพิมพ์ 2 ด้านอยู่ไหม — เงื่อนไขอ่านแบบเดียวกับ showWhen ของกลุ่ม
+ * ไม่เข้าเงื่อนไข = ไม่มีด้านหลังให้คละ (ช่องไม่ขึ้น ไม่คิดค่าคละด้านหลัง)
+ */
+export function backDesignActive(product: Product, selections: Record<string, string>): boolean {
+  const c = product.backDesign;
+  if (!c?.label || !c.choices?.length) return false;
+  return valueMatchesAny(selections[c.label], c.choices);
+}
+
+/** จำนวนลายที่คละ "ด้านหลัง" — อ่านแบบเดียวกับ designCountOf (ไม่ระบุ = 1 ลาย คือหลังเหมือนกันหมด) */
+export function backDesignCountOf(selections: Record<string, string>): number {
+  const n = parseInt(String(selections[BACK_DESIGN_LABEL] ?? ""), 10);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
 /**
  * 🧮 จำนวนชิ้นต่อ 1 หน่วยขาย ตามที่ลูกค้าเลือกในกลุ่ม pieceCountLabel — เลขหน้าชื่อตัวเลือก ("3 ชิ้น" → 3)
  * สินค้าไม่ได้ตั้ง / ยังไม่ได้เลือก = 1 (1 หน่วย = 1 ชิ้น เหมือนเดิม)
@@ -1949,7 +1978,8 @@ export function designFeeFor(product: Product, selections: Record<string, string
   const optionFee = perDesignExtraOf(product, selections);
   // ค่าเพิ่มต่อแผ่นวัสดุ (ค่าฟิล์มเคลือบพิเศษ ฯลฯ) — คิดตามจำนวนแผ่นที่ใช้จริง
   const sheetFee = sheetFeeTotalOf(product, selections, qty);
-  return optionFee + sheetFee + designFeeBase(product, selections, qty);
+  // ค่าคละลายคิดทีละด้าน — ด้านหลังมีเฉพาะงานพิมพ์ 2 ด้านที่ตั้ง backDesign ไว้ (ปกติได้ 0)
+  return optionFee + sheetFee + designFeeBase(product, selections, qty) + backDesignFeeOf(product, selections, qty);
 }
 
 /** 1 บรรทัดของการแจกแจง "Add on" — ชื่อรายการ + ยอด + วิธีคิดสั้น ๆ */
@@ -2001,6 +2031,9 @@ export function feeBreakdown(
     }
   }
   const mix = designFeeBase(product, selections, qty, tierQty);
+  // งานพิมพ์ 2 ด้าน — ค่าคละของด้านหลังเป็นคนละก้อน แยกบรรทัดให้เห็นว่าจ่ายค่าอะไรของด้านไหน
+  const backOn = backDesignActive(product, selections);
+  const mixBack = backDesignFeeOf(product, selections, qty, tierQty);
   if (mix > 0) {
     // กติกาคละไม่ถึงขั้นต่ำ — บอกฐานคิดตรง ๆ ว่ากี่ชิ้น × ชิ้นละเท่าไหร่ (ไม่ใช่จำนวนลาย)
     const r = activeRate(product, selections);
@@ -2012,9 +2045,19 @@ export function feeBreakdown(
             amount: mix,
             note: `${formatPrice(r!.underMinPieceFee!)} × ${under.toLocaleString("th-TH")} ชิ้นที่ไม่ถึงลายละ ${r!.minPerDesign!.toLocaleString("th-TH")}`,
           }
-        : { label: "ค่าคละลาย", amount: mix, note: `คละ ${designs.toLocaleString("th-TH")} ลาย` }
+        : {
+            label: backOn ? "ค่าคละลาย (ด้านหน้า)" : "ค่าคละลาย",
+            amount: mix,
+            note: `คละ ${designs.toLocaleString("th-TH")} ลาย`,
+          }
     );
   }
+  if (mixBack > 0)
+    lines.push({
+      label: "ค่าคละลาย (ด้านหลัง)",
+      amount: mixBack,
+      note: `คละ ${backDesignCountOf(selections).toLocaleString("th-TH")} ลาย`,
+    });
   return lines;
 }
 
@@ -2058,17 +2101,42 @@ function designFeeBase(
   qty: number,
   tierQty = qty
 ): number {
+  return mixFeeOfSide(product, selections, qty, tierQty, designCountOf(selections));
+}
+
+/**
+ * 🔄 ค่าคละลาย "ด้านหลัง" ของ 1 บรรทัด — งานพิมพ์ 2 ด้านที่ตั้ง Product.backDesign ไว้
+ * ใช้กติกาชุดเดียวกับด้านหน้าเป๊ะ ๆ (mixRule/เรทเดียวกัน) แค่เปลี่ยนจำนวนลายเป็นของด้านหลัง
+ * แล้วบวกเพิ่มอีกชุด — หน้า 4 ลาย + หลัง 4 ลาย = จ่ายค่าคละ 2 ชุด
+ * ยังไม่ได้เลือกพิมพ์ 2 ด้าน (หรือสินค้าไม่ได้ตั้งไว้) = 0 เสมอ ไม่กระทบสินค้าเดิม
+ */
+export function backDesignFeeOf(
+  product: Product,
+  selections: Record<string, string>,
+  qty: number,
+  tierQty = qty
+): number {
+  if (!backDesignActive(product, selections)) return 0;
+  return mixFeeOfSide(product, selections, qty, tierQty, backDesignCountOf(selections));
+}
+
+/** ค่าคละลายของ "ด้านหนึ่ง" ตามจำนวนลายที่ส่งมา — ตัวคิดกลางของทั้งด้านหน้าและด้านหลัง */
+function mixFeeOfSide(
+  product: Product,
+  selections: Record<string, string>,
+  qty: number,
+  tierQty: number,
+  designs: number
+): number {
   // กติกาคละแบบคิดต่อหน่วยมาก่อน — ค่าคละ = (ค่าต่อหน่วยตามจำนวนลาย) × จำนวนที่สั่ง
   // อ่านผ่าน mixRuleFor เสมอ ให้ตัวเลือกที่ตั้งกติกาเอง (เช่น ไดคัท 50%) ได้ค่าคละของตัวเอง
   const mr = mixRuleFor(product, selections);
-  if (mr) return mixFeeTotal(mr, designCountOf(selections), Math.max(0, qty));
+  if (mr) return mixFeeTotal(mr, designs, Math.max(0, qty));
   const r = activeRate(product, selections);
   // กติกา "คละไม่ถึงขั้นต่ำ คิดส่วนต่างชิ้นละ N" (เคสมือถือ) — คิดจากชิ้นในลายที่ไม่เต็มขั้นต่ำ
-  if (r?.underMinPieceFee) return underMinFeeFor(r, qty, designCountOf(selections), tierQty);
+  if (r?.underMinPieceFee) return underMinFeeFor(r, qty, designs, tierQty);
   if (!r?.minPerDesign || !r.extraDesignFee) return 0;
-  const n = parseInt(String(selections[DESIGN_LABEL] ?? ""), 10);
-  if (!Number.isFinite(n) || n <= 0) return 0;
-  const extra = n - includedDesigns(r, qty, perUnitCapacity(product, selections) ?? 1);
+  const extra = designs - includedDesigns(r, qty, perUnitCapacity(product, selections) ?? 1);
   return extra > 0 ? extra * r.extraDesignFee : 0;
 }
 
@@ -2146,6 +2214,17 @@ export interface Product {
    * ตั้งอันนี้แล้วราคาเรทจะไม่ถูกลดตามจำนวนลายอีก — คิดค่าคละตรง ๆ แทน
    */
   mixRule?: MixRule;
+  /**
+   * 🔄 คละลาย "ด้านหลัง" — งานพิมพ์ 2 ด้าน (งานกระดาษ) ที่ด้านหลังคละลายได้ด้วย
+   *
+   * เขียนเป็นเงื่อนไขแบบเดียวกับ showWhen ของกลุ่ม: กลุ่มไหน = ตัวเลือกไหน ถึงถือว่าพิมพ์ 2 ด้าน
+   * เช่น { label: "จำนวนด้านที่พิมพ์", choices: ["พิมพ์ 2 ด้าน"] }
+   *
+   * เข้าเงื่อนไข → หน้าสินค้าขึ้นช่อง "คละกี่ลาย (ด้านหลัง)" อีกช่อง แล้วคิดค่าคละด้วย
+   * กติกาชุดเดียวกับด้านหน้าเป๊ะ ๆ บวกเพิ่มอีกชุด (ดู backDesignFeeOf)
+   * ไม่ตั้ง = ไม่มีเรื่องด้านหลัง ทุกอย่างเหมือนเดิมทั้งหมด
+   */
+  backDesign?: { label: string; choices: string[] };
   /** ข้อมูล SEO/AEO (ไม่มี = ใช้ค่าจากชื่อ/รายละเอียดอัตโนมัติ) */
   seo?: ProductSeo;
   /**
@@ -2362,9 +2441,14 @@ export interface AreaPricing {
   round?: "none" | "ceil" | "round";
 }
 
-/** ตัวเลขที่ลูกค้ากรอกในกลุ่มช่องกรอก (ตัดหน่วยท้ายออก) — ยังไม่กรอก/ไม่ใช่ตัวเลข = 0 */
+/**
+ * ตัวเลขที่ลูกค้ากรอกในกลุ่มช่องกรอก (ตัดหน่วยท้ายออก) — ยังไม่กรอก/ไม่ใช่ตัวเลข = 0
+ * ⚠️ อ่านเป็น "ตัวเลขตัวแรกในข้อความ" ไม่ใช่กรองตัวอักษรทิ้ง — หน่วยไทยมีจุดในตัวเอง ("ซม.")
+ * การกรองทิ้งทำให้ "3.5 ซม." กลายเป็น "3.5." ซึ่ง Number() อ่านไม่ออก แล้วขนาดทศนิยมจะกลายเป็น 0 เงียบ ๆ
+ */
 function inputNumberOf(selections: Record<string, string>, label: string): number {
-  const n = Number(String(selections[label] ?? "").replace(/[^\d.]/g, ""));
+  const m = String(selections[label] ?? "").match(/\d+(?:\.\d+)?/);
+  const n = m ? Number(m[0]) : 0;
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
@@ -2675,6 +2759,83 @@ export function customSizeError(c: CustomOption | null | undefined, w: number, h
   const short = Math.min(w, h);
   if (c.maxLongest && long > c.maxLongest) return `ด้านยาวสุดไม่เกิน ${c.maxLongest} ${c.unit}`;
   if (c.maxShortest && short > c.maxShortest) return `อีกด้านไม่เกิน ${c.maxShortest} ${c.unit}`;
+  return null;
+}
+
+/**
+ * 📐 สเปกช่องกรอก "กำหนดขนาดเอง" ที่ฝังอยู่ในกลุ่มแกนตารางราคา (ดู ProductOption.sizeInput)
+ */
+export interface SizeInputSpec {
+  /** ชื่อตัวเลือกในกลุ่มนี้ที่แปลว่า "กำหนดขนาดเอง" (ตัวนี้ไม่มีช่องราคาในตาราง) */
+  choice: string;
+  /** ชื่อกลุ่มช่องกรอกด้านกว้าง / ด้านสูง (display "input" + standardInput หน่วยเดียวกับชื่อแถว) */
+  widthLabel: string;
+  heightLabel: string;
+  /** ด้านยาวสุดเกินกี่หน่วย = เกินที่ตารางครอบ ให้แอดมินตีราคาแทน (ไม่ตั้ง = ดูจากแถวใหญ่สุดที่เลือกได้) */
+  askOver?: number;
+  /** หน่วยที่โชว์ในข้อความสรุป เช่น "ซม." (ไม่ตั้ง = ไม่ต่อหน่วย) */
+  unit?: string;
+}
+
+/** 📐 ที่มาของราคางาน "กำหนดขนาดเอง" ในกลุ่มแกนราคา — ใช้ทั้งคิดเงินและกางให้ลูกค้าอ่าน */
+export interface SizeInputPlan {
+  /** ชื่อกลุ่มแกนราคาที่เป็นขนาด เช่น "ขนาด" */
+  label: string;
+  /** ค่าที่ลูกค้ากรอก (0 = ยังไม่กรอก) */
+  width: number;
+  height: number;
+  /** ด้านยาวสุดปัดขึ้นเต็มหน่วย (0 = ยังกรอกไม่ครบ) */
+  longest: number;
+  /**
+   * ชื่อแถวขนาดในตารางที่ใช้เป็นราคา — null = ใหญ่เกินตาราง (รอตีราคา)
+   * ยังกรอกไม่ครบ (filled = false) จะเป็นแถวเล็กสุดที่เลือกได้ ไว้โชว์เป็นราคาเริ่มต้น
+   * ⚠️ ต้องมีค่าเสมอเมื่อคิดราคาได้ — แกนตารางที่ไม่มีค่าจะทำให้ราคาหล่นไปที่ราคาตั้งต้นเงียบ ๆ
+   */
+  choice: string | null;
+  /** กรอกกว้าง×สูงครบแล้วไหม */
+  filled: boolean;
+  /** true = ใหญ่เกินที่ตารางครอบ ต้องให้แอดมินตีราคา */
+  quote: boolean;
+  /** หน่วยไว้ประกอบข้อความ */
+  unit: string;
+}
+
+/**
+ * 📐 แผนราคาของ "กำหนดขนาดเอง" ที่อยู่ในกลุ่มแกนตารางราคา — null เมื่อสินค้านี้ไม่ได้ตั้งไว้
+ * หรือลูกค้าไม่ได้เลือกตัวเลือกกำหนดขนาดเองอยู่
+ *
+ * แถวที่เอามาคิดราคานับเฉพาะแถวที่ **กฎเงื่อนไขยอมให้เลือกตอนนี้** (allowedChoices)
+ * — 2mm เลือกได้ถึง 10cm การกรอก 10.5 จึงต้องตกไปให้แอดมินตีราคา ไม่ใช่ไปเกาะแถว 11cm ของ 1mm
+ */
+export function sizeInputPlan(p: Product, selections: Record<string, string>): SizeInputPlan | null {
+  for (const opt of p.options ?? []) {
+    const cfg = opt.sizeInput;
+    if (!cfg) continue;
+    if (!optionActive(opt, selections)) continue;
+    if ((selections[opt.label] ?? "") !== cfg.choice) continue;
+    const unit = cfg.unit ?? "";
+    const w = inputNumberOf(selections, cfg.widthLabel);
+    const h = inputNumberOf(selections, cfg.heightLabel);
+    const base = { label: opt.label, width: w, height: h, unit };
+    const allowed = new Set(allowedChoices(p, selections, opt.label));
+    const rows = opt.choices
+      .filter((ch) => ch.name !== cfg.choice && allowed.has(ch.name))
+      .map((ch) => ({ name: ch.name, cm: choiceSizeCm(ch.name) }))
+      .filter((r): r is { name: string; cm: number } => r.cm != null)
+      .sort((a, b) => a.cm - b.cm);
+    // ยังกรอกไม่ครบ = เกาะแถวเล็กสุดไว้ก่อน (ราคาเริ่มต้น) — ปุ่มสั่งยังล็อกอยู่เพราะช่องกรอกยังว่าง
+    if (!(w > 0 && h > 0)) {
+      return { ...base, longest: 0, choice: rows[0]?.name ?? null, filled: false, quote: false };
+    }
+    // ปัดขึ้นเต็มหน่วย เผื่อ floating point ของเลขที่ลูกค้าพิมพ์ (14.000000001)
+    const longest = Math.ceil(Math.max(w, h) - 1e-9);
+    const row = rows.find((r) => longest <= r.cm);
+    // เกินเพดานที่แอดมินตั้งไว้ หรือไม่มีแถวไหนครอบได้ = ให้แอดมินตีราคา
+    if (!row || (cfg.askOver != null && longest > cfg.askOver)) {
+      return { ...base, longest, choice: null, filled: true, quote: true };
+    }
+    return { ...base, longest, choice: row.name, filled: true, quote: false };
+  }
   return null;
 }
 
@@ -4309,6 +4470,16 @@ export function matrixChoiceAvailable(m: PriceMatrix, label: string, choice: str
 }
 
 /**
+ * ตัวเลือกนี้คือ 📐 "กำหนดขนาดเอง" ของกลุ่มนั้นไหม (ดู ProductOption.sizeInput)
+ * ⚠️ ตัวนี้ **ไม่มีช่องราคาในตารางโดยตั้งใจ** — ราคาไปเกาะแถวที่ครอบขนาดที่ลูกค้ากรอก
+ * ทุกที่ที่กรอง "ตัวที่ไม่มีราคาในเรทนี้" ทิ้ง ต้องยกเว้นตัวนี้เสมอ ไม่งั้นมันหายจากเมนู
+ * (หรือกดเลือกแล้วเด้งกลับตัวแรกทันที)
+ */
+export function isSizeInputChoice(opt: ProductOption, choice: string): boolean {
+  return !!opt.sizeInput && opt.sizeInput.choice === choice;
+}
+
+/**
  * ทุกกลุ่มที่เป็น "แกนตารางราคา" ของสินค้านี้ (รวมทุกเรท) — ค่าของกลุ่มพวกนี้คือกุญแจหาราคาในตาราง
  * ขาดไปแม้กลุ่มเดียว คีย์จะหาช่องไม่เจอ แล้วราคาหล่นไปใช้ราคาตั้งต้นของสินค้า
  * → ตะกร้า/ออเดอร์ต้องเก็บค่ากลุ่มพวกนี้ไว้เสมอ แม้กลุ่มนั้นจะถูกซ่อนจากหน้าร้าน (showWhen ไม่ตรง)
@@ -4441,6 +4612,8 @@ export function needsQuote(p: Product, selections: Record<string, string>): bool
     if (opt.askPrice && (isInputOption(opt) || picked.length)) return true;
     if (opt.choices.some((c) => c.askPrice && picked.includes(c.name))) return true;
   }
+  // 📐 กำหนดขนาดเองที่ใหญ่เกินตารางราคา — ราคาต้องให้แอดมินตีให้
+  if (sizeInputPlan(p, selections)?.quote) return true;
   return false;
 }
 
@@ -4543,6 +4716,12 @@ export function unitPriceFor(
       return c.mode === "quote" ? 0 : customUnitPrice(c, dims.w, dims.h);
     }
   }
+  /*
+   * 📐 กำหนดขนาดเองในกลุ่มแกนราคา — สลับค่าแกน "ขนาด" เป็นแถวที่ครอบด้านยาวสุด
+   * แล้วคิดต่อตามตารางปกติ (ตัวเลือกที่ลูกค้าเลือกจริงไม่มีช่องราคาในตาราง)
+   */
+  const sizePlan = sizeInputPlan(product, selections);
+  if (sizePlan?.choice) selections = { ...selections, [sizePlan.label]: sizePlan.choice };
   // จำนวนที่ใช้ "เทียบช่วงราคา" — สินค้าที่คิดเรทตามชิ้นต่อลายจะเป็น ⌊จำนวน ÷ ลาย⌋
   // เงื่อนไขที่ผูกกับช่วงราคา (ค่าธรรมเนียมช่วงปลีก · extraFromQty) ต้องใช้ตัวเลขเดียวกับที่เลือกช่วงราคา
   // ไม่งั้นจะกลายเป็น "ได้ราคาช่วงปลีก แต่ไม่โดนค่าธรรมเนียมช่วงปลีก" (สั่ง 11 ชิ้น คละ 3 ลาย = ตกลายละ 3)
@@ -4931,6 +5110,8 @@ export function repriceCartGroups(
           extraFee:
             perDesignExtraOf(p, own) +
             sheetFeeTotalOf(p, own, lines[i].qty) +
+            // ค่าคละลายด้านหลังเป็นของบรรทัดตัวเอง (ลายหลังของแต่ละแผ่นแยกกันจริง ไม่รวมล็อต)
+            backDesignFeeOf(p, own, lines[i].qty, lotQty) +
             (pool.rate?.underMinPieceFee
               ? underMinFeeFor(pool.rate, lines[i].qty, designCountOf(own), lotQty)
               : splitMix
@@ -5185,7 +5366,9 @@ export function resolveSelections(
     // ค่าเริ่มต้นจึงต้องไม่ไปตกที่ตัวที่ถูกซ่อน ไม่งั้นหัวข้อจะโชว์ชื่อที่ลูกค้าเลือกซ้ำในเมนูไม่ได้
     // แถมราคาหล่นไปใช้ราคาตั้งต้นแทนราคาในตาราง · ไม่เหลือตัวที่มีราคาเลยค่อยคงชุดเดิมไว้กันหน้าพัง
     const m = activeMatrix(product, view);
-    const priced = m ? allowed.filter((n) => matrixChoiceAvailable(m, opt.label, n)) : allowed;
+    const priced = m
+      ? allowed.filter((n) => isSizeInputChoice(opt, n) || matrixChoiceAvailable(m, opt.label, n))
+      : allowed;
     const pool = priced.length > 0 ? priced : allowed;
     resolved[opt.label] = current && pool.includes(current) ? current : pool[0];
   }

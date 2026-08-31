@@ -12,6 +12,7 @@ import {
   INPUT_MAX_LEN,
   isInputOption,
   sheetYieldCount,
+  sizeInputPlan,
   unitYieldOf,
   isMadeToOrderOption,
   madeToOrderOn,
@@ -32,6 +33,8 @@ import {
   customKeepsOption,
   adminProductPath,
   DESIGN_LABEL,
+  BACK_DESIGN_LABEL,
+  backDesignActive,
   designFeeFor,
   feeBreakdown,
   unitAddOnBreakdown,
@@ -41,6 +44,7 @@ import {
   includedDesigns,
   isFreeMix,
   matrixChoiceAvailable,
+  isSizeInputChoice,
   maxDesignsFor,
   mixFeePerUnit,
   mixMaxDesigns,
@@ -915,15 +919,38 @@ export default function ProductDetail({
       return next;
     });
   }, [artFiles.length, maxDesigns, designsTouched]);
+  /**
+   * 🔄 คละลาย "ด้านหลัง" — งานพิมพ์ 2 ด้านที่สินค้าตั้ง backDesign ไว้ (งานกระดาษ)
+   * ใช้กติกาชุดเดียวกับด้านหน้า (เพดาน/ค่าคละเท่ากัน) แค่แยกเป็นอีกช่องแล้วคิดเงินอีกชุด
+   * ยังไม่ได้เลือกพิมพ์ 2 ด้าน = ไม่มีช่องนี้ ไม่มีค่าคละด้านหลัง
+   */
+  const backOn = backDesignActive(product, effective);
+  const [backDesigns, setBackDesigns] = useState(1);
+  const [backDesignsDraft, setBackDesignsDraft] = useState<string | null>(null);
+  useEffect(() => {
+    if (maxDesigns > 0) setBackDesigns((d) => Math.min(Math.max(1, d), maxDesigns));
+  }, [maxDesigns]);
+  // สลับกลับไปพิมพ์ 1 ด้าน = ล้างค่าที่ค้างไว้ ไม่ให้เงื่อนไขเก่าติดไปกับตะกร้า
+  useEffect(() => {
+    if (!backOn) {
+      setBackDesigns(1);
+      setBackDesignsDraft(null);
+    }
+  }, [backOn]);
+  /** จำนวนลายด้านหลังที่จะติดไปกับราคา/ตะกร้า — ไม่ได้พิมพ์ 2 ด้าน = ไม่ใส่เลย */
+  const backSel = useMemo<Record<string, string>>(
+    () => (backOn ? ({ [BACK_DESIGN_LABEL]: `${backDesigns} ลาย` } as Record<string, string>) : {}),
+    [backOn, backDesigns]
+  );
   const extraDesigns = rate?.extraDesignFee ? Math.max(0, designs - included) : 0;
   /**
    * ค่าคละลาย — ใช้ designFeeFor ตัวเดียวกับที่ตะกร้า/ออเดอร์ใช้
    * (เดิมหน้านี้คำนวณเองเป็น extraDesigns × extraDesignFee ซึ่งไม่รู้จักกติกา mixRule
    *  ลูกค้าจะเห็นราคาหน้าสินค้าไม่ตรงกับตอนจ่ายเงิน)
    */
-  const designFee = designFeeFor(product, { ...effective, [DESIGN_LABEL]: `${designs} ลาย` }, qty);
-  /** แจกแจงว่าค่าเพิ่มก้อนนั้นมาจากอะไร (ค่าเคลือบต่อแผ่น · ค่าสีต่อลาย · ค่าคละลาย) */
-  const feeLines = feeBreakdown(product, { ...effective, [DESIGN_LABEL]: `${designs} ลาย` }, qty);
+  const designFee = designFeeFor(product, { ...effective, ...backSel, [DESIGN_LABEL]: `${designs} ลาย` }, qty);
+  /** แจกแจงว่าค่าเพิ่มก้อนนั้นมาจากอะไร (ค่าเคลือบต่อแผ่น · ค่าสีต่อลาย · ค่าคละลายหน้า/หลัง) */
+  const feeLines = feeBreakdown(product, { ...effective, ...backSel, [DESIGN_LABEL]: `${designs} ลาย` }, qty);
   /**
    * 🔒 ขั้นต่ำต่อลายแบบแข็ง (hardMinPerDesign) — ต่ำกว่าเกณฑ์ = ปุ่มสั่งล็อก
    * เช่น อาร์มปักขั้นต่ำ 5 ชิ้น/ลาย: สั่ง 3 ชิ้นไม่ได้ · สั่ง 8 ชิ้นคละ 2 ลายก็ไม่ได้ (ต้อง 10)
@@ -941,9 +968,9 @@ export default function ProductDetail({
   const effectiveWithDesigns = useMemo(
     () =>
       (rate?.minPerDesign || tierByDesign || mixRule) && designs >= 1
-        ? { ...effective, [DESIGN_LABEL]: `${designs} ลาย` }
-        : effective,
-    [effective, rate, tierByDesign, mixRule, designs]
+        ? ({ ...effective, ...backSel, [DESIGN_LABEL]: `${designs} ลาย` } as Record<string, string>)
+        : ({ ...effective, ...backSel } as Record<string, string>),
+    [effective, backSel, rate, tierByDesign, mixRule, designs]
   );
 
   // ✨ เลือกเรทให้อัตโนมัติจากจำนวน + จำนวนลาย
@@ -968,6 +995,9 @@ export default function ProductDetail({
       const fitsSelections = (r: (typeof rates)[number]) =>
         r.pricing.driverLabels.every((label) => {
           const chosen = effective[label];
+          // 📐 "กำหนดขนาดเอง" ไม่มีช่องราคาในตารางโดยตั้งใจ — ไม่ถือว่าเรทนี้ไม่มีของ
+          const g = product.options.find((o) => o.label === label);
+          if (g && chosen && isSizeInputChoice(g, chosen)) return true;
           return !chosen || matrixChoiceAvailable(r.pricing, label, chosen);
         });
       /**
@@ -1183,7 +1213,7 @@ export default function ProductDetail({
         // กลุ่มติ๊กหลายอย่างไม่ใช่แกนตารางราคา (ห้ามไว้ในหลังบ้าน) — ไม่ต้องสลับให้
         if (isMultiOption(opt)) continue;
         const cur = next[opt.label];
-        if (cur && !matrixChoiceAvailable(matrix, opt.label, cur)) {
+        if (cur && !isSizeInputChoice(opt, cur) && !matrixChoiceAvailable(matrix, opt.label, cur)) {
           const alt = opt.choices.map((c) => c.name).find((n) => matrixChoiceAvailable(matrix, opt.label, n));
           if (alt) {
             next[opt.label] = alt;
@@ -1960,6 +1990,8 @@ export default function ProductDetail({
     if (note.trim()) extra["หมายเหตุ"] = note.trim();
     // จำนวนลายที่คละ (เรทที่มีระบบลาย / สินค้าคิดเรทตามชิ้นต่อลาย) — เก็บเป็นตัวเลือกให้เห็นในตะกร้า/ออเดอร์
     if ((rate?.minPerDesign || tierByDesign || mixRule) && designs >= 1) extra[DESIGN_LABEL] = `${designs} ลาย`;
+    // 🔄 จำนวนลายด้านหลัง (งานพิมพ์ 2 ด้าน) — ค่าคละอีกชุดตามกติกาเดียวกับด้านหน้า
+    if (backOn && backDesigns >= 1) extra[BACK_DESIGN_LABEL] = `${backDesigns} ลาย`;
     if (useCustom) {
       if (!custom || !customValid || customSizeErr) return null; // ต้องกรอกขนาดให้ครบ + ไม่เกินที่รับผลิตได้
       // เก็บขนาดที่ระบุลง selections (เป็น key ของตะกร้า + ใช้คิดราคาซ้ำ)
@@ -2235,7 +2267,9 @@ export default function ProductDetail({
               const heading = sectionShortLabel(opt);
               const allowedByRules = allowedChoices(product, effective, opt.label);
               // ตัดตัวที่ไม่มีราคาขายในเรทที่เลือกอยู่ (แอดมินล้างแถวทิ้ง) — ตัดหมดแล้วคงชุดเดิมไว้กันหน้าพัง
-              const byRate = matrix ? allowedByRules.filter((n) => matrixChoiceAvailable(matrix, opt.label, n)) : allowedByRules;
+              const byRate = matrix
+                ? allowedByRules.filter((n) => isSizeInputChoice(opt, n) || matrixChoiceAvailable(matrix, opt.label, n))
+                : allowedByRules;
               const allowed = byRate.length > 0 ? byRate : allowedByRules;
               const multi = isMultiOption(opt);
               // ✍️ ช่องกรอก — ลูกค้าพิมพ์ค่าเอง (ไม่มีรายการให้เลือก จึงไม่มีการล็อก/ไม่มีป้าย +฿)
@@ -2499,6 +2533,26 @@ export default function ProductDetail({
                             ) : (
                               <p className="mt-1 text-[11px] font-bold text-rose-600">
                                 ⚠ ขนาดนี้ใหญ่เกิน 1 {sheet} — รบกวนทักแชทเช็คกับแอดมินก่อนนะครับ
+                              </p>
+                            );
+                          })()}
+                          {/* 📐 กำหนดขนาดเองในกลุ่มแกนราคา — บอกว่าราคาไปเกาะแถวไหน / ต้องรอแอดมินตีราคา */}
+                          {(() => {
+                            const owner = product.options.find((o) => o.sizeInput?.heightLabel === opt.label);
+                            if (!owner) return null;
+                            const plan = sizeInputPlan(product, effective);
+                            if (!plan || plan.label !== owner.label || !plan.filled) return null;
+                            const u = plan.unit ? ` ${plan.unit}` : "";
+                            return plan.quote ? (
+                              <p className="mt-1 text-[11px] font-bold text-sky-700">
+                                💬 {plan.width}×{plan.height}
+                                {u} ใหญ่กว่าตารางราคา — กดสั่งไว้ได้เลย แล้วแอดมินตีราคาให้ทีหลัง
+                              </p>
+                            ) : (
+                              <p className="mt-1 text-[11px] font-bold text-teal-700">
+                                📐 {plan.width}×{plan.height}
+                                {u} → คิดราคาตามด้านที่ยาวที่สุด ปัดขึ้นเป็นแถว{" "}
+                                <span className="font-extrabold text-teal-900">{plan.choice}</span>
                               </p>
                             );
                           })()}
@@ -5494,6 +5548,64 @@ export default function ProductDetail({
                         (ทางร้านนับจำนวนลายจริงจากไฟล์ ถ้าไม่ตรงแอดมินจะทักยืนยันก่อนเริ่มงาน)
                       </p>
                     ))}
+                </div>
+              )}
+              {/*
+                🔄 คละกี่ลาย "ด้านหลัง" — งานพิมพ์ 2 ด้าน (สินค้าที่ตั้ง backDesign ไว้)
+                ใช้กติกา/เพดานชุดเดียวกับด้านหน้าเป๊ะ ๆ แค่คิดค่าคละเพิ่มอีกชุด
+                ไม่บังคับให้ระบุ — ปกติด้านหลังใช้ลายเดียวกันทั้งหมด (= 1 ลาย ไม่มีค่าคละ)
+              */}
+              {needDesignsChoice && backOn && (
+                <div id="back-designs-box" className="mt-2 rounded-xl bg-sky-50 px-3 py-2.5 ring-2 ring-sky-200">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[13px] font-extrabold text-sky-900">🔄 ด้านหลังคละกี่ลาย:</span>
+                    <div className="flex items-center rounded-full bg-white shadow-sm ring-1 ring-sky-200">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBackDesignsDraft(null);
+                          setBackDesigns((d) => Math.max(1, d - 1));
+                        }}
+                        disabled={backDesigns <= 1}
+                        className="h-8 w-8 rounded-l-full text-sm font-bold text-sky-700 hover:bg-sky-50 disabled:opacity-30"
+                        aria-label="ลดจำนวนลายด้านหลัง"
+                      >
+                        −
+                      </button>
+                      <input
+                        value={backDesignsDraft ?? String(backDesigns)}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/\D/g, "").slice(0, 5);
+                          setBackDesignsDraft(raw);
+                          const n = parseInt(raw, 10);
+                          if (Number.isFinite(n) && n >= 1) setBackDesigns(Math.min(n, Math.max(1, maxDesigns)));
+                        }}
+                        onBlur={() => setBackDesignsDraft(null)}
+                        onFocus={(e) => e.target.select()}
+                        inputMode="numeric"
+                        aria-label="จำนวนลายที่คละด้านหลัง (พิมพ์เลขได้)"
+                        className="w-12 bg-transparent text-center text-sm font-extrabold text-sky-900 outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBackDesignsDraft(null);
+                          setBackDesigns((d) => Math.min(maxDesigns, d + 1));
+                        }}
+                        disabled={backDesigns >= maxDesigns}
+                        className="h-8 w-8 rounded-r-full text-sm font-bold text-sky-700 hover:bg-sky-50 disabled:opacity-30"
+                        aria-label="เพิ่มจำนวนลายด้านหลัง"
+                      >
+                        +
+                      </button>
+                    </div>
+                    {/* ไม่ติดป้าย +฿ ตรงนี้ — บรรทัด "Add on = …" ด้านบนกางยอดค่าคละหน้า/หลังให้แล้ว (เหมือนกล่องด้านหน้า) */}
+                  </div>
+                  <p className="mt-1 text-[11px] leading-relaxed text-sky-800">
+                    ด้านหลังใช้เงื่อนไขคละลายชุดเดียวกับด้านหน้า — คิดค่าคละแยกอีกชุดหนึ่ง ·
+                    หลังเป็นลายเดียวกันทั้งหมดปล่อยไว้ที่ 1 ลาย (ไม่มีค่าคละ) ·
+                    หลังเป็นคนละลายกี่แบบ กด + ให้ตรงด้วยนะครับ
+                  </p>
                 </div>
               )}
             </div>

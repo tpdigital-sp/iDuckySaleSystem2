@@ -105,8 +105,9 @@ export default function ChatWidget() {
     if (!message || busy) return;
     setDraft("");
     setBusy(true);
+    const history = msgs.map((m) => ({ side: m.side, text: m.text }));
     setMsgs((prev) => [...prev, { id: nextId.current++, side: "out", text: message, time: clock() }]);
-    const reply = await askShopBot(message, sessionId.current);
+    const reply = await askShopBot(message, sessionId.current, history);
     setMsgs((prev) => [...prev, { id: nextId.current++, side: "in", text: reply, time: clock() }]);
     setBusy(false);
     inputRef.current?.focus();
