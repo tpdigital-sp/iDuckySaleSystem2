@@ -3,11 +3,14 @@ import { buildChatContext, getKbTitleCandidates } from "@/lib/server/chat-contex
 import {
   answerFromContext,
   askBackMessage,
+  isGreeting,
   isPricingQuestion,
+  needsHuman,
   parseCustomerMessage,
   writePriceReply,
 } from "@/lib/server/chat-parse";
-import { searchPrice } from "@/lib/server/price-answer";
+import { SITE_URL } from "@/lib/shop-info";
+import { isMinQtyIntent, isSpecIntent, parseQty, searchMinQty, searchPrice, searchSpec } from "@/lib/server/price-answer";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -33,6 +36,37 @@ const PERSONA =
   "คุณคือ 'ผู้ช่วย iDucky' แอดมินผู้ชายของร้าน iDucky Prints Studio (รับพิมพ์/ผลิตสินค้าตามสั่ง) " +
   "กำลังตอบลูกค้าทางแชทหน้าเว็บร้าน ตอบสุภาพ เป็นกันเอง กระชับ ลงท้ายด้วย 'ครับ' เสมอ " +
   "ห้ามลงท้ายด้วย 'ค่ะ/นะคะ' ตอบจากข้อมูลจริงของร้านเท่านั้น ห้ามเดาราคาที่ไม่มีในข้อมูล";
+
+/**
+ * ข้อความ "เกริ่นนำ" ที่ยังไม่ได้ถามอะไรจริง — สวัสดี / สอบถามหน่อย / รบกวนถามหน่อย
+ *
+ * ⚠️ ต้องกันไว้ตั้งแต่ต้นทาง: พอเราส่งประวัติบทสนทนาให้ชั้นวิเคราะห์ มันจะเติมบริบทจากที่คุยค้างไว้
+ * ให้ทุกข้อความ ลูกค้าพิมพ์แค่ "สอบถามหน่อย" หลังเคยถามราคาพวงกุญแจ จึงถูกตีความเป็น
+ * "ถามราคาพวงกุญแจ" แล้วเทตารางราคากลับไปทั้งชุด (ลูกค้าเจอจริง) — ทั้งที่เขายังไม่ได้ถามอะไรเลย
+ * ข้อความแบบนี้ต้องปล่อยให้ตอบแบบคุยกันปกติ ไม่เข้าเส้นทางราคา/สเปก/ขั้นต่ำ
+ */
+function isOpener(text: string): boolean {
+  const t = text.trim();
+
+  /**
+   * ⚠️ ต้องดัก "ข้อความที่ไม่มีเนื้อหาของตัวเอง" ให้หมด ไม่ใช่แค่คำเกริ่นที่รู้จัก
+   * ลูกค้าพิมพ์แค่ "." หลังเคยถามราคาพวงกุญแจ แล้วระบบเติมบริบทให้กลายเป็น "ถามราคาพวงกุญแจ"
+   * เทเมนูสินค้ากลับไปทั้งชุด (เจอจริง) — เดิมดักด้วยรายการคำ ซึ่งครอบคลุมไม่พอโดยธรรมชาติ
+   * เกณฑ์ที่ใช้แทน: นับเฉพาะ "ตัวอักษรจริง" (ไทย/อังกฤษ) ถ้าน้อยกว่า 2 ตัว = ยังไม่ได้ถามอะไร
+   */
+  const letters = t.replace(/[^\u0E00-\u0E7Fa-zA-Z]/g, "");
+  if (letters.length < 2) return true;
+
+  // คำรับ/คำขอบคุณ/หัวเราะ เดี่ยว ๆ ก็ไม่ใช่คำถาม
+  if (/^(ครับ|ค่ะ|คะ|จ้า|โอเค|โอเคครับ|โอเคค่ะ|ok|okay|ได้|ขอบคุณ|ขอบคุณครับ|ขอบคุณค่ะ|thx|thanks|5+)[\s!.~]*$/i.test(t))
+    return true;
+
+  if (t.length > 24 || /\d/.test(t)) return false;
+  if (/ราคา|เท่าไห|กี่|บาท|เรท|ขั้นต่ำ|ขนาด|สี|วัสดุ|เนื้อ|ทรง|ลด/.test(t)) return false;
+  // คำทักทายเดี่ยว ๆ ก็นับ (เดิมบังคับว่าต้องมีคำว่า "สอบถาม" ตามหลัง "สวัสดีครับ" เลยหลุดไป n8n)
+  if (/^(สวัสดี|หวัดดี|ดีครับ|ดีค่ะ|hello|hi|hey)/i.test(t)) return true;
+  return /^(ขอ)?\s*(สอบถาม|ถามหน่อย|ขอถาม|อยากถาม|อยากสอบถาม|รบกวน|ทัก)/i.test(t);
+}
 
 /** ประวัติบทสนทนาที่ส่งมาจากหน้าจอ → ข้อความบรรทัดเดียวแบบที่ workflow ของ n8n อ่าน */
 function historyText(turns: { role?: string; text?: string }[] | undefined): string {
@@ -116,6 +150,43 @@ export async function POST(req: Request) {
   // — แยกสินค้า/วัสดุ/จำนวน/ประเภทคำถาม + เลือกหัวข้อ KB · ล้มเหลว = null แล้วใช้จับคู่คำแทน
   const kbTitles = await getKbTitleCandidates(message).catch(() => []);
   const parsed = await parseCustomerMessage(message, kbTitles, convo);
+  /** ยังไม่ได้ถามอะไรจริง — ห้ามเดาว่าถามเรื่องเดิมต่อ (ดู isOpener) */
+  const opener = isOpener(message) || isGreeting(parsed);
+
+  /**
+   * ข้อความที่ยังไม่ได้ถามอะไร → ตอบเองสั้น ๆ ทันที ไม่ส่งไป n8n
+   *
+   * ส่งไปแล้วเสียเปล่า 2 ทาง: (1) รอ 16-24 วิ เพื่อได้คำทักทายกลับมา
+   * (2) agent มีความจำ 5 เทิร์นของตัวเอง มันจะเดาต่อจากที่คุยค้างไว้เอง — ลูกค้าพิมพ์ "." แล้วได้
+   * ราคาพวงกุญแจดุ๊กดิ๊ก พิมพ์ "555" ได้คำอธิบายกระเป๋า Candy Bag (เจอจริงตอนทดสอบ)
+   */
+  if (opener) {
+    const t = message.trim();
+    const reply = /^(ครับ|ค่ะ|คะ|จ้า|โอเค|ได้|ขอบคุณ|thx|thanks|ok|okay)/i.test(t)
+      ? "ยินดีครับ 😊 มีอะไรให้ช่วยอีกบอกได้เลยครับ"
+      : /^(สวัสดี|หวัดดี|hello|hi|hey)/i.test(t)
+        ? "สวัสดีครับ 👋 สนใจสินค้าตัวไหน หรืออยากถามเรื่องอะไร พิมพ์มาได้เลยครับ"
+        : "ได้เลยครับ 😊 บอกชื่อสินค้ากับจำนวนที่สนใจมาได้เลย เดี๋ยวเช็คราคาให้ หรือจะถามเรื่องวัสดุ/ขนาด/ระยะเวลาก็ได้ครับ";
+    return NextResponse.json({ reply, ...(body.debug ? { debug: { parsed, via: "opener" } } : {}) }, {
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+
+  // 🚨 ลูกค้าขอคุยคน / ไม่พอใจ / เคลมงาน / ตามออเดอร์ → ส่งต่อแอดมินทันที ไม่ต้องให้บอทดันต่อ
+  // (เกณฑ์มาจากชั้นวิเคราะห์: escalate + เหตุผล) เรื่องพวกนี้บอทตอบเองแล้วยิ่งทำให้ลูกค้าหงุดหงิด
+  const hardHandoff = /ขอคุยแอดมิน|เคลม|ติดตามออเดอร์/.test(parsed?.intent ?? "");
+  if (needsHuman(parsed) && hardHandoff) {
+    return NextResponse.json(
+      {
+        reply:
+          "เรื่องนี้ขอให้แอดมินตัวจริงดูแลต่อนะครับ จะได้เช็คให้ตรงเคสที่สุด\n" +
+          `ทักไลน์ร้านได้เลยครับ 👉 ${SITE_URL}/line\n` +
+          "รบกวนแจ้งเลขออเดอร์หรือรูปงานมาด้วยจะเร็วขึ้นมากครับ",
+        ...(body.debug ? { debug: { parsed, via: "handoff" } } : {}),
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  }
 
   // ถามราคาแต่ AI ไม่แน่ใจว่าสินค้าอะไร → ถามลูกค้ากลับเลย ไม่เดาราคามั่ว (เหมือน chat.html)
   const askBack = askBackMessage(parsed);
@@ -124,7 +195,9 @@ export async function POST(req: Request) {
   // แนบบริบทชุดเดียวกับที่หน้าแชท AdminBuddy (chat.html) ส่ง
   // — ผลวิเคราะห์ + ลิงก์สินค้าบนเว็บ + แค็ตตาล็อก/ลิงก์ราคา/คลังความรู้
   // ล้มก็ยังถามต่อได้ แค่ได้คำตอบกว้างกว่าเดิม จึงไม่ให้ throw ออกมา
-  const ctx = await buildChatContext(message, parsed).catch(() => null);
+  // เกริ่นนำเฉย ๆ → ไม่ต้องแนบสินค้า/hint ค้นราคา ไม่งั้น agent จะพูดถึงสินค้าที่คุยค้างไว้
+  // ทั้งที่ลูกค้ายังไม่ได้ถาม
+  const ctx = await buildChatContext(message, opener ? null : parsed).catch(() => null);
 
   // 💰 คำถามราคา → เอาตัวเลขจาก "เครื่องคิดเงินตัวเดียวกับตะกร้า" ยัดเป็นข้อมูลที่เชื่อถือได้ที่สุด
   // (ดู lib/server/price-answer.ts) ไม่งั้น agent จะไปหยิบราคาจากสมองราคาอีกชุดของ n8n ซึ่งเป็น
@@ -132,8 +205,11 @@ export async function POST(req: Request) {
   let priceFacts = "";
   /** ตารางราคาดิบที่เว็บคิดเอง — ใช้ตอบลูกค้าตรง ๆ โดยไม่ต้องพึ่ง agent */
   let priceText = "";
-  if (isPricingQuestion(parsed) || !parsed) {
-    const found = await searchPrice(parsed?.corrected_query || message, {
+  if (!opener && (isPricingQuestion(parsed) || !parsed)) {
+    const found = await searchPrice(`${message} ${parsed?.search_query ?? ""}`.trim(), {
+      // ⚠️ จำนวนต้องเอาจาก slots หรือข้อความ "ต้นฉบับ" — search_query ที่ชั้นวิเคราะห์เรียบเรียงใหม่
+      // มักตัดจำนวนทิ้ง พอไม่มีจำนวนระบบจะกางขั้นบันไดทั้งตารางแทนที่จะตอบยอดรวมของจำนวนที่สั่ง
+      qty: Number(String(parsed?.slots?.quantity ?? "").replace(/[^\d]/g, "")) || parseQty(message),
       // สมองเดิมของ n8n จะถูกถามอีกทีโดย agent อยู่แล้ว ตรงนี้เอาเฉพาะที่เว็บตอบเองได้
       allowFallback: false,
     }).catch(() => null);
@@ -146,9 +222,33 @@ export async function POST(req: Request) {
     }
   }
 
+  // 📦 ถามขั้นต่ำ → ตอบจาก minQty จริงในเรทราคาของเว็บ
+  // เดิมปล่อยให้ n8n ตอบ แล้วมันตอบว่า "ส่วนใหญ่ไม่มีขั้นต่ำ สั่ง 1 ชิ้นได้" ซึ่งตรงข้ามกับของจริง
+  // (143 จาก 213 รายการมีขั้นต่ำ ส่วนใหญ่ 11 ชิ้น) — ลูกค้าเชื่อแล้วมาสั่งจะเจอปัญหาหน้างาน
+  let minText = "";
+  if (!priceText && !opener && isMinQtyIntent(message)) {
+    const found = await searchMinQty(`${message} ${parsed?.search_query ?? ""}`.trim()).catch(() => null);
+    if (found?.answer) minText = found.answer;
+  }
+
+  // 📐 ถามสเปก (ขนาด/สี/วัสดุ/ทรง) → ตอบจาก "ตัวเลือกจริงของสินค้า" บนเว็บ
+  // ลูกค้าเจอจริง: ถาม "สแตนดี้โยกเยก มีขนาดเท่าไหร่" แล้วบอทตอบ "ไม่มีขนาดระบุไว้ในข้อมูล"
+  // ทั้งที่หน้าสินค้ามีให้เลือกครบ — เพราะเราส่งให้บอทแค่ตารางราคากับลิงก์ ไม่เคยส่งตัวเลือกเลย
+  let specText = "";
+  if (!priceText && !minText && !opener && isSpecIntent(message)) {
+    const found = await searchSpec(`${message} ${parsed?.search_query ?? ""}`.trim()).catch(() => null);
+    if (found?.answer) specText = found.answer;
+  }
+
   // 🔗 แนบลิงก์หน้าสินค้าบนเว็บต่อท้ายคำตอบ — agent ของ n8n ไม่ยอมใส่ลิงก์เองแม้ป้อนให้ใน context
   // (system prompt ของ workflow คุมรูปแบบคำตอบไว้) เว็บเลยแนบเองจากผลค้นหาสินค้าในระบบ
   // ใส่เฉพาะเมื่อค้นเจอสินค้าที่ตรงจริง และคำตอบยังไม่มีลิงก์เว็บร้านอยู่แล้ว
+  /** escalate แบบไม่ด่วน (งานจำนวนมาก/นอกแคตตาล็อก/ถามซ้ำ) — ตอบให้ก่อน แล้วชวนคุยแอดมินต่อท้าย */
+  const adminNote =
+    needsHuman(parsed) && !hardHandoff
+      ? `\n\nเคสนี้แอดมินช่วยดูให้ละเอียดกว่าได้ครับ ทักไลน์ร้านได้เลย 👉 ${SITE_URL}/line`
+      : "";
+
   const withProductLinks = (reply: string): string => {
     const linksToAttach = (ctx?.productLinks ?? []).slice(0, 2);
     if (!linksToAttach.length || /https?:\/\//.test(reply)) return reply;
@@ -163,12 +263,13 @@ export async function POST(req: Request) {
   // เส้นนี้จึงตอบจากเครื่องคิดเงินของเว็บโดยตรง แล้วให้ Gemini เรียบเรียงถ้อยคำอย่างเดียว
   // ได้ครบสามอย่าง: ตัวเลขตรงกับที่ลูกค้าจ่ายจริง · ใช้เวลาไม่ถึง 2 วิ · โทนตรงกับหน้าเว็บ
   // คำถามที่ไม่ใช่ราคา (วิธีสั่ง/นโยบาย/ค่าส่ง) ยังเดินเส้นเดิมผ่าน n8n เหมือนเคย
-  if (priceText) {
-    const written = await writePriceReply(message, priceText, convo).catch(() => null);
+  const direct = priceText || minText || specText;
+  if (direct) {
+    const written = await writePriceReply(message, direct, convo).catch(() => null);
     return NextResponse.json(
       {
-        reply: withProductLinks(written || `ราคาตามนี้ครับ\n\n${priceText}`),
-        ...(body.debug ? { debug: { parsed, stats: ctx?.stats, links: ctx?.productLinks, priceFacts, via: "web-price-engine", ms: Date.now() - t0 } } : {}),
+        reply: withProductLinks(written || direct) + adminNote,
+        ...(body.debug ? { debug: { parsed, stats: ctx?.stats, links: ctx?.productLinks, priceFacts, via: priceText ? "web-price-engine" : minText ? "web-minqty" : "web-spec", ms: Date.now() - t0 } } : {}),
       },
       { headers: { "Cache-Control": "no-store" } },
     );
@@ -229,7 +330,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json(
     {
-      reply: withProductLinks(reply),
+      reply: withProductLinks(reply) + adminNote,
       // โหมดดีบัก (ส่ง debug:true มากับคำถาม) — ดูผลวิเคราะห์/ลิงก์ที่ระบบจับได้ ไว้ไล่ปัญหาคำตอบเพี้ยน ไม่มีข้อมูลลับ
       ...(body.debug ? { debug: { parsed, stats: ctx?.stats, links: ctx?.productLinks, priceFacts } } : {}),
     },

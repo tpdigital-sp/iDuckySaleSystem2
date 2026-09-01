@@ -4,7 +4,14 @@ import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { createClient } from "@supabase/supabase-js";
 import { productPath } from "@/lib/products";
 import { SITE_URL } from "@/lib/shop-info";
-import { buildParsedHint, isHowToQuestion, isPricingQuestion, type ParsedMessage } from "./chat-parse";
+import {
+  buildParsedHint,
+  isHowToQuestion,
+  isPricingQuestion,
+  parsedProduct,
+  parsedTerms,
+  type ParsedMessage,
+} from "./chat-parse";
 
 /**
  * บริบทที่ส่งไปให้ n8n พร้อมคำถามลูกค้า — ให้ตอบได้เหมือนหน้าแชทของ AdminBuddy (chat.html)
@@ -266,17 +273,9 @@ export async function buildChatContext(message: string, parsed: ParsedMessage | 
   }
 
   // คำที่ใช้จับคู่ — รวมผลวิเคราะห์จาก Gemini (คำที่แก้แล้ว/คำพ้อง) ถ้ามี ให้จับได้แม่นขึ้นมาก
-  const parsedTerms = [
-    parsed?.product,
-    parsed?.material,
-    parsed?.corrected_query,
-    ...(parsed?.products ?? []),
-    ...(parsed?.search_terms ?? []),
-  ]
-    .filter((t): t is string => typeof t === "string" && !!t.trim())
-    .map((t) => t.toLowerCase());
-  const msgLower = [message.toLowerCase(), ...parsedTerms].join(" ");
-  const msgWords = [...new Set([...message.toLowerCase().split(/[\s,+]+/), ...parsedTerms.flatMap((t) => t.split(/[\s,+]+/))])]
+  const terms = parsedTerms(parsed).map((t) => t.toLowerCase());
+  const msgLower = [message.toLowerCase(), ...terms].join(" ");
+  const msgWords = [...new Set([...message.toLowerCase().split(/[\s,+]+/), ...terms.flatMap((t) => t.split(/[\s,+]+/))])]
     .filter((w) => w.length >= 2);
 
   let sys = buildParsedHint(parsed);
@@ -284,11 +283,11 @@ export async function buildChatContext(message: string, parsed: ParsedMessage | 
   // 🔗 สินค้าบนเว็บร้านที่ตรงกับคำถาม — ลิงก์จริงที่ลูกค้ากดเข้าไปเลือกตัวเลือก/สั่งซื้อได้เลย
   // แนบเฉพาะเมื่อลูกค้า "ถามหาสินค้า" จริง (parse แล้วเจอชื่อสินค้า) — คำถามบริการ/นโยบาย เช่น
   // "ช่วยออกแบบให้ไหม" เคยโดนคำว่า "ออกแบบ" ใน description ลากลิงก์กรอบรูปมาแนบมั่ว
-  const wantsProduct = !parsed || !!(parsed.product || parsed.products?.length);
+  const wantsProduct = !parsed || !!parsedProduct(parsed);
   // จับคู่ลิงก์จาก "ข้อความลูกค้า + ชื่อสินค้าที่ AI สรุป" เท่านั้น — ห้ามใช้ search_terms
   // (Gemini ชอบแตกคำค้นเป็นชื่อสินค้าอื่น เช่นถาม "ออกแบบ" ได้ "ออกแบบกรอบรูป/ออกแบบธง" แล้วลิงก์มั่ว)
-  const linkTerms = [parsed?.product, parsed?.material, ...(parsed?.products ?? [])]
-    .filter((t): t is string => typeof t === "string" && !!t.trim())
+  const linkTerms = [parsedProduct(parsed), parsed?.slots?.material ?? ""]
+    .filter((t) => !!t.trim())
     .map((t) => t.toLowerCase());
   const linkMsgLower = [message.toLowerCase(), ...linkTerms].join(" ");
   const linkMsgWords = [...new Set([...message.toLowerCase().split(/[\s,+]+/), ...linkTerms.flatMap((t) => t.split(/[\s,+]+/))])]
@@ -385,28 +384,27 @@ export async function buildChatContext(message: string, parsed: ParsedMessage | 
  * (n8n agent อ่าน message เป็นหลัก การสั่งงานในนี้ได้ผลกว่าใน systemMessage)
  */
 function buildMessageHint(parsed: ParsedMessage | null, kb: KbItem[]): string {
-  if (!parsed?.search_terms?.length) return "";
+  const product = parsedProduct(parsed);
+  const query = parsed?.search_query?.trim() || product;
+  if (!query) return "";
 
   if (isHowToQuestion(parsed)) {
-    return `\n[คำแนะนำระบบ: ลูกค้าถามเกี่ยวกับ "วิธีการ/ขั้นตอน" ของ "${parsed.product ?? parsed.corrected_query ?? ""}" — ตอบอธิบายวิธีการ/ขั้นตอนให้ละเอียดก่อนเป็นหลัก แล้วเสริมราคาเป็นข้อมูลเพิ่มเติมสั้นๆ ทีหลัง กรุณาค้นหาข้อมูลจาก knowledge base ก่อน]`;
+    return `\n[คำแนะนำระบบ: ลูกค้าถามเรื่อง "สเปค/ขั้นตอน/ระยะเวลา" ของ "${query}" — ตอบอธิบายให้ละเอียดก่อนเป็นหลัก แล้วเสริมราคาสั้น ๆ ทีหลัง กรุณาค้นหาข้อมูลจาก knowledge base ก่อน]`;
   }
 
   // hint "สั่งให้ค้นราคา" ใส่เฉพาะคำถามราคาจริง ๆ — เคยใส่ทุกคำถามแล้วเจอ agent
   // เอาคำทักทาย/คำถามทั่วไปไปค้นราคาจนตอบราคาสินค้ามั่ว ๆ กลับมา (เช่นทัก "สวัสดี" ได้ราคารองแก้ว)
   if (!isPricingQuestion(parsed)) return "";
 
-  const materialHint = parsed.material ? ` วัสดุ: ${parsed.material}` : "";
-  const allSearchTerms = parsed.search_terms.slice(0, 3).join('", "');
-  const productsHint =
-    parsed.products && parsed.products.length > 1
-      ? `\nลูกค้าสั่ง ${parsed.products.length} รายการ: ${parsed.products.join(", ")} — ค้นหาราคาแยกแต่ละรายการ ใช้เรทตามจำนวนแต่ละรายการ (ไม่ใช่จำนวนรวม)`
-      : "";
-  const quantityHint = parsed.quantity ? ` จำนวน: ${parsed.quantity}` : "";
+  const s = parsed?.slots ?? {};
+  const materialHint = s.material ? ` วัสดุ: ${s.material}` : "";
+  const quantityHint = s.quantity ? ` จำนวน: ${s.quantity}` : "";
+  const sizeHint = s.size ? ` ขนาด: ${s.size}` : "";
 
   // ค้นข้อมูล "เซ็ต/หน่วยนับ" จาก KB แล้วฝังเข้า hint ตรง ๆ (กัน AI คิดเรทผิดเพราะนับหน่วยผิด)
   let setInfoHint = "";
-  if (parsed.product && kb.length) {
-    const productLower = parsed.product.toLowerCase();
+  if (product && kb.length) {
+    const productLower = product.toLowerCase();
     const setKeywords = ["เซ็ต", "set", "ชุด", "หน่วย", "กี่ชิ้น", "กี่ใบ"];
     const matched = kb.filter((k) => {
       const title = (k.title ?? "").toLowerCase();
@@ -424,13 +422,13 @@ function buildMessageHint(parsed: ParsedMessage | null, kb: KbItem[]): string {
     }
   }
 
-  return `\n[คำแนะนำระบบ: ลูกค้าถามเกี่ยวกับ "${parsed.product ?? parsed.corrected_query ?? ""}"${materialHint}${quantityHint}${setInfoHint}
-กรุณาใช้ get_master_pricing ค้นหาคำว่า "${allSearchTerms}" เพื่อหาราคา${
+  return `\n[คำแนะนำระบบ: ลูกค้าถามเกี่ยวกับ "${product || query}"${materialHint}${sizeHint}${quantityHint}${setInfoHint}
+กรุณาใช้ get_master_pricing ค้นหาคำว่า "${query}" เพื่อหาราคา${
     materialHint
       ? `
-สำคัญ: ลูกค้าระบุวัสดุเป็น "${parsed.material}" ต้องค้นหาราคาที่ตรงกับวัสดุนี้เท่านั้น ห้ามใช้ราคาวัสดุอื่น`
+สำคัญ: ลูกค้าระบุวัสดุเป็น "${s.material}" ต้องค้นหาราคาที่ตรงกับวัสดุนี้เท่านั้น ห้ามใช้ราคาวัสดุอื่น`
       : ""
   }
 ถ้าราคาเป็น "เซ็ต" แต่ลูกค้าบอก "ชิ้น" → ต้องแปลงจำนวนก่อนค้นเรท
-ห้ามตอบว่าไม่มีข้อมูลโดยไม่ค้นหาก่อน${productsHint}]`;
+ห้ามตอบว่าไม่มีข้อมูลโดยไม่ค้นหาก่อน]`;
 }
