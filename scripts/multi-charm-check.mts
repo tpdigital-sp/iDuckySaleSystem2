@@ -9,6 +9,7 @@ import {
   allowedChoices,
   choiceExtraAtQty,
   tierQtyFor,
+  optionFeeQty,
   optionVisible,
   artworkConsultOf,
   unitPriceFor,
@@ -120,17 +121,19 @@ ok("ทุกกลุ่มในชุดตั้ง sectionTrim ให้ต
 ok("กลุ่มนอกชุดไม่ติดชุด", [HANG, COUNT].every((l) => !sectionOf(l)));
 ok("ชื่อกลุ่มเต็มยังอยู่ (ตะกร้า/ใบงานอ่านออกว่าชิ้นไหน)", p.options.some((o) => o.label === "ขนาดชิ้นที่ 2") && trimOf("ขนาดชิ้นที่ 2") === "ชิ้นที่ 2");
 
-console.log("\n── เรทติ่งห้อย (ชิ้นที่ 2 ขึ้นไป · เริ่ม 2 ซม. · 20/15/12 ตามชิ้นรวม) ──");
+console.log("\n── เรทติ่งห้อย (ชิ้นที่ 2 ขึ้นไป · เริ่ม 2 ซม. · 20/15/12 ตามจำนวนติ่งห้อยรวม) ──");
 const SIZE2 = "ขนาดชิ้นที่ 2";
 const charmSize = group(SIZE2);
 ok("ติ่งห้อยเลิกดึงราคาจากตารางเรทของชิ้นที่ 1", !charmSize.priceAsDriver && !charmSize.priceAsDriverAlso);
-// 1 พวง 3 ชิ้น → สั่ง 1 พวง = 3 ชิ้นรวม (ช่วงปลีก) · 5 พวง = 15 ชิ้น · 10 พวง = 30 ชิ้น
+// พวงละ 3 ชิ้น = ติ่งห้อยพวงละ 2 ติ่ง → สั่ง 1 พวง = 2 ติ่ง (ปลีก) · 10 พวง = 20 ติ่ง · 15 พวง = 30 ติ่ง
 const selC = resolveSelections(p, { [COUNT]: "3 ชิ้น" });
-const feeAt = (name: string, units: number) => choiceExtraAtQty(charmSize, selC, name, tierQtyFor(p, selC, units));
-ok(`ติ่งห้อย 2cm = ${feeAt("2cm", 1)}/${feeAt("2cm", 5)}/${feeAt("2cm", 10)} บาท`,
-  feeAt("2cm", 1) === 20 && feeAt("2cm", 5) === 15 && feeAt("2cm", 10) === 12);
-ok(`ติ่งห้อย 3cm = ${feeAt("3cm", 1)}/${feeAt("3cm", 5)}/${feeAt("3cm", 10)} บาท (ใหญ่กว่า 2cm บวก cm ละ 10)`,
-  feeAt("3cm", 1) === 30 && feeAt("3cm", 5) === 25 && feeAt("3cm", 10) === 22);
+ok('ค่าติ่งห้อยนับเรทจาก "จำนวนติ่งห้อยรวม" (extraQtyScope)', charmSize.extraQtyScope === "extraPieces");
+const feeAt = (name: string, units: number) =>
+  choiceExtraAtQty(charmSize, selC, name, optionFeeQty(p, charmSize, selC, tierQtyFor(p, selC, units)));
+ok(`ติ่งห้อย 2cm = ${feeAt("2cm", 1)}/${feeAt("2cm", 10)}/${feeAt("2cm", 15)} บาท (1 / 10 / 15 พวง = 2 / 20 / 30 ติ่ง)`,
+  feeAt("2cm", 1) === 20 && feeAt("2cm", 10) === 15 && feeAt("2cm", 15) === 12);
+ok(`ติ่งห้อย 3cm = ${feeAt("3cm", 1)}/${feeAt("3cm", 10)}/${feeAt("3cm", 15)} บาท (ใหญ่กว่า 2cm บวก cm ละ 10)`,
+  feeAt("3cm", 1) === 30 && feeAt("3cm", 10) === 25 && feeAt("3cm", 15) === 22);
 ok(`ติ่งห้อย 10cm = ${feeAt("10cm", 1)} บาท (ปลีก)`, feeAt("10cm", 1) === 100);
 const oneCharm2cm = resolveSelections(p, { ...baseSel, "ขนาดชิ้นที่ 2": "2cm" });
 const charm2 = unitPriceFor(p, oneCharm2cm, 1);
@@ -141,6 +144,20 @@ ok("ค่าติ่งห้อยแยกบรรทัดให้ลู�
 // เนื้อ/งานสกรีนของติ่งห้อยไม่บวกราคาแล้ว (เดิมบวกผ่านตารางเรท) — บันทึกไว้ให้เห็นชัดว่าตั้งใจ
 const charmSpecial = unitPriceFor(p, resolveSelections(p, { ...oneCharm2cm, [TYPE2]: SPECIAL, "สีอะคริลิค ชิ้นที่ 2": "hologram-01" }), 1);
 ok(`ติ่งห้อยเลือกสีพิเศษ/สกรีน 2 ด้าน = ไม่บวกเพิ่ม (฿${charmSpecial})`, charmSpecial === unitPriceFor(p, oneCharm2cm, 1));
+
+console.log("\n── ช่วงราคาคิดตามจำนวนพวง ไม่ใช่ชิ้นรวม (1 ก.ย. 69) ──");
+const selQ = resolveSelections(p, {
+  ...baseSel,
+  "ขนาดชิ้นที่ 2": "2cm",
+  [HANG]: "ห้อยด้านข้าง",
+  ตะขอ: "F ตะขอสปริง 12×35mm (เงิน/ทอง/โรสโกลด์/รุ้ง)", // + สีตะขอ · โลหะ = สีเงิน +฿8 (ตามใบเสนอราคา)
+});
+ok("สั่ง 15 พวง พวงละ 2 ชิ้น → เรท 15 (ไม่ใช่ 30)", tierQtyFor(p, selQ, 15) === 15);
+const q15 = unitPriceParts(p, selQ, 15);
+const q30 = unitPriceParts(p, selQ, 30);
+ok(`15 พวง = ฿${q15.total}/พวง (ฐาน ฿${q15.base} + ติ่งห้อย 2cm ฿15 + ตะขอ ฿8) — ตรงใบเสนอราคาจริง`, q15.total === 82);
+ok(`30 พวง = ฿${q30.total}/พวง (ฐาน ฿${q30.base} + ติ่งห้อย 2cm ฿12 + ตะขอ ฿8) — ตรงใบเสนอราคาจริง`, q30.total === 75);
+ok("ป้ายช่วงราคาในตารางเปลี่ยนเป็น 'พวง'", (p.pricing?.tiers ?? []).every((t) => !/ชิ้น/.test(t.label ?? "")));
 
 console.log(fail ? `\n❌ ไม่ผ่าน ${fail} ข้อ` : "\n✅ ผ่านทั้งหมด");
 process.exit(fail ? 1 : 0);

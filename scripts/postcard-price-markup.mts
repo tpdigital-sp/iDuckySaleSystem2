@@ -1,26 +1,30 @@
 #!/usr/bin/env npx tsx
 /**
- * POSTCARD / โปสการ์ด (postcard-th) — บวกราคาทุกชนิดกระดาษ +10 บาท/แผ่น A3
+ * POSTCARD / โปสการ์ด (postcard-th) — ส่วนบวก/ลบราคาทุกชนิดกระดาษ (บาท/แผ่น A3) เทียบหน้าต้นทาง
  *
  *   npx tsx scripts/postcard-price-markup.mts           # ดูผลก่อน (ไม่เขียน)
  *   npx tsx scripts/postcard-price-markup.mts --write   # เขียนสินค้า
  *
- * ผู้ใช้สั่ง (1 ก.ย. 69): "ปรับราคา บวก10บาท ทุกชนิดกระดาษ"
- * — ตารางโปสการ์ดยกมาจาก paper-art-pet (งานตัดตามขนาด) ราคาโปสการ์ดแพงกว่างานกระดาษเปล่า 10 บาท/แผ่น
+ * ผู้ใช้สั่ง (1 ก.ย. 69): "ปรับราคา บวก10บาท ทุกชนิดกระดาษ" → ต่อมาวันเดียวกันสั่งกลับ
+ * "ราคาต้องลดลงมา 10 บาท" ทีละกลุ่มจนครบทั้งตาราง (กระดาษผิวพิเศษ → อาร์ตมัน → PET)
+ * — ตอนนี้ MARKUP = 0 คือ **ราคาโปสการ์ดเท่าหน้าต้นทางเป๊ะ** (paper-art-pet เรทตัดตามขนาด)
  *
  * บวกทุกช่อง = ทุกชนิดกระดาษ × ทุกการเคลือบ × ทุกขั้นจำนวน (ราคาต่อแผ่น A3 ทั้งตาราง)
  *
- * ⚠️ กันบวกซ้ำ: เก็บยอดที่บวกไว้ใน `data.priceMarkup` — รันซ้ำแล้วเห็นว่าบวกครบแล้วจะไม่บวกทับ
- *    (สั่งเพิ่มทีหลังให้แก้ MARKUP เป็นยอดรวมใหม่ สคริปต์จะบวกเฉพาะส่วนต่าง)
+ * ⚠️ กันบวกซ้ำ: เก็บยอดที่บวกไว้ใน `data.priceMarkup` — รันซ้ำแล้วเห็นว่าตรงเป้าแล้วจะไม่แตะซ้ำ
+ *    (แก้ MARKUP เป็นยอดรวมใหม่ สคริปต์จะปรับเฉพาะส่วนต่าง ลดได้ด้วยถ้าเป้าน้อยกว่าที่บวกไว้)
  * ⚠️ สคริปต์ต้นน้ำ postcard-price-from-paper-art.mts บวก MARKUP เดียวกันนี้ตอนก๊อปตารางอยู่แล้ว
- *    ลำดับรันทั้งชุด: price-from-paper-art → special-papers → paper-group-tidy → price-markup → option-art
+ * ⚠️ สคริปต์นี้แตะ **ทุกช่อง** รวมกระดาษผิวพิเศษ 6 ชนิดที่ไปอิงหน้า texture-paper (ซึ่งไม่คิด markup)
+ *    → รัน postcard-special-papers-from-texture.mts ปิดท้ายเสมอ ราคากลุ่มนั้นจะถูกคำนวณใหม่จากต้นทาง
+ *    ลำดับรันทั้งชุด: price-from-paper-art → special-papers → paper-group-tidy → price-markup →
+ *                     special-papers-from-texture → option-art
  */
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 
 const WRITE = process.argv.includes("--write");
 const ID = "postcard-th";
-const MARKUP = 10;
+const MARKUP = 0;
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -44,7 +48,7 @@ if (add === 0) {
   console.log("✅ ราคาบวกครบตามเป้าแล้ว ไม่ต้องแก้อะไร");
   process.exit(0);
 }
-if (add < 0) throw new Error(`ตารางบวกไว้เกินเป้า (${done} > ${MARKUP}) — ลดราคาต้องมาดูเองก่อน`);
+if (add < 0) console.log(`⚠️ เป้าน้อยกว่าที่บวกไว้ → รอบนี้ "ลด" ราคาลง ${-add} บาททุกช่อง`);
 
 const cells: Record<string, number[]> = d.pricing.cells;
 const sample = Object.keys(cells).slice(0, 3);
@@ -52,6 +56,8 @@ const beforeSample = sample.map((k) => `${k} ${JSON.stringify(cells[k])}`);
 for (const k of Object.keys(cells)) cells[k] = cells[k].map((v) => v + add);
 d.priceMarkup = MARKUP;
 
+const floor = Math.min(...Object.values(cells).flat());
+if (floor <= 0) throw new Error(`ปรับแล้วมีช่องราคา ≤ 0 (ต่ำสุด ${floor}) — หยุดก่อนเขียน`);
 const all = Object.values(cells).flat();
 d.price = Math.min(...all);
 d.priceMin = Math.min(...all);

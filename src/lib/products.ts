@@ -279,6 +279,20 @@ export interface ProductOption {
    */
   extraSmallUpToQty?: number;
   /**
+   * 🧮 ขั้น +฿ ของกลุ่มนี้นับจาก "จำนวนชิ้น" ของสินค้าหลายชิ้นต่อหน่วย (Product.pieceCountLabel)
+   * แทนจำนวนหน่วยขาย — ใช้กับกลุ่มที่ราคาเป็นของ "ชิ้นย่อย" ไม่ใช่ของทั้งหน่วย
+   *   "pieces"      = ทุกชิ้นในหน่วย (พวงละ 3 ชิ้น × 10 พวง = 30)
+   *   "extraPieces" = ชิ้นที่ 2 เป็นต้นไป (ติ่งห้อย — พวงละ 3 ชิ้น × 10 พวง = 20)
+   * เช่น พวงกุญแจหลายชิ้น: ราคาฐานคิดเรทตามจำนวนพวง (= จำนวนตัวหลัก) แต่ค่าติ่งห้อย 20/15/12
+   * ต้องคิดเรทตาม "จำนวนติ่งห้อยรวม" ของทั้งออเดอร์ · ไม่ตั้ง = นับเป็นหน่วยขายเหมือนทุกกลุ่ม
+   */
+  extraQtyScope?: "pieces" | "extraPieces";
+  /**
+   * คำเรียกหน่วยของ extraQtyScope ที่โชว์ในบรรทัด 💡 ("ครบ 30 ติ่งห้อย เหลือ +฿12/พวง")
+   * ไม่ตั้ง = "ชิ้น" · ไม่มีผลกับการคิดเงิน เป็นคำอธิบายอย่างเดียว
+   */
+  extraQtyWord?: string;
+  /**
    * 🔢 +฿ ของกลุ่มนี้คูณด้วย "จำนวนที่ระบุไว้ในกลุ่มอื่น" — ใส่ชื่อกลุ่มต้นทาง
    * ใช้กับกลุ่มลูกที่ราคาผูกกับของชิ้นเดียวกัน เช่น Acrylic Kit: กลุ่ม "ตะขอ" ให้ระบุจำนวนได้
    * (ติ๊ก F แล้วใส่ 3 ชิ้น) กลุ่ม "สีตะขอ · โลหะ" ที่โชว์ตามตะขอ F ต้องคิดสีคูณ 3 ตามไปด้วย
@@ -1942,9 +1956,9 @@ export function unitPieceCountOf(product: Product, selections: Record<string, st
  *   (ลูกค้าอยากคละเยอะยอมจ่ายราคาปลีกได้เอง — ระบบปรับเรทให้เห็นตรง ๆ ไม่ใช่แค่ป้ายเตือน)
  */
 export function tierQtyFor(product: Product, selections: Record<string, string>, qty: number): number {
-  // สินค้าหลายชิ้นต่อหน่วย (pieceCountLabel) — ช่วงราคานับจาก "จำนวนชิ้นรวม" ไม่ใช่จำนวนหน่วย
-  // (เงื่อนไขที่อิงช่วงราคา เช่น extraFromQty/ค่าเหมาช่วงปลีก ใช้เลขเดียวกัน จะได้ไม่คิดซ้ำกับราคาช่วงส่ง)
-  qty = qty * unitPieceCountOf(product, selections);
+  // ⚠️ สินค้าหลายชิ้นต่อหน่วย (pieceCountLabel) ก็นับเป็น "หน่วยขาย" เหมือนกัน — สั่ง 15 พวง พวงละ 2 ชิ้น
+  // = เรท 15 ไม่ใช่ 30 (ผู้ใช้เคาะ 1 ก.ย. 69: ขายเป็นพวง ตารางเรทคิดจากจำนวนตัวหลัก = จำนวนพวง)
+  // กลุ่มที่ราคาเป็นของ "ชิ้นย่อย" (ติ่งห้อย) นับเป็นชิ้นได้ผ่าน ProductOption.extraQtyScope — ดู optionFeeQty()
   // สินค้าที่คิดค่าคละเป็นเงินต่อหน่วยแล้ว (mixRule — ระดับสินค้าหรือระดับตัวเลือก) ห้ามลดเรทซ้ำอีก
   // ไม่งั้นลูกค้าโดนสองเด้ง: จ่ายค่าคละ + ราคาตกไปเรทปลีก
   if (mixRuleFor(product, selections)) return qty;
@@ -1958,6 +1972,27 @@ export function tierQtyFor(product: Product, selections: Record<string, string>,
     return Math.max(1, Math.floor(qty / d));
   }
   return Math.max(1, Math.floor(qty / d));
+}
+
+/**
+ * 🧮 จำนวนที่ใช้เทียบ "ขั้น +฿" ของกลุ่มหนึ่ง (extraFromQty / extraSmallUpToQty / extraTiers / ค่าเหมาช่วงปลีก)
+ * ปกติ = จำนวนที่ใช้หาช่วงราคาฐาน (tierQty — นับเป็นหน่วยขาย) เท่ากันทุกกลุ่ม
+ * ยกเว้นกลุ่มที่ตั้ง ProductOption.extraQtyScope ไว้ ซึ่งราคาเป็นของ "ชิ้นย่อย" ในหน่วยขาย:
+ *   พวงกุญแจหลายชิ้น สั่ง 15 พวง พวงละ 2 ชิ้น → ราคาฐานคิดเรท 15 (จำนวนตัวหลัก)
+ *   แต่ค่าติ่งห้อยคิดเรทจาก 15 ติ่ง (extraPieces) · พวงละ 3 ชิ้น = 30 ติ่ง
+ */
+export function optionFeeQty(
+  product: Product,
+  opt: ProductOption,
+  selections: Record<string, string>,
+  tierQty: number
+): number {
+  const scope = opt.extraQtyScope;
+  if (!scope || !product.pieceCountLabel) return tierQty;
+  const per = unitPieceCountOf(product, selections);
+  const n = scope === "extraPieces" ? per - 1 : per;
+  // ชิ้นย่อยยังไม่มีสักชิ้น (พวงละ 1 ชิ้น = ไม่มีติ่งห้อย) — กลุ่มนี้ถูกซ่อนอยู่แล้ว คืนเลขเดิมกันหารศูนย์
+  return n > 0 ? tierQty * n : tierQty;
 }
 
 /**
@@ -2137,7 +2172,7 @@ export function unitAddOnBreakdown(product: Product, selections: Record<string, 
     if (m?.driverLabels.includes(opt.label)) continue;
     // สองชนิดนี้ไม่เข้าราคาต่อหน่วย (ไปโผล่ที่ feeBreakdown แทน) — ใส่ซ้ำจะกลายเป็นบอกสองรอบ
     if (opt.extraPerDesign || opt.sheetFee) continue;
-    const add = groupAddOf(opt, selections, qty);
+    const add = groupAddOf(opt, selections, optionFeeQty(product, opt, selections, qty));
     if (add <= 0) continue;
     const picked = selections[opt.label];
     // ช่องกรอกเก็บแค่ตัวเลข ("2 นิ้ว") — ลำพังอ่านไม่รู้ว่าค่าอะไร ใส่ชื่อกลุ่มนำหน้าให้
@@ -2840,6 +2875,12 @@ export interface SizeInputSpec {
   askOver?: number;
   /** หน่วยที่โชว์ในข้อความสรุป เช่น "ซม." (ไม่ตั้ง = ไม่ต่อหน่วย) */
   unit?: string;
+  /**
+   * เศษที่ยัง "ผ่อนให้" อยู่แถวเดิมได้ ก่อนจะขยับขึ้นแถวถัดไป (ไม่ตั้ง = 0.5)
+   * 0.5 → 3.5 ยังคิดราคาแถว 3cm · 3.6 ขยับเป็นแถว 4cm
+   * 0 = ปัดขึ้นทุกเศษเหมือนเดิม (3.1 → แถว 4cm)
+   */
+  roundSlack?: number;
 }
 
 /** 📐 ที่มาของราคางาน "กำหนดขนาดเอง" ในกลุ่มแกนราคา — ใช้ทั้งคิดเงินและกางให้ลูกค้าอ่าน */
@@ -2849,7 +2890,7 @@ export interface SizeInputPlan {
   /** ค่าที่ลูกค้ากรอก (0 = ยังไม่กรอก) */
   width: number;
   height: number;
-  /** ด้านยาวสุดปัดขึ้นเต็มหน่วย (0 = ยังกรอกไม่ครบ) */
+  /** ด้านยาวสุดหลังปัดเป็นเต็มหน่วยตาม roundSlack (0 = ยังกรอกไม่ครบ) */
   longest: number;
   /**
    * ชื่อแถวขนาดในตารางที่ใช้เป็นราคา — null = ใหญ่เกินตาราง (รอตีราคา)
@@ -2892,8 +2933,12 @@ export function sizeInputPlan(p: Product, selections: Record<string, string>): S
     if (!(w > 0 && h > 0)) {
       return { ...base, longest: 0, choice: rows[0]?.name ?? null, filled: false, quote: false };
     }
-    // ปัดขึ้นเต็มหน่วย เผื่อ floating point ของเลขที่ลูกค้าพิมพ์ (14.000000001)
-    const longest = Math.ceil(Math.max(w, h) - 1e-9);
+    // ปัดเป็นเต็มหน่วยแบบ "ผ่อนเศษ" — เศษไม่เกิน roundSlack (ค่าเริ่มต้น 0.5) ยังอยู่แถวเดิม
+    // 3.5 → 3 (แถว 3cm) · 3.6 → 4 (แถว 4cm) · 1e-9 กันเลขทศนิยมของ Number() (3.5000000001)
+    const raw = Math.max(w, h);
+    const slack = Math.max(0, cfg.roundSlack ?? 0.5);
+    const floor = Math.floor(raw + 1e-9);
+    const longest = Math.max(1, raw - floor > slack + 1e-9 ? floor + 1 : floor);
     const row = rows.find((r) => longest <= r.cm);
     // เกินเพดานที่แอดมินตั้งไว้ หรือไม่มีแถวไหนครอบได้ = ให้แอดมินตีราคา
     if (!row || (cfg.askOver != null && longest > cfg.askOver)) {
@@ -4815,6 +4860,8 @@ export function unitPriceFor(
         note(opt.label, fee);
         continue;
       }
+      // 🧮 กลุ่มที่ +฿ นับเป็น "ชิ้น" ของสินค้าหลายชิ้นต่อหน่วย (ติ่งห้อย) — ขั้นราคาใช้จำนวนชิ้นรวมของกลุ่มนั้น
+      const feeQty = optionFeeQty(product, opt, selections, tierQty);
       // 💰 กลุ่มราคาดึงจากตารางเรท (priceAsDriver) — เช่น "ขนาดชิ้นที่ 2" บวกราคาช่องขนาดนั้น
       // ของเรทปัจจุบัน ณ ช่วงจำนวนเดียวกับราคาฐาน (สเปคอื่น ๆ ตามที่เลือกอยู่)
       if (opt.priceAsDriver && m.driverLabels.includes(opt.priceAsDriver)) {
@@ -4823,7 +4870,7 @@ export function unitPriceFor(
         note(opt.label, add);
         continue;
       }
-      const add = groupAddOf(opt, selections, tierQty);
+      const add = groupAddOf(opt, selections, feeQty);
       base += add;
       note(opt.label, add);
     }
@@ -4836,7 +4883,7 @@ export function unitPriceFor(
   for (const opt of product.options) {
     // กลุ่มที่ถูกซ่อน หรือกลุ่มงานสั่งทำที่ลูกค้ายังไม่ได้ติ๊ก = ไม่คิดเงิน
     if (!optionActive(opt, selections)) continue;
-    const add = groupAddOf(opt, selections, tierQty);
+    const add = groupAddOf(opt, selections, optionFeeQty(product, opt, selections, tierQty));
     price += add;
     note(opt.label, add);
   }

@@ -65,6 +65,7 @@ import {
   resolveSelections,
   choiceBadgeOf,
   choiceExtraAtQty,
+  optionFeeQty,
   extraTierBest,
   unitPieceCountOf,
   sizeFeeBreakdownOf,
@@ -880,9 +881,10 @@ export default function ProductDetail({
    * ใช้สรุปให้ลูกค้าว่า "สั่ง 10 แผ่น A3 ขนาดตัด A5 = ได้ 40 ชิ้น" · ไม่เกี่ยวกับราคา
    */
   const unitYield = useMemo(() => unitYieldOf(product, effective), [product, effective]);
-  // 🧮 สินค้าหลายชิ้นต่อหน่วย (pieceCountLabel — พวงละหลายชิ้น): เกณฑ์ลาย/เรทนับจาก "จำนวนชิ้นรวม"
-  // = จำนวนหน่วยที่สั่ง × ชิ้นต่อหน่วย (สินค้าปกติ = 1 เท่าเดิม) · หน่วยในข้อความเกณฑ์พวกนี้ = ชิ้น
-  const pieceQty = qty * unitPieceCountOf(product, effective);
+  // 🧮 จำนวนที่ใช้เทียบ "เกณฑ์เรท/คละลาย" — ต้องเป็นเลขเดียวกับที่ tierQtyFor ใช้ (= จำนวนหน่วยขาย)
+  // ⚠️ สินค้าหลายชิ้นต่อหน่วย (พวงละหลายชิ้น) เคยคูณชิ้นต่อหน่วยตรงนี้ — เลิกแล้ว (1 ก.ย. 69)
+  //    หน้าเว็บโชว์เกณฑ์คนละเลขกับที่ระบบคิดเงิน = บอกว่า "คละได้ 6 ลาย" แต่ราคาคิดแบบ 3 ลาย
+  const pieceQty = qty;
   // ลายที่รวมในราคาตามจำนวนที่สั่ง · เรทที่เปิด extraDesignFee คละเกินได้ (จ่ายเพิ่มต่อลาย ไม่เกินจำนวนชิ้น)
   // ส่ง unitCap ไปด้วยเสมอ — สินค้าขายเป็นเซ็ต โควตาช่วงคละอิสระต้องนับเป็นชิ้น ไม่ใช่จำนวนเซ็ต
   const included = rate?.minPerDesign ? includedDesigns(rate, pieceQty, unitCap ?? 1) : 0;
@@ -919,14 +921,25 @@ export default function ProductDetail({
     setQty((q) => Math.max(q, artFiles.length));
   }, [artFiles.length, tierByDesign]);
 
-  // ✨ นับจำนวนลายอัตโนมัติตามรูปลายที่แนบ
-  // ยังไม่เคยปรับเอง = ตามจำนวนรูปเป๊ะ · เคยปรับเองแล้ว = ไม่ลดให้ แต่ถ้าแนบรูป "เกิน" ที่ตั้งไว้
-  // ดันขึ้นตามรูปเสมอ (ทางร้านนับลายจากไฟล์จริง — ราคาต้องขยับตาม ไม่ใช่แค่ป้ายเตือน)
+  /** จำนวนรูปลายรอบก่อน — ใช้จับว่า "จำนวนรูปเพิ่งเปลี่ยน" (แนบเพิ่ม/ลบออก) ไม่ใช่แค่ re-render */
+  const artCountRef = useRef(artFiles.length);
+  /**
+   * ✨ นับจำนวนลายอัตโนมัติตามรูปลายที่แนบ — ทางร้านนับลายจริงจากไฟล์ ตัวเลขจึงต้องตรงกับรูปเสมอ
+   *
+   * 🐞 บั๊คที่แก้ (1 ก.ย. 69): พิมพ์จำนวนลายไว้ก่อน แล้วค่อยแนบรูปทีหลัง ตัวเลขไม่ยอมลงมาตามรูป
+   *    (โค้ดเดิมดันขึ้นตามรูปอย่างเดียว — พิมพ์ 3 แล้วแนบ 2 รูป ค้างที่ 3 ลูกค้าจ่ายค่าคละเกินจริง)
+   *    → ทุกครั้งที่ "จำนวนรูปเปลี่ยน" ให้ซิงก์จำนวนลาย = จำนวนรูป ทั้งขึ้นและลง
+   *      (ลบรูปออกหมด = ไม่ยุ่ง ปล่อยค่าที่ระบุไว้ · หลังซิงก์แล้วลูกค้ายังกด +/− ปรับเองต่อได้)
+   */
   useEffect(() => {
     if (maxDesigns < 1) return;
+    const n = artFiles.length;
+    const artChanged = n !== artCountRef.current;
+    artCountRef.current = n;
+    // ระบุเองแล้วและจำนวนรูปไม่ได้ขยับ = เคารพเลขที่ลูกค้ากดไว้ (แค่ re-render จากตัวเลือก/จำนวน)
+    if (designsTouched && (!artChanged || n < 1)) return;
     setDesigns((d) => {
-      const target = designsTouched ? Math.max(d, artFiles.length) : Math.max(artFiles.length, 1);
-      const next = Math.min(Math.max(1, target), maxDesigns);
+      const next = Math.min(Math.max(1, n), maxDesigns);
       if (next !== d) setDesignsDraft(null); // ค่าเปลี่ยนเพราะนับรูป — ล้างข้อความค้างในช่องให้โชว์ค่าจริง
       return next;
     });
@@ -1206,8 +1219,8 @@ export default function ProductDetail({
 
   // ตารางราคาที่ใช้อยู่ (ตามเรทที่เลือก — สินค้าเรทเดียวคือ pricing เดิม)
   const matrix = useMemo(() => activeMatrix(product, effective), [product, effective]);
-  // หน่วยของ "เกณฑ์ต่อลาย/ขั้นต่ำเรท" — สินค้าหลายชิ้นต่อหน่วย (พวงละหลายชิ้น) เกณฑ์พวกนี้นับเป็นชิ้น ไม่ใช่พวง
-  const pieceUnit = product.pieceCountLabel ? "ชิ้น" : (matrix?.unit ?? "ชิ้น");
+  // หน่วยของ "เกณฑ์ต่อลาย/ขั้นต่ำเรท" — เกณฑ์ทุกตัวนับเป็นหน่วยขาย (พวงละหลายชิ้นก็นับเป็นพวง)
+  const pieceUnit = matrix?.unit ?? "ชิ้น";
   /**
    * 📐 จำนวนงานรวมที่ได้จากจำนวนที่สั่งอยู่ตอนนี้ (เช่น 10 แผ่น A3 ตัด A5 = 40 ชิ้น)
    * null = ยังไม่รู้ หรือคูณไม่ได้เพราะหน่วยที่นับไม่ใช่หน่วยขาย
@@ -1282,12 +1295,19 @@ export default function ProductDetail({
   );
 
   /**
-   * คำเรียกจำนวนที่ใช้เทียบ "เกณฑ์ราคา" ในบรรทัด 💡 (ทุกเกณฑ์เทียบกับ feeQty)
-   * ⚠️ สินค้าหลายชิ้นต่อหน่วย (pieceCountLabel) feeQty คือ "ชิ้นรวม" ไม่ใช่จำนวนหน่วยขาย —
-   *    เขียนว่า "ครบ 30 พวง" ทั้งที่เกณฑ์คือ 30 ชิ้น (= 10 พวง พวงละ 3 ชิ้น) ลูกค้าอ่านแล้วเข้าใจผิด
+   * 🧮 จำนวนที่ใช้เทียบขั้น +฿ ของกลุ่มหนึ่ง — เท่ากับ feeQty ทุกกลุ่ม
+   * ยกเว้นกลุ่มที่ราคาเป็นของ "ชิ้นย่อย" ในหน่วยขาย (extraQtyScope เช่น ติ่งห้อยของพวงกุญแจหลายชิ้น)
+   * ป้าย +฿ บนการ์ดต้องใช้เลขเดียวกับที่คิดเงินจริง (ดู unitPriceFor) ไม่งั้นโชว์คนละราคากับที่จ่าย
    */
-  const tierUnitWord = (perDesign: boolean) => {
-    const base = product.pieceCountLabel ? "ชิ้นรวม" : (matrix?.unit ?? "ชิ้น");
+  const feeQtyOf = (opt: ProductOption) => optionFeeQty(product, opt, effectiveWithDesigns, feeQty);
+
+  /**
+   * คำเรียกจำนวนที่ใช้เทียบ "เกณฑ์ราคา" ในบรรทัด 💡 (เกณฑ์เทียบกับ feeQty = หน่วยขาย)
+   * ⚠️ กลุ่มที่ขั้น +฿ นับเป็นชิ้นย่อย (extraQtyScope — ติ่งห้อย) ต้องเขียนว่า "ชิ้น" ไม่ใช่ "พวง"
+   *    ไม่งั้นขึ้นว่า "ครบ 30 พวง" ทั้งที่เกณฑ์คือ 30 ติ่งห้อย (= 15 พวง พวงละ 2 ชิ้น)
+   */
+  const tierUnitWord = (perDesign: boolean, opt?: ProductOption) => {
+    const base = opt?.extraQtyScope ? (opt.extraQtyWord ?? "ชิ้น") : (matrix?.unit ?? "ชิ้น");
     return perDesign ? `${base}ต่อลาย` : base;
   };
 
@@ -2414,7 +2434,7 @@ export default function ProductDetail({
                                 ไม่ใช่เลขเรทที่ยังไม่ถึง) */}
                             {(() => {
                               const fees = opt.choices
-                                .map((c) => groupAddOf(opt, { ...effective, [opt.label]: c.name }, feeQty))
+                                .map((c) => groupAddOf(opt, { ...effective, [opt.label]: c.name }, feeQtyOf(opt)))
                                 .filter((n) => n > 0)
                                 .sort((a, b) => a - b);
                               return fees.length
@@ -2645,7 +2665,7 @@ export default function ProductDetail({
                             ) : (
                               <p className="mt-1 text-[11px] font-bold text-teal-700">
                                 📐 {plan.width}×{plan.height}
-                                {u} → คิดราคาตามด้านที่ยาวที่สุด ปัดขึ้นเป็นแถว{" "}
+                                {u} → คิดราคาตามด้านที่ยาวที่สุด เกาะแถว{" "}
                                 <span className="font-extrabold text-teal-900">{plan.choice}</span>
                               </p>
                             );
@@ -3346,21 +3366,22 @@ export default function ProductDetail({
                     );
                   })()}
                   {/* กลุ่มที่ระบุจำนวนได้ — สรุปยอดรวมของทั้งกลุ่มหลังคูณจำนวนแล้ว */}
-                  {withQty && picks.length > 0 && groupAddOf(opt, effective, feeQty) > 0 && (
+                  {withQty && picks.length > 0 && groupAddOf(opt, effective, feeQtyOf(opt)) > 0 && (
                     <p className="mt-1 text-[11px] font-semibold text-teal-700">
-                      💡 {opt.label}ที่เลือกไว้ รวม +{formatPrice(groupAddOf(opt, effective, feeQty))} ต่อ
+                      💡 {opt.label}ที่เลือกไว้ รวม +{formatPrice(groupAddOf(opt, effective, feeQtyOf(opt)))} ต่อ
                       {matrix?.unit ?? "ชิ้น"} (คิดตามจำนวนที่ระบุ)
                     </p>
                   )}
                   {/* ค่าธรรมเนียมช่วงสั่งน้อย — บอกทั้งตอนอยู่ในช่วง (คิดเหมา) และตอนพ้นช่วงแล้ว (คิดตามตัวเลือก) */}
                   {opt.smallQtyFee != null && opt.smallQtyFee.upToQty > 0 && (() => {
                     const s = opt.smallQtyFee!;
-                    const fee = smallQtyFeeOf(opt, effective, feeQty);
+                    const gQty = feeQtyOf(opt);
+                    const fee = smallQtyFeeOf(opt, effective, gQty);
                     const unit = matrix?.unit ?? "ชิ้น";
                     // สินค้าที่คิดเรทตามชิ้นต่อลาย ช่วงราคานับ "ต่อลาย" ไม่ใช่ยอดรวม — ต้องบอกให้ตรง
                     const perDesign = tierByDesign || (rate?.minPerDesign ?? 0) > 0;
-                    const unitTxt = tierUnitWord(perDesign);
-                    const inRange = feeQty <= s.upToQty;
+                    const unitTxt = tierUnitWord(perDesign, opt);
+                    const inRange = gQty <= s.upToQty;
                     const exempt = (s.freeChoices ?? []).join(" / ");
                     // กลุ่มที่มีเรทปลีก/ส่งด้วย (extraFromQty + extraBelow) — พ้นช่วงเหมาแล้ว
                     // ให้บรรทัด 💡 ของเรทเป็นคนบอกราคาแทน จะได้ไม่ขึ้นซ้อนกันสองบรรทัด
@@ -3382,7 +3403,7 @@ export default function ProductDetail({
                     if (inRange) {
                       // อยู่ในช่วงแต่ตัวที่เลือกได้รับยกเว้น (เช่น ห่วงแถม) — คิดราคาตัวเลือกตามปกติ
                       // ตัวที่เลือกไม่มีราคาอยู่แล้ว (เช่น "ไม่เพิ่ม") = ไม่มีอะไรต้องบอก ไม่ขึ้นบรรทัดรก
-                      if (groupAddOf(opt, effective, feeQty) <= 0) return null;
+                      if (groupAddOf(opt, effective, gQty) <= 0) return null;
                       return (
                         <p className="mt-1 text-[11px] font-semibold text-stone-500">
                           💡 {opt.label}ที่เลือกอยู่ไม่คิดค่าเหมาช่วง 1-{s.upToQty.toLocaleString("th-TH")} {unitTxt}
@@ -3391,7 +3412,7 @@ export default function ProductDetail({
                     }
                     if (tiered) return null;
                     // พ้นช่วงเหมาแล้ว — บอกราคาที่คิดจริงตอนนี้
-                    const now = groupAddOf(opt, effective, feeQty);
+                    const now = groupAddOf(opt, effective, gQty);
                     return (
                       <p className="mt-1 text-[11px] font-semibold text-teal-700">
                         💡 สั่งตั้งแต่ {(s.upToQty + 1).toLocaleString("th-TH")} {unitTxt}ขึ้นไปไม่มีค่าเหมา ·{" "}
@@ -3406,15 +3427,16 @@ export default function ProductDetail({
                     opt.choices.some((c) => c.extra) &&
                     (() => {
                       const unit = matrix?.unit ?? "ชิ้น";
+                      const gQty = feeQtyOf(opt);
                       const perDesign = tierByDesign || (rate?.minPerDesign ?? 0) > 0;
-                      const unitTxt = tierUnitWord(perDesign);
+                      const unitTxt = tierUnitWord(perDesign, opt);
                       const from = opt.extraFromQty!.toLocaleString("th-TH");
-                      if (!optionExtraApplies(opt, feeQty)) {
+                      if (!optionExtraApplies(opt, gQty)) {
                         // ช่วงปลีกบางกลุ่มคิดเพิ่มคนละเรท (extraBelow) — อย่าบอกว่า "รวมแล้ว" ทั้งที่ยังคิดเงิน
-                        const below = groupAddOf(opt, effective, feeQty);
+                        const below = groupAddOf(opt, effective, gQty);
                         if (opt.choices.some((c) => c.extraBelow)) {
                           // ช่วงเหมาสั่งน้อย (smallQtyFee) มีบรรทัด 💡 ของค่าเหมาบอกราคาอยู่แล้ว — ไม่ขึ้นซ้ำ
-                          if (smallQtyFeeOf(opt, effective, feeQty) > 0) return null;
+                          if (smallQtyFeeOf(opt, effective, gQty) > 0) return null;
                           // ราคาจริงเมื่อสั่งถึงเกณฑ์ — บอกตัวเลขตรง ๆ แทนคำว่า "เรทส่ง"
                           const atFrom = groupAddOf(opt, effective, opt.extraFromQty!);
                           if (below <= 0 && atFrom <= 0) return null;
@@ -3434,7 +3456,7 @@ export default function ProductDetail({
                           </p>
                         );
                       }
-                      const now = groupAddOf(opt, effective, feeQty);
+                      const now = groupAddOf(opt, effective, gQty);
                       return (
                         <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
                           💡 สั่งครบ {from} {unitTxt}แล้ว · {opt.label}
@@ -3449,11 +3471,11 @@ export default function ProductDetail({
                       const cur = opt.choices.find(
                         (c) => c.extraTiers?.length && (multi ? picked.includes(c.name) : effective[opt.label] === c.name)
                       );
-                      const now = cur ? choiceExtraAtQty(opt, effective, cur.name, feeQty) : 0;
+                      const now = cur ? choiceExtraAtQty(opt, effective, cur.name, feeQtyOf(opt)) : 0;
                       if (!cur || now <= 0) return null;
                       const unit = matrix?.unit ?? "ชิ้น";
                       // ขั้นของตารางเทียบกับ feeQty ตรง ๆ — หารด้วยจำนวนลายเฉพาะสินค้าที่คิดเรทต่อลายเท่านั้น
-                      const unitTxt = tierUnitWord(tierByDesign);
+                      const unitTxt = tierUnitWord(tierByDesign, opt);
                       const best = extraTierBest(cur);
                       return (
                         <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
@@ -4343,7 +4365,7 @@ export default function ProductDetail({
                 </>
               )}
             </div>
-            {/* 🧮 สินค้าหลายชิ้นต่อหน่วย (พวงละหลายชิ้น) — บอกยอดชิ้นรวมที่ใช้คิดช่วงราคา */}
+            {/* 🧮 สินค้าหลายชิ้นต่อหน่วย (พวงละหลายชิ้น) — บอกยอดชิ้นรวม + ย้ำว่าช่วงราคาคิดตามจำนวนหน่วยขาย */}
             {product.pieceCountLabel && unitPieceCountOf(product, effective) > 1 && !askQuote && (
               <p className="mt-1.5 text-xs leading-relaxed text-stone-500">
                 🧮 {matrix?.unit ?? "พวง"}ละ {unitPieceCountOf(product, effective)} ชิ้น ×{" "}
@@ -4351,7 +4373,7 @@ export default function ProductDetail({
                 <strong className="font-bold text-stone-600">
                   {(unitPieceCountOf(product, effective) * qty).toLocaleString("th-TH")} ชิ้นรวม
                 </strong>{" "}
-                — ช่วงราคาคิดตามชิ้นรวม
+                — ช่วงราคาคิดตามจำนวน{matrix?.unit ?? "พวง"}ที่สั่ง
               </p>
             )}
             {/* 🧮 มีสินค้านี้ในตะกร้าแล้ว — บอกก่อนกดสั่งว่าจะรวมล็อตคิดเรทตามยอดรวม */}
@@ -5378,22 +5400,22 @@ export default function ProductDetail({
                     {designFee > 0 && <> + Add on {formatPrice(designFee)}</>} ={" "}
                     <span className="font-extrabold text-amber-600">{formatPrice(unitPrice * qty + designFee)}</span>
                   </p>
-                  {/* Add on ที่รวมอยู่ในราคาต่อหน่วยแล้ว — บอกว่าราคาต่อหน่วยที่เห็นมีอะไรบวกอยู่ข้างใน */}
+                  {/* Add on ที่รวมอยู่ในราคาต่อหน่วยแล้ว — บอกว่าราคาต่อหน่วยที่เห็นมีอะไรบวกอยู่ข้างใน
+                    * ⚠️ ต้องเขียนให้ชัดว่า "ไม่บวกเพิ่ม" — เขียนแบบ "รวม Add on ฿20 × 15 = ฿300" เฉย ๆ
+                    *    ลูกค้าอ่านแล้วนึกว่ายอดข้างบนยังไม่ได้นับ Add on (ผู้ใช้ทัก 1 ก.ย. 69) */}
                   {unitAddOnTotal > 0 && (
                     <p className="mt-0.5 text-xs leading-relaxed text-stone-500">
-                      รวม Add on ในราคาต่อ{matrix.unit} แล้ว {formatPrice(unitAddOnTotal)}
+                      ใน {formatPrice(unitPrice)}/{matrix.unit} มี Add on รวมอยู่แล้ว{" "}
+                      <strong className="font-bold text-stone-600">{formatPrice(unitAddOnTotal)}</strong>
                       {/* สั่งหลายหน่วย = กางตัวคูณให้เห็นทั้งยอดรวมและรายตัว ไม่งั้นลูกค้าเทียบกับยอดจริงไม่ถูก */}
                       {qty > 1 ? (
                         <>
                           {" "}
-                          × {qty.toLocaleString("th-TH")} {matrix.unit} ={" "}
-                          <strong className="font-bold text-stone-600">
-                            {formatPrice(unitAddOnTotal * qty)}
-                          </strong>{" "}
-                          —{" "}
+                          (คิดเป็น {formatPrice(unitAddOnTotal * qty)} ใน {qty.toLocaleString("th-TH")} {matrix.unit}){" "}
+                          · ไม่บวกเพิ่มจากยอดด้านบน —{" "}
                         </>
                       ) : (
-                        <> = </>
+                        <> · ไม่บวกเพิ่มจากยอดด้านบน = </>
                       )}
                       {unitAddOns.map((f, i) => (
                         <span key={`${f.label}-${i}`}>
@@ -5493,7 +5515,7 @@ export default function ProductDetail({
                         +
                       </button>
                     </div>
-                    {!designsTouched && artFiles.length > 0 && (
+                    {artFiles.length > 0 && designs === artFiles.length && (
                       <span className="rounded-full bg-teal-600/10 px-2 py-0.5 text-[10px] font-bold text-teal-700" title="นับตามรูปลายที่แนบ — กด +/− เพื่อปรับเอง">
                         ✨ นับตามรูปที่แนบ
                       </span>

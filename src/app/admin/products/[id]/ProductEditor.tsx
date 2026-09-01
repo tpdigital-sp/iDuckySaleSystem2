@@ -125,6 +125,10 @@ type DraftOption = {
   extraFromQty?: string;
   /** ขั้นราคาที่ 3 ของกลุ่ม: สั่งไม่เกินกี่ชิ้นใช้ extraSmall — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
   extraSmallUpToQty?: number;
+  /** 🧮 ขั้น +฿ ของกลุ่มนี้นับเป็นชิ้นย่อย (ติ่งห้อยของพวงหลายชิ้น) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  extraQtyScope?: "pieces" | "extraPieces";
+  /** คำเรียกหน่วยของ extraQtyScope ในบรรทัด 💡 — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  extraQtyWord?: string;
   /** 🔢 ชื่อกลุ่มที่ +฿ ของกลุ่มนี้คูณจำนวนตาม — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   qtyFrom?: string;
   /** 💰 กลุ่มราคาดึงจากตารางเรท (ขนาดชิ้นที่ 2+ ของพวงหลายชิ้น) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
@@ -595,6 +599,8 @@ function toDraft(p: Product): Draft {
       display: o.display ?? "pills",
       ...(o.extraFromQty ? { extraFromQty: String(o.extraFromQty) } : {}),
       ...(o.extraSmallUpToQty ? { extraSmallUpToQty: o.extraSmallUpToQty } : {}),
+      ...(o.extraQtyScope ? { extraQtyScope: o.extraQtyScope } : {}),
+      ...(o.extraQtyWord ? { extraQtyWord: o.extraQtyWord } : {}),
       // 🔢 กลุ่มที่ +฿ คูณจำนวนจากกลุ่มอื่น (สีตะขอคูณจำนวนตะขอ) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
       ...(o.qtyFrom ? { qtyFrom: o.qtyFrom } : {}),
       // 💰 กลุ่มราคาดึงจากตารางเรท (ขนาดชิ้นที่ 2+ ของพวงหลายชิ้น) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
@@ -910,6 +916,8 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       ...(o.collapsible ? { collapsible: true } : {}),
       ...(Number(o.extraFromQty) > 0 ? { extraFromQty: Math.floor(Number(o.extraFromQty)) } : {}),
       ...(Number(o.extraSmallUpToQty) > 0 ? { extraSmallUpToQty: Math.floor(Number(o.extraSmallUpToQty)) } : {}),
+      ...(o.extraQtyScope ? { extraQtyScope: o.extraQtyScope } : {}),
+      ...(o.extraQtyWord ? { extraQtyWord: o.extraQtyWord } : {}),
       ...(o.qtyFrom ? { qtyFrom: o.qtyFrom } : {}),
       ...(o.priceAsDriver ? { priceAsDriver: o.priceAsDriver } : {}),
       ...(o.section ? { section: o.section } : {}),
