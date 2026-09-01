@@ -1281,6 +1281,16 @@ export default function ProductDetail({
     [product, effectiveWithDesigns, qty]
   );
 
+  /**
+   * คำเรียกจำนวนที่ใช้เทียบ "เกณฑ์ราคา" ในบรรทัด 💡 (ทุกเกณฑ์เทียบกับ feeQty)
+   * ⚠️ สินค้าหลายชิ้นต่อหน่วย (pieceCountLabel) feeQty คือ "ชิ้นรวม" ไม่ใช่จำนวนหน่วยขาย —
+   *    เขียนว่า "ครบ 30 พวง" ทั้งที่เกณฑ์คือ 30 ชิ้น (= 10 พวง พวงละ 3 ชิ้น) ลูกค้าอ่านแล้วเข้าใจผิด
+   */
+  const tierUnitWord = (perDesign: boolean) => {
+    const base = product.pieceCountLabel ? "ชิ้นรวม" : (matrix?.unit ?? "ชิ้น");
+    return perDesign ? `${base}ต่อลาย` : base;
+  };
+
   // tier ปัจจุบันของราคาขั้นบันได (ถ้ามี) — สินค้าคิดเรทตามชิ้นต่อลาย ไฮไลต์เรทของ ⌊จำนวน ÷ ลาย⌋
   const currentTier = useMemo(() => (matrix ? tierIndex(matrix, feeQty) : null), [matrix, feeQty]);
 
@@ -3349,7 +3359,7 @@ export default function ProductDetail({
                     const unit = matrix?.unit ?? "ชิ้น";
                     // สินค้าที่คิดเรทตามชิ้นต่อลาย ช่วงราคานับ "ต่อลาย" ไม่ใช่ยอดรวม — ต้องบอกให้ตรง
                     const perDesign = tierByDesign || (rate?.minPerDesign ?? 0) > 0;
-                    const unitTxt = perDesign ? `${unit}ต่อลาย` : unit;
+                    const unitTxt = tierUnitWord(perDesign);
                     const inRange = feeQty <= s.upToQty;
                     const exempt = (s.freeChoices ?? []).join(" / ");
                     // กลุ่มที่มีเรทปลีก/ส่งด้วย (extraFromQty + extraBelow) — พ้นช่วงเหมาแล้ว
@@ -3397,7 +3407,7 @@ export default function ProductDetail({
                     (() => {
                       const unit = matrix?.unit ?? "ชิ้น";
                       const perDesign = tierByDesign || (rate?.minPerDesign ?? 0) > 0;
-                      const unitTxt = perDesign ? `${unit}ต่อลาย` : unit;
+                      const unitTxt = tierUnitWord(perDesign);
                       const from = opt.extraFromQty!.toLocaleString("th-TH");
                       if (!optionExtraApplies(opt, feeQty)) {
                         // ช่วงปลีกบางกลุ่มคิดเพิ่มคนละเรท (extraBelow) — อย่าบอกว่า "รวมแล้ว" ทั้งที่ยังคิดเงิน
@@ -3443,7 +3453,7 @@ export default function ProductDetail({
                       if (!cur || now <= 0) return null;
                       const unit = matrix?.unit ?? "ชิ้น";
                       // ขั้นของตารางเทียบกับ feeQty ตรง ๆ — หารด้วยจำนวนลายเฉพาะสินค้าที่คิดเรทต่อลายเท่านั้น
-                      const unitTxt = tierByDesign ? `${unit}ต่อลาย` : unit;
+                      const unitTxt = tierUnitWord(tierByDesign);
                       const best = extraTierBest(cur);
                       return (
                         <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
