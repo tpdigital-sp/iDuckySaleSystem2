@@ -21,6 +21,7 @@ import {
   graphicTodoItems,
   isSelfDesigned,
   proofsOf,
+  proofUnit,
   type Order,
   type OrderItem,
   type OrderStatus,
@@ -349,7 +350,7 @@ function SentRow({ sent }: { sent: Sent }) {
               <span>{order.customer}</span>
               <span>
                 รูปที่ {no}
-                {proof.qty ? ` · ${proof.qty} ชิ้น` : ""}
+                {proof.qty ? ` · ${proof.qty} ${proofUnit(proof)}` : ""}
               </span>
               {note && (
                 <span className="hot" title={note}>

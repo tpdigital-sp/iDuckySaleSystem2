@@ -11,7 +11,7 @@ import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
-import { adminDiscountAmount, amountDueNow, itemDiscountAmount, orderBalance, orderItemDiscounts, orderTotal, PROOF_STYLES, proofsOf, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { adminDiscountAmount, amountDueNow, itemDiscountAmount, orderBalance, orderItemDiscounts, orderTotal, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchOrderForCustomer, reportPayment, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
@@ -1101,7 +1101,11 @@ export default function CustomerOrderPage() {
                           )}
                           {(p.qty || p.note) && (
                             <p className="mt-1 text-[11px] leading-tight t-soft">
-                              {p.qty ? <span className="font-semibold t-ink">{p.qty} ชิ้น</span> : null}
+                              {p.qty ? (
+                                <span className="font-semibold t-ink">
+                                  {p.qty} {proofUnit(p)}
+                                </span>
+                              ) : null}
                               {p.qty && p.note ? " · " : null}
                               {p.note}
                             </p>
@@ -1459,7 +1463,7 @@ export default function CustomerOrderPage() {
             <ImageLightbox
               src={p.url}
               alt={`แบบงาน ${it.name} รูปที่ ${lightbox.proofIdx + 1}`}
-              caption={[it.name, p.qty ? `${p.qty} ชิ้น` : "", p.note ?? ""].filter(Boolean).join(" · ")}
+              caption={[it.name, p.qty ? `${p.qty} ${proofUnit(p)}` : "", p.note ?? ""].filter(Boolean).join(" · ")}
               counter={many ? `${lightbox.proofIdx + 1} / ${proofs.length}` : undefined}
               onPrev={many ? () => go(-1) : undefined}
               onNext={many ? () => go(1) : undefined}

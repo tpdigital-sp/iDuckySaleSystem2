@@ -28,6 +28,8 @@ import {
   NOTE_SIZES,
   NOTE_WEIGHTS,
   noteHasText,
+  PROOF_UNITS,
+  proofUnit,
   type Order,
   type OrderItem,
   type OrderStatus,
@@ -386,6 +388,42 @@ function SelDetails({ sel, text }: { sel?: Record<string, string>; text?: string
   );
 }
 
+/**
+ * เดา "จำนวน + หน่วย" จากชื่อไฟล์แบบงาน — กราฟฟิกตั้งชื่อไฟล์บอกจำนวนอยู่แล้ว ไม่ต้องมาพิมพ์ซ้ำในช่องจำนวน
+ * รับเฉพาะรูปแบบที่ตั้งใจบอกจำนวนจริง ๆ กันเลขรหัสรูป (IMG_2345 · ลาย02 · 10x15cm) หล่นลงช่องจำนวน
+ *   • ต่อท้ายด้วยหน่วย — "ลายหน้า 3 ชิ้น.png" · "3ใบ.jpg" · "3 pcs.png" · "เจตนา 5 เซ็ต.png" (ได้หน่วยมาด้วย)
+ *   • ตัวคูณ x / × — "ลายหน้า x3.png" · "ลายหลัง 3x.jpg" (ไม่มีหน่วย = ชิ้น)
+ * ไม่เจอตัวบอกจำนวนชัด ๆ = คืน {} (ปล่อยช่องว่างให้แอดมินพิมพ์เอง)
+ */
+function qtyFromFileName(name: string): { qty?: number; unit?: string } {
+  const base = name.replace(/\.[a-z0-9]+$/i, "").replace(/[_]+/g, " ");
+  const ok = (n: string | undefined) => {
+    const v = Number(n);
+    return Number.isFinite(v) && v >= 1 && v <= 99999 ? Math.floor(v) : undefined;
+  };
+  // 1) ตัวเลข + หน่วยนับ (ชัดที่สุด) — เก็บหน่วยไว้ด้วย งานเซ็ตจะได้ไม่ไปโผล่ในใบงานว่า "ชิ้น"
+  const unit = base.match(/(\d{1,5})\s*(ชิ้น|ใบ|ดวง|อัน|ตัว|แผ่น|เส้น|คู่|ชุด|เซ็ต|เซต|เล่ม|sets|set|pcs|pc)(?![ก-๙a-z0-9])/i);
+  if (unit) {
+    const qty = ok(unit[1]);
+    if (qty) return { qty, unit: normalizeProofUnit(unit[2]) };
+  }
+  // 2) x นำหน้าเลข — x ต้องขึ้นต้นคำ ("max3" ไม่นับ) และหลังเลขต้องจบคำ ("x10x15" ไม่นับ)
+  const mulPre = base.match(/(?:^|[\s\-([])[x×]\s*(\d{1,5})(?![\d.,ก-๙a-z])/i);
+  if (mulPre?.[1] && ok(mulPre[1])) return { qty: ok(mulPre[1]) };
+  // 3) เลขนำหน้า x — "3x" ต้องจบคำ ("10x15" ไม่นับ)
+  const mulPost = base.match(/(?:^|[\s\-([])(\d{1,5})\s*[x×](?![\d.,ก-๙a-z])/i);
+  if (mulPost?.[1] && ok(mulPost[1])) return { qty: ok(mulPost[1]) };
+  return {};
+}
+
+/** คำหน่วยจากชื่อไฟล์ → คำที่ระบบใช้จริง (set/sets → เซ็ต · pc/pcs → ชิ้น) */
+function normalizeProofUnit(raw: string): string {
+  const w = raw.trim().toLowerCase();
+  if (w === "set" || w === "sets" || w === "เซต") return "เซ็ต";
+  if (w === "pc" || w === "pcs") return "ชิ้น";
+  return raw.trim();
+}
+
 export default function AdminOrderDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -520,6 +558,7 @@ export default function AdminOrderDetailPage() {
   const [artDropIdx, setArtDropIdx] = useState<number | null>(null);
   const [proofDropIdx, setProofDropIdx] = useState<number | null>(null);
   const [replaceDrop, setReplaceDrop] = useState<string | null>(null); // "itemIndex:proofIndex" ที่กำลังลากไฟล์ทับเพื่อเปลี่ยนรูป
+  const [addProofDrop, setAddProofDrop] = useState<number | null>(null); // รายการที่กำลังลากไฟล์ทับปุ่ม "อัปแบบใหม่"
   const [addPicIdx, setAddPicIdx] = useState<number | null>(null); // เปิดเมนู "เพิ่มรูป" ของรายการไหนอยู่
   // ช่องส่วนลดรายรายการ — ซ่อนไว้ กดป้าย "＋ ใส่ส่วนลด" ท้ายแถวถึงจะโผล่ (นาน ๆ ใช้ที)
   const [discOpen, setDiscOpen] = useState<Record<number, boolean>>({});
@@ -690,6 +729,19 @@ export default function AdminOrderDetailPage() {
     );
   }
 
+  /** แก้จำนวน/หน่วย/รายละเอียดของรูปแบบงาน แล้วบันทึกทันที (ใช้กับ select ที่ไม่มี blur) */
+  function patchProofSave(itemIndex: number, proofIndex: number, patch: Partial<Proof>) {
+    if (!order) return;
+    const next = {
+      ...order,
+      items: order.items.map((it, i) =>
+        i === itemIndex ? { ...it, proofs: proofsOf(it).map((p, j) => (j === proofIndex ? { ...p, ...patch } : p)) } : it
+      ),
+    };
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
+
   /** ลบสลิป (เฉพาะผู้ดูแลระบบ) — รีเซ็ตการแจ้งโอน ออเดอร์กลับเป็น รอชำระเงิน */
   async function deleteSlip() {
     if (!order) return;
@@ -831,7 +883,7 @@ export default function AdminOrderDetailPage() {
       alt: `แบบงาน ${it.name} รูปที่ ${proofIndex + 1}`,
       caption: [
         it.name,
-        p.qty ? `${p.qty} ชิ้น` : "",
+        p.qty ? `${p.qty} ${proofUnit(p)}` : "",
         p.note ?? "",
         p.review === "อนุมัติ" ? "✔ ลูกค้าอนุมัติรูปนี้" : "",
         p.review === "ขอแก้ไข" ? `✏️ ลูกค้าขอแก้รูปนี้${p.reviewNote ? ` — “${p.reviewNote}”` : ""}` : "",
@@ -1300,7 +1352,8 @@ export default function AdminOrderDetailPage() {
     }
     setUploadingIdx(itemIndex);
     for (const file of files) {
-      const res = await uploadProof(order.id, itemIndex, file);
+      // ชื่อไฟล์บอกจำนวน/หน่วยไว้ (เช่น "ลายหน้า x3.png" · "เจตนา 5 เซ็ต.png") → เติมให้เลย
+      const res = await uploadProof(order.id, itemIndex, file, qtyFromFileName(file.name));
       if (!res.ok) {
         setErr(res.error ?? "อัปโหลดแบบไม่สำเร็จ");
         break;
@@ -1323,7 +1376,8 @@ export default function AdminOrderDetailPage() {
     }
     setErr("");
     setUploadingIdx(itemIndex);
-    const res = await uploadProof(order.id, itemIndex, file, { replaceIndex: proofIdx });
+    // ชื่อไฟล์ใหม่บอกจำนวนมาด้วย = ทับจำนวน/หน่วยเดิม · ไม่บอก = คงค่าที่ตั้งไว้
+    const res = await uploadProof(order.id, itemIndex, file, { replaceIndex: proofIdx, ...qtyFromFileName(file.name) });
     setUploadingIdx(null);
     if (!res.ok) {
       setErr(res.error ?? "เปลี่ยนรูปไม่สำเร็จ");
@@ -1781,6 +1835,10 @@ export default function AdminOrderDetailPage() {
             {order.items.map((it, i) => {
               const proofs = proofsOf(it);
               const proofQty = proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
+              // หน่วยของแบบทั้งรายการ — ถ้ามีรูปไหนนับเป็นเซ็ต/ชุด จะเอาไปเทียบกับจำนวนที่ลูกค้าสั่ง (ชิ้น) ตรง ๆ ไม่ได้
+              const proofUnits = [...new Set(proofs.filter((p) => p.qty).map((p) => proofUnit(p)))];
+              const proofUnitTxt = proofUnits.length === 1 ? proofUnits[0] : "";
+              const proofSameUnit = proofUnitTxt === "ชิ้น";
               const open = itemOpen[i] ?? autoOpen(it);
               return (
                 <div
@@ -2202,9 +2260,11 @@ export default function AdminOrderDetailPage() {
                       </span>
                     )}
                     {proofs.length > 0 && (
-                      <span className={`text-[11px] ${proofQty && proofQty !== it.qty ? "font-bold text-rose-600" : faint}`}>
-                        {proofs.length} แบบ · ระบุจำนวนรวม {proofQty}/{it.qty} ชิ้น
-                        {proofQty > 0 && proofQty !== it.qty ? " ⚠️ ไม่ตรง" : ""}
+                      <span className={`text-[11px] ${proofSameUnit && proofQty && proofQty !== it.qty ? "font-bold text-rose-600" : faint}`}>
+                        {proofs.length} แบบ ·{" "}
+                        {proofSameUnit
+                          ? `ระบุจำนวนรวม ${proofQty}/${it.qty} ชิ้น${proofQty > 0 && proofQty !== it.qty ? " ⚠️ ไม่ตรง" : ""}`
+                          : `ระบุจำนวนรวม ${proofQty} ${proofUnitTxt || "หน่วย"} (สั่ง ${it.qty} ชิ้น)`}
                       </span>
                     )}
                     {it.sampleRequired && (
@@ -2605,22 +2665,47 @@ export default function AdminOrderDetailPage() {
                               </div>
                               {mayProof ? (
                                 <div className="space-y-1.5 p-2">
-                                  <label className="flex items-center gap-1.5">
-                                    <span className="text-[10px] font-bold text-slate-400">จำนวน</span>
+                                  <div
+                                    className="flex items-center gap-1"
+                                    title={
+                                      'ตั้งชื่อไฟล์บอกจำนวน+หน่วยไว้ ระบบเติมให้เอง — เช่น "ลายหน้า x3.png" · "ลายหลัง 5 ชิ้น.png" · "เจตนา 5 เซ็ต.png"'
+                                    }
+                                  >
+                                    <span className="shrink-0 text-[10px] font-bold text-slate-400">จำนวน</span>
                                     <input
                                       type="number"
                                       min={1}
                                       value={pf.qty ?? ""}
                                       placeholder="—"
                                       onChange={(e) => patchProof(i, j, { qty: Math.max(0, Number(e.target.value) || 0) || undefined })}
-                                      className="w-full min-w-0 rounded-md border border-slate-200 px-1.5 py-0.5 text-center text-[11px] focus:border-violet-300 focus:outline-none"
+                                      onBlur={persist}
+                                      aria-label={`จำนวนของแบบรูปที่ ${j + 1}`}
+                                      className="w-full min-w-0 rounded-md border border-slate-200 px-1 py-0.5 text-center text-[11px] focus:border-violet-300 focus:outline-none"
                                     />
-                                    <span className="text-[10px] text-slate-400">ชิ้น</span>
-                                  </label>
+                                    {/* หน่วยนับ — งานเซ็ต (พวงกุญแจ+การ์ดในไฟล์เดียว) นับเป็นเซ็ต ใบงาน/ฝ่ายแพ็คจะได้ไม่นับเป็นชิ้น */}
+                                    <select
+                                      value={proofUnit(pf)}
+                                      onChange={(e) => patchProofSave(i, j, { unit: e.target.value === "ชิ้น" ? undefined : e.target.value })}
+                                      aria-label={`หน่วยนับของแบบรูปที่ ${j + 1}`}
+                                      title="หน่วยนับของรูปนี้ — โชว์ในใบงาน ช่องตรวจนับของฝ่ายแพ็ค และหน้าที่ลูกค้าเห็น"
+                                      className={`shrink-0 rounded-md border px-0.5 py-0.5 text-[10px] focus:outline-none ${
+                                        proofUnit(pf) === "ชิ้น"
+                                          ? "border-slate-200 bg-white text-slate-500"
+                                          : "border-violet-300 bg-violet-50 font-bold text-violet-700"
+                                      }`}
+                                    >
+                                      {PROOF_UNITS.map((u) => (
+                                        <option key={u} value={u}>
+                                          {u}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
                                   <input
                                     value={pf.note ?? ""}
                                     placeholder="รายละเอียด เช่น ลายหน้า"
                                     onChange={(e) => patchProof(i, j, { note: e.target.value || undefined })}
+                                    onBlur={persist}
                                     className="w-full rounded-md border border-slate-200 px-1.5 py-0.5 text-[11px] focus:border-violet-300 focus:outline-none"
                                   />
                                   {pf.review === "ขอแก้ไข" && pf.reviewNote ? (
@@ -2657,7 +2742,13 @@ export default function AdminOrderDetailPage() {
                                 </div>
                               ) : (
                                 <div className="p-2 text-[11px] leading-snug text-slate-600">
-                                  {pf.qty ? <strong>{pf.qty} ชิ้น</strong> : <span className="text-slate-400">ไม่ระบุจำนวน</span>}
+                                  {pf.qty ? (
+                                    <strong>
+                                      {pf.qty} {proofUnit(pf)}
+                                    </strong>
+                                  ) : (
+                                    <span className="text-slate-400">ไม่ระบุจำนวน</span>
+                                  )}
                                   {pf.note ? <span className="block text-slate-500">{pf.note}</span> : null}
                                   {pf.review === "ขอแก้ไข" && pf.reviewNote && (
                                     <span className="block text-rose-600">ลูกค้าขอแก้: “{pf.reviewNote}”</span>
@@ -2670,10 +2761,31 @@ export default function AdminOrderDetailPage() {
                       )}
                       {mayProof && (
                         <label
-                          className="mt-2 block cursor-pointer rounded-lg bg-violet-600 px-3 py-1.5 text-center text-[11px] font-bold text-white transition hover:bg-violet-700"
-                          title="อัปแบบที่กราฟฟิกทำเสร็จ ให้ลูกค้าตรวจ"
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setAddProofDrop(i);
+                          }}
+                          onDragLeave={(e) => {
+                            if (!e.currentTarget.contains(e.relatedTarget as Node)) setAddProofDrop(null);
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setAddProofDrop(null);
+                            setProofDropIdx(null);
+                            void sendProofs(i, e.dataTransfer.files);
+                          }}
+                          className={`mt-2 block cursor-pointer rounded-lg px-3 py-1.5 text-center text-[11px] font-bold text-white transition ${
+                            addProofDrop === i ? "bg-violet-800 ring-2 ring-violet-300" : "bg-violet-600 hover:bg-violet-700"
+                          } ${uploadingIdx === i ? "pointer-events-none opacity-60" : ""}`}
+                          title="อัปแบบที่กราฟฟิกทำเสร็จ ให้ลูกค้าตรวจ — ลากรูปมาวางบนปุ่มนี้ก็ได้"
                         >
-                          {uploadingIdx === i ? "กำลังอัปโหลด…" : "＋ อัปแบบใหม่ให้ลูกค้าตรวจ"}
+                          {uploadingIdx === i
+                            ? "กำลังอัปโหลด…"
+                            : addProofDrop === i
+                              ? "⬇️ ปล่อยเพื่ออัปเป็นแบบใหม่"
+                              : "＋ อัปแบบใหม่ให้ลูกค้าตรวจ (ลากรูปมาวางก็ได้)"}
                           <input
                             type="file"
                             accept="image/png,image/jpeg,image/webp,image/gif"
@@ -2685,6 +2797,12 @@ export default function AdminOrderDetailPage() {
                             }}
                           />
                         </label>
+                      )}
+                      {mayProof && (
+                        <p className="mt-1 text-center text-[10px] leading-snug text-violet-400">
+                          💡 ตั้งชื่อไฟล์บอกจำนวนไว้ ช่อง “จำนวน” เติมให้เอง — <span className="font-bold">ลายหน้า x3.png</span> ·{" "}
+                          <span className="font-bold">ลายหลัง 5 ชิ้น.png</span>
+                        </p>
                       )}
                     </div>
                   </div>
@@ -3690,7 +3808,7 @@ function ProofCarousel({
               <img src={p.url} alt={`แบบงาน ${itemName}`} className="h-full w-full object-contain" />
               {p.qty ? (
                 <span className="absolute left-1.5 top-1.5 rounded bg-slate-900/70 px-2 py-0.5 text-xs font-bold text-white">
-                  {p.qty} ชิ้น
+                  {p.qty} {proofUnit(p)}
                 </span>
               ) : null}
               {!single && (

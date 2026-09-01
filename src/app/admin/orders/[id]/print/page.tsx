@@ -8,7 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { formatPrice } from "@/lib/products";
-import { adminDiscountAmount, MOCK_ORDERS, noteHasText, orderFullyPaid, orderItemDiscounts, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, MOCK_ORDERS, noteHasText, orderFullyPaid, orderItemDiscounts, orderTotal, proofsOf, proofUnit, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -58,7 +58,7 @@ function designLines(it: Order["items"][number]): string[] {
   if (!proofs.length) return [];
   const opts = optionText(it);
   return proofs.map((p, i) =>
-    [opts, `ลายที่ ${i + 1}${p.qty ? ` × ${p.qty} ชิ้น` : ""}`].filter(Boolean).join(" · "),
+    [opts, `ลายที่ ${i + 1}${p.qty ? ` × ${p.qty} ${proofUnit(p)}` : ""}`].filter(Boolean).join(" · "),
   );
 }
 
@@ -180,10 +180,10 @@ export default function PrintOrderPage() {
     const proofs = proofsOf(it);
     const list =
       proofs.length > 0
-        ? proofs.map((pf, k) => ({ url: pf.url, qty: pf.qty, no: k + 1 }))
+        ? proofs.map((pf, k) => ({ url: pf.url, qty: pf.qty, unit: proofUnit(pf), no: k + 1 }))
         : (it.artworkUrls ?? []).length > 0
-          ? (it.artworkUrls ?? []).map((u, k) => ({ url: u, qty: undefined as number | undefined, no: k + 1 }))
-          : [{ url: undefined as string | undefined, qty: it.qty, no: 1 }];
+          ? (it.artworkUrls ?? []).map((u, k) => ({ url: u, qty: undefined as number | undefined, unit: "ชิ้น", no: k + 1 }))
+          : [{ url: undefined as string | undefined, qty: it.qty, unit: "ชิ้น", no: 1 }];
     return list.map((d) => ({ ...d, i, it, total: list.length, key: `${i}-${d.no}` }));
   });
   /** ลิงก์เต็มสำหรับ QR มือถือ — เปิดหน้าออเดอร์เพื่อเช็คของตามภาพ */
@@ -285,7 +285,11 @@ export default function PrintOrderPage() {
                     <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-slate-700">
                       {order.items.length > 1 ? `รายการ ${u.i + 1} · ` : ""}
                       {u.total > 1 ? `ลายที่ ${u.no}` : u.it.name}
-                      {u.qty ? <span className="ml-1 font-normal text-slate-400">({u.qty} ชิ้น)</span> : null}
+                      {u.qty ? (
+                        <span className="ml-1 font-normal text-slate-400">
+                          ({u.qty} {u.unit})
+                        </span>
+                      ) : null}
                     </span>
                     <label className="flex items-center gap-1 text-[11px] text-slate-600">
                       ชิ้น/กล่อง
@@ -507,7 +511,11 @@ export default function PrintOrderPage() {
                                   className="h-20 w-20 rounded border border-slate-300 object-contain"
                                 />
                                 <p className="mt-0.5 text-[9px] leading-tight text-slate-600">
-                                  {p.qty ? <strong>{p.qty} ชิ้น</strong> : null}
+                                  {p.qty ? (
+                                    <strong>
+                                      {p.qty} {proofUnit(p)}
+                                    </strong>
+                                  ) : null}
                                   {p.qty && shortProofNote(p.note) ? " · " : null}
                                   {shortProofNote(p.note)}
                                 </p>
@@ -723,7 +731,7 @@ export default function PrintOrderPage() {
                     <p className="text-sm text-slate-500">
                       {order.date} · {order.shipping}
                       {(order.tracking ?? "").trim() ? ` · ${order.tracking}` : ""}
-                      {u.qty ? ` · ลายนี้รวม ${u.qty.toLocaleString("th-TH")} ชิ้น` : ""}
+                      {u.qty ? ` · ลายนี้รวม ${u.qty.toLocaleString("th-TH")} ${u.unit}` : ""}
                     </p>
                     <p className="flex items-end gap-3 text-5xl font-extrabold tabular-nums">
                       จำนวน

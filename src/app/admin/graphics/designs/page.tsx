@@ -24,7 +24,7 @@ import {
   TabRow,
   Tag,
 } from "@/components/admin/ui";
-import { isSelfDesigned, proofsOf, type Order, type OrderItem, type Proof } from "@/lib/admin-data";
+import { isSelfDesigned, proofsOf, proofUnit, type Order, type OrderItem, type Proof } from "@/lib/admin-data";
 import { dayOf, orderMatches, useGraphicsOrders } from "../data";
 
 /**
@@ -302,7 +302,7 @@ export default function DesignReportPage() {
                               <>
                                 <span>
                                   ลายที่ {r.no}
-                                  {r.proof.qty ? ` · ${r.proof.qty} ชิ้น` : ""}
+                                  {r.proof.qty ? ` · ${r.proof.qty} ${proofUnit(r.proof)}` : ""}
                                 </span>
                                 {r.dpi !== null && !low && <span>{r.dpi} DPI</span>}
                                 {r.note && (

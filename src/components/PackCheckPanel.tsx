@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { shortTime } from "@/lib/admin-ui";
-import type { Proof } from "@/lib/admin-data";
+import { proofUnit, type Proof } from "@/lib/admin-data";
 
 /**
  * ปุ่มยืนยันการตรวจนับ — แสดงใต้ภาพขยายในไลต์บ็อกซ์
@@ -24,13 +24,13 @@ export default function PackCheckPanel({
     <div className="rounded-2xl bg-white p-4 shadow-2xl">
       <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400">ตรวจนับของตามภาพนี้</p>
       <p className="mt-0.5 text-sm font-bold text-slate-800">
-        {proof.qty ? `ต้องได้ ${proof.qty} ชิ้น` : "ไม่ได้ระบุจำนวน"}
+        {proof.qty ? `ต้องได้ ${proof.qty} ${proofUnit(proof)}` : "ไม่ได้ระบุจำนวน"}
         {proof.note ? ` · ${proof.note}` : ""}
       </p>
 
       {proof.pack && (
         <p className={`mt-1 text-[11px] ${proof.pack.status === "ครบ" ? "text-green-700" : "font-bold text-rose-600"}`}>
-          ตรวจแล้ว: {proof.pack.status === "ครบ" ? "ครบ" : `ไม่ครบ — นับได้ ${proof.pack.got ?? 0} ชิ้น`} · {proof.pack.by} ·{" "}
+          ตรวจแล้ว: {proof.pack.status === "ครบ" ? "ครบ" : `ไม่ครบ — นับได้ ${proof.pack.got ?? 0} ${proofUnit(proof)}`} · {proof.pack.by} ·{" "}
           {shortTime(proof.pack.at)}
         </p>
       )}

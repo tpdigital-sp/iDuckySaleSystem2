@@ -197,7 +197,7 @@ export async function uploadProof(
   orderId: string,
   itemIndex: number,
   file: File,
-  meta?: { qty?: number; note?: string; replaceIndex?: number }
+  meta?: { qty?: number; unit?: string; note?: string; replaceIndex?: number }
 ): Promise<{ ok: boolean; order?: Order; error?: string }> {
   try {
     const fd = new FormData();
@@ -205,6 +205,7 @@ export async function uploadProof(
     fd.append("itemIndex", String(itemIndex));
     fd.append("file", file);
     if (meta?.qty) fd.append("qty", String(meta.qty));
+    if (meta?.unit) fd.append("unit", meta.unit);
     if (meta?.note) fd.append("note", meta.note);
     // เปลี่ยนรูปทับตำแหน่งเดิม (แก้ตามคำขอลูกค้า) — ตำแหน่ง/เลขรูปไม่เลื่อน
     if (meta?.replaceIndex !== undefined) fd.append("replaceIndex", String(meta.replaceIndex));

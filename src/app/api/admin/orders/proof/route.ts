@@ -40,6 +40,8 @@ export async function POST(req: Request) {
   const file = form.get("file");
   const rawQty = Number(form.get("qty"));
   const proofQty = Number.isFinite(rawQty) && rawQty > 0 ? Math.floor(rawQty) : undefined;
+  // หน่วยนับของแบบรูปนี้ (เช่น "เซ็ต") — ว่าง = ชิ้น
+  const proofUnitIn = String(form.get("unit") ?? "").trim().slice(0, 12) || undefined;
   const proofNote = String(form.get("note") ?? "").trim() || undefined;
   if (!orderId) return NextResponse.json({ error: "ไม่มีเลขออเดอร์" }, { status: 400 });
   if (!Number.isInteger(itemIndex) || itemIndex < 0) return NextResponse.json({ error: "ไม่ได้ระบุรายการสินค้า" }, { status: 400 });
@@ -75,7 +77,7 @@ export async function POST(req: Request) {
 
   let items: Order["items"];
   if (replaceIndex !== null) {
-    // ── เปลี่ยนรูปทับตำแหน่งเดิม: ตำแหน่ง/จำนวน/รายละเอียดคงอยู่ · ผลตรวจ+ผลนับของรูปนั้นรีเซ็ต (รูปเปลี่ยนแล้วต้องตรวจใหม่) ──
+    // ── เปลี่ยนรูปทับตำแหน่งเดิม: ตำแหน่ง/รายละเอียดคงอยู่ (จำนวนคงอยู่ ถ้าชื่อไฟล์ใหม่ไม่ได้บอกจำนวนมา) · ผลตรวจ+ผลนับของรูปนั้นรีเซ็ต (รูปเปลี่ยนแล้วต้องตรวจใหม่) ──
     items = order.items.map((it, i) => {
       if (i !== itemIndex) return it;
       const proofs = proofsOf(it).map((p, j) =>
@@ -83,7 +85,9 @@ export async function POST(req: Request) {
           ? {
               url: pub.publicUrl,
               at: now,
-              ...(p.qty ? { qty: p.qty } : {}),
+              // จำนวน/หน่วย: ชื่อไฟล์ใหม่บอกมา = ใช้ค่าใหม่ · ไม่บอก = คงค่าที่ตั้งไว้เดิม
+              ...((proofQty ?? p.qty) ? { qty: proofQty ?? p.qty } : {}),
+              ...((proofUnitIn ?? p.unit) ? { unit: proofUnitIn ?? p.unit } : {}),
               ...(p.note ? { note: p.note } : {}),
               // แก้ตามที่ลูกค้าขอ → ติดป้าย "แก้ไขให้แล้ว" ให้ลูกค้าเห็นว่ารูปนี้อัปเดตแล้ว
               ...(p.review === "ขอแก้ไข" ? { revisedAt: now, ...(p.reviewNote ? { revisedFromNote: p.reviewNote } : {}) } : {}),
@@ -102,7 +106,13 @@ export async function POST(req: Request) {
       };
     });
   } else {
-    const newProof = { url: pub.publicUrl, at: now, ...(proofQty ? { qty: proofQty } : {}), ...(proofNote ? { note: proofNote } : {}) };
+    const newProof = {
+      url: pub.publicUrl,
+      at: now,
+      ...(proofQty ? { qty: proofQty } : {}),
+      ...(proofQty && proofUnitIn ? { unit: proofUnitIn } : {}),
+      ...(proofNote ? { note: proofNote } : {}),
+    };
     items = order.items.map((it, i) =>
       i === itemIndex
         ? {
@@ -124,7 +134,7 @@ export async function POST(req: Request) {
     replaceIndex !== null ? "เปลี่ยนรูปแบบงาน (แก้ตามคำขอ)" : "อัปโหลดแบบให้ลูกค้าตรวจ",
     replaceIndex !== null
       ? `${order.items[itemIndex].name} · รูปที่ ${replaceIndex + 1}`
-      : `${order.items[itemIndex].name}${proofQty ? ` · ${proofQty} ชิ้น` : ""}${proofNote ? ` · ${proofNote}` : ""}`
+      : `${order.items[itemIndex].name}${proofQty ? ` · ${proofQty} ${proofUnitIn || "ชิ้น"}` : ""}${proofNote ? ` · ${proofNote}` : ""}`
   );
 
   const { error: saveErr } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
