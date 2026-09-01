@@ -63,6 +63,15 @@ export interface ProductOptionChoice {
    */
   imageSrc?: string;
   /**
+   * 🖼 ภาพสำรองที่สลับตาม "ค่าที่เลือกในกลุ่มอื่น" — ใช้เมื่อหน้าตาจริงของตัวเลือกนี้
+   * เปลี่ยนไปตามอีกกลุ่มหนึ่ง เช่น สีฟอยล์: เลือก "พิมพ์ 2 Layer" ต้องเห็นงานพิมพ์สีแล้วปั๊มฟอยล์ทับ
+   * ไม่ใช่แผ่นฟอยล์ล้วนแบบ 1 Layer (สีฟอยล์เดียวกันแต่คนละหน้าตา ลูกค้าเทียบผิด)
+   *
+   * เงื่อนไขเขียนแบบเดียวกับ showWhen ของกลุ่ม · ข้อแรกที่ตรงชนะ
+   * ไม่ตรงข้อไหนเลย = ใช้ imageSrc ตามเดิม · อ่านค่าผ่าน choiceImage() เสมอ
+   */
+  imageWhen?: { when: { label: string; choices: string[] }[]; imageSrc: string }[];
+  /**
    * 🎬 คลิปประกอบของตัวเลือกนี้ (URL .mp4) — การ์ดกลุ่ม display "cards" เล่นคลิปวนแทนภาพนิ่ง
    * และกดเลือกแล้วแกลเลอรีสลับไปช่องคลิปนี้ (imageSrc ยังต้องมี ใช้เป็นโปสเตอร์/ภาพสำรอง)
    */
@@ -1153,6 +1162,20 @@ export function optionVisible(opt: ProductOption, selections: Record<string, str
   const anyConds = (opt.showWhenAny ?? []).filter((s) => s?.label && s.choices?.length);
   const anyPass = !anyConds.length || anyConds.some((s) => valueMatchesAny(selections[s.label], s.choices));
   return anyPass && pass(opt.showWhen) && pass(opt.showWhenAlso) && (opt.showWhenAll ?? []).every(pass);
+}
+
+/**
+ * 🖼 ภาพของตัวเลือกนี้ ณ ตัวเลือกชุดนี้ — ตัวที่ตั้ง imageWhen ไว้จะสลับภาพตามกลุ่มอื่น
+ * (สีฟอยล์: 1 Layer = แผ่นฟอยล์ล้วน · 2 Layer = งานพิมพ์สีแล้วปั๊มฟอยล์ทับ)
+ * ทุกที่ที่โชว์ภาพตัวเลือกต้องอ่านผ่านตัวนี้ ไม่ใช่อ่าน choice.imageSrc ตรง ๆ
+ */
+export function choiceImage(c: ProductOptionChoice, selections: Record<string, string>): string | undefined {
+  for (const alt of c.imageWhen ?? []) {
+    const conds = (alt.when ?? []).filter((w) => w?.label && w.choices?.length);
+    if (!conds.length || !alt.imageSrc) continue;
+    if (conds.every((w) => valueMatchesAny(selections[w.label], w.choices))) return alt.imageSrc;
+  }
+  return c.imageSrc;
 }
 
 /** ราคาบวกเพิ่มของกลุ่มนี้ใช้กับจำนวนนี้ไหม (ต่ำกว่าเกณฑ์ = รวมในราคาแล้ว) */

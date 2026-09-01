@@ -53,6 +53,7 @@ import {
   mixTierFor,
   underMinPieces,
   mixUnitFee,
+  choiceImage,
   optionExtraApplies,
   optionVisible,
   perUnitCapacity,
@@ -546,7 +547,11 @@ export default function ProductDetail({
       // กลุ่มสวอตช์สี/แถบตัวอย่าง: รูปเป็นชิปเล็กไว้โชว์บนปุ่มเท่านั้น — เข้าแกลเลอรีแล้วขยายเบลอ
       // (แถมทะลัก 80 รูปจากสีไหม / 26 แถบจากฟอนต์) · ดูรูปเต็มได้จาก chartSrc ในกลุ่มนั้นแทน
       if (opt.swatchGrid || opt.sampleGrid) continue;
-      for (const c of opt.choices ?? []) add(c.imageSrc, `${opt.label}: ${c.name}`, c.videoSrc);
+      for (const c of opt.choices ?? []) {
+        add(c.imageSrc, `${opt.label}: ${c.name}`, c.videoSrc);
+        // ภาพสำรองที่สลับตามกลุ่มอื่น (ดู choiceImage) — ต้องอยู่ในแกลเลอรีด้วย ไม่งั้นกดเลือกแล้วภาพใหญ่ไม่ตาม
+        for (const alt of c.imageWhen ?? []) add(alt.imageSrc, `${opt.label}: ${c.name}`);
+      }
     }
     return list;
   }, [product]);
@@ -683,9 +688,9 @@ export default function ProductDetail({
   const [editIndex, setEditIndex] = useState<number | null>(null);
   /** เปิดจอวางรูปแบบมีช่อง (Theme) อยู่ไหม — เทมเพลตที่กำหนดช่องไว้จะใช้จอนี้แทน */
   const [slotStudio, setSlotStudio] = useState(false);
-  // กล่อง "แนบลายของคุณ" ยุบไว้ — ไม่ให้ฟอร์มที่ไม่บังคับดันปุ่มซื้อตกจอ
+  // กล่อง "แนบลายของคุณ" กางไว้ตั้งแต่แรก — ลูกค้าเห็นช่องอัปโหลดทันที ไม่ต้องเดาว่าต้องกดเปิด
   // (ช่องหมายเหตุถึงร้านไม่ยุบแล้ว — กางไว้ตลอด ลูกค้าใช้บ่อย)
-  const [extraOpen, setExtraOpen] = useState<"art" | null>(null);
+  const [extraOpen, setExtraOpen] = useState<"art" | null>("art");
   // สินค้าที่บังคับแนบลาย → เปิดกล่องค้างไว้จนกว่าลูกค้าจะแตะปิดเอง
   const [artTouched, setArtTouched] = useState(false);
   // 📐 กล่องไฟล์เทมเพลต — สินค้าที่มีเทมเพลตหลายรุ่น (เคสมือถือ 14 รุ่น) ยุบไว้ก่อน ไม่ให้ดันเนื้อหาอื่นตกจอ
@@ -2967,10 +2972,13 @@ export default function ProductDetail({
                     <div className="flex items-center gap-2">
                       {/* ภาพประจำตัวเลือกที่เลือกอยู่ — เมนูเลื่อนใส่รูปในตัวเลือกไม่ได้ จึงโชว์ไว้ข้าง ๆ
                           (สินค้าอย่างเคสมือถือ 20+ รุ่น ใช้เมนูเลื่อนดีกว่าปุ่ม แต่ยังต้องเห็นหน้าตาแบบที่เลือก) */}
-                      {opt.choices.find((c) => c.name === effective[opt.label])?.imageSrc && (
+                      {(() => {
+                        const selC = opt.choices.find((c) => c.name === effective[opt.label]);
+                        return selC ? choiceImage(selC, effective) : undefined;
+                      })() && (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={opt.choices.find((c) => c.name === effective[opt.label])!.imageSrc}
+                          src={choiceImage(opt.choices.find((c) => c.name === effective[opt.label])!, effective)}
                           alt={effective[opt.label]}
                           className="h-11 w-11 shrink-0 rounded-xl bg-white object-cover ring-1 ring-amber-200"
                         />
@@ -2979,7 +2987,10 @@ export default function ProductDetail({
                       value={effective[opt.label]}
                       onChange={(e) => {
                         setSelections((s) => ({ ...s, [opt.label]: e.target.value }));
-                        jumpToImage(opt.choices.find((c) => c.name === e.target.value)?.imageSrc);
+                        {
+                          const picked = opt.choices.find((c) => c.name === e.target.value);
+                          jumpToImage(picked ? choiceImage(picked, effective) : undefined);
+                        }
                       }}
                       className="w-full rounded-xl bg-white px-3 py-2 text-[13px] font-semibold text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
                       aria-label={opt.label}
@@ -3010,6 +3021,7 @@ export default function ProductDetail({
                       {cardList
                         .map((c) => {
                           const on = effective[opt.label] === c.name;
+                          const cImg = choiceImage(c, effective);
                           const add = choiceBadgeOf(opt, effective, c.name, feeQty, product);
                           // 📏 กางที่มาของค่าบริการตามขนาด (เช่น โพ้งขอบ ฿10 × 8 ชิ้น = ฿80)
                           // ใช้ view เดียวกับ choiceBadgeOf (สมมติว่าเลือกตัวนี้) ตัวเลขจะได้ตรงกับป้าย +฿ เสมอ
@@ -3022,7 +3034,7 @@ export default function ProductDetail({
                               type="button"
                               onClick={() => {
                                 setSelections((s) => ({ ...s, [opt.label]: c.name }));
-                                jumpToImage(c.videoSrc ?? c.imageSrc);
+                                jumpToImage(c.videoSrc ?? cImg);
                               }}
                               className={`rounded-xl px-3 py-2 text-left text-[13px] transition ${
                                 on
@@ -3038,7 +3050,7 @@ export default function ProductDetail({
                                   <video
                                     data-card-clip
                                     src={c.videoSrc}
-                                    poster={c.imageSrc}
+                                    poster={cImg}
                                     autoPlay
                                     muted
                                     loop
@@ -3051,10 +3063,10 @@ export default function ProductDetail({
                                     }}
                                     className={`${dense ? "h-9 w-9" : "h-12 w-12"} shrink-0 rounded-lg object-cover ring-1 ring-stone-200`}
                                   />
-                                ) : c.imageSrc ? (
+                                ) : cImg ? (
                                   // eslint-disable-next-line @next/next/no-img-element
                                   <img
-                                    src={c.imageSrc}
+                                    src={cImg}
                                     alt={c.name}
                                     className={`${dense ? "h-9 w-9" : "h-12 w-12"} shrink-0 rounded-lg object-cover ring-1 ring-stone-200`}
                                     loading="lazy"
@@ -3124,10 +3136,10 @@ export default function ProductDetail({
                             type="button"
                             onClick={() => {
                               setSelections((s) => ({ ...s, [opt.label]: c.name }));
-                              jumpToImage(c.imageSrc);
+                              jumpToImage(choiceImage(c, effective));
                             }}
                             className={`inline-flex items-center gap-1.5 rounded-full py-1.5 text-[13px] font-semibold transition ${
-                              c.imageSrc ? "pl-1.5 pr-3" : "px-3"
+                              choiceImage(c, effective) ? "pl-1.5 pr-3" : "px-3"
                             } ${
                               effective[opt.label] === c.name
                                 ? "bg-amber-400 text-white shadow"
@@ -3135,10 +3147,10 @@ export default function ProductDetail({
                             }`}
                           >
                             {/* ภาพประจำตัวเลือก (ถ้ามี) — เห็นหน้าตาแบบนั้น ๆ ก่อนเลือก */}
-                            {c.imageSrc && (
+                            {choiceImage(c, effective) && (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img
-                                src={c.imageSrc}
+                                src={choiceImage(c, effective)}
                                 alt={c.name}
                                 className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-black/10"
                                 loading="lazy"

@@ -182,7 +182,38 @@ export async function fetchProductsAdminLite(): Promise<Product[]> {
   return products.map((p) => resolveProduct(p, presets));
 }
 
-export async function fetchProductsLite(): Promise<Product[]> {
+/**
+ * แคชรายการสินค้าของแท็บนี้ — ให้หน้าที่เปิดทีหลังวาดของจริงได้ตั้งแต่เฟรมแรก
+ * (เดิมหน้ารายการวาดสินค้าชุด static ในโค้ดไปก่อน แล้วค่อยสลับเป็นของจริง = เห็นของเก่าแวบหนึ่ง)
+ * ยังยิงขอข้อมูลใหม่ทุกครั้งที่หน้าเปิดเหมือนเดิม แคชนี้ใช้แค่กับเฟรมแรกเท่านั้น
+ */
+let liteCache: Product[] | null = null;
+let liteInflight: Promise<Product[]> | null = null;
+
+/** รายการสินค้าที่โหลดไว้แล้วในแท็บนี้ (ยังไม่เคยโหลด = null) — ใช้เป็นค่าตั้งต้นของ state ได้เลย */
+export function cachedProductsLite(): Product[] | null {
+  return liteCache;
+}
+
+export function fetchProductsLite(): Promise<Product[]> {
+  // สองคอมโพเนนต์ขอพร้อมกัน (เช่น หน้าแรก + เมนู) ให้ใช้คำขอเดียวกัน ไม่ต้องโหลดซ้ำ
+  if (!liteInflight) {
+    liteInflight = loadProductsLite().then(
+      (ps) => {
+        liteCache = ps;
+        liteInflight = null;
+        return ps;
+      },
+      (err) => {
+        liteInflight = null;
+        throw err;
+      },
+    );
+  }
+  return liteInflight;
+}
+
+async function loadProductsLite(): Promise<Product[]> {
   const sb = getSupabase();
   if (!sb) return mergedProducts();
   const { data, error } = await sb

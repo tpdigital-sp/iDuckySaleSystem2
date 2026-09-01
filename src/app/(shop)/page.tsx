@@ -7,11 +7,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { formatPrice, formatPriceLabel, PRODUCTS, productPath, type Product } from "@/lib/products";
 import { fetchShopPayment, freeShippingMinOf } from "@/lib/shop-settings";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
-import { fetchProductsLite } from "@/lib/product-repo";
+import { cachedProductsLite, fetchProductsLite } from "@/lib/product-repo";
 import { fallbackToOriginal, imgProps } from "@/lib/img";
 import { canAccessAdmin } from "@/lib/auth";
 import AdminEditFab from "@/components/AdminEditFab";
 import HomeChat from "@/components/HomeChat";
+import CardSkeleton from "@/components/CardSkeleton";
 
 /**
  * หน้าแรก — ดีไซน์ตามไฟล์ต้นแบบ iducky-landing-v8_83.html
@@ -87,7 +88,13 @@ function useReveal() {
 }
 
 export default function HomePage() {
-  const [all, setAll] = useState<Product[]>(PRODUCTS);
+  /**
+   * สินค้าทั้งร้าน — ตั้งต้นจากแคชของแท็บ (เคยโหลดแล้วก็ขึ้นของจริงตั้งแต่เฟรมแรก)
+   * ยังไม่เคยโหลด = null แล้วโชว์โครงการ์ดรอ · ไม่วาดสินค้าชุด static ในโค้ดไปก่อน
+   * เพราะชุดนั้นเป็นของเก่า (ไม่มีรูปจริง) ผู้ใช้จะเห็นของเก่าแวบหนึ่งทุกครั้งที่เปิดหน้า
+   */
+  const [all, setAll] = useState<Product[] | null>(() => cachedProductsLite());
+  const loading = all === null;
   const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
   const [tab, setTab] = useState<string>("all");
   /** ยอดส่งฟรี — ดึงจากที่แอดมินตั้งไว้ ไม่พิมพ์เลขตายตัวไว้ในแถบวิ่ง */
@@ -108,7 +115,8 @@ export default function HomePage() {
     let active = true;
     fetchProductsLite().then((ps) => {
       // ตัดสินค้าที่ปิดการมองเห็นไว้ออกก่อน — หน้าแรกโชว์เฉพาะของที่ขายจริง
-      if (active && ps.length) setAll(ps.filter((p) => !p.hidden));
+      // โหลดไม่ได้/ฐานว่าง = ใช้ชุดในโค้ดไปก่อน ดีกว่าปล่อยแถวสินค้าว่าง
+      if (active) setAll(ps.length ? ps.filter((p) => !p.hidden) : PRODUCTS);
     });
     return () => {
       active = false;
@@ -119,7 +127,7 @@ export default function HomePage() {
   /** สินค้าตัวอย่างในแต่ละหมวด (โชว์ในเมนูย่อยของการ์ดหมวด) */
   const byCat = useMemo(() => {
     const m = new Map<string, Product[]>();
-    for (const p of all) {
+    for (const p of all ?? []) {
       const list = m.get(p.category) ?? [];
       if (list.length < 5) list.push(p);
       m.set(p.category, list);
@@ -133,10 +141,57 @@ export default function HomePage() {
    */
   const best = useMemo(() => {
     const bySold = (a: Product, b: Product) => b.sold - a.sold;
-    const picked = all.filter((p) => p.featured).sort(bySold);
-    const rest = all.filter((p) => !p.featured).sort(bySold);
+    const picked = (all ?? []).filter((p) => p.featured).sort(bySold);
+    const rest = (all ?? []).filter((p) => !p.featured).sort(bySold);
     return [...picked, ...rest].slice(0, 8);
   }, [all]);
+
+  /**
+   * มาใหม่ 8 ใบ — สินค้าที่ติดป้าย "ใหม่" โดยเอาตัวที่เพิ่งเข้าระบบขึ้นก่อน
+   * (ลิสต์จากฐานข้อมูลเรียงตาม sort จากน้อยไปมาก ตัวท้าย ๆ คือของที่เพิ่งเพิ่ม)
+   * ถ้ายังไม่มีใครติดป้ายเลย ใช้สินค้าที่เพิ่งเพิ่มล่าสุดแทน แถบนี้จะได้ไม่ว่าง
+   */
+  const fresh = useMemo(() => {
+    const tagged = (all ?? []).filter((p) => p.badge === "ใหม่");
+    const pool = tagged.length >= 4 ? tagged : (all ?? []);
+    return pool.slice(-8).reverse();
+  }, [all]);
+
+  /** เลื่อนแถวสินค้ามาใหม่ด้วยปุ่มลูกศร (ครั้งละเกือบเต็มหน้าจอ) */
+  const freshRef = useRef<HTMLDivElement>(null);
+  const slideFresh = (dir: 1 | -1) => {
+    const el = freshRef.current;
+    if (!el) return;
+    holdFresh();
+    el.scrollBy({ left: dir * Math.max(240, el.clientWidth * 0.82), behavior: "smooth" });
+  };
+
+  /**
+   * แถวสินค้ามาใหม่เลื่อนเอง — ทีละใบทุก 3.5 วิ ถึงท้ายแถวแล้ววนกลับใบแรก
+   * หยุดให้อัตโนมัติเมื่อ: เอาเมาส์ไปวาง · โฟกัสอยู่ในแถว · ผู้ใช้ปัดเอง (พัก 6 วิ)
+   * · แท็บถูกซ่อน · เครื่องตั้งค่าลดการเคลื่อนไหว (prefers-reduced-motion)
+   */
+  const [freshHover, setFreshHover] = useState(false);
+  /** เวลาที่ให้หยุดเลื่อนเองถึงเมื่อไหร่ — ผู้ใช้เพิ่งปัด/กดลูกศร อย่าเพิ่งแย่งเลื่อน */
+  const freshHold = useRef(0);
+  const holdFresh = () => {
+    freshHold.current = Date.now() + 6000;
+  };
+  useEffect(() => {
+    if (freshHover || loading || fresh.length < 2) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = window.setInterval(() => {
+      const el = freshRef.current;
+      if (!el || document.hidden || Date.now() < freshHold.current) return;
+      const gap = 18;
+      const card = el.firstElementChild?.getBoundingClientRect().width ?? 240;
+      const max = el.scrollWidth - el.clientWidth;
+      // ถึงท้ายแถวแล้ว (เผื่อเศษ 8px) — วนกลับไปเริ่มใหม่
+      if (el.scrollLeft >= max - 8) el.scrollTo({ left: 0, behavior: "smooth" });
+      else el.scrollBy({ left: card + gap, behavior: "smooth" });
+    }, 3500);
+    return () => clearInterval(id);
+  }, [freshHover, loading, fresh.length]);
 
   const catName = (id: string) => cats.find((c) => c.id === id)?.name ?? id;
 
@@ -269,6 +324,45 @@ export default function HomePage() {
                 alt=""
                 aria-hidden="true"
               />
+            </div>
+          </div>
+        </section>
+
+        {/* ── สินค้ามาใหม่ ── */}
+        <section id="new-arrivals" className="fresh-band rv">
+          <div className="wrap">
+            <div className="head">
+              <span className="kicker kicker-new">
+                <i className="sparkle">✨</i>เพิ่งเข้าร้าน
+              </span>
+              <h2>
+                สินค้า<em>มาใหม่</em>
+              </h2>
+              <p>ของใหม่ล่าสุดที่เพิ่งเปิดให้สั่ง — เลื่อนดูได้เลย</p>
+            </div>
+            <div
+              className="fresh-wrap"
+              onMouseEnter={() => setFreshHover(true)}
+              onMouseLeave={() => setFreshHover(false)}
+              onFocusCapture={() => setFreshHover(true)}
+              onBlurCapture={() => setFreshHover(false)}
+            >
+              <button type="button" className="fresh-nav prev" aria-label="เลื่อนดูสินค้าก่อนหน้า" onClick={() => slideFresh(-1)}>
+                ‹
+              </button>
+              <div className="fresh-rail" ref={freshRef} onTouchStart={holdFresh} onWheel={holdFresh}>
+                {loading
+                  ? Array.from({ length: 4 }, (_, i) => <CardSkeleton key={i} />)
+                  : fresh.map((p) => <FreshCard key={p.id} p={p} catLabel={catName(p.category)} />)}
+              </div>
+              <button type="button" className="fresh-nav next" aria-label="เลื่อนดูสินค้าถัดไป" onClick={() => slideFresh(1)}>
+                ›
+              </button>
+            </div>
+            <div className="rv-more">
+              <Link className="rv-viewall" href="/products">
+                ดูสินค้าทั้งหมด <span>→</span>
+              </Link>
             </div>
           </div>
         </section>
@@ -424,9 +518,9 @@ export default function HomePage() {
             <p>ราคานี้รวมพิมพ์ลายของคุณแล้ว สั่งชิ้นเดียวก็ทำได้</p>
           </div>
           <div className="rail in">
-            {best.map((p, i) => (
-              <BestCard key={p.id} p={p} catLabel={catName(p.category)} rank={i} />
-            ))}
+            {loading
+              ? Array.from({ length: 8 }, (_, i) => <CardSkeleton key={i} />)
+              : best.map((p, i) => <BestCard key={p.id} p={p} catLabel={catName(p.category)} rank={i} />)}
           </div>
           <div className="rv-more">
             <Link className="rv-viewall" href="/products">
@@ -589,6 +683,31 @@ export default function HomePage() {
         </a>
       </nav>
     </div>
+  );
+}
+
+/** การ์ดสินค้ามาใหม่ — โครงเดียวกับการ์ดขายดี ต่างที่ป้าย NEW ติดถาวรและไม่โชว์ยอดขาย */
+function FreshCard({ p, catLabel }: { p: Product; catLabel: string }) {
+  return (
+    <Link className="card fresh-card" href={productPath(p)}>
+      <div className="thumb">
+        <span className="tag tag-new">
+          <i className="sparkle">✨</i>NEW
+        </span>
+        {p.imageSrc ? (
+          <img {...imgProps(p.imageSrc, "(max-width: 768px) 76vw, 260px")} alt={p.name} loading="lazy" decoding="async" onError={fallbackToOriginal(p.imageSrc)} />
+        ) : (
+          <span className={`grid h-full w-full place-items-center bg-gradient-to-br text-6xl ${p.gradient}`}>{p.emoji}</span>
+        )}
+      </div>
+      <div className="card-body">
+        <span className="cat-l">{catLabel}</span>
+        <h3>{p.name}</h3>
+        <div className="meta">
+          <span className="price">{formatPriceLabel(p)}</span>
+        </div>
+      </div>
+    </Link>
   );
 }
 

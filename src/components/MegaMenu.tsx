@@ -34,6 +34,13 @@ function Badge({ badge }: { badge?: MegaBadge }) {
   );
 }
 
+/**
+ * ลิงก์ "+ อีก n รายการ →" ท้ายคอลัมน์ที่รายการเกินโควตา (id ลงท้าย -more)
+ * — ไม่ใช่สินค้า จึงแสดงเป็นลิงก์สีแบรนด์ ไม่มีป้าย N/H และไม่ตัดบรรทัด
+ * สร้างโดย scripts/site-nav-rebuild.mjs
+ */
+const isMoreLink = (id: string) => String(id).endsWith("-more");
+
 /** ป้ายบนสินค้า → ตัวย่อในเมนู */
 const badgeOf = (p: Product): MegaBadge => (p.badge === "ใหม่" ? "N" : p.badge === "ขายดี" ? "H" : "");
 
@@ -124,14 +131,18 @@ export function MegaPanel({
 
                 <ul className="mega-list mt-2 space-y-1.5">
                   {items.map((it) => (
-                    <li key={it.id}>
+                    <li key={it.id} className={isMoreLink(it.id) ? "pt-0.5" : undefined}>
                       <A
                         href={it.href}
-                        className="flex w-fit items-start text-sm leading-snug text-stone-600 transition duration-200 hover:translate-x-[5px] hover:text-[#26b6cf]"
+                        className={
+                          isMoreLink(it.id)
+                            ? "mega-more flex w-fit items-start text-sm font-medium leading-snug text-[#2C81C4] transition duration-200 hover:translate-x-[5px]"
+                            : "flex w-fit items-start text-sm leading-snug text-stone-600 transition duration-200 hover:translate-x-[5px] hover:text-[#26b6cf]"
+                        }
                       >
                         {/* ชื่อสินค้าจริงยาวกว่าเมนูที่พิมพ์เอง — ตัด 2 บรรทัดแทนตัดกลางคำ */}
                         <span className="line-clamp-2">{it.label}</span>
-                        <Badge badge={it.badge} />
+                        {!isMoreLink(it.id) && <Badge badge={it.badge} />}
                       </A>
                     </li>
                   ))}
@@ -323,10 +334,14 @@ export function MegaMobile({ groups, onNavigate }: { groups: MegaGroup[]; onNavi
                           <Link
                             href={it.href}
                             onClick={onNavigate}
-                            className="flex items-start py-0.5 text-sm leading-snug text-stone-600"
+                            className={
+                              isMoreLink(it.id)
+                                ? "mega-more flex items-start py-0.5 text-sm font-medium leading-snug text-[#2C81C4]"
+                                : "flex items-start py-0.5 text-sm leading-snug text-stone-600"
+                            }
                           >
                             <span className="line-clamp-2">{it.label}</span>
-                            <Badge badge={it.badge} />
+                            {!isMoreLink(it.id) && <Badge badge={it.badge} />}
                           </Link>
                         </li>
                       ))}
