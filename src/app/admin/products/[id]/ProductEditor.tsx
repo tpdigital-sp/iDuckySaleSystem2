@@ -155,6 +155,7 @@ type DraftOption = {
   showWhenAny?: { label: string; choices: string[] }[];
   /** 🧩 ชุดตัวเลือกที่กลุ่มนี้สังกัด (หัวกรอบบนหน้าสินค้า) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   section?: string;
+  sectionTrim?: string;
   /** 🎯 ค่าเริ่มต้นตามกลุ่มคุม (เช่น ตามเรทราคา) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   defaultBy?: { label: string; map: Record<string, string> };
   /** 🎨 โชว์เป็นตารางสวอตช์สีบนหน้าร้าน (กลุ่ม multi ที่ตัวเลือกเยอะ เช่น สีไหม) */
@@ -599,6 +600,7 @@ function toDraft(p: Product): Draft {
       // 💰 กลุ่มราคาดึงจากตารางเรท (ขนาดชิ้นที่ 2+ ของพวงหลายชิ้น) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
       ...(o.priceAsDriver ? { priceAsDriver: o.priceAsDriver } : {}),
       ...(o.section ? { section: o.section } : {}),
+      ...(o.sectionTrim ? { sectionTrim: o.sectionTrim } : {}),
       ...(o.priceAsDriverAlso && Object.keys(o.priceAsDriverAlso).length ? { priceAsDriverAlso: { ...o.priceAsDriverAlso } } : {}),
       ...(o.smallQtyFee
         ? {
@@ -911,6 +913,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       ...(o.qtyFrom ? { qtyFrom: o.qtyFrom } : {}),
       ...(o.priceAsDriver ? { priceAsDriver: o.priceAsDriver } : {}),
       ...(o.section ? { section: o.section } : {}),
+      ...(o.sectionTrim ? { sectionTrim: o.sectionTrim } : {}),
       ...(o.priceAsDriverAlso && Object.keys(o.priceAsDriverAlso).length ? { priceAsDriverAlso: { ...o.priceAsDriverAlso } } : {}),
       ...(Number.isFinite(Number(o.smallFee)) && Number(o.smallFee) !== 0 && String(o.smallFee ?? "").trim() !== "" && Number(o.smallUpTo) > 0
         ? {

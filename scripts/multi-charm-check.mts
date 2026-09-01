@@ -9,8 +9,6 @@ import {
   allowedChoices,
   optionVisible,
   artworkConsultOf,
-  choiceExtraAtQty,
-  tierQtyFor,
   unitPriceFor,
   unitPriceParts,
   type Product,
@@ -42,8 +40,6 @@ const ok = (name: string, pass: boolean) => {
   console.log(pass ? "✅" : "❌", name);
 };
 const group = (l: string) => p.options.find((o) => o.label === l)!;
-/** ตัวเลือกแรกของกลุ่มติ่งห้อย — ค่าที่ ProductDetail แกล้งใส่ให้ตอนเปิดสวิตช์ (visibilityView) */
-const charmGroupFirst = (prod: Product) => prod.options.find((o) => o.label === "ติ่งห้อย")!.choices[0].name;
 
 console.log("── ความหนา / ประเภท / สี ──");
 const sel1 = resolveSelections(p, {});
@@ -59,8 +55,9 @@ const back = resolveSelections(p, { ...toClear, [TYPE1]: SPECIAL });
 ok("สลับ สีพิเศษ → ใส → สีพิเศษ ได้ครบวง (ไม่ล็อกตาย)", toClear[TYPE1] === "อะคริลิคใส" && back[TYPE1] === SPECIAL);
 
 console.log("\n── สเปครายชิ้น ──");
-const one = resolveSelections(p, { [COUNT]: "1 ชิ้น" });
-ok("พวง 1 ชิ้น → ไม่ถามสเปคชิ้นที่ 2", !optionVisible(group(TYPE2), one) && !optionVisible(group("งานสกรีน ชิ้นที่ 2"), one));
+const minSel = resolveSelections(p, {});
+ok(`ขั้นต่ำ 2 ชิ้นต่อพวง — ไม่มีตัวเลือก "1 ชิ้น" (ค่าเริ่มต้น "${minSel[COUNT]}")`,
+  allowedChoices(p, minSel, COUNT)[0] === "2 ชิ้น" && minSel[COUNT] === "2 ชิ้น");
 const two = resolveSelections(p, { ความหนาอะคริลิค: "3mm", [COUNT]: "2 ชิ้น" });
 ok("พวง 2 ชิ้น → ถามขนาด/ประเภท/งานสกรีน ของชิ้นที่ 2", ["ขนาดชิ้นที่ 2", TYPE2, "งานสกรีน ชิ้นที่ 2"].every((l) => optionVisible(group(l), two)));
 ok("พวง 2 ชิ้น → ยังไม่ถามชิ้นที่ 3", !optionVisible(group("ประเภทอะคริลิค ชิ้นที่ 3"), two));
@@ -94,52 +91,38 @@ ok(`ชิ้นที่ 2 สกรีน 2 ด้าน ราคาขยั
 const parts = unitPriceParts(p, resolveSelections(p, { ...baseSel, "ขนาดชิ้นที่ 2": "10cm" }), 1);
 ok("รายการค่าตัวเลือกแยกบรรทัด 'ขนาดชิ้นที่ 2' ให้ลูกค้าเห็น", parts.addOns.some((a) => a.label === "ขนาดชิ้นที่ 2" && a.amount > 0));
 
-console.log("\n── รูปแบบการห้อย (แยก 2 กลุ่ม: ชิ้นงานหลัก / ติ่งห้อย) ──");
-const CHARM_HANG = "การห้อยติ่งห้อย";
+console.log("\n── รูปแบบการห้อย (ชิ้นในพวงทั้งหมด) ──");
 const OTHER = "แบบอื่น ๆ (ติดต่อแอดมิน)";
-const oneCharm = resolveSelections(p, { [COUNT]: "1 ชิ้น", [CHARM]: "ติ่งห้อย 2 ซม. (มาตรฐาน) ×2" });
-ok("พวง 1 ชิ้น ไม่ติ๊กติ่งห้อย → ไม่ถามการห้อยทั้งสองกลุ่ม", !optionVisible(group(HANG), one) && !optionVisible(group(CHARM_HANG), one));
-ok("พวง 2 ชิ้น → ถามรูปแบบการห้อย (ชิ้นงานหลัก) แต่ยังไม่ถามของติ่งห้อย", optionVisible(group(HANG), two) && !optionVisible(group(CHARM_HANG), two));
-ok("พวง 1 ชิ้น + ติ๊กติ่งห้อย → ถามเฉพาะการห้อยติ่งห้อย", optionVisible(group(CHARM_HANG), oneCharm) && !optionVisible(group(HANG), oneCharm));
-const twoCharm = resolveSelections(p, { ...two, [CHARM]: "ติ่งห้อย 3 ซม. ×1" });
-ok("พวง 2 ชิ้น + ติ่งห้อย → ถามทั้งสองกลุ่มแยกกัน", optionVisible(group(HANG), twoCharm) && optionVisible(group(CHARM_HANG), twoCharm));
-ok("การ์ดของสองกลุ่มมีภาพครบ และเป็นคนละชุด",
-  group(HANG).choices.every((c) => !!c.imageSrc) &&
-    group(CHARM_HANG).choices.every((c) => !!c.imageSrc) &&
-    group(CHARM_HANG).choices[0].imageSrc !== group(HANG).choices[0].imageSrc);
-ok("เลือก 'แบบอื่น ๆ' ที่ชิ้นงานหลัก → บังคับคุยแอดมิน", !!artworkConsultOf(p, resolveSelections(p, { ...two, [HANG]: OTHER })));
-ok("เลือก 'แบบอื่น ๆ' ที่ติ่งห้อย → บังคับคุยแอดมิน (เงื่อนไขหรือ)", !!artworkConsultOf(p, resolveSelections(p, { ...oneCharm, [CHARM_HANG]: OTHER })));
-ok("เลือกแบบปกติทั้งสองกลุ่ม → สั่งได้เลย",
-  !artworkConsultOf(p, resolveSelections(p, { ...twoCharm, [HANG]: "ห้อยด้านข้าง", [CHARM_HANG]: "ห้อยต่อ ๆ กันลงมา" })));
+ok("กลุ่มของเสริม 'ติ่งห้อย' และ 'การห้อยติ่งห้อย' ถอดออกแล้ว (ติ่งห้อย = ชิ้นที่ 2 ขึ้นไป)",
+  !p.options.some((o) => [CHARM, "การห้อยติ่งห้อย"].includes(o.label)));
+ok("ไม่มีกลุ่ม/กฎไหนค้างชี้กลุ่มที่ถอดไป",
+  !p.options.some((o) =>
+    [o.showWhen, ...(o.showWhenAll || []), ...(o.showWhenAny || [])].some((c) =>
+      c && [CHARM, "การห้อยติ่งห้อย"].includes(c.label)
+    )
+  ) && !(p.rules || []).some((r) => [CHARM, "การห้อยติ่งห้อย"].includes(r.when?.label ?? "")));
+ok("พวง 2 ชิ้น → ถามรูปแบบการห้อย", optionVisible(group(HANG), two));
+ok("การ์ดรูปแบบการห้อยมีภาพครบ", group(HANG).choices.every((c) => !!c.imageSrc));
+ok("เลือก 'แบบอื่น ๆ' → บังคับคุยแอดมิน", !!artworkConsultOf(p, resolveSelections(p, { ...two, [HANG]: OTHER })));
+ok("เลือกแบบปกติ → สั่งได้เลย", !artworkConsultOf(p, resolveSelections(p, { ...two, [HANG]: "ห้อยด้านข้าง" })));
 
-console.log("\n── เปิดสวิตช์ติ่งห้อยแต่ยังไม่ติ๊กขนาด (หน้าเว็บโชว์กลุ่มให้ แต่ห้ามคิดเงิน/ห้ามติดไปกับออเดอร์) ──");
-// หน้าเว็บโชว์กลุ่มโดยแกล้งมองว่ากลุ่มที่เปิดสวิตช์ไว้ = กำลังใช้อยู่ (visibilityView ใน ProductDetail)
-const openView = resolveSelections(p, { [COUNT]: "1 ชิ้น", [CHARM]: charmGroupFirst(p) });
-ok("มุมมองตอนเปิดสวิตช์ → กลุ่มการห้อยติ่งห้อยโชว์", optionVisible(group(CHARM_HANG), openView));
-// แต่ค่าจริง (ยังไม่ติ๊ก) ต้องถือว่ากลุ่มนี้ปิดอยู่ — handleAdd ตัดกลุ่มที่ optionVisible=false ออกจากตะกร้า
-const noTick = resolveSelections(p, { [COUNT]: "1 ชิ้น", [CHARM]: "", [CHARM_HANG]: "ห้อยต่อ ๆ กันลงมา" });
-ok("ค่าจริงยังไม่ติ๊ก → กลุ่มนี้ไม่ติดไปกับตะกร้า/ออเดอร์", !optionVisible(group(CHARM_HANG), noTick));
-ok("ยังไม่ติ๊กติ่งห้อย → ไม่มีค่าติ่งห้อยบวกเข้าราคา", unitPriceFor(p, noTick, 1) === unitPriceFor(p, resolveSelections(p, { [COUNT]: "1 ชิ้น" }), 1));
-ok("เลือก 'แบบอื่น ๆ' ค้างไว้ในกลุ่มที่ซ่อนอยู่ → ไม่บล็อกปุ่มสั่ง",
-  !artworkConsultOf(p, resolveSelections(p, { [COUNT]: "1 ชิ้น", [CHARM]: "", [CHARM_HANG]: OTHER })));
-
-console.log("\n── ชุดตัวเลือกรายชิ้น (กรอบ + หัวชุด) ──");
+console.log("\n── ชุดตัวเลือกรายชิ้น (กรอบ + หัวชุด: ตัวหลัก / ติ่งห้อย ชิ้นที่ k) ──");
 const sectionOf = (l: string) => group(l).section;
-ok("กลุ่มของชิ้นที่ 2 ติดชุด 'ชิ้นที่ 2' ครบ", ["ขนาดชิ้นที่ 2", TYPE2, "งานสกรีน ชิ้นที่ 2"].every((l) => sectionOf(l) === "ชิ้นที่ 2"));
-ok("กลุ่มของชิ้นที่ 10 ไม่หลุดไปชุดอื่น", sectionOf("ขนาดชิ้นที่ 10") === "ชิ้นที่ 10");
-ok("กลุ่มนอกชุดไม่ติดชุด", [CHARM, HANG, CHARM_HANG, COUNT].every((l) => !sectionOf(l)));
-ok("ชื่อกลุ่มเต็มยังอยู่ (ตะกร้า/ใบงานอ่านออกว่าชิ้นไหน)", p.options.some((o) => o.label === "ขนาดชิ้นที่ 2"));
+const trimOf = (l: string) => group(l).sectionTrim;
+ok("ชิ้นที่ 1 = ชุด 'ตัวหลัก'", ["ขนาดชิ้นที่ 1", TYPE1, "งานสกรีน ชิ้นที่ 1"].every((l) => sectionOf(l) === "ตัวหลัก"));
+ok("ชิ้นที่ 2 = ชุด 'ติ่งห้อย ชิ้นที่ 1'", ["ขนาดชิ้นที่ 2", TYPE2, "งานสกรีน ชิ้นที่ 2"].every((l) => sectionOf(l) === "ติ่งห้อย ชิ้นที่ 1"));
+ok("ชิ้นที่ 10 = ชุด 'ติ่งห้อย ชิ้นที่ 9'", sectionOf("ขนาดชิ้นที่ 10") === "ติ่งห้อย ชิ้นที่ 9");
+// หัวชุดโชว์ชื่อใหม่ แต่หัวข้อในกรอบยังตัดด้วยชื่อกลุ่มเดิม ("ขนาดชิ้นที่ 2" → "ขนาด")
+ok("ทุกกลุ่มในชุดตั้ง sectionTrim ให้ตัดชื่อกลุ่มเหลือคำสั้น",
+  p.options.filter((o) => o.section).every((o) => !!o.sectionTrim && o.label.endsWith(o.sectionTrim!)));
+ok("กลุ่มนอกชุดไม่ติดชุด", [HANG, COUNT].every((l) => !sectionOf(l)));
+ok("ชื่อกลุ่มเต็มยังอยู่ (ตะกร้า/ใบงานอ่านออกว่าชิ้นไหน)", p.options.some((o) => o.label === "ขนาดชิ้นที่ 2") && trimOf("ขนาดชิ้นที่ 2") === "ชิ้นที่ 2");
 
-console.log("\n── เรทติ่งห้อย (เริ่ม 2 ซม. · 20/15/12 ตามชิ้นรวม) ──");
-const charm = group(CHARM);
-const selC = resolveSelections(p, { [COUNT]: "3 ชิ้น" });
-const feeAt = (name: string, units: number) => choiceExtraAtQty(charm, selC, name, tierQtyFor(p, selC, units));
-console.log(`   สั่ง 1 พวง = 3 ชิ้นรวม · 5 พวง = 15 ชิ้น · 10 พวง = 30 ชิ้น`);
-ok(`ติ่งห้อย 2 ซม. = ${feeAt("ติ่งห้อย 2 ซม. (มาตรฐาน)", 1)}/${feeAt("ติ่งห้อย 2 ซม. (มาตรฐาน)", 5)}/${feeAt("ติ่งห้อย 2 ซม. (มาตรฐาน)", 10)} บาท`,
-  feeAt("ติ่งห้อย 2 ซม. (มาตรฐาน)", 1) === 20 && feeAt("ติ่งห้อย 2 ซม. (มาตรฐาน)", 5) === 15 && feeAt("ติ่งห้อย 2 ซม. (มาตรฐาน)", 10) === 12);
-ok(`ติ่งห้อย 3 ซม. = ${feeAt("ติ่งห้อย 3 ซม.", 1)}/${feeAt("ติ่งห้อย 3 ซม.", 5)}/${feeAt("ติ่งห้อย 3 ซม.", 10)} บาท (ใหญ่กว่า 2 ซม. บวก ซม. ละ 10)`,
-  feeAt("ติ่งห้อย 3 ซม.", 1) === 30 && feeAt("ติ่งห้อย 3 ซม.", 5) === 25 && feeAt("ติ่งห้อย 3 ซม.", 10) === 22);
-ok("ตัวเลือกติ่งห้อยเล็กสุดคือ 2 ซม.", charm.choices[0].name.includes("2 ซม."));
+console.log("\n── ติ่งห้อยคิดราคาจากตารางอะคริลิคของชิ้นนั้น ──");
+const three = resolveSelections(p, { ...baseSel, [COUNT]: "3 ชิ้น", "ขนาดชิ้นที่ 3": "2cm" });
+const priceTwo = unitPriceFor(p, baseSel, 1);
+const priceThree = unitPriceFor(p, three, 1);
+ok(`เพิ่มติ่งห้อยอีก 1 ชิ้น (2cm) ราคาต่อพวง ฿${priceTwo} → ฿${priceThree}`, priceThree > priceTwo);
 
 console.log(fail ? `\n❌ ไม่ผ่าน ${fail} ข้อ` : "\n✅ ผ่านทั้งหมด");
 process.exit(fail ? 1 : 0);

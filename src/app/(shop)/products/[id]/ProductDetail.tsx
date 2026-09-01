@@ -641,7 +641,13 @@ export default function ProductDetail({
   // ลิงก์ไฟล์ลาย / อีเมล (ไม่อัปโหลดขึ้นเว็บ — กันไฟล์ถูกบีบอัด)
   const [artLink, setArtLink] = useState("");
   // ภาพลายที่ลูกค้าแนบขึ้นเว็บ (เก็บไฟล์ต้นฉบับ — ใช้เป็นแนวทางให้กราฟฟิก)
-  const [artFiles, setArtFiles] = useState<{ url: string; name: string; w: number; h: number; hash?: string }[]>([]);
+  /**
+   * ภาพลายที่แนบแล้ว · `preview` = ลิงก์ไฟล์ในเครื่อง (blob) ไว้วาดรูปย่อเท่านั้น
+   * ไม่ใช่ค่าที่ส่งไปกับออเดอร์ — ตะกร้า/ใบงานใช้ `url` ที่อัปขึ้นสตอเรจเสมอ
+   */
+  const [artFiles, setArtFiles] = useState<
+    { url: string; name: string; w: number; h: number; hash?: string; preview?: string }[]
+  >([]);
   const [artBusy, setArtBusy] = useState(false);
   const [artErr, setArtErr] = useState("");
   const [artDrag, setArtDrag] = useState(false); // ลากไฟล์อยู่เหนือกล่องแนบลาย
@@ -1181,6 +1187,7 @@ export default function ProductDetail({
   /** เลื่อนไปที่กลุ่มช่องกรอกที่ติดปัญหา (ไฮไลต์ให้เห็นว่าอยู่ตรงไหน) — ค่าที่ผิดเกณฑ์มาก่อน */
   const jumpToInputError = () => {
     const label = (inputHardError ?? inputErrors[0])?.label;
+    setClosedSections({}); // ช่องที่ติดอาจอยู่ในกรอบชุดที่ลูกค้าหุบไว้ — กางให้ก่อน ไม่งั้นเลื่อนไปไม่ถึง
     const el = label ? document.querySelector<HTMLElement>(`[data-opt-group="${CSS.escape(label)}"]`) : null;
     (el ?? document.getElementById("opt-groups"))?.scrollIntoView({ block: "center", behavior: "smooth" });
     if (el) {
@@ -1430,11 +1437,19 @@ export default function ProductDetail({
       try {
         const url = await uploadArtworkFile(f);
         if (hash) seen.add(hash);
+        /**
+         * 🐞 บั๊กที่แก้: แนบรูปแล้ว "ภาพตัวอย่างขึ้นช้า/ไม่ขึ้นเลย"
+         *    รูปย่อ 80px เดิมชี้ไปที่ไฟล์ต้นฉบับบนสตอเรจ = เบราว์เซอร์โหลดไฟล์ทั้งก้อนกลับมาใหม่
+         *    ทั้งที่เพิ่งอัปไฟล์เดียวกันขึ้นไปเอง (วัดจริง: ไฟล์ 5.8MB รออีก 1 วิบนเน็ตบ้าน
+         *    · เน็ตมือถือรอเป็นสิบวินาที หรือค้างจนรูปไม่ขึ้นเลย)
+         *    ใช้ไฟล์ในเครื่องวาดรูปย่อแทน — ขึ้นทันที ไม่กินเน็ตสักไบต์
+         */
+        const preview = URL.createObjectURL(f);
         // กันซ้ำอีกชั้นตอนบันทึกจริง — เผื่อวางรูปเดิมรัว ๆ ระหว่างไฟล์แรกยังอัปโหลดไม่เสร็จ
         setArtFiles((cur) =>
           hash && cur.some((x) => x.hash === hash)
             ? cur
-            : [...cur, { url, name: f.name, ...dim, ...(hash ? { hash } : {}) }]
+            : [...cur, { url, name: f.name, ...dim, preview, ...(hash ? { hash } : {}) }]
         );
         // อัปโหลดสำเร็จแล้ว artBlocked เป็น false — ตรึงกล่องให้เปิดค้าง ไม่ให้หุบหนีรูปที่เพิ่งแนบ
         setArtTouched(true);
@@ -1592,6 +1607,8 @@ export default function ProductDetail({
 
   /** ลบลายที่สร้างไว้ (ทั้งภาพที่ประกอบแล้วและตัวเลขตำแหน่ง) */
   function removeDesign(index: number) {
+    const gone = artFiles[index];
+    if (gone?.preview) URL.revokeObjectURL(gone.preview);
     setArtFiles((cur) => cur.filter((_, i) => i !== index));
     setPlaced((cur) => cur.filter((_, i) => i !== index));
   }
@@ -1775,6 +1792,14 @@ export default function ProductDetail({
   // งานที่ต้องคุยลายก่อน: ไฟล์จริงจะตกลงกันในแชท ไม่บังคับแนบตรงนี้ (แนบเป็นตัวอย่างได้)
   const artRequired = artworkIsRequired(product) && !consult;
   const artProvided = artFiles.length > 0 || artLink.trim().length > 0;
+  /**
+   * 🎨 โหมดออกแบบบนเว็บ "ยังต้องวางลายอยู่ไหม"
+   *
+   * ลูกค้าที่ทำไฟล์ลายมาเองเรียบร้อยแล้ว (อัปรูป หรือใส่ลิงก์ไฟล์) ไม่ต้องไปวางลายบนเว็บซ้ำ
+   * ⚠️ เดิมโหมดนี้ซ่อนกล่อง "แนบลายของคุณ" ทิ้งทั้งกล่อง — ลูกค้าที่มีไฟล์พร้อมอยู่แล้ว
+   *    จึงไม่มีที่ส่งไฟล์เลย (รวมถึงช่องลิงก์ไฟล์และหมายเหตุถึงร้านที่อยู่ในกล่องเดียวกัน)
+   */
+  const studioNeedsDesign = studioMode && !designDone && !artProvided;
   // โหมดออกแบบบนเว็บ: "แบบที่ลูกค้าวางเอง" คือลายอยู่แล้ว ไม่ต้องมีช่องแนบไฟล์
   // โหมดแอดมิน: ลายมาทางไลน์/อีเมลอยู่แล้ว ไม่ต้องบังคับแนบตรงนี้ (แนบเพิ่มในออเดอร์ทีหลังได้)
   const artBlocked = studioMode || staffOrdering ? false : artRequired && !artProvided;
@@ -1809,7 +1834,7 @@ export default function ProductDetail({
       belowMinQty
     ) &&
     !(needDesignsChoice && !designsOk) &&
-    !(studioMode && !designDone);
+    !studioNeedsDesign;
   /**
    * 📦 ราคาสุดท้ายของ "สเปคที่พักไว้ (+ แผ่นที่กำลังตั้งค่า ถ้าพร้อมแล้ว)" — คิดผ่านกติกาเดียวกับตะกร้าเป๊ะ
    * (repriceCartGroups: ขั้นราคาจากยอดรวมล็อต · ราคาต่อแผ่นอ่านคอลัมน์ของสเปคตัวเอง · ค่าคละแยกตามกติกา)
@@ -1917,7 +1942,7 @@ export default function ProductDetail({
     // 🔒 ต่ำกว่าขั้นต่ำต่อลาย — ปุ่มถูกล็อกอยู่แล้ว กันไว้อีกชั้นเผื่อเรียกจากเส้นทางอื่น
     if (belowMin) return false;
     // โหมดออกแบบบนเว็บ: ต้องวางลายให้เสร็จก่อนถึงจะใส่ตะกร้าได้
-    if (studioMode && !designDone) {
+    if (studioNeedsDesign) {
       openStudio();
       return false;
     }
@@ -1952,6 +1977,8 @@ export default function ProductDetail({
   function clearLineExtras() {
     setNote("");
     setArtLink("");
+    // คืน blob url ของรูปย่อก่อนทิ้ง ไม่งั้นรูปที่แนบไปแล้วค้างในหน่วยความจำจนกว่าจะปิดหน้า
+    artFiles.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
     setArtFiles([]);
     setPlaced([]);
   }
@@ -2254,8 +2281,11 @@ export default function ProductDetail({
    * ตัดแล้วเหลือว่าง (ชื่อกลุ่มเท่ากับชื่อชุดพอดี) = คงชื่อเต็มไว้ ไม่งั้นหัวข้อหาย
    */
   function sectionShortLabel(opt: ProductOption): string {
-    if (!opt.section || !opt.label.endsWith(opt.section)) return opt.label;
-    return opt.label.slice(0, -opt.section.length).trim() || opt.label;
+    // ชื่อชุดที่โชว์อาจไม่ตรงกับท้ายชื่อกลุ่ม (หัวชุด "ติ่งห้อย ชิ้นที่ 1" · ชื่อกลุ่ม "ขนาดชิ้นที่ 2")
+    // — sectionTrim บอกว่าให้ตัดส่วนท้ายด้วยคำไหน
+    const trim = opt.sectionTrim || opt.section;
+    if (!opt.section || !trim || !opt.label.endsWith(trim)) return opt.label;
+    return opt.label.slice(0, -trim.length).trim() || opt.label;
   }
 
   /**
@@ -3566,6 +3596,11 @@ export default function ProductDetail({
    * กลุ่มที่ไม่ได้ตั้งชุดไว้ ยังเรียงเรียบ ๆ ทีละกลุ่มเหมือนเดิม (สินค้าเดิมทั้งเว็บไม่กระทบ)
    * ติด index เดิมของแต่ละกลุ่มไปด้วย เพื่อให้แผงเรทยังแทรกถูกตำแหน่ง
    */
+  /**
+   * 🧩 กรอบ "ชุดตัวเลือก" ที่ลูกค้าหุบไว้ (คีย์ = ชื่อชุด) — เริ่มต้นกางทุกชุด
+   * หุบแล้วหัวชุดยังบอกค่าที่เลือกไว้ครบ · ค่าที่เลือกไม่ได้หายไปไหน แค่ซ่อนการแสดงผล
+   */
+  const [closedSections, setClosedSections] = useState<Record<string, boolean>>({});
   const optionBlocks = useMemo(() => {
     const blocks: { section?: string; inputs?: boolean; items: { opt: ProductOption; i: number }[] }[] = [];
     visibleOptions.forEach((opt, i) => {
@@ -4453,15 +4488,38 @@ export default function ProductDetail({
             {optionBlocks.map((blk) => (
               <Fragment key={`blk-${blk.section ?? blk.items[0].opt.label}`}>
                 {blk.section ? (
-                  <section className="rounded-2xl bg-white p-3 ring-1 ring-stone-200">
-                    <div className="mb-2.5 flex items-center gap-2 border-b border-dashed border-stone-200 pb-2">
-                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-stone-800 text-[11px] font-bold tabular-nums text-white">
-                        {blk.section.match(/\d+/)?.[0] ?? "•"}
-                      </span>
-                      <span className="text-[13px] font-bold text-stone-700">{blk.section}</span>
-                    </div>
-                    <div className="space-y-3">{blk.items.map(({ opt }) => optionGroupUI(opt))}</div>
-                  </section>
+                  (() => {
+                    /* 🧩 ชุดตัวเลือก = กรอบเดียวที่กด "หัวชุด" หุบ/กางได้ (สินค้าหลายชิ้นมีได้ถึง 10 ชุด
+                       กางหมดพร้อมกันแล้วเลื่อนหาชิ้นที่จะแก้ไม่เจอ) · หุบไว้ยังอ่านค่าที่เลือกได้ทุกกลุ่ม
+                       ⚠️ หุบ = ซ่อนการแสดงผลเท่านั้น ค่าที่เลือกไว้ยังคิดราคา/ติดไปกับตะกร้าตามเดิม */
+                    const sec = blk.section as string;
+                    const closed = !!closedSections[sec];
+                    const summary = blk.items.map(({ opt }) => effective[opt.label]).filter(Boolean).join(" · ");
+                    return (
+                      <section className="rounded-2xl bg-white p-3 ring-1 ring-stone-200">
+                        <button
+                          type="button"
+                          onClick={() => setClosedSections((cur) => ({ ...cur, [sec]: !closed }))}
+                          aria-expanded={!closed}
+                          className={`flex min-h-[44px] w-full items-center gap-2 text-left ${
+                            closed ? "" : "mb-2.5 border-b border-dashed border-stone-200 pb-2"
+                          }`}
+                        >
+                          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-stone-800 text-[11px] font-bold tabular-nums text-white">
+                            {sec.match(/\d+/)?.[0] ?? "•"}
+                          </span>
+                          <span className="shrink-0 text-[13px] font-bold text-stone-700">{sec}</span>
+                          {closed && summary && (
+                            <span className="min-w-0 flex-1 truncate text-[11px] text-stone-500">{summary}</span>
+                          )}
+                          <span className="ml-auto shrink-0 pl-1 text-[11px] font-semibold text-stone-400">
+                            {closed ? "กาง ▾" : "หุบ ▴"}
+                          </span>
+                        </button>
+                        {!closed && <div className="space-y-3">{blk.items.map(({ opt }) => optionGroupUI(opt))}</div>}
+                      </section>
+                    );
+                  })()
                 ) : blk.inputs ? (
                   /* ✍️ ช่องกรอกที่ต่อกันมา — กรอบเดียวครอบทั้งชุด คั่นแต่ละช่องด้วยเส้นประ */
                   <div className="rounded-2xl bg-white/60 p-2.5 ring-1 ring-stone-200">
@@ -4953,7 +5011,7 @@ export default function ProductDetail({
                 )}
 
                 {/* โหมดออกแบบบนเว็บ: ปุ่มแรกคือ "เริ่มสร้าง" · วางลายเสร็จแล้วค่อยกลายเป็นปุ่มใส่ตะกร้า */}
-                {studioMode && !designDone && (
+                {studioNeedsDesign && (
                   <button
                     type="button"
                     onClick={() => openStudio(null)}
@@ -4967,7 +5025,7 @@ export default function ProductDetail({
                   * ⚠️ ที่ต้องโผล่คู่กับ "เริ่มสร้าง": พักรุ่นที่ 1 ไว้แล้วระบบล้างลายทิ้งเพื่อรับรุ่นถัดไป
                   *    ถ้าไม่มีปุ่มนี้ ลูกค้าที่พอแล้วจะไม่มีทางสั่งของที่เก็บไว้ นอกจากวางลายรุ่นถัดไปให้จบก่อน
                   */}
-                {(!(studioMode && !designDone) || sheets.length > 0) && (
+                {(!studioNeedsDesign || sheets.length > 0) && (
                   <button
                     type="button"
                     onClick={handleAdd}
@@ -5026,7 +5084,7 @@ export default function ProductDetail({
                   *    (กดแล้วรุ่นนั้นลงตะกร้า ฟอร์มพร้อมรับรุ่นถัดไป) มีสองปุ่มทำเรื่องเดียวกันแค่ชวนงง
                   *    — ผู้ใช้สั่งเอาออก 31 ส.ค. 69
                   * สินค้าที่ออกแบบบนเว็บได้ ต้องวางลายให้เสร็จก่อน ปุ่มถึงจะโผล่ */}
-                {lotMinScope && !lotToCart && !(studioMode && !designDone) && (
+                {lotMinScope && !lotToCart && !studioNeedsDesign && (
                   <button
                     type="button"
                     onClick={stageSheet}
@@ -5782,7 +5840,7 @@ export default function ProductDetail({
             </div>
           )}
 
-          <div id="art-box" className={`mt-4 overflow-hidden rounded-3xl bg-white ring-1 ring-stone-200 ${studioMode ? "hidden" : ""}`}>
+          <div id="art-box" className="mt-4 overflow-hidden rounded-3xl bg-white ring-1 ring-stone-200">
             <button
               type="button"
               onClick={() => {
@@ -5808,7 +5866,11 @@ export default function ProductDetail({
                     <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700">แนะนำ</span>
                   )}
                 </span>
-                <span className="block text-[11px] text-stone-400">อัปโหลดรูป (ลากมาวางได้) · หรือแนบลิงก์ไฟล์ / อีเมล</span>
+                <span className="block text-[11px] text-stone-400">
+                  {studioMode
+                    ? "ทำไฟล์ลายมาเองแล้ว? ส่งไฟล์ตรงนี้ได้เลย ไม่ต้องกดเริ่มสร้าง"
+                    : "อัปโหลดรูป (ลากมาวางได้) · หรือแนบลิงก์ไฟล์ / อีเมล"}
+                </span>
               </span>
               <span className={`shrink-0 text-stone-400 transition ${extraOpen === "art" ? "rotate-180" : ""}`}>⌄</span>
             </button>
@@ -5846,11 +5908,18 @@ export default function ProductDetail({
                       <div key={f.url} className="relative">
                         <a href={f.url} target="_blank" rel="noreferrer">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={f.url} alt={f.name} className="h-20 w-20 rounded-xl object-cover ring-1 ring-sky-200" />
+                          <img
+                            src={f.preview ?? f.url}
+                            alt={f.name}
+                            className="h-20 w-20 rounded-xl object-cover ring-1 ring-sky-200"
+                          />
                         </a>
                         <button
                           type="button"
-                          onClick={() => setArtFiles((cur) => cur.filter((_, j) => j !== i))}
+                          onClick={() => {
+                            if (f.preview) URL.revokeObjectURL(f.preview);
+                            setArtFiles((cur) => cur.filter((_, j) => j !== i));
+                          }}
                           className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow"
                           aria-label="ลบภาพนี้"
                         >
@@ -6086,7 +6155,7 @@ export default function ProductDetail({
             )}
           </div>
           {/* แถบล่างมือถือ — ยังไม่วางลาย = ปุ่มเริ่มสร้าง · มีสเปคพักไว้แล้วก็ต้องสั่งของที่เก็บไว้ได้ด้วย */}
-          {studioMode && !designDone && (
+          {studioNeedsDesign && (
             <button
               type="button"
               onClick={() => openStudio(null)}
@@ -6095,7 +6164,7 @@ export default function ProductDetail({
               🎨 เริ่มสร้าง
             </button>
           )}
-          {(!(studioMode && !designDone) || sheets.length > 0) && (
+          {(!studioNeedsDesign || sheets.length > 0) && (
             <button
               type="button"
               onClick={handleAdd}
