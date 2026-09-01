@@ -325,6 +325,30 @@ export default function AdminProductsPage() {
     return m;
   }, [products]);
 
+  /**
+   * หมวดที่ยังมีสินค้าอยู่ แต่ไม่มีในรายการหมวดของร้านแล้ว (แอดมินลบ/สลับชุดหมวดทีหลัง)
+   * [FIX 2026-09-01] เดิมสินค้ากลุ่มนี้หายจากลิสต์เงียบ ๆ — โหมด "ตามหมวด" วาดจาก cats
+   * จึงข้ามไปทั้งกลุ่ม และไม่มีชิปหมวดให้กดด้วย · ค้นหาแล้วขึ้น "พบ 1 รายการ" แต่ไม่มีแถวให้เห็น
+   * (เจอจริงกับ POLAROID / PHOTO BOOTH (กระดาษ) ที่ค้างหมวด card-photo)
+   * ใส่หมวดชั่วคราวติดป้าย ⚠️ ให้เห็น + กดเข้าไปแก้หมวดได้ — ไม่แตะรายการหมวดจริงในฐาน
+   */
+  const listCats = useMemo(() => {
+    const known = new Set(cats.map((c) => c.id));
+    const extra: ShopCategory[] = [];
+    for (const id of catCounts.keys()) {
+      if (known.has(id)) continue;
+      extra.push({
+        id,
+        name: `หมวดที่ไม่มีในระบบแล้ว (${id})`,
+        nameEn: "",
+        emoji: "⚠️",
+        gradient: "from-amber-100 to-amber-200",
+        description: "",
+      });
+    }
+    return extra.length ? [...cats, ...extra] : cats;
+  }, [cats, catCounts]);
+
   // สรุปตัวเลขภาพรวม
   const totalSold = useMemo(() => products.reduce((s, p) => s + p.sold, 0), [products]);
   const reviewedCount = useMemo(() => products.filter((p) => p.reviewed).length, [products]);
@@ -339,7 +363,8 @@ export default function AdminProductsPage() {
       if (reviewFilter === "unchecked" && p.reviewed) return false;
       if (showFilter === "published" && p.hidden) return false;
       if (showFilter === "draft" && !p.hidden) return false;
-      if (q && !p.name.toLowerCase().includes(q)) return false;
+      // ค้นหาจากชื่อ + ลิงก์ (slug) + รหัสสินค้า — ทีมงานมักก๊อปลิงก์หน้าร้านมาวางค้นหา
+      if (q && ![p.name, p.slug ?? "", p.id].some((v) => v.toLowerCase().includes(q))) return false;
       return true;
     });
   }, [products, catFilter, reviewFilter, showFilter, query]);
@@ -545,7 +570,7 @@ export default function AdminProductsPage() {
             </>
           ) : (
             <CatFilterGrid
-              cats={cats.filter((c) => (catCounts.get(c.id) ?? 0) > 0)}
+              cats={listCats.filter((c) => (catCounts.get(c.id) ?? 0) > 0)}
               counts={catCounts}
               total={products.length}
               active={catFilter}
@@ -607,7 +632,7 @@ export default function AdminProductsPage() {
         />
       ) : grouped ? (
         <div className="mt-5 space-y-6">
-          {cats.map((c) => {
+          {listCats.map((c) => {
             const inCat = visible.filter((p) => p.category === c.id);
             if (inCat.length === 0) return null;
             return (
