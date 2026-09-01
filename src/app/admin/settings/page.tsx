@@ -23,6 +23,7 @@ import {
   type ShippingMethod,
   type ShopPayment,
   type WelcomeCouponConfig,
+  giftNeedsArtwork,
   type GiftPromo,
   type GiftSize,
   type GiftRequire,
@@ -882,6 +883,7 @@ function AdminSettingsPageInner() {
           sizeLabel: g.sizeLabel?.trim() || undefined,
           giftProductId: g.giftProductId?.trim() || undefined,
           condition: g.condition?.trim() || undefined,
+          needArtwork: typeof g.needArtwork === "boolean" ? g.needArtwork : undefined,
           requires: (g.requires ?? [])
             .map((r) => ({
               label: r.label?.trim() || undefined,
@@ -1686,8 +1688,26 @@ function AdminSettingsPageInner() {
                         </div>
                       </div>
 
+                      {/* 🎨 ของแถมชิ้นนี้ต้องพิมพ์ลายไหม — เปิดแล้วตะกร้าจะมีกล่องแนบลายบนการ์ดของแถม */}
+                      <label className="mt-5 flex cursor-pointer items-start gap-2.5 rounded-xl border border-slate-200 bg-white p-3">
+                        <input
+                          type="checkbox"
+                          checked={giftNeedsArtwork(g)}
+                          onChange={(e) => patchGift(i, { needArtwork: e.target.checked })}
+                          className="mt-0.5 h-4 w-4"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-xs font-semibold text-slate-700">🎨 ของแถมชิ้นนี้ต้องพิมพ์ลาย (เช่น กระดาษรองหลัง)</span>
+                          <span className="mt-0.5 block text-[11px] leading-relaxed text-slate-400">
+                            เปิดแล้วการ์ดของแถมในตะกร้าจะมีให้เลือก{" "}
+                            <strong className="text-slate-500">“ใช้ลายเดียวกับสินค้าที่สั่ง” (ค่าเริ่มต้น)</strong> หรือแนบไฟล์ลายอื่น ·
+                            ไฟล์ที่แนบจะขึ้นในใบงานฝ่ายผลิตให้อัตโนมัติ
+                          </span>
+                        </span>
+                      </label>
+
                       {/* 📋 เงื่อนไขเพิ่มเติม (ข้อความ) + เงื่อนไขที่ระบบตรวจให้ */}
-                      <label className="mt-5 block">
+                      <label className="mt-4 block">
                         <span className="mb-1.5 block text-xs font-semibold text-slate-700">📋 เงื่อนไขเพิ่มเติม (ลูกค้าเห็นในตะกร้า)</span>
                         <input
                           value={g.condition ?? ""}

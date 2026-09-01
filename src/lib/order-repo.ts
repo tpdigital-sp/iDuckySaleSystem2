@@ -19,6 +19,8 @@ export interface CreateOrderInput {
   items: { productId: string; name: string; selections: string; sel?: Record<string, string>; qty: number; unitPrice: number }[];
   /** 📐 ขนาดของแถมที่ลูกค้าเลือกไว้ ({ promoId: "9 × 9 cm" }) — เซิร์ฟเวอร์ตรวจกับลิสต์ที่แอดมินตั้งไว้อีกที */
   giftSizes?: Record<string, string>;
+  /** 🎨 ลายที่ลูกค้าแนบให้ของแถม ({ promoId: [url, …] }) — ไม่ส่ง/ว่าง = ใช้ลายเดียวกับสินค้าที่สั่ง */
+  giftArtwork?: Record<string, string[]>;
 }
 
 /** ลูกค้าสั่งซื้อ → สร้างออเดอร์ (public API, service role เขียน) · คืน key ลับสำหรับแจ้งโอน */

@@ -43,6 +43,8 @@ export async function POST(req: Request) {
     staffOrder?: boolean;
     /** 📐 ขนาดของแถมที่ลูกค้าเลือก ({ promoId: "9 × 9 cm" }) — ตรวจกับลิสต์ของแอดมินก่อนใช้ */
     giftSizes?: Record<string, string>;
+    /** 🎨 ลายที่ลูกค้าแนบให้ของแถม ({ promoId: [url, …] }) — ล้างด้วย sanitizeGiftArtwork ก่อนเก็บ */
+    giftArtwork?: Record<string, string[]>;
   };
   try {
     input = await req.json();
@@ -173,7 +175,9 @@ export async function POST(req: Request) {
           promos,
           now.getTime()
         ),
-        chosen
+        chosen,
+        // 🎨 ลายของแถม — เก็บเฉพาะโปรที่แอดมินตั้ง needArtwork ไว้ (giftsToOrder คัดให้อีกชั้น)
+        input.giftArtwork
       );
     }
   } catch {

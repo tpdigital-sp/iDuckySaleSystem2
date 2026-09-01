@@ -39,9 +39,13 @@ import {
   splitGiftBySheet,
   readGiftSizes,
   writeGiftSizes,
+  readGiftArtwork,
+  writeGiftArtwork,
+  giftNeedsArtwork,
   type GiftPromo,
 } from "@/lib/gifts";
 import GiftPanel from "@/components/GiftPanel";
+import GiftArtworkPicker from "@/components/GiftArtworkPicker";
 import { useCart } from "@/lib/cart-context";
 import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import BoxFeeTag from "@/components/BoxFeeTag";
@@ -239,6 +243,18 @@ export default function CartPage() {
     setGiftSize((cur) => {
       const next = { ...cur, [promoId]: label };
       writeGiftSizes(next);
+      return next;
+    });
+  }
+  // 🎨 ลายที่ลูกค้าแนบให้ของแถม ({ promoId: [url, …] }) — ว่าง = ใช้ลายเดียวกับสินค้าที่สั่ง
+  const [giftArt, setGiftArt] = useState<Record<string, string[]>>({});
+  useEffect(() => setGiftArt(readGiftArtwork()), []);
+  function setGiftArtOf(promoId: string, urls: string[]) {
+    setGiftArt((cur) => {
+      const next = { ...cur };
+      if (urls.length) next[promoId] = urls;
+      else delete next[promoId];
+      writeGiftArtwork(next);
       return next;
     });
   }
@@ -684,17 +700,18 @@ export default function CartPage() {
             {giftRows
               .filter((g) => g.earned > 0)
               .map((g) => (
-                <div key={`gift-${g.promo.id}`} className="ord-card cart-item" style={{ borderColor: "rgba(18,135,106,.35)", background: "#F2FBF7" }}>
-                  <div className="flex gap-3.5 p-3.5 sm:gap-4 sm:p-4">
-                    {g.promo.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- รูปของแถมจากคลังรูปร้าน
-                      <img src={g.promo.image} alt={g.promo.name} className="cart-thumb object-cover" />
-                    ) : (
-                      <span className="cart-thumb grid place-items-center bg-white text-4xl">🎁</span>
-                    )}
-                    <div className="flex min-w-0 flex-1 flex-col">
+                /* ⚠️ ห้ามใส่ div ครอบชั้นในอีก — `.cart-item` เป็น flex + padding 14px อยู่แล้ว
+                   ของเดิมครอบซ้ำทำให้การ์ดของแถม padding 28-30px ไม่เท่าแถวสินค้า */
+                <div key={`gift-${g.promo.id}`} className="ord-card cart-item gift-item">
+                  {g.promo.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- รูปของแถมจากคลังรูปร้าน
+                    <img src={g.promo.image} alt={g.promo.name} className="cart-thumb object-cover" />
+                  ) : (
+                    <span className="cart-thumb ph" aria-hidden>🎁</span>
+                  )}
+                  <div className="flex min-w-0 flex-1 flex-col">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="ord-chip" style={{ background: "#DEF5EC", color: "#0E6B52" }}>🎁 ของแถมโปรโมชั่น</span>
+                        <span className="ord-chip gift-chip">🎁 ของแถมโปรโมชั่น</span>
                       </div>
                       <span className="cart-name mt-1" style={{ cursor: "default" }}>{g.promo.name}</span>
                       {g.promo.note && <span className="text-[11px] t-soft">{g.promo.note}</span>}
@@ -725,17 +742,11 @@ export default function CartPage() {
                                     disabled={sizes.length === 1}
                                     onClick={() => pickGiftSize(g.promo.id, sz.label)}
                                     title={sz.note}
-                                    className="flex items-center gap-1.5 rounded-xl px-2 py-1.5 text-[11px] font-semibold transition"
-                                    style={{
-                                      cursor: sizes.length === 1 ? "default" : "pointer",
-                                      border: `1.5px solid ${on ? "rgba(18,135,106,.65)" : "var(--sky-200)"}`,
-                                      background: on ? "#DEF5EC" : "#fff",
-                                      color: on ? "#0E6B52" : "var(--ink-soft, #5A6B84)",
-                                    }}
+                                    className={`gift-opt${on ? " on" : ""}${sizes.length === 1 ? " lock" : ""}`}
                                   >
                                     {sz.image && (
                                       // eslint-disable-next-line @next/next/no-img-element -- รูปของแถมจากคลังรูปร้าน
-                                      <img src={sz.image} alt="" className="h-7 w-7 rounded-lg object-cover" />
+                                      <img src={sz.image} alt="" />
                                     )}
                                     <span className="text-left">
                                       {sz.label}
@@ -749,7 +760,7 @@ export default function CartPage() {
                             </div>
                             {cur.note && <span className="mt-1 block text-[11px] t-soft">{cur.note}</span>}
                             {sp.fallback > 0 && (
-                              <span className="mt-1.5 block rounded-lg px-2 py-1.5 text-[11px] leading-relaxed" style={{ background: "#FFF6E2", color: "#7A5A12" }}>
+                              <span className="ord-note warn mt-1.5 block px-2.5 py-1.5 text-[11px]">
                                 🧾 ได้ <strong>{g.promo.name} {sp.printed.toLocaleString("th-TH")} ชิ้น</strong> ({sp.sheets} แผ่น A3 เต็ม)
                                 · อีก <strong>{sp.fallback.toLocaleString("th-TH")} ชิ้น</strong> ที่เหลือไม่เต็มครึ่งแผ่น
                                 จะได้เป็น <strong>{sp.fallbackName}</strong> แทน
@@ -765,6 +776,15 @@ export default function CartPage() {
                         );
                       })()}
 
+                      {/* 🎨 ลายของแถม — ค่าเริ่มต้นใช้ลายเดียวกับสินค้า · อยากได้ลายอื่นแนบไฟล์ตรงนี้ */}
+                      {giftNeedsArtwork(g.promo) && (
+                        <GiftArtworkPicker
+                          promo={g.promo}
+                          urls={giftArt[g.promo.id] ?? []}
+                          onChange={(urls) => setGiftArtOf(g.promo.id, urls)}
+                        />
+                      )}
+
                       <div className="mt-auto flex items-center justify-between gap-3 pt-2">
                         <span className="text-xs t-soft">จำนวน {g.earned.toLocaleString("th-TH")} ชิ้น · ระบบเพิ่มให้อัตโนมัติ</span>
                         <span className="text-right">
@@ -774,7 +794,6 @@ export default function CartPage() {
                           <span className="cart-price t-ok">ฟรี</span>
                         </span>
                       </div>
-                    </div>
                   </div>
                 </div>
               ))}
@@ -927,19 +946,30 @@ export default function CartPage() {
               </div>
               {giftRows
                 .filter((g) => g.earned > 0)
-                .map((g) => (
-                  <div key={g.promo.id} className="flex justify-between t-soft">
-                    <dt>
-                      🎁 ของแถม — {g.promo.name}
-                      {(() => {
-                        const cur = resolveGiftSize(g.promo, giftSize[g.promo.id]);
-                        return cur ? ` (${cur.label})` : "";
-                      })()}{" "}
-                      ×{g.earned}
-                    </dt>
-                    <dd className="font-semibold t-ok">ฟรี!</dd>
-                  </div>
-                ))}
+                .map((g) => {
+                  /* 🐞 บั๊กที่แก้: บรรทัดนี้เคยขึ้น ×g.earned (= 20) ทั้งที่เศษไม่เต็มแผ่นได้ของแทน
+                     ลูกค้าเลือก 9×9 แล้วเห็น "รองหลัง ×20" แต่ของจริงคือรองหลัง 15 + ซองใส 5
+                     — การ์ดของแถม/หน้าชำระเงิน/ใบงาน แตกให้ถูกอยู่แล้ว เหลือช่องนี้ช่องเดียวที่บอกเกิน */
+                  const cur = resolveGiftSize(g.promo, giftSize[g.promo.id]);
+                  const sp = splitGiftBySheet(g.promo, cur, g.earned);
+                  return (
+                    <div key={g.promo.id}>
+                      <div className="flex justify-between t-soft">
+                        <dt>
+                          🎁 ของแถม — {g.promo.name}
+                          {cur ? ` (${cur.label})` : ""} ×{sp.fallback > 0 ? sp.printed : g.earned}
+                        </dt>
+                        <dd className="font-semibold t-ok">ฟรี!</dd>
+                      </div>
+                      {sp.fallback > 0 && (
+                        <div className="flex justify-between t-soft">
+                          <dt>🧾 {sp.fallbackName} ×{sp.fallback}</dt>
+                          <dd className="font-semibold t-ok">ฟรี!</dd>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               <div className="ord-title mt-1 flex justify-between pt-3 text-base" style={{ borderTop: "1px dashed var(--sky-200)" }}>
                 <dt>ยอดชำระทั้งหมด</dt>
                 <dd className="t-blue" style={{ fontWeight: 600 }}>

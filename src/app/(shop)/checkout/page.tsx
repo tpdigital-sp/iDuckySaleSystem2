@@ -23,7 +23,7 @@ import {
   type ShopPayment,
   type ShippingMethod,
 } from "@/lib/shop-settings";
-import { giftsFor, giftSizesOf, resolveGiftSize, splitGiftBySheet, readGiftSizes } from "@/lib/gifts";
+import { giftsFor, giftSizesOf, resolveGiftSize, splitGiftBySheet, readGiftSizes, readGiftArtwork, giftNeedsArtwork } from "@/lib/gifts";
 import { getAccessToken } from "@/lib/customer-auth";
 import { fetchMyOrders } from "@/lib/my-orders";
 import { paidSpend, tierForSpend, tierDiscountAmount } from "@/lib/tiers";
@@ -206,6 +206,9 @@ export default function CheckoutPage() {
   // 📐 ขนาดของแถมที่ลูกค้าเลือกไว้ตั้งแต่หน้าตะกร้า
   const [giftChosen, setGiftChosen] = useState<Record<string, string>>({});
   useEffect(() => setGiftChosen(readGiftSizes()), []);
+  // 🎨 ลายของแถมที่แนบไว้ตั้งแต่หน้าตะกร้า — ตรงนี้โชว์อย่างเดียว (แก้ที่ตะกร้า)
+  const [giftArt, setGiftArt] = useState<Record<string, string[]>>({});
+  useEffect(() => setGiftArt(readGiftArtwork()), []);
 
   // 🎁 ของแถมฟรีตามจำนวนชิ้น — โชว์ให้ลูกค้าเห็นก่อนกดสั่ง (เซิร์ฟเวอร์คิดใหม่เองตอนสร้างออเดอร์)
   const giftRows = giftsFor(
@@ -464,6 +467,8 @@ export default function CheckoutPage() {
       items: orderItems,
       // 📐 ขนาดของแถมที่ลูกค้าเลือกไว้ในตะกร้า (เซิร์ฟเวอร์ตรวจกับลิสต์ของแอดมินอีกชั้น)
       giftSizes: readGiftSizes(),
+      // 🎨 ลายที่ลูกค้าแนบให้ของแถม (ไม่แนบ = ร้านใช้ลายเดียวกับสินค้าที่สั่ง)
+      giftArtwork: readGiftArtwork(),
         ...(useByDate ? { useByDate } : {}),
     });
     setPlacing(false);
@@ -980,8 +985,18 @@ export default function CheckoutPage() {
                   <span className="shrink-0">ฟรี</span>
                 </div>
               )}
-              {giftSizesOf(g.promo).length > 1 && (
-                <p className="pl-9 text-[11px] font-normal text-stone-400">เปลี่ยนขนาดได้ที่หน้าตะกร้า</p>
+              {giftNeedsArtwork(g.promo) && (
+                <p className="pl-9 text-[11px] font-normal text-stone-500">
+                  🎨 ลาย:{" "}
+                  {(giftArt[g.promo.id] ?? []).length > 0
+                    ? `แนบไฟล์ไว้แล้ว ${giftArt[g.promo.id].length} รูป`
+                    : "ใช้ลายเดียวกับสินค้าที่สั่ง"}
+                </p>
+              )}
+              {(giftSizesOf(g.promo).length > 1 || giftNeedsArtwork(g.promo)) && (
+                <p className="pl-9 text-[11px] font-normal text-stone-400">
+                  {giftSizesOf(g.promo).length > 1 ? "เปลี่ยนขนาด" : "เปลี่ยนลาย"}ได้ที่หน้าตะกร้า
+                </p>
               )}
             </div>
           );

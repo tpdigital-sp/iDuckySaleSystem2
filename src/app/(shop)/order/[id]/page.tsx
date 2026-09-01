@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useState } from "react";
-import { giftLinesOf } from "@/lib/gifts";
+import { giftLinesOf, giftArtLabel } from "@/lib/gifts";
 import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import AdminEditFab from "@/components/AdminEditFab";
@@ -1225,14 +1225,30 @@ export default function CustomerOrderPage() {
               <span className="t-soft">ค่าจัดส่ง ({order.shippingLabel || order.shipping})</span>
               <span>{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
             </div>
-            {(order.gifts ?? []).flatMap((g) =>
-              giftLinesOf(g).map((ln, k) => (
-                <div key={`${g.promoId}-${k}`} className="mt-1.5 flex justify-between text-sm font-semibold t-ok">
-                  <span>🎁 ของแถม — {ln.label} ×{ln.qty}</span>
-                  <span>ฟรี</span>
-                </div>
-              ))
-            )}
+            {(order.gifts ?? []).map((g) => (
+              <div key={g.promoId}>
+                {giftLinesOf(g).map((ln, k) => (
+                  <div key={k} className="mt-1.5 flex justify-between text-sm font-semibold t-ok">
+                    <span>🎁 ของแถม — {ln.label} ×{ln.qty}</span>
+                    <span>ฟรี</span>
+                  </div>
+                ))}
+                {/* 🎨 ลายที่จะพิมพ์บนของแถม — ให้ลูกค้าเช็คได้ว่าร้านจะใช้ลายไหน */}
+                {giftArtLabel(g) && (
+                  <p className="mt-0.5 text-[11px] t-soft">🎨 {giftArtLabel(g)}</p>
+                )}
+                {(g.artworkUrls?.length ?? 0) > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {(g.artworkUrls ?? []).map((u, k) => (
+                      <a key={u} href={u} target="_blank" rel="noreferrer">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={u} alt={`ลายของแถม ${k + 1}`} className="h-12 w-12 rounded-lg object-cover ring-1 ring-emerald-200" />
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
             {order.discount && order.discount.amount > 0 && (
               <div className="mt-1.5 flex justify-between text-sm font-semibold t-ok">
                 <span>{order.discount.label}</span>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { giftLinesOf } from "@/lib/gifts";
+import { giftLinesOf, giftArtLabel } from "@/lib/gifts";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
@@ -644,14 +644,30 @@ export default function PrintOrderPage() {
             {(order.gifts?.length ?? 0) > 0 && (
               <div className="keep mt-3 rounded border-2 border-slate-900 p-3">
                 <p className="text-sm font-extrabold">🎁 ของแถมที่ต้องใส่กล่อง</p>
-                <ul className="mt-1 space-y-0.5 text-sm font-bold">
-                  {(order.gifts ?? []).flatMap((g) =>
-                    giftLinesOf(g).map((ln, k) => (
-                      <li key={`${g.promoId}-${k}`}>
-                        ☐ {ln.label} × {ln.qty}
-                      </li>
-                    ))
-                  )}
+                <ul className="mt-1 space-y-1 text-sm font-bold">
+                  {(order.gifts ?? []).map((g) => (
+                    <li key={g.promoId}>
+                      {giftLinesOf(g).map((ln, k) => (
+                        <span key={k} className="block">
+                          ☐ {ln.label} × {ln.qty}
+                        </span>
+                      ))}
+                      {/* 🎨 ของแถมที่ต้องพิมพ์ลาย (เช่น รองหลัง) — กราฟฟิกต้องรู้ว่าใช้ลายไหน ไม่งั้นพิมพ์ผิด */}
+                      {giftArtLabel(g) && (
+                        <span className="mt-0.5 block pl-4 text-xs font-semibold text-slate-600">
+                          🎨 {giftArtLabel(g)}
+                        </span>
+                      )}
+                      {(g.artworkUrls?.length ?? 0) > 0 && (
+                        <span className="mt-1 flex flex-wrap gap-1 pl-4">
+                          {(g.artworkUrls ?? []).slice(0, 4).map((u, k) => (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img key={u} src={u} alt={`ลายของแถม ${k + 1}`} className="h-14 w-14 rounded border border-slate-300 object-cover" />
+                          ))}
+                        </span>
+                      )}
+                    </li>
+                  ))}
                 </ul>
               </div>
             )}

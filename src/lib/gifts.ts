@@ -87,6 +87,17 @@ export interface GiftPromo {
   /** เงื่อนไขเพิ่มเติมเป็นข้อความ (เช่น "อะคริลิคต้องขนาด 4 ซม. ขึ้นไป หนา 3 มม.") — โชว์ให้ลูกค้าเห็นในตะกร้า */
   condition?: string;
 
+  /**
+   * 🎨 ของแถมชิ้นนี้ต้อง "พิมพ์ลาย" ไหม (เช่น กระดาษรองหลัง — คนละลายกับตัวสินค้าก็ได้)
+   * true = การ์ดของแถมในตะกร้ามีกล่องเลือกลาย 2 ทาง
+   *        ① ใช้ลายเดียวกับสินค้าที่สั่ง (ค่าเริ่มต้น — ลูกค้าส่วนใหญ่ใช้ทางนี้ ไม่ต้องอัปซ้ำ)
+   *        ② แนบไฟล์ลายอื่น → เก็บลง OrderGift.artworkUrls ขึ้นใบงานให้กราฟฟิก/ฝ่ายแพ็ค
+   *
+   * ⚠️ ไม่ตั้ง ≠ ปิด — อ่านค่าผ่าน giftNeedsArtwork() เสมอ เพราะโปรที่ผูกกับสินค้าจริงในร้าน
+   *    (giftProductId) ถือว่าเป็นงานพิมพ์โดยปริยาย ไม่ต้องรอแอดมินไปติ๊กก่อนถึงจะใช้ได้
+   */
+  needArtwork?: boolean;
+
   /** 📋 เงื่อนไขที่ระบบตรวจให้เอง — ชิ้นที่ไม่ผ่านไม่นับเข้าโปร (ว่าง = นับทุกชิ้นของสินค้าที่เข้าโปร) */
   requires?: GiftRequire[];
 
@@ -148,6 +159,53 @@ export function writeGiftSizes(v: Record<string, string>): void {
   } catch {}
 }
 
+/**
+ * 🎨 ที่เก็บ "ลายที่ลูกค้าแนบให้ของแถม" ในเครื่องลูกค้า — ตะกร้าเขียน · หน้าชำระเงินอ่านไปส่งเข้าออเดอร์
+ * ({ promoId: ["https://…1.jpg", …]) · ไม่มีคีย์/ลิสต์ว่าง = ใช้ลายเดียวกับสินค้าที่สั่ง
+ */
+export const GIFT_ART_KEY = "iducky-gift-art-v1";
+
+/** เพดานไฟล์ลายต่อของแถม 1 โปร (กันตะกร้า/ออเดอร์บวมจากคนแนบรัว) */
+export const GIFT_ART_MAX = 10;
+
+/**
+ * ล้างลายของแถมให้เหลือเฉพาะที่ใช้ได้จริง
+ * ⚠️ ใช้ทั้งฝั่งเว็บและเซิร์ฟเวอร์ — เซิร์ฟเวอร์ห้ามเชื่อค่าที่หน้าเว็บส่งมาดื้อ ๆ
+ *    (รับเฉพาะลิงก์ http/https · ตัดที่ GIFT_ART_MAX รูป · ทิ้งลิงก์ยาวผิดปกติ)
+ */
+export function sanitizeGiftArtwork(raw: unknown): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [id, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!id || !Array.isArray(v)) continue;
+    const urls = v
+      .filter((u): u is string => typeof u === "string")
+      .map((u) => u.trim())
+      .filter((u) => /^https?:\/\//i.test(u) && u.length <= 500)
+      .slice(0, GIFT_ART_MAX);
+    if (urls.length) out[id] = [...new Set(urls)];
+  }
+  return out;
+}
+
+/** อ่านลายของแถมที่แนบไว้ (ฝั่งเซิร์ฟเวอร์/อ่านไม่ได้ = {}) */
+export function readGiftArtwork(): Record<string, string[]> {
+  if (typeof window === "undefined") return {};
+  try {
+    return sanitizeGiftArtwork(JSON.parse(window.localStorage.getItem(GIFT_ART_KEY) || "{}"));
+  } catch {
+    return {};
+  }
+}
+
+/** จำลายของแถมที่ลูกค้าแนบ */
+export function writeGiftArtwork(v: Record<string, string[]>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(GIFT_ART_KEY, JSON.stringify(v));
+  } catch {}
+}
+
 /** ผลการคิดของแถม 1 โปร */
 export interface GiftResult {
   promo: GiftPromo;
@@ -175,6 +233,34 @@ export interface OrderGift {
   /** ได้ของแทนกี่ชิ้น + ชื่อของแทน (เช่น ซองใส-หลังขาว ×5) */
   fallbackQty?: number;
   fallbackName?: string;
+
+  /** ของแถมชิ้นนี้ต้องพิมพ์ลาย (คัดลอกจากโปรตอนสั่ง — ใบงานใช้ตัดสินว่าจะขึ้นบรรทัดลายไหม) */
+  needArtwork?: boolean;
+  /**
+   * 🎨 ลายที่ลูกค้าแนบมา "เฉพาะของแถมชิ้นนี้"
+   * ว่าง/ไม่มี ทั้งที่ needArtwork = ลูกค้าเลือก "ใช้ลายเดียวกับสินค้าที่สั่ง"
+   */
+  artworkUrls?: string[];
+}
+
+/**
+ * ของแถมชิ้นนี้ต้องถามเรื่องลายไหม
+ *
+ * 🐞 บั๊กที่แก้: ตอนแรกให้ค่าเริ่มต้นเป็น "ไม่ต้องถาม" แล้วรอแอดมินไปติ๊กเอง
+ *    ผลคือของแถมงานพิมพ์ (รองหลัง) ไม่มีช่องแนบลายให้ลูกค้าเลย ทั้งที่ตั้งค่าอย่างอื่นครบแล้ว
+ *    — โปรที่ผูกกับ "สินค้าจริงในร้าน" (giftProductId) แปลว่าเป็นของที่ร้านผลิตเอง = ต้องมีลายแน่นอน
+ *    ถือเป็นค่าเริ่มต้น ส่วนแอดมินยังปิดเองได้ด้วยการติ๊กออก (เก็บเป็น false ชัดเจน)
+ */
+export function giftNeedsArtwork(promo: GiftPromo | null | undefined): boolean {
+  if (!promo) return false;
+  return promo.needArtwork ?? Boolean(promo.giftProductId?.trim());
+}
+
+/** ที่มาของลายบนของแถม 1 รายการ — null = ของแถมนี้ไม่ต้องใช้ลาย (ใบงานไม่ต้องขึ้นบรรทัดนี้) */
+export function giftArtLabel(g: OrderGift): string | null {
+  if (!g.needArtwork) return null;
+  const n = (g.artworkUrls ?? []).length;
+  return n > 0 ? `ลายเฉพาะของแถม ${n} รูป (ลูกค้าแนบมา)` : "ใช้ลายเดียวกับสินค้าที่สั่ง";
 }
 
 const num = (v: unknown, d = 0) => (typeof v === "number" && Number.isFinite(v) ? v : d);
@@ -370,18 +456,29 @@ export function giftsFor(
 /**
  * เฉพาะโปรที่ได้ของแถมแล้ว → รูปแบบที่เก็บลงออเดอร์
  * @param chosenSizes ขนาดที่ลูกค้าเลือกไว้ต่อโปร ({ promoId: "7 × 7 cm" }) — ตัวไหนไม่มี/ไม่ถูกต้อง ใช้ตัวแรกของโปร
+ * @param artwork ลายที่ลูกค้าแนบให้ของแถมต่อโปร — เก็บเฉพาะโปรที่ตั้ง needArtwork ไว้
+ *                (ไม่ส่ง/ว่าง = ใช้ลายเดียวกับสินค้าที่สั่ง ซึ่งเป็นค่าเริ่มต้นของหน้าตะกร้า)
  */
-export function giftsToOrder(results: GiftResult[], chosenSizes?: Record<string, string> | null): OrderGift[] {
+export function giftsToOrder(
+  results: GiftResult[],
+  chosenSizes?: Record<string, string> | null,
+  artwork?: Record<string, string[]> | null
+): OrderGift[] {
+  const art = sanitizeGiftArtwork(artwork ?? {});
   return results
     .filter((r) => r.earned > 0)
     .map((r) => {
       const size = resolveGiftSize(r.promo, chosenSizes?.[r.promo.id]);
       const sp = splitGiftBySheet(r.promo, size, r.earned);
+      const needs = giftNeedsArtwork(r.promo);
+      const urls = needs ? (art[r.promo.id] ?? []) : [];
       return {
         promoId: r.promo.id,
         name: r.promo.name,
         qty: r.earned,
         ...(size ? { size: size.label } : {}),
+        ...(needs ? { needArtwork: true } : {}),
+        ...(urls.length ? { artworkUrls: urls } : {}),
         ...(sp.fallback > 0
           ? { printedQty: sp.printed, fallbackQty: sp.fallback, fallbackName: sp.fallbackName ?? r.promo.partial?.name }
           : {}),

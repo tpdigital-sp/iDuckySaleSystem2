@@ -16,6 +16,7 @@ export {
   activeGiftPromos,
   giftsFor,
   giftSizesOf,
+  giftNeedsArtwork,
   resolveGiftSize,
   splitGiftBySheet,
   type GiftPromo,
