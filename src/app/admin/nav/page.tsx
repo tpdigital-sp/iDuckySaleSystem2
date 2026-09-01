@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type DragEvent as ReactDragEvent,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import RequirePerm from "@/components/RequirePerm";
 import NavTiles from "@/components/NavTiles";
@@ -42,6 +50,7 @@ import { fetchProductNamesLite } from "@/lib/product-repo";
 import type { Product } from "@/lib/products";
 import { btnNeutral, btnPrimary, btnSmDanger, btnSmGhost, card, faint, h1, muted } from "@/lib/admin-ui";
 import { Btn, Empty, PageHead, PageShell } from "@/components/admin/ui";
+import { Grip, reorder, useSortList } from "@/components/admin/SortList";
 
 /**
  * 🧭 เมนูหน้าร้าน — แอดมินจัดเมนูเองได้ ไม่ต้องแก้โค้ด
@@ -166,10 +175,15 @@ function DropZone({
   onFiles,
   className = "",
   children,
+  innerRef,
+  style,
 }: {
   onFiles: (files: File[]) => void;
   className?: string;
   children: ReactNode;
+  /** ให้ตัวลากสลับลำดับจับ element ตัวนี้ได้ (ดู SortList) */
+  innerRef?: (el: HTMLDivElement | null) => void;
+  style?: CSSProperties;
 }) {
   const [over, setOver] = useState(false);
   // dragenter/leave ยิงซ้ำทุกครั้งที่ลากผ่านลูกข้างใน — นับชั้นไว้กันไฮไลต์กะพริบ
@@ -177,6 +191,8 @@ function DropZone({
   const hasFiles = (e: ReactDragEvent) => e.dataTransfer.types.includes("Files");
   return (
     <div
+      ref={innerRef}
+      style={style}
       onDragEnter={(e) => {
         if (!hasFiles(e)) return;
         e.preventDefault();
@@ -480,6 +496,8 @@ function PanelMap() {
 
 function NavEditorInner() {
   const [nav, setNav] = useState<SiteNav>(DEFAULT_SITE_NAV);
+  /** ลากสลับลำดับด้วยเมาส์ — ทุกลิสต์ในหน้านี้ใช้ตัวเดียวกัน */
+  const sort = useSortList();
   const [cats, setCats] = useState<ShopCategory[]>([]);
   const [tab, setTab] = useState<Tab>("mega");
   /** กำลังอัปโหลดภาพแบนเนอร์จากกล่องตัวอย่างอยู่ */
@@ -610,7 +628,7 @@ function NavEditorInner() {
     }
   }
 
-  /** เลื่อนขึ้น/ลง — ใช้แทนการลาก (ลากบนมือถือพลาดง่าย) */
+  /** เลื่อนขึ้น/ลงทีละขั้นด้วยปุ่ม ↑↓ — จอสัมผัสใช้ทางนี้ (ลากด้วยนิ้วชนกับการเลื่อนหน้า) */
   function move<T>(list: T[], i: number, dir: -1 | 1): T[] {
     const j = i + dir;
     if (j < 0 || j >= list.length) return list;
@@ -618,6 +636,47 @@ function NavEditorInner() {
     [copy[i], copy[j]] = [copy[j], copy[i]];
     return copy;
   }
+
+  /**
+   * ── ลากสลับลำดับด้วยเมาส์ (ดู @/components/admin/SortList) ──
+   * ประกาศไว้ที่เดียว แถวไหนจะลากได้ก็เรียกเอา .row ไปแปะที่แถว
+   * แถวที่เป็นการ์ดใหญ่ (กางตัวแก้ไขข้างในได้) ใช้ mode "handle" แล้วเอา .handle
+   * ไปแปะที่จุดจับ — กันเผลอลากทั้งการ์ดตอนกดพื้นที่ว่างของตัวแก้ไข
+   * คีย์ของลิสต์ที่อยู่ในลูปชั้นนอกต้องผสม id ลงไป ไม่งั้นทุกกลุ่มใช้ทะเบียนเดียวกัน
+   */
+  const dragHome = (i: number) =>
+    sort.item("home", i, home.length, (f, t) => setHome(reorder(home, f, t)), { mode: "handle" });
+  const dragTile = (i: number) =>
+    sort.item("tiles", i, nav.tiles.length, (f, t) => edit((n) => ({ ...n, tiles: reorder(n.tiles, f, t) })), {
+      mode: "handle",
+    });
+  const dragMega = (i: number) =>
+    sort.item("mega", i, nav.mega.length, (f, t) => edit((n) => ({ ...n, mega: reorder(n.mega, f, t) })), {
+      mode: "handle",
+    });
+  const dragCol = (g: MegaGroup, i: number) =>
+    sort.item(`cols:${g.id}`, i, g.columns.length, (f, t) => setCols(g.id, (cols) => reorder(cols, f, t)), {
+      mode: "handle",
+    });
+  const dragItem = (g: MegaGroup, c: MegaColumn, i: number) =>
+    sort.item(`items:${g.id}:${c.id}`, i, c.items.length, (f, t) => setItems(g.id, c.id, (xs) => reorder(xs, f, t)));
+  const dragPerk = (i: number) =>
+    sort.item("perks", i, nav.perks.length, (f, t) => edit((n) => ({ ...n, perks: reorder(n.perks, f, t) })));
+  const dragLink = (i: number) =>
+    sort.item("menu", i, nav.menu.length, (f, t) => edit((n) => ({ ...n, menu: reorder(n.menu, f, t) })));
+  const dragPromo = (g: MegaGroup, i: number) =>
+    sort.item(`promos:${g.id}`, i, (g.promos ?? []).length, (f, t) => setPromos(g.id, (ps) => reorder(ps, f, t)), {
+      axis: "x",
+    });
+  const dragImg = (b: HomeBlock, i: number) =>
+    sort.item(`imgs:${b.id}`, i, (b.images ?? []).length, (f, t) => patchBlock(b.id, { images: reorder(b.images ?? [], f, t) }), {
+      axis: "x",
+    });
+  const dragCard = (b: HomeBlock, i: number) =>
+    sort.item(`cards:${b.id}`, i, (b.cards ?? []).length, (f, t) => patchBlock(b.id, { cards: reorder(b.cards ?? [], f, t) }), {
+      axis: "x",
+      mode: "handle",
+    });
 
   async function save() {
     setSaving(true);
@@ -668,7 +727,7 @@ function NavEditorInner() {
           <div>
             <h2 className="text-sm font-semibold text-slate-800">🏠 ผังหน้าแรก — เรียงจากบนลงล่างตามที่ลูกค้าเห็น</h2>
             <p className={`mt-0.5 text-xs ${faint}`}>
-              ลาก ↑↓ สลับลำดับ · 👁 ซ่อนชั่วคราว · กดชื่อบล็อกเพื่อตั้งค่า · อย่าลืมกด 💾 บันทึก
+              ลากที่จุดจับ ⣿ สลับลำดับ (หรือกดปุ่ม ↑↓) · 👁 ซ่อนชั่วคราว · กดชื่อบล็อกเพื่อตั้งค่า · อย่าลืมกด 💾 บันทึก
             </p>
           </div>
           <button type="button" onClick={() => setAddOpen((v) => !v)} className={btnPrimary}>
@@ -765,9 +824,17 @@ function NavEditorInner() {
                         ? b.heading || meta.desc
                         : meta.desc;
             return (
-              <div key={b.id} className={`rounded-xl ring-1 transition ${b.hidden ? "opacity-55" : ""} ${open ? "bg-amber-50/60 ring-amber-300" : "bg-slate-50 ring-slate-100"}`}>
+              <div key={b.id} {...dragHome(i).row} className={`rounded-xl ring-1 transition ${b.hidden ? "opacity-55" : ""} ${open ? "bg-amber-50/60 ring-amber-300" : "bg-slate-50 ring-slate-100"}`}>
                 <div className="flex w-full items-center gap-2 px-3 py-2">
-                  <span className="w-4 shrink-0 text-center text-xs font-bold text-slate-300">{i + 1}</span>
+                  {/* เลขลำดับ = จุดจับลาก (ลากทั้งใบไม่ได้ เพราะข้างในเป็นตัวแก้ไขที่กางออกมา) */}
+                  <span
+                    {...dragHome(i).handle}
+                    title="ลากเพื่อสลับลำดับ"
+                    className="flex shrink-0 items-center gap-0.5 text-xs font-bold text-slate-300"
+                  >
+                    <Grip className="px-0" />
+                    {i + 1}
+                  </span>
                   <button
                     type="button"
                     onClick={() => setOpenBlock(open ? "" : b.id)}
@@ -1140,7 +1207,7 @@ function NavEditorInner() {
                           style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(b.cols ?? 3, 1), 4)}, minmax(0, 1fr))` }}
                         >
                           {(b.images ?? []).map((im, ii) => (
-                            <div key={ii} className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+                            <div key={ii} {...dragImg(b, ii).row} className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
                               <div className="relative">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
@@ -1295,6 +1362,8 @@ function NavEditorInner() {
                           {(b.cards ?? []).map((cd, ci) => (
                             <DropZone
                               key={ci}
+                              innerRef={dragCard(b, ci).row.ref}
+                              style={dragCard(b, ci).row.style}
                               className="flex flex-col overflow-hidden bg-white ring-1 ring-slate-200"
                               onFiles={async (fs) => {
                                 const r = await uploadNavImage(fs[0]);
@@ -1306,7 +1375,14 @@ function NavEditorInner() {
                             >
                               {/* แถบคุมบาง ๆ บนหัวการ์ด */}
                               <div className="flex items-center gap-1 bg-slate-50 px-2 py-1">
-                                <span className="flex-1 text-[10px] font-bold text-slate-400">ใบที่ {ci + 1}</span>
+                                <span
+                                  {...dragCard(b, ci).handle}
+                                  title="ลากเพื่อสลับลำดับการ์ด"
+                                  className="flex flex-1 items-center gap-1 text-[10px] font-bold text-slate-400"
+                                >
+                                  <Grip />
+                                  ใบที่ {ci + 1}
+                                </span>
                                 <button
                                   type="button"
                                   onClick={() => ci > 0 && patchBlock(b.id, { cards: move(b.cards ?? [], ci, -1) })}
@@ -1885,13 +1961,16 @@ function NavEditorInner() {
           </p>
 
           {nav.tiles.map((t, i) => (
-            <div key={t.id} className={`p-4 ${card} ${t.hidden ? "opacity-60" : ""}`}>
+            <div key={t.id} {...dragTile(i).row} className={`p-4 ${card} ${t.hidden ? "opacity-60" : ""}`}>
               <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br ${t.gradient} text-lg`}
-                  aria-hidden="true"
-                >
-                  {t.image ? "🖼" : t.emoji}
+                <span {...dragTile(i).handle} title="ลากเพื่อสลับลำดับ" className="flex shrink-0 items-center gap-1">
+                  <Grip />
+                  <span
+                    className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br ${t.gradient} text-lg`}
+                    aria-hidden="true"
+                  >
+                    {t.image ? "🖼" : t.emoji}
+                  </span>
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-bold text-slate-900">{t.title || "(ยังไม่ตั้งชื่อ)"}</span>
@@ -2060,8 +2139,11 @@ function NavEditorInner() {
           {nav.mega.map((g, gi) => {
             const expanded = openGroup === g.id;
             return (
-              <div key={g.id} className={`p-4 ${card} ${g.hidden ? "opacity-60" : ""}`}>
+              <div key={g.id} {...dragMega(gi).row} className={`p-4 ${card} ${g.hidden ? "opacity-60" : ""}`}>
                 <div className="flex flex-wrap items-center gap-2">
+                  <span {...dragMega(gi).handle} title="ลากเพื่อสลับลำดับหัวข้อ" className="flex shrink-0 items-center">
+                    <Grip />
+                  </span>
                   <input
                     value={g.label}
                     onChange={(e) => setGroup(g.id, { label: e.target.value })}
@@ -2206,6 +2288,7 @@ function NavEditorInner() {
                         {(g.promos ?? []).map((pm, pi) => (
                           <div
                             key={pm.id}
+                            {...dragPromo(g, pi).row}
                             onDragOver={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
@@ -2234,7 +2317,8 @@ function NavEditorInner() {
                               />
                             </div>
                             <div className="mt-1 flex items-center justify-between">
-                              <span className="flex gap-0.5">
+                              <span className="flex items-center gap-0.5">
+                                <Grip />
                                 <button
                                   type="button"
                                   onClick={() => setPromos(g.id, (ps) => move(ps, pi, -1))}
@@ -2286,8 +2370,11 @@ function NavEditorInner() {
                       />
                       <div className="mt-3 space-y-3">
                       {g.columns.map((c, ci) => (
-                        <div key={c.id} className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                        <div key={c.id} {...dragCol(g, ci).row} className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
                           <div className="flex flex-wrap items-center gap-2">
+                            <span {...dragCol(g, ci).handle} title="ลากเพื่อสลับลำดับคอลัมน์" className="flex shrink-0 items-center">
+                              <Grip />
+                            </span>
                             <input
                               value={c.title}
                               onChange={(e) => setCol(g.id, c.id, { title: e.target.value })}
@@ -2393,7 +2480,8 @@ function NavEditorInner() {
 
                           <div className="mt-3 space-y-2">
                             {c.items.map((it, ii) => (
-                              <div key={it.id} className="flex flex-wrap items-start gap-2">
+                              <div key={it.id} {...dragItem(g, c, ii).row} className="flex flex-wrap items-start gap-2">
+                                <Grip className="mt-2" />
                                 <input
                                   value={it.label}
                                   onChange={(e) => setItems(g.id, c.id, (xs) => xs.map((x) => (x.id === it.id ? { ...x, label: e.target.value } : x)))}
@@ -2533,8 +2621,10 @@ function NavEditorInner() {
             {nav.perks.map((x, i) => (
               <div
                 key={x.id}
+                {...dragPerk(i).row}
                 className={`flex flex-wrap items-start gap-2 rounded-xl bg-slate-50 p-3 ${x.hidden ? "opacity-60" : ""}`}
               >
+                <Grip className="mt-2" />
                 <input
                   value={x.emoji}
                   onChange={(e) => setPerk(x.id, { emoji: e.target.value })}
@@ -2664,8 +2754,10 @@ function NavEditorInner() {
             {nav.menu.map((l, i) => (
               <div
                 key={l.id}
+                {...dragLink(i).row}
                 className={`flex flex-wrap items-start gap-2 rounded-xl bg-slate-50 p-3 ${l.hidden ? "opacity-60" : ""}`}
               >
+                <Grip className="mt-2" />
                 <input
                   value={l.label}
                   onChange={(e) => setLink(l.id, { label: e.target.value })}

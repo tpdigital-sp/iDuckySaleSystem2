@@ -297,9 +297,9 @@ const OPTIONS: ProductOption[] = [
       kind: "number",
       unit: "ซม.",
       min: 1,
-      max: 145,
+      max: 140,
       placeholder: "เช่น 45",
-      hint: "ขนาดต่อชิ้น ใหญ่สุดไม่เกิน 145×90 ซม. (1 หลา) — ค่าตัด/เย็บขอบคิดต่อชิ้นจากด้านที่ยาวที่สุด × จำนวนชิ้นที่ตัดได้ต่อหลา",
+      hint: "ขนาดต่อชิ้น ใหญ่สุดไม่เกิน 140×90 ซม. (1 หลา) — ค่าตัด/เย็บขอบคิดต่อชิ้นจากด้านที่ยาวที่สุด × จำนวนชิ้นที่ตัดได้ต่อหลา",
     },
     choices: [],
   },
@@ -308,7 +308,7 @@ const OPTIONS: ProductOption[] = [
     display: "input",
     standardInput: true,
     showWhen: SIZE_WHEN,
-    input: { kind: "number", unit: "ซม.", min: 1, max: 145, placeholder: "เช่น 45" },
+    input: { kind: "number", unit: "ซม.", min: 1, max: 90, placeholder: "เช่น 45" }, // ยาวต่อชิ้น ≤ 1 หลา
     // โชว์ "ตัดได้ ~กี่ชิ้นต่อ 1 หลา" — จัดวางชุดเดียวกับที่ sizeFee ใช้คิดเงิน
     sheetYield: { pairLabel: W_LABEL, sheetW: YARD_SHEET.sheetW, sheetH: YARD_SHEET.sheetH, gap: YARD_SHEET.gap, sheetName: "หลา" },
     choices: [],

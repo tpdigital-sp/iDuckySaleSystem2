@@ -61,6 +61,8 @@ type DraftChoice = {
   qtyUnit?: string;
   perUnit?: string;
   imageSrc?: string;
+  /** 🖼 ภาพสำรองที่สลับตามกลุ่มอื่น (สีฟอยล์ 2 Layer) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  imageWhen?: { when: { label: string; choices: string[] }[]; imageSrc: string }[];
   /** 🎬 คลิปของตัวเลือก (การ์ดเล่นคลิปวน) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   videoSrc?: string;
   stockItemId?: string;
@@ -567,6 +569,7 @@ function toDraft(p: Product): Draft {
         ...(c.qtyUnit ? { qtyUnit: c.qtyUnit } : {}),
         ...(c.perUnit ? { perUnit: String(c.perUnit) } : {}),
         ...(c.imageSrc ? { imageSrc: c.imageSrc } : {}),
+        ...(c.imageWhen?.length ? { imageWhen: c.imageWhen } : {}),
         ...(c.videoSrc ? { videoSrc: c.videoSrc } : {}),
         ...(c.stockItemId ? { stockItemId: c.stockItemId } : {}),
         ...(c.stockQtyPer ? { stockQtyPer: c.stockQtyPer } : {}),
@@ -870,6 +873,8 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             // 📐 ชิ้น/หน่วย กรอกในตารางราคา (คอลัมน์แรก) แล้วเก็บกลับมาที่ตัวเลือกตามเดิม
             ...(Number(c.perUnit) > 0 ? { perUnit: Math.floor(Number(c.perUnit)) } : {}),
             ...(c.imageSrc ? { imageSrc: c.imageSrc } : {}),
+            // 🖼 ภาพสำรองที่สลับตามกลุ่มอื่น (สีฟอยล์ 2 Layer) — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นบันทึกแล้วหาย
+            ...(c.imageWhen?.length ? { imageWhen: c.imageWhen } : {}),
             // 🎬 คลิปของตัวเลือก — หน้าแก้ไขไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นบันทึกแล้วหาย
             ...(c.videoSrc ? { videoSrc: c.videoSrc } : {}),
             // ลิงก์คลังวัสดุ — หน้าแก้ไขไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นบันทึกแล้วหาย
