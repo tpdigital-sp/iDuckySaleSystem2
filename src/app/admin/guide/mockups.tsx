@@ -557,6 +557,40 @@ export function ShotCustomerLink() {
   );
 }
 
+/** ปุ่มลิงก์ราคาในกล่อง "โหมดสั่งของ" ที่หน้าสินค้า + การ์ดที่ลูกค้าเห็นในแชท */
+export function ShotPriceLink() {
+  return (
+    <div className="mx-auto grid max-w-lg gap-2 sm:grid-cols-2">
+      <MCard>
+        <p className="text-[0.72rem] font-bold text-slate-700">🧑‍💼 โหมดสั่งของ (เห็นเฉพาะพนักงาน)</p>
+        <div className="mt-1.5">
+          <MBtn tone="brand" full>
+            🔗 คัดลอกลิงก์ราคา
+          </MBtn>
+        </div>
+        <p className="mt-1 truncate rounded bg-slate-50 px-2 py-1 font-mono text-[0.65rem] text-slate-500">
+          iduckystore.com/p/K7M2Q
+        </p>
+      </MCard>
+      <MCard>
+        <p className="text-[0.62rem] font-bold uppercase tracking-widest text-amber-600">ราคาที่ทางร้านจัดให้</p>
+        <p className="mt-0.5 text-[0.72rem] font-bold text-slate-800">SHAPE STICKER</p>
+        <p className="mt-1 text-[0.62rem] leading-relaxed text-slate-500">
+          ทรงกลม 5x5cm · PP ขาวมัน · ไม่เคลือบ
+        </p>
+        <p className="mt-1 text-[0.62rem] text-slate-500">
+          12 แผ่น A3 × ฿90 — รวม <b className="text-[0.95rem] text-amber-600">฿1,080</b>
+        </p>
+        <div className="mt-1.5">
+          <MBtn tone="brand" full>
+            🛒 สั่งตามสเปคนี้
+          </MBtn>
+        </div>
+      </MCard>
+    </div>
+  );
+}
+
 /** ข้อความไลน์ที่ลูกค้าได้รับ */
 export function ShotNotify() {
   return (

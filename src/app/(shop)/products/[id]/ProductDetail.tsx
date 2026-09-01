@@ -32,6 +32,7 @@ import {
   longestSizePlan,
   customKeepsOption,
   adminProductPath,
+  productPath,
   DESIGN_LABEL,
   BACK_DESIGN_LABEL,
   backDesignActive,
@@ -86,6 +87,7 @@ import {
   needsStockCheck,
   artworkIsRequired,
   artworkConsultOf,
+  consultTriggerLabels,
   CONSULT_LABEL,
   CONSULT_NOTE_DEFAULT,
   isMultiOption,
@@ -103,6 +105,13 @@ import {
   type ProductTab,
 } from "@/lib/products";
 import { LINE_URL } from "@/components/LineButton";
+import { specEntries } from "@/components/SpecLines";
+import {
+  priceLinkUrl,
+  readPriceLink,
+  sanitizeSpecSelections,
+  type PriceLinkSpec,
+} from "@/lib/price-link";
 import {
   fileHref,
   filesForSelections,
@@ -625,6 +634,22 @@ export default function ProductDetail({
   const [adminMode, setAdminMode] = useState(false);
   /** พนักงานเปิดโหมดแอดมินอยู่ไหม — เช็คสิทธิ์ควบเสมอ ลูกค้าทั่วไปจะไม่มีทางเข้าโหมดนี้ */
   const staffOrdering = isAdmin && adminMode;
+  /**
+   * 🔗 ลิงก์ราคาที่แอดมินส่งให้ลูกค้า (?s=…) — อ่านครั้งเดียวตอนเปิดหน้า
+   * อ่านตอน render (ไม่ใช่ useEffect) เพราะต้องรู้ตั้งแต่ก่อนสินค้าโหลดเสร็จว่ามีค่ารออยู่
+   * แต่ "ไม่เอาไปวาดอะไร" จนกว่าจะติ๊กค่าให้เสร็จ — ฝั่งเซิร์ฟเวอร์ไม่มี window จะได้ไม่ hydrate ไม่ตรง
+   */
+  const priceLinkRef = useRef<PriceLinkSpec | null | undefined>(undefined);
+  if (priceLinkRef.current === undefined)
+    priceLinkRef.current = typeof window === "undefined" ? null : readPriceLink(window.location.search);
+  /** ติ๊กค่าจากลิงก์ราคาให้เรียบร้อยแล้ว — โชว์แถบบอกลูกค้าว่าร้านจัดสเปคไว้ให้ */
+  const [fromPriceLink, setFromPriceLink] = useState(false);
+  /** โหลดสินค้าเวอร์ชันล่าสุดเสร็จหรือยัง — ต้องรอก่อนค่อยติ๊กค่าจากลิงก์ ไม่งั้นโดนทับ */
+  const [productReady, setProductReady] = useState(false);
+  /** แอดมินเพิ่งกดคัดลอกอะไร ("" = ยังไม่ได้กด · "long" = ตกไปใช้ลิงก์ยาว) */
+  const [priceCopied, setPriceCopied] = useState("");
+  /** กำลังสร้างลิงก์ราคาอยู่ — กันกดรัวแล้วได้ลิงก์ซ้ำหลายใบ */
+  const [priceBusy, setPriceBusy] = useState(false);
   const [selections, setSelections] = useState<Record<string, string>>(() =>
     initialSelections(initialProduct)
   );
@@ -722,11 +747,14 @@ export default function ProductDetail({
   useEffect(() => {
     let active = true;
     fetchProduct(initialProduct.id).then((m) => {
-      if (active && m) {
+      if (!active) return;
+      if (m) {
         setProduct(m);
         setSelections(initialSelections(m));
         setImageIndex(0);
       }
+      // ปักธงเสมอ (โหลดไม่ได้ก็ถือว่าจบ) — ลิงก์ราคารออยู่ ต้องได้ติ๊กค่าหลังจากนี้
+      setProductReady(true);
     });
     return () => {
       active = false;
@@ -969,6 +997,64 @@ export default function ProductDetail({
     () => (backOn ? ({ [BACK_DESIGN_LABEL]: `${backDesigns} ลาย` } as Record<string, string>) : {}),
     [backOn, backDesigns]
   );
+  /**
+   * 🔗 เปิดหน้าจากลิงก์ราคา — ติ๊กตัวเลือก/จำนวนที่แอดมินตั้งไว้ให้ครบในทีเดียว
+   *
+   * รอ productReady เสมอ: ตัวโหลดสินค้าเวอร์ชันล่าสุดสั่ง setSelections(initialSelections(m)) อยู่แล้ว
+   * ติ๊กก่อนหน้านั้น = โดนทับหมด (ลูกค้าเห็นสเปคผิดจากที่แอดมินส่งมา แต่ราคาดูสมเหตุสมผล = จับไม่ได้)
+   */
+  const priceLinkDone = useRef(false);
+  useEffect(() => {
+    const link = priceLinkRef.current;
+    if (!productReady || !link || priceLinkDone.current) return;
+    priceLinkDone.current = true;
+
+    const sel = sanitizeSpecSelections(product, link.s);
+    if (Object.keys(sel).length) {
+      setSelections((cur) => ({ ...cur, ...sel }));
+      /**
+       * 🔽 กลุ่มของเสริมที่ปิดไว้ก่อน (collapsible) ต้องกางให้ด้วยถ้าลิงก์เลือกของเสริมมา
+       * ไม่งั้นลูกค้าเห็นสวิตช์ปิดอยู่ แต่ราคารวมมีค่าของเสริมบวกอยู่ = ดูเหมือนคิดเงินเกิน
+       */
+      const open: Record<string, boolean> = {};
+      for (const opt of product.options ?? []) {
+        if (!opt.collapsible || isInputOption(opt)) continue;
+        const v = sel[opt.label];
+        if (v && v !== (opt.choices[0]?.name ?? "")) open[opt.label] = true;
+      }
+      if (Object.keys(open).length) setOpenAddOns((s) => ({ ...s, ...open }));
+    }
+    // เรทที่ไม่มีแล้ว (แอดมินลบทิ้ง) = ไม่ยัด ปล่อยให้ระบบเลือกเรทตามจำนวนเองตามปกติ
+    if (link.r && (product.priceRates ?? []).some((r) => r.label === link.r)) {
+      setRateLabel(link.r);
+      setRateTouched(true);
+    }
+    if (link.c && product.custom?.enabled) {
+      setUseCustom(true);
+      setCustomW(link.c.w);
+      setCustomH(link.c.h);
+    }
+    if (link.q && link.q > 0) {
+      setQty(link.q);
+      setQtyText(String(link.q));
+      // ถือว่า "ตั้งจำนวนมาแล้ว" — ไม่ให้จำนวนเด้งกลับขั้นต่ำของเรทเองทีหลัง
+      setQtyTouched(true);
+    }
+    if (link.d && link.d > 0) {
+      setDesigns(link.d);
+      setDesignsTouched(true);
+    }
+    if (link.b && link.b > 0) setBackDesigns(link.b);
+    setFromPriceLink(true);
+  }, [productReady, product]);
+
+  /** มาจากลิงก์ราคา = พาไปที่กล่องสั่งซื้อเลย (ลูกค้าเปิดมาเพื่อดูราคา ไม่ใช่มาอ่านหน้าสินค้าใหม่) */
+  useEffect(() => {
+    if (!fromPriceLink) return;
+    const t = setTimeout(() => orderBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 350);
+    return () => clearTimeout(t);
+  }, [fromPriceLink]);
+
   const extraDesigns = rate?.extraDesignFee ? Math.max(0, designs - included) : 0;
   /**
    * ค่าคละลาย — ใช้ designFeeFor ตัวเดียวกับที่ตะกร้า/ออเดอร์ใช้
@@ -1347,6 +1433,97 @@ export default function ProductDetail({
     );
     return () => window.cancelIdleCallback?.(id as number);
   }, []);
+
+  /**
+   * 🔗 สเปค+ราคาชุดที่กำลังดูอยู่ — ใช้ทั้งทำลิงก์สั้นและข้อความที่ส่งให้ลูกค้า
+   * ตัดกลุ่มที่ถูกซ่อนอยู่ (showWhen ไม่ตรง) ออกด้วยเกณฑ์เดียวกับตอนลงตะกร้า (ดู buildLine)
+   * ไม่งั้นข้อความที่ส่งให้ลูกค้ามีบรรทัดที่หน้าเว็บไม่ได้โชว์ เช่นลายเคลือบพิเศษที่ค้างไว้ตอนเลือกเคลือบด้าน
+   */
+  function priceSnapshot() {
+    const spec: PriceLinkSpec = {
+      v: 1,
+      // ส่งค่าดิบที่ติ๊กไว้ (ไม่ใช่ค่าหลังผ่านกฎเงื่อนไข) — ฝั่งลูกค้าเดินกฎเดิมซ้ำเองอยู่แล้ว
+      s: selections,
+      q: qty,
+      ...(rate ? { r: rate.label } : {}),
+      ...(needDesignsChoice ? { d: designs } : {}),
+      ...(backOn ? { b: backDesigns } : {}),
+      ...(useCustom && custom?.enabled && customW.trim() && customH.trim()
+        ? { c: { w: customW.trim(), h: customH.trim() } }
+        : {}),
+    };
+    const drivers = priceDriverLabels(product);
+    const hiddenLabels = new Set(
+      product.options.filter((o) => !optionActive(o, effective) && !drivers.includes(o.label)).map((o) => o.label)
+    );
+    const lines = specEntries(pricingSelections).filter(([k]) => !hiddenLabels.has(k)) as [string, string][];
+    // งานที่แอดมินต้องตีราคาเอง — อย่าโชว์ตัวเลข ฿0 ที่ไหนทั้งนั้น ลูกค้าอ่านว่าฟรี
+    const askPrice = askQuote || (useCustom && customAsk);
+    return { spec, lines, askPrice };
+  }
+
+  /**
+   * ลิงก์ที่จะส่งให้ลูกค้า — ลิงก์สั้น /p/XXXXX (แช่ราคา + มีวันหมดอายุ + นับยอดเปิด)
+   * ยิงซ้ำด้วยสเปคเดิม = ได้ลิงก์เดิม ไม่สร้างใบใหม่ทุกครั้งที่กดปุ่ม
+   * สร้างไม่ได้ (ยังไม่ได้รัน supabase/price-links.sql / เน็ตหลุด) → ตกไปใช้ลิงก์ยาวแบบเดิม ยังส่งงานได้
+   */
+  const shortLinkRef = useRef<{ key: string; url: string; expiresAt: string } | null>(null);
+  async function ensurePriceLink(): Promise<{ url: string; expiresAt?: string; short: boolean }> {
+    const { spec, lines, askPrice } = priceSnapshot();
+    const key = JSON.stringify(spec);
+    const cached = shortLinkRef.current;
+    if (cached?.key === key) return { url: cached.url, expiresAt: cached.expiresAt, short: true };
+
+    try {
+      const res = await fetch("/api/price-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId: product.id,
+          productPath: productPath(product),
+          productName: product.name,
+          // รูปต้องเป็น URL เต็ม — การ์ดราคาในแชทดึงรูปนี้ไปวาด
+          imageSrc: product.imageSrc ? new URL(product.imageSrc, window.location.origin).toString() : undefined,
+          spec,
+          lines,
+          qty,
+          unit: pieceUnit,
+          unitPrice: askPrice ? 0 : unitPrice,
+          total: askPrice ? 0 : unitPrice * qty + designFee,
+          askPrice,
+        }),
+      });
+      const j = (await res.json()) as { link?: { code: string; expiresAt: string } };
+      if (res.ok && j.link?.code) {
+        const url = `${window.location.origin}/p/${j.link.code}`;
+        shortLinkRef.current = { key, url, expiresAt: j.link.expiresAt };
+        return { url, expiresAt: j.link.expiresAt, short: true };
+      }
+    } catch {
+      /* ตกไปใช้ลิงก์ยาวด้านล่าง */
+    }
+    return { url: priceLinkUrl(window.location.href, spec), short: false };
+  }
+
+  /**
+   * คัดลอกลิงก์ราคาไปวางในไลน์
+   * ไม่ต้องคัดลอกสเปค/ราคาเป็นข้อความไปด้วย — ลิงก์เด้งการ์ดราคาให้เองในแชทอยู่แล้ว
+   */
+  async function copyPriceLink() {
+    if (priceBusy) return;
+    setPriceBusy(true);
+    try {
+      const { url, short } = await ensurePriceLink();
+      await navigator.clipboard.writeText(url);
+      setPriceCopied(short ? "ok" : "long");
+      window.setTimeout(() => setPriceCopied(""), 3000);
+    } catch {
+      // เบราว์เซอร์ไม่ให้เขียนคลิปบอร์ด (http หรือปิดสิทธิ์ไว้) — บอกตรง ๆ ดีกว่าเงียบแล้วแอดมินไปวางของเก่า
+      setPriceCopied("err");
+    } finally {
+      setPriceBusy(false);
+    }
+  }
 
   /** เปลี่ยนโหมดสั่งของ (ลูกค้า ↔ แอดมิน) แล้วจำไว้ให้หน้าสินค้าถัดไป */
   function switchAdminMode(on: boolean) {
@@ -1817,6 +1994,11 @@ export default function ProductDetail({
   // โหมดออกแบบบนเว็บ/โหมดแอดมินสั่งแทน = คุยกันอยู่แล้ว ไม่ต้องกั้นซ้ำ
   const consultGate = !!consult && consult.block !== false && !studioMode && !staffOrdering;
   const consultBlocked = consultGate && !consultOk;
+  /**
+   * 💬 กลุ่มที่ "เป็นตัวจุดชนวน" ให้ต้องคุยกับแอดมิน — เอาไปแปะกล่องเตือนใต้กลุ่มนั้นทันที
+   * (กล่องยืนยันตัวจริงอยู่ท้ายหน้า ถ้าไม่บอกตรงนี้ ลูกค้าเลือกแล้วไม่เห็นอะไรเปลี่ยนเลย)
+   */
+  const consultTriggers = consultTriggerLabels(product, effective);
 
   // 🎨 ต้องแนบลายก่อนสั่งไหม — ต้องมีรูปอัปโหลด หรือ ลิงก์/อีเมล อย่างน้อยหนึ่งอย่าง
   // งานที่ต้องคุยลายก่อน: ไฟล์จริงจะตกลงกันในแชท ไม่บังคับแนบตรงนี้ (แนบเป็นตัวอย่างได้)
@@ -2667,6 +2849,17 @@ export default function ProductDetail({
                                 📐 {plan.width}×{plan.height}
                                 {u} → คิดราคาตามด้านที่ยาวที่สุด เกาะแถว{" "}
                                 <span className="font-extrabold text-teal-900">{plan.choice}</span>
+                                {/* 📈 ใหญ่กว่าแถวสุดท้าย = ฐานแถวใหญ่สุด + ส่วนเกินต่อหน่วย (กางที่มาให้เห็น) */}
+                                {plan.overCm > 0 && (
+                                  <>
+                                    {" "}
+                                    + เกินอีก {plan.overCm}
+                                    {u} ={" "}
+                                    <span className="font-extrabold text-teal-900">
+                                      +฿{plan.overFee.toLocaleString("th-TH")}/ชิ้น
+                                    </span>
+                                  </>
+                                )}
                               </p>
                             );
                           })()}
@@ -3491,6 +3684,47 @@ export default function ProductDetail({
                 </div>
               );
   }
+
+  /**
+   * 💬 กล่องเตือน "ต้องคุยกับแอดมินก่อน" แบบแทรกใต้กลุ่มตัวเลือกที่เป็นตัวจุดชนวน
+   * กล่องยืนยันตัวจริง (#consult-box · ติ๊กว่าคุยแล้ว) อยู่ท้ายหน้าเหนือช่องแนบลาย —
+   * ลูกค้าที่เพิ่งกดตัวเลือกอยู่บนสุดจะไม่เห็นอะไรเปลี่ยนเลยถ้าไม่บอกตรงนี้
+   */
+  const consultInlineUI = consult && !studioMode && (
+    <div className="mt-2 rounded-2xl bg-emerald-50/70 p-3.5 ring-1 ring-emerald-200">
+      <p className="flex items-center gap-1.5 text-[13px] font-bold text-stone-700">
+        <span className="text-base leading-none">💬</span>
+        แบบนี้ต้องคุยกับแอดมินก่อนสั่ง
+        {consultOk ? (
+          <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">คุยแล้ว ✓</span>
+        ) : consultGate ? (
+          <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">ต้องคุยก่อน *</span>
+        ) : (
+          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">แนะนำ</span>
+        )}
+      </p>
+      <p className="mt-1 text-[12px] leading-relaxed text-stone-600">{consult.note?.trim() || CONSULT_NOTE_DEFAULT}</p>
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+        <a
+          href={LINE_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex min-h-[38px] items-center gap-1.5 rounded-full bg-[#06C755] px-4 text-xs font-bold text-white transition hover:brightness-95"
+        >
+          💬 ทักไลน์ส่งลายให้แอดมินดู
+        </a>
+        {!consultOk && (
+          <button
+            type="button"
+            onClick={() => document.getElementById("consult-box")?.scrollIntoView({ block: "center", behavior: "smooth" })}
+            className="inline-flex min-h-[38px] items-center rounded-full bg-white px-4 text-xs font-bold text-emerald-700 ring-1 ring-emerald-300 transition hover:bg-emerald-50"
+          >
+            คุยแล้ว — ไปติ๊กยืนยัน ↓
+          </button>
+        )}
+      </div>
+    </div>
+  );
 
   /**
    * แผงเลือกเรทราคา — แยกออกมาเป็นตัวแปรเพราะวางได้ 2 ที่:
@@ -4562,6 +4796,8 @@ export default function ProductDetail({
                 ) : (
                   blk.items.map(({ opt }) => optionGroupUI(opt))
                 )}
+                {/* 💬 เลือกตัวเลือกที่ต้องคุยกับแอดมิน = บอกตรงนั้นเลย (กล่องยืนยันตัวจริงอยู่ท้ายหน้า) */}
+                {blk.items.some(({ opt }) => consultTriggers.includes(opt.label)) && consultInlineUI}
                 {/* แผงเรทแทรกกลางกลุ่มตัวเลือก — กลุ่มที่อยู่ถัดไปถึงจะขึ้นกับเรทที่เพิ่งเลือกได้ */}
                 {blk.items.some(({ i }) => i === ratePickerAfterIdx) && ratePickerUI}
               </Fragment>
@@ -4810,6 +5046,15 @@ export default function ProductDetail({
 
           {/* ═══ กล่องสั่งซื้อ — จำนวน + ยอด + ปุ่ม (ติดกับตัวเลือก ไม่ให้ของไม่บังคับมาคั่น) ═══ */}
           <div ref={orderBoxRef} className="mt-5 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-amber-100">
+            {/* 🧾 เปิดมาจากลิงก์ราคาที่ร้านส่งให้ — บอกลูกค้าว่าของที่ติ๊กไว้มาจากไหน จะได้ไม่นึกว่าเว็บสุ่มมาให้ */}
+            {fromPriceLink && (
+              <div className="mb-3 rounded-2xl bg-amber-50 p-2.5 ring-1 ring-amber-200">
+                <p className="text-[12px] font-extrabold text-amber-900">🧾 ราคานี้ทางร้านจัดสเปคไว้ให้แล้ว</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800">
+                  ตัวเลือกกับจำนวนถูกติ๊กไว้ตามที่คุยกันไว้ — กดเพิ่มลงตะกร้าได้เลย หรือปรับเปลี่ยนเองก็ได้ ราคาจะขยับตามให้อัตโนมัติ
+                </p>
+              </div>
+            )}
             {/* ═══ สลับโหมดสั่งของ (เห็นเฉพาะพนักงานที่ล็อกอินหลังบ้าน) ═══
                  โหมดลูกค้า = เห็นหน้าเหมือนลูกค้าเป๊ะ ๆ · โหมดแอดมิน = สั่งแทนลูกค้า ข้ามขั้นวางลาย */}
             {isAdmin && (
@@ -4844,6 +5089,38 @@ export default function ProductDetail({
                     ? "🧑‍💼 สั่งแทนลูกค้า — หยิบใส่ตะกร้าได้เลย ไม่ต้องวางลาย/แนบไฟล์ (ติ๊ก “สั่งแทนลูกค้า” อีกทีตอนชำระเงิน)"
                     : "👤 เห็นหน้าเหมือนลูกค้าทุกอย่าง — สลับเป็นแอดมินเมื่อจะสั่งแทนลูกค้า"}
                 </p>
+
+                {/* 🔗 ส่งราคานี้ให้ลูกค้า — คัดลอกสเปค+ราคา+ลิงก์ที่ติ๊กไว้ให้แล้ว ไปวางในไลน์ได้เลย
+                     (แทนการ screenshot: ลูกค้ากดเข้าไปสั่งต่อได้ทันที ไม่ต้องเลือกตัวเลือกเองใหม่) */}
+                <div className="mt-2 border-t border-sky-200 pt-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => void copyPriceLink()}
+                      disabled={priceBusy}
+                      className="rounded-full bg-sky-600 px-3.5 py-1.5 text-[11px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
+                    >
+                      {priceBusy ? "⏳ กำลังสร้างลิงก์…" : "🔗 คัดลอกลิงก์ราคา"}
+                    </button>
+                    {priceCopied === "err" ? (
+                      <span className="text-[11px] font-bold text-rose-600">คัดลอกไม่ได้ — กดค้างเลือกคัดลอกเอง</span>
+                    ) : priceCopied === "long" ? (
+                      <span className="text-[11px] font-bold text-amber-700">
+                        ✓ คัดลอกแล้ว (ลิงก์ยาว — ยังไม่ได้รัน price-links.sql)
+                      </span>
+                    ) : priceCopied ? (
+                      <span className="text-[11px] font-bold text-emerald-600">✓ คัดลอกแล้ว วางในไลน์ได้เลย</span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1.5 px-1 text-[10.5px] leading-relaxed text-sky-800">
+                    วางในไลน์แล้วเด้งเป็นการ์ดราคาให้เอง (สเปค+ราคาอยู่ในการ์ด ไม่ต้องพิมพ์ซ้ำ) ·
+                    ลูกค้ากดเข้าไปสั่งตามสเปคนี้ได้เลย · ยืนราคา 7 วัน ·
+                    ดูว่าลูกค้าเปิดหรือยังที่{" "}
+                    <Link href="/admin/price-links" className="font-bold underline">
+                      ลิงก์ราคา
+                    </Link>
+                  </p>
+                </div>
               </div>
             )}
 
