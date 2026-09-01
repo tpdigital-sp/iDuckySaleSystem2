@@ -15,7 +15,7 @@
  *    (paper-art-pet คิดค่าคละลายอัตโนมัติด้วย mixRule ลายละ 5 บาท ลายแรกไม่คิด — กลุ่มมือจึงซ้ำซ้อน)
  *    สำรองไฟล์เดิมไว้ที่ .cache/backup-postcard-th-*.json ก่อนรัน --write ครั้งแรก
  *
- * ราคาเป็น "ต่อแผ่น A3" เหมือนต้นทาง — ขนาดที่เลือกบอกว่า 1 แผ่นได้กี่ใบ (piecesPerUnit)
+ * ราคาเป็น "ต่อแผ่น A3" เหมือนต้นทาง (+ MARKUP 10 บาท/แผ่น ตามที่ผู้ใช้สั่งภายหลัง) — ขนาดที่เลือกบอกว่า 1 แผ่นได้กี่ใบ (piecesPerUnit)
  * 4 × 6 นิ้ว = 8 ใบ/A3 · 5 × 7 นิ้ว = 4 ใบ/A3 (ตามป้ายเดิมของสินค้าโปสการ์ด)
  */
 import { readFileSync } from "node:fs";
@@ -25,6 +25,9 @@ const WRITE = process.argv.includes("--write");
 const ID = "postcard-th";
 const FROM = "paper-art-pet";
 const RATE = "ตัดตามขนาด";
+/** โปสการ์ดแพงกว่างานกระดาษเปล่า 10 บาท/แผ่น A3 (ผู้ใช้สั่ง 1 ก.ย. 69) — ต้องตรงกับ MARKUP
+ *  ใน scripts/postcard-price-markup.mts ไม่งั้นรันชุดใหม่แล้วราคาหล่นกลับไปเท่างานกระดาษ */
+const MARKUP = 10;
 const SIZE = "ขนาด";
 const ORIENT = "แนวโปสการ์ด";
 /** กลุ่มของต้นทางที่ไม่เอา — ผูกกับเรท/ขนาดตัดที่สินค้านี้ไม่มี */
@@ -61,10 +64,12 @@ const d: any = structuredClone(row.data);
 
 // 1) ราคา: เรทเดียว ไม่มีตัวเลือกเรท
 d.pricing = structuredClone(rate.pricing);
+for (const k of Object.keys(d.pricing.cells)) d.pricing.cells[k] = d.pricing.cells[k].map((v: number) => v + MARKUP);
+d.priceMarkup = MARKUP; // ธงกันบวกซ้ำของ postcard-price-markup.mts
 delete d.priceRates;
 delete d.rateAfterOptions;
 delete d.rateAfterGroup;
-const all = Object.values(cells).flat();
+const all = Object.values(d.pricing.cells).flat() as number[];
 d.price = Math.min(...all);
 d.priceMin = Math.min(...all);
 d.priceMax = Math.max(...all);
@@ -168,7 +173,11 @@ const checks: [string, unknown, unknown][] = [
   ["ไม่มีกลุ่มเรทราคา", b.priceRates === undefined, true],
   ["ช่องราคา", Object.keys(b.pricing.cells).length, Object.keys(cells).length],
   ["ขั้นจำนวน", b.pricing.tiers.length, tiers.length],
-  ["ราคาช่องอ้างอิง (อาร์ต 300 ไม่เคลือบ)", JSON.stringify(b.pricing.cells["กระดาษอาร์ตมัน 300 แกรม│ไม่เคลือบ"]), JSON.stringify(cells["กระดาษอาร์ตมัน 300 แกรม│ไม่เคลือบ"])],
+  [
+    "ราคาช่องอ้างอิง (อาร์ต 300 ไม่เคลือบ · บวก markup แล้ว)",
+    JSON.stringify(b.pricing.cells["กระดาษอาร์ตมัน 300 แกรม│ไม่เคลือบ"]),
+    JSON.stringify(cells["กระดาษอาร์ตมัน 300 แกรม│ไม่เคลือบ"].map((v: number) => v + MARKUP)),
+  ],
   ["ขนาด", gOf(SIZE)?.choices.map((c: any) => c.name).join(" | "), "4 × 6 นิ้ว | 5 × 7 นิ้ว"],
   ["ใบต่อ A3 (4x6)", gOf(SIZE)?.choices[0].piecesPerUnit, 8],
   ["ใบต่อ A3 (5x7)", gOf(SIZE)?.choices[1].piecesPerUnit, 4],
