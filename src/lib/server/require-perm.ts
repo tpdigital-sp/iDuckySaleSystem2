@@ -4,18 +4,30 @@ import { NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/server/admin-session";
 import { can, type Actor, type Perm } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
+import { extraPermsOf } from "@/lib/server/user-perms";
 
 /**
  * ด่านตรวจสิทธิ์ฝั่งเซิร์ฟเวอร์ — ต้องเรียกใน API route ทุกเส้นที่แตะข้อมูลหลังบ้าน
  * การซ่อนปุ่มในหน้าจอกันไม่ได้ เพราะยิง API ตรงได้
  */
 
-/** ผู้ใช้ที่ล็อกอินอยู่ (null = ยังไม่ล็อกอิน / คุกกี้หมดอายุ) */
+/**
+ * ผู้ใช้ที่ล็อกอินอยู่ (null = ยังไม่ล็อกอิน / คุกกี้หมดอายุ)
+ *
+ * สิทธิ์พิเศษรายคนอ่านสด ๆ จาก DB (ไม่ฝังในคุกกี้) — เจ้าของกดปิดสิทธิ์แล้วมีผลทันที
+ * ถ้าฝังในคุกกี้ คนที่ถูกถอดสิทธิ์จะยังยืนยันเงินได้จนกว่าคุกกี้จะหมดอายุ (30 วัน)
+ */
 export async function currentActor(): Promise<Actor | null> {
   const jar = await cookies();
   const s = verifySessionToken(jar.get(SESSION_COOKIE)?.value);
   if (!s) return null;
-  return { username: s.username, name: s.name, role: s.role, department: s.department };
+  return {
+    username: s.username,
+    name: s.name,
+    role: s.role,
+    department: s.department,
+    extraPerms: await extraPermsOf(s.username),
+  };
 }
 
 /**

@@ -589,6 +589,12 @@ export default function AdminOrderDetailPage() {
   const seesMoney = can("orders.money"); // เห็นราคา/สลิป
   const isSuperAdmin = useRoleLabel() === "ผู้ดูแลระบบ"; // ลบสลิปได้เฉพาะผู้ดูแลระบบ (เซิร์ฟเวอร์บังคับซ้ำ)
   const mayEdit = can("orders.edit"); // เปลี่ยนสถานะ/แก้ข้อมูล
+  /**
+   * 💰 ยืนยันเงินเข้า — สิทธิ์แยกจาก orders.edit
+   * ค่าเริ่มต้นมีแต่เจ้าของร้าน · พนักงานคนอื่นต้องให้เจ้าของเปิดให้เป็นรายคนที่หน้า /admin/staff
+   * (เซิร์ฟเวอร์บังคับซ้ำใน PATCH /api/admin/orders — ตรงนี้แค่ไม่ให้กดแล้วเด้ง error)
+   */
+  const mayMarkPaid = can("orders.markPaid");
   const mayProof = can("proof.manage"); // อัปโหลด/ลบแบบงาน
   const mayCancel = can("orders.cancel");
 
@@ -678,6 +684,12 @@ export default function AdminOrderDetailPage() {
 
   async function changeStatus(status: OrderStatus) {
     if (!order || order.status === status) return;
+    // 💰 "ชำระแล้ว" = ยืนยันเงินเข้า — ต้องมีสิทธิ์เฉพาะ (เซิร์ฟเวอร์ปฏิเสธซ้ำอยู่แล้ว)
+    if (status === "ชำระแล้ว" && !mayMarkPaid) {
+      setErr("บัญชีนี้ยืนยันเงินเข้าไม่ได้ — ให้เจ้าของร้าน หรือคนที่เปิดสิทธิ์ “ยืนยันเงินเข้า” ไว้ เป็นคนกด");
+      setOrder((cur) => (cur ? { ...cur } : cur)); // รีเซ็ต <select> กลับสถานะเดิม
+      return;
+    }
     // "ชำระแล้ว" ต้องมีสลิปเป็นหลักฐานเสมอ — ไม่มีสลิปให้แนบตรงนั้นเลย หรือยืนยันเองแล้วลง log
     const noSlip = status === "ชำระแล้ว" && !order.slipPath && !order.slipUrl;
     if (noSlip) {
@@ -1553,9 +1565,14 @@ export default function AdminOrderDetailPage() {
                     {STATUS_GROUPS.map((g) => (
                       <optgroup key={g.title} label={g.title}>
                         {g.items.map((st) => (
-                          <option key={st} value={st}>
+                          // "ชำระแล้ว" ปิดไว้สำหรับคนที่ไม่มีสิทธิ์ยืนยันเงินเข้า — เห็นได้แต่เลือกไม่ได้
+                          <option key={st} value={st} disabled={st === "ชำระแล้ว" && !mayMarkPaid}>
                             {st}
-                            {NEXT_STATUS[order.status]?.to === st ? "  ← ขั้นถัดไป" : ""}
+                            {st === "ชำระแล้ว" && !mayMarkPaid
+                              ? "  (เฉพาะคนที่มีสิทธิ์ยืนยันเงินเข้า)"
+                              : NEXT_STATUS[order.status]?.to === st
+                                ? "  ← ขั้นถัดไป"
+                                : ""}
                           </option>
                         ))}
                       </optgroup>
@@ -3062,13 +3079,16 @@ export default function AdminOrderDetailPage() {
                   </div>
                   {mayEdit && !order.deposit.firstPaidAt && (
                     <div className="flex gap-1.5 pt-0.5">
-                      <button
-                        type="button"
-                        onClick={confirmDepositFirst}
-                        className="flex-1 rounded-lg bg-violet-600 py-1.5 text-[11px] font-bold text-white transition hover:bg-violet-700"
-                      >
-                        ✔️ ยืนยันรับมัดจำ (ตรวจเอง)
-                      </button>
+                      {/* ยืนยันรับมัดจำ = ดันสถานะเป็น "ชำระแล้ว" ด้วย → ใช้สิทธิ์ยืนยันเงินเข้าเหมือนกัน */}
+                      {mayMarkPaid && (
+                        <button
+                          type="button"
+                          onClick={confirmDepositFirst}
+                          className="flex-1 rounded-lg bg-violet-600 py-1.5 text-[11px] font-bold text-white transition hover:bg-violet-700"
+                        >
+                          ✔️ ยืนยันรับมัดจำ (ตรวจเอง)
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={cancelDeposit}
@@ -3125,7 +3145,7 @@ export default function AdminOrderDetailPage() {
                       )}
                     </div>
                   )}
-                  {mayEdit && order.deposit.firstPaidAt && !order.deposit.settledAt && (
+                  {mayEdit && mayMarkPaid && order.deposit.firstPaidAt && !order.deposit.settledAt && (
                     <button
                       type="button"
                       onClick={confirmDepositSettled}
@@ -3133,6 +3153,12 @@ export default function AdminOrderDetailPage() {
                     >
                       ✔️ ยืนยันรับยอดคงเหลือครบ (ตรวจเอง)
                     </button>
+                  )}
+                  {/* ไม่มีสิทธิ์ยืนยันเงินเข้า — บอกให้รู้ว่าต้องไปตามใคร ไม่ใช่ปุ่มหายเฉย ๆ */}
+                  {mayEdit && !mayMarkPaid && !order.deposit.settledAt && (
+                    <p className="rounded-lg bg-white/70 px-2 py-1.5 text-[10px] font-semibold leading-snug text-violet-600 ring-1 ring-violet-100">
+                      💰 การยืนยันรับเงินสงวนไว้ให้เจ้าของร้าน (หรือคนที่เปิดสิทธิ์ “ยืนยันเงินเข้า” ไว้) เป็นคนกด
+                    </p>
                   )}
                   {!order.deposit.settledAt && (
                     <p className="text-[10px] leading-snug text-violet-500">

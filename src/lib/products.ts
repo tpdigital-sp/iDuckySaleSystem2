@@ -2715,6 +2715,22 @@ export function artworkConsultOf(p: Product, selections?: Record<string, string>
 }
 
 /**
+ * 💬 ชื่อกลุ่มตัวเลือกที่ "เป็นตัวจุดชนวน" ให้ต้องคุยกับแอดมิน ณ ตัวเลือกชุดนี้
+ * หน้าสินค้าเอาไปแปะกล่องเตือนใต้กลุ่มนั้นทันทีที่ลูกค้าเลือก — ไม่ต้องเลื่อนลงไปสุดหน้าถึงจะรู้
+ * (เช่น เลือก "มากกว่า 5 ชิ้น (สอบถามแอดมิน)" ในกลุ่มจำนวนชิ้น = ขึ้นเตือนตรงนั้นเลย)
+ * คืนลิสต์ว่างเมื่อไม่เข้าเงื่อนไข หรือเปิดสวิตช์แบบ "บังคับทั้งสินค้า" (ไม่มีกลุ่มไหนเป็นตัวจุดชนวน)
+ */
+export function consultTriggerLabels(p: Product, selections?: Record<string, string>): string[] {
+  const c = artworkConsultOf(p, selections);
+  if (!c || !selections) return [];
+  const conds = [c.when, c.whenAlso, ...(c.whenAny ?? [])].filter(
+    (w): w is { label: string; choices: string[] } => !!w?.label && !!w.choices?.length
+  );
+  const hit = conds.filter((w) => valueMatchesAny(selections[w.label], w.choices)).map((w) => w.label);
+  return [...new Set(hit)];
+}
+
+/**
  * แปลงข้อความ (เช่น ชื่อสินค้า) เป็น slug สำหรับลิงก์ — คงภาษาไทยไว้
  * เว้นวรรค→ขีดกลาง · ตัดอักขระที่มีความหมายพิเศษใน URL ออก
  */
@@ -2873,6 +2889,13 @@ export interface SizeInputSpec {
   heightLabel: string;
   /** ด้านยาวสุดเกินกี่หน่วย = เกินที่ตารางครอบ ให้แอดมินตีราคาแทน (ไม่ตั้ง = ดูจากแถวใหญ่สุดที่เลือกได้) */
   askOver?: number;
+  /**
+   * 📈 ใหญ่กว่าแถวสุดท้ายในตาราง คิดเพิ่มหน่วยละเท่านี้ต่อชิ้น (ไม่ตั้ง = เกินตาราง → แอดมินตีราคา)
+   * ราคาฐาน = ช่องของแถวใหญ่สุด แล้วบวกส่วนเกิน × เรทนี้ (ตรรกะเดียวกับ custom mode "longest")
+   * ตั้งคู่กับ askOver ได้ — askOver กลายเป็น "เพดานที่ระบบคิดเองได้" เกินกว่านั้นถึงตกไปให้ตีราคา
+   * เช่น อะคริลิคกระจก: ตาราง 4-6 ซม. · เกิน 6 ซม. ซม. ละ 15 บาท · เกิน askOver ให้แอดมินตีราคา
+   */
+  overRate?: number;
   /** หน่วยที่โชว์ในข้อความสรุป เช่น "ซม." (ไม่ตั้ง = ไม่ต่อหน่วย) */
   unit?: string;
   /**
@@ -2902,6 +2925,10 @@ export interface SizeInputPlan {
   filled: boolean;
   /** true = ใหญ่เกินที่ตารางครอบ ต้องให้แอดมินตีราคา */
   quote: boolean;
+  /** หน่วยที่เกินแถวใหญ่สุดในตาราง (0 = อยู่ในตาราง) — มีค่าเฉพาะสินค้าที่ตั้ง overRate */
+  overCm: number;
+  /** ค่าเพิ่มของส่วนเกิน ต่อชิ้น (overCm × overRate) */
+  overFee: number;
   /** หน่วยไว้ประกอบข้อความ */
   unit: string;
 }
@@ -2929,9 +2956,10 @@ export function sizeInputPlan(p: Product, selections: Record<string, string>): S
       .map((ch) => ({ name: ch.name, cm: choiceSizeCm(ch.name) }))
       .filter((r): r is { name: string; cm: number } => r.cm != null)
       .sort((a, b) => a.cm - b.cm);
+    const flat = { ...base, overCm: 0, overFee: 0 };
     // ยังกรอกไม่ครบ = เกาะแถวเล็กสุดไว้ก่อน (ราคาเริ่มต้น) — ปุ่มสั่งยังล็อกอยู่เพราะช่องกรอกยังว่าง
     if (!(w > 0 && h > 0)) {
-      return { ...base, longest: 0, choice: rows[0]?.name ?? null, filled: false, quote: false };
+      return { ...flat, longest: 0, choice: rows[0]?.name ?? null, filled: false, quote: false };
     }
     // ปัดเป็นเต็มหน่วยแบบ "ผ่อนเศษ" — เศษไม่เกิน roundSlack (ค่าเริ่มต้น 0.5) ยังอยู่แถวเดิม
     // 3.5 → 3 (แถว 3cm) · 3.6 → 4 (แถว 4cm) · 1e-9 กันเลขทศนิยมของ Number() (3.5000000001)
@@ -2940,11 +2968,20 @@ export function sizeInputPlan(p: Product, selections: Record<string, string>): S
     const floor = Math.floor(raw + 1e-9);
     const longest = Math.max(1, raw - floor > slack + 1e-9 ? floor + 1 : floor);
     const row = rows.find((r) => longest <= r.cm);
+    const top = rows[rows.length - 1];
+    /**
+     * 📈 ใหญ่กว่าทุกแถวในตาราง แต่ร้านตั้งเรทส่วนเกินไว้ (overRate) = คิดเองได้เลย
+     * ราคาฐานเกาะแถวใหญ่สุด + ส่วนที่เกินหน่วยละ overRate (askOver = เพดานที่ยอมคิดเอง)
+     */
+    if (!row && cfg.overRate && top && (cfg.askOver == null || longest <= cfg.askOver)) {
+      const overCm = longest - top.cm;
+      return { ...base, longest, choice: top.name, filled: true, quote: false, overCm, overFee: overCm * cfg.overRate };
+    }
     // เกินเพดานที่แอดมินตั้งไว้ หรือไม่มีแถวไหนครอบได้ = ให้แอดมินตีราคา
     if (!row || (cfg.askOver != null && longest > cfg.askOver)) {
-      return { ...base, longest, choice: null, filled: true, quote: true };
+      return { ...flat, longest, choice: null, filled: true, quote: true };
     }
-    return { ...base, longest, choice: row.name, filled: true, quote: false };
+    return { ...flat, longest, choice: row.name, filled: true, quote: false };
   }
   return null;
 }
@@ -4832,6 +4869,8 @@ export function unitPriceFor(
    */
   const sizePlan = sizeInputPlan(product, selections);
   if (sizePlan?.choice) selections = { ...selections, [sizePlan.label]: sizePlan.choice };
+  // 📈 ส่วนที่ใหญ่กว่าแถวสุดท้าย เมื่อร้านตั้งเรทส่วนเกินไว้ (ไม่ต้องรอแอดมินตีราคา)
+  const sizeOverFee = sizePlan?.overFee ?? 0;
   // จำนวนที่ใช้ "เทียบช่วงราคา" — สินค้าที่คิดเรทตามชิ้นต่อลายจะเป็น ⌊จำนวน ÷ ลาย⌋
   // เงื่อนไขที่ผูกกับช่วงราคา (ค่าธรรมเนียมช่วงปลีก · extraFromQty) ต้องใช้ตัวเลขเดียวกับที่เลือกช่วงราคา
   // ไม่งั้นจะกลายเป็น "ได้ราคาช่วงปลีก แต่ไม่โดนค่าธรรมเนียมช่วงปลีก" (สั่ง 11 ชิ้น คละ 3 ลาย = ตกลายละ 3)
@@ -4876,8 +4915,9 @@ export function unitPriceFor(
     }
     // 📐 ส่วนที่ใหญ่กว่าแถวสุดท้ายของตาราง (งานกำหนดขนาดเอง) — บวกท้ายสุด
     if (overFee) note(c!.label, overFee);
+    if (sizeOverFee) note(sizePlan!.label, sizeOverFee);
     // ค่าธรรมเนียมช่วงปลีกใส่ค่าติดลบได้ (ลดให้) — กันหักจนราคาติดลบ
-    return Math.max(0, base + overFee);
+    return Math.max(0, base + overFee + sizeOverFee);
   }
   let price = product.price;
   for (const opt of product.options) {
@@ -4888,7 +4928,8 @@ export function unitPriceFor(
     note(opt.label, add);
   }
   if (overFee) note(c!.label, overFee);
-  return Math.max(0, price + overFee);
+  if (sizeOverFee) note(sizePlan!.label, sizeOverFee);
+  return Math.max(0, price + overFee + sizeOverFee);
 }
 
 /**

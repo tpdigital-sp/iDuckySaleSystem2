@@ -30,6 +30,11 @@ export interface Actor {
   name?: string;
   role: string;
   department?: string;
+  /**
+   * สิทธิ์พิเศษที่เปิดให้ "เป็นรายคน" จากหน้า /admin/staff (นอกเหนือจากชุดของแผนก)
+   * ใช้กับงานที่ไว้ใจเป็นตัวบุคคล เช่น ยืนยันการรับเงิน ดู GRANTABLE_EXTRA_PERMS
+   */
+  extraPerms?: Perm[];
 }
 
 export type Perm =
@@ -41,6 +46,12 @@ export type Perm =
   | "orders.viewAll"
   /** เห็นราคา ยอดเงิน สลิปโอน และกดยืนยันการชำระเงิน */
   | "orders.money"
+  /**
+   * ยืนยันว่า "เงินเข้าแล้ว" — เปลี่ยนสถานะเป็น "ชำระแล้ว" · ยืนยันรับมัดจำ/ยอดคงเหลือ
+   * ไม่อยู่ในชุดของแผนกไหนเลยโดยค่าเริ่มต้น → มีแต่เจ้าของร้าน (ผู้ดูแลระบบ)
+   * กับพนักงานที่เจ้าของเปิดสิทธิ์ให้เป็นรายคนที่หน้า /admin/staff เท่านั้น
+   */
+  | "orders.markPaid"
   /** แก้ที่อยู่/เบอร์/สถานะออเดอร์ */
   | "orders.edit"
   /** ยกเลิกออเดอร์ */
@@ -147,19 +158,41 @@ export function permsOf(actor: Actor | null | undefined, rolePerms?: RolePermsMa
   if (actor.role !== ROLE_STAFF && actor.role !== ROLE_LEADER) return [];
   const map = rolePerms ?? DEFAULT_ROLE_PERMS;
   const dept = (actor.department ?? "").trim();
-  if (map[dept]) return sanitizePerms(map[dept]);
-  // คอนเทนต์: รับทั้งภาษาไทยและอังกฤษ (กันพิมพ์ใน Firebase คนละแบบ)
   const dl = dept.toLowerCase();
-  if (dl === DEPT_CONTENT.toLowerCase() || dl === "content") return sanitizePerms(map[DEPT_CONTENT] ?? []);
+  /**
+   * สิทธิ์พิเศษรายคน (เปิดจากหน้าพนักงาน) บวกทับชุดของแผนกเสมอ
+   * — แต่ให้เฉพาะกับคนที่แผนกเปิดให้เข้าหลังบ้านได้อยู่แล้ว
+   *   (คนที่ยังไม่มีแผนก/แผนกปิดสิทธิ์ ยังต้องเข้าไม่ได้เหมือนเดิม)
+   */
+  const extra = sanitizePerms(actor.extraPerms).filter((p) => GRANTABLE_EXTRA_PERMS.includes(p));
+  const withExtra = (base: Perm[]) => (base.length && extra.length ? [...new Set([...base, ...extra])] : base);
+  if (map[dept]) return withExtra(sanitizePerms(map[dept]));
+  // คอนเทนต์: รับทั้งภาษาไทยและอังกฤษ (กันพิมพ์ใน Firebase คนละแบบ)
+  if (dl === DEPT_CONTENT.toLowerCase() || dl === "content") return withExtra(sanitizePerms(map[DEPT_CONTENT] ?? []));
   // แผนกอื่นที่ยังไม่ได้กำหนดสิทธิ์ → ไม่ให้เข้า (ปิดไว้ก่อนปลอดภัยกว่า)
   return [];
 }
+
+/**
+ * สิทธิ์ที่ "เปิดให้เป็นรายคน" ได้ที่หน้า /admin/staff (เจ้าของร้านเท่านั้นที่กดเปิดได้)
+ * เป็น allowlist — สิทธิ์อื่นยังต้องให้ผ่านแผนกเหมือนเดิม กันแอบแจกทีละคนจนสิทธิ์รั่ว
+ */
+export const GRANTABLE_EXTRA_PERMS: Perm[] = ["orders.markPaid"];
+
+/** คำอธิบายสั้น ๆ ของสิทธิ์รายคน (ใช้เป็นป้ายบนสวิตช์ในหน้าพนักงาน) */
+export const EXTRA_PERM_LABEL: Record<string, { label: string; hint: string }> = {
+  "orders.markPaid": {
+    label: "ยืนยันเงินเข้า",
+    hint: 'เปลี่ยนสถานะเป็น "ชำระแล้ว" และยืนยันรับมัดจำ/ยอดคงเหลือได้',
+  },
+};
 
 export const ALL_PERMS: Perm[] = [
   "admin.access",
   "orders.view",
   "orders.viewAll",
   "orders.money",
+  "orders.markPaid",
   "orders.edit",
   "orders.cancel",
   "proof.manage",
@@ -184,6 +217,10 @@ export const PERM_INFO: { group: string; perms: { perm: Perm; label: string }[] 
       { perm: "orders.view", label: "ดูรายการออเดอร์" },
       { perm: "orders.viewAll", label: "เห็นออเดอร์ทุกสถานะ + ผลประเมินความพึงพอใจ (ไม่มี = เห็นเฉพาะคิวแพ็ค)" },
       { perm: "orders.money", label: "เห็นราคา ยอดเงิน สลิปโอน และกดยืนยันการชำระเงิน" },
+      {
+        perm: "orders.markPaid",
+        label: 'ยืนยันเงินเข้า — เปลี่ยนสถานะเป็น "ชำระแล้ว" · รับมัดจำ/ยอดคงเหลือ (ปกติเปิดเป็นรายคนที่หน้าพนักงาน)',
+      },
       { perm: "orders.edit", label: "แก้ที่อยู่/สถานะออเดอร์ · หมายเหตุใบงาน · ข้ามด่านตรวจได้ (มีบันทึก log)" },
       { perm: "orders.cancel", label: "ยกเลิกออเดอร์" },
     ],

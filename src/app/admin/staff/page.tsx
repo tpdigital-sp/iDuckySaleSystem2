@@ -30,7 +30,17 @@ import {
   TabRow,
   Tag,
 } from "@/components/admin/ui";
-import { DEPT_ADMIN, DEPT_CONTENT, DEPT_GRAPHIC, DEPT_PACKING, ROLE_ADMINISTRATOR, ROLE_LEADER, ROLE_STAFF } from "@/lib/permissions";
+import {
+  DEPT_ADMIN,
+  DEPT_CONTENT,
+  DEPT_GRAPHIC,
+  DEPT_PACKING,
+  EXTRA_PERM_LABEL,
+  ROLE_ADMINISTRATOR,
+  ROLE_LEADER,
+  ROLE_STAFF,
+  type Perm,
+} from "@/lib/permissions";
 
 interface Staff {
   id: string;
@@ -41,9 +51,14 @@ interface Staff {
   department: string;
   workStatus: string;
   suspended: boolean;
+  /** สิทธิ์พิเศษที่เปิดให้เป็นรายคน (ตอนนี้มี "ยืนยันเงินเข้า" ตัวเดียว) */
+  extraPerms: Perm[];
   /** เซิร์ฟเวอร์คิดให้จากชุดสิทธิ์จริง (รวมบทบาทที่แอดมินแก้เอง + สถานะระงับ) */
   hasAccess: boolean;
 }
+
+/** สิทธิ์ยืนยันเงินเข้า — ค่าเริ่มต้นปิดทุกคน เจ้าของร้านเปิดให้เป็นรายคน */
+const MARK_PAID: Perm = "orders.markPaid";
 
 const DEFAULT_DEPTS = [DEPT_ADMIN, DEPT_GRAPHIC, DEPT_PACKING, DEPT_CONTENT];
 
@@ -66,6 +81,7 @@ function StaffRow({
   const [role, setRole] = useState(s.role);
   const [department, setDepartment] = useState(s.department);
   const [busy, setBusy] = useState(false);
+  const [paidBusy, setPaidBusy] = useState(false);
   const [suspending, setSuspending] = useState(false);
   const [flash, setFlash] = useState<"ok" | "err" | null>(null);
   const [err, setErr] = useState("");
@@ -117,6 +133,33 @@ function StaffRow({
     onSaved();
   }
 
+  /**
+   * 💰 เปิด/ปิดสิทธิ์ "ยืนยันเงินเข้า" ให้คนนี้ — เฉพาะเจ้าของร้าน (ผู้ดูแลระบบ) เท่านั้น
+   * ค่าเริ่มต้นปิดหมด: พนักงานเปลี่ยนสถานะเป็น "ชำระแล้ว" เองไม่ได้จนกว่าจะเปิดให้
+   */
+  async function toggleMarkPaid() {
+    const on = s.extraPerms.includes(MARK_PAID);
+    const who = s.fullname || s.name || s.username;
+    const msg = on
+      ? `ปิดสิทธิ์ยืนยันเงินเข้าของ "${who}"?\nต่อไปเขาจะเปลี่ยนสถานะเป็น “ชำระแล้ว” เองไม่ได้`
+      : `เปิดสิทธิ์ยืนยันเงินเข้าให้ "${who}"?\nเขาจะเปลี่ยนสถานะเป็น “ชำระแล้ว” และยืนยันรับมัดจำ/ยอดคงเหลือได้`;
+    if (!window.confirm(msg)) return;
+    setPaidBusy(true);
+    setErr("");
+    const res = await fetch("/api/admin/staff", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: s.id, perms: on ? [] : [MARK_PAID] }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setPaidBusy(false);
+    if (!res.ok) {
+      setErr(j.error ?? "บันทึกไม่สำเร็จ");
+      return;
+    }
+    onSaved();
+  }
+
   /** อธิบายสิทธิ์เป็นภาษาคน — ชื่อ perm ไม่มีใครอ่านออก */
   const dutyOf = () => {
     if (isAdminRole) return "ทุกสิทธิ์";
@@ -138,6 +181,7 @@ function StaffRow({
           <>
             {lockNote === "self" && <Tag tone="yolk">คุณ</Tag>}
             {isAdminRole && <Tag tone="lilac">ทุกสิทธิ์</Tag>}
+            {!isAdminRole && s.extraPerms.includes(MARK_PAID) && <Tag tone="yolk">💰 ยืนยันเงินเข้าได้</Tag>}
             {s.suspended && <Tag tone="solid">ปิดการเข้าใช้งาน (เฉพาะระบบนี้)</Tag>}
             {!s.suspended && !isAdminRole && !department.trim() && <Tag tone="solid">ยังไม่กำหนดแผนก — เข้าไม่ได้</Tag>}
           </>
@@ -186,6 +230,18 @@ function StaffRow({
             <Btn small onClick={() => void toggleSuspend()} disabled={suspending}>
               {suspending ? "…" : s.suspended ? "เปิดการเข้าใช้งาน" : "ปิดการเข้าใช้งาน"}
             </Btn>
+            {/* 💰 สิทธิ์ยืนยันเงินเข้า — เจ้าของร้านเท่านั้นที่เปิด/ปิดได้ (พนง.แอดมินเห็นสถานะแต่กดไม่ได้) */}
+            {!isAdminRole && canGrantAdmin && (
+              <Btn
+                tone={s.extraPerms.includes(MARK_PAID) ? "navy" : undefined}
+                small
+                onClick={() => void toggleMarkPaid()}
+                disabled={paidBusy}
+                title={EXTRA_PERM_LABEL[MARK_PAID]?.hint}
+              >
+                {paidBusy ? "…" : s.extraPerms.includes(MARK_PAID) ? "💰 ปิดสิทธิ์ยืนยันเงินเข้า" : "💰 ให้ยืนยันเงินเข้าได้"}
+              </Btn>
+            )}
             {err && (
               <span className="w-full text-right text-[12px] font-semibold" style={{ color: "var(--dk-coral-ink)" }}>
                 {err}

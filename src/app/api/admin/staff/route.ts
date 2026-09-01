@@ -1,8 +1,17 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { EMPLOYEE_COLLECTION, getFirestoreAdmin, loginKey } from "@/lib/server/firebase-admin";
-import { can, DEFAULT_ROLE_PERMS, ROLE_ADMINISTRATOR, ROLE_LEADER, ROLE_STAFF } from "@/lib/permissions";
+import {
+  can,
+  DEFAULT_ROLE_PERMS,
+  GRANTABLE_EXTRA_PERMS,
+  ROLE_ADMINISTRATOR,
+  ROLE_LEADER,
+  ROLE_STAFF,
+  type Perm,
+} from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
+import { loadUserPerms, sanitizeExtraPerms, saveUserPerms } from "@/lib/server/user-perms";
 
 export const runtime = "nodejs";
 
@@ -25,10 +34,15 @@ export async function GET() {
   const db = getFirestoreAdmin();
   if (!db) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Firebase" }, { status: 503 });
 
-  const [rows, rolePerms] = await Promise.all([db.collection(EMPLOYEE_COLLECTION).get(), loadRolePerms()]);
+  const [rows, rolePerms, userPerms] = await Promise.all([
+    db.collection(EMPLOYEE_COLLECTION).get(),
+    loadRolePerms(),
+    loadUserPerms(),
+  ]);
   const staff = rows.docs
     .map((d) => {
       const e = d.data() as EmpDoc;
+      const key = loginKey(e.username ?? "");
       return {
         id: d.id,
         username: e.username ?? "",
@@ -38,6 +52,8 @@ export async function GET() {
         department: e.department ?? "",
         workStatus: e.workStatus ?? "",
         suspended: e.iduckySuspended === true,
+        // สิทธิ์พิเศษที่เปิดให้เป็นรายคน (เช่น ยืนยันเงินเข้า) — ผู้ดูแลระบบได้ทุกสิทธิ์อยู่แล้ว ไม่ต้องเปิด
+        extraPerms: e.role === ROLE_ADMINISTRATOR ? [] : (userPerms[key] ?? []),
         // เข้าหลังบ้านได้จริงไหม — คิดจากชุดสิทธิ์เดียวกับตอนล็อกอิน (รวมบทบาทที่แอดมินแก้เอง)
         hasAccess:
           e.iduckySuspended !== true &&
@@ -52,6 +68,8 @@ export async function GET() {
     departments: Object.keys(rolePerms ?? DEFAULT_ROLE_PERMS),
     // พนง.แอดมินตั้ง/แก้ระดับ Administrator ไม่ได้ — ให้หน้าจอปิดตัวเลือกให้ตรงกับกติกาเซิร์ฟเวอร์
     canGrantAdmin: gate.actor.role === ROLE_ADMINISTRATOR,
+    // สิทธิ์ที่เปิดเป็นรายคนได้ — เปิด/ปิดได้เฉพาะผู้ดูแลระบบ (เจ้าของร้าน)
+    grantablePerms: GRANTABLE_EXTRA_PERMS,
     me: loginKey(gate.actor.username),
   });
 }
@@ -63,7 +81,7 @@ export async function PATCH(req: Request) {
   const db = getFirestoreAdmin();
   if (!db) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Firebase" }, { status: 503 });
 
-  let body: { id?: string; role?: string; department?: string; workStatus?: string; suspended?: boolean };
+  let body: { id?: string; role?: string; department?: string; workStatus?: string; suspended?: boolean; perms?: string[] };
   try {
     body = await req.json();
   } catch {
@@ -72,12 +90,15 @@ export async function PATCH(req: Request) {
   const id = (body.id ?? "").trim();
   if (!id) return NextResponse.json({ error: "ไม่มีรหัสพนักงาน" }, { status: 400 });
 
-  // แก้ได้ 2 แบบ: ข้อมูลตำแหน่ง (role+department+workStatus) หรือสวิตช์ระงับสิทธิ์เฉพาะระบบนี้ (suspended)
-  const suspendOnly = body.role === undefined && body.suspended !== undefined;
+  // แก้ได้ 3 แบบ: ข้อมูลตำแหน่ง (role+department+workStatus) · สวิตช์ระงับสิทธิ์เฉพาะระบบนี้ (suspended) · สิทธิ์พิเศษรายคน (perms)
+  const permsOnly = body.role === undefined && body.suspended === undefined && body.perms !== undefined;
+  const suspendOnly = !permsOnly && body.role === undefined && body.suspended !== undefined;
   const role = (body.role ?? "").trim();
   const department = (body.department ?? "").trim().slice(0, 40);
   const workStatus = (body.workStatus ?? "").trim().slice(0, 30);
-  if (suspendOnly) {
+  if (permsOnly) {
+    if (!Array.isArray(body.perms)) return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
+  } else if (suspendOnly) {
     if (typeof body.suspended !== "boolean")
       return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
   } else {
@@ -107,6 +128,25 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "แก้บัญชีระดับผู้ดูแลระบบได้เฉพาะผู้ดูแลระบบด้วยกัน" }, { status: 403 });
     if (!suspendOnly && role === ROLE_ADMINISTRATOR)
       return NextResponse.json({ error: "ตั้งระดับผู้ดูแลระบบได้เฉพาะผู้ดูแลระบบเท่านั้น" }, { status: 403 });
+  }
+
+  /**
+   * 💰 สิทธิ์พิเศษรายคน (ตอนนี้มีตัวเดียว: ยืนยันเงินเข้า)
+   * เปิด/ปิดได้เฉพาะผู้ดูแลระบบ — พนง.แอดมินที่มี staff.manage แจกสิทธิ์เงินให้ใครไม่ได้
+   * เก็บนอก Firestore (แถว __user_perms__ ใน Supabase) เพราะเป็นข้อมูลของระบบนี้ล้วน ๆ
+   */
+  if (permsOnly) {
+    if (!actorIsAdmin)
+      return NextResponse.json({ error: "เปิด/ปิดสิทธิ์ยืนยันเงินเข้าได้เฉพาะผู้ดูแลระบบ" }, { status: 403 });
+    const key = loginKey(target.username ?? "");
+    if (!key) return NextResponse.json({ error: "พนักงานคนนี้ยังไม่มีชื่อผู้ใช้" }, { status: 400 });
+    const perms: Perm[] = sanitizeExtraPerms(body.perms);
+    const map = { ...(await loadUserPerms()) };
+    if (perms.length) map[key] = perms;
+    else delete map[key];
+    const { error } = await saveUserPerms(map);
+    if (error) return NextResponse.json({ error }, { status: 500 });
+    return NextResponse.json({ ok: true, perms });
   }
 
   await ref.update(suspendOnly ? { iduckySuspended: body.suspended } : { role, department, workStatus });

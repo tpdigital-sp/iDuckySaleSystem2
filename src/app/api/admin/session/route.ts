@@ -9,6 +9,7 @@ import {
 } from "@/lib/server/admin-session";
 import { ALL_PERMS, permsOf, roleLabel, ROLE_ADMINISTRATOR } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
+import { extraPermsOf } from "@/lib/server/user-perms";
 
 export const runtime = "nodejs";
 
@@ -17,7 +18,14 @@ export async function GET() {
   const session = verifySessionToken(jar.get(SESSION_COOKIE)?.value);
 
   const actor = session
-    ? { username: session.username, name: session.name, role: session.role, department: session.department }
+    ? {
+        username: session.username,
+        name: session.name,
+        role: session.role,
+        department: session.department,
+        // สิทธิ์พิเศษรายคน (เช่น ยืนยันเงินเข้า) — อ่านสดทุกครั้ง ไม่ได้ฝังในคุกกี้
+        extraPerms: await extraPermsOf(session.username),
+      }
     : null;
 
   const res = NextResponse.json({

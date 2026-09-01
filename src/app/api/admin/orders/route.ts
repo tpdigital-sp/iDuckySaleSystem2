@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { currentActor, requirePerm } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
+import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
 import { reportPaidToTP } from "@/lib/server/tp-report";
@@ -172,11 +173,18 @@ export async function PATCH(req: Request) {
   // แอดมิน (orders.edit) → บันทึกได้เต็ม · ฝ่ายแพ็ค (pack.check/pack.ship) → บันทึกได้เฉพาะงานแพ็ค
   const actor = await currentActor();
   if (!actor) return NextResponse.json({ error: "ต้องล็อกอินก่อน" }, { status: 401 });
-  const mayEditFull = can(actor, "orders.edit");
-  const mayPack = can(actor, "pack.check") || can(actor, "pack.ship");
+  // ใช้ชุดสิทธิ์ที่แอดมินแก้เอง (ตั้งค่าระบบ → แท็บบทบาท) ให้ตรงกับที่หน้าจอเห็น
+  const rolePerms = await loadRolePerms();
+  const mayEditFull = can(actor, "orders.edit", rolePerms);
+  const mayPack = can(actor, "pack.check", rolePerms) || can(actor, "pack.ship", rolePerms);
   if (!mayEditFull && !mayPack) {
     return NextResponse.json({ error: "บัญชีนี้ไม่มีสิทธิ์แก้ไขออเดอร์" }, { status: 403 });
   }
+  /**
+   * 💰 ยืนยันเงินเข้า = สิทธิ์แยกต่างหาก (orders.markPaid)
+   * ค่าเริ่มต้นมีแต่เจ้าของร้าน + พนักงานที่เปิดสิทธิ์ให้เป็นรายคนที่หน้า /admin/staff
+   */
+  const mayMarkPaid = can(actor, "orders.markPaid", rolePerms);
 
   let order: Order;
   try {
@@ -215,7 +223,7 @@ export async function PATCH(req: Request) {
         { status: 409 }
       );
     }
-    toSave = mergePackFields(existing, order, can(actor, "pack.ship"));
+    toSave = mergePackFields(existing, order, can(actor, "pack.ship", rolePerms));
   }
 
   /**
@@ -245,6 +253,25 @@ export async function PATCH(req: Request) {
   /** ตีราคางานสั่งทำครบในคำขอนี้ไหม — ใช้ทั้งกันแจ้งซ้ำและข้อความแจ้งราคาด้านล่าง */
   const quoteJustPriced =
     !toSave.claimOf && existing.items.some((i) => i.unitPrice <= 0) && toSave.items.length > 0 && toSave.items.every((i) => i.unitPrice > 0);
+
+  /**
+   * 🔒 ด่านยืนยันเงินเข้า — คนไม่มีสิทธิ์ทำ 3 อย่างนี้ไม่ได้ (บังคับที่นี่ ไม่ใช่แค่ซ่อนปุ่ม)
+   *   1) ดันสถานะเป็น "ชำระแล้ว"   2) ยืนยันรับมัดจำงวดแรก   3) ยืนยันรับยอดคงเหลือครบ
+   * ตรวจจากส่วนต่างกับข้อมูลเดิม → บันทึกอย่างอื่นบนออเดอร์ที่ชำระแล้วยังทำได้ตามปกติ
+   */
+  if (!mayMarkPaid) {
+    const nowPaid = toSave.status === "ชำระแล้ว" && existing.status !== "ชำระแล้ว";
+    const depositFirst = !!toSave.deposit?.firstPaidAt && !existing.deposit?.firstPaidAt;
+    const depositSettled = !!toSave.deposit?.settledAt && !existing.deposit?.settledAt;
+    if (nowPaid || depositFirst || depositSettled)
+      return NextResponse.json(
+        {
+          error:
+            "บัญชีนี้ยืนยันการรับเงินไม่ได้ — ให้เจ้าของร้าน หรือพนักงานที่เปิดสิทธิ์ “ยืนยันเงินเข้า” ไว้ เป็นคนกด",
+        },
+        { status: 403 }
+      );
+  }
 
   // อย่าเก็บ signed URL ชั่วคราวลงฐาน — สลิปที่มี slipPath ต้องเซ็นใหม่ทุกครั้งที่ดึง
   if (toSave.slipPath) toSave = { ...toSave, slipUrl: undefined };
