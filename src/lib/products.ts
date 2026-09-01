@@ -723,6 +723,13 @@ export interface SizeFee {
   defaultLongest?: number;
   /** คูณจำนวนชิ้นต่อ 1 หน่วยขาย จากการจัดวางชิ้น กว้าง×ยาว ในพื้นที่นี้ (ไม่ตั้ง = คิดชิ้นเดียว) */
   perPiece?: { sheetW: number; sheetH: number; gap?: number };
+  /**
+   * ✂️ ชื่อกลุ่มช่องกรอก "จำนวนชิ้นที่ต้องการต่อ 1 หน่วยขาย" — ลูกค้าไม่ได้อยากได้ทุกชิ้นที่ตัดได้เสมอไป
+   * (ผ้าแขวนผนัง: 1 หลาตัดชิ้น 45×45 ได้ 6 ชิ้น แต่สั่งตัดแค่ 2 ชิ้น ค่าตัด/เย็บก็ควรคิดแค่ 2)
+   * กรอกแล้ว = คิดตามจำนวนนั้น (ปัดลงเป็นจำนวนเต็ม · อย่างน้อย 1 · เกินที่ตัดได้จริงตัดลงมาที่เพดาน)
+   * ไม่กรอก/ไม่ตั้ง = คิดเต็มจำนวนที่ตัดได้ตาม perPiece เหมือนเดิม
+   */
+  piecesLabel?: string;
 }
 
 /** 💰 ที่มาของค่าบริการตามขนาด — ไว้กางให้ลูกค้าเห็นว่า +฿ มาจาก ชิ้นละเท่าไหร่ × กี่ชิ้น */
@@ -733,6 +740,8 @@ export interface SizeFeeBreakdown {
   perPiece: number;
   /** จำนวนชิ้นที่คูณ (1 = ไม่ได้คูณจากการจัดวาง เช่น เต็มหลา) */
   pieces: number;
+  /** เพดานชิ้นที่ตัดได้จริงต่อ 1 หน่วยขาย — มีเมื่อคูณจากการจัดวาง (ดู SizeFee.piecesLabel) */
+  maxPieces?: number;
 }
 
 /**
@@ -760,8 +769,27 @@ export function sizeFeeBreakdownOf(cfg: SizeFee, selections: Record<string, stri
   if (!perPiece) return null;
   if (!cfg.perPiece) return { fee: perPiece, perPiece, pieces: 1 };
   // ชิ้นใหญ่จนวางไม่ได้ (pieces 0) ก็ยังคิดอย่างน้อย 1 ชิ้น — ช่องกรอกมี max กันขนาดเกินอยู่แล้ว
-  const pieces = Math.max(1, packSingleSize(w, h, cfg.perPiece.sheetW, cfg.perPiece.sheetH, cfg.perPiece.gap ?? 0));
-  return { fee: perPiece * pieces, perPiece, pieces };
+  const maxPieces = Math.max(1, packSingleSize(w, h, cfg.perPiece.sheetW, cfg.perPiece.sheetH, cfg.perPiece.gap ?? 0));
+  // ✂️ สั่งตัดน้อยกว่าที่ตัดได้ = คิดค่าตัด/เย็บเท่าที่สั่ง (ดู SizeFee.piecesLabel)
+  const want = cfg.piecesLabel ? num(selections[cfg.piecesLabel]) : null;
+  const pieces = want == null ? maxPieces : Math.min(Math.max(1, Math.floor(want)), maxPieces);
+  return { fee: perPiece * pieces, perPiece, pieces, maxPieces };
+}
+
+/**
+ * ✂️ เพดาน "ตัดได้กี่ชิ้นต่อ 1 หน่วยขาย" ตามขนาดที่กรอกอยู่ตอนนี้ — หน้าสินค้าใช้บอกลูกค้า
+ * ว่าช่อง "จำนวนชิ้นที่ต้องการ" ใส่ได้ถึงเท่าไหร่ (null = ยังกรอกขนาดไม่ครบ หรือค่านี้ไม่ได้คูณชิ้น)
+ */
+export function sizeFeeMaxPieces(cfg: SizeFee, selections: Record<string, string>): number | null {
+  if (!cfg.perPiece) return null;
+  const num = (v: string | undefined) => {
+    const n = parseFloat(String(v ?? "").replace(/[^\d.]/g, ""));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const w = num(selections[cfg.widthLabel]);
+  const h = num(selections[cfg.heightLabel]);
+  if (w == null || h == null) return null;
+  return Math.max(1, packSingleSize(w, h, cfg.perPiece.sheetW, cfg.perPiece.sheetH, cfg.perPiece.gap ?? 0));
 }
 
 /** 💰 เฉพาะยอดรวมของ sizeFeeBreakdownOf — ตัวที่ choiceExtraOf ใช้คิดเงินจริง */

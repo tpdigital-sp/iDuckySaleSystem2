@@ -68,6 +68,7 @@ import {
   extraTierBest,
   unitPieceCountOf,
   sizeFeeBreakdownOf,
+  sizeFeeMaxPieces,
   shortComboParts,
   smallQtyFeeOf,
   groupAddOf,
@@ -2540,6 +2541,52 @@ export default function ProductDetail({
                             ) : (
                               <p className="mt-1 text-[11px] font-bold text-rose-600">
                                 ⚠ ขนาดนี้ใหญ่เกิน 1 {sheet} — รบกวนทักแชทเช็คกับแอดมินก่อนนะครับ
+                              </p>
+                            );
+                          })()}
+                          {/*
+                            * ✂️ ช่อง "จำนวนชิ้นที่ต้องการ" — ค่าตัด/เย็บขอบคิดตามจำนวนนี้ ไม่ใช่เต็มหน่วยขาย
+                            * (ผ้าแขวนผนัง: 1 หลาตัดได้ 6 ชิ้น แต่สั่งตัดแค่ 2 = จ่ายค่าตัด/เย็บ 2 ชิ้น)
+                            * ดู SizeFee.piecesLabel · ไม่กรอก = คิดเต็มตามที่ตัดได้เหมือนเดิม
+                            */}
+                          {(() => {
+                            const cfg = product.options
+                              .flatMap((o) => o.choices)
+                              .find((c) => c.sizeFee?.piecesLabel === opt.label && c.sizeFee?.perPiece)?.sizeFee;
+                            if (!cfg) return null;
+                            const sheet =
+                              product.options.find((o) => o.sheetYield)?.sheetYield?.sheetName ??
+                              matrix?.unit ??
+                              "หน่วย";
+                            const max = sizeFeeMaxPieces(cfg, effective);
+                            if (max == null)
+                              return (
+                                <p className="mt-1 text-[11px] text-stone-400">
+                                  กรอกขนาดชิ้นงานด้านบนก่อน แล้วระบบจะบอกว่า 1 {sheet} ตัดได้กี่ชิ้น
+                                </p>
+                              );
+                            const typed = Number(parseInputValue(opt, effective[opt.label]));
+                            const filled = Number.isFinite(typed) && typed > 0;
+                            const used = filled ? Math.min(Math.max(1, Math.floor(typed)), max) : max;
+                            const total = used * Math.max(1, qty);
+                            return (
+                              <p
+                                className={`mt-1 text-[11px] font-bold ${
+                                  filled && typed > max ? "text-rose-600" : "text-teal-700"
+                                }`}
+                              >
+                                {filled && typed > max
+                                  ? `⚠ 1 ${sheet} ตัดได้สูงสุด ${max} ชิ้น — คิดค่าตัด/เย็บขอบที่ ${max} ชิ้น`
+                                  : `✂️ คิดค่าตัด/เย็บขอบ ${used} ชิ้น ต่อ 1 ${sheet}${
+                                      filled ? "" : ` (ไม่กรอก = ตัดเต็ม ${max} ชิ้น)`
+                                    }`}
+                                {qty > 1 && (
+                                  <span className="font-normal text-stone-500">
+                                    {" "}
+                                    · สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? sheet} ={" "}
+                                    {total.toLocaleString("th-TH")} ชิ้น
+                                  </span>
+                                )}
                               </p>
                             );
                           })()}
@@ -5266,11 +5313,30 @@ export default function ProductDetail({
                   {/* Add on ที่รวมอยู่ในราคาต่อหน่วยแล้ว — บอกว่าราคาต่อหน่วยที่เห็นมีอะไรบวกอยู่ข้างใน */}
                   {unitAddOnTotal > 0 && (
                     <p className="mt-0.5 text-xs leading-relaxed text-stone-500">
-                      รวม Add on ในราคาต่อ{matrix.unit} แล้ว {formatPrice(unitAddOnTotal)} ={" "}
+                      รวม Add on ในราคาต่อ{matrix.unit} แล้ว {formatPrice(unitAddOnTotal)}
+                      {/* สั่งหลายหน่วย = กางตัวคูณให้เห็นทั้งยอดรวมและรายตัว ไม่งั้นลูกค้าเทียบกับยอดจริงไม่ถูก */}
+                      {qty > 1 ? (
+                        <>
+                          {" "}
+                          × {qty.toLocaleString("th-TH")} {matrix.unit} ={" "}
+                          <strong className="font-bold text-stone-600">
+                            {formatPrice(unitAddOnTotal * qty)}
+                          </strong>{" "}
+                          —{" "}
+                        </>
+                      ) : (
+                        <> = </>
+                      )}
                       {unitAddOns.map((f, i) => (
                         <span key={`${f.label}-${i}`}>
                           {i > 0 ? " + " : ""}
                           <strong className="font-bold text-stone-600">{f.label}</strong> {formatPrice(f.amount)}
+                          {qty > 1 && (
+                            <>
+                              {" "}
+                              × {qty.toLocaleString("th-TH")} = {formatPrice(f.amount * qty)}
+                            </>
+                          )}
                         </span>
                       ))}
                     </p>
