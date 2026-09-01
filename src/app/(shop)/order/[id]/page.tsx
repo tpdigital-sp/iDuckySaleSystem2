@@ -17,6 +17,7 @@ import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
 import { setAppendTarget } from "@/lib/append-order";
 import ImageLightbox from "@/components/ImageLightbox";
+import Portal from "@/components/Portal";
 import { SpecLines } from "@/components/SpecLines";
 import { LINE_URL } from "@/components/LineButton";
 import { canAccessAdmin } from "@/lib/auth";
@@ -752,8 +753,9 @@ export default function CustomerOrderPage() {
 
       {/* ── กล่องยืนยันก่อนอนุมัติแบบงาน ── */}
       {confirmApprove && (
-        // z สูงกว่า ImageLightbox (z-[100]) — กล่องยืนยันต้องลอยเหนือภาพขยายเสมอ
-        <div className="shopp-modal" onClick={() => confirmApprove.resolve(false)}>
+        // แขวนที่ body เหมือนไลท์บ็อกซ์ (หนีกรอบซ้อน .shopp-in) — z 110 จึงลอยเหนือภาพขยาย (z-[100]) ได้จริง
+        <Portal>
+          <div className="shopp-modal" onClick={() => confirmApprove.resolve(false)}>
           <div className="shopp-modal-box" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 pb-2 pt-7 text-center" style={{ background: "linear-gradient(180deg,#DEF5EC,transparent)" }}>
               <span className="text-5xl">✅</span>
@@ -785,11 +787,13 @@ export default function CustomerOrderPage() {
             </div>
           </div>
         </div>
+          </Portal>
       )}
 
       {/* ── คู่มือวิธีตรวจแบบงาน (เด้งครั้งแรก / กดเปิดซ้ำได้) ── */}
       {showGuide && (
-        <div className="shopp-modal" style={{ zIndex: 120 }} onClick={closeGuide}>
+        <Portal>
+          <div className="shopp-modal" style={{ zIndex: 120 }} onClick={closeGuide}>
           <div className="shopp-modal-box tall p-6" onClick={(e) => e.stopPropagation()}>
             <p className="text-center text-4xl">🎨</p>
             <h2 className="mt-2 text-center text-lg">วิธีตรวจ &amp; อนุมัติแบบงาน</h2>
@@ -826,6 +830,7 @@ export default function CustomerOrderPage() {
             </button>
           </div>
         </div>
+          </Portal>
       )}
 
       {/* ── แบบประเมินความพึงพอใจ (นิรนาม) — โชว์เมื่อได้รับสินค้าแล้ว ── */}
