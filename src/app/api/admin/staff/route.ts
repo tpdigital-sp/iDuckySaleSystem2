@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { EMPLOYEE_COLLECTION, getFirestoreAdmin, loginKey } from "@/lib/server/firebase-admin";
-import { can, DEFAULT_ROLE_PERMS, ROLE_ADMINISTRATOR, ROLE_STAFF } from "@/lib/permissions";
+import { can, DEFAULT_ROLE_PERMS, ROLE_ADMINISTRATOR, ROLE_LEADER, ROLE_STAFF } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 
 export const runtime = "nodejs";
@@ -81,8 +81,13 @@ export async function PATCH(req: Request) {
     if (typeof body.suspended !== "boolean")
       return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
   } else {
-    if (role !== ROLE_ADMINISTRATOR && role !== ROLE_STAFF)
-      return NextResponse.json({ error: `บทบาทต้องเป็น "${ROLE_ADMINISTRATOR}" หรือ "${ROLE_STAFF}"` }, { status: 400 });
+    // รับ "หัวหน้า" ด้วย — เป็นบทบาทจริงในระบบ TP ที่ใช้ฐาน employees2 ร่วมกัน
+    // (ถ้าไม่รับ การกดบันทึกจากหน้านี้จะเขียนทับบทบาทเดิมของเขาแล้วสิทธิ์ฝั่ง TP เพี้ยน)
+    if (role !== ROLE_ADMINISTRATOR && role !== ROLE_STAFF && role !== ROLE_LEADER)
+      return NextResponse.json(
+        { error: `บทบาทต้องเป็น "${ROLE_ADMINISTRATOR}", "${ROLE_STAFF}" หรือ "${ROLE_LEADER}"` },
+        { status: 400 },
+      );
     if (!workStatus) return NextResponse.json({ error: "ไม่มีสถานะการทำงาน" }, { status: 400 });
   }
 

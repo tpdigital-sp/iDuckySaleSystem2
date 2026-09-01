@@ -8,12 +8,19 @@
 /** ค่าที่เก็บใน Firestore employees2 */
 export const ROLE_ADMINISTRATOR = "Administrator";
 export const ROLE_STAFF = "พนักงาน";
+/**
+ * บทบาท "หัวหน้า" ของระบบ TP — คิดสิทธิ์ตามแผนกเหมือนพนักงาน
+ * (ก่อน 1 ก.ย. 69 บทบาทนี้ตกทุกด่านเพราะโค้ดรับแค่ Administrator/พนักงาน → ล็อกอินหลังบ้านไม่ได้)
+ */
+export const ROLE_LEADER = "หัวหน้า";
 export const DEPT_ADMIN = "แอดมิน";
 export const DEPT_PACKING = "แพ็คของ";
 /** แผนกคอนเทนต์ — ดูแลหน้าเว็บ/สินค้า/ราคา (ใน Firebase พิมพ์ "คอนเทนต์" หรือ "content" ก็ได้) */
 export const DEPT_CONTENT = "คอนเทนต์";
 /** แผนกกราฟฟิก — ทำแบบงานให้ลูกค้าตรวจ (ไม่เห็นเรื่องเงิน) */
 export const DEPT_GRAPHIC = "กราฟฟิก";
+/** แผนกหัวหน้า/ผู้บริหาร (ค่าใน Firestore เขียนเป็นอังกฤษ "Leadership") */
+export const DEPT_LEADERSHIP = "Leadership";
 /** พนักงานที่ยังทำงานอยู่เท่านั้นถึงล็อกอินได้ (allowlist — สถานะอื่นปิดไว้ก่อน) */
 export const WORK_STATUS_ACTIVE = "working";
 
@@ -103,6 +110,18 @@ const STAFF_GRAPHIC: Perm[] = [
   "products.view",
 ];
 
+/**
+ * สิทธิ์ของหัวหน้า/ผู้บริหาร (แผนก Leadership) — เท่าฝ่ายแอดมิน
+ * เท่ากับชุดที่ฝ่ายแอดมินใช้จริงอยู่ตอนนี้ (STAFF_ADMIN + สิทธิ์สินค้า/คลังตัวเลือกที่เพิ่มไว้ในหน้าตั้งค่า)
+ * ปรับทีหลังได้ที่ ตั้งค่าระบบ → แท็บบทบาท เหมือนแผนกอื่น
+ */
+const STAFF_LEADERSHIP: Perm[] = [
+  ...STAFF_ADMIN,
+  "products.manage",
+  "products.importOverwrite",
+  "presets.manage",
+];
+
 /** ชุดสิทธิ์ต่อแผนก — แก้/เพิ่มบทบาทได้ที่ ตั้งค่าระบบ → แท็บบทบาท (เก็บใน DB, ตัวนี้คือค่าเริ่มต้น) */
 export type RolePermsMap = Record<string, Perm[]>;
 export const DEFAULT_ROLE_PERMS: RolePermsMap = {
@@ -110,6 +129,7 @@ export const DEFAULT_ROLE_PERMS: RolePermsMap = {
   [DEPT_PACKING]: STAFF_PACKING,
   [DEPT_CONTENT]: STAFF_CONTENT,
   [DEPT_GRAPHIC]: STAFF_GRAPHIC,
+  [DEPT_LEADERSHIP]: STAFF_LEADERSHIP,
 };
 
 /** กรองค่าจาก DB ให้เหลือเฉพาะสิทธิ์ที่ระบบรู้จัก (กันข้อมูลเก่า/พิมพ์ผิด) */
@@ -123,7 +143,8 @@ const sanitizePerms = (ps: unknown): Perm[] =>
 export function permsOf(actor: Actor | null | undefined, rolePerms?: RolePermsMap): Perm[] {
   if (!actor) return [];
   if (actor.role === ROLE_ADMINISTRATOR) return ALL_PERMS; // ผู้ดูแลระบบได้ทุกสิทธิ์เสมอ (แก้ไม่ได้ กันล็อกตัวเองออก)
-  if (actor.role !== ROLE_STAFF) return [];
+  // พนักงาน + หัวหน้า คิดสิทธิ์ตามแผนกเหมือนกัน (บทบาทอื่นที่ระบบไม่รู้จัก → ปิดไว้ก่อน)
+  if (actor.role !== ROLE_STAFF && actor.role !== ROLE_LEADER) return [];
   const map = rolePerms ?? DEFAULT_ROLE_PERMS;
   const dept = (actor.department ?? "").trim();
   if (map[dept]) return sanitizePerms(map[dept]);

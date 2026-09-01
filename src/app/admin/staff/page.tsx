@@ -30,7 +30,7 @@ import {
   TabRow,
   Tag,
 } from "@/components/admin/ui";
-import { DEPT_ADMIN, DEPT_CONTENT, DEPT_GRAPHIC, DEPT_PACKING, ROLE_ADMINISTRATOR, ROLE_STAFF } from "@/lib/permissions";
+import { DEPT_ADMIN, DEPT_CONTENT, DEPT_GRAPHIC, DEPT_PACKING, ROLE_ADMINISTRATOR, ROLE_LEADER, ROLE_STAFF } from "@/lib/permissions";
 
 interface Staff {
   id: string;
@@ -161,6 +161,8 @@ function StaffRow({
               <span className="lb">บทบาท</span>
               <select value={role} onChange={(e) => setRole(e.target.value)}>
                 <option value={ROLE_STAFF}>พนักงาน</option>
+                {/* หัวหน้า — บทบาทของระบบ TP คิดสิทธิ์ตามแผนกเหมือนพนักงาน (ต้องมีตัวเลือกนี้ ไม่งั้นกดบันทึกแล้วบทบาทเดิมโดนทับ) */}
+                <option value={ROLE_LEADER}>หัวหน้า</option>
                 <option value={ROLE_ADMINISTRATOR} disabled={!canGrantAdmin}>
                   ผู้ดูแลระบบ{!canGrantAdmin ? " (เฉพาะผู้ดูแลระบบ)" : ""}
                 </option>
