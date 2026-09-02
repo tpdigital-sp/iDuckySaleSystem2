@@ -10,6 +10,8 @@ import {
   artworkConsultOf,
   unitPriceFor,
   unitPieceCountOf,
+  activeMatrix,
+  matrixChoiceAvailable,
   type Product,
 } from "../src/lib/products";
 
@@ -101,6 +103,20 @@ eq("ชิ้นที่ 1 ใส → สกรีนได้ครบ 5 แ�
 console.log("\n— เกิน 5 ชิ้น = ต้องคุยกับแอดมินก่อน —");
 eq("เลือก 5 ชิ้น สั่งได้เลย", artworkConsultOf(p, sel(5, 6, 10, 7)), null);
 eq("เลือกมากกว่า 5 ชิ้น = บล็อกไว้ให้คุยก่อน", artworkConsultOf(p, { ...sel(5, 6, 10, 7), [COUNT]: "มากกว่า 5 ชิ้น (สอบถามแอดมิน)" })?.block, true);
+
+console.log("\n— เรทที่ 2 (สั่งแบบไม่คละดีเทล) 50 ชุดขึ้นไป —");
+const rate2Label = p.priceRates![1]?.label ?? "";
+eq("มีเรทที่ 2 ในสินค้า", /เรทที่ 2/.test(rate2Label), true);
+const sel2 = (extra: Record<string, string> = {}) => ({ ...sel(2, 6, 10, 7), [RATE]: rate2Label, ...extra });
+eq("50 ชุด เรทที่ 2 = ชิ้นหน้า 6cm 55 + ชิ้นหลัง 10cm 85 + ฐาน 7cm 15", unitPriceFor(p, sel2(), 50), 155);
+eq("200 ชุด เรทที่ 2 = 45+75+15", unitPriceFor(p, sel2(), 200), 135);
+eq("เรทที่ 2 เนื้อพิเศษ 6cm ใช้คอลัมน์ส่ง (+8)", unitPriceFor(p, sel2({ "สีอะคริลิค ชิ้นที่ 1": SPECIAL, "เลือกเฉดสีพิเศษ ชิ้นที่ 1": "อะคริลิคสีฟ้า (B)" }), 50), 163);
+eq("เรทที่ 2 สกรีน 3 เลเยอร์ 20cm (ช่องที่เติมเอง +110)", unitPriceFor(p, sel2({ "ขนาดชิ้นที่ 1": "20cm", "งานสกรีน ชิ้นที่ 1": "สกรีน 3 เลเยอร์" }), 50), 185 + 110 + 85 + 15);
+const m2 = activeMatrix(p, sel2())!;
+eq("ขนาด 3cm ไม่มีขายในเรทที่ 2 (หน้าร้านซ่อนให้)", matrixChoiceAvailable(m2, "ขนาดชิ้นที่ 1", "3cm"), false);
+eq("ขนาด 5cm ยังอยู่ในเรทที่ 2", matrixChoiceAvailable(m2, "ขนาดชิ้นที่ 1", "5cm"), true);
+const m1 = activeMatrix(p, sel(2, 6, 10, 7))!;
+eq("เรทที่ 1 ยังมี 3cm ตามเดิม", matrixChoiceAvailable(m1, "ขนาดชิ้นที่ 1", "3cm"), true);
 
 console.log("\n— ฐานคิดครั้งเดียวต่อชุด —");
 eq("ฐาน 10cm ปลีก (+20) ไม่คูณจำนวนชิ้น", unitPriceFor(p, sel(5, 6, 10, 10), 1) - unitPriceFor(p, sel(5, 6, 10, 7), 1), 15);

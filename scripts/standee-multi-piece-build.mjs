@@ -10,11 +10,14 @@
  * แต่ไม่เกิน 5 ชิ้นใน 1 ฐาน ถ้าเกิน ต้องสอบถามแอดมิน · ดึงราคาจากตาราง เรทที่ 1 (สั่งแบบคละดีเทล)"
  *
  * ที่มาราคา (https://www.iduckyofficial-pricelists.com/pricestandy · อ่านสดทุกครั้งที่รัน)
- * เฉพาะบล็อก "เรทที่ 1 (สั่งแบบคละดีเทล)" 4 ตาราง
+ * บล็อก "เรทที่ 1 (สั่งแบบคละดีเทล)" 4 ตาราง
  *   1) ราคาแผ่นอะคริลิค 3-20cm × 6 ช่วงจำนวน   → ราคาชิ้นที่ 1 (แกนตารางราคา)
  *   2) ราคาฐาน (ไม่สกรีนฐาน/สกรีนฐาน)           → ตรวจกลุ่มฐานชุดกลางที่โคลนจาก standy
  *   3) Add on งานสกรีน (2 ด้าน/3-4 เลเยอร์)       → ค่าสกรีน คิดตามขนาดของ "ชิ้นนั้น ๆ"
  *   4) Add on อคล.พิเศษ (ปลีก/ส่ง)                → ค่าเนื้อพิเศษ คิดตามขนาดของชิ้นนั้น
+ * บล็อก "เรทที่ 2 (สั่งแบบ ไม่คละดีเทล)" (เพิ่ม 2 ก.ย. 69 ตามที่ผู้ใช้สั่ง "เพิ่มเรท 2")
+ *   ราคาแผ่น 5-30cm × 4 ช่วงจำนวน (ใช้ 5-20cm ตามช่วงขายของชิ้นที่ 1) + ตารางเสริมชุดเดียวกับเรทที่ 1
+ *   → เรทที่ 2 ของสินค้านี้: minQty 50 ชุด · ลายละ 25 ชุด (โครงเดียวกับ standy · 3-4cm ถูกซ่อนในเรทนี้)
  *
  * สูตรราคาต่อ 1 ชุด (= 1 ฐาน) ตามใบเสนอราคาที่ผู้ใช้ส่งมา
  *   ชิ้นที่ 1  = ช่องตาราง (ขนาด × งานสกรีน × เนื้ออะคริลิค) ณ ช่วงจำนวน "ชุด" ที่สั่ง
@@ -91,15 +94,21 @@ const strip = (s) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(
 const r1 = html.indexOf("เรทที่ 1 (สั่งแบบคละดีเทล)");
 const r2 = html.indexOf("เรทที่ 2 (สั่งแบบ ไม่คละดีเทล)");
 if (r1 < 0 || r2 < 0 || r2 < r1) throw new Error("หาหัวข้อ เรทที่ 1 / เรทที่ 2 ในหน้าไม่เจอ — โครงหน้าเว็บเปลี่ยน");
-const tables = [...html.matchAll(/<table[^>]*>[\s\S]*?<\/table>/g)]
-  .filter((m) => m.index > r1 && m.index < r2)
-  .map((m) => [...m[0].matchAll(/<tr[^>]*>[\s\S]*?<\/tr>/g)].map((r) => [...r[0].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/g)].map((c) => strip(c[1]))));
+const parseTables = (from, to) =>
+  [...html.matchAll(/<table[^>]*>[\s\S]*?<\/table>/g)]
+    .filter((m) => m.index > from && (to == null || m.index < to))
+    .map((m) => [...m[0].matchAll(/<tr[^>]*>[\s\S]*?<\/tr>/g)].map((r) => [...r[0].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/g)].map((c) => strip(c[1]))));
+const tables = parseTables(r1, r2);
+/** บล็อก "เรทที่ 2 (สั่งแบบ ไม่คละดีเทล)" — ชุดตารางหน้าตาเดียวกัน ต่อจากหัวข้อเรทที่ 2 จนจบหน้า */
+const tables2 = parseTables(r2, null);
 
-const findTable = (pred, what) => {
-  const t = tables.find((rows) => pred(rows.flat()));
-  if (!t) throw new Error(`ไม่เจอตาราง ${what} ในบล็อกเรทที่ 1 — โครงหน้าเว็บเปลี่ยน ตรวจก่อน`);
+const findIn = (ts, pred, what, block) => {
+  const t = ts.find((rows) => pred(rows.flat()));
+  if (!t) throw new Error(`ไม่เจอตาราง ${what} ในบล็อก${block} — โครงหน้าเว็บเปลี่ยน ตรวจก่อน`);
   return t;
 };
+const findTable = (pred, what) => findIn(tables, pred, what, "เรทที่ 1");
+const findTable2 = (pred, what) => findIn(tables2, pred, what, "เรทที่ 2");
 /** หัวคอลัมน์ "3cm"/"8"/"3-5cm" → กางเป็นเลขขนาดทีละเซนติเมตร */
 const spread = (head) => {
   const m = head.match(/^(\d+)(?:\s*-\s*(\d+))?/);
@@ -164,7 +173,30 @@ const baseTable = bySize(findTable((c) => c.includes("ไม่สกรีน�
 const BASE_PLAIN = baseTable["ไม่สกรีนฐาน"];
 const BASE_PRINT = baseTable["สกรีนฐาน"];
 
-console.log(`📄 อ่านตารางสดแล้ว — ช่วงจำนวน: ${TIERS.join(" · ")}`);
+/* 1.5 บล็อกเรทที่ 2 — ราคาแผ่นอะคริลิค 4 ช่วงจำนวน (ขนาด 5-30cm · ไม่มี 3-4cm ตามเว็บ) */
+const sheetRows2 = findTable2((c) => c[0] === "จำนวน" && c.includes("50-100 ชิ้น"), "ราคาแผ่นอะคริลิค เรทที่ 2");
+const TIERS2 = sheetRows2.slice(1).map((r) => r[0]);
+const SHEET2 = {}; // ขนาด → ราคาต่อชิ้นเรียงตามช่วงจำนวนของเรทที่ 2
+{
+  const heads = sheetRows2[0].slice(1);
+  for (const [i, h] of heads.entries())
+    for (const s of spread(h)) SHEET2[s] = sheetRows2.slice(1).map((r) => Number(r[i + 1]));
+}
+for (const s of Object.keys(SHEET2))
+  if (SHEET2[s].some((n) => !Number.isFinite(n))) throw new Error(`ตารางเรทที่ 2 ขนาด ${s}cm มีค่าไม่ใช่ตัวเลข — ตรวจหน้าเว็บ`);
+/** ตารางเสริม (ฐาน/สกรีน/อคล.พิเศษ) ของบล็อกเรทที่ 2 ต้องเหมือนบล็อกเรทที่ 1 เป๊ะ — ทุกวันนี้ร้านใช้ชุดเดียวกัน */
+for (const [kw, what] of [
+  ["ไม่สกรีนฐาน", "ราคาฐาน"],
+  ["สกรีน 2 ด้าน", "Add on งานสกรีน"],
+  ["อคล.พิเศษ", "Add on อะคริลิคพิเศษ"],
+]) {
+  const a = findTable((c) => c.some((x) => x.includes(kw)), what);
+  const b = findTable2((c) => c.some((x) => x.includes(kw)), what);
+  if (JSON.stringify(a) !== JSON.stringify(b))
+    throw new Error(`ตาราง ${what} ของบล็อกเรทที่ 2 ไม่เหมือนบล็อกเรทที่ 1 แล้ว — สูตรร่วมใช้ไม่ได้ ตรวจก่อน`);
+}
+
+console.log(`📄 อ่านตารางสดแล้ว — เรทที่ 1: ${TIERS.join(" · ")} · เรทที่ 2: ${TIERS2.join(" · ")}`);
 
 /* ══ 2. อ่านสินค้าต้นแบบ (standy) ═══════════════════════════════════════ */
 const load = async (id) => {
@@ -302,10 +334,94 @@ const PRICING = {
   cells,
 };
 
+/* ══ 3.5 ตารางราคาเรทที่ 2 (สั่งแบบไม่คละดีเทล) ═════════════════════════
+ * เว็บมีขนาด 5-30cm แต่ชิ้นที่ 1 ของสินค้านี้ขายถึง 20cm → ใช้เฉพาะ 5-20cm
+ * 3-4cm ไม่มีในเรทที่ 2 (ตามเว็บและ standy) — หน้าร้านซ่อนขนาดที่ไม่มีช่องราคาในเรทนั้นให้เอง */
+const R2_SIZES = MAIN_SIZES.filter((s) => SHEET2[s]);
+const stMatrix2 = (st.priceRates ?? []).find((r) => /เรทที่ 2/.test(r.label))?.pricing;
+if (!stMatrix2) throw new Error("standy ไม่มีเรทที่ 2 แล้ว — ตรวจก่อน");
+const stCell2 = (size, screen, color = "อะคริลิคใส") => stMatrix2.cells[`${cm(size)}│${screen}│${color}`];
+/* ค่าสกรีนเรทที่ 2 — ถอดจากช่องจริงของ standy (เว็บมีถึง 16cm · 2 ด้าน 17-20cm มีเฉพาะใน standy) */
+const SCREEN_FEE2 = Object.fromEntries(SCREENS.map((n) => [n, {}]));
+for (const s of R2_SIZES) {
+  const base = stCell2(s, BASE_SCREEN);
+  if (!base) throw new Error(`standy เรทที่ 2 ไม่มีช่องราคาขนาด ${s}cm — ตรวจก่อน`);
+  if (base.join(",") !== SHEET2[s].join(","))
+    throw new Error(`ราคาเว็บเรทที่ 2 กับ standy ไม่ตรงที่ ${s}cm (เว็บ ${SHEET2[s].join(",")} · standy ${base.join(",")}) — ตรวจก่อนเขียน`);
+  for (const name of SCREENS) {
+    const cell = stCell2(s, name);
+    if (!cell) continue; // standy ไม่มีช่อง 3 เลเยอร์ 17-20cm — เติมด้วยสูตร ×2 ด้านล่าง
+    const diffs = new Set(cell.map((v, i) => v - base[i]));
+    if (diffs.size !== 1) throw new Error(`ค่าสกรีนเรทที่ 2 "${name}" ของ standy ที่ ${s}cm ไม่คงที่ทุกช่วงจำนวน — ตรวจก่อน`);
+    SCREEN_FEE2[name][s] = [...diffs][0];
+  }
+}
+let filled2 = [];
+for (const name of SCREENS)
+  for (const s of R2_SIZES) {
+    // ช่วงที่ตารางเว็บมี (2-16cm) ต้องตรงกับที่ standy คิดจริง — ตารางเสริมเรท 2 = เรท 1 (assert ไว้ข้อ 1.5)
+    const web = /1 ด้าน/.test(name) ? 0 : /2 ด้าน/.test(name) ? WEB_2SIDE[s] : /เลเยอร์/.test(name) ? WEB_3LAYER[s] : undefined;
+    if (web !== undefined && SCREEN_FEE2[name][s] !== undefined && SCREEN_FEE2[name][s] !== web)
+      throw new Error(`ค่าสกรีนเรทที่ 2 "${name}" ${s}cm เว็บ ${web} ≠ standy ${SCREEN_FEE2[name][s]} — ตรวจก่อนเขียน`);
+    if (SCREEN_FEE2[name][s] === undefined) {
+      if (name !== layerName) throw new Error(`ยังไม่มีค่าสกรีนเรทที่ 2 "${name}" ที่ ${s}cm — ตรวจก่อน`);
+      // สูตร ×2 ของ 2 ด้าน — assert กับตารางเว็บไว้แล้วตอนสร้างเรทที่ 1 (WEB_3LAYER = WEB_2SIDE×2 ทุกขนาด)
+      SCREEN_FEE2[name][s] = SCREEN_FEE2[twoSideName][s] * 2;
+      filled2.push(`${s}cm=${SCREEN_FEE2[name][s]}`);
+    }
+  }
+/* ค่าเนื้ออะคริลิคพิเศษเรทที่ 2 = คอลัมน์ "ส่ง" ทุกช่วงจำนวน — ตรวจกับช่องจริงของ standy */
+for (const s of R2_SIZES) {
+  const clear = stCell2(s, BASE_SCREEN);
+  const spc = stCell2(s, BASE_SCREEN, SPECIAL);
+  if (!spc) throw new Error(`standy เรทที่ 2 ไม่มีช่องสีพิเศษขนาด ${s}cm — ตรวจก่อน`);
+  const diffs = new Set(spc.map((v, i) => v - clear[i]));
+  if (diffs.size !== 1 || [...diffs][0] !== SPECIAL_WHOLESALE[s])
+    throw new Error(`ค่าเนื้อพิเศษเรทที่ 2 ${s}cm: standy ${[...diffs].join(",")} ≠ เว็บคอลัมน์ส่ง ${SPECIAL_WHOLESALE[s]} — ตรวจก่อน`);
+}
+
+const cells2 = {};
+for (const s of R2_SIZES)
+  for (const sc of SCREENS)
+    for (const col of COLORS)
+      cells2[`${cm(s)}│${sc}│${col}`] = SHEET2[s].map(
+        (p) => p + SCREEN_FEE2[sc][s] + (col === SPECIAL ? SPECIAL_WHOLESALE[s] : 0)
+      );
+
+/** ด่าน: ทุกช่องเรทที่ 2 ที่ standy มีอยู่จริง ต้องได้เลขเดียวกันเป๊ะ */
+let checked2 = 0;
+for (const key of Object.keys(cells2)) {
+  const ref = stMatrix2.cells[key];
+  if (!ref) continue;
+  if (JSON.stringify(ref) !== JSON.stringify(cells2[key]))
+    throw new Error(`ช่องราคาเรทที่ 2 "${key}" ไม่ตรงกับ standy — เรา ${cells2[key].join(",")} · standy ${ref.join(",")}`);
+  checked2++;
+}
+
+const PRICING2 = {
+  unit: "ชุด",
+  driverLabels: [SIZE(1), SCREEN(1), COLOR(1)],
+  tiers: TIERS2.map((label) => ({ upTo: tierUpTo(label), label: label.replace("ชิ้น", "ชุด") })),
+  cells: cells2,
+};
+
 /* ══ 4. ราคาชิ้นที่ 2-5 ═════════════════════════════════════════════════ */
-/** min(สูตรเซนละ 10, ราคาในตารางของช่วงนั้น) — ตามหมายเหตุใต้ใบเสนอราคาของร้าน */
-const subPrice = (size, tierIdx) => Math.min(subFormula(size), SHEET[size]?.[tierIdx] ?? Infinity);
-const subTiers = (size) => TIERS.map((label, i) => ({ upTo: tierUpTo(label), extra: subPrice(size, i) }));
+/**
+ * min(สูตรเซนละ 10, ราคาในตารางของช่วงนั้น) — ตามหมายเหตุใต้ใบเสนอราคาของร้าน
+ * ช่วงจำนวนของ extraTiers รวมรอยต่อของทั้งสองเรท (10/29/49 · 100/199/4999) —
+ * ตั้งแต่ 50 ชุดขึ้นไปเทียบตารางเรทที่ 2 ด้วย เอาราคาที่ถูกกว่า (ขนาด 2-4cm ไม่มีในเรทที่ 2 ใช้เรทที่ 1 ตามเดิม)
+ */
+const R1_UPTO = TIERS.map(tierUpTo);
+const R2_UPTO = TIERS2.map(tierUpTo);
+const R2_MINQTY = 50;
+const SUB_BANDS = [...new Set([...R1_UPTO, ...R2_UPTO].filter((n) => n != null))].sort((a, b) => a - b).concat([null]);
+const colAt = (uptos, qty) => uptos.findIndex((u) => u == null || qty <= u);
+const subPriceAt = (size, qty) => {
+  const t1 = SHEET[size]?.[colAt(R1_UPTO, qty)] ?? Infinity;
+  const t2 = qty >= R2_MINQTY ? SHEET2[size]?.[colAt(R2_UPTO, qty)] ?? Infinity : Infinity;
+  return Math.min(subFormula(size), t1, t2);
+};
+const subTiers = (size) => SUB_BANDS.map((upTo, i) => ({ upTo, extra: subPriceAt(size, (SUB_BANDS[i - 1] ?? 0) + 1) }));
 /** ค่าบริการตามขนาดของชิ้นนั้น (sizeFee) — อ่านขนาดจากกลุ่ม "ขนาดชิ้นที่ k" ("6cm" → 6) */
 const feeBySize = (k, table) => ({
   onlyWhen: { label: COUNT, choices: countFrom(k) },
@@ -447,7 +563,7 @@ const tierIdxOf = (qty) => {
 const quote = (qty, front, back, baseCm) => {
   const i = tierIdxOf(qty);
   const a = cells[`${cm(front)}│${BASE_SCREEN}│อะคริลิคใส`][i];
-  const b = subPrice(back, i);
+  const b = subPriceAt(back, qty);
   const c = baseExtraAt(baseCm, qty);
   return { i, a, b, c, total: a + b + c };
 };
@@ -464,9 +580,9 @@ for (const t of CASES) {
     );
 }
 
-const all = Object.values(cells).flat();
-const PRICE_MIN = Math.min(...all) + subPrice(2, TIERS.length - 1);
-const PRICE_MAX = Math.max(...all) + subPrice(20, 0) * (MAX_PIECES - 1) + 80;
+const all = [...Object.values(cells).flat(), ...Object.values(cells2).flat()];
+const PRICE_MIN = Math.min(...all) + subPriceAt(2, 10 ** 9);
+const PRICE_MAX = Math.max(...all) + subPriceAt(20, 1) * (MAX_PIECES - 1) + 80;
 
 /* ══ 7. เนื้อหาหน้าสินค้า ═══════════════════════════════════════════════ */
 const money = (n) => n.toLocaleString("th-TH");
@@ -486,7 +602,8 @@ const TABS = [
       "• ค่าฐานคิดครั้งเดียวต่อชุด ไม่ได้คิดรายชิ้น — เลือกขนาด/ทรง/สีของฐานได้\n" +
       "• อะคริลิคใส / ขาวขุ่น C-02 หนา 3 มม. ไดคัทตามลาย พิมพ์ระบบ UV Printing\n" +
       "• อะคริลิคสีพิเศษกว่า 40 เฉด (สี/กลิตเตอร์/โฮโลแกรม) ระบบบวกราคาตามขนาดให้อัตโนมัติ\n" +
-      "• ราคาคิดเป็น \"ชุด\" — สั่ง 11 ชุดขึ้นไปได้เรทส่ง คละลาย/คละขนาดได้ ลายละ 5 ชุดขึ้นไป",
+      "• ราคาคิดเป็น \"ชุด\" — สั่ง 11 ชุดขึ้นไปได้เรทส่ง คละลาย/คละขนาดได้ ลายละ 5 ชุดขึ้นไป\n" +
+      "• สั่ง 50 ชุดขึ้นไปได้เรทที่ 2 ราคาส่งโรงงาน (ลายละ 25 ชุดขึ้นไป · ชิ้นที่ 1 ขนาด 5 ซม. ขึ้นไป)",
     images: [IMG("parts")],
     imageSize: "lg",
   },
@@ -497,6 +614,7 @@ const TABS = [
       "• ชิ้นที่ 1 (ตัวหลัก) คิดตามตารางราคาของขนาดนั้น ตามจำนวนชุดที่สั่ง\n" +
       "• ชิ้นที่ 2 เป็นต้นไป คิดเพิ่มตามขนาดของชิ้นนั้น — 2 ซม. = 20 บาท แล้วเพิ่มเซนติเมตรละ 10 บาท\n" +
       "  (สั่งจำนวนมาก ระบบเทียบกับตารางราคาให้ ถ้าราคาในตารางถูกกว่าจะคิดราคาในตารางให้อัตโนมัติ)\n" +
+      "• สั่ง 50 ชุดขึ้นไป ชิ้นที่ 1 คิดตามตารางเรทที่ 2 (ราคาส่งโรงงาน) ให้อัตโนมัติ\n" +
       "• ค่าฐานคิดครั้งเดียวต่อชุด — ช่วงปลีก 1-10 ชุด ฐานไม่เกิน 6 ซม. รวมในราคาแล้ว\n" +
       "• งานสกรีน 2 ด้าน / 3 เลเยอร์ คิดเพิ่ม \"รายชิ้น\" ตามขนาดของชิ้นนั้น ๆ\n" +
       "• เนื้ออะคริลิคพิเศษก็คิดเพิ่มรายชิ้นตามขนาดของชิ้นนั้นเช่นกัน\n\n" +
@@ -622,7 +740,7 @@ const saved = {
     "ตัวหลัก 3-20 ซม. · ชิ้นถัดไป 2-20 ซม. คิดเพิ่มเซนละ 10 บาท",
     "ค่าฐานคิดครั้งเดียวต่อชุด ไม่ได้คิดรายชิ้น",
     "อะคริลิคสีพิเศษกว่า 40 เฉด ระบบบวกราคาตามขนาดให้อัตโนมัติ",
-    "ไม่มีขั้นต่ำ · 11 ชุดขึ้นไป คละลาย/คละขนาดได้ ลายละ 5 ชุดขึ้นไป",
+    "ไม่มีขั้นต่ำ · 11 ชุดขึ้นไปเรทส่ง ลายละ 5 ชุด · 50 ชุดขึ้นไปเรทส่งโรงงาน",
   ],
   terms:
     "*ขนาดชิ้นงานนับจากด้านที่ยาวที่สุด และไม่นับรวมฐาน หากต้องการให้นับรวมต้องแจ้ง\n" +
@@ -643,6 +761,16 @@ const saved = {
       freeMixBelowQty: 11,
       underMinPieceFee: 5,
       pricing: PRICING,
+    },
+    {
+      id: "rate-nomix",
+      label: "เรทที่ 2 (สั่งแบบไม่คละดีเทล)",
+      desc:
+        "ราคาส่งโรงงาน · สั่งขั้นต่ำ 50 ชุดขึ้นไป · คละลาย คละขนาดได้ แต่ละดีเทลขั้นต่ำ 25 ชุดขึ้นไป " +
+        "(ไม่ถึงตามจำนวน คิดตามเรทที่ 1) · ชิ้นที่ 1 ขนาด 5 ซม. ขึ้นไป",
+      minQty: 50,
+      minPerDesign: 25,
+      pricing: PRICING2,
     },
   ],
   seo: {
@@ -673,7 +801,9 @@ const saved = {
       },
       {
         q: "สั่งขั้นต่ำกี่ชุด คละลายได้ไหม?",
-        a: "ไม่มีขั้นต่ำ · 1-10 ชุดคละดีเทลได้ไม่จำกัด · ตั้งแต่ 11 ชุดขึ้นไปคละลาย/คละขนาดได้ ลายละ 5 ชุดขึ้นไป",
+        a:
+          "ไม่มีขั้นต่ำ · 1-10 ชุดคละดีเทลได้ไม่จำกัด · ตั้งแต่ 11 ชุดขึ้นไปคละลาย/คละขนาดได้ ลายละ 5 ชุดขึ้นไป · " +
+          "ตั้งแต่ 50 ชุดขึ้นไปได้เรทที่ 2 ราคาส่งโรงงาน ลายละ 25 ชุดขึ้นไป",
       },
     ],
   },
@@ -684,15 +814,21 @@ const saved = {
 console.log(`\n📦 ${NAME} (${ID})`);
 console.log(`   ตารางราคา ${Object.keys(cells).length} ช่อง × ${TIERS.length} ช่วงจำนวน (${MAIN_SIZES.length} ขนาด × ${SCREENS.length} งานสกรีน × ${COLORS.length} เนื้ออะคริลิค)`);
 console.log(`   ✅ ช่องราคาที่ standy มีอยู่ ตรงกันหมด ${checked} ช่อง · เติมค่าสกรีน 3 เลเยอร์ 17-20cm เอง: ${filled.join(" ")}`);
+console.log(`   เรทที่ 2 ${Object.keys(cells2).length} ช่อง × ${TIERS2.length} ช่วงจำนวน (ขนาด ${R2_SIZES[0]}-${R2_SIZES.at(-1)}cm · 3-4cm ถูกซ่อนในเรทนี้)`);
+console.log(`   ✅ ช่องเรทที่ 2 ที่ standy มีอยู่ ตรงกันหมด ${checked2} ช่อง · เติมค่าสกรีน 3 เลเยอร์ 17-20cm เอง: ${filled2.join(" ")}`);
 console.log(`   กลุ่มตัวเลือก ${options.length} กลุ่ม · กฎ ${rules.length} ข้อ · ช่วงราคา ${money(PRICE_MIN)}-${money(PRICE_MAX)} บาท/ชุด`);
 console.log(`\n   ✅ ตรงกับใบเสนอราคาจริงของร้าน:`);
 for (const t of CASES) {
   const q = quote(t.qty, t.front, t.back, t.baseCm);
   console.log(`     ${String(t.qty).padStart(2)} ชุด (${TIERS[q.i]}) · ชิ้นหน้า ${t.front}cm ${q.a} + ชิ้นหลัง ${t.back}cm ${q.b} + ฐาน ${t.baseCm}cm ${q.c} = ${q.total} บาท/ชุด`);
 }
-console.log(`\n   ราคาชิ้นถัดไป (min ของ "เซนละ 10" กับตาราง):`);
+console.log(`\n   ราคาชิ้นถัดไป (min ของ "เซนละ 10" กับตารางของเรทที่ใช้ ณ จำนวนนั้น):`);
 for (const s of [2, 5, 10, 20])
-  console.log(`     ${String(s).padStart(2)}cm → ${TIERS.map((t, i) => `${t.replace(" ชิ้น", "")}: ${subPrice(s, i)}`).join(" · ")}`);
+  console.log(
+    `     ${String(s).padStart(2)}cm → ${SUB_BANDS.map(
+      (upTo, i) => `${(SUB_BANDS[i - 1] ?? 0) + 1}-${upTo ?? "∞"}: ${subPriceAt(s, (SUB_BANDS[i - 1] ?? 0) + 1)}`
+    ).join(" · ")}`
+  );
 
 if (!WRITE) {
   console.log("\n(ยังไม่บันทึก — ใส่ --write)");
