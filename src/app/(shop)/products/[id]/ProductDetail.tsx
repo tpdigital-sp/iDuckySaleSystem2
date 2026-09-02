@@ -5694,34 +5694,33 @@ export default function ProductDetail({
                     <span className="font-extrabold text-amber-600">{formatPrice(unitPrice * qty + designFee)}</span>
                   </p>
                   {/* Add on ที่รวมอยู่ในราคาต่อหน่วยแล้ว — บอกว่าราคาต่อหน่วยที่เห็นมีอะไรบวกอยู่ข้างใน
-                    * ⚠️ ต้องเขียนให้ชัดว่า "ไม่บวกเพิ่ม" — เขียนแบบ "รวม Add on ฿20 × 15 = ฿300" เฉย ๆ
-                    *    ลูกค้าอ่านแล้วนึกว่ายอดข้างบนยังไม่ได้นับ Add on (ผู้ใช้ทัก 1 ก.ย. 69) */}
+                    * ⚠️ ต้องเขียนให้ชัดว่า "ไม่ต้องบวกเพิ่ม" — เขียนแบบ "รวม Add on ฿20 × 15 = ฿300" เฉย ๆ
+                    *    ลูกค้าอ่านแล้วนึกว่ายอดข้างบนยังไม่ได้นับ Add on (ผู้ใช้ทัก 1 ก.ย. 69)
+                    * เขียนเป็นประโยคเดียว "ราคานี้รวม X ฿n/ชิ้น (= ฿N ใน q ชิ้น) ไว้แล้ว ไม่ต้องบวกเพิ่ม"
+                    * — ของเดิมบอกยอดรวมก่อนแล้วค่อยแจกแจง ทำให้พูดซ้ำสองรอบและมีวลี "ยอดด้านบน" ที่ไม่รู้ว่ายอดไหน
+                    *   (ผู้ใช้เลือกสำนวนนี้ 2 ก.ย. 69) */}
                   {unitAddOnTotal > 0 && (
                     <p className="mt-0.5 text-xs leading-relaxed text-stone-500">
-                      ใน {formatPrice(unitPrice)}/{matrix.unit} มี Add on รวมอยู่แล้ว{" "}
-                      <strong className="font-bold text-stone-600">{formatPrice(unitAddOnTotal)}</strong>
-                      {/* สั่งหลายหน่วย = กางตัวคูณให้เห็นทั้งยอดรวมและรายตัว ไม่งั้นลูกค้าเทียบกับยอดจริงไม่ถูก */}
-                      {qty > 1 ? (
-                        <>
-                          {" "}
-                          (คิดเป็น {formatPrice(unitAddOnTotal * qty)} ใน {qty.toLocaleString("th-TH")} {matrix.unit}){" "}
-                          · ไม่บวกเพิ่มจากยอดด้านบน —{" "}
-                        </>
-                      ) : (
-                        <> · ไม่บวกเพิ่มจากยอดด้านบน = </>
-                      )}
+                      ราคานี้รวม{" "}
                       {unitAddOns.map((f, i) => (
                         <span key={`${f.label}-${i}`}>
                           {i > 0 ? " + " : ""}
                           <strong className="font-bold text-stone-600">{f.label}</strong> {formatPrice(f.amount)}
-                          {qty > 1 && (
-                            <>
-                              {" "}
-                              × {qty.toLocaleString("th-TH")} = {formatPrice(f.amount * qty)}
-                            </>
-                          )}
                         </span>
                       ))}
+                      {/* หลายรายการ = ปิดท้ายด้วยยอดรวมต่อหน่วย ไม่งั้นลูกค้าต้องบวกเลขเอง */}
+                      {unitAddOns.length > 1 && (
+                        <> = <strong className="font-bold text-stone-600">{formatPrice(unitAddOnTotal)}</strong></>
+                      )}
+                      /{matrix.unit}
+                      {/* สั่งหลายหน่วย = กางยอดรวมให้เทียบกับยอดจริงด้านบนได้ */}
+                      {qty > 1 && (
+                        <>
+                          {" "}
+                          (= {formatPrice(unitAddOnTotal * qty)} ใน {qty.toLocaleString("th-TH")} {matrix.unit})
+                        </>
+                      )}{" "}
+                      ไว้แล้ว ไม่ต้องบวกเพิ่ม
                     </p>
                   )}
                   {/* แจกแจงค่าเพิ่มสั้น ๆ — ลูกค้าจะได้รู้ว่ายอดที่บวกมาเป็นค่าอะไร ไม่ต้องเดา */}

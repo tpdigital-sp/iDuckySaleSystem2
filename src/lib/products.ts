@@ -2154,6 +2154,14 @@ export function feeBreakdown(
 }
 
 /**
+ * ชื่อตัวเลือกที่เป็น "ตัวเลข + หน่วยความยาว" ล้วน ๆ เช่น "3cm" · "2 ซม." · "6 นิ้ว"
+ * — อ่านเดี่ยว ๆ ไม่รู้ว่าเป็นขนาดของอะไร ต้องมีชื่อกลุ่มนำหน้าเสมอเวลาเอาไปโชว์นอกกลุ่มตัวเอง
+ */
+function isBareSizeName(name: string): boolean {
+  return /^\d+(?:[.,]\d+)?\s*(?:cm|mm|ซม\.?|มม\.?|นิ้ว|")?$/i.test(name.trim());
+}
+
+/**
  * 🧾 แจกแจง Add on ที่ "รวมอยู่ในราคาต่อหน่วยแล้ว" — คนละก้อนกับ feeBreakdown
  *
  * ต่างกันตรง:
@@ -2175,8 +2183,12 @@ export function unitAddOnBreakdown(product: Product, selections: Record<string, 
     const add = groupAddOf(opt, selections, optionFeeQty(product, opt, selections, qty));
     if (add <= 0) continue;
     const picked = selections[opt.label];
-    // ช่องกรอกเก็บแค่ตัวเลข ("2 นิ้ว") — ลำพังอ่านไม่รู้ว่าค่าอะไร ใส่ชื่อกลุ่มนำหน้าให้
-    const label = isInputOption(opt) && picked ? `${opt.label} ${picked}` : picked || opt.label;
+    /*
+     * ชื่อตัวเลือกที่เป็น "ขนาดล้วน" ต้องมีชื่อกลุ่มนำหน้าเหมือนช่องกรอก — ลำพัง "2cm" อ่านไม่รู้ว่าค่าอะไร
+     * และสินค้าที่มีหลายกลุ่มเป็นขนาด (ตัวสแตนดี้ · แผ่นบน · ฐาน) จะชนกันเอง
+     * ผู้ใช้ทัก 2 ก.ย. 69: สแตนดี้+จุกใส ขึ้นว่า "2cm ฿10" ทั้งที่หมายถึงฐาน แต่แผ่นบนก็ 2 ซม. พอดี
+     */
+    const label = picked && (isInputOption(opt) || isBareSizeName(picked)) ? `${opt.label} ${picked}` : picked || opt.label;
     lines.push({ label, amount: add });
   }
   return lines;
