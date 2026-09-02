@@ -10,9 +10,16 @@
  *   title = ช่วงจำนวน · text = ราคา อะคริลิคใส · text1 = ราคา อะคริลิคพิเศษ
  * ชื่อคอลัมน์อ่านจาก schema ของคอลเลกชัน (displayName) — เว็บเปลี่ยนหัวคอลัมน์เมื่อไหร่ สคริปต์จะร้อง
  *
- * ⚠️ ส่วนต่างของ 2 คอลัมน์คือ "อะคริลิคพิเศษ +10 บาท" ตามที่หน้าเว็บเขียนไว้ — ราคาพิเศษอยู่ใน
- *    ช่องตารางแล้ว ห้ามใส่ extra:10 ทับที่ตัวเลือกอีก (กลุ่มที่เป็นแกนตารางระบบไม่คิด extra ให้อยู่แล้ว
- *    ดู unitPriceFor — ของเดิมมี extra:10 ค้างไว้ สคริปต์นี้ถอดทิ้ง)
+ * ⚠️ ส่วนต่างของ 2 คอลัมน์บนหน้า /cardholder คือ "อะคริลิคพิเศษ +10 บาท" — ใช้เป็นตัวตรวจสอบเท่านั้น
+ *    ราคาจริงของค่าเนื้อพิเศษมาจากตาราง "Add on อะคริลิคพิเศษ" หน้า /keyring (ผู้ใช้สั่ง 2 ก.ย. 69)
+ *    ห้ามใส่ extra ทับที่ตัวเลือกอีก — กลุ่มที่เป็นแกนตารางระบบไม่คิด extra ให้อยู่แล้ว (ดู unitPriceFor)
+ *
+ * 💰 ค่าบริการ 2 ตัวที่ "คิดตามขนาดชิ้นงาน" ดึงสดจากหน้า /keyring (ผู้ใช้ส่งภาพตารางมาสั่งเอง):
+ *   • Add on งานสกรีน 2 ด้าน  → ผูกที่ตัวเลือกด้วย choice.sizeFee (ขั้นบันไดตามขนาด ไม่ขึ้นกับจำนวน)
+ *   • Add on อะคริลิคพิเศษ    → ต้องอยู่ใน "ช่องตาราง" เพราะราคาต่างกันทั้ง 2 มิติ (ขนาด × ปลีก/ส่ง)
+ *     ⇒ ตารางราคาจึงมี 2 แกน: ประเภทเนื้ออะคริลิค × ขนาดชิ้นงาน (แถวปลีก = ช่วง 1-10 อัน · ที่เหลือ = แถวส่ง
+ *     ตรงกับที่ standy ทำไว้เป๊ะ — ตรวจแล้ว 2 ก.ย. 69) · ค่าเพิ่มขนาด ซม. ละ 15 ก็ถูกยุบเข้าช่องตารางด้วย
+ *     เพราะกลุ่มที่เป็นแกนตารางระบบไม่คิด extra ให้ (ดู [[iducky-price-driver-trap]])
  *
  * ภาพจำลอง: วาดเองด้วย scripts/photo-frame-acrylic-art.mjs (12 ภาพ แนวเรนเดอร์สินค้า ทรงกรอบขอบหยักเหมือนงานจริง)
  *   ยกเว้นกลุ่ม "สีตะขอโซ่ไข่ปลา" ที่ยืมรูปถ่ายจริงชุด hookcolor-C* ของ standee-keyring มาใช้
@@ -28,6 +35,7 @@ const WRITE = process.argv.includes("--write");
 const ID = "photo-fram-acrylic";
 const EXPECT_NAME = "Photo Fram Acrylic";
 const PAGE = "https://www.iduckyofficial-pricelists.com/cardholder";
+const ADDON_PAGE = "https://www.iduckyofficial-pricelists.com/keyring";
 const REV = "v3"; // v3 = สไตล์เรนเดอร์สินค้า (มีความหนา/เงา/ผิวเงา) ที่ผู้ใช้เลือก 1 ก.ย. 69
 const ART_DIR = ".cache/photo-fram-acrylic/upload";
 
@@ -44,15 +52,21 @@ const G_SIZE = "ขนาดชิ้นงาน";
 const G_SIZE_OLD = "ขนาด 5-6 cm";
 const G_SCREEN = "สกรีนกี่ด้าน";
 const G_SCREEN_OLD = "สรีนกี่ด้าน";
+const SCREEN_1 = "สกรีน 1 ด้าน (ด้านหลังอะคริลิคขาวขุ่น C-02)";
+const SCREEN_1_OLD = "1 ด้าน (ด้านหลังอะคริลิคขาวขุ่น C-02)";
+const SCREEN_2 = "สกรีน 2 ด้าน";
+const SCREEN_2_OLD = "2 ด้าน";
 const G_HOOK = "สีตะขอโซ่ไข่ปลา";
 const G_BASE_SIZE = "ขนาดฐาน";
 const G_BASE = "ฐาน";
 
 const MAT_CLEAR = "อะคริลิคใส";
 const MAT_SPECIAL = "อะคริลิคพิเศษ (กลิตเตอร์ · โฮโลแกรม · กระจก)";
-const SIZE_ADD = "เพิ่มขนาดเกิน 6 ซม. (ระบุกี่ ซม.)";
-const SIZE_ADD_OLD = "เพิ่มขนาด cm. ละ";
-const SIZE_ADD_FEE = 15;
+/** ขนาดที่เปิดให้สั่ง — ตารางฐานครอบ 5-6 ซม. ส่วนบนสุดจบที่ 20 ซม. เท่าที่ตาราง Add on บอกราคาไว้ */
+const SIZES = Array.from({ length: 16 }, (_, i) => i + 5);
+const sizeName = (n: number) => `${n}cm`;
+const SIZE_STD_MAX = 6; // ราคาในตารางฐานคือขนาด 5-6 ซม.
+const SIZE_ADD_FEE = 15; // เกินจากนั้นคิด ซม. ละ 15 บาท (หน้า /cardholder)
 
 const env = Object.fromEntries(
   readFileSync(new URL("../.env.local", import.meta.url), "utf8")
@@ -158,6 +172,163 @@ console.log(`   ${"จำนวน".padEnd(16)} ${hClear} / ${hSpecial}`);
 tiers.forEach((t, i) => console.log(`   ${t.label.padEnd(16)} ${clear[i]} / ${special[i]}`));
 console.log(`   ส่วนต่างเนื้อพิเศษ: ${gaps.map((g) => `+${g}`).join(" · ")} บาท`);
 
+/* ── 1b. ตาราง Add on จากหน้า /keyring ─────────────────────────────────────
+ * ผู้ใช้ส่งภาพตาราง 2 อันมาสั่ง (2 ก.ย. 69): "สกรีน 2 ด้าน / อะคริลิคพิเศษ คิดตามตารางนี้"
+ * หน้านี้วางเป็น <table> จริง (ต่างจาก /cardholder ที่เป็น repeater) — แต่ตารางชุดเดียวกันถูก
+ * วางซ้ำหลายรอบตามหมวดสินค้าในหน้า จึงอ่านทุกอันแล้วเทียบกันเอง: ช่องที่ขนาดตรงกันต้องราคาตรงกัน
+ * ไม่งั้นแปลว่าหยิบตารางข้ามหมวดมาปน — throw ทิ้งดีกว่าเดาว่าอันไหนใช่
+ */
+const addonHtml = await fetch(ADDON_PAGE, {
+  headers: { "User-Agent": "Mozilla/5.0 (compatible; iDuckySaleSystem/1.0)" },
+}).then((r) => {
+  if (!r.ok) throw new Error(`ดึงหน้า ${ADDON_PAGE} ไม่ได้ — HTTP ${r.status}`);
+  return r.text();
+});
+
+/** กาง <table> ทุกอันในหน้าออกมาเป็นตารางข้อความ (แถว × ช่อง) */
+function tablesOf(src: string): string[][][] {
+  const out: string[][][] = [];
+  for (const chunk of src.split(/<table[^>]*>/i).slice(1)) {
+    const end = chunk.search(/<\/table>/i);
+    if (end < 0) continue;
+    const rows = chunk
+      .slice(0, end)
+      .split(/<tr[^>]*>/i)
+      .slice(1)
+      .map((r) =>
+        r
+          .split(/<t[dh][^>]*>/i)
+          .slice(1)
+          .map((c) =>
+            c
+              .replace(/<[^>]+>/g, " ")
+              .replace(/&nbsp;/g, " ")
+              .replace(/&amp;/g, "&")
+              .replace(/\s+/g, " ")
+              .trim()
+          )
+      )
+      .filter((r) => r.length);
+    if (rows.length > 1) out.push(rows);
+  }
+  return out;
+}
+
+/** หัวคอลัมน์ "2cm 3cm …" → [2,3,…] (ช่องแรกเป็นชื่อแถว ข้ามไป) */
+function sizeCols(head: string[], where: string): number[] {
+  const cols = head.slice(1).map((h) => {
+    const m = h.match(/^(\d+)\s*cm$/i);
+    if (!m) throw new Error(`หัวคอลัมน์ของตาราง ${where} ไม่ใช่ขนาดเป็น cm ("${h}") — โครงหน้าเว็บเปลี่ยน`);
+    return Number(m[1]);
+  });
+  if (!cols.length || cols.some((n, i) => i > 0 && n <= cols[i - 1]))
+    throw new Error(`ขนาดในหัวตาราง ${where} ไม่ได้ไล่จากเล็กไปใหญ่ (${cols.join(", ")})`);
+  return cols;
+}
+
+/**
+ * รวมแถวชื่อ rowName จากทุกตารางที่มีแถวนั้น → Map ขนาด(ซม.) → ราคา
+ * ตารางไหนให้ราคาช่องเดียวกันไม่ตรงกัน = หยิบข้ามหมวด ให้ล้มไปเลย
+ */
+function feeRow(tables: string[][][], rowName: string, where: string): Map<number, number> {
+  const fees = new Map<number, number>();
+  let found = 0;
+  for (const rows of tables) {
+    const row = rows.find((r) => r[0] === rowName);
+    if (!row) continue;
+    const cols = sizeCols(rows[0], where);
+    found++;
+    cols.forEach((cm, i) => {
+      const raw = row[i + 1];
+      const v = Number(String(raw ?? "").replace(/[^\d.]/g, ""));
+      if (!Number.isFinite(v) || v <= 0) throw new Error(`ช่อง ${rowName} ${cm}cm ในตาราง ${where} อ่านไม่ออก ("${raw}")`);
+      const had = fees.get(cm);
+      if (had != null && had !== v)
+        throw new Error(`ตาราง ${where} ขัดกันเอง: ${rowName} ${cm}cm ได้ทั้ง ${had} และ ${v} — ตรวจหน้าเว็บก่อน`);
+      fees.set(cm, v);
+    });
+  }
+  if (!found) throw new Error(`หาแถว "${rowName}" ในหน้า ${ADDON_PAGE} ไม่เจอ — โครงหน้าเว็บเปลี่ยน`);
+  return fees;
+}
+
+const addonTables = tablesOf(addonHtml).filter((rows) => rows[0]?.[0] === "เพิ่มเติม");
+if (addonTables.length < 2) throw new Error(`หาตาราง Add on ในหน้า ${ADDON_PAGE} ไม่เจอ — โครงหน้าเว็บเปลี่ยน`);
+
+const R_SCREEN2 = "สกรีน 2 ด้าน";
+const R_SPECIAL_RETAIL = "(เรทราคาปลีก) อคล.พิเศษ";
+const R_SPECIAL_WHOLE = "(เรทราคาส่ง) อคล.พิเศษ";
+const screen2Row = feeRow(addonTables, R_SCREEN2, "Add on งานสกรีน");
+const specialRetailRow = feeRow(addonTables, R_SPECIAL_RETAIL, "Add on อะคริลิคพิเศษ");
+const specialWholeRow = feeRow(addonTables, R_SPECIAL_WHOLE, "Add on อะคริลิคพิเศษ");
+
+/* หมายเหตุใต้ตาราง = กติกาต่อขนาดที่เกินคอลัมน์สุดท้าย ("บวกเพิ่ม cm ละ 5 บาท") — อ่านสดเหมือนกัน */
+const addonText = addonHtml
+  .replace(/<script[\s\S]*?<\/script>/g, " ")
+  .replace(/<style[\s\S]*?<\/style>/g, " ")
+  .replace(/<[^>]+>/g, " ")
+  .replace(/&nbsp;/g, " ")
+  .replace(/\s+/g, " ");
+/** อ่านหมายเหตุ "…cm ขึ้นไป บวกเพิ่ม cm ละ N บาท" แล้วต่อขั้นบันไดจากคอลัมน์สุดท้ายของตาราง */
+function extendBeyond(fees: Map<number, number>, re: RegExp, where: string) {
+  const m = addonText.match(re);
+  if (!m) throw new Error(`หาหมายเหตุขนาดเกินตารางของ ${where} ไม่เจอ — โครงหน้าเว็บเปลี่ยน`);
+  const [from, step] = [Number(m[1]), Number(m[2])];
+  const last = Math.max(...fees.keys());
+  // "ตั้งแต่ 17cm บวกเพิ่ม cm ละ 5" ต่อจากคอลัมน์ 16 พอดี — ไม่พอดีเมื่อไหร่แปลว่าเว็บแก้ตาราง ให้ล้ม
+  if (from !== last + 1) throw new Error(`หมายเหตุ ${where} เริ่มที่ ${from}cm แต่ตารางจบที่ ${last}cm — ตรวจก่อน`);
+  for (const n of SIZES) if (n > last) fees.set(n, fees.get(last)! + step * (n - last));
+  return { from, step };
+}
+const screenBeyond = extendBeyond(
+  screen2Row,
+  /สกรีน 2 ด้าน ขนาดมากกว่า (\d+)\s*cm ขึ้นไป บวกเพิ่ม cm ละ (\d+) บาท/,
+  "สกรีน 2 ด้าน"
+);
+// ตาราง อคล.พิเศษ ยาวถึง 20cm ครบทุกขนาดที่เราขายอยู่แล้ว — อ่านหมายเหตุไว้เผื่อวันหลังเปิดขายใหญ่กว่านี้
+const specialBeyond = extendBeyond(
+  specialRetailRow,
+  /อคล\.พิเศษ ขนาดตั้งแต่ (\d+)\s*cm บวกเพิ่ม cm ละ (\d+) บาท/,
+  "อะคริลิคพิเศษ (เรทปลีก)"
+);
+extendBeyond(specialWholeRow, /อคล\.พิเศษ ขนาดตั้งแต่ (\d+)\s*cm บวกเพิ่ม cm ละ (\d+) บาท/, "อะคริลิคพิเศษ (เรทส่ง)");
+
+const feeAt = (fees: Map<number, number>, n: number, where: string) => {
+  const v = fees.get(n);
+  if (v == null) throw new Error(`ตาราง ${where} ไม่มีราคาของขนาด ${n}cm — ตรวจก่อน`);
+  return v;
+};
+const screen2Fee = (n: number) => feeAt(screen2Row, n, "สกรีน 2 ด้าน");
+const specialFee = (n: number, retail: boolean) =>
+  feeAt(retail ? specialRetailRow : specialWholeRow, n, `อะคริลิคพิเศษ (${retail ? "ปลีก" : "ส่ง"})`);
+
+/* ✅ ตรวจไขว้กับหน้า /cardholder: ช่องปลีกของขนาดมาตรฐาน 5-6 ซม. ต้องได้เท่ากับส่วนต่าง 2 คอลัมน์เดิม
+ *    (ตอนนี้ทั้งคู่ = +10) — วันไหนไม่ตรงแปลว่าหน้าใดหน้าหนึ่งแก้ราคาแล้ว ต้องมาดูก่อนว่าจะเชื่ออันไหน */
+for (const n of [5, 6])
+  if (!gaps.includes(specialFee(n, true)))
+    throw new Error(
+      `ค่าเนื้อพิเศษเรทปลีก ${n}cm จาก /keyring = +${specialFee(n, true)} แต่ /cardholder เขียนไว้ +${gapText} — ตรวจก่อน`
+    );
+
+console.log(`\n📊 ตาราง Add on จาก ${ADDON_PAGE}`);
+console.log(
+  `   ${R_SCREEN2.padEnd(24)} ${SIZES.map((n) => `${n}cm:${screen2Fee(n)}`).join(" ")}` +
+    ` (เกิน ${screenBeyond.from}cm +${screenBeyond.step}/ซม.)`
+);
+console.log(`   ${"อคล.พิเศษ ปลีก".padEnd(24)} ${SIZES.map((n) => `${n}cm:${specialFee(n, true)}`).join(" ")}`);
+console.log(
+  `   ${"อคล.พิเศษ ส่ง".padEnd(24)} ${SIZES.map((n) => `${n}cm:${specialFee(n, false)}`).join(" ")}` +
+    ` (เกิน ${specialBeyond.from}cm +${specialBeyond.step}/ซม.)`
+);
+
+/** ช่วง "฿ต่ำ-฿สูง" ของค่าบริการตามขนาด — เอาไปเขียนใน note/desc ให้ลูกค้าเห็นกรอบราคาก่อนเลือก */
+const rangeText = (vals: number[]) => {
+  const [lo, hi] = [Math.min(...vals), Math.max(...vals)];
+  return lo === hi ? `฿${lo}` : `฿${lo}-${hi}`;
+};
+const screenText = rangeText(SIZES.map(screen2Fee));
+const specialText = rangeText(SIZES.flatMap((n) => [specialFee(n, true), specialFee(n, false)]));
+
 /* ── 2. รูปตะขอ — ยืมรูปถ่ายจริงจาก standee-keyring (ชื่อสีตรงกันอยู่แล้ว) ── */
 const { data: kr, error: krErr } = await sb.from("products").select("data").eq("id", "standee-keyring").single();
 if (krErr) throw new Error(`อ่าน standee-keyring (คลังรูปตะขอ) ไม่สำเร็จ — ${krErr.message}`);
@@ -232,7 +403,7 @@ setChoice(gType, "สแตนดี้", {
 const gMat = group(G_MAT, G_MAT_OLD);
 gMat.display = "cards";
 gMat.stockBearing = true;
-gMat.note = `เนื้อพิเศษบวกเพิ่มอันละ ${gapText} (คิดในตารางราคาให้แล้ว)`;
+gMat.note = `เนื้อพิเศษบวกเพิ่มตามขนาดชิ้นงาน ${specialText} (คิดในตารางราคาให้แล้ว)`;
 // extra:10 ของเดิมเป็นของตายซาก — กลุ่มที่เป็นแกนตารางระบบไม่คิด extra อยู่แล้ว (ดู unitPriceFor)
 setChoice(
   gMat,
@@ -244,7 +415,7 @@ setChoice(
   gMat,
   MAT_SPECIAL,
   {
-    desc: `เนื้อกลิตเตอร์ / โฮโลแกรม / กระจก หนาประมาณ 2.5-3 มม. · บวกเพิ่มอันละ ${gapText}`,
+    desc: `เนื้อกลิตเตอร์ / โฮโลแกรม / กระจก หนาประมาณ 2.5-3 มม. · บวกเพิ่มตามขนาด ${specialText}`,
     imageSrc: art("mat-special"),
     extra: undefined,
   },
@@ -259,7 +430,7 @@ const shadeGroup = {
   label: G_SHADE,
   display: "dropdown",
   showWhen: { label: G_MAT, choices: [MAT_SPECIAL] },
-  note: `${SHADES.length} เฉด ราคาเท่ากันทุกเฉด — ค่าเนื้อพิเศษคิดแล้วที่ตารางราคา (+${gapText}/อัน)`,
+  note: `${SHADES.length} เฉด ราคาเท่ากันทุกเฉด — ค่าเนื้อพิเศษคิดแล้วที่ตารางราคา (${specialText} ต่ออัน ตามขนาด)`,
   choices: SHADES,
 };
 const shadeAt = opts.findIndex((o) => o.label === G_SHADE);
@@ -271,34 +442,44 @@ if (shadeAt < 0) {
   opts[shadeAt] = { ...opts[shadeAt], ...shadeGroup };
 }
 
-/* 3.3 ขนาดชิ้นงาน — มาตรฐาน 5-6 ซม. เกินกว่านั้นคิด ซม. ละ 15 บาท */
+/* 3.3 ขนาดชิ้นงาน — เลือกเป็น ซม. ตรง ๆ (กลายเป็นแกนตารางราคาที่ 2)
+ * ของเดิมเป็นช่องกด "เพิ่มขนาดเกิน 6 ซม. กี่ ซม." ซึ่งอ่านเป็นตัวเลขขนาดไม่ได้ — พอค่าสกรีน 2 ด้าน
+ * กับค่าเนื้อพิเศษต้องคิดตามขนาด (ตาราง Add on) ก็ต้องรู้ "ขนาดจริง" ไม่ใช่แค่ส่วนที่เกิน
+ * ⇒ เปลี่ยนเป็นเมนู 5cm-20cm ทรงเดียวกับ standy/keyring · ค่าเพิ่ม ซม. ละ 15 ยุบเข้าช่องตารางแทน extra
+ */
 const gSize = group(G_SIZE, G_SIZE_OLD);
-gSize.display = "multi";
-gSize.note = `ขนาดมาตรฐาน 5-6 ซม. รวมในราคาแล้ว — ใหญ่กว่านั้นคิดเพิ่ม ซม. ละ ฿${SIZE_ADD_FEE} (วัดจากด้านที่ยาวที่สุด)`;
-setChoice(
-  gSize,
-  SIZE_ADD,
-  {
-    qty: true,
-    qtyMax: 10,
-    extra: SIZE_ADD_FEE,
-    desc: `เช่น อยากได้ 8 ซม. = เพิ่ม 2 ซม. = +฿${SIZE_ADD_FEE * 2} ต่ออัน`,
-    imageSrc: art("size-add"),
-  },
-  SIZE_ADD_OLD
-);
+gSize.display = "dropdown";
+gSize.note =
+  `ราคาในตารางคือขนาดมาตรฐาน 5-6 ซม. — ใหญ่กว่านั้นคิดเพิ่ม ซม. ละ ฿${SIZE_ADD_FEE} (คิดให้ในราคาแล้ว)` +
+  " · วัดจากด้านที่ยาวที่สุดของชิ้นงาน";
+gSize.choices = SIZES.map((n) => ({ name: sizeName(n) }));
 
 /* 3.4 สกรีนกี่ด้าน */
 const gScreen = group(G_SCREEN, G_SCREEN_OLD);
 gScreen.display = "cards";
-setChoice(gScreen, "1 ด้าน (ด้านหลังอะคริลิคขาวขุ่น C-02)", {
-  desc: "พิมพ์ลายด้านหน้าด้านเดียว ด้านหลังเป็นอะคริลิคขาวขุ่น C-02 — แบบมาตรฐานตามตารางราคา",
-  imageSrc: art("screen-1side"),
-});
-setChoice(gScreen, "2 ด้าน", {
-  desc: "พิมพ์ลายทั้งสองด้าน ใช้คนละลายได้",
+gScreen.note = `ค่าสกรีน 2 ด้าน คิดตามขนาดชิ้นงาน ${screenText} ต่ออัน (ตาราง Add on หน้าราคาพวงกุญแจอะคริลิค)`;
+// ชื่อในฐานข้อมูลถูกเติมคำว่า "สกรีน" นำหน้าไว้ทีหลัง — รับได้ทั้งชื่อเก่า/ใหม่ สคริปต์จะได้รันซ้ำได้
+setChoice(
+  gScreen,
+  SCREEN_1,
+  {
+    desc: "พิมพ์ลายด้านหน้าด้านเดียว ด้านหลังเป็นอะคริลิคขาวขุ่น C-02 — แบบมาตรฐานตามตารางราคา",
+    imageSrc: art("screen-1side"),
+  },
+  SCREEN_1_OLD
+);
+setChoice(gScreen, SCREEN_2, {
+  desc: `พิมพ์ลายทั้งสองด้าน ใช้คนละลายได้ — บวกเพิ่มตามขนาด ${screenText} ต่ออัน`,
   imageSrc: art("screen-2side"),
-});
+  /* 📏 ค่าสกรีน 2 ด้าน = ขั้นบันไดตามขนาดชิ้นงาน (ไม่ขึ้นกับจำนวน จึงไม่ต้องเข้าตาราง)
+   * ชี้ทั้งด้านกว้าง/ด้านยาวไปที่เมนูขนาดกลุ่มเดียว — sizeFee อ่าน "8cm" เป็น 8 ให้เอง
+   * (ทรงเดียวกับที่ standee-multi-piece ใช้) */
+  sizeFee: {
+    widthLabel: G_SIZE,
+    heightLabel: G_SIZE,
+    tiers: SIZES.map((n) => ({ upTo: n, fee: screen2Fee(n) })),
+  },
+}, SCREEN_2_OLD);
 
 /* 3.5 สีตะขอโซ่ไข่ปลา — รูปถ่ายจริงจากคลัง standee-keyring */
 const gHook = group(G_HOOK);
@@ -335,11 +516,24 @@ setChoice(
 );
 
 /* ── 4. ราคา — เขียนทับด้วยตัวเลขสดจากเว็บ ──────────────────────────────── */
+/*
+ * ช่องราคา = ราคาอะคริลิคใสตามช่วงจำนวน + ค่าเพิ่มขนาด (ซม. ละ 15 จากขนาดมาตรฐาน 6 ซม.)
+ *            + ค่าเนื้อพิเศษตามขนาด (แถวปลีกใช้กับช่วง 1-10 อัน · แถวส่งใช้กับช่วงที่เหลือ)
+ * ⚠️ คอลัมน์ "ราคา อะคริลิคพิเศษ" ของ /cardholder (+10 ทุกช่วง) ไม่ได้ใช้คิดเงินแล้ว — เหลือไว้ตรวจไขว้
+ *    เฉพาะช่องปลีกขนาดมาตรฐาน (ดูหัวข้อ 1b)
+ */
+const isRetailTier = (i: number) => i === 0; // แถวแรก = 1-10 อัน = เรทราคาปลีกของตาราง Add on
+const cells: Record<string, number[]> = {};
+for (const n of SIZES) {
+  const sizeAdd = Math.max(0, n - SIZE_STD_MAX) * SIZE_ADD_FEE;
+  cells[`${MAT_CLEAR}│${sizeName(n)}`] = clear.map((v) => v + sizeAdd);
+  cells[`${MAT_SPECIAL}│${sizeName(n)}`] = clear.map((v, i) => v + sizeAdd + specialFee(n, isRetailTier(i)));
+}
 const pricing = {
   unit: "อัน",
   tiers,
-  driverLabels: [G_MAT],
-  cells: { [MAT_CLEAR]: clear, [MAT_SPECIAL]: special },
+  driverLabels: [G_MAT, G_SIZE],
+  cells,
 };
 d.pricing = pricing;
 // เรทเดียว minQty 11 = "1-10 อัน ยังเป็นราคาปลีก" (ไม่ใช่ขั้นต่ำที่บล็อกการสั่ง — เว็บบอกไม่มีขั้นต่ำ)
@@ -352,9 +546,10 @@ d.priceRates = [
     pricing,
   },
 ];
-d.price = clear[0];
-d.priceMin = Math.min(...clear, ...special);
-d.priceMax = Math.max(...clear, ...special);
+const allCells = Object.values(cells).flat();
+d.price = cells[`${MAT_CLEAR}│${sizeName(SIZES[0])}`][0];
+d.priceMin = Math.min(...allCells);
+d.priceMax = Math.max(...allCells);
 
 /* ── 5. แท็บรายละเอียด — ยกข้อความจากหน้าตารางราคา ─────────────────────── */
 const DETAIL = [
@@ -362,8 +557,11 @@ const DETAIL = [
   "• อะคริลิคใส หนาประมาณ 3 มม. · อะคริลิคพิเศษ (กลิตเตอร์ · โฮโลแกรม · กระจก) หนาประมาณ 2.5-3 มม.",
   "• พิมพ์ด้วยระบบ UV Printing สีสวยคมชัด สีไม่ซีดไม่หลุดลอก",
   "• ไม่มีขั้นต่ำในการสั่งผลิต · สกรีน 1 ด้าน เป็นแบบมาตรฐานตามตารางราคา",
-  "• ขนาดมาตรฐาน 5-6 ซม. — ใหญ่กว่านั้นคิดเพิ่ม ซม. ละ 15 บาท",
-  `• อะคริลิคกลิตเตอร์ / โฮโลแกรม / กระจก บวกเพิ่มอันละ ${gapText}`,
+  `• ขนาดมาตรฐาน 5-6 ซม. — ใหญ่กว่านั้นคิดเพิ่ม ซม. ละ ${SIZE_ADD_FEE} บาท (สั่งได้ถึง ${SIZES.at(-1)} ซม.)`,
+  `• สกรีน 2 ด้าน บวกเพิ่มตามขนาดชิ้นงาน ${screenText} ต่ออัน` +
+    ` (${SIZES.filter((n) => n <= 10).map((n) => `${n} ซม. ${screen2Fee(n)}`).join(" · ")} … ${SIZES.at(-1)} ซม. ${screen2Fee(SIZES.at(-1)!)})`,
+  `• อะคริลิคกลิตเตอร์ / โฮโลแกรม / กระจก บวกเพิ่มตามขนาด ${specialText} ต่ออัน` +
+    ` — ช่วง 1-10 อัน คิดเรทปลีก (ขนาดมาตรฐาน +${specialFee(6, true)}) · 11 อันขึ้นไป คิดเรทส่ง (ขนาดมาตรฐาน +${specialFee(6, false)})`,
   "• แบบพวงกุญแจ มีโซ่ไข่ปลาสีเงินให้ · เปลี่ยนเป็นสีอื่นได้ (11 อันขึ้นไป คิดเพิ่มอันละ 3 บาท)",
   "• จำนวน 11 อันขึ้นไปคละลายได้ ขั้นต่ำลายละ 5 อัน — ไม่ถึงตามจำนวน คิดตามราคาปลีก",
 ].join("\n");
@@ -375,7 +573,7 @@ d.description = "กรอบใส่รูปอะคริลิค สก�
 d.highlights = ["สกรีนลายตามสั่ง", "เลือกเนื้อใส / กลิตเตอร์ / โฮโลแกรม / กระจก", "ไม่มีขั้นต่ำ · 11 อันขึ้นไปคละลายได้"];
 d.savedAt = new Date().toISOString();
 
-console.log(`\n🧩 ตัวเลือก ${opts.length} กลุ่ม · แกนราคา: ${pricing.driverLabels.join(", ")}`);
+console.log(`\n🧩 ตัวเลือก ${opts.length} กลุ่ม · แกนราคา: ${pricing.driverLabels.join(" × ")} (${Object.keys(cells).length} ช่อง)`);
 for (const l of log) console.log(`   ${l}`);
 for (const o of opts) {
   const n = (o.choices ?? []).filter((c: any) => c.imageSrc).length;
