@@ -20,7 +20,8 @@
  *    ผลคือช่วงปลีกกลับมาตรงใบเสนอราคาเก่าของร้าน (ตัว 6cm + บน 2cm + ฐาน 3cm = 170)
  *    11 ชิ้นขึ้นไปเท่าเดิมทุกช่อง (109 / 95 ตรงใบเสนอราคาของร้าน)
  *
- * ราคา/ชิ้นในตาราง = ราคาแผ่นล่างตามขนาด + ค่าสกรีนแผ่นล่าง + จุกใส 10 + ราคาแผ่นบนตามขนาด + ค่าสกรีนแผ่นบน
+ * ราคา/ชิ้นในตาราง = ราคาแผ่นล่างตามขนาด + ค่าสกรีน 2 ด้านตามขนาดตัว (คิดครั้งเดียว — แผ่นบนไม่มี
+ * ค่าสกรีนเพิ่ม ผู้ใช้ทัก 2 ก.ย. 69 สูตรเดิมบวกของแผ่นบนซ้ำ) + จุกใส 10 + ราคาแผ่นบนตามขนาด
  *   (ค่าจุกใส 10 มาจากข้อความในหน้าเว็บ "เพิ่มจุกยางหมุนได้ ชุดละ 10 บาท"
  *    ราคาแผ่นบน 2 ซม. = 20 คงที่ทุกช่วงจำนวน + เซนละ 10 — ผู้ใช้ยืนยันจากใบเสนอราคาจริง)
  *
@@ -195,22 +196,19 @@ const TOP_SIZES = groupOf(TOP).choices.map((c) => parseInt(c.name, 10));
 const BASE_SIZES = groupOf(BASE_SIZE).choices.map((c) => parseInt(c.name, 10));
 
 /**
- * ค่าสกรีน 2 ด้านของแต่ละขนาด — ตารางเว็บมีถึง 16cm
- * ที่เหลือ (17-20cm) ถอดกลับจากตารางเรทที่ 1 เดิมของสินค้า: (2 ด้าน − 1 ด้าน) ที่แผ่นบน 2cm = SF[body] + SF[2]
+ * ค่าสกรีน 2 ด้านของแต่ละขนาดตัว — ตารางเว็บมีถึง 16cm
+ * ที่เหลือ (17-20cm) ต่อขั้นจากช่องสุดท้าย ซม.ละ 5 ตามหมายเหตุใต้ตาราง Add on ของร้าน
+ * ("มากกว่า 17cm บวกเพิ่ม cm ละ 5" หน้า /keyring — ตาราง /keyring คอลัมน์กว้าง 2-20 กับ cells ของ
+ *  standy ให้ค่าตรงกัน 17-20 = 40/45/50/55 ตรวจไว้ตอนทำ photo-fram-acrylic)
+ * ⚠️ ห้ามถอดกลับจาก cells เดิมของสินค้า — สูตรเก่าเคยบวกค่าสกรีนแผ่นบนซ้ำ ถอดกลับจะพาค่าผิดติดมา
  */
 const SF = {};
-const SF_TOP2 = WEB_2SIDE[2];
-if (!Number.isFinite(SF_TOP2)) throw new Error("ตารางเว็บไม่มีค่าสกรีนของขนาด 2cm — ตรวจก่อน");
-for (const s of new Set([...BODY_SIZES, ...TOP_SIZES])) {
-  if (WEB_2SIDE[s] !== undefined) {
-    SF[s] = WEB_2SIDE[s];
-    continue;
-  }
-  const one = before.priceRates.find((r) => /เรทที่ 1/.test(r.label)).pricing.cells[`${cm(s)}│${ONE_SIDE_UNDER}│${cm(2)}`];
-  const two = before.priceRates.find((r) => /เรทที่ 1/.test(r.label)).pricing.cells[`${cm(s)}│${TWO_SIDE[0]}│${cm(2)}`];
-  if (!one || !two) throw new Error(`ถอดค่าสกรีนขนาด ${s}cm จากตารางเดิมไม่ได้ — ไม่มีช่องราคา`);
-  SF[s] = two[0] - one[0] - SF_TOP2;
-}
+const SF_BEYOND_STEP = 5;
+const WEB_MAX = Math.max(...Object.keys(WEB_2SIDE).map(Number));
+for (const s of new Set([...BODY_SIZES, ...TOP_SIZES]))
+  SF[s] = WEB_2SIDE[s] !== undefined ? WEB_2SIDE[s] : WEB_2SIDE[WEB_MAX] + (s - WEB_MAX) * SF_BEYOND_STEP;
+if (SF[17] !== undefined && SF[17] !== 40)
+  throw new Error(`ค่าสกรีน 2 ด้าน 17cm ได้ ${SF[17]} ไม่ตรง 40 ที่ตรวจไว้กับ /keyring และ standy — ตารางเว็บเปลี่ยน ตรวจก่อน`);
 
 /* ══ 3. สร้างตารางราคาใหม่ทั้งสองเรท (ยังไม่บวกฐาน) ═════════════════════ */
 const buildCells = (sheet, sizes) => {
@@ -219,9 +217,9 @@ const buildCells = (sheet, sizes) => {
     for (const sc of SCREENS) {
       const twoSide = TWO_SIDE.includes(sc);
       for (const t of TOP_SIZES)
-        cells[`${cm(b)}│${sc}│${cm(t)}`] = sheet[b].map(
-          (p) => p + (twoSide ? SF[b] : 0) + STOPPER_FEE + topPlatePrice(t) + (twoSide ? SF[t] : 0)
-        );
+        // สกรีน 2 ด้าน คิดครั้งเดียวตามขนาดตัวสแตนดี้ — แผ่นบนไม่มีค่าสกรีนเพิ่ม (ตรงกับ note กลุ่มแผ่นบน
+        // และตาราง Add on ของร้าน · ผู้ใช้ทัก 2 ก.ย. 69: สูตรเดิมบวก SF[ขนาดแผ่นบน] ซ้ำอีกก้อน = แพงเกิน 10)
+        cells[`${cm(b)}│${sc}│${cm(t)}`] = sheet[b].map((p) => p + (twoSide ? SF[b] : 0) + STOPPER_FEE + topPlatePrice(t));
     }
   return cells;
 };

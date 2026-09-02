@@ -4262,6 +4262,29 @@ export default function ProductDetail({
               const only = allKeys.filter((k) => k === selectedKey);
               // ตัวเลือกที่เลือกอยู่ไม่มีราคาในตาราง (แอดมินเว้นช่องไว้) → กางทั้งหมดแทนตารางเปล่า
               const cols = !manyCols || priceAllCols || !only.length ? allKeys : only;
+              /**
+               * ราคาที่โชว์ = ช่องตาราง + ตัวเลือกเสริมที่เลือกอยู่ของช่วงจำนวนแถวนั้น (เช่น ค่าฐานสแตนดี้)
+               * — โชว์ช่องตารางดิบแล้วไม่เท่ากับ "ราคา/ชิ้น" ในกล่องราคา ลูกค้านึกว่าเว็บคิดเงินผิด
+               *   (ผู้ใช้ทัก 2 ก.ย. 69 สองรอบ — รอบแรกใส่แค่หมายเหตุใต้ตาราง ยังไม่พอ)
+               * จำนวนตัวแทนของแถว: แถวที่เลือกอยู่ใช้ feeQty จริง (ตรงกับกล่องราคาแม้ +฿ เปลี่ยนกลางช่วง)
+               * แถวแรกของเรทขั้นต่ำสูง (เช่น ไม่คละดีเทล 50+) ใช้ minQty ของเรท ไม่ใช่ 1 — ไม่งั้นได้ +฿ ฝั่งปลีก
+               * คอลัมน์เทียบทุกแบบ: ทับค่าแกนตารางตามคอลัมน์ก่อนคิด กัน +฿ ที่ผูกกับขนาด (sizeFee) หยิบขนาดผิด
+               */
+              const tierRep = (ti: number) => {
+                if (ti === currentTier) return feeQty;
+                if (ti === 0)
+                  return rate?.minQty && rate.minQty <= (matrix.tiers[0].upTo ?? Infinity) ? rate.minQty : 1;
+                return (matrix.tiers[ti - 1].upTo ?? 0) + 1;
+              };
+              const shownPrice = (col: string, ti: number) => {
+                const sel = { ...effectiveWithDesigns };
+                col.split("│").forEach((v, i) => {
+                  const l = matrix.driverLabels[i];
+                  if (l) sel[l] = v;
+                });
+                const addOn = unitAddOnBreakdown(product, sel, tierRep(ti)).reduce((n, f) => n + f.amount, 0);
+                return matrix.cells[col][ti] + addOn;
+              };
               return (
                 <div className="mt-2 overflow-hidden rounded-2xl ring-1 ring-stone-200">
                   {manyCols && (
@@ -4338,7 +4361,7 @@ export default function ProductDetail({
                               const isChosen = active && selectedKey === col;
                               return (
                                 <td key={col} className={`px-3 py-2 text-center ${isChosen ? "text-amber-700" : ""}`}>
-                                  {formatPrice(matrix.cells[col][ti])}
+                                  {formatPrice(shownPrice(col, ti))}
                                 </td>
                               );
                             })}
@@ -4356,6 +4379,20 @@ export default function ProductDetail({
                 </div>
               );
             })()}
+          {/* 💡 ตารางบวกตัวเลือกเสริมที่เลือกอยู่เข้าไปในทุกช่องแล้ว (ดู shownPrice) — บรรทัดนี้บอกว่ามีอะไรรวมอยู่
+            * จะได้ไม่งงว่าทำไมเลขไม่ตรงกับตารางหน้าราคาของร้าน (ผู้ใช้ทัก 2 ก.ย. 69 สองรอบ) */}
+          {matrix && !askQuote && !(useCustom && !customUsesMatrix) && unitAddOnTotal > 0 && (
+            <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900 ring-1 ring-amber-100">
+              💡 ราคาในตารางรวมตัวเลือกเสริมที่เลือกอยู่ให้แล้ว —{" "}
+              {unitAddOns.map((f, i) => (
+                <span key={`${f.label}-${i}`}>
+                  {i > 0 ? " + " : ""}
+                  <strong className="font-bold">{f.label}</strong> {formatPrice(f.amount)}
+                </span>
+              ))}
+              /{matrix.unit} ตามช่วงจำนวนของแต่ละแถว
+            </p>
+          )}
           {rate?.minPerDesign != null && rate.minPerDesign > 0 && (
             <p className="mt-2 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
               🎨 เรทนี้คละลายขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {pieceUnit}
