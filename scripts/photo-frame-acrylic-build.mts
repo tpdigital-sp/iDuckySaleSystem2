@@ -336,8 +336,9 @@ const specialText = rangeText(SIZES.flatMap((n) => [specialFee(n, true), special
  * ไม่พูดถึงฐานเลยสักคำ (ตารางที่นั่นเป็นราคาตัวกรอบล้วน ๆ) ค่าฐานจึงต้องมาจากตารางชุดกลางหน้านี้
  *   • เป็นตารางเดียวกับที่ระบบฐานสแตนดี้ของ standy ใช้ (ดู scripts/acrylic-mirror-build.mts ที่ assert ไว้)
  *   • หน้านี้วางตารางซ้ำ 2 รอบ → อ่านทุกอันแล้วเทียบกันเอง ช่องเดียวกันต้องราคาตรงกัน ไม่งั้น throw
- *   • ⚠️ ไม่ตั้ง extraFromQty ให้กลุ่มฐาน = คิดเท่ากันทุกช่วงจำนวน (นี่คือ "ทั้งปลีกและส่ง" ที่ผู้ใช้สั่ง)
- *     ต่างจาก standy ที่แยก 2 ขั้น (ปลีก extraBelow / ส่ง extra)
+ *   • ค่าฐานแยก 2 ขั้นแบบชุด standy (ผู้ใช้สั่งรอบสอง 2 ก.ย. 69 — ยกเลิก "ทั้งปลีกและส่ง" ของรอบแรก):
+ *     ช่วงปลีก 1-10 อัน (extraBelow) ไม่เกิน 6 ซม. ฟรี · 7 ซม.ขึ้นไปเพิ่ม ซม.ละ 5 บาท (7=+5 · 8=+10)
+ *     ตั้งแต่ 11 อัน (extra ตัดที่ extraFromQty=11) คิดตามตารางร้าน 3-5=10 · 6-7=15 · 8=20
  */
 const baseHtml = await fetch(BASE_PAGE, {
   headers: { "User-Agent": "Mozilla/5.0 (compatible; iDuckySaleSystem/1.0)" },
@@ -406,6 +407,12 @@ const baseFee = (n: number) => {
   return b.plain;
 };
 
+/* ค่าฐานช่วงปลีก 1-10 อัน — ผู้ใช้สั่ง 2 ก.ย. 69 (รอบสอง): "ไม่เกิน 6 ซม. ฟรี · ตั้งแต่ 7 ซม.ขึ้นไปเพิ่มเซนละ 5 บาท"
+ * บันไดเดียวกับชุดฐาน standy ฝั่งปลีก (ดู scripts/frame-card-base-retail-plus5.mjs ของ standee-frame-card) */
+const BASE_RETAIL_FREE_TO = 6;
+const BASE_RETAIL_STEP = 5;
+const baseRetailFee = (n: number) => Math.max(0, n - BASE_RETAIL_FREE_TO) * BASE_RETAIL_STEP;
+
 /* ขนาดฐานที่เปิดให้เลือก — ผู้ใช้สั่ง 2 ก.ย. 69: "แยกขนาดฐานออก 3,4,5,6,7 และทำเป็น dropdown"
  * (ของเดิมเป็นการ์ด 3 ใบตามชื่อคอลัมน์ตาราง "3-5 / 6-7 / 8" ซึ่งลูกค้าต้องเดาเองว่าฐานตัวเองกี่ ซม.)
  * เก็บ 8 ซม. ไว้ด้วย = ฐานใหญ่สุดที่หน้าเว็บร้านเปิดขาย · ชื่อทรง "Ncm" เหมือนกลุ่มขนาดชิ้นงาน */
@@ -421,8 +428,12 @@ const bandText = BASE_BANDS.filter((b) => b.from <= BASE_SIZES[BASE_SIZES.length
 console.log(`\n📐 ตารางค่าฐานสแตนดี้ จาก ${BASE_PAGE}`);
 console.log(`   ${"ช่วงราคาในตาราง".padEnd(24)} ${bandText}`);
 console.log(
-  `   ${R_BASE_PLAIN.padEnd(24)} ${BASE_SIZES.map((n) => `${baseName(n)}:${baseFee(n)}`).join(" ")}` +
-    ` · ${R_BASE_PRINT} +${BASE_PRINT_FEE} (คิดทั้งเรทปลีกและเรทส่ง)`
+  `   ${"เรทส่ง 11 อันขึ้นไป".padEnd(24)} ${BASE_SIZES.map((n) => `${baseName(n)}:${baseFee(n)}`).join(" ")}` +
+    ` · ${R_BASE_PRINT} +${BASE_PRINT_FEE} (ทุกช่วงจำนวน)`
+);
+console.log(
+  `   ${"เรทปลีก 1-10 อัน".padEnd(24)} ${BASE_SIZES.map((n) => `${baseName(n)}:${baseRetailFee(n)}`).join(" ")}` +
+    ` (ไม่เกิน ${BASE_RETAIL_FREE_TO} ซม. ฟรี · เกินแล้ว ซม.ละ ${BASE_RETAIL_STEP})`
 );
 
 /* ── 2. รูปตะขอ — ยืมรูปถ่ายจริงจาก standee-keyring (ชื่อสีตรงกันอยู่แล้ว) ── */
@@ -485,13 +496,13 @@ const setChoice = (g: any, name: string, patch: any, oldName?: string) => {
 /* 3.1 แบบ (พวงกุญแจ / สแตนดี้) */
 const gType = group(G_TYPE);
 gType.display = "cards";
-gType.note = `พวงกุญแจ = เจาะรู + โซ่ไข่ปลา · สแตนดี้ = ตัวงานราคาเท่ากัน แต่คิดค่าฐานเพิ่มตามขนาด ${baseText}`;
+gType.note = `พวงกุญแจ = เจาะรู + โซ่ไข่ปลา · สแตนดี้ = ตัวงานราคาเท่ากัน แต่คิดค่าฐานเพิ่มตามขนาดฐาน (1-10 อัน ฐานไม่เกิน ${BASE_RETAIL_FREE_TO} ซม. ฟรี)`;
 setChoice(gType, "พวงกุญแจ", {
   desc: "เจาะรูด้านบน ร้อยโซ่ไข่ปลา ห้อยกระเป๋า/กุญแจได้ — แถมโซ่สีเงินให้ทุกอัน",
   imageSrc: art("type-keyring"),
 });
 setChoice(gType, "สแตนดี้", {
-  desc: `เสียบฐานอะคริลิค ตั้งโชว์บนโต๊ะ — เลือกขนาดฐานและจะสกรีนลายฐานด้วยก็ได้ (ค่าฐาน ${baseText} ต่ออัน)`,
+  desc: `เสียบฐานอะคริลิค ตั้งโชว์บนโต๊ะ — เลือกขนาดฐานและจะสกรีนลายฐานด้วยก็ได้ (1-10 อัน ฐานไม่เกิน ${BASE_RETAIL_FREE_TO} ซม. ฟรี · 11 อันขึ้นไป ค่าฐาน ${baseText} ต่ออัน)`,
   imageSrc: art("type-standee"),
 });
 
@@ -592,9 +603,11 @@ if (missing.length) throw new Error(`ไม่เจอรูปตะขอใ�
 /* 3.6 ขนาดฐาน (เฉพาะแบบสแตนดี้) */
 const gBaseSize = group(G_BASE_SIZE);
 gBaseSize.display = "dropdown"; // ผู้ใช้สั่ง 2 ก.ย. 69 — 6 ขนาดเรียงเป็นการ์ดแล้วยาวเกินไป
-// ไม่ตั้ง extraFromQty = +฿ นี้คิดเท่ากันทุกช่วงจำนวน (ผู้ใช้สั่ง "ทั้งปลีกและส่ง" 2 ก.ย. 69)
-delete gBaseSize.extraFromQty;
-gBaseSize.note = `ค่าฐานคิดเพิ่มตามขนาด ${baseText} ต่ออัน — เท่ากันทั้งราคาปลีกและราคาส่ง (ร้านคิดเป็นช่วง: ${bandText})`;
+// ค่าฐาน 2 ขั้นแบบชุด standy (ผู้ใช้สั่งรอบสอง 2 ก.ย. 69): ปลีก 1-10 อัน = extraBelow · ตั้งแต่ 11 อัน = extra
+gBaseSize.extraFromQty = 11;
+gBaseSize.note =
+  `ค่าฐาน 1-10 อัน: ไม่เกิน ${BASE_RETAIL_FREE_TO} ซม. ฟรี · ${BASE_RETAIL_FREE_TO + 1} ซม.ขึ้นไปเพิ่ม ซม.ละ ฿${BASE_RETAIL_STEP}` +
+  ` — ตั้งแต่ 11 อัน คิดตามตารางร้าน (${bandText})`;
 const BASE_DESC: Record<number, string> = {
   3: "ฐานเล็กสุด เหมาะกับกรอบเล็ก 5-6 ซม. ที่ไม่อยากให้ฐานเด่นกว่าตัวงาน",
   4: "ฐานเล็ก ตั้งบนโต๊ะทำงาน/ชั้นแคบได้สบาย",
@@ -605,16 +618,20 @@ const BASE_DESC: Record<number, string> = {
 };
 gBaseSize.choices = BASE_SIZES.map((n) => ({
   name: baseName(n),
-  desc: `${BASE_DESC[n]} · บวกเพิ่มอันละ ฿${baseFee(n)}`,
+  desc:
+    `${BASE_DESC[n]} · 1-10 อัน ${baseRetailFee(n) ? `+฿${baseRetailFee(n)}` : "ฟรี"}` +
+    ` · 11 อันขึ้นไป +฿${baseFee(n)}`,
   imageSrc: art(baseFile(n)),
   extra: baseFee(n),
+  // ปลีก 1-10 อัน: ไม่เกิน 6 ซม. ไม่คิดค่าฐาน — ใส่เฉพาะตัวที่มีค่า (0 = ไม่ต้องเก็บฟิลด์)
+  ...(baseRetailFee(n) ? { extraBelow: baseRetailFee(n) } : {}),
 }));
 log.push(`ขนาดฐาน: แยกเป็นรายเซนติเมตร ${BASE_SIZES.map(baseName).join(" · ")} (dropdown)`);
 
 /* 3.7 ฐาน ใส / สกรีนลาย */
 const gBase = group(G_BASE);
 gBase.display = "cards";
-delete gBase.extraFromQty; // เช่นเดียวกับขนาดฐาน: คิดทั้งเรทปลีกและเรทส่ง
+delete gBase.extraFromQty; // สกรีนลายฐาน +10 คิดเท่ากันทุกช่วงจำนวน (ต่างจากกลุ่ม "ขนาดฐาน" ที่แยกปลีก/ส่ง)
 gBase.note = `สกรีนลายบนฐาน บวกเพิ่มอันละ ฿${BASE_PRINT_FEE} — เท่ากันทั้งราคาปลีกและราคาส่ง`;
 setChoice(gBase, "แบบใส", {
   desc: "ฐานอะคริลิคใส ไม่มีลาย — แบบมาตรฐาน ไม่บวกเพิ่มจากค่าฐาน",
@@ -681,8 +698,9 @@ const DETAIL = [
     ` (${SIZES.filter((n) => n <= 10).map((n) => `${n} ซม. ${screen2Fee(n)}`).join(" · ")} … ${SIZES.at(-1)} ซม. ${screen2Fee(SIZES.at(-1)!)})`,
   `• อะคริลิคกลิตเตอร์ / โฮโลแกรม / กระจก บวกเพิ่มตามขนาด ${specialText} ต่ออัน` +
     ` — ช่วง 1-10 อัน คิดเรทปลีก (ขนาดมาตรฐาน +${specialFee(6, true)}) · 11 อันขึ้นไป คิดเรทส่ง (ขนาดมาตรฐาน +${specialFee(6, false)})`,
-  `• แบบสแตนดี้ คิดค่าฐานอะคริลิคเพิ่มตามขนาดฐาน (${BASE_SIZES.map((n) => `${n} ซม. ${baseFee(n)}`).join(" · ")} บาท)` +
-    ` · สกรีนลายบนฐานบวกเพิ่มอีกอันละ ${BASE_PRINT_FEE} บาท — คิดเท่ากันทั้งราคาปลีกและราคาส่ง`,
+  `• แบบสแตนดี้ คิดค่าฐานอะคริลิคเพิ่มตามขนาดฐาน — 1-10 อัน: ฐานไม่เกิน ${BASE_RETAIL_FREE_TO} ซม. ฟรี` +
+    ` · ${BASE_RETAIL_FREE_TO + 1} ซม.ขึ้นไปเพิ่ม ซม.ละ ${BASE_RETAIL_STEP} บาท · ตั้งแต่ 11 อัน คิดตามตาราง (${bandText.replaceAll("฿", "")} บาท)` +
+    ` · สกรีนลายบนฐานบวกเพิ่มอีกอันละ ${BASE_PRINT_FEE} บาท ทุกช่วงจำนวน`,
   "• แบบพวงกุญแจ มีโซ่ไข่ปลาสีเงินให้ · เปลี่ยนเป็นสีอื่นได้ (11 อันขึ้นไป คิดเพิ่มอันละ 3 บาท)",
   "• จำนวน 11 อันขึ้นไปคละลายได้ ขั้นต่ำลายละ 5 อัน — ไม่ถึงตามจำนวน คิดตามราคาปลีก",
 ].join("\n");

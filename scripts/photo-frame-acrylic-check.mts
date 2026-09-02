@@ -66,9 +66,11 @@ check(
 );
 
 
-/* ── ค่าฐานสแตนดี้ (ตาราง /pricestandy) — ผู้ใช้สั่งให้คิดทั้งเรทปลีกและเรทส่ง 2 ก.ย. 69 ── */
-// แยกเป็นรายเซนติเมตรแล้ว (2 ก.ย. 69) — ยังคิดตามช่วงเดิมของร้าน 3-5=10 · 6-7=15 · 8=20
+/* ── ค่าฐานสแตนดี้ — 2 ขั้น (ผู้ใช้สั่งรอบสอง 2 ก.ย. 69) ──
+ * ปลีก 1-10 อัน: ไม่เกิน 6 ซม. ฟรี · 7 ซม.ขึ้นไปเพิ่ม ซม.ละ 5 (7=+5 · 8=+10)
+ * ตั้งแต่ 11 อัน: ตารางร้าน /pricestandy 3-5=10 · 6-7=15 · 8=20 */
 const BASE_FEE: Record<string, number> = { "3cm": 10, "4cm": 10, "5cm": 10, "6cm": 15, "7cm": 15, "8cm": 20 };
+const BASE_RETAIL: Record<string, number> = { "3cm": 0, "4cm": 0, "5cm": 0, "6cm": 0, "7cm": 5, "8cm": 10 };
 const BASE_PRINT = 10;
 const selStandee = (mat: string, cm: number, screen: string, baseSize: string, basePrint: boolean) => ({
   แบบ: "สแตนดี้",
@@ -78,13 +80,15 @@ const selStandee = (mat: string, cm: number, screen: string, baseSize: string, b
   ขนาดฐาน: baseSize,
   ฐาน: basePrint ? "สกรีนลาย" : "แบบใส",
 });
-for (const qty of [1, 11, 200]) {
+for (const qty of [1, 10, 11, 200]) {
+  const fee = qty <= 10 ? BASE_RETAIL : BASE_FEE; // 1-10 อัน = เรทปลีก · 11 ขึ้นไป = ตารางร้าน
+  const clear = CLEAR[qty] ?? CLEAR[1];
   for (const bs of Object.keys(BASE_FEE))
     for (const print of [false, true])
       check(
         `${qty} อัน · ใส · 6cm · 1 ด้าน · ฐาน ${bs}${print ? " สกรีนลาย" : ""}`,
         unitPriceFor(p, selStandee(MAT_CLEAR, 6, S1, bs, print), qty),
-        CLEAR[qty] + BASE_FEE[bs] + (print ? BASE_PRINT : 0)
+        clear + fee[bs] + (print ? BASE_PRINT : 0)
       );
 }
 // แบบพวงกุญแจต้องไม่โดนค่าฐาน (กลุ่มฐานซ่อนอยู่)
