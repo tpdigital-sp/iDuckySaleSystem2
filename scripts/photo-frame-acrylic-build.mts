@@ -36,6 +36,7 @@ const ID = "photo-fram-acrylic";
 const EXPECT_NAME = "Photo Fram Acrylic";
 const PAGE = "https://www.iduckyofficial-pricelists.com/cardholder";
 const ADDON_PAGE = "https://www.iduckyofficial-pricelists.com/keyring";
+const BASE_PAGE = "https://www.iduckyofficial-pricelists.com/pricestandy"; // ตารางค่าฐานสแตนดี้ (ชุดกลาง)
 const REV = "v3"; // v3 = สไตล์เรนเดอร์สินค้า (มีความหนา/เงา/ผิวเงา) ที่ผู้ใช้เลือก 1 ก.ย. 69
 const ART_DIR = ".cache/photo-fram-acrylic/upload";
 
@@ -329,6 +330,101 @@ const rangeText = (vals: number[]) => {
 const screenText = rangeText(SIZES.map(screen2Fee));
 const specialText = rangeText(SIZES.flatMap((n) => [specialFee(n, true), specialFee(n, false)]));
 
+/* ── 1c. ตารางค่าฐานสแตนดี้ จากหน้า /pricestandy ────────────────────────────
+ * ผู้ใช้สั่ง 2 ก.ย. 69 (ส่งภาพตารางมา): "ค่าฐานสแตนดี้ทั้งปลีกและส่ง บวกเพิ่มตามตารางได้เลย"
+ * ของเดิมกลุ่มฐานเขียนไว้ว่า "ทุกขนาดฐานรวมอยู่ในราคาแล้ว" ซึ่งไม่มีที่มา — หน้า /cardholder
+ * ไม่พูดถึงฐานเลยสักคำ (ตารางที่นั่นเป็นราคาตัวกรอบล้วน ๆ) ค่าฐานจึงต้องมาจากตารางชุดกลางหน้านี้
+ *   • เป็นตารางเดียวกับที่ระบบฐานสแตนดี้ของ standy ใช้ (ดู scripts/acrylic-mirror-build.mts ที่ assert ไว้)
+ *   • หน้านี้วางตารางซ้ำ 2 รอบ → อ่านทุกอันแล้วเทียบกันเอง ช่องเดียวกันต้องราคาตรงกัน ไม่งั้น throw
+ *   • ⚠️ ไม่ตั้ง extraFromQty ให้กลุ่มฐาน = คิดเท่ากันทุกช่วงจำนวน (นี่คือ "ทั้งปลีกและส่ง" ที่ผู้ใช้สั่ง)
+ *     ต่างจาก standy ที่แยก 2 ขั้น (ปลีก extraBelow / ส่ง extra)
+ */
+const baseHtml = await fetch(BASE_PAGE, {
+  headers: { "User-Agent": "Mozilla/5.0 (compatible; iDuckySaleSystem/1.0)" },
+}).then((r) => {
+  if (!r.ok) throw new Error(`ดึงหน้า ${BASE_PAGE} ไม่ได้ — HTTP ${r.status}`);
+  return r.text();
+});
+
+const R_BASE_PLAIN = "ไม่สกรีนฐาน";
+const R_BASE_PRINT = "สกรีนฐาน";
+
+/**
+ * หัวคอลัมน์ตารางค่าฐานเป็น "ช่วง" บ้าง ("3-5cm" · "6-7cm") เป็นเลขเดี่ยวบ้าง ("8" · "9cm")
+ * → เก็บเป็นช่วง [from,to] เพื่อกางออกเป็น "รายเซนติเมตร" ได้ (ผู้ใช้สั่งแยก 3,4,5,6,7 · 2 ก.ย. 69)
+ */
+type BaseBand = { from: number; to: number; plain: number; print: number };
+function baseFeeBands(): BaseBand[] {
+  const bands = new Map<string, BaseBand>();
+  let found = 0;
+  for (const rows of tablesOf(baseHtml)) {
+    const plain = rows.find((r) => r[0] === R_BASE_PLAIN);
+    const print = rows.find((r) => r[0] === R_BASE_PRINT);
+    if (!plain || !print) continue;
+    found++;
+    rows[0].slice(1).forEach((h, i) => {
+      const m = h.replace(/cm/gi, "").replace(/\s/g, "").match(/^(\d+)(?:[-–](\d+))?$/);
+      if (!m) throw new Error(`หัวคอลัมน์ตารางค่าฐานอ่านไม่ออก ("${h}") — โครงหน้าเว็บเปลี่ยน`);
+      const band: BaseBand = {
+        from: Number(m[1]),
+        to: Number(m[2] ?? m[1]),
+        plain: Number(plain[i + 1]),
+        print: Number(print[i + 1]),
+      };
+      if (!(band.plain > 0) || !(band.print > 0))
+        throw new Error(`ช่องค่าฐาน ${h} อ่านไม่ออก ("${plain[i + 1]}" / "${print[i + 1]}")`);
+      const key = `${band.from}-${band.to}`;
+      const had = bands.get(key);
+      if (had && (had.plain !== band.plain || had.print !== band.print))
+        throw new Error(`ตารางค่าฐานในหน้า ${BASE_PAGE} ขัดกันเองที่ช่อง ${h} — ตรวจหน้าเว็บก่อน`);
+      bands.set(key, band);
+    });
+  }
+  if (!found)
+    throw new Error(`หาตารางค่าฐาน ("${R_BASE_PLAIN}" / "${R_BASE_PRINT}") ในหน้า ${BASE_PAGE} ไม่เจอ — โครงหน้าเว็บเปลี่ยน`);
+  const list = [...bands.values()].sort((a, b) => a.from - b.from);
+  // ช่วงต้องต่อกันสนิท ไม่งั้นกางรายเซนติเมตรแล้วจะมีขนาดที่ไม่มีราคาโดยไม่รู้ตัว
+  list.forEach((b, i) => {
+    if (b.to < b.from || (i > 0 && b.from !== list[i - 1].to + 1))
+      throw new Error(`ช่วงขนาดในตารางค่าฐานไม่ต่อกัน (${list.map((x) => `${x.from}-${x.to}`).join(" ")}) — ตรวจก่อน`);
+  });
+  return list;
+}
+const BASE_BANDS = baseFeeBands();
+// ส่วนต่างของแถว "สกรีนฐาน" ต้องคงที่ทุกช่อง ถึงจะแยกออกมาเป็น +฿ ของกลุ่ม "ฐาน" กลุ่มเดียวได้
+const printDiffs = [...new Set(BASE_BANDS.map((b) => b.print - b.plain))];
+if (printDiffs.length !== 1 || printDiffs[0] <= 0)
+  throw new Error(`ส่วนต่าง "${R_BASE_PRINT}" ไม่คงที่ (${printDiffs.join(", ")}) — แยกเป็น +฿ กลุ่มเดียวไม่ได้ ตรวจก่อน`);
+const BASE_PRINT_FEE = printDiffs[0];
+/** ค่าฐาน (ยังไม่สกรีน) ของฐานขนาด n ซม. */
+const baseFee = (n: number) => {
+  const b = BASE_BANDS.find((x) => n >= x.from && n <= x.to);
+  if (!b)
+    throw new Error(
+      `ตารางค่าฐานไม่ครอบขนาด ${n}cm (มี ${BASE_BANDS.map((x) => `${x.from}-${x.to}`).join(" ")}) — ตรวจก่อน`
+    );
+  return b.plain;
+};
+
+/* ขนาดฐานที่เปิดให้เลือก — ผู้ใช้สั่ง 2 ก.ย. 69: "แยกขนาดฐานออก 3,4,5,6,7 และทำเป็น dropdown"
+ * (ของเดิมเป็นการ์ด 3 ใบตามชื่อคอลัมน์ตาราง "3-5 / 6-7 / 8" ซึ่งลูกค้าต้องเดาเองว่าฐานตัวเองกี่ ซม.)
+ * เก็บ 8 ซม. ไว้ด้วย = ฐานใหญ่สุดที่หน้าเว็บร้านเปิดขาย · ชื่อทรง "Ncm" เหมือนกลุ่มขนาดชิ้นงาน */
+const BASE_SIZES = [3, 4, 5, 6, 7, 8];
+const baseName = (n: number) => `${n}cm`;
+const baseFile = (n: number) => `base-${n}`;
+const baseText = rangeText(BASE_SIZES.map(baseFee));
+/** ช่วงราคาตามที่ร้านคิด เอาไปเขียนใน note ให้เห็นที่มา ("3-5 ซม. ฿10 · 6-7 ซม. ฿15 · 8 ซม. ฿20") */
+const bandText = BASE_BANDS.filter((b) => b.from <= BASE_SIZES[BASE_SIZES.length - 1])
+  .map((b) => `${b.from === b.to ? b.from : `${b.from}-${b.to}`} ซม. ฿${b.plain}`)
+  .join(" · ");
+
+console.log(`\n📐 ตารางค่าฐานสแตนดี้ จาก ${BASE_PAGE}`);
+console.log(`   ${"ช่วงราคาในตาราง".padEnd(24)} ${bandText}`);
+console.log(
+  `   ${R_BASE_PLAIN.padEnd(24)} ${BASE_SIZES.map((n) => `${baseName(n)}:${baseFee(n)}`).join(" ")}` +
+    ` · ${R_BASE_PRINT} +${BASE_PRINT_FEE} (คิดทั้งเรทปลีกและเรทส่ง)`
+);
+
 /* ── 2. รูปตะขอ — ยืมรูปถ่ายจริงจาก standee-keyring (ชื่อสีตรงกันอยู่แล้ว) ── */
 const { data: kr, error: krErr } = await sb.from("products").select("data").eq("id", "standee-keyring").single();
 if (krErr) throw new Error(`อ่าน standee-keyring (คลังรูปตะขอ) ไม่สำเร็จ — ${krErr.message}`);
@@ -389,13 +485,13 @@ const setChoice = (g: any, name: string, patch: any, oldName?: string) => {
 /* 3.1 แบบ (พวงกุญแจ / สแตนดี้) */
 const gType = group(G_TYPE);
 gType.display = "cards";
-gType.note = "พวงกุญแจ = เจาะรู + โซ่ไข่ปลา · สแตนดี้ = มาพร้อมฐานอะคริลิค (ราคาเท่ากัน)";
+gType.note = `พวงกุญแจ = เจาะรู + โซ่ไข่ปลา · สแตนดี้ = ตัวงานราคาเท่ากัน แต่คิดค่าฐานเพิ่มตามขนาด ${baseText}`;
 setChoice(gType, "พวงกุญแจ", {
   desc: "เจาะรูด้านบน ร้อยโซ่ไข่ปลา ห้อยกระเป๋า/กุญแจได้ — แถมโซ่สีเงินให้ทุกอัน",
   imageSrc: art("type-keyring"),
 });
 setChoice(gType, "สแตนดี้", {
-  desc: "เสียบฐานอะคริลิค ตั้งโชว์บนโต๊ะ — เลือกขนาดฐานและจะสกรีนลายฐานด้วยก็ได้",
+  desc: `เสียบฐานอะคริลิค ตั้งโชว์บนโต๊ะ — เลือกขนาดฐานและจะสกรีนลายฐานด้วยก็ได้ (ค่าฐาน ${baseText} ต่ออัน)`,
   imageSrc: art("type-standee"),
 });
 
@@ -495,23 +591,48 @@ if (missing.length) throw new Error(`ไม่เจอรูปตะขอใ�
 
 /* 3.6 ขนาดฐาน (เฉพาะแบบสแตนดี้) */
 const gBaseSize = group(G_BASE_SIZE);
-gBaseSize.display = "cards";
-gBaseSize.note = "ทุกขนาดฐานรวมอยู่ในราคาแล้ว ไม่บวกเพิ่ม";
-for (const [name, file, desc] of [
-  ["3-5 cm", "base-3-5", "ฐานเล็ก เหมาะกับกรอบขนาดมาตรฐาน 5-6 ซม."],
-  ["6-7 cm", "base-6-7", "ตั้งได้มั่นคงขึ้น เหมาะกับกรอบที่สั่งใหญ่กว่ามาตรฐาน"],
-  ["8 cm", "base-8", "ฐานใหญ่สุดที่สั่งผ่านหน้าเว็บได้"],
-] as const)
-  setChoice(gBaseSize, name, { desc, imageSrc: art(file) });
+gBaseSize.display = "dropdown"; // ผู้ใช้สั่ง 2 ก.ย. 69 — 6 ขนาดเรียงเป็นการ์ดแล้วยาวเกินไป
+// ไม่ตั้ง extraFromQty = +฿ นี้คิดเท่ากันทุกช่วงจำนวน (ผู้ใช้สั่ง "ทั้งปลีกและส่ง" 2 ก.ย. 69)
+delete gBaseSize.extraFromQty;
+gBaseSize.note =
+  `ค่าฐานคิดเพิ่มตามขนาด ${baseText} ต่ออัน — เท่ากันทั้งราคาปลีกและราคาส่ง` +
+  ` (ร้านคิดเป็นช่วง: ${BASE_BANDS.filter((b) => b.from <= BASE_SIZES.at(-1)!).map((b) => `${b.from === b.to ? `${b.from}` : `${b.from}-${b.to}`} ซม. ฿${b.plain}`).join(" · ")})`;
+const BASE_DESC: Record<number, string> = {
+  3: "ฐานเล็กสุด เหมาะกับกรอบเล็ก 5-6 ซม. ที่ไม่อยากให้ฐานเด่นกว่าตัวงาน",
+  4: "ฐานเล็ก ตั้งบนโต๊ะทำงาน/ชั้นแคบได้สบาย",
+  5: "ฐานเล็กที่มั่นคงขึ้น — คู่กับกรอบขนาดมาตรฐาน 5-6 ซม.",
+  6: "ฐานกลาง เริ่มรับกรอบที่สั่งใหญ่กว่ามาตรฐานได้",
+  7: "ฐานกลาง ตั้งได้มั่นคงขึ้นสำหรับกรอบทรงสูง",
+  8: "ฐานใหญ่สุดที่สั่งผ่านหน้าเว็บได้ — มั่นคงที่สุด",
+};
+gBaseSize.choices = BASE_SIZES.map((n) => ({
+  name: baseName(n),
+  desc: `${BASE_DESC[n]} · บวกเพิ่มอันละ ฿${baseFee(n)}`,
+  imageSrc: art(baseFile(n)),
+  extra: baseFee(n),
+}));
+log.push(`ขนาดฐาน: แยกเป็นรายเซนติเมตร ${BASE_SIZES.map(baseName).join(" · ")} (dropdown)`);
 
 /* 3.7 ฐาน ใส / สกรีนลาย */
 const gBase = group(G_BASE);
 gBase.display = "cards";
-setChoice(gBase, "แบบใส", { desc: "ฐานอะคริลิคใส ไม่มีลาย — แบบมาตรฐาน", imageSrc: art("base-plain") });
+delete gBase.extraFromQty; // เช่นเดียวกับขนาดฐาน: คิดทั้งเรทปลีกและเรทส่ง
+gBase.note = `สกรีนลายบนฐาน บวกเพิ่มอันละ ฿${BASE_PRINT_FEE} — เท่ากันทั้งราคาปลีกและราคาส่ง`;
+setChoice(gBase, "แบบใส", {
+  desc: "ฐานอะคริลิคใส ไม่มีลาย — แบบมาตรฐาน ไม่บวกเพิ่มจากค่าฐาน",
+  imageSrc: art("base-plain"),
+  extra: undefined,
+  extraBelow: undefined,
+});
 setChoice(
   gBase,
   "สกรีนลาย",
-  { desc: "พิมพ์ลายลงบนฐาน (คนละไฟล์กับลายบนกรอบ) — แจ้งลายฐานในหมายเหตุถึงร้าน", imageSrc: art("base-printed") },
+  {
+    desc: `พิมพ์ลายลงบนฐาน (คนละไฟล์กับลายบนกรอบ) — แจ้งลายฐานในหมายเหตุถึงร้าน · บวกเพิ่มอันละ ฿${BASE_PRINT_FEE}`,
+    imageSrc: art("base-printed"),
+    extra: BASE_PRINT_FEE,
+    extraBelow: undefined,
+  },
   "สรีนลาย"
 );
 
@@ -562,6 +683,8 @@ const DETAIL = [
     ` (${SIZES.filter((n) => n <= 10).map((n) => `${n} ซม. ${screen2Fee(n)}`).join(" · ")} … ${SIZES.at(-1)} ซม. ${screen2Fee(SIZES.at(-1)!)})`,
   `• อะคริลิคกลิตเตอร์ / โฮโลแกรม / กระจก บวกเพิ่มตามขนาด ${specialText} ต่ออัน` +
     ` — ช่วง 1-10 อัน คิดเรทปลีก (ขนาดมาตรฐาน +${specialFee(6, true)}) · 11 อันขึ้นไป คิดเรทส่ง (ขนาดมาตรฐาน +${specialFee(6, false)})`,
+  `• แบบสแตนดี้ คิดค่าฐานอะคริลิคเพิ่มตามขนาดฐาน (${BASE_SIZES.map((n) => `${n} ซม. ${baseFee(n)}`).join(" · ")} บาท)` +
+    ` · สกรีนลายบนฐานบวกเพิ่มอีกอันละ ${BASE_PRINT_FEE} บาท — คิดเท่ากันทั้งราคาปลีกและราคาส่ง`,
   "• แบบพวงกุญแจ มีโซ่ไข่ปลาสีเงินให้ · เปลี่ยนเป็นสีอื่นได้ (11 อันขึ้นไป คิดเพิ่มอันละ 3 บาท)",
   "• จำนวน 11 อันขึ้นไปคละลายได้ ขั้นต่ำลายละ 5 อัน — ไม่ถึงตามจำนวน คิดตามราคาปลีก",
 ].join("\n");

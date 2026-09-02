@@ -3069,9 +3069,9 @@ export function getCategory(id: CategoryId): Category {
 
 // ── ชุดตัวเลือกร่วมของสินค้ากลุ่มกระดาษ (ดึงจาก iduckyprintsstudio.com จริง) ──
 const PAPER_TYPES_POSTCARD: ProductOptionChoice[] = [
-  { name: "กระดาษอาร์ตเกาหลี 300 แกรม" },
+  { name: "กระดาษอาร์ตมัน 300 แกรม" },
   { name: "Canvas Paper 260 แกรม" },
-  { name: "100 Pound Paper 300 แกรม" },
+  { name: "100 Pound Paper (หนา 300gsm)" },
   { name: "E-Photo Paper 290 แกรม" },
   { name: "Stardream Crystal Paper 285 แกรม" },
   { name: "Stardream Paper 285 แกรม" },
@@ -3080,10 +3080,10 @@ const PAPER_TYPES_POSTCARD: ProductOptionChoice[] = [
 const PAPER_TYPES_POSTER: ProductOptionChoice[] = [
   { name: "กระดาษอาร์ตเกาหลี 130 แกรม" },
   { name: "กระดาษอาร์ตเกาหลี 150 แกรม" },
-  { name: "กระดาษอาร์ตเกาหลี 300 แกรม" },
+  { name: "กระดาษอาร์ตมัน 300 แกรม" },
   { name: "กระดาษอาร์ตเกาหลี 400 แกรม" },
   { name: "Canvas Paper 260 แกรม" },
-  { name: "100 Pound Paper 300 แกรม" },
+  { name: "100 Pound Paper (หนา 300gsm)" },
   { name: "E-Photo Paper 290 แกรม" },
   { name: "Stardream Crystal Paper 285 แกรม" },
   { name: "Stardream Paper 285 แกรม" },

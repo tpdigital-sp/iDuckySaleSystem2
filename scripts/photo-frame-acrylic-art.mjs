@@ -22,7 +22,7 @@
  *   mat-clear    | mat-special     กลุ่ม "ประเภทเนื้ออะคริลิค" (= แกนราคาของตาราง 2 คอลัมน์)
  *   size-add                       กลุ่มเพิ่มขนาดเกิน 6 ซม. (ซม. ละ 15 บาท)
  *   screen-1side | screen-2side    กลุ่ม "สกรีนกี่ด้าน"
- *   base-3-5 | base-6-7 | base-8   กลุ่ม "ขนาดฐาน" (เฉพาะแบบสแตนดี้ · สเกลจริงเทียบกันได้)
+ *   base-3 … base-8               กลุ่ม "ขนาดฐาน" (เฉพาะแบบสแตนดี้ · สเกลจริงเทียบกันได้)
  *   base-plain   | base-printed    กลุ่ม "ฐาน" (ใส / สกรีนลาย)
  *
  * เทคนิค: วาดเงารูปทรง (silhouette) ครั้งเดียวไว้ใน <defs> แล้วเรียกซ้ำด้วย <use> 3 ชั้น
@@ -287,19 +287,18 @@ function screenArt(sides) {
 
 /* ── 5. ขนาดฐาน (สเกลจริงเทียบกันได้ · เส้นประ = ฐานเล็กสุดไว้เทียบ) ────── */
 const BASE_PX_PER_CM = 62;
-const BASES = [
-  { key: "base-3-5", cm: 5, label: "3-5 ซม." },
-  { key: "base-6-7", cm: 7, label: "6-7 ซม." },
-  { key: "base-8", cm: 8, label: "8 ซม." },
-];
+/* ผู้ใช้สั่งแยกขนาดฐานเป็นรายเซนติเมตร 2 ก.ย. 69 (เดิมเป็นช่วง 3-5 / 6-7 / 8 ตามหัวคอลัมน์ตารางร้าน)
+ * — วาดครบทุกขนาด สเกลจริงเทียบกันได้ · เส้นประ = ฐานเล็กสุด (3 ซม.) ไว้เทียบว่าใหญ่ขึ้นแค่ไหน */
+const BASE_MIN_CM = 3;
+const BASES = [3, 4, 5, 6, 7, 8].map((cm) => ({ key: `base-${cm}`, cm, label: `${cm} ซม.` }));
 
 function baseSizeArt(b) {
   const rx = (b.cm * BASE_PX_PER_CM) / 2;
-  const std = (5 * BASE_PX_PER_CM) / 2;
+  const std = (BASE_MIN_CM * BASE_PX_PER_CM) / 2;
   const cx = 350;
   const cy = 352;
   return scene(`
-    ${b.cm > 5 ? `<ellipse cx="${cx}" cy="${cy}" rx="${std}" ry="${std * 0.27}" fill="none" stroke="#c9c0b4" stroke-width="4" stroke-dasharray="13 11"/>` : ""}
+    ${b.cm > BASE_MIN_CM ? `<ellipse cx="${cx}" cy="${cy}" rx="${std}" ry="${std * 0.27}" fill="none" stroke="#c9c0b4" stroke-width="4" stroke-dasharray="13 11"/>` : ""}
     ${baseDisc(cx, cy, rx)}
     <line x1="${cx - rx}" y1="${cy + rx * 0.27 + 74}" x2="${cx + rx}" y2="${cy + rx * 0.27 + 74}" stroke="${MUTED}" stroke-width="4"/>
     <line x1="${cx - rx}" y1="${cy + rx * 0.27 + 60}" x2="${cx - rx}" y2="${cy + rx * 0.27 + 88}" stroke="${MUTED}" stroke-width="4"/>

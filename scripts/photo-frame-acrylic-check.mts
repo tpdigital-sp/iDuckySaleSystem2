@@ -65,5 +65,29 @@ check(
   140 + 30 + 8 + 25 + 3
 );
 
+
+/* ── ค่าฐานสแตนดี้ (ตาราง /pricestandy) — ผู้ใช้สั่งให้คิดทั้งเรทปลีกและเรทส่ง 2 ก.ย. 69 ── */
+const BASE_FEE: Record<string, number> = { "3-5 cm": 10, "6-7 cm": 15, "8 cm": 20 };
+const BASE_PRINT = 10;
+const selStandee = (mat: string, cm: number, screen: string, baseSize: string, basePrint: boolean) => ({
+  แบบ: "สแตนดี้",
+  ประเภทเนื้ออะคริลิค: mat,
+  ขนาดชิ้นงาน: `${cm}cm`,
+  สกรีนกี่ด้าน: screen,
+  ขนาดฐาน: baseSize,
+  ฐาน: basePrint ? "สกรีนลาย" : "แบบใส",
+});
+for (const qty of [1, 11, 200]) {
+  for (const bs of Object.keys(BASE_FEE))
+    for (const print of [false, true])
+      check(
+        `${qty} อัน · ใส · 6cm · 1 ด้าน · ฐาน ${bs}${print ? " สกรีนลาย" : ""}`,
+        unitPriceFor(p, selStandee(MAT_CLEAR, 6, S1, bs, print), qty),
+        CLEAR[qty] + BASE_FEE[bs] + (print ? BASE_PRINT : 0)
+      );
+}
+// แบบพวงกุญแจต้องไม่โดนค่าฐาน (กลุ่มฐานซ่อนอยู่)
+check("11 อัน · ใส · 6cm · 1 ด้าน · พวงกุญแจ (ไม่มีค่าฐาน)", unitPriceFor(p, sel(MAT_CLEAR, 6, S1), 11), CLEAR[11]);
+
 console.log(fail ? `\n❌ ไม่ผ่าน ${fail} ข้อ` : "\n✅ ผ่านทุกข้อ");
 process.exit(fail ? 1 : 0);

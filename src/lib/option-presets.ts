@@ -28,9 +28,9 @@ export const DEFAULT_PRESETS: OptionPreset[] = [
     label: "ชนิดกระดาษ",
     note: "กระดาษมาตรฐานงานโปสการ์ด (7 ชนิด)",
     choices: [
-      { name: "กระดาษอาร์ตเกาหลี 300 แกรม" },
+      { name: "กระดาษอาร์ตมัน 300 แกรม" },
       { name: "Canvas Paper 260 แกรม" },
-      { name: "100 Pound Paper 300 แกรม" },
+      { name: "100 Pound Paper (หนา 300gsm)" },
       { name: "E-Photo Paper 290 แกรม" },
       { name: "Stardream Crystal Paper 285 แกรม" },
       { name: "Stardream Paper 285 แกรม" },

@@ -97,10 +97,10 @@ console.log(`📋 ขนาด ${sizes.length} แบบ: ${sizes.map((s) => `${
 
 /** ชนิดกระดาษฝั่งเว็บ → ชื่อที่ใช้ในร้าน (ตรงกับกลุ่มของ postcard-th) · null = ไม่เอา */
 const PAPER_MAP: Record<string, string | null> = {
-  "Paper 300 gram": "กระดาษอาร์ตเกาหลี 300 แกรม",
+  "Paper 300 gram": "กระดาษอาร์ตมัน 300 แกรม",
   "Canvas Paper": "Canvas Paper 260 แกรม",
   "Eggshell Paper": null, // ร้านเลิกขายแล้ว (ถอดทั้งระบบ)
-  "100 Pound Paper": "100 Pound Paper 300 แกรม",
+  "100 Pound Paper": "100 Pound Paper (หนา 300gsm)",
   "E-Photo Paper": "E-Photo Paper 290 แกรม",
   "Stardream Crystal Paper": "Stardream Crystal Paper 285 แกรม",
   "Stardream  Paper": "Stardream Paper 285 แกรม",
@@ -384,7 +384,7 @@ const product: Product = {
   description:
     "โฟโต้บูธสตริป (PHOTO BOOTH) พิมพ์ลายตามสั่งบนกระดาษ ระบบ Digital Printing สีคมชัด " +
     `เลือกได้ ${sizes.length} ขนาด — ${sizes.map((s) => `${s.name} (รูป ${s.frames} ช่อง · ${s.per} ใบ/แผ่น A3)`).join(" และ ")} ` +
-    `เลือกเนื้อกระดาษได้ ${papers.length} ชนิด ตั้งแต่อาร์ตเกาหลี 300 แกรม · อาร์ตมัน 350/400 แกรม ไปจนถึงกระดาษผิวพิเศษ Canvas · E-Photo · Stardream · Extra ` +
+    `เลือกเนื้อกระดาษได้ ${papers.length} ชนิด ตั้งแต่อาร์ตมัน 300 แกรม · อาร์ตมัน 350/400 แกรม ไปจนถึงกระดาษผิวพิเศษ Canvas · E-Photo · Stardream · Extra ` +
     "เลือกเคลือบเงา ด้าน หรือเคลือบพิเศษกลิตเตอร์/ทราย/โฮโลแกรม 10 ลาย · ไม่มีขั้นต่ำ ยิ่งสั่งเยอะยิ่งถูก",
   highlights: [
     ...sizes.map((s) => `${s.name} — รูป ${s.frames} ช่อง · 1 แผ่น A3 ตัดได้ ${s.per} ใบ`),
