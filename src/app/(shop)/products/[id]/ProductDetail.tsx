@@ -418,9 +418,25 @@ function GalleryThumbs({
     return () => ro.disconnect();
   }, [sync, gallery.length]);
 
-  // รูปใหญ่เปลี่ยน → เลื่อนให้รูปย่อที่เลือกอยู่โผล่ในจอเสมอ
+  /**
+   * รูปใหญ่เปลี่ยน → เลื่อน "แถบรูปย่อ" (แนวนอน) ให้รูปที่เลือกอยู่โผล่ในจอ
+   *
+   * ⚠️ ห้ามใช้ scrollIntoView ตรงนี้ — แม้จะสั่ง block:"nearest" มันก็เลื่อน **ทั้งหน้า**
+   *    ขึ้นไปหาแถบรูปย่อ (ซึ่งอยู่บนสุด) ด้วย · การเลือกตัวเลือกทำให้รูปใหญ่สลับเอง
+   *    ลูกค้าที่กำลังเลือกอยู่ท้ายหน้า (เช่นตัวเลือกของ "ชิ้นที่ 2") เลยโดนดีดกลับขึ้นไปข้างบน
+   *    ทุกครั้งที่กด — เลื่อนเองในกล่องแถบรูปย่อเท่านั้น หน้าเพจจะได้อยู่นิ่ง
+   */
   useEffect(() => {
-    ref.current?.children[at]?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    const el = ref.current;
+    const kid = el?.children[at] as HTMLElement | undefined;
+    if (!el || !kid) return;
+    const box = el.getBoundingClientRect();
+    const thumb = kid.getBoundingClientRect();
+    // เลื่อนเท่าที่จำเป็น (เหมือน inline:"nearest") + เผื่อขอบ 8px ให้เห็นว่ายังมีรูปถัดไป
+    const delta =
+      thumb.left < box.left ? thumb.left - box.left - 8 : thumb.right > box.right ? thumb.right - box.right + 8 : 0;
+    if (!delta) return;
+    el.scrollBy({ left: delta, behavior: "smooth" });
   }, [at]);
 
   const page = (d: number) => {
