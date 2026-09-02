@@ -4728,13 +4728,15 @@ export default function ProductEditor({ product }: { product: Product }) {
           >
             {urlCopied ? "คัดลอกแล้ว ✓" : "📋 คัดลอกลิงก์"}
           </button>
+          {/* ฉบับร่างเปิดลิงก์หน้าร้านตรง ๆ = 404 (หน้า /products เป็นหน้าแคช อ่านคุกกี้ไม่ได้)
+            * → พาไปหน้าพรีวิวทีมงาน /preview/[id] แทน (force-dynamic เปิดร่างได้) */}
           <a
-            href={fullUrl}
+            href={draft.hidden ? `/preview/${productId}` : fullUrl}
             target="_blank"
             rel="noreferrer"
             className="shrink-0 rounded-full bg-slate-100 px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-200"
           >
-            ↗ เปิดดูหน้าร้าน
+            {draft.hidden ? "👁 พรีวิว (ฉบับร่าง)" : "↗ เปิดดูหน้าร้าน"}
           </a>
         </div>
         {/* ── ตั้งลิงก์เอง (slug) — ให้ URL อ่านรู้เรื่องตามชื่อสินค้า แทนรหัสอย่าง /products/2cm ── */}
@@ -7151,7 +7153,7 @@ export default function ProductEditor({ product }: { product: Product }) {
             <p className="mb-1 text-xs font-semibold text-slate-500">{draft.hidden ? "📝 สถานะ: ยังไม่เผยแพร่" : "🌐 สถานะ: เผยแพร่แล้ว"}</p>
             <p className={`mb-2.5 text-xs leading-relaxed ${draft.hidden ? "text-rose-700" : "text-sky-800"}`}>
               {draft.hidden
-                ? "ลูกค้าไม่เห็นสินค้านี้ทั้งในหน้ารายการ หน้าแรก ค้นหา และเปิดลิงก์ตรงก็ไม่เจอ — ทีมงานที่ล็อกอินยังเปิดพรีวิวได้"
+                ? "ลูกค้าไม่เห็นสินค้านี้ทั้งในหน้ารายการ หน้าแรก ค้นหา และเปิดลิงก์ตรงก็ไม่เจอ — ทีมงานดูได้จากปุ่ม 👁 พรีวิว ข้างลิงก์หน้าร้านด้านบน"
                 : "ลูกค้าเห็นสินค้านี้บนหน้าร้านแล้ว"}
             </p>
             <button

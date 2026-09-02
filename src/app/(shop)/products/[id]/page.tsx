@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import { PRODUCTS } from "@/lib/products";
 import { getProductServer, getProductTemplates, getRelatedProducts } from "@/lib/products-server";
 import { productAutoSeo } from "@/lib/auto-seo";
-import { currentActor } from "@/lib/server/require-perm";
 import { fetchProductReviewStats } from "@/lib/server/reviews-db";
 import ProductDetail from "./ProductDetail";
 import ProductReviews from "@/components/ProductReviews";
@@ -12,7 +11,8 @@ import ProductReviews from "@/components/ProductReviews";
  * ให้ CDN เก็บหน้าไว้ 5 นาที แล้วค่อยสร้างใหม่เบื้องหลัง (ISR)
  * วัดจากเว็บจริง: หน้าที่ CDN ยังไม่มีสำเนา ใช้ 0.8-1.3 วิ · ถ้ามีสำเนาแล้วเหลือ 0.12 วิ
  * ราคา/ตัวเลือกไม่ค้าง เพราะหน้าสินค้าดึงข้อมูลล่าสุดจากฐานข้อมูลซ้ำอีกรอบฝั่งเบราว์เซอร์อยู่แล้ว
- * (สินค้าที่ปิดการมองเห็นจะกลายเป็นหน้าแบบไม่แคชเองอัตโนมัติ เพราะต้องอ่านคุกกี้เช็คว่าเป็นทีมงานไหม)
+ * ⚠️ ห้ามอ่านคุกกี้ในหน้านี้ — หน้า ISR บนเว็บจริงเจอ cookies() กลางทางจะกลายเป็น 500
+ *    (DYNAMIC_SERVER_USAGE — เคยพังกับสินค้าฉบับร่างทุกตัว 2 ก.ย. 69) ทีมงานพรีวิวร่างที่ /preview/[id] แทน
  */
 export const revalidate = 300;
 
@@ -54,10 +54,8 @@ export default async function ProductPage({
 }) {
   const { id } = await params;
   const product = await getProductServer(id);
-  if (!product) notFound();
-  // ปิดการมองเห็นไว้ → ลูกค้าเปิดลิงก์ตรงก็ไม่เจอ · ทีมงานที่ล็อกอินหลังบ้านยังเปิดพรีวิวได้
-  const staff = product.hidden ? await currentActor() : null;
-  if (product.hidden && !staff) notFound();
+  // ปิดการมองเห็นไว้ = 404 สำหรับทุกคน — ทีมงานพรีวิวผ่าน /preview/[id] (หน้า force-dynamic แยกต่างหาก)
+  if (!product || product.hidden) notFound();
   // 📐 เทมเพลตไฟล์งานที่ผูกไว้ — ดึงฝั่งเซิร์ฟเวอร์ให้ลิงก์โหลดติดมากับหน้าเลย
   const templates = await getProductTemplates(product.templateIds ?? []);
   // ⭐ สรุปคะแนนรีวิวจริง — ดึงฝั่งเซิร์ฟเวอร์เพื่อให้ aggregateRating ติดไปกับ JSON-LD ตั้งแต่ HTML แรก (Google เห็นดาว)
@@ -69,7 +67,7 @@ export default async function ProductPage({
       <ProductDetail
         product={product}
         templates={templates}
-        preview={!!staff && !!product.hidden}
+        preview={false}
         reviewStats={reviewStats}
         related={related}
       />

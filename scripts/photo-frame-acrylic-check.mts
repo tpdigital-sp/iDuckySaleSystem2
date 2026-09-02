@@ -67,7 +67,8 @@ check(
 
 
 /* ── ค่าฐานสแตนดี้ (ตาราง /pricestandy) — ผู้ใช้สั่งให้คิดทั้งเรทปลีกและเรทส่ง 2 ก.ย. 69 ── */
-const BASE_FEE: Record<string, number> = { "3-5 cm": 10, "6-7 cm": 15, "8 cm": 20 };
+// แยกเป็นรายเซนติเมตรแล้ว (2 ก.ย. 69) — ยังคิดตามช่วงเดิมของร้าน 3-5=10 · 6-7=15 · 8=20
+const BASE_FEE: Record<string, number> = { "3cm": 10, "4cm": 10, "5cm": 10, "6cm": 15, "7cm": 15, "8cm": 20 };
 const BASE_PRINT = 10;
 const selStandee = (mat: string, cm: number, screen: string, baseSize: string, basePrint: boolean) => ({
   แบบ: "สแตนดี้",

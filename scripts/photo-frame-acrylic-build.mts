@@ -594,9 +594,7 @@ const gBaseSize = group(G_BASE_SIZE);
 gBaseSize.display = "dropdown"; // ผู้ใช้สั่ง 2 ก.ย. 69 — 6 ขนาดเรียงเป็นการ์ดแล้วยาวเกินไป
 // ไม่ตั้ง extraFromQty = +฿ นี้คิดเท่ากันทุกช่วงจำนวน (ผู้ใช้สั่ง "ทั้งปลีกและส่ง" 2 ก.ย. 69)
 delete gBaseSize.extraFromQty;
-gBaseSize.note =
-  `ค่าฐานคิดเพิ่มตามขนาด ${baseText} ต่ออัน — เท่ากันทั้งราคาปลีกและราคาส่ง` +
-  ` (ร้านคิดเป็นช่วง: ${BASE_BANDS.filter((b) => b.from <= BASE_SIZES.at(-1)!).map((b) => `${b.from === b.to ? `${b.from}` : `${b.from}-${b.to}`} ซม. ฿${b.plain}`).join(" · ")})`;
+gBaseSize.note = `ค่าฐานคิดเพิ่มตามขนาด ${baseText} ต่ออัน — เท่ากันทั้งราคาปลีกและราคาส่ง (ร้านคิดเป็นช่วง: ${bandText})`;
 const BASE_DESC: Record<number, string> = {
   3: "ฐานเล็กสุด เหมาะกับกรอบเล็ก 5-6 ซม. ที่ไม่อยากให้ฐานเด่นกว่าตัวงาน",
   4: "ฐานเล็ก ตั้งบนโต๊ะทำงาน/ชั้นแคบได้สบาย",
