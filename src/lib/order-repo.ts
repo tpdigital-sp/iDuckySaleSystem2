@@ -195,6 +195,27 @@ export async function reviewProof(
 }
 
 /** กราฟฟิก/แอดมิน อัปโหลดภาพแบบงาน (เพิ่มรูปใหม่เข้ารายการ) · ระบุจำนวน/รายละเอียดของรูปนี้ได้ */
+/** ลูกค้าตรวจแบบ "ของแถม" — อนุมัติ/ขอแก้ทั้งชุด (ระบุ giftId = promoId ของโปร) */
+export async function reviewGiftProof(
+  orderId: string,
+  key: string,
+  giftId: string,
+  action: "approve" | "request",
+  note?: string
+): Promise<{ ok: boolean; order?: Order; error?: string }> {
+  try {
+    const res = await fetch("/api/orders/review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, key, giftId, action, note }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return res.ok ? { ok: true, order: data.order as Order } : { ok: false, error: data.error ?? "ส่งผลตรวจไม่สำเร็จ" };
+  } catch {
+    return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
+  }
+}
+
 export async function uploadProof(
   orderId: string,
   itemIndex: number,

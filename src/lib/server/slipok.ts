@@ -15,6 +15,81 @@ export interface SlipVerifyResult {
   amount?: number;
   /** เลขอ้างอิงธุรกรรม — กันสลิปซ้ำ */
   transRef?: string;
+  /** ส่วนต่างที่ระบบรู้จัก (หัก ณ ที่จ่าย 1%/3% หรือค่าธรรมเนียมโอน) — มีค่า = โอนน้อยกว่ายอดแต่ถือว่าจ่ายครบ */
+  deduction?: SlipDeduction;
+}
+
+/** ส่วนต่างระหว่างยอดที่ต้องโอนกับยอดในสลิป ที่ระบบยอมรับได้ */
+export interface SlipDeduction {
+  /** wht = หัก ณ ที่จ่าย (ลูกค้านิติบุคคล — ต้องตามใบ 50 ทวิ) · bankFee = ธนาคารหักค่าธรรมเนียมโอน */
+  kind: "wht" | "bankFee";
+  /** อัตราหัก ณ ที่จ่าย (1 หรือ 3) — เฉพาะ kind = wht */
+  rate?: number;
+  /** จำนวนเงินที่หายไป (ยอดที่ต้องโอน − ยอดในสลิป) */
+  amount: number;
+  /** คำอธิบายสำหรับประวัติ/หน้าแอดมิน เช่น "หัก ณ ที่จ่าย 3% ของยอดทั้งออเดอร์" */
+  label: string;
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+/** ค่าธรรมเนียมโอนที่ธนาคารไทยหักจริง (โอนต่างธนาคารผ่านสาขา/ATM/บริการพิเศษ) */
+const BANK_FEES = [5, 8, 10, 15, 20, 25, 30, 35];
+
+/**
+ * เทียบยอดในสลิปกับยอดที่ต้องโอน แบบรู้เรื่องภาษี/ค่าธรรมเนียม:
+ *   1. ตรงเป๊ะ (หรือโอนเกิน) → ผ่าน
+ *   2. ขาดเท่ากับหัก ณ ที่จ่าย 1% / 3% → ผ่าน (คิดทั้งฐานยอดงวดนี้, ยอดทั้งออเดอร์ และฐานก่อน VAT 7%)
+ *      — ลูกค้าบริษัทบางเจ้าหักภาษีของทั้งบิลตั้งแต่งวดมัดจำ เลยต้องเช็คฐานยอดรวมด้วย
+ *   3. ขาดเท่ากับค่าธรรมเนียมโอนของธนาคาร (5–35 บาท) → ผ่าน
+ * นอกเหนือจากนี้ = ยอดไม่ตรง ให้ตกไปตรวจมือ
+ */
+export function matchSlipAmount(
+  expected: number,
+  actual: number,
+  orderTotal?: number,
+  /** ยอดหัก ณ ที่จ่ายที่แอดมินตั้งไว้ในออเดอร์ (order.wht) — แอดมินแก้ตัวเลขตามใบ 50 ทวิได้ เลยต้องยอมรับยอดนี้ตรง ๆ ด้วย */
+  adminWht?: { rate: number; amount: number }
+): { ok: boolean; deduction?: SlipDeduction } {
+  if (!(expected > 0)) return { ok: true };
+  if (!(actual > 0)) return { ok: false };
+  const diff = round2(expected - actual);
+  // จ่ายครบ/จ่ายเกิน (เผื่อเศษสตางค์จากการปัด)
+  if (diff <= 0.5) return { ok: true };
+
+  // ── ขาดเท่ายอดหักที่แอดมินตั้งไว้ (เผื่อ ±1 บาท) — ครอบคลุมฐานพิเศษที่สูตรมาตรฐานเดาไม่ถูก ──
+  if (adminWht && adminWht.amount > 0 && Math.abs(diff - adminWht.amount) <= 1)
+    return {
+      ok: true,
+      deduction: { kind: "wht", rate: adminWht.rate, amount: diff, label: `หัก ณ ที่จ่าย ${adminWht.rate}% (ตามที่ตั้งไว้ในออเดอร์)` },
+    };
+
+  // ── หัก ณ ที่จ่าย — นักบัญชีมักปัดเป็นบาทถ้วน เผื่อคลาดเคลื่อน ±1 บาท ──
+  const bases: { amount: number; suffix: string }[] = [{ amount: expected, suffix: "ของยอดงวดนี้" }];
+  if (orderTotal && orderTotal > expected + 0.5) bases.push({ amount: orderTotal, suffix: "ของยอดทั้งออเดอร์" });
+  let best: { deduction: SlipDeduction; gap: number } | null = null;
+  for (const rate of [3, 1]) {
+    for (const base of bases) {
+      for (const [whtBase, vatNote] of [
+        [base.amount, ""],
+        [base.amount / 1.07, " (ฐานก่อน VAT)"],
+      ] as [number, string][]) {
+        const wht = round2((whtBase * rate) / 100);
+        const gap = Math.abs(diff - wht);
+        if (gap <= 1 && (!best || gap < best.gap))
+          best = {
+            gap,
+            deduction: { kind: "wht", rate, amount: diff, label: `หัก ณ ที่จ่าย ${rate}% ${base.suffix}${vatNote}` },
+          };
+      }
+    }
+  }
+  if (best) return { ok: true, deduction: best.deduction };
+
+  // ── ค่าธรรมเนียมโอนของธนาคาร — ต้องตรงกับค่าธรรมเนียมจริงเท่านั้น (กันโอนขาดมั่ว ๆ แล้วหลุดผ่าน) ──
+  if (BANK_FEES.some((fee) => Math.abs(diff - fee) <= 0.01))
+    return { ok: true, deduction: { kind: "bankFee", amount: diff, label: "ธนาคารหักค่าธรรมเนียมการโอน" } };
+
+  return { ok: false };
 }
 
 export const slipokConfigured = (): boolean => !!(process.env.SLIPOK_API_KEY && process.env.SLIPOK_BRANCH_ID);
@@ -22,18 +97,48 @@ export const slipokConfigured = (): boolean => !!(process.env.SLIPOK_API_KEY && 
 export async function verifySlipWithSlipOK(
   bytes: Uint8Array,
   contentType: string,
-  expectedAmount: number
+  expectedAmount: number,
+  /** ยอดรวมทั้งออเดอร์ — ใช้เช็คหัก ณ ที่จ่ายที่ลูกค้าคิดจากทั้งบิลตั้งแต่งวดมัดจำ */
+  orderTotalAmount?: number,
+  /** ยอดหัก ณ ที่จ่ายที่แอดมินตั้งไว้ในออเดอร์ (order.wht) */
+  adminWht?: { rate: number; amount: number }
 ): Promise<SlipVerifyResult> {
   const key = process.env.SLIPOK_API_KEY;
   const branch = process.env.SLIPOK_BRANCH_ID;
   if (!key || !branch) return { status: "skip", detail: "ยังไม่ได้ตั้งค่า SlipOK" };
 
+  // ตัดสินจากยอดในสลิป (ใช้ทั้งเส้นทางจริงและโหมดทดสอบ — กติกาเดียวกันเป๊ะ)
+  const judge = (slipAmount: number | undefined, transRef: string | undefined, receiver?: string): SlipVerifyResult => {
+    if (expectedAmount > 0) {
+      if (!slipAmount) return { status: "fail", transRef, detail: "สลิปแท้แต่อ่านยอดเงินไม่ได้ — รอแอดมินเทียบยอดเอง" };
+      const m = matchSlipAmount(expectedAmount, slipAmount, orderTotalAmount, adminWht);
+      if (!m.ok)
+        return {
+          status: "fail",
+          amount: slipAmount,
+          transRef,
+          detail: `ยอดในสลิป ${slipAmount.toLocaleString("th-TH")} บาท ไม่ตรงกับยอดที่ต้องชำระ ${expectedAmount.toLocaleString("th-TH")} บาท (ขาด ${(expectedAmount - slipAmount).toLocaleString("th-TH")} บาท)`,
+        };
+      return { status: "pass", amount: slipAmount, transRef, detail: receiver, deduction: m.deduction };
+    }
+    return { status: "pass", amount: slipAmount, transRef, detail: receiver };
+  };
+
+  // ── โหมดทดสอบ (dev เท่านั้น): ตั้ง SLIPOK_MOCK=1 + ไฟล์สลิปที่ฝังข้อความ "MOCKSLIP:<ยอด>" ──
+  // จำลองว่า SlipOK ตอบ "สลิปแท้" แล้วให้กติกาเทียบยอดของเราตัดสินตามจริง — ไม่ยิง API จริง
+  // production ปลอดภัยสองชั้น: Netlify ไม่ตั้ง SLIPOK_MOCK และ NODE_ENV เป็น production
+  if (process.env.SLIPOK_MOCK === "1" && process.env.NODE_ENV !== "production") {
+    const marker = /MOCKSLIP:([0-9.]+)/.exec(new TextDecoder().decode(bytes.subarray(0, 2048)));
+    if (marker)
+      return judge(Number(marker[1]) || undefined, `MOCK-${Date.now().toString(36).toUpperCase()}`, "ผู้รับ: บัญชีทดสอบ (SLIPOK_MOCK)");
+  }
+
   try {
     const fd = new FormData();
     const ext = contentType.split("/")[1] || "jpg";
     fd.append("files", new Blob([bytes as BlobPart], { type: contentType }), `slip.${ext}`);
-    // ให้ SlipOK เทียบยอดกับที่ต้องโอน — ยอดไม่ตรง = ไม่ผ่าน
-    if (expectedAmount > 0) fd.append("amount", String(expectedAmount));
+    // ⚠️ ไม่ส่ง amount ให้ SlipOK เทียบแล้ว — SlipOK เทียบได้แต่ตรงเป๊ะ
+    // เราอ่านยอดจากสลิปมาเทียบเองด้วย matchSlipAmount (รู้เรื่องหัก ณ ที่จ่าย 1%/3% + ค่าธรรมเนียมโอน)
     // log=true ให้ SlipOK จำสลิปไว้ — เจอสลิปใบเดิมซ้ำจะตีตก (กันเอาสลิปเก่ามาเวียน)
     fd.append("log", "true");
 
@@ -50,12 +155,12 @@ export async function verifySlipWithSlipOK(
     // ผ่าน = HTTP 2xx และไม่มีธง success เป็น false ที่ชั้นไหนเลย
     // (SlipOK บางเวอร์ชันไม่ส่ง j.success ระดับบน — อย่าตีตกเพราะฟิลด์ที่ไม่มี)
     if (res.ok && j && j.success !== false && j.data?.success !== false) {
-      return {
-        status: "pass",
-        amount: Number(j.data?.amount) || undefined,
-        transRef: j.data?.transRef,
-        detail: j.data?.receiver?.displayName ? `ผู้รับ: ${j.data.receiver.displayName}` : undefined,
-      };
+      // ── สลิปแท้แล้ว — เทียบยอดเองต่อ (ยอดต้องเข้าเงื่อนไขด้วย) ──
+      return judge(
+        Number(j.data?.amount) || undefined,
+        j.data?.transRef,
+        j.data?.receiver?.displayName ? `ผู้รับ: ${j.data.receiver.displayName}` : undefined
+      );
     }
     // ปัญหาฝั่งร้าน (คีย์/สาขาผิด, แพ็กเกจ/โควตาหมด — SlipOK code 1000-1005) ไม่ใช่สลิปลูกค้า → ตกไปตรวจมือเงียบ ๆ
     const code = Number(j?.code);

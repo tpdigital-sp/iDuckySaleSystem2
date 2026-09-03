@@ -20,7 +20,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import "./dashboard.css";
 import { formatPrice } from "@/lib/products";
-import { orderTotal, type Order } from "@/lib/admin-data";
+import { orderStatusLabel, orderTotal, type Order } from "@/lib/admin-data";
 import { computeDash, parseThaiDate, thaiToday } from "@/lib/admin-dash";
 import StatusChip from "./StatusChip";
 
@@ -370,7 +370,7 @@ export default function Dashboard({ orders, loading, demo, stale, updatedAt, see
                             </span>
                           </span>
                           <span className="flex shrink-0 flex-col items-end gap-1.5">
-                            <StatusChip s={o.status} />
+                            <StatusChip s={o.status} label={orderStatusLabel(o)} />
                             {seesMoney && (
                               <span className="dkb-num-sm text-[13.5px]" style={{ color: "var(--dk-navy-soft)" }}>
                                 {formatPrice(orderTotal(o))}
@@ -402,7 +402,7 @@ export default function Dashboard({ orders, loading, demo, stale, updatedAt, see
                           </span>
                         </span>
                         <span className="shrink-0">
-                          <StatusChip s={o.status} />
+                          <StatusChip s={o.status} label={orderStatusLabel(o)} />
                         </span>
                       </Link>
                     </li>

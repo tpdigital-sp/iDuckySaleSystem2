@@ -274,7 +274,19 @@ export interface Order {
   /** เวลาที่ลูกค้ากดแจ้งโอน (ISO string) */
   paidReportedAt?: string;
   /** ผลตรวจสลิปอัตโนมัติ (SlipOK) — pass = ยืนยันชำระให้แล้ว · fail = ให้แอดมินตรวจเอง */
-  slipVerify?: { status: "pass" | "fail"; detail?: string; amount?: number; transRef?: string; at: string };
+  slipVerify?: {
+    status: "pass" | "fail";
+    detail?: string;
+    amount?: number;
+    transRef?: string;
+    at: string;
+    /**
+     * ยอดในสลิปน้อยกว่ายอดที่ต้องโอน แต่ระบบรู้จักส่วนต่าง — ถือว่าจ่ายครบ
+     * wht = ลูกค้านิติบุคคลหัก ณ ที่จ่าย (rate 1 หรือ 3%) ต้องตามใบ 50 ทวิจากลูกค้า
+     * bankFee = ธนาคารหักค่าธรรมเนียมการโอน
+     */
+    deduction?: { kind: "wht" | "bankFee"; rate?: number; amount: number; label: string };
+  };
   /** เวลาที่แอดมินปริ้นใบงานครั้งแรก (ISO) — มีค่า = ล็อกที่อยู่ ลูกค้าแก้ไม่ได้แล้ว */
   printedAt?: string;
   /** ปริ้นไปแล้วกี่ครั้ง (รวมปริ้นซ้ำ) — กันของไปสองรอบ ดูรายละเอียดแต่ละครั้งได้ในประวัติ */
@@ -321,6 +333,12 @@ export interface Order {
   /** ส่วนลดทั้งบิลที่แอดมินใส่เอง (แยกจากคูปอง/ระดับสมาชิก — ใช้พร้อมกันได้) · pct มีค่า = คิดเป็น % ของยอดสินค้าหลังหักส่วนลดรายรายการ */
   adminDiscount?: { label?: string; amount?: number; pct?: number };
   /**
+   * หัก ณ ที่จ่าย (ลูกค้านิติบุคคล) — แอดมินเลือกอัตรา 1%/3% ระบบเติมจำนวนเงินจากยอดรวมให้
+   * แล้วแก้ตัวเลขเองได้ตามใบ 50 ทวิของลูกค้า (บัญชีลูกค้าบางเจ้าคิดจากฐานก่อน VAT)
+   * ไม่ลดยอดรวมของบิล — แค่บอกว่า "ยอดโอนจริง" น้อยกว่ายอดตั้งเท่าไหร่ ต้องตามใบ 50 ทวิมาแทน
+   */
+  wht?: { rate: number; amount: number };
+  /**
    * ลูกค้าประเมินความพึงพอใจแล้ว (กันประเมินซ้ำ) — ตั้งใจเก็บแค่ boolean
    * ห้ามเก็บคะแนน/เวลา/รายละเอียดใด ๆ ที่นี่ เพื่อให้คะแนนในตาราง ratings นิรนามจริง
    */
@@ -363,6 +381,16 @@ export function orderDiscountTotal(o: Order): number {
 export function orderTotal(o: Order): number {
   // ?? 0 กันออเดอร์เก่า/แถวที่ไม่มี shippingCost ทำให้ยอดกลายเป็น NaN แล้วลามไปทั้งระบบ
   return Math.max(0, orderSubtotal(o) + (o.shippingCost ?? 0) - orderDiscountTotal(o));
+}
+
+/** ยอดหัก ณ ที่จ่ายของออเดอร์ (บาท) — 0 = ไม่ได้ตั้งหรือไม่หัก */
+export function orderWhtAmount(o: Order): number {
+  return Math.max(0, o.wht?.amount ?? 0);
+}
+
+/** ยอดโอนจริงหลังหัก ณ ที่จ่าย — ลูกค้านิติบุคคลโอนเท่านี้ ส่วนต่างตามใบ 50 ทวิ */
+export function orderNetTransfer(o: Order): number {
+  return Math.max(0, orderTotal(o) - orderWhtAmount(o));
 }
 
 /** ยอดที่ลูกค้ายังค้างชำระ (มากกว่า 0 = ต้องโอนเพิ่ม เช่น หลังสั่งเพิ่มในออเดอร์เดิม) */
@@ -502,6 +530,8 @@ export interface OrderDeposit {
   balanceSlipUrl?: string;
   /** เวลาที่แจ้งโอนงวดหลัง (ISO) */
   balanceReportedAt?: string;
+  /** ผลตรวจสลิป "งวดหลัง" (SlipOK) — แยกช่องจาก slipVerify ซึ่งเป็นของงวดแรก ไม่ให้ทับกัน */
+  balanceVerify?: Order["slipVerify"];
   /** ทวงยอดคงเหลือครั้งล่าสุดเมื่อไหร่ (ISO) — กันทวงซ้ำถี่เกินไป */
   balanceRemindedAt?: string;
 }
@@ -527,6 +557,18 @@ export function orderFullyPaid(o: Order): boolean {
   if (o.deposit) return paidStage && !!o.deposit.settledAt;
   // ยอดโตขึ้นหลังรับเงินแล้ว = ยังเก็บไม่ครบ ห้ามนับว่าจ่ายครบ (ไม่งั้นปิดงานส่งของทั้งที่ยังขาด)
   return paidStage && !hasUnpaidBalance(o);
+}
+
+/**
+ * ป้ายสถานะแบบที่ควรโชว์ให้คนอ่าน — ออเดอร์มัดจำที่เพิ่งรับงวดแรก
+ * ต้องเห็นชัดว่าเงินเข้าแค่ครึ่ง ไม่ใช่ "ชำระแล้ว" เฉย ๆ (ค่า status จริงในฐานไม่เปลี่ยน)
+ */
+export function orderStatusLabel(o: Order): string {
+  if (o.status === "ชำระแล้ว" && o.deposit?.firstPaidAt) {
+    // งวดแรกเข้า = เงินยังครึ่งเดียว · งวดหลังเข้า = ครบ 100% แล้ว (บอกให้รู้ว่าเป็นใบมัดจำที่เก็บจบ)
+    return o.deposit.settledAt ? "ชำระแล้ว 50% หลัง" : "ชำระแล้ว 50% แรก";
+  }
+  return o.status;
 }
 
 /** ยอดที่ลูกค้าต้องโอน "งวดนี้" — มัดจำ / ยอดคงเหลือ / เต็มจำนวน */

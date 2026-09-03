@@ -92,25 +92,31 @@ export async function POST(req: Request) {
   // ── ตรวจสลิปอัตโนมัติกับ SlipOK (ถ้าตั้งค่าไว้) — เทียบ "ยอดงวดนี้" (มัดจำ/คงเหลือ/เต็ม) ──
   const expected = amountDueNow(order);
   const depositPhase = !!order.deposit && !order.deposit.firstPaidAt; // งวดแรกของออเดอร์มัดจำ
-  const verify = await verifySlipWithSlipOK(bytes, file.type, expected);
+  const verify = await verifySlipWithSlipOK(bytes, file.type, expected, orderTotal(order), order.wht);
   const now = new Date().toISOString();
+  // ท้ายประโยคบันทึก/แจ้งเตือน เมื่อสลิปโดนหัก ณ ที่จ่าย 1%/3% หรือค่าธรรมเนียมโอน
+  const dedNote = verify.deduction
+    ? ` · ${verify.deduction.label} ${verify.deduction.amount.toLocaleString("th-TH")} บาท${verify.deduction.kind === "wht" ? " — รอใบ 50 ทวิจากลูกค้า" : ""}`
+    : "";
 
+  // ผลตรวจของงวดนี้ — งวดแรกลง slipVerify · งวดหลังลง deposit.balanceVerify (คนละช่อง ไม่ทับกัน)
+  const vRec: Order["slipVerify"] =
+    verify.status === "pass" || verify.status === "fail"
+      ? { status: verify.status, detail: verify.detail, amount: verify.amount, transRef: verify.transRef, at: now, deduction: verify.deduction }
+      : undefined;
   let updated: Order = {
     ...order,
     // งวดหลังของออเดอร์มัดจำเก็บแยกช่อง — ไม่งั้นสลิปมัดจำงวดแรกถูกทับหาย
     ...(balancePhase
-      ? { deposit: { ...order.deposit!, balanceSlipPath: path, balanceReportedAt: now } }
-      : { slipPath: path, slipUrl: undefined, paidReportedAt: now }),
-    ...(verify.status === "pass" || verify.status === "fail"
-      ? { slipVerify: { status: verify.status, detail: verify.detail, amount: verify.amount, transRef: verify.transRef, at: now } }
-      : { slipVerify: undefined }),
+      ? { deposit: { ...order.deposit!, balanceSlipPath: path, balanceReportedAt: now, balanceVerify: vRec } }
+      : { slipPath: path, slipUrl: undefined, paidReportedAt: now, slipVerify: vRec }),
   };
   if (balancePhase) {
     // งวดหลังของออเดอร์มัดจำ — สถานะงานเดินต่อตามเดิม ไม่ถอยกลับไปรอตรวจสอบ
     if (verify.status === "pass") {
       // ต่อจาก updated (ไม่ใช่ order) เพราะเพิ่งใส่ balanceSlipPath ไปในนั้น
       updated = { ...updated, paidTotal: orderTotal(order), deposit: { ...updated.deposit!, settledAt: now } };
-      updated = withLog(updated, "SlipOK", "รับยอดคงเหลือครบแล้ว (อัตโนมัติ)", `ยอด ${verify.amount ?? expected} บาท${verify.transRef ? ` · อ้างอิง ${verify.transRef}` : ""}`);
+      updated = withLog(updated, "SlipOK", "รับยอดคงเหลือครบแล้ว (อัตโนมัติ)", `ยอด ${verify.amount ?? expected} บาท${verify.transRef ? ` · อ้างอิง ${verify.transRef}` : ""}${dedNote}`);
     } else {
       updated = withLog(updated, "SlipOK", "สลิปยอดคงเหลือรอแอดมินตรวจ", verify.detail ?? "ตรวจอัตโนมัติไม่ได้");
     }
@@ -130,7 +136,7 @@ export async function POST(req: Request) {
         updated,
         "SlipOK",
         depositPhase ? "ยืนยันมัดจำ 50% อัตโนมัติ" : "ยืนยันการชำระเงินอัตโนมัติ",
-        `ยอด ${verify.amount ?? expected} บาท${verify.transRef ? ` · อ้างอิง ${verify.transRef}` : ""}`
+        `ยอด ${verify.amount ?? expected} บาท${verify.transRef ? ` · อ้างอิง ${verify.transRef}` : ""}${dedNote}`
       );
     else if (verify.status === "fail")
       updated = withLog(updated, "SlipOK", "สลิปตรวจไม่ผ่าน — รอแอดมินตรวจเอง", verify.detail ?? "");
@@ -143,16 +149,21 @@ export async function POST(req: Request) {
   if (verify.status === "pass") {
     const origin = new URL(req.url).origin;
     const link = orderLink(origin, updated);
+    // เงินเข้าบัญชีจริง = ยอดในสลิป (น้อยกว่ายอดตั้งเมื่อโดนหัก ณ ที่จ่าย/ค่าธรรมเนียม) — ให้ msVerify กระทบยอดกับธนาคารตรง
+    const received = verify.amount ?? expected;
+    // ขอใบ 50 ทวิจากลูกค้าไปในข้อความยืนยันเลย — เคสหัก ณ ที่จ่าย
+    const whtAsk = verify.deduction?.kind === "wht" ? `\nรับยอดหลัง${verify.deduction.label} — รบกวนส่งหนังสือรับรองหักภาษี ณ ที่จ่าย (50 ทวิ) ให้ทางร้านด้วยนะครับ` : "";
     if (balancePhase) {
-      void notifyCustomerLogged(sb, updated, `✅ รับยอดคงเหลือออเดอร์ ${updated.id} ครบแล้ว ขอบคุณครับ\n${link}`, "ยืนยันรับยอดคงเหลือครบ");
-      void reportPaidToTP(updated, "SlipOK อัตโนมัติ", { docSuffix: "-final", amount: expected, noteSuffix: "ยอดคงเหลือ 50% หลัง (ครบแล้ว)" });
+      void notifyCustomerLogged(sb, updated, `✅ รับยอดคงเหลือออเดอร์ ${updated.id} ครบแล้ว ขอบคุณครับ${whtAsk}\n${link}`, "ยืนยันรับยอดคงเหลือครบ");
+      void reportPaidToTP(updated, "SlipOK อัตโนมัติ", { docSuffix: "-final", amount: received, noteSuffix: `ยอดคงเหลือ 50% หลัง (ครบแล้ว)${dedNote}` });
     } else if (depositPhase) {
       const remain = orderTotal(updated) - (updated.paidTotal ?? 0);
-      void notifyCustomerLogged(sb, updated, `✅ รับมัดจำออเดอร์ ${updated.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${remain.toLocaleString()} บาท ชำระก่อนจัดส่ง\n${link}`, "ยืนยันรับมัดจำ");
-      void reportPaidToTP(updated, "SlipOK อัตโนมัติ", { amount: expected, noteSuffix: "มัดจำ 50% งวดแรก" });
+      void notifyCustomerLogged(sb, updated, `✅ รับมัดจำออเดอร์ ${updated.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${remain.toLocaleString()} บาท ชำระก่อนจัดส่ง${whtAsk}\n${link}`, "ยืนยันรับมัดจำ");
+      void reportPaidToTP(updated, "SlipOK อัตโนมัติ", { amount: received, noteSuffix: `มัดจำ 50% งวดแรก${dedNote}` });
     } else {
-      void notifyCustomerLogged(sb, updated, `✅ ยืนยันการชำระเงินออเดอร์ ${updated.id} แล้ว กำลังเริ่มงานให้ครับ\n${link}`, "ยืนยันการชำระเงิน");
-      void reportPaidToTP(updated, "SlipOK อัตโนมัติ"); // ส่งเข้า msVerify ระบบ Admin (fire-and-forget)
+      void notifyCustomerLogged(sb, updated, `✅ ยืนยันการชำระเงินออเดอร์ ${updated.id} แล้ว กำลังเริ่มงานให้ครับ${whtAsk}\n${link}`, "ยืนยันการชำระเงิน");
+      // ส่งเข้า msVerify ระบบ Admin (fire-and-forget) — โดนหักมา = แจ้งยอดจริงพร้อมเหตุผล
+      void reportPaidToTP(updated, "SlipOK อัตโนมัติ", verify.deduction ? { amount: received, noteSuffix: dedNote.replace(/^ · /, "") } : undefined);
     }
     if (!balancePhase) void cutStockForOrder(updated); // ตัดสต๊อกวัสดุที่ผูกไว้ (มัดจำ = เริ่มงานแล้วก็ตัดเลย)
     void bumpSoldForOrder(updated.id); // ยอด "ขายแล้ว" หน้าเว็บ (กันซ้ำในตัวเอง)

@@ -44,11 +44,12 @@ export function chipStyle(s: OrderStatus) {
   return { color: t.fg, background: t.bg };
 }
 
-export default function StatusChip({ s }: { s: OrderStatus }) {
+export default function StatusChip({ s, label }: { s: OrderStatus; label?: string }) {
+  // label = ข้อความโชว์แทนชื่อสถานะ (สี/สไตล์ยังอิง s) — ใช้กับ "ชำระแล้ว 50% แรก" ของออเดอร์มัดจำ
   return (
     <span className="dkb-chip" data-done={CLOSED.includes(s) ? "1" : undefined} style={chipStyle(s)}>
       <i />
-      {s}
+      {label ?? s}
     </span>
   );
 }

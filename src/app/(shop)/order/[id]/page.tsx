@@ -11,8 +11,8 @@ import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
-import { adminDiscountAmount, amountDueNow, itemDiscountAmount, orderBalance, orderItemDiscounts, orderTotal, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
-import { fetchOrderForCustomer, reportPayment, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
+import { adminDiscountAmount, amountDueNow, itemDiscountAmount, orderBalance, orderItemDiscounts, orderStatusLabel, orderTotal, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { fetchOrderForCustomer, reportPayment, reviewGiftProof, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
 import { setAppendTarget } from "@/lib/append-order";
@@ -21,6 +21,21 @@ import Portal from "@/components/Portal";
 import { SpecLines } from "@/components/SpecLines";
 import { LINE_URL } from "@/components/LineButton";
 import { canAccessAdmin } from "@/lib/auth";
+
+/*
+ * ── สไตล์ปุ่ม/ช่องกรอกใน lightbox ──
+ * ImageLightbox เรนเดอร์ผ่าน Portal นอก .shopp — คลาส ord-btn/ord-input (scope .shopp) ไปไม่ถึง
+ * จึงต้องแต่งเต็มในตัวเอง: โทนสำหรับพื้นมืด ปุ่มหลักเด่นชัด กดง่ายด้วยนิ้วโป้ง (≥44px)
+ */
+const LB_OK =
+  "whitespace-nowrap rounded-full bg-emerald-500 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-500/40 transition hover:bg-emerald-400 active:scale-95 disabled:opacity-50";
+const LB_EDIT =
+  "whitespace-nowrap rounded-full border border-rose-300/60 bg-white/5 px-5 py-3 text-sm font-bold text-rose-200 transition hover:bg-rose-500/25 active:scale-95";
+const LB_DANGER =
+  "whitespace-nowrap rounded-full bg-rose-500 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-rose-500/30 transition hover:bg-rose-400 active:scale-95 disabled:opacity-50";
+const LB_QUIET = "whitespace-nowrap rounded-full bg-white/10 px-5 py-2.5 text-sm font-semibold text-white/80 transition hover:bg-white/20 active:scale-95";
+const LB_INPUT =
+  "w-full rounded-xl border border-white/20 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-300";
 
 /** ป้ายขั้นตอนฝั่งลูกค้า (คำอ่านง่ายกว่าฝั่งหลังบ้าน) — ลำดับตรงกับ STEP_OF */
 const STEPS = ["สั่งซื้อ", "ชำระเงิน", "ตรวจแบบงาน", "ผลิต", "จัดส่ง"];
@@ -68,6 +83,15 @@ export default function CustomerOrderPage() {
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [note, setNote] = useState("");
   const [busyIdx, setBusyIdx] = useState<number | null>(null);
+  /* ตรวจแบบ "ของแถม" — สถานะแยกจากรายการสินค้า (อ้างด้วย promoId) */
+  const [giftEditing, setGiftEditing] = useState<string | null>(null);
+  const [giftNote, setGiftNote] = useState("");
+  const [giftBusy, setGiftBusy] = useState<string | null>(null);
+  /* ขยายดูรูปของแถม — อ้างด้วย promoId+ตำแหน่ง (ไม่เก็บ src ตรง ๆ) ให้ปุ่มอนุมัติใน lightbox ใช้ข้อมูลล่าสุดเสมอ */
+  const [giftLightbox, setGiftLightbox] = useState<{ promoId: string; kind: "art" | "proof"; idx: number } | null>(null);
+  const [giftLbEdit, setGiftLbEdit] = useState(false);
+  const [giftLbNote, setGiftLbNote] = useState("");
+  const [giftLbConfirm, setGiftLbConfirm] = useState(false);
   const [actionErr, setActionErr] = useState("");
   // อ้างอิงด้วย index (ไม่เก็บ src ตรง ๆ) — ให้ปุ่มอนุมัติ/เลื่อนรูปใน lightbox ใช้ข้อมูลล่าสุดเสมอ
   const [lightbox, setLightbox] = useState<{ itemIdx: number; proofIdx: number } | null>(null);
@@ -273,6 +297,22 @@ export default function CustomerOrderPage() {
     setEditingIdx(null);
     setNote("");
     return res.order ?? null;
+  }
+
+  /** ส่งผลตรวจแบบ "ของแถม" — อนุมัติ/ขอแก้ทั้งชุด · คืน true เมื่อสำเร็จ (lightbox ใช้ปิดกล่องพิมพ์) */
+  async function actGift(promoId: string, action: "approve" | "request", noteText?: string): Promise<boolean> {
+    setActionErr("");
+    setGiftBusy(promoId);
+    const res = await reviewGiftProof(orderId, orderKey, promoId, action, action === "request" ? (noteText ?? giftNote) : undefined);
+    setGiftBusy(null);
+    if (!res.ok) {
+      setActionErr(res.error ?? "ส่งผลตรวจไม่สำเร็จ");
+      return false;
+    }
+    if (res.order) setOrder(res.order);
+    setGiftEditing(null);
+    setGiftNote("");
+    return true;
   }
 
   /** ลูกค้าอัปโหลดสลิปแจ้งโอน (ทั้งจ่ายครั้งแรกและจ่ายส่วนต่างที่สั่งเพิ่ม) */
@@ -647,7 +687,7 @@ export default function CustomerOrderPage() {
           </div>
           <div className="flex flex-col items-end gap-2">
             <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ring-1 ${STATUS_STYLES[order.status]}`}>
-              {order.status}
+              {orderStatusLabel(order)}
             </span>
             <Link
               href={`/order/${encodeURIComponent(orderId)}/receipt${orderKey ? `?key=${encodeURIComponent(orderKey)}` : ""}`}
@@ -1210,6 +1250,171 @@ export default function CustomerOrderPage() {
               </div>
             );
           })}
+
+          {/* 🎁 การ์ดของแถม — งานคัสตอมเหมือนสินค้า: โชว์ลายที่ส่งมา + แบบจากร้าน ให้กดอนุมัติ/ขอแก้ได้ */}
+          {(order.gifts ?? []).map((g) => {
+            const gProofs = g.proofs ?? [];
+            const showProofZone = g.needArtwork || gProofs.length > 0 || (g.artworkUrls?.length ?? 0) > 0;
+            return (
+              <div key={g.promoId} className="ord-card p-4 sm:p-5" style={{ borderColor: "var(--gift-line, #bbe7cd)" }}>
+                <div className="flex justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="ord-title text-[1rem]">
+                      🎁 ของแถมฟรี — {g.name}
+                      {g.size ? ` (${g.size})` : ""}
+                    </p>
+                    <p className="mt-1 text-xs t-soft">
+                      {giftLinesOf(g)
+                        .map((ln) => `${ln.label} ×${ln.qty}`)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                  <span className="ord-title shrink-0 text-sm t-ok">ฟรี</span>
+                </div>
+
+                {showProofZone && (
+                  <>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className="ord-title text-[.82rem]">
+                        🖼 แบบงานของแถม
+                        {!gProofs.length && (g.artworkUrls?.length ?? 0) > 0 && (
+                          <span className="ml-1 t-faint" style={{ fontFamily: "var(--body)" }}>— ตอนนี้แสดงลายที่คุณส่งมาไว้ก่อน</span>
+                        )}
+                      </span>
+                      {g.proofStatus && (
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${PROOF_STYLES[g.proofStatus]}`}>
+                          {g.proofStatus}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* ยังไม่มีแบบจากร้าน → โชว์ลายที่ลูกค้าส่งมาไว้ก่อน */}
+                    {!gProofs.length ? (
+                      <>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {(g.artworkUrls ?? []).map((u, k) => (
+                            <button
+                              key={`${u}-${k}`}
+                              type="button"
+                              onClick={() => setGiftLightbox({ promoId: g.promoId, kind: "art", idx: k })}
+                              className="w-24"
+                              title="ลายที่คุณส่งมา — แตะเพื่อดูเต็ม"
+                            >
+                              <span className="ord-proof">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={u} alt={`ลายของแถมที่คุณส่ง ${k + 1}`} style={{ objectFit: "cover" }} />
+                                <span className="ord-proof-n">ลายที่คุณส่ง</span>
+                              </span>
+                            </button>
+                          ))}
+                          <span className="ord-proof-empty" style={{ width: "6rem" }}>
+                            🎨 รอแบบ<br />จากร้าน
+                          </span>
+                        </div>
+                        <p className="mt-1.5 text-[11px] leading-relaxed t-faint">
+                          {(g.artworkUrls?.length ?? 0) > 0
+                            ? "ทีมกราฟฟิกกำลังจัดทำแบบของแถมจากลายของคุณ เดี๋ยวจะแจ้งให้เข้ามาตรวจครับ"
+                            : "ของแถมจะใช้ลายเดียวกับสินค้าที่สั่ง — ถ้าอยากใช้ลายอื่น ส่งรูปมาทางไลน์ได้เลยครับ"}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {gProofs.map((p, j) => (
+                            <button
+                              key={`${p.url}-${j}`}
+                              type="button"
+                              onClick={() => setGiftLightbox({ promoId: g.promoId, kind: "proof", idx: j })}
+                              className="w-24"
+                              title="แตะเพื่อดูเต็ม"
+                              aria-label={`ขยายดูแบบของแถม รูปที่ ${j + 1}`}
+                            >
+                              <span className={`ord-proof${p.review === "อนุมัติ" ? " approved" : p.review === "ขอแก้ไข" ? " revise" : ""}`}>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={p.url} alt={`แบบของแถม รูปที่ ${j + 1}`} style={{ objectFit: "cover" }} />
+                                <span className="ord-proof-n">รูปที่ {j + 1}</span>
+                                {p.review && (
+                                  <span className={`ord-proof-mark ${p.review === "อนุมัติ" ? "ok" : "revise"}`}>
+                                    {p.review === "อนุมัติ" ? "✓" : "✏"}
+                                  </span>
+                                )}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-1.5 text-[11px] t-faint">แตะรูปเพื่อดูขนาดเต็ม</p>
+                      </>
+                    )}
+
+                    {g.proofStatus === "ขอแก้ไข" && g.proofNote && (
+                      <p className="ord-note danger mt-3 px-3 py-2 text-xs">
+                        ✏️ คุณขอแก้ไข: “{g.proofNote}” — ทีมกราฟฟิกกำลังแก้ให้ครับ
+                      </p>
+                    )}
+                    {g.proofStatus === "อนุมัติ" && (
+                      <p className="ord-note ok mt-3 px-3 py-2 text-xs font-semibold">
+                        ✅ คุณอนุมัติแบบของแถมแล้ว — ทางร้านจะจัดทำให้พร้อมออเดอร์เลย
+                      </p>
+                    )}
+                    {g.proofStatus === "รอตรวจ" &&
+                      (giftEditing === g.promoId ? (
+                        <div className="ord-sub mt-3 p-3">
+                          <label className="ord-title mb-1.5 block text-xs">อยากให้แก้ตรงไหน?</label>
+                          <textarea
+                            value={giftNote}
+                            onChange={(e) => setGiftNote(e.target.value)}
+                            rows={3}
+                            placeholder="เช่น ขอเปลี่ยนสีพื้นหลัง · ขยับลายให้อยู่กลาง"
+                            className="ord-input"
+                          />
+                          <div className="mt-2.5 flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void actGift(g.promoId, "request")}
+                              disabled={!giftNote.trim() || giftBusy === g.promoId}
+                              className="ord-btn danger sm"
+                            >
+                              {giftBusy === g.promoId ? "กำลังส่ง…" : "ส่งคำขอแก้ไข"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setGiftEditing(null);
+                                setGiftNote("");
+                              }}
+                              className="ord-btn quiet sm"
+                            >
+                              ยกเลิก
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void actGift(g.promoId, "approve")}
+                            disabled={giftBusy === g.promoId}
+                            className="ord-btn ok sm"
+                          >
+                            {giftBusy === g.promoId ? "กำลังส่ง…" : "✅ อนุมัติแบบของแถม"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setGiftEditing(g.promoId);
+                              setGiftNote("");
+                            }}
+                            className="ord-btn danger-ghost sm"
+                          >
+                            ✏️ ขอแก้ไข
+                          </button>
+                        </div>
+                      ))}
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* ขวา: สรุป (ติดหนึบตอนเลื่อน) */}
@@ -1233,19 +1438,9 @@ export default function CustomerOrderPage() {
                     <span>ฟรี</span>
                   </div>
                 ))}
-                {/* 🎨 ลายที่จะพิมพ์บนของแถม — ให้ลูกค้าเช็คได้ว่าร้านจะใช้ลายไหน */}
+                {/* 🎨 สถานะลายบรรทัดเดียวพอ — รูปลาย/แบบงานย้ายไปการ์ดของแถมในรายการด้านซ้าย (ลูกค้ากดอนุมัติที่นั่น) */}
                 {giftArtLabel(g) && (
                   <p className="mt-0.5 text-[11px] t-soft">🎨 {giftArtLabel(g)}</p>
-                )}
-                {(g.artworkUrls?.length ?? 0) > 0 && (
-                  <div className="mt-1 flex flex-wrap gap-1.5">
-                    {(g.artworkUrls ?? []).map((u, k) => (
-                      <a key={u} href={u} target="_blank" rel="noreferrer">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={u} alt={`ลายของแถม ${k + 1}`} className="h-12 w-12 rounded-lg object-cover ring-1 ring-emerald-200" />
-                      </a>
-                    ))}
-                  </div>
                 )}
               </div>
             ))}
@@ -1457,6 +1652,133 @@ export default function CustomerOrderPage() {
         </Link>
       </div>
 
+      {/* ขยายดูรูปของแถม — footer มีปุ่มอนุมัติ/ขอแก้เหมือน lightbox ของสินค้า (ตัดสินทั้งชุดของแถม) */}
+      {giftLightbox &&
+        (() => {
+          const g = (order.gifts ?? []).find((x) => x.promoId === giftLightbox.promoId);
+          if (!g) return null;
+          const isProof = giftLightbox.kind === "proof";
+          const urls = isProof ? (g.proofs ?? []).map((p) => p.url) : (g.artworkUrls ?? []);
+          const src = urls[giftLightbox.idx];
+          if (!src) return null;
+          const many = urls.length > 1;
+          const go = (d: number) =>
+            setGiftLightbox({ ...giftLightbox, idx: (giftLightbox.idx + d + urls.length) % urls.length });
+          const closeAll = () => {
+            setGiftLightbox(null);
+            setGiftLbEdit(false);
+            setGiftLbNote("");
+            setGiftLbConfirm(false);
+          };
+          const busy = giftBusy === g.promoId;
+          return (
+            <ImageLightbox
+              src={src}
+              alt={isProof ? `แบบของแถม รูปที่ ${giftLightbox.idx + 1}` : `ลายของแถมที่คุณส่ง ${giftLightbox.idx + 1}`}
+              caption={`🎁 ${g.name} — ${isProof ? "แบบของแถม" : "ลายที่คุณส่งมา"}`}
+              counter={many ? `${giftLightbox.idx + 1} / ${urls.length}` : undefined}
+              onPrev={many ? () => go(-1) : undefined}
+              onNext={many ? () => go(1) : undefined}
+              onClose={closeAll}
+              footer={
+                !isProof ? undefined : g.proofStatus === "อนุมัติ" ? (
+                  <p className="text-center text-sm font-bold text-teal-300">✅ คุณอนุมัติแบบของแถมนี้แล้ว</p>
+                ) : g.proofStatus === "ขอแก้ไข" ? (
+                  <p className="text-center text-sm font-bold text-rose-300">
+                    ✏️ ขอแก้ไขแบบของแถมแล้ว{g.proofNote ? ` — “${g.proofNote}”` : ""}
+                  </p>
+                ) : giftLbConfirm ? (
+                  <div className="rounded-2xl bg-white/10 p-3 text-center">
+                    <p className="text-xs leading-relaxed text-white/90">
+                      ทางบริษัทจะ<strong className="text-rose-300">จัดทำของแถมตามภาพที่อนุมัติทันที</strong> — หาก
+                      <strong className="text-amber-300">ไม่มั่นใจ</strong> รบกวน
+                      <strong className="text-white">ตรวจสอบอีกรอบ</strong> หรือ
+                      <strong className="text-teal-300">สอบถามแอดมิน</strong>ก่อนนะคะ 🙏
+                    </p>
+                    <div className="mt-2.5 flex flex-wrap justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          markConfirmedOnce();
+                          setGiftLbConfirm(false);
+                          void (await actGift(g.promoId, "approve"));
+                        }}
+                        disabled={busy}
+                        className={LB_OK}
+                      >
+                        ✅ ยืนยันอนุมัติแบบของแถม
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setGiftLbConfirm(false)}
+                        className={LB_QUIET}
+                      >
+                        ↩️ ขอดูอีกครั้ง
+                      </button>
+                    </div>
+                  </div>
+                ) : giftLbEdit ? (
+                  <div className="rounded-2xl bg-white/10 p-3">
+                    <textarea
+                      value={giftLbNote}
+                      onChange={(e) => setGiftLbNote(e.target.value)}
+                      rows={2}
+                      autoFocus
+                      placeholder="อยากให้แก้ตรงไหนในแบบของแถม?"
+                      className={LB_INPUT}
+                    />
+                    <div className="mt-2 flex justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (await actGift(g.promoId, "request", giftLbNote)) {
+                            setGiftLbEdit(false);
+                            setGiftLbNote("");
+                          }
+                        }}
+                        disabled={!giftLbNote.trim() || busy}
+                        className={LB_DANGER}
+                      >
+                        {busy ? "กำลังส่ง…" : "ส่งคำขอแก้ไข"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setGiftLbEdit(false)}
+                        className={LB_QUIET}
+                      >
+                        ยกเลิก
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!confirmedOnce()) {
+                          setGiftLbConfirm(true);
+                          return;
+                        }
+                        void actGift(g.promoId, "approve");
+                      }}
+                      disabled={busy}
+                      className={LB_OK}
+                    >
+                      {busy ? "กำลังส่ง…" : "✅ อนุมัติแบบของแถม"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGiftLbEdit(true)}
+                      className={LB_EDIT}
+                    >
+                      ✏️ ขอแก้ไขแบบนี้
+                    </button>
+                  </div>
+                )
+              }
+            />
+          );
+        })()}
       {lightbox &&
         (() => {
           const it = order.items[lightbox.itemIdx];
@@ -1521,15 +1843,14 @@ export default function CustomerOrderPage() {
                           if (target >= 0) openLightbox(lightbox.itemIdx, target);
                         }}
                         disabled={busyIdx === lightbox.itemIdx}
-                        className="ord-btn ok"
+                        className={LB_OK}
                       >
                         ✅ ยืนยันอนุมัติ — ให้เริ่มผลิตได้เลย
                       </button>
                       <button
                         type="button"
                         onClick={() => setLbConfirm(false)}
-                        className="ord-btn"
-                        style={{ background: "rgba(255,255,255,.1)", color: "rgba(255,255,255,.8)" }}
+                        className={LB_QUIET}
                       >
                         ↩️ ขอดูอีกครั้ง
                       </button>
@@ -1543,7 +1864,7 @@ export default function CustomerOrderPage() {
                       rows={2}
                       autoFocus
                       placeholder="อยากให้แก้ตรงไหนในภาพนี้?"
-                      className="ord-input"
+                      className={LB_INPUT}
                     />
                     <div className="mt-2 flex justify-center gap-2">
                       <button
@@ -1556,15 +1877,14 @@ export default function CustomerOrderPage() {
                           }
                         }}
                         disabled={!lbNote.trim() || busyIdx === lightbox.itemIdx}
-                        className="ord-btn danger sm"
+                        className={LB_DANGER}
                       >
                         {busyIdx === lightbox.itemIdx ? "กำลังส่ง…" : "ส่งคำขอแก้ไขภาพนี้"}
                       </button>
                       <button
                         type="button"
                         onClick={() => setLbEdit(false)}
-                        className="ord-btn sm"
-                        style={{ background: "rgba(255,255,255,.1)", color: "rgba(255,255,255,.8)" }}
+                        className={LB_QUIET}
                       >
                         ยกเลิก
                       </button>
@@ -1582,15 +1902,14 @@ export default function CustomerOrderPage() {
                       type="button"
                       onClick={approveThis}
                       disabled={busyIdx === lightbox.itemIdx}
-                      className="ord-btn yolk"
+                      className={LB_OK}
                     >
                       {busyIdx === lightbox.itemIdx ? "กำลังส่ง…" : "✅ อนุมัติภาพนี้"}
                     </button>
                     <button
                       type="button"
                       onClick={() => setLbEdit(true)}
-                      className="ord-btn"
-                      style={{ background: "rgba(255,255,255,.12)", color: "#FFB8C7", borderColor: "rgba(255,158,176,.5)" }}
+                      className={LB_EDIT}
                     >
                       ✏️ ขอแก้ไขภาพนี้
                     </button>

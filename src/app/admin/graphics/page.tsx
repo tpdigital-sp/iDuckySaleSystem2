@@ -20,6 +20,7 @@ import {
   daysToUseBy,
   graphicTodoItems,
   isSelfDesigned,
+  orderStatusLabel,
   proofsOf,
   proofUnit,
   type Order,
@@ -304,7 +305,7 @@ function QueueRow({ o }: { o: Order }) {
         }
       />
       <RowSide>
-        <StatusChip s={o.status} />
+        <StatusChip s={o.status} label={orderStatusLabel(o)} />
         <span className="dkb-amt" style={todo === 0 ? { color: "var(--dk-mint-ink)" } : undefined}>
           {todo > 0 ? `${todo} ลาย` : "ครบแล้ว"}
         </span>

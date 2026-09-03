@@ -241,6 +241,17 @@ export interface OrderGift {
    * ว่าง/ไม่มี ทั้งที่ needArtwork = ลูกค้าเลือก "ใช้ลายเดียวกับสินค้าที่สั่ง"
    */
   artworkUrls?: string[];
+  /**
+   * 🖼 แบบงานของแถมที่ร้านส่งให้ลูกค้าตรวจ — วงจรเดียวกับแบบของสินค้า (อนุมัติ/ขอแก้ไข)
+   * (import type จาก admin-data เป็น type-only จึงไม่วนลูปกับที่ admin-data import OrderGift)
+   */
+  proofs?: import("./admin-data").Proof[];
+  /** สถานะการตรวจแบบของแถมทั้งชุด — ไม่มีค่า = ยังไม่ส่งแบบ/ยังไม่ตรวจ */
+  proofStatus?: import("./admin-data").ProofStatus;
+  /** คอมเมนต์จากลูกค้าเมื่อขอแก้ไขแบบของแถม */
+  proofNote?: string;
+  /** เวลาอัป/อัปเดตแบบของแถมล่าสุด (ISO) */
+  proofUpdatedAt?: string;
 }
 
 /**

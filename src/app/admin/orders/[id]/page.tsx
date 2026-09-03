@@ -18,7 +18,9 @@ import {
   lineUserOf,
   orderItemDiscounts,
   orderFullyPaid,
+  orderNetTransfer,
   orderTotal,
+  orderWhtAmount,
   packGate,
   PROOF_STYLES,
   proofsOf,
@@ -28,6 +30,7 @@ import {
   NOTE_SIZES,
   NOTE_WEIGHTS,
   noteHasText,
+  orderStatusLabel,
   PROOF_UNITS,
   proofUnit,
   type Order,
@@ -424,6 +427,32 @@ function normalizeProofUnit(raw: string): string {
   return raw.trim();
 }
 
+/** แถบผลตรวจสลิปอัตโนมัติ (SlipOK) — ใช้ซ้ำได้ทั้งสลิปงวดแรกและงวดหลัง */
+function SlipVerifyNote({ v }: { v: NonNullable<Order["slipVerify"]> }) {
+  return (
+    <p
+      className={`mt-2 rounded-xl px-3 py-2 text-xs font-semibold ring-1 ${
+        v.status === "pass" ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : "bg-amber-50 text-amber-800 ring-amber-200"
+      }`}
+    >
+      {v.status === "pass" ? (
+        <>
+          ✅ SlipOK ตรวจแล้ว: ยอดถูกต้อง {v.amount ? formatPrice(v.amount) : ""} — ยืนยันการชำระให้อัตโนมัติ
+          {v.transRef ? ` · อ้างอิง ${v.transRef}` : ""}
+          {v.deduction && (
+            <span className="mt-1 block text-sky-700">
+              💡 โอนน้อยกว่ายอดตั้ง {formatPrice(v.deduction.amount)} — {v.deduction.label}
+              {v.deduction.kind === "wht" ? " · อย่าลืมตามหนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ) จากลูกค้า" : ""}
+            </span>
+          )}
+        </>
+      ) : (
+        <>⚠️ SlipOK ตรวจไม่ผ่าน{v.detail ? `: ${v.detail}` : ""} — กรุณาตรวจสลิปเอง</>
+      )}
+    </p>
+  );
+}
+
 export default function AdminOrderDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -550,7 +579,15 @@ export default function AdminOrderDetailPage() {
   }
   const [printMenu, setPrintMenu] = useState(false);
   const [slipUploading, setSlipUploading] = useState(false);
+  /** กำลังลากไฟล์ค้างอยู่เหนือช่องแนบสลิปงวดที่ 2 — ไว้ไฮไลต์ช่องรับ */
+  const [slipDragOver, setSlipDragOver] = useState(false);
   const adminSlipInput = useRef<HTMLInputElement | null>(null);
+  /** แนบลาย "ของแถม" แทนลูกค้า — promoId ที่กำลังอัปโหลด (null = ว่าง) */
+  const [giftArtBusy, setGiftArtBusy] = useState<string | null>(null);
+  /** กำลังลากไฟล์ค้างเหนือช่องแนบลายของแถมโปรไหน — ไว้ไฮไลต์ช่องรับ */
+  const [giftArtDragOver, setGiftArtDragOver] = useState<string | null>(null);
+  /** กำลังอัป "แบบงานของแถม" ให้ลูกค้าตรวจอยู่โปรไหน */
+  const [giftProofBusy, setGiftProofBusy] = useState<string | null>(null);
   /** สถานะที่รอเปลี่ยน "หลังแนบสลิปเสร็จ" — ตั้งตอนกด "แนบสลิปตอนนี้" ในกล่องเตือน */
   const pendingStatus = useRef<OrderStatus | null>(null);
   /** สลิปที่กำลังจะแนบเป็นงวดไหน (ออเดอร์มัดจำมีสองงวด เก็บคนละช่อง) */
@@ -1331,6 +1368,103 @@ export default function AdminOrderDetailPage() {
     });
   }
 
+  /**
+   * แนบลายให้ "ของแถม" แทนลูกค้า (ส่งมาทางแชท/ไลน์) — งานร้านเป็นงานคัสตอม ของแถมก็สั่งลายได้
+   * เก็บลง OrderGift.artworkUrls ของโปรนั้น + ติดธง needArtwork ให้ใบงานขึ้นบรรทัดลายเสมอ
+   */
+  async function addGiftArtwork(promoId: string, fileList: FileList | File[] | null) {
+    if (!order || !fileList) return;
+    const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    setGiftArtBusy(promoId);
+    const urls: string[] = [];
+    for (const f of files.slice(0, 8)) {
+      try {
+        // ยิงตรงเข้า Supabase — รูปจากมือถือใหญ่เกินเพดาน body ของ Netlify ประจำ
+        urls.push(await uploadArtworkFile(f));
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "อัปโหลดภาพลายไม่สำเร็จ");
+        break;
+      }
+    }
+    setGiftArtBusy(null);
+    if (!urls.length) return;
+    setOrder((cur) => {
+      if (!cur) return cur;
+      const gifts = (cur.gifts ?? []).map((g) =>
+        g.promoId === promoId ? { ...g, needArtwork: true, artworkUrls: [...(g.artworkUrls ?? []), ...urls] } : g
+      );
+      const name = (cur.gifts ?? []).find((g) => g.promoId === promoId)?.name ?? "ของแถม";
+      const next = withLog({ ...cur, gifts }, actor, "แนบลายของแถม", `${name} +${urls.length} รูป`);
+      if (!demo) void saveOrderAdmin(next);
+      return next;
+    });
+  }
+
+  function removeGiftArtwork(promoId: string, url: string) {
+    if (!order) return;
+    const gifts = (order.gifts ?? []).map((g) =>
+      g.promoId === promoId ? { ...g, artworkUrls: (g.artworkUrls ?? []).filter((u) => u !== url) } : g
+    );
+    const next = withLog({ ...order, gifts }, actor, "ลบลายของแถม", order.gifts?.find((g) => g.promoId === promoId)?.name);
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
+
+  /**
+   * อัป "แบบงานของแถม" ให้ลูกค้าตรวจ — วงจรเดียวกับแบบสินค้า (รอตรวจ → ลูกค้าอนุมัติ/ขอแก้)
+   * เก็บใน OrderGift.proofs · อัปรูปยิงตรง Supabase เหมือนลาย
+   */
+  async function addGiftProof(promoId: string, fileList: FileList | File[] | null) {
+    if (!order || !fileList) return;
+    const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    setGiftProofBusy(promoId);
+    const at = new Date().toISOString();
+    const urls: string[] = [];
+    for (const f of files.slice(0, 8)) {
+      try {
+        urls.push(await uploadArtworkFile(f));
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "อัปโหลดแบบของแถมไม่สำเร็จ");
+        break;
+      }
+    }
+    setGiftProofBusy(null);
+    if (!urls.length) return;
+    setOrder((cur) => {
+      if (!cur) return cur;
+      const gifts = (cur.gifts ?? []).map((g) =>
+        g.promoId === promoId
+          ? {
+              ...g,
+              proofs: [...(g.proofs ?? []), ...urls.map((url) => ({ url, at }))],
+              proofStatus: "รอตรวจ" as const,
+              proofNote: undefined,
+              proofUpdatedAt: at,
+            }
+          : g
+      );
+      const name = (cur.gifts ?? []).find((g) => g.promoId === promoId)?.name ?? "ของแถม";
+      const next = withLog({ ...cur, gifts }, actor, "อัปแบบของแถมให้ลูกค้าตรวจ", `🎁 ${name} +${urls.length} รูป`);
+      if (!demo) void saveOrderAdmin(next);
+      return next;
+    });
+  }
+
+  function removeGiftProof(promoId: string, url: string) {
+    if (!order) return;
+    const gifts = (order.gifts ?? []).map((g) => {
+      if (g.promoId !== promoId) return g;
+      const proofs = (g.proofs ?? []).filter((p) => p.url !== url);
+      // ไม่เหลือแบบแล้ว → เคลียร์สถานะตรวจ กลับเป็น "ยังไม่ส่งแบบ"
+      return proofs.length ? { ...g, proofs } : { ...g, proofs: undefined, proofStatus: undefined, proofNote: undefined };
+    });
+    const next = withLog({ ...order, gifts }, actor, "ลบแบบของแถม", order.gifts?.find((g) => g.promoId === promoId)?.name);
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
+
   function removeProof(itemIndex: number, proofIndex: number) {
     if (!order) return;
     const items = order.items.map((it, i) => {
@@ -1542,32 +1676,68 @@ export default function AdminOrderDetailPage() {
               {demo && <span className="ml-1">· ตัวอย่าง</span>}
             </p>
           </div>
-          {/* ขวาบน = ยอดรวมก่อน แล้วสถานะอยู่ใต้ยอด (เรียงลงเป็นแถวเดียวชิดขวา) */}
-          <div className="ml-auto flex flex-col items-end gap-2">
-            {seesMoney && (
-              <div className="text-right">
-                <div className={LBL}>ยอดรวม</div>
-                <div className="dkb-num mt-1 text-[1.6rem]">{formatPrice(orderTotal(order))}</div>
-              </div>
-            )}
+          {/* ขวาบน = แผงเงิน+สถานะชิดขวา — เลขที่โชว์ใหญ่คือ "เงินที่ยังต้องเก็บ" ไม่ใช่ยอดตั้งบิล (งานค้างเด่นกว่างานจบ)
+              และมีบรรทัดเทียบใต้เลขเสมอ (ยอดรวม/รับแล้วเท่าไหร่) เลขไม่ลอยเดี่ยว */}
+          <div className="ml-auto flex flex-col items-end gap-2.5">
+            {seesMoney &&
+              (() => {
+                const total = orderTotal(order);
+                const dep = order.deposit;
+                const canceled = order.status === "ยกเลิก";
+                const paidUp = orderFullyPaid(order);
+                const m = canceled
+                  ? { label: "ยอดรวม", num: total, hot: false, sub: "ออเดอร์ถูกยกเลิก" }
+                  : paidUp
+                    ? { label: "ยอดรวม", num: total, hot: false, sub: "✓ รับเงินครบแล้ว", subTone: "text-emerald-600" }
+                    : dep && !dep.firstPaidAt
+                      ? { label: "รอมัดจำงวดแรก", num: Math.min(total, dep.amount), hot: true, sub: `ยอดรวมทั้งบิล ${formatPrice(total)}` }
+                      : dep && !dep.settledAt
+                        ? { label: "ค้างงวดที่ 2", num: amountDueNow(order), hot: true, sub: `ยอดรวม ${formatPrice(total)} · รับแล้ว ${formatPrice(dep.amount)}` }
+                        : order.paidTotal != null && total - order.paidTotal > 0
+                          ? { label: "ค้างส่วนต่าง", num: total - order.paidTotal, hot: true, sub: `ยอดรวม ${formatPrice(total)} · รับแล้ว ${formatPrice(order.paidTotal)}` }
+                          : {
+                              label: "ยอดรวม",
+                              num: total,
+                              hot: false,
+                              sub:
+                                order.status === "รอชำระเงิน"
+                                  ? "ยังไม่ได้รับเงิน"
+                                  : order.status === "รอตรวจสอบ"
+                                    ? "ลูกค้าแจ้งโอนแล้ว — รอตรวจ"
+                                    : undefined,
+                            };
+                return (
+                  <div className="text-right">
+                    <div className={`text-[11px] font-bold uppercase tracking-[0.09em] ${m.hot ? "text-rose-500" : "text-slate-400"}`}>
+                      {m.label}
+                    </div>
+                    <div className={`dkb-num mt-0.5 text-[1.6rem] ${m.hot ? "text-rose-600" : ""}`}>{formatPrice(m.num)}</div>
+                    {m.sub && <p className={`mt-1 text-[11px] font-semibold ${m.subTone ?? "text-slate-400"}`}>{m.sub}</p>}
+                  </div>
+                );
+              })()}
             <div className="flex items-center gap-2">
-              <span className={LBL}>สถานะตอนนี้</span>
-              {/* ป้ายสถานะ = ตัวเลือกในตัว — กดที่ป้ายแล้วเลือกสถานะใหม่ได้เลย ไม่ต้องมีปุ่มแยก */}
+              {/* ป้ายสถานะ = ตัวเลือกในตัว — สีป้ายบอกสถานะอยู่แล้ว ไม่ต้องมี label ซ้ำ · กดที่ป้ายเลือกสถานะใหม่ได้เลย */}
               {mayEdit ? (
                 <div className="relative">
                   <select
                     value={order.status}
                     onChange={(e) => void changeStatus(e.target.value as OrderStatus)}
-                    aria-label="เปลี่ยนสถานะออเดอร์"
-                    title="เปลี่ยนสถานะออเดอร์"
-                    className={`cursor-pointer appearance-none rounded-xl py-1.5 pl-3 pr-8 text-sm font-bold ring-1 focus:outline-none focus:ring-2 focus:ring-[#2472ae]/40 ${STATUS_STYLES[order.status]}`}
+                    aria-label="สถานะตอนนี้ — กดเพื่อเปลี่ยน"
+                    title="สถานะตอนนี้ — กดเพื่อเปลี่ยน"
+                    className={`cursor-pointer appearance-none rounded-xl py-2 pl-3.5 pr-8 text-sm font-bold ring-1 focus:outline-none focus:ring-2 focus:ring-[#2472ae]/40 ${STATUS_STYLES[order.status]}`}
                   >
                     {STATUS_GROUPS.map((g) => (
                       <optgroup key={g.title} label={g.title}>
                         {g.items.map((st) => (
                           // "ชำระแล้ว" ปิดไว้สำหรับคนที่ไม่มีสิทธิ์ยืนยันเงินเข้า — เห็นได้แต่เลือกไม่ได้
                           <option key={st} value={st} disabled={st === "ชำระแล้ว" && !mayMarkPaid}>
-                            {st}
+                            {/* ออเดอร์มัดจำ: ป้าย "ชำระแล้ว" ต้องบอกว่าเงินเข้างวดไหน (แรก = ครึ่งเดียว · หลัง = ครบ 100%) */}
+                            {st === "ชำระแล้ว" && order.deposit?.firstPaidAt
+                              ? order.deposit.settledAt
+                                ? "ชำระแล้ว 50% หลัง"
+                                : "ชำระแล้ว 50% แรก"
+                              : st}
                             {st === "ชำระแล้ว" && !mayMarkPaid
                               ? "  (เฉพาะคนที่มีสิทธิ์ยืนยันเงินเข้า)"
                               : NEXT_STATUS[order.status]?.to === st
@@ -1586,8 +1756,8 @@ export default function AdminOrderDetailPage() {
                   <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] opacity-70">▼</span>
                 </div>
               ) : (
-                <span className={`inline-flex rounded-xl px-3 py-1.5 text-sm font-bold ring-1 ${STATUS_STYLES[order.status]}`}>
-                  {order.status}
+                <span className={`inline-flex rounded-xl px-3.5 py-2 text-sm font-bold ring-1 ${STATUS_STYLES[order.status]}`}>
+                  {orderStatusLabel(order)}
                 </span>
               )}
             </div>
@@ -2854,6 +3024,201 @@ export default function AdminOrderDetailPage() {
                 </div>
               );
             })}
+            {/* 🎁 การ์ดของแถม — ขึ้นเป็นรายการงานต่อท้าย ให้แนบลาย/เห็นว่าต้องใส่กล่อง
+                (ข้อมูลอยู่ order.gifts เหมือนเดิม — ห้ามยัดเป็นสินค้า ฿0 เดี๋ยวปนยอด/สต๊อก) */}
+            {(order.gifts ?? []).map((g) => (
+              <div key={g.promoId} className="overflow-hidden rounded-2xl bg-emerald-50/50 ring-1 ring-emerald-200">
+                <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+                  <span className="text-lg" aria-hidden>🎁</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-emerald-800">
+                      ของแถมฟรี — {g.name}
+                      {g.size ? ` (${g.size})` : ""}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-emerald-700">
+                      {giftLinesOf(g)
+                        .map((ln) => `${ln.label} ×${ln.qty}`)
+                        .join(" · ")}{" "}
+                      · ต้องใส่กล่องไปกับออเดอร์
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-xs font-bold text-emerald-600">ฟรี</span>
+                </div>
+                {/* 🎨 ลาย + 🖼 แบบงานของแถม — โครงเดียวกับการ์ดสินค้า (ซ้ายลายจากลูกค้า · ขวาแบบที่ส่งให้ตรวจ) */}
+                {(giftArtLabel(g) || mayEdit) && (
+                  <div className="grid gap-3 border-t border-emerald-100 px-4 py-3 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)]">
+                    <div
+                      className={`rounded-xl border p-3 transition ${
+                        giftArtDragOver === g.promoId ? "border-sky-400 bg-sky-100/70" : "border-sky-200 bg-sky-50/40"
+                      }`}
+                      /* ลากรูปมาวางได้ทั้งกล่อง (หลายรูปพร้อมกัน) — เข้าท่ออัปโหลดเดียวกับการกดเลือกไฟล์ */
+                      onDragOver={(e) => {
+                        if (!mayEdit) return;
+                        e.preventDefault();
+                        if (giftArtBusy !== g.promoId) setGiftArtDragOver(g.promoId);
+                      }}
+                      onDragLeave={() => setGiftArtDragOver(null)}
+                      onDrop={(e) => {
+                        if (!mayEdit) return;
+                        e.preventDefault();
+                        setGiftArtDragOver(null);
+                        if (giftArtBusy === g.promoId) return;
+                        const files = Array.from(e.dataTransfer.files ?? []);
+                        if (!files.length) return;
+                        if (!files.some((f) => f.type.startsWith("image/"))) {
+                          setErr("ลายต้องเป็นไฟล์รูปภาพ (PNG / JPG / WEBP)");
+                          return;
+                        }
+                        void addGiftArtwork(g.promoId, files);
+                      }}
+                    >
+                      <p className="text-xs font-bold text-sky-800">
+                        🎨 ลายของแถม ({g.artworkUrls?.length ?? 0})
+                        <span className="ml-1 font-normal text-sky-600">
+                          — {giftArtLabel(g) ?? "ลูกค้าส่งลายมาทางแชท แนบแทนได้ · ลากไฟล์มาวางในกล่องนี้ได้เลย"}
+                        </span>
+                      </p>
+                      {(g.artworkUrls?.length ?? 0) > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {(g.artworkUrls ?? []).map((u, k) => (
+                            <span key={u} className="group relative block">
+                              <button
+                                type="button"
+                                onClick={() => setLightbox({ src: u, alt: `ลายของแถม ${k + 1}`, caption: `ของแถม — ${g.name}` })}
+                                className="block h-16 w-16 overflow-hidden rounded-lg ring-1 ring-slate-200 transition hover:ring-2 hover:ring-sky-400"
+                                title="ดูรูปเต็ม"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={u} alt={`ลายของแถม ${k + 1}`} className="h-full w-full object-cover" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void downloadImage(u, `${order.id}-ของแถม-ลาย${k + 1}.${(u.split(".").pop() || "jpg").split("?")[0]}`)}
+                                title="โหลดรูปนี้เก็บลงเครื่อง"
+                                aria-label="ดาวน์โหลดลายของแถมรูปนี้"
+                                className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-sky-600 text-[10px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100"
+                              >
+                                ⬇
+                              </button>
+                              {mayEdit && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (confirm(`เอาลายของแถมใบที่ ${k + 1} ออกจากออเดอร์นี้?\n(ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับออเดอร์)`))
+                                      removeGiftArtwork(g.promoId, u);
+                                  }}
+                                  title="เอารูปนี้ออกจากออเดอร์"
+                                  aria-label="เอาลายของแถมรูปนี้ออก"
+                                  className="absolute -left-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-rose-500 text-[10px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {/* แนบลายเพิ่มได้เสมอ — ไทล์เดียวกับกล่องลายจากลูกค้า */}
+                      {mayEdit && (
+                        <label
+                          className="mt-2 inline-grid h-16 w-16 cursor-pointer place-items-center rounded-lg border-2 border-dashed border-sky-300 bg-white text-center text-[10px] font-bold leading-tight text-sky-600 transition hover:bg-sky-50"
+                          title="แนบลายของแถม (ลากวางก็ได้)"
+                        >
+                          {giftArtBusy === g.promoId ? "อัป…" : <span>＋<br />แนบลาย</span>}
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            multiple
+                            className="hidden"
+                            disabled={giftArtBusy === g.promoId}
+                            onChange={(e) => {
+                              void addGiftArtwork(g.promoId, e.target.files);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
+
+                    {/* ขวา: แบบของแถมที่ส่งให้ลูกค้าตรวจ — ลูกค้าเห็นชุดนี้ในการ์ดของแถม แล้วกดอนุมัติ/ขอแก้ */}
+                    <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-3">
+                      <p className="text-xs font-bold text-violet-800">
+                        🖼 แบบของแถมที่ส่งให้ตรวจ ({(g.proofs ?? []).length})
+                        <span className="ml-1 font-normal text-violet-600">— ลูกค้าเห็นชุดนี้ และกดอนุมัติ / ขอแก้ไขได้</span>
+                        {g.proofStatus && (
+                          <span className={`ml-1.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${PROOF_STYLES[g.proofStatus]}`}>
+                            {g.proofStatus}
+                          </span>
+                        )}
+                      </p>
+                      {g.proofStatus === "ขอแก้ไข" && g.proofNote && (
+                        <p className="mt-1.5 rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
+                          ✏️ ลูกค้าขอแก้: “{g.proofNote}”
+                        </p>
+                      )}
+                      {(g.proofs ?? []).length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {(g.proofs ?? []).map((p, k) => (
+                            <span key={p.url} className="group relative block">
+                              <button
+                                type="button"
+                                onClick={() => setLightbox({ src: p.url, alt: `แบบของแถม รูปที่ ${k + 1}`, caption: `ของแถม — ${g.name}` })}
+                                className="block h-16 w-16 overflow-hidden rounded-lg ring-1 ring-violet-200 transition hover:ring-2 hover:ring-violet-400"
+                                title="ดูรูปเต็ม"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={p.url} alt={`แบบของแถม ${k + 1}`} className="h-full w-full object-cover" />
+                              </button>
+                              {p.review && (
+                                <span
+                                  className={`absolute bottom-1 left-1 rounded px-1 text-[9px] font-bold text-white ${
+                                    p.review === "อนุมัติ" ? "bg-emerald-500" : "bg-rose-500"
+                                  }`}
+                                >
+                                  {p.review === "อนุมัติ" ? "✓ อนุมัติ" : "✏ ขอแก้"}
+                                </span>
+                              )}
+                              {mayEdit && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (confirm(`ลบแบบของแถมรูปที่ ${k + 1}?`)) removeGiftProof(g.promoId, p.url);
+                                  }}
+                                  title="ลบแบบรูปนี้"
+                                  aria-label="ลบแบบของแถมรูปนี้"
+                                  className="absolute -left-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-rose-500 text-[10px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {mayEdit && (
+                        <label
+                          className="mt-2 inline-grid h-16 w-16 cursor-pointer place-items-center rounded-lg border-2 border-dashed border-violet-300 bg-white text-center text-[10px] font-bold leading-tight text-violet-600 transition hover:bg-violet-50"
+                          title="อัปแบบของแถมให้ลูกค้าตรวจ"
+                        >
+                          {giftProofBusy === g.promoId ? "อัป…" : <span>＋<br />อัปแบบ</span>}
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            multiple
+                            className="hidden"
+                            disabled={giftProofBusy === g.promoId}
+                            onChange={(e) => {
+                              void addGiftProof(g.promoId, e.target.files);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
 
           {/* เพิ่มรายการพิเศษ — งานสั่งทำที่ไม่มีหน้าเว็บ (เฉพาะคนที่แก้ออเดอร์ได้) */}
@@ -2887,101 +3252,101 @@ export default function AdminOrderDetailPage() {
           <div className={seesMoney ? "" : "hidden"}>
             <GH t="emerald">💰 ยอดเงิน</GH>
             <div className={`mt-2 ${soft("emerald")}`}>
-              <div className="flex justify-between text-sm">
-                <span className={muted}>รวมสินค้า ({qty} ชิ้น)</span>
-                <span>{formatPrice(subtotal)}</span>
+              {/* โซนคำนวณ — ตัวเลขเงินอยู่คอลัมน์ขวาคอลัมน์เดียว (tabular) หลักตรงกันไล่ลงถึงยอดรวม · ตัวเลือก/ช่องกรอกเกาะฝั่งชื่อแถว */}
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className={muted}>รวมสินค้า · {qty} ชิ้น</span>
+                <span className="font-semibold tabular-nums text-slate-800">{formatPrice(subtotal)}</span>
               </div>
-              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-sm">
-                <span className={muted}>ค่าจัดส่ง</span>
+              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
                 {mayEdit ? (
                   /* เลือกวิธีส่งจากตั้งค่าร้าน — ราคาเติมอัตโนมัติ แล้วแก้ตัวเลขต่อได้ (จุดเดียวของทั้งหน้า) */
-                  <span className="flex items-center gap-1.5">
-                    <select
-                      value={shipMethods.find((m) => m.name === order.shippingLabel)?.id ?? ""}
-                      onChange={(e) => {
-                        const m = shipMethods.find((x) => x.id === e.target.value);
-                        if (!m) return;
-                        applyOrder({
-                          ...order,
-                          shipping: (m.name.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา") as Order["shipping"],
-                          shippingLabel: m.name,
-                          shippingCost: Math.max(0, m.price),
-                        });
-                      }}
-                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
-                    >
-                      <option value="" disabled>
-                        {order.shippingLabel || "เลือกวิธีส่ง…"}
-                      </option>
-                      {shipMethods.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name} — ฿{m.price}
+                  <>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className={`shrink-0 ${muted}`}>ค่าจัดส่ง</span>
+                      <select
+                        value={shipMethods.find((m) => m.name === order.shippingLabel)?.id ?? ""}
+                        onChange={(e) => {
+                          const m = shipMethods.find((x) => x.id === e.target.value);
+                          if (!m) return;
+                          applyOrder({
+                            ...order,
+                            shipping: (m.name.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา") as Order["shipping"],
+                            shippingLabel: m.name,
+                            shippingCost: Math.max(0, m.price),
+                          });
+                        }}
+                        className="min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
+                      >
+                        <option value="" disabled>
+                          {order.shippingLabel || "เลือกวิธีส่ง…"}
                         </option>
-                      ))}
-                    </select>
+                        {shipMethods.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} — ฿{m.price}
+                          </option>
+                        ))}
+                      </select>
+                    </span>
                     <input
                       type="number"
                       min={0}
                       value={order.shippingCost}
                       onChange={(e) => setOrder((cur) => (cur ? { ...cur, shippingCost: Math.max(0, Number(e.target.value) || 0) } : cur))}
                       onBlur={persist}
-                      className="w-16 rounded-lg border border-slate-200 bg-white px-2 py-1 text-right text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
+                      className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-right text-xs font-semibold tabular-nums text-slate-800 focus:border-amber-300 focus:outline-none"
                     />
-                  </span>
+                  </>
                 ) : (
-                  <span>{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
+                  <>
+                    <span className={muted}>ค่าจัดส่ง</span>
+                    <span className="font-semibold tabular-nums text-slate-800">{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
+                  </>
                 )}
               </div>
               {(order.gifts ?? []).map((g) => (
                 <div key={g.promoId}>
                   {giftLinesOf(g).map((ln, k) => (
-                    <div key={k} className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
-                      <span>🎁 ของแถม — {ln.label} ×{ln.qty}</span>
-                      <span>ฟรี</span>
+                    <div key={k} className="mt-1.5 flex items-center justify-between gap-3 text-xs font-semibold text-emerald-600">
+                      <span className="min-w-0">🎁 ของแถม — {ln.label} ×{ln.qty}</span>
+                      <span className="shrink-0">ฟรี</span>
                     </div>
                   ))}
                   {/* 🎨 ของแถมที่ต้องพิมพ์ลาย — บอกกราฟฟิกว่าใช้ลายสินค้า หรือลูกค้าแนบมาต่างหาก */}
                   {giftArtLabel(g) && (
                     <p className="mt-0.5 text-[11px] text-slate-500">🎨 {giftArtLabel(g)}</p>
                   )}
-                  {(g.artworkUrls?.length ?? 0) > 0 && (
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      {(g.artworkUrls ?? []).map((u, k) => (
-                        <a key={u} href={u} target="_blank" rel="noreferrer">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={u} alt={`ลายของแถม ${k + 1}`} className="h-12 w-12 rounded-lg object-cover ring-1 ring-emerald-200" />
-                        </a>
-                      ))}
-                    </div>
-                  )}
+                  {/* การ์ดยอดเงินโชว์ตัวเลขล้วน — แนบ/ลบลายของแถมทำที่การ์ดของแถมในโซนงานแบบด้านบน */}
                 </div>
               ))}
               {order.discount && order.discount.amount > 0 && (
-                <div className="mt-1.5 flex justify-between text-sm font-semibold text-emerald-600">
-                  <span>{order.discount.label}</span>
-                  <span>−{formatPrice(order.discount.amount)}</span>
+                <div className="mt-1.5 flex items-center justify-between gap-3 text-xs font-semibold text-emerald-600">
+                  <span className="min-w-0">{order.discount.label}</span>
+                  <span className="shrink-0 tabular-nums">−{formatPrice(order.discount.amount)}</span>
                 </div>
               )}
               {orderItemDiscounts(order) > 0 && (
-                <div className="mt-1.5 flex justify-between text-sm font-semibold text-rose-500">
+                <div className="mt-1.5 flex items-center justify-between gap-3 text-xs font-semibold text-rose-500">
                   <span>ส่วนลดรายรายการ</span>
-                  <span>−{formatPrice(orderItemDiscounts(order))}</span>
+                  <span className="tabular-nums">−{formatPrice(orderItemDiscounts(order))}</span>
                 </div>
               )}
-              {/* ส่วนลดทั้งบิล (แอดมินใส่เอง) — บันทึกตอนออกจากช่อง + ลง log */}
+              {/* ส่วนลดทั้งบิล (แอดมินใส่เอง) — บันทึกตอนออกจากช่อง + ลง log · ช่องเหตุผลเกาะฝั่งชื่อแถว คอลัมน์ขวาเป็นตัวเลขล้วน */}
               {mayEdit ? (
                 <div className="mt-1.5 flex items-center justify-between gap-2 text-sm">
-                  <input
-                    value={order.adminDiscount?.label ?? ""}
-                    onChange={(e) =>
-                      setOrder((cur) =>
-                        cur ? { ...cur, adminDiscount: { amount: cur.adminDiscount?.amount ?? 0, label: e.target.value } } : cur
-                      )
-                    }
-                    onBlur={persist}
-                    placeholder="ส่วนลดทั้งบิล (เหตุผล)"
-                    className="w-full min-w-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
-                  />
+                  <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <span className={`shrink-0 ${muted}`}>ส่วนลดทั้งบิล</span>
+                    <input
+                      value={order.adminDiscount?.label ?? ""}
+                      onChange={(e) =>
+                        setOrder((cur) =>
+                          cur ? { ...cur, adminDiscount: { amount: cur.adminDiscount?.amount ?? 0, label: e.target.value } } : cur
+                        )
+                      }
+                      onBlur={persist}
+                      placeholder="เหตุผล (ถ้ามี)"
+                      className="w-full min-w-0 max-w-44 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
+                    />
+                  </span>
                   <span className="flex shrink-0 items-center gap-1 font-semibold text-rose-500">
                     −
                     <input
@@ -3050,10 +3415,137 @@ export default function AdminOrderDetailPage() {
                   </div>
                 )
               )}
-              <div className="mt-2.5 flex justify-between border-t border-slate-100 pt-2.5 font-bold text-slate-900">
-                <span>ยอดรวม</span>
-                <span>{formatPrice(orderTotal(order))}</span>
+              {/* ── แถบสรุป: ยอดรวมบิล → หัก ณ ที่จ่าย → ยอดโอนจริง จบในก้อนเดียว ──
+                  ไม่หักภาษี = ยอดรวมคือเลขใหญ่ · หักภาษี = ยอดโอนจริงคือเลขใหญ่ (เลขที่ต้องเทียบเงินเข้าบัญชี) */}
+              <div className="mt-2.5 rounded-xl bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200/70">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-sm font-bold text-slate-700">ยอดรวม</span>
+                  <span
+                    className={
+                      order.wht && orderWhtAmount(order) > 0
+                        ? "text-sm font-bold tabular-nums text-slate-600"
+                        : "text-lg font-extrabold tabular-nums tracking-tight text-slate-900"
+                    }
+                  >
+                    {formatPrice(orderTotal(order))}
+                  </span>
+                </div>
+
+                {/* หัก ณ ที่จ่าย — ลูกค้านิติบุคคลโอนยอดหลังหัก 1%/3% ส่วนต่างต้องตามใบ 50 ทวิ */}
+                {(mayEdit || order.wht) && (
+                  <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-slate-200 pt-1.5 text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <span className={muted}>หัก ณ ที่จ่าย</span>
+                      {mayEdit ? (
+                        <select
+                          value={order.wht?.rate ?? 0}
+                          onChange={(e) => {
+                            const rate = Number(e.target.value) || 0;
+                            const amt = Math.round(orderTotal(order) * rate) / 100;
+                            const next = withLog(
+                              { ...order, wht: rate > 0 ? { rate, amount: amt } : undefined },
+                              actor,
+                              "หัก ณ ที่จ่าย",
+                              rate > 0 ? `หัก ${rate}% = ${formatPrice(amt)} · ยอดโอนจริง ${formatPrice(orderTotal(order) - amt)}` : "ยกเลิกหัก ณ ที่จ่าย"
+                            );
+                            applyOrder(next);
+                          }}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
+                        >
+                          <option value={0}>ไม่หัก</option>
+                          <option value={1}>1%</option>
+                          <option value={3}>3%</option>
+                        </select>
+                      ) : (
+                        <span className="font-semibold text-slate-600">{order.wht!.rate}%</span>
+                      )}
+                    </span>
+                    {order.wht &&
+                      (mayEdit ? (
+                        <span className="flex items-center gap-1 font-semibold text-rose-500">
+                          −
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={order.wht.amount}
+                            onChange={(e) =>
+                              setOrder((cur) =>
+                                cur?.wht ? { ...cur, wht: { ...cur.wht, amount: Math.max(0, Number(e.target.value) || 0) } } : cur
+                              )
+                            }
+                            onFocus={(e) => (e.currentTarget.dataset.orig = String(order.wht?.amount ?? 0))}
+                            onBlur={(e) => {
+                              const orig = Number(e.currentTarget.dataset.orig || 0);
+                              const now = order.wht?.amount ?? 0;
+                              if (orig === now) return persist();
+                              // บัญชีลูกค้าคิดฐานไม่เท่าเรา (เช่น ก่อน VAT) — แอดมินแก้ตัวเลขให้ตรงใบ 50 ทวิได้
+                              const next = withLog(order, actor, "หัก ณ ที่จ่าย", `แก้ยอดหักเป็น ${formatPrice(now)} (${order.wht?.rate}%)`);
+                              applyOrder(next);
+                            }}
+                            className="w-20 rounded-md border border-slate-200 bg-white px-1.5 py-1 text-right text-xs font-semibold tabular-nums text-rose-600 focus:border-amber-300 focus:outline-none"
+                          />
+                        </span>
+                      ) : (
+                        <span className="font-semibold tabular-nums text-rose-500">−{formatPrice(orderWhtAmount(order))}</span>
+                      ))}
+                  </div>
+                )}
+                {order.wht && orderWhtAmount(order) > 0 && (
+                  <>
+                    <div className="mt-1.5 flex items-baseline justify-between gap-3 border-t border-slate-200 pt-1.5">
+                      <span className="text-sm font-bold text-emerald-700">ยอดโอนจริง</span>
+                      <span className="text-lg font-extrabold tabular-nums tracking-tight text-emerald-700">{formatPrice(orderNetTransfer(order))}</span>
+                    </div>
+                    <p className="mt-0.5 text-[10px] leading-snug text-slate-400">
+                      ลูกค้าหักภาษี {order.wht.rate}% แล้วโอนยอดนี้ — ตามหนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ) มาแทนส่วนต่าง
+                    </p>
+                  </>
+                )}
               </div>
+
+              {/* ── ออเดอร์ธรรมดาที่ยังไม่มีสลิป: ช่องแนบสลิปอยู่ใกล้ยอดรวมเลย (ลูกค้าส่งมาทางแชท) ── */}
+              {!order.deposit &&
+                mayEdit &&
+                !order.slipUrl &&
+                !order.slipPath &&
+                (order.status === "รอชำระเงิน" || order.status === "รอตรวจสอบ") && (
+                  <button
+                    type="button"
+                    onClick={() => pickAdminSlip("first")}
+                    disabled={slipUploading}
+                    /* รับลากรูปมาวางได้เหมือนช่องสลิปงวดที่ 2 — เข้าท่ออัปโหลดเดียวกับการกดเลือกไฟล์ */
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (!slipUploading) setSlipDragOver(true);
+                    }}
+                    onDragLeave={() => setSlipDragOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setSlipDragOver(false);
+                      if (slipUploading) return;
+                      const f = e.dataTransfer.files?.[0];
+                      if (!f) return;
+                      if (!f.type.startsWith("image/")) {
+                        setErr("สลิปต้องเป็นไฟล์รูปภาพ (PNG / JPG / WEBP)");
+                        return;
+                      }
+                      slipPhase.current = "first";
+                      void uploadAdminSlip(f);
+                    }}
+                    className={`mt-2.5 w-full rounded-lg border border-dashed px-3 py-2 text-left text-[11px] font-semibold transition disabled:opacity-50 ${
+                      slipDragOver
+                        ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                        : "border-slate-300 bg-transparent text-slate-500 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700"
+                    }`}
+                  >
+                    {slipUploading
+                      ? "กำลังอัปโหลด…"
+                      : slipDragOver
+                        ? "🫳 วางรูปตรงนี้ได้เลย"
+                        : "📎 รอสลิปการโอน — ลูกค้าส่งมาทางแชท? แตะเลือกรูป หรือลากมาวาง"}
+                  </button>
+                )}
 
               {/* ── มัดจำ 50% — ลูกค้าขอโอนงวดแรกก่อนเริ่มงาน ── */}
               {!order.deposit && mayEdit && (order.status === "รอชำระเงิน" || order.status === "รอตรวจสอบ") && (
@@ -3065,108 +3557,206 @@ export default function AdminOrderDetailPage() {
                   ➗ เปิดโหมดมัดจำ 50% (โอนก่อน {formatPrice(Math.ceil(orderTotal(order) / 2))})
                 </button>
               )}
-              {order.deposit && (
-                <div className="mt-2.5 space-y-1.5 rounded-xl bg-violet-50/60 p-2.5 ring-1 ring-violet-100">
-                  <div className="flex items-center justify-between text-xs font-semibold">
-                    <span className="text-violet-700">➗ มัดจำ 50% {order.deposit.firstPaidAt ? "· รับแล้ว ✓" : "· รอโอน"}</span>
-                    <span className={order.deposit.firstPaidAt ? "text-emerald-600" : "text-slate-700"}>{formatPrice(order.deposit.amount)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs font-semibold">
-                    <span className="text-violet-700">ยอดคงเหลือ {order.deposit.settledAt ? "· ครบแล้ว ✓" : "· เก็บก่อนส่ง"}</span>
-                    <span className={order.deposit.settledAt ? "text-emerald-600" : "text-rose-600"}>
-                      {formatPrice(Math.max(0, orderTotal(order) - order.deposit.amount))}
-                    </span>
-                  </div>
-                  {mayEdit && !order.deposit.firstPaidAt && (
-                    <div className="flex gap-1.5 pt-0.5">
-                      {/* ยืนยันรับมัดจำ = ดันสถานะเป็น "ชำระแล้ว" ด้วย → ใช้สิทธิ์ยืนยันเงินเข้าเหมือนกัน */}
-                      {mayMarkPaid && (
-                        <button
-                          type="button"
-                          onClick={confirmDepositFirst}
-                          className="flex-1 rounded-lg bg-violet-600 py-1.5 text-[11px] font-bold text-white transition hover:bg-violet-700"
+              {order.deposit &&
+                (() => {
+                  /**
+                   * ใบแบ่งงวดแบบบัญชีร้าน — งวดที่ "ยังค้าง" ต้องเด่นสุดในกล่อง (ตัวเลขใหญ่ ตัวหนา)
+                   * งวดที่จบแล้วหุบเป็นบรรทัดเงียบสีจาง มี ✓ กับเวลารับเงินพอ (งานค้างเด่นกว่างานจบเสมอ)
+                   */
+                  const dep = order.deposit;
+                  const balance = Math.max(0, orderTotal(order) - dep.amount);
+                  const phase: "first" | "balance" | "done" = !dep.firstPaidAt ? "first" : !dep.settledAt ? "balance" : "done";
+                  const thDT = (iso: string) =>
+                    new Date(iso).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+                  const rowQuiet = "text-xs font-semibold text-slate-400";
+                  const rowHot = "text-[13px] font-bold text-slate-800";
+                  return (
+                    <div className="mt-2.5 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                      {/* หัวใบ: ชื่อโหมด + สถานะรวมของการแบ่งงวด */}
+                      <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+                        <span className="text-[11px] font-bold tracking-wide text-slate-500">แบ่งชำระ 2 งวด · มัดจำ 50%</span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${
+                            phase === "done"
+                              ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                              : phase === "balance"
+                                ? "bg-rose-50 text-rose-700 ring-rose-200"
+                                : "bg-yellow-50 text-yellow-700 ring-yellow-200"
+                          }`}
                         >
-                          ✔️ ยืนยันรับมัดจำ (ตรวจเอง)
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={cancelDeposit}
-                        className="rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-bold text-slate-500 transition hover:bg-slate-50"
-                      >
-                        ยกเลิกโหมด
-                      </button>
-                    </div>
-                  )}
-                  {/* สลิปงวดหลัง — เก็บคนละใบกับสลิปมัดจำ (ลูกค้าแนบเอง หรือแอดมินแนบแทน) */}
-                  {seesMoney && order.deposit.firstPaidAt && (
-                    <div className="flex items-center gap-1.5 pt-0.5">
-                      {order.deposit.balanceSlipUrl ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setLightbox({
-                                src: order.deposit!.balanceSlipUrl!,
-                                alt: "สลิปยอดคงเหลือ",
-                                caption: `${order.id} · งวดหลัง`,
-                              })
-                            }
-                            aria-label="ขยายดูสลิปงวดหลัง"
-                            className="h-9 w-9 shrink-0 cursor-zoom-in overflow-hidden rounded-md border border-violet-200"
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={order.deposit.balanceSlipUrl} alt="สลิปยอดคงเหลือ" className="h-full w-full object-cover" />
-                          </button>
-                          <span className="min-w-0 flex-1 text-[10px] font-semibold text-violet-600">🧾 มีสลิปงวดหลังแล้ว</span>
-                          {isSuperAdmin && (
+                          {phase === "done" ? "รับครบ 100% แล้ว" : phase === "balance" ? "ค้างงวดที่ 2" : "รอมัดจำงวดแรก"}
+                        </span>
+                      </div>
+
+                      {/* งวดที่ 1 — มัดจำ 50% แรก */}
+                      <div className={`flex items-center justify-between gap-3 px-3 ${phase === "first" ? "py-2.5" : "py-2"}`}>
+                        <div className="min-w-0">
+                          <p className={phase === "first" ? rowHot : rowQuiet}>
+                            งวดที่ 1 · มัดจำ 50% แรก{dep.firstPaidAt ? " ✓ รับแล้ว" : ""}
+                          </p>
+                          {phase === "first" ? (
+                            <p className="text-[10px] font-semibold text-yellow-700">รอลูกค้าโอนก่อนเริ่มงาน</p>
+                          ) : (
+                            dep.firstPaidAt && <p className="text-[10px] text-slate-400">{thDT(dep.firstPaidAt)}</p>
+                          )}
+                        </div>
+                        <span
+                          className={
+                            phase === "first"
+                              ? "text-xl font-extrabold tabular-nums tracking-tight text-slate-900"
+                              : "text-xs font-bold tabular-nums text-slate-400"
+                          }
+                        >
+                          {formatPrice(dep.amount)}
+                        </span>
+                      </div>
+                      <div className="mx-3 border-t border-dashed border-slate-200" />
+
+                      {/* งวดที่ 2 — ยอดคงเหลือ 50% หลัง */}
+                      <div className={`flex items-center justify-between gap-3 px-3 ${phase === "balance" ? "py-2.5" : "py-2"}`}>
+                        <div className="min-w-0">
+                          <p className={phase === "balance" ? "text-[13px] font-bold text-rose-700" : rowQuiet}>
+                            งวดที่ 2 · อีก 50% หลัง{phase === "done" ? " ✓ รับแล้ว" : ""}
+                          </p>
+                          {phase === "balance" ? (
+                            <p className="text-[10px] font-semibold text-rose-500">เก็บให้ครบก่อนจัดส่ง</p>
+                          ) : phase === "done" && dep.settledAt ? (
+                            <p className="text-[10px] text-slate-400">{thDT(dep.settledAt)}</p>
+                          ) : (
+                            <p className="text-[10px] text-slate-400">เก็บก่อนจัดส่ง</p>
+                          )}
+                        </div>
+                        <span
+                          className={
+                            phase === "balance"
+                              ? "text-2xl font-extrabold tabular-nums tracking-tight text-rose-600"
+                              : "text-xs font-bold tabular-nums text-slate-400"
+                          }
+                        >
+                          {formatPrice(balance)}
+                        </span>
+                      </div>
+
+                      {/* ช่องสลิปงวดที่ 2 — เกาะใต้แถวงวดที่มันเป็นหลักฐาน (ไม่ไปแข่งพื้นที่กับปุ่มยืนยัน) */}
+                      {seesMoney && dep.firstPaidAt && (dep.balanceSlipUrl || (mayEdit && phase === "balance")) && (
+                        <div className="mx-3 mb-2.5">
+                          {dep.balanceSlipUrl ? (
+                            <div className="flex items-center gap-2.5 rounded-lg bg-slate-50 px-2.5 py-1.5 ring-1 ring-slate-200">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setLightbox({ src: dep.balanceSlipUrl!, alt: "สลิปยอดคงเหลือ", caption: `${order.id} · งวดที่ 2 (50% หลัง)` })
+                                }
+                                aria-label="ขยายดูสลิปงวดหลัง"
+                                className="h-9 w-9 shrink-0 cursor-zoom-in overflow-hidden rounded-md border border-slate-200 transition hover:border-amber-300"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={dep.balanceSlipUrl} alt="สลิปยอดคงเหลือ" className="h-full w-full object-cover" />
+                              </button>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-[11px] font-bold text-slate-600">สลิปงวดที่ 2 มาแล้ว</p>
+                                <p className="text-[10px] text-slate-400">แตะรูปเพื่อขยายดู</p>
+                              </div>
+                              {isSuperAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={deleteBalanceSlip}
+                                  title="แนบผิดใบ — ลบแล้วแนบใหม่ได้"
+                                  className="shrink-0 rounded-full px-2 py-1 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
+                                >
+                                  🗑 ลบ
+                                </button>
+                              )}
+                            </div>
+                          ) : (
                             <button
                               type="button"
-                              onClick={deleteBalanceSlip}
-                              title="แนบผิดใบ — ลบแล้วแนบใหม่ได้"
-                              className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
+                              onClick={() => pickAdminSlip("balance")}
+                              disabled={slipUploading}
+                              /* รับลากรูปมาวางได้ด้วย — เข้าท่ออัปโหลดเดียวกับการกดเลือกไฟล์ */
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                if (!slipUploading) setSlipDragOver(true);
+                              }}
+                              onDragLeave={() => setSlipDragOver(false)}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                setSlipDragOver(false);
+                                if (slipUploading) return;
+                                const f = e.dataTransfer.files?.[0];
+                                if (!f) return;
+                                if (!f.type.startsWith("image/")) {
+                                  setErr("สลิปต้องเป็นไฟล์รูปภาพ (PNG / JPG / WEBP)");
+                                  return;
+                                }
+                                slipPhase.current = "balance";
+                                void uploadAdminSlip(f);
+                              }}
+                              className={`w-full rounded-lg border border-dashed px-3 py-2 text-left text-[11px] font-semibold transition disabled:opacity-50 ${
+                                slipDragOver
+                                  ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                                  : "border-slate-300 bg-transparent text-slate-500 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700"
+                              }`}
                             >
-                              🗑 ลบ
+                              {slipUploading
+                                ? "กำลังอัปโหลด…"
+                                : slipDragOver
+                                  ? "🫳 วางรูปตรงนี้ได้เลย"
+                                  : "📎 รอสลิปงวดที่ 2 — ลูกค้าส่งมาทางแชท? แตะเลือกรูป หรือลากมาวาง"}
                             </button>
                           )}
-                        </>
-                      ) : (
-                        mayEdit &&
-                        !order.deposit.settledAt && (
-                          <button
-                            type="button"
-                            onClick={() => pickAdminSlip("balance")}
-                            disabled={slipUploading}
-                            className="w-full rounded-lg border border-violet-200 bg-white py-1.5 text-[11px] font-bold text-violet-600 transition hover:bg-violet-50 disabled:opacity-50"
-                          >
-                            {slipUploading ? "กำลังอัปโหลด…" : "📎 แนบสลิปงวดหลัง (แทนลูกค้า)"}
-                          </button>
-                        )
+                        </div>
+                      )}
+
+                      {/* ท้ายใบ: หมายเหตุชิดซ้าย · ปุ่มยืนยันกะทัดรัดชิดขวา (จอแคบปุ่มลงมาอยู่ล่าง) */}
+                      {phase !== "done" && (
+                        <div className="border-t border-slate-100 bg-slate-50/70 p-2.5">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <p className="flex-1 text-[10px] leading-snug text-slate-400">
+                              ใบงานพิมพ์ได้ แต่ใบปะหน้าพัสดุ/ใบเสร็จและการยิงเลขยังล็อก จนกว่าจะเก็บครบ 100%
+                            </p>
+                            {mayEdit && phase === "first" && (
+                              <div className="flex shrink-0 gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={cancelDeposit}
+                                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50"
+                                >
+                                  ยกเลิกโหมด
+                                </button>
+                                {/* ยืนยันรับมัดจำ = ดันสถานะเป็น "ชำระแล้ว" ด้วย → ใช้สิทธิ์ยืนยันเงินเข้าเหมือนกัน */}
+                                {mayMarkPaid && (
+                                  <button
+                                    type="button"
+                                    onClick={confirmDepositFirst}
+                                    className="rounded-lg bg-violet-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-violet-700 active:scale-[.98]"
+                                  >
+                                    ยืนยันรับมัดจำ <span className="tabular-nums">{formatPrice(dep.amount)}</span>
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                            {mayEdit && mayMarkPaid && phase === "balance" && (
+                              <button
+                                type="button"
+                                onClick={confirmDepositSettled}
+                                className="shrink-0 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[.98]"
+                              >
+                                ยืนยันรับงวดที่ 2 ครบ <span className="tabular-nums">{formatPrice(balance)}</span>
+                              </button>
+                            )}
+                          </div>
+                          {/* ไม่มีสิทธิ์ยืนยันเงินเข้า — บอกให้รู้ว่าต้องไปตามใคร ไม่ใช่ปุ่มหายเฉย ๆ */}
+                          {mayEdit && !mayMarkPaid && (
+                            <p className="mt-1.5 rounded-lg bg-white px-2 py-1.5 text-[10px] font-semibold leading-snug text-slate-500 ring-1 ring-slate-200">
+                              การยืนยันรับเงินสงวนไว้ให้เจ้าของร้าน (หรือคนที่เปิดสิทธิ์ “ยืนยันเงินเข้า” ไว้) เป็นคนกด
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
-                  )}
-                  {mayEdit && mayMarkPaid && order.deposit.firstPaidAt && !order.deposit.settledAt && (
-                    <button
-                      type="button"
-                      onClick={confirmDepositSettled}
-                      className="w-full rounded-lg bg-emerald-600 py-1.5 text-[11px] font-bold text-white transition hover:bg-emerald-700"
-                    >
-                      ✔️ ยืนยันรับยอดคงเหลือครบ (ตรวจเอง)
-                    </button>
-                  )}
-                  {/* ไม่มีสิทธิ์ยืนยันเงินเข้า — บอกให้รู้ว่าต้องไปตามใคร ไม่ใช่ปุ่มหายเฉย ๆ */}
-                  {mayEdit && !mayMarkPaid && !order.deposit.settledAt && (
-                    <p className="rounded-lg bg-white/70 px-2 py-1.5 text-[10px] font-semibold leading-snug text-violet-600 ring-1 ring-violet-100">
-                      💰 การยืนยันรับเงินสงวนไว้ให้เจ้าของร้าน (หรือคนที่เปิดสิทธิ์ “ยืนยันเงินเข้า” ไว้) เป็นคนกด
-                    </p>
-                  )}
-                  {!order.deposit.settledAt && (
-                    <p className="text-[10px] leading-snug text-violet-500">
-                      ใบงานพิมพ์ได้ แต่ใบปะหน้าพัสดุ/ใบเสร็จและการยิงเลขยังล็อก จนกว่าจะเก็บครบ 100%
-                    </p>
-                  )}
-                </div>
-              )}
+                  );
+                })()}
             </div>
           </div>
         </div>
@@ -3441,70 +4031,105 @@ export default function AdminOrderDetailPage() {
             </div>
           )}
 
-          {order.slipUrl && seesMoney && (
+          {(order.slipUrl || order.deposit?.balanceSlipUrl) && seesMoney && (
             <div>
               <GH t="green">🧾 หลักฐานการโอน</GH>
-              {/* ผลตรวจสลิปอัตโนมัติ (SlipOK) */}
-              {order.slipVerify && (
-                <p
-                  className={`mt-2 rounded-xl px-3 py-2 text-xs font-semibold ring-1 ${
-                    order.slipVerify.status === "pass"
-                      ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-                      : "bg-amber-50 text-amber-800 ring-amber-200"
-                  }`}
-                >
-                  {order.slipVerify.status === "pass" ? (
-                    <>
-                      ✅ SlipOK ตรวจแล้ว: ยอดถูกต้อง {order.slipVerify.amount ? formatPrice(order.slipVerify.amount) : ""} — ยืนยันการชำระให้อัตโนมัติ
-                      {order.slipVerify.transRef ? ` · อ้างอิง ${order.slipVerify.transRef}` : ""}
-                    </>
-                  ) : (
-                    <>⚠️ SlipOK ตรวจไม่ผ่าน{order.slipVerify.detail ? `: ${order.slipVerify.detail}` : ""} — กรุณาตรวจสลิปเอง</>
-                  )}
-                </p>
+              {/* ── สลิปงวดแรก (ออเดอร์มัดจำ = มัดจำ 50% แรก · ออเดอร์ปกติ = เต็มจำนวน) ── */}
+              {order.slipUrl && (
+                <>
+                  {order.slipVerify && <SlipVerifyNote v={order.slipVerify} />}
+                  <div className={`mt-2 flex items-center gap-3 ${soft("green")}`}>
+                    <button
+                      type="button"
+                      onClick={() => setLightbox({ src: order.slipUrl!, alt: "สลิปการโอน", caption: `${order.id} · ${order.deposit ? "มัดจำ 50% แรก" : formatPrice(orderTotal(order))}` })}
+                      aria-label="ขยายดูสลิป"
+                      className="h-14 w-14 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 transition hover:border-amber-300"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={order.slipUrl} alt="สลิปการโอน" className="h-full w-full object-cover" />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-slate-800">
+                        {order.deposit ? "สลิปมัดจำ 50% แรก" : "ลูกค้าแจ้งโอนแล้ว"}
+                        {isSuperAdmin && (
+                          <button
+                            type="button"
+                            onClick={deleteSlip}
+                            className="ml-2 rounded-full px-2 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
+                          >
+                            🗑 ลบสลิป
+                          </button>
+                        )}
+                      </p>
+                      {order.paidReportedAt && (
+                        <p className={`text-xs ${faint}`}>
+                          {new Date(order.paidReportedAt).toLocaleString("th-TH", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setLightbox({ src: order.slipUrl!, alt: "สลิปการโอน", caption: `${order.id} · ${order.deposit ? "มัดจำ 50% แรก" : formatPrice(orderTotal(order))}` })}
+                      className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      ดูเต็ม
+                    </button>
+                  </div>
+                </>
               )}
-              <div className={`mt-2 flex items-center gap-3 ${soft("green")}`}>
-                <button
-                  type="button"
-                  onClick={() => setLightbox({ src: order.slipUrl!, alt: "สลิปการโอน", caption: `${order.id} · ${formatPrice(orderTotal(order))}` })}
-                  aria-label="ขยายดูสลิป"
-                  className="h-14 w-14 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 transition hover:border-amber-300"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={order.slipUrl} alt="สลิปการโอน" className="h-full w-full object-cover" />
-                </button>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-slate-800">
-                    ลูกค้าแจ้งโอนแล้ว
-                    {isSuperAdmin && (
-                      <button
-                        type="button"
-                        onClick={deleteSlip}
-                        className="ml-2 rounded-full px-2 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
-                      >
-                        🗑 ลบสลิป
-                      </button>
-                    )}
-                  </p>
-                  {order.paidReportedAt && (
-                    <p className={`text-xs ${faint}`}>
-                      {new Date(order.paidReportedAt).toLocaleString("th-TH", {
-                        day: "numeric",
-                        month: "short",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setLightbox({ src: order.slipUrl!, alt: "สลิปการโอน", caption: `${order.id} · ${formatPrice(orderTotal(order))}` })}
-                  className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
-                >
-                  ดูเต็ม
-                </button>
-              </div>
+              {/* ── สลิปงวดหลัง (ยอดคงเหลือของออเดอร์มัดจำ) — แยกใบ แยกผลตรวจ ── */}
+              {order.deposit?.balanceSlipUrl && (
+                <>
+                  {order.deposit.balanceVerify && <SlipVerifyNote v={order.deposit.balanceVerify} />}
+                  <div className={`mt-2 flex items-center gap-3 ${soft("green")}`}>
+                    <button
+                      type="button"
+                      onClick={() => setLightbox({ src: order.deposit!.balanceSlipUrl!, alt: "สลิปยอดคงเหลือ", caption: `${order.id} · ยอดคงเหลือ 50% หลัง` })}
+                      aria-label="ขยายดูสลิปงวดหลัง"
+                      className="h-14 w-14 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 transition hover:border-amber-300"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={order.deposit.balanceSlipUrl} alt="สลิปยอดคงเหลือ" className="h-full w-full object-cover" />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-slate-800">
+                        สลิปยอดคงเหลือ 50% หลัง
+                        {isSuperAdmin && (
+                          <button
+                            type="button"
+                            onClick={deleteBalanceSlip}
+                            className="ml-2 rounded-full px-2 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
+                          >
+                            🗑 ลบสลิป
+                          </button>
+                        )}
+                      </p>
+                      {order.deposit.balanceReportedAt && (
+                        <p className={`text-xs ${faint}`}>
+                          {new Date(order.deposit.balanceReportedAt).toLocaleString("th-TH", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setLightbox({ src: order.deposit!.balanceSlipUrl!, alt: "สลิปยอดคงเหลือ", caption: `${order.id} · ยอดคงเหลือ 50% หลัง` })}
+                      className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      ดูเต็ม
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 

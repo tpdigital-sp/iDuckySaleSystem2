@@ -31,6 +31,7 @@ import {
 } from "@/components/admin/ui";
 import {
   MOCK_ORDERS,
+  orderStatusLabel,
   packGate,
   withLog,
   type Order,
@@ -265,7 +266,7 @@ export default function ScanTrackingPage() {
                     {target.address}
                   </p>
                 </div>
-                <StatusChip s={target.status} />
+                <StatusChip s={target.status} label={orderStatusLabel(target)} />
               </div>
               <div className="mt-3">
                 <Btn small onClick={() => reset({ kind: "info", text: "ยกเลิกแล้ว — ยิง QR ออเดอร์ใหม่ได้เลย" })}>
@@ -294,7 +295,7 @@ export default function ScanTrackingPage() {
                     }
                   />
                   <RowSide>
-                    <StatusChip s={o.status} />
+                    <StatusChip s={o.status} label={orderStatusLabel(o)} />
                   </RowSide>
                 </Row>
               ))}

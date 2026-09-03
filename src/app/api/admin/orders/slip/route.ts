@@ -68,7 +68,7 @@ export async function POST(req: Request) {
 
   const updated = withLog(
     balance
-      ? { ...order, deposit: { ...order.deposit!, balanceSlipPath: path, balanceReportedAt: now } }
+      ? { ...order, deposit: { ...order.deposit!, balanceSlipPath: path, balanceReportedAt: now, balanceVerify: undefined } }
       : {
           ...order,
           slipPath: path,
@@ -125,7 +125,7 @@ export async function DELETE(req: Request) {
     await sb.storage.from(BUCKET).remove([order.deposit.balanceSlipPath]);
     const settled = !!order.deposit.settledAt;
     const cleaned = withLog(
-      { ...order, deposit: { ...order.deposit, balanceSlipPath: undefined, balanceSlipUrl: undefined, balanceReportedAt: undefined } },
+      { ...order, deposit: { ...order.deposit, balanceSlipPath: undefined, balanceSlipUrl: undefined, balanceReportedAt: undefined, balanceVerify: undefined } },
       actor.name?.trim() || actor.username,
       "ลบสลิปงวดหลัง",
       settled ? "⚠️ ออเดอร์นี้ยืนยันรับครบแล้ว — ลบหลักฐานงวดหลังออก" : "ให้ลูกค้า/แอดมินแนบใหม่ได้"

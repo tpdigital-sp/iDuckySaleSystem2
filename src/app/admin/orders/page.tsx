@@ -24,6 +24,7 @@ import {
   MOCK_ORDERS,
   ORDER_STATUSES,
   ORDER_STEPS,
+  orderStatusLabel,
   orderTotal,
   proofsOf,
   STEP_OF,
@@ -525,7 +526,7 @@ function OrderRow({
       </span>
 
       <span className="dkb-side">
-        <StatusChip s={o.status} />
+        <StatusChip s={o.status} label={orderStatusLabel(o)} />
         <span className="dkb-amt">
           {seesMoney ? formatPrice(orderTotal(o)) : `${qtyOf(o)} ชิ้น`}
           {/* ยังเก็บเงินไม่ครบ: บอกยอดที่ยังต้องตามเก็บใต้ยอดเต็ม

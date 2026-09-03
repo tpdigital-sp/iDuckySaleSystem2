@@ -24,7 +24,7 @@ import {
   TabRow,
   Tag,
 } from "@/components/admin/ui";
-import { isSelfDesigned, proofsOf, proofUnit, type Order, type OrderItem, type Proof } from "@/lib/admin-data";
+import { isSelfDesigned, orderStatusLabel, proofsOf, proofUnit, type Order, type OrderItem, type Proof } from "@/lib/admin-data";
 import { dayOf, orderMatches, useGraphicsOrders } from "../data";
 
 /**
@@ -252,7 +252,7 @@ export default function DesignReportPage() {
                   >
                     {g.order.id}
                   </Link>
-                  <StatusChip s={g.order.status} />
+                  <StatusChip s={g.order.status} label={orderStatusLabel(g.order)} />
                   <span className="truncate text-[13px]" style={{ color: "var(--dk-navy)" }} title={g.order.customer}>
                     {g.order.customer}
                   </span>
