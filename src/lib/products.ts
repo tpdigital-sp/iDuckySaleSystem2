@@ -109,6 +109,13 @@ export interface ProductOptionChoice {
    */
   popular?: boolean;
   /**
+   * ☝️ ชุด "เลือกได้อย่างเดียว" ในกลุ่มติ๊กหลายอย่าง (display: multi)
+   * ตัวเลือกที่ป้ายนี้ตรงกันถือเป็นชุดเดียวกัน — ติ๊กตัวหนึ่ง ตัวอื่นในชุดจะถูกติ๊กออกให้อัตโนมัติ
+   * เช่น "กระเป๋าเล็กด้านใน (ไม่สกรีน)" กับ "(สกรีน)" เป็นของชิ้นเดียวกัน ต่างกันแค่สกรีนหรือไม่
+   * (ไม่ติ๊กเลยก็ได้ — ต่างจากกลุ่มเลือก 1 อย่างที่ต้องเลือกเสมอ)
+   */
+  exclusiveWith?: string;
+  /**
    * 🏷️ ป้ายสั้น ๆ ท้ายชื่อตัวเลือก เช่น "ฟรี!" · "แนะนำ" — บอกทางเฉย ๆ ไม่มีผลกับราคา
    * (ต่างจาก popular ตรงที่พิมพ์ข้อความเองได้ · ใส่ทั้งคู่ก็ได้ ป้ายจะขึ้นเรียงกัน)
    */
@@ -1051,6 +1058,14 @@ export const MULTI_SEP = " + ";
 /** กลุ่มนี้ให้ลูกค้าติ๊กเลือกได้หลายอย่างไหม */
 export function isMultiOption(opt: ProductOption): boolean {
   return opt.display === "multi";
+}
+
+/**
+ * ป้ายชุด "เลือกได้อย่างเดียว" ของตัวเลือกนี้ (ดู ProductOptionChoice.exclusiveWith)
+ * คืน undefined = ตัวเลือกอิสระ ติ๊กพร้อมตัวอื่นได้ตามปกติ
+ */
+export function exclusiveTag(opt: ProductOption, choiceName: string): string | undefined {
+  return opt.choices.find((c) => c.name === choiceName)?.exclusiveWith || undefined;
 }
 
 /**

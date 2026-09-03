@@ -91,6 +91,7 @@ import {
   CONSULT_LABEL,
   CONSULT_NOTE_DEFAULT,
   isMultiOption,
+  exclusiveTag,
   hasChoiceQty,
   anyChoiceQty,
   choiceQtyMax,
@@ -2551,6 +2552,24 @@ export default function ProductDetail({
               /** เขียนตัวเลือกที่ติ๊กกลับลง selections — เรียงตามลำดับตัวเลือกในกลุ่มเสมอ */
               const writePicks = (make: (cur: MultiPick[]) => MultiPick[]) =>
                 setSelections((s) => ({ ...s, [opt.label]: joinMultiPicks(make(selectedPicks(opt, s))) }));
+              /**
+               * ติ๊กเปิด/ปิดตัวเลือกหนึ่งในกลุ่ม multi
+               * ตัวที่อยู่ "ชุดเลือกได้อย่างเดียว" เดียวกัน (choice.exclusiveWith) จะถูกติ๊กออกให้
+               * เช่น กระเป๋าเล็กด้านใน ไม่สกรีน/สกรีน = ของชิ้นเดียวกัน สั่งพร้อมกันไม่ได้
+               */
+              const togglePick = (name: string, on: boolean) => {
+                const tag = exclusiveTag(opt, name);
+                writePicks((cur) =>
+                  // เก็บตามลำดับตัวเลือกในกลุ่มเสมอ — ติ๊กสลับไปมาแล้วข้อความ (และ key ตะกร้า) ไม่เปลี่ยนตาม
+                  opt.choices
+                    .filter((x) =>
+                      x.name === name
+                        ? !on
+                        : cur.some((p) => p.name === x.name) && !(!on && tag && exclusiveTag(opt, x.name) === tag)
+                    )
+                    .map((x) => ({ name: x.name, qty: cur.find((p) => p.name === x.name)?.qty ?? 1 }))
+                );
+              };
               const setChoiceQty = (name: string, n: number) =>
                 writePicks((cur) =>
                   cur.map((p) =>
@@ -3006,11 +3025,7 @@ export default function ProductDetail({
                               aria-checked={on}
                               title={c.name}
                               onClick={() => {
-                                writePicks((cur) =>
-                                  opt.choices
-                                    .filter((x) => (x.name === c.name ? !on : cur.some((p) => p.name === x.name)))
-                                    .map((x) => ({ name: x.name, qty: cur.find((p) => p.name === x.name)?.qty ?? 1 }))
-                                );
+                                togglePick(c.name, on);
                                 setSwatchTap((m) => ({ ...m, [opt.label]: c.name }));
                               }}
                               className={`flex flex-col items-center gap-0.5 rounded-xl p-1 transition ${
@@ -3106,15 +3121,7 @@ export default function ProductDetail({
                                 role="checkbox"
                                 aria-checked={on}
                                 onClick={() => {
-                                  writePicks((cur) =>
-                                    // เก็บตามลำดับตัวเลือกในกลุ่มเสมอ — ติ๊กสลับไปมาแล้วข้อความ (และ key ตะกร้า) ไม่เปลี่ยนตาม
-                                    opt.choices
-                                      .filter((x) => (x.name === c.name ? !on : cur.some((p) => p.name === x.name)))
-                                      .map((x) => ({
-                                        name: x.name,
-                                        qty: cur.find((p) => p.name === x.name)?.qty ?? 1,
-                                      }))
-                                  );
+                                  togglePick(c.name, on);
                                   if (!on) jumpToImage(c.imageSrc); // ติ๊กเปิด = โชว์ภาพแบบนั้น (ติ๊กออกไม่ต้อง)
                                 }}
                                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition ${

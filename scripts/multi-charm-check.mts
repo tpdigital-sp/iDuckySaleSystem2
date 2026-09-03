@@ -14,6 +14,7 @@ import {
   artworkConsultOf,
   unitPriceFor,
   unitPriceParts,
+  needsQuote,
   type Product,
 } from "../src/lib/products";
 
@@ -169,6 +170,18 @@ for (const [units, want, note] of [
   const got = unitPriceParts(p, sel3, units);
   ok(`${units} พวง พวงละ 3 ชิ้น = ฿${got.total}/พวง (${note}) — ตรงใบเสนอราคาจริง`, got.total === want);
 }
+
+console.log("\n── มากกว่า 10 ชิ้นในพวงเดียว = แอดมินคิดราคาให้ (3 ก.ย. 69) ──");
+const OVER10 = "มากกว่า 10 ชิ้น (แอดมินคิดราคาให้)";
+const overChoice = group(COUNT).choices.find((c) => c.name === OVER10);
+ok(`กลุ่ม "${COUNT}" มีตัวเลือก "${OVER10}" ติดธง askPrice`, overChoice?.askPrice === true);
+const selOver = resolveSelections(p, { ...selQ, [COUNT]: OVER10 });
+ok("เลือกมากกว่า 10 ชิ้น → ต้องตีราคา (needsQuote)", needsQuote(p, selOver));
+ok("เลือกมากกว่า 10 ชิ้น → ราคาเป็น 0 (ตะกร้าขึ้น 💬 รอตีราคา)", unitPriceFor(p, selOver, 1) === 0);
+ok("เลือกมากกว่า 10 ชิ้น → ชุดสเปคชิ้นที่ 2 ไม่โชว์ (คุยสเปคกับแอดมินแทน)", !optionVisible(group("ขนาดชิ้นที่ 2"), selOver));
+ok("เลือกมากกว่า 10 ชิ้น → รูปแบบการห้อยไม่โชว์", !optionVisible(group(HANG), selOver));
+ok("เลือก 3 ชิ้นตามปกติ → ไม่ติดตีราคา ราคายังคิดเองได้", !needsQuote(p, sel3) && unitPriceFor(p, sel3, 15) > 0);
+ok("ธงการ์ดหน้ารายการ quoteOption = true", (p as { quoteOption?: boolean }).quoteOption === true);
 
 console.log(fail ? `\n❌ ไม่ผ่าน ${fail} ข้อ` : "\n✅ ผ่านทั้งหมด");
 process.exit(fail ? 1 : 0);

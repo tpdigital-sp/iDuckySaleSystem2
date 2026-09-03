@@ -13,6 +13,7 @@ import { canAccessAdmin } from "@/lib/auth";
 import AdminEditFab from "@/components/AdminEditFab";
 import HomeChat from "@/components/HomeChat";
 import CardSkeleton from "@/components/CardSkeleton";
+import { CAT_ICON, groupOf, TAB_GROUPS } from "@/lib/cat-groups";
 
 /**
  * หน้าแรก — ดีไซน์ตามไฟล์ต้นแบบ iducky-landing-v8_83.html
@@ -20,13 +21,8 @@ import CardSkeleton from "@/components/CardSkeleton";
  * เนื้อหาที่เป็น "ของจริง" ดึงจากฐานข้อมูล: หมวดสินค้า · รายการสินค้าในแต่ละหมวด · สินค้าขายดี
  */
 
-/** จัดหมวดจริงของร้านเข้ากลุ่มแท็บ 4 กลุ่มตามดีไซน์ */
-const TAB_GROUPS: { id: string; label: string; cats: string[] }[] = [
-  { id: "acrylic", label: "อะคริลิค & สแตนดี้", cats: ["acrylic", "acrylic-bending", "standee", "light", "mirror-magnet"] },
-  { id: "paper", label: "งานกระดาษ & สติ๊กเกอร์", cats: ["sticker-paper", "card-photo", "banner", "calendar-frame"] },
-  { id: "goods", label: "ของใช้ & แก็ดเจ็ต", cats: ["phone-gadget", "home", "bag"] },
-  { id: "wear", label: "เสื้อผ้า & ของขวัญ", cats: ["apparel", "fabric", "gifts"] },
-];
+// กลุ่มแท็บ 4 กลุ่ม + ไอคอนหมวด ย้ายไปไฟล์กลาง src/lib/cat-groups.ts
+// (ใช้ร่วมกับเมนูดรอปดาวน์ "สินค้าและบริการ" บนแถบเมนู — NavCatMenu)
 
 /** รีวิวลูกค้าที่โชว์บนหน้าแรก (ภาพงานจริง + คำชม) — แก้ข้อความ/รูปได้ที่นี่ */
 const REVIEWS: { photo: string; text: string; name: string; item: string }[] = [
@@ -38,21 +34,6 @@ const REVIEWS: { photo: string; text: string; name: string; item: string }[] = [
   { photo: "/landing/review-6.webp", text: "ลายชัด ขอบไม่เบลอ ราคาน่ารักมาก จะกลับมาสั่งอีกแน่นอน", name: "คุณอาย", item: "เคสมือถือ · สั่ง 5 ชิ้น" },
 ];
 
-/** ไอคอนวาดมือของหมวดหลัก (จากไฟล์ต้นแบบ) — หมวดอื่นใช้อีโมจิของหมวดนั้น */
-const CAT_ICON: Record<string, string> = {
-  acrylic: "/landing/cat-ico-1.webp",
-  standee: "/landing/cat-ico-2.webp",
-  "card-photo": "/landing/cat-ico-3.webp",
-  "sticker-paper": "/landing/cat-ico-4.webp",
-  home: "/landing/cat-ico-5.webp",
-  light: "/landing/cat-ico-6.webp",
-  "phone-gadget": "/landing/cat-ico-7.webp",
-  apparel: "/landing/cat-ico-8.webp",
-  fabric: "/landing/cat-ico-9.webp",
-  gifts: "/landing/cat-ico-10.webp",
-};
-
-const groupOf = (catId: string) => TAB_GROUPS.find((g) => g.cats.includes(catId))?.id ?? "goods";
 
 /**
  * ค่อย ๆ โผล่ตอนเลื่อนถึง (คลาส .rv → .in ตามดีไซน์)

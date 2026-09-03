@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { PRODUCTS } from "@/lib/products";
 import { getProductServer, getProductTemplates, getRelatedProducts } from "@/lib/products-server";
 import { productAutoSeo } from "@/lib/auto-seo";
+import { withImageVersion } from "@/lib/img";
 import { fetchProductReviewStats } from "@/lib/server/reviews-db";
 import ProductDetail from "./ProductDetail";
 import ProductReviews from "@/components/ProductReviews";
@@ -65,7 +66,8 @@ export default async function ProductPage({
   return (
     <>
       <ProductDetail
-        product={product}
+        // ติดรหัสรุ่นท้าย URL รูป (?v=savedAt) — เปลี่ยนรูปทับพาธเดิมแล้วต้องเห็นของใหม่ ไม่ใช่ของที่ค้างในแคชตัวย่อรูป
+        product={withImageVersion(product)}
         templates={templates}
         preview={false}
         reviewStats={reviewStats}

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getProductServer, getProductTemplates, getRelatedProducts } from "@/lib/products-server";
 import { currentActor } from "@/lib/server/require-perm";
+import { withImageVersion } from "@/lib/img";
 import { fetchProductReviewStats } from "@/lib/server/reviews-db";
 import ProductDetail from "../../products/[id]/ProductDetail";
 import ProductReviews from "@/components/ProductReviews";
@@ -41,7 +42,8 @@ export default async function ProductPreviewPage({
   return (
     <>
       <ProductDetail
-        product={product}
+        // ติดรหัสรุ่นท้าย URL รูป (?v=savedAt) — เปลี่ยนรูปทับพาธเดิมแล้วต้องเห็นของใหม่ ไม่ใช่ของที่ค้างในแคชตัวย่อรูป
+        product={withImageVersion(product)}
         templates={templates}
         preview={!!product.hidden}
         reviewStats={reviewStats}

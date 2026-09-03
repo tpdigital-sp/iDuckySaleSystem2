@@ -52,3 +52,44 @@ export function fallbackToOriginal(original?: string) {
     el.src = original;
   };
 }
+
+/**
+ * ── รหัสรุ่นรูป (?v=…) กันเห็น "รูปเก่า" หลังอัปทับ ──
+ * รูปสินค้าหลายตัวถูกอัปทับที่พาธเดิม (สคริปต์ตั้งรูปใช้ upsert: true) → URL ไม่เปลี่ยน
+ * แต่ตัวย่อรูปของ Next แคชผลตาม URL ไว้ 30 วัน (images.minimumCacheTTL ใน next.config.ts)
+ * = เปลี่ยนรูปแล้วรีเฟรชยังเห็นของเก่าไปอีกเป็นเดือน ทั้งหลังบ้านและหน้าร้าน
+ * แก้ด้วยการต่อ ?v=<เวลาบันทึกล่าสุดของสินค้า> ท้าย URL — บันทึก/รันสคริปต์ทีไร URL เปลี่ยน
+ * ได้รูปใหม่ทันที · ระหว่างที่ยังไม่แก้ก็ยังแคชยาวเหมือนเดิม (ไม่เสียความเร็ว)
+ */
+
+/** เฉพาะรูปในคลัง Supabase เท่านั้น (รูปจาก wixstatic เปลี่ยนชื่อไฟล์ทุกครั้งอยู่แล้ว) */
+const STORAGE_URL = /\/storage\/v1\/object\/public\//;
+
+/** ย่อเวลาบันทึก (savedAt) เป็นรหัสสั้น ๆ · ไม่มี/อ่านไม่ออก = ไม่ต้องต่อรหัส */
+export function imgVersion(savedAt?: string): string | undefined {
+  if (!savedAt) return undefined;
+  const t = Date.parse(savedAt);
+  return Number.isNaN(t) ? undefined : t.toString(36);
+}
+
+/** ต่อรหัสรุ่นท้าย URL รูป (ของเดิมมีอยู่แล้วให้ทับ ไม่ต่อซ้อน) */
+export function versionedSrc(src?: string, ver?: string): string | undefined {
+  if (!src || !ver || !STORAGE_URL.test(src)) return src;
+  const [path, qs = ""] = src.split("#")[0].split("?");
+  const params = new URLSearchParams(qs);
+  params.set("v", ver);
+  return `${path}?${params.toString()}`;
+}
+
+/** สินค้าพร้อมรูปที่ติดรหัสรุ่นแล้ว (ภาพปก + แกลเลอรี) — ใช้กับ "ข้อมูลที่เอาไปแสดง" เท่านั้น ไม่ใช่ก้อนที่จะบันทึกกลับ */
+export function withImageVersion<T extends { savedAt?: string; imageSrc?: string; images?: { src?: string }[] }>(
+  p: T
+): T {
+  const ver = imgVersion(p.savedAt);
+  if (!ver) return p;
+  return {
+    ...p,
+    imageSrc: versionedSrc(p.imageSrc, ver),
+    images: p.images?.map((im) => (im.src ? { ...im, src: versionedSrc(im.src, ver) } : im)),
+  };
+}

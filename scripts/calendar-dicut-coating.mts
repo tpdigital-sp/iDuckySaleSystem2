@@ -113,12 +113,14 @@ function coatingPair(srcCoat: { label: string; choices: { name: string }[] }, sr
   coat.note = note;
   for (const c of coat.choices) {
     delete c.perSheet; // ของ Mini (1 เล่ม = 1 A3) ใช้กับสินค้านี้ไม่ได้ — จำนวนแผ่นมาจากกลุ่ม "ขนาดกระดาษ" แทน
+    delete c.videoSrc; // สินค้านี้ใช้ภาพนิ่งชุดกลาง coating-b เหมือนงานกระดาษ ไม่เอาคลิปฟิล์มของ Mini (ผู้ใช้สั่ง 3 ก.ย. 69)
     const fee = feeOfChoice(c.name);
     if (fee) c.extra = fee;
     else delete c.extra;
   }
   // ลายฟิล์มของด้านนั้น — showWhen ชี้กลุ่มเคลือบด้านเดียวกัน (ก๊อปมาแล้วชื่อกลุ่มตรงกันอยู่)
   const film = structuredClone(srcFilm) as any;
+  for (const c of film.choices ?? []) delete c.videoSrc;
   if (film.showWhen?.label !== coat.label)
     throw new Error(`ลายฟิล์ม "${film.label}" ชี้กลุ่ม "${film.showWhen?.label}" ไม่ใช่ "${coat.label}" — โครงต้นแบบเปลี่ยน`);
   return [coat, film] as const;

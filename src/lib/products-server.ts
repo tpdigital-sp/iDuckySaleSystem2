@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getProduct, type Product } from "./products";
 import { resolveOptions, type OptionPreset } from "./option-presets";
 import { sortTemplates, templateReady, type DesignTemplate } from "./design-templates";
+import { withImageVersion } from "./img";
 
 /**
  * ดึงสินค้ารายตัวฝั่งเซิร์ฟเวอร์ (สำหรับ generateMetadata + หน้าสินค้า)
@@ -47,6 +48,49 @@ export const getProductServer = cache(async (rawId: string): Promise<Product | u
 });
 
 /**
+ * รายการสินค้าสำหรับ "หน้ารายการหลังบ้าน" รอบแรก — ดึงฝั่งเซิร์ฟเวอร์เพื่อให้ HTML แรกมีรูปปกมาด้วยเลย
+ * เดิมหน้านั้นวาดจากศูนย์แล้วค่อยยิงขอข้อมูลตอนหน้าโหลดเสร็จ (~1 วิ) ระหว่างนั้นเบราว์เซอร์
+ * ยังค้างภาพหน้าเดิมไว้ = กดรีเฟรชแล้ว "เห็นรูปปกเก่า" อยู่พักหนึ่งทั้งที่ในฐานข้อมูลเปลี่ยนแล้ว
+ * เอาเฉพาะฟิลด์ที่ใช้วาดแถว (~170 KB) — ของหนัก (ตัวเลือก/ตารางราคา/เนื้อหา) ฝั่งหน้าเว็บโหลดตามทีหลัง
+ */
+export async function getAdminProductRows(): Promise<Product[]> {
+  const sb = serverClient();
+  if (!sb) return [];
+  const { data, error } = await sb
+    .from("products")
+    .select(
+      "id,name,category,price,sold,featured,badge,sort,slug:data->>slug,savedAt:data->>savedAt," +
+        "emoji:data->>emoji,gradient:data->>gradient,imageSrc:data->>imageSrc," +
+        "rating:data->rating,oldPrice:data->oldPrice,hidden:data->hidden,reviewed:data->reviewed"
+    )
+    .order("sort", { ascending: true });
+  if (error || !data) return [];
+  return (data as unknown as Record<string, unknown>[])
+    .filter((r) => !String(r.id).startsWith("__"))
+    .map(
+      (r) =>
+        ({
+          ...r,
+          slug: (r.slug as string | null) ?? undefined,
+          badge: (r.badge as string | null) ?? undefined,
+          emoji: (r.emoji as string | null) ?? "🦆",
+          gradient: (r.gradient as string | null) ?? "from-amber-100 to-amber-200",
+          imageSrc: (r.imageSrc as string | null) ?? undefined,
+          rating: r.rating ?? 5,
+          oldPrice: (r.oldPrice as number | null) ?? undefined,
+          hidden: (r.hidden as boolean | null) ?? undefined,
+          options: [],
+          rules: [],
+          images: [],
+          highlights: [],
+          body: [],
+          description: "",
+        }) as unknown as Product
+    )
+    .map((p) => withImageVersion(p));
+}
+
+/**
  * เทมเพลตไฟล์งานที่สินค้าตัวนี้ผูกไว้ (สำหรับหน้าสินค้า — เรนเดอร์ฝั่งเซิร์ฟเวอร์ Google เห็นด้วย)
  * เก็บเป็นแถวพิเศษ category "__templates__" ในตาราง products แบบเดียวกับคลังตัวเลือก
  * เอาเฉพาะอันที่พร้อมโหลดจริง (ไม่ซ่อน + มีไฟล์หรือลิงก์) · เรียงตามที่ผูกไว้ในสินค้า
@@ -75,7 +119,7 @@ export const getRelatedProducts = cache(
     const { data, error } = await sb
       .from("products")
       .select(
-        "id,name,category,price,sold,featured,badge,sort,slug:data->>slug,hidden:data->hidden," +
+        "id,name,category,price,sold,featured,badge,sort,slug:data->>slug,hidden:data->hidden,savedAt:data->>savedAt," +
           "emoji:data->>emoji,gradient:data->>gradient,imageSrc:data->>imageSrc," +
           "rating:data->rating,oldPrice:data->oldPrice,priceMin:data->priceMin,priceMax:data->priceMax," +
           "quoteOption:data->quoteOption"
@@ -101,7 +145,11 @@ export const getRelatedProducts = cache(
           badge: (r.badge as string | null) ?? undefined,
           emoji: (r.emoji as string | null) ?? "🦆",
           gradient: (r.gradient as string | null) ?? "from-amber-100 to-amber-200",
-          imageSrc: (r.imageSrc as string | null) ?? undefined,
+          // ติดรหัสรุ่นท้าย URL รูป (?v=savedAt) — รูปที่อัปทับพาธเดิมจะไม่ค้างของเก่าในแคชตัวย่อรูป
+          imageSrc: withImageVersion({
+            savedAt: (r.savedAt as string | null) ?? undefined,
+            imageSrc: (r.imageSrc as string | null) ?? undefined,
+          }).imageSrc,
           rating: r.rating ?? 5,
           oldPrice: (r.oldPrice as number | null) ?? undefined,
           priceMin: (r.priceMin as number | null) ?? undefined,

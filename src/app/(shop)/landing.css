@@ -115,6 +115,116 @@
 .dl .menu a:not(.on)::after{content:"";position:absolute;left:50%;bottom:2px;width:0;height:4px;border-radius:9px;
   background:var(--sky-300);translate:-50% 0;transition:width .28s cubic-bezier(.34,1.56,.64,1)}
 .dl .menu a:not(.on):hover::after{width:18px}
+/* ---- เมนูดรอปดาวน์ "สินค้าและบริการ" (ต้นแบบ MEGAMENU_01) — การ์ดลอยโค้งมนแบบเดียวกับ nav-in
+   แท็บกลุ่มหมวดหมู่แบบ pill สีพาสเทล ให้เข้ากับโทนความน่ารักของแบรนด์ ---- */
+.dl .nav-drop{position:relative}
+.dl .nav-drop-trigger{display:inline-flex!important;align-items:center;gap:5px}
+.dl .nav-drop-trigger .caret{font-size:.62em;transition:transform .3s cubic-bezier(.34,1.56,.64,1);display:inline-block}
+.dl .nav-drop.open .nav-drop-trigger .caret{transform:rotate(180deg)}
+/* ⚠️ จัดกึ่งกลางด้วย translate(-50%) ใน transform เท่านั้น — property `translate` เดี่ยว ๆ
+   โดน lightningcss (ตัว build ของ Next) ตัดทิ้งเมื่อ rule เดียวกันมี transform อยู่แล้ว
+   ทำให้แผงเคยไปกองขวาของปุ่มแทนที่จะอยู่กึ่งกลาง */
+.dl .nav-drop-panel{position:absolute;top:calc(100% + 26px);left:50%;
+  width:800px;max-width:min(92vw,800px);
+  background:linear-gradient(135deg,rgba(255,255,255,.98),rgba(255,255,255,.95));
+  -webkit-backdrop-filter:blur(34px) saturate(160%);backdrop-filter:blur(34px) saturate(160%);
+  border:1px solid rgba(255,255,255,.65);border-radius:var(--r-xl);
+  box-shadow:var(--shadow-l),inset 0 1px 0 rgba(255,255,255,.75),inset 0 -1px 0 rgba(255,255,255,.25);
+  padding:22px 26px;opacity:0;visibility:hidden;pointer-events:none;
+  transform:translate(calc(-50% + var(--drop-shift,0px)),10px) scale(.98);transform-origin:top center;
+  transition:opacity .24s ease,transform .3s cubic-bezier(.34,1.56,.64,1),visibility .24s;z-index:70}
+/* ลูกศรขยับสวนทาง --drop-shift เพื่อชี้ที่กึ่งกลางปุ่มเสมอ แม้แผงถูกขยับหนีขอบจอ */
+.dl .nav-drop-panel::before{content:"";position:absolute;top:-10px;left:calc(50% - var(--drop-shift,0px));margin-left:-12px;width:0;height:0;
+  border-left:12px solid transparent;border-right:12px solid transparent;border-bottom:11px solid rgba(255,255,255,.98);
+  filter:drop-shadow(0 -3px 2px rgba(23,58,107,.05))}
+.dl .nav-drop.open .nav-drop-panel{opacity:1;visibility:visible;pointer-events:auto;transform:translate(calc(-50% + var(--drop-shift,0px)),0) scale(1)}
+.dl .nav-mega-layout{position:relative}
+/* แท็บกลุ่มหมวดหมู่ — ทรงแคปซูลนุ่มๆ สีพาสเทลต่างกันตามกลุ่มตอนเลือก แทนเส้นใต้แข็งๆ */
+.dl .nav-mega-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.dl .nav-mega-tab{font-family:var(--display);font-size:.82rem;color:var(--navy-soft);
+  background:rgba(255,255,255,.65);border:1px solid var(--sky-200);border-radius:999px;cursor:pointer;
+  padding:8px 15px;display:inline-flex;align-items:center;gap:6px;
+  transition:background .22s ease,border-color .22s ease,color .22s ease,transform .22s cubic-bezier(.34,1.56,.64,1)}
+.dl .nav-mega-tab .emoji{font-size:1rem;transition:transform .3s cubic-bezier(.34,1.56,.64,1)}
+.dl .nav-mega-tab:hover{transform:translateY(-2px)}
+.dl .nav-mega-tab:hover .emoji{transform:scale(1.15) rotate(-6deg)}
+.dl .nav-mega-tab.active{color:var(--navy);font-weight:500}
+.dl .nav-mega-tab.active[data-group="acrylic"]{background:var(--sky-100);border-color:var(--blue)}
+.dl .nav-mega-tab.active[data-group="paper"]{background:#FFE1E8;border-color:var(--coral)}
+.dl .nav-mega-tab.active[data-group="goods"]{background:var(--yolk-soft);border-color:#D9A928}
+.dl .nav-mega-tab.active[data-group="wear"]{background:var(--lilac);border-color:#8b7fd1}
+.dl .nav-mega-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,220px));gap:20px 34px;
+  justify-content:start;padding-top:6px;border-top:1px solid var(--sky-100)}
+.dl .nav-mega-col{min-width:0;display:none;flex-direction:column}
+@keyframes megaColIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.dl .nav-mega-cols[data-active="acrylic"] .nav-mega-col[data-group="acrylic"],
+.dl .nav-mega-cols[data-active="paper"] .nav-mega-col[data-group="paper"],
+.dl .nav-mega-cols[data-active="goods"] .nav-mega-col[data-group="goods"],
+.dl .nav-mega-cols[data-active="wear"] .nav-mega-col[data-group="wear"]{
+  display:flex;animation:megaColIn .4s cubic-bezier(.22,1,.36,1) both}
+.dl .nav-mega-label{display:block;font-family:var(--display);font-weight:500;font-size:.92rem;color:var(--navy);
+  margin-top:10px;line-height:1.4;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent;outline:none}
+.dl .nav-mega-label:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}
+.dl .nav-mega-thumb{display:block;position:relative;margin:0 auto;width:80px;max-width:100%;aspect-ratio:1/1;border-radius:26px;overflow:hidden;
+  padding:13px;box-sizing:border-box;
+  background:linear-gradient(160deg,color-mix(in srgb,var(--accent) 45%,#fff),color-mix(in srgb,var(--accent) 92%,#fff));
+  box-shadow:0 10px 18px -7px color-mix(in srgb,var(--accent) 65%,transparent),
+    inset 0 1.5px 2px rgba(255,255,255,.7),inset 0 -4px 7px rgba(0,0,0,.06);
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1),box-shadow .3s ease}
+.dl .nav-mega-thumb:focus{outline:none}
+.dl .nav-mega-thumb:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.dl .nav-mega-thumb img{width:100%;height:100%;object-fit:contain;display:block;transition:transform .35s ease}
+.dl .nav-mega-emoji{width:100%;height:100%;display:grid;place-items:center;font-size:2rem;font-style:normal}
+.dl .nav-mega-col:hover .nav-mega-thumb{transform:scale(1.05) rotate(-2deg);
+  box-shadow:0 13px 22px -7px color-mix(in srgb,var(--accent) 70%,transparent),
+    0 0 0 5px color-mix(in srgb,var(--accent) 32%,transparent),
+    inset 0 1.5px 2px rgba(255,255,255,.7),inset 0 -4px 7px rgba(0,0,0,.06)}
+.dl .nav-mega-col:hover .nav-mega-thumb img{transform:scale(1.08)}
+.dl .nav-mega-col ul{list-style:none;margin-top:12px;padding-top:11px;border-top:1px solid color-mix(in srgb,var(--accent) 55%,var(--sky-100));
+  display:flex;flex-direction:column;gap:2px}
+.dl .nav-mega-col li a{position:relative;display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 4px;font-size:.82rem;color:var(--navy-soft);
+  line-height:1.5;transform-origin:left center;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;
+  transition:color .18s ease,transform .22s cubic-bezier(.34,1.56,.64,1)}
+.dl .nav-mega-col li a:hover{transform:translateY(-2px) scale(1.04)}
+.dl .nav-mega-col li a:focus{outline:none}
+.dl .nav-mega-col li a:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}
+/* ป้ายใหม่/ฮิต ข้างรายการสินค้าย่อย — ยืมโทนไล่สีเดียวกับป้ายมุมการ์ดสินค้า แต่ย่อให้พอดีกับลิสต์ */
+.dl .nav-tag-new,.dl .nav-tag-hot{flex:none;font-family:var(--display);font-size:.6rem;font-weight:500;line-height:1;
+  padding:2.5px 7px;border-radius:999px;letter-spacing:.02em;white-space:nowrap;color:#fff}
+.dl .nav-tag-new{background:linear-gradient(100deg,#5FC4F5,#3E86E0 58%,#6C6BE0)}
+.dl .nav-tag-hot{background:linear-gradient(100deg,#FF9F45,#FF6F3C 60%,#F2542D)}
+/* มาสคอตตกแต่งมุมขวาบน — แค่ลูกเล่นเบาๆ ไม่กระทบขนาด layout เพราะ absolute ทั้งหมด */
+.dl .nav-drop-panel::after{content:"🦆";position:absolute;right:24px;top:16px;font-size:1.6rem;
+  opacity:.16;pointer-events:none;rotate:-10deg}
+/* แถบท้าย dropdown — CTA ดูสินค้าทั้งหมด */
+.dl .nav-mega-foot{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+  margin-top:18px;padding-top:14px;border-top:1px dashed var(--sky-200)}
+.dl .nav-mega-foot span{font-size:.8rem;color:var(--navy-soft)}
+.dl .nav-mega-foot span b{color:var(--navy);font-weight:500}
+.dl .nav-mega-foot a{display:inline-flex;align-items:center;gap:6px;font-family:var(--display);font-size:.83rem;
+  font-weight:500;color:#fff;background:var(--navy);padding:8px 15px;border-radius:999px;
+  transition:gap .2s ease,transform .2s cubic-bezier(.34,1.56,.64,1)}
+.dl .nav-mega-foot a:hover{gap:9px;transform:translateY(-2px)}
+@media(min-width:1001px){
+  .dl .nav-drop:hover .nav-drop-trigger .caret{transform:rotate(180deg)}
+}
+@media(max-width:1000px){
+  .dl .nav-drop-trigger{width:100%;justify-content:space-between;padding-right:15px}
+  .dl .nav-drop-panel{position:static;width:100%;max-width:none;box-shadow:none;border:none;
+    background:var(--sky-50);margin:2px 0 6px;transform:none;border-radius:0;
+    transition:opacity .22s ease,max-height .28s ease,padding .22s ease;
+    max-height:0;padding:0 12px;overflow:hidden;opacity:0;visibility:visible;pointer-events:none}
+  .dl .nav-drop-panel::before,.dl .nav-drop-panel::after{display:none}
+  .dl .nav-drop.open .nav-drop-panel{max-height:2600px;padding:14px 12px;opacity:1;pointer-events:auto}
+  .dl .nav-mega-tabs{overflow-x:auto;flex-wrap:nowrap;-ms-overflow-style:none;scrollbar-width:none}
+  .dl .nav-mega-tabs::-webkit-scrollbar{display:none}
+  .dl .nav-mega-tab{white-space:nowrap}
+  .dl .nav-mega-cols{grid-template-columns:1fr 1fr;gap:18px 14px}
+  .dl .nav-mega-thumb{width:60px}
+}
+@media(max-width:480px){
+  .dl .nav-mega-cols{grid-template-columns:1fr}
+}
 .dl .nav-cta{display:flex;gap:8px;align-items:center}
 /* ⚠️ ปุ่ม "ช้อปเลย" ในแถบเมนูต้องหายบนจอเล็ก — คลาส .dl .btn ด้านบนมี specificity สูงกว่า
    utility "hidden" ของ Tailwind (0,2,0 > 0,1,0) มันเลยไม่ถูกซ่อนจริง แถบเมนูกว้างเกินจอมือถือ

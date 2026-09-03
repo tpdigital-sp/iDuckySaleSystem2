@@ -26,8 +26,8 @@
  * ภาพ/คลิป (ผู้ใช้สั่ง 25 ส.ค. 69 — ตัวเลือกต้องมีภาพประกอบว่าแต่ละแบบหน้าตายังไง):
  *   แกลเลอรี 5 ใบ = รูปงานจริง Mini Calendar จากหน้า /calendar (ชุดรูปเล่มจิ๋วมีโลโก้ iDucky —
  *   ระวัง: รูปชุดก่อนหัวข้อเป็นของ "ปฎิทินตั้งโต๊ะ ไดคัทตามทรง" คนละสินค้า ห้ามหยิบ)
- *   ตัวเลือกเคลือบ = การ์ดเล่นคลิปฟิล์มจริงจากหน้า /laminate (แพทเทิร์น videoSrc griptok-mirror-fold —
- *   คลิป wixstatic: id เดียวกับโปสเตอร์ f00x) · ฟิล์มพิเศษครบ 10 ลายตามหน้า ตย.ฟิล์มเคลือบ
+ *   ตัวเลือกเคลือบ = ภาพนิ่งชุดกลาง coating-b เหมือนงานกระดาษ (ผู้ใช้สั่ง 3 ก.ย. 69 — เดิมเป็นคลิปฟิล์ม
+ *   จากหน้า /laminate ถอดออกแล้ว) · ฟิล์มพิเศษครบ 10 ลายตามหน้า ตย.ฟิล์มเคลือบ
  *   ⚠️ ห้ามอัปทับชื่อไฟล์เดิม (Next/CDN แคช) — แก้รูปครั้งหน้าขยับ V เป็น v2
  */
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
@@ -228,19 +228,26 @@ const FILMS: [string, string, string, string][] = [
 const gallerySrc: Record<string, string> = {};
 for (const [key, wixId] of GALLERY_SRC) gallerySrc[key] = await putJpg(key, wixId);
 
-const filmMedia: Record<string, { img: string; vid: string }> = {};
-for (const [key, id] of FILMS) {
-  // โปสเตอร์ = ภาพนิ่งสำรอง/เฟรมแรกของการ์ด · คลิป = ตัวจริงที่การ์ดเล่นวน
-  const img = await putJpg(`${key}-poster`, `${id}f000.jpg`);
-  const vid = await putClip(`${key}-clip`, id);
-  filmMedia[key] = { img, vid };
+// การ์ดเคลือบใช้ "ภาพนิ่ง" ชุดกลาง coating-b เหมือนงานกระดาษ (ผู้ใช้สั่ง 3 ก.ย. 69 — เลิกใช้คลิปฟิล์ม /laminate)
+// ชุดกลางมาจาก scripts/coating-photos-shopwide.mjs · id วิดีโอใน FILMS เก็บไว้เฉย ๆ เผื่อวันหน้า
+const COATING_B: Record<string, string> = {
+  "film-none": "none", "film-gloss": "gloss", "film-matte": "matte", "film-sand": "sand",
+  "film-glitter": "glitter", "film-holo-star": "star", "film-holo-dot": "dot", "film-holo-heart": "heart",
+  "film-holo-square": "facet", "film-holo-snow": "snow", "film-holo-rainbow": "rainbow",
+  "film-holo-dust": "dust", "film-holo-stardust": "stardust",
+};
+const filmMedia: Record<string, { img: string }> = {};
+for (const [key] of FILMS) {
+  filmMedia[key] = {
+    img: `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/coating-b/${COATING_B[key]}-v1.jpg`,
+  };
 }
-console.log(`🖼  รูปแกลเลอรี ${GALLERY_SRC.length} ใบ + ฟิล์ม ${FILMS.length} แบบ (โปสเตอร์+คลิป) — ตัวอย่างอยู่ที่ ${OUT}`);
+console.log(`🖼  รูปแกลเลอรี ${GALLERY_SRC.length} ใบ · ฟิล์ม ${FILMS.length} แบบใช้ภาพนิ่งชุดกลาง coating-b — ตัวอย่างอยู่ที่ ${OUT}`);
 
 /* ── 3. ประกอบตัวเลือก ───────────────────────────────────────────── */
 const film = (key: string) => {
   const f = FILMS.find((x) => x[0] === key)!;
-  return { name: f[2], desc: f[3], imageSrc: filmMedia[key].img, videoSrc: filmMedia[key].vid };
+  return { name: f[2], desc: f[3], imageSrc: filmMedia[key].img };
 };
 
 /**
@@ -281,7 +288,6 @@ const coatGroups = (side: "หน้า" | "หลัง"): ProductOption[] => {
           extra: SPECIAL_FEE,
           perSheet: PER_SHEET,
           imageSrc: filmMedia["film-glitter"].img,
-          videoSrc: filmMedia["film-glitter"].vid,
         },
         // งานฟอยล์พิมพ์ด้านหน้า — ตัวเลือกล็อก 0 บาทที่ rules สลับให้เองเมื่อเลือกฟอยล์ (ไม่ต้องกดเอง)
         ...(back
@@ -293,7 +299,6 @@ const coatGroups = (side: "หน้า" | "หลัง"): ProductOption[] => {
                 badge: "ฟรี!",
                 perSheet: PER_SHEET,
                 imageSrc: filmMedia["film-matte"].img,
-                videoSrc: filmMedia["film-matte"].vid,
               },
             ]),
       ],
@@ -302,7 +307,7 @@ const coatGroups = (side: "หน้า" | "หลัง"): ProductOption[] => {
       label: filmGroup,
       display: "cards",
       showWhen: { label: group, choices: [special] },
-      note: `10 ลาย ราคาเท่ากัน (รวมในค่าเคลือบพิเศษแล้ว) · การ์ดเล่นคลิปฟิล์มจริง`,
+      note: `10 ลาย ราคาเท่ากัน (รวมในค่าเคลือบพิเศษแล้ว)`,
       choices: FILMS.filter(([k]) => !["film-none", "film-gloss", "film-matte"].includes(k)).map(([k]) => named(k)),
     },
   ];
@@ -373,7 +378,25 @@ const RULES: OptionRule[] = [
   },
 ];
 
-const OPTIONS: ProductOption[] = [...coatGroups("หน้า"), ...FOIL_OPTIONS, ...coatGroups("หลัง")];
+/**
+ * กลุ่ม "ขนาด" ขนาดเดียว 6×8 ซม. แบบการ์ด (ผู้ใช้สั่ง 3 ก.ย. 69) — ภาพวาดมาจาก
+ * scripts/mini-calendar-size-art.mjs (ตัวนั้นเป็นคนอัปไฟล์ ที่นี่ชี้ URL เฉย ๆ ไม่อัปซ้ำ)
+ * ต้องอยู่ใน OPTIONS ด้วย เพราะ build เขียน d.options ทับทั้งก้อน — ไม่งั้นรันซ้ำแล้วกลุ่มขนาดหาย
+ */
+const SIZE_OPTION: ProductOption = {
+  label: "ขนาด",
+  display: "cards",
+  note: "ปฏิทินมินิมีขนาดเดียว — เล่มจิ๋วตั้งโต๊ะ พิมพ์ลายตามสั่งทั้งเล่ม",
+  choices: [
+    {
+      name: "กว้าง 6 × สูง 8 ซม.",
+      desc: "หน้ากระดาษ 6 × 8 ซม. หนา 260 แกรม\n• ฐานปฏิทินกระดาษอาร์ตขาว 400 แกรม\n• เข้าเล่มห่วงสันเกลียว สีขาว",
+      imageSrc: url(`size-6x8-${V}.jpg`),
+    },
+  ],
+};
+
+const OPTIONS: ProductOption[] = [SIZE_OPTION, ...coatGroups("หน้า"), ...FOIL_OPTIONS, ...coatGroups("หลัง")];
 
 /* ── 4. ประกอบสินค้า (patch ทับร่างเดิม — คงแท็บกลาง/ฟิลด์อื่นไว้) ── */
 const { data: row, error: rowErr } = await sb.from("products").select("name,data").eq("id", ID).single();

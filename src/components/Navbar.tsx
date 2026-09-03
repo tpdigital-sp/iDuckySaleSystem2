@@ -11,6 +11,7 @@ import { signOut } from "@/lib/customer-auth";
 import { fetchSiteNav, visibleMenu, visibleMega, DEFAULT_SITE_NAV, type MegaGroup, type NavLink } from "@/lib/home-nav";
 /* eslint-disable @next/next/no-img-element */
 import { MegaBar, MegaMobile } from "@/components/MegaMenu";
+import NavCatMenu from "@/components/NavCatMenu";
 
 /**
  * ไอคอนเส้นบาง ๆ ชุดเดียวกันทั้งเมนูบัญชี (เดิมใช้อีโมจิคนละสไตล์ 🏠🧾👤🚪 ดูไม่เป็นชุดเดียวกัน)
@@ -66,7 +67,9 @@ export default function Navbar() {
   const [small, setSmall] = useState(false);
   // ลิงก์เมนูที่แอดมินตั้งไว้ (แสดงค่าเริ่มต้นไปก่อน แล้วสลับเมื่อโหลดเสร็จ — ไม่มีจังหวะเมนูหาย)
   const [links, setLinks] = useState<NavLink[]>(visibleMenu(DEFAULT_SITE_NAV));
-  const [mega, setMega] = useState<MegaGroup[]>(visibleMega(DEFAULT_SITE_NAV));
+  // เมกะเมนูเริ่มจากว่าง — ผู้ใช้ลบทิ้งแล้ว (2 ก.ย. 69) ถ้าแอดมินสร้างใหม่ใน /admin/nav ค่อยโผล่ตามข้อมูล
+  // (ห้าม seed จาก DEFAULT_SITE_NAV ไม่งั้นแถบที่ลบไปแล้ววูบขึ้นมาก่อน /api/nav ตอบ)
+  const [mega, setMega] = useState<MegaGroup[]>([]);
   const [logo, setLogo] = useState<string>("");
   useEffect(() => {
     fetchSiteNav().then((n) => {
@@ -119,12 +122,24 @@ export default function Navbar() {
             )}
           </Link>
 
-          <div className={`menu${open ? " open" : ""}`} id="menu" onClick={() => setOpen(false)}>
-            {links.map((l) => (
-              <Link key={l.id} href={l.href} className={pathname === l.href ? "on" : undefined}>
-                {l.label}
-              </Link>
-            ))}
+          <div
+            className={`menu${open ? " open" : ""}`}
+            id="menu"
+            // ปิดเมนู ☰ เฉพาะตอนคลิก "ลิงก์" — คลิกแท็บ/ปุ่มในเมกะเมนูต้องไม่ทำเมนูหุบ
+            onClick={(e) => {
+              if ((e.target as HTMLElement).closest("a")) setOpen(false);
+            }}
+          >
+            {links.map((l) =>
+              /#categories$/.test(l.href) ? (
+                // เมนู "สินค้าและบริการ" กางเป็นเมกะเมนูหมวดสินค้า (ต้นแบบ MEGAMENU_01)
+                <NavCatMenu key={l.id} label={l.label} href={l.href} onNavigate={() => setOpen(false)} />
+              ) : (
+                <Link key={l.id} href={l.href} className={pathname === l.href ? "on" : undefined}>
+                  {l.label}
+                </Link>
+              )
+            )}
             {/* มือถือ: หมวดสินค้าทั้งหมดอยู่ในเมนูที่กางออก */}
             <div className="md:hidden">
               <MegaMobile groups={mega} onNavigate={() => setOpen(false)} />

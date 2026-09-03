@@ -71,6 +71,8 @@ type DraftChoice = {
   askPrice?: boolean;
   /** ⭐ แบบที่ลูกค้านิยมสั่ง — หน้าสินค้าโชว์ป้าย "นิยม" */
   popular?: boolean;
+  /** ☝️ ชุด "เลือกได้อย่างเดียว" ในกลุ่ม multi — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  exclusiveWith?: string;
   /** 🏷️ ป้ายอิสระท้ายชื่อ เช่น "ฟรี!" — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   badge?: string;
   /** 📝 คำอธิบายใต้ชื่อ (โชว์เฉพาะกลุ่ม display "cards") — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
@@ -580,6 +582,7 @@ function toDraft(p: Product): Draft {
         ...(c.stockQtyPer ? { stockQtyPer: c.stockQtyPer } : {}),
         ...(c.askPrice ? { askPrice: true } : {}),
         ...(c.popular ? { popular: true } : {}),
+        ...(c.exclusiveWith ? { exclusiveWith: c.exclusiveWith } : {}),
         ...(c.badge ? { badge: c.badge } : {}),
         ...(c.desc ? { desc: c.desc } : {}),
         ...(c.selectedNote ? { selectedNote: c.selectedNote } : {}),
@@ -891,6 +894,8 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             ...(c.askPrice ? { askPrice: true as const } : {}),
             // ⭐ ป้าย "แบบยอดนิยม" — ต้องส่งกลับ ไม่งั้นบันทึกแล้วหาย
             ...(c.popular ? { popular: true as const } : {}),
+            // ☝️ ชุดเลือกได้อย่างเดียว — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
+            ...(c.exclusiveWith ? { exclusiveWith: c.exclusiveWith } : {}),
             // 🏷️ ป้ายอิสระ ("ฟรี!") + 📝 คำอธิบายการ์ด + 📄 ชิ้นต่อแผ่นวัสดุ — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
             ...(c.badge ? { badge: c.badge } : {}),
             ...(c.desc ? { desc: c.desc } : {}),

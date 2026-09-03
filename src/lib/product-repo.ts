@@ -8,6 +8,7 @@ import { getSupabase } from "./supabase";
 import { type Product } from "./products";
 import { resolveOptions, type OptionPreset } from "./option-presets";
 import { fetchPresets } from "./preset-repo";
+import { withImageVersion } from "./img";
 import {
   markDeleted,
   mergedProduct,
@@ -137,6 +138,50 @@ export async function fetchProductNamesLite(): Promise<Product[]> {
 }
 
 /**
+ * รอบแรกของหน้ารายการหลังบ้าน — เฉพาะของที่ต้องใช้ "วาดแถว" (รูปปก ชื่อ หมวด ป้าย สถานะ)
+ * ชุดเต็ม (fetchProductsAdminLite) หนัก ~4.8 MB / ~1.2 วิ เพราะลาก options+images+body+ตารางราคามาด้วย
+ * ระหว่างนั้นหน้าจอยังไม่มีรูปปกให้เห็น = รีเฟรชแล้วค้างอยู่กับภาพหน้าเดิม (รูปเก่า) อยู่หลายวินาที
+ * ชุดนี้ ~170 KB / ~0.4 วิ — วาดรูปปกที่ถูกต้องได้ก่อน แล้วค่อยให้ชุดเต็มตามมาเติมรายละเอียด
+ */
+export async function fetchProductsAdminRows(): Promise<Product[]> {
+  const sb = getSupabase();
+  if (!sb) return mergedProducts();
+  const { data, error } = await sb
+    .from("products")
+    .select(
+      "id,name,category,price,sold,featured,badge,sort,slug:data->>slug,savedAt:data->>savedAt," +
+        "emoji:data->>emoji,gradient:data->>gradient,imageSrc:data->>imageSrc," +
+        "rating:data->rating,oldPrice:data->oldPrice,hidden:data->hidden,reviewed:data->reviewed"
+    )
+    .order("sort", { ascending: true });
+  if (error || !data) return mergedProducts();
+  return (data as unknown as Record<string, unknown>[])
+    .filter((r) => !String(r.id).startsWith("__"))
+    .map(
+      (r) =>
+        ({
+          ...r,
+          slug: (r.slug as string | null) ?? undefined,
+          badge: (r.badge as string | null) ?? undefined,
+          emoji: (r.emoji as string | null) ?? "🦆",
+          gradient: (r.gradient as string | null) ?? "from-amber-100 to-amber-200",
+          imageSrc: (r.imageSrc as string | null) ?? undefined,
+          rating: r.rating ?? 5,
+          oldPrice: (r.oldPrice as number | null) ?? undefined,
+          hidden: (r.hidden as boolean | null) ?? undefined,
+          // ฟิลด์หนักยังไม่ได้โหลด — หน้ารายการซ่อนบรรทัดรายละเอียด/ราคาไว้จนกว่าชุดเต็มจะมา
+          options: [],
+          rules: [],
+          images: [],
+          highlights: [],
+          body: [],
+          description: "",
+        }) as unknown as Product
+    )
+    .map((p) => withImageVersion(p));
+}
+
+/**
  * รายการสินค้าสำหรับ "หน้ารายการหลังบ้าน" — เอาเฉพาะฟิลด์ที่ลิสต์ใช้จริง
  * ของหนักที่ลิสต์ไม่ได้ใช้ (tabs · seo · rules · body ยาว ๆ · description) ไม่ต้องโหลด
  * ก้อนเดิม (id,data ทั้งแถว) = ~1.4 MB / 364 สินค้า · แบบนี้เหลือราวครึ่งเดียว
@@ -147,7 +192,7 @@ export async function fetchProductsAdminLite(): Promise<Product[]> {
   const { data, error } = await sb
     .from("products")
     .select(
-      "id,name,category,price,sold,featured,badge,sort,slug:data->>slug," +
+      "id,name,category,price,sold,featured,badge,sort,slug:data->>slug,savedAt:data->>savedAt," +
         "emoji:data->>emoji,gradient:data->>gradient,imageSrc:data->>imageSrc," +
         "rating:data->rating,oldPrice:data->oldPrice,pricing:data->pricing,priceRates:data->priceRates," +
         "hidden:data->hidden,reviewed:data->reviewed,bulkAskQty:data->bulkAskQty,custom:data->custom," +
@@ -175,7 +220,9 @@ export async function fetchProductsAdminLite(): Promise<Product[]> {
         rules: [],
         description: "",
       }) as unknown as Product
-  );
+  )
+    // ติดรหัสรุ่นท้าย URL รูป — รูปที่ถูกอัปทับพาธเดิมจะได้ขึ้นของใหม่ทันที ไม่ติดแคชตัวย่อรูป 30 วัน
+    .map((p) => withImageVersion(p));
   // คลี่ตัวเลือกที่ลิงก์คลัง เพื่อให้สรุป "ชื่อกลุ่ม (จำนวนตัวเลือก)" ตรงกับของจริง
   if (!products.some((p) => p.options?.some((o) => o.presetId))) return products;
   const presets = await fetchPresets();
@@ -219,7 +266,7 @@ async function loadProductsLite(): Promise<Product[]> {
   const { data, error } = await sb
     .from("products")
     .select(
-      "id,name,category,price,sold,featured,badge,sort,slug:data->>slug,hidden:data->hidden," +
+      "id,name,category,price,sold,featured,badge,sort,slug:data->>slug,hidden:data->hidden,savedAt:data->>savedAt," +
         "emoji:data->>emoji,gradient:data->>gradient,imageSrc:data->>imageSrc," +
         "rating:data->rating,oldPrice:data->oldPrice,priceMin:data->priceMin,priceMax:data->priceMax," +
         "quoteOption:data->quoteOption"
@@ -243,7 +290,11 @@ async function loadProductsLite(): Promise<Product[]> {
         hidden: (r.hidden as boolean | null) ?? undefined,
         emoji: (r.emoji as string | null) ?? "🦆",
         gradient: (r.gradient as string | null) ?? "from-amber-100 to-amber-200",
-        imageSrc: (r.imageSrc as string | null) ?? undefined,
+        // ติดรหัสรุ่นท้าย URL รูป (?v=savedAt) — เปลี่ยนรูปทับพาธเดิมแล้วการ์ดขึ้นของใหม่ทันที
+        imageSrc: withImageVersion({
+          savedAt: (r.savedAt as string | null) ?? undefined,
+          imageSrc: (r.imageSrc as string | null) ?? undefined,
+        }).imageSrc,
         rating: r.rating ?? 5,
         oldPrice: (r.oldPrice as number | null) ?? undefined,
         priceMin: (r.priceMin as number | null) ?? undefined,
