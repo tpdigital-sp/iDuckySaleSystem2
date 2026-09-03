@@ -4257,11 +4257,23 @@ export default function ProductDetail({
           {matrix &&
             (() => {
               const allKeys = Object.keys(matrix.cells);
-              const selectedKey = priceMatrixKey(matrix, effective);
+              /**
+               * 📐 กำหนดขนาดเองในกลุ่มแกนราคา — ตัวเลือกนี้ไม่มีคอลัมน์ของตัวเองในตาราง
+               * ต้องเกาะแถวเดียวกับที่ใช้คิดเงิน (12.5 → คอลัมน์ 12cm) ไม่งั้น selectedKey หาไม่เจอ
+               * แล้วตารางกางทั้งหมดแทนที่จะโชว์แบบที่เลือกอยู่
+               */
+              const tableSizePlan = sizeInputPlan(product, effective);
+              const selectedKey = priceMatrixKey(
+                matrix,
+                tableSizePlan?.choice ? { ...effective, [tableSizePlan.label]: tableSizePlan.choice } : effective
+              );
               const manyCols = allKeys.length > 1;
               const only = allKeys.filter((k) => k === selectedKey);
               // ตัวเลือกที่เลือกอยู่ไม่มีราคาในตาราง (แอดมินเว้นช่องไว้) → กางทั้งหมดแทนตารางเปล่า
-              const cols = !manyCols || priceAllCols || !only.length ? allKeys : only;
+              // ยกเว้นตอน "รอแอดมินตีราคา" (เช่น กำหนดขนาดเองเกินตาราง) — มี overlay คลุมอยู่แล้ว
+              // กางทั้ง 258 คอลัมน์ข้างหลังมีแต่ทำให้ตารางยืดเปล่า ๆ
+              const cols =
+                !manyCols || priceAllCols ? allKeys : only.length ? only : askQuote ? [allKeys[0]] : allKeys;
               /**
                * ราคาที่โชว์ = ช่องตาราง + ตัวเลือกเสริมที่เลือกอยู่ของช่วงจำนวนแถวนั้น (เช่น ค่าฐานสแตนดี้)
                * — โชว์ช่องตารางดิบแล้วไม่เท่ากับ "ราคา/ชิ้น" ในกล่องราคา ลูกค้านึกว่าเว็บคิดเงินผิด
