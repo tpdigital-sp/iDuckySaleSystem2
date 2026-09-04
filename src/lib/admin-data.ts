@@ -129,6 +129,18 @@ export function proofUnit(p?: { unit?: string }): string {
   return p?.unit?.trim() || "ชิ้น";
 }
 
+/**
+ * คำหน่วยที่เขียนต่างกันแต่หมายถึงอันเดียวกัน → คำมาตรฐาน ("เซต"/"set" → "เซ็ต" · "pcs" → "ชิ้น")
+ * ร้านสะกด "เซต" กับ "เซ็ต" ปนกันทั้งในสเปคและในหน่วยขาย ถ้าเทียบสตริงดิบจะกลายเป็นคนละหน่วย
+ */
+export function normalizeUnitWord(raw: string | undefined): string {
+  const w = (raw ?? "").trim().toLowerCase();
+  if (!w) return "";
+  if (w === "เซต" || w === "set" || w === "sets") return "เซ็ต";
+  if (w === "pc" || w === "pcs") return "ชิ้น";
+  return (raw ?? "").trim();
+}
+
 /** คำที่ใช้เรียก "ชิ้นงานย่อย" ในชื่อตัวเลือก (ฝั่งซ้ายของ 20 ใบ/เซ็ต) */
 const PIECE_WORDS = "ใบ|ชิ้น|ดวง|แผ่น|อัน|ตัว|เส้น|คู่|ผืน";
 /** คำที่ใช้เรียก "หน่วยที่ลูกค้าสั่ง" (ฝั่งขวาของ 20 ใบ/เซ็ต) */

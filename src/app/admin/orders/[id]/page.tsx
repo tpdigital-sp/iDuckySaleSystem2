@@ -6,6 +6,8 @@ import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
+import { proofIssues, productWordIndex, type ProductWordIndex } from "@/lib/proof-check";
+import { fetchProductNamesLite } from "@/lib/product-repo";
 import {
   allSelfDesignedApproved,
   MOCK_ORDERS,
@@ -46,7 +48,7 @@ import {
 } from "@/lib/admin-data";
 import { fetchOrderAdmin, fetchOrdersAdmin, packScanHeaders, saveOrderAdmin, setPackScanMode, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
-import { card, faint, muted, shortTime } from "@/lib/admin-ui";
+import { btnSm, btnSmNeutral, card, faint, muted, shortTime } from "@/lib/admin-ui";
 import { Banner, PageShell } from "@/components/admin/ui";
 import ImageLightbox from "@/components/ImageLightbox";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
@@ -61,6 +63,7 @@ import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
 import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
+import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
 import { foldSizeExtra, specEntries, specValueLines } from "@/components/SpecLines";
 import { uploadArtworkFile } from "@/lib/artwork-upload";
 
@@ -100,6 +103,34 @@ function packOptedOut(orderId: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * แยกลายที่แนบมาของรายการหนึ่ง ออกเป็น "ไฟล์พร้อมพิมพ์" (ลูกค้าออกแบบมาเอง ขนาดตรงกรอบ)
+ * กับ "ไฟล์ภาพต้นฉบับ" (ไว้ทำงานใหม่)
+ *
+ * แยกออกมาเป็นฟังก์ชันเพราะต้องใช้สองที่: ตอนวาดรายการไฟล์ในแต่ละรายการสินค้า และตอนถามระดับ
+ * ออเดอร์ว่า "มีไฟล์ที่ผูกเทมเพลตอยู่ไหม" — แถบสคริปต์แยกเลเยอร์ต้องขึ้นครั้งเดียวทั้งใบ
+ * ไม่ใช่ทุกรายการ (ออเดอร์ 6 รายการเคยได้แถบเดิม 6 อัน)
+ */
+function printFilesOf(it: OrderItem, orderId: string, itemIndex: number) {
+  const arts = it.artworkUrls ?? [];
+  const specs = (it.sel?.[PLACEMENT_SPEC_LABEL] ?? "").split(" | ").filter(Boolean);
+  const matched = specs.length > 0 && arts.length === specs.length;
+  const sourceSet = new Set(specs.map((sp) => sp.match(/ต้นฉบับ:\s*(\S+)/)?.[1]).filter(Boolean) as string[]);
+  const isReady = (u: string) => matched || (!sourceSet.has(u) && /\.jpe?g(\?|$)/i.test(u));
+  const ready = arts.filter(isReady).map((u, n) => {
+    const sp = specs[n] ?? specs[0] ?? "";
+    return {
+      u,
+      no: n + 1,
+      frame: parsePrintFrame(sp),
+      dpi: sp.match(/(\d+)\s*DPI/)?.[1],
+      source: sp.match(/ต้นฉบับ:\s*(\S+)/)?.[1],
+      name: `${orderId}-item${itemIndex + 1}-ลาย${n + 1}-พร้อมพิมพ์.ai`,
+    };
+  });
+  return { arts, specs, matched, ready, raw: arts.filter((u) => !isReady(u)) };
 }
 
 /** ขั้นถัดไปที่ "ปกติจะกด" ของแต่ละสถานะ — ทำเป็นปุ่มเดียวจบ ไม่ต้องเปิดลิสต์ยาว */
@@ -540,62 +571,19 @@ function ProofNoteInput({
 function ProofDropCheck({
   proofs,
   item,
+  catalog,
   onSetPerUnit,
 }: {
   proofs: Proof[];
   item: OrderItem;
+  /** คำเฉพาะของสินค้าทั้งร้าน — ใช้จับไฟล์ของงานอื่นที่ปนมา (ยังโหลดไม่เสร็จ = ข้ามข้อนี้) */
+  catalog?: ProductWordIndex;
   /** แอดมินตั้ง "1 เซ็ต = กี่ชิ้น" ให้รายการนี้ (undefined = ไม่มีสิทธิ์แก้) */
   onSetPerUnit?: (per: number) => void;
 }) {
   const qc = proofQtyCheck(item, proofs);
+  const list = proofIssues(item, proofs, catalog);
   if (proofs.length === 0) return null;
-  const list: { level: "warn" | "hint"; text: string }[] = [];
-  const nos = (idx: number[]) => idx.map((j) => `รูปที่ ${j + 1}`).join(" · ");
-
-  // ไฟล์เดียวกันโผล่สองกรอบ = ลากซ้ำแน่นอน (ลูกค้าเห็นแบบเดียวกันสองรูป และยอดรวมจะเกิน)
-  const byUrl = new Map<string, number[]>();
-  proofs.forEach((p, j) => byUrl.set(p.url, [...(byUrl.get(p.url) ?? []), j]));
-  byUrl.forEach((idx) => {
-    if (idx.length > 1) list.push({ level: "warn", text: `ไฟล์เดียวกันซ้ำ (${nos(idx)}) — น่าจะลากไฟล์เดิมมาสองรอบ` });
-  });
-
-  // ชื่อไฟล์ซ้ำแต่คนละไฟล์ = ลายเดียวกันคนละเวอร์ชันปนมา (เช่นไฟล์เก่ากับไฟล์แก้แล้ว)
-  const byNote = new Map<string, number[]>();
-  proofs.forEach((p, j) => {
-    const key = (p.note ?? "").trim().toLowerCase();
-    if (key) byNote.set(key, [...(byNote.get(key) ?? []), j]);
-  });
-  byNote.forEach((idx) => {
-    if (idx.length > 1 && new Set(idx.map((j) => proofs[j]?.url)).size > 1)
-      list.push({ level: "warn", text: `ชื่อไฟล์ซ้ำกัน “${proofs[idx[0] ?? 0]?.note}” (${nos(idx)}) — เช็กว่าคนละลายจริงไหม` });
-  });
-
-  // ไม่รู้จำนวนของรูปไหน = เทียบยอดกับที่ลูกค้าสั่งไม่ได้ และฝ่ายแพ็คไม่รู้ว่ารูปนั้นต้องนับกี่ชิ้น
-  const noQty = proofs.map((p, j) => (p.qty ? -1 : j)).filter((j) => j >= 0);
-  if (noQty.length)
-    list.push({ level: "hint", text: `ยังไม่ระบุจำนวน (${nos(noQty)}) — ใส่ “x3” หรือ “3 ชิ้น” ไว้ในชื่อไฟล์ ระบบเติมให้เอง` });
-
-  // ยอดรวมเทียบกับที่ลูกค้าสั่ง — คูณ "กี่ชิ้นต่อหน่วย" ให้แล้ว (สั่ง 12 เซ็ต × 20 ใบ = 240 ใบ)
-  if (!noQty.length) {
-    if (!qc.comparable && qc.total > 0)
-      list.push({
-        level: "hint",
-        text: `แบบนับเป็น “${qc.unit || "คนละหน่วยกัน"}” รวม ${qc.total} ${qc.unit} (ลูกค้าสั่ง ${qc.orderedText}) — ระบบเทียบให้ไม่ได้ ต้องเช็กเอง`,
-      });
-    else if (qc.comparable && !qc.ok && qc.packUnit)
-      // งานขายเป็นเซ็ต/แผ่น ยังไม่รู้ว่า 1 หน่วยกี่ชิ้น — ไม่ใช่ความผิดของกราฟฟิก อย่าฟ้องว่าแบบผิด
-      list.push({
-        level: "hint",
-        text: `งานนี้ขายเป็น “${qc.saleUnit}” — สั่ง ${item.qty} ${qc.saleUnit} แต่แบบรวม ${qc.total} ${qc.unit} ระบบยังไม่รู้ว่า 1 ${qc.saleUnit} เท่ากับกี่ชิ้น`,
-      });
-    else if (qc.comparable && !qc.ok)
-      list.push({
-        level: "warn",
-        text: `รวมจากแบบ ${qc.total} ${qc.unit} แต่ลูกค้าสั่ง ${qc.orderedText} — ${
-          qc.total < qc.target ? `ขาดอีก ${qc.target - qc.total}` : `เกินมา ${qc.total - qc.target}`
-        } ${qc.unit}`,
-      });
-  }
 
   /* งานเซ็ตที่ยังไม่ได้ตั้งตัวคูณ — ให้ตั้งตรงนี้ได้เลย ตั้งแล้วทั้งใบงาน/โหมดแพ็คใช้เลขเดียวกันหมด */
   const perUnitRow = qc.needPerUnit && onSetPerUnit && (
@@ -607,7 +595,7 @@ function ProofDropCheck({
       <>
         {perUnitRow}
         <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-emerald-800 ring-1 ring-emerald-200">
-          ✅ ตรวจชื่อไฟล์แล้ว — {proofs.length} รูป รวม {qc.total} {qc.unit} ตรงกับที่ลูกค้าสั่งพอดี
+          ✅ ตรวจแล้ว — {proofs.length} รูป รวม {qc.total} {qc.unit} ตรงกับที่ลูกค้าสั่งพอดี
           {qc.per > 1 && <span className="font-normal"> ({qc.math})</span>}
         </p>
       </>
@@ -622,7 +610,7 @@ function ProofDropCheck({
           bad ? "bg-rose-50 text-rose-800 ring-rose-300" : "bg-amber-50 text-amber-900 ring-amber-300"
         }`}
       >
-        <p className="font-extrabold">{bad ? "⚠️ ตรวจชื่อไฟล์แล้ว — มีจุดที่ต้องแก้ก่อนส่งให้ลูกค้า" : "💡 ตรวจชื่อไฟล์แล้ว — มีจุดที่ควรเช็ก"}</p>
+        <p className="font-extrabold">{bad ? "⚠️ ตรวจแล้ว — มีจุดที่ต้องแก้ก่อนส่งให้ลูกค้า" : "💡 ตรวจแล้ว — มีจุดที่ควรเช็ก"}</p>
         <ul className="mt-1 space-y-0.5">
           {list.map((x, k) => (
             <li key={k} className={x.level === "warn" ? "font-bold" : "font-normal opacity-90"}>
@@ -738,6 +726,27 @@ export default function AdminOrderDetailPage() {
     setOrder(next);
     if (!demo) void saveOrderAdmin(next);
   }
+
+  /*
+   * คลังคำเฉพาะของสินค้าทั้งร้าน — ใช้จับ "ไฟล์ของงานอื่นปนมา" จากชื่อไฟล์
+   * โหลดทีหลังและเฉพาะตอนมีแบบงานให้ตรวจ (~35KB) จะได้ไม่ถ่วงหน้าออเดอร์ตอนเปิด
+   */
+  const [nameIndex, setNameIndex] = useState<ProductWordIndex>();
+  const hasProofs = (order?.items ?? []).some((it) => proofsOf(it).length > 0);
+  useEffect(() => {
+    if (!hasProofs || nameIndex) return;
+    let alive = true;
+    void fetchProductNamesLite()
+      .then((rows) => {
+        if (alive) setNameIndex(productWordIndex(rows.map((r) => ({ id: r.id, name: r.name, slug: r.slug }))));
+      })
+      .catch(() => {
+        /* โหลดคลังชื่อไม่ได้ = ข้ามการจับไฟล์ข้ามงาน ตัวตรวจอื่นยังทำงานปกติ */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [hasProofs, nameIndex]);
 
   /**
    * ตั้ง "1 เซ็ต/ชุด/แผ่น = กี่ชิ้น" ให้รายการนี้ (แช่ลงออเดอร์ ไม่ไปแก้สินค้า)
@@ -936,9 +945,9 @@ export default function AdminOrderDetailPage() {
   /**
    * โหลดหน้าออเดอร์ — ⚠️ อย่ารวมสองคำขอเป็น Promise.all อีก
    * เดิมรอทั้ง "ใบนี้" และ "ออเดอร์ทั้งตาราง" ให้เสร็จก่อนถึงจะวาด → จอค้าง "กำลังโหลดออเดอร์…"
-   * นานเท่าคำขอที่ช้ากว่า (ตารางทั้งหมดวัดจริง 66 ใบ = 137 KB / ~440 ms) ทั้งที่ข้อมูลที่ใช้วาดหน้ามีแค่ใบเดียว
-   * ตอนนี้: ยิงคู่ขนานทั้งคู่ · ใบนี้มาถึงก็วาดเลย · ตารางทั้งหมดตามมาเบื้องหลัง (ใช้แค่ "ออเดอร์อื่นของ
-   * ลูกค้าคนเดียวกัน" กับการเดาห้องแชท LINE จากใบเก่า — สองอย่างนี้โผล่ทีหลังได้ ไม่ต้องกั๊กทั้งหน้าไว้)
+   * นานเท่าคำขอที่ช้ากว่า (ตารางทั้งหมด ~150 KB ขึ้นไป) ทั้งที่ข้อมูลที่ต้องใช้วาดหน้ามีแค่ใบเดียว
+   * ตอนนี้: ใบนี้มาถึงก็วาดเลย · ตารางทั้งหมดตามมาเบื้องหลัง (ใช้แค่ "ออเดอร์อื่นของลูกค้าคนเดียวกัน"
+   * กับการเดาห้องแชท LINE จากใบเก่า — สองอย่างนี้โผล่ทีหลังได้ ไม่ต้องกั๊กทั้งหน้าไว้)
    */
   const load = useCallback(async () => {
     const listLater = fetchOrdersAdmin({ lite: true }); // ยิงคู่ขนานไปเลย แต่ไม่รอ — ไม่ใช่ข้อมูลที่ใช้วาดหน้า
@@ -2894,27 +2903,7 @@ export default function AdminOrderDetailPage() {
                         จับคู่กับจำนวนลายได้พอดี = ภาพพร้อมพิมพ์ทั้งชุด (ออเดอร์ที่สร้างหลังแก้บั๊ครูปซ้ำ)
                       */}
                       {(() => {
-                        const arts = it.artworkUrls ?? [];
-                        const specs = (it.sel?.[PLACEMENT_SPEC_LABEL] ?? "").split(" | ").filter(Boolean);
-                        const matched = specs.length > 0 && arts.length === specs.length;
-                        const sourceSet = new Set(
-                          specs.map((sp) => sp.match(/ต้นฉบับ:\s*(\S+)/)?.[1]).filter(Boolean) as string[],
-                        );
-                        const isReady = (u: string) => matched || (!sourceSet.has(u) && /\.jpe?g(\?|$)/i.test(u));
-                        const ready = arts
-                          .filter(isReady)
-                          .map((u, n) => {
-                            const sp = specs[n] ?? specs[0] ?? "";
-                            return {
-                              u,
-                              no: n + 1,
-                              frame: parsePrintFrame(sp),
-                              dpi: sp.match(/(\d+)\s*DPI/)?.[1],
-                              source: sp.match(/ต้นฉบับ:\s*(\S+)/)?.[1],
-                              name: `${order.id}-item${i + 1}-ลาย${n + 1}-พร้อมพิมพ์.ai`,
-                            };
-                          });
-                        const raw = arts.filter((u) => !isReady(u));
+                        const { arts, specs, matched, ready, raw } = printFilesOf(it, order.id, i);
                         if (!arts.length) return null;
                         return (
                           <div className="mt-2 space-y-2">
@@ -2931,67 +2920,94 @@ export default function AdminOrderDetailPage() {
                                 <p className="text-[11px] font-bold text-sky-800">
                                   📐 ไฟล์พร้อมพิมพ์ ({ready.length}) — ลูกค้าออกแบบมาเองแล้ว ไม่ต้องทำแบบใหม่
                                 </p>
-                                <ol className="mt-1 space-y-1">
+                                <ol className="mt-1 space-y-1.5">
                                   {ready.map((r) => {
                                     const aiKey = `${order.id}-${i}-ai-${r.no}`;
                                     return (
                                       <li
                                         key={r.u}
-                                        className="flex items-start gap-2 rounded-lg bg-white p-1.5 ring-1 ring-sky-200"
+                                        className="flex items-start gap-2 rounded-lg bg-white p-2 ring-1 ring-sky-200"
                                       >
-                                        <span className="w-4 shrink-0 pt-1 text-center text-[11px] font-bold text-slate-400">
-                                          {r.no}.
-                                        </span>
                                         <button
                                           type="button"
                                           onClick={() => setLightbox({ src: r.u, alt: `${it.name} ลายที่ ${r.no}`, caption: it.name })}
-                                          className="h-12 w-12 shrink-0 overflow-hidden rounded ring-1 ring-sky-200 transition hover:ring-2 hover:ring-sky-400"
+                                          className="h-14 w-14 shrink-0 overflow-hidden rounded-lg ring-1 ring-sky-200 transition hover:ring-2 hover:ring-sky-400"
                                           title="ดูรูปเต็ม"
                                         >
                                           {/* eslint-disable-next-line @next/next/no-img-element */}
                                           <img src={r.u} alt={`ลายที่ ${r.no}`} className="h-full w-full object-cover" />
                                         </button>
-                                        {/* ชื่อไฟล์ · ข้อมูลกรอบ · ปุ่มดาวน์โหลด — เรียงลงมาในคอลัมน์เดียว
-                                            (แผงนี้แคบ ถ้าวางปุ่มด้านข้างข้อความจะถูกบีบจนอ่านไม่ออก) */}
+                                        {/* หัวแถวบอก "ลายที่เท่าไหร่ · กรอบกี่มิล" แล้วค่อยเป็นปุ่มโหลด
+                                            ชื่อไฟล์ยาว ๆ ไม่โชว์แล้ว (โดน truncate จนอ่านไม่ออกอยู่ดี) ย้ายไปอยู่ใน title */}
                                         <span className="min-w-0 flex-1">
-                                          <button
-                                            type="button"
-                                            disabled={!r.frame || aiBusy === aiKey}
-                                            onClick={async () => {
-                                              if (!r.frame) return;
-                                              setAiBusy(aiKey);
-                                              try {
-                                                /**
-                                                 * รู้ว่าใช้เทมเพลตไฟล์ไหน → ให้เป็นชุด .zip
-                                                 * (เทมเพลตต้นฉบับเลเยอร์ครบ + ลาย + สคริปต์วางให้อัตโนมัติ)
-                                                 * เอา .ai ไฟล์เดียวไม่ได้ — Illustrator เปิด PDF แล้วยุบเหลือเลเยอร์เดียวเสมอ
-                                                 */
-                                                /**
-                                                 * ไฟล์นี้มีแต่ "ลายของลูกค้า" ล้วน ๆ ขนาดเท่ากรอบงานจริง (รวมตัดตก)
-                                                 * ไม่รวมงานของเทมเพลตเข้ามา — กราฟฟิกเปิดเทมเพลตจากคลังแล้ววางลายเอง
-                                                 * จะได้เลเยอร์เดิมของเทมเพลตครบ (ถ้ารวมให้ Illustrator จะยุบเหลือเลเยอร์เดียว)
-                                                 */
-                                                const blob = await buildPrintAi({
-                                                  imageUrl: r.u,
-                                                  widthMm: r.frame.widthMm,
-                                                  heightMm: r.frame.heightMm,
-                                                  title: `${order.id} ${it.name} ลายที่ ${r.no}`,
-                                                });
-                                                downloadBlob(blob, r.name);
-                                              } catch (e) {
-                                                alert(e instanceof Error ? e.message : "สร้างไฟล์ .ai ไม่สำเร็จ");
-                                              } finally {
-                                                setAiBusy(null);
-                                              }
-                                            }}
-                                            className="block w-full truncate text-left text-[11px] font-bold text-sky-700 underline decoration-sky-300 underline-offset-2 transition hover:text-sky-900 disabled:no-underline disabled:opacity-60"
-                                            title={`กดเพื่อสร้างและดาวน์โหลด ${r.name}`}
-                                          >
-                                            {aiBusy === aiKey ? "กำลังสร้างไฟล์…" : `⬇️ ${r.name}`}
-                                          </button>
-                                          <span className={`block text-[10px] leading-snug ${faint}`}>
-                                            {r.frame ? `กรอบ ${r.frame.widthMm}×${r.frame.heightMm} มม.` : "ไม่มีข้อมูลกรอบงาน"}
-                                            {r.dpi ? ` · ${r.dpi} DPI` : ""}
+                                          <span className="flex items-baseline justify-between gap-2">
+                                            <span className="text-xs font-semibold text-slate-700">ลายที่ {r.no}</span>
+                                            <span className={`shrink-0 text-[11px] tabular-nums ${muted}`}>
+                                              {r.frame ? `${r.frame.widthMm}×${r.frame.heightMm} มม.` : "ไม่มีข้อมูลกรอบงาน"}
+                                              {r.dpi ? ` · ${r.dpi} DPI` : ""}
+                                            </span>
+                                          </span>
+                                          <span className="mt-1.5 flex flex-wrap gap-1.5">
+                                            <button
+                                              type="button"
+                                              disabled={!r.frame || aiBusy === aiKey}
+                                              onClick={async () => {
+                                                if (!r.frame) return;
+                                                setAiBusy(aiKey);
+                                                try {
+                                                  /**
+                                                   * ไฟล์นี้มีแต่ "ลายของลูกค้า" ล้วน ๆ ขนาดเท่ากรอบงานจริง (รวมตัดตก)
+                                                   * ไม่รวมงานของเทมเพลต — สำหรับงานที่กราฟฟิกอยากวางเองใน Illustrator
+                                                   * (แบบรวมเทมเพลต+เลเยอร์ครบ ใช้ปุ่ม 🧩 ข้าง ๆ แทน)
+                                                   */
+                                                  const blob = await buildPrintAi({
+                                                    imageUrl: r.u,
+                                                    widthMm: r.frame.widthMm,
+                                                    heightMm: r.frame.heightMm,
+                                                    title: `${order.id} ${it.name} ลายที่ ${r.no}`,
+                                                  });
+                                                  downloadBlob(blob, r.name);
+                                                } catch (e) {
+                                                  alert(e instanceof Error ? e.message : "สร้างไฟล์ .ai ไม่สำเร็จ");
+                                                } finally {
+                                                  setAiBusy(null);
+                                                }
+                                              }}
+                                              className={`${btnSm} whitespace-nowrap border border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100`}
+                                              title={`ลายของลูกค้าล้วน ๆ ขนาดเท่ากรอบงานจริง — ${r.name}`}
+                                            >
+                                              {aiBusy === aiKey ? "กำลังสร้าง…" : "⬇️ ลายอย่างเดียว"}
+                                            </button>
+                                            {/* 🧩 ไฟล์รวมเทมเพลต — ลายเป็นเลเยอร์ล่างสุด เส้นไดคัท/ไกด์ของเทมเพลตทับอยู่
+                                                มีเฉพาะออเดอร์ที่จดไฟล์เทมเพลตไว้ ([ai:…|tpl:…]) และเทมเพลตเป็น PDF compatible */}
+                                            {r.frame?.tplUrl && (
+                                              <button
+                                                type="button"
+                                                disabled={aiBusy === `${aiKey}-tpl`}
+                                                onClick={async () => {
+                                                  const frame = r.frame;
+                                                  if (!frame?.tplUrl) return;
+                                                  setAiBusy(`${aiKey}-tpl`);
+                                                  try {
+                                                    const blob = await buildTplMergedAi({
+                                                      tplUrl: frame.tplUrl,
+                                                      imageUrl: r.u,
+                                                      layerName: `ลายลูกค้า ${order.id} ลายที่ ${r.no}`,
+                                                      title: `${order.id} ${it.name} ลายที่ ${r.no} (รวมเทมเพลต)`,
+                                                    });
+                                                    downloadBlob(blob, r.name.replace(/-พร้อมพิมพ์\.ai$/, "-รวมเทมเพลต.ai"));
+                                                  } catch (e) {
+                                                    alert(e instanceof Error ? e.message : "สร้างไฟล์รวมเทมเพลตไม่สำเร็จ");
+                                                  } finally {
+                                                    setAiBusy(null);
+                                                  }
+                                                }}
+                                                className={`${btnSm} whitespace-nowrap border border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100`}
+                                                title="ไฟล์ .ai ที่มีทั้งเทมเพลต (เส้นไดคัท/ไกด์) และลายลูกค้าในไฟล์เดียว — Illustrator เปิดมาเป็นชั้นเดียว ใช้ปุ่ม “โหลด .jsx” ท้ายรายการสินค้าแยกเลเยอร์"
+                                              >
+                                                {aiBusy === `${aiKey}-tpl` ? "กำลังรวม…" : "🧩 รวมเทมเพลต"}
+                                              </button>
+                                            )}
                                           </span>
                                         </span>
                                         {isOwner && (
@@ -3158,7 +3174,12 @@ export default function AdminOrderDetailPage() {
                         </div>
                       )}
                       {/* ผลตรวจชุดแบบ — อ่านจากชื่อไฟล์ที่ลากเข้ามา เทียบกับจำนวนที่ลูกค้าสั่ง */}
-                      <ProofDropCheck proofs={proofs} item={it} onSetPerUnit={mayProof ? (per) => setItemPerUnit(i, per) : undefined} />
+                      <ProofDropCheck
+                        proofs={proofs}
+                        item={it}
+                        catalog={nameIndex}
+                        onSetPerUnit={mayProof ? (per) => setItemPerUnit(i, per) : undefined}
+                      />
                       {proofs.length === 0 ? (
                         <p className="mt-2 rounded-lg border-2 border-dashed border-violet-200 bg-white px-3 py-3 text-center text-[11px] text-slate-400">
                           {proofDropIdx === i ? "⬇️ ปล่อยไฟล์ตรงนี้ได้เลย" : "ยังไม่ได้ส่งแบบให้ลูกค้า — ลากไฟล์มาวาง กดปุ่มด้านล่าง หรือกด “ใช้ลายนี้เป็นแบบ” จากฝั่งซ้าย"}
@@ -3431,6 +3452,28 @@ export default function AdminOrderDetailPage() {
                 </div>
               );
             })}
+            {/* 📜 เครื่องมือของทั้งออเดอร์ ไม่ใช่ของรายการใดรายการหนึ่ง — สคริปต์เป็นไฟล์เดียวกันเป๊ะ
+                ทุกครั้ง (layerSplitJsx() ไม่รับพารามิเตอร์) และทำงานทีละ "โฟลเดอร์" อยู่แล้ว
+                จึงขึ้นครั้งเดียวท้ายรายการสินค้า ไม่ใช่ในทุกลาย/ทุกรายการ */}
+            {order.items.some((it, i) => printFilesOf(it, order.id, i).ready.some((r) => r.frame?.tplUrl)) && (
+              <div className="flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200">
+                <span className="shrink-0 text-sm leading-5">📜</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-semibold text-slate-700">แยกเลเยอร์ไฟล์ “รวมเทมเพลต”</span>
+                  <span className={`mt-0.5 block text-[11px] leading-snug ${faint}`}>
+                    ไฟล์รวมเปิดมาเป็นชั้นเดียว — รันครั้งเดียวแยกได้ทั้งโฟลเดอร์
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => downloadBlob(layerSplitJsx(), "แยกเลเยอร์-ทั้งโฟลเดอร์.jsx")}
+                  className={`${btnSmNeutral} shrink-0 whitespace-nowrap`}
+                  title="ใน Illustrator: File → Scripts → Other Script… เลือกไฟล์นี้ → เลือกโฟลเดอร์ → แยกเลเยอร์ทุกไฟล์ .ai ในโฟลเดอร์ เซฟทับไฟล์เดิมแล้วปิดเอง (ได้เลเยอร์ Details Cut + ลายลูกค้า)"
+                >
+                  โหลด .jsx
+                </button>
+              </div>
+            )}
             {/* 🎁 การ์ดของแถม — ขึ้นเป็นรายการงานต่อท้าย ให้แนบลาย/เห็นว่าต้องใส่กล่อง
                 (ข้อมูลอยู่ order.gifts เหมือนเดิม — ห้ามยัดเป็นสินค้า ฿0 เดี๋ยวปนยอด/สต๊อก) */}
             {(order.gifts ?? []).map((g) => (
