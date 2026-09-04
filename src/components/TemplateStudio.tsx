@@ -122,6 +122,8 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
    * ยกเลิกแล้วจะเห็นงานสะอาด ๆ ไม่มีเส้นกรอบบัง เหมือนตอนพิมพ์จริง
    */
   const [sel, setSel] = useState(false);
+  /** กำลังถามอยู่ว่า "ลายไม่เต็มกรอบ เอาแบบนี้จริงไหม" — ขึ้นตอนกดใช้ลายทั้งที่ยังไม่เต็ม */
+  const [gapAsk, setGapAsk] = useState(false);
   /** ค่าล่าสุดของการวาง — ให้ตัวจัดการล้อเมาส์ (ผูกครั้งเดียว) อ่านได้โดยไม่ต้องผูกใหม่ทุกครั้ง */
   const plRef = useRef<Placement | null>(null);
 
@@ -528,16 +530,38 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
   /** ขนาดที่ "คลุมเต็มกรอบพอดี" = 100% ของแถบเลื่อน */
   const fillW = src ? src.w * Math.max(bleedW / src.w, bleedH / src.h) : 1;
   const zoomPct = pl ? clamp((pl.wMm / fillW) * 100, 5, 400) : 100;
-  /** ลายคลุมถึงขอบตัดตกครบไหม (เช็คแบบกรอบสี่เหลี่ยม — พอสำหรับเตือน) */
+  /**
+   * ลายคลุมถึงขอบตัดตกครบไหม
+   * ลายเป็นสี่เหลี่ยม (นูน) → คลุมกรอบครบ ก็ต่อเมื่อ "มุมทั้งสี่ของกรอบ" อยู่ในลาย
+   * เช็คแบบนี้จับกรณีลายหมุนแล้วมุมกรอบโหว่ได้ด้วย (เทียบกรอบครอบนอกจะบอกว่าคลุมทั้งที่จริงไม่คลุม)
+   */
   const covers = (() => {
     if (!pl) return false;
-    const rad = (pl.rotDeg * Math.PI) / 180;
-    const w = Math.abs(pl.wMm * Math.cos(rad)) + Math.abs(pl.hMm * Math.sin(rad));
-    const h = Math.abs(pl.wMm * Math.sin(rad)) + Math.abs(pl.hMm * Math.cos(rad));
+    const r = (-pl.rotDeg * Math.PI) / 180;
+    const cos = Math.cos(r);
+    const sin = Math.sin(r);
+    const tol = 0.5; // มม. — ต่างกันไม่ถึงครึ่งมิลถือว่าเต็ม (ตาไม่เห็น เครื่องตัดก็กินเกินอยู่แล้ว)
     return (
-      pl.cxMm - w / 2 <= 0.5 && pl.cyMm - h / 2 <= 0.5 && pl.cxMm + w / 2 >= bleedW - 0.5 && pl.cyMm + h / 2 >= bleedH - 0.5
-    );
+      [
+        [0, 0],
+        [bleedW, 0],
+        [0, bleedH],
+        [bleedW, bleedH],
+      ] as const
+    ).every(([x, y]) => {
+      const dx = x - pl.cxMm;
+      const dy = y - pl.cyMm;
+      const lx = dx * cos - dy * sin;
+      const ly = dx * sin + dy * cos;
+      return Math.abs(lx) <= pl.wMm / 2 + tol && Math.abs(ly) <= pl.hMm / 2 + tol;
+    });
   })();
+
+  // ขยับจนลายเต็มกรอบแล้ว → ปิดคำถามทิ้ง (ไม่มีอะไรให้ยืนยันแล้ว)
+  useEffect(() => {
+    if (covers) setGapAsk(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [covers]);
 
   /** ประกอบภาพจริงตามตัวเลขที่วางไว้ (ขนาดเท่าพื้นที่ตัดตก) */
   async function buildComposite(pl: Placement): Promise<File | null> {
@@ -571,9 +595,17 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
     return new File([blob], `${stem}-บนเทมเพลต.jpg`, { type: "image/jpeg" });
   }
 
-  async function apply() {
+  /** force = ยืนยันจากป๊อปอัพแล้วว่ารับขอบขาวได้ (อย่าถามซ้ำ) */
+  async function apply(force = false) {
     const pl0 = pl;
     if (!src || !pl0 || busy) return;
+    // ลายไม่เต็มกรอบ = ยังไม่ไปไหน เด้งข้อความเตือนถามก่อน
+    // (เผลอสั่งงานที่มีขอบขาวแล้วมารู้ตอนได้ของ = เคลมกันทั้งสองฝ่าย)
+    if (!covers && !force) {
+      setGapAsk(true);
+      return;
+    }
+    setGapAsk(false);
     setBusy(true);
     setErr("");
     try {
@@ -651,7 +683,7 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
         ถ้ายืดเต็มจะเหลือที่ว่างเปล่าเกินครึ่ง ปุ่มก็ไปอยู่ไกลนิ้ว
         จอใหญ่: สูงเกือบเต็มจอเหมือนเดิม (มีที่ให้ลากลายเยอะ ๆ)
       */}
-      <div className="mx-auto flex max-h-full w-full max-w-3xl flex-col overflow-hidden bg-white sm:my-4 sm:h-[calc(100%-2rem)] sm:rounded-3xl sm:shadow-2xl">
+      <div className="relative mx-auto flex max-h-full w-full max-w-3xl flex-col overflow-hidden bg-white sm:my-4 sm:h-[calc(100%-2rem)] sm:rounded-3xl sm:shadow-2xl">
         {/* หัว */}
         <div className="flex items-center gap-3 border-b border-stone-100 px-4 py-3">
           <div className="min-w-0 flex-1">
@@ -762,6 +794,40 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
                   aria-hidden="true"
                   className="pointer-events-none absolute inset-0 h-full w-full object-fill"
                 />
+              )}
+
+              {/*
+                ⚠️ ส่วนที่ลายวางไม่ถึง — ขีดแดงทับให้เห็นกับตาว่า "ตรงนี้จะพิมพ์ออกมาเป็นขอบขาว"
+                ใช้ mask เจาะรูปสี่เหลี่ยมของลาย (หมุนตามลายด้วย) ออกจากกรอบงาน
+                → ที่เหลือคือพื้นที่โหว่จริง ๆ ถูกต้องทุกมุมหมุน ไม่ต้องเดาเป็นแถบ ๆ
+                อยู่บนสุด (เหนือสกิน) เพราะเป็นคำเตือน ไม่ใช่ส่วนหนึ่งของงาน
+              */}
+              {src && pl && !covers && (
+                <svg
+                  className="pointer-events-none absolute inset-0 h-full w-full"
+                  viewBox={`0 0 ${bleedW} ${bleedH}`}
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
+                  <defs>
+                    <pattern id="tsGapHatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                      <rect width="4" height="4" fill="rgba(244,63,94,.12)" />
+                      <line x1="0" y1="0" x2="0" y2="4" stroke="rgba(225,29,72,.65)" strokeWidth="1" />
+                    </pattern>
+                    <mask id="tsGapMask">
+                      <rect width={bleedW} height={bleedH} fill="#fff" />
+                      <rect
+                        x={pl.cxMm - pl.wMm / 2}
+                        y={pl.cyMm - pl.hMm / 2}
+                        width={pl.wMm}
+                        height={pl.hMm}
+                        transform={`rotate(${pl.rotDeg} ${pl.cxMm} ${pl.cyMm})`}
+                        fill="#000"
+                      />
+                    </mask>
+                  </defs>
+                  <rect width={bleedW} height={bleedH} fill="url(#tsGapHatch)" mask="url(#tsGapMask)" />
+                </svg>
               )}
             </div>
 
@@ -880,6 +946,13 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
             </span>
           </p>
 
+          {/* ข้อความเตือนคาไว้เหนือกรอบงาน — ตอนวางลายสายตาอยู่ตรงนี้ ไม่ได้มองแถบใต้จอ */}
+          {src && !covers && (
+            <p className="pointer-events-none absolute left-1/2 top-2 z-10 max-w-[92%] -translate-x-1/2 rounded-full bg-rose-600 px-3 py-1 text-center text-[11px] font-extrabold text-white shadow-lg">
+              ⚠️ ลายวางไม่เต็มกรอบงาน — ตรงที่ขีดแดงจะพิมพ์ออกมาเป็นขอบขาว
+            </p>
+          )}
+
           {/* ลากไฟล์อยู่เหนือจอ — บอกให้ชัดว่าปล่อยได้เลย */}
           {dropOn && (
             <div className="pointer-events-none absolute inset-3 z-10 flex items-center justify-center rounded-2xl border-4 border-dashed border-sky-400 bg-sky-50/85">
@@ -905,11 +978,25 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
               >
                 {dpi >= DPI_WARN ? "✓ ความคมชัดดี" : dpi >= DPI_BAD ? "⚠️ ค่อนข้างเบลอ" : "⚠️ เบลอแน่นอน"} · {dpi} DPI
               </span>
-              {!covers && (
-                <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800">
-                  ⚠️ ลายไม่คลุมถึงขอบตัด — จะมีขอบขาว
-                </span>
-              )}
+            </div>
+          )}
+
+          {/*
+            ลายวางไม่เต็มเทมเพลต — เตือนเป็นแถบเต็มบรรทัด (ชิปเล็ก ๆ ลูกค้ามองข้าม)
+            พร้อมปุ่มแก้ให้จบในคลิกเดียว ไม่ต้องไปหาปุ่ม "เต็มพื้นที่" เอง
+          */}
+          {src && !covers && (
+            <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2">
+              <p className="min-w-0 flex-1 text-[11px] font-bold leading-snug text-amber-900">
+                ⚠️ ลายวางไม่เต็มเทมเพลต — ส่วนที่ขีดแดงจะพิมพ์ออกมาเป็นขอบขาว
+              </p>
+              <button
+                type="button"
+                onClick={() => fill()}
+                className="shrink-0 rounded-full bg-amber-500 px-3 py-1 text-[11px] font-extrabold text-white transition hover:bg-amber-600"
+              >
+                ⤢ ขยายให้เต็ม
+              </button>
             </div>
           )}
 
@@ -1005,6 +1092,57 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
             </button>
           </div>
         </div>
+
+        {/*
+          ⚠️ ข้อความเตือนตอนกด "ใช้ลายนี้" ทั้งที่ลายยังไม่เต็มกรอบ
+          บอกตัวเลขจริงให้เทียบเห็น ๆ + ให้ทางออกที่ถูกต้องเป็นปุ่มหลัก
+          ไม่ห้ามขาด (บางงานตั้งใจให้มีขอบขาว) แค่ต้องรู้ตัวก่อนกดผ่าน
+        */}
+        {gapAsk && pl && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-stone-900/45 p-4">
+            <div className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-2xl">
+              <p className="text-sm font-extrabold text-rose-700">⚠️ ลายวางไม่เต็มเทมเพลต</p>
+              <p className="mt-2 text-xs leading-relaxed text-stone-600">
+                ลายที่วางอยู่ {Math.round(pl.wMm) / 10}×{Math.round(pl.hMm) / 10} ซม. แต่กรอบงานรวมตัดตกต้องได้{" "}
+                {Math.round(bleedW) / 10}×{Math.round(bleedH) / 10} ซม.
+                {/* ไทยไม่เว้นวรรคกลางประโยค — ต่อสตริงเองกัน JSX แทรกช่องว่างรอบ <strong> */}
+                {" — ส่วนที่"}
+                <strong>ขีดแดง</strong>
+                {"ไว้จะพิมพ์ออกมาเป็น"}
+                <strong>ขอบขาว</strong>
+                {" แก้ทีหลังไม่ได้"}
+              </p>
+              <div className="mt-3 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    fill();
+                    setGapAsk(false);
+                  }}
+                  className="rounded-full bg-sky-600 px-4 py-2.5 text-sm font-extrabold text-white shadow transition hover:bg-sky-700"
+                >
+                  ⤢ ขยายลายให้เต็มกรอบ
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setGapAsk(false)}
+                    className="flex-1 rounded-full bg-stone-100 px-3 py-2 text-xs font-bold text-stone-600 transition hover:bg-stone-200"
+                  >
+                    ← กลับไปปรับเอง
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void apply(true)}
+                    className="flex-1 rounded-full border border-stone-200 px-3 py-2 text-xs font-bold text-stone-500 transition hover:bg-stone-50"
+                  >
+                    ใช้ทั้งที่มีขอบขาว
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
