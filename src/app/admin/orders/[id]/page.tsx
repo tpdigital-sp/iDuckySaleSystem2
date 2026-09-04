@@ -4669,6 +4669,13 @@ function PackView({
       <div className="space-y-4 p-3">
         {order.items.map((it, i) => {
           const proofs = proofsOf(it);
+          // จำนวนที่ระบุไว้บนรูปแบบงาน (ป้ายมุมซ้ายบนของรูป) เทียบกับจำนวนที่ลูกค้าสั่ง
+          // หน่วยต่างกัน (เซ็ต/ชุด) เทียบตรง ๆ ไม่ได้ — บอกให้รู้เฉย ๆ ไม่ตีว่าผิด
+          const proofQty = proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
+          const proofUnits = [...new Set(proofs.filter((p) => p.qty).map((p) => proofUnit(p)))];
+          const proofUnitTxt = proofUnits.length === 1 ? proofUnits[0] : "";
+          const qtyMismatch = proofQty > 0 && proofUnitTxt === "ชิ้น" && proofQty !== it.qty;
+          const qtyOtherUnit = proofQty > 0 && proofUnitTxt !== "" && proofUnitTxt !== "ชิ้น";
           return (
             <div key={`${it.productId}-${i}`} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200">
               {/* งานตัวอย่าง — วางบนสุดให้สะดุดตาก่อนเริ่มแพ็ค · บังคับยืนยันก่อนยิงเลขพัสดุ */}
@@ -4696,11 +4703,28 @@ function PackView({
 
               <div className="mb-2 flex items-baseline justify-between">
                 <p className="text-base font-extrabold text-slate-900">{it.name}</p>
-                <span className="text-lg font-black text-slate-900">
+                <span className={`text-lg font-black tabular-nums ${qtyMismatch ? "text-rose-600" : "text-slate-900"}`}>
                   {it.qty}
-                  <span className="text-xs font-bold text-slate-400"> ชิ้น</span>
+                  <span className={`text-xs font-bold ${qtyMismatch ? "text-rose-400" : "text-slate-400"}`}> ชิ้น</span>
                 </span>
               </div>
+
+              {/* จำนวนบนรูปไม่ตรงกับที่ลูกค้าสั่ง — คนแพ็คต้องเห็นก่อนนับ ไม่งั้นแพ็คตามป้ายบนรูปผิดจำนวน */}
+              {qtyMismatch && (
+                <div className="mb-2 rounded-xl bg-rose-50 px-3 py-2 ring-2 ring-rose-300">
+                  <p className="text-xs font-extrabold text-rose-700">⚠️ จำนวนไม่ตรงกัน — ถามแอดมินก่อนแพ็ค</p>
+                  <p className="mt-0.5 text-[11px] font-bold text-rose-600">
+                    ป้ายบนรูปรวม <span className="tabular-nums">{proofQty}</span> ชิ้น · ลูกค้าสั่ง{" "}
+                    <span className="tabular-nums">{it.qty}</span> ชิ้น
+                  </p>
+                </div>
+              )}
+              {qtyOtherUnit && (
+                <p className="mb-2 rounded-xl bg-slate-50 px-3 py-2 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200">
+                  งานนี้นับเป็น{proofUnitTxt} — ป้ายบนรูปรวม <span className="tabular-nums">{proofQty}</span> {proofUnitTxt} (ลูกค้าสั่ง{" "}
+                  <span className="tabular-nums">{it.qty}</span> ชิ้น)
+                </p>
+              )}
 
               {/* รูปแบบงาน — ปัดดูทีละรูป กด "ครบ" แล้วเลื่อนไปรูปถัดไปที่ยังไม่ตรวจ */}
               {proofs.length > 0 ? (
