@@ -7,14 +7,30 @@ import type { Perm } from "@/lib/permissions";
  * สิทธิ์ของผู้ใช้ที่ล็อกอินอยู่ — AdminShell เป็นคนใส่ค่าให้ทุกหน้าใต้ /admin
  * ใช้ซ่อน/แสดงปุ่มเท่านั้น · การบังคับจริงอยู่ที่ API (requirePerm)
  */
-const PermContext = createContext<{ perms: Perm[]; role: string; name: string; isAdministrator?: boolean }>({
+const PermContext = createContext<{
+  perms: Perm[];
+  role: string;
+  name: string;
+  isAdministrator?: boolean;
+  /** true = getAdminSession ตอบกลับแล้ว — ก่อนหน้านั้น perms ว่างเพราะ "ยังไม่รู้" ไม่ใช่ "ไม่มีสิทธิ์" */
+  ready?: boolean;
+}>({
   perms: [],
   role: "",
   name: "",
   isAdministrator: false,
+  ready: false,
 });
 
 export const PermProvider = PermContext.Provider;
+
+/**
+ * สิทธิ์โหลดเสร็จหรือยัง — ใช้กับการตัดสินใจที่ "สลับทั้งหน้า" (เช่น หน้าแพ็ค vs หน้าตรวจสอบออเดอร์)
+ * ห้ามตัดสินจาก perms ว่างเฉย ๆ เพราะช่วงกำลังโหลดก็ว่างเหมือนกัน → หน้าเด้งสลับให้เห็นแว๊บนึง
+ */
+export function usePermsReady(): boolean {
+  return !!useContext(PermContext).ready;
+}
 
 /** ผู้ใช้คนนี้ทำสิ่งนี้ได้ไหม — ใช้ในคอมโพเนนต์หน้าจอ */
 export function useCan(): (perm: Perm) => boolean {

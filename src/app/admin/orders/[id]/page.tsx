@@ -58,7 +58,7 @@ import ItemAdder from "@/components/admin/ItemAdder";
 import QuotePanel from "@/components/admin/QuotePanel";
 import Barcode from "@/components/Barcode";
 import { QRCodeSVG } from "qrcode.react";
-import { useActor, useCan, useIsAdministrator, useRoleLabel } from "@/lib/perm-context";
+import { useActor, useCan, useIsAdministrator, usePermsReady, useRoleLabel } from "@/lib/perm-context";
 import { PACK_SCAN_PARAM, PACK_SCAN_PERMS, type Perm } from "@/lib/permissions";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
@@ -941,6 +941,7 @@ export default function AdminOrderDetailPage() {
   const trackingRef = useRef<string>(""); // เลขพัสดุที่บันทึกไปแล้ว กันบันทึกซ้ำตอน blur
 
   const rolCan = useCan();
+  const permsReady = usePermsReady(); // สิทธิ์จริงมาถึงหรือยัง — ก่อนหน้านั้นห้ามสรุปว่าเป็นฝ่ายแพ็ค
   /** สแกน QR ใบงานมา = ยืมสิทธิ์งานแพ็ค (pack.check / pack.ship) ให้ ไม่ว่าจะแผนกไหน */
   const can = useCallback(
     (perm: Perm) => rolCan(perm) || (viaScan && PACK_SCAN_PERMS.includes(perm)),
@@ -1915,7 +1916,10 @@ export default function AdminOrderDetailPage() {
   const paidOk = !(["รอชำระเงิน", "รอตรวจสอบ"] as OrderStatus[]).includes(order.status);
   const gate = packGate(order); // ขั้นตอนแพ็คผ่านครบหรือยัง
   // ฝ่ายแพ็ค (ตรวจนับได้ แต่แก้ออเดอร์ไม่ได้) → เห็นหน้าแพ็คเสมอ · แอดมิน/พนักงานแอดมินกด "โหมดแพ็ค" เอง
-  const isPackOnly = can("pack.check") && !mayEdit;
+  // ⚠️ ต้องรอสิทธิ์โหลดเสร็จก่อนค่อยตัดสิน (permsReady) — ช่วงที่สิทธิ์ยังไม่มา mayEdit เป็น false
+  // แต่ viaScan ยืม pack.check ให้แล้ว → เงื่อนไขนี้จริงชั่วคราว = แอดมินเห็นหน้าแพ็คแว๊บนึงทุกครั้ง
+  // ที่เปิดลิงก์จากนอกเว็บ (จาก msVerify/LINE/พิมพ์ URL เอง) ก่อนสลับกลับหน้าปกติ
+  const isPackOnly = permsReady && can("pack.check") && !mayEdit;
   const showPackView = isPackOnly || packMode;
 
   if (showPackView) {
