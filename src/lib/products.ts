@@ -1052,6 +1052,61 @@ export function unitYieldOf(product: Product, selections: Record<string, string>
   return null;
 }
 
+/** คำที่ร้านใช้เรียก "ชิ้นงานย่อย" (ฝั่งซ้ายของ 20 ใบ/เซ็ต) */
+const YIELD_PIECE_WORDS = "ใบ|ชิ้น|ดวง|แผ่น|อัน|ตัว|เส้น|คู่|ผืน";
+/** คำที่ร้านใช้เรียก "หน่วยที่ลูกค้าสั่ง" — ขายเป็นหน่วยพวกนี้ = 1 หน่วยมีของหลายชิ้น */
+const YIELD_PACK_WORDS = "เซ็ต|เซต|ชุด|แพ็ค|แพค|แผ่น|กล่อง|ถุง|ม้วน|เล่ม|พวง";
+
+/** งานที่ขายเป็นหน่วยรวม (เซ็ต/ชุด/แผ่น/กล่อง) — จำนวนที่สั่งไม่ใช่จำนวนชิ้นงาน */
+export function isPackUnit(unit: string): boolean {
+  const u = (unit ?? "").trim();
+  return !!u && u !== "ชิ้น" && new RegExp(`^(${YIELD_PACK_WORDS})(\\s|\\(|$)`).test(u);
+}
+
+/**
+ * "สั่ง 1 หน่วย ได้ของกี่ชิ้น" แบบพร้อมแช่ลงออเดอร์ — บอกหน่วยขาย (เซ็ต/แผ่น A3) มาด้วยเสมอ
+ * ตัวคูณอ่านจาก 3 ทางตามลำดับความน่าเชื่อถือ:
+ *   1) piecesPerUnit / sheetYield ที่ร้านตั้งไว้กับตัวเลือก (unitYieldOf) — แม่นที่สุด
+ *   2) ชื่อหน่วยขายที่วงเล็บบอกไว้ — "เซ็ต (20 ใบ)"
+ *   3) ชื่อตัวเลือกที่วงเล็บบอกไว้ — "ตัดขนาดโฟโต้การ์ด 5.5×8.5 ซม. (20 ใบ/เซ็ต)"
+ * ไม่รู้ตัวคูณแต่ขายเป็นเซ็ต/ชุด = คืน per 1 พร้อมหน่วย เพื่อให้หน้าออเดอร์รู้ว่า "12" คือ 12 เซ็ต ไม่ใช่ 12 ชิ้น
+ * ทำไมต้องแช่ลงออเดอร์: หน้าออเดอร์/โหมดแพ็คต้องรู้โดยไม่ต้องโหลดสินค้าใหม่ และร้านแก้สินค้าทีหลัง
+ *   ออเดอร์เก่าต้องคงตัวเลขวันที่สั่งไว้ ไม่ใช่ขยับตาม
+ * null = งานนับเป็นชิ้นตรง ๆ (1 หน่วย = 1 ชิ้น) ไม่ต้องเก็บอะไร
+ */
+export function orderUnitYield(product: Product, selections: Record<string, string>): { per: number; piece: string; unit: string } | null {
+  const saleUnit = ((activeMatrix(product, selections)?.unit ?? product.pricing?.unit) ?? "").trim();
+  const y = unitYieldOf(product, selections);
+  /*
+   * y.unit มีค่า = per นับ "ต่อแผ่น" ไม่ใช่ต่อหน่วยที่ลูกค้าสั่ง (เรทที่ขายเป็น ตร.ม. ฯลฯ)
+   * เอาไปคูณกับจำนวนที่สั่งตรง ๆ ไม่ได้ นอกจากหน่วยขายคือแผ่นนั้นเอง — ไม่ตรงก็ไม่เอา
+   */
+  if (y && y.per > 1 && (!y.unit || !saleUnit || y.unit === saleUnit)) {
+    return { per: y.per, piece: pieceWordOf(selections[y.optLabel], y.per), unit: saleUnit || y.unit || "" };
+  }
+  // "เซ็ต (20 ใบ)" — ร้านเขียนจำนวนต่อเซ็ตไว้ในชื่อหน่วยขายเอง
+  const inUnit = saleUnit.match(new RegExp(`^(${YIELD_PACK_WORDS})[^()]*\\(\\s*(\\d{1,4})\\s*(${YIELD_PIECE_WORDS})\\s*\\)$`));
+  if (inUnit && Number(inUnit[2]) > 1) return { per: Number(inUnit[2]), piece: inUnit[3], unit: inUnit[1] };
+  // "(20 ใบ/เซ็ต)" ในชื่อตัวเลือกที่เลือกไว้
+  const reName = new RegExp(`(\\d{1,4})\\s*(${YIELD_PIECE_WORDS})\\s*/\\s*(${YIELD_PACK_WORDS})`);
+  for (const v of Object.values(selections)) {
+    const m = (v ?? "").match(reName);
+    if (m && Number(m[1]) > 1) return { per: Number(m[1]), piece: m[2], unit: saleUnit || m[3] };
+  }
+  // ไม่รู้ว่าเซ็ตละกี่ชิ้น แต่รู้ว่าขายเป็นเซ็ต — บอกหน่วยไว้ก่อน แอดมินเติมจำนวนต่อเซ็ตทีหลังได้
+  if (isPackUnit(saleUnit)) return { per: 1, piece: "ชิ้น", unit: saleUnit };
+  return null;
+}
+
+/**
+ * คำเรียกชิ้นย่อยจากชื่อตัวเลือก — "ตัดโฟโต้การ์ด (20 ใบ/เซ็ต)" → "ใบ" · "ทรงกลม 5x5cm (4 ดวง)" → "ดวง"
+ * รับเฉพาะเมื่อตัวเลขในชื่อ "ตรงกับ" จำนวนจริงที่ร้านตั้งไว้ — ชื่อกับตัวเลขในระบบไม่ตรงกันก็มี (ถือว่าไม่รู้ ใช้ "ชิ้น")
+ */
+function pieceWordOf(choiceName: string | undefined, per: number): string {
+  const m = (choiceName ?? "").match(new RegExp(`(\\d{1,4})\\s*(${YIELD_PIECE_WORDS})`));
+  return m && Number(m[1]) === per ? m[2] : "ชิ้น";
+}
+
 /** ตัวคั่นค่าของกลุ่ม "เลือกได้หลายอย่าง" (display: 'multi') เมื่อเก็บลง selections */
 export const MULTI_SEP = " + ";
 
@@ -2840,6 +2895,19 @@ export function choiceSizeCm(name: string): number | null {
   return nums?.length ? Math.max(...nums.map(Number)) : null;
 }
 
+/**
+ * ขนาด **สองด้าน** ที่ชื่อตัวเลือกสื่อถึง เช่น "20x60cm" → { short: 20, long: 60 }
+ * ใช้กับแถวขนาดที่กว้าง×ยาวไม่เท่ากันและราคาต่างกัน (ผ้าเชียร์: 15x100 ถูกกว่า 25x100)
+ * — เทียบแบบไม่สนแนววาง (คืน short/long) เพราะลูกค้าพิมพ์สลับด้านกันได้
+ * ชื่อที่มีเลขเดียว = จัตุรัส · ไม่มีตัวเลขเลย = null (เลขที่ 3 ขึ้นไปไม่สนใจ เช่นหน่วย/รุ่น)
+ */
+export function choiceSizeBox(name: string): { short: number; long: number } | null {
+  const nums = String(name).match(/\d+(?:\.\d+)?/g);
+  if (!nums?.length) return null;
+  const [a, b = a] = nums.map(Number);
+  return { short: Math.min(a, b), long: Math.max(a, b) };
+}
+
 /** 📐 ที่มาของราคางานกำหนดขนาดเอง แบบอิงด้านที่ยาวที่สุด — ใช้ทั้งคิดเงินและกางให้ลูกค้าอ่าน */
 export interface LongestSizePlan {
   /** ด้านยาวสุดที่ลูกค้ากรอก (ปัดขึ้นเต็มหน่วย) */
@@ -2926,6 +2994,16 @@ export interface SizeInputSpec {
   /** หน่วยที่โชว์ในข้อความสรุป เช่น "ซม." (ไม่ตั้ง = ไม่ต่อหน่วย) */
   unit?: string;
   /**
+   * 📏 เทียบขนาดที่ลูกค้ากรอกกับแถวในตารางยังไง
+   *  - `"longest"` (ค่าเริ่มต้น) = ดู **ด้านยาวสุด** อย่างเดียว — แถวที่ชื่อบอกขนาดเดียว (สแตนดี้ "12cm")
+   *  - `"both"` = เทียบ **ทั้งสองด้าน** — แถวชื่อ "20x60cm" ครอบได้ก็ต่อเมื่อ กว้าง≤20 และ ยาว≤60
+   *    (จำเป็นเมื่อแถวขนาดเท่ากันด้านยาวแต่ราคาไม่เท่ากัน เช่น ผ้าเชียร์ 15x100 ฿120 vs 25x100 ฿130
+   *     — ดูด้านยาวสุดอย่างเดียวจะเกาะแถวผิดแล้วคิดเงินขาด)
+   *    ⚠️ เกาะ **แถวแรกในลิสต์ที่ครอบได้** จึงต้องเรียงตัวเลือกขนาดจากถูกไปแพงในหน้าแก้ไข
+   *    ⚠️ โหมดนี้ยังไม่รองรับ overRate (ใหญ่เกินทุกแถว = ให้แอดมินตีราคา)
+   */
+  match?: "longest" | "both";
+  /**
    * เศษที่ยัง "ผ่อนให้" อยู่แถวเดิมได้ ก่อนจะขยับขึ้นแถวถัดไป (ไม่ตั้ง = 0.5)
    * 0.5 → 3.5 ยังคิดราคาแถว 3cm · 3.6 ขยับเป็นแถว 4cm
    * 0 = ปัดขึ้นทุกเศษเหมือนเดิม (3.1 → แถว 4cm)
@@ -2984,16 +3062,39 @@ export function sizeInputPlan(p: Product, selections: Record<string, string>): S
       .filter((r): r is { name: string; cm: number } => r.cm != null)
       .sort((a, b) => a.cm - b.cm);
     const flat = { ...base, overCm: 0, overFee: 0 };
+    const slackOf = (v: number) => {
+      // ปัดเป็นเต็มหน่วยแบบ "ผ่อนเศษ" — เศษไม่เกิน roundSlack (ค่าเริ่มต้น 0.5) ยังอยู่แถวเดิม
+      // 3.5 → 3 (แถว 3cm) · 3.6 → 4 (แถว 4cm) · 1e-9 กันเลขทศนิยมของ Number() (3.5000000001)
+      const slack = Math.max(0, cfg.roundSlack ?? 0.5);
+      const f = Math.floor(v + 1e-9);
+      return Math.max(1, v - f > slack + 1e-9 ? f + 1 : f);
+    };
+    /*
+     * 📏 โหมดเทียบสองด้าน — แถวครอบได้ต่อเมื่อครอบ **ทั้งกว้างและยาว** (ไม่สนแนววาง)
+     * เกาะแถวแรกในลิสต์ที่ครอบได้ = แถวถูกที่สุด (ร้านเรียงตัวเลือกขนาดจากถูกไปแพงอยู่แล้ว)
+     * เล็กกว่าแถวเล็กสุดก็เข้าแถวเล็กสุด — ลูกค้าสั่งเล็กกว่ามาตรฐานได้โดยไม่ต้องรอตีราคา
+     */
+    if (cfg.match === "both") {
+      const boxes = opt.choices
+        .filter((ch) => ch.name !== cfg.choice && allowed.has(ch.name))
+        .map((ch) => ({ name: ch.name, box: choiceSizeBox(ch.name) }))
+        .filter((r): r is { name: string; box: { short: number; long: number } } => r.box != null);
+      if (!(w > 0 && h > 0)) {
+        return { ...flat, longest: 0, choice: boxes[0]?.name ?? null, filled: false, quote: false };
+      }
+      const short = slackOf(Math.min(w, h));
+      const long = slackOf(Math.max(w, h));
+      const row = boxes.find((r) => short <= r.box.short && long <= r.box.long);
+      if (!row || (cfg.askOver != null && long > cfg.askOver)) {
+        return { ...flat, longest: long, choice: null, filled: true, quote: true };
+      }
+      return { ...flat, longest: long, choice: row.name, filled: true, quote: false };
+    }
     // ยังกรอกไม่ครบ = เกาะแถวเล็กสุดไว้ก่อน (ราคาเริ่มต้น) — ปุ่มสั่งยังล็อกอยู่เพราะช่องกรอกยังว่าง
     if (!(w > 0 && h > 0)) {
       return { ...flat, longest: 0, choice: rows[0]?.name ?? null, filled: false, quote: false };
     }
-    // ปัดเป็นเต็มหน่วยแบบ "ผ่อนเศษ" — เศษไม่เกิน roundSlack (ค่าเริ่มต้น 0.5) ยังอยู่แถวเดิม
-    // 3.5 → 3 (แถว 3cm) · 3.6 → 4 (แถว 4cm) · 1e-9 กันเลขทศนิยมของ Number() (3.5000000001)
-    const raw = Math.max(w, h);
-    const slack = Math.max(0, cfg.roundSlack ?? 0.5);
-    const floor = Math.floor(raw + 1e-9);
-    const longest = Math.max(1, raw - floor > slack + 1e-9 ? floor + 1 : floor);
+    const longest = slackOf(Math.max(w, h));
     const row = rows.find((r) => longest <= r.cm);
     const top = rows[rows.length - 1];
     /**

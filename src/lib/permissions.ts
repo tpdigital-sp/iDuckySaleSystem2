@@ -285,7 +285,19 @@ export function canPack(
   scanned: boolean
 ): boolean {
   if (can(actor, perm, rolePerms)) return true;
-  return scanned && PACK_SCAN_PERMS.includes(perm) && can(actor, "admin.access", rolePerms);
+  /**
+   * สแกน QR ใบงานมา = พนักงานแผนกไหนก็ทำงานแพ็คใบนั้นได้ ไม่ต้องมีสิทธิ์หลังบ้านมาก่อน
+   * (เจ้าของร้านสั่ง 4 ก.ย. 69 — ฝ่ายผลิต ซับลิเมชั่น uv เย็บผ้า QC ฯลฯ มาช่วยแพ็คสลับกัน)
+   *
+   * ปลอดภัยเพราะ actor ไม่ null = ผ่านด่านล็อกอินพนักงาน "ยังทำงานอยู่" (workStatus=working
+   * และไม่ถูกระงับ) มาแล้วเสมอ · และยืมให้แค่ PACK_SCAN_PERMS เท่านั้น
+   */
+  return !!actor && scanned && PACK_SCAN_PERMS.includes(perm);
+}
+
+/** บทบาทที่ระบบรู้จัก (ล็อกอินหลังบ้านได้ ถ้ายังเป็นพนักงานที่ทำงานอยู่) */
+export function isKnownRole(role: string | undefined): boolean {
+  return role === ROLE_ADMINISTRATOR || role === ROLE_STAFF || role === ROLE_LEADER;
 }
 
 /** ชื่อตำแหน่งไว้แสดงในหน้าจอ เช่น "พนักงาน · แพ็คของ" */

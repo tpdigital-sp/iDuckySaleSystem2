@@ -106,7 +106,7 @@ import {
   type ProductTab,
 } from "@/lib/products";
 import { LINE_URL } from "@/components/LineButton";
-import { specEntries } from "@/components/SpecLines";
+import { foldSizeExtra, specEntries } from "@/components/SpecLines";
 import {
   priceLinkUrl,
   readPriceLink,
@@ -1582,7 +1582,8 @@ export default function ProductDetail({
     const hiddenLabels = new Set(
       product.options.filter((o) => !optionActive(o, effective) && !drivers.includes(o.label)).map((o) => o.label)
     );
-    const lines = specEntries(pricingSelections).filter(([k]) => !hiddenLabels.has(k)) as [string, string][];
+    // บรรทัดโชว์บนลิงก์ราคา — บวก "เพิ่มขนาด" เข้าบรรทัดขนาดเหมือนตะกร้า/ออเดอร์ (ค่าจริงอยู่ใน spec.s)
+    const lines = foldSizeExtra(specEntries(pricingSelections).filter(([k]) => !hiddenLabels.has(k)) as [string, string][]);
     // งานที่แอดมินต้องตีราคาเอง — อย่าโชว์ตัวเลข ฿0 ที่ไหนทั้งนั้น ลูกค้าอ่านว่าฟรี
     const askPrice = askQuote || (useCustom && customAsk);
     return { spec, lines, askPrice };
@@ -3015,7 +3016,10 @@ export default function ProductDetail({
                             ) : (
                               <p className="mt-1 text-[11px] font-bold text-teal-700">
                                 📐 {plan.width}×{plan.height}
-                                {u} → คิดราคาตามด้านที่ยาวที่สุด เกาะแถว{" "}
+                                {u} →{" "}
+                                {owner.sizeInput?.match === "both"
+                                  ? "คิดราคาเท่าขนาดมาตรฐานที่ครอบได้ คือ"
+                                  : "คิดราคาตามด้านที่ยาวที่สุด เกาะแถว"}{" "}
                                 <span className="font-extrabold text-teal-900">{plan.choice}</span>
                                 {/* 📈 ใหญ่กว่าแถวสุดท้าย = ฐานแถวใหญ่สุด + ส่วนเกินต่อหน่วย (กางที่มาให้เห็น) */}
                                 {plan.overCm > 0 && (
@@ -3138,7 +3142,11 @@ export default function ProductDetail({
                             const owners = (product.options ?? [])
                               .flatMap((o) => (o.choices ?? []).map((c) => ({ o, c })))
                               .filter(
-                                ({ o, c }) => c.sizeFee?.heightLabel === opt.label && effective[o.label] === c.name
+                                ({ o, c }) =>
+                                  // 💬 กางใต้ "ทั้งสองช่อง" ของคู่กว้าง×สูง — ลูกค้าพิมพ์ช่องบนเสร็จแล้วสายตาอยู่ตรงนั้น
+                                  // ถ้าโชว์แต่ช่องล่างช่องเดียว คนที่กรอกช่องบนก่อนจะไม่เห็นราคาเลย
+                                  (c.sizeFee?.heightLabel === opt.label || c.sizeFee?.widthLabel === opt.label) &&
+                                  effective[o.label] === c.name
                               );
                             if (!owners.length) return null;
                             const cf = owners[0].c.sizeFee!;
@@ -3151,6 +3159,38 @@ export default function ProductDetail({
                             // ยังกรอกไม่ครบ = บอกเพดานที่รวมในราคาไว้ก่อน (ขั้นสุดท้ายที่ยังฟรี)
                             // ตัวที่เกาะอยู่หลายตัวอาจให้โควตาไม่เท่ากัน — ตรงกันหมดถึงจะกล้าบอกตัวเลข
                             if (w == null || h == null) {
+                              /*
+                               * 💰 กรอกไปแล้วช่องเดียว = คิดให้ดูก่อนจากด้านที่กรอกแล้ว (ราคาขึ้นตาม "ด้านยาวสุด"
+                               * อีกช่องจึงมีแต่ทำให้แพงขึ้น ไม่มีทางถูกลง) — ลูกค้าจะได้รู้ราคาตั้งแต่พิมพ์ช่องแรก
+                               * ⚠️ เฉพาะค่าบริการที่คิดชิ้นเดียว — ตัวที่คูณจำนวนชิ้นจากการจัดวาง (perPiece)
+                               *    ต้องรู้ทั้งกว้างและยาวถึงจะรู้ว่าตัดได้กี่ชิ้น เดาไปก่อนจะเป็นตัวเลขหลอก
+                               */
+                              const one = w ?? h;
+                              const guess = owners.every(({ c }) => !c.sizeFee!.perPiece)
+                                ? owners
+                                    .map(({ c }) =>
+                                      one == null
+                                        ? 0
+                                        : sizeFeeBreakdownOf(c.sizeFee!, {
+                                            ...effective,
+                                            [c.sizeFee!.widthLabel]: String(one),
+                                            [c.sizeFee!.heightLabel]: String(one),
+                                          })?.fee ?? 0
+                                    )
+                                    .reduce((s, f) => s + f, 0)
+                                : 0;
+                              if (one != null && guess > 0)
+                                return (
+                                  <p className="mt-1 rounded-xl bg-teal-50 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-teal-700 ring-1 ring-teal-200">
+                                    💰 ด้านที่กรอกแล้ว {one} {cfg?.unit ?? ""} ={" "}
+                                    <span className="font-extrabold text-teal-900">+{formatPrice(guess)}</span> ต่อ
+                                    {matrix?.unit ?? "ชิ้น"}
+                                    <span className="font-normal text-stone-500">
+                                      {" "}
+                                      — กรอกอีกช่องให้ครบ ถ้าอีกด้านยาวกว่าจะคิดตามด้านนั้น
+                                    </span>
+                                  </p>
+                                );
                               const frees = owners.map(({ c }) => [...c.sizeFee!.tiers].filter((t) => !t.fee).pop()?.upTo);
                               const freeUpTo = frees.every((f) => f != null && f === frees[0]) ? frees[0] : null;
                               return freeUpTo != null ? (

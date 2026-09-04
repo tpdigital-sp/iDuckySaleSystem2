@@ -6,7 +6,7 @@ import {
   loginKey,
   verifyPassword,
 } from "@/lib/server/firebase-admin";
-import { can, WORK_STATUS_ACTIVE } from "@/lib/permissions";
+import { can, isKnownRole, WORK_STATUS_ACTIVE } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { SESSION_COOKIE, adminCookieOptions, createSessionToken } from "@/lib/server/admin-session";
 
@@ -67,9 +67,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" }, { status: 401 });
   }
 
-  // ตำแหน่ง/แผนกนี้มีสิทธิ์เข้าหลังบ้านไหม (ตามชุดสิทธิ์ที่แก้ได้ในตั้งค่าระบบ → แท็บบทบาท)
+  /**
+   * ตำแหน่ง/แผนกนี้มีสิทธิ์เข้าหลังบ้านไหม (ตามชุดสิทธิ์ที่แก้ได้ในตั้งค่าระบบ → แท็บบทบาท)
+   *
+   * 📱 แผนกที่ยังไม่ได้เปิดสิทธิ์ (ซับลิเมชั่น · uv · เย็บผ้า · กระดาษ/สตก. · ประกอบงาน · QC ฯลฯ)
+   * ล็อกอินได้แล้ว แต่ยังได้ "สิทธิ์ศูนย์" เหมือนเดิม — permsOf() คืน [] เมนูหลังบ้านว่างเปล่า
+   * และทุก API ยังปฏิเสธ · เปิดให้เพราะเจ้าของร้านสั่ง (4 ก.ย. 69) ว่าพนักงานบริษัทคนไหนก็ตาม
+   * ที่สแกน QR ใบงานต้องเข้าไปช่วยแพ็คของใบนั้นได้ ดู canPack() ใน permissions.ts
+   *
+   * บทบาทที่ระบบไม่รู้จัก (ไม่ใช่ Administrator/พนักงาน/หัวหน้า) ยังปิดไว้เหมือนเดิม
+   */
   const actor = { username: wanted, name: emp.name, role: emp.role ?? "", department: emp.department };
-  if (!can(actor, "admin.access", await loadRolePerms())) {
+  if (!can(actor, "admin.access", await loadRolePerms()) && !isKnownRole(actor.role)) {
     return NextResponse.json({ error: "บัญชีนี้ไม่มีสิทธิ์เข้าหลังบ้าน" }, { status: 403 });
   }
 

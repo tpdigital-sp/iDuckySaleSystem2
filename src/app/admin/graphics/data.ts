@@ -44,4 +44,51 @@ export function orderMatches(o: Order, q: string): boolean {
   );
 }
 
+/**
+ * รายชื่อพนักงานแผนกกราฟฟิกจาก employees2 (คนที่ยังทำงานอยู่) — ตัวตั้งของชิปกรอง "คนทำแบบ"
+ * โหลดไม่ได้/ยังไม่ได้ตั้งค่า Firebase → คืนลิสต์ว่าง แล้วชิปจะใช้ชื่อที่พบในแบบงานแทน
+ */
+export function useGraphicStaff(): string[] {
+  const [names, setNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/admin/staff/graphics")
+      .then((r) => (r.ok ? r.json() : { staff: [] }))
+      .then((d: { staff?: { name: string }[] }) => {
+        if (alive) setNames((d.staff ?? []).map((s) => s.name).filter(Boolean));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  return names;
+}
+
+/**
+ * นับงานของกราฟฟิกแต่ละคน สำหรับชิปกรอง "คนทำแบบ"
+ * @param names ชื่อคนทำของแบบแต่ละรูป · @param roster รายชื่อแผนกกราฟฟิกใน employees2
+ *
+ * ชิปมาจากรายชื่อแผนกเป็นหลัก (คนที่ยังไม่มีงานค้างก็ขึ้น ชิปจะจางไว้) แล้วบวกชื่ออื่นที่โผล่ในงานจริง
+ * — คนที่ลาออกไปแล้ว หรือแอดมินที่อัปแบบแทน จะได้ไม่หายไปจากตัวกรอง
+ * ชื่อว่าง ("") = แบบเก่าที่ยังไม่ได้บันทึกชื่อคนทำ — ดันไปท้ายสุดเสมอ
+ */
+export function staffTally(names: string[], roster: string[] = []): { name: string; n: number }[] {
+  const tally = new Map<string, number>();
+  for (const name of roster) tally.set(name.trim(), 0);
+  for (const raw of names) {
+    const name = raw.trim();
+    tally.set(name, (tally.get(name) ?? 0) + 1);
+  }
+  return [...tally]
+    .map(([name, n]) => ({ name, n }))
+    .filter((p) => p.name || p.n > 0) // ช่อง "ไม่ระบุคนทำ" ขึ้นเฉพาะตอนมีของจริง
+    .sort((a, b) => {
+      if (!a.name !== !b.name) return a.name ? -1 : 1;
+      return b.n - a.n || a.name.localeCompare(b.name, "th");
+    });
+}
+
 export const dayOf = (d: string) => d.split(" ").slice(0, 3).join(" ");

@@ -38,6 +38,7 @@ import {
   type OrderItem,
   type OrderStatus,
   type Proof,
+  proofQtyCheck,
   type ProofStatus,
   type NoteColor,
   type NoteSize,
@@ -60,7 +61,7 @@ import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
 import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
-import { specEntries, specValueLines } from "@/components/SpecLines";
+import { foldSizeExtra, specEntries, specValueLines } from "@/components/SpecLines";
 import { uploadArtworkFile } from "@/lib/artwork-upload";
 
 /**
@@ -377,7 +378,8 @@ const selLines = specValueLines;
  */
 function SelDetails({ sel, text }: { sel?: Record<string, string>; text?: string }) {
   // ออเดอร์เก่าไม่มีตัวเลือกแบบหัวข้อ/ค่า — กางจากข้อความรวมให้เป็นบรรทัดละหัวข้อเหมือนกัน
-  const entries = specEntries(sel, text, SEL_HIDE);
+  // บวก "เพิ่มขนาด" เข้าบรรทัดขนาดให้เหมือนหน้าร้าน/ใบงาน — ทีมผลิตอ่านขนาดจริงได้เลย
+  const entries = foldSizeExtra(specEntries(sel, text, SEL_HIDE));
   if (!entries.length) {
     return <span className="text-slate-300">— ยังไม่มีรายละเอียด —</span>;
   }
@@ -430,31 +432,48 @@ function SelDetails({ sel, text }: { sel?: Record<string, string>; text?: string
 }
 
 /**
- * เดา "จำนวน + หน่วย" จากชื่อไฟล์แบบงาน — กราฟฟิกตั้งชื่อไฟล์บอกจำนวนอยู่แล้ว ไม่ต้องมาพิมพ์ซ้ำในช่องจำนวน
- * รับเฉพาะรูปแบบที่ตั้งใจบอกจำนวนจริง ๆ กันเลขรหัสรูป (IMG_2345 · ลาย02 · 10x15cm) หล่นลงช่องจำนวน
+ * เดา "จำนวน + หน่วย + รายละเอียด" จากชื่อไฟล์แบบงาน — กราฟฟิกตั้งชื่อไฟล์บอกไว้อยู่แล้ว ไม่ต้องมาพิมพ์ซ้ำ
+ * จำนวนรับเฉพาะรูปแบบที่ตั้งใจบอกจริง ๆ กันเลขรหัสรูป (IMG_2345 · ลาย02 · 10x15cm) หล่นลงช่องจำนวน
  *   • ต่อท้ายด้วยหน่วย — "ลายหน้า 3 ชิ้น.png" · "3ใบ.jpg" · "3 pcs.png" · "เจตนา 5 เซ็ต.png" (ได้หน่วยมาด้วย)
  *   • ตัวคูณ x / × — "ลายหน้า x3.png" · "ลายหลัง 3x.jpg" (ไม่มีหน่วย = ชิ้น)
- * ไม่เจอตัวบอกจำนวนชัด ๆ = คืน {} (ปล่อยช่องว่างให้แอดมินพิมพ์เอง)
+ * ไม่เจอตัวบอกจำนวนชัด ๆ = ปล่อยช่องจำนวนว่างให้แอดมินพิมพ์เอง
+ * ส่วนที่เหลือของชื่อไฟล์ (ตัดนามสกุลกับตัวบอกจำนวนออกแล้ว) ลงช่อง "รายละเอียด" เสมอ — ไว้เทียบว่าอัปครบ/ไม่ซ้ำไฟล์
  */
-function qtyFromFileName(name: string): { qty?: number; unit?: string } {
+function proofFromFileName(name: string): { qty?: number; unit?: string; note?: string } {
   const base = name.replace(/\.[a-z0-9]+$/i, "").replace(/[_]+/g, " ");
   const ok = (n: string | undefined) => {
     const v = Number(n);
     return Number.isFinite(v) && v >= 1 && v <= 99999 ? Math.floor(v) : undefined;
   };
+  // ตัดตัวบอกจำนวนออกจากชื่อ เหลือแต่ชื่อลาย ("ลายหน้า x3" → "ลายหน้า") — เลขไปอยู่ช่องจำนวนแล้ว ไม่ต้องซ้ำ
+  const cut = (m: RegExpMatchArray) => {
+    const at = m.index ?? 0;
+    return noteFromFileName(base.slice(0, at) + base.slice(at + m[0].length));
+  };
   // 1) ตัวเลข + หน่วยนับ (ชัดที่สุด) — เก็บหน่วยไว้ด้วย งานเซ็ตจะได้ไม่ไปโผล่ในใบงานว่า "ชิ้น"
   const unit = base.match(/(\d{1,5})\s*(ชิ้น|ใบ|ดวง|อัน|ตัว|แผ่น|เส้น|คู่|ชุด|เซ็ต|เซต|เล่ม|sets|set|pcs|pc)(?![ก-๙a-z0-9])/i);
   if (unit) {
     const qty = ok(unit[1]);
-    if (qty) return { qty, unit: normalizeProofUnit(unit[2]) };
+    if (qty) return { qty, unit: normalizeProofUnit(unit[2]), note: cut(unit) };
   }
   // 2) x นำหน้าเลข — x ต้องขึ้นต้นคำ ("max3" ไม่นับ) และหลังเลขต้องจบคำ ("x10x15" ไม่นับ)
   const mulPre = base.match(/(?:^|[\s\-([])[x×]\s*(\d{1,5})(?![\d.,ก-๙a-z])/i);
-  if (mulPre?.[1] && ok(mulPre[1])) return { qty: ok(mulPre[1]) };
+  if (mulPre?.[1] && ok(mulPre[1])) return { qty: ok(mulPre[1]), note: cut(mulPre) };
   // 3) เลขนำหน้า x — "3x" ต้องจบคำ ("10x15" ไม่นับ)
   const mulPost = base.match(/(?:^|[\s\-([])(\d{1,5})\s*[x×](?![\d.,ก-๙a-z])/i);
-  if (mulPost?.[1] && ok(mulPost[1])) return { qty: ok(mulPost[1]) };
-  return {};
+  if (mulPost?.[1] && ok(mulPost[1])) return { qty: ok(mulPost[1]), note: cut(mulPost) };
+  return { note: noteFromFileName(base) };
+}
+
+/** ชื่อไฟล์ → ข้อความช่อง "รายละเอียด" — ยุบช่องว่าง ตัดตัวคั่นหัวท้าย และตัดที่ยาวเกินช่อง */
+function noteFromFileName(raw: string): string | undefined {
+  const txt = raw
+    .replace(/\s+/g, " ")
+    .replace(/^[\s\-–—·.,()[\]]+/, "")
+    .replace(/[\s\-–—·.,()[\]]+$/, "")
+    .trim();
+  if (!txt) return undefined;
+  return txt.length > 60 ? `${txt.slice(0, 60)}…` : txt;
 }
 
 /** คำหน่วยจากชื่อไฟล์ → คำที่ระบบใช้จริง (set/sets → เซ็ต · pc/pcs → ชิ้น) */
@@ -463,6 +482,201 @@ function normalizeProofUnit(raw: string): string {
   if (w === "set" || w === "sets" || w === "เซต") return "เซ็ต";
   if (w === "pc" || w === "pcs") return "ชิ้น";
   return raw.trim();
+}
+
+/**
+ * ช่อง "รายละเอียด" ของแบบ 1 รูป — ยืดความสูงตามข้อความเอง ไม่ตัดคำทิ้ง
+ * ทำไมไม่ใช้ input บรรทัดเดียว: รายละเอียดมาจากชื่อไฟล์ ("(2ด้าน)Photocard 30") การ์ดกว้างแค่ 144px
+ * ข้อความจะโดนตัดหายไปครึ่งหนึ่ง กราฟฟิกอ่านไม่ออกว่ารูปนี้คือลายอะไร
+ */
+function ProofNoteInput({
+  value,
+  label,
+  onChange,
+  onBlur,
+}: {
+  value: string;
+  label: string;
+  onChange: (v: string) => void;
+  onBlur: () => void;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  // ยืด/หดตามจำนวนบรรทัดจริงทุกครั้งที่ข้อความเปลี่ยน (ตอนพิมพ์เองและตอนระบบเติมชื่อไฟล์ให้)
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      value={value}
+      placeholder="รายละเอียด เช่น ลายหน้า"
+      aria-label={label}
+      title={value ? `${value}\n\n(ระบบเติมชื่อไฟล์ที่ลากเข้ามาให้ — แก้ทับได้)` : "ระบบเติมชื่อไฟล์ที่ลากเข้ามาให้ — แก้ทับได้"}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={onBlur}
+      // Enter = บันทึกแล้วออกจากช่อง (ไม่ต้องขึ้นบรรทัดใหม่ในชื่อลาย) · Shift+Enter ถ้าอยากขึ้นบรรทัดจริง ๆ
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+      }}
+      className="w-full resize-none overflow-hidden break-words rounded-md border border-slate-200 px-1.5 py-0.5 text-[11px] leading-snug focus:border-violet-300 focus:outline-none"
+    />
+  );
+}
+
+/**
+ * ตรวจชุดแบบก่อนส่งให้ลูกค้า — จับพลาดตอนลากไฟล์เข้ามา: ลากไฟล์เดิมซ้ำ · ชื่อลายซ้ำ · ยังไม่ระบุจำนวน · ยอดรวมไม่ตรงกับที่สั่ง
+ * ทำไมต้องมี: กราฟฟิกลากไฟล์ทีละหลายสิบรูป ไฟล์เดิมหลุดมาซ้ำหรือตกลายไปหนึ่งตัวมองด้วยตาไม่ทัน
+ * กว่าจะรู้คือลูกค้าอนุมัติไปแล้ว/ฝ่ายแพ็คนับไม่ครบ
+ */
+function ProofDropCheck({
+  proofs,
+  item,
+  onSetPerUnit,
+}: {
+  proofs: Proof[];
+  item: OrderItem;
+  /** แอดมินตั้ง "1 เซ็ต = กี่ชิ้น" ให้รายการนี้ (undefined = ไม่มีสิทธิ์แก้) */
+  onSetPerUnit?: (per: number) => void;
+}) {
+  const qc = proofQtyCheck(item, proofs);
+  if (proofs.length === 0) return null;
+  const list: { level: "warn" | "hint"; text: string }[] = [];
+  const nos = (idx: number[]) => idx.map((j) => `รูปที่ ${j + 1}`).join(" · ");
+
+  // ไฟล์เดียวกันโผล่สองกรอบ = ลากซ้ำแน่นอน (ลูกค้าเห็นแบบเดียวกันสองรูป และยอดรวมจะเกิน)
+  const byUrl = new Map<string, number[]>();
+  proofs.forEach((p, j) => byUrl.set(p.url, [...(byUrl.get(p.url) ?? []), j]));
+  byUrl.forEach((idx) => {
+    if (idx.length > 1) list.push({ level: "warn", text: `ไฟล์เดียวกันซ้ำ (${nos(idx)}) — น่าจะลากไฟล์เดิมมาสองรอบ` });
+  });
+
+  // ชื่อไฟล์ซ้ำแต่คนละไฟล์ = ลายเดียวกันคนละเวอร์ชันปนมา (เช่นไฟล์เก่ากับไฟล์แก้แล้ว)
+  const byNote = new Map<string, number[]>();
+  proofs.forEach((p, j) => {
+    const key = (p.note ?? "").trim().toLowerCase();
+    if (key) byNote.set(key, [...(byNote.get(key) ?? []), j]);
+  });
+  byNote.forEach((idx) => {
+    if (idx.length > 1 && new Set(idx.map((j) => proofs[j]?.url)).size > 1)
+      list.push({ level: "warn", text: `ชื่อไฟล์ซ้ำกัน “${proofs[idx[0] ?? 0]?.note}” (${nos(idx)}) — เช็กว่าคนละลายจริงไหม` });
+  });
+
+  // ไม่รู้จำนวนของรูปไหน = เทียบยอดกับที่ลูกค้าสั่งไม่ได้ และฝ่ายแพ็คไม่รู้ว่ารูปนั้นต้องนับกี่ชิ้น
+  const noQty = proofs.map((p, j) => (p.qty ? -1 : j)).filter((j) => j >= 0);
+  if (noQty.length)
+    list.push({ level: "hint", text: `ยังไม่ระบุจำนวน (${nos(noQty)}) — ใส่ “x3” หรือ “3 ชิ้น” ไว้ในชื่อไฟล์ ระบบเติมให้เอง` });
+
+  // ยอดรวมเทียบกับที่ลูกค้าสั่ง — คูณ "กี่ชิ้นต่อหน่วย" ให้แล้ว (สั่ง 12 เซ็ต × 20 ใบ = 240 ใบ)
+  if (!noQty.length) {
+    if (!qc.comparable && qc.total > 0)
+      list.push({
+        level: "hint",
+        text: `แบบนับเป็น “${qc.unit || "คนละหน่วยกัน"}” รวม ${qc.total} ${qc.unit} (ลูกค้าสั่ง ${qc.orderedText}) — ระบบเทียบให้ไม่ได้ ต้องเช็กเอง`,
+      });
+    else if (qc.comparable && !qc.ok && qc.packUnit)
+      // งานขายเป็นเซ็ต/แผ่น ยังไม่รู้ว่า 1 หน่วยกี่ชิ้น — ไม่ใช่ความผิดของกราฟฟิก อย่าฟ้องว่าแบบผิด
+      list.push({
+        level: "hint",
+        text: `งานนี้ขายเป็น “${qc.saleUnit}” — สั่ง ${item.qty} ${qc.saleUnit} แต่แบบรวม ${qc.total} ${qc.unit} ระบบยังไม่รู้ว่า 1 ${qc.saleUnit} เท่ากับกี่ชิ้น`,
+      });
+    else if (qc.comparable && !qc.ok)
+      list.push({
+        level: "warn",
+        text: `รวมจากแบบ ${qc.total} ${qc.unit} แต่ลูกค้าสั่ง ${qc.orderedText} — ${
+          qc.total < qc.target ? `ขาดอีก ${qc.target - qc.total}` : `เกินมา ${qc.total - qc.target}`
+        } ${qc.unit}`,
+      });
+  }
+
+  /* งานเซ็ตที่ยังไม่ได้ตั้งตัวคูณ — ให้ตั้งตรงนี้ได้เลย ตั้งแล้วทั้งใบงาน/โหมดแพ็คใช้เลขเดียวกันหมด */
+  const perUnitRow = qc.needPerUnit && onSetPerUnit && (
+    <PerUnitSetter unit={qc.saleUnit} qty={item.qty} suggest={qc.suggestPer} onSet={onSetPerUnit} />
+  );
+
+  if (!list.length)
+    return (
+      <>
+        {perUnitRow}
+        <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-emerald-800 ring-1 ring-emerald-200">
+          ✅ ตรวจชื่อไฟล์แล้ว — {proofs.length} รูป รวม {qc.total} {qc.unit} ตรงกับที่ลูกค้าสั่งพอดี
+          {qc.per > 1 && <span className="font-normal"> ({qc.math})</span>}
+        </p>
+      </>
+    );
+
+  const bad = list.some((x) => x.level === "warn");
+  return (
+    <>
+      {perUnitRow}
+      <div
+        className={`mt-2 rounded-lg px-3 py-2 text-[11px] leading-relaxed ring-1 ${
+          bad ? "bg-rose-50 text-rose-800 ring-rose-300" : "bg-amber-50 text-amber-900 ring-amber-300"
+        }`}
+      >
+        <p className="font-extrabold">{bad ? "⚠️ ตรวจชื่อไฟล์แล้ว — มีจุดที่ต้องแก้ก่อนส่งให้ลูกค้า" : "💡 ตรวจชื่อไฟล์แล้ว — มีจุดที่ควรเช็ก"}</p>
+        <ul className="mt-1 space-y-0.5">
+          {list.map((x, k) => (
+            <li key={k} className={x.level === "warn" ? "font-bold" : "font-normal opacity-90"}>
+              {x.level === "warn" ? "⚠️ " : "· "}
+              {x.text}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </>
+  );
+}
+
+/**
+ * ตั้ง "1 เซ็ต = กี่ชิ้น" ให้รายการนี้ — งานที่ขายเป็นเซ็ต/ชุด/แผ่น ระบบไม่รู้เองว่าเซ็ตละกี่ชิ้น
+ * ตั้งแล้วใช้ต่อทุกที่: แถบเทียบจำนวน · แถบตรวจชื่อไฟล์ · โหมดแพ็ค (หัวรายการขึ้น "12 เซ็ต = 240 ชิ้น")
+ * ระบบเดาให้ได้เมื่อป้ายบนแบบรวมแล้วหารจำนวนที่สั่งลงตัว — กดปุ่มยืนยันทีเดียวจบ
+ */
+function PerUnitSetter({ unit, qty, suggest, onSet }: { unit: string; qty: number; suggest: number; onSet: (per: number) => void }) {
+  const [draft, setDraft] = useState("");
+  const save = (v: number) => {
+    if (v >= 1 && v <= 99999) onSet(Math.floor(v));
+    setDraft("");
+  };
+  return (
+    <div className="mt-2 rounded-lg bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-900 ring-1 ring-sky-300">
+      <p className="font-extrabold">
+        📦 งานนี้ขายเป็น “{unit}” — สั่ง {qty} {unit} · ยังไม่ได้ตั้งว่า 1 {unit} เท่ากับกี่ชิ้น
+      </p>
+      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+        {suggest > 0 && (
+          <button
+            type="button"
+            onClick={() => save(suggest)}
+            className="rounded-lg bg-sky-600 px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-sky-700"
+          >
+            ✔ ตั้งเป็น 1 {unit} = {suggest} ชิ้น (ตรงกับป้ายบนแบบพอดี)
+          </button>
+        )}
+        <span className="text-sky-700">หรือพิมพ์เอง 1 {unit} =</span>
+        <input
+          type="number"
+          min={1}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save(Number(draft));
+          }}
+          onBlur={() => draft && save(Number(draft))}
+          aria-label={`1 ${unit} เท่ากับกี่ชิ้น`}
+          className="w-16 rounded-md border border-sky-300 px-1.5 py-0.5 text-center focus:border-sky-500 focus:outline-none"
+        />
+        <span className="text-sky-700">ชิ้น</span>
+      </div>
+    </div>
+  );
 }
 
 /** แถบผลตรวจสลิปอัตโนมัติ (SlipOK) — ใช้ซ้ำได้ทั้งสลิปงวดแรกและงวดหลัง */
@@ -519,6 +733,24 @@ export default function AdminOrderDetailPage() {
     if (value === before.trim()) return;
     const items = order.items.map((it, i) => (i === itemIndex ? { ...it, selections: value } : it));
     const next = withLog({ ...order, items }, actor, "แก้รายละเอียดรายการ", `${order.items[itemIndex]?.name}`);
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
+
+  /**
+   * ตั้ง "1 เซ็ต/ชุด/แผ่น = กี่ชิ้น" ให้รายการนี้ (แช่ลงออเดอร์ ไม่ไปแก้สินค้า)
+   * งานที่ขายเป็นหน่วยรวมและร้านยังไม่ได้ตั้ง piecesPerUnit ไว้ที่สินค้า ระบบเดาเองไม่ได้ —
+   * ตั้งที่นี่ทีเดียว ใช้ต่อทั้งแถบเทียบจำนวน ใบงาน และโหมดแพ็ค
+   */
+  function setItemPerUnit(itemIndex: number, per: number) {
+    if (!order) return;
+    const it = order.items[itemIndex];
+    if (!it) return;
+    const unit = it.unitYield?.unit || "หน่วย";
+    const items = order.items.map((x, i) =>
+      i === itemIndex ? { ...x, unitYield: { per, piece: x.unitYield?.piece || "ชิ้น", unit } } : x
+    );
+    const next = withLog({ ...order, items }, actor, "ตั้งจำนวนต่อหน่วย", `${it.name} — 1 ${unit} = ${per} ชิ้น`);
     setOrder(next);
     if (!demo) void saveOrderAdmin(next);
   }
@@ -1262,13 +1494,29 @@ export default function AdminOrderDetailPage() {
       if (!fresh.length) return it;
       return {
         ...it,
-        proofs: [...proofsOf(it), ...fresh.map((url) => ({ url, at: now }))],
+        proofs: [...proofsOf(it), ...fresh.map((url) => ({ url, at: now, by: actor }))],
         proofStatus: "รอตรวจ" as ProofStatus,
         proofUpdatedAt: now,
       };
     });
     if (!added) return;
     const next = withLog({ ...order, items }, actor, "ส่งแบบให้ลูกค้าตรวจ", `${order.items[itemIndex]?.name} — ใช้ลายที่แนบ ${added} รูป`);
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
+
+  /**
+   * ปิดคำขอแก้ไขที่ลูกค้าส่งมา (กด "จัดการแล้ว") — ไม่ได้แก้ออเดอร์ให้อัตโนมัติ
+   * แค่บอกว่าคนดูแลรับเรื่องและจัดการเรียบร้อยแล้ว แบนเนอร์เตือนจะหายไป
+   */
+  function resolveEditRequest() {
+    if (!order?.editRequest || order.editRequest.doneAt) return;
+    const next = withLog(
+      { ...order, editRequest: { ...order.editRequest, doneAt: new Date().toISOString(), doneBy: actor } },
+      actor,
+      "ปิดคำขอแก้ไขของลูกค้า",
+      order.editRequest.text
+    );
     setOrder(next);
     if (!demo) void saveOrderAdmin(next);
   }
@@ -1305,7 +1553,7 @@ export default function AdminOrderDetailPage() {
       if (proofsOf(it).some((p) => p.url === url)) return it; // ส่งไปแล้ว
       return {
         ...it,
-        proofs: [...proofsOf(it), { url, at: now }],
+        proofs: [...proofsOf(it), { url, at: now, by: actor }],
         proofStatus: "รอตรวจ" as ProofStatus,
         proofUpdatedAt: now,
       };
@@ -1497,7 +1745,7 @@ export default function AdminOrderDetailPage() {
         g.promoId === promoId
           ? {
               ...g,
-              proofs: [...(g.proofs ?? []), ...urls.map((url) => ({ url, at }))],
+              proofs: [...(g.proofs ?? []), ...urls.map((url) => ({ url, at, by: actor }))],
               proofStatus: "รอตรวจ" as const,
               proofNote: undefined,
               proofUpdatedAt: at,
@@ -1557,8 +1805,8 @@ export default function AdminOrderDetailPage() {
     }
     setUploadingIdx(itemIndex);
     for (const file of files) {
-      // ชื่อไฟล์บอกจำนวน/หน่วยไว้ (เช่น "ลายหน้า x3.png" · "เจตนา 5 เซ็ต.png") → เติมให้เลย
-      const res = await uploadProof(order.id, itemIndex, file, qtyFromFileName(file.name));
+      // ชื่อไฟล์บอกจำนวน/หน่วย/ชื่อลายไว้ (เช่น "ลายหน้า x3.png" · "เจตนา 5 เซ็ต.png") → เติมช่องจำนวนกับรายละเอียดให้เลย
+      const res = await uploadProof(order.id, itemIndex, file, proofFromFileName(file.name));
       if (!res.ok) {
         setErr(res.error ?? "อัปโหลดแบบไม่สำเร็จ");
         break;
@@ -1581,8 +1829,8 @@ export default function AdminOrderDetailPage() {
     }
     setErr("");
     setUploadingIdx(itemIndex);
-    // ชื่อไฟล์ใหม่บอกจำนวนมาด้วย = ทับจำนวน/หน่วยเดิม · ไม่บอก = คงค่าที่ตั้งไว้
-    const res = await uploadProof(order.id, itemIndex, file, { replaceIndex: proofIdx, ...qtyFromFileName(file.name) });
+    // ชื่อไฟล์ใหม่บอกจำนวน/ชื่อลายมาด้วย = ทับค่าเดิม (รายละเอียดต้องเป็นของไฟล์ที่อยู่ในกรอบตอนนี้) · ไม่บอก = คงค่าที่ตั้งไว้
+    const res = await uploadProof(order.id, itemIndex, file, { replaceIndex: proofIdx, ...proofFromFileName(file.name) });
     setUploadingIdx(null);
     if (!res.ok) {
       setErr(res.error ?? "เปลี่ยนรูปไม่สำเร็จ");
@@ -1703,6 +1951,10 @@ export default function AdminOrderDetailPage() {
    * ⚠️ ของเดิมต้องเลื่อนหาเองว่าใบนี้ติดตรงไหน (เก็บเงินไม่ครบ? ยังไม่ตรวจแบบ?)
    */
   const blockers: string[] = [];
+  // ลูกค้าขอแก้ไขออเดอร์ — ขึ้นก่อนเรื่องเงิน เพราะถ้าแก้แล้วยอดเปลี่ยน เก็บเงินตอนนี้ก็ต้องเก็บใหม่อยู่ดี
+  const openEditReq = order.editRequest && !order.editRequest.doneAt ? order.editRequest : null;
+  if (openEditReq && order.status !== "ยกเลิก")
+    blockers.push(`ลูกค้าขอแก้ไขออเดอร์ — “${openEditReq.text}”`);
   if (order.deposit && !order.deposit.settledAt && order.status !== "ยกเลิก") {
     blockers.push(
       order.deposit.firstPaidAt
@@ -1717,6 +1969,66 @@ export default function AdminOrderDetailPage() {
       {blockers.length > 0 && (
         <div className="mb-4">
           <Banner tone="hot" title={`ต้องทำต่อ · ${blockers[0]}`} detail={nextStep ? `ขั้นถัดไปหลังเคลียร์แล้ว: ${nextStep}` : undefined} />
+        </div>
+      )}
+
+      {/*
+        ✏️ ลูกค้าขอแก้ไขออเดอร์ — ลูกค้าพิมพ์มาจากหน้าออเดอร์ของตัวเอง (ไม่ได้แก้ยอดเอง)
+        คนดูแลอ่าน → แก้รายการ/ราคาให้เอง → กด "จัดการแล้ว" ให้แบนเนอร์หาย
+      */}
+      {openEditReq && order.status !== "ยกเลิก" && (
+        <div
+          className="dkb-g mb-4 p-4"
+          style={{ background: "var(--dk-lilac-wash)", borderLeft: "5px solid var(--dk-lilac)" }}
+        >
+          <p className="dkb-eyebrow" style={{ color: "var(--dk-lilac-ink)" }}>
+            ✏️ ลูกค้าขอแก้ไขออเดอร์
+          </p>
+          <p className="mt-1.5 text-[.95rem] leading-relaxed" style={{ color: "var(--dk-navy)" }}>
+            “{openEditReq.text}”
+          </p>
+          <p className={`mt-1 text-xs ${faint}`}>
+            ส่งเมื่อ{" "}
+            {new Date(openEditReq.at).toLocaleString("th-TH", {
+              day: "numeric",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}{" "}
+            · ลูกค้าแก้เองไม่ได้ — แก้รายการ/ราคาให้ในหน้านี้ แล้วทักยืนยันยอดใหม่กับลูกค้า
+          </p>
+          {mayEdit && (
+            <button type="button" onClick={resolveEditRequest} className="dkb-btn dkb-btn-ghost mt-3">
+              ✓ จัดการแล้ว
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* 🚫 ใบที่ลูกค้ากดยกเลิกเอง (ยกเลิกได้เฉพาะตอนยังไม่มีเงินเข้า) — แยกจากที่ร้านยกเลิกให้ */}
+      {order.cancelledByCustomer && (
+        <div
+          className="dkb-g mb-4 p-4"
+          style={{ background: "var(--dk-coral-wash)", borderLeft: "5px solid var(--dk-coral-deep)" }}
+        >
+          <p className="dkb-eyebrow" style={{ color: "var(--dk-coral-ink)" }}>
+            🚫 ลูกค้ากดยกเลิกออเดอร์เอง
+          </p>
+          <p className={`mt-1.5 text-xs ${faint}`}>
+            {new Date(order.cancelledByCustomer.at).toLocaleString("th-TH", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}{" "}
+            · ยังไม่มีเงินเข้าตอนที่ยกเลิก (ระบบเปิดให้ยกเลิกเองเฉพาะกรณีนี้)
+          </p>
+          {order.cancelledByCustomer.reason && (
+            <p className="mt-1.5 text-[.95rem] leading-relaxed" style={{ color: "var(--dk-navy)" }}>
+              เหตุผล: “{order.cancelledByCustomer.reason}”
+            </p>
+          )}
         </div>
       )}
 
@@ -2092,11 +2404,8 @@ export default function AdminOrderDetailPage() {
           <div className="mt-1.5 space-y-4">
             {order.items.map((it, i) => {
               const proofs = proofsOf(it);
-              const proofQty = proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
-              // หน่วยของแบบทั้งรายการ — ถ้ามีรูปไหนนับเป็นเซ็ต/ชุด จะเอาไปเทียบกับจำนวนที่ลูกค้าสั่ง (ชิ้น) ตรง ๆ ไม่ได้
-              const proofUnits = [...new Set(proofs.filter((p) => p.qty).map((p) => proofUnit(p)))];
-              const proofUnitTxt = proofUnits.length === 1 ? proofUnits[0] : "";
-              const proofSameUnit = proofUnitTxt === "ชิ้น";
+              // เทียบจำนวนบนแบบกับที่ลูกค้าสั่ง — คูณ "กี่ชิ้นต่อหน่วย" ให้แล้ว (สั่ง 12 เซ็ต × 20 ใบ = 240 ใบ)
+              const qc = proofQtyCheck(it, proofs);
               const open = itemOpen[i] ?? autoOpen(it);
               return (
                 <div
@@ -2520,11 +2829,15 @@ export default function AdminOrderDetailPage() {
                       </span>
                     )}
                     {proofs.length > 0 && (
-                      <span className={`text-[11px] ${proofSameUnit && proofQty && proofQty !== it.qty ? "font-bold text-rose-600" : faint}`}>
+                      <span
+                        className={`text-[11px] ${qc.comparable && !qc.ok ? "font-bold text-rose-600" : faint}`}
+                        title={qc.math || undefined}
+                      >
                         {proofs.length} แบบ ·{" "}
-                        {proofSameUnit
-                          ? `ระบุจำนวนรวม ${proofQty}/${it.qty} ชิ้น${proofQty > 0 && proofQty !== it.qty ? " ⚠️ ไม่ตรง" : ""}`
-                          : `ระบุจำนวนรวม ${proofQty} ${proofUnitTxt || "หน่วย"} (สั่ง ${it.qty} ชิ้น)`}
+                        {qc.comparable
+                          ? `ระบุจำนวนรวม ${qc.total}/${qc.target} ${qc.unit}${qc.ok ? "" : " ⚠️ ไม่ตรง"}`
+                          : `ระบุจำนวนรวม ${qc.total} ${qc.unit || "หน่วย"} (สั่ง ${qc.orderedText})`}
+                        {qc.per > 1 && <span className="ml-1 font-normal opacity-70">({qc.math})</span>}
                       </span>
                     )}
                     {it.sampleRequired && (
@@ -2824,6 +3137,8 @@ export default function AdminOrderDetailPage() {
                           </button>
                         </div>
                       )}
+                      {/* ผลตรวจชุดแบบ — อ่านจากชื่อไฟล์ที่ลากเข้ามา เทียบกับจำนวนที่ลูกค้าสั่ง */}
+                      <ProofDropCheck proofs={proofs} item={it} onSetPerUnit={mayProof ? (per) => setItemPerUnit(i, per) : undefined} />
                       {proofs.length === 0 ? (
                         <p className="mt-2 rounded-lg border-2 border-dashed border-violet-200 bg-white px-3 py-3 text-center text-[11px] text-slate-400">
                           {proofDropIdx === i ? "⬇️ ปล่อยไฟล์ตรงนี้ได้เลย" : "ยังไม่ได้ส่งแบบให้ลูกค้า — ลากไฟล์มาวาง กดปุ่มด้านล่าง หรือกด “ใช้ลายนี้เป็นแบบ” จากฝั่งซ้าย"}
@@ -2928,7 +3243,7 @@ export default function AdminOrderDetailPage() {
                                   <div
                                     className="flex items-center gap-1"
                                     title={
-                                      'ตั้งชื่อไฟล์บอกจำนวน+หน่วยไว้ ระบบเติมให้เอง — เช่น "ลายหน้า x3.png" · "ลายหลัง 5 ชิ้น.png" · "เจตนา 5 เซ็ต.png"'
+                                      'ตั้งชื่อไฟล์บอกจำนวน+หน่วยไว้ ระบบเติมช่องจำนวนกับรายละเอียดให้เอง — เช่น "ลายหน้า x3.png" · "ลายหลัง 5 ชิ้น.png" · "เจตนา 5 เซ็ต.png"'
                                     }
                                   >
                                     <span className="shrink-0 text-[10px] font-bold text-slate-400">จำนวน</span>
@@ -2961,12 +3276,11 @@ export default function AdminOrderDetailPage() {
                                       ))}
                                     </select>
                                   </div>
-                                  <input
+                                  <ProofNoteInput
                                     value={pf.note ?? ""}
-                                    placeholder="รายละเอียด เช่น ลายหน้า"
-                                    onChange={(e) => patchProof(i, j, { note: e.target.value || undefined })}
+                                    label={`รายละเอียดของแบบรูปที่ ${j + 1}`}
+                                    onChange={(v) => patchProof(i, j, { note: v || undefined })}
                                     onBlur={persist}
-                                    className="w-full rounded-md border border-slate-200 px-1.5 py-0.5 text-[11px] focus:border-violet-300 focus:outline-none"
                                   />
                                   {pf.review === "ขอแก้ไข" && pf.reviewNote ? (
                                     <p className="rounded-md bg-rose-50 px-1.5 py-1 text-[10px] font-bold leading-snug text-rose-700">
@@ -3060,8 +3374,8 @@ export default function AdminOrderDetailPage() {
                       )}
                       {mayProof && (
                         <p className="mt-1 text-center text-[10px] leading-snug text-violet-400">
-                          💡 ตั้งชื่อไฟล์บอกจำนวนไว้ ช่อง “จำนวน” เติมให้เอง — <span className="font-bold">ลายหน้า x3.png</span> ·{" "}
-                          <span className="font-bold">ลายหลัง 5 ชิ้น.png</span>
+                          💡 ชื่อไฟล์ลงช่อง “รายละเอียด” ให้เอง และเลขในชื่อลงช่อง “จำนวน” — <span className="font-bold">ลายหน้า x3.png</span> ·{" "}
+                          <span className="font-bold">ลายหลัง 5 ชิ้น.png</span> แล้วระบบเทียบยอดรวมกับจำนวนที่สั่งให้
                         </p>
                       )}
                     </div>
@@ -4616,6 +4930,26 @@ function ProofCarousel({
   );
 }
 
+/**
+ * จุดที่ยังต้องยืนยันก่อนยิงเลขพัสดุ — บอกเป็นรายจุดพร้อมชื่อรายการ ไม่ใช่แค่นับจำนวน
+ * ใช้ทั้งหัวจอ (เหลือจุดไหนบ้าง) และแถบล่าง (ทำไมยังยิงเลขไม่ได้) ตัวเลขจะได้ตรงกันเสมอ
+ */
+function packTodos(order: Order, gate: ReturnType<typeof packGate>): { icon: string; text: string }[] {
+  const out: { icon: string; text: string }[] = [];
+  // ของไม่ครบขึ้นก่อน — ต้องถามแอดมินก่อนทำอย่างอื่น
+  gate.short.forEach((s) => out.push({ icon: "⚠️", text: `ของไม่ครบ: ${s.item} (นับได้ ${s.got}/${s.need})` }));
+  // ตรวจนับ: รวมรูปของรายการเดียวกันเป็นบรรทัดเดียว คนแพ็คไล่ทีละรายการอยู่แล้ว
+  const uncountedByItem = new Map<string, number[]>();
+  gate.uncounted.forEach((u) => uncountedByItem.set(u.item, [...(uncountedByItem.get(u.item) ?? []), u.index]));
+  uncountedByItem.forEach((idx, item) => out.push({ icon: "🔢", text: `ตรวจนับรูป: ${item} (รูปที่ ${idx.join(", ")})` }));
+  gate.unread.forEach((n) => out.push({ icon: "📄", text: `ยืนยันอ่านรายละเอียด: ${n}` }));
+  gate.unsampled.forEach((n) => out.push({ icon: "🎁", text: `ใส่งานตัวอย่างลงกล่อง: ${n}` }));
+  if (gate.noPhoto) out.push({ icon: "📸", text: "ถ่ายภาพของในกล่อง ก่อนปิดกล่อง" });
+  if (gate.unpaidBalance)
+    out.push({ icon: "💳", text: order.deposit ? "เก็บยอดคงเหลือ (มัดจำ) ให้ครบ" : "เก็บส่วนต่างที่ค้างให้ครบ" });
+  return out;
+}
+
 function PackView({
   order,
   gate,
@@ -4640,6 +4974,7 @@ function PackView({
   onPhotoDelete: (i: number) => void;
 }) {
   const totalQty = order.items.reduce((s, it) => s + it.qty, 0);
+  const todos = packTodos(order, gate);
   return (
     <div className="mx-auto min-h-screen max-w-[480px] bg-slate-50 pb-28">
       {/* หัวเข้ม + ความคืบหน้า */}
@@ -4651,11 +4986,27 @@ function PackView({
         <p className="text-xs text-slate-300">
           {order.customer} · รวม {totalQty} ชิ้น
         </p>
-        <p className={`mt-1 text-sm font-bold ${gate.ready ? "text-green-400" : "text-amber-300"}`}>
-          {gate.ready
-            ? "✅ ตรวจครบแล้ว — ยิงเลขพัสดุได้"
-            : `⏳ เหลืออีก ${gate.uncounted.length + gate.unread.length + gate.unsampled.length + (gate.noPhoto ? 1 : 0) + (gate.unpaidBalance ? 1 : 0)} จุดต้องยืนยัน`}
-        </p>
+        {/* เหลือกี่จุด + จุดไหนบ้าง — เดิมบอกแค่จำนวน คนแพ็คต้องเลื่อนหาเองว่าค้างตรงไหน */}
+        {gate.ready ? (
+          <p className="mt-1 text-sm font-bold text-green-400">✅ ตรวจครบแล้ว — ยิงเลขพัสดุได้</p>
+        ) : (
+          <div className="mt-2 rounded-xl bg-amber-400/10 px-3 py-2 ring-1 ring-amber-400/40">
+            <p className="text-sm font-extrabold text-amber-300">
+              ⏳ เหลืออีก <span className="tabular-nums">{todos.length}</span> จุดต้องยืนยัน
+            </p>
+            <ul className="mt-1.5 space-y-1">
+              {todos.slice(0, 5).map((t, n) => (
+                <li key={`${t.text}-${n}`} className="flex gap-1.5 text-xs font-bold leading-tight text-amber-50">
+                  <span className="shrink-0">{t.icon}</span>
+                  <span className="min-w-0 flex-1">{t.text}</span>
+                </li>
+              ))}
+              {todos.length > 5 && (
+                <li className="pl-5 text-xs font-bold text-amber-200/80">+ อีก {todos.length - 5} จุด (เลื่อนดูด้านล่าง)</li>
+              )}
+            </ul>
+          </div>
+        )}
         {/* ตรวจครบแล้วค่อยโชว์บาร์โค้ด — ยิงจากจอนี้เข้าสถานีได้เลย ไม่ต้องหาใบงาน */}
         {gate.ready && (
           <div className="mt-3 rounded-xl bg-white p-2 text-center">
@@ -4671,11 +5022,9 @@ function PackView({
           const proofs = proofsOf(it);
           // จำนวนที่ระบุไว้บนรูปแบบงาน (ป้ายมุมซ้ายบนของรูป) เทียบกับจำนวนที่ลูกค้าสั่ง
           // หน่วยต่างกัน (เซ็ต/ชุด) เทียบตรง ๆ ไม่ได้ — บอกให้รู้เฉย ๆ ไม่ตีว่าผิด
-          const proofQty = proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
-          const proofUnits = [...new Set(proofs.filter((p) => p.qty).map((p) => proofUnit(p)))];
-          const proofUnitTxt = proofUnits.length === 1 ? proofUnits[0] : "";
-          const qtyMismatch = proofQty > 0 && proofUnitTxt === "ชิ้น" && proofQty !== it.qty;
-          const qtyOtherUnit = proofQty > 0 && proofUnitTxt !== "" && proofUnitTxt !== "ชิ้น";
+          const qc = proofQtyCheck(it, proofs);
+          const qtyMismatch = qc.comparable && !qc.ok;
+          const qtyOtherUnit = qc.total > 0 && !qc.comparable && qc.unit !== "";
           return (
             <div key={`${it.productId}-${i}`} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200">
               {/* งานตัวอย่าง — วางบนสุดให้สะดุดตาก่อนเริ่มแพ็ค · บังคับยืนยันก่อนยิงเลขพัสดุ */}
@@ -4703,9 +5052,15 @@ function PackView({
 
               <div className="mb-2 flex items-baseline justify-between">
                 <p className="text-base font-extrabold text-slate-900">{it.name}</p>
-                <span className={`text-lg font-black tabular-nums ${qtyMismatch ? "text-rose-600" : "text-slate-900"}`}>
+                {/* สั่งเป็นเซ็ต/แผ่น = โชว์จำนวนชิ้นจริงต่อท้าย คนแพ็คจะได้นับถูก ("12 เซ็ต = 240 ใบ") */}
+                <span className={`text-right text-lg font-black tabular-nums ${qtyMismatch ? "text-rose-600" : "text-slate-900"}`}>
                   {it.qty}
-                  <span className={`text-xs font-bold ${qtyMismatch ? "text-rose-400" : "text-slate-400"}`}> ชิ้น</span>
+                  <span className={`text-xs font-bold ${qtyMismatch ? "text-rose-400" : "text-slate-400"}`}> {qc.saleUnit || "ชิ้น"}</span>
+                  {qc.per > 1 && (
+                    <span className="block text-xs font-bold text-slate-500">
+                      = {qc.pieces} {qc.piece}
+                    </span>
+                  )}
                 </span>
               </div>
 
@@ -4714,15 +5069,15 @@ function PackView({
                 <div className="mb-2 rounded-xl bg-rose-50 px-3 py-2 ring-2 ring-rose-300">
                   <p className="text-xs font-extrabold text-rose-700">⚠️ จำนวนไม่ตรงกัน — ถามแอดมินก่อนแพ็ค</p>
                   <p className="mt-0.5 text-[11px] font-bold text-rose-600">
-                    ป้ายบนรูปรวม <span className="tabular-nums">{proofQty}</span> ชิ้น · ลูกค้าสั่ง{" "}
-                    <span className="tabular-nums">{it.qty}</span> ชิ้น
+                    ป้ายบนรูปรวม <span className="tabular-nums">{qc.total}</span> {qc.unit} · ลูกค้าสั่ง{" "}
+                    <span className="tabular-nums">{qc.orderedText}</span>
                   </p>
                 </div>
               )}
               {qtyOtherUnit && (
                 <p className="mb-2 rounded-xl bg-slate-50 px-3 py-2 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200">
-                  งานนี้นับเป็น{proofUnitTxt} — ป้ายบนรูปรวม <span className="tabular-nums">{proofQty}</span> {proofUnitTxt} (ลูกค้าสั่ง{" "}
-                  <span className="tabular-nums">{it.qty}</span> ชิ้น)
+                  งานนี้นับเป็น{qc.unit || "คนละหน่วยกัน"} — ป้ายบนรูปรวม <span className="tabular-nums">{qc.total}</span> {qc.unit} (ลูกค้าสั่ง{" "}
+                  <span className="tabular-nums">{qc.orderedText}</span>)
                 </p>
               )}
 
@@ -4739,25 +5094,44 @@ function PackView({
               <button
                 type="button"
                 onClick={() => onAck(i)}
-                className={`mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-3 text-left ${
-                  it.noteAck ? "bg-green-50 ring-1 ring-green-200" : "bg-amber-50 ring-1 ring-amber-200"
+                className={`mt-2 w-full overflow-hidden rounded-xl text-left ${
+                  it.noteAck ? "bg-green-50 ring-1 ring-green-200" : "bg-amber-50 ring-2 ring-amber-400"
                 }`}
               >
-                <span className="text-lg">{it.noteAck ? "✅" : "📄"}</span>
-                <span className="min-w-0 flex-1 text-xs">
-                  {/* บรรทัดละหัวข้อเหมือนที่อื่น — คนแพ็คอ่านทีละบรรทัดไม่ตกหล่น (อยู่ในปุ่ม จึงใช้ span ล้วน) */}
-                  <span className="block font-bold text-slate-700">
-                    {specEntries(it.sel, it.selections).length
-                      ? specEntries(it.sel, it.selections).map(([k, v], n) => (
-                          <span key={`${k}-${n}`} className="block">
-                            {k && <span className="text-slate-500">{k}: </span>}
-                            <SelText text={v} plain />
-                          </span>
-                        ))
-                      : "ไม่มีรายละเอียดเพิ่มเติม"}
+                <span className="flex items-start gap-2 px-3 pt-3 pb-2">
+                  <span className="text-lg leading-none">{it.noteAck ? "✅" : "📄"}</span>
+                  <span className="min-w-0 flex-1 text-xs">
+                    {/* บรรทัดละหัวข้อเหมือนที่อื่น — คนแพ็คอ่านทีละบรรทัดไม่ตกหล่น (อยู่ในปุ่ม จึงใช้ span ล้วน) */}
+                    <span className="block font-bold text-slate-700">
+                      {foldSizeExtra(specEntries(it.sel, it.selections)).length
+                        ? foldSizeExtra(specEntries(it.sel, it.selections)).map(([k, v], n) => (
+                            <span key={`${k}-${n}`} className="block">
+                              {k && <span className="text-slate-500">{k}: </span>}
+                              <SelText text={v} plain />
+                            </span>
+                          ))
+                        : "ไม่มีรายละเอียดเพิ่มเติม"}
+                    </span>
                   </span>
-                  <span className={it.noteAck ? "text-green-700" : "font-bold text-amber-700"}>
-                    {it.noteAck ? "ยืนยันอ่านแล้ว" : "แตะเพื่อยืนยันว่าอ่านแล้ว"}
+                </span>
+                {/* แถบยืนยัน — แยกออกจากสเปคด้วยเส้นคั่น + พื้นทึบเต็มความกว้าง ให้เห็นว่า "กดได้" ไม่ใช่ข้อความต่อท้าย
+                    ยังไม่ยืนยัน = พื้นเหลืองทึบ + ช่องติ๊กว่าง (แยกจากสถานะเสร็จได้แม้ไม่เห็นสี) */}
+                <span
+                  className={`flex items-center gap-2 border-t px-3 py-3 ${
+                    it.noteAck ? "border-green-200 bg-green-100" : "border-amber-500 bg-amber-300"
+                  }`}
+                >
+                  <span
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 text-sm font-black leading-none ${
+                      it.noteAck ? "border-green-700 bg-green-700 text-white" : "border-amber-800 bg-white text-transparent"
+                    }`}
+                  >
+                    ✓
+                  </span>
+                  <span className={`min-w-0 flex-1 text-sm font-extrabold ${it.noteAck ? "text-green-800" : "text-amber-950"}`}>
+                    {it.noteAck ? "ยืนยันอ่านแล้ว" : "ยังไม่ยืนยัน — แตะเพื่อยืนยันว่าอ่านแล้ว"}
+                    {/* ยืนยันแล้วบอกด้วยว่าใครกด เหมือนช่องงานตัวอย่าง จะได้ตามถามถูกคน */}
+                    {it.noteAck?.by && <span className="block text-[11px] font-bold text-green-700">โดย {it.noteAck.by}</span>}
                   </span>
                 </span>
               </button>
@@ -4837,17 +5211,12 @@ function PackView({
             <p className="flex items-center gap-2 text-sm font-bold text-slate-500">
               <span className="grayscale">🔒</span> ตรวจให้ครบก่อน ถึงยิงเลขพัสดุได้
             </p>
-            <p className="mt-0.5 pl-6 text-[11px] text-slate-400">
-              {[
-                gate.uncounted.length ? `ตรวจนับอีก ${gate.uncounted.length} รูป` : "",
-                gate.unread.length ? `ยืนยันอ่านอีก ${gate.unread.length} รายการ` : "",
-                gate.short.length ? `ของไม่ครบ ${gate.short.length} รายการ` : "",
-                gate.unsampled.length ? `🎁 ใส่งานตัวอย่างอีก ${gate.unsampled.length} รายการ` : "",
-                gate.noPhoto ? "📸 ถ่ายภาพก่อนปิดกล่อง" : "",
-                gate.unpaidBalance ? (order.deposit ? "💳 เก็บยอดคงเหลือ (มัดจำ) ให้ครบ" : "💳 เก็บส่วนต่างที่ค้างให้ครบ") : "",
-              ]
-                .filter(Boolean)
+            <p className="mt-0.5 pl-6 text-[11px] leading-tight text-slate-400">
+              {todos
+                .slice(0, 2)
+                .map((t) => `${t.icon} ${t.text}`)
                 .join(" · ")}
+              {todos.length > 2 ? ` · + อีก ${todos.length - 2} จุด` : ""}
             </p>
           </div>
         )}

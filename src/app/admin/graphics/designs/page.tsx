@@ -24,8 +24,8 @@ import {
   TabRow,
   Tag,
 } from "@/components/admin/ui";
-import { isSelfDesigned, orderStatusLabel, proofsOf, proofUnit, type Order, type OrderItem, type Proof } from "@/lib/admin-data";
-import { dayOf, orderMatches, useGraphicsOrders } from "../data";
+import { isSelfDesigned, orderStatusLabel, proofBy, proofsOf, proofUnit, type Order, type OrderItem, type Proof } from "@/lib/admin-data";
+import { dayOf, orderMatches, staffTally, useGraphicStaff, useGraphicsOrders } from "../data";
 
 /**
  * 📋 รายงานแบบงาน — ตารางสรุปว่า "แบบของออเดอร์ไหนค้างอยู่ตรงไหน"
@@ -65,6 +65,8 @@ interface Row {
   no: number;
   /** ลูกค้าจัดวางลายเองบนเทมเพลต (ไม่ใช่แบบที่กราฟฟิกทำ) */
   self: boolean;
+  /** กราฟฟิกที่ทำแบบลายนี้ — ว่าง = ลูกค้าจัดวางเอง หรือแบบเก่าที่ไม่ได้บันทึกชื่อไว้ */
+  by: string;
   state: State;
   /** คอมเมนต์ที่ลูกค้าเขียนตอนขอแก้ */
   note: string;
@@ -101,6 +103,7 @@ function buildRows(orders: Order[]): Row[] {
           proof,
           no: i + 1,
           self,
+          by: self ? "" : (proofBy(order, proof) ?? ""),
           state,
           note,
           noteWhole: !proof.reviewNote && !!note,
@@ -117,7 +120,11 @@ type Filter = State | "all" | "self" | "lowdpi";
 
 export default function DesignReportPage() {
   const { orders, demo } = useGraphicsOrders();
+  /** รายชื่อพนักงานแผนกกราฟฟิกใน employees2 — เป็นตัวตั้งของชิป "คนทำแบบ" */
+  const roster = useGraphicStaff();
   const [filter, setFilter] = useState<Filter>("all");
+  /** กรองตามกราฟฟิกที่ทำแบบ — "all" = ทุกคน · "" = แบบเก่าที่ไม่ได้บันทึกชื่อคนทำ */
+  const [staff, setStaff] = useState<string | "all">("all");
   const [q, setQ] = useState("");
 
   const rows = useMemo(() => buildRows(orders), [orders]);
@@ -140,7 +147,11 @@ export default function DesignReportPage() {
   }, [rows]);
 
 
+  /** รายชื่อกราฟฟิกในชิปกรอง — เฉพาะลายที่เราทำเอง (ลายที่ลูกค้าจัดวางเองไม่มีคนทำ) */
+  const staffList = useMemo(() => staffTally(rows.filter((r) => !r.self).map((r) => r.by), roster), [rows, roster]);
+
   const shown = rows
+    .filter((r) => (staff === "all" ? true : !r.self && r.by === staff))
     .filter((r) =>
       filter === "all"
         ? true
@@ -227,6 +238,24 @@ export default function DesignReportPage() {
             style={{ background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}
           />
         </TabRow>
+        {/* ใครเป็นคนทำแบบ — ขึ้นเมื่อมีกราฟฟิกทำแบบมากกว่า 1 คน */}
+        {staffList.length > 1 && (
+          <TabRow divider>
+            <span className="flex-none self-center pr-1 text-[12px]" style={{ color: "var(--dk-faint)" }}>
+              คนทำแบบ
+            </span>
+            <FChip on={staff === "all"} onClick={() => setStaff("all")} label="ทุกคน" count={counts.all} />
+            {staffList.map((p) => (
+              <FChip
+                key={p.name || "unknown"}
+                on={staff === p.name}
+                onClick={() => setStaff(staff === p.name ? "all" : p.name)}
+                label={p.name || "ไม่ระบุคนทำ"}
+                count={p.n}
+              />
+            ))}
+          </TabRow>
+        )}
       </FilterCard>
 
       <ListHead title="ลาย" note="จัดกลุ่มตามออเดอร์ · ที่ค้างอยู่ที่เราขึ้นก่อน" />
@@ -290,7 +319,13 @@ export default function DesignReportPage() {
                               <>
                                 <Tag tone={STATE_TAG[r.state]}>{r.state}</Tag>
                                 {r.proof.revisedAt && <Tag tone="mint">แก้ให้แล้ว</Tag>}
-                                {r.self ? <Tag tone="sky">ลูกค้าจัดวางเอง</Tag> : <Tag tone="quiet">กราฟฟิกทำ</Tag>}
+                                {r.self ? (
+                                  <Tag tone="sky">ลูกค้าจัดวางเอง</Tag>
+                                ) : (
+                                  <Tag tone="quiet" title={r.by ? `${r.by} เป็นคนทำแบบลายนี้` : undefined}>
+                                    {r.by ? `ทำโดย ${r.by}` : "กราฟฟิกทำ"}
+                                  </Tag>
+                                )}
                                 {low && (
                                   <Tag tone="solid" title={`ต่ำกว่า ${DPI_WARN} DPI — พิมพ์แล้วอาจไม่คม`}>
                                     {r.dpi} DPI

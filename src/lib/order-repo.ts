@@ -173,6 +173,51 @@ export async function updateOrderAddress(
   }
 }
 
+/**
+ * ลูกค้ายกเลิกออเดอร์เอง — เซิร์ฟเวอร์เปิดให้เฉพาะใบที่ยังไม่มีเงินเข้าเลย (สถานะ "รอชำระเงิน" + ไม่มีสลิป)
+ * locked = เงื่อนไขไม่ผ่าน (เพิ่งแจ้งโอน/ร้านเริ่มงานแล้ว) → ให้หน้าเว็บรีเฟรชแล้วบอกให้ทักร้าน
+ */
+export async function cancelOrderByCustomer(
+  orderId: string,
+  key: string,
+  reason?: string
+): Promise<{ ok: boolean; order?: Order; locked?: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/orders/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, key, reason }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return res.ok
+      ? { ok: true, order: data.order as Order }
+      : { ok: false, locked: !!data.locked, error: data.error ?? "ยกเลิกออเดอร์ไม่สำเร็จ" };
+  } catch {
+    return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
+  }
+}
+
+/** ลูกค้าส่งคำขอแก้ไขออเดอร์ (แอดมินเป็นคนแก้ให้ — ลูกค้าไม่ได้แก้ยอดเอง) */
+export async function requestOrderEdit(
+  orderId: string,
+  key: string,
+  text: string
+): Promise<{ ok: boolean; order?: Order; locked?: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/orders/edit-request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, key, text }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return res.ok
+      ? { ok: true, order: data.order as Order }
+      : { ok: false, locked: !!data.locked, error: data.error ?? "ส่งคำขอไม่สำเร็จ" };
+  } catch {
+    return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
+  }
+}
+
 /** ลูกค้าตรวจแบบ — อนุมัติ หรือ ขอแก้ไข (พร้อมคอมเมนต์) · ระบุ proofIndex = ตรวจเฉพาะรูปนั้น */
 export async function reviewProof(
   orderId: string,

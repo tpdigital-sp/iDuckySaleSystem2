@@ -53,6 +53,8 @@ export async function POST(req: Request) {
       productId: it.productId,
       name: it.name,
       selections: it.selections,
+      ...(it.sel ? { sel: { ...it.sel } } : {}),
+      ...(it.unitYield ? { unitYield: { ...it.unitYield } } : {}), // 1 หน่วย = กี่ชิ้น ต้องตามไปด้วย ไม่งั้นใบใหม่เทียบจำนวนแบบงานผิด
       qty,
       unitPrice: mode === "claim" ? 0 : it.unitPrice, // เคลม = ไม่คิดเงิน
       ...(it.artworkUrls?.length ? { artworkUrls: [...it.artworkUrls] } : {}),

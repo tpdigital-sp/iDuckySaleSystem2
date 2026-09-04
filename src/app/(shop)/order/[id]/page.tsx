@@ -11,7 +11,7 @@ import { formatPrice } from "@/lib/products";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
 import { adminDiscountAmount, amountDueNow, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderItemDiscounts, orderStatusLabel, orderTotal, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
-import { fetchOrderForCustomer, reportPayment, reviewGiftProof, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
+import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, reviewGiftProof, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
 import { setAppendTarget } from "@/lib/append-order";
@@ -236,6 +236,57 @@ export default function CustomerOrderPage() {
     setEditAddr(false);
   }
 
+  /* ✏️ ขอแก้ไขออเดอร์ — ลูกค้าพิมพ์บอกว่าอยากแก้อะไร แล้วแอดมินแก้ให้ (ไม่ให้แก้ยอดเอง กันบิลเพี้ยนจากสลิป) */
+  const [editReqOpen, setEditReqOpen] = useState(false);
+  const [editReqText, setEditReqText] = useState("");
+  const [editReqBusy, setEditReqBusy] = useState(false);
+  const [editReqErr, setEditReqErr] = useState("");
+  const [editReqSent, setEditReqSent] = useState(false);
+
+  async function sendEditRequest() {
+    if (!order) return;
+    const text = editReqText.trim();
+    if (text.length < 3) {
+      setEditReqErr("พิมพ์บอกหน่อยครับว่าอยากแก้ตรงไหน");
+      return;
+    }
+    setEditReqBusy(true);
+    setEditReqErr("");
+    const res = await requestOrderEdit(orderId, orderKey, text);
+    setEditReqBusy(false);
+    if (!res.ok) {
+      setEditReqErr(res.error ?? "ส่งคำขอไม่สำเร็จ");
+      if (res.locked) void load(orderKey);
+      return;
+    }
+    if (res.order) setOrder(res.order);
+    setEditReqOpen(false);
+    setEditReqText("");
+    setEditReqSent(true);
+  }
+
+  /* 🚫 ยกเลิกออเดอร์เอง — เปิดให้เฉพาะใบที่ยังไม่มีเงินเข้าเลย (เซิร์ฟเวอร์เช็คซ้ำอีกชั้น) */
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelErr, setCancelErr] = useState("");
+
+  async function doCancel() {
+    if (!order) return;
+    setCancelBusy(true);
+    setCancelErr("");
+    const res = await cancelOrderByCustomer(orderId, orderKey, cancelReason.trim() || undefined);
+    setCancelBusy(false);
+    if (!res.ok) {
+      setCancelErr(res.error ?? "ยกเลิกไม่สำเร็จ");
+      if (res.locked) void load(orderKey); // ร้านเพิ่งขยับสถานะ → รีเฟรชให้เห็นของจริง
+      return;
+    }
+    if (res.order) setOrder(res.order);
+    setCancelOpen(false);
+    setCancelReason("");
+  }
+
   const load = useCallback(
     async (key: string) => {
       setLoading(true);
@@ -255,12 +306,12 @@ export default function CustomerOrderPage() {
 
   /** ดึงข้อมูลใหม่เงียบ ๆ — ให้แบบงานใหม่จากกราฟฟิกขึ้นเอง */
   const refresh = useCallback(async () => {
-    // กันข้อมูลใหม่ทับตอนลูกค้ากำลังพิมพ์คำขอแก้ไข/แก้ที่อยู่ หรือกำลังส่งอยู่
-    if (editingIdx !== null || busyIdx !== null || editAddr) return;
+    // กันข้อมูลใหม่ทับตอนลูกค้ากำลังพิมพ์คำขอแก้ไข/แก้ที่อยู่/ขอแก้ออเดอร์/ยืนยันยกเลิก หรือกำลังส่งอยู่
+    if (editingIdx !== null || busyIdx !== null || editAddr || editReqOpen || cancelOpen) return;
     const res = await fetchOrderForCustomer(orderId, orderKey);
     if (!res.order) return;
     setOrder((cur) => (JSON.stringify(cur) === JSON.stringify(res.order) ? cur : res.order!));
-  }, [orderId, orderKey, editingIdx, busyIdx, editAddr]);
+  }, [orderId, orderKey, editingIdx, busyIdx, editAddr, editReqOpen, cancelOpen]);
 
   const live = !!order && order.status !== "เสร็จสิ้น" && order.status !== "ยกเลิก";
   usePolling(refresh, { enabled: live });
@@ -382,6 +433,16 @@ export default function CustomerOrderPage() {
     order.status
   );
   const cancelled = order.status === "ยกเลิก";
+  /**
+   * ยกเลิกเองได้ไหม — เงื่อนไขเดียวกับด่านฝั่งเซิร์ฟเวอร์ (/api/orders/cancel)
+   * "ยังไม่มีเงินเข้าเลย + ร้านยังไม่เริ่มงาน" เท่านั้น · นอกนั้นให้ทักร้าน
+   */
+  const paidSomething =
+    !!order.slipUrl || !!order.slipPath || !!order.paidReportedAt || (order.paidTotal ?? 0) > 0 || !!order.deposit?.firstPaidAt;
+  const canCancelSelf = order.status === "รอชำระเงิน" && !paidSomething && !order.printedAt;
+  // ขอแก้ไขได้จนกว่าของจะออกจากร้าน
+  const canRequestEdit = !(["จัดส่งแล้ว", "เสร็จสิ้น", "ยกเลิก"] as OrderStatus[]).includes(order.status);
+  const openEditReq = order.editRequest && !order.editRequest.doneAt ? order.editRequest : null;
 
   /* ชุดชำระเงิน/สลิป — มือถือโชว์บนสุด (CTA ต้องเจอทันที) · เดสก์ท็อปย้ายไปคอลัมน์ขวา */
   const payFlow = (
@@ -1637,6 +1698,160 @@ export default function CustomerOrderPage() {
           ← ดูสินค้าทั้งหมด
         </Link>
       </div>
+
+      {/*
+        ✏️/🚫 แก้ไข–ยกเลิกออเดอร์
+        แยกกันชัด ๆ: "ขอแก้ไข" = พิมพ์บอกร้าน แล้วร้านแก้ให้ (ไม่ให้ลูกค้าขยับยอดเอง กันบิลไม่ตรงสลิป)
+        "ยกเลิกเอง" = เปิดเฉพาะใบที่ยังไม่มีเงินเข้าเลย · ใบที่โอนแล้ว/เริ่มงานแล้ว ต้องคุยกับร้าน
+      */}
+      {!cancelled && (
+        <div className="ord-card mt-4 p-5 sm:p-6">
+          <p className="ord-eyebrow">แก้ไข / ยกเลิกออเดอร์</p>
+
+          {/* ── ขอแก้ไขออเดอร์ ── */}
+          <div className="mt-3">
+            {openEditReq && !editReqOpen ? (
+              <div className="ord-note warn p-4">
+                <p className="text-sm font-bold">✏️ ส่งคำขอแก้ไขให้ร้านแล้ว</p>
+                <p className="mt-1 text-xs leading-relaxed">
+                  “{openEditReq.text}”
+                  <br />
+                  <span className="opacity-75">
+                    ส่งเมื่อ{" "}
+                    {new Date(openEditReq.at).toLocaleString("th-TH", {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}{" "}
+                    — ทางร้านกำลังดูให้ครับ ถ้ามีผลกับยอดเงินจะทักกลับไปยืนยันก่อน
+                  </span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditReqText(openEditReq.text);
+                    setEditReqErr("");
+                    setEditReqOpen(true);
+                  }}
+                  className="ord-btn ghost sm mt-3"
+                >
+                  ✏️ แก้ข้อความ / ส่งใหม่
+                </button>
+              </div>
+            ) : editReqOpen ? (
+              <div className="ord-note plain p-4">
+                <p className="text-sm font-bold t-ink">อยากแก้ตรงไหนบอกได้เลยครับ</p>
+                <p className="mt-1 text-xs leading-relaxed t-soft">
+                  เช่น เปลี่ยนขนาด · เพิ่ม/ลดจำนวน · เปลี่ยนสี · เอาบางรายการออก — ทางร้านจะแก้ให้แล้วแจ้งยอดใหม่กลับไป
+                </p>
+                <textarea
+                  value={editReqText}
+                  onChange={(e) => setEditReqText(e.target.value)}
+                  rows={3}
+                  maxLength={800}
+                  placeholder="เช่น พวงกุญแจอันที่ 2 ขอเปลี่ยนจาก 5 ซม. เป็น 7 ซม. ครับ"
+                  className="ord-input mt-3"
+                />
+                {editReqErr && <p className="ord-note danger mt-2 px-3 py-2 text-xs">{editReqErr}</p>}
+                <div className="mt-2 flex gap-2">
+                  <button type="button" onClick={sendEditRequest} disabled={editReqBusy} className="ord-btn blue flex-1">
+                    {editReqBusy ? "กำลังส่ง…" : "📨 ส่งคำขอให้ร้าน"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditReqOpen(false);
+                      setEditReqErr("");
+                    }}
+                    className="ord-btn quiet"
+                  >
+                    ยกเลิก
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {editReqSent && (
+                  <p className="ord-note ok mb-2 px-3 py-2 text-xs">✓ ส่งคำขอให้ร้านแล้ว — ทางร้านจะติดต่อกลับครับ</p>
+                )}
+                <p className="text-xs leading-relaxed t-soft">
+                  อยากเปลี่ยนขนาด/จำนวน/สเปคงาน? พิมพ์บอกร้านได้เลย — ทางร้านแก้ให้แล้วแจ้งยอดใหม่กลับไป
+                  {canRequestEdit ? "" : " (ออเดอร์นี้ส่งของแล้ว ทักร้านทางไลน์แทนนะครับ)"}
+                </p>
+                {canRequestEdit && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditReqText("");
+                      setEditReqErr("");
+                      setEditReqOpen(true);
+                    }}
+                    className="ord-btn ghost mt-3"
+                  >
+                    ✏️ ขอแก้ไขออเดอร์นี้
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* ── ยกเลิกออเดอร์ ── */}
+          <div className="mt-4 border-t pt-4" style={{ borderColor: "var(--sky-200)" }}>
+            {cancelOpen ? (
+              <div className="ord-note danger p-4">
+                <p className="text-sm font-bold">ยืนยันยกเลิกออเดอร์ {order.id}?</p>
+                <p className="mt-1 text-xs leading-relaxed">
+                  ยกเลิกแล้วกลับมาแก้ไม่ได้ — ถ้าอยากได้ของอยู่แต่ขอปรับสเปค กด “ขอแก้ไขออเดอร์” ด้านบนดีกว่าครับ
+                </p>
+                <input
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  maxLength={300}
+                  placeholder="เหตุผล (ไม่บังคับ) — ช่วยให้ร้านปรับปรุงได้"
+                  className="ord-input mt-3"
+                />
+                {cancelErr && <p className="mt-2 text-xs font-semibold">{cancelErr}</p>}
+                <div className="mt-3 flex gap-2">
+                  <button type="button" onClick={doCancel} disabled={cancelBusy} className="ord-btn danger flex-1">
+                    {cancelBusy ? "กำลังยกเลิก…" : "ยืนยันยกเลิกออเดอร์"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCancelOpen(false);
+                      setCancelErr("");
+                    }}
+                    className="ord-btn quiet"
+                  >
+                    ไม่ยกเลิกแล้ว
+                  </button>
+                </div>
+              </div>
+            ) : canCancelSelf ? (
+              <>
+                <p className="text-xs leading-relaxed t-soft">
+                  ยังไม่ได้โอนเงิน — ยกเลิกออเดอร์นี้เองได้เลย ไม่มีค่าใช้จ่ายครับ
+                </p>
+                <button type="button" onClick={() => setCancelOpen(true)} className="ord-btn danger-ghost sm mt-2">
+                  🚫 ยกเลิกออเดอร์นี้
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-xs leading-relaxed t-soft">
+                  🔒 ออเดอร์นี้ยกเลิกเองไม่ได้แล้ว
+                  {paidSomething ? " เพราะแจ้งโอนเข้ามาแล้ว" : " เพราะทางร้านเริ่มทำงานแล้ว"} — ทักร้านได้เลยครับ
+                  เดี๋ยวทางร้านเช็คให้
+                </p>
+                <a href={LINE_URL} target="_blank" rel="noreferrer" className="ord-btn line sm mt-2">
+                  💬 ทักร้านทางไลน์
+                </a>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ขยายดูรูปของแถม — footer มีปุ่มอนุมัติ/ขอแก้เหมือน lightbox ของสินค้า (ตัดสินทั้งชุดของแถม) */}
       {giftLightbox &&

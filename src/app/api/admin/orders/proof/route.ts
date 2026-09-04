@@ -42,7 +42,8 @@ export async function POST(req: Request) {
   const proofQty = Number.isFinite(rawQty) && rawQty > 0 ? Math.floor(rawQty) : undefined;
   // หน่วยนับของแบบรูปนี้ (เช่น "เซ็ต") — ว่าง = ชิ้น
   const proofUnitIn = String(form.get("unit") ?? "").trim().slice(0, 12) || undefined;
-  const proofNote = String(form.get("note") ?? "").trim() || undefined;
+  // รายละเอียดของรูป (ปกติ = ชื่อไฟล์ที่ลากเข้ามา) — ตัดยาวไว้ กันชื่อไฟล์ยาวเป็นพรืดล้นช่อง
+  const proofNote = String(form.get("note") ?? "").trim().slice(0, 80) || undefined;
   if (!orderId) return NextResponse.json({ error: "ไม่มีเลขออเดอร์" }, { status: 400 });
   if (!Number.isInteger(itemIndex) || itemIndex < 0) return NextResponse.json({ error: "ไม่ได้ระบุรายการสินค้า" }, { status: 400 });
   if (!(file instanceof File)) return NextResponse.json({ error: "ไม่มีไฟล์รูปแบบงาน" }, { status: 400 });
@@ -74,10 +75,12 @@ export async function POST(req: Request) {
 
   const { data: pub } = sb.storage.from(BUCKET).getPublicUrl(path);
   const now = new Date().toISOString();
+  // ชื่อคนที่ทำแบบ — ติดไปกับตัวรูป เพื่อให้หน้าออเดอร์กราฟฟิกบอกได้ว่าใครเป็นคนทำ
+  const by = gate.actor.name?.trim() || "กราฟฟิก";
 
   let items: Order["items"];
   if (replaceIndex !== null) {
-    // ── เปลี่ยนรูปทับตำแหน่งเดิม: ตำแหน่ง/รายละเอียดคงอยู่ (จำนวนคงอยู่ ถ้าชื่อไฟล์ใหม่ไม่ได้บอกจำนวนมา) · ผลตรวจ+ผลนับของรูปนั้นรีเซ็ต (รูปเปลี่ยนแล้วต้องตรวจใหม่) ──
+    // ── เปลี่ยนรูปทับตำแหน่งเดิม: ตำแหน่งคงอยู่ (จำนวน/รายละเอียดคงอยู่ ถ้าชื่อไฟล์ใหม่ไม่ได้บอกมา) · ผลตรวจ+ผลนับของรูปนั้นรีเซ็ต (รูปเปลี่ยนแล้วต้องตรวจใหม่) ──
     items = order.items.map((it, i) => {
       if (i !== itemIndex) return it;
       const proofs = proofsOf(it).map((p, j) =>
@@ -85,10 +88,12 @@ export async function POST(req: Request) {
           ? {
               url: pub.publicUrl,
               at: now,
+              by, // คนที่แก้รูปนี้รอบล่าสุด = เจ้าของแบบตัวปัจจุบัน
               // จำนวน/หน่วย: ชื่อไฟล์ใหม่บอกมา = ใช้ค่าใหม่ · ไม่บอก = คงค่าที่ตั้งไว้เดิม
               ...((proofQty ?? p.qty) ? { qty: proofQty ?? p.qty } : {}),
               ...((proofUnitIn ?? p.unit) ? { unit: proofUnitIn ?? p.unit } : {}),
-              ...(p.note ? { note: p.note } : {}),
+              // รายละเอียด: ชื่อไฟล์ใหม่บอกมา = ใช้ชื่อไฟล์ใหม่ (กรอบนี้เป็นไฟล์ใหม่แล้ว ต้องตรงกัน) · ไม่บอก = คงข้อความเดิม
+              ...((proofNote ?? p.note) ? { note: proofNote ?? p.note } : {}),
               // แก้ตามที่ลูกค้าขอ → ติดป้าย "แก้ไขให้แล้ว" ให้ลูกค้าเห็นว่ารูปนี้อัปเดตแล้ว
               ...(p.review === "ขอแก้ไข" ? { revisedAt: now, ...(p.reviewNote ? { revisedFromNote: p.reviewNote } : {}) } : {}),
             }
@@ -109,6 +114,7 @@ export async function POST(req: Request) {
     const newProof = {
       url: pub.publicUrl,
       at: now,
+      by,
       ...(proofQty ? { qty: proofQty } : {}),
       ...(proofQty && proofUnitIn ? { unit: proofUnitIn } : {}),
       ...(proofNote ? { note: proofNote } : {}),
@@ -130,7 +136,7 @@ export async function POST(req: Request) {
   const anyEditLeft = items.some((it) => it.proofStatus === "ขอแก้ไข");
   const updated = withLog(
     { ...order, items, status: anyEditLeft ? ("แก้ไขแบบ" as const) : ("รอตรวจแบบ" as const) },
-    gate.actor.name?.trim() || "กราฟฟิก", // บันทึกชื่อคนที่อัปโหลดจริง (fallback: กราฟฟิก)
+    by, // บันทึกชื่อคนที่อัปโหลดจริง (fallback: กราฟฟิก)
     replaceIndex !== null ? "เปลี่ยนรูปแบบงาน (แก้ตามคำขอ)" : "อัปโหลดแบบให้ลูกค้าตรวจ",
     replaceIndex !== null
       ? `${order.items[itemIndex].name} · รูปที่ ${replaceIndex + 1}`

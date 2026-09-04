@@ -107,6 +107,8 @@ export interface Proof {
   note?: string;
   /** เวลาอัปโหลด (ISO) */
   at: string;
+  /** ชื่อคนที่ทำแบบรูปนี้ (กราฟฟิกที่อัป/เปลี่ยนรูปล่าสุด) */
+  by?: string;
   /** ผลตรวจนับของพนักงานแพ็ค — ต้องมีครบทุกรูปก่อนยิงเลขพัสดุ */
   pack?: PackCheck;
   /** ผลตรวจของลูกค้า "ต่อรูปนี้" — ไม่มีค่า = ยังไม่ตรวจ · รายการอนุมัติเมื่อครบทุกรูป */
@@ -125,6 +127,139 @@ export const PROOF_UNITS = ["ชิ้น", "เซ็ต", "ชุด", "ใบ
 /** หน่วยนับของรูปแบบงานนี้ (ไม่ได้ตั้ง = "ชิ้น") — ใช้ทุกที่ที่โชว์จำนวนของแบบ ใบงาน/ฝ่ายแพ็ค/หน้าลูกค้าจะได้ตรงกัน */
 export function proofUnit(p?: { unit?: string }): string {
   return p?.unit?.trim() || "ชิ้น";
+}
+
+/** คำที่ใช้เรียก "ชิ้นงานย่อย" ในชื่อตัวเลือก (ฝั่งซ้ายของ 20 ใบ/เซ็ต) */
+const PIECE_WORDS = "ใบ|ชิ้น|ดวง|แผ่น|อัน|ตัว|เส้น|คู่|ผืน";
+/** คำที่ใช้เรียก "หน่วยที่ลูกค้าสั่ง" (ฝั่งขวาของ 20 ใบ/เซ็ต) */
+const PACK_WORDS = "เซ็ต|เซต|ชุด|แพ็ค|แพค|แผ่น|กล่อง|ถุง|ม้วน|เล่ม";
+
+/**
+ * สั่ง 1 หน่วย ได้ของกี่ชิ้น — อ่านจากชื่อตัวเลือกที่ร้านเขียนไว้เอง
+ * เช่น "ตัดขนาดโฟโต้การ์ด 5.5×8.5 ซม. (20 ใบ/เซ็ต)" = 1 เซ็ต ได้ 20 ใบ · "40 ชิ้น / แผ่น A3"
+ * ทำไมต้องมี: ช่องจำนวนของออเดอร์นับเป็น "เซ็ต/แผ่น" แต่ป้ายจำนวนบนแบบงานนับเป็น "ใบ/ชิ้น"
+ *   เอามาเทียบกันตรง ๆ ระบบจะฟ้อง "ไม่ตรง" ทั้งที่ถูกอยู่แล้ว (สั่ง 12 เซ็ต = 240 ใบ = ป้ายบนแบบรวม 240)
+ * null = ไม่ได้เขียนไว้ → ถือว่า 1 หน่วย = 1 ชิ้น
+ */
+export function orderPiecesPerUnit(item: { selections?: string; sel?: Record<string, string> }): { per: number; piece: string; unit: string } | null {
+  const re = new RegExp(`(\\d{1,4})\\s*(${PIECE_WORDS})\\s*/\\s*(${PACK_WORDS})(\\s?A\\d)?`);
+  for (const text of [...Object.values(item.sel ?? {}), item.selections ?? ""]) {
+    const m = text.match(re);
+    const per = Number(m?.[1]);
+    if (m && Number.isFinite(per) && per > 1 && per <= 9999) return { per, piece: m[2], unit: (m[3] + (m[4] ?? "")).trim() };
+  }
+  return null;
+}
+
+/** ขายเป็นหน่วยรวมไหม (เซ็ต/ชุด/แผ่น/กล่อง) — จำนวนที่สั่งไม่ใช่จำนวนชิ้นงานตรง ๆ */
+export function isPackUnit(unit: string): boolean {
+  const u = (unit ?? "").trim();
+  return !!u && u !== "ชิ้น" && new RegExp(`^(${PACK_WORDS}|พวง)(\\s|\\(|$)`).test(u);
+}
+
+/** จำนวน "ชิ้นจริง" ที่ลูกค้าสั่งของรายการนี้ + ข้อความกางที่มาให้คนตรวจเห็นว่าคูณมาจากไหน */
+export function orderedPieces(item: {
+  qty: number;
+  selections?: string;
+  sel?: Record<string, string>;
+  unitYield?: { per: number; piece: string; unit: string };
+}) {
+  // ค่าที่แช่ไว้ตอนสั่ง (อ่านจากสินค้าจริง) มาก่อนเสมอ — แม้ per = 1 ก็ยังมีประโยชน์ เพราะบอกหน่วยขาย ("12 เซ็ต")
+  // เดาจากชื่อตัวเลือกไว้ใช้กับออเดอร์เก่าที่ยังไม่มีฟิลด์นี้
+  const y = item.unitYield?.per ? item.unitYield : orderPiecesPerUnit(item);
+  const pieces = y ? item.qty * y.per : item.qty;
+  return {
+    /** จำนวนชิ้นจริงที่ต้องผลิต/แพ็ค */
+    pieces,
+    /** ได้กี่ชิ้นต่อ 1 หน่วยที่สั่ง (1 = ไม่ได้แบ่ง) */
+    per: y?.per ?? 1,
+    /** คำเรียกชิ้นงานย่อย เช่น "ใบ" */
+    piece: y?.piece ?? "ชิ้น",
+    /** หน่วยที่ลูกค้าสั่ง เช่น "เซ็ต" (ว่าง = นับเป็นชิ้นอยู่แล้ว) */
+    unit: y?.unit ?? "",
+    /** "12 เซ็ต × 20 ใบ = 240 ใบ" — ว่างเมื่อยังไม่รู้ว่า 1 หน่วยกี่ชิ้น */
+    math: y && y.per > 1 ? `${item.qty} ${y.unit || "หน่วย"} × ${y.per} ${y.piece} = ${pieces} ${y.piece}` : "",
+  };
+}
+
+/**
+ * เทียบ "จำนวนบนแบบงาน" กับ "จำนวนที่ลูกค้าสั่ง" ที่เดียวจบ — ใช้ร่วมกันทั้งหน้าออเดอร์ โหมดแพ็ค และแถบตรวจชื่อไฟล์
+ * เทียบได้ 2 ทาง: แบบนับเป็นชิ้น → เทียบกับจำนวนชิ้นจริง · แบบนับเป็นหน่วยเดียวกับที่สั่ง (เซ็ต) → เทียบกับจำนวนที่สั่ง
+ * คนละหน่วยกัน/ยังไม่ระบุจำนวน = comparable false (บอกให้รู้เฉย ๆ ไม่ตีว่าผิด)
+ */
+export function proofQtyCheck(
+  item: { qty: number; selections?: string; sel?: Record<string, string>; unitYield?: { per: number; piece: string; unit: string } },
+  proofs: Proof[]
+) {
+  const ord = orderedPieces(item);
+  const total = proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
+  const units = [...new Set(proofs.filter((p) => p.qty).map((p) => proofUnit(p)))];
+  const unit = units.length === 1 ? units[0] : "";
+  const asPiece = unit === "ชิ้น" || (ord.per > 1 && unit === ord.piece);
+  const asUnit = unit !== "" && unit === ord.unit;
+  const comparable = total > 0 && (asPiece || asUnit);
+  /*
+   * งานขายเป็นเซ็ต/ชุด/แผ่น แต่ยังไม่ได้ตั้งว่า 1 หน่วยกี่ชิ้น (per = 1)
+   * ป้ายจำนวนบนแบบรวมแล้วหารจำนวนที่สั่งลงตัวพอดี = แทบแน่นอนว่านั่นคือตัวคูณที่หายไป
+   * (สั่ง 12 เซ็ต · แบบรวม 240 ชิ้น → 1 เซ็ต = 20 ชิ้น) — เสนอให้แอดมินกดตั้งค่า แทนที่จะฟ้องว่าผิด
+   */
+  const packUnit = ord.per <= 1 && isPackUnit(ord.unit);
+  const suggestPer =
+    packUnit && asPiece && !asUnit && item.qty > 0 && total > item.qty && total % item.qty === 0 ? total / item.qty : 0;
+  return {
+    ...ord,
+    /** จำนวนรวมจากป้ายบนแบบงาน */
+    total,
+    /** หน่วยของป้ายบนแบบงาน (ว่าง = คละหน่วย) — ทับ ord.unit ตั้งใจ เพราะข้อความส่วนใหญ่พูดถึงหน่วยของแบบ */
+    unit,
+    /** หน่วยที่ลูกค้าสั่ง เช่น "เซ็ต" (ว่าง = สั่งเป็นชิ้น) — ord.unit ที่ถูกทับไป */
+    saleUnit: ord.unit,
+    /** จำนวนที่ควรได้ตามที่ลูกค้าสั่ง (หน่วยเดียวกับ unit) */
+    target: asPiece ? ord.pieces : asUnit ? item.qty : 0,
+    comparable,
+    ok: comparable && total === (asPiece ? ord.pieces : item.qty),
+    /** ขายเป็นเซ็ต/ชุด/แผ่น แต่ยังไม่รู้ว่า 1 หน่วยกี่ชิ้น */
+    packUnit,
+    /** ตัวคูณที่ระบบเดาให้จากป้ายบนแบบ (0 = เดาไม่ได้) — ให้แอดมินกดยืนยันแล้วเก็บลงรายการ */
+    suggestPer,
+    /** ต้องให้แอดมินตั้ง "1 หน่วยกี่ชิ้น" ไหม — ถามเฉพาะตอนตัวเลขไม่ตรงจริง ๆ (ตรงอยู่แล้ว = ไม่กวน) */
+    needPerUnit: packUnit && comparable && total !== item.qty,
+    /** ข้อความ "ลูกค้าสั่ง …" ที่กางที่มาให้เห็น เช่น "12 เซ็ต × 20 ใบ = 240 ใบ" */
+    orderedText: ord.per > 1 && !asUnit ? ord.math : `${item.qty} ${ord.unit || "ชิ้น"}`,
+  };
+}
+
+/** บรรทัดประวัติที่หมายถึง "มีคนอัป/เปลี่ยนแบบงาน" — ใช้ย้อนหาคนทำแบบของรูปเก่าที่ยังไม่มี proof.by */
+const PROOF_LOG_ACTIONS = ["อัปโหลดแบบ", "เปลี่ยนรูปแบบงาน", "ส่งแบบให้ลูกค้าตรวจ", "อัปแบบของแถม"];
+
+/**
+ * ชื่อที่ไม่ใช่ "คน" — ชื่อแผนก/ระบบที่ระบบเก่าใส่ไว้แทนตอนไม่รู้ว่าใครทำ
+ * ขึ้นเป็นชื่อคนทำไม่ได้ (พนักงานจริงใช้ชื่อเล่นตาม employees2) → นับเป็น "ไม่ระบุคนทำ"
+ */
+const GENERIC_BY = new Set(["กราฟฟิก", "กราฟิก", "แอดมิน", "ระบบ", "ลูกค้า"]);
+
+/**
+ * ใครเป็นคนทำแบบรูปนี้
+ * รูปที่อัปหลังมีระบบนี้เก็บชื่อไว้ในตัวรูปเลย (proof.by)
+ * รูปเก่ากว่านั้นย้อนหาจากประวัติออเดอร์ — บรรทัดอัปแบบที่เวลาใกล้กับรูปที่สุด (ไม่เกิน 2 นาที)
+ * คืน undefined เมื่อไม่รู้จริง ๆ (จะได้ไม่เดาชื่อผิดคน)
+ */
+export function proofBy(order: Order, proof: Proof): string | undefined {
+  const own = proof.by?.trim();
+  if (own) return GENERIC_BY.has(own) ? undefined : own;
+  const t = new Date(proof.at).getTime();
+  if (!Number.isFinite(t)) return undefined;
+  let best: string | undefined;
+  let gap = 120_000;
+  for (const e of order.log ?? []) {
+    if (!PROOF_LOG_ACTIONS.some((a) => e.action.includes(a))) continue;
+    const d = Math.abs(new Date(e.at).getTime() - t);
+    if (!Number.isFinite(d) || d > gap) continue;
+    gap = d;
+    best = e.by?.trim();
+  }
+  // ชื่อแผนก/ระบบไม่ใช่คนทำแบบ — ปล่อยว่างดีกว่าขึ้นชื่อที่ไม่จริง
+  return best && !GENERIC_BY.has(best) ? best : undefined;
 }
 
 /** สีของหมายเหตุบนใบงาน (ชุดสำเร็จรูป) */
@@ -216,6 +351,13 @@ export interface OrderItem {
   graphicAck?: { by: string; at: string };
   /** หมายเหตุที่แอดมินพิมพ์ลงใบงาน (ตรงตำแหน่งรายการนี้) — rich text HTML (สี/ขนาด/น้ำหนักต่อคำ) */
   adminNote?: string;
+  /**
+   * สั่ง 1 หน่วย ได้ของกี่ชิ้น — แช่ไว้ตอนสั่ง (orderUnitYield ใน products.ts อ่านจาก piecesPerUnit/sheetYield ของสินค้า)
+   * เช่น โฟโต้การ์ด { per: 20, piece: "ใบ", unit: "เซ็ต" } = สั่ง 12 เซ็ต ต้องผลิต 240 ใบ
+   * ⚠️ แช่ไว้ ไม่ใช่คิดสดจากสินค้า — ร้านแก้จำนวนต่อเซ็ตทีหลัง ออเดอร์เก่าต้องคงตัวเลขวันที่สั่ง
+   * ออเดอร์เก่าที่ยังไม่มีฟิลด์นี้ ระบบเดาจากชื่อตัวเลือก "(20 ใบ/เซ็ต)" ให้แทน (orderPiecesPerUnit)
+   */
+  unitYield?: { per: number; piece: string; unit: string };
 }
 
 export interface Order {
@@ -352,6 +494,17 @@ export interface Order {
    * ห้ามเก็บคะแนน/เวลา/รายละเอียดใด ๆ ที่นี่ เพื่อให้คะแนนในตาราง ratings นิรนามจริง
    */
   rated?: boolean;
+  /**
+   * ✏️ ลูกค้ากด "ขอแก้ไขออเดอร์" จากหน้าออเดอร์ — พิมพ์บอกว่าอยากแก้อะไร
+   * ตั้งใจให้แอดมินเป็นคนแก้ให้ (ลูกค้าแก้สเปค/จำนวนเองไม่ได้ กันยอดกับสลิปเพี้ยน)
+   * ส่งซ้ำได้ = ทับข้อความเดิม แต่ log เก็บครบทุกครั้ง · doneAt = แอดมินกดรับเรื่องแล้ว
+   */
+  editRequest?: { text: string; at: string; doneAt?: string; doneBy?: string };
+  /**
+   * 🚫 ลูกค้ากดยกเลิกออเดอร์เอง — เปิดให้เฉพาะใบที่ "ยังไม่มีเงินเข้าเลย" (ดู /api/orders/cancel)
+   * มีค่า = ใบนี้ลูกค้ายกเลิกเอง ไม่ใช่ร้านยกเลิก (แยกไว้ดูสถิติ/ตามงานย้อนหลัง)
+   */
+  cancelledByCustomer?: { at: string; reason?: string };
 }
 
 /** ราคาสินค้ารวม (ก่อนค่าส่ง/ส่วนลด) */

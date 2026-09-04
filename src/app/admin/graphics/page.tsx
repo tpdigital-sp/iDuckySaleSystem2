@@ -21,6 +21,7 @@ import {
   graphicTodoItems,
   isSelfDesigned,
   orderStatusLabel,
+  proofBy,
   proofsOf,
   proofUnit,
   type Order,
@@ -48,7 +49,7 @@ import {
   TabRow,
   Tag,
 } from "@/components/admin/ui";
-import { orderMatches, useGraphicsOrders } from "./data";
+import { orderMatches, staffTally, useGraphicStaff, useGraphicsOrders } from "./data";
 
 const QUEUE: OrderStatus[] = ["ชำระแล้ว", "รอตรวจสอบ"];
 
@@ -64,6 +65,8 @@ interface Sent {
   /** รูปที่เท่าไหร่ของรายการนั้น (เริ่มที่ 1) */
   no: number;
   state: SentState;
+  /** กราฟฟิกที่ทำแบบรูปนี้ — ว่าง = ออเดอร์เก่าที่ไม่ได้บันทึกชื่อไว้ */
+  by: string;
 }
 
 const qtyOf = (o: Order) => o.items.reduce((s, i) => s + i.qty, 0);
@@ -95,7 +98,14 @@ function sentProofs(orders: Order[]): Sent[] {
          * ส่วนรูปที่ยังไม่ได้ตรวจ ถ้าทั้งรายการอยู่สถานะ "ขอแก้ไข" ก็นับว่ารอแก้ด้วย
          */
         const redo = proof.review === "ขอแก้ไข" || item.proofStatus === "ขอแก้ไข";
-        rows.push({ order, item, proof, no: i + 1, state: redo ? "ขอแก้ไข" : "รอลูกค้าตรวจ" });
+        rows.push({
+          order,
+          item,
+          proof,
+          no: i + 1,
+          state: redo ? "ขอแก้ไข" : "รอลูกค้าตรวจ",
+          by: proofBy(order, proof) ?? "",
+        });
       });
     }
   }
@@ -105,9 +115,13 @@ function sentProofs(orders: Order[]): Sent[] {
 
 export default function GraphicsOrdersPage() {
   const { orders, demo } = useGraphicsOrders();
+  /** รายชื่อพนักงานแผนกกราฟฟิกใน employees2 — เป็นตัวตั้งของชิป "คนทำแบบ" */
+  const roster = useGraphicStaff();
   const [view, setView] = useState<View>("queue");
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [sentFilter, setSentFilter] = useState<SentState | "all">("all");
+  /** กรองตามกราฟฟิกที่ทำแบบ — "all" = ทุกคน · "" = แบบเก่าที่ไม่ได้บันทึกชื่อคนทำ */
+  const [staff, setStaff] = useState<string | "all">("all");
   const [q, setQ] = useState("");
 
   /** คิวของฝ่ายกราฟฟิก — ใบเก่าขึ้นก่อน ค้างนานสุดต้องรีบสุด */
@@ -133,8 +147,12 @@ export default function GraphicsOrdersPage() {
     return days.length ? Math.max(...days) : 0;
   }, [sent]);
 
+  /** ชิปกรองคนทำแบบ — รายชื่อแผนกกราฟฟิก + ชื่ออื่นที่พบในงานจริง · นับจากแบบทั้งหมดที่ค้างอยู่ (สลับชิปสถานะแล้วรายชื่อไม่กระโดด) */
+  const staffList = useMemo(() => staffTally(sent.map((s) => s.by), roster), [sent, roster]);
+
   const shownSent = sent
     .filter((s) => (sentFilter === "all" ? true : s.state === sentFilter))
+    .filter((s) => (staff === "all" ? true : s.by === staff))
     .filter((s) => orderMatches(s.order, q));
 
   const shown = queue.filter((o) => (filter === "all" ? true : o.status === filter)).filter((o) => orderMatches(o, q));
@@ -221,6 +239,24 @@ export default function GraphicsOrdersPage() {
             </>
           )}
         </TabRow>
+        {/* ใครเป็นคนทำแบบ — ขึ้นเฉพาะแท็บ "แบบที่ส่งแล้ว" และเฉพาะเมื่อมีคนทำมากกว่า 1 คน */}
+        {view === "sent" && staffList.length > 1 && (
+          <TabRow divider>
+            <span className="flex-none self-center pr-1 text-[12px]" style={{ color: "var(--dk-faint)" }}>
+              คนทำแบบ
+            </span>
+            <FChip on={staff === "all"} onClick={() => setStaff("all")} label="ทุกคน" count={sent.length} />
+            {staffList.map((p) => (
+              <FChip
+                key={p.name || "unknown"}
+                on={staff === p.name}
+                onClick={() => setStaff(staff === p.name ? "all" : p.name)}
+                label={p.name || "ไม่ระบุคนทำ"}
+                count={p.n}
+              />
+            ))}
+          </TabRow>
+        )}
       </FilterCard>
 
       {view === "sent" ? (
@@ -341,6 +377,11 @@ function SentRow({ sent }: { sent: Sent }) {
           tags={
             <>
               {redo ? <Tag tone="solid">ลูกค้าขอแก้</Tag> : <Tag tone="lilac">รอลูกค้าตรวจ</Tag>}
+              {sent.by && (
+                <Tag tone="sky" title={`${sent.by} เป็นคนทำแบบรูปนี้`}>
+                  คนทำ: {sent.by}
+                </Tag>
+              )}
               {proof.revisedAt && <Tag tone="mint">แก้ให้แล้ว</Tag>}
               {!redo && waited !== null && waited >= 3 && <Tag tone="yolk">ค้าง {waited} วัน — ควรทวง</Tag>}
             </>

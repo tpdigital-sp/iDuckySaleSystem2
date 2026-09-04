@@ -10,7 +10,7 @@ import { currentActor } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { getProductServer } from "@/lib/products-server";
-import { lotShortfalls, type Product } from "@/lib/products";
+import { lotShortfalls, orderUnitYield, type Product } from "@/lib/products";
 
 // id เรคอร์ดตั้งค่าร้าน (ตรงกับ SETTINGS_ID ใน shop-settings ซึ่งเป็น "use client")
 const SETTINGS_ROW = "__shop_payment__";
@@ -198,6 +198,24 @@ export async function POST(req: Request) {
     // อ่านตั้งค่าไม่ได้ = ไม่ลด ดีกว่าสั่งซื้อไม่สำเร็จ (แอดมินใส่ส่วนลดเองได้ที่หน้าออเดอร์)
   }
 
+  /*
+   * 📐 แช่ "สั่ง 1 หน่วย ได้กี่ชิ้น" ลงรายการ (โฟโต้การ์ด 1 เซ็ต = 20 ใบ · โปสการ์ด 1 แผ่น A3 = 8 ใบ)
+   * หน้าออเดอร์/โหมดแพ็คจะได้เทียบจำนวนบนแบบงานกับของจริงถูก โดยไม่ต้องโหลดสินค้าใหม่ทุกครั้ง
+   * อ่านไม่ได้ (สินค้าโดนลบ/ตัวเลือกไม่ครบ) = ไม่ใส่ ถือว่า 1 หน่วย 1 ชิ้น
+   */
+  const itemsWithYield = await Promise.all(
+    input.items.map(async (it) => {
+      if (!it.productId || !it.sel) return it;
+      try {
+        const prod = await getProductServer(it.productId);
+        const y = prod ? orderUnitYield(prod, it.sel) : null;
+        return y ? { ...it, unitYield: y } : it;
+      } catch {
+        return it;
+      }
+    })
+  );
+
   const key = randomBytes(24).toString("base64url"); // กุญแจลับต่อออเดอร์
   const order: Order = {
     id,
@@ -213,7 +231,7 @@ export async function POST(req: Request) {
     status: "รอชำระเงิน",
     note: input.note?.trim() || undefined,
     ...(/^\d{4}-\d{2}-\d{2}$/.test(input.useByDate ?? "") ? { useByDate: input.useByDate } : {}),
-    items: input.items,
+    items: itemsWithYield,
     ...(cid ? { customerId: cid } : {}),
     ...(input.email?.trim() ? { email: input.email.trim() } : {}),
     ...(discount ? { discount } : {}),

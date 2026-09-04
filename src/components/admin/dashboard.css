@@ -310,6 +310,34 @@
 .dkb-lrow[data-done="1"] { background: rgba(255, 255, 255, 0.4); }
 .dkb-lrow[data-done="1"] .dkb-who, .dkb-lrow[data-done="1"] .dkb-amt { color: var(--dk-faint); }
 
+/* แถวที่มีรูป: เพิ่มช่องรูปซ้ายสุด (เฉพาะแถวที่ส่ง .dkb-pic มา — แถวอื่นคุมกริดเดิมไว้) */
+.dkb-lrow.has-pic { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "pic main side" "dots dots dots"; }
+/*
+ * โมเสกรูปในออเดอร์ — กรอบเดียวเท่าเดิมเสมอ แต่ซอยเป็นช่องตามจำนวนรูป (1 · 2 · 3 · 4+)
+ * ใบที่ลูกค้าสั่งหลายรายการจะเห็นหลายลายพร้อมกัน แถวไม่สูงขึ้นและไม่เลื่อนหลุดแถว
+ * data-n = จำนวนช่องที่วาดจริง (สูงสุด 4 · ช่องสุดท้ายกลายเป็นตัวเลข +N เมื่อรูปเกิน)
+ */
+.dkb-pic {
+  grid-area: pic; align-self: start; flex: none;
+  width: 48px; height: 48px; border-radius: 13px; overflow: hidden;
+  background: linear-gradient(150deg, var(--dk-sky), #fff);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.9);
+  display: grid; gap: 1.5px;
+  grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+}
+.dkb-pic > * { min-width: 0; min-height: 0; }
+.dkb-pic img { width: 100%; height: 100%; object-fit: cover; display: block; background: rgba(255, 255, 255, 0.7); }
+/* 1 รูป (และช่องว่าง) = เต็มกรอบ · 2 รูป = ผ่าครึ่งซ้าย-ขวา · 3 รูป = รูปแรกสูงเต็มซ้าย */
+.dkb-pic[data-n="1"] > * { grid-column: 1 / -1; grid-row: 1 / -1; }
+.dkb-pic[data-n="2"] > * { grid-row: 1 / -1; }
+.dkb-pic[data-n="3"] > *:first-child { grid-row: 1 / -1; }
+/* ช่องสุดท้ายบอกจำนวนที่เหลือ — อ่านออกว่า "ยังมีอีก" ไม่ใช่รูปหาย */
+.dkb-pic .more {
+  display: grid; place-items: center; background: rgba(23, 58, 107, 0.72); color: #fff;
+  font-size: 0.63rem; font-weight: 700; line-height: 1; letter-spacing: -0.02em;
+}
+.dkb-pic .ph { display: grid; place-items: center; font-size: 1.05rem; opacity: 0.45; }
+
 .dkb-main { grid-area: main; min-width: 0; }
 .dkb-who { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 1rem; }
 .dkb-who .nm { font-family: var(--dk-display); font-weight: 400; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
@@ -343,6 +371,12 @@
     align-items: center;
     padding: 13px 16px 13px 20px;
   }
+  .dkb-lrow.has-pic {
+    grid-template-columns: auto minmax(0, 1fr) 210px auto;
+    grid-template-areas: "pic main dots side";
+  }
+  .dkb-pic { align-self: center; width: 58px; height: 58px; border-radius: 16px; }
+  .dkb-pic .more { font-size: 0.68rem; }
   /* จอกว้าง: ป้ายขั้นตอนขึ้นบรรทัดบน แถบกินเต็มช่อง อ่านง่ายกว่าต่อท้ายบรรทัดเดียว */
   .dkb-dots { flex-direction: column; align-items: stretch; gap: 5px; }
   .dkb-dots .lb { order: -1; margin-left: 2px; }

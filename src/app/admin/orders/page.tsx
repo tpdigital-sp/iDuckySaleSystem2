@@ -50,6 +50,30 @@ const DEPARTMENTS: { key: string; label: string; statuses: OrderStatus[] }[] = [
 const visibleTo = (list: Order[], seesAll: boolean) =>
   seesAll ? list : list.filter((o) => PACKING_QUEUE_STATUSES.includes(o.status));
 
+/** โมเสกรูปโชว์ได้มากสุด 4 ช่อง — เกินจากนี้ช่องสุดท้ายกลายเป็น "+N" */
+const PIC_CELLS = 4;
+/**
+ * ภาพของออเดอร์ทั้งใบ (เรียงตามรายการ) — รายการไหนมีแบบงานแล้วใช้แบบ ยังไม่มีก็ใช้ลายที่ลูกค้าแนบมา
+ *
+ * ⚠️ เก็บ "ทุกรูป" ไม่ใช่รูปเดียวต่อรายการ — ลูกค้าที่สั่งทีละหลายลายต้องเห็นว่าใบนี้มีหลายลาย
+ *    (ของเดิมเก็บรายการละรูปเดียว ใบ 1 รายการ 8 ลายเลยดูเหมือนใบลายเดียว)
+ */
+const coversOf = (o: Order) => {
+  const out: { url: string; name: string }[] = [];
+  for (const it of o.items) {
+    const ps = proofsOf(it);
+    const urls = ps.length ? ps.map((p) => p.url) : (it.artworkUrls ?? []);
+    for (const url of urls) if (url) out.push({ url, name: it.name });
+  }
+  return out;
+};
+/** ป้ายกำกับกรอบรูป — ชื่อรายการ (ไม่ซ้ำ) + จำนวนรูปทั้งใบ */
+const picTitle = (covers: { url: string; name: string }[]) => {
+  if (!covers.length) return "ยังไม่มีภาพลาย/แบบงาน";
+  const names = [...new Set(covers.map((c) => c.name))];
+  const head = names.slice(0, 3).join(" · ") + (names.length > 3 ? ` และอีก ${names.length - 3} รายการ` : "");
+  return `${head} — ${covers.length} รูป`;
+};
 const qtyOf = (o: Order) => o.items.reduce((s, i) => s + i.qty, 0);
 const dayOf = (d: string) => d.split(" ").slice(0, 3).join(" ");
 /** งานแบบที่ยังไม่จบ (ยังไม่มีแบบ หรือ ลูกค้าขอแก้) */
@@ -388,14 +412,32 @@ function OrderRow({
   const line = lineUserOf(o, orders);
   const chat = lineChatOf(o, orders);
   const dup = (openByPhone[(o.phone ?? "").replace(/\D/g, "")] ?? 0) > 1;
+  const covers = coversOf(o);
 
   return (
     <Link
       href={`/admin/orders/${encodeURIComponent(o.id)}`}
-      className="dkb-g dkb-lrow"
+      className="dkb-g dkb-lrow has-pic"
       data-done={done ? "1" : undefined}
       style={{ ["--dk-tone" as string]: STATUS_TONE[o.status] }}
     >
+      {/* รูปที่ลูกค้าสั่ง — แบบงานก่อน ถ้ายังไม่มีแบบก็ใช้ลายที่ลูกค้าแนบมา · หลายลายซอยเป็นโมเสกในกรอบเดิม */}
+      <span className="dkb-pic" data-n={covers.length ? Math.min(covers.length, PIC_CELLS) : 1} title={picTitle(covers)}>
+        {covers.length === 0 ? (
+          <span className="ph" aria-hidden>
+            🖼️
+          </span>
+        ) : (
+          <>
+            {covers.slice(0, covers.length > PIC_CELLS ? PIC_CELLS - 1 : PIC_CELLS).map((c) => (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img key={c.url} src={c.url} alt="" loading="lazy" decoding="async" />
+            ))}
+            {covers.length > PIC_CELLS && <span className="more">+{covers.length - (PIC_CELLS - 1)}</span>}
+          </>
+        )}
+      </span>
+
       <span className="dkb-main">
         <span className="dkb-who">
           <span className="nm">{o.customer || "ยังไม่ระบุชื่อ"}</span>
@@ -421,6 +463,17 @@ function OrderRow({
             >
               <i />
               {o.deposit.firstPaidAt ? "ค้างครึ่งหลัง" : "รอมัดจำครึ่งแรก"}
+            </span>
+          )}
+          {/* ลูกค้าพิมพ์ขอแก้ไขออเดอร์เข้ามาแล้วยังไม่มีใครรับเรื่อง — ต้องเห็นตั้งแต่ในลิสต์ */}
+          {o.editRequest && !o.editRequest.doneAt && o.status !== "ยกเลิก" && (
+            <span
+              className="dkb-tag"
+              style={{ background: "var(--dk-lilac-wash)", color: "var(--dk-lilac-ink)" }}
+              title={`ลูกค้าขอแก้ไข — “${o.editRequest.text}”`}
+            >
+              <i />
+              ลูกค้าขอแก้ไข
             </span>
           )}
           {o.claimOf && (

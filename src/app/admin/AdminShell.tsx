@@ -257,6 +257,35 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   }
   if (allowed === false) return null;
 
+  /**
+   * 📱 พนักงานฝ่ายผลิต (ซับลิเมชั่น · uv · เย็บผ้า · กระดาษ/สตก. · QC ฯลฯ) — ล็อกอินได้แต่ไม่มีสิทธิ์อะไรเลย
+   * เข้ามาเพื่อ "แพ็คของจาก QR ใบงาน" อย่างเดียว (ดู canPack ใน permissions.ts)
+   * หน้าอื่นที่หลุดเข้ามาจะขึ้นแผงว่างเปล่า + ป้าย "ต่อเซิร์ฟเวอร์ไม่ได้" ซึ่งชวนเข้าใจผิด
+   * → บอกตรง ๆ ว่าให้ไปสแกน QR ดีกว่า (หน้าออเดอร์ปล่อยผ่าน เพราะนั่นคืองานของเขา)
+   */
+  const packScanOnly = configured && allowed && perms.length === 0 && !isAdministrator;
+  const onOrderPage = /^\/admin\/orders\/[^/]+$/.test(pathname);
+  if (packScanOnly && !onOrderPage) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-6 text-center">
+        <span className="text-4xl">📱</span>
+        <p className="text-base font-bold text-slate-700">{userName || "พนักงาน"} — เข้าได้เฉพาะงานแพ็คของ</p>
+        <p className="max-w-xs text-sm leading-relaxed text-slate-500">
+          สแกน QR บนใบงานของออเดอร์ที่จะแพ็ค แล้วระบบจะพาเข้าโหมดแพ็คให้เอง
+          <br />
+          ถ้าต้องใช้เมนูอื่นในหลังบ้าน ให้แจ้งแอดมินเปิดสิทธิ์ให้
+        </p>
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="mt-1 rounded-full border border-slate-300 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+        >
+          ออกจากระบบ
+        </button>
+      </div>
+    );
+  }
+
   // เมนูที่เห็นตามสิทธิ์ (การซ่อนเป็นแค่ความสะดวก — ของจริงบังคับที่ API)
   const menu = MENU.filter((m) => perms.includes(m.perm));
 
