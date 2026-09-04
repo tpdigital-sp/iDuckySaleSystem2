@@ -12,6 +12,7 @@ import { fetchSiteNav, visibleMenu, visibleMega, DEFAULT_SITE_NAV, type MegaGrou
 /* eslint-disable @next/next/no-img-element */
 import { MegaBar, MegaMobile } from "@/components/MegaMenu";
 import NavCatMenu from "@/components/NavCatMenu";
+import BottomNav from "@/components/BottomNav";
 
 /**
  * ไอคอนเส้นบาง ๆ ชุดเดียวกันทั้งเมนูบัญชี (เดิมใช้อีโมจิคนละสไตล์ 🏠🧾👤🚪 ดูไม่เป็นชุดเดียวกัน)
@@ -25,6 +26,7 @@ const ICON = {
   /* เป็ดยาง + รูกุญแจที่ตัว = เข้าสู่ระบบ · ตาคือเส้นสั้น h.01 ปลายมนให้เป็นจุด */
   key: "M8 10.6c-1.7 1-2.9 2.7-2.9 4.7 0 3.3 3.1 5.5 7.2 5.5 4.6 0 7.5-2.5 7.5-5.9 0-1.7-.8-3.1-2.1-4.1M8 10.6a4.7 4.7 0 1 1 7.7-3.7c0 1.5-.7 2.9-1.8 3.7M7.3 7.4c-1.4-.55-2.9-.3-3.5.45.55.85 1.95 1.3 3.35 1.05M11.1 6.4h.01M13.2 14a1.35 1.35 0 1 0-2.7 0 1.35 1.35 0 0 0 2.7 0ZM11.85 15.35V17.6",
   cart: "M3.5 5H6l2.2 10h9.6l2.2-8H7M10 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm8 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z",
+  search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14Zm5-2 4 4",
 } as const;
 
 /** เมนูในดรอปดาวน์บัญชี */
@@ -106,6 +108,7 @@ export default function Navbar() {
   }
 
   return (
+    <>
     <header className={`nav${small ? " small" : ""}`} id="nav">
       <div className="wrap">
         <nav className="nav-in">
@@ -223,7 +226,7 @@ export default function Navbar() {
 
             <Link
               href="/cart"
-              className="icon-btn relative"
+              className="icon-btn nav-cart-icon relative"
               aria-label={`ตะกร้าสินค้า มี ${itemCount} รายการ`}
               title="ตะกร้าสินค้า"
             >
@@ -233,6 +236,11 @@ export default function Navbar() {
                   {itemCount > 99 ? "99+" : itemCount}
                 </span>
               )}
+            </Link>
+
+            {/* มือถือ: ตะกร้าย้ายลงแถบเมนูล่างแล้ว ช่องนี้เลยสลับเป็นทางลัดค้นหาสินค้าแทน (MEGAMENU_03) */}
+            <Link href="/products" className="icon-btn nav-search-mobile" aria-label="ค้นหาสินค้า" title="ค้นหาสินค้า">
+              <LineIcon d={ICON.search} size={20} />
             </Link>
 
             <Link href="/products" className="btn btn-yolk hidden sm:inline-flex">
@@ -259,5 +267,9 @@ export default function Navbar() {
         )}
       </div>
     </header>
+
+    {/* แถบเมนูล่างสไตล์แอป (มือถือ) — ใช้สถานะเปิดเมนูร่วมกับปุ่ม ☰ เดิม */}
+    <BottomNav menuOpen={open} onToggleMenu={() => setOpen((v) => !v)} itemCount={itemCount} />
+    </>
   );
 }

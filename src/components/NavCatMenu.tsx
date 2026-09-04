@@ -13,12 +13,12 @@ import Portal from "@/components/Portal";
 /* eslint-disable @next/next/no-img-element */
 
 /**
- * เมนู "สินค้าและบริการ" บนแถบเมนู — ดรอปดาวน์เมกะเมนูตามต้นแบบ MEGAMENU_02
+ * เมนู "สินค้าและบริการ" บนแถบเมนู — ดรอปดาวน์เมกะเมนูตามต้นแบบ MEGAMENU_03
  *
  * จอใหญ่ (>1000px + มีเมาส์): ชี้ค้างเพื่อเปิดแผง — แผงกางเต็มความกว้างแถบเมนู
  *   แท็บ "ทั้งหมด" (ค่าเริ่มต้น) กางทุกหมวดพร้อมกัน · อีก 4 แท็บกรองเฉพาะกลุ่ม (ชี้ก็สลับ)
  *   ชี้รายการสินค้าย่อย = การ์ดพรีวิวลอยข้างๆ (รูป + ชื่อ + ราคาเริ่มต้น)
- *   ท้ายแผงมีช่องค้นหาสินค้าไวๆ (พิมพ์แล้วมีตัวเลือกโผล่ · ↑↓ Enter Esc)
+ *   ใต้แท็บมีช่องค้นหาสินค้าไวๆ — พิมพ์แล้วกรองคอลัมน์ในแผงเลย (Esc ล้างคำค้น · Enter ไป /products?q=)
  *   คลิกที่ตัวเมนู = ไปโซนหมวดบนหน้าแรกตามเดิม
  * มือถือ: อยู่ในเมนู ☰ — แตะครั้งแรกกางหมวดก่อน แตะซ้ำถึงไปหน้าโซนหมวด
  *
@@ -176,42 +176,34 @@ export default function NavCatMenu({
     if (!open) hideTip();
   }, [open]);
 
-  /* ---------- ช่องค้นหาสินค้าไวๆ ท้ายแผง ---------- */
+  /* ---------- ช่องค้นหาสินค้าไวๆ ใต้แท็บ (MEGAMENU_03) ----------
+     พิมพ์แล้ว "กรองคอลัมน์ในแผงเอง" ไม่มีกล่องผลลัพธ์ลอยแยกอีกต่อไป
+     จับคู่ทั้งชื่อสินค้าและชื่อหมวด — หมวดที่ชื่อตรงจะกางสินค้าครบทั้งคอลัมน์ */
   const [q, setQ] = useState("");
-  const [srOpen, setSrOpen] = useState(false);
-  const [active, setActive] = useState(0);
-  const catName = useMemo(() => new Map(cats.map((c) => [c.id, c.name])), [cats]);
-  const matches = useMemo(() => {
+  const searching = q.trim().length > 0;
+  /** ผลกรอง: หมวดไหนเหลือรอด → สินค้าที่จะโชว์ในคอลัมน์นั้น (ไม่ค้นหาอยู่ = null) */
+  const filter = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return [];
-    return products.filter((p) => p.name.toLowerCase().includes(s)).slice(0, 8);
-  }, [q, products]);
+    if (!s) return null;
+    const catHit = new Set(cats.filter((c) => c.name.toLowerCase().includes(s)).map((c) => c.id));
+    const m = new Map<string, Product[]>();
+    for (const p of products) {
+      // หมวดที่ "ชื่อหมวด" ตรงคำค้น กางสินค้าตามปกติทั้งคอลัมน์ ไม่ต้องให้ชื่อสินค้าตรงด้วย
+      if (!catHit.has(p.category) && !p.name.toLowerCase().includes(s)) continue;
+      const list = m.get(p.category) ?? [];
+      if (list.length < 5) list.push(p);
+      m.set(p.category, list);
+    }
+    // หมวดที่ชื่อตรงแต่ยังไม่มีสินค้า ก็ยังโชว์คอลัมน์ไว้ให้กดเข้าไปดู
+    for (const id of catHit) if (!m.has(id)) m.set(id, []);
+    return m;
+  }, [q, cats, products]);
+  /** กรองแล้วไม่เหลืออะไรเลย = ขึ้นข้อความแทนตารางว่าง ๆ */
+  const noMatch = filter !== null && filter.size === 0;
   // เคลียร์ช่องค้นหาทุกครั้งที่เมนูปิด ไม่ให้ค้างข้อความเดิมไว้ตอนเปิดใหม่
   useEffect(() => {
-    if (!open) {
-      setQ("");
-      setSrOpen(false);
-    }
+    if (!open) setQ("");
   }, [open]);
-
-  const goTo = (p: Product | undefined) => {
-    if (!p) return;
-    setSrOpen(false);
-    setQ("");
-    go();
-    router.push(productPath(p));
-  };
-  const onSearchKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Escape") return setSrOpen(false);
-    if (!srOpen || !matches.length) return;
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setActive((i) => (i + 1) % matches.length);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActive((i) => (i - 1 + matches.length) % matches.length);
-    }
-  };
 
   return (
     <div
@@ -250,8 +242,9 @@ export default function NavCatMenu({
 
       <div className="nav-drop-panel" ref={panelRef}>
         <div className="nav-mega-layout">
-          {/* แท็บกลุ่มหมวด — "ทั้งหมด" + 4 กลุ่ม ชุดเดียวกับแท็บกรองบนหน้าแรก */}
-          <div className="nav-mega-tabs">
+          {/* แถบบน: แท็บกลุ่มหมวด ("ทั้งหมด" + 4 กลุ่ม ชุดเดียวกับแท็บกรองบนหน้าแรก) แล้วช่องค้นหาใต้แท็บ */}
+          <div className="nav-mega-topbar">
+          <div className={`nav-mega-tabs${searching ? " is-disabled" : ""}`}>
             <button
               type="button"
               className={`nav-mega-tab${group === ALL ? " active" : ""}`}
@@ -286,14 +279,53 @@ export default function NavCatMenu({
             ))}
           </div>
 
-          <div className="nav-mega-cols" data-active={group} onScroll={hideTip}>
+          {/* ค้นหาสินค้าไวๆ — พิมพ์แล้วกรองคอลัมน์ในแผงทันที · Enter = ไปหน้ารายการสินค้าพร้อมคำค้น */}
+          <form
+            className="nav-mega-search"
+            autoComplete="off"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const s = q.trim();
+              if (!s) return;
+              setQ("");
+              go();
+              router.push(`/products?q=${encodeURIComponent(s)}`);
+            }}
+          >
+            <span className="search-icon" aria-hidden="true">🔍</span>
+            <input
+              type="text"
+              name="q"
+              value={q}
+              placeholder="ค้นหาสินค้าไวๆ เช่น พวงกุญแจ, สติกเกอร์..."
+              aria-label="ค้นหาสินค้าในเมนู"
+              onChange={(e) => setQ(e.target.value)}
+              // ออกจากช่องค้นหาเมื่อไหร่ก็เคลียร์ทิ้ง ไม่ให้ผลกรองค้างไว้
+              onBlur={() => setQ("")}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.stopPropagation(); // กด Esc ครั้งแรกล้างคำค้นก่อน ยังไม่ปิดแผง
+                  setQ("");
+                }
+              }}
+            />
+          </form>
+          </div>
+
+          <div
+            className={`nav-mega-cols${searching ? " searching" : ""}`}
+            data-active={searching ? ALL : group}
+            onScroll={hideTip}
+          >
             {cats.map((c, i) => {
-              const items = byCat.get(c.id) ?? [];
+              // กำลังค้นหา = โชว์เฉพาะหมวดที่ยังเหลือของ และเหลือแต่สินค้าที่ตรงคำค้น
+              const hit = filter?.get(c.id);
+              const items = filter ? (hit ?? []) : (byCat.get(c.id) ?? []);
               const catHref = `/products?category=${c.id}`;
               return (
                 <div
                   key={c.id}
-                  className="nav-mega-col"
+                  className={`nav-mega-col${filter && !hit ? " sf-hide" : ""}`}
                   data-cat={c.id}
                   data-group={groupOf(c.id)}
                   style={{ "--accent": accentOf(c.id, i) } as React.CSSProperties}
@@ -335,90 +367,13 @@ export default function NavCatMenu({
             })}
           </div>
 
+          {noMatch && (
+            <div className="nav-mega-search-empty show" role="status">
+              ไม่พบสินค้าที่ตรงกับคำค้นหา ลองคำอื่นดูนะ
+            </div>
+          )}
+
           <div className="nav-mega-foot">
-            {/* ค้นหาสินค้าไวๆ — พิมพ์แล้วมีตัวเลือกโผล่ เลือกด้วย ↑↓ Enter หรือชี้ด้วยเมาส์ */}
-            <form
-              className="nav-mega-search"
-              autoComplete="off"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (matches[active]) return goTo(matches[active]);
-                const s = q.trim();
-                if (!s) return;
-                setQ("");
-                setSrOpen(false);
-                go();
-                router.push(`/products?q=${encodeURIComponent(s)}`);
-              }}
-            >
-              <span className="search-icon" aria-hidden="true">🔍</span>
-              <input
-                type="text"
-                name="q"
-                value={q}
-                placeholder="ค้นหาสินค้าไวๆ เช่น พวงกุญแจ, สติกเกอร์..."
-                role="combobox"
-                aria-expanded={srOpen}
-                aria-controls="navMegaSearchResults"
-                aria-autocomplete="list"
-                aria-activedescendant={srOpen && matches.length ? `navMegaSrOpt${active}` : undefined}
-                onChange={(e) => {
-                  setQ(e.target.value);
-                  setActive(0);
-                  setSrOpen(e.target.value.trim().length > 0);
-                }}
-                onFocus={() => setSrOpen(q.trim().length > 0)}
-                // ออกจากช่องค้นหาเมื่อไหร่ก็เคลียร์ทิ้ง — ข้อความค้างครึ่ง ๆ กลาง ๆ ไม่มีประโยชน์
-                onBlur={() => {
-                  setQ("");
-                  setSrOpen(false);
-                }}
-                onKeyDown={onSearchKey}
-              />
-              <div
-                className={`nav-mega-search-results${srOpen && q.trim() ? " show" : ""}`}
-                id="navMegaSearchResults"
-                role="listbox"
-                aria-label="ผลการค้นหาสินค้า"
-                // กันคลิก/ลากในกล่อง (เช่น สโครลบาร์) ไปทำให้ช่องค้นหา blur ก่อนเวลาอันควร
-                onMouseDown={(e) => {
-                  if (!(e.target as HTMLElement).closest(".sr-item")) e.preventDefault();
-                }}
-              >
-                {matches.length === 0 ? (
-                  <div className="sr-empty" role="status">ไม่พบสินค้าที่ตรงกับคำค้นหา</div>
-                ) : (
-                  matches.map((p, i) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      className={`sr-item${i === active ? " active" : ""}`}
-                      role="option"
-                      id={`navMegaSrOpt${i}`}
-                      aria-selected={i === active}
-                      onMouseMove={() => setActive(i)}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        goTo(p);
-                      }}
-                    >
-                      <span className="sr-emoji" aria-hidden="true">
-                        {p.imageSrc ? (
-                          <img {...imgProps(p.imageSrc, "30px", 96)} alt="" onError={fallbackToOriginal(p.imageSrc)} />
-                        ) : (
-                          p.emoji
-                        )}
-                      </span>
-                      <span className="sr-text">
-                        <span className="sr-name">{p.name}</span>
-                        <span className="sr-cat">{catName.get(p.category) ?? ""}</span>
-                      </span>
-                      <span className="sr-price">{startPrice(p)}</span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </form>
             <Link href="/products" onClick={go}>
               ดูสินค้าทั้งหมด <span className="arrow">→</span>
             </Link>
