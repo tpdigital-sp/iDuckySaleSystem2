@@ -508,10 +508,10 @@ export default function CheckoutPage() {
 
   /**
    * ทักแชทร้าน (LINE OA) พร้อมคัดลอกรายละเอียดออเดอร์ไว้ให้วางในแชทได้เลย
-   * ต่างจาก shareToLine: อันนั้นเปิด "แชร์ข้อความ" ให้เลือกแชทเอง (ลูกค้าที่ยังไม่ได้แอดร้านจะหาไม่เจอ)
-   * อันนี้เข้าห้องแชทร้านตรง ๆ — ลูกค้าใหม่ก็กดแอดแล้วคุยต่อได้ทันที
+   * เข้าห้องแชทร้านตรง ๆ ผ่าน /line (route เลือกปลายทางตามอุปกรณ์) — ลูกค้าใหม่ก็กดแอดแล้วคุยต่อได้ทันที
+   * ⚠️ ห้ามใช้ line.me/R/msg/text/?<ข้อความ> — ออเดอร์ยาว ๆ ทำให้ LINE ตอบ HTTP 400
    */
-  function contactShop(text: string) {
+  function contactShop(text: string, prefill = text) {
     try {
       navigator.clipboard?.writeText(text).catch(() => {});
     } catch {
@@ -519,16 +519,7 @@ export default function CheckoutPage() {
     }
     setLineOpened(true);
     // ส่งข้อความไปตั้งต้นในช่องพิมพ์ให้เลย (มือถือ) — ถ้ายาวเกิน route จะข้ามให้เอง แล้วลูกค้าวางจากคลิปบอร์ดแทน
-    window.open(LINE_URL + "?text=" + encodeURIComponent(text), "_blank", "noopener,noreferrer");
-  }
-
-  function shareToLine(text: string) {
-    try {
-      navigator.clipboard?.writeText(text).catch(() => {});
-    } catch {
-      /* ข้าม */
-    }
-    window.open("https://line.me/R/msg/text/?" + encodeURIComponent(text), "_blank", "noopener,noreferrer");
+    window.open(LINE_URL + "?text=" + encodeURIComponent(prefill), "_blank", "noopener,noreferrer");
   }
 
   /* ── สั่งเพิ่มในออเดอร์เดิมสำเร็จ ── */
@@ -822,11 +813,22 @@ export default function CheckoutPage() {
               <p className="text-xs text-stone-400">หรือแจ้งผ่านช่องทางอื่น</p>
               <button
                 type="button"
-                onClick={() => shareToLine(placed.text)}
+                onClick={() =>
+                  contactShop(
+                    placed.text,
+                    // ตั้งต้นในช่องพิมพ์ด้วยข้อความสั้น — รายละเอียดเต็มยาวเกิน 800 ตัวอักษร /line จะข้ามให้
+                    `🦆 แจ้งสลิปออเดอร์ ${placed.id}\nยอด ${formatPrice(placed.total)}\n🔗 ${placed.url}`,
+                  )
+                }
                 className="mt-2 inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold text-[#06C755] ring-1 ring-[#06C755]/40 transition hover:bg-[#06C755]/5"
               >
                 💬 แจ้งสลิป + ส่งออเดอร์ทาง LINE
               </button>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-stone-400">
+                {lineOpened
+                  ? "✓ คัดลอกรายละเอียดออเดอร์ให้แล้ว — วางในแชทร้าน แล้วส่งรูปสลิปตามไปได้เลย"
+                  : "กดแล้วเข้าแชทร้าน พร้อมคัดลอกรายละเอียดออเดอร์ให้ — ส่งรูปสลิปในแชทได้เลย"}
+              </p>
             </div>
           </div>
           ))}
