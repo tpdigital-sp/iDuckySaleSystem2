@@ -171,6 +171,18 @@ export default function PrintOrderPage() {
   const printedAt = new Date().toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
   // 🔒 ยังไม่ได้รับเงินครบ (รวมออเดอร์มัดจำที่ค้างยอดหลัง) → พิมพ์เอกสารไม่ได้
   const fullyPaid = orderFullyPaid(order);
+  // ชื่อวิธีจัดส่งที่ลูกค้าเลือกจริง (เช่น "EMS (50)") — order.shipping เก็บได้แค่ 2 ค่าเก่า ธรรมดา/ด่วน จึงเพี้ยนเวลาร้านตั้งวิธีส่งเอง
+  const shipName = ((order.shippingLabel ?? "").trim() || order.shipping).trim();
+  // ป้ายตัวใหญ่บนใบปะหน้า — ชื่อยาวต้องย่อลง ไม่งั้นทับบาร์โค้ด
+  const shipNameSize = shipName.length > 18 ? "text-lg" : shipName.length > 13 ? "text-xl" : shipName.length > 9 ? "text-2xl" : "text-3xl";
+  // สีป้ายวิธีส่ง — คนแพ็คของแยกกองด้วยสีตั้งแต่ยังไม่อ่านตัวหนังสือ (พิมพ์สีออกจริง มี print-color-adjust: exact อยู่แล้ว)
+  const shipColor = /ems|ด่วน/i.test(shipName)
+    ? "#1d4ed8" // EMS/ส่งด่วน — น้ำเงิน
+    : /รับเอง|มารับ|pick\s*-?up/i.test(shipName)
+      ? "#15803d" // มารับเอง — เขียว
+      : /ลงทะเบียน|ธรรมดา/i.test(shipName)
+        ? "#dc2626" // ลงทะเบียน/ส่งธรรมดา — แดง
+        : "#0f172a"; // วิธีอื่น — ดำเหมือนเดิม
   const chosen = (Object.keys(docs) as DocKey[]).filter((k) => docs[k]);
   /**
    * แตกออเดอร์เป็น "ลาย" — งานขายส่งแพ็คแยกลาย ใบแปะกล่องจึงต้องออกทีละลาย
@@ -416,7 +428,12 @@ export default function PrintOrderPage() {
               </div>
               {/* วิธีจัดส่งตัวใหญ่เหนือบาร์โค้ด (สไตล์ป้ายขนส่ง) · บาร์โค้ด = เลขออเดอร์ล้วน สำหรับเครื่องยิงที่คอม */}
               <div className="flex shrink-0 flex-col items-end">
-                <p className="text-3xl font-extrabold uppercase leading-none tracking-tight">{order.shipping}</p>
+                <p
+                  className={`${shipNameSize} max-w-[16rem] break-words text-right font-extrabold uppercase leading-none tracking-tight`}
+                  style={{ color: shipColor }}
+                >
+                  {shipName}
+                </p>
                 <div className="mt-1.5">
                   <Barcode value={order.id} displayValue={false} height={30} width={1.2} />
                 </div>
@@ -745,7 +762,7 @@ export default function PrintOrderPage() {
                   {/* ล่าง: จำนวนในกล่องนี้ — ใส่เลขมาแล้ว หรือเว้นเส้นให้เขียนเอง */}
                   <div className="flex items-end justify-between gap-6 border-t-4 border-slate-900 pt-4">
                     <p className="text-sm text-slate-500">
-                      {order.date} · {order.shipping}
+                      {order.date} · <span className="font-bold" style={{ color: shipColor }}>{shipName}</span>
                       {(order.tracking ?? "").trim() ? ` · ${order.tracking}` : ""}
                       {u.qty ? ` · ลายนี้รวม ${u.qty.toLocaleString("th-TH")} ${u.unit}` : ""}
                     </p>
@@ -827,7 +844,7 @@ export default function PrintOrderPage() {
                 <span className="tabular-nums">{formatPrice(subtotal)}</span>
               </div>
               <div className="flex justify-between py-1">
-                <span className="text-slate-500">ค่าจัดส่ง</span>
+                <span className="text-slate-500">ค่าจัดส่ง ({shipName})</span>
                 <span className="tabular-nums">{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
               </div>
               {(order.gifts ?? []).flatMap((g) =>

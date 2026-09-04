@@ -75,6 +75,7 @@ export async function POST(req: Request) {
     date: now.toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
     payment: src.payment,
     shipping: src.shipping,
+    ...(src.shippingLabel ? { shippingLabel: src.shippingLabel } : {}), // ชื่อวิธีส่งจริง (EMS ฯลฯ) ต้องติดไปด้วย ไม่งั้นใบปะหน้าขึ้นผิด
     shippingCost: mode === "claim" ? 0 : src.shippingCost, // เคลม = ร้านออกค่าส่งเอง
     status: mode === "claim" ? "ชำระแล้ว" : "รอชำระเงิน",
     items,
