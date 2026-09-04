@@ -258,6 +258,36 @@ export function can(actor: Actor | null | undefined, perm: Perm, rolePerms?: Rol
   return permsOf(actor, rolePerms).includes(perm);
 }
 
+/**
+ * 📱 ด่านสแกน QR ใบงาน (packing list)
+ *
+ * ใบงานที่ปริ้นออกมามี QR ชี้มาที่ /admin/orders/<id>?pack=1
+ * ใครก็ตามที่ "ล็อกอินหลังบ้านอยู่แล้ว" แล้วสแกน QR ใบนั้น = ได้สิทธิ์งานแพ็คของใบนี้ชั่วคราว
+ * (เจ้าของร้านสั่ง: หน้างานมีคนช่วยแพ็คสลับกัน ไม่อยากมาเปิดสิทธิ์รายคนทุกครั้ง)
+ *
+ * ตัว QR คือกุญแจ — ต้องถือใบงานอยู่ตรงหน้าถึงจะเข้าโหมดนี้ได้
+ * แต่ยังต้องล็อกอินเป็นพนักงาน (admin.access) เสมอ · ลูกค้า/คนนอกใช้ไม่ได้
+ */
+export const PACK_SCAN_PARAM = "pack";
+/** ค่า header ที่หน้าจอส่งมาบอกเซิร์ฟเวอร์ว่า "เปิดหน้านี้จาก QR ใบงาน" */
+export const PACK_SCAN_HEADER = "x-pack-scan";
+/** สิทธิ์ที่ยืมให้คนสแกน QR ใบงาน — เท่ากับชุดของฝ่ายแพ็คของ (STAFF_PACKING) ไม่รวมสิทธิ์อื่น */
+export const PACK_SCAN_PERMS: Perm[] = ["orders.view", "pack.check", "pack.ship"];
+
+/**
+ * เหมือน can() แต่บวกด่านสแกน QR ใบงานเข้าไปด้วย
+ * scanned = คำขอนี้มาจากหน้าที่เปิดด้วย QR ใบงาน (เซิร์ฟเวอร์อ่านจาก header)
+ */
+export function canPack(
+  actor: Actor | null | undefined,
+  perm: Perm,
+  rolePerms: RolePermsMap | undefined,
+  scanned: boolean
+): boolean {
+  if (can(actor, perm, rolePerms)) return true;
+  return scanned && PACK_SCAN_PERMS.includes(perm) && can(actor, "admin.access", rolePerms);
+}
+
 /** ชื่อตำแหน่งไว้แสดงในหน้าจอ เช่น "พนักงาน · แพ็คของ" */
 export function roleLabel(actor: Actor | null | undefined): string {
   if (!actor) return "";

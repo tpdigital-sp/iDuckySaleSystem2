@@ -36,6 +36,8 @@ export {
 } from "./box-fee";
 import { DEFAULT_BOX_FEES as _DEFAULT_BOX_FEES, type BoxFee } from "./box-fee";
 export { DEFAULT_IMAGE_CLEANUP, imageCleanupOf, type ImageCleanupConfig } from "./image-cleanup";
+export { DEFAULT_EARLY_PAY, EARLY_PAY_LABEL, earlyPayOf, earlyPayAmount, type EarlyPayDiscount } from "./early-pay";
+import type { EarlyPayDiscount as _EarlyPayDiscount } from "./early-pay";
 import type { ImageCleanupConfig as _ImageCleanupConfig } from "./image-cleanup";
 
 export interface BankAccount {
@@ -88,6 +90,8 @@ export interface ShopPayment {
   imageCleanup?: _ImageCleanupConfig;
   /** เชื่อมกับ Google (Search Console / Analytics / Tag Manager) + คุมการเก็บข้อมูลของเว็บ */
   seo?: SeoConfig;
+  /** ⚡ ส่วนลดโอนไว (5/10 บาทตามยอดสินค้า) — ไม่ตั้ง = ใช้ค่าเริ่มต้นใน @/lib/early-pay */
+  earlyPay?: _EarlyPayDiscount;
 }
 
 /** ข้อมูลร้านที่แอดมินแก้เองได้ (แสดงบนเอกสารพิมพ์ทุกใบ) */

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { currentActor, requirePerm } from "@/lib/server/require-perm";
-import { can } from "@/lib/permissions";
+import { can, canPack, PACK_SCAN_HEADER } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
@@ -72,8 +72,12 @@ function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Or
 export async function GET(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ orders: [] });
-  const gate = await requirePerm("orders.view");
-  if (gate.res) return gate.res;
+  // 📱 มาจาก QR บนใบงาน → พนักงานที่ล็อกอินอยู่เปิดดูใบนี้ได้ แม้แผนกตัวเองไม่มีสิทธิ์ดูออเดอร์
+  const actor = await currentActor();
+  if (!actor) return NextResponse.json({ error: "ต้องล็อกอินก่อน" }, { status: 401 });
+  const scanned = req.headers.get(PACK_SCAN_HEADER) === "1";
+  if (!canPack(actor, "orders.view", await loadRolePerms(), scanned))
+    return NextResponse.json({ error: "บัญชีนี้ไม่มีสิทธิ์ทำรายการนี้" }, { status: 403 });
 
   const wantId = new URL(req.url).searchParams.get("id");
   let q = sb.from("orders").select("data").order("created_at", { ascending: false });
@@ -175,8 +179,10 @@ export async function PATCH(req: Request) {
   if (!actor) return NextResponse.json({ error: "ต้องล็อกอินก่อน" }, { status: 401 });
   // ใช้ชุดสิทธิ์ที่แอดมินแก้เอง (ตั้งค่าระบบ → แท็บบทบาท) ให้ตรงกับที่หน้าจอเห็น
   const rolePerms = await loadRolePerms();
+  // 📱 เปิดหน้าออเดอร์จาก QR บนใบงาน → ยืมสิทธิ์งานแพ็คให้พนักงานคนไหนก็ได้ที่ล็อกอินอยู่
+  const scanned = req.headers.get(PACK_SCAN_HEADER) === "1";
   const mayEditFull = can(actor, "orders.edit", rolePerms);
-  const mayPack = can(actor, "pack.check", rolePerms) || can(actor, "pack.ship", rolePerms);
+  const mayPack = canPack(actor, "pack.check", rolePerms, scanned) || canPack(actor, "pack.ship", rolePerms, scanned);
   if (!mayEditFull && !mayPack) {
     return NextResponse.json({ error: "บัญชีนี้ไม่มีสิทธิ์แก้ไขออเดอร์" }, { status: 403 });
   }
@@ -223,7 +229,7 @@ export async function PATCH(req: Request) {
         { status: 409 }
       );
     }
-    toSave = mergePackFields(existing, order, can(actor, "pack.ship", rolePerms));
+    toSave = mergePackFields(existing, order, canPack(actor, "pack.ship", rolePerms, scanned));
   }
 
   /**

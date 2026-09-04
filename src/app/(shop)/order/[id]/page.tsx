@@ -6,12 +6,11 @@ import { useCallback, useEffect, useState } from "react";
 import { giftLinesOf, giftArtLabel } from "@/lib/gifts";
 import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
-import AdminEditFab from "@/components/AdminEditFab";
 import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
-import { adminDiscountAmount, amountDueNow, itemDiscountAmount, orderBalance, orderItemDiscounts, orderStatusLabel, orderTotal, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { adminDiscountAmount, amountDueNow, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderItemDiscounts, orderStatusLabel, orderTotal, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchOrderForCustomer, reportPayment, reviewGiftProof, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
@@ -20,7 +19,6 @@ import ImageLightbox from "@/components/ImageLightbox";
 import Portal from "@/components/Portal";
 import { SpecLines } from "@/components/SpecLines";
 import { LINE_URL } from "@/components/LineButton";
-import { canAccessAdmin } from "@/lib/auth";
 
 /*
  * ── สไตล์ปุ่ม/ช่องกรอกใน lightbox ──
@@ -71,11 +69,6 @@ export default function CustomerOrderPage() {
   // 💬 กดทักไลน์คุยออเดอร์แล้วหรือยัง (คัดลอกเลขออเดอร์+ลิงก์ให้วางในแชท)
   const [lineOpened, setLineOpened] = useState(false);
   const [order, setOrder] = useState<Order | null>(null);
-  /** ทีมงานที่ล็อกอินหลังบ้านอยู่ (แอดมิน/กราฟฟิก/เจ้าของ) — ขึ้นปุ่มลัดเข้าออเดอร์นี้ในหลังบ้าน */
-  const [isStaff, setIsStaff] = useState(false);
-  useEffect(() => {
-    void canAccessAdmin().then(setIsStaff);
-  }, []);
   const [loadErr, setLoadErr] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -656,19 +649,6 @@ export default function CustomerOrderPage() {
         <img className="oc4" src="/landing/cloud.webp" alt="" />
       </div>
       <div className="shopp-in">
-      {/*
-        ทีมงานที่ล็อกอินหลังบ้านอยู่ (แอดมิน/กราฟฟิก/เจ้าของ) เปิดลิงก์ลูกค้ามาดู
-        → มีปุ่มลัดเข้าออเดอร์นี้ในหลังบ้านเลย ไม่ต้องไปไล่หาในรายการออเดอร์
-        (ลูกค้าทั่วไปไม่เห็นปุ่มนี้ เพราะไม่มี session หลังบ้าน)
-      */}
-      {isStaff && (
-        <AdminEditFab
-          href={`/admin/orders/${encodeURIComponent(order.id)}`}
-          title="เปิดออเดอร์นี้ในระบบหลังบ้าน"
-          label="เปิดในหลังบ้าน"
-        />
-      )}
-
       {/* ── หัวออเดอร์ + แถบขั้นตอน ── */}
       <div className="ord-card p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1448,6 +1428,12 @@ export default function CustomerOrderPage() {
               <div className="mt-1.5 flex justify-between text-sm font-semibold t-ok">
                 <span>{order.discount.label}</span>
                 <span>−{formatPrice(order.discount.amount)}</span>
+              </div>
+            )}
+            {orderEarlyPayAmount(order) > 0 && (
+              <div className="mt-1.5 flex justify-between text-sm font-semibold t-ok">
+                <span>{order.earlyPay!.label}</span>
+                <span>−{formatPrice(orderEarlyPayAmount(order))}</span>
               </div>
             )}
             {orderItemDiscounts(order) > 0 && (

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { formatPrice } from "@/lib/products";
-import { adminDiscountAmount, orderFullyPaid, orderItemDiscounts, orderTotal, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderTotal, type Order } from "@/lib/admin-data";
 import { fetchOrderForCustomer } from "@/lib/order-repo";
 import { fetchShopPayment, shopInfoOf, type ShopInfo } from "@/lib/shop-settings";
 import { SpecLines } from "@/components/SpecLines";
@@ -150,6 +150,12 @@ export default function CustomerReceiptPage() {
               <div className="flex justify-between font-semibold text-emerald-600">
                 <span>{order.discount.label}</span>
                 <span className="tabular-nums">−{formatPrice(order.discount.amount)}</span>
+              </div>
+            )}
+            {orderEarlyPayAmount(order) > 0 && (
+              <div className="flex justify-between font-semibold text-emerald-600">
+                <span>{order.earlyPay!.label}</span>
+                <span className="tabular-nums">−{formatPrice(orderEarlyPayAmount(order))}</span>
               </div>
             )}
             {orderItemDiscounts(order) > 0 && (

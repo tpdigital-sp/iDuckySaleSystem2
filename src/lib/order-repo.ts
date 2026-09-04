@@ -2,6 +2,7 @@
 
 /** ชั้นเข้าถึงออเดอร์จริง (Supabase ตาราง orders ผ่าน API ฝั่งเซิร์ฟเวอร์) */
 import type { Order } from "./admin-data";
+import { PACK_SCAN_HEADER } from "./permissions";
 
 export interface CreateOrderInput {
   customerName: string;
@@ -247,7 +248,7 @@ export async function uploadProof(
  */
 export async function fetchOrdersAdmin(): Promise<{ orders: Order[]; needsSetup: boolean; ok: boolean }> {
   try {
-    const res = await fetch("/api/admin/orders", { cache: "no-store" });
+    const res = await fetch("/api/admin/orders", { cache: "no-store", headers: packScanHeaders() });
     const data = await res.json().catch(() => ({}));
     return { orders: data.orders ?? [], needsSetup: !!data.needsSetup, ok: res.ok };
   } catch {
@@ -260,7 +261,10 @@ export async function fetchOrdersAdmin(): Promise<{ orders: Order[]; needsSetup:
  */
 export async function fetchOrderAdmin(id: string): Promise<{ order?: Order; needsSetup: boolean }> {
   try {
-    const res = await fetch(`/api/admin/orders?id=${encodeURIComponent(id)}`, { cache: "no-store" });
+    const res = await fetch(`/api/admin/orders?id=${encodeURIComponent(id)}`, {
+      cache: "no-store",
+      headers: packScanHeaders(),
+    });
     const data = await res.json().catch(() => ({}));
     return { order: (data.orders ?? [])[0], needsSetup: !!data.needsSetup };
   } catch {
@@ -268,12 +272,26 @@ export async function fetchOrderAdmin(id: string): Promise<{ order?: Order; need
   }
 }
 
+/**
+ * 📱 เปิดหน้าออเดอร์มาจาก QR บนใบงานหรือเปล่า
+ * หน้าออเดอร์เป็นคนตั้งค่านี้ตอน mount (อ่าน ?pack=1 จาก URL)
+ * แล้วทุกคำขอบันทึกจากแท็บนี้จะแนบ header ไปด้วย — เซิร์ฟเวอร์ถึงจะยืมสิทธิ์งานแพ็คให้
+ */
+let packScan = false;
+export function setPackScanMode(on: boolean) {
+  packScan = on;
+}
+/** header ที่ต้องแนบไปกับคำขอ "งานแพ็ค" ทุกเส้น (ว่างถ้าไม่ได้มาจาก QR) */
+export function packScanHeaders(): Record<string, string> {
+  return packScan ? { [PACK_SCAN_HEADER]: "1" } : {};
+}
+
 /** แอดมินอัปเดตออเดอร์ (เช่น เปลี่ยนสถานะ) */
 export async function saveOrderAdmin(order: Order): Promise<boolean> {
   try {
     const res = await fetch("/api/admin/orders", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...packScanHeaders() },
       body: JSON.stringify(order),
     });
     return res.ok;

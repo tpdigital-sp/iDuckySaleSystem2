@@ -16,6 +16,7 @@ import {
   itemDiscountAmount,
   lineChatOf,
   lineUserOf,
+  orderEarlyPayAmount,
   orderItemDiscounts,
   orderFullyPaid,
   orderNetTransfer,
@@ -42,7 +43,7 @@ import {
   type NoteSize,
   type NoteWeight,
 } from "@/lib/admin-data";
-import { fetchOrderAdmin, fetchOrdersAdmin, saveOrderAdmin, uploadProof } from "@/lib/order-repo";
+import { fetchOrderAdmin, fetchOrdersAdmin, packScanHeaders, saveOrderAdmin, setPackScanMode, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
 import { card, faint, muted, shortTime } from "@/lib/admin-ui";
 import { Banner, PageShell } from "@/components/admin/ui";
@@ -54,6 +55,7 @@ import QuotePanel from "@/components/admin/QuotePanel";
 import Barcode from "@/components/Barcode";
 import { QRCodeSVG } from "qrcode.react";
 import { useActor, useCan, useIsAdministrator, useRoleLabel } from "@/lib/perm-context";
+import { PACK_SCAN_PARAM, PACK_SCAN_PERMS, type Perm } from "@/lib/permissions";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
 import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
@@ -614,14 +616,33 @@ export default function AdminOrderDetailPage() {
   const [linkCopied, setLinkCopied] = useState(false);
   const [overrideLock, setOverrideLock] = useState(false); // แอดมินยืนยันให้ทำแบบก่อนจ่ายเงิน
   const [packMode, setPackMode] = useState(false); // แอดมินสลับเข้าโหมดแพ็ค (ตรวจนับ/ยืนยันอ่าน) เอง
+  /**
+   * 📱 เปิดหน้านี้มาจาก QR บนใบงาน (?pack=1) — พนักงานคนไหนก็ได้ที่ล็อกอินอยู่
+   * ได้สิทธิ์งานแพ็คใบนี้ชั่วคราวและเข้าโหมดแพ็คให้เลย (เซิร์ฟเวอร์ตรวจซ้ำจาก header)
+   * อ่านหลัง mount เพราะ URL ฝั่งเซิร์ฟเวอร์กับเบราว์เซอร์ต้องตรงกันตอน hydrate
+   */
+  const [viaScan, setViaScan] = useState(false);
   const [logOpen, setLogOpen] = useState(false); // ประวัติการทำงาน: หุบไว้ (โชว์ 3 รายการล่าสุด) กดค่อยขยาย
+
+  useEffect(() => {
+    const on = new URLSearchParams(window.location.search).get(PACK_SCAN_PARAM) === "1";
+    setViaScan(on);
+    setPackScanMode(on); // ทุกคำขอบันทึกจากแท็บนี้จะแนบ header บอกเซิร์ฟเวอร์
+    if (on) setPackMode(true);
+    return () => setPackScanMode(false);
+  }, []);
 
   useEffect(() => setShortcutExt(shortcutKind()), []);
   const [skipGate, setSkipGate] = useState<string[] | null>(null); // โมดัลยืนยันข้ามด่านแพ็ค (เหตุผลที่ยังไม่ครบ)
   const [shortcutExt, setShortcutExt] = useState<"webloc" | "url" | "">(""); // นามสกุลทางลัดตามเครื่องที่เปิด (รู้หลัง mount)
   const trackingRef = useRef<string>(""); // เลขพัสดุที่บันทึกไปแล้ว กันบันทึกซ้ำตอน blur
 
-  const can = useCan();
+  const rolCan = useCan();
+  /** สแกน QR ใบงานมา = ยืมสิทธิ์งานแพ็ค (pack.check / pack.ship) ให้ ไม่ว่าจะแผนกไหน */
+  const can = useCallback(
+    (perm: Perm) => rolCan(perm) || (viaScan && PACK_SCAN_PERMS.includes(perm)),
+    [rolCan, viaScan]
+  );
   const actor = useActor(); // ชื่อคนที่ล็อกอินอยู่ (ไว้บันทึกประวัติว่าใครทำ)
   const seesMoney = can("orders.money"); // เห็นราคา/สลิป
   const isSuperAdmin = useRoleLabel() === "ผู้ดูแลระบบ"; // ลบสลิปได้เฉพาะผู้ดูแลระบบ (เซิร์ฟเวอร์บังคับซ้ำ)
@@ -1080,7 +1101,7 @@ export default function AdminOrderDetailPage() {
       const fd = new FormData();
       fd.append("orderId", order.id);
       fd.append("file", f);
-      const res = await fetch("/api/admin/orders/pack-photo", { method: "POST", body: fd });
+      const res = await fetch("/api/admin/orders/pack-photo", { method: "POST", body: fd, headers: packScanHeaders() });
       const j = (await res.json().catch(() => null)) as { order?: Order; error?: string } | null;
       if (!res.ok || !j?.order) {
         setErr(j?.error ?? "อัปโหลดภาพไม่สำเร็จ");
@@ -1101,7 +1122,7 @@ export default function AdminOrderDetailPage() {
     }
     const res = await fetch("/api/admin/orders/pack-photo", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...packScanHeaders() },
       body: JSON.stringify({ orderId: order.id, index }),
     });
     const j = (await res.json().catch(() => null)) as { order?: Order; error?: string } | null;
@@ -1950,9 +1971,9 @@ export default function AdminOrderDetailPage() {
         </div>
       )}
 
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_20rem]">
         {/* ── ซ้าย: งานแบบ ── */}
-        <div className="px-6 py-6">
+        <div className="px-4 py-6 sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <GH t="indigo">🎨 งานแบบ · {order.items.length} รายการ</GH>
             {order.items.length > 1 && (
@@ -2044,7 +2065,9 @@ export default function AdminOrderDetailPage() {
                           : "border-sky-100 bg-sky-100/60"
                     }`}
                   >
-                    <span className={`text-xs font-extrabold ${i % 2 === 0 ? "text-indigo-800" : "text-sky-800"}`}>
+                    <span
+                      className={`shrink-0 whitespace-nowrap text-xs font-extrabold ${i % 2 === 0 ? "text-indigo-800" : "text-sky-800"}`}
+                    >
                       รายการที่ {i + 1} / {order.items.length}
                     </span>
                     <span className="flex min-w-0 items-center gap-2">
@@ -2473,7 +2496,7 @@ export default function AdminOrderDetailPage() {
                   </div>
 
                   {/* ── รูปงาน แยกชัดว่าใครเป็นคนใส่ · ใครเห็น ── */}
-                  <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)]">
+                  <div className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)]">
                     {/* ซ้าย: ลายที่ลูกค้าส่งมา (ทีมงานเห็นเท่านั้น) */}
                     <div className="rounded-xl border border-sky-200 bg-sky-50/40 p-3">
                       <p className="text-xs font-bold text-sky-800">
@@ -3046,7 +3069,7 @@ export default function AdminOrderDetailPage() {
                 </div>
                 {/* 🎨 ลาย + 🖼 แบบงานของแถม — โครงเดียวกับการ์ดสินค้า (ซ้ายลายจากลูกค้า · ขวาแบบที่ส่งให้ตรวจ) */}
                 {(giftArtLabel(g) || mayEdit) && (
-                  <div className="grid gap-3 border-t border-emerald-100 px-4 py-3 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)]">
+                  <div className="grid grid-cols-[minmax(0,1fr)] gap-3 border-t border-emerald-100 px-4 py-3 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)]">
                     <div
                       className={`rounded-xl border p-3 transition ${
                         giftArtDragOver === g.promoId ? "border-sky-400 bg-sky-100/70" : "border-sky-200 bg-sky-50/40"
@@ -3322,6 +3345,12 @@ export default function AdminOrderDetailPage() {
                 <div className="mt-1.5 flex items-center justify-between gap-3 text-xs font-semibold text-emerald-600">
                   <span className="min-w-0">{order.discount.label}</span>
                   <span className="shrink-0 tabular-nums">−{formatPrice(order.discount.amount)}</span>
+                </div>
+              )}
+              {orderEarlyPayAmount(order) > 0 && (
+                <div className="mt-1.5 flex items-center justify-between gap-3 text-xs font-semibold text-emerald-600">
+                  <span className="min-w-0">{order.earlyPay!.label}</span>
+                  <span className="shrink-0 tabular-nums">−{formatPrice(orderEarlyPayAmount(order))}</span>
                 </div>
               )}
               {orderItemDiscounts(order) > 0 && (

@@ -5,6 +5,7 @@ import type { Order } from "@/lib/admin-data";
 import { paidSpend, tierForSpend, tierDiscountAmount, tiersOf, type Tier } from "@/lib/tiers";
 import { couponLabel, validateCoupon, type Coupon } from "@/lib/coupons";
 import { giftsFor, giftsToOrder, type GiftPromo, type OrderGift } from "@/lib/gifts";
+import { earlyPayAmount, earlyPayOf, EARLY_PAY_LABEL, type EarlyPayDiscount } from "@/lib/early-pay";
 import { currentActor } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
@@ -184,6 +185,19 @@ export async function POST(req: Request) {
     // คิดของแถมไม่ได้ = ไม่ควรทำให้สั่งซื้อไม่สำเร็จ — แอดมินเติมให้ทีหลังได้
   }
 
+  // ── 4) ⚡ ส่วนลดโอนไว — ได้ทุกออเดอร์ที่สั่งผ่านเว็บ (ลูกค้าโอนก่อนร้านเริ่มผลิตเสมอ) ──
+  // คิดจาก "ยอดสินค้าก่อนค่าส่ง" ตามกติกาที่เจ้าของร้านกำหนด · ใช้พร้อมส่วนลดระดับ/คูปองได้
+  // ⚠️ ออเดอร์ที่ยังรอตีราคา (unitPrice 0) จะได้ส่วนลดจากยอดเท่าที่กรอกมา — แอดมินแก้ยอดทีหลังได้ที่หน้าออเดอร์
+  let earlyPay: Order["earlyPay"];
+  try {
+    const { data: settRow } = await sb.from("products").select("data").eq("id", SETTINGS_ROW).maybeSingle();
+    const cfg = earlyPayOf(settRow?.data as { earlyPay?: EarlyPayDiscount } | undefined);
+    const amount = earlyPayAmount(subtotal, cfg);
+    if (amount > 0) earlyPay = { label: EARLY_PAY_LABEL, amount };
+  } catch {
+    // อ่านตั้งค่าไม่ได้ = ไม่ลด ดีกว่าสั่งซื้อไม่สำเร็จ (แอดมินใส่ส่วนลดเองได้ที่หน้าออเดอร์)
+  }
+
   const key = randomBytes(24).toString("base64url"); // กุญแจลับต่อออเดอร์
   const order: Order = {
     id,
@@ -203,6 +217,7 @@ export async function POST(req: Request) {
     ...(cid ? { customerId: cid } : {}),
     ...(input.email?.trim() ? { email: input.email.trim() } : {}),
     ...(discount ? { discount } : {}),
+    ...(earlyPay ? { earlyPay } : {}),
     ...(gifts.length ? { gifts } : {}),
     ...(placedBy ? { placedBy } : {}),
   };

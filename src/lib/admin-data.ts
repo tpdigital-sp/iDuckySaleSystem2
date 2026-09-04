@@ -285,7 +285,7 @@ export interface Order {
      * wht = ลูกค้านิติบุคคลหัก ณ ที่จ่าย (rate 1 หรือ 3%) ต้องตามใบ 50 ทวิจากลูกค้า
      * bankFee = ธนาคารหักค่าธรรมเนียมการโอน
      */
-    deduction?: { kind: "wht" | "bankFee"; rate?: number; amount: number; label: string };
+    deduction?: { kind: "wht" | "bankFee" | "earlyPay"; rate?: number; amount: number; label: string };
   };
   /** เวลาที่แอดมินปริ้นใบงานครั้งแรก (ISO) — มีค่า = ล็อกที่อยู่ ลูกค้าแก้ไม่ได้แล้ว */
   printedAt?: string;
@@ -333,6 +333,11 @@ export interface Order {
   /** ส่วนลดทั้งบิลที่แอดมินใส่เอง (แยกจากคูปอง/ระดับสมาชิก — ใช้พร้อมกันได้) · pct มีค่า = คิดเป็น % ของยอดสินค้าหลังหักส่วนลดรายรายการ */
   adminDiscount?: { label?: string; amount?: number; pct?: number };
   /**
+   * ⚡ ส่วนลด "โอนไว" — คิดฝั่งเซิร์ฟเวอร์ตอนสร้างออเดอร์จากยอดสินค้าก่อนค่าส่ง (ดู @/lib/early-pay)
+   * ใช้พร้อมส่วนลดอื่นได้ทั้งหมด (ไม่ใช่ "เลือกอันที่ดีกว่า" แบบคูปอง/ระดับสมาชิก)
+   */
+  earlyPay?: { label: string; amount: number };
+  /**
    * หัก ณ ที่จ่าย (ลูกค้านิติบุคคล) — แอดมินเลือกอัตรา 1%/3% ระบบเติมจำนวนเงินจากยอดรวมให้
    * แล้วแก้ตัวเลขเองได้ตามใบ 50 ทวิของลูกค้า (บัญชีลูกค้าบางเจ้าคิดจากฐานก่อน VAT)
    * ไม่ลดยอดรวมของบิล — แค่บอกว่า "ยอดโอนจริง" น้อยกว่ายอดตั้งเท่าไหร่ ต้องตามใบ 50 ทวิมาแทน
@@ -373,9 +378,14 @@ export function adminDiscountAmount(o: Order): number {
   return Math.max(0, d.amount ?? 0);
 }
 
-/** ส่วนลดทั้งหมดของออเดอร์ = คูปอง/ระดับ + ส่วนลดทั้งบิลจากแอดมิน + ส่วนลดรายรายการ */
+/** ส่วนลดโอนไวของออเดอร์นี้เป็นบาท (0 = ออเดอร์นี้ไม่ได้ลด) */
+export function orderEarlyPayAmount(o: Order): number {
+  return Math.max(0, o.earlyPay?.amount ?? 0);
+}
+
+/** ส่วนลดทั้งหมดของออเดอร์ = คูปอง/ระดับ + ส่วนลดทั้งบิลจากแอดมิน + ส่วนลดรายรายการ + ส่วนลดโอนไว */
 export function orderDiscountTotal(o: Order): number {
-  return (o.discount?.amount ?? 0) + adminDiscountAmount(o) + orderItemDiscounts(o);
+  return (o.discount?.amount ?? 0) + adminDiscountAmount(o) + orderItemDiscounts(o) + orderEarlyPayAmount(o);
 }
 
 export function orderTotal(o: Order): number {

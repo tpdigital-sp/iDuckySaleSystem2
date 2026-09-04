@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { amountDueNow, orderTotal, withLog, type Order, paidStatusFor } from "@/lib/admin-data";
+import { amountDueNow, orderSubtotal, orderTotal, withLog, type Order, paidStatusFor } from "@/lib/admin-data";
+import { earlyPayAmount, earlyPayOf, type EarlyPayDiscount } from "@/lib/early-pay";
 import { verifySlipWithSlipOK } from "@/lib/server/slipok";
 import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
 import { reportPaidToTP } from "@/lib/server/tp-report";
@@ -92,7 +93,21 @@ export async function POST(req: Request) {
   // ── ตรวจสลิปอัตโนมัติกับ SlipOK (ถ้าตั้งค่าไว้) — เทียบ "ยอดงวดนี้" (มัดจำ/คงเหลือ/เต็ม) ──
   const expected = amountDueNow(order);
   const depositPhase = !!order.deposit && !order.deposit.firstPaidAt; // งวดแรกของออเดอร์มัดจำ
-  const verify = await verifySlipWithSlipOK(bytes, file.type, expected, orderTotal(order), order.wht);
+  /**
+   * ⚡ ส่วนลดโอนไวที่ออเดอร์นี้ "ยังไม่ได้หัก" — ยอมให้สลิปขาดได้เท่านี้โดยไม่ตกไปตรวจมือ
+   * ออเดอร์ที่สั่งผ่านเว็บหลังเปิดโปรจะมี order.earlyPay อยู่แล้ว (ยอดที่ต้องโอนลดไปแล้ว) → 0 กันหักซ้ำ
+   * เหลือไว้ให้ออเดอร์เก่า + ลูกค้าที่รู้โปรจากไลน์แล้วโอนน้อยกว่ายอดที่เห็นในเว็บ
+   */
+  let earlyPayAllowed = 0;
+  if (!order.earlyPay) {
+    try {
+      const { data: settRow } = await sb.from("products").select("data").eq("id", "__shop_payment__").maybeSingle();
+      earlyPayAllowed = earlyPayAmount(orderSubtotal(order), earlyPayOf(settRow?.data as { earlyPay?: EarlyPayDiscount } | undefined));
+    } catch {
+      // อ่านตั้งค่าไม่ได้ = ไม่ยอมรับส่วนต่าง ตกไปตรวจมือตามเดิม (fail-safe)
+    }
+  }
+  const verify = await verifySlipWithSlipOK(bytes, file.type, expected, orderTotal(order), order.wht, earlyPayAllowed);
   const now = new Date().toISOString();
   // ท้ายประโยคบันทึก/แจ้งเตือน เมื่อสลิปโดนหัก ณ ที่จ่าย 1%/3% หรือค่าธรรมเนียมโอน
   const dedNote = verify.deduction

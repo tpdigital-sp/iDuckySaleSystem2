@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { currentActor } from "@/lib/server/require-perm";
-import { can } from "@/lib/permissions";
+import { can, canPack, PACK_SCAN_HEADER } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order, type PackPhoto } from "@/lib/admin-data";
@@ -16,12 +16,16 @@ const EXT: Record<string, string> = {
   "image/webp": "webp",
 };
 
-/** ฝ่ายแพ็ค (pack.check) หรือแอดมิน (orders.edit) เท่านั้น */
-async function packActor() {
+/**
+ * ฝ่ายแพ็ค (pack.check) หรือแอดมิน (orders.edit) เท่านั้น
+ * 📱 ถ้าเปิดหน้าออเดอร์มาจาก QR บนใบงาน (header x-pack-scan) → พนักงานที่ล็อกอินอยู่คนไหนก็ทำได้
+ */
+async function packActor(req: Request) {
   const actor = await currentActor();
   if (!actor) return { res: NextResponse.json({ error: "ต้องล็อกอินก่อน" }, { status: 401 }) };
   const perms = await loadRolePerms();
-  if (!can(actor, "pack.check", perms) && !can(actor, "orders.edit", perms))
+  const scanned = req.headers.get(PACK_SCAN_HEADER) === "1";
+  if (!canPack(actor, "pack.check", perms, scanned) && !can(actor, "orders.edit", perms))
     return { res: NextResponse.json({ error: "บัญชีนี้ไม่มีสิทธิ์งานแพ็ค" }, { status: 403 }) };
   return { actor };
 }
@@ -30,7 +34,7 @@ async function packActor() {
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
-  const g = await packActor();
+  const g = await packActor(req);
   if (g.res) return g.res;
 
   let form: FormData;
@@ -78,7 +82,7 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
-  const g = await packActor();
+  const g = await packActor(req);
   if (g.res) return g.res;
 
   let body: { orderId?: string; index?: number };

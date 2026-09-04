@@ -8,7 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { formatPrice } from "@/lib/products";
-import { adminDiscountAmount, MOCK_ORDERS, noteHasText, orderFullyPaid, orderItemDiscounts, orderTotal, proofsOf, proofUnit, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, MOCK_ORDERS, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderTotal, proofsOf, proofUnit, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -21,6 +21,7 @@ import { fetchOrdersAdmin } from "@/lib/order-repo";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shopInfoOf, type ShopInfo } from "@/lib/shop-settings";
 import { useCan } from "@/lib/perm-context";
+import { PACK_SCAN_PARAM } from "@/lib/permissions";
 import { parsePrintFrame, PLACEMENT_LABEL, PLACEMENT_SPEC_LABEL, sheetsFor } from "@/lib/design-templates";
 import { SpecLines } from "@/components/SpecLines";
 
@@ -172,7 +173,11 @@ export default function PrintOrderPage() {
   // 🔒 ยังไม่ได้รับเงินครบ (รวมออเดอร์มัดจำที่ค้างยอดหลัง) → พิมพ์เอกสารไม่ได้
   const fullyPaid = orderFullyPaid(order);
   // ชื่อวิธีจัดส่งที่ลูกค้าเลือกจริง (เช่น "EMS (50)") — order.shipping เก็บได้แค่ 2 ค่าเก่า ธรรมดา/ด่วน จึงเพี้ยนเวลาร้านตั้งวิธีส่งเอง
-  const shipName = ((order.shippingLabel ?? "").trim() || order.shipping).trim();
+  const shipName = ((order.shippingLabel ?? "").trim() || order.shipping)
+    // ตัดราคาที่ติดมากับชื่อวิธีส่งออก — ใบปะหน้าโชว์แค่วิธีส่ง ("EMS (50)" → "EMS") ราคาอยู่ในตารางยอดเงินแล้ว
+    .replace(/[\s(\[]*(?:฿|บาท)?\s*\d[\d,.]*\s*(?:฿|บาท|.-)?\s*[)\]]*\s*$/u, "")
+    .replace(/[\s·—–-]+$/u, "")
+    .trim();
   // ป้ายตัวใหญ่บนใบปะหน้า — ชื่อยาวต้องย่อลง ไม่งั้นทับบาร์โค้ด
   const shipNameSize = shipName.length > 18 ? "text-lg" : shipName.length > 13 ? "text-xl" : shipName.length > 9 ? "text-2xl" : "text-3xl";
   // สีป้ายวิธีส่ง — คนแพ็คของแยกกองด้วยสีตั้งแต่ยังไม่อ่านตัวหนังสือ (พิมพ์สีออกจริง มี print-color-adjust: exact อยู่แล้ว)
@@ -198,8 +203,13 @@ export default function PrintOrderPage() {
           : [{ url: undefined as string | undefined, qty: it.qty, unit: "ชิ้น", no: 1 }];
     return list.map((d) => ({ ...d, i, it, total: list.length, key: `${i}-${d.no}` }));
   });
-  /** ลิงก์เต็มสำหรับ QR มือถือ — เปิดหน้าออเดอร์เพื่อเช็คของตามภาพ */
-  const orderUrl = origin ? `${origin}/admin/orders/${encodeURIComponent(order.id)}` : "";
+  /**
+   * ลิงก์เต็มสำหรับ QR มือถือ — เปิดหน้าออเดอร์เพื่อเช็คของตามภาพ
+   * ?pack=1 = เข้ามาจาก QR ใบงาน → พนักงานที่ล็อกอินอยู่ (สิทธิ์ไหนก็ได้) ทำงานแพ็คใบนี้ได้เลย
+   */
+  const orderUrl = origin
+    ? `${origin}/admin/orders/${encodeURIComponent(order.id)}?${PACK_SCAN_PARAM}=1`
+    : "";
 
   return (
     <>
@@ -492,7 +502,7 @@ export default function PrintOrderPage() {
                 <div className="shrink-0 text-center">
                   <QRCodeSVG value={orderUrl} size={82} level="M" marginSize={0} />
                   <p className="mt-1 text-[9px] font-bold leading-tight text-slate-600">📱 มือถือ</p>
-                  <p className="text-[9px] leading-tight text-slate-500">เปิดหน้าออเดอร์ · เช็คของ</p>
+                  <p className="text-[9px] leading-tight text-slate-500">สแกนแล้วแพ็คได้เลย</p>
                 </div>
               )}
             </div>
@@ -859,6 +869,12 @@ export default function PrintOrderPage() {
                 <div className="flex justify-between py-1 text-emerald-600">
                   <span>{order.discount.label}</span>
                   <span className="tabular-nums">−{formatPrice(order.discount.amount)}</span>
+                </div>
+              )}
+              {orderEarlyPayAmount(order) > 0 && (
+                <div className="flex justify-between py-1 text-emerald-600">
+                  <span>{order.earlyPay!.label}</span>
+                  <span className="tabular-nums">−{formatPrice(orderEarlyPayAmount(order))}</span>
                 </div>
               )}
               {orderItemDiscounts(order) > 0 && (

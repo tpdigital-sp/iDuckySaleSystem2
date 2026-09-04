@@ -31,7 +31,6 @@ import {
   customSizeError,
   longestSizePlan,
   customKeepsOption,
-  adminProductPath,
   productPath,
   DESIGN_LABEL,
   BACK_DESIGN_LABEL,
@@ -134,7 +133,6 @@ import SlotStudio, { type SlotResult, type SlotShot } from "@/components/SlotStu
 import { useCart } from "@/lib/cart-context";
 import GiftPromoBadge from "@/components/GiftPromoBadge";
 import { canAccessAdmin } from "@/lib/auth";
-import AdminEditFab from "@/components/AdminEditFab";
 import { fetchProduct } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
 import ProductCard from "@/components/ProductCard";
@@ -3334,6 +3332,9 @@ export default function ProductDetail({
                     </div>
                   ) : opt.display === "cards" ? (
                     /* การ์ดแนวตั้งหน้าตาเดียวกับแผงเลือกเรทราคา — รูปใหญ่ + วิทยุ + ชื่อ + คำอธิบาย
+                       รูป 80px (เดิม 48px — ผู้ใช้ทัก 4 ก.ย. 69 ว่าเล็กจนดูไม่ออกว่าเป็นรูปอะไร)
+                       ภาพตัวเลือกเป็นจัตุรัส 900×900 ลงกล่องจัตุรัส object-cover จึงเห็นเต็มใบ ไม่ถูกครอป —
+                       กล่องใหญ่ขึ้นเท่าไหร่ = เห็นชัดขึ้นเท่านั้น (แผงเรทราคาด้านล่างขยายคู่กันให้หน้าตาเหมือนเดิม)
                        (กลุ่ม "แบบ/ชนิด/เนื้อ" ที่หน้าตาต่างกันชัด ๆ ผู้ใช้สั่งใช้ทรงนี้ 25 ส.ค. 69)
                        กลุ่มที่ตัวเลือกเยอะ (ลายฟิล์ม 10 ลาย) เรียง 2 คอลัมน์แบบกระชับ ไม่งั้นหน้ายาวจนต้องเลื่อนหา */
                     (() => {
@@ -3384,14 +3385,14 @@ export default function ProductDetail({
                                         el.play().catch(() => {});
                                       }
                                     }}
-                                    className={`${dense ? "h-9 w-9" : "h-12 w-12"} shrink-0 rounded-lg object-cover ring-1 ring-stone-200`}
+                                    className={`${dense ? "h-12 w-12" : "h-20 w-20"} shrink-0 rounded-lg object-cover ring-1 ring-stone-200`}
                                   />
                                 ) : cImg ? (
                                   // eslint-disable-next-line @next/next/no-img-element
                                   <img
                                     src={cImg}
                                     alt={c.name}
-                                    className={`${dense ? "h-9 w-9" : "h-12 w-12"} shrink-0 rounded-lg object-cover ring-1 ring-stone-200`}
+                                    className={`${dense ? "h-12 w-12" : "h-20 w-20"} shrink-0 rounded-lg object-cover ring-1 ring-stone-200`}
                                     loading="lazy"
                                   />
                                 ) : null}
@@ -3804,7 +3805,7 @@ export default function ProductDetail({
                     <img
                       src={r.imageSrc}
                       alt={r.label}
-                      className={`h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-stone-200 ${locked ? "opacity-50 grayscale" : ""}`}
+                      className={`h-20 w-20 shrink-0 rounded-lg object-cover ring-1 ring-stone-200 ${locked ? "opacity-50 grayscale" : ""}`}
                       loading="lazy"
                     />
                   )}
@@ -3928,6 +3929,122 @@ export default function ProductDetail({
     [product, effective, qty]
   );
 
+  /**
+   * 📐 กล่องงานสั่งทำมาก่อนกลุ่มตัวเลือกไหม — ยึดลำดับที่แอดมินเรียงกลุ่มไว้
+   * ช่องกรอกอยู่เหนือกลุ่มตัวเลือกอื่นในรายการ = ลูกค้าควรกรอกก่อน (อาร์มปัก: ราคาคิดจากขนาดลาย
+   * เลือกสีผ้า/สีไหมก่อนแล้วราคายังไม่นิ่ง) · เรียงไว้ท้ายเหมือนเดิม = อยู่ใต้กลุ่มตัวเลือกตามเดิม
+   * (กลุ่มแกนตารางราคาแบบพื้นที่ถูกซ่อนจากหน้าร้านอยู่แล้ว ไม่ถูกนับเป็นกลุ่มแรก)
+   */
+  const mtoFirst = (() => {
+    // ยึดลำดับที่ "ตั้งไว้" ทั้งหมด ไม่ใช่เฉพาะกลุ่มที่โผล่อยู่ตอนนี้ — ไม่งั้นกล่องเด้งขึ้น-ลง
+    // เวลากลุ่มที่ตั้ง "แสดงเมื่อ" ไว้ถูกซ่อน
+    const first = product.options.findIndex((o) => isMadeToOrderOption(o));
+    if (first < 0) return false;
+    const firstPlain = product.options.findIndex((o) => !isMadeToOrderOption(o) && !areaDriver(o));
+    return firstPlain >= 0 && first < firstPlain;
+  })();
+
+  /**
+   * 📐 กล่องงานสั่งทำ — รวมทุกอย่างที่ลูกค้าต้อง "ระบุเอง" ไว้ที่เดียว
+   * โผล่เมื่อมีอะไรให้กรอกจริง ๆ (เช่น เลือกแบบที่ 3 แล้วช่องขนาดถึงจะขึ้น)
+   * เรียกจาก JSX ตำแหน่งเดียวเท่านั้น (บนหรือล่างกลุ่มตัวเลือก ตาม mtoFirst)
+   */
+  function mtoBoxUI() {
+    if (mtoVisible.length === 0) return null;
+    return (
+      <div className={`${mtoFirst ? "mt-4" : "mt-5"} rounded-2xl bg-sky-50/60 p-4 ring-1 ring-sky-200`}>
+        {/*
+          สินค้าที่ไม่มีขนาดมาตรฐาน (mtoAlways) ไม่ต้องให้ติ๊ก — ช่องกรอกกางรอเลย
+          (ติ๊กแล้วเขียนว่า "ไม่ติ๊ก = ใช้ขนาดมาตรฐาน" ทั้งที่ไม่มีขนาดมาตรฐาน = ลูกค้าไม่ติ๊ก แล้วออเดอร์เข้ามาไม่มีขนาด)
+        */}
+        {product.mtoAlways ? (
+          <div>
+            <span className="text-sm font-bold text-stone-700">📐 ระบุขนาดที่ต้องการ</span>
+            <span className="mt-0.5 block text-[11px] leading-relaxed text-stone-500">
+              {areaOn
+                ? "งานนี้คิดราคาตามพื้นที่ลาย — กรอกขนาดมาให้ครบ ระบบคำนวณราคาให้ทันที ไม่ต้องรอสอบถาม"
+                : "งานนี้ทำตามขนาดที่ลูกค้ากำหนด — กรอกขนาดมาให้ครบ แล้วแอดมินจะตีราคาให้"}
+            </span>
+          </div>
+        ) : (
+          /* ติ๊กก่อนถึงกางช่องกรอก — ไม่ติ๊ก = ใช้ขนาดมาตรฐาน ราคายังคิดเองได้ตามตารางปกติ */
+          <label className="flex cursor-pointer items-start gap-2.5">
+            <input
+              type="checkbox"
+              checked={mtoOn}
+              onChange={(e) =>
+                setSelections((sel) => {
+                  const next: Record<string, string> = { ...sel, [MTO_LABEL]: e.target.checked ? MTO_ON : "" };
+                  // เอาติ๊กออก = ล้างค่าที่กรอกไว้ด้วย ไม่งั้นค่าเก่าค้างแล้วติดไปกับออเดอร์
+                  if (!e.target.checked)
+                    for (const o of product.options) if (isMadeToOrderOption(o)) next[o.label] = "";
+                  return next;
+                })
+              }
+              className="mt-0.5 h-4 w-4 shrink-0 accent-sky-600"
+            />
+            <span>
+              <span className="text-sm font-bold text-stone-700">📐 ต้องการสั่งทำ — กำหนดขนาด/รายละเอียดเอง</span>
+              <span className="mt-0.5 block text-[11px] leading-relaxed text-stone-500">
+                ไม่ติ๊ก = ใช้ขนาดมาตรฐานของแบบนี้ ราคาตามตารางปกติ · ติ๊กแล้วระบุขนาดที่ต้องการได้
+                แล้วแอดมินจะตีราคาให้
+              </span>
+            </span>
+          </label>
+        )}
+        {mtoOn && (
+          <>
+            <div className="mt-3 space-y-3 border-t border-dashed border-sky-200 pt-3">
+              {mtoVisible.map((opt) => optionGroupUI(opt, false))}
+            </div>
+          </>
+        )}
+        {/* 📐 โชว์วิธีคิดราคาจากขนาดที่กรอก — ลูกค้าเห็นเองว่าราคามาจากไหน ไม่ต้องทักถามแอดมิน */}
+        {mtoOn && areaBreakdown && (
+          <div className="mt-3 border-t border-dashed border-sky-200 pt-3">
+            <p className="text-xs font-bold text-sky-800">
+              🧮 พื้นที่ลาย {areaBreakdown.width} × {areaBreakdown.height} ={" "}
+              {Math.round(areaBreakdown.area * 100) / 100} ตร.ซม.
+            </p>
+            <ul className="mt-1.5 space-y-0.5 text-[11px] leading-relaxed text-stone-600">
+              <li>
+                · {areaBreakdown.baseArea} ตร.ซม. แรก = {formatPrice(areaBreakdown.basePrice)}
+              </li>
+              {areaBreakdown.extraArea > 0 && (
+                <li>
+                  · อีก {Math.round(areaBreakdown.extraArea * 100) / 100} ตร.ซม. ×{" "}
+                  {formatPrice(areaBreakdown.stepPrice)} = {formatPrice(areaBreakdown.extraPrice)}
+                </li>
+              )}
+              <li className="font-bold text-stone-700">
+                · รวม {formatPrice(areaBreakdown.unitPrice)} / ชิ้น
+                {qty > 1 && <> × {qty} ชิ้น = {formatPrice(areaBreakdown.unitPrice * qty)}</>}
+              </li>
+            </ul>
+            <p className="mt-1.5 text-[10px] text-stone-400">
+              เรทเปลี่ยนตามช่วงจำนวนที่สั่ง — สั่งเยอะขึ้น ราคาต่อชิ้นลดเองอัตโนมัติ
+            </p>
+          </div>
+        )}
+        {mtoOn && askQuote && (
+          <div className="mt-3 border-t border-dashed border-sky-200 pt-3">
+            <p className="text-xs font-bold text-sky-800">
+              💬 อยากรู้ราคาก่อนสั่ง ทักมาถามได้เลย
+            </p>
+            <a
+              href={LINE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
+            >
+              💬 ทักไลน์สอบถามราคาก่อน
+            </a>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="homebg">
       {/* พื้นหลัง + เมฆลอย ชุดเดียวกับหน้าแรก (ครอบเฉพาะพื้นหลัง ไม่แตะดีไซน์เดิมของหน้านี้) */}
@@ -3960,7 +4077,6 @@ export default function ProductDetail({
       ))}
 
       {/* ปุ่มลัดไปแก้ไขสินค้านี้ในหลังบ้าน (เฉพาะแอดมิน) */}
-      {isAdmin && <AdminEditFab href={adminProductPath(product)} title="เปิดหน้าแก้ไขสินค้านี้ในระบบหลังบ้าน" />}
       {/* breadcrumb */}
       <nav className="flex items-center gap-1 overflow-hidden whitespace-nowrap text-[11px] text-stone-400">
         <Link href="/" className="shrink-0 hover:text-amber-600">หน้าแรก</Link>
@@ -4819,6 +4935,7 @@ export default function ProductDetail({
               )}
             </div>
           )}
+          {mtoFirst && mtoBoxUI()}
           <div id="opt-groups" className="mt-4 space-y-3">
             {/* กลุ่มที่ตั้ง "แสดงเมื่อ" ไว้ และเงื่อนไขยังไม่ตรง → ไม่ต้องโชว์ (เช่น สีตะขอของแบบที่ไม่ได้เลือก)
                 🧩 กลุ่มที่ตั้ง "ชุดตัวเลือก" (section) ชื่อเดียวกันและอยู่ติดกัน → ใส่กรอบเดียวมีหัวชุด
@@ -4879,102 +4996,8 @@ export default function ProductDetail({
           {/* สินค้าที่ให้เลือกของก่อน แล้วค่อยเลือกวิธีขาย — แผงเรทมาต่อท้ายกลุ่มตัวเลือก */}
           {product.rateAfterOptions && ratePickerAfterIdx < 0 && ratePickerUI}
 
-          {/*
-            📐 กล่องงานสั่งทำ — รวมทุกอย่างที่ลูกค้าต้อง "ระบุเอง" ไว้ที่เดียว
-            โผล่เมื่อมีอะไรให้กรอกจริง ๆ (เช่น เลือกแบบที่ 3 แล้วช่องขนาดถึงจะขึ้น)
-          */}
-          {mtoVisible.length > 0 && (
-            <div className="mt-5 rounded-2xl bg-sky-50/60 p-4 ring-1 ring-sky-200">
-              {/*
-                สินค้าที่ไม่มีขนาดมาตรฐาน (mtoAlways) ไม่ต้องให้ติ๊ก — ช่องกรอกกางรอเลย
-                (ติ๊กแล้วเขียนว่า "ไม่ติ๊ก = ใช้ขนาดมาตรฐาน" ทั้งที่ไม่มีขนาดมาตรฐาน = ลูกค้าไม่ติ๊ก แล้วออเดอร์เข้ามาไม่มีขนาด)
-              */}
-              {product.mtoAlways ? (
-                <div>
-                  <span className="text-sm font-bold text-stone-700">📐 ระบุขนาดที่ต้องการ</span>
-                  <span className="mt-0.5 block text-[11px] leading-relaxed text-stone-500">
-                    {areaOn
-                      ? "งานนี้คิดราคาตามพื้นที่ลาย — กรอกขนาดมาให้ครบ ระบบคำนวณราคาให้ทันที ไม่ต้องรอสอบถาม"
-                      : "งานนี้ทำตามขนาดที่ลูกค้ากำหนด — กรอกขนาดมาให้ครบ แล้วแอดมินจะตีราคาให้"}
-                  </span>
-                </div>
-              ) : (
-                /* ติ๊กก่อนถึงกางช่องกรอก — ไม่ติ๊ก = ใช้ขนาดมาตรฐาน ราคายังคิดเองได้ตามตารางปกติ */
-                <label className="flex cursor-pointer items-start gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={mtoOn}
-                    onChange={(e) =>
-                      setSelections((sel) => {
-                        const next: Record<string, string> = { ...sel, [MTO_LABEL]: e.target.checked ? MTO_ON : "" };
-                        // เอาติ๊กออก = ล้างค่าที่กรอกไว้ด้วย ไม่งั้นค่าเก่าค้างแล้วติดไปกับออเดอร์
-                        if (!e.target.checked)
-                          for (const o of product.options) if (isMadeToOrderOption(o)) next[o.label] = "";
-                        return next;
-                      })
-                    }
-                    className="mt-0.5 h-4 w-4 shrink-0 accent-sky-600"
-                  />
-                  <span>
-                    <span className="text-sm font-bold text-stone-700">📐 ต้องการสั่งทำ — กำหนดขนาด/รายละเอียดเอง</span>
-                    <span className="mt-0.5 block text-[11px] leading-relaxed text-stone-500">
-                      ไม่ติ๊ก = ใช้ขนาดมาตรฐานของแบบนี้ ราคาตามตารางปกติ · ติ๊กแล้วระบุขนาดที่ต้องการได้
-                      แล้วแอดมินจะตีราคาให้
-                    </span>
-                  </span>
-                </label>
-              )}
-              {mtoOn && (
-                <>
-                  <div className="mt-3 space-y-3 border-t border-dashed border-sky-200 pt-3">
-                    {mtoVisible.map((opt) => optionGroupUI(opt, false))}
-                  </div>
-                </>
-              )}
-              {/* 📐 โชว์วิธีคิดราคาจากขนาดที่กรอก — ลูกค้าเห็นเองว่าราคามาจากไหน ไม่ต้องทักถามแอดมิน */}
-              {mtoOn && areaBreakdown && (
-                <div className="mt-3 border-t border-dashed border-sky-200 pt-3">
-                  <p className="text-xs font-bold text-sky-800">
-                    🧮 พื้นที่ลาย {areaBreakdown.width} × {areaBreakdown.height} ={" "}
-                    {Math.round(areaBreakdown.area * 100) / 100} ตร.ซม.
-                  </p>
-                  <ul className="mt-1.5 space-y-0.5 text-[11px] leading-relaxed text-stone-600">
-                    <li>
-                      · {areaBreakdown.baseArea} ตร.ซม. แรก = {formatPrice(areaBreakdown.basePrice)}
-                    </li>
-                    {areaBreakdown.extraArea > 0 && (
-                      <li>
-                        · อีก {Math.round(areaBreakdown.extraArea * 100) / 100} ตร.ซม. ×{" "}
-                        {formatPrice(areaBreakdown.stepPrice)} = {formatPrice(areaBreakdown.extraPrice)}
-                      </li>
-                    )}
-                    <li className="font-bold text-stone-700">
-                      · รวม {formatPrice(areaBreakdown.unitPrice)} / ชิ้น
-                      {qty > 1 && <> × {qty} ชิ้น = {formatPrice(areaBreakdown.unitPrice * qty)}</>}
-                    </li>
-                  </ul>
-                  <p className="mt-1.5 text-[10px] text-stone-400">
-                    เรทเปลี่ยนตามช่วงจำนวนที่สั่ง — สั่งเยอะขึ้น ราคาต่อชิ้นลดเองอัตโนมัติ
-                  </p>
-                </div>
-              )}
-              {mtoOn && askQuote && (
-                <div className="mt-3 border-t border-dashed border-sky-200 pt-3">
-                  <p className="text-xs font-bold text-sky-800">
-                    💬 อยากรู้ราคาก่อนสั่ง ทักมาถามได้เลย
-                  </p>
-                  <a
-                    href={LINE_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
-                  >
-                    💬 ทักไลน์สอบถามราคาก่อน
-                  </a>
-                </div>
-              )}
-            </div>
-          )}
+          {/* 📐 กล่องงานสั่งทำ — ปกติต่อท้ายกลุ่มตัวเลือก (mtoFirst = ยกขึ้นไปไว้ก่อนแล้ว) */}
+          {!mtoFirst && mtoBoxUI()}
 
           {/* งานกำหนดขนาดเอง แบบเดิม (custom) — ช่องกว้าง × ยาว ชุดเดียว */}
           {custom && (

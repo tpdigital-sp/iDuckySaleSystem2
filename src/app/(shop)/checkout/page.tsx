@@ -12,6 +12,8 @@ import {
   orderBoxFees,
   boxFeeTotal,
   boxFeesOf,
+  earlyPayAmount,
+  earlyPayOf,
   fetchShopPayment,
   hasPayment,
   freeShippingMinOf,
@@ -335,7 +337,11 @@ export default function CheckoutPage() {
   const effTierDiscount = staffMode ? 0 : tierDiscount;
   const useCoupon = couponDisc > effTierDiscount;
   const discount = Math.max(effTierDiscount, couponDisc);
-  const total = Math.max(0, subtotal - discount + shippingCost);
+  // ⚡ ส่วนลดโอนไว — ได้ทุกคนที่สั่งผ่านเว็บ (บวกทับส่วนลดระดับ/คูปองได้ ไม่ใช่เลือกอันที่ดีกว่า)
+  //    สั่งเพิ่มในออเดอร์เดิมไม่คิดใหม่ — ออเดอร์แรกลดไปแล้ว (ตรงกับกติกาส่วนลดระดับด้านบน)
+  //    ต้องคิดด้วยสูตรเดียวกับ /api/orders เป๊ะ ไม่งั้นยอดหน้าเว็บกับยอดในออเดอร์ไม่ตรง
+  const earlyPay = appendTo ? 0 : earlyPayAmount(subtotal, earlyPayOf(payment));
+  const total = Math.max(0, subtotal - discount - earlyPay + shippingCost);
 
   async function submit() {
     // 📦 ขั้นต่ำต่อรอบผลิต (เรท minQtyScope: "lot") — กันคนเดินมาหน้านี้ตรง ๆ ข้ามประตูที่ตะกร้า
@@ -1011,6 +1017,12 @@ export default function CheckoutPage() {
                 : `${tier?.icon ?? "🎖️"} ส่วนลดสมาชิก ${tier?.name ?? ""} (${tier?.pct ?? 0}%)`}
             </span>
             <span>−{formatPrice(discount)}</span>
+          </div>
+        )}
+        {earlyPay > 0 && (
+          <div className="mt-1 flex justify-between text-sm font-semibold text-emerald-600">
+            <span>⚡ ส่วนลดโอนไว</span>
+            <span>−{formatPrice(earlyPay)}</span>
           </div>
         )}
         <div className="mt-1 flex justify-between text-sm text-stone-600">

@@ -9,7 +9,10 @@ import Link from "next/link";
 import {
   DEFAULT_SHIPPING,
   fetchShopPayment,
+  DEFAULT_EARLY_PAY,
+  earlyPayOf,
   freeShippingMinOf,
+  type EarlyPayDiscount,
   giftPromosOf,
   boxFeesOf,
   persistShopPayment,
@@ -552,6 +555,8 @@ function AdminSettingsPageInner() {
   // ── จัดส่ง ──
   const [shipping, setShipping] = useState<ShippingMethod[]>([]);
   const [freeMin, setFreeMin] = useState<number>(0);
+  /** ⚡ ส่วนลดโอนไว — ลด 5/10 บาทตามยอดสินค้า (ดู @/lib/early-pay) */
+  const [earlyPay, setEarlyPay] = useState<EarlyPayDiscount>(DEFAULT_EARLY_PAY);
 
   // ── ระดับสมาชิก ──
   const [tiers, setTiers] = useState<Tier[]>([]);
@@ -747,6 +752,7 @@ function AdminSettingsPageInner() {
       setNote(p.note ?? "");
       setShipping(shippingOf(p));
       setFreeMin(freeShippingMinOf(p));
+      setEarlyPay(earlyPayOf(p));
       setTiers(tiersConfigOf(p));
       setWelcome(welcomeCouponOf(p));
       setGifts(giftPromosOf(p));
@@ -823,6 +829,12 @@ function AdminSettingsPageInner() {
       note: note.trim() || undefined,
       shipping: cleanShipping,
       freeShippingMin: Number(freeMin) || 0,
+      earlyPay: {
+        enabled: earlyPay.enabled,
+        threshold: Math.max(0, Number(earlyPay.threshold) || 0),
+        small: Math.max(0, Number(earlyPay.small) || 0),
+        large: Math.max(0, Number(earlyPay.large) || 0),
+      },
       tiers: tiers
         .map((t) => ({ ...t, name: t.name.trim(), minSpend: Number(t.minSpend) || 0, discountPct: Number(t.discountPct) || 0 }))
         .filter((t) => t.name)
@@ -1394,6 +1406,85 @@ function AdminSettingsPageInner() {
               )}
               <p className={`mt-3 text-xs ${faint}`}>
                 💡 ควรมีระดับเริ่มต้นที่ยอด 0 · ลด 0% (สมาชิกใหม่) และเรียงยอดจากน้อยไปมาก · ระบบจะเรียงให้อัตโนมัติตอนบันทึก
+              </p>
+            </section>
+          )}
+
+          {/* ══════ ⚡ ส่วนลดโอนไว (อยู่แท็บเดียวกับระดับสมาชิก — เป็นส่วนลดเหมือนกัน) ══════ */}
+          {tab === "tier" && (
+            <section className={`mt-4 p-5 ${card}`}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="font-display text-[15px] font-semibold text-slate-800">⚡ ส่วนลดโอนไว</h2>
+                  <p className={`mt-1 text-xs ${muted}`}>
+                    ลดท้ายบิลให้ทุกออเดอร์ที่สั่งผ่านเว็บ (ลูกค้าโอนก่อนร้านเริ่มผลิตเสมอ) · บวกทับส่วนลดสมาชิก/คูปองได้
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={earlyPay.enabled}
+                  onClick={() => {
+                    setEarlyPay({ ...earlyPay, enabled: !earlyPay.enabled });
+                    touch();
+                  }}
+                  className={`flex shrink-0 items-center gap-2.5 rounded-full py-1.5 pl-4 pr-1.5 text-sm font-bold transition ${
+                    earlyPay.enabled ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"
+                  }`}
+                >
+                  {earlyPay.enabled ? "เปิดอยู่" : "ปิดอยู่"}
+                  <span className={`relative h-7 w-12 rounded-full transition ${earlyPay.enabled ? "bg-emerald-500" : "bg-slate-300"}`}>
+                    <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${earlyPay.enabled ? "left-[22px]" : "left-0.5"}`} />
+                  </span>
+                </button>
+              </div>
+
+              <div className={`mt-4 grid gap-4 sm:grid-cols-3 ${earlyPay.enabled ? "" : "pointer-events-none opacity-50"}`}>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-slate-700">ยอดสินค้าไม่เกิน (บาท)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={earlyPay.threshold}
+                    onChange={(e) => {
+                      setEarlyPay({ ...earlyPay, threshold: Number(e.target.value) });
+                      touch();
+                    }}
+                    className={`${inputCls} w-full text-right tabular-nums`}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-slate-700">ลดกี่บาท (ยอดน้อย)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={earlyPay.small}
+                    onChange={(e) => {
+                      setEarlyPay({ ...earlyPay, small: Number(e.target.value) });
+                      touch();
+                    }}
+                    className={`${inputCls} w-full text-right tabular-nums`}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-slate-700">ลดกี่บาท (ยอดมาก)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={earlyPay.large}
+                    onChange={(e) => {
+                      setEarlyPay({ ...earlyPay, large: Number(e.target.value) });
+                      touch();
+                    }}
+                    className={`${inputCls} w-full text-right tabular-nums`}
+                  />
+                </label>
+              </div>
+
+              <p className={`mt-3 text-xs ${faint}`}>
+                {earlyPay.enabled
+                  ? `ยอดสินค้า (ก่อนค่าส่ง) ไม่เกิน ฿${Number(earlyPay.threshold).toLocaleString()} ลด ฿${earlyPay.small} · เกินกว่านั้นลด ฿${earlyPay.large} — คิดจากค่าสินค้าอย่างเดียว ค่าส่งไม่นับ`
+                  : "ปิดอยู่ = ออเดอร์ใหม่ไม่ได้ส่วนลดนี้ และตัวตรวจสลิปจะไม่ยอมรับยอดที่โอนขาดไป 5-10 บาทอีกต่อไป"}
               </p>
             </section>
           )}

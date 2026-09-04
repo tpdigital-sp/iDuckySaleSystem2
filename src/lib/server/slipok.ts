@@ -21,8 +21,8 @@ export interface SlipVerifyResult {
 
 /** ส่วนต่างระหว่างยอดที่ต้องโอนกับยอดในสลิป ที่ระบบยอมรับได้ */
 export interface SlipDeduction {
-  /** wht = หัก ณ ที่จ่าย (ลูกค้านิติบุคคล — ต้องตามใบ 50 ทวิ) · bankFee = ธนาคารหักค่าธรรมเนียมโอน */
-  kind: "wht" | "bankFee";
+  /** wht = หัก ณ ที่จ่าย (ลูกค้านิติบุคคล — ต้องตามใบ 50 ทวิ) · bankFee = ธนาคารหักค่าธรรมเนียมโอน · earlyPay = ส่วนลดโอนไวของร้าน */
+  kind: "wht" | "bankFee" | "earlyPay";
   /** อัตราหัก ณ ที่จ่าย (1 หรือ 3) — เฉพาะ kind = wht */
   rate?: number;
   /** จำนวนเงินที่หายไป (ยอดที่ต้องโอน − ยอดในสลิป) */
@@ -48,7 +48,13 @@ export function matchSlipAmount(
   actual: number,
   orderTotal?: number,
   /** ยอดหัก ณ ที่จ่ายที่แอดมินตั้งไว้ในออเดอร์ (order.wht) — แอดมินแก้ตัวเลขตามใบ 50 ทวิได้ เลยต้องยอมรับยอดนี้ตรง ๆ ด้วย */
-  adminWht?: { rate: number; amount: number }
+  adminWht?: { rate: number; amount: number },
+  /**
+   * ⚡ ส่วนลดโอนไวที่ออเดอร์นี้ "ยังไม่ได้หัก" (บาท) — 0/ไม่ส่ง = ไม่ยอมรับส่วนต่างนี้
+   * ออเดอร์ใหม่หักให้ตั้งแต่หน้า checkout แล้ว (ยอดที่ต้องโอนลดไปแล้ว) เลยต้องส่ง 0 มา
+   * ไม่งั้นลูกค้าหักซ้ำได้อีกรอบ · ที่ยังต้องมีทางนี้เพราะออเดอร์เก่า/ลูกค้าที่รู้โปรจากไลน์แล้วโอนน้อยกว่ายอดในเว็บ
+   */
+  earlyPayAllowed?: number
 ): { ok: boolean; deduction?: SlipDeduction } {
   if (!(expected > 0)) return { ok: true };
   if (!(actual > 0)) return { ok: false };
@@ -62,6 +68,13 @@ export function matchSlipAmount(
       ok: true,
       deduction: { kind: "wht", rate: adminWht.rate, amount: diff, label: `หัก ณ ที่จ่าย ${adminWht.rate}% (ตามที่ตั้งไว้ในออเดอร์)` },
     };
+
+  // ── ส่วนลดโอนไวของร้าน (5/10 บาท) — ต้องตรงเป๊ะ ──
+  // เช็คก่อนหัก ณ ที่จ่ายและค่าธรรมเนียมโอน เพราะ 5/10 ไปตรงกับทั้งสองอย่างพอดี
+  // (ค่าธรรมเนียมโอน 5/10 บาท และ 1% ของบิล 500/1,000) — ลูกค้าทั่วไปคือ "โอนไว" ไม่ใช่สองอันนั้น
+  // ลูกค้านิติบุคคลที่หักภาษีจริงจะมี order.wht ตั้งไว้ ซึ่งถูกจับไปตั้งแต่ด่านบนแล้ว
+  if (earlyPayAllowed && earlyPayAllowed > 0 && Math.abs(diff - earlyPayAllowed) <= 0.01)
+    return { ok: true, deduction: { kind: "earlyPay", amount: diff, label: "ส่วนลดโอนไวของร้าน" } };
 
   // ── หัก ณ ที่จ่าย — นักบัญชีมักปัดเป็นบาทถ้วน เผื่อคลาดเคลื่อน ±1 บาท ──
   const bases: { amount: number; suffix: string }[] = [{ amount: expected, suffix: "ของยอดงวดนี้" }];
@@ -101,7 +114,9 @@ export async function verifySlipWithSlipOK(
   /** ยอดรวมทั้งออเดอร์ — ใช้เช็คหัก ณ ที่จ่ายที่ลูกค้าคิดจากทั้งบิลตั้งแต่งวดมัดจำ */
   orderTotalAmount?: number,
   /** ยอดหัก ณ ที่จ่ายที่แอดมินตั้งไว้ในออเดอร์ (order.wht) */
-  adminWht?: { rate: number; amount: number }
+  adminWht?: { rate: number; amount: number },
+  /** ⚡ ส่วนลดโอนไวที่ออเดอร์นี้ยังไม่ได้หัก (บาท) — ดู matchSlipAmount */
+  earlyPayAllowed?: number
 ): Promise<SlipVerifyResult> {
   const key = process.env.SLIPOK_API_KEY;
   const branch = process.env.SLIPOK_BRANCH_ID;
@@ -111,7 +126,7 @@ export async function verifySlipWithSlipOK(
   const judge = (slipAmount: number | undefined, transRef: string | undefined, receiver?: string): SlipVerifyResult => {
     if (expectedAmount > 0) {
       if (!slipAmount) return { status: "fail", transRef, detail: "สลิปแท้แต่อ่านยอดเงินไม่ได้ — รอแอดมินเทียบยอดเอง" };
-      const m = matchSlipAmount(expectedAmount, slipAmount, orderTotalAmount, adminWht);
+      const m = matchSlipAmount(expectedAmount, slipAmount, orderTotalAmount, adminWht, earlyPayAllowed);
       if (!m.ok)
         return {
           status: "fail",
@@ -166,6 +181,18 @@ export async function verifySlipWithSlipOK(
     const code = Number(j?.code);
     if (res.status === 401 || res.status === 403 || (code >= 1000 && code <= 1005))
       return { status: "skip", detail: `SlipOK ตั้งค่าไม่ถูกต้อง/ใช้งานไม่ได้ (${j?.message ?? res.status})` };
+    // ── code 1010: สลิป SCB ที่ SlipOK ตรวจกับธนาคารไม่ได้ ──
+    // ⚠️ ข้อความจาก SlipOK เขียนว่า "กรุณารอประมาณ 2 นาที" ซึ่งจริงแค่ครึ่งเดียว
+    //    เจอทั้งกรณีเพิ่งโอนไม่ถึง 2 นาที และกรณี "สลิปเก่า" ที่ SCB ไม่ให้ตรวจย้อนหลังแล้ว
+    //    (OD-260904-5811 · 4 ก.ย. 69 แนบสลิปลงวันที่ 8 มิ.ย. 69 — ยิงซ้ำอีก 3 เดือนให้หลังก็ยังได้ 1010)
+    //    ถ้าปล่อยข้อความเดิมไปขึ้นหลังบ้าน แอดมินจะเข้าใจว่า "รอแป๊บเดียวเดี๋ยวผ่านเอง" แล้วทิ้งออเดอร์ค้าง
+    //    จึงเขียนเหตุผลใหม่ให้บอกทั้งสองทาง + สั่งงานชัดว่าให้ตรวจยอดกับวันเวลาในสลิปเอง
+    if (code === 1010)
+      return {
+        status: "fail",
+        detail:
+          "ตรวจกับธนาคารไทยพาณิชย์ไม่สำเร็จ — สลิปเพิ่งโอนไม่ถึง 2 นาที หรือเป็นสลิปเก่าที่เลยกรอบเวลาที่ SCB ให้ตรวจย้อนหลัง · กรุณาเปิดสลิปเทียบยอดและวันเวลาโอนเอง",
+      };
     // เก็บคำตอบดิบย่อ ๆ ไว้ในเหตุผล — วินิจฉัยเคสแปลก ๆ ได้จากหลังบ้านเลย
     const msg = j?.data?.message || j?.message || `ตรวจไม่ผ่าน`;
     const raw = JSON.stringify(j ?? {}).slice(0, 160);

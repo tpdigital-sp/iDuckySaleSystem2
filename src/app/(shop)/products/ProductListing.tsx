@@ -22,7 +22,8 @@ export default function ProductListing() {
   const router = useRouter();
   const params = useSearchParams();
   const category = (params.get("category") as CategoryId | null) ?? "all";
-  const [search, setSearch] = useState("");
+  // คำค้นเริ่มต้นจาก ?q= (ช่องค้นหาไวๆ ในเมกะเมนู "สินค้าและบริการ" ส่งมาแบบนี้)
+  const [search, setSearch] = useState(() => params.get("q") ?? "");
   const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
   useEffect(() => {
     fetchCategories().then((list) => setCats(list.filter((c) => !c.hidden)));

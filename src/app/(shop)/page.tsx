@@ -9,8 +9,6 @@ import { fetchShopPayment, freeShippingMinOf } from "@/lib/shop-settings";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { cachedProductsLite, fetchProductsLite } from "@/lib/product-repo";
 import { fallbackToOriginal, imgProps } from "@/lib/img";
-import { canAccessAdmin } from "@/lib/auth";
-import AdminEditFab from "@/components/AdminEditFab";
 import HomeChat from "@/components/HomeChat";
 import CardSkeleton from "@/components/CardSkeleton";
 import { CAT_ICON, groupOf, TAB_GROUPS } from "@/lib/cat-groups";
@@ -80,17 +78,12 @@ export default function HomePage() {
   const [tab, setTab] = useState<string>("all");
   /** ยอดส่งฟรี — ดึงจากที่แอดมินตั้งไว้ ไม่พิมพ์เลขตายตัวไว้ในแถบวิ่ง */
   const [freeMin, setFreeMin] = useState<number | null>(null);
-  /** ล็อกอินหลังบ้านอยู่ไหม — ใช้โชว์ปุ่มลัดไปแก้หน้าแรก (ลูกค้าทั่วไปไม่เห็น) */
-  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     fetchCategories().then((list) => setCats(list.filter((c) => !c.hidden)));
   }, []);
   useEffect(() => {
     void fetchShopPayment().then((p) => setFreeMin(freeShippingMinOf(p)));
-  }, []);
-  useEffect(() => {
-    void canAccessAdmin().then(setIsAdmin);
   }, []);
   useEffect(() => {
     let active = true;
@@ -636,7 +629,6 @@ export default function HomePage() {
       </section>
 
       {/* ปุ่มลัดไปแก้หน้าแรกในหลังบ้าน (เฉพาะแอดมิน) — /admin/nav คุมเมนูหัวเว็บ + หน้าแรก */}
-      {isAdmin && <AdminEditFab href="/admin/nav" title="เปิดหน้าแก้ไขเมนูและหน้าแรกในระบบหลังบ้าน" />}
 
       {/* ── ช่องทางโซเชียลลอยมุมจอ ── */}
       <nav className="social-dock" aria-label="ช่องทางโซเชียลของร้าน">
