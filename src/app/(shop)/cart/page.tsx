@@ -541,15 +541,27 @@ export default function CartPage() {
                       <Link href={productPath(product)} className="cart-name">
                         {product.name}
                       </Link>
-                      <button
-                        type="button"
-                        onClick={() => removeItem(item.key)}
-                        className="ord-btn quiet sm shrink-0"
-                        style={{ padding: "5px 10px", fontSize: ".72rem" }}
-                        aria-label={`ลบ ${product.name} ออกจากตะกร้า`}
-                      >
-                        ✕ ลบ
-                      </button>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {/* ✏️ แก้สเปคเดิม — เปิดหน้าสินค้าพร้อมติ๊กของเดิมกลับมาให้ครบ (รวมลายที่แนบ)
+                            แล้วกดบันทึกทับบรรทัดนี้ · เดิมลูกค้าต้องลบทิ้งแล้วเลือกใหม่ตั้งแต่ต้น ลายก็หายไปด้วย */}
+                        <Link
+                          href={`${productPath(product)}?edit=${encodeURIComponent(item.key)}`}
+                          className="ord-btn quiet sm shrink-0"
+                          style={{ padding: "5px 10px", fontSize: ".72rem" }}
+                          aria-label={`แก้ไขสเปคของ ${product.name}`}
+                        >
+                          ✏️ แก้ไข
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => removeItem(item.key)}
+                          className="ord-btn quiet sm shrink-0"
+                          style={{ padding: "5px 10px", fontSize: ".72rem" }}
+                          aria-label={`ลบ ${product.name} ออกจากตะกร้า`}
+                        >
+                          ✕ ลบ
+                        </button>
+                      </div>
                     </div>
                     {(() => {
                       // ซ่อน url ลาย/ธงภายในระบบ — สรุปเป็นข้อความสั้นแทน

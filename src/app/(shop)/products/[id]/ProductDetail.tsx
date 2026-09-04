@@ -3,6 +3,7 @@
 import { productAutoSeo } from "@/lib/auto-seo";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   activeMatrix,
   areaPriceBreakdown,
@@ -512,7 +513,8 @@ export default function ProductDetail({
 }) {
   const [product, setProduct] = useState<Product>(initialProduct);
   const category = getCategory(product.category);
-  const { addItem, items: cartItems, productOf } = useCart();
+  const { addItem, removeItem, items: cartItems, productOf } = useCart();
+  const router = useRouter();
   const [imageIndex, setImageIndex] = useState(0);
   // แท็บข้อมูลสินค้า (รายละเอียดเพิ่มเติม / วิธีสั่งงาน ฯลฯ)
   const [tabIndex, setTabIndex] = useState(0);
@@ -659,6 +661,21 @@ export default function ProductDetail({
     priceLinkRef.current = typeof window === "undefined" ? null : readPriceLink(window.location.search);
   /** ติ๊กค่าจากลิงก์ราคาให้เรียบร้อยแล้ว — โชว์แถบบอกลูกค้าว่าร้านจัดสเปคไว้ให้ */
   const [fromPriceLink, setFromPriceLink] = useState(false);
+  /**
+   * ✏️ เปิดหน้าจากปุ่ม "แก้ไข" ในตะกร้า (?edit=<คีย์บรรทัด>) — บรรทัดเดิมถูกแทนที่ตอนกดบันทึก
+   *
+   * ⚠️ อ่านใน effect เท่านั้น ห้ามอ่านตอน render เหมือนลิงก์ราคา — กดมาจากตะกร้าเป็นการเปลี่ยนหน้าฝั่ง
+   * ไคลเอนต์ ตอน render แรก window.location ยังเป็น /cart อยู่ (?edit= ยังไม่ขึ้น) จะได้ค่าว่างตลอด
+   */
+  const editKeyRef = useRef<string | null>(null);
+  /** ติ๊กสเปคเดิมจากตะกร้ากลับมาครบแล้ว — เปลี่ยนแถบบอกสถานะ/ป้ายบนปุ่มเป็นโหมดแก้ไข */
+  const [editing, setEditing] = useState(false);
+  /**
+   * ของในบรรทัดเดิมที่ "ประกอบใหม่จากหน้าจอไม่ได้" — ตำแหน่งลายที่วางบนเทมเพลต + ภาพแยกรายด้าน
+   * (จอวางลายสร้างค่าพวกนี้ตอนวาง เก็บไว้แค่เป็นข้อความในตะกร้า แกะกลับเป็นสถานะไม่ได้)
+   * จึงหิ้วค่าเดิมไปกับรายการที่บันทึกทับ ตราบใดที่ลายที่แนบยังครบเหมือนเดิม
+   */
+  const editCarryRef = useRef<{ keys: Record<string, string>; arts: string[] } | null>(null);
   /** โหลดสินค้าเวอร์ชันล่าสุดเสร็จหรือยัง — ต้องรอก่อนค่อยติ๊กค่าจากลิงก์ ไม่งั้นโดนทับ */
   const [productReady, setProductReady] = useState(false);
   /** แอดมินเพิ่งกดคัดลอกอะไร ("" = ยังไม่ได้กด · "long" = ตกไปใช้ลิงก์ยาว) */
@@ -1069,6 +1086,100 @@ export default function ProductDetail({
     const t = setTimeout(() => orderBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 350);
     return () => clearTimeout(t);
   }, [fromPriceLink]);
+
+  /**
+   * ✏️ แก้ไขรายการเดิมในตะกร้า (?edit=<คีย์บรรทัด>) — ติ๊กสเปคเดิมกลับมาให้ครบก่อน
+   *
+   * รอ 2 อย่าง: productReady (ตัวโหลดสินค้าสั่ง setSelections(initialSelections) ทับอยู่ ติ๊กก่อนหน้านั้นหายหมด)
+   * และตะกร้าอ่านของเก่าจาก localStorage เสร็จ (cartItems ว่างเปล่าในรอบแรกเสมอ) — หาไม่เจอก็แค่รอรอบถัดไป
+   */
+  const editLoadDone = useRef(false);
+  useEffect(() => {
+    if (!productReady || editLoadDone.current) return;
+    const key = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("edit");
+    if (!key) return;
+    editKeyRef.current = key;
+    const line = cartItems.find((i) => i.key === key && i.productId === product.id);
+    if (!line) return; // ตะกร้ายังไม่ hydrate (หรือบรรทัดถูกลบไปแล้ว) — ยังไม่ปักธง รอรอบหน้า
+    editLoadDone.current = true;
+    const src = line.selections;
+
+    const sel = sanitizeSpecSelections(product, src);
+    if (Object.keys(sel).length) {
+      setSelections((cur) => ({ ...cur, ...sel }));
+      // ของเสริมที่ปิดไว้ก่อน (collapsible) ต้องกางให้ด้วย ไม่งั้นราคามีค่าของเสริมแต่สวิตช์ดูเหมือนปิดอยู่
+      const open: Record<string, boolean> = {};
+      for (const opt of product.options ?? []) {
+        if (!opt.collapsible || isInputOption(opt)) continue;
+        const v = sel[opt.label];
+        if (v && v !== (opt.choices[0]?.name ?? "")) open[opt.label] = true;
+      }
+      if (Object.keys(open).length) setOpenAddOns((s) => ({ ...s, ...open }));
+    }
+    // เรทที่แอดมินลบทิ้งไปแล้ว = ไม่ยัด ปล่อยให้ระบบเลือกเรทตามจำนวนเองตามปกติ
+    const savedRate = src[RATE_LABEL];
+    if (savedRate && (product.priceRates ?? []).some((r) => r.label === savedRate)) {
+      setRateLabel(savedRate);
+      setRateTouched(true);
+    }
+    // 📐 ขนาดกำหนดเอง — ตะกร้าเก็บเป็นข้อความ "กว้าง×ยาว หน่วย" แกะกลับเป็นช่องกรอกสองช่อง
+    const cus = product.custom?.enabled ? product.custom : null;
+    const cusVal = cus ? (src[cus.label] ?? "") : "";
+    if (cus && cusVal) {
+      const m = /^\s*([\d.]+)\s*[×x]\s*([\d.]+)/.exec(cusVal);
+      if (m) {
+        setUseCustom(true);
+        setCustomW(m[1]);
+        setCustomH(m[2]);
+      } else if (cusVal.includes("คุยรายละเอียด")) {
+        setUseCustom(true);
+      }
+    }
+    if (line.qty > 0) {
+      setQty(line.qty);
+      setQtyText(String(line.qty));
+      // ถือว่า "ตั้งจำนวนมาแล้ว" — ไม่ให้จำนวนเด้งกลับขั้นต่ำของเรทเองทีหลัง
+      setQtyTouched(true);
+    }
+    const nDesigns = parseInt(src[DESIGN_LABEL] ?? "", 10);
+    if (nDesigns > 0) {
+      setDesigns(nDesigns);
+      setDesignsTouched(true);
+    }
+    const nBack = parseInt(src[BACK_DESIGN_LABEL] ?? "", 10);
+    if (nBack > 0) setBackDesigns(nBack);
+    if (src["หมายเหตุ"]) setNote(src["หมายเหตุ"]);
+    if (src["ลิงก์ไฟล์ลาย/อีเมล"]) setArtLink(src["ลิงก์ไฟล์ลาย/อีเมล"]);
+    // 🎨 ลายที่แนบไว้เดิม — เอา url กลับมาเลย ลูกค้าไม่ต้องอัปใหม่ (w/h ใช้แค่เตือน "ภาพเล็กไป" จึงปล่อย 0 ได้)
+    const arts = (src["ภาพลายที่แนบ"] ?? "")
+      .split(" | ")
+      .map((u) => u.trim())
+      .filter(Boolean);
+    if (arts.length)
+      setArtFiles(
+        arts.map((url) => ({ url, name: decodeURIComponent(url.split("/").pop() ?? "ลายที่แนบ"), w: 0, h: 0 }))
+      );
+    const consultVal = src[CONSULT_LABEL] ?? "";
+    if (consultVal.startsWith("คุยลายกับแอดมินแล้ว")) {
+      setConsultOk(true);
+      const ref = consultVal.split("·")[1]?.trim();
+      if (ref) setConsultRef(ref);
+    }
+    editCarryRef.current = {
+      keys: Object.fromEntries(
+        Object.entries(src).filter(([k]) => k === PLACEMENT_LABEL || k === PLACEMENT_SPEC_LABEL || k === "ภาพลายแต่ละด้าน")
+      ),
+      arts,
+    };
+    setEditing(true);
+  }, [productReady, product, cartItems]);
+
+  /** โหมดแก้ไข = พาไปที่กล่องสั่งซื้อเลย (ลูกค้ามาเพื่อปรับสเปค ไม่ใช่มาอ่านหน้าสินค้าใหม่) */
+  useEffect(() => {
+    if (!editing) return;
+    const t = setTimeout(() => orderBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 350);
+    return () => clearTimeout(t);
+  }, [editing]);
 
   const extraDesigns = rate?.extraDesignFee ? Math.max(0, designs - included) : 0;
   /**
@@ -2291,10 +2402,29 @@ export default function ProductDetail({
     if (!onlyStaged && !readyToAdd()) return;
     const selections = onlyStaged ? null : buildLine();
     if (!onlyStaged && !selections) return;
+    /**
+     * ✏️ โหมดแก้ไข — ลบบรรทัดเดิมทิ้ง "ก่อน" ใส่ของใหม่เสมอ
+     * ถ้าสเปคใหม่เหมือนเดิมเป๊ะ คีย์จะซ้ำกับของเดิม — ใส่ก่อนจะกลายเป็นบวกจำนวนทับ แล้วลบทีหลังหายทั้งบรรทัด
+     */
+    const editKey = editing ? editKeyRef.current : null;
+    if (editKey) removeItem(editKey);
     // 📦 สเปคแผ่นอื่นที่พักไว้ — หย่อนลงตะกร้าพร้อมกันทีเดียว (คนละบรรทัด อยู่ล็อตเดียวกัน)
     for (const sh of sheets) addItem(product.id, sh.selections, sh.qty, product);
-    if (selections) addItem(product.id, selections, qty, product);
+    /**
+     * หิ้วตำแหน่งลาย/ภาพรายด้านของบรรทัดเดิมไปด้วย — เฉพาะตอนที่ลายที่แนบยังครบเหมือนเดิม
+     * (ลบลายทิ้งไปแล้วยังหิ้วต่อ = ใบงานอ้างถึงรูปที่ไม่ได้แนบมา) · วางลายใหม่เอง ค่าใหม่ทับอยู่แล้ว
+     */
+    const carry = editKey ? editCarryRef.current : null;
+    const artsIntact =
+      !!carry && carry.arts.length > 0 && carry.arts.every((u) => artFiles.some((f) => f.url === u));
+    const line = selections && carry && artsIntact ? { ...carry.keys, ...selections } : selections;
+    if (line) addItem(product.id, line, qty, product);
     setSheets([]);
+    // แก้เสร็จแล้วพากลับตะกร้าเลย — ลูกค้ามาจากตะกร้า ไม่ได้ตั้งใจสั่งเพิ่มอีกใบ
+    if (editKey) {
+      router.push("/cart");
+      return;
+    }
     // เพิ่มสำเร็จแล้วค่อยล็อก — กันแตะซ้ำภายในไม่กี่ร้อยมิลลิวินาทีกลายเป็นสองใบงาน
     addLock.current = true;
     setTimeout(() => {
@@ -2987,6 +3117,76 @@ export default function ProductDetail({
                                 {hardMax != null ? `–${hardMax}` : " ขึ้นไป"} {cfg.unit ?? ""}
                               </p>
                             ) : null;
+                          })()}
+                          {/*
+                           * 📏 ค่าบริการตามขนาดที่กรอก (sizeFee) — กางตรงช่องกรอกเลย
+                           * ค่าบริการนี้อ่านจาก "คู่ช่อง กว้าง×ยาว" จึงไม่ใช่ของช่องใดช่องหนึ่ง — โชว์ใต้ช่องท้าย
+                           * ของคู่ (heightLabel) ตอนกรอกครบแล้ว · ป้าย +฿ บนการ์ดตัวเลือกอยู่คนละที่กับ
+                           * ช่องกรอก ลูกค้าพิมพ์เลขแล้วต้องเลื่อนขึ้นไปดู ไม่งั้นไม่รู้ว่าจ่ายเพิ่มเท่าไหร่
+                           */}
+                          {(() => {
+                            /*
+                             * ⚠️ ช่องขนาดช่องเดียวมี sizeFee เกาะได้ "หลายตัว" พร้อมกัน — สแตนดี้หลายชิ้น
+                             * (new-mt1dwpc1-6773) ผูกทั้งงานสกรีนและสีอะคริลิคไว้กับ "ขนาดชิ้นที่ 2" ตัวเดียว
+                             * ต้องรวมทุกตัวที่เลือกอยู่ ไม่ใช่หยิบตัวแรก ไม่งั้นยอดที่โชว์ต่ำกว่าที่จ่ายจริง
+                             */
+                            const owners = (product.options ?? [])
+                              .flatMap((o) => (o.choices ?? []).map((c) => ({ o, c })))
+                              .filter(
+                                ({ o, c }) => c.sizeFee?.heightLabel === opt.label && effective[o.label] === c.name
+                              );
+                            if (!owners.length) return null;
+                            const cf = owners[0].c.sizeFee!;
+                            const num = (v: string | undefined) => {
+                              const n = parseFloat(String(v ?? "").replace(/[^\d.]/g, ""));
+                              return Number.isFinite(n) && n > 0 ? n : null;
+                            };
+                            const w = num(effective[cf.widthLabel]);
+                            const h = num(effective[cf.heightLabel]);
+                            // ยังกรอกไม่ครบ = บอกเพดานที่รวมในราคาไว้ก่อน (ขั้นสุดท้ายที่ยังฟรี)
+                            // ตัวที่เกาะอยู่หลายตัวอาจให้โควตาไม่เท่ากัน — ตรงกันหมดถึงจะกล้าบอกตัวเลข
+                            if (w == null || h == null) {
+                              const frees = owners.map(({ c }) => [...c.sizeFee!.tiers].filter((t) => !t.fee).pop()?.upTo);
+                              const freeUpTo = frees.every((f) => f != null && f === frees[0]) ? frees[0] : null;
+                              return freeUpTo != null ? (
+                                <p className="mt-1 text-[11px] font-bold text-emerald-600">
+                                  🎁 ถึง {freeUpTo} {cfg?.unit ?? ""} รวมในราคาแล้ว — กรอกครบทั้งสองช่องแล้วจะคิดส่วนเกินให้
+                                </p>
+                              ) : null;
+                            }
+                            const longest = Math.max(w, h);
+                            const parts = owners
+                              .map(({ c }) => ({ name: c.name, bd: sizeFeeBreakdownOf(c.sizeFee!, effective) }))
+                              .filter((p): p is { name: string; bd: NonNullable<typeof p.bd> } => p.bd != null);
+                            const total = parts.reduce((s, p) => s + p.bd.fee, 0);
+                            if (!total)
+                              return (
+                                <p className="mt-1 text-[11px] font-bold text-emerald-600">
+                                  ✓ ด้านยาวสุด {longest} {cfg?.unit ?? ""} — รวมในราคาแล้ว ไม่คิดเพิ่ม
+                                </p>
+                              );
+                            const solo = parts.length === 1 ? parts[0].bd : null;
+                            return (
+                              <p className="mt-1 rounded-xl bg-teal-50 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-teal-700 ring-1 ring-teal-200">
+                                💰 ด้านยาวสุด {longest} {cfg?.unit ?? ""} ={" "}
+                                <span className="font-extrabold text-teal-900">+{formatPrice(total)}</span> ต่อ
+                                {matrix?.unit ?? "ชิ้น"}
+                                {solo && solo.pieces > 1 && (
+                                  // ที่มาของยอด: ชิ้นละ × จำนวนชิ้นต่อหน่วยขาย (เช่น โพ้งขอบ ฿10 × 8 ชิ้น)
+                                  <span className="font-normal text-stone-500">
+                                    {" "}
+                                    ({formatPrice(solo.perPiece)} × {solo.pieces} ชิ้น)
+                                  </span>
+                                )}
+                                {parts.length > 1 && (
+                                  // เกาะหลายตัว = กางว่ามาจากตัวเลือกไหนบ้าง ไม่งั้นลูกค้าไล่ที่มาไม่ถูก
+                                  <span className="font-normal text-stone-500">
+                                    {" "}
+                                    ({parts.map((p) => `${p.name} ${formatPrice(p.bd.fee)}`).join(" · ")})
+                                  </span>
+                                )}
+                              </p>
+                            );
                           })()}
                           {/* เตือนเฉพาะตอนพิมพ์ผิด — ยังไม่ได้กรอกไม่ต้องขึ้นแดงใส่หน้าลูกค้าตั้งแต่เปิดหน้า */}
                           {err && (
@@ -4971,7 +5171,16 @@ export default function ProductDetail({
                             {closed ? "กาง ▾" : "หุบ ▴"}
                           </span>
                         </button>
-                        {!closed && <div className="space-y-3">{blk.items.map(({ opt }) => optionGroupUI(opt))}</div>}
+                        {/* ✍️ ชุดที่มีแต่ช่องกรอก (กว้าง+สูง) — กรอบชุดครอบให้แล้ว ไม่ต้องมีกรอบซ้อนอีกชั้น
+                            คั่นด้วยเส้นประเหมือนช่องกรอกที่ต่อกันมานอกชุด (ชุดที่ปนปุ่มยังใส่กรอบตามเดิม) */}
+                        {!closed &&
+                          (blk.items.every(({ opt }) => isInputOption(opt)) ? (
+                            <div className="divide-y divide-dashed divide-stone-200 [&>*:not(:last-child)]:pb-3 [&>*+*]:pt-3">
+                              {blk.items.map(({ opt }) => optionGroupUI(opt, false))}
+                            </div>
+                          ) : (
+                            <div className="space-y-3">{blk.items.map(({ opt }) => optionGroupUI(opt))}</div>
+                          ))}
                       </section>
                     );
                   })()
@@ -5141,6 +5350,19 @@ export default function ProductDetail({
 
           {/* ═══ กล่องสั่งซื้อ — จำนวน + ยอด + ปุ่ม (ติดกับตัวเลือก ไม่ให้ของไม่บังคับมาคั่น) ═══ */}
           <div ref={orderBoxRef} className="mt-5 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-amber-100">
+            {/* ✏️ มาจากปุ่ม "แก้ไข" ในตะกร้า — ต้องบอกให้ชัดว่ากดบันทึกแล้วทับบรรทัดเดิม ไม่ใช่เพิ่มใบใหม่ */}
+            {editing && (
+              <div className="mb-3 rounded-2xl bg-sky-50 p-2.5 ring-1 ring-sky-200">
+                <p className="text-[12px] font-extrabold text-sky-900">✏️ กำลังแก้ไขรายการในตะกร้า</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-sky-800">
+                  ตัวเลือก จำนวน และลายที่แนบไว้ ถูกติ๊กกลับมาให้แล้ว — ปรับตรงไหนก็ได้ แล้วกด “💾 บันทึกการแก้ไข”
+                  ระบบจะแทนที่บรรทัดเดิมในตะกร้าให้ (ไม่เพิ่มเป็นรายการใหม่)
+                </p>
+                <Link href="/cart" className="mt-1.5 inline-block text-[11px] font-bold text-sky-700 underline">
+                  ← ยกเลิก กลับไปตะกร้าโดยไม่แก้
+                </Link>
+              </div>
+            )}
             {/* 🧾 เปิดมาจากลิงก์ราคาที่ร้านส่งให้ — บอกลูกค้าว่าของที่ติ๊กไว้มาจากไหน จะได้ไม่นึกว่าเว็บสุ่มมาให้ */}
             {fromPriceLink && (
               <div className="mb-3 rounded-2xl bg-amber-50 p-2.5 ring-1 ring-amber-200">
@@ -5446,7 +5668,9 @@ export default function ProductDetail({
                     }`}
                   >
                     {added
-                      ? "✓ เพิ่มลงตะกร้าแล้ว!"
+                      ? editing
+                        ? "✓ บันทึกแล้ว!"
+                        : "✓ เพิ่มลงตะกร้าแล้ว!"
                       : sheetRoll && !sheetRoll.withCurrent
                         ? `🛒 สั่ง ${sheetRoll.qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} ที่เก็บไว้ — ${formatPrice(sheetRoll.total)}`
                       : inputHardError || inputErrors.length > 0
@@ -5463,6 +5687,9 @@ export default function ProductDetail({
                         //    เคยวางไว้หัวบันได ปุ่มเลยฟ้องเรื่องจำนวนลายทั้งที่ยังไม่ได้กรอกช่องด้านบน
                         : needDesignsChoice && !designsOk
                         ? "⚠ ระบุก่อนว่ามีกี่ลาย"
+                        // ✏️ โหมดแก้ไข — ป้ายต้องบอกว่า "บันทึกทับ" ไม่ใช่ "เพิ่มลงตะกร้า" (อยู่หลังด่านตรวจทุกอัน)
+                        : editing
+                        ? `💾 บันทึกการแก้ไข — ${formatPrice(unitPrice * qty + designFee)}`
                         : (useCustom && customAsk) || askQuote
                         ? "🛒 สั่งเลย — แอดมินตีราคาแล้วแจ้งกลับ"
                         : sheetRoll
