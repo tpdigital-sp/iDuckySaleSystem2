@@ -8,6 +8,7 @@ import { useParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import { proofIssues, productWordIndex, type ProductWordIndex } from "@/lib/proof-check";
 import { fetchProductNamesLite } from "@/lib/product-repo";
+import { SSR_ORDER_SCRIPT_ID } from "@/lib/ssr-order-id";
 import {
   allSelfDesignedApproved,
   MOCK_ORDERS,
@@ -97,6 +98,24 @@ function openedFromOutside(): boolean {
 
 /** จำว่าผู้ใช้กดออกจากโหมดแพ็คของใบนี้เองแล้ว — เก็บต่อแท็บ (ปิดแท็บแล้วลืม) */
 const packOptOutKey = (orderId: string) => `ducky_pack_optout_${orderId}`;
+/**
+ * อ่านออเดอร์ที่ layout แปะมากับ HTML (ดู lib/server/order-ssr.ts)
+ * อ่านครั้งเดียวแล้วทิ้ง element ทิ้ง — กันของเก่าค้างตอนสลับไปดูออเดอร์ใบอื่นในแท็บเดิม
+ */
+function readSsrOrder(orderId: string): Order | null {
+  if (typeof document === "undefined") return null;
+  const el = document.getElementById(SSR_ORDER_SCRIPT_ID);
+  if (!el?.textContent) return null;
+  try {
+    const o = JSON.parse(el.textContent) as Order;
+    return o?.id === orderId ? o : null;
+  } catch {
+    return null;
+  } finally {
+    el.remove();
+  }
+}
+
 function packOptedOut(orderId: string): boolean {
   try {
     return sessionStorage.getItem(packOptOutKey(orderId)) === "1";
@@ -950,8 +969,16 @@ export default function AdminOrderDetailPage() {
    * กับการเดาห้องแชท LINE จากใบเก่า — สองอย่างนี้โผล่ทีหลังได้ ไม่ต้องกั๊กทั้งหน้าไว้)
    */
   const load = useCallback(async () => {
+    // ข้อมูลที่ layout แปะมากับ HTML แล้ว — วาดได้ทันทีโดยไม่ต้องรอ API สักรอบ
+    // (บนเว็บจริงค่าเรียก serverless function รอบละ ~0.6-0.8 วิ · ในเครื่องแทบไม่รู้สึกจึงเคยมองไม่เห็นปัญหา)
+    const seeded = readSsrOrder(orderId);
+    if (seeded) {
+      setOrder(seeded);
+      setDemo(false);
+      setLoading(false);
+    }
     const listLater = fetchOrdersAdmin({ lite: true }); // ยิงคู่ขนานไปเลย แต่ไม่รอ — ไม่ใช่ข้อมูลที่ใช้วาดหน้า
-    const one = await fetchOrderAdmin(orderId);
+    const one = await fetchOrderAdmin(orderId); // ของสดจากเซิร์ฟเวอร์ (มี loginLine ที่ SSR ไม่ได้ดึงมา)
     if (one.order) {
       setOrder(one.order);
       setDemo(false);
