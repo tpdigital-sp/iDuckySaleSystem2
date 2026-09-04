@@ -50,8 +50,11 @@ const DEPARTMENTS: { key: string; label: string; statuses: OrderStatus[] }[] = [
 const visibleTo = (list: Order[], seesAll: boolean) =>
   seesAll ? list : list.filter((o) => PACKING_QUEUE_STATUSES.includes(o.status));
 
-/** โมเสกรูปโชว์ได้มากสุด 4 ช่อง — เกินจากนี้ช่องสุดท้ายกลายเป็น "+N" */
-const PIC_CELLS = 4;
+/**
+ * วาดรูปในแถบท้ายแถวมากสุดกี่ใบ — กว้างสุด (จอ 1440) ยังใส่ได้ไม่เกินราว 12 ใบ
+ * เกินจากนี้ยังไงก็ถูกขอบขวาจางกลืนไป ไม่ต้องโหลดมาให้เปลืองแรงเครื่อง (ลิสต์ทีละ 65 ใบ)
+ */
+const PIC_MAX = 12;
 /**
  * ภาพของออเดอร์ทั้งใบ (เรียงตามรายการ) — รายการไหนมีแบบงานแล้วใช้แบบ ยังไม่มีก็ใช้ลายที่ลูกค้าแนบมา
  *
@@ -67,7 +70,7 @@ const coversOf = (o: Order) => {
   }
   return out;
 };
-/** ป้ายกำกับกรอบรูป — ชื่อรายการ (ไม่ซ้ำ) + จำนวนรูปทั้งใบ */
+/** ป้ายกำกับแถบรูป — ชื่อรายการ (ไม่ซ้ำ) + จำนวนรูปทั้งใบ */
 const picTitle = (covers: { url: string; name: string }[]) => {
   if (!covers.length) return "ยังไม่มีภาพลาย/แบบงาน";
   const names = [...new Set(covers.map((c) => c.name))];
@@ -417,27 +420,10 @@ function OrderRow({
   return (
     <Link
       href={`/admin/orders/${encodeURIComponent(o.id)}`}
-      className="dkb-g dkb-lrow has-pic"
+      className={`dkb-g dkb-lrow${covers.length ? " has-pic" : ""}`}
       data-done={done ? "1" : undefined}
       style={{ ["--dk-tone" as string]: STATUS_TONE[o.status] }}
     >
-      {/* รูปที่ลูกค้าสั่ง — แบบงานก่อน ถ้ายังไม่มีแบบก็ใช้ลายที่ลูกค้าแนบมา · หลายลายซอยเป็นโมเสกในกรอบเดิม */}
-      <span className="dkb-pic" data-n={covers.length ? Math.min(covers.length, PIC_CELLS) : 1} title={picTitle(covers)}>
-        {covers.length === 0 ? (
-          <span className="ph" aria-hidden>
-            🖼️
-          </span>
-        ) : (
-          <>
-            {covers.slice(0, covers.length > PIC_CELLS ? PIC_CELLS - 1 : PIC_CELLS).map((c) => (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img key={c.url} src={c.url} alt="" loading="lazy" decoding="async" />
-            ))}
-            {covers.length > PIC_CELLS && <span className="more">+{covers.length - (PIC_CELLS - 1)}</span>}
-          </>
-        )}
-      </span>
-
       <span className="dkb-main">
         <span className="dkb-who">
           <span className="nm">{o.customer || "ยังไม่ระบุชื่อ"}</span>
@@ -577,6 +563,19 @@ function OrderRow({
           </>
         )}
       </span>
+
+      {/* รูปที่ลูกค้าสั่ง — แบบงานก่อน ถ้ายังไม่มีแบบก็ใช้ลายที่ลูกค้าแนบมา (ไม่มีรูป = ไม่มีแถบ) */}
+      {covers.length > 0 && (
+        <span className="dkb-strip" title={picTitle(covers)}>
+          <span className="pics">
+            {covers.slice(0, PIC_MAX).map((c, i) => (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img key={`${c.url}-${i}`} src={c.url} alt="" loading="lazy" decoding="async" />
+            ))}
+          </span>
+          {covers.length > 1 && <span className="more">{covers.length} รูป</span>}
+        </span>
+      )}
 
       <span className="dkb-side">
         <StatusChip s={o.status} label={orderStatusLabel(o)} />
