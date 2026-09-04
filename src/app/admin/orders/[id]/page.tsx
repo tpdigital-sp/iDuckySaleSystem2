@@ -3879,12 +3879,18 @@ export default function AdminOrderDetailPage() {
                 {origin && (
                   <div className="flex items-center gap-3 rounded-xl bg-white p-3 ring-1 ring-slate-200">
                     <div className="shrink-0">
-                      <QRCodeSVG value={`${origin}/admin/orders/${encodeURIComponent(order.id)}`} size={68} level="M" marginSize={0} />
+                      <QRCodeSVG
+                        value={`${origin}/admin/orders/${encodeURIComponent(order.id)}?${PACK_SCAN_PARAM}=1`}
+                        size={68}
+                        level="M"
+                        marginSize={0}
+                      />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-semibold text-slate-600">📱 สแกนเปิดบนมือถือ</p>
+                      <p className="text-xs font-semibold text-slate-600">📱 สแกนเข้าโหมดแพ็คบนมือถือ</p>
                       <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
-                        ส่องด้วยกล้องมือถือ → เปิดหน้าออเดอร์นี้ เช็คของตามภาพได้เลย ไม่ต้องรอปริ้นใบงาน
+                        ส่องด้วยกล้องมือถือ → เข้าโหมดแพ็คของใบนี้ทันที เช็คของตามภาพได้เลย ไม่ต้องรอปริ้นใบงาน ·
+                        พนักงานแผนกไหนก็ใช้ได้ ขอแค่ล็อกอินหลังบ้านอยู่
                       </p>
                     </div>
                   </div>
