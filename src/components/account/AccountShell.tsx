@@ -210,7 +210,14 @@ export function stepLabel(i: number, o: Order): string {
   const cur = STEP_OF[o.status];
   if (i === 0) return "สั่งซื้อสำเร็จ";
   if (i === 1) return cur > 1 ? "ชำระเงินแล้ว" : o.status === "รอตรวจสอบ" ? "รอตรวจสลิป" : "รอชำระเงิน";
-  if (i === 2) return cur > 2 ? "อนุมัติแบบแล้ว" : o.status === "แก้ไขแบบ" ? "กำลังแก้แบบ" : o.status === "รอตรวจแบบ" ? "รอคุณตรวจแบบ" : "ทำแบบงาน";
+  if (i === 2)
+    return cur > 2 || o.status === "อนุมัติแบบ"
+      ? "อนุมัติแบบแล้ว"
+      : o.status === "แก้ไขแบบ"
+        ? "กำลังแก้แบบ"
+        : o.status === "รอตรวจแบบ"
+          ? "รอคุณตรวจแบบ"
+          : "ทำแบบงาน";
   if (i === 3) return cur > 3 ? "ผลิตเสร็จ" : "กำลังผลิต";
   return o.status === "เสร็จสิ้น" ? "จัดส่งสำเร็จ" : o.status === "จัดส่งแล้ว" ? "จัดส่งแล้ว" : "จัดส่ง";
 }
@@ -220,6 +227,8 @@ export function stepTime(i: number, o: Order): string {
   if (i === 0) return o.date;
   if (i === 1 && cur === 1) return orderBalance(o) > 0 ? `ค้างชำระ ${formatPrice(orderBalance(o))}` : "รอตรวจสอบ";
   if (i === 4 && o.tracking) return `พัสดุ ${o.tracking}`;
+  // แบบผ่านแล้วแต่ยังไม่เข้าผลิต — ขั้นแบบงานถือว่าเรียบร้อยทั้งที่ยังยืนอยู่ขั้นนี้
+  if (i === 2 && o.status === "อนุมัติแบบ") return "เรียบร้อย";
   if (i < cur) return "เรียบร้อย";
   return "—";
 }

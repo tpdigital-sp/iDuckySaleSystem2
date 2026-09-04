@@ -3,15 +3,16 @@
 /**
  * คิวปริ้น /admin/print — ใบงานที่พร้อมปริ้นได้แล้ว  (ดีไซน์ "รางเบนโตะกระจก")
  *
- * เอาเฉพาะสถานะ "อนุมัติแบบ" เท่านั้น (ลูกค้าตรวจแบบผ่านแล้ว = แบบนิ่ง ปริ้นไปทำได้)
+ * เอาตั้งแต่ "อนุมัติแบบ" (แบบนิ่งแล้ว ปริ้นไปทำได้) ไปจนถึง "กำลังผลิต"
  * ก่อนหน้านั้นแบบยังเปลี่ยนได้ ปริ้นไปก็ต้องทิ้ง
+ * ⚠️ ต้องรวม "กำลังผลิต" ด้วย ไม่งั้นใบที่ถูกดันเข้าไลน์ผลิตก่อนปริ้นจะหายจากคิวทั้งที่ยังไม่ได้ปริ้น
  *
  * คนที่ใช้: ฝ่ายผลิตยืนหน้าเครื่อง มือไม่ว่าง — ปุ่มปริ้นจึงอยู่ในแถวเลย ไม่ต้องเปิดเข้าใบก่อน
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import RequirePerm from "@/components/RequirePerm";
-import { daysToUseBy, orderFullyPaid, proofsOf, type Order } from "@/lib/admin-data";
+import { daysToUseBy, orderFullyPaid, proofsOf, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchOrdersAdmin } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
 import {
@@ -36,11 +37,17 @@ import {
 
 type TabKey = "todo" | "done" | "all";
 
+/** สถานะที่ใบงานเข้าคิวปริ้นได้ — "กำลังผลิต" ต้องอยู่ด้วย เพราะบางใบถูกดันเข้าไลน์ผลิตตั้งแต่ยังไม่ปริ้น */
+const PRINT_QUEUE_STATUSES: OrderStatus[] = ["อนุมัติแบบ", "กำลังผลิต"];
+
 const qtyOf = (o: Order) => o.items.reduce((s, i) => s + i.qty, 0);
 const printCountOf = (o: Order) => o.printCount ?? (o.printedAt ? 1 : 0);
+/** ผลิตอยู่แล้วแต่ยังไม่มีใบงาน — ของร้อนที่สุดในคิว ต้องปริ้นตามให้ทัน */
+const inProdUnprinted = (o: Order) => o.status === "กำลังผลิต" && printCountOf(o) === 0;
 
-/** ยิ่งเร่งยิ่งอยู่บน: งานเร่ง → ใกล้วันใช้งาน → ออเดอร์เก่ากว่า */
+/** ยิ่งเร่งยิ่งอยู่บน: ผลิตอยู่แล้วยังไม่ปริ้น → งานเร่ง → ใกล้วันใช้งาน → ออเดอร์เก่ากว่า */
 function urgency(o: Order): number {
+  if (inProdUnprinted(o)) return -2000;
   if (o.rush) return -1000;
   const d = daysToUseBy(o);
   return d ?? 999;
@@ -62,8 +69,8 @@ function PrintQueueInner() {
   }, [load]);
   usePolling(load, { intervalMs: 20000 });
 
-  /** เฉพาะที่แบบผ่านแล้ว — ที่เหลือยังปริ้นไม่ได้ */
-  const ready = useMemo(() => orders.filter((o) => o.status === "อนุมัติแบบ"), [orders]);
+  /** แบบผ่านแล้วจนถึงกำลังผลิต — ก่อนหน้านี้แบบยังไม่นิ่ง ปริ้นไม่ได้ */
+  const ready = useMemo(() => orders.filter((o) => PRINT_QUEUE_STATUSES.includes(o.status)), [orders]);
 
   const counts = useMemo(
     () => ({
@@ -79,6 +86,7 @@ function PrintQueueInner() {
     const todo = ready.filter((o) => printCountOf(o) === 0);
     return {
       rush: todo.filter((o) => o.rush).length,
+      inProd: todo.filter((o) => o.status === "กำลังผลิต").length,
       today: todo.filter((o) => {
         const d = daysToUseBy(o);
         return d !== null && d <= 0;
@@ -103,7 +111,7 @@ function PrintQueueInner() {
         group="งานขาย"
         title="คิวปริ้น"
         count={`${counts.all} ใบ`}
-        sub="เฉพาะออเดอร์ที่ลูกค้าอนุมัติแบบแล้ว — แบบนิ่งแล้ว ปริ้นใบงานไปทำได้เลย"
+        sub="ออเดอร์ที่อนุมัติแบบแล้วจนถึงที่กำลังผลิต — แบบนิ่งแล้ว ปริ้นใบงานไปทำได้เลย"
         tools={<SearchBox value={q} onChange={setQ} placeholder="ค้นเลขออเดอร์ / ชื่อลูกค้า" />}
       />
 
@@ -112,9 +120,11 @@ function PrintQueueInner() {
           n={counts.todo}
           label="ยังไม่ปริ้น"
           detail={
-            urgent.rush || urgent.today
-              ? `ในนี้เป็นงานเร่ง ${urgent.rush} ใบ · ถึงกำหนดใช้แล้ว ${urgent.today} ใบ`
-              : "ไม่มีงานเร่งในคิวตอนนี้"
+            urgent.inProd
+              ? `เข้าไลน์ผลิตแล้วแต่ยังไม่ปริ้น ${urgent.inProd} ใบ · งานเร่ง ${urgent.rush} ใบ`
+              : urgent.rush || urgent.today
+                ? `ในนี้เป็นงานเร่ง ${urgent.rush} ใบ · ถึงกำหนดใช้แล้ว ${urgent.today} ใบ`
+                : "ไม่มีงานเร่งในคิวตอนนี้"
           }
           pct={counts.all > 0 ? (counts.todo / counts.all) * 100 : 0}
         />
@@ -133,7 +143,7 @@ function PrintQueueInner() {
       <ListHead title="คิวงาน" note="งานเร่งขึ้นก่อน แล้วตามด้วยงานที่ใกล้วันใช้งานที่สุด" />
 
       {loading ? (
-        <Empty title="กำลังโหลดคิว…" body="ดึงออเดอร์ที่อนุมัติแบบแล้วจากเซิร์ฟเวอร์" />
+        <Empty title="กำลังโหลดคิว…" body="ดึงออเดอร์ที่อนุมัติแบบแล้วและที่กำลังผลิตจากเซิร์ฟเวอร์" />
       ) : shown.length === 0 ? (
         <Empty
           title={kw ? `ไม่เจอ “${q.trim()}” ในหมวดนี้` : tab === "todo" ? "ไม่มีใบงานรอปริ้น" : "ไม่มีออเดอร์ในหมวดนี้"}
@@ -160,7 +170,12 @@ function PrintRow({ o }: { o: Order }) {
   const paid = orderFullyPaid(o);
   const noProof = o.items.some((it) => proofsOf(it).length === 0);
   /** ยังไม่ปริ้น = งานค้าง (คอรัล) · ปริ้นแล้ว = เดินต่อได้ (เงียบ) */
-  const tone = printed > 0 ? "var(--dk-quiet)" : o.rush || (left !== null && left <= 0) ? "var(--dk-coral-deep)" : "var(--dk-mint)";
+  const tone =
+    printed > 0
+      ? "var(--dk-quiet)"
+      : inProdUnprinted(o) || o.rush || (left !== null && left <= 0)
+        ? "var(--dk-coral-deep)"
+        : "var(--dk-mint)";
 
   return (
     <Row tone={tone} done={printed > 0}>
@@ -169,6 +184,10 @@ function PrintRow({ o }: { o: Order }) {
         href={`/admin/orders/${encodeURIComponent(o.id)}`}
         tags={
           <>
+            {inProdUnprinted(o) && (
+              <Tag tone="coral" title="ใบนี้ถูกดันเข้าไลน์ผลิตแล้วทั้งที่ยังไม่ได้ปริ้นใบงาน">ผลิตอยู่ ยังไม่ปริ้น</Tag>
+            )}
+            {o.status === "กำลังผลิต" && printed > 0 && <Tag tone="quiet">กำลังผลิต</Tag>}
             {o.rush && <Tag tone="solid">งานเร่ง</Tag>}
             {left !== null && (
               <Tag tone={left < 0 ? "coral" : left <= 3 ? "yolk" : "quiet"} title="วันที่ลูกค้าต้องใช้งาน">
