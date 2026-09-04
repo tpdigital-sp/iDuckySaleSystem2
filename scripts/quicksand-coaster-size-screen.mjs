@@ -19,14 +19,14 @@
  *    ⚠️ ศัพท์ร้าน (iducky-screen-2layer): 2 ด้าน = ลายคนละฝั่ง มองจากคนละด้าน ·
  *       2 เลเยอร์ = ลายบน+ใต้หันฝั่งเดียวกัน ซ้อนกันดูมีมิติ — อย่าเขียนคำอธิบายปนกัน
  *       (ภาพ 2 ด้านรุ่น v1 เคยติดคำว่า 2 Layer ในหัวข้อ → ขึ้นรุ่น v2)
- * 3. ภาพประจำตัวเลือก "สีกลิตเตอร์" 4 สี — ครอปจากภาพถ่ายจริงของสินค้า (ใบ 4 แผ่น 2×2)
- *    ประกอบลงการ์ดขาวพร้อมชื่อสี
+ * 3. ภาพประจำตัวเลือก "สีกลิตเตอร์" 4 สี — ครอปเนื้อกลิตเตอร์เต็มกรอบจากภาพถ่ายจริง
+ *    ต้นฉบับความละเอียดเต็มบนไดรฟ์ (DSC00008.jpg 5371×3581) ไม่ใช่ตัวย่อ 1200px ในเว็บ
  *
  * รันซ้ำได้: เจอกลุ่มเดิม = เขียนทับตัวเดิม ไม่เพิ่มซ้ำ
  * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคช 30 วัน) — แก้ภาพเมื่อไหร่ให้ขึ้นรุ่น VER ใหม่
  * ⚠️ ห้ามลืม data.savedAt เป็น ISO string (ไม่ใช่ Date.now() ตัวเลข)
  */
-import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import sharp from "sharp";
 import { mascotDataUri } from "./iducky-assets.mjs";
 
@@ -46,18 +46,26 @@ const TWO_SIDE = "สกรีน 2 ด้าน";
 const TWO_LAYER = "สกรีน 2 เลเยอร์";
 const TWO_EXTRA = 10; // ใบสเปค: สกรีน 2 ด้าน / 2 layer บวกเพิ่ม 10 บาท (ราคาเดียวกันทั้งคู่)
 const SCREEN2_VER = "v2"; // ภาพ 2 ด้านแก้หัวข้อ/คำบรรยาย — อัปทับชื่อเดิมไม่ได้ (CDN แคช 30 วัน)
+const COLOR_VER = "v2"; // สวอตช์สีกลิตเตอร์ครอปใหม่จากต้นฉบับความละเอียดเต็ม (v1 เละตอนย่อ)
 
-/** ภาพถ่ายจริง 4 แผ่นเรียง 2×2 (อยู่ใน body ของสินค้าเอง) — ใช้ครอปเป็นภาพตัวเลือกสี */
+/**
+ * ต้นฉบับภาพ 4 แผ่นเรียง 2×2 ที่ความละเอียดเต็ม (5371×3581) จากไดรฟ์รูปงานจริง
+ * — ภาพเดียวกับที่อยู่ใน body ของสินค้า แต่ในเว็บถูกย่อเหลือ 1200×750 (แผ่นละ ~334px)
+ * ครอปจากตัวย่อแล้วสวอตช์เละตอนย่อเป็นวงกลม 36px ในหน้าสินค้า ("ปรับภาพให้ชัดขึ้น" 3 ก.ย. 69)
+ */
 const GLITTER_PHOTO =
-  "https://upvigfvxloelzevwneof.supabase.co/storage/v1/object/public/product-images/products/coasters-glitter/0d2d135e-4bc8-4892-aacd-da92885cd496.jpg";
-/** ตำแหน่งศูนย์กลางแต่ละแผ่นในภาพ 1200×750 (วัดมือจากภาพ) + ชื่อไฟล์/ป้าย */
+  "/Volumes/iDuckyShop/- ข้อมูลตอบลูกค้า/50_ของใช้และของที่ระลึก/แผ่นรองแก้วน้ำ/DSC00008.jpg";
+/**
+ * ศูนย์กลาง + ครึ่งด้านของกรอบครอปในภาพต้นฉบับ (วัดมือ) — เลือกโซนที่กลิตเตอร์แน่น
+ * และไม่ติดขอบยางขาว/ผ้าปูฉากหลัง เพราะสวอตช์เป็นเนื้อกลิตเตอร์เต็มกรอบ ไม่มีขอบ
+ * ลำดับแผ่นตามใบสเปค: ทอง ซ้ายบน · ชมพู ขวาบน · ซากุระ ซ้ายล่าง · ม่วง ขวาล่าง
+ */
 const COLORS = [
-  { name: "ทอง", file: `glitter-gold-${VER}.jpg`, label: "กลิตเตอร์สีทอง", cx: 437, cy: 190 },
-  { name: "ชมพู", file: `glitter-pink-${VER}.jpg`, label: "กลิตเตอร์สีชมพู", cx: 765, cy: 197 },
-  { name: "ซากุระ", file: `glitter-sakura-${VER}.jpg`, label: "กลิตเตอร์ดอกซากุระ", cx: 440, cy: 525 },
-  { name: "ม่วง", file: `glitter-purple-${VER}.jpg`, label: "กลิตเตอร์สีม่วง", cx: 767, cy: 527 },
+  { name: "ทอง", file: `glitter-gold-${COLOR_VER}.jpg`, cx: 1905, cy: 900, half: 540 },
+  { name: "ชมพู", file: `glitter-pink-${COLOR_VER}.jpg`, cx: 3540, cy: 1050, half: 520 },
+  { name: "ซากุระ", file: `glitter-sakura-${COLOR_VER}.jpg`, cx: 1905, cy: 2600, half: 540 },
+  { name: "ม่วง", file: `glitter-purple-${COLOR_VER}.jpg`, cx: 3650, cy: 2760, half: 520 },
 ];
-const CROP = 306; // ด้านของสี่เหลี่ยมครอป — เล็กกว่าแผ่น (~334px) เล็กน้อย กันฉากหลังโผล่มุมวงกลม
 
 const W = 900;
 const H = 900;
@@ -223,30 +231,22 @@ files[`screen-1side-${VER}.jpg`] = await jpeg(Buffer.from(screenArt("1side")));
 files[`screen-2side-${SCREEN2_VER}.jpg`] = await jpeg(Buffer.from(screenArt("2side")));
 files[`screen-2layer-${VER}.jpg`] = await jpeg(Buffer.from(screenArt("2layer")));
 
-// การ์ดสีกลิตเตอร์ — วงกลมครอปจากภาพถ่ายจริง วางบนการ์ดขาว + ชื่อสี
-const photoRes = await fetch(GLITTER_PHOTO);
-if (!photoRes.ok) { console.error("โหลดภาพกลิตเตอร์ 4 สีไม่ได้", photoRes.status); process.exit(1); }
-const photo = Buffer.from(await photoRes.arrayBuffer());
-const CIRCLE = 620; // ขนาดวงกลมบนการ์ด
+/**
+ * สวอตช์สีกลิตเตอร์ — เนื้อกลิตเตอร์เต็มกรอบจากภาพถ่ายจริง ไม่มีการ์ดขาว/ตัวหนังสือ
+ * หน้าสินค้าย่อสวอตช์เป็นวงกลม ~36px และพิมพ์ชื่อสีข้าง ๆ ให้อยู่แล้ว
+ * การ์ดขาว+หัวข้อรุ่นแรกจึงเหลือแต่ขอบขาวกับวงจิ๋ว มองไม่ออกว่าสีไหน
+ */
+if (!existsSync(GLITTER_PHOTO)) {
+  console.error(`ไม่เจอภาพต้นฉบับ (ไดรฟ์ยังไม่ได้เมาต์?)\n  ${GLITTER_PHOTO}`);
+  process.exit(1);
+}
 for (const c of COLORS) {
-  const crop = await sharp(photo)
-    .extract({ left: Math.round(c.cx - CROP / 2), top: Math.round(c.cy - CROP / 2), width: CROP, height: CROP })
-    .resize(CIRCLE, CIRCLE)
-    .png()
+  files[c.file] = await sharp(GLITTER_PHOTO)
+    .extract({ left: c.cx - c.half, top: c.cy - c.half, width: c.half * 2, height: c.half * 2 })
+    .resize(W, H)
+    .sharpen({ sigma: 0.8 }) // ชดเชยความคมที่หายตอนย่อ — ไม่แตะสี/ความอิ่มตัว ให้ตรงงานจริง
+    .jpeg({ quality: 90, mozjpeg: true })
     .toBuffer();
-  const mask = Buffer.from(`<svg width="${CIRCLE}" height="${CIRCLE}"><circle cx="${CIRCLE / 2}" cy="${CIRCLE / 2}" r="${CIRCLE / 2 - 2}" fill="#fff"/></svg>`);
-  const round = await sharp(crop).composite([{ input: mask, blend: "dest-in" }]).png().toBuffer();
-  const card = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-  <rect width="${W}" height="${H}" fill="#f8fafc"/>
-  <rect x="18" y="18" width="${W - 36}" height="${H - 36}" rx="28" fill="#ffffff" stroke="#e2e8f0" stroke-width="2"/>
-  <text x="${W / 2}" y="96" font-family="${TH}" font-size="44" font-weight="700" text-anchor="middle" fill="${INK}">${c.label}</text>
-  <ellipse cx="${W / 2}" cy="${470 + CIRCLE / 2 - 8}" rx="${CIRCLE * 0.46}" ry="26" fill="#0f172a" opacity="0.08"/>
-  <text x="${W / 2}" y="${H - 44}" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">ภาพถ่ายจากงานจริง · กลิตเตอร์แต่ละล็อตอาจต่างกันเล็กน้อย</text>
-</svg>`;
-  const bg = await sharp(Buffer.from(card)).png().toBuffer();
-  files[c.file] = await jpeg(
-    await sharp(bg).composite([{ input: round, left: Math.round(W / 2 - CIRCLE / 2), top: 150 }]).png().toBuffer()
-  );
 }
 
 for (const [f, buf] of Object.entries(files)) {

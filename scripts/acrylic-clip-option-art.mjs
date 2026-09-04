@@ -7,8 +7,10 @@
  *
  * ครอบ 4 กลุ่ม:
  *   1. "ขนาดด้านยาวที่สุด" (dropdown 4-4.5 cm ทีละ 0.1) — วาดการ์ด 6 ใบ: ชิ้นงานไดคัท+คลิปหนีบ
- *      สเกลจริง 1 ซม. = 120 px + ลูกศรวัดด้านยาวสุด + เลขตัวใหญ่กลางภาพ (ภาพย่อบนปุ่ม 28px ต้องอ่านออก)
+ *      สเกลจริง 1 ซม. = 105 px + ลูกศรวัดด้านยาวสุด + เลขตัวใหญ่ (ภาพย่อบนปุ่ม 28px ต้องอ่านออก)
  *      + ไม้บรรทัด 0-5 ซม. ไฮไลต์ช่วงถึงขนาดที่เลือก
+ *      ⚠️ v2: คลิปเป็น **คลิปหนีบพลาสติกขาว ติดหลังแนวตั้ง** ปากงับชี้ลง (รูปงานจริงจากเจ้าของร้าน 3 ก.ย. 69)
+ *      v1 วาดเป็นขาโลหะโผล่ซ้าย-ขวา = ผิด · อะคริลิคใสวาดโปร่ง 0.72 ให้เห็นตัวคลิปทะลุหลังชิ้นงาน
  *   2. "เทคนิค" สกรีนใต้/สกรีนบน — ครอป 2 ช่องบนจากชาร์ต HOW TO PRINT ของร้าน
  *      (959b83_87c211c630db4c6397260296e75557ba — ชุดเดียวกับที่ 3d-acrylic เคยครอป)
  *   3. "ประเภท" ใส/C-02/พิเศษ — ใช้ชุดภาพมาตรฐานเดียวกับ keyring-acrylic-type-cards.mts
@@ -24,7 +26,7 @@ import { mascotDataUri } from "./iducky-assets.mjs";
 const MASCOT = await mascotDataUri("heart", 520);
 
 const PRODUCT_ID = "otheracrylicproducts2-5";
-const VER = "v1";
+const VER = "v2";
 const OUT = ".cache/acrylic-clip/upload";
 mkdirSync(OUT, { recursive: true });
 
@@ -48,10 +50,14 @@ const TH = "Thonburi, 'Noto Sans Thai', 'Sukhumvit Set', sans-serif";
 const INK = "#0f172a";
 const SUB = "#64748b";
 const OK = "#0891b2";
+/** พลาสติกคลิปหนีบ — เทาอ่อนพอให้แยกออกจากกระดาษขาวและแผ่นอะคริลิคใส */
+const CLIP_FILL = "#e9eef4";
+const CLIP_GRIP = "#d3dbe5";
+const CLIP_EDGE = "#8fa0b3";
 
-/** สเกลจริง — 1 ซม. = 105 px (4.5 ซม. = 472 px) ทุกใบสเกลเดียวกัน */
-const CM = 105;
-const GROUND = 660; // เส้นฐานก้นชิ้นงาน
+/** สเกลจริง — 1 ซม. = 95 px (4.5 ซม. = 428 px) ทุกใบสเกลเดียวกัน */
+const CM = 95;
+const GROUND = 578; // เส้นฐานก้นชิ้นงาน (ใต้ลงไปเป็นปากคลิป + กระดาษ)
 const CHARM_CX = 270;
 
 /** ขนาด 6 ตัวเลือกจาก DB — key = choice.name เป๊ะ ๆ */
@@ -96,22 +102,77 @@ const dimV = (x, y1, y2, label, dx = 26) => {
     </g>`;
 };
 
-/** กระดาษ/รูปที่ถูกหนีบ — ขอบบนของแผ่นอยู่ช่วงล่างของชิ้นงาน เหมือนรูปงานจริง */
+/**
+ * ระดับสำคัญของฉาก (คิดจากก้นชิ้นงาน) — คลิปติดหลังแนวตั้ง ปากงับชี้ลง งับขอบบนของกระดาษ
+ * ขอบกระดาษต้องอยู่ "ใน" ช่วงปากคลิป แล้ววาดปากคลิปทับกระดาษ (แขนหน้าของคลิปบังขอบไว้จริง ๆ)
+ */
+const paperEdgeY = (groundY, h) => groundY + h * 0.13;
+const jawTopY = (groundY, h) => groundY - h * 0.03;
+const jawBotY = (groundY, h) => groundY + h * 0.27;
+
+/** กระดาษ/รูปที่ถูกหนีบ — ขอบบนแผ่นโผล่สองข้างปากคลิป ตรงกลางถูกปากคลิปงับบังไว้ */
 const sheet = (cx, groundY, hcm) => {
   const h = hcm * CM;
-  const edgeY = groundY - h * 0.18;
-  const x = cx - 195;
-  const w = 390;
-  const bottom = groundY + 58;
+  const edgeY = paperEdgeY(groundY, h);
+  const x = cx - 200;
+  const w = 400;
+  const bottom = groundY + h * 0.27 + 74;
   return `
-    <rect x="${x + 10}" y="${edgeY + 8}" width="${w}" height="${bottom - edgeY}" rx="8" fill="#e8edf3" opacity="0.7"/>
+    <rect x="${x + 10}" y="${edgeY + 9}" width="${w}" height="${bottom - edgeY}" rx="8" fill="#e6ecf3" opacity="0.65"/>
     <rect x="${x}" y="${edgeY}" width="${w}" height="${bottom - edgeY}" rx="8" fill="#ffffff" stroke="#d6dee8" stroke-width="3"/>
-    <rect x="${x}" y="${edgeY}" width="${w}" height="6" rx="3" fill="#eef2f7"/>
-    <line x1="${x + 34}" y1="${groundY + 24}" x2="${x + w - 60}" y2="${groundY + 24}" stroke="#e6ebf1" stroke-width="9" stroke-linecap="round"/>
-    <line x1="${x + 34}" y1="${groundY + 44}" x2="${x + w - 150}" y2="${groundY + 44}" stroke="#eff3f7" stroke-width="9" stroke-linecap="round"/>`;
+    <line x1="${x + 30}" y1="${bottom - 40}" x2="${x + w - 56}" y2="${bottom - 40}" stroke="#e6ebf1" stroke-width="9" stroke-linecap="round"/>
+    <line x1="${x + 30}" y1="${bottom - 18}" x2="${x + w - 148}" y2="${bottom - 18}" stroke="#eff3f7" stroke-width="9" stroke-linecap="round"/>`;
 };
 
-/** ชิ้นงานไดคัท — บอดี้ขอบขาวทรงหยดตามซิลูเอตเป็ด + ลายเป็ดข้างใน + คลิปโลหะโผล่ข้างล่าง */
+/**
+ * คลิปหนีบพลาสติกขาว ติดหลังชิ้นงาน **แนวตั้ง** ปากงับชี้ลง (ตามรูปงานจริงที่เจ้าของร้านส่งมา 3 ก.ย. 69)
+ * แยกเป็น 2 ชิ้นเพราะลำดับการวาดต่างกัน:
+ *   back — ตัวคลิป+หมุดสปริงที่อยู่ "หลัง" แผ่นอะคริลิค (วาดก่อนชิ้นงาน เห็นจาง ๆ ทะลุเนื้อใส)
+ *   jaw  — ปากงับที่โผล่พ้นก้นชิ้นงานลงมา (วาด "หลังกระดาษ" เพื่อบังขอบกระดาษไว้ = งับอยู่จริง)
+ */
+const clipBack = (cx, groundY, hcm) => {
+  const h = hcm * CM;
+  const cw = h * 0.24;
+  const topY = groundY - h * 0.62;
+  const pivotY = groundY - h * 0.26;
+  return `
+    <rect x="${cx - cw / 2}" y="${topY}" width="${cw}" height="${groundY + h * 0.06 - topY}" rx="${cw * 0.34}"
+      fill="${CLIP_FILL}" stroke="${CLIP_EDGE}" stroke-width="3"/>
+    <circle cx="${cx}" cy="${pivotY}" r="${cw * 0.2}" fill="${CLIP_GRIP}" stroke="${CLIP_EDGE}" stroke-width="2.5"/>
+    <circle cx="${cx}" cy="${pivotY}" r="${cw * 0.07}" fill="${CLIP_EDGE}"/>`;
+};
+
+/** เงาคลิปที่เห็นทะลุแผ่นอะคริลิคใส — วาดทับชิ้นงาน เส้นประจาง ๆ ให้รู้ว่าคลิปวางแนวตั้งยาวตลอดตัว */
+const clipGhost = (cx, groundY, hcm) => {
+  const h = hcm * CM;
+  const cw = h * 0.24;
+  const topY = groundY - h * 0.62;
+  const pivotY = groundY - h * 0.26;
+  return `
+    <g opacity="0.42">
+      <rect x="${cx - cw / 2}" y="${topY}" width="${cw}" height="${groundY + h * 0.06 - topY}" rx="${cw * 0.34}"
+        fill="none" stroke="${CLIP_EDGE}" stroke-width="3" stroke-dasharray="9 7"/>
+      <circle cx="${cx}" cy="${pivotY}" r="${cw * 0.2}" fill="none" stroke="${CLIP_EDGE}" stroke-width="2.5"/>
+    </g>`;
+};
+
+const clipJaw = (cx, groundY, hcm) => {
+  const h = hcm * CM;
+  const jw = h * 0.28;
+  const top = jawTopY(groundY, h);
+  const bot = jawBotY(groundY, h);
+  return `
+    <!-- ปากคลิป: แขนตรง ไม่บาน (บานแล้วดูเป็นฐานแจกัน) วางทับขอบกระดาษ = งับอยู่จริง -->
+    <rect x="${cx - jw / 2}" y="${top}" width="${jw}" height="${bot - top}" rx="${jw * 0.2}"
+      fill="${CLIP_FILL}" stroke="${CLIP_EDGE}" stroke-width="3.5"/>
+    <!-- รอยต่อแขนคลิป 2 ข้าง -->
+    <line x1="${cx}" y1="${top + 10}" x2="${cx}" y2="${bot - jw * 0.34}" stroke="${CLIP_EDGE}" stroke-width="2.5" opacity="0.55"/>
+    <!-- ริมยางกันลื่นตรงปากงับ -->
+    <rect x="${cx - jw / 2}" y="${bot - jw * 0.3}" width="${jw}" height="${jw * 0.3}" rx="${jw * 0.15}"
+      fill="${CLIP_GRIP}" stroke="${CLIP_EDGE}" stroke-width="3"/>`;
+};
+
+/** ชิ้นงานไดคัท — บอดี้ขอบขาวทรงหยดตามซิลูเอตเป็ด + ลายเป็ดสกรีน (อะคริลิคใสจึงโปร่ง เห็นคลิปหลังจาง ๆ) */
 const charm = (cx, groundY, hcm) => {
   const h = hcm * CM;
   const w = h * 0.82;
@@ -123,18 +184,10 @@ const charm = (cx, groundY, hcm) => {
     C ${cx + w / 2} ${groundY - h * 0.1} ${cx + w * 0.3} ${groundY} ${cx} ${groundY}
     C ${cx - w * 0.3} ${groundY} ${cx - w / 2} ${groundY - h * 0.1} ${cx - w / 2} ${cy + h * 0.08}
     C ${cx - w / 2} ${cy - h * 0.22} ${cx - w * 0.34} ${top} ${cx} ${top} Z`;
-  // ขาคลิปโลหะโผล่พ้นขอบชิ้นงานซ้าย-ขวา (ตัวที่หนีบกระดาษไว้ด้านหลัง)
-  const legW = w * 0.12;
-  const legH = h * 0.14;
-  const legY = groundY - h * 0.22;
-  const leg = (lx) => `
-    <rect x="${lx}" y="${legY}" width="${legW}" height="${legH}" rx="${legW / 2.4}" fill="#c3ccd7" stroke="#9aa6b4" stroke-width="2.5"/>
-    <rect x="${lx + 4}" y="${legY + 5}" width="${legW - 8}" height="${legH * 0.3}" rx="3" fill="#e4eaf1"/>`;
   return `
-    ${leg(cx - w * 0.46 - legW * 0.45)}${leg(cx + w * 0.46 - legW * 0.55)}
-    <!-- ตัวอะคริลิคขอบขาว -->
-    <path d="${blob}" fill="#ffffff" stroke="#cbd5e1" stroke-width="4"/>
-    <path d="${blob}" fill="#e8f4fb" opacity="0.5"/>
+    <!-- แผ่นอะคริลิคใส โปร่งพอให้เห็นคลิปด้านหลัง -->
+    <path d="${blob}" fill="#ffffff" opacity="0.72"/>
+    <path d="${blob}" fill="#e8f4fb" opacity="0.45" stroke="#cbd5e1" stroke-width="4"/>
     ${(() => {
       const r = MASCOT.ratio;
       let ah = h * 0.82;
@@ -184,15 +237,19 @@ function sizeArt(sel) {
   const halfW = w / 2;
   const body = `
     ${title(`ขนาดด้านยาวที่สุด ${sel.cm} ซม.`, "วัดด้านที่ยาวที่สุดของชิ้นงานไดคัท · ทุกใบสเกลเดียวกัน")}
-    ${sheet(CHARM_CX, GROUND, sel.cm)}
+    ${clipBack(CHARM_CX, GROUND, sel.cm)}
     ${charm(CHARM_CX, GROUND, sel.cm)}
+    ${clipGhost(CHARM_CX, GROUND, sel.cm)}
+    ${sheet(CHARM_CX, GROUND, sel.cm)}
+    ${clipJaw(CHARM_CX, GROUND, sel.cm)}
     ${dimV(CHARM_CX - halfW - 34, top, GROUND, `${sel.cm} ซม.`, -26)}
-    <text x="700" y="352" font-family="${TH}" font-size="150" font-weight="800" text-anchor="middle" fill="${OK}">${sel.cm}</text>
-    <text x="700" y="408" font-family="${TH}" font-size="36" font-weight="700" text-anchor="middle" fill="${SUB}">ซม.</text>
-    ${callout(CHARM_CX + w * 0.52, GROUND - h * 0.15, 600, GROUND - h * 0.15 - 22, "คลิปหนีบด้านหลัง")}
-    <text x="700" y="466" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">หนีบรูป · โน้ต · เมนู</text>
-    ${ruler(768, sel.cm)}
-    ${foot(["อะคริลิคหนา 3 มม. พิมพ์ UV ไดคัทตามลาย"])}`;
+    <text x="700" y="330" font-family="${TH}" font-size="150" font-weight="800" text-anchor="middle" fill="${OK}">${sel.cm}</text>
+    <text x="700" y="386" font-family="${TH}" font-size="36" font-weight="700" text-anchor="middle" fill="${SUB}">ซม.</text>
+    ${callout(CHARM_CX + h * 0.15, GROUND + h * 0.2, 560, GROUND + h * 0.2 + 6, "คลิปหนีบแนวตั้ง ติดด้านหลัง")}
+    <text x="700" y="452" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">หนีบรูป · โน้ต · เมนู</text>
+    <text x="700" y="486" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">อะคริลิคหนา 3 มม. พิมพ์ UV</text>
+    <text x="700" y="520" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">ไดคัทตามลาย</text>
+    ${ruler(800, sel.cm)}`;
   return frame(body);
 }
 

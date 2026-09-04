@@ -6,7 +6,7 @@
  *
  * ได้:
  *   clear-plain-v4            ประเภทอะคริลิค → อะคริลิคใส (อีก 2 ตัวใช้สวอตช์จริงจากชาร์ตสีกลาง)
- *   size-5..size-10           ขนาดชิ้นงาน 5-10 ซม. (สเกลจริง เทียบกันได้ทั้งชุด)
+ *   size-5..size-15           ขนาดชิ้นงาน 5-15 ซม. (สเกลจริง เทียบกันได้ทั้งชุด)
  *   part-small | part-large   อะไหล่ "ก้านตะขอ" 1.8 / 2.8 ซม.
  *   print-1 | print-2         สกรีน 1 ด้าน / 2 ด้าน
  *   hook-extra                เพิ่มก้านตะขอ (+15 บาท/ก้าน)
@@ -154,19 +154,24 @@ const clearArt = frame(`
     "อยากได้กลิตเตอร์/โฮโลแกรม เลือก 'สีพิเศษ' ได้",
   ])}`);
 
-// ── ขนาด 5-10 ซม. (สเกลจริง — เทียบกันได้ทั้งชุด) ─────────────────────────
-const PX_PER_CM = 40; // 10 ซม. = 400px
+// ── ขนาด 5-15 ซม. (สเกลจริง — เทียบกันได้ทั้งชุด) ─────────────────────────
+// ⚠️ ชุด v3 วาดที่ 40px/ซม. ซึ่ง 15 ซม. ล้นกรอบ — ชุด v4 ย่อสเกลใหม่ทั้งชุด 11 ใบ จะได้เทียบกันได้
+const PX_PER_CM = 30; // 15 ซม. = 450px
 const GROUND = 596; // ปลายล่างของชิ้นงานในภาพ
+const MAX_CM = 15;  // ขนาดใหญ่สุดที่ร้านรับ (เงาจางในภาพใช้ขนาดนี้)
 function sizeArt(cm) {
   const h = cm * PX_PER_CM;
   const top = GROUND - h;
-  const ghostH = 10 * PX_PER_CM;
+  const ghostH = MAX_CM * PX_PER_CM;
   return frame(`
     ${title(`ขนาด ${cm} ซม.`, "วัดจากด้านที่ยาวที่สุดของอะคริลิค")}
     ${piece(330, GROUND - ghostH, ghostH, { ghost: true })}
     ${piece(330, top, h)}
     ${dimV(330 + (ghostH * 0.62) / 2 + 40, top, GROUND, `${cm} ซม.`)}
-    ${foot(["เงาจาง = ขนาดใหญ่สุด 10 ซม. ไว้เทียบ", "ขนาดอื่นแจ้งในหมายเหตุถึงร้านได้"])}`);
+    ${foot([
+      `เงาจาง = ขนาดใหญ่สุด ${MAX_CM} ซม. ไว้เทียบ`,
+      cm > 10 ? "ใหญ่กว่ามาตรฐาน 10 ซม. — คิดเพิ่ม ซม.ละ 10 บาท (สีพิเศษ ซม.ละ 15 บาท)" : "ขนาดอื่นแจ้งในหมายเหตุถึงร้านได้",
+    ])}`);
 }
 
 // ── อะไหล่ "ก้านตะขอ" 1.8 / 2.8 ซม. ─────────────────────────────────────
@@ -235,7 +240,7 @@ async function render(name, svg) {
 }
 
 await render("clear-plain-v4", clearArt);
-for (let cm = 5; cm <= 10; cm++) await render(`size-${cm}-v3`, sizeArt(cm));
+for (let cm = 5; cm <= MAX_CM; cm++) await render(`size-${cm}-v4`, sizeArt(cm));
 await render("part-small-v3", gateArt(1.8, 2.8));
 await render("part-large-v3", gateArt(2.8, 1.8));
 await render("print-1-v3", printArt(1));

@@ -2,19 +2,19 @@
 /**
  * แก้วสแตนเลส 16/20 ออนซ์ (new-msodn3he-7357) — กลุ่ม "ขนาด" แบบการ์ด + ภาพประกอบ
  *
- *   node scripts/tumbler-size-option-art.mjs            (วาดภาพลง .cache/tumbler-16-20/upload ดูก่อน)
- *   node scripts/tumbler-size-option-art.mjs --write    (+ อัปโหลด storage + เขียน options + อ่านกลับเทียบ)
+ *   node scripts/tumbler-size-option-art.mjs                     (วาดภาพแบบที่ใช้อยู่ ดูก่อน)
+ *   node scripts/tumbler-size-option-art.mjs --write             (+ อัปโหลด + เขียน options + อ่านกลับเทียบ)
+ *   node scripts/tumbler-size-option-art.mjs --style=round       (ลองแบบแก้วโค้ง 3 มิติ)
  *
- * กลุ่ม "รูปทรง" เดิมคือขนาดอยู่แล้ว (ทรงกรวย 16 Oz / ทรง Yeti 20 Oz) และเป็นแกนตารางราคา
- * เลยไม่เพิ่มกลุ่มใหม่ให้ซ้ำซ้อน — เปลี่ยนกลุ่มเดิมเป็นชื่อ "ขนาด" display "cards"
+ * มีภาพ 2 สไตล์ให้สลับ — เจ้าของร้านเลือก "แบบแรก" (flat) ไว้ (3 ก.ย. 69):
+ *   flat  (v1, ค่าเริ่มต้น) — แก้วมองด้านข้างแบน เรียบ อ่านทรงง่าย ชัดเจนในการ์ดเล็ก
+ *   round (v2)              — แก้วทรงกระบอก 3 มิติ ปาก/ก้นเป็นวงรี ไล่แสงโค้งเหมือนรูปถ่ายจริง
+ * สลับสไตล์ = เปลี่ยนทั้งภาพที่วาดและ VER (คนละไฟล์ในสตอเรจ) จึงไม่ชนแคช CDN
+ *
+ * ทั้งสองสไตล์เขียน DB เหมือนกัน: กลุ่ม "รูปทรง" เดิมคือขนาดอยู่แล้ว (ทรงกรวย 16 Oz / ทรง Yeti 20 Oz)
+ * และเป็นแกนตารางราคา เลยไม่เพิ่มกลุ่มใหม่ให้ซ้ำซ้อน — เปลี่ยนกลุ่มเดิมเป็นชื่อ "ขนาด" display "cards"
  * คงชื่อตัวเลือกเดิมเป๊ะ (คีย์ pricing.cells อิงชื่อตัวเลือก) แล้วอัปเดต driverLabels
  * "รูปทรง" → "ขนาด" ทั้งใน data.pricing และ priceRates[*].pricing
- *
- * ภาพการ์ด 900×900 สองใบ — วาดเป็นทรงกระบอก 3 มิติให้เหมือนรูปงานจริง:
- * ปาก/ก้นเป็นวงรี · ผิวโลหะไล่แสงโค้ง (ขอบเข้ม-กลางสว่าง) · ฝาใสมีจุกเปิด · เงาใต้แก้ว
- * ลายพิมพ์อยู่ใต้ชั้นไล่แสง จึงโค้งไปตามตัวแก้วเหมือนสกรีนจริง
- *   • ทรงกรวย 16 Oz — ปากกว้างก้นสอบ + หลอด (มีหลอดให้) ป้ายความจุ ≈470 มล.
- *   • ทรง Yeti 20 Oz — ช่วงบนตรง ช่วงล่างสอบ + ฝาใสจุกเปิด ป้ายความจุ ≈590 มล.
  *
  * รันซ้ำได้: เจอกลุ่ม "ขนาด" (หรือ "รูปทรง" เดิม) = เขียนทับตัวเดิม ไม่เพิ่มซ้ำ
  * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคช 30 วัน) — แก้ภาพเมื่อไหร่ให้ขึ้นรุ่น VER ใหม่
@@ -27,7 +27,7 @@ const HEART = await mascotDataUri("heart", 420);
 const PEACE = await mascotDataUri("peace", 420);
 
 const PRODUCT_ID = "new-msodn3he-7357";
-const VER = "v2";
+const STYLE = (process.argv.find((a) => a.startsWith("--style=")) || "").split("=")[1] || "flat";
 const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || ".cache/tumbler-16-20/upload").replace(/\/$/, "");
 mkdirSync(OUT, { recursive: true });
 
@@ -43,11 +43,21 @@ const INK = "#0f172a";
 const SUB = "#64748b";
 const OK = "#0891b2";
 
-/** อัตราส่วน ry/rx ของวงรีปาก-ก้น = มุมมองเอียงลงเล็กน้อยแบบภาพถ่ายสินค้า */
-const ELL = 0.17;
-
+// ── ชิ้นส่วนที่ใช้ร่วมกันทั้งสองสไตล์ ────────────────────────────────
 const DEFS = `<defs>
-    <!-- ผิวสแตนเลสเคลือบขาวทรงกระบอก: ขอบซ้าย-ขวาเป็นเงาเทาอมฟ้า กลางสว่าง = ดูโค้งทึบ -->
+    <!-- [flat] ผิวสแตนเลสเคลือบขาว — ไล่เฉดเทาอ่อนให้ดูเป็นโลหะ (ชุดเดียวกับ flat-stainless) -->
+    <linearGradient id="steel" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#eef2f7"/>
+      <stop offset="0.35" stop-color="#ffffff"/>
+      <stop offset="0.65" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e3e9f1"/>
+    </linearGradient>
+    <!-- [flat] ฝาพลาสติกใส -->
+    <linearGradient id="clearlid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f0f9ff" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#dbeafe" stop-opacity="0.9"/>
+    </linearGradient>
+    <!-- [round] ผิวสแตนเลสทรงกระบอก: ขอบซ้าย-ขวาเป็นเงาเทาอมฟ้า กลางสว่าง = ดูโค้งทึบ -->
     <linearGradient id="steel3d" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#93a6bd"/>
       <stop offset="0.04" stop-color="#b8c7d8"/>
@@ -61,7 +71,7 @@ const DEFS = `<defs>
       <stop offset="0.97" stop-color="#a9bacd"/>
       <stop offset="1" stop-color="#8fa3ba"/>
     </linearGradient>
-    <!-- ชั้นไล่แสงทับลายพิมพ์ ให้ลายจมโค้งไปกับผิวแก้วเหมือนสกรีนจริง -->
+    <!-- [round] ไล่แสงใต้ลาย + ชั้นบางทับลาย (ลายจึงจมโค้งไปกับผิว) -->
     <linearGradient id="curve" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#1e2f45" stop-opacity="0.42"/>
       <stop offset="0.06" stop-color="#1e2f45" stop-opacity="0.2"/>
@@ -73,7 +83,6 @@ const DEFS = `<defs>
       <stop offset="0.9" stop-color="#1e2f45" stop-opacity="0.24"/>
       <stop offset="1" stop-color="#1e2f45" stop-opacity="0.45"/>
     </linearGradient>
-    <!-- ไล่แสงชั้นบางที่ทับลายสกรีน (เบากว่า curve เพื่อไม่กลบสีลาย) -->
     <linearGradient id="curveSoft" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#1e2f45" stop-opacity="0.34"/>
       <stop offset="0.08" stop-color="#1e2f45" stop-opacity="0.13"/>
@@ -83,12 +92,11 @@ const DEFS = `<defs>
       <stop offset="0.85" stop-color="#1e2f45" stop-opacity="0.12"/>
       <stop offset="1" stop-color="#1e2f45" stop-opacity="0.36"/>
     </linearGradient>
-    <!-- ปากแก้วด้านใน (มองเห็นเป็นวงรีเข้มใต้ฝา) -->
+    <!-- [round] ปากแก้วด้านใน / ฝาใส / ฉากหลังฟ้าจาง -->
     <linearGradient id="mouth" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#94a3b8"/>
       <stop offset="1" stop-color="#cbd5e1"/>
     </linearGradient>
-    <!-- ฝาพลาสติกใส -->
     <linearGradient id="lid" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#cfe0f0" stop-opacity="0.9"/>
       <stop offset="0.26" stop-color="#fbfdff" stop-opacity="0.85"/>
@@ -99,13 +107,112 @@ const DEFS = `<defs>
       <stop offset="0" stop-color="#fdfeff"/>
       <stop offset="1" stop-color="#e8f2fa"/>
     </linearGradient>
-    <!-- ฉากหลังฟ้าจาง: ให้ตัวแก้วขาวเด่นออกมาแทนที่จะกลืนพื้นการ์ด -->
     <radialGradient id="backdrop" cx="0.5" cy="0.45" r="0.62">
       <stop offset="0" stop-color="#e3eefa"/>
       <stop offset="0.6" stop-color="#eef4fb"/>
       <stop offset="1" stop-color="#f8fafc" stop-opacity="0"/>
     </radialGradient>
   </defs>`;
+
+const frame = (body) => `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  ${DEFS}
+  <rect width="${W}" height="${H}" fill="#f8fafc"/>
+  <rect x="18" y="18" width="${W - 36}" height="${H - 36}" rx="28" fill="#ffffff" stroke="#e2e8f0" stroke-width="2"/>
+  ${body}
+</svg>`;
+
+const title = (t, s) => `
+  <text x="${W / 2}" y="92" font-family="${TH}" font-size="42" font-weight="700" text-anchor="middle" fill="${INK}">${t}</text>
+  <text x="${W / 2}" y="132" font-family="${TH}" font-size="24" text-anchor="middle" fill="${SUB}">${s}</text>`;
+
+const foot = (lines) => lines
+  .map((t, i) => `<text x="${W / 2}" y="${H - 72 + i * 32}" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">${t}</text>`)
+  .join("");
+
+/** ป้ายความจุด้านข้างแก้ว */
+const capBadge = (cx, cy, big, small) => `
+  <g transform="translate(${cx} ${cy})">
+    <rect x="-120" y="-62" width="240" height="124" rx="18" fill="#ecfeff" stroke="${OK}" stroke-width="2.5"/>
+    <text x="0" y="-14" font-family="${TH}" font-size="27" font-weight="700" text-anchor="middle" fill="${OK}">${big}</text>
+    <text x="0" y="22" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">${small[0]}</text>
+    <text x="0" y="50" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">${small[1] ?? ""}</text>
+  </g>`;
+
+const FOOT_LINES = [
+  "สแตนเลสเก็บอุณหภูมิ พิมพ์ลายตามสั่งงานทรานเฟอร์ความร้อน",
+  "ลายในภาพเป็นตัวอย่างตำแหน่งพิมพ์ · สกรีนเต็มใบไม่ได้",
+];
+
+/** ลายสกรีนบนตัวแก้ว — มาสคอต + จุดสีประกอบ (งานทรานเฟอร์ความร้อน) */
+const printArt = (cx, cy, wAvail, hAvail, mascot) => {
+  const r = mascot.ratio;
+  let ah = hAvail;
+  let aw = ah * r;
+  if (aw > wAvail) { aw = wAvail; ah = aw / r; }
+  return `
+    <circle cx="${cx - wAvail * 0.42}" cy="${cy - hAvail * 0.34}" r="7" fill="#ef4444"/>
+    <circle cx="${cx + wAvail * 0.4}" cy="${cy - hAvail * 0.42}" r="5" fill="#eab308"/>
+    <circle cx="${cx + wAvail * 0.38}" cy="${cy + hAvail * 0.4}" r="6" fill="#2563eb"/>
+    <circle cx="${cx - wAvail * 0.36}" cy="${cy + hAvail * 0.44}" r="4" fill="#ef4444"/>
+    <image href="${mascot.uri}" x="${cx - aw / 2}" y="${cy - ah / 2}" width="${aw}" height="${ah}" preserveAspectRatio="xMidYMid meet"/>`;
+};
+
+// ══ สไตล์ flat (v1) — แก้วมองด้านข้างแบน ═════════════════════════════
+function flatCone() {
+  const cx = 400;
+  const top = 262;
+  const tw = 218;      // ปากแก้ว
+  const bw = 138;      // ก้นแก้ว
+  const bh = 400;
+  const lidH = 34;
+  const cup = `M ${cx - tw / 2} ${top} L ${cx - bw / 2} ${top + bh - 18} Q ${cx - bw / 2} ${top + bh} ${cx - bw / 2 + 18} ${top + bh}
+    L ${cx + bw / 2 - 18} ${top + bh} Q ${cx + bw / 2} ${top + bh} ${cx + bw / 2} ${top + bh - 18} L ${cx + tw / 2} ${top} Z`;
+  const straw = `
+    <g transform="rotate(14 ${cx + 30} ${top - lidH})">
+      <rect x="${cx + 18}" y="${top - lidH - 82}" width="24" height="94" rx="12" fill="#bae6fd" stroke="#7dd3fc" stroke-width="3"/>
+      <line x1="${cx + 24}" y1="${top - lidH - 70}" x2="${cx + 24}" y2="${top - lidH - 4}" stroke="#e0f2fe" stroke-width="5" stroke-linecap="round"/>
+    </g>`;
+  return frame(`
+    ${title("ทรงกรวย 16 ออนซ์", "ปากกว้างก้นสอบ · มีหลอดให้พร้อมฝา")}
+    ${straw}
+    <rect x="${cx - tw / 2 - 12}" y="${top - lidH}" width="${tw + 24}" height="${lidH}" rx="14" fill="url(#clearlid)" stroke="#bfdbfe" stroke-width="3"/>
+    <path d="${cup}" fill="url(#steel)" stroke="#cbd5e1" stroke-width="3.5"/>
+    <line x1="${cx - tw / 2 + 16}" y1="${top + 26}" x2="${cx - bw / 2 + 14}" y2="${top + bh - 26}" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.7"/>
+    ${printArt(cx, top + bh * 0.52, bw + 44, bh * 0.4, HEART)}
+    ${capBadge(682, top + bh / 2 - 30, "ความจุ 16 ออนซ์", ["≈ 470 มล.", "มีหลอดให้"])}
+    ${foot(FOOT_LINES)}`);
+}
+
+function flatYeti() {
+  const cx = 400;
+  const top = 258;
+  const tw = 224;      // ช่วงบนทรงตรง
+  const bw = 158;      // ก้นแก้ว
+  const bh = 424;
+  const straightH = bh * 0.46;   // ช่วงบนตรงก่อนสอบเข้า
+  const lidH = 40;
+  // ช่วงตรง → ช่วงสอบ ต่อกันด้วยเส้นโค้ง (จุดคุมอยู่แนวเดียวกับผนังตรง = ออกจากแนวตั้งแบบไม่หักมุม)
+  const cy1 = top + straightH + (bh - straightH) * 0.42;
+  const cup = `M ${cx - tw / 2} ${top} L ${cx - tw / 2} ${top + straightH}
+    Q ${cx - tw / 2} ${cy1} ${cx - bw / 2} ${top + bh - 18} Q ${cx - bw / 2} ${top + bh} ${cx - bw / 2 + 18} ${top + bh}
+    L ${cx + bw / 2 - 18} ${top + bh} Q ${cx + bw / 2} ${top + bh} ${cx + bw / 2} ${top + bh - 18}
+    Q ${cx + tw / 2} ${cy1} ${cx + tw / 2} ${top + straightH} L ${cx + tw / 2} ${top} Z`;
+  return frame(`
+    ${title("ทรง Yeti 20 ออนซ์", "ทรงเยติสุดฮิต ช่วงบนตรง ช่วงล่างสอบ · ฝาใสกันหก")}
+    <rect x="${cx - tw / 2 - 10}" y="${top - lidH}" width="${tw + 20}" height="${lidH}" rx="16" fill="url(#clearlid)" stroke="#bfdbfe" stroke-width="3"/>
+    <rect x="${cx + tw / 2 - 74}" y="${top - lidH + 9}" width="44" height="9" rx="4.5" fill="#93c5fd"/>
+    <path d="${cup}" fill="url(#steel)" stroke="#cbd5e1" stroke-width="3.5"/>
+    <path d="M ${cx - tw / 2 + 18} ${top + 28} L ${cx - tw / 2 + 18} ${top + straightH}
+             Q ${cx - tw / 2 + 18} ${cy1} ${cx - bw / 2 + 16} ${top + bh - 28}"
+      fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.7"/>
+    ${printArt(cx, top + bh * 0.5, bw + 52, bh * 0.4, PEACE)}
+    ${capBadge(688, top + bh / 2 - 34, "ความจุ 20 ออนซ์", ["≈ 590 มล.", "เก็บอุณหภูมิได้ดี"])}
+    ${foot(FOOT_LINES)}`);
+}
+
+// ══ สไตล์ round (v2) — แก้วทรงกระบอก 3 มิติ ═══════════════════════════
+/** อัตราส่วน ry/rx ของวงรีปาก-ก้น = มุมมองเอียงลงเล็กน้อยแบบภาพถ่ายสินค้า */
+const ELL = 0.17;
 
 /**
  * เส้นรอบตัวแก้ว (มองด้านข้าง): ปากวงรีด้านบน → ข้างซ้าย → ก้นวงรีด้านล่าง → ข้างขวา
@@ -116,50 +223,30 @@ function cupPath(cx, top, tw, bw, bh, straight) {
   const brx = bw / 2;
   const bry = brx * ELL;
   const bot = top + bh;
-  const my = top + bh * straight;          // จุดเริ่มสอบ
-  const mrx = trx;                          // ช่วงบนกว้างเท่าปาก
-  // ด้านข้างโค้งเข้าเล็กน้อย (คุมด้วย quadratic) ให้ไม่เป็นกรวยตรงแข็ง ๆ
+  const my = top + bh * straight;
   const ctrl = (x1, x2) => x1 + (x2 - x1) * 0.62;
   return `M ${cx - trx} ${top}
-    L ${cx - mrx} ${my}
-    Q ${cx - ctrl(mrx, brx)} ${my + (bot - my) * 0.55} ${cx - brx} ${bot}
+    L ${cx - trx} ${my}
+    Q ${cx - ctrl(trx, brx)} ${my + (bot - my) * 0.55} ${cx - brx} ${bot}
     A ${brx} ${bry} 0 0 0 ${cx + brx} ${bot}
-    Q ${cx + ctrl(mrx, brx)} ${my + (bot - my) * 0.55} ${cx + mrx} ${my}
+    Q ${cx + ctrl(trx, brx)} ${my + (bot - my) * 0.55} ${cx + trx} ${my}
     L ${cx + trx} ${top}
     A ${trx} ${trx * ELL} 0 0 0 ${cx - trx} ${top} Z`;
 }
 
-/** ลายสกรีน — มาสคอต + จุดสีประกอบ (วาดก่อนชั้นไล่แสง จึงโค้งไปกับตัวแก้ว) */
-function printArt(cx, cy, wAvail, hAvail, mascot) {
-  const r = mascot.ratio;
-  let ah = hAvail;
-  let aw = ah * r;
-  if (aw > wAvail) { aw = wAvail; ah = aw / r; }
-  return `
-    <circle cx="${cx - wAvail * 0.44}" cy="${cy - hAvail * 0.3}" r="7" fill="#ef4444"/>
-    <circle cx="${cx + wAvail * 0.42}" cy="${cy - hAvail * 0.4}" r="5.5" fill="#eab308"/>
-    <circle cx="${cx + wAvail * 0.4}" cy="${cy + hAvail * 0.4}" r="6.5" fill="#2563eb"/>
-    <circle cx="${cx - wAvail * 0.38}" cy="${cy + hAvail * 0.46}" r="4.5" fill="#ef4444"/>
-    <image href="${mascot.uri}" x="${cx - aw / 2}" y="${cy - ah / 2}" width="${aw}" height="${ah}" preserveAspectRatio="xMidYMid meet"/>`;
-}
-
-/**
- * แก้วสแตนเลสทรงกระบอก 3 มิติ + ฝาใสจุกเปิด (+ หลอดถ้าสั่ง)
- * id = คีย์ clipPath (การ์ดละใบ ห้ามชนกัน)
- */
+/** แก้วสแตนเลสทรงกระบอก 3 มิติ + ฝาใสจุกเปิด (+ หลอดถ้าสั่ง) — id = คีย์ clipPath ห้ามชนกัน */
 function tumbler(cx, top, { tw, bw, bh, straight, mascot, id, straw = false }) {
   const trx = tw / 2;
   const try_ = trx * ELL;
   const brx = bw / 2;
   const bot = top + bh;
-  const lrx = trx + 9;                 // ฝาครอบกว้างกว่าปากเล็กน้อย
+  const lrx = trx + 9;
   const lry = lrx * ELL;
   const lidH = 40;
   const lidTop = top - lidH;
   const d = cupPath(cx, top, tw, bw, bh, straight);
 
   return `
-  <!-- ฉากหลังฟ้าจางหลังแก้ว -->
   <ellipse cx="${cx}" cy="${top + bh * 0.48}" rx="${trx * 2.15}" ry="${bh * 0.68}" fill="url(#backdrop)"/>
 
   <!-- เงาใต้แก้ว (ซ้อนวงรีจาง ๆ แทนฟิลเตอร์เบลอ ให้ผลนิ่งกับทุก renderer) -->
@@ -167,31 +254,25 @@ function tumbler(cx, top, { tw, bw, bh, straight, mascot, id, straw = false }) {
   <ellipse cx="${cx}" cy="${bot + 12}" rx="${brx * 1.16}" ry="${brx * 0.19}" fill="#0f172a" opacity="0.07"/>
   <ellipse cx="${cx}" cy="${bot + 7}" rx="${brx * 0.9}" ry="${brx * 0.13}" fill="#0f172a" opacity="0.08"/>
 
-  <!-- ปากแก้วด้านใน โผล่ใต้ฝานิดเดียว (ฝาครอบเกือบมิดเหมือนของจริง) -->
   <ellipse cx="${cx}" cy="${top}" rx="${trx}" ry="${try_}" fill="url(#mouth)"/>
 
-  <!-- ตัวแก้ว: ขาวทึบ → เนื้อโลหะไล่โค้ง → ลายสกรีน (คลิปในทรง) → ชั้นไล่แสง → เส้นขอบ -->
+  <!-- ตัวแก้ว: ขาวทึบ → เนื้อโลหะไล่โค้ง → ไฮไลต์ → ลายสกรีน → ไล่แสงบางทับลาย -->
   <clipPath id="cup-${id}"><path d="${d}"/></clipPath>
   <path d="${d}" fill="#ffffff"/>
   <path d="${d}" fill="url(#steel3d)"/>
   <g clip-path="url(#cup-${id})">
-    <!-- ชั้นแสงเงาของผิวโลหะ วาด "ใต้ลาย" — ลายสกรีนจึงทึบเหมือนพิมพ์บนผิวขาว ไม่ใช่แก้วใส -->
     <path d="${d}" fill="url(#curve)"/>
-    <!-- ไฮไลต์แถบยาวด้านซ้าย = แสงสะท้อนบนผิวโค้ง -->
     <path d="M ${cx - trx * 0.62} ${top + 22} L ${cx - brx * 0.56} ${bot - 26}
              L ${cx - brx * 0.36} ${bot - 26} L ${cx - trx * 0.44} ${top + 22} Z"
       fill="#ffffff" opacity="0.8"/>
     ${printArt(cx, top + bh * (straight ? 0.5 : 0.52), (brx + trx) * 0.86, bh * 0.4, mascot)}
-    <!-- ไล่แสงบางอีกชั้นทับลาย = ลายจมโค้งไปกับตัวแก้ว -->
     <path d="${d}" fill="url(#curveSoft)"/>
-    <!-- ขอบฐาน: วงแหวนก้นแก้วแบบของจริง -->
     <ellipse cx="${cx}" cy="${bot - brx * 0.26}" rx="${brx}" ry="${brx * ELL}" fill="none" stroke="#8ba0b8" stroke-width="2.5" opacity="0.55"/>
     <ellipse cx="${cx}" cy="${bot - brx * 0.1}" rx="${brx}" ry="${brx * ELL}" fill="none" stroke="#8ba0b8" stroke-width="2" opacity="0.3"/>
   </g>
   <path d="${d}" fill="none" stroke="#8ea1b8" stroke-width="3" stroke-linejoin="round"/>
 
   ${straw ? `
-  <!-- หลอด: เอียงออกจากรูฝา ท่อนบนสว่างกว่าท่อนล่าง -->
   <g transform="rotate(13 ${cx + 26} ${lidTop + 8})">
     <rect x="${cx + 14}" y="${lidTop - 132}" width="25" height="150" rx="12.5" fill="#a5dcf7" stroke="#7cc6ea" stroke-width="2.5"/>
     <rect x="${cx + 19}" y="${lidTop - 124}" width="8" height="134" rx="4" fill="#e6f6fe" opacity="0.9"/>
@@ -216,52 +297,31 @@ function tumbler(cx, top, { tw, bw, bh, straight, mascot, id, straw = false }) {
     stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.75"/>`;
 }
 
-const frame = (body) => `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-  ${DEFS}
-  <rect width="${W}" height="${H}" fill="#f8fafc"/>
-  <rect x="18" y="18" width="${W - 36}" height="${H - 36}" rx="28" fill="#ffffff" stroke="#e2e8f0" stroke-width="2"/>
-  ${body}
-</svg>`;
-
-const title = (t, s) => `
-  <text x="${W / 2}" y="92" font-family="${TH}" font-size="42" font-weight="700" text-anchor="middle" fill="${INK}">${t}</text>
-  <text x="${W / 2}" y="132" font-family="${TH}" font-size="24" text-anchor="middle" fill="${SUB}">${s}</text>`;
-
-const foot = (lines) => lines
-  .map((t, i) => `<text x="${W / 2}" y="${H - 72 + i * 32}" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">${t}</text>`)
-  .join("");
-
-/** ป้ายความจุด้านข้างแก้ว */
-const capBadge = (cx, cy, big, small) => `
-  <g transform="translate(${cx} ${cy})">
-    <rect x="-118" y="-62" width="236" height="124" rx="18" fill="#ecfeff" stroke="${OK}" stroke-width="2.5"/>
-    <text x="0" y="-14" font-family="${TH}" font-size="27" font-weight="700" text-anchor="middle" fill="${OK}">${big}</text>
-    <text x="0" y="22" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">${small[0]}</text>
-    <text x="0" y="50" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">${small[1] ?? ""}</text>
-  </g>`;
-
-const FOOT_LINES = [
-  "สแตนเลสเก็บอุณหภูมิ พิมพ์ลายตามสั่งงานทรานเฟอร์ความร้อน",
-  "ลายในภาพเป็นตัวอย่างตำแหน่งพิมพ์ · สกรีนเต็มใบไม่ได้",
-];
-
-// ── การ์ด 1 — ทรงกรวย 16 Oz (มีหลอด) ────────────────────────────────
-const coneArt = () => frame(`
+const roundCone = () => frame(`
   ${title("ทรงกรวย 16 ออนซ์", "ปากกว้างก้นสอบ · มีหลอดให้พร้อมฝา")}
   ${tumbler(352, 300, { tw: 226, bw: 140, bh: 404, straight: 0, mascot: HEART, id: "cone", straw: true })}
   ${capBadge(676, 468, "ความจุ 16 ออนซ์", ["≈ 470 มล.", "มีหลอดให้"])}
   ${foot(FOOT_LINES)}`);
 
-// ── การ์ด 2 — ทรง Yeti 20 Oz ────────────────────────────────────────
-const yetiArt = () => frame(`
+const roundYeti = () => frame(`
   ${title("ทรง Yeti 20 ออนซ์", "ทรงเยติสุดฮิต ช่วงบนตรง ช่วงล่างสอบ · ฝาใสกันหก")}
   ${tumbler(352, 292, { tw: 232, bw: 168, bh: 428, straight: 0.44, mascot: PEACE, id: "yeti" })}
   ${capBadge(680, 468, "ความจุ 20 ออนซ์", ["≈ 590 มล.", "เก็บอุณหภูมิได้ดี"])}
   ${foot(FOOT_LINES)}`);
 
+// ── เลือกสไตล์ → วาดภาพ ─────────────────────────────────────────────
+const STYLES = {
+  flat: { ver: "v3", cone: flatCone, yeti: flatYeti, note: "แก้วมองด้านข้างแบบเรียบ (แบบที่ร้านเลือกใช้) · v3 = ช่วงเปลี่ยนทรงเยติโค้งต่อเนื่อง ไม่หักมุม" },
+  round: { ver: "v2", cone: roundCone, yeti: roundYeti, note: "แก้วทรงกระบอก 3 มิติ" },
+};
+const S = STYLES[STYLE];
+if (!S) { console.error(`--style ต้องเป็น ${Object.keys(STYLES).join(" หรือ ")} (ได้มา "${STYLE}")`); process.exit(1); }
+const VER = S.ver;
+console.log(`สไตล์ "${STYLE}" (${VER}) — ${S.note}\n`);
+
 const FILES = [
-  { file: `size-cone-16oz-${VER}.jpg`, svg: coneArt(), choice: CONE },
-  { file: `size-yeti-20oz-${VER}.jpg`, svg: yetiArt(), choice: YETI },
+  { file: `size-cone-16oz-${VER}.jpg`, svg: S.cone(), choice: CONE },
+  { file: `size-yeti-20oz-${VER}.jpg`, svg: S.yeti(), choice: YETI },
 ];
 const bufs = {};
 for (const f of FILES) {
@@ -351,4 +411,4 @@ const fails = [
 ].filter(([ok]) => !ok);
 if (fails.length) { console.error("อ่านกลับไม่ตรง:", fails.map((f) => f[1]).join(" · ")); process.exit(1); }
 
-console.log(`\n✓ กลุ่ม "${SIZE_GROUP}" (การ์ด 2 ใบ+ภาพ ${VER}) + driverLabels ย้ายจาก "${OLD_GROUP}" ครบทั้ง pricing/priceRates · savedAt =`, back.data.savedAt);
+console.log(`\n✓ กลุ่ม "${SIZE_GROUP}" (การ์ด 2 ใบ + ภาพสไตล์ ${STYLE}/${VER}) + driverLabels ย้ายจาก "${OLD_GROUP}" ครบทั้ง pricing/priceRates · savedAt =`, back.data.savedAt);

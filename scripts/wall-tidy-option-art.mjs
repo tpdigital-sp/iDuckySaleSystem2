@@ -26,7 +26,8 @@ import {
 } from "./wall-tidy-panel.mjs";
 
 const PRODUCT_ID = "wall-tidy";
-const VER = "v1";
+// v2 — ย้าย "ช่องที่เย็บเพิ่ม" ไปคอลัมน์ซ้ายใต้สายเกี่ยว ตามตำแหน่งจริงที่ร้านชี้มา (กรอบแดงในรูปงาน)
+const VER = "v2";
 const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || `.cache/${PRODUCT_ID}/upload`).replace(/\/$/, "");
 mkdirSync(OUT, { recursive: true });
 
@@ -36,7 +37,7 @@ mkdirSync(OUT, { recursive: true });
  * ลูกค้าจะเห็นทันทีว่า "7 ช่องที่รวมในราคา" คือช่องไหน และช่องที่จ่ายเพิ่มไปอยู่ตรงไหน
  */
 function pocketArt() {
-  const g = panel(408, 178, 296, 470, { extraPocket: true });
+  const g = panel(452, 178, 296, 470, { extraPocket: true });
   const nums = g.pockets
     .map((p, i) => `
       <circle cx="${p.x + p.w / 2}" cy="${p.y + p.h / 2}" r="15" fill="#ffffff" opacity="0.9"/>
@@ -47,13 +48,13 @@ function pocketArt() {
     ${title("เพิ่มกระเป๋า (ช่องใส่ของ)", "เย็บช่องเพิ่มจากมาตรฐาน — แจ้งตำแหน่งที่อยากได้กับแอดมิน")}
     ${g.svg}
     ${nums}
-    ${callout(ep.x + ep.w, ep.y + ep.h / 2, 700, ep.y - 30, "ช่องที่เย็บเพิ่ม", "ok")}
+    ${callout(ep.x, ep.y + ep.h * 0.66, 168, ep.y + ep.h + 62, "ช่องที่เย็บเพิ่ม", "ok")}
     ${(() => {
-      const ly = g.rowsTop + g.rowH * 1.25; // เสมอแถวกลาง — ป้ายอยู่นอกผืนผ้าฝั่งซ้าย ไม่ทับช่อง
+      const ly = g.rowsTop + g.rowH * 1.25; // เสมอแถวกลาง — ป้ายอยู่นอกผืนผ้าฝั่งขวา ไม่ทับช่อง
       return `
-      <rect x="52" y="${ly}" width="178" height="40" rx="20" fill="#ffffff" stroke="#e2e8f0" stroke-width="2"/>
-      <text x="141" y="${ly + 27}" font-family="${TH}" font-size="21" font-weight="700" text-anchor="middle" fill="${SUB}">7 ช่องมีให้อยู่แล้ว</text>
-      <line x1="230" y1="${ly + 20}" x2="${g.x0 - 4}" y2="${ly + 20}" stroke="#cbd5e1" stroke-width="2.5"/>`;
+      <rect x="${g.x1 + 30}" y="${ly}" width="178" height="40" rx="20" fill="#ffffff" stroke="#e2e8f0" stroke-width="2"/>
+      <text x="${g.x1 + 119}" y="${ly + 27}" font-family="${TH}" font-size="21" font-weight="700" text-anchor="middle" fill="${SUB}">7 ช่องมีให้อยู่แล้ว</text>
+      <line x1="${g.x1 + 4}" y1="${ly + 20}" x2="${g.x1 + 30}" y2="${ly + 20}" stroke="#cbd5e1" stroke-width="2.5"/>`;
     })()}
     ${pill(W / 2, g.bottom + 34, "ช่องละ ฿20 · เพิ่มได้ 1 ช่อง")}
     ${foot(["ช่องใส่ของ 7 ช่อง (เรียง 2-3-2) รวมในราคาต่อชิ้นอยู่แล้ว", "อยากได้ช่องใหญ่/เล็กหรือตำแหน่งไหนเป็นพิเศษ พิมพ์บอกในหมายเหตุถึงร้านได้เลย"])}`;

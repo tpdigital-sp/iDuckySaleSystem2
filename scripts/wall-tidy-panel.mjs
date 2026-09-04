@@ -200,10 +200,9 @@ export const panel = (cx, top, w, h, o = {}) => {
     hangStrap(strapX(i), strapY, strapLen, strapW, strapScale, { compact: true })
   ).join("");
 
-  // ── ช่องที่เย็บเพิ่ม (OPTION) — วางบนพื้นที่ว่างหัวแผงฝั่งขวา ──
-  const ep = { w: w * 0.3, h: headerH * 0.5 };
-  ep.x = x1 - pad - ep.w;
-  ep.y = top + sleeveH + headerH * 0.2;
+  // ── ช่องที่เย็บเพิ่ม (OPTION) — คอลัมน์ซ้ายใต้สายเกี่ยว เสมอแถวแรก
+  // (ตำแหน่งนี้ร้านชี้มาเอง: กรอบแดงในรูปงานจริงตรงที่ห้อยชาร์มเป็ด) ──
+  const ep = { x: x0 + pad, y: rowsTop, w: leftCol - pad - gap, h: rowH };
   const extraPocketSvg = extraPocket
     ? `
     <rect x="${ep.x}" y="${ep.y}" width="${ep.w}" height="${ep.h}" rx="7" fill="#ecfeff" stroke="${OK}" stroke-width="3" stroke-dasharray="9 6"/>
@@ -215,7 +214,7 @@ export const panel = (cx, top, w, h, o = {}) => {
   // ── ลายที่พิมพ์ (มาสคอตแทนไฟล์ลูกค้า) — วางหัวแผง เลี่ยงสายเกี่ยวและช่องที่เพิ่ม ──
   const artH = headerH * 0.55;
   const artW = artH * MASCOT.ratio;
-  const artCx = extraPocket ? x0 + w * 0.5 : x0 + w * 0.6;
+  const artCx = x0 + w * 0.6;
   const artSvg = art
     ? `<image href="${MASCOT.uri}" x="${artCx - artW / 2}" y="${top + sleeveH + headerH * 0.2}" width="${artW}" height="${artH}" preserveAspectRatio="xMidYMid meet"/>`
     : "";
@@ -233,8 +232,8 @@ export const panel = (cx, top, w, h, o = {}) => {
     ${dowel(top + sleeveH / 2)}
     ${dowel(bottom - sleeveH / 2)}
     ${artSvg}
-    ${strapsSvg}
     ${extraPocketSvg}
+    ${strapsSvg}
     ${row(rowsTop, 2, leftCol)}
     ${row(rowsTop + rowH + gap, 3)}
     ${row(rowsTop + (rowH + gap) * 2, 2)}`,
