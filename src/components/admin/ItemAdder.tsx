@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { formatPrice } from "@/lib/products";
+import { fetchProductsByIds } from "@/lib/product-repo";
+import { defaultSpecText } from "@/lib/product-spec";
 import type { OrderItem } from "@/lib/admin-data";
 import { uploadArtworkFile } from "@/lib/artwork-upload";
 
@@ -28,6 +30,10 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
   const [webList, setWebList] = useState<{ id: string; name: string; price: number }[]>([]);
   const [webPick, setWebPick] = useState<{ id: string; name: string; price: number } | null>(null);
   const [webQuery, setWebQuery] = useState("");
+  /** กำลังดึงสเปคของสินค้าที่เพิ่งเลือกอยู่ */
+  const [specBusy, setSpecBusy] = useState(false);
+  /** สเปคที่แอดมินพิมพ์เองก่อนถูกสเปคของสินค้าเขียนทับ — ไว้กดคืน */
+  const [specUndo, setSpecUndo] = useState<string | null>(null);
   useEffect(() => {
     if (!open || mode !== "web" || webList.length) return;
     fetch("/api/admin/products-lite", { cache: "no-store" })
@@ -40,6 +46,18 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
   const [qty, setQty] = useState("1");
   const [price, setPrice] = useState("");
   const [err, setErr] = useState("");
+  /** สเปคชุดล่าสุดที่ระบบเติมให้ (ไม่ใช่ที่แอดมินพิมพ์เอง) — ใช้ตัดสินว่าเขียนทับได้ไหม */
+  const [specAuto, setSpecAuto] = useState("");
+  // เก็บเงาไว้ในอ้างอิงด้วย: ตัวเติมสเปครออ่านค่า "ล่าสุด" หลัง await (แอดมินพิมพ์แทรกระหว่างนั้นได้)
+  const autoSpecRef = useRef("");
+  const specRef = useRef("");
+  useEffect(() => {
+    specRef.current = spec;
+  }, [spec]);
+  const rememberAutoSpec = (text: string) => {
+    autoSpecRef.current = text;
+    setSpecAuto(text);
+  };
   // ภาพลายที่ลูกค้าส่งมาทางแชท — แอดมินแนบให้กราฟฟิกดูตอนสั่งงานพิเศษ
   const [art, setArt] = useState<string[]>([]);
   // ── กันกรอกเสร็จแล้วรีเฟรชทิ้ง: เก็บร่างไว้ในเครื่อง จนกว่าจะกด "เพิ่มเข้าออเดอร์" หรือยกเลิก ──
@@ -97,6 +115,35 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
   const kw = name.trim().toLowerCase();
   const suggestions = kw ? catalog.filter((p) => p.name.toLowerCase().includes(kw)).slice(0, 8) : [];
 
+  /**
+   * เติมสเปคตามตัวเลือกจริงของสินค้าที่เลือกจากหน้าเว็บ (ค่าเริ่มต้นเหมือนหน้าสินค้า)
+   * เดิมเลือกสินค้าแล้วเติมให้แค่ชื่อ/ราคา ช่องสเปคเลยค้างข้อความของรายการก่อนหน้า = สเปคไม่ตรงสินค้า
+   * ที่แอดมินพิมพ์เองจะไม่หายเงียบ ๆ — เก็บไว้ให้กด "คืนสเปคเดิม" ได้
+   */
+  async function fillSpecFromWeb(id: string) {
+    setSpecBusy(true);
+    try {
+      const [full] = await fetchProductsByIds([id]);
+      const text = full ? defaultSpecText(full) : "";
+      const prev = specRef.current;
+      const wasAuto = prev === autoSpecRef.current;
+      if (!text) {
+        // สินค้าไม่มีกลุ่มตัวเลือก — ล้างเฉพาะสเปคที่ระบบเติมจากสินค้าตัวก่อน ไม่แตะที่พิมพ์เอง
+        if (wasAuto && prev) setSpec("");
+        rememberAutoSpec("");
+        setSpecUndo(null);
+        return;
+      }
+      setSpecUndo(prev.trim() && !wasAuto ? prev : null);
+      rememberAutoSpec(text);
+      setSpec(text);
+    } catch {
+      // ดึงสินค้าไม่ได้ = ปล่อยช่องสเปคไว้ตามเดิม ให้แอดมินพิมพ์เอง
+    } finally {
+      setSpecBusy(false);
+    }
+  }
+
   function submit() {
     const n = name.trim();
     const q = Math.max(1, Math.floor(Number(qty) || 0));
@@ -123,6 +170,8 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
     setPrice("");
     setArt([]);
     setErr("");
+    rememberAutoSpec("");
+    setSpecUndo(null);
   }
 
   // ฟอร์มเปิดอยู่ → รับรูปจากคลิปบอร์ด (⌘/Ctrl+V) และกันเบราว์เซอร์เปิดไฟล์ที่โยนพลาดนอกกรอบ
@@ -243,6 +292,7 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
                       setWebQuery(p.name);
                       setName(p.name);
                       setPrice(String(p.price));
+                      void fillSpecFromWeb(p.id);
                     }}
                     className="flex w-full items-center justify-between gap-2 border-b border-slate-100 px-3 py-1.5 text-left text-sm last:border-0 hover:bg-amber-50"
                   >
@@ -373,6 +423,27 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
             className={`${inp} resize-y`}
             placeholder="สเปค/รายละเอียด (ไม่บังคับ) เช่น หนา 5 มม. · พิมพ์ UV 2 ด้าน"
           />
+          {/* สเปคมาจากตัวเลือกจริงของสินค้าที่เลือก — บอกให้ชัดว่าเป็นค่าเริ่มต้นที่ต้องแก้ให้ตรงที่ลูกค้าสั่ง */}
+          {specBusy && <p className="text-[11px] font-semibold text-slate-400">⏳ กำลังดึงสเปคของสินค้าที่เลือก…</p>}
+          {!specBusy && webPick && spec !== "" && spec === specAuto && (
+            <p className="text-[11px] leading-relaxed text-slate-500">
+              📋 สเปคตั้งต้นจากตัวเลือกของ <span className="font-bold">“{webPick.name}”</span> (ค่าเริ่มต้นเหมือนหน้าสินค้า) — แก้ให้ตรงที่ลูกค้าสั่งได้
+              <span className="block text-slate-400">อยากได้ตัวเลือกครบ + ราคาขั้นบันไดอัตโนมัติ ให้กด “🛍️ หยิบจากหน้าร้าน” แทน</span>
+            </p>
+          )}
+          {specUndo && (
+            <button
+              type="button"
+              onClick={() => {
+                setSpec(specUndo);
+                rememberAutoSpec("");
+                setSpecUndo(null);
+              }}
+              className="text-[11px] font-bold text-amber-600 hover:underline"
+            >
+              ↩︎ คืนสเปคเดิมที่พิมพ์ไว้ (ก่อนเลือกสินค้า)
+            </button>
+          )}
         </div>
 
         {/* จำนวน */}
@@ -439,6 +510,10 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
             setArt([]);
             setOpen(false);
             setErr("");
+            setWebPick(null);
+            setWebQuery("");
+            rememberAutoSpec("");
+            setSpecUndo(null);
           }}
           className="rounded-full px-4 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100"
         >
