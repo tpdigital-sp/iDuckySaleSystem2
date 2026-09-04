@@ -76,7 +76,9 @@ import { uploadArtworkFile } from "@/lib/artwork-upload";
  *   2. ไม่มี referrer จากโดเมนเราเอง (กล้องสแกน QR / LINE / พิมพ์ลิงก์เอง = ไม่มี referrer)
  *   3. ไม่ใช่การกดปุ่มย้อนกลับ (back_forward) — คนกดย้อนกลับตั้งใจกลับไปที่เดิม ไม่ใช่เพิ่งสแกน
  *
- * กดลิงก์จากหน้ารายการออเดอร์/สถานีแพ็ค → ข้อ 1 ไม่ผ่าน = ไม่เด้งเข้าโหมดแพ็ค (ตามเดิม)
+ * ผลของการเดา: ใช้ "ยืมสิทธิ์งานแพ็ค" ให้เท่านั้น (คนไม่มีสิทธิ์แก้ออเดอร์จะเห็นหน้าแพ็คเอง
+ * ผ่าน isPackOnly) — ไม่ลากแอดมินที่กดลิงก์ธรรมดาจากนอกเว็บเข้าโหมดแพ็ค
+ * โหมดแพ็คเด้งอัตโนมัติเฉพาะ QR รุ่นใหม่ที่มี ?pack=1 จริง
  */
 function openedFromOutside(): boolean {
   try {
@@ -897,8 +899,11 @@ export default function AdminOrderDetailPage() {
     const on = explicit || openedFromOutside();
     setViaScan(on);
     setPackScanMode(on); // ทุกคำขอบันทึกจากแท็บนี้จะแนบ header บอกเซิร์ฟเวอร์
+    // เด้งเข้าโหมดแพ็คเฉพาะ QR ที่มี ?pack=1 จริงเท่านั้น — ลิงก์ธรรมดาที่เปิดจากนอกเว็บ
+    // (เช่น กดลิงก์ใน LINE) ให้เข้าหน้าตรวจสอบออเดอร์ปกติ · ตัวเดา openedFromOutside ยังใช้
+    // "ยืมสิทธิ์" ให้คนสแกนใบงานรุ่นเก่าอยู่ — คนไม่มีสิทธิ์แก้ออเดอร์จะเห็นหน้าแพ็คเองผ่าน isPackOnly
     // เคยกด "กลับหน้าตรวจสอบออเดอร์" ของใบนี้ในแท็บนี้แล้ว = อย่าลากกลับเข้าโหมดแพ็คอีก
-    if (on && !packOptedOut(orderId)) setPackMode(true);
+    if (explicit && !packOptedOut(orderId)) setPackMode(true);
     return () => setPackScanMode(false);
   }, [orderId]);
 
