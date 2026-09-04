@@ -933,13 +933,28 @@ export default function AdminOrderDetailPage() {
 
   useEffect(() => setOrigin(publicOrigin()), []); // ลิงก์นี้ส่งให้ลูกค้า ต้องไม่ใช่ localhost
 
+  /**
+   * โหลดหน้าออเดอร์ — ⚠️ อย่ารวมสองคำขอเป็น Promise.all อีก
+   * เดิมรอทั้ง "ใบนี้" และ "ออเดอร์ทั้งตาราง" ให้เสร็จก่อนถึงจะวาด → จอค้าง "กำลังโหลดออเดอร์…"
+   * นานเท่าคำขอที่ช้ากว่า (ตารางทั้งหมดวัดจริง 66 ใบ = 137 KB / ~440 ms) ทั้งที่ข้อมูลที่ใช้วาดหน้ามีแค่ใบเดียว
+   * ตอนนี้: ยิงคู่ขนานทั้งคู่ · ใบนี้มาถึงก็วาดเลย · ตารางทั้งหมดตามมาเบื้องหลัง (ใช้แค่ "ออเดอร์อื่นของ
+   * ลูกค้าคนเดียวกัน" กับการเดาห้องแชท LINE จากใบเก่า — สองอย่างนี้โผล่ทีหลังได้ ไม่ต้องกั๊กทั้งหน้าไว้)
+   */
   const load = useCallback(async () => {
-    // ออเดอร์ใบนี้ (มีลิงก์สลิปที่เซ็นแล้ว) + รายการทั้งหมด (ไว้หา "ออเดอร์อื่นของลูกค้าคนเดียวกัน")
-    const [one, r] = await Promise.all([fetchOrderAdmin(orderId), fetchOrdersAdmin()]);
-    const list = r.orders.length > 0 ? r.orders : MOCK_ORDERS;
-    setDemo(r.orders.length === 0);
+    const listLater = fetchOrdersAdmin({ lite: true }); // ยิงคู่ขนานไปเลย แต่ไม่รอ — ไม่ใช่ข้อมูลที่ใช้วาดหน้า
+    const one = await fetchOrderAdmin(orderId);
+    if (one.order) {
+      setOrder(one.order);
+      setDemo(false);
+      setLoading(false); // วาดหน้าได้แล้ว — ที่เหลือทยอยมา
+    }
+    const r = await listLater; // เอาเฉพาะฟิลด์ที่ใช้จริง — ก้อนเต็มไม่มีใครใช้ในหน้านี้
+    const demoMode = r.orders.length === 0;
+    const list = demoMode ? MOCK_ORDERS : r.orders;
+    setDemo(demoMode);
     setAllOrders(list);
-    setOrder(one.order ?? list.find((o) => o.id === orderId) ?? null);
+    // ใบเบาไม่มีรายการสินค้า → ใช้เป็นตัวออเดอร์หลักไม่ได้ ยกเว้นโหมดตัวอย่างที่ list เป็นข้อมูลเต็ม
+    if (!one.order && demoMode) setOrder(list.find((o) => o.id === orderId) ?? null);
     setLoading(false);
   }, [orderId]);
 

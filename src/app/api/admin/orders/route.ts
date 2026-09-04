@@ -64,11 +64,33 @@ function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Or
  * แอดมินดึงออเดอร์ (ใหม่→เก่า)
  *   /api/admin/orders          = ทั้งหมด (หน้ารายการ · หน้าสแกน · ใบงาน) — ไม่เซ็นลิงก์สลิป
  *   /api/admin/orders?id=XXXX  = ออเดอร์เดียว (หน้ารายละเอียด) — เซ็นลิงก์สลิปให้ดูรูปได้
+ *   /api/admin/orders?lite=1   = ทั้งหมดแบบเบา (เฉพาะฟิลด์ที่หน้ารายละเอียดต้องใช้)
  *
  * เดิมเซ็นลิงก์สลิป "ทุกใบ" ทุกครั้งที่เรียก (หน้ารายการถามซ้ำทุก 15 วิ) = ยิง Storage ทีละใบ
  * วัดจริง 21 ออเดอร์: ดึงข้อมูลเปล่า ~300 ms แต่ผ่าน API ~890 ms — ส่วนต่างคือการเซ็นลิงก์
  * หน้ารายการใช้แค่ป้าย 📎 ซึ่งดูจาก slipPath ได้อยู่แล้ว จึงไม่ต้องเซ็น
  */
+/**
+ * ออเดอร์เวอร์ชันเบา — เฉพาะฟิลด์ที่หน้ารายละเอียดต้องใช้กับ "ออเดอร์ทั้งตาราง":
+ * หาออเดอร์อื่นของลูกค้าคนเดียวกัน (id/status/phone) และเดาห้องแชท/LINE จากใบเก่า (lineChatOf/lineUserOf)
+ * ตัด items/ประวัติ/ที่อยู่ ฯลฯ ทิ้ง — ก้อนใหญ่ที่หน้านั้นไม่ได้ใช้เลย
+ *
+ * ดึงด้วย jsonb projection ให้ Postgres ตัดฟิลด์ให้ตั้งแต่ต้นทาง (ไม่ใช่ดึงทั้งก้อนมาตัดทีหลัง)
+ * วัดจริง 66 ใบ: ทั้งก้อน 137 KB / ~440 ms → เบา 16 KB / ~275 ms
+ */
+const LITE_SELECT = [
+  "id:data->>id",
+  "customer:data->>customer",
+  "phone:data->>phone",
+  "email:data->>email",
+  "customerId:data->>customerId",
+  "status:data->>status",
+  "date:data->>date",
+  "lineChatUrl:data->>lineChatUrl",
+  "lineUserId:data->>lineUserId",
+  "lineProfile:data->lineProfile",
+].join(",");
+
 export async function GET(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ orders: [] });
@@ -79,7 +101,25 @@ export async function GET(req: Request) {
   if (!canPack(actor, "orders.view", await loadRolePerms(), scanned))
     return NextResponse.json({ error: "บัญชีนี้ไม่มีสิทธิ์ทำรายการนี้" }, { status: 403 });
 
-  const wantId = new URL(req.url).searchParams.get("id");
+  const url = new URL(req.url);
+  const wantId = url.searchParams.get("id");
+  const lite = url.searchParams.get("lite") === "1";
+
+  // โหมดเบา — หน้ารายละเอียดขอตารางทั้งหมดไว้ทำแค่ 2 อย่าง (ออเดอร์อื่นของลูกค้าคนเดียวกัน + เดาห้องแชท
+  // LINE จากใบเก่า) ส่งทั้งก้อนไปเปลืองเปล่า ๆ · items:[] ใส่ไว้ให้โค้ดฝั่งหน้าเว็บที่วนรายการไม่พัง
+  if (lite && !wantId) {
+    const { data: rows, error: liteErr } = await sb
+      .from("orders")
+      .select(LITE_SELECT)
+      .order("created_at", { ascending: false });
+    if (liteErr) {
+      if (liteErr.code === "42P01" || liteErr.code === "PGRST205" || /schema cache|does not exist/i.test(liteErr.message))
+        return NextResponse.json({ orders: [], needsSetup: true });
+      return NextResponse.json({ error: liteErr.message, orders: [] }, { status: 500 });
+    }
+    const liteRows = (rows ?? []) as unknown as Record<string, unknown>[];
+    return NextResponse.json({ orders: liteRows.map((r) => ({ ...r, items: [] })) });
+  }
   let q = sb.from("orders").select("data").order("created_at", { ascending: false });
   if (wantId) q = q.eq("id", wantId);
   const { data, error } = await q;
@@ -92,39 +132,53 @@ export async function GET(req: Request) {
 
   const orders = (data ?? []).map((r) => r.data as Order);
   // เซ็น signed URL ชั่วคราวสำหรับสลิปใน bucket ส่วนตัว — เฉพาะตอนขอออเดอร์เดียว (หน้ารายละเอียด)
+  // ⚠️ ทั้งสามงาน (เช็ค LINE ของบัญชีลูกค้า · เซ็นสลิปงวดแรก · เซ็นสลิปงวดหลัง) ไม่เกี่ยวกัน
+  //    ทำขนานกันเสมอ — เดิมทำเรียงกันทำให้หน้ารายละเอียดรอนานโดยไม่จำเป็น
   if (wantId) {
-    // LINE ของบัญชีที่ล็อกอินตอนสั่ง — ให้หน้าออเดอร์เทียบกับที่พนักงานผูก (ชั่วคราว ไม่ persist)
-    for (const o of orders) {
-      if (!o.customerId) continue;
-      try {
-        const { data: u } = await sb.auth.admin.getUserById(o.customerId);
-        const meta = u?.user?.user_metadata as { line_user_id?: string; full_name?: string; name?: string } | undefined;
-        if (meta?.line_user_id) o.loginLine = { userId: meta.line_user_id, name: meta.full_name || meta.name };
-      } catch {
-        /* ไม่มีก็ข้าม */
-      }
-    }
-    const withSlip = orders.filter((o) => o.slipPath);
-    if (withSlip.length) {
+    const signSlip = async () => {
+      const withSlip = orders.filter((o) => o.slipPath);
+      if (!withSlip.length) return;
       const signed = await Promise.all(
         withSlip.map((o) => sb.storage.from("payment-slips-private").createSignedUrl(o.slipPath!, 3600))
       );
       withSlip.forEach((o, i) => {
-        const url = signed[i].data?.signedUrl;
-        if (url) o.slipUrl = url; // ชั่วคราว ใช้แสดงผลเท่านั้น ไม่ persist
+        const signedUrl = signed[i].data?.signedUrl;
+        if (signedUrl) o.slipUrl = signedUrl; // ชั่วคราว ใช้แสดงผลเท่านั้น ไม่ persist
       });
-    }
+    };
     // สลิป "งวดหลัง" ของออเดอร์มัดจำ — เก็บคนละช่อง ต้องเซ็นแยก
-    const withBalance = orders.filter((o) => o.deposit?.balanceSlipPath);
-    if (withBalance.length) {
+    const signBalance = async () => {
+      const withBalance = orders.filter((o) => o.deposit?.balanceSlipPath);
+      if (!withBalance.length) return;
       const signed = await Promise.all(
-        withBalance.map((o) => sb.storage.from("payment-slips-private").createSignedUrl(o.deposit!.balanceSlipPath!, 3600))
+        withBalance.map((o) =>
+          sb.storage.from("payment-slips-private").createSignedUrl(o.deposit!.balanceSlipPath!, 3600)
+        )
       );
       withBalance.forEach((o, i) => {
-        const url = signed[i].data?.signedUrl;
-        if (url) o.deposit = { ...o.deposit!, balanceSlipUrl: url };
+        const signedUrl = signed[i].data?.signedUrl;
+        if (signedUrl) o.deposit = { ...o.deposit!, balanceSlipUrl: signedUrl };
       });
-    }
+    };
+    // LINE ของบัญชีที่ล็อกอินตอนสั่ง — ให้หน้าออเดอร์เทียบกับที่พนักงานผูก (ชั่วคราว ไม่ persist)
+    const fillLoginLine = async () => {
+      await Promise.all(
+        orders
+          .filter((o) => o.customerId)
+          .map(async (o) => {
+            try {
+              const { data: u } = await sb.auth.admin.getUserById(o.customerId!);
+              const meta = u?.user?.user_metadata as
+                | { line_user_id?: string; full_name?: string; name?: string }
+                | undefined;
+              if (meta?.line_user_id) o.loginLine = { userId: meta.line_user_id, name: meta.full_name || meta.name };
+            } catch {
+              /* ไม่มีก็ข้าม */
+            }
+          })
+      );
+    };
+    await Promise.all([fillLoginLine(), signSlip(), signBalance()]);
   }
   return NextResponse.json({ orders });
 }

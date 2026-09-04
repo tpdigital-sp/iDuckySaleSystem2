@@ -1,5 +1,6 @@
 import "server-only";
 import { getFirestoreAdmin } from "@/lib/server/firebase-admin";
+import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderTotal, type Order } from "@/lib/admin-data";
 import { SITE_URL } from "@/lib/shop-info";
 
@@ -12,6 +13,28 @@ import { SITE_URL } from "@/lib/shop-info";
  * Idempotent: doc id = เลขออเดอร์ + .create() → ยิงซ้ำกี่ครั้งก็มีเรคอร์ดเดียว
  */
 export const TP_PAID_COLLECTION = "iduckyPaidOrders";
+
+/** bucket สลิปส่วนตัว — ต้องเซ็น URL ก่อนถึงจะเปิดดูได้ */
+const SLIP_BUCKET = "payment-slips-private";
+/** อายุลิงก์สลิปที่ส่งไปให้ msVerify — ยาว 1 ปี เพราะฝั่งนั้นเก็บไว้ดูย้อนหลัง (เซ็นสั้น = รูปเสียตอนเปิดดูทีหลัง) */
+const SLIP_URL_TTL_SEC = 365 * 24 * 60 * 60;
+
+/**
+ * ลิงก์สลิปสำหรับส่งข้ามระบบ — งวดแรกใช้ order.slipPath · งวดหลัง (มัดจำ 50%) ใช้ deposit.balanceSlipPath
+ * ออเดอร์เก่าที่เก็บเป็น public URL ถาวร (slipUrl) ส่งไปตรงๆ ได้เลย
+ */
+async function slipLinkFor(order: Order, isFinal: boolean): Promise<{ slipUrl: string; slipPath: string }> {
+  const path = isFinal ? order.deposit?.balanceSlipPath : order.slipPath;
+  if (!path) return { slipUrl: !isFinal && order.slipUrl ? order.slipUrl : "", slipPath: "" };
+  try {
+    const sb = getSupabaseAdmin();
+    if (!sb) return { slipUrl: "", slipPath: path };
+    const { data } = await sb.storage.from(SLIP_BUCKET).createSignedUrl(path, SLIP_URL_TTL_SEC);
+    return { slipUrl: data?.signedUrl ?? "", slipPath: path };
+  } catch {
+    return { slipUrl: "", slipPath: path };
+  }
+}
 
 export async function reportPaidToTP(
   order: Order,
@@ -40,6 +63,8 @@ export async function reportPaidToTP(
       hour12: false,
     }).formatToParts(now);
     const part = (t: string) => th.find((p) => p.type === t)?.value ?? "";
+    const isFinal = opts?.docSuffix === "-final";
+    const slip = await slipLinkFor(order, isFinal);
     const itemSummary = order.items
       .map((i) => `${i.name} ×${i.qty}`)
       .join(", ")
@@ -59,6 +84,10 @@ export async function reportPaidToTP(
         bank: "iDucky Store",
         orderLink: `${SITE_URL}/admin/orders/${encodeURIComponent(order.id)}`,
         note: opts?.noteSuffix ? `${opts.noteSuffix} · ${itemSummary}`.slice(0, 120) : itemSummary,
+        // สลิปโอน — msVerify เอาไปโชว์เป็นรูปย่อในตาราง (ลิงก์เซ็นอายุ 1 ปี · เก็บ path ไว้เซ็นใหม่ได้)
+        slipUrl: slip.slipUrl,
+        slipPath: slip.slipPath,
+        slipSignedAt: now.toISOString(),
         verifiedBy,
         paymentStatus: "ชำระแล้ว",
         origin: "iducky",

@@ -291,9 +291,15 @@ export async function uploadProof(
  * ok = false เมื่อยิงไม่ถึงเซิร์ฟเวอร์ (เน็ตหลุด) — คนละเรื่องกับ "ยิงถึงแต่ยังไม่มีออเดอร์"
  * หน้าจอที่โชว์ตัวเลขสรุปต้องแยกสองกรณีนี้ให้ออก ไม่งั้นเน็ตหลุดจะกลายเป็น "ยอดขาย 0"
  */
-export async function fetchOrdersAdmin(): Promise<{ orders: Order[]; needsSetup: boolean; ok: boolean }> {
+export async function fetchOrdersAdmin(opts?: {
+  /** เอาเฉพาะฟิลด์ที่ใช้หาออเดอร์อื่นของลูกค้าคนเดียวกัน/ห้องแชท LINE (หน้ารายละเอียดใช้แค่นี้ — ก้อนเล็กลงมาก) */
+  lite?: boolean;
+}): Promise<{ orders: Order[]; needsSetup: boolean; ok: boolean }> {
   try {
-    const res = await fetch("/api/admin/orders", { cache: "no-store", headers: packScanHeaders() });
+    const res = await fetch(`/api/admin/orders${opts?.lite ? "?lite=1" : ""}`, {
+      cache: "no-store",
+      headers: packScanHeaders(),
+    });
     const data = await res.json().catch(() => ({}));
     return { orders: data.orders ?? [], needsSetup: !!data.needsSetup, ok: res.ok };
   } catch {
