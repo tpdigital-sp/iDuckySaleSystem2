@@ -1,12 +1,13 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────
 # iDucky Prints Studio — ดับเบิลคลิกเพื่อเปิดเว็บอัตโนมัติ
-# สตาร์ท dev server (พอร์ต 3006 · เปลี่ยนได้ด้วย PORT=xxxx ./start.command) แล้วเปิดเบราว์เซอร์ให้เอง
+# สตาร์ท dev server (พอร์ต 3016 · เปลี่ยนได้ด้วย PORT=xxxx ./start.command) แล้วเปิดเบราว์เซอร์ให้เอง
 # ปิดเซิร์ฟเวอร์: กด Ctrl+C หรือปิดหน้าต่าง Terminal นี้
 #
 # กันหน้าต่างปิดเอง:
 #   · ถ้าเซิร์ฟเวอร์ error/ดับ → ค้างข้อความไว้ให้อ่าน ต้องกด Enter ถึงจะปิด
 #   · ถ้าดับเองแบบไม่ได้ตั้งใจ → สตาร์ทใหม่อัตโนมัติ (สูงสุด 5 ครั้ง)
+#   · ถ้าพอร์ตชนกับโปรแกรมอื่น → เลื่อนไปใช้พอร์ตว่างถัดไปให้เอง
 #   · กันเครื่องหลับตอนไม่ได้ใช้งาน (caffeinate) เซิร์ฟเวอร์จะไม่หลุด
 # ─────────────────────────────────────────────────────────────
 
@@ -35,7 +36,7 @@ trap on_interrupt INT TERM
 NODE_BIN=$(ls -d "$HOME"/.local/node-*/bin 2>/dev/null | head -1)
 [ -n "$NODE_BIN" ] && export PATH="$NODE_BIN:$PATH"
 
-PORT="${PORT:-3006}"
+PORT="${PORT:-3016}"
 URL="http://localhost:$PORT"
 
 echo "🦆 iDucky Prints Studio"
@@ -63,6 +64,23 @@ if curl -s -o /dev/null "$URL"; then
   echo "✓ เซิร์ฟเวอร์เปิดอยู่แล้ว — กำลังเปิดเบราว์เซอร์..."
   open "$URL"
   exit 0
+fi
+
+# พอร์ตโดนโปรแกรมอื่นจองอยู่ (แต่ไม่ใช่เว็บเรา) → เลื่อนไปพอร์ตว่างถัดไป สูงสุด 20 พอร์ต
+port_busy() { lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
+if port_busy "$PORT"; then
+  BUSY_PORT="$PORT"
+  FOUND=""
+  for _ in $(seq 1 20); do
+    PORT=$((PORT + 1))
+    port_busy "$PORT" || { FOUND=1; break; }
+  done
+  if [ -z "$FOUND" ]; then
+    hold_window "❌ พอร์ต $BUSY_PORT ถึง $PORT ไม่ว่างสักตัว — ปิดโปรแกรมที่ใช้พอร์ตอยู่ แล้วลองใหม่"
+    exit 1
+  fi
+  URL="http://localhost:$PORT"
+  echo "⚠️  พอร์ต $BUSY_PORT ชนกับโปรแกรมอื่น — เปลี่ยนไปใช้พอร์ต $PORT แทน"
 fi
 
 # เปิดเบราว์เซอร์อัตโนมัติเมื่อเซิร์ฟเวอร์พร้อม (รอเบื้องหลัง สูงสุด ~60 วิ)
