@@ -5779,7 +5779,7 @@ export default function ProductDetail({
                   <button
                     type="button"
                     onClick={() => openStudio(null)}
-                    className="rounded-full px-3 py-2 text-[12px] font-bold text-sky-700 underline decoration-sky-300 underline-offset-4 transition hover:text-sky-900"
+                    className="shrink-0 rounded-full bg-white px-4 py-2 text-[12px] font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-50"
                   >
                     🎨 วางลายเอง
                   </button>
