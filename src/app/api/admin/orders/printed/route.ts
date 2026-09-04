@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderFullyPaid, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { notifyCustomerLogged, orderLink, statusFlex } from "@/lib/server/notify";
 
 export const runtime = "nodejs";
 
@@ -86,5 +87,16 @@ export async function POST(req: Request) {
 
   const { error } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  /**
+   * สถานะเปลี่ยนตรงนี้ก็ต้องแจ้งลูกค้าเหมือนแอดมินกดเปลี่ยนเอง
+   * (ไม่งั้นใบที่เข้าผลิตด้วยการปริ้น ลูกค้าจะไม่ได้ข่าวเลย)
+   * "กำลังผลิต" = ข่าวคืบหน้า → importance "extra" ตามกติกาเดิม (คนที่เลือกรับเฉพาะเรื่องสำคัญจะไม่โดน)
+   */
+  if (startsProduction) {
+    const link = orderLink(new URL(req.url).origin, updated);
+    await notifyCustomerLogged(sb, updated, statusFlex(updated, link), 'แจ้งสถานะ "กำลังผลิต" (ปริ้นใบงาน)', "extra");
+  }
+
   return NextResponse.json({ ok: true, printCount: count, reprint: !first });
 }
