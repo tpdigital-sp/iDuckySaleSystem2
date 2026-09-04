@@ -63,6 +63,42 @@ import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { specEntries, specValueLines } from "@/components/SpecLines";
 import { uploadArtworkFile } from "@/lib/artwork-upload";
 
+/**
+ * 📱 เปิดหน้าออเดอร์นี้ "มาจากนอกเว็บ" หรือเปล่า — ใช้เดาว่าเป็นการสแกน QR จากใบงาน
+ *
+ * ทำไมต้องเดา: ใบงานที่ปริ้นไว้ก่อน 4 ก.ย. 69 มี QR รุ่นเก่าที่ไม่มี ?pack=1 ติดมาด้วย
+ * กระดาษที่แจกไปแล้วแก้ไม่ได้ แต่พนักงานยังส่องใบเดิมอยู่ทุกวัน — เลยต้องรู้จักท่านี้ด้วย
+ *
+ * เงื่อนไขที่ถือว่า "มาจากนอกเว็บ" ครบทั้ง 3 ข้อ:
+ *   1. หน้านี้คือหน้าที่เบราว์เซอร์โหลดมาทั้งหน้า (ไม่ใช่กดลิงก์ในเว็บแล้วเปลี่ยนหน้าแบบ SPA)
+ *      — เทียบ path ปัจจุบันกับ URL ที่เอกสารถูกโหลดมา (PerformanceNavigationTiming.name)
+ *   2. ไม่มี referrer จากโดเมนเราเอง (กล้องสแกน QR / LINE / พิมพ์ลิงก์เอง = ไม่มี referrer)
+ *   3. ไม่ใช่การกดปุ่มย้อนกลับ (back_forward) — คนกดย้อนกลับตั้งใจกลับไปที่เดิม ไม่ใช่เพิ่งสแกน
+ *
+ * กดลิงก์จากหน้ารายการออเดอร์/สถานีแพ็ค → ข้อ 1 ไม่ผ่าน = ไม่เด้งเข้าโหมดแพ็ค (ตามเดิม)
+ */
+function openedFromOutside(): boolean {
+  try {
+    const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    if (nav?.type === "back_forward") return false;
+    // URL ที่เอกสารถูกโหลดมาจริง — ถ้าตรงกับหน้าที่กำลังดูอยู่ แปลว่าเปิดหน้านี้ตรง ๆ ไม่ได้กดลิงก์ในเว็บมา
+    if (!nav?.name || new URL(nav.name).pathname !== window.location.pathname) return false;
+    return !document.referrer || !document.referrer.startsWith(window.location.origin);
+  } catch {
+    return false;
+  }
+}
+
+/** จำว่าผู้ใช้กดออกจากโหมดแพ็คของใบนี้เองแล้ว — เก็บต่อแท็บ (ปิดแท็บแล้วลืม) */
+const packOptOutKey = (orderId: string) => `ducky_pack_optout_${orderId}`;
+function packOptedOut(orderId: string): boolean {
+  try {
+    return sessionStorage.getItem(packOptOutKey(orderId)) === "1";
+  } catch {
+    return false;
+  }
+}
+
 /** ขั้นถัดไปที่ "ปกติจะกด" ของแต่ละสถานะ — ทำเป็นปุ่มเดียวจบ ไม่ต้องเปิดลิสต์ยาว */
 const NEXT_STATUS: Partial<Record<OrderStatus, { to: OrderStatus; label: string }>> = {
   รอชำระเงิน: { to: "ชำระแล้ว", label: "ยืนยันว่าเงินเข้าแล้ว" },
@@ -625,12 +661,14 @@ export default function AdminOrderDetailPage() {
   const [logOpen, setLogOpen] = useState(false); // ประวัติการทำงาน: หุบไว้ (โชว์ 3 รายการล่าสุด) กดค่อยขยาย
 
   useEffect(() => {
-    const on = new URLSearchParams(window.location.search).get(PACK_SCAN_PARAM) === "1";
+    const explicit = new URLSearchParams(window.location.search).get(PACK_SCAN_PARAM) === "1";
+    const on = explicit || openedFromOutside();
     setViaScan(on);
     setPackScanMode(on); // ทุกคำขอบันทึกจากแท็บนี้จะแนบ header บอกเซิร์ฟเวอร์
-    if (on) setPackMode(true);
+    // เคยกด "กลับหน้าตรวจสอบออเดอร์" ของใบนี้ในแท็บนี้แล้ว = อย่าลากกลับเข้าโหมดแพ็คอีก
+    if (on && !packOptedOut(orderId)) setPackMode(true);
     return () => setPackScanMode(false);
-  }, []);
+  }, [orderId]);
 
   useEffect(() => setShortcutExt(shortcutKind()), []);
   const [skipGate, setSkipGate] = useState<string[] | null>(null); // โมดัลยืนยันข้ามด่านแพ็ค (เหตุผลที่ยังไม่ครบ)
@@ -1584,7 +1622,19 @@ export default function AdminOrderDetailPage() {
             <span className="text-sm font-bold text-slate-500">📦 โหมดแพ็ค</span>
             <button
               type="button"
-              onClick={() => setPackMode(false)}
+              onClick={() => {
+                setPackMode(false);
+                // จำไว้ว่าคนนี้กดออกเอง — รีเฟรช/เปิดใบนี้ซ้ำในแท็บนี้จะไม่เด้งเข้าโหมดแพ็คอีก
+                // (สิทธิ์ที่ยืมมาตอนสแกนยังอยู่จนกว่าจะปิดแท็บ — แค่ไม่ดันเข้าโหมดแพ็คให้)
+                try {
+                  sessionStorage.setItem(packOptOutKey(order.id), "1");
+                } catch {}
+                const u = new URL(window.location.href);
+                if (u.searchParams.has(PACK_SCAN_PARAM)) {
+                  u.searchParams.delete(PACK_SCAN_PARAM);
+                  window.history.replaceState(null, "", u.pathname + u.search);
+                }
+              }}
               className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
             >
               ← กลับหน้าตรวจสอบออเดอร์
