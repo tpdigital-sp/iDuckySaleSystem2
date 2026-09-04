@@ -2138,6 +2138,11 @@ export default function ProductDetail({
    *    จึงไม่มีที่ส่งไฟล์เลย (รวมถึงช่องลิงก์ไฟล์และหมายเหตุถึงร้านที่อยู่ในกล่องเดียวกัน)
    */
   const studioNeedsDesign = studioMode && !designDone && !artProvided;
+  /**
+   * โหมดแอดมิน (สั่งแทนลูกค้า) ก็ต้องมีปุ่มเริ่มสร้างหน้าตาเดียวกับที่ลูกค้าเห็น
+   * — ต่างกันแค่ "ไม่บังคับ" วางลายก่อน (ปุ่มเพิ่มลงตะกร้ายังกดได้เลย ลายมาทางไลน์อยู่แล้ว)
+   */
+  const studioOfferStaff = staffOrdering && !!studioTarget && !designDone;
   // โหมดออกแบบบนเว็บ: "แบบที่ลูกค้าวางเอง" คือลายอยู่แล้ว ไม่ต้องมีช่องแนบไฟล์
   // โหมดแอดมิน: ลายมาทางไลน์/อีเมลอยู่แล้ว ไม่ต้องบังคับแนบตรงนี้ (แนบเพิ่มในออเดอร์ทีหลังได้)
   const artBlocked = studioMode || staffOrdering ? false : artRequired && !artProvided;
@@ -5636,8 +5641,9 @@ export default function ProductDetail({
                 </div>
                 )}
 
-                {/* โหมดออกแบบบนเว็บ: ปุ่มแรกคือ "เริ่มสร้าง" · วางลายเสร็จแล้วค่อยกลายเป็นปุ่มใส่ตะกร้า */}
-                {studioNeedsDesign && (
+                {/* โหมดออกแบบบนเว็บ: ปุ่มแรกคือ "เริ่มสร้าง" · วางลายเสร็จแล้วค่อยกลายเป็นปุ่มใส่ตะกร้า
+                    (โหมดแอดมินก็เห็นปุ่มเดียวกัน แต่ปุ่มเพิ่มลงตะกร้าไม่ถูกล็อก) */}
+                {(studioNeedsDesign || studioOfferStaff) && (
                   <button
                     type="button"
                     onClick={() => openStudio(null)}
@@ -5772,16 +5778,6 @@ export default function ProductDetail({
                   >
                     ปรับเป็น {(belowMin ? hardMinNeed : rateMinQty).toLocaleString("th-TH")}{" "}
                     {belowMin ? "ชิ้น" : (matrix?.unit ?? "ชิ้น")}
-                  </button>
-                )}
-                {/* โหมดแอดมินยังเปิดจอวางลายเองได้ ถ้าลูกค้าอยากให้จัดลายให้ตรงนี้เลย */}
-                {staffOrdering && studioTarget && !designDone && (
-                  <button
-                    type="button"
-                    onClick={() => openStudio(null)}
-                    className="shrink-0 rounded-full bg-white px-4 py-2 text-[12px] font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-50"
-                  >
-                    🎨 วางลายเอง
                   </button>
                 )}
               </div>
@@ -6784,8 +6780,9 @@ export default function ProductDetail({
               </>
             )}
           </div>
-          {/* แถบล่างมือถือ — ยังไม่วางลาย = ปุ่มเริ่มสร้าง · มีสเปคพักไว้แล้วก็ต้องสั่งของที่เก็บไว้ได้ด้วย */}
-          {studioNeedsDesign && (
+          {/* แถบล่างมือถือ — ยังไม่วางลาย = ปุ่มเริ่มสร้าง · มีสเปคพักไว้แล้วก็ต้องสั่งของที่เก็บไว้ได้ด้วย
+              (โหมดแอดมินก็มีปุ่มนี้ แต่ปุ่มเพิ่มลงตะกร้าไม่ถูกล็อก) */}
+          {(studioNeedsDesign || studioOfferStaff) && (
             <button
               type="button"
               onClick={() => openStudio(null)}
