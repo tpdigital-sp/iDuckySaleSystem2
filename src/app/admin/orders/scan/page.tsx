@@ -42,7 +42,7 @@ import { fetchOrdersAdmin, saveOrderAdmin } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
 
 type Msg = { kind: "ok" | "err" | "info"; text: string } | null;
-type Tab = "scan" | "print";
+type Tab = "scan" | "print" | "done";
 
 /** สถานะที่อยู่ในสายงานแพ็ค–ส่ง (แบบผ่านแล้ว ยังไม่ส่ง) */
 const FULFILL: OrderStatus[] = ["อนุมัติแบบ", "กำลังผลิต"];
@@ -62,6 +62,21 @@ function extractOrderId(raw: string): string {
     if (tail) return decodeURIComponent(tail);
   }
   return v;
+}
+
+/** เวลาที่ยิงเลขพัสดุออเดอร์นี้ (ISO) — อ่านจากบรรทัด log ล่าสุดของการบันทึกเลข */
+function trackedAt(o: Order): string | undefined {
+  for (let i = (o.log?.length ?? 0) - 1; i >= 0; i--) {
+    if (o.log![i].action === "บันทึกเลขพัสดุ") return o.log![i].at;
+  }
+  return undefined;
+}
+
+function fmtTrackedAt(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 /**
@@ -121,6 +136,16 @@ export default function ScanTrackingPage() {
       toPrint: active.filter((o) => !packGate(o).ready), // ยังไม่ครบ → รอปริ้น/แพ็ค
     };
   }, [orders]);
+
+  // ── ออเดอร์ที่มีเลขพัสดุในระบบแล้ว — ล่าสุดขึ้นก่อน (เรียงจากเวลาที่ยิงใน log) ──
+  const scanned = useMemo(
+    () =>
+      orders
+        .filter((o) => !!o.tracking)
+        .map((o) => ({ o, at: trackedAt(o) }))
+        .sort((a, b) => (b.at ?? "").localeCompare(a.at ?? "")),
+    [orders]
+  );
 
   function reset(message?: Msg) {
     setTarget(null);
@@ -201,6 +226,7 @@ export default function ScanTrackingPage() {
           <TabRow>
             <Tab on={tab === "scan"} onClick={() => setTab("scan")} label="ยิงเลขพัสดุ" count={toScan.length} />
             <Tab on={tab === "print"} onClick={() => setTab("print")} label="รอปริ้น/แพ็ค" count={toPrint.length} />
+            <Tab on={tab === "done"} onClick={() => setTab("done")} label="ยิงแล้ว" count={scanned.length} />
           </TabRow>
         </div>
       </div>
@@ -327,7 +353,7 @@ export default function ScanTrackingPage() {
             </>
           )}
         </>
-      ) : (
+      ) : tab === "print" ? (
         <>
           <ListHead title="แบบผ่านแล้ว รอปริ้นใบงาน + แพ็ค" note={`${toPrint.length} ใบ`} />
           {toPrint.length === 0 ? (
@@ -365,6 +391,35 @@ export default function ScanTrackingPage() {
                   </Row>
                 );
               })}
+            </Rows>
+          )}
+        </>
+      ) : (
+        <>
+          {/* ── ยิงแล้ว: เลขพัสดุที่บันทึกเข้าระบบทั้งหมด ── */}
+          <ListHead title="เลขพัสดุที่ยิงเข้าระบบแล้ว" note={`${scanned.length} ใบ`} />
+          {scanned.length === 0 ? (
+            <Empty title="ยังไม่มีออเดอร์ที่ยิงเลขพัสดุ" body="ยิงเลขพัสดุใบแรกจากแท็บ “ยิงเลขพัสดุ” แล้วจะขึ้นตรงนี้" />
+          ) : (
+            <Rows>
+              {scanned.map(({ o, at }) => (
+                <Row key={o.id} tone={STATUS_TONE[o.status]} href={`/admin/orders/${encodeURIComponent(o.id)}`}>
+                  <RowMain
+                    name={o.customer || "ยังไม่ระบุชื่อ"}
+                    tags={<Tag tone="mint">{o.tracking}</Tag>}
+                    meta={
+                      <>
+                        <span className="id">{o.id}</span>
+                        <span>{qtyOf(o)} ชิ้น</span>
+                        {at && <span>ยิงเมื่อ {fmtTrackedAt(at)}</span>}
+                      </>
+                    }
+                  />
+                  <RowSide>
+                    <StatusChip s={o.status} label={orderStatusLabel(o)} />
+                  </RowSide>
+                </Row>
+              ))}
             </Rows>
           )}
         </>
