@@ -58,6 +58,8 @@ function PrintQueueInner() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<TabKey>("todo");
   const [q, setQ] = useState("");
+  /** ใบที่ติ๊กไว้เพื่อปริ้นรวดเดียวหลายใบ — เก็บเป็น id กันหลุดตอนรายการรีเฟรชทุก 20 วิ */
+  const [sel, setSel] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     const r = await fetchOrdersAdmin();
@@ -105,6 +107,30 @@ function PrintQueueInner() {
     [ready, tab, kw]
   );
 
+  const toggleSel = useCallback((id: string) => {
+    setSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  /** ใบที่ติ๊กแล้วยังอยู่ในคิวจริง เรียงงานเร่งขึ้นก่อนเหมือนหน้าจอ — ใบที่หลุดคิวไปแล้วไม่นับ */
+  const selected = useMemo(
+    () =>
+      ready
+        .filter((o) => sel.has(o.id))
+        .sort((a, b) => urgency(a) - urgency(b) || a.id.localeCompare(b.id))
+        .map((o) => o.id),
+    [ready, sel]
+  );
+  const allShownSelected = shown.length > 0 && shown.every((o) => sel.has(o.id));
+  const batchHref =
+    selected.length > 0
+      ? `/admin/orders/${encodeURIComponent(selected[0])}/print?ids=${selected.map(encodeURIComponent).join(",")}`
+      : "";
+
   return (
     <PageShell>
       <PageHead
@@ -142,6 +168,26 @@ function PrintQueueInner() {
 
       <ListHead title="คิวงาน" note="งานเร่งขึ้นก่อน แล้วตามด้วยงานที่ใกล้วันใช้งานที่สุด" />
 
+      {!loading && shown.length > 0 && (
+        <label className="flex w-fit cursor-pointer items-center gap-2 px-2 pb-2 text-[13px] font-semibold" style={{ color: "var(--dk-quiet)" }}>
+          <input
+            type="checkbox"
+            className="h-5 w-5"
+            checked={allShownSelected}
+            onChange={() =>
+              setSel((prev) => {
+                const next = new Set(prev);
+                // ติ๊กครบอยู่แล้ว = เอาออกทั้งชุด · ยังไม่ครบ = ติ๊กที่เหลือให้ครบ
+                if (allShownSelected) shown.forEach((o) => next.delete(o.id));
+                else shown.forEach((o) => next.add(o.id));
+                return next;
+              })
+            }
+          />
+          เลือกทั้งหมดที่แสดง ({shown.length} ใบ) — ปริ้นรวดเดียวได้หลายใบ
+        </label>
+      )}
+
       {loading ? (
         <Empty title="กำลังโหลดคิว…" body="ดึงออเดอร์ที่อนุมัติแบบแล้วและที่กำลังผลิตจากเซิร์ฟเวอร์" />
       ) : shown.length === 0 ? (
@@ -152,9 +198,27 @@ function PrintQueueInner() {
       ) : (
         <Rows>
           {shown.map((o) => (
-            <PrintRow key={o.id} o={o} />
+            <PrintRow key={o.id} o={o} checked={sel.has(o.id)} onToggle={() => toggleSel(o.id)} />
           ))}
         </Rows>
+      )}
+
+      {/* แถบสั่งปริ้นรวม — ลอยติดขอบล่าง มือเดียวเอื้อมถึงบนมือถือ */}
+      {selected.length > 0 && (
+        <div className="dkb-g sticky bottom-4 z-20 mt-4 flex flex-wrap items-center gap-3 rounded-2xl px-4 py-3 shadow-lg">
+          <b className="text-[14px]">ติ๊กไว้ {selected.length} ใบ</b>
+          <span className="text-[12.5px]" style={{ color: "var(--dk-faint)" }}>
+            ปริ้นออกมาใบละหน้า เรียงงานเร่งขึ้นก่อน
+          </span>
+          <span className="ml-auto flex items-center gap-2">
+            <Btn small onClick={() => setSel(new Set())}>
+              ล้างที่เลือก
+            </Btn>
+            <Btn tone="navy" href={batchHref}>
+              🖨 ปริ้นที่เลือก {selected.length} ใบ
+            </Btn>
+          </span>
+        </div>
       )}
 
       <p className="mt-4 px-2 text-center text-[12px]" style={{ color: "var(--dk-faint)" }}>
@@ -164,7 +228,7 @@ function PrintQueueInner() {
   );
 }
 
-function PrintRow({ o }: { o: Order }) {
+function PrintRow({ o, checked, onToggle }: { o: Order; checked: boolean; onToggle: () => void }) {
   const printed = printCountOf(o);
   const left = daysToUseBy(o);
   const paid = orderFullyPaid(o);
@@ -179,6 +243,10 @@ function PrintRow({ o }: { o: Order }) {
 
   return (
     <Row tone={tone} done={printed > 0}>
+      {/* ติ๊กเลือกเพื่อปริ้นรวดเดียวหลายใบ — พื้นที่กด 44px นิ้วเดียวโดน */}
+      <label className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center self-center" title="เลือกเพื่อปริ้นรวมหลายใบ">
+        <input type="checkbox" className="h-5 w-5" checked={checked} onChange={onToggle} />
+      </label>
       <RowMain
         name={o.customer || "ยังไม่ระบุชื่อ"}
         href={`/admin/orders/${encodeURIComponent(o.id)}`}

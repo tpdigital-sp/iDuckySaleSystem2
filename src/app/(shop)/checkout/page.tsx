@@ -76,13 +76,14 @@ function selfDesignedProof(
 }
 
 export default function CheckoutPage() {
-  const { items: allItems, productOf, removeItem } = useCart();
+  const { items: allItems, productOf, productGone, removeItem } = useCart();
   /** รายการที่ลูกค้าเอาติ๊กออกในหน้าตะกร้า — ไม่เอาเข้าออเดอร์รอบนี้ (ยังค้างในตะกร้าต่อ) */
   const [unpicked, setUnpicked] = useState<string[]>([]);
   useEffect(() => {
     setUnpicked(getUnpicked());
   }, []);
-  const items = allItems.filter((i) => !unpicked.includes(i.key));
+  // สินค้าที่ยืนยันแล้วว่าถูกลบจากร้าน = ห้ามหลุดเข้าออเดอร์ (หน้าตะกร้าโชว์ป้ายบอกให้ลบอยู่แล้ว)
+  const items = allItems.filter((i) => !unpicked.includes(i.key) && !productGone(i.productId));
   const totalQty = items.reduce((sum, i) => sum + i.qty, 0);
   const { customer } = useCustomer();
   const [payment, setPayment] = useState<ShopPayment>(EMPTY_PAYMENT);

@@ -30,6 +30,7 @@
         "npm:firebase-admin@^12.7.0",
         "npm:jsbarcode@^3.12.3",
         "npm:next@^15.3.0",
+        "npm:pdf-lib@^1.17.1",
         "npm:pdfjs-dist@4.10.38",
         "npm:qrcode.react@^4.2.0",
         "npm:react-dom@19",

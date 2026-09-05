@@ -32,9 +32,13 @@
     "**/*.ts",
     "**/*.tsx",
     ".next-demo/types/**/*.ts",
+    ".next-dev-3006/types/**/*.ts",
+    ".next-dev-3014/types/**/*.ts",
+    ".next-dev-3016/types/**/*.ts",
     ".next/types/**/*.ts",
+    ".tmpwork/next-verify/types/**/*.ts",
     "next-env.d.ts",
-    ".tmpwork/next-verify/types/**/*.ts"
+    ".next-dev-3007/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

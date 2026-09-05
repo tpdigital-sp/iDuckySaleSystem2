@@ -14,7 +14,8 @@
       "port": 3021,
       "autoPort": false,
       "env": {
-        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "NEXT_DIST_DIR": ".next-dev-3021"
       }
     },
     {
@@ -30,7 +31,8 @@
       "port": 3016,
       "autoPort": false,
       "env": {
-        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "NEXT_DIST_DIR": ".next-dev-3016"
       }
     },
     {
@@ -46,7 +48,8 @@
       "port": 3006,
       "autoPort": false,
       "env": {
-        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "NEXT_DIST_DIR": ".next-dev-3006"
       }
     },
     {
@@ -72,7 +75,8 @@
       "port": 3001,
       "autoPort": false,
       "env": {
-        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "NEXT_DIST_DIR": ".next-dev-3001"
       }
     },
     {
@@ -88,7 +92,8 @@
       "port": 3007,
       "autoPort": false,
       "env": {
-        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "NEXT_DIST_DIR": ".next-dev-3007"
       }
     },
     {
@@ -104,7 +109,8 @@
       "port": 3012,
       "autoPort": false,
       "env": {
-        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "NEXT_DIST_DIR": ".next-dev-3012"
       }
     },
     {
@@ -120,7 +126,8 @@
       "port": 3014,
       "autoPort": false,
       "env": {
-        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "NEXT_DIST_DIR": ".next-dev-3014"
       }
     }
   ]

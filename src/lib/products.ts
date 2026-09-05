@@ -5242,6 +5242,37 @@ function backfillShowWhen(p: Product, selections: Record<string, string>): Recor
   return out;
 }
 
+/** ตัดวงเล็บออกจากชื่อกลุ่ม — "เพิ่มขนาด · ด้านยาวสุด (นิ้ว)" → "เพิ่มขนาด · ด้านยาวสุด" */
+const stripLabelParen = (s: string) => s.replace(/\s*\([^)]*\)/g, "").trim();
+
+/**
+ * 🩹 ย้ายคีย์ตัวเลือกของบรรทัดเก่าตามกลุ่มที่ถูก "เปลี่ยนชื่อ" ไปแล้ว
+ *
+ * ร้านเติมข้อมูลลงวงเล็บท้ายชื่อกลุ่มเป็นระยะ (เช่น "เพิ่มขนาด · ด้านยาวสุด (นิ้ว)" →
+ * "…(นิ้ว · จาก 55×33 ซม.)" ของ WALL TIDY 5 ก.ย. 69) — บรรทัดที่ค้างอยู่ในตะกร้าลูกค้า
+ * เก็บคีย์ชื่อเก่าไว้ พอชื่อไม่แมตช์ ค่าบวกเพิ่มของกลุ่มนั้นหายเงียบ ๆ (฿600 เหลือ ฿450)
+ *
+ * กติกา: คีย์ที่ไม่ตรงกับกลุ่มไหนเลย ให้หากลุ่มที่ "ชื่อตัดวงเล็บแล้วตรงกันเป๊ะ ๆ กลุ่มเดียว"
+ * (กลุ่มชื่อซ้ำมีจริง — เจอหลายกลุ่มถือว่าไม่รู้ ไม่แตะ) และปลายทางต้องยังไม่มีค่า
+ * คีย์ที่ไม่ใช่กลุ่ม ("หมายเหตุ") ไม่โดนเพราะหากลุ่มไม่เจออยู่แล้ว
+ */
+export function migrateRenamedGroupKeys(p: Product, selections: Record<string, string>): Record<string, string> {
+  const opts = p.options ?? [];
+  const labels = new Set(opts.map((o) => o.label));
+  const rename = new Map<string, string>();
+  for (const key of Object.keys(selections)) {
+    if (labels.has(key)) continue;
+    const base = stripLabelParen(key);
+    if (!base) continue;
+    const matches = opts.filter((o) => o.label !== key && stripLabelParen(o.label) === base);
+    if (matches.length !== 1 || selections[matches[0].label] !== undefined) continue;
+    rename.set(key, matches[0].label);
+  }
+  if (!rename.size) return selections;
+  // สร้างใหม่ตามลำดับคีย์เดิม — บรรทัดในตะกร้า/ออเดอร์จะได้ไม่สลับที่
+  return Object.fromEntries(Object.entries(selections).map(([k, v]) => [rename.get(k) ?? k, v]));
+}
+
 /**
  * 🩹 ซ่อมบรรทัดที่ "เรทราคาขัดกับสเปคของตัวเอง"
  *
@@ -5281,7 +5312,9 @@ export function repriceCartGroups(
   // เติมค่ากลุ่มควบคุมที่หายไปก่อนคิดราคา (ของเก่าในตะกร้าที่เกิดก่อนร้านเพิ่มกลุ่มใหม่)
   const lines = rawLines.map((l) => {
     const p = productOf(l.productId);
-    return p ? { ...l, selections: repairRateFromOptions(p, backfillShowWhen(p, l.selections)) } : l;
+    return p
+      ? { ...l, selections: repairRateFromOptions(p, backfillShowWhen(p, migrateRenamedGroupKeys(p, l.selections))) }
+      : l;
   });
 
   // ตั้งต้น: คิดแบบบรรทัดเดี่ยวตามเดิม แล้วค่อยทับเฉพาะกลุ่มที่รวมได้

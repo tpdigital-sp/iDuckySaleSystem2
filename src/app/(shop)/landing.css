@@ -3151,6 +3151,22 @@ main:has(.dl-page) + .dl footer{margin-top:0}
   background:var(--yolk-deep);box-shadow:0 0 0 3px rgba(255,182,39,.22)}
 .shopp .ord-terms li>span{white-space:pre-line;min-width:0}
 
+/* --- ป้าย "ข้อควรทราบก่อนสั่ง" บนการ์ดสินค้าในตะกร้า — ปิดไว้เป็นชิปเล็ก กดแล้วกางอ่าน --- */
+.shopp .cart-terms{margin-top:8px}
+.shopp .cart-terms>summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:6px;
+  padding:4px 11px;border-radius:999px;font-size:.72rem;font-weight:700;color:#8A5B00;
+  background:rgba(255,182,39,.16);border:1.5px solid rgba(255,182,39,.5)}
+.shopp .cart-terms>summary::-webkit-details-marker{display:none}
+.shopp .cart-terms>summary:hover{background:rgba(255,182,39,.28)}
+.shopp .cart-terms-chev{flex:none;transition:transform .28s cubic-bezier(.34,1.56,.64,1);font-size:.58rem}
+.shopp .cart-terms[open]>summary .cart-terms-chev{transform:rotate(180deg)}
+.shopp .cart-terms ul{margin-top:8px;padding:10px 13px;display:flex;flex-direction:column;gap:8px;
+  border-radius:12px;background:rgba(255,182,39,.1);border:1px solid rgba(255,182,39,.35)}
+.shopp .cart-terms li{list-style:none;display:flex;gap:9px;font-size:.76rem;line-height:1.7;color:#6B4A17}
+.shopp .cart-terms li>i{flex:none;margin-top:.58em;width:5px;height:5px;border-radius:50%;
+  background:var(--yolk-deep);box-shadow:0 0 0 3px rgba(255,182,39,.22)}
+.shopp .cart-terms li>span{white-space:pre-line;min-width:0}
+
 /* --- ระดับความลอย: หน้าสินค้ามีกล่องเยอะมาก ถ้าลอยเท่ากันหมดจะลายตา ---
    ลอย (.ord-card ปกติ) = เฉพาะแผงหลักที่อยากให้สายตาไปเกาะ (ราคา · แผงสั่งซื้อ · แกลเลอรี)
    แบน (.ord-card.flat / .ord-tile) = กล่องประกอบทั้งหมด — มีขอบบาง ๆ พอแยกกลุ่ม แต่ไม่มีเงา ไม่ลอย */

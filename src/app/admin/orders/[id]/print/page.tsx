@@ -83,10 +83,217 @@ export default function PrintOrderPage() {
   const params = useParams<{ id: string }>();
   const orderId = decodeURIComponent(String(params?.id ?? ""));
 
-  const [order, setOrder] = useState<Order | null>(null);
+  /** ออเดอร์ที่จะปริ้น — ปกติใบเดียวตาม [id] · มากับ ?ids= จากคิวปริ้นได้หลายใบรวดเดียว */
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [docs, setDocs] = useState<Record<DocKey, boolean>>({ work: true, receipt: false, box: false });
   const [withProofs, setWithProofs] = useState(true);
+  const [origin, setOrigin] = useState(""); // สำหรับ QR มือถือ (ต้องอ่านฝั่งเบราว์เซอร์)
+  const [shop, setShop] = useState<ShopInfo>(shopInfoOf(null)); // ข้อมูลร้าน (แอดมินแก้ได้ที่ตั้งค่าระบบ)
+  const seesMoney = useCan()("orders.money"); // ฝ่ายแพ็คไม่เห็นใบเสร็จ (มีราคา)
+
+  const load = useCallback(async (wanted: string[]) => {
+    const r = await fetchOrdersAdmin();
+    const list = r.orders.length > 0 ? r.orders : MOCK_ORDERS;
+    // คงลำดับตามที่เลือกมาจากคิว — ใบที่หาไม่เจอข้ามไป
+    setOrders(wanted.map((id) => list.find((o) => o.id === id)).filter((o): o is Order => Boolean(o)));
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    // ?doc=work|receipt (รองรับลิงก์เก่า job/label → work)
+    setOrigin(publicOrigin()); // ต้องเป็นโดเมนจริง มือถือถึงสแกนแล้วเปิดได้
+    const sp = new URLSearchParams(window.location.search);
+    const only = sp.get("doc");
+    if (only === "receipt") setDocs({ work: false, receipt: true, box: false });
+    else if (only === "box") setDocs({ work: false, receipt: false, box: true });
+    else if (only) setDocs({ work: true, receipt: false, box: false });
+    void fetchShopPayment().then((p) => setShop(shopInfoOf(p)));
+    // ?ids=A,B,C = ติ๊กเลือกจากคิวปริ้นมาหลายใบ — ไม่มีก็ปริ้นใบเดียวตาม [id]
+    const multi = (sp.get("ids") ?? "")
+      .split(",")
+      .map((s) => decodeURIComponent(s.trim()))
+      .filter(Boolean);
+    void load(multi.length > 0 ? Array.from(new Set(multi)) : [orderId]);
+  }, [load, orderId]);
+
+  if (loading) return <p className="p-10 text-center text-sm text-slate-400">กำลังโหลด…</p>;
+  if (orders.length === 0) {
+    return (
+      <div className="p-10 text-center">
+        <p className="font-semibold text-slate-600">ไม่พบออเดอร์ {orderId}</p>
+        <Link href="/admin/orders" className="mt-3 inline-block text-sm font-semibold text-amber-600 hover:underline">
+          ← กลับหน้าคำสั่งซื้อ
+        </Link>
+      </div>
+    );
+  }
+
+  const batch = orders.length > 1;
+  // 🔒 เงินครบเป็นเรื่องรายใบ — ปริ้นรวมจึงดูทั้ง "ครบทุกใบ" (ป้ายเตือน) และ "ครบอย่างน้อยหนึ่งใบ" (เปิดใบเสร็จได้)
+  const allPaid = orders.every((o) => orderFullyPaid(o));
+  const anyPaid = orders.some((o) => orderFullyPaid(o));
+  const unpaidCount = orders.filter((o) => !orderFullyPaid(o)).length;
+  // ใบเสร็จติ๊กได้ก็ต่อเมื่อมีใบที่เก็บเงินครบอย่างน้อยหนึ่งใบ (ใบที่ไม่ครบจะไม่ออกใบเสร็จอยู่แล้ว)
+  const chosen = (Object.keys(docs) as DocKey[]).filter((k) => docs[k] && !(k === "receipt" && !anyPaid));
+
+  return (
+    <>
+      <style>{`
+        @page { size: A4; margin: 10mm; }
+        @media print {
+          html, body { background: #fff !important; }
+          /* ให้สีหมายเหตุพิมพ์ออกตรงตามที่เลือก */
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .no-print { display: none !important; }
+          .print-wrap { padding: 0 !important; }
+          /* 1 ออเดอร์ = 1 หน้า A4 เป๊ะ (277mm = A4 หัก margin) — ส่วนเกินถูกตัด (ดูต่อผ่านมือถือ) */
+          .sheet { break-after: page; box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; width: auto !important; height: 277mm; overflow: hidden; display: flex; flex-direction: column; }
+          .sheet:last-child { break-after: auto; }
+          /* โซนตารางงาน = ยืดเต็มที่เหลือ แล้วตัดส่วนเกิน (หัว+ท้ายไม่โดนตัด) */
+          .sheet-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+          .keep { break-inside: avoid; }
+        }
+      `}</style>
+
+      {/* ── แถบเครื่องมือ (ไม่พิมพ์ออกมา) ── */}
+      <div className="no-print sticky top-0 z-10 mb-6 flex flex-wrap items-center gap-4 border-b border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
+        <Link
+          href={batch ? "/admin/print" : `/admin/orders/${encodeURIComponent(orders[0].id)}`}
+          className="text-sm text-slate-500 hover:text-slate-800"
+        >
+          {batch ? "← กลับคิวปริ้น" : "← กลับหน้าออเดอร์"}
+        </Link>
+
+        {batch && (
+          <span className="rounded-full bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-700 ring-1 ring-sky-200">
+            🖨 ปริ้นรวม {orders.length} ใบ — ใบละหน้า เรียงตามที่เลือกจากคิว
+          </span>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          {(([
+            // ยังเก็บเงินไม่ครบ = ใบปะหน้า (ที่อยู่จัดส่ง) ไม่ออก — ป้ายต้องบอกตรง ๆ ว่าจะได้แค่ใบงาน
+            ["work", allPaid ? "ใบงาน + ใบปะหน้าพัสดุ" : "ใบงาน"],
+            // ป้ายแปะหน้ากล่อง — ตัวใหญ่ อ่านจากไกล ไม่มีราคา ฝ่ายแพ็คใช้ได้
+            ["box", "🏷 ใบแปะหน้ากล่อง"],
+            // ใบเสร็จมีราคา — เฉพาะคนที่เห็นข้อมูลเงินได้
+            ...(seesMoney ? [["receipt", "ใบเสร็จ"]] : []),
+          ] as [DocKey, string][])).map(([k, label]) => (
+            <label key={k} className={`flex items-center gap-1.5 ${k === "receipt" && !anyPaid ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}>
+              <input
+                type="checkbox"
+                checked={docs[k] && !(k === "receipt" && !anyPaid)}
+                disabled={k === "receipt" && !anyPaid}
+                onChange={(e) => setDocs((d) => ({ ...d, [k]: e.target.checked }))}
+                className="h-4 w-4 accent-amber-500"
+              />
+              {label}
+              {k === "work" && !allPaid && (
+                <span className="text-xs font-semibold text-rose-500">
+                  · {batch ? `ใบปะหน้ายังไม่ออก ${unpaidCount} ใบ 🔒` : "ใบปะหน้ายังไม่ออก 🔒"}
+                </span>
+              )}
+              {k === "receipt" && !anyPaid ? " 🔒" : ""}
+            </label>
+          ))}
+          <span className="text-slate-300">|</span>
+          <label className="flex cursor-pointer items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={withProofs}
+              onChange={(e) => setWithProofs(e.target.checked)}
+              className="h-4 w-4 accent-amber-500"
+            />
+            แนบรูปแบบงาน
+          </label>
+        </div>
+
+        {!allPaid && (
+          <span className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">
+            {batch
+              ? `🔒 มี ${unpaidCount} ใบยังเก็บเงินไม่ครบ 100% — ใบนั้นออกได้เฉพาะ “ใบงาน”`
+              : "🔒 ยังเก็บเงินไม่ครบ 100% — พิมพ์ได้เฉพาะ “ใบงาน” · ใบปะหน้าพัสดุและใบเสร็จยังออกไม่ได้"}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            // บันทึกทุกครั้งที่กดพิมพ์ รวมปริ้นซ้ำ — ประวัติจะเห็นว่าใครปริ้น เอกสารอะไร ครั้งที่เท่าไร
+            // (ครั้งแรกที่พิมพ์ใบปะหน้าจริง = ล็อกที่อยู่ฝั่งลูกค้าด้วย)
+            if (chosen.length > 0) {
+              const now = new Date().toISOString();
+              for (const o of orders) {
+                // ใบที่ยังไม่จ่ายครบไม่ออกใบเสร็จ — ประวัติต้องไม่บันทึกเกินจริง
+                const docsFor = chosen.filter((k) => k !== "receipt" || orderFullyPaid(o));
+                if (docsFor.length === 0) continue;
+                fetch("/api/admin/orders/printed", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ orderId: o.id, docs: docsFor }),
+                }).catch(() => {});
+              }
+              setOrders((list) =>
+                list.map((o) => {
+                  // ปริ้นใบงาน/ใบปะหน้า (เก็บเงินครบแล้ว) = งานเข้าไลน์ผลิต → เลื่อนสถานะให้ตรงกับฝั่งเซิร์ฟเวอร์
+                  const toProduction =
+                    chosen.includes("work") &&
+                    orderFullyPaid(o) &&
+                    ["รอชำระเงิน", "รอตรวจสอบ", "ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"].includes(o.status);
+                  return {
+                    ...o,
+                    printedAt: o.printedAt ?? now,
+                    printCount: (o.printCount ?? (o.printedAt ? 1 : 0)) + 1,
+                    lastPrintedAt: now,
+                    ...(toProduction ? { status: "กำลังผลิต" as const } : {}),
+                  };
+                })
+              );
+            }
+            window.print();
+          }}
+          disabled={chosen.length === 0 || (!anyPaid && !docs.work)}
+          title={anyPaid || docs.work ? undefined : "ใบเสร็จพิมพ์ได้เมื่อรับเงินครบ 100%"}
+          className="ml-auto rounded-xl bg-amber-500 px-5 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-40"
+        >
+          {batch ? `🖨️ พิมพ์ทั้ง ${orders.length} ใบ` : "🖨️ พิมพ์"}
+        </button>
+      </div>
+
+      <div className="print-wrap mx-auto max-w-[210mm] space-y-6 px-4 pb-16 text-slate-900">
+        {chosen.length === 0 && (
+          <p className="no-print rounded-xl bg-amber-50 p-6 text-center text-sm text-amber-800 ring-1 ring-amber-200">
+            เลือกเอกสารที่ต้องการพิมพ์อย่างน้อย 1 อย่างด้านบน
+          </p>
+        )}
+
+        {orders.map((o) => (
+          <OrderDocs key={o.id} order={o} docs={docs} withProofs={withProofs} shop={shop} origin={origin} seesMoney={seesMoney} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+/**
+ * เอกสารครบชุดของออเดอร์เดียว (ใบงาน/ใบแปะกล่อง/ใบเสร็จ) —
+ * แยกเป็นคอมโพเนนต์เพราะหน้านี้ปริ้นได้ทีละหลายใบ state ต่อใบ (ใบแปะกล่อง/สถานะ ปณ./วัดล้นหน้า) ต้องแยกกัน
+ */
+function OrderDocs({
+  order,
+  docs,
+  withProofs,
+  shop,
+  origin,
+  seesMoney,
+}: {
+  order: Order;
+  docs: Record<DocKey, boolean>;
+  withProofs: boolean;
+  shop: ShopInfo;
+  origin: string;
+  seesMoney: boolean;
+}) {
   /**
    * 🏷 ใบแปะกล่อง — งานขายส่งแพ็คแยกลาย (กล่องละลาย กล่องละ N ชิ้น)
    * เลยให้ตั้งได้ต่อ "ลาย" ว่าพิมพ์กี่ใบ และหนึ่งกล่องใส่กี่ชิ้น
@@ -94,14 +301,11 @@ export default function PrintOrderPage() {
    */
   const [boxCopies, setBoxCopies] = useState<Record<string, number>>({});
   const [boxPerBox, setBoxPerBox] = useState<Record<string, string>>({});
-  const [origin, setOrigin] = useState(""); // สำหรับ QR มือถือ (ต้องอ่านฝั่งเบราว์เซอร์)
-  const [shop, setShop] = useState<ShopInfo>(shopInfoOf(null)); // ข้อมูลร้าน (แอดมินแก้ได้ที่ตั้งค่าระบบ)
-  const seesMoney = useCan()("orders.money"); // ฝ่ายแพ็คไม่เห็นใบเสร็จ (มีราคา)
 
   // 📮 สถานะพัสดุ ปณ. ณ เวลาพิมพ์ — โชว์บนใบงานเมื่อมีเลขรูปแบบไปรษณีย์ไทย
   const [thpEvents, setThpEvents] = useState<ThpEventView[] | null>(null);
   useEffect(() => {
-    const n = (order?.tracking ?? "").trim().toUpperCase();
+    const n = (order.tracking ?? "").trim().toUpperCase();
     if (!/^[A-Z]{2}\d{9}TH$/.test(n)) return;
     let live = true;
     fetch(`/api/orders/track?number=${encodeURIComponent(n)}`)
@@ -111,25 +315,7 @@ export default function PrintOrderPage() {
     return () => {
       live = false;
     };
-  }, [order?.tracking]);
-
-  const load = useCallback(async () => {
-    const r = await fetchOrdersAdmin();
-    const list = r.orders.length > 0 ? r.orders : MOCK_ORDERS;
-    setOrder(list.find((o) => o.id === orderId) ?? null);
-    setLoading(false);
-  }, [orderId]);
-
-  useEffect(() => {
-    // ?doc=work|receipt (รองรับลิงก์เก่า job/label → work)
-    setOrigin(publicOrigin()); // ต้องเป็นโดเมนจริง มือถือถึงสแกนแล้วเปิดได้
-    const only = new URLSearchParams(window.location.search).get("doc");
-    if (only === "receipt") setDocs({ work: false, receipt: true, box: false });
-    else if (only === "box") setDocs({ work: false, receipt: false, box: true });
-    else if (only) setDocs({ work: true, receipt: false, box: false });
-    void fetchShopPayment().then((p) => setShop(shopInfoOf(p)));
-    void load();
-  }, [load]);
+  }, [order.tracking]);
 
   // วัดว่าเนื้อหาชีทงานล้นเกิน A4 ไหม (วัดที่ความกว้าง A4 = 794px) → ใช้ตัดสินใจโชว์โน้ต "ดูต่อผ่านมือถือ"
   const workRef = useRef<HTMLElement>(null);
@@ -148,18 +334,6 @@ export default function PrintOrderPage() {
     const t = setTimeout(measure, 500); // เผื่อ layout/รูปเสถียร
     return () => clearTimeout(t);
   }, [order, withProofs, docs]);
-
-  if (loading) return <p className="p-10 text-center text-sm text-slate-400">กำลังโหลด…</p>;
-  if (!order) {
-    return (
-      <div className="p-10 text-center">
-        <p className="font-semibold text-slate-600">ไม่พบออเดอร์ {orderId}</p>
-        <Link href="/admin/orders" className="mt-3 inline-block text-sm font-semibold text-amber-600 hover:underline">
-          ← กลับหน้าคำสั่งซื้อ
-        </Link>
-      </div>
-    );
-  }
 
   const subtotal = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
   const totalQty = order.items.reduce((s, i) => s + i.qty, 0);
@@ -188,7 +362,6 @@ export default function PrintOrderPage() {
       : /ลงทะเบียน|ธรรมดา/i.test(shipName)
         ? "#dc2626" // ลงทะเบียน/ส่งธรรมดา — แดง
         : "#0f172a"; // วิธีอื่น — ดำเหมือนเดิม
-  const chosen = (Object.keys(docs) as DocKey[]).filter((k) => docs[k]);
   /**
    * แตกออเดอร์เป็น "ลาย" — งานขายส่งแพ็คแยกลาย ใบแปะกล่องจึงต้องออกทีละลาย
    * ใช้แบบที่อนุมัติแล้วเป็นหลัก (มีจำนวนต่อลายติดมาด้วย) ไม่มีก็ใช้ลายที่ลูกค้าแนบ
@@ -212,70 +385,15 @@ export default function PrintOrderPage() {
     : "";
 
   return (
-    <>
-      <style>{`
-        @page { size: A4; margin: 10mm; }
-        @media print {
-          html, body { background: #fff !important; }
-          /* ให้สีหมายเหตุพิมพ์ออกตรงตามที่เลือก */
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          .no-print { display: none !important; }
-          .print-wrap { padding: 0 !important; }
-          /* 1 ออเดอร์ = 1 หน้า A4 เป๊ะ (277mm = A4 หัก margin) — ส่วนเกินถูกตัด (ดูต่อผ่านมือถือ) */
-          .sheet { break-after: page; box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; width: auto !important; height: 277mm; overflow: hidden; display: flex; flex-direction: column; }
-          .sheet:last-child { break-after: auto; }
-          /* โซนตารางงาน = ยืดเต็มที่เหลือ แล้วตัดส่วนเกิน (หัว+ท้ายไม่โดนตัด) */
-          .sheet-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
-          .keep { break-inside: avoid; }
-        }
-      `}</style>
-
-      {/* ── แถบเครื่องมือ (ไม่พิมพ์ออกมา) ── */}
-      <div className="no-print sticky top-0 z-10 mb-6 flex flex-wrap items-center gap-4 border-b border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
-        <Link href={`/admin/orders/${encodeURIComponent(order.id)}`} className="text-sm text-slate-500 hover:text-slate-800">
-          ← กลับหน้าออเดอร์
-        </Link>
-
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          {(([
-            // ยังเก็บเงินไม่ครบ = ใบปะหน้า (ที่อยู่จัดส่ง) ไม่ออก — ป้ายต้องบอกตรง ๆ ว่าจะได้แค่ใบงาน
-            ["work", fullyPaid ? "ใบงาน + ใบปะหน้าพัสดุ" : "ใบงาน"],
-            // ป้ายแปะหน้ากล่อง — ตัวใหญ่ อ่านจากไกล ไม่มีราคา ฝ่ายแพ็คใช้ได้
-            ["box", "🏷 ใบแปะหน้ากล่อง"],
-            // ใบเสร็จมีราคา — เฉพาะคนที่เห็นข้อมูลเงินได้
-            ...(seesMoney ? [["receipt", "ใบเสร็จ"]] : []),
-          ] as [DocKey, string][])).map(([k, label]) => (
-            <label key={k} className={`flex items-center gap-1.5 ${k === "receipt" && !fullyPaid ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}>
-              <input
-                type="checkbox"
-                checked={docs[k] && !(k === "receipt" && !fullyPaid)}
-                disabled={k === "receipt" && !fullyPaid}
-                onChange={(e) => setDocs((d) => ({ ...d, [k]: e.target.checked }))}
-                className="h-4 w-4 accent-amber-500"
-              />
-              {label}
-              {k === "work" && !fullyPaid && (
-                <span className="text-xs font-semibold text-rose-500">· ใบปะหน้ายังไม่ออก 🔒</span>
-              )}
-              {k === "receipt" && !fullyPaid ? " 🔒" : ""}
-            </label>
-          ))}
-          <span className="text-slate-300">|</span>
-          <label className="flex cursor-pointer items-center gap-1.5">
-            <input
-              type="checkbox"
-              checked={withProofs}
-              onChange={(e) => setWithProofs(e.target.checked)}
-              className="h-4 w-4 accent-amber-500"
-            />
-            แนบรูปแบบงาน
-          </label>
-        </div>
-
+    <div className="space-y-6">
+      {/* หัวคั่นต่อใบ (ไม่พิมพ์) — ปริ้นรวมหลายใบต้องรู้ว่าชุดไหนของใคร + เคยปริ้นไปแล้วกี่ครั้ง */}
+      <div className="no-print flex flex-wrap items-center gap-2 px-1 pt-2">
+        <span className="font-mono text-sm font-extrabold text-slate-700">{order.id}</span>
+        <span className="text-sm text-slate-500">{order.customer}</span>
         {/* เคยปริ้นแล้ว — เตือนก่อนกดซ้ำ กันของออกสองรอบ */}
         {(order.printCount ?? 0) > 0 && (
           <span
-            className="rounded-full bg-orange-50 px-3 py-1.5 text-xs font-bold text-orange-700 ring-1 ring-orange-200"
+            className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-bold text-orange-700 ring-1 ring-orange-200"
             title={order.lastPrintedAt ? `ล่าสุด ${new Date(order.lastPrintedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}` : undefined}
           >
             🖨 ใบนี้ปริ้นไปแล้ว {order.printCount} ครั้ง
@@ -283,134 +401,85 @@ export default function PrintOrderPage() {
             {" — กดพิมพ์อีกจะบันทึกเป็นปริ้นซ้ำ"}
           </span>
         )}
-
-        {docs.box && (
-          <div className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-bold text-slate-700">
-              🏷 ตั้งค่าใบแปะกล่อง — งานขายส่งแพ็คแยกลาย ตั้งได้ทีละลาย
-            </p>
-            <p className="mt-0.5 text-[11px] text-slate-500">
-              “จำนวนใบ” = พิมพ์กี่แผ่น A4 (กล่องละแผ่น) · “ชิ้น/กล่อง” ใส่ตัวเลขไว้ก็ได้
-              หรือเว้นว่างให้คนแพ็คเขียนเองหน้างาน
-            </p>
-            <div className="mt-2 grid gap-1.5">
-              {boxUnits.map((u) => {
-                const copies = boxCopies[u.key] ?? 1;
-                return (
-                  <div key={u.key} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-2 py-1.5 ring-1 ring-slate-200">
-                    {u.url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={u.url} alt="" className="h-9 w-9 shrink-0 rounded object-cover ring-1 ring-slate-200" />
-                    ) : (
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded bg-slate-100 text-[10px] text-slate-400">—</span>
-                    )}
-                    <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-slate-700">
-                      {order.items.length > 1 ? `รายการ ${u.i + 1} · ` : ""}
-                      {u.total > 1 ? `ลายที่ ${u.no}` : u.it.name}
-                      {u.qty ? (
-                        <span className="ml-1 font-normal text-slate-400">
-                          ({u.qty} {u.unit})
-                        </span>
-                      ) : null}
-                    </span>
-                    <label className="flex items-center gap-1 text-[11px] text-slate-600">
-                      ชิ้น/กล่อง
-                      <input
-                        value={boxPerBox[u.key] ?? ""}
-                        onChange={(e) => {
-                          const v = e.target.value.replace(/\D/g, "");
-                          setBoxPerBox((c) => ({ ...c, [u.key]: v }));
-                          // ใส่ชิ้น/กล่องแล้ว คำนวณจำนวนใบให้เลย (แก้ทับได้)
-                          const per = Number(v);
-                          if (per > 0 && u.qty) setBoxCopies((c) => ({ ...c, [u.key]: Math.max(1, Math.ceil(u.qty! / per)) }));
-                        }}
-                        inputMode="numeric"
-                        placeholder="เขียนเอง"
-                        className="w-20 rounded border border-slate-300 px-1.5 py-0.5 text-center text-[11px]"
-                      />
-                    </label>
-                    <label className="flex items-center gap-1 text-[11px] text-slate-600">
-                      จำนวนใบ
-                      <button
-                        type="button"
-                        onClick={() => setBoxCopies((c) => ({ ...c, [u.key]: Math.max(0, copies - 1) }))}
-                        className="h-6 w-6 rounded border border-slate-300 bg-white text-sm font-bold text-slate-600 hover:bg-slate-50"
-                      >
-                        −
-                      </button>
-                      <input
-                        value={copies}
-                        onChange={(e) => setBoxCopies((c) => ({ ...c, [u.key]: Math.min(99, Math.max(0, Number(e.target.value.replace(/\D/g, "")) || 0)) }))}
-                        inputMode="numeric"
-                        className="w-12 rounded border border-slate-300 px-1 py-0.5 text-center text-[11px] font-bold"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setBoxCopies((c) => ({ ...c, [u.key]: Math.min(99, copies + 1) }))}
-                        className="h-6 w-6 rounded border border-slate-300 bg-white text-sm font-bold text-slate-600 hover:bg-slate-50"
-                      >
-                        +
-                      </button>
-                    </label>
-                  </div>
-                );
-              })}
-            </div>
-            <p className="mt-1.5 text-[11px] font-bold text-slate-600">
-              รวมพิมพ์ {boxUnits.reduce((n, u) => n + (boxCopies[u.key] ?? 1), 0)} แผ่น
-            </p>
-          </div>
-        )}
-
-        {!fullyPaid && (
-          <span className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">
-            🔒 ยังเก็บเงินไม่ครบ 100% — พิมพ์ได้เฉพาะ “ใบงาน” · ใบปะหน้าพัสดุและใบเสร็จยังออกไม่ได้
-          </span>
-        )}
-        <button
-          type="button"
-          onClick={() => {
-            // บันทึกทุกครั้งที่กดพิมพ์ รวมปริ้นซ้ำ — ประวัติจะเห็นว่าใครปริ้น เอกสารอะไร ครั้งที่เท่าไร
-            // (ครั้งแรกที่พิมพ์ใบปะหน้าจริง = ล็อกที่อยู่ฝั่งลูกค้าด้วย)
-            if (order && chosen.length > 0) {
-              fetch("/api/admin/orders/printed", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ orderId: order.id, docs: chosen }),
-              }).catch(() => {});
-              // ปริ้นใบงาน/ใบปะหน้า (เก็บเงินครบแล้ว) = งานเข้าไลน์ผลิต → เลื่อนสถานะให้ตรงกับฝั่งเซิร์ฟเวอร์
-              const toProduction =
-                chosen.includes("work") &&
-                fullyPaid &&
-                ["รอชำระเงิน", "รอตรวจสอบ", "ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"].includes(order.status);
-              setOrder((o) =>
-                o
-                  ? {
-                      ...o,
-                      printedAt: o.printedAt ?? new Date().toISOString(),
-                      printCount: (o.printCount ?? (o.printedAt ? 1 : 0)) + 1,
-                      lastPrintedAt: new Date().toISOString(),
-                      ...(toProduction ? { status: "กำลังผลิต" as const } : {}),
-                    }
-                  : o
-              );
-            }
-            window.print();
-          }}
-          disabled={chosen.length === 0 || (!fullyPaid && !docs.work)}
-          title={fullyPaid || docs.work ? undefined : "ใบเสร็จพิมพ์ได้เมื่อรับเงินครบ 100%"}
-          className="ml-auto rounded-xl bg-amber-500 px-5 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-40"
-        >
-          🖨️ พิมพ์
-        </button>
       </div>
 
-      <div className="print-wrap mx-auto max-w-[210mm] space-y-6 px-4 pb-16 text-slate-900">
-        {chosen.length === 0 && (
-          <p className="no-print rounded-xl bg-amber-50 p-6 text-center text-sm text-amber-800 ring-1 ring-amber-200">
-            เลือกเอกสารที่ต้องการพิมพ์อย่างน้อย 1 อย่างด้านบน
+      {docs.box && (
+        <div className="no-print w-full rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs font-bold text-slate-700">
+            🏷 ตั้งค่าใบแปะกล่อง {order.id} — งานขายส่งแพ็คแยกลาย ตั้งได้ทีละลาย
           </p>
-        )}
+          <p className="mt-0.5 text-[11px] text-slate-500">
+            “จำนวนใบ” = พิมพ์กี่แผ่น A4 (กล่องละแผ่น) · “ชิ้น/กล่อง” ใส่ตัวเลขไว้ก็ได้
+            หรือเว้นว่างให้คนแพ็คเขียนเองหน้างาน
+          </p>
+          <div className="mt-2 grid gap-1.5">
+            {boxUnits.map((u) => {
+              const copies = boxCopies[u.key] ?? 1;
+              return (
+                <div key={u.key} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-2 py-1.5 ring-1 ring-slate-200">
+                  {u.url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={u.url} alt="" className="h-9 w-9 shrink-0 rounded object-cover ring-1 ring-slate-200" />
+                  ) : (
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded bg-slate-100 text-[10px] text-slate-400">—</span>
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-slate-700">
+                    {order.items.length > 1 ? `รายการ ${u.i + 1} · ` : ""}
+                    {u.total > 1 ? `ลายที่ ${u.no}` : u.it.name}
+                    {u.qty ? (
+                      <span className="ml-1 font-normal text-slate-400">
+                        ({u.qty} {u.unit})
+                      </span>
+                    ) : null}
+                  </span>
+                  <label className="flex items-center gap-1 text-[11px] text-slate-600">
+                    ชิ้น/กล่อง
+                    <input
+                      value={boxPerBox[u.key] ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/\D/g, "");
+                        setBoxPerBox((c) => ({ ...c, [u.key]: v }));
+                        // ใส่ชิ้น/กล่องแล้ว คำนวณจำนวนใบให้เลย (แก้ทับได้)
+                        const per = Number(v);
+                        if (per > 0 && u.qty) setBoxCopies((c) => ({ ...c, [u.key]: Math.max(1, Math.ceil(u.qty! / per)) }));
+                      }}
+                      inputMode="numeric"
+                      placeholder="เขียนเอง"
+                      className="w-20 rounded border border-slate-300 px-1.5 py-0.5 text-center text-[11px]"
+                    />
+                  </label>
+                  <label className="flex items-center gap-1 text-[11px] text-slate-600">
+                    จำนวนใบ
+                    <button
+                      type="button"
+                      onClick={() => setBoxCopies((c) => ({ ...c, [u.key]: Math.max(0, copies - 1) }))}
+                      className="h-6 w-6 rounded border border-slate-300 bg-white text-sm font-bold text-slate-600 hover:bg-slate-50"
+                    >
+                      −
+                    </button>
+                    <input
+                      value={copies}
+                      onChange={(e) => setBoxCopies((c) => ({ ...c, [u.key]: Math.min(99, Math.max(0, Number(e.target.value.replace(/\D/g, "")) || 0)) }))}
+                      inputMode="numeric"
+                      className="w-12 rounded border border-slate-300 px-1 py-0.5 text-center text-[11px] font-bold"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setBoxCopies((c) => ({ ...c, [u.key]: Math.min(99, copies + 1) }))}
+                      className="h-6 w-6 rounded border border-slate-300 bg-white text-sm font-bold text-slate-600 hover:bg-slate-50"
+                    >
+                      +
+                    </button>
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-1.5 text-[11px] font-bold text-slate-600">
+            รวมพิมพ์ {boxUnits.reduce((n, u) => n + (boxCopies[u.key] ?? 1), 0)} แผ่น
+          </p>
+        </div>
+      )}
 
         {/* ═══════════ ใบงาน + ใบปะหน้าพัสดุ (ใบเดียวจบ) ═══════════ */}
         {docs.work && (
@@ -909,7 +978,6 @@ export default function PrintOrderPage() {
             <p className="mt-4 text-right text-[10px] text-slate-400">พิมพ์เมื่อ {printedAt}</p>
           </section>
         )}
-      </div>
-    </>
+    </div>
   );
 }

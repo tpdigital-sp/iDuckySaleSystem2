@@ -139,14 +139,11 @@ import ProductVisual from "@/components/ProductVisual";
 import ProductCard from "@/components/ProductCard";
 import ImageLightbox from "@/components/ImageLightbox";
 import { uploadArtworkFile, checkArtworkFile } from "@/lib/artwork-upload";
+import { termLines } from "@/lib/term-lines";
 
 /** จำโหมดสั่งของของพนักงาน (ลูกค้า/แอดมิน) ไว้ในเครื่อง — ค่าเริ่มต้นคือโหมดลูกค้าเสมอ */
 const ADMIN_MODE_KEY = "iducky:product-order-mode";
 
-/**
- * แยก "ข้อควรทราบ" เป็นข้อ ๆ — บรรทัดที่ขึ้นต้นด้วย * / ** / *** = ข้อใหม่
- * บรรทัดถัดไปที่ไม่ได้ขึ้นต้นด้วย * ถือเป็นบรรทัดต่อของข้อเดิม (คงการขึ้นบรรทัดไว้)
- */
 /**
  * เนื้อหาในแท็บข้อมูลสินค้า — บรรทัดขึ้นต้น "•" = รายการมีจุดนำ ·
  * บรรทัดที่ครอบ/ลงท้ายด้วย "::" = หัวข้อย่อยตัวหนา · บรรทัดว่าง = เว้นช่วง
@@ -327,17 +324,6 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
  */
 const CARDS_DENSE_FROM = 6;
 
-function termLines(raw: string): string[] {
-  const out: string[] = [];
-  for (const line of raw.split("\n")) {
-    const t = line.trim();
-    if (!t) continue;
-    if (/^[*•]/.test(t)) out.push(t.replace(/^[*•\s]+/, ""));
-    else if (out.length) out[out.length - 1] += "\n" + t;
-    else out.push(t);
-  }
-  return out.filter(Boolean);
-}
 
 /**
  * note ของกลุ่มตัวเลือกที่มีคำเน้น `**คำ**` — โชว์คำนั้นหนา+สีชมพูบนพื้นไฮไลต์ให้ลูกค้าสะดุดตา
@@ -2328,6 +2314,34 @@ export default function ProductDetail({
   }
 
   /**
+   * 🧼 รีเซ็ตสเปคทั้งฟอร์มกลับค่าเริ่มต้น เหมือนเพิ่งเปิดหน้าสินค้าใหม่ — ใช้หลังเพิ่มลงตะกร้าสำเร็จ
+   * ไม่งั้นตัวเลือก/จำนวน/ช่องติ๊กของรายการที่สั่งไปแล้วค้างอยู่ ลูกค้ากลับมาหน้านี้อีกที
+   * (หรือกดย้อนกลับบนมือถือที่จำหน้าเดิมไว้) นึกว่ายังไม่ได้สั่ง หรือสั่งซ้ำสเปคเดิมโดยไม่ตั้งใจ
+   */
+  function resetSpecForm() {
+    setSelections(initialSelections(product));
+    setOpenAddOns({});
+    setSwatchTap({});
+    setUseCustom(false);
+    setCustomW("");
+    setCustomH("");
+    setQty(initialQty);
+    setQtyText(String(initialQty));
+    setQtyTouched(false);
+    setRateLabel("");
+    setRateTouched(false);
+    setRateLock(null);
+    setDesigns(1);
+    setDesignsTouched(false);
+    setDesignsDraft(null);
+    setBackDesigns(1);
+    setBackDesignsDraft(null);
+    setConsultOk(false);
+    setConsultRef("");
+    setConsultWarn(false);
+  }
+
+  /**
    * ประกอบ selections ของบรรทัดนี้ (ตัวเลือกที่เลือก + ของแนบ) — null = งานสั่งทำที่กรอกไม่ครบ
    */
   function buildLine(): Record<string, string> | null {
@@ -2437,6 +2451,8 @@ export default function ProductDetail({
       addLock.current = false;
     }, 1200);
     clearLineExtras();
+    // 🧼 สั่งเสร็จแล้ว — สเปคที่เพิ่งสั่งต้องไม่ค้างอยู่ในฟอร์ม กลับเป็นค่าเริ่มต้นทั้งหมด
+    resetSpecForm();
     setAdded(true);
     // โชว์ "✓ เพิ่มลงตะกร้าแล้ว!" ~5 วิ — พอให้ลูกค้าเห็นชัดว่าสั่งสำเร็จ
     // (เดิม 1.8 วิ สั้นไป แล้วป้าย "ต้องแนบลาย" เด้งกลับมาเพราะเพิ่งล้าง artFiles ทิ้ง ดูเหมือนระบบฟ้อง)

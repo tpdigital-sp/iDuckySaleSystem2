@@ -13,13 +13,14 @@ import {
 } from "react";
 import {
   getProduct,
+  migrateRenamedGroupKeys,
   repairRateFromOptions,
   repriceCartGroups,
   unitPriceFor,
   type Product,
   type UnitPriceAddOn,
 } from "./products";
-import { fetchProductsByIds } from "./product-repo";
+import { fetchProductsByIds, fetchProductsByIdsChecked } from "./product-repo";
 
 export interface CartItem {
   key: string;
@@ -50,7 +51,16 @@ type CartAction =
   | { type: "add"; item: CartItem }
   | { type: "remove"; key: string }
   | { type: "setQty"; key: string; qty: number }
+  | { type: "setNote"; key: string; note: string }
   | { type: "clear" };
+
+/**
+ * 📝 หมายเหตุของลูกค้าต่อรายการ — เก็บเป็นคีย์ใน selections ตามธรรมเนียมเดียวกับที่แอดมิน
+ * พิมพ์ "หมายเหตุ" ลงรายละเอียดออเดอร์ จึงติดไปกับออเดอร์/ใบงาน/โหมดแพ็คเองผ่าน SpecLines ทุกจอ
+ * ⚠️ ไม่ใช่กลุ่มตัวเลือกของสินค้า และไม่อยู่ใน key ของบรรทัด (key แช่ตอน addItem — พิมพ์หมายเหตุทีหลัง
+ * ไม่ทำให้บรรทัดแตก และกดสั่งสเปคเดิมซ้ำก็ยังรวมบรรทัดเดิมได้)
+ */
+export const CART_NOTE_LABEL = "หมายเหตุ";
 
 const STORAGE_KEY = "iducky-cart-v1";
 
@@ -81,6 +91,18 @@ function reducer(state: CartState, action: CartAction): CartState {
           i.key === action.key ? { ...i, qty: Math.min(action.qty, 99999) } : i
         ),
       };
+    case "setNote":
+      return {
+        ...state,
+        items: state.items.map((i) => {
+          if (i.key !== action.key) return i;
+          const selections = { ...i.selections };
+          // ลบว่าง ๆ ทิ้ง — ไม่ให้บรรทัด "หมายเหตุ:" เปล่าติดไปกับออเดอร์
+          if (action.note.trim()) selections[CART_NOTE_LABEL] = action.note;
+          else delete selections[CART_NOTE_LABEL];
+          return { ...i, selections };
+        }),
+      };
     case "clear":
       return { ...state, items: [] };
   }
@@ -110,9 +132,16 @@ interface CartContextValue {
   addItem: (productId: string, selections: Record<string, string>, qty: number, known?: Product) => void;
   removeItem: (key: string) => void;
   setQty: (key: string, qty: number) => void;
+  /** พิมพ์หมายเหตุของลูกค้าลงรายการ (เก็บใน selections["หมายเหตุ"] — ว่าง = ลบทิ้ง) */
+  setNote: (key: string, note: string) => void;
   clear: () => void;
   /** ค้นหาสินค้า (Supabase → static) — ใช้แสดงรายการในตะกร้าให้รองรับสินค้าที่นำเข้าฐานข้อมูล */
   productOf: (id: string) => Product | undefined;
+  /**
+   * สินค้านี้ "ถูกลบจากร้านแล้ว" ใช่ไหม — true เฉพาะเมื่อถามฐานข้อมูลสำเร็จแล้วยืนยันว่าไม่มีจริง
+   * productOf คืน undefined + productGone=false = แค่ยังโหลดไม่เสร็จ (หน้าตะกร้าต้องโชว์ว่ากำลังโหลด ไม่ใช่ซ่อนทิ้ง)
+   */
+  productGone: (id: string) => boolean;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -198,26 +227,52 @@ export function CartProvider({ children }: { children: ReactNode }) {
     };
   }, [readStored]);
 
+  /** id ที่ถามฐานข้อมูลสำเร็จแล้วยืนยันว่า "ไม่มีสินค้านี้แล้ว" — เลิกถามซ้ำ ให้หน้าตะกร้าโชว์ป้ายบอกแทน */
+  const [goneIds, setGoneIds] = useState<Set<string>>(new Set());
+
   /**
    * โหลด "เฉพาะสินค้าที่อยู่ในตะกร้า" ไว้คิดราคาใหม่ตามจำนวน
    * ตะกร้าว่าง = ไม่ยิงฐานข้อมูลเลย (เดิมดึงสินค้าทั้งร้าน ~1.4 MB ทุกหน้าที่เปิด แม้ไม่มีของในตะกร้า)
+   * โหลดพลาด (เน็ตสะดุด/ฐานข้อมูลล่มแว๊บ) → ลองใหม่เองสูงสุด 5 รอบ — เดิมพลาดแล้วเงียบตลอดชีวิตหน้า
+   * ทำให้ตะกร้า "ดูว่าง" ทั้งที่ของยังอยู่ครบใน localStorage (ลูกค้าเข้าใจว่าของหาย)
    */
   useEffect(() => {
-    const missing = [...new Set(state.items.map((i) => i.productId))].filter((id) => !catalog.has(id));
+    const missing = [...new Set(state.items.map((i) => i.productId))].filter(
+      (id) => !catalog.has(id) && !goneIds.has(id)
+    );
     if (missing.length === 0) return;
     let active = true;
-    fetchProductsByIds(missing).then((ps) => {
-      if (!active || ps.length === 0) return;
-      setCatalog((prev) => {
-        const next = new Map(prev);
-        for (const p of ps) next.set(p.id, p);
-        return next;
-      });
-    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const attempt = (round: number) => {
+      fetchProductsByIdsChecked(missing)
+        .then(({ ok, products }) => {
+          if (!active) return;
+          if (products.length > 0) {
+            setCatalog((prev) => {
+              const next = new Map(prev);
+              for (const p of products) next.set(p.id, p);
+              return next;
+            });
+          }
+          if (ok) {
+            // ถามสำเร็จแล้วยังไม่ได้กลับมา = สินค้าถูกลบจากร้านจริง (ไม่ใช่โหลดพลาด)
+            const found = new Set(products.map((p) => p.id));
+            const gone = missing.filter((id) => !found.has(id));
+            if (gone.length) setGoneIds((prev) => new Set([...prev, ...gone]));
+          } else if (round < 5) {
+            timer = setTimeout(() => attempt(round + 1), Math.min(1500 * 2 ** round, 10000));
+          }
+        })
+        .catch(() => {
+          if (active && round < 5) timer = setTimeout(() => attempt(round + 1), Math.min(1500 * 2 ** round, 10000));
+        });
+    };
+    attempt(0);
     return () => {
       active = false;
+      clearTimeout(timer);
     };
-  }, [state.items, catalog]);
+  }, [state.items, catalog, goneIds]);
 
   const value = useMemo<CartContextValue>(() => {
     // คำนวณราคา/หน่วยใหม่ทุกครั้งตามจำนวนปัจจุบัน (รองรับราคาขั้นบันได)
@@ -229,7 +284,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const r = priced[idx];
       // 🩹 บรรทัดเก่าที่ฝัง "เรทราคา" ผิดไว้ (ขัดกับสเปคของตัวเอง) — ซ่อมค่าที่โชว์ให้ตรงกับราคาที่คิดจริง
       // ไม่งั้นตะกร้าจะคิดราคาถูกต้องแต่ยังโชว์ชื่อเรทเดิม ลูกค้าอ่านแล้วยิ่งงง (ดู repairRateFromOptions)
-      const selections = repairRateFromOptions(p, i.selections);
+      // + ย้ายคีย์กลุ่มที่ถูกเปลี่ยนชื่อ ให้ที่โชว์/ที่ส่งเข้าออเดอร์ตรงกับชื่อกลุ่มปัจจุบัน (ดู migrateRenamedGroupKeys)
+      const selections = repairRateFromOptions(p, migrateRenamedGroupKeys(p, i.selections));
       return { ...i, selections, unitPrice: r.unitPrice, extraFee: r.extraFee, addOns: r.addOns, merged: r.merged };
     });
     const totalQty = items.reduce((s, i) => s + i.qty, 0);
@@ -268,10 +324,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
       },
       removeItem: (key) => dispatch({ type: "remove", key }),
       setQty: (key, qty) => dispatch({ type: "setQty", key, qty }),
+      setNote: (key, note) => dispatch({ type: "setNote", key, note }),
       clear: () => dispatch({ type: "clear" }),
       productOf,
+      productGone: (id) => goneIds.has(id),
     };
-  }, [state.items, productOf]);
+  }, [state.items, productOf, goneIds]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

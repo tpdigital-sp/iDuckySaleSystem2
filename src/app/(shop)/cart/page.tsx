@@ -14,10 +14,12 @@ import {
   isRetailRateLine,
   lotShortfalls,
   maxDesignsFor,
+  orderUnitYield,
   perUnitCapacity,
   productPath,
   qtyFromAreaOf,
   RATE_LABEL,
+  unitYieldOf,
 } from "@/lib/products";
 import {
   orderBoxFees,
@@ -46,22 +48,23 @@ import {
 } from "@/lib/gifts";
 import GiftPanel from "@/components/GiftPanel";
 import GiftArtworkPicker from "@/components/GiftArtworkPicker";
-import { useCart } from "@/lib/cart-context";
+import { CART_NOTE_LABEL, useCart } from "@/lib/cart-context";
 import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import BoxFeeTag from "@/components/BoxFeeTag";
 import ProductVisual from "@/components/ProductVisual";
-import { SpecLines } from "@/components/SpecLines";
+import { SPEC_HIDE, SpecLines } from "@/components/SpecLines";
 import { getAppendTarget, clearAppendTarget, type AppendTarget } from "@/lib/append-order";
 import { getUnpicked, setUnpicked as saveUnpicked, clearUnpicked } from "@/lib/cart-select";
 import { getQuoteTarget, clearQuoteTarget, type QuoteTarget } from "@/lib/append-quote";
 import { cartQtyShipFee, pickShipping, shipProfileOf, shippingAllowed } from "@/lib/shipping-auto";
+import { termLines } from "@/lib/term-lines";
 
 const USE_BY_KEY = "ducky-use-by-date";
 /** วิธีจัดส่งที่ลูกค้ากดเลือกเอง (เก็บ "ลายเซ็นตะกร้า" ตอนที่กด — ตะกร้าเปลี่ยน = ให้ระบบคิดใหม่) */
 const SHIP_PICK_KEY = "iducky-shipping-pick-v1";
 
 export default function CartPage() {
-  const { items, setQty, removeItem, addItem, clear, productOf } = useCart();
+  const { items, setQty, setNote, removeItem, addItem, clear, productOf, productGone } = useCart();
   const router = useRouter();
   // สั่งเป็นออเดอร์ใหม่ หรือเพิ่มเข้าออเดอร์เดิม (ลูกค้ากดมาจากหน้าออเดอร์)
   const [appendTo, setAppendTo] = useState<AppendTarget | null>(null);
@@ -121,8 +124,10 @@ export default function CartPage() {
 
   // ✅ ติ๊กเลือกเฉพาะรายการที่จะสั่งรอบนี้ — ยอดรวม/ค่าส่ง/ปุ่มสั่งซื้อ คิดจากที่ติ๊กไว้เท่านั้น
   const isPicked = (key: string) => !unpicked.includes(key);
-  const pickedItems = items.filter((i) => isPicked(i.key));
-  const allPicked = pickedItems.length === items.length;
+  // สินค้าที่ยืนยันแล้วว่าถูกลบจากร้าน = สั่งไม่ได้ ไม่นับเข้ายอด (การ์ดยังโชว์พร้อมป้ายบอกให้ลบออก)
+  const selectableItems = items.filter((i) => !productGone(i.productId));
+  const pickedItems = selectableItems.filter((i) => isPicked(i.key));
+  const allPicked = pickedItems.length === selectableItems.length;
   /** ค่ากล่องของ "ออเดอร์รอบนี้" (เฉพาะที่ติ๊ก) — ป้ายราคาแขวนกับรายการแรกที่เข้าเงื่อนไข */
   const boxFeeRows = orderBoxFees(
     pickedItems.map((i) => ({
@@ -492,7 +497,7 @@ export default function CartPage() {
                 เลือกทั้งหมด
               </label>
               <span className="text-xs t-soft">
-                เลือกแล้ว <strong className="t-blue">{pickedItems.length}</strong>/{items.length} รายการ · ที่ไม่ติ๊กจะยังอยู่ในตะกร้า สั่งทีหลังได้
+                เลือกแล้ว <strong className="t-blue">{pickedItems.length}</strong>/{selectableItems.length} รายการ · ที่ไม่ติ๊กจะยังอยู่ในตะกร้า สั่งทีหลังได้
               </span>
               {pickedItems.length > 0 && (
                 <button type="button" onClick={removePicked} className="ord-btn quiet sm ml-auto">
@@ -503,7 +508,46 @@ export default function CartPage() {
 
             {items.map((item) => {
               const product = productOf(item.productId);
-              if (!product) return null;
+              if (!product) {
+                /* ยังไม่รู้จักสินค้า — ห้ามซ่อนการ์ดทิ้ง (เดิม return null ลูกค้าเห็นตะกร้าโล่งแล้วเข้าใจว่าของหาย)
+                   แยก 2 เคส: กำลังโหลดจากฐานข้อมูล vs ยืนยันแล้วว่าสินค้าถูกลบจากร้าน */
+                const gone = productGone(item.productId);
+                return (
+                  <div key={item.key} className={`ord-card cart-item${gone ? " tint dim" : ""}`}>
+                    <div className="cart-thumb" aria-hidden="true">
+                      <ProductVisual
+                        emoji={gone ? "🚫" : "⏳"}
+                        gradient="from-slate-100 to-slate-200"
+                        size="text-4xl"
+                        className="h-full w-full"
+                      />
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="cart-name">
+                          {gone ? "สินค้านี้ไม่มีจำหน่ายแล้ว" : "กำลังโหลดข้อมูลสินค้า…"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeItem(item.key)}
+                          className="ord-btn quiet sm shrink-0"
+                          style={{ padding: "5px 10px", fontSize: ".72rem" }}
+                          aria-label="ลบรายการนี้ออกจากตะกร้า"
+                        >
+                          ✕ ลบ
+                        </button>
+                      </div>
+                      <SpecLines sel={item.selections} stripLinks className="text-[.78rem] t-soft" />
+                      <span className="text-xs t-soft">
+                        จำนวน {item.qty.toLocaleString("th-TH")} ชิ้น
+                        {gone
+                          ? " · รายการนี้ถูกตัดออกจากยอดสั่งซื้อ — กด ✕ ลบ ได้เลย"
+                          : " · ของยังอยู่ในตะกร้า กำลังดึงรายละเอียดจากร้าน"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              }
               const picked = isPicked(item.key);
               // ลายที่ลูกค้าแนบ (เก็บในตัวเลือกเป็น url คั่นด้วย " | ") — คำนวณครั้งเดียว ใช้ทั้งรูปหลักและแถบลายด้านล่าง
               const artUrls = String(item.selections["ภาพลายที่แนบ"] ?? "")
@@ -567,9 +611,25 @@ export default function CartPage() {
                       // ซ่อน url ลาย/ธงภายในระบบ — สรุปเป็นข้อความสั้นแทน
                       // (บรรทัดตัวเลขของทีมผลิตซ่อนอยู่แล้วใน SPEC_HIDE — ลูกค้าไม่ต้องอ่าน แต่ยังติดไปกับออเดอร์)
                       const artCount = artUrls.length;
+                      /* 📐 งานแบ่งแผ่น (สติ๊กเกอร์/งานกระดาษ/เซ็ต) — จำนวนที่สั่งไม่ใช่จำนวนชิ้นงาน
+                         บอกในตะกร้าด้วยว่าได้กี่ชิ้น (5×5 ซม. บนแผ่น A3 ≈ 40 ชิ้น) ตัวเลขชุดเดียวกับหน้าสินค้า
+                         ขนาดที่กรอกเอง = ตัวเลขโดยประมาณ (unitYieldOf.approx) · ขนาดตายตัว/เซ็ต = ตัวเลขเป๊ะ */
+                      const yieldInfo = orderUnitYield(product, item.selections);
+                      const yieldCalc = unitYieldOf(product, item.selections);
+                      const yieldApprox = yieldCalc?.approx ?? false;
+                      const showYield = !!yieldInfo && yieldInfo.per > 1;
+                      /* ห้อยขนาดที่นับไว้ในบรรทัดเดียวกัน "(ขนาดไดคัท 10 × 5 ซม.)" — เห็นขนาดกับจำนวนคู่กันไม่ต้องไล่อ่านสเปค
+                         เทียบ per ให้ตรงกันก่อน กันเคสที่ตัวเลขมาจากชื่อหน่วย/ชื่อตัวเลือก (ไม่ใช่จากขนาด) */
+                      const yieldSize = yieldCalc && yieldCalc.per === yieldInfo?.per ? ` (${yieldCalc.label} ${yieldCalc.size})` : "";
                       return (
                         <SpecLines
                           sel={item.selections}
+                          /* "หมายเหตุ" มีช่องกรอกของตัวเองด้านล่าง — โชว์ซ้ำเป็นบรรทัดสเปคจะงง
+                             "เรทราคา" เป็นเรื่องภายใน (ชื่อเรทอย่าง "เรทที่ 1" ลูกค้าอ่านไม่รู้เรื่อง) —
+                             เจ้าของร้านสั่งไม่ต้องโชว์ในตะกร้า (5 ก.ย. 69) · ยังติดไปกับออเดอร์/ใบงานตามเดิม
+                             "จำนวนลาย" ซ่อนเฉพาะตอนมีบรรทัด "🎨 แนบลายแล้ว N รูป" บอกซ้ำอยู่แล้ว —
+                             ยังไม่แนบลาย (จะส่งทีหลัง) ต้องโชว์ต่อ ไม่งั้นไม่รู้ว่าสั่งคละกี่ลาย */
+                          hide={[...SPEC_HIDE, CART_NOTE_LABEL, RATE_LABEL, ...(artCount > 0 ? ["จำนวนลาย"] : [])]}
                           className="mt-1 text-xs t-soft"
                           /* ป้าย +฿ ท้ายบรรทัดสเปค = "ค่าที่บวกเพิ่มจากราคาเรทจริง ๆ" เท่านั้น (เช่น ตะขอสปริง +฿8)
                              ตรงกับบรรทัดแจกแจงมุมขวาล่าง: ราคาเรท ฿45 + ตะขอ ฿8 = ฿53/ชิ้น
@@ -579,8 +639,18 @@ export default function CartPage() {
                           extras={Object.fromEntries((item.addOns ?? []).map((a) => [a.label, a.amount]))}
                           /* 🎨 กางลายที่แนบให้ครบทุกรูป — เดิมโชว์แค่รูปแรก ลูกค้าเช็คไม่ได้ว่าส่งลายถูกครบไหม */
                           after={
-                            artCount > 0 ? (
-                              <>
+                            // ⚠️ ไม่มีอะไรให้โชว์ต้องส่ง null — SpecLines ใช้ truthy ของ after ตัดสินว่าจะวาดบล็อก
+                            !showYield && artCount < 1 ? null : (
+                            <>
+                              {yieldInfo && showYield && (
+                                <p className="font-semibold t-blue">
+                                  {/* ประโยคเดียวจบ (เจ้าของร้านสั่ง "แจ้งแค่จุดเดียว") — ยอดรวมของจำนวนที่สั่งเลย ไม่กางต่อหน่วยซ้ำ
+                                      ต่อสตริงเองทั้งบรรทัด — JSX ตัดช่องว่างระหว่าง expression เคยทำให้เป็น "ได้2 ชิ้น" */}
+                                  {`📐 สั่ง ${item.qty.toLocaleString("th-TH")} ${yieldInfo.unit || "หน่วย"}${yieldSize} ได้${yieldApprox ? "ประมาณ" : ""} ${(yieldInfo.per * item.qty).toLocaleString("th-TH")} ${yieldInfo.piece}`}
+                                </p>
+                              )}
+                              {artCount > 0 && (
+                                <>
                                 <p className="font-semibold t-blue">🎨 แนบลายแล้ว {artCount} รูป</p>
                                 <div className="cart-arts">
                                   {artUrls.map((u, k) => (
@@ -598,12 +668,51 @@ export default function CartPage() {
                                     </a>
                                   ))}
                                 </div>
-                              </>
-                            ) : null
+                                </>
+                              )}
+                            </>
+                            )
                           }
                         />
                       );
                     })()}
+                    {/* ⚠️ ข้อควรทราบของสินค้าตัวนี้ (Product.terms — ชุดเดียวกับกล่องแดงหน้าสินค้า)
+                        เป็นป้ายเล็ก ๆ บนการ์ด กดแล้วกางอ่านได้ — ไม่กินที่ตอนปิด (เจ้าของร้านสั่ง 5 ก.ย. 69) */}
+                    {(() => {
+                      const lines = product.terms?.trim() ? termLines(product.terms) : [];
+                      if (!lines.length) return null;
+                      return (
+                        <details className="cart-terms">
+                          <summary title={`ข้อควรทราบของ ${product.name} — กดเพื่ออ่าน`}>
+                            <span aria-hidden>⚠️</span>
+                            ข้อควรทราบก่อนสั่ง · {lines.length.toLocaleString("th-TH")} ข้อ
+                            <span className="cart-terms-chev" aria-hidden>▼</span>
+                          </summary>
+                          <ul>
+                            {lines.map((t, i) => (
+                              <li key={i}>
+                                <i aria-hidden />
+                                <span>{t}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      );
+                    })()}
+                    {/* 📝 หมายเหตุของลูกค้า — เก็บลง selections["หมายเหตุ"] (ธรรมเนียมเดียวกับที่แอดมินพิมพ์เอง)
+                        จึงติดไปกับออเดอร์/ใบงาน/โหมดแพ็คผ่าน SpecLines โดยไม่ต้องแก้จออื่น */}
+                    <label className="mt-2 block">
+                      <span className="text-[11px] font-semibold t-soft">📝 หมายเหตุถึงร้าน (ไม่บังคับ)</span>
+                      <textarea
+                        className="ord-input mt-1"
+                        rows={1}
+                        maxLength={300}
+                        placeholder="รายละเอียดเพิ่มเติมถึงทีมงาน · มีจุดไหนอยากให้ดูแลเป็นพิเศษ บอกได้เลย"
+                        value={item.selections[CART_NOTE_LABEL] ?? ""}
+                        onChange={(e) => setNote(item.key, e.target.value)}
+                        aria-label={`หมายเหตุของ ${product.name}`}
+                      />
+                    </label>
                     {/* 🧮 บรรทัดนี้ถูกคิดรวมกับบรรทัดอื่นในล็อตเดียวกัน เพื่อให้ได้เรทตามจำนวนรวม (เช่น 25+25 = 50 ชิ้น 2 ลาย)
                         สเปคต่างกันก็รวมได้ (ตะขอคนละแบบ/สีอะคริลิคคนละสี) — ราคาฐานเท่ากัน ต่างกันแค่ค่าตัวเลือก */}
                     {item.merged && (

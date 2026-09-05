@@ -99,6 +99,17 @@ const BASE_2D_RE = new RegExp(String.raw`${FROM}\s*([\d.]+)\s*[×x]\s*([\d.]+)\s
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
+ * แปลงหน่วยความยาว (1 นิ้ว = 2.54 ซม. = 25.4 มม.) — เจ้าของร้านสั่งให้บวกข้ามหน่วยได้เลย (5 ก.ย. 69)
+ * กราฟฟิกจะได้ไม่ต้องคำนวณเอง (เสี่ยงพลาด) · ที่มาของเลขโชว์ในวงเล็บเสมอให้ตรวจทานได้
+ */
+const LEN_MM: Record<"cm" | "inch" | "mm", number> = { mm: 1, cm: 10, inch: 25.4 };
+const convertLen = (n: number, from: "cm" | "inch" | "mm", to: "cm" | "inch" | "mm") =>
+  round2((n * LEN_MM[from]) / LEN_MM[to]);
+
+/** บรรทัดขนาดสองด้าน "40x85 ซม." — ร้านเขียนตามแบบ กว้าง×ยาว/สูง (ตัวแรก = ด้านกว้างเสมอ) */
+const DIM2_RE = new RegExp(String.raw`^([\d.]+)\s*([×x])\s*([\d.]+)(\s*)(${UNIT_RE})$`, "i");
+
+/**
  * ชื่อด้านที่กลุ่ม/ตัวเลือกบอกไว้ — "เพิ่มขนาด · ด้านยาวสุด (นิ้ว)" → "ด้านยาวสุด" (ไม่ระบุ = "")
  * ชื่อกลุ่มยาว ๆ ที่ไม่ได้ตั้งใจเป็นชื่อด้าน ("FLEX กว้างเกินขนาดที่กำหนด") ให้ถอยไปอ่านจากชื่อตัวเลือกแทน
  */
@@ -110,6 +121,15 @@ function sideOf(label: string, name: string): string {
   if (/ความยาว|ด้านยาว/.test(t)) return "ด้านยาว";
   if (/ความสูง|ด้านสูง/.test(t)) return "ด้านสูง";
   return "";
+}
+
+/** ด้านที่ตัวเลือกเพิ่มขนาดชี้ชัด ๆ — ใช้เลือกว่าบวกตัวเลขไหนของ "40x85" (null = ไม่บอกด้าน) */
+function dimSide(a: SizeAdd): "กว้าง" | "ยาว" | "สูง" | null {
+  const t = `${a.label} ${a.name}`;
+  if (/ความกว้าง|ด้านกว้าง/.test(t)) return "กว้าง";
+  if (/ความยาว|ด้านยาว/.test(t)) return "ยาว";
+  if (/ความสูง|ด้านสูง/.test(t)) return "สูง";
+  return null;
 }
 
 /** ตัวเลือก 1 บรรทัดที่แปลว่า "บวกขนาดเพิ่ม N หน่วย" */
@@ -132,12 +152,15 @@ function readSizeAdd(label: string, value: string, i: number): SizeAdd | null {
 
 /**
  * บวก "เพิ่มขนาด" ให้เห็นเป็นขนาดจริง — ทำเฉพาะตอนที่ไม่กำกวมเท่านั้น (ไม่เข้าเงื่อนไข = ปล่อยไว้เหมือนเดิม)
- * หน่วยต้องตรงกับขนาดฐานเสมอ แล้วบวกตามลำดับ:
- *   1) บรรทัดขนาดเป็นตัวเลขเดี่ยว         "ขนาด: 15 ซม."           → "17 ซม. (15 + เพิ่ม 2)"
- *   2) บรรทัดขนาดระบุด้าน + กลุ่มบอกด้าน   "กว้าง 2.5 cm ยาว 10cm"  → บวกเฉพาะด้านยาว
- *   3) ฐานเขียนในชื่อกลุ่มเอง              "ขนาดมากกว่า 8 ซม"       → ต่อท้ายว่า "→ รวม 10 ซม."
- *      (ฐานสองด้าน "จาก 13×13 นิ้ว" → "→ รวม 15×15 นิ้ว" — โตทั้งสองด้าน ตามที่เจ้าของร้านยืนยัน 4 ก.ย. 69)
- *   4) หน่วยคนละอย่างกับบรรทัดขนาด (ขนาดเป็น ซม. แต่เพิ่มเป็นนิ้ว) → **ไม่แปลงหน่วย** ต่อท้ายว่าเพิ่มไปกี่นิ้ว
+ * หน่วยไม่ตรงกับฐานก็แปลงให้ (นิ้ว→ซม.) แล้วบวกเลย พร้อมโชว์ที่มาในวงเล็บ — เจ้าของร้านสั่ง (5 ก.ย. 69)
+ * กราฟฟิกจะได้ไม่ต้องคำนวณเอง · บวกตามลำดับ:
+ *   1) บรรทัดขนาดสองด้าน + ตัวเลือกบอกด้าน  "40x85 ซม." + กว้าง 5 นิ้ว → "52.7x85 ซม. (กว้างเดิม 40 + เพิ่ม 5 นิ้ว = 12.7 ซม.)"
+ *   2) บรรทัดขนาดเป็นตัวเลขเดี่ยว          "ขนาด: 15 ซม."           → "17 ซม. (15 + เพิ่ม 2)"
+ *   3) บรรทัดขนาดระบุด้าน + กลุ่มบอกด้าน    "กว้าง 2.5 cm ยาว 10cm"  → บวกเฉพาะด้านยาว
+ *   4) ฐานเขียนในชื่อกลุ่มเอง               "ขนาดมากกว่า 8 ซม"       → แทรกบรรทัด "ขนาด: 10 ซม. (8 + เพิ่ม 2)"
+ *      (ฐานสองด้าน "จาก 13×13 นิ้ว" → "ขนาด: 15×15 นิ้ว (13×13 + เพิ่ม 2)" — โตทั้งสองด้าน ตามที่เจ้าของร้านยืนยัน 4 ก.ย. 69
+ *       มีบรรทัดขนาดอยู่แล้วค่อยถอยไปต่อท้ายบรรทัดเพิ่มขนาดว่า "→ รวม …" กันหัวข้อ "ขนาด" ซ้ำ)
+ *   5) บวกไม่ได้ (ไม่บอกด้าน/หาบรรทัดฐานไม่เจอ) → ต่อท้ายบรรทัดขนาดว่าเพิ่มไปกี่หน่วย
  * ที่เหลือปล่อยไว้ = ไม่รู้ฐานจริง ๆ (ช่วงขนาด "6 – 8 ซม." · ไม่มีขนาดฐานใน options · เพิ่มคนละชิ้นสองกลุ่ม)
  */
 export function foldSizeExtra(entries: [string, string][]): [string, string][] {
@@ -152,51 +175,107 @@ export function foldSizeExtra(entries: [string, string][]): [string, string][] {
     k.includes("ขนาด") && !ADD_SIZE_RE.test(k) && !adds.some((a) => a.i === i) ? [{ i, v: v.trim() }] : [],
   );
 
+  // 1) ขนาดสองด้าน "40x85 ซม." + ทุกตัวเลือกบอกด้านชัดคนละด้าน → บวกเข้าด้านนั้นเลย (ตัวแรก = กว้าง)
+  const dim2 = sizeLines.flatMap(({ i, v }) => {
+    const s = DIM2_RE.exec(v);
+    const u = s ? lengthUnit(s[5]) : null;
+    return s && u ? [{ i, s, u }] : [];
+  });
+  const dimSides = adds.map((a) => dimSide(a));
+  if (
+    dim2.length === 1 &&
+    dimSides.every(Boolean) &&
+    new Set(dimSides.map((s) => (s === "กว้าง" ? 0 : 1))).size === dimSides.length
+  ) {
+    const { i, s, u } = dim2[0];
+    const nums = [Number(s[1]), Number(s[3])];
+    const notes: string[] = [];
+    adds.forEach((a, k) => {
+      const at = dimSides[k] === "กว้าง" ? 0 : 1;
+      const step = convertLen(a.step, a.unit, u);
+      notes.push(
+        `${dimSides[k]}เดิม ${nums[at]} + เพิ่ม ${a.step}${a.unit === u ? "" : ` ${a.unitText} = ${step} ${s[5]}`}`,
+      );
+      nums[at] = round2(nums[at] + step);
+    });
+    return put(i, `${nums[0]}${s[2]}${nums[1]}${s[4]}${s[5]} (${notes.join(" · ")})`);
+  }
+
   if (adds.length === 1) {
     const add = adds[0];
 
-    // 1) ขนาดที่เป็นตัวเลขเดี่ยว หน่วยตรงกัน → บวกตรง ๆ
+    // 2) ขนาดที่เป็นตัวเลขเดี่ยว → บวกตรง ๆ (หน่วยไม่ตรงก็แปลงก่อนบวก)
     const plain = sizeLines.flatMap(({ i, v }) => {
       const s = SIZE_VALUE_RE.exec(v);
-      return s && lengthUnit(s[3]) === add.unit ? [{ i, s }] : [];
+      const u = s ? lengthUnit(s[3]) : null;
+      return s && u ? [{ i, s, u }] : [];
     });
     if (plain.length === 1) {
-      const { i, s } = plain[0];
+      const { i, s, u } = plain[0];
       const base = Number(s[1]);
-      return put(i, `${round2(base + add.step)}${s[2]}${s[3]} (${base} + เพิ่ม ${add.step})`);
+      const step = convertLen(add.step, add.unit, u);
+      const math = add.unit === u ? `เพิ่ม ${add.step}` : `เพิ่ม ${add.step} ${add.unitText} = ${step} ${s[3]}`;
+      return put(i, `${round2(base + step)}${s[2]}${s[3]} (${base} + ${math})`);
     }
 
-    // 2) ขนาดที่ระบุด้านไว้ + กลุ่มบอกว่าเพิ่มด้านไหน → บวกเฉพาะด้านนั้น
-    const tag = `${add.label} ${add.name}`;
-    const side = /ความยาว|ด้านยาว/.test(tag) ? "ยาว" : /ความกว้าง|ด้านกว้าง/.test(tag) ? "กว้าง" : null;
+    // 3) ขนาดที่ระบุด้านไว้ + กลุ่มบอกว่าเพิ่มด้านไหน → บวกเฉพาะด้านนั้น
+    const side = dimSide(add);
     if (side) {
       const sideRe = new RegExp(String.raw`(${side}\s*)([\d.]+)(\s*)(${UNIT_RE})`, "i");
       const sided = sizeLines.flatMap(({ i, v }) => {
         const s = sideRe.exec(v);
-        return s && lengthUnit(s[4]) === add.unit ? [{ i, v, s }] : [];
+        const u = s ? lengthUnit(s[4]) : null;
+        return s && u ? [{ i, v, s, u }] : [];
       });
       if (sided.length === 1) {
-        const { i, v, s } = sided[0];
+        const { i, v, s, u } = sided[0];
         const base = Number(s[2]);
-        return put(i, `${v.replace(sideRe, `$1${round2(base + add.step)}$3$4`)} (${side}เดิม ${base} + เพิ่ม ${add.step})`);
+        const step = convertLen(add.step, add.unit, u);
+        const math = add.unit === u ? `เพิ่ม ${add.step}` : `เพิ่ม ${add.step} ${add.unitText} = ${step} ${s[4]}`;
+        return put(i, `${v.replace(sideRe, `$1${round2(base + step)}$3$4`)} (${side}เดิม ${base} + ${math})`);
       }
     }
 
-    // 3) ฐานเขียนอยู่ในชื่อกลุ่ม/ชื่อตัวเลือกเอง → ต่อท้ายบรรทัดเพิ่มขนาดว่ารวมแล้วเท่าไร
+    // 4) ฐานเขียนอยู่ในชื่อกลุ่ม/ชื่อตัวเลือกเอง → แทรกบรรทัด "ขนาด" แยกให้เห็นขนาดจริง
+    //    บรรทัดขนาดที่ค่าเป็นการ์ด "เพิ่มขนาด" เอง (WALL TIDY เลือก "📐 เพิ่มขนาด (นิ้วละ ฿30)")
+    //    = ไม่มีตัวเลขให้ลูกค้าเห็นเลย → เขียนขนาดจริงทับบรรทัดนั้นแทน
+    //    มีบรรทัดขนาดตัวเลขอยู่แล้วค่อยถอยไปต่อท้ายบรรทัดเพิ่มขนาดแบบเดิม กันหัวข้อ "ขนาด" ซ้ำ
+    const cardLine = sizeLines.find(({ v }) => ADD_SIZE_RE.test(v));
+    const placeSize = (value: string) =>
+      cardLine
+        ? put(cardLine.i, value)
+        : sizeLines.length
+          ? put(add.i, `${entries[add.i][1]} → รวม ${value.replace(/\s*\(.*$/, "")}`)
+          : [...entries.slice(0, add.i), ["ขนาด", value] as [string, string], ...entries.slice(add.i)];
     const from = `${add.name} ${add.label}`;
     const b2 = BASE_2D_RE.exec(from);
-    if (b2 && lengthUnit(b2[3]) === add.unit) {
-      const [w, h] = [Number(b2[1]), Number(b2[2])];
-      return put(add.i, `${entries[add.i][1]} → รวม ${round2(w + add.step)}×${round2(h + add.step)} ${b2[3]}`);
+    const u2 = b2 ? lengthUnit(b2[3]) : null;
+    if (b2 && u2) {
+      const step = convertLen(add.step, add.unit, u2);
+      const dims = [Number(b2[1]), Number(b2[2])];
+      const math = add.unit === u2 ? `เพิ่ม ${add.step}` : `เพิ่ม ${add.step} ${add.unitText} = ${step} ${b2[3]}`;
+      // กลุ่มบอกด้าน ("ด้านยาวสุด" = ตัวเลขที่มากกว่า · กว้าง = ตัวแรก · ยาว/สูง = ตัวหลัง) → โตด้านเดียว
+      const at = /ยาวสุด/.test(from)
+        ? (dims[1] > dims[0] ? 1 : 0)
+        : dimSide(add) === "กว้าง" ? 0 : dimSide(add) ? 1 : -1;
+      if (at >= 0) {
+        const side = sideOf(add.label, add.name) || "ด้านที่เพิ่ม";
+        const total = dims.map((n, i) => (i === at ? round2(n + step) : n));
+        return placeSize(`${total[0]}×${total[1]} ${b2[3]} (${side}เดิม ${dims[at]} + ${math})`);
+      }
+      return placeSize(`${round2(dims[0] + step)}×${round2(dims[1] + step)} ${b2[3]} (${b2[1]}×${b2[2]} + ${math})`);
     }
     const b1 = BASE_RE.exec(from);
-    if (b1 && lengthUnit(b1[2]) === add.unit) {
-      return put(add.i, `${entries[add.i][1]} → รวม ${round2(Number(b1[1]) + add.step)} ${b1[2]}`);
+    const u1 = b1 ? lengthUnit(b1[2]) : null;
+    if (b1 && u1) {
+      const step = convertLen(add.step, add.unit, u1);
+      const math = add.unit === u1 ? `เพิ่ม ${add.step}` : `เพิ่ม ${add.step} ${add.unitText} = ${step} ${b1[2]}`;
+      return placeSize(`${round2(Number(b1[1]) + step)} ${b1[2]} (${b1[1]} + ${math})`);
     }
   }
 
-  // 4) หน่วยคนละอย่างกับบรรทัดขนาด — แปลงหน่วยเองไม่ได้ (1 นิ้ว = 2.54 ซม. แล้วขนาดจริงจะเพี้ยน)
-  //    จึงต่อท้ายบรรทัดขนาดว่าเพิ่มไปกี่หน่วย ตามที่เจ้าของร้านสั่ง (4 ก.ย. 69) — รับหลายด้านพร้อมกันได้
+  // 5) หน่วยคนละอย่างแต่บวกให้ไม่ได้ (เช่น "40x85" ที่ตัวเลือกไม่บอกด้าน) → อย่างน้อยต่อท้ายว่าเพิ่มไปกี่หน่วย
+  //    (หน่วยเดียวกันที่บวกไม่ได้ = เคสที่เจ้าของร้านสั่งปล่อยไว้ เช่น ขนาดเป็นช่วง "6 – 8 ซม." — ไม่แตะ)
   if (sizeLines.length === 1 && adds.every((a) => lengthUnit(sizeLines[0].v) !== null && lengthUnit(sizeLines[0].v) !== a.unit)) {
     const notes = adds
       .map((a) => {

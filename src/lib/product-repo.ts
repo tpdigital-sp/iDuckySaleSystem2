@@ -43,16 +43,32 @@ export async function fetchProducts(): Promise<Product[]> {
  * ก่อนหน้านี้ตะกร้าดึงสินค้า "ทั้งร้าน" (~1.4 MB) ทุกครั้งที่เปิดหน้า ทั้งที่ใช้แค่ไม่กี่ตัว
  */
 export async function fetchProductsByIds(ids: string[]): Promise<Product[]> {
+  return (await fetchProductsByIdsChecked(ids)).products;
+}
+
+/**
+ * แบบเดียวกับ fetchProductsByIds แต่บอกด้วยว่า "คำตอบเชื่อถือได้ไหม"
+ * - ok=true  → ถามฐานข้อมูลสำเร็จ id ที่ไม่ได้กลับมา = สินค้าถูกลบจากร้านจริง
+ * - ok=false → เน็ต/ฐานข้อมูลล่มระหว่างถาม ผู้เรียกควรลองใหม่ (ห้ามสรุปว่าสินค้าหาย)
+ * ตะกร้าใช้แยกสองเคสนี้ — เดิมโหลดพลาดแล้วได้ [] เงียบ ๆ หน้าตะกร้าเลยดูว่างทั้งที่ของยังอยู่
+ */
+export async function fetchProductsByIdsChecked(
+  ids: string[]
+): Promise<{ ok: boolean; products: Product[] }> {
   const want = [...new Set(ids.filter(Boolean))];
-  if (want.length === 0) return [];
+  if (want.length === 0) return { ok: true, products: [] };
   const sb = getSupabase();
-  if (!sb) return mergedProducts().filter((p) => want.includes(p.id));
-  const { data, error } = await sb.from("products").select("id,data").in("id", want);
-  if (error || !data) return mergedProducts().filter((p) => want.includes(p.id));
-  const products = (data as Array<{ id: string; data: Product }>).map((r) => r.data as Product);
-  if (!products.some((p) => p.options?.some((o) => o.presetId))) return products;
-  const presets = await fetchPresets();
-  return products.map((p) => resolveProduct(p, presets));
+  if (!sb) return { ok: true, products: mergedProducts().filter((p) => want.includes(p.id)) };
+  try {
+    const { data, error } = await sb.from("products").select("id,data").in("id", want);
+    if (error || !data) return { ok: false, products: mergedProducts().filter((p) => want.includes(p.id)) };
+    const products = (data as Array<{ id: string; data: Product }>).map((r) => r.data as Product);
+    if (!products.some((p) => p.options?.some((o) => o.presetId))) return { ok: true, products };
+    const presets = await fetchPresets();
+    return { ok: true, products: products.map((p) => resolveProduct(p, presets)) };
+  } catch {
+    return { ok: false, products: mergedProducts().filter((p) => want.includes(p.id)) };
+  }
 }
 
 /**
