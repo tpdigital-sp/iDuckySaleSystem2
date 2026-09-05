@@ -89,6 +89,8 @@ const ADD_QTY_RE = /^(.+?)\s+×\s*(\d+(?:\.\d+)?)$/;
 const ADD_INPUT_RE = new RegExp(String.raw`^([\d.]+)\s*(${UNIT_RE})?$`, "i");
 /** ชื่อกลุ่ม/ชื่อตัวเลือกที่แปลว่า "บวกเพิ่มจากขนาดมาตรฐาน" */
 const ADD_SIZE_RE = /เพิ่มขนาด|เพิ่มความยาว|เพิ่มความกว้าง|ขนาดมากกว่า/;
+/** ชื่อตัวเลือกแบบคิดต่อหน่วย — "นิ้วละ 15 บาท" / "เซนละ" / "บวกเพิ่มเซนละ" */
+const PER_UNIT_RE = /(?:นิ้ว|เซน|ซม|มม|inch|cm|mm)\.?\s*ละ/i;
 /** ขนาดฐานที่เขียนไว้ในชื่อกลุ่ม/ชื่อตัวเลือกเอง — "ขนาดมากกว่า 8 ซม" · "เริ่มที่ 15 cm" · "จาก 6 ซม." */
 const FROM = String.raw`(?:มากกว่า|เริ่มที่|เริ่มต้นที่|จาก)`;
 const BASE_RE = new RegExp(String.raw`${FROM}\s*([\d.]+)\s*(${UNIT_RE})`, "i");
@@ -108,6 +110,8 @@ const convertLen = (n: number, from: "cm" | "inch" | "mm", to: "cm" | "inch" | "
 
 /** บรรทัดขนาดสองด้าน "40x85 ซม." — ร้านเขียนตามแบบ กว้าง×ยาว/สูง (ตัวแรก = ด้านกว้างเสมอ) */
 const DIM2_RE = new RegExp(String.raw`^([\d.]+)\s*([×x])\s*([\d.]+)(\s*)(${UNIT_RE})$`, "i");
+/** ขนาดสองด้านที่ฝังอยู่ในค่า — "Size XL (65x65cm)" (ชื่อรุ่นพ่วงขนาดจริงมาในวงเล็บ) */
+const DIM2_IN_RE = new RegExp(String.raw`([\d.]+)\s*[×x]\s*([\d.]+)\s*(${UNIT_RE})`, "i");
 
 /**
  * ชื่อด้านที่กลุ่ม/ตัวเลือกบอกไว้ — "เพิ่มขนาด · ด้านยาวสุด (นิ้ว)" → "ด้านยาวสุด" (ไม่ระบุ = "")
@@ -140,10 +144,13 @@ function readSizeAdd(label: string, value: string, i: number): SizeAdd | null {
   const v = value.trim();
   const qty = ADD_QTY_RE.exec(v);
   const input = qty ? null : ADD_INPUT_RE.exec(v); // ช่องกรอกเก็บเป็นตัวเลขล้วน ไม่มี "×N"
-  const name = qty ? qty[1] : "";
-  if (!qty && !input) return null;
+  // เพิ่มแค่ 1 หน่วยถูกเก็บเป็นชื่อเปล่า ไม่มี "×1" (ดู formatMultiPick) — รับเฉพาะกลุ่มเพิ่มขนาดเอง
+  // และชื่อแบบ "หน่วยละ…" เท่านั้น กันไปโดนตัวเลือกที่แค่เอ่ยถึงหน่วย ("เพิ่ม 2 ซม. (ไม่เกิน 11 ซม.)")
+  const bare = !qty && !input && ADD_SIZE_RE.test(label) && PER_UNIT_RE.test(v);
+  const name = qty ? qty[1] : bare ? v : "";
+  if (!qty && !input && !bare) return null;
   if (!ADD_SIZE_RE.test(label) && !ADD_SIZE_RE.test(name)) return null;
-  const step = Number(qty ? qty[2] : input![1]);
+  const step = Number(qty ? qty[2] : bare ? 1 : input![1]);
   const unitText = (input?.[2] ?? "").trim();
   const unit = lengthUnit(name) ?? lengthUnit(unitText) ?? lengthUnit(label);
   if (!unit || !(step > 0)) return null;
@@ -164,7 +171,11 @@ function readSizeAdd(label: string, value: string, i: number): SizeAdd | null {
  * ที่เหลือปล่อยไว้ = ไม่รู้ฐานจริง ๆ (ช่วงขนาด "6 – 8 ซม." · ไม่มีขนาดฐานใน options · เพิ่มคนละชิ้นสองกลุ่ม)
  */
 export function foldSizeExtra(entries: [string, string][]): [string, string][] {
-  const adds = entries.map(([k, v], i) => readSizeAdd(k, v, i)).filter(Boolean) as SizeAdd[];
+  // กลุ่มติ๊กหลายอย่างเก็บค่ารวมคั่น " | " ("เพิ่มความกว้าง นิ้วละ ×2 | เพิ่มความยาว นิ้วละ ×3")
+  // ต้องแตกอ่านทีละตัวเลือก — อ่านทั้งก้อน regex จะจับได้แค่ ×N ตัวท้ายแล้วบวกผิดด้าน (เจอกับผ้าเชียร์)
+  const adds = entries.flatMap(
+    ([k, v], i) => v.split(" | ").map((part) => readSizeAdd(k, part, i)).filter(Boolean) as SizeAdd[],
+  );
   if (!adds.length) return entries;
   const put = (at: number, value: string) =>
     entries.map(([k, v], i) => (i === at ? ([k, value] as [string, string]) : ([k, v] as [string, string])));
@@ -218,6 +229,37 @@ export function foldSizeExtra(entries: [string, string][]): [string, string][] {
       return put(i, `${round2(base + step)}${s[2]}${s[3]} (${base} + ${math})`);
     }
 
+    // 2.5) ขนาดสองด้านฝังอยู่ในค่า ("Size XL (65x65cm)") → ถอดออกมาบวกให้ แล้วโชว์ขนาดจริงต่อท้าย
+    //      ฐานสองด้านเท่ากัน + ตัวเลือกไม่บอกด้าน = โตทั้งสองด้าน (แบบเดียวกับฐาน "จาก 13×13 นิ้ว"
+    //      ที่เจ้าของร้านยืนยัน 4 ก.ย. 69) · ไม่เท่ากันต้องมีด้าน/"ยาวสุด" ชี้ ไม่งั้นปล่อยไปข้อ 5
+    const embedded = sizeLines.flatMap(({ i, v }) => {
+      const s = DIM2_IN_RE.exec(v);
+      const u = s ? lengthUnit(s[3]) : null;
+      return s && u ? [{ i, v, s, u }] : [];
+    });
+    if (embedded.length === 1) {
+      const { i, v, s, u } = embedded[0];
+      const dims = [Number(s[1]), Number(s[2])];
+      const from = `${add.label} ${add.name}`;
+      const at = /ยาวสุด/.test(from)
+        ? (dims[1] > dims[0] ? 1 : 0)
+        : dimSide(add) === "กว้าง" ? 0 : dimSide(add) ? 1 : -1;
+      if (at >= 0 || dims[0] === dims[1]) {
+        const step = convertLen(add.step, add.unit, u);
+        const math = add.unit === u ? `เพิ่ม ${add.step}` : `เพิ่ม ${add.step} ${add.unitText} = ${step} ${s[3]}`;
+        const total = dims.map((n, k) => (at < 0 || k === at ? round2(n + step) : n));
+        const note = at >= 0
+          ? `${sideOf(add.label, add.name) || "ด้านที่เพิ่ม"}เดิม ${dims[at]} + ${math}`
+          : `${dims[0]}×${dims[1]} + ${math}`;
+        // ตัดก้อนขนาดเดิม (รวมวงเล็บที่ครอบพอดี) ออก เหลือชื่อรุ่นนำหน้าขนาดจริง
+        let a = s.index, b = s.index + s[0].length;
+        if (v[a - 1] === "(" && v[b] === ")") { a--; b++; }
+        const prefix = `${v.slice(0, a)}${v.slice(b)}`.replace(/\s+/g, " ").trim();
+        const sized = `${total[0]}×${total[1]} ${s[3]} (${note})`;
+        return put(i, prefix ? `${prefix} → ${sized}` : sized);
+      }
+    }
+
     // 3) ขนาดที่ระบุด้านไว้ + กลุ่มบอกว่าเพิ่มด้านไหน → บวกเฉพาะด้านนั้น
     const side = dimSide(add);
     if (side) {
@@ -241,11 +283,13 @@ export function foldSizeExtra(entries: [string, string][]): [string, string][] {
     //    = ไม่มีตัวเลขให้ลูกค้าเห็นเลย → เขียนขนาดจริงทับบรรทัดนั้นแทน
     //    มีบรรทัดขนาดตัวเลขอยู่แล้วค่อยถอยไปต่อท้ายบรรทัดเพิ่มขนาดแบบเดิม กันหัวข้อ "ขนาด" ซ้ำ
     const cardLine = sizeLines.find(({ v }) => ADD_SIZE_RE.test(v));
+    // แบบต่อท้ายต้องคงวงเล็บที่มาของเลขไว้ — "จาก 6 ซม. ×2 → รวม 8 ซม." เฉย ๆ อ่านแล้วชวนงงว่า 6×2 ทำไมได้ 8
+    // (×2 คือจำนวนหน่วยที่เพิ่ม ไม่ใช่คูณ) ใส่ "(6 + เพิ่ม 2)" ให้ตรวจทานได้ — เจ้าของร้านทัก 5 ก.ย. 69
     const placeSize = (value: string) =>
       cardLine
         ? put(cardLine.i, value)
         : sizeLines.length
-          ? put(add.i, `${entries[add.i][1]} → รวม ${value.replace(/\s*\(.*$/, "")}`)
+          ? put(add.i, `${entries[add.i][1]} → รวม ${value}`)
           : [...entries.slice(0, add.i), ["ขนาด", value] as [string, string], ...entries.slice(add.i)];
     const from = `${add.name} ${add.label}`;
     const b2 = BASE_2D_RE.exec(from);
@@ -271,6 +315,25 @@ export function foldSizeExtra(entries: [string, string][]): [string, string][] {
       const step = convertLen(add.step, add.unit, u1);
       const math = add.unit === u1 ? `เพิ่ม ${add.step}` : `เพิ่ม ${add.step} ${add.unitText} = ${step} ${b1[2]}`;
       return placeSize(`${round2(Number(b1[1]) + step)} ${b1[2]} (${b1[1]} + ${math})`);
+    }
+  }
+
+  // 4.5) หลายตัวเลือกในกลุ่มเดียวกันที่มีฐานในชื่อกลุ่ม — คนละชิ้นแต่ฐานเดียวกัน
+  //      ("เริ่มที่ 15 cm เพิ่มขนาด": แผ่นหน้า ×2 + แผ่นประกบ ×3) → แทรกบรรทัดขนาดรายชิ้น
+  if (adds.length > 1 && adds.every((a) => a.i === adds[0].i)) {
+    const b1 = BASE_RE.exec(adds[0].label);
+    const u1 = b1 && !BASE_2D_RE.test(adds[0].label) ? lengthUnit(b1[2]) : null;
+    if (b1 && u1) {
+      const parts = adds.map((a) => {
+        const step = convertLen(a.step, a.unit, u1);
+        const math = a.unit === u1 ? `เพิ่ม ${a.step}` : `เพิ่ม ${a.step} ${a.unitText} = ${step} ${b1[2]}`;
+        const piece = a.name.replace(new RegExp(String.raw`${PER_UNIT_RE.source}.*$`, "i"), "").trim();
+        return `${piece ? `${piece} ` : ""}${round2(Number(b1[1]) + step)} ${b1[2]} (${b1[1]} + ${math})`;
+      });
+      const at = adds[0].i;
+      return sizeLines.length
+        ? put(at, `${entries[at][1]} → รวม ${parts.join(" · ")}`)
+        : [...entries.slice(0, at), ["ขนาด", parts.join(" · ")] as [string, string], ...entries.slice(at)];
     }
   }
 
