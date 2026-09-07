@@ -559,7 +559,8 @@ gSize.display = "dropdown";
 gSize.note =
   `ราคาในตารางคือขนาดมาตรฐาน 5-6 ซม. — ใหญ่กว่านั้นคิดเพิ่ม ซม. ละ ฿${SIZE_ADD_FEE} (คิดให้ในราคาแล้ว)` +
   " · วัดจากด้านที่ยาวที่สุดของชิ้นงาน";
-gSize.choices = SIZES.map((n) => ({ name: sizeName(n) }));
+// การ์ดขนาดสเกลเดียวกัน (size-5 … size-20 จากสคริปต์ art) — เส้นประในภาพ = ขนาดมาตรฐาน 6 ซม.
+gSize.choices = SIZES.map((n) => ({ name: sizeName(n), imageSrc: art(`size-${n}`) }));
 
 /* 3.4 สกรีนกี่ด้าน */
 const gScreen = group(G_SCREEN, G_SCREEN_OLD);

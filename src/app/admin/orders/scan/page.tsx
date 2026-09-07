@@ -4,11 +4,13 @@
  * สถานีแพ็ค–ส่ง /admin/orders/scan  (ดีไซน์ "รางเบนโตะกระจก")
  *
  * คนที่ใช้: ฝ่ายแพ็คยืนหน้าโต๊ะ มือถือข้างเดียว เครื่องยิงอีกข้าง
- * ช่องยิงจึงใหญ่เต็มความกว้างและอยู่บนสุด · ใบที่ยังยิงไม่ได้บอกเหตุผลตรง ๆ ในแถว
- * ไม่ใช่แค่ปุ่มเทา — จะได้รู้ว่าต้องไปทำอะไรก่อน
  *
- *  • ยิงเลขพัสดุ: ยิง QR เลขออเดอร์ → ยิงเลขพัสดุ + ลิสต์ออเดอร์ที่ตรวจแพ็คครบ
- *  • รอปริ้น/แพ็ค: ออเดอร์ที่แบบผ่านแล้ว ยังตรวจแพ็คไม่ครบ
+ * โครงหน้า (บน → ล่าง):
+ *  1. กล่องยิง — อยู่บนสุด "ตลอดเวลา" ไม่ผูกกับแท็บ ยิงได้ไม่ว่ากำลังดูรายการไหน
+ *     ข้างในมีขั้นตอน ① เลขออเดอร์ → ② เลขพัสดุ และข้อมูลออเดอร์ที่กำลังรอเลข
+ *  2. แถบไปป์ไลน์ 3 ขั้นตามงานจริง: รอปริ้น/แพ็ค → พร้อมยิง → ยิงแล้ว
+ *     ตัวเลขใหญ่อ่านจากระยะแขน กดเพื่อสลับรายการข้างล่าง
+ *  3. รายการของขั้นที่เลือก — แถวที่ยิงไม่ได้บอกเหตุผลตรง ๆ ในแถว ไม่ใช่แค่ปุ่มเทา
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -25,8 +27,7 @@ import {
   RowMain,
   RowSide,
   Rows,
-  Tab,
-  TabRow,
+  SearchBox,
   Tag,
 } from "@/components/admin/ui";
 import {
@@ -42,7 +43,7 @@ import { fetchOrdersAdmin, saveOrderAdmin } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
 
 type Msg = { kind: "ok" | "err" | "info"; text: string } | null;
-type Tab = "scan" | "print" | "done";
+type Tab = "print" | "scan" | "done";
 
 /** สถานะที่อยู่ในสายงานแพ็ค–ส่ง (แบบผ่านแล้ว ยังไม่ส่ง) */
 const FULFILL: OrderStatus[] = ["อนุมัติแบบ", "กำลังผลิต"];
@@ -72,28 +73,45 @@ function trackedAt(o: Order): string | undefined {
   return undefined;
 }
 
-function fmtTrackedAt(iso?: string): string {
+/** เวลาแบบสั้น "09:14" — วันที่ไม่ต้องซ้ำในแถว เพราะอยู่ที่หัวกลุ่มแล้ว */
+function fmtTime(iso?: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
 }
 
-/**
- * สถานีแพ็ค–ส่ง — 2 แท็บ
- *  • ยิงเลขพัสดุ: ยิง QR เลขออเดอร์ → ยิงเลขพัสดุ + ลิสต์ออเดอร์ที่ตรวจแพ็คครบ พร้อมยิง
- *  • รอปริ้น/แพ็ค: ออเดอร์ที่แบบผ่านแล้ว ยังตรวจแพ็คไม่ครบ — ปริ้นใบงานไปทำ/แพ็ค
- */
+/** หัวกลุ่มวัน: วันนี้ · เมื่อวาน · "31 ก.ค. 69" (พ.ศ. ตามที่ทีมใช้คุยกัน) */
+function dayLabel(iso?: string): string {
+  if (!iso) return "ไม่ทราบวันยิง";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "ไม่ทราบวันยิง";
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return "วันนี้";
+  if (d.toDateString() === yesterday.toDateString()) return "เมื่อวาน";
+  return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
+}
+
+function isToday(iso?: string): boolean {
+  if (!iso) return false;
+  const d = new Date(iso);
+  return !Number.isNaN(d.getTime()) && d.toDateString() === new Date().toDateString();
+}
+
 export default function ScanTrackingPage() {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [demo, setDemo] = useState(false);
   const [tab, setTab] = useState<Tab>("scan");
   const [target, setTarget] = useState<Order | null>(null); // ออเดอร์ที่รอเลขพัสดุ
   const [value, setValue] = useState("");
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
-  const [history, setHistory] = useState<{ id: string; tracking: string; at: string }[]>([]);
   const [blocked, setBlocked] = useState<{ order: Order; gate: PackGate } | null>(null);
+  const [q, setQ] = useState(""); // ค้นหาในแท็บ "ยิงแล้ว"
+  const [copied, setCopied] = useState<string | null>(null); // ออเดอร์ที่เพิ่งคัดลอกเลขพัสดุ
   const inputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -105,6 +123,7 @@ export default function ScanTrackingPage() {
       setOrders(MOCK_ORDERS);
       setDemo(true);
     }
+    setLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -120,13 +139,14 @@ export default function ScanTrackingPage() {
   }, [busy, target]);
   usePolling(refresh, { enabled: !demo });
 
-  const focusInput = useCallback(() => inputRef.current?.focus(), []);
+  // ช่องยิงโฟกัสตลอด ไม่ว่าดูแท็บไหน — เครื่องยิงทำงานได้เสมอ
+  // preventScroll: การคืนโฟกัสห้ามดึงจอเด้งขึ้นบน ระหว่างที่คนกำลังไล่ดูรายการข้างล่าง
+  const focusInput = useCallback(() => inputRef.current?.focus({ preventScroll: true }), []);
   useEffect(() => {
-    if (tab !== "scan") return;
     focusInput();
     window.addEventListener("focus", focusInput);
     return () => window.removeEventListener("focus", focusInput);
-  }, [focusInput, target, tab]);
+  }, [focusInput, target]);
 
   // ── แยกออเดอร์เป็น 2 กอง ตามผลตรวจแพ็ค ──
   const { toScan, toPrint } = useMemo(() => {
@@ -146,11 +166,69 @@ export default function ScanTrackingPage() {
         .sort((a, b) => (b.at ?? "").localeCompare(a.at ?? "")),
     [orders]
   );
+  const scannedToday = useMemo(() => scanned.filter((s) => isToday(s.at)).length, [scanned]);
+
+  // ── แท็บ "ยิงแล้ว": กรองตามคำค้น แล้วจัดกลุ่มตามวัน (เรียงล่าสุดอยู่แล้ว → กลุ่มติดกัน) ──
+  const shipGroups = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    const filtered = !s
+      ? scanned
+      : scanned.filter(
+          ({ o }) =>
+            o.id.toLowerCase().includes(s) ||
+            (o.tracking ?? "").toLowerCase().includes(s) ||
+            (o.customer ?? "").toLowerCase().includes(s)
+        );
+    const groups: { key: string; label: string; rows: typeof filtered }[] = [];
+    for (const row of filtered) {
+      const key = row.at ? new Date(row.at).toDateString() : "unknown";
+      const last = groups[groups.length - 1];
+      if (last && last.key === key) last.rows.push(row);
+      else groups.push({ key, label: dayLabel(row.at), rows: [row] });
+    }
+    return groups;
+  }, [scanned, q]);
+  const shipCount = useMemo(() => shipGroups.reduce((n, g) => n + g.rows.length, 0), [shipGroups]);
+
+  /** คัดลอกเลขพัสดุไปตอบลูกค้า — ติ๊กเขียวบนแถวสักครู่ให้รู้ว่าติดมือแล้ว */
+  const copyTracking = useCallback((orderId: string, tracking: string) => {
+    const done = () => {
+      setCopied(orderId);
+      window.setTimeout(() => setCopied((c) => (c === orderId ? null : c)), 1600);
+    };
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(tracking).then(done);
+      return;
+    }
+    const ta = document.createElement("textarea");
+    ta.value = tracking;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+    done();
+  }, []);
 
   function reset(message?: Msg) {
     setTarget(null);
     setValue("");
     setMsg(message ?? null);
+    setTimeout(focusInput, 50);
+  }
+
+  /** เลือกออเดอร์มารอยิงเลขพัสดุ (จาก QR หรือกดปุ่มในแถว) — เช็คด่านตรวจแพ็คก่อนเสมอ */
+  function pickTarget(o: Order) {
+    const gate = packGate(o);
+    if (!gate.ready) {
+      setBlocked({ order: o, gate });
+      setMsg(null);
+      return;
+    }
+    setTarget(o);
+    setMsg({
+      kind: "info",
+      text: o.tracking ? `ออเดอร์นี้มีเลขพัสดุแล้ว (${o.tracking}) — ยิงใหม่เพื่อแทนที่` : "ยิงเลขพัสดุต่อได้เลย",
+    });
     setTimeout(focusInput, 50);
   }
 
@@ -169,19 +247,7 @@ export default function ScanTrackingPage() {
         setTimeout(focusInput, 50);
         return;
       }
-      // ── ด่านกันพลาด: ต้องตรวจแพ็คครบก่อนถึงยิงเลขพัสดุได้ ──
-      const gate = packGate(found);
-      if (!gate.ready) {
-        setBlocked({ order: found, gate });
-        setMsg(null);
-        return;
-      }
-      setTarget(found);
-      setMsg({
-        kind: "info",
-        text: found.tracking ? `ออเดอร์นี้มีเลขพัสดุแล้ว (${found.tracking}) — ยิงใหม่เพื่อแทนที่` : "ยิงเลขพัสดุต่อได้เลย",
-      });
-      setTimeout(focusInput, 50);
+      pickTarget(found);
       return;
     }
 
@@ -202,14 +268,16 @@ export default function ScanTrackingPage() {
       return;
     }
     setOrders((os) => os.map((o) => (o.id === next.id ? next : o)));
-    setHistory((h) =>
-      [{ id: next.id, tracking: v, at: new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }) }, ...h].slice(0, 12)
-    );
     reset({ kind: "ok", text: `บันทึกแล้ว — ${next.id} · ${v}` });
   }
 
-
   const waiting = !target;
+
+  const PIPE: { key: Tab; label: string; n: number; hint: string; tone: string }[] = [
+    { key: "print", label: "รอปริ้น/แพ็ค", n: toPrint.length, hint: "ตรวจแพ็คยังไม่ครบ", tone: "var(--dk-coral-deep)" },
+    { key: "scan", label: "พร้อมยิง", n: toScan.length, hint: "ตรวจครบ รอเลขพัสดุ", tone: "var(--dk-mint)" },
+    { key: "done", label: "ยิงแล้ว", n: scanned.length, hint: `วันนี้ ${scannedToday} ใบ`, tone: "var(--dk-quiet)" },
+  ];
 
   return (
     <PageShell>
@@ -221,96 +289,110 @@ export default function ScanTrackingPage() {
         tools={<Btn href="/admin/orders">คำสั่งซื้อทั้งหมด</Btn>}
       />
 
-      <div className="mt-4">
-        <div className="dkb-g px-3 py-3">
-          <TabRow>
-            <Tab on={tab === "scan"} onClick={() => setTab("scan")} label="ยิงเลขพัสดุ" count={toScan.length} />
-            <Tab on={tab === "print"} onClick={() => setTab("print")} label="รอปริ้น/แพ็ค" count={toPrint.length} />
-            <Tab on={tab === "done"} onClick={() => setTab("done")} label="ยิงแล้ว" count={scanned.length} />
-          </TabRow>
+      {/* ── กล่องยิง — ใหญ่สุดและอยู่บนสุดตลอด ยิงได้ไม่ว่ากำลังดูรายการไหน ── */}
+      <form onSubmit={onSubmit} className="mt-4">
+        <div className="dkb-g dkb-scanbox">
+          <div className="dkb-scansteps">
+            <span className="dkb-scanstep" data-on={waiting ? "1" : undefined} data-done={waiting ? undefined : "1"}>
+              <i>{waiting ? "1" : "✓"}</i>เลขออเดอร์
+            </span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden>
+              <path d="M5 12h14m-6-6 6 6-6 6" />
+            </svg>
+            <span className="dkb-scanstep" data-on={waiting ? undefined : "1"}>
+              <i>2</i>เลขพัสดุ
+            </span>
+          </div>
+
+          <label htmlFor="scan" className="big">
+            {waiting ? "รอยิง QR เลขออเดอร์" : `รอเลขพัสดุของ ${target.id}`}
+          </label>
+          <span className="cap">
+            {waiting ? "เอาเครื่องยิงจ่อที่ใบงาน หรือพิมพ์เลขเองก็ได้" : "ยิงเลขพัสดุ แล้วกด Enter"}
+          </span>
+          <div className="dkb-scanline">
+            <input
+              id="scan"
+              ref={inputRef}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onBlur={() => {
+                if (!blocked) setTimeout(focusInput, 120);
+              }}
+              autoComplete="off"
+              autoFocus
+              placeholder={waiting ? "ยิง QR หรือพิมพ์เลขออเดอร์" : "ยิงเลขพัสดุ"}
+            />
+          </div>
+          <span className="cap mt-2 block">{busy ? "กำลังบันทึก…" : "ช่องนี้โฟกัสอยู่ตลอด — ยิงได้เลย"}</span>
+
+          {/* ออเดอร์ที่กำลังรอเลขพัสดุ — อยู่ในกล่องเดียวกัน จะได้เห็นว่ากำลังยิงให้ใคร */}
+          {target && (
+            <div className="dkb-scantarget">
+              <span className="who">{target.customer || "ยังไม่ระบุชื่อ"}</span>
+              {target.phone && <span className="sub">{target.phone}</span>}
+              {target.address && <span className="sub w-full">{target.address}</span>}
+              <StatusChip s={target.status} label={orderStatusLabel(target)} />
+              <Btn small onClick={() => reset({ kind: "info", text: "ยกเลิกแล้ว — ยิง QR ออเดอร์ใหม่ได้เลย" })}>
+                ยกเลิก / เปลี่ยนออเดอร์
+              </Btn>
+            </div>
+          )}
         </div>
+      </form>
+
+      {msg && (
+        <div className="mt-3">
+          {msg.kind === "err" ? (
+            <Banner tone="hot" title={msg.text} />
+          ) : msg.kind === "ok" ? (
+            <div className="dkb-g px-4 py-3 text-[14px]" style={{ background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" }}>
+              {msg.text}
+            </div>
+          ) : (
+            <div className="dkb-g px-4 py-3 text-[14px]" style={{ background: "var(--dk-sky)", color: "var(--dk-blue-deep)" }}>
+              {msg.text}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── ไปป์ไลน์ 3 ขั้นตามงานจริง — ตัวเลขใหญ่ กดสลับรายการข้างล่าง ── */}
+      <div className="dkb-pipe mt-4">
+        {PIPE.map((p) => (
+          <button
+            key={p.key}
+            type="button"
+            onClick={() => setTab(p.key)}
+            aria-pressed={tab === p.key}
+            className="dkb-g dkb-pipestep"
+            style={{ ["--dk-tone" as string]: p.tone }}
+          >
+            <span className="lb">{p.label}</span>
+            <span className="dkb-num n">{p.n}</span>
+            <span className="hint">{p.hint}</span>
+          </button>
+        ))}
       </div>
 
-      {tab === "scan" ? (
+      {!loaded ? (
+        <div className="mt-5 grid gap-2">
+          <div className="dkb-skel h-[64px]" />
+          <div className="dkb-skel h-[64px]" />
+          <div className="dkb-skel h-[64px]" />
+        </div>
+      ) : tab === "scan" ? (
         <>
-          {/* ── ช่องรับการยิง — ใหญ่ที่สุดในหน้า เพราะเป็นสิ่งเดียวที่ต้องใช้ ── */}
-          <form onSubmit={onSubmit} className="mt-4">
-            <div className="dkb-g dkb-scanbox">
-              <label htmlFor="scan" className="big">
-                {waiting ? "รอยิง QR เลขออเดอร์" : `รอเลขพัสดุของ ${target.id}`}
-              </label>
-              <span className="cap">
-                {waiting ? "เอาเครื่องยิงจ่อที่ใบงาน หรือพิมพ์เลขเองก็ได้" : "ยิงเลขพัสดุ แล้วกด Enter"}
-              </span>
-              <div className="dkb-scanline">
-                <input
-                  id="scan"
-                  ref={inputRef}
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
-                  onBlur={() => {
-                    if (!blocked) setTimeout(focusInput, 120);
-                  }}
-                  autoComplete="off"
-                  autoFocus
-                  placeholder={waiting ? "ยิง QR หรือพิมพ์เลขออเดอร์" : "ยิงเลขพัสดุ"}
-                />
-              </div>
-              <span className="cap mt-2 block">{busy ? "กำลังบันทึก…" : "ช่องนี้โฟกัสอยู่ตลอด — ยิงได้เลย"}</span>
-            </div>
-          </form>
-
-          {msg && (
-            <div className="mt-3">
-              {msg.kind === "err" ? (
-                <Banner tone="hot" title={msg.text} />
-              ) : msg.kind === "ok" ? (
-                <div className="dkb-g px-4 py-3 text-[14px]" style={{ background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" }}>
-                  {msg.text}
-                </div>
-              ) : (
-                <div className="dkb-g px-4 py-3 text-[14px]" style={{ background: "var(--dk-sky)", color: "var(--dk-blue-deep)" }}>
-                  {msg.text}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── ออเดอร์ที่กำลังรอเลขพัสดุ ── */}
-          {target && (
-            <div className="dkb-g mt-3 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="dkb-code text-[13px]" style={{ color: "var(--dk-navy-soft)" }}>
-                    {target.id}
-                  </p>
-                  <p className="dkb-display text-[1.05rem]">{target.customer}</p>
-                  <p className="text-[13px]" style={{ color: "var(--dk-navy-soft)" }}>
-                    {target.phone}
-                  </p>
-                  <p className="mt-1 text-[12.5px] leading-snug" style={{ color: "var(--dk-faint)" }}>
-                    {target.address}
-                  </p>
-                </div>
-                <StatusChip s={target.status} label={orderStatusLabel(target)} />
-              </div>
-              <div className="mt-3">
-                <Btn small onClick={() => reset({ kind: "info", text: "ยกเลิกแล้ว — ยิง QR ออเดอร์ใหม่ได้เลย" })}>
-                  ยกเลิก / เปลี่ยนออเดอร์
-                </Btn>
-              </div>
-            </div>
-          )}
-
           <ListHead title="ตรวจแพ็คครบแล้ว พร้อมยิงเลข" note={`${toScan.length} ใบ`} />
           {toScan.length === 0 ? (
-            <Empty title="ยังไม่มีออเดอร์พร้อมยิง" body="ไปที่แท็บ “รอปริ้น/แพ็ค” แล้วตรวจนับของให้ครบก่อน" />
+            <Empty title="ยังไม่มีออเดอร์พร้อมยิง" body="ไปที่ขั้น “รอปริ้น/แพ็ค” แล้วตรวจนับของให้ครบก่อน" />
           ) : (
             <Rows>
               {toScan.map((o) => (
-                <Row key={o.id} tone="var(--dk-mint)" href={`/admin/orders/${encodeURIComponent(o.id)}`}>
+                <Row key={o.id} tone="var(--dk-mint)">
                   <RowMain
                     name={o.customer || "ยังไม่ระบุชื่อ"}
+                    href={`/admin/orders/${encodeURIComponent(o.id)}`}
                     tags={<Tag tone="mint">พร้อมยิง</Tag>}
                     meta={
                       <>
@@ -321,36 +403,13 @@ export default function ScanTrackingPage() {
                     }
                   />
                   <RowSide>
-                    <StatusChip s={o.status} label={orderStatusLabel(o)} />
+                    <Btn tone="navy" small onClick={() => pickTarget(o)}>
+                      ยิงเลขใบนี้
+                    </Btn>
                   </RowSide>
                 </Row>
               ))}
             </Rows>
-          )}
-
-          {history.length > 0 && (
-            <>
-              <ListHead title="บันทึกแล้วรอบนี้" note={`${history.length} ใบ`} />
-              <Rows>
-                {history.map((h, i) => (
-                  <Row key={`${h.id}-${i}`} tone="var(--dk-quiet)" done>
-                    <RowMain
-                      name={h.id}
-                      href={`/admin/orders/${encodeURIComponent(h.id)}`}
-                      meta={
-                        <>
-                          <span className="id">{h.tracking}</span>
-                          <span>ยิงเมื่อ {h.at}</span>
-                        </>
-                      }
-                    />
-                    <RowSide>
-                      <Tag tone="quiet">จัดส่งแล้ว</Tag>
-                    </RowSide>
-                  </Row>
-                ))}
-              </Rows>
-            </>
           )}
         </>
       ) : tab === "print" ? (
@@ -396,31 +455,79 @@ export default function ScanTrackingPage() {
         </>
       ) : (
         <>
-          {/* ── ยิงแล้ว: เลขพัสดุที่บันทึกเข้าระบบทั้งหมด ── */}
-          <ListHead title="เลขพัสดุที่ยิงเข้าระบบแล้ว" note={`${scanned.length} ใบ`} />
+          {/* ── ยิงแล้ว: ตารางเลขพัสดุ จัดกลุ่มตามวัน · เลขกดคัดลอกไปตอบลูกค้าได้เลย ── */}
+          <ListHead title="เลขพัสดุที่ยิงเข้าระบบแล้ว" note={`${shipCount} ใบ · วันนี้ ${scannedToday} ใบ`} />
           {scanned.length === 0 ? (
-            <Empty title="ยังไม่มีออเดอร์ที่ยิงเลขพัสดุ" body="ยิงเลขพัสดุใบแรกจากแท็บ “ยิงเลขพัสดุ” แล้วจะขึ้นตรงนี้" />
+            <Empty title="ยังไม่มีออเดอร์ที่ยิงเลขพัสดุ" body="ยิง QR ออเดอร์แรกที่กล่องข้างบน แล้วจะขึ้นตรงนี้" />
           ) : (
-            <Rows>
-              {scanned.map(({ o, at }) => (
-                <Row key={o.id} tone={STATUS_TONE[o.status]} href={`/admin/orders/${encodeURIComponent(o.id)}`}>
-                  <RowMain
-                    name={o.customer || "ยังไม่ระบุชื่อ"}
-                    tags={<Tag tone="mint">{o.tracking}</Tag>}
-                    meta={
-                      <>
-                        <span className="id">{o.id}</span>
-                        <span>{qtyOf(o)} ชิ้น</span>
-                        {at && <span>ยิงเมื่อ {fmtTrackedAt(at)}</span>}
-                      </>
-                    }
-                  />
-                  <RowSide>
-                    <StatusChip s={o.status} label={orderStatusLabel(o)} />
-                  </RowSide>
-                </Row>
-              ))}
-            </Rows>
+            <>
+              <div className="mb-2.5 px-1">
+                <SearchBox value={q} onChange={setQ} placeholder="ค้นหา เลขพัสดุ · เลขออเดอร์ · ชื่อลูกค้า" />
+              </div>
+              {shipCount === 0 ? (
+                <Empty title={`ไม่พบ “${q.trim()}”`} body="ลองพิมพ์เลขพัสดุ เลขออเดอร์ หรือชื่อลูกค้าอีกครั้ง" />
+              ) : (
+                <div className="dkb-g dkb-ship">
+                  <div className="dkb-shiphead" aria-hidden>
+                    <span className="r">#</span>
+                    <span>เลขออเดอร์</span>
+                    <span>ลูกค้า</span>
+                    <span>เลขพัสดุ · กดคัดลอกได้</span>
+                    <span className="r">ชิ้น</span>
+                    <span className="r">เวลา</span>
+                    <span className="r">สถานะ</span>
+                  </div>
+                  {shipGroups.map((g) => (
+                    <div key={g.key}>
+                      <div className="dkb-shipday">
+                        {g.label} <small>{g.rows.length} ใบ</small>
+                      </div>
+                      {g.rows.map(({ o, at }, i) => {
+                        const odd = o.status !== "จัดส่งแล้ว" && o.status !== "เสร็จสิ้น";
+                        return (
+                          <div key={o.id} className="dkb-shiprow" data-odd={odd ? "1" : undefined}>
+                            <span className="dkb-shipidx">{i + 1}</span>
+                            <Link
+                              href={`/admin/orders/${encodeURIComponent(o.id)}`}
+                              className="dkb-shipid underline-offset-4 hover:underline"
+                              title="เปิดหน้าออเดอร์"
+                            >
+                              {o.id}
+                            </Link>
+                            <span className="dkb-shipwho">{o.customer || "ยังไม่ระบุชื่อ"}</span>
+                            <button
+                              type="button"
+                              className="dkb-shiptrk"
+                              data-copied={copied === o.id ? "1" : undefined}
+                              onClick={() => copyTracking(o.id, o.tracking!)}
+                              title="กดเพื่อคัดลอกเลขพัสดุ"
+                              aria-label={`คัดลอกเลขพัสดุ ${o.tracking}`}
+                            >
+                              {o.tracking}
+                              {copied === o.id ? (
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" aria-hidden>
+                                  <path d="m4.5 12.5 5 5 10-11" />
+                                </svg>
+                              ) : (
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                                  <rect x="8" y="8" width="12" height="12" rx="2.5" />
+                                  <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+                                </svg>
+                              )}
+                            </button>
+                            <span className="dkb-shipqty">{qtyOf(o)} ชิ้น</span>
+                            <span className="dkb-shiptime">{fmtTime(at)}</span>
+                            <span className="dkb-shipst">
+                              <StatusChip s={o.status} label={orderStatusLabel(o)} />
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </>
       )}

@@ -117,9 +117,23 @@ ok("ชิ้นที่ 1 = ชุด 'ตัวหลัก'", ["ขนาด
 ok("ชิ้นที่ 2 = ชุด 'ติ่งห้อย ชิ้นที่ 1'", ["ขนาดชิ้นที่ 2", TYPE2, "งานสกรีน ชิ้นที่ 2"].every((l) => sectionOf(l) === "ติ่งห้อย ชิ้นที่ 1"));
 ok("ชิ้นที่ 10 = ชุด 'ติ่งห้อย ชิ้นที่ 9'", sectionOf("ขนาดชิ้นที่ 10") === "ติ่งห้อย ชิ้นที่ 9");
 // หัวชุดโชว์ชื่อใหม่ แต่หัวข้อในกรอบยังตัดด้วยชื่อกลุ่มเดิม ("ขนาดชิ้นที่ 2" → "ขนาด")
-ok("ทุกกลุ่มในชุดตั้ง sectionTrim ให้ตัดชื่อกลุ่มเหลือคำสั้น",
-  p.options.filter((o) => o.section).every((o) => !!o.sectionTrim && o.label.endsWith(o.sectionTrim!)));
-ok("กลุ่มนอกชุดไม่ติดชุด", [HANG, COUNT].every((l) => !sectionOf(l)));
+// (เฉพาะชุดรายชิ้น — ชุด "ทั้งพวง"/"ตะขอ + การห้อย" ที่เพิ่มทีหลัง ชื่อกลุ่มอ่านออกอยู่แล้ว ไม่ต้องตัด)
+ok("ทุกกลุ่มในชุดรายชิ้นตั้ง sectionTrim ให้ตัดชื่อกลุ่มเหลือคำสั้น",
+  p.options.filter((o) => o.section && /ชิ้นที่ \d+$/.test(o.section) || o.section === "ตัวหลัก")
+    .every((o) => !!o.sectionTrim && o.label.endsWith(o.sectionTrim!)));
+ok("ทุกกลุ่มอยู่ในชุดครบ (ทั้งพวง/ตัวหลัก/ติ่งห้อย/ตะขอ + การห้อย)",
+  [HANG, COUNT].every((l) => ["ทั้งพวง", "ตะขอ + การห้อย"].includes(sectionOf(l) ?? "")));
+// 7 ก.ย. 69 — จัดหน้าให้กระชับ (multi-charm-tidy-dropdown.mjs): ชุดติ่งห้อยเริ่มแบบหุบ
+ok("ชุดติ่งห้อยทุกชุดติดธง sectionClosed (เริ่มแบบหุบ)",
+  p.options.filter((o) => /^ติ่งห้อย ชิ้นที่ \d+$/.test(o.section ?? "")).every((o) => o.sectionClosed === true) &&
+  p.options.filter((o) => /^ติ่งห้อย ชิ้นที่ \d+$/.test(o.section ?? "")).length === 36);
+ok("ชุดอื่นไม่ติด sectionClosed (ทั้งพวง/ตัวหลัก/ตะขอ ยังกางตอนเปิดหน้า)",
+  !p.options.some((o) => o.sectionClosed && !/^ติ่งห้อย ชิ้นที่ \d+$/.test(o.section ?? "")));
+ok("รูปแบบการห้อย + รับตะขอไหม เป็นเมนูเลื่อน (dropdown) และคำอธิบายย้ายไป selectedNote",
+  [HANG, "รับตะขอไหม"].every((l) =>
+    group(l).display === "dropdown" &&
+    group(l).choices.every((c) => !c.desc || (typeof c.selectedNote === "string" && c.selectedNote.length > 0))
+  ));
 ok("ชื่อกลุ่มเต็มยังอยู่ (ตะกร้า/ใบงานอ่านออกว่าชิ้นไหน)", p.options.some((o) => o.label === "ขนาดชิ้นที่ 2") && trimOf("ขนาดชิ้นที่ 2") === "ชิ้นที่ 2");
 
 console.log("\n── เรทติ่งห้อย (ชิ้นที่ 2 ขึ้นไป · เริ่ม 2 ซม. · 20/15/12 ตามจำนวนพวง) ──");

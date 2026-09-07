@@ -8,6 +8,7 @@ import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFl
 import { reportPaidToTP } from "@/lib/server/tp-report";
 import { bumpSoldForOrder, unbumpSoldForOrder } from "@/lib/server/sold";
 import { cutStockForOrder, restoreStockForOrder } from "@/lib/server/stock";
+import { awardPointsForOrder, revokePointsForOrder } from "@/lib/server/contact-points";
 import { hasUnpaidBalance, orderBalance, orderTotal, packGate, proofsOf, withLog, type Order, type OrderStatus, type PackGate } from "@/lib/admin-data";
 
 /** สรุปเหตุผลที่ด่านตรวจยังไม่ผ่าน (ไว้โชว์/ลง log) */
@@ -205,7 +206,8 @@ export async function POST(req: Request) {
   let order: Order = {
     id,
     key: randomBytes(24).toString("base64url"),
-    customer: body.customerName?.trim() || "ยังไม่ระบุชื่อ",
+    // ปล่อยว่างไว้ — หน้าจอทุกที่ fallback เป็น "ยังไม่ระบุชื่อ" ให้เอง (ช่องกรอกจะโชว์เป็นลายน้ำ ไม่ใช่ค่าจริง)
+    customer: body.customerName?.trim() || "",
     phone: body.phone?.trim() || "",
     address: body.address?.trim() || "",
     date: now.toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
@@ -372,6 +374,9 @@ export async function PATCH(req: Request) {
     if (toSave.status === "ชำระแล้ว") void bumpSoldForOrder(toSave.id);
     if (toSave.status === "ยกเลิก") void unbumpSoldForOrder(toSave.id);
     if (toSave.status === "ยกเลิก") void restoreStockForOrder(toSave);
+    // 🦆 แต้มสะสม — ชำระครบ = บวกให้ผู้ติดต่อที่ผูกไว้ (ออเดอร์มัดจำรอเก็บยอดคงเหลือครบก่อน — บวกที่บล็อก settledAt ด้านล่าง)
+    if (toSave.status === "ชำระแล้ว" && !toSave.deposit) void awardPointsForOrder(toSave);
+    if (toSave.status === "ยกเลิก") void revokePointsForOrder(toSave);
 
     // ออเดอร์มัดจำเข้าไลน์ผลิตแล้วแต่ยังค้างงวดหลัง → ทวงตั้งแต่ตอนนี้ ไม่ต้องรอของเสร็จค่อยรู้
     if (toSave.status === "กำลังผลิต" && toSave.deposit?.firstPaidAt && !toSave.deposit.settledAt) {
@@ -438,6 +443,8 @@ export async function PATCH(req: Request) {
     const bal = Math.max(0, orderTotal(toSave) - (existing.paidTotal ?? toSave.deposit.amount));
     void notifyCustomerLogged(sb, toSave, `✅ รับยอดคงเหลือออเดอร์ ${toSave.id} ครบแล้ว ขอบคุณครับ\n${orderLink(origin, toSave)}`, "ยืนยันรับยอดคงเหลือครบ");
     void reportPaidToTP(toSave, adminName, { docSuffix: "-final", amount: bal, noteSuffix: "ยอดคงเหลือ 50% หลัง (ครบแล้ว)" });
+    // 🦆 ออเดอร์มัดจำเพิ่งชำระครบ → บวกแต้มสะสม (idempotent)
+    void awardPointsForOrder(toSave);
   }
 
   return NextResponse.json({ ok: true, order: toSave });

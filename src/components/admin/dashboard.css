@@ -460,6 +460,104 @@
 .dkb-scanline input { flex: 1; border: 0; background: transparent; outline: none; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1rem; color: var(--dk-navy); letter-spacing: 0.04em; }
 .dkb-scanline input::placeholder { color: var(--dk-faint); letter-spacing: 0; font-family: inherit; }
 
+/* ขั้นตอนในกล่องยิง: ① เลขออเดอร์ → ② เลขพัสดุ — บอกว่ากำลังรออะไรโดยไม่ต้องอ่านยาว */
+.dkb-scansteps { display: flex; justify-content: center; align-items: center; gap: 7px; margin-bottom: 11px; }
+.dkb-scanstep {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px 4px 5px; border-radius: 999px;
+  font-size: 0.78rem; font-weight: 600; background: rgba(255, 255, 255, 0.6); color: var(--dk-faint);
+  border: 1px solid var(--dk-hair);
+}
+.dkb-scanstep > i {
+  display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--dk-quiet); color: #fff; font-size: 0.68rem; font-style: normal; font-variant-numeric: tabular-nums;
+}
+.dkb-scanstep[data-on="1"] { background: var(--dk-navy); color: #fff; border-color: var(--dk-navy); }
+.dkb-scanstep[data-on="1"] > i { background: var(--dk-yolk); color: var(--dk-navy); }
+.dkb-scanstep[data-done="1"] { background: var(--dk-mint-wash); color: var(--dk-mint-ink); border-color: transparent; }
+.dkb-scanstep[data-done="1"] > i { background: var(--dk-mint); }
+.dkb-scansteps > svg { width: 14px; height: 14px; color: var(--dk-faint); flex: none; }
+
+/* ออเดอร์ที่กำลังรอเลขพัสดุ — โชว์ในกล่องยิงเลย ไม่แยกการ์ดลอย */
+.dkb-scantarget {
+  margin-top: 13px; padding-top: 12px; border-top: 1px dashed var(--dk-hair);
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 12px;
+}
+.dkb-scantarget .who { font-family: var(--dk-display); font-weight: 400; font-size: 1rem; }
+.dkb-scantarget .sub { font-size: 0.8rem; color: var(--dk-navy-soft); }
+
+/* ── แถบไปป์ไลน์แพ็ค–ส่ง: 3 ขั้นตามงานจริง ตัวเลขใหญ่ กดสลับรายการ ── */
+.dkb-pipe { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.dkb-pipestep { position: relative; overflow: hidden; padding: 11px 13px 12px 17px; text-align: left; transition: transform 0.18s ease, box-shadow 0.18s ease; }
+.dkb-pipestep::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--dk-tone, var(--dk-quiet)); }
+.dkb-pipestep:hover { transform: translateY(-2px); box-shadow: 0 14px 28px rgba(44, 129, 196, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.92); }
+.dkb-pipestep .lb { display: block; font-size: 0.73rem; font-weight: 600; color: var(--dk-navy-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dkb-pipestep .n { display: block; margin-top: 3px; font-size: 1.65rem; }
+.dkb-pipestep .hint { display: block; margin-top: 2px; font-size: 0.68rem; color: var(--dk-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dkb-pipestep[aria-pressed="true"] { background: rgba(255, 255, 255, 0.95); border-color: var(--dk-navy); box-shadow: 0 10px 24px rgba(23, 58, 107, 0.18); }
+.dkb-pipestep[aria-pressed="true"] .lb { color: var(--dk-navy); }
+
+/* ── แท็บ "ยิงแล้ว" — ตารางทรงใบคุมฝากส่ง: หัวคอลัมน์จริง เส้นหนักใต้หัวแบบเอกสารพิมพ์
+   จุดกล้าจุดเดียว: เส้นใต้หัวตารางสีกรม 2px ที่เหลือเงียบและตรงคอลัมน์เป๊ะ ── */
+.dkb-ship { padding: 0 0 7px; overflow: hidden; }
+.dkb-shiphead, .dkb-shiprow {
+  display: grid;
+  grid-template-columns: 26px minmax(148px, auto) minmax(0, 1fr) auto minmax(58px, auto) minmax(44px, auto) auto;
+  column-gap: 14px; align-items: center;
+}
+.dkb-shiphead {
+  padding: 13px 18px 9px; border-bottom: 2px solid var(--dk-navy);
+  font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; color: var(--dk-navy-soft);
+}
+.dkb-shiphead .r, .dkb-shipqty, .dkb-shiptime, .dkb-shipidx { text-align: right; }
+.dkb-shipday {
+  display: flex; align-items: baseline; gap: 7px; padding: 5px 18px;
+  background: var(--dk-sky); font-size: 0.72rem; font-weight: 600; color: var(--dk-blue-deep);
+}
+.dkb-shipday small { font-weight: 500; font-variant-numeric: tabular-nums; color: var(--dk-navy-soft); }
+.dkb-shiprow { padding: 7px 18px; }
+.dkb-shiprow + .dkb-shiprow { box-shadow: 0 -1px 0 var(--dk-hair); }
+.dkb-shiprow:hover { background: rgba(255, 255, 255, 0.75); }
+/* ใบที่สถานะแปลก (ยิงแล้วแต่ยังรอชำระเงิน ฯลฯ) ต้องสะดุดตากว่าใบที่จบงาน */
+.dkb-shiprow[data-odd="1"] { background: var(--dk-coral-wash); box-shadow: inset 4px 0 0 var(--dk-coral-deep); }
+.dkb-shiprow[data-odd="1"] + .dkb-shiprow { box-shadow: none; }
+.dkb-shipidx { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem; color: var(--dk-faint); font-variant-numeric: tabular-nums; }
+.dkb-shipid {
+  justify-self: start; white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.84rem; font-weight: 600;
+  letter-spacing: -0.02em; color: var(--dk-navy);
+}
+.dkb-shipwho { min-width: 0; font-family: var(--dk-display); font-weight: 400; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ป้ายเลขพัสดุ — แคปซูลเส้นประแบบเดียวกับช่องยิง: ภาษาเดียวกันว่า "กดเก็บได้" · กดแล้วเขียวทั้งป้าย */
+.dkb-shiptrk {
+  display: inline-flex; align-items: center; gap: 7px; justify-self: start;
+  cursor: pointer; padding: 4px 12px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8); border: 1.5px dashed var(--dk-sky-300);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; font-weight: 600;
+  letter-spacing: -0.01em; color: var(--dk-navy); white-space: nowrap;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.dkb-shiptrk:hover { border-color: var(--dk-blue-deep); background: rgba(255, 255, 255, 1); }
+.dkb-shiptrk svg { width: 13px; height: 13px; color: var(--dk-blue-deep); flex: none; }
+.dkb-shiptrk[data-copied="1"] { background: var(--dk-mint-wash); border-color: var(--dk-mint); color: var(--dk-mint-ink); }
+.dkb-shiptrk[data-copied="1"] svg { color: var(--dk-mint-ink); }
+.dkb-shipqty { font-variant-numeric: tabular-nums; font-size: 0.8rem; color: var(--dk-navy-soft); white-space: nowrap; }
+.dkb-shiptime { font-variant-numeric: tabular-nums; font-size: 0.8rem; color: var(--dk-faint); white-space: nowrap; }
+.dkb-shipst { justify-self: end; }
+@media (max-width: 640px) {
+  .dkb-shiphead, .dkb-shipidx { display: none; }
+  .dkb-shiprow {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "id id st" "trk trk trk" "who qty tm";
+    row-gap: 4px;
+  }
+  .dkb-shipid { grid-area: id; }
+  .dkb-shipst { grid-area: st; }
+  .dkb-shiptrk { grid-area: trk; }
+  .dkb-shipwho { grid-area: who; }
+  .dkb-shipqty { grid-area: qty; }
+  .dkb-shiptime { grid-area: tm; }
+}
+
 /* ── ช่องว่าง — ต้องบอกว่าต้องทำอะไรต่อ ไม่ใช่แค่บอกว่าไม่มีข้อมูล ── */
 .dkb-empty { padding: 44px 20px; text-align: center; }
 .dkb-empty b { display: block; font-family: var(--dk-display); font-weight: 500; font-size: 1rem; }

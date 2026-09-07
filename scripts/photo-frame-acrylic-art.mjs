@@ -272,6 +272,31 @@ const sizeAdd = (() => {
       fill="none" stroke-linecap="round" stroke-linejoin="round"/>`);
 })();
 
+/* ── 3b. ขนาดชิ้นงาน 5-20 ซม. (เมนูเลื่อน) — สเกลจริงเทียบกันได้ ─────────
+ * ทรงเดียวกับการ์ด "ขนาดฐาน": ทุกใบใช้สเกลเดียวกัน + เส้นประ = ขนาดมาตรฐาน 6 ซม.
+ * (ราคาในตารางคือ 5-6 ซม. — ใหญ่กว่านั้น ซม. ละ 15 ซึ่งยุบเข้าช่องตารางแล้ว)
+ * ป้ายตัวเลขใส่ได้ตามข้อยกเว้น "ภาพขนาด/ฐาน" — ขาดแล้วดูไม่ออกว่าเทียบอะไร */
+const SIZE_PX_PER_CM = 25; // 20 ซม. = 500px พอดีกรอบ 700 เมื่อเผื่อที่ป้าย
+const SIZE_STD_CM = 6;
+const SIZES_CM = Array.from({ length: 16 }, (_, i) => i + 5);
+
+function sizeArt(cm) {
+  const bottom = 540;
+  const h = cm * SIZE_PX_PER_CM;
+  const w = h * RATIO;
+  const cx = 350;
+  // ขนาดนับจาก "ด้านที่ยาวที่สุด" = ความสูงของกรอบ → ไม้บรรทัดต้องวัดแนวตั้ง ไม่ใช่ความกว้าง
+  // (เคยลองวาดเส้นประขนาดมาตรฐาน 6 ซม. ทับไว้ — ดูเหมือนช่องใส่รูปลอย ๆ เลยตัดออก
+  //  ทุกใบสเกลเดียวกัน + ไม้บรรทัด + ตัวเลข ก็เทียบกันได้แล้ว)
+  const rx = cx + w / 2 + 34;
+  return scene(`
+    ${plate(cx, bottom - h, w, h, { art: false, card: false })}
+    <line x1="${rx}" y1="${bottom - h}" x2="${rx}" y2="${bottom}" stroke="${MUTED}" stroke-width="4"/>
+    <line x1="${rx - 14}" y1="${bottom - h}" x2="${rx + 14}" y2="${bottom - h}" stroke="${MUTED}" stroke-width="4"/>
+    <line x1="${rx - 14}" y1="${bottom}" x2="${rx + 14}" y2="${bottom}" stroke="${MUTED}" stroke-width="4"/>
+    ${label(cx, bottom + 88, `${cm} ซม.`, 46)}`);
+}
+
 /* ── 4. สกรีนกี่ด้าน — หน้า/หลัง วางคู่กัน ─────────────────────────────── */
 function screenArt(sides) {
   const h = 362;
@@ -319,6 +344,7 @@ const SHEETS = {
   "size-add": sizeAdd,
   "screen-1side": screenArt(1),
   "screen-2side": screenArt(2),
+  ...Object.fromEntries(SIZES_CM.map((cm) => [`size-${cm}`, sizeArt(cm)])),
   ...Object.fromEntries(BASES.map((b) => [b.key, baseSizeArt(b)])),
   "base-plain": basePlain,
   "base-printed": basePrinted,

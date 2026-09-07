@@ -76,7 +76,8 @@
       "Skill(artifact-design:*)",
       "Bash(/usr/bin/curl -s -o /dev/null -w \"served: HTTP %{http_code}\\\\n\" http://localhost:3001/_preview-drawer.html)",
       "Bash(/usr/bin/curl -s -o /dev/null -w \"customer page: %{http_code}\\\\n\" \"http://localhost:3001/order/OD-260722-8143?key=au2AJFu_9toYrctb1SXHAiD0S7fw5nfs\")",
-      "Bash(/usr/bin/curl -s \"http://localhost:3001/order/OD-260722-8143?key=au2AJFu_9toYrctb1SXHAiD0S7fw5nfs\")"
+      "Bash(/usr/bin/curl -s \"http://localhost:3001/order/OD-260722-8143?key=au2AJFu_9toYrctb1SXHAiD0S7fw5nfs\")",
+      "mcp__claude-in-chrome__browser_batch"
     ]
   }
 }
