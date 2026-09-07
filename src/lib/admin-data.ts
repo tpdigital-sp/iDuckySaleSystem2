@@ -639,6 +639,22 @@ export function lineUserOf(
   return null;
 }
 
+/**
+ * ออเดอร์ยังว่างเปล่า — เพิ่งกดสร้างจากหลังบ้าน ยังไม่ใส่ชื่อ/เบอร์/ที่อยู่/รายการเลย
+ * ใช้ชะลอแถบแดง "บังคับผูก LINE" ไม่ให้ขึ้นตั้งแต่ยังไม่รู้ว่าลูกค้าคือใคร
+ */
+export function isBlankOrder(order: Order): boolean {
+  const noName = !order.customer?.trim() || order.customer === "ยังไม่ระบุชื่อ";
+  return (
+    noName &&
+    !(order.phone ?? "").trim() &&
+    !(order.address ?? "").trim() &&
+    !order.contactId &&
+    !order.customerId &&
+    order.items.length === 0
+  );
+}
+
 /** รูปแบบงานของรายการ — รองรับออเดอร์เก่าที่เก็บเป็น proofUrl รูปเดียว */
 export function proofsOf(item: OrderItem): Proof[] {
   if (item.proofs?.length) return item.proofs;

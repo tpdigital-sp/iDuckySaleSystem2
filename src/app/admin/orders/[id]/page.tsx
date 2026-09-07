@@ -17,6 +17,7 @@ import {
   amountDueNow,
   daysToUseBy,
   itemDiscountAmount,
+  isBlankOrder,
   lineChatOf,
   lineUserOf,
   orderEarlyPayAmount,
@@ -101,7 +102,9 @@ function openedFromOutside(): boolean {
 const packOptOutKey = (orderId: string) => `ducky_pack_optout_${orderId}`;
 /**
  * อ่านออเดอร์ที่ layout แปะมากับ HTML (ดู lib/server/order-ssr.ts)
- * อ่านครั้งเดียวแล้วทิ้ง element ทิ้ง — กันของเก่าค้างตอนสลับไปดูออเดอร์ใบอื่นในแท็บเดิม
+ * อ่านครั้งเดียวแล้วล้างข้อความข้างในทิ้ง — กันของเก่าค้างตอนสลับไปดูออเดอร์ใบอื่นในแท็บเดิม
+ * ⚠️ ห้าม el.remove() — แท็กนี้ React (layout) เป็นเจ้าของ ลบเองแล้วตอน React ถอดหน้า
+ * จะเจอ NotFoundError: Failed to execute 'removeChild' on 'Node'
  */
 function readSsrOrder(orderId: string): Order | null {
   if (typeof document === "undefined") return null;
@@ -113,7 +116,7 @@ function readSsrOrder(orderId: string): Order | null {
   } catch {
     return null;
   } finally {
-    el.remove();
+    el.textContent = "";
   }
 }
 
@@ -2329,6 +2332,7 @@ export default function AdminOrderDetailPage() {
         const needChat = !lineChatOf(order, allOrders);
         const needUser = !lineUserOf(order, allOrders);
         if (!needChat && !needUser) return null;
+        if (isBlankOrder(order)) return null; // เพิ่งกดสร้าง ยังไม่กรอกอะไร — รอให้เริ่มใส่ข้อมูลลูกค้า/รายการก่อนค่อยเตือน
         const missing = [needChat && "ลิงก์ห้องแชท", needUser && "LINE userId"].filter(Boolean).join(" + ");
         return (
           <a href="#line-bind" className="block border-b border-rose-200 bg-rose-50 px-6 py-3 transition hover:bg-rose-100">
@@ -2500,24 +2504,6 @@ export default function AdminOrderDetailPage() {
                   🤝 ตัวแทนจำหน่าย — ราคาเรทตัวแทน (ไม่มีส่วนลด/คูปอง/โอนไว/ของแถม)
                 </p>
               )}
-              <LineChatBox
-                order={order}
-                allOrders={allOrders}
-                mayEdit={mayEdit}
-                demo={demo}
-                onSave={(url) => {
-                  const next = { ...order, lineChatUrl: url || undefined };
-                  setOrder(next);
-                  // อัปเดตสำเนาในลิสต์รวมด้วย — ไม่งั้น lineChatOf ไป "จำ" ลิงก์จากตัวเก่าของใบนี้เอง ลบแล้วก็เด้งกลับ
-                  setAllOrders((cur) => cur.map((o) => (o.id === next.id ? next : o)));
-                  if (!demo) void saveOrderAdmin(next);
-                }}
-                onBound={(next) => {
-                  setOrder(next);
-                  // อัปเดตสำเนาในลิสต์รวมด้วย — ไม่งั้น "จำจากใบเก่า" จะไปเจอตัวเก่าของใบนี้เองที่ยังผูกอยู่
-                  setAllOrders((cur) => cur.map((o) => (o.id === next.id ? next : o)));
-                }}
-              />
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2537,7 +2523,9 @@ export default function AdminOrderDetailPage() {
               </button>
             )}
           </div>
-          {!paidOk && (
+          {/* โชว์เฉพาะ "รอตรวจสอบ" (ลูกค้าแจ้งโอนแล้ว รอตรวจสลิป) — ตอน "รอชำระเงิน" ยังไม่ต้องเตือน
+              ตัวล็อกอัปโหลดแบบยังคุมทุกสถานะที่ยังไม่จ่ายเหมือนเดิม (มีป้าย+ปุ่มปลดล็อกที่รายการ) */}
+          {order.status === "รอตรวจสอบ" && (
             <div className="mt-2 rounded-xl bg-yellow-50 p-3 ring-1 ring-yellow-200">
               <p className="text-xs font-bold text-yellow-800">
                 ⚠️ ยังไม่ยืนยันการชำระเงิน (สถานะ “{order.status}”)
@@ -4375,6 +4363,26 @@ export default function AdminOrderDetailPage() {
         {/* ── ขวา: ข้อมูล ── */}
         <div className="space-y-4 border-t border-slate-200/70 bg-slate-50/50 px-4 py-5 lg:border-l lg:border-t-0">
 
+          {/* ── 💬 LINE ลูกค้า: ลิงก์ห้องแชท + userId ── */}
+          <LineChatBox
+            order={order}
+            allOrders={allOrders}
+            mayEdit={mayEdit}
+            demo={demo}
+            onSave={(url) => {
+              const next = { ...order, lineChatUrl: url || undefined };
+              setOrder(next);
+              // อัปเดตสำเนาในลิสต์รวมด้วย — ไม่งั้น lineChatOf ไป "จำ" ลิงก์จากตัวเก่าของใบนี้เอง ลบแล้วก็เด้งกลับ
+              setAllOrders((cur) => cur.map((o) => (o.id === next.id ? next : o)));
+              if (!demo) void saveOrderAdmin(next);
+            }}
+            onBound={(next) => {
+              setOrder(next);
+              // อัปเดตสำเนาในลิสต์รวมด้วย — ไม่งั้น "จำจากใบเก่า" จะไปเจอตัวเก่าของใบนี้เองที่ยังผูกอยู่
+              setAllOrders((cur) => cur.map((o) => (o.id === next.id ? next : o)));
+            }}
+          />
+
           {/* ── ข้อมูลใบงาน: วันที่จัดส่ง + หมายเหตุ (โชว์ตอนปริ้น) ── */}
           {mayEdit && (
             <div>
@@ -6190,15 +6198,21 @@ function LineChatBox({
     );
 
   // ── ยังไม่ผูก — บังคับ ต้องใส่ให้ครบทั้งลิงก์ห้องแชทและ userId ──
+  // ออเดอร์เพิ่งสร้างยังว่างเปล่า = ยังไม่รู้ว่าลูกค้าคือใคร → โทนปกติไว้ก่อน ค่อยขึ้นแดงเมื่อเริ่มกรอก
   if (!mayEdit) return null;
+  const fresh = !changing && isBlankOrder(order);
   return (
     <div
       id="line-bind"
-      className={`mt-2 scroll-mt-24 rounded-xl p-2.5 ring-1 ${changing ? "bg-slate-50 ring-dashed ring-slate-300" : "bg-rose-50 ring-rose-300"}`}
+      className={`mt-2 scroll-mt-24 rounded-xl p-2.5 ring-1 ${changing ? "bg-slate-50 ring-dashed ring-slate-300" : fresh ? "bg-white ring-slate-200" : "bg-rose-50 ring-rose-300"}`}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <p className={`min-w-[10rem] flex-1 text-[11px] font-bold ${changing ? "text-slate-500" : "text-rose-700"}`}>
-          {changing ? "🔄 เปลี่ยน LINE ของลูกค้า — ค้นแล้วเลือกคนใหม่" : "⛔ บังคับ: ต้องผูก LINE ของลูกค้าให้ครบ (ลิงก์ห้องแชท + userId)"}
+        <p className={`min-w-[10rem] flex-1 text-[11px] font-bold ${changing ? "text-slate-500" : fresh ? "text-slate-600" : "text-rose-700"}`}>
+          {changing
+            ? "🔄 เปลี่ยน LINE ของลูกค้า — ค้นแล้วเลือกคนใหม่"
+            : fresh
+              ? "🔗 ผูก LINE ของลูกค้า (ลิงก์ห้องแชท + userId) — ผูกได้เลยถ้ารู้แล้วว่าลูกค้าคนไหน"
+              : "⛔ บังคับ: ต้องผูก LINE ของลูกค้าให้ครบ (ลิงก์ห้องแชท + userId)"}
         </p>
         {/* มีลิงก์ห้องแชทเก็บไว้แล้ว (แต่ยังไม่ผูก userId) — โชว์ให้เห็นว่าไม่ได้หายไปไหน */}
         {chat && !changing && (
@@ -6252,9 +6266,9 @@ function LineChatBox({
       {/* เช็กลิสต์ 2 ช่อง — เห็นทันทีว่าขาดอะไร (ในโหมดนี้ userId ยังไม่ผูกแน่นอน) */}
       {!changing && (
         <p className="mt-1 text-[10px] font-bold">
-          <span className={chat ? "text-emerald-600" : "text-rose-600"}>{chat ? "✔" : "✖"} ลิงก์ห้องแชท</span>
+          <span className={chat ? "text-emerald-600" : fresh ? "text-slate-400" : "text-rose-600"}>{chat ? "✔" : "✖"} ลิงก์ห้องแชท</span>
           <span className="mx-1.5 text-slate-300">·</span>
-          <span className="text-rose-600">✖ LINE userId</span>
+          <span className={fresh ? "text-slate-400" : "text-rose-600"}>✖ LINE userId</span>
         </p>
       )}
       <div className="mt-1.5 flex gap-1.5">
