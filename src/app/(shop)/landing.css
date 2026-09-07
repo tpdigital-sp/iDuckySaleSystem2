@@ -101,8 +101,21 @@
 .dl .logo b{color:var(--yolk-deep)}
 .dl .duck-mini{width:38px;height:auto;flex:none;display:block;animation:bobble 3.4s ease-in-out infinite}
 .dl .menu{display:flex;gap:6px;margin-left:auto}
-.dl .menu a{font-family:var(--display);font-size:.94rem;font-weight:400;padding:9px 15px;border-radius:999px;position:relative;
+/* ชื่อเมนูห้ามตกบรรทัดในปุ่มตัวเอง ("หน้า/แรก") — เมนูยาวขึ้นแล้วให้ย่อขนาดตาม breakpoint ด้านล่างแทน */
+.dl .menu a{font-family:var(--display);font-size:.94rem;font-weight:400;padding:9px 15px;border-radius:999px;position:relative;white-space:nowrap;
   color:var(--navy-soft);transition:color .2s ease,transform .25s cubic-bezier(.34,1.56,.64,1)}
+/* ── โครงแถบเมนูเดสก์ท็อป 2 แถว (ผู้ใช้สั่ง: ห้ามลดขนาดโลโก้ ให้รื้อการจัดวางแทน) ──
+   แถวบน: โลโก้เต็มขนาดซ้าย · ไอคอน+ปุ่ม "ช้อปเลย" ขวา / แถวล่าง: ลิงก์เมนูเรียงกลาง ฟอนต์เต็ม ไม่ต้องบีบตาม breakpoint
+   ใช้ grid บน .nav-in เดิมโดยไม่แตะ DOM — ต่ำกว่า 1001px สลับไปโหมดมือถือ (เมนู ☰ + แถบล่าง) เหมือนเดิม */
+@media(min-width:1001px){
+  .dl .nav-in{display:grid;grid-template-columns:1fr auto;grid-template-areas:"logo cta" "menu menu";
+    align-items:center;row-gap:9px;padding:13px 14px 9px 20px}
+  .dl .logo{grid-area:logo;justify-self:start}
+  .dl .nav-cta{grid-area:cta;justify-self:end}
+  .dl .menu{grid-area:menu;margin-left:0;justify-content:center;flex-wrap:wrap;
+    border-top:1px dashed var(--sky-200);padding-top:9px}
+  .dl header.nav.small .nav-in{row-gap:5px;padding-top:9px;padding-bottom:6px}
+}
 .dl .menu a::before{content:"";position:absolute;inset:0;border-radius:999px;background:var(--sky-100);
   transform:scale(.6);opacity:0;transition:.28s cubic-bezier(.34,1.56,.64,1);z-index:-1}
 .dl .menu a:hover{color:var(--navy);transform:translateY(-2px)}
@@ -1725,6 +1738,13 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .dl .acd-preview-note{display:flex;align-items:center;gap:8px;font-size:.74rem;background:rgba(255,255,255,.22);
   border:1px solid rgba(255,255,255,.32);padding:6px 12px;border-radius:999px;margin-top:12px;width:fit-content;max-width:100%;flex-wrap:wrap}
 .dl .acd-preview-note button{all:unset;cursor:pointer;text-decoration:underline;font-weight:500}
+/* การ์ดแจ้งครบรอบทบทวนระดับสมาชิก (แต้มหมุน 12 เดือน) */
+.dl .acd-tier-expiry{display:flex;flex-direction:column;gap:2px;margin-top:12px;padding:10px 14px;border-radius:14px;
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);font-size:.76rem;line-height:1.45}
+.dl .acd-tier-expiry>b{font-size:.82rem}
+.dl .acd-tier-expiry .acd-tier-expiry-hint{opacity:.85;font-size:.72rem}
+.dl .acd-tier-expiry.soon{background:rgba(255,214,71,.22);border-color:rgba(255,214,71,.6)}
+.dl .acd-tier.dark .acd-tier-expiry{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.3)}
 .dl .acd-tier-hero{display:flex;align-items:center;gap:18px;margin:18px 0 6px}
 .dl .acd-medal-wrap{position:relative;flex:none;width:88px;height:88px;display:grid;place-items:center}
 .dl .acd-medal-wrap::before{content:"";position:absolute;inset:-18px;border-radius:50%;
