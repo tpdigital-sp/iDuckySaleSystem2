@@ -64,6 +64,8 @@ export default function Navbar() {
   const { customer } = useCustomer();
   const [open, setOpen] = useState(false);
   const [acctOpen, setAcctOpen] = useState(false);
+  /** คำค้นในช่องค้นหากลางแถบเมนู (เดสก์ท็อป) */
+  const [q, setQ] = useState("");
   const acctRef = useRef<HTMLDivElement>(null);
   /** เลื่อนหน้าลงแล้วแถบเมนูหดลง (คลาส .small ตามดีไซน์) */
   const [small, setSmall] = useState(false);
@@ -124,6 +126,26 @@ export default function Navbar() {
               <img className="logo-img" src="/landing/logo-ducky.png" alt="iDucky Prints Studio" width={722} height={243} />
             )}
           </Link>
+
+          {/* ช่องค้นหาสินค้ากลางแถบเมนู (เดสก์ท็อป) — Enter/ปุ่มค้นหา ไป /products?q= ชุดเดียวกับช่องค้นในเมกะเมนู */}
+          <form
+            className="nav-find"
+            role="search"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const s = q.trim();
+              router.push(s ? `/products?q=${encodeURIComponent(s)}` : "/products");
+            }}
+          >
+            <LineIcon d={ICON.search} size={17} className="nav-find-ico" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="ค้นหาสินค้า เช่น สแตนดี้ พวงกุญแจ สติกเกอร์…"
+              aria-label="ค้นหาสินค้า"
+            />
+            <button type="submit">ค้นหา</button>
+          </form>
 
           <div
             className={`menu${open ? " open" : ""}`}
