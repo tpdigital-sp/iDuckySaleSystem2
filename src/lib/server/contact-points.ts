@@ -1,7 +1,7 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderTotal, type Order } from "@/lib/admin-data";
-import { TIER_WINDOW_DAYS } from "@/lib/tiers";
+import { applyEarn, applyRenewal, applyRevoke, lockedTier, seedTierStatus, tiersOf, type Tier, type TierStatus } from "@/lib/tiers";
 import type { Contact } from "@/lib/contacts";
 
 /**
@@ -74,9 +74,11 @@ export async function awardPointsForOrder(order: Order): Promise<void> {
 
     const contact = hit.data;
     const point = round2((Number(contact.point) || 0) + amount);
-    // เริ่มสะสมตั้งแต่ออเดอร์แรก — ติดธง pointActive ให้เลย
-    await sb.from("contacts").update({ data: { ...contact, point, pointActive: true } }).eq("id", hit.id);
-    await recomputeTier(sb, hit.id); // อัปเดตแต้มนับระดับ (หมุน 12 เดือน) ให้ทันที
+    // อัปเดตสถานะระดับ (status-lock): บวกยอดเข้ารอบ + เช็คขึ้นระดับ
+    const tiers = await loadTiers(sb);
+    const seeded = ensureSeeded(contact, tiers);
+    const next = applyEarn(seeded, amount, tiers);
+    await sb.from("contacts").update({ data: { ...contact, point, pointActive: true, tierLevel: next.levelId, tierAnchor: next.anchor, tierCycleSpend: next.cycleSpend } }).eq("id", hit.id);
   } catch {
     /* fire-and-forget — แต้มพลาดไม่ควรล้มการบันทึกออเดอร์ */
   }
@@ -109,95 +111,83 @@ export async function revokePointsForOrder(order: Order): Promise<void> {
 
     const contact = hit.data;
     const point = round2(Math.max(0, (Number(contact.point) || 0) - amount));
-    await sb.from("contacts").update({ data: { ...contact, point } }).eq("id", hit.id);
-    await recomputeTier(sb, hit.id);
+    const tiers = await loadTiers(sb);
+    const seeded = ensureSeeded(contact, tiers);
+    const next = applyRevoke(seeded, amount, tiers);
+    await sb.from("contacts").update({ data: { ...contact, point, tierLevel: next.levelId, tierAnchor: next.anchor, tierCycleSpend: next.cycleSpend } }).eq("id", hit.id);
   } catch {
     /* fire-and-forget */
   }
 }
 
 
-/* ── ระดับสมาชิกแบบหมุน 12 เดือน ─────────────────────────────
- * "แต้มนับระดับ" (tierPoints) = ผลรวมแต้มในประวัติ (contact_points) ที่ได้ภายใน 365 วันล่าสุด
- * แต้มเก่ากว่านั้นหมดอายุเอง → ระดับลดลงเมื่อลูกค้าหยุดซื้อ · ไม่ต้องมีใครกดลด
- *
- * ลูกค้าที่ยกมาจากระบบเดิม: ประวัติเป็นวันเก่า (นอกช่วง 12 เดือน) จะหล่นระดับทันที
- * จึงให้ "เครดิตระดับ" = แต้มสะสมเดิม ค้ำระดับไว้ถึง importedAt + 365 วัน (ปีแรกไม่ตก) แล้วค่อยนับจากยอดจริง
+/* ── สถานะระดับสมาชิก (status-lock) ─────────────────────────────
+ * ดูกติกาเต็มใน lib/tiers.ts · ที่นี่คือส่วนที่ "เขียนสถานะลงฐาน"
+ *   - award/revoke: อัปเดต tierLevel/tierAnchor/tierCycleSpend ตอนออเดอร์จ่าย/ยกเลิก (ข้างบน)
+ *   - runRenewals: cron รายวัน ทบทวนคนที่ครบรอบปี → ต่ออายุ/ลด 1 ขั้น
  */
 
-/** แปลงวันเวลาแบบไทยในประวัติ ("2026-05-19 14:59:11") เป็น ms */
-function ledgerMs(at: string): number {
-  const ms = Date.parse(String(at ?? "").replace(" ", "T"));
-  return isNaN(ms) ? 0 : ms;
-}
+const SETTINGS_ROW = "__shop_payment__";
 
-/** อ่านประวัติของผู้ติดต่อ แล้วคำนวณ tierPoints + วันที่จะลดระดับ (เครดิตหมด/แต้มเก่าก้อนถัดไปหมดอายุ) */
-export async function recomputeTier(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>, contactId: string): Promise<void> {
+/** โหลดระดับสมาชิกที่ตั้งไว้ในหน้า /admin/settings (เก็บใน products row __settings__) */
+async function loadTiers(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>): Promise<Tier[]> {
   try {
-    const [{ data: crow }, { data: logs }] = await Promise.all([
-      sb.from("contacts").select("data").eq("id", contactId).maybeSingle(),
-      sb.from("contact_points").select("data").eq("contact_id", contactId).limit(3000),
-    ]);
-    if (!crow) return;
-    const contact = crow.data as Contact;
-    const now = Date.now();
-    const windowStart = now - TIER_WINDOW_DAYS * 86400_000;
-
-    // แต้มในช่วง 12 เดือน (รวมรายการติดลบจากการยกเลิก/คืน)
-    let rolling = 0;
-    let nextExpire = Infinity; // ก้อนเก่าสุดที่ยังนับอยู่จะหมดอายุเมื่อไหร่
-    for (const r of (logs ?? []) as { data: { at?: string; point?: number } }[]) {
-      const ms = ledgerMs(r.data.at ?? "");
-      const pt = Number(r.data.point) || 0;
-      if (ms >= windowStart) {
-        rolling += pt;
-        if (pt > 0 && ms < nextExpire) nextExpire = ms;
-      }
-    }
-    rolling = round2(Math.max(0, rolling));
-
-    // เครดิตระดับสำหรับลูกค้าเดิม (ตั้งครั้งเดียว) — ค้ำระดับปีแรก
-    let graceUntil = contact.tierGraceUntil ? Date.parse(contact.tierGraceUntil) : NaN;
-    let gracePoints = Number(contact.tierGracePoints) || 0;
-    if (isNaN(graceUntil) && (contact.origins ?? []).includes("legacy") && (Number(contact.point) || 0) > 0) {
-      const anchor = Date.parse(contact.importedAt ?? "") || now;
-      graceUntil = anchor + TIER_WINDOW_DAYS * 86400_000;
-      gracePoints = round2(Number(contact.point) || 0);
-    }
-    const graceActive = !isNaN(graceUntil) && now < graceUntil ? gracePoints : 0;
-
-    const tierPoints = Math.max(rolling, graceActive);
-    // จะลดระดับเมื่อ: เครดิตหมด (ถ้าเครดิตค้ำอยู่) หรือแต้มก้อนเก่าสุดหมดอายุ
-    const dropCandidates = [graceActive > rolling && !isNaN(graceUntil) ? graceUntil : Infinity, nextExpire === Infinity ? Infinity : nextExpire + TIER_WINDOW_DAYS * 86400_000].filter((n) => isFinite(n));
-    const tierExpiresAt = dropCandidates.length ? new Date(Math.min(...dropCandidates)).toISOString() : undefined;
-
-    const next: Contact = { ...contact, tierPoints, tierPointsAt: new Date(now).toISOString() };
-    if (tierExpiresAt) next.tierExpiresAt = tierExpiresAt; else delete next.tierExpiresAt;
-    if (!isNaN(graceUntil)) { next.tierGraceUntil = new Date(graceUntil).toISOString(); next.tierGracePoints = gracePoints; }
-    await sb.from("contacts").update({ data: next }).eq("id", contactId);
+    const { data } = await sb.from("products").select("data").eq("id", SETTINGS_ROW).maybeSingle();
+    const list = ((data?.data as { tiers?: Tier[] } | undefined)?.tiers ?? []).filter((t) => t.name?.trim());
+    return tiersOf(list.length ? list : null);
   } catch {
-    /* fire-and-forget */
+    return tiersOf(null);
   }
 }
 
-/** คำนวณระดับใหม่ให้ผู้ติดต่อทุกคนที่มีแต้ม/เครดิตระดับ — เรียกจาก cron รายวัน (จัดการเรื่องแต้มหมดอายุตามเวลา) */
-export async function recomputeAllTiers(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>): Promise<{ scanned: number }> {
-  let scanned = 0;
+/** อ่านสถานะระดับปัจจุบันของ contact — ยังไม่มี = สร้างตั้งต้นจากยอดสะสมเดิม (ยกยอดลูกค้าเก่า) */
+function ensureSeeded(contact: Contact, tiers: Tier[]): TierStatus {
+  if (contact.tierLevel) return { levelId: contact.tierLevel, anchor: contact.tierAnchor, cycleSpend: contact.tierCycleSpend };
+  return seedTierStatus(Number(contact.point) || 0, contact.importedAt, tiers);
+}
+
+/**
+ * cron รายวัน — ทบทวนระดับลูกค้าที่ครบรอบปี (ต่ออายุ หรือ ลด 1 ขั้น)
+ * ครอบเฉพาะคนที่มีสถานะระดับหรือมีแต้ม (ไม่ต้องไล่ทั้ง 28,000 ราย)
+ */
+export async function runTierRenewals(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>): Promise<{ scanned: number; renewed: number; dropped: number; seeded: number }> {
+  const tiers = await loadTiers(sb);
+  let scanned = 0, renewed = 0, dropped = 0, seeded = 0;
   let from = 0;
   const PAGE = 500;
   for (;;) {
     const { data, error } = await sb
       .from("contacts")
-      .select("id")
-      .or("data->point.gt.0,data->tierPoints.gt.0,data->>tierGraceUntil.not.is.null")
+      .select("id,data")
+      .or("data->point.gt.0,data->>tierLevel.not.is.null")
       .range(from, from + PAGE - 1);
     if (error || !data || data.length === 0) break;
-    for (const r of data) {
-      await recomputeTier(sb, r.id as string);
+    for (const row of data) {
       scanned++;
+      const contact = row.data as Contact;
+      let status: TierStatus;
+      if (!contact.tierLevel) {
+        status = seedTierStatus(Number(contact.point) || 0, contact.importedAt, tiers);
+        seeded++;
+      } else {
+        status = { levelId: contact.tierLevel, anchor: contact.tierAnchor, cycleSpend: contact.tierCycleSpend };
+      }
+      const r = applyRenewal(status, tiers);
+      const finalStatus = r.status;
+      if (r.changed) dropped++;
+      else if (r.renewed) renewed++;
+      // เขียนกลับเมื่อมีอะไรเปลี่ยน (เพิ่งซีด / ต่ออายุ / ลดระดับ)
+      if (!contact.tierLevel || r.changed || r.renewed) {
+        await sb.from("contacts").update({ data: { ...contact, tierLevel: finalStatus.levelId, tierAnchor: finalStatus.anchor, tierCycleSpend: finalStatus.cycleSpend } }).eq("id", row.id as string);
+      }
     }
     if (data.length < PAGE) break;
     from += PAGE;
   }
-  return { scanned };
+  return { scanned, renewed, dropped, seeded };
+}
+
+/** ระดับที่ล็อกอยู่ของ contact (เผื่อยังไม่ซีด ใช้ยอดสะสมเดิมประเมิน) — ไว้ให้ API อื่นเรียก */
+export function contactTier(contact: Contact, tiers: Tier[]) {
+  return lockedTier(ensureSeeded(contact, tiers), tiers);
 }

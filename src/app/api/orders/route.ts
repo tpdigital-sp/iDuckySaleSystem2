@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import type { Order } from "@/lib/admin-data";
-import { paidSpend, tierForSpend, tierDiscountAmount, tiersOf, TIER_WINDOW_DAYS, type Tier } from "@/lib/tiers";
+import { orderTotal, type Order } from "@/lib/admin-data";
+import { tierDiscountAmount, tiersOf, lockedTier, seedTierStatus, type Tier, type TierStatus } from "@/lib/tiers";
 import { couponLabel, validateCoupon, type Coupon } from "@/lib/coupons";
 import { giftsFor, giftsToOrder, type GiftPromo, type OrderGift } from "@/lib/gifts";
 import { earlyPayAmount, earlyPayOf, EARLY_PAY_LABEL, type EarlyPayDiscount } from "@/lib/early-pay";
@@ -148,14 +148,24 @@ export async function POST(req: Request) {
   let tierAmount = 0;
   let tierLabel = "";
   if (cid && !dealer) {
-    const [settRes, ordRes] = await Promise.all([
+    // ระดับสมาชิกแบบ status-lock: อ่าน "ระดับที่ล็อกอยู่" ของลูกค้าจาก contact (จับคู่ด้วย memberId)
+    // ยังไม่มี contact/สถานะ → ประเมินจากยอดสะสมเดิมของลูกค้าไปก่อน (ยกยอดลูกค้าเก่า)
+    const [settRes, contactRes, ordRes] = await Promise.all([
       sb.from("products").select("data").eq("id", SETTINGS_ROW).maybeSingle(),
-      sb.from("orders").select("data"),
+      sb.from("contacts").select("data").eq("data->>memberId", cid).limit(1).maybeSingle(),
+      sb.from("orders").select("data").eq("data->>customerId", cid),
     ]);
     const configuredTiers = ((settRes.data?.data as { tiers?: Tier[] } | undefined)?.tiers ?? []).filter((t) => t.name?.trim());
     const tiers = tiersOf(configuredTiers.length ? configuredTiers : null);
-    const myPaid = (ordRes.data ?? []).map((r) => r.data as Order).filter((o) => o.customerId === cid);
-    const tier = tierForSpend(paidSpend(myPaid, TIER_WINDOW_DAYS), tiers); // ระดับแบบหมุน 12 เดือน
+    const contact = contactRes.data?.data as { tierLevel?: string; tierAnchor?: string; tierCycleSpend?: number; point?: number; importedAt?: string } | undefined;
+    let status: TierStatus;
+    if (contact?.tierLevel) status = { levelId: contact.tierLevel, anchor: contact.tierAnchor, cycleSpend: contact.tierCycleSpend };
+    else {
+      // ไม่มี contact → ประเมินระดับจากยอดที่ลูกค้าจ่ายจริงในระบบนี้ (หรือยอดเดิมถ้ามี contact แต่ยังไม่ซีด)
+      const lifetime = contact?.point ?? (ordRes.data ?? []).map((r) => r.data as Order).filter((o) => o.customerId === cid).reduce((spend, o) => spend + orderTotal(o), 0);
+      status = seedTierStatus(lifetime, contact?.importedAt, tiers);
+    }
+    const tier = lockedTier(status, tiers);
     tierAmount = tierDiscountAmount(subtotal, tier.discountPct);
     if (tierAmount > 0) tierLabel = `สมาชิก ${tier.name} (${tier.discountPct}%)`;
   }

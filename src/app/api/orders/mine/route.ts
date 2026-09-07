@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import type { Order } from "@/lib/admin-data";
+import { orderTotal, type Order } from "@/lib/admin-data";
+import { seedTierStatus, tiersOf, type Tier, type TierStatus } from "@/lib/tiers";
 
 export const runtime = "nodejs";
 
@@ -28,5 +29,24 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message, orders: [] }, { status: 500 });
   }
   const mine = (data ?? []).map((r) => r.data as Order);
-  return NextResponse.json({ orders: mine });
+
+  // สถานะระดับสมาชิก (status-lock) — อ่านจาก contact ที่ผูก memberId ไว้
+  // ยังไม่มี contact/สถานะ → ประเมินจากยอดที่จ่ายจริง (ยกยอดลูกค้าเก่า) เพื่อให้หน้า account โชว์ระดับได้
+  let tier: TierStatus | undefined;
+  try {
+    const [{ data: c }, { data: sett }] = await Promise.all([
+      sb.from("contacts").select("data").eq("data->>memberId", u.user.id).limit(1).maybeSingle(),
+      sb.from("products").select("data").eq("id", "__shop_payment__").maybeSingle(),
+    ]);
+    const contact = c?.data as { tierLevel?: string; tierAnchor?: string; tierCycleSpend?: number; point?: number; importedAt?: string } | undefined;
+    const tiers: Tier[] = tiersOf((((sett?.data as { tiers?: Tier[] } | undefined)?.tiers) ?? []).filter((t) => t.name?.trim()) || null);
+    if (contact?.tierLevel) tier = { levelId: contact.tierLevel, anchor: contact.tierAnchor, cycleSpend: contact.tierCycleSpend };
+    else {
+      const lifetime = contact?.point ?? mine.filter((o) => ["ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ", "กำลังผลิต", "จัดส่งแล้ว", "เสร็จสิ้น"].includes(o.status)).reduce((sp, o) => sp + orderTotal(o), 0);
+      tier = seedTierStatus(lifetime, contact?.importedAt, tiers);
+    }
+  } catch {
+    /* ไม่มีตาราง contacts ก็ข้าม — ระดับจะไม่โชว์ */
+  }
+  return NextResponse.json({ orders: mine, tier });
 }

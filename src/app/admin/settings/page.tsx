@@ -1342,8 +1342,37 @@ function AdminSettingsPageInner() {
                 </button>
               </div>
               <p className={`mt-1 text-xs ${faint}`}>
-                ลูกค้าสะสมยอด "จ่ายจริง" ตลอดชีพ ถึงขั้นต่ำของระดับไหน → ได้ส่วนลด % นั้นอัตโนมัติทุกออเดอร์ (คิดจากราคาสินค้าก่อนค่าส่ง)
+                ตั้งชื่อระดับ · ยอดสะสมขั้นต่ำ · ส่วนลด % — ลูกค้าถึงขั้นต่ำของระดับไหน ได้ส่วนลดนั้นอัตโนมัติทุกออเดอร์ (คิดจากราคาสินค้าก่อนค่าส่ง)
               </p>
+
+              {/* กติกาการเก็บระดับ (status-lock) — แสดงตลอด ให้ทีมงานเห็นทันทีว่าระดับเลื่อนขึ้น/ลงยังไง */}
+              <div className="mt-3 rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 to-yellow-50 p-4 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">📘</span>
+                  <h3 className="font-display text-[15px] font-bold text-amber-900">กติกาการเก็บระดับสมาชิก</h3>
+                  <span className="ml-auto rounded-full bg-amber-200 px-2.5 py-0.5 text-[11px] font-bold text-amber-900">ล็อกระดับ · ทบทวนปีละครั้ง</span>
+                </div>
+                <p className="mt-1 text-[13px] font-medium text-amber-800">ระดับนิ่งทั้งปี ไม่ตกกลางคัน — ครบรอบค่อยทบทวนครั้งเดียว</p>
+                <ol className="mt-3 grid gap-2 text-[13px] leading-relaxed text-slate-800 sm:grid-cols-2">
+                  <li className="rounded-xl bg-white/80 p-3 ring-1 ring-amber-200">
+                    <b className="text-amber-900">1. ขึ้นระดับทันที</b><br />
+                    ยอดสะสม "ในรอบปีปัจจุบัน" ถึงขั้นต่ำของระดับที่สูงกว่า → ขึ้นทันที (ข้ามหลายขั้นได้) และ <b>เริ่มนับรอบใหม่ 12 เดือน</b>
+                  </li>
+                  <li className="rounded-xl bg-white/80 p-3 ring-1 ring-amber-200">
+                    <b className="text-amber-900">2. รักษาระดับตอนครบรอบ</b><br />
+                    ยอดในรอบถึงขั้นต่ำเดิม = อยู่ต่อ · ไม่ถึง = <b>ลดลง 1 ขั้น</b> (ไม่ร่วงหลายขั้นรวด) แล้วเริ่มรอบใหม่
+                  </li>
+                  <li className="rounded-xl bg-white/80 p-3 ring-1 ring-amber-200">
+                    <b className="text-amber-900">3. ส่วนลด & แต้ม</b><br />
+                    ส่วนลดคิดจาก "ระดับที่ล็อกอยู่" ไม่ใช่ยอดสด · แต้ม 1 บาท = 1 แต้ม <b>ใช้เลื่อนระดับเท่านั้น แลกเป็นเงิน/ของไม่ได้</b>
+                  </li>
+                  <li className="rounded-xl bg-white/80 p-3 ring-1 ring-amber-200">
+                    <b className="text-amber-900">4. บวก/คืนแต้มอัตโนมัติ</b><br />
+                    ออเดอร์ "ชำระครบ" → บวกแต้ม · ยกเลิกออเดอร์ → หักคืน · ระบบทบทวนระดับให้เองทุกวัน
+                  </li>
+                </ol>
+                <p className="mt-2 text-[12px] text-amber-800/80">ลูกค้าเดิมที่ยกยอดมา: ได้ระดับตามยอดเดิม ค้ำไว้ 1 ปีแรก จากนั้นต้องสะสมใหม่เพื่อรักษาระดับ</p>
+              </div>
 
               {/* หัวตาราง */}
               <div className="mt-3 hidden grid-cols-[3rem_1fr_8rem_6rem_2.5rem] gap-2 px-1 text-[11px] font-bold text-slate-400 sm:grid">

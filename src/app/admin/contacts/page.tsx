@@ -15,7 +15,7 @@ import { useCan } from "@/lib/perm-context";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { formatPhone, normalizeContact, ORIGIN_LABEL, type Contact, type ContactOrigin, type PointLog } from "@/lib/contacts";
 import { fetchShopPayment, readStoredShopPayment, tiersConfigOf } from "@/lib/shop-settings";
-import { tierColor, tierForSpend, tiersOf, type Tier } from "@/lib/tiers";
+import { lockedTier, tierColor, tierForSpend, tiersOf, tierRenewalInfo, type Tier } from "@/lib/tiers";
 import {
   Banner,
   Btn,
@@ -59,15 +59,20 @@ const fmtN = (n: number) => n.toLocaleString("th-TH");
  * ระดับสมาชิก 🏅 (ตั้งค่าที่ /admin/settings › ระดับสมาชิก) — คิดจากยอดสะสม
  * ผู้ติดต่อจากระบบเดิมยังไม่มีออเดอร์ในระบบนี้ → ใช้ "แต้มสะสมระบบเดิม" เป็นยอดสะสมตั้งต้น (1 แต้ม = 1 บาท)
  */
-function TierPill({ tiers, spend, small }: { tiers: Tier[]; spend: number; small?: boolean }) {
+/** ระดับที่ล็อกอยู่ของผู้ติดต่อ — มี tierLevel ใช้ตัวนั้น · ยังไม่ซีดใช้ยอดสะสมเดิมประเมิน */
+function contactTier(c: Contact, tiers: Tier[]): Tier {
   const list = tiersOf(tiers);
-  const t = tierForSpend(spend, list);
+  return c.tierLevel ? lockedTier({ levelId: c.tierLevel }, list) : tierForSpend(c.point ?? 0, list);
+}
+function TierPill({ tiers, tier, small }: { tiers: Tier[]; tier: Tier; small?: boolean }) {
+  const list = tiersOf(tiers);
+  const t = tier;
   const { gradient } = tierColor(t, list.indexOf(t));
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full font-semibold text-white shadow-sm ${small ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-[12px]"}`}
       style={{ background: gradient }}
-      title={`${t.name} · ยอดสะสม ฿${fmtN(Math.round(spend))}${t.discountPct ? ` · ลด ${t.discountPct}%` : ""}`}
+      title={`${t.name}${t.discountPct ? ` · ลด ${t.discountPct}% ทุกออเดอร์` : ""}`}
     >
       <span aria-hidden>{t.icon}</span>
       {t.name}
@@ -137,15 +142,7 @@ export default function AdminContactsPage() {
         if (filter === "dealer") sp.set("type", "dealer");
         else if (filter) sp.set("has", filter);
         if (origin) sp.set("origin", origin);
-        if (tierId) {
-          const list = tiersOf(tiers);
-          const idx = list.findIndex((t) => t.id === tierId);
-          if (idx >= 0) {
-            sp.set("tierMin", String(list[idx].minSpend));
-            const nx = list[idx + 1];
-            if (nx) sp.set("tierMax", String(nx.minSpend));
-          }
-        }
+        if (tierId) sp.set("tierLevel", tierId);
         if (opts?.stats || !stats) sp.set("stats", "1");
         const res = await fetch(`/api/admin/contacts?${sp}`, { cache: "no-store" });
         const j = await res.json();
@@ -476,7 +473,7 @@ export default function AdminContactsPage() {
                     </span>
                   </td>
                   <td className="px-3 py-2.5 whitespace-nowrap">
-                    <TierPill tiers={tiers} spend={c.tierPoints ?? c.point} small />
+                    <TierPill tiers={tiers} tier={contactTier(c, tiers)} small />
                   </td>
                   <td className="px-3 py-3">{c.rankExpiry || "-"}</td>
                   <td className="dkb-num-sm px-3 py-3 whitespace-nowrap">{c.phone ? formatPhone(c.phone) : ""}</td>
@@ -549,8 +546,16 @@ export default function AdminContactsPage() {
             {selected.orders?.placedBy && <KV k="พนักงานที่กรอก" v={selected.orders.placedBy} />}
             <KV k="ประเภท" v={selected.customerType === "dealer" ? "ตัวแทนจำหน่าย" : selected.customerType === "customer" ? "ลูกค้า" : "—"} />
             <KV k="แต้มสะสม (ระบบเดิม)" v={<span>{fmtN(selected.point ?? 0)} <Tag tone={selected.pointActive ? "mint" : "coral"}>{selected.pointActive ? "คำนวณคะแนน" : "ไม่คำนวณคะแนน"}</Tag></span>} />
-            <KV k="ระดับสมาชิก 🏅" v={<TierPill tiers={tiers} spend={selected.tierPoints ?? selected.point ?? 0} />} />
-            <KV k="แต้มนับระดับ (12 เดือน)" v={<span>{fmtN(Math.round(selected.tierPoints ?? 0))}{selected.tierExpiresAt ? <span className="ml-1 text-[12px]" style={{ color: "var(--dk-faint)" }}>· ลดระดับ {fmtDate(selected.tierExpiresAt)} หากไม่ซื้อเพิ่ม</span> : null}</span>} />
+            <KV k="ระดับสมาชิก 🏅" v={<TierPill tiers={tiers} tier={contactTier(selected, tiers)} />} />
+            {(() => {
+              const r = selected.tierLevel ? tierRenewalInfo({ levelId: selected.tierLevel, anchor: selected.tierAnchor, cycleSpend: selected.tierCycleSpend }, tiers) : null;
+              return r ? (
+                <KV
+                  k="ครบรอบทบทวนระดับ"
+                  v={<span>{fmtDate(r.at)} · ยอดรอบนี้ {fmtN(Math.round(r.cycleSpend))}/{fmtN(r.level.minSpend)}{r.willRenew ? " ✅ รักษาระดับแล้ว" : r.dropTo ? ` · อีก ${fmtN(r.needMore)} รักษาไว้` : ""}</span>}
+                />
+              ) : null;
+            })()}
             {selected.rankExpiry && <KV k="วันหมดอายุ" v={selected.rankExpiry} />}
           </div>
           <div className="dkb-g mt-3 px-4 py-3">

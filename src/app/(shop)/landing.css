@@ -104,17 +104,42 @@
 /* ชื่อเมนูห้ามตกบรรทัดในปุ่มตัวเอง ("หน้า/แรก") — เมนูยาวขึ้นแล้วให้ย่อขนาดตาม breakpoint ด้านล่างแทน */
 .dl .menu a{font-family:var(--display);font-size:.94rem;font-weight:400;padding:9px 15px;border-radius:999px;position:relative;white-space:nowrap;
   color:var(--navy-soft);transition:color .2s ease,transform .25s cubic-bezier(.34,1.56,.64,1)}
-/* ── โครงแถบเมนูเดสก์ท็อป 2 แถว (ผู้ใช้สั่ง: ห้ามลดขนาดโลโก้ ให้รื้อการจัดวางแทน) ──
-   แถวบน: โลโก้เต็มขนาดซ้าย · ไอคอน+ปุ่ม "ช้อปเลย" ขวา / แถวล่าง: ลิงก์เมนูเรียงกลาง ฟอนต์เต็ม ไม่ต้องบีบตาม breakpoint
-   ใช้ grid บน .nav-in เดิมโดยไม่แตะ DOM — ต่ำกว่า 1001px สลับไปโหมดมือถือ (เมนู ☰ + แถบล่าง) เหมือนเดิม */
+/* ── โครงแถบเมนูเดสก์ท็อป "ผิวน้ำ" (ผู้ใช้สั่ง: ห้ามลดโลโก้ + ขอฉีกแนว) ──
+   แถวบน = เหนือน้ำ: โลโก้เป็ดลอยซ้าย · ช่องค้นหาสินค้ากลาง · ไอคอน+ปุ่ม "ช้อปเลย" ขวา
+   แถวล่าง = ในน้ำ: แถบฟ้าอ่อนขอบบนหยักคลื่น กินเต็มการ์ดถึงมุมล่างมน ใส่ลิงก์เมนูฟอนต์เต็มไม่บีบ
+   ต่ำกว่า 1001px สลับโหมดมือถือชุดเดิม (เมนู ☰ + แถบล่าง) — ช่องค้นหาโผล่เฉพาะเดสก์ท็อป */
+.dl .nav-find{display:none}
 @media(min-width:1001px){
-  .dl .nav-in{display:grid;grid-template-columns:1fr auto;grid-template-areas:"logo cta" "menu menu";
-    align-items:center;row-gap:9px;padding:13px 14px 9px 20px}
+  .dl .nav-in{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"logo find cta" "menu menu menu";
+    align-items:center;column-gap:18px;row-gap:0;padding:12px 14px 0 20px}
   .dl .logo{grid-area:logo;justify-self:start}
   .dl .nav-cta{grid-area:cta;justify-self:end}
-  .dl .menu{grid-area:menu;margin-left:0;justify-content:center;flex-wrap:wrap;
-    border-top:1px dashed var(--sky-200);padding-top:9px}
-  .dl header.nav.small .nav-in{row-gap:5px;padding-top:9px;padding-bottom:6px}
+  /* ช่องค้นหา: แคปซูลขาวขอบฟ้า + ปุ่มไข่แดง — เติมพื้นที่กลางที่เคยว่างตายให้มีประโยชน์จริง */
+  .dl .nav-find{grid-area:find;display:flex;align-items:center;gap:9px;justify-self:center;width:100%;max-width:480px;min-width:200px;
+    background:#fff;border:1px solid var(--sky-200);border-radius:999px;padding:5px 5px 5px 16px;color:#8FA9CB;
+    box-shadow:inset 0 2px 6px rgba(44,129,196,.07);transition:border-color .2s ease,box-shadow .2s ease}
+  .dl .nav-find:focus-within{border-color:var(--blue);box-shadow:0 0 0 3px rgba(87,182,232,.22)}
+  .dl .nav-find-ico{flex:none}
+  .dl .nav-find input{flex:1;min-width:0;border:0;background:transparent;outline:none;
+    font-family:var(--body);font-size:.88rem;color:var(--navy);line-height:1.5}
+  .dl .nav-find input::placeholder{color:#9DB6D4}
+  .dl .nav-find button{flex:none;border:0;cursor:pointer;border-radius:999px;padding:7px 16px;
+    font-family:var(--display);font-size:.84rem;font-weight:500;color:var(--navy);
+    background:var(--yolk);box-shadow:inset 0 -2px 0 rgba(0,0,0,.07);
+    transition:transform .2s cubic-bezier(.34,1.56,.64,1),background .2s ease}
+  .dl .nav-find button:hover{background:var(--yolk-deep);transform:scale(1.05)}
+  .dl .nav-find button:active{transform:scale(.96)}
+  /* แถบน้ำ: ลบ margin ออกไปชนขอบ padding การ์ดพอดี มุมล่างมนตามการ์ด (48-1px เผื่อเส้นขอบ)
+     ขอบบนเป็นรอยหยักคลื่น = การ์ดขาวกัดแอ่งครึ่งวงรีซ้ำทุก 22px ในแถบสูง 9px แล้วค่อยเทสีเต็มใต้นั้น */
+  .dl .menu{grid-area:menu;margin:12px -14px 0 -20px;justify-content:center;flex-wrap:wrap;gap:8px;
+    padding:16px 16px 11px;border-radius:0 0 calc(var(--r-xl) - 1px) calc(var(--r-xl) - 1px);
+    background:
+      radial-gradient(12px 9px at 11px 0,rgba(255,255,255,0) 62%,var(--sky-50) 64%) 0 0/22px 9px repeat-x,
+      linear-gradient(180deg,var(--sky-50),var(--sky-100)) 0 9px/100% calc(100% - 9px) no-repeat}
+  /* วงจับ hover เดิมสี sky-100 จมหายในแถบน้ำ — สลับเป็นขาวให้เด้งเหมือนฟองน้ำ */
+  .dl .menu a::before{background:#fff}
+  .dl header.nav.small .nav-in{padding-top:8px}
+  .dl header.nav.small .menu{margin-top:8px;padding-top:13px;padding-bottom:8px}
 }
 .dl .menu a::before{content:"";position:absolute;inset:0;border-radius:999px;background:var(--sky-100);
   transform:scale(.6);opacity:0;transition:.28s cubic-bezier(.34,1.56,.64,1);z-index:-1}
@@ -1745,6 +1770,13 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .dl .acd-tier-expiry .acd-tier-expiry-hint{opacity:.85;font-size:.72rem}
 .dl .acd-tier-expiry.soon{background:rgba(255,214,71,.22);border-color:rgba(255,214,71,.6)}
 .dl .acd-tier.dark .acd-tier-expiry{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.3)}
+/* กล่องอธิบาย "ระดับสมาชิกทำงานยังไง" ในการ์ดระดับ (หน้า account) — แสดงตลอด เห็นชัด */
+.dl .acd-tier-how{margin-top:12px;padding:12px 14px;border-radius:14px;font-size:.78rem;line-height:1.55;
+  background:rgba(255,255,255,.22);border:1.5px solid rgba(255,255,255,.45)}
+.dl .acd-tier-how-title{display:block;font-size:.86rem;margin-bottom:6px}
+.dl .acd-tier-how ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px}
+.dl .acd-tier-how li b{font-weight:600}
+.dl .acd-tier.dark .acd-tier-how{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.35)}
 .dl .acd-tier-hero{display:flex;align-items:center;gap:18px;margin:18px 0 6px}
 .dl .acd-medal-wrap{position:relative;flex:none;width:88px;height:88px;display:grid;place-items:center}
 .dl .acd-medal-wrap::before{content:"";position:absolute;inset:-18px;border-radius:50%;

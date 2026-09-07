@@ -1,4 +1,5 @@
 "use client";
+import type { TierStatus } from "@/lib/tiers";
 
 /**
  * ออเดอร์ของฉัน — ตัวกลางเรียก /api/orders/mine ที่ใช้ผลร่วมกันทั้งหน้า
@@ -14,6 +15,8 @@ export interface MyOrders {
   orders: Order[];
   /** ยังไม่ได้สร้างตาราง orders ใน Supabase */
   needsSetup?: boolean;
+  /** สถานะระดับสมาชิก (status-lock) จากเซิร์ฟเวอร์ */
+  tier?: TierStatus;
 }
 
 /** อายุแคช — สั้นพอที่กลับมาหน้าเดิมแล้วยังเห็นของใหม่ แต่ยาวพอให้หลายคอมโพเนนต์ในหน้าเดียวใช้ร่วมกัน */
@@ -67,7 +70,7 @@ async function load(): Promise<MyOrders> {
     cache: "no-store",
   }).catch(() => null);
   const j: Partial<MyOrders> = res ? await res.json().catch(() => ({})) : {};
-  const value: MyOrders = { orders: j.orders ?? [], needsSetup: j.needsSetup };
+  const value: MyOrders = { orders: j.orders ?? [], needsSetup: j.needsSetup, tier: j.tier };
   cached = { at: Date.now(), value };
   // เก็บสำเนาไว้เฉพาะตอนได้ของจริง (401/เน็ตหลุด → j.orders ไม่มี → ไม่ทับของเดิม)
   if (owner && j.orders) writeStoredOrders(owner, value.orders);

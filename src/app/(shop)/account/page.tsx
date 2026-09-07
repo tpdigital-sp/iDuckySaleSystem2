@@ -6,7 +6,7 @@ import Link from "next/link";
 import { formatPrice } from "@/lib/products";
 import { graphicWaitingItems, orderBalance, STEP_OF, type Order } from "@/lib/admin-data";
 import { fetchShopPayment, readStoredShopPayment, tiersConfigOf } from "@/lib/shop-settings";
-import { nextTier, paidSpend, tierForSpend, tiersOf, type Tier } from "@/lib/tiers";
+import { lockedTier, nextTier, paidSpend, tierForSpend, tierRenewalInfo, tiersOf, type Tier, type TierStatus } from "@/lib/tiers";
 import { useCustomer } from "@/lib/customer-context";
 import { signOut, updateProfile } from "@/lib/customer-auth";
 import { clearMyOrders, fetchMyOrders, readStoredOrders, setOrdersOwner } from "@/lib/my-orders";
@@ -115,6 +115,7 @@ export default function AccountPage() {
   const router = useRouter();
   const { customer, loading, refresh } = useCustomer();
   const [orders, setOrders] = useState<Order[] | null>(null);
+  const [tierStatus, setTierStatus] = useState<TierStatus | null>(null);
   const [tierList, setTierList] = useState<Tier[] | null>(null);
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -154,6 +155,7 @@ export default function AccountPage() {
     (async () => {
       const [res, sett] = await Promise.all([fetchMyOrders(), fetchShopPayment()]);
       setOrders(res.orders);
+      setTierStatus(res.tier ?? null);
       setTierList(tiersConfigOf(sett));
     })();
   }, [customer]);
@@ -182,8 +184,13 @@ export default function AccountPage() {
 
   // ── ระดับสมาชิก ──
   const tiers = useMemo(() => tiersOf(tierList), [tierList]);
-  const spend = orders ? paidSpend(orders) : 0;
-  const realTier = orders ? tierForSpend(spend, tierList) : null;
+  // ระดับ = "ระดับที่ล็อกอยู่" (status-lock) จากเซิร์ฟเวอร์ · ยอดตลอดชีพเก็บไว้โชว์เฉย ๆ
+  const lifetimeSpend = orders ? paidSpend(orders) : 0;
+  const realTier = orders && tierStatus ? lockedTier(tierStatus, tierList) : orders ? tierForSpend(lifetimeSpend, tierList) : null;
+  /** ข้อมูลครบรอบทบทวนระดับ (null = ระดับต่ำสุด/ยังไม่รู้รอบ) */
+  const renewal = tierStatus ? tierRenewalInfo(tierStatus, tierList) : null;
+  /** ยอดในรอบปีปัจจุบัน (ใช้กับแถบความคืบหน้าไปเกณฑ์ระดับถัดไป) */
+  const spend = renewal ? renewal.cycleSpend : lifetimeSpend;
   /** ระดับที่เอาไว้ลงสี/ตรา/ธีม — ยังโหลดไม่เสร็จก็ใช้ของที่จำไว้ไปก่อน หน้าจะได้ไม่เปลี่ยนสีทีหลัง */
   const paintTier = realTier ?? tierHint;
   const realIdx = paintTier ? Math.max(0, tiers.findIndex((t) => t.id === paintTier.id)) : 0;
@@ -602,6 +609,45 @@ export default function AccountPage() {
                       <button type="button" onClick={() => setPreviewTier(null)}>
                         กลับไประดับของฉัน
                       </button>
+                    </div>
+                  )}
+                  {!isPreview && !dataLoading && renewal && renewal.days <= 60 && (
+                    <div className={`acd-tier-expiry${!renewal.willRenew && renewal.days <= 30 ? " soon" : ""}`}>
+                      {renewal.willRenew ? (
+                        <>
+                          <b>✅ รักษาระดับ {renewal.level.icon} {renewal.level.name} แล้ว</b>
+                          <span>
+                            ครบรอบทบทวนวันที่{" "}
+                            <b>{new Date(renewal.at).toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric" })}</b>
+                            {" "}— รอบนี้ยอดถึงเกณฑ์แล้ว ระดับต่ออีก 1 ปีอัตโนมัติ
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <b>{renewal.days <= 30 ? "⏰ ใกล้ครบรอบระดับสมาชิก" : "📅 ครบรอบทบทวนระดับ"}</b>
+                          <span>
+                            ระดับ {renewal.level.icon} {renewal.level.name} จะครบรอบวันที่{" "}
+                            <b>{new Date(renewal.at).toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric" })}</b>
+                            {" "}(อีก {renewal.days.toLocaleString("th-TH")} วัน) — อีก <b>{formatPrice(renewal.needMore)}</b> เพื่อรักษาระดับไว้อีกปี
+                            {renewal.dropTo ? `, ไม่งั้นลดเป็น ${renewal.dropTo.icon} ${renewal.dropTo.name}` : ""}
+                          </span>
+                          <span className="acd-tier-expiry-hint">
+                            ยอดสะสมในรอบปีนี้ {formatPrice(renewal.cycleSpend)} จาก {formatPrice(renewal.level.minSpend)}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {/* วิธีสะสมระดับ — อธิบายลูกค้าแบบเห็นชัด ไม่ต้องกดกาง */}
+                  {!dataLoading && (
+                    <div className="acd-tier-how">
+                      <b className="acd-tier-how-title">🏅 ระดับสมาชิกทำงานยังไง</b>
+                      <ul>
+                        <li>สะสมยอด "ที่ชำระจริง" ครบขั้นของระดับไหน → <b>เลื่อนขึ้นทันที</b> รับส่วนลด % ของระดับนั้นทุกออเดอร์</li>
+                        <li>ขึ้นระดับแล้ว <b>อยู่ยาว 12 เดือน</b> — ครบรอบค่อยทบทวน ยอดถึงเกณฑ์เดิมก็อยู่ต่อ ไม่ถึงลดลง 1 ระดับ</li>
+                        <li>ซื้อเพิ่มจนขึ้นระดับใหม่ = <b>เริ่มนับรอบ 12 เดือนใหม่</b> ของระดับนั้น</li>
+                        <li>ระดับใช้รับส่วนลดเท่านั้น ไม่มีการแลกแต้มเป็นเงินหรือของ</li>
+                      </ul>
                     </div>
                   )}
                 </div>
