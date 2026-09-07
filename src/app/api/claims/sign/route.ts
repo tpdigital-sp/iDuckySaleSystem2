@@ -30,11 +30,13 @@ export async function POST(req: Request) {
   const sign = () => sb.storage.from(CLAIM_BUCKET).createSignedUploadUrl(path);
 
   let { data, error } = await sign();
-  if (error && /bucket not found/i.test(error.message)) {
+  // Supabase ตอบ bucket หายได้ 2 สำนวน: "Bucket not found" / "The related resource does not exist"
+  if (error && /bucket not found|related resource does not exist/i.test(error.message)) {
     await sb.storage.createBucket(CLAIM_BUCKET, { public: false, fileSizeLimit: `${MAX_BYTES}` });
     ({ data, error } = await sign());
   }
-  if (error || !data?.token) return NextResponse.json({ error: error?.message ?? "ขอตั๋วอัปโหลดไม่สำเร็จ" }, { status: 500 });
+  if (error || !data?.token)
+    return NextResponse.json({ error: `ขอตั๋วอัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง${error ? ` (${error.message})` : ""}` }, { status: 500 });
 
   return NextResponse.json({ ok: true, bucket: CLAIM_BUCKET, path, token: data.token });
 }
