@@ -1,0 +1,101 @@
+import { NextResponse } from "next/server";
+import { requirePerm } from "@/lib/server/require-perm";
+import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
+import { normalizePhone, type OrderCustomer, type WebMember } from "@/lib/contacts";
+
+export const runtime = "nodejs";
+
+type OrderLite = { id: string; customer: string | null; phone: string | null; address: string | null; email: string | null; date: string | null; created_at: string | null; customerId: string | null; placedBy: string | null };
+
+/**
+ * GET → { members, adminEntered, guests }
+ *  members      = สมัครสมาชิกเองจากหน้าเว็บ (ทั้งที่เคยสั่งและยังไม่เคย)
+ *  adminEntered = แอดมิน/พนักงานกรอกข้อมูลลูกค้าตอนสั่งของแทน — รวมตามเบอร์โทร
+ *  guests       = ลูกค้าสั่งเองโดยไม่ได้สมัครสมาชิก — รวมตามเบอร์โทร
+ */
+export async function GET() {
+  const gate = await requirePerm("orders.viewAll");
+  if (gate.res) return gate.res;
+  const sb = getSupabaseAdmin();
+  if (!sb) return NextResponse.json({ members: [], adminEntered: [], guests: [] });
+
+  // ── ออเดอร์ทั้งหมดแบบเบา (เฉพาะฟิลด์ลูกค้า) ──
+  const { data: ords, error } = await sb
+    .from("orders")
+    .select("id:data->>id,customer:data->>customer,phone:data->>phone,address:data->>address,email:data->>email,date:data->>date,created_at,customerId:data->>customerId,placedBy:data->>placedBy")
+    .limit(20000);
+  if (error) return NextResponse.json({ error: error.message, members: [], adminEntered: [], guests: [] }, { status: 500 });
+  // เวลาออเดอร์: created_at เป็น ISO เทียบกันได้ (data.date เป็นข้อความไทย "7 ก.ย. 2569 10:30")
+  const orders = ((ords ?? []) as unknown as OrderLite[]).map((o) => ({ ...o, date: o.created_at ?? o.date }));
+
+  // นับออเดอร์ต่อสมาชิก
+  const byMember = new Map<string, { n: number; lastAt: string; lastId: string }>();
+  for (const o of orders) {
+    if (!o.customerId) continue;
+    const cur = byMember.get(o.customerId) ?? { n: 0, lastAt: "", lastId: "" };
+    cur.n++;
+    if ((o.date ?? "") > cur.lastAt) {
+      cur.lastAt = o.date ?? "";
+      cur.lastId = o.id;
+    }
+    byMember.set(o.customerId, cur);
+  }
+
+  // ── สมาชิกจาก Supabase Auth ──
+  const members: WebMember[] = [];
+  for (let page = 1; page <= 20; page++) {
+    const { data, error: uErr } = await sb.auth.admin.listUsers({ page, perPage: 1000 });
+    if (uErr) return NextResponse.json({ error: uErr.message, members: [], adminEntered: [], guests: [] }, { status: 500 });
+    for (const u of data.users) {
+      if ((u.email ?? "").endsWith("@staff.iducky.local")) continue; // บัญชีพนักงานสังเคราะห์ ไม่ใช่ลูกค้า
+      const m = (u.user_metadata ?? {}) as { name?: string; phone?: string; address?: string; picture?: string; line_user_id?: string };
+      const stat = byMember.get(u.id);
+      members.push({
+        id: u.id,
+        email: u.email ?? "",
+        name: m.name ?? "",
+        phone: normalizePhone(m.phone),
+        address: m.address ?? "",
+        picture: m.picture || undefined,
+        channel: m.line_user_id ? "line" : "email",
+        createdAt: u.created_at,
+        lastSignInAt: u.last_sign_in_at ?? undefined,
+        orders: stat?.n ?? 0,
+        lastOrderAt: stat?.lastAt || undefined,
+        lastOrderId: stat?.lastId || undefined,
+      });
+    }
+    if (data.users.length < 1000) break;
+  }
+  members.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+
+  // ── ลูกค้าจากออเดอร์ (ไม่ใช่สมาชิก) — รวมตามเบอร์ ถ้าไม่มีเบอร์ใช้ชื่อ ──
+  const group = (list: OrderLite[]): OrderCustomer[] => {
+    const map = new Map<string, OrderCustomer & { by: Set<string> }>();
+    for (const o of list) {
+      const phone = normalizePhone(o.phone);
+      const name = (o.customer ?? "").trim();
+      const key = phone || `n:${name.toLowerCase()}`;
+      if (!phone && !name) continue;
+      const cur = map.get(key) ?? { key, name, phone, address: o.address ?? "", email: o.email || undefined, orders: 0, firstOrderAt: o.date ?? "", lastOrderAt: "", lastOrderId: "", by: new Set<string>() };
+      cur.orders++;
+      if ((o.date ?? "") < cur.firstOrderAt) cur.firstOrderAt = o.date ?? "";
+      if ((o.date ?? "") >= cur.lastOrderAt) {
+        cur.lastOrderAt = o.date ?? "";
+        cur.lastOrderId = o.id;
+        if (name) cur.name = name;
+        if (o.address) cur.address = o.address;
+        if (o.email) cur.email = o.email;
+      }
+      if (o.placedBy) cur.by.add(o.placedBy);
+      map.set(key, cur);
+    }
+    return [...map.values()]
+      .map(({ by, ...c }) => ({ ...c, placedBy: by.size ? [...by].join(" · ") : undefined }))
+      .sort((a, b) => (a.lastOrderAt < b.lastOrderAt ? 1 : -1));
+  };
+  const adminEntered = group(orders.filter((o) => o.placedBy));
+  const guests = group(orders.filter((o) => !o.placedBy && !o.customerId));
+
+  return NextResponse.json({ members, adminEntered, guests, orders: orders.length });
+}

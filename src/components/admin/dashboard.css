@@ -293,6 +293,23 @@
 .dkb-fchip[aria-pressed="true"] > i { background: var(--dk-yolk); }
 .dkb-fchip[data-zero="1"] { opacity: 0.42; }
 
+/* ── ตัวกรองช่วงวันที่ ── */
+.dkb-flab {
+  display: inline-flex; align-items: center; flex: none; padding-right: 2px;
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; color: var(--dk-faint);
+}
+.dkb-dfield {
+  display: inline-flex; align-items: center; gap: 8px; flex: none;
+  min-height: 44px; padding: 0 14px; border-radius: 999px;
+  font-size: 0.78rem; font-weight: 600; color: var(--dk-navy-soft);
+  background: rgba(255, 255, 255, 0.7); border: 1px solid rgba(255, 255, 255, 0.9);
+}
+.dkb-dfield:focus-within { border-color: var(--dk-sky-300); box-shadow: 0 6px 18px rgba(44, 129, 196, 0.22); }
+.dkb-dfield input {
+  border: 0; background: transparent; outline: none;
+  font-size: 0.85rem; font-weight: 600; color: var(--dk-navy); font-variant-numeric: tabular-nums;
+}
+
 /* ── แถวออเดอร์ ── */
 .dkb-rows { display: grid; gap: 9px; }
 .dkb-lrow {

@@ -40,6 +40,32 @@ export interface PriceLinkSpec {
   b?: number;
   /** งานกำหนดขนาดเอง — กว้าง/ยาวที่กรอกไว้ (เก็บเป็นข้อความตามที่พิมพ์) */
   c?: { w: string; h: string };
+  /**
+   * ภาพลายที่ลูกค้าวางไว้บนการ์ดราคา (/p/CODE) ก่อนกด "สั่งตามสเปคนี้"
+   * เป็น URL ที่อัปขึ้นสตอเรจแล้ว — หน้าสินค้าเอามาแนบต่อให้เลย ลูกค้าไม่ต้องอัปซ้ำ
+   * (ฟิลด์ใหม่แบบไม่บังคับ ลิงก์เก่าที่ไม่มีคีย์นี้ยังอ่านออกเหมือนเดิม)
+   */
+  a?: string[];
+}
+
+/** เพดานจำนวนลายที่ยัดมากับลิงก์ได้ — ยาวกว่านี้ URL เริ่มเสี่ยงโดนตัดกลางทาง */
+const MAX_SPEC_ARTS = 10;
+
+/**
+ * กรอง URL ลายที่มากับลิงก์ให้เหลือเฉพาะที่ปลอดภัยจะเอาไปแสดง/เปิดต่อ
+ * (ค่าในลิงก์ใครก็แต่งได้ — รับเฉพาะ http/https ไม่งั้น javascript: หลุดไปเป็น href ของรูปย่อ)
+ */
+export function sanitizeSpecArts(raw?: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const v of raw) {
+    if (typeof v !== "string") continue;
+    const url = v.trim();
+    if (!/^https?:\/\//i.test(url) || url.length > 500) continue;
+    if (!out.includes(url)) out.push(url);
+    if (out.length >= MAX_SPEC_ARTS) break;
+  }
+  return out;
 }
 
 /** JSON → base64url (รองรับภาษาไทย — ชื่อตัวเลือกเป็นไทยเกือบทั้งหมด) */

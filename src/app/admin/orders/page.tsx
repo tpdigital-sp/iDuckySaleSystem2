@@ -32,6 +32,7 @@ import {
   type OrderStatus,
 } from "@/lib/admin-data";
 import { fetchOrdersAdmin } from "@/lib/order-repo";
+import { parseThaiDate } from "@/lib/admin-dash";
 import { usePolling } from "@/lib/use-polling";
 import { useCan } from "@/lib/perm-context";
 import { PACKING_QUEUE_STATUSES } from "@/lib/permissions";
@@ -94,6 +95,59 @@ const NEEDS_US: OrderStatus[] = ["รอตรวจสอบ", "ชำระแ
 /** สถานะที่ถือว่าจบแล้ว — แถวต้องเงียบกว่าใบที่ยังค้าง */
 const DONE: OrderStatus[] = ["จัดส่งแล้ว", "เสร็จสิ้น", "ยกเลิก"];
 
+/* ── ตัวกรองวันที่สั่ง ─────────────────────────────────────────────
+   ⚠️ วันที่ของออเดอร์เก็บเป็นข้อความไทย "20 ก.ค. 2569 14:22" ไม่ใช่ ISO
+      ต้องแกะด้วย parseThaiDate ก่อนเทียบเสมอ (ดู lib/admin-dash) */
+type DateKey = "all" | "today" | "yesterday" | "7d" | "30d" | "custom";
+const DATE_RANGES: { key: DateKey; label: string }[] = [
+  { key: "all", label: "ทุกวัน" },
+  { key: "today", label: "วันนี้" },
+  { key: "yesterday", label: "เมื่อวาน" },
+  { key: "7d", label: "7 วัน" },
+  { key: "30d", label: "30 วัน" },
+  { key: "custom", label: "เลือกวันเอง" },
+];
+/** ข้อความเต็มของแต่ละช่วง — ใช้ในบรรทัดสรุปใต้หัวข้อ "รายการ" */
+const RANGE_TEXT: Record<string, string> = {
+  today: "เฉพาะวันนี้",
+  yesterday: "เฉพาะเมื่อวาน",
+  "7d": "7 วันล่าสุด",
+  "30d": "30 วันล่าสุด",
+};
+const DAY_MS = 86_400_000;
+/** ขอบเขตเวลาของช่วงที่เลือก [เริ่ม, จบ] · ±Infinity = ไม่จำกัดด้านนั้น */
+function rangeBounds(key: DateKey, from: string, to: string): [number, number] {
+  const t0 = new Date();
+  t0.setHours(0, 0, 0, 0);
+  const today = t0.getTime();
+  switch (key) {
+    case "today":
+      return [today, today + DAY_MS - 1];
+    case "yesterday":
+      return [today - DAY_MS, today - 1];
+    case "7d":
+      return [today - 6 * DAY_MS, Infinity];
+    case "30d":
+      return [today - 29 * DAY_MS, Infinity];
+    case "custom":
+      return [
+        from ? new Date(`${from}T00:00:00`).getTime() : -Infinity,
+        to ? new Date(`${to}T23:59:59.999`).getTime() : Infinity,
+      ];
+    default:
+      return [-Infinity, Infinity];
+  }
+}
+/** ใบนี้อยู่ในช่วงที่เลือกไหม — ใบที่อ่านวันที่ไม่ออกจะหลุดทุกช่วง (นับแยกไว้เตือนใต้ลิสต์) */
+const inRange = (o: Order, lo: number, hi: number) => {
+  if (lo === -Infinity && hi === Infinity) return true;
+  const t = parseThaiDate(o.date)?.getTime();
+  return t !== undefined && t >= lo && t <= hi;
+};
+/** "2569-09-07" ที่ช่องวันที่คืนมา (ค.ศ.) → "7 ก.ย. 2569" ไว้โชว์ให้ตรงกับที่ทีมคุยกัน */
+const thaiDay = (iso: string) =>
+  iso ? new Date(`${iso}T00:00:00`).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" }) : "";
+
 export default function AdminOrdersPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -101,6 +155,9 @@ export default function AdminOrdersPage() {
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [q, setQ] = useState("");
   const [onlyDue, setOnlyDue] = useState(false); // เห็นเฉพาะออเดอร์ที่ยังเก็บเงินไม่ครบ (มัดจำ + ส่วนต่างที่ตีราคาเพิ่ม)
+  const [dateKey, setDateKey] = useState<DateKey>("all"); // ช่วงวันที่สั่ง
+  const [from, setFrom] = useState(""); // yyyy-mm-dd จาก <input type="date">
+  const [to, setTo] = useState("");
   const [demo, setDemo] = useState(false);
 
   const can = useCan();
@@ -135,18 +192,37 @@ export default function AdminOrdersPage() {
   }, [seesAll]);
   usePolling(refresh, { enabled: !demo });
 
-  const counts = useMemo(() => {
-    const c: Record<string, number> = { all: orders.length };
-    for (const s of ORDER_STATUSES) c[s] = orders.filter((o) => o.status === s).length;
+  // ── ช่วงวันที่: กรองก่อนใครเพื่อน แล้วให้ตัวเลขบนชิปทุกตัวนับจากชุดนี้ ──
+  const [lo, hi] = useMemo(() => rangeBounds(dateKey, from, to), [dateKey, from, to]);
+  const dateOn = lo !== -Infinity || hi !== Infinity;
+  const dated = useMemo(() => (dateOn ? orders.filter((o) => inRange(o, lo, hi)) : orders), [orders, dateOn, lo, hi]);
+  /** ใบที่อ่านวันที่ไม่ออก (ออเดอร์เก่ารูปแบบอื่น) — บอกไว้ใต้ลิสต์ ไม่ให้หายเงียบ */
+  const noDate = useMemo(
+    () => (dateOn ? orders.filter((o) => !parseThaiDate(o.date)).length : 0),
+    [orders, dateOn]
+  );
+  const dateCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const r of DATE_RANGES) {
+      if (r.key === "custom") continue;
+      const [a, b] = rangeBounds(r.key, "", "");
+      c[r.key] = orders.filter((o) => inRange(o, a, b)).length;
+    }
     return c;
   }, [orders]);
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: dated.length };
+    for (const s of ORDER_STATUSES) c[s] = dated.filter((o) => o.status === s).length;
+    return c;
+  }, [dated]);
 
   const activeDept = DEPARTMENTS.find((d) => d.key === dept) ?? DEPARTMENTS[0];
   const deptCounts = useMemo(() => {
     const c: Record<string, number> = {};
-    for (const d of DEPARTMENTS) c[d.key] = orders.filter((o) => d.statuses.includes(o.status)).length;
+    for (const d of DEPARTMENTS) c[d.key] = dated.filter((o) => d.statuses.includes(o.status)).length;
     return c;
-  }, [orders]);
+  }, [dated]);
 
   const stats = useMemo(() => {
     const today = orders[0] ? dayOf(orders[0].date) : "";
@@ -181,7 +257,7 @@ export default function AdminOrdersPage() {
 
   const kw = q.trim().toLowerCase();
   const digits = kw.replace(/\D/g, "");
-  const shown = orders
+  const shown = dated
     .filter((o) => (onlyDue ? isDue(o) : true))
     .filter((o) => (onlyDue ? o.status !== "ยกเลิก" : activeDept.statuses.includes(o.status)))
     .filter((o) => (filter === "all" ? true : o.status === filter))
@@ -191,6 +267,23 @@ export default function AdminOrdersPage() {
       // ค้นด้วยเบอร์โทรได้ด้วย — แอดมินมักได้เบอร์จากไลน์ก่อนได้เลขออเดอร์
       return digits.length >= 4 && (o.phone ?? "").replace(/\D/g, "").includes(digits);
     });
+
+  const rangeText =
+    dateKey === "custom"
+      ? from || to
+        ? `${thaiDay(from) || "ใบแรกสุด"} – ${thaiDay(to) || "วันนี้"}`
+        : ""
+      : (RANGE_TEXT[dateKey] ?? "");
+
+  /** ประโยคตอนไม่มีใบในช่วงที่เลือก — พูดแบบที่คนในร้านพูดกัน */
+  const emptyRange =
+    dateKey === "today"
+      ? "วันนี้ยังไม่มีออเดอร์เข้ามา"
+      : dateKey === "yesterday"
+        ? "เมื่อวานไม่มีออเดอร์"
+        : dateKey === "custom"
+          ? `ไม่มีออเดอร์ช่วง ${rangeText}`
+          : `ไม่มีออเดอร์ใน ${rangeText}`;
 
   const needPct = stats.total > 0 ? Math.round((stats.needUs / stats.total) * 100) : 0;
 
@@ -362,6 +455,57 @@ export default function AdminOrdersPage() {
               </>
             )}
           </div>
+
+          {/* ── ช่วงวันที่สั่ง — "วันนี้เข้ามากี่ใบ" คือคำถามแรกของทุกเช้า ── */}
+          <div className="dkb-scroll mt-2.5 border-t pt-2.5" style={{ borderColor: "var(--dk-hair)" }}>
+            <span className="dkb-flab">วันที่สั่ง</span>
+            {DATE_RANGES.map((r) => {
+              const n = dateCounts[r.key];
+              return (
+                <button
+                  key={r.key}
+                  type="button"
+                  onClick={() => setDateKey(r.key)}
+                  aria-pressed={dateKey === r.key}
+                  data-zero={n === 0 ? "1" : undefined}
+                  className="dkb-fchip"
+                >
+                  <i />
+                  {r.label}
+                  {n !== undefined && <b>{n}</b>}
+                </button>
+              );
+            })}
+          </div>
+          {dateKey === "custom" && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t pt-2.5" style={{ borderColor: "var(--dk-hair)" }}>
+              <label className="dkb-dfield">
+                ตั้งแต่
+                <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+              </label>
+              <label className="dkb-dfield">
+                ถึง
+                <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+              </label>
+              {(from || to) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFrom("");
+                    setTo("");
+                  }}
+                  className="dkb-fchip"
+                >
+                  ล้างวันที่
+                </button>
+              )}
+              <span className="text-[12px]" style={{ color: "var(--dk-faint)" }}>
+                {from || to
+                  ? `${thaiDay(from) || "ใบแรกสุด"} – ${thaiDay(to) || "วันนี้"} · ${dated.length} ใบ`
+                  : "เลือกวันเริ่มและวันสิ้นสุด — เว้นว่างข้างใดข้างหนึ่งได้"}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* ── รายการ ── */}
@@ -369,6 +513,7 @@ export default function AdminOrdersPage() {
           <h2 className="dkb-h2 text-[1.06rem]">รายการ</h2>
           <span className="text-[12.5px]" style={{ color: "var(--dk-faint)" }}>
             เรียงใหม่ → เก่า · แสดง {shown.length} จาก {orders.length} ใบ
+            {dateOn && rangeText ? ` · ${rangeText}` : ""}
           </span>
         </div>
 
@@ -377,12 +522,18 @@ export default function AdminOrdersPage() {
             <p className="dkb-h2 text-[16px]">
               {kw
                 ? `ไม่พบออเดอร์ที่ตรงกับ “${q}”`
-                : filter === "all"
-                  ? `ไม่มีงานในแผนก${activeDept.label}`
-                  : `ไม่มีออเดอร์สถานะ “${filter}”`}
+                : dateOn
+                  ? `${emptyRange}${filter === "all" ? "" : ` สถานะ “${filter}”`}`
+                  : filter === "all"
+                    ? `ไม่มีงานในแผนก${activeDept.label}`
+                    : `ไม่มีออเดอร์สถานะ “${filter}”`}
             </p>
             <p className="mt-1.5 text-[13px]" style={{ color: "var(--dk-navy-soft)" }}>
-              {kw ? "ลองค้นด้วยเลขออเดอร์ ชื่อลูกค้า หรือเบอร์โทรแทน" : "เคลียร์หมดแล้ว — ใบใหม่จะโผล่ตรงนี้ทันทีที่ลูกค้าสั่ง"}
+              {kw
+                ? "ลองค้นด้วยเลขออเดอร์ ชื่อลูกค้า หรือเบอร์โทรแทน"
+                : dateOn
+                  ? "ลองขยายช่วงวันที่ หรือกด “ทุกวัน” เพื่อดูทั้งหมด"
+                  : "เคลียร์หมดแล้ว — ใบใหม่จะโผล่ตรงนี้ทันทีที่ลูกค้าสั่ง"}
             </p>
           </div>
         ) : (
@@ -391,6 +542,12 @@ export default function AdminOrdersPage() {
               <OrderRow key={o.id} o={o} orders={orders} openByPhone={openByPhone} seesMoney={seesMoney} />
             ))}
           </div>
+        )}
+
+        {dateOn && noDate > 0 && (
+          <p className="mt-2.5 px-2 text-[12px]" style={{ color: "var(--dk-faint)" }}>
+            อีก {noDate} ใบอ่านวันที่ไม่ได้ (ออเดอร์เก่ารูปแบบอื่น) จึงไม่เข้าช่วงไหนเลย — กด “ทุกวัน” เพื่อดู
+          </p>
         )}
       </div>
     </div>

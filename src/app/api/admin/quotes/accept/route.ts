@@ -56,6 +56,8 @@ export async function POST(req: Request) {
     items: quote.items.map((it) => ({ ...it })),
     placedBy: by,
     ...(quote.email ? { email: quote.email } : {}),
+    // ผู้ติดต่อที่ผูกไว้ตอนทำใบเสนอราคา ต้องติดไปกับออเดอร์ด้วย ไม่งั้นแต้มไม่เข้าใคร
+    ...(quote.contactId ? { contactId: quote.contactId } : {}),
     ...(quote.discount ? { adminDiscount: { amount: quote.discount, label: quote.discountNote } } : {}),
     ...(quote.note ? { billNote: quote.note } : {}),
     quoteOf: quote.id,

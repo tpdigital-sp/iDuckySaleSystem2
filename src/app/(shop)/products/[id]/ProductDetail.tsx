@@ -112,6 +112,7 @@ import { foldSizeExtra, specEntries } from "@/components/SpecLines";
 import {
   priceLinkUrl,
   readPriceLink,
+  sanitizeSpecArts,
   sanitizeSpecSelections,
   type PriceLinkSpec,
 } from "@/lib/price-link";
@@ -658,6 +659,8 @@ export default function ProductDetail({
     priceLinkRef.current = typeof window === "undefined" ? null : readPriceLink(window.location.search);
   /** ติ๊กค่าจากลิงก์ราคาให้เรียบร้อยแล้ว — โชว์แถบบอกลูกค้าว่าร้านจัดสเปคไว้ให้ */
   const [fromPriceLink, setFromPriceLink] = useState(false);
+  /** ลายที่ลูกค้าวางไว้บนการ์ดราคาแล้วติดมากับลิงก์กี่รูป (0 = ไม่ได้วางมา) */
+  const [linkArtCount, setLinkArtCount] = useState(0);
   /**
    * ✏️ เปิดหน้าจากปุ่ม "แก้ไข" ในตะกร้า (?edit=<คีย์บรรทัด>) — บรรทัดเดิมถูกแทนที่ตอนกดบันทึก
    *
@@ -919,6 +922,14 @@ export default function ProductDetail({
   const [designs, setDesigns] = useState(1);
   // ลูกค้ากดปรับเองแล้ว = หยุดนับอัตโนมัติ (บางงานลาย 1 แบบแนบรูปหลายมุม)
   const [designsTouched, setDesignsTouched] = useState(false);
+  /**
+   * 🔒 เพดานแนบรูป = จำนวนลายที่ลูกค้า "กดระบุเอง" (กด +/− หรือพิมพ์เลขในช่องคละกี่ลาย)
+   * ระบุคละไว้ 3 ลาย → แนบได้ 3 รูป ที่เกินข้ามให้พร้อมบอกวิธี (กด + เพิ่มจำนวนลายก่อน)
+   * ⚠️ ห้ามเอา designs มาเป็นเพดานตรง ๆ — ตัวเลขนั้นถูกซิงก์ลงตามรูปที่แนบจริง
+   *    (ระบุ 3 แล้วแนบ 2 รูป → designs = 2) เอามาเป็นเพดานจะแนบรูปที่ 3 ไม่ได้
+   * null = ยังไม่ได้ระบุเอง → แนบได้ไม่จำกัด ระบบนับจำนวนลายตามรูปให้เอง
+   */
+  const [designsCap, setDesignsCap] = useState<number | null>(null);
   // ข้อความในช่องพิมพ์จำนวนลายระหว่างแก้ (ยอมว่างชั่วคราว — ลบทิ้งแล้วพิมพ์ใหม่ได้) · null = โชว์ค่าจริง
   const [designsDraft, setDesignsDraft] = useState<string | null>(null);
   // กดสั่งโดยยังไม่ระบุจำนวนลาย → ไฮไลต์กล่องเตือน
@@ -967,6 +978,25 @@ export default function ProductDetail({
           : 0;
   // เพดานจากจำนวนชิ้นที่ใส่ได้จริง ทับกติกาอื่นเสมอ — ใส่ไม่ลงแผ่นก็ผลิตไม่ได้
   const maxDesigns = maxDesignsRaw > 0 ? Math.max(1, Math.min(maxDesignsRaw, capByPieces)) : maxDesignsRaw;
+  /** เพดานแนบรูปที่ใช้จริง — จำนวนที่ลูกค้าระบุเอง แต่ไม่เกินเพดานคละของเรท · null = ไม่จำกัด */
+  const artCap =
+    designsCap == null ? null : maxDesigns > 0 ? Math.max(1, Math.min(designsCap, maxDesigns)) : Math.max(1, designsCap);
+  /**
+   * เพดานแนบรูปที่บังคับจริง — ที่ลูกค้าระบุเองมาก่อน · ไม่ได้ระบุก็ใช้เพดานคละของเรท
+   * (แนบเกินเพดานเรท = ลายที่ผลิตไม่ได้ตามจำนวนที่สั่ง ต้องถามก่อน ไม่ปล่อยผ่านเงียบ ๆ)
+   * null = สินค้าที่ไม่มีระบบจำนวนลาย → แนบได้ไม่จำกัด
+   */
+  const artLimit = artCap ?? (maxDesigns > 0 ? maxDesigns : null);
+  /** แนบครบเพดานแล้ว — ช่องอัปโหลดเปลี่ยนเป็นสถานะ "ครบแล้ว" (ยังกดได้ กดแล้วป๊อปอัพจะอธิบายให้) */
+  const artFull = artLimit != null && artFiles.length >= artLimit;
+  /** แนบได้อีกกี่รูป (−1 = ไม่จำกัด) */
+  const artLeft = artLimit == null ? -1 : Math.max(0, artLimit - artFiles.length);
+  /**
+   * 🔔 ป๊อปอัพ "แนบเกินจำนวนลายที่กำหนดไว้" — เด้งทันทีที่ไฟล์ถูกกัน (ผู้ใช้สั่ง 7 ก.ย. 69)
+   * เดิมเป็นข้อความเล็ก ๆ ใต้ช่องอัปโหลด ลูกค้าเลื่อนผ่านไม่ทันเห็นว่ารูปที่เลือกไปหายไปไหน
+   * เก็บไฟล์ที่ยังไม่ได้แนบไว้ด้วย — กด "เพิ่มจำนวนลาย" แล้วแนบต่อได้เลย ไม่ต้องเลือกไฟล์ใหม่
+   */
+  const [artOver, setArtOver] = useState<{ limit: number; pending: File[]; byCap: boolean } | null>(null);
   // "ระบุจำนวนลายแล้ว" = แตะ +/− หรือพิมพ์เลขเอง หรือแนบรูปให้ระบบนับ — สินค้าที่มีระบบลายต้องระบุก่อนสั่ง
   // ยกเว้นตอนคละได้แค่ลายเดียว (เช่น สั่ง 1 ชิ้น) — มีทางเลือกเดียวอยู่แล้ว ถือว่าระบุแล้ว ไม่ต้องให้กดยืนยัน
   const designsSet = designsTouched || artFiles.length > 0 || maxDesigns <= 1;
@@ -1080,6 +1110,17 @@ export default function ProductDetail({
       setDesignsTouched(true);
     }
     if (link.b && link.b > 0) setBackDesigns(link.b);
+    /**
+     * 🎨 ลายที่ลูกค้าวางไว้ตั้งแต่บนการ์ดราคา (/p/CODE) — แนบต่อให้เลย ไม่ต้องอัปซ้ำ
+     * (w/h ปล่อย 0 เหมือนเส้น ?edit= — ใช้แค่เตือน "ภาพเล็ก" ซึ่งเตือนไปแล้วตอนวางบนการ์ด)
+     */
+    const arts = sanitizeSpecArts(link.a);
+    if (arts.length) {
+      setArtFiles(
+        arts.map((url) => ({ url, name: decodeURIComponent(url.split("/").pop() ?? "ลายที่แนบ"), w: 0, h: 0 }))
+      );
+      setLinkArtCount(arts.length);
+    }
     setFromPriceLink(true);
   }, [productReady, product]);
 
@@ -1721,20 +1762,44 @@ export default function ProductDetail({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [artFiles.length]);
 
+  /** รายการรูป/เพดานล่าสุด — uploadArtwork ถูกเรียกจาก listener ที่ผูกไว้ก่อนหน้า ค่าใน closure เชื่อไม่ได้ */
+  const artFilesRef = useRef(artFiles);
+  artFilesRef.current = artFiles;
+  const artCapRef = useRef(artCap);
+  artCapRef.current = artCap;
+  const artMaxRef = useRef(maxDesigns);
+  artMaxRef.current = maxDesigns;
+
   /**
    * อัปโหลดภาพลาย — ตรวจก่อนขึ้นเซิร์ฟเวอร์ทีละชั้น:
    * ① ชนิดไฟล์ต้องเป็นรูป (JPG/PNG/WEBP) ② ขนาดไม่เกิน 15MB ③ เปิดอ่านได้จริง (ไฟล์ไม่เสีย)
    * ④ ไม่ซ้ำกับรูปที่แนบไปแล้ว (เทียบเนื้อไฟล์จริงด้วย SHA-256 — รูปซ้ำทำให้นับจำนวนลายเพี้ยน)
    * ผ่านครบแล้วค่อยอัปโหลด + อ่านความละเอียดไว้เตือนถ้าภาพเล็ก
    */
-  async function uploadArtwork(files: FileList | null) {
-    if (!files?.length) return;
+  async function uploadArtwork(files: FileList | File[] | null, capOverride?: number) {
+    const list = files ? Array.from(files) : [];
+    if (!list.length) return;
     setArtErr("");
     setArtBusy(true);
     const skipped: string[] = [];
+    // ⚠️ อ่านจาก ref ไม่ใช่ค่าใน closure — ตัวรับ drop/paste ทั้งหน้าผูกไว้ตั้งแต่รอบก่อน
+    //    ค่าที่ปิดทับไว้อาจเป็นของเก่า (เพดาน/รายการรูปเปลี่ยนโดยที่จำนวนรูปยังเท่าเดิม)
+    //    capOverride = เพดานที่เพิ่งตกลงกันในป๊อปอัพ (state ยังไม่ทันอัปเดตตอนเรียกต่อทันที)
+    const cap = capOverride ?? artCapRef.current;
+    const max = artMaxRef.current;
+    /** เพดานที่บังคับรอบนี้ — ที่ลูกค้าระบุมาก่อน ไม่ระบุก็ใช้เพดานคละของเรท */
+    const limit = cap ?? (max > 0 ? max : null);
+    let count = artFilesRef.current.length;
     // เนื้อไฟล์ที่มีอยู่แล้ว (รูปเก่าก่อนมีระบบ hash จะไม่มีค่า — ข้ามการเทียบ)
-    const seen = new Set(artFiles.map((x) => x.hash).filter(Boolean) as string[]);
-    for (const f of Array.from(files)) {
+    const seen = new Set(artFilesRef.current.map((x) => x.hash).filter(Boolean) as string[]);
+    for (let i = 0; i < list.length; i++) {
+      const f = list[i];
+      // ⓪ 🔒 เกินจำนวนลายที่กำหนดไว้ = หยุดตรงนี้แล้วเด้งป๊อปอัพถาม (ผู้ใช้สั่ง 7 ก.ย. 69)
+      //    ไฟล์ที่เหลือยังไม่ทิ้ง — ถ้าลูกค้าเลือก "เพิ่มจำนวนลาย" จะแนบต่อให้เลย
+      if (limit != null && count >= limit) {
+        setArtOver({ limit, pending: list.slice(i), byCap: cap != null });
+        break;
+      }
       // ① ชนิดไฟล์ + ② ขนาด (ไฟล์ HEIC จาก iPhone จะบอกวิธีแก้ให้ด้วย)
       const bad = checkArtworkFile(f);
       if (bad) {
@@ -1788,6 +1853,7 @@ export default function ProductDetail({
             ? cur
             : [...cur, { url, name: f.name, ...dim, preview, ...(hash ? { hash } : {}) }]
         );
+        count += 1;
         // อัปโหลดสำเร็จแล้ว artBlocked เป็น false — ตรึงกล่องให้เปิดค้าง ไม่ให้หุบหนีรูปที่เพิ่งแนบ
         setArtTouched(true);
         setExtraOpen("art");
@@ -5458,6 +5524,12 @@ export default function ProductDetail({
                 <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800">
                   ตัวเลือกกับจำนวนถูกติ๊กไว้ตามที่คุยกันไว้ — กดเพิ่มลงตะกร้าได้เลย หรือปรับเปลี่ยนเองก็ได้ ราคาจะขยับตามให้อัตโนมัติ
                 </p>
+                {/* วางลายไว้ตั้งแต่บนการ์ดราคา — บอกให้รู้ว่าไฟล์ตามมาแล้ว จะได้ไม่แนบซ้ำ */}
+                {linkArtCount > 0 && (
+                  <p className="mt-1 text-[11px] font-extrabold text-emerald-700">
+                    🎨 ลายที่คุณวางไว้บนใบราคา {linkArtCount} รูป แนบมาให้แล้ว — ดูได้ที่กล่อง “แนบลายของคุณ”
+                  </p>
+                )}
               </div>
             )}
             {/* ═══ สลับโหมดสั่งของ (เห็นเฉพาะพนักงานที่ล็อกอินหลังบ้าน) ═══
@@ -6150,7 +6222,11 @@ export default function ProductDetail({
                         onClick={() => {
                           setDesignsTouched(true);
                           setDesignsDraft(null);
+                          // ⚠️ ต้องเป็น updater ทั้งคู่ — กดรัว ๆ 2 ที React รวมเป็นรอบเดียว
+                          //    ถ้าอ่านค่า designs ตรง ๆ จะได้เลขเดิมทั้งสองครั้ง (กด + 2 ที ได้ 2 ไม่ใช่ 3)
                           setDesigns((d) => Math.max(1, d - 1));
+                          // ระบุเอง = ตั้งเพดานแนบรูปตามเลขนี้ด้วย (แนบได้เท่าที่บอกว่าจะคละ)
+                          setDesignsCap((c) => Math.max(1, (c ?? designs) - 1));
                         }}
                         disabled={designsSet && designs <= 1}
                         className="h-8 w-8 rounded-l-full text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
@@ -6166,7 +6242,11 @@ export default function ProductDetail({
                           const raw = e.target.value.replace(/\D/g, "").slice(0, 5);
                           setDesignsDraft(raw);
                           const n = parseInt(raw, 10);
-                          if (Number.isFinite(n) && n >= 1) setDesigns(Math.min(n, Math.max(1, maxDesigns)));
+                          if (Number.isFinite(n) && n >= 1) {
+                            const next = Math.min(n, Math.max(1, maxDesigns));
+                            setDesigns(next);
+                            setDesignsCap(next);
+                          }
                         }}
                         onBlur={() => setDesignsDraft(null)}
                         onFocus={(e) => {
@@ -6184,6 +6264,7 @@ export default function ProductDetail({
                           setDesignsTouched(true);
                           setDesignsDraft(null);
                           setDesigns((d) => Math.min(maxDesigns, d + 1));
+                          setDesignsCap((c) => Math.min(maxDesigns, (c ?? designs) + 1));
                         }}
                         disabled={designs >= maxDesigns}
                         className="h-8 w-8 rounded-r-full text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
@@ -6663,18 +6744,43 @@ export default function ProductDetail({
                     setArtDrag(false);
                     void uploadArtwork(e.dataTransfer.files);
                   }}
-                  className={`mt-2 flex cursor-pointer flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed px-3 py-3 text-center transition ${
-                    artDrag ? "border-sky-500 bg-sky-100" : "border-sky-300 bg-white hover:border-sky-400 hover:bg-sky-50"
+                  className={`mt-2 flex flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed px-3 py-3 text-center transition ${
+                    artFull
+                      ? "cursor-default border-amber-300 bg-amber-50"
+                      : artDrag
+                        ? "cursor-pointer border-sky-500 bg-sky-100"
+                        : "cursor-pointer border-sky-300 bg-white hover:border-sky-400 hover:bg-sky-50"
                   }`}
                 >
                   {artBusy ? (
                     <span className="text-xs font-bold text-sky-700">กำลังอัปโหลด…</span>
+                  ) : artFull ? (
+                    /* ครบเพดานแล้ว — ยังกดได้ ถ้ากดแล้วเลือกไฟล์เพิ่มจะมีป๊อปอัพถามให้เพิ่มจำนวนลายก่อน */
+                    <>
+                      <span className="text-xs font-extrabold text-amber-700">
+                        ✅ ครบ {artLimit!.toLocaleString("th-TH")} รูปตาม
+                        {artCap != null ? "ที่ระบุคละไว้แล้ว" : `เพดานคละของเรทนี้แล้ว`}
+                      </span>
+                      <span className="text-[10px] font-normal text-amber-600">
+                        {artCap != null
+                          ? "อยากแนบเพิ่ม กด + เพิ่ม “คละกี่ลาย” ด้านบนก่อนนะครับ · หรือลบรูปเดิมออกแล้วแนบใหม่"
+                          : `จำนวน ${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} คละได้ ${artLimit!.toLocaleString("th-TH")} ลาย — อยากคละมากกว่านี้ต้องเพิ่มจำนวนสั่ง`}
+                      </span>
+                    </>
                   ) : artDrag ? (
                     <span className="text-sm font-extrabold text-sky-700">⬇️ ปล่อยไฟล์ตรงนี้ได้เลย</span>
                   ) : (
                     <>
                       <span className="text-xs font-extrabold text-sky-700">🖼️ แตะเลือกไฟล์ · ลากมาวาง · ⌘/Ctrl+V</span>
-                      <span className="text-[10px] font-normal text-stone-400">JPG / PNG / WEBP · ใส่ได้ไม่จำกัดจำนวน · ไฟล์ละไม่เกิน 15MB</span>
+                      <span className="text-[10px] font-normal text-stone-400">
+                        JPG / PNG / WEBP ·{" "}
+                        {artCap != null
+                          ? `ระบุคละไว้ ${artCap.toLocaleString("th-TH")} ลาย แนบได้อีก ${artLeft.toLocaleString("th-TH")} รูป`
+                          : artLimit != null
+                            ? `เรทนี้คละได้ ${artLimit.toLocaleString("th-TH")} ลาย แนบได้อีก ${artLeft.toLocaleString("th-TH")} รูป`
+                            : "ใส่ได้ไม่จำกัดจำนวน"}{" "}
+                        · ไฟล์ละไม่เกิน 15MB
+                      </span>
                     </>
                   )}
                   <input
@@ -6905,6 +7011,120 @@ export default function ProductDetail({
       </div>
       {/* กันแถบลอยบังเนื้อหาท้ายหน้า */}
       <div className="h-20 lg:hidden" aria-hidden />
+
+      {/*
+        🔔 แนบรูปเกิน "จำนวนลายที่กำหนดไว้" — ถามให้ชัดตรงนี้ ไม่ข้ามไฟล์เงียบ ๆ
+        ไฟล์ที่ยังไม่ได้แนบถูกอุ้มไว้ใน artOver.pending → กดเพิ่มจำนวนลายแล้วแนบต่อได้ทันที
+      */}
+      {artOver && (() => {
+        const over = artOver;
+        const want = over.limit + over.pending.length;
+        const unit = matrix?.unit ?? "ชิ้น";
+        /** เพิ่มจำนวนลายให้ครบทุกไฟล์ได้ไหม — เกินเพดานคละของเรทที่จำนวนสั่งตอนนี้ก็เพิ่มไม่ได้ */
+        const canRaise = maxDesigns <= 0 || want <= maxDesigns;
+        const names = over.pending.slice(0, 3).map((f) => f.name);
+        const attach = (capTo: number) => {
+          setArtOver(null);
+          void uploadArtwork(over.pending, capTo);
+        };
+        return (
+          <div
+            className="fixed inset-0 z-[95] flex items-end justify-center bg-stone-900/50 p-4 backdrop-blur-sm sm:items-center"
+            onClick={() => setArtOver(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-label="แนบรูปเกินจำนวนลายที่กำหนดไว้"
+          >
+            <div
+              className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl ring-1 ring-stone-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-50 text-xl ring-1 ring-amber-200">
+                  ⚠️
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-[15px] font-extrabold leading-snug text-stone-800">
+                    แนบเกินจำนวนลายที่กำหนดไว้
+                  </h3>
+                  <p className="mt-1 text-[13px] leading-relaxed text-stone-600">
+                    {over.byCap ? (
+                      <>
+                        คุณระบุ “คละกี่ลาย” ไว้ที่{" "}
+                        <strong className="text-stone-800">{over.limit.toLocaleString("th-TH")} ลาย</strong> จึงแนบรูปได้{" "}
+                        {over.limit.toLocaleString("th-TH")} รูป
+                      </>
+                    ) : (
+                      <>
+                        สั่ง {qty.toLocaleString("th-TH")} {unit} เรทนี้คละได้สูงสุด{" "}
+                        <strong className="text-stone-800">{over.limit.toLocaleString("th-TH")} ลาย</strong>
+                      </>
+                    )}{" "}
+                    — ยังมีอีก{" "}
+                    <strong className="text-amber-700">{over.pending.length.toLocaleString("th-TH")} ไฟล์</strong>{" "}
+                    ที่ยังไม่ได้แนบ
+                  </p>
+                </div>
+              </div>
+
+              <ul className="mt-3 space-y-1 rounded-2xl bg-stone-50 px-3 py-2 text-[12px] leading-relaxed text-stone-600 ring-1 ring-stone-100">
+                {names.map((n) => (
+                  <li key={n} className="truncate">
+                    📄 {n}
+                  </li>
+                ))}
+                {over.pending.length > names.length && (
+                  <li className="text-stone-400">
+                    · และอีก {(over.pending.length - names.length).toLocaleString("th-TH")} ไฟล์
+                  </li>
+                )}
+              </ul>
+
+              {!canRaise && (
+                <p className="mt-2 rounded-2xl bg-amber-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-amber-800 ring-1 ring-amber-100">
+                  จำนวน {qty.toLocaleString("th-TH")} {unit} ที่สั่ง เพิ่มจำนวนลายได้สูงสุด{" "}
+                  {maxDesigns.toLocaleString("th-TH")} ลาย — อยากคละ {want.toLocaleString("th-TH")} ลาย
+                  ต้องเพิ่มจำนวนสั่งก่อนนะครับ
+                </p>
+              )}
+
+              <div className="mt-4 grid gap-2">
+                {canRaise ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDesignsTouched(true);
+                      setDesignsDraft(null);
+                      setDesigns(want);
+                      setDesignsCap(want);
+                      attach(want);
+                    }}
+                    className="rounded-2xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600"
+                  >
+                    ✅ เพิ่มเป็น {want.toLocaleString("th-TH")} ลาย แล้วแนบรูปที่เหลือ
+                  </button>
+                ) : (
+                  /* เพดานเรทไม่พอ — ยังยอมให้แนบได้ (ทางร้านนับลายจริงจากไฟล์แล้วทักยืนยัน) */
+                  <button
+                    type="button"
+                    onClick={() => attach(want)}
+                    className="rounded-2xl bg-white px-4 py-2.5 text-sm font-extrabold text-amber-700 ring-1 ring-amber-300 transition hover:bg-amber-50"
+                  >
+                    แนบต่อไปเลย — ให้แอดมินทักยืนยันก่อนเริ่มงาน
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setArtOver(null)}
+                  className="rounded-2xl px-4 py-2 text-sm font-bold text-stone-500 transition hover:bg-stone-100 hover:text-stone-700"
+                >
+                  ไม่เพิ่ม แนบเท่านี้พอ
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 🔒 เรทนี้ยังใช้ไม่ได้ — บอกเหตุผล + ปรับจำนวนให้ถึงขั้นต่ำในคลิกเดียว */}
       {rateLock && (() => {

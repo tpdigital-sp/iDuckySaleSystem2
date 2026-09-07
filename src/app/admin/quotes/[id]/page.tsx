@@ -1,5 +1,15 @@
 "use client";
 
+/**
+ * หน้าแก้ไขใบเสนอราคา — กรอกลูกค้า/รายการ/ราคา แล้วส่งให้ลูกค้าดู หรือแปลงเป็นออเดอร์เมื่อตกลง
+ *
+ * โครงหน้าเดียวกับหน้าออเดอร์ (/admin/orders/[id]) ทุกอย่าง — ใบเสนอราคาคือ "ออเดอร์ที่ยังไม่ตกลง"
+ * คนที่ทำงานสองหน้านี้คือคนเดียวกัน สลับไปมาทั้งวัน ถ้าโครงคนละแบบต้องมานั่งหาของใหม่ทุกครั้ง:
+ *   แถบหัว = ข้อมูลล้วน (เลขใบ · สถานะ · ยอด) แล้วปุ่มอยู่บรรทัดล่าง — "ขั้นถัดไป" เด่นอันเดียวชิดขวา
+ *   ซ้าย   = งาน (ลูกค้า → รายการ → ยอดเงิน) · ขวา = ข้อมูลประกอบ (วันยืนราคา · ลิงก์ · เงื่อนไข · ประวัติ)
+ *   หัวข้อกลุ่มขีดสี + การ์ดขอบซ้ายสีเดียวกัน (GH/soft) ชุดเดียวกับหน้าออเดอร์
+ */
+
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -14,13 +24,19 @@ import {
   type Quote,
 } from "@/lib/quotes";
 import type { OrderItem } from "@/lib/admin-data";
-import { card, faint, h1, muted } from "@/lib/admin-ui";
-import { Banner, Btn, PageShell } from "@/components/admin/ui";
+import { faint, muted } from "@/lib/admin-ui";
+import { Banner, Btn, CopyChip, GH, HBTN, LogTimeline, PageShell, soft } from "@/components/admin/ui";
+import { ContactChip, CustomerContactInput } from "@/components/admin/CustomerContactInput";
 import { useActor } from "@/lib/perm-context";
 import ItemAdder from "@/components/admin/ItemAdder";
 import { setQuoteTarget } from "@/lib/append-quote";
+import { formatPhone } from "@/lib/contacts";
 
-/** หน้าแก้ไขใบเสนอราคา — กรอกลูกค้า/รายการ/ราคา แล้วส่งให้ลูกค้าดู หรือแปลงเป็นออเดอร์เมื่อตกลง */
+/** ช่องกรอกชุดเดียวกับหน้าออเดอร์ */
+const INP =
+  "w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[13px] text-slate-800 focus:border-amber-300 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500";
+const MINI = "mb-1 text-[10.5px] font-bold text-slate-400";
+
 function QuoteDetailInner() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -34,6 +50,8 @@ function QuoteDetailInner() {
   const [busy, setBusy] = useState(false);
   const [origin, setOrigin] = useState("");
   const [copied, setCopied] = useState(false);
+  /** ชื่อที่กำลังพิมพ์ (ยังไม่บันทึก) — ระหว่างค้นผู้ติดต่อจะยิง PATCH ทุกตัวอักษรไม่ไหว บันทึกตอนออกจากช่องพอ */
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
 
   useEffect(() => setOrigin(window.location.origin), []);
 
@@ -104,14 +122,14 @@ function QuoteDetailInner() {
     router.push("/admin/quotes");
   }
 
-  if (loading) return <p className="py-20 text-center text-sm text-slate-400">กำลังโหลด…</p>;
+  if (loading) return <p className="py-20 text-center text-sm text-slate-400">กำลังโหลดใบเสนอราคา…</p>;
   if (!quote)
     return (
       <div className="py-20 text-center">
         <span className="text-4xl">📄</span>
         <p className="mt-3 font-semibold text-slate-600">ไม่พบใบเสนอราคา {quoteId}</p>
         <Link href="/admin/quotes" className="mt-4 inline-block text-sm font-semibold text-amber-600 hover:underline">
-          ← กลับรายการใบเสนอราคา
+          ← กลับไปหน้าใบเสนอราคา
         </Link>
       </div>
     );
@@ -120,9 +138,33 @@ function QuoteDetailInner() {
   const left = daysToExpire(quote);
   const locked = Boolean(quote.orderId); // แปลงเป็นออเดอร์แล้ว = ล็อกไม่ให้แก้
   const customerUrl = origin ? `${origin}/quote/${encodeURIComponent(quote.id)}?key=${encodeURIComponent(quote.key)}` : "";
-  const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-300 focus:outline-none";
+  const soon = !locked && st !== "ไม่รับ" && left !== null && left <= 3;
 
-  const soon = !locked && left !== null && left <= 3;
+  const qty = quote.items.reduce((s, i) => s + i.qty, 0);
+  const subtotal = quote.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+  const total = quoteTotal(quote);
+  const nItems = `${quote.items.length} รายการ`;
+
+  /* ตัวเลขใหญ่บนแถบหัว — ยอดที่เสนอ พร้อมบรรทัดเทียบใต้เลขเสมอ (เลขไม่ลอยเดี่ยว)
+     ใบที่ยืนราคาใกล้หมดคือใบที่กำลังจะหลุดมือ → ให้เลขเป็นสีเตือน เหมือน "ค้างชำระ" ของหน้าออเดอร์ */
+  const money: { label: string; hot: boolean; sub: string; subTone?: string } = locked
+    ? { label: "ยอดที่ตกลง", hot: false, sub: `✓ เป็นออเดอร์ ${quote.orderId} แล้ว`, subTone: "text-emerald-600" }
+    : st === "ไม่รับ"
+      ? { label: "ยอดที่เสนอไป", hot: false, sub: quote.declineReason ? `ลูกค้าไม่รับ — ${quote.declineReason}` : "ลูกค้าไม่รับใบนี้" }
+      : soon
+        ? {
+            label: left! < 0 ? "หมดวันยืนราคาแล้ว" : "ใกล้หมดวันยืนราคา",
+            hot: true,
+            sub:
+              left! < 0
+                ? `เลยวันยืนราคามา ${Math.abs(left!)} วัน · ${nItems}`
+                : `${left === 0 ? "ยืนราคาหมดวันนี้" : `เหลืออีก ${left} วัน`} · ${nItems}`,
+          }
+        : {
+            label: "ยอดที่เสนอ",
+            hot: false,
+            sub: `${nItems} · รวมสินค้า ${formatPrice(subtotal)}${left !== null ? ` · ยืนราคาอีก ${left} วัน` : ""}`,
+          };
 
   return (
     <PageShell>
@@ -135,12 +177,14 @@ function QuoteDetailInner() {
         />
       )}
       {locked && (
-        <Banner
-          tone="warm"
-          title={`ใบนี้ลูกค้าตกลงแล้ว และกลายเป็นออเดอร์ ${quote.orderId}`}
-          detail="แก้ไขต่อที่หน้าออเดอร์แทน"
-          href={quote.orderId ? `/admin/orders/${encodeURIComponent(quote.orderId)}` : undefined}
-        />
+        <div className={soon ? "mt-3" : ""}>
+          <Banner
+            tone="warm"
+            title={`ใบนี้ลูกค้าตกลงแล้ว และกลายเป็นออเดอร์ ${quote.orderId}`}
+            detail="แก้ไขต่อที่หน้าออเดอร์แทน"
+            href={quote.orderId ? `/admin/orders/${encodeURIComponent(quote.orderId)}` : undefined}
+          />
+        </div>
       )}
       {err && (
         <div className={soon || locked ? "mt-3" : ""}>
@@ -149,323 +193,423 @@ function QuoteDetailInner() {
       )}
 
       <div className={`dkb-g overflow-hidden ${soon || locked || err ? "mt-4" : ""}`}>
-        {/* หัวใบ */}
-        <div className="flex flex-wrap items-center gap-3 border-b px-5 py-4" style={{ borderColor: "var(--dk-hair)" }}>
-          <div className="min-w-0">
-            <Link href="/admin/quotes" className="dkb-eyebrow" style={{ color: "var(--dk-faint)" }}>
-              ใบเสนอราคาทั้งหมด
-            </Link>
-            <h1 className="dkb-display mt-1 flex flex-wrap items-center gap-2 text-[1.5rem] leading-tight">
-              {quote.id}
-              <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${QUOTE_STYLES[st]}`}>{st}</span>
-            </h1>
-            <p className="text-[12.5px]" style={{ color: "var(--dk-navy-soft)" }}>
-              {quote.date}
-              {quote.createdBy ? ` · โดย ${quote.createdBy}` : ""}
-            </p>
+        {/* ── แถบหัว ── */}
+        <div className="border-b px-5 py-4" style={{ borderColor: "var(--dk-hair)" }}>
+          {/* บรรทัดบน = ข้อมูลล้วน (เลขใบ · สถานะ · ยอด) ไม่มีปุ่มปน */}
+          <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
+            <div className="min-w-0">
+              <Link href="/admin/quotes" className="dkb-eyebrow" style={{ color: "var(--dk-faint)" }}>
+                ใบเสนอราคาทั้งหมด
+              </Link>
+              <h1 className="dkb-display mt-1 flex flex-wrap items-center gap-2 text-[1.55rem] leading-tight">
+                {quote.id}
+                {soon &&
+                  (left! < 0 ? (
+                    <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200">
+                      หมดวันยืนราคา {Math.abs(left!)} วัน
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-bold text-orange-700 ring-1 ring-orange-200">
+                      {left === 0 ? "ยืนราคาหมดวันนี้" : `ยืนราคาเหลือ ${left} วัน`}
+                    </span>
+                  ))}
+              </h1>
+              <p className={`text-xs ${faint}`}>
+                {quote.date}
+                {quote.createdBy ? ` · โดย ${quote.createdBy}` : ""}
+              </p>
+            </div>
+
+            {/* ขวาบน = ยอด + สถานะชิดขวา (โครงเดียวกับแผงเงินหน้าออเดอร์) */}
+            <div className="ml-auto flex flex-col items-end gap-2.5">
+              <div className="text-right">
+                <div className={`text-[11px] font-bold uppercase tracking-[0.09em] ${money.hot ? "text-rose-500" : "text-slate-400"}`}>
+                  {money.label}
+                </div>
+                <div className={`dkb-num mt-0.5 text-[1.6rem] ${money.hot ? "text-rose-600" : ""}`}>{formatPrice(total)}</div>
+                <p className={`mt-1 text-[11px] font-semibold ${money.subTone ?? "text-slate-400"}`}>{money.sub}</p>
+              </div>
+              <span className={`inline-flex rounded-xl px-3.5 py-2 text-sm font-bold ring-1 ${QUOTE_STYLES[st]}`}>{st}</span>
+            </div>
           </div>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            {saved && (
-              <span className="text-[12px] font-semibold" style={{ color: "var(--dk-mint-ink)" }}>
-                บันทึกแล้ว
-              </span>
-            )}
+
+          {/* บรรทัดล่าง = ปุ่ม — งานรองอยู่ซ้าย (เงียบ) · "ขั้นถัดไป" อยู่ขวา เด่นอันเดียว */}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             {!locked && (
-              <>
-                <Btn tone="navy" onClick={acceptQuote} disabled={busy || !quote.items.length}>
-                  ลูกค้าตกลง — สร้างออเดอร์
+              <button type="button" onClick={declineQuote} className={HBTN} title="ปิดใบนี้เป็น “ไม่รับ” พร้อมเก็บเหตุผล">
+                🚫 ลูกค้าไม่รับ
+              </button>
+            )}
+            {customerUrl && (
+              <a href={customerUrl} target="_blank" rel="noreferrer" className={HBTN} title="เปิดหน้าที่ลูกค้าเห็น">
+                👁 ดูใบที่ลูกค้าเห็น
+              </a>
+            )}
+            <span className="ml-auto flex flex-wrap items-center gap-2">
+              {saved && (
+                <span className="text-[12px] font-semibold" style={{ color: "var(--dk-mint-ink)" }}>
+                  บันทึกแล้ว
+                </span>
+              )}
+              {locked ? (
+                <Btn tone="yolk" href={`/admin/orders/${encodeURIComponent(quote.orderId!)}`}>
+                  เปิดออเดอร์ {quote.orderId}
                 </Btn>
-                <Btn onClick={declineQuote}>ลูกค้าไม่รับ</Btn>
-              </>
-            )}
-            {quote.orderId && (
-              <Btn tone="yolk" href={`/admin/orders/${encodeURIComponent(quote.orderId)}`}>
-                เปิดออเดอร์ {quote.orderId}
-              </Btn>
-            )}
-            <span className="text-right">
-              <span className="block text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
-                ยอดรวม
-              </span>
-              <span className="dkb-num block text-[1.4rem]">{formatPrice(quoteTotal(quote))}</span>
+              ) : (
+                <Btn tone="navy" onClick={acceptQuote} disabled={busy || !quote.items.length}>
+                  {busy ? "กำลังสร้างออเดอร์…" : "ลูกค้าตกลง — สร้างออเดอร์"}
+                </Btn>
+              )}
             </span>
           </div>
         </div>
 
-      <div className="grid gap-5 p-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        {/* ── ซ้าย: รายการ ── */}
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400">รายการที่เสนอ</p>
-
-          {/* หัวตาราง — คอลัมน์ตรงกับแถวด้านล่าง อ่านง่ายเวลามีหลายรายการ */}
-          {quote.items.length > 0 && (
-            <div className="mt-2 hidden gap-2 px-3 pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400 lg:grid lg:grid-cols-[1.75rem_5rem_minmax(0,1fr)_4.5rem_6.5rem_6rem_1.75rem]">
-              <span>#</span>
-              <span>รูป</span>
-              <span>ชื่องาน / สเปคที่เสนอ</span>
-              <span className="text-center">จำนวน</span>
-              <span className="text-right">ราคา/หน่วย</span>
-              <span className="text-right">ยอดรวม</span>
-              <span />
-            </div>
-          )}
-
-          <div className="space-y-2">
-            {quote.items.map((it, i) => (
-              <div
-                key={i}
-                className={`grid items-start gap-2 rounded-xl border border-slate-200 p-3 lg:grid-cols-[1.75rem_5rem_minmax(0,1fr)_4.5rem_6.5rem_6rem_1.75rem] ${
-                  i % 2 ? "bg-slate-50/70" : "bg-white"
-                }`}
-              >
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-slate-100 text-[11px] font-bold text-slate-600">
-                  {i + 1}
-                </span>
-
-                {/* ภาพลายที่แนบมาจากตอนหยิบของ (ถ้ามี) */}
-                <div className="flex flex-wrap gap-1">
-                  {(it.artworkUrls ?? []).slice(0, 4).map((u, k) => (
-                    <a key={k} href={u} target="_blank" rel="noreferrer">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={u} alt="" className="h-9 w-9 rounded-md object-cover ring-1 ring-slate-200" />
+        <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_20rem]">
+          {/* ── ซ้าย: งาน ── */}
+          <div className="px-4 py-6 sm:px-6">
+            {/* 👤 ลูกค้า */}
+            <div className="mb-5">
+              <GH t="sky">👤 ลูกค้า / จัดส่ง</GH>
+              <div className={`mt-2 space-y-2.5 ${soft("sky")}`}>
+                {/* ⚠️ คอลัมน์เบอร์ต้องกว้าง 7rem + gap-2 — รายชื่อที่เด้งลงมายืดคลุมช่องเบอร์ด้วย (right-[-7.5rem]) */}
+                <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
+                  <div className="min-w-0">
+                    <p className={MINI}>ชื่อลูกค้า</p>
+                    {locked ? (
+                      <input value={quote.customer} disabled className={`${INP} font-bold`} />
+                    ) : (
+                      /* พิมพ์ชื่อ/เบอร์ ≥ 2 ตัว → ค้นคลังผู้ติดต่อ ~28,000 ราย เลือกแล้วเติมชื่อ/เบอร์/ที่อยู่ให้ทั้งชุด
+                         (ชุดเดียวกับหน้าออเดอร์ — คนกรอกคือคนเดียวกัน ไม่ต้องจำว่าหน้าไหนพิมพ์เองหน้าไหนค้นได้) */
+                      <CustomerContactInput
+                        value={nameDraft ?? quote.customer}
+                        onChange={setNameDraft}
+                        onBlur={() => {
+                          if (nameDraft !== null && nameDraft !== quote.customer) void persist({ ...quote, customer: nameDraft });
+                          setNameDraft(null);
+                        }}
+                        onPick={(c) => {
+                          setNameDraft(null);
+                          void persist({
+                            ...quote,
+                            customer: c.name || quote.customer,
+                            phone: c.phone || quote.phone,
+                            address: c.address || quote.address,
+                            contactId: c.id,
+                          });
+                        }}
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <p className={MINI}>เบอร์โทร</p>
+                    <input
+                      value={quote.phone}
+                      disabled={locked}
+                      onChange={(e) => patch({ phone: e.target.value.replace(/[^\d\-+ ]/g, "") })}
+                      inputMode="tel"
+                      placeholder="08x-xxx-xxxx"
+                      className={`${INP} tabular-nums`}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <p className={MINI}>ที่อยู่จัดส่ง</p>
+                  <textarea
+                    value={quote.address ?? ""}
+                    disabled={locked}
+                    onChange={(e) => patch({ address: e.target.value })}
+                    rows={2}
+                    placeholder="บ้านเลขที่ ถนน แขวง/ตำบล เขต/อำเภอ จังหวัด รหัสไปรษณีย์"
+                    className={`${INP} resize-y`}
+                  />
+                </div>
+                {/* แถวลงมือทำต่อ — สถานะการผูกผู้ติดต่อ · คัดลอกไปตอบ LINE · โทรหาลูกค้า */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {quote.contactId ? (
+                    <ContactChip contactId={quote.contactId} onUnlink={() => patch({ contactId: undefined })} />
+                  ) : (
+                    !locked && <span className="text-[11px] text-slate-400">💡 พิมพ์ชื่อเพื่อค้นผู้ติดต่อ — ตกลงแล้วแต้มเข้าคนนี้ตั้งแต่ออเดอร์แรก</span>
+                  )}
+                  {(quote.customer || quote.phone || quote.address) && (
+                    <CopyChip
+                      label="คัดลอกที่อยู่จัดส่ง"
+                      text={() =>
+                        [
+                          [quote.customer, quote.phone && `โทร. ${formatPhone(quote.phone)}`].filter(Boolean).join("  "),
+                          quote.address,
+                        ]
+                          .filter(Boolean)
+                          .join("\n")
+                      }
+                    />
+                  )}
+                  {quote.phone && (
+                    <a
+                      href={`tel:${quote.phone.replace(/\D/g, "")}`}
+                      className="inline-flex min-h-[30px] items-center gap-1 rounded-full bg-white px-3 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50"
+                    >
+                      📞 {formatPhone(quote.phone)}
                     </a>
-                  ))}
-                  {!it.artworkUrls?.length && (
-                    <span className="grid h-9 w-9 place-items-center rounded-md bg-slate-100 text-sm text-slate-300">🖼️</span>
                   )}
                 </div>
+              </div>
+            </div>
 
-                <div className="min-w-0 space-y-1.5">
-                  <input
-                    value={it.name}
-                    disabled={locked}
-                    onChange={(e) => patchItem(i, { name: e.target.value })}
-                    placeholder="ชื่องาน"
-                    className={`${inp} font-bold`}
-                  />
-                  <textarea
-                    value={it.selections ?? ""}
-                    disabled={locked}
-                    onChange={(e) => patchItem(i, { selections: e.target.value })}
-                    rows={2}
-                    placeholder="สเปค/รายละเอียดที่เสนอ เช่น ขนาด · วัสดุ · จำนวนสี"
-                    className={`${inp} resize-y text-xs`}
-                  />
+            {/* 🎨 รายการที่เสนอ */}
+            <div className="mb-5">
+              <GH t="indigo">🎨 รายการที่เสนอ · {nItems}</GH>
+
+              <div className="mt-2 space-y-3">
+                {quote.items.map((it, i) => (
+                  <div
+                    key={i}
+                    className={`overflow-hidden rounded-2xl border-2 shadow-[0_2px_10px_rgba(15,23,42,0.05)] ${
+                      i % 2 === 0 ? "border-slate-200 bg-white" : "border-sky-200 bg-sky-50/40"
+                    }`}
+                  >
+                    {/* แถบหัวรายการ — สลับสีคู่/คี่ ให้ไล่สายตาแยกรายการได้ง่ายเวลามีหลายรายการ */}
+                    <div
+                      className={`flex items-center justify-between gap-2 border-b-2 px-4 py-2 ${
+                        i % 2 === 0 ? "border-slate-100 bg-slate-50" : "border-sky-100 bg-sky-100/60"
+                      }`}
+                    >
+                      <span className={`shrink-0 text-xs font-extrabold ${i % 2 === 0 ? "text-indigo-800" : "text-sky-800"}`}>
+                        รายการที่ {i + 1}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        <span className="dkb-num text-[15px]">{formatPrice(it.qty * it.unitPrice)}</span>
+                        {!locked && (
+                          <button
+                            type="button"
+                            onClick={() => patch({ items: quote.items.filter((_, k) => k !== i) })}
+                            title="ลบรายการนี้"
+                            className="rounded-lg px-2 py-1 text-xs font-bold text-rose-500 transition hover:bg-rose-50"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)] gap-3 p-3 sm:grid-cols-[5rem_minmax(0,1fr)]">
+                      {/* ภาพลายที่แนบมาจากตอนหยิบของ (ถ้ามี) */}
+                      <div className="flex flex-wrap gap-1">
+                        {(it.artworkUrls ?? []).slice(0, 4).map((u, k) => (
+                          <a key={k} href={u} target="_blank" rel="noreferrer">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={u} alt="" className="h-9 w-9 rounded-md object-cover ring-1 ring-slate-200" />
+                          </a>
+                        ))}
+                        {!it.artworkUrls?.length && (
+                          <span className="grid h-9 w-9 place-items-center rounded-md bg-slate-100 text-sm text-slate-300">🖼️</span>
+                        )}
+                      </div>
+
+                      <div className="min-w-0 space-y-2">
+                        <div>
+                          <p className={MINI}>ชื่องาน</p>
+                          <input
+                            value={it.name}
+                            disabled={locked}
+                            onChange={(e) => patchItem(i, { name: e.target.value })}
+                            placeholder="ชื่องาน"
+                            className={`${INP} font-bold`}
+                          />
+                        </div>
+                        <div>
+                          <p className={MINI}>สเปคที่เสนอ</p>
+                          <textarea
+                            value={it.selections ?? ""}
+                            disabled={locked}
+                            onChange={(e) => patchItem(i, { selections: e.target.value })}
+                            rows={2}
+                            placeholder="ขนาด · วัสดุ · จำนวนสี · รายละเอียดที่ตกลงกับลูกค้า"
+                            className={`${INP} resize-y`}
+                          />
+                        </div>
+                        <div className="flex flex-wrap items-end gap-2">
+                          <label className="block w-24">
+                            <span className={`block ${MINI}`}>จำนวน</span>
+                            <input
+                              type="number"
+                              min={1}
+                              value={it.qty}
+                              disabled={locked}
+                              onChange={(e) => patchItem(i, { qty: Math.max(1, Number(e.target.value) || 1) })}
+                              className={`${INP} text-center font-bold tabular-nums`}
+                            />
+                          </label>
+                          <label className="block w-32">
+                            <span className={`block ${MINI}`}>ราคา/หน่วย</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={it.unitPrice}
+                              disabled={locked}
+                              onChange={(e) => patchItem(i, { unitPrice: Math.max(0, Number(e.target.value) || 0) })}
+                              className={`${INP} text-right font-bold tabular-nums`}
+                            />
+                          </label>
+                          <span className={`pb-1.5 text-[11px] ${faint}`}>
+                            {it.qty} × {formatPrice(it.unitPrice)} = <b className="text-slate-700">{formatPrice(it.qty * it.unitPrice)}</b>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {!quote.items.length && (
+                  <p className="rounded-xl border-2 border-dashed border-slate-200 px-4 py-6 text-center text-xs text-slate-400">
+                    ยังไม่มีรายการ — กดปุ่มด้านล่างเพื่อเพิ่มงานที่จะเสนอ
+                  </p>
+                )}
+              </div>
+
+              {/* ตัวเพิ่มรายการชุดเดียวกับหน้าออเดอร์งานพิเศษ — กรอกเอง (มีคลังสินค้าพิเศษ/แนบภาพลาย) หรือหยิบจากหน้าร้านจริง */}
+              {!locked && (
+                <ItemAdder
+                  draftKey={`quote.${quote.id}`}
+                  target="ใบเสนอราคา"
+                  onAdd={(item) => patch({ items: [...quote.items, item] })}
+                  onShopAdd={() => {
+                    setQuoteTarget({ id: quote.id, customer: quote.customer });
+                    window.open("/products", "_blank", "noopener");
+                  }}
+                />
+              )}
+            </div>
+
+            {/* 💰 ยอดเงิน — ตัวเลขอยู่คอลัมน์ขวาคอลัมน์เดียว (tabular) หลักตรงกันไล่ลงถึงยอดรวม */}
+            <div>
+              <GH t="emerald">💰 ยอดเงิน</GH>
+              <div className={`mt-2 ${soft("emerald")}`}>
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className={muted}>รวมสินค้า · {qty} ชิ้น</span>
+                  <span className="font-semibold tabular-nums text-slate-800">{formatPrice(subtotal)}</span>
                 </div>
-
-                <label className="block lg:mt-0">
-                  <span className="mb-0.5 block text-[10px] font-bold text-slate-400 lg:hidden">จำนวน</span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={it.qty}
-                    disabled={locked}
-                    onChange={(e) => patchItem(i, { qty: Math.max(1, Number(e.target.value) || 1) })}
-                    className={`${inp} text-center font-bold`}
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-0.5 block text-[10px] font-bold text-slate-400 lg:hidden">ราคา/หน่วย</span>
+                <div className="mt-1.5 flex items-center justify-between gap-3 text-sm">
+                  <span className={muted}>ค่าจัดส่ง</span>
                   <input
                     type="number"
                     min={0}
-                    value={it.unitPrice}
+                    value={quote.shippingCost}
                     disabled={locked}
-                    onChange={(e) => patchItem(i, { unitPrice: Math.max(0, Number(e.target.value) || 0) })}
-                    className={`${inp} text-right font-bold`}
+                    onChange={(e) => patch({ shippingCost: Math.max(0, Number(e.target.value) || 0) })}
+                    className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-right text-xs font-semibold tabular-nums text-slate-800 focus:border-amber-300 focus:outline-none disabled:bg-slate-50"
                   />
-                </label>
+                </div>
+                <div className="mt-1.5 flex items-center justify-between gap-3 text-sm">
+                  <span className={muted}>ส่วนลด</span>
+                  <span className="flex items-center gap-1 font-semibold text-rose-500">
+                    −
+                    <input
+                      type="number"
+                      min={0}
+                      value={quote.discount ?? 0}
+                      disabled={locked}
+                      onChange={(e) => patch({ discount: Math.max(0, Number(e.target.value) || 0) })}
+                      className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-right text-xs font-semibold tabular-nums text-rose-600 focus:border-amber-300 focus:outline-none disabled:bg-slate-50"
+                    />
+                  </span>
+                </div>
+                <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2">
+                  <span className="text-sm font-bold text-slate-700">ยอดรวมที่เสนอ</span>
+                  <span className="dkb-num text-[1.15rem]">{formatPrice(total)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
 
-                <span className="pt-2 text-right text-sm font-extrabold text-slate-900">{formatPrice(it.qty * it.unitPrice)}</span>
-
-                {!locked ? (
-                  <button
-                    type="button"
-                    onClick={() => patch({ items: quote.items.filter((_, k) => k !== i) })}
-                    title="ลบรายการนี้"
-                    className="mt-1 justify-self-end rounded-lg px-2 py-1 text-xs font-bold text-rose-500 transition hover:bg-rose-50"
-                  >
-                    ✕
-                  </button>
-                ) : (
-                  <span />
+          {/* ── ขวา: ข้อมูล ── */}
+          <div className="space-y-4 border-t border-slate-200/70 bg-slate-50/50 px-4 py-5 lg:border-l lg:border-t-0">
+            {/* 📅 ยืนราคาถึง */}
+            <div>
+              <GH t="orange">📅 ยืนราคาถึง</GH>
+              <div className={`mt-2 ${soft("orange")}`}>
+                <input
+                  type="date"
+                  value={quote.expiresAt ? quote.expiresAt.slice(0, 10) : ""}
+                  disabled={locked}
+                  onChange={(e) => patch({ expiresAt: e.target.value ? new Date(`${e.target.value}T23:59:59`).toISOString() : undefined })}
+                  className={INP}
+                />
+                {left !== null && !locked && (
+                  <p className={`mt-1.5 text-[11px] font-bold ${left < 0 ? "text-rose-600" : left <= 3 ? "text-orange-600" : "text-slate-400"}`}>
+                    {left < 0 ? `หมดอายุมาแล้ว ${Math.abs(left)} วัน — ขยายวันก่อนส่งให้ลูกค้าอีกครั้ง` : `เหลืออีก ${left} วัน`}
+                  </p>
                 )}
               </div>
-            ))}
-            {!quote.items.length && (
-              <p className="rounded-xl border-2 border-dashed border-slate-200 px-4 py-6 text-center text-xs text-slate-400">
-                ยังไม่มีรายการ — กดปุ่มด้านล่างเพื่อเพิ่ม
+            </div>
+
+            {/* 🔗 ลิงก์สำหรับลูกค้า */}
+            <div>
+              <GH t="violet">🔗 ลิงก์สำหรับลูกค้า</GH>
+              <div className={`mt-2 ${soft("violet")}`}>
+                <p className="break-all rounded-lg bg-slate-50 px-2.5 py-2 font-mono text-[11px] text-slate-600 ring-1 ring-slate-200">
+                  {customerUrl || "…"}
+                </p>
+                <button
+                  type="button"
+                  disabled={!customerUrl}
+                  onClick={() => {
+                    navigator.clipboard?.writeText(customerUrl).catch(() => {});
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                    if (quote.status === "ร่าง")
+                      void persist(withQuoteLog({ ...quote, status: "ส่งให้ลูกค้าแล้ว" }, meName || "แอดมิน", "ส่งใบเสนอราคาให้ลูกค้า"));
+                  }}
+                  className={`mt-2 min-h-[44px] w-full rounded-xl px-3 py-2 text-xs font-bold text-white transition disabled:opacity-50 ${
+                    copied ? "bg-emerald-600" : "bg-amber-500 hover:bg-amber-600"
+                  }`}
+                >
+                  {copied ? "✓ คัดลอกแล้ว — วางในแชทได้เลย" : "🔗 คัดลอกลิงก์ส่งลูกค้า"}
+                </button>
+                <p className={`mt-1.5 text-[10.5px] leading-relaxed ${faint}`}>
+                  คัดลอกครั้งแรกจะเปลี่ยนสถานะเป็น “ส่งให้ลูกค้าแล้ว” · ลูกค้ากดตกลงเองได้จากลิงก์นี้
+                </p>
+              </div>
+            </div>
+
+            {/* 📝 เงื่อนไขที่พิมพ์ลงใบ */}
+            <div>
+              <GH t="rose">📝 เงื่อนไข / หมายเหตุบนใบ</GH>
+              <div className={`mt-2 ${soft("rose")}`}>
+                <textarea
+                  value={quote.note ?? ""}
+                  disabled={locked}
+                  onChange={(e) => patch({ note: e.target.value })}
+                  rows={4}
+                  placeholder="เช่น ราคานี้ยังไม่รวม VAT · ใช้เวลาผลิต 7–10 วันหลังอนุมัติแบบ · มัดจำ 50% ก่อนเริ่มงาน"
+                  className={`${INP} resize-y`}
+                />
+                <p className={`mt-1 text-[10.5px] ${faint}`}>ข้อความนี้ลูกค้าเห็นในใบเสนอราคา</p>
+              </div>
+            </div>
+
+            {quote.declineReason && (
+              <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 ring-1 ring-rose-200">
+                🚫 ลูกค้าไม่รับ — {quote.declineReason}
               </p>
             )}
-          </div>
 
-          {/* ตัวเพิ่มรายการชุดเดียวกับหน้าออเดอร์งานพิเศษ — กรอกเอง (มีคลังสินค้าพิเศษ/แนบภาพลาย) หรือหยิบจากหน้าร้านจริง */}
-          {!locked && (
-            <ItemAdder
-              draftKey={`quote.${quote.id}`}
-              target="ใบเสนอราคา"
-              onAdd={(item) => patch({ items: [...quote.items, item] })}
-              onShopAdd={() => {
-                setQuoteTarget({ id: quote.id, customer: quote.customer });
-                window.open("/products", "_blank", "noopener");
-              }}
-            />
-          )}
-
-          {/* เงื่อนไข/หมายเหตุ */}
-          <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400">เงื่อนไข / หมายเหตุบนใบเสนอราคา</p>
-          <textarea
-            value={quote.note ?? ""}
-            disabled={locked}
-            onChange={(e) => patch({ note: e.target.value })}
-            rows={3}
-            placeholder="เช่น ราคานี้ยังไม่รวม VAT · ใช้เวลาผลิต 7–10 วันหลังอนุมัติแบบ · มัดจำ 50% ก่อนเริ่มงาน"
-            className={`${inp} mt-1 resize-y text-xs`}
-          />
-        </div>
-
-        {/* ── ขวา: ลูกค้า · ยอด · ลิงก์ ── */}
-        <div className="space-y-4">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400">ลูกค้า</p>
-            <div className="mt-2 space-y-2 rounded-xl border border-slate-200 bg-white p-3">
-              <input
-                value={quote.customer}
-                disabled={locked}
-                onChange={(e) => patch({ customer: e.target.value })}
-                placeholder="ชื่อลูกค้า"
-                className={`${inp} font-bold`}
-              />
-              <input
-                value={quote.phone}
-                disabled={locked}
-                onChange={(e) => patch({ phone: e.target.value.replace(/[^\d\-+ ]/g, "") })}
-                placeholder="เบอร์โทร"
-                className={inp}
-              />
-              <textarea
-                value={quote.address ?? ""}
-                disabled={locked}
-                onChange={(e) => patch({ address: e.target.value })}
-                rows={2}
-                placeholder="ที่อยู่จัดส่ง (ไม่ใส่ก็ได้)"
-                className={`${inp} resize-y`}
-              />
+            {/* 🕘 ประวัติ */}
+            <div>
+              <GH t="slate">🕘 ประวัติการทำงาน{quote.log?.length ? ` (${quote.log.length})` : ""}</GH>
+              <LogTimeline log={quote.log} empty="ยังไม่มีประวัติ — จะบันทึกอัตโนมัติเมื่อมีการเปลี่ยนแปลง" />
             </div>
-          </div>
 
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400">ยอดเงิน</p>
-            <div className="mt-2 space-y-2 rounded-xl border border-slate-200 bg-white p-3 text-sm">
-              <div className="flex items-center justify-between gap-2">
-                <span className={muted}>ค่าจัดส่ง</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={quote.shippingCost}
-                  disabled={locked}
-                  onChange={(e) => patch({ shippingCost: Math.max(0, Number(e.target.value) || 0) })}
-                  className={`${inp} w-24 text-right`}
-                />
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className={muted}>ส่วนลด</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={quote.discount ?? 0}
-                  disabled={locked}
-                  onChange={(e) => patch({ discount: Math.max(0, Number(e.target.value) || 0) })}
-                  className={`${inp} w-24 text-right`}
-                />
-              </div>
-              <div className="flex items-center justify-between border-t border-slate-100 pt-2 text-base font-extrabold text-slate-900">
-                <span>ยอดรวม</span>
-                <span>{formatPrice(quoteTotal(quote))}</span>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400">ยืนราคาถึง</p>
-            <div className="mt-2 rounded-xl border border-slate-200 bg-white p-3">
-              <input
-                type="date"
-                value={quote.expiresAt ? quote.expiresAt.slice(0, 10) : ""}
-                disabled={locked}
-                onChange={(e) => patch({ expiresAt: e.target.value ? new Date(`${e.target.value}T23:59:59`).toISOString() : undefined })}
-                className={inp}
-              />
-              {left !== null && !locked && (
-                <p className={`mt-1 text-[11px] font-bold ${left < 0 ? "text-amber-600" : "text-slate-400"}`}>
-                  {left < 0 ? `หมดอายุมาแล้ว ${Math.abs(left)} วัน` : `เหลืออีก ${left} วัน`}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400">ลิงก์ให้ลูกค้าดู</p>
-            <div className="mt-2 rounded-xl border border-slate-200 bg-white p-3">
-              <p className="break-all rounded-lg bg-slate-50 px-2.5 py-2 font-mono text-[11px] text-slate-600 ring-1 ring-slate-200">
-                {customerUrl || "…"}
-              </p>
+            {!locked && (
               <button
                 type="button"
-                disabled={!customerUrl}
-                onClick={() => {
-                  navigator.clipboard?.writeText(customerUrl).catch(() => {});
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                  if (quote.status === "ร่าง")
-                    void persist(withQuoteLog({ ...quote, status: "ส่งให้ลูกค้าแล้ว" }, meName || "แอดมิน", "ส่งใบเสนอราคาให้ลูกค้า"));
-                }}
-                className={`mt-2 w-full rounded-xl px-3 py-2 text-xs font-bold text-white transition ${
-                  copied ? "bg-emerald-600" : "bg-amber-500 hover:bg-amber-600"
-                }`}
+                onClick={removeQuote}
+                className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
               >
-                {copied ? "✓ คัดลอกแล้ว" : "🔗 คัดลอกลิงก์ส่งลูกค้า"}
+                🗑 ลบใบเสนอราคานี้
               </button>
-              <p className={`mt-1.5 text-[10px] leading-relaxed ${faint}`}>
-                คัดลอกครั้งแรกจะเปลี่ยนสถานะเป็น “ส่งให้ลูกค้าแล้ว” · ลูกค้ากดตกลงเองได้จากลิงก์นี้
-              </p>
-            </div>
+            )}
           </div>
-
-          {quote.declineReason && (
-            <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 ring-1 ring-rose-200">
-              ไม่รับ — {quote.declineReason}
-            </p>
-          )}
-
-          {!locked && (
-            <button
-              type="button"
-              onClick={removeQuote}
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
-            >
-              🗑 ลบใบเสนอราคานี้
-            </button>
-          )}
         </div>
-      </div>
-
-      {/* ประวัติ */}
-      {(quote.log?.length ?? 0) > 0 && (
-        <div className="border-t border-slate-100 px-6 py-4">
-          <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400">ประวัติ</p>
-          <ul className="mt-2 space-y-1">
-            {[...(quote.log ?? [])].reverse().map((l, i) => (
-              <li key={i} className="text-[11px] text-slate-500">
-                <span className="font-bold text-slate-600">{l.by}</span> · {l.action}
-                {l.detail ? ` — ${l.detail}` : ""} ·{" "}
-                {new Date(l.at).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
       </div>
     </PageShell>
   );

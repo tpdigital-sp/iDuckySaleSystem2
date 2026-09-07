@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { formatPrice } from "@/lib/products";
-import { encodePriceLink, PRICE_LINK_PARAM } from "@/lib/price-link";
 import { daysLeft, priceLinkStatus, thaiDay } from "@/lib/price-links";
 import { getPriceLink, bumpPriceLinkOpened } from "@/lib/server/price-links-db";
 import { LINE_URL } from "@/components/LineButton";
+import OrderWithArtwork from "./OrderWithArtwork";
 
 /**
  * 🧾 การ์ดราคาที่ร้านจัดให้ลูกค้า — /p/<code>
@@ -50,7 +50,6 @@ export default async function PriceLinkPage({ params }: { params: Promise<{ code
 
   const status = priceLinkStatus(link);
   const left = daysLeft(link);
-  const orderHref = `${link.productPath}?${PRICE_LINK_PARAM}=${encodePriceLink(link.spec)}`;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -118,19 +117,14 @@ export default async function PriceLinkPage({ params }: { params: Promise<{ code
         {/* ปุ่มสั่ง / สถานะ */}
         <div className="border-t border-stone-100 px-5 py-5">
           {status === "ใช้ได้" ? (
-            <>
-              <a
-                href={orderHref}
-                className="block w-full rounded-full bg-amber-500 py-3.5 text-center text-sm font-extrabold text-white shadow-lg transition hover:bg-amber-600"
-              >
-                🛒 สั่งตามสเปคนี้
-              </a>
+            /* ปุ่มสั่งอยู่ในคอมโพเนนต์เดียวกับกล่องแนบลาย — ลิงก์ต้องคิดใหม่ทุกครั้งที่ลูกค้าวางไฟล์ */
+            <OrderWithArtwork productPath={link.productPath} spec={link.spec}>
               <p className="mt-2 text-center text-[11px] leading-relaxed text-stone-400">
                 กดแล้วระบบจะเปิดหน้าสินค้าที่ติ๊กตัวเลือกไว้ให้ครบ · ทางร้านยืนราคาตามใบนี้ถึง{" "}
                 <span className="font-bold text-stone-500">{thaiDay(link.expiresAt)}</span>
                 {left >= 0 && ` (อีก ${left} วัน)`}
               </p>
-            </>
+            </OrderWithArtwork>
           ) : (
             <div className="rounded-2xl bg-stone-100 p-4 text-center">
               <p className="text-sm font-bold text-stone-600">

@@ -27,6 +27,8 @@ export interface Quote {
   phone: string;
   address?: string;
   email?: string;
+  /** ผูกกับผู้ติดต่อในคลัง (เลือกจาก autocomplete ช่องชื่อ) — ตกลงแล้วแต้มเข้าคนนี้ตั้งแต่ออเดอร์แรก */
+  contactId?: string;
   /** วันที่ออกใบ (ข้อความไทยเหมือนออเดอร์) */
   date: string;
   items: OrderItem[];

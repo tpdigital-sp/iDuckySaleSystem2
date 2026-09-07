@@ -18,6 +18,7 @@
  */
 
 import Link from "next/link";
+import { useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import "./dashboard.css";
 
@@ -501,5 +502,118 @@ export function VTabs({ items, active, onPick }: { items: { key: string; label: 
         </button>
       ))}
     </div>
+  );
+}
+
+/* ── ชิ้นส่วนหน้ารายละเอียด (ออเดอร์ · ใบเสนอราคา) ────────
+   หน้าเอกสารใบเดียวใช้โครงเดียวกันหมด: แถบหัว → กริดสองคอลัมน์ (ซ้ายงาน · ขวาข้อมูล)
+   แต่ละกลุ่มมีหัวข้อขีดสี + การ์ดขอบซ้ายสีเดียวกัน — กวาดตาหาหัวข้อที่ต้องการได้เร็ว
+   ⚠️ เดิมชิ้นส่วนพวกนี้อยู่ในหน้าออเดอร์ไฟล์เดียว หน้าอื่นเลยลอกไม่ได้และดีไซน์เพี้ยนกันไปเรื่อย */
+
+/** ปุ่มงานรองบนแถบหัว — เงียบกว่าปุ่มขั้นถัดไป ตาจะได้ไม่ต้องเลือกระหว่างปุ่มน้ำหนักเท่ากันหลายอัน */
+export const HBTN =
+  "inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900";
+
+/** สีประจำกลุ่มข้อมูลในหน้ารายละเอียด */
+export const GTONE: Record<string, { text: string; bar: string; card: string }> = {
+  indigo: { text: "text-indigo-700", bar: "bg-indigo-400", card: "border-l-indigo-400" },
+  emerald: { text: "text-emerald-700", bar: "bg-emerald-400", card: "border-l-emerald-400" },
+  sky: { text: "text-sky-700", bar: "bg-sky-400", card: "border-l-sky-400" },
+  violet: { text: "text-violet-700", bar: "bg-violet-400", card: "border-l-violet-400" },
+  green: { text: "text-green-700", bar: "bg-green-500", card: "border-l-green-500" },
+  orange: { text: "text-orange-700", bar: "bg-orange-400", card: "border-l-orange-400" },
+  cyan: { text: "text-cyan-700", bar: "bg-cyan-400", card: "border-l-cyan-400" },
+  teal: { text: "text-teal-700", bar: "bg-teal-400", card: "border-l-teal-400" },
+  rose: { text: "text-rose-700", bar: "bg-rose-400", card: "border-l-rose-400" },
+  slate: { text: "text-slate-500", bar: "bg-slate-300", card: "border-l-slate-300" },
+};
+
+/** หัวข้อกลุ่ม: ขีดสี + ตัวหนังสือสีเดียวกับแถบซ้ายของการ์ดข้างล่าง */
+export function GH({ t, children }: { t: string; children: ReactNode }) {
+  const g = GTONE[t] ?? GTONE.slate;
+  return (
+    <p className={`flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.09em] ${g.text}`}>
+      <span className={`inline-block h-3 w-1 shrink-0 rounded-full ${g.bar}`} />
+      {children}
+    </p>
+  );
+}
+
+/** การ์ดของกลุ่ม — ขอบซ้ายสีเดียวกับหัวข้อ */
+export const soft = (t: string) => `rounded-xl border border-slate-200/70 border-l-4 ${(GTONE[t] ?? GTONE.slate).card} bg-white p-3`;
+
+/** ป้ายชื่อคนทำในไทม์ไลน์ประวัติ — ลูกค้า/กราฟฟิกแยกสีจากพนักงานคนอื่น */
+export function Actor({ by }: { by: string }) {
+  const tone =
+    by === "ลูกค้า"
+      ? "bg-sky-50 text-sky-700 ring-sky-200/70"
+      : by === "กราฟฟิก"
+        ? "bg-violet-50 text-violet-700 ring-violet-200/70"
+        : "bg-slate-100 text-slate-500 ring-slate-200/70";
+  return <span className={`mr-1.5 inline-block rounded-full px-2 py-0.5 align-[1px] text-[10px] font-bold ring-1 ${tone}`}>{by}</span>;
+}
+
+/** ปุ่มคัดลอกไปวางในแชท — บอกผลตรงปุ่ม ไม่ต้องเดาว่าคัดลอกติดไหม */
+export function CopyChip({ label, text }: { label: string; text: () => string }) {
+  const [ok, setOk] = useState<boolean | null>(null); // null = ยังไม่ได้กด
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text());
+          setOk(true);
+        } catch {
+          setOk(false);
+        }
+        setTimeout(() => setOk(null), 2000);
+      }}
+      className={`inline-flex min-h-[30px] items-center gap-1 rounded-full px-3 text-[11px] font-bold ring-1 transition ${
+        ok === true ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50"
+      }`}
+    >
+      {ok === true ? "✓ คัดลอกแล้ว — วางในแชทได้เลย" : ok === false ? "คัดลอกไม่ได้ — เลือกข้อความเอง" : `📋 ${label}`}
+    </button>
+  );
+}
+
+/** ไทม์ไลน์ประวัติการทำงาน — 3 บรรทัดล่าสุดก่อน กดกางดูทั้งหมด */
+export function LogTimeline({ log, empty }: { log?: { by: string; action: string; detail?: string; at: string }[]; empty: string }) {
+  const [open, setOpen] = useState(false);
+  if (!log?.length) return <p className="mt-2 text-xs text-slate-400">{empty}</p>;
+  return (
+    <>
+      <ul className="relative mt-3 space-y-4 border-l-2 border-slate-200 pl-4">
+        {[...log]
+          .reverse()
+          .slice(0, open ? undefined : 3)
+          .map((l, i) => (
+            <li key={i} className="relative">
+              <span
+                className={`absolute -left-[22px] top-1.5 h-2.5 w-2.5 rounded-full border-2 ${
+                  i === 0 ? "border-amber-500 bg-amber-500" : "border-slate-300 bg-white"
+                }`}
+              />
+              <p className="text-sm font-bold text-slate-700">
+                <Actor by={l.by} />
+                {l.action}
+              </p>
+              {l.detail && <p className="text-xs text-slate-500">{l.detail}</p>}
+              <p className="text-[11px] text-slate-400">
+                {new Date(l.at).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+              </p>
+            </li>
+          ))}
+      </ul>
+      {log.length > 3 && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="mt-2 w-full rounded-lg bg-slate-50 py-1.5 text-xs font-bold text-slate-500 ring-1 ring-slate-200 transition hover:bg-slate-100"
+        >
+          {open ? "หุบประวัติ ▴" : `ดูทั้งหมด ${log.length} รายการ ▾`}
+        </button>
+      )}
+    </>
   );
 }
