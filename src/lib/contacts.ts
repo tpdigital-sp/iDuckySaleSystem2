@@ -51,6 +51,14 @@ export type Contact = {
   /** สรุปออเดอร์ในระบบนี้ (ซิงก์อัตโนมัติ) */
   orders?: { count: number; lastAt?: string; lastId?: string; firstAt?: string; placedBy?: string };
   syncedAt?: string;
+  /** แต้มนับระดับ (หมุน 12 เดือน) — คิดระดับสมาชิกจากตัวนี้ ต่างจาก point ที่เป็นยอดสะสมตลอดชีพ */
+  tierPoints?: number;
+  tierPointsAt?: string;
+  /** วันที่คาดว่าจะลดระดับถ้าไม่มีการซื้อเพิ่ม (เครดิตหมด/แต้มก้อนเก่าหมดอายุ) */
+  tierExpiresAt?: string;
+  /** เครดิตระดับสำหรับลูกค้าเดิม — ค้ำระดับถึงวันนี้ (importedAt + 1 ปี) */
+  tierGraceUntil?: string;
+  tierGracePoints?: number;
   importedAt?: string;
   updatedAt?: string;
   updatedBy?: string;
@@ -112,9 +120,12 @@ export function normalizeContact(r: Record<string, unknown>, extra?: Partial<Con
   if (note) c.note = note;
   // ฟิลด์ที่ระบบซิงก์ให้ — ส่งผ่านตามเดิม (ฟอร์มแก้ไขไม่ยุ่ง แต่ต้องไม่หาย)
   if (Array.isArray(r.origins)) c.origins = r.origins.filter((o): o is ContactOrigin => typeof o === "string" && o in ORIGIN_LABEL);
-  for (const k of ["memberId", "channel", "picture", "memberSince", "syncedAt", "source", "importedAt", "updatedAt", "updatedBy"] as const) {
+  for (const k of ["memberId", "channel", "picture", "memberSince", "syncedAt", "source", "importedAt", "updatedAt", "updatedBy", "tierPointsAt", "tierExpiresAt", "tierGraceUntil"] as const) {
     const v = r[k];
     if (typeof v === "string" && v) (c as Record<string, unknown>)[k] = v;
+  }
+  for (const k of ["tierPoints", "tierGracePoints"] as const) {
+    if (typeof r[k] === "number") (c as Record<string, unknown>)[k] = r[k];
   }
   if (r.orders && typeof r.orders === "object") c.orders = r.orders as Contact["orders"];
   return { ...c, ...extra };

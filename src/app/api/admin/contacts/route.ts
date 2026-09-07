@@ -18,7 +18,7 @@ function cleanQuery(q: string) {
 
 /**
  * รายชื่อผู้ติดต่อ — ค้นหา + แบ่งหน้า (ค้นฝั่งเซิร์ฟเวอร์ เพราะมี ~28,000 ราย ส่งทั้งก้อนไม่ไหว)
- *   ?q=คำค้น (ชื่อ/เบอร์/ที่อยู่/รหัส) · ?origin=legacy|member|admin-order|guest-order · ?page=1 · ?limit=50 · ?sort=id|name|phone|address|point|rankStatus|rankExpiry&dir=asc|desc · ?type=customer|dealer · ?has=phone|point
+ *   ?q=คำค้น (ชื่อ/เบอร์/ที่อยู่/รหัส) · ?origin=… · ?tierMin=&tierMax= (ช่วงแต้มของระดับสมาชิก) · ?page=1 · ?limit=50 · ?sort=id|name|phone|address|point|rankStatus|rankExpiry&dir=asc|desc · ?type=customer|dealer · ?has=phone|point
  * ตอบ { contacts, total, page, pageSize, stats?, needsSetup? }
  */
 export async function GET(req: Request) {
@@ -33,6 +33,8 @@ export async function GET(req: Request) {
   const type = url.searchParams.get("type") ?? "";
   const has = url.searchParams.get("has") ?? "";
   const origin = url.searchParams.get("origin") ?? "";
+  const tierMin = url.searchParams.get("tierMin");
+  const tierMax = url.searchParams.get("tierMax");
   const withStats = url.searchParams.get("stats") === "1";
   const limit = Math.min(200, Math.max(10, Number(url.searchParams.get("limit")) || PAGE_SIZE));
   const sort = url.searchParams.get("sort") ?? "id";
@@ -51,6 +53,9 @@ export async function GET(req: Request) {
   if (has === "phone") query = query.neq("data->>phone", "");
   if (has === "point") query = query.gt("data->point", 0);
   if (origin) query = query.contains("data", { origins: [origin] });
+  // กรองตามระดับสมาชิก — ส่งช่วงแต้มมา (ระดับคิดจากยอดสะสม = แต้มระบบเดิม) เพราะ tier config อยู่ฝั่งหน้าจอ
+  if (tierMin != null && tierMin !== "") query = query.gte("data->tierPoints", Number(tierMin));
+  if (tierMax != null && tierMax !== "") query = query.lt("data->tierPoints", Number(tierMax));
 
   // เรียงตามหัวคอลัมน์ที่กด — ชื่อ/เบอร์/ที่อยู่ เรียงตามข้อความ · แต้ม เรียงตามตัวเลข · อื่น ๆ เรียงตามรหัส
   const SORT: Record<string, string> = { name: "data->>name", phone: "data->>phone", address: "data->>address", point: "data->point", rankExpiry: "data->>rankExpiry", rankStatus: "data->>rankStatus" };

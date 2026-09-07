@@ -36,7 +36,7 @@ import {
 
 type Stats = { total: number; withPhone: number; withPoint: number; dealers: number; legacy: number; member: number; adminOrder: number; guestOrder: number };
 type Filter = "" | "phone" | "point" | "dealer";
-type SortKey = "id" | "name" | "point" | "rankStatus" | "rankExpiry" | "phone" | "address";
+type SortKey = "id" | "name" | "point" | "rankExpiry" | "phone" | "address";
 
 /** คอลัมน์ตาราง — ลำดับ/ชื่อเหมือนตารางระบบเดิม ให้ทีมย้ายมาใช้ได้โดยไม่ต้องเรียนรู้ใหม่ */
 const COLS: { key: SortKey | "rank" | "actions"; label: string; sortable?: boolean; w?: string }[] = [
@@ -44,7 +44,6 @@ const COLS: { key: SortKey | "rank" | "actions"; label: string; sortable?: boole
   { key: "name", label: "ชื่อผู้ติดต่อ", sortable: true, w: "min-w-[9.5rem]" },
   { key: "point", label: "Point", sortable: true, w: "w-[4.75rem]" },
   { key: "rank", label: "Rank", w: "w-[6.5rem]" },
-  { key: "rankStatus", label: "สถานะ Rank", sortable: true, w: "w-[5.5rem]" },
   { key: "rankExpiry", label: "วันหมดอายุ", sortable: true, w: "w-[6rem]" },
   { key: "phone", label: "เบอร์โทร", sortable: true, w: "w-[7.25rem]" },
   { key: "address", label: "ที่อยู่", sortable: true, w: "min-w-[20rem]" },
@@ -90,6 +89,7 @@ export default function AdminContactsPage() {
 
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("");
+  const [tierId, setTierId] = useState<string>(""); // "" = ทุกระดับ
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   /** แท็บที่มา — "" = ทุกคน · ที่เหลือกรองตาม origins ของผู้ติดต่อ (คนเดียวอยู่ได้หลายแท็บ) */
@@ -137,6 +137,15 @@ export default function AdminContactsPage() {
         if (filter === "dealer") sp.set("type", "dealer");
         else if (filter) sp.set("has", filter);
         if (origin) sp.set("origin", origin);
+        if (tierId) {
+          const list = tiersOf(tiers);
+          const idx = list.findIndex((t) => t.id === tierId);
+          if (idx >= 0) {
+            sp.set("tierMin", String(list[idx].minSpend));
+            const nx = list[idx + 1];
+            if (nx) sp.set("tierMax", String(nx.minSpend));
+          }
+        }
         if (opts?.stats || !stats) sp.set("stats", "1");
         const res = await fetch(`/api/admin/contacts?${sp}`, { cache: "no-store" });
         const j = await res.json();
@@ -154,7 +163,7 @@ export default function AdminContactsPage() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [q, page, filter, limit, sort, dir, origin]
+    [q, page, filter, limit, sort, dir, origin, tierId, tiers]
   );
 
   useEffect(() => {
@@ -193,6 +202,10 @@ export default function AdminContactsPage() {
       setSort(k);
       setDir(k === "id" || k === "point" ? "desc" : "asc");
     }
+    setPage(1);
+  }
+  function pickTier(id: string) {
+    setTierId((cur) => (cur === id ? "" : id));
     setPage(1);
   }
   function pick(f: Filter) {
@@ -328,6 +341,28 @@ export default function AdminContactsPage() {
           <FChip on={filter === "point"} onClick={() => pick("point")} label="มีแต้มสะสม" count={stats?.withPoint} />
           <FChip on={filter === "dealer"} onClick={() => pick("dealer")} label="ตัวแทนจำหน่าย" count={stats?.dealers} />
         </TabRow>
+        <TabRow divider>
+          <span className="mr-1 self-center whitespace-nowrap text-[12px]" style={{ color: "var(--dk-faint)" }}>
+            ระดับ 🏅
+          </span>
+          <FChip on={tierId === ""} onClick={() => pickTier("")} label="ทุกระดับ" />
+          {tiersOf(tiers).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => pickTier(t.id)}
+              aria-pressed={tierId === t.id}
+              className="dkb-fchip"
+              style={
+                tierId === t.id
+                  ? { background: tierColor(t, tiersOf(tiers).indexOf(t)).gradient, color: "#fff", borderColor: "transparent" }
+                  : undefined
+              }
+            >
+              <span aria-hidden>{t.icon}</span> {t.name}
+            </button>
+          ))}
+        </TabRow>
       </FilterCard>
 
 
@@ -441,9 +476,8 @@ export default function AdminContactsPage() {
                     </span>
                   </td>
                   <td className="px-3 py-2.5 whitespace-nowrap">
-                    <TierPill tiers={tiers} spend={c.point} small />
+                    <TierPill tiers={tiers} spend={c.tierPoints ?? c.point} small />
                   </td>
-                  <td className="px-3 py-3">{c.rankStatus || "-"}</td>
                   <td className="px-3 py-3">{c.rankExpiry || "-"}</td>
                   <td className="dkb-num-sm px-3 py-3 whitespace-nowrap">{c.phone ? formatPhone(c.phone) : ""}</td>
                   <td className="px-3 py-3 leading-snug">{c.address}</td>
@@ -515,8 +549,8 @@ export default function AdminContactsPage() {
             {selected.orders?.placedBy && <KV k="พนักงานที่กรอก" v={selected.orders.placedBy} />}
             <KV k="ประเภท" v={selected.customerType === "dealer" ? "ตัวแทนจำหน่าย" : selected.customerType === "customer" ? "ลูกค้า" : "—"} />
             <KV k="แต้มสะสม (ระบบเดิม)" v={<span>{fmtN(selected.point ?? 0)} <Tag tone={selected.pointActive ? "mint" : "coral"}>{selected.pointActive ? "คำนวณคะแนน" : "ไม่คำนวณคะแนน"}</Tag></span>} />
-            <KV k="ระดับสมาชิก 🏅" v={<TierPill tiers={tiers} spend={selected.point ?? 0} />} />
-            {selected.rankStatus && <KV k="สถานะ Rank" v={selected.rankStatus} />}
+            <KV k="ระดับสมาชิก 🏅" v={<TierPill tiers={tiers} spend={selected.tierPoints ?? selected.point ?? 0} />} />
+            <KV k="แต้มนับระดับ (12 เดือน)" v={<span>{fmtN(Math.round(selected.tierPoints ?? 0))}{selected.tierExpiresAt ? <span className="ml-1 text-[12px]" style={{ color: "var(--dk-faint)" }}>· ลดระดับ {fmtDate(selected.tierExpiresAt)} หากไม่ซื้อเพิ่ม</span> : null}</span>} />
             {selected.rankExpiry && <KV k="วันหมดอายุ" v={selected.rankExpiry} />}
           </div>
           <div className="dkb-g mt-3 px-4 py-3">

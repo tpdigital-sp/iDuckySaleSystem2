@@ -38,6 +38,9 @@ export function tierColor(tier: { id: string }, index = 0): { gradient: string; 
   return { gradient: TIER_GRAD[k], pill: TIER_PILL[k] };
 }
 
+/** ระดับสมาชิกใช้ยอดสะสมแบบ "หมุน 12 เดือน" — จ่ายค้างไว้เกินช่วงนี้จะไม่นับ ทำให้ระดับลดเองเมื่อหยุดซื้อ */
+export const TIER_WINDOW_DAYS = 365;
+
 /** สถานะที่ถือว่า "จ่ายแล้ว" — นับเข้ายอดสะสม (ไม่นับ รอชำระ/รอตรวจสลิป/ยกเลิก) */
 const PAID_STATUSES: OrderStatus[] = ["ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ", "กำลังผลิต", "จัดส่งแล้ว", "เสร็จสิ้น"];
 
@@ -47,9 +50,26 @@ export function tiersOf(list?: Tier[] | null): Tier[] {
   return [...t].sort((a, b) => a.minSpend - b.minSpend);
 }
 
-/** ยอดสะสมของลูกค้า = ผลรวม orderTotal ของออเดอร์ที่จ่ายแล้ว */
-export function paidSpend(orders: Order[]): number {
-  return orders.filter((o) => PAID_STATUSES.includes(o.status)).reduce((s, o) => s + orderTotal(o), 0);
+/**
+ * ยอดสะสมของลูกค้า = ผลรวม orderTotal ของออเดอร์ที่จ่ายแล้ว
+ * ส่ง sinceDays มา = นับเฉพาะออเดอร์ในช่วงนั้น (ใช้กับระดับแบบหมุน 12 เดือน) · ไม่ส่ง = ตลอดชีพ
+ */
+export function paidSpend(orders: Order[], sinceDays?: number): number {
+  const cut = sinceDays ? Date.now() - sinceDays * 86400_000 : 0;
+  return orders
+    .filter((o) => PAID_STATUSES.includes(o.status))
+    .filter((o) => !cut || orderPaidTime(o) >= cut)
+    .reduce((s, o) => s + orderTotal(o), 0);
+}
+
+/**
+ * เวลาที่ถือว่าออเดอร์ "จ่าย" — ใช้ paidReportedAt / ผลตรวจสลิปก่อน
+ * ไม่มีเวลาที่อ่านได้ (ออเดอร์เก่าที่แอดมินกดจ่ายเอง) → ถือว่า "อยู่ในช่วง" ไว้ก่อน กันตัดระดับผิด
+ */
+function orderPaidTime(o: Order): number {
+  const t = o.paidReportedAt || o.slipVerify?.at || "";
+  const ms = Date.parse(t);
+  return isNaN(ms) ? Date.now() : ms;
 }
 
 /** ระดับปัจจุบันจากยอดสะสม (ระดับสูงสุดที่ยอดถึง) */

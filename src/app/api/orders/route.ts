@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import type { Order } from "@/lib/admin-data";
-import { paidSpend, tierForSpend, tierDiscountAmount, tiersOf, type Tier } from "@/lib/tiers";
+import { paidSpend, tierForSpend, tierDiscountAmount, tiersOf, TIER_WINDOW_DAYS, type Tier } from "@/lib/tiers";
 import { couponLabel, validateCoupon, type Coupon } from "@/lib/coupons";
 import { giftsFor, giftsToOrder, type GiftPromo, type OrderGift } from "@/lib/gifts";
 import { earlyPayAmount, earlyPayOf, EARLY_PAY_LABEL, type EarlyPayDiscount } from "@/lib/early-pay";
@@ -155,7 +155,7 @@ export async function POST(req: Request) {
     const configuredTiers = ((settRes.data?.data as { tiers?: Tier[] } | undefined)?.tiers ?? []).filter((t) => t.name?.trim());
     const tiers = tiersOf(configuredTiers.length ? configuredTiers : null);
     const myPaid = (ordRes.data ?? []).map((r) => r.data as Order).filter((o) => o.customerId === cid);
-    const tier = tierForSpend(paidSpend(myPaid), tiers);
+    const tier = tierForSpend(paidSpend(myPaid, TIER_WINDOW_DAYS), tiers); // ระดับแบบหมุน 12 เดือน
     tierAmount = tierDiscountAmount(subtotal, tier.discountPct);
     if (tierAmount > 0) tierLabel = `สมาชิก ${tier.name} (${tier.discountPct}%)`;
   }
