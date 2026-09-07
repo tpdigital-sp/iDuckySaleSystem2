@@ -12,8 +12,10 @@ import {
   type ReactNode,
 } from "react";
 import {
+  dealerRateOf,
   getProduct,
   migrateRenamedGroupKeys,
+  RATE_LABEL,
   repairRateFromOptions,
   repriceCartGroups,
   unitPriceFor,
@@ -21,6 +23,7 @@ import {
   type UnitPriceAddOn,
 } from "./products";
 import { fetchProductsByIds, fetchProductsByIdsChecked } from "./product-repo";
+import { useCustomer } from "./customer-context";
 
 export interface CartItem {
   key: string;
@@ -196,6 +199,32 @@ export function CartProvider({ children }: { children: ReactNode }) {
       // storage เต็มหรือถูกปิด — ข้ามการบันทึก
     }
   }, [state.items, state.hydrated]);
+
+  /**
+   * 🤝 ล้างเรทตัวแทนจำหน่ายออกจากตะกร้า เมื่อ "รู้แน่แล้ว" ว่าบัญชีนี้ไม่ใช่ตัวแทน (logout/สลับบัญชี)
+   * ถอดคีย์ "เรทราคา" ทิ้ง → ตัวคิดราคาเลือกเรท public ให้เอง ตะกร้ายังสั่งต่อได้ ไม่ไปตาย 400 ที่เซิร์ฟเวอร์
+   * ⚠️ ต้องรอ dealerReady — ตอนเช็คยังไม่จบ isDealer เป็น false ชั่วคราว ห้ามล้างของตัวแทนจริง
+   */
+  const { isDealer, dealerReady } = useCustomer();
+  useEffect(() => {
+    if (!state.hydrated || !dealerReady || isDealer) return;
+    let changed = false;
+    const merged = new Map<string, CartItem>();
+    for (const i of state.items) {
+      const p = productOf(i.productId);
+      let item = i;
+      if (p && dealerRateOf(p, i.selections)) {
+        const selections = { ...i.selections };
+        delete selections[RATE_LABEL];
+        item = { ...i, selections, key: cartItemKey(i.productId, selections) };
+        changed = true;
+      }
+      const ex = merged.get(item.key);
+      if (ex) ex.qty += item.qty; // คีย์ชนกับบรรทัดเดิม (สเปคเดียวกัน) = รวมจำนวน
+      else merged.set(item.key, { ...item });
+    }
+    if (changed) dispatch({ type: "hydrate", items: [...merged.values()] });
+  }, [state.hydrated, state.items, dealerReady, isDealer, productOf]);
 
   /**
    * ซิงก์ข้ามแท็บ — เปิดเว็บไว้หลายหน้า แล้วลบของในแท็บหนึ่ง แท็บอื่นต้องรู้ทันที

@@ -8,6 +8,7 @@ import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
 import { reportPaidToTP } from "@/lib/server/tp-report";
 import { cutStockForOrder } from "@/lib/server/stock";
 import { bumpSoldForOrder } from "@/lib/server/sold";
+import { awardPointsForOrder } from "@/lib/server/contact-points";
 
 export const runtime = "nodejs";
 
@@ -99,7 +100,8 @@ export async function POST(req: Request) {
    * เหลือไว้ให้ออเดอร์เก่า + ลูกค้าที่รู้โปรจากไลน์แล้วโอนน้อยกว่ายอดที่เห็นในเว็บ
    */
   let earlyPayAllowed = 0;
-  if (!order.earlyPay) {
+  // 🤝 ออเดอร์ตัวแทนจำหน่ายไม่มีส่วนลดโอนไว — ห้ามยอมรับสลิปที่โอนขาด ฿5/฿10
+  if (!order.earlyPay && !order.dealer) {
     try {
       const { data: settRow } = await sb.from("products").select("data").eq("id", "__shop_payment__").maybeSingle();
       earlyPayAllowed = earlyPayAmount(orderSubtotal(order), earlyPayOf(settRow?.data as { earlyPay?: EarlyPayDiscount } | undefined));
@@ -182,6 +184,8 @@ export async function POST(req: Request) {
     }
     if (!balancePhase) void cutStockForOrder(updated); // ตัดสต๊อกวัสดุที่ผูกไว้ (มัดจำ = เริ่มงานแล้วก็ตัดเลย)
     void bumpSoldForOrder(updated.id); // ยอด "ขายแล้ว" หน้าเว็บ (กันซ้ำในตัวเอง)
+    // 🦆 แต้มสะสม — บวกเมื่อชำระ "ครบ" เท่านั้น: ออเดอร์ปกติ = งวดเดียวจบ · มัดจำ = ตอนยอดคงเหลือครบ (idempotent)
+    if (!order.deposit || balancePhase) void awardPointsForOrder(updated);
   }
 
   return NextResponse.json({ ok: true, verified: verify.status === "pass" });

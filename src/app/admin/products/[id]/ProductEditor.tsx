@@ -162,6 +162,8 @@ type DraftOption = {
   /** 🧩 ชุดตัวเลือกที่กลุ่มนี้สังกัด (หัวกรอบบนหน้าสินค้า) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   section?: string;
   sectionTrim?: string;
+  /** 🧩 กรอบชุดเริ่มแบบหุบบนหน้าสินค้า — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  sectionClosed?: boolean;
   /** 🎯 ค่าเริ่มต้นตามกลุ่มคุม (เช่น ตามเรทราคา) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   defaultBy?: { label: string; map: Record<string, string> };
   /** 🎨 โชว์เป็นตารางสวอตช์สีบนหน้าร้าน (กลุ่ม multi ที่ตัวเลือกเยอะ เช่น สีไหม) */
@@ -272,7 +274,7 @@ type DraftPricing = {
 type DraftMixTier = { fromQty: string; baseFee: string; includedDesigns: string; extraFee: string; onePerUnit: boolean };
 const EMPTY_MIX_TIER: DraftMixTier = { fromQty: "", baseFee: "", includedDesigns: "", extraFee: "", onePerUnit: false };
 /** ข้อมูลกำกับเรทราคา (ชื่อ + เงื่อนไขการสั่ง + ภาพประจำเรท) — mixRule = ค่าคละเฉพาะเรท (ตั้งจากสคริปต์ หน้านี้แค่พาผ่านตอนบันทึก ไม่มี UI แก้) */
-type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; underMinPieceFee: string; freeMixBelowQty: string; imageSrc?: string; mixRule?: MixRule; minQtyScope?: "line" | "lot" };
+type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; underMinPieceFee: string; freeMixBelowQty: string; imageSrc?: string; mixRule?: MixRule; minQtyScope?: "line" | "lot"; /** 🤝 เรทเฉพาะตัวแทนจำหน่าย (ลูกค้าทั่วไปไม่เห็น) — ติ๊กได้เฉพาะเรทเพิ่มเติม ห้ามเป็นเรทแรก */ dealerOnly?: boolean };
 /** เรทเพิ่มเติม — มีช่วงจำนวน+ตารางราคาของตัวเอง (คอลัมน์/หน่วยใช้ร่วมกับเรทหลัก) */
 type DraftExtraRate = DraftRateMeta & {
   id: string;
@@ -610,6 +612,7 @@ function toDraft(p: Product): Draft {
       ...(o.priceAsDriver ? { priceAsDriver: o.priceAsDriver } : {}),
       ...(o.section ? { section: o.section } : {}),
       ...(o.sectionTrim ? { sectionTrim: o.sectionTrim } : {}),
+      ...(o.sectionClosed ? { sectionClosed: true } : {}),
       ...(o.priceAsDriverAlso && Object.keys(o.priceAsDriverAlso).length ? { priceAsDriverAlso: { ...o.priceAsDriverAlso } } : {}),
       ...(o.smallQtyFee
         ? {
@@ -740,6 +743,8 @@ function toDraft(p: Product): Draft {
       underMinPieceFee: r.underMinPieceFee != null ? String(r.underMinPieceFee) : "",
       freeMixBelowQty: r.freeMixBelowQty != null ? String(r.freeMixBelowQty) : "",
       minQtyScope: r.minQtyScope,
+      // 🤝 เรทเฉพาะตัวแทนจำหน่าย — ไม่พาผ่านตอนบันทึก = ธงหายเงียบ ๆ แล้วลูกค้าทั่วไปเห็นราคาตัวแทน
+      ...(r.dealerOnly ? { dealerOnly: true } : {}),
       ...(r.imageSrc ? { imageSrc: r.imageSrc } : {}),
       ...(r.mixRule ? { mixRule: r.mixRule } : {}),
       tiers: r.pricing.tiers.map((t) => ({ upTo: t.upTo == null ? "" : String(t.upTo), label: t.label })),
@@ -927,6 +932,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       ...(o.priceAsDriver ? { priceAsDriver: o.priceAsDriver } : {}),
       ...(o.section ? { section: o.section } : {}),
       ...(o.sectionTrim ? { sectionTrim: o.sectionTrim } : {}),
+      ...(o.sectionClosed ? { sectionClosed: true } : {}),
       ...(o.priceAsDriverAlso && Object.keys(o.priceAsDriverAlso).length ? { priceAsDriverAlso: { ...o.priceAsDriverAlso } } : {}),
       ...(Number.isFinite(Number(o.smallFee)) && Number(o.smallFee) !== 0 && String(o.smallFee ?? "").trim() !== "" && Number(o.smallUpTo) > 0
         ? {
@@ -4179,10 +4185,14 @@ export default function ProductEditor({ product }: { product: Product }) {
         ...(m.mixRule ? { mixRule: m.mixRule } : {}),
         // ขั้นต่ำนับที่ยอดรวมทั้งล็อต (ตั้งจากสคริปต์) — พาผ่านเหมือนกัน
         ...(m.minQtyScope ? { minQtyScope: m.minQtyScope } : {}),
+        // 🤝 เรทเฉพาะตัวแทนจำหน่าย — ลืมพาผ่าน = ธงหายตอนบันทึก แล้วลูกค้าทั่วไปเห็นราคาตัวแทน
+        ...(m.dealerOnly ? { dealerOnly: true } : {}),
       });
       const list: NonNullable<Product["priceRates"]> = [
         { id: "r1", ...metaOf(draft.rateMeta, "เรทที่ 1"), pricing },
       ];
+      // เรทแรกเป็นเรทตัวแทนไม่ได้ — ตารางเรทแรกถูกเซฟเป็น pricing หลักที่การ์ด/บอท/โค้ดเก่า fallback ไปหา
+      delete list[0].dealerOnly;
       draft.extraRates.forEach((r, i) => {
         const m = buildRateMatrix(r);
         if (m) list.push({ id: r.id, ...metaOf(r, `เรทที่ ${i + 2}`), pricing: m });
@@ -6413,6 +6423,21 @@ export default function ProductEditor({ product }: { product: Product }) {
                       )}
                     </span>
                   </div>
+                  {/* 🤝 เรทเฉพาะตัวแทนจำหน่าย — เฉพาะเรทเพิ่มเติม (เรทแรกเป็นตารางหลักที่ทุกอย่าง fallback ไปหา) */}
+                  {rateIdx > 0 && (
+                    <label
+                      className="flex items-center gap-1.5 text-xs font-semibold text-slate-500"
+                      title="ติ๊กแล้วเรทนี้เห็น/สั่งได้เฉพาะบัญชีในหน้า ตัวแทนจำหน่าย (/admin/dealers) — ลูกค้าทั่วไปไม่เห็นเรทนี้เลย ทั้งหน้าสินค้า การ์ด และบอทราคา"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!activeMeta.dealerOnly}
+                        onChange={(e) => patchActiveMeta({ dealerOnly: e.target.checked || undefined })}
+                        className="h-4 w-4 accent-teal-600"
+                      />
+                      🤝 เรทเฉพาะตัวแทนจำหน่าย (ลูกค้าทั่วไปไม่เห็น)
+                    </label>
+                  )}
                   <p className="w-full text-[11px] text-slate-400">
                     💡 เช่น เรท 2 สั่งรวม 50 ขึ้นไป + ลายละ 25 → สั่ง 50 {draft.pricing.unit || "ชิ้น"}คละได้ 2 ลายในราคา ·
                     ใส่ &quot;คละเกินโควตา ลายละ +฿&quot; (เช่น 10) = ลูกค้าเพิ่มลายเกินโควตาได้ โดยจ่ายเพิ่มลายละ 10 บาท · เว้นว่าง = คละเกินไม่ได้

@@ -7,6 +7,7 @@ import { LINE_URL } from "@/components/LineButton";
 import {
   activeMatrix,
   activeRate,
+  dealerRateOf,
   designCountOf,
   DESIGN_LABEL,
   feeBreakdown,
@@ -17,6 +18,7 @@ import {
   orderUnitYield,
   perUnitCapacity,
   productPath,
+  publicRates,
   qtyFromAreaOf,
   RATE_LABEL,
   unitYieldOf,
@@ -49,6 +51,7 @@ import {
 import GiftPanel from "@/components/GiftPanel";
 import GiftArtworkPicker from "@/components/GiftArtworkPicker";
 import { CART_NOTE_LABEL, useCart } from "@/lib/cart-context";
+import { useCustomer } from "@/lib/customer-context";
 import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import BoxFeeTag from "@/components/BoxFeeTag";
 import ProductVisual from "@/components/ProductVisual";
@@ -65,6 +68,8 @@ const SHIP_PICK_KEY = "iducky-shipping-pick-v1";
 
 export default function CartPage() {
   const { items, setQty, setNote, removeItem, addItem, clear, productOf, productGone } = useCart();
+  // 🤝 ตัวแทนจำหน่าย — ไม่ได้ของแถม และบรรทัดเรทตัวแทนไม่สลับเรทอัตโนมัติ
+  const { isDealer } = useCustomer();
   const router = useRouter();
   // สั่งเป็นออเดอร์ใหม่ หรือเพิ่มเข้าออเดอร์เดิม (ลูกค้ากดมาจากหน้าออเดอร์)
   const [appendTo, setAppendTo] = useState<AppendTarget | null>(null);
@@ -184,10 +189,13 @@ export default function CartPage() {
     // 📐 สินค้าขายเป็นพื้นที่ (qtyFromArea) — จำนวนล็อกตามขนาดที่กรอกไว้ตอนสั่ง ปรับในตะกร้าไม่ได้
     // ไม่งั้นเลี่ยงราคาได้: สั่ง 140×200 ซม. (คิด 3 ตร.ม.) แล้วมาลดเหลือ 1 ตร.ม. ที่นี่
     if (p && qtyFromAreaOf(p, item.selections) != null) return;
-    const rates = p?.priceRates ?? [];
+    // เรทตัวแทนจำหน่าย: สั่งได้ตั้งแต่ชิ้นแรก ไม่สลับลงเรทอื่น (และตัวสลับใช้เฉพาะเรท public
+    // จึงไม่มีทางสลับ "เข้า" เรทตัวแทนด้วย) — กติกาอื่น (โควตาคละ ฯลฯ) ยังทำงานตามปกติ
+    const dealerLine = p ? !!dealerRateOf(p, item.selections) : false;
+    const rates = p ? publicRates(p) : [];
     let rate = p ? activeRate(p, item.selections) : undefined;
     let selections = item.selections;
-    if (p && rates.length > 1 && rate && (rate.minQty ?? 1) > next) {
+    if (p && !dealerLine && rates.length > 1 && rate && (rate.minQty ?? 1) > next) {
       const fit = [...rates]
         .filter((r) => (r.minQty ?? 1) <= next)
         .sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
@@ -404,12 +412,14 @@ export default function CartPage() {
     return rows;
   })();
   const total = subtotal + shippingCost;
-  // 🎁 ของแถมฟรีที่ออเดอร์นี้ได้ (คิดจากรายการที่ติ๊กไว้)
-  const giftRows = giftsFor(
-    pickedItems.map((i) => ({ productId: i.productId, qty: i.qty, selections: i.selections })),
-    (id) => productOf(id)?.category,
-    giftPromos
-  );
+  // 🎁 ของแถมฟรีที่ออเดอร์นี้ได้ (คิดจากรายการที่ติ๊กไว้) — ตัวแทนจำหน่ายไม่ได้ของแถม
+  const giftRows = isDealer
+    ? []
+    : giftsFor(
+        pickedItems.map((i) => ({ productId: i.productId, qty: i.qty, selections: i.selections })),
+        (id) => productOf(id)?.category,
+        giftPromos
+      );
   const remainForFree = freeMin - subtotal;
 
   /** เมฆพื้นหลัง — ชุดเดียวกับหน้าแรก */

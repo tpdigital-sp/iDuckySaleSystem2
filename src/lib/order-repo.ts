@@ -2,6 +2,7 @@
 
 /** ชั้นเข้าถึงออเดอร์จริง (Supabase ตาราง orders ผ่าน API ฝั่งเซิร์ฟเวอร์) */
 import type { Order } from "./admin-data";
+import { getAccessToken } from "./customer-auth";
 import { PACK_SCAN_HEADER } from "./permissions";
 
 export interface CreateOrderInput {
@@ -29,9 +30,11 @@ export async function placeOrder(
   input: CreateOrderInput
 ): Promise<{ ok: boolean; orderId?: string; key?: string; coupon?: { applied: boolean; reason?: string }; error?: string }> {
   try {
+    // แนบ token เมื่อล็อกอิน — เซิร์ฟเวอร์ใช้ยืนยันสถานะตัวแทนจำหน่าย (ไม่มี token = ออเดอร์ปกติ)
+    const token = await getAccessToken().catch(() => null);
     const res = await fetch("/api/orders", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify(input),
     });
     const data = await res.json().catch(() => ({}));

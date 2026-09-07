@@ -265,8 +265,20 @@ async function minTable(): Promise<MinRow[]> {
     const rows = (data ?? [])
       .filter((r) => r.id && r.name && !String(r.category ?? "").startsWith("__") && r.hidden !== "true")
       .map((r) => {
-        const rates = ((r.rates ?? []) as { label?: string; minQty?: number; minQtyScope?: string; pricing?: { unit?: string } }[])
-          .map((x) => ({ label: x?.label ?? "", min: Number(x?.minQty ?? 0) || 0, unit: x?.pricing?.unit || "ชิ้น" }));
+        // 🤝 ตัดเรทตัวแทนจำหน่าย (dealerOnly) — เส้นตอบขั้นต่ำเป็นสาธารณะ เรท minQty 1 ของตัวแทน
+        // จะทำให้บอทตอบ "สั่ง 1 ชิ้นได้" ทั้งที่ลูกค้าทั่วไปสั่งไม่ได้
+        const rawRates = ((r.rates ?? []) as {
+          label?: string;
+          minQty?: number;
+          minQtyScope?: string;
+          dealerOnly?: boolean;
+          pricing?: { unit?: string };
+        }[]).filter((x) => !x?.dealerOnly);
+        const rates = rawRates.map((x) => ({
+          label: x?.label ?? "",
+          min: Number(x?.minQty ?? 0) || 0,
+          unit: x?.pricing?.unit || "ชิ้น",
+        }));
         const hard = Number(r.hardMin ?? 0) || 0;
         const mins = rates.map((x) => x.min).filter((n) => n > 0);
         return {
@@ -274,9 +286,9 @@ async function minTable(): Promise<MinRow[]> {
           name: String(r.name),
           url: `${SITE_URL}${productPath({ id: String(r.id), slug: (r as { slug?: string }).slug } as Product)}`,
           min: hard || (mins.length === rates.length && mins.length ? Math.min(...mins) : 0),
-          unit: ((r.rates ?? []) as { pricing?: { unit?: string } }[])[0]?.pricing?.unit || "ชิ้น",
+          unit: rawRates[0]?.pricing?.unit || "ชิ้น",
           rates,
-          lot: ((r.rates ?? []) as { minQtyScope?: string }[]).some((x) => x?.minQtyScope === "lot"),
+          lot: rawRates.some((x) => x?.minQtyScope === "lot"),
         };
       });
     minCache = { at: Date.now(), rows };
@@ -428,8 +440,9 @@ function columnText(m: PriceMatrix, key: string): string {
 
 /** ตารางราคาทุกเรทของสินค้า (สินค้าเรทเดียวห่อให้เป็นเรทเดียวเพื่อให้เดินลูปทางเดียวกัน) */
 function ratesOf(p: Product): { label: string; desc?: string; minQty?: number; matrix: PriceMatrix }[] {
-  if (p.priceRates?.length)
-    return p.priceRates.map((r) => ({ label: r.label, desc: r.desc, minQty: r.minQty, matrix: r.pricing }));
+  // 🤝 เรทตัวแทนจำหน่าย (dealerOnly) ห้ามหลุดออกทางบอทราคา — เส้นนี้เป็นสาธารณะ ไม่รู้ว่าใครถาม
+  const pub = (p.priceRates ?? []).filter((r) => !r.dealerOnly);
+  if (pub.length) return pub.map((r) => ({ label: r.label, desc: r.desc, minQty: r.minQty, matrix: r.pricing }));
   return p.pricing ? [{ label: "", matrix: p.pricing }] : [];
 }
 

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderTotal, withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
+import { dealerRateOf } from "@/lib/products";
+import { getProductServer } from "@/lib/products-server";
 
 export const runtime = "nodejs";
 
@@ -45,6 +47,21 @@ export async function POST(req: Request) {
       { error: `ออเดอร์นี้อยู่ในขั้น “${order.status}” แล้ว สั่งเพิ่มไม่ได้ — กรุณาสั่งเป็นออเดอร์ใหม่` },
       { status: 409 }
     );
+
+  // 🤝 รายการเรทตัวแทนจำหน่าย เพิ่มได้เฉพาะออเดอร์ตัวแทน (order.dealer) — กันคนถือ key ออเดอร์ธรรมดา
+  // ยัด label เรทตัวแทนใส่ selections แล้วได้ราคาตัวแทน
+  if (!order.dealer) {
+    for (const it of items) {
+      if (!it.productId || !it.sel) continue;
+      const p = await getProductServer(it.productId);
+      if (p && dealerRateOf(p, it.sel)) {
+        return NextResponse.json(
+          { error: "เรทตัวแทนจำหน่ายใช้ได้เฉพาะออเดอร์ของบัญชีตัวแทนจำหน่าย" },
+          { status: 400 }
+        );
+      }
+    }
+  }
 
   const merged = [...order.items, ...items];
   const newTotal = orderTotal({ ...order, items: merged }); // หักส่วนลด (ส่วนลดคิดจาก subtotal เดิม ไม่คิดซ้ำของที่สั่งเพิ่ม)

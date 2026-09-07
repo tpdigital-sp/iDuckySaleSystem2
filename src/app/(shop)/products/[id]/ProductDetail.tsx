@@ -60,6 +60,7 @@ import {
   perUnitCapacity,
   priceMatrixKey,
   priceRange,
+  publicRates,
   qtyFromAreaOf,
   PRODUCTS,
   RATE_LABEL,
@@ -106,6 +107,7 @@ import {
   type ProductTab,
 } from "@/lib/products";
 import { LINE_URL } from "@/components/LineButton";
+import { useCustomer } from "@/lib/customer-context";
 import { foldSizeExtra, specEntries } from "@/components/SpecLines";
 import {
   priceLinkUrl,
@@ -500,6 +502,14 @@ export default function ProductDetail({
   const [product, setProduct] = useState<Product>(initialProduct);
   const category = getCategory(product.category);
   const { addItem, removeItem, items: cartItems, productOf } = useCart();
+  /**
+   * 🤝 บัญชีตัวแทนจำหน่าย — สินค้าที่มีเรท dealerOnly จะโชว์เฉพาะเรทตัวแทน (ราคาตัวแทน)
+   * ลูกค้าทั่วไป/ยังเช็คไม่จบ เห็นเฉพาะเรท public เสมอ (ค่าเริ่มปลอดภัย — ISR วาดราคา public ก่อน
+   * แล้วสลับเป็นราคาตัวแทนหลัง useCustomer ยืนยันฝั่ง client)
+   */
+  const { isDealer } = useCustomer();
+  const dealerRates = useMemo(() => (product.priceRates ?? []).filter((r) => r.dealerOnly), [product]);
+  const dealerMode = isDealer && dealerRates.length > 0;
   const router = useRouter();
   const [imageIndex, setImageIndex] = useState(0);
   // แท็บข้อมูลสินค้า (รายละเอียดเพิ่มเติม / วิธีสั่งงาน ฯลฯ)
@@ -556,7 +566,8 @@ export default function ProductDetail({
       if (list.some((im, i) => srcAt(im, i) === src)) return;
       list.push({ emoji: product.emoji, gradient: product.gradient, label, src, ...(videoSrc ? { videoSrc } : {}) });
     };
-    for (const r of product.priceRates ?? []) add(r.imageSrc, r.label);
+    // เรทตัวแทนจำหน่ายไม่โผล่ในแกลเลอรีของลูกค้าทั่วไป (label ภาพหลุดชื่อเรทได้)
+    for (const r of isDealer ? (product.priceRates ?? []) : publicRates(product)) add(r.imageSrc, r.label);
     for (const opt of product.options ?? []) {
       // กลุ่มสวอตช์สี/แถบตัวอย่าง: รูปเป็นชิปเล็กไว้โชว์บนปุ่มเท่านั้น — เข้าแกลเลอรีแล้วขยายเบลอ
       // (แถมทะลัก 80 รูปจากสีไหม / 26 แถบจากฟอนต์) · ดูรูปเต็มได้จาก chartSrc ในกลุ่มนั้นแทน
@@ -568,7 +579,7 @@ export default function ProductDetail({
       }
     }
     return list;
-  }, [product]);
+  }, [product, isDealer]);
   const zoomList = useMemo(() => {
     // ช่องที่เป็นคลิปไม่เข้าลิสต์ซูม — กดขยายแล้วจะได้ภาพนิ่ง (โปสเตอร์) เฉย ๆ ทั้งที่ตั้งใจดูคลิป
     const srcs = galleryImages.map((img, i) =>
@@ -780,7 +791,12 @@ export default function ProductDetail({
   }, [initialProduct]);
 
   // ── หลายเรทราคา (เช่น พิน: คละดีเทล / ไม่คละดีเทล) ──
-  const rates = useMemo(() => product.priceRates ?? [], [product]);
+  // ตัวแทนจำหน่าย + สินค้ามีเรทตัวแทน = เห็น "เฉพาะ" เรทตัวแทน (ได้ราคาตัวแทนอย่างเดียว)
+  // คนอื่นเห็นเฉพาะเรท public — ทุกอย่างข้างล่าง (เลือกเรท/auto-pick/แผงเลือก/ตาราง) เดินตามลิสต์นี้เอง
+  const rates = useMemo(
+    () => (dealerMode ? dealerRates : publicRates(product)),
+    [product, dealerMode, dealerRates]
+  );
   const [rateLabel, setRateLabel] = useState("");
   // ลูกค้ากดเลือกเรทเอง = หยุดสลับอัตโนมัติ (เช่น ตั้งใจอยู่เรท 1 เพื่อคละดีเทล)
   const [rateTouched, setRateTouched] = useState(false);
@@ -851,7 +867,7 @@ export default function ProductDetail({
    * เรทที่ตั้งขั้นต่ำแบบนับทั้งล็อต — ใช้เขียนการ์ด "วิธีสั่งสินค้านี้" ฝั่งซ้าย
    * อ่านจากตัวสินค้าไม่ใช่เรทที่เลือกอยู่ ลูกค้าจะได้เห็นกติกาแม้กำลังดูเรทอื่น (เช่น ตร.ม.)
    */
-  const lotMinRate = (product.priceRates ?? []).find((r) => r.minQtyScope === "lot" && (r.minQty ?? 1) > 1);
+  const lotMinRate = rates.find((r) => r.minQtyScope === "lot" && (r.minQty ?? 1) > 1);
   /**
    * 🔒 จำนวนต่ำสุดที่กดลงได้ — ปกติคือ 1 (ร้านรับสั่งขั้นต่ำ 1 ชิ้นเสมอ)
    * สินค้าที่ตั้ง hardMinQty ใช้ขั้นต่ำของเรทที่เลือกเป็นพื้น เช่น สติ๊กเกอร์ UV เรท A3 = 3 แผ่น
@@ -1042,8 +1058,9 @@ export default function ProductDetail({
       }
       if (Object.keys(open).length) setOpenAddOns((s) => ({ ...s, ...open }));
     }
-    // เรทที่ไม่มีแล้ว (แอดมินลบทิ้ง) = ไม่ยัด ปล่อยให้ระบบเลือกเรทตามจำนวนเองตามปกติ
-    if (link.r && (product.priceRates ?? []).some((r) => r.label === link.r)) {
+    // เรทที่ไม่มีแล้ว (แอดมินลบทิ้ง) หรือเรทตัวแทนที่บัญชีนี้ไม่มีสิทธิ์ = ไม่ยัด ปล่อยให้ระบบเลือกเอง
+    // (เช็คกับ rates ที่กรองสิทธิ์แล้ว — กันลิงก์ราคา ?r=เรทตัวแทน แจกราคาตัวแทนให้คนทั่วไป)
+    if (link.r && rates.some((r) => r.label === link.r)) {
       setRateLabel(link.r);
       setRateTouched(true);
     }
@@ -1102,9 +1119,9 @@ export default function ProductDetail({
       }
       if (Object.keys(open).length) setOpenAddOns((s) => ({ ...s, ...open }));
     }
-    // เรทที่แอดมินลบทิ้งไปแล้ว = ไม่ยัด ปล่อยให้ระบบเลือกเรทตามจำนวนเองตามปกติ
+    // เรทที่แอดมินลบทิ้งไปแล้ว หรือเรทตัวแทนที่บัญชีนี้ไม่มีสิทธิ์ = ไม่ยัด ปล่อยให้ระบบเลือกเอง
     const savedRate = src[RATE_LABEL];
-    if (savedRate && (product.priceRates ?? []).some((r) => r.label === savedRate)) {
+    if (savedRate && rates.some((r) => r.label === savedRate)) {
       setRateLabel(savedRate);
       setRateTouched(true);
     }
@@ -4151,7 +4168,12 @@ export default function ProductDetail({
    * 🧩 กรอบ "ชุดตัวเลือก" ที่ลูกค้าหุบไว้ (คีย์ = ชื่อชุด) — เริ่มต้นกางทุกชุด
    * หุบแล้วหัวชุดยังบอกค่าที่เลือกไว้ครบ · ค่าที่เลือกไม่ได้หายไปไหน แค่ซ่อนการแสดงผล
    */
-  const [closedSections, setClosedSections] = useState<Record<string, boolean>>({});
+  const [closedSections, setClosedSections] = useState<Record<string, boolean>>(() => {
+    // ชุดที่ติดธง sectionClosed = เริ่มแบบหุบ (ติ่งห้อยชิ้นที่ 1-9 กางหมดแล้วหน้ายาวมาก)
+    const init: Record<string, boolean> = {};
+    for (const o of product.options ?? []) if (o.section && o.sectionClosed) init[o.section] = true;
+    return init;
+  });
   const optionBlocks = useMemo(() => {
     const blocks: { section?: string; inputs?: boolean; items: { opt: ProductOption; i: number }[] }[] = [];
     visibleOptions.forEach((opt, i) => {
@@ -5137,6 +5159,11 @@ export default function ProductDetail({
                   💡 เรทราคา {formatPriceRange(product)} ขึ้นกับตัวเลือกที่เลือก
                 </p>
               )
+            )}
+            {dealerMode && (
+              <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-teal-50 px-3 py-1 text-[11px] font-bold text-teal-700 ring-1 ring-teal-200">
+                🤝 ราคาตัวแทนจำหน่าย — ไม่ร่วมส่วนลด/คูปอง/ของแถม
+              </p>
             )}
           </div>
 

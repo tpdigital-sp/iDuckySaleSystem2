@@ -76,6 +76,8 @@ export type Perm =
   | "settings.manage"
   /** จัดการคูปอง — สร้าง/แจก/ดูสถานะ */
   | "coupons.manage"
+  /** จัดการบัญชีตัวแทนจำหน่าย — เพิ่ม/ถอดบัญชีที่เห็นราคาเรทตัวแทน */
+  | "dealers.manage"
   /** กำหนดบทบาท/แผนก/สถานะให้พนักงาน (ตั้งหรือแก้ระดับ Administrator ได้เฉพาะผู้ดูแลระบบ) */
   | "staff.manage";
 
@@ -92,6 +94,7 @@ const STAFF_ADMIN: Perm[] = [
   "products.view",
   "products.import",
   "coupons.manage",
+  "dealers.manage",
   "staff.manage",
   // เปิดหน้า "ตั้งค่าระบบ" ให้ฝ่ายแอดมิน (14 ส.ค. 69) — แท็บอ่อนไหว (บัญชีรับเงิน/บทบาท/Google) ยังล็อกเฉพาะผู้ดูแลระบบในหน้า
   "settings.manage",
@@ -205,6 +208,7 @@ export const ALL_PERMS: Perm[] = [
   "presets.manage",
   "settings.manage",
   "coupons.manage",
+  "dealers.manage",
   "staff.manage",
 ];
 
@@ -247,6 +251,7 @@ export const PERM_INFO: { group: string; perms: { perm: Perm; label: string }[] 
     perms: [
       { perm: "presets.manage", label: "จัดการคลังตัวเลือกกลาง" },
       { perm: "coupons.manage", label: "สร้าง/แจก/ยกเลิกคูปองส่วนลด" },
+      { perm: "dealers.manage", label: "จัดการบัญชีตัวแทนจำหน่าย (เห็นราคาเรทตัวแทน)" },
       { perm: "settings.manage", label: "ตั้งค่าระบบ — ข้อมูลร้าน บัญชี ค่าส่ง ระดับสมาชิก คูปองต้อนรับ" },
       { perm: "staff.manage", label: "กำหนดบทบาท/แผนกให้พนักงาน (ตั้งระดับผู้ดูแลระบบได้เฉพาะผู้ดูแลระบบ)" },
     ],

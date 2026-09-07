@@ -264,6 +264,11 @@ export interface ProductOption {
    */
   sectionTrim?: string;
   /**
+   * 🧩 กรอบชุดนี้ "หุบไว้ก่อน" ตอนเปิดหน้า (หัวชุดยังโชว์ค่าที่เลือกครบ กดกางได้)
+   * — ชุดที่ซ้ำ ๆ กันหลายชุด (ติ่งห้อยชิ้นที่ 1-9) กางหมดแล้วหน้ายาวมาก
+   */
+  sectionClosed?: boolean;
+  /**
    * 🎯 ค่าเริ่มต้นของกลุ่มนี้ผูกกับค่าของกลุ่มอื่น — ลูกค้าเปลี่ยนค่ากลุ่มคุมเมื่อไหร่
    * กลุ่มนี้รีเซ็ตเป็นค่าเริ่มต้นของค่านั้น (ที่เลือกไว้ก่อนหน้าไม่เกี่ยว เริ่มใหม่ตามกลุ่มคุม)
    * เช่น อะคริลิคประกบ: "รับตะขอไหม" ตั้ง { label: "เรทราคา", map: { "สแตนดี้…": "ไม่รับตะขอ" } }
@@ -1698,6 +1703,11 @@ export interface PriceRate {
    * ไดคัท 100% ลายละ 5 · SET-KIT ลายละ 20 (ตรรกะเดียวกับสติ๊กเกอร์ไดคัท 100%/50%)
    */
   mixRule?: MixRule;
+  /**
+   * 🤝 เรทเฉพาะตัวแทนจำหน่าย — เห็น/สั่งได้เฉพาะบัญชีที่อยู่ในทะเบียนตัวแทน (__dealers__)
+   * ห้ามถูก auto-pick ให้ลูกค้าทั่วไป และห้ามเป็นเรทแรก (เรทแรกถูกเซฟเป็น pricing หลักที่ทุกอย่าง fallback)
+   */
+  dealerOnly?: boolean;
   pricing: PriceMatrix;
 }
 
@@ -4722,11 +4732,28 @@ export function formatPrice(n: number): string {
   return `฿${n.toLocaleString("th-TH", opts)}`;
 }
 
-/** เรทที่ลูกค้าเลือกอยู่ (จาก selections) — ไม่เจอ/ไม่ได้เลือก = เรทแรก · สินค้าไม่มีหลายเรท = undefined */
+/** เรทที่ลูกค้าทั่วไปเห็นได้ (ตัดเรทเฉพาะตัวแทนจำหน่ายออก) */
+export function publicRates(p: Product): PriceRate[] {
+  return (p.priceRates ?? []).filter((r) => !r.dealerOnly);
+}
+
+/**
+ * บรรทัดนี้เลือกเรทตัวแทนจำหน่ายอยู่ไหม — ใช้ตัดสินว่าเป็น "บรรทัดตัวแทน"
+ * (ห้ามโดนรวมล็อต/สลับเรทอัตโนมัติไปปนกับเรท public และฝั่งเซิร์ฟเวอร์ใช้เช็คสิทธิ์)
+ */
+export function dealerRateOf(p: Product, selections: Record<string, string>): PriceRate | undefined {
+  const label = selections[RATE_LABEL];
+  if (!label) return undefined;
+  return (p.priceRates ?? []).find((r) => r.dealerOnly && r.label === label);
+}
+
+/** เรทที่ลูกค้าเลือกอยู่ (จาก selections) — ไม่เจอ/ไม่ได้เลือก = เรท public แรก · สินค้าไม่มีหลายเรท = undefined */
 export function activeRate(p: Product, selections: Record<string, string>): PriceRate | undefined {
   const rs = p.priceRates;
   if (!rs?.length) return undefined;
-  return rs.find((r) => r.label === selections[RATE_LABEL]) ?? rs[0];
+  // จับคู่ label กับทุกเรท (รวมเรทตัวแทน — บรรทัดตัวแทนในตะกร้า/ออเดอร์ต้องคิดราคาเรทนั้น)
+  // แต่ fallback ห้ามตกไปเรทตัวแทน ไม่งั้นลูกค้าทั่วไปได้ราคาตัวแทนโดยไม่ได้เลือก
+  return rs.find((r) => r.label === selections[RATE_LABEL]) ?? rs.find((r) => !r.dealerOnly) ?? rs[0];
 }
 
 /** ตารางราคาที่ใช้จริงตามเรทที่เลือก — สินค้าเรทเดียวคืน pricing เดิม */
@@ -4789,16 +4816,17 @@ export function priceRange(p: Product): { min: number; max: number } {
    * เอามารวมช่วงราคาจะได้ "฿1 – ฿40" ซึ่งอ่านผิดความหมาย — ใช้เฉพาะคอลัมน์ราคาก้อนแรก
    * (= ราคาต่อชิ้นของลายที่ไม่เกินพื้นที่ก้อนแรก คือราคาเริ่มต้นจริง ๆ ของงาน)
    */
+  // ราคาเรทตัวแทนจำหน่ายไม่นับเข้าช่วงราคาที่โชว์สาธารณะ (การ์ด/priceMin/priceMax)
   const ap = p.areaPricing;
   if (ap?.enabled) {
     const base = [
-      ...(p.priceRates ?? []).flatMap((r) => r.pricing.cells[ap.baseColumn] ?? []),
+      ...publicRates(p).flatMap((r) => r.pricing.cells[ap.baseColumn] ?? []),
       ...(p.pricing?.cells[ap.baseColumn] ?? []),
     ].filter((n) => n > 0);
     if (base.length) return { min: Math.min(...base), max: Math.max(...base) };
   }
-  if (p.priceRates?.length) {
-    const all = p.priceRates.flatMap((r) => Object.values(r.pricing.cells).flat()).filter((n) => n > 0);
+  if (publicRates(p).length) {
+    const all = publicRates(p).flatMap((r) => Object.values(r.pricing.cells).flat()).filter((n) => n > 0);
     if (all.length) return { min: Math.min(...all), max: Math.max(...all) };
   }
   if (p.pricing) {
@@ -5087,8 +5115,9 @@ export interface GroupReprice {
 
 /** เรทที่จำนวน qty เข้าเงื่อนไข minQty สูงสุด (กติกาเดียวกับ ProductDetail) — ไม่มีหลายเรท = undefined */
 function pickRateForQty(p: Product, qty: number): PriceRate | undefined {
-  const rs = p.priceRates;
-  if (!rs?.length) return undefined;
+  // เรทตัวแทนจำหน่ายห้ามถูกหยิบอัตโนมัติ (ต้องมาจาก selections ของบัญชีตัวแทนเท่านั้น)
+  const rs = publicRates(p);
+  if (!rs.length) return undefined;
   return [...rs].filter((r) => (r.minQty ?? 1) <= qty).sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0] ?? rs[0];
 }
 
@@ -5106,13 +5135,15 @@ export function isRetailRateLine(
   qty: number,
   mergedRateLabel?: string
 ): boolean {
-  const rs = p.priceRates ?? [];
+  // ปลีก/ส่งตัดสินด้วยเกณฑ์เรท public เสมอ — เรทตัวแทน minQty 1 ห้ามพลิกให้ 1 ชิ้นกลายเป็น "ขายส่ง"
+  // (บรรทัดตัวแทนใช้จำนวนจริงเทียบเกณฑ์ public: 1 ชิ้นส่งแบบปลีก · 200 ชิ้นเด้งกล่องใหญ่ตามจริง)
+  const rs = publicRates(p);
   if (!rs.length) return true; // ไม่มีเรทส่ง = ราคาเดียวตลอด ไม่มีอะไรให้ขยับ
   // ตะกร้าสรุปเรทจาก "ยอดรวมล็อต" มาแล้ว = เข้าเรทส่งแน่ (บรรทัดเดี่ยวอาจยังไม่ถึงขั้นต่ำ แต่รวมกันแล้วถึง)
   if (mergedRateLabel && rs.some((r) => r.label === mergedRateLabel)) return false;
   // สินค้าที่ล็อกให้เลือกเรทเอง (hardMinQty) — ยึดเรทที่ลูกค้าเลือกไว้ เทียบกับขั้นต่ำของเรทนั้น
   const picked = p.hardMinQty ? activeRate(p, selections) : undefined;
-  if (picked) return (picked.minQty ?? 1) > qty;
+  if (picked && !picked.dealerOnly) return (picked.minQty ?? 1) > qty;
   return !rs.some((r) => (r.minQty ?? 1) <= qty);
 }
 
@@ -5136,7 +5167,8 @@ function ratePoolsFor(
   entries: { qty: number; designs: number; perUnit?: number }[]
 ): (PriceRate | undefined)[] {
   const out: (PriceRate | undefined)[] = entries.map(() => undefined);
-  const rs = p.priceRates ?? [];
+  // เรทตัวแทนจำหน่ายไม่เข้าการแบ่งกลุ่มอัตโนมัติ — บรรทัดตัวแทนถูกแยก pool ไว้ก่อนถึงตัวนี้
+  const rs = publicRates(p);
   if (!rs.length) return out;
   const taken = entries.map(() => false);
   for (const r of [...rs].sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))) {
@@ -5191,7 +5223,8 @@ function lineMergeable(p: Product, selections: Record<string, string>, qty: numb
   if (p.custom?.enabled && !customPriced && (selections[p.custom.label] ?? "").trim()) return false;
   if (needsQuote(p, selections)) return false;
   // ออเดอร์ปลีกคละอิสระ (ลายเกินโควตาต่อลายในช่วงปลีก) = จ่ายราคาปลีกตามเดิม ไม่นับรวมล็อตผลิต
-  const r = p.hardMinQty ? activeRate(p, selections) : pickRateForQty(p, qty);
+  // บรรทัดเรทตัวแทน: ยึดเรทตัวแทนที่เลือกไว้เสมอ ไม่ให้ pickRateForQty สลับไปเรท public
+  const r = dealerRateOf(p, selections) ?? (p.hardMinQty ? activeRate(p, selections) : pickRateForQty(p, qty));
   if (usesFreeMixRetail(r, qty, designCountOf(selections), perUnitCapacity(p, selections) ?? 1)) return false;
   return true;
 }
@@ -5290,6 +5323,8 @@ export function repairRateFromOptions(p: Product, selections: Record<string, str
   const rates = p.priceRates ?? [];
   const cur = selections[RATE_LABEL];
   if (rates.length < 2 || !cur) return selections;
+  // บรรทัดเรทตัวแทนจำหน่าย: ไม่แตะ (เรทตัวแทนไม่ถูกอ้างในเงื่อนไข showWhen ของกลุ่มสเปค)
+  if (dealerRateOf(p, selections)) return selections;
   const wanted = new Set<string>();
   for (const opt of p.options ?? []) {
     if (!(selections[opt.label] ?? "").trim()) continue; // ไม่มีค่า = ไม่ใช่หลักฐาน
@@ -5302,6 +5337,8 @@ export function repairRateFromOptions(p: Product, selections: Record<string, str
   if (wanted.size !== 1) return selections;
   const only = [...wanted][0];
   if (only === cur || !rates.some((r) => r.label === only)) return selections;
+  // ห้ามซ่อมให้กลายเป็นเรทตัวแทนจำหน่าย (ลูกค้าทั่วไปต้องไม่ได้เรทนี้จากการซ่อมอัตโนมัติ)
+  if (rates.some((r) => r.dealerOnly && r.label === only)) return selections;
   return { ...selections, [RATE_LABEL]: only };
 }
 
@@ -5351,23 +5388,37 @@ export function repriceCartGroups(
     if (p.hardMinQty || !p.priceRates?.length) {
       pools = [{ rate: p.hardMinQty ? activeRate(p, lines[idxs[0]].selections) : undefined, idxs: [...idxs] }];
     } else {
+      // บรรทัดเรทตัวแทนจำหน่าย: ล็อกเรทตามที่เลือกไว้ รวมกลุ่มกันเองตามเรท (หลายบรรทัดยังรวม tier ได้)
+      // ห้ามเข้า ratePoolsFor — ไม่งั้นโดนย้ายไปเรท public ตอนยอดถึงขั้นต่ำเรทส่ง
+      const dealerPools = new Map<string, { rate: PriceRate; idxs: number[] }>();
+      const restIdxs: number[] = [];
+      for (const idx of idxs) {
+        const dr = dealerRateOf(p, lines[idx].selections);
+        if (!dr) {
+          restIdxs.push(idx);
+          continue;
+        }
+        const cur = dealerPools.get(dr.label);
+        if (cur) cur.idxs.push(idx);
+        else dealerPools.set(dr.label, { rate: dr, idxs: [idx] });
+      }
       const assigned = ratePoolsFor(
         p,
-        idxs.map((i) => ({
+        restIdxs.map((i) => ({
           qty: lines[i].qty,
           designs: designCountOf(lines[i].selections),
           perUnit: perUnitCapacity(p, lines[i].selections) ?? 1,
         }))
       );
       const byLabel = new Map<string, { rate: PriceRate; idxs: number[] }>();
-      idxs.forEach((idx, n) => {
+      restIdxs.forEach((idx, n) => {
         const r = assigned[n];
         if (!r) return; // ไม่เข้าเรทไหน → คงราคาเดี่ยวตามตั้งต้น
         const cur = byLabel.get(r.label);
         if (cur) cur.idxs.push(idx);
         else byLabel.set(r.label, { rate: r, idxs: [idx] });
       });
-      pools = [...byLabel.values()];
+      pools = [...dealerPools.values(), ...byLabel.values()];
     }
 
     for (const pool of pools) {
@@ -5480,7 +5531,7 @@ export function lotShortfalls(
     if (!p) continue;
     const sel = backfillShowWhen(p, l.selections);
     if (!lineMergeable(p, sel, l.qty)) continue;
-    const rate = p.hardMinQty ? activeRate(p, sel) : pickRateForQty(p, l.qty);
+    const rate = dealerRateOf(p, sel) ?? (p.hardMinQty ? activeRate(p, sel) : pickRateForQty(p, l.qty));
     if (rate?.minQtyScope !== "lot" || !rate.minQty || rate.minQty <= 1) continue;
     const key = groupKeyOf(p, sel);
     const cur = groups.get(key);
@@ -5554,7 +5605,9 @@ export function lotPreviewFor(
   // บรรทัดที่ "ใช้สิทธิ์คละอิสระช่วงปลีก" (ลายเกินโควตาต่อลาย) → คิดราคาปลีกแยก แต่บอกเกณฑ์เริ่มรวมให้รู้
   // พรีวิวราคาคิดที่ "สั่งขั้นต่ำที่เริ่มรวมได้" = จำนวนถึงโควตาลาย (ลาย × ลายละ) แทนจำนวนที่เลือกอยู่
   const myDesigns = Math.max(1, designs);
-  const rNow = product.hardMinQty ? activeRate(product, selections) : pickRateForQty(product, qty);
+  // บัญชีตัวแทนจำหน่าย: เรทล็อกตามที่เลือก ไม่ผ่านการแบ่งกลุ่มเรทอัตโนมัติ
+  const dealerR = dealerRateOf(product, selections);
+  const rNow = dealerR ?? (product.hardMinQty ? activeRate(product, selections) : pickRateForQty(product, qty));
   const myPerUnit = perUnitCapacity(product, selections) ?? 1;
   const retailLine = usesFreeMixRetail(rNow, qty, myDesigns, myPerUnit);
   // จำนวนที่ต้องสั่งถึงจะรวมล็อตได้ = ชิ้นที่ต้องใช้ (ลาย × ลายละ) หารชิ้นต่อหน่วย ปัดขึ้น
@@ -5574,8 +5627,8 @@ export function lotPreviewFor(
     })),
     { qty: lineQty, designs: myDesigns, perUnit: myPerUnit },
   ];
-  const assigned = product.hardMinQty ? undefined : ratePoolsFor(product, entries);
-  const rate = product.hardMinQty ? activeRate(product, selections) : assigned![entries.length - 1];
+  const assigned = product.hardMinQty || dealerR ? undefined : ratePoolsFor(product, entries);
+  const rate = dealerR ?? (product.hardMinQty ? activeRate(product, selections) : assigned![entries.length - 1]);
   // มีหลายเรทแต่บรรทัดนี้ไม่เข้าเรทไหนเลย (เช่น ลายเยอะเกินโควตาทุกเรท) = ไม่มีอะไรให้รวม
   if (!rate && (product.priceRates?.length ?? 0) > 0) return undefined;
   // จำนวนลายนับเฉพาะกลุ่มเรทเดียวกัน (กลุ่มอื่นคนละเงื่อนไข ไม่เกี่ยวกับโควตาลายของบรรทัดนี้)

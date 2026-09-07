@@ -85,7 +85,8 @@ export default function CheckoutPage() {
   // สินค้าที่ยืนยันแล้วว่าถูกลบจากร้าน = ห้ามหลุดเข้าออเดอร์ (หน้าตะกร้าโชว์ป้ายบอกให้ลบอยู่แล้ว)
   const items = allItems.filter((i) => !unpicked.includes(i.key) && !productGone(i.productId));
   const totalQty = items.reduce((sum, i) => sum + i.qty, 0);
-  const { customer } = useCustomer();
+  // 🤝 ตัวแทนจำหน่าย: ได้ราคาเรทตัวแทนอย่างเดียว — ไม่คิดส่วนลดสมาชิก/คูปอง/โอนไว/ของแถม (ตรงกับเซิร์ฟเวอร์)
+  const { customer, isDealer } = useCustomer();
   const [payment, setPayment] = useState<ShopPayment>(EMPTY_PAYMENT);
 
   /* 📦 ค่ากล่อง/ค่าแพ็คอัตโนมัติ (เช่น งานโปสเตอร์/ขนาด A3 +30) — คิด "ครั้งเดียวต่อออเดอร์"
@@ -214,11 +215,14 @@ export default function CheckoutPage() {
   useEffect(() => setGiftArt(readGiftArtwork()), []);
 
   // 🎁 ของแถมฟรีตามจำนวนชิ้น — โชว์ให้ลูกค้าเห็นก่อนกดสั่ง (เซิร์ฟเวอร์คิดใหม่เองตอนสร้างออเดอร์)
-  const giftRows = giftsFor(
-    items.map((i) => ({ productId: i.productId, qty: i.qty, selections: i.selections })),
-    (id) => productOf(id)?.category,
-    giftPromosOf(payment)
-  ).filter((g) => g.earned > 0);
+  // ตัวแทนจำหน่ายไม่ได้ของแถม (ได้ราคาตัวแทนอย่างเดียว — ตรงกับที่เซิร์ฟเวอร์ข้ามบล็อกของแถม)
+  const giftRows = isDealer
+    ? []
+    : giftsFor(
+        items.map((i) => ({ productId: i.productId, qty: i.qty, selections: i.selections })),
+        (id) => productOf(id)?.category,
+        giftPromosOf(payment)
+      ).filter((g) => g.earned > 0);
 
   // 📦 สินค้าที่คิดค่าส่งตามจำนวนชิ้น (คิดแบบเดียวกับหน้าตะกร้า — สองหน้าต้องได้เลขเดียวกัน)
   const qtyShipCalc = (() => {
@@ -269,14 +273,14 @@ export default function CheckoutPage() {
   // ── ส่วนลดระดับสมาชิก (โชว์เป็นตัวอย่าง — เซิร์ฟเวอร์คิดจริงตอนสร้างออเดอร์) ──
   const [tier, setTier] = useState<{ name: string; icon: string; pct: number } | null>(null);
   useEffect(() => {
-    if (!customer || appendTo) { setTier(null); return; } // สั่งเพิ่มไม่คิดส่วนลดใหม่
+    if (!customer || appendTo || isDealer) { setTier(null); return; } // สั่งเพิ่ม/ตัวแทนไม่คิดส่วนลดใหม่
     (async () => {
       const [ordRes, sett] = await Promise.all([fetchMyOrders(), fetchShopPayment()]);
       const spend = paidSpend(ordRes.orders);
       const t = tierForSpend(spend, tiersConfigOf(sett));
       setTier(t.discountPct > 0 ? { name: t.name, icon: t.icon, pct: t.discountPct } : null);
     })();
-  }, [customer, appendTo]);
+  }, [customer, appendTo, isDealer]);
 
   const tierDiscount = tier ? tierDiscountAmount(subtotal, tier.pct) : 0;
 
@@ -334,14 +338,14 @@ export default function CheckoutPage() {
 
   // เลือกส่วนลดที่ดีกว่า (ระดับ vs คูปอง) — ตรงกับที่เซิร์ฟเวอร์คิด
   // โหมดพนักงานสั่งแทน: ไม่คิดส่วนลดสมาชิก/คูปองของพนักงานเอง (ออเดอร์เป็นของลูกค้า)
-  const couponDisc = staffMode ? 0 : (couponPreview?.discount ?? 0);
-  const effTierDiscount = staffMode ? 0 : tierDiscount;
+  const couponDisc = staffMode || isDealer ? 0 : (couponPreview?.discount ?? 0);
+  const effTierDiscount = staffMode || isDealer ? 0 : tierDiscount;
   const useCoupon = couponDisc > effTierDiscount;
   const discount = Math.max(effTierDiscount, couponDisc);
   // ⚡ ส่วนลดโอนไว — ได้ทุกคนที่สั่งผ่านเว็บ (บวกทับส่วนลดระดับ/คูปองได้ ไม่ใช่เลือกอันที่ดีกว่า)
   //    สั่งเพิ่มในออเดอร์เดิมไม่คิดใหม่ — ออเดอร์แรกลดไปแล้ว (ตรงกับกติกาส่วนลดระดับด้านบน)
-  //    ต้องคิดด้วยสูตรเดียวกับ /api/orders เป๊ะ ไม่งั้นยอดหน้าเว็บกับยอดในออเดอร์ไม่ตรง
-  const earlyPay = appendTo ? 0 : earlyPayAmount(subtotal, earlyPayOf(payment));
+  //    ตัวแทนจำหน่ายไม่ได้ (ได้ราคาตัวแทนอย่างเดียว) — ต้องคิดด้วยสูตรเดียวกับ /api/orders เป๊ะ
+  const earlyPay = appendTo || isDealer ? 0 : earlyPayAmount(subtotal, earlyPayOf(payment));
   const total = Math.max(0, subtotal - discount - earlyPay + shippingCost);
 
   async function submit() {
@@ -469,7 +473,7 @@ export default function CheckoutPage() {
       shippingCost,
       subtotal,
       total,
-      couponCode: staffMode ? undefined : couponPreview?.code,
+      couponCode: staffMode || isDealer ? undefined : couponPreview?.code,
       staffOrder: staffMode || undefined,
       items: orderItems,
       // 📐 ขนาดของแถมที่ลูกค้าเลือกไว้ในตะกร้า (เซิร์ฟเวอร์ตรวจกับลิสต์ของแอดมินอีกชั้น)
@@ -916,8 +920,8 @@ export default function CheckoutPage() {
         </div>
       </div>
 
-      {/* คูปองส่วนลด (เฉพาะสมาชิก · ไม่ใช้ตอนสั่งเพิ่ม/สั่งแทนลูกค้า) */}
-      {customer && !appendTo && !staffMode && (
+      {/* คูปองส่วนลด (เฉพาะสมาชิก · ไม่ใช้ตอนสั่งเพิ่ม/สั่งแทนลูกค้า/บัญชีตัวแทนจำหน่าย) */}
+      {customer && !appendTo && !staffMode && !isDealer && (
         <div className="mt-5 rounded-2xl bg-white p-4 ring-1 ring-amber-200">
           <p className="text-sm font-bold text-stone-700">🎟️ คูปองส่วนลด</p>
           {couponPreview ? (
@@ -1010,6 +1014,11 @@ export default function CheckoutPage() {
             </div>
           );
         })}
+        {isDealer && (
+          <div className="mt-1 flex items-center gap-1.5 text-xs font-bold text-teal-700">
+            🤝 ราคาตัวแทนจำหน่าย — ไม่ร่วมส่วนลด/คูปอง/ของแถม
+          </div>
+        )}
         {discount > 0 && (
           <div className="mt-1 flex justify-between text-sm font-semibold text-emerald-600">
             <span>

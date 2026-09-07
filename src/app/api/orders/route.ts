@@ -10,7 +10,8 @@ import { currentActor } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { getProductServer } from "@/lib/products-server";
-import { lotShortfalls, orderUnitYield, type Product } from "@/lib/products";
+import { dealerRateOf, lotShortfalls, orderUnitYield, type Product } from "@/lib/products";
+import { isDealerUid } from "@/lib/server/dealers";
 
 // id เรคอร์ดตั้งค่าร้าน (ตรงกับ SETTINGS_ID ใน shop-settings ซึ่งเป็น "use client")
 const SETTINGS_ROW = "__shop_payment__";
@@ -70,17 +71,55 @@ export async function POST(req: Request) {
   }
 
   /**
+   * 🤝 ตัวแทนจำหน่าย — ยืนยันตัวตนจาก access token เท่านั้น (customerId ในบอดี้ปลอมได้)
+   * แล้วเช็คกับทะเบียน __dealers__ ฝั่งเซิร์ฟเวอร์ · token พัง/ไม่มี = ไม่ใช่ตัวแทน (ออเดอร์ปกติเดินต่อ)
+   */
+  let dealer = false;
+  let dealerUid = "";
+  try {
+    const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+    if (token && !input.staffOrder) {
+      const { data: u } = await sb.auth.getUser(token);
+      if (u.user && (await isDealerUid(u.user.id))) {
+        dealer = true;
+        dealerUid = u.user.id;
+      }
+    }
+  } catch {
+    // เช็คไม่ได้ = ปฏิบัติเหมือนลูกค้าทั่วไป (ด่านเรทตัวแทนด้านล่างยังกันราคาตัวแทนอยู่)
+  }
+
+  // โหลดสินค้าของทุกรายการที่มีสเปค — ใช้ทั้งด่านเรทตัวแทนและประตูขั้นต่ำต่อรอบผลิต
+  const withSel = input.items.filter((i) => i.sel && i.productId);
+  const prods = new Map<string, Product>();
+  for (const pid of [...new Set(withSel.map((i) => i.productId))]) {
+    const p = await getProductServer(pid);
+    if (p) prods.set(pid, p);
+  }
+
+  /**
+   * 🚧 ด่านเรทตัวแทนจำหน่าย — บรรทัดที่เลือก "เรทราคา" เป็นเรท dealerOnly ต้องมาจากบัญชีตัวแทน
+   * ที่ยืนยัน token แล้วเท่านั้น (พนักงานสั่งแทน staffOrder ผ่านได้ — เคสสั่งแทนตัวแทน)
+   * ไม่งั้นใครก็ยัด label เรทตัวแทนใส่ selections แล้วจ่ายราคาตัวแทนได้
+   */
+  if (!dealer && !input.staffOrder) {
+    for (const i of withSel) {
+      const p = prods.get(i.productId);
+      if (p && dealerRateOf(p, i.sel!)) {
+        return NextResponse.json(
+          { error: "เรทตัวแทนจำหน่ายใช้ได้เฉพาะบัญชีตัวแทนจำหน่ายที่ล็อกอินอยู่ — กรุณาเข้าสู่ระบบใหม่" },
+          { status: 400 }
+        );
+      }
+    }
+  }
+
+  /**
    * 📦 ยอดสั่งขั้นต่ำต่อ "รอบผลิต" (เรทที่ตั้ง minQtyScope: "lot" เช่น สติ๊กเกอร์ UV 3 แผ่น A3 ต่อเนื้อ 1 ชนิด)
    * หน้าสินค้าปล่อยให้ทยอยเพิ่มทีละแผ่น ประตูจริงอยู่ที่ตะกร้า/หน้าชำระเงิน — ตรงนี้กันคนยิง API ตรง
    * แอดมินสั่งแทนลูกค้า (staffOrder) ข้ามได้ — เคสตกลงกับลูกค้าเป็นราย ๆ ไป
    */
   if (!input.staffOrder) {
-    const withSel = input.items.filter((i) => i.sel && i.productId);
-    const prods = new Map<string, Product>();
-    for (const pid of [...new Set(withSel.map((i) => i.productId))]) {
-      const p = await getProductServer(pid);
-      if (p) prods.set(pid, p);
-    }
     const short = lotShortfalls(
       withSel.map((i) => ({ productId: i.productId, selections: i.sel!, qty: i.qty })),
       (id) => prods.get(id)
@@ -101,12 +140,14 @@ export async function POST(req: Request) {
   const subtotal = input.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
   const now = new Date();
   const id = orderNo(now);
+  // ตัวแทนจำหน่าย: ผูกออเดอร์กับ uid ที่ยืนยันแล้ว (ไม่เชื่อค่าในบอดี้)
+  if (dealer) input.customerId = dealerUid;
   const cid = input.customerId;
 
-  // ── 1) ส่วนลดระดับสมาชิก ──
+  // ── 1) ส่วนลดระดับสมาชิก ── (ตัวแทนจำหน่ายไม่ได้ — ได้ราคาเรทตัวแทนอย่างเดียว)
   let tierAmount = 0;
   let tierLabel = "";
-  if (cid) {
+  if (cid && !dealer) {
     const [settRes, ordRes] = await Promise.all([
       sb.from("products").select("data").eq("id", SETTINGS_ROW).maybeSingle(),
       sb.from("orders").select("data"),
@@ -123,7 +164,8 @@ export async function POST(req: Request) {
   let discount: Order["discount"] | undefined;
   let redeemedCode: string | null = null; // เก็บไว้ rollback ถ้า insert พัง
   let coupon: { applied: boolean; reason?: string } = { applied: false };
-  const couponCode = (input.couponCode ?? "").trim().toUpperCase();
+  // ตัวแทนจำหน่ายใช้คูปองไม่ได้ — และไม่เผาคูปองที่เผลอส่งมา
+  const couponCode = dealer ? "" : (input.couponCode ?? "").trim().toUpperCase();
 
   if (couponCode && cid) {
     const { data: cRow } = await sb.from("coupons").select("data").eq("code", couponCode).maybeSingle();
@@ -156,8 +198,9 @@ export async function POST(req: Request) {
   if (!discount && tierAmount > 0) discount = { label: tierLabel, amount: tierAmount };
 
   // ── 3) 🎁 ของแถมฟรีตามจำนวนชิ้น — คิดใหม่ฝั่งเซิร์ฟเวอร์เสมอ (ไม่เชื่อค่าที่หน้าเว็บส่งมา) ──
+  // ตัวแทนจำหน่ายไม่ได้ของแถม (เจ้าของร้านยืนยัน 7 ก.ย. 69 — ได้ราคาตัวแทนอย่างเดียว)
   let gifts: OrderGift[] = [];
-  try {
+  if (!dealer) try {
     const ids = [...new Set(input.items.map((i) => i.productId).filter(Boolean))];
     const [settRes, prodRes] = await Promise.all([
       sb.from("products").select("data").eq("id", SETTINGS_ROW).maybeSingle(),
@@ -193,7 +236,8 @@ export async function POST(req: Request) {
     const { data: settRow } = await sb.from("products").select("data").eq("id", SETTINGS_ROW).maybeSingle();
     const cfg = earlyPayOf(settRow?.data as { earlyPay?: EarlyPayDiscount } | undefined);
     const amount = earlyPayAmount(subtotal, cfg);
-    if (amount > 0) earlyPay = { label: EARLY_PAY_LABEL, amount };
+    // ตัวแทนจำหน่ายไม่ได้ส่วนลดโอนไว (ได้ราคาเรทตัวแทนอย่างเดียว — ตรงกับพรีวิวหน้า checkout)
+    if (amount > 0 && !dealer) earlyPay = { label: EARLY_PAY_LABEL, amount };
   } catch {
     // อ่านตั้งค่าไม่ได้ = ไม่ลด ดีกว่าสั่งซื้อไม่สำเร็จ (แอดมินใส่ส่วนลดเองได้ที่หน้าออเดอร์)
   }
@@ -238,6 +282,7 @@ export async function POST(req: Request) {
     ...(earlyPay ? { earlyPay } : {}),
     ...(gifts.length ? { gifts } : {}),
     ...(placedBy ? { placedBy } : {}),
+    ...(dealer ? { dealer: true } : {}),
   };
 
   const { error } = await sb.from("orders").insert({ id, data: order });
