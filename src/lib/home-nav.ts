@@ -181,6 +181,7 @@ export const DEFAULT_MENU: NavLink[] = [
   { id: "bestseller", label: "สินค้าขายดี", href: "/#bestseller" },
   { id: "steps", label: "ขั้นตอนสั่งซื้อ", href: "/how-to-order" },
   { id: "why", label: "ทำไมต้องเรา", href: "/#why" },
+  { id: "dealer", label: "สมัครตัวแทน", href: "/dealer" },
   { id: "contact", label: "ติดต่อเรา", href: "/#contact" },
 ];
 

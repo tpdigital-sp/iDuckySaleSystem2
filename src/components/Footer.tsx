@@ -77,6 +77,7 @@ export default function Footer() {
             <Link href="/how-to-order">การจัดส่งสินค้า</Link>
             <Link href="/how-to-order">เงื่อนไขการเคลมสินค้า</Link>
             <Link href="/account/orders">ติดตามคำสั่งซื้อ</Link>
+            <Link href="/dealer">สมัครตัวแทนจำหน่าย</Link>
             <Link href="/terms">เงื่อนไขการใช้บริการ</Link>
             <Link href="/privacy">นโยบายความเป็นส่วนตัว</Link>
           </div>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { loadDealers, saveDealers, type DealersMap } from "@/lib/server/dealers";
+import { loadDealersDoc, saveDealersDoc } from "@/lib/server/dealers";
 
 export const runtime = "nodejs";
 
@@ -14,6 +14,19 @@ export interface DealerRow {
   picture: string;
   note: string;
   since: string;
+}
+
+/** ใบสมัครที่รออนุมัติ 1 ใบ (join ข้อมูลบัญชีสดเหมือนกัน) */
+export interface DealerApplicationRow {
+  uid: string;
+  email: string;
+  name: string;
+  phone: string;
+  picture: string;
+  shopName: string;
+  channel: string;
+  detail: string;
+  at: string;
 }
 
 type AuthUser = {
@@ -31,57 +44,95 @@ async function listUsers(): Promise<AuthUser[]> {
   return data.users as AuthUser[];
 }
 
-const rowOf = (uid: string, entry: { note?: string; since: string }, u?: AuthUser): DealerRow => ({
-  uid,
+const userBits = (u?: AuthUser) => ({
   email: u?.email ?? "",
   name: u?.user_metadata?.name ?? "",
   phone: u?.user_metadata?.phone ?? "",
   picture: u?.user_metadata?.picture ?? "",
+});
+
+const rowOf = (uid: string, entry: { note?: string; since: string }, u?: AuthUser): DealerRow => ({
+  uid,
+  ...userBits(u),
   note: entry.note ?? "",
   since: entry.since,
 });
 
-/** รายชื่อตัวแทนจำหน่ายทั้งหมด (ใหม่→เก่า) */
+/** รายชื่อตัวแทน (ใหม่→เก่า) + ใบสมัครที่รออนุมัติ (ใหม่→เก่า) */
 export async function GET() {
   const gate = await requirePerm("dealers.manage");
   if (gate.res) return gate.res;
 
-  const map = await loadDealers();
-  const uids = Object.keys(map);
-  if (!uids.length) return NextResponse.json({ dealers: [] });
+  const doc = await loadDealersDoc();
+  const uids = [...Object.keys(doc.users), ...Object.keys(doc.applications)];
+  const users = uids.length ? new Map((await listUsers()).map((u) => [u.id, u])) : new Map<string, AuthUser>();
 
-  const users = new Map((await listUsers()).map((u) => [u.id, u]));
-  const dealers = uids
-    .map((uid) => rowOf(uid, map[uid], users.get(uid)))
+  const dealers = Object.keys(doc.users)
+    .map((uid) => rowOf(uid, doc.users[uid], users.get(uid)))
     .sort((a, b) => (b.since || "").localeCompare(a.since || ""));
-  return NextResponse.json({ dealers });
+  const applications: DealerApplicationRow[] = Object.keys(doc.applications)
+    .map((uid) => {
+      const a = doc.applications[uid];
+      return { uid, ...userBits(users.get(uid)), shopName: a.shopName, channel: a.channel, detail: a.detail ?? "", at: a.at };
+    })
+    .sort((a, b) => (b.at || "").localeCompare(a.at || ""));
+  return NextResponse.json({ dealers, applications });
 }
 
-/** เพิ่มตัวแทนด้วยอีเมล (หรือแก้โน้ตด้วย uid) */
+/**
+ * จัดการทะเบียน — ก้อนเดียวหลายท่า:
+ * { email, note? }   เพิ่มตัวแทนด้วยอีเมล (ทางลัด ไม่ต้องรอใบสมัคร)
+ * { uid, note }      แก้โน้ตของตัวแทนเดิม
+ * { approveUid }     อนุมัติใบสมัคร → ย้ายเข้าทะเบียน (โน้ต = ชื่อร้านจากใบสมัคร)
+ * { rejectUid }      ปฏิเสธใบสมัคร → ลบใบสมัครทิ้ง (สมัครใหม่ได้)
+ */
 export async function POST(req: Request) {
   const gate = await requirePerm("dealers.manage");
   if (gate.res) return gate.res;
 
-  let body: { email?: string; uid?: string; note?: string };
+  let body: { email?: string; uid?: string; note?: string; approveUid?: string; rejectUid?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
   }
 
-  const map: DealersMap = { ...(await loadDealers()) };
+  const doc = await loadDealersDoc();
+  const next = { users: { ...doc.users }, applications: { ...doc.applications } };
   const note = (body.note ?? "").trim().slice(0, 200);
+
+  // อนุมัติใบสมัคร
+  if (body.approveUid) {
+    const app = next.applications[body.approveUid];
+    if (!app) return NextResponse.json({ error: "ไม่พบใบสมัครนี้ (อาจถูกจัดการไปแล้ว)" }, { status: 404 });
+    delete next.applications[body.approveUid];
+    next.users[body.approveUid] = { since: new Date().toISOString(), note: app.shopName.slice(0, 200) };
+    const { error } = await saveDealersDoc(next);
+    if (error) return NextResponse.json({ error }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ปฏิเสธใบสมัคร
+  if (body.rejectUid) {
+    if (!next.applications[body.rejectUid])
+      return NextResponse.json({ error: "ไม่พบใบสมัครนี้ (อาจถูกจัดการไปแล้ว)" }, { status: 404 });
+    delete next.applications[body.rejectUid];
+    const { error } = await saveDealersDoc(next);
+    if (error) return NextResponse.json({ error }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
 
   // แก้โน้ตของตัวแทนที่มีอยู่แล้ว
   if (body.uid) {
-    const entry = map[body.uid];
+    const entry = next.users[body.uid];
     if (!entry) return NextResponse.json({ error: "ไม่พบตัวแทนคนนี้" }, { status: 404 });
-    map[body.uid] = { ...entry, ...(note ? { note } : { note: undefined }) };
-    const { error } = await saveDealers(map);
+    next.users[body.uid] = { since: entry.since, ...(note ? { note } : {}) };
+    const { error } = await saveDealersDoc(next);
     if (error) return NextResponse.json({ error }, { status: 500 });
-    return NextResponse.json({ ok: true, dealer: rowOf(body.uid, map[body.uid], undefined) });
+    return NextResponse.json({ ok: true });
   }
 
+  // เพิ่มด้วยอีเมล
   const email = (body.email ?? "").trim().toLowerCase();
   if (!email) return NextResponse.json({ error: "กรอกอีเมลของบัญชีสมาชิก" }, { status: 400 });
 
@@ -91,12 +142,13 @@ export async function POST(req: Request) {
       { error: "ไม่พบบัญชีสมาชิกอีเมลนี้ — ให้ตัวแทนสมัครสมาชิก/ล็อกอินบนเว็บก่อน แล้วค่อยเพิ่ม" },
       { status: 404 }
     );
-  if (map[user.id]) return NextResponse.json({ error: "บัญชีนี้เป็นตัวแทนอยู่แล้ว" }, { status: 409 });
+  if (next.users[user.id]) return NextResponse.json({ error: "บัญชีนี้เป็นตัวแทนอยู่แล้ว" }, { status: 409 });
 
-  map[user.id] = { since: new Date().toISOString(), ...(note ? { note } : {}) };
-  const { error } = await saveDealers(map);
+  delete next.applications[user.id]; // มีใบสมัครค้างอยู่ = ถือว่าอนุมัติไปในตัว
+  next.users[user.id] = { since: new Date().toISOString(), ...(note ? { note } : {}) };
+  const { error } = await saveDealersDoc(next);
   if (error) return NextResponse.json({ error }, { status: 500 });
-  return NextResponse.json({ ok: true, dealer: rowOf(user.id, map[user.id], user) });
+  return NextResponse.json({ ok: true, dealer: rowOf(user.id, next.users[user.id], user) });
 }
 
 /** ถอดตัวแทน — ?uid=<auth uid> */
@@ -105,10 +157,11 @@ export async function DELETE(req: Request) {
   if (gate.res) return gate.res;
 
   const uid = new URL(req.url).searchParams.get("uid") ?? "";
-  const map: DealersMap = { ...(await loadDealers()) };
-  if (!uid || !map[uid]) return NextResponse.json({ error: "ไม่พบตัวแทนคนนี้" }, { status: 404 });
-  delete map[uid];
-  const { error } = await saveDealers(map);
+  const doc = await loadDealersDoc();
+  if (!uid || !doc.users[uid]) return NextResponse.json({ error: "ไม่พบตัวแทนคนนี้" }, { status: 404 });
+  const next = { users: { ...doc.users }, applications: { ...doc.applications } };
+  delete next.users[uid];
+  const { error } = await saveDealersDoc(next);
   if (error) return NextResponse.json({ error }, { status: 500 });
   return NextResponse.json({ ok: true });
 }

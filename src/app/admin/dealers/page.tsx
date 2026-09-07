@@ -4,8 +4,8 @@
  * ตัวแทนจำหน่าย /admin/dealers
  *
  * ทะเบียนบัญชีสมาชิกที่เห็น "เรทราคาตัวแทนจำหน่าย" (เรทที่ติ๊ก dealerOnly ในหน้าแก้ไขสินค้า)
- * เพิ่มด้วยอีเมลของบัญชีสมาชิกที่มีอยู่แล้ว · ตัวแทนได้ราคาเรทตัวแทนอย่างเดียว
- * ไม่ได้ส่วนลดสมาชิก/คูปอง/โอนไว/ของแถม (เซิร์ฟเวอร์บังคับตอนสร้างออเดอร์)
+ * ลูกค้าสมัครเองได้จากหน้า /dealer → ขึ้นแถบรออนุมัติบนสุด · หรือแอดมินเพิ่มเองด้วยอีเมล
+ * ตัวแทนได้ราคาเรทตัวแทนอย่างเดียว ไม่ได้ส่วนลดสมาชิก/คูปอง/โอนไว/ของแถม (เซิร์ฟเวอร์บังคับ)
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -21,8 +21,20 @@ interface DealerRow {
   since: string;
 }
 
-/** วันที่แบบที่ทีมใช้คุยกัน (พ.ศ.) — since เก่าที่ไม่มีค่า = "—" */
-function sinceText(iso: string): string {
+interface ApplicationRow {
+  uid: string;
+  email: string;
+  name: string;
+  phone: string;
+  picture: string;
+  shopName: string;
+  channel: string;
+  detail: string;
+  at: string;
+}
+
+/** วันที่แบบที่ทีมใช้คุยกัน (พ.ศ.) — ค่าเก่าที่ไม่มี = "—" */
+function thDate(iso: string): string {
   const d = new Date(iso);
   if (!iso || !isFinite(d.getTime())) return "—";
   return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
@@ -30,13 +42,16 @@ function sinceText(iso: string): string {
 
 export default function AdminDealersPage() {
   const [dealers, setDealers] = useState<DealerRow[]>([]);
+  const [applications, setApplications] = useState<ApplicationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [email, setEmail] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-  /** uid ที่กด "ถอดออก" ครั้งแรกแล้ว — กดซ้ำถึงถอดจริง (ยืนยันในที่ ไม่เด้ง dialog) */
-  const [confirmUid, setConfirmUid] = useState("");
+  /** uid ที่กำลังยิง approve/reject อยู่ — กันกดรัว */
+  const [acting, setActing] = useState("");
+  /** uid ที่กด "ถอดออก"/"ปฏิเสธ" ครั้งแรกแล้ว — กดซ้ำถึงทำจริง (ยืนยันในที่ ไม่เด้ง dialog) */
+  const [confirmKey, setConfirmKey] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -45,6 +60,7 @@ export default function AdminDealersPage() {
       const j = await res.json();
       if (!res.ok) setErr(j.error ?? "โหลดรายชื่อไม่สำเร็จ — ลองรีเฟรชหน้า");
       setDealers(j.dealers ?? []);
+      setApplications(j.applications ?? []);
     } catch {
       setErr("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — รายชื่อที่เห็นอาจไม่ใช่ล่าสุด");
     } finally {
@@ -56,38 +72,65 @@ export default function AdminDealersPage() {
     load();
   }, [load]);
 
-  async function add() {
-    if (!email.trim() || busy) return;
-    setBusy(true);
+  /** ยิงคำสั่งจัดการ (approve/reject/เพิ่ม/แก้โน้ต) แล้วโหลดรายชื่อใหม่ */
+  async function manage(body: Record<string, string>): Promise<boolean> {
     setErr("");
     try {
       const res = await fetch("/api/admin/dealers", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), note: note.trim() || undefined }),
+        body: JSON.stringify(body),
       });
       const j = await res.json();
       if (!res.ok) {
-        setErr(j.error ?? "เพิ่มตัวแทนไม่สำเร็จ");
-        return;
+        setErr(j.error ?? "ทำรายการไม่สำเร็จ");
+        return false;
       }
-      setEmail("");
-      setNote("");
       await load();
+      return true;
     } catch {
-      setErr("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — ยังไม่ได้เพิ่ม ลองใหม่อีกครั้ง");
-    } finally {
-      setBusy(false);
+      setErr("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — ลองใหม่อีกครั้ง");
+      return false;
     }
   }
 
-  async function remove(uid: string) {
-    if (confirmUid !== uid) {
-      setConfirmUid(uid);
-      window.setTimeout(() => setConfirmUid((c) => (c === uid ? "" : c)), 4000);
+  async function add() {
+    if (!email.trim() || busy) return;
+    setBusy(true);
+    const ok = await manage({ email: email.trim(), ...(note.trim() ? { note: note.trim() } : {}) });
+    if (ok) {
+      setEmail("");
+      setNote("");
+    }
+    setBusy(false);
+  }
+
+  async function approve(uid: string) {
+    if (acting) return;
+    setActing(uid);
+    await manage({ approveUid: uid });
+    setActing("");
+  }
+
+  /** ปฏิเสธ/ถอดออก — กด 2 ครั้งยืนยัน */
+  function twoTap(key: string, run: () => void) {
+    if (confirmKey !== key) {
+      setConfirmKey(key);
+      window.setTimeout(() => setConfirmKey((c) => (c === key ? "" : c)), 4000);
       return;
     }
-    setConfirmUid("");
+    setConfirmKey("");
+    run();
+  }
+
+  async function reject(uid: string) {
+    if (acting) return;
+    setActing(uid);
+    await manage({ rejectUid: uid });
+    setActing("");
+  }
+
+  async function remove(uid: string) {
     setErr("");
     try {
       const res = await fetch(`/api/admin/dealers?uid=${encodeURIComponent(uid)}`, { method: "DELETE" });
@@ -108,10 +151,55 @@ export default function AdminDealersPage() {
         group="ลูกค้า & การตลาด"
         title="ตัวแทนจำหน่าย"
         count={loading ? undefined : `${dealers.length} คน`}
-        sub="บัญชีในรายชื่อนี้เห็นราคาเรทตัวแทน (เรทที่ติ๊ก 🤝 ในหน้าแก้ไขสินค้า) — ได้ราคาตัวแทนอย่างเดียว ไม่ได้ส่วนลด/คูปอง/ของแถม"
+        sub={
+          <>
+            บัญชีในทะเบียนเห็นราคาเรทตัวแทน (เรทที่ติ๊ก 🤝 ในหน้าแก้ไขสินค้า) — ได้ราคาตัวแทนอย่างเดียว ไม่ได้ส่วนลด/คูปอง/ของแถม
+            · ลิงก์สมัครสำหรับส่งให้ลูกค้า: <b>iduckystore.com/dealer</b>
+          </>
+        }
       />
 
-      {/* เพิ่มตัวแทน — ต้องเป็นบัญชีสมาชิกที่มีอยู่แล้ว (สมัคร/ล็อกอินบนเว็บอย่างน้อย 1 ครั้ง) */}
+      {/* 📥 ใบสมัครรออนุมัติ — งานค้าง อยู่บนสุดเสมอ */}
+      {applications.length > 0 && (
+        <>
+          <ListHead title={`📥 รออนุมัติ (${applications.length} ใบ)`} note="สมัครจากหน้า /dealer" />
+          <Rows>
+            {applications.map((a) => (
+              <Row key={a.uid} tone="var(--dk-coral-deep)">
+                <RowMain
+                  name={a.shopName}
+                  tags={<Tag tone="coral">รออนุมัติ</Tag>}
+                  meta={
+                    <>
+                      <span>{a.name || a.email || a.uid.slice(0, 8)}</span>
+                      {a.email && <span> · {a.email}</span>}
+                      {a.phone && <span> · {a.phone}</span>}
+                      <span> · ช่องทาง: {a.channel}</span>
+                      {a.detail && <span> · {a.detail}</span>}
+                      <span> · สมัคร {thDate(a.at)}</span>
+                    </>
+                  }
+                />
+                <RowSide>
+                  <Btn small tone="navy" disabled={acting === a.uid} onClick={() => approve(a.uid)}>
+                    {acting === a.uid ? "…" : "✅ อนุมัติ"}
+                  </Btn>
+                  <Btn
+                    small
+                    tone={confirmKey === `rej:${a.uid}` ? "navy" : "ghost"}
+                    disabled={acting === a.uid}
+                    onClick={() => twoTap(`rej:${a.uid}`, () => reject(a.uid))}
+                  >
+                    {confirmKey === `rej:${a.uid}` ? "กดอีกครั้งเพื่อปฏิเสธ" : "ปฏิเสธ"}
+                  </Btn>
+                </RowSide>
+              </Row>
+            ))}
+          </Rows>
+        </>
+      )}
+
+      {/* เพิ่มตัวแทนเองด้วยอีเมล (ทางลัด ไม่ต้องรอใบสมัคร) — ต้องเป็นบัญชีสมาชิกที่มีอยู่แล้ว */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -139,7 +227,7 @@ export default function AdminDealersPage() {
       ) : dealers.length === 0 ? (
         <Empty
           title="ยังไม่มีตัวแทนจำหน่าย"
-          body="เพิ่มด้วยอีเมลของบัญชีสมาชิกด้านบน — ถ้ายังไม่มีบัญชี ให้ตัวแทนสมัครสมาชิก/ล็อกอินบนเว็บก่อน แล้วอย่าลืมไปติ๊ก 🤝 เรทตัวแทนในสินค้าที่จะขายราคาตัวแทน"
+          body="ส่งลิงก์สมัคร iduckystore.com/dealer ให้ลูกค้า หรือเพิ่มเองด้วยอีเมลด้านบน — และอย่าลืมไปติ๊ก 🤝 เรทตัวแทนในสินค้าที่จะขายราคาตัวแทน"
         />
       ) : (
         <Rows>
@@ -152,14 +240,18 @@ export default function AdminDealersPage() {
                   <>
                     {d.email && <span>{d.email}</span>}
                     {d.phone && <span> · {d.phone}</span>}
-                    <span> · เพิ่มเมื่อ {sinceText(d.since)}</span>
+                    <span> · เพิ่มเมื่อ {thDate(d.since)}</span>
                     {d.note && <span> · 📝 {d.note}</span>}
                   </>
                 }
               />
               <RowSide>
-                <Btn small tone={confirmUid === d.uid ? "navy" : "ghost"} onClick={() => remove(d.uid)}>
-                  {confirmUid === d.uid ? "กดอีกครั้งเพื่อถอดออก" : "ถอดออก"}
+                <Btn
+                  small
+                  tone={confirmKey === `rm:${d.uid}` ? "navy" : "ghost"}
+                  onClick={() => twoTap(`rm:${d.uid}`, () => remove(d.uid))}
+                >
+                  {confirmKey === `rm:${d.uid}` ? "กดอีกครั้งเพื่อถอดออก" : "ถอดออก"}
                 </Btn>
               </RowSide>
             </Row>
