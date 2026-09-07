@@ -5182,7 +5182,16 @@ function ratePoolsFor(
           (per <= 0 || !!r.underMinPieceFee || piecesOfEntry(entries[i]) >= per * Math.max(1, entries[i].designs))
       );
     const candQty = cand.reduce((s, i) => s + entries[i].qty, 0);
-    if (!cand.length || candQty < (r.minQty ?? 1)) continue;
+    /**
+     * ขั้นต่ำของเรท (minQty) เทียบกับ "ยอดที่ผลิตพร้อมกันจริง" = บรรทัดผู้เข้าเงื่อนไขรอบนี้
+     * + บรรทัดที่ถูกเรทสูงกว่าหยิบไปแล้ว (ล็อตเดียวกัน ผ่านเกณฑ์เข้มกว่าอีกต่างหาก)
+     *
+     * เจอจริง 7 ก.ย. 69 (เข็มกลัดอะคริลิค 80+10+30 = 120 ชิ้น): {80,30} เข้าเรท 2 (ลายละ 25)
+     * เหลือบรรทัด 10 ชิ้นไปนับขั้นต่ำเรท 1 (11 ชิ้น) ด้วยตัวเอง → ไม่ถึง ตกไปจ่ายราคาปลีก
+     * ฿90/ชิ้น ทั้งที่เป็นล็อต 120 ชิ้น ต้องได้เรท 1 ขั้น 50-199 = ฿40/ชิ้น
+     */
+    const takenQty = entries.reduce((s, e, i) => (taken[i] ? s + e.qty : s), 0);
+    if (!cand.length || takenQty + candQty < (r.minQty ?? 1)) continue;
     for (const i of cand) {
       out[i] = r;
       taken[i] = true;

@@ -13,6 +13,7 @@
  *
  * รัน:  node scripts/dealer-rates-apply.mjs           → dry-run (พิมพ์สรุป ไม่เขียนอะไร)
  *       node scripts/dealer-rates-apply.mjs --apply   → เขียนจริง + อ่านกลับเทียบ
+ *       … --only=id1,id2                              → เฉพาะสินค้าที่ระบุ (แก้ราคาปกติตัวเดียวก็รันเฉพาะตัวนั้น)
  * รันซ้ำได้: ลบเรท dealerOnly เดิมทิ้งแล้วสร้างใหม่จากราคาปกติปัจจุบันทุกครั้ง
  * (กติกาสคริปต์เขียน DB: อ่านกลับเทียบค่า + savedAt เป็น ISO string — ดูโน้ต iducky-script-write-product)
  */
@@ -20,6 +21,8 @@ import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 
 const APPLY = process.argv.includes("--apply");
+/** เจาะจงบางสินค้า: --only=id1,id2 (เช่น แก้ราคาปกติไปตัวเดียว ไม่ต้องเขียนทับทั้งร้าน) */
+const ONLY = (process.argv.find((a) => a.startsWith("--only=")) ?? "").slice(7).split(",").filter(Boolean);
 
 const env = Object.fromEntries(
   readFileSync(new URL("../.env.local", import.meta.url), "utf8")
@@ -121,7 +124,10 @@ function dealerTwin(rate, { fixedDiff, single }) {
 }
 
 const { data } = await sb.from("products").select("id, category, data");
-const rows = (data ?? []).filter((r) => !String(r.category ?? "").startsWith("__"));
+const rows = (data ?? [])
+  .filter((r) => !String(r.category ?? "").startsWith("__"))
+  .filter((r) => !ONLY.length || ONLY.includes(r.id));
+if (ONLY.length && rows.length !== ONLY.length) throw new Error(`--only: หาสินค้าไม่ครบ (เจอ ${rows.map((r) => r.id).join(",")})`);
 
 let done = 0;
 const skipped = [];
