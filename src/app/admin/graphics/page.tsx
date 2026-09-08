@@ -22,6 +22,7 @@ import {
   isSelfDesigned,
   orderStatusLabel,
   proofBy,
+  proofExempt,
   proofsOf,
   proofUnit,
   type Order,
@@ -301,7 +302,7 @@ function QueueRow({ o }: { o: Order }) {
   const todo = graphicTodoItems(o).length;
   const selfMade = o.items.filter(isSelfDesigned).length;
   const done = o.items.filter((it) => !isSelfDesigned(it) && proofsOf(it).length > 0).length;
-  const noArt = o.items.some((it) => !it.artworkUrls?.length && !isSelfDesigned(it));
+  const noArt = o.items.some((it) => !it.artworkUrls?.length && !isSelfDesigned(it) && !proofExempt(it));
   const left = o.useByDate ? daysToUseBy(o) : null;
 
   return (

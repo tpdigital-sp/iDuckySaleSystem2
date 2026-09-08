@@ -1118,10 +1118,12 @@ export default function CustomerOrderPage() {
                   <span className="ord-title text-[.82rem]">
                     🖼 แบบงาน
                     {proofs.length > 1 && <span className="ml-1 t-faint" style={{ fontFamily: "var(--body)" }}>{proofs.length} รูป</span>}
-                    {!proofs.length && (it.artworkUrls?.length ?? 0) > 0 && (
+                    {!proofs.length && (it.artworkUrls?.length ?? 0) > 0 && !it.noProof && (
                       <span className="ml-1 t-faint" style={{ fontFamily: "var(--body)" }}>— ตอนนี้แสดงลายที่คุณส่งมาไว้ก่อน</span>
                     )}
                   </span>
+                  {/* ยอดเพิ่ม/ค่าบริการที่ร้านติ๊กว่าไม่ต้องทำแบบ — บอกลูกค้าตรง ๆ จะได้ไม่รอแบบของรายการนี้ */}
+                  {!proofs.length && it.noProof && <span className="ord-chip ghost">ไม่มีแบบให้ตรวจ — รายการนี้ไม่ต้องทำแบบ</span>}
                   {it.proofStatus && (
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${PROOF_STYLES[it.proofStatus]}`}>
                       {it.proofStatus}
@@ -1141,14 +1143,18 @@ export default function CustomerOrderPage() {
                         </span>
                       </a>
                     ))}
-                    <span className="ord-proof-empty" style={{ width: "6rem" }}>
-                      🎨 รอแบบ<br />จากร้าน
-                    </span>
+                    {!it.noProof && (
+                      <span className="ord-proof-empty" style={{ width: "6rem" }}>
+                        🎨 รอแบบ<br />จากร้าน
+                      </span>
+                    )}
                   </div>
                 )}
                 {!proofs.length ? (
                   <p className="mt-1.5 text-[11px] leading-relaxed t-faint">
-                    ทีมกราฟฟิกกำลังจัดทำแบบจากลายของคุณ เดี๋ยวจะแจ้งให้เข้ามาตรวจครับ
+                    {it.noProof
+                      ? "รายการนี้เป็นยอดเพิ่ม/ค่าบริการ ไม่มีแบบให้ตรวจ — ร้านจะดำเนินการต่อจากรายการหลักได้เลย"
+                      : "ทีมกราฟฟิกกำลังจัดทำแบบจากลายของคุณ เดี๋ยวจะแจ้งให้เข้ามาตรวจครับ"}
                   </p>
                 ) : (
                   <>

@@ -17,13 +17,15 @@ export interface ItemAdderProps {
   onShopAdd: () => void;
   /** คำเรียกปลายทาง เช่น "ออเดอร์" หรือ "ใบเสนอราคา" */
   target?: string;
+  /** ชื่อคนที่ล็อกอินอยู่ — ไว้บันทึกว่าใครติ๊ก "ไม่ต้องทำแบบ" */
+  actor?: string;
 }
 
 /**
  * 🛠️ ตัวเพิ่มรายการกลาง — ใช้ร่วมกันระหว่างหน้าออเดอร์กับหน้าใบเสนอราคา
  * 2 ทาง: กรอกเอง (สินค้าในเว็บ / งานพิเศษ + คลังสินค้าพิเศษ + แนบภาพลาย) หรือหยิบจากหน้าร้านจริง
  */
-export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออเดอร์" }: ItemAdderProps) {
+export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออเดอร์", actor = "แอดมิน" }: ItemAdderProps) {
   const [open, setOpen] = useState(false);
   /** เพิ่มได้ 2 แบบ — สินค้าที่มีในเว็บ (ผูก productId จริง) หรืองานพิเศษที่ไม่มีหน้าเว็บ */
   const [mode, setMode] = useState<"web" | "special">("web");
@@ -60,6 +62,11 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
   };
   // ภาพลายที่ลูกค้าส่งมาทางแชท — แอดมินแนบให้กราฟฟิกดูตอนสั่งงานพิเศษ
   const [art, setArt] = useState<string[]>([]);
+  /**
+   * รายการนี้ "ไม่ต้องทำแบบ" — ค่าตัดไฟล์ / เพิ่มขนาด / คละลายเพิ่ม / ซื้อตะขอ ฯลฯ
+   * ติ๊กแล้วรายการจะไม่ค้างเป็น "รอกราฟฟิกทำแบบ" (ดู OrderItem.noProof) · แนบภาพได้ถ้าอยาก
+   */
+  const [noProof, setNoProof] = useState(false);
   // ── กันกรอกเสร็จแล้วรีเฟรชทิ้ง: เก็บร่างไว้ในเครื่อง จนกว่าจะกด "เพิ่มเข้าออเดอร์" หรือยกเลิก ──
   const DRAFT_KEY = `admin.${draftKey}.specialDraft`;
   const [draftLoaded, setDraftLoaded] = useState(false);
@@ -67,13 +74,14 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (raw) {
-        const d = JSON.parse(raw) as { name?: string; spec?: string; qty?: string; price?: string; art?: string[] };
+        const d = JSON.parse(raw) as { name?: string; spec?: string; qty?: string; price?: string; art?: string[]; noProof?: boolean };
         if (d.name || d.spec || d.price || (d.art?.length ?? 0)) {
           setName(d.name ?? "");
           setSpec(d.spec ?? "");
           setQty(d.qty ?? "1");
           setPrice(d.price ?? "");
           setArt(d.art ?? []);
+          setNoProof(!!d.noProof);
           setOpen(true);
         }
       }
@@ -85,11 +93,11 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
   useEffect(() => {
     if (!draftLoaded) return;
     try {
-      if (dirty) localStorage.setItem(DRAFT_KEY, JSON.stringify({ name, spec, qty, price, art }));
+      if (dirty) localStorage.setItem(DRAFT_KEY, JSON.stringify({ name, spec, qty, price, art, noProof }));
       else localStorage.removeItem(DRAFT_KEY);
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftLoaded, dirty, name, spec, qty, price, art]);
+  }, [draftLoaded, dirty, name, spec, qty, price, art, noProof]);
   // เตือนก่อนปิด/รีเฟรชหน้าทั้งที่ยังไม่ได้กดเพิ่มเข้าออเดอร์
   useEffect(() => {
     if (!dirty) return;
@@ -157,6 +165,7 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
       qty: q,
       unitPrice: p,
       ...(art.length ? { artworkUrls: art } : {}),
+      ...(noProof ? { noProof: { by: actor, at: new Date().toISOString() } } : {}),
     });
     setWebPick(null);
     setWebQuery("");
@@ -169,6 +178,7 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
     setQty("1");
     setPrice("");
     setArt([]);
+    setNoProof(false);
     setErr("");
     rememberAutoSpec("");
     setSpecUndo(null);
@@ -476,6 +486,20 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
           </span>
         </label>
       </div>
+      {/* ยอดเพิ่ม/ค่าบริการที่ไม่มีชิ้นงานให้ออกแบบ — ติ๊กตั้งแต่ตอนเพิ่ม กราฟฟิกจะไม่เห็นเป็นงานค้าง */}
+      <label
+        className={`mt-3 flex cursor-pointer items-start gap-2.5 rounded-xl px-3 py-2.5 text-xs ring-1 transition ${
+          noProof ? "bg-slate-700 text-white ring-slate-700" : "bg-white text-slate-600 ring-slate-200 hover:ring-slate-400"
+        }`}
+      >
+        <input type="checkbox" checked={noProof} onChange={(e) => setNoProof(e.target.checked)} className="mt-0.5 h-4 w-4 accent-slate-700" />
+        <span>
+          <span className="font-bold">🚫 รายการนี้ไม่ต้องทำแบบ</span>
+          <span className={`block text-[11px] leading-relaxed ${noProof ? "text-slate-200" : "text-slate-400"}`}>
+            ใช้กับค่าตัดไฟล์ · ยอดโอนเพิ่มภายหลัง · เพิ่มขนาด · คละลายเพิ่ม · ซื้อตะขอ ฯลฯ — จะไม่ขึ้นคิวกราฟฟิก ไม่ติดป้าย “ยังไม่มีแบบ” ในใบงาน (แนบภาพประกอบได้ถ้าอยาก)
+          </span>
+        </span>
+      </label>
       <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
         🎨 ภาพลาย: เก็บไฟล์ตามต้นฉบับที่เลือก ไม่บีบอัดซ้ำ — ภาพจากแชทมักถูกลดคุณภาพมาแล้ว ใช้เป็นแนวทางให้กราฟฟิก ไฟล์งานพิมพ์จริงขอลิงก์/อีเมลจากลูกค้าเพิ่ม
       </p>
@@ -508,6 +532,7 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
             setQty("1");
             setPrice("");
             setArt([]);
+            setNoProof(false);
             setOpen(false);
             setErr("");
             setWebPick(null);

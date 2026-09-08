@@ -879,6 +879,8 @@ export default function AdminOrderDetailPage() {
   const [noteOpen, setNoteOpen] = useState<Record<number, boolean>>({});
   // ยุบ/กางรายละเอียดของแต่ละรายการ — ออเดอร์ที่มีหลายรายการจะได้ไม่ยาวจนหาของไม่เจอ
   const [itemOpen, setItemOpen] = useState<Record<number, boolean>>({});
+  /** รายการ "ไม่ต้องทำแบบ" ที่แอดมินกดขอเปิดช่องรูปเอง (ปกติซ่อนไว้เพราะไม่มีอะไรให้แนบ) */
+  const [picOpen, setPicOpen] = useState<Record<number, boolean>>({});
   const [lightbox, setLightbox] = useState<{
     src: string;
     alt: string;
@@ -1483,6 +1485,27 @@ export default function AdminOrderDetailPage() {
       { ...order, items },
       actor,
       acked ? "กราฟฟิกยกเลิกยืนยันอ่านรายละเอียด" : "กราฟฟิกยืนยันอ่านรายละเอียดแล้ว",
+      item?.name
+    );
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
+
+  /**
+   * ติ๊กว่ารายการนี้ "ไม่ต้องทำแบบ" — ยอดโอนเพิ่มภายหลัง/ค่าบริการ (ค่าตัดไฟล์, เพิ่มขนาด, คละลายเพิ่ม, ซื้อตะขอ ฯลฯ)
+   * รายการจะไม่ค้างเป็น "รอกราฟฟิกทำแบบ" และไม่ติดป้ายยังไม่มีแบบในใบงาน · แนบภาพได้ถ้าอยาก · กดซ้ำ = ยกเลิก
+   */
+  function toggleNoProof(itemIndex: number) {
+    if (!order) return;
+    const item = order.items[itemIndex];
+    const on = !!item?.noProof;
+    const items = order.items.map((it, i) =>
+      i === itemIndex ? { ...it, noProof: on ? undefined : { by: actor, at: new Date().toISOString() } } : it
+    );
+    const next = withLog(
+      { ...order, items },
+      actor,
+      on ? "ยกเลิก: ไม่ต้องทำแบบ (กลับมารอกราฟฟิกทำแบบ)" : "ติ๊กว่ารายการนี้ไม่ต้องทำแบบ (ยอดเพิ่ม/ค่าบริการ)",
       item?.name
     );
     setOrder(next);
@@ -2638,6 +2661,8 @@ export default function AdminOrderDetailPage() {
                     {/* รูปตัวอย่างในแถว — กดเพื่อกาง แล้วจัดการรูปทั้งหมดด้านล่าง */}
                     {(() => {
                       const cover = proofs[proofs.length - 1]?.url ?? it.artworkUrls?.[0];
+                      // ไม่ต้องทำแบบ + ไม่มีรูป = ไม่ต้องโชว์กรอบรูปเปล่า ๆ (เลขรายการยังกด กาง/ยุบ ได้)
+                      if (!cover && it.noProof) return null;
                       return (
                         <button
                           type="button"
@@ -2654,7 +2679,7 @@ export default function AdminOrderDetailPage() {
                             </span>
                           )}
                           <span className="mt-0.5 block text-[10px] leading-tight text-slate-400">
-                            {proofs.length ? `🖼 แบบ ${proofs.length}` : "ยังไม่มีแบบ"}
+                            {proofs.length ? `🖼 แบบ ${proofs.length}` : it.noProof ? "ไม่ต้องทำแบบ" : "ยังไม่มีแบบ"}
                             {(it.artworkUrls?.length ?? 0) > 0 ? ` · 🎨 ลาย ${it.artworkUrls!.length}` : ""}
                           </span>
                         </button>
@@ -2723,7 +2748,7 @@ export default function AdminOrderDetailPage() {
                         </button>
                       )}
                       <p className="mt-0.5 text-[11px] text-slate-400">
-                        {it.proofStatus ? `แบบ: ${it.proofStatus === "รอตรวจ" ? "รอลูกค้าตรวจ" : it.proofStatus === "อนุมัติ" ? "ลูกค้าอนุมัติแล้ว" : "ลูกค้าขอแก้ไข"}` : "แบบ: รอกราฟฟิกทำแบบ"}
+                        {it.proofStatus ? `แบบ: ${it.proofStatus === "รอตรวจ" ? "รอลูกค้าตรวจ" : it.proofStatus === "อนุมัติ" ? "ลูกค้าอนุมัติแล้ว" : "ลูกค้าขอแก้ไข"}` : it.noProof ? "แบบ: ไม่ต้องทำแบบ" : "แบบ: รอกราฟฟิกทำแบบ"}
                         {proofs.length > 0 ? ` · ${proofs.length} แบบ` : ""}
                         {(it.artworkUrls?.length ?? 0) > 0 ? ` · 🎨 ภาพลาย ${it.artworkUrls!.length}` : ""}
                         {noteHasText(it.adminNote) ? " · 📝 มีหมายเหตุ" : ""}
@@ -2975,6 +3000,30 @@ export default function AdminOrderDetailPage() {
                     </div>
                   )}
 
+                  {/* ยอดโอนเพิ่ม/ค่าบริการที่ไม่มีชิ้นงานให้ออกแบบ — ติ๊กแล้วรายการจะไม่ค้างเป็น "รอกราฟฟิกทำแบบ" · แนบภาพได้ถ้าอยาก */}
+                  {(mayProof || mayEdit) && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleNoProof(i)}
+                        title="ติ๊กเมื่อรายการนี้เป็นยอดโอนเพิ่ม/ค่าบริการ (ค่าตัดไฟล์, เพิ่มขนาด, คละลายเพิ่ม, ซื้อตะขอ ฯลฯ) — จะไม่ขึ้นคิวกราฟฟิก ไม่ติดป้ายยังไม่มีแบบในใบงาน · แนบภาพประกอบได้ถ้าอยาก"
+                        className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                          it.noProof
+                            ? "bg-slate-600 text-white hover:bg-slate-700"
+                            : "border border-slate-300 bg-white text-slate-600 hover:border-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        {it.noProof ? "🚫 ไม่ต้องทำแบบ (ยอดเพิ่ม/ค่าบริการ)" : "☐ รายการนี้ไม่ต้องทำแบบ"}
+                      </button>
+                      {it.noProof && (
+                        <span className="text-[10px] text-slate-400">
+                          {it.noProof.by} · {shortTime(it.noProof.at)}
+                          {proofs.length === 0 ? " · จะแนบภาพประกอบก็ได้ ไม่บังคับ" : ""}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     {it.proofStatus ? (
                       <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${PROOF_STYLES[it.proofStatus]}`}>
@@ -2983,6 +3032,10 @@ export default function AdminOrderDetailPage() {
                           : it.proofStatus === "อนุมัติ"
                             ? "ลูกค้าอนุมัติแล้ว"
                             : "ลูกค้าขอแก้ไข"}
+                      </span>
+                    ) : it.noProof ? (
+                      <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-600 ring-1 ring-slate-300/70">
+                        ไม่ต้องทำแบบ
                       </span>
                     ) : (
                       <span className="inline-flex items-center rounded-full bg-violet-50 px-2.5 py-0.5 text-[11px] font-bold text-violet-700 ring-1 ring-violet-200/70">
@@ -3020,6 +3073,21 @@ export default function AdminOrderDetailPage() {
                   </div>
 
                   {/* ── รูปงาน แยกชัดว่าใครเป็นคนใส่ · ใครเห็น ── */}
+                  {/* ไม่ต้องทำแบบ + ยังไม่มีรูปสักใบ = ซ่อนช่องรูปทั้งสองกล่อง เหลือลิงก์เล็ก ๆ เผื่ออยากแนบภาพประกอบ */}
+                  {it.noProof && !proofs.length && !(it.artworkUrls?.length ?? 0) && !picOpen[i] ? (
+                    <p className="mt-3 text-[11px] text-slate-400">
+                      🚫 รายการนี้ไม่ต้องทำแบบ — ไม่มีช่องรูปให้กราฟฟิก
+                      {(mayProof || mayEdit) && (
+                        <button
+                          type="button"
+                          onClick={() => setPicOpen((cur) => ({ ...cur, [i]: true }))}
+                          className="ml-2 font-bold text-slate-500 underline-offset-2 hover:text-indigo-700 hover:underline"
+                        >
+                          แนบภาพประกอบ (ไม่บังคับ)
+                        </button>
+                      )}
+                    </p>
+                  ) : (
                   <div className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)]">
                     {/* ซ้าย: ลายที่ลูกค้าส่งมา (ทีมงานเห็นเท่านั้น) */}
                     <div className="rounded-xl border border-sky-200 bg-sky-50/40 p-3">
@@ -3313,8 +3381,16 @@ export default function AdminOrderDetailPage() {
                         onSetPerUnit={mayProof ? (per) => setItemPerUnit(i, per) : undefined}
                       />
                       {proofs.length === 0 ? (
-                        <p className="mt-2 rounded-lg border-2 border-dashed border-violet-200 bg-white px-3 py-3 text-center text-[11px] text-slate-400">
-                          {proofDropIdx === i ? "⬇️ ปล่อยไฟล์ตรงนี้ได้เลย" : "ยังไม่ได้ส่งแบบให้ลูกค้า — ลากไฟล์มาวาง กดปุ่มด้านล่าง หรือกด “ใช้ลายนี้เป็นแบบ” จากฝั่งซ้าย"}
+                        <p
+                          className={`mt-2 rounded-lg border-2 border-dashed bg-white px-3 py-3 text-center text-[11px] ${
+                            it.noProof ? "border-slate-200 text-slate-500" : "border-violet-200 text-slate-400"
+                          }`}
+                        >
+                          {proofDropIdx === i
+                            ? "⬇️ ปล่อยไฟล์ตรงนี้ได้เลย"
+                            : it.noProof
+                              ? "🚫 รายการนี้ไม่ต้องทำแบบ — จะแนบภาพประกอบก็ได้ ไม่บังคับ (แนบแล้วลูกค้าจะเห็นและกดตรวจตามปกติ)"
+                              : "ยังไม่ได้ส่งแบบให้ลูกค้า — ลากไฟล์มาวาง กดปุ่มด้านล่าง หรือกด “ใช้ลายนี้เป็นแบบ” จากฝั่งซ้าย"}
                         </p>
                       ) : (
                         <div className="mt-2 flex flex-wrap gap-2">
@@ -3553,6 +3629,7 @@ export default function AdminOrderDetailPage() {
                       )}
                     </div>
                   </div>
+                  )}
 
                   {/* 📝 หมายเหตุใบงานของรายการนี้ — อยู่ติดกับรายการเลย ไม่ต้องไปหาที่คอลัมน์ขวา */}
                   {mayEdit && (
@@ -3807,6 +3884,7 @@ export default function AdminOrderDetailPage() {
           {mayEdit && (
             <ItemAdder
               draftKey={`order.${order.id}`}
+              actor={actor}
               onShopAdd={() => {
                 // ใช้กลไกเดียวกับที่ลูกค้ากด "สั่งเพิ่มในออเดอร์นี้" — ของที่หยิบจะเข้าออเดอร์นี้ ไม่คิดค่าส่งซ้ำ
                 try {
@@ -3823,7 +3901,7 @@ export default function AdminOrderDetailPage() {
                   { ...order, items: [...order.items, item] },
                   actor,
                   "เพิ่มรายการพิเศษ",
-                  `${item.name} ×${item.qty} @${formatPrice(item.unitPrice)}`
+                  `${item.name} ×${item.qty} @${formatPrice(item.unitPrice)}${item.noProof ? " · ไม่ต้องทำแบบ" : ""}`
                 );
                 applyOrder(next);
               }}

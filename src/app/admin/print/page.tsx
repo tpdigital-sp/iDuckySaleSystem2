@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import RequirePerm from "@/components/RequirePerm";
-import { daysToUseBy, orderFullyPaid, proofsOf, type Order, type OrderStatus } from "@/lib/admin-data";
+import { daysToUseBy, orderFullyPaid, proofMissing, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchOrdersAdmin } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
 import {
@@ -232,7 +232,7 @@ function PrintRow({ o, checked, onToggle }: { o: Order; checked: boolean; onTogg
   const printed = printCountOf(o);
   const left = daysToUseBy(o);
   const paid = orderFullyPaid(o);
-  const noProof = o.items.some((it) => proofsOf(it).length === 0);
+  const noProof = o.items.some(proofMissing);
   /** ยังไม่ปริ้น = งานค้าง (คอรัล) · ปริ้นแล้ว = เดินต่อได้ (เงียบ) */
   const tone =
     printed > 0

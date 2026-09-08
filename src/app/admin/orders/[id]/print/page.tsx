@@ -618,6 +618,8 @@ function OrderDocs({
                               </div>
                             ))}
                           </div>
+                        ) : it.noProof ? (
+                          <p className="text-xs font-semibold text-slate-500">— ไม่ต้องทำแบบ (ยอดเพิ่ม/ค่าบริการ)</p>
                         ) : (
                           <p className="text-xs font-semibold text-rose-600">⚠️ ยังไม่มีแบบงาน</p>
                         )}

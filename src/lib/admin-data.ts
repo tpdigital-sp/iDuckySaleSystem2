@@ -361,6 +361,13 @@ export interface OrderItem {
   samplePacked?: { by: string; at: string };
   /** กราฟฟิกยืนยันว่าอ่านรายละเอียดรายการนี้แล้ว (ก่อนทำแบบงาน) — audit trail */
   graphicAck?: { by: string; at: string };
+  /**
+   * รายการนี้ "ไม่ต้องทำแบบ" — ยอดโอนเพิ่มภายหลัง/ค่าบริการที่ไม่มีชิ้นงานให้ออกแบบ
+   * (ค่าตัดไฟล์, เพิ่มขนาด, คละลายเพิ่ม, ซื้อตะขอ ฯลฯ) แอดมิน/กราฟฟิกติ๊กเองในหน้าออเดอร์ หรือติ๊กตอนเพิ่มรายการ
+   * ผล: ไม่นับเป็น "รอกราฟฟิกทำแบบ" ไม่ขึ้นคิวกราฟฟิก ไม่ติดป้าย "ยังไม่มีแบบ" ในใบงาน/รายการ
+   * ⚠️ แนบภาพได้ถ้าอยากแนบ — พอมีแบบแล้วเดินตามขั้นตอนตรวจแบบตามปกติ (ดู proofMissing)
+   */
+  noProof?: { by: string; at: string };
   /** หมายเหตุที่แอดมินพิมพ์ลงใบงาน (ตรงตำแหน่งรายการนี้) — rich text HTML (สี/ขนาด/น้ำหนักต่อคำ) */
   adminNote?: string;
   /**
@@ -663,6 +670,19 @@ export function proofsOf(item: OrderItem): Proof[] {
   return item.proofUrl ? [{ url: item.proofUrl, at: item.proofUpdatedAt ?? "" }] : [];
 }
 
+/** รายการนี้ติ๊ก "ไม่ต้องทำแบบ" ไว้ (ยอดเพิ่ม/ค่าบริการ) — ดู OrderItem.noProof */
+export function proofExempt(item: OrderItem): boolean {
+  return !!item.noProof;
+}
+
+/**
+ * รายการนี้ "ยังขาดแบบงาน" ที่ต้องมีคนทำ — ใช้แทน !proofsOf(it).length ทุกจอที่นับงานค้าง
+ * รายการที่ติ๊กไม่ต้องทำแบบ = ไม่มีแบบก็ไม่ถือว่าขาด (แต่ถ้าแนบภาพมาแล้ว ก็เดินขั้นตอนตรวจแบบตามปกติ)
+ */
+export function proofMissing(item: OrderItem): boolean {
+  return !proofsOf(item).length && !proofExempt(item);
+}
+
 /**
  * รายการนี้ "ลูกค้าจัดวางลายบนเทมเพลตเองมา" หรือเปล่า
  * ดูจากบรรทัดพิกัดของทีมผลิตที่จอวางลายแนบมาให้ (ออเดอร์ที่แนบไฟล์เฉย ๆ จะไม่มี)
@@ -679,6 +699,8 @@ export function allSelfDesignedApproved(order: Order): boolean {
   if (!order.items.length) return false;
   return order.items.every((it) => {
     const proofs = proofsOf(it);
+    // ยอดเพิ่ม/ค่าบริการที่ไม่ต้องทำแบบ = ไม่มีอะไรให้ตรวจ ถือว่าผ่าน
+    if (!proofs.length && proofExempt(it)) return true;
     if (!proofs.length) return false;
     // แบบชุดนี้ต้องมาจากจอวางลายของลูกค้า และอนุมัติครบทุกรูป
     return isSelfDesigned(it) && proofs.every((p) => p.review === "อนุมัติ");
@@ -692,7 +714,7 @@ export function allSelfDesignedApproved(order: Order): boolean {
 export function graphicTodoItems(order: Order): OrderItem[] {
   return order.items.filter((it) => {
     if (isSelfDesigned(it)) return false; // ลูกค้าทำมาแล้ว กราฟฟิกไม่ต้องแตะ
-    return !proofsOf(it).length || it.proofStatus === "ขอแก้ไข";
+    return proofMissing(it) || it.proofStatus === "ขอแก้ไข";
   });
 }
 

@@ -488,6 +488,7 @@ function QuoteDetailInner() {
                 <ItemAdder
                   draftKey={`quote.${quote.id}`}
                   target="ใบเสนอราคา"
+                  actor={meName}
                   onAdd={(item) => patch({ items: [...quote.items, item] })}
                   onShopAdd={() => {
                     setQuoteTarget({ id: quote.id, customer: quote.customer });
