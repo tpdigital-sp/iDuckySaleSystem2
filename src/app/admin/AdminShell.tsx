@@ -7,6 +7,7 @@ import { getAdminSession, signOut } from "@/lib/auth";
 import { PermProvider } from "@/lib/perm-context";
 import type { Perm } from "@/lib/permissions";
 import { markRatingsSeen, unseenRatingCount } from "@/lib/ratings";
+import { QUOTES_CHANGED_EVENT } from "@/lib/quotes";
 
 /** เมนู + สิทธิ์ที่ต้องมีถึงจะเห็น */
 /** เมนูแบ่งเป็นกลุ่มตามงาน — เมนูยาวขึ้นเรื่อย ๆ ไล่หาทีละบรรทัดไม่ไหวแล้ว */
@@ -67,6 +68,9 @@ const MENU_GROUPS: {
 
 /** แคชป้ายจำนวนประเมินใหม่ (module scope — อยู่ข้ามการเปลี่ยนหน้า) กันดึงเรตติ้งทั้งชุดซ้ำทุกคลิก */
 let ratingsBadgeCache: { at: number; rows: { id: string }[] } | null = null;
+/** แคชป้าย "ลูกค้ากดตกลงใบเสนอราคาแล้ว รอร้านเปิดงาน" — นับจากฐานจริง ป้ายหายเองพอแปลงเป็นออเดอร์/ปิดใบ */
+let quotesBadgeCache: { at: number; count: number } | null = null;
+const QUOTES_BADGE_TTL = 60_000;
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -102,6 +106,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [isAdministrator, setIsAdministrator] = useState(false);
   // badge แจ้งจำนวนประเมินความพึงพอใจใหม่ที่ยังไม่ได้เปิดดู (นับต่อเครื่องด้วย localStorage)
   const [newRatings, setNewRatings] = useState(0);
+  // badge ที่เมนู "ใบเสนอราคา" — ลูกค้ากด ✅ ตกลงจากลิงก์แล้ว แต่ร้านยังไม่ได้แปลงเป็นออเดอร์
+  const [acceptedQuotes, setAcceptedQuotes] = useState(0);
 
   // ── โลโก้หลังบ้าน — กดที่โลโก้มุมซ้ายบนเพื่อเปลี่ยนรูปได้เลย (เก็บในแถวเมนู __site_nav__) ──
   const [adminLogo, setAdminLogo] = useState<string | undefined>(undefined);
@@ -220,6 +226,50 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     };
   }, [perms, pathname]);
 
+  /**
+   * ป้ายใบเสนอราคาที่ลูกค้าตกลงแล้ว — แอดมินมักเปิดหลังบ้านค้างไว้ทั้งวัน เลยต้อง
+   * (1) เช็กซ้ำเป็นระยะ + ตอนกลับมาที่แท็บ จะได้เห็นทันทีที่ลูกค้ากด ไม่ต้องรีเฟรชเอง
+   * (2) ฟัง event จากหน้าใบเสนอราคา หลังแปลงเป็นออเดอร์/ปิดใบ ป้ายจะได้ลดทันที ไม่ค้างจนแคชหมดอายุ
+   */
+  useEffect(() => {
+    if (pathname === "/admin/login" || !perms.includes("orders.edit")) return;
+    let active = true;
+    const refresh = (force = false) => {
+      if (!force && quotesBadgeCache && Date.now() - quotesBadgeCache.at < QUOTES_BADGE_TTL) {
+        setAcceptedQuotes(quotesBadgeCache.count);
+        return;
+      }
+      fetch("/api/admin/quotes/pending", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (!active || !j) return;
+          const count = Number(j.count) || 0;
+          quotesBadgeCache = { at: Date.now(), count };
+          setAcceptedQuotes(count);
+        })
+        .catch(() => {});
+    };
+    // อยู่ในหน้าใบเสนอราคาเอง = เพิ่งแก้อะไรมาแน่ ๆ → ดึงใหม่ไม่ใช้แคช
+    refresh(pathname.startsWith("/admin/quotes"));
+    const onChanged = () => refresh(true);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") refresh(true);
+    }, 90_000);
+    window.addEventListener(QUOTES_CHANGED_EVENT, onChanged);
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener(QUOTES_CHANGED_EVENT, onChanged);
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [perms, pathname]);
+
   const isLoginPage = pathname === "/admin/login";
 
   useEffect(() => {
@@ -327,13 +377,19 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     </svg>
   );
 
+  /** ป้ายแดงบนเมนู: ประเมินใหม่ที่ยังไม่เปิดดู / ใบเสนอราคาที่ลูกค้ากดตกลงแล้วรอร้านเปิดงาน */
+  const badgeCountFor = (href: string) => (href === "/admin/ratings" ? newRatings : href === "/admin/quotes" ? acceptedQuotes : 0);
+
   /**
    * แถวเมนูหนึ่งรายการ — ใช้ทั้งโหมดกาง/พับ/ผลค้นหา
    * ไอคอนอยู่ในกล่อง 24px เท่ากันหมด ตัวอักษรทุกบรรทัดจึงเริ่มตรงกัน (เดิมอีโมจิกว้างไม่เท่ากัน ขอบซ้ายเลยเป็นฟันปลา)
    */
   const itemLink = (m: (typeof MENU)[number], rail: boolean) => {
     const active = m.href === activeHref;
-    const hasBadge = m.href === "/admin/ratings" && newRatings > 0;
+    const badgeCount = badgeCountFor(m.href);
+    const hasBadge = badgeCount > 0;
+    const badgeTitle =
+      m.href === "/admin/quotes" ? `ลูกค้าตกลงใบเสนอราคาแล้ว ${badgeCount} ใบ — รอกดแปลงเป็นออเดอร์` : `ประเมินใหม่ ${badgeCount} รายการ`;
     return (
       <Link
         key={m.href}
@@ -343,7 +399,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           setQuery("");
         }}
         aria-current={active ? "page" : undefined}
-        title={rail ? m.label : undefined}
+        title={rail ? (hasBadge ? `${m.label} · ${badgeTitle}` : m.label) : hasBadge ? badgeTitle : undefined}
         className={`group relative flex items-center rounded-xl py-[9px] text-[13px] transition ${
           rail ? "justify-center px-0" : "gap-2.5 px-2.5"
         } ${
@@ -362,10 +418,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         {!rail && <span className="truncate">{m.label}</span>}
         {hasBadge &&
           (rail ? (
-            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-400 ring-2 ring-[#173A6B]" />
+            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-400 ring-2 ring-[#173A6B]" aria-label={badgeTitle} />
           ) : (
-            <span className="ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10.5px] font-bold text-white">
-              {newRatings > 99 ? "99+" : newRatings}
+            <span
+              className="ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10.5px] font-bold text-white"
+              aria-label={badgeTitle}
+            >
+              {badgeCount > 99 ? "99+" : badgeCount}
             </span>
           ))}
       </Link>
@@ -393,6 +452,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         const items = menu.filter((m) => m.group === key);
         if (!items.length) return [];
         const folded = !!foldedGroups[key];
+        // หุบกลุ่มอยู่แต่มีเมนูข้างในติดป้ายแดง → โชว์จุดแดงที่หัวกลุ่ม ไม่งั้นแจ้งเตือนจะหายไปเงียบ ๆ
+        const groupBadge = items.reduce((n, m) => n + badgeCountFor(m.href), 0);
         return [
           rail ? (
             groupIdx > 0 ? (
@@ -423,6 +484,14 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               {/* หุบอยู่แต่มีหน้าที่เปิดค้างในกลุ่มนี้ → จุดบอกให้รู้ว่าอยู่ตรงไหน */}
               {folded && activeGroup === key && (
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} aria-label="อยู่ในกลุ่มนี้" />
+              )}
+              {folded && groupBadge > 0 && (
+                <span
+                  className="inline-flex h-[15px] min-w-[15px] shrink-0 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold normal-case tracking-normal text-white"
+                  aria-label={`มีแจ้งเตือน ${groupBadge} รายการในกลุ่มนี้`}
+                >
+                  {groupBadge > 99 ? "99+" : groupBadge}
+                </span>
               )}
               <span className="ml-1 h-px flex-1 bg-white/10" aria-hidden="true" />
               <span className={`shrink-0 rounded-full px-1.5 text-[10px] font-semibold ${folded ? badge : "text-sky-200/45"}`}>

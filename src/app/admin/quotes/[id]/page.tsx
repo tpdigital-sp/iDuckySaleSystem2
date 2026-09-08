@@ -18,6 +18,7 @@ import { formatPrice } from "@/lib/products";
 import {
   QUOTE_STYLES,
   daysToExpire,
+  notifyQuotesChanged,
   quoteStatusOf,
   quoteTotal,
   withQuoteLog,
@@ -81,6 +82,8 @@ function QuoteDetailInner() {
     }
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
+    // ป้ายแดงที่เมนู "ใบเสนอราคา" นับจากสถานะ — แก้สถานะแล้วให้แถบเมนูดึงใหม่ทันที
+    notifyQuotesChanged();
   }, []);
 
   const patch = (p: Partial<Quote>) => quote && void persist({ ...quote, ...p });
@@ -101,6 +104,7 @@ function QuoteDetailInner() {
     const j = await res.json();
     setBusy(false);
     if (!res.ok) return setErr(j.error ?? "แปลงเป็นออเดอร์ไม่สำเร็จ");
+    notifyQuotesChanged();
     router.push(`/admin/orders/${encodeURIComponent(j.orderId)}`);
   }
 
@@ -119,6 +123,7 @@ function QuoteDetailInner() {
     const res = await fetch(`/api/admin/quotes?id=${encodeURIComponent(quote.id)}`, { method: "DELETE" });
     const j = await res.json();
     if (!res.ok) return setErr(j.error ?? "ลบไม่สำเร็จ");
+    notifyQuotesChanged();
     router.push("/admin/quotes");
   }
 

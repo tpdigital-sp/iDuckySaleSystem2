@@ -74,6 +74,20 @@ export function daysToExpire(q: Quote): number | null {
   return Math.ceil(ms / 86400_000);
 }
 
+/**
+ * ใบที่ "ลูกค้ากดตกลงจากลิงก์แล้ว แต่ร้านยังไม่ได้แปลงเป็นออเดอร์" — คืองานที่รอแอดมินอยู่
+ * ใช้นับป้ายแจ้งเตือนที่เมนูหลังบ้าน (ป้ายหายเองพอแปลงเป็นออเดอร์หรือปิดใบ)
+ */
+export function quoteAwaitingAdmin(q: Pick<Quote, "status" | "orderId">): boolean {
+  return q.status === "ลูกค้าตกลง" && !q.orderId;
+}
+
+/** event บนหน้าต่าง — หน้าใบเสนอราคายิงหลังแก้ข้อมูล ให้ป้ายที่เมนูรีเฟรชทันทีไม่ต้องรอแคชหมดอายุ */
+export const QUOTES_CHANGED_EVENT = "iducky:quotes-changed";
+export function notifyQuotesChanged(): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(QUOTES_CHANGED_EVENT));
+}
+
 /** ต่อท้ายประวัติ (รูปแบบเดียวกับออเดอร์) */
 export function withQuoteLog(q: Quote, by: string, action: string, detail?: string): Quote {
   const entry: LogEntry = { at: new Date().toISOString(), by, action, ...(detail ? { detail } : {}) };
