@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { quoteExpired, withQuoteLog, type Quote } from "@/lib/quotes";
+import { syncQuoteMemberTier } from "@/lib/server/quote-member-tier";
 
 export const runtime = "nodejs";
 
@@ -15,8 +16,16 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const { data, error } = await sb.from("quotes").select("data").eq("id", decodeURIComponent(id)).maybeSingle();
   if (error || !data) return NextResponse.json({ error: "ไม่พบใบเสนอราคานี้" }, { status: 404 });
 
-  const quote = data.data as Quote;
+  let quote = data.data as Quote;
   if (!quote.key || quote.key !== key) return NextResponse.json({ error: "ลิงก์ไม่ถูกต้อง" }, { status: 403 });
+
+  // ใบที่ยังไม่เป็นออเดอร์: เช็คส่วนลดระดับสมาชิกของผู้ติดต่อสดทุกครั้งที่ลูกค้าเปิด
+  // (ใบเก่าที่ผูกผู้ติดต่อไว้ก่อนมีฟีเจอร์นี้จะได้ % ตามระดับตัวเองโดยไม่ต้องให้แอดมินเปิดบันทึกซ้ำ)
+  const synced = await syncQuoteMemberTier(sb, quote);
+  if (JSON.stringify(synced.memberTier) !== JSON.stringify(quote.memberTier)) {
+    quote = synced;
+    await sb.from("quotes").update({ data: quote }).eq("id", quote.id);
+  }
 
   return NextResponse.json({ quote });
 }

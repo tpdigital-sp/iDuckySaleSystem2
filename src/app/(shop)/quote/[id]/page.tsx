@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { formatPrice } from "@/lib/products";
-import { daysToExpire, quoteStatusOf, quoteTotal, type Quote } from "@/lib/quotes";
+import { daysToExpire, quoteMemberDiscount, quoteStatusOf, quoteTotal, type Quote } from "@/lib/quotes";
 import { LINE_URL } from "@/components/LineButton";
 import { SpecLines } from "@/components/SpecLines";
 
@@ -105,6 +105,14 @@ export default function CustomerQuotePage() {
               <span>ค่าจัดส่ง</span>
               <span>{quote.shippingCost ? formatPrice(quote.shippingCost) : "ฟรี"}</span>
             </div>
+            {quoteMemberDiscount(quote) > 0 && quote.memberTier && (
+              <div className="flex justify-between font-semibold text-emerald-600">
+                <span>
+                  {quote.memberTier.icon} ส่วนลดสมาชิก {quote.memberTier.name} ({quote.memberTier.pct}%)
+                </span>
+                <span>−{formatPrice(quoteMemberDiscount(quote))}</span>
+              </div>
+            )}
             {(quote.discount ?? 0) > 0 && (
               <div className="flex justify-between font-semibold text-emerald-600">
                 <span>ส่วนลด{quote.discountNote ? ` (${quote.discountNote})` : ""}</span>

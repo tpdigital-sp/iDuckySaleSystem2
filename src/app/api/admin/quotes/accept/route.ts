@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import { bkkYmd, thaiDateTime } from "@/lib/bangkok-time";
 import { randomBytes } from "node:crypto";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order } from "@/lib/admin-data";
-import { quoteTotal, withQuoteLog, type Quote } from "@/lib/quotes";
+import { quoteMemberDiscount, quoteMemberLabel, quoteTotal, withQuoteLog, type Quote } from "@/lib/quotes";
+import { syncQuoteMemberTier } from "@/lib/server/quote-member-tier";
 
 export const runtime = "nodejs";
 
@@ -33,14 +35,16 @@ export async function POST(req: Request) {
   if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
   if (!row) return NextResponse.json({ error: "ไม่พบใบเสนอราคานี้" }, { status: 404 });
 
-  const quote = row.data as Quote;
+  let quote = row.data as Quote;
   if (quote.orderId) return NextResponse.json({ error: `ใบนี้แปลงเป็นออเดอร์ ${quote.orderId} ไปแล้ว` }, { status: 400 });
   if (!quote.items.length) return NextResponse.json({ error: "ใบนี้ยังไม่มีรายการสินค้า" }, { status: 400 });
+  // ระดับสมาชิกคิดสด ณ วันตกลง (ระหว่างรอลูกค้าตอบ ระดับอาจขึ้น/ตกได้) — กติกาเดียวกับสั่งเองจากเว็บ
+  quote = await syncQuoteMemberTier(sb, quote);
+  const memberAmount = quoteMemberDiscount(quote);
 
   const by = gate.actor.name?.trim() || gate.actor.username;
   const now = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  const orderId = `OD-${String(now.getFullYear()).slice(2)}${p(now.getMonth() + 1)}${p(now.getDate())}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const orderId = `OD-${bkkYmd(now)}-${Math.floor(1000 + Math.random() * 9000)}`;
 
   let order: Order = {
     id: orderId,
@@ -48,7 +52,7 @@ export async function POST(req: Request) {
     customer: quote.customer,
     phone: quote.phone,
     address: quote.address ?? "",
-    date: now.toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+    date: thaiDateTime(now),
     payment: "โอนธนาคาร",
     shipping: "ส่งธรรมดา",
     shippingCost: quote.shippingCost || 0,
@@ -58,6 +62,7 @@ export async function POST(req: Request) {
     ...(quote.email ? { email: quote.email } : {}),
     // ผู้ติดต่อที่ผูกไว้ตอนทำใบเสนอราคา ต้องติดไปกับออเดอร์ด้วย ไม่งั้นแต้มไม่เข้าใคร
     ...(quote.contactId ? { contactId: quote.contactId } : {}),
+    ...(memberAmount > 0 ? { discount: { label: quoteMemberLabel(quote), amount: memberAmount } } : {}),
     ...(quote.discount ? { adminDiscount: { amount: quote.discount, label: quote.discountNote } } : {}),
     ...(quote.note ? { billNote: quote.note } : {}),
     quoteOf: quote.id,

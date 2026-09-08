@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
+import { bkkYmd, thaiDateTime } from "@/lib/bangkok-time";
 import { randomBytes } from "node:crypto";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withQuoteLog, type Quote } from "@/lib/quotes";
+import { syncQuoteMemberTier } from "@/lib/server/quote-member-tier";
 
 export const runtime = "nodejs";
 
@@ -51,8 +53,7 @@ export async function POST(req: Request) {
   }
 
   const now = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  const id = `QT-${String(now.getFullYear()).slice(2)}${p(now.getMonth() + 1)}${p(now.getDate())}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const id = `QT-${bkkYmd(now)}-${Math.floor(1000 + Math.random() * 9000)}`;
   const by = gate.actor.name?.trim() || gate.actor.username;
   const validDays = Number.isFinite(Number(body.validDays)) && Number(body.validDays) > 0 ? Math.floor(Number(body.validDays)) : 7;
 
@@ -82,7 +83,7 @@ export async function POST(req: Request) {
     address: body.address?.trim() || base.address || "",
     ...(body.contactId?.trim() || base.contactId ? { contactId: body.contactId?.trim() || base.contactId } : {}),
     email: base.email,
-    date: now.toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+    date: thaiDateTime(now),
     items: base.items ?? [],
     shippingCost: base.shippingCost ?? 0,
     note: base.note,
@@ -91,6 +92,8 @@ export async function POST(req: Request) {
     createdBy: by,
   };
   quote = withQuoteLog(quote, by, body.copyFrom ? "สร้างใบเสนอราคา (ก๊อปจากใบเดิม)" : "สร้างใบเสนอราคา", body.copyFrom ?? undefined);
+  // ผูกผู้ติดต่อมาตั้งแต่สร้าง → เติมส่วนลดระดับสมาชิกให้เลย
+  quote = await syncQuoteMemberTier(sb, quote);
 
   const { error } = await sb.from(TABLE).insert({ id, data: quote });
   if (error) {
@@ -116,9 +119,12 @@ export async function PATCH(req: Request) {
   }
   if (!quote?.id) return NextResponse.json({ error: "ไม่มีเลขใบเสนอราคา" }, { status: 400 });
 
+  // ส่วนลดระดับสมาชิกเป็นของเซิร์ฟเวอร์ — คิดจากผู้ติดต่อที่ผูกอยู่ทุกครั้งที่บันทึก (หน้าจอส่งค่ามาก็ไม่เชื่อ)
+  quote = await syncQuoteMemberTier(sb, quote);
+
   const { error } = await sb.from(TABLE).update({ data: quote }).eq("id", quote.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, quote });
 }
 
 /** ลบใบเสนอราคา (เฉพาะใบร่าง/ไม่รับ — ใบที่กลายเป็นออเดอร์แล้วลบไม่ได้) */

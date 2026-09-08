@@ -6,6 +6,7 @@
  * ใบเสนอราคาจึงอยู่คนละตาราง ไม่เข้าคิวงาน ไม่นับยอดขาย จนกว่าลูกค้าจะตกลง แล้วค่อยแปลงเป็นออเดอร์
  */
 import type { LogEntry, OrderItem } from "./admin-data";
+import { tierDiscountAmount } from "./tiers";
 
 /**
  * "ลูกค้าตกลง" กับ "สร้างออเดอร์แล้ว" ต้องแยกกัน — ระหว่างสองอันนี้คือ "งานที่แอดมินต้องทำ"
@@ -46,9 +47,17 @@ export interface Quote {
   date: string;
   items: OrderItem[];
   shippingCost: number;
-  /** ส่วนลดท้ายบิล (บาท) */
+  /** ส่วนลดท้ายบิล (บาท) — แอดมินใส่เอง (ใช้พร้อมส่วนลดสมาชิกได้ เหมือน adminDiscount ของออเดอร์) */
   discount?: number;
   discountNote?: string;
+  /**
+   * 🏅 ส่วนลดระดับสมาชิกของผู้ติดต่อที่ผูกไว้ (contactId) — เซิร์ฟเวอร์เติมให้เองตอนบันทึก/เปิดใบ (ดู lib/server/quote-member-tier.ts)
+   * เก็บ % ไม่เก็บบาท → แก้รายการแล้วยอดลดคิดใหม่ตามเอง · ตัวแทนจำหน่าย/ระดับ 0% = ไม่มีฟิลด์นี้
+   * ตอนแปลงเป็นออเดอร์จะคิดสดจากผู้ติดต่ออีกครั้ง (ระดับอาจเปลี่ยนระหว่างรอ)
+   */
+  memberTier?: { id: string; name: string; icon: string; pct: number };
+  /** แอดมินกดปิดส่วนลดสมาชิกสำหรับใบนี้ (เช่น เสนอราคาพิเศษที่รวมส่วนลดไว้แล้ว) */
+  memberTierOff?: boolean;
   /** เงื่อนไข/หมายเหตุที่จะพิมพ์บนใบเสนอราคา */
   note?: string;
   status: QuoteStatus;
@@ -62,10 +71,26 @@ export interface Quote {
   log?: LogEntry[];
 }
 
-/** ยอดรวมของใบเสนอราคา (สินค้า + ค่าส่ง − ส่วนลด) */
+/** ยอดสินค้าก่อนค่าส่ง/ส่วนลด */
+export function quoteSubtotal(q: Quote): number {
+  return q.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+}
+
+/** ส่วนลดระดับสมาชิกเป็นบาท (คิดบนยอดสินค้า ปัดลง — สูตรเดียวกับออเดอร์) · 0 = ไม่มี/ปิดไว้ */
+export function quoteMemberDiscount(q: Quote): number {
+  if (q.memberTierOff || !q.memberTier) return 0;
+  return tierDiscountAmount(quoteSubtotal(q), q.memberTier.pct);
+}
+
+/** ป้ายส่วนลดสมาชิก เช่น "สมาชิก Diamond (12%)" — ใช้ทั้งหน้าใบและตอนแปลงเป็นออเดอร์ */
+export function quoteMemberLabel(q: Quote): string {
+  const t = q.memberTier;
+  return t ? `สมาชิก ${t.name} (${t.pct}%)` : "";
+}
+
+/** ยอดรวมของใบเสนอราคา (สินค้า + ค่าส่ง − ส่วนลดสมาชิก − ส่วนลดที่แอดมินใส่) */
 export function quoteTotal(q: Quote): number {
-  const sub = q.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
-  return Math.max(0, sub + (q.shippingCost || 0) - (q.discount || 0));
+  return Math.max(0, quoteSubtotal(q) + (q.shippingCost || 0) - quoteMemberDiscount(q) - (q.discount || 0));
 }
 
 /** ใบนี้หมดอายุแล้วหรือยัง (นับเฉพาะใบที่ยังรอลูกค้าตอบ) */

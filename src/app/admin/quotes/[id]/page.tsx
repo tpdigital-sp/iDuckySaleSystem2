@@ -19,6 +19,7 @@ import {
   QUOTE_STYLES,
   awaitingOrder,
   daysToExpire,
+  quoteMemberDiscount,
   quoteStatusOf,
   quoteTotal,
   withQuoteLog,
@@ -30,6 +31,9 @@ import { Banner, Btn, CopyChip, GH, HBTN, LogTimeline, PageShell, soft } from "@
 import { ContactChip, CustomerContactInput } from "@/components/admin/CustomerContactInput";
 import { useActor } from "@/lib/perm-context";
 import ItemAdder from "@/components/admin/ItemAdder";
+import PrevNextNav from "@/components/admin/PrevNextNav";
+/** ลิงก์หน้ารายละเอียดใบเสนอราคา — คงที่นอกคอมโพเนนต์ */
+const quoteHref = (id: string) => `/admin/quotes/${encodeURIComponent(id)}`;
 import { setQuoteTarget } from "@/lib/append-quote";
 import { formatPhone } from "@/lib/contacts";
 
@@ -53,6 +57,8 @@ function QuoteDetailInner() {
   const [copied, setCopied] = useState(false);
   /** ชื่อที่กำลังพิมพ์ (ยังไม่บันทึก) — ระหว่างค้นผู้ติดต่อจะยิง PATCH ทุกตัวอักษรไม่ไหว บันทึกตอนออกจากช่องพอ */
   const [nameDraft, setNameDraft] = useState<string | null>(null);
+  // ลำดับใบทั้งหมดตามที่ API ส่งมา (created_at ใหม่→เก่า) ไว้ทำปุ่มก่อนหน้า/ถัดไป
+  const [quoteIds, setQuoteIds] = useState<string[]>([]);
 
   useEffect(() => setOrigin(window.location.origin), []);
 
@@ -60,6 +66,7 @@ function QuoteDetailInner() {
     const res = await fetch("/api/admin/quotes", { cache: "no-store" });
     const j = await res.json();
     const found = (j.quotes ?? []).find((q: Quote) => q.id === quoteId) ?? null;
+    setQuoteIds(((j.quotes ?? []) as Quote[]).map((q) => q.id));
     setQuote(found);
     setLoading(false);
   }, [quoteId]);
@@ -80,11 +87,23 @@ function QuoteDetailInner() {
       setErr(j.error ?? "บันทึกไม่สำเร็จ");
       return;
     }
+    // เซิร์ฟเวอร์เติมส่วนลดระดับสมาชิกจากผู้ติดต่อที่ผูก (memberTier) — รับกลับมาโชว์ทันทีที่ผูก/ยกเลิกผูก
+    const j = (await res.json().catch(() => ({}))) as { quote?: Quote };
+    if (j.quote) setQuote((cur) => (cur && cur.id === j.quote!.id ? { ...cur, memberTier: j.quote!.memberTier } : cur));
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
   }, []);
 
   const patch = (p: Partial<Quote>) => quote && void persist({ ...quote, ...p });
+
+  /* เปิดใบที่ผูกผู้ติดต่อไว้ → บันทึกเปล่า 1 ครั้งให้เซิร์ฟเวอร์เช็คระดับสมาชิกสดจากผู้ติดต่อ (ยิงครั้งเดียวต่อใบ)
+     ต้องทำแม้มี memberTier อยู่แล้ว — ระดับที่ล็อกในผู้ติดต่อเปลี่ยนได้ (ซีดใหม่/ขึ้น-ตกระดับ) แล้วใบต้องตามให้ทัน */
+  const [backfilled, setBackfilled] = useState("");
+  useEffect(() => {
+    if (!quote || quote.orderId || !quote.contactId || backfilled === quote.id) return;
+    setBackfilled(quote.id);
+    void persist(quote);
+  }, [quote, backfilled, persist]);
   const patchItem = (i: number, p: Partial<OrderItem>) =>
     quote && void persist({ ...quote, items: quote.items.map((it, k) => (k === i ? { ...it, ...p } : it)) });
 
@@ -146,6 +165,7 @@ function QuoteDetailInner() {
 
   const qty = quote.items.reduce((s, i) => s + i.qty, 0);
   const subtotal = quote.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+  const memberAmount = quoteMemberDiscount(quote);
   const total = quoteTotal(quote);
   const nItems = `${quote.items.length} รายการ`;
 
@@ -215,9 +235,12 @@ function QuoteDetailInner() {
           {/* บรรทัดบน = ข้อมูลล้วน (เลขใบ · สถานะ · ยอด) ไม่มีปุ่มปน */}
           <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
             <div className="min-w-0">
-              <Link href="/admin/quotes" className="dkb-eyebrow" style={{ color: "var(--dk-faint)" }}>
-                ใบเสนอราคาทั้งหมด
-              </Link>
+              <div className="flex flex-wrap items-center gap-3">
+                <Link href="/admin/quotes" className="dkb-eyebrow" style={{ color: "var(--dk-faint)" }}>
+                  ใบเสนอราคาทั้งหมด
+                </Link>
+                <PrevNextNav ids={quoteIds} current={quote.id} hrefOf={quoteHref} />
+              </div>
               <h1 className="dkb-display mt-1 flex flex-wrap items-center gap-2 text-[1.55rem] leading-tight">
                 {quote.id}
                 {soon &&
@@ -528,8 +551,29 @@ function QuoteDetailInner() {
                     className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-right text-xs font-semibold tabular-nums text-slate-800 focus:border-amber-300 focus:outline-none disabled:bg-slate-50"
                   />
                 </div>
+                {/* 🏅 ส่วนลดระดับสมาชิก — เซิร์ฟเวอร์คิดจากผู้ติดต่อที่ผูก แอดมินปิดได้ต่อใบ (เช่น ราคาที่เสนอรวมส่วนลดไว้แล้ว) */}
+                {quote.memberTier && (
+                  <div className="mt-1.5 flex items-center justify-between gap-3 text-sm">
+                    <span className={`flex items-center gap-1.5 ${quote.memberTierOff ? "text-slate-400 line-through" : "text-emerald-700"}`}>
+                      {quote.memberTier.icon} ส่วนลดสมาชิก {quote.memberTier.name} ({quote.memberTier.pct}%)
+                      {!locked && (
+                        <button
+                          type="button"
+                          onClick={() => patch({ memberTierOff: !quote.memberTierOff })}
+                          className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-500 no-underline ring-1 ring-slate-200 transition hover:bg-slate-50"
+                          title={quote.memberTierOff ? "เปิดใช้ส่วนลดสมาชิกสำหรับใบนี้" : "ไม่คิดส่วนลดสมาชิกในใบนี้ (เช่น ราคาที่เสนอรวมส่วนลดไว้แล้ว)"}
+                        >
+                          {quote.memberTierOff ? "เปิดใช้" : "ไม่ใช้"}
+                        </button>
+                      )}
+                    </span>
+                    <span className={`font-semibold tabular-nums ${quote.memberTierOff ? "text-slate-400 line-through" : "text-emerald-600"}`}>
+                      −{formatPrice(quote.memberTierOff ? Math.floor((subtotal * quote.memberTier.pct) / 100) : memberAmount)}
+                    </span>
+                  </div>
+                )}
                 <div className="mt-1.5 flex items-center justify-between gap-3 text-sm">
-                  <span className={muted}>ส่วนลด</span>
+                  <span className={muted}>{quote.memberTier ? "ส่วนลดเพิ่ม (แอดมิน)" : "ส่วนลด"}</span>
                   <span className="flex items-center gap-1 font-semibold text-rose-500">
                     −
                     <input
