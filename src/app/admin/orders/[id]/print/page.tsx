@@ -8,7 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice } from "@/lib/products";
-import { adminDiscountAmount, artworkSide, MOCK_ORDERS, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderTotal, proofsOf, proofUnit, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, artworkSide, MOCK_ORDERS, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -975,10 +975,28 @@ function OrderDocs({
                   <span className="tabular-nums">−{formatPrice(adminDiscountAmount(order))}</span>
                 </div>
               )}
+              {orderVatAmount(order) > 0 && (
+                <div className="flex justify-between py-1">
+                  <span className="text-slate-500">ภาษีมูลค่าเพิ่ม {order.vat!.rate}%</span>
+                  <span className="tabular-nums">{formatPrice(orderVatAmount(order))}</span>
+                </div>
+              )}
               <div className="mt-1 flex justify-between border-t-2 border-slate-900 py-1.5 text-base font-extrabold">
                 <span>ยอดรวมทั้งสิ้น</span>
                 <span className="tabular-nums">{formatPrice(orderTotal(order))}</span>
               </div>
+              {orderWhtAmount(order) > 0 && (
+                <>
+                  <div className="flex justify-between py-1 text-slate-600">
+                    <span>หักภาษี ณ ที่จ่าย {order.wht!.rate}%</span>
+                    <span className="tabular-nums">−{formatPrice(orderWhtAmount(order))}</span>
+                  </div>
+                  <div className="flex justify-between py-1 text-base font-extrabold">
+                    <span>ยอดชำระ</span>
+                    <span className="tabular-nums">{formatPrice(orderNetTransfer(order))}</span>
+                  </div>
+                </>
+              )}
             </div>
 
             <p className="mt-3 text-sm">

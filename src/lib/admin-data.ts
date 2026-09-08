@@ -548,6 +548,33 @@ export interface Order {
    * มีค่า = ใบนี้ลูกค้ายกเลิกเอง ไม่ใช่ร้านยกเลิก (แยกไว้ดูสถิติ/ตามงานย้อนหลัง)
    */
   cancelledByCustomer?: { at: string; reason?: string };
+  /**
+   * 📄 ออเดอร์ที่สร้างจากลิงก์แชร์ FlowAccount (ลูกค้าที่ขอใบกำกับภาษี — บิลจริงออกที่ FlowAccount)
+   * ใบนี้ในระบบเราเป็น "ใบงาน" ให้กราฟฟิก/ผลิต/จัดส่ง · ยอดเงิน/VAT/หัก ณ ที่จ่าย ยึดตามเอกสาร FlowAccount
+   * ราคาต่อชิ้นในรายการ = ราคาก่อน VAT ตามใบ (grandTotal คือยอดรวม VAT แล้ว)
+   */
+  flowAccount?: {
+    url: string;
+    /** qt · bl · inv · re · ca … ตามตัวย่อในลิงก์ */
+    docType: string;
+    docTypeLabel: string;
+    docNo: string;
+    date?: string;
+    subtotal?: number;
+    vat?: number;
+    grandTotal?: number;
+    wht?: number;
+    net?: number;
+    fetchedAt: string;
+  };
+  /** ข้อมูลออกใบกำกับภาษีของลูกค้า (ดึงจาก FlowAccount หรือแอดมินกรอก) */
+  taxInvoice?: { company: string; taxId?: string; branch?: string; address: string };
+  /**
+   * ภาษีมูลค่าเพิ่มตามบิล — มีเฉพาะออเดอร์ที่สร้างจากลิงก์ FlowAccount (ราคาสินค้าในรายการเป็นราคาก่อน VAT)
+   * บวกเข้ายอดรวม (orderTotal) ให้ยอดในระบบนี้เท่ากับ "จำนวนเงินรวมทั้งสิ้น" ในเอกสารทุกบาท
+   * ออเดอร์ปกติจากหน้าเว็บไม่มีฟิลด์นี้ (ราคาหน้าร้านรวมทุกอย่างแล้ว)
+   */
+  vat?: { rate: number; amount: number };
 }
 
 /** ราคาสินค้ารวม (ก่อนค่าส่ง/ส่วนลด) */
@@ -588,9 +615,15 @@ export function orderDiscountTotal(o: Order): number {
   return (o.discount?.amount ?? 0) + adminDiscountAmount(o) + orderItemDiscounts(o) + orderEarlyPayAmount(o);
 }
 
+/** VAT ตามบิล (บาท) — 0 = ออเดอร์ทั่วไปที่ราคารวมทุกอย่างแล้ว */
+export function orderVatAmount(o: Order): number {
+  return Math.max(0, o.vat?.amount ?? 0);
+}
+
 export function orderTotal(o: Order): number {
   // ?? 0 กันออเดอร์เก่า/แถวที่ไม่มี shippingCost ทำให้ยอดกลายเป็น NaN แล้วลามไปทั้งระบบ
-  return Math.max(0, orderSubtotal(o) + (o.shippingCost ?? 0) - orderDiscountTotal(o));
+  // ปัดทศนิยม 2 ตำแหน่ง — ออเดอร์จาก FlowAccount มีสตางค์ (VAT 7%) ไม่ให้ลอยเป็น 1540.8000000001
+  return Math.max(0, Math.round((orderSubtotal(o) + (o.shippingCost ?? 0) - orderDiscountTotal(o) + orderVatAmount(o)) * 100) / 100);
 }
 
 /** ยอดหัก ณ ที่จ่ายของออเดอร์ (บาท) — 0 = ไม่ได้ตั้งหรือไม่หัก */

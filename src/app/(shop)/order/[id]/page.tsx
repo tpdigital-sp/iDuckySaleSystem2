@@ -10,7 +10,7 @@ import { useParams, useRouter } from "next/navigation";
 import { artQtyOf, formatPrice } from "@/lib/products";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
-import { adminDiscountAmount, amountDueNow, artworkSide, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderItemDiscounts, orderStatusLabel, orderTotal, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { adminDiscountAmount, amountDueNow, artworkSide, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, reviewGiftProof, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
@@ -644,8 +644,24 @@ export default function CustomerOrderPage() {
         </div>
       )}
 
+      {/* ── ใบที่ออกบิลใน FlowAccount: ชำระตามเอกสารนั้น ไม่ต้องโอนเข้าบัญชีร้าน/แนบสลิปที่นี่ ── */}
+      {order.status === "รอชำระเงิน" && order.flowAccount && (
+        <div className="ord-note mt-4 p-4">
+          <p className="ord-title text-[.96rem]" style={{ color: "inherit" }}>
+            📄 ชำระตาม{order.flowAccount.docTypeLabel} {order.flowAccount.docNo}
+          </p>
+          <p className="mt-1 text-xs leading-relaxed">
+            ออเดอร์นี้ออกเอกสารผ่านระบบบัญชีของร้านแล้ว — ชำระตามยอดในเอกสาร
+            {order.flowAccount.grandTotal != null ? ` (${formatPrice(order.flowAccount.grandTotal)} รวม VAT)` : ""} แล้วแจ้งทางร้านได้เลย
+            ไม่ต้องแนบสลิปในหน้านี้
+          </p>
+          <a href={order.flowAccount.url} target="_blank" rel="noreferrer" className="ord-btn sm mt-3 inline-block">
+            เปิดเอกสาร ↗
+          </a>
+        </div>
+      )}
       {/* ── ชำระเงิน / แจ้งสลิป ── */}
-      {order.status === "รอชำระเงิน" && pendingQuote.length === 0 && (
+      {order.status === "รอชำระเงิน" && !order.flowAccount && pendingQuote.length === 0 && (
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -1697,10 +1713,28 @@ export default function CustomerOrderPage() {
                 <span>−{formatPrice(adminDiscountAmount(order))}</span>
               </div>
             )}
+            {orderVatAmount(order) > 0 && (
+              <div className="mt-1.5 flex justify-between text-sm">
+                <span className="t-soft">ภาษีมูลค่าเพิ่ม {order.vat!.rate}%</span>
+                <span>{formatPrice(orderVatAmount(order))}</span>
+              </div>
+            )}
             <div className="ord-title mt-3 flex justify-between pt-3 text-base" style={{ borderTop: "1px dashed var(--sky-200)" }}>
               <span>ยอดรวม</span>
               <span className="t-blue" style={{ fontWeight: 600 }}>{formatPrice(orderTotal(order))}</span>
             </div>
+            {orderWhtAmount(order) > 0 && (
+              <>
+                <div className="mt-1.5 flex justify-between text-sm">
+                  <span className="t-soft">หักภาษี ณ ที่จ่าย {order.wht!.rate}%</span>
+                  <span>−{formatPrice(orderWhtAmount(order))}</span>
+                </div>
+                <div className="ord-title mt-1 flex justify-between text-base">
+                  <span>ยอดชำระ (หลังหัก ณ ที่จ่าย)</span>
+                  <span className="t-blue" style={{ fontWeight: 600 }}>{formatPrice(orderNetTransfer(order))}</span>
+                </div>
+              </>
+            )}
             {order.deposit && (
               <div className="ord-sub mt-2.5 space-y-1 p-2.5 text-xs">
                 <div className="flex justify-between font-semibold">

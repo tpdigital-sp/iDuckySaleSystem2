@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { formatPrice } from "@/lib/products";
-import { adminDiscountAmount, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderTotal, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, type Order } from "@/lib/admin-data";
 import { fetchOrderForCustomer } from "@/lib/order-repo";
 import { fetchShopPayment, shopInfoOf, type ShopInfo } from "@/lib/shop-settings";
 import { SpecLines } from "@/components/SpecLines";
@@ -170,10 +170,28 @@ export default function CustomerReceiptPage() {
                 <span className="tabular-nums">−{formatPrice(adminDiscountAmount(order))}</span>
               </div>
             )}
+            {orderVatAmount(order) > 0 && (
+              <div className="flex justify-between">
+                <span>ภาษีมูลค่าเพิ่ม {order.vat!.rate}%</span>
+                <span className="tabular-nums">{formatPrice(orderVatAmount(order))}</span>
+              </div>
+            )}
             <div className="flex justify-between border-t border-stone-200 pt-2 text-base font-extrabold text-amber-950">
               <span>ยอดรวมทั้งสิ้น</span>
               <span className="tabular-nums">{formatPrice(orderTotal(order))}</span>
             </div>
+            {orderWhtAmount(order) > 0 && (
+              <>
+                <div className="flex justify-between text-stone-600">
+                  <span>หักภาษี ณ ที่จ่าย {order.wht!.rate}%</span>
+                  <span className="tabular-nums">−{formatPrice(orderWhtAmount(order))}</span>
+                </div>
+                <div className="flex justify-between font-extrabold text-amber-950">
+                  <span>ยอดชำระ</span>
+                  <span className="tabular-nums">{formatPrice(orderNetTransfer(order))}</span>
+                </div>
+              </>
+            )}
             {(order.paidTotal ?? 0) > 0 && (
               <div className="flex justify-between text-xs text-emerald-600">
                 <span>ชำระแล้ว</span>

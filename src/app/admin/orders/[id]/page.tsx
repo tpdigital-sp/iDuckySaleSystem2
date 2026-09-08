@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { giftLinesOf, giftArtLabel } from "@/lib/gifts";
 import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
+import FlowAccountSync from "@/components/admin/FlowAccountSync";
 import { useParams, useRouter } from "next/navigation";
 import { artQtyOf, formatPrice } from "@/lib/products";
 import { proofIssues, productWordIndex, type ProductWordIndex } from "@/lib/proof-check";
@@ -26,6 +27,7 @@ import {
   orderNetTransfer,
   orderTotal,
   orderWhtAmount,
+  orderVatAmount,
   packGate,
   PROOF_STYLES,
   proofsOf,
@@ -2526,6 +2528,37 @@ export default function AdminOrderDetailPage() {
                   🧑‍💼 พนักงานสั่งแทนลูกค้า — {order.placedBy}
                 </p>
               )}
+              {(order.flowAccount || order.taxInvoice) && (
+                <div className="mt-2 rounded-lg border border-sky-200 bg-sky-50/60 px-3 py-2 text-[12px] leading-relaxed text-slate-700">
+                  {order.flowAccount && (
+                    <p className="font-bold text-sky-800">
+                      📄 {order.flowAccount.docTypeLabel} FlowAccount {order.flowAccount.docNo}
+                      {order.flowAccount.date ? ` · ${order.flowAccount.date}` : ""}
+                      {" · "}
+                      <a href={order.flowAccount.url} target="_blank" rel="noreferrer" className="underline">
+                        เปิดเอกสาร ↗
+                      </a>
+                    </p>
+                  )}
+                  {order.flowAccount?.grandTotal != null && (
+                    <p className={muted}>
+                      ยอดตามใบ {formatPrice(order.flowAccount.grandTotal)}
+                      {order.flowAccount.vat ? ` (รวม VAT ${formatPrice(order.flowAccount.vat)})` : ""}
+                      {order.flowAccount.wht ? ` · หัก ณ ที่จ่าย ${formatPrice(order.flowAccount.wht)} → โอนจริง ${formatPrice(order.flowAccount.net ?? 0)}` : ""}
+                      {" · "}บิลจริง/รับชำระที่ FlowAccount — ใบนี้เป็นใบงาน
+                    </p>
+                  )}
+                  {order.flowAccount && mayEdit && <FlowAccountSync order={order} actor={actor} onApply={applyOrder} />}
+                  {order.taxInvoice && (
+                    <p className={muted}>
+                      🧾 ใบกำกับ: <b className="text-slate-800">{order.taxInvoice.company}</b>
+                      {order.taxInvoice.branch ? ` (${order.taxInvoice.branch})` : ""}
+                      {order.taxInvoice.taxId ? ` · เลขผู้เสียภาษี ${order.taxInvoice.taxId}` : ""}
+                      {order.taxInvoice.address ? ` · ${order.taxInvoice.address}` : ""}
+                    </p>
+                  )}
+                </div>
+              )}
               {order.dealer && (
                 <p className="mt-2 inline-flex rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-bold text-teal-700 ring-1 ring-teal-200">
                   🤝 ตัวแทนจำหน่าย — ราคาเรทตัวแทน (ไม่มีส่วนลด/คูปอง/โอนไว/ของแถม)
@@ -4125,6 +4158,31 @@ export default function AdminOrderDetailPage() {
                     <span>−{formatPrice(adminDiscountAmount(order))}</span>
                   </div>
                 )
+              )}
+              {/* VAT ตามบิล — เฉพาะออเดอร์จาก FlowAccount (ราคาสินค้าข้างบนเป็นราคาก่อน VAT) */}
+              {order.vat && (
+                <div className="mt-1.5 flex items-center justify-between gap-3 text-sm">
+                  <span className={muted}>ภาษีมูลค่าเพิ่ม {order.vat.rate}%</span>
+                  {mayEdit ? (
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={order.vat.amount}
+                      onChange={(e) => setOrder((cur) => (cur?.vat ? { ...cur, vat: { ...cur.vat, amount: Math.max(0, Number(e.target.value) || 0) } } : cur))}
+                      onFocus={(e) => (e.currentTarget.dataset.orig = String(order.vat?.amount ?? 0))}
+                      onBlur={(e) => {
+                        const orig = Number(e.currentTarget.dataset.orig || 0);
+                        if (orig === (order.vat?.amount ?? 0)) return persist();
+                        applyOrder(withLog(order, actor, "แก้ VAT ตามบิล", `${formatPrice(orig)} → ${formatPrice(order.vat?.amount ?? 0)}`));
+                      }}
+                      title="แก้ให้ตรงยอด VAT ในเอกสาร FlowAccount"
+                      className="w-24 rounded-lg border border-slate-200 bg-white px-2 py-1 text-right text-xs font-semibold tabular-nums text-slate-800 focus:border-amber-300 focus:outline-none"
+                    />
+                  ) : (
+                    <span className="font-semibold tabular-nums text-slate-800">{formatPrice(orderVatAmount(order))}</span>
+                  )}
+                </div>
               )}
               {/* ── แถบสรุป: ยอดรวมบิล → หัก ณ ที่จ่าย → ยอดโอนจริง จบในก้อนเดียว ──
                   ไม่หักภาษี = ยอดรวมคือเลขใหญ่ · หักภาษี = ยอดโอนจริงคือเลขใหญ่ (เลขที่ต้องเทียบเงินเข้าบัญชี) */}

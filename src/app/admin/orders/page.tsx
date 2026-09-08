@@ -39,6 +39,7 @@ import { useCan } from "@/lib/perm-context";
 import { PACKING_QUEUE_STATUSES } from "@/lib/permissions";
 import StatusChip, { chipStyle, STATUS_TONE } from "@/components/admin/StatusChip";
 import NewCustomerDialog, { type NewCustomerDraft } from "@/components/admin/NewCustomerDialog";
+import FlowAccountOrderDialog from "@/components/admin/FlowAccountOrderDialog";
 import "@/components/admin/dashboard.css";
 
 /** แบ่งสถานะตามแผนกที่รับผิดชอบ — แต่ละแผนกเห็นเฉพาะงานของตัวเอง */
@@ -268,6 +269,8 @@ export default function AdminOrdersPage() {
       if (o.id.toLowerCase().includes(kw) || o.customer.toLowerCase().includes(kw)) return true;
       // พิมพ์ชื่อพนักงาน = เห็นเฉพาะใบที่คนนั้นสั่งแทนลูกค้า
       if ((o.placedBy ?? "").toLowerCase().includes(kw)) return true;
+      // เลขเอกสาร FlowAccount (QT010529) / ชื่อบริษัทในใบกำกับ — ลูกค้านิติบุคคลมักอ้างเลขนี้
+      if ((o.flowAccount?.docNo ?? "").toLowerCase().includes(kw) || (o.taxInvoice?.company ?? "").toLowerCase().includes(kw)) return true;
       // ค้นด้วยเบอร์โทรได้ด้วย — แอดมินมักได้เบอร์จากไลน์ก่อนได้เลขออเดอร์
       return digits.length >= 4 && (o.phone ?? "").replace(/\D/g, "").includes(digits);
     });
@@ -326,6 +329,7 @@ export default function AdminOrdersPage() {
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นเลขออเดอร์ / ชื่อลูกค้า / เบอร์โทร" />
             </label>
             {can("orders.edit") && <NewOrderButton onCreated={(id) => router.push(`/admin/orders/${id}`)} />}
+            {can("orders.edit") && <FlowAccountButton onCreated={(id) => router.push(`/admin/orders/${id}`)} />}
             <Link href="/admin/orders/scan" className="dkb-btn dkb-btn-navy">
               ยิงเลขพัสดุ
             </Link>
@@ -633,6 +637,16 @@ function OrderRow({
               งานเคลม
             </span>
           )}
+          {o.flowAccount && (
+            <span
+              className="dkb-tag"
+              style={{ background: "var(--dk-sky)", color: "var(--dk-blue-deep)" }}
+              title={`สร้างจาก ${o.flowAccount.docTypeLabel} FlowAccount — บิลจริงออกที่ FlowAccount`}
+            >
+              <i />
+              FlowAccount {o.flowAccount.docNo}
+            </span>
+          )}
           {o.reorderOf && (
             <span
               className="dkb-tag"
@@ -829,6 +843,27 @@ function NewOrderButton({ onCreated }: { onCreated: (id: string) => void }) {
           error={err}
           onCancel={() => setOpen(false)}
           onCreate={(d) => void create(d)}
+        />
+      )}
+    </>
+  );
+}
+
+/** ปุ่ม "จากลิงก์ FlowAccount" — วางลิงก์แชร์ใบเสนอราคา/ใบแจ้งหนี้ แล้วระบบอ่านมาสร้างออเดอร์ให้ (ลูกค้าขอใบกำกับภาษี) */
+function FlowAccountButton({ onCreated }: { onCreated: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="dkb-btn dkb-btn-ghost" title="ลูกค้าที่ออกบิลใน FlowAccount — วางลิงก์แชร์แล้วสร้างออเดอร์ให้ทันที">
+        📄 จากลิงก์ FlowAccount
+      </button>
+      {open && (
+        <FlowAccountOrderDialog
+          onCancel={() => setOpen(false)}
+          onCreated={(id) => {
+            setOpen(false);
+            onCreated(id);
+          }}
         />
       )}
     </>

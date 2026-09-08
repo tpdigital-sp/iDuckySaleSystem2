@@ -6,6 +6,11 @@ const nextConfig: NextConfig = {
    * ตั้ง NEXT_DIST_DIR ได้เมื่อต้องรัน dev หลายตัวพร้อมกัน (คนละพอร์ต) จะได้ไม่เขียนทับกันจนพัง
    */
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  /**
+   * pdf.js ฝั่งเซิร์ฟเวอร์ (อ่านเอกสารจากลิงก์ FlowAccount — src/lib/server/flowaccount.ts)
+   * ต้องโหลดจาก node_modules ตรง ๆ ไม่ให้ Turbopack/webpack มัดรวม ไม่งั้น fake worker ของมันหาไฟล์ไม่เจอ
+   */
+  serverExternalPackages: ["pdfjs-dist"],
   images: {
     /**
      * รูปสินค้ามาจาก 2 ที่: Supabase Storage (อัปเองหลังบ้าน) และ static.wixstatic.com (นำเข้าจากเว็บเดิม)
