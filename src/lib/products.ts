@@ -2344,6 +2344,10 @@ function isBareSizeName(name: string): boolean {
  * ⚠️ อย่าเอายอดจากที่นี่ไปบวกกับราคารวม — มันถูกนับไปแล้วในราคาต่อหน่วย ที่นี่ทำหน้าที่ "อธิบาย" อย่างเดียว
  */
 export function unitAddOnBreakdown(product: Product, selections: Record<string, string>, qty: number): FeeLine[] {
+  // 📐 กลุ่มขนาดที่ลูกค้ากำหนดเอง (ติ่งห้อยของพวงหลายชิ้น) — +฿ อ่านจากแถวที่ราคาไปเกาะ เหมือน unitPriceFor
+  // ไม่สลับ = ตัวเลือก "กำหนดขนาดเอง" ไม่มี +฿ ของตัวเอง บรรทัดค่าติ่งห้อยจะหายทั้งที่คิดเงินอยู่
+  const sized = applySizeInputPlans(product, selections);
+  selections = sized.selections;
   const m = activeMatrix(product, selections);
   const lines: FeeLine[] = [];
   for (const opt of product.options ?? []) {
@@ -2360,7 +2364,14 @@ export function unitAddOnBreakdown(product: Product, selections: Record<string, 
      * และสินค้าที่มีหลายกลุ่มเป็นขนาด (ตัวสแตนดี้ · แผ่นบน · ฐาน) จะชนกันเอง
      * ผู้ใช้ทัก 2 ก.ย. 69: สแตนดี้+จุกใส ขึ้นว่า "2cm ฿10" ทั้งที่หมายถึงฐาน แต่แผ่นบนก็ 2 ซม. พอดี
      */
-    const label = picked && (isInputOption(opt) || isBareSizeName(picked)) ? `${opt.label} ${picked}` : picked || opt.label;
+    // กลุ่มที่กำหนดขนาดเอง: บอกขนาดที่กรอกจริง + แถวที่คิดเท่า ("ขนาดชิ้นที่ 2 3.5×2 ซม. (คิดเท่า 4cm)")
+    // (ยังกรอกไม่ครบ = ยังไม่มีขนาดจริงให้บอก ใช้ชื่อแถวเริ่มต้นตามปกติ)
+    const pl = sized.plans.find((x) => x.label === opt.label && x.filled);
+    const label = pl
+      ? `${opt.label} ${pl.width}×${pl.height}${pl.unit ? ` ${pl.unit}` : ""} (คิดเท่า ${picked})`
+      : picked && (isInputOption(opt) || isBareSizeName(picked))
+        ? `${opt.label} ${picked}`
+        : picked || opt.label;
     lines.push({ label, amount: add });
   }
   return lines;
@@ -3147,73 +3158,113 @@ export interface SizeInputPlan {
  * แถวที่เอามาคิดราคานับเฉพาะแถวที่ **กฎเงื่อนไขยอมให้เลือกตอนนี้** (allowedChoices)
  * — 2mm เลือกได้ถึง 10cm การกรอก 10.5 จึงต้องตกไปให้แอดมินตีราคา ไม่ใช่ไปเกาะแถว 11cm ของ 1mm
  */
-export function sizeInputPlan(p: Product, selections: Record<string, string>): SizeInputPlan | null {
+export function sizeInputPlans(p: Product, selections: Record<string, string>): SizeInputPlan[] {
+  const plans: SizeInputPlan[] = [];
   for (const opt of p.options ?? []) {
     const cfg = opt.sizeInput;
     if (!cfg) continue;
     if (!optionActive(opt, selections)) continue;
     if ((selections[opt.label] ?? "") !== cfg.choice) continue;
-    const unit = cfg.unit ?? "";
-    const w = inputNumberOf(selections, cfg.widthLabel);
-    const h = inputNumberOf(selections, cfg.heightLabel);
-    const base = { label: opt.label, width: w, height: h, unit };
-    const allowed = new Set(allowedChoices(p, selections, opt.label));
-    const rows = opt.choices
-      .filter((ch) => ch.name !== cfg.choice && allowed.has(ch.name))
-      .map((ch) => ({ name: ch.name, cm: choiceSizeCm(ch.name) }))
-      .filter((r): r is { name: string; cm: number } => r.cm != null)
-      .sort((a, b) => a.cm - b.cm);
-    const flat = { ...base, overCm: 0, overFee: 0 };
-    const slackOf = (v: number) => {
-      // ปัดเป็นเต็มหน่วยแบบ "ผ่อนเศษ" — เศษไม่เกิน roundSlack (ค่าเริ่มต้น 0.5) ยังอยู่แถวเดิม
-      // 3.5 → 3 (แถว 3cm) · 3.6 → 4 (แถว 4cm) · 1e-9 กันเลขทศนิยมของ Number() (3.5000000001)
-      const slack = Math.max(0, cfg.roundSlack ?? 0.5);
-      const f = Math.floor(v + 1e-9);
-      return Math.max(1, v - f > slack + 1e-9 ? f + 1 : f);
-    };
-    /*
-     * 📏 โหมดเทียบสองด้าน — แถวครอบได้ต่อเมื่อครอบ **ทั้งกว้างและยาว** (ไม่สนแนววาง)
-     * เกาะแถวแรกในลิสต์ที่ครอบได้ = แถวถูกที่สุด (ร้านเรียงตัวเลือกขนาดจากถูกไปแพงอยู่แล้ว)
-     * เล็กกว่าแถวเล็กสุดก็เข้าแถวเล็กสุด — ลูกค้าสั่งเล็กกว่ามาตรฐานได้โดยไม่ต้องรอตีราคา
-     */
-    if (cfg.match === "both") {
-      const boxes = opt.choices
-        .filter((ch) => ch.name !== cfg.choice && allowed.has(ch.name))
-        .map((ch) => ({ name: ch.name, box: choiceSizeBox(ch.name) }))
-        .filter((r): r is { name: string; box: { short: number; long: number } } => r.box != null);
-      if (!(w > 0 && h > 0)) {
-        return { ...flat, longest: 0, choice: boxes[0]?.name ?? null, filled: false, quote: false };
-      }
-      const short = slackOf(Math.min(w, h));
-      const long = slackOf(Math.max(w, h));
-      const row = boxes.find((r) => short <= r.box.short && long <= r.box.long);
-      if (!row || (cfg.askOver != null && long > cfg.askOver)) {
-        return { ...flat, longest: long, choice: null, filled: true, quote: true };
-      }
-      return { ...flat, longest: long, choice: row.name, filled: true, quote: false };
-    }
-    // ยังกรอกไม่ครบ = เกาะแถวเล็กสุดไว้ก่อน (ราคาเริ่มต้น) — ปุ่มสั่งยังล็อกอยู่เพราะช่องกรอกยังว่าง
-    if (!(w > 0 && h > 0)) {
-      return { ...flat, longest: 0, choice: rows[0]?.name ?? null, filled: false, quote: false };
-    }
-    const longest = slackOf(Math.max(w, h));
-    const row = rows.find((r) => longest <= r.cm);
-    const top = rows[rows.length - 1];
-    /**
-     * 📈 ใหญ่กว่าทุกแถวในตาราง แต่ร้านตั้งเรทส่วนเกินไว้ (overRate) = คิดเองได้เลย
-     * ราคาฐานเกาะแถวใหญ่สุด + ส่วนที่เกินหน่วยละ overRate (askOver = เพดานที่ยอมคิดเอง)
-     */
-    if (!row && cfg.overRate && top && (cfg.askOver == null || longest <= cfg.askOver)) {
-      const overCm = longest - top.cm;
-      return { ...base, longest, choice: top.name, filled: true, quote: false, overCm, overFee: overCm * cfg.overRate };
-    }
-    // เกินเพดานที่แอดมินตั้งไว้ หรือไม่มีแถวไหนครอบได้ = ให้แอดมินตีราคา
-    if (!row || (cfg.askOver != null && longest > cfg.askOver)) {
-      return { ...flat, longest, choice: null, filled: true, quote: true };
-    }
-    return { ...flat, longest, choice: row.name, filled: true, quote: false };
+    plans.push(sizeInputPlanOf(p, selections, opt, cfg));
   }
-  return null;
+  return plans;
+}
+
+/**
+ * แผนของกลุ่มเดียว — ระบุ `label` เมื่อสินค้ามีหลายกลุ่มกำหนดขนาดเอง (พวงหลายชิ้น: ขนาดชิ้นที่ 1-10)
+ * ไม่ระบุ = กลุ่มแรกที่เจอ (สินค้าที่มีกลุ่มเดียวใช้แบบเดิมได้)
+ */
+export function sizeInputPlan(p: Product, selections: Record<string, string>, label?: string): SizeInputPlan | null {
+  const plans = sizeInputPlans(p, selections);
+  return (label ? plans.find((pl) => pl.label === label) : plans[0]) ?? null;
+}
+
+/**
+ * 📐 สลับค่าแกน/กลุ่มขนาดทุกกลุ่มที่ลูกค้ากำหนดเอง เป็น "แถวที่ราคาไปเกาะ" ก่อนคิดราคาตามปกติ
+ * — ใช้ชุดเดียวกันทั้ง unitPriceFor / unitAddOnBreakdown / ตารางราคาหน้าสินค้า ไม่งั้นแต่ละที่เห็นคนละแถว
+ * (พวงหลายชิ้น: ชิ้นที่ 1 เป็นแกนตาราง · ชิ้นที่ 2-10 บวก +฿ ตามแถวขนาดของกลุ่มตัวเอง)
+ * กลุ่มที่รอตีราคา (choice = null) คงค่าเดิมไว้ — needsQuote จัดการให้ราคาเป็น 0 อยู่แล้ว
+ */
+export function applySizeInputPlans(
+  p: Product,
+  selections: Record<string, string>
+): { selections: Record<string, string>; plans: SizeInputPlan[]; overFee: number } {
+  const plans = sizeInputPlans(p, selections);
+  if (!plans.length) return { selections, plans, overFee: 0 };
+  const next = { ...selections };
+  let overFee = 0;
+  for (const pl of plans) {
+    if (pl.choice) next[pl.label] = pl.choice;
+    overFee += pl.overFee;
+  }
+  return { selections: next, plans, overFee };
+}
+
+function sizeInputPlanOf(
+  p: Product,
+  selections: Record<string, string>,
+  opt: ProductOption,
+  cfg: SizeInputSpec
+): SizeInputPlan {
+  const unit = cfg.unit ?? "";
+  const w = inputNumberOf(selections, cfg.widthLabel);
+  const h = inputNumberOf(selections, cfg.heightLabel);
+  const base = { label: opt.label, width: w, height: h, unit };
+  const allowed = new Set(allowedChoices(p, selections, opt.label));
+  const rows = opt.choices
+    .filter((ch) => ch.name !== cfg.choice && allowed.has(ch.name))
+    .map((ch) => ({ name: ch.name, cm: choiceSizeCm(ch.name) }))
+    .filter((r): r is { name: string; cm: number } => r.cm != null)
+    .sort((a, b) => a.cm - b.cm);
+  const flat = { ...base, overCm: 0, overFee: 0 };
+  const slackOf = (v: number) => {
+    // ปัดเป็นเต็มหน่วยแบบ "ผ่อนเศษ" — เศษไม่เกิน roundSlack (ค่าเริ่มต้น 0.5) ยังอยู่แถวเดิม
+    // 3.5 → 3 (แถว 3cm) · 3.6 → 4 (แถว 4cm) · 1e-9 กันเลขทศนิยมของ Number() (3.5000000001)
+    const slack = Math.max(0, cfg.roundSlack ?? 0.5);
+    const f = Math.floor(v + 1e-9);
+    return Math.max(1, v - f > slack + 1e-9 ? f + 1 : f);
+  };
+  /*
+   * 📏 โหมดเทียบสองด้าน — แถวครอบได้ต่อเมื่อครอบ **ทั้งกว้างและยาว** (ไม่สนแนววาง)
+   * เกาะแถวแรกในลิสต์ที่ครอบได้ = แถวถูกที่สุด (ร้านเรียงตัวเลือกขนาดจากถูกไปแพงอยู่แล้ว)
+   * เล็กกว่าแถวเล็กสุดก็เข้าแถวเล็กสุด — ลูกค้าสั่งเล็กกว่ามาตรฐานได้โดยไม่ต้องรอตีราคา
+   */
+  if (cfg.match === "both") {
+    const boxes = opt.choices
+      .filter((ch) => ch.name !== cfg.choice && allowed.has(ch.name))
+      .map((ch) => ({ name: ch.name, box: choiceSizeBox(ch.name) }))
+      .filter((r): r is { name: string; box: { short: number; long: number } } => r.box != null);
+    if (!(w > 0 && h > 0)) {
+      return { ...flat, longest: 0, choice: boxes[0]?.name ?? null, filled: false, quote: false };
+    }
+    const short = slackOf(Math.min(w, h));
+    const long = slackOf(Math.max(w, h));
+    const row = boxes.find((r) => short <= r.box.short && long <= r.box.long);
+    if (!row || (cfg.askOver != null && long > cfg.askOver)) {
+      return { ...flat, longest: long, choice: null, filled: true, quote: true };
+    }
+    return { ...flat, longest: long, choice: row.name, filled: true, quote: false };
+  }
+  // ยังกรอกไม่ครบ = เกาะแถวเล็กสุดไว้ก่อน (ราคาเริ่มต้น) — ปุ่มสั่งยังล็อกอยู่เพราะช่องกรอกยังว่าง
+  if (!(w > 0 && h > 0)) {
+    return { ...flat, longest: 0, choice: rows[0]?.name ?? null, filled: false, quote: false };
+  }
+  const longest = slackOf(Math.max(w, h));
+  const row = rows.find((r) => longest <= r.cm);
+  const top = rows[rows.length - 1];
+  /**
+   * 📈 ใหญ่กว่าทุกแถวในตาราง แต่ร้านตั้งเรทส่วนเกินไว้ (overRate) = คิดเองได้เลย
+   * ราคาฐานเกาะแถวใหญ่สุด + ส่วนที่เกินหน่วยละ overRate (askOver = เพดานที่ยอมคิดเอง)
+   */
+  if (!row && cfg.overRate && top && (cfg.askOver == null || longest <= cfg.askOver)) {
+    const overCm = longest - top.cm;
+    return { ...base, longest, choice: top.name, filled: true, quote: false, overCm, overFee: overCm * cfg.overRate };
+  }
+  // เกินเพดานที่แอดมินตั้งไว้ หรือไม่มีแถวไหนครอบได้ = ให้แอดมินตีราคา
+  if (!row || (cfg.askOver != null && longest > cfg.askOver)) {
+    return { ...flat, longest, choice: null, filled: true, quote: true };
+  }
+  return { ...flat, longest, choice: row.name, filled: true, quote: false };
 }
 
 /** บันทึกว่าใคร "ตรวจแล้ว" เมื่อไหร่ — โชว์เป็นป้ายในหลังบ้านให้ทีมงานไม่ทำงานซ้ำกัน */
@@ -5008,7 +5059,7 @@ export function needsQuote(p: Product, selections: Record<string, string>): bool
     if (opt.choices.some((c) => c.askPrice && picked.includes(c.name))) return true;
   }
   // 📐 กำหนดขนาดเองที่ใหญ่เกินตารางราคา — ราคาต้องให้แอดมินตีให้
-  if (sizeInputPlan(p, selections)?.quote) return true;
+  if (sizeInputPlans(p, selections).some((pl) => pl.quote)) return true;
   return false;
 }
 
@@ -5115,10 +5166,11 @@ export function unitPriceFor(
    * 📐 กำหนดขนาดเองในกลุ่มแกนราคา — สลับค่าแกน "ขนาด" เป็นแถวที่ครอบด้านยาวสุด
    * แล้วคิดต่อตามตารางปกติ (ตัวเลือกที่ลูกค้าเลือกจริงไม่มีช่องราคาในตาราง)
    */
-  const sizePlan = sizeInputPlan(product, selections);
-  if (sizePlan?.choice) selections = { ...selections, [sizePlan.label]: sizePlan.choice };
+  // (สินค้าที่มีหลายกลุ่มกำหนดขนาดเอง เช่น พวงหลายชิ้น สลับให้ครบทุกกลุ่ม)
+  const sized = applySizeInputPlans(product, selections);
+  selections = sized.selections;
   // 📈 ส่วนที่ใหญ่กว่าแถวสุดท้าย เมื่อร้านตั้งเรทส่วนเกินไว้ (ไม่ต้องรอแอดมินตีราคา)
-  const sizeOverFee = sizePlan?.overFee ?? 0;
+  const sizeOverFee = sized.overFee;
   // จำนวนที่ใช้ "เทียบช่วงราคา" — สินค้าที่คิดเรทตามชิ้นต่อลายจะเป็น ⌊จำนวน ÷ ลาย⌋
   // เงื่อนไขที่ผูกกับช่วงราคา (ค่าธรรมเนียมช่วงปลีก · extraFromQty) ต้องใช้ตัวเลขเดียวกับที่เลือกช่วงราคา
   // ไม่งั้นจะกลายเป็น "ได้ราคาช่วงปลีก แต่ไม่โดนค่าธรรมเนียมช่วงปลีก" (สั่ง 11 ชิ้น คละ 3 ลาย = ตกลายละ 3)
@@ -5163,7 +5215,7 @@ export function unitPriceFor(
     }
     // 📐 ส่วนที่ใหญ่กว่าแถวสุดท้ายของตาราง (งานกำหนดขนาดเอง) — บวกท้ายสุด
     if (overFee) note(c!.label, overFee);
-    if (sizeOverFee) note(sizePlan!.label, sizeOverFee);
+    for (const pl of sized.plans) if (pl.overFee) note(pl.label, pl.overFee);
     // ค่าธรรมเนียมช่วงปลีกใส่ค่าติดลบได้ (ลดให้) — กันหักจนราคาติดลบ
     return Math.max(0, base + overFee + sizeOverFee);
   }
@@ -5176,7 +5228,7 @@ export function unitPriceFor(
     note(opt.label, add);
   }
   if (overFee) note(c!.label, overFee);
-  if (sizeOverFee) note(sizePlan!.label, sizeOverFee);
+  for (const pl of sized.plans) if (pl.overFee) note(pl.label, pl.overFee);
   return Math.max(0, price + overFee + sizeOverFee);
 }
 

@@ -14,6 +14,7 @@ import {
   artworkConsultOf,
   unitPriceFor,
   unitPriceParts,
+  unitAddOnBreakdown,
   needsQuote,
   type Product,
 } from "../src/lib/products";
@@ -126,7 +127,8 @@ ok("ทุกกลุ่มอยู่ในชุดครบ (ทั้ง�
 // 7 ก.ย. 69 — จัดหน้าให้กระชับ (multi-charm-tidy-dropdown.mjs): ชุดติ่งห้อยเริ่มแบบหุบ
 ok("ชุดติ่งห้อยทุกชุดติดธง sectionClosed (เริ่มแบบหุบ)",
   p.options.filter((o) => /^ติ่งห้อย ชิ้นที่ \d+$/.test(o.section ?? "")).every((o) => o.sectionClosed === true) &&
-  p.options.filter((o) => /^ติ่งห้อย ชิ้นที่ \d+$/.test(o.section ?? "")).length === 36);
+  // 36 กลุ่มสเปค + 18 ช่องกรอกกำหนดขนาดเอง (8 ก.ย. 69)
+  p.options.filter((o) => /^ติ่งห้อย ชิ้นที่ \d+$/.test(o.section ?? "")).length === 54);
 ok("ชุดอื่นไม่ติด sectionClosed (ทั้งพวง/ตัวหลัก/ตะขอ ยังกางตอนเปิดหน้า)",
   !p.options.some((o) => o.sectionClosed && !/^ติ่งห้อย ชิ้นที่ \d+$/.test(o.section ?? "")));
 ok("รูปแบบการห้อย + รับตะขอไหม เป็นเมนูเลื่อน (dropdown) และคำอธิบายย้ายไป selectedNote",
@@ -196,6 +198,50 @@ ok("เลือกมากกว่า 10 ชิ้น → ชุดสเป�
 ok("เลือกมากกว่า 10 ชิ้น → รูปแบบการห้อยไม่โชว์", !optionVisible(group(HANG), selOver));
 ok("เลือก 3 ชิ้นตามปกติ → ไม่ติดตีราคา ราคายังคิดเองได้", !needsQuote(p, sel3) && unitPriceFor(p, sel3, 15) > 0);
 ok("ธงการ์ดหน้ารายการ quoteOption = true", (p as { quoteOption?: boolean }).quoteOption === true);
+
+console.log("\n── 📐 กำหนดขนาดเองได้ทุกชิ้น (8 ก.ย. 69 — ตรรกะเดียวกับพวงกุญแจ sizeInput) ──");
+const CUSTOM = "📐 กำหนดขนาดเอง (ระบุ ก.×ส.)";
+const wL = (k: number) => `ขนาดกำหนดเอง (กว้าง) ชิ้นที่ ${k}`;
+const hL = (k: number) => `ขนาดกำหนดเอง (สูง) ชิ้นที่ ${k}`;
+ok("ขนาดชิ้นที่ 1-10 ทุกกลุ่มมีตัวเลือกกำหนดขนาดเอง + sizeInput ชี้ช่องกรอกของชิ้นตัวเอง",
+  Array.from({ length: 10 }, (_, i) => i + 1).every((k) => {
+    const g = group(`ขนาดชิ้นที่ ${k}`);
+    return g.choices.some((c) => c.name === CUSTOM) && g.sizeInput?.choice === CUSTOM && g.sizeInput.widthLabel === wL(k) && g.sizeInput.heightLabel === hL(k) && g.sizeInput.askOver === 10;
+  }));
+ok("ช่องกรอกกว้าง/สูงของทุกชิ้นเป็น input บังคับกรอก อยู่ชุดเดียวกับกลุ่มขนาด",
+  Array.from({ length: 10 }, (_, i) => i + 1).every((k) => [wL(k), hL(k)].every((l) => { const g = group(l); return g?.display === "input" && g.standardInput === true && g.input?.required === true && g.section === group(`ขนาดชิ้นที่ ${k}`).section; })));
+// ชิ้นที่ 1 (แกนตาราง) 3.5×2 → เกาะแถว 3cm · ราคาต้องเท่าเลือก 3cm ตรง ๆ
+const std3 = resolveSelections(p, { ...selQ, "ขนาดชิ้นที่ 1": "3cm" });
+const cus1 = resolveSelections(p, { ...selQ, "ขนาดชิ้นที่ 1": CUSTOM, [wL(1)]: "3.5 ซม.", [hL(1)]: "2 ซม." });
+ok("ชิ้นที่ 1 เลือกกำหนดขนาดเอง → ช่องกรอกกว้าง/สูงของชิ้นที่ 1 โผล่ (ชิ้นที่ 2 ไม่โผล่)",
+  optionVisible(group(wL(1)), cus1) && optionVisible(group(hL(1)), cus1) && !optionVisible(group(wL(2)), cus1));
+ok(`ชิ้นที่ 1 กรอก 3.5×2 ซม. → คิดเท่าแถว 3cm (฿${unitPriceFor(p, cus1, 15)} = ฿${unitPriceFor(p, std3, 15)} ที่ 15 พวง)`,
+  unitPriceFor(p, cus1, 15) === unitPriceFor(p, std3, 15) && unitPriceFor(p, cus1, 1) === unitPriceFor(p, std3, 1) && !needsQuote(p, cus1));
+const cus1b = resolveSelections(p, { ...cus1, [wL(1)]: "3.6 ซม." });
+const std4 = resolveSelections(p, { ...selQ, "ขนาดชิ้นที่ 1": "4cm" });
+ok(`ชิ้นที่ 1 กรอก 3.6×2 → ขยับเป็นแถว 4cm (฿${unitPriceFor(p, cus1b, 15)} = ฿${unitPriceFor(p, std4, 15)})`, unitPriceFor(p, cus1b, 15) === unitPriceFor(p, std4, 15));
+// ติ่งห้อย (ชิ้นที่ 2) กำหนดขนาดเอง 4.5×3 → +฿ เท่าแถว 4cm (15 พวง = ฿35)
+const charm4 = resolveSelections(p, { ...selQ, "ขนาดชิ้นที่ 2": "4cm" });
+const cus2 = resolveSelections(p, { ...selQ, "ขนาดชิ้นที่ 2": CUSTOM, [wL(2)]: "4.5", [hL(2)]: "3" });
+ok(`ติ่งห้อยชิ้นที่ 2 กรอก 4.5×3 → +฿ เท่าแถว 4cm (฿${unitPriceFor(p, cus2, 15)} = ฿${unitPriceFor(p, charm4, 15)} ที่ 15 พวง · 1 พวง ฿${unitPriceFor(p, cus2, 1)})`,
+  unitPriceFor(p, cus2, 15) === unitPriceFor(p, charm4, 15) && unitPriceFor(p, cus2, 1) === unitPriceFor(p, charm4, 1) && unitPriceFor(p, cus2, 15) > unitPriceFor(p, selQ, 15));
+ok("ติ่งห้อยกำหนดขนาดเอง → บรรทัด Add on บอกขนาดที่กรอก + แถวที่คิดเท่า",
+  unitAddOnBreakdown(p, cus2, 15).some((l) => /ขนาดชิ้นที่ 2 4.5×3 ซม\. \(คิดเท่า 4cm\)/.test(l.label) && l.amount === 35));
+// ทั้งตัวหลักและติ่งห้อย 2 ชิ้นกำหนดขนาดเองพร้อมกัน — ทุกกลุ่มต้องถูกคิดครบ (จุดที่โค้ดเก่ารองรับแค่กลุ่มแรก)
+const std3set = resolveSelections(p, { ...selQ, [COUNT]: "3 ชิ้น", "ขนาดชิ้นที่ 1": "5cm", "ขนาดชิ้นที่ 2": "3cm", "ขนาดชิ้นที่ 3": "6cm" });
+const cusAll = resolveSelections(p, { ...selQ, [COUNT]: "3 ชิ้น", "ขนาดชิ้นที่ 1": CUSTOM, [wL(1)]: "5", [hL(1)]: "4.5", "ขนาดชิ้นที่ 2": CUSTOM, [wL(2)]: "2.5", [hL(2)]: "3", "ขนาดชิ้นที่ 3": CUSTOM, [wL(3)]: "6", [hL(3)]: "1" });
+ok(`3 ชิ้นกำหนดขนาดเองพร้อมกัน (5×4.5 · 2.5×3 · 6×1) = ฿${unitPriceFor(p, cusAll, 15)} เท่า 5cm+3cm+6cm (฿${unitPriceFor(p, std3set, 15)}) ที่ 15 พวง`,
+  unitPriceFor(p, cusAll, 15) === unitPriceFor(p, std3set, 15) && unitPriceFor(p, cusAll, 1) === unitPriceFor(p, std3set, 1));
+ok("กำหนดขนาดเองแล้วชุดสเปคอื่นของชิ้นนั้นยังโผล่ตามปกติ (ประเภท/งานสกรีน ชิ้นที่ 2)",
+  optionVisible(group(TYPE2), cus2) && optionVisible(group("งานสกรีน ชิ้นที่ 2"), cus2));
+// เกิน 10 ซม. = รอแอดมินตีราคา (ชิ้นไหนก็ได้)
+const over2 = resolveSelections(p, { ...selQ, "ขนาดชิ้นที่ 2": CUSTOM, [wL(2)]: "10.6", [hL(2)]: "3" });
+ok("ติ่งห้อยกรอก 10.6 ซม. → ต้องตีราคา (needsQuote) ราคาเป็น 0", needsQuote(p, over2) && unitPriceFor(p, over2, 15) === 0);
+const ten = resolveSelections(p, { ...selQ, "ขนาดชิ้นที่ 1": CUSTOM, [wL(1)]: "10.5", [hL(1)]: "2" });
+ok("ชิ้นที่ 1 กรอก 10.5 ซม. → ผ่อนเศษยังเกาะแถว 10cm ไม่ตกไปตีราคา", !needsQuote(p, ten) && unitPriceFor(p, ten, 15) === unitPriceFor(p, resolveSelections(p, { ...selQ, "ขนาดชิ้นที่ 1": "10cm" }), 15));
+// ชิ้นที่ 5 ซ่อนอยู่ (พวง 2 ชิ้น) แต่มีค่า custom ค้าง → ช่องกรอกต้องไม่โผล่/ไม่บังคับกรอก
+const stale = resolveSelections(p, { ...selQ, [COUNT]: "2 ชิ้น", "ขนาดชิ้นที่ 5": CUSTOM });
+ok("ชิ้นที่ 5 ถูกซ่อน (พวง 2 ชิ้น) แม้ค่ากำหนดขนาดเองค้างอยู่ → ช่องกรอกชิ้นที่ 5 ไม่โผล่", !optionVisible(group(wL(5)), stale) && !needsQuote(p, stale));
 
 console.log(fail ? `\n❌ ไม่ผ่าน ${fail} ข้อ` : "\n✅ ผ่านทั้งหมด");
 process.exit(fail ? 1 : 0);

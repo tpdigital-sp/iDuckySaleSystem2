@@ -14,6 +14,7 @@ import {
   isInputOption,
   sheetYieldCount,
   sizeInputPlan,
+  applySizeInputPlans,
   unitYieldOf,
   isMadeToOrderOption,
   madeToOrderOn,
@@ -3570,8 +3571,9 @@ export default function ProductDetail({
                           {(() => {
                             const owner = product.options.find((o) => o.sizeInput?.heightLabel === opt.label);
                             if (!owner) return null;
-                            const plan = sizeInputPlan(product, effective);
-                            if (!plan || plan.label !== owner.label || !plan.filled) return null;
+                            // ระบุกลุ่มเจ้าของ — สินค้าที่มีหลายกลุ่มกำหนดขนาดเอง (พวงหลายชิ้น) ต้องได้แผนของชิ้นตัวเอง
+                            const plan = sizeInputPlan(product, effective, owner.label);
+                            if (!plan || !plan.filled) return null;
                             const u = plan.unit ? ` ${plan.unit}` : "";
                             return plan.quote ? (
                               <p className="mt-1 text-[11px] font-bold text-sky-700">
@@ -5214,11 +5216,7 @@ export default function ProductDetail({
                * ต้องเกาะแถวเดียวกับที่ใช้คิดเงิน (12.5 → คอลัมน์ 12cm) ไม่งั้น selectedKey หาไม่เจอ
                * แล้วตารางกางทั้งหมดแทนที่จะโชว์แบบที่เลือกอยู่
                */
-              const tableSizePlan = sizeInputPlan(product, effective);
-              const selectedKey = priceMatrixKey(
-                matrix,
-                tableSizePlan?.choice ? { ...effective, [tableSizePlan.label]: tableSizePlan.choice } : effective
-              );
+              const selectedKey = priceMatrixKey(matrix, applySizeInputPlans(product, effective).selections);
               const manyCols = allKeys.length > 1;
               const only = allKeys.filter((k) => k === selectedKey);
               // ตัวเลือกที่เลือกอยู่ไม่มีราคาในตาราง (แอดมินเว้นช่องไว้) → กางทั้งหมดแทนตารางเปล่า
