@@ -333,6 +333,14 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   // เมนูที่เห็นตามสิทธิ์ (การซ่อนเป็นแค่ความสะดวก — ของจริงบังคับที่ API)
   const menu = MENU.filter((m) => perms.includes(m.perm));
 
+  /**
+   * ป้ายจำนวนของเมนูแต่ละอัน (0 = ไม่ต้องขึ้นป้าย)
+   * ประเมินใหม่ที่ยังไม่ได้เปิดดู · ใบเสนอราคาที่ลูกค้าตกลงแล้วแต่ยังไม่ได้เปิดงาน
+   */
+  const badgeOf = (href: string) => (href === "/admin/ratings" ? newRatings : href === "/admin/quotes" ? waitingQuotes : 0);
+  /** ป้ายทั้งแถบรวมกัน — ใช้บนปุ่ม ☰ ของมือถือ ตอนเมนูปิดอยู่จะได้ยังเห็นว่ามีงานค้าง */
+  const badgeAll = menu.reduce((n, m) => n + badgeOf(m.href), 0);
+
   // เมนูที่ "ตรงที่สุด" กับ path ปัจจุบัน — /admin/orders/OD-123 → ไฮไลต์ "คำสั่งซื้อ"
   // ส่วน /admin/orders/scan → ไฮไลต์ "ยิงเลขพัสดุ" (เพราะ href ยาวกว่า จึงชนะ)
   const activeHref = menu
@@ -373,8 +381,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
    */
   const itemLink = (m: (typeof MENU)[number], rail: boolean) => {
     const active = m.href === activeHref;
-    // ป้ายจำนวนข้างเมนู: ประเมินใหม่ที่ยังไม่ได้เปิดดู · ใบเสนอราคาที่ลูกค้าตกลงแล้วแต่ยังไม่ได้เปิดงาน
-    const badgeN = m.href === "/admin/ratings" ? newRatings : m.href === "/admin/quotes" ? waitingQuotes : 0;
+    const badgeN = badgeOf(m.href);
     const hasBadge = badgeN > 0;
     return (
       <Link
@@ -402,9 +409,12 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           {m.emoji}
         </span>
         {!rail && <span className="truncate">{m.label}</span>}
+        {/* โหมดพับก็บอกเป็น "จำนวน" ไม่ใช่จุดเปล่า ๆ — จุดบอกได้แค่ว่ามีงาน ไม่ได้บอกว่ามีกี่ใบ */}
         {hasBadge &&
           (rail ? (
-            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-400 ring-2 ring-[#173A6B]" />
+            <span className="absolute right-0.5 top-0.5 inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-rose-500 px-1 text-[9.5px] font-bold leading-none text-white ring-2 ring-[#173A6B]">
+              {badgeN > 9 ? "9+" : badgeN}
+            </span>
           ) : (
             <span className="ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10.5px] font-bold text-white">
               {badgeN > 99 ? "99+" : badgeN}
@@ -435,6 +445,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         const items = menu.filter((m) => m.group === key);
         if (!items.length) return [];
         const folded = !!foldedGroups[key];
+        // หุบกลุ่มอยู่ = เมนูข้างในหายไปทั้งแถว ป้ายงานค้างของมันก็หายตาม → ยกมาไว้ที่หัวกลุ่มแทน
+        const groupBadge = items.reduce((n, m) => n + badgeOf(m.href), 0);
         return [
           rail ? (
             groupIdx > 0 ? (
@@ -467,6 +479,14 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} aria-label="อยู่ในกลุ่มนี้" />
               )}
               <span className="ml-1 h-px flex-1 bg-white/10" aria-hidden="true" />
+              {folded && groupBadge > 0 && (
+                <span
+                  className="inline-flex h-[16px] min-w-[16px] shrink-0 items-center justify-center rounded-full bg-rose-500 px-1 text-[9.5px] font-bold leading-none text-white"
+                  title={`มีงานค้างในกลุ่มนี้ ${groupBadge} รายการ`}
+                >
+                  {groupBadge > 99 ? "99+" : groupBadge}
+                </span>
+              )}
               <span className={`shrink-0 rounded-full px-1.5 text-[10px] font-semibold ${folded ? badge : "text-sky-200/45"}`}>
                 {items.length}
               </span>
@@ -645,11 +665,17 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/20 text-lg text-white"
-            aria-label="เปิดเมนูแอดมิน"
+            className="relative flex h-10 w-10 items-center justify-center rounded-lg border border-white/20 text-lg text-white"
+            aria-label={badgeAll > 0 && !open ? `เปิดเมนูแอดมิน — มีงานค้าง ${badgeAll} รายการ` : "เปิดเมนูแอดมิน"}
             aria-expanded={open}
           >
             {open ? "✕" : "☰"}
+            {/* มือถือเมนูปิดอยู่เกือบตลอด — ถ้าป้ายอยู่แต่ในเมนู เท่ากับไม่มีป้าย */}
+            {!open && badgeAll > 0 && (
+              <span className="absolute -right-1 -top-1 inline-flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-[#173A6B]">
+                {badgeAll > 99 ? "99+" : badgeAll}
+              </span>
+            )}
           </button>
         </header>
         {open && (
