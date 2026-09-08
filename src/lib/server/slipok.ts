@@ -15,6 +15,8 @@ export interface SlipVerifyResult {
   amount?: number;
   /** เลขอ้างอิงธุรกรรม — กันสลิปซ้ำ */
   transRef?: string;
+  /** SlipOK บอกว่าสลิปใบนี้เคยถูกตรวจกับร้านไปแล้ว (log=true) — ใบเดิมถูกเวียนมาใช้ซ้ำ */
+  duplicate?: boolean;
   /** ส่วนต่างที่ระบบรู้จัก (หัก ณ ที่จ่าย 1%/3% หรือค่าธรรมเนียมโอน) — มีค่า = โอนน้อยกว่ายอดแต่ถือว่าจ่ายครบ */
   deduction?: SlipDeduction;
 }
@@ -142,10 +144,11 @@ export async function verifySlipWithSlipOK(
   // ── โหมดทดสอบ (dev เท่านั้น): ตั้ง SLIPOK_MOCK=1 + ไฟล์สลิปที่ฝังข้อความ "MOCKSLIP:<ยอด>" ──
   // จำลองว่า SlipOK ตอบ "สลิปแท้" แล้วให้กติกาเทียบยอดของเราตัดสินตามจริง — ไม่ยิง API จริง
   // production ปลอดภัยสองชั้น: Netlify ไม่ตั้ง SLIPOK_MOCK และ NODE_ENV เป็น production
+  // "MOCKSLIP:<ยอด>:<REF>" = กำหนดเลขอ้างอิงเอง (ทดสอบกันสลิปซ้ำข้ามออเดอร์ที่ไฟล์ต่างกันแต่ธุรกรรมเดียวกัน)
   if (process.env.SLIPOK_MOCK === "1" && process.env.NODE_ENV !== "production") {
-    const marker = /MOCKSLIP:([0-9.]+)/.exec(new TextDecoder().decode(bytes.subarray(0, 2048)));
+    const marker = /MOCKSLIP:([0-9.]+)(?::([A-Z0-9-]{4,40}))?/.exec(new TextDecoder().decode(bytes.subarray(0, 2048)));
     if (marker)
-      return judge(Number(marker[1]) || undefined, `MOCK-${Date.now().toString(36).toUpperCase()}`, "ผู้รับ: บัญชีทดสอบ (SLIPOK_MOCK)");
+      return judge(Number(marker[1]) || undefined, marker[2] || `MOCK-${Date.now().toString(36).toUpperCase()}`, "ผู้รับ: บัญชีทดสอบ (SLIPOK_MOCK)");
   }
 
   try {
@@ -193,8 +196,19 @@ export async function verifySlipWithSlipOK(
         detail:
           "ตรวจกับธนาคารไทยพาณิชย์ไม่สำเร็จ — สลิปเพิ่งโอนไม่ถึง 2 นาที หรือเป็นสลิปเก่าที่เลยกรอบเวลาที่ SCB ให้ตรวจย้อนหลัง · กรุณาเปิดสลิปเทียบยอดและวันเวลาโอนเอง",
       };
+    // ── สลิปซ้ำ: SlipOK จำสลิปที่เคยตรวจไว้ (log=true) — เจอใบเดิมอีกรอบจะตอบว่าซ้ำ ──
+    // (ชั้นแรกของเรากันด้วยลายนิ้วมือไฟล์/เลขอ้างอิงในฐานข้อมูลก่อนแล้ว — มาถึงตรงนี้ได้คือสลิปที่เคยตรวจ
+    //  ก่อนมีระบบจำ หรือถูกลบออกจากออเดอร์ไปแล้ว) · code 1012 = "สลิปซ้ำ" ตามเอกสาร SlipOK
+    const rawMsg = String(j?.data?.message || j?.message || "");
+    if (code === 1012 || /ซ้ำ|duplicate|already/i.test(rawMsg))
+      return {
+        status: "fail",
+        duplicate: true,
+        transRef: j?.data?.transRef,
+        detail: "สลิปใบนี้เคยถูกใช้แจ้งโอนกับทางร้านไปแล้ว (SlipOK จำได้) — ห้ามยืนยันจนกว่าจะหาออเดอร์ที่ใช้สลิปนี้ก่อนเจอ",
+      };
     // เก็บคำตอบดิบย่อ ๆ ไว้ในเหตุผล — วินิจฉัยเคสแปลก ๆ ได้จากหลังบ้านเลย
-    const msg = j?.data?.message || j?.message || `ตรวจไม่ผ่าน`;
+    const msg = rawMsg || `ตรวจไม่ผ่าน`;
     const raw = JSON.stringify(j ?? {}).slice(0, 160);
     return { status: "fail", detail: `${String(msg).slice(0, 120)} (HTTP ${res.status} · ${raw})` };
   } catch {

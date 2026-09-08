@@ -1018,18 +1018,36 @@ export default function AdminOrderDetailPage() {
     setErr("");
     setSlipUploading(true);
     try {
-      const fd = new FormData();
-      fd.append("orderId", order.id);
-      fd.append("file", file);
-      fd.append("phase", slipPhase.current);
-      const res = await fetch("/api/admin/orders/slip", { method: "POST", body: fd });
-      const j = (await res.json().catch(() => ({}))) as { order?: Order; error?: string };
+      const send = async (force: boolean) => {
+        const fd = new FormData();
+        fd.append("orderId", order.id);
+        fd.append("file", file);
+        fd.append("phase", slipPhase.current);
+        if (force) fd.append("force", "1");
+        const res = await fetch("/api/admin/orders/slip", { method: "POST", body: fd });
+        const j = (await res.json().catch(() => ({}))) as { order?: Order; verified?: boolean; error?: string; duplicate?: boolean; owners?: { orderId: string }[] };
+        return { res, j };
+      };
+      let { res, j } = await send(false);
+      // 🧾 สลิปซ้ำกับออเดอร์อื่น (ไฟล์เดิม/เลขอ้างอิงเดิม) — ถามก่อน: โอนรวมหลายออเดอร์จริงถึงแนบซ้ำได้ (ลง log ว่าใครยืนยัน)
+      if (res.status === 409 && j.duplicate && j.owners?.length) {
+        const ok = await askConfirm({
+          icon: "🧾",
+          title: "สลิปใบนี้ถูกใช้กับออเดอร์อื่นแล้ว",
+          detail: `${j.error ?? ""}\n\nแนบซ้ำเฉพาะกรณีลูกค้าโอนยอดรวมของหลายออเดอร์ในสลิปเดียว — ระบบจะบันทึกในประวัติว่าคุณยืนยันเอง`,
+          confirmLabel: "ยืนยันว่าโอนรวม แนบเลย",
+          danger: true,
+        });
+        if (!ok) return;
+        ({ res, j } = await send(true));
+      }
       if (!res.ok || !j.order) {
         setErr(j.error ?? "อัปโหลดสลิปไม่สำเร็จ");
         return;
       }
       let next = j.order;
-      const want = pendingStatus.current;
+      // SlipOK ตรวจผ่านและยืนยันรับเงินให้แล้ว → ไม่ทับสถานะที่ค้างไว้ (เช่นงานจัดวางเองที่ข้ามไป "อนุมัติแบบ")
+      const want = j.verified ? null : pendingStatus.current;
       if (want && next.status !== want) {
         next = withLog({ ...next, status: want }, actor, "เปลี่ยนสถานะ", `${next.status} → ${want} · หลังแนบสลิป`);
         void saveOrderAdmin(next);

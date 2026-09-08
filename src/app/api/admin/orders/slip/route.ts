@@ -4,6 +4,9 @@ import { currentActor, requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { ROLE_ADMINISTRATOR } from "@/lib/permissions";
 import { withLog, type Order } from "@/lib/admin-data";
+import { applySlipVerification } from "@/lib/server/slip-apply";
+import { acquireSlipLock, assertSlipNotDuplicate, SlipDuplicateError, slipHashOf, type SlipOwner } from "@/lib/server/slip-dedupe";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
@@ -17,8 +20,12 @@ const EXT: Record<string, string> = {
 
 /**
  * แอดมินแนบสลิปแทนลูกค้า (ลูกค้าส่งมาทางแชท/ไลน์ หรือจ่ายช่องทางอื่นแล้วมีหลักฐาน)
- * — ไม่ยิง SlipOK และไม่เปลี่ยนสถานะให้เอง แค่ผูกไฟล์กับออเดอร์ + ลง log ว่าใครแนบ
- * คนเปลี่ยนสถานะยังเป็นแอดมินเอง (ผ่านหน้าออเดอร์) เพื่อให้ยังมีคนรับผิดชอบการตรวจยอด
+ * — ยิง SlipOK ตรวจเหมือนลูกค้าแนบเอง (8 ก.ย. 69): ผ่าน = ยืนยันรับเงินอัตโนมัติ + แจ้ง LINE/msVerify/ตัดสต๊อก
+ *   ไม่ผ่าน/ระบบล่ม = เก็บผลไว้ให้ดู แล้วแอดมินตรวจยอดเองต่อ (fail-safe เหมือนเดิม)
+ * ออเดอร์ที่ยืนยันเงินไปแล้ว (แนบหลักฐานย้อนหลัง) → ตรวจแล้วเก็บผลอย่างเดียว ไม่แตะสถานะ/ยอด
+ *
+ * กันสลิปซ้ำ (slip-dedupe.ts): ไฟล์เดิม/เลขอ้างอิงเดิมที่ออเดอร์อื่นหรืองวดอื่นใช้อยู่ → 409 พร้อม duplicate:true
+ * แอดมินยืนยันว่าเป็นสลิปโอนรวมหลายออเดอร์ได้ด้วย form field force=1 (ลง log ว่าใครยืนยัน + ซ้ำกับใบไหน)
  */
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
@@ -37,6 +44,8 @@ export async function POST(req: Request) {
   const orderId = String(form.get("orderId") ?? "").trim();
   // "balance" = สลิปงวดหลังของออเดอร์มัดจำ (เก็บคนละช่องกับสลิปงวดแรก)
   const phase = String(form.get("phase") ?? "") === "balance" ? "balance" : "first";
+  // force=1 = แอดมินยืนยันแล้วว่าสลิปใบนี้จ่ายรวมหลายออเดอร์ — ข้ามการกันซ้ำ (ยังบันทึกไว้ในประวัติ)
+  const force = String(form.get("force") ?? "") === "1";
   const file = form.get("file");
   if (!orderId) return NextResponse.json({ error: "ไม่มีเลขออเดอร์" }, { status: 400 });
   if (!(file instanceof File)) return NextResponse.json({ error: "ไม่มีไฟล์สลิป" }, { status: 400 });
@@ -48,10 +57,42 @@ export async function POST(req: Request) {
   if (!row) return NextResponse.json({ error: "ไม่พบออเดอร์นี้" }, { status: 404 });
   const order = row.data as Order;
   if (order.status === "ยกเลิก") return NextResponse.json({ error: "ออเดอร์นี้ถูกยกเลิกแล้ว" }, { status: 409 });
+  if (phase === "balance" && !order.deposit)
+    return NextResponse.json({ error: "ออเดอร์นี้ไม่ได้เปิดโหมดมัดจำ" }, { status: 409 });
+
+  // ── กันคำขอซ้อน: ออเดอร์เดียวกันรับสลิปทีละคำขอ ──
+  const release = acquireSlipLock(orderId);
+  if (!release) return NextResponse.json({ error: "กำลังบันทึกสลิปของออเดอร์นี้อยู่ — รอสักครู่" }, { status: 429 });
+  try {
+    return await attachSlip({ sb, req, who: actor.name?.trim() || actor.username, order, file, ext, balance: phase === "balance", force });
+  } finally {
+    release();
+  }
+}
+
+async function attachSlip(a: { sb: SupabaseClient; req: Request; who: string; order: Order; file: File; ext: string; balance: boolean; force: boolean }) {
+  const { sb, req, who, order, file, ext, balance, force } = a;
+  const orderId = order.id;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const hash = slipHashOf(bytes);
+  const self: SlipOwner = { orderId, phase: balance ? "balance" : "first" };
+
+  // ── กันสลิปซ้ำชั้นที่ 1: ลายนิ้วมือไฟล์ (ก่อนอัปโหลด/ก่อนเสียโควตา SlipOK) ──
+  const curHash = balance ? order.deposit?.balanceSlipHash : order.slipHash;
+  if (curHash && curHash === hash)
+    return NextResponse.json({ error: "สลิปใบนี้แนบไว้กับออเดอร์นี้อยู่แล้ว (ไฟล์เดิมเป๊ะ)", duplicate: true }, { status: 409 });
+  let dupNote = "";
+  try {
+    await assertSlipNotDuplicate(sb, { hash }, self);
+  } catch (e) {
+    if (!(e instanceof SlipDuplicateError)) throw e;
+    if (!force) return NextResponse.json({ error: e.message, duplicate: true, owners: e.owners }, { status: 409 });
+    dupNote = ` · ⚠️ ยืนยันแนบทั้งที่ไฟล์ซ้ำกับ ${e.owners.map((o) => o.orderId).join(", ")} (โอนรวม)`;
+  }
+  if (!dupNote && force) dupNote = " · ⚠️ แอดมินยืนยันข้ามการกันสลิปซ้ำ (โอนรวม)";
 
   const safeId = orderId.replace(/[^a-z0-9_-]/gi, "") || "misc";
   const path = `${safeId}/${randomUUID()}.${ext}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
   const upload = () => sb.storage.from(BUCKET).upload(path, bytes, { contentType: file.type, upsert: false });
   let { error: upErr } = await upload();
   if (upErr && /bucket not found/i.test(upErr.message)) {
@@ -60,33 +101,40 @@ export async function POST(req: Request) {
   }
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 
-  const who = actor.name?.trim() || actor.username;
   const now = new Date().toISOString();
-  const balance = phase === "balance" && !!order.deposit;
-  if (phase === "balance" && !order.deposit)
-    return NextResponse.json({ error: "ออเดอร์นี้ไม่ได้เปิดโหมดมัดจำ" }, { status: 409 });
 
-  const updated = withLog(
-    balance
-      ? { ...order, deposit: { ...order.deposit!, balanceSlipPath: path, balanceReportedAt: now, balanceVerify: undefined } }
-      : {
-          ...order,
-          slipPath: path,
-          slipUrl: undefined, // ห้ามเก็บ signed URL ลงฐาน — เซ็นใหม่ทุกครั้งที่ดึง
-          slipVerify: undefined, // แอดมินแนบเอง = ไม่มีผลตรวจอัตโนมัติ
-          paidReportedAt: order.paidReportedAt ?? now,
-        },
-    who,
-    balance ? "แนบสลิปยอดคงเหลือแทนลูกค้า" : "แนบสลิปแทนลูกค้า",
-    `ไฟล์ ${file.name.slice(0, 60)}`
-  );
-  const { error } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // ลง log ว่าใครแนบก่อน แล้วค่อยให้ SlipOK ลงผลต่อท้าย (ประวัติอ่านเป็นลำดับ: แนบ → ตรวจ)
+  const attached = withLog(order, who, balance ? "แนบสลิปยอดคงเหลือแทนลูกค้า" : "แนบสลิปแทนลูกค้า", `ไฟล์ ${file.name.slice(0, 60)}${dupNote}`);
+
+  let updated: Order;
+  let confirmed = false;
+  try {
+    ({ updated, confirmed } = await applySlipVerification({
+      sb,
+      order: attached,
+      path,
+      bytes,
+      contentType: file.type,
+      hash,
+      // แอดมินยืนยันแล้วว่าเป็นสลิปโอนรวม → ไม่ตีตกเพราะเลขอ้างอิงซ้ำ
+      allowDuplicate: force,
+      balancePhase: balance,
+      origin: new URL(req.url).origin,
+      // แนบย้อนหลัง = คงเวลาแจ้งโอนเดิมไว้ (ถ้ามี)
+      paidReportedAt: order.paidReportedAt ?? now,
+    }));
+  } catch (e) {
+    // กันสลิปซ้ำชั้นที่ 2: เลขอ้างอิงธุรกรรมซ้ำกับออเดอร์อื่น — ไฟล์ถูกลบไปแล้วใน applySlipVerification
+    // หน้าแอดมินถามยืนยัน แล้วส่งใหม่พร้อม force=1 ได้ถ้าเป็นโอนรวมจริง
+    if (e instanceof SlipDuplicateError) return NextResponse.json({ error: e.message, duplicate: true, owners: e.owners }, { status: 409 });
+    return NextResponse.json({ error: e instanceof Error ? e.message : "บันทึกสลิปไม่สำเร็จ" }, { status: 500 });
+  }
 
   // ส่ง signed URL กลับไปให้หน้าออเดอร์แสดงรูปได้ทันที (ไม่ได้เก็บลงฐาน)
   const { data: signed } = await sb.storage.from(BUCKET).createSignedUrl(path, 3600);
   return NextResponse.json({
     ok: true,
+    verified: confirmed,
     order: balance
       ? { ...updated, deposit: { ...updated.deposit!, balanceSlipUrl: signed?.signedUrl } }
       : { ...updated, slipUrl: signed?.signedUrl },
@@ -125,7 +173,8 @@ export async function DELETE(req: Request) {
     await sb.storage.from(BUCKET).remove([order.deposit.balanceSlipPath]);
     const settled = !!order.deposit.settledAt;
     const cleaned = withLog(
-      { ...order, deposit: { ...order.deposit, balanceSlipPath: undefined, balanceSlipUrl: undefined, balanceReportedAt: undefined, balanceVerify: undefined } },
+      // ล้าง balanceSlipHash ด้วย — ไม่งั้นแนบใบเดิมกลับมาจะโดนกันซ้ำทั้งที่ลบไปแล้ว
+      { ...order, deposit: { ...order.deposit, balanceSlipPath: undefined, balanceSlipHash: undefined, balanceSlipUrl: undefined, balanceReportedAt: undefined, balanceVerify: undefined } },
       actor.name?.trim() || actor.username,
       "ลบสลิปงวดหลัง",
       settled ? "⚠️ ออเดอร์นี้ยืนยันรับครบแล้ว — ลบหลักฐานงวดหลังออก" : "ให้ลูกค้า/แอดมินแนบใหม่ได้"
@@ -147,6 +196,7 @@ export async function DELETE(req: Request) {
     {
       ...order,
       slipPath: undefined,
+      slipHash: undefined, // ล้างลายนิ้วมือด้วย — ให้แนบใบเดิมกลับมาได้หลังลบ
       slipUrl: undefined,
       slipVerify: undefined,
       paidReportedAt: undefined,

@@ -435,6 +435,8 @@ export interface Order {
   slipUrl?: string;
   /** path ของสลิปใน bucket ส่วนตัว (ออเดอร์ใหม่) — แอดมินเปิดผ่าน signed URL เท่านั้น กัน URL หลุด */
   slipPath?: string;
+  /** ลายนิ้วมือไฟล์สลิป (SHA-256) — กันเอาไฟล์เดิมมาแนบซ้ำ/แนบออเดอร์อื่น (ดู server/slip-dedupe.ts) */
+  slipHash?: string;
   /** เวลาที่ลูกค้ากดแจ้งโอน (ISO string) */
   paidReportedAt?: string;
   /** ผลตรวจสลิปอัตโนมัติ (SlipOK) — pass = ยืนยันชำระให้แล้ว · fail = ให้แอดมินตรวจเอง */
@@ -732,6 +734,8 @@ export interface OrderDeposit {
    * ออเดอร์มัดจำมีเงินเข้าสองครั้ง ถ้าใช้ช่องเดียวสลิปมัดจำจะถูกทับหาย
    */
   balanceSlipPath?: string;
+  /** ลายนิ้วมือไฟล์สลิปงวดหลัง (SHA-256) — กันสลิปซ้ำ คู่กับ order.slipHash */
+  balanceSlipHash?: string;
   /** signed URL ชั่วคราวของสลิปงวดหลัง — เซ็นใหม่ทุกครั้งที่ดึง ห้ามเก็บลงฐาน */
   balanceSlipUrl?: string;
   /** เวลาที่แจ้งโอนงวดหลัง (ISO) */

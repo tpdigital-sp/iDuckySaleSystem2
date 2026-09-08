@@ -1,14 +1,9 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { amountDueNow, orderSubtotal, orderTotal, withLog, type Order, paidStatusFor } from "@/lib/admin-data";
-import { earlyPayAmount, earlyPayOf, type EarlyPayDiscount } from "@/lib/early-pay";
-import { verifySlipWithSlipOK } from "@/lib/server/slipok";
-import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
-import { reportPaidToTP } from "@/lib/server/tp-report";
-import { cutStockForOrder } from "@/lib/server/stock";
-import { bumpSoldForOrder } from "@/lib/server/sold";
-import { awardPointsForOrder } from "@/lib/server/contact-points";
+import type { Order } from "@/lib/admin-data";
+import { applySlipVerification } from "@/lib/server/slip-apply";
+import { acquireSlipLock, assertSlipNotDuplicate, SlipDuplicateError, slipHashOf, type SlipOwner } from "@/lib/server/slip-dedupe";
 
 export const runtime = "nodejs";
 
@@ -27,8 +22,35 @@ const EXT: Record<string, string> = {
  *
  * ความปลอดภัย: อนุญาตแนบสลิปเฉพาะออเดอร์ที่ยัง "รอชำระเงิน/รอตรวจสอบ" เท่านั้น
  * (กันการเปลี่ยนออเดอร์ที่ยืนยันไปแล้ว) · path ใช้ UUID สุ่ม เดาไม่ได้
+ *
+ * กันสลิปซ้ำ (ดู lib/server/slip-dedupe.ts):
+ *   - ล็อกต่อออเดอร์ — กดแจ้งโอนรัว ๆ ให้วิ่งทีละคำขอ
+ *   - ไฟล์เดิมเป๊ะ (SHA-256) ที่เคยแนบออเดอร์อื่น/งวดอื่น → ปฏิเสธก่อนอัปโหลด/ก่อนเสียโควตา SlipOK
+ *   - ไฟล์เดิมของออเดอร์นี้เองที่ตรวจไปแล้ว → ไม่ตรวจซ้ำ (ผ่านแล้ว = ตอบผ่าน · ตกแล้ว = บอกว่ารอแอดมิน)
+ *   - เลขอ้างอิงธุรกรรมที่ SlipOK อ่านได้ ซ้ำกับออเดอร์อื่น/งวดอื่น → applySlipVerification โยน 409 (ลบไฟล์ให้แล้ว)
  */
 export async function POST(req: Request) {
+  const release = await acquireSlipLockFrom(req);
+  if (!release) return NextResponse.json({ error: "กำลังบันทึกสลิปของออเดอร์นี้อยู่ — รอสักครู่แล้วรีเฟรชดูสถานะ" }, { status: 429 });
+  try {
+    return await handle(req);
+  } finally {
+    release();
+  }
+}
+
+/** อ่านเลขออเดอร์จากฟอร์มเพื่อจองล็อก — body อ่านซ้ำใน handle() ไม่ได้ (stream) เลย clone ก่อน */
+async function acquireSlipLockFrom(req: Request): Promise<(() => void) | null> {
+  const orderId = await req
+    .clone()
+    .formData()
+    .then((f) => String(f.get("orderId") ?? "").trim())
+    .catch(() => "");
+  // ไม่มีเลขออเดอร์ = ปล่อยให้ handle() ตอบ 400 เอง (ไม่ต้องล็อก)
+  return orderId ? acquireSlipLock(orderId) : () => undefined;
+}
+
+async function handle(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 
@@ -77,10 +99,31 @@ export async function POST(req: Request) {
       { status: 409 }
     );
 
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const hash = slipHashOf(bytes);
+  const self: SlipOwner = { orderId, phase: balancePhase ? "balance" : "first" };
+
+  // ── ไฟล์เดิมของออเดอร์นี้ งวดนี้ ที่ตรวจไปแล้ว → ไม่ต้องอัปโหลด/ตรวจซ้ำ ──
+  const curHash = balancePhase ? order.deposit?.balanceSlipHash : order.slipHash;
+  const curVerify = balancePhase ? order.deposit?.balanceVerify : order.slipVerify;
+  if (curHash && curHash === hash && curVerify) {
+    if (curVerify.status === "pass") return NextResponse.json({ ok: true, verified: true, duplicateOfSelf: true });
+    return NextResponse.json(
+      { error: "สลิปใบนี้ส่งมาแล้ว กำลังรอแอดมินตรวจยอดอยู่ครับ — ไม่ต้องส่งซ้ำ ถ้าโอนใหม่ให้แนบสลิปใบใหม่", duplicate: true },
+      { status: 409 }
+    );
+  }
+  // ── ไฟล์เดิมเป๊ะที่เคยแนบออเดอร์อื่น / งวดอื่นของออเดอร์นี้ → ตีตกก่อนเสียโควตา SlipOK ──
+  try {
+    await assertSlipNotDuplicate(sb, { hash }, self);
+  } catch (e) {
+    if (e instanceof SlipDuplicateError) return NextResponse.json({ error: e.message, duplicate: true, owners: e.owners }, { status: 409 });
+    throw e;
+  }
+
   // อัปโหลดสลิป (สร้าง bucket ให้อัตโนมัติถ้ายังไม่มี)
   const safeId = orderId.replace(/[^a-z0-9_-]/gi, "") || "misc";
   const path = `${safeId}/${randomUUID()}.${ext}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
   const upload = () => sb.storage.from(BUCKET).upload(path, bytes, { contentType: file.type, upsert: false });
 
   let { error: upErr } = await upload();
@@ -91,102 +134,24 @@ export async function POST(req: Request) {
   }
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 
-  // ── ตรวจสลิปอัตโนมัติกับ SlipOK (ถ้าตั้งค่าไว้) — เทียบ "ยอดงวดนี้" (มัดจำ/คงเหลือ/เต็ม) ──
-  const expected = amountDueNow(order);
-  const depositPhase = !!order.deposit && !order.deposit.firstPaidAt; // งวดแรกของออเดอร์มัดจำ
-  /**
-   * ⚡ ส่วนลดโอนไวที่ออเดอร์นี้ "ยังไม่ได้หัก" — ยอมให้สลิปขาดได้เท่านี้โดยไม่ตกไปตรวจมือ
-   * ออเดอร์ที่สั่งผ่านเว็บหลังเปิดโปรจะมี order.earlyPay อยู่แล้ว (ยอดที่ต้องโอนลดไปแล้ว) → 0 กันหักซ้ำ
-   * เหลือไว้ให้ออเดอร์เก่า + ลูกค้าที่รู้โปรจากไลน์แล้วโอนน้อยกว่ายอดที่เห็นในเว็บ
-   */
-  let earlyPayAllowed = 0;
-  // 🤝 ออเดอร์ตัวแทนจำหน่ายไม่มีส่วนลดโอนไว — ห้ามยอมรับสลิปที่โอนขาด ฿5/฿10
-  if (!order.earlyPay && !order.dealer) {
-    try {
-      const { data: settRow } = await sb.from("products").select("data").eq("id", "__shop_payment__").maybeSingle();
-      earlyPayAllowed = earlyPayAmount(orderSubtotal(order), earlyPayOf(settRow?.data as { earlyPay?: EarlyPayDiscount } | undefined));
-    } catch {
-      // อ่านตั้งค่าไม่ได้ = ไม่ยอมรับส่วนต่าง ตกไปตรวจมือตามเดิม (fail-safe)
-    }
-  }
-  const verify = await verifySlipWithSlipOK(bytes, file.type, expected, orderTotal(order), order.wht, earlyPayAllowed);
-  const now = new Date().toISOString();
-  // ท้ายประโยคบันทึก/แจ้งเตือน เมื่อสลิปโดนหัก ณ ที่จ่าย 1%/3% หรือค่าธรรมเนียมโอน
-  const dedNote = verify.deduction
-    ? ` · ${verify.deduction.label} ${verify.deduction.amount.toLocaleString("th-TH")} บาท${verify.deduction.kind === "wht" ? " — รอใบ 50 ทวิจากลูกค้า" : ""}`
-    : "";
-
-  // ผลตรวจของงวดนี้ — งวดแรกลง slipVerify · งวดหลังลง deposit.balanceVerify (คนละช่อง ไม่ทับกัน)
-  const vRec: Order["slipVerify"] =
-    verify.status === "pass" || verify.status === "fail"
-      ? { status: verify.status, detail: verify.detail, amount: verify.amount, transRef: verify.transRef, at: now, deduction: verify.deduction }
-      : undefined;
-  let updated: Order = {
-    ...order,
-    // งวดหลังของออเดอร์มัดจำเก็บแยกช่อง — ไม่งั้นสลิปมัดจำงวดแรกถูกทับหาย
-    ...(balancePhase
-      ? { deposit: { ...order.deposit!, balanceSlipPath: path, balanceReportedAt: now, balanceVerify: vRec } }
-      : { slipPath: path, slipUrl: undefined, paidReportedAt: now, slipVerify: vRec }),
-  };
-  if (balancePhase) {
-    // งวดหลังของออเดอร์มัดจำ — สถานะงานเดินต่อตามเดิม ไม่ถอยกลับไปรอตรวจสอบ
-    if (verify.status === "pass") {
-      // ต่อจาก updated (ไม่ใช่ order) เพราะเพิ่งใส่ balanceSlipPath ไปในนั้น
-      updated = { ...updated, paidTotal: orderTotal(order), deposit: { ...updated.deposit!, settledAt: now } };
-      updated = withLog(updated, "SlipOK", "รับยอดคงเหลือครบแล้ว (อัตโนมัติ)", `ยอด ${verify.amount ?? expected} บาท${verify.transRef ? ` · อ้างอิง ${verify.transRef}` : ""}${dedNote}`);
-    } else {
-      updated = withLog(updated, "SlipOK", "สลิปยอดคงเหลือรอแอดมินตรวจ", verify.detail ?? "ตรวจอัตโนมัติไม่ได้");
-    }
-  } else {
-    updated = {
-      ...updated,
-      // จำยอดที่รับ ณ งวดนี้ — ออเดอร์มัดจำเก็บแค่ยอดงวดแรกก่อน
-      paidTotal: expected,
-      // ผ่านการตรวจอัตโนมัติเท่านั้นถึงยืนยันให้เลย — นอกนั้นรอแอดมินตรวจตามเดิม
-      // ผ่านแล้ว: งานที่ลูกค้าจัดวางลายบนเทมเพลตเองมาครบ ข้ามไป "อนุมัติแบบ" เลย
-      // (กราฟฟิกไม่ต้องทำแบบ ลูกค้าไม่ต้องตรวจซ้ำ) · งานอื่นเป็น "ชำระแล้ว" ตามเดิม
-      status: verify.status === "pass" ? paidStatusFor(order) : "รอตรวจสอบ",
-      ...(depositPhase && verify.status === "pass" ? { deposit: { ...order.deposit!, firstPaidAt: now } } : {}),
-    };
-    if (verify.status === "pass")
-      updated = withLog(
-        updated,
-        "SlipOK",
-        depositPhase ? "ยืนยันมัดจำ 50% อัตโนมัติ" : "ยืนยันการชำระเงินอัตโนมัติ",
-        `ยอด ${verify.amount ?? expected} บาท${verify.transRef ? ` · อ้างอิง ${verify.transRef}` : ""}${dedNote}`
-      );
-    else if (verify.status === "fail")
-      updated = withLog(updated, "SlipOK", "สลิปตรวจไม่ผ่าน — รอแอดมินตรวจเอง", verify.detail ?? "");
+  // ── ตรวจสลิปกับ SlipOK แล้วลงผล (ผ่าน = ยืนยันอัตโนมัติ + แจ้ง LINE/msVerify/สต๊อก/แต้ม) — กติกาเดียวกับแอดมินแนบแทน ──
+  let confirmed = false;
+  try {
+    ({ confirmed } = await applySlipVerification({
+      sb,
+      order,
+      path,
+      bytes,
+      contentType: file.type,
+      hash,
+      balancePhase,
+      origin: new URL(req.url).origin,
+    }));
+  } catch (e) {
+    // เลขอ้างอิงธุรกรรมซ้ำกับออเดอร์อื่น/งวดอื่น — ไฟล์ถูกลบไปแล้วใน applySlipVerification
+    if (e instanceof SlipDuplicateError) return NextResponse.json({ error: e.message, duplicate: true, owners: e.owners }, { status: 409 });
+    return NextResponse.json({ error: e instanceof Error ? e.message : "บันทึกสลิปไม่สำเร็จ" }, { status: 500 });
   }
 
-  const { error: saveErr } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
-  if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
-
-  // ผ่านอัตโนมัติ → แจ้งลูกค้าทันทีเหมือนแอดมินกดยืนยันเอง (เงียบถ้ายังไม่ตั้งค่า LINE)
-  if (verify.status === "pass") {
-    const origin = new URL(req.url).origin;
-    const link = orderLink(origin, updated);
-    // เงินเข้าบัญชีจริง = ยอดในสลิป (น้อยกว่ายอดตั้งเมื่อโดนหัก ณ ที่จ่าย/ค่าธรรมเนียม) — ให้ msVerify กระทบยอดกับธนาคารตรง
-    const received = verify.amount ?? expected;
-    // ขอใบ 50 ทวิจากลูกค้าไปในข้อความยืนยันเลย — เคสหัก ณ ที่จ่าย
-    const whtAsk = verify.deduction?.kind === "wht" ? `\nรับยอดหลัง${verify.deduction.label} — รบกวนส่งหนังสือรับรองหักภาษี ณ ที่จ่าย (50 ทวิ) ให้ทางร้านด้วยนะครับ` : "";
-    if (balancePhase) {
-      void notifyCustomerLogged(sb, updated, `✅ รับยอดคงเหลือออเดอร์ ${updated.id} ครบแล้ว ขอบคุณครับ${whtAsk}\n${link}`, "ยืนยันรับยอดคงเหลือครบ");
-      void reportPaidToTP(updated, "SlipOK อัตโนมัติ", { docSuffix: "-final", amount: received, noteSuffix: `ยอดคงเหลือ 50% หลัง (ครบแล้ว)${dedNote}` });
-    } else if (depositPhase) {
-      const remain = orderTotal(updated) - (updated.paidTotal ?? 0);
-      void notifyCustomerLogged(sb, updated, `✅ รับมัดจำออเดอร์ ${updated.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${remain.toLocaleString()} บาท ชำระก่อนจัดส่ง${whtAsk}\n${link}`, "ยืนยันรับมัดจำ");
-      void reportPaidToTP(updated, "SlipOK อัตโนมัติ", { amount: received, noteSuffix: `มัดจำ 50% งวดแรก${dedNote}` });
-    } else {
-      void notifyCustomerLogged(sb, updated, `✅ ยืนยันการชำระเงินออเดอร์ ${updated.id} แล้ว กำลังเริ่มงานให้ครับ${whtAsk}\n${link}`, "ยืนยันการชำระเงิน");
-      // ส่งเข้า msVerify ระบบ Admin (fire-and-forget) — โดนหักมา = แจ้งยอดจริงพร้อมเหตุผล
-      void reportPaidToTP(updated, "SlipOK อัตโนมัติ", verify.deduction ? { amount: received, noteSuffix: dedNote.replace(/^ · /, "") } : undefined);
-    }
-    if (!balancePhase) void cutStockForOrder(updated); // ตัดสต๊อกวัสดุที่ผูกไว้ (มัดจำ = เริ่มงานแล้วก็ตัดเลย)
-    void bumpSoldForOrder(updated.id); // ยอด "ขายแล้ว" หน้าเว็บ (กันซ้ำในตัวเอง)
-    // 🦆 แต้มสะสม — บวกเมื่อชำระ "ครบ" เท่านั้น: ออเดอร์ปกติ = งวดเดียวจบ · มัดจำ = ตอนยอดคงเหลือครบ (idempotent)
-    if (!order.deposit || balancePhase) void awardPointsForOrder(updated);
-  }
-
-  return NextResponse.json({ ok: true, verified: verify.status === "pass" });
+  return NextResponse.json({ ok: true, verified: confirmed });
 }
