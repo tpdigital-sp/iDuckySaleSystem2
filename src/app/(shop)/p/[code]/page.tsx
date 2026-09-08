@@ -14,14 +14,16 @@ import {
 } from "@/lib/price-links";
 import { getPriceLink, bumpPriceLinkOpened, productArtworkRequired } from "@/lib/server/price-links-db";
 import { LINE_URL } from "@/components/LineButton";
-import OrderWithArtwork from "./OrderWithArtwork";
-import OrderBundle from "./OrderBundle";
+import PriceSheet from "./PriceSheet";
 
 /**
  * 🧾 การ์ดราคาที่ร้านจัดให้ลูกค้า — /p/<code>
  *
  * ลิงก์สั้นพอวางในไลน์ · ราคาที่โชว์คือราคาวันที่เสนอ (แช่ไว้ในฐานข้อมูล ไม่คิดใหม่)
  * กด "สั่งตามสเปคนี้" แล้วระบบเปิดหน้าสินค้า ติ๊กตัวเลือกให้ครบ หย่อนลงตะกร้าให้เอง แล้วพาไปหน้าตะกร้า (ลิงก์ยาว ?s= + &add=1)
+ *
+ * หน้าตา: โครง .shopp + คอมโพเนนต์ .ord-* ชุดเดียวกับตะกร้า/ติดตามออเดอร์ (ดู landing.css)
+ * หัวใบอยู่บนพื้นฟ้าจาง ไม่ใส่การ์ด · การ์ดลอยมีแค่รายการกับสรุปยอด (บทเรียน "ลายตา" — อย่าทำทุกกล่องเป็นกระจก)
  */
 export const dynamic = "force-dynamic"; // ต้องนับยอดเปิด + เช็ควันหมดอายุสด ๆ ทุกครั้ง
 
@@ -67,139 +69,85 @@ export default async function PriceLinkPage({ params }: { params: Promise<{ code
     Promise.all(items.map((i) => productArtworkRequired(i.productId))),
     isLinkPreviewBot((await headers()).get("user-agent")) ? Promise.resolve() : bumpPriceLinkOpened(link),
   ]);
-  const artRequired = artFlags[0];
 
   const status = priceLinkStatus(link);
+  const open = status === "ใช้ได้";
   const left = daysLeft(link);
-  /** ยืนราคาถึงเมื่อไร — ข้อความเดียวกันทั้งใบรายการเดียวและใบหลายรายการ */
+  const askAll = items.every((i) => i.askPrice);
+
+  /** ยืนราคาถึงเมื่อไร — ใต้ปุ่มสั่ง */
   const holdNote = (
-    <p className="mt-2 text-center text-[11px] leading-relaxed text-stone-400">
-      กดแล้วระบบจะใส่ตะกร้าให้ทันทีแล้วพาไปหน้าตะกร้า · ทางร้านยืนราคาตามใบนี้ถึง{" "}
-      <span className="font-bold text-stone-500">{thaiDay(link.expiresAt)}</span>
+    <p className="mt-2.5 text-center text-[11px] leading-relaxed t-soft">
+      กดแล้วระบบใส่ตะกร้าให้ทันทีแล้วพาไปหน้าตะกร้า · ยืนราคาตามใบนี้ถึง{" "}
+      <b className="t-ink">{thaiDay(link.expiresAt)}</b>
       {left >= 0 && ` (อีก ${left} วัน)`}
     </p>
   );
-  /** ข้อความจากแอดมินถึงลูกค้า — ใบรายการเดียวและใบหลายรายการใช้กล่องเดียวกัน */
-  const noteBlock = link.note ? (
-    <div className="border-t border-stone-100 px-5 py-4">
-      <p className="whitespace-pre-line rounded-2xl bg-amber-50/60 p-3 text-xs leading-relaxed text-stone-700 ring-1 ring-amber-100">
-        {link.note}
-      </p>
-    </div>
-  ) : null;
-  /** ใบที่ปิด/หมดอายุ — ข้อความชุดเดียวกันทั้งสองแบบ */
+  /** ใบที่ปิด/หมดอายุ — ขึ้นแทนปุ่มสั่ง */
   const closedNote = (
-    <div className="rounded-2xl bg-stone-100 p-4 text-center">
-      <p className="text-sm font-bold text-stone-600">
-        {status === "หมดอายุ" ? "⌛ ราคานี้หมดอายุแล้ว" : "ราคานี้ปิดไปแล้ว"}
-      </p>
-      <p className="mt-1 text-xs text-stone-500">รบกวนทักร้านเพื่อขอราคาใหม่นะครับ</p>
-      <a
-        href={LINE_URL}
-        target="_blank"
-        rel="noreferrer"
-        className="mt-3 inline-block rounded-full bg-[#06C755] px-6 py-2.5 text-xs font-bold text-white"
-      >
+    <div className="ord-note plain p-4 text-center">
+      <p className="ord-title text-[15px]">{status === "หมดอายุ" ? "⌛ ราคานี้หมดอายุแล้ว" : "ราคานี้ปิดไปแล้ว"}</p>
+      <p className="mt-1 text-xs t-soft">รบกวนทักร้านเพื่อขอราคาใหม่นะครับ</p>
+      <a href={LINE_URL} target="_blank" rel="noreferrer" className="ord-btn line sm mt-3">
         💬 ทักร้านทางไลน์
       </a>
     </div>
   );
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-stone-200">
-        {/* หัวการ์ด */}
-        <div className="flex items-start gap-3 bg-gradient-to-br from-amber-50 to-white p-5">
-          {link.imageSrc && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={link.imageSrc}
-              alt={link.productName}
-              className="h-20 w-20 shrink-0 rounded-2xl object-cover ring-1 ring-stone-200"
-            />
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-amber-600">ราคาที่ทางร้านจัดให้</p>
-            <h1 className="mt-0.5 text-lg font-extrabold leading-snug text-stone-900">{priceLinkTitle(link)}</h1>
-            {bundle && (
-              <p className="mt-0.5 text-[11px] font-bold text-stone-500">📦 ใบนี้มี {items.length} รายการ</p>
-            )}
-            <p className="mt-1 text-[11px] text-stone-400">
-              เลขที่ {link.code} · เสนอเมื่อ {thaiDay(link.createdAt)}
-            </p>
-          </div>
-        </div>
-
-        {bundle ? (
-          /* ── ใบหลายรายการ: ทุกรายการ + ยอดรวม + ปุ่มสั่งทั้งใบ อยู่ในคอมโพเนนต์เดียว ── */
-          <>
-            {noteBlock}
-            <OrderBundle
-              code={link.code}
-              items={items.map((it, i) => ({ ...it, artRequired: artFlags[i] }))}
-              {...(status === "ใช้ได้" ? {} : { closedNote })}
-            >
-              {holdNote}
-            </OrderBundle>
-          </>
-        ) : (
-          <>
-            {/* สเปคที่ตกลงกันไว้ */}
-            <div className="border-t border-stone-100 px-5 py-4">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-stone-400">รายละเอียดที่จัดไว้</p>
-              <dl className="mt-2 space-y-1">
-                {link.lines.map(([k, v], i) => (
-                  <div key={i} className="flex flex-wrap gap-x-2 text-[13px] leading-relaxed">
-                    <dt className="font-bold text-stone-700">{k}:</dt>
-                    <dd className="min-w-0 flex-1 text-stone-600">{v}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-
-            {/* ราคา */}
-            <div className="border-t border-stone-100 bg-stone-50/60 px-5 py-4">
-              {link.askPrice ? (
-                <p className="text-sm font-bold text-stone-700">💬 งานนี้ทางร้านตีราคาให้อีกที — ทักไลน์ได้เลยครับ</p>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between text-sm text-stone-600">
-                    <span>
-                      {link.qty.toLocaleString("th-TH")} {link.unit} × {formatPrice(link.unitPrice)}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex items-end justify-between">
-                    <span className="text-sm font-bold text-stone-700">ยอดรวม</span>
-                    <span className="text-3xl font-extrabold text-amber-600">{formatPrice(link.total)}</span>
-                  </div>
-                  <p className="mt-1 text-right text-[11px] text-stone-400">ยังไม่รวมค่าจัดส่ง</p>
-                </>
-              )}
-            </div>
-
-            {noteBlock}
-
-            {/* ปุ่มสั่ง / สถานะ */}
-            <div className="border-t border-stone-100 px-5 py-5">
-              {status === "ใช้ได้" ? (
-                /* ปุ่มสั่งอยู่ในคอมโพเนนต์เดียวกับกล่องแนบลาย — ลิงก์ต้องคิดใหม่ทุกครั้งที่ลูกค้าวางไฟล์ */
-                <OrderWithArtwork productPath={link.productPath} spec={link.spec} artRequired={artRequired}>
-                  {holdNote}
-                </OrderWithArtwork>
-              ) : (
-                closedNote
-              )}
-            </div>
-          </>
-        )}
+    <div className="shopp">
+      {/* เมฆพื้นหลัง — ชุดเดียวกับหน้าแรก/ตะกร้า */}
+      <div className="shopp-sky" aria-hidden="true">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="oc1" src="/landing/cloud.webp" alt="" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="oc2" src="/landing/cloud.webp" alt="" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="oc4" src="/landing/cloud.webp" alt="" />
       </div>
 
-      <p className="mt-4 text-center text-xs text-stone-400">
-        มีข้อสงสัย?{" "}
-        <a href={LINE_URL} target="_blank" rel="noreferrer" className="font-bold text-[#06C755]">
-          ทักแชทร้าน
-        </a>
-      </p>
+      <div className="shopp-in" style={{ maxWidth: 1040 }}>
+        {/* ── หัวใบ: ชื่อ + เลขที่ + วันยืนราคา (ไม่ใส่การ์ด) ── */}
+        <header className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+          <div className="min-w-0 flex-1">
+            <span className="ord-eyebrow block">🧾 ใบราคาที่ทางร้านจัดให้</span>
+            <h1 className="ord-title mt-1" style={{ fontSize: "clamp(1.35rem, 3.6vw, 1.85rem)", fontWeight: 600 }}>
+              {priceLinkTitle(link)}
+            </h1>
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              <span className="ord-chip ghost">เลขที่ {link.code}</span>
+              <span className="ord-chip ghost">เสนอเมื่อ {thaiDay(link.createdAt)}</span>
+              {bundle && <span className="ord-chip">📦 {items.length} รายการ</span>}
+              {open ? (
+                <span className="ord-chip ok">
+                  ✓ ยืนราคาถึง {thaiDay(link.expiresAt)}
+                  {left >= 0 && ` · อีก ${left} วัน`}
+                </span>
+              ) : (
+                <span className="ord-chip danger">{status === "หมดอายุ" ? "⌛ หมดอายุแล้ว" : "ปิดแล้ว"}</span>
+              )}
+            </div>
+          </div>
+
+          {/* ยอดรวมโผล่ตั้งแต่บนหัวเฉพาะจอเล็ก — จอกว้างมีการ์ดสรุปอยู่ข้าง ๆ แล้ว */}
+          {!askAll && (
+            <div className="text-right lg:hidden">
+              <span className="ord-eyebrow block">ยอดรวม</span>
+              <p className="ord-title text-[1.7rem] leading-none t-blue">{formatPrice(priceLinkTotal(link))}</p>
+              <p className="mt-1 text-[10.5px] t-faint">ยังไม่รวมค่าจัดส่ง</p>
+            </div>
+          )}
+        </header>
+
+        <PriceSheet
+          code={link.code}
+          items={items.map((it, i) => ({ ...it, artRequired: artFlags[i] }))}
+          open={open}
+          note={link.note}
+          closedNote={closedNote}
+          holdNote={holdNote}
+        />
+      </div>
     </div>
   );
 }

@@ -109,26 +109,26 @@ export default function ArtDrop({
         setDrag(false);
         void upload(e.dataTransfer.files);
       }}
-      className={`rounded-2xl transition ${compact ? "p-2.5" : "mb-4 p-3.5"} ${
+      className={`rounded-2xl transition ${compact ? "p-3" : "mb-4 p-3.5"} ${
         drag ? "bg-sky-100 ring-2 ring-dashed ring-sky-400" : "bg-sky-50/70 ring-1 ring-sky-200"
       }`}
     >
       {artRequired ? (
         <>
-          <p className="text-xs font-bold text-stone-700">
+          <p className="text-xs font-bold t-ink">
             🎨 งานนี้ต้องมีไฟล์ลาย — มีแล้ววางตรงนี้ได้เลย{" "}
-            <span className="font-normal text-stone-400">(ยังไม่มีก็สั่งก่อนได้)</span>
+            <span className="font-normal t-faint">(ยังไม่มีก็สั่งก่อนได้)</span>
           </p>
-          <p className="mt-0.5 text-[11px] leading-relaxed text-stone-500">
+          <p className="mt-0.5 text-[11px] leading-relaxed t-soft">
             ลายจะติดไปกับออเดอร์ให้เอง ไม่ต้องแนบซ้ำ · ถ้ายังไม่พร้อม สั่งไว้ก่อนแล้วค่อยส่งลายทางไลน์ทีหลังได้
           </p>
         </>
       ) : (
         <>
-          <p className="text-xs font-bold text-stone-700">
-            🎨 มีไฟล์ลายแล้ว? วางตรงนี้ได้เลย <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
+          <p className="text-xs font-bold t-ink">
+            🎨 มีไฟล์ลายแล้ว? วางตรงนี้ได้เลย <span className="font-normal t-faint">(ไม่บังคับ)</span>
           </p>
-          <p className="mt-0.5 text-[11px] leading-relaxed text-stone-500">
+          <p className="mt-0.5 text-[11px] leading-relaxed t-soft">
             ลายจะติดไปกับออเดอร์ให้เอง ไม่ต้องแนบซ้ำในหน้าถัดไป · ใช้เป็นแนวทางให้กราฟฟิกทำแบบ
           </p>
         </>
@@ -156,7 +156,7 @@ export default function ArtDrop({
               {a.w > 0 && (
                 <p
                   className={`mt-0.5 w-20 text-center text-[9px] leading-tight ${
-                    Math.max(a.w, a.h) < 1500 ? "font-bold text-amber-600" : "text-stone-400"
+                    Math.max(a.w, a.h) < 1500 ? "font-bold t-warn" : "t-faint"
                   }`}
                 >
                   {a.w}×{a.h}
@@ -197,7 +197,7 @@ export default function ArtDrop({
         ) : (
           <>
             <span className="text-xs font-extrabold text-sky-700">🖼️ แตะเลือกไฟล์ · ลากมาวาง</span>
-            <span className="text-[10px] font-normal text-stone-400">JPG / PNG / WEBP · ไฟล์ละไม่เกิน 15MB</span>
+            <span className="text-[10px] font-normal t-faint">JPG / PNG / WEBP · ไฟล์ละไม่เกิน 15MB</span>
           </>
         )}
         <input
