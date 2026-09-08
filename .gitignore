@@ -25,3 +25,4 @@ scratchpad_out/
 # สำรองฐานข้อมูล (ไฟล์ใหญ่ ไม่เก็บเข้า repo)
 backups/
 .backup-*.json
+.restart-for-update
