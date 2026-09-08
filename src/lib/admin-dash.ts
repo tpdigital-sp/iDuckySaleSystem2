@@ -174,5 +174,5 @@ export function computeDash(orders: Order[], now: Date = new Date()): DashMetric
 
 /** วันที่วันนี้แบบไทยเต็ม "ศ. 22 ส.ค. 2569" — ทีมงานคุยกันด้วย พ.ศ. */
 export function thaiToday(now: Date = new Date()): string {
-  return now.toLocaleDateString("th-TH", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  return now.toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok", weekday: "short", day: "numeric", month: "short", year: "numeric" });
 }

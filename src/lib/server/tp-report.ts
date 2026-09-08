@@ -89,6 +89,9 @@ export async function reportPaidToTP(
         slipPath: slip.slipPath,
         slipSignedAt: now.toISOString(),
         verifiedBy,
+        // 🔥 งานเร่ง + วันที่ลูกค้าต้องใช้งาน — บอร์ด WIP กราฟฟิกเอาไปติดป้ายแดง/จัดคิว (แก้ทีหลังผ่าน syncRushToTP)
+        rush: !!order.rush,
+        useByDate: order.useByDate || "",
         paymentStatus: "ชำระแล้ว",
         origin: "iducky",
         createdAt: now.toISOString(),
@@ -98,5 +101,25 @@ export async function reportPaidToTP(
     const code = (e as { code?: number | string })?.code;
     if (code !== 6 && code !== "already-exists")
       console.error("[tp-report] ส่งออเดอร์ไป msVerify ไม่สำเร็จ:", (e as Error)?.message);
+  }
+}
+
+/**
+ * แอดมินติ๊ก/ยกเลิก "งานเร่ง" หรือแก้วันที่ลูกค้าต้องใช้งาน หลังออเดอร์ชำระแล้ว → อัปเดตเรคอร์ดสะพานให้บอร์ด WIP เห็นตาม
+ * เรคอร์ดมีได้ 2 ใบ (งวดแรก + งวดหลัง -final ของมัดจำ 50%) → ยิงทั้งคู่ · ใบที่ยังไม่มี (ยังไม่ชำระ) = not-found ข้ามเงียบ
+ * Fire-and-forget เหมือน reportPaidToTP
+ */
+export async function syncRushToTP(order: Order): Promise<void> {
+  const db = getFirestoreAdmin();
+  if (!db) return;
+  const patch = { rush: !!order.rush, useByDate: order.useByDate || "", rushUpdatedAt: new Date().toISOString() };
+  for (const suffix of ["", "-final"]) {
+    try {
+      await db.collection(TP_PAID_COLLECTION).doc(`${order.id}${suffix}`).update(patch);
+    } catch (e) {
+      const code = (e as { code?: number | string })?.code;
+      if (code !== 5 && code !== "not-found")
+        console.error("[tp-report] อัปเดตงานเร่งไป WIP ไม่สำเร็จ:", (e as Error)?.message);
+    }
   }
 }

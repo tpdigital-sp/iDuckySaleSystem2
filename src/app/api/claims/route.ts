@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { bkkYmd } from "@/lib/bangkok-time";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { bearerUser, CLAIM_TABLE, isMissingTable } from "@/lib/server/claims-db";
 import { CLAIM_TYPES, CLAIM_WINDOW_DAYS, isOpenClaim, type Claim } from "@/lib/claims";
@@ -14,8 +15,7 @@ export const runtime = "nodejs";
 
 const claimId = () => {
   const d = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  const ymd = `${String(d.getFullYear() + 543).slice(-2)}${p(d.getMonth() + 1)}${p(d.getDate())}`;
+  const ymd = bkkYmd(d, true);
   return `CL-${ymd}-${Math.floor(1000 + Math.random() * 9000)}`;
 };
 

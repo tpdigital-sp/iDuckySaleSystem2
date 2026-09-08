@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { bkkYmd } from "@/lib/bangkok-time";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { bearerUser } from "@/lib/server/claims-db";
 import { fetchShownReviews, isMissingTable, statsOf, toPublic } from "@/lib/server/reviews-db";
@@ -21,8 +22,7 @@ export async function GET(req: Request) {
 
 const reviewId = () => {
   const d = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `RV-${String(d.getFullYear() + 543).slice(-2)}${p(d.getMonth() + 1)}${p(d.getDate())}-${Math.floor(1000 + Math.random() * 9000)}`;
+  return `RV-${bkkYmd(d, true)}-${Math.floor(1000 + Math.random() * 9000)}`;
 };
 
 /** URL รูปต้องเป็นของ storage เราเอง (bucket ภาพลาย) — กันแปะลิงก์รูปนอกมั่ว */

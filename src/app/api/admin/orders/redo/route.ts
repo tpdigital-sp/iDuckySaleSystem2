@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { bkkYmd, thaiDateTime } from "@/lib/bangkok-time";
 import { randomBytes } from "node:crypto";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
@@ -66,8 +67,7 @@ export async function POST(req: Request) {
   if (!items.length) return NextResponse.json({ error: "ไม่ได้เลือกรายการที่จะทำใหม่" }, { status: 400 });
 
   const now = new Date();
-  const p2 = (n: number) => String(n).padStart(2, "0");
-  const id = `OD-${String(now.getFullYear()).slice(2)}${p2(now.getMonth() + 1)}${p2(now.getDate())}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const id = `OD-${bkkYmd(now)}-${Math.floor(1000 + Math.random() * 9000)}`;
   const by = gate.actor.name?.trim() || gate.actor.username;
 
   let order: Order = {
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
     customer: src.customer,
     phone: src.phone,
     address: src.address,
-    date: now.toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+    date: thaiDateTime(now),
     payment: src.payment,
     shipping: src.shipping,
     ...(src.shippingLabel ? { shippingLabel: src.shippingLabel } : {}), // ชื่อวิธีส่งจริง (EMS ฯลฯ) ต้องติดไปด้วย ไม่งั้นใบปะหน้าขึ้นผิด

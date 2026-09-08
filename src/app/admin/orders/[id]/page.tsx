@@ -4,7 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { giftLinesOf, giftArtLabel } from "@/lib/gifts";
 import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
+import PrevNextNav from "@/components/admin/PrevNextNav";
 import FlowAccountSync from "@/components/admin/FlowAccountSync";
+/** ลิงก์หน้ารายละเอียดออเดอร์ — ประกาศนอกคอมโพเนนต์ให้ reference คงที่ */
+const orderHref = (id: string) => `/admin/orders/${encodeURIComponent(id)}`;
 import { useParams, useRouter } from "next/navigation";
 import { artQtyOf, formatPrice } from "@/lib/products";
 import { proofIssues, productWordIndex, type ProductWordIndex } from "@/lib/proof-check";
@@ -668,9 +671,9 @@ function PerUnitSetter({ unit, qty, suggest, onSet }: { unit: string; qty: numbe
 }
 
 /** แถบผลตรวจสลิปอัตโนมัติ (SlipOK) — ใช้ซ้ำได้ทั้งสลิปงวดแรกและงวดหลัง */
-function SlipVerifyNote({ v }: { v: NonNullable<Order["slipVerify"]> }) {
+function SlipVerifyNote({ v, onRecheck, rechecking }: { v: NonNullable<Order["slipVerify"]>; onRecheck?: () => void; rechecking?: boolean }) {
   return (
-    <p
+    <div
       className={`mt-2 rounded-xl px-3 py-2 text-xs font-semibold ring-1 ${
         v.status === "pass" ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : "bg-amber-50 text-amber-800 ring-amber-200"
       }`}
@@ -687,9 +690,25 @@ function SlipVerifyNote({ v }: { v: NonNullable<Order["slipVerify"]> }) {
           )}
         </>
       ) : (
-        <>⚠️ SlipOK ตรวจไม่ผ่าน{v.detail ? `: ${v.detail}` : ""} — กรุณาตรวจสลิปเอง</>
+        <>
+          ⚠️ SlipOK ตรวจไม่ผ่าน{v.detail ? `: ${v.detail}` : ""} — กรุณาตรวจสลิปเอง
+          {/* 🔄 ยิง SlipOK ซ้ำด้วยไฟล์เดิม — เคสลูกค้าแนบเร็วกว่าธนาคารส่งข้อมูล (1010) รอสักครู่แล้วกดตรวจใหม่ก็ผ่านได้ ไม่ต้องลบ/แนบใหม่ */}
+          {onRecheck && (
+            <span className="mt-1.5 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={onRecheck}
+                disabled={rechecking}
+                className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-amber-800 ring-1 ring-amber-300 transition hover:bg-amber-100 disabled:opacity-60"
+              >
+                {rechecking ? "⏳ กำลังตรวจ…" : "🔄 ตรวจสลิปอีกครั้ง"}
+              </button>
+              <span className="font-normal text-amber-700">ถ้าลูกค้าเพิ่งโอน รอ 2 นาทีแล้วกดตรวจใหม่ได้เลย</span>
+            </span>
+          )}
+        </>
       )}
-    </p>
+    </div>
   );
 }
 
@@ -858,6 +877,7 @@ export default function AdminOrderDetailPage() {
   }
   const [printMenu, setPrintMenu] = useState(false);
   const [slipUploading, setSlipUploading] = useState(false);
+  const [slipRechecking, setSlipRechecking] = useState(false);
   /** กำลังลากไฟล์ค้างอยู่เหนือช่องแนบสลิปงวดที่ 2 — ไว้ไฮไลต์ช่องรับ */
   const [slipDragOver, setSlipDragOver] = useState(false);
   const adminSlipInput = useRef<HTMLInputElement | null>(null);
@@ -1135,6 +1155,36 @@ export default function AdminOrderDetailPage() {
     };
     setOrder(next);
     if (!demo) void saveOrderAdmin(next);
+  }
+
+  /**
+   * 🔄 ตรวจสลิปใบเดิมกับ SlipOK อีกครั้ง — ใช้ไฟล์ที่แนบไว้แล้ว (ไม่ต้องลบ/แนบใหม่)
+   * เคสหลัก: ลูกค้าแนบเร็วกว่าธนาคารส่งข้อมูล SlipOK ตอบ 1010 → รอสักครู่แล้วกดตรวจซ้ำ
+   * ผ่าน = เซิร์ฟเวอร์ยืนยันรับเงิน/แจ้ง LINE ให้เหมือนตรวจรอบแรก
+   */
+  async function recheckSlip(phase: "first" | "balance") {
+    if (!order) return;
+    if (demo) {
+      setErr("โหมดตัวอย่างตรวจสลิปไม่ได้");
+      return;
+    }
+    setErr("");
+    setSlipRechecking(true);
+    try {
+      const res = await fetch("/api/admin/orders/slip/recheck", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, phase }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { order?: Order; verified?: boolean; error?: string };
+      if (!res.ok || !j.order) {
+        setErr(j.error ?? "ตรวจสลิปไม่สำเร็จ");
+        return;
+      }
+      setOrder(j.order);
+    } finally {
+      setSlipRechecking(false);
+    }
   }
 
   /** ลบสลิป (เฉพาะผู้ดูแลระบบ) — รีเซ็ตการแจ้งโอน ออเดอร์กลับเป็น รอชำระเงิน */
@@ -2131,9 +2181,13 @@ export default function AdminOrderDetailPage() {
         {/* บรรทัดบน = ข้อมูลล้วน (เลขออเดอร์ · สถานะตอนนี้ · ยอดรวม) ไม่มีปุ่มปน */}
         <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
           <div className="min-w-0">
-            <Link href="/admin/orders" className="dkb-eyebrow" style={{ color: "var(--dk-faint)" }}>
-              คำสั่งซื้อทั้งหมด
-            </Link>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link href="/admin/orders" className="dkb-eyebrow" style={{ color: "var(--dk-faint)" }}>
+                คำสั่งซื้อทั้งหมด
+              </Link>
+              {/* ไล่ใบก่อนหน้า/ถัดไปตามลำดับหน้ารายการ (allOrders = ใบเบาเรียงใหม่→เก่าจาก API) */}
+              {!demo && <PrevNextNav ids={allOrders.map((o) => o.id)} current={order.id} hrefOf={orderHref} />}
+            </div>
             <h1 className="dkb-display mt-1 flex flex-wrap items-center gap-2 text-[1.55rem] leading-tight">
               {order.id}
               {order.rush && (
@@ -4766,7 +4820,7 @@ export default function AdminOrderDetailPage() {
               {/* ── สลิปงวดแรก (ออเดอร์มัดจำ = มัดจำ 50% แรก · ออเดอร์ปกติ = เต็มจำนวน) ── */}
               {order.slipUrl && (
                 <>
-                  {order.slipVerify && <SlipVerifyNote v={order.slipVerify} />}
+                  {order.slipVerify && <SlipVerifyNote v={order.slipVerify} onRecheck={() => recheckSlip("first")} rechecking={slipRechecking} />}
                   <div className={`mt-2 flex items-center gap-3 ${soft("green")}`}>
                     <button
                       type="button"
@@ -4814,7 +4868,7 @@ export default function AdminOrderDetailPage() {
               {/* ── สลิปงวดหลัง (ยอดคงเหลือของออเดอร์มัดจำ) — แยกใบ แยกผลตรวจ ── */}
               {order.deposit?.balanceSlipUrl && (
                 <>
-                  {order.deposit.balanceVerify && <SlipVerifyNote v={order.deposit.balanceVerify} />}
+                  {order.deposit.balanceVerify && <SlipVerifyNote v={order.deposit.balanceVerify} onRecheck={() => recheckSlip("balance")} rechecking={slipRechecking} />}
                   <div className={`mt-2 flex items-center gap-3 ${soft("green")}`}>
                     <button
                       type="button"

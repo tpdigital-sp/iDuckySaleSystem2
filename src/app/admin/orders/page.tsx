@@ -158,6 +158,8 @@ export default function AdminOrdersPage() {
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [q, setQ] = useState("");
   const [onlyDue, setOnlyDue] = useState(false); // เห็นเฉพาะออเดอร์ที่ยังเก็บเงินไม่ครบ (มัดจำ + ส่วนต่างที่ตีราคาเพิ่ม)
+  /** ใครสร้างใบ: "all" · "customer" (ลูกค้ากดเอง) · "admin" (พนักงานทำให้ทุกคน) · "by:<ชื่อ>" (พนักงานคนนั้นคนเดียว) */
+  const [by, setBy] = useState<"all" | "customer" | "admin" | `by:${string}`>("all");
   const [dateKey, setDateKey] = useState<DateKey>("all"); // ช่วงวันที่สั่ง
   const [from, setFrom] = useState(""); // yyyy-mm-dd จาก <input type="date">
   const [to, setTo] = useState("");
@@ -258,9 +260,35 @@ export default function AdminOrdersPage() {
     return m;
   }, [orders]);
 
+  // นับใบตามคนสร้าง (ในช่วงวันที่ที่เลือก) — ชื่อพนักงานเรียงตามจำนวนใบมาก→น้อย
+  const byCounts = useMemo(() => {
+    const staff: Record<string, number> = {};
+    let admin = 0;
+    for (const o of dated) {
+      const nm = (o.placedBy ?? "").trim();
+      if (!nm) continue;
+      admin++;
+      staff[nm] = (staff[nm] ?? 0) + 1;
+    }
+    return {
+      admin,
+      customer: dated.length - admin,
+      staff: Object.entries(staff).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "th")),
+    };
+  }, [dated]);
+  const byMatch = (o: Order) => {
+    const nm = (o.placedBy ?? "").trim();
+    if (by === "all") return true;
+    if (by === "customer") return !nm;
+    if (by === "admin") return !!nm;
+    return nm === by.slice(3);
+  };
+  const byLabel = by === "customer" ? "ลูกค้าสั่งเอง" : by === "admin" ? "แอดมินสร้างให้" : by.startsWith("by:") ? by.slice(3) : "";
+
   const kw = q.trim().toLowerCase();
   const digits = kw.replace(/\D/g, "");
   const shown = dated
+    .filter(byMatch)
     .filter((o) => (onlyDue ? isDue(o) : true))
     .filter((o) => (onlyDue ? o.status !== "ยกเลิก" : activeDept.statuses.includes(o.status)))
     .filter((o) => (filter === "all" ? true : o.status === filter))
@@ -514,6 +542,55 @@ export default function AdminOrdersPage() {
               </span>
             </div>
           )}
+
+          {/* ── ใครสร้างใบ — แยกใบที่พนักงานทำให้ออกจากใบที่ลูกค้ากดสั่งเอง · กดชื่อพนักงานเพื่อดูเฉพาะของคนนั้น ── */}
+          <div className="dkb-scroll mt-2.5 border-t pt-2.5" style={{ borderColor: "var(--dk-hair)" }}>
+            <span className="dkb-flab">ใครสร้าง</span>
+            <button type="button" onClick={() => setBy("all")} aria-pressed={by === "all"} className="dkb-fchip">
+              <i />
+              ทั้งหมด <b>{dated.length}</b>
+            </button>
+            <button
+              type="button"
+              onClick={() => setBy("customer")}
+              aria-pressed={by === "customer"}
+              data-zero={byCounts.customer === 0 ? "1" : undefined}
+              className="dkb-fchip"
+            >
+              <i />
+              🛒 ลูกค้าสั่งเอง <b>{byCounts.customer}</b>
+            </button>
+            <button
+              type="button"
+              onClick={() => setBy("admin")}
+              aria-pressed={by === "admin"}
+              data-zero={byCounts.admin === 0 ? "1" : undefined}
+              className="dkb-fchip"
+              style={by === "admin" || byCounts.admin === 0 ? undefined : { background: "var(--dk-sky)", color: "var(--dk-blue-deep)" }}
+            >
+              <i />
+              🧑‍💼 แอดมินสร้างให้ <b>{byCounts.admin}</b>
+            </button>
+            {/* รายชื่อพนักงานทุกคนที่เคยสร้างใบ (ในช่วงวันที่ที่เลือก) — กดดูเฉพาะของคนนั้น กดซ้ำ = กลับไปแอดมินทุกคน */}
+            {byCounts.staff.length > 0 && <span className="dkb-flab">รายคน</span>}
+            {byCounts.staff.map(([nm, n]) => {
+              const on = by === `by:${nm}`;
+              return (
+                <button
+                  key={nm}
+                  type="button"
+                  onClick={() => setBy(on ? "admin" : `by:${nm}`)}
+                  aria-pressed={on}
+                  className="dkb-fchip"
+                  style={on ? undefined : { background: "var(--dk-sky)", color: "var(--dk-blue-deep)" }}
+                  title={`เฉพาะใบที่ ${nm} สร้างให้ลูกค้า`}
+                >
+                  <i />
+                  {nm} <b>{n}</b>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* ── รายการ ── */}
@@ -530,7 +607,9 @@ export default function AdminOrdersPage() {
             <p className="dkb-h2 text-[16px]">
               {kw
                 ? `ไม่พบออเดอร์ที่ตรงกับ “${q}”`
-                : dateOn
+                : by !== "all"
+                  ? `ไม่มีใบที่ “${byLabel}”${filter === "all" ? "" : ` สถานะ “${filter}”`}${dateOn && rangeText ? ` · ${rangeText}` : ""}`
+                  : dateOn
                   ? `${emptyRange}${filter === "all" ? "" : ` สถานะ “${filter}”`}`
                   : filter === "all"
                     ? `ไม่มีงานในแผนก${activeDept.label}`
@@ -539,7 +618,9 @@ export default function AdminOrdersPage() {
             <p className="mt-1.5 text-[13px]" style={{ color: "var(--dk-navy-soft)" }}>
               {kw
                 ? "ลองค้นด้วยเลขออเดอร์ ชื่อลูกค้า หรือเบอร์โทรแทน"
-                : dateOn
+                : by !== "all"
+                  ? "กด “ทั้งหมด” ในแถวใครสร้าง เพื่อดูทุกใบ"
+                  : dateOn
                   ? "ลองขยายช่วงวันที่ หรือกด “ทุกวัน” เพื่อดูทั้งหมด"
                   : "เคลียร์หมดแล้ว — ใบใหม่จะโผล่ตรงนี้ทันทีที่ลูกค้าสั่ง"}
             </p>

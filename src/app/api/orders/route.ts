@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { bkkYmd, thaiDateTime } from "@/lib/bangkok-time";
 import { randomBytes } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderTotal, type Order } from "@/lib/admin-data";
@@ -19,8 +20,7 @@ const SETTINGS_ROW = "__shop_payment__";
 export const runtime = "nodejs";
 
 function orderNo(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  const ymd = `${String(d.getFullYear()).slice(2)}${p(d.getMonth() + 1)}${p(d.getDate())}`;
+  const ymd = bkkYmd(d);
   return `OD-${ymd}-${String(Math.floor(1000 + Math.random() * 9000))}`;
 }
 
@@ -277,7 +277,7 @@ export async function POST(req: Request) {
     customer: input.customerName.trim(),
     phone: input.phone.trim(),
     address: input.address.trim(),
-    date: now.toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+    date: thaiDateTime(now),
     payment: "โอนธนาคาร",
     shipping: input.shipping === "ส่งด่วน" ? "ส่งด่วน" : "ส่งธรรมดา",
     ...(input.shipping?.trim() ? { shippingLabel: input.shipping.trim().slice(0, 40) } : {}),

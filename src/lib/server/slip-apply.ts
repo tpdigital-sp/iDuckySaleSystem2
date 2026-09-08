@@ -41,6 +41,11 @@ export interface ApplySlipInput {
   origin: string;
   /** วันเวลาที่ถือว่า "แจ้งโอน" งวดแรก (แอดมินแนบย้อนหลังอาจอยากคงค่าเดิม) — ค่าเริ่มต้น = ตอนนี้ */
   paidReportedAt?: string;
+  /**
+   * 🔄 ตรวจซ้ำสลิปใบเดิมที่แนบไว้แล้ว (แอดมินกด "ตรวจสลิปอีกครั้ง" หลัง SlipOK ตอบ 1010 เพราะลูกค้าแนบเร็วกว่าธนาคารส่งข้อมูล)
+   * — ไม่ลบไฟล์ทิ้งแม้เจอเลขอ้างอิงซ้ำ (ไฟล์เป็นของออเดอร์นี้อยู่แล้ว), คงเวลาแจ้งโอนเดิม, log บอกว่าเป็นการตรวจซ้ำ
+   */
+  recheck?: boolean;
 }
 
 export interface ApplySlipResult {
@@ -88,7 +93,8 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
     try {
       await assertSlipNotDuplicate(sb, { transRef: verify.transRef }, { orderId: order.id, phase: balancePhase ? "balance" : "first" });
     } catch (e) {
-      await sb.storage.from("payment-slips-private").remove([path]).catch(() => undefined);
+      // ตรวจซ้ำ = ไฟล์เป็นของออเดอร์นี้อยู่แล้ว ห้ามลบ (แค่ตอบว่าซ้ำให้แอดมินไปตามต่อ)
+      if (!input.recheck) await sb.storage.from("payment-slips-private").remove([path]).catch(() => undefined);
       throw e;
     }
   }
@@ -110,23 +116,34 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
     ...order,
     // งวดหลังของออเดอร์มัดจำเก็บแยกช่อง — ไม่งั้นสลิปมัดจำงวดแรกถูกทับหาย
     ...(balancePhase
-      ? { deposit: { ...order.deposit!, balanceSlipPath: path, balanceSlipHash: input.hash, balanceReportedAt: now, balanceVerify: vRec } }
+      ? {
+          deposit: {
+            ...order.deposit!,
+            balanceSlipPath: path,
+            balanceSlipHash: input.hash,
+            // ตรวจซ้ำ = คงเวลาที่ลูกค้าแจ้งโอนไว้เดิม (ไม่ใช่เวลาที่แอดมินกดตรวจ)
+            balanceReportedAt: input.recheck ? order.deposit?.balanceReportedAt ?? now : now,
+            balanceVerify: vRec,
+          },
+        }
       : { slipPath: path, slipHash: input.hash, slipUrl: undefined, paidReportedAt: input.paidReportedAt ?? now, slipVerify: vRec }),
   };
+  // คำขึ้นต้นบรรทัดประวัติ — ตรวจซ้ำให้อ่านออกว่าเป็นรอบที่สอง ไม่ใช่สลิปใบใหม่
+  const rc = input.recheck ? "ตรวจซ้ำ: " : "";
 
   if (!eligible) {
     // ออเดอร์ยืนยันเงินงวดนี้ไปแล้ว (แอดมินแนบหลักฐานย้อนหลัง) — บันทึกผลตรวจไว้ดูอย่างเดียว
     if (verify.status === "pass")
-      updated = withLog(updated, "SlipOK", "ตรวจสลิปแล้ว: ยอดถูกต้อง (ออเดอร์ยืนยันรับเงินไว้ก่อนแล้ว — ไม่เปลี่ยนสถานะ)", amountNote);
-    else if (verify.status === "fail") updated = withLog(updated, "SlipOK", "สลิปตรวจไม่ผ่าน — กรุณาตรวจสลิปเอง", verify.detail ?? "");
+      updated = withLog(updated, "SlipOK", `${rc}ตรวจสลิปแล้ว: ยอดถูกต้อง (ออเดอร์ยืนยันรับเงินไว้ก่อนแล้ว — ไม่เปลี่ยนสถานะ)`, amountNote);
+    else if (verify.status === "fail") updated = withLog(updated, "SlipOK", `${rc}สลิปตรวจไม่ผ่าน — กรุณาตรวจสลิปเอง`, verify.detail ?? "");
   } else if (balancePhase) {
     // งวดหลังของออเดอร์มัดจำ — สถานะงานเดินต่อตามเดิม ไม่ถอยกลับไปรอตรวจสอบ
     if (verify.status === "pass") {
       // ต่อจาก updated (ไม่ใช่ order) เพราะเพิ่งใส่ balanceSlipPath ไปในนั้น
       updated = { ...updated, paidTotal: orderTotal(order), deposit: { ...updated.deposit!, settledAt: now } };
-      updated = withLog(updated, "SlipOK", "รับยอดคงเหลือครบแล้ว (อัตโนมัติ)", amountNote);
+      updated = withLog(updated, "SlipOK", `${rc}รับยอดคงเหลือครบแล้ว (อัตโนมัติ)`, amountNote);
     } else {
-      updated = withLog(updated, "SlipOK", "สลิปยอดคงเหลือรอแอดมินตรวจ", verify.detail ?? "ตรวจอัตโนมัติไม่ได้");
+      updated = withLog(updated, "SlipOK", `${rc}สลิปยอดคงเหลือรอแอดมินตรวจ`, verify.detail ?? "ตรวจอัตโนมัติไม่ได้");
     }
   } else {
     updated = {
@@ -140,8 +157,8 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
       ...(depositPhase && verify.status === "pass" ? { deposit: { ...order.deposit!, firstPaidAt: now } } : {}),
     };
     if (verify.status === "pass")
-      updated = withLog(updated, "SlipOK", depositPhase ? "ยืนยันมัดจำ 50% อัตโนมัติ" : "ยืนยันการชำระเงินอัตโนมัติ", amountNote);
-    else if (verify.status === "fail") updated = withLog(updated, "SlipOK", "สลิปตรวจไม่ผ่าน — รอแอดมินตรวจเอง", verify.detail ?? "");
+      updated = withLog(updated, "SlipOK", `${rc}${depositPhase ? "ยืนยันมัดจำ 50% อัตโนมัติ" : "ยืนยันการชำระเงินอัตโนมัติ"}`, amountNote);
+    else if (verify.status === "fail") updated = withLog(updated, "SlipOK", `${rc}สลิปตรวจไม่ผ่าน — รอแอดมินตรวจเอง`, verify.detail ?? "");
   }
 
   const { error: saveErr } = await sb.from("orders").update({ data: updated }).eq("id", order.id);
