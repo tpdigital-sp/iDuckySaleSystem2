@@ -2,10 +2,20 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { formatPrice } from "@/lib/products";
-import { daysLeft, priceLinkStatus, thaiDay } from "@/lib/price-links";
+import {
+  daysLeft,
+  priceLinkHasAsk,
+  priceLinkIsBundle,
+  priceLinkItems,
+  priceLinkStatus,
+  priceLinkTitle,
+  priceLinkTotal,
+  thaiDay,
+} from "@/lib/price-links";
 import { getPriceLink, bumpPriceLinkOpened, productArtworkRequired } from "@/lib/server/price-links-db";
 import { LINE_URL } from "@/components/LineButton";
 import OrderWithArtwork from "./OrderWithArtwork";
+import OrderBundle from "./OrderBundle";
 
 /**
  * 🧾 การ์ดราคาที่ร้านจัดให้ลูกค้า — /p/<code>
@@ -19,10 +29,15 @@ export async function generateMetadata({ params }: { params: Promise<{ code: str
   const { code } = await params;
   const link = await getPriceLink(decodeURIComponent(code).toUpperCase());
   if (!link) return { title: "ไม่พบราคานี้", robots: { index: false, follow: false } };
-  const title = `${link.productName} — ${link.askPrice ? "ราคาที่ร้านจัดให้" : formatPrice(link.total)}`;
-  const description = link.askPrice
-    ? `สเปคที่ทางร้านจัดไว้ให้ · ${link.qty} ${link.unit}`
-    : `${link.qty} ${link.unit} · ${formatPrice(link.unitPrice)}/${link.unit} — รวม ${formatPrice(link.total)}`;
+  const items = priceLinkItems(link);
+  const ask = priceLinkHasAsk(link);
+  const title = `${priceLinkTitle(link)} — ${ask && items.length === 1 ? "ราคาที่ร้านจัดให้" : formatPrice(priceLinkTotal(link))}`;
+  const description =
+    items.length > 1
+      ? `${items.length} รายการที่ทางร้านจัดไว้ให้ — รวม ${formatPrice(priceLinkTotal(link))}${ask ? " (ยังไม่รวมรายการที่รอตีราคา)" : ""}`
+      : link.askPrice
+        ? `สเปคที่ทางร้านจัดไว้ให้ · ${link.qty} ${link.unit}`
+        : `${link.qty} ${link.unit} · ${formatPrice(link.unitPrice)}/${link.unit} — รวม ${formatPrice(link.total)}`;
   return {
     title,
     description,
@@ -46,13 +61,49 @@ export default async function PriceLinkPage({ params }: { params: Promise<{ code
   // นับว่าลูกค้าเปิดแล้ว (แอดมินดูได้ที่ /admin/price-links ว่าควรตามต่อไหม)
   // ⚠️ ไม่นับตัวไล่อ่านลิงก์ของแอป — ไลน์/เฟซยิงเข้ามาอ่านการ์ดทันทีที่วางลิงก์ในแชท
   //    นับด้วยจะกลายเป็น "ลูกค้าเปิดแล้ว" ตั้งแต่ยังไม่มีใครแตะ = ป้ายเตือนที่หน้าแอดมินใช้ไม่ได้เลย
-  const [artRequired] = await Promise.all([
-    productArtworkRequired(link.productId),
+  const items = priceLinkItems(link);
+  const bundle = priceLinkIsBundle(link);
+  const [artFlags] = await Promise.all([
+    Promise.all(items.map((i) => productArtworkRequired(i.productId))),
     isLinkPreviewBot((await headers()).get("user-agent")) ? Promise.resolve() : bumpPriceLinkOpened(link),
   ]);
+  const artRequired = artFlags[0];
 
   const status = priceLinkStatus(link);
   const left = daysLeft(link);
+  /** ยืนราคาถึงเมื่อไร — ข้อความเดียวกันทั้งใบรายการเดียวและใบหลายรายการ */
+  const holdNote = (
+    <p className="mt-2 text-center text-[11px] leading-relaxed text-stone-400">
+      กดแล้วระบบจะใส่ตะกร้าให้ทันทีแล้วพาไปหน้าตะกร้า · ทางร้านยืนราคาตามใบนี้ถึง{" "}
+      <span className="font-bold text-stone-500">{thaiDay(link.expiresAt)}</span>
+      {left >= 0 && ` (อีก ${left} วัน)`}
+    </p>
+  );
+  /** ข้อความจากแอดมินถึงลูกค้า — ใบรายการเดียวและใบหลายรายการใช้กล่องเดียวกัน */
+  const noteBlock = link.note ? (
+    <div className="border-t border-stone-100 px-5 py-4">
+      <p className="whitespace-pre-line rounded-2xl bg-amber-50/60 p-3 text-xs leading-relaxed text-stone-700 ring-1 ring-amber-100">
+        {link.note}
+      </p>
+    </div>
+  ) : null;
+  /** ใบที่ปิด/หมดอายุ — ข้อความชุดเดียวกันทั้งสองแบบ */
+  const closedNote = (
+    <div className="rounded-2xl bg-stone-100 p-4 text-center">
+      <p className="text-sm font-bold text-stone-600">
+        {status === "หมดอายุ" ? "⌛ ราคานี้หมดอายุแล้ว" : "ราคานี้ปิดไปแล้ว"}
+      </p>
+      <p className="mt-1 text-xs text-stone-500">รบกวนทักร้านเพื่อขอราคาใหม่นะครับ</p>
+      <a
+        href={LINE_URL}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-3 inline-block rounded-full bg-[#06C755] px-6 py-2.5 text-xs font-bold text-white"
+      >
+        💬 ทักร้านทางไลน์
+      </a>
+    </div>
+  );
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -69,82 +120,78 @@ export default async function PriceLinkPage({ params }: { params: Promise<{ code
           )}
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-bold uppercase tracking-widest text-amber-600">ราคาที่ทางร้านจัดให้</p>
-            <h1 className="mt-0.5 text-lg font-extrabold leading-snug text-stone-900">{link.productName}</h1>
+            <h1 className="mt-0.5 text-lg font-extrabold leading-snug text-stone-900">{priceLinkTitle(link)}</h1>
+            {bundle && (
+              <p className="mt-0.5 text-[11px] font-bold text-stone-500">📦 ใบนี้มี {items.length} รายการ</p>
+            )}
             <p className="mt-1 text-[11px] text-stone-400">
               เลขที่ {link.code} · เสนอเมื่อ {thaiDay(link.createdAt)}
             </p>
           </div>
         </div>
 
-        {/* สเปคที่ตกลงกันไว้ */}
-        <div className="border-t border-stone-100 px-5 py-4">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-stone-400">รายละเอียดที่จัดไว้</p>
-          <dl className="mt-2 space-y-1">
-            {link.lines.map(([k, v], i) => (
-              <div key={i} className="flex flex-wrap gap-x-2 text-[13px] leading-relaxed">
-                <dt className="font-bold text-stone-700">{k}:</dt>
-                <dd className="min-w-0 flex-1 text-stone-600">{v}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-
-        {/* ราคา */}
-        <div className="border-t border-stone-100 bg-stone-50/60 px-5 py-4">
-          {link.askPrice ? (
-            <p className="text-sm font-bold text-stone-700">💬 งานนี้ทางร้านตีราคาให้อีกที — ทักไลน์ได้เลยครับ</p>
-          ) : (
-            <>
-              <div className="flex items-center justify-between text-sm text-stone-600">
-                <span>
-                  {link.qty.toLocaleString("th-TH")} {link.unit} × {formatPrice(link.unitPrice)}
-                </span>
-              </div>
-              <div className="mt-1 flex items-end justify-between">
-                <span className="text-sm font-bold text-stone-700">ยอดรวม</span>
-                <span className="text-3xl font-extrabold text-amber-600">{formatPrice(link.total)}</span>
-              </div>
-              <p className="mt-1 text-right text-[11px] text-stone-400">ยังไม่รวมค่าจัดส่ง</p>
-            </>
-          )}
-        </div>
-
-        {link.note && (
-          <div className="border-t border-stone-100 px-5 py-4">
-            <p className="whitespace-pre-line rounded-2xl bg-amber-50/60 p-3 text-xs leading-relaxed text-stone-700 ring-1 ring-amber-100">
-              {link.note}
-            </p>
-          </div>
-        )}
-
-        {/* ปุ่มสั่ง / สถานะ */}
-        <div className="border-t border-stone-100 px-5 py-5">
-          {status === "ใช้ได้" ? (
-            /* ปุ่มสั่งอยู่ในคอมโพเนนต์เดียวกับกล่องแนบลาย — ลิงก์ต้องคิดใหม่ทุกครั้งที่ลูกค้าวางไฟล์ */
-            <OrderWithArtwork productPath={link.productPath} spec={link.spec} artRequired={artRequired}>
-              <p className="mt-2 text-center text-[11px] leading-relaxed text-stone-400">
-                กดแล้วระบบจะใส่ตะกร้าให้ทันทีแล้วพาไปหน้าตะกร้า · ทางร้านยืนราคาตามใบนี้ถึง{" "}
-                <span className="font-bold text-stone-500">{thaiDay(link.expiresAt)}</span>
-                {left >= 0 && ` (อีก ${left} วัน)`}
-              </p>
-            </OrderWithArtwork>
-          ) : (
-            <div className="rounded-2xl bg-stone-100 p-4 text-center">
-              <p className="text-sm font-bold text-stone-600">
-                {status === "หมดอายุ" ? "⌛ ราคานี้หมดอายุแล้ว" : "ราคานี้ปิดไปแล้ว"}
-              </p>
-              <p className="mt-1 text-xs text-stone-500">รบกวนทักร้านเพื่อขอราคาใหม่นะครับ</p>
-              <a
-                href={LINE_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 inline-block rounded-full bg-[#06C755] px-6 py-2.5 text-xs font-bold text-white"
-              >
-                💬 ทักร้านทางไลน์
-              </a>
+        {bundle ? (
+          /* ── ใบหลายรายการ: ทุกรายการ + ยอดรวม + ปุ่มสั่งทั้งใบ อยู่ในคอมโพเนนต์เดียว ── */
+          <>
+            {noteBlock}
+            <OrderBundle
+              code={link.code}
+              items={items.map((it, i) => ({ ...it, artRequired: artFlags[i] }))}
+              {...(status === "ใช้ได้" ? {} : { closedNote })}
+            >
+              {holdNote}
+            </OrderBundle>
+          </>
+        ) : (
+          <>
+            {/* สเปคที่ตกลงกันไว้ */}
+            <div className="border-t border-stone-100 px-5 py-4">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-stone-400">รายละเอียดที่จัดไว้</p>
+              <dl className="mt-2 space-y-1">
+                {link.lines.map(([k, v], i) => (
+                  <div key={i} className="flex flex-wrap gap-x-2 text-[13px] leading-relaxed">
+                    <dt className="font-bold text-stone-700">{k}:</dt>
+                    <dd className="min-w-0 flex-1 text-stone-600">{v}</dd>
+                  </div>
+                ))}
+              </dl>
             </div>
-          )}
-        </div>
+
+            {/* ราคา */}
+            <div className="border-t border-stone-100 bg-stone-50/60 px-5 py-4">
+              {link.askPrice ? (
+                <p className="text-sm font-bold text-stone-700">💬 งานนี้ทางร้านตีราคาให้อีกที — ทักไลน์ได้เลยครับ</p>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between text-sm text-stone-600">
+                    <span>
+                      {link.qty.toLocaleString("th-TH")} {link.unit} × {formatPrice(link.unitPrice)}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-end justify-between">
+                    <span className="text-sm font-bold text-stone-700">ยอดรวม</span>
+                    <span className="text-3xl font-extrabold text-amber-600">{formatPrice(link.total)}</span>
+                  </div>
+                  <p className="mt-1 text-right text-[11px] text-stone-400">ยังไม่รวมค่าจัดส่ง</p>
+                </>
+              )}
+            </div>
+
+            {noteBlock}
+
+            {/* ปุ่มสั่ง / สถานะ */}
+            <div className="border-t border-stone-100 px-5 py-5">
+              {status === "ใช้ได้" ? (
+                /* ปุ่มสั่งอยู่ในคอมโพเนนต์เดียวกับกล่องแนบลาย — ลิงก์ต้องคิดใหม่ทุกครั้งที่ลูกค้าวางไฟล์ */
+                <OrderWithArtwork productPath={link.productPath} spec={link.spec} artRequired={artRequired}>
+                  {holdNote}
+                </OrderWithArtwork>
+              ) : (
+                closedNote
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       <p className="mt-4 text-center text-xs text-stone-400">

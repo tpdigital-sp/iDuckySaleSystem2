@@ -11,7 +11,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { publicOrigin } from "@/lib/shop-info";
 import { formatPrice } from "@/lib/products";
-import { daysLeft, priceLinkStatus, type PriceLink } from "@/lib/price-links";
+import {
+  daysLeft,
+  priceLinkIsBundle,
+  priceLinkItems,
+  priceLinkStatus,
+  priceLinkTitle,
+  PRICE_LINK_MAX_ITEMS,
+  type PriceLink,
+} from "@/lib/price-links";
 import {
   Banner,
   Btn,
@@ -60,6 +68,9 @@ export default function AdminPriceLinksPage() {
   const [q, setQ] = useState("");
   const [copied, setCopied] = useState("");
   const [busy, setBusy] = useState("");
+  /** ใบที่ติ๊กไว้เพื่อ "รวมเป็นใบเดียว" (โค้ด) — ลูกค้าคนเดียวสั่งหลายอย่าง ส่งลิงก์เดียวจบ */
+  const [picked, setPicked] = useState<string[]>([]);
+  const [merged, setMerged] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -92,6 +103,36 @@ export default function AdminPriceLinksPage() {
       else setErr(j.error ?? "ทำรายการไม่สำเร็จ");
     } catch {
       setErr("ทำรายการไม่สำเร็จ — เช็คเน็ตแล้วลองใหม่");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  /**
+   * 🧺 รวมใบที่ติ๊กไว้เป็นใบเดียว — เรียงตามลำดับที่ติ๊ก (ลูกค้าจะเห็นเรียงแบบนั้นบนการ์ด)
+   * ใบต้นทางยังอยู่เหมือนเดิม (บางใบส่งไปแล้ว) — ปิดเองทีหลังได้ถ้าไม่อยากให้ลูกค้ากดใบเก่า
+   */
+  async function mergePicked() {
+    if (picked.length < 2 || busy) return;
+    setBusy("merge");
+    setErr("");
+    try {
+      const res = await fetch("/api/price-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ merge: picked }),
+      });
+      const j = (await res.json()) as { link?: PriceLink; error?: string };
+      if (!j.link) {
+        setErr(j.error ?? "รวมใบไม่สำเร็จ");
+        return;
+      }
+      setPicked([]);
+      setMerged(j.link.code);
+      copy(j.link.code);
+      await load();
+    } catch {
+      setErr("รวมใบไม่สำเร็จ — เช็คเน็ตแล้วลองใหม่");
     } finally {
       setBusy("");
     }
@@ -137,7 +178,7 @@ export default function AdminPriceLinksPage() {
       if (!key) return true;
       return (
         l.code.toLowerCase().includes(key) ||
-        l.productName.toLowerCase().includes(key) ||
+        priceLinkItems(l).some((i) => i.productName.toLowerCase().includes(key)) ||
         l.createdBy.toLowerCase().includes(key)
       );
     });
@@ -149,7 +190,7 @@ export default function AdminPriceLinksPage() {
         group="งานขาย"
         title="ลิงก์ราคา"
         count={`${links.length} ใบ`}
-        sub="ราคาที่ยิงให้ลูกค้าจากหน้าสินค้า — แช่ราคาไว้ ยืนราคา 7 วัน"
+        sub="ราคาที่ยิงให้ลูกค้าจากหน้าสินค้า — แช่ราคาไว้ ยืนราคา 7 วัน · ติ๊ก “รวมใบ” หลายใบแล้วรวมเป็นลิงก์เดียวหลายรายการได้"
         live={
           sum.unopened
             ? { ok: false, text: `${sum.unopened} ใบที่ส่งไปแล้วลูกค้ายังไม่เปิด` }
@@ -212,6 +253,33 @@ export default function AdminPriceLinksPage() {
         </div>
       </FilterCard>
 
+      {merged && (
+        <Banner
+          tone="warm"
+          title={`รวมเป็นใบเดียวแล้ว — ${merged} (คัดลอกลิงก์ให้เรียบร้อย)`}
+          detail="ใบเดิมยังเปิดอยู่ ถ้าไม่อยากให้ลูกค้ากดใบเก่าให้กด “ปิดลิงก์” ทีละใบ"
+        />
+      )}
+
+      {picked.length > 0 && (
+        <div className="dkb-g flex flex-wrap items-center gap-3 px-4 py-3">
+          <span className="text-sm font-bold">ติ๊กไว้ {picked.length} ใบ</span>
+          <span className="text-xs" style={{ color: "var(--dk-faint)" }}>
+            {picked.length < 2
+              ? `ติ๊กอีกใบเพื่อรวมเป็นใบเดียว (ไม่เกิน ${PRICE_LINK_MAX_ITEMS} รายการต่อใบ)`
+              : "รวมแล้วได้ลิงก์ใหม่ใบเดียวที่มีครบทุกรายการ — ลูกค้ากดสั่งทีเดียวได้ทั้งใบ"}
+          </span>
+          <span className="ml-auto flex items-center gap-2">
+            <Btn small onClick={() => setPicked([])}>
+              ล้างที่ติ๊ก
+            </Btn>
+            <Btn small tone="navy" disabled={picked.length < 2 || busy === "merge"} onClick={() => void mergePicked()}>
+              {busy === "merge" ? "กำลังรวม…" : `รวม ${picked.length} ใบเป็นใบเดียว`}
+            </Btn>
+          </span>
+        </div>
+      )}
+
       <ListHead title="ลิงก์ที่ส่งไปแล้ว" note={`${shown.length} ใบ`} />
 
       {loading ? (
@@ -235,6 +303,8 @@ export default function AdminPriceLinksPage() {
             const live = st === "ใช้ได้";
             const soon = live && left <= 2;
             const unopened = live && !l.opened;
+            const bundle = priceLinkIsBundle(l);
+            const on = picked.includes(l.code);
             return (
               <Row
                 key={l.code}
@@ -242,10 +312,11 @@ export default function AdminPriceLinksPage() {
                 done={!live}
               >
                 <RowMain
-                  name={l.productName}
-                  href={l.productPath}
+                  name={priceLinkTitle(l)}
+                  href={bundle ? undefined : l.productPath}
                   tags={
                     <>
+                      {bundle && <Tag tone="lilac">{priceLinkItems(l).length} รายการ</Tag>}
                       {!live && <Tag tone="quiet">{st}</Tag>}
                       {unopened && <Tag tone="yolk">ลูกค้ายังไม่เปิด</Tag>}
                       {live && (l.opened ?? 0) > 0 && (
@@ -259,23 +330,46 @@ export default function AdminPriceLinksPage() {
                   meta={
                     <>
                       <span className="dkb-code">{l.code}</span>
-                      <span>
-                        {l.qty.toLocaleString("th-TH")} {l.unit}
-                      </span>
-                      <span title={l.lines.map(([k, v]) => `${k}: ${v}`).join(" · ")}>
-                        {l.lines
-                          .slice(0, 3)
-                          .map(([, v]) => v)
-                          .join(" · ")}
-                      </span>
+                      {bundle ? (
+                        <span title={priceLinkItems(l)
+                          .map((i) => `${i.productName} · ${i.qty} ${i.unit}`)
+                          .join(" | ")}>
+                          {priceLinkItems(l)
+                            .map((i) => i.productName)
+                            .join(" · ")}
+                        </span>
+                      ) : (
+                        <>
+                          <span>
+                            {l.qty.toLocaleString("th-TH")} {l.unit}
+                          </span>
+                          <span title={l.lines.map(([k, v]) => `${k}: ${v}`).join(" · ")}>
+                            {l.lines
+                              .slice(0, 3)
+                              .map(([, v]) => v)
+                              .join(" · ")}
+                          </span>
+                        </>
+                      )}
                       <span>โดย {l.createdBy}</span>
                       <span>{stamp(l.createdAt)}</span>
                     </>
                   }
                 />
                 <RowSide>
-                  <span className="dkb-money">{l.askPrice ? "รอตีราคา" : formatPrice(l.total)}</span>
+                  <span className="dkb-money">{l.askPrice && !bundle ? "รอตีราคา" : formatPrice(l.total)}</span>
                   <span className="flex items-center gap-2">
+                    {/* ติ๊กหลายใบแล้วรวมเป็นใบเดียว — ลูกค้าคนเดียวสั่งหลายอย่าง ส่งลิงก์เดียวพอ */}
+                    <label className="flex cursor-pointer items-center gap-1 text-xs" title="ติ๊กไว้เพื่อรวมเป็นใบเดียว">
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() =>
+                          setPicked((cur) => (on ? cur.filter((c) => c !== l.code) : [...cur, l.code]))
+                        }
+                      />
+                      รวมใบ
+                    </label>
                     <Btn small onClick={() => copy(l.code)}>
                       {copied === l.code ? "คัดลอกแล้ว" : "คัดลอกลิงก์"}
                     </Btn>

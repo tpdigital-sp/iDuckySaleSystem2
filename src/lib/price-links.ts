@@ -12,9 +12,11 @@
  */
 import type { PriceLinkSpec } from "./price-link";
 
-export interface PriceLink {
-  /** โค้ดสั้นบน URL — /p/<code> */
-  code: string;
+/**
+ * 🧾 หนึ่ง "รายการ" บนใบราคา — สินค้าตัวหนึ่งพร้อมสเปค/จำนวน/ราคาที่แช่ไว้
+ * ใบเดียวมีได้หลายรายการ (ลูกค้าสั่งสติ๊กเกอร์ + กล่องในงานเดียวกัน จะได้ไม่ต้องส่งลิงก์หลายใบ)
+ */
+export interface PriceLinkItem {
   productId: string;
   /** ทางเข้าหน้าสินค้า (slug ถ้ามี ไม่งั้นเป็น id) */
   productPath: string;
@@ -31,6 +33,20 @@ export interface PriceLink {
   total: number;
   /** งานที่ยังไม่รู้ราคา (รอแอดมินตีราคา) — การ์ดไม่โชว์ตัวเลข */
   askPrice?: boolean;
+}
+
+export interface PriceLink extends PriceLinkItem {
+  /** โค้ดสั้นบน URL — /p/<code> */
+  code: string;
+  /**
+   * ใบหลายรายการ — รายการทั้งหมดอยู่ตรงนี้ (ใบรายการเดียวไม่มีคีย์นี้)
+   *
+   * ⚠️ ฟิลด์สินค้าด้านบน (productName/qty/spec/…) ยังคงเป็น "รายการแรก" เสมอ
+   *    ใบเก่า/ตัวอ่านเก่า (การ์ดในแชท, บอทตอบลูกค้า) จึงยังอ่านออกเหมือนเดิม
+   *    ส่วน total ของใบหลายรายการ = ยอดรวมทั้งใบ (ไม่ใช่ของรายการแรก)
+   *    อ่านผ่าน priceLinkItems() / priceLinkTotal() เสมอ อย่าอ่านฟิลด์บนตรง ๆ
+   */
+  items?: PriceLinkItem[];
   /** ข้อความจากแอดมินถึงลูกค้า (ไม่บังคับ) */
   note?: string;
   createdBy: string;
@@ -43,6 +59,53 @@ export interface PriceLink {
   opened?: number;
   lastOpenedAt?: string;
 }
+
+/**
+ * รายการทั้งหมดบนใบ — ใบรายการเดียว (และใบเก่าทุกใบ) คืนรายการเดียวที่ประกอบจากฟิลด์บน
+ * ทุกจอที่โชว์ใบราคาอ่านผ่านตัวนี้ จะได้ไม่ต้องเขียนเงื่อนไข "ใบเก่า/ใบใหม่" ซ้ำทุกที่
+ */
+export function priceLinkItems(l: PriceLink): PriceLinkItem[] {
+  if (l.items?.length) return l.items;
+  return [
+    {
+      productId: l.productId,
+      productPath: l.productPath,
+      productName: l.productName,
+      ...(l.imageSrc ? { imageSrc: l.imageSrc } : {}),
+      spec: l.spec,
+      lines: l.lines ?? [],
+      qty: l.qty,
+      unit: l.unit,
+      unitPrice: l.unitPrice,
+      total: l.total,
+      ...(l.askPrice ? { askPrice: true } : {}),
+    },
+  ];
+}
+
+/** ใบนี้มีมากกว่า 1 รายการไหม */
+export function priceLinkIsBundle(l: PriceLink): boolean {
+  return (l.items?.length ?? 0) > 1;
+}
+
+/** ยอดรวมทั้งใบ (บวกทุกรายการ) */
+export function priceLinkTotal(l: PriceLink): number {
+  return priceLinkItems(l).reduce((s, i) => s + (i.askPrice ? 0 : i.total), 0);
+}
+
+/** มีรายการที่ยังต้องให้ร้านตีราคาอยู่ไหม */
+export function priceLinkHasAsk(l: PriceLink): boolean {
+  return priceLinkItems(l).some((i) => i.askPrice);
+}
+
+/** ชื่อใบที่เอาไปโชว์ได้เลย ("สติ๊กเกอร์ PVC + อีก 2 รายการ") */
+export function priceLinkTitle(l: PriceLink): string {
+  const items = priceLinkItems(l);
+  return items.length > 1 ? `${items[0].productName} + อีก ${items.length - 1} รายการ` : items[0].productName;
+}
+
+/** จำนวนรายการสูงสุดต่อใบ — ยาวกว่านี้ลูกค้าอ่านการ์ดไม่ไหว และคิวเปิดหน้าสินค้าก็ยาวเกินไป */
+export const PRICE_LINK_MAX_ITEMS = 10;
 
 /** อายุลิงก์เริ่มต้น (วัน) — ยืนราคา 1 อาทิตย์ */
 export const PRICE_LINK_DAYS = 7;

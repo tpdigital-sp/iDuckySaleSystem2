@@ -23,6 +23,7 @@ import {
   RATE_LABEL,
   unitYieldOf,
 } from "@/lib/products";
+import { clearPriceLinkBundle } from "@/lib/price-link";
 import {
   orderBoxFees,
   boxFeeTotal,
@@ -83,6 +84,11 @@ export default function CartPage() {
     setAppendTo(getAppendTarget());
     setUnpicked(getUnpicked());
     setQuoteTo(getQuoteTarget());
+    /**
+     * มาถึงตะกร้า = จบคิวของใบราคาหลายรายการแล้ว (ปกติคิวหมดเองอยู่แล้ว)
+     * ล้างทิ้งเผื่อลูกค้าเลิกกลางทางแล้วเดินมาตะกร้าเอง — ไม่งั้นการกดสั่งครั้งถัดไปจะโดนพาไปหน้าที่ไม่ได้ตั้งใจ
+     */
+    clearPriceLinkBundle();
   }, []);
 
   async function sendToQuote() {

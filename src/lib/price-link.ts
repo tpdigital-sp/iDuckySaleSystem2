@@ -158,3 +158,79 @@ export function priceLinkUrl(href: string, spec: PriceLinkSpec): string {
   url.searchParams.set(PRICE_LINK_PARAM, encodePriceLink(spec));
   return url.toString();
 }
+
+/**
+ * 🧺 คิว "ใบราคาหลายรายการ" — /p/CODE ที่มีมากกว่า 1 รายการ
+ *
+ * หย่อนหลายรายการลงตะกร้าทีเดียวทำตรง ๆ ไม่ได้: ราคา/ด่านตรวจ/การรวมบรรทัดทั้งหมดอยู่ในหน้าสินค้า
+ * (คิดใหม่บนการ์ด = มีสองสูตรราคาในระบบ ซึ่งจะเพี้ยนกันวันใดวันหนึ่งแน่นอน)
+ * จึงพาลูกค้าเดินผ่านหน้าสินค้าทีละตัวแบบอัตโนมัติ: หน้าสินค้าติ๊กสเปค → หย่อนลงตะกร้า → ไปตัวถัดไป
+ * ตัวสุดท้ายจบที่หน้าตะกร้าเหมือนใบรายการเดียว ลูกค้ากดปุ่มเดียวตั้งแต่ต้นจนจบ
+ *
+ * เก็บใน sessionStorage ไม่ใช่ URL — คิวยาว ๆ ต่อท้ายกันจะทำให้ที่อยู่ยาวเกินจนโดนตัดกลางทาง
+ */
+const BUNDLE_KEY = "iducky-pl-queue";
+/** คิวที่ค้างเกินชั่วโมงถือว่าลูกค้าเลิกกลางทาง — ไม่งั้นการกดสั่งครั้งถัดไปจะโดนพาไปหน้าที่ไม่ได้ตั้งใจ */
+const BUNDLE_TTL_MS = 60 * 60 * 1000;
+
+interface BundleQueue {
+  /** ใบไหน (ไว้ดูตอนแก้ปัญหา) */
+  code: string;
+  /** หน้าที่ยังไม่ได้เดินผ่าน */
+  urls: string[];
+  at: number;
+}
+
+function readQueue(): BundleQueue | null {
+  try {
+    const raw = sessionStorage.getItem(BUNDLE_KEY);
+    if (!raw) return null;
+    const q = JSON.parse(raw) as BundleQueue;
+    if (!q?.urls?.length || Date.now() - (q.at ?? 0) > BUNDLE_TTL_MS) {
+      sessionStorage.removeItem(BUNDLE_KEY);
+      return null;
+    }
+    return q;
+  } catch {
+    return null;
+  }
+}
+
+/** เริ่มเดินคิว: เก็บหน้าที่เหลือไว้ แล้วคืนหน้าแรกให้ผู้เรียกพาไป */
+export function startPriceLinkBundle(code: string, urls: string[]): string | null {
+  if (!urls.length) return null;
+  try {
+    sessionStorage.setItem(BUNDLE_KEY, JSON.stringify({ code, urls: urls.slice(1), at: Date.now() }));
+  } catch {
+    /* เบราว์เซอร์ปิดที่เก็บไว้ — ยังสั่งรายการแรกได้ ที่เหลือลูกค้ากดจากการ์ดต่อเอง */
+  }
+  return urls[0];
+}
+
+/** ยังมีรายการค้างในคิวไหม (ไม่แตะคิว) */
+export function hasPriceLinkBundle(): boolean {
+  return !!readQueue();
+}
+
+/** หยิบหน้าถัดไปออกจากคิว (null = จบแล้ว) */
+export function takePriceLinkStop(): string | null {
+  const q = readQueue();
+  if (!q) return null;
+  const [next, ...rest] = q.urls;
+  try {
+    if (rest.length) sessionStorage.setItem(BUNDLE_KEY, JSON.stringify({ ...q, urls: rest, at: Date.now() }));
+    else sessionStorage.removeItem(BUNDLE_KEY);
+  } catch {
+    /* เขียนไม่ได้ก็ยังไปหน้าถัดไปได้ (คิวจะหมดอายุเองใน 1 ชั่วโมง) */
+  }
+  return next ?? null;
+}
+
+/** ทิ้งคิว — ลูกค้าถึงตะกร้าแล้ว/เลิกกลางทาง */
+export function clearPriceLinkBundle(): void {
+  try {
+    sessionStorage.removeItem(BUNDLE_KEY);
+  } catch {
+    /* ไม่มีอะไรต้องทำ */
+  }
+}
