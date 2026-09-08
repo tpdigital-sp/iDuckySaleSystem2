@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { PRICE_LINK_PARAM, encodePriceLink, type PriceLinkSpec } from "@/lib/price-link";
+import { PRICE_LINK_ADD_PARAM, PRICE_LINK_PARAM, encodePriceLink, type PriceLinkSpec } from "@/lib/price-link";
 import { checkArtworkFile, uploadArtworkFile } from "@/lib/artwork-upload";
 
 /**
@@ -24,10 +24,17 @@ const MAX_FILES = 10;
 export default function OrderWithArtwork({
   productPath,
   spec,
+  artRequired = false,
   children,
 }: {
   productPath: string;
   spec: PriceLinkSpec;
+  /**
+   * สินค้าที่ต้องมีไฟล์ลายก่อนผลิต — บอกให้ชัดบนการ์ดว่างานนี้ต้องมีลาย แต่ "ไม่ล็อกปุ่ม"
+   * เจ้าของร้านสั่ง (8 ก.ย. 69): ลูกค้าบางคนยังไม่อยากวางลายตอนกดตกลงราคา — ให้สั่งได้ก่อนแล้วส่งลายทางไลน์ทีหลัง
+   * (หน้าสินค้าที่เปิดจากลิงก์ราคาไม่บังคับแนบลายเช่นกัน — ดู preArranged ใน ProductDetail)
+   */
+  artRequired?: boolean;
   /** คำอธิบายใต้ปุ่ม (วันยืนราคา) — เรนเดอร์มาจากฝั่งเซิร์ฟเวอร์ */
   children?: React.ReactNode;
 }) {
@@ -40,10 +47,13 @@ export default function OrderWithArtwork({
   artsRef.current = arts;
   useEffect(() => () => artsRef.current.forEach((a) => URL.revokeObjectURL(a.preview)), []);
 
+  // ?add=1 = หน้าสินค้าติ๊กสเปคเสร็จแล้วหย่อนลงตะกร้าให้เลย แล้วพาไปหน้าตะกร้า (ลูกค้ากดปุ่มเดียวจบ)
   const href = `${productPath}?${PRICE_LINK_PARAM}=${encodePriceLink(
     arts.length ? { ...spec, a: arts.map((a) => a.url) } : spec
-  )}`;
+  )}&${PRICE_LINK_ADD_PARAM}=1`;
   const tiny = arts.some((a) => a.w > 0 && Math.max(a.w, a.h) < 1500);
+  /** งานต้องมีลายแต่ยังไม่ได้วาง — สั่งได้ แต่ต้องบอกชัดว่าจะส่งลายทีหลังทางไลน์ */
+  const artLater = artRequired && arts.length === 0;
 
   async function upload(files: FileList | null) {
     if (!files?.length) return;
@@ -95,6 +105,7 @@ export default function OrderWithArtwork({
     <>
       {/* ── กล่องแนบลาย ── */}
       <div
+        id="pl-art-box"
         onDragOver={(e) => {
           e.preventDefault();
           setDrag(true);
@@ -111,12 +122,26 @@ export default function OrderWithArtwork({
           drag ? "bg-sky-100 ring-2 ring-dashed ring-sky-400" : "bg-sky-50/70 ring-1 ring-sky-200"
         }`}
       >
-        <p className="text-xs font-bold text-stone-700">
-          🎨 มีไฟล์ลายแล้ว? วางตรงนี้ได้เลย <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
-        </p>
-        <p className="mt-0.5 text-[11px] leading-relaxed text-stone-500">
-          ลายจะติดไปกับออเดอร์ให้เอง ไม่ต้องแนบซ้ำในหน้าถัดไป · ใช้เป็นแนวทางให้กราฟฟิกทำแบบ
-        </p>
+        {artRequired ? (
+          <>
+            <p className="text-xs font-bold text-stone-700">
+              🎨 งานนี้ต้องมีไฟล์ลาย — มีแล้ววางตรงนี้ได้เลย{" "}
+              <span className="font-normal text-stone-400">(ยังไม่มีก็สั่งก่อนได้)</span>
+            </p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-stone-500">
+              ลายจะติดไปกับออเดอร์ให้เอง ไม่ต้องแนบซ้ำ · ถ้ายังไม่พร้อม สั่งไว้ก่อนแล้วค่อยส่งลายทางไลน์ทีหลังได้
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-xs font-bold text-stone-700">
+              🎨 มีไฟล์ลายแล้ว? วางตรงนี้ได้เลย <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
+            </p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-stone-500">
+              ลายจะติดไปกับออเดอร์ให้เอง ไม่ต้องแนบซ้ำในหน้าถัดไป · ใช้เป็นแนวทางให้กราฟฟิกทำแบบ
+            </p>
+          </>
+        )}
 
         {arts.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-2">
@@ -210,8 +235,14 @@ export default function OrderWithArtwork({
         className="block w-full rounded-full bg-amber-500 py-3.5 text-center text-sm font-extrabold text-white shadow-lg transition hover:bg-amber-600"
       >
         🛒 สั่งตามสเปคนี้
-        {arts.length > 0 ? ` (แนบลาย ${arts.length} รูป)` : ""}
+        {arts.length > 0 ? ` (แนบลาย ${arts.length} รูป)` : artLater ? " (ส่งลายทีหลัง)" : ""}
       </a>
+      {artLater && (
+        /* บอกก่อนกด ไม่ใช่หลังกด — ลูกค้าจะได้รู้ว่าออเดอร์เข้าตะกร้าแบบ "รอลาย" แล้วต้องส่งลายทางไลน์ต่อ */
+        <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-center text-[11px] font-semibold leading-relaxed text-amber-700 ring-1 ring-amber-200">
+          ยังไม่ได้วางลาย — สั่งได้เลย แล้วส่งไฟล์ลายให้ร้านทางไลน์ทีหลัง ทางร้านจะเริ่มทำแบบเมื่อได้ลายครับ
+        </p>
+      )}
       {children}
     </>
   );

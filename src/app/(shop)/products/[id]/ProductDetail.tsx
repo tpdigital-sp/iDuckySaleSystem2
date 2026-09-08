@@ -112,6 +112,7 @@ import { foldSizeExtra, specEntries } from "@/components/SpecLines";
 import {
   priceLinkUrl,
   readPriceLink,
+  readPriceLinkAutoAdd,
   sanitizeSpecArts,
   sanitizeSpecSelections,
   type PriceLinkSpec,
@@ -659,6 +660,13 @@ export default function ProductDetail({
     priceLinkRef.current = typeof window === "undefined" ? null : readPriceLink(window.location.search);
   /** ติ๊กค่าจากลิงก์ราคาให้เรียบร้อยแล้ว — โชว์แถบบอกลูกค้าว่าร้านจัดสเปคไว้ให้ */
   const [fromPriceLink, setFromPriceLink] = useState(false);
+  /**
+   * 🛒 ลิงก์ราคาขอให้ "หย่อนลงตะกร้าให้เลย" (?add=1 จากปุ่ม "สั่งตามสเปคนี้" บนการ์ด /p/CODE)
+   * ติ๊กสเปคเสร็จ → รอค่าที่คิดต่อ (เรท/ราคา/ด่านตรวจ) นิ่ง → กดเพิ่มลงตะกร้าให้เอง → พาไปหน้าตะกร้า
+   * ระหว่างนั้นบังหน้าไว้ด้วยม่าน "กำลังใส่ตะกร้า…" ลูกค้าจะได้ไม่เห็นหน้าสินค้ากระพริบแล้วงงว่าต้องกดอะไรต่อ
+   */
+  const autoAddRef = useRef(typeof window !== "undefined" && readPriceLinkAutoAdd(window.location.search));
+  const [autoAdding, setAutoAdding] = useState(false);
   /** ลายที่ลูกค้าวางไว้บนการ์ดราคาแล้วติดมากับลิงก์กี่รูป (0 = ไม่ได้วางมา) */
   const [linkArtCount, setLinkArtCount] = useState(0);
   /**
@@ -1122,6 +1130,7 @@ export default function ProductDetail({
       setLinkArtCount(arts.length);
     }
     setFromPriceLink(true);
+    if (autoAddRef.current) setAutoAdding(true);
   }, [productReady, product]);
 
   /** มาจากลิงก์ราคา = พาไปที่กล่องสั่งซื้อเลย (ลูกค้าเปิดมาเพื่อดูราคา ไม่ใช่มาอ่านหน้าสินค้าใหม่) */
@@ -1130,6 +1139,25 @@ export default function ProductDetail({
     const t = setTimeout(() => orderBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 350);
     return () => clearTimeout(t);
   }, [fromPriceLink]);
+
+  /**
+   * 🛒 สั่งตามสเปคนี้ = หย่อนลงตะกร้าให้เองแล้วพาไปหน้าตะกร้า (ลูกค้าไม่ต้องหาปุ่มกดซ้ำ)
+   *
+   * ใช้ handleAdd ตัวเดียวกับปุ่มจริงผ่าน ref — ด่านตรวจ/คิดราคา/รวมบรรทัดชุดเดียวกันเป๊ะ
+   * รอสักครู่ก่อนกด: หลังติ๊กสเปคยังมี effect ที่ปรับตามอีกหลายตัว (เรทเด้งตามจำนวน, นับลายตามไฟล์ที่แนบมา)
+   * กดทันทีในรอบเดียวกัน = ได้ราคา/ตัวเลือกก่อนปรับ ซึ่งไม่ตรงกับใบราคาที่ลูกค้าเห็น
+   * ⚠️ ถ้าสเปคยังสั่งไม่ได้ (ต้องแนบลาย/กรอกช่อง/ต่ำกว่าขั้นต่ำ) ไม่ฝืน — เปิดม่านออกให้ลูกค้าเห็นจุดที่ติดที่หน้าสินค้าตามปกติ
+   */
+  useEffect(() => {
+    if (!autoAdding) return;
+    const t = setTimeout(() => {
+      const ok = currentReadyRef.current && handleAddRef.current();
+      if (ok) router.push("/cart");
+      else setAutoAdding(false);
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoAdding]);
 
   /**
    * ✏️ แก้ไขรายการเดิมในตะกร้า (?edit=<คีย์บรรทัด>) — ติ๊กสเปคเดิมกลับมาให้ครบก่อน
@@ -2188,7 +2216,8 @@ export default function ProductDetail({
   // (effective มี "เรทราคา" อยู่แล้ว เงื่อนไขจึงอ้างเรทหรือกลุ่มตัวเลือกไหนก็ได้)
   const consult = artworkConsultOf(product, effective);
   // โหมดออกแบบบนเว็บ/โหมดแอดมินสั่งแทน = คุยกันอยู่แล้ว ไม่ต้องกั้นซ้ำ
-  const consultGate = !!consult && consult.block !== false && !studioMode && !staffOrdering;
+  // (ลิงก์ราคาก็คุยกับแอดมินมาแล้วเช่นกัน — ถึงได้ใบราคา)
+  const consultGate = !!consult && consult.block !== false && !studioMode && !staffOrdering && !fromPriceLink;
   const consultBlocked = consultGate && !consultOk;
   /**
    * 💬 กลุ่มที่ "เป็นตัวจุดชนวน" ให้ต้องคุยกับแอดมิน — เอาไปแปะกล่องเตือนใต้กลุ่มนั้นทันที
@@ -2199,6 +2228,12 @@ export default function ProductDetail({
   // 🎨 ต้องแนบลายก่อนสั่งไหม — ต้องมีรูปอัปโหลด หรือ ลิงก์/อีเมล อย่างน้อยหนึ่งอย่าง
   // งานที่ต้องคุยลายก่อน: ไฟล์จริงจะตกลงกันในแชท ไม่บังคับแนบตรงนี้ (แนบเป็นตัวอย่างได้)
   const artRequired = artworkIsRequired(product) && !consult;
+  /**
+   * 🔗 มาจากลิงก์ราคา (ร้านจัดสเปคให้แล้ว) = ไม่บังคับแนบลายบนเว็บ เหมือนโหมดพนักงานสั่งแทน
+   * เจ้าของร้านสั่ง (8 ก.ย. 69): ลูกค้าบางคนยังไม่อยากวางลายตอนกดตกลงราคา — ให้สั่งได้ก่อนแล้วส่งลายทางไลน์ทีหลัง
+   * (ตะกร้า/ออเดอร์รองรับรายการที่ยังไม่มีลายอยู่แล้วจากโหมดพนักงาน)
+   */
+  const preArranged = staffOrdering || fromPriceLink;
   const artProvided = artFiles.length > 0 || artLink.trim().length > 0;
   /**
    * 🎨 โหมดออกแบบบนเว็บ "ยังต้องวางลายอยู่ไหม"
@@ -2215,7 +2250,7 @@ export default function ProductDetail({
   const studioOfferStaff = staffOrdering && !!studioTarget && !designDone;
   // โหมดออกแบบบนเว็บ: "แบบที่ลูกค้าวางเอง" คือลายอยู่แล้ว ไม่ต้องมีช่องแนบไฟล์
   // โหมดแอดมิน: ลายมาทางไลน์/อีเมลอยู่แล้ว ไม่ต้องบังคับแนบตรงนี้ (แนบเพิ่มในออเดอร์ทีหลังได้)
-  const artBlocked = studioMode || staffOrdering ? false : artRequired && !artProvided;
+  const artBlocked = studioMode || preArranged ? false : artRequired && !artProvided;
 
   /**
    * 🎨 สินค้าที่นับขั้นต่ำทั้งล็อต (และสินค้าโหมดหย่อนลงตะกร้าทันที): **ไม่ถามจำนวนลาย** —
@@ -2248,6 +2283,9 @@ export default function ProductDetail({
     ) &&
     !(needDesignsChoice && !designsOk) &&
     !studioNeedsDesign;
+  /** ค่าล่าสุดสำหรับ effect "สั่งตามสเปคนี้" (อ่านตอน timeout ยิง ไม่ใช่ตอนตั้ง) */
+  const currentReadyRef = useRef(currentReady);
+  currentReadyRef.current = currentReady;
   /**
    * 📦 ราคาสุดท้ายของ "สเปคที่พักไว้ (+ แผ่นที่กำลังตั้งค่า ถ้าพร้อมแล้ว)" — คิดผ่านกติกาเดียวกับตะกร้าเป๊ะ
    * (repriceCartGroups: ขั้นราคาจากยอดรวมล็อต · ราคาต่อแผ่นอ่านคอลัมน์ของสเปคตัวเอง · ค่าคละแยกตามกติกา)
@@ -2332,7 +2370,7 @@ export default function ProductDetail({
       done: inputErrors.length === 0,
       jump: jumpToInputError,
     },
-    ...(artRequired && !staffOrdering
+    ...(artRequired && !preArranged
       ? [
           {
             key: "art",
@@ -2492,19 +2530,20 @@ export default function ProductDetail({
     return { ...shown, ...extra };
   }
 
-  function handleAdd() {
+  /** คืน true เมื่อหย่อนลงตะกร้าได้จริง (false = ติดด่านตรวจ/ล็อกกันกดซ้ำ) — เส้น "สั่งตามสเปคนี้" ใช้ตัดสินใจพาไปตะกร้า */
+  function handleAdd(): boolean {
     // 🔒 กันกดรัว/แตะซ้ำบนมือถือ — 1 คลิก = 1 รายการเสมอ
     // (กดครั้งแรกสำเร็จ ระบบเคลียร์ลาย/หมายเหตุทิ้ง ครั้งที่สองจึงกลายเป็น "อีกรายการ" คนละใบงาน)
     // ล็อกเฉพาะตอนที่เพิ่มเข้าตะกร้าได้จริง — โดนเตือนแล้วกดแก้ต่อได้ทันที ไม่ต้องรอ
-    if (addLock.current) return;
+    if (addLock.current) return false;
     /**
      * 📦 มีสเปคพักไว้แล้ว แต่แผ่นที่กำลังตั้งค่ายังไม่พร้อม (พักเสร็จระบบล้างลายทิ้ง)
      * → สั่งเฉพาะที่พักไว้ ไม่ต้องบังคับให้กรอกแผ่นที่ยังไม่ได้ตั้งใจจะสั่งให้ครบก่อน
      */
     const onlyStaged = sheets.length > 0 && !currentReady;
-    if (!onlyStaged && !readyToAdd()) return;
+    if (!onlyStaged && !readyToAdd()) return false;
     const selections = onlyStaged ? null : buildLine();
-    if (!onlyStaged && !selections) return;
+    if (!onlyStaged && !selections) return false;
     /**
      * ✏️ โหมดแก้ไข — ลบบรรทัดเดิมทิ้ง "ก่อน" ใส่ของใหม่เสมอ
      * ถ้าสเปคใหม่เหมือนเดิมเป๊ะ คีย์จะซ้ำกับของเดิม — ใส่ก่อนจะกลายเป็นบวกจำนวนทับ แล้วลบทีหลังหายทั้งบรรทัด
@@ -2526,7 +2565,7 @@ export default function ProductDetail({
     // แก้เสร็จแล้วพากลับตะกร้าเลย — ลูกค้ามาจากตะกร้า ไม่ได้ตั้งใจสั่งเพิ่มอีกใบ
     if (editKey) {
       router.push("/cart");
-      return;
+      return true;
     }
     // เพิ่มสำเร็จแล้วค่อยล็อก — กันแตะซ้ำภายในไม่กี่ร้อยมิลลิวินาทีกลายเป็นสองใบงาน
     addLock.current = true;
@@ -2540,7 +2579,11 @@ export default function ProductDetail({
     // โชว์ "✓ เพิ่มลงตะกร้าแล้ว!" ~5 วิ — พอให้ลูกค้าเห็นชัดว่าสั่งสำเร็จ
     // (เดิม 1.8 วิ สั้นไป แล้วป้าย "ต้องแนบลาย" เด้งกลับมาเพราะเพิ่งล้าง artFiles ทิ้ง ดูเหมือนระบบฟ้อง)
     setTimeout(() => setAdded(false), 5000);
+    return true;
   }
+  /** ตัวล่าสุดของ handleAdd — effect "สั่งตามสเปคนี้" เรียกผ่านตัวนี้ จะได้ไม่ติด closure เก่าที่ยังไม่เห็นสเปคจากลิงก์ */
+  const handleAddRef = useRef(handleAdd);
+  handleAddRef.current = handleAdd;
 
   /**
    * ➕ พักสเปคแผ่นนี้ไว้ แล้วให้ลูกค้าตั้งค่าแผ่นถัดไปต่อ (ยังไม่ลงตะกร้า)
@@ -4396,6 +4439,20 @@ export default function ProductDetail({
 
   return (
     <div className="homebg">
+      {/* 🛒 ม่านระหว่าง "สั่งตามสเปคนี้" กำลังหย่อนลงตะกร้าให้ — ปิดเองเมื่อพาไปตะกร้าแล้ว หรือเมื่อสเปคติดด่านตรวจ */}
+      {autoAdding && (
+        <div
+          className="fixed inset-0 z-[120] grid place-items-center bg-white/80 backdrop-blur-sm"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="rounded-3xl bg-white px-8 py-6 text-center shadow-xl ring-1 ring-stone-200">
+            <div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-amber-200 border-t-amber-500" />
+            <p className="mt-3 text-sm font-extrabold text-stone-800">🛒 กำลังใส่ตะกร้าตามสเปคที่ร้านจัดให้…</p>
+            <p className="mt-1 text-[11px] text-stone-400">สักครู่ ระบบจะพาไปหน้าตะกร้าให้เอง</p>
+          </div>
+        </div>
+      )}
       {/* พื้นหลัง + เมฆลอย ชุดเดียวกับหน้าแรก (ครอบเฉพาะพื้นหลัง ไม่แตะดีไซน์เดิมของหน้านี้) */}
       <div className="homebg-sky" aria-hidden="true">
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -6649,8 +6706,8 @@ export default function ProductDetail({
                     <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
                       {artFiles.length > 0 ? `แนบแล้ว ${artFiles.length} รูป` : "ใส่ลิงก์แล้ว"}
                     </span>
-                  ) : artRequired && !staffOrdering ? (
-                    /* โหมดแอดมินไม่บังคับแนบ — ลายมาทางไลน์/อีเมลอยู่แล้ว */
+                  ) : artRequired && !preArranged ? (
+                    /* โหมดแอดมิน/ลิงก์ราคาไม่บังคับแนบ — ลายมาทางไลน์/อีเมลได้ */
                     <span className="ml-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">จำเป็น *</span>
                   ) : (
                     <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700">แนะนำ</span>

@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import { daysLeft, priceLinkStatus, thaiDay } from "@/lib/price-links";
-import { getPriceLink, bumpPriceLinkOpened } from "@/lib/server/price-links-db";
+import { getPriceLink, bumpPriceLinkOpened, productArtworkRequired } from "@/lib/server/price-links-db";
 import { LINE_URL } from "@/components/LineButton";
 import OrderWithArtwork from "./OrderWithArtwork";
 
@@ -11,7 +11,7 @@ import OrderWithArtwork from "./OrderWithArtwork";
  * 🧾 การ์ดราคาที่ร้านจัดให้ลูกค้า — /p/<code>
  *
  * ลิงก์สั้นพอวางในไลน์ · ราคาที่โชว์คือราคาวันที่เสนอ (แช่ไว้ในฐานข้อมูล ไม่คิดใหม่)
- * กด "สั่งตามสเปคนี้" แล้วเด้งไปหน้าสินค้าที่ติ๊กตัวเลือกไว้ให้ครบ (ลิงก์ยาว ?s=)
+ * กด "สั่งตามสเปคนี้" แล้วระบบเปิดหน้าสินค้า ติ๊กตัวเลือกให้ครบ หย่อนลงตะกร้าให้เอง แล้วพาไปหน้าตะกร้า (ลิงก์ยาว ?s= + &add=1)
  */
 export const dynamic = "force-dynamic"; // ต้องนับยอดเปิด + เช็ควันหมดอายุสด ๆ ทุกครั้ง
 
@@ -46,7 +46,10 @@ export default async function PriceLinkPage({ params }: { params: Promise<{ code
   // นับว่าลูกค้าเปิดแล้ว (แอดมินดูได้ที่ /admin/price-links ว่าควรตามต่อไหม)
   // ⚠️ ไม่นับตัวไล่อ่านลิงก์ของแอป — ไลน์/เฟซยิงเข้ามาอ่านการ์ดทันทีที่วางลิงก์ในแชท
   //    นับด้วยจะกลายเป็น "ลูกค้าเปิดแล้ว" ตั้งแต่ยังไม่มีใครแตะ = ป้ายเตือนที่หน้าแอดมินใช้ไม่ได้เลย
-  if (!isLinkPreviewBot((await headers()).get("user-agent"))) await bumpPriceLinkOpened(link);
+  const [artRequired] = await Promise.all([
+    productArtworkRequired(link.productId),
+    isLinkPreviewBot((await headers()).get("user-agent")) ? Promise.resolve() : bumpPriceLinkOpened(link),
+  ]);
 
   const status = priceLinkStatus(link);
   const left = daysLeft(link);
@@ -118,9 +121,9 @@ export default async function PriceLinkPage({ params }: { params: Promise<{ code
         <div className="border-t border-stone-100 px-5 py-5">
           {status === "ใช้ได้" ? (
             /* ปุ่มสั่งอยู่ในคอมโพเนนต์เดียวกับกล่องแนบลาย — ลิงก์ต้องคิดใหม่ทุกครั้งที่ลูกค้าวางไฟล์ */
-            <OrderWithArtwork productPath={link.productPath} spec={link.spec}>
+            <OrderWithArtwork productPath={link.productPath} spec={link.spec} artRequired={artRequired}>
               <p className="mt-2 text-center text-[11px] leading-relaxed text-stone-400">
-                กดแล้วระบบจะเปิดหน้าสินค้าที่ติ๊กตัวเลือกไว้ให้ครบ · ทางร้านยืนราคาตามใบนี้ถึง{" "}
+                กดแล้วระบบจะใส่ตะกร้าให้ทันทีแล้วพาไปหน้าตะกร้า · ทางร้านยืนราคาตามใบนี้ถึง{" "}
                 <span className="font-bold text-stone-500">{thaiDay(link.expiresAt)}</span>
                 {left >= 0 && ` (อีก ${left} วัน)`}
               </p>

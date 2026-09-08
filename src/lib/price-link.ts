@@ -24,6 +24,12 @@ import {
 
 /** ชื่อพารามิเตอร์บน URL */
 export const PRICE_LINK_PARAM = "s";
+/**
+ * ธง "หย่อนลงตะกร้าให้เลย" (?add=1) — ใช้คู่กับ ?s= จากปุ่ม "สั่งตามสเปคนี้" บนการ์ดราคา /p/CODE
+ * หน้าสินค้าติ๊กสเปคเสร็จแล้วกดเพิ่มลงตะกร้าให้เอง แล้วพาไปหน้าตะกร้าทันที (ลูกค้าไม่ต้องกดซ้ำอีกที)
+ * ถ้าสเปคยังสั่งไม่ได้ (ต้องแนบลาย/กรอกช่อง) ระบบหยุดอยู่ที่หน้าสินค้าพร้อมบอกจุดที่ติด เหมือนกดปุ่มเอง
+ */
+export const PRICE_LINK_ADD_PARAM = "add";
 
 export interface PriceLinkSpec {
   /** เวอร์ชันของรูปแบบ — เผื่อเปลี่ยนโครงทีหลังแล้วลิงก์เก่ายังอ่านออก */
@@ -103,6 +109,15 @@ export function readPriceLink(search: string): PriceLinkSpec | null {
     return decodePriceLink(new URLSearchParams(search).get(PRICE_LINK_PARAM) ?? "");
   } catch {
     return null;
+  }
+}
+
+/** ลิงก์นี้ขอให้หย่อนลงตะกร้าให้เลยไหม (?add=1) */
+export function readPriceLinkAutoAdd(search: string): boolean {
+  try {
+    return new URLSearchParams(search).get(PRICE_LINK_ADD_PARAM) === "1";
+  } catch {
+    return false;
   }
 }
 
