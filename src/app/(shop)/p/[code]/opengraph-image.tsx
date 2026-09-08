@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import { headers } from "next/headers";
 import { formatPrice } from "@/lib/products";
-import { thaiDay } from "@/lib/price-links";
+import { priceLinkItems, priceLinkTitle, priceLinkTotal, thaiDay } from "@/lib/price-links";
 import { getPriceLink } from "@/lib/server/price-links-db";
 import { SITE_URL } from "@/lib/shop-info";
 
@@ -93,13 +93,21 @@ export default async function Image({ params }: { params: Promise<{ code: string
   }
 
   const photo = await photoData(link.imageSrc);
-  // 4 บรรทัดพอ — ยาวกว่านั้นการ์ดแน่นจนอ่านไม่ออกในแชท (รายละเอียดครบอยู่ในหน้าที่กดเข้าไป)
-  const lines = link.lines.slice(0, 4);
+  const items = priceLinkItems(link);
+  const bundle = items.length > 1;
+  /**
+   * 4 บรรทัดพอ — ยาวกว่านั้นการ์ดแน่นจนอ่านไม่ออกในแชท (รายละเอียดครบอยู่ในหน้าที่กดเข้าไป)
+   * ใบหลายรายการโชว์ "ชื่อสินค้า → จำนวน" แทนสเปคของรายการเดียว — ในแชทต้องเห็นทันทีว่าใบนี้มีอะไรบ้าง
+   */
+  const lines: [string, string][] = bundle
+    ? items.slice(0, 4).map((i) => [i.productName, `${i.qty.toLocaleString("th-TH")} ${i.unit}`])
+    : link.lines.slice(0, 4);
   /**
    * ชื่อสินค้ายาวไม่เท่ากัน และตัวเรนเดอร์ไม่ตัดบรรทัดให้ — ต้องย่อขนาด/ตัดท้ายเอง
    * ไม่งั้นชื่อยาวโดนตัดกลางคำ ("สแตนดี้อะคริลิค (Acrylic")
    */
-  const name = link.productName.length > 46 ? `${link.productName.slice(0, 45)}…` : link.productName;
+  const fullName = priceLinkTitle(link);
+  const name = fullName.length > 46 ? `${fullName.slice(0, 45)}…` : fullName;
   const nameSize = name.length > 38 ? 34 : name.length > 30 ? 40 : name.length > 22 ? 46 : 52;
 
   return new ImageResponse(
@@ -119,7 +127,9 @@ export default async function Image({ params }: { params: Promise<{ code: string
           <div style={{ display: "flex", fontSize: 22, color: BRAND, fontWeight: 600, letterSpacing: 2 }}>
             iDUCKY PRINTS STUDIO
           </div>
-          <div style={{ display: "flex", fontSize: 26, color: MUTED, marginTop: 14 }}>ราคาที่ทางร้านจัดให้</div>
+          <div style={{ display: "flex", fontSize: 26, color: MUTED, marginTop: 14 }}>
+            ราคาที่ทางร้านจัดให้{bundle ? ` · ${items.length} รายการ` : ""}
+          </div>
           <div style={{ display: "flex", fontSize: nameSize, fontWeight: 600, lineHeight: 1.25, marginTop: 6 }}>
             {name}
           </div>
@@ -135,25 +145,27 @@ export default async function Image({ params }: { params: Promise<{ code: string
 
           <div style={{ display: "flex", flex: 1, minHeight: 24 }} />
 
-          {link.askPrice ? (
+          {link.askPrice && !bundle ? (
             <div style={{ display: "flex", fontSize: 40, fontWeight: 600, color: BRAND }}>
               ราคา: ทางร้านตีราคาให้อีกที
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column" }}>
               <div style={{ display: "flex", fontSize: 26, color: MUTED }}>
-                {link.qty.toLocaleString("th-TH")} {link.unit} × {formatPrice(link.unitPrice)}
+                {bundle
+                  ? `${items.length} รายการ${items.some((i) => i.askPrice) ? " (มีรายการที่รอตีราคา)" : ""}`
+                  : `${link.qty.toLocaleString("th-TH")} ${link.unit} × ${formatPrice(link.unitPrice)}`}
               </div>
               <div style={{ display: "flex", alignItems: "flex-end", gap: 14, marginTop: 2 }}>
                 <span style={{ fontSize: 30, color: MUTED, paddingBottom: 14 }}>รวม</span>
                 <span style={{ fontSize: 84, fontWeight: 600, color: BRAND, lineHeight: 1 }}>
-                  {formatPrice(link.total)}
+                  {formatPrice(priceLinkTotal(link))}
                 </span>
               </div>
             </div>
           )}
           <div style={{ display: "flex", fontSize: 20, color: MUTED, marginTop: 16 }}>
-            ยืนราคาถึง {thaiDay(link.expiresAt)} · กดลิงก์เพื่อสั่งตามสเปคนี้ได้เลย
+            ยืนราคาถึง {thaiDay(link.expiresAt)} · กดลิงก์เพื่อสั่ง{bundle ? "ทั้งใบ" : "ตามสเปคนี้"}ได้เลย
           </div>
         </div>
 

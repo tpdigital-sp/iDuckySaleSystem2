@@ -110,11 +110,13 @@ import { LINE_URL } from "@/components/LineButton";
 import { useCustomer } from "@/lib/customer-context";
 import { foldSizeExtra, specEntries } from "@/components/SpecLines";
 import {
+  hasPriceLinkBundle,
   priceLinkUrl,
   readPriceLink,
   readPriceLinkAutoAdd,
   sanitizeSpecArts,
   sanitizeSpecSelections,
+  takePriceLinkStop,
   type PriceLinkSpec,
 } from "@/lib/price-link";
 import {
@@ -1141,6 +1143,20 @@ export default function ProductDetail({
   }, [fromPriceLink]);
 
   /**
+   * ลงตะกร้าเสร็จแล้วไปไหนต่อ — ใบราคาหลายรายการยังมีสินค้าตัวถัดไปรออยู่ในคิว (ดู lib/price-link.ts)
+   * คิวหมด/ไม่มีคิว = ไปหน้าตะกร้าเหมือนเดิม
+   *
+   * ⚠️ ไปสินค้าตัวถัดไปต้อง "โหลดหน้าใหม่ทั้งหน้า" ไม่ใช่ router.push
+   *    หน้านี้อ่าน ?s= ตอน render แรก แต่การเปลี่ยนหน้าฝั่งไคลเอนต์ render แรกยังเห็นที่อยู่ของหน้าก่อนหน้า
+   *    (เหตุผลเดียวกับ editKeyRef) → จะติ๊กสเปคของสินค้าตัวก่อนใส่ตัวถัดไป แล้วหย่อนลงตะกร้าผิดตัวแบบเงียบ ๆ
+   */
+  function goAfterAdd() {
+    const next = takePriceLinkStop();
+    if (next) window.location.assign(next);
+    else router.push("/cart");
+  }
+
+  /**
    * 🛒 สั่งตามสเปคนี้ = หย่อนลงตะกร้าให้เองแล้วพาไปหน้าตะกร้า (ลูกค้าไม่ต้องหาปุ่มกดซ้ำ)
    *
    * ใช้ handleAdd ตัวเดียวกับปุ่มจริงผ่าน ref — ด่านตรวจ/คิดราคา/รวมบรรทัดชุดเดียวกันเป๊ะ
@@ -1151,8 +1167,8 @@ export default function ProductDetail({
   useEffect(() => {
     if (!autoAdding) return;
     const t = setTimeout(() => {
-      const ok = currentReadyRef.current && handleAddRef.current();
-      if (ok) router.push("/cart");
+      const ok = currentReadyRef.current && handleAddRef.current(true);
+      if (ok) goAfterAdd();
       else setAutoAdding(false);
     }, 600);
     return () => clearTimeout(t);
@@ -2531,7 +2547,12 @@ export default function ProductDetail({
   }
 
   /** คืน true เมื่อหย่อนลงตะกร้าได้จริง (false = ติดด่านตรวจ/ล็อกกันกดซ้ำ) — เส้น "สั่งตามสเปคนี้" ใช้ตัดสินใจพาไปตะกร้า */
-  function handleAdd(): boolean {
+  /**
+   * @param auto เรียกจากตัว "สั่งตามสเปคนี้" (ลิงก์ราคา) — ตัวนั้นพาไปหน้าถัดไปเองอยู่แล้ว
+   *             ลูกค้ากดปุ่มเอง (auto=false) ระหว่างเดินคิวใบหลายรายการ = ต้องพาไปรายการถัดไปให้ด้วย
+   *             ไม่งั้นรายการที่เหลือในใบตกหล่นทั้งที่ลูกค้ากดสั่งทั้งใบมาแล้ว
+   */
+  function handleAdd(auto = false): boolean {
     // 🔒 กันกดรัว/แตะซ้ำบนมือถือ — 1 คลิก = 1 รายการเสมอ
     // (กดครั้งแรกสำเร็จ ระบบเคลียร์ลาย/หมายเหตุทิ้ง ครั้งที่สองจึงกลายเป็น "อีกรายการ" คนละใบงาน)
     // ล็อกเฉพาะตอนที่เพิ่มเข้าตะกร้าได้จริง — โดนเตือนแล้วกดแก้ต่อได้ทันที ไม่ต้องรอ
@@ -2576,6 +2597,7 @@ export default function ProductDetail({
     // 🧼 สั่งเสร็จแล้ว — สเปคที่เพิ่งสั่งต้องไม่ค้างอยู่ในฟอร์ม กลับเป็นค่าเริ่มต้นทั้งหมด
     resetSpecForm();
     setAdded(true);
+    if (!auto && hasPriceLinkBundle()) goAfterAdd();
     // โชว์ "✓ เพิ่มลงตะกร้าแล้ว!" ~5 วิ — พอให้ลูกค้าเห็นชัดว่าสั่งสำเร็จ
     // (เดิม 1.8 วิ สั้นไป แล้วป้าย "ต้องแนบลาย" เด้งกลับมาเพราะเพิ่งล้าง artFiles ทิ้ง ดูเหมือนระบบฟ้อง)
     setTimeout(() => setAdded(false), 5000);
@@ -5872,7 +5894,7 @@ export default function ProductDetail({
                 {(!studioNeedsDesign || sheets.length > 0) && (
                   <button
                     type="button"
-                    onClick={handleAdd}
+                    onClick={() => handleAdd()}
                     // ขนาดกำหนดเอง = ราคาไม่อิงเรทปกติ → ไม่ติดขั้นต่ำของเรทด้วย (สั่งกี่ชิ้นก็ได้ แอดมินตีราคาตามจริง)
                     // ยังไม่ถึงขั้นต่ำรอบผลิต = ยังเพิ่มลงตะกร้าได้ (แค่เตือน) · ไปบล็อกที่ปุ่มยืนยันในตะกร้าแทน
                     disabled={
@@ -7040,7 +7062,7 @@ export default function ProductDetail({
           {(!studioNeedsDesign || sheets.length > 0) && (
             <button
               type="button"
-              onClick={handleAdd}
+              onClick={() => handleAdd()}
               disabled={
                 !sheets.length &&
                 ((useCustom && !customValid) || !!customSizeErr || artBlocked || inputErrors.length > 0 || belowMin)
