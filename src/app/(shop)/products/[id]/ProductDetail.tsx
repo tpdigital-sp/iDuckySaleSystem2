@@ -1747,7 +1747,23 @@ export default function ProductDetail({
     const lines = foldSizeExtra(specEntries(pricingSelections).filter(([k]) => !hiddenLabels.has(k)) as [string, string][]);
     // งานที่แอดมินต้องตีราคาเอง — อย่าโชว์ตัวเลข ฿0 ที่ไหนทั้งนั้น ลูกค้าอ่านว่าฟรี
     const askPrice = askQuote || (useCustom && customAsk);
-    return { spec, lines, askPrice };
+    /*
+     * 📐 งานแบ่งแผ่น/เซ็ต — แช่ "ได้กี่ชิ้น" ลงใบราคาด้วย (ตัวคูณชุดเดียวกับตะกร้า/ออเดอร์ orderUnitYield)
+     * ใบราคาโชว์ "25 แผ่น A3" เฉย ๆ ลูกค้าไม่รู้ว่าได้กี่ชิ้น — เคยโดนทักตอนเทสต์ใบกระดาษรองหลัง 7.5×7.5 ซม. (8 ก.ย. 69)
+     * ขนาดที่กรอกเอง = ตัวเลขโดยประมาณ (unitYield.approx) · ห้อยขนาดที่นับไว้ให้เห็นคู่กันเหมือนในตะกร้า
+     */
+    const y = orderUnitYield(product, effective);
+    const sameCalc = !!unitYield && !!y && unitYield.per === y.per;
+    const pieces =
+      y && y.per > 1
+        ? {
+            n: y.per * qty,
+            word: y.piece,
+            approx: sameCalc && !!unitYield?.approx,
+            ...(sameCalc && unitYield ? { size: `${unitYield.label} ${unitYield.size}` } : {}),
+          }
+        : undefined;
+    return { spec, lines, askPrice, pieces };
   }
 
   /**
@@ -1757,7 +1773,7 @@ export default function ProductDetail({
    */
   const shortLinkRef = useRef<{ key: string; url: string; code: string; expiresAt: string } | null>(null);
   async function ensurePriceLink(): Promise<{ url: string; expiresAt?: string; short: boolean; code?: string }> {
-    const { spec, lines, askPrice } = priceSnapshot();
+    const { spec, lines, askPrice, pieces } = priceSnapshot();
     const key = JSON.stringify(spec);
     const cached = shortLinkRef.current;
     if (cached?.key === key) return { url: cached.url, expiresAt: cached.expiresAt, short: true, code: cached.code };
@@ -1779,6 +1795,7 @@ export default function ProductDetail({
           unitPrice: askPrice ? 0 : unitPrice,
           total: askPrice ? 0 : unitPrice * qty + designFee,
           askPrice,
+          pieces,
         }),
       });
       const j = (await res.json()) as { link?: { code: string; expiresAt: string } };

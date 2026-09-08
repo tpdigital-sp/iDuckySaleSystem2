@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import { headers } from "next/headers";
 import { formatPrice } from "@/lib/products";
-import { priceLinkItems, priceLinkTitle, priceLinkTotal, thaiDay } from "@/lib/price-links";
+import { priceLinkItems, priceLinkPiecesText, priceLinkTitle, priceLinkTotal, thaiDay } from "@/lib/price-links";
 import { getPriceLink } from "@/lib/server/price-links-db";
 import { SITE_URL } from "@/lib/shop-info";
 
@@ -154,7 +154,7 @@ export default async function Image({ params }: { params: Promise<{ code: string
               <div style={{ display: "flex", fontSize: 26, color: MUTED }}>
                 {bundle
                   ? `${items.length} รายการ${items.some((i) => i.askPrice) ? " (มีรายการที่รอตีราคา)" : ""}`
-                  : `${link.qty.toLocaleString("th-TH")} ${link.unit} × ${formatPrice(link.unitPrice)}`}
+                  : `${link.qty.toLocaleString("th-TH")} ${link.unit}${link.pieces ? ` (${priceLinkPiecesText(link.pieces)})` : ""} × ${formatPrice(link.unitPrice)}`}
               </div>
               <div style={{ display: "flex", alignItems: "flex-end", gap: 14, marginTop: 2 }}>
                 <span style={{ fontSize: 30, color: MUTED, paddingBottom: 14 }}>รวม</span>

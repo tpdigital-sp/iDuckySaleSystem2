@@ -33,6 +33,29 @@ export interface PriceLinkItem {
   total: number;
   /** งานที่ยังไม่รู้ราคา (รอแอดมินตีราคา) — การ์ดไม่โชว์ตัวเลข */
   askPrice?: boolean;
+  /**
+   * 📐 งานแบ่งแผ่น/เซ็ต — "สั่ง 25 แผ่น A3 ได้ประมาณ 400 ชิ้น" แช่ไว้ตอนเสนอ (ตัวคูณชุดเดียวกับตะกร้า/ออเดอร์)
+   * ไม่มีคีย์ = งานนับเป็นชิ้นตรง ๆ หรือใบเก่าก่อนมีฟิลด์นี้ (หน้า /p คิดสดจากสินค้าให้แทน)
+   */
+  pieces?: PriceLinkPieces;
+}
+
+/** จำนวนชิ้นงานที่ได้จากจำนวนที่สั่ง — ใบราคาเก็บไว้เอง ไม่ต้องโหลดสินค้าใหม่ */
+export interface PriceLinkPieces {
+  /** จำนวนชิ้นรวม (qty × ชิ้นต่อหน่วย) */
+  n: number;
+  /** คำเรียกชิ้นย่อย ("ชิ้น" / "ใบ" / "ดวง") */
+  word: string;
+  /** true = คิดจากการจัดวางขนาดที่กรอกเอง (ตัวเลขโดยประมาณ) */
+  approx?: boolean;
+  /** ขนาดที่นับไว้ เช่น "ขนาดไดคัท 7.5 × 7.5 ซม." — ห้อยบอกคู่กับตัวเลขให้ลูกค้าเห็นว่านับจากอะไร */
+  size?: string;
+}
+
+/** ประโยคจำนวนชิ้นบนการ์ด — "ได้ประมาณ 400 ชิ้น" · ไม่มีข้อมูล = "" */
+export function priceLinkPiecesText(p?: PriceLinkPieces): string {
+  if (!p || !(p.n > 0)) return "";
+  return `ได้${p.approx ? "ประมาณ" : ""} ${p.n.toLocaleString("th-TH")} ${p.word || "ชิ้น"}`;
 }
 
 export interface PriceLink extends PriceLinkItem {
@@ -79,6 +102,7 @@ export function priceLinkItems(l: PriceLink): PriceLinkItem[] {
       unitPrice: l.unitPrice,
       total: l.total,
       ...(l.askPrice ? { askPrice: true } : {}),
+      ...(l.pieces ? { pieces: l.pieces } : {}),
     },
   ];
 }

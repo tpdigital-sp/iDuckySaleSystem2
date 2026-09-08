@@ -8,6 +8,7 @@ import {
   PRICE_LINK_MAX_ITEMS,
   type PriceLink,
   type PriceLinkItem,
+  type PriceLinkPieces,
 } from "@/lib/price-links";
 
 export const runtime = "nodejs";
@@ -159,6 +160,17 @@ export async function POST(req: Request) {
   const days = Number.isFinite(Number(body.days)) && Number(body.days) > 0 ? Math.floor(Number(body.days)) : PRICE_LINK_DAYS;
   const now = new Date();
   const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  // 📐 จำนวนชิ้นที่ได้ (งานแบ่งแผ่น/เซ็ต) — หน้าสินค้าคิดมาให้ รับเฉพาะที่เป็นตัวเลขจริง
+  const rawPieces = body.pieces as { n?: unknown; word?: unknown; approx?: unknown; size?: unknown } | undefined;
+  const pieces: PriceLinkPieces | undefined =
+    rawPieces && num(rawPieces.n) > 0
+      ? {
+          n: Math.round(num(rawPieces.n)),
+          word: String(rawPieces.word || "ชิ้น").slice(0, 20),
+          ...(rawPieces.approx ? { approx: true } : {}),
+          ...(typeof rawPieces.size === "string" && rawPieces.size.trim() ? { size: rawPieces.size.trim().slice(0, 80) } : {}),
+        }
+      : undefined;
 
   const link: PriceLink = {
     code: newPriceLinkCode(),
@@ -173,6 +185,7 @@ export async function POST(req: Request) {
     unitPrice: num(body.unitPrice),
     total: num(body.total),
     ...(body.askPrice ? { askPrice: true } : {}),
+    ...(pieces ? { pieces } : {}),
     ...(body.note?.trim() ? { note: body.note.trim().slice(0, 300) } : {}),
     createdBy: gate.actor.name?.trim() || gate.actor.username,
     createdAt: now.toISOString(),

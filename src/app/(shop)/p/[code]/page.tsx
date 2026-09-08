@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { formatPrice } from "@/lib/products";
+import { formatPrice, orderUnitYield, resolveSelections, unitYieldOf, RATE_LABEL } from "@/lib/products";
+import { getProductServer } from "@/lib/products-server";
+import { sanitizeSpecSelections } from "@/lib/price-link";
 import {
   daysLeft,
   priceLinkHasAsk,
@@ -11,6 +13,8 @@ import {
   priceLinkTitle,
   priceLinkTotal,
   thaiDay,
+  type PriceLinkItem,
+  type PriceLinkPieces,
 } from "@/lib/price-links";
 import { getPriceLink, bumpPriceLinkOpened, productArtworkRequired } from "@/lib/server/price-links-db";
 import { LINE_URL } from "@/components/LineButton";
@@ -49,6 +53,33 @@ export async function generateMetadata({ params }: { params: Promise<{ code: str
   };
 }
 
+/**
+ * 📐 จำนวนชิ้นของใบเก่าที่สร้างก่อนมีฟิลด์ pieces — คิดสดจากสินค้าด้วยตัวคูณชุดเดียวกับตะกร้า
+ * ใบใหม่แช่ค่ามาแล้ว (ไม่โหลดสินค้า การ์ดต้องเบา) · อ่านไม่ได้/นับเป็นชิ้นตรง ๆ = undefined
+ */
+async function fallbackPieces(it: PriceLinkItem): Promise<PriceLinkPieces | undefined> {
+  if (it.pieces || it.askPrice) return it.pieces;
+  try {
+    const product = await getProductServer(it.productId);
+    if (!product) return undefined;
+    // เดินกฎเงื่อนไขซ้ำแบบเดียวกับหน้าสินค้า แล้วพาเรทที่เลือกไว้ติดไปด้วย (เรทไม่ใช่กลุ่มตัวเลือก resolve ไม่พาไป)
+    const sel = resolveSelections(product, sanitizeSpecSelections(product, it.spec?.s));
+    if (it.spec?.r) sel[RATE_LABEL] = it.spec.r;
+    const y = orderUnitYield(product, sel);
+    if (!y || y.per <= 1) return undefined;
+    const calc = unitYieldOf(product, sel);
+    const same = !!calc && calc.per === y.per;
+    return {
+      n: y.per * it.qty,
+      word: y.piece,
+      ...(same && calc?.approx ? { approx: true } : {}),
+      ...(same && calc ? { size: `${calc.label} ${calc.size}` } : {}),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 /** ตัวไล่อ่านลิงก์เพื่อทำพรีวิว (ไม่ใช่คน) */
 function isLinkPreviewBot(ua: string | null): boolean {
   if (!ua) return true; // ไม่บอกว่าเป็นใคร = ไม่ใช่เบราว์เซอร์คนทั่วไป ไม่ต้องนับ
@@ -65,8 +96,9 @@ export default async function PriceLinkPage({ params }: { params: Promise<{ code
   //    นับด้วยจะกลายเป็น "ลูกค้าเปิดแล้ว" ตั้งแต่ยังไม่มีใครแตะ = ป้ายเตือนที่หน้าแอดมินใช้ไม่ได้เลย
   const items = priceLinkItems(link);
   const bundle = priceLinkIsBundle(link);
-  const [artFlags] = await Promise.all([
+  const [artFlags, pieces] = await Promise.all([
     Promise.all(items.map((i) => productArtworkRequired(i.productId))),
+    Promise.all(items.map(fallbackPieces)),
     isLinkPreviewBot((await headers()).get("user-agent")) ? Promise.resolve() : bumpPriceLinkOpened(link),
   ]);
 
@@ -141,7 +173,7 @@ export default async function PriceLinkPage({ params }: { params: Promise<{ code
 
         <PriceSheet
           code={link.code}
-          items={items.map((it, i) => ({ ...it, artRequired: artFlags[i] }))}
+          items={items.map((it, i) => ({ ...it, artRequired: artFlags[i], ...(pieces[i] ? { pieces: pieces[i] } : {}) }))}
           open={open}
           note={link.note}
           closedNote={closedNote}

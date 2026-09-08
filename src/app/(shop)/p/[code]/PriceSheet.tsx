@@ -8,7 +8,7 @@ import {
   encodePriceLink,
   startPriceLinkBundle,
 } from "@/lib/price-link";
-import type { PriceLinkItem } from "@/lib/price-links";
+import { priceLinkPiecesText, type PriceLinkItem } from "@/lib/price-links";
 import { LINE_URL } from "@/components/LineButton";
 import ArtDrop, { type Art } from "./ArtDrop";
 
@@ -135,6 +135,12 @@ export default function PriceSheet({
                       <span className="t-faint">/{it.unit}</span>
                     </>
                   )}
+                  {/* 📐 งานแบ่งแผ่น/เซ็ต — บอกด้วยว่าได้กี่ชิ้น (ประโยคเดียวกับตะกร้า) ไม่งั้น "25 แผ่น A3" ลูกค้าไม่รู้ว่าได้กี่ชิ้น */}
+                  {it.pieces && (
+                    <span className="block font-semibold t-blue">
+                      {`📐 สั่ง ${it.qty.toLocaleString("th-TH")} ${it.unit}${it.pieces.size ? ` (${it.pieces.size})` : ""} ${priceLinkPiecesText(it.pieces)}`}
+                    </span>
+                  )}
                 </span>
                 {it.askPrice ? (
                   <span className="ord-chip yolk">รอร้านตีราคา</span>
@@ -185,6 +191,7 @@ export default function PriceSheet({
                 </span>
                 <span className="block text-[11.5px] t-soft">
                   {it.qty.toLocaleString("th-TH")} {it.unit}
+                  {it.pieces && ` · ${priceLinkPiecesText(it.pieces)}`}
                 </span>
               </span>
               <span
