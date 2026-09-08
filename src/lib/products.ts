@@ -5308,12 +5308,30 @@ export function isRetailRateLine(
  */
 function ratePoolsFor(
   p: Product,
-  entries: { qty: number; designs: number; perUnit?: number }[]
+  entries: { qty: number; designs: number; perUnit?: number; rate?: PriceRate }[]
 ): (PriceRate | undefined)[] {
   const out: (PriceRate | undefined)[] = entries.map(() => undefined);
   // เรทตัวแทนจำหน่ายไม่เข้าการแบ่งกลุ่มอัตโนมัติ — บรรทัดตัวแทนถูกแยก pool ไว้ก่อนถึงตัวนี้
   const rs = publicRates(p);
   if (!rs.length) return out;
+  /**
+   * ⚠️ สลับเรทให้อัตโนมัติได้เฉพาะสินค้าที่เรทเป็น "ขั้นบันไดจำนวน" (minQty ต่างกัน เช่น เรท 1 = 11 ชิ้น ·
+   * เรท 2 = 50 ชิ้น) — สินค้าที่เรทเป็น "แบบสินค้า/วัสดุ" ให้ลูกค้าเลือกเอง (minQty เท่ากันหมด เช่น
+   * โฟโต้การ์ด: อาร์ตมัน 300 แกรม / เนื้อพิเศษ / PET 250 · เสื้อ: DTF / FLEX / ปัก · สายคล้องคอ 8 แบบ)
+   * ต้องคงเรทที่แต่ละบรรทัดเลือกไว้ คิดแค่ขั้นราคาจากยอดรวมล็อต
+   *
+   * เจอจริง 8 ก.ย. 69 (OD-260908-7338): โฟโต้การ์ด PET 250 ไมครอน 10+10 เซ็ต ถูกรวมล็อตแล้วโดนย้ายไป
+   * เรทแรกในลิสต์ "กระดาษอาร์ตมัน 300 แกรม" ทั้งสองบรรทัด → คิด ฿95/เซ็ต (แถมค่ารองพื้นขาว +20 หาย)
+   * ทั้งที่ต้องเป็น PET ขั้น 11-49 = ฿160 + ฿20 = ฿180/เซ็ต
+   */
+  const ladder = new Set(rs.map((r) => r.minQty ?? 1)).size > 1;
+  if (!ladder) {
+    entries.forEach((e, i) => {
+      const own = e.rate && !e.rate.dealerOnly ? e.rate : rs[0];
+      out[i] = rs.find((r) => r.label === own.label) ?? rs[0];
+    });
+    return out;
+  }
   const taken = entries.map(() => false);
   for (const r of [...rs].sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))) {
     const per = r.minPerDesign ?? 0;
@@ -5561,6 +5579,8 @@ export function repriceCartGroups(
           qty: lines[i].qty,
           designs: designCountOf(lines[i].selections),
           perUnit: perUnitCapacity(p, lines[i].selections) ?? 1,
+          // เรทที่บรรทัดนี้เลือกไว้ — สินค้าที่เรทเป็นแบบสินค้า (ไม่ใช่ขั้นบันไดจำนวน) ต้องคงเรทนี้
+          rate: activeRate(p, lines[i].selections),
         }))
       );
       const byLabel = new Map<string, { rate: PriceRate; idxs: number[] }>();
@@ -5777,8 +5797,9 @@ export function lotPreviewFor(
       qty: l.qty,
       designs: designCountOf(l.selections),
       perUnit: perUnitCapacity(product, l.selections) ?? 1,
+      rate: activeRate(product, l.selections),
     })),
-    { qty: lineQty, designs: myDesigns, perUnit: myPerUnit },
+    { qty: lineQty, designs: myDesigns, perUnit: myPerUnit, rate: activeRate(product, selections) },
   ];
   const assigned = product.hardMinQty || dealerR ? undefined : ratePoolsFor(product, entries);
   const rate = dealerR ?? (product.hardMinQty ? activeRate(product, selections) : assigned![entries.length - 1]);
