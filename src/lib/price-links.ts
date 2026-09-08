@@ -149,3 +149,52 @@ export function thaiDay(iso: string): string {
     return iso;
   }
 }
+
+/**
+ * 🧺 "ใบรวม" ที่แอดมินกำลังสะสมอยู่ — เก็บโค้ดใบเดี่ยวไว้ในเครื่อง (localStorage)
+ *
+ * ทำไมต้องมี: สเปค/ราคาของแต่ละสินค้าคิดที่หน้าสินค้าของตัวเองเท่านั้น แอดมินจึงต้องเดินไป
+ * ทีละหน้าสินค้าอยู่ดี — ปุ่ม "เพิ่มเข้าใบรวม" ที่หน้าสินค้าจึงเก็บโค้ดใบไว้ให้ระหว่างทาง
+ * แล้วค่อยกดคัดลอกลิงก์ใบรวมทีเดียวตอนจบ (ไม่ต้องเข้าหลังบ้านไปติ๊กรวมทีหลัง)
+ *
+ * เก็บแค่ "โค้ดใบ" ไม่ใช่ราคา — ราคาจริงแช่อยู่ในใบแต่ละใบในฐานข้อมูลแล้ว
+ */
+const BASKET_KEY = "iducky-pl-basket";
+/** ใบรวมที่ค้างข้ามวันถือว่าลืม — ไม่งั้นวันรุ่งขึ้นกดคัดลอกแล้วได้ของลูกค้าคนเมื่อวานติดไปด้วย */
+const BASKET_TTL_MS = 24 * 60 * 60 * 1000;
+
+export function readPriceLinkBasket(): string[] {
+  try {
+    const raw = localStorage.getItem(BASKET_KEY);
+    if (!raw) return [];
+    const b = JSON.parse(raw) as { codes?: string[]; at?: number };
+    if (!b?.codes?.length || Date.now() - (b.at ?? 0) > BASKET_TTL_MS) {
+      localStorage.removeItem(BASKET_KEY);
+      return [];
+    }
+    return b.codes.slice(0, PRICE_LINK_MAX_ITEMS);
+  } catch {
+    return [];
+  }
+}
+
+/** ใส่ใบเข้าใบรวม (ใบเดิมใส่ซ้ำไม่ได้) — คืนรายการล่าสุดเสมอ */
+export function addToPriceLinkBasket(code: string): string[] {
+  const cur = readPriceLinkBasket();
+  if (!code || cur.includes(code) || cur.length >= PRICE_LINK_MAX_ITEMS) return cur;
+  const next = [...cur, code];
+  try {
+    localStorage.setItem(BASKET_KEY, JSON.stringify({ codes: next, at: Date.now() }));
+  } catch {
+    /* เขียนไม่ได้ = ใช้ทางเดิม (ติ๊กรวมที่หน้า /admin/price-links) ได้อยู่ */
+  }
+  return next;
+}
+
+export function clearPriceLinkBasket(): void {
+  try {
+    localStorage.removeItem(BASKET_KEY);
+  } catch {
+    /* ไม่มีอะไรต้องทำ */
+  }
+}
