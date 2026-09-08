@@ -910,9 +910,9 @@ export default function AdminOrderDetailPage() {
     return () => setPackScanMode(false);
   }, [orderId]);
 
-  useEffect(() => setShortcutExt(shortcutKind()), []);
   const [skipGate, setSkipGate] = useState<string[] | null>(null); // โมดัลยืนยันข้ามด่านแพ็ค (เหตุผลที่ยังไม่ครบ)
-  const [shortcutExt, setShortcutExt] = useState<"webloc" | "url" | "">(""); // นามสกุลทางลัดตามเครื่องที่เปิด (รู้หลัง mount)
+  const [os, setOs] = useState<"mac" | "win" | "">(""); // เครื่องที่เปิดหน้านี้ (รู้หลัง mount) — ใช้เรียงตัวเลือกทางลัดแบบเนทีฟ
+  useEffect(() => setOs(shortcutOs()), []);
   const trackingRef = useRef<string>(""); // เลขพัสดุที่บันทึกไปแล้ว กันบันทึกซ้ำตอน blur
 
   const rolCan = useCan();
@@ -4516,10 +4516,10 @@ export default function AdminOrderDetailPage() {
                   type="button"
                   disabled={!customerUrl}
                   onClick={() => downloadOrderShortcut(order.id, customerUrl)}
-                  title="วางในโฟลเดอร์งานของลูกค้า ดับเบิลคลิกเปิดหน้าออเดอร์ได้ทันที"
+                  title="ไฟล์ .html — วางในโฟลเดอร์งานของลูกค้า ดับเบิลคลิกแล้วเปิดหน้าออเดอร์ทันที ทั้ง Windows / Mac / มือถือ"
                   className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-[11px] font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
                 >
-                  ⬇️ ทางลัด{shortcutExt ? ` .${shortcutExt}` : ""}
+                  ⬇️ ทางลัด .html
                 </button>
                 <a
                   href={customerUrl || "#"}
@@ -4530,27 +4530,33 @@ export default function AdminOrderDetailPage() {
                   ↗ หน้าลูกค้า
                 </a>
               </div>
-              {shortcutExt && (
-                <p className={`mt-1.5 text-[10px] leading-relaxed ${faint}`}>
-                  ทางลัด = ไฟล์เปิดออเดอร์นี้ เก็บไว้ในโฟลเดอร์งานลูกค้าคู่กับไฟล์ลาย · เครื่องอื่น:{" "}
-                  <button
-                    type="button"
-                    onClick={() => downloadOrderShortcut(order.id, customerUrl, shortcutExt === "webloc" ? "url" : "webloc")}
-                    className="font-bold text-amber-600 underline decoration-amber-300 underline-offset-2 hover:text-amber-700"
-                  >
-                    {shortcutExt === "webloc" ? "Windows (.url)" : "Mac (.webloc)"}
-                  </button>
-                  {" · "}
-                  <button
-                    type="button"
-                    onClick={() => downloadOrderShortcut(order.id, customerUrl, "html")}
-                    title="ไฟล์เดียวเปิดได้ทั้ง Mac / Windows / มือถือ"
-                    className="font-bold text-amber-600 underline decoration-amber-300 underline-offset-2 hover:text-amber-700"
-                  >
-                    ทุกเครื่อง (.html)
-                  </button>
-                </p>
-              )}
+              <p className={`mt-1.5 text-[10px] leading-relaxed ${faint}`}>
+                ทางลัด = ไฟล์เปิดออเดอร์นี้ เก็บไว้ในโฟลเดอร์งานลูกค้าคู่กับไฟล์ลาย · ดับเบิลคลิกได้ทุกเครื่อง
+                <br />
+                อยากได้ทางลัดแบบเนทีฟ:{" "}
+                <button
+                  type="button"
+                  disabled={!customerUrl}
+                  onClick={() => downloadOrderShortcut(order.id, customerUrl, os === "mac" ? "webloc" : "url")}
+                  title={
+                    os === "mac"
+                      ? "ไฟล์ .webloc ของ Finder"
+                      : "ไฟล์ .url ของ Windows — ถ้าดับเบิลคลิกแล้วขึ้นเป็นข้อความ [InternetShortcut] แปลว่านามสกุล .url ในเครื่องถูกโปรแกรมอื่นยึดไป ให้ใช้ไฟล์ .html แทน"
+                  }
+                  className="font-bold text-amber-600 underline decoration-amber-300 underline-offset-2 hover:text-amber-700 disabled:opacity-40"
+                >
+                  {os === "mac" ? "Mac (.webloc)" : "Windows (.url)"}
+                </button>
+                {" · "}
+                <button
+                  type="button"
+                  disabled={!customerUrl}
+                  onClick={() => downloadOrderShortcut(order.id, customerUrl, os === "mac" ? "url" : "webloc")}
+                  className="font-bold text-amber-600 underline decoration-amber-300 underline-offset-2 hover:text-amber-700 disabled:opacity-40"
+                >
+                  {os === "mac" ? "Windows (.url)" : "Mac (.webloc)"}
+                </button>
+              </p>
               {!order.key && (
                 <p className="mt-2 text-[11px] text-amber-700">
                   ⚠️ ออเดอร์นี้สร้างก่อนมีระบบรหัส — ลิงก์ไม่มี key (ยังเปิดได้ปกติ)
@@ -5464,34 +5470,53 @@ function SkipGateModal({ reasons, onCancel, onConfirm }: { reasons: string[]; on
   );
 }
 
-/** Mac เปิด .url ไม่ได้ (มองเป็นไฟล์ข้อความ) — ต้องใช้ .webloc ของ Apple · Windows ใช้ .url */
-function shortcutKind(): "webloc" | "url" {
-  return typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.userAgent) ? "webloc" : "url";
+type ShortcutKind = "html" | "url" | "webloc";
+
+/** เครื่องที่เปิดหน้านี้อยู่ — ใช้แค่ตั้งชื่อปุ่ม "ทางลัดแบบเนทีฟ" ให้ตรงเครื่องคนกด */
+function shortcutOs(): "mac" | "win" {
+  return typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.userAgent) ? "mac" : "win";
+}
+
+/** เอาอักขระที่ Windows/macOS ห้ามใช้ในชื่อไฟล์ออก (ชื่อออเดอร์เป็น OD-xxxxxx-xxxx อยู่แล้ว แต่กันไว้) */
+function safeFileName(name: string) {
+  return (name || "order").replace(/[\\/:*?"<>|\r\n]+/g, "-").slice(0, 80);
 }
 
 /**
  * ดาวน์โหลด "ทางลัดเปิดออเดอร์" — ดับเบิลคลิกแล้วเปิดหน้าออเดอร์ในเบราว์เซอร์ทันที
  * เอาไปวางในโฟลเดอร์งานของลูกค้าคู่กับไฟล์ลายได้เลย
- *   • macOS → .webloc (plist ของ Apple — Finder รู้จักเป็น "ตำแหน่งที่ตั้งอินเทอร์เน็ต")
- *   • Windows → .url (Internet Shortcut)
+ *
+ * ค่าเริ่มต้น = .html ทุกเครื่อง (Windows / Mac / มือถือ)
+ *   เพราะ .html ผูกกับเบราว์เซอร์เสมอ ดับเบิลคลิกแล้วเด้งเข้าออเดอร์แน่นอน
+ *   ส่วน .url ของ Windows ต้องพึ่ง file association ของ InternetShortcut — ถ้าเครื่องไหนโดน
+ *   Notepad / VS Code / โปรแกรมอื่นยึดไป ดับเบิลคลิกจะเห็นเป็นข้อความ "[InternetShortcut] URL=…"
+ *   เฉย ๆ ไม่เปิดเว็บ (แถม Chrome/Edge ยังเตือนว่าไฟล์อันตรายตอนโหลดอีก)
+ *   จึงเก็บ .url (Windows) / .webloc (Mac) ไว้เป็นตัวเลือกรองให้คนที่อยากได้ทางลัดแบบเนทีฟ
  */
-function downloadOrderShortcut(orderId: string, url: string, kind?: "webloc" | "url" | "html") {
+function downloadOrderShortcut(orderId: string, url: string, kind: ShortcutKind = "html") {
   if (!url) return;
-  const k = kind ?? shortcutKind();
-  const esc = (u: string) => u.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const esc = (u: string) =>
+    u.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   const body =
-    k === "webloc"
+    kind === "webloc"
       ? `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n\t<key>URL</key>\n\t<string>${esc(url)}</string>\n</dict>\n</plist>\n`
-      : k === "html"
-        ? // ใช้ได้ทุกเครื่อง (Mac / Windows / มือถือ) — เด้งเข้าออเดอร์ทันที มีลิงก์สำรองถ้า JS ถูกปิด
-          `<!doctype html>\n<html lang="th">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>${esc(orderId)} — iDucky</title>\n<meta http-equiv="refresh" content="0;url=${esc(url)}">\n<script>location.replace(${JSON.stringify(url)});</script>\n</head>\n<body style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;text-align:center;padding:56px 20px;color:#44403c">\n<p style="font-size:15px">🦆 กำลังเปิดออเดอร์ <b>${esc(orderId)}</b>…</p>\n<p style="font-size:13px;color:#a8a29e">ถ้าไม่เปิดอัตโนมัติ กดลิงก์ด้านล่าง</p>\n<p><a href="${esc(url)}" style="display:inline-block;margin-top:8px;background:#fbbf24;color:#fff;text-decoration:none;font-weight:700;padding:11px 22px;border-radius:999px">เปิดหน้าออเดอร์</a></p>\n</body>\n</html>\n`
-        : `[InternetShortcut]\r\nURL=${url}\r\nIconIndex=0\r\n`;
-  const type = k === "webloc" ? "application/xml" : k === "html" ? "text/html;charset=utf-8" : "application/internet-shortcut";
+      : kind === "url"
+        ? // รูปแบบเดียวกับที่ Windows เขียนเอง (มีบล็อก Prop3) · ต้องเป็น CRLF ล้วน ไม่มี BOM
+          `[{000214A0-0000-0000-C000-000000000046}]\r\nProp3=19,11\r\n[InternetShortcut]\r\nIDList=\r\nURL=${url}\r\nIconIndex=0\r\n`
+        : // .html — ใช้ได้ทุกเครื่อง (Mac / Windows / มือถือ) เด้งเข้าออเดอร์ทันที มีลิงก์สำรองถ้า JS ถูกปิด
+          `<!doctype html>\n<html lang="th">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>${esc(orderId)} — iDucky</title>\n<meta http-equiv="refresh" content="0;url=${esc(url)}">\n<script>location.replace(${JSON.stringify(url)});</script>\n</head>\n<body style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;text-align:center;padding:56px 20px;color:#44403c">\n<p style="font-size:15px">🦆 กำลังเปิดออเดอร์ <b>${esc(orderId)}</b>…</p>\n<p style="font-size:13px;color:#a8a29e">ถ้าไม่เปิดอัตโนมัติ กดลิงก์ด้านล่าง</p>\n<p><a href="${esc(url)}" style="display:inline-block;margin-top:8px;background:#fbbf24;color:#fff;text-decoration:none;font-weight:700;padding:11px 22px;border-radius:999px">เปิดหน้าออเดอร์</a></p>\n</body>\n</html>\n`;
+  const type =
+    kind === "webloc"
+      ? "application/xml"
+      : kind === "url"
+        ? "application/internet-shortcut"
+        : "text/html;charset=utf-8";
   const blob = new Blob([body], { type });
   const href = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = href;
-  a.download = `${orderId}.${k}`;
+  a.download = `${safeFileName(orderId)}.${kind}`;
+  a.rel = "noopener";
   document.body.appendChild(a);
   a.click();
   a.remove();
