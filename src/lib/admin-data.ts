@@ -343,6 +343,17 @@ export interface OrderItem {
    * เก็บไฟล์ต้นฉบับที่อัปมา — ใช้เป็นแนวทางให้กราฟฟิก · ไฟล์งานพิมพ์จริงดูจากลิงก์/อีเมลใน selections
    */
   artworkUrls?: string[];
+  /**
+   * จำนวนชิ้นของแต่ละลายที่ลูกค้าระบุตอนแนบ (key = url ใน artworkUrls) — ไม่ระบุ = ไม่มีคีย์
+   * แกะมาจาก selections["จำนวนแต่ละลาย"] ตอน checkout (ดู artQtyByUrl ใน products.ts)
+   */
+  artworkQty?: Record<string, number>;
+  /**
+   * งานพิมพ์ 2 ด้าน — url ใน artworkUrls ชุดที่เป็น "ลายด้านหลัง" (เป็นส่วนย่อยของ artworkUrls ไม่ใช่รายการแยก)
+   * ทุกจอที่นับ/ลบ/ก๊อป/ล้างไฟล์ยังใช้ artworkUrls ชุดเดียวได้เหมือนเดิม · ตัวนี้มีไว้ติดป้าย หน้า/หลัง อย่างเดียว
+   * ไม่มีฟิลด์ = ออเดอร์เก่า หรืองานด้านเดียว → ไม่ติดป้าย (ดู artworkSide)
+   */
+  artworkBackUrls?: string[];
   /** ภาพแบบงาน (proof) — หลายรูปได้ แต่ละรูประบุจำนวน/รายละเอียดของตัวเอง */
   proofs?: Proof[];
   /** @deprecated รูปแบบเดิม (รูปเดียว) — อ่านผ่าน proofsOf() เพื่อรองรับออเดอร์เก่า */
@@ -665,6 +676,16 @@ export function isBlankOrder(order: Order): boolean {
 }
 
 /** รูปแบบงานของรายการ — รองรับออเดอร์เก่าที่เก็บเป็น proofUrl รูปเดียว */
+/**
+ * ป้ายด้านของภาพลายที่ลูกค้าแนบ — "ด้านหน้า" / "ด้านหลัง" · null = รายการนี้ไม่ได้แยกด้าน (งานด้านเดียว/ออเดอร์เก่า)
+ * ใช้ติดใต้รูปในหน้าออเดอร์/ใบงาน/ใบเสนอราคา ให้กราฟฟิกรู้ว่าลายไหนพิมพ์ด้านไหนโดยไม่ต้องเดาจากลำดับ
+ */
+export function artworkSide(it: Pick<OrderItem, "artworkBackUrls">, url: string): "ด้านหน้า" | "ด้านหลัง" | null {
+  const back = it.artworkBackUrls;
+  if (!back?.length) return null;
+  return back.includes(url) ? "ด้านหลัง" : "ด้านหน้า";
+}
+
 export function proofsOf(item: OrderItem): Proof[] {
   if (item.proofs?.length) return item.proofs;
   return item.proofUrl ? [{ url: item.proofUrl, at: item.proofUpdatedAt ?? "" }] : [];

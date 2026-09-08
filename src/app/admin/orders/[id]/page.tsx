@@ -5,7 +5,7 @@ import { giftLinesOf, giftArtLabel } from "@/lib/gifts";
 import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import { useParams, useRouter } from "next/navigation";
-import { formatPrice } from "@/lib/products";
+import { artQtyOf, formatPrice } from "@/lib/products";
 import { proofIssues, productWordIndex, type ProductWordIndex } from "@/lib/proof-check";
 import { fetchProductNamesLite } from "@/lib/product-repo";
 import { SSR_ORDER_SCRIPT_ID } from "@/lib/ssr-order-id";
@@ -47,6 +47,7 @@ import {
   type NoteColor,
   type NoteSize,
   type NoteWeight,
+  artworkSide,
 } from "@/lib/admin-data";
 import { fetchOrderAdmin, fetchOrdersAdmin, packScanHeaders, saveOrderAdmin, setPackScanMode, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
@@ -394,7 +395,7 @@ function SelText({ text, plain = false }: { text: string; plain?: boolean }) {
 
 
 /** ชื่อหัวข้อที่ไม่ต้องโชว์ในรายละเอียด (มีที่แสดงของตัวเองอยู่แล้ว) */
-const SEL_HIDE = ["ภาพลายที่แนบ", "รอเช็คสต๊อก"];
+const SEL_HIDE = ["ภาพลายที่แนบ", "ภาพลายที่แนบ (ด้านหลัง)", "รอเช็คสต๊อก"];
 const SEL_SPEC = "ตำแหน่งลาย (ทีมผลิต)";
 
 /** ตัดค่าที่มีหลายลายให้เป็นบรรทัดละลาย (ใช้กติกาเดียวกับหน้าร้าน) */
@@ -1567,7 +1568,14 @@ export default function AdminOrderDetailPage() {
       if (!fresh.length) return it;
       return {
         ...it,
-        proofs: [...proofsOf(it), ...fresh.map((url) => ({ url, at: now, by: actor }))],
+        // 🔢 ลูกค้าระบุจำนวนต่อลายมาแล้ว → เติมลงแบบให้เลย ฝ่ายแพ็ค/ใบแปะกล่องจะได้เลขถูกโดยไม่ต้องพิมพ์ซ้ำ
+        proofs: [
+          ...proofsOf(it),
+          ...fresh.map((url) => {
+            const q = artQtyOf(it, url, (it.artworkUrls ?? []).indexOf(url));
+            return { url, at: now, by: actor, ...(q ? { qty: q } : {}) };
+          }),
+        ],
         proofStatus: "รอตรวจ" as ProofStatus,
         proofUpdatedAt: now,
       };
@@ -1640,7 +1648,14 @@ export default function AdminOrderDetailPage() {
   function removeArtwork(itemIndex: number, url: string) {
     if (!order) return;
     const items = order.items.map((it, i) =>
-      i === itemIndex ? { ...it, artworkUrls: (it.artworkUrls ?? []).filter((u) => u !== url) } : it
+      i === itemIndex
+        ? {
+            ...it,
+            artworkUrls: (it.artworkUrls ?? []).filter((u) => u !== url),
+            ...(it.artworkQty ? { artworkQty: Object.fromEntries(Object.entries(it.artworkQty).filter(([k]) => k !== url)) } : {}),
+            ...(it.artworkBackUrls ? { artworkBackUrls: it.artworkBackUrls.filter((u) => u !== url) } : {}),
+          }
+        : it
     );
     const next = withLog({ ...order, items }, actor, "ลบภาพลาย", order.items[itemIndex]?.name);
     setOrder(next);
@@ -3093,6 +3108,13 @@ export default function AdminOrderDetailPage() {
                     <div className="rounded-xl border border-sky-200 bg-sky-50/40 p-3">
                       <p className="text-xs font-bold text-sky-800">
                         🎨 ลายจากลูกค้า ({it.artworkUrls?.length ?? 0})
+                        {(it.artworkBackUrls?.length ?? 0) > 0 && (
+                          /* งานพิมพ์ 2 ด้าน — สรุปให้เห็นทันทีว่ามาแยกหน้า/หลังกี่รูป */
+                          <span className="ml-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">
+                            หน้า {((it.artworkUrls?.length ?? 0) - (it.artworkBackUrls?.length ?? 0)).toLocaleString("th-TH")} · หลัง{" "}
+                            {(it.artworkBackUrls?.length ?? 0).toLocaleString("th-TH")}
+                          </span>
+                        )}
                         <span className="ml-1 font-normal text-sky-600">— ทีมงานเห็นเท่านั้น ลูกค้าไม่เห็นในหน้าเช็คออเดอร์</span>
                       </p>
                       {/*
@@ -3141,7 +3163,14 @@ export default function AdminOrderDetailPage() {
                                             ชื่อไฟล์ยาว ๆ ไม่โชว์แล้ว (โดน truncate จนอ่านไม่ออกอยู่ดี) ย้ายไปอยู่ใน title */}
                                         <span className="min-w-0 flex-1">
                                           <span className="flex items-baseline justify-between gap-2">
-                                            <span className="text-xs font-semibold text-slate-700">ลายที่ {r.no}</span>
+                                            <span className="text-xs font-semibold text-slate-700">
+                                              ลายที่ {r.no}
+                                              {artQtyOf(it, r.u, r.no - 1) ? (
+                                                <span className="ml-1 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-800">
+                                                  × {artQtyOf(it, r.u, r.no - 1)!.toLocaleString("th-TH")} ชิ้น
+                                                </span>
+                                              ) : null}
+                                            </span>
                                             <span className={`shrink-0 text-[11px] tabular-nums ${muted}`}>
                                               {r.frame ? `${r.frame.widthMm}×${r.frame.heightMm} มม.` : "ไม่มีข้อมูลกรอบงาน"}
                                               {r.dpi ? ` · ${r.dpi} DPI` : ""}
@@ -3249,7 +3278,23 @@ export default function AdminOrderDetailPage() {
                                       >
                                         {/* eslint-disable-next-line @next/next/no-img-element */}
                                         <img src={u} alt={`ต้นฉบับ ${k + 1}`} className="h-full w-full object-cover" />
+                                        {/* 🔢 จำนวนที่ลูกค้าระบุให้ลายนี้ */}
+                                        {artQtyOf(it, u, (it.artworkUrls ?? []).indexOf(u)) ? (
+                                          <span className="absolute inset-x-0 bottom-0 bg-sky-900/75 py-0.5 text-center text-[10px] font-bold leading-none text-white">
+                                            ×{artQtyOf(it, u, (it.artworkUrls ?? []).indexOf(u))!.toLocaleString("th-TH")}
+                                          </span>
+                                        ) : null}
                                       </button>
+                                      {/* งานพิมพ์ 2 ด้าน: ลูกค้าแยกช่องหน้า/หลังมาแล้ว — ติดป้ายให้กราฟฟิกไม่ต้องเดาจากลำดับ */}
+                                      {artworkSide(it, u) && (
+                                        <span
+                                          className={`pointer-events-none absolute bottom-0 left-0 right-0 rounded-b-lg px-1 py-0.5 text-center text-[9px] font-bold text-white ${
+                                            artworkSide(it, u) === "ด้านหลัง" ? "bg-violet-600/90" : "bg-sky-600/90"
+                                          }`}
+                                        >
+                                          {artworkSide(it, u)}
+                                        </span>
+                                      )}
                                       <button
                                         type="button"
                                         onClick={() => void downloadImage(u, `${order.id}-item${i + 1}-ต้นฉบับ-${k + 1}.${(u.split(".").pop() || "jpg").split("?")[0]}`)}

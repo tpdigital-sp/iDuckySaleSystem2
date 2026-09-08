@@ -41,7 +41,23 @@ export async function POST(req: Request) {
     selections: typeof it.selections === "string" ? it.selections : "",
     qty: Math.max(1, Math.floor(Number(it.qty) || 1)),
     unitPrice: Math.max(0, Number(it.unitPrice) || 0),
-    ...(Array.isArray(it.artworkUrls) && it.artworkUrls.length ? { artworkUrls: it.artworkUrls.slice(0, 5) } : {}),
+    ...(Array.isArray(it.artworkUrls) && it.artworkUrls.length ? { artworkUrls: it.artworkUrls.slice(0, 10) } : {}),
+    // 🔢 จำนวนต่อลาย (key=url) — รับเฉพาะเลขบวกของ url ที่แนบมาจริง
+    ...(it.artworkQty && typeof it.artworkQty === "object" && Array.isArray(it.artworkUrls)
+      ? (() => {
+          const urls = it.artworkUrls as string[];
+          const q = Object.fromEntries(
+            Object.entries(it.artworkQty as Record<string, unknown>)
+              .filter(([u, n]) => urls.includes(u) && Number(n) > 0)
+              .map(([u, n]) => [u, Math.min(99999, Math.floor(Number(n)))]),
+          );
+          return Object.keys(q).length ? { artworkQty: q } : {};
+        })()
+      : {}),
+    // งาน 2 ด้าน — url ชุดด้านหลัง (ส่วนย่อยของ artworkUrls) ไว้ติดป้ายในใบเสนอราคา
+    ...(Array.isArray(it.artworkBackUrls) && it.artworkBackUrls.length
+      ? { artworkBackUrls: it.artworkBackUrls.filter((u: unknown) => typeof u === "string").slice(0, 10) }
+      : {}),
   }));
 
   const by = gate.actor.name?.trim() || gate.actor.username;

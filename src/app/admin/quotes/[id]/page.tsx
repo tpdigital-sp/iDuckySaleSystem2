@@ -14,7 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import RequirePerm from "@/components/RequirePerm";
-import { formatPrice } from "@/lib/products";
+import { artQtyOf, formatPrice } from "@/lib/products";
 import {
   QUOTE_STYLES,
   awaitingOrder,
@@ -24,7 +24,7 @@ import {
   withQuoteLog,
   type Quote,
 } from "@/lib/quotes";
-import type { OrderItem } from "@/lib/admin-data";
+import { artworkSide, type OrderItem } from "@/lib/admin-data";
 import { faint, muted } from "@/lib/admin-ui";
 import { Banner, Btn, CopyChip, GH, HBTN, LogTimeline, PageShell, soft } from "@/components/admin/ui";
 import { ContactChip, CustomerContactInput } from "@/components/admin/CustomerContactInput";
@@ -412,9 +412,20 @@ function QuoteDetailInner() {
                       {/* ภาพลายที่แนบมาจากตอนหยิบของ (ถ้ามี) */}
                       <div className="flex flex-wrap gap-1">
                         {(it.artworkUrls ?? []).slice(0, 4).map((u, k) => (
-                          <a key={k} href={u} target="_blank" rel="noreferrer">
+                          <a key={k} href={u} target="_blank" rel="noreferrer" className="relative block" title={[artworkSide(it, u), artQtyOf(it, u, k) ? `ลายที่ ${k + 1} × ${artQtyOf(it, u, k)} ชิ้น` : `ลายที่ ${k + 1}`].filter(Boolean).join(" · ")}>
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={u} alt="" className="h-9 w-9 rounded-md object-cover ring-1 ring-slate-200" />
+                            <img src={u} alt={artworkSide(it, u) ?? ""} className="h-9 w-9 rounded-md object-cover ring-1 ring-slate-200" />
+                            {/* งานพิมพ์ 2 ด้าน — ป้ายหน้า/หลังด้านบน · 🔢 จำนวนต่อลายด้านล่าง */}
+                            {artworkSide(it, u) && (
+                              <span className="absolute left-0 right-0 top-0 rounded-t-md bg-slate-800/85 text-center text-[7px] font-bold leading-tight text-white">
+                                {artworkSide(it, u) === "ด้านหลัง" ? "หลัง" : "หน้า"}
+                              </span>
+                            )}
+                            {artQtyOf(it, u, k) ? (
+                              <span className="absolute bottom-0 left-0 right-0 rounded-b-md bg-slate-900/75 text-center text-[8px] font-bold leading-tight text-white">
+                                ×{artQtyOf(it, u, k)}
+                              </span>
+                            ) : null}
                           </a>
                         ))}
                         {!it.artworkUrls?.length && (

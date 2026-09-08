@@ -35,6 +35,13 @@ import {
   productPath,
   DESIGN_LABEL,
   BACK_DESIGN_LABEL,
+  ART_QTY_LABEL,
+  formatArtQty,
+  parseArtQty,
+  orderUnitYield,
+  ART_LABEL,
+  ART_BACK_LABEL,
+  parseArtUrls,
   backDesignActive,
   designFeeFor,
   feeBreakdown,
@@ -722,9 +729,19 @@ export default function ProductDetail({
    * ภาพลายที่แนบแล้ว · `preview` = ลิงก์ไฟล์ในเครื่อง (blob) ไว้วาดรูปย่อเท่านั้น
    * ไม่ใช่ค่าที่ส่งไปกับออเดอร์ — ตะกร้า/ใบงานใช้ `url` ที่อัปขึ้นสตอเรจเสมอ
    */
-  const [artFiles, setArtFiles] = useState<
-    { url: string; name: string; w: number; h: number; hash?: string; preview?: string }[]
-  >([]);
+  /** qty = จำนวนชิ้นของลายนี้ที่ลูกค้าระบุเอง (ไม่ระบุ = undefined) — ดู ART_QTY_LABEL · ใช้เฉพาะด้านหน้า */
+  type ArtFile = { url: string; name: string; w: number; h: number; hash?: string; preview?: string; qty?: number };
+  /** ด้านของภาพลาย — งานพิมพ์ 2 ด้านแยกช่องแนบ "ด้านหน้า"/"ด้านหลัง" (งานด้านเดียวมีแต่ front) */
+  type ArtSide = "front" | "back";
+  const [artFiles, setArtFiles] = useState<ArtFile[]>([]);
+  /**
+   * 🔄 ภาพลาย "ด้านหลัง" ของงานพิมพ์ 2 ด้าน (ผู้ใช้สั่ง 8 ก.ย. 69) — แยกรายการจากด้านหน้า
+   * ลูกค้าจึงระบุได้เองว่าลายไหนพิมพ์ด้านไหน · จำนวนลายด้านหลัง (backDesigns) นับจากช่องนี้ ไม่ปนกับด้านหน้า
+   * ติดไปกับตะกร้าอีกคีย์ (ART_BACK_LABEL) แล้ว checkout รวมเป็น artworkUrls + จด artworkBackUrls ไว้ติดป้าย
+   */
+  const [artBackFiles, setArtBackFiles] = useState<ArtFile[]>([]);
+  /** ช่องแนบด้านไหนที่กำลังลากไฟล์อยู่เหนือ (ไฮไลต์เฉพาะช่องนั้น ไม่ให้ทั้ง 2 ช่องกะพริบพร้อมกัน) */
+  const [artDragSide, setArtDragSide] = useState<ArtSide | null>(null);
   const [artBusy, setArtBusy] = useState(false);
   const [artErr, setArtErr] = useState("");
   const [artDrag, setArtDrag] = useState(false); // ลากไฟล์อยู่เหนือกล่องแนบลาย
@@ -1015,7 +1032,7 @@ export default function ProductDetail({
    * เดิมเป็นข้อความเล็ก ๆ ใต้ช่องอัปโหลด ลูกค้าเลื่อนผ่านไม่ทันเห็นว่ารูปที่เลือกไปหายไปไหน
    * เก็บไฟล์ที่ยังไม่ได้แนบไว้ด้วย — กด "เพิ่มจำนวนลาย" แล้วแนบต่อได้เลย ไม่ต้องเลือกไฟล์ใหม่
    */
-  const [artOver, setArtOver] = useState<{ limit: number; pending: File[]; byCap: boolean } | null>(null);
+  const [artOver, setArtOver] = useState<{ limit: number; pending: File[]; byCap: boolean; side: ArtSide } | null>(null);
   // "ระบุจำนวนลายแล้ว" = แตะ +/− หรือพิมพ์เลขเอง หรือแนบรูปให้ระบบนับ — สินค้าที่มีระบบลายต้องระบุก่อนสั่ง
   // ยกเว้นตอนคละได้แค่ลายเดียว (เช่น สั่ง 1 ชิ้น) — มีทางเลือกเดียวอยู่แล้ว ถือว่าระบุแล้ว ไม่ต้องให้กดยืนยัน
   const designsSet = designsTouched || artFiles.length > 0 || maxDesigns <= 1;
@@ -1080,6 +1097,35 @@ export default function ProductDetail({
     () => (backOn ? ({ [BACK_DESIGN_LABEL]: `${backDesigns} ลาย` } as Record<string, string>) : {}),
     [backOn, backDesigns]
   );
+  /**
+   * เพดานแนบรูป "ด้านหลัง" = เพดานคละของเรท (ชุดเดียวกับที่ล็อกช่อง "ด้านหลังคละกี่ลาย") · null = ไม่จำกัด
+   * ไม่มีเพดานที่ลูกค้าระบุเองแบบด้านหน้า (designsCap) — จำนวนลายด้านหลังวิ่งตามรูปที่แนบเสมอ
+   */
+  const artBackLimit = maxDesigns > 0 ? maxDesigns : null;
+  const artBackFull = artBackLimit != null && artBackFiles.length >= artBackLimit;
+  const artBackLeft = artBackLimit == null ? -1 : Math.max(0, artBackLimit - artBackFiles.length);
+  /** จำนวนรูปด้านหลังรอบก่อน — ซิงก์ backDesigns เฉพาะตอน "จำนวนรูปเปลี่ยน" (แนบเพิ่ม/ลบออก) เหมือนด้านหน้า */
+  const artBackCountRef = useRef(artBackFiles.length);
+  useEffect(() => {
+    const n = artBackFiles.length;
+    const changed = n !== artBackCountRef.current;
+    artBackCountRef.current = n;
+    // ลบออกหมด = ไม่ยุ่ง ปล่อยเลขที่ระบุไว้ (เหมือนด้านหน้า) · หลังซิงก์แล้วลูกค้ายังกด +/− ปรับต่อได้
+    if (!changed || n < 1 || maxDesigns < 1) return;
+    setBackDesignsDraft(null);
+    setBackDesigns(Math.min(Math.max(1, n), maxDesigns));
+  }, [artBackFiles.length, maxDesigns]);
+  // สลับกลับไปพิมพ์ 1 ด้าน = รูปด้านหลังไม่มีที่ไป — ทิ้งพร้อมคืน blob (ไม่ให้ติดไปกับตะกร้าเงียบ ๆ)
+  useEffect(() => {
+    if (backOn) return;
+    setArtBackFiles((cur) => {
+      if (!cur.length) return cur;
+      cur.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
+      return [];
+    });
+  }, [backOn]);
+  /** รูปลายที่แนบทั้งหมดที่จะติดไปกับรายการ (หน้า + หลังเฉพาะตอนพิมพ์ 2 ด้าน) — ใช้โชว์ตัวเลขรวมตามหัวกล่อง/แถบล่าง */
+  const artTotal = artFiles.length + (backOn ? artBackFiles.length : 0);
   /**
    * 🔗 เปิดหน้าจากลิงก์ราคา — ติ๊กตัวเลือก/จำนวนที่แอดมินตั้งไว้ให้ครบในทีเดียว
    *
@@ -1255,9 +1301,24 @@ export default function ProductDetail({
       .split(" | ")
       .map((u) => u.trim())
       .filter(Boolean);
-    if (arts.length)
+    if (arts.length) {
+      // 🔢 จำนวนต่อลายที่เคยระบุไว้ — คืนกลับตามลำดับรูปเดิม
+      const qtys = parseArtQty(src[ART_QTY_LABEL]);
       setArtFiles(
-        arts.map((url) => ({ url, name: decodeURIComponent(url.split("/").pop() ?? "ลายที่แนบ"), w: 0, h: 0 }))
+        arts.map((url, i) => ({
+          url,
+          name: decodeURIComponent(url.split("/").pop() ?? "ลายที่แนบ"),
+          w: 0,
+          h: 0,
+          ...(qtys.get(i) ? { qty: qtys.get(i) } : {}),
+        }))
+      );
+    }
+    // 🔄 ลายด้านหลังของงานพิมพ์ 2 ด้าน — กลับเข้าช่องด้านหลังของตัวเอง ไม่ปนกับด้านหน้า
+    const backArts = parseArtUrls(src[ART_BACK_LABEL]);
+    if (backArts.length)
+      setArtBackFiles(
+        backArts.map((url) => ({ url, name: decodeURIComponent(url.split("/").pop() ?? "ลายด้านหลัง"), w: 0, h: 0 }))
       );
     const consultVal = src[CONSULT_LABEL] ?? "";
     if (consultVal.startsWith("คุยลายกับแอดมินแล้ว")) {
@@ -1885,6 +1946,10 @@ export default function ProductDetail({
   artCapRef.current = artCap;
   const artMaxRef = useRef(maxDesigns);
   artMaxRef.current = maxDesigns;
+  const artBackFilesRef = useRef(artBackFiles);
+  artBackFilesRef.current = artBackFiles;
+  const artBackLimitRef = useRef(artBackLimit);
+  artBackLimitRef.current = artBackLimit;
 
   /**
    * อัปโหลดภาพลาย — ตรวจก่อนขึ้นเซิร์ฟเวอร์ทีละชั้น:
@@ -1892,7 +1957,7 @@ export default function ProductDetail({
    * ④ ไม่ซ้ำกับรูปที่แนบไปแล้ว (เทียบเนื้อไฟล์จริงด้วย SHA-256 — รูปซ้ำทำให้นับจำนวนลายเพี้ยน)
    * ผ่านครบแล้วค่อยอัปโหลด + อ่านความละเอียดไว้เตือนถ้าภาพเล็ก
    */
-  async function uploadArtwork(files: FileList | File[] | null, capOverride?: number) {
+  async function uploadArtwork(files: FileList | File[] | null, capOverride?: number, side: ArtSide = "front") {
     const list = files ? Array.from(files) : [];
     if (!list.length) return;
     setArtErr("");
@@ -1901,19 +1966,26 @@ export default function ProductDetail({
     // ⚠️ อ่านจาก ref ไม่ใช่ค่าใน closure — ตัวรับ drop/paste ทั้งหน้าผูกไว้ตั้งแต่รอบก่อน
     //    ค่าที่ปิดทับไว้อาจเป็นของเก่า (เพดาน/รายการรูปเปลี่ยนโดยที่จำนวนรูปยังเท่าเดิม)
     //    capOverride = เพดานที่เพิ่งตกลงกันในป๊อปอัพ (state ยังไม่ทันอัปเดตตอนเรียกต่อทันที)
-    const cap = capOverride ?? artCapRef.current;
+    const back = side === "back";
+    const cap = back ? null : (capOverride ?? artCapRef.current);
     const max = artMaxRef.current;
-    /** เพดานที่บังคับรอบนี้ — ที่ลูกค้าระบุมาก่อน ไม่ระบุก็ใช้เพดานคละของเรท */
-    const limit = cap ?? (max > 0 ? max : null);
-    let count = artFilesRef.current.length;
-    // เนื้อไฟล์ที่มีอยู่แล้ว (รูปเก่าก่อนมีระบบ hash จะไม่มีค่า — ข้ามการเทียบ)
-    const seen = new Set(artFilesRef.current.map((x) => x.hash).filter(Boolean) as string[]);
+    /**
+     * เพดานที่บังคับรอบนี้ — ด้านหน้า: ที่ลูกค้าระบุมาก่อน ไม่ระบุก็ใช้เพดานคละของเรท
+     * ด้านหลัง: เพดานคละของเรทอย่างเดียว (capOverride = ยอดที่ตกลงกันในป๊อปอัพ "แนบต่อไปเลย")
+     */
+    const limit = back ? (capOverride ?? artBackLimitRef.current) : (cap ?? (max > 0 ? max : null));
+    const current = back ? artBackFilesRef.current : artFilesRef.current;
+    const setFiles = back ? setArtBackFiles : setArtFiles;
+    let count = current.length;
+    // เนื้อไฟล์ที่มีอยู่แล้วในด้านเดียวกัน (รูปเก่าก่อนมีระบบ hash จะไม่มีค่า — ข้ามการเทียบ)
+    // ⚠️ เทียบเฉพาะด้านเดียวกัน — ลายเดียวกันทั้งหน้าและหลังเป็นงานปกติ ไม่ทำให้นับลายเพี้ยน
+    const seen = new Set(current.map((x) => x.hash).filter(Boolean) as string[]);
     for (let i = 0; i < list.length; i++) {
       const f = list[i];
       // ⓪ 🔒 เกินจำนวนลายที่กำหนดไว้ = หยุดตรงนี้แล้วเด้งป๊อปอัพถาม (ผู้ใช้สั่ง 7 ก.ย. 69)
       //    ไฟล์ที่เหลือยังไม่ทิ้ง — ถ้าลูกค้าเลือก "เพิ่มจำนวนลาย" จะแนบต่อให้เลย
       if (limit != null && count >= limit) {
-        setArtOver({ limit, pending: list.slice(i), byCap: cap != null });
+        setArtOver({ limit, pending: list.slice(i), byCap: cap != null, side });
         break;
       }
       // ① ชนิดไฟล์ + ② ขนาด (ไฟล์ HEIC จาก iPhone จะบอกวิธีแก้ให้ด้วย)
@@ -1964,7 +2036,7 @@ export default function ProductDetail({
          */
         const preview = URL.createObjectURL(f);
         // กันซ้ำอีกชั้นตอนบันทึกจริง — เผื่อวางรูปเดิมรัว ๆ ระหว่างไฟล์แรกยังอัปโหลดไม่เสร็จ
-        setArtFiles((cur) =>
+        setFiles((cur) =>
           hash && cur.some((x) => x.hash === hash)
             ? cur
             : [...cur, { url, name: f.name, ...dim, preview, ...(hash ? { hash } : {}) }]
@@ -1981,6 +2053,216 @@ export default function ProductDetail({
     }
     if (skipped.length) setArtErr((cur) => [cur, ...skipped].filter(Boolean).join(" · "));
     setArtBusy(false);
+  }
+
+  /**
+   * ช่องแนบภาพลาย 1 ด้าน (รูปย่อที่แนบแล้ว + เตือนภาพเล็ก + กล่องลากวาง/เลือกไฟล์)
+   * งานด้านเดียวเรียกครั้งเดียว ("front") · งานพิมพ์ 2 ด้านเรียก 2 ครั้ง แยกรายการ/เพดาน/ตัวนับของแต่ละด้าน
+   * ไม่ใช่คอมโพเนนต์แยก — ใช้ state/ตัวอัปโหลดชุดเดียวกับหน้านี้ (ตัวนับลาย ป๊อปอัพเกินเพดาน ฯลฯ)
+   */
+  function artZone(side: ArtSide) {
+    const back = side === "back";
+    const files = back ? artBackFiles : artFiles;
+    const setFiles = back ? setArtBackFiles : setArtFiles;
+    const limit = back ? artBackLimit : artLimit;
+    const full = back ? artBackFull : artFull;
+    const left = back ? artBackLeft : artLeft;
+    const cap = back ? null : artCap;
+    const dragHere = artDragSide === side;
+    const unit = matrix?.unit ?? "ชิ้น";
+    const sideWord = back ? "ด้านหลัง" : "ด้านหน้า";
+    return (
+      <div className={backOn ? `mt-2 rounded-xl p-2.5 ring-1 ${back ? "bg-violet-50/60 ring-violet-200" : "bg-white/80 ring-sky-200"}` : ""}>
+        {backOn && (
+          <p className="flex flex-wrap items-center gap-1.5 text-xs font-extrabold text-stone-700">
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${back ? "bg-violet-600 text-white" : "bg-sky-600 text-white"}`}>
+              {back ? "🔄 ด้านหลัง" : "🖼 ด้านหน้า"}
+            </span>
+            {files.length > 0 ? (
+              <span className="text-[11px] font-bold text-emerald-700">แนบแล้ว {files.length.toLocaleString("th-TH")} รูป = {files.length.toLocaleString("th-TH")} ลาย</span>
+            ) : (
+              <span className="text-[11px] font-normal text-stone-400">{back ? "ยังไม่แนบ — ถือว่าด้านหลังใช้ลายเดียวกันทั้งหมด" : "ยังไม่แนบ"}</span>
+            )}
+          </p>
+        )}
+
+        {files.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {files.map((f, i) => (
+              <div key={f.url} className="relative">
+                <a href={f.url} target="_blank" rel="noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={f.preview ?? f.url}
+                    alt={backOn ? `${f.name} (${sideWord})` : f.name}
+                    className={`h-20 w-20 rounded-xl object-cover ring-1 ${back ? "ring-violet-200" : "ring-sky-200"}`}
+                  />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (f.preview) URL.revokeObjectURL(f.preview);
+                    setFiles((cur) => cur.filter((_, j) => j !== i));
+                  }}
+                  className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow"
+                  aria-label={backOn ? `ลบภาพนี้ (${sideWord})` : "ลบภาพนี้"}
+                >
+                  ✕
+                </button>
+                {f.w > 0 && (
+                  <p className={`mt-0.5 w-20 text-center text-[9px] leading-tight ${Math.max(f.w, f.h) < 1500 ? "font-bold text-amber-600" : "text-stone-400"}`}>
+                    {f.w}×{f.h}
+                    {Math.max(f.w, f.h) < 1500 ? " · ภาพเล็ก" : ""}
+                  </p>
+                )}
+                {/* 🔢 จำนวนชิ้นของลายนี้ — โผล่เมื่อแนบตั้งแต่ 2 ลาย (ลายเดียว = ทั้งหมดอยู่แล้ว) · เฉพาะด้านหน้า
+                    (ด้านหลังเป็นแค่ "ลายไหนอยู่หลัง" ไม่มีจำนวนของตัวเอง) · ลายที่วางบนเทมเพลตมีช่องจำนวนในการ์ด "แบบพร้อมผลิต" แล้ว ไม่ซ้ำตรงนี้ */}
+                {!back && artQtyMode && (
+                  <label className="mt-1 flex w-20 items-center gap-0.5 rounded-lg bg-white px-1 py-0.5 ring-1 ring-sky-200 focus-within:ring-2 focus-within:ring-sky-400">
+                    <span className="text-[9px] font-bold text-stone-400">ลายที่ {i + 1}</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      value={f.qty ?? ""}
+                      placeholder="กี่ชิ้น"
+                      onChange={(e) => setArtQty(i, e.target.value === "" ? undefined : Number(e.target.value))}
+                      aria-label={`จำนวนชิ้นของลายที่ ${i + 1}`}
+                      className="w-full min-w-0 bg-transparent text-right text-[11px] font-bold text-sky-900 outline-none placeholder:font-normal placeholder:text-stone-300"
+                    />
+                  </label>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 🔢 สรุปจำนวนต่อลาย — เทียบกับจำนวนที่สั่ง (ผู้ใช้สั่ง 8 ก.ย. 69: "สั่ง 10 ชิ้น คละ 3 ลาย ลายละกี่ชิ้น")
+            ไม่บังคับ ไม่บล็อกปุ่มสั่ง — แค่บอกให้เห็นว่ารวมครบ/ยังขาด/เกิน แอดมินจะได้ไม่ต้องทักถาม · เฉพาะด้านหน้า */}
+        {!back && artQtyMode && (() => {
+          const qUnit = artPieces.word;
+          const total = artPieces.total;
+          const filled = artFiles.filter((f) => f.qty && f.qty > 0).length;
+          const sum = artFiles.reduce((a, f) => a + (f.qty ?? 0), 0);
+          const leftN = artFiles.length - filled;
+          const fmt = (n: number) => n.toLocaleString("th-TH");
+          const shareEven = () => {
+            // แบ่งเท่า ๆ กัน — เศษที่เหลือใส่ลายแรก ๆ ทีละชิ้น (10 ชิ้น 3 ลาย → 4 · 3 · 3)
+            const cnt = artFiles.length;
+            const base = Math.floor(total / cnt);
+            const rest = total - base * cnt;
+            setArtFiles((cur) => cur.map((f, k) => ({ ...f, qty: Math.max(1, base + (k < rest ? 1 : 0)) })));
+          };
+          const tone =
+            filled === 0
+              ? "bg-white text-stone-500 ring-stone-200"
+              : leftN > 0
+                ? "bg-white text-sky-800 ring-sky-200"
+                : sum === total
+                  ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                  : "bg-amber-50 text-amber-800 ring-amber-200";
+          return (
+            <div className={`mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-3 py-2 text-[11px] font-semibold leading-relaxed ring-1 ${tone}`}>
+              <span className="min-w-0 flex-1">
+                {filled === 0
+                  ? `🔢 ระบุจำนวนแต่ละลายได้ใต้รูป (ไม่บังคับ) — สั่งทั้งหมด ${fmt(total)} ${qUnit} คละ ${fmt(artFiles.length)} ลาย`
+                  : leftN > 0
+                    ? `🔢 ระบุแล้ว ${fmt(sum)} จาก ${fmt(total)} ${qUnit} — เหลืออีก ${fmt(leftN)} ลายที่ยังไม่ระบุ`
+                    : sum === total
+                      ? `✓ ระบุครบ ${fmt(sum)} ${qUnit} ตรงกับจำนวนที่สั่ง`
+                      : `⚠️ รวม ${fmt(sum)} ${qUnit} แต่สั่งทั้งหมด ${fmt(total)} ${qUnit} — ปรับตัวเลขให้ตรงกัน (หรือแอดมินจะทักยืนยันก่อนเริ่มงาน)`}
+              </span>
+              {total >= artFiles.length && (filled === 0 || sum !== total) && (
+                <button
+                  type="button"
+                  onClick={shareEven}
+                  className="shrink-0 rounded-full bg-sky-100 px-2.5 py-0.5 text-[10px] font-bold text-sky-800 transition hover:bg-sky-200"
+                >
+                  แบ่งเท่า ๆ กัน
+                </button>
+              )}
+            </div>
+          );
+        })()}
+
+        {files.some((f) => f.w > 0 && Math.max(f.w, f.h) < 1500) && (
+          <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-semibold leading-relaxed text-amber-700 ring-1 ring-amber-200">
+            ⚠️ มีภาพความละเอียดต่ำ — พิมพ์ออกมาอาจแตก/ไม่คม รบกวนแนบไฟล์ต้นฉบับเป็นลิงก์ในข้อ 2 ด้วยครับ
+          </p>
+        )}
+
+        <label
+          onDragOver={(e) => {
+            e.preventDefault();
+            setArtDrag(true);
+            setArtDragSide(side);
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) setArtDragSide(null);
+          }}
+          onDrop={(e) => {
+            // หยุด bubble — กล่องนอกก็เป็น dropzone ถ้าไม่หยุดจะอัปซ้ำ 2 รอบ (และจะตกไปด้านหน้าเสมอ)
+            e.preventDefault();
+            e.stopPropagation();
+            setArtDrag(false);
+            setArtDragSide(null);
+            void uploadArtwork(e.dataTransfer.files, undefined, side);
+          }}
+          className={`mt-2 flex flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed px-3 py-3 text-center transition ${
+            full
+              ? "cursor-default border-amber-300 bg-amber-50"
+              : dragHere
+                ? "cursor-pointer border-sky-500 bg-sky-100"
+                : "cursor-pointer border-sky-300 bg-white hover:border-sky-400 hover:bg-sky-50"
+          }`}
+        >
+          {artBusy ? (
+            <span className="text-xs font-bold text-sky-700">กำลังอัปโหลด…</span>
+          ) : full ? (
+            /* ครบเพดานแล้ว — ยังกดได้ ถ้ากดแล้วเลือกไฟล์เพิ่มจะมีป๊อปอัพถามให้เพิ่มจำนวนลายก่อน */
+            <>
+              <span className="text-xs font-extrabold text-amber-700">
+                ✅ {backOn ? `${sideWord}ครบ` : "ครบ"} {limit!.toLocaleString("th-TH")} รูปตาม
+                {cap != null ? "ที่ระบุคละไว้แล้ว" : `เพดานคละของเรทนี้แล้ว`}
+              </span>
+              <span className="text-[10px] font-normal text-amber-600">
+                {cap != null
+                  ? "อยากแนบเพิ่ม กด + เพิ่ม “คละกี่ลาย” ด้านบนก่อนนะครับ · หรือลบรูปเดิมออกแล้วแนบใหม่"
+                  : `จำนวน ${qty.toLocaleString("th-TH")} ${unit} ${backOn ? `${sideWord}` : ""}คละได้ ${limit!.toLocaleString("th-TH")} ลาย — อยากคละมากกว่านี้ต้องเพิ่มจำนวนสั่ง`}
+              </span>
+            </>
+          ) : dragHere ? (
+            <span className="text-sm font-extrabold text-sky-700">⬇️ ปล่อยไฟล์ตรงนี้ได้เลย{backOn ? ` (${sideWord})` : ""}</span>
+          ) : (
+            <>
+              <span className="text-xs font-extrabold text-sky-700">
+                🖼️ {backOn ? `แนบลาย${sideWord} · ` : ""}แตะเลือกไฟล์ · ลากมาวาง{backOn ? "" : " · ⌘/Ctrl+V"}
+              </span>
+              <span className="text-[10px] font-normal text-stone-400">
+                JPG / PNG / WEBP ·{" "}
+                {cap != null
+                  ? `ระบุคละไว้ ${cap.toLocaleString("th-TH")} ลาย แนบได้อีก ${left.toLocaleString("th-TH")} รูป`
+                  : limit != null
+                    ? `${backOn ? sideWord : "เรทนี้"}คละได้ ${limit.toLocaleString("th-TH")} ลาย แนบได้อีก ${left.toLocaleString("th-TH")} รูป`
+                    : "ใส่ได้ไม่จำกัดจำนวน"}{" "}
+                · ไฟล์ละไม่เกิน 15MB
+              </span>
+            </>
+          )}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            className="hidden"
+            disabled={artBusy}
+            onChange={(e) => {
+              void uploadArtwork(e.target.files, undefined, side);
+              e.target.value = "";
+            }}
+          />
+        </label>
+      </div>
+    );
   }
 
   /**
@@ -2130,6 +2412,12 @@ export default function ProductDetail({
     if (gone?.preview) URL.revokeObjectURL(gone.preview);
     setArtFiles((cur) => cur.filter((_, i) => i !== index));
     setPlaced((cur) => cur.filter((_, i) => i !== index));
+  }
+
+  /** 🔢 จำนวนชิ้นของลายที่แนบ (ช่องใต้รูปย่อ) — ว่าง/0 = ไม่ระบุ */
+  function setArtQty(index: number, n: number | undefined) {
+    const v = n && n > 0 ? Math.min(99999, Math.round(n)) : undefined;
+    setArtFiles((cur) => cur.map((f, i) => (i === index ? { ...f, qty: v } : f)));
   }
 
   /** จำนวนชิ้นของลายนั้น (อย่างน้อย 1) */
@@ -2322,7 +2610,19 @@ export default function ProductDetail({
    * (ตะกร้า/ออเดอร์รองรับรายการที่ยังไม่มีลายอยู่แล้วจากโหมดพนักงาน)
    */
   const preArranged = staffOrdering || fromPriceLink;
-  const artProvided = artFiles.length > 0 || artLink.trim().length > 0;
+  const artProvided = artTotal > 0 || artLink.trim().length > 0;
+  /** 🔢 โชว์ช่องจำนวนต่อลายไหม — แนบตั้งแต่ 2 รูป และไม่ใช่ลายที่วางบนเทมเพลต (มีช่องของตัวเองแล้ว) */
+  const artQtyMode = artFiles.length > 1 && placed.length === 0;
+  /**
+   * 🔢 จำนวน "ชิ้นจริง" ที่ใช้เทียบกับจำนวนต่อลาย — สินค้าขายเป็นเซ็ต/แผ่น (1 เซ็ต = 20 ใบ) ลูกค้าระบุเป็นใบ ไม่ใช่เซ็ต
+   * ตัวคูณชุดเดียวกับที่ตะกร้า/ออเดอร์ใช้ (orderUnitYield) · ไม่รู้ตัวคูณ = นับตามหน่วยที่สั่ง
+   */
+  const artPieces = useMemo(() => {
+    const y = orderUnitYield(product, effective);
+    return y && y.per > 1
+      ? { total: y.per * qty, word: y.piece }
+      : { total: qty, word: matrix?.unit ?? "ชิ้น" };
+  }, [product, effective, qty, matrix?.unit]);
   /**
    * 🎨 โหมดออกแบบบนเว็บ "ยังต้องวางลายอยู่ไหม"
    *
@@ -2519,6 +2819,8 @@ export default function ProductDetail({
     // คืน blob url ของรูปย่อก่อนทิ้ง ไม่งั้นรูปที่แนบไปแล้วค้างในหน่วยความจำจนกว่าจะปิดหน้า
     artFiles.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
     setArtFiles([]);
+    artBackFiles.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
+    setArtBackFiles([]);
     setPlaced([]);
   }
 
@@ -2557,7 +2859,17 @@ export default function ProductDetail({
     // แนบข้อมูลเพิ่มไปกับรายการ (ไม่กระทบราคา): ลิงก์ไฟล์ลาย/อีเมล + หมายเหตุ
     const extra: Record<string, string> = {};
     if (artLink.trim()) extra["ลิงก์ไฟล์ลาย/อีเมล"] = artLink.trim();
-    if (artFiles.length) extra["ภาพลายที่แนบ"] = artFiles.map((f) => f.url).join(" | ");
+    if (artFiles.length) extra[ART_LABEL] = artFiles.map((f) => f.url).join(" | ");
+    // งานพิมพ์ 2 ด้าน — ภาพลายด้านหลังไปอีกคีย์ (ลูกค้าระบุแล้วว่าลายไหนพิมพ์ด้านไหน)
+    if (backOn && artBackFiles.length) extra[ART_BACK_LABEL] = artBackFiles.map((f) => f.url).join(" | ");
+    /**
+     * 🔢 จำนวนชิ้นของแต่ละลาย (ลูกค้าระบุเองใต้รูปที่แนบ — ไม่บังคับ)
+     * ลายเดียว = ทั้งหมดอยู่แล้ว ไม่ต้องจด · ลายที่วางบนเทมเพลตมีจำนวนของตัวเองใน PLACEMENT_LABEL แล้ว ไม่จดซ้ำ
+     */
+    if (artFiles.length > 1 && !placed.length) {
+      const artQtyText = formatArtQty(artFiles.map((f) => f.qty), artPieces.word);
+      if (artQtyText) extra[ART_QTY_LABEL] = artQtyText;
+    }
     // งานหลายด้าน — ภาพของแต่ละด้าน (ไม่นับเป็นลายเพิ่ม แค่แนบให้กราฟฟิกครบ)
     const sideArts = placed.flatMap((d, i) =>
       (d.sides ?? []).map((sd) => `${placed.length > 1 ? `ลายที่ ${i + 1} ` : ""}${sd.name}: ${sd.artUrl}`),
@@ -5856,7 +6168,8 @@ export default function ProductDetail({
                           {sheetRoll.rows[i].extraFee > 0 && <> + ค่าคละลาย {formatPrice(sheetRoll.rows[i].extraFee)}</>}
                           {/* ลายของแผ่นนี้ — ยืนยันให้เห็นว่าแต่ละแผ่นมีลายของตัวเองแล้ว */}
                           {(() => {
-                            const imgs = (sh.selections["ภาพลายที่แนบ"] ?? "").split(" | ").filter(Boolean).length;
+                            // นับรวมทั้ง 2 ด้าน — งานพิมพ์ 2 ด้านเก็บลายด้านหลังไว้อีกคีย์
+                            const imgs = parseArtUrls(sh.selections[ART_LABEL]).length + parseArtUrls(sh.selections[ART_BACK_LABEL]).length;
                             const link = (sh.selections["ลิงก์ไฟล์ลาย/อีเมล"] ?? "").trim();
                             if (!imgs && !link) return null;
                             return (
@@ -6848,7 +7161,7 @@ export default function ProductDetail({
                   {lotMinScope ? `แนบลายของ${lotWord}ที่ ${(sheets.length + 1).toLocaleString("th-TH")}` : "แนบลายของคุณ"}
                   {artProvided ? (
                     <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                      {artFiles.length > 0 ? `แนบแล้ว ${artFiles.length} รูป` : "ใส่ลิงก์แล้ว"}
+                      {artTotal > 0 ? `แนบแล้ว ${artTotal} รูป` : "ใส่ลิงก์แล้ว"}
                     </span>
                   ) : artRequired && !preArranged ? (
                     /* โหมดแอดมิน/ลิงก์ราคาไม่บังคับแนบ — ลายมาทางไลน์/อีเมลได้ */
@@ -6874,11 +7187,16 @@ export default function ProductDetail({
                 }}
                 onDragLeave={(e) => {
                   // ออกจากกล่องจริง ๆ เท่านั้น (ไม่ใช่แค่ย้ายข้ามลูกใน)
-                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setArtDrag(false);
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    setArtDrag(false);
+                    setArtDragSide(null);
+                  }
                 }}
                 onDrop={(e) => {
+                  // ปล่อยนอกช่องของด้าน = ถือเป็นด้านหน้า (งาน 2 ด้านต้องปล่อยลงช่อง "ด้านหลัง" เองถึงจะเข้าด้านหลัง)
                   e.preventDefault();
                   setArtDrag(false);
+                  setArtDragSide(null);
                   void uploadArtwork(e.dataTransfer.files);
                 }}
                 className={`mt-3 rounded-2xl p-3.5 transition ${
@@ -6893,109 +7211,19 @@ export default function ProductDetail({
                   </p>
                 </div>
 
-                {artFiles.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {artFiles.map((f, i) => (
-                      <div key={f.url} className="relative">
-                        <a href={f.url} target="_blank" rel="noreferrer">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={f.preview ?? f.url}
-                            alt={f.name}
-                            className="h-20 w-20 rounded-xl object-cover ring-1 ring-sky-200"
-                          />
-                        </a>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (f.preview) URL.revokeObjectURL(f.preview);
-                            setArtFiles((cur) => cur.filter((_, j) => j !== i));
-                          }}
-                          className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow"
-                          aria-label="ลบภาพนี้"
-                        >
-                          ✕
-                        </button>
-                        {f.w > 0 && (
-                          <p className={`mt-0.5 w-20 text-center text-[9px] leading-tight ${Math.max(f.w, f.h) < 1500 ? "font-bold text-amber-600" : "text-stone-400"}`}>
-                            {f.w}×{f.h}
-                            {Math.max(f.w, f.h) < 1500 ? " · ภาพเล็ก" : ""}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {artFiles.some((f) => f.w > 0 && Math.max(f.w, f.h) < 1500) && (
-                  <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-semibold leading-relaxed text-amber-700 ring-1 ring-amber-200">
-                    ⚠️ มีภาพความละเอียดต่ำ — พิมพ์ออกมาอาจแตก/ไม่คม รบกวนแนบไฟล์ต้นฉบับเป็นลิงก์ในข้อ 2 ด้วยครับ
+                {/*
+                  🔄 งานพิมพ์ 2 ด้าน = 2 ช่องแยก "ด้านหน้า" / "ด้านหลัง" — ลูกค้าระบุเองว่าลายไหนพิมพ์ด้านไหน
+                  จำนวนลายของแต่ละด้านนับตามรูปในช่องนั้น (ด้านหลังเดิมนับไม่ได้เลย เพดานแนบจับแต่ด้านหน้า)
+                  งานด้านเดียวมีช่องเดียวเหมือนเดิม
+                */}
+                {backOn && (
+                  <p className="mt-1.5 rounded-lg bg-white/70 px-2.5 py-1.5 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
+                    งานพิมพ์ 2 ด้าน — แนบลายแยกช่อง <b>ด้านหน้า</b> และ <b>ด้านหลัง</b> · จำนวนลายแต่ละด้านนับตามรูปในช่องนั้น
+                    (ด้านหลังใช้ลายเดียวกันทั้งหมด = แนบรูปเดียว)
                   </p>
                 )}
-
-                <label
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setArtDrag(true);
-                  }}
-                  onDrop={(e) => {
-                    // หยุด bubble — กล่องนอกก็เป็น dropzone ถ้าไม่หยุดจะอัปซ้ำ 2 รอบ
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setArtDrag(false);
-                    void uploadArtwork(e.dataTransfer.files);
-                  }}
-                  className={`mt-2 flex flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed px-3 py-3 text-center transition ${
-                    artFull
-                      ? "cursor-default border-amber-300 bg-amber-50"
-                      : artDrag
-                        ? "cursor-pointer border-sky-500 bg-sky-100"
-                        : "cursor-pointer border-sky-300 bg-white hover:border-sky-400 hover:bg-sky-50"
-                  }`}
-                >
-                  {artBusy ? (
-                    <span className="text-xs font-bold text-sky-700">กำลังอัปโหลด…</span>
-                  ) : artFull ? (
-                    /* ครบเพดานแล้ว — ยังกดได้ ถ้ากดแล้วเลือกไฟล์เพิ่มจะมีป๊อปอัพถามให้เพิ่มจำนวนลายก่อน */
-                    <>
-                      <span className="text-xs font-extrabold text-amber-700">
-                        ✅ ครบ {artLimit!.toLocaleString("th-TH")} รูปตาม
-                        {artCap != null ? "ที่ระบุคละไว้แล้ว" : `เพดานคละของเรทนี้แล้ว`}
-                      </span>
-                      <span className="text-[10px] font-normal text-amber-600">
-                        {artCap != null
-                          ? "อยากแนบเพิ่ม กด + เพิ่ม “คละกี่ลาย” ด้านบนก่อนนะครับ · หรือลบรูปเดิมออกแล้วแนบใหม่"
-                          : `จำนวน ${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} คละได้ ${artLimit!.toLocaleString("th-TH")} ลาย — อยากคละมากกว่านี้ต้องเพิ่มจำนวนสั่ง`}
-                      </span>
-                    </>
-                  ) : artDrag ? (
-                    <span className="text-sm font-extrabold text-sky-700">⬇️ ปล่อยไฟล์ตรงนี้ได้เลย</span>
-                  ) : (
-                    <>
-                      <span className="text-xs font-extrabold text-sky-700">🖼️ แตะเลือกไฟล์ · ลากมาวาง · ⌘/Ctrl+V</span>
-                      <span className="text-[10px] font-normal text-stone-400">
-                        JPG / PNG / WEBP ·{" "}
-                        {artCap != null
-                          ? `ระบุคละไว้ ${artCap.toLocaleString("th-TH")} ลาย แนบได้อีก ${artLeft.toLocaleString("th-TH")} รูป`
-                          : artLimit != null
-                            ? `เรทนี้คละได้ ${artLimit.toLocaleString("th-TH")} ลาย แนบได้อีก ${artLeft.toLocaleString("th-TH")} รูป`
-                            : "ใส่ได้ไม่จำกัดจำนวน"}{" "}
-                        · ไฟล์ละไม่เกิน 15MB
-                      </span>
-                    </>
-                  )}
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    multiple
-                    className="hidden"
-                    disabled={artBusy}
-                    onChange={(e) => {
-                      void uploadArtwork(e.target.files);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
+                {artZone("front")}
+                {backOn && artZone("back")}
                 {artErr && <p className="mt-1.5 text-[11px] font-semibold text-rose-600">⚠️ {artErr}</p>}
 
                 {/* 2) ลิงก์ไฟล์ต้นฉบับ */}
@@ -7145,7 +7373,7 @@ export default function ProductDetail({
               {sheetRoll
                 ? `${sheetRoll.qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} · ${(sheets.length + 1).toLocaleString("th-TH")} รายการ`
                 : `${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}`}
-              {artFiles.length > 0 ? ` · แนบลาย ${artFiles.length} รูป` : ""}
+              {artTotal > 0 ? ` · แนบลาย ${artTotal} รูป` : ""}
             </p>
             {askQuote || (useCustom && customAsk) ? (
               <p className="text-sm font-extrabold leading-tight text-sky-700">💬 รอแอดมินตีราคา</p>
@@ -7224,9 +7452,10 @@ export default function ProductDetail({
         /** เพิ่มจำนวนลายให้ครบทุกไฟล์ได้ไหม — เกินเพดานคละของเรทที่จำนวนสั่งตอนนี้ก็เพิ่มไม่ได้ */
         const canRaise = maxDesigns <= 0 || want <= maxDesigns;
         const names = over.pending.slice(0, 3).map((f) => f.name);
+        const backSide = over.side === "back";
         const attach = (capTo: number) => {
           setArtOver(null);
-          void uploadArtwork(over.pending, capTo);
+          void uploadArtwork(over.pending, capTo, over.side);
         };
         return (
           <div
@@ -7257,8 +7486,9 @@ export default function ProductDetail({
                       </>
                     ) : (
                       <>
-                        สั่ง {qty.toLocaleString("th-TH")} {unit} เรทนี้คละได้สูงสุด{" "}
-                        <strong className="text-stone-800">{over.limit.toLocaleString("th-TH")} ลาย</strong>
+                        {/* งาน 2 ด้าน: บอกให้ชัดว่าเป็นเพดานของด้านไหน — ด้านหลังก็ใช้เพดานคละของเรทชุดเดียวกัน */}
+                        {backSide ? "ลายด้านหลัง — " : ""}สั่ง {qty.toLocaleString("th-TH")} {unit} เรทนี้คละได้สูงสุด{" "}
+                        <strong className="text-stone-800">{over.limit.toLocaleString("th-TH")} ลาย{backSide ? "ต่อด้าน" : ""}</strong>
                       </>
                     )}{" "}
                     — ยังมีอีก{" "}
@@ -7294,6 +7524,13 @@ export default function ProductDetail({
                   <button
                     type="button"
                     onClick={() => {
+                      if (backSide) {
+                        // ด้านหลังไม่มีเพดานที่ลูกค้าระบุเอง — แค่ดันจำนวนลายด้านหลังขึ้นแล้วแนบต่อ
+                        setBackDesignsDraft(null);
+                        setBackDesigns(want);
+                        attach(want);
+                        return;
+                      }
                       setDesignsTouched(true);
                       setDesignsDraft(null);
                       setDesigns(want);

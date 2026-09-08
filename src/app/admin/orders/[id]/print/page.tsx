@@ -7,8 +7,8 @@ import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
-import { formatPrice } from "@/lib/products";
-import { adminDiscountAmount, MOCK_ORDERS, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderTotal, proofsOf, proofUnit, type Order } from "@/lib/admin-data";
+import { artQtyOf, formatPrice } from "@/lib/products";
+import { adminDiscountAmount, artworkSide, MOCK_ORDERS, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderTotal, proofsOf, proofUnit, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -38,7 +38,7 @@ function boxSummary(it: Order["items"][number]): string {
 }
 
 /** หัวข้อที่ไม่ต้องขึ้นใบงาน — พิกัด/ลิงก์/สรุปการวางลาย (ทีมผลิตดูจากไฟล์ .ai) */
-const PRINT_SKIP = ["ภาพลายที่แนบ", "รอเช็คสต๊อก", "ลิงก์ไฟล์ลาย/อีเมล", PLACEMENT_SPEC_LABEL, PLACEMENT_LABEL];
+const PRINT_SKIP = ["ภาพลายที่แนบ", "ภาพลายที่แนบ (ด้านหลัง)", "รอเช็คสต๊อก", "ลิงก์ไฟล์ลาย/อีเมล", PLACEMENT_SPEC_LABEL, PLACEMENT_LABEL];
 
 /** ตัวเลือกสินค้าล้วน ๆ (ขนาด/สี/รุ่น) — ตัดพิกัด/ลิงก์/สรุปการวางลายออก */
 function optionText(it: Order["items"][number]): string {
@@ -372,7 +372,8 @@ function OrderDocs({
       proofs.length > 0
         ? proofs.map((pf, k) => ({ url: pf.url, qty: pf.qty, unit: proofUnit(pf), no: k + 1 }))
         : (it.artworkUrls ?? []).length > 0
-          ? (it.artworkUrls ?? []).map((u, k) => ({ url: u, qty: undefined as number | undefined, unit: "ชิ้น", no: k + 1 }))
+          ? // 🔢 ลูกค้าระบุจำนวนต่อลายไว้ตอนแนบ → ใบแปะกล่องได้เลขทันที ไม่ต้องรอแบบ
+            (it.artworkUrls ?? []).map((u, k) => ({ url: u, qty: artQtyOf(it, u, k), unit: "ชิ้น", no: k + 1 }))
           : [{ url: undefined as string | undefined, qty: it.qty, unit: "ชิ้น", no: 1 }];
     return list.map((d) => ({ ...d, i, it, total: list.length, key: `${i}-${d.no}` }));
   });
@@ -662,8 +663,22 @@ function OrderDocs({
                             <p className="text-[10px] font-bold text-slate-500">🎨 ภาพลายจากลูกค้า (แนวทางทำแบบ)</p>
                             <div className="mt-1 flex flex-wrap gap-1">
                               {(it.artworkUrls ?? []).slice(0, 4).map((u, k) => (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img key={u} src={u} alt={`ภาพลาย ${k + 1}`} className="h-14 w-14 rounded border border-slate-300 object-cover" />
+                                <span key={u} className="relative block h-14 w-14">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={u} alt={`ภาพลาย ${k + 1}`} className="h-14 w-14 rounded border border-slate-300 object-cover" />
+                                  {/* 🔢 จำนวนต่อลายที่ลูกค้าระบุ — เลขบนรูปให้ฝ่ายผลิต/แพ็คเห็นทันที */}
+                                  {artQtyOf(it, u, k) ? (
+                                    <span className="absolute bottom-0 left-0 right-0 rounded-b bg-slate-900/80 text-center text-[9px] font-bold leading-tight text-white">
+                                      {k + 1} ×{artQtyOf(it, u, k)!.toLocaleString("th-TH")}
+                                    </span>
+                                  ) : null}
+                                  {/* งานพิมพ์ 2 ด้าน — ป้ายหน้า/หลังบนใบงาน (ป้ายบน) กราฟฟิกจะได้ไม่วางสลับด้าน */}
+                                  {artworkSide(it, u) && (
+                                    <span className="absolute left-0 right-0 top-0 bg-slate-800/85 text-center text-[8px] font-bold leading-tight text-white">
+                                      {artworkSide(it, u)}
+                                    </span>
+                                  )}
+                                </span>
                               ))}
                             </div>
                           </div>

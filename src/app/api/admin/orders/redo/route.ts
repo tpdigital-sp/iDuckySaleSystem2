@@ -58,6 +58,8 @@ export async function POST(req: Request) {
       qty,
       unitPrice: mode === "claim" ? 0 : it.unitPrice, // เคลม = ไม่คิดเงิน
       ...(it.artworkUrls?.length ? { artworkUrls: [...it.artworkUrls] } : {}),
+      ...(it.artworkQty ? { artworkQty: { ...it.artworkQty } } : {}), // จำนวนต่อลายตามไปด้วย
+      ...(it.artworkBackUrls?.length ? { artworkBackUrls: [...it.artworkBackUrls] } : {}), // ป้ายหน้า/หลังของลายต้องตามไปด้วย
       ...(it.sampleRequired ? { sampleRequired: it.sampleRequired } : {}),
     });
   }

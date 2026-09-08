@@ -1998,6 +1998,98 @@ export function designCountOf(selections: Record<string, string>): number {
 /** ชื่อกลุ่มที่เก็บจำนวนลาย "ด้านหลัง" ของงานพิมพ์ 2 ด้าน (ดู Product.backDesign) */
 export const BACK_DESIGN_LABEL = "จำนวนลาย (ด้านหลัง)";
 
+/* ──────────────────────────────────────────────────────────────
+ * 🔢 จำนวนชิ้นของแต่ละลายที่แนบ (ผู้ใช้สั่ง 8 ก.ย. 69)
+ * "สั่ง 10 ชิ้น คละ 3 ลาย → ลายที่ 1 สั่ง 5 · ลายที่ 2 สั่ง 2 · ลายที่ 3 สั่ง 3"
+ * เก็บใน selections เป็นข้อความอ่านออก (ติดไปตะกร้า/ออเดอร์/ใบงาน/โหมดแพ็คผ่าน SpecLines โดยไม่ต้องแก้จออื่น)
+ * ตอน checkout ค่อยแกะเป็น OrderItem.artworkQty (key = url) ไว้ติดป้ายบนรูปย่อ — ลบรูปออกก็ไม่เพี้ยน
+ * ลำดับ "ลายที่ N" = ลำดับ url ใน "ภาพลายที่แนบ" (นับจาก 1)
+ * ────────────────────────────────────────────────────────────── */
+export const ART_QTY_LABEL = "จำนวนแต่ละลาย";
+
+/** ประกอบข้อความ "ลายที่ 1 × 5 ชิ้น · ลายที่ 2 × 2 ชิ้น" — ลายที่ไม่ได้ระบุข้าม · ไม่มีเลยคืน "" */
+export function formatArtQty(qtys: (number | undefined | null)[], unit = "ชิ้น"): string {
+  return qtys
+    .map((q, i) => (q && q > 0 ? `ลายที่ ${i + 1} × ${Math.round(q)} ${unit}` : ""))
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** แกะข้อความกลับเป็น ลำดับลาย (นับจาก 0) → จำนวน */
+export function parseArtQty(text?: string | null): Map<number, number> {
+  const out = new Map<number, number>();
+  if (!text) return out;
+  const re = /ลายที่\s*(\d+)\s*[×x]\s*(\d+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const i = parseInt(m[1], 10) - 1;
+    const q = parseInt(m[2], 10);
+    if (i >= 0 && q > 0) out.set(i, q);
+  }
+  return out;
+}
+
+/**
+ * จำนวนของรูปลายใบนี้ในออเดอร์/ใบเสนอราคา — อ่านฟิลด์ artworkQty (key=url) ก่อน
+ * ไม่มีค่อยตกไปแกะข้อความใน sel ตามลำดับรูป (รายการที่มาจากเส้นทางที่ยังไม่แกะให้ เช่น ใบเสนอราคาเก่า)
+ * คืน undefined = ลูกค้าไม่ได้ระบุ
+ */
+export function artQtyOf(
+  item: { artworkQty?: Record<string, number>; sel?: Record<string, string> },
+  url: string,
+  index: number,
+): number | undefined {
+  const q = item.artworkQty?.[url];
+  if (q && q > 0) return q;
+  return parseArtQty(item.sel?.[ART_QTY_LABEL]).get(index);
+}
+
+/** จับคู่จำนวนเข้ากับ url ตามลำดับ → { url: qty } (ไม่มีสักลาย = undefined) */
+export function artQtyByUrl(text: string | undefined | null, urls: string[]): Record<string, number> | undefined {
+  const byIndex = parseArtQty(text);
+  if (!byIndex.size) return undefined;
+  const out: Record<string, number> = {};
+  urls.forEach((u, i) => {
+    const q = byIndex.get(i);
+    if (q) out[u] = q;
+  });
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** คีย์ใน selections ที่เก็บ url ภาพลายที่ลูกค้าแนบ (คั่นด้วย " | ") — ด้านหน้า/ด้านเดียว */
+export const ART_LABEL = "ภาพลายที่แนบ";
+/**
+ * คีย์ภาพลาย "ด้านหลัง" ของงานพิมพ์ 2 ด้าน — แยกคีย์จากด้านหน้า ลูกค้าจึงบอกได้ว่าลายไหนอยู่ด้านไหน
+ * ตอน checkout ทั้ง 2 คีย์ถูกดึงออกจาก selections ไปเป็น OrderItem.artworkUrls (หน้าแล้วต่อด้วยหลัง)
+ * + OrderItem.artworkBackUrls (เฉพาะชุดด้านหลัง ไว้ติดป้าย) — ดู splitArtUrls
+ */
+export const ART_BACK_LABEL = "ภาพลายที่แนบ (ด้านหลัง)";
+
+/** แยกสตริง url คั่น " | " เป็นรายการ (ค่าว่าง/ไม่มี = []) */
+export function parseArtUrls(raw: unknown): string[] {
+  return String(raw ?? "")
+    .split(" | ")
+    .map((u) => u.trim())
+    .filter(Boolean);
+}
+
+/**
+ * ดึงภาพลายออกจาก selections ของบรรทัดตะกร้า → ฟิลด์ของออเดอร์
+ * `urls` = ทุกรูป (หน้าก่อน หลังต่อท้าย) ให้ทุกจอที่นับ/ลบ/ก๊อปใช้ชุดเดียวเหมือนเดิม
+ * `back` = เฉพาะรูปด้านหลัง (เป็นส่วนหนึ่งของ urls) ไว้ติดป้าย "ด้านหลัง"
+ * `rest` = selections ที่ตัด 2 คีย์นี้ออกแล้ว (url ยาว ๆ ไม่ควรไปรกใบงาน)
+ */
+export function splitArtUrls(selections: Record<string, string>): {
+  urls: string[];
+  back: string[];
+  rest: Record<string, string>;
+} {
+  const { [ART_LABEL]: frontRaw, [ART_BACK_LABEL]: backRaw, ...rest } = selections;
+  const front = parseArtUrls(frontRaw);
+  const back = parseArtUrls(backRaw);
+  return { urls: [...front, ...back], back, rest };
+}
+
 /**
  * 🔄 ตอนนี้ลูกค้าเลือกพิมพ์ 2 ด้านอยู่ไหม — เงื่อนไขอ่านแบบเดียวกับ showWhen ของกลุ่ม
  * ไม่เข้าเงื่อนไข = ไม่มีด้านหลังให้คละ (ช่องไม่ขึ้น ไม่คิดค่าคละด้านหลัง)

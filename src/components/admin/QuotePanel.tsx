@@ -19,6 +19,7 @@ import {
   RATE_LABEL,
   activeMatrix,
   activeRate,
+  artQtyOf,
   formatPrice,
   isInputOption,
   priceMatrixKey,
@@ -26,7 +27,7 @@ import {
   type PriceMatrix,
   type Product,
 } from "@/lib/products";
-import type { OrderItem } from "@/lib/admin-data";
+import { artworkSide, type OrderItem } from "@/lib/admin-data";
 
 /** ราคา/หน่วยในตาราง m ที่ช่วงจำนวน tier ตามตัวเลือกที่ลูกค้าเลือก (0 = ไม่มีราคาในช่องนั้น) */
 function cellPrice(m: PriceMatrix, sel: Record<string, string>, tier: number): number {
@@ -301,10 +302,22 @@ export default function QuotePanel({
           <div className={`${box} lg:col-span-2`}>
             <p className={head}>🎨 ลายที่ลูกค้าแนบ ({item.artworkUrls!.length})</p>
             <div className="mt-1 flex flex-wrap gap-1.5">
-              {item.artworkUrls!.map((u) => (
-                <a key={u} href={u} target="_blank" rel="noreferrer" title="เปิดรูปเต็ม">
+              {item.artworkUrls!.map((u, k) => (
+                <a key={u} href={u} target="_blank" rel="noreferrer" title="เปิดรูปเต็ม" className="relative block">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={u} alt="ลายลูกค้า" className="h-16 w-16 rounded-lg object-cover ring-1 ring-slate-200 transition hover:ring-amber-400" />
+                  {/* 🔢 จำนวนต่อลายที่ลูกค้าระบุ — ตีราคางานคละดูตรงนี้ได้เลย */}
+                  {artQtyOf(item, u, k) ? (
+                    <span className="absolute bottom-0 left-0 right-0 rounded-b-lg bg-slate-900/75 text-center text-[10px] font-bold leading-tight text-white">
+                      ลายที่ {k + 1} ×{artQtyOf(item, u, k)}
+                    </span>
+                  ) : null}
+                  {/* งานพิมพ์ 2 ด้าน — ลูกค้าแยกหน้า/หลังมาแล้ว (ป้ายบน) */}
+                  {artworkSide(item, u) && (
+                    <span className="absolute left-0 right-0 top-0 rounded-t-lg bg-slate-800/85 text-center text-[9px] font-bold leading-tight text-white">
+                      {artworkSide(item, u)}
+                    </span>
+                  )}
                 </a>
               ))}
             </div>

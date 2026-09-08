@@ -21,7 +21,11 @@ import {
   publicRates,
   qtyFromAreaOf,
   RATE_LABEL,
+  ART_QTY_LABEL,
+  artQtyByUrl,
+  parseArtQty,
   unitYieldOf,
+  splitArtUrls,
 } from "@/lib/products";
 import { clearPriceLinkBundle } from "@/lib/price-link";
 import {
@@ -102,8 +106,9 @@ export default function CartPage() {
         id: quoteTo.id,
         items: pickedItems.map((i) => {
           // แยกภาพลาย/ธงเช็คสต๊อกออกจากข้อความตัวเลือก (เหมือนตอน checkout) ไม่งั้น URL ยาวจะรกใบเสนอราคา
-          const { "ภาพลายที่แนบ": artRaw, "รอเช็คสต๊อก": _bulk, ...restSel } = i.selections;
-          const artworkUrls = (artRaw ?? "").split(" | ").map((u) => u.trim()).filter(Boolean);
+          const { "รอเช็คสต๊อก": _bulk, ...selNoBulk } = i.selections;
+          const { urls: artworkUrls, back: artworkBackUrls, rest: restSel } = splitArtUrls(selNoBulk);
+          const artworkQty = artQtyByUrl(restSel[ART_QTY_LABEL], artworkUrls);
           return {
             productId: i.productId,
             name: productOf(i.productId)?.name ?? i.productId,
@@ -114,6 +119,8 @@ export default function CartPage() {
             qty: i.qty,
             unitPrice: i.unitPrice,
             ...(artworkUrls.length ? { artworkUrls } : {}),
+            ...(artworkQty ? { artworkQty } : {}),
+            ...(artworkBackUrls.length ? { artworkBackUrls } : {}),
           };
         }),
       }),
@@ -566,10 +573,12 @@ export default function CartPage() {
               }
               const picked = isPicked(item.key);
               // ลายที่ลูกค้าแนบ (เก็บในตัวเลือกเป็น url คั่นด้วย " | ") — คำนวณครั้งเดียว ใช้ทั้งรูปหลักและแถบลายด้านล่าง
-              const artUrls = String(item.selections["ภาพลายที่แนบ"] ?? "")
-                .split("|")
-                .map((u) => u.trim())
-                .filter(Boolean);
+              // งาน 2 ด้าน: ชุดด้านหลังอยู่อีกคีย์ — เอามาต่อท้ายแล้วจำไว้ว่ารูปไหนเป็นด้านหลัง (ติดป้ายใต้รูป)
+              const artSplit = splitArtUrls(item.selections);
+              const artUrls = artSplit.urls;
+              const artBackSet = new Set(artSplit.back);
+              // 🔢 จำนวนต่อลายที่ระบุไว้ — ติดป้ายบนรูปย่อ (บรรทัดข้อความซ่อนใน SpecLines กันซ้ำ)
+              const artQtys = parseArtQty(item.selections[ART_QTY_LABEL]);
               return (
                 <div key={item.key} className={`ord-card cart-item${picked ? "" : " tint dim"}`}>
                   {/* ✅ ติ๊ก = สั่งรายการนี้รอบนี้ · เอาติ๊กออก = พักไว้ในตะกร้าก่อน */}
@@ -645,7 +654,7 @@ export default function CartPage() {
                              เจ้าของร้านสั่งไม่ต้องโชว์ในตะกร้า (5 ก.ย. 69) · ยังติดไปกับออเดอร์/ใบงานตามเดิม
                              "จำนวนลาย" ซ่อนเฉพาะตอนมีบรรทัด "🎨 แนบลายแล้ว N รูป" บอกซ้ำอยู่แล้ว —
                              ยังไม่แนบลาย (จะส่งทีหลัง) ต้องโชว์ต่อ ไม่งั้นไม่รู้ว่าสั่งคละกี่ลาย */
-                          hide={[...SPEC_HIDE, CART_NOTE_LABEL, RATE_LABEL, ...(artCount > 0 ? ["จำนวนลาย"] : [])]}
+                          hide={[...SPEC_HIDE, CART_NOTE_LABEL, RATE_LABEL, ...(artCount > 0 ? ["จำนวนลาย", ART_QTY_LABEL] : [])]}
                           className="mt-1 text-xs t-soft"
                           /* ป้าย +฿ ท้ายบรรทัดสเปค = "ค่าที่บวกเพิ่มจากราคาเรทจริง ๆ" เท่านั้น (เช่น ตะขอสปริง +฿8)
                              ตรงกับบรรทัดแจกแจงมุมขวาล่าง: ราคาเรท ฿45 + ตะขอ ฿8 = ฿53/ชิ้น
@@ -667,7 +676,16 @@ export default function CartPage() {
                               )}
                               {artCount > 0 && (
                                 <>
-                                <p className="font-semibold t-blue">🎨 แนบลายแล้ว {artCount} รูป</p>
+                                <p className="font-semibold t-blue">
+                                  {/* งาน 2 ด้าน: บอกยอดแยกหน้า/หลัง — ลูกค้าเช็คได้ทันทีว่าส่งครบทั้งสองด้านไหม */}
+                                  🎨 แนบลายแล้ว {artCount} รูป
+                                  {artBackSet.size > 0 ? ` (หน้า ${artCount - artBackSet.size} · หลัง ${artBackSet.size})` : ""}
+                                  {artQtys.size > 0 && (
+                                    <span className="ml-1 font-normal t-faint">
+                                      {"· " + artUrls.map((_, k) => (artQtys.get(k) ? `ลายที่ ${k + 1} × ${artQtys.get(k)}` : "")).filter(Boolean).join(" · ")}
+                                    </span>
+                                  )}
+                                </p>
                                 <div className="cart-arts">
                                   {artUrls.map((u, k) => (
                                     <a
@@ -676,11 +694,16 @@ export default function CartPage() {
                                       target="_blank"
                                       rel="noreferrer"
                                       className="cart-art"
-                                      title={`ลายที่ ${k + 1} — แตะเพื่อดูเต็ม`}
+                                      title={`ลายที่ ${k + 1}${artBackSet.size ? (artBackSet.has(u) ? " (ด้านหลัง)" : " (ด้านหน้า)") : ""} — แตะเพื่อดูเต็ม`}
                                     >
                                       {/* eslint-disable-next-line @next/next/no-img-element */}
                                       <img src={u} alt={`ลายที่แนบของ ${product.name} รูปที่ ${k + 1}`} />
-                                      {artCount > 1 && <i>{k + 1}</i>}
+                                      {/* งาน 2 ด้าน: บอกใต้รูปว่าลายนี้พิมพ์ด้านไหน · ด้านเดียวโชว์ลำดับ (+จำนวนต่อลายถ้าระบุ) */}
+                                      {artBackSet.size ? (
+                                        <i>{artBackSet.has(u) ? "หลัง" : "หน้า"}{artQtys.get(k) ? ` ×${artQtys.get(k)}` : ""}</i>
+                                      ) : (
+                                        artCount > 1 && <i>{k + 1}{artQtys.get(k) ? ` ×${artQtys.get(k)}` : ""}</i>
+                                      )}
                                     </a>
                                   ))}
                                 </div>

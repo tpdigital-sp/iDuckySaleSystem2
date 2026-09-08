@@ -7,10 +7,10 @@ import { giftLinesOf, giftArtLabel } from "@/lib/gifts";
 import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import { useParams, useRouter } from "next/navigation";
-import { formatPrice } from "@/lib/products";
+import { artQtyOf, formatPrice } from "@/lib/products";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
-import { adminDiscountAmount, amountDueNow, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderItemDiscounts, orderStatusLabel, orderTotal, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { adminDiscountAmount, amountDueNow, artworkSide, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderItemDiscounts, orderStatusLabel, orderTotal, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, reviewGiftProof, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
@@ -1139,7 +1139,10 @@ export default function CustomerOrderPage() {
                         <span className="ord-proof">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={u} alt={`ลายที่คุณส่ง ${k + 1}`} style={{ objectFit: "cover" }} />
-                          <span className="ord-proof-n">ลายที่คุณส่ง</span>
+                          {/* งานพิมพ์ 2 ด้าน — บอกว่ารูปนี้เป็นลายด้านไหน · 🔢 จำนวนที่ระบุไว้ตอนแนบ — ลูกค้าเช็คได้ว่าร้านได้เลขถูก */}
+                          <span className="ord-proof-n">
+                            {artworkSide(it, u) ?? "ลายที่คุณส่ง"}{artQtyOf(it, u, k) ? ` · ${artQtyOf(it, u, k)!.toLocaleString("th-TH")} ชิ้น` : ""}
+                          </span>
                         </span>
                       </a>
                     ))}
