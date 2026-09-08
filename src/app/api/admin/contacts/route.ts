@@ -53,7 +53,9 @@ export async function GET(req: Request) {
   if (has === "point") query = query.gt("data->point", 0);
   if (origin) query = query.contains("data", { origins: [origin] });
   // กรองตามระดับสมาชิกที่ล็อกอยู่ (status-lock)
-  if (tierLevel) query = query.eq("data->>tierLevel", tierLevel);
+  // ระดับเริ่มต้น "member" = ยังไม่ถึงระดับแรกในตาราง — รวมคนที่ยังไม่เคยซีดระดับ (tierLevel ว่าง) ด้วย
+  if (tierLevel === "member") query = query.or("data->>tierLevel.eq.member,data->>tierLevel.is.null");
+  else if (tierLevel) query = query.eq("data->>tierLevel", tierLevel);
 
   // เรียงตามหัวคอลัมน์ที่กด — ชื่อ/เบอร์/ที่อยู่ เรียงตามข้อความ · แต้ม เรียงตามตัวเลข · อื่น ๆ เรียงตามรหัส
   const SORT: Record<string, string> = { name: "data->>name", phone: "data->>phone", address: "data->>address", point: "data->point", rankExpiry: "data->>rankExpiry", rankStatus: "data->>rankStatus" };

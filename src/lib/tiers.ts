@@ -20,6 +20,15 @@ export const DEFAULT_TIERS: Tier[] = [
   { id: "diamond", name: "Diamond", icon: "👑", minSpend: 80000, discountPct: 12 },
 ];
 
+/**
+ * ระดับเริ่มต้น "ยังไม่เป็นสมาชิกระดับใด" — ใส่ให้เองเมื่อตารางที่ตั้งไว้เริ่มที่ยอด > 0
+ * ทำไม: ร้านตั้ง Bronze ≥ ฿50,000 (ไม่มีระดับ ฿0) แต่โค้ดเคยถือว่า "ไม่มีระดับ = ระดับแรกในตาราง"
+ * → ลูกค้าใหม่ยอด ฿0 ได้ Bronze 3% ทั้งใบเสนอราคา/สั่งเอง/หน้า account (QT-260908-3316, 8 ก.ย. 69)
+ * ระดับนี้ไม่ถูกเก็บลงตั้งค่าร้าน (tiersConfigOf ไม่มี) เป็นแค่ขั้นล่างสุดตอนคำนวณ/แสดงผล
+ */
+export const BASE_TIER_ID = "member";
+export const BASE_TIER: Tier = { id: BASE_TIER_ID, name: "สมาชิกทั่วไป", icon: "🙂", minSpend: 0, discountPct: 0 };
+
 /** สี gradient + สีป้ายส่วนลด ต่อระดับ (โทนสีสด อิงโลหะ/อัญมณี) — คีย์ด้วย id, ไม่เจอใช้ลำดับวน */
 const TIER_GRAD = [
   "linear-gradient(135deg,#7c4a21,#b06a34 55%,#c98a4e)", // bronze
@@ -30,9 +39,12 @@ const TIER_GRAD = [
 ];
 const TIER_PILL = ["#7c4a21", "#525b67", "#8a5a12", "#0b6b7a", "#4032a0"];
 const TIER_ID_INDEX: Record<string, number> = { bronze: 0, silver: 1, gold: 2, platinum: 3, diamond: 4 };
+const BASE_GRAD = "linear-gradient(135deg,#64748b,#94a3b8 55%,#cbd5e1)";
+const BASE_PILL = "#64748b";
 
 /** คืนสี gradient + สีป้ายของระดับ (index = ตำแหน่งในลิสต์ ใช้เมื่อ id ไม่ตรงมาตรฐาน) */
 export function tierColor(tier: { id: string }, index = 0): { gradient: string; pill: string } {
+  if (tier.id === BASE_TIER_ID) return { gradient: BASE_GRAD, pill: BASE_PILL }; // ระดับเริ่มต้น = เทากลาง ไม่ใช่สีทองแดง
   const i = TIER_ID_INDEX[tier.id] ?? index;
   const k = ((i % TIER_GRAD.length) + TIER_GRAD.length) % TIER_GRAD.length;
   return { gradient: TIER_GRAD[k], pill: TIER_PILL[k] };
@@ -83,10 +95,12 @@ export type TierStatus = {
 /** สถานะที่ถือว่า "จ่ายแล้ว" — นับเข้ายอดสะสม (ไม่นับ รอชำระ/รอตรวจสลิป/ยกเลิก) */
 const PAID_STATUSES: OrderStatus[] = ["ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ", "กำลังผลิต", "จัดส่งแล้ว", "เสร็จสิ้น"];
 
-/** เรียงระดับจากต่ำ→สูง · ตกไปใช้ค่าเริ่มต้นถ้ายังไม่ตั้ง */
+/** เรียงระดับจากต่ำ→สูง · ตกไปใช้ค่าเริ่มต้นถ้ายังไม่ตั้ง · ตารางที่ไม่มีระดับ ฿0 จะได้ระดับเริ่มต้น (0%) เติมหน้าสุด */
 export function tiersOf(list?: Tier[] | null): Tier[] {
   const t = list && list.length ? list : DEFAULT_TIERS;
-  return [...t].sort((a, b) => a.minSpend - b.minSpend);
+  const sorted = [...t].filter((x) => x.id !== BASE_TIER_ID).sort((a, b) => a.minSpend - b.minSpend);
+  if (!sorted.length || sorted[0].minSpend > 0) sorted.unshift(BASE_TIER);
+  return sorted;
 }
 
 /** ยอดสะสมตลอดชีพ = ผลรวม orderTotal ของออเดอร์ที่จ่ายแล้ว (ไว้โชว์เฉย ๆ ไม่ใช้ตัดสินระดับแล้ว) */

@@ -14,7 +14,8 @@ const { data: sett } = await sb.from("products").select("data").eq("id", "__shop
 const tiers = [...(sett?.data?.tiers ?? [])].filter((t) => t.name?.trim()).sort((a, b) => a.minSpend - b.minSpend);
 if (!tiers.length) { console.error("ยังไม่ได้ตั้งตารางระดับใน __shop_payment__"); process.exit(1); }
 console.log("ตารางปัจจุบัน:", tiers.map((t) => `${t.id} ≥${t.minSpend} ${t.discountPct}%`).join(" · "));
-const levelFor = (p) => { let c = tiers[0]; for (const t of tiers) if (p >= t.minSpend) c = t; return c.id; };
+// ยอดไม่ถึงระดับแรกในตาราง = ระดับเริ่มต้น "member" (0%) — ห้ามตกไป tiers[0] (เคยทำให้ยอด ฿0 ได้ Bronze 3%)
+const levelFor = (p) => { let c = null; for (const t of tiers) if (p >= t.minSpend) c = t; return c ? c.id : "member"; };
 
 const changes = [], skippedEarned = [];
 for (let from = 0; ; from += 1000) {
