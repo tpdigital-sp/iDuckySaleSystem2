@@ -290,7 +290,7 @@ export default function CustomerQuotePage() {
                   <dd className="t-ink">{formatPrice(subtotal)}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="t-soft">ค่าจัดส่ง</dt>
+                  <dt className="t-soft">ค่าจัดส่ง{quote.shippingLabel ? ` · ${quote.shippingLabel}` : ""}</dt>
                   <dd className={quote.shippingCost ? "t-ink" : "t-ok font-semibold"}>{quote.shippingCost ? formatPrice(quote.shippingCost) : "ฟรี"}</dd>
                 </div>
                 {memberOff > 0 && quote.memberTier && (

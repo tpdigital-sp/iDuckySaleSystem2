@@ -36,6 +36,7 @@ import PrevNextNav from "@/components/admin/PrevNextNav";
 const quoteHref = (id: string) => `/admin/quotes/${encodeURIComponent(id)}`;
 import { setQuoteTarget } from "@/lib/append-quote";
 import { formatPhone } from "@/lib/contacts";
+import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
 
 /** ช่องกรอกชุดเดียวกับหน้าออเดอร์ */
 const INP =
@@ -59,8 +60,13 @@ function QuoteDetailInner() {
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   // ลำดับใบทั้งหมดตามที่ API ส่งมา (created_at ใหม่→เก่า) ไว้ทำปุ่มก่อนหน้า/ถัดไป
   const [quoteIds, setQuoteIds] = useState<string[]>([]);
+  /** วิธีส่งจากตั้งค่าร้าน — ชุดเดียวกับหน้าออเดอร์ (เลือกแล้วราคาเติมให้เอง แก้ตัวเลขต่อได้) */
+  const [shipMethods, setShipMethods] = useState<ShippingMethod[]>([]);
 
   useEffect(() => setOrigin(window.location.origin), []);
+  useEffect(() => {
+    void fetchShopPayment().then((p) => setShipMethods(shippingOf(p)));
+  }, []);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/quotes", { cache: "no-store" });
@@ -540,8 +546,33 @@ function QuoteDetailInner() {
                   <span className={muted}>รวมสินค้า · {qty} ชิ้น</span>
                   <span className="font-semibold tabular-nums text-slate-800">{formatPrice(subtotal)}</span>
                 </div>
-                <div className="mt-1.5 flex items-center justify-between gap-3 text-sm">
-                  <span className={muted}>ค่าจัดส่ง</span>
+                <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
+                  {/* เลือกวิธีส่งจากตั้งค่าร้าน — ราคาเติมอัตโนมัติ แล้วแก้ตัวเลขต่อได้ (แบบเดียวกับหน้าออเดอร์) */}
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className={`shrink-0 ${muted}`}>ค่าจัดส่ง</span>
+                    {locked ? (
+                      quote.shippingLabel && <span className="text-xs text-slate-600">{quote.shippingLabel}</span>
+                    ) : (
+                      <select
+                        value={shipMethods.find((m) => m.name === quote.shippingLabel)?.id ?? ""}
+                        onChange={(e) => {
+                          const m = shipMethods.find((x) => x.id === e.target.value);
+                          if (!m) return;
+                          patch({ shippingLabel: m.name, shippingCost: Math.max(0, m.price) });
+                        }}
+                        className="min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
+                      >
+                        <option value="" disabled>
+                          {quote.shippingLabel || "เลือกวิธีส่ง…"}
+                        </option>
+                        {shipMethods.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} — ฿{m.price}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </span>
                   <input
                     type="number"
                     min={0}

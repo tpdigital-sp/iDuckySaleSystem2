@@ -71,6 +71,7 @@ export async function POST(req: Request) {
         email: q.email,
         items: q.items.map((it) => ({ ...it })),
         shippingCost: q.shippingCost,
+        shippingLabel: q.shippingLabel,
         note: q.note,
       };
   }
@@ -86,6 +87,7 @@ export async function POST(req: Request) {
     date: thaiDateTime(now),
     items: base.items ?? [],
     shippingCost: base.shippingCost ?? 0,
+    ...(base.shippingLabel ? { shippingLabel: base.shippingLabel } : {}),
     note: base.note,
     status: "ร่าง",
     expiresAt: new Date(now.getTime() + validDays * 86400_000).toISOString(),

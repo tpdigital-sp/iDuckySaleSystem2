@@ -54,7 +54,9 @@ export async function POST(req: Request) {
     address: quote.address ?? "",
     date: thaiDateTime(now),
     payment: "โอนธนาคาร",
-    shipping: "ส่งธรรมดา",
+    // วิธีส่งที่เลือกไว้ในใบเสนอราคา (ชุดเดียวกับหน้าออเดอร์) — ไม่ได้เลือก = ส่งธรรมดา
+    shipping: (quote.shippingLabel?.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา") as Order["shipping"],
+    ...(quote.shippingLabel ? { shippingLabel: quote.shippingLabel } : {}),
     shippingCost: quote.shippingCost || 0,
     status: "รอชำระเงิน",
     items: quote.items.map((it) => ({ ...it })),

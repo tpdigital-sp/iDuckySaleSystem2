@@ -47,6 +47,8 @@ export interface Quote {
   date: string;
   items: OrderItem[];
   shippingCost: number;
+  /** ชื่อวิธีส่งที่เลือกจากตั้งค่าร้าน (เช่น "ส่งด่วน (1-2 วัน)") — ส่งต่อไปเป็น shippingLabel ของออเดอร์ตอนตกลง · ไม่มี = แอดมินกรอกตัวเลขเอง */
+  shippingLabel?: string;
   /** ส่วนลดท้ายบิล (บาท) — แอดมินใส่เอง (ใช้พร้อมส่วนลดสมาชิกได้ เหมือน adminDiscount ของออเดอร์) */
   discount?: number;
   discountNote?: string;
