@@ -142,6 +142,13 @@ export async function POST(req: Request) {
     .map((r) => r.data as PriceLink)
     .find(
       (l) =>
+        /**
+         * ⚠️ ใบรวมห้ามถูกส่งกลับมาเป็น "ใบเดิม" ของสเปคเดี่ยว
+         * ใบรวมเก็บรายการแรกไว้ที่ฟิลด์บน (productId/spec/qty) ให้ตัวอ่านเก่าอ่านออก —
+         * ถ้าไม่กันตรงนี้ แอดมินกดคัดลอกลิงก์สินค้าตัวนั้นซ้ำ จะได้ลิงก์ใบรวมทั้งใบไปส่งลูกค้า
+         * (ลูกค้ากดสั่งแล้วได้ของเกินมาทั้งชุด) — เจอตอนเทสต์จริง 8 ก.ย. 69
+         */
+        !l.items?.length &&
         !l.closed &&
         new Date(l.expiresAt).getTime() > Date.now() &&
         l.qty === Math.max(1, Number(body.qty) || 1) &&

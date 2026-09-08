@@ -16,7 +16,6 @@ import {
   priceLinkIsBundle,
   priceLinkItems,
   priceLinkStatus,
-  priceLinkTitle,
   PRICE_LINK_MAX_ITEMS,
   type PriceLink,
 } from "@/lib/price-links";
@@ -312,10 +311,25 @@ export default function AdminPriceLinksPage() {
                 done={!live}
               >
                 <RowMain
-                  name={priceLinkTitle(l)}
+                  name={priceLinkItems(l)[0].productName}
                   href={bundle ? undefined : l.productPath}
                   tags={
                     <>
+                      {/* ติ๊กหลายใบแล้วรวมเป็นใบเดียว — ลูกค้าคนเดียวสั่งหลายอย่าง ส่งลิงก์เดียวพอ
+                          (อยู่ข้างชื่อ ไม่ใช่ฝั่งขวา — ฝั่งขวามียอดเงิน+ปุ่มอยู่แล้ว จอแคบจะเบียดชื่อจนอ่านไม่ออก) */}
+                      <label
+                        className="flex cursor-pointer items-center gap-1 text-[11px] font-bold"
+                        title="ติ๊กไว้เพื่อรวมเป็นใบเดียว"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() =>
+                            setPicked((cur) => (on ? cur.filter((c) => c !== l.code) : [...cur, l.code]))
+                          }
+                        />
+                        รวมใบ
+                      </label>
                       {bundle && <Tag tone="lilac">{priceLinkItems(l).length} รายการ</Tag>}
                       {!live && <Tag tone="quiet">{st}</Tag>}
                       {unopened && <Tag tone="yolk">ลูกค้ายังไม่เปิด</Tag>}
@@ -359,17 +373,6 @@ export default function AdminPriceLinksPage() {
                 <RowSide>
                   <span className="dkb-money">{l.askPrice && !bundle ? "รอตีราคา" : formatPrice(l.total)}</span>
                   <span className="flex items-center gap-2">
-                    {/* ติ๊กหลายใบแล้วรวมเป็นใบเดียว — ลูกค้าคนเดียวสั่งหลายอย่าง ส่งลิงก์เดียวพอ */}
-                    <label className="flex cursor-pointer items-center gap-1 text-xs" title="ติ๊กไว้เพื่อรวมเป็นใบเดียว">
-                      <input
-                        type="checkbox"
-                        checked={on}
-                        onChange={() =>
-                          setPicked((cur) => (on ? cur.filter((c) => c !== l.code) : [...cur, l.code]))
-                        }
-                      />
-                      รวมใบ
-                    </label>
                     <Btn small onClick={() => copy(l.code)}>
                       {copied === l.code ? "คัดลอกแล้ว" : "คัดลอกลิงก์"}
                     </Btn>
