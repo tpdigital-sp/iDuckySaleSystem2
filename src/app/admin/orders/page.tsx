@@ -37,6 +37,7 @@ import { usePolling } from "@/lib/use-polling";
 import { useCan } from "@/lib/perm-context";
 import { PACKING_QUEUE_STATUSES } from "@/lib/permissions";
 import StatusChip, { chipStyle, STATUS_TONE } from "@/components/admin/StatusChip";
+import NewCustomerDocDialog, { type NewCustomerDocInput } from "@/components/admin/NewCustomerDocDialog";
 import "@/components/admin/dashboard.css";
 
 /** แบ่งสถานะตามแผนกที่รับผิดชอบ — แต่ละแผนกเห็นเฉพาะงานของตัวเอง */
@@ -751,27 +752,39 @@ function OrderRow({
   );
 }
 
-/** ปุ่มสร้างออเดอร์ใหม่ — สร้างออเดอร์เปล่าทันที แล้วพาเข้าหน้าออเดอร์ (กรอกชื่อ/ที่อยู่/รายการ ที่นั่นหน้าเดียวจบ) */
+/**
+ * ปุ่มสร้างออเดอร์ใหม่ — เปิดกล่องถามชื่อ/เบอร์ลูกค้าก่อน ค่อยสร้างจริงแล้วพาเข้าหน้าออเดอร์ (เติมที่อยู่/รายการที่นั่น)
+ * เดิมกดปุ๊บสร้างออเดอร์เปล่าทันที กดเปิดดูเฉย ๆ ก็เหลือออเดอร์ว่างค้างในคิว
+ */
 function NewOrderButton({ onCreated }: { onCreated: (id: string) => void }) {
-  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
 
-  async function create() {
-    if (busy) return;
-    setBusy(true);
+  async function create(input: NewCustomerDocInput) {
     const res = await fetch("/api/admin/orders", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: "{}",
+      body: JSON.stringify({ customerName: input.customer, phone: input.phone, address: input.address, contactId: input.contactId, email: input.email }),
     });
     const j = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (!res.ok) return alert(j.error ?? "สร้างออเดอร์ไม่สำเร็จ");
+    if (!res.ok || !j.id) throw new Error(j.error ?? "สร้างออเดอร์ไม่สำเร็จ");
     onCreated(j.id);
   }
 
   return (
-    <button type="button" onClick={create} disabled={busy} className="dkb-btn dkb-btn-yolk">
-      {busy ? "กำลังสร้าง…" : "สร้างออเดอร์งานพิเศษ"}
-    </button>
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="dkb-btn dkb-btn-yolk">
+        สร้างออเดอร์งานพิเศษ
+      </button>
+      {open && (
+        <NewCustomerDocDialog
+          eyebrow="งานขาย"
+          title="ออเดอร์งานพิเศษ"
+          hint="ใส่ชื่อหรือเบอร์ลูกค้าก่อน แล้วค่อยไปเติมที่อยู่/รายการในหน้าออเดอร์"
+          submitLabel="สร้างออเดอร์"
+          onClose={() => setOpen(false)}
+          onSubmit={create}
+        />
+      )}
+    </>
   );
 }

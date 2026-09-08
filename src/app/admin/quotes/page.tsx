@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import RequirePerm from "@/components/RequirePerm";
+import NewCustomerDocDialog, { type NewCustomerDocInput } from "@/components/admin/NewCustomerDocDialog";
 import { formatPrice } from "@/lib/products";
 import { daysToExpire, quoteStatusOf, quoteTotal, type Quote, type QuoteStatus } from "@/lib/quotes";
 import {
@@ -62,6 +63,7 @@ function QuotesPageInner() {
   const [needsSetup, setNeedsSetup] = useState(false);
   const [filter, setFilter] = useState<QuoteStatus | "all" | "open">("open");
   const [q, setQ] = useState("");
+  // กล่องถามชื่อ/เบอร์ลูกค้าก่อนสร้าง — ยังไม่พิมพ์อะไร = ยังไม่สร้างใบเปล่าทิ้งไว้ในฐาน
   const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
@@ -75,17 +77,15 @@ function QuotesPageInner() {
     void load();
   }, [load]);
 
-  async function createQuote() {
-    setCreating(true);
+  async function createQuote(input: NewCustomerDocInput) {
     const res = await fetch("/api/admin/quotes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify(input),
     });
-    const j = await res.json();
-    setCreating(false);
-    if (j.ok) router.push(`/admin/quotes/${j.id}`);
-    else alert(j.error ?? "สร้างไม่สำเร็จ");
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j.ok) throw new Error(j.error ?? "สร้างไม่สำเร็จ");
+    router.push(`/admin/quotes/${j.id}`);
   }
 
   const counts = useMemo(() => {
@@ -138,6 +138,16 @@ function QuotesPageInner() {
 
   return (
     <PageShell>
+      {creating && (
+        <NewCustomerDocDialog
+          eyebrow="งานขาย"
+          title="ใบเสนอราคาใหม่"
+          hint="ใส่ชื่อหรือเบอร์ลูกค้าก่อน แล้วค่อยไปเติมรายการ/ราคาในใบ"
+          submitLabel="สร้างใบเสนอราคา"
+          onClose={() => setCreating(false)}
+          onSubmit={createQuote}
+        />
+      )}
       <PageHead
         group="งานขาย"
         title="ใบเสนอราคา"
@@ -146,8 +156,8 @@ function QuotesPageInner() {
         tools={
           <>
             <SearchBox value={q} onChange={setQ} placeholder="ค้นเลขใบ / ชื่อลูกค้า" />
-            <Btn tone="yolk" onClick={() => void createQuote()} disabled={creating}>
-              {creating ? "กำลังสร้าง…" : "ใบเสนอราคาใหม่"}
+            <Btn tone="yolk" onClick={() => setCreating(true)}>
+              ใบเสนอราคาใหม่
             </Btn>
           </>
         }

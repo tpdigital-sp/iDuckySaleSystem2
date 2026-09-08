@@ -251,7 +251,12 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     };
     // อยู่ในหน้าใบเสนอราคาเอง = เพิ่งแก้อะไรมาแน่ ๆ → ดึงใหม่ไม่ใช้แคช
     refresh(pathname.startsWith("/admin/quotes"));
-    const onChanged = () => refresh(true);
+    // ล้างแคชด้วย — หน้าใบเสนอราคายิง event แล้วเปลี่ยนหน้าทันที (แปลงเป็นออเดอร์ → ไปหน้าออเดอร์)
+    // ถ้าไม่ล้าง effect รอบใหม่จะหยิบเลขเก่าจากแคชมาโชว์ค้างจนครบนาที
+    const onChanged = () => {
+      quotesBadgeCache = null;
+      refresh(true);
+    };
     const onVisible = () => {
       if (document.visibilityState === "visible") refresh();
     };

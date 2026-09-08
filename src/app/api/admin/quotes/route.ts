@@ -35,7 +35,15 @@ export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 
-  let body: { customer?: string; phone?: string; address?: string; validDays?: number; copyFrom?: string } = {};
+  let body: {
+    customer?: string;
+    phone?: string;
+    address?: string;
+    contactId?: string;
+    email?: string;
+    validDays?: number;
+    copyFrom?: string;
+  } = {};
   try {
     body = await req.json();
   } catch {
@@ -59,6 +67,7 @@ export async function POST(req: Request) {
         phone: q.phone,
         address: q.address,
         email: q.email,
+        contactId: q.contactId,
         items: q.items.map((it) => ({ ...it })),
         shippingCost: q.shippingCost,
         note: q.note,
@@ -71,7 +80,9 @@ export async function POST(req: Request) {
     customer: body.customer?.trim() || base.customer || "ยังไม่ระบุชื่อ",
     phone: body.phone?.trim() || base.phone || "",
     address: body.address?.trim() || base.address || "",
-    email: base.email,
+    email: body.email?.trim() || base.email,
+    // ผู้ติดต่อที่เลือกจากคลังตอนสร้าง — ผูกไว้ตั้งแต่แรกให้แต้มเข้าถูกคน
+    ...(body.contactId?.trim() || base.contactId ? { contactId: body.contactId?.trim() || base.contactId } : {}),
     date: now.toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
     items: base.items ?? [],
     shippingCost: base.shippingCost ?? 0,

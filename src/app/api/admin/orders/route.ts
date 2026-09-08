@@ -192,7 +192,16 @@ export async function POST(req: Request) {
   if (gate.res) return gate.res;
 
   // สร้างได้ทันทีไม่ต้องกรอกอะไรก่อน — ไปเติมชื่อ/ที่อยู่/รายการ ในหน้าออเดอร์ (หน้าเดียวจบ)
-  let body: { customerName?: string; phone?: string; address?: string; shipping?: string; shippingCost?: number } = {};
+  let body: {
+    customerName?: string;
+    customer?: string;
+    phone?: string;
+    address?: string;
+    contactId?: string;
+    email?: string;
+    shipping?: string;
+    shippingCost?: number;
+  } = {};
   try {
     body = await req.json();
   } catch {
@@ -207,7 +216,7 @@ export async function POST(req: Request) {
     id,
     key: randomBytes(24).toString("base64url"),
     // ปล่อยว่างไว้ — หน้าจอทุกที่ fallback เป็น "ยังไม่ระบุชื่อ" ให้เอง (ช่องกรอกจะโชว์เป็นลายน้ำ ไม่ใช่ค่าจริง)
-    customer: body.customerName?.trim() || "",
+    customer: (body.customerName ?? body.customer)?.trim() || "",
     phone: body.phone?.trim() || "",
     address: body.address?.trim() || "",
     date: now.toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
@@ -217,6 +226,9 @@ export async function POST(req: Request) {
     status: "รอชำระเงิน",
     items: [],
     placedBy: by,
+    ...(body.email?.trim() ? { email: body.email.trim() } : {}),
+    // ผู้ติดต่อที่เลือกจากคลังตอนสร้าง — ผูกไว้ตั้งแต่แรกให้แต้มเข้าถูกคน
+    ...(body.contactId?.trim() ? { contactId: body.contactId.trim() } : {}),
   };
   order = withLog(order, by, "สร้างออเดอร์จากหลังบ้าน", "งานพิเศษ/สั่งแทนลูกค้า");
 
