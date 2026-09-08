@@ -375,6 +375,15 @@
 .dkb-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 3px; font-size: 0.76rem; color: var(--dk-navy-soft); }
 .dkb-meta .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.74rem; letter-spacing: -0.02em; color: var(--dk-faint); }
 .dkb-meta .hot { color: var(--dk-coral-ink); font-weight: 600; }
+/* วันที่ใช้งานจริงต่อท้าย "ใช้งานอีก N วัน" — ป้ายม่วงเล็ก ให้สายตาจับได้ทันทีว่าเป็น "วันลูกค้าใช้งาน"
+   ไม่ชนกับแดง (.hot ใกล้กำหนด) / เหลือง (.warn งานค้าง) · พอใกล้กำหนดสลับเป็นแดงเข้มพร้อมตัวนับ */
+.dkb-meta .usedate {
+  display: inline-block; margin-left: 4px; padding: 1px 7px; border-radius: 999px;
+  font-weight: 700; color: var(--dk-lilac-ink); background: rgba(91, 83, 194, 0.12);
+}
+/* งานเร่ง (o.rush) หรือใกล้กำหนด ≤3 วัน → ป้ายแดงตัวหนังสือขาว ให้เห็นแต่ไกลว่าวันนี้สำคัญ */
+.dkb-meta .hot .usedate,
+.dkb-meta [data-rush="1"] .usedate { color: #fff; background: var(--dk-coral-ink); }
 .dkb-meta .warn { color: var(--dk-yolk-ink); font-weight: 600; }
 
 .dkb-tag {

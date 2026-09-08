@@ -714,8 +714,10 @@ function OrderRow({
           <span className="id">{o.id}</span>
           <span>{o.date}</span>
           {days !== null && (
-            <span className={days <= 3 ? "hot" : undefined}>
+            <span className={days <= 3 ? "hot" : undefined} data-rush={o.rush ? "1" : undefined}>
               {days < 0 ? `เลยกำหนด ${Math.abs(days)} วัน` : days === 0 ? "ใช้งานวันนี้" : `ใช้งานอีก ${days} วัน`}
+              {/* วันที่ลูกค้าจะใช้งานจริง ต่อท้ายตัวนับวัน ให้ทีมเห็นทันทีโดยไม่ต้องเปิดใบ */}
+              <span className="usedate">📅 {thaiDay(o.useByDate!)}</span>
             </span>
           )}
           <span>{qtyOf(o)} ชิ้น</span>
