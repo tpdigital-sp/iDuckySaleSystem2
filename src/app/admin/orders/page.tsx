@@ -266,6 +266,8 @@ export default function AdminOrdersPage() {
     .filter((o) => {
       if (!kw) return true;
       if (o.id.toLowerCase().includes(kw) || o.customer.toLowerCase().includes(kw)) return true;
+      // พิมพ์ชื่อพนักงาน = เห็นเฉพาะใบที่คนนั้นสั่งแทนลูกค้า
+      if ((o.placedBy ?? "").toLowerCase().includes(kw)) return true;
       // ค้นด้วยเบอร์โทรได้ด้วย — แอดมินมักได้เบอร์จากไลน์ก่อนได้เลขออเดอร์
       return digits.length >= 4 && (o.phone ?? "").replace(/\D/g, "").includes(digits);
     });
@@ -683,6 +685,28 @@ function OrderRow({
               <i />
               SlipOK ไม่ผ่าน
             </span>
+          )}
+        </span>
+
+        {/* ใครสร้างใบนี้ — บรรทัดของตัวเอง แยกจากป้ายสถานะอื่นให้เห็นทันที
+            แอดมิน/พนักงานทำให้ (สั่งแทนที่ตะกร้า · งานพิเศษ · แปลงจากใบเสนอราคา · redo) = ป้ายทึบ + ชื่อคนทำ
+            ลูกค้ากดสั่งเองจากหน้าเว็บ = ป้ายจาง ๆ ให้รู้ว่าไม่ใช่ใบที่พนักงานกรอก */}
+        <span className="dkb-by" data-admin={o.placedBy ? "1" : undefined}>
+          {o.placedBy ? (
+            <>
+              <span className="ic" aria-hidden>
+                🧑‍💼
+              </span>
+              แอดมินสร้างให้
+              <b>{o.placedBy}</b>
+            </>
+          ) : (
+            <>
+              <span className="ic" aria-hidden>
+                🛒
+              </span>
+              ลูกค้าสั่งเองจากเว็บ
+            </>
           )}
         </span>
 
