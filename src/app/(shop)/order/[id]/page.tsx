@@ -176,6 +176,34 @@ export default function CustomerOrderPage() {
     }
   };
 
+  /* 🧾 เงื่อนไขก่อนชำระเงิน — เด้งครั้งแรกที่ลูกค้าเปิดลิงก์ตอนสถานะ "รอชำระเงิน" (ยังไม่มีเงินเข้า + ราคาครบทุกรายการ)
+     ย้ำให้ตรวจสินค้า/จำนวน/รายละเอียดก่อนโอน เพราะโอนแล้วเข้าสายผลิต แก้/ยกเลิกไม่ได้ตามเงื่อนไขร้าน
+     จำต่อออเดอร์ต่อเครื่อง (localStorage) · กดเปิดอ่านซ้ำได้จากกล่องชำระเงิน */
+  const [showPayTerms, setShowPayTerms] = useState(false);
+  useEffect(() => {
+    if (!order || order.status !== "รอชำระเงิน") return;
+    const isClaim = !!(order.claimOf || order.claimReason);
+    const quoting = !isClaim && order.items.some((it) => it.qty > 0 && it.unitPrice <= 0);
+    if (quoting) return; // ยังรอตีราคา — หน้าแจ้งโอนยังไม่เปิด ไม่ต้องเตือน
+    const paid =
+      !!order.slipUrl || !!order.slipPath || !!order.paidReportedAt || (order.paidTotal ?? 0) > 0 || !!order.deposit?.firstPaidAt;
+    if (paid) return; // โอนไปแล้ว/แนบสลิปแล้ว — เลยจุดที่ต้องเตือน
+    try {
+      if (localStorage.getItem(`ducky-pay-terms-${order.id}`)) return;
+    } catch {
+      /* localStorage ปิด — เด้งได้ตามปกติ */
+    }
+    setShowPayTerms(true);
+  }, [order]);
+  const closePayTerms = () => {
+    setShowPayTerms(false);
+    try {
+      if (order) localStorage.setItem(`ducky-pay-terms-${order.id}`, "1");
+    } catch {
+      /* ข้าม */
+    }
+  };
+
   const [rateScore, setRateScore] = useState(0);
   const [rateTags, setRateTags] = useState<string[]>([]);
   const [rateComment, setRateComment] = useState("");
@@ -615,6 +643,9 @@ export default function CustomerOrderPage() {
             />
           </label>
           {slipErr && <p className="mt-2 text-xs font-semibold">⚠️ {slipErr}</p>}
+          <button type="button" onClick={() => setShowPayTerms(true)} className="ord-btn quiet sm block mt-2">
+            📋 อ่านเงื่อนไขก่อนโอนอีกครั้ง
+          </button>
         </div>
       )}
       {/* ── มัดจำผ่านแล้ว: เก็บยอดคงเหลือก่อนจัดส่ง — แนบสลิปได้ตลอด ── */}
@@ -913,6 +944,90 @@ export default function CustomerOrderPage() {
         </div>
           </Portal>
       )}
+
+      {/* ── 🧾 เงื่อนไขก่อนชำระเงิน (เด้งครั้งแรกตอนรอชำระ / กดเปิดซ้ำได้) ──
+          ต่ำกว่าคู่มือตรวจแบบ (z 120) — ถ้าเด้งพร้อมกัน ลูกค้าอ่านคู่มือก่อนแล้วค่อยเจอใบนี้ */}
+      {showPayTerms && order.status === "รอชำระเงิน" && (() => {
+        // ข้อจำกัดการผลิตของสินค้าในออเดอร์นี้ (แอดมินตั้งในหลังบ้าน) — รวมไว้ในป๊อปอัพเดียว ไม่ให้ต้องไล่กางทีละรายการ
+        const seen = new Set<string>();
+        const productTerms = order.items
+          .filter((it) => {
+            if (!termsById[it.productId] || seen.has(it.productId)) return false;
+            seen.add(it.productId);
+            return true;
+          })
+          .map((it) => ({
+            name: it.name,
+            lines: termsById[it.productId]
+              .split(/\n+/)
+              .map((line) => line.replace(/^[-•*\s]+/, "").trim())
+              .filter(Boolean),
+          }));
+        const depositFirst = !!order.deposit && !order.deposit.firstPaidAt;
+        return (
+          <Portal>
+            <div className="shopp-modal" style={{ zIndex: 115 }} onClick={closePayTerms}>
+              <div className="shopp-modal-box tall" onClick={(e) => e.stopPropagation()}>
+                <div className="px-6 pb-2 pt-7 text-center" style={{ background: "linear-gradient(180deg,#FFF3D6,transparent)" }}>
+                  <span className="text-5xl">🧾</span>
+                  <h2 className="mt-2 text-lg">ตรวจสอบรายการก่อนชำระเงิน</h2>
+                  <p className="mt-1 text-xs t-soft">
+                    ออเดอร์ {order.id} · {depositFirst ? "มัดจำที่ต้องโอน" : "ยอดที่ต้องโอน"}{" "}
+                    <strong className="t-ink">{formatPrice(amountDueNow(order))}</strong>
+                  </p>
+                </div>
+                <div className="px-6 pb-6 pt-2">
+                  <p className="text-sm leading-relaxed t-soft">
+                    ทางร้านจัดทำรายการสั่งซื้อให้เรียบร้อยแล้วค่ะ 😊 หากรายละเอียดถูกต้อง สามารถชำระเงินผ่านระบบได้เลยค่ะ 💳✨
+                  </p>
+                  <div className="ord-note danger mt-3 px-3.5 py-3 text-xs leading-relaxed">
+                    <p>
+                      ⚠️ <strong>แนะนำให้ตรวจสอบสินค้า จำนวน และรายละเอียดต่าง ๆ ให้เรียบร้อยก่อนชำระเงินค่ะ</strong>
+                    </p>
+                    <p className="mt-1.5">
+                      เนื่องจากหลังชำระเงินแล้ว ทางร้านจะเข้าสู่ขั้นตอนดำเนินการผลิต และ
+                      <strong>ไม่สามารถแก้ไขหรือยกเลิกออเดอร์ได้</strong>ตามเงื่อนไขของทางร้านค่ะ
+                    </p>
+                    {depositFirst && (
+                      <p className="mt-1.5">
+                        ออเดอร์นี้ตกลงมัดจำ 50% — โอน {formatPrice(amountDueNow(order))} จากยอดทั้งหมด {formatPrice(orderTotal(order))}{" "}
+                        ส่วนที่เหลือชำระก่อนจัดส่ง
+                      </p>
+                    )}
+                  </div>
+                  {productTerms.length > 0 && (
+                    <div className="mt-3">
+                      <p className="ord-title text-[.9rem]">📌 ข้อจำกัดการผลิตของสินค้าในออเดอร์นี้</p>
+                      <div className="mt-1.5 space-y-2">
+                        {productTerms.map((t) => (
+                          <div key={t.name} className="ord-note warn px-3 py-2.5">
+                            <p className="text-xs font-semibold">{t.name}</p>
+                            <ul className="mt-1 space-y-1">
+                              {t.lines.map((line, k) => (
+                                <li key={k} className="flex gap-1.5 text-[11px] leading-relaxed">
+                                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#F2456B]" />
+                                  {line}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <p className="mt-3 text-center text-xs t-soft">ขอบคุณที่ไว้วางใจให้เราดูแลงานนะคะ 💖</p>
+                  <button type="button" onClick={closePayTerms} className="ord-btn yolk block mt-4">
+                    ✅ ตรวจสอบแล้ว — ไปชำระเงิน
+                  </button>
+                  <a href="/terms" target="_blank" rel="noopener noreferrer" className="ord-btn quiet block mt-2">
+                    📖 อ่านเงื่อนไขการชำระเงิน &amp; การผลิตฉบับเต็ม
+                  </a>
+                </div>
+              </div>
+            </div>
+          </Portal>
+        );
+      })()}
 
       {/* ── แบบประเมินความพึงพอใจ (นิรนาม) — โชว์เมื่อได้รับสินค้าแล้ว ── */}
       {(order.status === "จัดส่งแล้ว" || order.status === "เสร็จสิ้น") &&
