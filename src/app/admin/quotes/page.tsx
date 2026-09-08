@@ -40,6 +40,9 @@ import {
 /** ใบที่ยังลุ้นอยู่ = ยังไม่ตกลง ไม่ปฏิเสธ ไม่หมดอายุ */
 const OPEN: QuoteStatus[] = ["ร่าง", "ส่งให้ลูกค้าแล้ว"];
 
+/** ชั้นความสำคัญของใบ: 0 รอเราเปิดงาน · 1 ยังลุ้นอยู่ · 2 จบแล้ว */
+const rank = (q: Quote): 0 | 1 | 2 => (awaitingOrder(q) ? 0 : OPEN.includes(quoteStatusOf(q)) ? 1 : 2);
+
 /** สีแถบซ้าย + ป้าย ตามสถานะใบเสนอราคา */
 const TONE: Record<QuoteStatus, string> = {
   ร่าง: "var(--dk-yolk-deep)",
@@ -136,11 +139,14 @@ function QuotesPageInner() {
       return st === filter;
     })
     .filter((qt) => (kw ? qt.id.toLowerCase().includes(kw) || qt.customer.toLowerCase().includes(kw) : true))
-    // ใบที่ลูกค้าตกลงแล้วรอเปิดงานขึ้นก่อนสุด (ลูกค้ารออยู่จริง) แล้วค่อยใกล้หมดวันยืนราคา — ใบที่เงียบเกินวันยืนราคาคือใบที่หลุดมือ
-    .sort(
-      (a, b) =>
-        Number(awaitingOrder(b)) - Number(awaitingOrder(a)) || (daysToExpire(a) ?? 9999) - (daysToExpire(b) ?? 9999)
-    );
+    /*
+      เรียงเป็นชั้นตาม "ใครต้องทำอะไรต่อ" — ไม่ใช่เรียงวันยืนราคาล้วนแบบเดิม
+        0 ลูกค้าตกลงแล้ว รอเราเปิดงาน (ลูกค้ารออยู่จริง)
+        1 ยังลุ้นอยู่ — ในชั้นนี้ใกล้หมดวันยืนราคาขึ้นก่อน ใบที่เงียบเกินวันยืนราคาคือใบที่หลุดมือ
+        2 จบแล้ว (สร้างออเดอร์แล้ว / ไม่รับ / หมดอายุ) — ลงไปท้ายสุด คงลำดับใหม่→เก่าจากฐานไว้
+      ของเดิมใบที่จบไปนานแล้วมีวันยืนราคาติดลบเยอะ เลยลอยขึ้นมาอยู่หัวรายการ "ทั้งหมด" แทนที่จะเป็นงานที่ต้องทำ
+    */
+    .sort((a, b) => rank(a) - rank(b) || (rank(a) === 1 ? (daysToExpire(a) ?? 9999) - (daysToExpire(b) ?? 9999) : 0));
 
   // ลูกค้ารายไหนมีใบค้างหลายใบ — เตือนให้เลือกใบเดียว
   const openByPhone = useMemo(() => {
@@ -250,7 +256,7 @@ function QuotesPageInner() {
         </TabRow>
       </FilterCard>
 
-      <ListHead title="รายการ" note="ใบที่ลูกค้าตกลงแล้วขึ้นก่อน · ตามด้วยใบที่ใกล้หมดวันยืนราคา" />
+      <ListHead title="รายการ" note="ใบที่ลูกค้าตกลงแล้วขึ้นก่อน · ตามด้วยใบที่ใกล้หมดวันยืนราคา · ใบที่จบแล้วอยู่ท้าย" />
 
       {loading ? (
         <Empty title="กำลังโหลด…" body="ดึงใบเสนอราคาจากเซิร์ฟเวอร์" />
@@ -284,7 +290,8 @@ function QuotesPageInner() {
                         <Tag tone="solid">{left! < 0 ? "หมดอายุแล้ว" : left === 0 ? "หมดอายุวันนี้" : `ยืนราคาเหลือ ${left} วัน`}</Tag>
                       )}
                       {dup && open && <Tag tone="yolk">ลูกค้ารายนี้มีใบค้างหลายใบ</Tag>}
-                      {qt.orderId && <Tag tone="mint" title={`แปลงเป็นออเดอร์ ${qt.orderId} แล้ว`}>แปลงเป็นออเดอร์แล้ว</Tag>}
+                      {/* ไม่ต้องมีป้าย "แปลงเป็นออเดอร์แล้ว" — ชิปสถานะขวามือบอกว่า "สร้างออเดอร์แล้ว" อยู่แล้ว
+                          พูดเรื่องเดียวกันสองที่ในแถวเดียว ทำให้ป้ายที่ต้องรีบอ่านจริง ๆ จมหาย */}
                     </>
                   }
                   meta={
@@ -292,7 +299,11 @@ function QuotesPageInner() {
                       <span className="id">{qt.id}</span>
                       <span>{qt.date}</span>
                       <span>{qt.items.length} รายการ</span>
-                      {qt.orderId && <span className="id">{qt.orderId}</span>}
+                      {qt.orderId && (
+                        <span className="id" title={`ใบนี้กลายเป็นออเดอร์ ${qt.orderId}`}>
+                          → {qt.orderId}
+                        </span>
+                      )}
                       {!hot && open && left !== null && <span>ยืนราคาอีก {left} วัน</span>}
                     </>
                   }
