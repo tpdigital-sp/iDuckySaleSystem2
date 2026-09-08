@@ -17,6 +17,7 @@ import RequirePerm from "@/components/RequirePerm";
 import { formatPrice } from "@/lib/products";
 import {
   QUOTE_STYLES,
+  awaitingOrder,
   daysToExpire,
   quoteStatusOf,
   quoteTotal,
@@ -137,8 +138,11 @@ function QuoteDetailInner() {
   const st = quoteStatusOf(quote);
   const left = daysToExpire(quote);
   const locked = Boolean(quote.orderId); // แปลงเป็นออเดอร์แล้ว = ล็อกไม่ให้แก้
+  /** ลูกค้ากดตกลงจากลิงก์เองแล้ว แต่ยังไม่มีใครกดเปิดงาน — ลูกค้ารออยู่จริง ต้องเด้งขึ้นบนสุด */
+  const waiting = awaitingOrder(quote);
   const customerUrl = origin ? `${origin}/quote/${encodeURIComponent(quote.id)}?key=${encodeURIComponent(quote.key)}` : "";
-  const soon = !locked && st !== "ไม่รับ" && left !== null && left <= 3;
+  // ใบที่ลูกค้าตกลงแล้วไม่ต้องเตือนเรื่องวันยืนราคาอีก — จบขั้นตอน "รอลูกค้าตอบ" ไปแล้ว เหลือแค่รอเปิดงาน
+  const soon = !locked && !waiting && st !== "ไม่รับ" && left !== null && left <= 3;
 
   const qty = quote.items.reduce((s, i) => s + i.qty, 0);
   const subtotal = quote.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
@@ -149,7 +153,9 @@ function QuoteDetailInner() {
      ใบที่ยืนราคาใกล้หมดคือใบที่กำลังจะหลุดมือ → ให้เลขเป็นสีเตือน เหมือน "ค้างชำระ" ของหน้าออเดอร์ */
   const money: { label: string; hot: boolean; sub: string; subTone?: string } = locked
     ? { label: "ยอดที่ตกลง", hot: false, sub: `✓ เป็นออเดอร์ ${quote.orderId} แล้ว`, subTone: "text-emerald-600" }
-    : st === "ไม่รับ"
+    : waiting
+      ? { label: "ลูกค้าตกลงแล้ว", hot: false, sub: `${nItems} · รอกดสร้างออเดอร์`, subTone: "text-emerald-600" }
+      : st === "ไม่รับ"
       ? { label: "ยอดที่เสนอไป", hot: false, sub: quote.declineReason ? `ลูกค้าไม่รับ — ${quote.declineReason}` : "ลูกค้าไม่รับใบนี้" }
       : soon
         ? {
@@ -169,6 +175,17 @@ function QuoteDetailInner() {
   return (
     <PageShell>
       {/* งานที่ต้องทำต่ออยู่บนสุดเสมอ — ใบเสนอราคาที่เงียบเกินวันยืนราคาคือใบที่หลุดมือ */}
+      {waiting && (
+        <Banner
+          tone="hot"
+          title="✅ ลูกค้ากดตกลงตามใบนี้แล้ว — ยังไม่ได้สร้างออเดอร์"
+          detail={
+            quote.items.length
+              ? "กดปุ่ม “ลูกค้าตกลง — สร้างออเดอร์” มุมขวาบน เพื่อเปิดงานจริงและเข้าคิวกราฟฟิก"
+              : "ใบนี้ยังไม่มีรายการสินค้า — เติมรายการก่อน ถึงจะกดสร้างออเดอร์ได้"
+          }
+        />
+      )}
       {soon && (
         <Banner
           tone="warm"
@@ -177,7 +194,7 @@ function QuoteDetailInner() {
         />
       )}
       {locked && (
-        <div className={soon ? "mt-3" : ""}>
+        <div className={soon || waiting ? "mt-3" : ""}>
           <Banner
             tone="warm"
             title={`ใบนี้ลูกค้าตกลงแล้ว และกลายเป็นออเดอร์ ${quote.orderId}`}
@@ -187,12 +204,12 @@ function QuoteDetailInner() {
         </div>
       )}
       {err && (
-        <div className={soon || locked ? "mt-3" : ""}>
+        <div className={soon || waiting || locked ? "mt-3" : ""}>
           <Banner tone="hot" title={err} />
         </div>
       )}
 
-      <div className={`dkb-g overflow-hidden ${soon || locked || err ? "mt-4" : ""}`}>
+      <div className={`dkb-g overflow-hidden ${soon || waiting || locked || err ? "mt-4" : ""}`}>
         {/* ── แถบหัว ── */}
         <div className="border-b px-5 py-4" style={{ borderColor: "var(--dk-hair)" }}>
           {/* บรรทัดบน = ข้อมูลล้วน (เลขใบ · สถานะ · ยอด) ไม่มีปุ่มปน */}
@@ -256,8 +273,8 @@ function QuoteDetailInner() {
                   เปิดออเดอร์ {quote.orderId}
                 </Btn>
               ) : (
-                <Btn tone="navy" onClick={acceptQuote} disabled={busy || !quote.items.length}>
-                  {busy ? "กำลังสร้างออเดอร์…" : "ลูกค้าตกลง — สร้างออเดอร์"}
+                <Btn tone={waiting ? "yolk" : "navy"} onClick={acceptQuote} disabled={busy || !quote.items.length}>
+                  {busy ? "กำลังสร้างออเดอร์…" : waiting ? "✅ ลูกค้าตกลงแล้ว — สร้างออเดอร์" : "ลูกค้าตกลง — สร้างออเดอร์"}
                 </Btn>
               )}
             </span>

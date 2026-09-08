@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getAdminSession, signOut } from "@/lib/auth";
 import { PermProvider } from "@/lib/perm-context";
 import type { Perm } from "@/lib/permissions";
 import { markRatingsSeen, unseenRatingCount } from "@/lib/ratings";
+import { usePolling } from "@/lib/use-polling";
 
 /** เมนู + สิทธิ์ที่ต้องมีถึงจะเห็น */
 /** เมนูแบ่งเป็นกลุ่มตามงาน — เมนูยาวขึ้นเรื่อย ๆ ไล่หาทีละบรรทัดไม่ไหวแล้ว */
@@ -67,6 +68,8 @@ const MENU_GROUPS: {
 
 /** แคชป้ายจำนวนประเมินใหม่ (module scope — อยู่ข้ามการเปลี่ยนหน้า) กันดึงเรตติ้งทั้งชุดซ้ำทุกคลิก */
 let ratingsBadgeCache: { at: number; rows: { id: string }[] } | null = null;
+/** แคชป้าย "ใบเสนอราคาที่ลูกค้าตกลงแล้ว รอเปิดงาน" — งานค้างจริง แคชสั้นกว่าเรตติ้ง (1 นาที) */
+let quotesBadgeCache: { at: number; n: number } | null = null;
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -102,6 +105,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [isAdministrator, setIsAdministrator] = useState(false);
   // badge แจ้งจำนวนประเมินความพึงพอใจใหม่ที่ยังไม่ได้เปิดดู (นับต่อเครื่องด้วย localStorage)
   const [newRatings, setNewRatings] = useState(0);
+  // badge แจ้งใบเสนอราคาที่ "ลูกค้ากดตกลงแล้ว แต่ยังไม่มีใครกดสร้างออเดอร์"
+  // ไม่ใช่ป้าย "ยังไม่ได้เปิดดู" แบบเรตติ้ง — เป็นงานค้างจริง ตัวเลขจะหายเองเมื่อกดสร้างออเดอร์ครบ
+  const [waitingQuotes, setWaitingQuotes] = useState(0);
 
   // ── โลโก้หลังบ้าน — กดที่โลโก้มุมซ้ายบนเพื่อเปลี่ยนรูปได้เลย (เก็บในแถวเมนู __site_nav__) ──
   const [adminLogo, setAdminLogo] = useState<string | undefined>(undefined);
@@ -220,6 +226,40 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     };
   }, [perms, pathname]);
 
+  /**
+   * ป้ายเตือน "ลูกค้าตกลงแล้ว รอสร้างออเดอร์" ข้างเมนูใบเสนอราคา
+   * ลูกค้ากดตกลงจากลิงก์ตอนไหนก็ได้ ถ้าไม่มีป้ายบอก แอดมินต้องเปิดหน้าใบเสนอราคาเช็คเองทุกวัน
+   */
+  const quoteBadgeReady = pathname !== "/admin/login" && perms.includes("orders.edit");
+  const refreshQuoteBadge = useCallback(async () => {
+    if (!quoteBadgeReady) return;
+    try {
+      const r = await fetch("/api/admin/quotes/pending", { cache: "no-store" });
+      const j = r.ok ? await r.json() : { n: 0 };
+      const n = Number(j?.n) || 0;
+      quotesBadgeCache = { at: Date.now(), n };
+      setWaitingQuotes(n);
+    } catch {
+      /* เน็ตสะดุด → คงเลขเดิมไว้ รอบหน้าค่อยว่ากัน */
+    }
+  }, [quoteBadgeReady]);
+
+  // เปลี่ยนหน้า: อยู่หน้าใบเสนอราคา = ดึงสดทุกครั้ง (เพิ่งกดสร้างออเดอร์ไป ตัวเลขต้องลดทันที) หน้าอื่นใช้แคช 1 นาทีพอ
+  useEffect(() => {
+    if (!quoteBadgeReady) return;
+    const onQuotes = pathname.startsWith("/admin/quotes");
+    const cached = quotesBadgeCache && Date.now() - quotesBadgeCache.at < 60_000 ? quotesBadgeCache.n : null;
+    if (cached !== null && !onQuotes) {
+      setWaitingQuotes(cached);
+      return;
+    }
+    void refreshQuoteBadge();
+  }, [quoteBadgeReady, pathname, refreshQuoteBadge]);
+
+  // แอดมินเปิดหลังบ้านค้างไว้ทั้งวัน — ถ้าไม่ถามซ้ำ ป้ายจะขึ้นก็ต่อเมื่อบังเอิญเปลี่ยนหน้า
+  // (usePolling หยุดถามเองตอนสลับแท็บไป แล้วถามทันทีตอนกลับมา)
+  usePolling(refreshQuoteBadge, { intervalMs: 90_000, enabled: quoteBadgeReady });
+
   const isLoginPage = pathname === "/admin/login";
 
   useEffect(() => {
@@ -333,7 +373,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
    */
   const itemLink = (m: (typeof MENU)[number], rail: boolean) => {
     const active = m.href === activeHref;
-    const hasBadge = m.href === "/admin/ratings" && newRatings > 0;
+    // ป้ายจำนวนข้างเมนู: ประเมินใหม่ที่ยังไม่ได้เปิดดู · ใบเสนอราคาที่ลูกค้าตกลงแล้วแต่ยังไม่ได้เปิดงาน
+    const badgeN = m.href === "/admin/ratings" ? newRatings : m.href === "/admin/quotes" ? waitingQuotes : 0;
+    const hasBadge = badgeN > 0;
     return (
       <Link
         key={m.href}
@@ -343,7 +385,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           setQuery("");
         }}
         aria-current={active ? "page" : undefined}
-        title={rail ? m.label : undefined}
+        title={rail ? (hasBadge && m.href === "/admin/quotes" ? `${m.label} — ลูกค้าตกลงแล้ว ${badgeN} ใบ รอสร้างออเดอร์` : m.label) : undefined}
         className={`group relative flex items-center rounded-xl py-[9px] text-[13px] transition ${
           rail ? "justify-center px-0" : "gap-2.5 px-2.5"
         } ${
@@ -365,7 +407,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-400 ring-2 ring-[#173A6B]" />
           ) : (
             <span className="ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10.5px] font-bold text-white">
-              {newRatings > 99 ? "99+" : newRatings}
+              {badgeN > 99 ? "99+" : badgeN}
             </span>
           ))}
       </Link>

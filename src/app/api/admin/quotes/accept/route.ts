@@ -67,9 +67,11 @@ export async function POST(req: Request) {
   const { error: insErr } = await sb.from("orders").insert({ id: orderId, data: order });
   if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
 
-  // ปิดใบนี้เป็น "ลูกค้าตกลง" + ผูกเลขออเดอร์
+  // ปิดใบนี้เป็น "สร้างออเดอร์แล้ว" + ผูกเลขออเดอร์
+  // (ไม่ใช่ "ลูกค้าตกลง" — สถานะนั้นแปลว่า "ลูกค้าตอบตกลงแล้ว แต่ยังไม่มีใครเปิดงาน" ซึ่งเป็นตัวนับป้ายเตือนข้างเมนู
+  //  ถ้าไม่เปลี่ยน ใบที่เปิดงานไปแล้วจะค้างเป็นงานเตือนตลอดไป)
   const accepted = withQuoteLog(
-    { ...quote, status: "ลูกค้าตกลง", orderId },
+    { ...quote, status: "สร้างออเดอร์แล้ว", orderId },
     by,
     "ลูกค้าตกลง — แปลงเป็นออเดอร์",
     orderId

@@ -13,8 +13,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import RequirePerm from "@/components/RequirePerm";
+import NewCustomerDialog, { type NewCustomerDraft } from "@/components/admin/NewCustomerDialog";
 import { formatPrice } from "@/lib/products";
-import { daysToExpire, quoteStatusOf, quoteTotal, type Quote, type QuoteStatus } from "@/lib/quotes";
+import { awaitingOrder, daysToExpire, quoteStatusOf, quoteTotal, type Quote, type QuoteStatus } from "@/lib/quotes";
 import {
   Banner,
   Btn,
@@ -44,13 +45,15 @@ const TONE: Record<QuoteStatus, string> = {
   ร่าง: "var(--dk-yolk-deep)",
   ส่งให้ลูกค้าแล้ว: "var(--dk-blue)",
   ลูกค้าตกลง: "var(--dk-mint)",
+  สร้างออเดอร์แล้ว: "var(--dk-lilac)",
   ไม่รับ: "var(--dk-quiet)",
   หมดอายุ: "var(--dk-quiet)",
 };
-const CHIP: Record<QuoteStatus, "yolk" | "sky" | "mint" | "quiet"> = {
+const CHIP: Record<QuoteStatus, "yolk" | "sky" | "mint" | "lilac" | "quiet"> = {
   ร่าง: "yolk",
   ส่งให้ลูกค้าแล้ว: "sky",
   ลูกค้าตกลง: "mint",
+  สร้างออเดอร์แล้ว: "lilac",
   ไม่รับ: "quiet",
   หมดอายุ: "quiet",
 };
@@ -63,6 +66,9 @@ function QuotesPageInner() {
   const [filter, setFilter] = useState<QuoteStatus | "all" | "open">("open");
   const [q, setQ] = useState("");
   const [creating, setCreating] = useState(false);
+  /** กล่องถามชื่อลูกค้าก่อนสร้างจริง — ยังไม่พิมพ์อะไร = ยังไม่มีใบเปล่าไปค้างในระบบ */
+  const [newOpen, setNewOpen] = useState(false);
+  const [newErr, setNewErr] = useState("");
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/quotes", { cache: "no-store" });
@@ -75,17 +81,20 @@ function QuotesPageInner() {
     void load();
   }, [load]);
 
-  async function createQuote() {
+  async function createQuote(d: NewCustomerDraft) {
     setCreating(true);
+    setNewErr("");
     const res = await fetch("/api/admin/quotes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ customer: d.customer, phone: d.phone, address: d.address, contactId: d.contactId }),
     });
-    const j = await res.json();
+    const j = await res.json().catch(() => ({}));
     setCreating(false);
-    if (j.ok) router.push(`/admin/quotes/${j.id}`);
-    else alert(j.error ?? "สร้างไม่สำเร็จ");
+    if (res.ok && j.ok) {
+      setNewOpen(false);
+      router.push(`/admin/quotes/${j.id}`);
+    } else setNewErr(j.error ?? "สร้างไม่สำเร็จ");
   }
 
   const counts = useMemo(() => {
@@ -97,6 +106,9 @@ function QuotesPageInner() {
     }
     return c;
   }, [quotes]);
+
+  /** ลูกค้ากดตกลงจากลิงก์แล้ว แต่ยังไม่มีใครกดสร้างออเดอร์ — งานที่ต้องทำก่อนอย่างอื่นวันนี้ */
+  const waiting = useMemo(() => quotes.filter(awaitingOrder), [quotes]);
 
   /** ใบที่ยืนราคาใกล้หมด — ตัวเลขที่บอกว่าวันนี้ต้องโทรหาใคร */
   const expiring = useMemo(
@@ -118,12 +130,17 @@ function QuotesPageInner() {
     .filter((qt) => {
       const st = quoteStatusOf(qt);
       if (filter === "all") return true;
-      if (filter === "open") return OPEN.includes(st);
+      // แท็บแรก = "งานที่ยังไม่จบ" — รวมใบที่ลูกค้าตกลงแล้วแต่ยังไม่ได้เปิดงานด้วย
+      // (ถ้าไม่รวม ใบที่ลูกค้ารออยู่จะไม่โผล่ในแท็บที่เปิดมาเจอเป็นอันแรก = ตกหล่นทั้งที่มีป้ายเตือน)
+      if (filter === "open") return OPEN.includes(st) || awaitingOrder(qt);
       return st === filter;
     })
     .filter((qt) => (kw ? qt.id.toLowerCase().includes(kw) || qt.customer.toLowerCase().includes(kw) : true))
-    // ใกล้หมดวันยืนราคาขึ้นก่อน — ใบที่เงียบเกินวันยืนราคาคือใบที่หลุดมือ
-    .sort((a, b) => (daysToExpire(a) ?? 9999) - (daysToExpire(b) ?? 9999));
+    // ใบที่ลูกค้าตกลงแล้วรอเปิดงานขึ้นก่อนสุด (ลูกค้ารออยู่จริง) แล้วค่อยใกล้หมดวันยืนราคา — ใบที่เงียบเกินวันยืนราคาคือใบที่หลุดมือ
+    .sort(
+      (a, b) =>
+        Number(awaitingOrder(b)) - Number(awaitingOrder(a)) || (daysToExpire(a) ?? 9999) - (daysToExpire(b) ?? 9999)
+    );
 
   // ลูกค้ารายไหนมีใบค้างหลายใบ — เตือนให้เลือกใบเดียว
   const openByPhone = useMemo(() => {
@@ -146,12 +163,32 @@ function QuotesPageInner() {
         tools={
           <>
             <SearchBox value={q} onChange={setQ} placeholder="ค้นเลขใบ / ชื่อลูกค้า" />
-            <Btn tone="yolk" onClick={() => void createQuote()} disabled={creating}>
-              {creating ? "กำลังสร้าง…" : "ใบเสนอราคาใหม่"}
+            <Btn
+              tone="yolk"
+              onClick={() => {
+                setNewErr("");
+                setNewOpen(true);
+              }}
+            >
+              ใบเสนอราคาใหม่
             </Btn>
           </>
         }
       />
+
+      {/* 🔔 งานค้างขึ้นบนสุดเสมอ — ลูกค้ากดตกลงแล้ว รออยู่ว่าเมื่อไหร่ร้านจะเปิดงาน */}
+      {waiting.length > 0 && (
+        <div className="mt-4">
+          <Banner
+            tone="hot"
+            title={`ลูกค้ากดตกลงแล้ว ${waiting.length} ใบ — ยังไม่ได้สร้างออเดอร์`}
+            detail={`${waiting
+              .slice(0, 3)
+              .map((qt) => `${qt.id} · ${qt.customer || "ยังไม่ระบุชื่อ"}`)
+              .join(" · ")}${waiting.length > 3 ? ` · และอีก ${waiting.length - 3} ใบ` : ""} — เปิดใบแล้วกด “ลูกค้าตกลง — สร้างออเดอร์”`}
+          />
+        </div>
+      )}
 
       {needsSetup && (
         <div className="mt-4">
@@ -163,7 +200,7 @@ function QuotesPageInner() {
         </div>
       )}
 
-      <Stats cols={4}>
+      <Stats cols={5}>
         <HeroStat
           n={counts.open}
           label="ยังรอลูกค้าตอบ"
@@ -171,6 +208,12 @@ function QuotesPageInner() {
           pct={counts.all > 0 ? (counts.open / counts.all) * 100 : 0}
         />
         <Stat label="มูลค่าที่ลุ้นอยู่" value={formatPrice(openValue)} hint="รวมใบที่ยังไม่ปิด" />
+        <Stat
+          label="ตกลงแล้ว รอสร้างออเดอร์"
+          value={waiting.length}
+          hint={waiting.length ? "ใบ — ทำก่อนเลย" : "ใบ"}
+          tone={waiting.length ? "due" : undefined}
+        />
         <Stat
           label="ใกล้หมดวันยืนราคา"
           value={expiring}
@@ -181,21 +224,33 @@ function QuotesPageInner() {
 
       <FilterCard>
         <TabRow>
-          <FChip on={filter === "open"} onClick={() => setFilter("open")} label="ยังรอลูกค้า" count={counts.open} />
+          <FChip
+            on={filter === "open"}
+            onClick={() => setFilter("open")}
+            label="ยังไม่จบ"
+            count={counts.open + waiting.length}
+          />
           <FChip on={filter === "all"} onClick={() => setFilter("all")} label="ทั้งหมด" count={counts.all} />
           <FChip
             on={filter === "ลูกค้าตกลง"}
             onClick={() => setFilter("ลูกค้าตกลง")}
-            label="ตกลงแล้ว"
+            label="ตกลงแล้ว — รอสร้างออเดอร์"
             count={counts["ลูกค้าตกลง"] ?? 0}
             style={{ background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" }}
+          />
+          <FChip
+            on={filter === "สร้างออเดอร์แล้ว"}
+            onClick={() => setFilter("สร้างออเดอร์แล้ว")}
+            label="สร้างออเดอร์แล้ว"
+            count={counts["สร้างออเดอร์แล้ว"] ?? 0}
+            style={{ background: "var(--dk-lilac-wash)", color: "var(--dk-lilac-ink)" }}
           />
           <FChip on={filter === "ไม่รับ"} onClick={() => setFilter("ไม่รับ")} label="ไม่รับ" count={counts["ไม่รับ"] ?? 0} />
           <FChip on={filter === "หมดอายุ"} onClick={() => setFilter("หมดอายุ")} label="หมดอายุ" count={counts["หมดอายุ"] ?? 0} />
         </TabRow>
       </FilterCard>
 
-      <ListHead title="รายการ" note="ใกล้หมดวันยืนราคาขึ้นก่อน" />
+      <ListHead title="รายการ" note="ใบที่ลูกค้าตกลงแล้วขึ้นก่อน · ตามด้วยใบที่ใกล้หมดวันยืนราคา" />
 
       {loading ? (
         <Empty title="กำลังโหลด…" body="ดึงใบเสนอราคาจากเซิร์ฟเวอร์" />
@@ -212,17 +267,19 @@ function QuotesPageInner() {
             const dup = (openByPhone[(qt.phone ?? "").replace(/\D/g, "")] ?? 0) > 1;
             const open = OPEN.includes(st);
             const hot = open && left !== null && left <= 3;
+            const wait = awaitingOrder(qt);
             return (
               <Row
                 key={qt.id}
-                tone={hot ? "var(--dk-coral-deep)" : TONE[st]}
-                done={!open}
+                tone={wait ? "var(--dk-mint)" : hot ? "var(--dk-coral-deep)" : TONE[st]}
+                done={!open && !wait}
                 href={`/admin/quotes/${encodeURIComponent(qt.id)}`}
               >
                 <RowMain
                   name={qt.customer || "ยังไม่ระบุชื่อ"}
                   tags={
                     <>
+                      {wait && <Tag tone="solid">ลูกค้าตกลงแล้ว — รอสร้างออเดอร์</Tag>}
                       {hot && (
                         <Tag tone="solid">{left! < 0 ? "หมดอายุแล้ว" : left === 0 ? "หมดอายุวันนี้" : `ยืนราคาเหลือ ${left} วัน`}</Tag>
                       )}
@@ -248,6 +305,19 @@ function QuotesPageInner() {
             );
           })}
         </Rows>
+      )}
+
+      {newOpen && (
+        <NewCustomerDialog
+          icon="📄"
+          title="ใบเสนอราคาใหม่"
+          detail="ใส่ชื่อ (หรือเบอร์) ลูกค้าก่อน แล้วค่อยไปกรอกรายการ/ราคาในหน้าถัดไป — กดยกเลิกตอนนี้จะไม่มีใบเปล่าค้างในระบบ"
+          confirmLabel="สร้างใบเสนอราคา"
+          busy={creating}
+          error={newErr}
+          onCancel={() => setNewOpen(false)}
+          onCreate={(d) => void createQuote(d)}
+        />
       )}
     </PageShell>
   );

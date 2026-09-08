@@ -37,6 +37,7 @@ import { usePolling } from "@/lib/use-polling";
 import { useCan } from "@/lib/perm-context";
 import { PACKING_QUEUE_STATUSES } from "@/lib/permissions";
 import StatusChip, { chipStyle, STATUS_TONE } from "@/components/admin/StatusChip";
+import NewCustomerDialog, { type NewCustomerDraft } from "@/components/admin/NewCustomerDialog";
 import "@/components/admin/dashboard.css";
 
 /** แบ่งสถานะตามแผนกที่รับผิดชอบ — แต่ละแผนกเห็นเฉพาะงานของตัวเอง */
@@ -751,27 +752,58 @@ function OrderRow({
   );
 }
 
-/** ปุ่มสร้างออเดอร์ใหม่ — สร้างออเดอร์เปล่าทันที แล้วพาเข้าหน้าออเดอร์ (กรอกชื่อ/ที่อยู่/รายการ ที่นั่นหน้าเดียวจบ) */
+/**
+ * ปุ่มสร้างออเดอร์ใหม่ — ถามชื่อ (หรือเบอร์) ลูกค้าก่อน แล้วค่อยสร้างจริง
+ *
+ * ของเดิมกดปุ่มปุ๊บ = มีออเดอร์เปล่า "ยังไม่ระบุชื่อ" เกิดในฐานทันที กดดูเล่น/กดพลาด/เปลี่ยนใจ
+ * ก็เหลือใบเปล่าค้างในรายการและตัวนับ ต้องมาไล่ลบทีหลัง — ตอนนี้ยังไม่พิมพ์อะไร = ยังไม่สร้างอะไร
+ * (ที่อยู่/รายการ ยังไปกรอกในหน้าออเดอร์เหมือนเดิม ไม่ได้ย้ายงานมาไว้ในกล่องนี้)
+ */
 function NewOrderButton({ onCreated }: { onCreated: (id: string) => void }) {
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [err, setErr] = useState("");
 
-  async function create() {
+  async function create(d: NewCustomerDraft) {
     if (busy) return;
     setBusy(true);
+    setErr("");
     const res = await fetch("/api/admin/orders", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: "{}",
+      body: JSON.stringify({ customerName: d.customer, phone: d.phone, address: d.address, contactId: d.contactId }),
     });
     const j = await res.json().catch(() => ({}));
     setBusy(false);
-    if (!res.ok) return alert(j.error ?? "สร้างออเดอร์ไม่สำเร็จ");
+    if (!res.ok) return setErr(j.error ?? "สร้างออเดอร์ไม่สำเร็จ");
+    setOpen(false);
     onCreated(j.id);
   }
 
   return (
-    <button type="button" onClick={create} disabled={busy} className="dkb-btn dkb-btn-yolk">
-      {busy ? "กำลังสร้าง…" : "สร้างออเดอร์งานพิเศษ"}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setErr("");
+          setOpen(true);
+        }}
+        className="dkb-btn dkb-btn-yolk"
+      >
+        สร้างออเดอร์งานพิเศษ
+      </button>
+      {open && (
+        <NewCustomerDialog
+          icon="📦"
+          title="สร้างออเดอร์งานพิเศษ"
+          detail="ใส่ชื่อ (หรือเบอร์) ลูกค้าก่อน แล้วค่อยไปเพิ่มรายการในหน้าออเดอร์ — กดยกเลิกตอนนี้จะไม่มีออเดอร์เปล่าค้างในระบบ"
+          confirmLabel="สร้างออเดอร์"
+          busy={busy}
+          error={err}
+          onCancel={() => setOpen(false)}
+          onCreate={(d) => void create(d)}
+        />
+      )}
+    </>
   );
 }

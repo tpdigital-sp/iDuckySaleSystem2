@@ -191,8 +191,16 @@ export async function POST(req: Request) {
   const gate = await requirePerm("orders.edit");
   if (gate.res) return gate.res;
 
-  // สร้างได้ทันทีไม่ต้องกรอกอะไรก่อน — ไปเติมชื่อ/ที่อยู่/รายการ ในหน้าออเดอร์ (หน้าเดียวจบ)
-  let body: { customerName?: string; phone?: string; address?: string; shipping?: string; shippingCost?: number } = {};
+  // หน้าเว็บถามชื่อ (หรือเบอร์) ลูกค้าก่อนเสมอ แล้วค่อยเรียกมาสร้าง — ที่เหลือ (รายการ/ที่อยู่) ไปเติมในหน้าออเดอร์
+  let body: {
+    customerName?: string;
+    phone?: string;
+    address?: string;
+    /** ผู้ติดต่อที่เลือกจากคลังตอนกรอกชื่อ — ผูกตั้งแต่ออเดอร์แรก แต้มจะได้เข้าคนถูก */
+    contactId?: string;
+    shipping?: string;
+    shippingCost?: number;
+  } = {};
   try {
     body = await req.json();
   } catch {
@@ -217,6 +225,7 @@ export async function POST(req: Request) {
     status: "รอชำระเงิน",
     items: [],
     placedBy: by,
+    ...(body.contactId?.trim() ? { contactId: body.contactId.trim() } : {}),
   };
   order = withLog(order, by, "สร้างออเดอร์จากหลังบ้าน", "งานพิเศษ/สั่งแทนลูกค้า");
 

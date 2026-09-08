@@ -49,6 +49,7 @@ import { fetchOrdersAdmin } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
 import { useCan } from "@/lib/perm-context";
 import { PACKING_QUEUE_STATUSES } from "@/lib/permissions";
+import NewCustomerDialog, { type NewCustomerDraft } from "@/components/admin/NewCustomerDialog";
 import "./orders-preview.css";
 
 /* ═══ กติกาเดิมของระบบ (ยกมาจาก /admin/orders ตรง ๆ) ═══════════════════ */
@@ -1148,23 +1149,52 @@ function pageList(cur: number, total: number): number[] {
   return res;
 }
 
-/** ปุ่มสร้างออเดอร์ใหม่ — ตัวเดียวกับหน้าจริง (เรียก POST /api/admin/orders) */
+/** ปุ่มสร้างออเดอร์ใหม่ — ตัวเดียวกับหน้าจริง: ถามชื่อลูกค้าก่อน ยังไม่พิมพ์อะไรก็ยังไม่สร้างออเดอร์เปล่า */
 function NewOrderButton({ onCreated }: { onCreated: (id: string) => void }) {
   const [busy, setBusy] = useState(false);
-  async function create() {
+  const [open, setOpen] = useState(false);
+  const [err, setErr] = useState("");
+  async function create(d: NewCustomerDraft) {
     if (busy) return;
     setBusy(true);
-    const res = await fetch("/api/admin/orders", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    setErr("");
+    const res = await fetch("/api/admin/orders", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ customerName: d.customer, phone: d.phone, address: d.address, contactId: d.contactId }),
+    });
     const j = await res.json().catch(() => ({}));
     setBusy(false);
-    if (!res.ok) return alert(j.error ?? "สร้างออเดอร์ไม่สำเร็จ");
+    if (!res.ok) return setErr(j.error ?? "สร้างออเดอร์ไม่สำเร็จ");
+    setOpen(false);
     onCreated(j.id);
   }
   return (
-    <button type="button" onClick={create} disabled={busy} className="opv-btn">
-      {icon.plus}
-      {busy ? "กำลังสร้าง…" : "สร้างออเดอร์งานพิเศษ"}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setErr("");
+          setOpen(true);
+        }}
+        className="opv-btn"
+      >
+        {icon.plus}
+        สร้างออเดอร์งานพิเศษ
+      </button>
+      {open && (
+        <NewCustomerDialog
+          icon="📦"
+          title="สร้างออเดอร์งานพิเศษ"
+          detail="ใส่ชื่อ (หรือเบอร์) ลูกค้าก่อน แล้วค่อยไปเพิ่มรายการในหน้าออเดอร์ — กดยกเลิกตอนนี้จะไม่มีออเดอร์เปล่าค้างในระบบ"
+          confirmLabel="สร้างออเดอร์"
+          busy={busy}
+          error={err}
+          onCancel={() => setOpen(false)}
+          onCreate={(d) => void create(d)}
+        />
+      )}
+    </>
   );
 }
 
