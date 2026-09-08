@@ -110,6 +110,12 @@ import { LINE_URL } from "@/components/LineButton";
 import { useCustomer } from "@/lib/customer-context";
 import { foldSizeExtra, specEntries } from "@/components/SpecLines";
 import {
+  addToPriceLinkBasket,
+  clearPriceLinkBasket,
+  readPriceLinkBasket,
+  PRICE_LINK_MAX_ITEMS,
+} from "@/lib/price-links";
+import {
   hasPriceLinkBundle,
   priceLinkUrl,
   readPriceLink,
@@ -692,6 +698,9 @@ export default function ProductDetail({
   const [priceCopied, setPriceCopied] = useState("");
   /** กำลังสร้างลิงก์ราคาอยู่ — กันกดรัวแล้วได้ลิงก์ซ้ำหลายใบ */
   const [priceBusy, setPriceBusy] = useState(false);
+  /** 🧺 ใบรวมที่แอดมินกำลังสะสม (โค้ดใบเดี่ยว) — ข้ามหน้าสินค้าได้ เก็บในเครื่อง */
+  const [bundleCodes, setBundleCodes] = useState<string[]>([]);
+  const [bundleMsg, setBundleMsg] = useState("");
   const [selections, setSelections] = useState<Record<string, string>>(() =>
     initialSelections(initialProduct)
   );
@@ -1134,6 +1143,9 @@ export default function ProductDetail({
     setFromPriceLink(true);
     if (autoAddRef.current) setAutoAdding(true);
   }, [productReady, product]);
+
+  // ใบรวมที่ค้างไว้จากหน้าสินค้าก่อนหน้า (อ่านใน effect — localStorage ไม่มีตอนเรนเดอร์ฝั่งเซิร์ฟเวอร์)
+  useEffect(() => setBundleCodes(readPriceLinkBasket()), []);
 
   /** มาจากลิงก์ราคา = พาไปที่กล่องสั่งซื้อเลย (ลูกค้าเปิดมาเพื่อดูราคา ไม่ใช่มาอ่านหน้าสินค้าใหม่) */
   useEffect(() => {
@@ -1682,12 +1694,12 @@ export default function ProductDetail({
    * ยิงซ้ำด้วยสเปคเดิม = ได้ลิงก์เดิม ไม่สร้างใบใหม่ทุกครั้งที่กดปุ่ม
    * สร้างไม่ได้ (ยังไม่ได้รัน supabase/price-links.sql / เน็ตหลุด) → ตกไปใช้ลิงก์ยาวแบบเดิม ยังส่งงานได้
    */
-  const shortLinkRef = useRef<{ key: string; url: string; expiresAt: string } | null>(null);
-  async function ensurePriceLink(): Promise<{ url: string; expiresAt?: string; short: boolean }> {
+  const shortLinkRef = useRef<{ key: string; url: string; code: string; expiresAt: string } | null>(null);
+  async function ensurePriceLink(): Promise<{ url: string; expiresAt?: string; short: boolean; code?: string }> {
     const { spec, lines, askPrice } = priceSnapshot();
     const key = JSON.stringify(spec);
     const cached = shortLinkRef.current;
-    if (cached?.key === key) return { url: cached.url, expiresAt: cached.expiresAt, short: true };
+    if (cached?.key === key) return { url: cached.url, expiresAt: cached.expiresAt, short: true, code: cached.code };
 
     try {
       const res = await fetch("/api/price-links", {
@@ -1711,8 +1723,8 @@ export default function ProductDetail({
       const j = (await res.json()) as { link?: { code: string; expiresAt: string } };
       if (res.ok && j.link?.code) {
         const url = `${window.location.origin}/p/${j.link.code}`;
-        shortLinkRef.current = { key, url, expiresAt: j.link.expiresAt };
-        return { url, expiresAt: j.link.expiresAt, short: true };
+        shortLinkRef.current = { key, url, code: j.link.code, expiresAt: j.link.expiresAt };
+        return { url, expiresAt: j.link.expiresAt, short: true, code: j.link.code };
       }
     } catch {
       /* ตกไปใช้ลิงก์ยาวด้านล่าง */
@@ -1735,6 +1747,66 @@ export default function ProductDetail({
     } catch {
       // เบราว์เซอร์ไม่ให้เขียนคลิปบอร์ด (http หรือปิดสิทธิ์ไว้) — บอกตรง ๆ ดีกว่าเงียบแล้วแอดมินไปวางของเก่า
       setPriceCopied("err");
+    } finally {
+      setPriceBusy(false);
+    }
+  }
+
+  /**
+   * 🧺 เพิ่มสเปคที่กำลังดูอยู่ "เข้าใบรวม" — ลูกค้าคนเดียวสั่งหลายอย่าง ส่งลิงก์เดียวจบ
+   * เก็บเป็นโค้ดใบไว้ในเครื่อง (ดู price-links.ts) แล้วเดินไปหน้าสินค้าตัวถัดไปกดเพิ่มต่อได้เลย
+   */
+  async function addToBundle() {
+    if (priceBusy) return;
+    setPriceBusy(true);
+    setBundleMsg("");
+    try {
+      const { code, short } = await ensurePriceLink();
+      if (!short || !code) {
+        // ยังไม่ได้รัน supabase/price-links.sql = ไม่มีใบให้รวม (ลิงก์ยาวไม่มีโค้ด)
+        setBundleMsg("ยังรวมใบไม่ได้ — ยังไม่ได้สร้างตารางลิงก์ราคาในฐานข้อมูล");
+        return;
+      }
+      const before = bundleCodes.length;
+      const next = addToPriceLinkBasket(code);
+      setBundleCodes(next);
+      setBundleMsg(
+        next.length === before
+          ? next.includes(code)
+            ? "รายการนี้อยู่ในใบรวมอยู่แล้ว"
+            : `ใบรวมเต็มแล้ว (สูงสุด ${PRICE_LINK_MAX_ITEMS} รายการ)`
+          : `เพิ่มแล้ว — ใบรวมมี ${next.length} รายการ`
+      );
+    } catch {
+      setBundleMsg("เพิ่มไม่สำเร็จ — เช็คเน็ตแล้วลองใหม่");
+    } finally {
+      setPriceBusy(false);
+    }
+  }
+
+  /** รวมใบที่สะสมไว้เป็นลิงก์เดียวแล้วคัดลอก — รวมเสร็จล้างใบรวมให้ พร้อมเริ่มลูกค้าคนถัดไป */
+  async function copyBundleLink() {
+    if (priceBusy || bundleCodes.length < 2) return;
+    setPriceBusy(true);
+    setBundleMsg("");
+    try {
+      const res = await fetch("/api/price-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ merge: bundleCodes }),
+      });
+      const j = (await res.json()) as { link?: { code: string }; error?: string };
+      if (!j.link?.code) {
+        setBundleMsg(j.error ?? "รวมใบไม่สำเร็จ");
+        return;
+      }
+      await navigator.clipboard.writeText(`${window.location.origin}/p/${j.link.code}`);
+      clearPriceLinkBasket();
+      setBundleCodes([]);
+      setBundleMsg(`✓ คัดลอกลิงก์ใบรวมแล้ว (${j.link.code}) วางในไลน์ได้เลย`);
+    } catch {
+      // เบราว์เซอร์ไม่ให้เขียนคลิปบอร์ด — ใบรวมยังอยู่ กดใหม่ได้ ไม่ต้องเก็บสเปคใหม่ทั้งชุด
+      setBundleMsg("คัดลอกไม่ได้ — เปิดหน้าลิงก์ราคาแล้วคัดลอกจากใบล่าสุดแทน");
     } finally {
       setPriceBusy(false);
     }
@@ -5675,6 +5747,56 @@ export default function ProductDetail({
                     <Link href="/admin/price-links" className="font-bold underline">
                       ลิงก์ราคา
                     </Link>
+                  </p>
+                </div>
+
+                {/* 🧺 ใบรวม — ลูกค้าคนเดียวสั่งหลายอย่าง: กด "เพิ่มเข้าใบรวม" ที่สินค้าแต่ละตัว
+                     แล้วคัดลอกลิงก์เดียวตอนจบ (ใบรวมติดตัวข้ามหน้าสินค้า เก็บไว้ในเครื่อง 1 วัน) */}
+                <div className="mt-2 border-t border-sky-200 pt-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => void addToBundle()}
+                      disabled={priceBusy}
+                      className="rounded-full bg-white px-3.5 py-1.5 text-[11px] font-bold text-sky-800 ring-1 ring-sky-300 transition hover:bg-sky-100 disabled:opacity-50"
+                    >
+                      ➕ เพิ่มเข้าใบรวม
+                    </button>
+                    {bundleCodes.length > 0 && (
+                      <>
+                        <span className="rounded-full bg-sky-600 px-2.5 py-1 text-[11px] font-extrabold text-white">
+                          🧺 ใบรวม {bundleCodes.length} รายการ
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void copyBundleLink()}
+                          disabled={priceBusy || bundleCodes.length < 2}
+                          className="rounded-full bg-sky-600 px-3.5 py-1.5 text-[11px] font-bold text-white transition hover:brightness-110 disabled:opacity-40"
+                          title={bundleCodes.length < 2 ? "ต้องมีอย่างน้อย 2 รายการถึงจะรวมได้" : undefined}
+                        >
+                          📤 คัดลอกลิงก์ใบรวม
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearPriceLinkBasket();
+                            setBundleCodes([]);
+                            setBundleMsg("ล้างใบรวมแล้ว");
+                          }}
+                          className="rounded-full px-2 py-1 text-[11px] font-bold text-stone-500 underline"
+                        >
+                          ล้าง
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {bundleMsg && (
+                    <p className="mt-1 px-1 text-[11px] font-bold text-sky-900">{bundleMsg}</p>
+                  )}
+                  <p className="mt-1.5 px-1 text-[10.5px] leading-relaxed text-sky-800">
+                    ลูกค้าสั่งหลายอย่างในงานเดียว — กด <b>เพิ่มเข้าใบรวม</b> ที่สินค้าแต่ละตัว (ติ๊กสเปคให้ครบก่อน)
+                    แล้วกด <b>คัดลอกลิงก์ใบรวม</b> ทีเดียวตอนจบ ได้ลิงก์เดียวที่ลูกค้ากดสั่งครบทั้งใบ ·
+                    ต้องมีอย่างน้อย 2 รายการ · ใบรวมค้างไว้ได้ 1 วัน
                   </p>
                 </div>
               </div>
