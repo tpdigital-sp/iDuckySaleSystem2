@@ -19,6 +19,7 @@ import ImageLightbox from "@/components/ImageLightbox";
 import Portal from "@/components/Portal";
 import { SpecLines } from "@/components/SpecLines";
 import { LINE_URL } from "@/components/LineButton";
+import { fetchShopPayment, type ShopPayment } from "@/lib/shop-settings";
 
 /*
  * ── สไตล์ปุ่ม/ช่องกรอกใน lightbox ──
@@ -34,6 +35,62 @@ const LB_DANGER =
 const LB_QUIET = "whitespace-nowrap rounded-full bg-white/10 px-5 py-2.5 text-sm font-semibold text-white/80 transition hover:bg-white/20 active:scale-95";
 const LB_INPUT =
   "w-full rounded-xl border border-white/20 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-300";
+
+/** แถวบัญชีเดียว (แยกเป็นคอมโพเนนต์ระดับโมดูล — ถ้าประกาศในฟังก์ชันแม่ React จะ remount ทุกครั้งที่กด ทำให้ป้าย "คัดลอกแล้ว" ไม่ขึ้น) */
+function AccountRow({ label, value, copied, onCopy }: { label: string; value: string; copied: boolean; onCopy: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-2xl bg-white p-3.5 ring-1 ring-rose-200/70">
+      <div className="min-w-0">
+        <p className="text-[.72rem] leading-snug text-slate-500">{label}</p>
+        <p className="select-all font-mono text-[1.05rem] font-bold tracking-wide text-slate-800">{value}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onCopy}
+        className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-bold transition ${copied ? "bg-emerald-500 text-white" : "bg-rose-50 text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"}`}
+      >
+        {copied ? "✓ คัดลอกแล้ว" : "คัดลอก"}
+      </button>
+    </div>
+  );
+}
+
+/** 🏦 การ์ดบัญชีร้าน/พร้อมเพย์ + ปุ่มคัดลอก — วางในกล่องรอชำระเงิน/ค้างชำระ (null = ยังโหลด/ร้านยังไม่ตั้งบัญชี) */
+function PayAccounts({ payment }: { payment: ShopPayment | null }) {
+  const [copied, setCopied] = useState("");
+  if (!payment) return null;
+  const banks = payment.banks.filter((b) => b.accountNo?.trim());
+  const pp = payment.promptpay?.trim();
+  if (banks.length === 0 && !pp) return null;
+  const copy = (key: string, text: string) => {
+    navigator.clipboard?.writeText(text).catch(() => {});
+    setCopied(key);
+    setTimeout(() => setCopied((c) => (c === key ? "" : c)), 1500);
+  };
+  return (
+    <div className="mt-3 space-y-2">
+      <p className="text-xs font-bold">💳 โอนมาที่บัญชีร้าน</p>
+      {banks.map((b) => (
+        <AccountRow
+          key={b.id}
+          label={`${b.bank}${b.accountName ? ` · ${b.accountName}` : ""}`}
+          value={b.accountNo}
+          copied={copied === b.id}
+          onCopy={() => copy(b.id, b.accountNo)}
+        />
+      ))}
+      {pp && (
+        <AccountRow
+          label={`📱 พร้อมเพย์${payment.promptpayName ? ` · ${payment.promptpayName}` : ""}`}
+          value={pp}
+          copied={copied === "__pp"}
+          onCopy={() => copy("__pp", pp)}
+        />
+      )}
+      {payment.note?.trim() && <p className="text-[.72rem] leading-relaxed opacity-90">{payment.note}</p>}
+    </div>
+  );
+}
 
 /** ป้ายขั้นตอนฝั่งลูกค้า (คำอ่านง่ายกว่าฝั่งหลังบ้าน) — ลำดับตรงกับ STEP_OF */
 const STEPS = ["สั่งซื้อ", "ชำระเงิน", "ตรวจแบบงาน", "ผลิต", "จัดส่ง"];
@@ -216,6 +273,11 @@ export default function CustomerOrderPage() {
   const [prefMsg, setPrefMsg] = useState("");
   const [slipErr, setSlipErr] = useState("");
   const [slipDrag, setSlipDrag] = useState(false);
+  // 🏦 บัญชีร้าน/พร้อมเพย์ให้ลูกค้าโอน (ชุดเดียวกับหน้า checkout — ตั้งค่าที่ /admin/payment)
+  const [payment, setPayment] = useState<ShopPayment | null>(null);
+  useEffect(() => {
+    fetchShopPayment().then(setPayment).catch(() => {});
+  }, []);
   // กันวางไฟล์พลาดนอกกล่องแล้วเบราว์เซอร์เปิดรูปแทนหน้าเว็บ (สาเหตุ "โยนแล้วไม่ได้")
   useEffect(() => {
     const block = (e: DragEvent) => e.preventDefault();
@@ -613,6 +675,7 @@ export default function CustomerOrderPage() {
                 ? `ยอดรวมเพิ่มขึ้นหลังโอนรอบแรก (สั่งเพิ่ม หรือทางร้านตีราคางานสั่งทำให้แล้ว) — โอนเฉพาะส่วนต่างมาที่บัญชีร้าน แล้วแนบสลิป (จ่ายแล้ว ${formatPrice(order.paidTotal ?? 0)} จาก ${formatPrice(orderTotal(order))})`
                 : "โอนเงินมาที่บัญชีร้านแล้วแนบสลิปที่นี่ ทางร้านจะตรวจสอบและเริ่มงานให้"}
           </p>
+          <PayAccounts payment={payment} />
           <label
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
@@ -655,6 +718,7 @@ export default function CustomerOrderPage() {
           <p className="mt-1 text-xs leading-relaxed">
             รับมัดจำ {formatPrice(order.deposit.amount)} แล้ว — โอนส่วนที่เหลือแล้วแนบสลิปตรงนี้ ก่อนทางร้านจัดส่งของ
           </p>
+          <PayAccounts payment={payment} />
           <label className="ord-btn danger wrap block mt-3 cursor-pointer">
             {slipBusy ? "กำลังส่งสลิป…" : "📤 แนบสลิปยอดคงเหลือ"}
             <input
