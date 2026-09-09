@@ -269,13 +269,15 @@ export async function uploadProof(
   orderId: string,
   itemIndex: number,
   file: File,
-  meta?: { qty?: number; unit?: string; note?: string; replaceIndex?: number }
+  meta?: { qty?: number; unit?: string; note?: string; replaceIndex?: number; silent?: boolean }
 ): Promise<{ ok: boolean; order?: Order; error?: string }> {
   try {
     const fd = new FormData();
     fd.append("orderId", orderId);
     fd.append("itemIndex", String(itemIndex));
     fd.append("file", file);
+    // silent = ไม่ให้เซิร์ฟเวอร์ยิงไลน์ต่อไฟล์ — ผู้เรียกรวมแล้วยิง notifyProofReady ครั้งเดียว
+    if (meta?.silent) fd.append("silent", "1");
     if (meta?.qty) fd.append("qty", String(meta.qty));
     if (meta?.unit) fd.append("unit", meta.unit);
     if (meta?.note) fd.append("note", meta.note);
@@ -284,6 +286,28 @@ export async function uploadProof(
     const res = await fetch("/api/admin/orders/proof", { method: "POST", body: fd });
     const data = await res.json().catch(() => ({}));
     return res.ok ? { ok: true, order: data.order as Order } : { ok: false, error: data.error ?? "อัปโหลดแบบไม่สำเร็จ" };
+  } catch {
+    return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
+  }
+}
+
+/**
+ * ปุ่ม 📣 แจ้งลูกค้าทางไลน์ครั้งเดียวว่ามีแบบงานให้ตรวจ — เซิร์ฟเวอร์นับรูปค้างแจ้งเองจากออเดอร์ในฐาน
+ * (คู่กับ uploadProof({ silent: true }) — กันลูกค้าโดนข้อความรัว ๆ ตอนอัปทีละ 10 รูป)
+ */
+export async function notifyProofReady(
+  orderId: string,
+  /** true = แจ้งซ้ำทุกรูปที่ลูกค้ายังไม่อนุมัติ แม้ไม่มีรูปค้างแจ้ง */
+  force = false
+): Promise<{ ok: boolean; sent?: boolean; skipped?: boolean; count?: number; reason?: string; order?: Order; error?: string }> {
+  try {
+    const res = await fetch("/api/admin/orders/proof/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, force }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return res.ok ? { ok: true, ...data } : { ok: false, error: data.error ?? "แจ้งลูกค้าไม่สำเร็จ" };
   } catch {
     return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
   }

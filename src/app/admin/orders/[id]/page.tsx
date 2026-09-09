@@ -11,6 +11,7 @@ const orderHref = (id: string) => `/admin/orders/${encodeURIComponent(id)}`;
 import { useParams, useRouter } from "next/navigation";
 import { artQtyOf, formatPrice } from "@/lib/products";
 import { proofIssues, productWordIndex, type ProductWordIndex } from "@/lib/proof-check";
+import { PROOF_AUTO_NOTIFY_MINUTES, pendingProofs, pendingProofsLabel } from "@/lib/proof-notify";
 import { fetchProductNamesLite } from "@/lib/product-repo";
 import { SSR_ORDER_SCRIPT_ID } from "@/lib/ssr-order-id";
 import {
@@ -54,7 +55,7 @@ import {
   type NoteWeight,
   artworkSide,
 } from "@/lib/admin-data";
-import { fetchOrderAdmin, fetchOrdersAdmin, packScanHeaders, saveOrderAdmin, setPackScanMode, uploadProof } from "@/lib/order-repo";
+import { fetchOrderAdmin, fetchOrdersAdmin, notifyProofReady, packScanHeaders, saveOrderAdmin, setPackScanMode, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
 import { btnSm, btnSmNeutral, card, faint, muted, shortTime } from "@/lib/admin-ui";
 import { Banner, CopyChip, GH, HBTN, LogTimeline, PageShell, soft } from "@/components/admin/ui";
@@ -722,6 +723,43 @@ export default function AdminOrderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [demo, setDemo] = useState(false);
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
+  // 📣 แจ้งลูกค้าทางไลน์ครั้งเดียวหลังอัปแบบครบชุด — ตัวอัปโหลดยิงแบบ silent · แถบเตือนนับจาก order.proofNotifiedAt · cron แจ้งเองถ้าค้างเกิน 30 นาที
+  const [notifyingProof, setNotifyingProof] = useState(false);
+  // ผลการกดล่าสุด โชว์ในกล่องของรายการที่กด
+  const [proofNotifyMsg, setProofNotifyMsg] = useState<{ item: number; text: string } | null>(null);
+  async function notifyProofs(itemIndex: number, force = false) {
+    if (!order || notifyingProof) return;
+    if (demo) {
+      setErr("ออเดอร์ตัวอย่าง — แจ้งลูกค้าได้เฉพาะออเดอร์จริง");
+      return;
+    }
+    if (force) {
+      const ok = await askConfirm({
+        icon: "📣",
+        title: "แจ้งลูกค้าซ้ำอีกครั้ง?",
+        detail: "ไม่มีรูปใหม่ค้างแจ้ง — ระบบจะส่งไลน์ย้ำว่าแบบงานพร้อมให้ตรวจ (ทุกรูปที่ลูกค้ายังไม่อนุมัติ)",
+        confirmLabel: "แจ้งอีกครั้ง",
+      });
+      if (!ok) return;
+    }
+    setNotifyingProof(true);
+    setProofNotifyMsg(null);
+    const res = await notifyProofReady(order.id, force);
+    setNotifyingProof(false);
+    if (!res.ok) {
+      setErr(res.error ?? "แจ้งลูกค้าไม่สำเร็จ");
+      return;
+    }
+    if (res.order) setOrder(res.order);
+    setProofNotifyMsg({
+      item: itemIndex,
+      text: res.skipped
+        ? "ไม่มีแบบให้แจ้ง"
+        : res.sent
+          ? `✅ แจ้งลูกค้าทางไลน์แล้ว (${res.count} รูป)`
+          : `⚠️ ส่งไลน์ไม่ถึงลูกค้า — ${res.reason ?? "ไม่ทราบสาเหตุ"} · บันทึกไว้ในประวัติแล้ว`,
+    });
+  }
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [err, setErr] = useState("");
   /** กล่องยืนยันของระบบเอง — แทน confirm() ของเบราว์เซอร์ (ใช้ตัวเดียวกับหน้าอื่นในหลังบ้าน) */
@@ -1944,16 +1982,21 @@ export default function AdminOrderDetailPage() {
       return;
     }
     setUploadingIdx(itemIndex);
+    let added = 0;
     for (const file of files) {
       // ชื่อไฟล์บอกจำนวน/หน่วย/ชื่อลายไว้ (เช่น "ลายหน้า x3.png" · "เจตนา 5 เซ็ต.png") → เติมช่องจำนวนกับรายละเอียดให้เลย
-      const res = await uploadProof(order.id, itemIndex, file, proofFromFileName(file.name));
+      // silent: ไม่ให้เซิร์ฟเวอร์ยิงไลน์ต่อไฟล์ — รวมแจ้งครั้งเดียวหลังครบชุด (เดิมอัป 10 รูป ลูกค้าโดน 10 ข้อความ)
+      const res = await uploadProof(order.id, itemIndex, file, { ...proofFromFileName(file.name), silent: true });
       if (!res.ok) {
         setErr(res.error ?? "อัปโหลดแบบไม่สำเร็จ");
         break;
       }
+      added++;
       if (res.order) setOrder(res.order);
     }
     setUploadingIdx(null);
+    // รูปที่ขึ้นแล้วจะโชว์แถบ "ยังไม่ได้แจ้งลูกค้า" ให้กด 📣 ทีเดียวเมื่อพร้อม (กรอกจำนวน/รายละเอียดก่อนได้)
+    if (added > 0) setProofNotifyMsg(null);
   }
 
   /** เปลี่ยนรูปทับตำแหน่งเดิม (กราฟฟิกแก้ตามคำขอลูกค้า) — เลขรูปไม่เลื่อน ผลตรวจรูปนั้นรีเซ็ตให้ลูกค้าตรวจใหม่ */
@@ -1970,13 +2013,14 @@ export default function AdminOrderDetailPage() {
     setErr("");
     setUploadingIdx(itemIndex);
     // ชื่อไฟล์ใหม่บอกจำนวน/ชื่อลายมาด้วย = ทับค่าเดิม (รายละเอียดต้องเป็นของไฟล์ที่อยู่ในกรอบตอนนี้) · ไม่บอก = คงค่าที่ตั้งไว้
-    const res = await uploadProof(order.id, itemIndex, file, { replaceIndex: proofIdx, ...proofFromFileName(file.name) });
+    const res = await uploadProof(order.id, itemIndex, file, { replaceIndex: proofIdx, ...proofFromFileName(file.name), silent: true });
     setUploadingIdx(null);
     if (!res.ok) {
       setErr(res.error ?? "เปลี่ยนรูปไม่สำเร็จ");
       return;
     }
     if (res.order) setOrder(res.order);
+    setProofNotifyMsg(null);
   }
 
   if (loading) {
@@ -1998,6 +2042,8 @@ export default function AdminOrderDetailPage() {
   // ถือว่า "จ่ายแล้ว" เมื่อแอดมินยืนยันสลิปแล้ว (ชำระแล้วเป็นต้นไป)
   const paidOk = !(["รอชำระเงิน", "รอตรวจสอบ"] as OrderStatus[]).includes(order.status);
   const gate = packGate(order); // ขั้นตอนแพ็คผ่านครบหรือยัง
+  // 📣 รูปแบบงานที่ยังไม่ได้แจ้งลูกค้า (นับจาก proofNotifiedAt) — โชว์แถบเตือนในกล่องแบบของรายการที่มีรูปค้าง
+  const proofPending = pendingProofs(order);
   // ฝ่ายแพ็ค (ตรวจนับได้ แต่แก้ออเดอร์ไม่ได้) → เห็นหน้าแพ็คเสมอ · แอดมิน/พนักงานแอดมินกด "โหมดแพ็ค" เอง
   // ⚠️ ต้องรอสิทธิ์โหลดเสร็จก่อนค่อยตัดสิน (permsReady) — ช่วงที่สิทธิ์ยังไม่มา mayEdit เป็น false
   // แต่ viaScan ยืม pack.check ให้แล้ว → เงื่อนไขนี้จริงชั่วคราว = แอดมินเห็นหน้าแพ็คแว๊บนึงทุกครั้ง
@@ -3720,6 +3766,52 @@ export default function AdminOrderDetailPage() {
                           ))}
                         </div>
                       )}
+                      {/* 📣 แจ้งลูกค้าทางไลน์ครั้งเดียว — มีรูปค้างแจ้ง = แถบเหลือง+ปุ่ม · ไม่มี = แถบเทาบอกว่าแจ้งแล้ว+ปุ่มแจ้งซ้ำ · ไม่กดใน 30 นาที ระบบแจ้งเอง */}
+                      {mayProof && proofs.length > 0 && (proofPending.perItem[i] ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 ring-1 ring-amber-300">
+                          <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-amber-900">
+                            <strong>📣 ยังไม่ได้แจ้งลูกค้า</strong> — {pendingProofsLabel(proofPending)}
+                            {proofPending.total > proofPending.perItem[i] ? (
+                              <span className="text-amber-700"> (รวมทุกรายการ {proofPending.total} รูป)</span>
+                            ) : null}
+                            <span className="block text-amber-700">
+                              กรอกจำนวน/รายละเอียดให้ครบก่อน แล้วกดแจ้งทีเดียว · ไม่กดภายใน {PROOF_AUTO_NOTIFY_MINUTES} นาที ระบบแจ้งให้เอง
+                            </span>
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void notifyProofs(i)}
+                            disabled={notifyingProof || uploadingIdx !== null}
+                            className="rounded-lg bg-amber-500 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-amber-600 disabled:opacity-60"
+                          >
+                            {notifyingProof ? "กำลังส่ง…" : "📣 แจ้งลูกค้าทางไลน์"}
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 ring-1 ring-slate-200">
+                          <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-slate-500">
+                            {proofNotifyMsg?.item === i ? (
+                              <span className="font-semibold text-emerald-700">{proofNotifyMsg.text}</span>
+                            ) : (
+                              <>
+                                📣 แจ้งลูกค้าแล้ว
+                                {order.proofNotifiedAt
+                                  ? ` · ${new Date(order.proofNotifiedAt).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+                                  : " · ตอนอัปแบบ"} — อัปรูปใหม่เมื่อไหร่ แถบเหลืองจะขึ้นให้กดแจ้งทีเดียว
+                              </>
+                            )}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void notifyProofs(i, true)}
+                            disabled={notifyingProof || uploadingIdx !== null}
+                            className="rounded-lg bg-white px-3 py-1 text-[11px] font-bold text-slate-600 ring-1 ring-slate-300 transition hover:bg-slate-100 disabled:opacity-60"
+                            title="ส่งไลน์ย้ำว่าแบบพร้อมให้ตรวจ (ทุกรูปที่ลูกค้ายังไม่อนุมัติ)"
+                          >
+                            {notifyingProof ? "กำลังส่ง…" : "📣 แจ้งอีกครั้ง"}
+                          </button>
+                        </div>
+                      ))}
                       {mayProof && (
                         <label
                           onDragOver={(e) => {

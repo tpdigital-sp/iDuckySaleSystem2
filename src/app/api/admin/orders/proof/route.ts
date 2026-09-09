@@ -44,6 +44,9 @@ export async function POST(req: Request) {
   const proofUnitIn = String(form.get("unit") ?? "").trim().slice(0, 12) || undefined;
   // รายละเอียดของรูป (ปกติ = ชื่อไฟล์ที่ลากเข้ามา) — ตัดยาวไว้ กันชื่อไฟล์ยาวเป็นพรืดล้นช่อง
   const proofNote = String(form.get("note") ?? "").trim().slice(0, 80) || undefined;
+  // silent=1 = ไม่ยิงไลน์จากตัวอัปโหลด — หน้าจออัปหลายรูปติดกันแล้วค่อยยิง /proof/notify ครั้งเดียว
+  // (เดิมยิงทุกไฟล์ → ลูกค้าโดน 10 ข้อความเมื่ออัป 10 รูป)
+  const silent = String(form.get("silent") ?? "") === "1";
   if (!orderId) return NextResponse.json({ error: "ไม่มีเลขออเดอร์" }, { status: 400 });
   if (!Number.isInteger(itemIndex) || itemIndex < 0) return NextResponse.json({ error: "ไม่ได้ระบุรายการสินค้า" }, { status: 400 });
   if (!(file instanceof File)) return NextResponse.json({ error: "ไม่มีไฟล์รูปแบบงาน" }, { status: 400 });
@@ -146,9 +149,9 @@ export async function POST(req: Request) {
   const { error: saveErr } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
 
-  // แจ้งเตือนลูกค้าว่ามีแบบงานให้ตรวจ (เงียบถ้ายังไม่ตั้งค่า LINE)
+  // แจ้งเตือนลูกค้าว่ามีแบบงานให้ตรวจ (เงียบถ้ายังไม่ตั้งค่า LINE) — ข้ามเมื่อหน้าจอขอรวมแจ้งทีเดียว
   const origin = new URL(req.url).origin;
-  void notifyCustomer(
+  if (!silent) void notifyCustomer(
     sb,
     updated,
     replaceIndex !== null
