@@ -118,6 +118,8 @@ const RANGE_TEXT: Record<string, string> = {
   "30d": "30 วันล่าสุด",
 };
 const DAY_MS = 86_400_000;
+/** จำนวนใบต่อหน้าในลิสต์ */
+const PAGE_SIZE = 20;
 /** ขอบเขตเวลาของช่วงที่เลือก [เริ่ม, จบ] · ±Infinity = ไม่จำกัดด้านนั้น */
 function rangeBounds(key: DateKey, from: string, to: string): [number, number] {
   const t0 = new Date();
@@ -160,10 +162,14 @@ export default function AdminOrdersPage() {
   const [onlyDue, setOnlyDue] = useState(false); // เห็นเฉพาะออเดอร์ที่ยังเก็บเงินไม่ครบ (มัดจำ + ส่วนต่างที่ตีราคาเพิ่ม)
   /** ใครสร้างใบ: "all" · "customer" (ลูกค้ากดเอง) · "admin" (พนักงานทำให้ทุกคน) · "by:<ชื่อ>" (พนักงานคนนั้นคนเดียว) */
   const [by, setBy] = useState<"all" | "customer" | "admin" | `by:${string}`>("all");
-  const [dateKey, setDateKey] = useState<DateKey>("all"); // ช่วงวันที่สั่ง
+  const [dateKey, setDateKey] = useState<DateKey>("7d"); // ช่วงวันที่สั่ง — เริ่มที่ 7 วัน (เจ้าของร้านขอ 9 ก.ย. 69) ไม่ให้เปิดมาเจอทุกใบ
   const [from, setFrom] = useState(""); // yyyy-mm-dd จาก <input type="date">
   const [to, setTo] = useState("");
   const [demo, setDemo] = useState(false);
+  /** หน้าที่ดูอยู่ (เริ่ม 0) — ลิสต์ยาวมากทำให้เลื่อนหาใบไม่เจอ จึงแบ่งทีละ PAGE_SIZE ใบ */
+  const [page, setPage] = useState(0);
+  // เปลี่ยนตัวกรองอะไรก็ตาม = กลับหน้าแรก ไม่งั้นค้างอยู่หน้า 3 ที่ชุดใหม่ไม่มี
+  useEffect(() => setPage(0), [dept, filter, q, onlyDue, by, dateKey, from, to]);
 
   const can = useCan();
   const seesAll = can("orders.viewAll"); // ฝ่ายแพ็คเห็นเฉพาะคิวของตัวเอง
@@ -302,6 +308,17 @@ export default function AdminOrdersPage() {
       // ค้นด้วยเบอร์โทรได้ด้วย — แอดมินมักได้เบอร์จากไลน์ก่อนได้เลขออเดอร์
       return digits.length >= 4 && (o.phone ?? "").replace(/\D/g, "").includes(digits);
     });
+
+  const pageCount = Math.max(1, Math.ceil(shown.length / PAGE_SIZE));
+  const curPage = Math.min(page, pageCount - 1); // กันค้างหน้าที่หายไปหลังใบลดลง (เช่นเปลี่ยนสถานะ)
+  const pageRows = shown.slice(curPage * PAGE_SIZE, (curPage + 1) * PAGE_SIZE);
+  const pageFrom = curPage * PAGE_SIZE + 1;
+  const pageTo = Math.min(shown.length, (curPage + 1) * PAGE_SIZE);
+  const goPage = (n: number) => {
+    setPage(Math.max(0, Math.min(pageCount - 1, n)));
+    // เปลี่ยนหน้าแล้วพากลับไปหัวลิสต์ ไม่ให้ค้างอยู่ท้ายจอ
+    if (typeof window !== "undefined") document.getElementById("od-list")?.scrollIntoView({ block: "start", behavior: "smooth" });
+  };
 
   const rangeText =
     dateKey === "custom"
@@ -594,10 +611,11 @@ export default function AdminOrdersPage() {
         </div>
 
         {/* ── รายการ ── */}
-        <div className="flex items-baseline justify-between gap-3 px-2 pb-2 pt-5">
+        <div id="od-list" className="flex items-baseline justify-between gap-3 px-2 pb-2 pt-5" style={{ scrollMarginTop: 16 }}>
           <h2 className="dkb-h2 text-[1.06rem]">รายการ</h2>
           <span className="text-[12.5px]" style={{ color: "var(--dk-faint)" }}>
             เรียงใหม่ → เก่า · แสดง {shown.length} จาก {orders.length} ใบ
+            {shown.length > PAGE_SIZE ? ` · หน้า ${curPage + 1}/${pageCount} (ใบที่ ${pageFrom}–${pageTo})` : ""}
             {dateOn && rangeText ? ` · ${rangeText}` : ""}
           </span>
         </div>
@@ -626,11 +644,36 @@ export default function AdminOrdersPage() {
             </p>
           </div>
         ) : (
-          <div className="dkb-rows">
-            {shown.map((o) => (
-              <OrderRow key={o.id} o={o} orders={orders} openByPhone={openByPhone} seesMoney={seesMoney} />
-            ))}
-          </div>
+          <>
+            <div className="dkb-rows">
+              {pageRows.map((o) => (
+                <OrderRow key={o.id} o={o} orders={orders} openByPhone={openByPhone} seesMoney={seesMoney} />
+              ))}
+            </div>
+            {pageCount > 1 && (
+              <nav className="dkb-pager" aria-label="เปลี่ยนหน้ารายการ">
+                <button type="button" className="dkb-btn dkb-pager-btn" onClick={() => goPage(curPage - 1)} disabled={curPage === 0}>
+                  ← ก่อนหน้า
+                </button>
+                <span className="dkb-pager-info">
+                  <span>
+                    หน้า <b>{curPage + 1}</b> / {pageCount}
+                  </span>
+                  <small>
+                    ใบที่ {pageFrom}–{pageTo} จาก {shown.length}
+                  </small>
+                </span>
+                <button
+                  type="button"
+                  className="dkb-btn dkb-pager-btn"
+                  onClick={() => goPage(curPage + 1)}
+                  disabled={curPage >= pageCount - 1}
+                >
+                  ถัดไป →
+                </button>
+              </nav>
+            )}
+          </>
         )}
 
         {dateOn && noDate > 0 && (
