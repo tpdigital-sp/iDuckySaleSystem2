@@ -368,14 +368,18 @@ export function packScanHeaders(): Record<string, string> {
  * แอดมินอัปเดตออเดอร์ (เช่น เปลี่ยนสถานะ) — คืนเหตุผลด้วยเวลาพลาด
  * เซิร์ฟเวอร์ปฏิเสธ (403 ไม่มีสิทธิ์ · 409 ด่านตรวจ) ต้องขึ้นให้คนกดเห็น ไม่งั้นหน้าจอเหมือนบันทึกแล้วแต่รีเฟรชค่าเดิมกลับมา
  */
-export async function saveOrderAdminResult(order: Order): Promise<{ ok: boolean; error?: string }> {
+export async function saveOrderAdminResult(order: Order): Promise<{ ok: boolean; error?: string; order?: Order }> {
   try {
     const res = await fetch("/api/admin/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", ...packScanHeaders() },
       body: JSON.stringify(order),
     });
-    if (res.ok) return { ok: true };
+    if (res.ok) {
+      // ก้อนที่เซิร์ฟเวอร์บันทึกจริง (มี savedAt + ติ๊กที่ประทับเวลาเซิร์ฟเวอร์) — หน้าจอต้องรับไปถือ ไม่งั้นรอบหน้าถูกมองว่า "ค้าง"
+      const j = (await res.json().catch(() => ({}))) as { order?: Order };
+      return { ok: true, order: j.order };
+    }
     let error = `บันทึกไม่สำเร็จ (${res.status})`;
     try {
       const j = (await res.json()) as { error?: string };

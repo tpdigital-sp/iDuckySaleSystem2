@@ -57,7 +57,7 @@ export async function sendProofNotify(
   const fresh = (row?.data as Order | undefined) ?? order;
   const what = `แบบงาน ${pending.total} รูป${opts?.auto ? " · อัตโนมัติ (ค้างเกินกำหนด)" : opts?.force ? " · แจ้งซ้ำ" : ""}${r.reason ? ` · ${r.reason}` : ""}`;
   const next = withLog(
-    { ...fresh, proofNotifiedAt: new Date().toISOString() },
+    { ...fresh, proofNotifiedAt: new Date().toISOString(), savedAt: new Date().toISOString() },
     by,
     r.ok ? "แจ้งลูกค้าทางไลน์แล้ว" : "แจ้งลูกค้าทางไลน์ไม่สำเร็จ",
     what

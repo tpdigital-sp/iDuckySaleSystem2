@@ -1290,8 +1290,25 @@ export default function AdminOrderDetailPage() {
    */
   async function saveOrWarn(next: Order): Promise<boolean> {
     const r = await saveOrderAdminResult(next);
-    if (!r.ok) setErr(`⚠️ ${r.error ?? "บันทึกลงฐานข้อมูลไม่สำเร็จ"} — สิ่งที่เพิ่งทำยังไม่ถูกบันทึก อย่าเพิ่งปิดหน้านี้ ลองใหม่หรือรีเฟรชดูค่าจริง`);
-    return r.ok;
+    if (!r.ok) {
+      setErr(`⚠️ ${r.error ?? "บันทึกลงฐานข้อมูลไม่สำเร็จ"} — สิ่งที่เพิ่งทำยังไม่ถูกบันทึก อย่าเพิ่งปิดหน้านี้ ลองใหม่หรือรีเฟรชดูค่าจริง`);
+      return false;
+    }
+    /**
+     * 🕒 รับ savedAt ที่เซิร์ฟเวอร์ประทับกลับมาถือไว้เสมอ — รอบหน้าเซิร์ฟเวอร์จะรู้ว่าหน้านี้ "เห็นข้อมูลถึงตอนนี้แล้ว"
+     * (ไม่ถือ = ถูกมองว่าเป็นหน้าจอค้าง ยกเลิกติ๊กที่เพิ่งกดเอง/ลบรูปที่เพิ่งอัปไม่ได้)
+     * ถ้ายังไม่มีใครแก้ต่อจากก้อนที่เพิ่งส่ง (state ยังเป็นก้อนเดิม) รับติ๊ก/แบบงานที่เซิร์ฟเวอร์ประทับเวลาให้แล้วมาด้วย ให้ตรงฐาน
+     * แก้ต่อไปแล้ว → รับแค่ savedAt ห้ามทับสิ่งที่เพิ่งทำ (คำขอถัดไปกำลังตามมา)
+     */
+    const saved = r.order;
+    if (saved)
+      setOrder((cur) => {
+        if (!cur || cur.id !== saved.id) return cur;
+        if (cur === next && cur.items.length === saved.items.length)
+          return { ...cur, savedAt: saved.savedAt, items: cur.items.map((it, i) => withServerStamps(it, saved.items[i])) };
+        return { ...cur, savedAt: saved.savedAt };
+      });
+    return true;
   }
 
   function persist() {
@@ -5993,6 +6010,16 @@ function safeFileName(name: string) {
  *   เฉย ๆ ไม่เปิดเว็บ (แถม Chrome/Edge ยังเตือนว่าไฟล์อันตรายตอนโหลดอีก)
  *   จึงเก็บ .url (Windows) / .webloc (Mac) ไว้เป็นตัวเลือกรองให้คนที่อยากได้ทางลัดแบบเนทีฟ
  */
+/** ฟิลด์ที่เซิร์ฟเวอร์เป็นคนประทับเวลา/กันเขียนทับ (ดู reconcileItem ใน api/admin/orders/route.ts) — รับค่าจากก้อนที่บันทึกจริง */
+const SERVER_STAMPED = ["graphicAck", "noProof", "sampleRequired", "samplePacked", "noteAck", "arrival", "proofs"] as const;
+function withServerStamps(local: OrderItem, saved?: OrderItem): OrderItem {
+  if (!saved) return local;
+  const out = { ...local } as Record<string, unknown>;
+  const src = saved as unknown as Record<string, unknown>;
+  for (const k of SERVER_STAMPED) out[k] = src[k];
+  return out as unknown as OrderItem;
+}
+
 function downloadOrderShortcut(orderId: string, url: string, kind: ShortcutKind = "html") {
   if (!url) return;
   const esc = (u: string) =>

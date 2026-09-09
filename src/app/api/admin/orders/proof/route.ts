@@ -138,7 +138,8 @@ export async function POST(req: Request) {
   // ยังมีรายการไหนค้างแก้อยู่ไหม → คุมสถานะออเดอร์ให้ตรงความจริง
   const anyEditLeft = items.some((it) => it.proofStatus === "ขอแก้ไข");
   const updated = withLog(
-    { ...order, items, status: anyEditLeft ? ("แก้ไขแบบ" as const) : ("รอตรวจแบบ" as const) },
+    // savedAt = now เท่ากับ at ของรูปที่เพิ่งอัป → หน้าจอที่รับ order กลับ "เห็นรูปนี้แล้ว" ลบ/แก้ต่อได้ทันที (ดู reconcileProofs)
+    { ...order, items, status: anyEditLeft ? ("แก้ไขแบบ" as const) : ("รอตรวจแบบ" as const), savedAt: now },
     by, // บันทึกชื่อคนที่อัปโหลดจริง (fallback: กราฟฟิก)
     replaceIndex !== null ? "เปลี่ยนรูปแบบงาน (แก้ตามคำขอ)" : "อัปโหลดแบบให้ลูกค้าตรวจ",
     replaceIndex !== null

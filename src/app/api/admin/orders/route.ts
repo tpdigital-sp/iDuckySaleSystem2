@@ -10,7 +10,20 @@ import { reportPaidToTP, syncArrivalToTP, syncRushToTP } from "@/lib/server/tp-r
 import { bumpSoldForOrder, unbumpSoldForOrder } from "@/lib/server/sold";
 import { cutStockForOrder, restoreStockForOrder } from "@/lib/server/stock";
 import { awardPointsForOrder, revokePointsForOrder } from "@/lib/server/contact-points";
-import { hasUnpaidBalance, orderBalance, orderTotal, packGate, proofsOf, withLog, type Order, type OrderStatus, type PackGate } from "@/lib/admin-data";
+import {
+  hasUnpaidBalance,
+  orderBalance,
+  orderTotal,
+  packGate,
+  proofsOf,
+  withLog,
+  type LogEntry,
+  type Order,
+  type OrderItem,
+  type OrderStatus,
+  type PackGate,
+  type Proof,
+} from "@/lib/admin-data";
 
 /** สรุปเหตุผลที่ด่านตรวจยังไม่ผ่าน (ไว้โชว์/ลง log) */
 function gateReasons(g: PackGate): string {
@@ -28,6 +41,82 @@ function gateReasons(g: PackGate): string {
 }
 
 export const runtime = "nodejs";
+
+/**
+ * 🕒 กันหน้าจอ "ค้าง" เขียนทับงานของคนอื่น
+ * ทุกคำขอบันทึกส่งออเดอร์ "ทั้งก้อน" จากหน้าจอของตัวเอง — ถ้าหน้านั้นเปิดค้างไว้ (โพลลิงหยุดตอนเคอร์เซอร์อยู่ในช่องกรอก ·
+ * เปิดใบเดียวกัน 2 หน้าต่าง · สถานีแพ็คที่ช่องยิง QR โฟกัสตลอด) ก้อนที่ส่งมาคือของเก่า → ติ๊กที่คนอื่นเพิ่งกด
+ * (เช่น ✅ กราฟฟิกอ่านรายละเอียดแล้ว) หายเงียบ ๆ ทั้งที่ log ยังอยู่ (OD-260908-1902 / OD-260908-1744 · 9 ก.ย. 69)
+ *
+ * วิธีกัน: เซิร์ฟเวอร์ประทับ savedAt ทุกครั้งที่บันทึก · หน้าจอส่ง savedAt ที่ตัวเองถือกลับมา (= "เห็นข้อมูลถึงตอนไหน")
+ *   · ฟิลด์ประทับเวลา (graphicAck/noProof/sampleRequired/samplePacked/noteAck/arrival) ที่ในฐานมี at ใหม่กว่า savedAt ของหน้าจอ
+ *     = หน้าจอนั้นยังไม่เคยเห็น → คงของในฐาน (ติ๊ก/ยกเลิกทับไม่ได้จนกว่าจะได้ค่าล่าสุด — โพลลิง 15 วิ/รับค่ากลับหลังบันทึก)
+ *   · ติ๊กที่เพิ่งเกิด ประทับ at ด้วยนาฬิกาเซิร์ฟเวอร์ (นาฬิกาเครื่องพนักงานเชื่อไม่ได้ เทียบกับ savedAt ไม่ตรง)
+ *   · แบบงานที่อัปหลัง savedAt ของหน้าจอ แล้วไม่อยู่ในชุดที่ส่งมา = หน้าจอยังไม่เคยเห็น → เติมกลับ (ไม่ใช่การลบ)
+ *   · log รวม 2 ฝั่งแบบไม่ซ้ำ ไม่มีใครทับประวัติของอีกฝ่าย
+ * หน้าจอที่ไม่มี savedAt (ใบเก่า/หน้าที่ไม่ได้รับค่ากลับ) ถือว่าเห็นถึง "" = คงของในฐานทุกตัว
+ */
+type Stamp = { by: string; at: string };
+const STAMPED = ["graphicAck", "noProof", "sampleRequired", "samplePacked", "noteAck", "arrival"] as const;
+type StampedKey = (typeof STAMPED)[number];
+type Stamped = Record<StampedKey, Stamp | undefined>;
+
+/** เทียบว่าเป็นติ๊กเดียวกันไหมโดยไม่ดู at (หน้าจอที่เพิ่งติ๊กยังถือ at นาฬิกาเครื่องตัวเอง ต่างจากที่เซิร์ฟเวอร์ประทับ) */
+function sameStamp(a: Stamp, b: Stamp): boolean {
+  return JSON.stringify({ ...a, at: 0 }) === JSON.stringify({ ...b, at: 0 });
+}
+
+function pickStamp<T extends Stamp>(cur: T | undefined, inc: T | undefined, clientSavedAt: string, now: string): T | undefined {
+  if (cur && cur.at > clientSavedAt) return cur; // เกิดหลังจากที่หน้าจอนี้เห็นล่าสุด → หน้าจอนี้ยังไม่รู้ ห้ามทับ
+  if (!inc) return undefined; // หน้าจอเห็นแล้วและตั้งใจยกเลิก
+  if (cur && sameStamp(cur, inc)) return cur; // ยังติ๊กอยู่เหมือนเดิม → คงคน/เวลาที่ติ๊กครั้งแรก
+  return { ...inc, at: now }; // ติ๊กใหม่/แก้ค่า → เวลาเซิร์ฟเวอร์
+}
+
+/** แบบงาน: รูปใหม่ที่หน้าจอส่งมาประทับเวลาเซิร์ฟเวอร์ · รูปในฐานที่อัปหลังหน้าจอเห็นล่าสุดแต่ไม่อยู่ในชุดที่ส่ง → เติมกลับ */
+function reconcileProofs(cur: Proof[], inc: Proof[] | undefined, clientSavedAt: string, now: string): Proof[] | undefined {
+  const known = new Set(cur.map((p) => p.url));
+  const sent = new Set((inc ?? []).map((p) => p.url));
+  const unseen = cur.filter((p) => !sent.has(p.url) && p.at > clientSavedAt);
+  if (!inc && !unseen.length) return inc;
+  const list = (inc ?? []).map((p) => (known.has(p.url) ? p : { ...p, at: now }));
+  return unseen.length ? [...list, ...unseen] : list;
+}
+
+/** รายการเดียว: เอาค่าที่หน้าจอส่งมา (inc) เป็นหลัก แต่ติ๊ก/แบบงานที่หน้าจอยังไม่เคยเห็นต้องไม่หาย */
+function reconcileItem(cur: OrderItem | undefined, inc: OrderItem, clientSavedAt: string, now: string): OrderItem {
+  if (!cur) return inc;
+  const out: OrderItem = { ...inc };
+  const c = cur as unknown as Stamped;
+  const i = inc as unknown as Stamped;
+  const o = out as unknown as Stamped;
+  for (const k of STAMPED) o[k] = pickStamp(c[k], i[k], clientSavedAt, now);
+  const proofs = reconcileProofs(proofsOf(cur), inc.proofs, clientSavedAt, now);
+  if (proofs) out.proofs = proofs;
+  return out;
+}
+
+/** แอดมินสิทธิ์เต็ม: ก้อนที่ส่งมาคือของจริงทั้งใบ ยกเว้นติ๊ก/แบบงานที่หน้าจอนั้นยังไม่เคยเห็น (จับคู่รายการตามลำดับ+ชื่อ) */
+function reconcileFullEdit(existing: Order, incoming: Order, clientSavedAt: string, now: string): Order {
+  const items = (incoming.items ?? []).map((inc, i) => {
+    const cur = existing.items?.[i];
+    return cur && cur.name === inc.name ? reconcileItem(cur, inc, clientSavedAt, now) : inc;
+  });
+  return { ...incoming, items };
+}
+
+/** รวมประวัติ 2 ฝั่งแบบไม่ซ้ำ เรียงตามเวลา — หน้าจอค้างส่ง log สั้นกว่าก็ไม่ทับรายการที่คนอื่น/เซิร์ฟเวอร์เพิ่งลง */
+function mergeLogs(...lists: (LogEntry[] | undefined)[]): LogEntry[] {
+  const seen = new Set<string>();
+  const out: LogEntry[] = [];
+  for (const e of lists.flatMap((l) => l ?? [])) {
+    const k = `${e.at}|${e.by}|${e.action}|${e.detail ?? ""}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(e);
+  }
+  return out.sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
+}
 
 /**
  * ฝ่ายแพ็คบันทึกได้เฉพาะงานแพ็ค — เอาออเดอร์เดิมจาก DB เป็นฐาน แล้วทับเฉพาะ:
@@ -62,12 +151,7 @@ function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Or
     }
   }
 
-  // ต่อประวัติการทำงาน (log ที่ client ส่งมา = ของเดิม + รายการใหม่)
-  if (incoming.log && incoming.log.length >= (existing.log?.length ?? 0)) {
-    merged.log = incoming.log;
-  }
-
-  return merged;
+  return merged; // log รวมกลางที่ PATCH (mergeLogs)
 }
 
 /**
@@ -79,7 +163,7 @@ function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Or
  *
  * ⚠️ เดิมไม่มีทางนี้ — กราฟฟิกกด "ลบแบบ" แล้ว API ตอบ 403 เงียบ ๆ หน้าจอเหมือนลบได้ แต่รีเฟรช/อัปรูปใหม่รูปเดิมกลับมา
  */
-function mergeProofFields(existing: Order, incoming: Order): Order {
+function mergeProofFields(existing: Order, incoming: Order, clientSavedAt: string, now: string): Order {
   const items = existing.items.map((it, i) => {
     const inc = incoming.items?.[i];
     if (!inc) return it;
@@ -90,7 +174,7 @@ function mergeProofFields(existing: Order, incoming: Order): Order {
           return pack && !p.pack ? { ...p, pack } : p;
         })
       : it.proofs;
-    return {
+    const draft: OrderItem = {
       ...it,
       proofs,
       proofStatus: inc.proofStatus,
@@ -102,19 +186,23 @@ function mergeProofFields(existing: Order, incoming: Order): Order {
       samplePacked: inc.samplePacked,
       unitYield: inc.unitYield ?? it.unitYield,
     };
+    // ⚠️ หน้าจอกราฟฟิกที่ค้าง (เปิด 2 หน้าต่าง/เคอร์เซอร์ค้างในช่องกรอก) ส่ง graphicAck ว่าง = ติ๊กของอีกคนหาย → reconcileItem กันไว้
+    return reconcileItem(it, draft, clientSavedAt, now);
   });
 
   const gifts = existing.gifts?.map((g) => {
     const inc = incoming.gifts?.find((x) => x.promoId === g.promoId);
     if (!inc) return g;
-    return { ...g, proofs: inc.proofs, proofStatus: inc.proofStatus, proofNote: inc.proofNote, proofUpdatedAt: inc.proofUpdatedAt ?? g.proofUpdatedAt };
+    return {
+      ...g,
+      proofs: reconcileProofs(g.proofs ?? [], inc.proofs, clientSavedAt, now),
+      proofStatus: inc.proofStatus,
+      proofNote: inc.proofNote,
+      proofUpdatedAt: inc.proofUpdatedAt ?? g.proofUpdatedAt,
+    };
   });
 
-  const merged: Order = { ...existing, items, ...(gifts ? { gifts } : {}) };
-  if (incoming.log && incoming.log.length >= (existing.log?.length ?? 0)) {
-    merged.log = incoming.log;
-  }
-  return merged;
+  return { ...existing, items, ...(gifts ? { gifts } : {}) }; // log รวมกลางที่ PATCH (mergeLogs)
 }
 
 /**
@@ -321,6 +409,9 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
   }
   if (!order?.id) return NextResponse.json({ error: "ไม่มีเลขออเดอร์" }, { status: 400 });
+  const now = new Date().toISOString();
+  // 🕒 หน้าจอเห็นข้อมูลถึงตอนไหน (savedAt ที่ถือมา) — ไม่มี = ถือว่าเก่าสุด ห้ามทับติ๊ก/แบบที่คนอื่นทำไว้
+  const clientSavedAt = typeof order.savedAt === "string" ? order.savedAt : "";
 
   // ดึงออเดอร์เดิม — ฝ่ายแพ็คใช้เป็นฐาน merge · ทุกคนใช้เทียบสถานะเก่าเพื่อแจ้งเตือน
   const { data: row, error: gErr } = await sb.from("orders").select("data").eq("id", order.id).single();
@@ -334,7 +425,8 @@ export async function PATCH(req: Request) {
 
   let toSave: Order;
   if (mayEditFull) {
-    toSave = order;
+    // ก้อนจากหน้าจอแอดมินเป็นหลัก แต่ติ๊ก/แบบงานที่หน้าจอนั้นยังไม่เคยเห็น (คนอื่นเพิ่งทำ) ต้องไม่หาย
+    toSave = reconcileFullEdit(existing, order, clientSavedAt, now);
     // แอดมินยิงเลขทั้งที่ด่านตรวจยังไม่ครบ = อนุญาต (ตัดสินใจเอง) แต่บันทึก log ฝั่งเซิร์ฟเวอร์เสมอ — ตรวจย้อนหลังได้ว่าใครข้าม
     if (wantsTracking) {
       const g = packGate(existing);
@@ -356,7 +448,7 @@ export async function PATCH(req: Request) {
       toSave = mergePackFields(existing, order, canPack(actor, "pack.ship", rolePerms, scanned));
     }
     // กราฟฟิก (มีหรือไม่มีสิทธิ์แพ็คร่วมด้วยก็ได้) → ทับฟิลด์งานแบบต่อจากผลแพ็ค
-    if (mayProof) toSave = mergeProofFields(toSave, order);
+    if (mayProof) toSave = mergeProofFields(toSave, order, clientSavedAt, now);
   }
 
   /**
@@ -410,6 +502,10 @@ export async function PATCH(req: Request) {
   if (toSave.slipPath) toSave = { ...toSave, slipUrl: undefined };
   if (toSave.deposit?.balanceSlipUrl) toSave = { ...toSave, deposit: { ...toSave.deposit, balanceSlipUrl: undefined } };
   if (toSave.loginLine) toSave = { ...toSave, loginLine: undefined };
+
+  // 🕒 ประวัติรวม 2 ฝั่ง + ประทับเวลาบันทึก (หน้าจอรับกลับไปถือ = รอบหน้าเซิร์ฟเวอร์รู้ว่าหน้านั้นเห็นถึงตอนนี้แล้ว)
+  // (ฐาน + ที่หน้าจอส่งมา + ที่เซิร์ฟเวอร์เพิ่งต่อท้ายในคำขอนี้ — ทางแพ็ค/กราฟฟิก toSave ตั้งต้นจากฐาน log ของหน้าจอจึงต้องรวมตรงนี้)
+  toSave = { ...toSave, log: mergeLogs(existing.log, order.log, toSave.log), savedAt: now };
 
   const { error } = await sb.from("orders").update({ data: toSave }).eq("id", toSave.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
