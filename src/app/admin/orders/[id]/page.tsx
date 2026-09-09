@@ -79,6 +79,7 @@ import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
 import { foldSizeExtra, specEntries, specValueLines } from "@/components/SpecLines";
 import { uploadArtworkFile } from "@/lib/artwork-upload";
 import { formatPhone } from "@/lib/contacts";
+import { SHIP_WINDOW_RULE, shipWindowForUseBy, shipWindowWarnings } from "@/lib/ship-date";
 import { ContactChip, CustomerContactInput } from "@/components/admin/CustomerContactInput";
 
 /**
@@ -1296,6 +1297,28 @@ export default function AdminOrderDetailPage() {
   function persist() {
     if (!order || demo) return;
     void saveOrWarn(order);
+  }
+
+  /**
+   * 📅 ใบที่มีวันใช้งานแต่ช่องวันส่งยังว่าง (ใบเก่าก่อนมีระบบ / ลูกค้าระบุตอนสั่ง) → เติมช่วงวันส่งให้เองแล้วบันทึก
+   * ทำครั้งเดียวต่อใบ · เฉพาะคนที่มีสิทธิ์แก้ออเดอร์ (ฝ่ายแพ็ค/กราฟฟิกเซิร์ฟเวอร์ไม่รับฟิลด์นี้อยู่แล้ว ไม่ต้องยิงให้เด้ง error)
+   */
+  const shipAutoRef = useRef<string>("");
+  useEffect(() => {
+    if (!order || demo || !permsReady || !rolCan("orders.edit")) return;
+    if (!order.useByDate || order.shipDate?.from || order.shipDate?.to) return;
+    if (shipAutoRef.current === order.id) return;
+    const win = shipWindowForUseBy(order.useByDate, todayYmd());
+    if (!win) return;
+    shipAutoRef.current = order.id;
+    applyOrder({ ...order, shipDate: { from: win.from, to: win.to } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.id, order?.useByDate, order?.shipDate?.from, order?.shipDate?.to, demo, permsReady]);
+
+  /** วันนี้แบบ YYYY-MM-DD ตามนาฬิกาเครื่องแอดมิน (ไว้กันช่วงวันส่งถอยไปก่อนวันนี้) */
+  function todayYmd(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
 
   /** อัปเดต order + บันทึกทันที (ใช้กับ select สี/ขนาด/วันที่ ที่ไม่มี blur) */
@@ -4805,9 +4828,12 @@ export default function AdminOrderDetailPage() {
                   </div>
                 )}
 
-                {/* วันที่จัดส่ง */}
+                {/* วันที่จัดส่ง — เติมให้เองจากวันใช้งาน (ส่งถึงก่อน 1–2 วันทำการ เว้นเสาร์-อาทิตย์/วันหยุด ดู autoFillShipDate) · แอดมินแก้ทับได้ */}
+                {(() => {
+                  const warns = shipWindowWarnings(order.shipDate, order.useByDate);
+                  return (
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold text-slate-600">📅 วันที่จัดส่ง (จาก–ถึง)</p>
+                  <p className="mb-1.5 text-xs font-semibold text-slate-600" title={SHIP_WINDOW_RULE}>📅 วันที่จัดส่ง (จาก–ถึง)</p>
                   <div className="flex items-center gap-2">
                     <input
                       type="date"
@@ -4823,7 +4849,16 @@ export default function AdminOrderDetailPage() {
                       className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1 text-[13px] text-slate-800 focus:border-amber-300 focus:outline-none"
                     />
                   </div>
+                  {warns.length > 0 && (
+                    <ul className="mt-1 space-y-0.5 text-[11px] font-bold text-rose-600">
+                      {warns.map((w) => (
+                        <li key={w}>⚠️ {w}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
+                  );
+                })()}
 
                 {/* 🔥 วันที่ลูกค้าต้องใช้งาน + งานเร่ง — สีบอกความด่วนตั้งแต่เหลือบมอง */}
                 {(() => {
@@ -4848,7 +4883,12 @@ export default function AdminOrderDetailPage() {
                         <input
                           type="date"
                           value={order.useByDate ?? ""}
-                          onChange={(e) => applyOrder({ ...order, useByDate: e.target.value || undefined })}
+                          onChange={(e) => {
+                            // ระบุวันใช้งาน → เติมช่วงวันส่งให้ทันที (ส่งถึงก่อน 1–2 วันทำการ เว้นเสาร์-อาทิตย์/วันหยุด)
+                            const v = e.target.value || undefined;
+                            const win = v ? shipWindowForUseBy(v, todayYmd()) : null;
+                            applyOrder({ ...order, useByDate: v, ...(win ? { shipDate: { from: win.from, to: win.to } } : {}) });
+                          }}
                           className={`min-w-fit flex-1 rounded-lg border bg-white px-2 py-1 text-[13px] tabular-nums focus:outline-none ${
                             order.rush || late ? "border-rose-300 font-bold text-rose-700" : soon ? "border-orange-300 font-bold text-orange-700" : "border-slate-200 text-slate-800 focus:border-amber-300"
                           }`}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { bkkYmd, thaiDateTime } from "@/lib/bangkok-time";
+import { autoShipDate } from "@/lib/ship-date";
 import { randomBytes } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderTotal, type Order } from "@/lib/admin-data";
@@ -269,7 +270,7 @@ export async function POST(req: Request) {
     shippingCost: Number(input.shippingCost) || 0,
     status: "รอชำระเงิน",
     note: input.note?.trim() || undefined,
-    ...(/^\d{4}-\d{2}-\d{2}$/.test(input.useByDate ?? "") ? { useByDate: input.useByDate } : {}),
+    ...(/^\d{4}-\d{2}-\d{2}$/.test(input.useByDate ?? "") ? { useByDate: input.useByDate, ...autoShipDate(input.useByDate!) } : {}),
     items: itemsWithYield,
     ...(cid ? { customerId: cid } : {}),
     ...(input.email?.trim() ? { email: input.email.trim() } : {}),

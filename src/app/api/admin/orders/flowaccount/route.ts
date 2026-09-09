@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { bkkYmd, thaiDateTime } from "@/lib/bangkok-time";
+import { autoShipDate } from "@/lib/ship-date";
 import { requirePerm } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
@@ -189,7 +190,7 @@ export async function PUT(req: Request) {
     ...(discountAmt > 0 ? { adminDiscount: { label: `ส่วนลดตามใบ ${doc.docNo}`, amount: discountAmt } } : {}),
     ...(vatAmt > 0 ? { vat: { rate: Number(body.vatRate) || doc.vatRate || 7, amount: vatAmt } } : {}),
     ...(body.note?.trim() ? { note: body.note.trim() } : {}),
-    ...(useByDate ? { useByDate } : {}),
+    ...(useByDate ? { useByDate, ...autoShipDate(useByDate) } : {}),
     taxInvoice: {
       company: doc.customer.name,
       ...(doc.customer.taxId ? { taxId: doc.customer.taxId } : {}),
