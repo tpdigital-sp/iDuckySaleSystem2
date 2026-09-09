@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LINE_URL } from "@/components/LineButton";
+import { addDays, isWorkingDay, shipWindowForUseBy, shortThaiDay, todayBkkYmd } from "@/lib/ship-date";
 import {
   activeMatrix,
   activeRate,
@@ -70,6 +71,19 @@ import { cartQtyShipFee, pickShipping, shipProfileOf, shippingAllowed } from "@/
 import { termLines } from "@/lib/term-lines";
 
 const USE_BY_KEY = "ducky-use-by-date";
+
+/** 📅 กล่องวันใช้งาน — เกณฑ์เตือน (ปรับตัวเลขตรงนี้ที่เดียว) */
+/** สั่งรวมตั้งแต่กี่ชิ้นถือว่า "จำนวนเยอะ" ต้องสอบถามคิวผลิตก่อนสั่ง */
+const USE_BY_BIG_QTY = 100;
+/** วันใช้งานห่างจากวันนี้ไม่ถึงกี่วันทำการ ถือว่า "กระชั้น" */
+const USE_BY_RUSH_WORKDAYS = 3;
+/** นับวันทำการ (จ–ศ เว้นวันหยุด) ตั้งแต่พรุ่งนี้จนถึงก่อนวันใช้งาน · -1 = วันผิดรูป/ย้อนหลัง */
+function workingDaysUntil(useBy: string, today = todayBkkYmd()): number {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(useBy) || useBy < today) return -1;
+  let n = 0;
+  for (let d = addDays(today, 1); d < useBy && n < 400; d = addDays(d, 1)) if (isWorkingDay(d)) n++;
+  return n;
+}
 /** วิธีจัดส่งที่ลูกค้ากดเลือกเอง (เก็บ "ลายเซ็นตะกร้า" ตอนที่กด — ตะกร้าเปลี่ยน = ให้ระบบคิดใหม่) */
 const SHIP_PICK_KEY = "iducky-shipping-pick-v1";
 
@@ -1144,35 +1158,87 @@ export default function CartPage() {
               </div>
             </dl>
 
-            {/* 📅 วันที่ต้องใช้งาน — ทักเช็คคิวงานกับแอดมินก่อน */}
-            <div className="ord-sub mt-5 p-4">
-              <label htmlFor="use-by" className="ord-title block text-[.86rem]">
-                📅 ต้องใช้งานวันไหน? <span className="t-faint" style={{ fontFamily: "var(--body)", fontWeight: 400 }}>(ไม่บังคับ)</span>
-              </label>
-              <p className="mt-1 text-[11px] leading-relaxed t-soft">
-                มีกำหนดใช้งาน (อีเวนต์ · วันเกิด · ของขวัญ) ระบุไว้ได้เลย —{" "}
-                <strong className="t-blue">รบกวนทักแอดมินเช็คคิวงานก่อนนะครับ</strong> ทางร้านจะยืนยันว่าทันไหมก่อนเริ่มผลิต
-              </p>
-              <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                <input
-                  id="use-by"
-                  type="date"
-                  value={useBy}
-                  min={new Date().toISOString().slice(0, 10)}
-                  onChange={(e) => saveUseBy(e.target.value)}
-                  className="ord-input"
-                  style={{ width: "auto" }}
-                />
-                {useBy && (
-                  <button type="button" onClick={() => saveUseBy("")} className="ord-btn quiet sm">
-                    ล้างวันที่
-                  </button>
-                )}
-                <a href={LINE_URL} target="_blank" rel="noopener noreferrer" className="ord-btn line sm ml-auto">
-                  💬 ทักเช็คคิวงาน
-                </a>
-              </div>
-            </div>
+            {/* 📅 วันที่ต้องใช้งาน — เผื่อเวลา · สั่งเยอะต้องเช็คคิว · ทักแอดมินยืนยันก่อนผลิต */}
+            {(() => {
+              const bigQty = totalQty >= USE_BY_BIG_QTY;
+              const wd = useBy ? workingDaysUntil(useBy) : -1;
+              const rush = !!useBy && wd >= 0 && wd < USE_BY_RUSH_WORKDAYS;
+              const win = useBy ? shipWindowForUseBy(useBy, todayBkkYmd()) : null;
+              return (
+                <div className="ord-sub mt-5 p-4">
+                  <label htmlFor="use-by" className="ord-title block text-[.86rem]">
+                    📅 ต้องใช้งานวันไหน?{" "}
+                    <span className="t-faint" style={{ fontFamily: "var(--body)", fontWeight: 400 }}>
+                      (ไม่บังคับ)
+                    </span>
+                  </label>
+                  <p className="mt-1 text-xs leading-relaxed t-soft">
+                    มีกำหนดใช้ (อีเวนต์ · วันเกิด · ออกบูธ) ระบุไว้ได้เลย{" "}
+                    <strong className="t-blue">ทางร้านจะเช็คคิวและยืนยันว่าทันไหมก่อนเริ่มผลิต</strong>
+                  </p>
+                  <ul className="mt-2.5 space-y-1.5 text-[11.5px] leading-relaxed">
+                    <li className="ord-note info px-3 py-2">
+                      🗓️ <strong>เผื่อเวลาไว้หน่อย</strong> — อย่าระบุวันกระชั้นเกินไป งานต้องตรวจแบบ → ผลิต → ส่ง
+                      (ขนส่งไม่วิ่งเสาร์-อาทิตย์/วันหยุด)
+                    </li>
+                    <li className={`ord-note ${bigQty ? "danger" : "warn"} px-3 py-2`}>
+                      📦 <strong>สั่งจำนวนเยอะ ต้องสอบถามคิวก่อนสั่ง</strong>
+                      {bigQty ? (
+                        <>
+                          {" "}
+                          — ตะกร้านี้ <strong>{totalQty.toLocaleString("th-TH")} ชิ้น</strong> รบกวนทักเช็คคิวก่อนกดสั่งนะครับ
+                        </>
+                      ) : (
+                        <> (ประมาณ {USE_BY_BIG_QTY.toLocaleString("th-TH")} ชิ้นขึ้นไป หรือหลายลาย/หลายรายการ)</>
+                      )}
+                    </li>
+                    <li className="ord-note line px-3 py-2">
+                      💬 <strong>ทัก LINE เช็คคิวก่อน</strong> — บอกวันใช้ + จำนวน + สินค้า ทางร้านตอบทันทีว่าทันไหม
+                    </li>
+                  </ul>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <input
+                      id="use-by"
+                      type="date"
+                      value={useBy}
+                      min={todayBkkYmd()}
+                      onChange={(e) => saveUseBy(e.target.value)}
+                      className="ord-input"
+                      style={{ width: "auto", ...(rush ? { borderColor: "var(--coral-deep,#F2456B)" } : {}) }}
+                    />
+                    {useBy && (
+                      <button type="button" onClick={() => saveUseBy("")} className="ord-btn quiet sm">
+                        ล้างวันที่
+                      </button>
+                    )}
+                    <a href={LINE_URL} target="_blank" rel="noopener noreferrer" className="ord-btn line sm ml-auto">
+                      💬 ทักเช็คคิวงาน
+                    </a>
+                  </div>
+                  {useBy && win && (
+                    <p className={`ord-note ${rush ? "danger" : "ok"} mt-2.5 px-3 py-2 text-[11.5px] leading-relaxed`}>
+                      {rush ? (
+                        <>
+                          ⚠️ <strong>{shortThaiDay(useBy)} กระชั้นมาก</strong> (เหลือ{" "}
+                          {wd === 0 ? "ไม่ถึง 1" : wd.toLocaleString("th-TH")} วันทำการ) —{" "}
+                          {win.to <= todayBkkYmd() ? "ของต้องออกวันนี้เลย" : `ของต้องถึงภายใน ${shortThaiDay(win.to)}`}{" "}
+                          รบกวน<strong>ทักเช็คคิวก่อนกดสั่ง</strong>นะครับ
+                        </>
+                      ) : (
+                        <>
+                          ✅ ใช้งาน <strong>{shortThaiDay(useBy)}</strong> (อีก {wd.toLocaleString("th-TH")} วันทำการ) — ส่งถึงประมาณ{" "}
+                          <strong>
+                            {shortThaiDay(win.from)}
+                            {win.from !== win.to ? ` – ${shortThaiDay(win.to)}` : ""}
+                          </strong>
+                          {bigQty ? " · จำนวนเยอะ อย่าลืมทักเช็คคิวก่อนนะครับ" : ""}
+                        </>
+                      )}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* ร้านรับสั่งขั้นต่ำ 1 ชิ้นทุกสินค้า — ขั้นต่ำของเรทไม่บล็อกการสั่งอีกต่อไป
                 (จำนวนต่ำกว่าเกณฑ์เรท = ระบบสลับลงเรทที่เหมาะให้เอง ราคาถูกต้องตามช่วงจำนวน) */}
