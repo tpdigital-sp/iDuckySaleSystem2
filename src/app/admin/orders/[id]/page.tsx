@@ -4231,7 +4231,18 @@ export default function AdminOrderDetailPage() {
                   </div>
                   )}
 
-                  {/* 📝 หมายเหตุใบงานของรายการนี้ — อยู่ติดกับรายการเลย ไม่ต้องไปหาที่คอลัมน์ขวา */}
+                  {/* 📝 หมายเหตุใบงานของรายการนี้ — อยู่ติดกับรายการเลย ไม่ต้องไปหาที่คอลัมน์ขวา
+                      ⚠️ เดิมอยู่หลัง mayEdit อย่างเดียว → กราฟฟิกที่ไม่ใช่หัวหน้า (proof.manage ไม่มี orders.edit) ไม่เห็นหมายเหตุเลย
+                      ทั้งที่เป็นคำสั่งงานของตัวเอง (9 ก.ย. 69) → กราฟฟิกเห็นแบบอ่านอย่างเดียว (เซิร์ฟเวอร์ mergeProofFields ไม่รับ adminNote อยู่แล้ว) */}
+                  {!mayEdit && mayProof && noteHasText(it.adminNote) && (
+                    <div className="mt-3 border-t border-slate-100 pt-3">
+                      <p className="text-xs font-bold text-teal-700">📝 หมายเหตุใบงานของรายการนี้</p>
+                      <div
+                        className="mt-2 rounded-xl bg-amber-50 px-3 py-2.5 text-sm leading-snug text-slate-900 ring-1 ring-amber-200 [&_span]:whitespace-pre-wrap"
+                        dangerouslySetInnerHTML={{ __html: it.adminNote! }}
+                      />
+                    </div>
+                  )}
                   {mayEdit && (
                     <div className="mt-3 border-t border-slate-100 pt-3">
                       <button
@@ -5205,6 +5216,17 @@ export default function AdminOrderDetailPage() {
 
                 <p className={`text-[11px] ${faint}`}>บันทึกอัตโนมัติ · แสดงบนใบงานตอนปริ้น</p>
               </div>
+            </div>
+          )}
+          {/* 📄 หมายเหตุท้ายบิลสำหรับกราฟฟิกที่ไม่มี orders.edit — ทั้งกล่อง "ใบงาน · การจัดส่ง" ข้างบนซ่อนไป
+              แต่หมายเหตุเป็นคำสั่งงานที่กราฟฟิกต้องอ่าน → โชว์อ่านอย่างเดียวเมื่อมีข้อความ (9 ก.ย. 69) */}
+          {!mayEdit && mayProof && noteHasText(order.billNote) && (
+            <div>
+              <GH t="teal">📄 หมายเหตุท้ายบิล</GH>
+              <div
+                className="mt-2 rounded-xl bg-amber-50 px-3 py-2.5 text-sm leading-snug text-slate-900 ring-1 ring-amber-200 [&_span]:whitespace-pre-wrap"
+                dangerouslySetInnerHTML={{ __html: order.billNote! }}
+              />
             </div>
           )}
 
