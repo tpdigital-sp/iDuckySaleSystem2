@@ -369,9 +369,14 @@
 }
 .dkb-by .ic { font-size: 0.85rem; line-height: 1; }
 .dkb-by b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
-.dkb-by[data-admin="1"] { background: var(--dk-navy); color: #fff; box-shadow: 0 2px 8px rgba(23, 58, 107, 0.28); }
-.dkb-by[data-admin="1"] b { padding-left: 6px; margin-left: 2px; border-left: 1px solid rgba(255, 255, 255, 0.35); }
-.dkb-lrow[data-done="1"] .dkb-by[data-admin="1"] { background: rgba(23, 58, 107, 0.55); box-shadow: none; }
+/* โทนฟ้าชุดเดียวกับชิปกรอง "🧑‍💼 แอดมินสร้างให้" ในแถบ "ใครสร้าง" แต่ทำเป็นพื้นทึบไล่สี (ชุดปุ่มหลัก .dkb-go) ให้เด่นบนการ์ด */
+.dkb-by[data-admin="1"] {
+  padding: 4px 12px 4px 9px; font-size: 0.78rem; font-weight: 700; color: #fff;
+  background: linear-gradient(120deg, var(--dk-blue), var(--dk-blue-deep));
+  box-shadow: 0 4px 12px rgba(44, 129, 196, 0.32);
+}
+.dkb-by[data-admin="1"] b { padding-left: 7px; margin-left: 2px; border-left: 1px solid rgba(255, 255, 255, 0.45); font-weight: 800; }
+.dkb-lrow[data-done="1"] .dkb-by[data-admin="1"] { background: rgba(44, 129, 196, 0.5); box-shadow: none; }
 .dkb-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 3px; font-size: 0.76rem; color: var(--dk-navy-soft); }
 .dkb-meta .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.74rem; letter-spacing: -0.02em; color: var(--dk-faint); }
 .dkb-meta .hot { color: var(--dk-coral-ink); font-weight: 600; }
