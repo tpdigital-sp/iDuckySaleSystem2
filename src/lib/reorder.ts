@@ -6,7 +6,8 @@
  */
 import { useRouter } from "next/navigation";
 import { useCart } from "./cart-context";
-import type { Order } from "./admin-data";
+import { REUSE_ART_LABEL } from "./products";
+import { proofsOf, type Order } from "./admin-data";
 
 export function useReorder(onFail: (msg: string) => void) {
   const router = useRouter();
@@ -19,7 +20,9 @@ export function useReorder(onFail: (msg: string) => void) {
     let added = 0;
     for (const it of o.items) {
       if (!productOf(it.productId)) continue; // สินค้าถูกลบไปแล้ว → ข้าม
-      addItem(it.productId, it.sel ?? {}, it.qty);
+      // ♻️ ใบเดิมมีลาย/แบบอยู่แล้ว → ปักป้าย "ใช้ไฟล์เก่า" ชี้ใบเดิมให้เลย ลูกค้าไม่ต้องอัปซ้ำ กราฟฟิกดึงจากใบเดิมได้
+      const hasFiles = (it.artworkUrls?.length ?? 0) > 0 || proofsOf(it).length > 0;
+      addItem(it.productId, { ...(it.sel ?? {}), ...(hasFiles ? { [REUSE_ART_LABEL]: o.id } : {}) }, it.qty);
       added++;
     }
     if (added === 0) return onFail("สินค้าในออเดอร์นี้ไม่มีขายแล้ว สั่งซ้ำไม่ได้");

@@ -2004,6 +2004,12 @@ export const BACK_DESIGN_LABEL = "จำนวนลาย (ด้านหล�
  * ลำดับ "ลายที่ N" = ลำดับ url ใน "ภาพลายที่แนบ" (นับจาก 1)
  * ────────────────────────────────────────────────────────────── */
 export const ART_QTY_LABEL = "จำนวนแต่ละลาย";
+/**
+ * 🔄 จำนวนต่อลาย "ด้านหลัง" ของงานพิมพ์ 2 ด้าน (ผู้ใช้สั่ง 9 ก.ย. 69: "ด้านหลังต้องมีระบุจำนวนด้วย")
+ * รูปแบบเดียวกับ ART_QTY_LABEL แต่ "ลายที่ N" นับตามลำดับ url ใน ART_BACK_LABEL (ไม่ต่อจากด้านหน้า)
+ * ทุกชิ้นมีทั้งหน้าและหลัง → ยอดรวมด้านหลังต้องเท่ากับจำนวนที่สั่งเหมือนด้านหน้า (ไม่ใช่บวกกัน)
+ */
+export const ART_BACK_QTY_LABEL = "จำนวนแต่ละลาย (ด้านหลัง)";
 
 /** ประกอบข้อความ "ลายที่ 1 × 5 ชิ้น · ลายที่ 2 × 2 ชิ้น" — ลายที่ไม่ได้ระบุข้าม · ไม่มีเลยคืน "" */
 export function formatArtQty(qtys: (number | undefined | null)[], unit = "ชิ้น"): string {
@@ -2033,12 +2039,15 @@ export function parseArtQty(text?: string | null): Map<number, number> {
  * คืน undefined = ลูกค้าไม่ได้ระบุ
  */
 export function artQtyOf(
-  item: { artworkQty?: Record<string, number>; sel?: Record<string, string> },
+  item: { artworkQty?: Record<string, number>; sel?: Record<string, string>; artworkBackUrls?: string[] },
   url: string,
   index: number,
 ): number | undefined {
   const q = item.artworkQty?.[url];
   if (q && q > 0) return q;
+  // 🔄 รูปด้านหลัง: ข้อความจำนวนอยู่อีกคีย์ และ "ลายที่ N" นับใหม่ภายในชุดด้านหลัง
+  const backIdx = item.artworkBackUrls?.indexOf(url) ?? -1;
+  if (backIdx >= 0) return parseArtQty(item.sel?.[ART_BACK_QTY_LABEL]).get(backIdx);
   return parseArtQty(item.sel?.[ART_QTY_LABEL]).get(index);
 }
 
@@ -2051,6 +2060,21 @@ export function artQtyByUrl(text: string | undefined | null, urls: string[]): Re
     const q = byIndex.get(i);
     if (q) out[u] = q;
   });
+  return Object.keys(out).length ? out : undefined;
+}
+
+/**
+ * จำนวนต่อลายทั้งหน้า+หลัง → { url: qty } สำหรับ OrderItem.artworkQty
+ * `urls` = ชุดรวมจาก splitArtUrls (หน้าก่อน หลังต่อท้าย) · `back` = เฉพาะชุดด้านหลัง (ท้ายของ urls)
+ * ข้อความด้านหน้า (ART_QTY_LABEL) จับกับ url ด้านหน้า · ข้อความด้านหลัง (ART_BACK_QTY_LABEL) จับกับชุดด้านหลังนับใหม่จาก 1
+ */
+export function artQtyFromSel(
+  sel: Record<string, string | undefined>,
+  urls: string[],
+  back: string[] = [],
+): Record<string, number> | undefined {
+  const front = back.length ? urls.slice(0, Math.max(0, urls.length - back.length)) : urls;
+  const out = { ...(artQtyByUrl(sel[ART_QTY_LABEL], front) ?? {}), ...(artQtyByUrl(sel[ART_BACK_QTY_LABEL], back) ?? {}) };
   return Object.keys(out).length ? out : undefined;
 }
 
@@ -2133,6 +2157,14 @@ export function artSizeText(s: ArtSize, unit = "ซม."): string {
   const num = (n: number) => String(Math.round(n * 100) / 100);
   return `${num(s.w)}×${num(s.h)}${unit ? ` ${unit}` : ""}`;
 }
+
+/**
+ * ♻️ คีย์ใน selections ที่ลูกค้าบอกว่า "ใช้ไฟล์เก่า" (ลายจากออเดอร์ก่อน ไม่แนบใหม่)
+ * ค่า = เลขออเดอร์เดิม/ข้อความที่พิมพ์ · ไม่มีเลขให้ใส่ REUSE_ART_DEFAULT
+ * ตอน checkout/ใบเสนอราคาแกะเป็น OrderItem.reuseArt (parseReuseArt ใน admin-data) — ข้อความยังคงอยู่ใน sel ให้ใบงาน/โหมดแพ็คอ่าน
+ */
+export const REUSE_ART_LABEL = "ใช้ไฟล์เก่า";
+export const REUSE_ART_DEFAULT = "ลายเดียวกับที่เคยสั่ง";
 
 /** คีย์ใน selections ที่เก็บ url ภาพลายที่ลูกค้าแนบ (คั่นด้วย " | ") — ด้านหน้า/ด้านเดียว */
 export const ART_LABEL = "ภาพลายที่แนบ";

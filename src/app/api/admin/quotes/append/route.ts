@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withQuoteLog, type Quote } from "@/lib/quotes";
-import type { OrderItem } from "@/lib/admin-data";
+import { orderIdIn, type OrderItem } from "@/lib/admin-data";
 import { withUnitYield } from "@/lib/products-server";
 
 export const runtime = "nodejs";
@@ -79,6 +79,15 @@ export async function POST(req: Request) {
     // งาน 2 ด้าน — url ชุดด้านหลัง (ส่วนย่อยของ artworkUrls) ไว้ติดป้ายในใบเสนอราคา
     ...(Array.isArray(it.artworkBackUrls) && it.artworkBackUrls.length
       ? { artworkBackUrls: it.artworkBackUrls.filter((u: unknown) => typeof u === "string").slice(0, 10) }
+      : {}),
+    // ♻️ ใช้ไฟล์เก่า — รับเฉพาะเลขออเดอร์/ข้อความสั้น ใครติ๊ก/เมื่อไหร่ให้เซิร์ฟเวอร์ตั้งเอง
+    ...(it.reuseArt && typeof it.reuseArt === "object"
+      ? (() => {
+          const r = it.reuseArt as { fromOrderId?: unknown; note?: unknown };
+          const fromOrderId = typeof r.fromOrderId === "string" ? orderIdIn(r.fromOrderId) : undefined;
+          const note = typeof r.note === "string" ? r.note.trim().slice(0, 200) : "";
+          return { reuseArt: { ...(fromOrderId ? { fromOrderId } : {}), ...(note ? { note } : {}), by: "ลูกค้า", at: new Date().toISOString() } };
+        })()
       : {}),
   }));
 

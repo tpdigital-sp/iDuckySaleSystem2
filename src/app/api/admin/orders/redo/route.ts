@@ -41,6 +41,7 @@ export async function POST(req: Request) {
   if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
   if (!row) return NextResponse.json({ error: "ไม่พบออเดอร์ต้นทาง" }, { status: 404 });
   const src = row.data as Order;
+  const by = gate.actor.name?.trim() || gate.actor.username;
 
   // เลือกเฉพาะรายการที่ติ๊กมา (ไม่ส่ง picks = ทำใหม่ทั้งออเดอร์)
   const picks: { index: number; qty?: number }[] =
@@ -63,13 +64,16 @@ export async function POST(req: Request) {
       ...(it.artworkSize ? { artworkSize: { ...it.artworkSize } } : {}), // ขนาดต่อลาย (คละหลายขนาด) ตามไปด้วย
       ...(it.artworkBackUrls?.length ? { artworkBackUrls: [...it.artworkBackUrls] } : {}), // ป้ายหน้า/หลังของลายต้องตามไปด้วย
       ...(it.sampleRequired ? { sampleRequired: it.sampleRequired } : {}),
+      // ♻️ ใบเดิมมีลาย/แบบอยู่แล้ว → ปักป้าย "ใช้ไฟล์เก่า" ชี้กลับใบเดิม กราฟฟิกจะได้หยิบแบบที่อนุมัติแล้วมาใช้ต่อ
+      ...(it.artworkUrls?.length || proofsOf(it).length
+        ? { reuseArt: { fromOrderId: fromId, note: mode === "claim" ? "งานเคลม — ไฟล์เดิมจากใบที่เคลม" : "สั่งซ้ำ — ไฟล์เดิมจากใบก่อน", by, at: new Date().toISOString() } }
+        : {}),
     });
   }
   if (!items.length) return NextResponse.json({ error: "ไม่ได้เลือกรายการที่จะทำใหม่" }, { status: 400 });
 
   const now = new Date();
   const id = `OD-${bkkYmd(now)}-${Math.floor(1000 + Math.random() * 9000)}`;
-  const by = gate.actor.name?.trim() || gate.actor.username;
 
   let order: Order = {
     id,

@@ -22,14 +22,18 @@ import {
   publicRates,
   qtyFromAreaOf,
   RATE_LABEL,
+  ART_BACK_QTY_LABEL,
   ART_QTY_LABEL,
   ART_SIZE_LABEL,
-  artQtyByUrl,
+  REUSE_ART_LABEL,
+  REUSE_ART_DEFAULT,
+  artQtyFromSel,
   artSizeByUrl,
   parseArtQty,
   unitYieldOf,
   splitArtUrls,
 } from "@/lib/products";
+import { orderIdIn, parseReuseArt } from "@/lib/admin-data";
 import { clearPriceLinkBundle } from "@/lib/price-link";
 import {
   orderBoxFees,
@@ -88,7 +92,7 @@ function workingDaysUntil(useBy: string, today = todayBkkYmd()): number {
 const SHIP_PICK_KEY = "iducky-shipping-pick-v1";
 
 export default function CartPage() {
-  const { items, setQty, setNote, removeItem, addItem, clear, productOf, productGone } = useCart();
+  const { items, setQty, setNote, setExtra, removeItem, addItem, clear, productOf, productGone } = useCart();
   // 🤝 ตัวแทนจำหน่าย — ไม่ได้ของแถม และบรรทัดเรทตัวแทนไม่สลับเรทอัตโนมัติ
   const { isDealer } = useCustomer();
   const router = useRouter();
@@ -124,8 +128,9 @@ export default function CartPage() {
           // แยกภาพลาย/ธงเช็คสต๊อกออกจากข้อความตัวเลือก (เหมือนตอน checkout) ไม่งั้น URL ยาวจะรกใบเสนอราคา
           const { "รอเช็คสต๊อก": _bulk, ...selNoBulk } = i.selections;
           const { urls: artworkUrls, back: artworkBackUrls, rest: restSel } = splitArtUrls(selNoBulk);
-          const artworkQty = artQtyByUrl(restSel[ART_QTY_LABEL], artworkUrls);
+          const artworkQty = artQtyFromSel(restSel, artworkUrls, artworkBackUrls);
           const artworkSize = artSizeByUrl(restSel[ART_SIZE_LABEL], artworkUrls);
+          const reuseArt = parseReuseArt(restSel[REUSE_ART_LABEL], "ลูกค้า"); // ♻️ ใช้ไฟล์เก่า → ป้ายในใบเสนอราคา/ออเดอร์
           return {
             productId: i.productId,
             name: productOf(i.productId)?.name ?? i.productId,
@@ -141,6 +146,7 @@ export default function CartPage() {
             ...(artworkQty ? { artworkQty } : {}),
             ...(artworkSize ? { artworkSize } : {}),
             ...(artworkBackUrls.length ? { artworkBackUrls } : {}),
+            ...(reuseArt ? { reuseArt } : {}),
           };
         }),
       }),
@@ -598,7 +604,12 @@ export default function CartPage() {
               const artUrls = artSplit.urls;
               const artBackSet = new Set(artSplit.back);
               // 🔢 จำนวนต่อลายที่ระบุไว้ — ติดป้ายบนรูปย่อ (บรรทัดข้อความซ่อนใน SpecLines กันซ้ำ)
+              // งาน 2 ด้าน: ด้านหลังมีข้อความของตัวเอง นับ "ลายที่ N" ใหม่ภายในชุดหลัง → แปลงเป็นลำดับในชุดรวม (หน้าก่อน หลังต่อท้าย)
               const artQtys = parseArtQty(item.selections[ART_QTY_LABEL]);
+              const frontCount = artUrls.length - artSplit.back.length;
+              parseArtQty(item.selections[ART_BACK_QTY_LABEL]).forEach((q, j) => artQtys.set(frontCount + j, q));
+              /** ป้าย "ลายที่ N" ของรูปลำดับ k ในชุดรวม — ด้านหลังนับใหม่จาก 1 ให้ตรงกับที่ลูกค้าเห็นตอนกรอก */
+              const artNo = (k: number) => (artBackSet.size && k >= frontCount ? `หลัง ${k - frontCount + 1}` : artBackSet.size ? `หน้า ${k + 1}` : `ลายที่ ${k + 1}`);
               return (
                 <div key={item.key} className={`ord-card cart-item${picked ? "" : " tint dim"}`}>
                   {/* ✅ ติ๊ก = สั่งรายการนี้รอบนี้ · เอาติ๊กออก = พักไว้ในตะกร้าก่อน */}
@@ -674,7 +685,7 @@ export default function CartPage() {
                              เจ้าของร้านสั่งไม่ต้องโชว์ในตะกร้า (5 ก.ย. 69) · ยังติดไปกับออเดอร์/ใบงานตามเดิม
                              "จำนวนลาย" ซ่อนเฉพาะตอนมีบรรทัด "🎨 แนบลายแล้ว N รูป" บอกซ้ำอยู่แล้ว —
                              ยังไม่แนบลาย (จะส่งทีหลัง) ต้องโชว์ต่อ ไม่งั้นไม่รู้ว่าสั่งคละกี่ลาย */
-                          hide={[...SPEC_HIDE, CART_NOTE_LABEL, RATE_LABEL, ...(artCount > 0 ? ["จำนวนลาย", ART_QTY_LABEL] : [])]}
+                          hide={[...SPEC_HIDE, CART_NOTE_LABEL, REUSE_ART_LABEL, RATE_LABEL, ...(artCount > 0 ? ["จำนวนลาย", ART_QTY_LABEL, ART_BACK_QTY_LABEL] : [])]}
                           className="mt-1 text-xs t-soft"
                           /* ป้าย +฿ ท้ายบรรทัดสเปค = "ค่าที่บวกเพิ่มจากราคาเรทจริง ๆ" เท่านั้น (เช่น ตะขอสปริง +฿8)
                              ตรงกับบรรทัดแจกแจงมุมขวาล่าง: ราคาเรท ฿45 + ตะขอ ฿8 = ฿53/ชิ้น
@@ -702,7 +713,7 @@ export default function CartPage() {
                                   {artBackSet.size > 0 ? ` (หน้า ${artCount - artBackSet.size} · หลัง ${artBackSet.size})` : ""}
                                   {artQtys.size > 0 && (
                                     <span className="ml-1 font-normal t-faint">
-                                      {"· " + artUrls.map((_, k) => (artQtys.get(k) ? `ลายที่ ${k + 1} × ${artQtys.get(k)}` : "")).filter(Boolean).join(" · ")}
+                                      {"· " + artUrls.map((_, k) => (artQtys.get(k) ? `${artNo(k)} × ${artQtys.get(k)}` : "")).filter(Boolean).join(" · ")}
                                     </span>
                                   )}
                                 </p>
@@ -760,6 +771,42 @@ export default function CartPage() {
                     })()}
                     {/* 📝 หมายเหตุของลูกค้า — เก็บลง selections["หมายเหตุ"] (ธรรมเนียมเดียวกับที่แอดมินพิมพ์เอง)
                         จึงติดไปกับออเดอร์/ใบงาน/โหมดแพ็คผ่าน SpecLines โดยไม่ต้องแก้จออื่น */}
+                    {/* ♻️ ใช้ไฟล์เก่า — เผื่อลูกค้าลืมติ๊กที่หน้าสินค้า · เก็บลง selections["ใช้ไฟล์เก่า"] (checkout แกะเป็น reuseArt ให้กราฟฟิก) */}
+                    {(() => {
+                      const raw = item.selections[REUSE_ART_LABEL] ?? "";
+                      const on = raw.trim().length > 0;
+                      return (
+                        <label
+                          className={`mt-2 flex cursor-pointer items-start gap-2 rounded-lg px-2.5 py-2 text-[11px] ring-1 transition ${
+                            on ? "bg-amber-100 text-amber-900 ring-amber-300" : "bg-white/60 t-soft ring-amber-200/70 hover:ring-amber-300"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={(e) => setExtra(item.key, REUSE_ART_LABEL, e.target.checked ? REUSE_ART_DEFAULT : "")}
+                            className="mt-0.5 h-3.5 w-3.5 accent-amber-600"
+                            aria-label={`ใช้ไฟล์เก่าสำหรับ ${product.name}`}
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="font-bold">♻️ ใช้ไฟล์เก่าที่เคยสั่งกับร้าน</span>
+                            <span className="block leading-relaxed opacity-80">ไม่ต้องอัปลายใหม่ ทีมงานหยิบจากออเดอร์ก่อนให้ · ใส่เลขออเดอร์เดิมถ้าจำได้</span>
+                            {on && (
+                              <input
+                                type="text"
+                                value={raw === REUSE_ART_DEFAULT ? "" : raw}
+                                onChange={(e) => setExtra(item.key, REUSE_ART_LABEL, e.target.value.slice(0, 220) || REUSE_ART_DEFAULT)}
+                                onClick={(e) => e.preventDefault()}
+                                placeholder="เลขออเดอร์เดิม เช่น OD-260801-1234 (ไม่บังคับ)"
+                                aria-label="เลขออเดอร์เดิมที่ใช้ไฟล์"
+                                className="ord-input mt-1.5 text-xs"
+                              />
+                            )}
+                            {on && orderIdIn(raw) && <span className="mt-1 block text-[10px] font-bold text-amber-700">จะอ้างอิงออเดอร์ {orderIdIn(raw)}</span>}
+                          </span>
+                        </label>
+                      );
+                    })()}
                     <label className="mt-2 block">
                       <span className="text-[11px] font-semibold t-soft">📝 หมายเหตุถึงร้าน (ไม่บังคับ)</span>
                       <textarea

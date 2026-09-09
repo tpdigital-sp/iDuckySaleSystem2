@@ -57,7 +57,8 @@ export const runtime = "nodejs";
  * หน้าจอที่ไม่มี savedAt (ใบเก่า/หน้าที่ไม่ได้รับค่ากลับ) ถือว่าเห็นถึง "" = คงของในฐานทุกตัว
  */
 type Stamp = { by: string; at: string };
-const STAMPED = ["graphicAck", "noProof", "sampleRequired", "samplePacked", "noteAck", "arrival"] as const;
+// reuseArt (♻️ ใช้ไฟล์เก่า) มี by/at เหมือนกัน — แก้เลขใบเดิม/หมายเหตุ = ค่าต่าง → ประทับเวลาใหม่ตามกติกาเดียวกัน
+const STAMPED = ["graphicAck", "noProof", "sampleRequired", "samplePacked", "noteAck", "arrival", "reuseArt"] as const;
 type StampedKey = (typeof STAMPED)[number];
 type Stamped = Record<StampedKey, Stamp | undefined>;
 
@@ -184,6 +185,7 @@ function mergeProofFields(existing: Order, incoming: Order, clientSavedAt: strin
       noProof: inc.noProof,
       sampleRequired: inc.sampleRequired,
       samplePacked: inc.samplePacked,
+      reuseArt: inc.reuseArt, // ♻️ กราฟฟิกติ๊ก/ยกเลิก "ใช้ไฟล์เก่า" + เลขใบเดิมได้เอง
       unitYield: inc.unitYield ?? it.unitYield,
     };
     // ⚠️ หน้าจอกราฟฟิกที่ค้าง (เปิด 2 หน้าต่าง/เคอร์เซอร์ค้างในช่องกรอก) ส่ง graphicAck ว่าง = ติ๊กของอีกคนหาย → reconcileItem กันไว้

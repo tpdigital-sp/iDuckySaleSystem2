@@ -341,6 +341,44 @@ export function noteHasText(html?: string): boolean {
   return !!html && html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim().length > 0;
 }
 
+/**
+ * ♻️ รายการนี้ "ใช้ไฟล์เก่า" — ลูกค้าเคยสั่งลายนี้กับร้านแล้ว ไม่แนบใหม่ ให้กราฟฟิกหยิบไฟล์จากออเดอร์ก่อน
+ * ทางเข้า: หน้าสินค้า/ตะกร้า (selections["ใช้ไฟล์เก่า"] → แกะตอน checkout) · ItemAdder · ปุ่มติ๊กในหน้าออเดอร์ · สั่งซ้ำ/เคลม (redo)
+ * fromOrderId = เลขออเดอร์เดิมถ้าระบุมา (ลูกค้าพิมพ์เอง ระบบไม่ได้ตรวจว่าเป็นของคนเดียวกัน — แอดมินดูเอง)
+ * ⚠️ เป็นแค่ "ป้ายบอก" ไม่ข้ามขั้นตรวจแบบ — กราฟฟิกกดใช้ไฟล์เดิมแล้วส่งตรวจตามปกติ (สเปครอบใหม่อาจต่างจากรอบก่อน)
+ */
+export interface ReuseArt {
+  /** เลขออเดอร์เดิม เช่น OD-260801-1234 (ไม่มี = ลูกค้าบอกแค่ว่าใช้ไฟล์เก่า) */
+  fromOrderId?: string;
+  /** ข้อความที่ลูกค้า/แอดมินพิมพ์ประกอบ เช่น "ลายเดียวกับรอบก่อน แต่เปลี่ยนขนาด" */
+  note?: string;
+  by: string;
+  at: string;
+}
+
+/** ดึงเลขออเดอร์ OD-YYMMDD-NNNN ออกจากข้อความที่ลูกค้าพิมพ์ (พิมพ์ตัวเล็ก/มีคำอื่นปนมาก็เจอ) */
+export function orderIdIn(text: string): string | undefined {
+  const m = /OD-\d{6}-\d{4}/i.exec(text);
+  return m ? m[0].toUpperCase() : undefined;
+}
+
+/**
+ * แปลงข้อความในช่อง "ใช้ไฟล์เก่า" (จากตะกร้า/หน้าสินค้า) เป็น ReuseArt
+ * ว่าง = ไม่ได้ติ๊ก → undefined · มีเลขออเดอร์ → fromOrderId + ส่วนที่เหลือเป็น note
+ */
+export function parseReuseArt(raw: unknown, by: string, at = new Date().toISOString()): ReuseArt | undefined {
+  const text = String(raw ?? "").trim();
+  if (!text) return undefined;
+  const fromOrderId = orderIdIn(text);
+  const note = fromOrderId ? text.replace(/OD-\d{6}-\d{4}/i, "").replace(/^[\s·,\-–—]+|[\s·,\-–—]+$/g, "").trim() : text;
+  return { ...(fromOrderId ? { fromOrderId } : {}), ...(note ? { note: note.slice(0, 200) } : {}), by, at };
+}
+
+/** ข้อความสั้นสำหรับป้าย ♻️ เช่น "ใช้ไฟล์เก่า · OD-260801-1234" */
+export function reuseArtText(r: ReuseArt): string {
+  return `ใช้ไฟล์เก่า${r.fromOrderId ? ` · ${r.fromOrderId}` : ""}${r.note ? ` · ${r.note}` : ""}`;
+}
+
 export interface OrderItem {
   productId: string;
   name: string;
@@ -384,6 +422,11 @@ export interface OrderItem {
    * ไม่มีฟิลด์ = ออเดอร์เก่า หรืองานด้านเดียว → ไม่ติดป้าย (ดู artworkSide)
    */
   artworkBackUrls?: string[];
+  /**
+   * ♻️ ใช้ไฟล์เก่าจากออเดอร์ก่อน (ลูกค้าติ๊กตอนสั่ง / แอดมินติ๊ก / สั่งซ้ำ) — ดู ReuseArt
+   * ไม่มี artworkUrls ก็ไม่ถือว่า "ยังไม่มีลาย" · ป้ายขึ้นข้างชื่อสินค้าในหน้าออเดอร์ บอร์ดกราฟฟิก และใบงาน
+   */
+  reuseArt?: ReuseArt;
   /** ภาพแบบงาน (proof) — หลายรูปได้ แต่ละรูประบุจำนวน/รายละเอียดของตัวเอง */
   proofs?: Proof[];
   /** @deprecated รูปแบบเดิม (รูปเดียว) — อ่านผ่าน proofsOf() เพื่อรองรับออเดอร์เก่า */

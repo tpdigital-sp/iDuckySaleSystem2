@@ -55,6 +55,7 @@ type CartAction =
   | { type: "remove"; key: string }
   | { type: "setQty"; key: string; qty: number }
   | { type: "setNote"; key: string; note: string }
+  | { type: "setExtra"; key: string; label: string; value: string }
   | { type: "clear" };
 
 /**
@@ -106,6 +107,18 @@ function reducer(state: CartState, action: CartAction): CartState {
           return { ...i, selections };
         }),
       };
+    case "setExtra":
+      // คีย์ประกอบอื่นที่ไม่ใช่ตัวเลือกราคา (เช่น "ใช้ไฟล์เก่า") — ว่าง = ลบทิ้ง เหมือนหมายเหตุ
+      return {
+        ...state,
+        items: state.items.map((i) => {
+          if (i.key !== action.key) return i;
+          const selections = { ...i.selections };
+          if (action.value.trim()) selections[action.label] = action.value;
+          else delete selections[action.label];
+          return { ...i, selections };
+        }),
+      };
     case "clear":
       return { ...state, items: [] };
   }
@@ -137,6 +150,8 @@ interface CartContextValue {
   setQty: (key: string, qty: number) => void;
   /** พิมพ์หมายเหตุของลูกค้าลงรายการ (เก็บใน selections["หมายเหตุ"] — ว่าง = ลบทิ้ง) */
   setNote: (key: string, note: string) => void;
+  /** ตั้ง/ลบคีย์ประกอบอื่นในรายการ (เช่น REUSE_ART_LABEL "ใช้ไฟล์เก่า") — ว่าง = ลบทิ้ง */
+  setExtra: (key: string, label: string, value: string) => void;
   clear: () => void;
   /** ค้นหาสินค้า (Supabase → static) — ใช้แสดงรายการในตะกร้าให้รองรับสินค้าที่นำเข้าฐานข้อมูล */
   productOf: (id: string) => Product | undefined;
@@ -354,6 +369,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       removeItem: (key) => dispatch({ type: "remove", key }),
       setQty: (key, qty) => dispatch({ type: "setQty", key, qty }),
       setNote: (key, note) => dispatch({ type: "setNote", key, note }),
+      setExtra: (key, label, value) => dispatch({ type: "setExtra", key, label, value }),
       clear: () => dispatch({ type: "clear" }),
       productOf,
       productGone: (id) => goneIds.has(id),

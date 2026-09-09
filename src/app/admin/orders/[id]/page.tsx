@@ -56,6 +56,8 @@ import {
   type NoteSize,
   type NoteWeight,
   artworkSide,
+  orderIdIn,
+  reuseArtText,
 } from "@/lib/admin-data";
 import { fetchOrderAdmin, fetchOrdersAdmin, notifyProofReady, packScanHeaders, saveOrderAdminResult, setPackScanMode, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
@@ -77,6 +79,7 @@ import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
 import { foldSizeExtra, specEntries, specValueLines } from "@/components/SpecLines";
+import { applySelectionsDraft, selectionsDraft, selectionsDraftChanged } from "@/lib/edit-selections";
 import { uploadArtworkFile } from "@/lib/artwork-upload";
 import { formatPhone } from "@/lib/contacts";
 import { SHIP_WINDOW_RULE, shipWindowForUseBy, shipWindowWarnings } from "@/lib/ship-date";
@@ -784,11 +787,12 @@ export default function AdminOrderDetailPage() {
   const [priceDraft, setPriceDraft] = useState("");
   function saveSelections(itemIndex: number, text: string) {
     if (!order) return;
-    const before = order.items[itemIndex]?.selections ?? "";
-    const value = text.trim();
+    const cur = order.items[itemIndex];
     setEditSel(null);
-    if (value === before.trim()) return;
-    const items = order.items.map((it, i) => (i === itemIndex ? { ...it, selections: value } : it));
+    if (!cur || !selectionsDraftChanged(cur, text)) return;
+    // ⚠️ ทุกจออ่านตัวเลือกแบบหัวข้อ (sel) ก่อนข้อความ — ต้องเขียนกลับทั้ง sel และ selections ไม่งั้นแก้แล้วไม่เปลี่ยน (ดู lib/edit-selections)
+    const patch = applySelectionsDraft(cur, text);
+    const items = order.items.map((it, i) => (i === itemIndex ? { ...it, ...patch } : it));
     const next = withLog({ ...order, items }, actor, "แก้รายละเอียดรายการ", `${order.items[itemIndex]?.name}`);
     setOrder(next);
     if (!demo) void saveOrWarn(next);
@@ -1675,6 +1679,73 @@ export default function AdminOrderDetailPage() {
     if (!demo) void saveOrWarn(next);
   }
 
+  /**
+   * ♻️ ติ๊กว่ารายการนี้ "ใช้ไฟล์เก่า" (ลายจากออเดอร์ก่อน) — แอดมิน/กราฟฟิกติ๊กเองเมื่อลูกค้าบอกทางไลน์/ใบ FlowAccount
+   * กดซ้ำ = ยกเลิก · เลขออเดอร์เดิมกรอกในช่องข้าง ๆ (setReuseArtRef) · เป็นแค่ป้าย ไม่ข้ามขั้นตรวจแบบ
+   */
+  function toggleReuseArt(itemIndex: number) {
+    if (!order) return;
+    const item = order.items[itemIndex];
+    const on = !!item?.reuseArt;
+    const items = order.items.map((it, i) =>
+      i === itemIndex ? { ...it, reuseArt: on ? undefined : { by: actor, at: new Date().toISOString() } } : it
+    );
+    const next = withLog({ ...order, items }, actor, on ? "ยกเลิกป้าย: ใช้ไฟล์เก่า" : "ติ๊กว่ารายการนี้ใช้ไฟล์เก่า (ลายจากออเดอร์ก่อน)", item?.name);
+    setOrder(next);
+    if (!demo) void saveOrWarn(next);
+  }
+
+  /** เลขออเดอร์เดิม/ข้อความประกอบของป้าย ♻️ — บันทึกตอนออกจากช่อง (blur/Enter) · เลข OD-… ดึงออกให้เอง ที่เหลือเป็นหมายเหตุ */
+  function setReuseArtRef(itemIndex: number, text: string) {
+    if (!order) return;
+    const item = order.items[itemIndex];
+    if (!item?.reuseArt) return;
+    const fromOrderId = orderIdIn(text);
+    const note = (fromOrderId ? text.replace(/OD-\d{6}-\d{4}/i, "") : text).replace(/^[\s·,\-–—]+|[\s·,\-–—]+$/g, "").trim().slice(0, 200);
+    if ((item.reuseArt.fromOrderId ?? "") === (fromOrderId ?? "") && (item.reuseArt.note ?? "") === note) return;
+    const items = order.items.map((it, i) =>
+      i === itemIndex
+        ? { ...it, reuseArt: { by: it.reuseArt!.by, at: it.reuseArt!.at, ...(fromOrderId ? { fromOrderId } : {}), ...(note ? { note } : {}) } }
+        : it
+    );
+    const next = withLog({ ...order, items }, actor, `ใช้ไฟล์เก่า: ${fromOrderId ?? "-"}${note ? ` · ${note}` : ""}`, item.name);
+    setOrder(next);
+    if (!demo) void saveOrWarn(next);
+  }
+
+  /**
+   * ♻️ ดึงลาย/แบบจากออเดอร์เดิมมาใส่รายการนี้ในคลิกเดียว — เอาลายที่ลูกค้าแนบไว้ (artworkUrls) ของทุกรายการในใบเดิม
+   * ใบเดิมไม่มีลายแต่มีแบบงาน (กราฟฟิกทำ) → เอารูปแบบงานมาแทน (ลงช่อง "ลายจากลูกค้า" ให้กดใช้เป็นแบบต่อได้)
+   * ไม่ทับของเดิม — ต่อท้ายเฉพาะ url ที่ยังไม่มี
+   */
+  async function pullArtworkFromOld(itemIndex: number) {
+    if (!order) return;
+    const item = order.items[itemIndex];
+    const fromId = item?.reuseArt?.fromOrderId;
+    if (!fromId) return;
+    setArtUpIdx(itemIndex);
+    try {
+      const src = (await fetchOrderAdmin(fromId)).order;
+      if (!src) throw new Error(`ไม่พบออเดอร์ ${fromId}`);
+      const have = new Set(item.artworkUrls ?? []);
+      let urls = src.items.flatMap((it) => it.artworkUrls ?? []).filter((u) => !have.has(u));
+      if (!urls.length) urls = src.items.flatMap((it) => proofsOf(it).map((p) => p.url)).filter((u) => !have.has(u));
+      urls = [...new Set(urls)].slice(0, 12);
+      if (!urls.length) throw new Error(`ออเดอร์ ${fromId} ไม่มีลาย/แบบงานให้ดึง (หรือมีครบแล้ว)`);
+      setOrder((cur) => {
+        if (!cur) return cur;
+        const items = cur.items.map((it, i) => (i === itemIndex ? { ...it, artworkUrls: [...(it.artworkUrls ?? []), ...urls] } : it));
+        const next = withLog({ ...cur, items }, actor, `ดึงลายจากออเดอร์เดิม ${fromId}`, `${cur.items[itemIndex]?.name} +${urls.length} รูป`);
+        if (!demo) void saveOrWarn(next);
+        return next;
+      });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "ดึงลายจากออเดอร์เดิมไม่สำเร็จ");
+    } finally {
+      setArtUpIdx(null);
+    }
+  }
+
   /** กราฟฟิก/แอดมินติ๊กว่างานนี้มีชิ้นงานตัวอย่างที่ต้องส่งให้ลูกค้า · กดซ้ำ = ยกเลิก */
   function toggleSampleRequired(itemIndex: number) {
     if (!order) return;
@@ -1731,10 +1802,12 @@ export default function AdminOrderDetailPage() {
       return {
         ...it,
         // 🔢 ลูกค้าระบุจำนวนต่อลายมาแล้ว → เติมลงแบบให้เลย ฝ่ายแพ็ค/ใบแปะกล่องจะได้เลขถูกโดยไม่ต้องพิมพ์ซ้ำ
+        // 🔄 รูปด้านหลังของงาน 2 ด้านไม่เติมจำนวน — ทุกชิ้นมีทั้งหน้าและหลัง ถ้าเติมทั้งสองด้าน proofQtyCheck จะนับซ้ำเป็น 2 เท่า
         proofs: [
           ...proofsOf(it),
           ...fresh.map((url) => {
-            const q = artQtyOf(it, url, (it.artworkUrls ?? []).indexOf(url));
+            const isBack = (it.artworkBackUrls ?? []).includes(url);
+            const q = isBack ? undefined : artQtyOf(it, url, (it.artworkUrls ?? []).indexOf(url));
             return { url, at: now, by: actor, ...(q ? { qty: q } : {}) };
           }),
         ],
@@ -2921,6 +2994,29 @@ export default function AdminOrderDetailPage() {
                       >
                         {it.name} <span className="text-xs font-normal text-slate-400">{open ? "▴" : "▾"}</span>
                       </button>
+                      {/* ♻️ ป้ายใช้ไฟล์เก่า — ข้างชื่อสินค้า เห็นตั้งแต่ยังไม่กางการ์ด · เลขออเดอร์เดิมกดเปิดใบเดิมในแท็บใหม่ */}
+                      {it.reuseArt && (
+                        <span
+                          className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 align-middle text-[11px] font-bold text-amber-800 ring-1 ring-amber-300"
+                          title={`${reuseArtText(it.reuseArt)} · ${it.reuseArt.by} ${shortTime(it.reuseArt.at)}`}
+                        >
+                          ♻️ ใช้ไฟล์เก่า
+                          {it.reuseArt.fromOrderId ? (
+                            <a
+                              href={`/admin/orders/${encodeURIComponent(it.reuseArt.fromOrderId)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="underline decoration-amber-400 underline-offset-2 hover:text-amber-950"
+                            >
+                              {it.reuseArt.fromOrderId}
+                            </a>
+                          ) : (
+                            <span className="font-semibold">(ลูกค้าแจ้ง)</span>
+                          )}
+                          {it.reuseArt.note && <span className="max-w-[14rem] truncate font-semibold">· {it.reuseArt.note}</span>}
+                        </span>
+                      )}
                       {editSel === i ? (
                         <div className="mt-1">
                           <textarea
@@ -2937,7 +3033,7 @@ export default function AdminOrderDetailPage() {
                             className="w-full resize-y rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-[11px] leading-snug text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-200"
                           />
                           <p className="mt-0.5 text-[10px] text-slate-400">
-                            คลิกนอกช่องเพื่อบันทึก · Esc = ยกเลิก · ระบบลงประวัติว่าใครแก้
+                            บรรทัดละหัวข้อ “หัวข้อ: ค่า” · คลิกนอกช่องเพื่อบันทึก · Esc = ยกเลิก · ระบบลงประวัติว่าใครแก้
                           </p>
                         </div>
                       ) : (
@@ -2947,7 +3043,7 @@ export default function AdminOrderDetailPage() {
                             <button
                               type="button"
                               onClick={() => {
-                                setSelDraft(it.selections ?? "");
+                                setSelDraft(selectionsDraft(it));
                                 setEditSel(i);
                                 setItemOpen((cur) => ({ ...cur, [i]: true }));
                               }}
@@ -2979,6 +3075,7 @@ export default function AdminOrderDetailPage() {
                         {it.proofStatus ? `แบบ: ${it.proofStatus === "รอตรวจ" ? "รอลูกค้าตรวจ" : it.proofStatus === "อนุมัติ" ? "ลูกค้าอนุมัติแล้ว" : "ลูกค้าขอแก้ไข"}` : it.noProof ? "แบบ: ไม่ต้องทำแบบ" : "แบบ: รอกราฟฟิกทำแบบ"}
                         {proofs.length > 0 ? ` · ${proofs.length} แบบ` : ""}
                         {(it.artworkUrls?.length ?? 0) > 0 ? ` · 🎨 ภาพลาย ${it.artworkUrls!.length}` : ""}
+                        {it.reuseArt ? ` · ♻️ ${reuseArtText(it.reuseArt)}` : ""}
                         {noteHasText(it.adminNote) ? " · 📝 มีหมายเหตุ" : ""}
                         {it.needStockCheck ? " · 📦 รอเช็คสต๊อก" : ""}
                       </p>
@@ -3248,6 +3345,42 @@ export default function AdminOrderDetailPage() {
                           {it.noProof.by} · {shortTime(it.noProof.at)}
                           {proofs.length === 0 ? " · จะแนบภาพประกอบก็ได้ ไม่บังคับ" : ""}
                         </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ♻️ ใช้ไฟล์เก่า — ลูกค้าเคยสั่งลายนี้แล้ว บอกทางไลน์/ใบ FlowAccount → แอดมิน/กราฟฟิกติ๊กให้ + ใส่เลขออเดอร์เดิม */}
+                  {(mayProof || mayEdit) && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleReuseArt(i)}
+                        title="ติ๊กเมื่อลูกค้าใช้ลายเดิมจากออเดอร์ก่อน ไม่แนบไฟล์ใหม่ — กราฟฟิกจะเห็นป้าย ♻️ ข้างชื่อสินค้า และดึงลายจากใบเดิมได้ในคลิกเดียว · เป็นแค่ป้าย ไม่ข้ามขั้นตรวจแบบ"
+                        className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                          it.reuseArt
+                            ? "bg-amber-500 text-white hover:bg-amber-600"
+                            : "border border-slate-300 bg-white text-slate-600 hover:border-amber-400 hover:text-amber-700"
+                        }`}
+                      >
+                        {it.reuseArt ? "♻️ ใช้ไฟล์เก่า (ลายจากออเดอร์ก่อน)" : "☐ รายการนี้ใช้ไฟล์เก่า"}
+                      </button>
+                      {it.reuseArt && (
+                        <>
+                          <input
+                            type="text"
+                            defaultValue={[it.reuseArt.fromOrderId, it.reuseArt.note].filter(Boolean).join(" · ")}
+                            onBlur={(e) => setReuseArtRef(i, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                            }}
+                            placeholder="เลขออเดอร์เดิม เช่น OD-260801-1234 · หมายเหตุ"
+                            aria-label="เลขออเดอร์เดิมที่ใช้ไฟล์"
+                            className="w-72 max-w-full rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-900 placeholder:font-normal placeholder:text-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                          />
+                          <span className="text-[10px] text-slate-400">
+                            {it.reuseArt.by} · {shortTime(it.reuseArt.at)}
+                          </span>
+                        </>
                       )}
                     </div>
                   )}
@@ -3574,6 +3707,43 @@ export default function AdminOrderDetailPage() {
                           </div>
                         );
                       })()}
+
+                      {/* ♻️ ลูกค้าใช้ไฟล์เก่า — บอกกราฟฟิกว่าลายอยู่ที่ใบเดิม + ปุ่มดึงมาในคลิกเดียว (มีเลขออเดอร์เดิมถึงจะดึงได้) */}
+                      {it.reuseArt && (
+                        <div className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-900 ring-1 ring-amber-200">
+                          <p className="font-bold">
+                            ♻️ ลูกค้าใช้ไฟล์เก่า
+                            {it.reuseArt.fromOrderId ? (
+                              <>
+                                {" "}
+                                — ดูจากออเดอร์{" "}
+                                <a
+                                  href={`/admin/orders/${encodeURIComponent(it.reuseArt.fromOrderId)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="underline decoration-amber-400 underline-offset-2 hover:text-amber-950"
+                                >
+                                  {it.reuseArt.fromOrderId}
+                                </a>
+                              </>
+                            ) : (
+                              " — ไม่ได้ระบุเลขออเดอร์เดิม ค้นจากชื่อ/เบอร์ลูกค้าในรายการออเดอร์ หรือถามลูกค้าทางไลน์"
+                            )}
+                          </p>
+                          {it.reuseArt.note && <p className="mt-0.5">“{it.reuseArt.note}”</p>}
+                          {(mayProof || mayEdit) && it.reuseArt.fromOrderId && (
+                            <button
+                              type="button"
+                              disabled={artUpIdx === i}
+                              onClick={() => void pullArtworkFromOld(i)}
+                              title="คัดลอกลายที่ลูกค้าแนบ (หรือแบบงาน ถ้าใบเดิมไม่มีลาย) จากออเดอร์เดิมมาใส่รายการนี้ — ไม่ทับของเดิม"
+                              className="mt-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-amber-600 disabled:opacity-50"
+                            >
+                              {artUpIdx === i ? "กำลังดึง…" : `⬇️ ดึงลายจากออเดอร์ ${it.reuseArt.fromOrderId}`}
+                            </button>
+                          )}
+                        </div>
+                      )}
 
                       {/* แนบลายเพิ่มได้เสมอ */}
                       {mayEdit && (

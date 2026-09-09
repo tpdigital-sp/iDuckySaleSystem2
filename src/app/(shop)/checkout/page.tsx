@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ART_QTY_LABEL, ART_SIZE_LABEL, artQtyByUrl, artSizeByUrl, feeBreakdown, formatPrice, lotShortfalls, splitArtUrls } from "@/lib/products";
+import { ART_SIZE_LABEL, REUSE_ART_LABEL, artQtyFromSel, artSizeByUrl, feeBreakdown, formatPrice, lotShortfalls, splitArtUrls } from "@/lib/products";
 import { useCart } from "@/lib/cart-context";
 import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { getUnpicked, clearUnpicked } from "@/lib/cart-select";
@@ -29,7 +29,7 @@ import { giftsFor, giftSizesOf, resolveGiftSize, splitGiftBySheet, readGiftSizes
 import { getAccessToken } from "@/lib/customer-auth";
 import { fetchMyOrders } from "@/lib/my-orders";
 import { paidSpend, tierForSpend, tierDiscountAmount } from "@/lib/tiers";
-import type { Order, Proof } from "@/lib/admin-data";
+import { parseReuseArt, reuseArtText, type Order, type Proof } from "@/lib/admin-data";
 import { appendToOrder, placeOrder, reportPayment } from "@/lib/order-repo";
 import { clearAppendTarget, getAppendTarget, type AppendTarget } from "@/lib/append-order";
 import { publicOrigin } from "@/lib/shop-info";
@@ -377,10 +377,12 @@ export default function CheckoutPage() {
       // แล้วจด url ของด้านหลังไว้ใน artworkBackUrls ให้จอหลังบ้านติดป้ายหน้า/หลังได้
       const { "รอเช็คสต๊อก": bulkFlag, ...selNoBulk } = it.selections;
       const { urls: artworkUrls, back: artworkBackUrls, rest: restSel } = splitArtUrls(selNoBulk);
-      // 🔢 จำนวนต่อลายที่ลูกค้าระบุใต้รูป → ผูกกับ url (ข้อความใน sel ยังอยู่ให้ใบงาน/โหมดแพ็คอ่าน)
-      const artworkQty = artQtyByUrl(restSel[ART_QTY_LABEL], artworkUrls);
+      // 🔢 จำนวนต่อลายที่ลูกค้าระบุใต้รูป (หน้า + หลังคนละคีย์) → ผูกกับ url (ข้อความใน sel ยังอยู่ให้ใบงาน/โหมดแพ็คอ่าน)
+      const artworkQty = artQtyFromSel(restSel, artworkUrls, artworkBackUrls);
       // 📐 ขนาดต่อลาย (คละหลายขนาดใน 1 แผ่น) → ผูกกับ url เช่นกัน
       const artworkSize = artSizeByUrl(restSel[ART_SIZE_LABEL], artworkUrls);
+      // ♻️ ลูกค้าติ๊ก "ใช้ไฟล์เก่า" (หน้าสินค้า/ตะกร้า) → ฟิลด์โครงสร้างให้หลังบ้านติดป้าย (ข้อความยังอยู่ใน sel)
+      const reuseArt = parseReuseArt(restSel[REUSE_ART_LABEL], "ลูกค้า");
       return {
         productId: it.productId,
         name: productOf(it.productId)?.name ?? it.productId,
@@ -404,6 +406,7 @@ export default function CheckoutPage() {
         ...(artworkQty ? { artworkQty } : {}),
         ...(artworkSize ? { artworkSize } : {}),
         ...(artworkBackUrls.length ? { artworkBackUrls } : {}),
+        ...(reuseArt ? { reuseArt } : {}),
         ...(bulkFlag ? { needStockCheck: true } : {}),
       };
     });
@@ -504,6 +507,7 @@ export default function CheckoutPage() {
       lines.push(`${i + 1}) ${it.name} ×${it.qty} = ${it.unitPrice > 0 ? formatPrice(it.unitPrice * it.qty) : "รอตีราคา"}`);
       if (it.selections) lines.push(`   • ${it.selections}`);
       if (it.artworkUrls?.length) lines.push(`   🎨 แนบภาพลาย ${it.artworkUrls.length} รูป (ดูในลิงก์ออเดอร์)`);
+      if (it.reuseArt) lines.push(`   ♻️ ${reuseArtText(it.reuseArt)}`);
       if (it.needStockCheck) lines.push(`   📦 สั่งจำนวนมาก — รอร้านยืนยันสต๊อก/คิวผลิต`);
     });
     lines.push("━━━━━━━━━━━━━━");

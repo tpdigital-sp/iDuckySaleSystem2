@@ -8,7 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice } from "@/lib/products";
-import { adminDiscountAmount, artworkSide, MOCK_ORDERS, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, artworkSide, MOCK_ORDERS, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, reuseArtText, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -627,6 +627,11 @@ function OrderDocs({
                       </td>
                       <td className="py-3">
                         <p className="font-bold">{it.name}</p>
+                        {it.reuseArt && (
+                          <p className="mt-1 inline-block rounded border-2 border-amber-500 px-2 py-0.5 text-sm font-extrabold" style={{ color: "#b45309" }}>
+                            ♻️ {reuseArtText(it.reuseArt)}
+                          </p>
+                        )}
                         {it.sampleRequired && (
                           <p className="mt-1 inline-block rounded border-2 border-red-600 px-2 py-0.5 text-sm font-extrabold" style={{ color: "#dc2626" }}>
                             🎁 มีงานตัวอย่าง — แนบใส่กล่องให้ลูกค้าด้วย

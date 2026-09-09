@@ -36,6 +36,7 @@ import {
   productPath,
   DESIGN_LABEL,
   BACK_DESIGN_LABEL,
+  ART_BACK_QTY_LABEL,
   ART_QTY_LABEL,
   formatArtQty,
   parseArtQty,
@@ -49,6 +50,8 @@ import {
   orderUnitYield,
   ART_LABEL,
   ART_BACK_LABEL,
+  REUSE_ART_LABEL,
+  REUSE_ART_DEFAULT,
   parseArtUrls,
   backDesignActive,
   designFeeFor,
@@ -732,13 +735,19 @@ export default function ProductDetail({
   const [note, setNote] = useState("");
   // ลิงก์ไฟล์ลาย / อีเมล (ไม่อัปโหลดขึ้นเว็บ — กันไฟล์ถูกบีบอัด)
   const [artLink, setArtLink] = useState("");
+  /**
+   * ♻️ ลูกค้าใช้ไฟล์เก่าที่เคยสั่งกับร้าน (ไม่แนบใหม่) — reuseFrom = เลขออเดอร์เดิม/ข้อความ (ไม่บังคับ)
+   * เก็บลง selections[REUSE_ART_LABEL] → checkout แกะเป็น OrderItem.reuseArt ให้กราฟฟิกเห็นป้าย ♻️
+   */
+  const [reuseOld, setReuseOld] = useState(false);
+  const [reuseFrom, setReuseFrom] = useState("");
   // ภาพลายที่ลูกค้าแนบขึ้นเว็บ (เก็บไฟล์ต้นฉบับ — ใช้เป็นแนวทางให้กราฟฟิก)
   /**
    * ภาพลายที่แนบแล้ว · `preview` = ลิงก์ไฟล์ในเครื่อง (blob) ไว้วาดรูปย่อเท่านั้น
    * ไม่ใช่ค่าที่ส่งไปกับออเดอร์ — ตะกร้า/ใบงานใช้ `url` ที่อัปขึ้นสตอเรจเสมอ
    */
   /**
-   * qty = จำนวนชิ้นของลายนี้ที่ลูกค้าระบุเอง (ไม่ระบุ = undefined) — ดู ART_QTY_LABEL · ใช้เฉพาะด้านหน้า
+   * qty = จำนวนชิ้นของลายนี้ที่ลูกค้าระบุเอง (ไม่ระบุ = undefined) — ดู ART_QTY_LABEL (ด้านหลังเก็บใน ART_BACK_QTY_LABEL)
    * size = ขนาดชิ้นงานของลายนี้ (คละหลายขนาดใน 1 แผ่น — ดู ART_SIZE_LABEL) · sizeRaw = ข้อความที่พิมพ์ค้างอยู่ในช่อง
    */
   type ArtFile = { url: string; name: string; w: number; h: number; hash?: string; preview?: string; qty?: number; size?: ArtSize; sizeRaw?: string; sizeErr?: string };
@@ -1354,6 +1363,10 @@ export default function ProductDetail({
     if (nBack > 0) setBackDesigns(nBack);
     if (src["หมายเหตุ"]) setNote(src["หมายเหตุ"]);
     if (src["ลิงก์ไฟล์ลาย/อีเมล"]) setArtLink(src["ลิงก์ไฟล์ลาย/อีเมล"]);
+    if (src[REUSE_ART_LABEL]) {
+      setReuseOld(true);
+      setReuseFrom(src[REUSE_ART_LABEL] === REUSE_ART_DEFAULT ? "" : src[REUSE_ART_LABEL]);
+    }
     // 🎨 ลายที่แนบไว้เดิม — เอา url กลับมาเลย ลูกค้าไม่ต้องอัปใหม่ (w/h ใช้แค่เตือน "ภาพเล็กไป" จึงปล่อย 0 ได้)
     const arts = (src["ภาพลายที่แนบ"] ?? "")
       .split(" | ")
@@ -1379,10 +1392,18 @@ export default function ProductDetail({
     }
     // 🔄 ลายด้านหลังของงานพิมพ์ 2 ด้าน — กลับเข้าช่องด้านหลังของตัวเอง ไม่ปนกับด้านหน้า
     const backArts = parseArtUrls(src[ART_BACK_LABEL]);
-    if (backArts.length)
+    if (backArts.length) {
+      const backQtys = parseArtQty(src[ART_BACK_QTY_LABEL]);
       setArtBackFiles(
-        backArts.map((url) => ({ url, name: decodeURIComponent(url.split("/").pop() ?? "ลายด้านหลัง"), w: 0, h: 0 }))
+        backArts.map((url, i) => ({
+          url,
+          name: decodeURIComponent(url.split("/").pop() ?? "ลายด้านหลัง"),
+          w: 0,
+          h: 0,
+          ...(backQtys.get(i) ? { qty: backQtys.get(i) } : {}),
+        }))
       );
+    }
     const consultVal = src[CONSULT_LABEL] ?? "";
     if (consultVal.startsWith("คุยลายกับแอดมินแล้ว")) {
       setConsultOk(true);
@@ -2151,6 +2172,8 @@ export default function ProductDetail({
     const dragHere = artDragSide === side;
     const unit = matrix?.unit ?? "ชิ้น";
     const sideWord = back ? "ด้านหลัง" : "ด้านหน้า";
+    /** 🔢 ด้านนี้โชว์ช่องจำนวนต่อลายไหม — หน้า/หลังนับแยกกัน (หลัง 3 ลาย หน้า 1 ลาย = หลังมีช่อง หน้าไม่มี) */
+    const qtyMode = back ? artBackQtyMode : artQtyMode;
     return (
       <div className={backOn ? `mt-2 rounded-xl p-2.5 ring-1 ${back ? "bg-violet-50/60 ring-violet-200" : "bg-white/80 ring-sky-200"}` : ""}>
         {backOn && (
@@ -2201,10 +2224,15 @@ export default function ProductDetail({
                     {Math.max(f.w, f.h) < 1500 ? " · ภาพเล็ก" : ""}
                   </p>
                 )}
-                {/* 🔢 จำนวนชิ้นของลายนี้ — โผล่เมื่อแนบตั้งแต่ 2 ลาย (ลายเดียว = ทั้งหมดอยู่แล้ว) · เฉพาะด้านหน้า
-                    (ด้านหลังเป็นแค่ "ลายไหนอยู่หลัง" ไม่มีจำนวนของตัวเอง) · ลายที่วางบนเทมเพลตมีช่องจำนวนในการ์ด "แบบพร้อมผลิต" แล้ว ไม่ซ้ำตรงนี้ */}
-                {!back && artQtyMode && (
-                  <label className="mt-1 flex w-20 items-center gap-0.5 rounded-lg bg-white px-1 py-0.5 ring-1 ring-sky-200 focus-within:ring-2 focus-within:ring-sky-400">
+                {/* 🔢 จำนวนชิ้นของลายนี้ — โผล่เมื่อด้านนั้นแนบตั้งแต่ 2 ลาย (ลายเดียว = ทั้งหมดอยู่แล้ว)
+                    ด้านหลังมีช่องของตัวเอง (ผู้ใช้สั่ง 9 ก.ย. 69) นับ "ลายที่ N" ใหม่ภายในด้านหลัง เก็บคนละคีย์ (ART_BACK_QTY_LABEL)
+                    · ลายที่วางบนเทมเพลตมีช่องจำนวนในการ์ด "แบบพร้อมผลิต" แล้ว ไม่ซ้ำตรงนี้ */}
+                {qtyMode && (
+                  <label
+                    className={`mt-1 flex w-20 items-center gap-0.5 rounded-lg bg-white px-1 py-0.5 ring-1 focus-within:ring-2 ${
+                      back ? "ring-violet-200 focus-within:ring-violet-400" : "ring-sky-200 focus-within:ring-sky-400"
+                    }`}
+                  >
                     <span className="text-[9px] font-bold text-stone-400">ลายที่ {i + 1}</span>
                     <input
                       type="number"
@@ -2212,9 +2240,11 @@ export default function ProductDetail({
                       min={1}
                       value={f.qty ?? ""}
                       placeholder="กี่ชิ้น"
-                      onChange={(e) => setArtQty(i, e.target.value === "" ? undefined : Number(e.target.value))}
-                      aria-label={`จำนวนชิ้นของลายที่ ${i + 1}`}
-                      className="w-full min-w-0 bg-transparent text-right text-[11px] font-bold text-sky-900 outline-none placeholder:font-normal placeholder:text-stone-300"
+                      onChange={(e) => setArtQty(side, i, e.target.value === "" ? undefined : Number(e.target.value))}
+                      aria-label={`จำนวนชิ้นของลายที่ ${i + 1}${backOn ? ` (${sideWord})` : ""}`}
+                      className={`w-full min-w-0 bg-transparent text-right text-[11px] font-bold outline-none placeholder:font-normal placeholder:text-stone-300 ${
+                        back ? "text-violet-900" : "text-sky-900"
+                      }`}
                     />
                   </label>
                 )}
@@ -2290,26 +2320,32 @@ export default function ProductDetail({
         })()}
 
         {/* 🔢 สรุปจำนวนต่อลาย — เทียบกับจำนวนที่สั่ง (ผู้ใช้สั่ง 8 ก.ย. 69: "สั่ง 10 ชิ้น คละ 3 ลาย ลายละกี่ชิ้น")
-            ไม่บังคับ ไม่บล็อกปุ่มสั่ง — แค่บอกให้เห็นว่ารวมครบ/ยังขาด/เกิน แอดมินจะได้ไม่ต้องทักถาม · เฉพาะด้านหน้า */}
-        {!back && artQtyMode && (() => {
+            ไม่บังคับ ไม่บล็อกปุ่มสั่ง — แค่บอกให้เห็นว่ารวมครบ/ยังขาด/เกิน แอดมินจะได้ไม่ต้องทักถาม
+            งาน 2 ด้าน: แต่ละด้านสรุปของตัวเอง ทุกชิ้นมีทั้งหน้าและหลัง → ยอดด้านหลังก็ต้องรวมเท่าจำนวนที่สั่ง (ไม่ใช่บวกกับด้านหน้า) */}
+        {qtyMode && (() => {
           const qUnit = artPieces.word;
           const total = artPieces.total;
-          const filled = artFiles.filter((f) => f.qty && f.qty > 0).length;
-          const sum = artFiles.reduce((a, f) => a + (f.qty ?? 0), 0);
-          const leftN = artFiles.length - filled;
+          const filled = files.filter((f) => f.qty && f.qty > 0).length;
+          const sum = files.reduce((a, f) => a + (f.qty ?? 0), 0);
+          const leftN = files.length - filled;
           const fmt = (n: number) => n.toLocaleString("th-TH");
+          // งาน 2 ด้าน: วงเล็บบอกด้านต่อท้ายคำว่า "ลาย" — "ระบุจำนวนแต่ละลาย (ด้านหลัง) ได้ใต้รูป" · งานด้านเดียวข้อความเดิม
+          const sideTag = backOn ? ` (${sideWord}) ` : "";
+          const sideLbl = backOn ? `ลาย (${sideWord}) ` : "";
           const shareEven = () => {
             // แบ่งเท่า ๆ กัน — เศษที่เหลือใส่ลายแรก ๆ ทีละชิ้น (10 ชิ้น 3 ลาย → 4 · 3 · 3)
-            const cnt = artFiles.length;
+            const cnt = files.length;
             const base = Math.floor(total / cnt);
             const rest = total - base * cnt;
-            setArtFiles((cur) => cur.map((f, k) => ({ ...f, qty: Math.max(1, base + (k < rest ? 1 : 0)) })));
+            setFiles((cur) => cur.map((f, k) => ({ ...f, qty: Math.max(1, base + (k < rest ? 1 : 0)) })));
           };
           const tone =
             filled === 0
               ? "bg-white text-stone-500 ring-stone-200"
               : leftN > 0
-                ? "bg-white text-sky-800 ring-sky-200"
+                ? back
+                  ? "bg-white text-violet-800 ring-violet-200"
+                  : "bg-white text-sky-800 ring-sky-200"
                 : sum === total
                   ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
                   : "bg-amber-50 text-amber-800 ring-amber-200";
@@ -2317,18 +2353,20 @@ export default function ProductDetail({
             <div className={`mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-3 py-2 text-[11px] font-semibold leading-relaxed ring-1 ${tone}`}>
               <span className="min-w-0 flex-1">
                 {filled === 0
-                  ? `🔢 ระบุจำนวนแต่ละลายได้ใต้รูป (ไม่บังคับ) — สั่งทั้งหมด ${fmt(total)} ${qUnit} คละ ${fmt(artFiles.length)} ลาย`
+                  ? `🔢 ระบุจำนวนแต่ละลาย${sideTag}ได้ใต้รูป (ไม่บังคับ) — สั่งทั้งหมด ${fmt(total)} ${qUnit} คละ ${fmt(files.length)} ลาย${sideTag.trimEnd()}`
                   : leftN > 0
-                    ? `🔢 ระบุแล้ว ${fmt(sum)} จาก ${fmt(total)} ${qUnit} — เหลืออีก ${fmt(leftN)} ลายที่ยังไม่ระบุ`
+                    ? `🔢 ${sideLbl}ระบุแล้ว ${fmt(sum)} จาก ${fmt(total)} ${qUnit} — เหลืออีก ${fmt(leftN)} ลายที่ยังไม่ระบุ`
                     : sum === total
-                      ? `✓ ระบุครบ ${fmt(sum)} ${qUnit} ตรงกับจำนวนที่สั่ง`
-                      : `⚠️ รวม ${fmt(sum)} ${qUnit} แต่สั่งทั้งหมด ${fmt(total)} ${qUnit} — ปรับตัวเลขให้ตรงกัน (หรือแอดมินจะทักยืนยันก่อนเริ่มงาน)`}
+                      ? `✓ ${sideLbl}ระบุครบ ${fmt(sum)} ${qUnit} ตรงกับจำนวนที่สั่ง`
+                      : `⚠️ ${sideLbl}รวม ${fmt(sum)} ${qUnit} แต่สั่งทั้งหมด ${fmt(total)} ${qUnit} — ปรับตัวเลขให้ตรงกัน (หรือแอดมินจะทักยืนยันก่อนเริ่มงาน)`}
               </span>
-              {total >= artFiles.length && (filled === 0 || sum !== total) && (
+              {total >= files.length && (filled === 0 || sum !== total) && (
                 <button
                   type="button"
                   onClick={shareEven}
-                  className="shrink-0 rounded-full bg-sky-100 px-2.5 py-0.5 text-[10px] font-bold text-sky-800 transition hover:bg-sky-200"
+                  className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold transition ${
+                    back ? "bg-violet-100 text-violet-800 hover:bg-violet-200" : "bg-sky-100 text-sky-800 hover:bg-sky-200"
+                  }`}
                 >
                   แบ่งเท่า ๆ กัน
                 </button>
@@ -2566,10 +2604,10 @@ export default function ProductDetail({
     setPlaced((cur) => cur.filter((_, i) => i !== index));
   }
 
-  /** 🔢 จำนวนชิ้นของลายที่แนบ (ช่องใต้รูปย่อ) — ว่าง/0 = ไม่ระบุ */
-  function setArtQty(index: number, n: number | undefined) {
+  /** 🔢 จำนวนชิ้นของลายที่แนบ (ช่องใต้รูปย่อ) — ว่าง/0 = ไม่ระบุ · หน้า/หลังคนละรายการ */
+  function setArtQty(side: ArtSide, index: number, n: number | undefined) {
     const v = n && n > 0 ? Math.min(99999, Math.round(n)) : undefined;
-    setArtFiles((cur) => cur.map((f, i) => (i === index ? { ...f, qty: v } : f)));
+    (side === "back" ? setArtBackFiles : setArtFiles)((cur) => cur.map((f, i) => (i === index ? { ...f, qty: v } : f)));
   }
   /**
    * 📐 ขนาดของลายนั้น (พิมพ์ใต้รูป) — เก็บข้อความดิบไว้ให้พิมพ์ต่อได้ + ค่าที่แปลงแล้วเฉพาะเมื่ออ่านออก
@@ -2784,9 +2822,12 @@ export default function ProductDetail({
    * (ตะกร้า/ออเดอร์รองรับรายการที่ยังไม่มีลายอยู่แล้วจากโหมดพนักงาน)
    */
   const preArranged = staffOrdering || fromPriceLink;
-  const artProvided = artTotal > 0 || artLink.trim().length > 0;
+  // ♻️ ติ๊กใช้ไฟล์เก่า = ถือว่ามีลายแล้ว (อยู่กับร้าน) ปุ่มสั่งไม่ล็อก
+  const artProvided = artTotal > 0 || artLink.trim().length > 0 || reuseOld;
   /** 🔢 โชว์ช่องจำนวนต่อลายไหม — แนบตั้งแต่ 2 รูป และไม่ใช่ลายที่วางบนเทมเพลต (มีช่องของตัวเองแล้ว) */
   const artQtyMode = artFiles.length > 1 && placed.length === 0;
+  /** 🔢 ด้านหลังของงาน 2 ด้าน — แนบตั้งแต่ 2 รูปก็ระบุจำนวนแต่ละลายได้เหมือนด้านหน้า (นับแยกจากด้านหน้า) */
+  const artBackQtyMode = backOn && artBackFiles.length > 1 && placed.length === 0;
   /**
    * 📐 คละหลายขนาดใน 1 แผ่น — กลุ่มกว้าง×สูงที่นับชิ้น/แผ่น (sheetYield) ที่แสดงอยู่ตอนนี้
    * มี = สินค้านี้แบ่งแผ่น/ไดคัทตามขนาด → แนบ ≥2 ลายแล้วระบุขนาดใต้รูปแต่ละลายได้ (ดู ART_SIZE_LABEL)
@@ -3092,6 +3133,8 @@ export default function ProductDetail({
     // แนบข้อมูลเพิ่มไปกับรายการ (ไม่กระทบราคา): ลิงก์ไฟล์ลาย/อีเมล + หมายเหตุ
     const extra: Record<string, string> = {};
     if (artLink.trim()) extra["ลิงก์ไฟล์ลาย/อีเมล"] = artLink.trim();
+    // ♻️ ใช้ไฟล์เก่า — ไม่ระบุเลขออเดอร์ก็ใส่ข้อความกลางไว้ให้ป้ายขึ้น
+    if (reuseOld) extra[REUSE_ART_LABEL] = reuseFrom.trim() || REUSE_ART_DEFAULT;
     if (artFiles.length) extra[ART_LABEL] = artFiles.map((f) => f.url).join(" | ");
     // งานพิมพ์ 2 ด้าน — ภาพลายด้านหลังไปอีกคีย์ (ลูกค้าระบุแล้วว่าลายไหนพิมพ์ด้านไหน)
     if (backOn && artBackFiles.length) extra[ART_BACK_LABEL] = artBackFiles.map((f) => f.url).join(" | ");
@@ -3102,6 +3145,11 @@ export default function ProductDetail({
     if (artFiles.length > 1 && !placed.length) {
       const artQtyText = formatArtQty(artFiles.map((f) => f.qty), artPieces.word);
       if (artQtyText) extra[ART_QTY_LABEL] = artQtyText;
+    }
+    // 🔄 ด้านหลังจดแยกคีย์ "ลายที่ N" นับใหม่ภายในชุดหลัง (checkout จับคู่กับ url ด้านหลังผ่าน artQtyFromSel)
+    if (backOn && artBackFiles.length > 1 && !placed.length) {
+      const backQtyText = formatArtQty(artBackFiles.map((f) => f.qty), artPieces.word);
+      if (backQtyText) extra[ART_BACK_QTY_LABEL] = backQtyText;
     }
     // งานหลายด้าน — ภาพของแต่ละด้าน (ไม่นับเป็นลายเพิ่ม แค่แนบให้กราฟฟิกครบ)
     const sideArts = placed.flatMap((d, i) =>
@@ -7404,7 +7452,7 @@ export default function ProductDetail({
                   {lotMinScope ? `แนบลายของ${lotWord}ที่ ${(sheets.length + 1).toLocaleString("th-TH")}` : "แนบลายของคุณ"}
                   {artProvided ? (
                     <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                      {artTotal > 0 ? `แนบแล้ว ${artTotal} รูป` : "ใส่ลิงก์แล้ว"}
+                      {artTotal > 0 ? `แนบแล้ว ${artTotal} รูป` : artLink.trim() ? "ใส่ลิงก์แล้ว" : "♻️ ใช้ไฟล์เก่า"}
                     </span>
                   ) : artRequired && !preArranged ? (
                     /* โหมดแอดมิน/ลิงก์ราคาไม่บังคับแนบ — ลายมาทางไลน์/อีเมลได้ */
@@ -7446,6 +7494,41 @@ export default function ProductDetail({
                   artDrag ? "bg-sky-100 ring-2 ring-dashed ring-sky-400" : "bg-sky-50/70 ring-1 ring-sky-200"
                 }`}
               >
+                {/* ♻️ เคยสั่งลายนี้กับร้านแล้ว — ติ๊กแล้วไม่ต้องอัปซ้ำ ร้านหยิบไฟล์จากออเดอร์ก่อน (ยังส่งแบบให้ตรวจก่อนผลิตเหมือนเดิม) */}
+                <label
+                  className={`mb-3 flex cursor-pointer items-start gap-2.5 rounded-xl px-3 py-2.5 text-xs ring-1 transition ${
+                    reuseOld ? "bg-amber-400 text-amber-950 ring-amber-400" : "bg-white text-stone-600 ring-amber-200 hover:ring-amber-400"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={reuseOld}
+                    onChange={(e) => {
+                      setReuseOld(e.target.checked);
+                      setArtTouched(true);
+                      setExtraOpen("art");
+                    }}
+                    className="mt-0.5 h-4 w-4 accent-amber-600"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="font-bold">♻️ เคยสั่งลายนี้กับร้านแล้ว — ใช้ไฟล์เก่า ไม่ต้องอัปใหม่</span>
+                    <span className={`block text-[11px] leading-relaxed ${reuseOld ? "text-amber-900" : "text-stone-400"}`}>
+                      ทีมงานจะหยิบไฟล์จากออเดอร์ก่อนให้ · ใส่เลขออเดอร์เดิม (OD-…) ถ้าจำได้ จะได้หาเจอไวขึ้น
+                    </span>
+                    {reuseOld && (
+                      <input
+                        type="text"
+                        value={reuseFrom}
+                        onChange={(e) => setReuseFrom(e.target.value.slice(0, 220))}
+                        onClick={(e) => e.preventDefault()}
+                        placeholder="เลขออเดอร์เดิม เช่น OD-260801-1234 · หรือบอกว่าลายไหน (ไม่บังคับ)"
+                        aria-label="เลขออเดอร์เดิมที่ใช้ไฟล์"
+                        className="mt-2 w-full rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-300 placeholder:font-normal placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                    )}
+                  </span>
+                </label>
+
                 {/* 1) อัปโหลดภาพ — หัวข้อใหญ่ซ้ำกับแถบพับด้านบน จึงตัดออก เข้าเรื่องเป็นขั้นตอนเลย */}
                 <div className="flex items-center gap-2">
                   <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-sky-600 text-[11px] font-bold text-white">1</span>

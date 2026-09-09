@@ -302,7 +302,9 @@ function QueueRow({ o }: { o: Order }) {
   const todo = graphicTodoItems(o).length;
   const selfMade = o.items.filter(isSelfDesigned).length;
   const done = o.items.filter((it) => !isSelfDesigned(it) && proofsOf(it).length > 0).length;
-  const noArt = o.items.some((it) => !it.artworkUrls?.length && !isSelfDesigned(it) && !proofExempt(it));
+  // ♻️ รายการที่บอกว่าใช้ไฟล์เก่า = มีลายแล้ว (อยู่ในออเดอร์ก่อน) ไม่ใช่ "ยังไม่มีลาย"
+  const noArt = o.items.some((it) => !it.artworkUrls?.length && !it.reuseArt && !isSelfDesigned(it) && !proofExempt(it));
+  const reuse = o.items.find((it) => it.reuseArt)?.reuseArt;
 
   return (
     <Row tone={todo > 0 ? STATUS_TONE[o.status] : "var(--dk-mint)"} href={`/admin/orders/${encodeURIComponent(o.id)}`}>
@@ -314,6 +316,11 @@ function QueueRow({ o }: { o: Order }) {
             {o.claimOf && (
               <Tag tone="lilac" title={`งานเคลมจาก ${o.claimOf}${o.claimReason ? ` — ${o.claimReason}` : ""}`}>
                 งานเคลม
+              </Tag>
+            )}
+            {reuse && (
+              <Tag tone="yolk" title={`ลูกค้าใช้ไฟล์เก่า${reuse.fromOrderId ? ` จาก ${reuse.fromOrderId}` : ""}${reuse.note ? ` — ${reuse.note}` : ""}`}>
+                ♻️ ใช้ไฟล์เก่า{reuse.fromOrderId ? ` ${reuse.fromOrderId}` : ""}
               </Tag>
             )}
             {o.reorderOf && (
