@@ -235,14 +235,22 @@ function RichNoteEditor({
   placeholder?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const lastPushed = useRef<string>(value ?? "");
+  /**
+   * ค่าล่าสุดที่ "เราเป็นคนส่งออกไป" — ใช้แยกว่า value ที่ไหลกลับมาเป็นของเราเอง (ไม่ต้องเขียน DOM ซ้ำ เดี๋ยวเคอร์เซอร์เด้ง)
+   * หรือมาจากภายนอก (โหลดใหม่/โพลลิง) ที่ต้องเติมลงช่อง
+   * ⚠️ ต้องเริ่มที่ "" เสมอ ห้ามเริ่มด้วย value — contentEditable ไม่มี children จาก React ข้อความจึงต้องถูกเขียนลง DOM
+   *    ด้วย effect ข้างล่างเท่านั้น · เดิมเริ่มด้วย value ทำให้ตอนที่ออเดอร์มาพร้อม HTML ตั้งแต่แรก (SSR seed)
+   *    หรือกล่องหมายเหตุรายการที่เปิดมาพร้อมข้อความ effect เห็นว่า "เท่าเดิม" แล้วข้าม → ช่องว่างทั้งที่ DB มีข้อความ
+   *    และถ้าแอดมินคลิกช่องแล้วออก ยังเซฟค่าว่างทับของเดิมอีก (OD-260908-1744 "หมายเหตุหายหลังรีเฟรช")
+   */
+  const lastPushed = useRef<string>("");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [empty, setEmpty] = useState(!noteHasText(value));
 
   // เคลียร์ตัวตั้งเวลาเซฟตอน unmount
   useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
 
-  // ซิงก์ค่าจากภายนอกเข้า editor (ไม่ทับตอนแอดมินกำลังพิมพ์เอง)
+  // ซิงก์ค่าจากภายนอกเข้า editor (รวมตอน mount) — ไม่ทับตอนแอดมินกำลังพิมพ์เอง
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -5558,6 +5566,17 @@ function PackView({
                           ))
                         : "ไม่มีรายละเอียดเพิ่มเติม"}
                     </span>
+                    {/* 📝 หมายเหตุใบงานของรายการนี้ (adminNote rich text) — เดิมโชว์แค่บนใบปริ้น คนแพ็คที่สแกน QR ไม่เห็น
+                        วางในกล่องเดียวกับสเปค → กด "ยืนยันอ่านแล้ว" ครั้งเดียวครอบทั้งสเปค+หมายเหตุ · HTML ผ่าน sanitizeNoteHtml ตอนเซฟแล้ว */}
+                    {noteHasText(it.adminNote) && (
+                      <span className="mt-2 block rounded-lg bg-amber-100 px-2.5 py-2 ring-1 ring-amber-300">
+                        <span className="block text-[10px] font-bold uppercase tracking-wide text-amber-700">📝 หมายเหตุใบงาน</span>
+                        <span
+                          className="mt-0.5 block text-sm leading-snug text-slate-900 [&_span]:whitespace-pre-wrap"
+                          dangerouslySetInnerHTML={{ __html: it.adminNote! }}
+                        />
+                      </span>
+                    )}
                   </span>
                 </span>
                 {/* แถบยืนยัน — แยกออกจากสเปคด้วยเส้นคั่น + พื้นทึบเต็มความกว้าง ให้เห็นว่า "กดได้" ไม่ใช่ข้อความต่อท้าย
@@ -5586,6 +5605,28 @@ function PackView({
           );
         })}
       </div>
+
+      {/* 📄 หมายเหตุท้ายบิล (billNote) + หมายเหตุลูกค้า — ระดับออเดอร์ ไม่ผูกกับรายการไหน
+          เดิมมีแต่บนใบปริ้น คนแพ็คบนมือถือไม่เห็นเลย · วางก่อนช่องถ่ายรูปให้เห็นก่อนปิดกล่อง */}
+      {(noteHasText(order.billNote) || !!order.note) && (
+        <div className="px-3 pb-3">
+          <div className="rounded-2xl bg-amber-50 p-3 shadow-sm ring-2 ring-amber-300">
+            <p className="text-sm font-extrabold text-slate-900">📄 หมายเหตุท้ายบิล</p>
+            {noteHasText(order.billNote) && (
+              <div
+                className="mt-1.5 text-sm leading-snug text-slate-900 [&_span]:whitespace-pre-wrap"
+                dangerouslySetInnerHTML={{ __html: order.billNote! }}
+              />
+            )}
+            {order.note && (
+              <p className="mt-1.5 text-sm leading-snug text-slate-700">
+                <span className="font-bold text-slate-500">หมายเหตุลูกค้า: </span>
+                {order.note}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 📸 ภาพก่อนปิดกล่อง — บังคับอย่างน้อย 1 รูปก่อนยิงเลขพัสดุ */}
       <div className="px-3 pt-1">
