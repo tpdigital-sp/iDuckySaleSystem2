@@ -64,6 +64,18 @@ export async function POST(req: Request) {
           return Object.keys(q).length ? { artworkQty: q } : {};
         })()
       : {}),
+    // 📐 ขนาดต่อลาย (key=url) — รับเฉพาะ {w,h} บวกของ url ที่แนบมาจริง
+    ...(it.artworkSize && typeof it.artworkSize === "object" && Array.isArray(it.artworkUrls)
+      ? (() => {
+          const urls = it.artworkUrls as string[];
+          const q = Object.fromEntries(
+            Object.entries(it.artworkSize as Record<string, { w?: unknown; h?: unknown }>)
+              .filter(([u, s]) => urls.includes(u) && s && Number(s.w) > 0 && Number(s.h) > 0)
+              .map(([u, s]) => [u, { w: Math.min(9999, Number(s.w)), h: Math.min(9999, Number(s.h)) }]),
+          );
+          return Object.keys(q).length ? { artworkSize: q } : {};
+        })()
+      : {}),
     // งาน 2 ด้าน — url ชุดด้านหลัง (ส่วนย่อยของ artworkUrls) ไว้ติดป้ายในใบเสนอราคา
     ...(Array.isArray(it.artworkBackUrls) && it.artworkBackUrls.length
       ? { artworkBackUrls: it.artworkBackUrls.filter((u: unknown) => typeof u === "string").slice(0, 10) }

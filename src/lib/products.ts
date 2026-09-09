@@ -676,6 +676,23 @@ function packSingleSize(itemW: number, itemH: number, binW: number, binH: number
 }
 
 /**
+ * ชิ้นขนาดเดียว กว้าง×สูง วางได้กี่ชิ้นต่อ 1 แผ่นตามสเปก sheetYield (0 = ใหญ่เกินแผ่น)
+ * แยกออกมาให้หน้าสินค้าเช็ค "ลายไหนใหญ่เกินแผ่น" รายลายได้ (ป้ายแดงใต้รูป — ผู้ใช้สั่ง 9 ก.ย. 69)
+ */
+export function sheetFitCount(cfg: SheetYield, w: number, h: number): number {
+  if (!(w > 0) || !(h > 0)) return 0;
+  const itemH = h + (cfg.addH ?? 0);
+  /*
+   * ร้านตั้งตารางจำนวนต่อแผ่นเองไว้ (perSheetTiers) = ใช้เลขนั้น ไม่คำนวณจากการจัดวาง
+   * ตารางร้านเผื่อพื้นที่ mark/ระยะจับชิ้นไว้แล้ว การคำนวณตรง ๆ จะได้เยอะกว่าที่ทำได้จริง
+   */
+  for (const t of cfg.perSheetTiers ?? []) {
+    if ((t.upTo == null || Math.max(w, itemH) <= t.upTo) && t.per > 0) return t.per;
+  }
+  return packSingleSize(w, itemH, cfg.sheetW, cfg.sheetH, cfg.gap ?? 0);
+}
+
+/**
  * จำนวนชิ้นโดยประมาณต่อ 1 แผ่น จากค่าที่ลูกค้ากรอก (กว้างจากกลุ่ม pairLabel × สูงจากกลุ่มนี้)
  * จัดวางแบบเดียวกับโปรแกรม Print-Fit — null = ไม่ได้ตั้ง sheetYield หรือยังกรอกไม่ครบ · 0 = ใหญ่เกินแผ่น
  */
@@ -690,16 +707,21 @@ export function sheetYieldCount(
   if (!pair) return null;
   const w = Number(parseInputValue(pair, selections[pair.label]));
   const h = Number(parseInputValue(opt, selections[opt.label]));
-  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
-  const itemH = h + (cfg.addH ?? 0);
+  const perOf = (pw: number, ph: number): number => sheetFitCount(cfg, pw, ph);
   /*
-   * ร้านตั้งตารางจำนวนต่อแผ่นเองไว้ (perSheetTiers) = ใช้เลขนั้น ไม่คำนวณจากการจัดวาง
-   * ตารางร้านเผื่อพื้นที่ mark/ระยะจับชิ้นไว้แล้ว การคำนวณตรง ๆ จะได้เยอะกว่าที่ทำได้จริง
+   * 📐 คละหลายขนาดใน 1 แผ่น (ART_SIZE_LABEL) — คิด "ลายละเท่า ๆ กัน": 1 ชุด (ลายละ 1 ชิ้น) กินพื้นที่
+   * Σ(1/ชิ้นต่อแผ่นของขนาดนั้น) แผ่น → ชิ้นต่อแผ่น = จำนวนลาย ÷ Σ(1/c_i) (ปัดลง)
+   * ทำไมไม่คิดจากพื้นที่รวม: พื้นที่รวมเกินที่ Print-Fit วางได้จริง (ดู [[iducky-sheet-yield-printfit]])
+   * สัดส่วนจากผังชิ้นเดี่ยวไม่มีทางเกินเพดานของแต่ละขนาด · ขนาดไหนใหญ่เกินแผ่น = 0 ทั้งงาน
    */
-  for (const t of cfg.perSheetTiers ?? []) {
-    if ((t.upTo == null || Math.max(w, itemH) <= t.upTo) && t.per > 0) return t.per;
+  const mixed = [...parseArtSize(selections[ART_SIZE_LABEL]).values()];
+  if (mixed.length) {
+    const counts = mixed.map((sz) => perOf(sz.w, sz.h));
+    if (counts.some((c) => c <= 0)) return 0;
+    return Math.max(1, Math.floor(mixed.length / counts.reduce((a, c) => a + 1 / c, 0)));
   }
-  return packSingleSize(w, itemH, cfg.sheetW, cfg.sheetH, cfg.gap ?? 0);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  return perOf(w, h);
 }
 
 /**
@@ -1008,7 +1030,9 @@ export function unitYieldOf(product: Product, selections: Record<string, string>
     const w = pair ? parseInputValue(pair, selections[pair.label]) : "";
     const h = parseInputValue(opt, selections[opt.label]);
     const sheetName = cfg.sheetName ?? "แผ่น";
-    const size = `${w} × ${h}${unit ? ` ${unit}` : ""}`;
+    // 📐 คละหลายขนาด — บอกจำนวนขนาดแทนตัวเลขเดียว (ตัวเลขรายลายอยู่ในบรรทัด "ขนาดแต่ละลาย" ของสเปคแล้ว)
+    const mixedN = parseArtSize(selections[ART_SIZE_LABEL]).size;
+    const size = mixedN ? `คละ ${mixedN} ขนาด` : `${w} × ${h}${unit ? ` ${unit}` : ""}`;
     /*
      * เรทที่ขายเป็นหน่วยใหญ่กว่าแผ่น (ตร.ม.) — แปลง "ต่อแผ่น" เป็น "ต่อหน่วยขาย" ด้วยตัวคูณที่ตั้งไว้
      * ไม่มีตัวคูณ = คืนเลขต่อแผ่นไปตามเดิม (ฝั่งโชว์จะไม่คูณจำนวนที่สั่งให้ ดู UnitYield.unit)
@@ -2028,6 +2052,86 @@ export function artQtyByUrl(text: string | undefined | null, urls: string[]): Re
     if (q) out[u] = q;
   });
   return Object.keys(out).length ? out : undefined;
+}
+
+/* ──────────────────────────────────────────────────────────────
+ * 📐 ขนาดของแต่ละลายที่แนบ — "คละหลายขนาดใน 1 แผ่น" (ผู้ใช้สั่ง 9 ก.ย. 69 — เคสคละขนาดเกิดบ่อย)
+ * งานแบ่งแผ่น/ไดคัทตามขนาด (sheetYield) เดิมมีช่องกว้าง×สูงช่องเดียว = ทุกลายต้องขนาดเดียวกัน
+ * ลูกค้าสั่ง 4 ลายใน 1 A3 กว้างไม่เท่ากัน จึงระบุ กว้าง×สูง ใต้รูปแต่ละลายได้ (ไม่ระบุ = ใช้ขนาดหลัก)
+ * เก็บใน selections เป็นข้อความอ่านออก (ติดไปตะกร้า/ออเดอร์/ใบงานผ่าน SpecLines ฟรี ธรรมเนียมเดียวกับ ART_QTY_LABEL)
+ * ตอน checkout แกะเป็น OrderItem.artworkSize (key = url) · ตัวนับชิ้น/แผ่น (sheetYieldCount) อ่านคีย์นี้ตรง ๆ
+ * ทุกจอที่ส่ง selections มาจึงได้เลขแบบคละขนาดเอง (ตะกร้า/แช่ unitYield ลงออเดอร์/ตัวเทียบแบบงาน)
+ * ────────────────────────────────────────────────────────────── */
+export const ART_SIZE_LABEL = "ขนาดแต่ละลาย";
+/** ขนาดชิ้นงานของลายหนึ่ง (หน่วยเดียวกับช่องกรอกขนาด — ซม.) */
+export type ArtSize = { w: number; h: number };
+
+/** ประกอบข้อความ "ลายที่ 1 25×8 ซม. · ลายที่ 2 18×8 ซม." — ลายที่ไม่มีขนาดข้าม · ไม่มีเลยคืน "" */
+export function formatArtSize(sizes: (ArtSize | undefined | null)[], unit = "ซม."): string {
+  const num = (n: number) => String(Math.round(n * 100) / 100);
+  return sizes
+    .map((s, i) => (s && s.w > 0 && s.h > 0 ? `ลายที่ ${i + 1} ${num(s.w)}×${num(s.h)}${unit ? ` ${unit}` : ""}` : ""))
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** แกะข้อความกลับเป็น ลำดับลาย (นับจาก 0) → ขนาด (รูปแบบต่างจาก parseArtQty: ตัวเลขคู่ "25×8" ตามหลังเลขลาย ไม่มี × นำหน้า) */
+export function parseArtSize(text?: string | null): Map<number, ArtSize> {
+  const out = new Map<number, ArtSize>();
+  if (!text) return out;
+  const re = /ลายที่\s*(\d+)\s+(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const i = parseInt(m[1], 10) - 1;
+    const w = Number(m[2]);
+    const h = Number(m[3]);
+    if (i >= 0 && w > 0 && h > 0) out.set(i, { w, h });
+  }
+  return out;
+}
+
+/**
+ * แปลงที่ลูกค้าพิมพ์ในช่องใต้รูป → ขนาด · รับ "25x8" "25×8" "25*8" "25,8" "25 8" (ทศนิยมได้)
+ * null = ยังพิมพ์ไม่ครบ/อ่านไม่ออก
+ */
+export function parseArtSizeInput(raw: string): ArtSize | null {
+  const m = (raw ?? "").trim().match(/^(\d+(?:\.\d+)?)\s*[×xX*,\s]\s*(\d+(?:\.\d+)?)$/);
+  if (!m) return null;
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  return w > 0 && h > 0 ? { w, h } : null;
+}
+
+/**
+ * ขนาดของรูปลายใบนี้ในออเดอร์/ใบเสนอราคา — อ่านฟิลด์ artworkSize (key=url) ก่อน
+ * ไม่มีค่อยตกไปแกะข้อความใน sel ตามลำดับรูป · undefined = ลูกค้าไม่ได้ระบุ (ทุกลายใช้ขนาดหลัก)
+ */
+export function artSizeOf(
+  item: { artworkSize?: Record<string, ArtSize>; sel?: Record<string, string> },
+  url: string,
+  index: number,
+): ArtSize | undefined {
+  const s = item.artworkSize?.[url];
+  if (s && s.w > 0 && s.h > 0) return s;
+  return parseArtSize(item.sel?.[ART_SIZE_LABEL]).get(index);
+}
+
+/** จับคู่ขนาดเข้ากับ url ตามลำดับ → { url: {w,h} } (ไม่มีสักลาย = undefined) */
+export function artSizeByUrl(text: string | undefined | null, urls: string[]): Record<string, ArtSize> | undefined {
+  const byIndex = parseArtSize(text);
+  if (!byIndex.size) return undefined;
+  const out: Record<string, ArtSize> = {};
+  urls.forEach((u, i) => {
+    const s = byIndex.get(i);
+    if (s) out[u] = s;
+  });
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** "25×8 ซม." ไว้ติดป้าย/ใส่ title */
+export function artSizeText(s: ArtSize, unit = "ซม."): string {
+  const num = (n: number) => String(Math.round(n * 100) / 100);
+  return `${num(s.w)}×${num(s.h)}${unit ? ` ${unit}` : ""}`;
 }
 
 /** คีย์ใน selections ที่เก็บ url ภาพลายที่ลูกค้าแนบ (คั่นด้วย " | ") — ด้านหน้า/ด้านเดียว */

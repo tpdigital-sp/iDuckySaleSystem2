@@ -9,7 +9,7 @@ import FlowAccountSync from "@/components/admin/FlowAccountSync";
 /** ลิงก์หน้ารายละเอียดออเดอร์ — ประกาศนอกคอมโพเนนต์ให้ reference คงที่ */
 const orderHref = (id: string) => `/admin/orders/${encodeURIComponent(id)}`;
 import { useParams, useRouter } from "next/navigation";
-import { artQtyOf, formatPrice } from "@/lib/products";
+import { artQtyOf, artSizeOf, artSizeText, formatPrice } from "@/lib/products";
 import { proofIssues, productWordIndex, type ProductWordIndex } from "@/lib/proof-check";
 import { PROOF_AUTO_NOTIFY_MINUTES, pendingProofs, pendingProofsLabel } from "@/lib/proof-notify";
 import { fetchProductNamesLite } from "@/lib/product-repo";
@@ -1768,6 +1768,7 @@ export default function AdminOrderDetailPage() {
             ...it,
             artworkUrls: (it.artworkUrls ?? []).filter((u) => u !== url),
             ...(it.artworkQty ? { artworkQty: Object.fromEntries(Object.entries(it.artworkQty).filter(([k]) => k !== url)) } : {}),
+            ...(it.artworkSize ? { artworkSize: Object.fromEntries(Object.entries(it.artworkSize).filter(([k]) => k !== url)) } : {}),
             ...(it.artworkBackUrls ? { artworkBackUrls: it.artworkBackUrls.filter((u) => u !== url) } : {}),
           }
         : it
@@ -3360,6 +3361,12 @@ export default function AdminOrderDetailPage() {
                                                   × {artQtyOf(it, r.u, r.no - 1)!.toLocaleString("th-TH")} ชิ้น
                                                 </span>
                                               ) : null}
+                                              {/* 📐 ขนาดที่ลูกค้าระบุให้ลายนี้ (คละหลายขนาดใน 1 แผ่น) */}
+                                              {artSizeOf(it, r.u, r.no - 1) ? (
+                                                <span className="ml-1 rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-bold text-teal-800">
+                                                  📐 {artSizeText(artSizeOf(it, r.u, r.no - 1)!)}
+                                                </span>
+                                              ) : null}
                                             </span>
                                             <span className={`shrink-0 text-[11px] tabular-nums ${muted}`}>
                                               {r.frame ? `${r.frame.widthMm}×${r.frame.heightMm} มม.` : "ไม่มีข้อมูลกรอบงาน"}
@@ -3469,9 +3476,13 @@ export default function AdminOrderDetailPage() {
                                         {/* eslint-disable-next-line @next/next/no-img-element */}
                                         <img src={u} alt={`ต้นฉบับ ${k + 1}`} className="h-full w-full object-cover" />
                                         {/* 🔢 จำนวนที่ลูกค้าระบุให้ลายนี้ */}
-                                        {artQtyOf(it, u, (it.artworkUrls ?? []).indexOf(u)) ? (
+                                        {artQtyOf(it, u, (it.artworkUrls ?? []).indexOf(u)) || artSizeOf(it, u, (it.artworkUrls ?? []).indexOf(u)) ? (
                                           <span className="absolute inset-x-0 bottom-0 bg-sky-900/75 py-0.5 text-center text-[10px] font-bold leading-none text-white">
-                                            ×{artQtyOf(it, u, (it.artworkUrls ?? []).indexOf(u))!.toLocaleString("th-TH")}
+                                            {artQtyOf(it, u, (it.artworkUrls ?? []).indexOf(u)) ? `×${artQtyOf(it, u, (it.artworkUrls ?? []).indexOf(u))!.toLocaleString("th-TH")}` : ""}
+                                            {/* 📐 ขนาดต่อลาย (คละหลายขนาด) — ต่อท้ายจำนวน */}
+                                            {artSizeOf(it, u, (it.artworkUrls ?? []).indexOf(u))
+                                              ? `${artQtyOf(it, u, (it.artworkUrls ?? []).indexOf(u)) ? " " : ""}${artSizeText(artSizeOf(it, u, (it.artworkUrls ?? []).indexOf(u))!, "")}`
+                                              : ""}
                                           </span>
                                         ) : null}
                                       </button>

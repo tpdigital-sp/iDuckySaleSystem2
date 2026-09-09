@@ -22,7 +22,9 @@ import {
   qtyFromAreaOf,
   RATE_LABEL,
   ART_QTY_LABEL,
+  ART_SIZE_LABEL,
   artQtyByUrl,
+  artSizeByUrl,
   parseArtQty,
   unitYieldOf,
   splitArtUrls,
@@ -109,6 +111,7 @@ export default function CartPage() {
           const { "รอเช็คสต๊อก": _bulk, ...selNoBulk } = i.selections;
           const { urls: artworkUrls, back: artworkBackUrls, rest: restSel } = splitArtUrls(selNoBulk);
           const artworkQty = artQtyByUrl(restSel[ART_QTY_LABEL], artworkUrls);
+          const artworkSize = artSizeByUrl(restSel[ART_SIZE_LABEL], artworkUrls);
           return {
             productId: i.productId,
             name: productOf(i.productId)?.name ?? i.productId,
@@ -122,6 +125,7 @@ export default function CartPage() {
             unitPrice: i.unitPrice,
             ...(artworkUrls.length ? { artworkUrls } : {}),
             ...(artworkQty ? { artworkQty } : {}),
+            ...(artworkSize ? { artworkSize } : {}),
             ...(artworkBackUrls.length ? { artworkBackUrls } : {}),
           };
         }),

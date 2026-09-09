@@ -39,6 +39,13 @@ import {
   ART_QTY_LABEL,
   formatArtQty,
   parseArtQty,
+  ART_SIZE_LABEL,
+  formatArtSize,
+  parseArtSize,
+  parseArtSizeInput,
+  artSizeText,
+  sheetFitCount,
+  type ArtSize,
   orderUnitYield,
   ART_LABEL,
   ART_BACK_LABEL,
@@ -730,8 +737,11 @@ export default function ProductDetail({
    * ภาพลายที่แนบแล้ว · `preview` = ลิงก์ไฟล์ในเครื่อง (blob) ไว้วาดรูปย่อเท่านั้น
    * ไม่ใช่ค่าที่ส่งไปกับออเดอร์ — ตะกร้า/ใบงานใช้ `url` ที่อัปขึ้นสตอเรจเสมอ
    */
-  /** qty = จำนวนชิ้นของลายนี้ที่ลูกค้าระบุเอง (ไม่ระบุ = undefined) — ดู ART_QTY_LABEL · ใช้เฉพาะด้านหน้า */
-  type ArtFile = { url: string; name: string; w: number; h: number; hash?: string; preview?: string; qty?: number };
+  /**
+   * qty = จำนวนชิ้นของลายนี้ที่ลูกค้าระบุเอง (ไม่ระบุ = undefined) — ดู ART_QTY_LABEL · ใช้เฉพาะด้านหน้า
+   * size = ขนาดชิ้นงานของลายนี้ (คละหลายขนาดใน 1 แผ่น — ดู ART_SIZE_LABEL) · sizeRaw = ข้อความที่พิมพ์ค้างอยู่ในช่อง
+   */
+  type ArtFile = { url: string; name: string; w: number; h: number; hash?: string; preview?: string; qty?: number; size?: ArtSize; sizeRaw?: string; sizeErr?: string };
   /** ด้านของภาพลาย — งานพิมพ์ 2 ด้านแยกช่องแนบ "ด้านหน้า"/"ด้านหลัง" (งานด้านเดียวมีแต่ front) */
   type ArtSide = "front" | "back";
   const [artFiles, setArtFiles] = useState<ArtFile[]>([]);
@@ -867,12 +877,59 @@ export default function ProductDetail({
 
   // เรทที่เลือกติดไปกับ selections → ตะกร้า/ออเดอร์เห็นเป็น "เรทราคา: …" และคิดราคาตามเรทนั้น
   // (จำนวนลายเติมทีหลังตรง effectiveWithDesigns — ต้องประกาศ designs ก่อน)
+  /**
+   * 📐 บรรทัด "ขนาดแต่ละลาย" (คละหลายขนาดใน 1 แผ่น — ผู้ใช้สั่ง 9 ก.ย. 69) ประกอบสดจากขนาดที่พิมพ์ใต้รูป
+   * ลายที่ไม่ได้ระบุถือว่าเท่า "ขนาดหลัก" ในกลุ่มกว้าง×สูง (ซึ่งซิงก์เป็นชิ้นใหญ่สุดอยู่แล้ว — ดู effect ด้านล่าง)
+   * ใส่ลง effective ให้ตัวนับชิ้น/แผ่น (sheetYieldCount/unitYieldOf/orderUnitYield) เห็นเหมือนที่ตะกร้า/ออเดอร์จะเห็น
+   * "" = ไม่ได้ใช้ (ลายเดียว / ไม่มีใครระบุ / ลายวางบนเทมเพลต / สินค้าไม่ได้นับชิ้นต่อแผ่น)
+   */
+  const artSizeLine = useMemo(() => {
+    if (artFiles.length < 2 || placed.length || !artFiles.some((f) => f.size)) return "";
+    const yOpt = product.options.find((o) => o.sheetYield && optionVisible(o, resolved));
+    const pair = yOpt ? product.options.find((o) => o.label === yOpt.sheetYield!.pairLabel) : undefined;
+    if (!yOpt || !pair) return "";
+    const mw = Number(parseInputValue(pair, resolved[pair.label]));
+    const mh = Number(parseInputValue(yOpt, resolved[yOpt.label]));
+    const main = mw > 0 && mh > 0 ? { w: mw, h: mh } : undefined;
+    return formatArtSize(artFiles.map((f) => f.size ?? main), yOpt.input?.unit ?? "ซม.");
+  }, [artFiles, placed.length, product, resolved]);
   const effective = useMemo(() => {
     const base: Record<string, string> = rate ? { ...resolved, [RATE_LABEL]: rate.label } : { ...resolved };
     // ติ๊ก "สั่งทำ" ไม่ใช่กลุ่มตัวเลือกของสินค้า จึงไม่ผ่าน resolveSelections — พากลับมาเอง
     if (selections[MTO_LABEL]) base[MTO_LABEL] = selections[MTO_LABEL];
+    // 📐 ขนาดแต่ละลาย — ไม่ใช่กลุ่มตัวเลือกเช่นกัน ติดไปกับบรรทัดในตะกร้าผ่าน buildLine เหมือน MTO_LABEL
+    if (artSizeLine) base[ART_SIZE_LABEL] = artSizeLine;
     return base;
-  }, [resolved, rate, selections]);
+  }, [resolved, rate, selections, artSizeLine]);
+  /**
+   * 📐 คละหลายขนาด — ให้กลุ่มกว้าง×สูงหลักเป็น "ชิ้นใหญ่สุด" เสมอ (ตรงคำอธิบายช่อง "วัดด้านที่กว้างที่สุด")
+   * ลูกค้าระบุขนาดใต้รูปแล้วไม่ต้องกรอกช่องหลักซ้ำ (ช่องหลักเป็นช่องบังคับ) · ซิงก์เฉพาะตอนขนาดใต้รูปเปลี่ยน
+   * ⚠️ ไม่ผูก dependency กับ resolved — ไม่งั้นลูกค้าแก้ช่องหลักเองแล้วโดนเขียนทับกลับทันที (อ่านผ่าน ref แทน)
+   */
+  const resolvedRef = useRef(resolved);
+  resolvedRef.current = resolved;
+  const artSizeKey = artFiles.map((f) => (f.size ? `${f.size.w}x${f.size.h}` : "-")).join(",");
+  useEffect(() => {
+    if (artFiles.length < 2 || placed.length) return;
+    const sized = artFiles.filter((f): f is ArtFile & { size: ArtSize } => !!f.size);
+    if (!sized.length) return;
+    const cur = resolvedRef.current;
+    const yOpt = product.options.find((o) => o.sheetYield && optionVisible(o, cur));
+    const pair = yOpt ? product.options.find((o) => o.label === yOpt.sheetYield!.pairLabel) : undefined;
+    if (!yOpt || !pair) return;
+    // ชิ้นใหญ่สุด = ด้านยาวสุดยาวที่สุด (เท่ากันเอาพื้นที่มากกว่า)
+    const big = sized.reduce((a, f) => {
+      const la = Math.max(a.size.w, a.size.h);
+      const lb = Math.max(f.size.w, f.size.h);
+      return lb > la || (lb === la && f.size.w * f.size.h > a.size.w * a.size.h) ? f : a;
+    });
+    const wantW = formatInputValue(pair, String(big.size.w));
+    const wantH = formatInputValue(yOpt, String(big.size.h));
+    setSelections((sel) =>
+      sel[pair.label] === wantW && sel[yOpt.label] === wantH ? sel : { ...sel, [pair.label]: wantW, [yOpt.label]: wantH },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [artSizeKey, placed.length, product]);
   const rateMinQty = rate?.minQty ?? 1;
   /**
    * 📦 เรทนี้นับขั้นต่ำที่ "ยอดรวมทั้งล็อต" ไม่ใช่รายบรรทัด (เช่น สติ๊กเกอร์ UV ขั้นต่ำ 3 แผ่น A3
@@ -1303,16 +1360,21 @@ export default function ProductDetail({
       .map((u) => u.trim())
       .filter(Boolean);
     if (arts.length) {
-      // 🔢 จำนวนต่อลายที่เคยระบุไว้ — คืนกลับตามลำดับรูปเดิม
+      // 🔢 จำนวนต่อลาย / 📐 ขนาดต่อลาย ที่เคยระบุไว้ — คืนกลับตามลำดับรูปเดิม
       const qtys = parseArtQty(src[ART_QTY_LABEL]);
+      const sizes = parseArtSize(src[ART_SIZE_LABEL]);
       setArtFiles(
-        arts.map((url, i) => ({
-          url,
-          name: decodeURIComponent(url.split("/").pop() ?? "ลายที่แนบ"),
-          w: 0,
-          h: 0,
-          ...(qtys.get(i) ? { qty: qtys.get(i) } : {}),
-        }))
+        arts.map((url, i) => {
+          const sz = sizes.get(i);
+          return {
+            url,
+            name: decodeURIComponent(url.split("/").pop() ?? "ลายที่แนบ"),
+            w: 0,
+            h: 0,
+            ...(qtys.get(i) ? { qty: qtys.get(i) } : {}),
+            ...(sz ? { size: sz, sizeRaw: `${sz.w}x${sz.h}` } : {}),
+          };
+        })
       );
     }
     // 🔄 ลายด้านหลังของงานพิมพ์ 2 ด้าน — กลับเข้าช่องด้านหลังของตัวเอง ไม่ปนกับด้านหน้า
@@ -2108,13 +2170,19 @@ export default function ProductDetail({
           <div className="mt-2 flex flex-wrap gap-2">
             {files.map((f, i) => (
               <div key={f.url} className="relative">
-                <a href={f.url} target="_blank" rel="noreferrer">
+                <a href={f.url} target="_blank" rel="noreferrer" className="relative block w-20">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={f.preview ?? f.url}
                     alt={backOn ? `${f.name} (${sideWord})` : f.name}
                     className={`h-20 w-20 rounded-xl object-cover ring-1 ${back ? "ring-violet-200" : "ring-sky-200"}`}
                   />
+                  {/* ⛔ ป้ายแดงขอบล่างของรูป: ลายนี้ใหญ่เกินแผ่น (คละขนาด) — อยู่ในกรอบรูป ไม่ทับช่องขนาดข้างล่าง */}
+                  {!back && artSizeAlert?.tooBig.includes(i) && (
+                    <span className="pointer-events-none absolute inset-x-0 bottom-0 rounded-b-xl bg-rose-600/90 py-0.5 text-center text-[9px] font-bold leading-tight text-white">
+                      ⛔ เกิน 1 {artSizeAlert.sheet}
+                    </span>
+                  )}
                 </a>
                 <button
                   type="button"
@@ -2150,10 +2218,76 @@ export default function ProductDetail({
                     />
                   </label>
                 )}
+                {/* 📐 ขนาดของลายนี้ (กว้าง×สูง) — งานแบ่งแผ่น/ไดคัทตามขนาดที่แนบ ≥2 ลาย คละหลายขนาดใน 1 แผ่นได้
+                    ไม่ระบุ = ใช้ขนาดหลักในกลุ่มกว้าง×สูง · พิมพ์ "25x8" (ดู ART_SIZE_LABEL) */}
+                {!back && artSizeMode && (
+                  <label
+                    className={`mt-1 flex w-20 items-center gap-0.5 rounded-lg bg-white px-1 py-0.5 ring-1 focus-within:ring-2 ${
+                      f.sizeErr || artSizeAlert?.tooBig.includes(i)
+                        ? "ring-2 ring-rose-400 focus-within:ring-rose-500"
+                        : "ring-teal-200 focus-within:ring-teal-400"
+                    }`}
+                    title={`ขนาดของลายที่ ${i + 1} กว้าง x สูง (${artSizeUnit}) — ไม่ระบุ = ใช้ขนาดหลัก`}
+                  >
+                    {/* ⛔ ลายนี้ใหญ่เกินแผ่น — ป้ายแดงบนช่องขนาด (ผู้ใช้สั่ง 9 ก.ย. 69) */}
+                    <span className={`text-[9px] font-bold ${artSizeAlert?.tooBig.includes(i) ? "text-rose-600" : "text-stone-400"}`}>
+                      {artSizeAlert?.tooBig.includes(i) ? "⛔" : "📐"}
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={f.sizeRaw ?? ""}
+                      placeholder={mainArtSize ? `${mainArtSize.w}x${mainArtSize.h}` : "กxส"}
+                      onChange={(e) => setArtSize(i, e.target.value)}
+                      aria-label={`ขนาดของลายที่ ${i + 1} (กว้าง x สูง ${artSizeUnit})`}
+                      className="w-full min-w-0 bg-transparent text-right text-[11px] font-bold text-teal-900 outline-none placeholder:font-normal placeholder:text-stone-300"
+                    />
+                  </label>
+                )}
               </div>
             ))}
           </div>
         )}
+
+        {/* 📐 สรุปคละขนาด — ระบุ กว้าง×สูง ใต้รูปแต่ละลาย (ผู้ใช้สั่ง 9 ก.ย. 69: เคสคละขนาดเกิดบ่อย)
+            ไม่บังคับ ไม่บล็อกปุ่มสั่ง · ลายที่ไม่ระบุใช้ขนาดหลัก · ตัวเลขชิ้น/แผ่นคิดลายละเท่า ๆ กัน (sheetYieldCount) */}
+        {!back && artSizeMode && (() => {
+          const fmt = (n: number) => n.toLocaleString("th-TH");
+          const bad = artFiles.map((f, k) => (f.sizeErr ? `ลายที่ ${k + 1}: ${f.sizeErr}` : "")).filter(Boolean);
+          const sizedN = artFiles.filter((f) => f.size).length;
+          const sheet = artSizeOpt?.sheetYield?.sheetName ?? "แผ่น";
+          const mainTxt = mainArtSize ? artSizeText(mainArtSize, artSizeUnit) : "";
+          const alert = artSizeAlert;
+          // ⛔ แดง = ลายใหญ่เกินแผ่น / แผ่นที่สั่งใส่ไม่ครบทุกลาย · เหลือง = พิมพ์ผิด/เกินช่วง · เขียว = ปกติ
+          const red = !!alert && (alert.tooBig.length > 0 || alert.short);
+          const tone = red
+            ? "bg-rose-50 text-rose-800 ring-2 ring-rose-300"
+            : bad.length
+              ? "bg-amber-50 text-amber-800 ring-amber-200"
+              : sizedN > 0
+                ? "bg-teal-50 text-teal-800 ring-teal-200"
+                : "bg-white text-stone-500 ring-stone-200";
+          const text = red && alert!.tooBig.length
+            ? `⛔ ${alert!.tooBig.map((k) => `ลายที่ ${k + 1} (${artFiles[k].size ? artSizeText(artFiles[k].size!, artSizeUnit) : mainTxt})`).join(", ")} ใหญ่เกิน 1 ${sheet} — วางลงแผ่นไม่ได้ ลดขนาดหรือทักแชทเช็คกับแอดมินก่อนนะครับ`
+            : red
+              ? `⛔ ${fmt(artFiles.length)} ลายขนาดนี้รวมกันเกิน 1 ${sheet} — สั่งอยู่ ${fmt(alert!.available!)} ${sheet} ได้แค่ ${fmt(artSizeMixedPer ?? 0)} ชิ้น ไม่ครบทุกลาย ต้องสั่งอย่างน้อย ${fmt(alert!.needSheets!)} ${sheet} (หรือลดขนาดลาย)`
+              : bad.length
+                ? `⚠️ ${bad.join(" · ")}`
+                : sizedN === 0
+              ? `📐 ลายคนละขนาด? ระบุ กว้าง x สูง ใต้รูปแต่ละลายได้ (ไม่ระบุ = ทุกลายใช้ขนาด${mainTxt ? ` ${mainTxt}` : "หลัก"})`
+              : `📐 คละ ${fmt(sizedN)} ขนาด${
+                  sizedN < artFiles.length ? ` (อีก ${fmt(artFiles.length - sizedN)} ลายใช้ขนาดหลัก${mainTxt ? ` ${mainTxt}` : ""})` : ""
+                }${
+                  artSizeMixedPer == null
+                    ? ""
+                    : artSizeMixedPer > 0
+                      ? ` — ได้ประมาณ ${fmt(artSizeMixedPer)} ชิ้น ต่อ 1 ${sheet} (คิดลายละเท่า ๆ กัน · ตัวเลขคร่าว ๆ)`
+                      : ` — มีลายใหญ่เกิน 1 ${sheet} รบกวนทักแชทเช็คกับแอดมินก่อนนะครับ`
+                }`;
+          // ป้ายแดงขึ้นก่อน แต่ช่องที่พิมพ์ผิด/เกินช่วงยังต้องบอกด้วย (ไม่งั้นลูกค้าแก้ป้ายแดงเสร็จแล้วเพิ่งเจออีกอัน)
+          const tail = red && bad.length ? ` · ⚠️ ${bad.join(" · ")}` : "";
+          return <div className={`mt-2 rounded-lg px-3 py-2 text-[11px] font-semibold leading-relaxed ring-1 ${tone}`}>{text}{tail}</div>;
+        })()}
 
         {/* 🔢 สรุปจำนวนต่อลาย — เทียบกับจำนวนที่สั่ง (ผู้ใช้สั่ง 8 ก.ย. 69: "สั่ง 10 ชิ้น คละ 3 ลาย ลายละกี่ชิ้น")
             ไม่บังคับ ไม่บล็อกปุ่มสั่ง — แค่บอกให้เห็นว่ารวมครบ/ยังขาด/เกิน แอดมินจะได้ไม่ต้องทักถาม · เฉพาะด้านหน้า */}
@@ -2437,6 +2571,28 @@ export default function ProductDetail({
     const v = n && n > 0 ? Math.min(99999, Math.round(n)) : undefined;
     setArtFiles((cur) => cur.map((f, i) => (i === index ? { ...f, qty: v } : f)));
   }
+  /**
+   * 📐 ขนาดของลายนั้น (พิมพ์ใต้รูป) — เก็บข้อความดิบไว้ให้พิมพ์ต่อได้ + ค่าที่แปลงแล้วเฉพาะเมื่ออ่านออก
+   * และอยู่ในช่วง min/max ของช่องกว้าง/สูงหลัก (เกณฑ์เดียวกับช่องหลัก จะได้ไม่มีขนาดที่ช่องหลักรับไม่ได้หลุดไป)
+   */
+  function setArtSize(index: number, raw: string) {
+    const cleaned = raw.replace(/[^\d.,xX×*\s]/g, "").slice(0, 16);
+    const parsed = parseArtSizeInput(cleaned);
+    const lim = (o: ProductOption | null) => `${o?.input?.min ?? 1}–${o?.input?.max ?? "…"}`;
+    const within = (o: ProductOption | null, v: number) => v >= (o?.input?.min ?? 0) && v <= (o?.input?.max ?? Infinity);
+    // แยกสาเหตุให้ชัด: พิมพ์ผิดรูปแบบ vs ตัวเลขเกินช่วงที่ช่องรับ (ข้อความเดิมรวมเป็น "อ่านไม่ออก" ทั้งคู่ — ผู้ใช้ทัก 9 ก.ย. 69)
+    const sizeErr = !cleaned.trim()
+      ? undefined
+      : !parsed
+        ? `พิมพ์แบบ 25x8 (กว้าง x สูง ${artSizeUnit})`
+        : !within(artSizePair, parsed.w)
+          ? `กว้าง ${parsed.w} เกินที่รับ ${lim(artSizePair)} ${artSizeUnit}`
+          : !within(artSizeOpt, parsed.h)
+            ? `สูง ${parsed.h} เกินที่รับ ${lim(artSizeOpt)} ${artSizeUnit}`
+            : undefined;
+    const ok = !!parsed && !sizeErr;
+    setArtFiles((cur) => cur.map((f, i) => (i === index ? { ...f, sizeRaw: cleaned, size: ok ? parsed! : undefined, sizeErr } : f)));
+  }
 
   /** จำนวนชิ้นของลายนั้น (อย่างน้อย 1) */
   function setDesignQty(index: number, n: number) {
@@ -2631,6 +2787,53 @@ export default function ProductDetail({
   const artProvided = artTotal > 0 || artLink.trim().length > 0;
   /** 🔢 โชว์ช่องจำนวนต่อลายไหม — แนบตั้งแต่ 2 รูป และไม่ใช่ลายที่วางบนเทมเพลต (มีช่องของตัวเองแล้ว) */
   const artQtyMode = artFiles.length > 1 && placed.length === 0;
+  /**
+   * 📐 คละหลายขนาดใน 1 แผ่น — กลุ่มกว้าง×สูงที่นับชิ้น/แผ่น (sheetYield) ที่แสดงอยู่ตอนนี้
+   * มี = สินค้านี้แบ่งแผ่น/ไดคัทตามขนาด → แนบ ≥2 ลายแล้วระบุขนาดใต้รูปแต่ละลายได้ (ดู ART_SIZE_LABEL)
+   */
+  const artSizeOpt = useMemo(
+    () => product.options.find((o) => o.sheetYield && optionVisible(o, effective)) ?? null,
+    [product, effective],
+  );
+  const artSizePair = useMemo(
+    () => (artSizeOpt ? product.options.find((o) => o.label === artSizeOpt.sheetYield!.pairLabel) ?? null : null),
+    [product, artSizeOpt],
+  );
+  const artSizeMode = artQtyMode && !!artSizeOpt && !!artSizePair;
+  const artSizeUnit = artSizeOpt?.input?.unit ?? "ซม.";
+  /** ขนาดหลักที่กรอกในกลุ่มกว้าง×สูง (null = ยังกรอกไม่ครบ) — ใช้เป็น placeholder และค่าของลายที่ไม่ได้ระบุ */
+  const mainArtSize = useMemo<ArtSize | null>(() => {
+    if (!artSizeOpt || !artSizePair) return null;
+    const w = Number(parseInputValue(artSizePair, effective[artSizePair.label]));
+    const h = Number(parseInputValue(artSizeOpt, effective[artSizeOpt.label]));
+    return w > 0 && h > 0 ? { w, h } : null;
+  }, [artSizeOpt, artSizePair, effective]);
+  /** ชิ้นต่อแผ่นแบบคละขนาด (effective มี ART_SIZE_LABEL อยู่แล้วเมื่อมีลายที่ระบุขนาด) · null = ยังไม่มีใครระบุ */
+  const artSizeMixedPer = artSizeMode && effective[ART_SIZE_LABEL] && artSizeOpt ? sheetYieldCount(product, artSizeOpt, effective) : null;
+  /**
+   * ⛔ ป้ายเตือนแดงของงานคละขนาด (ผู้ใช้สั่ง 9 ก.ย. 69 "ต้องมี badge แจ้งเตือนสีแดงด้วย") — เตือน ไม่ล็อกปุ่มสั่ง (เหมือนช่องขนาดหลัก)
+   *  - tooBig: ลายที่วางลงแผ่นไม่ได้เลย (ติดป้ายบนรูปนั้นด้วย)
+   *  - setSheets: 1 ชุด (ลายละ 1 ชิ้น) ต้องใช้กี่แผ่น = Σ 1/ชิ้นต่อแผ่นของแต่ละลาย · เกินจำนวนแผ่นที่สั่ง = แผ่นเดียวใส่ไม่ครบทุกลาย
+   *    (เคสจริง: 25×20 + 25×10 ×3 → ได้ 3 ชิ้น/แผ่น แต่มี 4 ลาย — สั่ง 1 แผ่นไม่ครบ ต้อง 2 แผ่น)
+   *  เทียบจำนวนแผ่นได้เฉพาะเมื่อหน่วยขายคือแผ่นนั้น (หรือรู้ตัวคูณ via) — เรทที่ขายเป็น ตร.ม. ไม่รู้ = ไม่เทียบ
+   */
+  const artSizeAlert = useMemo(() => {
+    const cfg = artSizeOpt?.sheetYield;
+    if (!artSizeMode || !cfg || !artFiles.some((f) => f.size)) return null;
+    const sheet = cfg.sheetName ?? "แผ่น";
+    const fits = artFiles.map((f) => {
+      // ช่องที่พิมพ์ผิด/เกินช่วง (sizeErr) ยังไม่มีขนาดที่เชื่อได้ — ไม่เอาขนาดหลักมาแทน ไม่งั้นโดนป้าย "ใหญ่เกินแผ่น" ผิดลาย
+      const s = f.sizeErr ? null : (f.size ?? mainArtSize);
+      return s ? sheetFitCount(cfg, s.w, s.h) : null;
+    });
+    const tooBig = fits.map((c, i) => (c === 0 ? i : -1)).filter((i) => i >= 0);
+    const setSheets = fits.every((c): c is number => c != null && c > 0) ? fits.reduce((a, c) => a + 1 / c, 0) : null;
+    const saleUnit = matrix?.unit ?? "";
+    const available = unitYield?.via ? qty * unitYield.via.sheets : saleUnit === sheet ? qty : null;
+    const needSheets = setSheets != null ? Math.ceil(setSheets - 1e-9) : null;
+    const short = tooBig.length === 0 && available != null && needSheets != null && needSheets > available;
+    return { tooBig, needSheets, available, short, sheet };
+  }, [artSizeMode, artSizeOpt, artFiles, mainArtSize, matrix?.unit, unitYield, qty]);
   /**
    * 🔢 จำนวน "ชิ้นจริง" ที่ใช้เทียบกับจำนวนต่อลาย — สินค้าขายเป็นเซ็ต/แผ่น (1 เซ็ต = 20 ใบ) ลูกค้าระบุเป็นใบ ไม่ใช่เซ็ต
    * ตัวคูณชุดเดียวกับที่ตะกร้า/ออเดอร์ใช้ (orderUnitYield) · ไม่รู้ตัวคูณ = นับตามหน่วยที่สั่ง
@@ -3493,9 +3696,11 @@ export default function ProductDetail({
                             const gap = opt.sheetYield?.gap ?? 0;
                             // gap เก็บหน่วยเดียวกับช่องกรอก (ซม.) — บอกลูกค้าเป็น มม. อ่านง่ายกว่า
                             const gapNote = gap > 0 ? ` เว้นระยะระหว่างชิ้น ${Math.round(gap * 10)} มม.` : "";
+                            // 📐 คละหลายขนาด (ระบุใต้รูปแต่ละลาย) — ตัวเลขนี้คิดจากทุกขนาดแล้ว ไม่ใช่ขนาดหลักอย่างเดียว
+                            const mixedN = parseArtSize(effective[ART_SIZE_LABEL]).size;
                             return n >= 1 ? (
                               <p className="mt-1 text-[11px] font-bold text-teal-700">
-                                📐 ขนาดนี้ได้ประมาณ {n} ชิ้น ต่อ 1 {sheet}
+                                📐 {mixedN ? `คละ ${mixedN} ขนาด ได้ประมาณ` : "ขนาดนี้ได้ประมาณ"} {n} ชิ้น ต่อ 1 {sheet}
                                 {/*
                                   * คูณจำนวนที่สั่งให้เลย · เรทที่ขายเป็นหน่วยใหญ่กว่าแผ่น (ตร.ม.)
                                   * กางตัวคูณให้เห็นด้วย ไม่งั้นลูกค้าคิดตามไม่ได้ว่าเลขมาจากไหน
@@ -3514,6 +3719,16 @@ export default function ProductDetail({
                                   </>
                                 )}{" "}
                                 (จัดวางบนพื้นที่พิมพ์จริง{gapNote} — ตัวเลขคร่าว ๆ จำนวนจริงขึ้นกับรูปทรงลาย)
+                                {/* แนบหลายลายแล้วแต่ยังไม่ระบุขนาดรายลาย — ชี้ทางไปช่องใต้รูป (คละหลายขนาดใน 1 แผ่นได้) */}
+                                {artFiles.length > 1 && !placed.length && !mixedN && (
+                                  <span className="font-semibold text-teal-600"> · ลายคนละขนาด? ระบุ กว้าง x สูง ใต้รูปแต่ละลายในกล่องแนบลายได้เลย</span>
+                                )}
+                                {/* ⛔ แผ่นที่สั่งใส่ไม่ครบทุกลาย — เตือนซ้ำตรงช่องขนาดหลักด้วย (ลูกค้ามองจุดนี้ก่อน) */}
+                                {artSizeAlert?.short && (
+                                  <span className="block font-bold text-rose-600">
+                                    ⛔ {artFiles.length} ลายขนาดนี้รวมกันเกิน 1 {sheet} — ต้องสั่งอย่างน้อย {artSizeAlert.needSheets} {sheet} ถึงจะครบทุกลาย
+                                  </span>
+                                )}
                               </p>
                             ) : (
                               <p className="mt-1 text-[11px] font-bold text-rose-600">

@@ -14,7 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import RequirePerm from "@/components/RequirePerm";
-import { artQtyOf, formatPrice, type Product } from "@/lib/products";
+import { artQtyOf, artSizeOf, artSizeText, formatPrice, type Product } from "@/lib/products";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import { itemPiecesLine } from "@/lib/item-yield";
 import {
@@ -137,6 +137,7 @@ function QuoteDetailInner() {
             ...it,
             artworkUrls: (it.artworkUrls ?? []).filter((u) => u !== url),
             ...(it.artworkQty ? { artworkQty: Object.fromEntries(Object.entries(it.artworkQty).filter(([key]) => key !== url)) } : {}),
+            ...(it.artworkSize ? { artworkSize: Object.fromEntries(Object.entries(it.artworkSize).filter(([key]) => key !== url)) } : {}),
             ...(it.artworkBackUrls ? { artworkBackUrls: it.artworkBackUrls.filter((u) => u !== url) } : {}),
           }
         : it
@@ -473,7 +474,7 @@ function QuoteDetailInner() {
                       <div className="flex flex-wrap gap-1">
                         {(it.artworkUrls ?? []).slice(0, 4).map((u, k) => (
                           <span key={k} className="relative block">
-                            <a href={u} target="_blank" rel="noreferrer" className="relative block" title={[artworkSide(it, u), artQtyOf(it, u, k) ? `ลายที่ ${k + 1} × ${artQtyOf(it, u, k)} ชิ้น` : `ลายที่ ${k + 1}`].filter(Boolean).join(" · ")}>
+                            <a href={u} target="_blank" rel="noreferrer" className="relative block" title={[artworkSide(it, u), artQtyOf(it, u, k) ? `ลายที่ ${k + 1} × ${artQtyOf(it, u, k)} ชิ้น` : `ลายที่ ${k + 1}`, artSizeOf(it, u, k) ? `📐 ${artSizeText(artSizeOf(it, u, k)!)}` : ""].filter(Boolean).join(" · ")}>
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img src={u} alt={artworkSide(it, u) ?? ""} className="h-9 w-9 rounded-md object-cover ring-1 ring-slate-200" />
                               {/* งานพิมพ์ 2 ด้าน — ป้ายหน้า/หลังด้านบน · 🔢 จำนวนต่อลายด้านล่าง */}

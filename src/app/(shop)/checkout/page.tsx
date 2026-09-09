@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ART_QTY_LABEL, artQtyByUrl, feeBreakdown, formatPrice, lotShortfalls, splitArtUrls } from "@/lib/products";
+import { ART_QTY_LABEL, ART_SIZE_LABEL, artQtyByUrl, artSizeByUrl, feeBreakdown, formatPrice, lotShortfalls, splitArtUrls } from "@/lib/products";
 import { useCart } from "@/lib/cart-context";
 import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { getUnpicked, clearUnpicked } from "@/lib/cart-select";
@@ -379,6 +379,8 @@ export default function CheckoutPage() {
       const { urls: artworkUrls, back: artworkBackUrls, rest: restSel } = splitArtUrls(selNoBulk);
       // 🔢 จำนวนต่อลายที่ลูกค้าระบุใต้รูป → ผูกกับ url (ข้อความใน sel ยังอยู่ให้ใบงาน/โหมดแพ็คอ่าน)
       const artworkQty = artQtyByUrl(restSel[ART_QTY_LABEL], artworkUrls);
+      // 📐 ขนาดต่อลาย (คละหลายขนาดใน 1 แผ่น) → ผูกกับ url เช่นกัน
+      const artworkSize = artSizeByUrl(restSel[ART_SIZE_LABEL], artworkUrls);
       return {
         productId: it.productId,
         name: productOf(it.productId)?.name ?? it.productId,
@@ -400,6 +402,7 @@ export default function CheckoutPage() {
         ...selfDesignedProof(restSel, artworkUrls, new Date().toISOString()),
         ...(artworkUrls.length ? { artworkUrls } : {}),
         ...(artworkQty ? { artworkQty } : {}),
+        ...(artworkSize ? { artworkSize } : {}),
         ...(artworkBackUrls.length ? { artworkBackUrls } : {}),
         ...(bulkFlag ? { needStockCheck: true } : {}),
       };

@@ -374,6 +374,11 @@ export interface OrderItem {
    */
   artworkQty?: Record<string, number>;
   /**
+   * 📐 ขนาดชิ้นงาน (กว้าง×สูง ซม.) ของแต่ละลายที่ลูกค้าระบุตอนแนบ — คละหลายขนาดใน 1 แผ่น (key = url)
+   * แกะมาจาก selections["ขนาดแต่ละลาย"] ตอน checkout (ดู artSizeByUrl ใน products.ts) · ไม่ระบุ = ไม่มีคีย์ (ใช้ขนาดหลักในสเปค)
+   */
+  artworkSize?: Record<string, { w: number; h: number }>;
+  /**
    * งานพิมพ์ 2 ด้าน — url ใน artworkUrls ชุดที่เป็น "ลายด้านหลัง" (เป็นส่วนย่อยของ artworkUrls ไม่ใช่รายการแยก)
    * ทุกจอที่นับ/ลบ/ก๊อป/ล้างไฟล์ยังใช้ artworkUrls ชุดเดียวได้เหมือนเดิม · ตัวนี้มีไว้ติดป้าย หน้า/หลัง อย่างเดียว
    * ไม่มีฟิลด์ = ออเดอร์เก่า หรืองานด้านเดียว → ไม่ติดป้าย (ดู artworkSide)
