@@ -7,71 +7,206 @@ import { useEffect, useRef, useState } from "react";
 import { useCart } from "@/lib/cart-context";
 import { useCustomer } from "@/lib/customer-context";
 import NotifBell from "@/components/NotifBell";
-import { signOut } from "@/lib/customer-auth";
+import { signOut, type Customer } from "@/lib/customer-auth";
 import { fetchSiteNav, visibleMenu, visibleMega, DEFAULT_SITE_NAV, type MegaGroup, type NavLink } from "@/lib/home-nav";
 /* eslint-disable @next/next/no-img-element */
-import { MegaBar, MegaMobile } from "@/components/MegaMenu";
+import { MegaBar } from "@/components/MegaMenu";
 import NavCatMenu from "@/components/NavCatMenu";
 import BottomNav from "@/components/BottomNav";
+import NavSearchBar from "@/components/NavSearchBar";
+import MobileNav from "@/components/MobileNav";
+import MobileSearch from "@/components/MobileSearch";
 
 /**
- * ไอคอนเส้นบาง ๆ ชุดเดียวกันทั้งเมนูบัญชี (เดิมใช้อีโมจิคนละสไตล์ 🏠🧾👤🚪 ดูไม่เป็นชุดเดียวกัน)
- * ใช้ currentColor เพื่อให้เปลี่ยนสีตามสถานะ hover ได้
+ * แถบเมนูหัวเว็บ — ดีไซน์ตามไฟล์ต้นแบบ LADNDING PAGE.html (9 ก.ย. 69)
+ *
+ * เดสก์ท็อป (≥1001px) สองแถวในการ์ดกระจกเดียว:
+ *   แถวบน   โลโก้ · แถบค้นหา "AI Mode" (พิมพ์แล้วมี dropdown ผลลัพธ์) · โปรไฟล์ → กระดิ่ง → ตะกร้า → ช้อปเลย
+ *   แถวล่าง ชิป "สินค้าและบริการ" (เมกะเมนูหมวด) ชิดซ้าย · ลิงก์เมนูจากหลังบ้านชิดขวา
+ * แท็บเล็ต/มือถือ: โลโก้ · แถบค้นหา (กดแล้วเปิดค้นหาเต็มจอ) · ไอคอน · ☰ เปิดเมนูหมวดเต็มจอ + แถบเมนูล่างสไตล์แอป
+ *
+ * เมนูลิงก์ + โลโก้ ตั้งได้จากหลังบ้าน (/admin/nav → products row __site_nav__) — ค่าเริ่มต้นใน home-nav.ts
  */
-const ICON = {
-  home: "M3 10.5 12 3l9 7.5M5.5 9.5V20h13V9.5M9.5 20v-6h5v6",
-  receipt: "M6 3h12v18l-2.5-1.6L13 21l-2.5-1.6L8 21l-2-1.6V3Zm3 5h6M9 12h6M9 16h4",
-  user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0",
-  logout: "M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4M6 12h11",
-  /* เป็ดยาง + รูกุญแจที่ตัว = เข้าสู่ระบบ · ตาคือเส้นสั้น h.01 ปลายมนให้เป็นจุด */
-  key: "M8 10.6c-1.7 1-2.9 2.7-2.9 4.7 0 3.3 3.1 5.5 7.2 5.5 4.6 0 7.5-2.5 7.5-5.9 0-1.7-.8-3.1-2.1-4.1M8 10.6a4.7 4.7 0 1 1 7.7-3.7c0 1.5-.7 2.9-1.8 3.7M7.3 7.4c-1.4-.55-2.9-.3-3.5.45.55.85 1.95 1.3 3.35 1.05M11.1 6.4h.01M13.2 14a1.35 1.35 0 1 0-2.7 0 1.35 1.35 0 0 0 2.7 0ZM11.85 15.35V17.6",
-  cart: "M3.5 5H6l2.2 10h9.6l2.2-8H7M10 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm8 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z",
-  search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14Zm5-2 4 4",
-} as const;
 
-/** เมนูในดรอปดาวน์บัญชี */
-const ACCOUNT_MENU = [
-  { href: "/account", label: "บัญชีของฉัน", icon: ICON.home, hint: "ภาพรวม · คูปองของฉัน" },
-  { href: "/account/orders", label: "ประวัติการสั่งซื้อ", icon: ICON.receipt, hint: "ติดตามงาน · สั่งซ้ำ" },
-  { href: "/account/profile", label: "ข้อมูลส่วนตัว", icon: ICON.user, hint: "ชื่อ · เบอร์ · ที่อยู่" },
-];
-
-/** ไอคอนเส้นขนาดเดียวกันทุกอัน */
-function LineIcon({ d, className = "", size = 18 }: { d: string; className?: string; size?: number }) {
+/** ไอคอนเส้นบางชุดเดียวกับต้นแบบ (.nav-icon-svg) */
+function UserIcon() {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.7"
-      strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
-      <path d={d} />
+    <svg className="nav-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="8" r="3.6" />
+      <path d="M4.8 20c0-3.6 3.2-5.8 7.2-5.8s7.2 2.2 7.2 5.8" />
+    </svg>
+  );
+}
+function CartIcon() {
+  return (
+    <svg className="nav-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3.2 4h2.1l2 10.2h9.9l1.9-7.4H6.1" />
+      <circle cx="9.6" cy="19" r="1.5" />
+      <circle cx="16.6" cy="19" r="1.5" />
+    </svg>
+  );
+}
+function SearchIcon() {
+  return (
+    <svg className="nav-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="6.5" />
+      <line x1="16" y1="16" x2="20.5" y2="20.5" />
     </svg>
   );
 }
 
-/**
- * ป้ายบอกวิธีเข้าสู่ระบบ — บัญชีที่ล็อกอินด้วย LINE จะได้อีเมลปลอมยาว ๆ (line_u039af…)
- * โชว์ให้ลูกค้าเห็นก็ไม่มีประโยชน์ เลยแปลงเป็นข้อความที่อ่านรู้เรื่องแทน
- */
-function loginLabel(email: string): { text: string; line: boolean } {
-  const e = (email || "").trim();
-  const viaLine = /^line[_-]/i.test(e) || !e.includes("@");
-  return viaLine ? { text: "เข้าสู่ระบบด้วย LINE", line: true } : { text: e, line: false };
+/** รหัสลูกค้าแบบอ่านง่าย — ตัดจาก id จริงของบัญชี (ชุดเดียวกับหน้าบัญชี) */
+function customerCode(id: string): string {
+  const hex = id.replace(/[^0-9a-f]/gi, "").toUpperCase();
+  return `IDK-${hex.slice(0, 4)}-${hex.slice(4, 8)}`;
+}
+
+/** ระดับสมาชิกที่หน้าบัญชีจดไว้ในเครื่อง (ducky_acc_tier) — ใช้ทำกรอบรูป/ป้ายระดับ โดยไม่ต้องยิง API เพิ่ม */
+const RINGS = new Set(["bronze", "silver", "gold", "platinum", "diamond"]);
+function readTier(cid: string): { id: string; name: string; icon: string } | null {
+  try {
+    const h = JSON.parse(localStorage.getItem("ducky_acc_tier") || "null") as { cid: string; id: string; name: string; icon: string } | null;
+    return h && h.cid === cid ? h : null;
+  } catch {
+    return null;
+  }
+}
+
+/** เมนูในดรอปดาวน์บัญชี (ตามต้นแบบ) */
+const USER_LINKS = [
+  { href: "/account/orders", ico: "📦", label: "คำสั่งซื้อของฉัน" },
+  { href: "/account/profile", ico: "📍", label: "ที่อยู่จัดส่ง" },
+  { href: "/account", ico: "💛", label: "บัญชีของฉัน" },
+  { href: "/dealer", ico: "🤝", label: "สมัครตัวแทนจำหน่าย" },
+  { href: "/how-to-order", ico: "❓", label: "วิธีสั่งซื้อ & ช่วยเหลือ" },
+];
+
+/** รูปโปรไฟล์ในกรอบสีตามระดับ — ไม่มีรูป = วงกลมตัวอักษรแรกของชื่อ */
+function UserPic({ customer, ring, lg }: { customer: Customer; ring?: string; lg?: boolean }) {
+  const initial = (customer.name || "ส").trim().charAt(0).toUpperCase();
+  return (
+    <span className={`nav-user-pic${lg ? " lg" : ""}`} data-ring={ring} aria-hidden="true">
+      {customer.picture ? (
+        <span className="nav-user-photo" style={{ backgroundImage: `url(${customer.picture})` }} />
+      ) : (
+        <span className="nav-user-photo txt">{initial}</span>
+      )}
+    </span>
+  );
+}
+
+/** เมนูโปรไฟล์ (เดสก์ท็อป) — ปุ่มไอคอนคน / รูปโปรไฟล์ในกรอบสีระดับ + ดรอปดาวน์สถานะยังไม่ล็อกอิน/ล็อกอินแล้ว */
+function NavUserMenu() {
+  const { customer } = useCustomer();
+  const router = useRouter();
+  const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [tier, setTier] = useState<{ id: string; name: string; icon: string } | null>(null);
+  useEffect(() => {
+    setTier(customer ? readTier(customer.id) : null);
+  }, [customer, pathname]);
+  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const ring = tier && RINGS.has(tier.id) ? tier.id : undefined;
+  async function logout() {
+    setOpen(false);
+    await signOut();
+    router.push("/products");
+  }
+
+  return (
+    <div ref={wrapRef} className={`nav-user-wrap${customer ? " is-signed-in" : ""}`} onMouseLeave={() => setOpen(false)}>
+      <button
+        type="button"
+        className="icon-btn nav-account-icon"
+        aria-label={customer ? `บัญชีของ ${customer.name || "สมาชิก"}` : "บัญชีของฉัน"}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+      >
+        {customer && <UserPic customer={customer} ring={ring} />}
+        <UserIcon />
+      </button>
+      <div className={`nav-user-drop${open ? " open" : ""}`} role="menu">
+        <div className="nav-user-guest">
+          <div className="nav-user-head">
+            <span className="nav-user-avatar">🐣</span>
+            <div>
+              <b>ยังไม่ได้เข้าสู่ระบบ</b>
+              <span>เข้าสู่ระบบเพื่อติดตามออเดอร์และเก็บที่อยู่</span>
+            </div>
+          </div>
+          <div className="nav-user-actions">
+            <Link className="nav-user-btn primary" href="/account/login">
+              เข้าสู่ระบบ
+            </Link>
+            <Link className="nav-user-btn ghost" href="/account/login">
+              สมัครสมาชิก
+            </Link>
+          </div>
+        </div>
+        {customer && (
+          <div className="nav-user-signed">
+            <div className="nav-user-head">
+              <UserPic customer={customer} ring={ring} lg />
+              <div>
+                <b>{customer.name || "สมาชิก"}</b>
+                {tier && (
+                  <span className="nav-tier-tag" data-ring={ring}>
+                    {tier.icon} {tier.name}
+                  </span>
+                )}
+                <span className="nav-user-cid">รหัสลูกค้า {customerCode(customer.id)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+        <div className="nav-user-links">
+          {USER_LINKS.map((l) => (
+            <Link key={l.href + l.label} href={l.href} role="menuitem" onClick={() => setOpen(false)}>
+              <i>{l.ico}</i>
+              {l.label}
+            </Link>
+          ))}
+        </div>
+        <div className="nav-user-foot">
+          <button type="button" className="nav-user-signout" role="menuitem" onClick={logout}>
+            <i>↪</i>ออกจากระบบ
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function Navbar() {
   const pathname = usePathname();
-  const router = useRouter();
   const { items } = useCart();
   const itemCount = items.length; // ป้ายตะกร้านับ "รายการ" ไม่ใช่จำนวนชิ้น (สั่งแก้ว 100 ใบ = 1 รายการ ไม่ใช่ 99+)
-  const { customer } = useCustomer();
-  const [open, setOpen] = useState(false);
-  const [acctOpen, setAcctOpen] = useState(false);
-  /** คำค้นในช่องค้นหากลางแถบเมนู (เดสก์ท็อป) */
-  const [q, setQ] = useState("");
-  const acctRef = useRef<HTMLDivElement>(null);
+  const [mnavOpen, setMnavOpen] = useState(false);
+  const [msearchOpen, setMsearchOpen] = useState(false);
   /** เลื่อนหน้าลงแล้วแถบเมนูหดลง (คลาส .small ตามดีไซน์) */
   const [small, setSmall] = useState(false);
   // ลิงก์เมนูที่แอดมินตั้งไว้ (แสดงค่าเริ่มต้นไปก่อน แล้วสลับเมื่อโหลดเสร็จ — ไม่มีจังหวะเมนูหาย)
   const [links, setLinks] = useState<NavLink[]>(visibleMenu(DEFAULT_SITE_NAV));
-  // เมกะเมนูเริ่มจากว่าง — ผู้ใช้ลบทิ้งแล้ว (2 ก.ย. 69) ถ้าแอดมินสร้างใหม่ใน /admin/nav ค่อยโผล่ตามข้อมูล
+  // เมกะเมนูจากหลังบ้านเริ่มจากว่าง — ผู้ใช้ลบทิ้งแล้ว (2 ก.ย. 69) ถ้าแอดมินสร้างใหม่ใน /admin/nav ค่อยโผล่ตามข้อมูล
   // (ห้าม seed จาก DEFAULT_SITE_NAV ไม่งั้นแถบที่ลบไปแล้ววูบขึ้นมาก่อน /api/nav ตอบ)
   const [mega, setMega] = useState<MegaGroup[]>([]);
   const [logo, setLogo] = useState<string>("");
@@ -90,208 +225,107 @@ export default function Navbar() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // ปิดดรอปดาวน์เมื่อคลิกนอกพื้นที่ หรือเปลี่ยนหน้า
+  // เปลี่ยนหน้าเมื่อไหร่ก็ปิด overlay ทิ้ง
   useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
-      if (acctRef.current && !acctRef.current.contains(e.target as Node)) setAcctOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
-  useEffect(() => {
-    setAcctOpen(false);
-    setOpen(false);
+    setMnavOpen(false);
+    setMsearchOpen(false);
   }, [pathname]);
 
-  async function logout() {
-    setAcctOpen(false);
-    await signOut();
-    router.push("/products");
-  }
+  const catLink = links.find((l) => /#categories$/.test(l.href));
+  const menuLinks = links.filter((l) => l !== catLink);
 
   return (
     <>
-    <header className={`nav${small ? " small" : ""}`} id="nav">
-      <div className="wrap">
-        <nav className="nav-in">
-          <Link href="/" className="logo" onClick={() => setOpen(false)}>
-            {logo ? (
-              <img
-                {...imgProps(logo, "210px", 384)}
-                onError={fallbackToOriginal(logo)}
-                alt="iDucky Prints Studio"
-                className="h-11 w-auto max-w-[210px] object-contain"
+      <header className={`nav${small ? " small" : ""}`} id="nav">
+        <div className="wrap">
+          <nav className="nav-in">
+            <div className="nav-row nav-row-top">
+              <Link href="/" className="logo">
+                {logo ? (
+                  <img {...imgProps(logo, "210px", 384)} onError={fallbackToOriginal(logo)} alt="iDucky Prints Studio" className="logo-img" />
+                ) : (
+                  <img className="logo-img" src="/landing/logo-ducky.png" alt="iDucky Prints Studio" width={722} height={243} />
+                )}
+              </Link>
+
+              <NavSearchBar
+                onOpenMobile={() => {
+                  setMnavOpen(false);
+                  setMsearchOpen(true);
+                }}
               />
-            ) : (
-              <img className="logo-img" src="/landing/logo-ducky.png" alt="iDucky Prints Studio" width={722} height={243} />
-            )}
-          </Link>
 
-          {/* ช่องค้นหาสินค้ากลางแถบเมนู (เดสก์ท็อป) — Enter/ปุ่มค้นหา ไป /products?q= ชุดเดียวกับช่องค้นในเมกะเมนู */}
-          <form
-            className="nav-find"
-            role="search"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const s = q.trim();
-              router.push(s ? `/products?q=${encodeURIComponent(s)}` : "/products");
-            }}
-          >
-            <LineIcon d={ICON.search} size={17} className="nav-find-ico" />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="ค้นหาสินค้า เช่น สแตนดี้ พวงกุญแจ สติกเกอร์…"
-              aria-label="ค้นหาสินค้า"
-            />
-            <button type="submit">ค้นหา</button>
-          </form>
+              <div className="nav-cta">
+                <NavUserMenu />
 
-          <div
-            className={`menu${open ? " open" : ""}`}
-            id="menu"
-            // ปิดเมนู ☰ เฉพาะตอนคลิก "ลิงก์" — คลิกแท็บ/ปุ่มในเมกะเมนูต้องไม่ทำเมนูหุบ
-            onClick={(e) => {
-              if ((e.target as HTMLElement).closest("a")) setOpen(false);
-            }}
-          >
-            {links.map((l) =>
-              /#categories$/.test(l.href) ? (
-                // เมนู "สินค้าและบริการ" กางเป็นเมกะเมนูหมวดสินค้า (ต้นแบบ MEGAMENU_01)
-                <NavCatMenu key={l.id} label={l.label} href={l.href} onNavigate={() => setOpen(false)} />
-              ) : (
-                <Link key={l.id} href={l.href} className={pathname === l.href ? "on" : undefined}>
-                  {l.label}
+                <Link href="/cart" className="icon-btn nav-cart-icon" aria-label={`ตะกร้าสินค้า มี ${itemCount} รายการ`} title="ตะกร้าสินค้า">
+                  <CartIcon />
+                  {itemCount > 0 && <span className="nav-cart-count">{itemCount > 99 ? "99+" : itemCount}</span>}
                 </Link>
-              )
-            )}
-            {/* มือถือ: หมวดสินค้าทั้งหมดอยู่ในเมนูที่กางออก */}
-            <div className="md:hidden">
-              <MegaMobile groups={mega} onNavigate={() => setOpen(false)} />
-            </div>
-          </div>
 
-          <div className="nav-cta">
-            {customer ? (
-              <div ref={acctRef} className="relative">
+                {/* มือถือ: ตะกร้าย้ายลงแถบเมนูล่างแล้ว ช่องนี้สลับเป็นปุ่มค้นหาเต็มจอแทน */}
                 <button
                   type="button"
-                  onClick={() => setAcctOpen((v) => !v)}
-                  className="icon-btn"
-                  aria-haspopup="menu"
-                  aria-expanded={acctOpen}
-                  aria-label={`บัญชีของ ${customer.name || "สมาชิก"}`}
-                  title={customer.name || "บัญชีของฉัน"}
+                  className="icon-btn nav-search-mobile"
+                  aria-label="ค้นหาสินค้า"
+                  onClick={() => {
+                    setMnavOpen(false);
+                    setMsearchOpen((v) => !v);
+                  }}
                 >
-                  <LineIcon d={ICON.user} size={20} />
+                  <SearchIcon />
                 </button>
-                {acctOpen && (
-                  <div role="menu" className="acct-pop">
-                    {/* หัวการ์ด: ตัวอักษรแรกของชื่อ + ชื่อ + ป้ายบอกว่าล็อกอินมาทางไหน */}
-                    <div className="acct-head">
-                      <span className="acct-ava">{(customer.name || "ส").trim().charAt(0).toUpperCase()}</span>
-                      <span className="acct-who">
-                        <span className="acct-name">{customer.name || "สมาชิก"}</span>
-                        {(() => {
-                          const l = loginLabel(customer.email);
-                          return (
-                            <span className={`acct-chip${l.line ? " line" : ""}`} title={customer.email}>
-                              {l.line && <span className="dot" />}
-                              {l.text}
-                            </span>
-                          );
-                        })()}
-                      </span>
-                    </div>
 
-                    <div className="acct-sep" />
-                    <div className="acct-list">
-                      {ACCOUNT_MENU.map((m) => (
-                        <Link key={m.href} href={m.href} role="menuitem" className="acct-item">
-                          <span className="acct-ico">
-                            <LineIcon d={m.icon} />
-                          </span>
-                          <span className="acct-txt">
-                            <span className="acct-lb">{m.label}</span>
-                            <span className="acct-hint">{m.hint}</span>
-                          </span>
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
-                            strokeLinecap="round" strokeLinejoin="round" className="acct-arrow" aria-hidden="true">
-                            <path d="m9 6 6 6-6 6" />
-                          </svg>
-                        </Link>
-                      ))}
-                    </div>
+                {/* กระดิ่งแจ้งเตือน (เฉพาะสมาชิก) — ค้างชำระ / แบบรอตรวจ / จัดส่งแล้ว */}
+                <NotifBell />
 
-                    <div className="acct-sep" />
-                    <div className="acct-list">
-                      <button type="button" onClick={logout} role="menuitem" className="acct-item out">
-                        <span className="acct-ico">
-                          <LineIcon d={ICON.logout} />
-                        </span>
-                        <span className="acct-txt">
-                          <span className="acct-lb">ออกจากระบบ</span>
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-                )}
+                <Link href="/products" className="btn btn-yolk">
+                  ช้อปเลย <span className="dot">→</span>
+                </Link>
+
+                <button
+                  type="button"
+                  className="icon-btn burger"
+                  aria-label="เปิดเมนู"
+                  aria-expanded={mnavOpen}
+                  onClick={() => {
+                    setMsearchOpen(false);
+                    setMnavOpen((v) => !v);
+                  }}
+                >
+                  ☰
+                </button>
               </div>
-            ) : (
-              <Link href="/account/login" className="icon-btn" aria-label="เข้าสู่ระบบ" title="เข้าสู่ระบบ">
-                <LineIcon d={ICON.key} size={20} />
-              </Link>
-            )}
+            </div>
 
-            {/* กระดิ่งแจ้งเตือน (เฉพาะสมาชิก) — ค้างชำระ / แบบรอตรวจ / จัดส่งแล้ว */}
-            <NotifBell />
+            <div className="nav-row nav-row-bottom">
+              {/* ชิป "สินค้าและบริการ" — เมกะเมนูหมวดสินค้า (เดสก์ท็อป · มือถือใช้เมนู ☰ แทน) */}
+              {catLink && <NavCatMenu label={catLink.label} href={catLink.href} />}
+              <div className="menu" id="menu">
+                {menuLinks.map((l) => (
+                  <Link key={l.id} href={l.href} className={pathname === l.href ? "on" : undefined}>
+                    {l.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </nav>
 
-            <Link
-              href="/cart"
-              className="icon-btn nav-cart-icon relative"
-              aria-label={`ตะกร้าสินค้า มี ${itemCount} รายการ`}
-              title="ตะกร้าสินค้า"
-            >
-              <LineIcon d={ICON.cart} size={20} />
-              {itemCount > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">
-                  {itemCount > 99 ? "99+" : itemCount}
-                </span>
-              )}
-            </Link>
+          {/* แถบหมวดสินค้า (เดสก์ท็อป) — เมกะเมนูจากหลังบ้าน ถ้าแอดมินตั้งไว้ */}
+          {mega.length > 0 && (
+            <div className="catbar-row">
+              <MegaBar groups={mega} pathname={pathname} align="center" />
+            </div>
+          )}
+        </div>
+      </header>
 
-            {/* มือถือ: ตะกร้าย้ายลงแถบเมนูล่างแล้ว ช่องนี้เลยสลับเป็นทางลัดค้นหาสินค้าแทน (MEGAMENU_03) */}
-            <Link href="/products" className="icon-btn nav-search-mobile" aria-label="ค้นหาสินค้า" title="ค้นหาสินค้า">
-              <LineIcon d={ICON.search} size={20} />
-            </Link>
+      {/* เมนูหมวดหมู่เต็มจอ + ค้นหาเต็มจอ (มือถือ/แท็บเล็ต) */}
+      <MobileNav open={mnavOpen} onClose={() => setMnavOpen(false)} logo={logo} />
+      <MobileSearch open={msearchOpen} onClose={() => setMsearchOpen(false)} />
 
-            <Link href="/products" className="btn btn-yolk hidden sm:inline-flex">
-              ช้อปเลย <span className="dot">→</span>
-            </Link>
-
-            <button
-              type="button"
-              className="icon-btn burger"
-              onClick={() => setOpen((v) => !v)}
-              aria-label="เปิดเมนู"
-              aria-expanded={open}
-            >
-              {open ? "✕" : "☰"}
-            </button>
-          </div>
-        </nav>
-
-        {/* แถวหมวดสินค้า (เดสก์ท็อป) — เมกะเมนูเดิม วางใต้แถบกระจก */}
-        {mega.length > 0 && (
-          <div className="catbar-row">
-            <MegaBar groups={mega} pathname={pathname} align="center" />
-          </div>
-        )}
-      </div>
-    </header>
-
-    {/* แถบเมนูล่างสไตล์แอป (มือถือ) — ใช้สถานะเปิดเมนูร่วมกับปุ่ม ☰ เดิม */}
-    <BottomNav menuOpen={open} onToggleMenu={() => setOpen((v) => !v)} itemCount={itemCount} />
+      {/* แถบเมนูล่างสไตล์แอป (มือถือ) */}
+      <BottomNav itemCount={itemCount} />
     </>
   );
 }

@@ -22,7 +22,9 @@ export default function ShopLayout({ children }: { children: React.ReactNode }) 
           <Footer />
         </div>
         {/* ปุ่มลอยมุมขวาล่าง: LINE = แอดมินตัวจริง · ChatWidget = ผู้ช่วย AI ตอบทันที */}
-        <LineFloat />
+        <div className="dl dl-contents">
+          <LineFloat />
+        </div>
         <ChatWidget />
         {/* ปุ่มลัดเข้าหลังบ้าน — เห็นเฉพาะทีมงาน · เสียบที่ layout ให้ขึ้นครบทุกหน้าร้าน */}
         <AdminEditFabAuto />

@@ -9,7 +9,7 @@ import { useCustomer } from "@/lib/customer-context";
 import { fetchMyOrders, setOrdersOwner } from "@/lib/my-orders";
 
 /**
- * กระดิ่งแจ้งเตือนบนแถบเมนู (ตามต้นแบบ USER PROFILE UPDATE_01.html) — โชว์เฉพาะสมาชิกที่ล็อกอิน
+ * กระดิ่งแจ้งเตือนบนแถบเมนู (มาร์กอัป/สไตล์ .nav-bell-* ตามต้นแบบ LADNDING PAGE.html) — โชว์ทุกคน (ยังไม่ล็อกอิน = ชวนเข้าสู่ระบบ)
  * รายการแจ้งเตือนคำนวณสดจากออเดอร์ของลูกค้า (ไม่มีตารางแจ้งเตือนแยก):
  *   💳 ค้างชำระ · 🖼️ แบบพร้อมให้อนุมัติ · 🚚 จัดส่งแล้ว (มีเลขพัสดุ)
  * ตัวเลขบนกระดิ่ง = จำนวนเรื่องที่ยังต้องทำ/ควรรู้ตอนนี้ (ไม่ใช่ "ยังไม่ได้อ่าน")
@@ -85,43 +85,52 @@ export default function NotifBell() {
     };
   }, [open]);
 
-  if (!customer) return null;
-  const n = notifs.length;
+  // ต้นแบบมีกระดิ่งบนแถบเมนูเสมอ (เจ้าของร้านยืนยัน 9 ก.ย. 69) — ยังไม่ล็อกอินก็เห็นปุ่ม กดแล้วชวนเข้าสู่ระบบ
+  const n = customer ? notifs.length : 0;
 
   return (
-    <div ref={wrapRef} className="nbell-wrap">
+    <div ref={wrapRef} className="nav-bell-wrap" onMouseLeave={() => setOpen(false)}>
       <button
         type="button"
-        className={`icon-btn nbell-btn${n ? " has" : ""}`}
-        onClick={() => setOpen((v) => !v)}
+        className="icon-btn nav-bell-icon"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
         aria-haspopup="true"
         aria-expanded={open}
         aria-label={n ? `แจ้งเตือน ${n} รายการ` : "แจ้งเตือน"}
         title="แจ้งเตือน"
       >
-        <span className="nbell-ico" aria-hidden="true">🔔</span>
-        {n > 0 && <span className="nbell-count">{n > 9 ? "9+" : n}</span>}
+        <svg className="nav-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M18 9a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16S18 14 18 9" />
+          <path d="M10.3 19a2 2 0 0 0 3.4 0" />
+        </svg>
+        {n > 0 && <span className="nav-bell-dot" aria-hidden="true" />}
       </button>
-      <div className={`nbell-panel${open ? " show" : ""}`} role="menu" aria-hidden={!open}>
-        <div className="nbell-head">การแจ้งเตือน</div>
-        {n === 0 ? (
-          <div className="nbell-empty">
+      <div className={`nav-bell-drop${open ? " open" : ""}`} role="menu" aria-hidden={!open}>
+        <div className="nav-bell-head">การแจ้งเตือน{n > 0 ? ` (${n})` : ""}</div>
+        {!customer ? (
+          <div className="nav-bell-empty">
+            <span>🐣</span>
+            เข้าสู่ระบบเพื่อรับแจ้งเตือนออเดอร์ ยอดค้างชำระ และแบบที่รอตรวจ
+          </div>
+        ) : n === 0 ? (
+          <div className="nav-bell-empty">
             <span>🦆</span>
             ไม่มีเรื่องค้าง — เรียบร้อยดีทุกออเดอร์
           </div>
         ) : (
           notifs.map((x) => (
-            <Link key={x.key} href={x.href} role="menuitem" className="nbell-row" onClick={() => setOpen(false)}>
-              <span className="nbell-rico">{x.ico}</span>
-              <span className="nbell-text">
-                <span className="t1">{x.t1}</span>
-                <span className="t2">{x.t2}</span>
-              </span>
+            <Link key={x.key} href={x.href} role="menuitem" onClick={() => setOpen(false)}>
+              <i>{x.ico}</i>
+              <b>{x.t1}</b>
+              <span>{x.t2}</span>
             </Link>
           ))
         )}
-        <Link href="/account" className="nbell-foot" onClick={() => setOpen(false)}>
-          ดูทั้งหมดในหน้าบัญชี →
+        <Link href={customer ? "/account" : "/account/login"} className="nav-bell-all" onClick={() => setOpen(false)}>
+          {customer ? "ดูทั้งหมด →" : "เข้าสู่ระบบ →"}
         </Link>
       </div>
     </div>

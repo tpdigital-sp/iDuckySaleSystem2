@@ -16,22 +16,16 @@ function ChatIcon({ className = "h-5 w-5" }: { className?: string }) {
   );
 }
 
-/** ปุ่ม LINE ลอยมุมจอ (ทุกหน้าร้าน) — ติดต่อสอบถาม */
+/**
+ * ปุ่ม LINE ลอยมุมขวาล่าง (ทุกหน้าร้าน) — มาร์กอัป .line-fab ตามไฟล์ต้นแบบ LADNDING PAGE.html
+ * เดสก์ท็อป = พิลล์เขียวมีข้อความ · มือถือ = วงกลม 💬 เหนือแถบเมนูล่าง + ป้าย "ทักเราได้เลยนะ 👋" โผล่เป็นระยะ
+ * สไตล์อยู่ใน landing.css (ต้องอยู่ใต้ตัวครอบ .dl — ดู (shop)/layout.tsx)
+ */
 export function LineFloat() {
   return (
-    <a
-      href={LINE_URL}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label="คุยกับแอดมินตัวจริงทาง LINE"
-      /*
-       * มุมขวาล่างตามดีไซน์ (มุมซ้ายล่างเป็นแถวไอคอนโซเชียลของหน้าแรก)
-       * ยกสูงขึ้น 1 ระดับ เพื่อไม่ทับปุ่ม "🔧 แก้ไขในหลังบ้าน" ที่ลอยมุมเดียวกันเวลาแอดมินล็อกอินอยู่
-       */
-      className="fixed bottom-20 right-5 z-40 flex items-center gap-2 rounded-full bg-[#06C755] px-4 py-3 text-sm font-bold text-white shadow-lg ring-4 ring-[#06C755]/20 transition hover:scale-105 hover:bg-[#05b34c]"
-    >
-      <ChatIcon />
-      <span className="hidden sm:inline">คุยกับแอดมิน (LINE)</span>
+    <a href={LINE_URL} target="_blank" rel="noopener noreferrer" className="line-fab" aria-label="คุยกับแอดมินตัวจริงทาง LINE">
+      <i className="line-fab-ico">💬</i>
+      <span className="line-fab-tip">ทักเราได้เลยนะ 👋</span>
     </a>
   );
 }

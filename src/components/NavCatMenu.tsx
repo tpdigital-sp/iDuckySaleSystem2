@@ -1,26 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_CATEGORIES, fetchCategories, type ShopCategory } from "@/lib/categories";
 import { cachedProductsLite, fetchProductsLite } from "@/lib/product-repo";
-import { formatPrice, priceRange, productPath, type Product } from "@/lib/products";
+import { productPath, type Product } from "@/lib/products";
 import { fallbackToOriginal, imgProps } from "@/lib/img";
 import { accentOf, CAT_ICON, groupOf, TAB_GROUPS } from "@/lib/cat-groups";
 import Portal from "@/components/Portal";
+import PreviewTip, { tipPositionFor, type TipState } from "@/components/PreviewTip";
+import { startPriceLabel } from "@/lib/site-search";
 
 /* eslint-disable @next/next/no-img-element */
 
 /**
- * เมนู "สินค้าและบริการ" บนแถบเมนู — ดรอปดาวน์เมกะเมนูตามต้นแบบ MEGAMENU_03
+ * ชิป "สินค้าและบริการ" แถวล่างของแถบเมนู — ดรอปดาวน์เมกะเมนูตามต้นแบบ LADNDING PAGE.html
  *
- * จอใหญ่ (>1000px + มีเมาส์): ชี้ค้างเพื่อเปิดแผง — แผงกางเต็มความกว้างแถบเมนู
+ * เดสก์ท็อป (>1000px + มีเมาส์): ชี้ค้างเพื่อเปิดแผง (คลิก = ไปโซนหมวดบนหน้าแรก) — แผงกางเต็มความกว้างแถบเมนู
  *   แท็บ "ทั้งหมด" (ค่าเริ่มต้น) กางทุกหมวดพร้อมกัน · อีก 4 แท็บกรองเฉพาะกลุ่ม (ชี้ก็สลับ)
- *   ชี้รายการสินค้าย่อย = การ์ดพรีวิวลอยข้างๆ (รูป + ชื่อ + ราคาเริ่มต้น)
- *   ใต้แท็บมีช่องค้นหาสินค้าไวๆ — พิมพ์แล้วกรองคอลัมน์ในแผงเลย (Esc ล้างคำค้น · Enter ไป /products?q=)
- *   คลิกที่ตัวเมนู = ไปโซนหมวดบนหน้าแรกตามเดิม
- * มือถือ: อยู่ในเมนู ☰ — แตะครั้งแรกกางหมวดก่อน แตะซ้ำถึงไปหน้าโซนหมวด
+ *   ชี้รายการสินค้าย่อย = การ์ดพรีวิวลอยข้างๆ (รูป + ชื่อ + ราคาเริ่มต้น) · เปิดแผงแล้วมีม่านเบลอฉากหลัง (.nav-scrim)
+ *   ระหว่างที่ dropdown ค้นหาบนแถบเมนูเปิดอยู่ ห้ามเปิดจากการชี้ผ่าน (เมาส์ที่กวาดลงหาผลลัพธ์ต้องผ่านชิปนี้พอดี)
+ * มือถือ/แท็บเล็ต: CSS ซ่อนชิปนี้ — หมวดทั้งหมดอยู่ในเมนู ☰ (MobileNav) แทน
  *
  * เนื้อหาเป็นของจริงทั้งหมด (ไม่พิมพ์ตายตัวแบบไฟล์ต้นแบบ):
  * หมวดจากหลังบ้าน + สินค้า 5 ตัวแรกของแต่ละหมวด พร้อมป้าย ใหม่/ฮิต จากป้ายสินค้า
@@ -33,37 +33,13 @@ const desktop = () => window.matchMedia("(hover:hover) and (min-width:1001px)").
 /** แท็บ "ทั้งหมด" — กางทุกหมวดพร้อมกัน (ชุดเดียวกับแท็บกรองหมวดบนหน้าแรก) */
 const ALL = "all";
 
-/** ราคาเริ่มต้นของสินค้าแบบสั้น ๆ พอใส่การ์ดพรีวิว 172px — ไม่มีราคา (งานขอใบเสนอ) = ไม่โชว์ */
-function startPrice(p: Product): string {
-  const { min, max } = priceRange(p);
-  if (!(min > 0)) return "";
-  return max > min ? `เริ่มต้น ${formatPrice(min)}` : formatPrice(min);
-}
-
-/** ขนาดการ์ดพรีวิว (ตรงกับ .nav-mega-tip ใน landing.css) — ใช้คำนวณตำแหน่งก่อนการ์ดถูกวาด */
-const TIP_W = 172;
-const TIP_H = 210;
-const TIP_GAP = 14;
-
-type TipState = { p: Product; left: number; top: number; flip: boolean };
-
 /** ชื่อหมวดใน DB เป็น "Keychain & Acrylic — พวงกุญแจ / งานอะคริลิค" → แยกเป็นบรรทัดหลัก (EN) + บรรทัดรอง (ไทย) ให้อ่านง่ายและไม่ล้นคอลัมน์ · ขีด — / – ตัดได้แม้ไม่มีช่องว่าง ("Banners— โปสเตอร์") ส่วนขีด - ต้องมีช่องว่างสองข้าง (กัน Die-Cut) */
 function catNameParts(name: string): string[] {
   const parts = name.split(/\s*[—–]\s*|\s+-\s+/).map((s) => s.trim()).filter(Boolean);
   return parts.length ? parts : [name];
 }
 
-export default function NavCatMenu({
-  label,
-  href,
-  onNavigate,
-}: {
-  label: string;
-  href: string;
-  /** ปิดเมนู ☰ บนมือถือหลังเลือกลิงก์ */
-  onNavigate?: () => void;
-}) {
-  const router = useRouter();
+export default function NavCatMenu({ label, href }: { label: string; href: string }) {
   const [open, setOpen] = useState(false);
   const [group, setGroup] = useState<string>(ALL);
   const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
@@ -71,39 +47,8 @@ export default function NavCatMenu({
   const asked = useRef(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const trigRef = useRef<HTMLAnchorElement>(null);
-
-  /**
-   * ลูกศรชี้ปุ่ม "สินค้าและบริการ" — แผงกางเต็มความกว้างแถบเมนูแล้ว (left:14px right:14px)
-   * จัดกึ่งกลางแผงเฉย ๆ จะชี้ผิดจุด ต้องวัดตำแหน่งปุ่มเทียบขอบซ้ายแผงส่งให้ CSS ผ่าน --arrow-left
-   * เรียกซ้ำทุกครั้งที่เปิด/ย่อขยายจอ
-   *
-   * ⚠️ วัดแผงด้วย offsetLeft/offsetWidth ไม่ใช่ getBoundingClientRect — ตอนถูกเรียกแผงยังวิ่ง
-   * transition อยู่ (scale .98) rect จึงเป็นขนาดย่อ ทำให้ลูกศรเพี้ยนไปสิบกว่าพิกเซล
-   */
-  const positionArrow = () => {
-    const panel = panelRef.current;
-    const trig = trigRef.current;
-    if (!panel || !trig || !desktop()) return;
-    const host = panel.offsetParent as HTMLElement | null;
-    if (!host) return;
-    const panelLeft = host.getBoundingClientRect().left + host.clientLeft + panel.offsetLeft;
-    const panelW = panel.offsetWidth;
-    const tr = trig.getBoundingClientRect();
-    const x = Math.max(24, Math.min(tr.left + tr.width / 2 - panelLeft, panelW - 24));
-    panel.style.setProperty("--arrow-left", `${Math.round(x)}px`);
-  };
-  useEffect(() => {
-    if (!open) return;
-    positionArrow();
-    window.addEventListener("resize", positionArrow);
-    return () => window.removeEventListener("resize", positionArrow);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
 
   // โหลดหมวดจริง + สินค้า ครั้งเดียวตอนเปิดเมนูครั้งแรก (ไม่ถ่วงหน้าอื่นทั้งเว็บ)
-  // ใช้ fetchProductsLite ชุดเดียวกับหน้ารายการสินค้า — ได้รูป+ช่วงราคามาทำการ์ดพรีวิวและช่องค้นหา
   useEffect(() => {
     if (!open || asked.current) return;
     asked.current = true;
@@ -111,7 +56,7 @@ export default function NavCatMenu({
     void fetchProductsLite().then((ps) => setProducts(ps.filter((p) => !p.hidden)));
   }, [open]);
 
-  // ปิดเมื่อคลิกนอกแผง / กด Esc
+  // ปิดเมื่อคลิกนอกแผง / กด Esc / ช่องค้นหาบนแถบเมนูถูกเปิด
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent | TouchEvent) => {
@@ -122,13 +67,16 @@ export default function NavCatMenu({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
+    const onSearch = () => setOpen(false);
     document.addEventListener("mousedown", onDown);
     document.addEventListener("touchstart", onDown, { passive: true });
     document.addEventListener("keydown", onKey);
+    document.addEventListener("id-search-open", onSearch);
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("touchstart", onDown);
       document.removeEventListener("keydown", onKey);
+      document.removeEventListener("id-search-open", onSearch);
     };
   }, [open]);
 
@@ -139,17 +87,13 @@ export default function NavCatMenu({
   const openNow = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
     setOpen(true);
-    positionArrow();
   };
   // หน่วงปิดตอนเมาส์ออก — เผื่อลากผ่านช่องว่างระหว่างปุ่มกับแผง (ตามต้นแบบ 260ms)
   const scheduleClose = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
     closeTimer.current = setTimeout(() => setOpen(false), 260);
   };
-  const go = () => {
-    setOpen(false);
-    onNavigate?.();
-  };
+  const go = () => setOpen(false);
 
   /** สินค้า 5 ตัวแรกของแต่ละหมวด (เรียงตามลำดับจริงในร้าน) */
   const byCat = useMemo(() => {
@@ -166,57 +110,19 @@ export default function NavCatMenu({
   const [tip, setTip] = useState<TipState | null>(null);
   const showTip = (p: Product) => (e: React.MouseEvent | React.FocusEvent) => {
     if (!desktop()) return;
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    // ไม่มีที่ทางฝั่งขวาพอ = พลิกไปโผล่ฝั่งซ้ายของรายการแทน
-    const flip = window.innerWidth - r.right < TIP_W + TIP_GAP + 16;
-    const left = flip ? r.left - TIP_GAP - TIP_W : r.right + TIP_GAP;
-    const top = Math.min(
-      Math.max(r.top + r.height / 2, TIP_H / 2 + 10),
-      window.innerHeight - TIP_H / 2 - 10
-    );
-    setTip({ p, left, top, flip });
+    setTip({ name: p.name, price: startPriceLabel(p), img: p.imageSrc || "", emoji: p.emoji, ...tipPositionFor(e.currentTarget as HTMLElement) });
   };
   const hideTip = () => setTip(null);
-  // เลื่อนคอลัมน์ในแผง (แท็บ "ทั้งหมด" มีสกรอลล์) แล้วการ์ดจะค้างผิดตำแหน่ง — ซ่อนไปเลย
   useEffect(() => {
     if (!open) hideTip();
-  }, [open]);
-
-  /* ---------- ช่องค้นหาสินค้าไวๆ ใต้แท็บ (MEGAMENU_03) ----------
-     พิมพ์แล้ว "กรองคอลัมน์ในแผงเอง" ไม่มีกล่องผลลัพธ์ลอยแยกอีกต่อไป
-     จับคู่ทั้งชื่อสินค้าและชื่อหมวด — หมวดที่ชื่อตรงจะกางสินค้าครบทั้งคอลัมน์ */
-  const [q, setQ] = useState("");
-  const searching = q.trim().length > 0;
-  /** ผลกรอง: หมวดไหนเหลือรอด → สินค้าที่จะโชว์ในคอลัมน์นั้น (ไม่ค้นหาอยู่ = null) */
-  const filter = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return null;
-    const catHit = new Set(cats.filter((c) => c.name.toLowerCase().includes(s)).map((c) => c.id));
-    const m = new Map<string, Product[]>();
-    for (const p of products) {
-      // หมวดที่ "ชื่อหมวด" ตรงคำค้น กางสินค้าตามปกติทั้งคอลัมน์ ไม่ต้องให้ชื่อสินค้าตรงด้วย
-      if (!catHit.has(p.category) && !p.name.toLowerCase().includes(s)) continue;
-      const list = m.get(p.category) ?? [];
-      if (list.length < 5) list.push(p);
-      m.set(p.category, list);
-    }
-    // หมวดที่ชื่อตรงแต่ยังไม่มีสินค้า ก็ยังโชว์คอลัมน์ไว้ให้กดเข้าไปดู
-    for (const id of catHit) if (!m.has(id)) m.set(id, []);
-    return m;
-  }, [q, cats, products]);
-  /** กรองแล้วไม่เหลืออะไรเลย = ขึ้นข้อความแทนตารางว่าง ๆ */
-  const noMatch = filter !== null && filter.size === 0;
-  // เคลียร์ช่องค้นหาทุกครั้งที่เมนูปิด ไม่ให้ค้างข้อความเดิมไว้ตอนเปิดใหม่
-  useEffect(() => {
-    if (!open) setQ("");
   }, [open]);
 
   return (
     <div
       ref={rootRef}
-      className={`nav-drop${open ? " open" : ""}`}
+      className={`nav-drop nav-cat-block${open ? " open" : ""}`}
       onMouseEnter={() => {
-        if (desktop()) openNow();
+        if (desktop() && !document.body.classList.contains("search-open")) openNow();
       }}
       onMouseLeave={() => {
         if (desktop()) {
@@ -227,115 +133,74 @@ export default function NavCatMenu({
     >
       <Link
         href={href}
-        ref={trigRef}
-        className="nav-drop-trigger"
+        className="nav-drop-trigger nav-cat-btn"
         aria-expanded={open}
         aria-haspopup="true"
         onClick={(e) => {
           if (desktop()) return go(); // เดสก์ท็อป: คลิก = ไปโซนหมวดตามเดิม (hover เป็นคนเปิดแผง)
+          // จอสัมผัส: แตะครั้งแรกกางหมวดก่อน แตะซ้ำถึงไปหน้าโซนหมวด
           if (!open) {
-            // มือถือ: แตะครั้งแรกกางหมวดก่อน — กัน .menu ปิดตัวเองด้วย (มันปิดเมื่อคลิก <a>)
             e.preventDefault();
-            e.stopPropagation();
             openNow();
-          } else {
-            go();
-          }
+          } else go();
         }}
       >
-        {label} <span className="caret">▾</span>
+        <span className="nav-cat-grid" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+          <i />
+        </span>
+        {label}
+        <span className="caret">▾</span>
       </Link>
 
-      <div className="nav-drop-panel" ref={panelRef}>
+      <div className="nav-drop-panel">
         <div className="nav-mega-layout">
-          {/* แถบบน: แท็บกลุ่มหมวด ("ทั้งหมด" + 4 กลุ่ม ชุดเดียวกับแท็บกรองบนหน้าแรก) แล้วช่องค้นหาใต้แท็บ */}
+          {/* แถบบน: แท็บกลุ่มหมวด ("ทั้งหมด" + 4 กลุ่ม ชุดเดียวกับแท็บกรองบนหน้าแรก) */}
           <div className="nav-mega-topbar">
-          <div className={`nav-mega-tabs${searching ? " is-disabled" : ""}`}>
-            <button
-              type="button"
-              className={`nav-mega-tab${group === ALL ? " active" : ""}`}
-              data-group={ALL}
-              onClick={(e) => {
-                e.stopPropagation();
-                setGroup(ALL);
-              }}
-              onMouseEnter={() => {
-                if (desktop()) setGroup(ALL);
-              }}
-            >
-              ทั้งหมด
-            </button>
-            {TAB_GROUPS.map((g) => (
+            <div className="nav-mega-tabs">
               <button
-                key={g.id}
                 type="button"
-                className={`nav-mega-tab${group === g.id ? " active" : ""}`}
-                data-group={g.id}
+                className={`nav-mega-tab${group === ALL ? " active" : ""}`}
+                data-group={ALL}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setGroup(g.id);
+                  setGroup(ALL);
                 }}
                 onMouseEnter={() => {
-                  if (desktop()) setGroup(g.id);
+                  if (desktop()) setGroup(ALL);
                 }}
               >
-                <span className="emoji">{g.emoji}</span>
-                {g.label}
+                ทั้งหมด
               </button>
-            ))}
+              {TAB_GROUPS.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  className={`nav-mega-tab${group === g.id ? " active" : ""}`}
+                  data-group={g.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setGroup(g.id);
+                  }}
+                  onMouseEnter={() => {
+                    if (desktop()) setGroup(g.id);
+                  }}
+                >
+                  <span className="emoji">{g.emoji}</span>
+                  {g.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* ค้นหาสินค้าไวๆ — พิมพ์แล้วกรองคอลัมน์ในแผงทันที · Enter = ไปหน้ารายการสินค้าพร้อมคำค้น */}
-          <form
-            className="nav-mega-search"
-            autoComplete="off"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const s = q.trim();
-              if (!s) return;
-              setQ("");
-              go();
-              router.push(`/products?q=${encodeURIComponent(s)}`);
-            }}
-          >
-            <span className="search-icon" aria-hidden="true">🔍</span>
-            <input
-              type="text"
-              name="q"
-              value={q}
-              placeholder="ค้นหาสินค้าไวๆ เช่น พวงกุญแจ, สติกเกอร์..."
-              aria-label="ค้นหาสินค้าในเมนู"
-              onChange={(e) => setQ(e.target.value)}
-              // ออกจากช่องค้นหาเมื่อไหร่ก็เคลียร์ทิ้ง ไม่ให้ผลกรองค้างไว้
-              onBlur={() => setQ("")}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  e.stopPropagation(); // กด Esc ครั้งแรกล้างคำค้นก่อน ยังไม่ปิดแผง
-                  setQ("");
-                }
-              }}
-            />
-          </form>
-          </div>
-
-          <div
-            className={`nav-mega-cols${searching ? " searching" : ""}`}
-            data-active={searching ? ALL : group}
-            onScroll={hideTip}
-          >
+          <div className="nav-mega-cols" data-active={group} onScroll={hideTip}>
             {cats.map((c, i) => {
-              // กำลังค้นหา = โชว์เฉพาะหมวดที่ยังเหลือของ และเหลือแต่สินค้าที่ตรงคำค้น
-              const hit = filter?.get(c.id);
-              const items = filter ? (hit ?? []) : (byCat.get(c.id) ?? []);
+              const items = byCat.get(c.id) ?? [];
               const catHref = `/products?category=${c.id}`;
               return (
-                <div
-                  key={c.id}
-                  className={`nav-mega-col${filter && !hit ? " sf-hide" : ""}`}
-                  data-cat={c.id}
-                  data-group={groupOf(c.id)}
-                  style={{ "--accent": accentOf(c.id, i) } as React.CSSProperties}
-                >
+                <div key={c.id} className="nav-mega-col" data-cat={c.id} data-group={groupOf(c.id)} style={{ "--accent": accentOf(c.id, i) } as React.CSSProperties}>
                   <Link className="nav-mega-thumb" href={catHref} onClick={go} aria-label={c.name}>
                     {c.image ? (
                       <img {...imgProps(c.image, "80px", 160)} alt="" aria-hidden="true" loading="lazy" decoding="async" onError={fallbackToOriginal(c.image)} />
@@ -354,14 +219,7 @@ export default function NavCatMenu({
                     <ul>
                       {items.map((p) => (
                         <li key={p.id}>
-                          <Link
-                            href={productPath(p)}
-                            onClick={go}
-                            onMouseEnter={showTip(p)}
-                            onMouseLeave={hideTip}
-                            onFocus={showTip(p)}
-                            onBlur={hideTip}
-                          >
+                          <Link href={productPath(p)} onClick={go} onMouseEnter={showTip(p)} onMouseLeave={hideTip} onFocus={showTip(p)} onBlur={hideTip}>
                             {p.name}
                             {p.badge === "ใหม่" && <span className="nav-tag-new">ใหม่</span>}
                             {p.badge === "ขายดี" && <span className="nav-tag-hot">ฮิต</span>}
@@ -375,12 +233,6 @@ export default function NavCatMenu({
             })}
           </div>
 
-          {noMatch && (
-            <div className="nav-mega-search-empty show" role="status">
-              ไม่พบสินค้าที่ตรงกับคำค้นหา ลองคำอื่นดูนะ
-            </div>
-          )}
-
           <div className="nav-mega-foot">
             <Link href="/products" onClick={go}>
               ดูสินค้าทั้งหมด <span className="arrow">→</span>
@@ -389,21 +241,13 @@ export default function NavCatMenu({
         </div>
       </div>
 
-      {/* การ์ดพรีวิวลอย — แขวนที่ <body> เพราะแผงมี transform (position:fixed จะอ้างอิงผิดจุด) */}
+      {/* ม่านเบลอฉากหลังตอนแผงเปิด — แขวนที่ body (แถบเมนูมี backdrop-filter จะกัก position:fixed ไว้) */}
       <Portal>
-        <div className={`dl-tip nav-mega-tip${tip ? " show" : ""}${tip?.flip ? " flip" : ""}`} aria-hidden="true"
-          style={tip ? { left: tip.left, top: tip.top } : undefined}>
-          <div className="tip-img-wrap">
-            {tip?.p.imageSrc ? (
-              <img {...imgProps(tip.p.imageSrc, "172px", 256)} alt="" onError={fallbackToOriginal(tip.p.imageSrc)} />
-            ) : (
-              <em className="tip-emoji">{tip?.p.emoji ?? "🦆"}</em>
-            )}
-          </div>
-          <b className="tip-name">{tip?.p.name}</b>
-          <span className="tip-price">{tip ? startPrice(tip.p) : ""}</span>
+        <div className="dl dl-contents">
+          <div className={`nav-scrim${open ? " show" : ""}`} aria-hidden="true" />
         </div>
       </Portal>
+      <PreviewTip tip={tip} />
     </div>
   );
 }

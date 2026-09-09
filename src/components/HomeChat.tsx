@@ -123,7 +123,7 @@ export default function HomeChat({ catCount }: { catCount: number }) {
 
       <div className={`chat-body${live ? " is-live" : ""}`} ref={bodyRef} aria-live="polite">
         {msgs.map((m) => (
-          <div key={m.id} className={`msg ${m.side}`}>
+          <div key={m.id} className={`msg ${m.side} show`}>
             <span className="mbub">
               {m.step && <b className="stepno">{m.step}</b>}
               {renderChatText(m.text)}
@@ -132,7 +132,7 @@ export default function HomeChat({ catCount }: { catCount: number }) {
           </div>
         ))}
         {busy && (
-          <div className="msg in typing">
+          <div className="msg in typing show">
             <span className="mbub mbub-typing">
               <i />
               <i />

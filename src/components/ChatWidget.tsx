@@ -9,7 +9,8 @@
  * ใช้สมองตัวเดียวกับกล่องแชทหน้าแรก (lib/shop-chat) และ sessionId เดียวกัน
  * ลูกค้าเริ่มถามหน้าแรกแล้วเดินไปหน้าอื่นแล้วกดปุ่มนี้ บทสนทนาต่อเนื่องไม่หลุด
  *
- * ตำแหน่ง: ปุ่มลอยมุมขวาล่างซ้อนกันเป็นชั้น — bottom-5 แอดมิน · bottom-20 LINE · bottom-36 ตัวนี้
+ * ตำแหน่ง: ปุ่มลอยมุมขวาล่างซ้อนกันเป็นชั้น — bottom-5 แอดมิน · LINE (.line-fab: เดสก์ท็อป 80px · มือถือ 100px) · bottom-36 ตัวนี้
+ * มือถือ (≤1000px) ตัวนี้ขยับขึ้นเป็น 164px ให้พ้นปุ่ม LINE ทรงกลม (100–150px) · ปุ่มแอดมินย้ายไปมุมซ้ายล่างเหนือแถบเมนูล่าง
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -128,7 +129,7 @@ export default function ChatWidget() {
           วงแหวนขาว ไม่ใช่กรมท่าโปร่ง — เลื่อนถึง footer (พื้นกรมท่า) ปุ่มกรมท่าบนวงแหวนกรมท่าจะจมหายทั้งใบ
           ขาวตัดได้ทั้งพื้นฟ้าอ่อนด้านบนและพื้นกรมท่าด้านล่าง
         */
-        className="fixed bottom-36 right-5 z-40 flex items-center gap-2 rounded-full bg-[#173A6B] px-4 py-3 text-sm font-bold text-white shadow-lg ring-[3px] ring-white/85 transition hover:scale-105 hover:bg-[#1E4A85]"
+        className="fixed bottom-36 right-5 z-40 max-[1000px]:bottom-[164px] max-[1000px]:right-4 flex items-center gap-2 rounded-full bg-[#173A6B] px-4 py-3 text-sm font-bold text-white shadow-lg ring-[3px] ring-white/85 transition hover:scale-105 hover:bg-[#1E4A85]"
       >
         {open ? (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="h-5 w-5" aria-hidden="true">

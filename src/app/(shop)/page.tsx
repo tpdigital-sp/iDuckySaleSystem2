@@ -12,9 +12,11 @@ import { fallbackToOriginal, imgProps } from "@/lib/img";
 import HomeChat from "@/components/HomeChat";
 import CardSkeleton from "@/components/CardSkeleton";
 import { CAT_ICON, groupOf, TAB_GROUPS } from "@/lib/cat-groups";
+import { SOCIAL_LINKS } from "@/components/SocialLinks";
+import { LINE_URL } from "@/components/LineButton";
 
 /**
- * หน้าแรก — ดีไซน์ตามไฟล์ต้นแบบ iducky-landing-v8_83.html
+ * หน้าแรก — ดีไซน์ตามไฟล์ต้นแบบของทีม Content (ล่าสุด "LADNDING PAGE.html" 9 ก.ย. 69)
  * สไตล์ทั้งหมดอยู่ใน (shop)/landing.css (ครอบด้วยคลาส .dl) · รูปประกอบอยู่ /public/landing
  * เนื้อหาที่เป็น "ของจริง" ดึงจากฐานข้อมูล: หมวดสินค้า · รายการสินค้าในแต่ละหมวด · สินค้าขายดี
  */
@@ -188,6 +190,7 @@ export default function HomePage() {
       <div className="top-stack">
         {/* ── HERO ── */}
         <section className="hero" id="top">
+          <div className="hero-bg" />
           <img className="bg-cloud bc1" src="/landing/cloud.webp" alt="" aria-hidden="true" />
           <img className="bg-cloud bc2" src="/landing/cloud.webp" alt="" aria-hidden="true" />
           <img className="bg-cloud bc3" src="/landing/cloud.webp" alt="" aria-hidden="true" />
@@ -210,8 +213,14 @@ export default function HomePage() {
                 </span>
               </h1>
               <p className="lead">
-                พวงกุญแจ · สแตนดี้ · สติ๊กเกอร์ · เสื้อยืด · แก้วมัค · เคสมือถือ
-                <br />
+                <span className="lead-cats">
+                  {["พวงกุญแจ", "สแตนดี้", "สติ๊กเกอร์", "เสื้อยืด", "แก้วมัค", "เคสมือถือ"].map((t, i) => (
+                    <span key={t}>
+                      {i > 0 && " · "}
+                      <span className="lc">{t}</span>
+                    </span>
+                  ))}
+                </span>{" "}
                 และอีกกว่า <b>{cats.length} หมวด</b> ครบจบในที่เดียว
               </p>
               <div className="chips">
@@ -254,7 +263,7 @@ export default function HomePage() {
             </div>
 
             <div className="stage">
-              <img className="duck" src="/landing/hero-duck.webp" alt="มาสคอตเป็ด iDucky ถือพวงกุญแจอะคริลิคหน้าร้าน" />
+              <img className="duck" src="/landing/hero-duck.webp" alt="ร้าน iDucky มาสคอตเป็ดถือพวงกุญแจอะคริลิคหน้าร้านค้า" />
               <img
                 className="deco d-cloud1"
                 style={{ top: "3%", left: "13%", width: "13%", opacity: 0.92 }}
@@ -418,7 +427,7 @@ export default function HomePage() {
                     </Link>
                     {items.length > 0 && (
                       <div className="sub">
-                        <span className="sub-title">สินค้าในหมวดนี้</span>
+                        <span className="sub-title">เลือกชนิดที่ต้องการ</span>
                         {items.map((p) => (
                           <Link key={p.id} href={productPath(p)}>
                             {p.name}
@@ -573,7 +582,6 @@ export default function HomePage() {
             <h2>
               แค่ <em>ทักมา</em> ที่เหลือเราจัดให้
             </h2>
-            <p>ถามราคา ขนาด วัสดุ หรือขั้นตอนสั่งทำ ผู้ช่วยของร้านตอบให้ทันทีตลอด 24 ชม. — คุยได้จริง ไม่ใช่ภาพตัวอย่าง</p>
           </div>
 
           <HomeChat catCount={cats.length} />
@@ -585,10 +593,10 @@ export default function HomePage() {
             </div>
             <div className="cc-btns">
               <Link className="btn btn-yolk" href="/products">
-                เริ่มออกแบบสินค้าของฉัน <span className="dot">→</span>
+                เริ่มออกแบบสินค้า <span className="dot">→</span>
               </Link>
-              <a className="btn btn-line" href="https://lin.ee/x8GkqGZ" target="_blank" rel="noreferrer">
-                ทักแอดมินทาง LINE <span className="dot">💬</span>
+              <a className="btn btn-line" href={LINE_URL} target="_blank" rel="noreferrer">
+                ทัก LINE เลย <span className="dot">💬</span>
               </a>
             </div>
           </div>
@@ -632,28 +640,11 @@ export default function HomePage() {
 
       {/* ── ช่องทางโซเชียลลอยมุมจอ ── */}
       <nav className="social-dock" aria-label="ช่องทางโซเชียลของร้าน">
-        <a className="sd-fb" data-label="Facebook" href="https://www.facebook.com/iduckyshop" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M22 12a10 10 0 10-11.6 9.9v-7H7.9V12h2.5V9.8c0-2.5 1.5-3.9 3.8-3.9 1.1 0 2.2.2 2.2.2v2.5h-1.3c-1.2 0-1.6.8-1.6 1.6V12h2.8l-.4 2.9h-2.4v7A10 10 0 0022 12z" />
-          </svg>
-        </a>
-        <a className="sd-ig" data-label="Instagram" href="https://www.instagram.com/iduckyshop1" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <rect x="3" y="3" width="18" height="18" rx="5.4" />
-            <circle cx="12" cy="12" r="4.2" />
-            <circle cx="17.4" cy="6.6" r="1.2" fill="currentColor" stroke="none" />
-          </svg>
-        </a>
-        <a className="sd-tt" data-label="TikTok" href="https://www.tiktok.com/@iduckyofficial" target="_blank" rel="noopener noreferrer" aria-label="TikTok">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M16.5 2h-2.9v13.2a2.5 2.5 0 11-2.1-2.5v-3a5.5 5.5 0 105.1 5.5V9.1a6.6 6.6 0 003.9 1.3V7.5a3.8 3.8 0 01-3.9-3.8V2z" />
-          </svg>
-        </a>
-        <a className="sd-x" data-label="X (Twitter)" href="https://x.com/iduckyshop" target="_blank" rel="noopener noreferrer" aria-label="X">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M17.5 3h3.1l-6.8 7.8L21.8 21h-6.2l-4.4-5.7L6 21H2.9l7.3-8.3L2.5 3h6.4l4 5.3L17.5 3z" />
-          </svg>
-        </a>
+        {SOCIAL_LINKS.map((s) => (
+          <a key={s.key} className={`sd-${s.key}`} data-label={s.label} href={s.href} target="_blank" rel="noopener noreferrer" aria-label={s.name}>
+            {s.icon}
+          </a>
+        ))}
       </nav>
     </div>
   );
