@@ -408,6 +408,11 @@
 .dkb-meta [data-rush="1"] .usedate,
 .dkb-useby.hot .usedate,
 .dkb-useby[data-rush="1"] .usedate { color: #fff; background: var(--dk-coral-ink); }
+/* 🚚 วันส่ง (จาก–ถึง) ต่อท้ายป้ายวันใช้งาน — โทนฟ้าคงที่ ไม่เปลี่ยนตามงานเร่ง (ป้ายแดงมีอันเดียวพอ) */
+.dkb-useby .shipdate {
+  display: inline-block; margin-left: 4px; padding: 1px 7px; border-radius: 999px;
+  font-weight: 700; color: var(--dk-blue-deep); background: var(--dk-sky);
+}
 /* ป้ายวันใช้งานวางเดี่ยวนอก .dkb-meta (หัวกลุ่มออเดอร์ในรายงานแบบงาน) — ขนาด/สีเท่า meta */
 .dkb-useby { font-size: 0.76rem; color: var(--dk-navy-soft); white-space: nowrap; }
 .dkb-useby.hot { color: var(--dk-coral-ink); font-weight: 600; }
