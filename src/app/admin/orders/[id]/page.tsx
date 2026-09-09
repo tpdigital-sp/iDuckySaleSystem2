@@ -2002,7 +2002,13 @@ export default function AdminOrderDetailPage() {
   // ⚠️ ต้องรอสิทธิ์โหลดเสร็จก่อนค่อยตัดสิน (permsReady) — ช่วงที่สิทธิ์ยังไม่มา mayEdit เป็น false
   // แต่ viaScan ยืม pack.check ให้แล้ว → เงื่อนไขนี้จริงชั่วคราว = แอดมินเห็นหน้าแพ็คแว๊บนึงทุกครั้ง
   // ที่เปิดลิงก์จากนอกเว็บ (จาก msVerify/LINE/พิมพ์ URL เอง) ก่อนสลับกลับหน้าปกติ
-  const isPackOnly = permsReady && can("pack.check") && !mayEdit;
+  //
+  // 🎨 กราฟฟิก (proof.manage แต่ไม่มี orders.edit) กดเลขออเดอร์จากบอร์ด WIP/LINE = เปิด "จากนอกเว็บ"
+  // → ตัวเดา openedFromOutside ยืม pack.check ให้ → เคยถูกลากเข้าหน้าแพ็คถาวรทั้งที่ต้องมาทำแบบงาน
+  // (OD-260908-1744 · 9 ก.ย. 69) · สิทธิ์ที่ "ยืมมา" จากการเดา ห้ามใช้ตัดสินว่าเป็นฝ่ายแพ็ค
+  // ถ้าคนนั้นมีงานของตัวเองบนหน้าปกติอยู่แล้ว (ทำแบบงาน) — ให้เห็นหน้าปกติ แล้วกด "โหมดแพ็ค" เองได้
+  // คนที่ไม่มีทั้งสิทธิ์แก้และสิทธิ์ทำแบบ (ฝ่ายผลิตสแกน QR รุ่นเก่า) ยังเข้าหน้าแพ็คให้เองเหมือนเดิม
+  const isPackOnly = permsReady && !mayEdit && (rolCan("pack.check") || (can("pack.check") && !mayProof));
   const showPackView = isPackOnly || packMode;
 
   if (showPackView) {
