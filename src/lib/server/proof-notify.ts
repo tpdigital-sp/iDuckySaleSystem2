@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { proofsOf, withLog, type Order } from "@/lib/admin-data";
-import { notifyCustomer, orderLink, type NotifyResult } from "@/lib/server/notify";
+import { notifyCustomer, orderLink, statusFlex, type NotifyResult } from "@/lib/server/notify";
 import { pendingProofs, type PendingProofs } from "@/lib/proof-notify";
 
 /**
@@ -39,7 +39,18 @@ export async function sendProofNotify(
       : revised
         ? `🎨 ${revised > 1 ? `แก้ไขรูปแบบงาน ${revised} รูป` : "แก้ไขรูปแบบงาน"}ของออเดอร์ ${order.id} เรียบร้อย พร้อมให้คุณตรวจอีกครั้ง`
         : `🎨 แบบงานออเดอร์ ${order.id} พร้อมให้คุณตรวจแล้ว${added > 1 ? ` (${added} รูป)` : ""}`;
-  const r: NotifyResult = await notifyCustomer(sb, order, `${head}\nดู/อนุมัติได้ที่: ${link}`);
+  // ส่งเป็นการ์ด Flex หัวม่วง "รอตรวจแบบ" แบบเดียวกับแจ้งสถานะ (ข้อความล้วนไว้เป็น altText บนเครื่องที่โชว์การ์ดไม่ได้)
+  const headline =
+    added && revised
+      ? `แบบงานพร้อมให้ตรวจแล้ว ${added} รูป และแก้ไขรูปตามที่ขอเรียบร้อยอีก ${revised} รูป`
+      : revised
+        ? `แก้ไขรูปแบบงาน${revised > 1 ? ` ${revised} รูป` : ""}ตามที่ขอเรียบร้อย พร้อมให้ตรวจอีกครั้ง`
+        : `แบบงานพร้อมให้ตรวจแล้ว${added > 1 ? ` (${added} รูป)` : ""}`;
+  const r: NotifyResult = await notifyCustomer(
+    sb,
+    order,
+    statusFlex(order, link, { status: "รอตรวจแบบ", headline, alt: `${head}\nดู/อนุมัติได้ที่: ${link}` })
+  );
 
   // อ่านสดก่อนเขียน กันทับงานที่คนอื่นเพิ่งบันทึก
   const { data: row } = await sb.from("orders").select("data").eq("id", order.id).maybeSingle();

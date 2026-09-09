@@ -284,9 +284,15 @@ function flexRow(label: string, value: string, color = "#334155", bold = false) 
  * การ์ดแจ้งสถานะแบบ Flex — อ่านง่ายกว่าข้อความล้วนเยอะ
  * altText ใช้ข้อความเดิม (โชว์ในแถบแจ้งเตือน/เครื่องที่แสดง Flex ไม่ได้)
  */
-export function statusFlex(order: Order, link: string): LineMessage[] {
-  const alt = statusMessage(order, link) ?? `ออเดอร์ ${order.id}`;
-  const tone = STATUS_HEX[order.status] ?? "#475569";
+export function statusFlex(
+  order: Order,
+  link: string,
+  /** ปรับหัวการ์ด/ประโยคนำ/altText เอง (เช่นแจ้งแบบงานพร้อมตรวจ N รูป) — ไม่ส่ง = ตามสถานะออเดอร์ */
+  opts?: { status?: OrderStatus; headline?: string; alt?: string }
+): LineMessage[] {
+  const status = opts?.status ?? order.status;
+  const alt = opts?.alt ?? statusMessage(order, link) ?? `ออเดอร์ ${order.id}`;
+  const tone = STATUS_HEX[status] ?? "#475569";
   const total = orderTotal(order);
   const bal = Math.max(0, total - (order.paidTotal ?? 0));
   const owe = !!order.deposit && !order.deposit.settledAt && bal > 0;
@@ -312,7 +318,7 @@ export function statusFlex(order: Order, link: string): LineMessage[] {
           paddingAll: "14px",
           contents: [
             { type: "text", text: "iDucky Prints Studio", size: "xs", color: "#FFFFFFCC" },
-            { type: "text", text: order.status, size: "xl", weight: "bold", color: "#FFFFFF" },
+            { type: "text", text: status, size: "xl", weight: "bold", color: "#FFFFFF" },
           ],
         },
         body: {
@@ -321,7 +327,7 @@ export function statusFlex(order: Order, link: string): LineMessage[] {
           spacing: "md",
           paddingAll: "16px",
           contents: [
-            { type: "text", text: STATUS_HEADLINE[order.status] ?? "", size: "sm", color: "#334155", wrap: true },
+            { type: "text", text: opts?.headline ?? STATUS_HEADLINE[status] ?? "", size: "sm", color: "#334155", wrap: true },
             { type: "text", text: order.id, size: "lg", weight: "bold", color: "#0F172A" },
             { type: "separator", color: "#E2E8F0" },
             { type: "box", layout: "vertical", spacing: "sm", contents: rows },
