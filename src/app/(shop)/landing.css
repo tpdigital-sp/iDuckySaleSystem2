@@ -230,9 +230,13 @@
 .dl .nav-mega-cols.searching .nav-mega-col{animation:none}
 .dl .nav-mega-cols.searching .nav-mega-col.sf-hide{display:none}
 /* ชื่อหมวดจองความสูง 2 บรรทัดเสมอ — คอลัมน์ชื่อสั้น/ยาวปนกันจะได้ขึ้นบรรทัดสินค้าตรงระดับเดียวกัน */
-.dl .nav-mega-label{font-family:var(--display);font-weight:500;font-size:.88rem;color:var(--navy);
+/* selector ต้องชนะ .dl .menu a (0,2,1) ที่ใส่ nowrap ไว้ → ใช้ .dl .nav-mega-col .nav-mega-label (0,3,0) */
+.dl .nav-mega-col .nav-mega-label{font-family:var(--display);font-weight:500;font-size:.88rem;color:var(--navy);
   margin-top:6px;line-height:1.25;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent;outline:none;
-  min-height:2.1em;display:flex;align-items:center;justify-content:center}
+  min-height:2.1em;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  /* ชื่อหมวดยาว (EN — ไทย) ต้องตัดบรรทัดได้ ไม่งั้นล้นทับคอลัมน์ข้าง ๆ */
+  white-space:normal;overflow-wrap:anywhere;min-width:0;max-width:100%}
+.dl .nav-mega-label-sub{display:block;font-size:.76rem;font-weight:400;color:var(--navy-soft);line-height:1.3;margin-top:1px}
 .dl .nav-mega-label:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}
 .dl .nav-mega-thumb{display:block;position:relative;margin:0 auto;width:80px;max-width:100%;aspect-ratio:1/1;border-radius:50%;overflow:hidden;
   padding:13px;box-sizing:border-box;

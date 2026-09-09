@@ -47,6 +47,12 @@ const TIP_GAP = 14;
 
 type TipState = { p: Product; left: number; top: number; flip: boolean };
 
+/** ชื่อหมวดใน DB เป็น "Keychain & Acrylic — พวงกุญแจ / งานอะคริลิค" → แยกเป็นบรรทัดหลัก (EN) + บรรทัดรอง (ไทย) ให้อ่านง่ายและไม่ล้นคอลัมน์ · ขีด — / – ตัดได้แม้ไม่มีช่องว่าง ("Banners— โปสเตอร์") ส่วนขีด - ต้องมีช่องว่างสองข้าง (กัน Die-Cut) */
+function catNameParts(name: string): string[] {
+  const parts = name.split(/\s*[—–]\s*|\s+-\s+/).map((s) => s.trim()).filter(Boolean);
+  return parts.length ? parts : [name];
+}
+
 export default function NavCatMenu({
   label,
   href,
@@ -340,7 +346,9 @@ export default function NavCatMenu({
                     )}
                   </Link>
                   <Link className="nav-mega-label" href={catHref} onClick={go}>
-                    {c.name}
+                    {catNameParts(c.name).map((part, k) => (
+                      <span key={k} className={k === 0 ? undefined : "nav-mega-label-sub"}>{part}</span>
+                    ))}
                   </Link>
                   {items.length > 0 && (
                     <ul>
