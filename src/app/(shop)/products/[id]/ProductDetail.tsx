@@ -2860,6 +2860,18 @@ export default function ProductDetail({
   // โหมดออกแบบบนเว็บ: "แบบที่ลูกค้าวางเอง" คือลายอยู่แล้ว ไม่ต้องมีช่องแนบไฟล์
   // โหมดแอดมิน: ลายมาทางไลน์/อีเมลอยู่แล้ว ไม่ต้องบังคับแนบตรงนี้ (แนบเพิ่มในออเดอร์ทีหลังได้)
   const artBlocked = studioMode || preArranged ? false : artRequired && !artProvided;
+  /**
+   * ปุ่มสั่งกดไม่ได้ (ยังมีด่านไม่ผ่าน) — ใช้ทั้ง disabled และเลือกสไตล์ "แผ่นทึบอ่านออก"
+   * ขนาดกำหนดเอง = ราคาไม่อิงเรทปกติ → ไม่ติดขั้นต่ำของเรทด้วย (สั่งกี่ชิ้นก็ได้ แอดมินตีราคาตามจริง)
+   * ยังไม่ถึงขั้นต่ำรอบผลิต = ยังเพิ่มลงตะกร้าได้ (แค่เตือน) · ไปบล็อกที่ปุ่มยืนยันในตะกร้าแทน
+   * มีของพักไว้แล้ว (sheets) = ปุ่มเปลี่ยนเป็น "สั่งของที่เก็บไว้" ไม่ล็อก
+   */
+  const orderBlocked =
+    !sheets.length &&
+    ((useCustom && !customValid) || !!customSizeErr || artBlocked || inputErrors.length > 0 || belowMin || belowMinQty);
+  /** ปุ่มในแถบล่าง — เงื่อนไขเดิมของแถบนั้น (ไม่นับ belowMinQty) */
+  const barBlocked =
+    !sheets.length && ((useCustom && !customValid) || !!customSizeErr || artBlocked || inputErrors.length > 0 || belowMin);
 
   /**
    * 🎨 สินค้าที่นับขั้นต่ำทั้งล็อต (และสินค้าโหมดหย่อนลงตะกร้าทันที): **ไม่ถามจำนวนลาย** —
@@ -6562,14 +6574,15 @@ export default function ProductDetail({
                     onClick={() => handleAdd()}
                     // ขนาดกำหนดเอง = ราคาไม่อิงเรทปกติ → ไม่ติดขั้นต่ำของเรทด้วย (สั่งกี่ชิ้นก็ได้ แอดมินตีราคาตามจริง)
                     // ยังไม่ถึงขั้นต่ำรอบผลิต = ยังเพิ่มลงตะกร้าได้ (แค่เตือน) · ไปบล็อกที่ปุ่มยืนยันในตะกร้าแทน
-                    disabled={
-                      !sheets.length &&
-                      ((useCustom && !customValid) || !!customSizeErr || artBlocked || inputErrors.length > 0 || belowMin || belowMinQty)
-                    }
-                    className={`flex-1 rounded-full px-5 py-3 text-[13px] font-bold shadow-lg transition sm:flex-none sm:px-8 ${
+                    disabled={orderBlocked}
+                    // ⚠️ ตอนกดไม่ได้ห้ามใช้ opacity-40 ตัวขาว — บนพื้นฟ้าอ่อนกลายเป็นตัวขาวจางอ่านไม่ออก ทั้งที่ข้อความบนปุ่ม
+                    //    คือ "เหตุผลที่กดไม่ได้" ที่ลูกค้าต้องอ่าน → ใช้แผ่นฟ้าจางทึบ ตัวน้ำเงินเข้ม ขอบฟ้าแทน (9 ก.ย. 69)
+                    className={`flex-1 rounded-full px-5 py-3 text-[13px] font-bold transition sm:flex-none sm:px-8 ${
                       added
-                        ? "bg-emerald-500 text-white"
-                        : "bg-amber-400 text-white hover:scale-105 hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+                        ? "bg-emerald-500 text-white shadow-lg"
+                        : orderBlocked
+                          ? "cursor-not-allowed bg-sky-50 text-sky-900 ring-1 ring-sky-200"
+                          : "bg-amber-400 text-white shadow-lg hover:scale-105 hover:bg-amber-500"
                     }`}
                   >
                     {added
@@ -7643,12 +7656,13 @@ export default function ProductDetail({
             <button
               type="button"
               onClick={() => handleAdd()}
-              disabled={
-                !sheets.length &&
-                ((useCustom && !customValid) || !!customSizeErr || artBlocked || inputErrors.length > 0 || belowMin)
-              }
-              className={`ml-auto shrink-0 rounded-full px-6 py-3 text-sm font-bold text-white shadow-lg transition ${
-                added ? "bg-emerald-500" : "bg-amber-400 hover:bg-amber-500 disabled:opacity-40"
+              disabled={barBlocked}
+              className={`ml-auto shrink-0 rounded-full px-6 py-3 text-sm font-bold transition ${
+                added
+                  ? "bg-emerald-500 text-white shadow-lg"
+                  : barBlocked
+                    ? "cursor-not-allowed bg-sky-50 text-sky-900 ring-1 ring-sky-200"
+                    : "bg-amber-400 text-white shadow-lg hover:bg-amber-500"
               }`}
             >
               {added

@@ -539,7 +539,7 @@ export function inputError(
   const required = cfg.required !== false;
   // ชื่อกลุ่มมักมีวงเล็บ ("(ตัวหน้า) ขนาด") — ครอบอัญประกาศไว้ ประโยคจะได้ไม่อ่านติดกันจนงง
   const name = `“${opt.label}”`;
-  if (!raw) return required ? `กรอก${name}ด้วยนะครับ` : null;
+  if (!raw) return required ? `กรอก ${name} ด้วยนะครับ` : null;
   if (cfg.kind === "number") {
     const n = Number(raw);
     if (!Number.isFinite(n) || n <= 0) return `${name} ต้องเป็นตัวเลข`;
