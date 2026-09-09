@@ -364,16 +364,32 @@ export function packScanHeaders(): Record<string, string> {
   return packScan ? { [PACK_SCAN_HEADER]: "1" } : {};
 }
 
-/** แอดมินอัปเดตออเดอร์ (เช่น เปลี่ยนสถานะ) */
-export async function saveOrderAdmin(order: Order): Promise<boolean> {
+/**
+ * แอดมินอัปเดตออเดอร์ (เช่น เปลี่ยนสถานะ) — คืนเหตุผลด้วยเวลาพลาด
+ * เซิร์ฟเวอร์ปฏิเสธ (403 ไม่มีสิทธิ์ · 409 ด่านตรวจ) ต้องขึ้นให้คนกดเห็น ไม่งั้นหน้าจอเหมือนบันทึกแล้วแต่รีเฟรชค่าเดิมกลับมา
+ */
+export async function saveOrderAdminResult(order: Order): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await fetch("/api/admin/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", ...packScanHeaders() },
       body: JSON.stringify(order),
     });
-    return res.ok;
+    if (res.ok) return { ok: true };
+    let error = `บันทึกไม่สำเร็จ (${res.status})`;
+    try {
+      const j = (await res.json()) as { error?: string };
+      if (j?.error) error = j.error;
+    } catch {
+      /* ไม่ใช่ JSON */
+    }
+    return { ok: false, error };
   } catch {
-    return false;
+    return { ok: false, error: "บันทึกไม่สำเร็จ — เช็คอินเทอร์เน็ตแล้วลองใหม่" };
   }
+}
+
+/** แอดมินอัปเดตออเดอร์ — แบบสั้น (true/false) */
+export async function saveOrderAdmin(order: Order): Promise<boolean> {
+  return (await saveOrderAdminResult(order)).ok;
 }

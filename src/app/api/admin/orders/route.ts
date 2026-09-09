@@ -71,6 +71,53 @@ function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Or
 }
 
 /**
+ * ฝ่ายกราฟฟิก (proof.manage แต่ไม่มี orders.edit) บันทึกได้เฉพาะงานแบบ — เอาออเดอร์เดิมเป็นฐาน แล้วทับเฉพาะ:
+ *   แบบงาน (items[].proofs ทั้งชุด — ลบ/แก้จำนวน/หน่วย/รายละเอียด/ใช้ลายเป็นแบบ) · สถานะแบบ (proofStatus/proofNote/proofUpdatedAt)
+ *   · ติ๊กของกราฟฟิก (graphicAck · noProof · sampleRequired · samplePacked) · จำนวนต่อหน่วย (unitYield) · แบบของแถม (gifts[].proofs…) · log
+ * ผลตรวจนับของฝ่ายแพ็ค (proofs[].pack) คงของเดิมไว้ตาม url — กราฟฟิกแตะไม่ได้
+ * ฟิลด์อื่น (ราคา ที่อยู่ สถานะออเดอร์ เลขพัสดุ) ใช้ของเดิมทั้งหมด
+ *
+ * ⚠️ เดิมไม่มีทางนี้ — กราฟฟิกกด "ลบแบบ" แล้ว API ตอบ 403 เงียบ ๆ หน้าจอเหมือนลบได้ แต่รีเฟรช/อัปรูปใหม่รูปเดิมกลับมา
+ */
+function mergeProofFields(existing: Order, incoming: Order): Order {
+  const items = existing.items.map((it, i) => {
+    const inc = incoming.items?.[i];
+    if (!inc) return it;
+    const packByUrl = new Map(proofsOf(it).filter((p) => p.pack).map((p) => [p.url, p.pack]));
+    const proofs = Array.isArray(inc.proofs)
+      ? inc.proofs.map((p) => {
+          const pack = packByUrl.get(p.url);
+          return pack && !p.pack ? { ...p, pack } : p;
+        })
+      : it.proofs;
+    return {
+      ...it,
+      proofs,
+      proofStatus: inc.proofStatus,
+      proofNote: inc.proofNote,
+      proofUpdatedAt: inc.proofUpdatedAt ?? it.proofUpdatedAt,
+      graphicAck: inc.graphicAck,
+      noProof: inc.noProof,
+      sampleRequired: inc.sampleRequired,
+      samplePacked: inc.samplePacked,
+      unitYield: inc.unitYield ?? it.unitYield,
+    };
+  });
+
+  const gifts = existing.gifts?.map((g) => {
+    const inc = incoming.gifts?.find((x) => x.promoId === g.promoId);
+    if (!inc) return g;
+    return { ...g, proofs: inc.proofs, proofStatus: inc.proofStatus, proofNote: inc.proofNote, proofUpdatedAt: inc.proofUpdatedAt ?? g.proofUpdatedAt };
+  });
+
+  const merged: Order = { ...existing, items, ...(gifts ? { gifts } : {}) };
+  if (incoming.log && incoming.log.length >= (existing.log?.length ?? 0)) {
+    merged.log = incoming.log;
+  }
+  return merged;
+}
+
+/**
  * แอดมินดึงออเดอร์ (ใหม่→เก่า)
  *   /api/admin/orders          = ทั้งหมด (หน้ารายการ · หน้าสแกน · ใบงาน) — ไม่เซ็นลิงก์สลิป
  *   /api/admin/orders?id=XXXX  = ออเดอร์เดียว (หน้ารายละเอียด) — เซ็นลิงก์สลิปให้ดูรูปได้
@@ -247,7 +294,7 @@ export async function PATCH(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 
-  // แอดมิน (orders.edit) → บันทึกได้เต็ม · ฝ่ายแพ็ค (pack.check/pack.ship) → บันทึกได้เฉพาะงานแพ็ค
+  // แอดมิน (orders.edit) → บันทึกได้เต็ม · ฝ่ายแพ็ค (pack.check/pack.ship) → บันทึกได้เฉพาะงานแพ็ค · กราฟฟิก (proof.manage) → เฉพาะงานแบบ
   const actor = await currentActor();
   if (!actor) return NextResponse.json({ error: "ต้องล็อกอินก่อน" }, { status: 401 });
   // ใช้ชุดสิทธิ์ที่แอดมินแก้เอง (ตั้งค่าระบบ → แท็บบทบาท) ให้ตรงกับที่หน้าจอเห็น
@@ -256,7 +303,9 @@ export async function PATCH(req: Request) {
   const scanned = req.headers.get(PACK_SCAN_HEADER) === "1";
   const mayEditFull = can(actor, "orders.edit", rolePerms);
   const mayPack = canPack(actor, "pack.check", rolePerms, scanned) || canPack(actor, "pack.ship", rolePerms, scanned);
-  if (!mayEditFull && !mayPack) {
+  // ฝ่ายกราฟฟิก → บันทึกได้เฉพาะฟิลด์งานแบบ (ดู mergeProofFields)
+  const mayProof = can(actor, "proof.manage", rolePerms);
+  if (!mayEditFull && !mayPack && !mayProof) {
     return NextResponse.json({ error: "บัญชีนี้ไม่มีสิทธิ์แก้ไขออเดอร์" }, { status: 403 });
   }
   /**
@@ -294,15 +343,20 @@ export async function PATCH(req: Request) {
       }
     }
   } else {
-    // ฝ่ายแพ็ค: ห้ามข้ามเด็ดขาด — เช็คด่านจากข้อมูลล่าสุด (รวมผลตรวจที่เพิ่งส่งมาในคำขอนี้)
-    const mergedNoShip = mergePackFields(existing, order, false);
-    if (wantsTracking && !packGate(mergedNoShip).ready) {
-      return NextResponse.json(
-        { error: `ยังยิงเลขพัสดุไม่ได้ — ${gateReasons(packGate(mergedNoShip))}` },
-        { status: 409 }
-      );
+    toSave = existing;
+    if (mayPack) {
+      // ฝ่ายแพ็ค: ห้ามข้ามเด็ดขาด — เช็คด่านจากข้อมูลล่าสุด (รวมผลตรวจที่เพิ่งส่งมาในคำขอนี้)
+      const mergedNoShip = mergePackFields(existing, order, false);
+      if (wantsTracking && !packGate(mergedNoShip).ready) {
+        return NextResponse.json(
+          { error: `ยังยิงเลขพัสดุไม่ได้ — ${gateReasons(packGate(mergedNoShip))}` },
+          { status: 409 }
+        );
+      }
+      toSave = mergePackFields(existing, order, canPack(actor, "pack.ship", rolePerms, scanned));
     }
-    toSave = mergePackFields(existing, order, canPack(actor, "pack.ship", rolePerms, scanned));
+    // กราฟฟิก (มีหรือไม่มีสิทธิ์แพ็คร่วมด้วยก็ได้) → ทับฟิลด์งานแบบต่อจากผลแพ็ค
+    if (mayProof) toSave = mergeProofFields(toSave, order);
   }
 
   /**

@@ -57,7 +57,7 @@ import {
   type NoteWeight,
   artworkSide,
 } from "@/lib/admin-data";
-import { fetchOrderAdmin, fetchOrdersAdmin, notifyProofReady, packScanHeaders, saveOrderAdmin, setPackScanMode, uploadProof } from "@/lib/order-repo";
+import { fetchOrderAdmin, fetchOrdersAdmin, notifyProofReady, packScanHeaders, saveOrderAdminResult, setPackScanMode, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
 import { btnSm, btnSmNeutral, card, faint, muted, shortTime } from "@/lib/admin-ui";
 import { Banner, CopyChip, GH, HBTN, LogTimeline, PageShell, soft } from "@/components/admin/ui";
@@ -790,7 +790,7 @@ export default function AdminOrderDetailPage() {
     const items = order.items.map((it, i) => (i === itemIndex ? { ...it, selections: value } : it));
     const next = withLog({ ...order, items }, actor, "แก้รายละเอียดรายการ", `${order.items[itemIndex]?.name}`);
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /*
@@ -829,7 +829,7 @@ export default function AdminOrderDetailPage() {
     );
     const next = withLog({ ...order, items }, actor, "ตั้งจำนวนต่อหน่วย", `${it.name} — 1 ${unit} = ${per} ชิ้น`);
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /**
@@ -1124,7 +1124,7 @@ export default function AdminOrderDetailPage() {
       const want = j.verified ? null : pendingStatus.current;
       if (want && next.status !== want) {
         next = withLog({ ...next, status: want }, actor, "เปลี่ยนสถานะ", `${next.status} → ${want} · หลังแนบสลิป`);
-        void saveOrderAdmin(next);
+        void saveOrWarn(next);
       }
       setOrder(next);
     } finally {
@@ -1174,7 +1174,7 @@ export default function AdminOrderDetailPage() {
       `${order.status} → ${status}${noSlip ? " · ยืนยันรับเงินเองโดยไม่มีสลิปแนบ" : ""}`
     );
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /** แก้จำนวน/รายละเอียดของรูปแบบงาน (อัปเดตในจอก่อน แล้วค่อยบันทึกตอนออกจากช่อง) */
@@ -1203,7 +1203,7 @@ export default function AdminOrderDetailPage() {
       ),
     };
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /**
@@ -1283,19 +1283,26 @@ export default function AdminOrderDetailPage() {
   }
 
   /** บันทึกออเดอร์ปัจจุบันลงฐานข้อมูล (เรียกตอน blur ช่องกรอก) */
+  /**
+   * บันทึกลงฐาน + ถ้าพลาดต้องขึ้นให้เห็น — เดิมทุกปุ่ม (ลบแบบ/ติ๊ก/แก้จำนวน) ยิงเงียบ ๆ
+   * กราฟฟิกกด "ลบแบบ" แล้วเซิร์ฟเวอร์ตอบ 403 หน้าจอเหมือนลบได้ แต่พออัปรูปใหม่/รีเฟรช รูปเดิมกลับมา — งงกันทั้งร้าน
+   */
+  async function saveOrWarn(next: Order): Promise<boolean> {
+    const r = await saveOrderAdminResult(next);
+    if (!r.ok) setErr(`⚠️ ${r.error ?? "บันทึกลงฐานข้อมูลไม่สำเร็จ"} — สิ่งที่เพิ่งทำยังไม่ถูกบันทึก อย่าเพิ่งปิดหน้านี้ ลองใหม่หรือรีเฟรชดูค่าจริง`);
+    return r.ok;
+  }
+
   function persist() {
     if (!order || demo) return;
-    void saveOrderAdmin(order);
+    void saveOrWarn(order);
   }
 
   /** อัปเดต order + บันทึกทันที (ใช้กับ select สี/ขนาด/วันที่ ที่ไม่มี blur) */
   function applyOrder(next: Order) {
     setOrder(next);
     if (demo) return;
-    // บันทึกจริงลงฐาน — ถ้าพลาด ต้องขึ้นให้เห็น (เดิมเงียบ แล้วข้อมูลหายตอนรีเฟรช)
-    void saveOrderAdmin(next).then((ok) => {
-      if (!ok) setErr("บันทึกลงฐานข้อมูลไม่สำเร็จ — อย่าเพิ่งปิดหน้านี้ ลองแก้ค่าอีกครั้งหรือเช็คอินเทอร์เน็ต");
-    });
+    void saveOrWarn(next);
   }
 
   /** บันทึกหมายเหตุ (HTML) ของท้ายบิล หรือของรายการที่ index (itemIdx = null → ท้ายบิล) · commit = บันทึกลง DB */
@@ -1306,7 +1313,7 @@ export default function AdminOrderDetailPage() {
         itemIdx === null
           ? { ...cur, billNote: html }
           : { ...cur, items: cur.items.map((it, i) => (i === itemIdx ? { ...it, adminNote: html } : it)) };
-      if (commit && !demo) void saveOrderAdmin(next);
+      if (commit && !demo) void saveOrWarn(next);
       return next;
     });
   }
@@ -1351,7 +1358,7 @@ export default function AdminOrderDetailPage() {
       t
     );
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /** แอดมินยืนยัน "ข้ามด่านตรวจ" จากโมดัล — เซิร์ฟเวอร์จะลง log ชื่อคนข้ามเสมอ */
@@ -1417,7 +1424,7 @@ export default function AdminOrderDetailPage() {
       `${item?.name ?? ""} รูปที่ ${proofIndex + 1}${status === "ไม่ครบ" ? ` — นับได้ ${got ?? 0} ชิ้น` : ""}`
     );
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /** เปิดโหมดมัดจำ 50% — ลูกค้าโอนครึ่งแรกก่อนเริ่มงาน (แก้ยอดมัดจำไม่ได้ ระบบคิดครึ่งหนึ่งปัดขึ้น) */
@@ -1573,7 +1580,7 @@ export default function AdminOrderDetailPage() {
       item?.name
     );
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /**
@@ -1586,7 +1593,7 @@ export default function AdminOrderDetailPage() {
     const next = applyArrival(order, itemIndex, patch, actor);
     if (next === order) return;
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /** กราฟฟิกยืนยันว่าอ่านรายละเอียดรายการแล้ว (ก่อนทำแบบงาน) · กดซ้ำ = ยกเลิก */
@@ -1604,7 +1611,7 @@ export default function AdminOrderDetailPage() {
       item?.name
     );
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /**
@@ -1625,7 +1632,7 @@ export default function AdminOrderDetailPage() {
       item?.name
     );
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /** กราฟฟิก/แอดมินติ๊กว่างานนี้มีชิ้นงานตัวอย่างที่ต้องส่งให้ลูกค้า · กดซ้ำ = ยกเลิก */
@@ -1645,7 +1652,7 @@ export default function AdminOrderDetailPage() {
       item?.name
     );
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /** พนักงานแพ็คยืนยันว่าใส่ชิ้นงานตัวอย่างลงกล่องแล้ว · กดซ้ำ = ยกเลิก */
@@ -1663,7 +1670,7 @@ export default function AdminOrderDetailPage() {
       item?.name
     );
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /** ส่งลายที่แนบไว้ "ทุกรูป" ของรายการนี้ให้ลูกค้าตรวจทีเดียว */
@@ -1698,7 +1705,7 @@ export default function AdminOrderDetailPage() {
     if (!added) return;
     const next = withLog({ ...order, items }, actor, "ส่งแบบให้ลูกค้าตรวจ", `${order.items[itemIndex]?.name} — ใช้ลายที่แนบ ${added} รูป`);
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /**
@@ -1714,7 +1721,7 @@ export default function AdminOrderDetailPage() {
       order.editRequest.text
     );
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /** ลบรายการออกจากออเดอร์ — ลง log ทุกครั้ง (ใคร ลบอะไร ยอดหายไปเท่าไร) */
@@ -1733,7 +1740,7 @@ export default function AdminOrderDetailPage() {
         `${(it.artworkUrls?.length ?? 0) ? ` · ลายลูกค้า ${it.artworkUrls!.length} รูป` : ""}`
     );
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /** ใช้ลายที่แนบไว้เป็นแบบให้ลูกค้ากดอนุมัติ/ขอแก้ไข (บางงานร้านใช้ลายลูกค้าเป็นแบบเลย) */
@@ -1756,7 +1763,7 @@ export default function AdminOrderDetailPage() {
     });
     const next = withLog({ ...order, items }, actor, "ส่งแบบให้ลูกค้าตรวจ", `${order.items[itemIndex]?.name} — ใช้ลายที่แนบไว้`);
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /** ลบภาพลายของลูกค้าออกจากรายการ (ไฟล์ยังอยู่ในคลัง แต่ไม่ผูกกับออเดอร์แล้ว) */
@@ -1775,7 +1782,7 @@ export default function AdminOrderDetailPage() {
     );
     const next = withLog({ ...order, items }, actor, "ลบภาพลาย", order.items[itemIndex]?.name);
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /** แนบภาพลายเพิ่มให้รายการนี้ (ลากวาง/เลือกไฟล์ที่คอลัมน์รูป) */
@@ -1828,7 +1835,7 @@ export default function AdminOrderDetailPage() {
     autoProofDone.current = true;
     const next = withLog({ ...order, items }, actor, "ใช้แบบที่ลูกค้าออกแบบเอง (อนุมัติอัตโนมัติ)");
     setOrder(next);
-    void saveOrderAdmin(next);
+    void saveOrWarn(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.id, mayEdit, demo]);
   /**
@@ -1847,7 +1854,7 @@ export default function AdminOrderDetailPage() {
       `${order.status} → อนุมัติแบบ`,
     );
     setOrder(next);
-    void saveOrderAdmin(next);
+    void saveOrWarn(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.id, order?.status, selfDesignedReady, mayEdit, demo]);
 
@@ -1874,7 +1881,7 @@ export default function AdminOrderDetailPage() {
         i === itemIndex ? { ...it, artworkUrls: [...(it.artworkUrls ?? []), ...urls] } : it
       );
       const next = withLog({ ...cur, items }, actor, "แนบภาพลาย", `${cur.items[itemIndex]?.name} +${urls.length} รูป`);
-      if (!demo) void saveOrderAdmin(next);
+      if (!demo) void saveOrWarn(next);
       return next;
     });
   }
@@ -1907,7 +1914,7 @@ export default function AdminOrderDetailPage() {
       );
       const name = (cur.gifts ?? []).find((g) => g.promoId === promoId)?.name ?? "ของแถม";
       const next = withLog({ ...cur, gifts }, actor, "แนบลายของแถม", `${name} +${urls.length} รูป`);
-      if (!demo) void saveOrderAdmin(next);
+      if (!demo) void saveOrWarn(next);
       return next;
     });
   }
@@ -1919,7 +1926,7 @@ export default function AdminOrderDetailPage() {
     );
     const next = withLog({ ...order, gifts }, actor, "ลบลายของแถม", order.gifts?.find((g) => g.promoId === promoId)?.name);
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /**
@@ -1958,7 +1965,7 @@ export default function AdminOrderDetailPage() {
       );
       const name = (cur.gifts ?? []).find((g) => g.promoId === promoId)?.name ?? "ของแถม";
       const next = withLog({ ...cur, gifts }, actor, "อัปแบบของแถมให้ลูกค้าตรวจ", `🎁 ${name} +${urls.length} รูป`);
-      if (!demo) void saveOrderAdmin(next);
+      if (!demo) void saveOrWarn(next);
       return next;
     });
   }
@@ -1973,7 +1980,7 @@ export default function AdminOrderDetailPage() {
     });
     const next = withLog({ ...order, gifts }, actor, "ลบแบบของแถม", order.gifts?.find((g) => g.promoId === promoId)?.name);
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   function removeProof(itemIndex: number, proofIndex: number) {
@@ -1986,7 +1993,7 @@ export default function AdminOrderDetailPage() {
     });
     const next = withLog({ ...order, items }, actor, "ลบแบบงาน", order.items[itemIndex]?.name);
     setOrder(next);
-    if (!demo) void saveOrderAdmin(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   /** อัปโหลดแบบงานได้หลายรูปพร้อมกัน — ทีละรูปเรียงกัน (กันชนกันตอน server ต่อ proofs) */
@@ -4758,7 +4765,7 @@ export default function AdminOrderDetailPage() {
               setOrder(next);
               // อัปเดตสำเนาในลิสต์รวมด้วย — ไม่งั้น lineChatOf ไป "จำ" ลิงก์จากตัวเก่าของใบนี้เอง ลบแล้วก็เด้งกลับ
               setAllOrders((cur) => cur.map((o) => (o.id === next.id ? next : o)));
-              if (!demo) void saveOrderAdmin(next);
+              if (!demo) void saveOrWarn(next);
             }}
             onBound={(next) => {
               setOrder(next);
@@ -4842,7 +4849,7 @@ export default function AdminOrderDetailPage() {
                           type="date"
                           value={order.useByDate ?? ""}
                           onChange={(e) => applyOrder({ ...order, useByDate: e.target.value || undefined })}
-                          className={`min-w-0 flex-1 rounded-lg border bg-white px-2 py-1 text-[13px] focus:outline-none ${
+                          className={`min-w-fit flex-1 rounded-lg border bg-white px-2 py-1 text-[13px] tabular-nums focus:outline-none ${
                             order.rush || late ? "border-rose-300 font-bold text-rose-700" : soon ? "border-orange-300 font-bold text-orange-700" : "border-slate-200 text-slate-800 focus:border-amber-300"
                           }`}
                         />
