@@ -123,6 +123,7 @@ import {
   type Product,
   type ProductImage,
   type ProductOption,
+  type ProductOptionChoice,
   type ProductTab,
 } from "@/lib/products";
 import { LINE_URL } from "@/components/LineButton";
@@ -723,6 +724,12 @@ export default function ProductDetail({
   const [selections, setSelections] = useState<Record<string, string>>(() =>
     initialSelections(initialProduct)
   );
+  /**
+   * 🎨 เมนูเลื่อนแบบวาดเอง (กลุ่มที่มีตัวเลือกตั้งสี เช่น ครึ่ง A4/A5/A6 สีเขียว) — label ของกลุ่มที่กางอยู่
+   * เหตุที่ไม่ใช้ <select>: ป๊อปอัปของ <select> บน macOS (Safari/Chrome) และ iOS เป็นของระบบ ทาสี <option> ไม่ติด
+   * เจ้าของร้านเปิดบน Mac แล้วเห็นทุกตัวสีเดียวกัน (9 ก.ย. 69) → กลุ่มที่มีสีจึงวาดรายการเอง กลุ่มอื่นยังเป็น <select> เดิม
+   */
+  const [openDd, setOpenDd] = useState<string | null>(null);
   /**
    * 🔽 กลุ่ม "ของเสริม" ที่ตั้ง collapsible ไว้ — ปิดอยู่เป็นค่าเริ่มต้น (เก็บชื่อกลุ่มที่ลูกค้ากดเปิด)
    * ปิด = ยังไม่กางตัวเลือก และค่าคงเป็นตัวแรกของกลุ่ม (ตัวที่ไม่คิดเงิน) จึงไม่ต้องรีเซ็ตอะไรตอนเปิด
@@ -4378,6 +4385,77 @@ export default function ProductDetail({
                         );
                       })()}
                     </>
+                  ) : opt.display === "dropdown" && opt.choices.some((c) => c.color) ? (
+                    /* 🎨 เมนูเลื่อนวาดเอง — ใช้เฉพาะกลุ่มที่มีตัวเลือกตั้งสี (ดู openDd) หน้าตา/ข้อความในรายการเหมือน <select> เดิม
+                       รายการลอยเหนือเนื้อหาด้วย absolute (ตรวจแล้วไม่มี overflow ตัด) · ปิดเมื่อโฟกัสหลุดออกนอกกล่อง / กด Esc */
+                    (() => {
+                      const list = opt.choices.filter((c) => allowed.includes(c.name));
+                      const cur = opt.choices.find((c) => c.name === effective[opt.label]);
+                      const labelOf = (c: ProductOptionChoice) => {
+                        const add = choiceBadgeOf(opt, effective, c.name, feeQty, product);
+                        return `${c.name}${c.popular ? " (นิยม)" : ""}${c.badge ? ` (${c.badge})` : ""}${add > 0 ? ` +${formatPrice(add)}` : ""}`;
+                      };
+                      const open = openDd === opt.label;
+                      const curImg = cur ? choiceImage(cur, effective) : undefined;
+                      return (
+                        <div className="flex items-center gap-2">
+                          {curImg && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={curImg} alt={cur?.name} className="h-11 w-11 shrink-0 rounded-xl bg-white object-cover ring-1 ring-amber-200" />
+                          )}
+                          <div
+                            className="relative w-full"
+                            onBlur={(e) => {
+                              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpenDd((o) => (o === opt.label ? null : o));
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") setOpenDd(null);
+                            }}
+                          >
+                            <button
+                              type="button"
+                              aria-haspopup="listbox"
+                              aria-expanded={open}
+                              aria-label={opt.label}
+                              onClick={() => setOpenDd((o) => (o === opt.label ? null : opt.label))}
+                              className="flex w-full items-center justify-between gap-2 rounded-xl bg-white px-3 py-2 text-left text-[13px] font-semibold text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                              style={cur?.color ? { color: cur.color } : undefined}
+                            >
+                              <span className="truncate">{cur ? labelOf(cur) : "— เลือก —"}</span>
+                              <span className="shrink-0 text-[10px] text-stone-400">{open ? "▲" : "▼"}</span>
+                            </button>
+                            {open && (
+                              <ul
+                                role="listbox"
+                                aria-label={opt.label}
+                                className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[32rem] overflow-auto rounded-xl bg-white py-1 text-[13px] shadow-lg ring-1 ring-stone-200"
+                              >
+                                {list.map((c) => {
+                                  const on = c.name === effective[opt.label];
+                                  return (
+                                    <li key={c.name} role="option" aria-selected={on}>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSelections((s) => ({ ...s, [opt.label]: c.name }));
+                                          jumpToImage(choiceImage(c, effective));
+                                          setOpenDd(null);
+                                        }}
+                                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-amber-50 ${on ? "bg-amber-50 font-bold" : "font-medium"}`}
+                                        style={c.color ? { color: c.color } : undefined}
+                                      >
+                                        <span className="w-3 shrink-0 text-[11px]">{on ? "✓" : ""}</span>
+                                        <span>{labelOf(c)}</span>
+                                      </button>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()
                   ) : opt.display === "dropdown" ? (
                     <div className="flex items-center gap-2">
                       {/* ภาพประจำตัวเลือกที่เลือกอยู่ — เมนูเลื่อนใส่รูปในตัวเลือกไม่ได้ จึงโชว์ไว้ข้าง ๆ
@@ -4403,12 +4481,14 @@ export default function ProductDetail({
                         }
                       }}
                       className="w-full rounded-xl bg-white px-3 py-2 text-[13px] font-semibold text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                      // 🎨 ตัวเลือกที่ตั้งสีไว้ (ครึ่ง A4/A5/A6 สีเขียว) — ตอนถูกเลือกให้ตัวเมนูเป็นสีนั้นด้วย จะได้เห็นตั้งแต่ยังไม่กาง
+                      style={(() => { const col = opt.choices.find((c) => c.name === effective[opt.label])?.color; return col ? { color: col } : undefined; })()}
                       aria-label={opt.label}
                     >
                       {opt.choices
                         .filter((c) => allowed.includes(c.name))
                         .map((c) => (
-                          <option key={c.name} value={c.name}>
+                          <option key={c.name} value={c.name} style={c.color ? { color: c.color } : undefined}>
                             {c.name}
                             {c.popular ? " (นิยม)" : ""}
                             {c.badge ? ` (${c.badge})` : ""}

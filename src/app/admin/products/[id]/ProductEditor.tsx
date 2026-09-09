@@ -73,6 +73,8 @@ type DraftChoice = {
   popular?: boolean;
   /** ☝️ ชุด "เลือกได้อย่างเดียว" ในกลุ่ม multi — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
   exclusiveWith?: string;
+  /** 🎨 สีตัวหนังสือในเมนูเลื่อน (ครึ่ง A4/A5/A6 สีเขียว) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  color?: string;
   /** 🏷️ ป้ายอิสระท้ายชื่อ เช่น "ฟรี!" — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   badge?: string;
   /** 📝 คำอธิบายใต้ชื่อ (โชว์เฉพาะกลุ่ม display "cards") — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
@@ -585,6 +587,7 @@ function toDraft(p: Product): Draft {
         ...(c.askPrice ? { askPrice: true } : {}),
         ...(c.popular ? { popular: true } : {}),
         ...(c.exclusiveWith ? { exclusiveWith: c.exclusiveWith } : {}),
+        ...(c.color ? { color: c.color } : {}),
         ...(c.badge ? { badge: c.badge } : {}),
         ...(c.desc ? { desc: c.desc } : {}),
         ...(c.selectedNote ? { selectedNote: c.selectedNote } : {}),
@@ -901,6 +904,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             ...(c.popular ? { popular: true as const } : {}),
             // ☝️ ชุดเลือกได้อย่างเดียว — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
             ...(c.exclusiveWith ? { exclusiveWith: c.exclusiveWith } : {}),
+            ...(c.color ? { color: c.color } : {}),
             // 🏷️ ป้ายอิสระ ("ฟรี!") + 📝 คำอธิบายการ์ด + 📄 ชิ้นต่อแผ่นวัสดุ — ไม่มีช่องกรอก ต้องส่งกลับ ไม่งั้นหาย
             ...(c.badge ? { badge: c.badge } : {}),
             ...(c.desc ? { desc: c.desc } : {}),

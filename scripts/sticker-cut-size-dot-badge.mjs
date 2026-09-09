@@ -1,5 +1,5 @@
 /**
- * ป้ายโควตาจุดไดคัทบนตัวเลือก "ขนาดตัด" ของสติ๊กเกอร์ 8 ตัว — ผู้ใช้สั่ง 26 ส.ค. 69
+ * ป้ายโควตาจุดไดคัทบนตัวเลือก "ขนาดตัด" ของสติ๊กเกอร์ 9 ตัว (8 + วาชิ) — ผู้ใช้สั่ง 26 ส.ค. 69 · รันซ้ำหลัง sticker-dots-quota-a3.mjs (9 ก.ย. 69)
  *
  * อ่านโควตาจริงจาก inputFee.rates ของกลุ่ม "จำนวนจุดไดคัท" ที่คู่กัน (ไม่ hardcode)
  * แล้วต่อท้าย badge ของแต่ละขนาด: "ได้ 16 ชิ้น / แผ่น A3 · ไดคัทฟรี 12 จุด (สูงสุด 20)"
@@ -13,7 +13,7 @@
 import { createClient } from "@supabase/supabase-js";
 import fs from "fs";
 
-const IDS = ["sticker-pp", "sticker-uv", "sticker-solvent", "sticker-rainbow-film", "neon", "reflective-sticker", "sticker-gold-silver-rosegold", "sticker-hologram"];
+const IDS = ["sticker-pp", "sticker-uv", "sticker-solvent", "sticker-rainbow-film", "neon", "reflective-sticker", "sticker-gold-silver-rosegold", "sticker-hologram", "washi-sticker"];
 const DOT = "จำนวนจุดไดคัท";
 const baht = (n) => (n % 1 ? `฿${n.toFixed(2)}` : `฿${n}`);
 
