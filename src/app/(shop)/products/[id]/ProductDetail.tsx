@@ -46,6 +46,7 @@ import {
   parseArtSizeInput,
   artSizeText,
   sheetFitCount,
+  sheetBoundOf,
   type ArtSize,
   orderUnitYield,
   ART_LABEL,
@@ -2865,7 +2866,8 @@ export default function ProductDetail({
     const fits = artFiles.map((f) => {
       // ช่องที่พิมพ์ผิด/เกินช่วง (sizeErr) ยังไม่มีขนาดที่เชื่อได้ — ไม่เอาขนาดหลักมาแทน ไม่งั้นโดนป้าย "ใหญ่เกินแผ่น" ผิดลาย
       const s = f.sizeErr ? null : (f.size ?? mainArtSize);
-      return s ? sheetFitCount(cfg, s.w, s.h) : null;
+      // เพดานช่องกรอก (เต็มแผ่น A3) — ขนาดในเพดานไม่โดนป้าย "เกิน 1 แผ่น" แม้พื้นที่วางที่หักขอบแล้วเล็กกว่า
+      return s ? sheetFitCount(cfg, s.w, s.h, sheetBoundOf(artSizePair, artSizeOpt!, effective)) : null;
     });
     const tooBig = fits.map((c, i) => (c === 0 ? i : -1)).filter((i) => i >= 0);
     const setSheets = fits.every((c): c is number => c != null && c > 0) ? fits.reduce((a, c) => a + 1 / c, 0) : null;
@@ -2874,7 +2876,7 @@ export default function ProductDetail({
     const needSheets = setSheets != null ? Math.ceil(setSheets - 1e-9) : null;
     const short = tooBig.length === 0 && available != null && needSheets != null && needSheets > available;
     return { tooBig, needSheets, available, short, sheet };
-  }, [artSizeMode, artSizeOpt, artFiles, mainArtSize, matrix?.unit, unitYield, qty]);
+  }, [artSizeMode, artSizeOpt, artSizePair, effective, artFiles, mainArtSize, matrix?.unit, unitYield, qty]);
   /**
    * 🔢 จำนวน "ชิ้นจริง" ที่ใช้เทียบกับจำนวนต่อลาย — สินค้าขายเป็นเซ็ต/แผ่น (1 เซ็ต = 20 ใบ) ลูกค้าระบุเป็นใบ ไม่ใช่เซ็ต
    * ตัวคูณชุดเดียวกับที่ตะกร้า/ออเดอร์ใช้ (orderUnitYield) · ไม่รู้ตัวคูณ = นับตามหน่วยที่สั่ง

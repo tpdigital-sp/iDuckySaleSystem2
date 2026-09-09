@@ -679,7 +679,7 @@ function packSingleSize(itemW: number, itemH: number, binW: number, binH: number
  * ชิ้นขนาดเดียว กว้าง×สูง วางได้กี่ชิ้นต่อ 1 แผ่นตามสเปก sheetYield (0 = ใหญ่เกินแผ่น)
  * แยกออกมาให้หน้าสินค้าเช็ค "ลายไหนใหญ่เกินแผ่น" รายลายได้ (ป้ายแดงใต้รูป — ผู้ใช้สั่ง 9 ก.ย. 69)
  */
-export function sheetFitCount(cfg: SheetYield, w: number, h: number): number {
+export function sheetFitCount(cfg: SheetYield, w: number, h: number, bound?: SheetBound): number {
   if (!(w > 0) || !(h > 0)) return 0;
   const itemH = h + (cfg.addH ?? 0);
   /*
@@ -689,7 +689,33 @@ export function sheetFitCount(cfg: SheetYield, w: number, h: number): number {
   for (const t of cfg.perSheetTiers ?? []) {
     if ((t.upTo == null || Math.max(w, itemH) <= t.upTo) && t.per > 0) return t.per;
   }
-  return packSingleSize(w, itemH, cfg.sheetW, cfg.sheetH, cfg.gap ?? 0);
+  const n = packSingleSize(w, itemH, cfg.sheetW, cfg.sheetH, cfg.gap ?? 0);
+  /*
+   * ⚠️ ชิ้นเดียวเต็มแผ่น: พื้นที่วาง (sheetW×sheetH) หักขอบเผื่อรอบด้านออกแล้ว (ไดคัท 43.76×28.89)
+   * จึงเล็กกว่าแผ่น A3 จริง (29.7×42) — ลูกค้ากรอก 29.7×42 ซึ่งเท่ากับเพดานที่ช่องกรอกรับ
+   * แล้วเจอป้ายแดง "ใหญ่เกิน 1 แผ่น A3" ทั้งที่ร้านรับงานเต็มแผ่นแบบนี้ (เจ้าของร้านทัก 9 ก.ย. 69)
+   * → ถ้าวางไม่ลงแต่ยังอยู่ในเพดานที่ช่องกรอกรับ (ตั้งหรือนอน) = งานเต็มแผ่น 1 ชิ้น/แผ่น
+   *   ขอบเผื่อของงานเต็มแผ่นร้านจัดการเองตอนพิมพ์ · เกินเพดานจริง ๆ ยัง 0 เหมือนเดิม
+   */
+  if (n === 0 && bound && fitsBound(w, itemH, bound)) return 1;
+  return n;
+}
+
+/** เพดานกว้าง×สูงที่ช่องกรอกรับ (input.max ของกลุ่มกว้าง / กลุ่มสูง) — ไม่มีเพดานด้านไหน = ไม่จำกัดด้านนั้น */
+export interface SheetBound {
+  w?: number;
+  h?: number;
+}
+
+/** ชิ้น w×h อยู่ในเพดานไหม (หมุนได้ · ด้านที่ไม่ตั้งเพดาน = ผ่าน) */
+function fitsBound(w: number, h: number, b: SheetBound): boolean {
+  const ok = (x: number, cap?: number) => cap == null || x <= cap + 1e-9;
+  return (ok(w, b.w) && ok(h, b.h)) || (ok(h, b.w) && ok(w, b.h));
+}
+
+/** เพดานที่ช่องกรอกคู่กว้าง×สูงรับอยู่ตอนนี้ (ขั้นตามตัวเลือกชนะ input.max — ดู inputMaxOf) */
+export function sheetBoundOf(pair: ProductOption | null | undefined, opt: ProductOption, selections?: Record<string, string>): SheetBound {
+  return { w: pair ? inputMaxOf(pair, selections) : undefined, h: inputMaxOf(opt, selections) };
 }
 
 /**
@@ -707,7 +733,9 @@ export function sheetYieldCount(
   if (!pair) return null;
   const w = Number(parseInputValue(pair, selections[pair.label]));
   const h = Number(parseInputValue(opt, selections[opt.label]));
-  const perOf = (pw: number, ph: number): number => sheetFitCount(cfg, pw, ph);
+  // เพดานช่องกรอก = ขนาดใหญ่สุดที่ร้านรับ (เต็มแผ่น) — ส่งให้ตัวนับกันป้าย "ใหญ่เกินแผ่น" ทั้งที่อยู่ในเพดาน
+  const bound = sheetBoundOf(pair, opt, selections);
+  const perOf = (pw: number, ph: number): number => sheetFitCount(cfg, pw, ph, bound);
   /*
    * 📐 คละหลายขนาดใน 1 แผ่น (ART_SIZE_LABEL) — คิด "ลายละเท่า ๆ กัน": 1 ชุด (ลายละ 1 ชิ้น) กินพื้นที่
    * Σ(1/ชิ้นต่อแผ่นของขนาดนั้น) แผ่น → ชิ้นต่อแผ่น = จำนวนลาย ÷ Σ(1/c_i) (ปัดลง)

@@ -84,7 +84,7 @@ export default function UseBy({ o }: { o: Order }) {
       title={`ลูกค้าแจ้งวันใช้งาน ${thaiDay(o.useByDate)}`}
     >
       {left < 0 ? `เลยกำหนด ${Math.abs(left)} วัน` : left === 0 ? "ใช้งานวันนี้" : `ใช้งานอีก ${left} วัน`}
-      <span className="usedate">📅 {thaiDay(o.useByDate)}</span>
+      <span className="usedate">📅 ใช้งาน {thaiDay(o.useByDate)}</span>
       {ship && <ShipBadge r={ship} />}
     </span>
   );
