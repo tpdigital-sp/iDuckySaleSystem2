@@ -370,6 +370,52 @@ export function splitGiftBySheet(promo: GiftPromo, size: GiftSize | undefined, e
   };
 }
 
+/** 🔓 ของแถม "ปลดล็อกจริง" หรือยัง + ต้องสั่งอีกเท่าไร (คิดรวมกติกาแผ่น A3 แล้ว) */
+export interface GiftUnlock {
+  /** ปลดล็อกแล้ว = ได้ของแถมจริงอย่างน้อย 1 ชิ้น (ไม่นับของแทนที่ได้เพราะเศษไม่เต็มแผ่น) */
+  unlocked: boolean;
+  /** ต้องสั่งสินค้าที่ร่วมรายการถึงกี่ชิ้นถึงจะปลดล็อก (แผ่นแรก) */
+  unlockAt: number;
+  /** ขาดอีกกี่ชิ้นถึงจะปลดล็อก (0 = ปลดล็อกแล้ว) */
+  need: number;
+  /** ความคืบหน้าไปยังจุดปลดล็อก 0..1 */
+  progress: number;
+  /** ปลดล็อกแล้วแต่ยังมีเศษได้ของแทน — สั่งเพิ่มอีกกี่ชิ้นถึงจะได้พิมพ์ครบทุกชิ้น (0 = ครบแล้ว/ไม่มีกติกาแผ่น) */
+  moreForFull: number;
+  /** ผลแบ่งตามแผ่น (ตัวเดียวกับ splitGiftBySheet) */
+  split: GiftSplit;
+}
+
+/**
+ * 🔓 ของแถมชิ้นนี้ปลดล็อกจริงหรือยัง — จุดตัดสินเดียวที่ทุกหน้าต้องใช้ร่วมกัน
+ *
+ * 🐞 ที่มา (9 ก.ย. 69): โปรรองหลังตั้ง "1 ชิ้น = 1 ใบ" ทำให้ `earned > 0` ตั้งแต่สั่งชิ้นแรก
+ *    ตะกร้าเลยขึ้นการ์ดเขียว "🎉 ปลดล็อกของแถมแล้ว ×0 + ซองใส-หลังขาว ×1" ทั้งที่ลูกค้ายังไม่ได้รองหลังจริงสักใบ
+ *    เจ้าของร้านให้ถือว่า "ยังไม่ปลดล็อก" จนกว่าจะได้พิมพ์จริง (เศษถึงเกณฑ์ partial.minFill ของแผ่น A3)
+ *    และให้บอกลูกค้าว่าต้องสั่งครบกี่ชิ้น (เช่น 7×7 = 24 ใบ/แผ่น → "สั่งครบ 24 ชิ้น") แทนการ์ดเขียว
+ *
+ * โปรที่ไม่มีกติกาแผ่น (ไม่ตั้ง perSheet/ของแทน) = ปลดล็อกเมื่อ earned > 0 เหมือนเดิม
+ */
+export function giftUnlock(r: GiftResult, size: GiftSize | undefined): GiftUnlock {
+  const split = splitGiftBySheet(r.promo, size, r.earned);
+  const unlocked = split.printed > 0;
+
+  const minQty = Math.max(1, Math.floor(num(r.promo.minQty, 1)));
+  const step = Math.max(1, Math.floor(num(r.promo.step, 0) || minQty));
+  const give = Math.max(1, Math.floor(num(r.promo.giveQty, 0) || 1));
+  // ต้องได้ของแถมกี่ "หน่วย" ถึงจะพิมพ์แผ่นแรก (มีกติกาแผ่น = ต้องถึงเกณฑ์เศษ · ไม่มี = 1)
+  const unitsFirst = Math.max(1, split.threshold);
+  // แปลงหน่วยของแถม → จำนวนชิ้นที่ต้องสั่ง (earned = give × ขั้น · ขั้นแรกที่ minQty แล้วเพิ่มทุก step)
+  const unlockAt = minQty + (Math.ceil(unitsFirst / give) - 1) * step;
+  const need = unlocked ? 0 : Math.max(0, unlockAt - r.qty);
+  const progress = unlocked ? 1 : Math.max(0, Math.min(1, r.qty / unlockAt));
+
+  // เศษที่เหลือยังไม่ถึงเกณฑ์ → อีกกี่ชิ้นถึงจะพิมพ์ให้ครบทุกชิ้น
+  const moreForFull = unlocked && split.fallback > 0 ? Math.ceil(Math.max(0, split.threshold - split.fallback) / give) * step : 0;
+
+  return { unlocked, unlockAt, need, progress, moreForFull, split };
+}
+
 /** ตัวเลขขนาด (ซม.) ที่อ่านได้จากข้อความตัวเลือก เช่น "7 × 7 cm" → [7,7] · "5 ซม." → [5] */
 function cmNumbersOf(text: string): number[] {
   const t = String(text ?? "");
@@ -481,6 +527,8 @@ export function giftsToOrder(
     .map((r) => {
       const size = resolveGiftSize(r.promo, chosenSizes?.[r.promo.id]);
       const sp = splitGiftBySheet(r.promo, size, r.earned);
+      // 🔓 ยังไม่ปลดล็อกจริง (เศษไม่ถึงเกณฑ์แผ่น ได้แต่ของแทน) = ไม่บันทึกเป็นของแถม — ตรงกับที่ตะกร้า/checkout ไม่โชว์
+      if (sp.printed <= 0) return null;
       const needs = giftNeedsArtwork(r.promo);
       const urls = needs ? (art[r.promo.id] ?? []) : [];
       return {
@@ -494,7 +542,8 @@ export function giftsToOrder(
           ? { printedQty: sp.printed, fallbackQty: sp.fallback, fallbackName: sp.fallbackName ?? r.promo.partial?.name }
           : {}),
       };
-    });
+    })
+    .filter((g): g is NonNullable<typeof g> => g != null);
 }
 
 /**

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchShopPayment, giftPromosOf } from "@/lib/shop-settings";
-import { activeGiftPromos, giftMatches, giftsFor, type GiftPromo } from "@/lib/gifts";
+import { activeGiftPromos, giftMatches, giftsFor, giftUnlock, readGiftSizes, resolveGiftSize, type GiftPromo } from "@/lib/gifts";
 import { useCart } from "@/lib/cart-context";
 import { formatPrice } from "@/lib/products";
 import type { Product } from "@/lib/products";
@@ -20,9 +20,12 @@ export default function GiftPromoBadge({ product, className = "" }: { product: P
   const { items, productOf } = useCart();
   const [promos, setPromos] = useState<GiftPromo[]>([]);
   const [open, setOpen] = useState(false);
+  // 📐 ขนาดของแถมที่ลูกค้าเลือกไว้ในตะกร้า — ใช้คิดจุดปลดล็อก (7×7 = 24 ใบ/แผ่น → ครบ 24 ชิ้น)
+  const [sizes, setSizes] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetchShopPayment().then((p) => setPromos(activeGiftPromos(giftPromosOf(p))));
+    setSizes(readGiftSizes());
   }, []);
 
   // เฉพาะโปรที่สินค้าตัวนี้ร่วมรายการ
@@ -39,25 +42,27 @@ export default function GiftPromoBadge({ product, className = "" }: { product: P
   return (
     <div className={className}>
       {rows.map((r) => {
-        const target = r.nextAt ?? r.promo.minQty;
+        // 🔓 ปลดล็อกจริง = ได้ของแถมอย่างน้อย 1 ชิ้นหลังคิดกติกาแผ่น A3 (ไม่ใช่ earned > 0)
+        const u = giftUnlock(r, resolveGiftSize(r.promo, sizes[r.promo.id]));
+        const target = u.unlockAt;
         return (
           <div
             key={r.promo.id}
             className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-2xl bg-emerald-50 px-3 py-2 text-[12px] font-semibold leading-relaxed text-emerald-900 ring-1 ring-emerald-200"
           >
             <span>
-              🎁 มีของแถม — สั่งสินค้าที่ร่วมรายการครบ {r.promo.minQty.toLocaleString("th-TH")} ชิ้น รับ{" "}
+              🎁 มีของแถม — สั่งสินค้าที่ร่วมรายการครบ {target.toLocaleString("th-TH")} ชิ้น รับ{" "}
               <strong>{r.promo.name}</strong> ฟรี!
             </span>
             {r.qty > 0 &&
-              (r.earned > 0 ? (
+              (u.unlocked ? (
                 <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] font-bold text-white">
-                  🎉 ปลดล็อกแล้ว ×{r.earned}
+                  🎉 ปลดล็อกแล้ว ×{u.split.printed}
                 </span>
               ) : (
                 <span className="rounded-full bg-white px-2 py-0.5 text-[11px] ring-1 ring-emerald-200">
                   ตอนนี้มี {r.qty.toLocaleString("th-TH")} / {target.toLocaleString("th-TH")} ชิ้น — เพิ่มอีก{" "}
-                  {(r.need ?? 0).toLocaleString("th-TH")} ชิ้น
+                  {u.need.toLocaleString("th-TH")} ชิ้น
                 </span>
               ))}
             <button
@@ -82,7 +87,9 @@ export default function GiftPromoBadge({ product, className = "" }: { product: P
           <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <p className="text-base font-bold text-slate-900">🎁 โปรโมชั่นของแถมฟรี</p>
             <div className="mt-3 space-y-3">
-              {mine.map((g) => (
+              {mine.map((g) => {
+                const unlockAt = giftUnlock(rows.find((r) => r.promo.id === g.id) ?? { promo: g, qty: 0, earned: 0, progress: 0 }, resolveGiftSize(g, sizes[g.id])).unlockAt;
+                return (
                 <div key={g.id} className="flex items-start gap-3 rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100">
                   {g.image ? (
                     // eslint-disable-next-line @next/next/no-img-element -- รูปของแถมจากคลังรูปร้าน
@@ -94,7 +101,7 @@ export default function GiftPromoBadge({ product, className = "" }: { product: P
                     <p className="font-bold">{g.name}</p>
                     {g.note && <p className="text-[12px] opacity-80">{g.note}</p>}
                     <p className="mt-1">
-                      สั่งสินค้าที่ร่วมรายการครบ <strong>{g.minQty.toLocaleString("th-TH")} ชิ้น</strong> รับฟรี{" "}
+                      สั่งสินค้าที่ร่วมรายการครบ <strong>{unlockAt.toLocaleString("th-TH")} ชิ้น</strong> รับฟรี{" "}
                       {Math.max(1, Math.floor(g.giveQty ?? 1)).toLocaleString("th-TH")} ชุด
                       {(g.value ?? 0) > 0 && (
                         <>
@@ -111,7 +118,8 @@ export default function GiftPromoBadge({ product, className = "" }: { product: P
                     </p>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
             <button
               type="button"

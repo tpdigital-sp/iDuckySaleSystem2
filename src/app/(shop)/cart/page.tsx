@@ -51,6 +51,7 @@ import {
 import {
   giftsFor,
   giftSizesOf,
+  giftUnlock,
   resolveGiftSize,
   splitGiftBySheet,
   readGiftSizes,
@@ -459,6 +460,9 @@ export default function CartPage() {
         (id) => productOf(id)?.category,
         giftPromos
       );
+  // 🔓 เฉพาะโปรที่ปลดล็อกจริง (ได้ของแถมอย่างน้อย 1 ชิ้นหลังคิดกติกาแผ่น A3) — ยังไม่ถึงจะไม่ขึ้นการ์ด/บรรทัดฟรี
+  //    เจ้าของร้านขอ 9 ก.ย. 69: รองหลัง 1 ชิ้น = 1 ใบ เคยขึ้นการ์ดเขียว "×0 + ซองใส ×1" ตั้งแต่ชิ้นแรก
+  const giftUnlocked = giftRows.filter((g) => giftUnlock(g, resolveGiftSize(g.promo, giftSize[g.promo.id])).unlocked);
   const remainForFree = freeMin - subtotal;
 
   /** เมฆพื้นหลัง — ชุดเดียวกับหน้าแรก */
@@ -923,9 +927,9 @@ export default function CartPage() {
               );
             })}
 
-            {/* ── 🎁 ของแถมโปรโมชั่นที่ปลดล็อกแล้ว — แถวแสดงผลอย่างเดียว (แก้จำนวน/ลบไม่ได้ ระบบคิดให้เอง) ── */}
-            {giftRows
-              .filter((g) => g.earned > 0)
+            {/* ── 🎁 ของแถมโปรโมชั่นที่ปลดล็อกแล้ว — แถวแสดงผลอย่างเดียว (แก้จำนวน/ลบไม่ได้ ระบบคิดให้เอง)
+                   ยังไม่ปลดล็อกจริง = ไม่ขึ้นการ์ดนี้ (ไปขึ้นแถบ "สั่งครบ N ชิ้น" ในสรุปยอดแทน) ── */}
+            {giftUnlocked
               .map((g) => (
                 /* ⚠️ ห้ามใส่ div ครอบชั้นในอีก — `.cart-item` เป็น flex + padding 14px อยู่แล้ว
                    ของเดิมครอบซ้ำทำให้การ์ดของแถม padding 28-30px ไม่เท่าแถวสินค้า */
@@ -989,7 +993,7 @@ export default function CartPage() {
                             {sp.fallback > 0 && (
                               <span className="ord-note warn mt-1.5 block px-2.5 py-1.5 text-[11px]">
                                 🧾 ได้ <strong>{g.promo.name} {sp.printed.toLocaleString("th-TH")} ชิ้น</strong> ({sp.sheets} แผ่น A3 เต็ม)
-                                · อีก <strong>{sp.fallback.toLocaleString("th-TH")} ชิ้น</strong> ที่เหลือไม่เต็มครึ่งแผ่น
+                                · อีก <strong>{sp.fallback.toLocaleString("th-TH")} ชิ้น</strong> ที่เหลือไม่ถึงเกณฑ์แผ่น
                                 จะได้เป็น <strong>{sp.fallbackName}</strong> แทน
                                 {sp.threshold > rem && (
                                   <span className="block">
@@ -1012,15 +1016,24 @@ export default function CartPage() {
                         />
                       )}
 
+                      {(() => {
+                        // จำนวน/มูลค่าขีดฆ่า = เฉพาะของจริงที่ได้พิมพ์ (เศษที่ได้ของแทนไม่นับ — ตรงกับสรุปยอด)
+                        const sp = splitGiftBySheet(g.promo, resolveGiftSize(g.promo, giftSize[g.promo.id]), g.earned);
+                        return (
                       <div className="mt-auto flex items-center justify-between gap-3 pt-2">
-                        <span className="text-xs t-soft">จำนวน {g.earned.toLocaleString("th-TH")} ชิ้น · ระบบเพิ่มให้อัตโนมัติ</span>
+                        <span className="text-xs t-soft">
+                          จำนวน {sp.printed.toLocaleString("th-TH")} ชิ้น
+                          {sp.fallback > 0 && ` (+ ${sp.fallbackName} ${sp.fallback.toLocaleString("th-TH")})`} · ระบบเพิ่มให้อัตโนมัติ
+                        </span>
                         <span className="text-right">
                           {(g.promo.value ?? 0) > 0 && (
-                            <s className="mr-1.5 text-[11px] t-faint">{formatPrice((g.promo.value ?? 0) * g.earned)}</s>
+                            <s className="mr-1.5 text-[11px] t-faint">{formatPrice((g.promo.value ?? 0) * sp.printed)}</s>
                           )}
                           <span className="cart-price t-ok">ฟรี</span>
                         </span>
                       </div>
+                        );
+                      })()}
                   </div>
                 </div>
               ))}
@@ -1171,8 +1184,7 @@ export default function CartPage() {
                   {shippingCost === 0 ? <span className="t-ok">ฟรี!</span> : formatPrice(shippingCost)}
                 </dd>
               </div>
-              {giftRows
-                .filter((g) => g.earned > 0)
+              {giftUnlocked
                 .map((g) => {
                   /* 🐞 บั๊กที่แก้: บรรทัดนี้เคยขึ้น ×g.earned (= 20) ทั้งที่เศษไม่เต็มแผ่นได้ของแทน
                      ลูกค้าเลือก 9×9 แล้วเห็น "รองหลัง ×20" แต่ของจริงคือรองหลัง 15 + ซองใส 5

@@ -25,7 +25,7 @@ import {
   type ShopPayment,
   type ShippingMethod,
 } from "@/lib/shop-settings";
-import { giftsFor, giftSizesOf, resolveGiftSize, splitGiftBySheet, readGiftSizes, readGiftArtwork, giftNeedsArtwork } from "@/lib/gifts";
+import { giftsFor, giftSizesOf, giftUnlock, resolveGiftSize, splitGiftBySheet, readGiftSizes, readGiftArtwork, giftNeedsArtwork } from "@/lib/gifts";
 import { getAccessToken } from "@/lib/customer-auth";
 import { fetchMyOrders } from "@/lib/my-orders";
 import { paidSpend, tierForSpend, tierDiscountAmount } from "@/lib/tiers";
@@ -222,7 +222,9 @@ export default function CheckoutPage() {
         items.map((i) => ({ productId: i.productId, qty: i.qty, selections: i.selections })),
         (id) => productOf(id)?.category,
         giftPromosOf(payment)
-      ).filter((g) => g.earned > 0);
+      )
+        // 🔓 เฉพาะที่ปลดล็อกจริง (ได้ของแถมอย่างน้อย 1 ชิ้นหลังคิดกติกาแผ่น A3) — ตรงกับตะกร้าและ giftsToOrder ฝั่งเซิร์ฟเวอร์
+        .filter((g) => giftUnlock(g, resolveGiftSize(g.promo, giftChosen[g.promo.id])).unlocked);
 
   // 📦 สินค้าที่คิดค่าส่งตามจำนวนชิ้น (คิดแบบเดียวกับหน้าตะกร้า — สองหน้าต้องได้เลขเดียวกัน)
   const qtyShipCalc = (() => {
@@ -1007,7 +1009,7 @@ export default function CheckoutPage() {
               </div>
               {sp.fallback > 0 && (
                 <div className="mt-0.5 flex items-center justify-between gap-2 pl-9 text-xs font-medium text-amber-700">
-                  <span className="truncate">🧾 {sp.fallbackName} ×{sp.fallback} (เศษไม่เต็มครึ่งแผ่น A3)</span>
+                  <span className="truncate">🧾 {sp.fallbackName} ×{sp.fallback} (เศษไม่ถึงเกณฑ์แผ่น A3)</span>
                   <span className="shrink-0">ฟรี</span>
                 </div>
               )}
