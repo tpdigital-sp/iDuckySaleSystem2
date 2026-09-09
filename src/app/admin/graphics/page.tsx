@@ -17,7 +17,6 @@
 import { useMemo, useState } from "react";
 import StatusChip, { chipStyle, STATUS_TONE } from "@/components/admin/StatusChip";
 import {
-  daysToUseBy,
   graphicTodoItems,
   isSelfDesigned,
   orderStatusLabel,
@@ -51,6 +50,7 @@ import {
   Tag,
 } from "@/components/admin/ui";
 import { orderMatches, staffTally, useGraphicStaff, useGraphicsOrders } from "./data";
+import UseBy from "./UseBy";
 
 const QUEUE: OrderStatus[] = ["ชำระแล้ว", "รอตรวจสอบ"];
 
@@ -303,7 +303,6 @@ function QueueRow({ o }: { o: Order }) {
   const selfMade = o.items.filter(isSelfDesigned).length;
   const done = o.items.filter((it) => !isSelfDesigned(it) && proofsOf(it).length > 0).length;
   const noArt = o.items.some((it) => !it.artworkUrls?.length && !isSelfDesigned(it) && !proofExempt(it));
-  const left = o.useByDate ? daysToUseBy(o) : null;
 
   return (
     <Row tone={todo > 0 ? STATUS_TONE[o.status] : "var(--dk-mint)"} href={`/admin/orders/${encodeURIComponent(o.id)}`}>
@@ -330,11 +329,8 @@ function QueueRow({ o }: { o: Order }) {
           <>
             <span className="id">{o.id}</span>
             <span>{dayOf(o.date)}</span>
-            {left !== null && (
-              <span className={left <= 3 ? "hot" : undefined}>
-                {left < 0 ? `เลยกำหนด ${Math.abs(left)} วัน` : left === 0 ? "ใช้งานวันนี้" : `ใช้งานอีก ${left} วัน`}
-              </span>
-            )}
+            {/* วันใช้งานที่ลูกค้าแจ้ง — ตัวนับ + 📅 วันที่จริง ให้กราฟฟิกจัดลำดับได้โดยไม่ต้องเปิดใบ */}
+            <UseBy o={o} />
             <span>{qtyOf(o)} ชิ้น</span>
             {selfMade > 0 && <span title="ลูกค้าจัดวางลายเองมาแล้ว — ไม่ต้องทำแบบ">ลูกค้าทำเอง {selfMade}</span>}
             {done > 0 && <span>ทำแล้ว {done}</span>}
@@ -391,6 +387,7 @@ function SentRow({ sent }: { sent: Sent }) {
             <>
               <span className="id">{order.id}</span>
               <span>{order.customer}</span>
+              <UseBy o={order} />
               <span>
                 รูปที่ {no}
                 {proof.qty ? ` · ${proof.qty} ${proofUnit(proof)}` : ""}

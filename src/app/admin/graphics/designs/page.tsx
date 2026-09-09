@@ -26,6 +26,7 @@ import {
 } from "@/components/admin/ui";
 import { isSelfDesigned, orderStatusLabel, proofBy, proofsOf, proofUnit, type Order, type OrderItem, type Proof } from "@/lib/admin-data";
 import { dayOf, orderMatches, staffTally, useGraphicStaff, useGraphicsOrders } from "../data";
+import UseBy from "../UseBy";
 
 /**
  * 📋 รายงานแบบงาน — ตารางสรุปว่า "แบบของออเดอร์ไหนค้างอยู่ตรงไหน"
@@ -288,6 +289,8 @@ export default function DesignReportPage() {
                   <span className="text-[12px]" style={{ color: "var(--dk-faint)" }}>
                     {dayOf(g.order.date)}
                   </span>
+                  {/* วันใช้งานที่ลูกค้าแจ้ง — ใบไหนใกล้วันใช้งานให้เห็นตั้งแต่หัวกลุ่ม */}
+                  <UseBy o={g.order} />
                   <span className="ml-auto flex flex-wrap items-center gap-1.5">
                     {redo > 0 && <Tag tone="solid">ขอแก้ {redo}</Tag>}
                     {wait > 0 && <Tag tone="lilac">ยังไม่ยืนยัน {wait}</Tag>}

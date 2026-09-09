@@ -1,0 +1,40 @@
+"use client";
+
+import { daysToUseBy, type Order, type OrderStatus } from "@/lib/admin-data";
+
+/** ใบที่จบไปแล้ว — ตัวนับ "เลยกำหนด N วัน" ไม่มีความหมาย ไม่ต้องขึ้น */
+const DONE: OrderStatus[] = ["จัดส่งแล้ว", "เสร็จสิ้น", "ยกเลิก"];
+
+/** "2569-09-07" (ค.ศ.ในช่องวันที่) → "7 ก.ย. 2569" ให้ตรงกับที่ทีมคุยกัน */
+export const thaiDay = (iso: string) =>
+  iso ? new Date(`${iso}T00:00:00`).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" }) : "";
+
+/**
+ * วันใช้งานที่ลูกค้าแจ้งมา (Order.useByDate) — ตัวนับวัน + ป้ายม่วง 📅 วันที่จริง
+ * หน้าตาเดียวกับหน้ารายการออเดอร์: ใกล้กำหนด ≤3 วัน หรืองานเร่ง → ป้ายแดงตัวหนังสือขาว
+ * ใช้ได้ทั้งใน RowMain meta (.dkb-meta) และวางเดี่ยว ๆ ในหัวกลุ่ม (คลาส dkb-useby รับสไตล์เอง)
+ * ไม่ได้ระบุวันใช้งาน → ป้ายเหลืองตัวหนา "⚠ ไม่ระบุวันใช้งาน" ให้สะดุดตาว่าต้องถามลูกค้า
+ * คืน null เฉพาะใบที่จบไปแล้ว
+ */
+export default function UseBy({ o }: { o: Order }) {
+  if (DONE.includes(o.status)) return null;
+  const left = o.useByDate ? daysToUseBy(o) : null;
+  if (left === null || !o.useByDate) {
+    return (
+      <span className="dkb-useby none" title="ลูกค้าไม่ได้แจ้งวันใช้งานมา — ถามลูกค้าก่อนจัดคิว">
+        ⚠ ไม่ระบุวันใช้งาน
+      </span>
+    );
+  }
+  const hot = left <= 3;
+  return (
+    <span
+      className={hot ? "dkb-useby hot" : "dkb-useby"}
+      data-rush={o.rush ? "1" : undefined}
+      title={`ลูกค้าแจ้งวันใช้งาน ${thaiDay(o.useByDate)}`}
+    >
+      {left < 0 ? `เลยกำหนด ${Math.abs(left)} วัน` : left === 0 ? "ใช้งานวันนี้" : `ใช้งานอีก ${left} วัน`}
+      <span className="usedate">📅 {thaiDay(o.useByDate)}</span>
+    </span>
+  );
+}

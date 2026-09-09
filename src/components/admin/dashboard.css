@@ -377,13 +377,24 @@
 .dkb-meta .hot { color: var(--dk-coral-ink); font-weight: 600; }
 /* วันที่ใช้งานจริงต่อท้าย "ใช้งานอีก N วัน" — ป้ายม่วงเล็ก ให้สายตาจับได้ทันทีว่าเป็น "วันลูกค้าใช้งาน"
    ไม่ชนกับแดง (.hot ใกล้กำหนด) / เหลือง (.warn งานค้าง) · พอใกล้กำหนดสลับเป็นแดงเข้มพร้อมตัวนับ */
-.dkb-meta .usedate {
+.dkb-meta .usedate,
+.dkb-useby .usedate {
   display: inline-block; margin-left: 4px; padding: 1px 7px; border-radius: 999px;
   font-weight: 700; color: var(--dk-lilac-ink); background: rgba(91, 83, 194, 0.12);
 }
 /* งานเร่ง (o.rush) หรือใกล้กำหนด ≤3 วัน → ป้ายแดงตัวหนังสือขาว ให้เห็นแต่ไกลว่าวันนี้สำคัญ */
 .dkb-meta .hot .usedate,
-.dkb-meta [data-rush="1"] .usedate { color: #fff; background: var(--dk-coral-ink); }
+.dkb-meta [data-rush="1"] .usedate,
+.dkb-useby.hot .usedate,
+.dkb-useby[data-rush="1"] .usedate { color: #fff; background: var(--dk-coral-ink); }
+/* ป้ายวันใช้งานวางเดี่ยวนอก .dkb-meta (หัวกลุ่มออเดอร์ในรายงานแบบงาน) — ขนาด/สีเท่า meta */
+.dkb-useby { font-size: 0.76rem; color: var(--dk-navy-soft); white-space: nowrap; }
+.dkb-useby.hot { color: var(--dk-coral-ink); font-weight: 600; }
+/* ลูกค้าไม่ได้แจ้งวันใช้งาน — ป้ายเหลืองตัวหนา ให้สะดุดตาว่าใบนี้ยังไม่รู้กำหนด ต้องถามลูกค้า */
+.dkb-useby.none {
+  display: inline-block; padding: 1px 7px; border-radius: 999px;
+  font-weight: 700; color: var(--dk-yolk-ink); background: rgba(232, 168, 0, 0.16);
+}
 .dkb-meta .warn { color: var(--dk-yolk-ink); font-weight: 600; }
 
 .dkb-tag {
