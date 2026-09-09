@@ -6,7 +6,7 @@ import { can, canPack, PACK_SCAN_HEADER } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
-import { reportPaidToTP, syncRushToTP } from "@/lib/server/tp-report";
+import { reportPaidToTP, syncArrivalToTP, syncRushToTP } from "@/lib/server/tp-report";
 import { bumpSoldForOrder, unbumpSoldForOrder } from "@/lib/server/sold";
 import { cutStockForOrder, restoreStockForOrder } from "@/lib/server/stock";
 import { awardPointsForOrder, revokePointsForOrder } from "@/lib/server/contact-points";
@@ -18,6 +18,7 @@ function gateReasons(g: PackGate): string {
     g.uncounted.length ? `ตรวจนับอีก ${g.uncounted.length} รูป` : "",
     g.unread.length ? `ยืนยันอ่านอีก ${g.unread.length} รายการ` : "",
     g.short.length ? `ของไม่ครบ ${g.short.length} รายการ` : "",
+    g.missing.length ? `ของยังไม่มา/ไม่ครบ ${g.missing.length} รายการ (${g.missing.map((m) => m.item).join(", ")})` : "",
     g.unsampled.length ? `ยังไม่ยืนยันใส่งานตัวอย่าง ${g.unsampled.length} รายการ` : "",
     g.noPhoto ? "ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง" : "",
     g.unpaidBalance ? "ยังเก็บเงินไม่ครบ (ยอดคงเหลือมัดจำ / ส่วนต่างที่ตีราคาเพิ่ม)" : "",
@@ -30,7 +31,8 @@ export const runtime = "nodejs";
 
 /**
  * ฝ่ายแพ็คบันทึกได้เฉพาะงานแพ็ค — เอาออเดอร์เดิมจาก DB เป็นฐาน แล้วทับเฉพาะ:
- *   ผลตรวจนับ (proofs[].pack) · ยืนยันอ่าน (items[].noteAck) · ยืนยันใส่งานตัวอย่าง (items[].samplePacked) · เลขพัสดุ + สถานะจัดส่ง · log
+ *   ผลตรวจนับ (proofs[].pack) · ยืนยันอ่าน (items[].noteAck) · ยืนยันใส่งานตัวอย่าง (items[].samplePacked)
+ *   · ของยังไม่มา/ไม่ครบ (items[].arrival) · เลขพัสดุ + สถานะจัดส่ง · log
  * ฟิลด์อื่น (ราคา ที่อยู่ รายการ) ใช้ของเดิมทั้งหมด — กันแก้ทางอ้อม
  */
 function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Order {
@@ -41,7 +43,13 @@ function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Or
       const ip = (inc.proofs ?? [])[j];
       return ip?.pack ? { ...p, pack: ip.pack } : p;
     });
-    return { ...it, proofs, noteAck: inc.noteAck ?? it.noteAck, samplePacked: inc.samplePacked ?? it.samplePacked };
+    return {
+      ...it,
+      proofs,
+      noteAck: inc.noteAck ?? it.noteAck,
+      samplePacked: inc.samplePacked ?? it.samplePacked,
+      arrival: inc.arrival ?? it.arrival,
+    };
   });
 
   const merged: Order = { ...existing, items };
@@ -357,6 +365,8 @@ export async function PATCH(req: Request) {
   // 🔥 ติ๊ก/ยกเลิกงานเร่ง หรือแก้วันที่ลูกค้าต้องใช้งาน → ส่งต่อให้บอร์ด WIP กราฟฟิก (เฉพาะใบที่ชำระแล้วมีเรคอร์ดอยู่ · ใบอื่น not-found ข้ามเงียบ)
   if (mayEditFull && (!!toSave.rush !== !!existing.rush || (toSave.useByDate || "") !== (existing.useByDate || "")))
     void syncRushToTP(toSave);
+  // 📦 ฝ่ายแพ็คปักของยังไม่มา/มาไม่ครบ/มาครบ → ส่งไปหน้า "ติดตามของ iDucky" ในระบบ TP (ยิงเฉพาะรายการที่เปลี่ยน)
+  void syncArrivalToTP(existing, toSave);
   // มัดจำงวดแรกเพิ่งยืนยัน (มือ) ในคำขอนี้ — ใช้แยกรูปแบบรายงาน msVerify
   const depositFirstNow = !!toSave.deposit?.firstPaidAt && !existing.deposit?.firstPaidAt;
 

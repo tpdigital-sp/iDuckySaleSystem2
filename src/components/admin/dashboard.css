@@ -540,7 +540,11 @@
 .dkb-scantarget .sub { font-size: 0.8rem; color: var(--dk-navy-soft); }
 
 /* ── แถบไปป์ไลน์แพ็ค–ส่ง: 3 ขั้นตามงานจริง ตัวเลขใหญ่ กดสลับรายการ ── */
-.dkb-pipe { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.dkb-pipe { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
+@media (max-width: 640px) { .dkb-pipe { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* ขั้น "รอของ" ที่มีใบเลยวันที่คาด — พื้นชมพูอ่อนให้สะดุดตาแม้ยังไม่ได้กดดู */
+.dkb-pipestep[data-alert="1"] { background: var(--dk-coral-wash); }
+.dkb-pipestep[data-alert="1"] .hint { color: var(--dk-coral-ink); font-weight: 700; }
 .dkb-pipestep { position: relative; overflow: hidden; padding: 11px 13px 12px 17px; text-align: left; transition: transform 0.18s ease, box-shadow 0.18s ease; }
 .dkb-pipestep::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--dk-tone, var(--dk-quiet)); }
 .dkb-pipestep:hover { transform: translateY(-2px); box-shadow: 0 14px 28px rgba(44, 129, 196, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.92); }
@@ -610,6 +614,47 @@
   .dkb-shipwho { grid-area: who; }
   .dkb-shipqty { grid-area: qty; }
   .dkb-shiptime { grid-area: tm; }
+}
+
+/*
+ * ── 📦 รอของ: รายการที่ติดของใต้แถวออเดอร์ (สถานีแพ็ค–ส่ง) ──
+ * แถวที่มี .dkb-wait ใช้ผังเต็มความกว้างทุกจอ (แทนช่อง dots 210px ตอนจอกว้าง) — บรรทัดรายการต้องอ่านได้ยาว ๆ
+ * แต่ละบรรทัด: สถานะ (ยังไม่มา = แดง · มาไม่ครบ = เหลือง) · ชื่อรายการ · วันที่คาด/หมายเหตุ/ใครปัก · ปุ่ม "มาครบแล้ว" ≥44px
+ */
+.dkb-lrow:has(.dkb-wait) { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "main side" "wait wait"; align-items: start; }
+.dkb-wait { grid-area: wait; display: grid; gap: 6px; min-width: 0; }
+.dkb-waitrow {
+  display: grid; align-items: center; gap: 4px 10px; min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "st nm ok" "dt dt ok";
+  padding: 8px 10px 8px 12px; border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55); box-shadow: inset 4px 0 0 var(--dk-yolk-deep);
+}
+.dkb-waitrow[data-st="none"] { box-shadow: inset 4px 0 0 var(--dk-coral-deep); }
+.dkb-waitrow[data-over="1"] { background: var(--dk-coral-wash); box-shadow: inset 4px 0 0 var(--dk-coral-ink); }
+.dkb-waitrow .st { grid-area: st; font-size: 0.74rem; font-weight: 700; white-space: nowrap; color: var(--dk-yolk-ink); font-variant-numeric: tabular-nums; }
+.dkb-waitrow[data-st="none"] .st { color: var(--dk-coral-ink); }
+.dkb-waitrow .nm { grid-area: nm; font-size: 0.86rem; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dkb-waitrow .dt { grid-area: dt; display: flex; flex-wrap: wrap; align-items: center; gap: 3px 8px; font-size: 0.72rem; color: var(--dk-navy-soft); min-width: 0; }
+.dkb-waitrow .exp { font-weight: 700; color: var(--dk-navy); }
+.dkb-waitrow .exp.none { color: var(--dk-yolk-ink); }
+.dkb-waitrow[data-over="1"] .exp { color: #fff; background: var(--dk-coral-ink); padding: 1px 8px; border-radius: 999px; }
+.dkb-waitrow .note { font-style: italic; }
+.dkb-waitrow .by { color: var(--dk-faint); font-variant-numeric: tabular-nums; }
+/* คำตอบจากฝ่ายผลิต (TP) — บรรทัดเต็มความกว้างใต้รายละเอียด · ตอบแล้ว = พื้นฟ้าอ่อน */
+.dkb-waitrow { grid-template-areas: "st nm ok" "dt dt ok" "tp tp ok"; }
+.dkb-waitrow .tp { grid-area: tp; display: flex; flex-wrap: wrap; align-items: center; gap: 3px 8px; font-size: 0.72rem; color: var(--dk-navy-soft); min-width: 0; }
+.dkb-waitrow .tp[data-on="1"] { background: var(--dk-sky); color: var(--dk-blue-deep); padding: 4px 9px; border-radius: 10px; }
+.dkb-waitrow .tp b { font-weight: 700; }
+.dkb-waitrow .ok {
+  grid-area: ok; align-self: center; min-height: 44px; padding: 0 14px; border-radius: 12px; white-space: nowrap;
+  font-size: 0.8rem; font-weight: 700; color: var(--dk-mint-ink); background: var(--dk-mint-wash); border: 1.5px solid var(--dk-mint);
+}
+.dkb-waitrow .ok:hover { background: var(--dk-mint); color: #fff; }
+.dkb-waitrow .ok:disabled { opacity: 0.5; }
+@media (max-width: 640px) {
+  .dkb-waitrow { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "st nm" "dt dt" "tp tp" "ok ok"; }
+  .dkb-waitrow .ok { width: 100%; margin-top: 2px; }
 }
 
 /* ── ช่องว่าง — ต้องบอกว่าต้องทำอะไรต่อ ไม่ใช่แค่บอกว่าไม่มีข้อมูล ── */

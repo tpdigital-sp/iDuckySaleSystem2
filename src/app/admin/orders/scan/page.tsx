@@ -8,9 +8,13 @@
  * โครงหน้า (บน → ล่าง):
  *  1. กล่องยิง — อยู่บนสุด "ตลอดเวลา" ไม่ผูกกับแท็บ ยิงได้ไม่ว่ากำลังดูรายการไหน
  *     ข้างในมีขั้นตอน ① เลขออเดอร์ → ② เลขพัสดุ และข้อมูลออเดอร์ที่กำลังรอเลข
- *  2. แถบไปป์ไลน์ 3 ขั้นตามงานจริง: รอปริ้น/แพ็ค → พร้อมยิง → ยิงแล้ว
+ *  2. แถบไปป์ไลน์ 4 ขั้นตามงานจริง: รอปริ้น/แพ็ค → รอของ → พร้อมยิง → ยิงแล้ว
  *     ตัวเลขใหญ่อ่านจากระยะแขน กดเพื่อสลับรายการข้างล่าง
  *  3. รายการของขั้นที่เลือก — แถวที่ยิงไม่ได้บอกเหตุผลตรง ๆ ในแถว ไม่ใช่แค่ปุ่มเทา
+ *
+ * 📦 "รอของ" = ฝ่ายแพ็คปักว่าของรายการไหน "ยังไม่มา / มาไม่ครบ" (items[].arrival)
+ *    ปักได้จากปุ่มในแถว (โมดัล) หรือจากโหมดแพ็คในหน้าออเดอร์ · ใบที่ติดของโผล่ที่ขั้นนี้แทนขั้นรอปริ้น
+ *    บอกรายตัวว่ารออะไร มาแล้วกี่ชิ้น รอมากี่วัน คาดว่ามาวันไหน (เลยกำหนด = แดง) · กด "มาครบแล้ว" ทีเดียวจากแถว
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -30,20 +34,27 @@ import {
   SearchBox,
   Tag,
 } from "@/components/admin/ui";
+import ArrivalPicker, { arrivalSummary, fmtExpected, waitingDays, type ArrivalPatch } from "@/components/admin/ArrivalPicker";
 import {
   MOCK_ORDERS,
+  applyArrival,
+  arrivalOverdue,
   orderStatusLabel,
   packGate,
+  packMissingOf,
   withLog,
   type Order,
   type OrderStatus,
   type PackGate,
 } from "@/lib/admin-data";
 import { fetchOrdersAdmin, saveOrderAdmin } from "@/lib/order-repo";
+import { useActor } from "@/lib/perm-context";
 import { usePolling } from "@/lib/use-polling";
 
 type Msg = { kind: "ok" | "err" | "info"; text: string } | null;
-type Tab = "print" | "scan" | "done";
+/** คำตอบจากฝ่ายผลิต (ระบบ TP หน้า "ติดตามของ iDucky") ต่อรายการที่รอของ — key = <เลขออเดอร์>__<ลำดับรายการ> */
+type TPReply = { id: string; orderId: string; itemIndex: number; tpStatus?: string; tpNote?: string; tpEta?: string; tpBy?: string; tpAt?: string };
+type Tab = "print" | "wait" | "scan" | "done";
 
 /** สถานะที่อยู่ในสายงานแพ็ค–ส่ง (แบบผ่านแล้ว ยังไม่ส่ง) */
 const FULFILL: OrderStatus[] = ["อนุมัติแบบ", "กำลังผลิต"];
@@ -110,6 +121,10 @@ export default function ScanTrackingPage() {
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
   const [blocked, setBlocked] = useState<{ order: Order; gate: PackGate } | null>(null);
+  const [tpReplies, setTpReplies] = useState<Record<string, TPReply>>({}); // 🏭 คำตอบจาก TP ต่อรายการที่รอของ
+  const [arrivalFor, setArrivalFor] = useState<string | null>(null); // โมดัลปักของยังไม่มา — เก็บ id ไว้ อ่านออเดอร์สดจาก orders ทุกครั้ง
+  const [savingArrival, setSavingArrival] = useState(false);
+  const actor = useActor(); // ชื่อคนที่ล็อกอิน (ลงประวัติว่าใครปักของยังไม่มา)
   const [q, setQ] = useState(""); // ค้นหาในแท็บ "ยิงแล้ว"
   const [copied, setCopied] = useState<string | null>(null); // ออเดอร์ที่เพิ่งคัดลอกเลขพัสดุ
   const inputRef = useRef<HTMLInputElement>(null);
@@ -130,13 +145,34 @@ export default function ScanTrackingPage() {
     void load();
   }, [load]);
 
+  /** 🏭 ดึงคำตอบจากฝ่ายผลิต (TP) ของรายการที่ยังรอของ — เงียบถ้าดึงไม่ได้ (ยังไม่ตั้งค่า Firebase / ออฟไลน์) */
+  const loadTpReplies = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/orders/pack-followup", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = (await res.json()) as { replies?: TPReply[] };
+      const map: Record<string, TPReply> = {};
+      (data.replies ?? []).forEach((r) => {
+        map[`${r.orderId}__${r.itemIndex}`] = r;
+      });
+      setTpReplies(map);
+    } catch {
+      /* ข้าม */
+    }
+  }, []);
+  useEffect(() => {
+    if (demo) return;
+    void loadTpReplies();
+  }, [demo, loadTpReplies]);
+
   // อัปเดตลิสต์เงียบ ๆ (ออเดอร์ใหม่ที่แบบผ่าน / ตรวจแพ็คเสร็จ จะโผล่เอง) — ไม่แตะช่องยิง
   const refresh = useCallback(async () => {
-    if (busy || target) return; // กำลังยิงอยู่ อย่าทับ
+    if (busy || target || savingArrival) return; // กำลังยิง/กำลังบันทึกของอยู่ อย่าทับ
     const r = await fetchOrdersAdmin();
     if (r.orders.length === 0) return;
     setOrders((cur) => (JSON.stringify(cur) === JSON.stringify(r.orders) ? cur : r.orders));
-  }, [busy, target]);
+    if (r.orders.some((o) => packMissingOf(o).length > 0)) void loadTpReplies(); // มีใบรอของ → ถามฝ่ายผลิตด้วย
+  }, [busy, target, savingArrival, loadTpReplies]);
   usePolling(refresh, { enabled: !demo });
 
   // ช่องยิงโฟกัสตลอด ไม่ว่าดูแท็บไหน — เครื่องยิงทำงานได้เสมอ
@@ -148,14 +184,57 @@ export default function ScanTrackingPage() {
     return () => window.removeEventListener("focus", focusInput);
   }, [focusInput, target]);
 
-  // ── แยกออเดอร์เป็น 2 กอง ตามผลตรวจแพ็ค ──
-  const { toScan, toPrint } = useMemo(() => {
+  // ── แยกออเดอร์เป็น 3 กอง ตามผลตรวจแพ็ค ──
+  const { toScan, toPrint, toWait, waitOverdue } = useMemo(() => {
     const active = orders.filter((o) => FULFILL.includes(o.status) && !o.tracking);
+    const wait = active.filter((o) => packMissingOf(o).length > 0); // 📦 ของยังไม่มา/ไม่ครบ → รอของ
+    // เลยวันที่คาดว่าจะมาก่อน · แล้วใบที่รอมานานสุดก่อน
+    wait.sort((a, b) => {
+      const ma = packMissingOf(a);
+      const mb = packMissingOf(b);
+      const oa = ma.some((m) => arrivalOverdue(m.expectedAt)) ? 0 : 1;
+      const ob = mb.some((m) => arrivalOverdue(m.expectedAt)) ? 0 : 1;
+      if (oa !== ob) return oa - ob;
+      const sa = ma.reduce((x, m) => (m.since < x ? m.since : x), "9");
+      const sb = mb.reduce((x, m) => (m.since < x ? m.since : x), "9");
+      return sa.localeCompare(sb);
+    });
+    const rest = active.filter((o) => packMissingOf(o).length === 0);
     return {
-      toScan: active.filter((o) => packGate(o).ready), // ตรวจครบ → พร้อมยิง
-      toPrint: active.filter((o) => !packGate(o).ready), // ยังไม่ครบ → รอปริ้น/แพ็ค
+      toScan: rest.filter((o) => packGate(o).ready), // ตรวจครบ → พร้อมยิง
+      toPrint: rest.filter((o) => !packGate(o).ready), // ยังไม่ครบ → รอปริ้น/แพ็ค
+      toWait: wait,
+      waitOverdue: wait.filter((o) => packMissingOf(o).some((m) => arrivalOverdue(m.expectedAt))).length,
     };
   }, [orders]);
+
+  /** ออเดอร์ที่โมดัลปักของเปิดอยู่ — อ่านสดจาก orders จะได้เห็นผลทันทีหลังบันทึก */
+  const arrivalOrder = useMemo(() => (arrivalFor ? orders.find((o) => o.id === arrivalFor) ?? null : null), [arrivalFor, orders]);
+
+  /** 📦 ปักสถานะของรายการ (จากโมดัล/ปุ่ม "มาครบแล้ว" ในแถว) — บันทึกทันที ลงประวัติว่าใครปัก */
+  const saveArrival = useCallback(
+    async (o: Order, itemIndex: number, patch: ArrivalPatch) => {
+      const next = applyArrival(o, itemIndex, patch, actor);
+      if (next === o) return;
+      setSavingArrival(true);
+      const ok = demo ? true : await saveOrderAdmin(next);
+      setSavingArrival(false);
+      if (!ok) {
+        setMsg({ kind: "err", text: `บันทึกสถานะของไม่สำเร็จ (${o.id}) — ลองใหม่อีกครั้ง` });
+        return;
+      }
+      setOrders((os) => os.map((x) => (x.id === next.id ? next : x)));
+      const it = o.items[itemIndex];
+      setMsg({
+        kind: patch.status === "มาครบ" ? "ok" : "info",
+        text:
+          patch.status === "มาครบ"
+            ? `📦 ${o.id} · ${it?.name ?? ""} — ของมาครบแล้ว`
+            : `📦 ${o.id} · ${it?.name ?? ""} — ปัก “${patch.status}” แล้ว ใบนี้ย้ายไปขั้น “รอของ”`,
+      });
+    },
+    [actor, demo]
+  );
 
   // ── ออเดอร์ที่มีเลขพัสดุในระบบแล้ว — ล่าสุดขึ้นก่อน (เรียงจากเวลาที่ยิงใน log) ──
   const scanned = useMemo(
@@ -275,6 +354,13 @@ export default function ScanTrackingPage() {
 
   const PIPE: { key: Tab; label: string; n: number; hint: string; tone: string }[] = [
     { key: "print", label: "รอปริ้น/แพ็ค", n: toPrint.length, hint: "ตรวจแพ็คยังไม่ครบ", tone: "var(--dk-coral-deep)" },
+    {
+      key: "wait",
+      label: "รอของ",
+      n: toWait.length,
+      hint: toWait.length === 0 ? "ของมาครบทุกใบ" : waitOverdue ? `เลยกำหนด ${waitOverdue} ใบ` : "ยังไม่มา / มาไม่ครบ",
+      tone: waitOverdue ? "var(--dk-coral-ink)" : "var(--dk-yolk-deep)",
+    },
     { key: "scan", label: "พร้อมยิง", n: toScan.length, hint: "ตรวจครบ รอเลขพัสดุ", tone: "var(--dk-mint)" },
     { key: "done", label: "ยิงแล้ว", n: scanned.length, hint: `วันนี้ ${scannedToday} ใบ`, tone: "var(--dk-quiet)" },
   ];
@@ -366,6 +452,7 @@ export default function ScanTrackingPage() {
             onClick={() => setTab(p.key)}
             aria-pressed={tab === p.key}
             className="dkb-g dkb-pipestep"
+            data-alert={p.key === "wait" && waitOverdue > 0 ? "1" : undefined}
             style={{ ["--dk-tone" as string]: p.tone }}
           >
             <span className="lb">{p.label}</span>
@@ -412,6 +499,124 @@ export default function ScanTrackingPage() {
             </Rows>
           )}
         </>
+      ) : tab === "wait" ? (
+        <>
+          {/* ── 📦 รอของ: ของยังไม่มา/มาไม่ครบ — บอกรายตัวว่ารออะไร รอมากี่วัน คาดว่ามาวันไหน ── */}
+          <ListHead
+            title="ของยังไม่มา / มาไม่ครบ — รอของก่อนแพ็ค"
+            note={waitOverdue ? `${toWait.length} ใบ · เลยกำหนด ${waitOverdue} ใบ` : `${toWait.length} ใบ`}
+          />
+          {toWait.length === 0 ? (
+            <Empty
+              title="ไม่มีออเดอร์ที่รอของ"
+              body="ของรายการไหนยังไม่ถึงโต๊ะแพ็ค กด “ของยังไม่มา” ในแถวที่ขั้น “รอปริ้น/แพ็ค” หรือปักจากโหมดแพ็คในหน้าออเดอร์"
+            />
+          ) : (
+            <Rows>
+              {toWait.map((o) => {
+                const miss = packMissingOf(o);
+                const anyNone = miss.some((m) => m.status === "ยังไม่มา");
+                const anyOverdue = miss.some((m) => arrivalOverdue(m.expectedAt));
+                const longest = Math.max(...miss.map((m) => waitingDays(m.since)));
+                const okItems = o.items.length - miss.length;
+                return (
+                  <Row key={o.id} tone={anyOverdue ? "var(--dk-coral-ink)" : anyNone ? "var(--dk-coral-deep)" : "var(--dk-yolk-deep)"}>
+                    <RowMain
+                      name={o.customer || "ยังไม่ระบุชื่อ"}
+                      href={`/admin/orders/${encodeURIComponent(o.id)}`}
+                      tags={
+                        <>
+                          {anyOverdue ? (
+                            <Tag tone="solid">เลยวันที่คาด</Tag>
+                          ) : anyNone ? (
+                            <Tag tone="coral">ของยังไม่มา</Tag>
+                          ) : (
+                            <Tag tone="yolk">มาไม่ครบ</Tag>
+                          )}
+                          <Tag tone="quiet">
+                            รอมา {longest} วัน
+                          </Tag>
+                        </>
+                      }
+                      meta={
+                        <>
+                          <span className="id">{o.id}</span>
+                          <span>{qtyOf(o)} ชิ้น</span>
+                          <span>
+                            ติดของ {miss.length}/{o.items.length} รายการ
+                            {okItems > 0 ? ` · อีก ${okItems} รายการมาแล้ว` : ""}
+                          </span>
+                          {o.useByDate && (
+                            <span className="warn">ลูกค้าใช้งาน {fmtExpected(o.useByDate)}</span>
+                          )}
+                        </>
+                      }
+                    />
+                    <RowSide>
+                      <Btn tone="navy" small onClick={() => setArrivalFor(o.id)}>
+                        อัปเดตของ
+                      </Btn>
+                      <Btn small href={`/admin/orders/${encodeURIComponent(o.id)}`}>
+                        เปิดออเดอร์
+                      </Btn>
+                    </RowSide>
+                    {/* รายการที่ติดของ — บรรทัดละรายการ กด "มาครบแล้ว" ได้จากตรงนี้เลย */}
+                    <span className="dkb-wait">
+                      {miss.map((m) => {
+                        const over = arrivalOverdue(m.expectedAt);
+                        return (
+                          <span key={m.index} className="dkb-waitrow" data-st={m.status === "ยังไม่มา" ? "none" : "part"} data-over={over ? "1" : undefined}>
+                            <span className="st">{m.status === "ยังไม่มา" ? "⏳ ยังไม่มา" : `⚠️ ${arrivalSummary(m, m.need)}`}</span>
+                            <span className="nm">{m.item}</span>
+                            <span className="dt">
+                              {m.expectedAt ? (
+                                <b className="exp">{over ? `เลยกำหนด ${fmtExpected(m.expectedAt)}` : `คาดว่ามา ${fmtExpected(m.expectedAt)}`}</b>
+                              ) : (
+                                <b className="exp none">ไม่ได้ระบุวันที่คาด</b>
+                              )}
+                              {m.note && <span className="note">{m.note}</span>}
+                              <span className="by">
+                                ปักโดย {m.by} · รอมา {waitingDays(m.since)} วัน
+                              </span>
+                            </span>
+                            {/* 🏭 ฝ่ายผลิตตอบอะไรบ้าง (จากหน้า "ติดตามของ iDucky" ในระบบ TP) — ยังไม่ตอบก็บอกว่าส่งเรื่องไปแล้ว */}
+                            {(() => {
+                              const r = tpReplies[`${o.id}__${m.index}`];
+                              const answered = !!(r && (r.tpStatus || r.tpNote || r.tpEta));
+                              return (
+                                <span className="tp" data-on={answered ? "1" : undefined}>
+                                  {answered ? (
+                                    <>
+                                      <b>🏭 ฝ่ายผลิต: {r!.tpStatus || "รับเรื่องแล้ว"}</b>
+                                      {r!.tpEta && <span>ส่งได้ {fmtExpected(r!.tpEta)}</span>}
+                                      {r!.tpNote && <span className="note">{r!.tpNote}</span>}
+                                      {r!.tpBy && <span className="by">ตอบโดย {r!.tpBy}</span>}
+                                    </>
+                                  ) : (
+                                    <span className="by">🏭 ส่งเรื่องไประบบ TP (ติดตามของ iDucky) แล้ว — ฝ่ายผลิตยังไม่ตอบ</span>
+                                  )}
+                                </span>
+                              );
+                            })()}
+                            <button
+                              type="button"
+                              className="ok"
+                              disabled={savingArrival}
+                              onClick={() => void saveArrival(o, m.index, { status: "มาครบ" })}
+                              title="ของรายการนี้มาครบแล้ว — ปลดออกจากรอของ"
+                            >
+                              ✓ มาครบแล้ว
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </span>
+                  </Row>
+                );
+              })}
+            </Rows>
+          )}
+        </>
       ) : tab === "print" ? (
         <>
           <ListHead title="แบบผ่านแล้ว รอปริ้นใบงาน + แพ็ค" note={`${toPrint.length} ใบ`} />
@@ -445,6 +650,9 @@ export default function ScanTrackingPage() {
                     <RowSide>
                       <Btn tone="navy" small href={`/admin/orders/${encodeURIComponent(o.id)}/print?doc=work`}>
                         ปริ้นใบงาน
+                      </Btn>
+                      <Btn small onClick={() => setArrivalFor(o.id)} title="ของรายการไหนยังไม่ถึงโต๊ะแพ็ค ปักไว้ให้ใบนี้ไปรอที่ขั้น “รอของ”">
+                        📦 ของยังไม่มา
                       </Btn>
                     </RowSide>
                   </Row>
@@ -569,6 +777,12 @@ export default function ScanTrackingPage() {
                     {s.need ? ` จาก ${s.need}` : ""} ชิ้น
                   </li>
                 ))}
+                {blocked.gate.missing.map((m) => (
+                  <li key={`m-${m.index}`} className="font-semibold">
+                    · 📦 {m.status === "ยังไม่มา" ? "ของยังไม่มา" : `ของมาไม่ครบ (${m.got ?? 0}/${m.need})`}: {m.item}
+                    {m.expectedAt ? ` — ${arrivalOverdue(m.expectedAt) ? "เลยกำหนด" : "คาดว่ามา"} ${fmtExpected(m.expectedAt)}` : ""}
+                  </li>
+                ))}
               </ul>
             </div>
 
@@ -585,6 +799,62 @@ export default function ScanTrackingPage() {
               >
                 ปิด · ยิงออเดอร์อื่น
               </Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 📦 โมดัลปักของยังไม่มา/มาไม่ครบ — ทีละรายการของออเดอร์ บันทึกทันทีที่กด ── */}
+      {arrivalOrder && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="arrival-title"
+          className="fixed inset-0 z-[100] grid place-items-center p-3"
+          style={{ background: "rgba(23,58,107,.62)", backdropFilter: "blur(4px)" }}
+          onClick={() => setArrivalFor(null)}
+        >
+          <div
+            className="dkb flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-[26px]"
+            style={{ boxShadow: "0 30px 60px rgba(23,58,107,.4)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 px-5 pt-5">
+              <div className="min-w-0">
+                <h2 id="arrival-title" className="dkb-display text-[1.25rem]">
+                  📦 ของมาถึงโต๊ะแพ็คหรือยัง
+                </h2>
+                <p className="dkb-code mt-1 text-[13px]" style={{ color: "var(--dk-navy-soft)" }}>
+                  {arrivalOrder.id}
+                </p>
+                <p className="text-[14px]">{arrivalOrder.customer || "ยังไม่ระบุชื่อ"}</p>
+              </div>
+              <Btn small onClick={() => setArrivalFor(null)}>
+                ปิด
+              </Btn>
+            </div>
+            <p className="px-5 pt-2 text-[12.5px]" style={{ color: "var(--dk-navy-soft)" }}>
+              ปักเฉพาะรายการที่ของ<b>ยังไม่ถึงมือ</b> — รายการที่ของอยู่ตรงหน้าแล้วไม่ต้องกด · กด “มาครบแล้ว” เมื่อของถึง
+              ใบนี้จะกลับไปขั้นแพ็คเอง
+            </p>
+            <div className="mt-3 grid gap-3 overflow-y-auto px-5 pb-5">
+              {arrivalOrder.items.map((it, i) => (
+                <div key={`${it.productId}-${i}`} className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
+                  <div className="mb-2 flex items-baseline justify-between gap-2">
+                    <p className="min-w-0 truncate text-[14px] font-extrabold text-slate-900">{it.name}</p>
+                    <span className="shrink-0 text-[15px] font-black tabular-nums text-slate-900">
+                      {it.qty} <span className="text-[11px] font-bold text-slate-400">{it.unitYield?.unit || "ชิ้น"}</span>
+                    </span>
+                  </div>
+                  <ArrivalPicker
+                    compact
+                    arrival={it.arrival}
+                    need={it.qty}
+                    unit={it.unitYield?.unit || "ชิ้น"}
+                    onSave={(patch) => void saveArrival(arrivalOrder, i, patch)}
+                  />
+                </div>
+              ))}
             </div>
           </div>
         </div>

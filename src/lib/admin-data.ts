@@ -96,6 +96,31 @@ export interface PackCheck {
   at: string;
 }
 
+/** สถานะ "ของมาถึงโต๊ะแพ็คหรือยัง" ของรายการ 1 รายการ */
+export type PackArrivalStatus = "ยังไม่มา" | "มาไม่ครบ" | "มาครบ";
+
+/**
+ * 📦 ติดตามของยังไม่มา / ของยังไม่ครบ ต่อรายการ (ฝ่ายแพ็คปัก)
+ * ต่างจาก PackCheck (ตรวจนับ "ต่อรูปแบบงาน" ตอนของอยู่ตรงหน้าแล้ว) — อันนี้คือของ "ยังไม่ถึงมือ" เลย
+ * เช่น รอโรงงานส่ง / รอผลิตอีกล็อต / มาแค่บางส่วน · ปักแล้วออเดอร์ย้ายไปขั้น "รอของ" ที่สถานีแพ็ค–ส่ง
+ * และห้ามยิงเลขพัสดุจนกว่าจะกด "มาครบ" — สถานะ "มาครบ" เก็บไว้เป็นประวัติ ไม่ลบทิ้ง
+ */
+export interface PackArrival {
+  status: PackArrivalStatus;
+  /** มาแล้วกี่ชิ้น (กรอกเมื่อ "มาไม่ครบ") — หน่วยเดียวกับ qty ของรายการ */
+  got?: number;
+  /** คาดว่าของจะมาวันไหน (YYYY-MM-DD) — เลยวันนี้แล้วยังไม่มา = ป้ายแดงที่สถานีแพ็ค */
+  expectedAt?: string;
+  /** รอจากไหน/ติดอะไร เช่น "รอโรงงานหุ้มอะคริลิค" */
+  note?: string;
+  /** ใครปัก */
+  by: string;
+  /** เวลาที่ปัก/อัปเดตล่าสุด (ISO) */
+  at: string;
+  /** เวลาที่ปักครั้งแรกว่ายังไม่มา (ISO) — ไว้บอกว่ารอมากี่วันแล้ว (ไม่รีเซ็ตตอนอัปเดตหมายเหตุ) */
+  since?: string;
+}
+
 /** ภาพแบบงาน 1 รูป ที่กราฟฟิกอัปโหลดให้ลูกค้าตรวจ */
 export interface Proof {
   url: string;
@@ -370,6 +395,8 @@ export interface OrderItem {
   sampleRequired?: { by: string; at: string };
   /** พนักงานแพ็คยืนยันว่าใส่ชิ้นงานตัวอย่างลงกล่องแล้ว — ต้องมีก่อนยิงเลขพัสดุ (เมื่อ sampleRequired) */
   samplePacked?: { by: string; at: string };
+  /** 📦 ของรายการนี้มาถึงโต๊ะแพ็คหรือยัง (ยังไม่มา/มาไม่ครบ/มาครบ) — ไม่มีค่า = ไม่เคยปัก ถือว่าปกติ */
+  arrival?: PackArrival;
   /** กราฟฟิกยืนยันว่าอ่านรายละเอียดรายการนี้แล้ว (ก่อนทำแบบงาน) — audit trail */
   graphicAck?: { by: string; at: string };
   /**
@@ -885,6 +912,126 @@ export interface PackGate {
   noPhoto: boolean;
   /** ยังเก็บเงินไม่ครบ (ยอดคงเหลือมัดจำ หรือส่วนต่างที่โตขึ้นหลังโอน) — ห้ามยิงเลขพัสดุ */
   unpaidBalance: boolean;
+  /** 📦 รายการที่ฝ่ายแพ็คปักว่า "ของยังไม่มา / มาไม่ครบ" — ห้ามส่งจนกว่าจะกดมาครบ */
+  missing: PackMissing[];
+}
+
+/** รายการที่ของยังไม่ถึงโต๊ะแพ็ค (สรุปจาก OrderItem.arrival) */
+export interface PackMissing {
+  /** ตำแหน่งรายการใน order.items */
+  index: number;
+  item: string;
+  status: Exclude<PackArrivalStatus, "มาครบ">;
+  /** มาแล้วกี่ชิ้น (มาไม่ครบ) */
+  got?: number;
+  /** ต้องได้กี่ชิ้น (= qty ของรายการ) */
+  need: number;
+  expectedAt?: string;
+  note?: string;
+  by: string;
+  at: string;
+  /** ปักครั้งแรกเมื่อไหร่ */
+  since: string;
+}
+
+/** รายการที่ของยังไม่มา/ไม่ครบของออเดอร์นี้ (ว่าง = ของครบทุกรายการหรือไม่เคยปัก) */
+export function packMissingOf(order: Order): PackMissing[] {
+  const out: PackMissing[] = [];
+  order.items.forEach((it, i) => {
+    const a = it.arrival;
+    if (!a || a.status === "มาครบ") return;
+    out.push({
+      index: i,
+      item: it.name,
+      status: a.status,
+      got: a.status === "มาไม่ครบ" ? a.got ?? 0 : undefined,
+      need: it.qty,
+      expectedAt: a.expectedAt,
+      note: a.note,
+      by: a.by,
+      at: a.at,
+      since: a.since ?? a.at,
+    });
+  });
+  return out;
+}
+
+/** ของที่คาดว่าจะมา "เลยวันที่คาดแล้ว" หรือยัง (ไม่ได้ระบุวัน = ไม่เลย) */
+export function arrivalOverdue(expectedAt?: string): boolean {
+  if (!expectedAt) return false;
+  const d = new Date(expectedAt + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return d.getTime() < today.getTime();
+}
+
+/** รอของมากี่วันแล้ว นับจากวันที่ปักครั้งแรก (0 = วันนี้) */
+export function waitingDays(since?: string): number {
+  if (!since) return 0;
+  const d = new Date(since);
+  if (Number.isNaN(d.getTime())) return 0;
+  d.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.round((today.getTime() - d.getTime()) / 86400000));
+}
+
+/** วันที่ YYYY-MM-DD → "12 ก.ย. 69" (พ.ศ. ตามที่ทีมคุยกัน) */
+export function fmtExpected(ymd?: string): string {
+  if (!ymd) return "";
+  const d = new Date(ymd + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return ymd;
+  return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
+}
+
+/** ข้อความสรุปสถานะของบรรทัดเดียว — ใช้ในลิสต์/ป้าย ให้ทุกจอพูดเหมือนกัน */
+export function arrivalSummary(a: Pick<PackArrival, "status" | "got">, need: number, unit = "ชิ้น"): string {
+  if (a.status === "มาครบ") return "มาครบแล้ว";
+  if (a.status === "มาไม่ครบ") return `มาแล้ว ${a.got ?? 0}/${need} ${unit}`;
+  return "ยังไม่มา";
+}
+
+export type ArrivalPatch = { status: PackArrivalStatus; got?: number; expectedAt?: string; note?: string };
+
+/**
+ * 📦 ปักสถานะของรายการ (ยังไม่มา / มาไม่ครบ / มาครบ) + ลงประวัติ — คืน Order ใหม่ ไม่แก้ของเดิม
+ * ใช้ทั้งโหมดแพ็คในหน้าออเดอร์และโมดัลที่สถานีแพ็ค–ส่ง จะได้ลง log/นับวันเหมือนกัน
+ * since = วันที่ปักครั้งแรกในรอบนี้ (แก้หมายเหตุ/วันคาดไม่รีเซ็ต · มาครบแล้วปักใหม่ = เริ่มนับใหม่)
+ * "มาครบ" เก็บไว้เป็นประวัติว่าเคยรอ (ไม่ลบ arrival ทิ้ง) แต่ไม่ติดด่านแล้ว
+ */
+export function applyArrival(order: Order, itemIndex: number, patch: ArrivalPatch, actor: string): Order {
+  const item = order.items[itemIndex];
+  if (!item) return order;
+  const prev = item.arrival;
+  const now = new Date().toISOString();
+  const wasMissing = !!prev && prev.status !== "มาครบ";
+  const done = patch.status === "มาครบ";
+  const arrival: PackArrival = {
+    status: patch.status,
+    ...(patch.status === "มาไม่ครบ" ? { got: patch.got ?? 0 } : {}),
+    ...(!done && patch.expectedAt ? { expectedAt: patch.expectedAt } : {}),
+    ...(!done && patch.note ? { note: patch.note } : {}),
+    by: actor,
+    at: now,
+    ...(!done ? { since: wasMissing ? prev!.since ?? prev!.at : now } : {}),
+  };
+  const items = order.items.map((it, i) => (i === itemIndex ? { ...it, arrival } : it));
+  const detail = [
+    item.name,
+    patch.status === "มาไม่ครบ" ? `มาแล้ว ${patch.got ?? 0}/${item.qty}` : "",
+    !done && patch.expectedAt ? `คาดว่ามา ${fmtExpected(patch.expectedAt)}` : "",
+    !done && patch.note ? patch.note : "",
+    done && wasMissing ? `รอมา ${waitingDays(prev!.since ?? prev!.at)} วัน` : "",
+  ]
+    .filter(Boolean)
+    .join(" — ");
+  return withLog(
+    { ...order, items },
+    actor,
+    done ? "📦 ของมาครบแล้ว" : patch.status === "ยังไม่มา" ? "📦 ของยังไม่มา" : "📦 ของมาไม่ครบ",
+    detail
+  );
 }
 
 /**
@@ -908,15 +1055,18 @@ export function packGate(order: Order): PackGate {
 
   const noPhoto = !(order.packPhotos && order.packPhotos.length > 0);
   const unpaidBalance = hasUnpaidBalance(order);
+  const missing = packMissingOf(order);
 
   return {
-    ready: !uncounted.length && !unread.length && !short.length && !unsampled.length && !noPhoto && !unpaidBalance,
+    ready:
+      !uncounted.length && !unread.length && !short.length && !unsampled.length && !noPhoto && !unpaidBalance && !missing.length,
     uncounted,
     unread,
     short,
     unsampled,
     noPhoto,
     unpaidBalance,
+    missing,
   };
 }
 

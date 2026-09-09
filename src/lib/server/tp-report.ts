@@ -1,7 +1,8 @@
 import "server-only";
+import { FieldValue } from "firebase-admin/firestore";
 import { getFirestoreAdmin } from "@/lib/server/firebase-admin";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderTotal, type Order } from "@/lib/admin-data";
+import { orderTotal, proofsOf, type Order } from "@/lib/admin-data";
 import { SITE_URL } from "@/lib/shop-info";
 
 /**
@@ -101,6 +102,113 @@ export async function reportPaidToTP(
     const code = (e as { code?: number | string })?.code;
     if (code !== 6 && code !== "already-exists")
       console.error("[tp-report] ส่งออเดอร์ไป msVerify ไม่สำเร็จ:", (e as Error)?.message);
+  }
+}
+
+/**
+ * 📦 ติดตามของยังไม่มา/มาไม่ครบ → หน้า "ติดตามของ iDucky" ในระบบ TP-Leader (pack-followup.html)
+ * เขียนลง tp-fixflow collection iduckyPackFollowups · doc id = <เลขออเดอร์>__<ลำดับรายการ>
+ * ยิงเฉพาะรายการที่ arrival "เปลี่ยน" ในคำขอนี้ (เทียบก่อน/หลัง) · merge:true เพื่อไม่ทับฟิลด์ที่ฝั่ง TP เขียน (tp*)
+ * "มาครบ" = open:false + resolvedAt — เก็บไว้เป็นประวัติ ฝั่ง TP โชว์ในแท็บปิดแล้ว
+ * Fire-and-forget เหมือน reportPaidToTP
+ */
+export const TP_FOLLOWUP_COLLECTION = "iduckyPackFollowups";
+
+export async function syncArrivalToTP(before: Order, after: Order): Promise<void> {
+  const db = getFirestoreAdmin();
+  if (!db) return;
+  const now = new Date().toISOString();
+  for (let i = 0; i < after.items.length; i++) {
+    const it = after.items[i];
+    const a = it.arrival;
+    if (!a) continue;
+    const b = before.items[i]?.arrival;
+    if (b && JSON.stringify(a) === JSON.stringify(b)) continue; // ไม่เปลี่ยน — ไม่ยิง
+    const open = a.status !== "มาครบ";
+    const proofs = proofsOf(it);
+    // เริ่ม "รอบใหม่" (เดิมไม่เคยปัก หรือมาครบไปแล้ว → ปักยังไม่มา/มาไม่ครบอีกครั้ง) → ล้างคำตอบฝ่ายผลิตของรอบก่อนทิ้ง
+    // ไม่งั้นการ์ดใน TP โชว์ "รับเรื่องแล้ว ส่งได้ <วันเก่า>" ทั้งที่เป็นเรื่องใหม่ (เจอตอนทดสอบ 9 ก.ย. 69) · tpHistory คงไว้เป็นประวัติ
+    const newRound = open && (!b || b.status === "มาครบ");
+    const clearReply = newRound
+      ? { tpStatus: FieldValue.delete(), tpEta: FieldValue.delete(), tpNote: FieldValue.delete(), tpBy: FieldValue.delete(), tpAt: FieldValue.delete() }
+      : {};
+    try {
+      await db
+        .collection(TP_FOLLOWUP_COLLECTION)
+        .doc(`${after.id}__${i}`)
+        .set(
+          {
+            id: `iducky-${after.id}__${i}`,
+            orderId: after.id,
+            itemIndex: i,
+            itemName: it.name,
+            qty: it.qty,
+            unit: it.unitYield?.unit || "ชิ้น",
+            customerName: after.customer || "",
+            phone: after.phone || "",
+            orderLink: `${SITE_URL}/admin/orders/${encodeURIComponent(after.id)}`,
+            proofUrl: proofs[0]?.url || "",
+            status: a.status,
+            got: a.status === "มาไม่ครบ" ? a.got ?? 0 : null,
+            expectedAt: open ? a.expectedAt || "" : "",
+            note: open ? a.note || "" : "",
+            by: a.by,
+            at: a.at,
+            since: a.since || a.at,
+            open,
+            resolvedAt: open ? null : a.at,
+            rush: !!after.rush,
+            useByDate: after.useByDate || "",
+            orderStatus: after.status,
+            origin: "iducky",
+            updatedAt: now,
+            ...clearReply,
+          },
+          { merge: true }
+        );
+    } catch (e) {
+      console.error("[tp-report] ส่งของยังไม่มาไป TP ไม่สำเร็จ:", (e as Error)?.message);
+    }
+  }
+}
+
+/** ฝั่ง TP ตอบกลับอะไรบ้าง (tp* ที่หน้า pack-followup.html เขียน) — สถานีแพ็คเอาไปโชว์ใต้รายการ */
+export interface TPFollowupReply {
+  id: string;
+  orderId: string;
+  itemIndex: number;
+  open: boolean;
+  tpStatus?: string;
+  tpNote?: string;
+  tpEta?: string;
+  tpBy?: string;
+  tpAt?: string;
+}
+
+/** อ่านรายการติดตามที่ยังเปิดอยู่ทั้งหมด (ฝ่ายผลิตตอบว่าอะไร) — ไม่ตั้งค่า Firebase = คืนว่าง */
+export async function fetchOpenFollowupsFromTP(): Promise<TPFollowupReply[]> {
+  const db = getFirestoreAdmin();
+  if (!db) return [];
+  try {
+    const snap = await db.collection(TP_FOLLOWUP_COLLECTION).where("open", "==", true).get();
+    return snap.docs.map((d) => {
+      const x = d.data() as Record<string, unknown>;
+      const str = (k: string) => (typeof x[k] === "string" ? (x[k] as string) : undefined);
+      return {
+        id: d.id,
+        orderId: String(x.orderId ?? ""),
+        itemIndex: Number(x.itemIndex ?? 0),
+        open: true,
+        tpStatus: str("tpStatus"),
+        tpNote: str("tpNote"),
+        tpEta: str("tpEta"),
+        tpBy: str("tpBy"),
+        tpAt: str("tpAt"),
+      };
+    });
+  } catch (e) {
+    console.error("[tp-report] อ่านรายการติดตามจาก TP ไม่สำเร็จ:", (e as Error)?.message);
+    return [];
   }
 }
 

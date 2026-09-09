@@ -33,6 +33,8 @@ import {
   orderWhtAmount,
   orderVatAmount,
   packGate,
+  applyArrival,
+  arrivalOverdue,
   PROOF_STYLES,
   proofsOf,
   STATUS_STYLES,
@@ -62,6 +64,7 @@ import { Banner, CopyChip, GH, HBTN, LogTimeline, PageShell, soft } from "@/comp
 import ImageLightbox from "@/components/ImageLightbox";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import PackCheckPanel from "@/components/PackCheckPanel";
+import ArrivalPicker, { arrivalSummary, fmtExpected, type ArrivalPatch } from "@/components/admin/ArrivalPicker";
 import ItemAdder from "@/components/admin/ItemAdder";
 import QuotePanel from "@/components/admin/QuotePanel";
 import Barcode from "@/components/Barcode";
@@ -1321,6 +1324,7 @@ export default function AdminOrderDetailPage() {
         g.uncounted.length ? `ตรวจนับแบบงานอีก ${g.uncounted.length} รูป` : "",
         g.unread.length ? `ยืนยันอ่านรายละเอียดอีก ${g.unread.length} รายการ` : "",
         g.short.length ? `ของไม่ครบ ${g.short.length} รายการ` : "",
+        g.missing.length ? `ของยังไม่มา/ไม่ครบ ${g.missing.length} รายการ (${g.missing.map((m) => m.item).join(", ")})` : "",
         g.unsampled.length ? `ยังไม่ยืนยันใส่ชิ้นงานตัวอย่าง ${g.unsampled.length} รายการ` : "",
         g.noPhoto ? "ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง" : "",
         g.unpaidBalance ? (order?.deposit ? "ยังเก็บยอดคงเหลือ (มัดจำ 50%) ไม่ครบ" : "ยังเก็บส่วนต่างที่ตีราคาเพิ่มไม่ครบ") : "",
@@ -1568,6 +1572,19 @@ export default function AdminOrderDetailPage() {
       acked ? "ยกเลิกยืนยันอ่านรายละเอียด" : "ยืนยันอ่านรายละเอียดแล้ว",
       item?.name
     );
+    setOrder(next);
+    if (!demo) void saveOrderAdmin(next);
+  }
+
+  /**
+   * 📦 ฝ่ายแพ็คปักว่าของรายการนี้ "ยังไม่มา / มาไม่ครบ / มาครบ"
+   * ปักยังไม่มา → ออเดอร์ย้ายไปขั้น "รอของ" ที่สถานีแพ็ค–ส่ง + ห้ามยิงเลขพัสดุ · กดมาครบ = ปลดล็อก (เก็บเป็นประวัติ ไม่ลบ)
+   * since = วันที่ปักครั้งแรกในรอบนี้ (แก้หมายเหตุ/วันคาดไม่รีเซ็ต · มาครบแล้วปักใหม่ = เริ่มนับใหม่)
+   */
+  function setArrival(itemIndex: number, patch: ArrivalPatch) {
+    if (!order) return;
+    const next = applyArrival(order, itemIndex, patch, actor);
+    if (next === order) return;
     setOrder(next);
     if (!demo) void saveOrderAdmin(next);
   }
@@ -2101,6 +2118,7 @@ export default function AdminOrderDetailPage() {
           onCheck={setPackCheck}
           onAck={toggleNoteAck}
           onSampleAck={toggleSamplePacked}
+          onArrival={setArrival}
           onTrackingChange={(v) => setOrder((cur) => (cur ? { ...cur, tracking: v } : cur))}
           onTrackingSave={saveTracking}
           onZoom={showProof}
@@ -3230,6 +3248,31 @@ export default function AdminOrderDetailPage() {
                         }
                       >
                         {it.samplePacked ? "🎁 งานตัวอย่างใส่กล่องแล้ว" : "🎁 มีงานตัวอย่างต้องส่ง"}
+                      </span>
+                    )}
+                    {/* 📦 ฝ่ายแพ็คปักว่าของยังไม่มา/มาไม่ครบ — แอดมินเห็นจากหน้าปกติได้เลยว่าใบนี้ติดของ ไม่ต้องเข้าโหมดแพ็ค */}
+                    {it.arrival && it.arrival.status !== "มาครบ" && (
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${
+                          it.arrival.status === "ยังไม่มา"
+                            ? "bg-rose-50 text-rose-700 ring-rose-200/70"
+                            : "bg-amber-50 text-amber-700 ring-amber-200/70"
+                        }`}
+                        title={[
+                          `ปักโดย ${it.arrival.by} · ${shortTime(it.arrival.at)}`,
+                          it.arrival.expectedAt ? `คาดว่ามา ${fmtExpected(it.arrival.expectedAt)}` : "",
+                          it.arrival.note ?? "",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      >
+                        📦 {arrivalSummary(it.arrival, it.qty)}
+                        {it.arrival.expectedAt && (
+                          <span className={`ml-1 ${arrivalOverdue(it.arrival.expectedAt) ? "text-rose-700 underline" : "opacity-80"}`}>
+                            · {arrivalOverdue(it.arrival.expectedAt) ? "เลยกำหนด" : "คาดว่ามา"} {fmtExpected(it.arrival.expectedAt)}
+                          </span>
+                        )}
+                        {it.arrival.note && <span className="ml-1 font-normal opacity-80">· {it.arrival.note}</span>}
                       </span>
                     )}
                   </div>
@@ -5390,6 +5433,15 @@ function ProofCarousel({
  */
 function packTodos(order: Order, gate: ReturnType<typeof packGate>): { icon: string; text: string }[] {
   const out: { icon: string; text: string }[] = [];
+  // ของยังไม่มา/มาไม่ครบขึ้นก่อนสุด — แพ็คต่อไม่ได้เลยจนกว่าของจะถึง
+  gate.missing.forEach((m) =>
+    out.push({
+      icon: "📦",
+      text: `${m.status === "ยังไม่มา" ? "ของยังไม่มา" : `ของมาไม่ครบ (${m.got ?? 0}/${m.need})`}: ${m.item}${
+        m.expectedAt ? ` · ${arrivalOverdue(m.expectedAt) ? "เลยกำหนด" : "คาดว่ามา"} ${fmtExpected(m.expectedAt)}` : ""
+      }`,
+    })
+  );
   // ของไม่ครบขึ้นก่อน — ต้องถามแอดมินก่อนทำอย่างอื่น
   gate.short.forEach((s) => out.push({ icon: "⚠️", text: `ของไม่ครบ: ${s.item} (นับได้ ${s.got}/${s.need})` }));
   // ตรวจนับ: รวมรูปของรายการเดียวกันเป็นบรรทัดเดียว คนแพ็คไล่ทีละรายการอยู่แล้ว
@@ -5410,6 +5462,7 @@ function PackView({
   onCheck,
   onAck,
   onSampleAck,
+  onArrival,
   onTrackingChange,
   onTrackingSave,
   onZoom,
@@ -5421,6 +5474,7 @@ function PackView({
   onCheck: (i: number, j: number, status: "ครบ" | "ไม่ครบ", got?: number) => void;
   onAck: (i: number) => void;
   onSampleAck: (i: number) => void;
+  onArrival: (i: number, patch: ArrivalPatch) => void;
   onTrackingChange: (v: string) => void;
   onTrackingSave: () => void;
   onZoom: (i: number, j: number) => void;
@@ -5479,8 +5533,12 @@ function PackView({
           const qc = proofQtyCheck(it, proofs);
           const qtyMismatch = qc.comparable && !qc.ok;
           const qtyOtherUnit = qc.total > 0 && !qc.comparable && qc.unit !== "";
+          const itemMissing = !!it.arrival && it.arrival.status !== "มาครบ";
           return (
-            <div key={`${it.productId}-${i}`} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200">
+            <div
+              key={`${it.productId}-${i}`}
+              className={`rounded-2xl bg-white p-3 shadow-sm ${itemMissing ? "ring-2 ring-rose-400" : "ring-1 ring-slate-200"}`}
+            >
               {/* งานตัวอย่าง — วางบนสุดให้สะดุดตาก่อนเริ่มแพ็ค · บังคับยืนยันก่อนยิงเลขพัสดุ */}
               {it.sampleRequired && (
                 <button
@@ -5516,6 +5574,16 @@ function PackView({
                     </span>
                   )}
                 </span>
+              </div>
+
+              {/* 📦 ของมาถึงโต๊ะแพ็คหรือยัง — ปักก่อนนับ: ของยังไม่มา/มาไม่ครบ = ออเดอร์ไปรอที่ขั้น "รอของ" ห้ามยิงเลข */}
+              <div className="mb-2">
+                <ArrivalPicker
+                  arrival={it.arrival}
+                  need={it.qty}
+                  unit={qc.saleUnit || "ชิ้น"}
+                  onSave={(patch) => onArrival(i, patch)}
+                />
               </div>
 
               {/* จำนวนบนรูปไม่ตรงกับที่ลูกค้าสั่ง — คนแพ็คต้องเห็นก่อนนับ ไม่งั้นแพ็คตามป้ายบนรูปผิดจำนวน */}
