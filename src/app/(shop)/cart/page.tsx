@@ -116,6 +116,8 @@ export default function CartPage() {
               .filter(([k]) => k !== PLACEMENT_SPEC_LABEL)
               .map(([k, v]) => `${k}: ${v}`)
               .join(" · "),
+            // ตัวเลือกแบบมีโครงสร้าง (เหมือนตอน checkout) — ฝั่งเซิร์ฟเวอร์ใช้อ่าน "1 หน่วยได้กี่ชิ้น" ลงใบเสนอราคา
+            sel: restSel,
             qty: i.qty,
             unitPrice: i.unitPrice,
             ...(artworkUrls.length ? { artworkUrls } : {}),

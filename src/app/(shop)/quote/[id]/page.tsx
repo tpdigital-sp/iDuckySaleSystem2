@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { artQtyOf, formatPrice } from "@/lib/products";
+import { artQtyOf, formatPrice, type Product } from "@/lib/products";
+import { fetchProductsByIds } from "@/lib/product-repo";
+import { itemPiecesLine } from "@/lib/item-yield";
 import { artworkSide } from "@/lib/admin-data";
 import ImageLightbox from "@/components/ImageLightbox";
 import { daysToExpire, quoteMemberDiscount, quoteStatusOf, quoteSubtotal, quoteTotal, type Quote, type QuoteStatus } from "@/lib/quotes";
@@ -71,6 +73,19 @@ export default function CustomerQuotePage() {
   const [accepted, setAccepted] = useState(false);
   /** ขยายดูลายที่แนบ — i = ลำดับรายการ · idx = รูปที่เท่าไรในรายการนั้น */
   const [lightbox, setLightbox] = useState<{ i: number; idx: number } | null>(null);
+  /* 📐 สินค้าจริงของรายการ — คิด "สั่ง N แผ่น ได้ X ชิ้น" ให้ใบเก่าที่ยังไม่ได้แช่ unitYield */
+  const [prodById, setProdById] = useState<Record<string, Product>>({});
+  const itemIdsKey = (quote?.items ?? []).map((i) => i.productId).filter((id) => id && !id.includes("#") && id !== "special-item").sort().join(",");
+  useEffect(() => {
+    if (!itemIdsKey) return;
+    let alive = true;
+    fetchProductsByIds(itemIdsKey.split(","))
+      .then((list) => alive && setProdById(Object.fromEntries(list.map((p) => [p.id, p]))))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [itemIdsKey]);
 
   useEffect(() => {
     fetch(`/api/quotes/${encodeURIComponent(id)}?key=${encodeURIComponent(key)}`, { cache: "no-store" })
@@ -217,6 +232,8 @@ export default function CustomerQuotePage() {
                         stripLinks
                         labelClassName="t-ink"
                         className="mt-2 pl-[34px] text-[.8rem] leading-relaxed t-soft"
+                        /* 📐 งานแบ่งแผ่น/เซ็ต — บอกจำนวนชิ้นจริงของยอดที่เสนอ (ประโยคเดียวเหมือนตะกร้า) · null = ไม่วาดบล็อก */
+                        after={itemPiecesLine(it, prodById[it.productId]) ? <p className="font-semibold t-blue">{itemPiecesLine(it, prodById[it.productId])}</p> : null}
                       />
                       {/* 🎨 ลายที่ลูกค้าแนบมากับรายการ — โชว์ให้เห็นว่าราคานี้คิดจากลายไหน (แตะเพื่อขยาย) */}
                       {(it.artworkUrls?.length ?? 0) > 0 && (

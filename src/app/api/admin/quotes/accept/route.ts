@@ -6,6 +6,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order } from "@/lib/admin-data";
 import { quoteMemberDiscount, quoteMemberLabel, quoteTotal, withQuoteLog, type Quote } from "@/lib/quotes";
 import { syncQuoteMemberTier } from "@/lib/server/quote-member-tier";
+import { withUnitYield } from "@/lib/products-server";
 
 export const runtime = "nodejs";
 
@@ -59,7 +60,8 @@ export async function POST(req: Request) {
     ...(quote.shippingLabel ? { shippingLabel: quote.shippingLabel } : {}),
     shippingCost: quote.shippingCost || 0,
     status: "รอชำระเงิน",
-    items: quote.items.map((it) => ({ ...it })),
+    // 📐 ใบเก่าที่ยังไม่ได้แช่จำนวนชิ้นต่อหน่วย เติมให้ตอนกลายเป็นออเดอร์ (มีอยู่แล้วไม่ทับ)
+    items: await withUnitYield(quote.items.map((it) => ({ ...it }))),
     placedBy: by,
     ...(quote.email ? { email: quote.email } : {}),
     // ผู้ติดต่อที่ผูกไว้ตอนทำใบเสนอราคา ต้องติดไปกับออเดอร์ด้วย ไม่งั้นแต้มไม่เข้าใคร

@@ -14,7 +14,9 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import RequirePerm from "@/components/RequirePerm";
-import { artQtyOf, formatPrice } from "@/lib/products";
+import { artQtyOf, formatPrice, type Product } from "@/lib/products";
+import { fetchProductsByIds } from "@/lib/product-repo";
+import { itemPiecesLine } from "@/lib/item-yield";
 import {
   QUOTE_STYLES,
   awaitingOrder,
@@ -53,6 +55,19 @@ function QuoteDetailInner() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [saved, setSaved] = useState(false);
+  /* 📐 สินค้าจริงของรายการในใบ — ไว้คิด "สั่ง N แผ่น ได้ X ชิ้น" ให้ใบเก่าที่ยังไม่ได้แช่ unitYield (ใบใหม่แช่มาแล้ว ไม่ต้องรอ) */
+  const [prodById, setProdById] = useState<Record<string, Product>>({});
+  const itemIdsKey = (quote?.items ?? []).map((i) => i.productId).filter((id) => id && !id.includes("#") && id !== "special-item").sort().join(",");
+  useEffect(() => {
+    if (!itemIdsKey) return;
+    let alive = true;
+    fetchProductsByIds(itemIdsKey.split(","))
+      .then((list) => alive && setProdById(Object.fromEntries(list.map((p) => [p.id, p]))))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [itemIdsKey]);
   const [busy, setBusy] = useState(false);
   const [origin, setOrigin] = useState("");
   const [copied, setCopied] = useState(false);
@@ -543,6 +558,10 @@ function QuoteDetailInner() {
                             {it.qty} × {formatPrice(it.unitPrice)} = <b className="text-slate-700">{formatPrice(it.qty * it.unitPrice)}</b>
                           </span>
                         </div>
+                        {/* 📐 งานแบ่งแผ่น/เซ็ต — จำนวนที่เสนอไม่ใช่จำนวนชิ้นงาน บอกยอดชิ้นจริงให้เห็นคู่กับราคา (เช่น สั่ง 2 แผ่น A3 ตัด A4 = 4 ชิ้น) */}
+                        {itemPiecesLine(it, prodById[it.productId]) && (
+                          <p className="mt-1.5 text-[12px] font-bold text-sky-700">{itemPiecesLine(it, prodById[it.productId])}</p>
+                        )}
                       </div>
                     </div>
                   </div>

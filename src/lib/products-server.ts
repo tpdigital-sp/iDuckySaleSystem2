@@ -1,7 +1,8 @@
 import "server-only";
 import { cache } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { getProduct, type Product } from "./products";
+import { getProduct, orderUnitYield, type Product } from "./products";
+import { itemSel, type YieldItem } from "./item-yield";
 import { resolveOptions, type OptionPreset } from "./option-presets";
 import { sortTemplates, templateReady, type DesignTemplate } from "./design-templates";
 import { withImageVersion } from "./img";
@@ -168,3 +169,27 @@ export const getRelatedProducts = cache(
     return [...withImage, ...noImage].slice(0, limit);
   }
 );
+
+/**
+ * 📐 แช่ "สั่ง 1 หน่วย ได้กี่ชิ้น" ลงรายการ (โฟโต้การ์ด 1 เซ็ต = 20 ใบ · สติ๊กเกอร์ 1 แผ่น A3 ตัด A4 = 2 ชิ้น)
+ * ใช้ทุกทางที่รายการเข้าระบบ: สั่งจากตะกร้า · สั่งเพิ่มในออเดอร์ · โยนเข้าใบเสนอราคา · แปลงใบเสนอราคาเป็นออเดอร์
+ * หน้าออเดอร์/ใบเสนอราคา/โหมดแพ็คจะได้โชว์จำนวนชิ้นจริงโดยไม่ต้องโหลดสินค้าใหม่ และร้านแก้สินค้าทีหลังตัวเลขเดิมไม่ขยับ
+ * มีค่าอยู่แล้วไม่ทับ · อ่านไม่ได้ (สินค้าโดนลบ/ตัวเลือกไม่ครบ/งานพิเศษ) = ไม่ใส่ ถือว่า 1 หน่วย 1 ชิ้น
+ * ไม่มี sel (ใบเสนอราคาที่ส่งมาแต่ข้อความ) ก็กางจากข้อความสเปคให้ (itemSel)
+ */
+export async function withUnitYield<T extends YieldItem>(items: T[]): Promise<T[]> {
+  return Promise.all(
+    items.map(async (it) => {
+      if (it.unitYield?.per || !it.productId || it.productId.includes("#") || it.productId === "special-item") return it;
+      const sel = itemSel(it);
+      if (!Object.keys(sel).length) return it;
+      try {
+        const prod = await getProductServer(it.productId);
+        const y = prod ? orderUnitYield(prod, sel) : null;
+        return y ? { ...it, unitYield: y } : it;
+      } catch {
+        return it;
+      }
+    })
+  );
+}

@@ -3,6 +3,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withQuoteLog, type Quote } from "@/lib/quotes";
 import type { OrderItem } from "@/lib/admin-data";
+import { withUnitYield } from "@/lib/products-server";
 
 export const runtime = "nodejs";
 
@@ -35,10 +36,19 @@ export async function POST(req: Request) {
   if (quote.orderId) return NextResponse.json({ error: `ใบนี้แปลงเป็นออเดอร์ ${quote.orderId} แล้ว แก้ไม่ได้` }, { status: 400 });
 
   // กรองเอาเฉพาะฟิลด์ที่ใบเสนอราคาต้องใช้ (ตัดของฝั่งตะกร้า เช่น key/ภาพชั่วคราว)
-  const clean: OrderItem[] = items.map((it) => ({
+  const cleanRaw: OrderItem[] = items.map((it) => ({
     productId: String(it.productId ?? "special-item"),
     name: String(it.name ?? "").slice(0, 200),
     selections: typeof it.selections === "string" ? it.selections : "",
+    // ตัวเลือกแบบมีโครงสร้าง — ไว้อ่านจำนวนชิ้นต่อหน่วย/สั่งซ้ำ (รับเฉพาะคู่ข้อความ)
+    ...(it.sel && typeof it.sel === "object"
+      ? (() => {
+          const sel = Object.fromEntries(
+            Object.entries(it.sel as Record<string, unknown>).filter(([, v]) => typeof v === "string") as [string, string][]
+          );
+          return Object.keys(sel).length ? { sel } : {};
+        })()
+      : {}),
     qty: Math.max(1, Math.floor(Number(it.qty) || 1)),
     unitPrice: Math.max(0, Number(it.unitPrice) || 0),
     ...(Array.isArray(it.artworkUrls) && it.artworkUrls.length ? { artworkUrls: it.artworkUrls.slice(0, 10) } : {}),
@@ -59,6 +69,9 @@ export async function POST(req: Request) {
       ? { artworkBackUrls: it.artworkBackUrls.filter((u: unknown) => typeof u === "string").slice(0, 10) }
       : {}),
   }));
+
+  // 📐 แช่ "สั่ง 1 หน่วย ได้กี่ชิ้น" ตั้งแต่อยู่ในใบเสนอราคา — ใบ/ออเดอร์ที่แปลงจากใบนี้จะโชว์จำนวนชิ้นจริงได้
+  const clean = await withUnitYield(cleanRaw);
 
   const by = gate.actor.name?.trim() || gate.actor.username;
   const next = withQuoteLog(

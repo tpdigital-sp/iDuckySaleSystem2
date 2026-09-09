@@ -7,7 +7,8 @@ import { giftLinesOf, giftArtLabel } from "@/lib/gifts";
 import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import { useParams, useRouter } from "next/navigation";
-import { artQtyOf, formatPrice } from "@/lib/products";
+import { artQtyOf, formatPrice, type Product } from "@/lib/products";
+import { itemPiecesLine } from "@/lib/item-yield";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
 import { adminDiscountAmount, amountDueNow, artworkSide, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
@@ -189,6 +190,8 @@ export default function CustomerOrderPage() {
   const [termsById, setTermsById] = useState<Record<string, string>>({});
   /** ข้อมูลสินค้าไว้โชว์รูปประกอบรายการ (ลูกค้าจะได้รู้ว่าสั่งอะไรไว้ แม้ยังไม่มีแบบงาน) */
   const [picById, setPicById] = useState<Record<string, { emoji: string; gradient: string; imageSrc?: string }>>({});
+  /* 📐 สินค้าจริงของรายการ — คิด "สั่ง N แผ่น ได้ X ชิ้น" ให้ออเดอร์เก่าที่ยังไม่ได้แช่ unitYield */
+  const [prodById, setProdById] = useState<Record<string, Product>>({});
   // รายการ id สินค้าในออเดอร์นี้ (คีย์คงที่ ไม่ให้ effect วิ่งซ้ำทุกครั้งที่ order อัปเดต)
   const itemIdsKey = (order?.items ?? []).map((i) => i.productId).sort().join(",");
   useEffect(() => {
@@ -206,6 +209,7 @@ export default function CustomerOrderPage() {
         }
         setTermsById(map);
         setPicById(pics);
+        setProdById(Object.fromEntries(list.map((p) => [p.id, p])));
       })
       .catch(() => {});
     return () => {
@@ -1262,6 +1266,9 @@ export default function CustomerOrderPage() {
                       text={it.selections}
                       className="mt-1 text-xs t-soft"
                       stripLinks
+                      /* 📐 งานแบ่งแผ่น/เซ็ต (สติ๊กเกอร์ตัด A4 · โฟโต้การ์ดเซ็ต) — จำนวนที่สั่งไม่ใช่จำนวนชิ้น บอกยอดชิ้นจริงประโยคเดียวเหมือนตะกร้า
+                         ⚠️ SpecLines ใช้ truthy ของ after ตัดสินว่าจะวาดบล็อก — ไม่มีอะไรโชว์ต้องส่ง null */
+                      after={itemPiecesLine(it, prodById[it.productId]) ? <p className="font-semibold t-blue">{itemPiecesLine(it, prodById[it.productId])}</p> : null}
                     />
                     {/* 💬 ที่มาของราคาที่ร้านตีให้ (งานสั่งทำ) — บอกวิธีคิดตรง ๆ ไม่ต้องทักถาม */}
                     {it.quoteNote && (
