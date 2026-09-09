@@ -2000,6 +2000,54 @@ export default function AdminOrderDetailPage() {
   }
 
   /**
+   * 🔁 เปลี่ยนรูปลายใบเดิมเป็นรูปอื่น "ในตำแหน่งเดิม" — เจ้าของร้านขอ 9 ก.ย. 69
+   * (ลูกค้าส่งไฟล์แก้มาทางไลน์ เดิมต้องกด ✕ ลบแล้วแนบใหม่ รูปไปต่อท้าย ลำดับเปลี่ยน
+   *  จำนวน/ขนาดต่อลายที่ผูกกับ url เดิมหาย)
+   * · คงลำดับ: "ลายที่ N" เท่าเดิม → กรอบงานจาก PLACEMENT_SPEC และ selections "ลายที่ N กี่ชิ้น" ยังตรง
+   * · ย้าย artworkQty / artworkSize จากคีย์ url เก่าไปคีย์ใหม่ · ป้ายหน้า/หลัง (artworkBackUrls) ตามไปด้วย
+   * · แบบงานฝั่งขวาที่เคยคัดลอกจากรูปเก่าไม่แตะ (ลูกค้าเคยเห็นแล้ว) — รูปใหม่จะโผล่ในปุ่ม
+   *   "ใช้ลายนี้เป็นแบบ" ให้กราฟฟิกกดส่งให้ตรวจอีกที
+   */
+  async function replaceArtwork(itemIndex: number, oldUrl: string, file: File | null | undefined) {
+    if (!order || !file) return;
+    if (!file.type.startsWith("image/")) {
+      setErr("เปลี่ยนรูปได้เฉพาะไฟล์ภาพ (JPG / PNG / WebP)");
+      return;
+    }
+    setArtUpIdx(itemIndex);
+    let url: string;
+    try {
+      // ยิงตรงเข้า Supabase เหมือนแนบลาย — ไฟล์ใหญ่เกินเพดาน body ของ Netlify ประจำ
+      url = await uploadArtworkFile(file);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "อัปโหลดรูปใหม่ไม่สำเร็จ");
+      setArtUpIdx(null);
+      return;
+    }
+    setArtUpIdx(null);
+    setOrder((cur) => {
+      if (!cur) return cur;
+      const swap = (u: string) => (u === oldUrl ? url : u);
+      const rekey = <T,>(m: Record<string, T>) => Object.fromEntries(Object.entries(m).map(([k, v]) => [swap(k), v]));
+      const no = (cur.items[itemIndex]?.artworkUrls ?? []).indexOf(oldUrl) + 1;
+      const items = cur.items.map((it, i) =>
+        i === itemIndex
+          ? {
+              ...it,
+              artworkUrls: (it.artworkUrls ?? []).map(swap),
+              ...(it.artworkQty ? { artworkQty: rekey(it.artworkQty) } : {}),
+              ...(it.artworkSize ? { artworkSize: rekey(it.artworkSize) } : {}),
+              ...(it.artworkBackUrls ? { artworkBackUrls: it.artworkBackUrls.map(swap) } : {}),
+            }
+          : it
+      );
+      const next = withLog({ ...cur, items }, actor, "เปลี่ยนภาพลาย", `${cur.items[itemIndex]?.name} — ลายที่ ${no || "?"}`);
+      if (!demo) void saveOrWarn(next);
+      return next;
+    });
+  }
+
+  /**
    * แนบลายให้ "ของแถม" แทนลูกค้า (ส่งมาทางแชท/ไลน์) — งานร้านเป็นงานคัสตอม ของแถมก็สั่งลายได้
    * เก็บลง OrderGift.artworkUrls ของโปรนั้น + ติดธง needArtwork ให้ใบงานขึ้นบรรทัดลายเสมอ
    */
@@ -3614,6 +3662,27 @@ export default function AdminOrderDetailPage() {
                                                 {aiBusy === `${aiKey}-tpl` ? "กำลังรวม…" : "🧩 รวมเทมเพลต"}
                                               </button>
                                             )}
+                                            {/* 🔁 เปลี่ยนรูปลายนี้เป็นรูปอื่น — แทนที่ตำแหน่งเดิม ลำดับ/จำนวนต่อลายไม่เปลี่ยน */}
+                                            {mayEdit && (
+                                              <label
+                                                className={`${btnSm} cursor-pointer whitespace-nowrap border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 ${
+                                                  artUpIdx === i ? "pointer-events-none opacity-50" : ""
+                                                }`}
+                                                title={`เปลี่ยนรูปลายที่ ${r.no} เป็นรูปอื่น — ยังเป็นลายที่ ${r.no} เหมือนเดิม จำนวน/ขนาดต่อลายคงไว้`}
+                                              >
+                                                {artUpIdx === i ? "กำลังอัป…" : "🔁 เปลี่ยนรูป"}
+                                                <input
+                                                  type="file"
+                                                  accept="image/jpeg,image/png,image/webp"
+                                                  className="hidden"
+                                                  disabled={artUpIdx === i}
+                                                  onChange={(e) => {
+                                                    void replaceArtwork(i, r.u, e.target.files?.[0]);
+                                                    e.target.value = "";
+                                                  }}
+                                                />
+                                              </label>
+                                            )}
                                           </span>
                                         </span>
                                         {isOwner && (
@@ -3685,6 +3754,28 @@ export default function AdminOrderDetailPage() {
                                       >
                                         ⬇
                                       </button>
+                                      {/* 🔁 เปลี่ยนรูปนี้เป็นรูปอื่น (ตำแหน่งเดิม) */}
+                                      {mayEdit && (
+                                        <label
+                                          title="เปลี่ยนรูปนี้เป็นรูปอื่น — อยู่ตำแหน่งเดิม จำนวน/ขนาดต่อลายคงไว้"
+                                          aria-label="เปลี่ยนรูปลายนี้"
+                                          className={`absolute -right-1 top-5 grid h-5 w-5 cursor-pointer place-items-center rounded-full bg-amber-500 text-[10px] font-bold text-white opacity-0 shadow transition group-hover:opacity-100 ${
+                                            artUpIdx === i ? "pointer-events-none" : ""
+                                          }`}
+                                        >
+                                          {artUpIdx === i ? "…" : "🔁"}
+                                          <input
+                                            type="file"
+                                            accept="image/jpeg,image/png,image/webp"
+                                            className="hidden"
+                                            disabled={artUpIdx === i}
+                                            onChange={(e) => {
+                                              void replaceArtwork(i, u, e.target.files?.[0]);
+                                              e.target.value = "";
+                                            }}
+                                          />
+                                        </label>
+                                      )}
                                       {isOwner && (
                                         <button
                                           type="button"
