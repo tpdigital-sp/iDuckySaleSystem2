@@ -2356,7 +2356,8 @@ export default function ProductDetail({
                   : "bg-white text-sky-800 ring-sky-200"
                 : sum === total
                   ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-                  : "bg-amber-50 text-amber-800 ring-amber-200";
+                  : "bg-red-50 text-red-700 ring-red-200"; // ยอดรวมไม่ตรงจำนวนสั่ง → ตัวแดง (เจ้าของร้านขอ 9 ก.ย. 69 เดิมเหลืองอำพันมองผ่าน)
+          const mismatch = filled > 0 && leftN === 0 && sum !== total;
           return (
             <div className={`mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-3 py-2 text-[11px] font-semibold leading-relaxed ring-1 ${tone}`}>
               <span className="min-w-0 flex-1">
@@ -2373,7 +2374,11 @@ export default function ProductDetail({
                   type="button"
                   onClick={shareEven}
                   className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold transition ${
-                    back ? "bg-violet-100 text-violet-800 hover:bg-violet-200" : "bg-sky-100 text-sky-800 hover:bg-sky-200"
+                    mismatch
+                      ? "bg-red-100 text-red-800 hover:bg-red-200"
+                      : back
+                        ? "bg-violet-100 text-violet-800 hover:bg-violet-200"
+                        : "bg-sky-100 text-sky-800 hover:bg-sky-200"
                   }`}
                 >
                   แบ่งเท่า ๆ กัน
