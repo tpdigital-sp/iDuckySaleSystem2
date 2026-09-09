@@ -113,6 +113,22 @@ function QuoteDetailInner() {
   const patchItem = (i: number, p: Partial<OrderItem>) =>
     quote && void persist({ ...quote, items: quote.items.map((it, k) => (k === i ? { ...it, ...p } : it)) });
 
+  /** เอาภาพลายออกจากรายการ (ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับใบนี้) — ล้าง artworkQty/artworkBackUrls ของรูปนั้นตามไปด้วย + ลงประวัติ */
+  function removeArtwork(itemIndex: number, url: string) {
+    if (!quote) return;
+    const items = quote.items.map((it, k) =>
+      k === itemIndex
+        ? {
+            ...it,
+            artworkUrls: (it.artworkUrls ?? []).filter((u) => u !== url),
+            ...(it.artworkQty ? { artworkQty: Object.fromEntries(Object.entries(it.artworkQty).filter(([key]) => key !== url)) } : {}),
+            ...(it.artworkBackUrls ? { artworkBackUrls: it.artworkBackUrls.filter((u) => u !== url) } : {}),
+          }
+        : it
+    );
+    void persist(withQuoteLog({ ...quote, items }, meName || "แอดมิน", "ลบภาพลาย", quote.items[itemIndex]?.name));
+  }
+
   async function acceptQuote() {
     if (!quote) return;
     const others = window.confirm(
@@ -441,21 +457,37 @@ function QuoteDetailInner() {
                       {/* ภาพลายที่แนบมาจากตอนหยิบของ (ถ้ามี) */}
                       <div className="flex flex-wrap gap-1">
                         {(it.artworkUrls ?? []).slice(0, 4).map((u, k) => (
-                          <a key={k} href={u} target="_blank" rel="noreferrer" className="relative block" title={[artworkSide(it, u), artQtyOf(it, u, k) ? `ลายที่ ${k + 1} × ${artQtyOf(it, u, k)} ชิ้น` : `ลายที่ ${k + 1}`].filter(Boolean).join(" · ")}>
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={u} alt={artworkSide(it, u) ?? ""} className="h-9 w-9 rounded-md object-cover ring-1 ring-slate-200" />
-                            {/* งานพิมพ์ 2 ด้าน — ป้ายหน้า/หลังด้านบน · 🔢 จำนวนต่อลายด้านล่าง */}
-                            {artworkSide(it, u) && (
-                              <span className="absolute left-0 right-0 top-0 rounded-t-md bg-slate-800/85 text-center text-[7px] font-bold leading-tight text-white">
-                                {artworkSide(it, u) === "ด้านหลัง" ? "หลัง" : "หน้า"}
-                              </span>
+                          <span key={k} className="relative block">
+                            <a href={u} target="_blank" rel="noreferrer" className="relative block" title={[artworkSide(it, u), artQtyOf(it, u, k) ? `ลายที่ ${k + 1} × ${artQtyOf(it, u, k)} ชิ้น` : `ลายที่ ${k + 1}`].filter(Boolean).join(" · ")}>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={u} alt={artworkSide(it, u) ?? ""} className="h-9 w-9 rounded-md object-cover ring-1 ring-slate-200" />
+                              {/* งานพิมพ์ 2 ด้าน — ป้ายหน้า/หลังด้านบน · 🔢 จำนวนต่อลายด้านล่าง */}
+                              {artworkSide(it, u) && (
+                                <span className="absolute left-0 right-0 top-0 rounded-t-md bg-slate-800/85 text-center text-[7px] font-bold leading-tight text-white">
+                                  {artworkSide(it, u) === "ด้านหลัง" ? "หลัง" : "หน้า"}
+                                </span>
+                              )}
+                              {artQtyOf(it, u, k) ? (
+                                <span className="absolute bottom-0 left-0 right-0 rounded-b-md bg-slate-900/75 text-center text-[8px] font-bold leading-tight text-white">
+                                  ×{artQtyOf(it, u, k)}
+                                </span>
+                              ) : null}
+                            </a>
+                            {/* ✕ เอารูปออกจากใบ (ใบที่กลายเป็นออเดอร์แล้วล็อกทั้งรายการ ไม่มีปุ่ม) */}
+                            {!locked && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`เอารูปลายที่ ${k + 1} ออกจากรายการนี้?\n(ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับใบเสนอราคา)`)) removeArtwork(i, u);
+                                }}
+                                title="เอารูปนี้ออกจากใบเสนอราคา"
+                                aria-label="เอารูปลายนี้ออก"
+                                className="absolute -right-1.5 -top-1.5 grid h-4 w-4 place-items-center rounded-full bg-rose-500 text-[9px] font-bold text-white shadow transition hover:bg-rose-600"
+                              >
+                                ✕
+                              </button>
                             )}
-                            {artQtyOf(it, u, k) ? (
-                              <span className="absolute bottom-0 left-0 right-0 rounded-b-md bg-slate-900/75 text-center text-[8px] font-bold leading-tight text-white">
-                                ×{artQtyOf(it, u, k)}
-                              </span>
-                            ) : null}
-                          </a>
+                          </span>
                         ))}
                         {!it.artworkUrls?.length && (
                           <span className="grid h-9 w-9 place-items-center rounded-md bg-slate-100 text-sm text-slate-300">🖼️</span>
