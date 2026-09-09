@@ -606,47 +606,21 @@ function gridCount(w: number, h: number, binW: number, binH: number, gap: number
   return Math.max(0, Math.floor((binW + gap) / (w + gap))) * Math.max(0, Math.floor((binH + gap) / (h + gap)));
 }
 
-/** กริดที่ดีที่สุดของสองแนววาง (ตั้ง/นอน) */
-function gridBest(itemW: number, itemH: number, binW: number, binH: number, gap: number): number {
-  return Math.max(gridCount(itemW, itemH, binW, binH, gap), gridCount(itemH, itemW, binW, binH, gap));
-}
-
 /**
- * 📐 เพดานล่างที่ "การันตีว่าวางได้" — กริดเต็มกล่อง หรือแบ่งกล่องเป็น 2 แถบแล้วแถบละแนว
+ * 📐 เพดานล่างที่ "การันตีว่าวางได้" — กริดแนวเดียวเต็มกล่อง (ตั้งหรือนอน)
  *
  * MaxRects ใน packSingleSize เป็นอัลกอริทึมโลภ เลือกแนวชิ้นแรกผิดแล้วพลาดยาว
  * เช่น A5 (14.8×21) บนแผ่น A3 (42×29.7): คำตอบจริงคือหมุนนอนทั้ง 4 ใบพอดีแผ่น
  * แต่ MaxRects วางใบแรกแนวตั้ง (คะแนน BSSF ดีกว่าเฉพาะหน้า) แล้วเหลือเศษวางต่อไม่ได้ → ได้ 2
- * เลยต้องเทียบกับการวางแบบกริดตรง ๆ ด้วย แล้วเอาค่าที่มากกว่า — ค่าที่ได้จากตรงนี้
- * มีผังวางจริงรองรับทุกใบ ไม่ใช่การเดา จึงไม่ทำให้บอกลูกค้าเกินจริง
+ * เลยต้องเทียบกับการวางแบบกริดตรง ๆ ด้วย แล้วเอาค่าที่มากกว่า
+ *
+ * ⚠️ เคยมีตัวเสริม "แบ่งกล่องเป็น 2 แถบแล้วแถบละแนว" (ตั้ง 4×4 + คอลัมน์นอนอีก 3) ซึ่งหาผังได้
+ * มากกว่าโปรแกรม Print-Fit ที่ร้านใช้จัดวางจริง → หน้าเว็บบอก 19 ชิ้น แต่ Print-Fit วางได้ 18
+ * (สติ๊กเกอร์ Digital ไดคัท 8.9×6 ซม. 9 ก.ย. 69) ตัดออกแล้ว: ตัวเลขที่บอกลูกค้าต้องไม่เกิน
+ * ที่โปรแกรมจัดวางของร้านทำได้จริง — ห้ามใส่ผังผสมแนวกลับมาถ้า Print-Fit ยังหาผังนั้นไม่เจอ
  */
-function bandBest(itemW: number, itemH: number, binW: number, binH: number, gap: number): number {
-  let best = gridBest(itemW, itemH, binW, binH, gap);
-  if (itemW <= 0 || itemH <= 0) return best;
-  const sides = itemW === itemH ? [itemH] : [itemH, itemW];
-  // แบ่งเป็นแถบบน/ล่าง — แถบบนวางเป็นแถวสูงเท่าด้านที่เลือก n แถว ที่เหลือวางแนวไหนก็ได้
-  for (const rowH of sides) {
-    for (let n = 1; n * rowH + (n - 1) * gap <= binH; n++) {
-      const band = n * rowH + (n - 1) * gap;
-      const rest = binH - band - gap;
-      best = Math.max(
-        best,
-        gridBest(itemW, itemH, binW, band, gap) + (rest > 0 ? gridBest(itemW, itemH, binW, rest, gap) : 0)
-      );
-    }
-  }
-  // แบ่งเป็นแถบซ้าย/ขวา — ตรรกะเดียวกันแต่สลับแกน
-  for (const colW of sides) {
-    for (let n = 1; n * colW + (n - 1) * gap <= binW; n++) {
-      const band = n * colW + (n - 1) * gap;
-      const rest = binW - band - gap;
-      best = Math.max(
-        best,
-        gridBest(itemW, itemH, band, binH, gap) + (rest > 0 ? gridBest(itemW, itemH, rest, binH, gap) : 0)
-      );
-    }
-  }
-  return best;
+function gridBest(itemW: number, itemH: number, binW: number, binH: number, gap: number): number {
+  return Math.max(gridCount(itemW, itemH, binW, binH, gap), gridCount(itemH, itemW, binW, binH, gap));
 }
 
 /**
@@ -697,8 +671,8 @@ function packSingleSize(itemW: number, itemH: number, binW: number, binH: number
     }
     if (count > best) best = count;
   }
-  // MaxRects โลภ พลาดผังที่ดีกว่าได้ (ดู bandBest) — เทียบกับผังกริดที่การันตีว่าวางได้เสมอ
-  return Math.max(best, bandBest(itemW, itemH, binW, binH, gap));
+  // MaxRects โลภ พลาดกริดที่ดีกว่าได้ (ดู gridBest) — เทียบกับผังกริดแนวเดียวที่การันตีว่าวางได้เสมอ
+  return Math.max(best, gridBest(itemW, itemH, binW, binH, gap));
 }
 
 /**
