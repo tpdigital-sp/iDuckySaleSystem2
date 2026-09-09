@@ -2814,13 +2814,13 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .shopp h1,.shopp h2,.shopp .ord-title{font-family:var(--display);font-weight:500;line-height:1.3;color:var(--navy)}
 .shopp .ord-eyebrow{font-family:var(--display);font-weight:400;font-size:.68rem;letter-spacing:.12em;
   text-transform:uppercase;color:var(--blue-deep);opacity:.85}
-.shopp .t-ink{color:var(--navy)}
-.shopp .t-soft{color:var(--navy-soft)}
+:is(.shopp,.shopp-modal) .t-ink{color:var(--navy)}
+:is(.shopp,.shopp-modal) .t-soft{color:var(--navy-soft)}
 .shopp .t-faint{color:#8CA3C2}
-.shopp .t-ok{color:#12876A}
-.shopp .t-warn{color:#A66A00}
-.shopp .t-danger{color:var(--coral-deep,#F2456B)}
-.shopp .t-blue{color:var(--blue-deep)}
+:is(.shopp,.shopp-modal) .t-ok{color:#12876A}
+:is(.shopp,.shopp-modal) .t-warn{color:#A66A00}
+:is(.shopp,.shopp-modal) .t-danger{color:var(--coral-deep,#F2456B)}
+:is(.shopp,.shopp-modal) .t-blue{color:var(--blue-deep)}
 
 /* --- การ์ดกระจก (พื้นผิวหลักของหน้า) --- */
 .shopp .ord-card{background:linear-gradient(180deg,rgba(255,255,255,.82) 0%,rgba(255,255,255,.64) 100%);
@@ -2832,47 +2832,47 @@ main:has(.dl-page) + .dl footer{margin-top:0}
 .shopp .ord-sub{background:rgba(255,255,255,.66);border:1px solid var(--sky-200);border-radius:var(--r-m)}
 
 /* --- กล่องข้อความบอกสถานะ --- */
-.shopp .ord-note{border-radius:var(--r-m);border:1.5px solid;line-height:1.7}
-.shopp .ord-note.info{background:rgba(226,243,254,.82);border-color:var(--sky-200);color:#1D4E7E}
-.shopp .ord-note.warn{background:#FFF6DF;border-color:rgba(255,182,39,.5);color:#8A5B00}
-.shopp .ord-note.danger{background:#FFE9EE;border-color:rgba(242,69,107,.32);color:#A81F45}
-.shopp .ord-note.ok{background:#DEF5EC;border-color:rgba(18,135,106,.28);color:#0E6B52}
-.shopp .ord-note.line{background:rgba(6,199,85,.1);border-color:rgba(6,199,85,.4);color:#0B6B36}
-.shopp .ord-note.plain{background:rgba(255,255,255,.72);border-color:var(--sky-200);color:var(--navy-soft)}
-.shopp .ord-note.drop{border-style:dashed;border-width:2px;background:#FFDCE4}
+:is(.shopp,.shopp-modal) .ord-note{border-radius:var(--r-m);border:1.5px solid;line-height:1.7}
+:is(.shopp,.shopp-modal) .ord-note.info{background:rgba(226,243,254,.82);border-color:var(--sky-200);color:#1D4E7E}
+:is(.shopp,.shopp-modal) .ord-note.warn{background:#FFF6DF;border-color:rgba(255,182,39,.5);color:#8A5B00}
+:is(.shopp,.shopp-modal) .ord-note.danger{background:#FFE9EE;border-color:rgba(242,69,107,.32);color:#A81F45}
+:is(.shopp,.shopp-modal) .ord-note.ok{background:#DEF5EC;border-color:rgba(18,135,106,.28);color:#0E6B52}
+:is(.shopp,.shopp-modal) .ord-note.line{background:rgba(6,199,85,.1);border-color:rgba(6,199,85,.4);color:#0B6B36}
+:is(.shopp,.shopp-modal) .ord-note.plain{background:rgba(255,255,255,.72);border-color:var(--sky-200);color:var(--navy-soft)}
+:is(.shopp,.shopp-modal) .ord-note.drop{border-style:dashed;border-width:2px;background:#FFDCE4}
 
 /* --- ปุ่มพิลล์ (ทรงเดียวกับปุ่มหน้าแรก แต่ขนาดกระชับกว่า) --- */
-.shopp .ord-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;
+:is(.shopp,.shopp-modal) .ord-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;
   font-family:var(--display);font-weight:400;font-size:.86rem;line-height:1;padding:11px 20px;border-radius:999px;
   border:1.5px solid transparent;white-space:nowrap;
   transition:transform .22s cubic-bezier(.34,1.56,.64,1),box-shadow .25s ease,background .25s ease,border-color .25s ease,color .25s ease}
-.shopp .ord-btn:active{transform:translateY(1px) scale(.985)}
-.shopp .ord-btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
-.shopp .ord-btn.sm{font-size:.78rem;padding:8px 15px}
-.shopp .ord-btn.lg{font-size:.95rem;padding:14px 26px}
-.shopp .ord-btn.block{width:100%}
+:is(.shopp,.shopp-modal) .ord-btn:active{transform:translateY(1px) scale(.985)}
+:is(.shopp,.shopp-modal) .ord-btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+:is(.shopp,.shopp-modal) .ord-btn.sm{font-size:.78rem;padding:8px 15px}
+:is(.shopp,.shopp-modal) .ord-btn.lg{font-size:.95rem;padding:14px 26px}
+:is(.shopp,.shopp-modal) .ord-btn.block{width:100%}
 /* ปุ่มข้อความยาว (เช่น แนบสลิป) — ให้ตัดบรรทัดในพิลล์ ไม่ล้นออกนอกกรอบบนจอแคบ */
-.shopp .ord-btn.wrap{white-space:normal;line-height:1.35;text-align:center;padding-top:12px;padding-bottom:12px}
-.shopp .ord-btn.navy{background:var(--navy);color:#fff;box-shadow:0 2px 10px rgba(23,58,107,.16)}
-.shopp .ord-btn.navy:hover:not(:disabled){background:#1E4A85;transform:translateY(-2px);box-shadow:0 12px 24px rgba(23,58,107,.26)}
-.shopp .ord-btn.yolk{background:var(--yolk);color:var(--navy);box-shadow:0 2px 10px rgba(255,182,39,.3)}
-.shopp .ord-btn.yolk:hover:not(:disabled){background:#FFDE6B;transform:translateY(-2px);box-shadow:0 12px 24px rgba(255,182,39,.4)}
-.shopp .ord-btn.blue{background:linear-gradient(100deg,var(--blue) 0%,var(--blue-deep) 100%);color:#fff;
+:is(.shopp,.shopp-modal) .ord-btn.wrap{white-space:normal;line-height:1.35;text-align:center;padding-top:12px;padding-bottom:12px}
+:is(.shopp,.shopp-modal) .ord-btn.navy{background:var(--navy);color:#fff;box-shadow:0 2px 10px rgba(23,58,107,.16)}
+:is(.shopp,.shopp-modal) .ord-btn.navy:hover:not(:disabled){background:#1E4A85;transform:translateY(-2px);box-shadow:0 12px 24px rgba(23,58,107,.26)}
+:is(.shopp,.shopp-modal) .ord-btn.yolk{background:var(--yolk);color:var(--navy);box-shadow:0 2px 10px rgba(255,182,39,.3)}
+:is(.shopp,.shopp-modal) .ord-btn.yolk:hover:not(:disabled){background:#FFDE6B;transform:translateY(-2px);box-shadow:0 12px 24px rgba(255,182,39,.4)}
+:is(.shopp,.shopp-modal) .ord-btn.blue{background:linear-gradient(100deg,var(--blue) 0%,var(--blue-deep) 100%);color:#fff;
   box-shadow:0 4px 12px rgba(44,129,196,.3)}
-.shopp .ord-btn.blue:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 14px 26px rgba(44,129,196,.36)}
-.shopp .ord-btn.ghost{background:#fff;color:var(--navy);border-color:var(--sky-200)}
-.shopp .ord-btn.ghost:hover:not(:disabled){background:var(--sky-50);border-color:var(--blue);transform:translateY(-2px);
+:is(.shopp,.shopp-modal) .ord-btn.blue:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 14px 26px rgba(44,129,196,.36)}
+:is(.shopp,.shopp-modal) .ord-btn.ghost{background:#fff;color:var(--navy);border-color:var(--sky-200)}
+:is(.shopp,.shopp-modal) .ord-btn.ghost:hover:not(:disabled){background:var(--sky-50);border-color:var(--blue);transform:translateY(-2px);
   box-shadow:0 10px 20px rgba(44,129,196,.14)}
-.shopp .ord-btn.ok{background:#12876A;color:#fff;box-shadow:0 4px 12px rgba(18,135,106,.3)}
-.shopp .ord-btn.ok:hover:not(:disabled){background:#0E6B52;transform:translateY(-2px);box-shadow:0 14px 26px rgba(18,135,106,.34)}
-.shopp .ord-btn.danger{background:#F2456B;color:#fff;box-shadow:0 4px 12px rgba(242,69,107,.3)}
-.shopp .ord-btn.danger:hover:not(:disabled){background:#DE2F56;transform:translateY(-2px);box-shadow:0 14px 26px rgba(242,69,107,.34)}
-.shopp .ord-btn.danger-ghost{background:#fff;color:#D8305A;border-color:rgba(242,69,107,.35)}
-.shopp .ord-btn.danger-ghost:hover:not(:disabled){background:#FFE9EE;border-color:#F2456B;transform:translateY(-2px)}
-.shopp .ord-btn.quiet{background:transparent;color:var(--navy-soft)}
-.shopp .ord-btn.quiet:hover:not(:disabled){background:var(--sky-100);color:var(--navy)}
-.shopp .ord-btn.line{background:#06C755;color:#fff;box-shadow:0 3px 12px rgba(6,199,85,.3)}
-.shopp .ord-btn.line:hover:not(:disabled){background:#05B34C;transform:translateY(-2px);box-shadow:0 14px 26px rgba(6,199,85,.34)}
+:is(.shopp,.shopp-modal) .ord-btn.ok{background:#12876A;color:#fff;box-shadow:0 4px 12px rgba(18,135,106,.3)}
+:is(.shopp,.shopp-modal) .ord-btn.ok:hover:not(:disabled){background:#0E6B52;transform:translateY(-2px);box-shadow:0 14px 26px rgba(18,135,106,.34)}
+:is(.shopp,.shopp-modal) .ord-btn.danger{background:#F2456B;color:#fff;box-shadow:0 4px 12px rgba(242,69,107,.3)}
+:is(.shopp,.shopp-modal) .ord-btn.danger:hover:not(:disabled){background:#DE2F56;transform:translateY(-2px);box-shadow:0 14px 26px rgba(242,69,107,.34)}
+:is(.shopp,.shopp-modal) .ord-btn.danger-ghost{background:#fff;color:#D8305A;border-color:rgba(242,69,107,.35)}
+:is(.shopp,.shopp-modal) .ord-btn.danger-ghost:hover:not(:disabled){background:#FFE9EE;border-color:#F2456B;transform:translateY(-2px)}
+:is(.shopp,.shopp-modal) .ord-btn.quiet{background:transparent;color:var(--navy-soft)}
+:is(.shopp,.shopp-modal) .ord-btn.quiet:hover:not(:disabled){background:var(--sky-100);color:var(--navy)}
+:is(.shopp,.shopp-modal) .ord-btn.line{background:#06C755;color:#fff;box-shadow:0 3px 12px rgba(6,199,85,.3)}
+:is(.shopp,.shopp-modal) .ord-btn.line:hover:not(:disabled){background:#05B34C;transform:translateY(-2px);box-shadow:0 14px 26px rgba(6,199,85,.34)}
 
 /* --- ชิป --- */
 .shopp .ord-chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--display);font-size:.72rem;

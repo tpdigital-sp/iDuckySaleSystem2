@@ -953,13 +953,19 @@ export default function CustomerOrderPage() {
         <Portal>
           <div className="shopp-modal" onClick={() => confirmApprove.resolve(false)}>
           <div className="shopp-modal-box" onClick={(e) => e.stopPropagation()}>
-            <div className="px-6 pb-2 pt-7 text-center" style={{ background: "linear-gradient(180deg,#DEF5EC,transparent)" }}>
-              <span className="text-5xl">✅</span>
-              <h2 className="mt-2 text-lg t-ok">ยืนยันการอนุมัติแบบงาน</h2>
+            {/* โทนเหลือง+❓ ไม่ใช่เขียว+✅ — ลูกค้าเคยเข้าใจว่ากล่องนี้ = อนุมัติเสร็จแล้ว แล้วปิดทิ้ง */}
+            <div className="px-6 pb-2 pt-7 text-center" style={{ background: "linear-gradient(180deg,#FFF1CC,transparent)" }}>
+              <span className="text-5xl">❓</span>
+              <h2 className="mt-2 text-lg t-warn">อนุมัติแบบงานนี้ใช่ไหมคะ?</h2>
             </div>
             <div className="px-6 pb-6 pt-2">
-              <p className="text-center text-sm leading-relaxed t-soft">
-                ทางบริษัทจะ<strong className="t-danger">จัดทำงานตามภาพที่อนุมัติทันที</strong>
+              <p className="ord-note warn px-3 py-2 text-center text-sm font-bold">
+                ⚠️ ตอนนี้ยังไม่ได้อนุมัตินะคะ
+                <br />
+                <span className="font-semibold">ต้องกดปุ่มสีเขียวด้านล่าง</span> จึงจะนับว่าอนุมัติ
+              </p>
+              <p className="mt-3 text-center text-sm leading-relaxed t-soft">
+                เมื่ออนุมัติแล้ว ทางบริษัทจะ<strong className="t-danger">จัดทำงานตามภาพนี้ทันที</strong>
                 <br />
                 หาก<strong className="t-warn">ไม่มั่นใจ</strong> รบกวน
                 <strong className="t-ink">ตรวจสอบอีกรอบ</strong>
@@ -969,16 +975,17 @@ export default function CustomerOrderPage() {
               <button
                 type="button"
                 onClick={() => confirmApprove.resolve(true)}
-                className="ord-btn ok block mt-5"
+                className="ord-btn ok lg block mt-5 !py-4 !text-base !font-extrabold"
+                style={{ boxShadow: "0 8px 22px rgba(18,135,106,.42), 0 0 0 4px rgba(18,135,106,.18)" }}
               >
-                ✅ ยืนยันอนุมัติ — ให้เริ่มผลิตได้เลย
+                ✅ กดที่นี่เพื่ออนุมัติ — เริ่มผลิตได้เลย
               </button>
               <button
                 type="button"
                 onClick={() => confirmApprove.resolve(false)}
-                className="ord-btn quiet block mt-2"
+                className="ord-btn quiet sm block mt-2"
               >
-                ↩️ ขอดูอีกครั้ง
+                ↩️ ยังไม่อนุมัติ — ขอดูอีกครั้ง
               </button>
             </div>
           </div>
@@ -2119,8 +2126,10 @@ export default function CustomerOrderPage() {
                   </p>
                 ) : giftLbConfirm ? (
                   <div className="rounded-2xl bg-white/10 p-3 text-center">
-                    <p className="text-xs leading-relaxed text-white/90">
-                      ทางบริษัทจะ<strong className="text-rose-300">จัดทำของแถมตามภาพที่อนุมัติทันที</strong> — หาก
+                    <p className="text-sm font-bold text-amber-300">❓ อนุมัติแบบของแถมนี้ใช่ไหมคะ? — ตอนนี้ยังไม่ได้อนุมัตินะคะ</p>
+                    <p className="mt-1 text-xs leading-relaxed text-white/90">
+                      ต้องกด<strong className="text-emerald-300">ปุ่มสีเขียว</strong>จึงจะนับว่าอนุมัติ แล้วทางบริษัทจะ
+                      <strong className="text-rose-300">จัดทำของแถมตามภาพนี้ทันที</strong> — หาก
                       <strong className="text-amber-300">ไม่มั่นใจ</strong> รบกวน
                       <strong className="text-white">ตรวจสอบอีกรอบ</strong> หรือ
                       <strong className="text-teal-300">สอบถามแอดมิน</strong>ก่อนนะคะ 🙏
@@ -2136,14 +2145,14 @@ export default function CustomerOrderPage() {
                         disabled={busy}
                         className={LB_OK}
                       >
-                        ✅ ยืนยันอนุมัติแบบของแถม
+                        ✅ กดที่นี่เพื่ออนุมัติแบบของแถม
                       </button>
                       <button
                         type="button"
                         onClick={() => setGiftLbConfirm(false)}
                         className={LB_QUIET}
                       >
-                        ↩️ ขอดูอีกครั้ง
+                        ↩️ ยังไม่อนุมัติ — ขอดูอีกครั้ง
                       </button>
                     </div>
                   </div>
@@ -2250,8 +2259,10 @@ export default function CustomerOrderPage() {
                   </p>
                 ) : lbConfirm ? (
                   <div className="rounded-2xl bg-white/10 p-3 text-center">
-                    <p className="text-xs leading-relaxed text-white/90">
-                      ทางบริษัทจะ<strong className="text-rose-300">จัดทำงานตามภาพที่อนุมัติทันที</strong> — หาก
+                    <p className="text-sm font-bold text-amber-300">❓ อนุมัติภาพนี้ใช่ไหมคะ? — ตอนนี้ยังไม่ได้อนุมัตินะคะ</p>
+                    <p className="mt-1 text-xs leading-relaxed text-white/90">
+                      ต้องกด<strong className="text-emerald-300">ปุ่มสีเขียว</strong>จึงจะนับว่าอนุมัติ แล้วทางบริษัทจะ
+                      <strong className="text-rose-300">จัดทำงานตามภาพนี้ทันที</strong> — หาก
                       <strong className="text-amber-300">ไม่มั่นใจ</strong> รบกวน
                       <strong className="text-white">ตรวจสอบอีกรอบ</strong> หรือ
                       <strong className="text-teal-300">สอบถามแอดมิน</strong>ก่อนนะคะ 🙏
@@ -2275,14 +2286,14 @@ export default function CustomerOrderPage() {
                         disabled={busyIdx === lightbox.itemIdx}
                         className={LB_OK}
                       >
-                        ✅ ยืนยันอนุมัติ — ให้เริ่มผลิตได้เลย
+                        ✅ กดที่นี่เพื่ออนุมัติ — เริ่มผลิตได้เลย
                       </button>
                       <button
                         type="button"
                         onClick={() => setLbConfirm(false)}
                         className={LB_QUIET}
                       >
-                        ↩️ ขอดูอีกครั้ง
+                        ↩️ ยังไม่อนุมัติ — ขอดูอีกครั้ง
                       </button>
                     </div>
                   </div>
