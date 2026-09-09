@@ -8,6 +8,7 @@
  * ตัวแทนได้ราคาเรทตัวแทนอย่างเดียว ไม่ได้ส่วนลดสมาชิก/คูปอง/โอนไว/ของแถม (เซิร์ฟเวอร์บังคับ)
  */
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Btn, Empty, Field, ListHead, PageHead, PageShell, Row, RowMain, RowSide, Rows, Tag } from "@/components/admin/ui";
 
@@ -38,6 +39,121 @@ function thDate(iso: string): string {
   const d = new Date(iso);
   if (!iso || !isFinite(d.getTime())) return "—";
   return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
+}
+
+/* ── กล่องคู่มือ "วิธีเพิ่มตัวแทน" ── */
+
+const HOWTO_STEP = "flex gap-2.5 text-[13.5px] leading-relaxed text-slate-700";
+const HOWTO_NUM =
+  "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white";
+const KEY = "rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[12px] font-semibold text-slate-800 shadow-sm";
+
+/**
+ * วิธีเพิ่มตัวแทน — วางไว้ในหน้านี้เลยให้แอดมินอ่านก่อนกดเพิ่ม (ไม่ต้องเปิดคู่มือแยก)
+ * กางเองเมื่อทะเบียนยังว่าง (แอดมินมือใหม่) · มีตัวแทนแล้วพับเก็บ กดหัวข้อเพื่อกาง
+ */
+function HowToAddDealer({ open }: { open: boolean }) {
+  return (
+    <details open={open} className="dkb-g group mt-4 px-4 py-3 sm:px-5">
+      <summary className="flex cursor-pointer list-none items-center gap-2 select-none">
+        <span className="text-[15px]">📖</span>
+        <span className="text-[14px] font-extrabold" style={{ color: "var(--dk-navy)" }}>
+          วิธีเพิ่มตัวแทนจำหน่าย
+        </span>
+        <span className="hidden text-[12px] sm:inline" style={{ color: "var(--dk-navy-soft)" }}>
+          — อ่านก่อนกดเพิ่ม · มี 2 ทาง
+        </span>
+        <span className="ml-auto text-[12px] transition group-open:rotate-90" style={{ color: "var(--dk-navy-soft)" }}>
+          ▸
+        </span>
+      </summary>
+
+      <div className="mt-3 grid gap-4 border-t border-slate-200/70 pt-3 md:grid-cols-2">
+        {/* ทางที่ 1 */}
+        <section className="rounded-2xl p-3.5" style={{ background: "var(--dk-mint-wash)" }}>
+          <p className="text-[13px] font-extrabold" style={{ color: "var(--dk-mint-ink)" }}>
+            ทางที่ 1 · ลูกค้าสมัครเอง (แนะนำ)
+          </p>
+          <ol className="mt-2 space-y-1.5">
+            <li className={HOWTO_STEP}>
+              <span className={HOWTO_NUM} style={{ background: "var(--dk-mint-ink)" }}>1</span>
+              <span>
+                ส่งลิงก์ <b className="select-all">iduckystore.com/dealer</b> ให้ลูกค้าทาง LINE — เขาต้องล็อกอินก่อน แล้วกรอกชื่อร้าน
+                + ช่องทางขาย
+              </span>
+            </li>
+            <li className={HOWTO_STEP}>
+              <span className={HOWTO_NUM} style={{ background: "var(--dk-mint-ink)" }}>2</span>
+              <span>
+                ใบสมัครเด้งแจ้งเตือนเข้า LINE ร้าน และขึ้นแถบ <b>📥 รออนุมัติ</b> บนสุดของหน้านี้ (ถ้าไม่มีแถบ = ยังไม่มีใครสมัคร)
+              </span>
+            </li>
+            <li className={HOWTO_STEP}>
+              <span className={HOWTO_NUM} style={{ background: "var(--dk-mint-ink)" }}>3</span>
+              <span>
+                กด <kbd className={KEY}>✅ อนุมัติ</kbd> → ย้ายเข้ารายชื่อตัวแทนทันที (ชื่อร้านที่กรอกมากลายเป็นโน้ตให้เอง) · ไม่ผ่านกด{" "}
+                <kbd className={KEY}>ปฏิเสธ</kbd> 2 ครั้ง ใบสมัครหาย ลูกค้าสมัครใหม่ได้
+              </span>
+            </li>
+          </ol>
+        </section>
+
+        {/* ทางที่ 2 */}
+        <section className="rounded-2xl p-3.5" style={{ background: "var(--dk-yolk-wash)" }}>
+          <p className="text-[13px] font-extrabold" style={{ color: "var(--dk-yolk-ink)" }}>
+            ทางที่ 2 · แอดมินเพิ่มเองด้วยอีเมล (ไม่ต้องรอใบสมัคร)
+          </p>
+          <ol className="mt-2 space-y-1.5">
+            <li className={HOWTO_STEP}>
+              <span className={HOWTO_NUM} style={{ background: "var(--dk-yolk-ink)" }}>1</span>
+              <span>
+                ลูกค้าต้อง<b>เคยสมัครสมาชิก/ล็อกอินบนเว็บแล้ว</b>อย่างน้อย 1 ครั้ง — ถ้ายังไม่เคย ระบบจะบอกว่าไม่พบบัญชี ให้เขาล็อกอินก่อนแล้วค่อยเพิ่ม
+              </span>
+            </li>
+            <li className={HOWTO_STEP}>
+              <span className={HOWTO_NUM} style={{ background: "var(--dk-yolk-ink)" }}>2</span>
+              <span>
+                กรอก<b>อีเมลที่เขาใช้ล็อกอิน</b>ในช่องด้านล่าง + โน้ตชื่อร้าน (ไม่บังคับ) → กด <kbd className={KEY}>➕ เพิ่มตัวแทน</kbd> มีผลทันที
+              </span>
+            </li>
+            <li className={HOWTO_STEP}>
+              <span className={HOWTO_NUM} style={{ background: "var(--dk-yolk-ink)" }}>3</span>
+              <span>
+                บัญชีที่ล็อกอิน LINE แบบไม่มีอีเมลจริง ให้ดูอีเมลระบบของเขาใน
+                <Link href="/admin/contacts" className="font-semibold underline decoration-dotted underline-offset-2">
+                  ข้อมูลผู้ติดต่อ
+                </Link>
+                /หน้าออเดอร์เก่า (รูปแบบ <span className="dkb-code">line_…@line.iducky.local</span>) แล้วใช้อีเมลนั้นเพิ่มได้เหมือนกัน
+              </span>
+            </li>
+          </ol>
+        </section>
+      </div>
+
+      {/* หลังเพิ่ม + ข้อควรรู้ */}
+      <div className="mt-3 grid gap-x-6 gap-y-1.5 text-[13px] leading-relaxed text-slate-700 md:grid-cols-2">
+        <p>
+          <b>หลังเพิ่มแล้ว</b> — บอกลูกค้ารีเฟรชหน้าเว็บ 1 ครั้ง จะเห็นป้าย 🤝 กับราคาตัวแทนตั้งแต่หน้าสินค้า → ตะกร้า → ชำระเงิน
+          สั่งได้ตั้งแต่ชิ้นแรก · ออเดอร์ของตัวแทนมีป้าย 🤝 ในหน้าออเดอร์
+        </p>
+        <p>
+          <b>ตัวแทนได้ราคาตัวแทนอย่างเดียว</b> — ระบบตัดส่วนลดระดับสมาชิก คูปอง ส่วนลดโอนไว ฿5/฿10 และของแถมโปรโมชั่นให้เองทั้งหน้าเว็บและตอนตรวจสลิป
+          ไม่ต้องไปแก้อะไรที่บัญชีเขา
+        </p>
+        <p>
+          <b>สินค้าต้องมีเรทตัวแทน</b> — ราคาตัวแทนตั้งแยกต่อสินค้า (เรทที่ติ๊ก 🤝 ในหน้าแก้ไขสินค้า แท็บราคาขั้นบันได) สินค้าที่ไม่ได้ตั้ง ตัวแทนจ่ายราคาปกติ
+          · สินค้าใหม่ที่เพิ่งเพิ่มต้องไปตั้งเรทตัวแทนเองด้วย
+        </p>
+        <p>
+          <b>ถอดออก</b> — กด <kbd className={KEY}>ถอดออก</kbd> 2 ครั้งท้ายรายชื่อ มีผลทันที (ออเดอร์เก่าไม่เปลี่ยน) · ถอดผิดเพิ่มกลับด้วยอีเมลเดิมได้เลย ·
+          อ่านฉบับเต็ม (การตั้งเรทตัวแทนในสินค้า) ที่{" "}
+          <Link href="/admin/guide#dealers" className="font-semibold underline decoration-dotted underline-offset-2">
+            📋 วิธีใช้ระบบ → ตัวแทนจำหน่าย
+          </Link>
+        </p>
+      </div>
+    </details>
+  );
 }
 
 export default function AdminDealersPage() {
@@ -158,6 +274,9 @@ export default function AdminDealersPage() {
           </>
         }
       />
+
+      {/* 📖 วิธีเพิ่มตัวแทน — กางเองตอนทะเบียนยังว่าง */}
+      <HowToAddDealer open={!loading && dealers.length === 0 && applications.length === 0} />
 
       {/* 📥 ใบสมัครรออนุมัติ — งานค้าง อยู่บนสุดเสมอ */}
       {applications.length > 0 && (
