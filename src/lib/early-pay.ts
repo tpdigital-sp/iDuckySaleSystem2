@@ -91,10 +91,12 @@ export interface EarlyPayLine {
  * บรรทัดนี้ "ได้เรทราคาส่ง" แล้วหรือยัง — กติกาเจ้าของร้าน (10 ก.ย. 69) ได้ราคาส่งแล้วไม่ต้องลดโอนไวซ้ำ
  *
  * ส่ง = จำนวน (รวมล็อตถ้าตะกร้ารวมให้) ตกเลย "ช่วงราคาแรก" ของตารางราคา (tierIndex > 0 เช่น 1-10 → 11-29)
- *   หรือเลือก/ถูกจัดเข้าเรทที่ต้องสั่งถึงขั้นต่ำ (minQty > 1) แล้วจำนวนถึงจริง (สแตนดี้เรท 2 เริ่ม 50)
+ *   หรือเลือก/ถูกจัดเข้า "เรทขั้นสูง" — เรทที่มีขั้นต่ำ และสินค้ามีเรทอื่นที่เริ่มต่ำกว่าให้เลือก (สแตนดี้เรท 2 เริ่ม 50
+ *   ขณะที่เรท 1 เริ่ม 11) แล้วจำนวนถึงจริง
+ * ⚠️ "ขั้นต่ำสั่ง" ไม่ใช่ "เรทส่ง": สินค้าเรทเดียวที่ขั้นต่ำ = ช่วงราคาแรก (โฟโต้การ์ด PVC ขั้นต่ำ 5 ใบ ช่วง 5-49 ·
+ *   สติ๊กเกอร์ UV 3 แผ่น ช่วง 3-9) สั่งเท่าขั้นต่ำยังเป็นปลีก — OD-260910-5703 เคยไม่ได้ลดเพราะถือ minQty เป็นส่ง
  * ⚠️ ไม่ใช้ isRetailRateLine (กติกากล่อง/ค่าส่ง) — ตัวนั้นถือว่าเรทที่ไม่มี minQty เป็น "ส่ง" ตั้งแต่ชิ้นแรก
  *   ทำให้สินค้าราคาเดียว/เรทเดียวไม่มีขั้นต่ำ 83 ตัว (ปฏิทิน · เสื้อ · กระเป๋า …) ไม่ได้ส่วนลดเลย (OD-260910-7269)
- * ขั้นต่ำแบบ "ต่อรอบผลิต" (minQtyScope lot เช่น สติ๊กเกอร์ UV 3 แผ่น) ไม่นับเป็นเรทส่ง — ช่วงราคาแรกยังเป็นปลีก
  * สินค้าไม่มีตารางราคา = ราคาเดียว = ปลีก
  */
 export function isWholesaleLine(
@@ -106,7 +108,13 @@ export function isWholesaleLine(
   const rs = publicRates(p);
   const rate = (merged?.rateLabel ? rs.find((r) => r.label === merged.rateLabel) : undefined) ?? activeRate(p, selections);
   const effQty = Math.max(qty, merged?.totalQty ?? 0);
-  if (rate && !rate.dealerOnly && (rate.minQty ?? 1) > 1 && rate.minQtyScope !== "lot" && effQty >= (rate.minQty ?? 1)) return true;
+  // เรทที่เป็น "ทางเลือกเชิงโครงสร้าง" (hardMinQty เช่น สติ๊กเกอร์ UV ขายเป็นแผ่น A3 / ตร.ม.) หรือขั้นต่ำต่อรอบผลิต (lot)
+  // ไม่ใช่ขั้นบันไดจำนวน — ตัดสินจากช่วงราคาอย่างเดียว
+  if (rate && !rate.dealerOnly && !p.hardMinQty && rate.minQtyScope !== "lot" && (rate.minQty ?? 1) > 1 && effQty >= (rate.minQty ?? 1)) {
+    // เรทขั้นสูง = มีเรท public อื่นที่เริ่มต่ำกว่า (ลูกค้าเลือกเรทที่ต้องสั่งเยอะกว่าเพื่อราคาที่ถูกกว่า)
+    const lowerEntry = rs.some((r) => r !== rate && (r.minQty ?? 1) < (rate.minQty ?? 1));
+    if (lowerEntry) return true;
+  }
   const matrix = rate?.pricing ?? p.pricing;
   if (!matrix?.tiers?.length) return false;
   return tierIndex(matrix, effQty) > 0;
