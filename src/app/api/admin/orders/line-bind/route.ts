@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   const gate = await requirePerm("orders.edit");
   if (gate.res) return gate.res;
 
-  let body: { orderId?: string; input?: string; managerId?: string; forget?: boolean };
+  let body: { orderId?: string; input?: string; managerId?: string; forget?: boolean; clearLink?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -54,10 +54,17 @@ export async function POST(req: Request) {
         }
       }
     }
+    // clearLink=true = ลบลิงก์ห้องแชทของใบนี้ทิ้งด้วย (ผูกผิดคน = ลิงก์ก็ผิดคนเช่นกัน — เจ้าของร้านแจ้ง 10 ก.ย. 69 ว่ากดยกเลิกแล้วลิงก์ยังค้าง)
     const cleared = withLog(
-      { ...order, lineUserId: undefined, lineProfile: undefined },
+      { ...order, lineUserId: undefined, lineProfile: undefined, ...(body.clearLink ? { lineChatUrl: undefined } : {}) },
       who,
-      body.forget ? "ยกเลิกการผูก LINE + ลืมคู่ลิงก์" : "ยกเลิกการผูก LINE ของลูกค้า"
+      body.forget
+        ? body.clearLink
+          ? "ยกเลิกการผูก LINE + ลบลิงก์ห้องแชท + ลืมคู่ลิงก์"
+          : "ยกเลิกการผูก LINE + ลืมคู่ลิงก์"
+        : body.clearLink
+          ? "ยกเลิกการผูก LINE + ลบลิงก์ห้องแชท"
+          : "ยกเลิกการผูก LINE ของลูกค้า"
     );
     const { error } = await sb.from("orders").update({ data: cleared }).eq("id", orderId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

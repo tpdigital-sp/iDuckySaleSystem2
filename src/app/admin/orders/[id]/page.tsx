@@ -7720,14 +7720,17 @@ function LineChatBox({
     }
   }
 
-  /** ยกเลิกการผูก — forget=true จะลบ "ลิงก์ห้องแชทนี้ = คนนี้" ที่จำไว้ด้วย (กันเดาผิดซ้ำ) */
-  async function unbind(forget = false) {
+  /**
+   * ยกเลิกการผูก — forget=true จะลบ "ลิงก์ห้องแชทนี้ = คนนี้" ที่จำไว้ด้วย (กันเดาผิดซ้ำ)
+   * clearLink=true ลบลิงก์ห้องแชทของใบนี้ทิ้งด้วย (ผูกผิดคน = ลิงก์ก็เป็นของคนผิด ไม่ควรค้างไว้)
+   */
+  async function unbind(forget = false, clearLink = false) {
     setBusy(true);
     try {
       const res = await fetch("/api/admin/orders/line-bind", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ orderId: order.id, input: "", forget }),
+        body: JSON.stringify({ orderId: order.id, input: "", forget, clearLink }),
       });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; order?: Order; error?: string };
       if (!j.ok) {
@@ -7735,7 +7738,16 @@ function LineChatBox({
         return;
       }
       if (j.order) onBound(j.order);
-      setMsg(forget ? "ยกเลิกการผูก + ลืมคู่ลิงก์แล้ว (ลิงก์ห้องแชทยังอยู่)" : "ยกเลิกการผูกแล้ว (ลิงก์ห้องแชทยังอยู่)");
+      setPingCopied(null);
+      setMsg(
+        clearLink
+          ? forget
+            ? "ยกเลิกการผูก + ลบลิงก์ห้องแชท + ลืมคู่ลิงก์แล้ว"
+            : "ยกเลิกการผูก + ลบลิงก์ห้องแชทแล้ว"
+          : forget
+            ? "ยกเลิกการผูก + ลืมคู่ลิงก์แล้ว (ลิงก์ห้องแชทยังอยู่)"
+            : "ยกเลิกการผูกแล้ว (ลิงก์ห้องแชทยังอยู่ — กด ✕ ที่บรรทัดลิงก์ถ้าต้องการลบ)"
+      );
     } catch {
       setMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
     } finally {
@@ -7885,9 +7897,9 @@ function LineChatBox({
                   {chat && (
                     <button
                       type="button"
-                      onClick={() => void unbind(true)}
+                      onClick={() => void unbind(true, true)}
                       disabled={busy}
-                      title="ผูกผิดคน — ยกเลิก และลบที่ระบบจำว่าลิงก์ห้องแชทนี้เป็นคนนี้ (ครั้งหน้าจะไม่เดาคนนี้อีก)"
+                      title="ผูกผิดคน — ยกเลิก ลบลิงก์ห้องแชทของใบนี้ และลบที่ระบบจำว่าลิงก์ห้องแชทนี้เป็นคนนี้ (ครั้งหน้าจะไม่เดาคนนี้อีก)"
                       className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-rose-500 transition hover:bg-rose-50 disabled:opacity-50"
                     >
                       ผูกผิดคน — ยกเลิก+ลืม
@@ -7928,9 +7940,26 @@ function LineChatBox({
           </div>
         )}
         {chat && (
-          <p className="mt-1.5 truncate text-[10px] text-slate-400" title={chat.url}>
-            🔗 <a href={chat.url} target="_blank" rel="noopener noreferrer" className="underline decoration-slate-300 underline-offset-2 hover:text-slate-600">{chat.url}</a>
-            {chat.source === "prev" && <span className="ml-1">(จาก {chat.from})</span>}
+          <p className="mt-1.5 flex min-w-0 items-center gap-1 text-[10px] text-slate-400" title={chat.url}>
+            <span className="min-w-0 truncate">
+              🔗 <a href={chat.url} target="_blank" rel="noopener noreferrer" className="underline decoration-slate-300 underline-offset-2 hover:text-slate-600">{chat.url}</a>
+              {chat.source === "prev" && <span className="ml-1">(จาก {chat.from})</span>}
+            </span>
+            {/* ลบเฉพาะลิงก์ (คงคนที่ผูกไว้) — ลิงก์ของใบนี้เท่านั้น ลิงก์ที่จำจากใบเก่าต้องไปลบที่ใบนั้น */}
+            {mayEdit && chat.source === "self" && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSave("");
+                  setPingCopied(null);
+                  setMsg("ลบลิงก์ห้องแชทแล้ว — วางลิงก์ที่ถูกต้องในช่องสีแดงด้านล่างได้เลย");
+                }}
+                className="shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-rose-600"
+                title="ลบลิงก์ห้องแชทของใบนี้ (คนที่ผูกไว้ยังอยู่)"
+              >
+                ✕ ลบลิงก์
+              </button>
+            )}
           </p>
         )}
         {note}
