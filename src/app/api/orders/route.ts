@@ -7,7 +7,7 @@ import { orderTotal, type Order } from "@/lib/admin-data";
 import { tierDiscountAmount, tiersOf, lockedTier, seedTierStatus, type Tier, type TierStatus } from "@/lib/tiers";
 import { couponLabel, validateCoupon, type Coupon } from "@/lib/coupons";
 import { giftsFor, giftsToOrder, type GiftPromo, type OrderGift } from "@/lib/gifts";
-import { earlyPayAmount, earlyPayOf, EARLY_PAY_LABEL, type EarlyPayDiscount } from "@/lib/early-pay";
+import { earlyPayAmount, earlyPayBase, earlyPayExpiresAt, earlyPayOf, EARLY_PAY_LABEL, type EarlyPayDiscount } from "@/lib/early-pay";
 import { currentActor } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
@@ -241,14 +241,22 @@ export async function POST(req: Request) {
 
   // ── 4) ⚡ ส่วนลดโอนไว — ได้ทุกออเดอร์ที่สั่งผ่านเว็บ (ลูกค้าโอนก่อนร้านเริ่มผลิตเสมอ) ──
   // คิดจาก "ยอดสินค้าก่อนค่าส่ง" ตามกติกาที่เจ้าของร้านกำหนด · ใช้พร้อมส่วนลดระดับ/คูปองได้
+  // เฉพาะออเดอร์ราคาปลีกล้วน — มีบรรทัดเรทขายส่งแม้บรรทัดเดียว = ไม่ลดทั้งใบ (รวมล็อตใหม่ด้วยกติกาตะกร้า ให้ 6+6 = เรทส่ง 12)
   // ⚠️ ออเดอร์ที่ยังรอตีราคา (unitPrice 0) จะได้ส่วนลดจากยอดเท่าที่กรอกมา — แอดมินแก้ยอดทีหลังได้ที่หน้าออเดอร์
   let earlyPay: Order["earlyPay"];
   try {
     const { data: settRow } = await sb.from("products").select("data").eq("id", SETTINGS_ROW).maybeSingle();
     const cfg = earlyPayOf(settRow?.data as { earlyPay?: EarlyPayDiscount } | undefined);
-    const amount = earlyPayAmount(subtotal, cfg);
+    const goods = earlyPayBase(
+      input.items.map((i) => ({ productId: i.productId, selections: i.sel, qty: i.qty, amount: i.qty * i.unitPrice })),
+      (id) => prods.get(id),
+      { mergeLots: true }
+    );
+    const amount = earlyPayAmount(goods, cfg);
     // ตัวแทนจำหน่ายไม่ได้ส่วนลดโอนไว (ได้ราคาเรทตัวแทนอย่างเดียว — ตรงกับพรีวิวหน้า checkout)
-    if (amount > 0 && !dealer) earlyPay = { label: EARLY_PAY_LABEL, amount };
+    // ⏳ ต้องแจ้งโอนภายในเวลา (ค่าเริ่มต้น 1 ชั่วโมง) — แช่เวลาหมดอายุไว้ในใบ ทุกหน้าจอคิดยอดจากตรงนี้เอง
+    const expiresAt = earlyPayExpiresAt(cfg, now);
+    if (amount > 0 && !dealer) earlyPay = { label: EARLY_PAY_LABEL, amount, ...(expiresAt ? { expiresAt } : {}) };
   } catch {
     // อ่านตั้งค่าไม่ได้ = ไม่ลด ดีกว่าสั่งซื้อไม่สำเร็จ (แอดมินใส่ส่วนลดเองได้ที่หน้าออเดอร์)
   }

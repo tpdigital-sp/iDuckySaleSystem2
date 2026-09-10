@@ -17,6 +17,7 @@ import {
   orderBalance,
   orderTotal,
   orderVatAmount,
+  lockEarlyPay,
   packGate,
   proofsOf,
   withLog,
@@ -510,6 +511,9 @@ export async function PATCH(req: Request) {
    * → จำว่ารับครบเท่ายอดบิลตอนนี้ ไม่งั้นสั่งเพิ่ม/เก็บค่าบริการทีหลังจะไม่รู้ว่าค้าง (กับดัก 26 ส.ค. 69: 34 จาก 40 ใบไม่มี paidTotal)
    * ใบมัดจำมีเส้นทางของตัวเอง (confirmDepositFirst ตั้ง paidTotal อยู่แล้ว)
    */
+  // ⏳ แอดมินยืนยันเงินเข้าเองทันเวลา → ล็อกส่วนลดโอนไวก่อนคิด paidTotal (เลยเวลาแล้ว = ส่วนลดหาย ใส่ส่วนลดทั้งบิลเองได้ถ้าตกลงกับลูกค้า)
+  if (toSave.status === "ชำระแล้ว" && existing.status !== "ชำระแล้ว")
+    toSave = lockEarlyPay(toSave, now, `แอดมิน ${actor.name?.trim() || actor.username}`);
   if (toSave.status === "ชำระแล้ว" && existing.status !== "ชำระแล้ว" && toSave.paidTotal == null && !toSave.deposit)
     toSave = { ...toSave, paidTotal: orderTotal(toSave) };
 

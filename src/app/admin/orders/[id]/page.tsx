@@ -28,6 +28,8 @@ import {
   isBlankOrder,
   lineChatOf,
   lineUserOf,
+  earlyPayMsLeft,
+  earlyPayState,
   orderEarlyPayAmount,
   orderItemDiscounts,
   orderFullyPaid,
@@ -5159,12 +5161,27 @@ export default function AdminOrderDetailPage() {
                   <span className="shrink-0 tabular-nums">−{formatPrice(order.discount.amount)}</span>
                 </div>
               )}
-              {orderEarlyPayAmount(order) > 0 && (
+              {earlyPayState(order) === "expired" ? (
+                <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-slate-400" title="ลูกค้าไม่ได้แจ้งโอนภายในเวลา ส่วนลดหายไปตามกติกา — ตกลงกับลูกค้าแล้วใส่ส่วนลดทั้งบิลเองได้">
+                  <span className="min-w-0">{order.earlyPay!.label} · หมดเวลาแจ้งโอน</span>
+                  <span className="shrink-0 tabular-nums line-through">−{formatPrice(order.earlyPay!.amount)}</span>
+                </div>
+              ) : orderEarlyPayAmount(order) > 0 ? (
                 <div className="mt-1.5 flex items-center justify-between gap-3 text-xs font-semibold text-emerald-600">
-                  <span className="min-w-0">{order.earlyPay!.label}</span>
+                  <span className="min-w-0">
+                    {order.earlyPay!.label}
+                    {earlyPayState(order) === "active" && (
+                      <span className="ml-1 font-normal text-slate-500">⏳ เหลือ {Math.max(1, Math.ceil(earlyPayMsLeft(order) / 60_000))} นาที</span>
+                    )}
+                    {order.earlyPay!.lockedAt && (
+                      <span className="ml-1 font-normal text-slate-500" title={`ล็อกโดย ${order.earlyPay!.lockedBy ?? ""}`}>
+                        🔒 {new Date(order.earlyPay!.lockedAt).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    )}
+                  </span>
                   <span className="shrink-0 tabular-nums">−{formatPrice(orderEarlyPayAmount(order))}</span>
                 </div>
-              )}
+              ) : null}
               {orderItemDiscounts(order) > 0 && (
                 <div className="mt-1.5 flex items-center justify-between gap-3 text-xs font-semibold text-rose-500">
                   <span>ส่วนลดรายรายการ</span>

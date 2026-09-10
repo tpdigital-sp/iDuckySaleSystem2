@@ -640,8 +640,11 @@ export interface Order {
   /**
    * ⚡ ส่วนลด "โอนไว" — คิดฝั่งเซิร์ฟเวอร์ตอนสร้างออเดอร์จากยอดสินค้าก่อนค่าส่ง (ดู @/lib/early-pay)
    * ใช้พร้อมส่วนลดอื่นได้ทั้งหมด (ไม่ใช่ "เลือกอันที่ดีกว่า" แบบคูปอง/ระดับสมาชิก)
+   * ⏳ expiresAt = หมดเวลาแจ้งโอน (ISO) — ไม่มี = ไม่จำกัดเวลา (ใบก่อน 10 ก.ย. 69) · เลยเวลาโดยยังไม่ล็อก = ส่วนลดหาย
+   *    ยอดทุกหน้าจอคิดผ่าน orderEarlyPayAmount() จึงกลับเป็นยอดเต็มเองโดยไม่ต้องมี cron
+   * 🔒 lockedAt = แจ้งโอน/ยืนยันเงินเข้าทันเวลา → ล็อกส่วนลดไว้ถาวร (ดู lockEarlyPay)
    */
-  earlyPay?: { label: string; amount: number };
+  earlyPay?: { label: string; amount: number; expiresAt?: string; lockedAt?: string; lockedBy?: string };
   /**
    * หัก ณ ที่จ่าย (ลูกค้านิติบุคคล) — แอดมินเลือกอัตรา 1%/3% ระบบเติมจำนวนเงินจากยอดรวมให้
    * แล้วแก้ตัวเลขเองได้ตามใบ 50 ทวิของลูกค้า (บัญชีลูกค้าบางเจ้าคิดจากฐานก่อน VAT)
@@ -730,9 +733,39 @@ export function adminDiscountAmount(o: Order): number {
   return Math.max(0, d.amount ?? 0);
 }
 
-/** ส่วนลดโอนไวของออเดอร์นี้เป็นบาท (0 = ออเดอร์นี้ไม่ได้ลด) */
-export function orderEarlyPayAmount(o: Order): number {
-  return Math.max(0, o.earlyPay?.amount ?? 0);
+/**
+ * สถานะส่วนลดโอนไวของออเดอร์ ณ เวลา now
+ * none = ไม่มีส่วนลด · active = ยังอยู่ในเวลา (นับถอยหลัง) · locked = ได้แน่แล้ว (แจ้งโอนทัน / ใบเก่าไม่จำกัดเวลา) · expired = เลยเวลาโดยไม่แจ้งโอน
+ */
+export type EarlyPayState = "none" | "active" | "locked" | "expired";
+export function earlyPayState(o: Order, now: number = Date.now()): EarlyPayState {
+  const e = o.earlyPay;
+  if (!e || !(e.amount > 0)) return "none";
+  if (e.lockedAt || !e.expiresAt) return "locked";
+  const t = Date.parse(e.expiresAt);
+  if (!Number.isFinite(t)) return "locked";
+  return now > t ? "expired" : "active";
+}
+
+/** เหลือเวลาแจ้งโอนอีกกี่มิลลิวินาที (0 = ไม่อยู่ในสถานะนับถอยหลัง) */
+export function earlyPayMsLeft(o: Order, now: number = Date.now()): number {
+  if (earlyPayState(o, now) !== "active") return 0;
+  return Math.max(0, Date.parse(o.earlyPay!.expiresAt!) - now);
+}
+
+/**
+ * 🔒 ล็อกส่วนลดโอนไว — เรียกตอนลูกค้าแจ้งโอน (slip-apply) หรือแอดมินยืนยันเงินเข้าเอง
+ * ทันเวลา = ประทับ lockedAt · เลยเวลา/ไม่มีส่วนลด/ล็อกแล้ว = คืนออเดอร์เดิม (ส่วนลดหายไปตามกติกา)
+ */
+export function lockEarlyPay(o: Order, at: string, by: string): Order {
+  if (earlyPayState(o, Date.parse(at) || Date.now()) !== "active") return o;
+  return { ...o, earlyPay: { ...o.earlyPay!, lockedAt: at, lockedBy: by } };
+}
+
+/** ส่วนลดโอนไวของออเดอร์นี้เป็นบาท (0 = ไม่ได้ลด หรือเลยเวลาแจ้งโอนแล้ว) */
+export function orderEarlyPayAmount(o: Order, now?: number): number {
+  const s = earlyPayState(o, now);
+  return s === "active" || s === "locked" ? Math.max(0, o.earlyPay!.amount) : 0;
 }
 
 /** ส่วนลดทั้งหมดของออเดอร์ = คูปอง/ระดับ + ส่วนลดทั้งบิลจากแอดมิน + ส่วนลดรายรายการ + ส่วนลดโอนไว */

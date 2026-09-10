@@ -13,7 +13,9 @@ import {
   boxFeeTotal,
   boxFeesOf,
   earlyPayAmount,
+  earlyPayBase,
   earlyPayOf,
+  earlyPayWindowText,
   fetchShopPayment,
   hasPayment,
   freeShippingMinOf,
@@ -347,7 +349,18 @@ export default function CheckoutPage() {
   // ⚡ ส่วนลดโอนไว — ได้ทุกคนที่สั่งผ่านเว็บ (บวกทับส่วนลดระดับ/คูปองได้ ไม่ใช่เลือกอันที่ดีกว่า)
   //    สั่งเพิ่มในออเดอร์เดิมไม่คิดใหม่ — ออเดอร์แรกลดไปแล้ว (ตรงกับกติกาส่วนลดระดับด้านบน)
   //    ตัวแทนจำหน่ายไม่ได้ (ได้ราคาตัวแทนอย่างเดียว) — ต้องคิดด้วยสูตรเดียวกับ /api/orders เป๊ะ
-  const earlyPay = appendTo || isDealer ? 0 : earlyPayAmount(subtotal, earlyPayOf(payment));
+  //    เฉพาะออเดอร์ราคาปลีกล้วน — มีบรรทัดเรทขายส่งแม้บรรทัดเดียว = ทั้งใบไม่ลด (ได้ราคาส่งไปแล้ว ไม่ลดซ้ำ)
+  const earlyPayGoods = earlyPayBase(
+    items.map((i) => ({
+      productId: i.productId,
+      selections: i.selections,
+      qty: i.qty,
+      amount: i.unitPrice * i.qty + (i.extraFee ?? 0),
+      mergedRateLabel: i.merged?.rateLabel,
+    })),
+    productOf
+  );
+  const earlyPay = appendTo || isDealer ? 0 : earlyPayAmount(earlyPayGoods, earlyPayOf(payment));
   const total = Math.max(0, subtotal - discount - earlyPay + shippingCost);
 
   async function submit() {
@@ -1049,6 +1062,9 @@ export default function CheckoutPage() {
             <span>⚡ ส่วนลดโอนไว</span>
             <span>−{formatPrice(earlyPay)}</span>
           </div>
+        )}
+        {earlyPay > 0 && earlyPayWindowText(earlyPayOf(payment)) && (
+          <p className="mt-0.5 text-[11px] text-stone-500">⏳ โอนและแจ้งโอนภายใน {earlyPayWindowText(earlyPayOf(payment))} หลังสั่งซื้อ — เลยเวลาส่วนลดนี้จะหายไปเอง</p>
         )}
         <div className="mt-1 flex justify-between text-sm text-stone-600">
           <span>

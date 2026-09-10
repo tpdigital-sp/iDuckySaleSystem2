@@ -1,8 +1,10 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { orderSubtotal, orderTotal, paidSoFar, paidStatusFor, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
+import { earlyPayState, lockEarlyPay, orderTotal, paidSoFar, paidStatusFor, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
 import { expectedForPhase, type SlipPhase } from "@/lib/payments";
-import { earlyPayAmount, earlyPayOf, type EarlyPayDiscount } from "@/lib/early-pay";
+import { earlyPayAmount, earlyPayBase, earlyPayOf, type EarlyPayDiscount } from "@/lib/early-pay";
+import { getProductServer } from "@/lib/products-server";
+import type { Product } from "@/lib/products";
 import { verifySlipWithSlipOK, type SlipVerifyResult } from "@/lib/server/slipok";
 import { assertSlipNotDuplicate } from "@/lib/server/slip-dedupe";
 import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
@@ -80,8 +82,19 @@ function verifyRecord(verify: SlipVerifyResult, now: string): Order["slipVerify"
 }
 
 export async function applySlipVerification(input: ApplySlipInput): Promise<ApplySlipResult> {
-  const { sb, order, path, bytes, contentType, phase, origin } = input;
+  const { sb, path, bytes, contentType, phase, origin } = input;
   const by = input.by?.trim() || "ลูกค้า";
+
+  /**
+   * ⏳ แจ้งโอนทันเวลา → ล็อกส่วนลดโอนไวไว้ "ก่อน" คิดยอดที่ต้องโอน (ไม่งั้นเลยเวลาแล้วยอดที่คาดหวังกลับเป็นเต็ม)
+   * นับที่เวลาแจ้งโอน (paidReportedAt — แอดมินแนบย้อนหลังส่งเวลาจริงมาได้) ไม่ใช่เวลาที่โอนในสลิป
+   * เลยเวลาแล้ว = ไม่ล็อก ยอดที่ต้องโอนเป็นยอดเต็ม สลิปที่โอนขาดเท่าส่วนลดจะตกไป "รับบางส่วน" ให้แอดมินดู
+   */
+  const lockAt = input.paidReportedAt ?? new Date().toISOString();
+  const order =
+    earlyPayState(input.order, Date.parse(lockAt) || Date.now()) === "active"
+      ? withLog(lockEarlyPay(input.order, lockAt, by), by, "ล็อกส่วนลดโอนไว", `แจ้งโอนทันเวลา — ได้ส่วนลด ${thb(input.order.earlyPay!.amount)} บาท`)
+      : input.order;
 
   // ── ยอดที่สลิปใบนี้ควรจะเป็น = ยอดค้างของช่องนั้น ณ ตอนนี้ (ไม่ใช่ยอดเต็ม) ──
   const expected = expectedForPhase(order, phase);
@@ -97,13 +110,24 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
    * ออเดอร์ที่สั่งผ่านเว็บหลังเปิดโปรจะมี order.earlyPay อยู่แล้ว (ยอดที่ต้องโอนลดไปแล้ว) → 0 กันหักซ้ำ
    * เหลือไว้ให้ออเดอร์เก่า + ลูกค้าที่รู้โปรจากไลน์แล้วโอนน้อยกว่ายอดที่เห็นในเว็บ
    * ยอมครั้งเดียวต่อออเดอร์ — เคยรับเงินไปแล้ว (paidSoFar > 0) = ใบต่อ ๆ ไปห้ามขาดอีก ไม่งั้นโอน 3 ใบขาดได้ 3 รอบ
+   * เฉพาะออเดอร์ราคาปลีกล้วนเหมือนตอน checkout — ใบที่มีบรรทัดเรทขายส่งไม่มีส่วนลดนี้ สลิปขาด ฿10 ต้องตกไปตรวจมือ
    */
   let earlyPayAllowed = 0;
   // 🤝 ออเดอร์ตัวแทนจำหน่ายไม่มีส่วนลดโอนไว — ห้ามยอมรับสลิปที่โอนขาด ฿5/฿10
   if (!order.earlyPay && !order.dealer && paidSoFar(order) <= 0) {
     try {
       const { data: settRow } = await sb.from("products").select("data").eq("id", "__shop_payment__").maybeSingle();
-      earlyPayAllowed = earlyPayAmount(orderSubtotal(order), earlyPayOf(settRow?.data as { earlyPay?: EarlyPayDiscount } | undefined));
+      const prods = new Map<string, Product>();
+      for (const pid of [...new Set(order.items.map((i) => i.productId).filter(Boolean))]) {
+        const p = await getProductServer(pid);
+        if (p) prods.set(pid, p);
+      }
+      const goods = earlyPayBase(
+        order.items.map((i) => ({ productId: i.productId, selections: i.sel, qty: i.qty, amount: i.qty * i.unitPrice })),
+        (id) => prods.get(id),
+        { mergeLots: true }
+      );
+      earlyPayAllowed = earlyPayAmount(goods, earlyPayOf(settRow?.data as { earlyPay?: EarlyPayDiscount } | undefined));
     } catch {
       // อ่านตั้งค่าไม่ได้ = ไม่ยอมรับส่วนต่าง ตกไปตรวจมือตามเดิม (fail-safe)
     }

@@ -11,7 +11,7 @@ import { artQtyOf, formatPrice, type Product } from "@/lib/products";
 import { itemPiecesLine } from "@/lib/item-yield";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
-import { adminDiscountAmount, amountDueNow, artworkSide, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { adminDiscountAmount, amountDueNow, artworkSide, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { overpaidAmount, paymentEntries, resolveSlipPhase } from "@/lib/payments";
 import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, reviewGiftProof, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
@@ -128,6 +128,13 @@ export default function CustomerOrderPage() {
   // 💬 กดทักไลน์คุยออเดอร์แล้วหรือยัง (คัดลอกเลขออเดอร์+ลิงก์ให้วางในแชท)
   const [lineOpened, setLineOpened] = useState(false);
   const [order, setOrder] = useState<Order | null>(null);
+  // ⏳ นาฬิกานับถอยหลังส่วนลดโอนไว — เดินเฉพาะตอนยังอยู่ในเวลา พอหมดเวลาหน้าจอคิดยอดใหม่เอง (ยอดโอน/QR ตามไปด้วย)
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (!order || earlyPayState(order) !== "active") return;
+    const t = setInterval(() => setNowTick(Date.now()), 15_000);
+    return () => clearInterval(t);
+  }, [order]);
   const [loadErr, setLoadErr] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -1733,12 +1740,24 @@ export default function CustomerOrderPage() {
                 <span>−{formatPrice(order.discount.amount)}</span>
               </div>
             )}
-            {orderEarlyPayAmount(order) > 0 && (
-              <div className="mt-1.5 flex justify-between text-sm font-semibold t-ok">
-                <span>{order.earlyPay!.label}</span>
-                <span>−{formatPrice(orderEarlyPayAmount(order))}</span>
+            {earlyPayState(order, nowTick) === "expired" ? (
+              <div className="mt-1.5 flex justify-between text-sm t-soft">
+                <span>
+                  {order.earlyPay!.label} <span className="text-xs">(หมดเวลาแจ้งโอนแล้ว)</span>
+                </span>
+                <span className="line-through">−{formatPrice(order.earlyPay!.amount)}</span>
               </div>
-            )}
+            ) : orderEarlyPayAmount(order, nowTick) > 0 ? (
+              <div className="mt-1.5 flex justify-between gap-2 text-sm font-semibold t-ok">
+                <span className="min-w-0">
+                  {order.earlyPay!.label}
+                  {earlyPayState(order, nowTick) === "active" && (
+                    <span className="block text-xs font-normal">⏳ แจ้งโอนภายใน {Math.max(1, Math.ceil(earlyPayMsLeft(order, nowTick) / 60_000))} นาที</span>
+                  )}
+                </span>
+                <span className="shrink-0">−{formatPrice(orderEarlyPayAmount(order, nowTick))}</span>
+              </div>
+            ) : null}
             {orderItemDiscounts(order) > 0 && (
               <div className="mt-1.5 flex justify-between text-sm font-semibold t-ok">
                 <span>ส่วนลดรายการสินค้า</span>

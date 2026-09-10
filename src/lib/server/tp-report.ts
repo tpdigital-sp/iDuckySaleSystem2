@@ -2,7 +2,7 @@ import "server-only";
 import { FieldValue } from "firebase-admin/firestore";
 import { getFirestoreAdmin } from "@/lib/server/firebase-admin";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderTotal, proofsOf, type Order } from "@/lib/admin-data";
+import { orderEarlyPayAmount, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
 import { SITE_URL } from "@/lib/shop-info";
 
 /**
@@ -108,7 +108,7 @@ export async function reportPaidToTP(
         // 💸 ชนิดเรคอร์ด: first = ใบหลัก · final = งวดหลังมัดจำ · extra = สลิปใบเพิ่ม (บอร์ด WIP ข้าม) · partial = ยังไม่ครบงวด
         installment: isFinal ? "final" : opts?.extra ? "extra" : "first",
         partial: !!opts?.partial,
-        earlyPay: order.earlyPay?.amount ?? 0,
+        earlyPay: orderEarlyPayAmount(order),
         bank: "iDucky Store",
         orderLink: `${SITE_URL}/admin/orders/${encodeURIComponent(order.id)}`,
         note: opts?.noteSuffix ? `${opts.noteSuffix} · ${itemSummary}`.slice(0, 120) : itemSummary,

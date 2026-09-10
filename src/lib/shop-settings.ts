@@ -36,7 +36,7 @@ export {
 } from "./box-fee";
 import { DEFAULT_BOX_FEES as _DEFAULT_BOX_FEES, type BoxFee } from "./box-fee";
 export { DEFAULT_IMAGE_CLEANUP, imageCleanupOf, type ImageCleanupConfig } from "./image-cleanup";
-export { DEFAULT_EARLY_PAY, EARLY_PAY_LABEL, earlyPayOf, earlyPayAmount, type EarlyPayDiscount } from "./early-pay";
+export { DEFAULT_EARLY_PAY, EARLY_PAY_LABEL, earlyPayOf, earlyPayAmount, earlyPayBase, earlyPayWindowText, type EarlyPayDiscount, type EarlyPayLine } from "./early-pay";
 import type { EarlyPayDiscount as _EarlyPayDiscount } from "./early-pay";
 import type { ImageCleanupConfig as _ImageCleanupConfig } from "./image-cleanup";
 
