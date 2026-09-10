@@ -180,10 +180,15 @@ const PACK_WORDS = "เซ็ต|เซต|ชุด|แพ็ค|แพค|แ�
  */
 export function orderPiecesPerUnit(item: { selections?: string; sel?: Record<string, string> }): { per: number; piece: string; unit: string } | null {
   const re = new RegExp(`(\\d{1,4})\\s*(${PIECE_WORDS})\\s*/\\s*(${PACK_WORDS})(\\s?A\\d)?`);
+  // "(1 เซตได้ 10 ชิ้น)" / "1 ชุด = 2 ชิ้น" — สำนวนของเข็มกลัดพลาสติก (ใบเก่าก่อน 10 ก.ย. 69 ยังไม่ได้แช่ unitYield)
+  const rePack = new RegExp(`(?:^|\\D)1\\s*(${PACK_WORDS})\\s*(?:ได้|มี|=|ละ)\\s*(\\d{1,4})\\s*(${PIECE_WORDS})`);
   for (const text of [...Object.values(item.sel ?? {}), item.selections ?? ""]) {
     const m = text.match(re);
     const per = Number(m?.[1]);
     if (m && Number.isFinite(per) && per > 1 && per <= 9999) return { per, piece: m[2], unit: (m[3] + (m[4] ?? "")).trim() };
+    const p = text.match(rePack);
+    const perP = Number(p?.[2]);
+    if (p && Number.isFinite(perP) && perP > 1 && perP <= 9999) return { per: perP, piece: p[3], unit: p[1] };
   }
   return null;
 }

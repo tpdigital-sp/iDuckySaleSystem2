@@ -1126,9 +1126,13 @@ export function orderUnitYield(product: Product, selections: Record<string, stri
   if (inUnit && Number(inUnit[2]) > 1) return { per: Number(inUnit[2]), piece: inUnit[3], unit: inUnit[1] };
   // "(20 ใบ/เซ็ต)" ในชื่อตัวเลือกที่เลือกไว้
   const reName = new RegExp(`(\\d{1,4})\\s*(${YIELD_PIECE_WORDS})\\s*/\\s*(${YIELD_PACK_WORDS})`);
+  // "(1 เซตได้ 10 ชิ้น)" / "1 ชุด = 2 ชิ้น" — อีกสำนวนที่ร้านใช้ (เข็มกลัดพลาสติก · ที่ถนอมสายชาร์จ)
+  const reNamePack = new RegExp(`(?:^|\\D)1\\s*(${YIELD_PACK_WORDS})\\s*(?:ได้|มี|=|ละ)\\s*(\\d{1,4})\\s*(${YIELD_PIECE_WORDS})`);
   for (const v of Object.values(selections)) {
     const m = (v ?? "").match(reName);
     if (m && Number(m[1]) > 1) return { per: Number(m[1]), piece: m[2], unit: saleUnit || m[3] };
+    const p = (v ?? "").match(reNamePack);
+    if (p && Number(p[2]) > 1) return { per: Number(p[2]), piece: p[3], unit: saleUnit || p[1] };
   }
   // ไม่รู้ว่าเซ็ตละกี่ชิ้น แต่รู้ว่าขายเป็นเซ็ต — บอกหน่วยไว้ก่อน แอดมินเติมจำนวนต่อเซ็ตทีหลังได้
   if (isPackUnit(saleUnit)) return { per: 1, piece: "ชิ้น", unit: saleUnit };
