@@ -3667,19 +3667,6 @@ export default function AdminOrderDetailPage() {
                     </span>
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="truncate text-xs font-bold text-slate-400">{it.name}</span>
-                      {/* ✏️ แก้ไข — วางคู่กับปุ่มลบเหมือนหัวบรรทัดในตะกร้า: เปิดหน้าสินค้าพร้อมตัวเลือก/จำนวน/ลายเดิม
-                          แก้แล้วกดสั่ง ระบบเพิ่มของใหม่เข้าออเดอร์นี้และถอดรายการเดิมออกให้ (เฉพาะรายการที่หยิบจากหน้าร้าน) */}
-                      {/* เฉพาะรายการที่ "หยิบจากหน้าร้าน" (มีสินค้าจริง + ตัวเลือกแบบหัวข้อ) — รายการที่กรอกชื่อ/ราคาเองไม่มีปุ่มนี้ (เจ้าของร้านสั่ง 10 ก.ย. 69) */}
-                      {mayEdit && isShopLine(productOfItem(it.productId), it) && mayChangeQty(it) && (
-                        <button
-                          type="button"
-                          title="เปิดหน้าสินค้าพร้อมตัวเลือก/จำนวน/ลายเดิม (เหมือนปุ่มแก้ไขในตะกร้า) — แก้แล้วกดสั่ง ระบบจะแทนที่รายการนี้ให้ แบบงาน/หมายเหตุย้ายตามไป"
-                          onClick={() => editItemOptionsInShop(i)}
-                          className="shrink-0 rounded-lg border border-sky-200 bg-white px-2 py-0.5 text-xs font-bold text-sky-700 transition hover:bg-sky-50"
-                        >
-                          ✏️ แก้ไข
-                        </button>
-                      )}
                       {mayEdit && (
                         <button
                           type="button"
@@ -3815,6 +3802,19 @@ export default function AdminOrderDetailPage() {
                               className="mt-0.5 whitespace-nowrap rounded px-1 text-[10px] font-bold text-amber-600 transition hover:bg-amber-50"
                             >
                               ✏️ แก้รายละเอียด
+                            </button>
+                          )}
+                          {/* 🛠 แก้ตัวเลือก — เจ้าของร้านเลือกให้อยู่ตรงนี้ข้าง "แก้รายละเอียด" (10 ก.ย. 69) · เฉพาะรายการที่หยิบจากหน้าร้าน
+                              (มีสินค้าจริง + ตัวเลือกแบบหัวข้อ) รายการที่กรอกชื่อ/ราคาเองไม่มีปุ่มนี้ · เปิดหน้าสินค้าพร้อมตัวเลือก/จำนวน/ลายเดิม
+                              เหมือนปุ่มแก้ไขในตะกร้า แก้แล้วกดสั่ง ระบบแทนที่รายการนี้ให้ */}
+                          {mayEdit && isShopLine(productOfItem(it.productId), it) && mayChangeQty(it) && (
+                            <button
+                              type="button"
+                              onClick={() => editItemOptionsInShop(i)}
+                              title="เปิดหน้าสินค้าพร้อมตัวเลือก/จำนวน/ลายเดิม (เหมือนปุ่มแก้ไขในตะกร้า) — แก้แล้วกดสั่ง ระบบจะแทนที่รายการนี้ให้ แบบงาน/หมายเหตุย้ายตามไป"
+                              className="ml-1 mt-0.5 whitespace-nowrap rounded px-1 text-[10px] font-bold text-sky-600 transition hover:bg-sky-50"
+                            >
+                              🛠 แก้ตัวเลือก (หน้าร้าน)
                             </button>
                           )}
                         </div>
