@@ -854,7 +854,7 @@ function SlipVerifyNote({ v, credited, onRecheck, rechecking }: { v: NonNullable
         <>
           ⚠️ SlipOK ตรวจไม่ผ่าน{v.detail ? `: ${v.detail}` : ""} — กรุณาตรวจสลิปเอง
           {/* 🔄 ยิง SlipOK ซ้ำด้วยไฟล์เดิม — เคสลูกค้าแนบเร็วกว่าธนาคารส่งข้อมูล (1010) รอสักครู่แล้วกดตรวจใหม่ก็ผ่านได้ ไม่ต้องลบ/แนบใหม่ */}
-          {onRecheck && (
+          {onRecheck && !v.noRetry && (
             <span className="mt-1.5 flex flex-wrap items-center gap-2">
               <button
                 type="button"

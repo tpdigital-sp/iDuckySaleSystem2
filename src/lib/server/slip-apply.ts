@@ -78,7 +78,15 @@ const thb = (n: number) => n.toLocaleString("th-TH");
 /** ผลตรวจที่จะเก็บลงออเดอร์ (ตัด skip ทิ้ง — ไม่มีอะไรให้จำ) */
 function verifyRecord(verify: SlipVerifyResult, now: string): Order["slipVerify"] {
   if (verify.status !== "pass" && verify.status !== "fail") return undefined;
-  return { status: verify.status, detail: verify.detail, amount: verify.amount, transRef: verify.transRef, at: now, deduction: verify.deduction };
+  return {
+    status: verify.status,
+    detail: verify.detail,
+    amount: verify.amount,
+    transRef: verify.transRef,
+    at: now,
+    deduction: verify.deduction,
+    ...(verify.noRetry ? { noRetry: true } : {}),
+  };
 }
 
 export async function applySlipVerification(input: ApplySlipInput): Promise<ApplySlipResult> {
@@ -240,7 +248,9 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
         };
         updated = withLog(updated, "SlipOK", `${rc}ยืนยันมัดจำ 50% อัตโนมัติ${paidBefore > 0 ? " (รวมยอดที่รับบางส่วนก่อนหน้า)" : ""}`, amountNote);
       } else {
-        updated = { ...updated, status: waiting ? "รอชำระเงิน" : updated.status };
+        // มัดจำขาด → "รอตรวจสอบ" ให้แอดมินเปิดสลิปดูก่อน (เจ้าของร้านสั่ง 10 ก.ย. 69: SlipOK ไม่ผ่านทุกแบบต้องเข้ารอตรวจสอบ
+        // — ยอดขาดอาจเป็นหัก ณ ที่จ่ายฐานที่สูตรเดาไม่ถูก ไม่ใช่ลูกค้าโอนไม่ครบจริง) · ลูกค้ายังเห็นยอดค้าง+แนบเพิ่มได้ (phase extra)
+        updated = { ...updated, status: waiting ? "รอตรวจสอบ" : updated.status };
         updated = withLog(updated, "SlipOK", `${rc}รับมัดจำบางส่วน ${thb(credit)} บาท — ยังขาดอีก ${thb(round2(depositDue - paidNow))} บาท (รอลูกค้าโอนเพิ่ม)`, amountNote);
       }
     } else if (updated.deposit && !updated.deposit.settledAt) {
@@ -266,8 +276,9 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
         amountNote
       );
     } else {
-      // รับบางส่วน — ยอดค้างที่เหลือโชว์ให้ลูกค้าโอนต่อ · ใบธรรมดาที่ยังไม่เริ่มงานให้กลับไป "รอชำระเงิน" (ไม่ใช่รอตรวจสอบ) เพราะไม่มีอะไรให้แอดมินตรวจ
-      updated = { ...updated, status: waiting ? "รอชำระเงิน" : updated.status };
+      // รับบางส่วน — ยอดค้างที่เหลือโชว์ให้ลูกค้าโอนต่อ (phase extra) · ใบธรรมดาที่ยังไม่เริ่มงานเข้า "รอตรวจสอบ"
+      // (เดิมกลับไป "รอชำระเงิน" — เจ้าของร้านสั่ง 10 ก.ย. 69 ว่า SlipOK ไม่ผ่านทุกแบบให้เข้ารอตรวจสอบ เพราะยอดขาดอาจเป็นหัก ณ ที่จ่ายที่สูตรไม่รู้จัก)
+      updated = { ...updated, status: waiting ? "รอตรวจสอบ" : updated.status };
       updated = withLog(updated, "SlipOK", `${rc}รับเงินบางส่วน ${thb(credit)} บาท — ยังค้างอีก ${thb(remain)} บาท (รอลูกค้าโอนเพิ่ม)`, amountNote);
     }
   } else {
