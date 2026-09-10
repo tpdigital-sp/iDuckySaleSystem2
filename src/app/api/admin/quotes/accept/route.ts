@@ -7,6 +7,8 @@ import { withLog, type Order } from "@/lib/admin-data";
 import { quoteMemberDiscount, quoteMemberLabel, quoteTotal, withQuoteLog, type Quote } from "@/lib/quotes";
 import { syncQuoteMemberTier } from "@/lib/server/quote-member-tier";
 import { withUnitYield } from "@/lib/products-server";
+import { shippingOf, type ShopPayment } from "@/lib/shop-settings";
+import { normalizeShipLabel } from "@/lib/ship-label";
 
 export const runtime = "nodejs";
 
@@ -45,6 +47,10 @@ export async function POST(req: Request) {
 
   const by = gate.actor.name?.trim() || gate.actor.username;
   const now = new Date();
+  // วิธีส่ง: ใบที่แอดมินกรอกตัวเลขค่าส่งเอง (ไม่ได้เลือกจากเมนู) ไม่มีชื่อวิธีส่ง → จับคู่ราคากับวิธีส่งของร้าน (50 → EMS (50))
+  // ไม่งั้นออเดอร์ตกไปใช้ค่าเก่า "ส่งธรรมดา" แล้วใบปะหน้าขึ้นผิด (OD-260909-8171 · 10 ก.ย. 69)
+  const { data: settRow } = await sb.from("products").select("data").eq("id", "__shop_payment__").maybeSingle();
+  const shipLabel = normalizeShipLabel(quote.shippingLabel, quote.shippingCost || 0, shippingOf((settRow?.data as ShopPayment | null) ?? null));
   const orderId = `OD-${bkkYmd(now)}-${Math.floor(1000 + Math.random() * 9000)}`;
 
   let order: Order = {
@@ -56,8 +62,8 @@ export async function POST(req: Request) {
     date: thaiDateTime(now),
     payment: "โอนธนาคาร",
     // วิธีส่งที่เลือกไว้ในใบเสนอราคา (ชุดเดียวกับหน้าออเดอร์) — ไม่ได้เลือก = ส่งธรรมดา
-    shipping: (quote.shippingLabel?.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา") as Order["shipping"],
-    ...(quote.shippingLabel ? { shippingLabel: quote.shippingLabel } : {}),
+    shipping: (shipLabel.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา") as Order["shipping"],
+    ...(shipLabel ? { shippingLabel: shipLabel } : {}),
     shippingCost: quote.shippingCost || 0,
     status: "รอชำระเงิน",
     // 📐 ใบเก่าที่ยังไม่ได้แช่จำนวนชิ้นต่อหน่วย เติมให้ตอนกลายเป็นออเดอร์ (มีอยู่แล้วไม่ทับ)

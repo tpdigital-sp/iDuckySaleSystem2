@@ -14,6 +14,8 @@ import { useState } from "react";
 import { formatPrice } from "@/lib/products";
 import { orderTotal, withLog, type Order } from "@/lib/admin-data";
 import type { FADoc } from "./FlowAccountOrderDialog";
+import type { ShippingMethod } from "@/lib/shop-settings";
+import { normalizeShipLabel } from "@/lib/ship-label";
 
 const SHIP_RE = /ค่าจัดส่ง|ค่าส่ง|ค่าขนส่ง|shipping|delivery/i;
 const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
@@ -47,9 +49,9 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ url: fa!.url }),
       });
-      const j = (await res.json().catch(() => ({}))) as { doc?: FADoc; error?: string };
+      const j = (await res.json().catch(() => ({}))) as { doc?: FADoc; shipping?: ShippingMethod[]; error?: string };
       if (!res.ok || !j.doc) throw new Error(j.error ?? "อ่านเอกสารไม่สำเร็จ");
-      setDiff(buildDiff(order, j.doc));
+      setDiff(buildDiff(order, j.doc, j.shipping ?? []));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "อ่านเอกสารไม่สำเร็จ");
     } finally {
@@ -148,11 +150,12 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
   );
 }
 
-function buildDiff(order: Order, doc: FADoc): Diff {
+function buildDiff(order: Order, doc: FADoc, methods: ShippingMethod[] = []): Diff {
   const shipLines = doc.items.filter((it) => SHIP_RE.test(it.name));
   const work = doc.items.filter((it) => !SHIP_RE.test(it.name));
   const docShip = shipLines.reduce((s, it) => s + it.amount, 0);
-  const docShipLabel = shipLines[0]?.name;
+  // "ค่าส่ง" ในเอกสาร → ชื่อวิธีส่งของร้านที่ราคาตรง (ไม่งั้นซิงก์แล้วป้ายกลับเป็น "ค่าส่ง" อีก)
+  const docShipLabel = shipLines[0] ? normalizeShipLabel(shipLines[0].name, docShip, methods) || shipLines[0].name : undefined;
 
   // จับคู่รายการตามชื่อ (ไม่สนช่องว่าง/ตัวพิมพ์) — ชื่อซ้ำหลายบรรทัดจับตามลำดับ
   const used = new Set<number>();

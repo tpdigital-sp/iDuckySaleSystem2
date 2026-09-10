@@ -6,7 +6,8 @@ import { useParams } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import { adminDiscountAmount, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, type Order } from "@/lib/admin-data";
 import { fetchOrderForCustomer } from "@/lib/order-repo";
-import { fetchShopPayment, shopInfoOf, type ShopInfo } from "@/lib/shop-settings";
+import { fetchShopPayment, shippingOf, shopInfoOf, type ShippingMethod, type ShopInfo } from "@/lib/shop-settings";
+import { resolveShipLabel } from "@/lib/ship-label";
 import { SpecLines } from "@/components/SpecLines";
 
 /** ใบเสร็จ/ใบรับเงิน ที่ลูกค้าเปิด+พิมพ์เองได้ (ต้องมี key) */
@@ -18,9 +19,13 @@ export default function CustomerReceiptPage() {
   const [loading, setLoading] = useState(true);
   const [orderKey, setOrderKey] = useState("");
   const [shop, setShop] = useState<ShopInfo>(shopInfoOf(null)); // ข้อมูลร้าน (แอดมินแก้ได้ที่ตั้งค่าระบบ)
+  const [shipMethods, setShipMethods] = useState<ShippingMethod[]>([]); // ไว้แปลงป้าย "ค่าส่ง"/ป้ายว่างเป็นชื่อวิธีส่งจริง
 
   useEffect(() => {
-    void fetchShopPayment().then((p) => setShop(shopInfoOf(p)));
+    void fetchShopPayment().then((p) => {
+      setShop(shopInfoOf(p));
+      setShipMethods(shippingOf(p));
+    });
   }, []);
 
   const load = useCallback(
@@ -143,7 +148,7 @@ export default function CustomerReceiptPage() {
               <span className="tabular-nums">{formatPrice(subtotal)}</span>
             </div>
             <div className="flex justify-between text-stone-500">
-              <span>ค่าจัดส่ง ({order.shippingLabel || order.shipping})</span>
+              <span>ค่าจัดส่ง ({resolveShipLabel(order, shipMethods)})</span>
               <span className="tabular-nums">{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
             </div>
             {order.discount && order.discount.amount > 0 && (

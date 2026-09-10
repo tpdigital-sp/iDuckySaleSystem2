@@ -94,6 +94,7 @@ import { useActor, useCan, useIsAdministrator, usePermsReady, useRoleLabel } fro
 import { PACK_SCAN_PARAM, PACK_SCAN_PERMS, type Perm } from "@/lib/permissions";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
+import { resolveShipLabel } from "@/lib/ship-label";
 import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
@@ -3422,7 +3423,7 @@ export default function AdminOrderDetailPage() {
                     )}
                   </div>
                   <p className={`text-xs ${faint}`}>
-                    {order.payment} · {order.shippingLabel || order.shipping}
+                    {order.payment} · {resolveShipLabel(order, shipMethods)}
                   </p>
                 </div>
               ) : (
@@ -3433,7 +3434,7 @@ export default function AdminOrderDetailPage() {
                   </p>
                   <p className={`text-sm ${muted}`}>{order.address}</p>
                   <p className={`mt-2 text-xs ${faint}`}>
-                    {order.payment} · {order.shippingLabel || order.shipping}
+                    {order.payment} · {resolveShipLabel(order, shipMethods)}
                   </p>
                 </>
               )}
@@ -5360,7 +5361,7 @@ export default function AdminOrderDetailPage() {
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span className={`shrink-0 ${muted}`}>ค่าจัดส่ง</span>
                       <select
-                        value={shipMethods.find((m) => m.name === order.shippingLabel)?.id ?? ""}
+                        value={shipMethods.find((m) => m.name === resolveShipLabel(order, shipMethods))?.id ?? ""}
                         onChange={(e) => {
                           const m = shipMethods.find((x) => x.id === e.target.value);
                           if (!m) return;

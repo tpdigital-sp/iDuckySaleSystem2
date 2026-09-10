@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CustomerContactInput } from "./CustomerContactInput";
 import { formatPhone } from "@/lib/contacts";
+import { normalizeShipLabel } from "@/lib/ship-label";
 import { formatPrice } from "@/lib/products";
 
 /** ผลอ่านเอกสาร (สำเนาชนิดจาก src/lib/server/flowaccount.ts — ไฟล์นั้นเป็นของฝั่งเซิร์ฟเวอร์ ไม่ import ข้ามมา) */
@@ -132,7 +133,8 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
       if (shipLines.length) {
         const cost = shipLines.reduce((s, it) => s + it.amount, 0);
         setShipFromDoc(shipLines.map((it) => it.name).join(" · "));
-        setShipLabel(shipLines[0].name);
+        // ชื่อบรรทัดในเอกสารมักเป็นแค่ "ค่าส่ง" → จับคู่ราคากับวิธีส่งของร้าน (50 → EMS (50)) ไม่งั้นใบปะหน้าขึ้น "ค่าส่ง" ตัวใหญ่
+        setShipLabel(normalizeShipLabel(shipLines[0].name, cost, p.shipping) || shipLines[0].name);
         setShipCost(cost);
       } else if (pickup && pickupMethod) {
         setShipFromDoc(null);

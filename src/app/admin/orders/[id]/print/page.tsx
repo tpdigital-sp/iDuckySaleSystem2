@@ -19,7 +19,8 @@ function fmtThaiDate(d?: string): string {
 }
 import { fetchOrdersAdmin } from "@/lib/order-repo";
 import { publicOrigin } from "@/lib/shop-info";
-import { fetchShopPayment, shopInfoOf, type ShopInfo } from "@/lib/shop-settings";
+import { fetchShopPayment, shippingOf, shopInfoOf, type ShippingMethod, type ShopInfo } from "@/lib/shop-settings";
+import { resolveShipLabel } from "@/lib/ship-label";
 import { useCan } from "@/lib/perm-context";
 import { PACK_SCAN_PARAM } from "@/lib/permissions";
 import { parsePrintFrame, PLACEMENT_LABEL, PLACEMENT_SPEC_LABEL, sheetsFor } from "@/lib/design-templates";
@@ -90,6 +91,7 @@ export default function PrintOrderPage() {
   const [withProofs, setWithProofs] = useState(true);
   const [origin, setOrigin] = useState(""); // สำหรับ QR มือถือ (ต้องอ่านฝั่งเบราว์เซอร์)
   const [shop, setShop] = useState<ShopInfo>(shopInfoOf(null)); // ข้อมูลร้าน (แอดมินแก้ได้ที่ตั้งค่าระบบ)
+  const [shipMethods, setShipMethods] = useState<ShippingMethod[]>([]); // วิธีส่งที่ร้านตั้ง — ไว้แปลงป้าย "ค่าส่ง"/ป้ายว่างเป็นชื่อวิธีส่งจริงตามราคา
   const seesMoney = useCan()("orders.money"); // ฝ่ายแพ็คไม่เห็นใบเสร็จ (มีราคา)
 
   const load = useCallback(async (wanted: string[]) => {
@@ -108,7 +110,10 @@ export default function PrintOrderPage() {
     if (only === "receipt") setDocs({ work: false, receipt: true, box: false });
     else if (only === "box") setDocs({ work: false, receipt: false, box: true });
     else if (only) setDocs({ work: true, receipt: false, box: false });
-    void fetchShopPayment().then((p) => setShop(shopInfoOf(p)));
+    void fetchShopPayment().then((p) => {
+      setShop(shopInfoOf(p));
+      setShipMethods(shippingOf(p));
+    });
     // ?ids=A,B,C = ติ๊กเลือกจากคิวปริ้นมาหลายใบ — ไม่มีก็ปริ้นใบเดียวตาม [id]
     const multi = (sp.get("ids") ?? "")
       .split(",")
@@ -268,7 +273,7 @@ export default function PrintOrderPage() {
         )}
 
         {orders.map((o) => (
-          <OrderDocs key={o.id} order={o} docs={docs} withProofs={withProofs} shop={shop} origin={origin} seesMoney={seesMoney} />
+          <OrderDocs key={o.id} order={o} docs={docs} withProofs={withProofs} shop={shop} shipMethods={shipMethods} origin={origin} seesMoney={seesMoney} />
         ))}
       </div>
     </>
@@ -284,6 +289,7 @@ function OrderDocs({
   docs,
   withProofs,
   shop,
+  shipMethods,
   origin,
   seesMoney,
 }: {
@@ -291,6 +297,7 @@ function OrderDocs({
   docs: Record<DocKey, boolean>;
   withProofs: boolean;
   shop: ShopInfo;
+  shipMethods: ShippingMethod[];
   origin: string;
   seesMoney: boolean;
 }) {
@@ -347,7 +354,8 @@ function OrderDocs({
   // 🔒 ยังไม่ได้รับเงินครบ (รวมออเดอร์มัดจำที่ค้างยอดหลัง) → พิมพ์เอกสารไม่ได้
   const fullyPaid = orderFullyPaid(order);
   // ชื่อวิธีจัดส่งที่ลูกค้าเลือกจริง (เช่น "EMS (50)") — order.shipping เก็บได้แค่ 2 ค่าเก่า ธรรมดา/ด่วน จึงเพี้ยนเวลาร้านตั้งวิธีส่งเอง
-  const shipName = ((order.shippingLabel ?? "").trim() || order.shipping)
+  // ป้ายกลาง ๆ "ค่าส่ง" (ใบจาก FlowAccount) หรือป้ายว่าง (ใบเสนอราคาที่กรอกตัวเลขเอง) → จับคู่ราคากับวิธีส่งของร้าน (10 ก.ย. 69)
+  const shipName = resolveShipLabel(order, shipMethods)
     // ตัดราคาที่ติดมากับชื่อวิธีส่งออก — ใบปะหน้าโชว์แค่วิธีส่ง ("EMS (50)" → "EMS") ราคาอยู่ในตารางยอดเงินแล้ว
     .replace(/[\s(\[]*(?:฿|บาท)?\s*\d[\d,.]*\s*(?:฿|บาท|.-)?\s*[)\]]*\s*$/u, "")
     .replace(/[\s·—–-]+$/u, "")

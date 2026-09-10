@@ -21,7 +21,8 @@ import ImageLightbox from "@/components/ImageLightbox";
 import Portal from "@/components/Portal";
 import { SpecLines } from "@/components/SpecLines";
 import { LINE_URL } from "@/components/LineButton";
-import { fetchShopPayment, type ShopPayment } from "@/lib/shop-settings";
+import { fetchShopPayment, shippingOf, type ShopPayment } from "@/lib/shop-settings";
+import { resolveShipLabel } from "@/lib/ship-label";
 
 /*
  * ── สไตล์ปุ่ม/ช่องกรอกใน lightbox ──
@@ -1717,7 +1718,7 @@ export default function CustomerOrderPage() {
               <span>{formatPrice(subtotal)}</span>
             </div>
             <div className="mt-1.5 flex justify-between text-sm">
-              <span className="t-soft">ค่าจัดส่ง ({order.shippingLabel || order.shipping})</span>
+              <span className="t-soft">ค่าจัดส่ง ({resolveShipLabel(order, shippingOf(payment))})</span>
               <span>{order.shippingCost === 0 ? "ฟรี" : formatPrice(order.shippingCost)}</span>
             </div>
             {(order.gifts ?? []).map((g) => (

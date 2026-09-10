@@ -12,6 +12,7 @@ import { bumpSoldForOrder } from "@/lib/server/sold";
 import { cutStockForOrder } from "@/lib/server/stock";
 import { awardPointsForOrder } from "@/lib/server/contact-points";
 import { orderTotal, withLog, type Order, type OrderItem } from "@/lib/admin-data";
+import { normalizeShipLabel } from "@/lib/ship-label";
 import type { Contact } from "@/lib/contacts";
 
 export const runtime = "nodejs";
@@ -164,7 +165,9 @@ export async function PUT(req: Request) {
 
   const now = new Date();
   const id = `OD-${bkkYmd(now)}-${Math.floor(1000 + Math.random() * 9000)}`;
-  const shippingLabel = body.shippingLabel?.trim();
+  const shipCost = Math.max(0, Number(body.shippingCost) || 0);
+  // ป้ายกลาง ๆ จากบรรทัดเอกสาร ("ค่าส่ง") → ชื่อวิธีส่งของร้านที่ราคาตรง — ใบปะหน้า/หน้าลูกค้าจะได้ขึ้น EMS (50) ไม่ใช่ "ค่าส่ง" (10 ก.ย. 69)
+  const shippingLabel = normalizeShipLabel(body.shippingLabel, shipCost, await shippingMethods(sb)) || undefined;
   const whtOk = body.wht && Number(body.wht.amount) > 0 ? { rate: Number(body.wht.rate) || 0, amount: Number(body.wht.amount) } : undefined;
   const useByDate = /^\d{4}-\d{2}-\d{2}$/.test(body.useByDate ?? "") ? body.useByDate : undefined;
   const discountAmt = Math.max(0, Number(body.discount ?? doc.discount ?? 0) || 0);
@@ -180,7 +183,7 @@ export async function PUT(req: Request) {
     payment: "โอนธนาคาร",
     shipping: shippingLabel?.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา",
     ...(shippingLabel ? { shippingLabel } : {}),
-    shippingCost: Math.max(0, Number(body.shippingCost) || 0),
+    shippingCost: shipCost,
     status: wantPaid ? "ชำระแล้ว" : "รอชำระเงิน",
     items,
     placedBy: by,
