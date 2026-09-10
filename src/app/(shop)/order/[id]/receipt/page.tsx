@@ -176,6 +176,13 @@ export default function CustomerReceiptPage() {
                 <span className="tabular-nums">{formatPrice(orderVatAmount(order))}</span>
               </div>
             )}
+            {/* 🧾 ค่าบริการเพิ่มที่เก็บทีหลัง — บรรทัดแยกให้ตรงกับที่ลูกค้าเห็นในหน้าออเดอร์ */}
+            {(order.charges ?? []).map((c) => (
+              <div key={c.id} className="flex justify-between text-stone-500">
+                <span>🧾 {c.label}</span>
+                <span className="tabular-nums">{formatPrice(c.amount)}</span>
+              </div>
+            ))}
             <div className="flex justify-between border-t border-stone-200 pt-2 text-base font-extrabold text-amber-950">
               <span>ยอดรวมทั้งสิ้น</span>
               <span className="tabular-nums">{formatPrice(orderTotal(order))}</span>

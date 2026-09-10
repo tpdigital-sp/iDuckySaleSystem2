@@ -5,6 +5,7 @@ import { currentActor } from "@/lib/server/require-perm";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import type { Order } from "@/lib/admin-data";
+import { signPaymentUrls } from "@/lib/server/slip-sign";
 export { SSR_ORDER_SCRIPT_ID } from "@/lib/ssr-order-id";
 
 /**
@@ -33,19 +34,8 @@ export async function orderForSsr(id: string): Promise<Order | null> {
     if (error || !data) return null;
     const order = data.data as Order;
 
-    // ลิงก์สลิปใน bucket ส่วนตัว — เซ็นสองงวดขนานกัน (เหมือน GET ?id=)
-    const [first, balance] = await Promise.all([
-      order.slipPath
-        ? sb.storage.from("payment-slips-private").createSignedUrl(order.slipPath, 3600)
-        : Promise.resolve(null),
-      order.deposit?.balanceSlipPath
-        ? sb.storage.from("payment-slips-private").createSignedUrl(order.deposit.balanceSlipPath, 3600)
-        : Promise.resolve(null),
-    ]);
-    if (first?.data?.signedUrl) order.slipUrl = first.data.signedUrl;
-    if (balance?.data?.signedUrl && order.deposit)
-      order.deposit = { ...order.deposit, balanceSlipUrl: balance.data.signedUrl };
-    return order;
+    // ลิงก์สลิปใน bucket ส่วนตัว — เซ็นทุกใบขนานกัน (ใบแรก/งวดหลัง/ใบเพิ่ม — เหมือน GET ?id=)
+    return await signPaymentUrls(sb, order);
   } catch {
     return null; // พังเมื่อไหร่ก็แค่กลับไปโหลดแบบเดิม (หน้าเว็บขอ API เอง)
   }

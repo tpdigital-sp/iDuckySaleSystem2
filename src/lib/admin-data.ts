@@ -545,7 +545,27 @@ export interface Order {
      * bankFee = ธนาคารหักค่าธรรมเนียมการโอน
      */
     deduction?: { kind: "wht" | "bankFee" | "earlyPay"; rate?: number; amount: number; label: string };
+    /**
+     * 💸 รับบางส่วน — สลิปแท้ (SlipOK ยืนยัน) แต่ยอดน้อยกว่าที่ต้องโอนและไม่เข้าข่ายส่วนต่างที่รู้จัก
+     * ระบบนับยอดนี้เข้า paidTotal ให้แล้ว (บาท) แต่ยังไม่ยืนยันงวด → ลูกค้าเห็นยอดค้างที่เหลือและโอนเพิ่มได้
+     * มีค่า = ห้ามนับซ้ำ (ตรวจซ้ำ/ลบสลิปต้องถอยยอดนี้ออก)
+     */
+    credited?: number;
+    /** โอนเกินยอดที่ต้องชำระอยู่กี่บาท (ผ่านแล้ว แต่จดไว้ให้แอดมินคืน/แปลงเป็นแต้ม) */
+    over?: number;
   };
+  /**
+   * 💸 สลิปเพิ่มเติม (ใบที่ 2, 3, …) นอกช่องหลัก slipPath / deposit.balanceSlipPath
+   * เกิดเมื่อลูกค้าโอนขาดแล้วโอนตาม · โอนแยกหลายบัญชี · โอนค่าบริการ/สั่งเพิ่มทีหลัง
+   * ช่องหลักสองช่องคงไว้ตามเดิม (ทุกจอรู้จัก) — ใบที่เกินมาเข้าอาเรย์นี้ ไม่จำกัดจำนวน
+   * ดู paymentEntries() ใน @/lib/payments ที่รวมทุกใบเป็นรายการเดียวไว้แสดงผล
+   */
+  payments?: OrderPayment[];
+  /**
+   * 🧾 ค่าบริการเพิ่มที่เก็บทีหลัง (ค่าตัดภาพ · ค่าส่งเพิ่ม · ค่าเร่งงาน …) — ไม่ใช่สินค้า ไม่เข้าใบงานผลิต
+   * บวกเข้า orderTotal ตรง ๆ (อยู่นอกฐานส่วนลด %) · ลูกค้าเห็นเป็นบรรทัดแยกใต้รายการสินค้าว่ายอดโตเพราะอะไร
+   */
+  charges?: OrderCharge[];
   /** เวลาที่แอดมินปริ้นใบงานครั้งแรก (ISO) — มีค่า = ล็อกที่อยู่ ลูกค้าแก้ไม่ได้แล้ว */
   printedAt?: string;
   /** ปริ้นไปแล้วกี่ครั้ง (รวมปริ้นซ้ำ) — กันของไปสองรอบ ดูรายละเอียดแต่ละครั้งได้ในประวัติ */
@@ -580,6 +600,11 @@ export interface Order {
    * ใช้คำนวณ "ยอดค้างชำระ" เมื่อลูกค้าสั่งเพิ่มในออเดอร์เดิม
    */
   paidTotal?: number;
+  /**
+   * 🔁 สถานะก่อนถูกเด้งกลับ "รอชำระเงิน" เพราะยอดโตทีหลัง (เปิด VAT/เก็บเพิ่ม/แก้ราคา) เช่น "อนุมัติแบบ"
+   * เก็บเงินส่วนต่างครบแล้วให้กลับไปสถานะนี้ ไม่ใช่ถอยไป "ชำระแล้ว" แล้วให้กราฟฟิก/ลูกค้าตรวจแบบซ้ำ · ล้างเมื่อแอดมินเปลี่ยนสถานะเอง
+   */
+  reopenedFrom?: OrderStatus;
   /** ประวัติการทำงานของออเดอร์ (เก่า→ใหม่) — ใครทำอะไรเมื่อไหร่ */
   log?: LogEntry[];
   /**
@@ -654,7 +679,16 @@ export interface Order {
     fetchedAt: string;
   };
   /** ข้อมูลออกใบกำกับภาษีของลูกค้า (ดึงจาก FlowAccount หรือแอดมินกรอก) */
-  taxInvoice?: { company: string; taxId?: string; branch?: string; address: string };
+  taxInvoice?: {
+    company: string;
+    taxId?: string;
+    branch?: string;
+    address: string;
+    /** เอกสาร FlowAccount ที่ใช้ออกใบกำกับ (วางลิงก์แชร์แล้วดึงข้อมูลผู้ซื้อมา) — แค่อ้างอิง ไม่ใช่ order.flowAccount (นั่นคือใบที่ "ชำระตามเอกสาร") */
+    docNo?: string;
+    docUrl?: string;
+    docTypeLabel?: string;
+  };
   /**
    * ภาษีมูลค่าเพิ่มตามบิล — มีเฉพาะออเดอร์ที่สร้างจากลิงก์ FlowAccount (ราคาสินค้าในรายการเป็นราคาก่อน VAT)
    * บวกเข้ายอดรวม (orderTotal) ให้ยอดในระบบนี้เท่ากับ "จำนวนเงินรวมทั้งสิ้น" ในเอกสารทุกบาท
@@ -706,10 +740,19 @@ export function orderVatAmount(o: Order): number {
   return Math.max(0, o.vat?.amount ?? 0);
 }
 
+/** 🧾 ค่าบริการเพิ่มรวม (บาท) — ค่าตัดภาพ/ค่าส่งเพิ่ม/ค่าเร่งงาน ที่แอดมินเก็บทีหลัง (0 = ไม่มี) */
+export function orderChargesTotal(o: Order): number {
+  return (o.charges ?? []).reduce((s, c) => s + Math.max(0, Number(c.amount) || 0), 0);
+}
+
 export function orderTotal(o: Order): number {
   // ?? 0 กันออเดอร์เก่า/แถวที่ไม่มี shippingCost ทำให้ยอดกลายเป็น NaN แล้วลามไปทั้งระบบ
   // ปัดทศนิยม 2 ตำแหน่ง — ออเดอร์จาก FlowAccount มีสตางค์ (VAT 7%) ไม่ให้ลอยเป็น 1540.8000000001
-  return Math.max(0, Math.round((orderSubtotal(o) + (o.shippingCost ?? 0) - orderDiscountTotal(o) + orderVatAmount(o)) * 100) / 100);
+  // ค่าบริการเพิ่ม (charges) บวกท้ายสุด — อยู่นอกฐานส่วนลด % (adminDiscountAmount คิดจาก subtotal สินค้า)
+  return Math.max(
+    0,
+    Math.round((orderSubtotal(o) + (o.shippingCost ?? 0) - orderDiscountTotal(o) + orderVatAmount(o) + orderChargesTotal(o)) * 100) / 100
+  );
 }
 
 /** ยอดหัก ณ ที่จ่ายของออเดอร์ (บาท) — 0 = ไม่ได้ตั้งหรือไม่หัก */
@@ -883,6 +926,50 @@ export interface PackPhoto {
   at: string;
 }
 
+/**
+ * 💸 สลิปเพิ่มเติมหนึ่งใบ (ดู Order.payments)
+ * ยอดที่ "นับเข้า paidTotal แล้ว" อยู่ที่ verify.credited (SlipOK) หรือ accepted.amount (แอดมินรับเอง)
+ * — ใบที่ยังไม่มีทั้งสองอย่าง = รอตรวจ ยังไม่กระทบยอด
+ */
+export interface OrderPayment {
+  /** รหัสสั้นสุ่ม (ใช้ชี้ใบตอนตรวจซ้ำ/ลบ/รับยอดเอง) */
+  id: string;
+  /** path ใน bucket payment-slips-private */
+  path: string;
+  /** ลายนิ้วมือไฟล์ (SHA-256) — กันซ้ำ */
+  hash?: string;
+  /** signed URL ชั่วคราว — เซิร์ฟเวอร์เซ็นให้ตอนดึง ห้ามเก็บลงฐาน */
+  url?: string;
+  /** เวลาที่แนบ/แจ้งโอน (ISO) */
+  at: string;
+  /** ใครแนบ — "ลูกค้า" หรือชื่อแอดมิน */
+  by: string;
+  /** ผลตรวจ SlipOK ของใบนี้ (pass = นับยอดเข้า paidTotal แล้ว · fail+credited = รับบางส่วน · fail = รอแอดมิน) */
+  verify?: Order["slipVerify"];
+  /**
+   * ยอดที่ใบนี้ "นับเข้า paidTotal แล้ว" (บาท) — ไม่ว่าผ่าน SlipOK หรือแอดมินรับเอง
+   * ไม่มีค่า = ยังไม่กระทบยอด (รอตรวจ) · ลบใบนี้ต้องถอยยอดนี้ออกจาก paidTotal
+   */
+  credited?: number;
+  /** แอดมินรับยอดเองเมื่อ SlipOK ตรวจไม่ได้/ตรวจตก (ยอดอยู่ใน credited) */
+  accepted?: { by: string; at: string };
+  /** ยอดที่ต้องโอนตอนแนบใบนี้ (บาท) — ไว้อ่านย้อนหลังว่าใบนี้ตั้งใจจ่ายส่วนไหน */
+  expected?: number;
+}
+
+/** 🧾 ค่าบริการเพิ่มหนึ่งรายการ (ดู Order.charges) */
+export interface OrderCharge {
+  id: string;
+  /** ชื่อรายการที่ลูกค้าเห็น เช่น "ค่าตัดภาพ 3 รูป" */
+  label: string;
+  /** บาท (บวกเข้ายอดรวมตรง ๆ) */
+  amount: number;
+  /** เหตุผล/รายละเอียดเพิ่ม (ไม่บังคับ) */
+  note?: string;
+  by: string;
+  at: string;
+}
+
 /** โหมดมัดจำ 50% ของออเดอร์ */
 export interface OrderDeposit {
   /** ยอดมัดจำงวดแรก (บาท) */
@@ -919,15 +1006,16 @@ export interface OrderDeposit {
  */
 export function hasUnpaidBalance(o: Order): boolean {
   if (o.status === "ยกเลิก" || o.claimOf) return false;
-  if (o.deposit) return !o.deposit.settledAt;
+  // ใบมัดจำ: ยังไม่ครบสองงวด · หรือครบแล้วแต่ยอดโตทีหลัง (ค่าบริการเพิ่ม/สั่งเพิ่ม) — paidTotal ถูกตั้งตอน settle เสมอ
+  if (o.deposit) return !o.deposit.settledAt || (o.paidTotal != null && orderBalance(o) > 0);
   return o.paidTotal != null && orderBalance(o) > 0;
 }
 
 /** ได้รับเงินครบยอดออเดอร์หรือยัง — ใช้ล็อกการพิมพ์ใบงาน/ใบเสร็จ และยิงเลขพัสดุ */
 export function orderFullyPaid(o: Order): boolean {
   const paidStage = !(["รอชำระเงิน", "รอตรวจสอบ", "ยกเลิก"] as OrderStatus[]).includes(o.status);
-  if (o.deposit) return paidStage && !!o.deposit.settledAt;
   // ยอดโตขึ้นหลังรับเงินแล้ว = ยังเก็บไม่ครบ ห้ามนับว่าจ่ายครบ (ไม่งั้นปิดงานส่งของทั้งที่ยังขาด)
+  // ใบมัดจำรวมอยู่ใน hasUnpaidBalance แล้ว (ยังไม่ settle = ค้าง)
   return paidStage && !hasUnpaidBalance(o);
 }
 
@@ -943,12 +1031,42 @@ export function orderStatusLabel(o: Order): string {
   return o.status;
 }
 
-/** ยอดที่ลูกค้าต้องโอน "งวดนี้" — มัดจำ / ยอดคงเหลือ / เต็มจำนวน */
+/**
+ * ยอดที่ลูกค้าต้องโอน "งวดนี้" — มัดจำ / ยอดคงเหลือ / เต็มจำนวน / ส่วนต่างที่ค้าง
+ * ⚠️ ใบธรรมดาที่เคยรับเงินแล้ว (paidTotal มีค่า) = ค้างเฉพาะส่วนต่าง ไม่ใช่ยอดเต็ม
+ *    (เดิมคืนยอดเต็ม → สลิปโอนส่วนต่างถูก SlipOK เทียบกับยอดเต็มแล้วตกทุกใบ · 10 ก.ย. 69)
+ */
 export function amountDueNow(o: Order): number {
   const total = orderTotal(o);
-  if (o.deposit && !o.deposit.firstPaidAt) return Math.min(total, Math.max(0, o.deposit.amount));
-  if (o.deposit && !o.deposit.settledAt) return Math.max(0, total - (o.paidTotal ?? 0));
-  return total;
+  const paid = paidSoFar(o);
+  if (o.deposit && !o.deposit.firstPaidAt) {
+    // มัดจำงวดแรก — แต่ถ้ารับบางส่วนมาแล้ว (credited) เหลือเท่าไรก็เท่านั้น
+    const dep = Math.min(total, Math.max(0, o.deposit.amount));
+    return Math.max(0, dep - paid);
+  }
+  if (o.deposit && !o.deposit.settledAt) return Math.max(0, total - paid);
+  return o.paidTotal != null && !paidTotalIsReportedOnly(o) ? Math.max(0, total - paid) : total;
+}
+
+/**
+ * ⚠️ paidTotal ของออเดอร์นี้เป็นแค่ "ยอดที่ลูกค้าแจ้งโอน" ที่ระบบเก่าตั้งไว้ล่วงหน้าตอนแนบสลิป (ก่อน 10 ก.ย. 69
+ * ตั้ง = ยอดที่ต้องโอน แม้ SlipOK จะตรวจตก) — ยังไม่มีเงินเข้าจริงที่ยืนยันได้
+ * ต้องรู้ไว้ ไม่งั้นสลิปใบถัดไปถูกเทียบกับ "ยอดค้าง 0" แล้วผ่านทั้งที่ยังไม่ได้เงิน
+ * เงื่อนไข: ยังรอตรวจสอบ · งวดแรกยังไม่ยืนยัน · สลิปช่องหลักไม่ผ่านและไม่เคยนับยอดบางส่วน · ไม่มีใบเพิ่มที่นับยอดแล้ว
+ * (โค้ดใหม่ไม่ตั้ง paidTotal ตอนตรวจตกแล้ว — เหลือไว้ให้ออเดอร์เก่าที่ค้างอยู่)
+ */
+export function paidTotalIsReportedOnly(o: Order): boolean {
+  if (o.paidTotal == null) return false;
+  if (o.status !== "รอตรวจสอบ") return false;
+  if (o.deposit?.firstPaidAt) return false;
+  if (o.slipVerify?.status === "pass" || (o.slipVerify?.credited ?? 0) > 0) return false;
+  if ((o.payments ?? []).some((p) => (p.credited ?? 0) > 0)) return false;
+  return true;
+}
+
+/** ยอดที่ "รับแล้วจริง" ตามที่ระบบยืนยันได้ (บาท) — ตัดค่าที่ตั้งล่วงหน้าตอนแจ้งโอนของระบบเก่าออก */
+export function paidSoFar(o: Order): number {
+  return paidTotalIsReportedOnly(o) ? 0 : Math.max(0, o.paidTotal ?? 0);
 }
 
 export interface PackGate {

@@ -7,6 +7,7 @@ import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
 import { reportPaidToTP, syncArrivalToTP, syncRushToTP } from "@/lib/server/tp-report";
+import { signPaymentUrls, stripPaymentUrls } from "@/lib/server/slip-sign";
 import { bumpSoldForOrder, unbumpSoldForOrder } from "@/lib/server/sold";
 import { cutStockForOrder, restoreStockForOrder } from "@/lib/server/stock";
 import { awardPointsForOrder, revokePointsForOrder } from "@/lib/server/contact-points";
@@ -14,6 +15,7 @@ import {
   hasUnpaidBalance,
   orderBalance,
   orderTotal,
+  orderVatAmount,
   packGate,
   proofsOf,
   withLog,
@@ -282,31 +284,15 @@ export async function GET(req: Request) {
   // ⚠️ ทั้งสามงาน (เช็ค LINE ของบัญชีลูกค้า · เซ็นสลิปงวดแรก · เซ็นสลิปงวดหลัง) ไม่เกี่ยวกัน
   //    ทำขนานกันเสมอ — เดิมทำเรียงกันทำให้หน้ารายละเอียดรอนานโดยไม่จำเป็น
   if (wantId) {
+    // สลิปทุกใบ (ใบแรก · งวดหลังของใบมัดจำ · ใบเพิ่ม payments[]) — เซ็นขนานกันใน signPaymentUrls · ชั่วคราว ไม่ persist
     const signSlip = async () => {
-      const withSlip = orders.filter((o) => o.slipPath);
-      if (!withSlip.length) return;
-      const signed = await Promise.all(
-        withSlip.map((o) => sb.storage.from("payment-slips-private").createSignedUrl(o.slipPath!, 3600))
+      await Promise.all(
+        orders.map(async (o, i) => {
+          orders[i] = await signPaymentUrls(sb, o);
+        })
       );
-      withSlip.forEach((o, i) => {
-        const signedUrl = signed[i].data?.signedUrl;
-        if (signedUrl) o.slipUrl = signedUrl; // ชั่วคราว ใช้แสดงผลเท่านั้น ไม่ persist
-      });
     };
-    // สลิป "งวดหลัง" ของออเดอร์มัดจำ — เก็บคนละช่อง ต้องเซ็นแยก
-    const signBalance = async () => {
-      const withBalance = orders.filter((o) => o.deposit?.balanceSlipPath);
-      if (!withBalance.length) return;
-      const signed = await Promise.all(
-        withBalance.map((o) =>
-          sb.storage.from("payment-slips-private").createSignedUrl(o.deposit!.balanceSlipPath!, 3600)
-        )
-      );
-      withBalance.forEach((o, i) => {
-        const signedUrl = signed[i].data?.signedUrl;
-        if (signedUrl) o.deposit = { ...o.deposit!, balanceSlipUrl: signedUrl };
-      });
-    };
+    const signBalance = async () => undefined;
     // LINE ของบัญชีที่ล็อกอินตอนสั่ง — ให้หน้าออเดอร์เทียบกับที่พนักงานผูก (ชั่วคราว ไม่ persist)
     const fillLoginLine = async () => {
       await Promise.all(
@@ -462,6 +448,17 @@ export async function PATCH(req: Request) {
    * · ใบที่ยังไม่เข้าไลน์ผลิต (เข้าผลิตแล้วดึงกลับ = ป่วนคิวงาน — ใบพวกนั้นพึ่งป้าย "ค้าง"
    *   ในลิสต์ + ด่านยิงเลขพัสดุแทน) · ใบมัดจำ/เคลมมีเส้นทางเก็บเงินของตัวเอง (hasUnpaidBalance กันให้แล้ว)
    */
+  /**
+   * 💰 ยอดบิลโตในคำขอนี้ (เปิด VAT ทีหลัง · แก้ค่าส่ง · เพิ่มรายการ) บนใบที่แอดมินเคยยืนยันเงินเองโดยไม่มี paidTotal
+   * → ถือว่ารับครบเท่าบิลเดิม ไม่งั้นระบบไม่รู้ว่าค้าง (hasUnpaidBalance ต้องมี paidTotal) · ใบมัดจำ/เคลมไม่เกี่ยว
+   */
+  const paidStageBefore = !(["รอชำระเงิน", "รอตรวจสอบ", "ยกเลิก"] as OrderStatus[]).includes(existing.status);
+  if (mayEditFull && !toSave.deposit && !toSave.claimOf && toSave.paidTotal == null && paidStageBefore && orderTotal(toSave) > orderTotal(existing) + 0.5)
+    toSave = { ...toSave, paidTotal: orderTotal(existing) };
+
+  // แอดมินเปลี่ยนสถานะเองในคำขอนี้ → ล้างสถานะที่จำไว้ก่อนเด้ง (ไม่ให้เด้งกลับไปทับสิ่งที่แอดมินตั้งใจ)
+  if (mayEditFull && toSave.status !== existing.status && toSave.reopenedFrom) toSave = { ...toSave, reopenedFrom: undefined };
+
   const REOPEN_FOR_BALANCE: OrderStatus[] = ["รอตรวจสอบ", "ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"];
   const reopenedForBalance =
     mayEditFull &&
@@ -471,7 +468,8 @@ export async function PATCH(req: Request) {
     hasUnpaidBalance(toSave);
   if (reopenedForBalance)
     toSave = withLog(
-      { ...toSave, status: "รอชำระเงิน" },
+      // จำสถานะเดิมไว้ — เก็บส่วนต่างครบแล้วกลับไปขั้นเดิม (ไม่ต้องตรวจแบบซ้ำ)
+      { ...toSave, status: "รอชำระเงิน", reopenedFrom: existing.status },
       actor.name?.trim() || actor.username,
       "ยอดรวมเพิ่มขึ้น — กลับไปรอชำระเงิน",
       `ค้างอีก ${orderBalance(toSave).toLocaleString("th-TH")} บาท (จ่ายมาแล้ว ${(toSave.paidTotal ?? 0).toLocaleString("th-TH")} จาก ${orderTotal(toSave).toLocaleString("th-TH")})`
@@ -500,10 +498,16 @@ export async function PATCH(req: Request) {
       );
   }
 
-  // อย่าเก็บ signed URL ชั่วคราวลงฐาน — สลิปที่มี slipPath ต้องเซ็นใหม่ทุกครั้งที่ดึง
-  if (toSave.slipPath) toSave = { ...toSave, slipUrl: undefined };
-  if (toSave.deposit?.balanceSlipUrl) toSave = { ...toSave, deposit: { ...toSave.deposit, balanceSlipUrl: undefined } };
+  // อย่าเก็บ signed URL ชั่วคราวลงฐาน — สลิปทุกใบ (ช่องหลัก/ใบเพิ่ม) ต้องเซ็นใหม่ทุกครั้งที่ดึง
+  toSave = stripPaymentUrls(toSave);
   if (toSave.loginLine) toSave = { ...toSave, loginLine: undefined };
+  /**
+   * 💰 แอดมินยืนยันเงินเข้าเอง (เปลี่ยนเป็น "ชำระแล้ว" โดยไม่ผ่าน SlipOK) ทั้งที่ยังไม่มี paidTotal
+   * → จำว่ารับครบเท่ายอดบิลตอนนี้ ไม่งั้นสั่งเพิ่ม/เก็บค่าบริการทีหลังจะไม่รู้ว่าค้าง (กับดัก 26 ส.ค. 69: 34 จาก 40 ใบไม่มี paidTotal)
+   * ใบมัดจำมีเส้นทางของตัวเอง (confirmDepositFirst ตั้ง paidTotal อยู่แล้ว)
+   */
+  if (toSave.status === "ชำระแล้ว" && existing.status !== "ชำระแล้ว" && toSave.paidTotal == null && !toSave.deposit)
+    toSave = { ...toSave, paidTotal: orderTotal(toSave) };
 
   // 🕒 ประวัติรวม 2 ฝั่ง + ประทับเวลาบันทึก (หน้าจอรับกลับไปถือ = รอบหน้าเซิร์ฟเวอร์รู้ว่าหน้านั้นเห็นถึงตอนนี้แล้ว)
   // (ฐาน + ที่หน้าจอส่งมา + ที่เซิร์ฟเวอร์เพิ่งต่อท้ายในคำขอนี้ — ทางแพ็ค/กราฟฟิก toSave ตั้งต้นจากฐาน log ของหน้าจอจึงต้องรวมตรงนี้)
@@ -514,16 +518,42 @@ export async function PATCH(req: Request) {
 
   const adminName = `แอดมิน ${actor.name?.trim() || actor.username}`;
 
-  // 🔥 ติ๊ก/ยกเลิกงานเร่ง หรือแก้วันที่ลูกค้าต้องใช้งาน → ส่งต่อให้บอร์ด WIP กราฟฟิก (เฉพาะใบที่ชำระแล้วมีเรคอร์ดอยู่ · ใบอื่น not-found ข้ามเงียบ)
-  if (mayEditFull && (!!toSave.rush !== !!existing.rush || (toSave.useByDate || "") !== (existing.useByDate || "")))
+  // 🔥 ติ๊ก/ยกเลิกงานเร่ง หรือแก้วันที่ลูกค้าต้องใช้งาน/ช่วงวันจัดส่ง → ส่งต่อให้บอร์ด WIP กราฟฟิก (เฉพาะใบที่ชำระแล้วมีเรคอร์ดอยู่ · ใบอื่น not-found ข้ามเงียบ)
+  const shipKey = (o: Order) => `${o.shipDate?.from || ""}|${o.shipDate?.to || ""}`;
+  if (mayEditFull && (!!toSave.rush !== !!existing.rush || (toSave.useByDate || "") !== (existing.useByDate || "") || shipKey(toSave) !== shipKey(existing)))
     void syncRushToTP(toSave);
   // 📦 ฝ่ายแพ็คปักของยังไม่มา/มาไม่ครบ/มาครบ → ส่งไปหน้า "ติดตามของ iDucky" ในระบบ TP (ยิงเฉพาะรายการที่เปลี่ยน)
   void syncArrivalToTP(existing, toSave);
   // มัดจำงวดแรกเพิ่งยืนยัน (มือ) ในคำขอนี้ — ใช้แยกรูปแบบรายงาน msVerify
   const depositFirstNow = !!toSave.deposit?.firstPaidAt && !existing.deposit?.firstPaidAt;
 
-  // แจ้งเตือนลูกค้าเมื่อสถานะเปลี่ยนไปขั้นสำคัญ (เงียบถ้ายังไม่ตั้งค่า LINE)
-  if (toSave.status !== oldStatus && !quoteJustPriced) {
+  /**
+   * 🧾 ยอดค้างโตในคำขอนี้ (เปิด VAT ทีหลังเพราะลูกค้าขอใบกำกับภาษี · แก้ค่าส่ง · เพิ่มรายการ)
+   * → บอกลูกค้าว่าเพราะอะไร ค้างเท่าไร แนบสลิปที่ลิงก์เดิม (แทนข้อความสถานะ "รอชำระเงิน" ทั่วไปที่ไม่มียอด)
+   * เก็บเพิ่ม (charges) แจ้งจาก /api/admin/orders/charge เองแล้ว · ลูกค้าสั่งเพิ่มแจ้งจาก /api/orders/append
+   */
+  const vatJustAdded = !!toSave.vat && !existing.vat && orderVatAmount(toSave) > 0;
+  // ใบเดิมไม่มี paidTotal (เพิ่งตั้งให้ด้านบน) = ก่อนหน้านี้ถือว่าไม่ค้าง → เทียบกับ 0 ไม่ใช่ยอดเต็ม
+  const balBefore = existing.paidTotal == null && paidStageBefore ? 0 : orderBalance(existing);
+  const balanceGrew = mayEditFull && !quoteJustPriced && hasUnpaidBalance(toSave) && orderBalance(toSave) > balBefore + 0.5;
+  if (balanceGrew) {
+    const origin = new URL(req.url).origin;
+    const total = orderTotal(toSave);
+    const bal = orderBalance(toSave);
+    const why = vatJustAdded
+      ? `ภาษีมูลค่าเพิ่ม ${toSave.vat!.rate}% ${orderVatAmount(toSave).toLocaleString("th-TH")} บาท (ออกใบกำกับภาษีตามที่ขอ)`
+      : `ยอดรวมเปลี่ยนเป็น ${total.toLocaleString("th-TH")} บาท`;
+    void notifyCustomerLogged(
+      sb,
+      toSave,
+      `🧾 ออเดอร์ ${toSave.id} มียอดเพิ่ม: ${why}\n💰 ยอดรวมทั้งบิล ${total.toLocaleString("th-TH")} บาท · รับแล้ว ${(toSave.paidTotal ?? 0).toLocaleString("th-TH")} บาท\n💳 ยอดที่ต้องโอนเพิ่ม ${bal.toLocaleString("th-TH")} บาท\nโอนแล้วแนบสลิปที่ลิงก์นี้ได้เลยครับ\n${orderLink(origin, toSave)}`,
+      `แจ้งยอดค้างเพิ่ม ${bal.toLocaleString("th-TH")} บาท${vatJustAdded ? " (เปิด VAT)" : ""}`,
+      "key"
+    );
+  }
+
+  // แจ้งเตือนลูกค้าเมื่อสถานะเปลี่ยนไปขั้นสำคัญ (เงียบถ้ายังไม่ตั้งค่า LINE) — กลับไปรอชำระเงินเพราะยอดโต แจ้งด้วยข้อความยอดค้างด้านบนแล้ว
+  if (toSave.status !== oldStatus && !quoteJustPriced && !(reopenedForBalance && balanceGrew)) {
     const origin = new URL(req.url).origin;
     const link = orderLink(origin, toSave);
     // แจ้งลูกค้า "ทุกครั้งที่สถานะเปลี่ยน" — ข้อความต่อสถานะอยู่ใน statusMessage()

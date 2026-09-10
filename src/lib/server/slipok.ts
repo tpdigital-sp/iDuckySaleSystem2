@@ -19,6 +19,11 @@ export interface SlipVerifyResult {
   duplicate?: boolean;
   /** ส่วนต่างที่ระบบรู้จัก (หัก ณ ที่จ่าย 1%/3% หรือค่าธรรมเนียมโอน) — มีค่า = โอนน้อยกว่ายอดแต่ถือว่าจ่ายครบ */
   deduction?: SlipDeduction;
+  /**
+   * SlipOK ยืนยันแล้วว่า "สลิปแท้ เงินเข้าบัญชีร้านจริง" (แม้ยอดจะไม่ตรง) — fail ที่มีธงนี้ + amount
+   * = โอนขาด → ระบบนับยอดที่เข้าจริงเป็น "รับบางส่วน" ได้ (ดู slip-apply.ts) · ไม่มีธง = ตรวจไม่ได้/ระบบล่ม ห้ามนับ
+   */
+  genuine?: boolean;
 }
 
 /** ส่วนต่างระหว่างยอดที่ต้องโอนกับยอดในสลิป ที่ระบบยอมรับได้ */
@@ -127,18 +132,19 @@ export async function verifySlipWithSlipOK(
   // ตัดสินจากยอดในสลิป (ใช้ทั้งเส้นทางจริงและโหมดทดสอบ — กติกาเดียวกันเป๊ะ)
   const judge = (slipAmount: number | undefined, transRef: string | undefined, receiver?: string): SlipVerifyResult => {
     if (expectedAmount > 0) {
-      if (!slipAmount) return { status: "fail", transRef, detail: "สลิปแท้แต่อ่านยอดเงินไม่ได้ — รอแอดมินเทียบยอดเอง" };
+      if (!slipAmount) return { status: "fail", transRef, genuine: true, detail: "สลิปแท้แต่อ่านยอดเงินไม่ได้ — รอแอดมินเทียบยอดเอง" };
       const m = matchSlipAmount(expectedAmount, slipAmount, orderTotalAmount, adminWht, earlyPayAllowed);
       if (!m.ok)
         return {
           status: "fail",
           amount: slipAmount,
           transRef,
+          genuine: true,
           detail: `ยอดในสลิป ${slipAmount.toLocaleString("th-TH")} บาท ไม่ตรงกับยอดที่ต้องชำระ ${expectedAmount.toLocaleString("th-TH")} บาท (ขาด ${(expectedAmount - slipAmount).toLocaleString("th-TH")} บาท)`,
         };
-      return { status: "pass", amount: slipAmount, transRef, detail: receiver, deduction: m.deduction };
+      return { status: "pass", amount: slipAmount, transRef, genuine: true, detail: receiver, deduction: m.deduction };
     }
-    return { status: "pass", amount: slipAmount, transRef, detail: receiver };
+    return { status: "pass", amount: slipAmount, transRef, genuine: true, detail: receiver };
   };
 
   // ── โหมดทดสอบ (dev เท่านั้น): ตั้ง SLIPOK_MOCK=1 + ไฟล์สลิปที่ฝังข้อความ "MOCKSLIP:<ยอด>" ──

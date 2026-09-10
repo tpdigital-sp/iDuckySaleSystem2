@@ -17,11 +17,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * ออเดอร์เก่าก่อน 8 ก.ย. 69 ไม่มี slipHash — ยังกันได้ด้วย transRef ที่ SlipOK เคยอ่านไว้ (ชั้นที่ 2)
  */
 
-export type SlipPhase = "first" | "balance";
+/** first = ช่องสลิปใบแรก · balance = ช่องยอดคงเหลือใบมัดจำ · extra = ใบเพิ่มใน order.payments[] (ระบุ paymentId) */
+export type SlipPhase = "first" | "balance" | "extra";
 
 export interface SlipOwner {
   orderId: string;
   phase: SlipPhase;
+  /** id ของใบเพิ่ม (เฉพาะ phase extra) */
+  paymentId?: string;
 }
 
 export const slipHashOf = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -33,6 +36,7 @@ interface Row {
     slipHash?: string;
     slipVerify?: { transRef?: string };
     deposit?: { balanceSlipHash?: string; balanceVerify?: { transRef?: string } };
+    payments?: { id: string; hash?: string; verify?: { transRef?: string } }[];
   } | null;
 }
 
@@ -52,25 +56,42 @@ export async function findSlipOwners(sb: SupabaseClient, q: { hash?: string; tra
   if (hash) clauses.push(`data->>slipHash.eq.${hash}`, `data->deposit->>balanceSlipHash.eq.${hash}`);
   if (ref) clauses.push(`data->slipVerify->>transRef.eq.${ref}`, `data->deposit->balanceVerify->>transRef.eq.${ref}`);
 
-  const { data, error } = await sb.from("orders").select("id,data").or(clauses.join(",")).limit(20);
+  // ช่องหลัก 2 ช่อง ค้นด้วย .or เดียว · ใบเพิ่ม (อาเรย์ jsonb) ต้องใช้ contains แยกคำขอ — ยิงขนานกัน
+  const mainQ = sb.from("orders").select("id,data").or(clauses.join(",")).limit(20);
+  const extraQs = [
+    hash ? sb.from("orders").select("id,data").contains("data->payments", [{ hash }]).limit(20) : null,
+    ref ? sb.from("orders").select("id,data").contains("data->payments", [{ verify: { transRef: ref } }]).limit(20) : null,
+  ];
+  const [main, ...extras] = await Promise.all([mainQ, ...extraQs.map((q) => q ?? Promise.resolve(null))]);
   // ค้นไม่ได้ (เช่น DB ล่ม) = ไม่ตีตกสลิปลูกค้า — ปล่อยผ่านไปตรวจตามปกติ ชั้นถัดไป (SlipOK log) ยังกันอยู่
-  if (error || !data) return [];
+  const rows = new Map<string, Row>();
+  for (const res of [main, ...extras]) {
+    if (!res || res.error || !res.data) continue;
+    for (const r of res.data as Row[]) rows.set(r.id, r);
+  }
 
   const owners: SlipOwner[] = [];
-  for (const row of data as Row[]) {
+  for (const row of rows.values()) {
     const d = row.data ?? {};
     const firstHit = (!!hash && d.slipHash === hash) || (!!ref && d.slipVerify?.transRef === ref);
     const balanceHit = (!!hash && d.deposit?.balanceSlipHash === hash) || (!!ref && d.deposit?.balanceVerify?.transRef === ref);
     if (firstHit && !(row.id === self.orderId && self.phase === "first")) owners.push({ orderId: row.id, phase: "first" });
     if (balanceHit && !(row.id === self.orderId && self.phase === "balance")) owners.push({ orderId: row.id, phase: "balance" });
+    for (const p of d.payments ?? []) {
+      const hit = (!!hash && p.hash === hash) || (!!ref && p.verify?.transRef === ref);
+      // ใบเพิ่มใบเดิมของตัวเอง (ตรวจซ้ำ) ไม่ถือว่าซ้ำ
+      if (hit && !(row.id === self.orderId && self.phase === "extra" && self.paymentId === p.id))
+        owners.push({ orderId: row.id, phase: "extra", paymentId: p.id });
+    }
   }
   return owners;
 }
 
 /** ข้อความบอกว่าซ้ำกับที่ไหน — ใช้ทั้งฝั่งลูกค้าและแอดมิน */
 export function describeSlipOwner(o: SlipOwner, self: SlipOwner): string {
-  if (o.orderId === self.orderId) return o.phase === "first" ? "สลิปงวดแรก (มัดจำ) ของออเดอร์นี้" : "สลิปยอดคงเหลือของออเดอร์นี้";
-  return `ออเดอร์ ${o.orderId}${o.phase === "balance" ? " (งวดยอดคงเหลือ)" : ""}`;
+  if (o.orderId === self.orderId)
+    return o.phase === "first" ? "สลิปใบแรกของออเดอร์นี้" : o.phase === "balance" ? "สลิปยอดคงเหลือของออเดอร์นี้" : "สลิปใบเพิ่มของออเดอร์นี้ (แนบไว้แล้ว)";
+  return `ออเดอร์ ${o.orderId}${o.phase === "balance" ? " (งวดยอดคงเหลือ)" : o.phase === "extra" ? " (สลิปใบเพิ่ม)" : ""}`;
 }
 
 /** โยนเมื่อสลิปซ้ำ — เส้น API จับไปตอบ 409 พร้อมรายชื่อออเดอร์ที่ใช้สลิปนี้อยู่ */

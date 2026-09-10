@@ -20,6 +20,9 @@ import {
   ORDER_STATUSES,
   adminDiscountAmount,
   amountDueNow,
+  hasUnpaidBalance,
+  orderBalance,
+  paidSoFar,
   daysToUseBy,
   itemDiscountAmount,
   isBlankOrder,
@@ -47,7 +50,9 @@ import {
   PROOF_UNITS,
   proofUnit,
   type Order,
+  type OrderCharge,
   type OrderItem,
+  type OrderPayment,
   type OrderStatus,
   type Proof,
   proofQtyCheck,
@@ -59,6 +64,7 @@ import {
   orderIdIn,
   reuseArtText,
 } from "@/lib/admin-data";
+import { overpaidAmount, paymentEntries, resolveSlipPhase, type PaymentEntry } from "@/lib/payments";
 import { fetchOrderAdmin, fetchOrdersAdmin, notifyProofReady, packScanHeaders, saveOrderAdminResult, setPackScanMode, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
 import { btnSm, btnSmNeutral, card, faint, muted, shortTime } from "@/lib/admin-ui";
@@ -686,17 +692,24 @@ function PerUnitSetter({ unit, qty, suggest, onSet }: { unit: string; qty: numbe
   );
 }
 
-/** แถบผลตรวจสลิปอัตโนมัติ (SlipOK) — ใช้ซ้ำได้ทั้งสลิปงวดแรกและงวดหลัง */
-function SlipVerifyNote({ v, onRecheck, rechecking }: { v: NonNullable<Order["slipVerify"]>; onRecheck?: () => void; rechecking?: boolean }) {
+/** ชื่อรายการเก็บเพิ่มที่ใช้บ่อย — กดเลือกแล้วแก้ต่อได้ */
+const CHARGE_PRESETS = ["ค่าตัดภาพ", "ค่าส่งเพิ่ม", "ค่าเร่งงาน", "ค่าแก้ไฟล์", "ค่าออกแบบ"];
+
+/**
+ * แถบผลตรวจสลิปอัตโนมัติ (SlipOK) — ใช้ซ้ำทุกใบ (ใบแรก/งวดหลัง/ใบเพิ่ม)
+ * credited = ยอดที่ใบนี้นับเข้าออเดอร์แล้วทั้งที่ตรวจ "ไม่ผ่าน" (สลิปแท้แต่โอนขาด → รับบางส่วน)
+ */
+function SlipVerifyNote({ v, credited, onRecheck, rechecking }: { v: NonNullable<Order["slipVerify"]>; credited?: number; onRecheck?: () => void; rechecking?: boolean }) {
+  const partial = v.status !== "pass" && (credited ?? 0) > 0;
   return (
     <div
       className={`mt-2 rounded-xl px-3 py-2 text-xs font-semibold ring-1 ${
-        v.status === "pass" ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : "bg-amber-50 text-amber-800 ring-amber-200"
+        v.status === "pass" ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : partial ? "bg-sky-50 text-sky-800 ring-sky-200" : "bg-amber-50 text-amber-800 ring-amber-200"
       }`}
     >
       {v.status === "pass" ? (
         <>
-          ✅ SlipOK ตรวจแล้ว: ยอดถูกต้อง {v.amount ? formatPrice(v.amount) : ""} — ยืนยันการชำระให้อัตโนมัติ
+          ✅ SlipOK ตรวจแล้ว: ยอดถูกต้อง {v.amount ? formatPrice(v.amount) : ""} — นับยอด/ยืนยันการชำระให้อัตโนมัติ
           {v.transRef ? ` · อ้างอิง ${v.transRef}` : ""}
           {v.deduction && (
             <span className="mt-1 block text-sky-700">
@@ -704,6 +717,14 @@ function SlipVerifyNote({ v, onRecheck, rechecking }: { v: NonNullable<Order["sl
               {v.deduction.kind === "wht" ? " · อย่าลืมตามหนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ) จากลูกค้า" : ""}
             </span>
           )}
+          {(v.over ?? 0) > 0 && (
+            <span className="mt-1 block text-amber-700">⚠️ โอนเกินยอดที่ต้องชำระ {formatPrice(v.over!)} — คืนลูกค้า หรือแปลงเป็นแต้ม</span>
+          )}
+        </>
+      ) : partial ? (
+        <>
+          💸 สลิปแท้แต่โอนขาด — SlipOK อ่านยอด {formatPrice(v.amount ?? credited ?? 0)} นับเข้าออเดอร์แล้ว {formatPrice(credited!)} · ส่วนที่เหลือรอลูกค้าโอนเพิ่ม (แจ้งไลน์แล้ว)
+          {v.transRef ? ` · อ้างอิง ${v.transRef}` : ""}
         </>
       ) : (
         <>
@@ -943,8 +964,30 @@ export default function AdminOrderDetailPage() {
   const [giftProofBusy, setGiftProofBusy] = useState<string | null>(null);
   /** สถานะที่รอเปลี่ยน "หลังแนบสลิปเสร็จ" — ตั้งตอนกด "แนบสลิปตอนนี้" ในกล่องเตือน */
   const pendingStatus = useRef<OrderStatus | null>(null);
-  /** สลิปที่กำลังจะแนบเป็นงวดไหน (ออเดอร์มัดจำมีสองงวด เก็บคนละช่อง) */
-  const slipPhase = useRef<"first" | "balance">("first");
+  /**
+   * สลิปที่กำลังจะแนบลงช่องไหน — auto = ให้เซิร์ฟเวอร์ตัดสินจากยอดค้าง (ใบแรก/งวดหลัง/ใบเพิ่ม)
+   * first/balance = ช่องหลักเดิม · extra = ใบเพิ่มใน payments[] (ใบที่ 2, 3, … ไม่จำกัด)
+   */
+  const slipPhase = useRef<"auto" | "first" | "balance" | "extra">("auto");
+  /** 🧾 ฟอร์มเก็บค่าบริการเพิ่ม (null = ปิด) */
+  const [chargeForm, setChargeForm] = useState<{ label: string; amount: string; note: string } | null>(null);
+  const [chargeBusy, setChargeBusy] = useState(false);
+  /** สลิปใบเพิ่มที่กำลังกด "รับยอดเอง" อยู่ (paymentId) */
+  const [acceptBusy, setAcceptBusy] = useState<string | null>(null);
+  /** 🧾 ฟอร์มข้อมูลใบกำกับภาษี (null = ปิด) · docUrl = ลิงก์แชร์ FlowAccount ที่วางไว้ · docVat = VAT ตามเอกสาร (เสนอให้เปิด VAT ตามนั้น) */
+  const [taxForm, setTaxForm] = useState<{
+    company: string;
+    taxId: string;
+    branch: string;
+    address: string;
+    docUrl: string;
+    docNo?: string;
+    docTypeLabel?: string;
+    docVat?: number;
+    docVatRate?: number;
+    applyDocVat?: boolean;
+  } | null>(null);
+  const [taxFetching, setTaxFetching] = useState(false);
   const [artDropIdx, setArtDropIdx] = useState<number | null>(null);
   const [proofDropIdx, setProofDropIdx] = useState<number | null>(null);
   const [replaceDrop, setReplaceDrop] = useState<string | null>(null); // "itemIndex:proofIndex" ที่กำลังลากไฟล์ทับเพื่อเปลี่ยนรูป
@@ -1081,7 +1124,7 @@ export default function AdminOrderDetailPage() {
   }, []);
 
   /** เปิดหน้าต่างเลือกไฟล์สลิป (แอดมินแนบแทนลูกค้า) — งวดแรก หรืองวดหลังของออเดอร์มัดจำ */
-  function pickAdminSlip(phase: "first" | "balance" = "first") {
+  function pickAdminSlip(phase: "auto" | "first" | "balance" | "extra" = "auto") {
     slipPhase.current = phase;
     adminSlipInput.current?.click();
   }
@@ -1134,7 +1177,7 @@ export default function AdminOrderDetailPage() {
       setOrder(next);
     } finally {
       pendingStatus.current = null;
-      slipPhase.current = "first";
+      slipPhase.current = "auto";
       setSlipUploading(false);
     }
   }
@@ -1148,7 +1191,7 @@ export default function AdminOrderDetailPage() {
       return;
     }
     // "ชำระแล้ว" ต้องมีสลิปเป็นหลักฐานเสมอ — ไม่มีสลิปให้แนบตรงนั้นเลย หรือยืนยันเองแล้วลง log
-    const noSlip = status === "ชำระแล้ว" && !order.slipPath && !order.slipUrl;
+    const noSlip = status === "ชำระแล้ว" && !order.slipPath && !order.slipUrl && !(order.payments?.length);
     if (noSlip) {
       const ok = await askConfirm({
         icon: "🧾",
@@ -1216,7 +1259,7 @@ export default function AdminOrderDetailPage() {
    * เคสหลัก: ลูกค้าแนบเร็วกว่าธนาคารส่งข้อมูล SlipOK ตอบ 1010 → รอสักครู่แล้วกดตรวจซ้ำ
    * ผ่าน = เซิร์ฟเวอร์ยืนยันรับเงิน/แจ้ง LINE ให้เหมือนตรวจรอบแรก
    */
-  async function recheckSlip(phase: "first" | "balance") {
+  async function recheckSlip(phase: "first" | "balance" | "extra", paymentId?: string) {
     if (!order) return;
     if (demo) {
       setErr("โหมดตัวอย่างตรวจสลิปไม่ได้");
@@ -1228,7 +1271,7 @@ export default function AdminOrderDetailPage() {
       const res = await fetch("/api/admin/orders/slip/recheck", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ orderId: order.id, phase }),
+        body: JSON.stringify({ orderId: order.id, phase, paymentId }),
       });
       const j = (await res.json().catch(() => ({}))) as { order?: Order; verified?: boolean; error?: string };
       if (!res.ok || !j.order) {
@@ -1285,6 +1328,264 @@ export default function AdminOrderDetailPage() {
       return;
     }
     if (j.order) setOrder(j.order);
+  }
+
+  /** ลบสลิป "ใบเพิ่ม" ใบเดียว (แนบผิด/ทดสอบ) — ถ้าใบนั้นนับยอดแล้ว เซิร์ฟเวอร์ถอยยอดออกให้ (สถานะไม่เปลี่ยน) */
+  async function deletePayment(e: PaymentEntry) {
+    if (!order || !e.paymentId) return;
+    if (
+      !(await askConfirm({
+        icon: "🧾",
+        title: `ลบสลิปใบที่ ${e.n}?`,
+        detail: e.credited
+          ? `⚠️ ใบนี้นับยอดไว้ ${formatPrice(e.credited)} — ลบแล้วยอดที่รับจะถอยลงเท่านั้น (สถานะไม่เปลี่ยน ตรวจยอดค้างเอง) · บันทึกในประวัติว่าใครลบ`
+          : "ใบนี้ยังไม่ได้นับยอด — ลบแล้วไม่กระทบยอดที่รับ",
+        confirmLabel: "ลบสลิปใบนี้",
+        danger: true,
+      }))
+    )
+      return;
+    const res = await fetch("/api/admin/orders/slip", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ orderId: order.id, phase: "extra", paymentId: e.paymentId }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setErr(j.error ?? "ลบสลิปไม่สำเร็จ");
+      return;
+    }
+    if (j.order) setOrder(j.order);
+  }
+
+  /**
+   * 💰 รับยอดของสลิปใบเพิ่มเอง — SlipOK ตรวจไม่ได้/ตรวจตก แต่แอดมินเทียบยอดกับธนาคารแล้ว
+   * ต้องมีสิทธิ์ยืนยันเงินเข้า (เซิร์ฟเวอร์บังคับซ้ำ) · เซิร์ฟเวอร์นับยอด + ครบแล้วยืนยันงวด/แจ้งลูกค้า/msVerify เอง
+   */
+  async function acceptPayment(e: PaymentEntry) {
+    if (!order || !e.paymentId) return;
+    if (!mayMarkPaid) {
+      setErr("บัญชีนี้ยืนยันเงินเข้าไม่ได้ — ให้เจ้าของร้าน หรือคนที่เปิดสิทธิ์ “ยืนยันเงินเข้า” ไว้ เป็นคนกด");
+      return;
+    }
+    const suggest = e.verify?.amount ?? orderBalance(order);
+    const raw = window.prompt(`ยอดในสลิปใบที่ ${e.n} ที่เทียบกับธนาคารแล้ว (บาท)\nยอดค้างตอนนี้ ${formatPrice(orderBalance(order))}`, suggest ? String(suggest) : "");
+    if (raw == null) return;
+    const amount = Number(raw.replace(/[^\d.]/g, ""));
+    if (!(amount > 0)) {
+      setErr("ยอดต้องมากกว่า 0");
+      return;
+    }
+    setAcceptBusy(e.paymentId);
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/orders/slip", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, paymentId: e.paymentId, amount }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { order?: Order; error?: string };
+      if (!res.ok || !j.order) {
+        setErr(j.error ?? "รับยอดไม่สำเร็จ");
+        return;
+      }
+      setOrder(j.order);
+    } finally {
+      setAcceptBusy(null);
+    }
+  }
+
+  /** 🧾 เก็บค่าบริการเพิ่ม (ค่าตัดภาพ/ค่าส่งเพิ่ม/ค่าเร่งงาน …) — เซิร์ฟเวอร์บวกยอดรวม + เด้งสถานะ/แจ้งลูกค้าทางไลน์ให้ */
+  async function addCharge() {
+    if (!order || !chargeForm) return;
+    const label = chargeForm.label.trim();
+    const amount = Number(chargeForm.amount);
+    if (!label) {
+      setErr("ใส่ชื่อรายการที่เก็บเพิ่ม");
+      return;
+    }
+    if (!(amount > 0)) {
+      setErr("ยอดที่เก็บเพิ่มต้องมากกว่า 0");
+      return;
+    }
+    if (demo) {
+      setErr("โหมดตัวอย่างเก็บเพิ่มไม่ได้");
+      return;
+    }
+    setChargeBusy(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/orders/charge", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, label, amount, note: chargeForm.note.trim() || undefined }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { order?: Order; error?: string };
+      if (!res.ok || !j.order) {
+        setErr(j.error ?? "เก็บเพิ่มไม่สำเร็จ");
+        return;
+      }
+      setOrder(j.order);
+      setChargeForm(null);
+    } finally {
+      setChargeBusy(false);
+    }
+  }
+
+  /** ถอดรายการเก็บเพิ่มออก (ใส่ผิด/ลูกค้าไม่เอา) — ยอดรวมลด · ถ้าลูกค้าโอนมาแล้วจะกลายเป็นโอนเกิน */
+  async function removeCharge(c: OrderCharge) {
+    if (!order) return;
+    if (
+      !(await askConfirm({
+        icon: "🧾",
+        title: `ถอดรายการ “${c.label}” ${formatPrice(c.amount)}?`,
+        detail: "ยอดรวมจะลดลง — ถ้าลูกค้าโอนยอดนี้มาแล้วจะกลายเป็นโอนเกิน ต้องคืนเงิน/แปลงเป็นแต้มเอง · บันทึกในประวัติว่าใครถอด",
+        confirmLabel: "ถอดรายการ",
+        danger: true,
+      }))
+    )
+      return;
+    const res = await fetch("/api/admin/orders/charge", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ orderId: order.id, chargeId: c.id }),
+    });
+    const j = (await res.json().catch(() => ({}))) as { order?: Order; error?: string };
+    if (!res.ok || !j.order) {
+      setErr(j.error ?? "ถอดรายการไม่สำเร็จ");
+      return;
+    }
+    setOrder(j.order);
+  }
+
+  /** คงลิงก์สลิปที่เซ็นไว้บนจอ เมื่อรับก้อนใหม่จากเซิร์ฟเวอร์ (PATCH คืนก้อนที่ล้าง signed URL แล้ว) */
+  function keepSlipUrls(fresh: Order, cur: Order): Order {
+    return {
+      ...fresh,
+      slipUrl: cur.slipUrl ?? fresh.slipUrl,
+      deposit: fresh.deposit ? { ...fresh.deposit, balanceSlipUrl: cur.deposit?.balanceSlipUrl } : fresh.deposit,
+      payments: fresh.payments?.map((p) => ({ ...p, url: cur.payments?.find((x) => x.id === p.id)?.url })),
+    };
+  }
+
+  /** บันทึกแล้วรับก้อนจากเซิร์ฟเวอร์มาแทน (สถานะ/paidTotal/log ที่เซิร์ฟเวอร์ปรับให้ เช่น เด้งกลับรอชำระเงิน) */
+  async function applyOrderFromServer(next: Order) {
+    setOrder(next);
+    if (demo) return;
+    const r = await saveOrderAdminResult(next);
+    if (!r.ok) {
+      setErr(`⚠️ ${r.error ?? "บันทึกลงฐานข้อมูลไม่สำเร็จ"} — สิ่งที่เพิ่งทำยังไม่ถูกบันทึก ลองใหม่หรือรีเฟรชดูค่าจริง`);
+      return;
+    }
+    if (r.order) setOrder((cur) => (cur ? keepSlipUrls(r.order!, cur) : r.order!));
+  }
+
+  /**
+   * 🧾 เปิด VAT 7% ทีหลัง — ลูกค้าจ่ายราคาหน้าร้านไปแล้ว มาขอใบกำกับภาษี → คิด VAT จากยอดบิลปัจจุบันบวกเข้าไป
+   * เซิร์ฟเวอร์ (PATCH) ตั้ง paidTotal ให้ถ้ายังไม่มี · เด้งกลับ "รอชำระเงิน" ถ้ายังไม่เข้าไลน์ผลิต · แจ้งไลน์ยอดที่ต้องโอนเพิ่ม + ลิงก์เดิม
+   */
+  async function enableVat() {
+    if (!order || order.vat) return;
+    const base = orderTotal(order);
+    const amt = Math.round(base * 7) / 100;
+    const waitingNow = order.status === "รอชำระเงิน" || order.status === "รอตรวจสอบ";
+    const paid = order.paidTotal ?? (waitingNow ? 0 : base);
+    const reopen = !order.deposit && (["รอตรวจสอบ", "ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"] as OrderStatus[]).includes(order.status);
+    const ok = await askConfirm({
+      icon: "🧾",
+      title: "เปิด VAT 7% ให้ออเดอร์นี้?",
+      detail: `ลูกค้าขอใบกำกับภาษีทีหลัง — คิด VAT 7% จากยอดบิล ${formatPrice(base)} = ${formatPrice(amt)}\nยอดรวมใหม่ ${formatPrice(base + amt)} · รับแล้ว ${formatPrice(paid)} → ค้าง ${formatPrice(Math.max(0, base + amt - paid))}\nระบบจะแจ้งลูกค้าทางไลน์ให้โอนส่วนต่างแล้วแนบสลิปที่ลิงก์เดิม${reopen ? ' · ใบยังไม่เข้าไลน์ผลิต จะกลับไป "รอชำระเงิน"' : " · งานเดินต่อ แต่ยิงเลขพัสดุไม่ได้จนกว่าจะเก็บครบ"}`,
+      confirmLabel: "เปิด VAT 7% + แจ้งลูกค้า",
+    });
+    if (!ok) return;
+    await applyOrderFromServer(
+      withLog({ ...order, vat: { rate: 7, amount: amt } }, actor, "เปิด VAT 7% (ออกใบกำกับภาษีทีหลัง)", `VAT ${formatPrice(amt)} จากยอด ${formatPrice(base)} → ยอดรวม ${formatPrice(base + amt)}`)
+    );
+  }
+
+  /** ยกเลิก VAT ที่เปิดไว้ (ใส่ผิด) — ยอดรวมกลับเท่าเดิม */
+  async function removeVat() {
+    if (!order?.vat) return;
+    if (!(await askConfirm({ icon: "🧾", title: `ยกเลิก VAT ${order.vat.rate}% ${formatPrice(orderVatAmount(order))}?`, detail: "ยอดรวมจะกลับเท่าเดิม — ถ้าลูกค้าโอน VAT มาแล้วจะกลายเป็นโอนเกิน", confirmLabel: "ยกเลิก VAT", danger: true }))) return;
+    await applyOrderFromServer(withLog({ ...order, vat: undefined }, actor, "ยกเลิก VAT", `ยอดรวมกลับเป็น ${formatPrice(orderTotal({ ...order, vat: undefined }))}`));
+  }
+
+  /**
+   * 🧾 วางลิงก์แชร์ FlowAccount → ดึงชื่อผู้ซื้อ/เลขผู้เสียภาษี/สาขา/ที่อยู่ มาเติมฟอร์มให้ (ใช้ POST /api/admin/orders/flowaccount ตัวเดิม — อ่านอย่างเดียว ไม่สร้างออเดอร์)
+   * เอกสารมี VAT → เสนอเปิด VAT ตามยอดในเอกสาร (แม่นกว่าคิด 7% เอง)
+   */
+  async function fetchTaxFromFlowAccount() {
+    if (!taxForm) return;
+    const url = taxForm.docUrl.trim();
+    if (!/share\.flowaccount\.com/i.test(url)) {
+      setErr("วางลิงก์แชร์ของ FlowAccount (share.flowaccount.com/…) ก่อน");
+      return;
+    }
+    setTaxFetching(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/orders/flowaccount", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) });
+      const j = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        doc?: { docNo?: string; docTypeLabel?: string; vat?: number; vatRate?: number; customer?: { name?: string; taxId?: string; branch?: string; address?: string } };
+      };
+      if (!res.ok || !j.doc) {
+        setErr(j.error ?? "อ่านเอกสาร FlowAccount ไม่สำเร็จ");
+        return;
+      }
+      const c = j.doc.customer ?? {};
+      const docVat = Number(j.doc.vat) || 0;
+      setTaxForm((cur) =>
+        cur
+          ? {
+              ...cur,
+              company: c.name?.trim() || cur.company,
+              taxId: c.taxId?.trim() || cur.taxId,
+              branch: c.branch?.trim() || cur.branch,
+              address: c.address?.trim() || cur.address,
+              docNo: j.doc!.docNo,
+              docTypeLabel: j.doc!.docTypeLabel,
+              docVat: docVat > 0 ? docVat : undefined,
+              docVatRate: Number(j.doc!.vatRate) || 7,
+              applyDocVat: docVat > 0 && !order?.vat,
+            }
+          : cur
+      );
+    } finally {
+      setTaxFetching(false);
+    }
+  }
+
+  /** 🧾 บันทึกข้อมูลใบกำกับภาษี (ชื่อบริษัท/เลขผู้เสียภาษี/สาขา/ที่อยู่ + อ้างอิงเอกสาร) — ขึ้นใบงาน/ใบเสร็จ · เลือกเปิด VAT ตามเอกสารพร้อมกันได้ */
+  async function saveTaxInvoice() {
+    if (!order || !taxForm) return;
+    const company = taxForm.company.trim();
+    if (!company) {
+      setErr("ใส่ชื่อบริษัท/ผู้ซื้อในใบกำกับก่อน");
+      return;
+    }
+    const docUrl = taxForm.docUrl.trim();
+    const taxInvoice: NonNullable<Order["taxInvoice"]> = {
+      company,
+      taxId: taxForm.taxId.trim() || undefined,
+      branch: taxForm.branch.trim() || undefined,
+      address: taxForm.address.trim(),
+      ...(taxForm.docNo ? { docNo: taxForm.docNo, docUrl: docUrl || undefined, docTypeLabel: taxForm.docTypeLabel } : {}),
+    };
+    const withVat = !!taxForm.applyDocVat && (taxForm.docVat ?? 0) > 0 && !order.vat;
+    const base = withLog(
+      { ...order, taxInvoice, ...(withVat ? { vat: { rate: taxForm.docVatRate || 7, amount: taxForm.docVat! } } : {}) },
+      actor,
+      order.taxInvoice ? "แก้ข้อมูลใบกำกับภาษี" : "ใส่ข้อมูลใบกำกับภาษี",
+      `${company}${taxInvoice.taxId ? ` · ${taxInvoice.taxId}` : ""}${taxInvoice.docNo ? ` · ${taxInvoice.docTypeLabel ?? "เอกสาร"} ${taxInvoice.docNo}` : ""}`
+    );
+    const next = withVat
+      ? withLog(base, actor, "เปิด VAT ตามเอกสาร FlowAccount", `VAT ${formatPrice(taxForm.docVat!)} → ยอดรวม ${formatPrice(orderTotal(base))}`)
+      : base;
+    setTaxForm(null);
+    // เปิด VAT ด้วย = ยอดโต → รับก้อนจากเซิร์ฟเวอร์ (สถานะเด้งกลับรอชำระเงิน/paidTotal/แจ้งไลน์) · แค่ข้อมูลผู้ซื้อ = บันทึกธรรมดา
+    if (withVat) await applyOrderFromServer(next);
+    else applyOrder(next);
   }
 
   /** บันทึกออเดอร์ปัจจุบันลงฐานข้อมูล (เรียกตอน blur ช่องกรอก) */
@@ -2856,8 +3157,98 @@ export default function AdminOrderDetailPage() {
                       {order.taxInvoice.branch ? ` (${order.taxInvoice.branch})` : ""}
                       {order.taxInvoice.taxId ? ` · เลขผู้เสียภาษี ${order.taxInvoice.taxId}` : ""}
                       {order.taxInvoice.address ? ` · ${order.taxInvoice.address}` : ""}
+                      {order.taxInvoice.docNo && (
+                        <>
+                          {" · "}
+                          {order.taxInvoice.docUrl ? (
+                            <a href={order.taxInvoice.docUrl} target="_blank" rel="noreferrer" className="underline">
+                              {order.taxInvoice.docTypeLabel ?? "เอกสาร"} {order.taxInvoice.docNo} ↗
+                            </a>
+                          ) : (
+                            `${order.taxInvoice.docTypeLabel ?? "เอกสาร"} ${order.taxInvoice.docNo}`
+                          )}
+                        </>
+                      )}
+                      {mayEdit && !taxForm && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setTaxForm({
+                              company: order.taxInvoice!.company,
+                              taxId: order.taxInvoice!.taxId ?? "",
+                              branch: order.taxInvoice!.branch ?? "",
+                              address: order.taxInvoice!.address,
+                              docUrl: order.taxInvoice!.docUrl ?? "",
+                              docNo: order.taxInvoice!.docNo,
+                              docTypeLabel: order.taxInvoice!.docTypeLabel,
+                            })
+                          }
+                          className="ml-2 rounded-full px-2 py-0.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-100"
+                        >
+                          ✏️ แก้
+                        </button>
+                      )}
                     </p>
                   )}
+                </div>
+              )}
+              {/* 🧾 ลูกค้าขอใบกำกับภาษีทีหลัง — ใส่ข้อมูลผู้ซื้อได้ที่นี่ (คู่กับปุ่ม "เปิด VAT 7%" ในกล่องยอดเงิน) */}
+              {mayEdit && !order.flowAccount && !order.taxInvoice && !taxForm && order.status !== "ยกเลิก" && (
+                <button
+                  type="button"
+                  onClick={() => setTaxForm({ company: order.customer, taxId: "", branch: "", address: order.address, docUrl: "" })}
+                  className="mt-2 rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200 transition hover:bg-sky-50 hover:text-sky-700"
+                >
+                  🧾 ใส่ข้อมูลใบกำกับภาษี
+                </button>
+              )}
+              {taxForm && (
+                <div className="mt-2 rounded-lg border border-dashed border-sky-300 bg-sky-50/60 p-2.5 text-xs">
+                  <p className="font-bold text-sky-800">🧾 ข้อมูลใบกำกับภาษี (ขึ้นใบงาน/ใบเสร็จ)</p>
+                  {/* วางลิงก์แชร์ FlowAccount แทนการพิมพ์ — ดึงชื่อ/เลขผู้เสียภาษี/สาขา/ที่อยู่ให้เอง (ไม่สร้างออเดอร์ใหม่) */}
+                  <div className="mt-1.5 flex items-center gap-1.5">
+                    <input
+                      value={taxForm.docUrl}
+                      onChange={(e) => setTaxForm({ ...taxForm, docUrl: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void fetchTaxFromFlowAccount();
+                        }
+                      }}
+                      placeholder="วางลิงก์แชร์ FlowAccount (share.flowaccount.com/…) แล้วกดดึงข้อมูล"
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-sky-300 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={fetchTaxFromFlowAccount}
+                      disabled={taxFetching || !taxForm.docUrl.trim()}
+                      className="shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-100 disabled:opacity-50"
+                    >
+                      {taxFetching ? "⏳ กำลังอ่าน…" : "📄 ดึงข้อมูล"}
+                    </button>
+                  </div>
+                  {taxForm.docNo && (
+                    <p className="mt-1 text-[11px] font-semibold text-sky-700">
+                      ✓ อ่านจาก {taxForm.docTypeLabel ?? "เอกสาร"} {taxForm.docNo} แล้ว — ตรวจข้อมูลด้านล่างก่อนบันทึก
+                    </p>
+                  )}
+                  {taxForm.docVat != null && taxForm.docVat > 0 && !order.vat && (
+                    <label className="mt-1.5 flex items-center gap-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200">
+                      <input type="checkbox" checked={!!taxForm.applyDocVat} onChange={(e) => setTaxForm({ ...taxForm, applyDocVat: e.target.checked })} />
+                      เอกสารมี VAT {taxForm.docVatRate ?? 7}% = {formatPrice(taxForm.docVat)} — เปิด VAT ตามเอกสารพร้อมกัน (ยอดค้างขึ้น + แจ้งลูกค้าทางไลน์)
+                    </label>
+                  )}
+                  <div className="mt-1.5 grid gap-1.5 sm:grid-cols-2">
+                    <input value={taxForm.company} onChange={(e) => setTaxForm({ ...taxForm, company: e.target.value })} placeholder="ชื่อบริษัท / ผู้ซื้อ *" className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-sky-300 focus:outline-none sm:col-span-2" />
+                    <input value={taxForm.taxId} onChange={(e) => setTaxForm({ ...taxForm, taxId: e.target.value })} placeholder="เลขประจำตัวผู้เสียภาษี 13 หลัก" className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-sky-300 focus:outline-none" />
+                    <input value={taxForm.branch} onChange={(e) => setTaxForm({ ...taxForm, branch: e.target.value })} placeholder="สาขา เช่น สำนักงานใหญ่" className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-sky-300 focus:outline-none" />
+                    <textarea value={taxForm.address} onChange={(e) => setTaxForm({ ...taxForm, address: e.target.value })} placeholder="ที่อยู่ตามใบกำกับภาษี" rows={2} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-sky-300 focus:outline-none sm:col-span-2" />
+                  </div>
+                  <div className="mt-2 flex justify-end gap-1.5">
+                    <button type="button" onClick={() => setTaxForm(null)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50">ยกเลิก</button>
+                    <button type="button" onClick={saveTaxInvoice} className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-sky-700">บันทึก</button>
+                  </div>
                 </div>
               )}
               {order.dealer && (
@@ -4692,10 +5083,27 @@ export default function AdminOrderDetailPage() {
                   </div>
                 )
               )}
-              {/* VAT ตามบิล — เฉพาะออเดอร์จาก FlowAccount (ราคาสินค้าข้างบนเป็นราคาก่อน VAT) */}
+              {/* 🧾 ลูกค้าขอใบกำกับภาษีทีหลัง — เปิด VAT 7% บวกจากยอดบิลปัจจุบัน (ยอดค้างขึ้นเอง + แจ้งไลน์) */}
+              {!order.vat && mayEdit && seesMoney && !order.claimOf && !order.flowAccount && order.status !== "ยกเลิก" && (
+                <button
+                  type="button"
+                  onClick={enableVat}
+                  className="mt-2 w-full rounded-lg border border-dashed border-slate-300 py-1.5 text-[11px] font-semibold text-slate-500 transition hover:border-sky-400 hover:bg-sky-50 hover:text-sky-700"
+                >
+                  ＋ เปิด VAT 7% — ลูกค้าขอใบกำกับภาษีทีหลัง (+{formatPrice(Math.round(orderTotal(order) * 7) / 100)})
+                </button>
+              )}
+              {/* VAT ตามบิล — ออเดอร์จาก FlowAccount (ราคาสินค้าข้างบนเป็นราคาก่อน VAT) หรือเปิดทีหลังตอนลูกค้าขอใบกำกับ */}
               {order.vat && (
                 <div className="mt-1.5 flex items-center justify-between gap-3 text-sm">
-                  <span className={muted}>ภาษีมูลค่าเพิ่ม {order.vat.rate}%</span>
+                  <span className={`flex items-center gap-1.5 ${muted}`}>
+                    ภาษีมูลค่าเพิ่ม {order.vat.rate}%
+                    {mayEdit && !order.flowAccount && (
+                      <button type="button" onClick={removeVat} title="ยกเลิก VAT (ใส่ผิด)" className="rounded-full px-1.5 text-[10px] font-bold text-rose-500 ring-1 ring-rose-200 transition hover:bg-rose-50">
+                        ✕
+                      </button>
+                    )}
+                  </span>
                   {mayEdit ? (
                     <input
                       type="number"
@@ -4717,6 +5125,96 @@ export default function AdminOrderDetailPage() {
                   )}
                 </div>
               )}
+              {/* 🧾 ค่าบริการเพิ่มที่เก็บทีหลัง — บรรทัดแยกจากสินค้า (อยู่นอกฐานส่วนลด %) · ถอดได้ · ปุ่ม "เก็บเพิ่ม" เปิดฟอร์มเล็ก */}
+              {(order.charges ?? []).map((c) => (
+                <div key={c.id} className="mt-1.5 flex items-center justify-between gap-3 text-sm">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className={`shrink-0 ${muted}`}>🧾 {c.label}</span>
+                    {c.note && (
+                      <span className="truncate text-[11px] text-slate-400" title={c.note}>
+                        · {c.note}
+                      </span>
+                    )}
+                    {mayEdit && seesMoney && (
+                      <button
+                        type="button"
+                        onClick={() => removeCharge(c)}
+                        title={`เพิ่มโดย ${c.by} · ถอดรายการนี้`}
+                        className="shrink-0 rounded-full px-1.5 text-[10px] font-bold text-rose-500 ring-1 ring-rose-200 transition hover:bg-rose-50"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </span>
+                  <span className="shrink-0 font-semibold tabular-nums text-slate-800">{formatPrice(c.amount)}</span>
+                </div>
+              ))}
+              {mayEdit &&
+                seesMoney &&
+                order.status !== "ยกเลิก" &&
+                !order.claimOf &&
+                (chargeForm ? (
+                  <div className="mt-2 rounded-xl border border-dashed border-amber-300 bg-amber-50/60 p-2.5 text-xs">
+                    <p className="font-bold text-amber-800">🧾 เก็บค่าบริการเพิ่ม — ระบบจะแจ้งลูกค้าทางไลน์พร้อมยอดที่ต้องโอนเพิ่มทันที</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {CHARGE_PRESETS.map((l) => (
+                        <button
+                          key={l}
+                          type="button"
+                          onClick={() => setChargeForm({ ...chargeForm, label: l })}
+                          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 transition ${
+                            chargeForm.label === l ? "bg-amber-500 text-white ring-amber-500" : "bg-white text-slate-600 ring-slate-200 hover:bg-amber-100"
+                          }`}
+                        >
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <input
+                        value={chargeForm.label}
+                        onChange={(e) => setChargeForm({ ...chargeForm, label: e.target.value })}
+                        placeholder="ชื่อรายการ เช่น ค่าตัดภาพ 3 รูป"
+                        className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-amber-300 focus:outline-none"
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        value={chargeForm.amount}
+                        onChange={(e) => setChargeForm({ ...chargeForm, amount: e.target.value })}
+                        placeholder="บาท"
+                        className="w-24 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-right text-xs font-semibold tabular-nums text-slate-800 focus:border-amber-300 focus:outline-none"
+                      />
+                    </div>
+                    <input
+                      value={chargeForm.note}
+                      onChange={(e) => setChargeForm({ ...chargeForm, note: e.target.value })}
+                      placeholder="เหตุผล/รายละเอียดที่ลูกค้าจะเห็น (ไม่บังคับ)"
+                      className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-amber-300 focus:outline-none"
+                    />
+                    <div className="mt-2 flex justify-end gap-1.5">
+                      <button type="button" onClick={() => setChargeForm(null)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50">
+                        ยกเลิก
+                      </button>
+                      <button
+                        type="button"
+                        onClick={addCharge}
+                        disabled={chargeBusy}
+                        className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-60"
+                      >
+                        {chargeBusy ? "กำลังบันทึก…" : "เก็บเพิ่ม + แจ้งลูกค้า"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setChargeForm({ label: "", amount: "", note: "" })}
+                    className="mt-2 w-full rounded-lg border border-dashed border-slate-300 py-1.5 text-[11px] font-semibold text-slate-500 transition hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700"
+                  >
+                    ＋ เก็บเพิ่ม (ค่าตัดภาพ · ค่าส่งเพิ่ม · ค่าเร่งงาน …)
+                  </button>
+                ))}
               {/* ── แถบสรุป: ยอดรวมบิล → หัก ณ ที่จ่าย → ยอดโอนจริง จบในก้อนเดียว ──
                   ไม่หักภาษี = ยอดรวมคือเลขใหญ่ · หักภาษี = ยอดโอนจริงคือเลขใหญ่ (เลขที่ต้องเทียบเงินเข้าบัญชี) */}
               <div className="mt-2.5 rounded-xl bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200/70">
@@ -4848,6 +5346,42 @@ export default function AdminOrderDetailPage() {
                         : "📎 รอสลิปการโอน — ลูกค้าส่งมาทางแชท? แตะเลือกรูป หรือลากมาวาง"}
                   </button>
                 )}
+
+              {/* ── เคยรับเงินแล้วแต่ยอดค้างโต (โอนขาด · สั่งเพิ่ม · ค่าบริการเพิ่ม) — ช่องรอสลิปใบถัดไป ── */}
+              {mayEdit && seesMoney && resolveSlipPhase(order) === "extra" && (
+                <button
+                  type="button"
+                  onClick={() => pickAdminSlip("extra")}
+                  disabled={slipUploading}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (!slipUploading) setSlipDragOver(true);
+                  }}
+                  onDragLeave={() => setSlipDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setSlipDragOver(false);
+                    if (slipUploading) return;
+                    const f = e.dataTransfer.files?.[0];
+                    if (!f) return;
+                    if (!f.type.startsWith("image/")) {
+                      setErr("สลิปต้องเป็นไฟล์รูปภาพ (PNG / JPG / WEBP)");
+                      return;
+                    }
+                    slipPhase.current = "extra";
+                    void uploadAdminSlip(f);
+                  }}
+                  className={`mt-2.5 w-full rounded-lg border border-dashed px-3 py-2 text-left text-[11px] font-semibold transition disabled:opacity-50 ${
+                    slipDragOver ? "border-emerald-400 bg-emerald-50 text-emerald-700" : "border-rose-300 bg-rose-50/40 text-rose-600 hover:border-rose-400 hover:bg-rose-50"
+                  }`}
+                >
+                  {slipUploading
+                    ? "กำลังอัปโหลด…"
+                    : slipDragOver
+                      ? "🫳 วางรูปตรงนี้ได้เลย"
+                      : `📎 รอสลิปโอนเพิ่ม — ค้าง ${formatPrice(amountDueNow(order))} · ลูกค้าส่งมาทางแชท? แตะเลือกรูป หรือลากมาวาง`}
+                </button>
+              )}
 
               {/* ── มัดจำ 50% — ลูกค้าขอโอนงวดแรกก่อนเริ่มงาน ── */}
               {!order.deposit && mayEdit && (order.status === "รอชำระเงิน" || order.status === "รอตรวจสอบ") && (
@@ -5308,120 +5842,141 @@ export default function AdminOrderDetailPage() {
           </div>
 
 
-          {/* ยังไม่มีสลิป — แอดมินแนบแทนลูกค้าได้ (ลูกค้าส่งมาทางแชท/ไลน์) */}
-          {!order.slipUrl && !order.slipPath && seesMoney && mayEdit && order.status !== "ยกเลิก" && (
-            <div>
-              <GH t="green">🧾 หลักฐานการโอน</GH>
-              <div className={`mt-2 flex flex-wrap items-center gap-2 ${soft("green")}`}>
-                <p className="min-w-0 flex-1 text-sm text-slate-500">ยังไม่มีสลิปในออเดอร์นี้</p>
-                <button type="button" onClick={() => pickAdminSlip("first")} disabled={slipUploading} className={HBTN}>
-                  {slipUploading ? "กำลังอัปโหลด…" : "📎 แนบสลิปแทนลูกค้า"}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {(order.slipUrl || order.deposit?.balanceSlipUrl) && seesMoney && (
-            <div>
-              <GH t="green">🧾 หลักฐานการโอน</GH>
-              {/* ── สลิปงวดแรก (ออเดอร์มัดจำ = มัดจำ 50% แรก · ออเดอร์ปกติ = เต็มจำนวน) ── */}
-              {order.slipUrl && (
-                <>
-                  {order.slipVerify && <SlipVerifyNote v={order.slipVerify} onRecheck={() => recheckSlip("first")} rechecking={slipRechecking} />}
-                  <div className={`mt-2 flex items-center gap-3 ${soft("green")}`}>
-                    <button
-                      type="button"
-                      onClick={() => setLightbox({ src: order.slipUrl!, alt: "สลิปการโอน", caption: `${order.id} · ${order.deposit ? "มัดจำ 50% แรก" : formatPrice(orderTotal(order))}` })}
-                      aria-label="ขยายดูสลิป"
-                      className="h-14 w-14 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 transition hover:border-amber-300"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={order.slipUrl} alt="สลิปการโอน" className="h-full w-full object-cover" />
-                    </button>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-slate-800">
-                        {order.deposit ? "สลิปมัดจำ 50% แรก" : "ลูกค้าแจ้งโอนแล้ว"}
-                        {isSuperAdmin && (
-                          <button
-                            type="button"
-                            onClick={deleteSlip}
-                            className="ml-2 rounded-full px-2 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
-                          >
-                            🗑 ลบสลิป
-                          </button>
-                        )}
-                      </p>
-                      {order.paidReportedAt && (
-                        <p className={`text-xs ${faint}`}>
-                          {new Date(order.paidReportedAt).toLocaleString("th-TH", {
-                            day: "numeric",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      )}
+          {/* ── 🧾 หลักฐานการโอน — สลิปทุกใบ (ใบแรก · งวดหลังใบมัดจำ · ใบเพิ่ม) รายการเดียวเรียงตามเวลา + บรรทัดสรุป รับแล้ว/ยอดบิล/ค้าง ── */}
+          {seesMoney &&
+            (() => {
+              const entries = paymentEntries(order);
+              const paid = order.paidTotal != null ? paidSoFar(order) : null;
+              const bal = orderBalance(order);
+              const over = overpaidAmount(order);
+              const captionOf = (e: PaymentEntry) => `${order.id} · ใบที่ ${e.n} · ${e.label}`;
+              const canAttach = mayEdit && order.status !== "ยกเลิก";
+              if (!entries.length && !canAttach) return null;
+              return (
+                <div>
+                  <GH t="green">🧾 หลักฐานการโอน{entries.length > 1 ? ` (${entries.length} ใบ)` : ""}</GH>
+                  {!entries.length ? (
+                    <div className={`mt-2 flex flex-wrap items-center gap-2 ${soft("green")}`}>
+                      <p className="min-w-0 flex-1 text-sm text-slate-500">ยังไม่มีสลิปในออเดอร์นี้</p>
+                      <button type="button" onClick={() => pickAdminSlip("auto")} disabled={slipUploading} className={HBTN}>
+                        {slipUploading ? "กำลังอัปโหลด…" : "📎 แนบสลิปแทนลูกค้า"}
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setLightbox({ src: order.slipUrl!, alt: "สลิปการโอน", caption: `${order.id} · ${order.deposit ? "มัดจำ 50% แรก" : formatPrice(orderTotal(order))}` })}
-                      className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
-                    >
-                      ดูเต็ม
-                    </button>
-                  </div>
-                </>
-              )}
-              {/* ── สลิปงวดหลัง (ยอดคงเหลือของออเดอร์มัดจำ) — แยกใบ แยกผลตรวจ ── */}
-              {order.deposit?.balanceSlipUrl && (
-                <>
-                  {order.deposit.balanceVerify && <SlipVerifyNote v={order.deposit.balanceVerify} onRecheck={() => recheckSlip("balance")} rechecking={slipRechecking} />}
-                  <div className={`mt-2 flex items-center gap-3 ${soft("green")}`}>
-                    <button
-                      type="button"
-                      onClick={() => setLightbox({ src: order.deposit!.balanceSlipUrl!, alt: "สลิปยอดคงเหลือ", caption: `${order.id} · ยอดคงเหลือ 50% หลัง` })}
-                      aria-label="ขยายดูสลิปงวดหลัง"
-                      className="h-14 w-14 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 transition hover:border-amber-300"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={order.deposit.balanceSlipUrl} alt="สลิปยอดคงเหลือ" className="h-full w-full object-cover" />
-                    </button>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-slate-800">
-                        สลิปยอดคงเหลือ 50% หลัง
-                        {isSuperAdmin && (
-                          <button
-                            type="button"
-                            onClick={deleteBalanceSlip}
-                            className="ml-2 rounded-full px-2 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
-                          >
-                            🗑 ลบสลิป
-                          </button>
-                        )}
-                      </p>
-                      {order.deposit.balanceReportedAt && (
-                        <p className={`text-xs ${faint}`}>
-                          {new Date(order.deposit.balanceReportedAt).toLocaleString("th-TH", {
-                            day: "numeric",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
+                  ) : (
+                    <>
+                      {entries.map((e) => (
+                        <div key={e.key}>
+                          {e.verify && (
+                            <SlipVerifyNote
+                              v={e.verify}
+                              credited={e.state === "partial" ? e.credited : undefined}
+                              onRecheck={e.state === "fail" || e.state === "pending" ? () => recheckSlip(e.phase, e.paymentId) : undefined}
+                              rechecking={slipRechecking}
+                            />
+                          )}
+                          {e.state === "accepted" && e.accepted && (
+                            <div className="mt-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                              ✅ {e.accepted.by} รับยอด {formatPrice(e.credited ?? 0)} เอง (เทียบกับธนาคารแล้ว)
+                            </div>
+                          )}
+                          {!e.verify && e.state === "pending" && e.phase === "extra" && (
+                            <div className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
+                              ⚠️ ยังไม่ได้ตรวจอัตโนมัติ (SlipOK ไม่พร้อม) — ตรวจยอดเองแล้วกด “รับยอดเอง” หรือ
+                              <button
+                                type="button"
+                                onClick={() => recheckSlip(e.phase, e.paymentId)}
+                                disabled={slipRechecking}
+                                className="ml-1.5 rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-amber-800 ring-1 ring-amber-300 transition hover:bg-amber-100 disabled:opacity-60"
+                              >
+                                {slipRechecking ? "⏳ กำลังตรวจ…" : "🔄 ตรวจซ้ำ"}
+                              </button>
+                            </div>
+                          )}
+                          <div className={`mt-2 flex items-center gap-3 ${soft("green")}`}>
+                            {e.url ? (
+                              <button
+                                type="button"
+                                onClick={() => setLightbox({ src: e.url!, alt: `สลิปใบที่ ${e.n}`, caption: captionOf(e) })}
+                                aria-label="ขยายดูสลิป"
+                                className="h-14 w-14 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 transition hover:border-amber-300"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={e.url} alt={`สลิปใบที่ ${e.n}`} className="h-full w-full object-cover" />
+                              </button>
+                            ) : (
+                              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-xl">🧾</span>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-bold text-slate-800">
+                                {entries.length > 1 ? `ใบที่ ${e.n} · ` : ""}
+                                {e.label}
+                                {isSuperAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={() => (e.phase === "first" ? deleteSlip() : e.phase === "balance" ? deleteBalanceSlip() : deletePayment(e))}
+                                    className="ml-2 rounded-full px-2 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
+                                  >
+                                    🗑 ลบ
+                                  </button>
+                                )}
+                              </p>
+                              <p className={`text-xs ${faint}`}>
+                                {e.at ? new Date(e.at).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}
+                                {e.by && e.by !== "ลูกค้า" ? ` · แนบโดย ${e.by}` : ""}
+                                {e.credited ? ` · นับยอด ${formatPrice(e.credited)}` : ""}
+                              </p>
+                            </div>
+                            {e.phase === "extra" && (e.state === "fail" || e.state === "pending") && mayMarkPaid && (
+                              <button
+                                type="button"
+                                onClick={() => acceptPayment(e)}
+                                disabled={acceptBusy === e.paymentId}
+                                title="SlipOK ตรวจไม่ได้ — เทียบยอดกับธนาคารแล้วรับยอดใบนี้เอง"
+                                className="shrink-0 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
+                              >
+                                {acceptBusy === e.paymentId ? "…" : "💰 รับยอดเอง"}
+                              </button>
+                            )}
+                            {e.url && (
+                              <button
+                                type="button"
+                                onClick={() => setLightbox({ src: e.url!, alt: `สลิปใบที่ ${e.n}`, caption: captionOf(e) })}
+                                className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                              >
+                                ดูเต็ม
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {/* บรรทัดสรุป: รับแล้ว / ยอดบิล / ค้าง — ภาพเดียวกับที่ลูกค้าเห็น */}
+                      {paid != null && (
+                        <div
+                          className={`mt-2 flex flex-wrap items-baseline justify-between gap-2 rounded-xl px-3 py-2 text-xs ring-1 ${
+                            bal > 0 ? "bg-rose-50 text-rose-800 ring-rose-200" : over > 0 ? "bg-sky-50 text-sky-800 ring-sky-200" : "bg-emerald-50 text-emerald-800 ring-emerald-200"
+                          }`}
+                        >
+                          <span className="font-bold">
+                            รับแล้ว {formatPrice(paid)} / ยอดบิล {formatPrice(orderTotal(order))}
+                          </span>
+                          <span className="font-bold">{bal > 0 ? `ค้าง ${formatPrice(bal)}` : over > 0 ? `โอนเกิน ${formatPrice(over)} — คืน/แปลงเป็นแต้ม` : "✓ ครบแล้ว"}</span>
+                        </div>
                       )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setLightbox({ src: order.deposit!.balanceSlipUrl!, alt: "สลิปยอดคงเหลือ", caption: `${order.id} · ยอดคงเหลือ 50% หลัง` })}
-                      className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
-                    >
-                      ดูเต็ม
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+                      {canAttach && (
+                        <button
+                          type="button"
+                          onClick={() => pickAdminSlip("extra")}
+                          disabled={slipUploading}
+                          className="mt-2 w-full rounded-lg border border-dashed border-slate-300 py-1.5 text-[11px] font-semibold text-slate-500 transition hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50"
+                        >
+                          {slipUploading ? "กำลังอัปโหลด…" : hasUnpaidBalance(order) ? `＋ แนบสลิปเพิ่ม (ค้าง ${formatPrice(amountDueNow(order))})` : "＋ แนบสลิปเพิ่ม (หลักฐานเพิ่มเติม)"}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })()}
 
           <div>
             <GH t="orange">📮 เลขพัสดุ</GH>

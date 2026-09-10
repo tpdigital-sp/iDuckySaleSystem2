@@ -11,7 +11,8 @@ import { artQtyOf, formatPrice, type Product } from "@/lib/products";
 import { itemPiecesLine } from "@/lib/item-yield";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
-import { adminDiscountAmount, amountDueNow, artworkSide, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { adminDiscountAmount, amountDueNow, artworkSide, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { overpaidAmount, paymentEntries, resolveSlipPhase } from "@/lib/payments";
 import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, reviewGiftProof, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
@@ -273,6 +274,8 @@ export default function CustomerOrderPage() {
   const [rateErr, setRateErr] = useState("");
 
   const [slipBusy, setSlipBusy] = useState(false);
+  /** กำลังส่งสลิปใบที่เท่าไรจากทั้งหมด (เลือกหลายไฟล์) — "" = ใบเดียว */
+  const [slipProgress, setSlipProgress] = useState("");
   const [prefBusy, setPrefBusy] = useState(false);
   const [prefMsg, setPrefMsg] = useState("");
   const [slipErr, setSlipErr] = useState("");
@@ -453,22 +456,30 @@ export default function CustomerOrderPage() {
     return true;
   }
 
-  /** ลูกค้าอัปโหลดสลิปแจ้งโอน (ทั้งจ่ายครั้งแรกและจ่ายส่วนต่างที่สั่งเพิ่ม) */
-  async function uploadSlip(file: File | null) {
-    if (!file) return;
+  /**
+   * ลูกค้าอัปโหลดสลิปแจ้งโอน — ปุ่มเดียวทุกกรณี (ใบแรก/มัดจำ/ยอดคงเหลือ/โอนขาดแล้วโอนตาม/สั่งเพิ่ม/ค่าบริการเพิ่ม)
+   * เซิร์ฟเวอร์เลือกช่องเองจากยอดค้าง (resolveSlipPhase) · เลือกหลายไฟล์ได้ ส่งทีละใบต่อกัน (ล็อกต่อออเดอร์ฝั่งเซิร์ฟเวอร์)
+   */
+  async function uploadSlip(input: FileList | File[] | File | null) {
+    if (!input) return;
+    const files = input instanceof File ? [input] : Array.from(input);
+    if (!files.length) return;
     setSlipErr("");
-    if (!file.type.startsWith("image/")) {
+    if (files.some((f) => !f.type.startsWith("image/"))) {
       setSlipErr("แนบเป็นรูปสลิป (PNG / JPG)");
       return;
     }
     setSlipBusy(true);
-    const res = await reportPayment(orderId, orderKey, file);
-    setSlipBusy(false);
-    if (!res.ok) {
-      setSlipErr(res.error ?? "แจ้งโอนไม่สำเร็จ");
-      return;
+    const errs: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      setSlipProgress(files.length > 1 ? `${i + 1}/${files.length}` : "");
+      const res = await reportPayment(orderId, orderKey, files[i]);
+      if (!res.ok) errs.push(files.length > 1 ? `ใบที่ ${i + 1}: ${res.error ?? "แจ้งโอนไม่สำเร็จ"}` : (res.error ?? "แจ้งโอนไม่สำเร็จ"));
     }
-    void load(orderKey); // ดึงสถานะใหม่ (เป็น "รอตรวจสอบ")
+    setSlipBusy(false);
+    setSlipProgress("");
+    if (errs.length) setSlipErr(errs.join(" · "));
+    void load(orderKey); // ดึงสถานะ/ยอดค้างใหม่
   }
 
   if (loading) {
@@ -537,6 +548,16 @@ export default function CustomerOrderPage() {
   // ขอแก้ไขได้จนกว่าของจะออกจากร้าน
   const canRequestEdit = !(["จัดส่งแล้ว", "เสร็จสิ้น", "ยกเลิก"] as OrderStatus[]).includes(order.status);
   const openEditReq = order.editRequest && !order.editRequest.doneAt ? order.editRequest : null;
+  // 💸 ช่องที่สลิปใบต่อไปจะลง (null = ไม่มียอดค้าง) + ยอดที่ต้องโอนตอนนี้ + สลิปทุกใบที่แนบไว้
+  const slipPhase = resolveSlipPhase(order);
+  const dueNow = amountDueNow(order);
+  const slipEntries = paymentEntries(order);
+  /**
+   * กล่องแจ้งโอนขึ้นเมื่อยังมียอดค้างให้แนบ ไม่ว่าสถานะอะไร (โอนขาด · สั่งเพิ่ม · ค่าบริการเพิ่มระหว่างผลิต · ยอดคงเหลือใบมัดจำ)
+   * ยกเว้นตอน "รอตรวจสอบ" ที่ใบแรกยังรอร้านตรวจ — แบนเนอร์ "ได้รับสลิปแล้ว" ดูแลอยู่ ไม่ต้องชวนโอนซ้ำ
+   */
+  const showDueBox =
+    !!slipPhase && dueNow > 0 && !order.flowAccount && pendingQuote.length === 0 && !cancelled && !(order.status === "รอตรวจสอบ" && slipPhase === "first");
 
   /* ชุดชำระเงิน/สลิป — มือถือโชว์บนสุด (CTA ต้องเจอทันที) · เดสก์ท็อปย้ายไปคอลัมน์ขวา */
   const payFlow = (
@@ -664,8 +685,8 @@ export default function CustomerOrderPage() {
           </a>
         </div>
       )}
-      {/* ── ชำระเงิน / แจ้งสลิป ── */}
-      {order.status === "รอชำระเงิน" && !order.flowAccount && pendingQuote.length === 0 && (
+      {/* ── ชำระเงิน / แจ้งสลิป — กล่องเดียวทุกกรณี (ใบแรก · มัดจำ · ยอดคงเหลือ · โอนขาด/สั่งเพิ่ม/ค่าบริการเพิ่ม) ตามยอดค้าง ── */}
+      {showDueBox && (
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -675,25 +696,32 @@ export default function CustomerOrderPage() {
           onDrop={(e) => {
             e.preventDefault();
             setSlipDrag(false);
-            const f = e.dataTransfer.files?.[0];
-            if (f) void uploadSlip(f);
+            void uploadSlip(e.dataTransfer.files);
           }}
           className={`ord-note danger mt-4 p-4${slipDrag ? " drop" : ""}`}
         >
           <p className="ord-title text-[.96rem]" style={{ color: "inherit" }}>
             💸{" "}
             {order.deposit && !order.deposit.firstPaidAt
-              ? `โอนมัดจำ 50% ก่อนเริ่มงาน ${formatPrice(amountDueNow(order))}`
-              : (order.paidTotal ?? 0) > 0
-                ? `มียอดค้างชำระ ${formatPrice(balance)}`
-                : `รอชำระเงิน ${formatPrice(orderTotal(order))}`}
+              ? paidSoFar(order) > 0
+                ? `โอนมัดจำเพิ่มอีก ${formatPrice(dueNow)}`
+                : `โอนมัดจำ 50% ก่อนเริ่มงาน ${formatPrice(dueNow)}`
+              : order.deposit && !order.deposit.settledAt
+                ? `ค้างชำระยอดคงเหลือ ${formatPrice(dueNow)}`
+                : paidSoFar(order) > 0
+                  ? `มียอดค้างชำระ ${formatPrice(dueNow)}`
+                  : `รอชำระเงิน ${formatPrice(orderTotal(order))}`}
           </p>
           <p className="mt-1 text-xs leading-relaxed">
             {order.deposit && !order.deposit.firstPaidAt
-              ? `ออเดอร์นี้ตกลงมัดจำก่อน — โอน ${formatPrice(amountDueNow(order))} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} แล้วแนบสลิป · ส่วนที่เหลือชำระก่อนจัดส่ง`
-              : (order.paidTotal ?? 0) > 0
-                ? `ยอดรวมเพิ่มขึ้นหลังโอนรอบแรก (สั่งเพิ่ม หรือทางร้านตีราคางานสั่งทำให้แล้ว) — โอนเฉพาะส่วนต่างมาที่บัญชีร้าน แล้วแนบสลิป (จ่ายแล้ว ${formatPrice(order.paidTotal ?? 0)} จาก ${formatPrice(orderTotal(order))})`
-                : "โอนเงินมาที่บัญชีร้านแล้วแนบสลิปที่นี่ ทางร้านจะตรวจสอบและเริ่มงานให้"}
+              ? paidSoFar(order) > 0
+                ? `รับมาแล้ว ${formatPrice(paidSoFar(order))} จากมัดจำ ${formatPrice(Math.min(orderTotal(order), order.deposit.amount))} — โอนส่วนที่ขาดแล้วแนบสลิปเพิ่ม ทางร้านจะเริ่มงานทันทีที่ครบ`
+                : `ออเดอร์นี้ตกลงมัดจำก่อน — โอน ${formatPrice(dueNow)} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} แล้วแนบสลิป · ส่วนที่เหลือชำระก่อนจัดส่ง`
+              : order.deposit && !order.deposit.settledAt
+                ? `รับแล้ว ${formatPrice(paidSoFar(order))} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} — โอนส่วนที่เหลือแล้วแนบสลิปตรงนี้ ก่อนทางร้านจัดส่งของ`
+                : paidSoFar(order) > 0
+                  ? `ยอดรวมเพิ่มขึ้นหลังโอนรอบแรก (โอนขาด · สั่งเพิ่ม · ค่าบริการเพิ่ม หรือทางร้านตีราคางานสั่งทำให้แล้ว) — โอนเฉพาะส่วนต่างมาที่บัญชีร้าน แล้วแนบสลิป (จ่ายแล้ว ${formatPrice(paidSoFar(order))} จาก ${formatPrice(orderTotal(order))})`
+                  : "โอนเงินมาที่บัญชีร้านแล้วแนบสลิปที่นี่ ทางร้านจะตรวจสอบและเริ่มงานให้"}
           </p>
           <PayAccounts payment={payment} />
           <label
@@ -701,26 +729,26 @@ export default function CustomerOrderPage() {
             onDrop={(e) => {
               // ลากสลิปมาวางที่ปุ่มนี้ได้เลย (เดสก์ท็อป) — มือถือแตะเลือกไฟล์เหมือนเดิม
               e.preventDefault();
-              const f = e.dataTransfer.files?.[0];
-              if (f) void uploadSlip(f);
+              void uploadSlip(e.dataTransfer.files);
             }}
             className="ord-btn danger wrap block mt-3 cursor-pointer"
           >
             {slipBusy ? (
-              "กำลังส่งสลิป…"
+              `กำลังส่งสลิป${slipProgress ? ` ${slipProgress}` : ""}…`
             ) : (
               <span className="flex flex-col items-center gap-[3px]">
-                <span>📤 แนบสลิปการโอน</span>
-                <span className="text-[.72rem] opacity-90">แตะเลือกรูป หรือลากมาวางตรงนี้</span>
+                <span>📤 {paidSoFar(order) > 0 ? "แนบสลิปโอนเพิ่ม" : "แนบสลิปการโอน"}</span>
+                <span className="text-[.72rem] opacity-90">แตะเลือกรูป (เลือกได้หลายใบ) หรือลากมาวางตรงนี้</span>
               </span>
             )}
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"
+              multiple
               className="hidden"
               disabled={slipBusy}
               onChange={(e) => {
-                void uploadSlip(e.target.files?.[0] ?? null);
+                void uploadSlip(e.target.files);
                 e.target.value = "";
               }}
             />
@@ -731,31 +759,6 @@ export default function CustomerOrderPage() {
           </button>
         </div>
       )}
-      {/* ── มัดจำผ่านแล้ว: เก็บยอดคงเหลือก่อนจัดส่ง — แนบสลิปได้ตลอด ── */}
-      {order.deposit?.firstPaidAt && !order.deposit.settledAt && order.status !== "รอชำระเงิน" && order.status !== "รอตรวจสอบ" && !cancelled && (
-        <div className="ord-note danger mt-4 p-4">
-          <p className="ord-title text-[.96rem]" style={{ color: "inherit" }}>💳 ค้างชำระยอดคงเหลือ {formatPrice(amountDueNow(order))}</p>
-          <p className="mt-1 text-xs leading-relaxed">
-            รับมัดจำ {formatPrice(order.deposit.amount)} แล้ว — โอนส่วนที่เหลือแล้วแนบสลิปตรงนี้ ก่อนทางร้านจัดส่งของ
-          </p>
-          <PayAccounts payment={payment} />
-          <label className="ord-btn danger wrap block mt-3 cursor-pointer">
-            {slipBusy ? "กำลังส่งสลิป…" : "📤 แนบสลิปยอดคงเหลือ"}
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="hidden"
-              disabled={slipBusy}
-              onChange={(e) => {
-                void uploadSlip(e.target.files?.[0] ?? null);
-                e.target.value = "";
-              }}
-            />
-          </label>
-          {slipErr && <p className="mt-2 text-xs font-semibold">⚠️ {slipErr}</p>}
-        </div>
-      )}
-
       {order.status === "รอตรวจสอบ" && (
         <div className="ord-note warn mt-4 p-4 text-sm">
           🧾 <strong>ได้รับสลิปแล้ว</strong> — ทางร้านกำลังตรวจสอบการชำระเงิน เดี๋ยวจะเริ่มงานให้ครับ
@@ -791,21 +794,42 @@ export default function CustomerOrderPage() {
         </div>
       )}
 
-      {/* สลิปที่แนบ — โชว์ต่อหลังร้านยืนยันแล้วด้วย (หลักฐานการชำระของลูกค้า) */}
-      {order.slipUrl && order.status !== "รอตรวจสอบ" && order.status !== "รอชำระเงิน" && (
-        <div className="ord-card mt-4 flex items-center gap-3 p-4">
-          <a href={order.slipUrl} target="_blank" rel="noreferrer" className="block h-14 w-14 shrink-0 overflow-hidden rounded-xl ring-2 ring-white transition hover:ring-[#57B6E8]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={order.slipUrl} alt="สลิปการโอน" className="h-full w-full object-cover" />
-          </a>
-          <span className="min-w-0 text-xs t-soft">
-            <span className="ord-title block text-sm">🧾 สลิปการโอนของคุณ</span>
-            {order.paidReportedAt && (
-              <span className="block">
-                แจ้งโอนเมื่อ {new Date(order.paidReportedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })} · แตะรูปเพื่อดูเต็ม
-              </span>
-            )}
-          </span>
+      {/* ── 🧾 สลิปทุกใบที่แนบไว้ (ใบแรก · มัดจำ · ยอดคงเหลือ · โอนเพิ่ม) — หลักฐานการชำระของลูกค้า
+          ซ่อนตอน "รอตรวจสอบ" ที่มีใบเดียว (แบนเนอร์ด้านบนโชว์ใบนั้นอยู่แล้ว) ── */}
+      {slipEntries.length > 0 && !(order.status === "รอตรวจสอบ" && slipEntries.length === 1) && (
+        <div className="ord-card mt-4 p-4">
+          <p className="ord-title text-sm">🧾 สลิปการโอนของคุณ{slipEntries.length > 1 ? ` (${slipEntries.length} ใบ)` : ""}</p>
+          <ul className="mt-2 space-y-2">
+            {slipEntries.map((e) => (
+              <li key={e.key} className="flex items-center gap-3 text-xs t-soft">
+                {e.url ? (
+                  <a href={e.url} target="_blank" rel="noreferrer" className="block h-12 w-12 shrink-0 overflow-hidden rounded-xl ring-2 ring-white transition hover:ring-[#57B6E8]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={e.url} alt={`สลิปใบที่ ${e.n}`} className="h-full w-full object-cover" />
+                  </a>
+                ) : (
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/70 text-lg">🧾</span>
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block font-bold">
+                    {slipEntries.length > 1 ? `ใบที่ ${e.n} · ` : ""}
+                    {e.phase === "first" && !order.deposit ? "สลิปการโอน" : e.label}
+                  </span>
+                  {e.at && <span className="block">{new Date(e.at).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })} · แตะรูปเพื่อดูเต็ม</span>}
+                </span>
+                <span className={`ord-chip shrink-0 ${e.state === "pass" || e.state === "accepted" ? "ok" : "yolk"}`}>
+                  {e.state === "pass" || e.state === "accepted"
+                    ? `✓ รับแล้ว${e.credited ? ` ${formatPrice(e.credited)}` : e.verify?.amount ? ` ${formatPrice(e.verify.amount)}` : ""}`
+                    : e.state === "partial"
+                      ? `รับบางส่วน ${formatPrice(e.credited ?? 0)}`
+                      : "รอร้านตรวจ"}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {overpaidAmount(order) > 0 && (
+            <p className="mt-2 text-xs font-semibold t-ok">💚 โอนเกินมา {formatPrice(overpaidAmount(order))} — ทางร้านจะติดต่อคืนเงินหรือแปลงเป็นแต้มให้ครับ</p>
+          )}
         </div>
       )}
     </>
@@ -1733,10 +1757,30 @@ export default function CustomerOrderPage() {
                 <span>{formatPrice(orderVatAmount(order))}</span>
               </div>
             )}
+            {/* 🧾 ค่าบริการเพิ่มที่ร้านเก็บทีหลัง (ค่าตัดภาพ/ค่าส่งเพิ่ม …) — บรรทัดแยก ให้รู้ว่ายอดโตเพราะอะไร */}
+            {(order.charges ?? []).map((c) => (
+              <div key={c.id} className="mt-1.5 flex justify-between text-sm">
+                <span className="t-soft">🧾 {c.label}{c.note ? <span className="block text-[11px] opacity-80">{c.note}</span> : null}</span>
+                <span>{formatPrice(c.amount)}</span>
+              </div>
+            ))}
             <div className="ord-title mt-3 flex justify-between pt-3 text-base" style={{ borderTop: "1px dashed var(--sky-200)" }}>
               <span>ยอดรวม</span>
               <span className="t-blue" style={{ fontWeight: 600 }}>{formatPrice(orderTotal(order))}</span>
             </div>
+            {/* 💸 รับแล้ว/ค้าง — เฉพาะใบธรรมดาที่เคยรับเงินแล้วและยอดยังไม่ครบ (ใบมัดจำมีกล่องสองงวดของตัวเองด้านล่าง) */}
+            {!order.deposit && paidSoFar(order) > 0 && balance > 0 && (
+              <div className="ord-sub mt-2.5 space-y-1 p-2.5 text-xs">
+                <div className="flex justify-between font-semibold">
+                  <span className="t-soft">ชำระแล้ว</span>
+                  <span className="t-ok">{formatPrice(paidSoFar(order))}</span>
+                </div>
+                <div className="flex justify-between font-semibold">
+                  <span className="t-soft">ค้างชำระ</span>
+                  <span className="t-danger">{formatPrice(balance)}</span>
+                </div>
+              </div>
+            )}
             {orderWhtAmount(order) > 0 && (
               <>
                 <div className="mt-1.5 flex justify-between text-sm">

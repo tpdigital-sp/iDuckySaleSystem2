@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import type { Order } from "@/lib/admin-data";
+import { findPayment, paymentEntries, resolveSlipPhase } from "@/lib/payments";
 import { applySlipVerification } from "@/lib/server/slip-apply";
 import { acquireSlipLock, assertSlipNotDuplicate, SlipDuplicateError, slipHashOf, type SlipOwner } from "@/lib/server/slip-dedupe";
 
@@ -17,17 +18,17 @@ const EXT: Record<string, string> = {
 };
 
 /**
- * ลูกค้าแจ้งโอน (guest, public) → อัปโหลดรูปสลิปขึ้น Supabase Storage
- * แล้วผูกกับออเดอร์ + เปลี่ยนสถานะเป็น "รอตรวจสอบ" ให้แอดมินตรวจยอด
+ * ลูกค้าแจ้งโอน (guest, public) → อัปโหลดรูปสลิปขึ้น Supabase Storage แล้วผูกกับออเดอร์ + ตรวจ SlipOK
  *
- * ความปลอดภัย: อนุญาตแนบสลิปเฉพาะออเดอร์ที่ยัง "รอชำระเงิน/รอตรวจสอบ" เท่านั้น
- * (กันการเปลี่ยนออเดอร์ที่ยืนยันไปแล้ว) · path ใช้ UUID สุ่ม เดาไม่ได้
+ * 💸 แนบได้หลายใบ: ปุ่มเดียว ระบบตัดสินเองว่าใบนี้ลงช่องไหน (resolveSlipPhase — ใบแรก/ยอดคงเหลือ/ใบเพิ่ม)
+ * รับเฉพาะเมื่อ "ยังมียอดค้าง" ไม่ว่าสถานะอะไร (โอนขาดแล้วโอนตาม · สั่งเพิ่ม · ค่าบริการเพิ่มระหว่างผลิต)
+ * ออเดอร์ที่ครบแล้ว → 409 "ไม่มียอดค้าง" · path ใช้ UUID สุ่ม เดาไม่ได้
  *
  * กันสลิปซ้ำ (ดู lib/server/slip-dedupe.ts):
- *   - ล็อกต่อออเดอร์ — กดแจ้งโอนรัว ๆ ให้วิ่งทีละคำขอ
- *   - ไฟล์เดิมเป๊ะ (SHA-256) ที่เคยแนบออเดอร์อื่น/งวดอื่น → ปฏิเสธก่อนอัปโหลด/ก่อนเสียโควตา SlipOK
- *   - ไฟล์เดิมของออเดอร์นี้เองที่ตรวจไปแล้ว → ไม่ตรวจซ้ำ (ผ่านแล้ว = ตอบผ่าน · ตกแล้ว = บอกว่ารอแอดมิน)
- *   - เลขอ้างอิงธุรกรรมที่ SlipOK อ่านได้ ซ้ำกับออเดอร์อื่น/งวดอื่น → applySlipVerification โยน 409 (ลบไฟล์ให้แล้ว)
+ *   - ล็อกต่อออเดอร์ — กดแจ้งโอนรัว ๆ ให้วิ่งทีละคำขอ (หน้าเว็บส่งหลายไฟล์ทีละใบต่อกันอยู่แล้ว)
+ *   - ไฟล์เดิมเป๊ะ (SHA-256) ที่เคยแนบออเดอร์อื่น/ใบอื่น → ปฏิเสธก่อนอัปโหลด/ก่อนเสียโควตา SlipOK
+ *   - ไฟล์เดิมของออเดอร์นี้เองที่ตรวจไปแล้ว → ไม่ตรวจซ้ำ (นับยอดแล้ว = ตอบผ่าน · ตกแล้ว = บอกว่ารอแอดมิน)
+ *   - เลขอ้างอิงธุรกรรมที่ SlipOK อ่านได้ ซ้ำกับออเดอร์อื่น/ใบอื่น → applySlipVerification โยน 409 (ลบไฟล์ให้แล้ว)
  */
 export async function POST(req: Request) {
   const release = await acquireSlipLockFrom(req);
@@ -71,7 +72,7 @@ async function handle(req: Request) {
   if (!ext) return NextResponse.json({ error: "รองรับเฉพาะ PNG / JPG / WEBP / GIF" }, { status: 400 });
   if (file.size > 5 * 1024 * 1024) return NextResponse.json({ error: "ไฟล์ใหญ่เกิน 5MB" }, { status: 400 });
 
-  // ดึงออเดอร์ก่อน — ต้องมีอยู่จริง และยังไม่ถูกยืนยันการชำระ
+  // ดึงออเดอร์ก่อน — ต้องมีอยู่จริง และยังมียอดค้างให้รับ
   const { data: row, error: readErr } = await sb.from("orders").select("data").eq("id", orderId).maybeSingle();
   if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
   if (!row) return NextResponse.json({ error: "ไม่พบเลขออเดอร์นี้" }, { status: 404 });
@@ -80,11 +81,10 @@ async function handle(req: Request) {
   // (ออเดอร์เก่าก่อนมีระบบ key จะไม่มี order.key → ข้ามการเช็ค เพื่อ backward-compat)
   if (order.key && order.key !== key)
     return NextResponse.json({ error: "ลิงก์แจ้งโอนไม่ถูกต้อง (รหัสออเดอร์ไม่ตรง)" }, { status: 403 });
-  // ออเดอร์มัดจำที่ผ่านงวดแรกแล้ว → เปิดให้แนบสลิป "ยอดคงเหลือ" ได้แม้เข้าขั้นผลิตแล้ว
-  const balancePhase = !!order.deposit && !!order.deposit.firstPaidAt && !order.deposit.settledAt;
   if (order.status === "ยกเลิก") return NextResponse.json({ error: "ออเดอร์นี้ถูกยกเลิกแล้ว" }, { status: 409 });
-  if (!balancePhase && order.status !== "รอชำระเงิน" && order.status !== "รอตรวจสอบ")
-    return NextResponse.json({ error: "ออเดอร์นี้ยืนยันการชำระเงินแล้ว ไม่ต้องแจ้งโอนซ้ำ" }, { status: 409 });
+  // ใบที่ออกบิล FlowAccount ชำระตามเอกสารนั้น — ไม่รับสลิปที่นี่ (หน้าเว็บซ่อนปุ่มไว้แล้ว)
+  if (order.flowAccount && (order.status === "รอชำระเงิน" || order.status === "รอตรวจสอบ"))
+    return NextResponse.json({ error: "ออเดอร์นี้ชำระตามเอกสาร FlowAccount — ไม่ต้องแนบสลิปที่นี่" }, { status: 409 });
   /**
    * 💬 ยังมีงานที่แอดมินต้องตีราคา → ยอดรวมยังไม่ครบ ห้ามรับสลิป
    * หน้าเว็บซ่อนเลขบัญชี/ปุ่มแนบสลิปไว้แล้ว อันนี้คือด่านฝั่งเซิร์ฟเวอร์ (หน้าเก่าค้างในเบราว์เซอร์ / ยิง API ตรง)
@@ -98,22 +98,31 @@ async function handle(req: Request) {
       },
       { status: 409 }
     );
+  // ── ใบนี้ควรลงช่องไหน — null = ไม่มียอดค้าง (ครบแล้ว หรือระบบไม่รู้ยอดที่รับ → ให้ทักร้าน) ──
+  const phase = resolveSlipPhase(order);
+  if (!phase)
+    return NextResponse.json(
+      { error: "ออเดอร์นี้ไม่มียอดค้างให้แจ้งโอนแล้วครับ — ถ้าเพิ่งโอนเพิ่มตามที่ร้านแจ้ง กรุณาส่งสลิปให้แอดมินทางไลน์" },
+      { status: 409 }
+    );
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   const hash = slipHashOf(bytes);
-  const self: SlipOwner = { orderId, phase: balancePhase ? "balance" : "first" };
+  const self: SlipOwner = { orderId, phase };
 
-  // ── ไฟล์เดิมของออเดอร์นี้ งวดนี้ ที่ตรวจไปแล้ว → ไม่ต้องอัปโหลด/ตรวจซ้ำ ──
-  const curHash = balancePhase ? order.deposit?.balanceSlipHash : order.slipHash;
-  const curVerify = balancePhase ? order.deposit?.balanceVerify : order.slipVerify;
-  if (curHash && curHash === hash && curVerify) {
-    if (curVerify.status === "pass") return NextResponse.json({ ok: true, verified: true, duplicateOfSelf: true });
+  // ── ไฟล์เดิมของออเดอร์นี้ (ใบไหนก็ตาม) ที่ตรวจไปแล้ว → ไม่ต้องอัปโหลด/ตรวจซ้ำ ──
+  const hashOf = (e: ReturnType<typeof paymentEntries>[number]) =>
+    e.phase === "first" ? order.slipHash : e.phase === "balance" ? order.deposit?.balanceSlipHash : findPayment(order, e.paymentId ?? "")?.hash;
+  const same = paymentEntries(order).find((e) => !!hash && hashOf(e) === hash);
+  if (same) {
+    if (same.state === "pass" || same.state === "partial" || same.state === "accepted")
+      return NextResponse.json({ ok: true, verified: same.state === "pass", duplicateOfSelf: true });
     return NextResponse.json(
       { error: "สลิปใบนี้ส่งมาแล้ว กำลังรอแอดมินตรวจยอดอยู่ครับ — ไม่ต้องส่งซ้ำ ถ้าโอนใหม่ให้แนบสลิปใบใหม่", duplicate: true },
       { status: 409 }
     );
   }
-  // ── ไฟล์เดิมเป๊ะที่เคยแนบออเดอร์อื่น / งวดอื่นของออเดอร์นี้ → ตีตกก่อนเสียโควตา SlipOK ──
+  // ── ไฟล์เดิมเป๊ะที่เคยแนบออเดอร์อื่น → ตีตกก่อนเสียโควตา SlipOK ──
   try {
     await assertSlipNotDuplicate(sb, { hash }, self);
   } catch (e) {
@@ -134,24 +143,22 @@ async function handle(req: Request) {
   }
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 
-  // ── ตรวจสลิปกับ SlipOK แล้วลงผล (ผ่าน = ยืนยันอัตโนมัติ + แจ้ง LINE/msVerify/สต๊อก/แต้ม) — กติกาเดียวกับแอดมินแนบแทน ──
-  let confirmed = false;
+  // ── ตรวจสลิปกับ SlipOK แล้วลงผล (ผ่าน = นับยอด/ยืนยันอัตโนมัติ · โอนขาด = รับบางส่วน) — กติกาเดียวกับแอดมินแนบแทน ──
   try {
-    ({ confirmed } = await applySlipVerification({
+    const r = await applySlipVerification({
       sb,
       order,
       path,
       bytes,
       contentType: file.type,
       hash,
-      balancePhase,
+      phase,
       origin: new URL(req.url).origin,
-    }));
+    });
+    return NextResponse.json({ ok: true, verified: r.confirmed, partial: r.partial, phase, paymentId: r.paymentId });
   } catch (e) {
-    // เลขอ้างอิงธุรกรรมซ้ำกับออเดอร์อื่น/งวดอื่น — ไฟล์ถูกลบไปแล้วใน applySlipVerification
+    // เลขอ้างอิงธุรกรรมซ้ำกับออเดอร์อื่น/ใบอื่น — ไฟล์ถูกลบไปแล้วใน applySlipVerification
     if (e instanceof SlipDuplicateError) return NextResponse.json({ error: e.message, duplicate: true, owners: e.owners }, { status: 409 });
     return NextResponse.json({ error: e instanceof Error ? e.message : "บันทึกสลิปไม่สำเร็จ" }, { status: 500 });
   }
-
-  return NextResponse.json({ ok: true, verified: confirmed });
 }

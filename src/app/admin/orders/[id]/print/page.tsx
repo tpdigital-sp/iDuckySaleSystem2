@@ -986,6 +986,13 @@ function OrderDocs({
                   <span className="tabular-nums">{formatPrice(orderVatAmount(order))}</span>
                 </div>
               )}
+              {/* 🧾 ค่าบริการเพิ่มที่เก็บทีหลัง (ค่าตัดภาพ/ค่าส่งเพิ่ม …) — บรรทัดแยก ให้รู้ว่ายอดโตเพราะอะไร */}
+              {(order.charges ?? []).map((c) => (
+                <div key={c.id} className="flex justify-between py-1">
+                  <span className="text-slate-500">🧾 {c.label}</span>
+                  <span className="tabular-nums">{formatPrice(c.amount)}</span>
+                </div>
+              ))}
               <div className="mt-1 flex justify-between border-t-2 border-slate-900 py-1.5 text-base font-extrabold">
                 <span>ยอดรวมทั้งสิ้น</span>
                 <span className="tabular-nums">{formatPrice(orderTotal(order))}</span>

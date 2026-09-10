@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import type { Order } from "@/lib/admin-data";
+import { signPaymentUrls } from "@/lib/server/slip-sign";
 
 export const runtime = "nodejs";
 
@@ -34,16 +35,7 @@ export async function GET(req: Request) {
   const { key: _secret, ...safe } = order;
   void _secret;
 
-  // ให้ลูกค้าเห็นสลิปที่ตัวเองแนบ — เซ็น URL ชั่วคราวจาก bucket ส่วนตัว (key ของออเดอร์คือหลักฐานความเป็นเจ้าของแล้ว)
-  if (safe.slipPath) {
-    const { data: signed } = await sb.storage.from("payment-slips-private").createSignedUrl(safe.slipPath, 3600);
-    if (signed?.signedUrl) safe.slipUrl = signed.signedUrl;
-  }
-  // ออเดอร์มัดจำมีสลิปงวดหลังอีกใบ — เซ็นให้ลูกค้าเห็นของตัวเองเหมือนกัน
-  if (safe.deposit?.balanceSlipPath) {
-    const { data: signed } = await sb.storage.from("payment-slips-private").createSignedUrl(safe.deposit.balanceSlipPath, 3600);
-    if (signed?.signedUrl) safe.deposit = { ...safe.deposit, balanceSlipUrl: signed.signedUrl };
-  }
-
-  return NextResponse.json({ ok: true, order: safe });
+  // ให้ลูกค้าเห็นสลิปที่ตัวเองแนบทุกใบ (ใบแรก/ยอดคงเหลือ/ใบเพิ่ม) — เซ็น URL ชั่วคราวจาก bucket ส่วนตัว
+  // (key ของออเดอร์คือหลักฐานความเป็นเจ้าของแล้ว)
+  return NextResponse.json({ ok: true, order: await signPaymentUrls(sb, safe as Order) });
 }
