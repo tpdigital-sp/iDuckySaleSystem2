@@ -20,7 +20,7 @@
  * ต้องใช้กติกาเดียวกันเป๊ะ จะ import ข้ามไปไม่ได้ (แบบเดียวกับ gifts.ts / box-fee.ts)
  */
 
-import { isRetailRateLine, repriceCartGroups, type Product } from "@/lib/products";
+import { activeRate, publicRates, repriceCartGroups, tierIndex, type Product } from "@/lib/products";
 
 export interface EarlyPayDiscount {
   /** ปิดได้จากหน้าตั้งค่าระบบ — ปิดแล้วออเดอร์ใหม่ไม่ได้ลด และตัวตรวจสลิปก็ไม่ยอมรับส่วนต่างนี้ */
@@ -83,10 +83,37 @@ export interface EarlyPayLine {
   amount: number;
   /** เรทที่ตะกร้ารวมล็อตสรุปให้แล้ว (CartItem.merged.rateLabel) — 6+6 รวมเป็น 12 = เข้าเรทส่ง */
   mergedRateLabel?: string;
+  /** จำนวนรวมทั้งล็อตที่ตะกร้ารวมให้ (CartItem.merged.totalQty) — ใช้เทียบช่วงราคาแทนจำนวนของบรรทัดเดียว */
+  mergedTotalQty?: number;
 }
 
 /**
- * ฐานคิดส่วนลดโอนไว = ยอดรวมทุกบรรทัด **เฉพาะเมื่อทุกบรรทัดยังเป็นราคาปลีก** (ยังไม่ถึงขั้นต่ำของเรทขายส่งเรทไหนเลย)
+ * บรรทัดนี้ "ได้เรทราคาส่ง" แล้วหรือยัง — กติกาเจ้าของร้าน (10 ก.ย. 69) ได้ราคาส่งแล้วไม่ต้องลดโอนไวซ้ำ
+ *
+ * ส่ง = จำนวน (รวมล็อตถ้าตะกร้ารวมให้) ตกเลย "ช่วงราคาแรก" ของตารางราคา (tierIndex > 0 เช่น 1-10 → 11-29)
+ *   หรือเลือก/ถูกจัดเข้าเรทที่ต้องสั่งถึงขั้นต่ำ (minQty > 1) แล้วจำนวนถึงจริง (สแตนดี้เรท 2 เริ่ม 50)
+ * ⚠️ ไม่ใช้ isRetailRateLine (กติกากล่อง/ค่าส่ง) — ตัวนั้นถือว่าเรทที่ไม่มี minQty เป็น "ส่ง" ตั้งแต่ชิ้นแรก
+ *   ทำให้สินค้าราคาเดียว/เรทเดียวไม่มีขั้นต่ำ 83 ตัว (ปฏิทิน · เสื้อ · กระเป๋า …) ไม่ได้ส่วนลดเลย (OD-260910-7269)
+ * ขั้นต่ำแบบ "ต่อรอบผลิต" (minQtyScope lot เช่น สติ๊กเกอร์ UV 3 แผ่น) ไม่นับเป็นเรทส่ง — ช่วงราคาแรกยังเป็นปลีก
+ * สินค้าไม่มีตารางราคา = ราคาเดียว = ปลีก
+ */
+export function isWholesaleLine(
+  p: Product,
+  selections: Record<string, string>,
+  qty: number,
+  merged?: { rateLabel?: string; totalQty?: number }
+): boolean {
+  const rs = publicRates(p);
+  const rate = (merged?.rateLabel ? rs.find((r) => r.label === merged.rateLabel) : undefined) ?? activeRate(p, selections);
+  const effQty = Math.max(qty, merged?.totalQty ?? 0);
+  if (rate && !rate.dealerOnly && (rate.minQty ?? 1) > 1 && rate.minQtyScope !== "lot" && effQty >= (rate.minQty ?? 1)) return true;
+  const matrix = rate?.pricing ?? p.pricing;
+  if (!matrix?.tiers?.length) return false;
+  return tierIndex(matrix, effQty) > 0;
+}
+
+/**
+ * ฐานคิดส่วนลดโอนไว = ยอดรวมทุกบรรทัด **เฉพาะเมื่อทุกบรรทัดยังเป็นราคาปลีก** (ดู isWholesaleLine)
  * มีบรรทัดที่เข้าเรทส่งแม้แต่บรรทัดเดียว = คืน 0 ทั้งใบ — ได้ราคาส่งไปแล้ว ไม่ลดซ้ำ (กติกาเจ้าของร้าน 10 ก.ย. 69)
  * สินค้าไม่มีเรท/หาสินค้าไม่เจอ (งานพิเศษ) = นับเป็นปลีก
  *
@@ -98,21 +125,23 @@ export function earlyPayBase(
   productOf: (id: string) => Product | undefined,
   opts?: { mergeLots?: boolean }
 ): number {
-  let merged: (string | undefined)[] = lines.map((l) => l.mergedRateLabel);
+  let merged: ({ rateLabel?: string; totalQty?: number } | undefined)[] = lines.map((l) =>
+    l.mergedRateLabel || l.mergedTotalQty ? { rateLabel: l.mergedRateLabel, totalQty: l.mergedTotalQty } : undefined
+  );
   if (opts?.mergeLots) {
     try {
       const priced = repriceCartGroups(
         lines.map((l) => ({ productId: l.productId, selections: l.selections ?? {}, qty: l.qty })),
         productOf
       );
-      merged = priced.map((r, i) => r.merged?.rateLabel ?? lines[i].mergedRateLabel);
+      merged = priced.map((r, i) => (r.merged ? { rateLabel: r.merged.rateLabel, totalQty: r.merged.totalQty } : merged[i]));
     } catch {
       // รวมล็อตพัง = คิดรายบรรทัดตามเดิม (ปลอดภัยกว่าสั่งซื้อไม่สำเร็จ)
     }
   }
   const allRetail = lines.every((l, i) => {
     const p = productOf(l.productId);
-    return !p || isRetailRateLine(p, l.selections ?? {}, l.qty, merged[i]);
+    return !p || !isWholesaleLine(p, l.selections ?? {}, l.qty, merged[i]);
   });
   if (!allRetail) return 0;
   return lines.reduce((sum, l) => sum + Math.max(0, l.amount), 0);

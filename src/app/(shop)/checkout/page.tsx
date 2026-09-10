@@ -357,6 +357,7 @@ export default function CheckoutPage() {
       qty: i.qty,
       amount: i.unitPrice * i.qty + (i.extraFee ?? 0),
       mergedRateLabel: i.merged?.rateLabel,
+      mergedTotalQty: i.merged?.totalQty,
     })),
     productOf
   );

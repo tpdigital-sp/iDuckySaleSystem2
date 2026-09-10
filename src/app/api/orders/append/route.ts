@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderTotal, withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
-import { dealerRateOf } from "@/lib/products";
+import { orderTotal, paidSoFar, withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
+import { dealerRateOf, type Product } from "@/lib/products";
+import { earlyPayAmount, earlyPayBase, earlyPayExpiresAt, earlyPayOf, EARLY_PAY_LABEL, type EarlyPayDiscount } from "@/lib/early-pay";
 import { getProductServer, withUnitYield } from "@/lib/products-server";
 
 export const runtime = "nodejs";
@@ -65,13 +66,43 @@ export async function POST(req: Request) {
 
   // 📐 แช่จำนวนชิ้นต่อหน่วยให้ของที่สั่งเพิ่มเหมือนตอนสั่งครั้งแรก
   const merged = [...order.items, ...(await withUnitYield(items))];
-  const newTotal = orderTotal({ ...order, items: merged }); // หักส่วนลด (ส่วนลดคิดจาก subtotal เดิม ไม่คิดซ้ำของที่สั่งเพิ่ม)
+
+  /**
+   * ⚡ ส่วนลดโอนไว — ใบที่ "ยังไม่มี" ส่วนลดนี้และยังไม่มีเงินเข้า (สร้างจากหลังบ้านเป็นใบเปล่า → ลูกค้าใส่ของเองทางลิงก์
+   * = ทางสั่งปกติของลูกค้าไลน์ เคส OD-260910-7269 ที่พนักงานทัก 10 ก.ย. 69) คิดให้ตอนนี้จากรายการทั้งใบ กติกาเดียวกับ /api/orders
+   * ใบที่มีส่วนลดอยู่แล้ว = ไม่คิดซ้ำ (เหมือนส่วนลดระดับ) · ตัวแทนไม่ได้ · เวลาหมดอายุนับจากตอนสั่งเพิ่มครั้งนี้
+   */
+  let earlyPay = order.earlyPay;
+  if (!earlyPay && !order.dealer && paidSoFar(order) <= 0) {
+    try {
+      const prods = new Map<string, Product>();
+      for (const pid of [...new Set(merged.map((i) => i.productId).filter(Boolean))]) {
+        const p = await getProductServer(pid);
+        if (p) prods.set(pid, p);
+      }
+      const { data: settRow } = await sb.from("products").select("data").eq("id", "__shop_payment__").maybeSingle();
+      const cfg = earlyPayOf(settRow?.data as { earlyPay?: EarlyPayDiscount } | undefined);
+      const goods = earlyPayBase(
+        merged.map((i) => ({ productId: i.productId, selections: i.sel, qty: i.qty, amount: i.qty * i.unitPrice })),
+        (id) => prods.get(id),
+        { mergeLots: true }
+      );
+      const amount = earlyPayAmount(goods, cfg);
+      const expiresAt = earlyPayExpiresAt(cfg);
+      if (amount > 0) earlyPay = { label: EARLY_PAY_LABEL, amount, ...(expiresAt ? { expiresAt } : {}) };
+    } catch {
+      // อ่านตั้งค่า/สินค้าไม่ได้ = ไม่ลด ดีกว่าสั่งเพิ่มไม่สำเร็จ
+    }
+  }
+
+  const newTotal = orderTotal({ ...order, items: merged, earlyPay }); // หักส่วนลด (ส่วนลดคิดจาก subtotal เดิม ไม่คิดซ้ำของที่สั่งเพิ่ม)
   const owed = newTotal - (order.paidTotal ?? 0);
 
   const updated = withLog(
     {
       ...order,
       items: merged,
+      ...(earlyPay ? { earlyPay } : {}),
       // มียอดค้าง → กลับไปรอชำระ · ไม่มียอดค้าง (เช่นยังไม่เคยจ่าย) → คงสถานะเดิม
       status: owed > 0 ? "รอชำระเงิน" : order.status,
     },
