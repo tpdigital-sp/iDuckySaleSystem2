@@ -601,7 +601,19 @@ export interface SheetYield {
    * (เลขที่ร้านใช้จริง เผื่อพื้นที่ mark + ระยะจับชิ้นไว้แล้ว จึงน้อยกว่าที่คำนวณจากการวางชิ้นตรง ๆ)
    */
   perSheetTiers?: { upTo?: number; per: number }[];
+  /**
+   * 📏 "กรอกด้านยาวสุดด้านเดียวพอ" (ไดคัท 100% สติ๊กเกอร์/กระดาษ — เจ้าของร้านสั่ง 10 ก.ย. 69)
+   * ลูกค้ามักบอกแค่ด้านที่ยาวที่สุด ไม่ได้วัด กว้าง×สูง มา → แอดมินต้องไปวัดจากไฟล์เอง งานช้า
+   * เปิดแล้ว: ช่องคู่ (pairLabel) = ด้านยาวสุด · ช่องนี้ (สูง) ไม่บังคับ (ตั้ง input.required:false ใน DB ด้วย)
+   * กรอกด้านเดียว → นับชิ้น/แผ่นจากด้านนั้น (perSheetTiers เทียบด้านยาวสุดอยู่แล้ว · ไม่มีตารางถือเป็นชิ้นจัตุรัส)
+   * ตัวเลขเป็น "ประมาณ" เสมอ + ทุกจอห้อยข้อความ "กราฟฟิกแจ้งจำนวนที่ได้จริงตอนส่งแบบ" (UnitYield.note)
+   * ช่องขนาดใต้รูปแต่ละลาย (ART_SIZE_LABEL) รับเลขเดี่ยวได้ด้วย → ArtSize.longest
+   */
+  longestOnly?: boolean;
 }
+
+/** ข้อความห้อยท้ายจำนวนชิ้นของงานที่กรอกแค่ด้านยาวสุด (เจ้าของร้านสั่งให้ระบุทุกจอ 10 ก.ย. 69) */
+export const LONGEST_ONLY_NOTE = "กราฟฟิกแจ้งจำนวนที่ได้จริงตอนส่งแบบ";
 
 /**
  * เรียงเป็นกริดแนวเดียวทั้งกล่อง — วิธีที่ช่างวางจริงและเป็นเลขที่การันตีได้ว่าวางได้แน่
@@ -753,6 +765,15 @@ export function sheetYieldCount(
     const counts = mixed.map((sz) => perOf(sz.w, sz.h));
     if (counts.some((c) => c <= 0)) return 0;
     return Math.max(1, Math.floor(mixed.length / counts.reduce((a, c) => a + 1 / c, 0)));
+  }
+  /*
+   * 📏 กรอกด้านยาวสุดด้านเดียว (longestOnly) — อีกด้านว่างถือเป็นชิ้นจัตุรัสด้านยาวสุด
+   * ตารางร้าน (perSheetTiers) เทียบด้านยาวสุดอยู่แล้วจึงได้เลขเดียวกับกรอกครบ · กรอกครบก็ใช้ครบตามเดิม
+   */
+  if (cfg.longestOnly) {
+    const L = Math.max(Number.isFinite(w) ? w : 0, Number.isFinite(h) ? h : 0);
+    if (L <= 0) return null;
+    return perOf(w > 0 ? w : L, h > 0 ? h : L);
   }
   if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
   return perOf(w, h);
@@ -1031,6 +1052,8 @@ export interface UnitYield {
    * ใช้กางที่มาให้ลูกค้าเห็น: 40 ชิ้น/แผ่น A3 × 8 แผ่น = 320 ชิ้น/ตร.ม.
    */
   via?: { perSheet: number; sheets: number; sheetName: string };
+  /** 📏 งานกรอกด้านยาวสุดด้านเดียว — ข้อความที่ทุกจอต้องห้อยท้ายจำนวนชิ้น (LONGEST_ONLY_NOTE) */
+  note?: string;
 }
 
 /**
@@ -1066,7 +1089,14 @@ export function unitYieldOf(product: Product, selections: Record<string, string>
     const sheetName = cfg.sheetName ?? "แผ่น";
     // 📐 คละหลายขนาด — บอกจำนวนขนาดแทนตัวเลขเดียว (ตัวเลขรายลายอยู่ในบรรทัด "ขนาดแต่ละลาย" ของสเปคแล้ว)
     const mixedN = parseArtSize(selections[ART_SIZE_LABEL]).size;
-    const size = mixedN ? `คละ ${mixedN} ขนาด` : `${w} × ${h}${unit ? ` ${unit}` : ""}`;
+    // 📏 กรอกด้านยาวสุดด้านเดียว — บอกเป็น "ยาวสุด 4 ซม." ไม่ใช่ "4 × " ครึ่ง ๆ กลาง ๆ
+    const oneSide = cfg.longestOnly && !(Number(w) > 0 && Number(h) > 0);
+    const size = mixedN
+      ? `คละ ${mixedN} ขนาด`
+      : oneSide
+        ? `ยาวสุด ${Number(w) > 0 ? w : h}${unit ? ` ${unit}` : ""}`
+        : `${w} × ${h}${unit ? ` ${unit}` : ""}`;
+    const note = cfg.longestOnly ? LONGEST_ONLY_NOTE : undefined;
     /*
      * เรทที่ขายเป็นหน่วยใหญ่กว่าแผ่น (ตร.ม.) — แปลง "ต่อแผ่น" เป็น "ต่อหน่วยขาย" ด้วยตัวคูณที่ตั้งไว้
      * ไม่มีตัวคูณ = คืนเลขต่อแผ่นไปตามเดิม (ฝั่งโชว์จะไม่คูณจำนวนที่สั่งให้ ดู UnitYield.unit)
@@ -1082,9 +1112,10 @@ export function unitYieldOf(product: Product, selections: Record<string, string>
         unit: null,
         approx: true,
         via: { perSheet, sheets, sheetName },
+        ...(note ? { note } : {}),
       };
     }
-    return { per: perSheet, size, label, optLabel: opt.label, unit: sheetName, approx: true };
+    return { per: perSheet, size, label, optLabel: opt.label, unit: sheetName, approx: true, ...(note ? { note } : {}) };
   }
   return null;
 }
@@ -2126,13 +2157,25 @@ export function artQtyFromSel(
  * ────────────────────────────────────────────────────────────── */
 export const ART_SIZE_LABEL = "ขนาดแต่ละลาย";
 /** ขนาดชิ้นงานของลายหนึ่ง (หน่วยเดียวกับช่องกรอกขนาด — ซม.) */
-export type ArtSize = { w: number; h: number };
+export type ArtSize = {
+  w: number;
+  h: number;
+  /** 📏 ลูกค้าบอกแค่ด้านยาวสุด (w = h = ด้านยาวสุด) — งาน longestOnly · โชว์เป็น "ยาวสุด 4 ซม." ไม่ใช่ "4×4" */
+  longest?: boolean;
+};
 
 /** ประกอบข้อความ "ลายที่ 1 25×8 ซม. · ลายที่ 2 18×8 ซม." — ลายที่ไม่มีขนาดข้าม · ไม่มีเลยคืน "" */
 export function formatArtSize(sizes: (ArtSize | undefined | null)[], unit = "ซม."): string {
   const num = (n: number) => String(Math.round(n * 100) / 100);
+  const u = unit ? ` ${unit}` : "";
   return sizes
-    .map((s, i) => (s && s.w > 0 && s.h > 0 ? `ลายที่ ${i + 1} ${num(s.w)}×${num(s.h)}${unit ? ` ${unit}` : ""}` : ""))
+    .map((s, i) =>
+      s && s.w > 0 && s.h > 0
+        ? s.longest
+          ? `ลายที่ ${i + 1} ยาวสุด ${num(Math.max(s.w, s.h))}${u}`
+          : `ลายที่ ${i + 1} ${num(s.w)}×${num(s.h)}${u}`
+        : "",
+    )
     .filter(Boolean)
     .join(" · ");
 }
@@ -2141,12 +2184,18 @@ export function formatArtSize(sizes: (ArtSize | undefined | null)[], unit = "ซ
 export function parseArtSize(text?: string | null): Map<number, ArtSize> {
   const out = new Map<number, ArtSize>();
   if (!text) return out;
-  const re = /ลายที่\s*(\d+)\s+(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)/g;
+  // "ลายที่ 1 25×8" (กว้าง×สูง) หรือ "ลายที่ 2 ยาวสุด 4" (งานกรอกด้านยาวสุดด้านเดียว — ดู ArtSize.longest)
+  const re = /ลายที่\s*(\d+)\s+(?:ยาวสุด\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?))/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {
     const i = parseInt(m[1], 10) - 1;
-    const w = Number(m[2]);
-    const h = Number(m[3]);
+    if (m[2] != null) {
+      const L = Number(m[2]);
+      if (i >= 0 && L > 0) out.set(i, { w: L, h: L, longest: true });
+      continue;
+    }
+    const w = Number(m[3]);
+    const h = Number(m[4]);
     if (i >= 0 && w > 0 && h > 0) out.set(i, { w, h });
   }
   return out;
@@ -2156,8 +2205,17 @@ export function parseArtSize(text?: string | null): Map<number, ArtSize> {
  * แปลงที่ลูกค้าพิมพ์ในช่องใต้รูป → ขนาด · รับ "25x8" "25×8" "25*8" "25,8" "25 8" (ทศนิยมได้)
  * null = ยังพิมพ์ไม่ครบ/อ่านไม่ออก
  */
-export function parseArtSizeInput(raw: string): ArtSize | null {
-  const m = (raw ?? "").trim().match(/^(\d+(?:\.\d+)?)\s*[×xX*,\s]\s*(\d+(?:\.\d+)?)$/);
+export function parseArtSizeInput(raw: string, longestOnly = false): ArtSize | null {
+  const t = (raw ?? "").trim();
+  // 📏 งานกรอกด้านยาวสุด — พิมพ์เลขเดี่ยว "4" ได้ (ยังรับ "25x8" ตามเดิมถ้าลูกค้าวัดมาครบ)
+  if (longestOnly) {
+    const one = t.match(/^(\d+(?:\.\d+)?)$/);
+    if (one) {
+      const L = Number(one[1]);
+      return L > 0 ? { w: L, h: L, longest: true } : null;
+    }
+  }
+  const m = t.match(/^(\d+(?:\.\d+)?)\s*[×xX*,\s]\s*(\d+(?:\.\d+)?)$/);
   if (!m) return null;
   const w = Number(m[1]);
   const h = Number(m[2]);
@@ -2193,6 +2251,7 @@ export function artSizeByUrl(text: string | undefined | null, urls: string[]): R
 /** "25×8 ซม." ไว้ติดป้าย/ใส่ title */
 export function artSizeText(s: ArtSize, unit = "ซม."): string {
   const num = (n: number) => String(Math.round(n * 100) / 100);
+  if (s.longest) return `ยาวสุด ${num(Math.max(s.w, s.h))}${unit ? ` ${unit}` : ""}`;
   return `${num(s.w)}×${num(s.h)}${unit ? ` ${unit}` : ""}`;
 }
 

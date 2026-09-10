@@ -203,6 +203,8 @@ type DraftOption = {
     unitSheets?: Record<string, number>;
     /** 📋 ตารางจำนวนชิ้นต่อแผ่นที่ร้านตั้งเอง (เทียบด้านยาวสุด) — ใช้แทนการคำนวณจากการจัดวาง */
     perSheetTiers?: { upTo?: number; per: number }[];
+    /** 📏 กรอกด้านยาวสุดด้านเดียวพอ (ไดคัท 100%) — ช่องสูงไม่บังคับ */
+    longestOnly?: boolean;
   };
 };
 /**

@@ -51,13 +51,16 @@ export function itemPiecesLine(item: YieldItem, product?: Product | null): strin
   // ห้อยขนาดที่นับไว้ในวงเล็บเมื่อรู้สินค้าและตัวเลขตรงกัน (เลขจากชื่อหน่วย/ชื่อตัวเลือกไม่มีขนาดให้ห้อย)
   let size = "";
   let approx = false;
+  // 📏 งานกรอกด้านยาวสุดด้านเดียว — ห้อย "กราฟฟิกแจ้งจำนวนที่ได้จริงตอนส่งแบบ" ทุกจอ (เจ้าของร้านสั่ง 10 ก.ย. 69)
+  let note = "";
   if (product) {
     const c = unitYieldOf(product, itemSel(item));
     if (c && c.per === y.per) {
       size = ` (${c.label} ${c.size})`;
       approx = c.approx;
+      note = c.note ? ` · ${c.note}` : "";
     }
   }
   const total = item.qty * y.per;
-  return `📐 สั่ง ${item.qty.toLocaleString("th-TH")} ${y.unit || "หน่วย"}${size} ได้${approx ? "ประมาณ" : ""} ${total.toLocaleString("th-TH")} ${y.piece}`;
+  return `📐 สั่ง ${item.qty.toLocaleString("th-TH")} ${y.unit || "หน่วย"}${size} ได้${approx ? "ประมาณ" : ""} ${total.toLocaleString("th-TH")} ${y.piece}${note}`;
 }

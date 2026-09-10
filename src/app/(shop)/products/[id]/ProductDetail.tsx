@@ -41,6 +41,7 @@ import {
   formatArtQty,
   parseArtQty,
   ART_SIZE_LABEL,
+  LONGEST_ONLY_NOTE,
   formatArtSize,
   parseArtSize,
   parseArtSizeInput,
@@ -907,7 +908,13 @@ export default function ProductDetail({
     if (!yOpt || !pair) return "";
     const mw = Number(parseInputValue(pair, resolved[pair.label]));
     const mh = Number(parseInputValue(yOpt, resolved[yOpt.label]));
-    const main = mw > 0 && mh > 0 ? { w: mw, h: mh } : undefined;
+    // 📏 งานกรอกด้านยาวสุดด้านเดียว — ช่องสูงว่างก็ยังมีขนาดหลัก (ArtSize.longest)
+    const main =
+      mw > 0 && mh > 0
+        ? { w: mw, h: mh }
+        : yOpt.sheetYield?.longestOnly && mw > 0
+          ? { w: mw, h: mw, longest: true }
+          : undefined;
     return formatArtSize(artFiles.map((f) => f.size ?? main), yOpt.input?.unit ?? "ซม.");
   }, [artFiles, placed.length, product, resolved]);
   const effective = useMemo(() => {
@@ -940,6 +947,12 @@ export default function ProductDetail({
       const lb = Math.max(f.size.w, f.size.h);
       return lb > la || (lb === la && f.size.w * f.size.h > a.size.w * a.size.h) ? f : a;
     });
+    // 📏 งานกรอกด้านยาวสุดด้านเดียว — ซิงก์เฉพาะช่องด้านยาวสุด (ช่องสูงไม่บังคับ ปล่อยไว้ตามที่ลูกค้ากรอก)
+    if (yOpt.sheetYield?.longestOnly) {
+      const wantL = formatInputValue(pair, String(Math.max(big.size.w, big.size.h)));
+      setSelections((sel) => (sel[pair.label] === wantL ? sel : { ...sel, [pair.label]: wantL }));
+      return;
+    }
     const wantW = formatInputValue(pair, String(big.size.w));
     const wantH = formatInputValue(yOpt, String(big.size.h));
     setSelections((sel) =>
@@ -1393,7 +1406,7 @@ export default function ProductDetail({
             w: 0,
             h: 0,
             ...(qtys.get(i) ? { qty: qtys.get(i) } : {}),
-            ...(sz ? { size: sz, sizeRaw: `${sz.w}x${sz.h}` } : {}),
+            ...(sz ? { size: sz, sizeRaw: sz.longest ? `${Math.max(sz.w, sz.h)}` : `${sz.w}x${sz.h}` } : {}),
           };
         })
       );
@@ -2265,7 +2278,11 @@ export default function ProductDetail({
                         ? "ring-2 ring-rose-400 focus-within:ring-rose-500"
                         : "ring-teal-200 focus-within:ring-teal-400"
                     }`}
-                    title={`ขนาดของลายที่ ${i + 1} กว้าง x สูง (${artSizeUnit}) — ไม่ระบุ = ใช้ขนาดหลัก`}
+                    title={
+                      artLongestOnly
+                        ? `ด้านยาวสุดของลายที่ ${i + 1} (${artSizeUnit}) — พิมพ์เลขเดียว เช่น 4 (วัดครบก็พิมพ์ 25x8 ได้) · ไม่ระบุ = ใช้ขนาดหลัก`
+                        : `ขนาดของลายที่ ${i + 1} กว้าง x สูง (${artSizeUnit}) — ไม่ระบุ = ใช้ขนาดหลัก`
+                    }
                   >
                     {/* ⛔ ลายนี้ใหญ่เกินแผ่น — ป้ายแดงบนช่องขนาด (ผู้ใช้สั่ง 9 ก.ย. 69) */}
                     <span className={`text-[9px] font-bold ${artSizeAlert?.tooBig.includes(i) ? "text-rose-600" : "text-stone-400"}`}>
@@ -2275,9 +2292,21 @@ export default function ProductDetail({
                       type="text"
                       inputMode="decimal"
                       value={f.sizeRaw ?? ""}
-                      placeholder={mainArtSize ? `${mainArtSize.w}x${mainArtSize.h}` : "กxส"}
+                      placeholder={
+                        mainArtSize
+                          ? mainArtSize.longest
+                            ? `${Math.max(mainArtSize.w, mainArtSize.h)}`
+                            : `${mainArtSize.w}x${mainArtSize.h}`
+                          : artLongestOnly
+                            ? "ยาวสุด"
+                            : "กxส"
+                      }
                       onChange={(e) => setArtSize(i, e.target.value)}
-                      aria-label={`ขนาดของลายที่ ${i + 1} (กว้าง x สูง ${artSizeUnit})`}
+                      aria-label={
+                        artLongestOnly
+                          ? `ด้านยาวสุดของลายที่ ${i + 1} (${artSizeUnit})`
+                          : `ขนาดของลายที่ ${i + 1} (กว้าง x สูง ${artSizeUnit})`
+                      }
                       className="w-full min-w-0 bg-transparent text-right text-[11px] font-bold text-teal-900 outline-none placeholder:font-normal placeholder:text-stone-300"
                     />
                   </label>
@@ -2312,14 +2341,14 @@ export default function ProductDetail({
               : bad.length
                 ? `⚠️ ${bad.join(" · ")}`
                 : sizedN === 0
-              ? `📐 ลายคนละขนาด? ระบุ กว้าง x สูง ใต้รูปแต่ละลายได้ (ไม่ระบุ = ทุกลายใช้ขนาด${mainTxt ? ` ${mainTxt}` : "หลัก"})`
+              ? `📐 ลายคนละขนาด? ระบุ${artLongestOnly ? "ด้านยาวสุด" : " กว้าง x สูง "}ใต้รูปแต่ละลายได้ (ไม่ระบุ = ทุกลายใช้ขนาด${mainTxt ? ` ${mainTxt}` : "หลัก"})`
               : `📐 คละ ${fmt(sizedN)} ขนาด${
                   sizedN < artFiles.length ? ` (อีก ${fmt(artFiles.length - sizedN)} ลายใช้ขนาดหลัก${mainTxt ? ` ${mainTxt}` : ""})` : ""
                 }${
                   artSizeMixedPer == null
                     ? ""
                     : artSizeMixedPer > 0
-                      ? ` — ได้ประมาณ ${fmt(artSizeMixedPer)} ชิ้น ต่อ 1 ${sheet} (คิดลายละเท่า ๆ กัน · ตัวเลขคร่าว ๆ)`
+                      ? ` — ได้ประมาณ ${fmt(artSizeMixedPer)} ชิ้น ต่อ 1 ${sheet} (คิดลายละเท่า ๆ กัน · ตัวเลขคร่าว ๆ${artLongestOnly ? ` · ${LONGEST_ONLY_NOTE}` : ""})`
                       : ` — มีลายใหญ่เกิน 1 ${sheet} รบกวนทักแชทเช็คกับแอดมินก่อนนะครับ`
                 }`;
           // ป้ายแดงขึ้นก่อน แต่ช่องที่พิมพ์ผิด/เกินช่วงยังต้องบอกด้วย (ไม่งั้นลูกค้าแก้ป้ายแดงเสร็จแล้วเพิ่งเจออีกอัน)
@@ -2628,14 +2657,21 @@ export default function ProductDetail({
    */
   function setArtSize(index: number, raw: string) {
     const cleaned = raw.replace(/[^\d.,xX×*\s]/g, "").slice(0, 16);
-    const parsed = parseArtSizeInput(cleaned);
+    // 📏 งานกรอกด้านยาวสุดด้านเดียว — รับเลขเดี่ยว "4" ด้วย (ArtSize.longest) · เทียบช่วงกับช่องด้านยาวสุดช่องเดียว
+    const parsed = parseArtSizeInput(cleaned, artLongestOnly);
     const lim = (o: ProductOption | null) => `${o?.input?.min ?? 1}–${o?.input?.max ?? "…"}`;
     const within = (o: ProductOption | null, v: number) => v >= (o?.input?.min ?? 0) && v <= (o?.input?.max ?? Infinity);
     // แยกสาเหตุให้ชัด: พิมพ์ผิดรูปแบบ vs ตัวเลขเกินช่วงที่ช่องรับ (ข้อความเดิมรวมเป็น "อ่านไม่ออก" ทั้งคู่ — ผู้ใช้ทัก 9 ก.ย. 69)
     const sizeErr = !cleaned.trim()
       ? undefined
       : !parsed
-        ? `พิมพ์แบบ 25x8 (กว้าง x สูง ${artSizeUnit})`
+        ? artLongestOnly
+          ? `พิมพ์ด้านยาวสุด เช่น 4 (${artSizeUnit})`
+          : `พิมพ์แบบ 25x8 (กว้าง x สูง ${artSizeUnit})`
+        : parsed.longest
+          ? !within(artSizePair, parsed.w)
+            ? `ยาวสุด ${parsed.w} เกินที่รับ ${lim(artSizePair)} ${artSizeUnit}`
+            : undefined
         : !within(artSizePair, parsed.w)
           ? `กว้าง ${parsed.w} เกินที่รับ ${lim(artSizePair)} ${artSizeUnit}`
           : !within(artSizeOpt, parsed.h)
@@ -2855,13 +2891,18 @@ export default function ProductDetail({
   );
   const artSizeMode = artQtyMode && !!artSizeOpt && !!artSizePair;
   const artSizeUnit = artSizeOpt?.input?.unit ?? "ซม.";
+  /** 📏 งานกรอกด้านยาวสุดด้านเดียว (ไดคัท 100%) — ช่องใต้รูปรับเลขเดี่ยว · ข้อความเปลี่ยนเป็น "ด้านยาวสุด" (ดู SheetYield.longestOnly) */
+  const artLongestOnly = artSizeOpt?.sheetYield?.longestOnly === true;
   /** ขนาดหลักที่กรอกในกลุ่มกว้าง×สูง (null = ยังกรอกไม่ครบ) — ใช้เป็น placeholder และค่าของลายที่ไม่ได้ระบุ */
   const mainArtSize = useMemo<ArtSize | null>(() => {
     if (!artSizeOpt || !artSizePair) return null;
     const w = Number(parseInputValue(artSizePair, effective[artSizePair.label]));
     const h = Number(parseInputValue(artSizeOpt, effective[artSizeOpt.label]));
-    return w > 0 && h > 0 ? { w, h } : null;
-  }, [artSizeOpt, artSizePair, effective]);
+    if (w > 0 && h > 0) return { w, h };
+    // 📏 กรอกด้านยาวสุดด้านเดียว — ยังนับเป็นขนาดหลักได้ (ช่องสูงไม่บังคับ)
+    if (artLongestOnly && w > 0) return { w, h: w, longest: true };
+    return null;
+  }, [artSizeOpt, artSizePair, effective, artLongestOnly]);
   /** ชิ้นต่อแผ่นแบบคละขนาด (effective มี ART_SIZE_LABEL อยู่แล้วเมื่อมีลายที่ระบุขนาด) · null = ยังไม่มีใครระบุ */
   const artSizeMixedPer = artSizeMode && effective[ART_SIZE_LABEL] && artSizeOpt ? sheetYieldCount(product, artSizeOpt, effective) : null;
   /**
@@ -3772,9 +3813,12 @@ export default function ProductDetail({
                             const gapNote = gap > 0 ? ` เว้นระยะระหว่างชิ้น ${Math.round(gap * 10)} มม.` : "";
                             // 📐 คละหลายขนาด (ระบุใต้รูปแต่ละลาย) — ตัวเลขนี้คิดจากทุกขนาดแล้ว ไม่ใช่ขนาดหลักอย่างเดียว
                             const mixedN = parseArtSize(effective[ART_SIZE_LABEL]).size;
+                            // 📏 กรอกด้านยาวสุดด้านเดียว — เลขมาจากตารางร้าน + ต้องบอกว่ากราฟฟิกแจ้งจำนวนจริงตอนส่งแบบ
+                            const longestOnly = opt.sheetYield?.longestOnly === true;
+                            const byTable = longestOnly && !!opt.sheetYield?.perSheetTiers?.length;
                             return n >= 1 ? (
                               <p className="mt-1 text-[11px] font-bold text-teal-700">
-                                📐 {mixedN ? `คละ ${mixedN} ขนาด ได้ประมาณ` : "ขนาดนี้ได้ประมาณ"} {n} ชิ้น ต่อ 1 {sheet}
+                                📐 {mixedN ? `คละ ${mixedN} ขนาด ได้ประมาณ` : longestOnly ? "ด้านยาวสุดเท่านี้ได้ประมาณ" : "ขนาดนี้ได้ประมาณ"} {n} ชิ้น ต่อ 1 {sheet}
                                 {/*
                                   * คูณจำนวนที่สั่งให้เลย · เรทที่ขายเป็นหน่วยใหญ่กว่าแผ่น (ตร.ม.)
                                   * กางตัวคูณให้เห็นด้วย ไม่งั้นลูกค้าคิดตามไม่ได้ว่าเลขมาจากไหน
@@ -3792,10 +3836,17 @@ export default function ProductDetail({
                                     </span>
                                   </>
                                 )}{" "}
-                                (จัดวางบนพื้นที่พิมพ์จริง{gapNote} — ตัวเลขคร่าว ๆ จำนวนจริงขึ้นกับรูปทรงลาย)
+                                {byTable
+                                  ? "(ตามตารางของร้าน — ตัวเลขคร่าว ๆ จำนวนจริงขึ้นกับรูปทรงลาย)"
+                                  : `(จัดวางบนพื้นที่พิมพ์จริง${gapNote} — ตัวเลขคร่าว ๆ จำนวนจริงขึ้นกับรูปทรงลาย)`}
+                                {/* 📏 เจ้าของร้านสั่ง 10 ก.ย. 69: งานกรอกด้านยาวสุดต้องระบุว่า "กราฟฟิกแจ้งตอนส่งแบบ" */}
+                                {longestOnly && <span className="block font-extrabold text-teal-900">🎨 {LONGEST_ONLY_NOTE}</span>}
                                 {/* แนบหลายลายแล้วแต่ยังไม่ระบุขนาดรายลาย — ชี้ทางไปช่องใต้รูป (คละหลายขนาดใน 1 แผ่นได้) */}
                                 {artFiles.length > 1 && !placed.length && !mixedN && (
-                                  <span className="font-semibold text-teal-600"> · ลายคนละขนาด? ระบุ กว้าง x สูง ใต้รูปแต่ละลายในกล่องแนบลายได้เลย</span>
+                                  <span className="font-semibold text-teal-600">
+                                    {" "}
+                                    · ลายคนละขนาด? ระบุ{longestOnly ? "ด้านยาวสุด" : " กว้าง x สูง "}ใต้รูปแต่ละลายในกล่องแนบลายได้เลย
+                                  </span>
                                 )}
                                 {/* ⛔ แผ่นที่สั่งใส่ไม่ครบทุกลาย — เตือนซ้ำตรงช่องขนาดหลักด้วย (ลูกค้ามองจุดนี้ก่อน) */}
                                 {artSizeAlert?.short && (
@@ -6887,6 +6938,8 @@ export default function ProductDetail({
                       : ""}
                     {unitYield!.approx ? " — จำนวนจริงขึ้นกับรูปทรงลาย" : ""})
                   </span>
+                  {/* 📏 งานกรอกด้านยาวสุดด้านเดียว — เจ้าของร้านสั่ง 10 ก.ย. 69 ให้ระบุว่ากราฟฟิกแจ้งตอนส่งแบบ */}
+                  {unitYield!.note && <span className="block font-extrabold">🎨 {unitYield!.note}</span>}
                 </p>
               )}
               {/* แบบที่ลูกค้าวางเอง — สั่งหลายลายในรายการเดียวได้ กำหนดจำนวนแยกแต่ละลาย */}

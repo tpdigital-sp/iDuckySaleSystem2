@@ -681,6 +681,8 @@ export default function CartPage() {
                       /* ห้อยขนาดที่นับไว้ในบรรทัดเดียวกัน "(ขนาดไดคัท 10 × 5 ซม.)" — เห็นขนาดกับจำนวนคู่กันไม่ต้องไล่อ่านสเปค
                          เทียบ per ให้ตรงกันก่อน กันเคสที่ตัวเลขมาจากชื่อหน่วย/ชื่อตัวเลือก (ไม่ใช่จากขนาด) */
                       const yieldSize = yieldCalc && yieldCalc.per === yieldInfo?.per ? ` (${yieldCalc.label} ${yieldCalc.size})` : "";
+                      // 📏 กรอกด้านยาวสุดด้านเดียว — ห้อย "กราฟฟิกแจ้งจำนวนที่ได้จริงตอนส่งแบบ" (เจ้าของร้านสั่ง 10 ก.ย. 69)
+                      const yieldNote = yieldCalc?.note && yieldCalc.per === yieldInfo?.per ? ` · ${yieldCalc.note}` : "";
                       return (
                         <SpecLines
                           sel={item.selections}
@@ -706,7 +708,7 @@ export default function CartPage() {
                                 <p className="font-semibold t-blue">
                                   {/* ประโยคเดียวจบ (เจ้าของร้านสั่ง "แจ้งแค่จุดเดียว") — ยอดรวมของจำนวนที่สั่งเลย ไม่กางต่อหน่วยซ้ำ
                                       ต่อสตริงเองทั้งบรรทัด — JSX ตัดช่องว่างระหว่าง expression เคยทำให้เป็น "ได้2 ชิ้น" */}
-                                  {`📐 สั่ง ${item.qty.toLocaleString("th-TH")} ${yieldInfo.unit || "หน่วย"}${yieldSize} ได้${yieldApprox ? "ประมาณ" : ""} ${(yieldInfo.per * item.qty).toLocaleString("th-TH")} ${yieldInfo.piece}`}
+                                  {`📐 สั่ง ${item.qty.toLocaleString("th-TH")} ${yieldInfo.unit || "หน่วย"}${yieldSize} ได้${yieldApprox ? "ประมาณ" : ""} ${(yieldInfo.per * item.qty).toLocaleString("th-TH")} ${yieldInfo.piece}${yieldNote}`}
                                 </p>
                               )}
                               {artCount > 0 && (
