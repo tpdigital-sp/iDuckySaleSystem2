@@ -38,6 +38,9 @@ export async function GET(req: Request) {
   const limit = Math.min(200, Math.max(10, Number(url.searchParams.get("limit")) || PAGE_SIZE));
   const sort = url.searchParams.get("sort") ?? "id";
   const asc = url.searchParams.get("dir") === "asc";
+  // ไม่ส่ง sort มา (ช่องค้นชื่อลูกค้าในหน้าออเดอร์/ใบเสนอราคา) + มีคำค้น = เรียงตาม "ตรงแค่ไหน" ไม่ใช่รหัสใหม่ก่อน
+  // — เคส 10 ก.ย. 69: พิมพ์ "ออม" เจอ 27 ราย แต่ลิสต์โชว์ 10 รายแรกตามรหัสใหม่→เก่า ออม #652 ชื่อตรงเป๊ะกลับตกจากลิสต์
+  const relevance = !!q && !url.searchParams.has("sort");
 
   let query = sb.from(CONTACT_TABLE).select("id,data", { count: "exact" });
   if (q) {
@@ -63,12 +66,56 @@ export async function GET(req: Request) {
   query = query.order("num", { ascending: SORT[sort] ? false : asc, nullsFirst: false }).order("id", { ascending: asc });
 
   const from = (page - 1) * limit;
-  const { data, count, error } = await query.range(from, from + limit - 1);
-  if (error) {
-    if (tableMissing(error.message, error.code)) return NextResponse.json({ contacts: [], total: 0, page, pageSize: limit, needsSetup: true });
-    return NextResponse.json({ error: error.message, contacts: [], total: 0, page, pageSize: limit }, { status: 500 });
+  let contacts: Contact[];
+  let count: number | null;
+  if (relevance) {
+    // ดึง 2 ก้อนพร้อมกัน: (ก) ชื่อขึ้นต้นด้วยคำค้น — รายเก่า ๆ ชื่อสั้นตรงเป๊ะจะได้ไม่หลุดจากหน้าต่าง (ข) ผลค้นทั่วไปตามรหัสใหม่ก่อน
+    // แล้วรวม-ตัดซ้ำ-จัดอันดับในนี้ (คลัง ~28,000 ราย คำค้นหนึ่งเจอไม่กี่สิบ-ร้อยราย ก้อนละ 200 พอ)
+    const WINDOW = 200;
+    const nameQ = q.toLowerCase();
+    const prefix = sb
+      .from(CONTACT_TABLE)
+      .select("id,data")
+      .ilike("data->>name", `${q}%`)
+      .order("num", { ascending: false, nullsFirst: false })
+      .order("id", { ascending: false })
+      .limit(WINDOW);
+    const [pre, gen] = await Promise.all([prefix, query.range(0, WINDOW - 1)]);
+    const error = gen.error ?? pre.error;
+    if (error) {
+      if (tableMissing(error.message, error.code)) return NextResponse.json({ contacts: [], total: 0, page, pageSize: limit, needsSetup: true });
+      return NextResponse.json({ error: error.message, contacts: [], total: 0, page, pageSize: limit }, { status: 500 });
+    }
+    const seen = new Set<string>();
+    const all: Contact[] = [];
+    for (const r of [...(pre.data ?? []), ...(gen.data ?? [])]) {
+      const id = String(r.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      all.push({ ...(r.data as Contact), id });
+    }
+    const digits = q.replace(/\D/g, "");
+    // อันดับ: 0 ชื่อตรงเป๊ะ · 1 ชื่อขึ้นต้นด้วยคำค้น · 2 ชื่อมีคำค้น · 3 เบอร์/รหัสตรง · 4 ที่อยู่/อีเมล/โน้ต — อันดับเท่ากันเรียงรหัสใหม่ก่อน (ลำดับเดิม)
+    const rankOf = (c: Contact) => {
+      const n = (c.name ?? "").trim().toLowerCase();
+      if (n === nameQ) return 0;
+      if (n.startsWith(nameQ)) return 1;
+      if (n.includes(nameQ)) return 2;
+      if (digits && ((c.phone ?? "").includes(digits) || c.id === digits)) return 3;
+      return 4;
+    };
+    const ranked = all.map((c, i) => ({ c, r: rankOf(c), i })).sort((a, b) => a.r - b.r || a.i - b.i);
+    contacts = ranked.slice(from, from + limit).map((x) => x.c);
+    count = Math.max(gen.count ?? 0, all.length);
+  } else {
+    const res = await query.range(from, from + limit - 1);
+    if (res.error) {
+      if (tableMissing(res.error.message, res.error.code)) return NextResponse.json({ contacts: [], total: 0, page, pageSize: limit, needsSetup: true });
+      return NextResponse.json({ error: res.error.message, contacts: [], total: 0, page, pageSize: limit }, { status: 500 });
+    }
+    contacts = (res.data ?? []).map((r) => ({ ...(r.data as Contact), id: r.id as string }));
+    count = res.count;
   }
-  const contacts = (data ?? []).map((r) => ({ ...(r.data as Contact), id: r.id as string }));
 
   // สถิติภาพรวม — นับฝั่งฐานข้อมูล (head) ไม่ดึงข้อมูลมา
   let stats: { total: number; withPhone: number; withPoint: number; dealers: number; legacy: number; member: number; adminOrder: number; guestOrder: number } | undefined;
