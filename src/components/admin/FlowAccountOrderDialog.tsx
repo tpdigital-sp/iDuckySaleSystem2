@@ -36,6 +36,21 @@ export interface FADoc {
   wht?: number;
   net?: number;
   note?: string;
+  title?: string;
+  /** ➗ ใบมัดจำ (ดู FlowAccountDeposit ฝั่งเซิร์ฟเวอร์) — deposit = ใบแจ้งหนี้มัดจำ · balance = ใบยอดคงเหลือที่หักมัดจำแล้ว */
+  deposit?: {
+    kind: "deposit" | "balance";
+    refDocNo?: string;
+    amountBeforeVat: number;
+    amount: number;
+    fullSubtotal?: number;
+    fullVat?: number;
+    fullGrandTotal?: number;
+    fullWht?: number;
+    remaining?: number;
+  };
+  /** รายการสินค้าดึงมาจากเอกสารอีกใบ */
+  itemsFrom?: { url: string; docNo: string; docTypeLabel: string };
   rawText: string;
 }
 
@@ -84,6 +99,10 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
   const [status, setStatus] = useState<"รอชำระเงิน" | "ชำระแล้ว">("รอชำระเงิน");
   const [note, setNote] = useState("");
   const [useByDate, setUseByDate] = useState("");
+  // ➗ ใบมัดจำ: ลิงก์ใบที่มีรายการ (ใบเสนอราคา/ใบยอดคงเหลือ) + เปิดโหมดมัดจำ/ยอดงวดแรก (แก้ได้)
+  const [itemsUrl, setItemsUrl] = useState("");
+  const [depositOn, setDepositOn] = useState(false);
+  const [depositAmt, setDepositAmt] = useState(0);
   const urlRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -95,7 +114,7 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel]);
 
-  async function load(u: string) {
+  async function load(u: string, itemsLink?: string) {
     const link = u.trim();
     if (!link || loading) return;
     setLoading(true);
@@ -104,7 +123,7 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
       const res = await fetch("/api/admin/orders/flowaccount", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url: link }),
+        body: JSON.stringify({ url: link, ...(itemsLink?.trim() ? { itemsUrl: itemsLink.trim() } : {}) }),
       });
       const j = (await res.json().catch(() => ({}))) as Partial<Preview> & { error?: string };
       if (!res.ok || !j.doc) throw new Error(j.error ?? "อ่านเอกสารไม่สำเร็จ");
@@ -145,10 +164,13 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
         setShipLabel("");
         setShipCost(0);
       }
-      setUseWht((d.wht ?? 0) > 0);
+      // ➗ ใบมัดจำ: ออเดอร์เป็นยอดเต็ม → VAT/หัก ณ ที่จ่าย ใช้ตัวเลขทั้งใบ ไม่ใช่ของงวดเดียว
+      setUseWht(((d.deposit ? d.deposit.fullWht : undefined) ?? d.wht ?? 0) > 0);
       setDiscount(d.discount ?? 0);
-      setVat(d.vat ?? 0);
+      setVat((d.deposit ? d.deposit.fullVat : undefined) ?? d.vat ?? 0);
       setVatRate(d.vatRate ?? 7);
+      setDepositOn(!!d.deposit);
+      setDepositAmt(d.deposit?.amount ?? 0);
       setStatus("รอชำระเงิน");
       setNote(d.note ?? "");
       setUseByDate("");
@@ -160,12 +182,20 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
   }
 
   const doc = pv?.doc;
+  const dep = doc?.deposit;
   const subtotal = useMemo(() => items.reduce((s, it) => s + it.qty * it.unitPrice, 0), [items]);
   // ยอดที่ออเดอร์จะได้ = สินค้า + ค่าส่ง − ส่วนลดตามใบ + VAT ตามใบ — ต้องเท่ากับ "รวมทั้งสิ้น" ในเอกสาร
   const total = Math.round((subtotal + shipCost - discount + vat) * 100) / 100;
-  const mismatch = doc?.grandTotal != null && Math.abs(doc.grandTotal - total) >= 0.01;
+  // ➗ ใบมัดจำ: เทียบกับมูลค่างานเต็ม (ใบแจ้งหนี้มัดจำ/ใบยอดคงเหลือใบเดียวบอกแค่ครึ่ง)
+  const docTotal = dep?.fullGrandTotal ?? doc?.grandTotal;
+  const whtAmt = dep?.fullWht ?? doc?.wht;
+  const mismatch = docTotal != null && Math.abs(docTotal - total) >= 0.01;
   /** VAT ที่ควรเป็นจากตัวเลขในฟอร์มตอนนี้ (ฐาน = สินค้า + ค่าส่ง − ส่วนลด) */
   const vatCalc = Math.round((subtotal + shipCost - discount) * vatRate) / 100;
+  const depositActive = depositOn && depositAmt > 0;
+  const depositRest = Math.max(0, Math.round((total - depositAmt) * 100) / 100);
+  /** หัก ณ ที่จ่ายส่วนของงวดแรก (ตามสัดส่วนมัดจำต่อยอดเต็ม) → โอนจริงงวดแรก */
+  const whtFirst = useWht && whtAmt && total > 0 ? Math.round(((whtAmt * depositAmt) / total) * 100) / 100 : 0;
   const ready = !!doc && items.some((it) => it.name.trim()) && (customer.trim() || phone.trim());
 
   async function create() {
@@ -185,10 +215,11 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
           shippingLabel: shipLabel || undefined,
           shippingCost: shipCost,
           items: items.filter((it) => it.name.trim()),
-          wht: useWht && doc.wht ? { rate: doc.whtRate ?? 0, amount: doc.wht } : null,
+          wht: useWht && whtAmt ? { rate: doc.whtRate ?? 0, amount: whtAmt } : null,
           discount,
           vat,
           vatRate,
+          deposit: depositActive ? { amount: depositAmt } : null,
           status,
           note: note.trim() || undefined,
           useByDate: useByDate || undefined,
@@ -273,12 +304,118 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
                   <span>
                     ยอดตามใบ <b className="text-slate-800">{formatPrice(doc.grandTotal)}</b>
                     {doc.vat ? ` (รวม VAT ${formatPrice(doc.vat)})` : ""}
+                    {dep?.fullGrandTotal != null ? ` · มูลค่างานเต็ม ${formatPrice(dep.fullGrandTotal)}` : ""}
                   </span>
                 )}
                 <a href={doc.url} target="_blank" rel="noreferrer" className="font-bold text-sky-700 underline">
                   เปิดเอกสาร ↗
                 </a>
+                {doc.itemsFrom && (
+                  <span>
+                    รายการจาก {doc.itemsFrom.docTypeLabel} {doc.itemsFrom.docNo} ·{" "}
+                    <a href={doc.itemsFrom.url} target="_blank" rel="noreferrer" className="font-bold text-sky-700 underline">
+                      เปิด ↗
+                    </a>
+                  </span>
+                )}
               </div>
+
+              {/* ── ➗ ใบเสนอราคา/ใบธรรมดา: เปิดโหมดมัดจำ 50% ได้เลย ไม่ต้องรอใบแจ้งหนี้มัดจำ (เจ้าของร้านเลือกทางนี้ 10 ก.ย. 69 — ง่ายกว่าวาง 2 ลิงก์) ── */}
+              {doc && !dep && (
+                <label className="flex cursor-pointer flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50/70 px-3 py-2 text-[12px] text-violet-900">
+                  <input
+                    type="checkbox"
+                    checked={depositOn}
+                    onChange={(e) => {
+                      setDepositOn(e.target.checked);
+                      if (e.target.checked && depositAmt <= 0) setDepositAmt(Math.ceil(total / 2));
+                    }}
+                  />
+                  <span className="font-bold">➗ เปิดโหมดมัดจำ 50% · งวดแรก (รวม VAT)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={depositAmt}
+                    disabled={!depositOn}
+                    onChange={(e) => setDepositAmt(Math.max(0, Number(e.target.value) || 0))}
+                    className={`${INP} w-28 py-0.5 text-right disabled:opacity-50`}
+                  />
+                  {depositOn && Math.abs(depositAmt - Math.ceil(total / 2)) >= 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setDepositAmt(Math.ceil(total / 2))}
+                      className="rounded border border-violet-300 bg-white px-1.5 py-0.5 text-[10.5px] font-bold text-violet-700 hover:bg-violet-100"
+                    >
+                      ↻ ครึ่งหนึ่ง = {formatPrice(Math.ceil(total / 2))}
+                    </button>
+                  )}
+                  <span className="text-[11px] text-violet-700">ลูกค้าโอนงวดแรกก่อนเริ่มงาน · ยอดคงเหลือเก็บก่อนจัดส่ง</span>
+                </label>
+              )}
+              {/* ── ➗ ใบมัดจำ 50% — เจ้าของร้านขอ 10 ก.ย. 69 (ใบแจ้งหนี้มัดจำ BL002072 / ใบยอดคงเหลือ BL002073 อ่านไม่ได้) ── */}
+              {dep && (
+                <div className="rounded-lg border border-violet-200 bg-violet-50/70 px-3 py-2 text-[12px] leading-relaxed text-violet-900">
+                  <p className="font-extrabold">
+                    ➗ {dep.kind === "deposit" ? "ใบนี้เป็นใบแจ้งหนี้มัดจำ" : "ใบนี้หักมัดจำออกแล้ว (ใบยอดคงเหลือ)"}
+                    {dep.refDocNo ? ` — ${dep.kind === "deposit" ? "อ้างอิงใบเสนอราคา" : "หักมัดจำตามใบ"} ${dep.refDocNo}` : ""}
+                  </p>
+                  <p className="mt-0.5">
+                    มัดจำงวดแรก <b>{formatPrice(dep.amount)}</b> (ก่อน VAT {formatPrice(dep.amountBeforeVat)})
+                    {dep.fullGrandTotal != null ? ` · มูลค่างานเต็ม ${formatPrice(dep.fullGrandTotal)}` : ""}
+                    {dep.remaining != null ? ` · คงเหลืองวดหลัง ${formatPrice(dep.remaining)}` : ""}
+                    <br />
+                    ระบบสร้างออเดอร์เป็น<b>ยอดเต็ม</b>แล้วเปิดโหมดมัดจำให้ — เริ่มงานได้หลังรับงวดแรก · พิมพ์ใบปะหน้า/ยิงเลขพัสดุได้เมื่อครบ 100%
+                  </p>
+                  {dep.kind === "deposit" && !items.length && (
+                    <div className="mt-2">
+                      <p className="mb-1 text-[11px] font-bold text-violet-800">
+                        ใบแจ้งหนี้มัดจำไม่มีรายการสินค้า — วางลิงก์แชร์ใบเสนอราคา{dep.refDocNo ? ` ${dep.refDocNo}` : ""} หรือใบแจ้งหนี้ยอดคงเหลือ เพื่อดึงรายการมาให้กราฟฟิก
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          value={itemsUrl}
+                          onChange={(e) => setItemsUrl(e.target.value)}
+                          onPaste={(e) => {
+                            const t = e.clipboardData.getData("text");
+                            if (/share\.flowaccount\.com/.test(t)) {
+                              e.preventDefault();
+                              setItemsUrl(t.trim());
+                              void load(url, t);
+                            }
+                          }}
+                          onKeyDown={(e) => e.key === "Enter" && void load(url, itemsUrl)}
+                          placeholder="https://share.flowaccount.com/qt/th/…"
+                          className={INP}
+                          inputMode="url"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void load(url, itemsUrl)}
+                          disabled={loading || !itemsUrl.trim()}
+                          className="shrink-0 rounded-lg bg-violet-600 px-3 text-[12px] font-bold text-white hover:bg-violet-700 disabled:bg-slate-200 disabled:text-slate-400"
+                        >
+                          {loading ? "กำลังอ่าน…" : "ดึงรายการ"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <label className="mt-2 flex cursor-pointer flex-wrap items-center gap-2">
+                    <input type="checkbox" checked={depositOn} onChange={(e) => setDepositOn(e.target.checked)} />
+                    <span className="font-bold">เปิดโหมดมัดจำ · งวดแรก (รวม VAT)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={depositAmt}
+                      disabled={!depositOn}
+                      onChange={(e) => setDepositAmt(Math.max(0, Number(e.target.value) || 0))}
+                      className={`${INP} w-28 py-0.5 text-right disabled:opacity-50`}
+                    />
+                    <span className="text-[11px] text-violet-700">บาท — ไม่ติ๊ก = สร้างเป็นใบเต็มจำนวนตามปกติ</span>
+                  </label>
+                </div>
+              )}
 
               {pv!.existing.length > 0 && (
                 <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
@@ -403,7 +540,20 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
                       </div>
                     </div>
                   ))}
-                  {!items.length && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">ไม่พบรายการในเอกสาร — เพิ่มเองในหน้าออเดอร์ได้หลังสร้าง</p>}
+                  {!items.length && (
+                    <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                      {dep?.kind === "deposit"
+                        ? "ยังไม่มีรายการสินค้า — วางลิงก์ใบเสนอราคา/ใบยอดคงเหลือในกล่องม่วงด้านบน หรือพิมพ์เพิ่มเอง"
+                        : "ไม่พบรายการในเอกสาร — พิมพ์เพิ่มเองได้"}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setItems((cur) => [...cur, { name: "", selections: "", qty: 1, unitPrice: 0, noProof: false }])}
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50"
+                  >
+                    ＋ เพิ่มรายการเอง
+                  </button>
                 </div>
               </div>
 
@@ -497,34 +647,56 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
                   />
                 </div>
                 <div className="mt-1 flex justify-between border-t border-dashed border-slate-200 pt-1 text-[13px] font-extrabold text-slate-900">
-                  <span>ยอดรวมทั้งสิ้น (ออเดอร์นี้)</span>
+                  <span>ยอดรวมทั้งสิ้น (ออเดอร์นี้{depositActive ? " · ยอดเต็ม" : ""})</span>
                   <span className="tabular-nums">{formatPrice(total)}</span>
                 </div>
-                {useWht && (doc.wht ?? 0) > 0 && (
+                {useWht && (whtAmt ?? 0) > 0 && (
                   <>
                     <div className="mt-1 flex justify-between text-rose-600">
-                      <span>หักภาษี ณ ที่จ่าย {doc.whtRate ?? ""}%</span>
-                      <span className="tabular-nums">−{formatPrice(doc.wht!)}</span>
+                      <span>หักภาษี ณ ที่จ่าย {doc.whtRate ?? ""}%{depositActive ? " (ทั้งใบ)" : ""}</span>
+                      <span className="tabular-nums">−{formatPrice(whtAmt!)}</span>
                     </div>
                     <div className="flex justify-between text-[13px] font-extrabold text-slate-900">
-                      <span>ยอดชำระ (โอนจริง)</span>
-                      <span className="tabular-nums">{formatPrice(Math.round((total - doc.wht!) * 100) / 100)}</span>
+                      <span>ยอดชำระ (โอนจริง{depositActive ? "ทั้งใบ" : ""})</span>
+                      <span className="tabular-nums">{formatPrice(Math.round((total - whtAmt!) * 100) / 100)}</span>
                     </div>
                   </>
                 )}
-                {doc.grandTotal != null && (
+                {depositActive && (
+                  <div className="mt-1.5 rounded-md bg-violet-50 px-2 py-1.5 text-violet-900 ring-1 ring-violet-200">
+                    <div className="flex justify-between font-bold">
+                      <span>➗ งวดที่ 1 · มัดจำ{dep?.kind === "deposit" ? ` (ตามใบ ${doc.docNo})` : dep?.refDocNo ? ` (ตามใบ ${dep.refDocNo})` : " 50%"}</span>
+                      <span className="tabular-nums">{formatPrice(depositAmt)}</span>
+                    </div>
+                    {whtFirst > 0 && (
+                      <div className="flex justify-between text-[11px]">
+                        <span>โอนจริงงวดแรก (หลังหัก ณ ที่จ่าย {formatPrice(whtFirst)})</span>
+                        <span className="tabular-nums">{formatPrice(Math.round((depositAmt - whtFirst) * 100) / 100)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span>งวดที่ 2 · ยอดคงเหลือก่อนจัดส่ง</span>
+                      <span className="tabular-nums">{formatPrice(depositRest)}</span>
+                    </div>
+                    {dep?.remaining != null && Math.abs(dep.remaining - depositRest) >= 0.01 && (
+                      <p className="mt-0.5 text-[11px] font-semibold text-rose-600">⚠️ ยอดคงเหลือตามเอกสาร {formatPrice(dep.remaining)} — ตรวจรายการ/VAT/ยอดมัดจำอีกครั้ง</p>
+                    )}
+                  </div>
+                )}
+                {docTotal != null && (
                   <p className={`mt-1 text-[11px] font-semibold ${mismatch ? "text-rose-600" : "text-emerald-700"}`}>
                     {mismatch
-                      ? `⚠️ ต่างจากฉบับที่ลิงก์ส่งมา (${formatPrice(doc.grandTotal)}) — ถ้าคุณแก้ตามใบล่าสุดในแอป FlowAccount ก็สร้างได้เลย · ถ้าไม่ได้ตั้งใจ ตรวจรายการ/ค่าส่ง/ส่วนลด/VAT อีกครั้ง`
-                      : `✓ ตรงกับยอดรวมทั้งสิ้นในเอกสาร ${formatPrice(doc.grandTotal)}`}
+                      ? `⚠️ ต่างจาก${dep ? "มูลค่างานเต็มตามเอกสาร" : "ฉบับที่ลิงก์ส่งมา"} (${formatPrice(docTotal)}) — ถ้าคุณแก้ตามใบล่าสุดในแอป FlowAccount ก็สร้างได้เลย · ถ้าไม่ได้ตั้งใจ ตรวจรายการ/ค่าส่ง/ส่วนลด/VAT อีกครั้ง`
+                      : `✓ ตรงกับ${dep ? "มูลค่างานเต็มตามเอกสาร" : "ยอดรวมทั้งสิ้นในเอกสาร"} ${formatPrice(docTotal)}`}
                   </p>
                 )}
               </div>
 
-              {doc.wht != null && doc.wht > 0 && (
+              {whtAmt != null && whtAmt > 0 && (
                 <label className="flex cursor-pointer items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-[12px] text-slate-700">
                   <input type="checkbox" checked={useWht} onChange={(e) => setUseWht(e.target.checked)} />
-                  ลูกค้าหัก ณ ที่จ่าย {doc.whtRate ?? ""}% = {formatPrice(doc.wht)} — บันทึกไว้ในออเดอร์ (ยอดโอนจริง {formatPrice(doc.net ?? 0)})
+                  ลูกค้าหัก ณ ที่จ่าย {doc.whtRate ?? ""}% = {formatPrice(whtAmt)}
+                  {dep ? " (ทั้งใบ)" : ""} — บันทึกไว้ในออเดอร์ (ยอดโอนจริง{dep ? "ทั้งใบ" : ""} {formatPrice(Math.round((total - whtAmt) * 100) / 100)})
                 </label>
               )}
 
@@ -542,9 +714,11 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
                 >
                   <input type="radio" name="fa-status" checked={status === "รอชำระเงิน"} onChange={() => setStatus("รอชำระเงิน")} className="mt-0.5" />
                   <span>
-                    <b>รอชำระเงิน</b>
+                    <b>{depositActive ? "รอมัดจำงวดแรก" : "รอชำระเงิน"}</b>
                     <br />
-                    <span className="text-slate-500">รอเงินเข้าตาม FlowAccount แล้วค่อยกด “ชำระแล้ว” ในหน้าออเดอร์</span>
+                    <span className="text-slate-500">
+                      {depositActive ? "รอมัดจำเข้าตาม FlowAccount แล้วค่อยกด “ยืนยันรับมัดจำ” ในหน้าออเดอร์" : "รอเงินเข้าตาม FlowAccount แล้วค่อยกด “ชำระแล้ว” ในหน้าออเดอร์"}
+                    </span>
                   </span>
                 </label>
                 <label
@@ -562,9 +736,13 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
                     className="mt-0.5"
                   />
                   <span>
-                    <b>ชำระแล้ว — เริ่มงานเลย</b>
+                    <b>{depositActive ? `รับมัดจำ ${formatPrice(depositAmt)} แล้ว — เริ่มงานเลย` : "ชำระแล้ว — เริ่มงานเลย"}</b>
                     <br />
-                    <span className="text-slate-500">เงินเข้าแล้ว/เครดิตเทอม · ส่งเข้าคิวกราฟฟิกทันที (ลง log ว่ารับชำระตาม FlowAccount)</span>
+                    <span className="text-slate-500">
+                      {depositActive
+                        ? "มัดจำเข้าแล้ว · ส่งเข้าคิวกราฟฟิกทันที · ยอดคงเหลือเก็บก่อนจัดส่ง (ลง log ว่ารับมัดจำตาม FlowAccount)"
+                        : "เงินเข้าแล้ว/เครดิตเทอม · ส่งเข้าคิวกราฟฟิกทันที (ลง log ว่ารับชำระตาม FlowAccount)"}
+                    </span>
                   </span>
                 </label>
               </div>
@@ -587,7 +765,7 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
               disabled={!ready || busy}
               className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
             >
-              {busy ? "กำลังสร้าง…" : status === "ชำระแล้ว" ? "สร้างออเดอร์ + ส่งกราฟฟิก" : "สร้างออเดอร์"}
+              {busy ? "กำลังสร้าง…" : status === "ชำระแล้ว" ? (depositActive ? "สร้างออเดอร์ + รับมัดจำ + ส่งกราฟฟิก" : "สร้างออเดอร์ + ส่งกราฟฟิก") : depositActive ? "สร้างออเดอร์ (โหมดมัดจำ)" : "สร้างออเดอร์"}
             </button>
           </div>
           {!doc && <p className="text-center text-[11px] text-slate-400">วางลิงก์แล้วระบบจะอ่านให้ทันที — ยังไม่สร้างอะไรจนกว่าจะกดสร้าง</p>}

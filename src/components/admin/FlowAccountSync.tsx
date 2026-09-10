@@ -62,6 +62,7 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
   function apply() {
     if (!diff) return;
     const d = diff.doc;
+    const f = fullFigures(d);
     const items = order.items.map((it, i) => (diff.itemPatch[i] ? { ...it, qty: diff.itemPatch[i].qty, unitPrice: diff.itemPatch[i].unitPrice } : it));
     let next: Order = {
       ...order,
@@ -71,20 +72,20 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
       flowAccount: {
         ...fa!,
         ...(d.date ? { date: d.date } : {}),
-        subtotal: d.subtotal,
-        vat: d.vat,
-        grandTotal: d.grandTotal,
-        wht: d.wht,
-        net: d.net,
+        subtotal: f.subtotal,
+        vat: f.vat,
+        grandTotal: f.grandTotal,
+        wht: f.wht,
+        net: f.grandTotal != null ? Math.round((f.grandTotal - (f.wht ?? 0)) * 100) / 100 : d.net,
         fetchedAt: new Date().toISOString(),
       },
     };
     // ส่วนลด/VAT ตามเอกสาร — ไม่มีในเอกสาร = เอาออก
     if (d.discount && d.discount > 0) next.adminDiscount = { label: `ส่วนลดตามใบ ${d.docNo}`, amount: d.discount };
     else if (next.adminDiscount?.label?.startsWith("ส่วนลดตามใบ")) delete next.adminDiscount;
-    if (d.vat && d.vat > 0) next.vat = { rate: d.vatRate ?? 7, amount: d.vat };
+    if (f.vat && f.vat > 0) next.vat = { rate: d.vatRate ?? 7, amount: f.vat };
     else delete next.vat;
-    if (d.wht && d.wht > 0) next.wht = { rate: d.whtRate ?? 0, amount: d.wht };
+    if (f.wht && f.wht > 0) next.wht = { rate: d.whtRate ?? 0, amount: f.wht };
     next = withLog(next, actor, "ซิงก์ยอดจาก FlowAccount", `${d.docTypeLabel} ${d.docNo} · ยอดรวม ${orderTotal(next).toLocaleString("th-TH")} บาท${d.grandTotal != null ? ` (เอกสาร ${d.grandTotal.toLocaleString("th-TH")})` : ""}`);
     onApply(next);
     setDiff(null);
@@ -150,7 +151,23 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
   );
 }
 
+/**
+ * ➗ ใบมัดจำของ FlowAccount (ใบแจ้งหนี้มัดจำ/ใบยอดคงเหลือ) บอกยอดแค่ครึ่ง — ออเดอร์ในระบบเป็นยอดเต็ม
+ * จึงเทียบ/ซิงก์กับ "มูลค่างานเต็ม" ที่ตัวอ่านคำนวณไว้ ไม่ใช่รวมทั้งสิ้นของใบนั้น
+ */
+function fullFigures(doc: FADoc): { subtotal?: number; vat?: number; grandTotal?: number; wht?: number } {
+  const dep = doc.deposit;
+  if (!dep) return { subtotal: doc.subtotal, vat: doc.vat, grandTotal: doc.grandTotal, wht: doc.wht };
+  return {
+    subtotal: dep.fullSubtotal ?? doc.subtotal,
+    vat: dep.fullVat ?? doc.vat,
+    grandTotal: dep.fullGrandTotal ?? doc.grandTotal,
+    wht: dep.fullWht ?? doc.wht,
+  };
+}
+
 function buildDiff(order: Order, doc: FADoc, methods: ShippingMethod[] = []): Diff {
+  const f = fullFigures(doc);
   const shipLines = doc.items.filter((it) => SHIP_RE.test(it.name));
   const work = doc.items.filter((it) => !SHIP_RE.test(it.name));
   const docShip = shipLines.reduce((s, it) => s + it.amount, 0);
@@ -177,16 +194,16 @@ function buildDiff(order: Order, doc: FADoc, methods: ShippingMethod[] = []): Di
   const nowDisc = order.adminDiscount?.amount ?? 0;
   const docDisc = doc.discount ?? 0;
   const nowVat = order.vat?.amount ?? 0;
-  const docVat = doc.vat ?? 0;
+  const docVat = f.vat ?? 0;
   const nowTotal = orderTotal(order);
-  const docTotal = doc.grandTotal ?? 0;
+  const docTotal = f.grandTotal ?? 0;
   const eq = (a: number, b: number) => Math.abs(a - b) < 0.01;
   const rows: Diff["rows"] = [
     { label: "รวมค่าสินค้า", doc: formatPrice(docSub), now: formatPrice(nowSub), same: eq(docSub, nowSub) },
     { label: "ค่าส่ง", doc: docShipLabel ? formatPrice(docShip) : "— ไม่มีในใบ", now: formatPrice(nowShip), same: docShipLabel ? eq(docShip, nowShip) : true },
     { label: "ส่วนลด", doc: `−${formatPrice(docDisc)}`, now: `−${formatPrice(nowDisc)}`, same: eq(docDisc, nowDisc) },
     { label: `VAT ${doc.vatRate ?? 7}%`, doc: formatPrice(docVat), now: formatPrice(nowVat), same: eq(docVat, nowVat) },
-    { label: "รวมทั้งสิ้น", doc: formatPrice(docTotal), now: formatPrice(nowTotal), same: eq(docTotal, nowTotal) },
+    { label: doc.deposit ? "มูลค่างานเต็ม (ใบมัดจำ)" : "รวมทั้งสิ้น", doc: formatPrice(docTotal), now: formatPrice(nowTotal), same: eq(docTotal, nowTotal) },
   ];
   return { doc, docShip, docShipLabel, rows, itemPatch, unmatched, sameTotal: eq(docTotal, nowTotal) };
 }

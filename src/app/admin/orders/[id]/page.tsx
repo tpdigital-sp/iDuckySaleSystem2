@@ -3532,6 +3532,24 @@ export default function AdminOrderDetailPage() {
                       {" · "}บิลจริง/รับชำระที่ FlowAccount — ใบนี้เป็นใบงาน
                     </p>
                   )}
+                  {/* ➗ ใบมัดจำของ FlowAccount: ยอดด้านบนคือมูลค่างานเต็ม · งวดแรกตามใบแจ้งหนี้มัดจำ · รายการอาจมาจากอีกใบ */}
+                  {order.flowAccount?.deposit && (
+                    <p className={muted}>
+                      ➗ มัดจำงวดแรกตามเอกสาร {formatPrice(order.flowAccount.deposit.amount)}
+                      {order.flowAccount.deposit.net != null ? ` (โอนจริง ${formatPrice(order.flowAccount.deposit.net)} หลังหัก ณ ที่จ่าย)` : ""}
+                      {order.flowAccount.deposit.refDocNo
+                        ? ` · ${order.flowAccount.deposit.kind === "deposit" ? "อ้างอิงใบเสนอราคา" : "หักมัดจำตามใบ"} ${order.flowAccount.deposit.refDocNo}`
+                        : ""}
+                      {order.flowAccount.itemsFrom ? (
+                        <>
+                          {" · รายการจาก "}
+                          <a href={order.flowAccount.itemsFrom.url} target="_blank" rel="noreferrer" className="underline">
+                            {order.flowAccount.itemsFrom.docTypeLabel} {order.flowAccount.itemsFrom.docNo} ↗
+                          </a>
+                        </>
+                      ) : null}
+                    </p>
+                  )}
                   {order.flowAccount && mayEdit && <FlowAccountSync order={order} actor={actor} onApply={applyOrder} />}
                   {order.taxInvoice && (
                     <p className={muted}>

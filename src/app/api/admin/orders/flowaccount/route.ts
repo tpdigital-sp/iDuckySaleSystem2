@@ -6,7 +6,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { fetchFlowAccountDoc, parseFlowAccountUrl, type FlowAccountDoc } from "@/lib/server/flowaccount";
+import { fetchFlowAccountDoc, mergeFlowAccountDocs, parseFlowAccountUrl, type FlowAccountDoc } from "@/lib/server/flowaccount";
 import { reportPaidToTP } from "@/lib/server/tp-report";
 import { bumpSoldForOrder } from "@/lib/server/sold";
 import { cutStockForOrder } from "@/lib/server/stock";
@@ -20,8 +20,9 @@ export const runtime = "nodejs";
 /**
  * 📄 สร้างออเดอร์จากลิงก์แชร์ FlowAccount
  *
- * POST { url }                  → อ่านเอกสาร + หาผู้ติดต่อ/ออเดอร์ซ้ำ/วิธีส่ง ให้แอดมินตรวจก่อน (ยังไม่สร้างอะไร)
- * PUT  { ...ข้อมูลที่ตรวจแล้ว }  → สร้างออเดอร์จริง
+ * POST { url, itemsUrl? }       → อ่านเอกสาร + หาผู้ติดต่อ/ออเดอร์ซ้ำ/วิธีส่ง ให้แอดมินตรวจก่อน (ยังไม่สร้างอะไร)
+ *                                 ➗ ใบแจ้งหนี้มัดจำไม่มีรายการสินค้า → itemsUrl = ลิงก์ใบเสนอราคา/ใบยอดคงเหลือ (หรือวาง 2 ลิงก์ใน url เลย) ระบบรวมให้
+ * PUT  { ...ข้อมูลที่ตรวจแล้ว }  → สร้างออเดอร์จริง (deposit มีค่า = เปิดโหมดมัดจำ · สถานะ "ชำระแล้ว" = รับมัดจำงวดแรกแล้ว)
  */
 
 interface ShippingMethod {
@@ -67,11 +68,22 @@ async function shippingMethods(sb: SB): Promise<ShippingMethod[]> {
   return Array.isArray(list) && list.length ? list : DEFAULT_SHIPPING;
 }
 
-/** ออเดอร์ที่เคยสร้างจากเอกสารเลขนี้แล้ว (กันสร้างซ้ำ) */
-async function existingOrdersFor(sb: SB, docNo: string): Promise<{ id: string; status: string }[]> {
-  if (!docNo) return [];
-  const { data } = await sb.from("orders").select("id,data").eq("data->flowAccount->>docNo", docNo).limit(5);
-  return ((data ?? []) as { id: string; data: Order }[]).map((r) => ({ id: r.id, status: r.data.status }));
+/** ออเดอร์ที่เคยสร้างจากเอกสารเลขพวกนี้แล้ว (กันสร้างซ้ำ) — นับทั้งใบหลักและใบที่ดึงรายการมา (ใบมัดจำ + ใบเสนอราคา) */
+async function existingOrdersFor(sb: SB, docNos: string[]): Promise<{ id: string; status: string }[]> {
+  const nos = [...new Set(docNos.filter(Boolean))];
+  if (!nos.length) return [];
+  const [a, b] = await Promise.all([
+    sb.from("orders").select("id,data").in("data->flowAccount->>docNo", nos).limit(5),
+    sb.from("orders").select("id,data").in("data->flowAccount->itemsFrom->>docNo", nos).limit(5),
+  ]);
+  const seen = new Set<string>();
+  const out: { id: string; status: string }[] = [];
+  for (const r of [...((a.data ?? []) as { id: string; data: Order }[]), ...((b.data ?? []) as { id: string; data: Order }[])]) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    out.push({ id: r.id, status: r.data.status });
+  }
+  return out;
 }
 
 export async function POST(req: Request) {
@@ -80,19 +92,22 @@ export async function POST(req: Request) {
   const gate = await requirePerm("orders.edit");
   if (gate.res) return gate.res;
 
-  let body: { url?: string } = {};
+  let body: { url?: string; itemsUrl?: string } = {};
   try {
     body = await req.json();
   } catch {
     /* ไม่มี body */
   }
-  const url = (body.url ?? "").trim();
-  if (!parseFlowAccountUrl(url))
+  // รับได้หลายลิงก์ (ใบมัดจำ + ใบที่มีรายการ) — วางติดกันในช่องเดียว หรือแยกช่อง itemsUrl ก็ได้
+  const links = [...new Set(`${body.url ?? ""} ${body.itemsUrl ?? ""}`.split(/\s+/).map((s) => s.trim()).filter((s) => parseFlowAccountUrl(s)))].slice(0, 3);
+  if (!links.length)
     return NextResponse.json({ error: "วางลิงก์แชร์ของ FlowAccount (share.flowaccount.com/…) ก่อน" }, { status: 400 });
 
   let doc: FlowAccountDoc;
+  let docs: FlowAccountDoc[];
   try {
-    doc = await fetchFlowAccountDoc(url);
+    docs = await Promise.all(links.map((u) => fetchFlowAccountDoc(u)));
+    doc = mergeFlowAccountDocs(docs);
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "อ่านเอกสารไม่สำเร็จ" }, { status: 502 });
   }
@@ -100,7 +115,7 @@ export async function POST(req: Request) {
   const [contact, shipping, existing, rolePerms] = await Promise.all([
     suggestContact(sb, doc),
     shippingMethods(sb),
-    existingOrdersFor(sb, doc.docNo),
+    existingOrdersFor(sb, docs.map((d) => d.docNo)),
     loadRolePerms(),
   ]);
   return NextResponse.json({
@@ -126,6 +141,11 @@ interface CreateBody {
   discount?: number;
   vat?: number;
   vatRate?: number;
+  /**
+   * ➗ เปิดโหมดมัดจำ: amount = งวดแรกรวม VAT (ตามใบแจ้งหนี้มัดจำ · แอดมินแก้ได้) · ไม่ส่ง/null = ใบเต็มจำนวนตามปกติ
+   * status "ชำระแล้ว" คู่กับ deposit = "รับมัดจำงวดแรกแล้ว" (ตั้ง firstPaidAt + paidTotal เท่ากับที่แอดมินกดยืนยันรับมัดจำในหน้าออเดอร์)
+   */
+  deposit?: { amount: number } | null;
   status?: "รอชำระเงิน" | "ชำระแล้ว";
   note?: string;
   useByDate?: string;
@@ -172,6 +192,12 @@ export async function PUT(req: Request) {
   const useByDate = /^\d{4}-\d{2}-\d{2}$/.test(body.useByDate ?? "") ? body.useByDate : undefined;
   const discountAmt = Math.max(0, Number(body.discount ?? doc.discount ?? 0) || 0);
   const vatAmt = Math.round(Math.max(0, Number(body.vat ?? doc.vat ?? 0) || 0) * 100) / 100;
+  const depositAmt = body.deposit && Number(body.deposit.amount) > 0 ? Math.round(Number(body.deposit.amount) * 100) / 100 : 0;
+  const nowIso = now.toISOString();
+  // ใบมัดจำ: ตัวเลขใน flowAccount = มูลค่างานเต็ม (ไม่ใช่ยอดของใบแจ้งหนี้มัดจำใบเดียว) จะได้เทียบกับ orderTotal ได้ตรง ๆ
+  const fa = depositAmt > 0 && doc.deposit ? { subtotal: doc.deposit.fullSubtotal, vat: doc.deposit.fullVat, grandTotal: doc.deposit.fullGrandTotal, wht: doc.deposit.fullWht } : doc;
+  const faNet = fa.grandTotal != null ? Math.round((fa.grandTotal - (fa.wht ?? 0)) * 100) / 100 : doc.net;
+  const docTotal = fa.grandTotal ?? doc.grandTotal;
 
   let order: Order = {
     id,
@@ -187,6 +213,8 @@ export async function PUT(req: Request) {
     status: wantPaid ? "ชำระแล้ว" : "รอชำระเงิน",
     items,
     placedBy: by,
+    // ➗ โหมดมัดจำ (แพตเทิร์นเดียวกับปุ่ม "เปิดโหมดมัดจำ 50%" + "ยืนยันรับมัดจำ" ในหน้าออเดอร์)
+    ...(depositAmt > 0 ? { deposit: { amount: depositAmt, ...(wantPaid ? { firstPaidAt: nowIso } : {}) }, ...(wantPaid ? { paidTotal: depositAmt } : {}) } : {}),
     ...(body.contactId?.trim() ? { contactId: body.contactId.trim() } : {}),
     ...(whtOk ? { wht: whtOk } : {}),
     // ยอดต้องเท่าบิล FlowAccount ทุกบาท: ส่วนลดตามใบ + VAT 7% ตามใบ (ราคาสินค้าเป็นราคาก่อน VAT)
@@ -206,35 +234,59 @@ export async function PUT(req: Request) {
       docTypeLabel: doc.docTypeLabel,
       docNo: doc.docNo,
       ...(doc.date ? { date: doc.date } : {}),
-      ...(doc.subtotal != null ? { subtotal: doc.subtotal } : {}),
-      ...(doc.vat != null ? { vat: doc.vat } : {}),
-      ...(doc.grandTotal != null ? { grandTotal: doc.grandTotal } : {}),
-      ...(doc.wht != null ? { wht: doc.wht } : {}),
-      ...(doc.net != null ? { net: doc.net } : {}),
-      fetchedAt: now.toISOString(),
+      ...(fa.subtotal != null ? { subtotal: fa.subtotal } : {}),
+      ...(fa.vat != null ? { vat: fa.vat } : {}),
+      ...(fa.grandTotal != null ? { grandTotal: fa.grandTotal } : {}),
+      ...(fa.wht != null ? { wht: fa.wht } : {}),
+      ...(faNet != null ? { net: faNet } : {}),
+      ...(depositAmt > 0
+        ? {
+            deposit: {
+              // ใบเสนอราคา/ใบธรรมดาที่แอดมินติ๊กเปิดมัดจำเอง = manual (ไม่มีใบแจ้งหนี้มัดจำอ้างอิง)
+              kind: doc.deposit?.kind ?? "manual",
+              amount: depositAmt,
+              ...(doc.deposit ? { amountBeforeVat: doc.deposit.amountBeforeVat } : {}),
+              ...(doc.deposit?.refDocNo ? { refDocNo: doc.deposit.refDocNo } : {}),
+              // โอนจริงงวดแรก = มัดจำ − หัก ณ ที่จ่ายส่วนของงวดแรก (ตามสัดส่วน)
+              ...(whtOk && fa.grandTotal ? { net: Math.round((depositAmt - (whtOk.amount * depositAmt) / fa.grandTotal) * 100) / 100 } : {}),
+            },
+          }
+        : {}),
+      ...(doc.itemsFrom ? { itemsFrom: doc.itemsFrom } : {}),
+      fetchedAt: nowIso,
     },
   };
   const total = orderTotal(order);
-  const mismatch = doc.grandTotal != null && Math.abs(doc.grandTotal - total) >= 0.01;
+  const mismatch = docTotal != null && Math.abs(docTotal - total) >= 0.01;
+  const depNote =
+    depositAmt > 0
+      ? ` · ➗ มัดจำงวดแรก ${depositAmt.toLocaleString("th-TH")} บาท${doc.deposit?.refDocNo ? ` (อ้างอิง ${doc.deposit.refDocNo})` : ""}${
+          doc.itemsFrom ? ` · รายการจาก ${doc.itemsFrom.docTypeLabel} ${doc.itemsFrom.docNo}` : ""
+        }`
+      : "";
   order = withLog(
     order,
     by,
     "สร้างจากลิงก์ FlowAccount",
-    `${doc.docTypeLabel} ${doc.docNo} · ยอดรวม ${total.toLocaleString("th-TH")} บาท${doc.vat ? " (รวม VAT)" : ""}${
-      mismatch ? ` ⚠️ ไม่ตรงกับยอดในเอกสาร ${doc.grandTotal!.toLocaleString("th-TH")} บาท (แอดมินแก้รายการ/ค่าส่งก่อนสร้าง)` : ""
+    `${doc.docTypeLabel} ${doc.docNo} · ยอดรวม ${total.toLocaleString("th-TH")} บาท${vatAmt ? " (รวม VAT)" : ""}${depNote}${
+      mismatch ? ` ⚠️ ไม่ตรงกับยอดในเอกสาร ${docTotal!.toLocaleString("th-TH")} บาท (แอดมินแก้รายการ/ค่าส่งก่อนสร้าง)` : ""
     }`
   );
-  if (wantPaid) order = withLog(order, by, "ยืนยันเงินเข้า (FlowAccount)", "รับชำระตามเอกสาร FlowAccount — ไม่มีสลิปในระบบนี้");
+  if (wantPaid)
+    order = depositAmt > 0
+      ? withLog(order, by, "ยืนยันรับมัดจำ 50% (FlowAccount)", `ยอด ${depositAmt.toLocaleString("th-TH")} บาท ตามเอกสาร FlowAccount ${doc.docNo} — ไม่มีสลิปในระบบนี้`)
+      : withLog(order, by, "ยืนยันเงินเข้า (FlowAccount)", "รับชำระตามเอกสาร FlowAccount — ไม่มีสลิปในระบบนี้");
 
   const { error } = await sb.from("orders").insert({ id, data: order });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // ชำระแล้วตั้งแต่สร้าง = ผลข้างเคียงชุดเดียวกับตอนแอดมินกดเปลี่ยนสถานะ (msVerify · ตัดสต๊อก · ยอดขาย · แต้ม)
   if (wantPaid) {
-    void reportPaidToTP(order, by, { noteSuffix: `FlowAccount ${doc.docNo}` });
+    // ใบมัดจำ: รายงาน msVerify เป็นงวดแรก (ยอดมัดจำ) · แต้มรอให้ครบ 100% (เหมือน PATCH ปกติที่ข้าม awardPoints เมื่อมี deposit)
+    void reportPaidToTP(order, by, depositAmt > 0 ? { amount: depositAmt, noteSuffix: `มัดจำ 50% งวดแรก · FlowAccount ${doc.docNo}` } : { noteSuffix: `FlowAccount ${doc.docNo}` });
     void cutStockForOrder(order);
     void bumpSoldForOrder(order.id);
-    void awardPointsForOrder(order);
+    if (depositAmt <= 0) void awardPointsForOrder(order);
   }
   return NextResponse.json({ ok: true, id });
 }

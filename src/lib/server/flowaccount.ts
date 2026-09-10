@@ -58,9 +58,44 @@ export interface FlowAccountDoc {
   /** ยอดชำระหลังหัก ณ ที่จ่าย */
   net?: number;
   note?: string;
+  /** ชื่อชนิดเอกสารตามหัวใบจริง เช่น "ใบวางบิล/ใบแจ้งหนี้" (มีเฉพาะทาง JSON) */
+  title?: string;
+  /** ➗ ใบที่เกี่ยวกับมัดจำ — ใบแจ้งหนี้มัดจำ (ไม่มีรายการสินค้า) หรือใบยอดคงเหลือที่หักมัดจำแล้ว */
+  deposit?: FlowAccountDeposit;
+  /** รายการสินค้าดึงมาจากเอกสารอีกใบ (ใบมัดจำไม่มีรายการ → วางลิงก์ใบเสนอราคา/ใบยอดคงเหลือเพิ่ม) */
+  itemsFrom?: { url: string; docNo: string; docTypeLabel: string };
   /** ข้อความทั้งหมดที่อ่านได้ (ไว้ดูตอนอ่านพลาด) */
   rawText: string;
 }
+
+/**
+ * ➗ ข้อมูลมัดจำที่อ่านจากเอกสาร (เจ้าของร้านขอ 10 ก.ย. 69 — ใบแจ้งหนี้มัดจำ 50% อ่านไม่ได้)
+ * FlowAccount ออกใบมัดจำเป็น 2 ใบ:
+ *   1) ใบแจ้งหนี้มัดจำ (BL002072): รายการเดียว "รับมัดจำ · ใบเสนอราคาเลขที่ QT010613 มูลค่า 125,190 บาท" ยอด 58,500 + VAT
+ *      → ไม่ใช่งานผลิต ต้องตัดออกจากรายการ และรู้มูลค่างานเต็มจากบรรทัดนั้น
+ *   2) ใบยอดคงเหลือ (BL002073): รายการสินค้าเต็ม 117,000 แต่ท้ายใบ "หักเงินมัดจำ BL002072 58,500" (ก่อน VAT)
+ *      แล้วคิด VAT จากส่วนที่เหลือ → รวมทั้งสิ้น 62,595 ไม่ใช่ยอดงานเต็ม
+ * ออเดอร์ในระบบต้องเป็น "ยอดเต็ม" + โหมดมัดจำ (Order.deposit.amount = งวดแรกรวม VAT) ทั้งสองกรณี
+ */
+export interface FlowAccountDeposit {
+  /** deposit = ใบแจ้งหนี้มัดจำ · balance = ใบยอดคงเหลือที่หักมัดจำแล้ว */
+  kind: "deposit" | "balance";
+  /** เลขเอกสารที่อ้างถึง — ใบมัดจำ: ใบเสนอราคาต้นทาง (QT…) · ใบยอดคงเหลือ: ใบมัดจำที่ถูกหัก (BL…) */
+  refDocNo?: string;
+  /** ยอดมัดจำก่อน VAT (บาท) */
+  amountBeforeVat: number;
+  /** ยอดมัดจำรวม VAT (บาท) = งวดแรกที่ลูกค้าต้องโอน (ก่อนหัก ณ ที่จ่าย) */
+  amount: number;
+  /** มูลค่างานเต็มทั้งใบ เท่าที่เอกสารบอก (ก่อน VAT / VAT / รวม VAT / หัก ณ ที่จ่ายทั้งใบ) */
+  fullSubtotal?: number;
+  fullVat?: number;
+  fullGrandTotal?: number;
+  fullWht?: number;
+  /** ยอดคงเหลืองวดหลัง (รวม VAT) */
+  remaining?: number;
+}
+
+type Parsed = Omit<FlowAccountDoc, "url" | "docType" | "docTypeLabel">;
 
 /** ตัวย่อในลิงก์ → ชื่อชนิดเอกสารที่ doc-api ใช้ (ถอดจากบันเดิลของหน้าแชร์) */
 const DOC_TYPES: Record<string, { api: string; label: string }> = {
@@ -101,7 +136,7 @@ interface LV {
   label?: string | null;
   value?: unknown;
 }
-interface ShareModel {
+export interface ShareModel {
   header: Record<string, LV>;
   body: {
     productItem?: { value?: Record<string, unknown>[] };
@@ -160,9 +195,9 @@ const money = (v: unknown): number | undefined => {
 };
 const str = (lv: LV | undefined): string => String(lv?.value ?? "").trim();
 
-function parseModel(m: ShareModel, serial?: string): Omit<FlowAccountDoc, "url" | "docType" | "docTypeLabel"> {
+export function parseShareModel(m: ShareModel, serial?: string): Parsed {
   const h = m.header;
-  const out: Omit<FlowAccountDoc, "url" | "docType" | "docTypeLabel"> = {
+  const out: Parsed = {
     docNo: str(h.documentSerial) || serial || "",
     date: str(h.publishedOn) || undefined,
     customer: { name: "", address: "" },
@@ -170,6 +205,8 @@ function parseModel(m: ShareModel, serial?: string): Omit<FlowAccountDoc, "url" 
     rawText: "",
     source: "json",
   };
+  const title = str(h.title);
+  if (title) out.title = title;
 
   // บล็อกลูกค้า: บรรทัดแรก = ชื่อ (+สาขาในวงเล็บ) · บรรทัดถัดไป = ที่อยู่ · บรรทัด "เลขประจำตัวผู้เสียภาษี …" = เลข 13 หลัก
   const lines = str(h.contact)
@@ -201,9 +238,20 @@ function parseModel(m: ShareModel, serial?: string): Omit<FlowAccountDoc, "url" 
   const ship = str(h.contactShippingAddress) || str(m.body.shippingAddress) || str(h.shippingAddress);
   if (ship) out.customer.shippingAddress = ship.replace(/\s+/g, " ").trim();
 
+  const depHints: DepositHints = {};
   for (const it of m.body.productItem?.value ?? []) {
     const name = String(it.name ?? "").trim();
     if (!name) continue;
+    // บรรทัด "รับมัดจำ" ทาง JSON บอกใบเสนอราคาที่อ้าง + มูลค่างานเต็มเป็นฟิลด์ตรง ๆ (แม่นกว่าอ่านจากข้อความ)
+    if (DEPOSIT_LINE_RE.test(name)) {
+      if (!depHints.refDocNo && typeof it.documentSerial === "string" && it.documentSerial.trim()) depHints.refDocNo = it.documentSerial.trim();
+      const g = money(it.documentGrandTotal);
+      if (g && g > 0) depHints.fullGrandTotal = g;
+      const sub = money(it.documentTotalWithOutVat);
+      if (sub && sub > 0) depHints.fullSubtotal = sub;
+      const w = money(it.withHeldPerItemValue);
+      if (w && w > 0 && !/ไม่หัก/.test(String(it.withHeldPerItem ?? ""))) depHints.fullWht = w;
+    }
     const qty = money(it.quantity) ?? 1;
     const unitPrice = money(it.pricePerUnit) ?? 0;
     const lineDiscount = money(it.discountPerItemValue) ?? 0;
@@ -236,7 +284,134 @@ function parseModel(m: ShareModel, serial?: string): Omit<FlowAccountDoc, "url" 
   const remark = str(m.body.remark);
   if (remark) out.note = remark;
   out.rawText = [str(h.contact), ...out.items.map((i) => `${i.name} ×${i.qty} @${i.unitPrice}\n${i.detail}`), remark].join("\n---\n");
+  // ท้ายใบยอดคงเหลือ: "หักเงินมัดจำ BL002072" + "จำนวนเงินหลังหักมัดจำ"
+  depHints.deducted = pos(s.depositAmount);
+  depHints.deductedLabel = String(s.depositAmount?.label ?? "");
+  depHints.afterDeposit = money(s.totalAfterDeposit?.value);
+  finalizeDeposit(out, depHints);
   return out;
+}
+
+/* ────────────────────────────── ➗ มัดจำ ────────────────────────────── */
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+/** บรรทัดรายการที่เป็น "รับมัดจำ" — ไม่ใช่งานผลิต */
+const DEPOSIT_LINE_RE = /^(รับ)?(เงิน)?มัดจำ|^deposit/i;
+const DOC_NO_RE = /([A-Z]{1,6}\d{3,}[\w-]*)/;
+
+interface DepositHints {
+  /** ยอด "หักเงินมัดจำ" ท้ายใบ + ป้าย (มีเลขใบมัดจำ) + "จำนวนเงินหลังหักมัดจำ" */
+  deducted?: number;
+  deductedLabel?: string;
+  afterDeposit?: number;
+  /** จากฟิลด์โครงสร้างของบรรทัด "รับมัดจำ" (ทาง JSON): ใบเสนอราคาที่อ้าง + มูลค่างานเต็ม + หัก ณ ที่จ่ายทั้งใบ */
+  refDocNo?: string;
+  fullGrandTotal?: number;
+  fullSubtotal?: number;
+  fullWht?: number;
+}
+
+/**
+ * ตัดสินว่าเอกสารเป็นใบมัดจำแบบไหน แล้วเติม out.deposit (ไม่ใช่ใบมัดจำ = ไม่ทำอะไร)
+ * เรียกหลังอ่านรายการ/สรุปยอดครบแล้ว ทั้งทาง JSON และทาง PDF
+ */
+function finalizeDeposit(out: Parsed, hints: DepositHints) {
+  const vatRate = out.vatRate ?? (out.vat ? 7 : 0);
+  const vatMul = 1 + vatRate / 100;
+  const whtOf = (base: number | undefined) => (base != null && out.whtRate ? round2((base * out.whtRate) / 100) : undefined);
+
+  const depLines = out.items.filter((it) => DEPOSIT_LINE_RE.test(it.name));
+  if (depLines.length) {
+    // ใบแจ้งหนี้มัดจำ — "รับมัดจำ · ใบเสนอราคาเลขที่ QT010613 มูลค่า 125,190.00 บาท" ตัดออกจากรายการงาน
+    out.items = out.items.filter((it) => !DEPOSIT_LINE_RE.test(it.name));
+    const text = depLines.map((l) => `${l.name} ${l.detail}`).join(" ");
+    const amountBeforeVat = round2(depLines.reduce((s, l) => s + l.amount, 0));
+    // ใบที่มีแต่บรรทัดมัดจำ: ยอดรวมทั้งสิ้นของใบ = มัดจำรวม VAT พอดี (กันปัดเศษต่างจากเอกสาร)
+    const amount = !out.items.length && out.grandTotal != null ? out.grandTotal : round2(amountBeforeVat * vatMul);
+    const refDocNo =
+      hints.refDocNo ||
+      text.match(/(?:ใบเสนอราคา|ใบแจ้งหนี้|ใบวางบิล|เลขที่|quotation|invoice)\s*(?:เลขที่)?\s*#?\s*([A-Z]{1,6}\d{3,}[\w-]*)/i)?.[1];
+    const fullGrandTotal = hints.fullGrandTotal ?? money(text.match(/มูลค่า\s*([\d,]+(?:\.\d+)?)/)?.[1]);
+    const fullSubtotal = hints.fullSubtotal ?? (fullGrandTotal != null ? round2(fullGrandTotal / vatMul) : undefined);
+    const fullVat = fullGrandTotal != null && fullSubtotal != null ? round2(fullGrandTotal - fullSubtotal) : undefined;
+    out.deposit = {
+      kind: "deposit",
+      ...(refDocNo ? { refDocNo } : {}),
+      amountBeforeVat,
+      amount,
+      ...(fullSubtotal != null ? { fullSubtotal } : {}),
+      ...(fullVat != null ? { fullVat } : {}),
+      ...(fullGrandTotal != null ? { fullGrandTotal } : {}),
+      ...((hints.fullWht ?? whtOf(fullSubtotal)) != null ? { fullWht: hints.fullWht ?? whtOf(fullSubtotal) } : {}),
+      ...(fullGrandTotal != null ? { remaining: round2(Math.max(0, fullGrandTotal - amount)) } : {}),
+    };
+    return;
+  }
+
+  if (hints.deducted && hints.deducted > 0) {
+    // ใบยอดคงเหลือ — รายการสินค้าเต็ม แต่ท้ายใบหักมัดจำก่อนคิด VAT (VAT ในใบ = เฉพาะส่วนที่เหลือ)
+    const itemsSum = round2(out.items.reduce((s, it) => s + it.amount, 0));
+    const base = round2((out.subtotal ?? itemsSum) - (out.discount ?? 0));
+    const beforeVat =
+      hints.afterDeposit != null
+        ? Math.abs(base - hints.deducted - hints.afterDeposit) < 0.01
+        : out.vat == null || Math.abs(round2(((base - hints.deducted) * vatRate) / 100) - out.vat) < 0.01;
+    const amountBeforeVat = beforeVat ? hints.deducted : round2(hints.deducted / vatMul);
+    const amount = round2(amountBeforeVat * vatMul);
+    const fullVat = vatRate ? round2((base * vatRate) / 100) : 0;
+    const fullGrandTotal = round2(base + fullVat);
+    const fullWht = whtOf(base);
+    out.deposit = {
+      kind: "balance",
+      ...(hints.deductedLabel?.match(DOC_NO_RE)?.[1] ? { refDocNo: hints.deductedLabel.match(DOC_NO_RE)![1] } : {}),
+      amountBeforeVat,
+      amount,
+      fullSubtotal: base,
+      fullVat,
+      fullGrandTotal,
+      ...(fullWht != null ? { fullWht } : {}),
+      remaining: out.grandTotal ?? round2(Math.max(0, fullGrandTotal - amount)),
+    };
+  }
+}
+
+/**
+ * รวมเอกสารหลายใบเป็นใบเดียวไว้สร้างออเดอร์ — ใบมัดจำไม่มีรายการสินค้า ให้แอดมินวางลิงก์ใบเสนอราคา/ใบยอดคงเหลือเพิ่ม
+ * ใบหลัก (flowAccount ของออเดอร์) = ใบมัดจำ (ลูกค้าชำระใบนี้ก่อน) · รายการ/ส่วนลด/มูลค่าเต็ม = จากใบที่มีรายการ
+ */
+export function mergeFlowAccountDocs(docs: FlowAccountDoc[]): FlowAccountDoc {
+  const main = docs.find((d) => d.deposit?.kind === "deposit") ?? docs[0];
+  const itemsDoc = docs.find((d) => d.items.length) ?? main;
+  if (itemsDoc === main) return main;
+  const dep = main.deposit;
+  const full = itemsDoc.deposit; // ใบยอดคงเหลือรู้มูลค่าเต็มอยู่แล้ว · ใบเสนอราคา = ยอดเต็มของใบนั้นเอง
+  const itemsDisc = itemsDoc.discount ?? 0;
+  const fullSubtotal = dep?.fullSubtotal ?? full?.fullSubtotal ?? (itemsDoc.subtotal != null ? round2(itemsDoc.subtotal - itemsDisc) : undefined);
+  const fullVat = dep?.fullVat ?? full?.fullVat ?? itemsDoc.vat;
+  const fullGrandTotal = dep?.fullGrandTotal ?? full?.fullGrandTotal ?? itemsDoc.grandTotal;
+  const fullWht = dep?.fullWht ?? full?.fullWht ?? itemsDoc.wht;
+  const cust = Object.fromEntries(Object.entries(main.customer).filter(([, v]) => v)) as Partial<FlowAccountDoc["customer"]>;
+  return {
+    ...main,
+    customer: { ...itemsDoc.customer, ...cust },
+    items: itemsDoc.items,
+    discount: dep?.kind === "deposit" ? itemsDoc.discount : main.discount,
+    note: main.note || itemsDoc.note,
+    itemsFrom: { url: itemsDoc.url, docNo: itemsDoc.docNo, docTypeLabel: itemsDoc.docTypeLabel },
+    ...(dep
+      ? {
+          deposit: {
+            ...dep,
+            ...(fullSubtotal != null ? { fullSubtotal } : {}),
+            ...(fullVat != null ? { fullVat } : {}),
+            ...(fullGrandTotal != null ? { fullGrandTotal } : {}),
+            ...(fullWht != null ? { fullWht } : {}),
+            ...(fullGrandTotal != null ? { remaining: round2(Math.max(0, fullGrandTotal - dep.amount)) } : {}),
+          },
+        }
+      : {}),
+    rawText: `${main.rawText}\n=====\n${itemsDoc.rawText}`,
+  };
 }
 
 /* ────────────────────────────── ทาง 2 (สำรอง): PDF ────────────────────────────── */
@@ -381,7 +556,7 @@ function tableHeader(toks: Tok[]): Cols | null {
 }
 
 const TOTAL_KEYS =
-  /^(รวมเป็นเงิน|ส่วนลด|ภาษีมูลค่าเพิ่ม|จำนวนเงินรวมทั้งสิ้น|รวมทั้งสิ้น|ยอดรวมทั้งสิ้น|หักภาษี|หักณ|ยอดชำระ|Subtotal|Discount|VAT|GrandTotal|Total|Withholding|NetAmount|Amountdue)/i;
+  /^(รวมเป็นเงิน|ส่วนลด|ภาษีมูลค่าเพิ่ม|จำนวนเงินรวมทั้งสิ้น|รวมทั้งสิ้น|ยอดรวมทั้งสิ้น|หักภาษี|หักณ|หักเงินมัดจำ|หักมัดจำ|จำนวนเงินหลังหัก|ยอดชำระ|Subtotal|Discount|VAT|GrandTotal|Total|Withholding|NetAmount|Amountdue)/i;
 
 /** ชื่อลูกค้า + แยก "(สำนักงานใหญ่)" / "(สาขา 00002)" ออกเป็น branch */
 function setCustomerName(out: { customer: FlowAccountDoc["customer"] }, line: string) {
@@ -394,14 +569,15 @@ function setCustomerName(out: { customer: FlowAccountDoc["customer"] }, line: st
   out.customer.name = name;
 }
 
-export function parseRows(rows: Row[]): Omit<FlowAccountDoc, "url" | "docType" | "docTypeLabel"> {
+export function parseRows(rows: Row[]): Parsed {
   const raw = rows.map((r) => text(r.toks)).join("\n");
-  const out: Omit<FlowAccountDoc, "url" | "docType" | "docTypeLabel"> = {
+  const out: Parsed = {
     docNo: "",
     customer: { name: "", address: "" },
     items: [],
     rawText: raw,
   };
+  const depHints: DepositHints = {};
 
   type Phase = "head" | "customer" | "items" | "totals" | "note" | "done";
   let phase: Phase = "head";
@@ -526,6 +702,17 @@ export function parseRows(rows: Row[]): Omit<FlowAccountDoc, "url" | "docType" |
         continue;
       }
       if (n == null) continue;
+      // ➗ ใบมัดจำ: "จำนวนเงินหลังหักมัดจำ" ต้องมาก่อน "หักเงินมัดจำ" (คำซ้อนกัน) · "ยอดชำระคงเหลือ" ซ้ำกับรวมทั้งสิ้น ข้ามไป
+      if (/หลังหักมัดจำ/.test(fullSq)) {
+        depHints.afterDeposit ??= n;
+        continue;
+      }
+      if (/หักเงินมัดจำ|หักมัดจำ/.test(fullSq)) {
+        depHints.deducted ??= n;
+        depHints.deductedLabel ??= full;
+        continue;
+      }
+      if (/คงเหลือ/.test(fullSq)) continue;
       if (/รวมเป็นเงิน|^Subtotal/i.test(fullSq)) out.subtotal ??= n;
       else if (/ส่วนลด|Discount/i.test(fullSq)) out.discount ??= n;
       else if (/ภาษีมูลค่าเพิ่ม|VAT/i.test(fullSq)) {
@@ -557,6 +744,7 @@ export function parseRows(rows: Row[]): Omit<FlowAccountDoc, "url" | "docType" |
   // ใบไม่มี VAT/หัก ณ ที่จ่าย → ยอดรวมทั้งสิ้น = ยอดชำระ
   if (out.grandTotal == null && out.subtotal != null) out.grandTotal = out.subtotal - (out.discount ?? 0) + (out.vat ?? 0);
   if (out.net == null && out.grandTotal != null) out.net = out.grandTotal - (out.wht ?? 0);
+  finalizeDeposit(out, depHints);
   return out;
 }
 
@@ -565,23 +753,24 @@ export async function fetchFlowAccountDoc(url: string): Promise<FlowAccountDoc> 
   const ref = parseFlowAccountUrl(url);
   if (!ref) throw new Error("ไม่ใช่ลิงก์แชร์ของ FlowAccount (ต้องขึ้นต้นด้วย share.flowaccount.com/…)");
   // ทาง 1: JSON (แม่น) → ไม่ได้ค่อยอ่านจาก PDF
-  let parsed: Omit<FlowAccountDoc, "url" | "docType" | "docTypeLabel"> | null = null;
+  let parsed: Parsed | null = null;
   const share = await fetchShareModel(ref);
   if (share) {
-    const p = parseModel(share.model, share.serial);
-    if (p.items.length || p.customer.name) parsed = p;
+    const p = parseShareModel(share.model, share.serial);
+    if (p.items.length || p.customer.name || p.deposit) parsed = p;
   }
   if (!parsed) {
     const pdf = await fetchSharePdf(ref);
     const rows = await pdfRows(pdf);
     parsed = { ...parseRows(rows), source: "pdf" };
   }
-  if (!parsed.items.length && !parsed.customer.name)
+  if (!parsed.items.length && !parsed.customer.name && !parsed.deposit)
     throw new Error("อ่านเอกสารได้แต่ไม่พบรายการ/ชื่อลูกค้า — เทมเพลตอาจต่างจากที่ระบบรู้จัก");
   return {
     url: `https://share.flowaccount.com/${ref.docType}/${ref.culture}/${ref.hash}`,
     docType: ref.docType,
-    docTypeLabel: flowAccountDocLabel(ref.docType),
+    // ชื่อตามหัวใบจริง ("ใบวางบิล/ใบแจ้งหนี้") ถ้าอ่านได้ — ตัวย่อในลิงก์ (bl) บอกแค่หมวด
+    docTypeLabel: parsed.title || flowAccountDocLabel(ref.docType),
     ...parsed,
   };
 }

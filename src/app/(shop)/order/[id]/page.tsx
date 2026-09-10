@@ -681,12 +681,38 @@ export default function CustomerOrderPage() {
       {order.status === "รอชำระเงิน" && order.flowAccount && (
         <div className="ord-note mt-4 p-4">
           <p className="ord-title text-[.96rem]" style={{ color: "inherit" }}>
-            📄 ชำระตาม{order.flowAccount.docTypeLabel} {order.flowAccount.docNo}
+            📄 {order.deposit && !order.deposit.firstPaidAt ? "โอนมัดจำงวดแรกตาม" : "ชำระตาม"}
+            {order.flowAccount.docTypeLabel} {order.flowAccount.docNo}
           </p>
           <p className="mt-1 text-xs leading-relaxed">
-            ออเดอร์นี้ออกเอกสารผ่านระบบบัญชีของร้านแล้ว — ชำระตามยอดในเอกสาร
-            {order.flowAccount.grandTotal != null ? ` (${formatPrice(order.flowAccount.grandTotal)} รวม VAT)` : ""} แล้วแจ้งทางร้านได้เลย
-            ไม่ต้องแนบสลิปในหน้านี้
+            {order.deposit && !order.deposit.firstPaidAt ? (
+              // ➗ ใบมัดจำ 50% ของ FlowAccount: งวดแรกตามใบแจ้งหนี้มัดจำ · ยอดคงเหลือเก็บก่อนจัดส่ง
+              <>
+                ออเดอร์นี้ตกลงมัดจำก่อนเริ่มงาน — โอนมัดจำ {formatPrice(Math.min(orderTotal(order), order.deposit.amount))} ตามเอกสาร
+                {order.flowAccount.deposit?.net != null ? ` (โอนจริง ${formatPrice(order.flowAccount.deposit.net)} หลังหัก ณ ที่จ่าย)` : ""} แล้วแจ้งทางร้านได้เลย
+                ไม่ต้องแนบสลิปในหน้านี้ · ยอดคงเหลือ {formatPrice(Math.max(0, orderTotal(order) - order.deposit.amount))} ชำระก่อนจัดส่ง
+              </>
+            ) : (
+              <>
+                ออเดอร์นี้ออกเอกสารผ่านระบบบัญชีของร้านแล้ว — ชำระตามยอดในเอกสาร
+                {order.flowAccount.grandTotal != null ? ` (${formatPrice(order.flowAccount.grandTotal)} รวม VAT)` : ""} แล้วแจ้งทางร้านได้เลย
+                ไม่ต้องแนบสลิปในหน้านี้
+              </>
+            )}
+          </p>
+          <a href={order.flowAccount.url} target="_blank" rel="noreferrer" className="ord-btn sm mt-3 inline-block">
+            เปิดเอกสาร ↗
+          </a>
+        </div>
+      )}
+      {/* ➗ ใบมัดจำ FlowAccount ที่รับงวดแรกแล้ว: บอกยอดคงเหลือ (กล่องแนบสลิปปกติปิดไว้สำหรับใบ FlowAccount) */}
+      {order.flowAccount && order.deposit?.firstPaidAt && !order.deposit.settledAt && !cancelled && (
+        <div className="ord-note mt-4 p-4">
+          <p className="ord-title text-[.96rem]" style={{ color: "inherit" }}>
+            📄 ยอดคงเหลืองวดหลัง {formatPrice(Math.max(0, orderTotal(order) - paidSoFar(order)))}
+          </p>
+          <p className="mt-1 text-xs leading-relaxed">
+            รับมัดจำงวดแรกแล้ว ✓ — ยอดคงเหลือชำระตามเอกสารของร้าน (ใบแจ้งหนี้ยอดคงเหลือ) ก่อนจัดส่ง แล้วแจ้งทางร้านได้เลย ไม่ต้องแนบสลิปในหน้านี้
           </p>
           <a href={order.flowAccount.url} target="_blank" rel="noreferrer" className="ord-btn sm mt-3 inline-block">
             เปิดเอกสาร ↗

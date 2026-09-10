@@ -686,6 +686,15 @@ export interface Order {
     grandTotal?: number;
     wht?: number;
     net?: number;
+    /**
+     * ➗ ใบมัดจำ 50% ของ FlowAccount (10 ก.ย. 69) — ออเดอร์เป็น "ยอดเต็ม" + Order.deposit.amount = งวดแรกรวม VAT
+     * kind deposit = ใบหลักคือใบแจ้งหนี้มัดจำ (refDocNo = ใบเสนอราคาที่อ้าง) · balance = ใบหลักคือใบยอดคงเหลือ (refDocNo = ใบมัดจำที่ถูกหัก)
+     * · manual = แอดมินติ๊กเปิดโหมดมัดจำเองจากใบเสนอราคา/ใบธรรมดา (ระบบคิดครึ่งหนึ่ง แก้ได้)
+     * subtotal/vat/grandTotal/wht/net ด้านบนของใบมัดจำ = มูลค่างานเต็ม (ไม่ใช่ยอดของใบแจ้งหนี้มัดจำใบเดียว)
+     */
+    deposit?: { kind: "deposit" | "balance" | "manual"; amount: number; amountBeforeVat?: number; refDocNo?: string; net?: number };
+    /** รายการสินค้าดึงมาจากเอกสารอีกใบ (ใบมัดจำไม่มีรายการ → ใบเสนอราคา/ใบยอดคงเหลือ) */
+    itemsFrom?: { url: string; docNo: string; docTypeLabel: string };
     fetchedAt: string;
   };
   /** ข้อมูลออกใบกำกับภาษีของลูกค้า (ดึงจาก FlowAccount หรือแอดมินกรอก) */
