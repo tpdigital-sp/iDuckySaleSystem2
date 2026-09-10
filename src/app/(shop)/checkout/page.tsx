@@ -361,7 +361,8 @@ export default function CheckoutPage() {
     })),
     productOf
   );
-  const earlyPay = appendTo || isDealer ? 0 : earlyPayAmount(earlyPayGoods, earlyPayOf(payment));
+  //    ไม่ใช้ร่วมกับส่วนลดระดับสมาชิก/คูปอง — มีส่วนลดอื่นแล้วไม่ลดโอนไวอีก (เจ้าของร้านสั่ง 10 ก.ย. 69)
+  const earlyPay = appendTo || isDealer || discount > 0 ? 0 : earlyPayAmount(earlyPayGoods, earlyPayOf(payment));
   const total = Math.max(0, subtotal - discount - earlyPay + shippingCost);
 
   async function submit() {

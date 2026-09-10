@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { earlyPayState, lockEarlyPay, orderTotal, paidSoFar, paidStatusFor, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
+import { earlyPayState, lockEarlyPay, orderOtherDiscounts, orderTotal, paidSoFar, paidStatusFor, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
 import { expectedForPhase, type SlipPhase } from "@/lib/payments";
 import { earlyPayAmount, earlyPayBase, earlyPayOf, type EarlyPayDiscount } from "@/lib/early-pay";
 import { getProductServer } from "@/lib/products-server";
@@ -122,7 +122,7 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
    */
   let earlyPayAllowed = 0;
   // 🤝 ออเดอร์ตัวแทนจำหน่ายไม่มีส่วนลดโอนไว — ห้ามยอมรับสลิปที่โอนขาด ฿5/฿10
-  if (!order.earlyPay && !order.dealer && paidSoFar(order) <= 0) {
+  if (!order.earlyPay && !order.dealer && paidSoFar(order) <= 0 && orderOtherDiscounts(order) <= 0) {
     try {
       const { data: settRow } = await sb.from("products").select("data").eq("id", "__shop_payment__").maybeSingle();
       const prods = new Map<string, Product>();

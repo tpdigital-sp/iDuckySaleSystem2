@@ -256,7 +256,8 @@ export async function POST(req: Request) {
     // ตัวแทนจำหน่ายไม่ได้ส่วนลดโอนไว (ได้ราคาเรทตัวแทนอย่างเดียว — ตรงกับพรีวิวหน้า checkout)
     // ⏳ ต้องแจ้งโอนภายในเวลา (ค่าเริ่มต้น 1 ชั่วโมง) — แช่เวลาหมดอายุไว้ในใบ ทุกหน้าจอคิดยอดจากตรงนี้เอง
     const expiresAt = earlyPayExpiresAt(cfg, now);
-    if (amount > 0 && !dealer) earlyPay = { label: EARLY_PAY_LABEL, amount, ...(expiresAt ? { expiresAt } : {}) };
+    // ไม่ใช้ร่วมกับส่วนลดระดับสมาชิก/คูปอง (มีส่วนลดอื่นแล้วไม่ลดโอนไวอีก — ตรงกับพรีวิวหน้า checkout)
+    if (amount > 0 && !dealer && !discount) earlyPay = { label: EARLY_PAY_LABEL, amount, ...(expiresAt ? { expiresAt } : {}) };
   } catch {
     // อ่านตั้งค่าไม่ได้ = ไม่ลด ดีกว่าสั่งซื้อไม่สำเร็จ (แอดมินใส่ส่วนลดเองได้ที่หน้าออเดอร์)
   }

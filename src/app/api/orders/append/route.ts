@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderTotal, paidSoFar, withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
+import { orderOtherDiscounts, orderTotal, paidSoFar, withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
 import { dealerRateOf, type Product } from "@/lib/products";
 import { earlyPayAmount, earlyPayBase, earlyPayExpiresAt, earlyPayOf, EARLY_PAY_LABEL, type EarlyPayDiscount } from "@/lib/early-pay";
 import { getProductServer, withUnitYield } from "@/lib/products-server";
@@ -73,7 +73,7 @@ export async function POST(req: Request) {
    * ใบที่มีส่วนลดอยู่แล้ว = ไม่คิดซ้ำ (เหมือนส่วนลดระดับ) · ตัวแทนไม่ได้ · เวลาหมดอายุนับจากตอนสั่งเพิ่มครั้งนี้
    */
   let earlyPay = order.earlyPay;
-  if (!earlyPay && !order.dealer && paidSoFar(order) <= 0) {
+  if (!earlyPay && !order.dealer && paidSoFar(order) <= 0 && orderOtherDiscounts(order) <= 0) {
     try {
       const prods = new Map<string, Product>();
       for (const pid of [...new Set(merged.map((i) => i.productId).filter(Boolean))]) {

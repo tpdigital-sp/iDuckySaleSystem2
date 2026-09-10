@@ -5423,7 +5423,12 @@ export default function AdminOrderDetailPage() {
                   <span className="shrink-0 tabular-nums">−{formatPrice(order.discount.amount)}</span>
                 </div>
               )}
-              {earlyPayState(order) === "expired" ? (
+              {earlyPayState(order) === "superseded" ? (
+                <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-slate-400" title="มีส่วนลดอื่นแล้ว (ระดับสมาชิก/คูปอง/ส่วนลดจากแอดมิน) — ส่วนลดโอนไวไม่ใช้ร่วมกัน">
+                  <span className="min-w-0">{order.earlyPay!.label} · ไม่ใช้ร่วมกับส่วนลดอื่น</span>
+                  <span className="shrink-0 tabular-nums line-through">−{formatPrice(order.earlyPay!.amount)}</span>
+                </div>
+              ) : earlyPayState(order) === "expired" ? (
                 <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-slate-400" title="ลูกค้าไม่ได้แจ้งโอนภายในเวลา ส่วนลดหายไปตามกติกา — ตกลงกับลูกค้าแล้วใส่ส่วนลดทั้งบิลเองได้">
                   <span className="min-w-0">{order.earlyPay!.label} · หมดเวลาแจ้งโอน</span>
                   <span className="shrink-0 tabular-nums line-through">−{formatPrice(order.earlyPay!.amount)}</span>

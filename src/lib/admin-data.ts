@@ -739,10 +739,19 @@ export function adminDiscountAmount(o: Order): number {
  * สถานะส่วนลดโอนไวของออเดอร์ ณ เวลา now
  * none = ไม่มีส่วนลด · active = ยังอยู่ในเวลา (นับถอยหลัง) · locked = ได้แน่แล้ว (แจ้งโอนทัน / ใบเก่าไม่จำกัดเวลา) · expired = เลยเวลาโดยไม่แจ้งโอน
  */
-export type EarlyPayState = "none" | "active" | "locked" | "expired";
+export type EarlyPayState = "none" | "active" | "locked" | "expired" | "superseded";
+
+/** ส่วนลดอื่นของออเดอร์ (ระดับสมาชิก/คูปอง + ส่วนลดทั้งบิลจากแอดมิน + ส่วนลดรายรายการ) — ไม่รวมส่วนลดโอนไว */
+export function orderOtherDiscounts(o: Order): number {
+  return (o.discount?.amount ?? 0) + adminDiscountAmount(o) + orderItemDiscounts(o);
+}
+
 export function earlyPayState(o: Order, now: number = Date.now()): EarlyPayState {
   const e = o.earlyPay;
   if (!e || !(e.amount > 0)) return "none";
+  // ⚡ ไม่ใช้ร่วมกับส่วนลดอื่น (เจ้าของร้านสั่ง 10 ก.ย. 69 "มีส่วนลดอื่นแล้วไม่ต้องลดโอนไวอีก") — คิดสด
+  // แอดมินใส่ส่วนลดทั้งบิล/รายรายการทีหลังก็ตัดให้เอง (ล็อกไว้แล้วก็ตัด — ส่วนลดอื่นมาแทน)
+  if (orderOtherDiscounts(o) > 0) return "superseded";
   if (e.lockedAt || !e.expiresAt) return "locked";
   const t = Date.parse(e.expiresAt);
   if (!Number.isFinite(t)) return "locked";
